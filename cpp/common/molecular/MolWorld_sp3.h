@@ -1036,7 +1036,7 @@ void printPBCshifts(){
         builder.export_REQs( nbmol.REQs   );       ff->REQs=nbmol.REQs;
         nbmol  .makePLQs   ( gridFF.alphaMorse );  ff->PLQs=nbmol.PLQs; 
         nbmol  .makePLQd   ( gridFF.alphaMorse );  ff->PLQd=nbmol.PLQd; 
-        if(bCleanCharge)for(int i=builder.atoms.size(); i<ff->natoms; i++){ nbmol.REQs[i].z=0; }  // Make sure that atoms not present in Builder has well-defined chanrge                       
+        if(bCleanCharge)for(int i=builder.atoms.size(); i<ff->natoms; i++){ nbmol.REQs[i].z=0; }  // Make sure that atoms not present in Builder has well-defined chanrge        
         params.assignREs( ff->natoms, nbmol.atypes, nbmol.REQs, true, false  );
         if(verbosity>1)nbmol.print();                              
     }
@@ -1296,6 +1296,9 @@ void printPBCshifts(){
         //params.printBond();
         //params.printAngleTypes();
         //params.printDihedralTypes();
+        builder.sp3types.insert( params.getAtomType("C") );
+        builder.sp3types.insert( params.getAtomType("N") );
+        builder.sp3types.insert( params.getAtomType("O") );
     }
 
 
@@ -1337,6 +1340,7 @@ void printPBCshifts(){
  * periodic boundary conditions if enabled.
  */
     void makeMMFFs(){
+        print("MolWorld_sp3::makeMMFFs() \n" );
         // check if all bonds are in atom neighbors
         if( builder.checkBondsInNeighs(true) ) { 
             printf("ERROR some bonds are not in atom neighbors => exit"); 
@@ -1348,13 +1352,11 @@ void printPBCshifts(){
         builder.checkBondsOrdered( true, false );
 
         // make assignement of atom types and force field parameters
-        if( bUFF ){ 
-            // according to UFF
+        if( bUFF ){  // according to UFF
             builder.assignUFFtypes( 0, bCumulene, true, b141, bSimple, bConj); 
             builder.assignUFFparams( 0, true );
-        }else{ 
-            // according to MMFF
-            builder.assignTypes(); 
+        }else{      // according to MMFF
+            builder.assignTypes();
         }
 
         // passing them to FFs
@@ -1405,6 +1407,7 @@ void printPBCshifts(){
  * Finally, if the bOptimizer flag is set to true, it sets the optimizer and performs relaxation if bRelaxPi is also true.
  */
     virtual void makeFFs(){
+        print("MolWorld_sp3::makeFFs() \n" );
         makeMMFFs();
         if ( bUFF ){
             //initNBmol( ffu.natoms, ffu.apos, ffu.fapos, ffu.atypes ); 
@@ -1433,7 +1436,9 @@ void printPBCshifts(){
         }else{
             //initNBmol( ffl.natoms, ffl.apos, ffl.fapos, ffl.atypes ); 
             initNBmol( &ffl );
+            //ffl.printAtomParams();
             setNonBond( bNonBonded );
+            //ffl.print_nonbonded();
             bool bChargeToEpair=true;
             //bool bChargeToEpair=false;
             if(bChargeToEpair){
@@ -1442,6 +1447,7 @@ void printPBCshifts(){
                 ffl.chargeToEpairs( QEpair, etyp ); 
             }
             nbmol.evalPLQs(gridFF.alphaMorse);
+
             { // check FFS
                 idebug=1;
                 ffl.checkREQlimits();
@@ -1450,6 +1456,7 @@ void printPBCshifts(){
                 //ff .eval_check();
                 idebug=0;
             }
+
             //ffl.print_nonbonded(); exit(0);
             if(bOptimizer){ 
                 //setOptimizer(); 

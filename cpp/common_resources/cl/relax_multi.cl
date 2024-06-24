@@ -909,10 +909,13 @@ __kernel void updateAtomsMMFFf4(
     __global float4*  constrK,      // 9 // constraints stiffness (kx,ky,kz,?) for each atom
     __global float4*  MDparams,     // 10 // MD parameters (dt,damp,Flimit)
     __global float4*  TDrives,      // 11 // Thermal driving (T,gamma_damp,seed,?)
-    __global cl_Mat3* bboxes        // 12 // bounding box (xmin,ymin,zmin)(xmax,ymax,zmax)(kx,ky,kz)
+    __global cl_Mat3* bboxes,       // 12 // bounding box (xmin,ymin,zmin)(xmax,ymax,zmax)(kx,ky,kz)
+    __global int*     sysneighs,    // 13 // // for each system contains array int[nMaxSysNeighs] of nearby other systems
+    __global float4*  sysbonds      // 14 // // contains parameters of bonds (constrains) with neighbor systems   {Lmin,Lmax,Kpres,Ktens}
 ){
     const int natoms=n.x;           // number of atoms
     const int nnode =n.y;           // number of node atoms
+    const int nMaxSysNeighs = n.w;  // max number of inter-system interactions; if <0 shwitch inter system interactions off
     const int nvec  = natoms+nnode; // number of vectors (atoms+node atoms)
     const int iG = get_global_id  (0); // index of atom
 
@@ -1001,6 +1004,24 @@ __kernel void updateAtomsMMFFf4(
             cK = max( cK, (float4){0.0f,0.0f,0.0f,0.0f} );
             fe.xyz += (cons.xyz - pe.xyz)*cK.xyz; // add constraint force
             //if(iS==0){printf( "GPU::constr[ia=%i] (%g,%g,%g|K=%g)\n", iG, cons.x,cons.y,cons.z,cons.w ); }
+        }
+    }
+
+    // -------- Inter system interactions
+    if( nMaxSysNeighs>0 ){
+        for(int i=0; i<nMaxSysNeighs; i++){
+            const int j     = iS*nMaxSysNeighs + i;
+            const int    jS = sysneighs[j];
+            const float4 bj = sysbonds [j];
+            const float4 pj = apos[jS*nvec + iG];
+            float3 d        = pj.xyz - pe.xyz;
+            float  l = length( d );
+            if      (l<bj.x){
+                d*=(l-bj.x)*bj.z/l;  // f = dx*kPress
+            }else if(l>bj.y){
+                d*=(bj.y-l)*bj.w/l;  // f = dx*kTens
+            }
+            fe.xyz += d;
         }
     }
     
