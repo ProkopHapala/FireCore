@@ -38,17 +38,10 @@ def skelet2triangles2( c2p, binds, bonds, npoint=None ):
             tris.append( [b[0],b[1],npoint+ic ] )
     return tris
 
-def drawTriangles(tris, points, ax=None):
+def drawTriangles(tris, points, ax=None, ec='gray', fc=None  ):
     if ax is None: ax = plt.gca()
-    # Create a list of triangle vertices from point indexes
-    #triangles = []
-    #for tri in tris:
-    #    triangles.append([points[tri[0]], points[tri[1]], points[tri[2]]])
-    triangles = np.array( [points[tri,:2] for tri in tris] )
-    #print( "triangles ", triangles )
-    #print( "triangles.shape ", triangles.shape )
-    #poly_collection = PolyCollection(triangles, edgecolors='k', facecolors='none')
-    poly_collection = PolyCollection(triangles, edgecolors='gray' )
+    triangles       = np.array( [points[tri,:2] for tri in tris] )
+    poly_collection = PolyCollection(triangles, edgecolors=ec, facecolors=fc )
     ax.add_collection(poly_collection)
 
 
@@ -71,7 +64,6 @@ def bonder_edges(polygons, bonds, border_polys=None, border_atoms=None, neighs=N
                 edges.append( (j,ip+np0) )
     return edges
 
-
 def order_contour(bonds, start=None ):
     # Create a dictionary to store adjacency list
     adjacency = {}
@@ -81,9 +73,18 @@ def order_contour(bonds, start=None ):
         adjacency[i].append(j)
         adjacency[j].append(i)
     # Start from an arbitrary point
-    if start is None: start = bonds[0][0]
-    #contour = [start]
-    contour = []
+    bClosed = True
+    if start is None: 
+        endpoints = [point for point, neighbors in adjacency.items() if len(neighbors) == 1]
+        if len(endpoints) == 0:
+            start = bonds[0][0]
+        else:
+            bClosed = False
+            start = endpoints[0]
+    if bClosed:
+        contour = []
+    else:
+        contour = [start]
     current = start
     prev    = None 
     while True:
@@ -99,13 +100,24 @@ def order_contour(bonds, start=None ):
         if not bFound: break 
         contour.append(current)
         if current == start: break
-    return contour
+    return contour, bClosed
 
-def offset_contour( controur, ps, l=2.0, cAve=1.0 ):
+def polygonContours( polys, bonds ):
+    controus = []
+    bonds = np.array( bonds, dtype=np.int32 )
+    #print( ">>>>> bonds", bonds )
+    #print( ">>>>> polys", polys )
+    for poly in polys: 
+        ps, closed = order_contour( bonds[ list(poly) ] )
+        controus.append( ps )
+    return controus
+
+def offset_contour( controur, ps, l=2.0, cAve=0.5):
     print("========")
     n = len(controur)
     p0 = np.average( ps, axis=0 )
     ps2 = np.zeros( (n,2) ) 
+    pout = None
     for i in range(0, n ):
         pp  = ps[ controur[i-2] ]
         pi  = ps[ controur[i-1] ]
@@ -121,30 +133,99 @@ def offset_contour( controur, ps, l=2.0, cAve=1.0 ):
         ps2 = (ps2[:,:] + cAve*np.roll(ps2,1,axis=0) + cAve*np.roll(ps2,-1,axis=0) )/(1. + 2.*cAve)
     return ps2
 
+def contours2bonds( contours, bonds ):
+    bdict = { b:i for i,b in enumerate(bonds) }
+    print( "bdict ", bdict )
+    bss = []
+    for c in contours:
+        bs = []
+        for ic in range(len(c)):
+            i,j = c[ic],c[ic-1]
+            if i<j:
+                b=(i,j)
+            else:
+                b=(j,i)
+            ib = bdict.get(b,-1)
+            if(ib>=0):
+                bs.append( ib )
+        bss.append(bs)
+    return bss
 
+def controusPoints( contours, ps, centers, beta=0.2 ):
+    ps2 = [] 
+    for ic,ips in enumerate(contours):
+        ps2.append( (1-beta)*ps[ips,:] +  beta*centers[ic][None,:] )
+        #plt.plot( (1-beta)*ps[ips,0] + beta*centers[ic][None,0], (1-beta)*ps[ips,1] + beta*centers[ic][None,1], 'o:', c='k' )
+    return ps2
+
+def small_trinagles( conts, bss, bonds, cont0, bss0 ):
+    tris = []
+    nc = 0
+    for i,bs in enumerate(bss):
+        c = conts[i]
+        nci = len(c)
+        for j,ib in enumerate(bs):
+            j1 = j-1
+            if( j1>=0 ): # j1 = nci
+                tris.append(  [ ib+bss0, j+nc+cont0, j1+nc+cont0 ] )
+        nc +=  nci
+    return tris
+
+
+#def poly
 
 
 # ================== Body
+plu.plotSystem( mol, bLabels=False )
 
 mol.findBonds()                                             #; print( "mol.bonds ", mol.bonds )
 #bonds        = au.filterBonds( mol.bonds, mol.enames, set('H') )   #; print( "bonds2 ", bonds )
-bonds        = mol.bonds
+#bonds        = mol.bonds
+
+bonds = [(i, j) if i < j else (j, i) for i, j in mol.bonds ]
+
 binds        = np.repeat(np.arange(len(bonds)), 2)   ;print("binds ", binds )  # indexes of bonds for each point
 #bsamp       = au.makeBondSamples( bonds, mol.apos, where=[-0.4,0.0,0.4] )
 bsamp        = au.makeBondSamples( bonds, mol.apos, where=None )
 centers, polygons = au.colapse_to_means( bsamp, R=0.7, binds=binds )
 
-polys = [  set( binds[p] for p in poly )  for poly in polygons ]
-
-print( "polys ", polys )
-
-#tris = skelet2triangles( bonds, b2c, npoint=len(mol.apos)+1 );   print("tris ", tris)
-tris = skelet2triangles2( polygons, binds, bonds, npoint=len(mol.apos) ); #  print("tris ", tris)
 
 #print( "mol.apos.shape, centers.shape ", mol.apos.shape, centers.shape  )
 points = np.concatenate( (mol.apos[:,:2], centers[:,:2]), axis=0 )
 
-plt.show()
+polys = [  set( binds[p] for p in poly )  for poly in polygons ]    # for each polygon center list of bonds adjecent to it
+
+conts = polygonContours( polys, bonds )
+cps   = controusPoints( conts, points, centers, beta=0.2 )   ;print( ">>>> cps 1 ", cps  )
+
+
+cps   = np.concatenate( cps, axis=0 ) ;print( ">>>> cps ", cps  )
+
+bss = contours2bonds( conts, bonds )                       #;print(">>>> bss ", bss )
+bcs = au.makeBondSamples( bonds, mol.apos, where=[0.0] )   #;print(">>>> bcs ", bcs )
+
+bss0  = len(points)
+cont0 = bss0 + len(bcs) 
+points = np.concatenate( (points, bcs, cps ), axis=0 )
+
+plt.plot( points[:,0],          points[:,1],           'ok' );
+plt.plot( points[bss0:cont0,0], points[bss0:cont0,1],  'or' );
+plt.plot( points[cont0:,0],     points[cont0:,1],      'ob' );
+
+#plt.show()
+
+tris2 = small_trinagles( conts, bss, bonds, cont0, bss0 )    ;print( "tris2 ", tris2 )
+
+drawTriangles(tris2, points, fc='r', ec='r' )
+
+#print( "polys ", polys )
+
+#tris = skelet2triangles( bonds, b2c, npoint=len(mol.apos)+1 )   ;print("tris ", tris)
+tris = skelet2triangles2( polygons, binds, bonds, npoint=len(mol.apos) )  ;print("tris ", tris)
+
+
+
+
 
 #exit()
 neighs = au.neigh_atoms( len(mol.enames), mol.bonds )
@@ -161,13 +242,19 @@ border_polys = [ any( is_capping_b[ binds[edge] ] for edge in polygon) for polyg
 edges = bonder_edges( polys, bonds, border_polys=border_polys, border_atoms=border_atoms, np0=len(mol.apos),  );  print( "edges ", edges )
 #edges = bonder_edges( polys, bonds, neighs=neighs, np0=len(mol.apos) );  print( "edges ", edges )
 
-contour = order_contour(edges) #;print( "contour ", contour )
+contour, closed = order_contour(edges) #;print( "contour ", contour )
 
 plt.plot( points[contour,0], points[contour,1], 'o:r', lw=3  )
+
+beta=0.2
+for ic,ips in enumerate(conts):
+    plt.plot( (1-beta)*points[ips,0] + beta*centers[ic][None,0], (1-beta)*points[ips,1] + beta*centers[ic][None,1], 'o:', c='k' ) 
 
 contour2  = offset_contour( contour, points, l=2.0 )     #;print( "contour2 ", contour2.shape, contour2  )
 
 plt.plot( contour2[:,0], contour2[:,1], 'o-b', lw=3  )
+
+plt.plot( bcs[:,0], bcs[:,1], 'ob'  )
 
 #plu.plotBonds( links=edges, ps=points, lws=5, colors='r' )
      
@@ -188,7 +275,7 @@ print( " tot npoint= ", nbsamp+nasamp+nesamp+nksamp ," nbsamp=", nbsamp," nasamp
 
 plt.plot( mol.apos[:,0],mol.apos[:,1], "o", ms=10, )
 
-drawTriangles(tris, points, ax=None)
+#drawTriangles(tris, points, ax=None)
 
 plt.plot( centers[:,0],centers[:,1], "o", ms=15. )
 #plt.plot( bsamp[:,0],bsamp[:,1], "." )
@@ -210,7 +297,7 @@ ax.scatter(points[:, 0], points[:, 1], c='b', marker='o')
 for i, point in enumerate(points):  ax.annotate(str(i), (point[0], point[1]), textcoords="offset points", xytext=(5,5), ha='center')
 
 
-plu.plotSystem( mol, bLabels=False )
+
 
 #print( "neighs ", neighs )
 #cycles = au.find_cycles( neighs, max_length=7)
