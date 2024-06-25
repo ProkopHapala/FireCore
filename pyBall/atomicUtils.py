@@ -96,11 +96,16 @@ def find_cycles(graph, max_length=7):
 def filterBonds( bonds, enames, ignore ):
     return [ (i,j) for (i,j) in bonds if not ( ( enames[i] in ignore ) or ( enames[j] in ignore ) ) ]
 
-def colapse_to_means( bsamp, R=0.7 ):
+def colapse_to_means( bsamp, R=0.7, binds=None ):
     R2 = R*R
     cs = [ ]
     ns = [ ]
     ci = [ ]
+    # n = len(bsamp)
+    # bMap = False; b2c=None
+    # if binds is not None: 
+    #     b2c = np.full(n,-1, dtype=np.int32 )
+    #     bMap = True
     for ip,p in enumerate(bsamp):
         imin  = -1
         for ic,c in enumerate(cs):
@@ -109,13 +114,15 @@ def colapse_to_means( bsamp, R=0.7 ):
                 n = ns[ic]
                 cs[ic] = (c*n + p)/(n+1.0)
                 ci[ic].append(ip)
+                #if(bMap): b2c[ip] = ic
                 ns[ic] +=1
                 imin    = ic
                 break
         if imin<0:
+            #if(bMap): b2c[ip] = len(cs)
             cs.append( p  )
             ns.append( 1. )
-            ci.append( [] )
+            ci.append( [ip] )
     print( "centers ", cs)
     cs = np.array( cs )
     return cs, ci
