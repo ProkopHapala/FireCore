@@ -1,31 +1,79 @@
 import sys
 import numpy as np
 import matplotlib.pyplot as plt
+from matplotlib.collections import PolyCollection
+
 
 sys.path.append('../../')
 from pyBall import atomicUtils as au
 from pyBall import plotUtils   as plu
 
 
+# ================== Setup
 
 mol = au.AtomicSystem( "../../cpp/common_resources/PTCDA-.xyz" )  #; mol.print()
 
 #mol = au.AtomicSystem( "../../cpp/common_resources/formic_dimer.xyz" )  #; mol.print()
 
+# ================== Functions
+
+def skelet2triangles( bonds, bond2center, npoint=None ):
+    #print( "bonds ", bonds )
+    if npoint is None: npoint =  np.array(bonds,dtype=np.int32).max() + 1 
+    tris = []
+    nb = len(bonds)
+    for ib,b in enumerate(bonds):
+        tris.append( [b[0],b[1],npoint+bond2center[ib]] )
+    return tris
+
+def skelet2triangles2( c2p, binds, bonds, npoint=None ):
+    #print( "bonds ", bonds )
+    if npoint is None: npoint =  np.array(bonds,dtype=np.int32).max() + 1 
+    tris = []
+    nb = len(bonds)
+    for ic,ci in enumerate(c2p):
+        for ip in ci:
+            ib = binds[ip]
+            b = bonds[ib]
+            tris.append( [b[0],b[1],npoint+ic ] )
+    return tris
+
+def drawTriangles(tris, points, ax=None):
+    if ax is None: ax = plt.gca()
+    # Create a list of triangle vertices from point indexes
+    #triangles = []
+    #for tri in tris:
+    #    triangles.append([points[tri[0]], points[tri[1]], points[tri[2]]])
+    triangles = np.array( [points[tri,:2] for tri in tris] )
+    #print( "triangles ", triangles )
+    #print( "triangles.shape ", triangles.shape )
+    #poly_collection = PolyCollection(triangles, edgecolors='k', facecolors='none')
+    poly_collection = PolyCollection(triangles, edgecolors='gray' )
+    ax.add_collection(poly_collection)
+
+# ================== Body
 
 mol.findBonds()                                             #; print( "mol.bonds ", mol.bonds )
-bonds = au.filterBonds( mol.bonds, mol.enames, set('H') )   #; print( "bonds2 ", bonds )
+#bonds        = au.filterBonds( mol.bonds, mol.enames, set('H') )   #; print( "bonds2 ", bonds )
+bonds        = mol.bonds
+binds        = np.repeat(np.arange(len(bonds)), 2)   ;print("binds ", binds )  # indexes of bonds for each point
 #bsamp       = au.makeBondSamples( bonds, mol.apos, where=[-0.4,0.0,0.4] )
 bsamp        = au.makeBondSamples( bonds, mol.apos, where=None )
-centers, cis = au.colapse_to_means( bsamp, R=0.7 )
+centers, cis = au.colapse_to_means( bsamp, R=0.7, binds=binds )
 
-#plt.show()
+#tris = skelet2triangles( bonds, b2c, npoint=len(mol.apos)+1 );   print("tris ", tris)
+tris = skelet2triangles2( cis, binds, bonds, npoint=len(mol.apos) );   print("tris ", tris)
+
+print( "mol.apos.shape, centers.shape ", mol.apos.shape, centers.shape  )
+points = np.concatenate( (mol.apos[:,:2], centers[:,:2]), axis=0 )
+
+plt.show()
 
 #exit()
 neighs = au.neigh_atoms( len(mol.enames), mol.bonds )
 
-asamp = au.makeAtomSamples( neighs, mol.apos,mol.enames, ignore=set(['H']), where=[-0.6] )
-esamp = au.makeEndAtomSamples( neighs, mol.apos, mol.enames, ignore=set(['H']),  whereX=[-0.6, +0.6 ], whereY=[0.0,+0.6] )
+asamp = au.makeAtomSamples    ( neighs, mol.apos, mol.enames,  ignore=set(['H']), where=[-0.6] )
+esamp = au.makeEndAtomSamples ( neighs, mol.apos, mol.enames, ignore=set(['H']),  whereX=[-0.6, +0.6 ], whereY=[0.0,+0.6] )
 ksamp = au.makeKinkAtomSamples( neighs, mol.apos, where=[-0.6, +0.6 ] )
 
 nbsamp = len(bsamp)
@@ -38,7 +86,7 @@ print( " tot npoint= ", nbsamp+nasamp+nesamp+nksamp ," nbsamp=", nbsamp," nasamp
 
 plt.plot( mol.apos[:,0],mol.apos[:,1], "o", ms=10, )
 plt.plot( centers[:,0],centers[:,1], "o", ms=15. )
-plt.plot( bsamp[:,0],bsamp[:,1], "." )
+#plt.plot( bsamp[:,0],bsamp[:,1], "." )
 
 #plt.plot( esamp[:,0],esamp[:,1], "." )
 #plt.plot( ksamp[:,0],ksamp[:,1], "." )
@@ -46,23 +94,22 @@ plt.plot( bsamp[:,0],bsamp[:,1], "." )
 
 
 
+drawTriangles(tris, points, ax=None)
 
+ax=plt.gca()
+ax.scatter(points[:, 0], points[:, 1], c='b', marker='o')    
+for i, point in enumerate(points):  ax.annotate(str(i), (point[0], point[1]), textcoords="offset points", xytext=(5,5), ha='center')
+
+
+plu.plotSystem( mol, bLabels=False )
 
 #print( "neighs ", neighs )
 #cycles = au.find_cycles( neighs, max_length=7)
 #print( cycles )
 
 
-
-# # Example usage:
-# graph = [
-#     {2, 13, 7}, {9, 3, 12}, {0, 8, 4}, {1, 20, 6}, {2, 5, 14}, {17, 4, 6},
-#     {10, 3, 5}, {0, 16, 15}, {19, 2, 10}, {24, 1, 27}, {8, 6, 22}, {24, 26, 20},
-#     {1, 17, 31}, {0, 18, 21}, {4, 21, 30}, {34, 19, 7}, {25, 29, 7}, {32, 12, 5},
-#     {25, 28, 13}, {8, 33, 15}, {11, 3, 23}, {35, 13, 14}, {10, 36, 23}, {20, 37, 22},
-#     {9, 11}, {16, 18}, {11}, {9}, {18}, {16}, {14}, {12}, {17}, {19}, {15}, {21}, {22}, {23}
-# ]
-
+'''
+# ------------ Cycles
 adj_list           = au.convert_to_adjacency_list(neighs)
 preprocessed_graph = au.preprocess_graph(adj_list.copy())     ;#print( "preprocessed_graph ", preprocessed_graph  )
 cycles             = au.find_cycles(preprocessed_graph, max_length=7)
@@ -76,8 +123,9 @@ for i,cycle in enumerate(cycles):
     plt.plot( ps[:,0], ps[:,1] )
 
 plt.plot( centers[:,0], centers[:,1], '*', )
+'''
 
 plt.axis('equal')
-plt.grid()
+#plt.grid()
 
 plt.show()
