@@ -206,6 +206,30 @@ void sample_SplineHermite1D_deriv( double g0, double dg, int ng, double* EFg, in
     Spline_Hermite::sample1D_deriv( g0, dg, ng, (Vec2d*)EFg, n, ps, (Vec2d*)fes );  
 }
 
+
+
+inline double periodic_x2(double x, int nmax=100){
+    //int ix    = (int)(x+nmax) - nmax; // fast floor
+    int ix=(int)x; if(x<0)ix--;
+    double dx = (x-ix-0.5)*2.0;
+    double y = 1-dx*dx;
+    if( ix&1 ){ y*=-1; } 
+    return y;
+}
+
+
+void sample_func( int n, double* xs, double* ys, int kind ){
+    for(int i=0; i<n; i++ ){
+        double x = xs[i];
+        switch (kind){
+            case 0:  { ys[i]= sin(x);         } break;
+            case 1:  { ys[i]= periodic_x2(x); } break;
+            default: { ys[i]= NAN;            } break;
+        }
+    }
+}
+
+
 void sample_SplineConstr( double x0, double dx, int np, double* Eps, int n, double* xs, double* Es, double* Fs ){
     SplineConstr C( {0,1}, x0, dx, np, Eps );
     Vec3d ps[2]{{.0,.0,.0},{.0,.0,.0}};

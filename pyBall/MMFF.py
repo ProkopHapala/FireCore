@@ -238,6 +238,16 @@ def saveXSF( name, FF, cell=None ):
     if name is not None: name = name.encode('utf8')
     lib.saveXSF( name, _np_as(FF,c_double_p), _np_as(ns,c_int_p), _np_as(cell,c_double_p) )
 
+
+# void sample_func( int n, double* xs, double* ys, int kind ){
+lib.sample_func.argtypes  = [c_int, c_double_p, c_double_p, c_int]
+lib.sample_func.restype   =  None
+def sample_func( xs, ys=None, kind=0 ):
+    n = len(xs)
+    if ys is None: ys=np.zeros(n)
+    lib.sample_func( n, _np_as(xs,c_double_p), _np_as(ys,c_double_p), kind )
+    return ys
+
 # void sample_Bspline( double g0, double dg, int ng, double* Gs, int n, double* xs, double* fes ){
 lib.sample_Bspline.argtypes  = [c_double, c_double, c_int, c_double_p, c_int, c_double_p, c_double_p ]
 lib.sample_Bspline.restype   =  None
