@@ -11,4 +11,5 @@ make $name
 cd $wd
 
 echo "#=========== RUN"
-python3 run.py
+#python3 run.py
+python3 ff2dGUI.py

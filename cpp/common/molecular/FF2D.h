@@ -8,6 +8,7 @@
 
 #include "datatypes.h"
 #include "Vec2.h"
+#include "geom2d.h"
 
 //              // H He Li Be B C N O F 
 static const int atom_ne[9] = { 0,0, 0, 0, 0,0,1,2,3};
@@ -17,6 +18,7 @@ class Atom2D{ public:
     Vec2d pos;
     int nb,ne,npi;
     int neighs[4];
+    //int remove = 0;
 
     double getCos0(){
         if       (npi==2){return -1.0;}
@@ -46,7 +48,7 @@ class Atom2D{ public:
 
 class FF2D{ public:
     std::vector<Atom2D> atoms;
-    //std::vector<Vec2i>  bonds;
+    std::vector<Vec2i>  bonds;
 
     int old_size =0;
     //Vec2d* apos  =0;
@@ -77,6 +79,60 @@ class FF2D{ public:
             if(neighs)neighs[ia]=*(int4*)A.neighs;
             if(apos  )apos  [ia]= A.pos;
         }
+    }
+
+    void getBonds( Vec2i* bs ){
+        for(int ib=0; ib<bonds.size(); ib++){ bs[i] = bs[ib]; }
+    };
+
+    void addAtom( Vec2d pos, int type, int* neighs=0 ){
+        Atom2D A;
+        A.pos=pos;
+        A.typ=type;
+        if( neighs ){ for(int i=0; i<4; i++){ A.neighs[i] = neighs[i]; } }else{ A.cleanNeighs(); }
+        atoms.push_back( A );
+    }
+
+    void addBond( int ia, int ja ){
+        atoms[ia].addNeigh(ja);
+        atoms[ja].addNeigh(ia);
+        bonds.push_back( Vec2i(ia,ja) );
+    }
+
+    bool removeAtom(int i){ if( (i>0)&&(i<atoms.size() ) ){ atoms[i].typ=-1;              return true; }else{ return false; } }
+    bool removeBond(int i){ if( (i>0)&&(i<bonds.size() ) ){ bonds[i].x=-1; bonds[i].y=-1; return true; }else{ return false; } }
+
+    int findBondAt( Vec2d pos, double R ){
+        double R2max = R*R;
+        double r2min = 1e+300;
+        int ifound = -1;
+        for(int ib=0; ib<bonds.size(); ib++){
+            Vec2i& b = bonds[ib];
+            if( (b.x<0) || (b.y<0) )continue;
+            Vec2d d = dpLineSegment( pos, atoms[b.x].pos, atoms[b.y].pos );
+            double r2 = d.norm2();
+            if( (r2 < R2max) && (r2 < r2min) ){
+                ifound = ib;
+                r2min = r2;
+            }
+        }
+        return ifound;
+    } 
+
+    int findAtomAt( Vec2d pos, double R ){
+        double R2max = R*R;
+        double r2min = 1e+300;
+        int ifound = -1;
+        for(int ia=0; ia<atoms.size(); ia++){
+            if(atoms[ia].typ<0) continue;
+            Vec2d d  = pos-atoms[ia].pos;
+            double r2 = d.norm2();
+            if( (r2 < R2max) && (r2 < r2min) ){
+                ifound = ib;
+                r2min = r2;
+            }
+        }
+        return ifound;
     }
 
     double eval(){

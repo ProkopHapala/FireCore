@@ -122,7 +122,7 @@ touch minima.dat
 
 
 
-./$name -m 100 -x common_resources/PTCDA  -c 29,1.0      -g common_resources/NaCl_1x1_L2     -iParalel 3   -perframe 100    -Ftol 1e-4    -lua0 scan_replicas.lua
+#./$name -m 100 -x common_resources/PTCDA  -c 29,1.0      -g common_resources/NaCl_1x1_L2     -iParalel 3   -perframe 100    -Ftol 1e-4    -lua0 scan_replicas.lua
 
 
 
@@ -168,6 +168,7 @@ touch minima.dat
 #./$name -m 100 -x common_resources/polymer-2_new                  -g common_resources/NaCl_1x1_L2    -Ftol 1e-4   -perframe 100  -iParalel 3   -group  9,20,17,1,9  0,1,7,9,15,17   -bbox -30.0,-30.0,-10.0,30.0,30.0,10.0,1.0,1.0,1.0
 #./$name -m 1000 -x common_resources/polymer-2_new                  -g common_resources/NaCl_1x1_L2    -Ftol 1e-4   -perframe 200  -iParalel 3   -group  9,20,17,1,9  0,1,7,9,15,17   -bbox -30.0,-30.0,-10.0,30.0,30.0,10.0,1.0,1.0,1.0
 #./$name -m 10 -x common_resources/polymer-2_new          -nogridff   -dt 0.05      -g common_resources/NaCl_1x1_L2    -Ftol 1e-4   -perframe 200  -iParalel 3   -group  9,20,17,1,9  0,1,7,9,15,17  -bbox -30.0,-30.0,-10.0,30.0,30.0,10.0,1.0,1.0,1.0
+
 ./$name -m 1000 -x common_resources/polymer-2_new-OH    -verb 0      -dt 0.1      -g common_resources/NaCl_1x1_L2    -Ftol 1e-4   -perframe 200  -iParalel 3   -group  9,20,17,1,9  0,1,7,9,15,17  -group  12,19,16,3,12  12,3,2,6,14,16 -bbox -4.02,-4.02,-10.0,20.10,20.20,20.0,1e-3,1e-3,1.0
 
 #./$name -m 10 -x common_resources/polymer-2_new          -dt 0.05      -g common_resources/NaCl_1x1_L2    -Ftol 1e-4   -perframe 200  -iParalel 3 -group  9,20,17,1,9  0,1,7,9,15,17   -c 10

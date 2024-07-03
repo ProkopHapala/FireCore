@@ -57,6 +57,10 @@ void toArrays( int* types, double* apos, int* neighs ){
     ff.toArrays( types, (Vec2d*)apos, (int4*)neighs );
 }
 
+void getBonds( int* bonds ){
+    ff.getBonds( (Vec2i*)bonds );
+}
+
 double step( double dt, double damp ){ return ff.step(dt,damp); }    
 
 int run( int n, double dt, double damp, double Fconv, bool bCleanForce){
@@ -71,5 +75,13 @@ int run( int n, double dt, double damp, double Fconv, bool bCleanForce){
     }
     return 0;
 }
+
+int getAtomNumber(){ return ff.atoms.size(); }
+int getBondNumber(){ return ff.bonds.size(); }
+
+bool removeAtom(int i){ return ff.removeAtom(i); }
+bool removeBond(int i){ return ff.removeBond(i); }
+int findBondAt( double x, double y, double R ){ return ff.findBondAt( {x,y},R); }
+int findAtomAt( double x, double y, double R ){ return ff.findAtomAt( {x,y},R); }
 
 } // extern "C"
