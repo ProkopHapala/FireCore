@@ -99,7 +99,7 @@ def run(n=1000, dt=0.1, damp=0.1, Fconv=1e-2, bCleanForce=False):
 lib.addAtom.argtypes  = [c_double, c_double, c_int, c_int_p ]
 lib.addAtom.restype   =  c_int
 def addAtom(x, y, type=0, neighs=None):
-    if neighs is None: neighs = np.zeros(4, dtype=np.int32)
+    #if neighs is None: neighs = np.zeros(4, dtype=np.int32)
     return lib.addAtom(x, y, type, _np_as(neighs,c_int_p))
                          
 #int addBond( int ia, int ja ){ 
@@ -132,4 +132,9 @@ lib.findAtomAt.restype  =  c_int
 def findAtomAt(x, y, R=0.3):
     return lib.findAtomAt(x, y, R)
 
+# void print_atoms(){
+lib.print_atoms.argtypes = [] 
+lib.print_atoms.restype  =  None
+def print_atoms():
+    lib.print_atoms()
 # =========  Tests
