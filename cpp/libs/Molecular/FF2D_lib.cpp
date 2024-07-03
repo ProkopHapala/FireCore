@@ -79,6 +79,10 @@ int run( int n, double dt, double damp, double Fconv, bool bCleanForce){
 int getAtomNumber(){ return ff.atoms.size(); }
 int getBondNumber(){ return ff.bonds.size(); }
 
+int addAtom( double x, double y, int type=0, int* neighs=0 ){ return ff.addAtom( Vec2d{x,y}, type, neighs );}
+
+int addBond( int ia, int ja ){ return ff.addBond(ia,ja); }
+
 bool removeAtom(int i){ return ff.removeAtom(i); }
 bool removeBond(int i){ return ff.removeBond(i); }
 int findBondAt( double x, double y, double R ){ return ff.findBondAt( {x,y},R); }

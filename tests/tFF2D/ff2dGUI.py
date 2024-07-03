@@ -1,9 +1,10 @@
 #!/usr/bin/python
-
+import sys
 import matplotlib.pyplot as plt
 from matplotlib.collections import LineCollection
 import numpy as np
 
+sys.path.append("../../")
 from pyBall import FF2D as ff
 
 # Initialize the figure and axis
@@ -23,50 +24,65 @@ icur_atom = -1
 
 # Function to update the plot
 def update_plot():
+    global icur_atom
     ax.clear()
     ax.set_xlim(0, 10)
     ax.set_ylim(0, 10)
     ax.set_title('Interactive Plot: Add, Delete, Connect, and Move Points')
-    
-    types, apos, neighs = ff.getAtoms()
-    bonds               = ff.getBonds()
+
+    print( "----- py.update_plot() " )
+    types, apos, neighs = ff.getAtoms()  #;print("apos ", apos) #;print("types", types) ;print("neighs", ne
+    bonds               = ff.getBonds()  #;print("bonds ", bonds)
 
     # Plot points
-    if points:
-        #x_values, y_values = zip(*points)
-        #ax.plot(x_values, y_values, 'bo', markersize=5)  # Plot points
-        ax.plot( apos[:,0], apos[:,1], 'bo', markersize=5 )
+    #x_values, y_values = zip(*points)
+    #ax.plot(x_values, y_values, 'bo', markersize=5)  # Plot points
+    ax.plot( apos[:,0], apos[:,1], 'bo', markersize=5 )
+    if icur_atom >= 0:
+        ax.plot( [apos[icur_atom,0]], [apos[icur_atom,1]], 'ro', markersize=5 )
 
     # Plot lines using LineCollection
-    if lines:
-        lines = [ (apos[i,:], apos[j,:]) for (i,j) in bonds ] 
-        line_segments = LineCollection(lines, colors='b')
-        ax.add_collection(line_segments)
+    lines = [ (apos[i,:], apos[j,:]) for (i,j) in bonds ] 
+    line_segments = LineCollection(lines, colors='b')
+    ax.add_collection(line_segments)
     
     fig.canvas.draw()
 
 # Event handler function for mouse button press
 def on_click(event):
+    global icur_atom
     global dragging_point_index
+    bUpdate = False
     if event.inaxes is not None:
         x = event.xdata
         y = event.ydata
+        ia = ff.findAtomAt( x, y )
         if event.button == 1:  # Left mouse button  - Picking atoms 
-            ia = ff.findAtomAt( x, y )
             if event.key == 'control':  # Ctrl + Left Click to delete point
+                print( "CTRL+LMB: remove atom() ", ia )
                 ff.removeAtom(ia)
+                bUpdate = True
             else:  # Left Click to add point
                 icur_atom = ia
+                bUpdate = True
         elif event.button == 3:  # Right mouse button to connect points
-            if icur_atom > 0:
-                lines.append((points[-2], points[-1]))  # Connect the last two points
+            ja = ia
+            if ia<0:   # new atom
+                ja = ff.addAtom( x, y )
+                bUpdate   = True
+            if icur_atom >= 0:   # bond to icur_atom
+                ff.addBond(icur_atom, ja)
+                bUpdate = True
+            icur_atom = ja
+                
 
         #elif event.button == 2:  # Middle mouse button to start dragging
         #    for (i, (x, y)) in enumerate(points):
         #        if abs(x - event.xdata) < 0.1 and abs(y - event.ydata) < 0.1:
         #            dragging_point_index = i
         #            break
-        update_plot()
+        if bUpdate:
+            update_plot()
 
 # Event handler function for mouse motion
 def on_motion(event):
