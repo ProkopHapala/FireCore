@@ -2,6 +2,8 @@
 import sys
 import matplotlib.pyplot as plt
 from matplotlib.collections import LineCollection
+from matplotlib.widgets import Button,Slider
+
 import numpy as np
 
 sys.path.append("../../")
@@ -129,6 +131,29 @@ fig.canvas.mpl_connect('button_press_event',   on_click   )
 fig.canvas.mpl_connect('motion_notify_event',  on_motion  )
 fig.canvas.mpl_connect('button_release_event', on_release )
 fig.canvas.mpl_connect('key_press_event', on_key)
+
+
+
+plt.subplots_adjust(bottom=0.2)  # Adjust the subplot to make room for widgets
+
+# ===========  Adding Button
+def on_button_clicked(event):
+    print("Button clicked!")
+
+# Add a button
+ax_button = plt.axes([0.81, 0.05, 0.1, 0.075])  # Position [left, bottom, width, height]
+button = Button(ax_button, 'Click Me')
+button.on_clicked(on_button_clicked)
+
+# ===========  Adding Slider
+
+def on_slider_changed(val):
+    print(f"Slider value: {val}")
+
+# Add a slider
+ax_slider = plt.axes([0.1, 0.1, 0.8, 0.05])  # Position [left, bottom, width, height]
+slider = Slider(ax_slider, 'Value', 0, 100, valinit=50)
+slider.on_changed(on_slider_changed)
 
 # Initial plot update
 update_plot()
