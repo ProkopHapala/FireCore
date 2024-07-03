@@ -9,7 +9,7 @@ from pyBall import FF2D as ff
 
 # Initialize the figure and axis
 fig, ax = plt.subplots()
-ax.set_title('Interactive Plot: Add, Delete, Connect, and Move Points')
+ax.set_title('LMB:select,RMB:add(atom,connect by bond), LMB+Ctrl:Delete')
 ax.set_xlim(0, 10)
 ax.set_ylim(0, 10)
 
@@ -23,14 +23,14 @@ dragging_point_index = None
 icur_atom = -1
 
 # Function to update the plot
-def update_plot():
+def update_plot( bLabels=True):
     global icur_atom
     ax.clear()
     ax.set_xlim(0, 10)
     ax.set_ylim(0, 10)
     ax.set_title('Interactive Plot: Add, Delete, Connect, and Move Points')
 
-    print( "----- py.update_plot() " )
+    #print( "----- py.update_plot() " )
     types, apos, neighs = ff.getAtoms()  #;print("apos ", apos) #;print("types", types) ;print("neighs", ne
     bonds               = ff.getBonds()  #;print("bonds ", bonds)
 
@@ -41,11 +41,15 @@ def update_plot():
     if icur_atom >= 0:
         ax.plot( [apos[icur_atom,0]], [apos[icur_atom,1]], 'ro', markersize=5 )
 
+    if bLabels:
+        for i, (x, y) in enumerate(apos):
+            ax.text(x, y, str(i), fontsize=10, ha='right')
+
     # Plot lines using LineCollection
     lines = [ (apos[i,:], apos[j,:]) for (i,j) in bonds ] 
     line_segments = LineCollection(lines, colors='b')
     ax.add_collection(line_segments)
-    
+    ax.set_aspect('equal', adjustable='datalim')
     fig.canvas.draw()
 
 # Event handler function for mouse button press
@@ -59,12 +63,13 @@ def on_click(event):
         ia = ff.findAtomAt( x, y )
         if event.button == 1:  # Left mouse button  - Picking atoms 
             if event.key == 'control':  # Ctrl + Left Click to delete point
-                print( "CTRL+LMB: remove atom() ", ia )
+                #print( "CTRL+LMB: remove atom() ", ia )
                 ff.removeAtom(ia)
                 bUpdate = True
             else:  # Left Click to add point
-                icur_atom = ia
-                bUpdate = True
+                if icur_atom != ia: 
+                    icur_atom = ia
+                    bUpdate = True
         elif event.button == 3:  # Right mouse button to connect points
             ja = ia
             if ia<0:   # new atom
@@ -74,15 +79,37 @@ def on_click(event):
                 ff.addBond(icur_atom, ja)
                 bUpdate = True
             icur_atom = ja
-                
-
         #elif event.button == 2:  # Middle mouse button to start dragging
         #    for (i, (x, y)) in enumerate(points):
         #        if abs(x - event.xdata) < 0.1 and abs(y - event.ydata) < 0.1:
         #            dragging_point_index = i
         #            break
+        #ff.print_atoms()
         if bUpdate:
             update_plot()
+
+
+key_actions = {
+    #'r':         lambda: print("Key 'a' pressed"),
+    #'d':         lambda: print("Key 'd' pressed"),
+    'enter':     lambda: ( print("run"),                     ff.run(n=1000, dt=0.1, damp=0.1, Fconv=1e-2, bCleanForce=True ), update_plot() ),
+    'delete':    lambda: ( print("delete atom ", icur_atom), ff.removeAtom(icur_atom),                                        update_plot() ),
+    #'backspace': lambda: print("Backspace key pressed"),
+    #'home':      lambda: print("Home key pressed"),
+    # Add more key events as needed
+}
+def on_key(event):
+    action = key_actions.get(event.key)
+    if action:
+        action()
+
+# def on_key(event):
+#     if event.key == 'r':
+#         print("Key 'a' pressed => Relax")
+#         ff.run(n=1000, dt=0.1, damp=0.1, Fconv=1e-2, bCleanForce=True )
+#         update_plot()
+#     elif event.key == 'delete':
+#       print("Key 'd' pressed")
 
 # Event handler function for mouse motion
 def on_motion(event):
@@ -101,6 +128,7 @@ def on_release(event):
 fig.canvas.mpl_connect('button_press_event',   on_click   )
 fig.canvas.mpl_connect('motion_notify_event',  on_motion  )
 fig.canvas.mpl_connect('button_release_event', on_release )
+fig.canvas.mpl_connect('key_press_event', on_key)
 
 # Initial plot update
 update_plot()

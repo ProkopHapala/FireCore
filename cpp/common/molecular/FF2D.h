@@ -14,9 +14,9 @@
 static const int atom_ne[9] = { 0,0, 0, 0, 0,0,1,2,3};
 
 class Atom2D{ public:
-    int typ;
+    int typ=-1;
     Vec2d pos;
-    int nb,ne,npi;
+    int nb=0,ne=0,npi=0;
     int neighs[4];
     //int remove = 0;
 
@@ -26,8 +26,41 @@ class Atom2D{ public:
         return -0.5;
     }
 
-    void cleanNeighs(){ for(int i=0;i<4;i++){neighs[i]=-1;}  };
-    bool addNeigh(int i){ if((nb+ne+npi)>3)return false; neighs[nb]=i; nb++; return true; };
+    void cleanNeighs(){ 
+        //printf("Atom2D::cleanNeighs()\n");
+        for(int i=0;i<4;i++){neighs[i]=-1;}  };
+    //bool addNeigh(int i){ if((nb+ne+npi)>3)return false; neighs[nb]=i; nb++; return true; };
+
+    bool addNeigh(int ja){
+        for(int i=0;i<4;i++){ if(neighs[i]<0){ neighs[i]=ja; return true; } }
+        return false;
+    };
+
+    void repairNeighs(){
+        int imax   = 0;
+        int nblank = 0;
+        int nvoids = 0;
+        for(int i=0;i<4;i++){ 
+            if(neighs[i]>=0){ imax=i; nvoids=nblank; }else{ nblank++; }
+        }
+        nb = 4-nblank;
+        if(nvoids>0){
+            for(int i=0;i<imax;i++){ 
+                if(neighs[i]<0){ 
+                    _swap(neighs[i],neighs[imax]);
+                    //neighs[i]=neighs[imax];
+                    //neighs[imax]=-1;
+                    while( (imax==0) || (neighs[imax]>=0) ) imax--; 
+                }
+                if(i>=imax){ break; } 
+            }
+        }
+    }
+
+    void changeNeigh(int ia, int ja){ 
+        for(int i=0;i<4;i++){ if(neighs[i]==ia){ neighs[i]=ja; } }
+        if(ja<0){ repairNeighs(); }
+    }
 
     void fromString(const char* s ){
         //printf("DEBUG fromString() %s \n", s );
@@ -41,7 +74,8 @@ class Atom2D{ public:
     }
 
     void print(){
-        printf("nb,ne,npi(%i,%i,%i) neighs{%i,%i,%i,%i} pos(%g,%g)\n", nb,ne,npi, neighs[0],neighs[1],neighs[2],neighs[3], pos.x,pos.y );
+        //printf("nb,ne,npi(%i,%i,%i) neighs{%i,%i,%i,%i} pos(%g,%g)\n", nb,ne,npi, neighs[0],neighs[1],neighs[2],neighs[3], pos.x,pos.y );
+        printf("neighs{%i,%i,%i,%i} pos(%g,%g)\n", neighs[0],neighs[1],neighs[2],neighs[3], pos.x,pos.y );
     }
 
 };
@@ -54,6 +88,7 @@ class FF2D{ public:
     //Vec2d* apos  =0;
     Vec2d* vels  =0;
     Vec2d* forces=0;
+    bool bRelax = true;
 
     double Kang=1.,Kbond=1.,L0=1.;
     double Etot=0.,Ebond=0.,Eang=0.;
@@ -85,18 +120,23 @@ class FF2D{ public:
         for(int ib=0; ib<bonds.size(); ib++){ bs[ib] = bonds[ib]; }
     };
 
+    void repairAtoms(){
+        for(int ia=0; ia<atoms.size(); ia++){ atoms[ia].repairNeighs(); }
+    }
+
     int addAtom( Vec2d pos, int type, int* neighs=0 ){
-        printf("addAtom(t=%i,pos(%g,%g)) \n", type, pos.x, pos.y);
+        //printf("addAtom(t=%i,pos(%g,%g)) @neighs=%li \n", type, pos.x, pos.y, (long)neighs );
         Atom2D A;
         A.pos=pos;
         A.typ=type;
         if( neighs ){ for(int i=0; i<4; i++){ A.neighs[i] = neighs[i]; } }else{ A.cleanNeighs(); }
+        //printf( "addAtom[%i]", atoms.size() ); A.print();
         atoms.push_back( A );
         return atoms.size()-1;
     }
 
     int addBond( int ia, int ja ){
-        printf("addBond(%i,%i) \n", ia, ja );
+        //printf("addBond(%i,%i) \n", ia, ja );
         atoms[ia].addNeigh(ja);
         atoms[ja].addNeigh(ia);
         bonds.push_back( Vec2i{ia,ja} );
@@ -104,34 +144,39 @@ class FF2D{ public:
     }
 
     void swapAtoms( int i, int j ){
-        /*
-        for(int ib=0; ib<bonds.size(); ib++){
-            Vec2i& b = bonds[ib];
-            if( b.x==ia ){ b.x=ja; }
-            if( b.y==ia ){ b.y=ja; }
-            if( b.x==ja ){ b.x=ia; }
-            if( b.y==ja ){ b.y=ia; }
+        Atom2D ai = atoms[i];
+        Atom2D aj = atoms[j];
+        // re-index neighbors of neighbors
+        for(int k=0; k<4; k++){
+           int ia = ai.neighs[k]; atoms[ia].changeNeigh(i,j);
+           int ja = aj.neighs[k]; atoms[ja].changeNeigh(j,i);
         }
-        Atom2D tmp = atoms[ia]; atoms[ia] = atoms[ja]; atoms[ja] = tmp;
-        */
-       Atom2D ai = atoms[i];
-       Atom2D aj = atoms[j];
-       // re-index neighbors of neighbors
-        //    for(int k=0; k<4; k++){
-        //     Atom2D aki = ai.neighs[k] ]  if( ai.neighs[k]==ja ){ ai.neighs[k]=ia; }
-        //    if( aj.neighs[k]==ia ){ aj.neighs[k]=ja; }
-        //    }
-       atoms[i] = aj;
-       atoms[j] = ai;
+        Atom2D tmp = atoms[i]; atoms[i] = atoms[j]; atoms[j] = tmp; 
+    }
 
+    void removeAtomSwap( int i ){
+        //printf("removeAtomSwap(%i) \n", i );
+        int j = atoms.size()-1;
+        Atom2D ai = atoms[i];
+        Atom2D aj = atoms[j];
+        // re-index neighbors of neighbors
+        for(int k=0; k<4; k++){
+           int ia = ai.neighs[k]; if(ia>=0){ atoms[ia].changeNeigh(i,-1); }
+           int ja = aj.neighs[k]; if(ja>=0){ atoms[ja].changeNeigh(j,i); }
+        }
+        atoms[i] = atoms[j];    
+        atoms.pop_back();
     }
 
     int bondsFromNeighs( ){
+        //printf("bondsFromNeighs() \n" );
         bonds.clear();
         for(int ia=0; ia<atoms.size(); ia++){
-            for(int j=0; j<atoms[ia].nb; j++){
-                int ja = atoms[ia].neighs[j];
-                if( ja<ia ){
+            Atom2D& a = atoms[ia];
+            //printf("atom[%i] ngs{%i,%i,%i,%i} \n", ia, a.neighs[0],a.neighs[1], a.neighs[2], a.neighs[3] );
+            for(int j=0; j<4; j++){
+                int ja = a.neighs[j];
+                if( (ja>=0) && (ja<ia) ){
                     bonds.push_back( Vec2i{ia,ja} );
                 }
             }
@@ -175,6 +220,15 @@ class FF2D{ public:
             //printf("atom[%i] pos(%g,%g) r=%g ifound=%i \n", ia, atoms[ia].pos.x, atoms[ia].pos.y, sqrt(r2), ifound );
         }
         return ifound;
+    }
+
+    void print_atoms(){
+        printf("FF2D::print_atoms() n=%i \n", atoms.size() );
+        for(int ia=0; ia<atoms.size(); ia++){
+            printf("[%i]", ia); atoms[ia].print();
+            //Atom2D& A = atoms[ia];
+            //printf("atom[%i] pos(%g,%g) typ=%i nb=%i neighs{%i,%i,%i,%i} \n", ia, A.pos.x, A.pos.y, A.typ, A.nb, A.neighs[0],A.neighs[1],A.neighs[2],A.neighs[3] );
+        }
     }
 
     double eval(){
@@ -222,7 +276,7 @@ class FF2D{ public:
                         // Draw2D::drawVecInPos( (Vec2f)hf2, (Vec2f)atoms[ka].pos );
                     double c_ = c-c0;
                     //printf("angle[%i|%i,%i] c %g c0 %g \n", ia,ja,ka, c, c0);
-                    double Eijk =  Kang*c_*c_;
+                    double Eijk = Kang*c_*c_;
                     double fang = Kang*c_*2;
                     hf1.mul( fang*il1 );
                     hf2.mul( fang*il2 );
@@ -235,21 +289,27 @@ class FF2D{ public:
                 }
             }
         }
+        //printf("eval() Ebond=%g Eang=%g \n", Ebond, Eang );
         return Ebond+Eang;
     }
 
     double moveMD(double dt, double damping){
         double cdamp = 1-damping;
-        double F2sum=0;
+        double F2sum = 0;
+        double cfv   = 0;
         for(int i=0; i<atoms.size();i++){
             Vec2d        v = vels[i];
             const Vec2d& f = forces[i];
-            v.mul(cdamp);
             F2sum += f.norm2();
+            cfv   += f.dot(v);
+            v.mul(cdamp);
             v.add_mul( f, dt );
             atoms[i].pos.add_mul(v, dt);
             vels[i]=v;
         } 
+        if( bRelax && (cfv<0) ){
+            for(int i=0; i<atoms.size();i++){ vels[i].set(0.); };
+        }
         return F2sum;
     }
 
@@ -263,20 +323,26 @@ class FF2D{ public:
         return moveMD( dt, damp);
     }
 
-    int run( int n, double dt, double damp, double F2conv, bool bCleanForce){
+    int run( int niter, double dt, double damp, double Fconv, bool bCleanForce){
+        printf("FF2D::run() n=%i dt=%g damp=%g Fconv=%g \n", niter, dt, damp , Fconv );
+        double F2conv=Fconv*Fconv;
         try_realloc();
+        repairAtoms();
+        //print_atoms();
         if(bCleanForce)cleanVelocity();
-        for(int itr=0; itr<n; itr++){
+        int itr=0;
+        for(itr=0; itr<niter; itr++){
             double F2sum = step( dt, damp);
-            //printf( "run[%i] E %g |F| %g \n", itr, Etot, sqrt(F2sum) );
+            //if(verbosity>1)
+            printf( "run[%i] E %g |F| %g \n", itr, Etot, sqrt(F2sum) );
             if(F2sum<F2conv)return itr;
         }
+        return itr;
     }
 
     int insertString(const char* str, char sep=';'){
         constexpr const int ntmp=256; 
         char tmp[ntmp];
-        DEBUG
         const char* pc   = str;
         //const char* pc_a0=pc;
         Atom2D atom;
