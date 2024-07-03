@@ -8,7 +8,7 @@
 
 #include "datatypes.h"
 #include "Vec2.h"
-#include "geom2d.h"
+#include "geom2D.h"
 
 //              // H He Li Be B C N O F 
 static const int atom_ne[9] = { 0,0, 0, 0, 0,0,1,2,3};
@@ -82,21 +82,61 @@ class FF2D{ public:
     }
 
     void getBonds( Vec2i* bs ){
-        for(int ib=0; ib<bonds.size(); ib++){ bs[i] = bs[ib]; }
+        for(int ib=0; ib<bonds.size(); ib++){ bs[ib] = bonds[ib]; }
     };
 
-    void addAtom( Vec2d pos, int type, int* neighs=0 ){
+    int addAtom( Vec2d pos, int type, int* neighs=0 ){
+        printf("addAtom(t=%i,pos(%g,%g)) \n", type, pos.x, pos.y);
         Atom2D A;
         A.pos=pos;
         A.typ=type;
         if( neighs ){ for(int i=0; i<4; i++){ A.neighs[i] = neighs[i]; } }else{ A.cleanNeighs(); }
         atoms.push_back( A );
+        return atoms.size()-1;
     }
 
-    void addBond( int ia, int ja ){
+    int addBond( int ia, int ja ){
+        printf("addBond(%i,%i) \n", ia, ja );
         atoms[ia].addNeigh(ja);
         atoms[ja].addNeigh(ia);
-        bonds.push_back( Vec2i(ia,ja) );
+        bonds.push_back( Vec2i{ia,ja} );
+        return bonds.size()-1;
+    }
+
+    void swapAtoms( int i, int j ){
+        /*
+        for(int ib=0; ib<bonds.size(); ib++){
+            Vec2i& b = bonds[ib];
+            if( b.x==ia ){ b.x=ja; }
+            if( b.y==ia ){ b.y=ja; }
+            if( b.x==ja ){ b.x=ia; }
+            if( b.y==ja ){ b.y=ia; }
+        }
+        Atom2D tmp = atoms[ia]; atoms[ia] = atoms[ja]; atoms[ja] = tmp;
+        */
+       Atom2D ai = atoms[i];
+       Atom2D aj = atoms[j];
+       // re-index neighbors of neighbors
+        //    for(int k=0; k<4; k++){
+        //     Atom2D aki = ai.neighs[k] ]  if( ai.neighs[k]==ja ){ ai.neighs[k]=ia; }
+        //    if( aj.neighs[k]==ia ){ aj.neighs[k]=ja; }
+        //    }
+       atoms[i] = aj;
+       atoms[j] = ai;
+
+    }
+
+    int bondsFromNeighs( ){
+        bonds.clear();
+        for(int ia=0; ia<atoms.size(); ia++){
+            for(int j=0; j<atoms[ia].nb; j++){
+                int ja = atoms[ia].neighs[j];
+                if( ja<ia ){
+                    bonds.push_back( Vec2i{ia,ja} );
+                }
+            }
+        }
+        return bonds.size();
     }
 
     bool removeAtom(int i){ if( (i>0)&&(i<atoms.size() ) ){ atoms[i].typ=-1;              return true; }else{ return false; } }
@@ -120,6 +160,7 @@ class FF2D{ public:
     } 
 
     int findAtomAt( Vec2d pos, double R ){
+        //printf("findAtomAt(pos=(%g,%g),R=%g) \n", pos.x, pos.y, R );
         double R2max = R*R;
         double r2min = 1e+300;
         int ifound = -1;
@@ -128,9 +169,10 @@ class FF2D{ public:
             Vec2d d  = pos-atoms[ia].pos;
             double r2 = d.norm2();
             if( (r2 < R2max) && (r2 < r2min) ){
-                ifound = ib;
+                ifound = ia;
                 r2min = r2;
             }
+            //printf("atom[%i] pos(%g,%g) r=%g ifound=%i \n", ia, atoms[ia].pos.x, atoms[ia].pos.y, sqrt(r2), ifound );
         }
         return ifound;
     }
