@@ -601,6 +601,20 @@ def saveAtoms( atoms, fname, xyz=True ):
             fout.write("%i %f %f %f\n"  %( atom[0], atom[1], atom[2], atom[3] ) )
     fout.close() 
 
+
+def psi4frags2string( enames, apos, frags=None ):
+    n = len(enames)
+    s = []
+    if frags is None: frags = [ range(n) ]
+    for i,frag in enumerate(frags):
+        #print( i, frag )
+        if i>0: s.append( "--" )
+        for ia in frag:
+            xyz = apos[ia]
+            s.append( "%s %f %f %f"  %( enames[ia], xyz[0], xyz[1], xyz[2]) )
+    #print("s = ", s)
+    return "\n".join(s)
+
 def writeToXYZ( fout, es, xyzs, qs=None, Rs=None, comment="#comment", bHeader=True, ignore_es=None, other_lines=None ):
     na=len(xyzs)
     if(bHeader):
