@@ -506,8 +506,9 @@ def orient( i0, ip1, ip2, apos, _0=1, trans=None, bCopy=True ):
     up  = apos[ip2[1]-_0]-apos[ip2[0]-_0]
     return orient_vs( p0, fw, up, apos, trans=trans )
 
-def orientPCA(ps):
+def orientPCA(ps, perm=None):
     M = rotMatPCA( ps )
+    if perm is not None: M = M[perm,:]
     mulpos( ps, M )
 
 def groupToPair( p1, p2, group, up, up_by_cog=False ):
@@ -1307,8 +1308,8 @@ class AtomicSystem( ):
         p0, fw, up = makeVectros( self.apos, i0, b1, b2, _0=_0 )
         return self.orient_vs( fw, up, p0, trans=trans, bCopy=bCopy )
     
-    def orientPCA(self):
-        orientPCA(self.apos)
+    def orientPCA(self, perm=None):
+        orientPCA(self.apos, perm=perm )
 
     def delete_atoms(self, lst ):
         st = set(lst)
