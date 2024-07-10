@@ -11,9 +11,35 @@ import molmesh2d as mm
 
 # ================== Setup
 
+zs = np.array( [0.0,0.1,0.2,0.3,0.4,0.5,0.6,0.7,0.8,0.9,1.0,1.1,1.2,1.3,1.4,1.5,1.6,1.7,1.8,1.9,2.0,2.1,2.2] ) + 1.6
 
-mol = au.AtomicSystem( "./AFM/Samples/Nucleobases/OHO-h_1-uracil.xyz")
+params={
+    "basis"    : "cc-pvdz",
+    "scf_type" : "df",
+}
 
+samples = [
+    "OHO-h_1-uracil",
+    #"OHO-h_1-cytosine",
+    #"HN-h-p-adenine",
+    #"HHO-h-p_1-guanine",
+    #"formic_dimer",
+    #"PTCDA-",
+]
+
+tips=[
+    "H2O_H",
+    #"H2O_O",
+    #"NH3_N",
+    #"NH3_H",
+    #"HCN_H",
+    #"HCN_N",
+    #"HF_H",
+    #"HF_F",
+]
+
+
+#mol = au.AtomicSystem( "./AFM/Samples/Nucleobases/OHO-h_1-uracil.xyz")
 
 #mol = au.AtomicSystem( "./AFM/Samples/Nucleobases/HNO-h-cytosine.xyz")
 ##mol.apos[:,2] *= -1
@@ -29,9 +55,6 @@ mol = au.AtomicSystem( "./AFM/Samples/Nucleobases/OHO-h_1-uracil.xyz")
 ##mol.apos[[10,14,15],2] -= mol.apos[10,2] 
 ##mol.saveXYZ( "./AFM/Samples/Nucleobases/HHO-h-p_1-guanine-.xyz")
 
-
-
-
 #mol = au.AtomicSystem( "../../cpp/common_resources/formic_dimer.xyz" )  #; mol.print()
 #mol = au.AtomicSystem( "../../cpp/common_resources/PTCDA-.xyz" )  #; mol.print()
 
@@ -44,8 +67,8 @@ mol = au.AtomicSystem( "./AFM/Samples/Nucleobases/OHO-h_1-uracil.xyz")
 #mol.orient( 1, (1,0), (0,[2,3]) ) 
 #mol.saveXYZ( "./AFM/Tips/NH3_H.xyz" )
 
-tip = au.AtomicSystem( "./AFM/Tips/H2O_H.xyz" )
-tip.apos[:,2] -= tip.apos[:,2].min()
+#tip = au.AtomicSystem( "./AFM/Tips/H2O_H.xyz" )
+#tip.apos[:,2] -= tip.apos[:,2].min()
 
 # plt.figure(figsize=(5,10))
 # plt.subplot(2,1,1); plu.plotSystem( mol, axes=(0,1) ); plt.xlabel("x");plt.ylabel("y"); plt.grid()
@@ -54,7 +77,7 @@ tip.apos[:,2] -= tip.apos[:,2].min()
 
 # ================= Functions
 
-def printPointInfo( ps, ptypes, ngs ):
+def printPointInfo( fname, ps, ptypes, ngs ):
     np = len(ps)
     nt = len(ptypes)
     ng = len(ngs)
@@ -62,18 +85,14 @@ def printPointInfo( ps, ptypes, ngs ):
          print( "Error: printPointInfo() size mismatch ps(%i) ptypes(%i) ngs(%i)" %(np,nt,ng) )
     #     exit()
     n = len(ps)
+    fout = open(fname,'w')
     for i in range(n):
-        print( i, ptypes[i], ps[i], ngs[i] )
+        fout.write( ("%i %s" %(i, ptypes[i])) + str(ps[i]) + str(ngs[i])+"\n" )
+    fout.close()
 
 def dictToString( dict ):
     lst = [ "%s %s" for k,v in dict.items() ]
     return "\n".join(lst)
-
-
-params={
-    "basis"    : "cc-pvdz",
-    "scf_type" : "df",
-}
 
 def toPsi4( fname, mol1, mol2, params ):
     fout = open( fname, "w" )
@@ -128,78 +147,104 @@ def make_scan_geoms( dirname, sample, tip, points, zs = [0.0,0.1,0.3,0.4,0.5], p
             toPsi4( path+"/psi4.in", tip, sample, params )
     fxyz.close()
 
+def makeSamplePoints( mol, fname="test", bPlot=True, bPointInfo=True ):
+    mol.findBonds()                                             #; print( "mol.bonds ", mol.bonds )
+    mol.neighs()
+    anew, bnew = mm.makeKinkDummy( mol.apos, mol.ngs, angMin=10.0, l=1.0 )  #;print("anew ", anew, "bnew ", bnew )  ; exit()
 
+    bonds = [(i, j) if i < j else (j, i) for i, j in mol.bonds ]    # order bonds ( i < j )
+
+    bonds_bak = bonds.copy()
+
+    bonds = bonds + bnew
+
+    nao = len(mol.apos)
+    if len(anew) > 0:
+        apos = np.concatenate( (mol.apos[:,:2], anew), axis=0 ) 
+    else:
+        apos = mol.apos[:,:2].copy()
+
+    binds        = np.repeat(np.arange(len(bonds)), 2)   ;print("binds ", binds )  # indexes of bonds for each point
+    #bsamp       = au.makeBondSamples( bonds, apos, where=[-0.4,0.0,0.4] )
+    bsamp        = au.makeBondSamples( bonds, apos, where=None )
+    centers, polygons = au.colapse_to_means( bsamp, R=0.7, binds=binds )     # polygons are lists of bond indices
+
+    #print( "mol.apos.shape, centers.shape ", mol.apos.shape, centers.shape  )
+    points = np.concatenate( (apos, centers[:,:2]), axis=0 )     # points = atoms + centers
+
+    na  = len(apos)
+    nc  = len(centers)
+    nac = na + nc
+
+    polys = [  set( binds[p] for p in poly )  for poly in polygons ]       # for each polygon center list of bonds adjecent to it
+
+    conts, cont_closed = mm.polygonContours( polys, bonds )                      ;print( "conts 1 ", conts  )   # order contours ( ordered list of points for each polygon )
+    cps_,cpis = mm.controusPoints( conts, points, centers, beta=0.3 )   #;print( "cps 1 ", cps  )       # orderd list of points for each contour
+    cps       = np.concatenate( cps_, axis=0 )                           #;print( "cps ", cps  )
+
+    bss = mm.contours2bonds( conts, bonds )                    #;print("bss ", bss )     # bond-centers to bonds
+    bcs = au.makeBondSamples( bonds, apos, where=[0.0] )       #;print("bcs ", bcs )     # bond-centers
+
+    bss0   = len(points)         # start bond-centers points
+    cont0  = bss0 + len(bcs) 
+    points = np.concatenate( (points, bcs, cps ), axis=0 )        # points = atoms + bond-centers + contours
+
+    ptyps = mol.enames  + [ "kink" ]*len(anew) + [ "center" ]*len(conts) + ['bond']*len(bcs) + ['cp']*len(cps)
+    pngs  = [ [] ]*nao  + [ [j] for i,j in bnew ]*len(anew) + conts      + bonds               + cpis
+
+    if bPlot:
+        fig = plt.figure()
+        plu.plotSystem( mol, bLabels=False )
+        #plt.plot( points[:,0],          points[:,1],           'ok' );    # all points
+        plt.plot( points[0:na,0],       points[0:na,1],        'ok' );    # bond centers
+        plt.plot( points[na:nac,0],     points[na:nac,1],      'og' );    # bond centers
+        plt.plot( points[bss0:cont0,0], points[bss0:cont0,1],  'or' );    # bond centers
+        plt.plot( points[cont0:,0],     points[cont0:,1],      'ob' );    # contours centers
+        ax = plt.gca()
+        for i, point in enumerate(points):  ax.annotate(str(i), (point[0], point[1]), textcoords="offset points", xytext=(5,5), ha='center')
+        plt.savefig(fname+"_points.png"  )
+        plt.close()
+
+    if bPointInfo:
+        printPointInfo( fname+"_point_info.txt", points, ptyps, pngs )
+
+    #print( "na(%i) nac(%i) bss0(%i) cont0(%i)" %( na, nac, bss0, cont0) )
+    #print( "len: mol.apos(%i) anew(%i) centers(%i) bonds(%i) bcs(%i) cps(%i) cpis(%i) tot(%i)" %( len(mol.apos), len(anew), len(centers), len(bonds), len(bcs), len(cps), len(cpis), len(mol.apos)+len(anew)+len(centers)+len(bss)+len(cps) ) )
+
+    ns = [ nao, na, nac, bss0, cont0 ]
+    return points, ns
 
 # ================== Body
+
+for isamp,sample_name in enumerate(samples):
+    sample = au.AtomicSystem( "./AFM/Samples/Nucleobases/%s.xyz" %sample_name )
+    points, ns = makeSamplePoints( sample, fname=sample_name )
+    for itip,tip_name in enumerate(tips):
+        tip = au.AtomicSystem( "./AFM/Tips/%s.xyz" %tip_name )
+        tip.apos[:,2] -= tip.apos[:,2].min()
+        dname = sample_name+"-"+tip_name 
+        make_scan_geoms( "guanine_H2O", sample, tip, points[:ns[0],:], zs = zs, params=params )
+
+
+exit()
+
+tip.apos[:,2] -= tip.apos[:,2].min()
+
 #plu.plotSystem( mol, bLabels=False )
 
-mol.findBonds()                                             #; print( "mol.bonds ", mol.bonds )
-mol.neighs()
-anew, bnew = mm.makeKinkDummy( mol.apos, mol.ngs, angMin=10.0, l=1.0 )  #;print("anew ", anew, "bnew ", bnew )  ; exit()
-
-bonds = [(i, j) if i < j else (j, i) for i, j in mol.bonds ]    # order bonds ( i < j )
-
-bonds_bak = bonds.copy()
-
-bonds = bonds + bnew
-
-nao = len(mol.apos)
-if len(anew) > 0:
-    apos = np.concatenate( (mol.apos[:,:2], anew), axis=0 ) 
-else:
-    apos = mol.apos[:,:2].copy()
-
-binds        = np.repeat(np.arange(len(bonds)), 2)   ;print("binds ", binds )  # indexes of bonds for each point
-#bsamp       = au.makeBondSamples( bonds, apos, where=[-0.4,0.0,0.4] )
-bsamp        = au.makeBondSamples( bonds, apos, where=None )
-centers, polygons = au.colapse_to_means( bsamp, R=0.7, binds=binds )     # polygons are lists of bond indices
-
-#print( "mol.apos.shape, centers.shape ", mol.apos.shape, centers.shape  )
-points = np.concatenate( (apos, centers[:,:2]), axis=0 )     # points = atoms + centers
-
-na  = len(apos)
-nc  = len(centers)
-nac = na + nc
-
-polys = [  set( binds[p] for p in poly )  for poly in polygons ]       # for each polygon center list of bonds adjecent to it
-
-conts, cont_closed = mm.polygonContours( polys, bonds )                      ;print( "conts 1 ", conts  )   # order contours ( ordered list of points for each polygon )
-cps_,cpis = mm.controusPoints( conts, points, centers, beta=0.3 )   #;print( "cps 1 ", cps  )       # orderd list of points for each contour
-cps       = np.concatenate( cps_, axis=0 )                           #;print( "cps ", cps  )
-
-bss = mm.contours2bonds( conts, bonds )                    #;print("bss ", bss )     # bond-centers to bonds
-bcs = au.makeBondSamples( bonds, apos, where=[0.0] )       #;print("bcs ", bcs )     # bond-centers
-
-bss0   = len(points)         # start bond-centers points
-cont0  = bss0 + len(bcs) 
-points = np.concatenate( (points, bcs, cps ), axis=0 )        # points = atoms + bond-centers + contours
-
-ptyps = mol.enames  + [ "kink" ]*len(anew) + [ "center" ]*len(conts) + ['bond']*len(bcs) + ['cp']*len(cps)
-pngs  = [ [] ]*nao  + [ [j] for i,j in bnew ]*len(anew) + conts      + bonds               + cpis
-
-
-print( "na(%i) nac(%i) bss0(%i) cont0(%i)" %( na, nac, bss0, cont0) )
-print( "len: mol.apos(%i) anew(%i) centers(%i) bonds(%i) bcs(%i) cps(%i) cpis(%i) tot(%i)" %( len(mol.apos), len(anew), len(centers), len(bonds), len(bcs), len(cps), len(cpis), len(mol.apos)+len(anew)+len(centers)+len(bss)+len(cps) ) )
+points, ns = makeSamplePoints( mol,  )
 
 #printPointInfo( points, ptyps, pngs )
 
-zs = np.array( [0.0,0.1,0.2,0.3,0.4,0.5,0.6,0.7,0.8,0.9,1.0,1.1,1.2,1.3,1.4,1.5,1.6,1.7,1.8,1.9,2.0,2.1,2.2] ) + 1.6
+print( "ps ", points[:ns[0],:] )
 
-make_scan_geoms( "guanine_H2O", mol, tip, mol.apos, zs = zs, params=params )
-
+make_scan_geoms( "guanine_H2O", mol, tip, points[:ns[0],:], zs = zs, params=params )
 
 exit()
 
 # ---------- PLOT points
 #plu.plotSystem( mol, bLabels=False )
-plu.plotSystem( mol, bLabels=False )
-#plt.plot( points[:,0],          points[:,1],           'ok' );    # all points
-plt.plot( points[0:na,0],       points[0:na,1],        'ok' );    # bond centers
-plt.plot( points[na:nac,0],     points[na:nac,1],      'og' );    # bond centers
-plt.plot( points[bss0:cont0,0], points[bss0:cont0,1],  'or' );    # bond centers
-plt.plot( points[cont0:,0],     points[cont0:,1],      'ob' );    # contours centers
-ax = plt.gca()
-for i, point in enumerate(points):  ax.annotate(str(i), (point[0], point[1]), textcoords="offset points", xytext=(5,5), ha='center')
+
 
 
 #for ic,centers in enumerate(centers): print( "center[%i]=p[%i]" %(ic,na+ic), polygons[ic] )
