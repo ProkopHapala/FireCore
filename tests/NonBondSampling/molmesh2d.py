@@ -9,6 +9,30 @@ from pyBall import plotUtils   as plu
 
 # ================== Functions
 
+def makeKinkDummy( apos, ngs, angMin=10, l=1.0 ):
+    na = len(apos)
+    cosMax = -np.cos(angMin*np.pi/180.0)
+    anew = []
+    bnew = []
+    ifound = 0
+    for ia in range(na):
+        ngi = ngs[ia]
+        nng = len(ngi)
+        #print("ia ngi ", ia, nng )
+        if(nng != 2): continue
+        i,j = ngi
+        p0 =  apos[ia,:2]
+        d1 = (apos[i,:2]-p0);  d1/=np.sqrt(np.dot(d1,d1))
+        d2 = (apos[j,:2]-p0);  d2/=np.sqrt(np.dot(d2,d2))
+        ca = np.dot( d1, d2 )
+        print("ia nng ca cosMin", ia, nng, ca, cosMax )
+        if ca > cosMax:
+            d = d1 + d2; d/=np.sqrt(np.dot(d,d))
+            anew.append( p0 - d*l )
+            bnew.append( (ia,na+ifound) )
+            ifound+=1
+    return np.array(anew), bnew 
+
 def skelet2triangles( bonds, bond2center, npoint=None ):
     #print( "bonds ", bonds )
     if npoint is None: npoint =  np.array(bonds,dtype=np.int32).max() + 1 
@@ -146,11 +170,13 @@ def contours2bonds( contours, bonds ):
     return bss
 
 def controusPoints( contours, ps, centers, beta=0.2 ):
-    ps2 = [] 
+    ps2  = [] 
+    cpis = []
     for ic,ips in enumerate(contours):
+        cpis += [ (ic,ip) for ip in ips ]
         ps2.append( (1-beta)*ps[ips,:] +  beta*centers[ic][None,:] )
         #plt.plot( (1-beta)*ps[ips,0] + beta*centers[ic][None,0], (1-beta)*ps[ips,1] + beta*centers[ic][None,1], 'o:', c='k' )
-    return ps2
+    return ps2, cpis
 
 def small_trinagles( conts, cont_closed, bss, cont0, bss0 ):
     tris = []
