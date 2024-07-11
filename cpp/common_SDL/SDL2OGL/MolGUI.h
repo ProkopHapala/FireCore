@@ -134,9 +134,6 @@ class MolGUI : public AppSDL2OGL_3D { public:
     Vec3d  rotation_axis   = Vec3dZ;
     double rotation_step   = 15.0 * (M_PI/180.0);
 
-    bool   bDragging = false;
-    Vec3d  ray0_start;
-    Vec3d  ray0;
     //int ipicked    = -1; // picket atom 
     //int ibpicked   = -1; // picket bond
     //int iangPicked = -1; // picket angle
@@ -1222,10 +1219,11 @@ void MolGUI::draw(){
     //debug_scanSurfFF( 100, {0.,0.,z0_scan}, {0.0,3.0,z0_scan}, 10.0 );
 
     // --- Mouse Interaction / Visualization
-	ray0 = (Vec3d)(  cam.rot.a*mouse_begin_x  +  cam.rot.b*mouse_begin_y  +  cam.pos );
+	//ray0 = (Vec3d)(  cam.rot.a*mouse_begin_x  +  cam.rot.b*mouse_begin_y  +  cam.pos );
+    ray0 = mouseRay0();
 
     W->pick_hray = (Vec3d)cam.rot.c;
-    W->pick_ray0 = ray0;
+    W->pick_ray0 = (Vec3d)ray0;
 
     if(bRunRelax){ 
         bool bRelaxOld = W->bConverged;
@@ -1241,19 +1239,20 @@ void MolGUI::draw(){
 
     Draw3D::drawPointCross( ray0, 0.1 );        // Mouse Cursor 
     //if(W->ipicked>=0) Draw3D::drawLine( W->ff.apos[W->ipicked], ray0); // Mouse Dragging Visualization
-    if(W->ipicked>=0) Draw3D::drawLine( apos[W->ipicked], ray0); // Mouse Dragging Visualization
+    if(W->ipicked>=0) Draw3D::drawLine( apos[W->ipicked], (Vec3d)ray0); // Mouse Dragging Visualization
     
     {   // draw mouse selection box;   ToDo:   for some reason the screen is upside-down
         //Vec3d ray0_ = ray0;            ray0_.y=-ray0_.y;
         //Vec3d ray0_start_=ray0_start;  ray0_start_.y=-ray0_start_.y;
         if(bDragging){
-            //glLineWidth(3.0);
-            //glColor3f(1.0,0.5,0.0); Draw3D::drawPointCross( ray0_start, 0.1 );    
-            //glLineWidth(1.0);
-            Vec3f ray0_;        cam.rot.dot_to( (Vec3f)ray0, ray0_);
-            Vec3f ray0_start_;  cam.rot.dot_to( (Vec3f)ray0_start, ray0_start_);
-            glColor3f(1.0,0.5,0.0); Draw3D::drawTriclinicBoxT(cam.rot, (Vec3f)ray0_start_, (Vec3f)ray0_ );   // Mouse Selection Box
-            //glColor3f(0.0,0.5,1.0); Draw3D::drawTriclinicBox (cam.rot, (Vec3f)ray0_start_, (Vec3f)ray0_ ); // Mouse Selection Box
+            drawMuseSelectionBox();
+            // //glLineWidth(3.0);
+            // //glColor3f(1.0,0.5,0.0); Draw3D::drawPointCross( ray0_start, 0.1 );    
+            // //glLineWidth(1.0);
+            // Vec3f ray0_;        cam.rot.dot_to( (Vec3f)ray0, ray0_);
+            // Vec3f ray0_start_;  cam.rot.dot_to( (Vec3f)ray0_start, ray0_start_);
+            // glColor3f(1.0,0.5,0.0); Draw3D::drawTriclinicBoxT(cam.rot, (Vec3f)ray0_start_, (Vec3f)ray0_ );   // Mouse Selection Box
+            // //glColor3f(0.0,0.5,1.0); Draw3D::drawTriclinicBox (cam.rot, (Vec3f)ray0_start_, (Vec3f)ray0_ ); // Mouse Selection Box
         }
     }
 
@@ -1663,7 +1662,7 @@ void MolGUI::drawHUD(){
 
 void MolGUI::drawingHex(double z0){
     Vec2i ip; Vec2d dp;
-    Vec3d p3 = rayPlane_hit( ray0, (Vec3d)cam.rot.c, {0.0,0.0,1.0}, {0.0,0.0,z0} );
+    Vec3d p3 = rayPlane_hit( (Vec3d)ray0, (Vec3d)cam.rot.c, {0.0,0.0,1.0}, {0.0,0.0,z0} );
     Vec2d p{p3.x,p3.y};
     double off=1000.0;
     bool s = ruler.simplexIndex( p+(Vec2d){off,off}, ip, dp );
@@ -2226,14 +2225,15 @@ void MolGUI::mouse_default( const SDL_Event& event ){
     switch( event.type ){
         case SDL_MOUSEBUTTONDOWN:
             switch( event.button.button ){
-                case SDL_BUTTON_LEFT: { ray0_start = ray0;  bDragging = true; }break;
+                //case SDL_BUTTON_LEFT: { ray0_start = ray0;  bDragging = true; }break;
+                case SDL_BUTTON_LEFT: mouseStartSelectionBox(); break;
                 case SDL_BUTTON_RIGHT:{ }break;
             } break;
         case SDL_MOUSEBUTTONUP:
             switch( event.button.button ){
                 case SDL_BUTTON_LEFT:
-                    if( ray0.dist2(ray0_start)<0.1 ){
-                        int ipick = pickParticle( ray0, (Vec3d)cam.rot.c, 0.5, W->nbmol.natoms, W->nbmol.apos );
+                    if( ray0.dist2(ray0_start)<0.1 ){ // too small for selection box 
+                        int ipick = pickParticle( (Vec3d)ray0, (Vec3d)cam.rot.c, 0.5, W->nbmol.natoms, W->nbmol.apos );
                         if( ipick>=0 ){ 
                             printf( "MolGUI::mouse_default() ipick=%i \n", ipick ); 
                             W->selection.clear();  
@@ -2257,7 +2257,7 @@ void MolGUI::mouse_default( const SDL_Event& event ){
                         };
                         //printf( "picked atom %i \n", W->ipicked );
                     }else{
-                        selectRect( ray0_start, ray0 );
+                        selectRect( (Vec3d)ray0_start, (Vec3d)ray0 );
                     }
                     bDragging=false;
                     break;
@@ -2279,7 +2279,7 @@ void MolGUI::eventMode_edit( const SDL_Event& event  ){
                 }break;
                 case SDLK_i:
                     //selectShorterSegment( (Vec3d)(cam.rot.a*mouse_begin_x + cam.rot.b*mouse_begin_y + cam.rot.c*-1000.0), (Vec3d)cam.rot.c );
-                    selectShorterSegment( ray0, (Vec3d)cam.rot.c );
+                    selectShorterSegment( (Vec3d)ray0, (Vec3d)cam.rot.c );
                     //selection.erase();
                     //for(int i:builder.selection){ selection.insert(i); };
                     break;
