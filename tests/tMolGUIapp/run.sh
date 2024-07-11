@@ -105,7 +105,8 @@ fi
 #.$name -x common_resources/Si10_H -iParalel 0
 
 #./$name -x Si255_H_relaxed
-./$name -x Si405_H_relaxed
+#./$name -x Si405_H_relaxed
+./$name -x si_111_surface_4x6-
 #./$name -x Si705_relaxed.xyz
 
 

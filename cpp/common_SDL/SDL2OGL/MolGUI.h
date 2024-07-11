@@ -1244,9 +1244,17 @@ void MolGUI::draw(){
     if(W->ipicked>=0) Draw3D::drawLine( apos[W->ipicked], ray0); // Mouse Dragging Visualization
     
     {   // draw mouse selection box;   ToDo:   for some reason the screen is upside-down
-        Vec3d ray0_ = ray0;            ray0_.y=-ray0_.y;
-        Vec3d ray0_start_=ray0_start;  ray0_start_.y=-ray0_start_.y;
-        if(bDragging)Draw3D::drawTriclinicBoxT(cam.rot, (Vec3f)ray0_start_, (Vec3f)ray0_ );   // Mouse Selection Box
+        //Vec3d ray0_ = ray0;            ray0_.y=-ray0_.y;
+        //Vec3d ray0_start_=ray0_start;  ray0_start_.y=-ray0_start_.y;
+        if(bDragging){
+            //glLineWidth(3.0);
+            //glColor3f(1.0,0.5,0.0); Draw3D::drawPointCross( ray0_start, 0.1 );    
+            //glLineWidth(1.0);
+            Vec3f ray0_;        cam.rot.dot_to( (Vec3f)ray0, ray0_);
+            Vec3f ray0_start_;  cam.rot.dot_to( (Vec3f)ray0_start, ray0_start_);
+            glColor3f(1.0,0.5,0.0); Draw3D::drawTriclinicBoxT(cam.rot, (Vec3f)ray0_start_, (Vec3f)ray0_ );   // Mouse Selection Box
+            //glColor3f(0.0,0.5,1.0); Draw3D::drawTriclinicBox (cam.rot, (Vec3f)ray0_start_, (Vec3f)ray0_ ); // Mouse Selection Box
+        }
     }
 
     //printf( "bViewSubstrate %i ogl_isosurf %i W->bGridFF %i \n", bViewSubstrate, ogl_isosurf, W->bGridFF );
@@ -1476,7 +1484,6 @@ void MolGUI::draw(){
     //}
     if(useGizmo){ gizmo.draw(); }
     if(bHexDrawing)drawingHex(5.0);
-
     if(bViewAxis){ glLineWidth(3);  Draw3D::drawAxis(1.0); glLineWidth(1); }
 };
 

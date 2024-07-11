@@ -1320,7 +1320,7 @@ void printPBCshifts(){
         builder.autoAllConfEPi  ( ia0 );
         builder.setPiLoop       ( ic0, -1, 10 );
         if(bEpairs)builder.addAllEpairsByPi( ia0=0 ); 
-        //builder.printAtomConfs(false, false );
+        builder.printAtomConfs(false, false );
         //builder.printAtomConfs(false, true );
         // TBD here FF params are assigned already, but types are not yet found out...
         builder.assignAllBondParams();    //if(verbosity>1)
