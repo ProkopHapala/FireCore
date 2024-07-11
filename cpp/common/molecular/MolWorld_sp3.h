@@ -2799,6 +2799,12 @@ Mat3d alignToAxis( Vec3i ax={2,1,0}, Mat3d* I_=0, Vec3d* cog=0, bool doIt=true, 
     return rot;
 }
 
+virtual void deleteAtomSelection(){
+    builder.deleteAtoms( selection.size(), selection.data() );   
+    selection.clear(); 
+    selection_set.clear(); 
+}
+
 int fragmentsByBonds(){
     builder.frags.clear();
     for( MM::Atom& a : builder.atoms ){ a.frag = -1; }
