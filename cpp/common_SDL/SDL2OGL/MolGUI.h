@@ -235,7 +235,8 @@ class MolGUI : public AppSDL2OGL_3D { public:
     double mm_Rsc            = 0.1;
     double mm_Rsub           = 0.0;
 
-    bool   bViewBuilder      = false;
+    //bool   bViewBuilder      = false;
+    bool   bViewBuilder      = true;
     bool   bViewAxis         = false;
     bool   bViewCell         = false;
 
@@ -1234,7 +1235,7 @@ void MolGUI::draw(){
         //     //updateGUI(); 
         // }
     }
-    if( bViewBuilder ){  W->updateBuilderFromFF(); }
+    //if( bViewBuilder ){  W->updateBuilderFromFF(); }
     //if(bRunRelax){ W->relax( perFrame ); }
 
     Draw3D::drawPointCross( ray0, 0.1 );        // Mouse Cursor 
@@ -1696,7 +1697,14 @@ void MolGUI::drawingHex(double z0){
     }
 }
 
-void MolGUI::selectRect( const Vec3d& p0, const Vec3d& p1 ){ W->selectRect( p0, p1, (Mat3d)cam.rot ); }
+void MolGUI::selectRect( const Vec3d& p0, const Vec3d& p1 ){ 
+    if(bViewBuilder){
+        W->builder.selectRect( p0, p1, (Mat3d)cam.rot ); 
+        W->selection.clear();
+        for( int i : W->builder.selection){ W->selection.push_back(i); }
+    }else{ W->selectRect( p0, p1, (Mat3d)cam.rot ); }
+    
+}
 
 void  MolGUI::selectShorterSegment( const Vec3d& ro, const Vec3d& rd ){
     int ib = pickBondCenter( W->ff.nbonds, W->ff.bond2atom, W->ff.apos, ro, rd, 0.5 );
@@ -2351,7 +2359,7 @@ void MolGUI::eventMode_default( const SDL_Event& event ){
                 //case SDLK_PERIOD: which_MO++; printf("which_MO %i \n", which_MO ); break;
 
                 //case SDLK_INSERT:   break;
-                //case SDLK_DELETE:   break;
+                case SDLK_DELETE:   {  W->deleteAtomSelection();  } break;
 
                 //case SDLK_HOME:     break;
                 //case SDLK_END:      break;

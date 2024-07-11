@@ -2813,6 +2813,96 @@ void assignTorsions( bool bNonPi=false, bool bNO=true ){
         return ibs.size();
     }
 
+    void reindexConfs(int* ias, int* ibs){
+        // ToDo: this would be much simpler if Confs are part of atoms
+        int nc = confs.size();
+        std::vector<int> new_inds(nc,-1);
+        int inew=0;
+        for(int ic=0; ic<nc; ic++){
+            AtomConf& c = confs[ic];
+            c.iatom = ias[c.iatom];
+            if(c.iatom<0) continue;
+            atoms[c.iatom].iconf = inew;
+            int nb=0;
+            for(int j=0; j<N_NEIGH_MAX; j++){
+                int jb = c.neighs[j];
+                if(jb<0) continue;
+                c.neighs[j] = ibs[jb];
+                if( c.neighs[j] >=0 ) nb++;
+            }
+            c.nbond = nb;
+            confs[inew]=c;
+            inew++;
+        }
+        confs.resize(inew);
+    }
+
+    void reindexBonds(int* ias, bool bUpdateConfs=true ){
+        int nb = bonds.size();
+        std::vector<int> new_inds(nb,-1);
+        int inew=0;
+        for(int ib=0; ib<nb; ib++){
+            Vec2i& b = bonds[ib].atoms;
+            b.i = ias[b.i];
+            b.j = ias[b.j];
+            bool bbad = (b.i==-1)||(b.j==-1);
+            if(bbad){ 
+                new_inds[ib]=-1; 
+            }else{ 
+                new_inds[ib]=inew; 
+                bonds[inew]=bonds[ib];
+                inew++; 
+            }
+        }
+        reindexConfs( ias, new_inds.data() );
+        bonds.resize(inew);
+    }
+
+    int selectRect( const Vec3d& p0, const Vec3d& p1, const Mat3d& rot ){
+        printf( "Builder::selectRect() p0(%g,%g,%g) p1(%g,%g,%g) \n", p0.x,p0.y,p0.z, p1.x,p1.y,p1.z );
+        Vec3d Tp0,Tp1,Tp;
+        //Mat3d rot = (Mat3d)cam.rot;
+        rot.dot_to(p0,Tp0);
+        rot.dot_to(p1,Tp1);
+        _order(Tp0.x,Tp1.x);
+        _order(Tp0.y,Tp1.y);
+        Tp0.z=-1e+300;
+        Tp1.z=+1e+300;
+        selection.clear();
+        for(int i=0; i<atoms.size(); i++ ){
+            rot.dot_to( atoms[i].pos,Tp);
+            if( Tp.isBetween(Tp0,Tp1) ){
+                selection.insert( i );
+            }
+        }
+        return selection.size();
+    }
+
+    void deleteAtoms(int n, int* ias, bool bUpdateBonds=true, bool bUpdateConfs=true, bool bCheckError=true ){
+        int na = atoms.size();
+        std::vector<int> old_inds(na,-1);
+        std::vector<int> new_inds(na,-1);
+        // mask removed atoms
+        for(int i=0; i<n; i++){ 
+            int ia = ias[i];
+            if(bCheckError)if( (ia<0)||(ia>=na) ){ printf("Builder::deleteAtoms() ias[%i]=%i out of range 0..atoms.size(%i) => exit()\n", i, ia, na ); exit(0); }
+            old_inds[i]=1; 
+        }
+        // reindex remaining atoms
+        int inew = 0;
+        for(int i=0; i<na; i++){
+            if( old_inds[i]==1 ){
+                new_inds[i]=-1;
+            }else{
+                new_inds[i]=inew;
+                atoms[inew]=atoms[i];
+                inew++;
+            }
+        }
+        if(bUpdateBonds) reindexBonds( new_inds.data(), bUpdateConfs );
+        atoms.resize(inew);
+    }
+
 #ifdef LimitedGraph_h
     bool toLimitedGraph( LimitedGraph<N_NEIGH_MAX>& G, bool bNoCap=true, bool bExitOnError=true, bool bRealloc=true ){
         bool err=false;
