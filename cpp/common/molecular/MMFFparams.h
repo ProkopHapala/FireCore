@@ -54,6 +54,7 @@ class ElementType{ public:
     uint8_t   iZ;         // atomic number
     uint8_t   neval;      // number of valence electrons
     uint8_t   valence;    // sum of bond orders of all bonds
+    uint8_t   piMax;      // maximum number of pi bonds
     uint32_t  color;      // color
     double    RvdW;       // LJ distance parameter
     double    EvdW;       // LJ energy parameter
@@ -67,12 +68,12 @@ class ElementType{ public:
     double    eta;        // valence orbital exponent
 
     char* toString( char * str, bool bParams=false )const{
-        str         +=sprintf( str, "%s %i %i %i %x", name,  iZ, neval, valence, color );
+        str         +=sprintf( str, "%s %i %i %i %i %x", name,  iZ, neval, valence, piMax, color );
         if(bParams)   sprintf( str, "%g %g %g   %g %g %g %g",  RvdW, EvdW, Quff,  Eaff,Ehard,Ra,eta  );
         return str;
     }
     void print(int i, bool bParams=false )const{ 
-        printf           ( "ElementType[%i,%s] %i(%i,%i) %x ", i,name,  iZ, neval, valence, color ); 
+        printf           ( "ElementType[%i,%s] %i(%i,%i,%i) %x ", i,name,  iZ, neval, valence,  piMax, color ); 
         if(bParams)printf( "REQuff(%g,%g,%g) QEq(%g,%g,%g)", RvdW, EvdW, Quff,  Eaff,Ehard,Ra,eta ); 
         printf( "\n"  ); 
     }
@@ -200,12 +201,12 @@ class MMFFparams{ public:
         //double Ehard;         // chemical hardness
         //double Ra;            // atomic size
         //double eta;           // valence orbital exponent
-        //                       1          2         3            4              5            6           7           8           9           10           11        12             13        14          
-        int nret = sscanf( str, "%s         %i        %i           %i             %x           %lf         %lf         %lf         %lf         %lf         %lf         %lf          %lf       %lf", 
-                                 etyp.name, &etyp.iZ, &etyp.neval, &etyp.valence, &etyp.color, &etyp.RvdW, &etyp.EvdW, &etyp.Quff, &etyp.Uuff, &etyp.Vuff, &etyp.Eaff, &etyp.Ehard, &etyp.Ra, &etyp.eta );
-        const int nretmin=10;
+        //                       1          2         3            4              5               6           7           8           9           10           11        12             13        14          15      
+        int nret = sscanf( str, "%s         %i        %i           %i             %i              %x           %lf         %lf         %lf         %lf         %lf         %lf         %lf          %lf       %lf", 
+                                 etyp.name, &etyp.iZ, &etyp.neval, &etyp.valence, &etyp.piMax,  &etyp.color, &etyp.RvdW, &etyp.EvdW, &etyp.Quff, &etyp.Uuff, &etyp.Vuff, &etyp.Eaff, &etyp.Ehard, &etyp.Ra, &etyp.eta );
+        const int nretmin=11;
         if(nret<nretmin){ printf( "ERROR in MMFFparams::string2ElementType: ElementType(iZ=%i,%s) is not complete (nret(%i)<nretmin(%i)) => Exit()\n", etyp.iZ, etyp.name, nret, nretmin ); printf("%s\n", str ); exit(0); }
-        if(nret<14     ){ etyp.bQEq=false; etyp.Eaff=0; etyp.Ehard=0; etyp.Ra=0; etyp.eta=0; }else{ etyp.bQEq=true; }
+        if(nret<15     ){ etyp.bQEq=false; etyp.Eaff=0; etyp.Ehard=0; etyp.Ra=0; etyp.eta=0; }else{ etyp.bQEq=true; }
     }
     
     // extract variables from one line of the AtomTypes file
@@ -276,7 +277,7 @@ class MMFFparams{ public:
             string2ElementType( line, etyp );
             etypes.push_back(etyp);
             if( !elementTypeDict.insert({ etyp.name, etypes.size()-1} ).second ){ printf("ERROR in MMFFparams::loadElementTypes: ElementType[%i](%s) is duplicated => Exit()\n", etypes.size(), etyp.name ); printf("%s\n", line ); exit(0); };
-            if(verbosity>1)printf("loadElementTypes[%i] name='%s' iZ=%i neval=%i valence=%i\n", etypes.size(), etyp.name, etyp.iZ, etyp.neval, etyp.valence );
+            if(verbosity>1)printf("loadElementTypes[%i] name='%s' iZ=%i neval=%i valence=%i piMax=%i \n", etypes.size(), etyp.name, etyp.iZ, etyp.neval, etyp.valence, etyp.piMax );
         }
         fclose(pFile);
         return i;

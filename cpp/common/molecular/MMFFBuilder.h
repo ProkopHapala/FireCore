@@ -1521,6 +1521,13 @@ class Builder{  public:
         if  ( (conf.nbond+conf.nH+ne)>N_NEIGH_MAX  ){ printf( "ERROR int autoConfEPi(ia=%i) ne(%i)+nb(%i)+nH(%i)>N_NEIGH_MAX(%i) => Exit() \n", ia, ne, conf.nbond, conf.nH, N_NEIGH_MAX ); exit(0);}
         else{ conf.ne=ne; }
         conf.fillIn_npi_sp3();
+
+        if(params){ // limit the number of pi-bonds
+            const ElementType* el = params->elementOfAtomType( atoms[ia].type );
+            //printf( "atom[%i] typ=%i %s %s piMax=%i \n", ia, atoms[ia].type, params->atypes[atoms[ia].type].name, el->name,  el->piMax );
+            conf.npi = _min( conf.npi, el->piMax );
+        }
+
         int nb = conf.nbond;
         if(nb>=2){ // for less than 2 neighbors makeConfGeom does not make sense
             Vec3d hs[4];
