@@ -1912,16 +1912,21 @@ void assignTorsions( bool bNonPi=false, bool bNO=true ){
         for(int i=i0; i<imax; i++){  // for pbc we need all atom pairs
             const Atom& A = atoms[i];
             Vec3d dp = A.pos - p; // pbc here
-            double R = (R0 + A.REQ.x)*Rfac;
+            double Rj = params->atypes[A.type].Ruff;
+            //double Rj = (R0 + A.REQ.x)*Rfac;    // Using RvdW
+            double R = (Rj+R0)*Rfac;
+            //printf( "touchingAtoms[%i] R=%g Ri+j=%g Ri=%g Rj=%g \n", i, R, R0+Rj, R0, Rj );
             if(  dp.norm2() < (R*R) ){
-                if(verbosity>2) printf( "bond[%i,%i] r %g R %g \n", i0-1, i, dp.norm(), R );
+                //if(verbosity>2) 
+                printf( "bond[%i,%i] r %g R %g(%g,%g) \n", i0-1, i,    dp.norm(), R, R0, Rj );
                 found.push_back(i);
             }
             //else{printf( "NON bond[%i,%i] r %g R %g \n", i0-1, i, dp.norm(), R );}
         }
     }
 
-    int autoBonds( double R=-0.65, int i0=0, int imax=-1 ){
+    // ToDo:  R=0.5 worsk for hydrocarbons (HCNOF), R=0.65 works for silicon (SiH), we should assign it according to the bond types maybe ?
+    int autoBonds( double R=-1.20, int i0=0, int imax=-1 ){
         //printf( "MM::Builder::autoBonds() \n" );
         if(verbosity>0){ printf( "MM::Builder::autoBonds() \n" ); }
         if(imax<0)imax=atoms.size();
@@ -1931,12 +1936,13 @@ void assignTorsions( bool bNonPi=false, bool bNO=true ){
         std::vector<int> found;
         int nbond=0;
         for(int i=i0; i<imax; i++){
-            //printf( "autoBonds() atom[%i] %s\n", i,  params->atypes[ atoms[i].type ].name );
+            //printf( "autoBonds() atom[%i] typ(%i==%s)\n", i, atoms[i].type,  params->atypes[ atoms[i].type ].name );
             const Atom& A = atoms[i];
             bool bCap_i = capping_types.count( A.type ) > 0; 
-            R = A.REQ.x;
+            //double Ri = A.REQ.x;   // Using RvdW
+            double Ri = params->atypes[A.type].Ruff;   
             found.clear();
-            touchingAtoms( i+1, imax, A.pos, R, Rfac, found );
+            touchingAtoms( i+1, imax, A.pos, Ri, Rfac, found );
             for(int j:found){
                 if( bCap_i ){ if( capping_types.count( atoms[j].type ) > 0 ) continue ; }  // prevent bonds between two capping atoms
                 //printf( "bond[%i] (%i,%i) %s-%s \n", nbond, i,j,  params->atypes[ atoms[i].type ].name, params->atypes[ atoms[j].type ].name    );
@@ -1945,20 +1951,6 @@ void assignTorsions( bool bNonPi=false, bool bNO=true ){
                 insertBond( bondBrush );
                 nbond++;
             }
-            /*
-            for(int j=i+1; j<imax; j++){  // for pbc we need all atom pairs
-                const Atom& B = atoms[j];
-                Vec3d dp = B.pos - A.pos; // pbc here
-                if(byParams){ R = (B.REQ.x + A.REQ.x)*Rfac; }
-                if(  dp.norm2() < (R*R) ){
-                    if( bCap_i ){ if( capping_types.count( atoms[j].type ) > 0 ) continue ; }  // prevent bonds between two capping atoms
-                    bondBrush.ipbc=Vec3i8{0,0,0};
-                    bondBrush.atoms={i,j};
-                    //printf( "autoBonds() try add bond(%i-%i)\n", i,j );
-                    insertBond( bondBrush );
-                }
-            }
-            */
         }
         //printf( "MM::Builder::autoBonds() DONE !!!!!!!!!!!!!!!!\n\n\n" );
         return nbond;
@@ -1967,7 +1959,7 @@ void assignTorsions( bool bNonPi=false, bool bNO=true ){
     inline Vec3d pbcShift( Vec3i G ){ return lvec.a*G.a + lvec.b*G.b + lvec.c*G.c; }
 
     // find 
-    int autoBondsPBC( double R=-0.50, int i0=0, int imax=-1, Vec3i npbc=Vec3iOne ){
+    int autoBondsPBC( double R=-1.20, int i0=0, int imax=-1, Vec3i npbc=Vec3iOne ){
         //printf( "MM::Builder::autoBondsPBC() \n" );
         //if(verbosity>0){ printf( "MM::Builder::autoBondsPBC() \n" );                             }
         if(verbosity>1){ printf( "MM::Builder::autoBondsPBC() builder.lvec: \n" ); lvec.print(); };
@@ -1980,7 +1972,8 @@ void assignTorsions( bool bNonPi=false, bool bNO=true ){
         for(int i=i0; i<imax; i++){
             const Atom& A = atoms[i];
             bool bCap_i = capping_types.count( A.type ) > 0; 
-            R = A.REQ.x;
+            //double Ri = A.REQ.x;  // Using RvdW
+            double Ri = params->atypes[A.type].Ruff;
             int ipbc=0;
             //if(verbosity>1)
             //printf( "autoBondsPBC() Atom[%i] R %g \n", i, R );
@@ -1994,7 +1987,7 @@ void assignTorsions( bool bNonPi=false, bool bNO=true ){
                         Vec3d p = A.pos - lvec.lincomb( ix, iy, iz );
                         found.clear();
                         // find overlapping atoms
-                        touchingAtoms( j0, imax, p, R, Rfac, found ); 
+                        touchingAtoms( j0, imax, p, Ri, Rfac, found ); 
                         //if(i==12)printf( "# pbc[%i,%i,%i][%i] nfound %i \n", ix,iy,iz, ipbc, found.size() );
                         for(int j:found){
                             if( bCap_i ){ if( capping_types.count( atoms[j].type ) > 0 ) continue ; }  // prevent bonds between two capping atoms
@@ -2885,21 +2878,26 @@ void assignTorsions( bool bNonPi=false, bool bNO=true ){
         // mask removed atoms
         for(int i=0; i<n; i++){ 
             int ia = ias[i];
+            //printf("deleteAtoms[%i] ia=%i \n", i,ia);
             if(bCheckError)if( (ia<0)||(ia>=na) ){ printf("Builder::deleteAtoms() ias[%i]=%i out of range 0..atoms.size(%i) => exit()\n", i, ia, na ); exit(0); }
-            old_inds[i]=1; 
+            old_inds[ia]=1; 
         }
+        //printAtoms();
         // reindex remaining atoms
         int inew = 0;
         for(int i=0; i<na; i++){
             if( old_inds[i]==1 ){
                 new_inds[i]=-1;
+                //atoms[inew]=atoms[i];  // Debug
             }else{
                 new_inds[i]=inew;
                 atoms[inew]=atoms[i];
                 inew++;
             }
         }
-        if(bUpdateBonds) reindexBonds( new_inds.data(), bUpdateConfs );
+        //for(int i=0; i<na; i++){    printf("new_inds[%i] == %i \n", i, new_inds[i]);  }
+        //printAtoms();
+        //if(bUpdateBonds) reindexBonds( new_inds.data(), bUpdateConfs );
         atoms.resize(inew);
     }
 

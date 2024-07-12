@@ -64,6 +64,7 @@ fi
 #./$name -x common_resources/formic_dimer
 #./$name -x common_resources/formic_dimer -e -iParalel 0
 
+#./$name -x common_resources/pyridine
 #./$name -x common_resources/pyridine -lua script.lua
 #./$name -x common_resources/propandiol
 #./$name -x common_resources/butandiol
@@ -101,12 +102,12 @@ fi
 #./$name -uff -x common_resources/C2H4
 
 
-#./$name -x common_resources/Si10_H
+./$name -x common_resources/Si10_H
 #.$name -x common_resources/Si10_H -iParalel 0
 
 #./$name -x Si255_H_relaxed
 #./$name -x Si405_H_relaxed
-./$name -x si_111_surface_4x6-
+#./$name -x si_111_surface_4x6-
 #./$name -x Si705_relaxed.xyz
 
 
