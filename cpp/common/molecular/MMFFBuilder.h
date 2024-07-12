@@ -128,9 +128,10 @@ struct AtomConf{
     inline bool addPi   (     ){ return addNeigh((int)NeighType::pi   ,npi); };
     inline bool addEpair(     ){ return addNeigh((int)NeighType::epair,ne ); };
 
+    inline int  updateNtot  (){ n=nbond+npi+ne+nH; return n; };
     inline void clearNonBond(){ n=nbond; npi=0;ne=0;nH=0; };
-    inline void clearBond   (){ nbond=0; n=npi+ne+nH;     };
-    inline void setNonBond(int npi_,int ne_){ npi=npi_; ne=ne_; n=nbond+npi+ne+nH;  }
+    inline void clearBond   (){ nbond=0; updateNtot();     };
+    inline void setNonBond(int npi_,int ne_){ npi=npi_; ne=ne_; updateNtot();  }
     inline void init0(){ for(int i=0; i<N_NEIGH_MAX; i++)neighs[i]=-1; nbond=0; clearNonBond(); }
 
     //void print()const{ printf( " AtomConf{ ia %i, n %i nb %i np %i ne %i nH %i (%i,%i,%i,%i) }", iatom, n, nbond, npi, ne, nH , neighs[0],neighs[1],neighs[2],neighs[3] ); }
@@ -1574,7 +1575,7 @@ class Builder{  public:
         //printf( "addEpairsByPi[%i] \n", ia  );
         int ic=atoms[ia].iconf;
         if(ic<0)return false;
-        int ityp=atoms[ia].type;
+        //int ityp=atoms[ia].type;
         AtomConf& conf = confs[ic];
         int ne = conf.ne;
         if( (ne<1)||(conf.nbond>1)||(conf.npi<1) )return false;
@@ -1615,6 +1616,41 @@ class Builder{  public:
         }
         return n;
     }
+
+
+    bool addCapsByPi(int ia, int cap_typ, double l=1.0 ){
+        int ic=atoms[ia].iconf;
+        if(ic<0)return false;
+        //int ityp=atoms[ia].type;
+        AtomConf& c = confs[ic];
+        int nCap = 4 - (c.ne + c.npi + c.nbond);
+        if(nCap<=0) return false;
+        Vec3d hs[4];
+        loadNeighbors ( ia, c.nbond,    c.neighs, hs );
+        //makeConfGeomPi( c.nbond, c.npi, c.pi_dir, hs );
+        makeConfGeom( c.nbond, c.npi, hs);
+        Atom A; A.type = cap_typ; A.iconf=-1;
+        printf( "addCapsByPi[%i] nCap=%i nb=%i ne=%i npi=%i \n", ia, nCap, c.nbond, c.ne, c.npi );
+        for( int i=0; i<nCap; i++ ){
+            int ib=c.nbond+i;
+            printf( "addCapsByPi[%i] i=%i ib=%i |h|=%g |hb|=%g |hpi|=%g  l=%g \n", ia, i, ib, hs[ib].norm(), hs[0].norm(), c.pi_dir.norm(), l );
+            //addEpair(ia,hs[ib],l);
+            addCap(ia,hs[ib], &A, l );
+        }
+        return true;
+    }
+    int addAllCapsByPi( int cap_typ, int ia0=0, int imax=-1, bool byPi=true ){
+        int n=0;
+        if(imax<0){ imax=atoms.size(); }
+        for(int ia=ia0;ia<imax;ia++){
+            if( addCapsByPi(ia,cap_typ) ){n++;}
+        }
+        return n;
+    }
+
+
+
+
 
     bool tryMakeSPConf(int ia, bool bAutoEPi=false){
         const AtomConf* conf = getAtomConf(ia);
@@ -1918,7 +1954,7 @@ void assignTorsions( bool bNonPi=false, bool bNO=true ){
             //printf( "touchingAtoms[%i] R=%g Ri+j=%g Ri=%g Rj=%g \n", i, R, R0+Rj, R0, Rj );
             if(  dp.norm2() < (R*R) ){
                 //if(verbosity>2) 
-                printf( "bond[%i,%i] r %g R %g(%g,%g) \n", i0-1, i,    dp.norm(), R, R0, Rj );
+                //printf( "bond[%i,%i] r %g R %g(%g,%g) \n", i0-1, i,    dp.norm(), R, R0, Rj );
                 found.push_back(i);
             }
             //else{printf( "NON bond[%i,%i] r %g R %g \n", i0-1, i, dp.norm(), R );}
@@ -2824,6 +2860,7 @@ void assignTorsions( bool bNonPi=false, bool bNO=true ){
                 if( c.neighs[j] >=0 ) nb++;
             }
             c.nbond = nb;
+            c.updateNtot();
             confs[inew]=c;
             inew++;
         }
@@ -2886,6 +2923,9 @@ void assignTorsions( bool bNonPi=false, bool bNO=true ){
             if(bCheckError)if( (ia<0)||(ia>=na) ){ printf("Builder::deleteAtoms() ias[%i]=%i out of range 0..atoms.size(%i) => exit()\n", i, ia, na ); exit(0); }
             old_inds[ia]=1; 
         }
+
+        printf("confs before ==== \n"); printAtomConfs();
+
         //printAtoms();
         // reindex remaining atoms
         int inew = 0;
@@ -2903,6 +2943,8 @@ void assignTorsions( bool bNonPi=false, bool bNO=true ){
         //printAtoms();
         if(bUpdateBonds) reindexBonds( new_inds.data(), bUpdateConfs );
         atoms.resize(inew);
+
+        printf("confs after ==== \n"); printAtomConfs();
     }
 
 #ifdef LimitedGraph_h
