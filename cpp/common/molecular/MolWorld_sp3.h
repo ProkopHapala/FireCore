@@ -2809,6 +2809,9 @@ void clearSelections(){
     builder.selection.clear();
 }
 
+void selectAll    (){ selection.clear(); for(int i=0; i<nbmol.natoms; i++)selection.push_back(i); };
+void selectInverse(){ std::unordered_set<int> s(selection.begin(),selection.end());selection.clear(); for(int i=0; i<nbmol.natoms;i++) if( !s.contains(i) )selection.push_back(i);  };
+
 int fragmentsByBonds(){
     builder.frags.clear();
     for( MM::Atom& a : builder.atoms ){ a.frag = -1; }
