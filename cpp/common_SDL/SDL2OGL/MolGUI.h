@@ -1453,10 +1453,8 @@ void MolGUI::draw(){
         debug_scanSurfFF( ny, p0-b+a*0.5, p0+b*2.+a*0.5 );
     }
 
-    for(int i=0; i<W->selection.size(); i++){ 
-        int ia = W->selection[i];
-        glColor3f( 0.f,1.f,0.f ); Draw3D::drawSphereOctLines( 8, 0.5, W->nbmol.apos[ia] );     
-    }
+    if(bViewBuilder){ glColor3f( 0.f,1.f,0.f ); for(int ia : W->builder.selection ){ Draw3D::drawSphereOctLines( 8, 0.5, W->builder.atoms[ia].pos ); } }
+    else            { glColor3f( 0.f,1.f,0.f ); for(int ia : W->selection         ){ Draw3D::drawSphereOctLines( 8, 0.5, W->nbmol.apos[ia]        ); } }
 
     // --- Drawing Population of geometies overlay
     if(frameCount>=1){ 
@@ -1702,6 +1700,9 @@ void MolGUI::selectRect( const Vec3d& p0, const Vec3d& p1 ){
         W->builder.selectRect( p0, p1, (Mat3d)cam.rot ); 
         W->selection.clear();
         for( int i : W->builder.selection){ W->selection.push_back(i); }
+        { // Debug
+           printf("selection: "); for( int i : W->selection){ printf("%i ", i); } printf("\n");
+        }
     }else{ W->selectRect( p0, p1, (Mat3d)cam.rot ); }
     
 }
@@ -2001,7 +2002,6 @@ void MolGUI::makeBondLengths0(){
         //printf( "MolGUI::makeBondLengths0() [%i] l0=%g \n", i, b.l0 );
         bL0s[i] = b.l0; 
     }
-
 }
 
 void MolGUI::drawBuilder( Vec3i ixyz ){
@@ -2359,7 +2359,7 @@ void MolGUI::eventMode_default( const SDL_Event& event ){
                 //case SDLK_PERIOD: which_MO++; printf("which_MO %i \n", which_MO ); break;
 
                 //case SDLK_INSERT:   break;
-                case SDLK_DELETE:   {  W->deleteAtomSelection();  } break;
+                case SDLK_DELETE:   {  W->deleteAtomSelection();      W->clearSelections();     } break;
 
                 //case SDLK_HOME:     break;
                 //case SDLK_END:      break;
