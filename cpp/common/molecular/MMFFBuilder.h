@@ -2851,6 +2851,10 @@ void assignTorsions( bool bNonPi=false, bool bNO=true ){
         bonds.resize(inew);
     }
 
+    void selectAll    (){ selection.clear(); for(int i=0; i<atoms.size(); i++)selection.insert(i); };
+    void selectInverse(){ std::unordered_set<int> s(selection.begin(),selection.end());selection.clear(); for(int i=0; i<atoms.size();i++) if( !s.contains(i) )selection.insert(i);  };
+    void selectCaping (){ selection.clear(); for(int i=0; i<atoms.size();i++){ if(atoms[i].iconf<0)selection.insert(i); } }
+
     int selectRect( const Vec3d& p0, const Vec3d& p1, const Mat3d& rot ){
         printf( "Builder::selectRect() p0(%g,%g,%g) p1(%g,%g,%g) \n", p0.x,p0.y,p0.z, p1.x,p1.y,p1.z );
         Vec3d Tp0,Tp1,Tp;
@@ -2897,7 +2901,7 @@ void assignTorsions( bool bNonPi=false, bool bNO=true ){
         }
         //for(int i=0; i<na; i++){    printf("new_inds[%i] == %i \n", i, new_inds[i]);  }
         //printAtoms();
-        //if(bUpdateBonds) reindexBonds( new_inds.data(), bUpdateConfs );
+        if(bUpdateBonds) reindexBonds( new_inds.data(), bUpdateConfs );
         atoms.resize(inew);
     }
 
