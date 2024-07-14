@@ -2286,7 +2286,12 @@ void MolGUI::mouse_default( const SDL_Event& event ){
                     }
                     bDragging=false;
                     break;
-                case SDL_BUTTON_RIGHT:{ W->ipicked=-1; } break;
+                case SDL_BUTTON_RIGHT:{ 
+                    int ib = W->builder.pickBond( (Vec3d)ray0, (Vec3d)cam.rot.c, 0.3 );
+                    //printf( "MolGUI::pickBond: %i \n", ib  );
+                    if(ib>=0){ printf( "MolGUI::delete bond: %i \n", ib  );  W->builder.deleteBond(ib);  }
+                    W->ipicked=-1; 
+                } break;
             }break;
     }
 }

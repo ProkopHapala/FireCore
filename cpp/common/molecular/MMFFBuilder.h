@@ -1617,7 +1617,6 @@ class Builder{  public:
         return n;
     }
 
-
     bool addCapsByPi(int ia, int cap_typ, double l=1.0 ){
         int ic=atoms[ia].iconf;
         if(ic<0)return false;
@@ -1647,10 +1646,6 @@ class Builder{  public:
         }
         return n;
     }
-
-
-
-
 
     bool tryMakeSPConf(int ia, bool bAutoEPi=false){
         const AtomConf* conf = getAtomConf(ia);
@@ -1756,6 +1751,13 @@ class Builder{  public:
             }
         }
         return selection.size();
+    }
+
+
+    int pickBond( const Vec3d& ro, const Vec3d& rh, double Rmax ){
+        return rayPickBond( ro, rh, bonds.size(), [&](int ib,Vec3d&pa,Vec3d&pb){ 
+            Vec2i b = bonds[ib].atoms; pa=atoms[b.i].pos; pb=atoms[b.j].pos;
+        }, Rmax, false );
     }
 
     // ============= Angles
@@ -2946,6 +2948,23 @@ void assignTorsions( bool bNonPi=false, bool bNO=true ){
 
         printf("confs after ==== \n"); printAtomConfs();
     }
+
+    inline void changeBondInAtomConf( int ia, int ib, int jb ){ int ic=atoms[ia].iconf; if(ic>=0) confs[ ic ].replaceNeigh( ib, jb ); }
+
+    void deleteBond(int ib){
+        int jb = bonds.size()-1;
+        Vec2i bi = bonds[ib].atoms;
+        if(ib!=jb){ // not last bond   
+            Vec2i bj = bonds[jb].atoms; 
+            changeBondInAtomConf( bi.a, ib, -1 );
+            changeBondInAtomConf( bi.b, ib, -1 );
+            changeBondInAtomConf( bj.a, jb, ib );
+            changeBondInAtomConf( bj.b, jb, ib );
+            bonds[ib] = bonds[jb];
+        }
+        bonds.pop_back();
+    }
+
 
 #ifdef LimitedGraph_h
     bool toLimitedGraph( LimitedGraph<N_NEIGH_MAX>& G, bool bNoCap=true, bool bExitOnError=true, bool bRealloc=true ){
