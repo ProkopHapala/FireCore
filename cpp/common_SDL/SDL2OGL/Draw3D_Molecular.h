@@ -213,11 +213,12 @@ void atomNeighs(  int ia, int perAtom, int* neighs, int* neighCell, Vec3d* apos,
 }
 
 void atomNeighs(  int ia, int perAtom, int* neighs, int* neighCell, Quat4f* apos, Vec3d* shifts=0 ){
+    printf( "Draw3D::atomNeighs[%i]\n", ia );
     int* ngs  = neighs   +ia*perAtom;
     int* ngC  = neighCell+ia*perAtom;
     Quat4f pi = apos[ia];
     //print( "\n", neighs_[0],neighs_[1],neighs_[2],neighs_[3],  neighCell_[0],neighCell_[1],neighCell_[2],neighCell_[3],  apos.x,apos.x,apos.x,apos.x );
-    //printf( "Draw3D::atomNeighs[%i] ng(%i,%i,%i,%i) ngC(%i,%i,%i,%i) p(%g,%g,%g)\n", ia, ngs[0],ngs[1],ngs[2],ngs[3],   ngC[0],ngC[1],ngC[2],ngC[3],    pi.x,pi.y,pi.z );
+    printf( "Draw3D::atomNeighs[%i] ng(%i,%i,%i,%i) ngC(%i,%i,%i,%i) p(%g,%g,%g)\n", ia, ngs[0],ngs[1],ngs[2],ngs[3],   ngC[0],ngC[1],ngC[2],ngC[3],    pi.x,pi.y,pi.z );
     glBegin( GL_LINES );
     for(int i=0; i<perAtom; i++){
         int ja = ngs[i];

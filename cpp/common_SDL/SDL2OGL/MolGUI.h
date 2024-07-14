@@ -235,6 +235,8 @@ class MolGUI : public AppSDL2OGL_3D { public:
     double mm_Rsc            = 0.1;
     double mm_Rsub           = 0.0;
 
+    bool bBuilderChanged     = false;
+
     //bool   bViewBuilder      = false;
     bool   bViewBuilder      = true;
     bool   bViewAxis         = false;
@@ -595,12 +597,11 @@ void MolGUI::initWiggets(){
     mp->addPanel( "Sel.Inv", {0.0,1.0, 0.0},  0,1,0,0,0 )->command = [&](GUIAbstractPanel* p){ if(bViewBuilder){ W->builder.selectInverse(); }else{ W->selectInverse();} return 0; };
     mp->addPanel( "Sel.Cap", {0.0,1.0, 0.0},  0,1,0,0,0 )->command = [&](GUIAbstractPanel* p){ W->builder.selectCaping(); for(int ia: W->builder.selection) W->selection.push_back(ia); return 0; };
     mp->addPanel( "Add.CapHs",{0.0,1.0, 0.0}, 0,1,0,0,0 )->command = [&](GUIAbstractPanel* p){ 
-        //W->builder.addAllCapTopo(); 
-        W->builder.addAllCapsByPi( W->params.getAtomType("H") );
-        W->builder.printAtomConfs( false );
-        W->builder.printAtoms();
-        return 0; 
-    };
+        //printf("====== AtomConf before Add.CapHs \n"); W->builder.printAtomConfs();
+        bBuilderChanged = W->builder.addAllCapsByPi( W->params.getAtomType("H") ) > 0; 
+        //printf("====== AtomConf After Add.CapHs \n"); 
+        //W->builder.printAtomConfs();
+        return 0; };
     //mp->addPanel( "rot3a"  , {0.0,1.0, 0.0},  0,1,0,0,0 )->command = [&](GUIAbstractPanel* p){ W->rot3a();            return 0; };
     mp->addPanel( "toCOG"  , {-3.0,3.0,0.0},  0,1,0,0,0 )->command = [&](GUIAbstractPanel* p){ W->center(true);         return 0; };
     mp->addPanel( "toPCAxy", {-3.0,3.0,0.0},  0,1,0,0,0 )->command = [&](GUIAbstractPanel* p){ W->alignToAxis({2,1,0}); return 0; };
@@ -1110,13 +1111,6 @@ void MolGUI::bindMolWorld( MolWorld_sp3* W_ ){
     // }else{ 
     //     if( W->isInitialized==false){ W->init(); } 
     // }
-    //MolGUI::bindMolecule( W->ff.natoms, W->ff.nbonds,W->ff.atypes,W->ff.bond2atom,Vec3d* fapos_,Quat4d* REQs_,Vec2i*  bond2atom_, Vec3d* pbcShifts_ );
-    //MolGUI::bindMolecule( W->nbmol.natoms, W->ff.nbonds, W->nbmol.atypes, W->nbmol.apos, W->nbmol.fapos, W->nbmol.REQs,                         0,0, W->ff.bond2atom, W->ff.pbcShifts );
-    //MolGUI::bindMolecule( W->nbmol.natoms, W->ffl.nnode, W->ff.nbonds, W->nbmol.atypes, W->nbmol.apos, W->nbmol.fapos, W->nbmol.REQs, W->ffl.pipos, W->ffl.fpipos, W->ff.bond2atom, W->ff.pbcShifts );
-    //constrs   = &W->constrs;
-    //neighs    = W->ffl.neighs;
-    //neighCell = W->ffl.neighCell;
-    //W->tmpstr = str;
     MolGUI::bindMolecule( W );
     //initGUI();
     initWiggets();
@@ -2289,7 +2283,7 @@ void MolGUI::mouse_default( const SDL_Event& event ){
                 case SDL_BUTTON_RIGHT:{ 
                     int ib = W->builder.pickBond( (Vec3d)ray0, (Vec3d)cam.rot.c, 0.3 );
                     //printf( "MolGUI::pickBond: %i \n", ib  );
-                    if(ib>=0){ printf( "MolGUI::delete bond: %i \n", ib  );  W->builder.deleteBond(ib);  }
+                    if(ib>=0){ printf( "MolGUI::delete bond: %i \n", ib  );  W->builder.deleteBond(ib); bBuilderChanged=true; }
                     W->ipicked=-1; 
                 } break;
             }break;
@@ -2381,7 +2375,7 @@ void MolGUI::eventMode_default( const SDL_Event& event ){
                 //case SDLK_PERIOD: which_MO++; printf("which_MO %i \n", which_MO ); break;
 
                 //case SDLK_INSERT:   break;
-                case SDLK_DELETE:   {  W->deleteAtomSelection();      W->clearSelections();     } break;
+                case SDLK_DELETE:   {  bBuilderChanged = W->deleteAtomSelection()>0;      W->clearSelections();     } break;
 
                 //case SDLK_HOME:     break;
                 //case SDLK_END:      break;
@@ -2515,6 +2509,18 @@ void MolGUI::eventMode_default( const SDL_Event& event ){
                 //case SDLK_RIGHTBRACKET: rotate( W->selection.size(), &W->selection[0], W->ff.apos, rotation_center, rotation_axis, -rotation_step );  break;
                 case SDLK_SPACE: 
                     bRunRelax=!bRunRelax;  
+
+                    if( bRunRelax ){ // Update ffl from builder
+                        if (bBuilderChanged){
+                            W->updateFromBuilder();
+                            bindMolecule(W);
+                            bBuilderChanged = false;
+                        }
+                        bViewBuilder    = false;
+                    }else{
+                        bViewBuilder = true;
+                        W->updateBuilderFromFF();
+                    }
 
                     //if( bRunRelax ){ if (W->go.bExploring){ W->stopExploring(); }else{ W->startExploring(); }; }
 
