@@ -122,6 +122,18 @@ struct AtomConf{
         return false;
     }
 
+    inline bool sortBonds(){ // bouble sort
+        bool change=false;
+        for (int i = 0; i < N_NEIGH_MAX-1; ++i) {  // Bouble-sort
+            for (int j = 0; j < N_NEIGH_MAX - i - 1; ++j) {
+                int a  = neighs[j   ]; if(a<0)a=1000000-a;  // make sure that -1 comes last
+                int b = neighs[j + 1]; if(b<0)b=1000000-b;  // make sure that -1 comes last
+                if (a > b ) { _swap( neighs[j], neighs[j + 1]); change=true; }
+            }
+        }
+        return change;
+    }
+
 
     inline bool addBond (int i){ return addNeigh(i,nbond); };
     inline bool addH    (     ){ return addNeigh((int)NeighType::H    ,nH ); };
@@ -663,7 +675,7 @@ class Builder{  public:
         atoms.push_back(atom);
         return addConfToAtom( atoms.size()-1, conf );
     }
-    int insertAtom(const Atom& atom ){ atoms.push_back(atom); return atoms.size()-1; }
+    int insertAtom(Atom& atom ){ int ia=atoms.size(); atom.id=ia; atoms.push_back(atom); return ia; }
 
     int insertAtom( int ityp, const Vec3d& pos, const Quat4d* REQ=0, int npi=-1, int ne=0 ){
         Quat4d REQloc;
@@ -939,6 +951,53 @@ class Builder{  public:
         }
         //if( (nb==2) && (npi=1) ){ printf( "hs angles %g %g %g \n", hs[0].getAngle(hs[1])/M_PI, hs[0].getAngle(hs[2])/M_PI, hs[0].getAngle(hs[3])/M_PI ); }
     }
+
+
+    void makeConfGeomCap(int nb, int npi, Vec3d* hs){
+        Mat3d m;
+        // --- sp3
+        if(npi==0){
+            if      (nb==3){
+                printf( "makeConfGeomCap() sp3 (1,1,1,0)\n" );
+                m.b.set_cross( hs[1]-hs[0], hs[2]-hs[0] );
+                m.b.mul( -1/m.b.norm() );
+                if( 0 < m.b.dot( hs[0]+hs[1]+hs[2] ) ){ m.b.mul(-1.); }
+                hs[3]=m.b;
+            }else if(nb==2){
+                printf( "makeConfGeomCap() sp3 (1,1,0,0)\n" );
+                m.fromCrossSafe( hs[0], hs[1] );
+                const double cb = 0.81649658092; // sqrt(2/3)
+                const double cc = 0.57735026919; // sqrt(1/3)
+                hs[nb  ] = m.c*cc+m.b*cb;
+                hs[nb+1] = m.c*cc-m.b*cb;
+            }else if(nb==1){
+                printf( "makeConfGeomCap() sp3 (1,0,0,0)\n" );
+                m.c = hs[0]; m.c.normalize();
+                m.c.getSomeOrtho(m.b,m.a);
+                const double ca = 0.81649658092;  // sqrt(2/3)
+                const double cb = 0.47140452079;  // sqrt(2/9)
+                const double cc =-0.33333333333;  // 1/3
+                hs[nb  ] = m.c*cc + m.b*(cb*2) ;
+                hs[nb+1] = m.c*cc - m.b* cb    + m.a*ca;
+                hs[nb+2] = m.c*cc - m.b* cb    - m.a*ca;
+            }
+        }else
+        // --- sp2
+        if(npi==1){
+
+        }else
+        // --- sp1
+        if(npi==2){
+        }
+
+        printf("hs[0] l=%6.3f", hs[0].norm()); printVec(hs[0]);
+        printf("hs[1] l=%6.3f", hs[1].norm()); printVec(hs[1]);
+        printf("hs[2] l=%6.3f", hs[2].norm()); printVec(hs[2]);
+        printf("hs[3] l=%6.3f", hs[3].norm()); printVec(hs[3]);
+    }
+
+
+
 
     bool makeConfGeomPi(int nb, int npi, const Vec3d& pi_dir, Vec3d* hs){
         //Mat3d m;
@@ -1617,21 +1676,24 @@ class Builder{  public:
         return n;
     }
 
-    bool addCapsByPi(int ia, int cap_typ, double l=1.0 ){
+    bool addCapByPi(int ia, int cap_typ, double l=1.0 ){
         int ic=atoms[ia].iconf;
         if(ic<0)return false;
         //int ityp=atoms[ia].type;
         AtomConf& c = confs[ic];
         int nCap = 4 - (c.ne + c.npi + c.nbond);
         if(nCap<=0) return false;
+        Atom A = capAtom; A.type = cap_typ; A.iconf=-1;
+        c.sortBonds();
+        printf( "addCapsByPi[%i] nCap=%i conf: ", ia, nCap ); c.print(); //printf("\n");
         Vec3d hs[4];
         loadNeighbors ( ia, c.nbond,    c.neighs, hs );
         //makeConfGeomPi( c.nbond, c.npi, c.pi_dir, hs );
-        makeConfGeom( c.nbond, c.npi, hs);
-        Atom A; A.type = cap_typ; A.iconf=-1;
-        printf( "addCapsByPi[%i] nCap=%i nb=%i ne=%i npi=%i \n", ia, nCap, c.nbond, c.ne, c.npi );
+        //makeConfGeom( c.nbond, c.npi, hs);
+        makeConfGeomCap( c.nbond, c.npi, hs );
+        int nb0 = c.nbond;
         for( int i=0; i<nCap; i++ ){
-            int ib=c.nbond+i;
+            int ib=nb0+i;
             printf( "addCapsByPi[%i] i=%i ib=%i |h|=%g |hb|=%g |hpi|=%g  l=%g \n", ia, i, ib, hs[ib].norm(), hs[0].norm(), c.pi_dir.norm(), l );
             //addEpair(ia,hs[ib],l);
             addCap(ia,hs[ib], &A, l );
@@ -1642,7 +1704,7 @@ class Builder{  public:
         int n=0;
         if(imax<0){ imax=atoms.size(); }
         for(int ia=ia0;ia<imax;ia++){
-            if( addCapsByPi(ia,cap_typ) ){n++;}
+            if( addCapByPi(ia,cap_typ) ){n++;}
         }
         return n;
     }
