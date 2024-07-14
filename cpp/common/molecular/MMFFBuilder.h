@@ -122,6 +122,8 @@ struct AtomConf{
         return false;
     }
 
+    inline int countBonds(){ nbond=0; for(int i=0; i<N_NEIGH_MAX;++i){ if(neighs[i]>=0)nbond++; } return nbond; }
+
     inline bool sortBonds(){ // bouble sort
         bool change=false;
         for (int i = 0; i < N_NEIGH_MAX-1; ++i) {  // Bouble-sort
@@ -958,20 +960,20 @@ class Builder{  public:
         // --- sp3
         if(npi==0){
             if      (nb==3){
-                printf( "makeConfGeomCap() sp3 (1,1,1,0)\n" );
+                //printf( "makeConfGeomCap() sp3 (1,1,1,0)\n" );
                 m.b.set_cross( hs[1]-hs[0], hs[2]-hs[0] );
                 m.b.mul( -1/m.b.norm() );
                 if( 0 < m.b.dot( hs[0]+hs[1]+hs[2] ) ){ m.b.mul(-1.); }
                 hs[3]=m.b;
             }else if(nb==2){
-                printf( "makeConfGeomCap() sp3 (1,1,0,0)\n" );
+                //printf( "makeConfGeomCap() sp3 (1,1,0,0)\n" );
                 m.fromCrossSafe( hs[0], hs[1] );
                 const double cb = 0.81649658092; // sqrt(2/3)
                 const double cc = 0.57735026919; // sqrt(1/3)
                 hs[nb  ] = m.c*cc+m.b*cb;
                 hs[nb+1] = m.c*cc-m.b*cb;
             }else if(nb==1){
-                printf( "makeConfGeomCap() sp3 (1,0,0,0)\n" );
+                //printf( "makeConfGeomCap() sp3 (1,0,0,0)\n" );
                 m.c = hs[0]; m.c.normalize();
                 m.c.getSomeOrtho(m.b,m.a);
                 const double ca = 0.81649658092;  // sqrt(2/3)
@@ -989,11 +991,10 @@ class Builder{  public:
         // --- sp1
         if(npi==2){
         }
-
-        printf("hs[0] l=%6.3f", hs[0].norm()); printVec(hs[0]);
-        printf("hs[1] l=%6.3f", hs[1].norm()); printVec(hs[1]);
-        printf("hs[2] l=%6.3f", hs[2].norm()); printVec(hs[2]);
-        printf("hs[3] l=%6.3f", hs[3].norm()); printVec(hs[3]);
+        //printf("hs[0] l=%6.3f", hs[0].norm()); printVec(hs[0]);
+        //printf("hs[1] l=%6.3f", hs[1].norm()); printVec(hs[1]);
+        //printf("hs[2] l=%6.3f", hs[2].norm()); printVec(hs[2]);
+        //printf("hs[3] l=%6.3f", hs[3].norm()); printVec(hs[3]);
     }
 
 
@@ -2976,7 +2977,7 @@ void assignTorsions( bool bNonPi=false, bool bNO=true ){
         return selection.size();
     }
 
-    void deleteAtoms(int n, int* ias, bool bUpdateBonds=true, bool bUpdateConfs=true, bool bCheckError=true ){
+    int deleteAtoms(int n, int* ias, bool bUpdateBonds=true, bool bUpdateConfs=true, bool bCheckError=true ){
         int na = atoms.size();
         std::vector<int> old_inds(na,-1);
         std::vector<int> new_inds(na,-1);
@@ -2989,13 +2990,14 @@ void assignTorsions( bool bNonPi=false, bool bNO=true ){
         }
 
         printf("confs before ==== \n"); printAtomConfs();
-
         //printAtoms();
         // reindex remaining atoms
         int inew = 0;
+        int ndel=0;
         for(int i=0; i<na; i++){
             if( old_inds[i]==1 ){
                 new_inds[i]=-1;
+                ndel++;
                 //atoms[inew]=atoms[i];  // Debug
             }else{
                 new_inds[i]=inew;
@@ -3007,11 +3009,19 @@ void assignTorsions( bool bNonPi=false, bool bNO=true ){
         //printAtoms();
         if(bUpdateBonds) reindexBonds( new_inds.data(), bUpdateConfs );
         atoms.resize(inew);
-
         printf("confs after ==== \n"); printAtomConfs();
+        return ndel;
     }
 
-    inline void changeBondInAtomConf( int ia, int ib, int jb ){ int ic=atoms[ia].iconf; if(ic>=0) confs[ ic ].replaceNeigh( ib, jb ); }
+    inline void changeBondInAtomConf( int ia, int ib, int jb ){ 
+        int ic=atoms[ia].iconf; 
+        if(ic>=0) confs[ ic ].replaceNeigh( ib, jb ); 
+        if(jb<0){
+            confs[ ic ].sortBonds();
+            confs[ ic ].countBonds();
+            confs[ ic ].updateNtot();
+        }
+    }
 
     void deleteBond(int ib){
         int jb = bonds.size()-1;
@@ -3640,9 +3650,9 @@ void toMMFFsp3_loc( MMFFsp3_loc& ff, bool bRealloc=true, bool bEPairs=true, bool
             AtomType& atyp = params->atypes[A.type];
 
             if(A.iconf>=0){
-
                 // Prepare params and orientation
                 AtomConf& conf = confs[A.iconf];
+                //printf( "Builder::toMMFFsp3_loc() [%i] ", ia ); conf.print(); printf("\n");
                 int npi_neigh = countAtomPiNeighs(ia);
                 //assignSp3Params( A.type, conf.nbond, conf.npi, conf.ne, npi_neigh, ff.NeighParams[ia] );
 
@@ -3666,8 +3676,7 @@ void toMMFFsp3_loc( MMFFsp3_loc& ff, bool bRealloc=true, bool bEPairs=true, bool
 
                 //printf( "atom[%i] npi(%i)=> angle %g cs(%g,%g) \n", ia, conf.npi, ang0*180./M_PI, ff.apars[ia].x, ff.apars[ia].y  ); 
 
-                // setup ff neighbors
-                
+                // setup ff neighbors                
                 int*     ngs  = ff.neighs[ia].array;
                 double*  bL   = ff.bLs[ia].array;
                 double*  bK   = ff.bKs[ia].array;
@@ -3675,10 +3684,7 @@ void toMMFFsp3_loc( MMFFsp3_loc& ff, bool bRealloc=true, bool bEPairs=true, bool
                 double*  Kpp  = ff.Kpp[ia].array;
                 //printf( "BEFOR atom[%i] ngs{%i,%i,%i,%i}\n", ia, ngs[0],ngs[1],ngs[2],ngs[3] );
 
-                // -- atoms
-                //printf( "atom[%i] ne %i \n", ia, conf.ne, conf.nbond );
                 // --- Generate Bonds
-
                 //printf( "ia[%i nbond=%i \n", ia, conf.nbond  );
                 for(int k=0; k<conf.nbond; k++){
                     int ib = conf.neighs[k];
@@ -3703,7 +3709,9 @@ void toMMFFsp3_loc( MMFFsp3_loc& ff, bool bRealloc=true, bool bEPairs=true, bool
                     int npij = getAtom_npi(ja);
                     Kpp[k]   = sqrt( atyp.Kpp * jtyp.Kpp );
                 }
+
                 makeConfGeom( conf.nbond, conf.npi, hs );
+
                 if(bEPairs){ // --- Generate electron pairs
                     int ns = conf.nbond+conf.ne;
                     for(int k=conf.nbond; k<ns; k++){    
@@ -3724,10 +3732,12 @@ void toMMFFsp3_loc( MMFFsp3_loc& ff, bool bRealloc=true, bool bEPairs=true, bool
                 //printf( "AFTER atom[%i] ngs{%i,%i,%i,%i}\n", ia, ngs[0],ngs[1],ngs[2],ngs[3] );
             } // if(A.iconf>=0){
         }
+
         ff.bPBC = bPBC;
         ff.makeBackNeighs();
         //if( bPBC ){ ff.initPBC(); updatePBC( ff.pbcShifts ); }
-        if(verbosity>0)printf(  "MM::Builder::toMMFFsp3_loc() DONE \n"  );
+        //if(verbosity>0)
+        printf(  "MM::Builder::toMMFFsp3_loc() DONE \n"  );
     }
 
 void assignAnglesMMFFsp3( MMFFsp3_loc& ff, bool bUFF=false ){

@@ -1340,7 +1340,7 @@ void printPBCshifts(){
  * periodic boundary conditions if enabled.
  */
     void makeMMFFs(){
-        print("MolWorld_sp3::makeMMFFs() \n" );
+        print("MolWorld_sp3::makeMMFFs()\n" );
         // check if all bonds are in atom neighbors
         if( builder.checkBondsInNeighs(true) ) { 
             printf("ERROR some bonds are not in atom neighbors => exit"); 
@@ -1400,7 +1400,6 @@ void printPBCshifts(){
 
     }
 
-
 /**
  * This function is responsible for performing various operations to generate force fields (FFs).
  * It calls the makeMMFFs() function, initializes the non-bonded molecules, sets the non-bonded interactions,
@@ -1409,7 +1408,7 @@ void printPBCshifts(){
  * Finally, if the bOptimizer flag is set to true, it sets the optimizer and performs relaxation if bRelaxPi is also true.
  */
     virtual void makeFFs(){
-        print("MolWorld_sp3::makeFFs() \n" );
+        print("MolWorld_sp3::makeFFs()\n" );
         makeMMFFs();
         if ( bUFF ){
             //initNBmol( ffu.natoms, ffu.apos, ffu.fapos, ffu.atypes ); 
@@ -1472,19 +1471,14 @@ void printPBCshifts(){
         //ffl.print_nonbonded();
     }
 
+virtual void updateFromBuilder(){
+    printf("MolWorld_sp3::updateFromBuilder()\n");
+    clearFFs();
+    makeFFs();
+};
 
-/**
- * @brief Clears the MolecularWorld object.
- * 
- * This function clears the MolecularWorld object by deallocating memory and resetting variables.
- * 
- * @param bParams Flag indicating whether to clear the parameters as well. Default is true.
- */
-virtual void clear( bool bParams=true, bool bSurf=false ){
-    //printf("MolWorld_sp3.clear() \n");
-    builder.clear();
-    selection.clear();
-    selection_set.clear();
+void clearFFs(){
+    printf("MolWorld_sp3::clearFFs()\n");
     ffl.dealloc();
     ff.dealloc();
     //ff4.dealloc();
@@ -1499,6 +1493,22 @@ virtual void clear( bool bParams=true, bool bSurf=false ){
     opt.pos = 0;
     opt.force = 0;
     opt.dealloc();
+}
+
+
+/**
+ * @brief Clears the MolecularWorld object.
+ * 
+ * This function clears the MolecularWorld object by deallocating memory and resetting variables.
+ * 
+ * @param bParams Flag indicating whether to clear the parameters as well. Default is true.
+ */
+virtual void clear( bool bParams=true, bool bSurf=false ){
+    //printf("MolWorld_sp3::clear() \n");
+    builder.clear();
+    selection.clear();
+    selection_set.clear();
+    clearFFs();
     constrs.clear();
     if(bSurf){  // ToDo: deallocate gridFF and surf ?
         //gridFF.dealloc();
@@ -2799,8 +2809,8 @@ Mat3d alignToAxis( Vec3i ax={2,1,0}, Mat3d* I_=0, Vec3d* cog=0, bool doIt=true, 
     return rot;
 }
 
-virtual void deleteAtomSelection(){
-    builder.deleteAtoms( selection.size(), selection.data() );   
+virtual int deleteAtomSelection(){
+    return builder.deleteAtoms( selection.size(), selection.data() );   
 }
 
 void clearSelections(){
