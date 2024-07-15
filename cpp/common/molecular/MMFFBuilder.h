@@ -141,8 +141,9 @@ struct AtomConf{
     inline bool addH    (     ){ return addNeigh((int)NeighType::H    ,nH ); };
     inline bool addPi   (     ){ return addNeigh((int)NeighType::pi   ,npi); };
     inline bool addEpair(     ){ return addNeigh((int)NeighType::epair,ne ); };
-
     inline int  updateNtot  (){ n=nbond+npi+ne+nH; return n; };
+    inline void updateNeighs(){ sortBonds(); countBonds(); updateNtot(); };
+
     inline void clearNonBond(){ n=nbond; npi=0;ne=0;nH=0; };
     inline void clearBond   (){ nbond=0; updateNtot();     };
     inline void setNonBond(int npi_,int ne_){ npi=npi_; ne=ne_; updateNtot();  }
@@ -857,8 +858,10 @@ class Builder{  public:
         //     Atom& a= atoms.back();
         //     printf( "addCap[%i : %i ] pos(%g,%g,%g) pos0(%g,%g,%g) hdir(%g,%g,%g) \n", atoms.size(), ia, a.pos.x,a.pos.y,a.pos.z, atoms[ia].pos.x,atoms[ia].pos.y,atoms[ia].pos.z, hdir.x,hdir.y,hdir.z );
         // }
-        capBond.atoms.set(ia,ja);
-        insertBond( capBond );
+        Bond B=capBond;
+        B.atoms.set(ia,ja);
+        int ib = insertBond( B );
+        if(params)assignBondParams(ib);
     }
 
     //void addCap(int ia,Vec3d& hdir, Atom* atomj, int btype){
@@ -1682,10 +1685,10 @@ class Builder{  public:
         if(ic<0)return false;
         //int ityp=atoms[ia].type;
         AtomConf& c = confs[ic];
+        c.updateNeighs();
         int nCap = 4 - (c.ne + c.npi + c.nbond);
         if(nCap<=0) return false;
         Atom A = capAtom; A.type = cap_typ; A.iconf=-1;
-        c.sortBonds();
         printf( "addCapsByPi[%i] nCap=%i conf: ", ia, nCap ); c.print(); //printf("\n");
         Vec3d hs[4];
         loadNeighbors ( ia, c.nbond,    c.neighs, hs );
@@ -3690,7 +3693,7 @@ void toMMFFsp3_loc( MMFFsp3_loc& ff, bool bRealloc=true, bool bEPairs=true, bool
                 for(int k=0; k<conf.nbond; k++){
                     int ib = conf.neighs[k];
                     const Bond& B = bonds[ib];
-                    //printf( "ia,ib[%i,%i] ts[%i,%i] B.l0=%g B.k=%g \n", ia, ib, B.atoms.a, B.atoms.b, B.l0, B.k  );
+                    { int ti=atoms[B.atoms.a].type; int tj=atoms[B.atoms.b].type;   printf( "ia,ib[%4i,%4i] l0=%7.3f k=%7.2f ts(%3i,%3i) %s-%s \n", ia, ib, B.l0, B.k, ti,tj, params->atypes[ti].name, params->atypes[tj].name ); }
                     int ja = B.getNeighborAtom(ia);
                     const Atom& Aj =  atoms[ja];
                     AtomType& jtyp = params->atypes[Aj.type];

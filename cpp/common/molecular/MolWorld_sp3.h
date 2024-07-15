@@ -274,6 +274,13 @@ class MolWorld_sp3 : public SolverInterface { public:
     virtual void startExploring(){ go.startExploring(); };
     virtual int getMultiConf( float* Fconvs , bool* bExplors ){ return 0; };
 
+    virtual int getTitle(char* s){
+        int nstr=0;
+        if(xyz_name ){ nstr += sprintf( s     , "%s",   xyz_name  ); }
+        if(surf_name){ nstr += sprintf( s+nstr, " @%s", surf_name ); }
+        return nstr;
+    }
+
     virtual void init(){
         printf( "MolWorld_sp3::init() verbosity=%i\n", verbosity );
         //params.verbosity=verbosity;
@@ -1320,7 +1327,7 @@ void printPBCshifts(){
         builder.autoAllConfEPi  ( ia0 );
         builder.setPiLoop       ( ic0, -1, 10 );
         if(bEpairs)builder.addAllEpairsByPi( ia0=0 ); 
-        builder.printAtomConfs(false, false );
+        //builder.printAtomConfs(false, false );
         //builder.printAtomConfs(false, true );
         // TBD here FF params are assigned already, but types are not yet found out...
         builder.assignAllBondParams();    //if(verbosity>1)
@@ -2301,6 +2308,8 @@ void pullAtom( int ia, Vec3d* apos, Vec3d* fapos, float K=-2.0 ){
     int run_omp( int niter_max, double dt, double Fconv=1e-6, double Flim=1000, double timeLimit=0.02, double* outE=0, double* outF=0, double* outV=0, double* outVF=0 ){
         nloop++;
         if(dt>0){ opt.setTimeSteps(dt); }else{ dt=opt.dt; }
+
+        int ncpu = omp_get_num_threads(); printf("run_omp() ncpu=%i \n");
         //printf( "run_omp() niter_max %i dt %g Fconv %g Flim %g timeLimit %g outE %li outF %li \n", niter_max, dt, Fconv, Flim, timeLimit, (long)outE, (long)outF );
         long T0 = getCPUticks();
         double E=0,F2=0,F2conv=Fconv*Fconv;
@@ -2752,6 +2761,9 @@ int selectAllBonded( int ia ){
 
 // ========= Geometry operations on selected atoms
 
+void selectionFromBuilder(){ for(int i: builder.selection){ selection.push_back(i); }; }
+
+
 bool trySel( int*& sel, int& n ){ 
     if(sel==0){
         sel=selection.data(); 
@@ -2768,7 +2780,7 @@ Vec3d center( bool dotIt=false, int* sel=0, int n=-1 ){
         c.add( ffl.apos[selection[i]] ); 
     }
     c.mul( 1./n );
-    //printf( "getCenter() cog(%g,%g,%g) selection.size()=%i dotIt=%i \n", c.x,c.y,c.z, selection.size(), dotIt );
+    printf( "MolWorld_sp3::center() cog(%g,%g,%g) selection.size()=%i dotIt=%i \n", c.x,c.y,c.z, selection.size(), dotIt );
     if(dotIt){ for(int i=0; i<n; i++){ ffl.apos[selection[i]].sub(c); } }
     return c;
 }
