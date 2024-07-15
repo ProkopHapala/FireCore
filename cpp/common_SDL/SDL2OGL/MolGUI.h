@@ -605,7 +605,8 @@ void MolGUI::initWiggets(){
     //mp->addPanel( "rot3a"  , {0.0,1.0, 0.0},  0,1,0,0,0 )->command = [&](GUIAbstractPanel* p){ W->rot3a();            return 0; };
     mp->addPanel( "toCOG"  , {-3.0,3.0,0.0},  0,1,0,0,0 )->command = [&](GUIAbstractPanel* p){ W->center(true);         return 0; };
     mp->addPanel( "toPCAxy", {-3.0,3.0,0.0},  0,1,0,0,0 )->command = [&](GUIAbstractPanel* p){ W->alignToAxis({2,1,0}); return 0; };
-    p=mp->addPanel( "save:",{-3.0,3.0,0.0},  0,1,0,0,0 );p->command = [&](GUIAbstractPanel* p){ const char* fname = ((GUIPanel*)p)->inputText.c_str(); W->saveXYZ(fname); return 0; }; p->inputText="out.xyz";
+    p=mp->addPanel( "save.xyz",{-3.0,3.0,0.0},  0,1,0,0,0 );p->command = [&](GUIAbstractPanel* p){ const char* fname = ((GUIPanel*)p)->inputText.c_str(); W->saveXYZ(fname); return 0; }; p->inputText="out.xyz";
+    p=mp->addPanel( "save.mol:",{-3.0,3.0,0.0},  0,1,0,0,0 );p->command = [&](GUIAbstractPanel* p){ const char* fname = ((GUIPanel*)p)->inputText.c_str(); W->updateBuilderFromFF(); W->builder.saveMol(fname); return 0; }; p->inputText="out.mol";
 
     //mp->addPanel( "VdwRim", {1.0,3.0,1.5},  0,1,0,0,0 )->command = [&](GUIAbstractPanel* p){  double R=((GUIPanel*)p)->value; dipoleMap.points_along_rim( R, {5.0,0.0,0.0}, Vec2d{0.0,0.1} );  bDipoleMap=true;  return 0; };
     //mp->addPanel( "VdwRim", {1.0,3.0,1.5},  0,1,0,0,0 )->command = [&](GUIAbstractPanel* p){  double R=((GUIPanel*)p)->value; dipoleMap.prepareRim( 5, {1.0,2.0}, {0.4,0.6}, {0.0,-7.0,0.0}, {1.0,0.0} );  bDipoleMap=true;  return 0; };

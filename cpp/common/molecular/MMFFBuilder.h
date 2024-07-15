@@ -2587,6 +2587,7 @@ void assignTorsions( bool bNonPi=false, bool bNO=true ){
             const Vec2i&  ats = bonds[i].atoms;
             fprintf( pfile, "%3i%3i%3i  0  0  0  0\n",  ats.a+1, ats.b+1, ityp );
         }
+        fprintf(pfile,"M  END\n");
         fclose(pfile);
         return atoms.size() + bonds.size();
     }
