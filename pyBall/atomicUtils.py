@@ -194,21 +194,22 @@ def makeKinkAtomSamples( neighs, apos, where=[-0.6, +0.6 ] ):
             samps.append( p0 + d*x )
     return np.array(samps)
 
-def getRvdWs( atypes, eparams=elements.ELEMENTS ):
+def getAtomRadius( atypes, eparams=elements.ELEMENTS, icol=6 ):
+    # icol=7 RvdW, icol=6 covalent radius
     #print( eparams[ 6 ][7], eparams[ 6 ] )
-    return [ eparams[ ei ][7] for ei in atypes ]
+    return [ eparams[ ei ][icol] for ei in atypes ]
 
-def getRvdWsNP( atypes, eparams=elements.ELEMENTS ):
-    return np.array( getRvdWs( atypes, eparams ) ) 
+def getAtomRadiusNP( atypes, eparams=elements.ELEMENTS ):
+    return np.array( getAtomRadius( atypes, eparams ) ) 
 
-def findBondsNP( apos, atypes=None, Rcut=3.0, RvdwCut=0.5, RvdWs=None, byRvdW=True ):
+def findBondsNP( apos, atypes=None, Rcut=3.0, RvdwCut=1.2, RvdWs=None, byRvdW=True ):
     bonds  = []
     rbs    = []
     iatoms = np.arange( len(apos), dtype=int )
     if byRvdW:
         if  RvdWs is None:
-            RvdWs = getRvdWsNP( atypes, eparams=elements.ELEMENTS )
-            #print( RvdWs )
+            RvdWs = getAtomRadiusNP( atypes, eparams=elements.ELEMENTS )
+            print( "findBondsNP() RvdWs=", RvdWs )
     else:
         RvdWs = np.ones(len(apos))*Rcut
     for i,pi in enumerate(apos):
@@ -1156,7 +1157,7 @@ class AtomicSystem( ):
         for i in range(len(self.bonds)):
             print( "[%i] (%i,%i) (%s,%s)" %( i, self.bonds[i,0],self.bonds[i,1],  self.enames[self.bonds[i,0]], self.enames[self.bonds[i,1]] ) )
 
-    def findBonds(self, Rcut=3.0, RvdwCut=0.5, RvdWs=None, byRvdW=True ):
+    def findBonds(self, Rcut=3.0, RvdwCut=1.2, RvdWs=None, byRvdW=True ):
         if self.atypes is None:
             self.atypes = [ elements.ELEMENT_DICT[e][0] for e in self.enames ]
         self.bonds, rs = findBondsNP( self.apos, self.atypes, Rcut=Rcut, RvdwCut=RvdwCut, RvdWs=RvdWs, byRvdW=byRvdW )
