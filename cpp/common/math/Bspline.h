@@ -208,8 +208,36 @@ void sample3D( const Vec3d g0, const Vec3d dg, const Vec3i ng, const double* Eg,
     }
 }
 
+
+Vec3d move( double dt, int n, double* gs, double* fs, double* vs ){
+        constexpr const int m = 2;
+        // --- eval velocity-to-force projection 
+        double vf = 0.0;
+        double ff = 0.0;
+        double vv = 0.0;
+        for(int i=0; i<n; i++){
+            ff += fs[i]*fs[i];
+            vf += vs[i]*fs[i];
+            vv += vs[i]*vs[i];
+        }
+        //printf( "|F[%i]|=%g \n",itr,  sqrt(ff) );
+        //printf( "p=%i v=%g f=%g \n",  Gs[1], vs[1], fs[1] );
+        //if(ff<F2max){ break; }
+        if(vf<0){ for(int i=0; i<n; i++){ vs[i]=0; }; }
+        // --- update the points
+        for(int i=0; i<n; i++){
+            vs[i] += fs[i]*dt;
+            gs[i] += vs[i]*dt;
+            //Gs[i] += fs[i]*dt;  // GD
+        }
+    return Vec3d{vf,ff,vv};
+}
+
+
+
 __attribute__((hot)) 
 int fit1D( const int n, double* Gs,  double* Es, double* Ws, double Ftol, int nmaxiter=100, double dt=0.1 ){
+    printf("Bspline::fit1D() \n");
     const double F2max = Ftol*Ftol;
     double* ps = new double[n];
     double* fs = new double[n];
@@ -241,23 +269,9 @@ int fit1D( const int n, double* Gs,  double* Es, double* Ws, double Ftol, int nm
             if(i>0  )[[likely]]{ fs[i-1] += B1*dp; }
             if(i<n-1)[[likely]]{ fs[i+1] += B1*dp; }
         }
-        // --- move
-        double vf = 0.0;
-        double ff = 0.0;
-        for(int i=0; i<n; i++){
-            ff += fs[i]*fs[i];
-            vf += vs[i]*fs[i];
-        }
-        printf( "|F[%i]|=%g \n",itr,  sqrt(ff) );
-        //printf( "p=%i v=%g f=%g \n",  Gs[1], vs[1], fs[1] );
-        if(ff<F2max){ break; }
-        if(vf<0){ for(int i=0; i<n; i++){ vs[i]=0; }; }
-        for(int i=0; i<n; i++){
-            vs[i] += fs[i]*dt;
-            Gs[i] += vs[i]*dt;
-            //Gs[i] += fs[i]*dt;  // GD
-        }
-        
+        Vec3d cfv = move(dt,n,Gs,fs, vs );
+        printf( "|F[%i]|=%g \n",itr,sqrt(cfv.y) );
+        if(cfv.y<F2max){ break; };
     }
     delete [] ps;
     delete [] fs;
@@ -267,72 +281,57 @@ int fit1D( const int n, double* Gs,  double* Es, double* Ws, double Ftol, int nm
 
 __attribute__((hot)) 
 int fit1D_EF( const double dg, const int n, double* Gs,  Vec2d* fes, Vec2d* Ws, double Ftol, int nmaxiter=1000, double dt=0.1 ){
+    printf("Bspline::fit1D_EF() \n");
     const double inv_dg = 1/dg;
     const double F2max = Ftol*Ftol;
-    Vec2d*  pfs = new Vec2d[n];
-    double* fs  = new double[n];
-    double* vs  = new double[n];
+    Vec2d*  ps = new Vec2d[n];
+    double* fs = new double[n];
+    double* vs = new double[n];
     constexpr double B0=2.0/3.0;
     constexpr double B1=1.0/6.0;
     constexpr double D1=0.5;
     int itr=0;
-
     for(int i=0; i<n; i++){ 
-        vs[i]=0; 
-        pfs[i] = Vec2dZero;   
-        Ws[i]= Vec2dZero;
+        vs[i] = 0; 
+        ps[i] = Vec2dZero;   
+        //Ws[i] = Vec2dZero;
     };
-
     for(itr=0; itr<nmaxiter; itr++){
         // --- evaluate current spline
-        for(int i=0; i<n-1; i++){
+        for(int i=0; i<n; i++){ fs[i]=0; };
+        for(int i=1; i<n-1; i++){
             Vec2d p = Vec2d{ Gs[i]*B0, 0.0};
             // if(i>0  )[[likely]]{ p.add_mul( Vec2d{B1,-D1*inv_dg}, Gs[i-1] ); }
             // if(i<n-1)[[likely]]{ p.add_mul( Vec2d{B1,+D1*inv_dg}, Gs[i+1] ); }
             p.add_mul( Vec2d{B1,-D1*inv_dg}, Gs[i-1] );
             p.add_mul( Vec2d{B1,+D1*inv_dg}, Gs[i+1] ); 
-            pfs[i] = p;    //Ws[i] = p;
-            fs [i] = 0;
-            Ws[i].x = p.y;
+            ps[i] = p;    
+            //Ws[i] = p;
+            //Ws[i].x = p.y;
         }
         // --- evaluate variatiaonal derivatives
-        for(int i=1; i<n-1; i++){
+        for(int i=2; i<n-2; i++){
             Vec2d fei = fes[i];
             //fei.y*=-1;
-            const Vec2d dp  = fei - pfs[i];
+            //const Vec2d w   = Ws[i];
+            Vec2d dp  = fei - ps[i];
+            if(Ws){ dp.mul( Ws[i] ); }
             fs[i] += dp.x*B0;
             //if(i>0  )[[likely]]{ fs[i-1] += B1*dp.x*0 + -D1*dp.y; }
             //if(i<n-1)[[likely]]{ fs[i+1] += B1*dp.x*0 + +D1*dp.y; }
             //fs[i-1] += B1*dp.x + -D1*dp.y*0;
             //fs[i+1] += B1*dp.x + +D1*dp.y*0;
-
-            fs[i  ] += B0*dp.x*0;
-            fs[i-1] += B1*dp.x*0 + -D1*dp.y;
-            fs[i+1] += B1*dp.x*0 + +D1*dp.y;
+            fs[i  ] += B0*dp.x;
+            fs[i-1] += B1*dp.x + -D1*dp.y;
+            fs[i+1] += B1*dp.x + +D1*dp.y;
         }
-        for(int i=0; i<n; i++){  Ws[i].y = fs[i];  } // Debug
+        //for(int i=0; i<n; i++){  Ws[i].y = fs[i];  } // Debug
         // --- move
-        constexpr const int m = 2;
-        // --- eval velocity-to-force projection 
-        double vf = 0.0;
-        double ff = 0.0;
-        for(int i=m; i<n-m; i++){
-            ff += fs[i]*fs[i];
-            vf += vs[i]*fs[i];
-        }
-        printf( "|F[%i]|=%g \n",itr,  sqrt(ff) );
-        //printf( "p=%i v=%g f=%g \n",  Gs[1], vs[1], fs[1] );
-        if(ff<F2max){ break; }
-        if(vf<0){ for(int i=0; i<n; i++){ vs[i]=0; }; }
-        // --- update the points
-        for(int i=m; i<n-m; i++){
-            vs[i] += fs[i]*dt;
-            Gs[i] += vs[i]*dt;
-            //Gs[i] += fs[i]*dt;  // GD
-        }
-        
+        Vec3d cfv = move(dt,n,Gs,fs, vs );
+        printf( "|F[%i]|=%g \n",itr,sqrt(cfv.y) );
+        if(cfv.y<F2max){ break; };
     }
-    delete [] pfs;
+    delete [] ps;
     delete [] fs;
     delete [] vs;
     return itr;
