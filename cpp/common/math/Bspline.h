@@ -270,7 +270,7 @@ int fit1D( const int n, double* Gs,  double* Es, double* Ws, double Ftol, int nm
             if(i<n-1)[[likely]]{ fs[i+1] += B1*dp; }
         }
         Vec3d cfv = move(dt,n,Gs,fs, vs );
-        printf( "|F[%i]|=%g \n",itr,sqrt(cfv.y) );
+        printf( "|F[%i]|=%g cos(f,v)=%g\n",itr,sqrt(cfv.y), cfv.x/sqrt(cfv.y*cfv.z) );
         if(cfv.y<F2max){ break; };
     }
     delete [] ps;
@@ -328,7 +328,7 @@ int fit1D_EF( const double dg, const int n, double* Gs,  Vec2d* fes, Vec2d* Ws, 
         //for(int i=0; i<n; i++){  Ws[i].y = fs[i];  } // Debug
         // --- move
         Vec3d cfv = move(dt,n,Gs,fs, vs );
-        printf( "|F[%i]|=%g \n",itr,sqrt(cfv.y) );
+        printf( "|F[%i]|=%g cos(f,v)=%g\n",itr,sqrt(cfv.y), cfv.x/sqrt(cfv.y*cfv.z) );
         if(cfv.y<F2max){ break; };
     }
     delete [] ps;
@@ -337,6 +337,79 @@ int fit1D_EF( const double dg, const int n, double* Gs,  Vec2d* fes, Vec2d* Ws, 
     return itr;
 }
 
+
+void getVariations2D( const Vec2i ns, double* Gs,  double* Es, double* Ws, double* fs, double* ps ){
+    constexpr double B0=2.0/3.0;
+    constexpr double B1=1.0/6.0;
+    constexpr double B00=B0*B0;
+    constexpr double B01=B0*B1;
+    constexpr double B11=B1*B1;
+    const int nxy  = ns.x*ns.y;
+    // --- evaluate current spline
+    for(int i=0; i<nxy; i++){ fs[i]=0; ps[i]=0;  }
+    // --- evaluate current spline (in order to evelauet approximation error)
+    for(int iy=1; iy<ns.y-1; iy++){
+        int iiy = iy*ns.x;
+        for(int ix=1; ix<ns.x-1; ix++){
+            double val=0; 
+            int       i = ix + iiy;
+            const int j = i;
+            const int i0 = i-ns.x;
+            const int i1 = i+ns.x;
+            val += 
+                + Gs[i0-1]*B11 + Gs[i0]*B01 + Gs[i0+1]*B11
+                + Gs[i -1]*B01 + Gs[i ]*B00 + Gs[i +1]*B01
+                + Gs[i1-1]*B11 + Gs[i1]*B01 + Gs[i1+1]*B11;
+            double err = Es[j] - val;
+            ps[j] = err;
+            Ws[j] = err;
+        }
+    }
+    // --- distribute variational derivatives of approximation error
+    for(int iy=0; iy<ns.y; iy++){
+        int iiy = iy*ns.x;
+        for(int ix=0; ix<ns.x; ix++){
+            double val=0; 
+            int i  = ix + iiy;
+            const int j = i;
+            const int i0 = i-ns.x;
+            const int i1 = i+ns.x;
+            if( (ix>0)&&(ix<(ns.x-1)) && (iy>0)&&(ix<(ns.y-1))) [[likely]] {
+                val += 
+                    + ps[i0-1]*B11 + ps[i0]*B01 + ps[i0+1]*B11
+                    + ps[i -1]*B01 + ps[i ]*B00 + ps[i +1]*B01
+                    + ps[i1-1]*B11 + ps[i1]*B01 + ps[i1+1]*B11;
+                fs[j] = val;
+            }else{
+                fs[j] = 0;
+                Gs[j] = 0;
+            }
+        }
+    }
+
+}
+
+__attribute__((hot)) 
+int fit2D( const Vec2i ns, double* Gs,  double* Es, double* Ws, double Ftol, int nmaxiter=100, double dt=0.1 ){
+    printf( "Bspline::fit2D() ns(%i,%i) \n", ns.x,ns.y );
+    const double F2max = Ftol*Ftol;
+    const int nxy  = ns.x*ns.y;
+    double* ps = new double[nxy];
+    double* fs = new double[nxy];
+    double* vs = new double[nxy];
+    int itr=0;
+    //while(false){
+    for(itr=0; itr<nmaxiter; itr++){
+        getVariations2D( ns, Gs, Es, Ws, fs, ps );
+        Vec3d cfv = move(dt,nxy,Gs,fs, vs );
+        printf( "|F[%i]|=%g cos(f,v)=%g\n",itr,sqrt(cfv.y), cfv.x/sqrt(cfv.y*cfv.z) );
+        if(cfv.y<F2max){ break; };
+    }
+    delete [] ps;
+    delete [] fs;
+    delete [] vs;
+    return itr;
+}
 
 void getVariations3D( const Vec3i ns, double* Gs,  double* Es, double* Ws, double* fs, double* ps ){
     constexpr double B0=2.0/3.0;
@@ -415,7 +488,7 @@ void getVariations3D( const Vec3i ns, double* Gs,  double* Es, double* Ws, doubl
                     (ix>0)&&(ix<(ns.x-1)) &&
                     (iy>0)&&(ix<(ns.y-1)) &&
                     (iz>0)&&(ix<(ns.z-1))           
-                ){
+                ) [[likely]] {
 
                 val += 
                     + ps[i0-1]*B011 + ps[i0]*B001 + ps[i0+1]*B011
