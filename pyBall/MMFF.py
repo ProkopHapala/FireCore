@@ -162,10 +162,10 @@ def fitEF_Bspline( dg, Fes, Gs=None, Ws=None, Ftol=1e-6, nmaxiter=100, dt=0.1 ):
 lib.fit2D_Bspline.argtypes  = [ c_int_p, c_double_p, c_double_p, c_double_p, c_double, c_int, c_double ]
 lib.fit2D_Bspline.restype   =  None
 def fit2D_Bspline( Es, Gs=None, Ws=None, Ftol=1e-6, nmaxiter=100, dt=0.1 ):
-    ns = np.array( Es.shape[::-1], dtype=np.int32 ) 
-    n  = Es.size
-    if Ws is None: Ws = np.zeros( ns )
-    if Gs is None: Gs = Es[:].copy()
+    ns = Es.shape
+    if Ws is None: Ws = np.ones( ns )
+    if Gs is None: Gs = Es.copy()
+    ns = np.array( ns[::-1], dtype=np.int32 ) 
     lib.fit2D_Bspline( _np_as(ns,c_int_p) , _np_as(Gs,c_double_p), _np_as(Es,c_double_p), _np_as(Ws,c_double_p), Ftol, nmaxiter, dt )
     return Gs, Ws
 
@@ -262,6 +262,18 @@ def sample_Bspline( xs, Eps, x0=0.0, dx=1.0, fes=None ):
     n = len(xs)
     if fes is None: fes=np.zeros((n,2))
     lib.sample_Bspline(x0, dx, len(Eps), _np_as(Eps,c_double_p), n, _np_as(xs,c_double_p), _np_as(fes,c_double_p) )
+    return fes
+
+# void sample_Bspline2D( double* g0, double* dg, int* ng, double* G, int n, double* ps, double* fes ){
+lib.sample_Bspline2D.argtypes  = [c_double_p, c_double_p, c_int_p, c_double_p,                c_int, c_double_p, c_double_p]
+lib.sample_Bspline2D.restype   =  None
+def sample_Bspline2D( ps, Eg, g0, dg, fes=None):
+    n = len(ps)
+    g0 = np.array(g0)
+    dg = np.array(dg)
+    ng = np.array( Eg.shape[::-1], np.int32 )
+    if fes is None: fes=np.zeros((n,3))
+    lib.sample_Bspline2D( _np_as(g0,c_double_p), _np_as(dg,c_double_p), _np_as(ng,c_int_p), _np_as(Eg,c_double_p), n, _np_as(ps,c_double_p), _np_as(fes,c_double_p) )
     return fes
 
 #void sample_Bspline3D            ( double* g0, double* dg, int* ng, double* G,               int n, double* ps, double* fes ){
