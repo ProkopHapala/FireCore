@@ -154,6 +154,10 @@ int fitEF_Bspline( double dg, const int n, double* Gs, double* fes, double* Ws, 
     return Bspline::fit1D_EF( dg, n, Gs,  (Vec2d*)fes, (Vec2d*)Ws, Ftol, nmaxiter, dt );
 }
 
+int fit2D_Bspline( const int* ns, double* Gs, double* Es, double* Ws, double Ftol, int nmaxiter, double dt ){
+    return Bspline::fit2D( *(Vec2i*)ns, Gs,  Es, Ws, Ftol, nmaxiter, dt );
+}
+
 int fit3D_Bspline( const int* ns, double* Gs, double* Es, double* Ws, double Ftol, int nmaxiter, double dt ){
     return Bspline::fit3D( *(Vec3i*)ns, Gs,  Es, Ws, Ftol, nmaxiter, dt );
 }
