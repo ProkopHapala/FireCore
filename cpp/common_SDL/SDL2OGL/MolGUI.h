@@ -134,9 +134,6 @@ class MolGUI : public AppSDL2OGL_3D { public:
     Vec3d  rotation_axis   = Vec3dZ;
     double rotation_step   = 15.0 * (M_PI/180.0);
 
-    bool   bDragging = false;
-    Vec3d  ray0_start;
-    Vec3d  ray0;
     //int ipicked    = -1; // picket atom 
     //int ibpicked   = -1; // picket bond
     //int iangPicked = -1; // picket angle
@@ -238,7 +235,10 @@ class MolGUI : public AppSDL2OGL_3D { public:
     double mm_Rsc            = 0.1;
     double mm_Rsub           = 0.0;
 
-    bool   bViewBuilder      = false;
+    bool bBuilderChanged     = false;
+
+    //bool   bViewBuilder      = false;
+    bool   bViewBuilder      = true;
     bool   bViewAxis         = false;
     bool   bViewCell         = false;
 
@@ -286,6 +286,8 @@ class MolGUI : public AppSDL2OGL_3D { public:
     Quat4f * M_apos      =0;
 
     Constrains* constrs = 0;
+
+    double* bL0s = 0;
 
     // ---- Graphics objects    // ToDO: maybe move to globals.h
     int  fontTex=-1,fontTex3D=-1;
@@ -366,6 +368,7 @@ class MolGUI : public AppSDL2OGL_3D { public:
     void Fz2df( int nxy, int izmin, int izmax, const Quat4f* afm_Fout, float* dfout );
     void makeAFM();
     void lattice_scan( int n1, int n2, const Mat3d& dlvec );
+    void makeBondLengths0();
 
     void bindMolecule(int natoms_, int nnode_, int nbonds_, int* atypes_,Vec3d* apos_,Vec3d* fapos_,Quat4d* REQs_, Vec3d* pipos_, Vec3d* fpipos_, Vec2i* bond2atom_, Vec3d* pbcShifts_);
     void bindMolecule(const MolWorld_sp3* W );
@@ -373,6 +376,7 @@ class MolGUI : public AppSDL2OGL_3D { public:
     void unBindMolecule();
 	void drawSystem ( Vec3i ixyz=Vec3iZero );
     void drawBuilder( Vec3i ixyz=Vec3iZero );
+    
     void drawPi0s( float sc );
     void  showAtomGrid( char* s, int ia, bool bDraw=true );
     Vec3d showNonBond ( char* s, Vec2i b, bool bDraw=true );
@@ -580,12 +584,33 @@ void MolGUI::initWiggets(){
     ylay.step( 1 ); ylay.step( 2 );
     mp= new MultiPanel( "Edit", gx.x0, ylay.x0, gx.x1, 0,-8); gui.addPanel( mp ); panel_Edit=mp;
     //GUIPanel* addPanel( const std::string& caption, Vec3d vals{min,max,val}, bool isSlider, bool isButton, bool isInt, bool viewVal, bool bCmdOnSlider );
-    mp->addPanel( "Sel.All", {0.0,1.0, 0.0},  0,1,0,0,0 )->command = [&](GUIAbstractPanel* p){ W->selection.clear(); for(int i=0; i<W->nbmol.natoms; i++)W->selection.push_back(i); return 0; };
-    mp->addPanel( "Sel.Inv", {0.0,1.0, 0.0},  0,1,0,0,0 )->command = [&](GUIAbstractPanel* p){ std::unordered_set<int> s(W->selection.begin(),W->selection.end()); W->selection.clear(); for(int i=0; i<W->nbmol.natoms; i++) if( !s.contains(i) )W->selection.push_back(i); return 0; };
+    // mp->addPanel( "Sel.All", {0.0,1.0, 0.0},  0,1,0,0,0 )->command = [&](GUIAbstractPanel* p){ 
+    //     if(bViewBuilder){ W->builder.selection.clear(); for(int i=0; i<W->builder.atoms.size(); i++)W->builder.selection.insert(i); return 0; }
+    //     else            { W->        selection.clear(); for(int i=0; i<W->nbmol.natoms; i++)W->selection.push_back(i);              return 0; }
+    // };
+    // mp->addPanel( "Sel.Inv", {0.0,1.0, 0.0},  0,1,0,0,0 )->command = [&](GUIAbstractPanel* p){ 
+    //     if(bViewBuilder){ std::unordered_set<int> s(W->builder.selection.begin(),W->builder.selection.end()); W->builder.selection.clear(); for(int i=0; i<W->builder.atoms.size(); i++) if( !s.contains(i) )W->builder.selection.insert(i);  return 0;  }
+    //     else            { std::unordered_set<int> s(W->selection.begin(),        W->selection.end());         W->selection.clear();         for(int i=0; i<W->nbmol.natoms;         i++) if( !s.contains(i) )W->selection.push_back(i);       return 0;  }
+    // };
+
+
+    mp->addPanel( "print.nonB",  {0.0,1.0, 0.0},  0,1,0,0,0 )->command = [&](GUIAbstractPanel* p){ W->ffl.print_nonbonded();   return 0; };
+    mp->addPanel( "print.Aconf", {0.0,1.0, 0.0},  0,1,0,0,0 )->command = [&](GUIAbstractPanel* p){ W->builder.printAtomConfs(); return 0; };
+
+    mp->addPanel( "Sel.All", {0.0,1.0, 0.0},  0,1,0,0,0 )->command = [&](GUIAbstractPanel* p){ if(bViewBuilder){ W->builder.selectAll();     }else{ W->selectAll();    } return 0; };
+    mp->addPanel( "Sel.Inv", {0.0,1.0, 0.0},  0,1,0,0,0 )->command = [&](GUIAbstractPanel* p){ if(bViewBuilder){ W->builder.selectInverse(); }else{ W->selectInverse();} return 0; };
+    mp->addPanel( "Sel.Cap", {0.0,1.0, 0.0},  0,1,0,0,0 )->command = [&](GUIAbstractPanel* p){ W->builder.selectCaping(); for(int ia: W->builder.selection) W->selection.push_back(ia); return 0; };
+    mp->addPanel( "Add.CapHs",{0.0,1.0, 0.0}, 0,1,0,0,0 )->command = [&](GUIAbstractPanel* p){ 
+        //printf("====== AtomConf before Add.CapHs \n"); W->builder.printAtomConfs();
+        bBuilderChanged = W->builder.addAllCapsByPi( W->params.getAtomType("H") ) > 0; 
+        //printf("====== AtomConf After Add.CapHs \n"); 
+        //W->builder.printAtomConfs();
+        return 0; };
     //mp->addPanel( "rot3a"  , {0.0,1.0, 0.0},  0,1,0,0,0 )->command = [&](GUIAbstractPanel* p){ W->rot3a();            return 0; };
-    mp->addPanel( "toCOG"  , {-3.0,3.0,0.0},  0,1,0,0,0 )->command = [&](GUIAbstractPanel* p){ W->center(true);         return 0; };
-    mp->addPanel( "toPCAxy", {-3.0,3.0,0.0},  0,1,0,0,0 )->command = [&](GUIAbstractPanel* p){ W->alignToAxis({2,1,0}); return 0; };
-    p=mp->addPanel( "save:",{-3.0,3.0,0.0},  0,1,0,0,0 );p->command = [&](GUIAbstractPanel* p){ const char* fname = ((GUIPanel*)p)->inputText.c_str(); W->saveXYZ(fname); return 0; }; p->inputText="out.xyz";
+    mp->addPanel( "toCOG"  , {-3.0,3.0,0.0},  0,1,0,0,0 )->command = [&](GUIAbstractPanel* p){ if(bViewBuilder){W->selectionFromBuilder();} W->center(true);         if(bViewBuilder){W->updateBuilderFromFF();} return 0; };
+    mp->addPanel( "toPCAxy", {-3.0,3.0,0.0},  0,1,0,0,0 )->command = [&](GUIAbstractPanel* p){ if(bViewBuilder){W->selectionFromBuilder();} W->alignToAxis({2,1,0}); if(bViewBuilder){W->updateBuilderFromFF();} return 0; };
+    p=mp->addPanel( "save.xyz",{-3.0,3.0,0.0},  0,1,0,0,0 );p->command = [&](GUIAbstractPanel* p){ const char* fname = ((GUIPanel*)p)->inputText.c_str(); if(bViewBuilder){ W->builder.save2xyz(fname);}else{W->saveXYZ(fname);} return 0; }; p->inputText="out.xyz";
+    p=mp->addPanel( "save.mol:",{-3.0,3.0,0.0},  0,1,0,0,0 );p->command = [&](GUIAbstractPanel* p){ const char* fname = ((GUIPanel*)p)->inputText.c_str(); W->updateBuilderFromFF(); W->builder.saveMol(fname); return 0; }; p->inputText="out.mol";
 
     //mp->addPanel( "VdwRim", {1.0,3.0,1.5},  0,1,0,0,0 )->command = [&](GUIAbstractPanel* p){  double R=((GUIPanel*)p)->value; dipoleMap.points_along_rim( R, {5.0,0.0,0.0}, Vec2d{0.0,0.1} );  bDipoleMap=true;  return 0; };
     //mp->addPanel( "VdwRim", {1.0,3.0,1.5},  0,1,0,0,0 )->command = [&](GUIAbstractPanel* p){  double R=((GUIPanel*)p)->value; dipoleMap.prepareRim( 5, {1.0,2.0}, {0.4,0.6}, {0.0,-7.0,0.0}, {1.0,0.0} );  bDipoleMap=true;  return 0; };
@@ -1091,14 +1116,9 @@ void MolGUI::bindMolWorld( MolWorld_sp3* W_ ){
     // }else{ 
     //     if( W->isInitialized==false){ W->init(); } 
     // }
-    //MolGUI::bindMolecule( W->ff.natoms, W->ff.nbonds,W->ff.atypes,W->ff.bond2atom,Vec3d* fapos_,Quat4d* REQs_,Vec2i*  bond2atom_, Vec3d* pbcShifts_ );
-    //MolGUI::bindMolecule( W->nbmol.natoms, W->ff.nbonds, W->nbmol.atypes, W->nbmol.apos, W->nbmol.fapos, W->nbmol.REQs,                         0,0, W->ff.bond2atom, W->ff.pbcShifts );
-    //MolGUI::bindMolecule( W->nbmol.natoms, W->ffl.nnode, W->ff.nbonds, W->nbmol.atypes, W->nbmol.apos, W->nbmol.fapos, W->nbmol.REQs, W->ffl.pipos, W->ffl.fpipos, W->ff.bond2atom, W->ff.pbcShifts );
-    //constrs   = &W->constrs;
-    //neighs    = W->ffl.neighs;
-    //neighCell = W->ffl.neighCell;
-    //W->tmpstr = str;
     MolGUI::bindMolecule( W );
+
+    W->getTitle(tmpstr); SDL_SetWindowTitle( window, tmpstr );
     //initGUI();
     initWiggets();
     updateGUI();
@@ -1218,10 +1238,11 @@ void MolGUI::draw(){
     //debug_scanSurfFF( 100, {0.,0.,z0_scan}, {0.0,3.0,z0_scan}, 10.0 );
 
     // --- Mouse Interaction / Visualization
-	ray0 = (Vec3d)(  cam.rot.a*mouse_begin_x  +  cam.rot.b*mouse_begin_y  +  cam.pos );
+	//ray0 = (Vec3d)(  cam.rot.a*mouse_begin_x  +  cam.rot.b*mouse_begin_y  +  cam.pos );
+    ray0 = mouseRay0();
 
     W->pick_hray = (Vec3d)cam.rot.c;
-    W->pick_ray0 = ray0;
+    W->pick_ray0 = (Vec3d)ray0;
 
     if(bRunRelax){ 
         bool bRelaxOld = W->bConverged;
@@ -1232,17 +1253,26 @@ void MolGUI::draw(){
         //     //updateGUI(); 
         // }
     }
-    if( bViewBuilder ){  W->updateBuilderFromFF(); }
+    //if( bViewBuilder ){  W->updateBuilderFromFF(); }
     //if(bRunRelax){ W->relax( perFrame ); }
 
     Draw3D::drawPointCross( ray0, 0.1 );        // Mouse Cursor 
     //if(W->ipicked>=0) Draw3D::drawLine( W->ff.apos[W->ipicked], ray0); // Mouse Dragging Visualization
-    if(W->ipicked>=0) Draw3D::drawLine( apos[W->ipicked], ray0); // Mouse Dragging Visualization
+    if(W->ipicked>=0) Draw3D::drawLine( apos[W->ipicked], (Vec3d)ray0); // Mouse Dragging Visualization
     
     {   // draw mouse selection box;   ToDo:   for some reason the screen is upside-down
-        Vec3d ray0_ = ray0;            ray0_.y=-ray0_.y;
-        Vec3d ray0_start_=ray0_start;  ray0_start_.y=-ray0_start_.y;
-        if(bDragging)Draw3D::drawTriclinicBoxT(cam.rot, (Vec3f)ray0_start_, (Vec3f)ray0_ );   // Mouse Selection Box
+        //Vec3d ray0_ = ray0;            ray0_.y=-ray0_.y;
+        //Vec3d ray0_start_=ray0_start;  ray0_start_.y=-ray0_start_.y;
+        if(bDragging){
+            drawMuseSelectionBox();
+            // //glLineWidth(3.0);
+            // //glColor3f(1.0,0.5,0.0); Draw3D::drawPointCross( ray0_start, 0.1 );    
+            // //glLineWidth(1.0);
+            // Vec3f ray0_;        cam.rot.dot_to( (Vec3f)ray0, ray0_);
+            // Vec3f ray0_start_;  cam.rot.dot_to( (Vec3f)ray0_start, ray0_start_);
+            // glColor3f(1.0,0.5,0.0); Draw3D::drawTriclinicBoxT(cam.rot, (Vec3f)ray0_start_, (Vec3f)ray0_ );   // Mouse Selection Box
+            // //glColor3f(0.0,0.5,1.0); Draw3D::drawTriclinicBox (cam.rot, (Vec3f)ray0_start_, (Vec3f)ray0_ ); // Mouse Selection Box
+        }
     }
 
     //printf( "bViewSubstrate %i ogl_isosurf %i W->bGridFF %i \n", bViewSubstrate, ogl_isosurf, W->bGridFF );
@@ -1441,10 +1471,8 @@ void MolGUI::draw(){
         debug_scanSurfFF( ny, p0-b+a*0.5, p0+b*2.+a*0.5 );
     }
 
-    for(int i=0; i<W->selection.size(); i++){ 
-        int ia = W->selection[i];
-        glColor3f( 0.f,1.f,0.f ); Draw3D::drawSphereOctLines( 8, 0.5, W->nbmol.apos[ia] );     
-    }
+    if(bViewBuilder){ glColor3f( 0.f,1.f,0.f ); for(int ia : W->builder.selection ){ Draw3D::drawSphereOctLines( 8, 0.5, W->builder.atoms[ia].pos ); } }
+    else            { glColor3f( 0.f,1.f,0.f ); for(int ia : W->selection         ){ Draw3D::drawSphereOctLines( 8, 0.5, W->nbmol.apos[ia]        ); } }
 
     // --- Drawing Population of geometies overlay
     if(frameCount>=1){ 
@@ -1472,7 +1500,6 @@ void MolGUI::draw(){
     //}
     if(useGizmo){ gizmo.draw(); }
     if(bHexDrawing)drawingHex(5.0);
-
     if(bViewAxis){ glLineWidth(3);  Draw3D::drawAxis(1.0); glLineWidth(1); }
 };
 
@@ -1652,7 +1679,7 @@ void MolGUI::drawHUD(){
 
 void MolGUI::drawingHex(double z0){
     Vec2i ip; Vec2d dp;
-    Vec3d p3 = rayPlane_hit( ray0, (Vec3d)cam.rot.c, {0.0,0.0,1.0}, {0.0,0.0,z0} );
+    Vec3d p3 = rayPlane_hit( (Vec3d)ray0, (Vec3d)cam.rot.c, {0.0,0.0,1.0}, {0.0,0.0,z0} );
     Vec2d p{p3.x,p3.y};
     double off=1000.0;
     bool s = ruler.simplexIndex( p+(Vec2d){off,off}, ip, dp );
@@ -1686,7 +1713,17 @@ void MolGUI::drawingHex(double z0){
     }
 }
 
-void MolGUI::selectRect( const Vec3d& p0, const Vec3d& p1 ){ W->selectRect( p0, p1, (Mat3d)cam.rot ); }
+void MolGUI::selectRect( const Vec3d& p0, const Vec3d& p1 ){ 
+    if(bViewBuilder){
+        W->builder.selectRect( p0, p1, (Mat3d)cam.rot ); 
+        W->selection.clear();
+        for( int i : W->builder.selection){ W->selection.push_back(i); }
+        { // Debug
+           printf("selection: "); for( int i : W->selection){ printf("%i ", i); } printf("\n");
+        }
+    }else{ W->selectRect( p0, p1, (Mat3d)cam.rot ); }
+    
+}
 
 void  MolGUI::selectShorterSegment( const Vec3d& ro, const Vec3d& rd ){
     int ib = pickBondCenter( W->ff.nbonds, W->ff.bond2atom, W->ff.apos, ro, rd, 0.5 );
@@ -1975,6 +2012,16 @@ void MolGUI::unBindMolecule(){
     neighs=0; neighCell=0;
 }
 
+void MolGUI::makeBondLengths0(){
+    int nb = W->builder.bonds.size();
+    _realloc0( bL0s, nb, -1. );
+    for( int i=0; i<nb; i++ ){
+        const MM::Bond& b = W->builder.bonds[i];
+        //printf( "MolGUI::makeBondLengths0() [%i] l0=%g \n", i, b.l0 );
+        bL0s[i] = b.l0; 
+    }
+}
+
 void MolGUI::drawBuilder( Vec3i ixyz ){
     //printf( "MolGUI::drawBuilder() ixyz(%i,%i,%i)\n", ixyz.x,ixyz.y,ixyz.z );
     //float textSize=0.015;
@@ -2040,7 +2087,10 @@ void MolGUI::drawSystem( Vec3i ixyz ){
     //printf( "bOrig %i ixyz(%i,%i,%i)\n", bOrig, ixyz.x,ixyz.y,ixyz.z );
     //printf( "MolGUI::drawSystem() bViewMolCharges %i W->nbmol.REQs %li\n", bViewMolCharges, W->nbmol.REQs );
     //printf("MolGUI::drawSystem()  bOrig %i W->bMMFF %i mm_bAtoms %i bViewAtomSpheres %i bViewAtomForces %i bViewMolCharges %i \n", bOrig, W->bMMFF, mm_bAtoms, bViewAtomSpheres, bViewAtomForces, bViewMolCharges  );
-    if( neighs ){  glColor3f(0.0f,0.0f,0.0f);  glLineWidth(1.0); Draw3D::neighs(  natoms, 4, (int*)neighs, (int*)neighCell, apos, W->pbc_shifts ); glLineWidth(1.0);  }
+    if( neighs && (!bViewBondLenghts) ){  glColor3f(0.0f,0.0f,0.0f);  glLineWidth(1.0); Draw3D::neighs(  natoms, 4, (int*)neighs, (int*)neighCell, apos, W->pbc_shifts ); glLineWidth(1.0);  }
+
+
+
     //W->nbmol.print();
     if(bViewAtomSpheres&&mm_bAtoms                  ){                            Draw3D::atoms            ( natoms, apos, atypes, W->params, ogl_sph, 1.0, mm_Rsc, mm_Rsub ); }
     if(bOrig){
@@ -2048,10 +2098,11 @@ void MolGUI::drawSystem( Vec3i ixyz ){
         //if(bViewAtomP0s     &&  fapos           ){ glColor3f(0.0f,1.0f,1.0f); Draw3D::drawVectorArray  ( natoms, apos, fapos, ForceViewScale, 10000.0 );  }
         //for(int i=0; i<natoms; i++){ printf( "MolGUI::drawSystem() fapos[%i] (%g,%g,%g)\n", i, fapos[i].x, fapos[i].y, fapos[i].z ); }
         if(bViewAtomForces    &&  fapos           ){ glColor3f(1.0f,0.0f,0.0f); Draw3D::drawVectorArray  ( natoms, apos, fapos, ForceViewScale, 10000.0 );   }
-        if(mm_bAtoms&&bViewAtomLabels             ){ glColor3f(0.0f,0.0f,0.0f); Draw3D::atomLabels       ( natoms, apos,                                    fontTex3D, textSize );  }
+        if(mm_bAtoms&&bViewAtomLabels&&(!bViewBondLenghts) ){ glColor3f(0.0f,0.0f,0.0f); Draw3D::atomLabels       ( natoms, apos,                                    fontTex3D, textSize );  }
         if(mm_bAtoms&&bViewAtomTypes              ){ glColor3f(0.0f,0.0f,0.0f); Draw3D::atomTypes        ( natoms, apos, atypes, &(params_glob->atypes[0]), fontTex3D, textSize );  }
         if(bViewMolCharges && (W->nbmol.REQs!=0)  ){ glColor3f(0.0,0.0,0.0);    Draw3D::atomPropertyLabel( natoms,  (double*)REQs,  apos, 4, 2,             fontTex3D, textSize ); }
         if(bViewHBondCharges && (W->nbmol.REQs!=0)){ glColor3f(0.0,0.0,0.0);    Draw3D::atomPropertyLabel( natoms,  (double*)REQs,  apos, 4, 3,             fontTex3D, textSize ); }
+        glEnable( GL_DEPTH_TEST );
 
         //if(W->ff.pi0s                           ){ glColor3f(0.0f,1.0f,1.0f); drawPi0s(1.0); }
     
@@ -2084,10 +2135,20 @@ void MolGUI::drawSystem( Vec3i ixyz ){
             //if(mm_bAtoms         ){ glColor3f(0.0f,0.0f,0.0f); Draw3D::atomLabels       ( natoms, apos, fontTex3D               ); }                    
             if( bViewBondLabels    ){ glColor3f(0.0f,0.0f,0.0f); Draw3D::bondLabels( nbonds, bond2atom, apos, fontTex3D,  textSize  ); }
             //void bondLabels( int n, const Vec2i* b2a, const Vec3d* apos, int fontTex3D, float sz=0.02 );
+            glEnable( GL_DEPTH_TEST );
             //Draw3D::atoms          ( natoms, apos, atypes, W->params, ogl_sph, 1.0, mm_Rsc, mm_Rsub );
             //Draw3D::drawVectorArray( natoms, apos, fapos, 100.0, 10000.0 );   
         }
-        if(bViewBondLenghts &&  bOrig ){ glColor3f(0.0f,0.0f,0.0f); Draw3D::bondsLengths( nbonds, bond2atom, apos, fontTex3D, textSize ); }
+        if(bViewBondLenghts &&  bOrig ){ 
+            if(bViewAtomLabels ){ glColor3f(0.0f,0.0f,0.0f); Draw3D::bondsLengths( nbonds, bond2atom, apos, fontTex3D, textSize ); }
+            glEnable( GL_DEPTH_TEST );
+            if(bL0s==0){ makeBondLengths0(); }
+            glLineWidth( 10.0 );
+            //Draw3D::bondLengthColorMap( nbonds, bond2atom, apos, bL0s, 0.01 );
+
+            Draw3D::bondLengthColorMap(nbonds, bond2atom, apos, Vec2d{2.33,2.35} );
+            glLineWidth( 1.0 );
+        }
     }
 
 }
@@ -2194,14 +2255,15 @@ void MolGUI::mouse_default( const SDL_Event& event ){
     switch( event.type ){
         case SDL_MOUSEBUTTONDOWN:
             switch( event.button.button ){
-                case SDL_BUTTON_LEFT: { ray0_start = ray0;  bDragging = true; }break;
+                //case SDL_BUTTON_LEFT: { ray0_start = ray0;  bDragging = true; }break;
+                case SDL_BUTTON_LEFT: mouseStartSelectionBox(); break;
                 case SDL_BUTTON_RIGHT:{ }break;
             } break;
         case SDL_MOUSEBUTTONUP:
             switch( event.button.button ){
                 case SDL_BUTTON_LEFT:
-                    if( ray0.dist2(ray0_start)<0.1 ){
-                        int ipick = pickParticle( ray0, (Vec3d)cam.rot.c, 0.5, W->nbmol.natoms, W->nbmol.apos );
+                    if( ray0.dist2(ray0_start)<0.1 ){ // too small for selection box 
+                        int ipick = pickParticle( (Vec3d)ray0, (Vec3d)cam.rot.c, 0.5, W->nbmol.natoms, W->nbmol.apos );
                         if( ipick>=0 ){ 
                             printf( "MolGUI::mouse_default() ipick=%i \n", ipick ); 
                             W->selection.clear();  
@@ -2225,11 +2287,16 @@ void MolGUI::mouse_default( const SDL_Event& event ){
                         };
                         //printf( "picked atom %i \n", W->ipicked );
                     }else{
-                        selectRect( ray0_start, ray0 );
+                        selectRect( (Vec3d)ray0_start, (Vec3d)ray0 );
                     }
                     bDragging=false;
                     break;
-                case SDL_BUTTON_RIGHT:{ W->ipicked=-1; } break;
+                case SDL_BUTTON_RIGHT:{ 
+                    int ib = W->builder.pickBond( (Vec3d)ray0, (Vec3d)cam.rot.c, 0.3 );
+                    //printf( "MolGUI::pickBond: %i \n", ib  );
+                    if(ib>=0){ printf( "MolGUI::delete bond: %i \n", ib  );  W->builder.deleteBond(ib); bBuilderChanged=true; }
+                    W->ipicked=-1; 
+                } break;
             }break;
     }
 }
@@ -2247,7 +2314,7 @@ void MolGUI::eventMode_edit( const SDL_Event& event  ){
                 }break;
                 case SDLK_i:
                     //selectShorterSegment( (Vec3d)(cam.rot.a*mouse_begin_x + cam.rot.b*mouse_begin_y + cam.rot.c*-1000.0), (Vec3d)cam.rot.c );
-                    selectShorterSegment( ray0, (Vec3d)cam.rot.c );
+                    selectShorterSegment( (Vec3d)ray0, (Vec3d)cam.rot.c );
                     //selection.erase();
                     //for(int i:builder.selection){ selection.insert(i); };
                     break;
@@ -2319,7 +2386,7 @@ void MolGUI::eventMode_default( const SDL_Event& event ){
                 //case SDLK_PERIOD: which_MO++; printf("which_MO %i \n", which_MO ); break;
 
                 //case SDLK_INSERT:   break;
-                //case SDLK_DELETE:   break;
+                case SDLK_DELETE:   {  bBuilderChanged = W->deleteAtomSelection()>0;      W->clearSelections();     } break;
 
                 //case SDLK_HOME:     break;
                 //case SDLK_END:      break;
@@ -2453,6 +2520,18 @@ void MolGUI::eventMode_default( const SDL_Event& event ){
                 //case SDLK_RIGHTBRACKET: rotate( W->selection.size(), &W->selection[0], W->ff.apos, rotation_center, rotation_axis, -rotation_step );  break;
                 case SDLK_SPACE: 
                     bRunRelax=!bRunRelax;  
+
+                    if( bRunRelax ){ // Update ffl from builder
+                        if (bBuilderChanged){
+                            W->updateFromBuilder();
+                            bindMolecule(W);
+                            bBuilderChanged = false;
+                        }
+                        bViewBuilder    = false;
+                    }else{
+                        bViewBuilder = true;
+                        W->updateBuilderFromFF();
+                    }
 
                     //if( bRunRelax ){ if (W->go.bExploring){ W->stopExploring(); }else{ W->startExploring(); }; }
 

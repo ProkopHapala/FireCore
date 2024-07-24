@@ -51,11 +51,37 @@ lib.init.restype   =  c_int
 def init(s,  seed=454 ):
     return lib.init( cstr(s), seed )
 
+# int getAtomNumber(){
+lib.getAtomNumber.argtypes  = [] 
+lib.getAtomNumber.restype   =  c_int
+def getAtomNumber( ):
+    return lib.getAtomNumber()
+
+# int getBondNumber(){ 
+lib.getBondNumber.argtypes  = [] 
+lib.getBondNumber.restype   =  c_int
+def getBondNumber( ):
+    return lib.getBondNumber()
+
 #  void toArrays( int* types, double* apos, int* neighs ){
 lib.toArrays.argtypes  = [c_int_p, c_double_p, c_int_p] 
 lib.toArrays.restype   =  None
-def toArrays(types=None, apos=None, neighs=None):
-    return lib.toArrays(_np_as(types,c_int_p), _np_as(apos,c_double_p), _np_as(neighs,c_int_p))
+def getAtoms( types=None, apos=None, neighs=None ):
+    na = lib.getAtomNumber()
+    if types  is None: types  = np.zeros( na, dtype=np.int32 )
+    if apos   is None: apos   = np.zeros( (na,2) )
+    if neighs is None: neighs = np.zeros( (na,4), dtype=np.int32 )
+    lib.toArrays(_np_as(types,c_int_p), _np_as(apos,c_double_p), _np_as(neighs,c_int_p))
+    return types, apos, neighs
+
+#void getBonds( int* bonds ){
+lib.getBonds.argtypes  = [c_int_p] 
+lib.getBonds.restype   =  None
+def getBonds( bonds=None ):
+    nb = lib.getBondNumber()
+    if bonds is None: bonds = np.zeros( (nb,2), dtype=np.int32 )
+    lib.getBonds(_np_as(bonds,c_int_p))
+    return bonds
 
 #  double step( double dt, double damp ){
 lib.step.argtypes  = [c_double, c_double] 
@@ -69,4 +95,46 @@ lib.run.restype   =  c_int
 def run(n=1000, dt=0.1, damp=0.1, Fconv=1e-2, bCleanForce=False):
     return lib.run(n, dt, damp, Fconv, bCleanForce)
 
+#int addAtom( double x, double y, int type=0, int* neighs=0 ){   
+lib.addAtom.argtypes  = [c_double, c_double, c_int, c_int_p ]
+lib.addAtom.restype   =  c_int
+def addAtom(x, y, type=0, neighs=None):
+    #if neighs is None: neighs = np.zeros(4, dtype=np.int32)
+    return lib.addAtom(x, y, type, _np_as(neighs,c_int_p))
+                         
+#int addBond( int ia, int ja ){ 
+lib.addBond.argtypes  = [c_int, c_int] 
+lib.addBond.restype   =  c_int
+def addBond(ia, ja):
+    return lib.addBond(ia, ja)
+
+# void removeAtom(int i){
+lib.removeAtom.argtypes = [c_int]
+lib.removeAtom.restype  = c_bool
+def removeAtom(i):
+    return lib.removeAtom(i)
+
+# void removeBond(int i){ 
+lib.removeBond.argtypes = [c_int] 
+lib.removeBond.restType  = c_bool
+def removeBond(i):
+    return lib.removeBond(i)
+
+# int findBondAt( double x, double y, double R ){
+lib.findBondAt.argtypes = [c_double, c_double, c_double] 
+lib.findBondAt.restype  =  c_int
+def findBondAt(x, y, R=0.3):
+    return lib.findBondAt(x, y, R)
+
+#int findAtomAt( double x, double y, double R ){ 
+lib.findAtomAt.argtypes = [c_double, c_double, c_double ]
+lib.findAtomAt.restype  =  c_int
+def findAtomAt(x, y, R=0.3):
+    return lib.findAtomAt(x, y, R)
+
+# void print_atoms(){
+lib.print_atoms.argtypes = [] 
+lib.print_atoms.restype  =  None
+def print_atoms():
+    lib.print_atoms()
 # =========  Tests

@@ -334,6 +334,29 @@ inline int pickBondCenter( int nb, const Vec2i* bonds, const Vec3d* ps, const Ve
     return imin;
 }
 
+template<typename Func>
+int rayPickBond( const Vec3d& ray0, const Vec3d& hRay, int nb, Func func, const double Rmax=0.5, const bool byCenter=false ){
+    double R2max = Rmax*Rmax;
+    double dist_min =  1e+300;
+    int    imin = -1;
+    for(int i=0; i<nb; i++){
+        Vec3d pa,pb; func(i,pa,pb);
+        if(byCenter){
+            double ti = raySphere( ray0, hRay, Rmax, (pa+pb)*0.5 );
+            if(ti<dist_min){ imin=i; dist_min=ti; }
+        }else{
+            double t1,t2;
+            Vec3d hb = pb-pa; double l = hb.normalize();
+            double dist = rayLine( ray0, hRay, pa, hb, t1, t2 );
+            //printf( "rayPickBond()[%i] dist=%g rs(%g,%g)\n", i, dist, t1, t2 );
+            if( (dist<Rmax) && (t2>0) && (t2<l) ){
+                imin=i; dist_min=dist;
+            }
+        }
+    }
+    return imin;
+}
+
 /*
 inline bool pointInRect( const Vec3d& p, const Mat3d& rot, Vec2d ){
     double x =

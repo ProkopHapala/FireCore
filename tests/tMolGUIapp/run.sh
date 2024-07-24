@@ -64,6 +64,7 @@ fi
 #./$name -x common_resources/formic_dimer
 #./$name -x common_resources/formic_dimer -e -iParalel 0
 
+#./$name -x common_resources/pyridine
 #./$name -x common_resources/pyridine -lua script.lua
 #./$name -x common_resources/propandiol
 #./$name -x common_resources/butandiol
@@ -98,9 +99,37 @@ fi
 #./$name -x common_resources/nHexadecan_dicarboxylic -T 500.0
 
 
-
-
 #./$name -uff -x common_resources/C2H4
+
+
+#./$name -x common_resources/Si10_H
+#.$name -x common_resources/Si10_H -iParalel 0
+
+#./$name -x Si255_H_relaxed
+#./$name -x Si405_H_relaxed
+#./$name -x si_111_surface_4x6-
+#./$name -x Si705_relaxed
+#./$name -x Si2505_111
+#./$name -x Si2647_100
+#./$name -x Si4930_110
+#./$name -x Si2505_111-
+#./$name -x Si2647_100-
+#./$name -x Si4930_110-
+#./$name -x Si2505_111-H       -perframe 1
+#./$name -x Si2647_100-H      -perframe 1
+#./$name -x Si4930_110-H      -perframe 1
+
+#./$name -x Si2505_111-H-relaxed        -perframe 1
+#./$name -x Si2505_111-H        -perframe 1  # -noNB
+#./$name -x Si2505_111-noH-SiH3  -perframe 1   
+#./$name -x Si2505_111-noH-SiH3-relaxed  -perframe 1   
+
+./$name -x Si2505_111-H-brak-110-relaxed  -perframe 1   
+
+
+#./$name -x Si2505_111-H-SiH3-relaxed.xyz
+
+
 
 # ====== Small Molecules On Substrate
 
@@ -182,7 +211,7 @@ fi
 
 
 #./$name  -x common_resources/polymer-2_new-OH                                                -Ftol 1e-4 -iParalel 0 -perframe 1
-./$name -verb 2 -e -x common_resources/polymer-2_new-OH   -g common_resources/NaCl_1x1_L2   -Ftol 1e-4 -iParalel 0 -perframe 200
+#./$name -verb 2 -e -x common_resources/polymer-2_new-OH   -g common_resources/NaCl_1x1_L2   -Ftol 1e-4 -iParalel 0 -perframe 200
 #./$name  -x common_resources/polymer-2_new-COOH           -g common_resources/NaCl_1x1_L2   -Ftol 1e-4 -iParalel 0 -perframe 10
 
 

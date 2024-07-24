@@ -28,21 +28,188 @@ def findAllBonds( atoms, Rcut=3.0, RvdwCut=0.7 ):
                 bondsVecs.append( ( rij, dp[j]/rij ) )
     return bonds, bondsVecs
 
-def getRvdWs( atypes, eparams=elements.ELEMENTS ):
+def convert_to_adjacency_list(graph):
+    adj_list = {i: list(neighbors) for i, neighbors in enumerate(graph)}
+    return adj_list
+
+def preprocess_graph(graph):
+    changed = True
+    while changed:
+        changed = False
+        to_remove = [node for node in graph if len(graph[node]) == 1]
+        if to_remove:
+            changed = True
+            for node in to_remove:
+                neighbor = graph[node][0]
+                graph[neighbor].remove(node)
+                del graph[node]
+    return graph
+
+def find_cycles(graph, max_length=7):
+    def unblock(node, blocked, blocked_nodes):
+        stack = [node]
+        while stack:
+            n = stack.pop()
+            if n in blocked:
+                blocked.remove(n)
+                stack.extend(blocked_nodes[n])
+                blocked_nodes[n].clear()
+
+    def circuit(node, start, blocked, blocked_nodes, stack):
+        found_cycle = False
+        stack.append(node)
+        blocked.add(node)
+        #print( graph )
+        gnd = graph.get( node, None )
+        if gnd is not None:
+            for neighbor in gnd:
+                if neighbor == start and len(stack) <= max_length:
+                    cycles.append(stack[:])
+                    found_cycle = True
+                elif neighbor not in blocked and len(stack) < max_length:
+                    if circuit(neighbor, start, blocked, blocked_nodes, stack):
+                        found_cycle = True
+            if found_cycle:
+                unblock(node, blocked, blocked_nodes)
+            else:
+                for neighbor in gnd:
+                    if node not in blocked_nodes[neighbor]:
+                        blocked_nodes[neighbor].append(node)
+        stack.pop()
+        return found_cycle
+
+    def find_all_cycles():
+        blocked = set()
+        blocked_nodes = {node: [] for node in graph}
+        stack = []
+        nodes = list(graph.keys())
+        for start in nodes:
+            circuit(start, start, blocked, blocked_nodes, stack)
+            while nodes and nodes[0] != start:
+                nodes.pop(0)
+            graph.pop(start, None)
+
+    cycles = []
+    find_all_cycles()
+    return [cycle for cycle in cycles if 3 <= len(cycle) <= max_length]
+
+def filterBonds( bonds, enames, ignore ):
+    return [ (i,j) for (i,j) in bonds if not ( ( enames[i] in ignore ) or ( enames[j] in ignore ) ) ]
+
+def colapse_to_means( bsamp, R=0.7, binds=None ):
+    R2 = R*R
+    cs = [ ]
+    ns = [ ]
+    ci = [ ]
+    # n = len(bsamp)
+    # bMap = False; b2c=None
+    # if binds is not None: 
+    #     b2c = np.full(n,-1, dtype=np.int32 )
+    #     bMap = True
+    for ip,p in enumerate(bsamp):
+        imin  = -1
+        for ic,c in enumerate(cs):
+            r2 = np.sum( (p-c)**2 )
+            if( r2<R2 ):
+                n = ns[ic]
+                cs[ic] = (c*n + p)/(n+1.0)
+                ci[ic].append(ip)
+                #if(bMap): b2c[ip] = ic
+                ns[ic] +=1
+                imin    = ic
+                break
+        if imin<0:
+            #if(bMap): b2c[ip] = len(cs)
+            cs.append( p  )
+            ns.append( 1. )
+            ci.append( [ip] )
+    print( "centers ", cs)
+    cs = np.array( cs )
+    return cs, ci
+
+
+def makeBondSamples( bonds, apos, where=[-0.2,0.0,0.2] ):
+    bsamp = []
+    for ib,(i,j) in enumerate(bonds):
+        p1 = apos[i,:2]
+        p2 = apos[j,:2]
+        c  = 0.5*(p1+p2)
+        d  = (p2-p1)
+        l = np.sqrt(np.sum(d*d))
+        d /=l
+        q  = d[[1,0]]; q[0]*=-1
+        if where is None:
+            ws = [-l,l]
+        else:
+            ws = where    
+        for w in ws: 
+            bsamp.append( c + q*w )
+    return np.array(bsamp)
+
+def makeAtomSamples( neighs, apos, enames, ignore=set(['H']), where=[-0.5,0.0,0.5] ):
+    samps = []
+    nw = len(where)
+    for ia,ngs in enumerate(neighs):
+        if enames[ia] in ignore: continue
+        p1 = apos[ia,:2]
+        samps.append( p1 )
+        if nw > 0:
+            for j in ngs:
+                p2 = apos[j,:2]
+                d  = (p2-p1)
+                d /= np.sqrt(np.sum(d*d))
+                for w in where: 
+                    samps.append( p1 + d*w )
+    return np.array(samps)
+
+def makeEndAtomSamples( neighs, apos,enames, ignore=set(['H']),  whereX=[-0.6, +0.6 ], whereY=[0.0,+0.6] ):
+    samps = []
+    nw = len(whereY)*len(whereX)
+    for ia,ngs in enumerate(neighs):
+        if len(ngs) != 1:        continue
+        if enames[ia] in ignore: continue
+        p1 = apos[ia,:2]
+        (j,)  = ngs
+        p2 = apos[j,:2]
+        d  = (p1-p2)
+        d /= np.sqrt(np.sum(d*d))
+        q  = d[[1,0]]; q[0]*=-1
+        for x in whereX:
+            for y in whereY: 
+                #print( x,y, d, q )
+                samps.append( p1 + d*y + q*x )
+    return np.array(samps)
+
+def makeKinkAtomSamples( neighs, apos, where=[-0.6, +0.6 ] ):
+    samps = []
+    for ia,ngs in enumerate(neighs):
+        if len(ngs) != 2:        continue
+        p0 = apos[ia,:2]
+        (i,j)  = ngs
+        d1  = (apos[i,:2]-p0);  d1/=np.sqrt(np.sum(d1*d1))
+        d2  = (apos[j,:2]-p0);  d2/=np.sqrt(np.sum(d2*d2))
+        d = d1  + d2;           d2/=np.sqrt(np.sum(d2*d2))
+        for x in where:
+            #print( x,y, d, q )
+            samps.append( p0 + d*x )
+    return np.array(samps)
+
+def getAtomRadius( atypes, eparams=elements.ELEMENTS, icol=6 ):
+    # icol=7 RvdW, icol=6 covalent radius
     #print( eparams[ 6 ][7], eparams[ 6 ] )
-    return [ eparams[ ei ][7] for ei in atypes ]
+    return [ eparams[ ei ][icol] for ei in atypes ]
 
-def getRvdWsNP( atypes, eparams=elements.ELEMENTS ):
-    return np.array( getRvdWs( atypes, eparams ) ) 
+def getAtomRadiusNP( atypes, eparams=elements.ELEMENTS ):
+    return np.array( getAtomRadius( atypes, eparams ) ) 
 
-def findBondsNP( apos, atypes=None, Rcut=3.0, RvdwCut=0.5, RvdWs=None, byRvdW=True ):
+def findBondsNP( apos, atypes=None, Rcut=3.0, RvdwCut=1.2, RvdWs=None, byRvdW=True ):
     bonds  = []
     rbs    = []
     iatoms = np.arange( len(apos), dtype=int )
     if byRvdW:
         if  RvdWs is None:
-            RvdWs = getRvdWsNP( atypes, eparams=elements.ELEMENTS )
-            #print( RvdWs )
+            RvdWs = getAtomRadiusNP( atypes, eparams=elements.ELEMENTS )
+            print( "findBondsNP() RvdWs=", RvdWs )
     else:
         RvdWs = np.ones(len(apos))*Rcut
     for i,pi in enumerate(apos):
@@ -340,8 +507,9 @@ def orient( i0, ip1, ip2, apos, _0=1, trans=None, bCopy=True ):
     up  = apos[ip2[1]-_0]-apos[ip2[0]-_0]
     return orient_vs( p0, fw, up, apos, trans=trans )
 
-def orientPCA(ps):
+def orientPCA(ps, perm=None):
     M = rotMatPCA( ps )
+    if perm is not None: M = M[perm,:]
     mulpos( ps, M )
 
 def groupToPair( p1, p2, group, up, up_by_cog=False ):
@@ -434,6 +602,20 @@ def saveAtoms( atoms, fname, xyz=True ):
         else:
             fout.write("%i %f %f %f\n"  %( atom[0], atom[1], atom[2], atom[3] ) )
     fout.close() 
+
+
+def psi4frags2string( enames, apos, frags=None ):
+    n = len(enames)
+    s = []
+    if frags is None: frags = [ range(n) ]
+    for i,frag in enumerate(frags):
+        #print( i, frag )
+        if i>0: s.append( "--" )
+        for ia in frag:
+            xyz = apos[ia]
+            s.append( "%s %f %f %f"  %( enames[ia], xyz[0], xyz[1], xyz[2]) )
+    #print("s = ", s)
+    return "\n".join(s)
 
 def writeToXYZ( fout, es, xyzs, qs=None, Rs=None, comment="#comment", bHeader=True, ignore_es=None, other_lines=None ):
     na=len(xyzs)
@@ -959,7 +1141,7 @@ class AtomicSystem( ):
         writeToXYZ( fout, self.enames, self.apos, qs=self.qs, Rs=self.Rs, bHeader=bHeader, comment=comment, ignore_es=ignore_es, other_lines=other_lines )
 
     def print(self):
-        #print( len(self.atypes), len(self.enames), len(self.apos) )
+        print( len(self.atypes), len(self.enames), len(self.apos) )
         for i in range(len(self.apos)):
             print( "[%i] %i=%s p(%10.5f,%10.5f,%10.5f)" %( i, self.atypes[i],self.enames[i], self.apos[i,0], self.apos[i,1], self.apos[i,2] ), end =" " )
             if(self.aux_labels is not None): print(self.aux_labels[i], end =" ")
@@ -975,7 +1157,7 @@ class AtomicSystem( ):
         for i in range(len(self.bonds)):
             print( "[%i] (%i,%i) (%s,%s)" %( i, self.bonds[i,0],self.bonds[i,1],  self.enames[self.bonds[i,0]], self.enames[self.bonds[i,1]] ) )
 
-    def findBonds(self, Rcut=3.0, RvdwCut=0.5, RvdWs=None, byRvdW=True ):
+    def findBonds(self, Rcut=3.0, RvdwCut=1.2, RvdWs=None, byRvdW=True ):
         if self.atypes is None:
             self.atypes = [ elements.ELEMENT_DICT[e][0] for e in self.enames ]
         self.bonds, rs = findBondsNP( self.apos, self.atypes, Rcut=Rcut, RvdwCut=RvdwCut, RvdWs=RvdWs, byRvdW=byRvdW )
@@ -1127,8 +1309,8 @@ class AtomicSystem( ):
         p0, fw, up = makeVectros( self.apos, i0, b1, b2, _0=_0 )
         return self.orient_vs( fw, up, p0, trans=trans, bCopy=bCopy )
     
-    def orientPCA(self):
-        orientPCA(self.apos)
+    def orientPCA(self, perm=None):
+        orientPCA(self.apos, perm=perm )
 
     def delete_atoms(self, lst ):
         st = set(lst)

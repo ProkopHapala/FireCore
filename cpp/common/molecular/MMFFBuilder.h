@@ -122,15 +122,31 @@ struct AtomConf{
         return false;
     }
 
+    inline int countBonds(){ nbond=0; for(int i=0; i<N_NEIGH_MAX;++i){ if(neighs[i]>=0)nbond++; } return nbond; }
+
+    inline bool sortBonds(){ // bouble sort
+        bool change=false;
+        for (int i = 0; i < N_NEIGH_MAX-1; ++i) {  // Bouble-sort
+            for (int j = 0; j < N_NEIGH_MAX - i - 1; ++j) {
+                int a  = neighs[j   ]; if(a<0)a=1000000-a;  // make sure that -1 comes last
+                int b = neighs[j + 1]; if(b<0)b=1000000-b;  // make sure that -1 comes last
+                if (a > b ) { _swap( neighs[j], neighs[j + 1]); change=true; }
+            }
+        }
+        return change;
+    }
+
 
     inline bool addBond (int i){ return addNeigh(i,nbond); };
     inline bool addH    (     ){ return addNeigh((int)NeighType::H    ,nH ); };
     inline bool addPi   (     ){ return addNeigh((int)NeighType::pi   ,npi); };
     inline bool addEpair(     ){ return addNeigh((int)NeighType::epair,ne ); };
+    inline int  updateNtot  (){ n=nbond+npi+ne+nH; return n; };
+    inline void updateNeighs(){ sortBonds(); countBonds(); updateNtot(); };
 
     inline void clearNonBond(){ n=nbond; npi=0;ne=0;nH=0; };
-    inline void clearBond   (){ nbond=0; n=npi+ne+nH;     };
-    inline void setNonBond(int npi_,int ne_){ npi=npi_; ne=ne_; n=nbond+npi+ne+nH;  }
+    inline void clearBond   (){ nbond=0; updateNtot();     };
+    inline void setNonBond(int npi_,int ne_){ npi=npi_; ne=ne_; updateNtot();  }
     inline void init0(){ for(int i=0; i<N_NEIGH_MAX; i++)neighs[i]=-1; nbond=0; clearNonBond(); }
 
     //void print()const{ printf( " AtomConf{ ia %i, n %i nb %i np %i ne %i nH %i (%i,%i,%i,%i) }", iatom, n, nbond, npi, ne, nH , neighs[0],neighs[1],neighs[2],neighs[3] ); }
@@ -367,6 +383,7 @@ class Builder{  public:
     std::unordered_map<std::string,int>* atomTypeDict  = 0;
 
     std::unordered_set<int> capping_types;
+    std::unordered_set<int> sp3types;
 
     std::vector<Fragment>   frags;
 
@@ -661,7 +678,7 @@ class Builder{  public:
         atoms.push_back(atom);
         return addConfToAtom( atoms.size()-1, conf );
     }
-    int insertAtom(const Atom& atom ){ atoms.push_back(atom); return atoms.size()-1; }
+    int insertAtom(Atom& atom ){ int ia=atoms.size(); atom.id=ia; atoms.push_back(atom); return ia; }
 
     int insertAtom( int ityp, const Vec3d& pos, const Quat4d* REQ=0, int npi=-1, int ne=0 ){
         Quat4d REQloc;
@@ -841,8 +858,10 @@ class Builder{  public:
         //     Atom& a= atoms.back();
         //     printf( "addCap[%i : %i ] pos(%g,%g,%g) pos0(%g,%g,%g) hdir(%g,%g,%g) \n", atoms.size(), ia, a.pos.x,a.pos.y,a.pos.z, atoms[ia].pos.x,atoms[ia].pos.y,atoms[ia].pos.z, hdir.x,hdir.y,hdir.z );
         // }
-        capBond.atoms.set(ia,ja);
-        insertBond( capBond );
+        Bond B=capBond;
+        B.atoms.set(ia,ja);
+        int ib = insertBond( B );
+        if(params)assignBondParams(ib);
     }
 
     //void addCap(int ia,Vec3d& hdir, Atom* atomj, int btype){
@@ -937,6 +956,52 @@ class Builder{  public:
         }
         //if( (nb==2) && (npi=1) ){ printf( "hs angles %g %g %g \n", hs[0].getAngle(hs[1])/M_PI, hs[0].getAngle(hs[2])/M_PI, hs[0].getAngle(hs[3])/M_PI ); }
     }
+
+
+    void makeConfGeomCap(int nb, int npi, Vec3d* hs){
+        Mat3d m;
+        // --- sp3
+        if(npi==0){
+            if      (nb==3){
+                //printf( "makeConfGeomCap() sp3 (1,1,1,0)\n" );
+                m.b.set_cross( hs[1]-hs[0], hs[2]-hs[0] );
+                m.b.mul( -1/m.b.norm() );
+                if( 0 < m.b.dot( hs[0]+hs[1]+hs[2] ) ){ m.b.mul(-1.); }
+                hs[3]=m.b;
+            }else if(nb==2){
+                //printf( "makeConfGeomCap() sp3 (1,1,0,0)\n" );
+                m.fromCrossSafe( hs[0], hs[1] );
+                const double cb = 0.81649658092; // sqrt(2/3)
+                const double cc = 0.57735026919; // sqrt(1/3)
+                hs[nb  ] = m.c*cc+m.b*cb;
+                hs[nb+1] = m.c*cc-m.b*cb;
+            }else if(nb==1){
+                //printf( "makeConfGeomCap() sp3 (1,0,0,0)\n" );
+                m.c = hs[0]; m.c.normalize();
+                m.c.getSomeOrtho(m.b,m.a);
+                const double ca = 0.81649658092;  // sqrt(2/3)
+                const double cb = 0.47140452079;  // sqrt(2/9)
+                const double cc =-0.33333333333;  // 1/3
+                hs[nb  ] = m.c*cc + m.b*(cb*2) ;
+                hs[nb+1] = m.c*cc - m.b* cb    + m.a*ca;
+                hs[nb+2] = m.c*cc - m.b* cb    - m.a*ca;
+            }
+        }else
+        // --- sp2
+        if(npi==1){
+
+        }else
+        // --- sp1
+        if(npi==2){
+        }
+        //printf("hs[0] l=%6.3f", hs[0].norm()); printVec(hs[0]);
+        //printf("hs[1] l=%6.3f", hs[1].norm()); printVec(hs[1]);
+        //printf("hs[2] l=%6.3f", hs[2].norm()); printVec(hs[2]);
+        //printf("hs[3] l=%6.3f", hs[3].norm()); printVec(hs[3]);
+    }
+
+
+
 
     bool makeConfGeomPi(int nb, int npi, const Vec3d& pi_dir, Vec3d* hs){
         //Mat3d m;
@@ -1121,7 +1186,9 @@ class Builder{  public:
             if( params->atypes[A.type].parrent != 0 ) continue; // already assigned
             if( A.iconf>=0 ){
                 int npi = confs[A.iconf].npi;
+                if( sp3types.count(A.type) == 0 ) continue;
                 A.type = assignSp3Type_pi( A.type, npi );
+                printf( "Builder::assignAllSp3Types() [ia=%i] ityp=%i \n", i, A.type );
             }
         }
     }
@@ -1247,11 +1314,11 @@ class Builder{  public:
         //for(int i=0; i<na;i++){ printf("aneigs[%i]{%i,%i,%i,%i}\n", i, neighs[i*4+0],neighs[i*4+1],neighs[i*4+2],neighs[i*4+3]); }
         for(int ia=0; ia<na; ia++){
             int* ngs  = neighs+ia*4;
-            int itnew =-1;
             Atom& A           = atoms[ia];
             const AtomType& t = params->atypes[A.type];
             int iZ            = t.iZ;
             int npineigh = countNeighPi( ia, ngs );
+            int itnew =A.type;
 
             //printf( "atom[%i] %s=%i iZ %i \n", ia, t.name, A.type, iZ );
             switch (iZ){
@@ -1309,103 +1376,6 @@ class Builder{  public:
 #undef _Btyp 
 #undef _TCap
 #undef T
-
-
-    // int assignSpecialTypes( int* neighs ){
-    //     //printf("#===========assignSpecialTypes() \n");
-    //     // ------ C
-    //     const int it_C_sp3 = params->getAtomType("C_sp3");
-    //     const int it_C_sp2 = params->getAtomType("C_sp2");
-    //     const int it_C_sp1 = params->getAtomType("C_sp1");
-    //     const int it_C_CA  = params->getAtomType("C_CA" );
-    //     const int it_C_ene = params->getAtomType("C_ene");
-    //     const int it_C_yne = params->getAtomType("C_yne");
-    //     const int it_C_CH3 = params->getAtomType("C_CH3");
-    //     const int it_C_ald = params->getAtomType("C_ald");
-    //     const int it_C_COO = params->getAtomType("C_COO");
-    //     // ------ O
-    //     const int it_O_sp3  = params->getAtomType("O_sp3");
-    //     const int it_O_sp2  = params->getAtomType("O_sp2");
-    //     const int it_O_sp1  = params->getAtomType("O_sp1");
-    //     const int it_O_OH   = params->getAtomType("O_OH" );
-    //     const int it_O_ald  = params->getAtomType("O_ald");
-    //     const int it_O_sCOO = params->getAtomType("O_sCOO");
-    //     const int it_O_pCOO = params->getAtomType("O_pCOO");
-    //     //const int it_O_O  = params->getAtomType("O_");
-    //     // ------ N
-    //     const int it_N_sp3 = params->getAtomType("N_sp3");
-    //     const int it_N_sp2 = params->getAtomType("N_sp2");
-    //     const int it_N_sp1 = params->getAtomType("N_sp1");
-    //     const int it_N_NH2 = params->getAtomType("N_NH2");
-    //     // ------- H
-    //     const int it_H_OH  = params->getAtomType("H_OH" );
-    //     const int it_H_COO = params->getAtomType("H_COO");
-    //     const int it_H_NH2 = params->getAtomType("H_NH2");
-    //     const int it_H_CH3 = params->getAtomType("H_CH3");
-    //     const int it_H_ene = params->getAtomType("H_ene");
-    //     const int it_H_yne = params->getAtomType("H_yne");
-    //     const int it_H_ald = params->getAtomType("H_ald");
-    //     //  C                    0        1        2        3
-    //     const static int its_C  [4]{it_O_sp3,it_O_sp2,it_C_sp2,it_C_CA};
-    //     //  N                    0        1
-    //     const static int its_N[2]{it_C_sp2,it_C_CA};
-    //     //  O                    0        1        2
-    //     const static int its_O [3]{it_C_COO,it_C_sp2,it_C_CA};
-    //     int na=atoms.size();
-    //     bool bls[8];
-    //     int nnew=0;
-    //     //for(int i=0; i<na;i++){ printf("aneigs[%i]{%i,%i,%i,%i}\n", i, neighs[i*4+0],neighs[i*4+1],neighs[i*4+2],neighs[i*4+3]); }
-    //     for(int ia=0; ia<na; ia++){
-    //         int* ngs  = neighs+ia*4;
-    //         int itnew =-1;
-    //         Atom& A           = atoms[ia];
-    //         const AtomType& t = params->atypes[A.type];
-    //         int iZ            = t.iZ;
-    //         //printf( "atom[%i] %s=%i iZ %i \n", ia, t.name, A.type, iZ );
-    //         switch (iZ){
-    //             case 1: {  // H
-    //                 int ingt =  getNeighType( 0, 0, ngs );       // if(ingt>-1)printf( "H[%i]-(%i|%s)\n", ia, ingt, params->atypes[ingt].name );
-    //                 //printf("H ingt=%i\n", ingt );
-    //                 if(ingt>=0){
-    //                     if     ( ingt==it_O_OH     ){ itnew=it_H_OH;  }
-    //                     else if( ingt==it_O_sCOO   ){ itnew=it_H_COO; }
-    //                     else if( ingt==it_N_NH2    ){ itnew=it_H_NH2; }
-    //                     else if( ingt==it_C_CH3    ){ itnew=it_H_CH3; }
-    //                     else if( ingt==it_C_ene    ){ itnew=it_H_ene; }
-    //                     else if( ingt==it_C_yne    ){ itnew=it_H_yne; }
-    //                     else if( ingt==it_C_ald    ){ itnew=it_H_ald; }
-    //                 }
-    //             }break;
-    //             case 6: { // C
-    //                 //printf("C \n");
-    //                 hasNeighborOfType( ia,4, its_C, bls, ngs  );
-    //                 if( bls[0] && bls[1] && (A.type==it_C_sp2) ){ // COOH
-    //                     itnew = it_C_COO;
-    //                 }else if ( (A.type==it_C_sp2)&&(bls[2]||bls[3]) ){ // Conjugated sp2 carbond ()
-    //                     itnew = it_C_CA;
-    //                 }
-    //             }break;
-    //             case 7: { // N
-    //                 //printf("N \n");
-    //                 //hasNeighborOfType( ia,2, its_N, bls, ngs );
-    //             }break;
-    //             case 8: { // O
-    //                 //printf("O \n");
-    //                 hasNeighborOfType( ia,3, its_O, bls, ngs );
-    //                 if( bls[0] ){ // COOH
-    //                     if      (A.type==it_O_sp3){ itnew=it_O_sCOO; }
-    //                     else if (A.type==it_O_sp2){ itnew=it_O_pCOO; }
-    //                 }
-    //             }break;
-    //         }
-    //         if( (itnew>=0) && (itnew!=A.type) ){ 
-    //             //printf( "atom[%i] type %i -> %i (%s) \n", ia, A.type, itnew, params->atypes[itnew].name );
-    //             A.type = itnew;
-    //             nnew++; 
-    //         }
-    //     }
-    //     return nnew;
-    // }
 
     int assignSpecialTypesLoop( int nmax, int* neighs ){
         int nnew=0;
@@ -1615,6 +1585,13 @@ class Builder{  public:
         if  ( (conf.nbond+conf.nH+ne)>N_NEIGH_MAX  ){ printf( "ERROR int autoConfEPi(ia=%i) ne(%i)+nb(%i)+nH(%i)>N_NEIGH_MAX(%i) => Exit() \n", ia, ne, conf.nbond, conf.nH, N_NEIGH_MAX ); exit(0);}
         else{ conf.ne=ne; }
         conf.fillIn_npi_sp3();
+
+        if(params){ // limit the number of pi-bonds
+            const ElementType* el = params->elementOfAtomType( atoms[ia].type );
+            //printf( "atom[%i] typ=%i %s %s piMax=%i \n", ia, atoms[ia].type, params->atypes[atoms[ia].type].name, el->name,  el->piMax );
+            conf.npi = _min( conf.npi, el->piMax );
+        }
+
         int nb = conf.nbond;
         if(nb>=2){ // for less than 2 neighbors makeConfGeom does not make sense
             Vec3d hs[4];
@@ -1661,7 +1638,7 @@ class Builder{  public:
         //printf( "addEpairsByPi[%i] \n", ia  );
         int ic=atoms[ia].iconf;
         if(ic<0)return false;
-        int ityp=atoms[ia].type;
+        //int ityp=atoms[ia].type;
         AtomConf& conf = confs[ic];
         int ne = conf.ne;
         if( (ne<1)||(conf.nbond>1)||(conf.npi<1) )return false;
@@ -1699,6 +1676,39 @@ class Builder{  public:
         if(imax<0){ imax=atoms.size(); }
         for(int ia=ia0;ia<imax;ia++){
             if( addEpairsByPi(ia ) ){n++;}
+        }
+        return n;
+    }
+
+    bool addCapByPi(int ia, int cap_typ, double l=1.0 ){
+        int ic=atoms[ia].iconf;
+        if(ic<0)return false;
+        //int ityp=atoms[ia].type;
+        AtomConf& c = confs[ic];
+        c.updateNeighs();
+        int nCap = 4 - (c.ne + c.npi + c.nbond);
+        if(nCap<=0) return false;
+        Atom A = capAtom; A.type = cap_typ; A.iconf=-1;
+        printf( "addCapsByPi[%i] nCap=%i conf: ", ia, nCap ); c.print(); //printf("\n");
+        Vec3d hs[4];
+        loadNeighbors ( ia, c.nbond,    c.neighs, hs );
+        //makeConfGeomPi( c.nbond, c.npi, c.pi_dir, hs );
+        //makeConfGeom( c.nbond, c.npi, hs);
+        makeConfGeomCap( c.nbond, c.npi, hs );
+        int nb0 = c.nbond;
+        for( int i=0; i<nCap; i++ ){
+            int ib=nb0+i;
+            printf( "addCapsByPi[%i] i=%i ib=%i |h|=%g |hb|=%g |hpi|=%g  l=%g \n", ia, i, ib, hs[ib].norm(), hs[0].norm(), c.pi_dir.norm(), l );
+            //addEpair(ia,hs[ib],l);
+            addCap(ia,hs[ib], &A, l );
+        }
+        return true;
+    }
+    int addAllCapsByPi( int cap_typ, int ia0=0, int imax=-1, bool byPi=true ){
+        int n=0;
+        if(imax<0){ imax=atoms.size(); }
+        for(int ia=ia0;ia<imax;ia++){
+            if( addCapByPi(ia,cap_typ) ){n++;}
         }
         return n;
     }
@@ -1807,6 +1817,13 @@ class Builder{  public:
             }
         }
         return selection.size();
+    }
+
+
+    int pickBond( const Vec3d& ro, const Vec3d& rh, double Rmax ){
+        return rayPickBond( ro, rh, bonds.size(), [&](int ib,Vec3d&pa,Vec3d&pb){ 
+            Vec2i b = bonds[ib].atoms; pa=atoms[b.i].pos; pb=atoms[b.j].pos;
+        }, Rmax, false );
     }
 
     // ============= Angles
@@ -1999,43 +2016,54 @@ void assignTorsions( bool bNonPi=false, bool bNO=true ){
         for(int i=i0; i<imax; i++){  // for pbc we need all atom pairs
             const Atom& A = atoms[i];
             Vec3d dp = A.pos - p; // pbc here
-            double R = (R0 + A.REQ.x)*Rfac;
+            double Rj = params->atypes[A.type].Ruff;
+            //double Rj = (R0 + A.REQ.x)*Rfac;    // Using RvdW
+            double R = (Rj+R0)*Rfac;
+            //printf( "touchingAtoms[%i] R=%g Ri+j=%g Ri=%g Rj=%g \n", i, R, R0+Rj, R0, Rj );
             if(  dp.norm2() < (R*R) ){
-                if(verbosity>2)  printf( "[%i,%i] r %g R %g \n", i0-1, i, dp.norm(), R );
+                //if(verbosity>2) 
+                //printf( "bond[%i,%i] r %g R %g(%g,%g) \n", i0-1, i,    dp.norm(), R, R0, Rj );
                 found.push_back(i);
             }
+            //else{printf( "NON bond[%i,%i] r %g R %g \n", i0-1, i, dp.norm(), R );}
         }
     }
 
-    void autoBonds( double R=-0.5, int i0=0, int imax=-1 ){
+    // ToDo:  R=0.5 worsk for hydrocarbons (HCNOF), R=0.65 works for silicon (SiH), we should assign it according to the bond types maybe ?
+    int autoBonds( double R=-1.20, int i0=0, int imax=-1 ){
         //printf( "MM::Builder::autoBonds() \n" );
         if(verbosity>0){ printf( "MM::Builder::autoBonds() \n" ); }
         if(imax<0)imax=atoms.size();
         bool byParams = (R<0);
         double Rfac   = -R;
         //if( byParams && (params==0) ){ printf("ERROR in MM::Builder.autoBonds() byParams(R<0) but params==NULL \n"); exit(0); }
+        std::vector<int> found;
+        int nbond=0;
         for(int i=i0; i<imax; i++){
+            //printf( "autoBonds() atom[%i] typ(%i==%s)\n", i, atoms[i].type,  params->atypes[ atoms[i].type ].name );
             const Atom& A = atoms[i];
             bool bCap_i = capping_types.count( A.type ) > 0; 
-            for(int j=i+1; j<imax; j++){  // for pbc we need all atom pairs
-                const Atom& B = atoms[j];
-                Vec3d dp = B.pos - A.pos; // pbc here
-                if(byParams){ R = (B.REQ.x + A.REQ.x)*Rfac; }
-                if(  dp.norm2() < (R*R) ){
-                    if( bCap_i ){ if( capping_types.count( atoms[j].type ) > 0 ) continue ; }  // prevent bonds between two capping atoms
-                    bondBrush.ipbc=Vec3i8{0,0,0};
-                    bondBrush.atoms={i,j};
-                    //printf( "autoBonds() try add bond(%i-%i)\n", i,j );
-                    insertBond( bondBrush );
-                }
+            //double Ri = A.REQ.x;   // Using RvdW
+            double Ri = params->atypes[A.type].Ruff;   
+            found.clear();
+            touchingAtoms( i+1, imax, A.pos, Ri, Rfac, found );
+            for(int j:found){
+                if( bCap_i ){ if( capping_types.count( atoms[j].type ) > 0 ) continue ; }  // prevent bonds between two capping atoms
+                //printf( "bond[%i] (%i,%i) %s-%s \n", nbond, i,j,  params->atypes[ atoms[i].type ].name, params->atypes[ atoms[j].type ].name    );
+                bondBrush.ipbc=Vec3i8{ -1,-1,-1 };
+                bondBrush.atoms={i,j};
+                insertBond( bondBrush );
+                nbond++;
             }
         }
+        //printf( "MM::Builder::autoBonds() DONE !!!!!!!!!!!!!!!!\n\n\n" );
+        return nbond;
     }
 
     inline Vec3d pbcShift( Vec3i G ){ return lvec.a*G.a + lvec.b*G.b + lvec.c*G.c; }
 
     // find 
-    void autoBondsPBC( double R=-0.5, int i0=0, int imax=-1, Vec3i npbc=Vec3iOne ){
+    int autoBondsPBC( double R=-1.20, int i0=0, int imax=-1, Vec3i npbc=Vec3iOne ){
         //printf( "MM::Builder::autoBondsPBC() \n" );
         //if(verbosity>0){ printf( "MM::Builder::autoBondsPBC() \n" );                             }
         if(verbosity>1){ printf( "MM::Builder::autoBondsPBC() builder.lvec: \n" ); lvec.print(); };
@@ -2044,10 +2072,12 @@ void assignTorsions( bool bNonPi=false, bool bNO=true ){
         double Rfac   = -R;
         //if( byParams && (params==0) ){ printf("ERROR in MM::Builder.autoBonds() byParams(R<0) but params==NULL \n"); exit(0); }
         std::vector<int> found;
+        int nbond=0;
         for(int i=i0; i<imax; i++){
             const Atom& A = atoms[i];
             bool bCap_i = capping_types.count( A.type ) > 0; 
-            R = A.REQ.x;
+            //double Ri = A.REQ.x;  // Using RvdW
+            double Ri = params->atypes[A.type].Ruff;
             int ipbc=0;
             //if(verbosity>1)
             //printf( "autoBondsPBC() Atom[%i] R %g \n", i, R );
@@ -2061,7 +2091,7 @@ void assignTorsions( bool bNonPi=false, bool bNO=true ){
                         Vec3d p = A.pos - lvec.lincomb( ix, iy, iz );
                         found.clear();
                         // find overlapping atoms
-                        touchingAtoms( j0, imax, p, R, Rfac, found ); 
+                        touchingAtoms( j0, imax, p, Ri, Rfac, found ); 
                         //if(i==12)printf( "# pbc[%i,%i,%i][%i] nfound %i \n", ix,iy,iz, ipbc, found.size() );
                         for(int j:found){
                             if( bCap_i ){ if( capping_types.count( atoms[j].type ) > 0 ) continue ; }  // prevent bonds between two capping atoms
@@ -2070,6 +2100,7 @@ void assignTorsions( bool bNonPi=false, bool bNO=true ){
                             bondBrush.ipbc=Vec3i8{ (int8_t)ix, (int8_t)iy, (int8_t)iz };
                             bondBrush.atoms={i,j};
                             insertBond( bondBrush );
+                            nbond++;
                         }
                         ipbc++;
                     }
@@ -2077,6 +2108,7 @@ void assignTorsions( bool bNonPi=false, bool bNO=true ){
             }
         }
         //printf( "MM::Builder::autoBondsPBC() DONE\n" );
+        return nbond;
     }
 
     bool checkNumberOfBonds( bool bPrint=true, bool bExitOnError=true){
@@ -2558,6 +2590,7 @@ void assignTorsions( bool bNonPi=false, bool bNO=true ){
             const Vec2i&  ats = bonds[i].atoms;
             fprintf( pfile, "%3i%3i%3i  0  0  0  0\n",  ats.a+1, ats.b+1, ityp );
         }
+        fprintf(pfile,"M  END\n");
         fclose(pfile);
         return atoms.size() + bonds.size();
     }
@@ -2615,7 +2648,7 @@ void assignTorsions( bool bNonPi=false, bool bNO=true ){
         //_allocIfNull(REQs,n);
         //printf( "export_REQs n %i @REQs=%li \n", n, (long)REQs );
         for(int i=0; i<n; i++){ 
-            //printf( "export_REQs[%i] REQ(%g,%g,%g)\n", i, atoms[i0+i].REQ.x,atoms[i0+i].REQ.y,atoms[i0+i].REQ.z  );
+            //printf( "export_REQs[%i] REQ(%g,%g,%g,%g)\n", i, atoms[i0+i].REQ.x,atoms[i0+i].REQ.y,atoms[i0+i].REQ.z,atoms[i0+i].REQ.w  );
             REQs[i]= atoms[i0+i].REQ; }
     }
 
@@ -2878,6 +2911,137 @@ void assignTorsions( bool bNonPi=false, bool bNO=true ){
         return ibs.size();
     }
 
+    void reindexConfs(int* ias, int* ibs){
+        // ToDo: this would be much simpler if Confs are part of atoms
+        int nc = confs.size();
+        std::vector<int> new_inds(nc,-1);
+        int inew=0;
+        for(int ic=0; ic<nc; ic++){
+            AtomConf& c = confs[ic];
+            c.iatom = ias[c.iatom];
+            if(c.iatom<0) continue;
+            atoms[c.iatom].iconf = inew;
+            int nb=0;
+            for(int j=0; j<N_NEIGH_MAX; j++){
+                int jb = c.neighs[j];
+                if(jb<0) continue;
+                c.neighs[j] = ibs[jb];
+                if( c.neighs[j] >=0 ) nb++;
+            }
+            c.nbond = nb;
+            c.updateNtot();
+            confs[inew]=c;
+            inew++;
+        }
+        confs.resize(inew);
+    }
+
+    void reindexBonds(int* ias, bool bUpdateConfs=true ){
+        int nb = bonds.size();
+        std::vector<int> new_inds(nb,-1);
+        int inew=0;
+        for(int ib=0; ib<nb; ib++){
+            Vec2i& b = bonds[ib].atoms;
+            b.i = ias[b.i];
+            b.j = ias[b.j];
+            bool bbad = (b.i==-1)||(b.j==-1);
+            if(bbad){ 
+                new_inds[ib]=-1; 
+            }else{ 
+                new_inds[ib]=inew; 
+                bonds[inew]=bonds[ib];
+                inew++; 
+            }
+        }
+        reindexConfs( ias, new_inds.data() );
+        bonds.resize(inew);
+    }
+
+    void selectAll    (){ selection.clear(); for(int i=0; i<atoms.size(); i++)selection.insert(i); };
+    void selectInverse(){ std::unordered_set<int> s(selection.begin(),selection.end());selection.clear(); for(int i=0; i<atoms.size();i++) if( !s.contains(i) )selection.insert(i);  };
+    void selectCaping (){ selection.clear(); for(int i=0; i<atoms.size();i++){ if(atoms[i].iconf<0)selection.insert(i); } }
+
+    int selectRect( const Vec3d& p0, const Vec3d& p1, const Mat3d& rot ){
+        printf( "Builder::selectRect() p0(%g,%g,%g) p1(%g,%g,%g) \n", p0.x,p0.y,p0.z, p1.x,p1.y,p1.z );
+        Vec3d Tp0,Tp1,Tp;
+        //Mat3d rot = (Mat3d)cam.rot;
+        rot.dot_to(p0,Tp0);
+        rot.dot_to(p1,Tp1);
+        _order(Tp0.x,Tp1.x);
+        _order(Tp0.y,Tp1.y);
+        Tp0.z=-1e+300;
+        Tp1.z=+1e+300;
+        selection.clear();
+        for(int i=0; i<atoms.size(); i++ ){
+            rot.dot_to( atoms[i].pos,Tp);
+            if( Tp.isBetween(Tp0,Tp1) ){
+                selection.insert( i );
+            }
+        }
+        return selection.size();
+    }
+
+    int deleteAtoms(int n, int* ias, bool bUpdateBonds=true, bool bUpdateConfs=true, bool bCheckError=true ){
+        int na = atoms.size();
+        std::vector<int> old_inds(na,-1);
+        std::vector<int> new_inds(na,-1);
+        // mask removed atoms
+        for(int i=0; i<n; i++){ 
+            int ia = ias[i];
+            //printf("deleteAtoms[%i] ia=%i \n", i,ia);
+            if(bCheckError)if( (ia<0)||(ia>=na) ){ printf("Builder::deleteAtoms() ias[%i]=%i out of range 0..atoms.size(%i) => exit()\n", i, ia, na ); exit(0); }
+            old_inds[ia]=1; 
+        }
+
+        printf("confs before ==== \n"); printAtomConfs();
+        //printAtoms();
+        // reindex remaining atoms
+        int inew = 0;
+        int ndel=0;
+        for(int i=0; i<na; i++){
+            if( old_inds[i]==1 ){
+                new_inds[i]=-1;
+                ndel++;
+                //atoms[inew]=atoms[i];  // Debug
+            }else{
+                new_inds[i]=inew;
+                atoms[inew]=atoms[i];
+                inew++;
+            }
+        }
+        //for(int i=0; i<na; i++){    printf("new_inds[%i] == %i \n", i, new_inds[i]);  }
+        //printAtoms();
+        if(bUpdateBonds) reindexBonds( new_inds.data(), bUpdateConfs );
+        atoms.resize(inew);
+        printf("confs after ==== \n"); printAtomConfs();
+        return ndel;
+    }
+
+    inline void changeBondInAtomConf( int ia, int ib, int jb ){ 
+        int ic=atoms[ia].iconf; 
+        if(ic>=0) confs[ ic ].replaceNeigh( ib, jb ); 
+        if(jb<0){
+            confs[ ic ].sortBonds();
+            confs[ ic ].countBonds();
+            confs[ ic ].updateNtot();
+        }
+    }
+
+    void deleteBond(int ib){
+        int jb = bonds.size()-1;
+        Vec2i bi = bonds[ib].atoms;
+        if(ib!=jb){ // not last bond   
+            Vec2i bj = bonds[jb].atoms; 
+            changeBondInAtomConf( bi.a, ib, -1 );
+            changeBondInAtomConf( bi.b, ib, -1 );
+            changeBondInAtomConf( bj.a, jb, ib );
+            changeBondInAtomConf( bj.b, jb, ib );
+            bonds[ib] = bonds[jb];
+        }
+        bonds.pop_back();
+    }
+
+
 #ifdef LimitedGraph_h
     bool toLimitedGraph( LimitedGraph<N_NEIGH_MAX>& G, bool bNoCap=true, bool bExitOnError=true, bool bRealloc=true ){
         bool err=false;
@@ -3035,9 +3199,7 @@ void assignTorsions( bool bNonPi=false, bool bNO=true ){
         Atoms   mol;
         Quat4d* REQs=0;
         int iret =  params->loadXYZ( fname, mol.natoms, &mol.apos, &REQs, &mol.atypes, 0, &lvec );
-        DEBUG
-        printAtomConfs(false, true );
-        DEBUG
+        //printAtomConfs(false, true );
         int ifrag=-1;
         if( iret>=0  ){ 
             if( iret==0 ){ bPBC=false; }else{ bPBC=true; }
@@ -3064,9 +3226,7 @@ void assignTorsions( bool bNonPi=false, bool bNO=true ){
                 atoms[ia].frag = ifrag;
             }
         }
-        DEBUG
-        printAtomConfs(false, true );
-        DEBUG
+        //printAtomConfs(false, true );
         delete [] REQs;
         //printf( "MM::Builder::loadXYZ_Atoms(%s) ifrag=%i DONE \n", fname, ifrag );
         return ifrag;
@@ -3494,9 +3654,9 @@ void toMMFFsp3_loc( MMFFsp3_loc& ff, bool bRealloc=true, bool bEPairs=true, bool
             AtomType& atyp = params->atypes[A.type];
 
             if(A.iconf>=0){
-
                 // Prepare params and orientation
                 AtomConf& conf = confs[A.iconf];
+                //printf( "Builder::toMMFFsp3_loc() [%i] ", ia ); conf.print(); printf("\n");
                 int npi_neigh = countAtomPiNeighs(ia);
                 //assignSp3Params( A.type, conf.nbond, conf.npi, conf.ne, npi_neigh, ff.NeighParams[ia] );
 
@@ -3520,8 +3680,7 @@ void toMMFFsp3_loc( MMFFsp3_loc& ff, bool bRealloc=true, bool bEPairs=true, bool
 
                 //printf( "atom[%i] npi(%i)=> angle %g cs(%g,%g) \n", ia, conf.npi, ang0*180./M_PI, ff.apars[ia].x, ff.apars[ia].y  ); 
 
-                // setup ff neighbors
-                
+                // setup ff neighbors                
                 int*     ngs  = ff.neighs[ia].array;
                 double*  bL   = ff.bLs[ia].array;
                 double*  bK   = ff.bKs[ia].array;
@@ -3529,15 +3688,12 @@ void toMMFFsp3_loc( MMFFsp3_loc& ff, bool bRealloc=true, bool bEPairs=true, bool
                 double*  Kpp  = ff.Kpp[ia].array;
                 //printf( "BEFOR atom[%i] ngs{%i,%i,%i,%i}\n", ia, ngs[0],ngs[1],ngs[2],ngs[3] );
 
-                // -- atoms
-                //printf( "atom[%i] ne %i \n", ia, conf.ne, conf.nbond );
                 // --- Generate Bonds
-
                 //printf( "ia[%i nbond=%i \n", ia, conf.nbond  );
                 for(int k=0; k<conf.nbond; k++){
                     int ib = conf.neighs[k];
                     const Bond& B = bonds[ib];
-                    //printf( "ia,ib[%i,%i] ts[%i,%i] B.l0=%g B.k=%g \n", ia, ib, B.atoms.a, B.atoms.b, B.l0, B.k  );
+                    { int ti=atoms[B.atoms.a].type; int tj=atoms[B.atoms.b].type;   printf( "ia,ib[%4i,%4i] l0=%7.3f k=%7.2f ts(%3i,%3i) %s-%s \n", ia, ib, B.l0, B.k, ti,tj, params->atypes[ti].name, params->atypes[tj].name ); }
                     int ja = B.getNeighborAtom(ia);
                     const Atom& Aj =  atoms[ja];
                     AtomType& jtyp = params->atypes[Aj.type];
@@ -3557,7 +3713,9 @@ void toMMFFsp3_loc( MMFFsp3_loc& ff, bool bRealloc=true, bool bEPairs=true, bool
                     int npij = getAtom_npi(ja);
                     Kpp[k]   = sqrt( atyp.Kpp * jtyp.Kpp );
                 }
+
                 makeConfGeom( conf.nbond, conf.npi, hs );
+
                 if(bEPairs){ // --- Generate electron pairs
                     int ns = conf.nbond+conf.ne;
                     for(int k=conf.nbond; k<ns; k++){    
@@ -3578,10 +3736,12 @@ void toMMFFsp3_loc( MMFFsp3_loc& ff, bool bRealloc=true, bool bEPairs=true, bool
                 //printf( "AFTER atom[%i] ngs{%i,%i,%i,%i}\n", ia, ngs[0],ngs[1],ngs[2],ngs[3] );
             } // if(A.iconf>=0){
         }
+
         ff.bPBC = bPBC;
         ff.makeBackNeighs();
         //if( bPBC ){ ff.initPBC(); updatePBC( ff.pbcShifts ); }
-        if(verbosity>0)printf(  "MM::Builder::toMMFFsp3_loc() DONE \n"  );
+        //if(verbosity>0)
+        printf(  "MM::Builder::toMMFFsp3_loc() DONE \n"  );
     }
 
 void assignAnglesMMFFsp3( MMFFsp3_loc& ff, bool bUFF=false ){

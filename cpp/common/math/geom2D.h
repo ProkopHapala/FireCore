@@ -165,6 +165,7 @@ class Line2d{
 inline double line_side   ( const Vec2d& p, const Vec2d& a, const Vec2d& b ){ Line2d l; l.set( a, b ); return l.dist_unitary( p );  }
 
 inline Vec2d dpLineSegment( const Vec2d& pos, const Vec2d& p1, const Vec2d& p2 ){
+    // vector from the point pos to the closest point on the line segment
     Vec2d d  = p2-p1;
     Vec2d dp = pos-p1;
     double c = d.dot( dp );
