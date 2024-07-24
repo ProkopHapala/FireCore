@@ -153,9 +153,8 @@ lib.fitEF_Bspline.argtypes  = [ c_double,  c_int, c_double_p, c_double_p, c_doub
 lib.fitEF_Bspline.restype   =  None
 def fitEF_Bspline( dg, Fes, Gs=None, Ws=None, Ftol=1e-6, nmaxiter=100, dt=0.1 ):
     n = len(Fes)
-    if Ws is None: Ws = np.zeros( (n,2) )
-    if Gs is None:
-        Gs = Fes[:,0].copy()
+    if Ws is None: Ws = np.ones( (n,2) )
+    if Gs is None: Gs = Fes[:,0].copy()
     lib.fitEF_Bspline( dg, n, _np_as(Gs,c_double_p), _np_as(Fes,c_double_p), _np_as(Ws,c_double_p), Ftol, nmaxiter, dt )
     return Gs, Ws
 
