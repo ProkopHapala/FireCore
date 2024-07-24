@@ -32,13 +32,13 @@ export OMP_NUM_THREADS
 #echo   $LD_PRELOAD
 #export LD_PRELOAD
 
-#python3 run.py
+python3 run.py
 #python3 run_gui.py
 #python3 run_surf_lattice.py
 #python3 run_propandiol.py
 #python3 run_sample.py
 #python3 run_Hbonds.py
-python3 run_sample_func.py
+#python3 run_sample_func.py
 #python3 run_sample_surf.py
 
 #python3 run_sample_tricubic.py

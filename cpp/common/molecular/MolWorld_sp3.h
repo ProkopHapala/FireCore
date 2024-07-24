@@ -575,7 +575,7 @@ virtual void setGeom( Vec3d* ps, Mat3d *lvec )override{
     //printf( "MolWorld::setGeom()\n" );
     //printf("ffl.lvec\n"    ); printMat( ffl.lvec );
     //printf("   *lvec\n"    ); printMat(    *lvec );
-    change_lvec( *lvec );
+    //change_lvec( *lvec );
     //printMat( ffl.lvec );
     //printPBCshifts();
     for(int i=0; i<ffl.natoms; i++){
@@ -596,7 +596,7 @@ virtual void setGeom( Vec3d* ps, Mat3d *lvec )override{
 virtual double getGeom( Vec3d* ps, Mat3d *lvec )override{
     //printf( "MolWorld::getGeom()\n" );
     //printf("getGeom ffl.lvec\n"    ); printMat( ffl.lvec );
-    if(lvec){ *lvec=ffl.lvec; }
+    //if(lvec){ *lvec=ffl.lvec; }
     //for(int i=0; i<ffl.nvecs; i++){
     for(int i=0; i<ffl.natoms; i++){
         ps[i]=ffl.apos[i];
@@ -3150,9 +3150,9 @@ void printDatabase(){
         b.push_back(20);
         boundaryRules.push_back(1);
     }
-    double Fstar = 0;
+    double Fstar = -99999999999;
     int maxeval = 15000;
-    int nRelax = 500;
+    int nRelax = 1;
     int nExplore = __INT_MAX__;
     int bShow = 1;
     int bSave = 0;
@@ -3171,7 +3171,7 @@ void runGlobalOptimization(int Findex, std::vector<double>* a, std::vector<doubl
     //gopt.init_heur(nbmol, params, Findex, a, b, boundaryRules, Fstar, maxeval, nRelax, nExploring, bShow, bSave, bDatabase)
 
 
-    std::vector<double> par_mut = {0.01};
+    std::vector<double> par_mut = {0.1};
     std::vector<double> par_alg = {1e-5, 100, maxeval, 100};    
     
     constrs.loadBonds("hexan-dicarboxylic.cons");
@@ -3179,8 +3179,8 @@ void runGlobalOptimization(int Findex, std::vector<double>* a, std::vector<doubl
     bConstrains = true;
 
     
-    gopt.init_heur(&nbmol, &params, Findex, a, b, boundaryRules, 0, maxeval, nRelax, nExploring, bShow, 2, 0);
-    gopt.SPSA(0, &par_mut, &par_alg);
+    gopt.init_heur(&nbmol, &params, Findex, a, b, boundaryRules, Fstar, maxeval, nRelax, nExploring, bShow, 2, 0);
+    gopt.SPSA(3, &par_mut, &par_alg);
     //gopt.randomBrutal(&nbmol, &params, 0, 0, 0, &boundaryRules, 0, maxeval, bShow, 3, &par_mut, &par_alg);
     //nbmol.print();
 printf("after optimization\n");

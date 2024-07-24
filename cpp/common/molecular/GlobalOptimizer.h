@@ -360,6 +360,7 @@ class GlobalOptimizer{ public:
 
 
     bool bExploring = false;
+    bool DO = false;
 
     std::vector<double> x_opt;
     double F_opt    = __DBL_MAX__;
@@ -415,6 +416,7 @@ bool containsNaN(const std::vector<double>& vec) {
         for(int i=0; i<DoF; i++) x_opt.push_back(NAN);
         F_opt           = __DBL_MAX__;
         bExploring      = true;
+        DO              = true;
         neval           = 0;
         
         structureToVector(_atoms);
@@ -424,7 +426,7 @@ bool containsNaN(const std::vector<double>& vec) {
     void randomBrutal(int index_mut=-1, std::vector<double>* par_mut=0, std::vector<double>* par_alg=0){
             printf("randomBrutal\n");
             //init_heur(_atoms, _params, _Findex, _a, _b, _boundaryRules, _Fstar, _maxeval, _bShow);
-            while(bExploring){
+            while(DO){
                 mutate(&currentStructure, index_mut, par_mut);
                 double F_new = evaluate(&currentStructure);
             }
@@ -440,10 +442,10 @@ bool containsNaN(const std::vector<double>& vec) {
             int repeater = (int)(*par_alg)[0];
             std::vector<double> x_new;
             double F_new, F;
-            while(bExploring){
+            while(DO){
                 mutate(&currentStructure, -1, nullptr);
                 F = evaluate(&currentStructure);
-                while (bExploring)
+                while (DO)
                 {
                     int i = 0;
                     for(; i<repeater; i++){
@@ -463,12 +465,15 @@ bool containsNaN(const std::vector<double>& vec) {
             results();
         }
 
-    std::vector<double>* gradSPSA(std::vector<double>* x, double ck){
-        std::vector<double>* grad = new std::vector<double>();
+    void gradSPSA(std::vector<double>* grad, std::vector<double>* x, double ck){
         std::vector<double> delta, x_plus, x_minus;
         double F_plus, F_minus, slope;
-        x_plus = (*x);
-        x_minus = (*x);
+        for(int i=0; i<DoF; i++){
+            x_plus.push_back((*x)[i]);
+            x_minus.push_back((*x)[i]);
+
+        }
+        
         for(int i=0; i<DoF; i++){
             if(randf(0, 1) > 0.5){
                 delta.push_back(1.0);
@@ -478,12 +483,17 @@ bool containsNaN(const std::vector<double>& vec) {
             x_minus[i] -= ck*delta[i];
         }
         F_plus = evaluate(&x_plus);
+        printf("F_plus %f\n", F_plus);
         F_minus = evaluate(&x_minus);
+        printf("F_minus %f\n", F_minus);
         slope = (F_plus-F_minus)/(2*ck);
         for(int i=0; i<DoF; i++){
-            (*grad).push_back(slope*delta[i]);
+            (*grad)[i] = (slope*delta[i]);
         }
-        return grad;
+
+        for(int i=0; i<DoF; i++){
+            printf("%f ", (*grad)[i]);
+        }
     }
     void SPSA(int index_mut=-1, std::vector<double>* par_mut=0, std::vector<double>* par_alg=0){
             printf("SPSA\n");
@@ -497,27 +507,43 @@ bool containsNaN(const std::vector<double>& vec) {
             double alpha = (*par_alg)[0];
             double gamma = (*par_alg)[1];
             double N = (*par_alg)[2];
-            std::vector<double> grad;
-            mutate(&currentStructure, 2, par_mut);
+            //mutate(&currentStructure, 0, par_mut);
             double F_new, F;
             double A = N*0.1;
             double c = 1e-2;
-            grad = (*gradSPSA(&currentStructure, c));
+            printf("Before grad\n");
+
+            std::vector<double> grad;
+            for(int i=0; i<DoF; i++)
+                grad.push_back(0);
+            gradSPSA(&grad, &currentStructure, c);
+if (containsNaN(grad)) {
+    std::cout << "Vector contains NaN values. After grad\n";exit(1);
+}
+            for(int i=0; i<DoF; i++){
+                printf("%f ", grad[i]);
+            }
             double magnitude_g0 = std::reduce(grad.begin(), grad.end())/grad.size();
+            printf("magnitude_g0 %f\n", magnitude_g0);
             magnitude_g0 = abs(magnitude_g0);
             double a = 2*pow(A+1, alpha)/magnitude_g0;
+            printf("a %f\n", a);
             double ak, ck;
-            //printf("beggining of iteration\n");
+            printf("beggining of iteration\n");
             for (int k = 0; k < N; k++){
                 ak = a/pow(k+A+1, alpha);
                 ck = c/pow(k+1, gamma);
 if (containsNaN(currentStructure)) {
     std::cout << "Vector contains NaN values. Before grad\n";exit(1);
 }                 
-                grad = (*gradSPSA(&currentStructure, ck));
+                gradSPSA(&grad, &currentStructure, ck);
 if (containsNaN(grad)) {
     std::cout << "Vector contains NaN values. After grad\n";exit(1);
 }
+if (containsNaN(currentStructure)) {
+    std::cout << "Vector contains NaN values. Before adding\n";exit(1);
+} 
+                printf("ak %f k %i\n", ak, k);
                 for(int i=0; i<DoF; i++){
                     currentStructure[i] -= ak*grad[i];
                 }
@@ -579,11 +605,12 @@ if (containsNaN(currentStructure)) {
 
     double evaluate(std::vector<double>* x){
         //printf("evaluate\n");
-        if(neval>=maxeval || !bExploring){
-            bExploring = false;
+        printf("neval %i DO %i\n", neval, DO);
+        if(neval>=maxeval || !DO){
+            DO = false;
             return __DBL_MAX__;
         }
-
+        
         
         if(nExplore<=0){        // maybe this should be done differently, but for this exploration it works
             Findex = 1;
@@ -601,7 +628,8 @@ if (containsNaN(currentStructure)) {
             x_opt = (*x);
             if (F <= Fstar)
             {
-                bExploring = false;
+                printf("F=%f <= Fstar=%f\n", F, Fstar);
+                DO = false;
             }
         }       
         return F;
