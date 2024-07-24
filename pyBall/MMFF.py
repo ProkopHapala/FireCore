@@ -143,7 +143,7 @@ lib.fit_Bspline.argtypes  = [ c_int, c_double_p, c_double_p, c_double_p, c_doubl
 lib.fit_Bspline.restype   =  None
 def fit_Bspline( Es, Gs=None, Ws=None, Ftol=1e-6, nmaxiter=100, dt=0.1 ):
     n = len(Es)
-    if Ws is None: Ws = np.zeros( n )
+    if Ws is None: Ws = np.ones( n )
     if Gs is None: Gs = Es.copy()
     lib.fit_Bspline( n, _np_as(Gs,c_double_p), _np_as(Es,c_double_p), _np_as(Ws,c_double_p), Ftol, nmaxiter, dt )
     return Gs, Ws
