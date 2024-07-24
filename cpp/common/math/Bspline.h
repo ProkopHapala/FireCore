@@ -217,19 +217,27 @@ int fit1D( const int n, double* Gs,  double* Es, double* Ws, double Ftol, int nm
     constexpr double B0=2.0/3.0;
     constexpr double B1=1.0/6.0;
     int itr=0;
+    for(int i=0; i<n; i++){ vs[i]=0.0; } // clear velocity
+    //if( ckeckRange(n, 1, Gs, -1.e+6, +1.e+6, "Gs", true ) && ckeckRange(n, 1, Gs, -1.e+6, +1.e+6, "Gs", true ) ){ printf("ERROR in fit1D()=> exit\n"); exit(0); };
+    bool bErr = false;
     for(itr=0; itr<nmaxiter; itr++){
         // --- evaluate current spline
         for(int i=0; i<n; i++){
             double p = Gs[i]*B0;
             if(i>0  )[[likely]]{ p += B1*Gs[i-1]; }
             if(i<n-1)[[likely]]{ p += B1*Gs[i+1]; }
-            ps[i] = p;   Ws[i] = p;
+            //bErr|=checkNumRange( i, T val, T min, T max, const char* pre, bool bPrint=true, bool bExit=false ){
+            //printf( "p[%i]=%g Gs=%g\n", i, p, Gs[i] );
+            //bErr|=  checkNumRange( i, p, -1.e+6, +1.e+6, "p=B*Gs", true, true );
+            ps[i] = p;   //Ws[i] = p;
             fs[i] = 0;
         }
         // --- evaluate variatiaonal derivatives
         for(int i=0; i<n; i++){
-            const double dp  = Es[i] - ps[i];
+            double dp  = Es[i] - ps[i];
+            if( Ws ){ dp *= Ws[i]; } // weighting 
             fs[i] += dp*B0;
+            //bErr|=  checkNumRange( i, dp, -1.e+6, +1.e+6, "dp=Es-ps", true, true );
             if(i>0  )[[likely]]{ fs[i-1] += B1*dp; }
             if(i<n-1)[[likely]]{ fs[i+1] += B1*dp; }
         }
@@ -269,7 +277,11 @@ int fit1D_EF( const double dg, const int n, double* Gs,  Vec2d* fes, Vec2d* Ws, 
     constexpr double D1=0.5;
     int itr=0;
 
-    for(int i=0; i<n; i++){  Ws[i]= Vec2dZero; pfs[i] = Vec2dZero;   };
+    for(int i=0; i<n; i++){ 
+        vs[i]=0; 
+        pfs[i] = Vec2dZero;   
+        Ws[i]= Vec2dZero;
+    };
 
     for(itr=0; itr<nmaxiter; itr++){
         // --- evaluate current spline

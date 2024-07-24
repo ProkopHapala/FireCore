@@ -38,7 +38,8 @@ export OMP_NUM_THREADS
 #python3 run_propandiol.py
 #python3 run_sample.py
 #python3 run_Hbonds.py
-python3 run_sample_func.py
+#python3 run_sample_func.py
+python3 run_sample_Bsplines.py
 #python3 run_sample_surf.py
 
 #python3 run_sample_tricubic.py

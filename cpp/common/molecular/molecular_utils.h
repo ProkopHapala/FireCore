@@ -38,23 +38,34 @@ bool ckeckNaN(int n, int m, T* xs, Func func, bool bPrint=true ){
 }
 
 template<typename T>
+bool checkNumRange( int i, T val, T min, T max, const char* pre, bool bPrint=true, bool bExit=false ){
+    if( ((val<min)||(val>max)) ){
+        if(bPrint){
+            printf("%s[%i]==(%g) out of range (%g:%g)\n", pre, i, val, min, max);
+        }
+        if(bExit)exit(0);
+        return true;
+    }
+    return false;
+}
+
+template<typename T>
 bool ckeckRange(int n, int m, T* xs, T min, T max, const char* pre, bool bPrint=true ){
     bool ret = false;
-    for(int i=0; i<n;i++){
+    for(int i=0; i<n;i++){ 
         bool b=false;
-        for(int j=0; j<m;j++){
+        for(int j=0; j<m;j++){  
             int ij=i*m+j;
-            b|=((xs[ij]<min)||(xs[ij]>max));
+            T val = xs[ij];
+            b|=((val<min)||(val>max)); 
         }
-        ret |= b;
         if(b && bPrint ){
             printf("%s[%i](", pre, i );
-            for(int j=0; j<m;j++){
-                int ij=i*m+j;
-                printf("%g,", xs[ij] );
-            }
+            for(int j=0; j<m;j++){  int ij=i*m+j; printf("%g,", xs[ij] );   }
             printf(") outof (%g,%g)\n", (double)min, (double)max );
         }
+        ret |= b;
+        //ret |= checkNumRange<T>(i,m, xs[ij],min,max,pre,bPrint); 
     }
     return ret;
 }
