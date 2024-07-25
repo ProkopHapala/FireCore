@@ -267,13 +267,13 @@ def sample_Bspline( xs, Eps, x0=0.0, dx=1.0, fes=None ):
 # void sample_Bspline2D( double* g0, double* dg, int* ng, double* G, int n, double* ps, double* fes ){
 lib.sample_Bspline2D.argtypes  = [c_double_p, c_double_p, c_int_p, c_double_p,                c_int, c_double_p, c_double_p]
 lib.sample_Bspline2D.restype   =  None
-def sample_Bspline2D( ps, Eg, g0, dg, fes=None):
+def sample_Bspline2D( ps, Gs, g0, dg, fes=None):
     n = len(ps)
     g0 = np.array(g0)
     dg = np.array(dg)
-    ng = np.array( Eg.shape[::-1], np.int32 )
+    ng = np.array( Gs.shape[::-1], np.int32 )
     if fes is None: fes=np.zeros((n,3))
-    lib.sample_Bspline2D( _np_as(g0,c_double_p), _np_as(dg,c_double_p), _np_as(ng,c_int_p), _np_as(Eg,c_double_p), n, _np_as(ps,c_double_p), _np_as(fes,c_double_p) )
+    lib.sample_Bspline2D( _np_as(g0,c_double_p), _np_as(dg,c_double_p), _np_as(ng,c_int_p), _np_as(Gs,c_double_p), n, _np_as(ps,c_double_p), _np_as(fes,c_double_p) )
     return fes
 
 #void sample_Bspline3D            ( double* g0, double* dg, int* ng, double* G,               int n, double* ps, double* fes ){

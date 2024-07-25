@@ -148,6 +148,7 @@ void scanAngleToAxis_ax( int n, int* selection, double r, double R, double* p0, 
 // ========= Force-Field Component Sampling  
 
 int fit_Bspline( const int n, double* Gs, double* Es, double* Ws, double Ftol, int nmaxiter, double dt ){
+    //return Bspline::fit1D_old( n, Gs, Es, Ws, Ftol, nmaxiter, dt );
     return Bspline::fit1D( n, Gs, Es, Ws, Ftol, nmaxiter, dt );
 }
 int fitEF_Bspline( double dg, const int n, double* Gs, double* fes, double* Ws, double Ftol, int nmaxiter, double dt ){

@@ -4,7 +4,7 @@
 
 #include "quaternion.h"
 #include "CG.h"
-
+#include "globals.h"
 
 
 /// Cubic B-spline 
@@ -58,6 +58,10 @@ ddBasis: [ 0.0, 1.0,    -2.0,     1.0   ]
 
 namespace Bspline{
 
+// ==============================================
+// ===================   Basis   ================
+// ==============================================
+
 constexpr static const double CPs[]{ 0.0,  1.0/6.0,   2.0/3.0,  1.0/6.0 };
 constexpr static const double DPs[]{ 0.0,  0.5,       0.0,     -0.5     };
 constexpr static const double APs[]{ 0.0,  1.0,      -2.0,      1.0     };
@@ -97,12 +101,20 @@ inline Quat4T<T> ddbasis(T u){
     };
 }
 
+// ======================================================  
+// ===================   Interpolation   ================
+// ======================================================
+
 __attribute__((hot)) 
 void sample1D( const double g0, const double dg, const int ng, const double* Gs, const int n, const double* ps, Vec2d* fes ){
     const double inv_dg = 1/dg; 
     for(int i=0; i<n; i++ ){
-        const double x = (ps[i] - g0)*inv_dg;  
+        const double x  = (ps[i] - g0)*inv_dg;  
         const int    ix = (int)x;
+        if( ((ix<1)||(ix>=(ng-2))) )[[unlikely]]{ 
+            continue;
+            //printf( "ERROR: Bspline::sample1D() ixyz(%i,%i) out of range 0 .. (%i,%i) u(%g,%g)\n", ix,iy, n.x,n.y, u.x,u.y );   exit(0); 
+        }
         const double tx = x-ix; 
         const Quat4d p  =  basis(tx);
         const Quat4d d  = dbasis(tx);
@@ -158,7 +170,7 @@ inline Vec3d fe2d( const Vec2d u, const Vec2i n, const double* Es ){
 	const int    ix = (int)u.x  ,  iy = (int)u.y  ;
     const double tx = u.x - ix  ,  ty = u.y - iy  ;
     const double mx = 1-tx      ,  my = 1-ty      ;
-    if( ((ix<0)||(ix>=n.x-3)) || ((iy<0)||(iy>=n.y-3))  )[[unlikely]]{   printf( "ERROR: Spline_Hermite::fe3d() ixyz(%i,%i) out of range 0 .. (%i,%i) u(%g,%g)\n", ix,iy, n.x,n.y, u.x,u.y );   exit(0); }
+    if( ((ix<1)||(ix>=n.x-2)) || ((iy<1)||(iy>=n.y-2))  )[[unlikely]]{   printf( "ERROR: Bspline::fe2d() ixyz(%i,%i) out of range 0 .. (%i,%i) u(%g,%g)\n", ix,iy, n.x,n.y, u.x,u.y );   exit(0); }
     const int nxy = n.x*n.y;
     int i0 = ix + n.x*iy; 
     return fe2d(tx,ty, {i0,i0+n.x,i0+n.x*2,i0+3*n.x}, Es );
@@ -185,11 +197,11 @@ Quat4d fe3d( const Vec3d u, const Vec3i n, const double* Es ){
     const double tx = u.x - ix  ,  ty = u.y - iy  ,  tz = u.z - iz  ;
     const double mx = 1-tx      ,  my = 1-ty      ,  mz = 1-tz      ;
     if( 
-        ((ix<0)||(ix>=n.x-3)) ||
-        ((iy<0)||(iy>=n.y-3)) ||
-        ((iz<0)||(iz>=n.z-3))        
+        ((ix<1)||(ix>=n.x-2)) ||
+        ((iy<1)||(iy>=n.y-2)) ||
+        ((iz<1)||(iz>=n.z-2))        
     )[[unlikely]]{ 
-        printf( "ERROR: Spline_Hermite::fe3d() ixyz(%i,%i,%i) out of range 0 .. (%i,%i,%i) u(%g,%g,%g)\n", ix,iy,iz, n.x,n.y,n.z, u.x,u.y,u.z ); 
+        printf( "ERROR: Bspline::fe3d() ixyz(%i,%i,%i) out of range 0 .. (%i,%i,%i) u(%g,%g,%g)\n", ix,iy,iz, n.x,n.y,n.z, u.x,u.y,u.z ); 
         //printf( "DETAILS:",   u.x ); 
         exit(0); 
     }
@@ -233,6 +245,9 @@ void sample3D( const Vec3d g0, const Vec3d dg, const Vec3i ng, const double* Eg,
     }
 }
 
+// ================================================  
+// ===================   Fitting   ================
+// ================================================  
 
 __attribute__((hot)) 
 Vec3d move( double dt, int n, double* gs, double* fs, double* vs ){
@@ -260,10 +275,9 @@ Vec3d move( double dt, int n, double* gs, double* fs, double* vs ){
 }
 
 
-
 __attribute__((hot)) 
-int fit1D( const int n, double* Gs,  double* Es, double* Ws, double Ftol, int nmaxiter=100, double dt=0.1 ){
-    printf("Bspline::fit1D() \n");
+int fit1D_old( const int n, double* Gs,  double* Es, double* Ws, double Ftol, int nmaxiter=100, double dt=0.1 ){
+    if(verbosity>1)printf("Bspline::fit1D_old() \n");
     const double F2max = Ftol*Ftol;
     double* ps = new double[n];
     double* fs = new double[n];
@@ -274,14 +288,19 @@ int fit1D( const int n, double* Gs,  double* Es, double* Ws, double Ftol, int nm
     for(int i=0; i<n; i++){ vs[i]=0.0; } // clear velocity
     //if( ckeckRange(n, 1, Gs, -1.e+6, +1.e+6, "Gs", true ) && ckeckRange(n, 1, Gs, -1.e+6, +1.e+6, "Gs", true ) ){ printf("ERROR in fit1D()=> exit\n"); exit(0); };
     bool bErr = false;
-    double err=0;
+    double err2sum=0;
     for(itr=0; itr<nmaxiter; itr++){
-        err=0.0;
+        err2sum=0.0;
         // --- evaluate current spline
         for(int i=0; i<n; i++){
+        //for(int i=1; i<n-1; i++){
             double p = Gs[i]*B0;
             if(i>0  )[[likely]]{ p += B1*Gs[i-1]; }
             if(i<n-1)[[likely]]{ p += B1*Gs[i+1]; }
+
+            //p += B1*Gs[i-1];
+            //p += B1*Gs[i+1];
+
             //bErr|=checkNumRange( i, T val, T min, T max, const char* pre, bool bPrint=true, bool bExit=false ){
             //printf( "p[%i]=%g Gs=%g\n", i, p, Gs[i] );
             //bErr|=  checkNumRange( i, p, -1.e+6, +1.e+6, "p=B*Gs", true, true );
@@ -289,20 +308,78 @@ int fit1D( const int n, double* Gs,  double* Es, double* Ws, double Ftol, int nm
             fs[i] = 0;
         }
         // --- evaluate variatiaonal derivatives
-        for(int i=0; i<n; i++){
+        //for(int i=0; i<n; i++){
+        for(int i=1; i<n-1; i++){
             double dp  = Es[i] - ps[i];
             if( Ws ){ dp *= Ws[i]; } // weighting 
-            err += dp*dp;
+            err2sum += dp*dp;
             fs[i] += dp*B0;
             //bErr|=  checkNumRange( i, dp, -1.e+6, +1.e+6, "dp=Es-ps", true, true );
-            if(i>0  )[[likely]]{ fs[i-1] += B1*dp; }
-            if(i<n-1)[[likely]]{ fs[i+1] += B1*dp; }
+            //if(i>0  )[[likely]]{ fs[i-1] += B1*dp; }
+            //if(i<n-1)[[likely]]{ fs[i+1] += B1*dp; }
+            fs[i-1] += B1*dp;
+            fs[i+1] += B1*dp;
         }
         Vec3d cfv = move(dt,n,Gs,fs, vs );
-        printf( "|F[%i]|=%g cos(f,v)=%g\n",itr,sqrt(cfv.y), cfv.x/sqrt(cfv.y*cfv.z) );
+        if(verbosity>2)printf( "|F[%i]|=%g cos(f,v)=%g\n",itr,sqrt(cfv.y), cfv.x/sqrt(cfv.y*cfv.z) );
         if(cfv.y<F2max){ break; };
     }
-    printf( "Bspline::fit1D_EF() iter=%i err=\n", itr, err );
+    if(verbosity>1)printf( "Bspline::fit1D_old() iter=%i err=%g \n", itr, sqrt(err2sum) );
+    delete [] ps;
+    delete [] fs;
+    delete [] vs;
+    return itr;
+}
+
+__attribute__((hot)) 
+double getVariations1D( const int n, const double* Gs, const double* Es, const double* Ws, double* fs, double* ps ){
+    constexpr double B0=2.0/3.0;
+    constexpr double B1=1.0/6.0;
+    // --- evaluate current spline
+    for(int i=0; i<n; i++){ fs[i]=0; ps[i]=0;  }
+    // --- evaluate current spline (in order to evelauet approximation error)
+    double err2sum=0;
+    for(int i=1; i<n-1; i++){
+        double val = Gs[i-1]*B1 + Gs[i]*B0 + Gs[i+1]*B1;
+        double err = Es[i] - val;
+        if(Ws){ err*=Ws[i]; }
+        err2sum += err*err;
+        ps[i] = err;
+        //Ws[j] = err;
+    }
+    // --- distribute variational derivatives of approximation error
+    for(int i=0; i<n; i++){
+        if( (i>0)&&(i<(n-1)) ) [[likely]] {
+            double val = ps[i-1]*B1 + ps[i]*B0 + ps[i+1]*B1;
+            fs[i] = val;
+        }else{
+            fs[i] = 0;
+        }
+    }
+    return err2sum;
+}
+
+__attribute__((hot)) 
+int fit1D( const int n, double* Gs,  double* Es, double* Ws, double Ftol, int nmaxiter=100, double dt=0.1 ){
+    if(verbosity>1)printf("Bspline::fit1D() !!!!!!\n");
+    const double F2max = Ftol*Ftol;
+    double* ps = new double[n];
+    double* fs = new double[n];
+    double* vs = new double[n];
+    constexpr double B0=2.0/3.0;
+    constexpr double B1=1.0/6.0;
+    int itr=0;
+    for(int i=0; i<n; i++){ vs[i]=0.0; } // clear velocity
+    //if( ckeckRange(n, 1, Gs, -1.e+6, +1.e+6, "Gs", true ) && ckeckRange(n, 1, Gs, -1.e+6, +1.e+6, "Gs", true ) ){ printf("ERROR in fit1D()=> exit\n"); exit(0); };
+    bool bErr = false;
+    double err2sum=0;
+    for(itr=0; itr<nmaxiter; itr++){        
+        err2sum = getVariations1D(  n, Gs, Es, Ws, fs, ps );
+        Vec3d cfv = move(dt,n,Gs,fs, vs );
+        if(verbosity>2)printf( "|F[%i]|=%g cos(f,v)=%g\n",itr,sqrt(cfv.y), cfv.x/sqrt(cfv.y*cfv.z) );
+        if(cfv.y<F2max){ break; };
+    }
+    if(verbosity>1)printf( "Bspline::fit1D() iter=%i err=%g \n", itr, sqrt(err2sum) );
     delete [] ps;
     delete [] fs;
     delete [] vs;
@@ -311,7 +388,7 @@ int fit1D( const int n, double* Gs,  double* Es, double* Ws, double Ftol, int nm
 
 __attribute__((hot)) 
 int fit1D_EF( const double dg, const int n, double* Gs,  Vec2d* fes, Vec2d* Ws, double Ftol, int nmaxiter=1000, double dt=0.1 ){
-    printf("Bspline::fit1D_EF() \n");
+    if(verbosity>1)printf("Bspline::fit1D_EF() \n");
     const double inv_dg = 1/dg;
     const double F2max = Ftol*Ftol;
     Vec2d*  ps = new Vec2d[n];
@@ -361,9 +438,10 @@ int fit1D_EF( const double dg, const int n, double* Gs,  Vec2d* fes, Vec2d* Ws, 
         //for(int i=0; i<n; i++){  Ws[i].y = fs[i];  } // Debug
         // --- move
         Vec3d cfv = move(dt,n,Gs,fs, vs );
-        printf( "|F[%i]|=%g cos(f,v)=%g\n",itr,sqrt(cfv.y), cfv.x/sqrt(cfv.y*cfv.z) );
+        if(verbosity>2)printf( "|F[%i]|=%g cos(f,v)=%g\n",itr,sqrt(cfv.y), cfv.x/sqrt(cfv.y*cfv.z) );
         if(cfv.y<F2max){ break; };
     }
+    if(verbosity>1)printf( "Bspline::fit1D_EF() iter=%i err=%g \n", itr, err );
     delete [] ps;
     delete [] fs;
     delete [] vs;
@@ -429,7 +507,7 @@ double getVariations2D( const Vec2i ns, double* Gs,  const double* Es, const dou
 
 __attribute__((hot)) 
 int fit2D( const Vec2i ns, double* Gs,  double* Es, double* Ws, double Ftol, int nmaxiter=100, double dt=0.1 ){
-    printf( "Bspline::fit2D() ns(%i,%i) \n", ns.x,ns.y );
+    if(verbosity>1)printf( "Bspline::fit2D() ns(%i,%i) \n", ns.x,ns.y );
     const double F2max = Ftol*Ftol;
     const int nxy  = ns.x*ns.y;
     double* ps = new double[nxy];
@@ -442,10 +520,10 @@ int fit2D( const Vec2i ns, double* Gs,  double* Es, double* Ws, double Ftol, int
     for(itr=0; itr<nmaxiter; itr++){
         err = getVariations2D( ns, Gs, Es, Ws, fs, ps );
         cfv = move(dt,nxy,Gs,fs, vs );
-        printf( "|F[%i]|=%g cos(f,v)=%g Error=%g \n",itr,sqrt(cfv.y), cfv.x/sqrt(cfv.y*cfv.z), sqrt(err) );
+        if(verbosity>2)printf( "|F[%i]|=%g cos(f,v)=%g Error=%g \n",itr,sqrt(cfv.y), cfv.x/sqrt(cfv.y*cfv.z), sqrt(err) );
         if(cfv.y<F2max){ break; };
     }
-    printf( "|F[%i]|=%g Error=%g \n",itr,sqrt(cfv.y), sqrt(err) );
+    if(verbosity>1)printf( "|F[%i]|=%g Error=%g \n",itr,sqrt(cfv.y), sqrt(err) );
     delete [] ps;
     delete [] fs;
     delete [] vs;
@@ -571,7 +649,7 @@ double getVariations3D( const Vec3i ns, double* Gs,  double* Es, double* Ws, dou
 
 __attribute__((hot)) 
 int fit3D( const Vec3i ns, double* Gs,  double* Es, double* Ws, double Ftol, int nmaxiter=100, double dt=0.1 ){
-    printf( "Bspline::fit3D() ns(%i,%i,%i) \n", ns.x,ns.y,ns.z  );
+    if(verbosity>1)printf( "Bspline::fit3D() ns(%i,%i,%i) \n", ns.x,ns.y,ns.z  );
     const double F2max = Ftol*Ftol;
     const int nxy  = ns.x*ns.y;
     const int nxyz = ns.x*ns.y*ns.z;
@@ -585,10 +663,10 @@ int fit3D( const Vec3i ns, double* Gs,  double* Es, double* Ws, double Ftol, int
     for(itr=0; itr<nmaxiter; itr++){
         err = getVariations3D( ns, Gs, Es, Ws, fs, ps );
         cfv = move(dt,nxy,Gs,fs, vs );
-        printf( "|F[%i]|=%g cos(f,v)=%g Error=%g \n",itr,sqrt(cfv.y), cfv.x/sqrt(cfv.y*cfv.z), sqrt(err) );
+        if(verbosity>2)printf( "|F[%i]|=%g cos(f,v)=%g Error=%g \n",itr,sqrt(cfv.y), cfv.x/sqrt(cfv.y*cfv.z), sqrt(err) );
         if(cfv.y<F2max){ break; };
     }
-    printf( "|F[%i]|=%g Error=%g \n",itr,sqrt(cfv.y), sqrt(err) );        
+    if(verbosity>1)printf( "|F[%i]|=%g Error=%g \n",itr,sqrt(cfv.y), sqrt(err) );        
     delete [] ps;
     delete [] fs;
     delete [] vs;
