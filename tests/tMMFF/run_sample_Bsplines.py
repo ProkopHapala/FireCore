@@ -26,6 +26,12 @@ def getCos( xs, freq ):
     F = -freq*np.sin( freq*xs )
     return E,F
 
+def getCos2D( Xs, Ys, freq=(np.pi,np.pi) ):
+    E =       np.cos( freq[0]*Xs )*np.cos( freq[1]*Ys )
+    Fx = -freq[0]*np.sin( freq[0]*Xs )*np.cos( freq[1]*Ys )
+    Fy = -freq[1]*np.cos( freq[0]*Xs )*np.sin( freq[1]*Ys )
+    return E,Fx,Fy
+
 def getLJ( r, R0, E0 ):
     #r = np.sqrt(x**2 + y**2 + z**2)
     E  = E0*    ( (R0/r)**12 - 2*(R0/r)**6 )
@@ -65,7 +71,7 @@ def test_fit_1D( g0=2.0, gmax=10.0, dg=0.1, dsamp=0.02, bUseForce=True ):
     E,F         = getCos( xs,  np.pi )
     E_ref,F_ref = getCos( xs_, np.pi )
 
-    print( "E_ref ", E_ref )
+    #print( "E_ref ", E_ref )
     #print( "F_ref ", F_ref )
 
     Emin =  E.min()
@@ -114,12 +120,16 @@ def make2Dsampling(  g0=(-5.0,2.0), gmax=(5.0,10.0), dg=(0.1,0.1) ):
     Xs,Ys = np.meshgrid(xs,ys)
     return Xs,Ys
 
-def make2Dsampling_ps(  g0=(-5.0,2.0), gmax=(5.0,10.0), dg=(0.1,0.1) ):
-    Xs,Ys = make2Dsampling(  g0=g0, gmax=gmax, dg=dg )
-    sh = Xs.shape
+def pack_ps2D( Xs, Ys):
     ps = np.zeros( ( len(Xs.flat), 2) )
     ps[:,0] = Xs.flat
     ps[:,1] = Ys.flat
+    return ps
+
+def make2Dsampling_ps(  g0=(-5.0,2.0), gmax=(5.0,10.0), dg=(0.1,0.1) ):
+    Xs,Ys = make2Dsampling(  g0=g0, gmax=gmax, dg=dg )
+    sh = Xs.shape
+    ps = pack_ps2D( Xs, Ys)
     return ps, sh
 
 def test_fit_2D( g0=(-5.0,2.0), gmax=(5.0,10.0), dg=(0.1,0.1), dsamp=(0.05,0.05) ):
@@ -127,31 +137,49 @@ def test_fit_2D( g0=(-5.0,2.0), gmax=(5.0,10.0), dg=(0.1,0.1), dsamp=(0.05,0.05)
     cmap="bwr"
     #x0 = 2.0
     #dx = 0.1
-    Xs,Ys = make2Dsampling(  g0=g0, gmax=gmax, dg=dg )
-    ps, sh_samp = make2Dsampling_ps(  g0=g0, gmax=gmax, dg=dsamp )
+    Xs,Ys   = make2Dsampling(  g0=g0, gmax=gmax, dg=dg )
+    Xs_,Ys_ = make2Dsampling(  g0=g0, gmax=gmax, dg=dsamp )
+    sh_samp = Xs_.shape
+    ps      = pack_ps2D( Xs_, Ys_)
+    #ps, sh_samp = make2Dsampling_ps(  g0=g0, gmax=gmax, dg=dsamp )
 
     print( "Xs.shape ", Xs.shape )
     
-    E, Fx,Fy,Fz = getLJ_atoms( apos, REs, Xs,Ys,Xs*0.0 )
+    #E, Fx,Fy,Fz = getLJ_atoms( apos, REs, Xs,Ys,Xs*0.0 )
+
+    E,  Fx,Fy   =  getCos2D( Xs, Ys   )
+    E_r, Fx_r,Fy_r =  getCos2D( Xs_, Ys_ )
 
     #xs_ = np.arange(g0, gmax, dsamp)  ; nsamp=len(xs_)
     Emin =  E.min()
-    Fmin = -Fz.max()
+    Fmin = -Fy.max()
     print( "Emin ", Emin," Fmin ", Fmin )
     #FEg = np.zeros( (len(xs),2) )
     #FEg[:,0] = E[:]
     #FEg[:,1] = F[:]
     Ecut = 100.0
 
-    Gs, Ws = mmff.fit2D_Bspline( E, Ws=None, dt=0.4, nmaxiter=1, Ftol=1e-7 )
+    Gs, Ws = mmff.fit2D_Bspline( E, Ws=None, dt=0.4, nmaxiter=1000, Ftol=1e-7 )
 
-    E_ = mmff.sample_Bspline2D( ps, Gs, g0, dg, fes=None  )
+    Gmin = -np.abs(Gs).max()
+
+    E_f = mmff.sample_Bspline2D( ps, Gs, g0, dg, fes=None  ).reshape(sh_samp+(3,))
+
+    dG = Gs-E                    ; dGmin = -np.abs(dG).max()
+    #dE = E_f[:,:,2] - E_r[:,:]   ; dEmin = -np.abs(dE).max()
+    #dE = E_f[1:,1:,2] - E_r[:-1,:-1]   ; dEmin = -np.abs(dE).max()
+    #dE = E_f[:-1,:-1,2] - E_r[1:,1:]   ; dEmin = -np.abs(dE).max()
+    dE = E_f[:-2,:-2,2] - E_r[2:,2:]   ; dEmin = -np.abs(dE).max()
 
     extent=(g0[0],gmax[0],g0[1],gmax[1])
-    plt.figure(figsize=(15,5))
-    plt.subplot(1,3,1); plt.imshow( E,                   origin="lower", extent=extent, vmin=Emin, vmax=-Emin, cmap=cmap ) ;plt.title("E  ref")
-    plt.subplot(1,3,2); plt.imshow( Gs,                  origin="lower", extent=extent, vmin=Emin, vmax=-Emin, cmap=cmap ) ;plt.title("Gs fit")
-    plt.subplot(1,3,3); plt.imshow( E_.reshape(sh_samp), origin="lower", extent=extent, vmin=Emin, vmax=-Emin, cmap=cmap ) ;plt.title("E  fit")
+    plt.figure(figsize=(15,10))
+    plt.subplot(2,3,1); plt.imshow( E,         origin="lower", extent=extent, vmin=Emin,  vmax=-Emin,  cmap=cmap ) ;plt.colorbar(); plt.title("Eg")
+    plt.subplot(2,3,2); plt.imshow( Gs,        origin="lower", extent=extent, vmin=Gmin,  vmax=-Gmin,  cmap=cmap ) ;plt.colorbar(); plt.title("Gs fit")
+    plt.subplot(2,3,3); plt.imshow( dG,        origin="lower", extent=extent, vmin=dGmin, vmax=-dGmin, cmap=cmap ) ;plt.colorbar(); plt.title("Gs-Eg")
+    
+    plt.subplot(2,3,4); plt.imshow( E_r,        origin="lower", extent=extent, vmin=Emin, vmax=-Emin,   cmap=cmap ) ;plt.colorbar(); plt.title("E  ref")
+    plt.subplot(2,3,5); plt.imshow( E_f[:,:,2], origin="lower", extent=extent, vmin=Emin, vmax=-Emin,   cmap=cmap ) ;plt.colorbar(); plt.title("E  fit")
+    plt.subplot(2,3,6); plt.imshow( dE,         origin="lower", extent=extent, vmin=dEmin, vmax=-dEmin, cmap=cmap ) ;plt.colorbar(); plt.title("E(fit-ref)")
     plt.axis('equal')
     '''
     #Ws = Ecut/np.sqrt( E**2 + Ecut**2 )  ; EWs = E*Ws
@@ -179,13 +207,14 @@ def test_fit_2D( g0=(-5.0,2.0), gmax=(5.0,10.0), dg=(0.1,0.1), dsamp=(0.05,0.05)
     '''
 
 
-mmff.setVerbosity( 2 )
-#mmff.setVerbosity( 3 )
+#mmff.setVerbosity( 2 )
+mmff.setVerbosity( 3 )
 
 #test_fit_1D( bUseForce=True )
 #test_fit_1D( bUseForce=False )
-test_fit_1D( g0=0.0, gmax=2.0, dg=0.1, bUseForce=False )
+#test_fit_1D( g0=0.0, gmax=2.0, dg=0.1, bUseForce=False )
 
 #test_fit_2D(  )
+test_fit_2D( g0=(0.0,0.0), gmax=(2.0,2.0), dg=(0.1,0.1), dsamp=(0.05,0.05)  )
 
 plt.show()

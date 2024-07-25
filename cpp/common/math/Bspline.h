@@ -170,7 +170,10 @@ inline Vec3d fe2d( const Vec2d u, const Vec2i n, const double* Es ){
 	const int    ix = (int)u.x  ,  iy = (int)u.y  ;
     const double tx = u.x - ix  ,  ty = u.y - iy  ;
     const double mx = 1-tx      ,  my = 1-ty      ;
-    if( ((ix<1)||(ix>=n.x-2)) || ((iy<1)||(iy>=n.y-2))  )[[unlikely]]{   printf( "ERROR: Bspline::fe2d() ixyz(%i,%i) out of range 0 .. (%i,%i) u(%g,%g)\n", ix,iy, n.x,n.y, u.x,u.y );   exit(0); }
+    if( ((ix<1)||(ix>=n.x-2)) || ((iy<1)||(iy>=n.y-2))  )[[unlikely]]{   
+        return Vec3dZero;
+        //printf( "ERROR: Bspline::fe2d() ixyz(%i,%i) out of range 0 .. (%i,%i) u(%g,%g)\n", ix,iy, n.x,n.y, u.x,u.y );   exit(0); 
+    }
     const int nxy = n.x*n.y;
     int i0 = ix + n.x*iy; 
     return fe2d(tx,ty, {i0,i0+n.x,i0+n.x*2,i0+3*n.x}, Es );
@@ -201,9 +204,8 @@ Quat4d fe3d( const Vec3d u, const Vec3i n, const double* Es ){
         ((iy<1)||(iy>=n.y-2)) ||
         ((iz<1)||(iz>=n.z-2))        
     )[[unlikely]]{ 
-        printf( "ERROR: Bspline::fe3d() ixyz(%i,%i,%i) out of range 0 .. (%i,%i,%i) u(%g,%g,%g)\n", ix,iy,iz, n.x,n.y,n.z, u.x,u.y,u.z ); 
-        //printf( "DETAILS:",   u.x ); 
-        exit(0); 
+         return Quat4dZero;
+        //printf( "ERROR: Bspline::fe3d() ixyz(%i,%i,%i) out of range 0 .. (%i,%i,%i) u(%g,%g,%g)\n", ix,iy,iz, n.x,n.y,n.z, u.x,u.y,u.z ); exit(0); 
     }
     //Quat4d E,Fx,Fy;
     const int nxy = n.x*n.y;
@@ -498,7 +500,7 @@ double getVariations2D( const Vec2i ns, double* Gs,  const double* Es, const dou
                 fs[j] = val;
             }else{
                 fs[j] = 0;
-                Gs[j] = 0;
+                //Gs[j] = 0;
             }
         }
     }
@@ -507,7 +509,7 @@ double getVariations2D( const Vec2i ns, double* Gs,  const double* Es, const dou
 
 __attribute__((hot)) 
 int fit2D( const Vec2i ns, double* Gs,  double* Es, double* Ws, double Ftol, int nmaxiter=100, double dt=0.1 ){
-    if(verbosity>1)printf( "Bspline::fit2D() ns(%i,%i) \n", ns.x,ns.y );
+    if(verbosity>1)printf( "Bspline::fit2D() ns(%i,%i) Ftol=%g dt=%g nmaxiter=%i \n", ns.x,ns.y, Ftol, dt, nmaxiter );
     const double F2max = Ftol*Ftol;
     const int nxy  = ns.x*ns.y;
     double* ps = new double[nxy];
@@ -517,7 +519,9 @@ int fit2D( const Vec2i ns, double* Gs,  double* Es, double* Ws, double Ftol, int
     //while(false){
     double err;    
     Vec3d  cfv;
+    for(int i=0; i<nxy; i++){ vs[i]=0; };
     for(itr=0; itr<nmaxiter; itr++){
+        //for(int i=0; i<nxy; i++){ fs[i]=0; };  // Not necessary - force is cleared inside getVariations2D
         err = getVariations2D( ns, Gs, Es, Ws, fs, ps );
         cfv = move(dt,nxy,Gs,fs, vs );
         if(verbosity>2)printf( "|F[%i]|=%g cos(f,v)=%g Error=%g \n",itr,sqrt(cfv.y), cfv.x/sqrt(cfv.y*cfv.z), sqrt(err) );
@@ -660,7 +664,9 @@ int fit3D( const Vec3i ns, double* Gs,  double* Es, double* Ws, double Ftol, int
     //while(false){
     double err=0; 
     Vec3d  cfv;
+    for(int i=0; i<nxy; i++){ vs[i]=0; };
     for(itr=0; itr<nmaxiter; itr++){
+        for(int i=0; i<nxy; i++){ fs[i]=0; };
         err = getVariations3D( ns, Gs, Es, Ws, fs, ps );
         cfv = move(dt,nxy,Gs,fs, vs );
         if(verbosity>2)printf( "|F[%i]|=%g cos(f,v)=%g Error=%g \n",itr,sqrt(cfv.y), cfv.x/sqrt(cfv.y*cfv.z), sqrt(err) );
