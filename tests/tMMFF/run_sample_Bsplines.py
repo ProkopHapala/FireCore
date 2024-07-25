@@ -21,6 +21,11 @@ REs=[
 
 # =============
 
+def getCos( xs, freq ):
+    E =       np.cos( freq*xs )
+    F = -freq*np.sin( freq*xs )
+    return E,F
+
 def getLJ( r, R0, E0 ):
     #r = np.sqrt(x**2 + y**2 + z**2)
     E  = E0*    ( (R0/r)**12 - 2*(R0/r)**6 )
@@ -54,9 +59,15 @@ def getLJ_atoms( apos, REs, Xs,Ys,Zs ):
 def test_fit_1D( g0=2.0, gmax=10.0, dg=0.1, dsamp=0.02, bUseForce=True ):
     #x0 = 2.0
     #dx = 0.1
-    xs  = np.arange(g0, gmax, dg)     ; ng=len(xs)
-    xs_ = np.arange(g0, gmax, dsamp)  ; nsamp=len(xs_)
-    E,F = getLJ( xs, 3.5, 1.0 )
+    xs  = np.arange(g0, gmax+1e-8, dg)     ; ng=len(xs)
+    xs_ = np.arange(g0, gmax+1e-8, dsamp)  ; nsamp=len(xs_)
+    #E,F = getLJ( xs, 3.5, 1.0 )
+    E,F         = getCos( xs,  np.pi )
+    E_ref,F_ref = getCos( xs_, np.pi )
+
+    print( "E_ref ", E_ref )
+    #print( "F_ref ", F_ref )
+
     Emin =  E.min()
     Fmin = -F.max()
     #print( "Emin ", Emin," Fmin ", Fmin )
@@ -78,31 +89,46 @@ def test_fit_1D( g0=2.0, gmax=10.0, dg=0.1, dsamp=0.02, bUseForce=True ):
     plt.figure(figsize=(5,10))
     plt.subplot(2,1,1)    
     #plt.plot( xs, EWs, ".-k" )
-    plt.plot( xs, E, ".-k", label="E_ref" )
+    #plt.plot( xs, E, ".-k", label="E_ref" )
+    plt.plot( xs_, E_ref, "-k", label="E_ref" )
     plt.plot( xs, Gs, ".-m", label="Gs" )
     plt.plot( xs_, FEout[:,0], "-b", label="E_fit" )
     #print( "Gs: ", Gs )
-    plt.ylim(Emin,-Emin)
+    plt.ylim(Emin*1.2,-Emin*1.2)
     plt.grid()
     plt.legend()
     plt.title("Energy")
     plt.subplot(2,1,2)
-    plt.plot( xs,  -F , ".-k", label="F_ref" )    
+    #plt.plot( xs,  -F ,     ".-k", label="F_ref" )    
+    plt.plot( xs_, -F_ref , "-k", label="F_ref" )    
     plt.plot( xs_, -FEout[:,1], "-b", label="F_fit" )
-    plt.ylim(Fmin,-Fmin)
+    #plt.ylim(Fmin*1.2,-Fmin*1.2)
     plt.legend()
     plt.title("Force")
     plt.grid()
     plt.show()
+
+def make2Dsampling(  g0=(-5.0,2.0), gmax=(5.0,10.0), dg=(0.1,0.1) ):
+    xs  = np.arange(g0[0], gmax[0], dg[0])
+    ys  = np.arange(g0[1], gmax[1], dg[0])
+    Xs,Ys = np.meshgrid(xs,ys)
+    return Xs,Ys
+
+def make2Dsampling_ps(  g0=(-5.0,2.0), gmax=(5.0,10.0), dg=(0.1,0.1) ):
+    Xs,Ys = make2Dsampling(  g0=g0, gmax=gmax, dg=dg )
+    sh = Xs.shape
+    ps = np.zeros( ( len(Xs.flat), 2) )
+    ps[:,0] = Xs.flat
+    ps[:,1] = Ys.flat
+    return ps, sh
 
 def test_fit_2D( g0=(-5.0,2.0), gmax=(5.0,10.0), dg=(0.1,0.1), dsamp=(0.05,0.05) ):
     #cmap="RdBu_r"
     cmap="bwr"
     #x0 = 2.0
     #dx = 0.1
-    xs  = np.arange(g0[0], gmax[0], dg[0])
-    ys  = np.arange(g0[1], gmax[1], dg[0])
-    Xs,Ys = np.meshgrid(xs,ys)
+    Xs,Ys = make2Dsampling(  g0=g0, gmax=gmax, dg=dg )
+    ps, sh_samp = make2Dsampling_ps(  g0=g0, gmax=gmax, dg=dsamp )
 
     print( "Xs.shape ", Xs.shape )
     
@@ -119,11 +145,13 @@ def test_fit_2D( g0=(-5.0,2.0), gmax=(5.0,10.0), dg=(0.1,0.1), dsamp=(0.05,0.05)
 
     Gs, Ws = mmff.fit2D_Bspline( E, Ws=None, dt=0.4, nmaxiter=1, Ftol=1e-7 )
 
+    E_ = mmff.sample_Bspline2D( ps, Gs, g0, dg, fes=None  )
+
     extent=(g0[0],gmax[0],g0[1],gmax[1])
-    
     plt.figure(figsize=(15,5))
-    plt.subplot(1,2,1); plt.imshow( E,  origin="lower", extent=extent, vmin=Emin, vmax=-Emin, cmap=cmap )
-    plt.subplot(1,2,2); plt.imshow( Gs, origin="lower", extent=extent, vmin=Emin, vmax=-Emin, cmap=cmap )
+    plt.subplot(1,3,1); plt.imshow( E,                   origin="lower", extent=extent, vmin=Emin, vmax=-Emin, cmap=cmap ) ;plt.title("E  ref")
+    plt.subplot(1,3,2); plt.imshow( Gs,                  origin="lower", extent=extent, vmin=Emin, vmax=-Emin, cmap=cmap ) ;plt.title("Gs fit")
+    plt.subplot(1,3,3); plt.imshow( E_.reshape(sh_samp), origin="lower", extent=extent, vmin=Emin, vmax=-Emin, cmap=cmap ) ;plt.title("E  fit")
     plt.axis('equal')
     '''
     #Ws = Ecut/np.sqrt( E**2 + Ecut**2 )  ; EWs = E*Ws
@@ -150,9 +178,14 @@ def test_fit_2D( g0=(-5.0,2.0), gmax=(5.0,10.0), dg=(0.1,0.1), dsamp=(0.05,0.05)
     plt.show()
     '''
 
+
+mmff.setVerbosity( 2 )
+#mmff.setVerbosity( 3 )
+
 #test_fit_1D( bUseForce=True )
 #test_fit_1D( bUseForce=False )
+test_fit_1D( g0=0.0, gmax=2.0, dg=0.1, bUseForce=False )
 
-test_fit_2D(  )
+#test_fit_2D(  )
 
 plt.show()
