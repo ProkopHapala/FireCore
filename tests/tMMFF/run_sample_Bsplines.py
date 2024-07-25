@@ -139,6 +139,9 @@ def test_fit_2D( g0=(-5.0,2.0), gmax=(5.0,10.0), dg=(0.1,0.1), dsamp=(0.05,0.05)
     #dx = 0.1
     Xs,Ys   = make2Dsampling(  g0=g0, gmax=gmax, dg=dg )
     Xs_,Ys_ = make2Dsampling(  g0=g0, gmax=gmax, dg=dsamp )
+
+    Xs_*=0.999999; Ys_*=0.999999;
+
     sh_samp = Xs_.shape
     ps      = pack_ps2D( Xs_, Ys_)
     #ps, sh_samp = make2Dsampling_ps(  g0=g0, gmax=gmax, dg=dsamp )
@@ -147,7 +150,7 @@ def test_fit_2D( g0=(-5.0,2.0), gmax=(5.0,10.0), dg=(0.1,0.1), dsamp=(0.05,0.05)
     
     #E, Fx,Fy,Fz = getLJ_atoms( apos, REs, Xs,Ys,Xs*0.0 )
 
-    E,  Fx,Fy   =  getCos2D( Xs, Ys   )
+    E,  Fx,Fy      =  getCos2D( Xs, Ys   )
     E_r, Fx_r,Fy_r =  getCos2D( Xs_, Ys_ )
 
     #xs_ = np.arange(g0, gmax, dsamp)  ; nsamp=len(xs_)
@@ -166,10 +169,10 @@ def test_fit_2D( g0=(-5.0,2.0), gmax=(5.0,10.0), dg=(0.1,0.1), dsamp=(0.05,0.05)
     E_f = mmff.sample_Bspline2D( ps, Gs, g0, dg, fes=None  ).reshape(sh_samp+(3,))
 
     dG = Gs-E                    ; dGmin = -np.abs(dG).max()
-    #dE = E_f[:,:,2] - E_r[:,:]   ; dEmin = -np.abs(dE).max()
+    dE = E_f[:,:,2] - E_r[:,:]   ; dEmin = -np.abs(dE[4:-4,4:-4]).max()
     #dE = E_f[1:,1:,2] - E_r[:-1,:-1]   ; dEmin = -np.abs(dE).max()
     #dE = E_f[:-1,:-1,2] - E_r[1:,1:]   ; dEmin = -np.abs(dE).max()
-    dE = E_f[:-2,:-2,2] - E_r[2:,2:]   ; dEmin = -np.abs(dE).max()
+    #dE = E_f[:-2,:-2,2] - E_r[2:,2:]   ; dEmin = -np.abs(dE).max()
 
     extent=(g0[0],gmax[0],g0[1],gmax[1])
     plt.figure(figsize=(15,10))
@@ -215,6 +218,6 @@ mmff.setVerbosity( 3 )
 #test_fit_1D( g0=0.0, gmax=2.0, dg=0.1, bUseForce=False )
 
 #test_fit_2D(  )
-test_fit_2D( g0=(0.0,0.0), gmax=(2.0,2.0), dg=(0.1,0.1), dsamp=(0.05,0.05)  )
+test_fit_2D( g0=(-1.0,-1.0), gmax=(1.0,1.0) )
 
 plt.show()

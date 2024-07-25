@@ -174,8 +174,8 @@ inline Vec3d fe2d( const Vec2d u, const Vec2i n, const double* Es ){
         return Vec3dZero;
         //printf( "ERROR: Bspline::fe2d() ixyz(%i,%i) out of range 0 .. (%i,%i) u(%g,%g)\n", ix,iy, n.x,n.y, u.x,u.y );   exit(0); 
     }
-    const int nxy = n.x*n.y;
-    int i0 = ix + n.x*iy; 
+    //int i0 = ix + n.x*iy;
+    int i0 = (ix-1) + n.x*(iy-1); 
     return fe2d(tx,ty, {i0,i0+n.x,i0+n.x*2,i0+3*n.x}, Es );
 } 
 
@@ -212,7 +212,7 @@ Quat4d fe3d( const Vec3d u, const Vec3i n, const double* Es ){
 
     //printf( "ixyz(%i,%i,%i)  (%g,%g,%g)\n", ix,iy,iz,  u.x,u.y,u.z );
 
-    int i0 = ix + n.x*( iy + n.y*iz );  
+    int i0 = (ix-1) + n.x*( (iy-1) + n.y*(iz-1) );  
     
     const Vec3d Exy1 = fe2d(tx,ty, {i0,i0+n.x,i0+n.x*2,i0+3*n.x}, Es );
     int i1 = i0+nxy  ;                  const Vec3d Exy2 = fe2d(tx,ty, {i1,i1+n.x,i1+n.x*2,i1+3*n.x}, Es );
@@ -507,6 +507,88 @@ double getVariations2D( const Vec2i ns, double* Gs,  const double* Es, const dou
     return err2sum;
 }
 
+
+__attribute__((hot)) 
+inline double assemleBound2D( const double* Gs, const int i, int nx, const bool ylo, const bool yhi ){
+    constexpr double B0=2.0/3.0;
+    constexpr double B1=1.0/6.0;
+    constexpr double B00=B0*B0;
+    constexpr double B01=B0*B1;
+    constexpr double B11=B1*B1;
+    const bool xlo = i > 0;
+    const bool xhi = i < nx-1; 
+    //const bool xmid = xlo&&xhi; 
+    //const bool ymid = ylo&&yhi; 
+    //int       i = ix + iiy;
+    const int i0 = i-nx;
+    const int i1 = i+nx;
+    double val=0;
+    if( xhi && xlo && ylo && yhi) [[likely]] { 
+        val = Gs[i0-1]*B11 + Gs[i0]*B01 + Gs[i0+1]*B11
+            + Gs[i -1]*B01 + Gs[i ]*B00 + Gs[i +1]*B01
+            + Gs[i1-1]*B11 + Gs[i1]*B01 + Gs[i1+1]*B11;
+    }else{
+                       val =Gs[i ]*B00;
+        if( ylo ){     val+=Gs[i0]*B01; };
+        if( yhi ){     val+=Gs[i1]*B01; };
+        if( xlo ){ 
+                       val+=Gs[i -1]*B01; 
+            if( ylo ){ val+=Gs[i0-1]*B11; };
+            if( yhi ){ val+=Gs[i1-1]*B11; };
+        };
+        if( xhi ){
+                       val+=Gs[i +1]*B01;  
+            if( ylo ){ val+=Gs[i0+1]*B11; };
+            if( yhi ){ val+=Gs[i1+1]*B11; };
+        };
+    }
+    return val;
+}
+
+
+__attribute__((hot)) 
+double getVariations2D_mod( const Vec2i ns, double* Gs,  const double* Es, const double* Ws, double* fs, double* ps ){
+    constexpr double B0=2.0/3.0;
+    constexpr double B1=1.0/6.0;
+    constexpr double B00=B0*B0;
+    constexpr double B01=B0*B1;
+    constexpr double B11=B1*B1;
+    const int nxy  = ns.x*ns.y;
+    // --- evaluate current spline
+    for(int i=0; i<nxy; i++){ fs[i]=0; ps[i]=0;  }
+    // --- evaluate current spline (in order to evelauet approximation error)
+    double err2sum=0;
+    for(int iy=0; iy<ns.y; iy++){
+        int iiy = iy*ns.x;
+        const bool ylo  = iy > 0;
+        const bool yhi  = iy < ns.y-1;
+        for(int ix=0; ix<ns.x; ix++){
+            int i = ix + iiy;
+            double val = assemleBound2D( Gs+iiy, ix, ns.x, ylo, yhi );
+            double err = Es[i] - val;
+            if(Ws){ err*=Ws[i]; }
+            err2sum += err*err;
+            ps[i] = err;
+            //Ws[j] = err;
+        }
+    }
+    // --- distribute variational derivatives of approximation error
+    for(int iy=0; iy<ns.y; iy++){
+        int iiy = iy*ns.x;
+        const bool ylo  = iy > 0;
+        const bool yhi  = iy < ns.y-1;
+        for(int ix=0; ix<ns.x; ix++){
+            int i = ix + iiy;
+            //printf("c2 ix,iy: %3i %3i \n", ix,iy );
+            fs[i] = assemleBound2D( ps+iiy, ix, ns.x, ylo, yhi );
+
+        }
+    }
+    return err2sum;
+}
+
+
+
 __attribute__((hot)) 
 int fit2D( const Vec2i ns, double* Gs,  double* Es, double* Ws, double Ftol, int nmaxiter=100, double dt=0.1 ){
     if(verbosity>1)printf( "Bspline::fit2D() ns(%i,%i) Ftol=%g dt=%g nmaxiter=%i \n", ns.x,ns.y, Ftol, dt, nmaxiter );
@@ -522,7 +604,8 @@ int fit2D( const Vec2i ns, double* Gs,  double* Es, double* Ws, double Ftol, int
     for(int i=0; i<nxy; i++){ vs[i]=0; };
     for(itr=0; itr<nmaxiter; itr++){
         //for(int i=0; i<nxy; i++){ fs[i]=0; };  // Not necessary - force is cleared inside getVariations2D
-        err = getVariations2D( ns, Gs, Es, Ws, fs, ps );
+        //err = getVariations2D( ns, Gs, Es, Ws, fs, ps );
+        err = getVariations2D_mod( ns, Gs, Es, Ws, fs, ps );
         cfv = move(dt,nxy,Gs,fs, vs );
         if(verbosity>2)printf( "|F[%i]|=%g cos(f,v)=%g Error=%g \n",itr,sqrt(cfv.y), cfv.x/sqrt(cfv.y*cfv.z), sqrt(err) );
         if(cfv.y<F2max){ break; };
