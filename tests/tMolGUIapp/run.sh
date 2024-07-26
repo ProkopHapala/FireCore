@@ -124,10 +124,10 @@ fi
 #./$name -x Si2505_111-noH-SiH3  -perframe 1   
 #./$name -x Si2505_111-noH-SiH3-relaxed  -perframe 1   
 
-./$name -x Si2505_111-H-brak-110-relaxed  -perframe 1   
+#./$name -x Si2505_111-H-brak-110-relaxed  -perframe 1
+#./$name -x Si2505_111-H-SiH3-relaxed      -perframe 1
+./$name -x Si2505_111-H-relaxed           -perframe 1
 
-
-#./$name -x Si2505_111-H-SiH3-relaxed.xyz
 
 
 
