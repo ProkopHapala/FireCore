@@ -167,6 +167,21 @@ void bondLengthColorMap( int n, const Vec2i* b2a, const Vec3d* apos, Vec2d lrang
     glEnd();
 }
 
+void bondLengthColorMap( int n, const Vec2i* b2a, const Vec3d* apos, double* clr ){
+    //printf( "bondLengthColorMap()\n" );
+    glBegin(GL_LINES);
+    for(int i=0; i<n; i++){
+        Vec2i b = b2a[i];
+        double s = clr[i]; 
+        if( (s>-1.0)&&(s<1.0) ){
+            if( s>0 ){ glColor3f(s,0.f,0.f); }else{ glColor3f(0.f,0.f,-s); };
+            Draw3D::vertex( apos[b.a] );
+            Draw3D::vertex( apos[b.b] );
+        }
+    }
+    glEnd();
+}
+
 void bondsLengths( int n, const Vec2i* b2a, const Vec3d* apos, int fontTex, float sz=0.01, const char* format="%4.2f\0" ){
     glBegin(GL_LINES);
     for(int i=0; i<n; i++){

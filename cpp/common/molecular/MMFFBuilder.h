@@ -630,6 +630,11 @@ class Builder{  public:
         return 0;
     }
 
+    Vec2i getBondAtomTypes(int ib){
+        const MM::Bond& b = bonds[ib];
+        return Vec2i{ atoms[b.atoms.a].type, atoms[b.atoms.b].type };
+    }
+
     int getBondToNeighbor( int ia, int ja )const {
         const AtomConf* conf = getAtomConf(ia);
         if(conf){
@@ -3693,7 +3698,7 @@ void toMMFFsp3_loc( MMFFsp3_loc& ff, bool bRealloc=true, bool bEPairs=true, bool
                 for(int k=0; k<conf.nbond; k++){
                     int ib = conf.neighs[k];
                     const Bond& B = bonds[ib];
-                    { int ti=atoms[B.atoms.a].type; int tj=atoms[B.atoms.b].type;   printf( "ia,ib[%4i,%4i] l0=%7.3f k=%7.2f ts(%3i,%3i) %s-%s \n", ia, ib, B.l0, B.k, ti,tj, params->atypes[ti].name, params->atypes[tj].name ); }
+                    //{ int ti=atoms[B.atoms.a].type; int tj=atoms[B.atoms.b].type;   printf( "ia,ib[%4i,%4i] l0=%7.3f k=%7.2f ts(%3i,%3i) %s-%s \n", ia, ib, B.l0, B.k, ti,tj, params->atypes[ti].name, params->atypes[tj].name ); }
                     int ja = B.getNeighborAtom(ia);
                     const Atom& Aj =  atoms[ja];
                     AtomType& jtyp = params->atypes[Aj.type];

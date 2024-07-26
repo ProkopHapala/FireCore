@@ -512,6 +512,16 @@ class MMFFparams{ public:
     inline const AtomType* getAtomTypeObj(const char* s, bool bErr=true)const{ return &atypes[getAtomType(s,bErr)];  }
 
 
+    Vec2i parseBondAtomTypes( const char* str, bool bErr=true ){
+        // char sep='-',
+        char name1[8];  
+        char name2[8];
+        sscanf( str, "%[^-]-%s", name1, name2 );
+        //printf( "parseBondAtomTypes(): (%s,%s) str=%s\n", name1, name2, str );
+        return Vec2i{ getAtomType(name1, bErr), getAtomType(name1, bErr) }; 
+    }
+
+
     inline const ElementType* elementOfAtomType( int it )const{ return &etypes[atypes[it].element]; }
 
     // following the graph and getting the ancestor
