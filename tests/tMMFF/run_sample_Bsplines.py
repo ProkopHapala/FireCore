@@ -107,14 +107,20 @@ def pack_ps3D( Xs, Ys, Zs):
     ps[:,2] = Zs.flat
     return ps
 
-def test_fit_1D( g0=2.0, gmax=10.0, dg=0.1, dsamp=0.02, bUseForce=True ):
+def test_fit_1D( g0=2.0, gmax=10.0, dg=0.2, dsamp=0.02, bUseForce=True, scErr=100.0, bHalf=False, title=None ):
     #x0 = 2.0
     #dx = 0.1
+    if bHalf: dg = dg*0.5
     xs  = np.arange(g0, gmax+1e-8, dg)     ; ng=len(xs)
     xs_ = np.arange(g0, gmax+1e-8, dsamp)  ; nsamp=len(xs_)
-    #E,F = getLJ( xs, 3.5, 1.0 )
-    E,F         = getCos( xs,  np.pi )
-    E_ref,F_ref = getCos( xs_, np.pi )
+    xsg=xs; 
+    if bHalf: xsg=xs[::2]
+    
+    E,F         = getLJ( xs,  3.5, 1.0 )
+    E_ref,F_ref = getLJ( xs_, 3.5, 1.0 )
+    
+    #E,F         = getCos( xs,  np.pi )
+    #E_ref,F_ref = getCos( xs_, np.pi )
 
     #print( "E_ref ", E_ref )
     #print( "F_ref ", F_ref )
@@ -122,10 +128,16 @@ def test_fit_1D( g0=2.0, gmax=10.0, dg=0.1, dsamp=0.02, bUseForce=True ):
     Emin =  E.min()
     Fmin = -F.max()
     #print( "Emin ", Emin," Fmin ", Fmin )
-    Ecut = 100.0
-    Ws = Ecut/np.sqrt( E**2 + Ecut**2 )  ; EWs = E*Ws
+    Ecut = -2.0
+    #Ws = 1/np.sqrt( (E/Ecut)**2 + 1 ); # EWs = E*Ws
+    Ws = 1/( E - Ecut );
     #E*=Ws
     #FEg[:,1]*=-1
+
+    #Ecut2 =  1.0
+    #mask    = E>Ecut2
+    #E[mask] = Ecut2
+
     if bUseForce:
         FEg = np.zeros( (len(xs),2) )
         FEg[:,0] = E[:]
@@ -134,30 +146,40 @@ def test_fit_1D( g0=2.0, gmax=10.0, dg=0.1, dsamp=0.02, bUseForce=True ):
         Ws     = np.zeros((ng,2));  Ws[:,0]=1.0; Ws[:,1]=0.0;
         Gs, Ws = mmff.fitEF_Bspline( dg, FEg, Gs=Gs, Ws=Ws, Ftol=1e-6, nmaxiter=1000, dt=0.1 )
     else:
-        Gs, Ws = mmff.fit_Bspline( E, Ws=None, dt=0.4, nmaxiter=1000, Ftol=1e-7 )
+
+        Gs, Ws_ = mmff.fit_Bspline( E, Ws=None, dt=0.4, nmaxiter=1000, Ftol=1e-7, bHalf=bHalf )
+
+        #Gs, Ws_ = mmff.fit_Bspline( E, Ws=Ws,   dt=1.0, nmaxiter=1000, Ftol=1e-9, bHalf=bHalf )
+
         #Gs, Ws = mmff.fit_Bspline( FEg[:,0].copy(), Ws=Ws,   dt=0.4, nmaxiter=1000, Ftol=1e-7 )
-    FEout = mmff.sample_Bspline( xs_, Gs, x0=g0, dx=dg )
+    dgs = dg
+    if bHalf: dgs=dg*2
+    FEout = mmff.sample_Bspline( xs_, Gs, x0=g0, dx=dgs )
     plt.figure(figsize=(5,10))
     plt.subplot(2,1,1)    
+    plt.plot( xs, Ws, ":m", lw=1.5, label="Ws" )
     #plt.plot( xs, EWs, ".-k" )
     #plt.plot( xs, E, ".-k", label="E_ref" )
-    plt.plot( xs_, E_ref, "-k", label="E_ref" )
-    plt.plot( xs, Gs, ".-m", label="Gs" )
-    plt.plot( xs_, FEout[:,0], "-b", label="E_fit" )
+    #plt.plot( xsg, Gs,          ".-m", lw=0.25, label="Gs" )
+    plt.plot( xs_, E_ref,      "-k",  lw=0.5,  label="E_ref" )
+    plt.plot( xs_, FEout[:,0], "-b",  lw=0.5,  label="E_fit" )
+    plt.plot( xs_, (FEout[:,0]-E_ref)*scErr, "-r", lw=0.5, label=("error*%g" % scErr) )
     #print( "Gs: ", Gs )
     plt.ylim(Emin*1.2,-Emin*1.2)
     plt.grid()
     plt.legend()
     plt.title("Energy")
     plt.subplot(2,1,2)
-    #plt.plot( xs,  -F ,     ".-k", label="F_ref" )    
-    plt.plot( xs_, -F_ref , "-k", label="F_ref" )    
-    plt.plot( xs_, -FEout[:,1], "-b", label="F_fit" )
-    #plt.ylim(Fmin*1.2,-Fmin*1.2)
+    #plt.plot( xs,  -F ,       ".-k", lw=0.5, label="F_ref" )    
+    plt.plot( xs_, -F_ref ,     "-k", lw=0.5, label="F_ref" )    
+    plt.plot( xs_, -FEout[:,1], "-b", lw=0.5, label="F_fit" )
+    plt.plot( xs_, (FEout[:,1]-F_ref)*scErr, "-r", lw=0.5, label=("error*%g" % scErr) )
+    plt.ylim(Fmin*1.2,-Fmin*1.2)
     plt.legend()
     plt.title("Force")
     plt.grid()
-    plt.show()
+    if title is not None: plt.suptitle(title)
+    #plt.show()
 
 
 def test_fit_2D( g0=(-5.0,2.0), gmax=(5.0,10.0), dg=(0.1,0.1), dsamp=(0.05,0.05) ):
@@ -251,10 +273,11 @@ def test_fit_3D( g0=(-5.0,-5.0,2.0), gmax=(5.0,-5.0,10.0), dg=(0.1,0.1,0.1), dsa
 mmff.setVerbosity( 3 )
 
 #test_fit_1D( bUseForce=True )
-#test_fit_1D( bUseForce=False )
+test_fit_1D( bUseForce=False, bHalf=False ,title="No-Half")
+test_fit_1D( bUseForce=False, bHalf=True  ,title="Half")
 #test_fit_1D( g0=0.0, gmax=2.0, dg=0.1, bUseForce=False )
 
 #test_fit_2D(  )
-test_fit_2D( g0=(-1.0,-1.0), gmax=(1.0,1.0) )
+#test_fit_2D( g0=(-1.0,-1.0), gmax=(1.0,1.0) )
 
 plt.show()

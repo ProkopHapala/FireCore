@@ -141,11 +141,16 @@ glob_bMMFF    = True
 #  int fit_Bspline( double dg, const int n, double* Gs, double* Es, double* Ws, double Ftol, int nmaxiter, double dt ){
 lib.fit_Bspline.argtypes  = [ c_int, c_double_p, c_double_p, c_double_p, c_double, c_int, c_double ]
 lib.fit_Bspline.restype   =  None
-def fit_Bspline( Es, Gs=None, Ws=None, Ftol=1e-6, nmaxiter=100, dt=0.1 ):
+def fit_Bspline( Es, Gs=None, Ws=None, Ftol=1e-6, nmaxiter=100, dt=0.1, bHalf=False ):
     n = len(Es)
-    if Ws is None: Ws = np.ones( n )
-    if Gs is None: Gs = Es.copy()
-    lib.fit_Bspline( n, _np_as(Gs,c_double_p), _np_as(Es,c_double_p), _np_as(Ws,c_double_p), Ftol, nmaxiter, dt )
+    if(bHalf): 
+        n = n//2
+        if Ws is None: Ws = np.ones( n*2 )
+        if Gs is None: Gs = Es[::2].copy()
+    else:
+        if Ws is None: Ws = np.ones( n )
+        if Gs is None: Gs = Es.copy()
+    lib.fit_Bspline( n, _np_as(Gs,c_double_p), _np_as(Es,c_double_p), _np_as(Ws,c_double_p), Ftol, nmaxiter, dt, bHalf )
     return Gs, Ws
 
 # int fitEF_Bspline( const int n, const double* Gs, double* fes, double* Ws, double Ftol, int nmaxiter, double dt ){
