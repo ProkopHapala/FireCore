@@ -362,21 +362,67 @@ double getVariations1D( const int n, const double* Gs, const double* Es, const d
 }
 
 __attribute__((hot)) 
-int fit1D( const int n, double* Gs,  double* Es, double* Ws, double Ftol, int nmaxiter=100, double dt=0.1 ){
+double getVariations1D_half( const int n, const double* Gs, const double* Es, const double* Ws, double* fs, double* ers ){
+    constexpr double B00 =2.0/3.0;   // 0.66666666666666666666666666666667
+    constexpr double B05 =23.0/48.0; // 0.47916666666666666666666666666667
+    constexpr double B10 =1.0/6.0;   // 0.16666666666666666666666666666667
+    constexpr double B15 =1.0/48.0;  // 0.020833333333333333333333333333333
+    
+    int n2 = 2*n;
+    // --- evaluate current spline
+    for(int i=0; i<n;  i++){ fs[i]=0;   }
+    for(int i=0; i<n2; i++){ ers[i]=0;  }
+    // --- evaluate current spline (in order to evelauet approximation error)
+    double err2sum=0;
+    for(int i=2; i<n-2; i++){
+        double e0 = Gs[i-1]*B10 + Gs[i]*B00 + Gs[i+1]*B10;
+        double e1 = Gs[i-1]*B15 + Gs[i]*B05 + Gs[i+1]*B05 + Gs[i+2]*B15;
+        //double e1 = Gs[i-2]*B15 + Gs[i-1]*B05 + Gs[i]*B05 + Gs[i+1]*B15;
+
+        int i2=i*2;
+        double d0 = Es[i2  ] - e0;   ers[i2  ] = d0;
+        double d1 = Es[i2+1] - e1;   ers[i2+1] = d1;
+        
+        err2sum += e0*e0 + e1*e1;
+        
+        //Ws[j] = err;
+    }
+    // --- distribute variational derivatives of approximation error
+    for(int i=0; i<n; i++){
+        if( (i>0)&&(i<(n-1)) ) [[likely]] {
+            int i2=i*2;
+            //double f = ers[i2-3]*B15 + ers[i2-2]*B10 + ers[i2-1]*B05 + ers[i2]*B00 + ers[i2+1]*B05 + ers[i2+2]*B10 + ers[i2+3]*B15;
+
+            double f = ers[i2-2]*B10 + ers[i2]*B00 + ers[i2+2]*B10;
+
+            f += ers[i2-1]*B15 + ers[i2+1]*B15;
+            //if(i2>=3){ f+=ers[i2-3]*B15; }
+            //if(i2<n ){ f+=ers[i2+3]*B15; }
+
+            fs[i]    = f;
+        }else{
+            fs[i] = 0;
+        }
+    }
+    return err2sum;
+}
+
+__attribute__((hot)) 
+int fit1D( const int n, double* Gs,  double* Es, double* Ws, double Ftol, int nmaxiter=100, double dt=0.1, bool bHalf=false ){
     if(verbosity>1)printf("Bspline::fit1D() !!!!!!\n");
     const double F2max = Ftol*Ftol;
-    double* ps = new double[n];
+    int n2=n; if(bHalf){ n2=2*n; }
+    double* ps = new double[n2];
     double* fs = new double[n];
     double* vs = new double[n];
-    constexpr double B0=2.0/3.0;
-    constexpr double B1=1.0/6.0;
     int itr=0;
     for(int i=0; i<n; i++){ vs[i]=0.0; } // clear velocity
     //if( ckeckRange(n, 1, Gs, -1.e+6, +1.e+6, "Gs", true ) && ckeckRange(n, 1, Gs, -1.e+6, +1.e+6, "Gs", true ) ){ printf("ERROR in fit1D()=> exit\n"); exit(0); };
     bool bErr = false;
     double err2sum=0;
     for(itr=0; itr<nmaxiter; itr++){        
-        err2sum = getVariations1D(  n, Gs, Es, Ws, fs, ps );
+        if(bHalf){ err2sum = getVariations1D_half( n, Gs, Es, Ws, fs, ps ); }
+        else     { err2sum = getVariations1D(      n, Gs, Es, Ws, fs, ps ); }
         Vec3d cfv = move(dt,n,Gs,fs, vs );
         if(verbosity>2)printf( "|F[%i]|=%g cos(f,v)=%g\n",itr,sqrt(cfv.y), cfv.x/sqrt(cfv.y*cfv.z) );
         if(cfv.y<F2max){ break; };
