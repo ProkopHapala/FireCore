@@ -118,10 +118,13 @@ def getCos3D( Xs, Ys, Zs, freq=(np.pi,np.pi,np.pi) ):
 
 # ========= Grid sampling generator in 2D and 3D =========
 
-def make2Dsampling(  g0=(-5.0,2.0), gmax=(5.0,10.0), dg=(0.1,0.1) ):
+def make2Dsampling(  g0=(-5.0,2.0), gmax=(5.0,10.0), dg=(0.1,0.1), bSwapXY=False ):
     xs  = np.arange(g0[0], gmax[0], dg[0])
-    ys  = np.arange(g0[1], gmax[1], dg[0])
-    Xs,Ys = np.meshgrid(xs,ys)
+    ys  = np.arange(g0[1], gmax[1], dg[1])    
+    if bSwapXY:
+        Ys,Xs = np.meshgrid(ys,xs)
+    else:
+        Xs,Ys = np.meshgrid(xs,ys)
     return Xs,Ys
 
 def pack_ps2D( Xs, Ys):

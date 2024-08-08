@@ -625,17 +625,31 @@ void sample1D( const double g0, const double dg, const int ng, const double* Eg,
 
 __attribute__((hot)) 
 void sample2D( const Vec2d g0, const Vec2d dg, const Vec2i ng, const double* Eg, const int n, const Vec2d* ps, Vec3d* fes ){
+    printf( "sample2D() g0=(%g,%g) dg=(%g,%g) ng=(%i,%i) n=%i \n", g0.x,g0.y, dg.x,dg.y, ng.x,ng.y, n );
     Vec2d inv_dg; inv_dg.set_inv(dg); 
     for(int i=0; i<n; i++ ){
         const Vec2d t  = (ps[i] - g0)*inv_dg; 
-        const int ix = (int)t.x;
-        const int iy = (int)t.y;
-        //if( ((ix<0)||(ix>=ng.x-3)) || ((iy<0)||(iy>=ng.y-3)) )[[unlikely]]{ printf( "ERROR: Spline_Hermite::sample2D() ixyz(%i,%i) out of range 0 .. (%i,%i) p[%i](%g,%g)-> t(%g,%g)\n", ix,iy, ng.x,ng.y, i, ps[i].x,ps[i].y, t.x,t.y ); exit(0); }
-        const int i0 = ix + ng.x*iy;
-        Vec3d fe = fe2d( t.x-ix,t.y-iy, {i0,i0+ng.x,i0+ng.x*2,i0+ng.x*3}, Eg );        // sample2D(n=10000) time=527.478[kTick] 52.7478[tick/point]
-        //Vec3d fe = fe2d_v2( t.x-ix,t.y-iy, {i0,i0+ng.x,i0+ng.x*2,i0+ng.x*3}, Eg );   // sample2D(n=10000) time=553.47[kTick] 55.347[tick/point]
-        fe.x*=inv_dg.x;
-        fe.y*=inv_dg.x;
+        const int ix = ((int)t.x);
+        const int iy = ((int)t.y);
+        if( ((ix<1)||(ix>=ng.x-2)) || ((iy<1)||(iy>=ng.y-2)) )[[unlikely]]{ 
+            //printf( "ERROR: Spline_Hermite::sample2D() ixyz(%i,%i) out of range 0 .. (%i,%i) p[%i](%g,%g)-> t(%g,%g)\n", ix,iy, ng.x,ng.y, i, ps[i].x,ps[i].y, t.x,t.y ); exit(0); 
+            fes[i]=Vec3dZero;
+            continue;
+        }
+        //const int i0 = ix + ng.x*iy;
+        //const int i0 = (ix+1) + ng.x*(iy+1);
+        const int i0 = (ix-1) + ng.x*(iy-1);
+        
+        //Vec3d fe = fe2d( t.x-ix,t.y-iy, {i0,i0+ng.x,i0+ng.x*2,i0+ng.x*3}, Eg );        // sample2D(n=10000) time=527.478[kTick] 52.7478[tick/point]
+        Vec3d fe = fe2d_v2( t.x-ix,t.y-iy, {i0,i0+ng.x,i0+ng.x*2,i0+ng.x*3}, Eg );   // sample2D(n=10000) time=553.47[kTick] 55.347[tick/point]
+        //fe.x*=inv_dg.x;
+        //fe.y*=inv_dg.x;
+
+        //Vec3d fe{  0.0,0.0, Eg[ iy*ng.x + ix ] }; // Nearest interpolation
+        //Vec3d fe{  0.0,0.0, Eg[ ix*ng.y + iy ] }; // Nearest interpolation
+        //Vec3d fe{  0.0,0.0, iy  }; // Nearest interpolation
+        //Vec3d fe{  0.0,0.0, ix  }; // Nearest interpolation
+
         fes[i]=fe;
         //printf( "sample2D()[%i] ps(%g,%g) E=%g Fxy(%g,%g)\n", i, ps[i].x,ps[i].y,  fes[i].z,fes[i].x,fes[i].y );
     }
@@ -732,21 +746,32 @@ void sample1D_deriv_comb2( const double g0, const double dg, const int ng, const
 
 __attribute__((hot)) 
 void sample2D_deriv_comb( const Vec2d g0, const Vec2d dg, const Vec2i ng, const Quat4d* FEg, const int n, const Vec2d* ps, Vec3d* fes, Vec2d C ){
+    printf( "sample2D_deriv_comb() g0=(%g,%g) dg=(%g,%g) ng=(%i,%i) n=%i C(%g,%g)\n", g0.x,g0.y, dg.x,dg.y, ng.x,ng.y, n, C.x,C.y );
     Vec2d inv_dg; inv_dg.set_inv(dg); 
     for(int i=0; i<n; i++ ){
         const Vec2d t  = (ps[i] - g0)*inv_dg; 
         const int ix = (int)t.x;
         const int iy = (int)t.y;
-        //if( ((ix<0)||(ix>=ng.x-3)) || ((iy<0)||(iy>=ng.y-3)) )[[unlikely]]{ printf( "ERROR: Spline_Hermite::sample2D() ixyz(%i,%i) out of range 0 .. (%i,%i) p[%i](%g,%g)-> t(%g,%g)\n", ix,iy, ng.x,ng.y, i, ps[i].x,ps[i].y, t.x,t.y ); exit(0); }
-        const int i0 = ix + ng.x*iy;
-
+        if( ((ix<1)||(ix>=ng.x-2)) || ((iy<0)||(iy>=ng.y-1)) )[[unlikely]]{ 
+            //printf( "ERROR: Spline_Hermite::sample2D() ixyz(%i,%i) out of range 0 .. (%i,%i) p[%i](%g,%g)-> t(%g,%g)\n", ix,iy, ng.x,ng.y, i, ps[i].x,ps[i].y, t.x,t.y ); exit(0); 
+            fes[i] = Vec3d{0.0,0.0,0.0};
+            continue;
+        }
+        
         const double tx = t.x-ix;
         const double ty = t.y-iy;
         alignas(32) const Quat4d py  = Spline_Hermite::basis(ty);
         alignas(32) const Quat4d dy  = Spline_Hermite::dbasis(ty);
         alignas(32) const Quat4d bx  = Spline_Hermite::basis_val( tx );
         alignas(32) const Quat4d dx  = Spline_Hermite::dbasis_val( tx );
-        Vec3d fe = Spline_Hermite::fe2d_comb2( iy, ng.y, FEg+ix*ng.y, C, py, dy, bx, dx );
+        Vec3d fe = Spline_Hermite::fe2d_comb2( iy, ng.y, FEg+(ix-1)*ng.y, C, py, dy, bx, dx );
+        //Vec3d fe = Spline_Hermite::fe2d_comb2( iy-1, ng.y, FEg+(ix-1)*ng.y, C, py, dy, bx, dx );
+        
+
+        //ec3d fe{0.0,0.0, ix };
+        //Vec3d fe{0.0,0.0, iy };
+        //Vec3d fe{0.0,0.0, FEg[ ix*ng.y+iy ].x };
+        //Vec3d fe{0.0,0.0, FEg[ iy*ng.x+ix ].x };
 
         //fe2d_deriv( t.x-ix,t.y-iy, {i0,i0+ng.x}, Eg, dEg, fe );        // sample2D(n=10000) time=527.478[kTick] 52.7478[tick/point]
         //Vec3d fe = fe2d_v2( t.x-ix,t.y-iy, {i0,i0+ng.x,i0+ng.x*2,i0+ng.x*3}, Eg );   // sample2D(n=10000) time=553.47[kTick] 55.347[tick/point]

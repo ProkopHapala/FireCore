@@ -198,6 +198,14 @@ void sample_SplineHermite2D( double* g0, double* dg, int* ng, double* Eg, int n,
     double t = (getCPUticks()-t0); printf( "sample2D(n=%i) time=%g[kTick] %g[tick/point]\n", n, t*(1.e-3), t/n );
 }
 
+void sample_SplineHermite2D_comb( double* g0, double* dg, int* ng, double* Gs, int n, double* ps, double* fes, int ncomb, double* Cs ){
+    long t0 = getCPUticks();
+    switch ( ncomb ){
+        case 2: {  Spline_Hermite::sample2D_deriv_comb( *(Vec2d*)g0, *(Vec2d*)dg, *(Vec2i*)ng, (Quat4d*)Gs, n, (Vec2d*)ps, (Vec3d*)fes, *(Vec2d*)Cs );  } break;
+    }
+    double t = (getCPUticks()-t0); printf( "sample2D(n=%i) time=%g[kTick] %g[tick/point]\n", n, t*(1.e-3), t/n );
+}
+
 void sample_SplineHermite3D( double* g0, double* dg, int* ng, double* Eg, int n, double* ps, double* fes ){
     long t0 = getCPUticks();
     Spline_Hermite::sample3D    ( *(Vec3d*)g0, *(Vec3d*) dg, *(Vec3i*)ng, Eg, n, (Vec3d*)ps, (Quat4d*)fes );    // sample3D(n=10000) time=2490.29[kTick] 249.029[tick/point]
