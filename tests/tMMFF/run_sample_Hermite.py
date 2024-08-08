@@ -79,6 +79,52 @@ def test_1D( func, funcS, g0=2.0, gmax=10.0, dg=0.2, dsamp=0.02, scErr=100.0, ti
     if title is not None: plt.suptitle(title)
     #plt.show()
 
+'''
+def test_fit_2D( g0=(-5.0,2.0), gmax=(5.0,10.0), dg=(0.1,0.1), dsamp=(0.05,0.05) ):
+    #cmap="RdBu_r"
+    cmap="bwr"
+    #x0 = 2.0
+    #dx = 0.1
+    Xs,Ys   = fu.make2Dsampling(  g0=g0, gmax=gmax, dg=dg )
+    Xs_,Ys_ = fu.make2Dsampling(  g0=g0, gmax=gmax, dg=dsamp )
+
+    Xs_*=0.999999; Ys_*=0.999999;
+
+    sh_samp = Xs_.shape
+    ps      = fu.pack_ps2D( Xs_, Ys_)
+    #ps, sh_samp = make2Dsampling_ps(  g0=g0, gmax=gmax, dg=dsamp )
+
+    print( "Xs.shape ", Xs.shape )
+    
+    #E, Fx,Fy,Fz = getLJ_atoms( apos, REs, Xs,Ys,Xs*0.0 )
+
+    E,   Fx,  Fy   =  fu.getCos2D( Xs, Ys   )
+    E_r, Fx_r,Fy_r =  fu.getCos2D( Xs_, Ys_ )
+
+    #xs_ = np.arange(g0, gmax, dsamp)  ; nsamp=len(xs_)
+    Emin =  E.min()
+    Fmin = -Fy.max()
+    print( "Emin ", Emin," Fmin ", Fmin )
+
+
+    E_f = mmff.sample_Bspline2D( ps, Gs, g0, dg, fes=None  ).reshape(sh_samp+(3,))
+
+    Gmin = -np.abs(Gs).max()
+    dG = Gs-E                    ; dGmin = -np.abs(dG).max()
+    dE = E_f[:,:,2] - E_r[:,:]   ; dEmin = -np.abs(dE[4:-4,4:-4]).max()
+
+
+    extent=(g0[0],gmax[0],g0[1],gmax[1])
+    plt.figure(figsize=(15,10))
+    plt.subplot(2,3,1); plt.imshow( E,         origin="lower", extent=extent, vmin=Emin,  vmax=-Emin,  cmap=cmap ) ;plt.colorbar(); plt.title("Eg")
+    plt.subplot(2,3,2); plt.imshow( Gs,        origin="lower", extent=extent, vmin=Gmin,  vmax=-Gmin,  cmap=cmap ) ;plt.colorbar(); plt.title("Gs fit")
+    plt.subplot(2,3,3); plt.imshow( dG,        origin="lower", extent=extent, vmin=dGmin, vmax=-dGmin, cmap=cmap ) ;plt.colorbar(); plt.title("Gs-Eg")
+    
+    plt.subplot(2,3,4); plt.imshow( E_r,        origin="lower", extent=extent, vmin=Emin, vmax=-Emin,   cmap=cmap ) ;plt.colorbar(); plt.title("E  ref")
+    plt.subplot(2,3,5); plt.imshow( E_f[:,:,2], origin="lower", extent=extent, vmin=Emin, vmax=-Emin,   cmap=cmap ) ;plt.colorbar(); plt.title("E  fit")
+    plt.subplot(2,3,6); plt.imshow( dE,         origin="lower", extent=extent, vmin=dEmin, vmax=-dEmin, cmap=cmap ) ;plt.colorbar(); plt.title("E(fit-ref)")
+    plt.axis('equal')
+'''
 
 R0 = 3.5
 E0 = 1.0
