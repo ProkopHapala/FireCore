@@ -570,6 +570,7 @@ void sample1D( const double g0, const double dg, const int ng, const double* Eg,
     }
 }
 
+
 __attribute__((hot)) 
 void sample2D( const Vec2d g0, const Vec2d dg, const Vec2i ng, const double* Eg, const int n, const Vec2d* ps, Vec3d* fes ){
     Vec2d inv_dg; inv_dg.set_inv(dg); 
@@ -662,6 +663,23 @@ void sample1D_deriv( const double g0, const double dg, const int ng, const Vec2d
     }
 }
 
+void sample1D_deriv_comb2( const double g0, const double dg, const int ng, const Quat4d* FE, const int n, const double* ps, Vec2d* fes, Vec2d C  ){
+    const double inv_dg = 1/dg; 
+    for(int i=0; i<n; i++ ){
+        const double x = (ps[i] - g0)*inv_dg;  
+        const int    ix = (int)x;
+        const double tx =  x-ix; 
+        const Quat4d p  =  basis(tx);
+        const Quat4d d  = dbasis(tx);
+        const Quat4d a  = FE[ix  ];
+        const Quat4d b  = FE[ix+1];
+        const Quat4d cs{ a.x*C.x+a.z*C.y, b.x*C.x+b.z*C.y, (a.y*C.x+a.w*C.y)*dg, (b.y*C.x+b.w*C.y)*dg };
+        fes[i]=Vec2d{
+            p.dot( cs ),
+            d.dot( cs )*inv_dg,
+        };
+    }
+}
 
 // =============== AVX2 version
 

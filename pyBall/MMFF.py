@@ -297,10 +297,20 @@ def sample_Bspline3D( ps, Eg, g0, dg, fes=None):
 #void sample_SplineHermite( double g0, double dg, int ng, double* Eg, int n, double* xs, double* fes ){
 lib.sample_SplineHermite.argtypes  = [c_double, c_double, c_int, c_double_p, c_int, c_double_p, c_double_p ]
 lib.sample_SplineHermite.restype   =  None
-def sample_SplineHermite( xs, Eps, x0=0.0, dx=1.0, fes=None ):
+def sample_SplineHermite( xs, Eps, g0=0.0, dg=1.0, fes=None ):
     n = len(xs)
     if fes is None: fes=np.zeros((n,2))
-    lib.sample_SplineHermite(x0, dx, len(Eps), _np_as(Eps,c_double_p), n, _np_as(xs,c_double_p), _np_as(fes,c_double_p) )
+    lib.sample_SplineHermite(g0, dg, len(Eps), _np_as(Eps,c_double_p), n, _np_as(xs,c_double_p), _np_as(fes,c_double_p) )
+    return fes
+
+#void sample_SplineHermite_comb( double g0, double dg, int ng, double* Eg, int n, double* xs, double* fes, int ncomb, double* Cs ){
+lib.sample_SplineHermite_comb.argtypes  = [c_double, c_double, c_int, c_double_p, c_int, c_double_p, c_double_p, c_int, c_double_p ]
+lib.sample_SplineHermite_comb.restype   =  None
+def sample_SplineHermite_comb( xs, Eps, Cs, ncomb=2, g0=0.0, dg=1.0, fes=None ):
+    n = len(xs)
+    if fes is None: fes=np.zeros((n,2))
+    Cs = np.array(Cs,dtype=np.float64)
+    lib.sample_SplineHermite_comb(g0, dg, len(Eps), _np_as(Eps,c_double_p), n, _np_as(xs,c_double_p), _np_as(fes,c_double_p), ncomb, _np_as(Cs,c_double_p) )
     return fes
 
 #void sample1D_deriv( const double g0, const double dg, const int ng, const Vec2d* FE, const int n, const double* ps, Vec2d* fes ){

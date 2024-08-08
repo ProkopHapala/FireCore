@@ -185,6 +185,12 @@ void sample_SplineHermite( double g0, double dg, int ng, double* Eg, int n, doub
     Spline_Hermite::sample1D( g0,dg,ng,Eg, n, xs, (Vec2d*)fes );
 }
 
+void sample_SplineHermite_comb( double g0, double dg, int ng, double* Eg, int n, double* xs, double* fes, int ncomb, double* Cs ){
+    switch(ncomb){
+        case 2:{ Spline_Hermite::sample1D_deriv_comb2( g0,dg,ng,(Quat4d*)Eg, n, xs, (Vec2d*)fes, *(Vec2d*)Cs ); } break;
+    }
+}
+
 void sample_SplineHermite2D( double* g0, double* dg, int* ng, double* Eg, int n, double* ps, double* fes ){
     long t0 = getCPUticks();
     Spline_Hermite::sample2D( *(Vec2d*)g0, *(Vec2d*)dg, *(Vec2i*)ng, Eg, n, (Vec2d*)ps, (Vec3d*)fes );     //    54 [tick/point] with -Ofast

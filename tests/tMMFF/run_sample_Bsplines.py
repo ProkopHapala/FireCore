@@ -6,7 +6,7 @@ import matplotlib.pyplot as plt
 sys.path.append("../../")
 from pyBall import atomicUtils as au
 from pyBall import MMFF as mmff
-
+from pyBall import FunctionSampling as fu
 
 # =============
 
@@ -23,89 +23,6 @@ REs=[
 
 ### ==== ToDo: Extract these functions to GridUtils.py (?)
 
-def getCos( xs, freq ):
-    E =       np.cos( freq*xs )
-    F = -freq*np.sin( freq*xs )
-    return E,F
-
-def getCos2D( Xs, Ys, freq=(np.pi,np.pi) ):
-    E =           np.cos( freq[0]*Xs )*np.cos( freq[1]*Ys )
-    Fx = -freq[0]*np.sin( freq[0]*Xs )*np.cos( freq[1]*Ys )
-    Fy = -freq[1]*np.cos( freq[0]*Xs )*np.sin( freq[1]*Ys )
-    return E,Fx,Fy
-
-def getCos3D( Xs, Ys, Zs, freq=(np.pi,np.pi,np.pi) ):
-    fx,fy,fz = freq
-    cx = np.cos( fx*Xs );  sx = np.sin( fx*Xs )
-    cy = np.cos( fy*Ys );  sy = np.sin( fy*Ys )
-    cz = np.cos( fz*Zs );  sz = np.sin( fz*Zs )
-    E =           cx*cy*cz
-    Fx = -fx*sx*cy*cz
-    Fy = -fy*cx*sy*cz
-    Fz = -fz*cx*cy*sz
-    return E,Fx,Fy,Fz
-
-def getLJ( r, R0, E0 ):
-    #r = np.sqrt(x**2 + y**2 + z**2)
-    E  = E0*    ( (R0/r)**12 - 2*(R0/r)**6 )
-    fr = E0*-12*( (R0/r)**12 -   (R0/r)**6 )/(r*r)
-    return E,fr*r
-
-def getLJ_atoms( apos, REs, Xs,Ys,Zs ):
-    ng  = len(Xs)
-    #Es = np.zeros( ng )
-    #Fx = np.zeros( ng )
-    #Fy = np.zeros( ng )
-    #Fz = np.zeros( ng )
-    Es = Xs*0.0
-    Fx = Xs*0.0
-    Fy = Xs*0.0
-    Fz = Xs*0.0
-    for i,p in enumerate(apos):
-        print( p )
-        dx = Xs-p[0]
-        dy = Ys-p[1]
-        dz = Zs-p[2]
-        r = np.sqrt( dx**2 + dy**2 + dz**2 )
-        R0,E0 = REs[i]
-        E, fr = getLJ( r, R0, E0 )
-        Es += E
-        Fx += fr*dx/r
-        Fy += fr*dy/r
-        Fz += fr*dz/r
-    return Es, Fx,Fy,Fz
-
-def make2Dsampling(  g0=(-5.0,2.0), gmax=(5.0,10.0), dg=(0.1,0.1) ):
-    xs  = np.arange(g0[0], gmax[0], dg[0])
-    ys  = np.arange(g0[1], gmax[1], dg[0])
-    Xs,Ys = np.meshgrid(xs,ys)
-    return Xs,Ys
-
-def pack_ps2D( Xs, Ys):
-    ps = np.zeros( ( len(Xs.flat), 2) )
-    ps[:,0] = Xs.flat
-    ps[:,1] = Ys.flat
-    return ps
-
-def make2Dsampling_ps(  g0=(-5.0,2.0), gmax=(5.0,10.0), dg=(0.1,0.1) ):
-    Xs,Ys = make2Dsampling(  g0=g0, gmax=gmax, dg=dg )
-    sh = Xs.shape
-    ps = pack_ps2D( Xs, Ys)
-    return ps, sh
-
-def make3Dsampling(  g0=(-5.0,2.0), gmax=(5.0,10.0), dg=(0.1,0.1) ):
-    xs  = np.arange(g0[0], gmax[0], dg[0])
-    ys  = np.arange(g0[1], gmax[1], dg[0])
-    zs  = np.arange(g0[2], gmax[2], dg[2])
-    Xs,Ys,Zs = np.meshgrid(xs,ys,zs)
-    return Xs,Ys,Zs
-
-def pack_ps3D( Xs, Ys, Zs):
-    ps = np.zeros( ( len(Xs.flat), 3) )
-    ps[:,0] = Xs.flat
-    ps[:,1] = Ys.flat
-    ps[:,2] = Zs.flat
-    return ps
 
 def test_fit_1D( g0=2.0, gmax=10.0, dg=0.2, dsamp=0.02, bUseForce=True, scErr=100.0, bHalf=False, title=None ):
     #x0 = 2.0
@@ -116,8 +33,8 @@ def test_fit_1D( g0=2.0, gmax=10.0, dg=0.2, dsamp=0.02, bUseForce=True, scErr=10
     xsg=xs; 
     if bHalf: xsg=xs[::2]
     
-    E,F         = getLJ( xs,  3.5, 1.0 )
-    E_ref,F_ref = getLJ( xs_, 3.5, 1.0 )
+    E,F         = fu.getLJ( xs,  3.5, 1.0 )
+    E_ref,F_ref = fu.getLJ( xs_, 3.5, 1.0 )
     
     #E,F         = getCos( xs,  np.pi )
     #E_ref,F_ref = getCos( xs_, np.pi )
@@ -187,21 +104,21 @@ def test_fit_2D( g0=(-5.0,2.0), gmax=(5.0,10.0), dg=(0.1,0.1), dsamp=(0.05,0.05)
     cmap="bwr"
     #x0 = 2.0
     #dx = 0.1
-    Xs,Ys   = make2Dsampling(  g0=g0, gmax=gmax, dg=dg )
-    Xs_,Ys_ = make2Dsampling(  g0=g0, gmax=gmax, dg=dsamp )
+    Xs,Ys   = fu.make2Dsampling(  g0=g0, gmax=gmax, dg=dg )
+    Xs_,Ys_ = fu.make2Dsampling(  g0=g0, gmax=gmax, dg=dsamp )
 
     Xs_*=0.999999; Ys_*=0.999999;
 
     sh_samp = Xs_.shape
-    ps      = pack_ps2D( Xs_, Ys_)
+    ps      = fu.pack_ps2D( Xs_, Ys_)
     #ps, sh_samp = make2Dsampling_ps(  g0=g0, gmax=gmax, dg=dsamp )
 
     print( "Xs.shape ", Xs.shape )
     
     #E, Fx,Fy,Fz = getLJ_atoms( apos, REs, Xs,Ys,Xs*0.0 )
 
-    E,  Fx,Fy      =  getCos2D( Xs, Ys   )
-    E_r, Fx_r,Fy_r =  getCos2D( Xs_, Ys_ )
+    E,  Fx,Fy      =  fu.getCos2D( Xs, Ys   )
+    E_r, Fx_r,Fy_r =  fu.getCos2D( Xs_, Ys_ )
 
     #xs_ = np.arange(g0, gmax, dsamp)  ; nsamp=len(xs_)
     Emin =  E.min()
@@ -235,18 +152,18 @@ def test_fit_2D( g0=(-5.0,2.0), gmax=(5.0,10.0), dg=(0.1,0.1), dsamp=(0.05,0.05)
 
 def test_fit_3D( g0=(-5.0,-5.0,2.0), gmax=(5.0,-5.0,10.0), dg=(0.1,0.1,0.1), dsamp=(0.05,0.05,0.05) ):
     cmap="bwr"
-    Xs,Ys,Ys    = make3Dsampling(  g0=g0, gmax=gmax, dg=dg )
-    Xs_,Ys_,Ys_ = make3Dsampling(  g0=g0, gmax=gmax, dg=dsamp )
+    Xs,Ys,Ys    = fu.make3Dsampling(  g0=g0, gmax=gmax, dg=dg )
+    Xs_,Ys_,Ys_ = fu.make3Dsampling(  g0=g0, gmax=gmax, dg=dsamp )
 
     Xs_*=0.999999; Ys_*=0.999999; Zs_*=0.999999;
 
     sh_samp = Xs_.shape
-    ps      = pack_ps3D(Xs_,Ys_,Ys_)
+    ps      = fu.pack_ps3D(Xs_,Ys_,Ys_)
     #ps, sh_samp = make2Dsampling_ps(  g0=g0, gmax=gmax, dg=dsamp )
     print( "Xs.shape ", Xs.shape )
     #E, Fx,Fy,Fz = getLJ_atoms( apos, REs, Xs,Ys,Xs*0.0 )
-    E,  Fx,Fy      = getCos3D( Xs, Ys   )
-    E_r, Fx_r,Fy_r = getCos3D( Xs_, Ys_ )
+    E,  Fx,Fy      = fu.getCos3D( Xs, Ys   )
+    E_r, Fx_r,Fy_r = fu.getCos3D( Xs_, Ys_ )
 
     Emin =  E.min()
     Fmin = -Fy.max()
