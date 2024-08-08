@@ -335,6 +335,21 @@ def sample_SplineHermite2D_deriv( ps, Eg, dEg, g0, dg, fes=None):
     lib.sample_SplineHermite2D_deriv( _np_as(g0,c_double_p), _np_as(dg,c_double_p), _np_as(ng,c_int_p), _np_as(Eg,c_double_p), _np_as(dEg,c_double_p),  n, _np_as(ps,c_double_p), _np_as(fes,c_double_p) )
     return fes
 
+
+# void sample_SplineHermite2D_comb( double* g0, double* dg, int* ng, double* Gs, int n, double* ps, double* fes, int ncomb, double* Cs ){
+lib.sample_SplineHermite2D_comb.argtypes  = [c_double_p, c_double_p, c_int_p, c_double_p,  c_int, c_double_p, c_double_p, c_int, c_double_p ]
+lib.sample_SplineHermite2D_comb.restype   =  None
+def sample_SplineHermite2D_comb( ps, Gs, g0, dg, ncomb=2, fes=None, Cs=[1.0,1.0] ):
+    n = len(ps)
+    g0 = np.array(g0)
+    dg = np.array(dg)
+    #ng = np.array( Gs.shape[:2][::-1], np.int32 )
+    ng = np.array( Gs.shape[:2], np.int32 )    # y-axis should be fastest
+    C = np.array(Cs,dtype=np.float64)
+    if fes is None: fes=np.zeros((n,3))
+    lib.sample_SplineHermite2D_comb( _np_as(g0,c_double_p), _np_as(dg,c_double_p), _np_as(ng,c_int_p), _np_as(Gs,c_double_p), n,_np_as(ps,c_double_p), _np_as(fes,c_double_p), ncomb, _np_as(C,c_double_p) )
+    return fes
+
 #void sample_SplineHermite3D_deriv( double* g0, double* dg, int* ng, double* Eg, double* dEg, int n, double* ps, double* fes ){
 lib.sample_SplineHermite3D_deriv.argtypes  = [c_double_p, c_double_p, c_int_p, c_double_p, c_double_p,  c_int, c_double_p, c_double_p]
 lib.sample_SplineHermite3D_deriv.restype   =  None
@@ -354,7 +369,7 @@ def sample_SplineHermite2D( ps, Eg, g0, dg, fes=None):
     n = len(ps)
     g0 = np.array(g0)
     dg = np.array(dg)
-    ng = np.array( Eg.shape, np.int32 )
+    ng = np.array( Eg.shape[::-1], np.int32 )
     if fes is None: fes=np.zeros((n,3))
     lib.sample_SplineHermite2D( _np_as(g0,c_double_p), _np_as(dg,c_double_p), _np_as(ng,c_int_p), _np_as(Eg,c_double_p), n, _np_as(ps,c_double_p), _np_as(fes,c_double_p) )
     return fes
