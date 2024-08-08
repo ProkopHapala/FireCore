@@ -10,6 +10,7 @@ sys.path.append("../../")
 from pyBall import atomicUtils as au
 from pyBall import MMFF as mmff
 
+# script for optimization of hydrogen bond correction parameters with electron pairs using random search
 
 # =========== Setting
 
@@ -104,10 +105,14 @@ rndlims = np.array( [ [-0.01,0.01],  [-0.01,0.01], [-0.01,0.01]  ] )
 what = [
     [42,'Hb'],
     [11,'Hb'],
-    [2,'Qbase'],
+    [2 ,'Qbase'],
 ]
 
 def run_rnd_opt( typstr, fname, nitr = 1000, qH=0.2, qX=-0.2, xshift=-0.3, clr=None, bPlt=True, bPltW=True, errSc=10.0 ):
+    """
+    Ramdom Optimized / Monte Carlo
+       - ToDo: Put it in some shared file in pyBall
+    """
     atyps, ntyp = mmff.getAtomTypes() 
     indexes     = getOffsets(what)
     ref         = np.genfromtxt(ref_path+fname ); 
