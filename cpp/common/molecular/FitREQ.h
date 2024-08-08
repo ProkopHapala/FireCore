@@ -92,7 +92,7 @@ class FitREQ{ public:
     // parameters
     double Kneutral      = 1.0;
     //double max_step      = 0.1345;
-    double max_step      = 0.5; // maximal variation (in percentage) of any parameters allowed in one step during optimization
+    //double max_step      = 0.05; // maximal variation (in percentage) of any parameters allowed in one step during optimization
     double Rfac_tooClose = 0.0;
     double kMorse        = 1.6;
 
@@ -166,7 +166,7 @@ void tryRealocSamp(){
  * @param fname The name of the file to load.
  * @return The number of types loaded.
 */
-int loadTypeSelection( const char* fname ){
+int loadTypeSelection( const char* fname, int imodel ){
     FILE* fin = fopen( fname, "r" );
     if(fin==0){ printf("cannot open '%s' \n", fname ); exit(0);}
     const int nline=1024;
@@ -197,8 +197,32 @@ int loadTypeSelection( const char* fname ){
     }
     fclose(fin);
     //init_types( ntypesel, &typeMask[0], &tREQs[0], true );
-    init_types_new( ntypesel, &t[0], &typeMask[0] );
+    init_types_new( ntypesel, &t[0], &typeMask[0], imodel );
     return ntypesel;
+}
+
+int loadWeights( const char* fname ){
+    FILE* fin = fopen( fname, "r" );
+    if(fin==0){ printf("cannot open '%s' \n", fname ); exit(0);}
+    const int nline=1024;
+    char line[1024];
+    int n = 0;
+    while( fgets(line, nline, fin) ){
+        double w;
+        sscanf( line, "%g\n", &w ); 
+        n++;
+    }
+    fseek( fin, 0, SEEK_SET );
+    _realloc( weights, n );
+    int i = 0;
+    while( fgets(line, nline, fin) ){
+        double w;
+        sscanf( line, "%g\n", &w ); 
+        weights[i]=w;
+        i++;
+    }
+    fclose(fin);
+    return n;
 }
 
 /**
@@ -214,7 +238,7 @@ int loadTypeSelection( const char* fname ){
  * @param typeKreg An array of Quat4d objects representing the regularization stiffness for each type.
  * @return The number of degrees of freedom.
  */
-int init_types_new( int ntypesel, int* tsel, Quat4i* typeMask ){
+int init_types_new( int ntypesel, int* tsel, Quat4i* typeMask, int imodel ){
     int ntype_ = params->atypes.size();
     printf( "FitREQ::init_types_new() ntypesel=%i ntypes=%i \n", ntypesel, ntype_ );
     int nDOFs=0;
@@ -248,8 +272,13 @@ int init_types_new( int ntypesel, int* tsel, Quat4i* typeMask ){
     realloc(nDOFs);
     ntype = ntype_; 
     typeREQs    = new Quat4d[ntype]; for(int i=0; i<ntype; i++){ typeREQs[i]    = Quat4d{ params->atypes[i].RvdW, params->atypes[i].EvdW, params->atypes[i].Qbase, params->atypes[i].Hb }; }
-    typeREQsMin = new Quat4d[ntype]; for(int i=0; i<ntype; i++){ typeREQsMin[i] = Quat4d{ 0.0,    0.0,   -1e+300, -1e+300 }; }
-    typeREQsMax = new Quat4d[ntype]; for(int i=0; i<ntype; i++){ typeREQsMax[i] = Quat4d{ 1e+300, 1e+300, 1e+300,  1e+300 }; }
+    if((imodel==2)||(imodel==5)||(imodel==8)){
+        typeREQsMin = new Quat4d[ntype]; for(int i=0; i<ntype; i++){ typeREQsMin[i] = Quat4d{ 0.0,    0.0,   -1e+300, -1.0 }; }
+        typeREQsMax = new Quat4d[ntype]; for(int i=0; i<ntype; i++){ typeREQsMax[i] = Quat4d{ 1e+300, 1e+300, 1e+300,  1.0 }; }
+    }else{
+        typeREQsMin = new Quat4d[ntype]; for(int i=0; i<ntype; i++){ typeREQsMin[i] = Quat4d{ 0.0,    0.0,   -1e+300, -1e+300 }; }
+        typeREQsMax = new Quat4d[ntype]; for(int i=0; i<ntype; i++){ typeREQsMax[i] = Quat4d{ 1e+300, 1e+300, 1e+300,  1e+300 }; }
+    }
     typeREQs0   = new Quat4d[ntype]; for(int i=0; i<ntype; i++){ typeREQs0[i]   = typeREQs[i]; }
     typeKreg    = new Quat4d[ntype]; for(int i=0; i<ntype; i++){ typeKreg[i]    = Quat4dZero; }
     DOFsFromTypes(); 
@@ -498,8 +527,8 @@ double evalExampleDerivs_LJQ( int n, int* types, Vec3d* ps, double* aq, int nj=0
             double u2   = ir2 * ( R0 * R0 );
             double u4   = u2 * u2;
             double u6   = u4 * u2;
-            double dE_dR0 = 12.0 * eps / (R0+1e-300) * u6 * ( u6 - 1.0 );
             double dE_deps = u6 * ( u6 - 2.0 );
+            double dE_dR0 = 12.0 * eps / (R0+1e-300) * u6 * ( u6 - 1.0 );
             double ELJ   = eps * dE_deps;
             // --- Energy and forces
             Etot  += ELJ + Eel;
@@ -558,20 +587,20 @@ double evalExampleDerivs_LJQH( int n, int* types, Vec3d* ps, double* aq, int nj=
             double u2   = ir2 * ( R0 * R0 );
             double u4   = u2 * u2;
             double u6   = u4 * u2;
-            double dE_dR0  = 12.0 / (R0+1e-300) * u6 * (  eps * u6 - eps - H );
-            double dE_deps = u6 * ( u6 - 2.0 );
-            double dE_dH   = -2.0 * u6;
-            double ELJ   = eps * dE_deps + H * dE_dH;
+            double dE_deps = u6 * ( u6 - 2.0 * ( 1.0 + H ) );
+            double dE_dR0  = 12.0 * eps / (R0+1e-300) * u6 * (  u6 - 1.0 - H );
+            double dE_dH   = -2.0 * eps * u6;
+            double ELJ   = eps * dE_deps;
             // --- Energy and forces
             Etot  += ELJ + Eel;
             fsi.x += dE_dR0;                                // dEtot/dR0i
             fsi.y += dE_deps * 0.5 / (eps+1e-300) * REQj.y; // dEtot/depsi
             fsi.z += dE_dQ * jq[j];                         // dEtot/dQi
             fsi.w += dE_dH * H / (REQi.w+1e-300);           // dEtot/dHi
-            fsj.x = dE_dR0;                                // dEtot/dR0j
-            fsj.y = dE_deps * 0.5 / (eps+1e-300) * REQi.y; // dEtot/depsj
-            fsj.z = dE_dQ * aq[i];                         // dEtot/dQj
-            fsj.w = dE_dH * H / (REQj.w+1e-300);           // dEtot/dHj
+            fsj.x = dE_dR0;                                 // dEtot/dR0j
+            fsj.y = dE_deps * 0.5 / (eps+1e-300) * REQi.y;  // dEtot/depsj
+            fsj.z = dE_dQ * aq[i];                          // dEtot/dQj
+            fsj.w = dE_dH * H / (REQj.w+1e-300);            // dEtot/dHj
             fs[j].add(fsj);
 //printf( "debug i= %i j= %i fsi.x= %g fsi.y= %g fsi.z= %g fsi.w= %g fsj.x= %g fsj.y= %g fsj.z= %g fsj.w= %g\n", i, j, fsi.x, fsi.y, fsi.z, fsi.w, fsj.x, fsj.y, fsj.z, fsj.w );
         }
@@ -616,20 +645,20 @@ double evalExampleDerivs_LJQH2( int n, int* types, Vec3d* ps, double* aq, int nj
             double u2   = ir2 * ( R0 * R0 );
             double u4   = u2 * u2;
             double u6   = u4 * u2;
-            double dE_dR0  = 12.0 / (R0+1e-300) * u6 * ( ( eps - H) * u6 - eps );
-            double dE_deps = u6 * ( u6 - 2.0 );
-            double dE_dH   = -u6 * u6;
-            double ELJ     = eps * dE_deps + H * dE_dH;
+            double dE_deps = u6 * ( ( 1.0 - H ) * u6 - 2.0 );
+            double dE_dR0  = 12.0 * eps / (R0+1e-300) * u6 * ( ( 1.0 - H) * u6 - 1.0 );
+            double dE_dH   = -eps * u6 * u6;
+            double ELJ     = eps * dE_deps;
             // --- Energy and forces
             Etot  += ELJ + Eel;
             fsi.x += dE_dR0;                                // dEtot/dRi
             fsi.y += dE_deps * 0.5 / (eps+1e-300) * REQj.y; // dEtot/dEi
             fsi.z += dE_dQ * jq[j];                         // dEtot/dQi
             fsi.w += dE_dH * H / (REQi.w+1e-300);           // dEtot/dHi
-            fsj.x = dE_dR0;                                // dEtot/dRj
-            fsj.y = dE_deps * 0.5 / (eps+1e-300) * REQi.y; // dEtot/dEj
-            fsj.z = dE_dQ * aq[i];                         // dEtot/dQj
-            fsj.w = dE_dH * H / (REQj.w+1e-300);           // dEtot/dHj
+            fsj.x = dE_dR0;                                 // dEtot/dRj
+            fsj.y = dE_deps * 0.5 / (eps+1e-300) * REQi.y;  // dEtot/dEj
+            fsj.z = dE_dQ * aq[i];                          // dEtot/dQj
+            fsj.w = dE_dH * H / (REQj.w+1e-300);            // dEtot/dHj
             fs[j].add(fsj);
 //printf( "debug i= %i j= %i fsi.x= %g fsi.y= %g fsi.z= %g fsi.w= %g fsj.x= %g fsj.y= %g fsj.z= %g fsj.w= %g\n", i, j, fsi.x, fsi.y, fsi.z, fsi.w, fsj.x, fsj.y, fsj.z, fsj.w );
         }
@@ -733,7 +762,6 @@ double evalExampleDerivs_LJQH2( int n, int* types, Vec3d* ps, double* aq, int nj
     return Etot;
 }*/
 
-// TBD to be tested!
 double evalExampleDerivs_BuckQ(int n, int* types, Vec3d* ps, double* aq,  int nj=0, int* jtyp=0, Vec3d* jpos=0, double* jq=0  ){
     // the Buckingham potential can be written in the form:
     // E = epsilon * { 6/(alpha-6) * exp[alpha*(1-r/R0)] - alpha/(alpha-6) * (R0/r)^6 }
@@ -772,17 +800,17 @@ double evalExampleDerivs_BuckQ(int n, int* types, Vec3d* ps, double* aq,  int nj
             // --- Buckingham
             double iu1 = 1.0 / u1;
             double e = exp( alpha * ( 1.0 - iu1 ) );
-            double dE_dR0 = 6.0 * eps / (R0+1e-300) * ( ia6 * iu1 * e - alpha * ia6 * u6 );
-            double dE_deps = 6.0 * ia6 * e - alpha * ia6 * u6;
+            double dE_deps = ia6 * ( 6.0 * e - alpha * u6 );
+            double dE_dR0 = 6.0 * eps * alpha / (R0+1e-300) * ia6 * ( iu1 * e - u6 );
             double EBuck   = eps * dE_deps;
             // --- Energy and forces
             Etot  += EBuck + Eel;
             fsi.x += dE_dR0;                                // dEtot/dR0i
             fsi.y += dE_deps * 0.5 / (eps+1e-300) * REQj.y; // dEtot/depsi
             fsi.z += dE_dQ * jq[j];                         // dEtot/dQi
-            fsj.x = dE_dR0;                                // dEtot/dR0j
-            fsj.y = dE_deps * 0.5 / (eps+1e-300) * REQi.y; // dEtot/depsj
-            fsj.z = dE_dQ * aq[i];                         // dEtot/dQj
+            fsj.x = dE_dR0;                                 // dEtot/dR0j
+            fsj.y = dE_deps * 0.5 / (eps+1e-300) * REQi.y;  // dEtot/depsj
+            fsj.z = dE_dQ * aq[i];                          // dEtot/dQj
             fs[j].add(fsj);
 //printf( "debug i= %i j= %i fsi.x= %g fsi.y= %g fsi.z= %g fsi.w= %g fsj.x= %g fsj.y= %g fsj.z= %g fsj.w= %g\n", i, j, fsi.x, fsi.y, fsi.z, fsi.w, fsj.x, fsj.y, fsj.z, fsj.w );
         }
@@ -792,7 +820,6 @@ double evalExampleDerivs_BuckQ(int n, int* types, Vec3d* ps, double* aq,  int nj
     return Etot;
 }
 
-// TBD to be tested!
 double evalExampleDerivs_BuckQH(int n, int* types, Vec3d* ps, double* aq,  int nj=0, int* jtyp=0, Vec3d* jpos=0, double* jq=0  ){
     // the Buckingham potential can be written in the form:
     // E = epsilon * { 6/(alpha-6) * exp[alpha*(1-r/R0)] - alpha/(alpha-6) * (R0/r)^6 }
@@ -832,20 +859,20 @@ double evalExampleDerivs_BuckQH(int n, int* types, Vec3d* ps, double* aq,  int n
             // --- Buckingham
             double iu1 = 1.0 / u1;
             double e = exp( alpha * ( 1.0 - iu1 ) );
-            double dE_dR0 = 6.0 * alpha * ia6 / (R0+1e-300) * ( eps * iu1 * e - ( eps + H ) * u6 );
-            double dE_deps = 6.0 * ia6 * e - alpha * ia6 * u6;
-            double dE_dH   = -alpha * ia6 * u6;
-            double EBuck   = eps * dE_deps + H * dE_dH;
+            double dE_deps = ia6 * ( 6.0 * e - alpha * ( 1.0 + H ) * u6 );
+            double dE_dR0 = 6.0 * eps * alpha * ia6 / (R0+1e-300) * ( iu1 * e - ( 1.0 + H ) * u6 );
+            double dE_dH   = -eps * alpha * ia6 * u6;
+            double EBuck   = eps * dE_deps;
             // --- Energy and forces
             Etot  += EBuck + Eel;
             fsi.x += dE_dR0;                                // dEtot/dR0i
             fsi.y += dE_deps * 0.5 / (eps+1e-300) * REQj.y; // dEtot/depsi
             fsi.z += dE_dQ * jq[j];                         // dEtot/dQi
             fsi.w += dE_dH * H / (REQi.w+1e-300);           // dEtot/dHi
-            fsj.x = dE_dR0;                                // dEtot/dR0j
-            fsj.y = dE_deps * 0.5 / (eps+1e-300) * REQi.y; // dEtot/depsj
-            fsj.z = dE_dQ * aq[i];                         // dEtot/dQj
-            fsj.w = dE_dH * H / (REQj.w+1e-300);           // dEtot/dHj
+            fsj.x = dE_dR0;                                 // dEtot/dR0j
+            fsj.y = dE_deps * 0.5 / (eps+1e-300) * REQi.y;  // dEtot/depsj
+            fsj.z = dE_dQ * aq[i];                          // dEtot/dQj
+            fsj.w = dE_dH * H / (REQj.w+1e-300);            // dEtot/dHj
             fs[j].add(fsj);
 //printf( "debug i= %i j= %i fsi.x= %g fsi.y= %g fsi.z= %g fsi.w= %g fsj.x= %g fsj.y= %g fsj.z= %g fsj.w= %g\n", i, j, fsi.x, fsi.y, fsi.z, fsi.w, fsj.x, fsj.y, fsj.z, fsj.w );
         }
@@ -855,7 +882,6 @@ double evalExampleDerivs_BuckQH(int n, int* types, Vec3d* ps, double* aq,  int n
     return Etot;
 }
 
-// TBD to be tested!
 double evalExampleDerivs_BuckQH2(int n, int* types, Vec3d* ps, double* aq,  int nj=0, int* jtyp=0, Vec3d* jpos=0, double* jq=0  ){
     // the Buckingham potential can be written in the form:
     // E = epsilon * { 6/(alpha-6) * exp[alpha*(1-r/R0)] - alpha/(alpha-6) * (R0/r)^6 }
@@ -895,20 +921,20 @@ double evalExampleDerivs_BuckQH2(int n, int* types, Vec3d* ps, double* aq,  int 
             // --- Buckingham
             double iu1 = 1.0 / u1;
             double e = exp( alpha * ( 1.0 - iu1 ) );
-            double dE_dR0 = 6.0 * alpha * ia6 / (R0+1e-300) * ( ( eps - H ) * iu1 * e - eps * u6 );
-            double dE_deps = 6.0 * ia6 * e - alpha * ia6 * u6;
-            double dE_dH   = -6.0 * ia6 * e;
-            double EBuck   = eps * dE_deps + H * dE_dH;
+            double dE_deps = ia6 * ( 6.0 * ( 1.0 - H ) * e - alpha * u6 );
+            double dE_dR0 = 6.0 * eps * alpha * ia6 / (R0+1e-300) * ( ( 1.0 - H ) * iu1 * e - u6 );
+            double dE_dH   = -6.0 * eps * ia6 * e;
+            double EBuck   = eps * dE_deps;
             // --- Energy and forces
             Etot  += EBuck + Eel;
             fsi.x += dE_dR0;                                // dEtot/dR0i
             fsi.y += dE_deps * 0.5 / (eps+1e-300) * REQj.y; // dEtot/depsi
             fsi.z += dE_dQ * jq[j];                         // dEtot/dQi
             fsi.w += dE_dH * H / (REQi.w+1e-300);           // dEtot/dHi
-            fsj.x = dE_dR0;                                // dEtot/dR0j
-            fsj.y = dE_deps * 0.5 / (eps+1e-300) * REQi.y; // dEtot/depsj
-            fsj.z = dE_dQ * aq[i];                         // dEtot/dQj
-            fsj.w = dE_dH * H / (REQj.w+1e-300);           // dEtot/dHj
+            fsj.x = dE_dR0;                                 // dEtot/dR0j
+            fsj.y = dE_deps * 0.5 / (eps+1e-300) * REQi.y;  // dEtot/depsj
+            fsj.z = dE_dQ * aq[i];                          // dEtot/dQj
+            fsj.w = dE_dH * H / (REQj.w+1e-300);            // dEtot/dHj
             fs[j].add(fsj);
 //printf( "debug i= %i j= %i fsi.x= %g fsi.y= %g fsi.z= %g fsi.w= %g fsj.x= %g fsj.y= %g fsj.z= %g fsj.w= %g\n", i, j, fsi.x, fsi.y, fsi.z, fsi.w, fsj.x, fsj.y, fsj.z, fsj.w );
         }
@@ -998,7 +1024,6 @@ double evalExampleDerivs_BuckQH2(int n, int* types, Vec3d* ps, double* aq,  int 
     return Etot;
 }*/
 
-// TBD to be tested!
 double evalExampleDerivs_MorseQ(int n, int* types, Vec3d* ps, double* aq,   int nj=0, int* jtyp=0, Vec3d* jpos=0, double* jq=0  ){
     // the Morse potential can be written in the form:
     // E = epsilon * { exp[-2*alpha*(r-R0)] - 2 * exp[-alpha*(r-R0)] }
@@ -1032,17 +1057,17 @@ double evalExampleDerivs_MorseQ(int n, int* types, Vec3d* ps, double* aq,   int 
             double r     = 1.0 / ir;
             double e = exp( -alpha * ( r - R0 ) );
             double e2 = e * e;
-            double dE_dR0 = 2.0 * alpha * eps * ( e2 - e );
             double dE_deps = e2 - 2.0 * e;
+            double dE_dR0 = 2.0 * alpha * eps * ( e2 - e );
             double EMorse  = eps * dE_deps;
             // --- Energy and forces
             Etot  += EMorse + Eel;
             fsi.x += dE_dR0;                                // dEtot/dR0i
             fsi.y += dE_deps * 0.5 / (eps+1e-300) * REQj.y; // dEtot/depsi
             fsi.z += dE_dQ * jq[j];                         // dEtot/dQi
-            fsj.x = dE_dR0;                                // dEtot/dR0j
-            fsj.y = dE_deps * 0.5 / (eps+1e-300) * REQi.y; // dEtot/depsj
-            fsj.z = dE_dQ * aq[i];                         // dEtot/dQj
+            fsj.x = dE_dR0;                                 // dEtot/dR0j
+            fsj.y = dE_deps * 0.5 / (eps+1e-300) * REQi.y;  // dEtot/depsj
+            fsj.z = dE_dQ * aq[i];                          // dEtot/dQj
             fs[j].add(fsj);
 //printf( "debug i= %i j= %i fsi.x= %g fsi.y= %g fsi.z= %g fsi.w= %g fsj.x= %g fsj.y= %g fsj.z= %g fsj.w= %g\n", i, j, fsi.x, fsi.y, fsi.z, fsi.w, fsj.x, fsj.y, fsj.z, fsj.w );
         }
@@ -1081,29 +1106,25 @@ double evalExampleDerivs_MorseQH(int n, int* types, Vec3d* ps, double* aq,   int
             double ir      = sqrt( ir2 );
             double dE_dQ   = ir * COULOMB_CONST;
             double Eel     = Q * dE_dQ;
-            // --- Lennard-Jones
-            double u2   = ir2 * ( R0 * R0 );
-            double u4   = u2 * u2;
-            double u6   = u4 * u2;
             // --- Morse
             double alpha = 6.0 / R0;
             double r     = 1.0 / ir;
             double e = exp( -alpha * ( r - R0 ) );
             double e2 = e * e;
-            double dE_dR0 = 2.0 * alpha * ( eps * e2 - ( eps + H ) * e );
-            double dE_deps = e2 - 2.0 * e;
-            double dE_dH   = -2.0 * e;
-            double EMorse  = eps * dE_deps + H * dE_dH;
+            double dE_deps = e2 - 2.0 * ( 1.0 + H ) * e;
+            double dE_dR0 = 2.0 * alpha * eps * ( e2 - ( 1.0 + H ) * e );
+            double dE_dH   = -2.0 * eps * e;
+            double EMorse  = eps * dE_deps;
             // --- Energy and forces
             Etot  += EMorse + Eel;
             fsi.x += dE_dR0;                                // dEtot/dR0i
             fsi.y += dE_deps * 0.5 / (eps+1e-300) * REQj.y; // dEtot/depsi
             fsi.z += dE_dQ * jq[j];                         // dEtot/dQi
             fsi.w += dE_dH * H / (REQi.w+1e-300);           // dEtot/dHi
-            fsj.x = dE_dR0;                                // dEtot/dR0j
-            fsj.y = dE_deps * 0.5 / (eps+1e-300) * REQi.y; // dEtot/depsj
-            fsj.z = dE_dQ * aq[i];                         // dEtot/dQj
-            fsj.w = dE_dH * H / (REQj.w+1e-300);           // dEtot/dHj
+            fsj.x = dE_dR0;                                 // dEtot/dR0j
+            fsj.y = dE_deps * 0.5 / (eps+1e-300) * REQi.y;  // dEtot/depsj
+            fsj.z = dE_dQ * aq[i];                          // dEtot/dQj
+            fsj.w = dE_dH * H / (REQj.w+1e-300);            // dEtot/dHj
             fs[j].add(fsj);
 //printf( "debug i= %i j= %i fsi.x= %g fsi.y= %g fsi.z= %g fsi.w= %g fsj.x= %g fsj.y= %g fsj.z= %g fsj.w= %g\n", i, j, fsi.x, fsi.y, fsi.z, fsi.w, fsj.x, fsj.y, fsj.z, fsj.w );
         }
@@ -1142,29 +1163,25 @@ double evalExampleDerivs_MorseQH2(int n, int* types, Vec3d* ps, double* aq,   in
             double ir      = sqrt( ir2 );
             double dE_dQ   = ir * COULOMB_CONST;
             double Eel     = Q * dE_dQ;
-            // --- Lennard-Jones
-            double u2   = ir2 * ( R0 * R0 );
-            double u4   = u2 * u2;
-            double u6   = u4 * u2;
             // --- Morse
             double alpha = 6.0 / R0;
             double r     = 1.0 / ir;
             double e = exp( -alpha * ( r - R0 ) );
             double e2 = e * e;
-            double dE_dR0 = 2.0 * alpha * ( ( eps - H ) * e2 - eps * e );
-            double dE_deps = e2 - 2.0 * e;
-            double dE_dH   = -e2;
-            double EMorse  = eps * dE_deps + H * dE_dH;
+            double dE_deps = ( 1.0 - H ) * e2 - 2.0 * e;
+            double dE_dR0 = 2.0 * alpha * eps * ( ( 1.0 - H ) * e2 - e );
+            double dE_dH   = - eps * e2;
+            double EMorse  = eps * dE_deps;
             // --- Energy and forces
             Etot  += EMorse + Eel;
             fsi.x += dE_dR0;                                // dEtot/dR0i
             fsi.y += dE_deps * 0.5 / (eps+1e-300) * REQj.y; // dEtot/depsi
             fsi.z += dE_dQ * jq[j];                         // dEtot/dQi
             fsi.w += dE_dH * H / (REQi.w+1e-300);           // dEtot/dHi
-            fsj.x = dE_dR0;                                // dEtot/dR0j
-            fsj.y = dE_deps * 0.5 / (eps+1e-300) * REQi.y; // dEtot/depsj
-            fsj.z = dE_dQ * aq[i];                         // dEtot/dQj
-            fsj.w = dE_dH * H / (REQj.w+1e-300);           // dEtot/dHj
+            fsj.x = dE_dR0;                                 // dEtot/dR0j
+            fsj.y = dE_deps * 0.5 / (eps+1e-300) * REQi.y;  // dEtot/depsj
+            fsj.z = dE_dQ * aq[i];                          // dEtot/dQj
+            fsj.w = dE_dH * H / (REQj.w+1e-300);            // dEtot/dHj
             fs[j].add(fsj);
 //printf( "debug i= %i j= %i fsi.x= %g fsi.y= %g fsi.z= %g fsi.w= %g fsj.x= %g fsj.y= %g fsj.z= %g fsj.w= %g\n", i, j, fsi.x, fsi.y, fsi.z, fsi.w, fsj.x, fsj.y, fsj.z, fsj.w );
         }
@@ -1225,7 +1242,7 @@ void limit_params(){
  * @param dt The time step to be limited.
  * @return The limited time step.
  */
-double limit_dt(double dt){
+double limit_dt(double dt, double max_step){
     double fm=0;
     int ifm;
     //for(int i=0; i<nDOFs; i++){fm=_max(fm,fabs(fDOFs[i]));}
@@ -1244,10 +1261,10 @@ double limit_dt(double dt){
  * @param dt The time step ( the higher the value, the faster the convergence, but the less stable the algorithm is).
  * @return Sum of squares of the variatinal derivatives of the fitting error with respect to all fitting parameters.
  */
-double move_GD( double dt ){
+double move_GD( double dt, double max_step ){
     //printf("now in move_GD\n");
     double F2 = 0;
-    if(max_step>0){ dt=limit_dt(dt);};
+    dt=limit_dt(dt,max_step);
     for(int i=0; i<nDOFs; i++){
         double f = fDOFs[i];
         DOFs[i] -= f*dt;
@@ -1256,26 +1273,24 @@ double move_GD( double dt ){
     return F2;
 }
 
-double move_GD_BB( int step, double dt ){
+// compute optimal dt according to the Barzilai-Borwein method
+double move_GD_BB_short( int step, double dt, double max_step ){
     double F2 = 0;
-    // compute optimal dt according to the Barzilai-Borwein method
     if(step>0){
-        //double dxdx = 0.0;
         double dxdg = 0.0;
         double dgdg = 0.0;
         for(int i=0; i<nDOFs; i++){
             double dx = DOFs[i] - DOFs_old[i];
             double dg = fDOFs[i] - fDOFs_old[i];
-            //dxdx += dx*dx;
             dxdg += dx*dg;
             dgdg += dg*dg;
         }
-        //dt = dxdx/fabs(dxdg); // long BB step
-        dt = fabs(dxdg)/dgdg; // short BB step
-        //dt = dxdx/dxdg; // long BB step
-        //dt = dxdg/dgdg; // short BB step
+        dt = fabs(dxdg)/dgdg;
+        //dt = dxdg/dgdg;
+        if(fabs(dxdg)<=1e-10*dgdg){dt=1e-11;}
     }
-    if(max_step>0){ dt=limit_dt(dt);};
+    dt=limit_dt(dt,max_step);
+    printf("step= %i dt= %g\n", step, dt );
     for(int i=0; i<nDOFs; i++){
         DOFs_old[i] = DOFs[i];
         fDOFs_old[i] = fDOFs[i];
@@ -1283,7 +1298,36 @@ double move_GD_BB( int step, double dt ){
         DOFs[i] -= f*dt;
         F2 += f*f;
     }
+    // stop the algorithm if the step is too small
+    if(dt<1e-10){ return -F2; }
+    return F2;
+}
+
+// compute optimal dt according to the Barzilai-Borwein method
+double move_GD_BB_long( int step, double dt, double max_step ){
+    double F2 = 0;
+    if(step>0){
+        double dxdx = 0.0;
+        double dxdg = 0.0;
+        for(int i=0; i<nDOFs; i++){
+            double dx = DOFs[i] - DOFs_old[i];
+            double dg = fDOFs[i] - fDOFs_old[i];
+            dxdx += dx*dx;
+            dxdg += dx*dg;
+        }
+        dt = dxdx/fabs(dxdg); // long BB step
+        //dt = dxdx/dxdg; // long BB step
+        if(dxdx<=1e-10*fabs(dxdg)){dt=1e-11;}
+    }
+    dt=limit_dt(dt,max_step);
     printf("step= %i dt= %g\n", step, dt );
+    for(int i=0; i<nDOFs; i++){
+        DOFs_old[i] = DOFs[i];
+        fDOFs_old[i] = fDOFs[i];
+        double f = fDOFs[i];
+        DOFs[i] -= f*dt;
+        F2 += f*f;
+    }
     // stop the algorithm if the step is too small
     if(dt<1e-10){ return -F2; }
     return F2;

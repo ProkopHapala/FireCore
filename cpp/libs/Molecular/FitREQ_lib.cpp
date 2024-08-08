@@ -25,8 +25,12 @@ void init_types(int ntyp, int* typeMask, double* typREQs, bool bCopy ){
     W.init_types( ntyp, (Quat4i*)typeMask, (Quat4d*)typREQs, bCopy );
 }
 
-int loadTypeSelection( const char* fname ){
-    return W.loadTypeSelection( fname );
+int loadTypeSelection( const char* fname, int imodel ){
+    return W.loadTypeSelection( fname, imodel );
+}
+
+int loadWeights( const char* fname ){
+    return W.loadWeights( fname );
 }
 
 void setSystem( int isys, int na, int* types, double* ps, bool bCopy=false ){
@@ -68,7 +72,7 @@ void setWeights( int n, double* weights ){
    //for(int i=0; i<n; i++){ printf("lib.weights[%i]=%g\n",i,W.weights[i]); }       
 }
 
-double run( int imodel,  int nstep, double Fmax, double dt, int ialg, int isampmode, bool bRegularize, bool bClamp ){
+double run( int nstep, double Fmax, double dt, int imodel, int isampmode, int ialg, bool bRegularize, bool bClamp, double max_step){
     W.imodel=imodel;
     double Err=0;
     printf( "run( nstep %i Fmax %g dt %g isamp %i )\n", nstep, Fmax, dt, isampmode  );
@@ -87,9 +91,10 @@ double run( int imodel,  int nstep, double Fmax, double dt, int ialg, int isampm
         printf("step= %i DOFs= ", i);for(int j=0;j<W.nDOFs;j++){ printf("%g ",W.DOFs[j]); };printf("\n");
         printf("step= %i fDOFs= ", i);for(int j=0;j<W.nDOFs;j++){ printf("%g ",W.fDOFs[j]); };printf("\n");
         switch(ialg){
-            //case 0: F2 = W.move_GD( dt ); break;
-            case 0: F2 = W.move_GD_BB( i, dt ); break;
-            case 1: F2 = W.move_MD( dt ); break;
+            case 0: F2 = W.move_GD( dt, max_step ); break;
+            case 1: F2 = W.move_MD( dt, max_step ); break;
+            case 2: F2 = W.move_GD_BB_short( i, dt, max_step ); break;
+            case 3: F2 = W.move_GD_BB_long( i, dt, max_step ); break;
         }
         // regularization must be done before evaluation of derivatives
         if(bRegularize){ W.regularization_force(); }
@@ -97,10 +102,11 @@ double run( int imodel,  int nstep, double Fmax, double dt, int ialg, int isampm
         //printf("step= %i dt= %g\n", i, dt );
         printf("step= %i RMSE= %g |F|= %g\n", i, sqrt(Err), sqrt(abs(F2)) );
         printf("[%i]\n", i );
-        if( F2<0.0 ){ printf("DYNAMICS STOPPED after %i iterations \n", i); printf("FINAL DOFs= ");for(int j=0;j<W.nDOFs;j++){ printf("%g ",W. DOFs[j]); };printf("\n"); return Err; }
-        if( F2<F2max ){ printf("CONVERGED in %i iterations \n", i); printf("FINAL DOFs= ");for(int j=0;j<W.nDOFs;j++){ printf("%g ",W. DOFs[j]); };printf("\n"); return Err; }
+        if( F2<0.0 ){ printf("DYNAMICS STOPPED after %i iterations \n", i); printf("VERY FINAL DOFs= ");for(int j=0;j<W.nDOFs;j++){ printf("%.15g ",W. DOFs[j]); };printf("\n"); return Err; }
+        if( F2<F2max ){ printf("CONVERGED in %i iterations \n", i); printf("VERY FINAL DOFs= ");for(int j=0;j<W.nDOFs;j++){ printf("%.15g ",W. DOFs[j]); };printf("\n"); return Err; }
     }
     printf("step= %i DOFs= ", nstep);for(int j=0;j<W.nDOFs;j++){ printf("%g ",W. DOFs[j]); };printf("\n");
+    printf("VERY FINAL DOFs= ");for(int j=0;j<W.nDOFs;j++){ printf("%.15g ",W. DOFs[j]); };printf("\n");
     return Err;
 }
 
@@ -108,12 +114,14 @@ void setType(int i, double* REQ ){ W.setType( i, *(Quat4d*)REQ ); }
 void getType(int i, double* REQ ){ W.getType( i, *(Quat4d*)REQ ); }
 
 double getEs( int imodel, double* Es, int isampmode ){
+    //printf("USED DOFs= ");for(int j=0;j<W.nDOFs;j++){ printf("%g ",W. DOFs[j]); };printf("\n");
     W.imodel=imodel;
     switch(isampmode){
         case 0: return W.evalDerivsRigid( Es ); break;
         case 1: return W.evalDerivs     ( Es ); break;
         case 2: return W.evalDerivsSamp ( Es ); break;
     }
+    //printf("FINAL DOFs= ");for(int j=0;j<W.nDOFs;j++){ printf("%g ",W. DOFs[j]); };printf("\n");
     return 0;
 }
 

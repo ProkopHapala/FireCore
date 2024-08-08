@@ -95,10 +95,10 @@ def setWeights(weights):
     return lib.setWeights(n, _np_as(weights,c_double_p))
 
 #  double run( int nstep, double ErrMax, double dt, bool bRigid ){
-lib.run.argtypes  = [c_int, c_int, c_double, c_double, c_int, c_int, c_bool, c_bool ] 
+lib.run.argtypes  = [c_int, c_double, c_double, c_int, c_int, c_int, c_bool, c_bool, c_double ] 
 lib.run.restype   =  c_double
-def run( nstep, ErrMax=1e-6, dt=0.1, imodel=1, isampmode=2, ialg=1, bRegularize=False, bClamp=False ):
-    return lib.run(imodel, nstep, ErrMax, dt, ialg, isampmode, bRegularize, bClamp )
+def run( nstep=1000, ErrMax=1e-8, dt=0.01, imodel=0, isampmode=2, ialg=0, bRegularize=False, bClamp=False, max_step=0.05 ):
+    return lib.run( nstep, ErrMax, dt, imodel, isampmode, ialg, bRegularize, bClamp, max_step )
 
 #void getEs( double* Es, bool bRigid ){
 lib.getEs.argtypes  = [ c_int, c_double_p,  c_int] 
@@ -136,10 +136,16 @@ def loadTypes_new( fEtypes="data/ElementTypes.dat", fAtypes="data/AtomTypes.dat"
     return lib.loadTypes_new( cstr(fEtypes), cstr(fAtypes) )
 
 # int loadTypeSelection( const char* fname ){
-lib.loadTypeSelection.argtypes  = [c_char_p ]
+lib.loadTypeSelection.argtypes  = [ c_char_p, c_int ]
 lib.loadTypeSelection.restype   =  c_int
-def loadTypeSelection( fname="typeSelection.dat" ):
-    return lib.loadTypeSelection( cstr(fname) )
+def loadTypeSelection( fname="typeSelection.dat", imodel=1 ):
+    return lib.loadTypeSelection( cstr(fname), imodel )
+
+#void loadWeights( const char* fname ){
+lib.loadWeights.argtypes  = [ c_char_p ]
+lib.loadWeights.restype   =  c_int
+def loadWeights( fname="weights.dat" ):
+    return lib.loadWeights( cstr(fname) )
 
 # int loadXYZ_new( const char* fname, const char* fname_AtomTypes  ){
 lib.loadXYZ_new.argtypes  = [c_char_p, c_bool, c_bool ]
