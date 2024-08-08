@@ -3,22 +3,52 @@ import numpy as np
 
 
 
+
+def numDeriv( Es, xs ):
+    F = (Es[2:] - Es[:-2])/(xs[2:] - xs[:-2])
+    return F
+
+
+def checkNumDeriv( func, xmin, xmax, tol=1e-6, n=100, errSc=100.0, plt=None, label="", c=None ):    
+    xs = np.linspace(xmin, xmax, n )
+    Es, Fs = func(xs)
+    Fnum   = numDeriv(Es,xs)
+    #print( "checkNumDeriv Fs.shape, Fnum.shape ", Fs.shape, Fnum.shape )
+    Fs   *= -1.0
+    Fnum *= -1.0
+    err    = Fnum - Fs[1:-1]
+    errTot = np.max( np.abs(err) )
+    if plt is not None:
+        plt.plot(xs,       Fs   ,'-',c=c,lw=0.5,label=label+" Fana")
+        plt.plot(xs[1:-1], Fnum ,':',c=c,lw=2.0,label=label+" Fnum")
+        plt.plot(xs[1:-1], err  ,'--',c=c,lw=0.5,label=(label+" Error*%g" %errSc) )
+        plt.axhline(0,ls="--",c="k")
+        plt.legend()
+        plt.grid()
+        Fmin = np.min( Fnum )
+        #print( "Fmin", Fmin )
+        plt.ylim(Fmin,-Fmin)
+    print( "checkNumDeriv maxError : ", errTot )
+    if errTot > tol: return False
+    return True
+    
+
 # ========= Morse Potential =========
 
 def getMorse( r, R0, E0, a=1.7 ):
     #r = np.sqrt(x**2 + y**2 + z**2)
     e = np.exp( -a*(r-R0) )
-    E  =     E0*(e*e - 2*e )
-    fr = 2*a*E0*(e*e -   e ) 
-    return E,fr*r
+    E  =      E0*(e*e - 2*e )
+    fr = -2*a*E0*(e*e -   e ) 
+    return E,fr
 
 def getMorseSplit( r, R0, E0, a=1.7 ):
     #r = np.sqrt(x**2 + y**2 + z**2)
     e = np.exp( -a*(r-R0) )
     Ep  =  E0*e*e
     El  =  E0*-2*e
-    Fp  =  E0*a*2*e*e
-    Fl  =  E0*a*-2*e 
+    Fp  =  E0*a*-2*e*e
+    Fl  =  E0*a*+2*e 
     return Ep,El,Fp,Fl
 
 # ========= Lennard-Jones Potential =========

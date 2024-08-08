@@ -663,6 +663,44 @@ void sample1D_deriv( const double g0, const double dg, const int ng, const Vec2d
     }
 }
 
+inline Vec2d fe1Dcomb2( const int ix, const Quat4d* FE, const Vec2d& C, const Quat4d& p, const Quat4d& d ){
+    //const Quat4d p =  basis(x);
+    //const Quat4d d = dbasis(x);
+    const Quat4d a = FE[ix  ];
+    const Quat4d b = FE[ix+1];
+    const Quat4d cs{ a.x*C.x+a.z*C.y, b.x*C.x+b.z*C.y, a.y*C.x+a.w*C.y, b.y*C.x+b.w*C.y };
+    return Vec2d{ p.dot( cs ), d.dot( cs ) };
+}
+
+
+/*
+__attribute__((pure))
+__attribute__((hot)) 
+inline Vec3d fe3d_comb2( const double tx, const double ty, const double tz, const Quat4i i, const Quat4d* FE, const Vec2d& C ){
+    
+    const Quat4d p  =  basis(tz);
+    const Quat4d d  = dbasis(tz);
+    Vec2d fez[4];
+    {
+        Vec2d fez[4];
+        fez[0] = fe1Dcomb2( i.x, FE, C, p, d );
+        fez[1] = fe1Dcomb2( i.x, FE, C, p, d );
+        fez[2] = fe1Dcomb2( i.x, FE, C, p, d );
+        fez[3] = fe1Dcomb2( i.x, FE, C, p, d );
+    }
+
+
+
+    alignas(32) const Quat4d by =  basis_val( ty );
+    alignas(32) const Quat4d dy = dbasis_val( ty );
+    return Vec3d{
+        by.dot(fx), // Fx
+        dy.dot(e ), // Fy
+        by.dot(e )  // E
+    };
+}
+*/
+
 void sample1D_deriv_comb2( const double g0, const double dg, const int ng, const Quat4d* FE, const int n, const double* ps, Vec2d* fes, Vec2d C  ){
     const double inv_dg = 1/dg; 
     for(int i=0; i<n; i++ ){
@@ -671,13 +709,9 @@ void sample1D_deriv_comb2( const double g0, const double dg, const int ng, const
         const double tx =  x-ix; 
         const Quat4d p  =  basis(tx);
         const Quat4d d  = dbasis(tx);
-        const Quat4d a  = FE[ix  ];
-        const Quat4d b  = FE[ix+1];
-        const Quat4d cs{ a.x*C.x+a.z*C.y, b.x*C.x+b.z*C.y, (a.y*C.x+a.w*C.y)*dg, (b.y*C.x+b.w*C.y)*dg };
-        fes[i]=Vec2d{
-            p.dot( cs ),
-            d.dot( cs )*inv_dg,
-        };
+        Vec2d fe = fe1Dcomb2( ix, FE, C, p, d );
+        fe.y *= inv_dg;
+        fes[i] = fe;
     }
 }
 
