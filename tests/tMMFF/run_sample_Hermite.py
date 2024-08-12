@@ -128,8 +128,7 @@ def test_fit_2D( g0=(-3.0,2.0), gmax=(3.0,7.0), dg=(0.2,0.2), dsamp=(0.05,0.05),
         E = E.transpose()
         FEout = mmff.sample_SplineHermite2D_comb( ps, Gs, g0, dg ).reshape(sh_samp+(3,))
 
-    dE = FEout[:,:,2] - E_r[:,:]; dEmin = -np.abs(dE[4:-4,4:-4]).max(); 
-    dEmin = 0.1
+    dE = FEout[:,:,2] - E_r[:,:]; #dEmin = -np.abs(dE[4:-4,4:-4]).max(); dEmin = 0.1
 
     #Emin = None; Emax = None
 
@@ -139,8 +138,16 @@ def test_fit_2D( g0=(-3.0,2.0), gmax=(3.0,7.0), dg=(0.2,0.2), dsamp=(0.05,0.05),
     #plt.subplot(1,2,1); plt.imshow( Gs,            origin="lower", interpolation='nearest', extent=extent, vmin=Emin, vmax=Emax,  cmap=cmap ) ;plt.colorbar(); plt.title("Eg")    
     plt.subplot(2,2,2); plt.imshow( E_r,          origin="lower", interpolation='nearest', extent=extent, vmin=Emin, vmax=Emax,  cmap=cmap ) ;plt.colorbar(); plt.title("E  ref")
     plt.subplot(2,2,3); plt.imshow( FEout[:,:,2], origin="lower", interpolation='nearest', extent=extent, vmin=Emin, vmax=Emax,  cmap=cmap ) ;plt.colorbar(); plt.title("E  fit")
-    plt.subplot(2,2,4); plt.imshow( dE,           origin="lower", interpolation='nearest', extent=extent, vmin=dEmin, vmax=-dEmin, cmap=cmap ) ;plt.colorbar(); plt.title("E(fit-ref)")
+    plt.subplot(2,2,4); plt.imshow( dE,           origin="lower", interpolation='nearest', extent=extent, vmin=Emin/scErr, vmax=-Emin/scErr, cmap=cmap ) ;plt.colorbar(); plt.title("E(fit-ref)")
     plt.axis('equal')
+
+
+def test_gridFF( name="data/NaCl_1x1_L2",g0=(-3.0,2.0), gmax=(3.0,7.0), dg=(0.2,0.2), dsamp=(0.05,0.05), scErr=100.0, title=None, mode=1 ):
+    mmff.initParams()
+    ff = mmff.makeGridFF( name=name, mode=4 )
+    print( "ff.shape ", ff.shape )
+    print( "test_gridFF() DONE" )
+
 
 R0 = 3.5
 E0 = 1.0
@@ -164,6 +171,8 @@ a  = 1.8
 
 
 #test_fit_2D( title="test mode=1", mode=1 )
-test_fit_2D( title="test mode=2", mode=3 )
+#test_fit_2D( title="test mode=2", mode=3 )
+
+test_gridFF()
 
 plt.show()

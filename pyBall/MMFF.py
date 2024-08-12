@@ -251,6 +251,20 @@ def saveXSF( name, FF, cell=None ):
     lib.saveXSF( name, _np_as(FF,c_double_p), _np_as(ns,c_int_p), _np_as(cell,c_double_p) )
 
 
+#double* makeGridFF( const char* name, int* ffshape, intl mode=, bool bSaveDebugXSFs=false, double z0=NAN, Vec3d cel0={-0.5,-0.5,0.0}  ){
+lib.makeGridFF.argtypes  = [ c_char_p, c_int_p, c_int, c_bool, c_double, c_double_p, c_bool ]
+lib.makeGridFF.restype   =  c_double_p
+def makeGridFF( name, mode=1, bSaveDebugXSFs=False, z0=0, cel0=(-0.5,-0.5,0.0), bAutoNPBC=True ):
+    name=name.encode('utf8')
+    cel0 = np.array( cel0 )
+    ffshape = np.zeros( 4, dtype=np.int32 )
+    print( "ffshape ", ffshape )
+    ff = lib.makeGridFF( name,  _np_as(ffshape,c_int_p), mode, bSaveDebugXSFs, z0, _np_as(cel0,c_double_p), bAutoNPBC )
+    print( "ffshape ", ffshape )
+    ff_ = np.ctypeslib.as_array(ff, ffshape )
+    print( "makeGridFF() DONE" )
+    return ff_
+
 # void sample_func( int n, double* xs, double* ys, int kind ){
 lib.sample_func.argtypes  = [c_int, c_double_p, c_double_p, c_int]
 lib.sample_func.restype   =  None
@@ -690,6 +704,19 @@ def init(
     glob_bMMFF = bMMFF
     nPBC=np.array(nPBC,dtype=np.int32)
     return lib.init( cstr(xyz_name), cstr(surf_name), cstr(smile_name), bMMFF, bEpairs, bUFF, b141, bSimple, bConj, bCumulene, nPBC, gridStep, cstr(sElementTypes), cstr(sAtomTypes), cstr(sBondTypes), cstr(sAngleTypes), cstr(sDihedralTypes) )
+
+
+#void initParams          ( const char* sElementTypes, const char* sAtomTypes, const char* sBondTypes, const char* sAngleTypes, const char* sDihedralTypes ){
+lib.initParams.argtypes  = [c_char_p, c_char_p, c_char_p, c_char_p, c_char_p]
+lib.initParams.restype   =  None
+def initParams(
+        sElementTypes  = "data/ElementTypes.dat",
+        sAtomTypes     = "data/AtomTypes.dat", 
+        sBondTypes     = "data/BondTypes.dat", 
+        sAngleTypes    = "data/AngleTypes.dat",
+        sDihedralTypes = "data/DihedralTypes.dat",
+    ):
+    return lib.initParams(  cstr(sElementTypes), cstr(sAtomTypes), cstr(sBondTypes), cstr(sAngleTypes), cstr(sDihedralTypes) )
 
 def tryInit():
     if not isInitialized:

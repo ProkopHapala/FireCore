@@ -956,7 +956,7 @@ void printPBCshifts(){
  * @param cel0 The initial cell position.
  * @param bAutoNPBC Flag indicating whether to automatically set non-periodic boundary conditions.
  */
-    virtual void initGridFF( const char * name, bool bGrid=true, bool bSaveDebugXSFs=false, double z0=NAN, Vec3d cel0={-0.5,-0.5,0.0}, bool bAutoNPBC=true ){
+    virtual double* initGridFF( const char * name, bool bGrid=true, bool bSaveDebugXSFs=false, double z0=NAN, Vec3d cel0={-0.5,-0.5,0.0}, bool bAutoNPBC=true, bool bCheckEval=true ){
         //if(verbosity>0)
         printf("MolWorld_sp3::initGridFF(%s,bGrid=%i,bGridDouble=%i,gridStep=%g,z0=%g,cel0={%g,%g,%g} )\n",  name, bGrid, bGridDouble, gridStep, z0, cel0.x,cel0.y,cel0.z  );
         sprintf(tmpstr, "%s.lvs", name );
@@ -964,8 +964,9 @@ void printPBCshifts(){
         if( !gridFF.bCellSet ){
             bGridFF=false; 
             printf( "WARRNING!!! GridFF not initialized because %s not found\n", tmpstr );
-            return;
+            return 0;
         }
+        double* ffgrid = 0;
         if(bGrid){
             gridFF.grid.center_cell( cel0 );
             //bGridFF=true;
@@ -988,37 +989,41 @@ void printPBCshifts(){
 
             // ========== Directory
             struct stat statbuf;
-            if (stat(surf_name, &statbuf) != 0) {   // Check if directory exists
-                if (mkdir(surf_name, 0755) == -1  ) { printf("ERROR in MolWorld_sp3::initGridFF() cannot mkdir(`%s`) => exit()\n",                       surf_name ); exit(0); }
-            }else if ( ! S_ISDIR(statbuf.st_mode) ) { printf("ERROR in MolWorld_sp3::initGridFF() path `%s` exists but is not a directory. => exit()\n", surf_name ); exit(0); }
+            if (stat(name, &statbuf) != 0) {   // Check if directory exists
+                if (mkdir(name, 0755) == -1  ) { printf("ERROR in MolWorld_sp3::initGridFF() cannot mkdir(`%s`) => exit()\n",                            name ); exit(0); }
+            }else if ( ! S_ISDIR(statbuf.st_mode) ) { printf("ERROR in MolWorld_sp3::initGridFF() path `%s` exists but is not a directory. => exit()\n", name ); exit(0); }
             getcwd(tmpstr, 1024 ); printf( "WD=`%s`\n", tmpstr );
-            if (chdir(surf_name) == -1) { printf("ERROR in MolWorld_sp3::initGridFF() chdir(%s) => exit()\n", surf_name ); exit(0); }
+            if (chdir(name) == -1) { printf("ERROR in MolWorld_sp3::initGridFF() chdir(%s) => exit()\n", name ); exit(0); }
             getcwd(tmpstr, 1024 ); printf( "WD=`%s`\n", tmpstr );
 
-            // char name_P[256]; sprintf(name_P, "/FFelec_d.bin" );
-            // char name_L[256]; sprintf(name_P, "/FFelec_d.bin" );
-            // char name_Q[256]; sprintf(name_P, "/FFelec_d.bin" );
-            gridFF.tryLoad( "FFelec.bin", "FFPaul.bin", "FFLond.bin", false, false );
-            gridFF.checkSum( false );
-            if(bGridDouble){  
-                gridFF.tryLoad( "FFelec_d.bin", "FFPaul_d.bin", "FFLond_d.bin", false, true ); 
-                gridFF.checkSum( true );
-                gridFF.makeVPLQH();
+            switch (gridFF.mode){
+                case GridFFmod::LinearFloat     :{
+                    gridFF.tryLoad( "FFelec.bin", "FFPaul.bin", "FFLond.bin", false, false );
+                    gridFF.checkSum( false );
+                } break;
+                case GridFFmod::LinearDouble    :{
+                    gridFF.tryLoad( "FFelec_d.bin", "FFPaul_d.bin", "FFLond_d.bin", false, true ); 
+                    gridFF.checkSum( true );
+                    gridFF.makeVPLQH();
+                } break;
+                case GridFFmod::HermiteFloat    :{ printf("ERROR in MolWorld_sp3::initGridFF() GridFFmode::HermiteFloat NOT IMPLEMENTED \n"); exit(0); } break;
+                case GridFFmod::HermiteDouble   :{ 
+                    gridFF.makeGridFF_Hherm_d();  ffgrid=gridFF.HHermite_d;
+                    gridFF.perVoxel=6;
+                } break;            
             }
-            gridFF.log_z( "initGridFF_iz_ix0_iy0.log" ,0,0);
-            bSaveDebugXSFs = true;
+            //gridFF.log_z( "initGridFF_iz_ix0_iy0.log" ,0,0);
+            //bSaveDebugXSFs = true;
             if(bSaveDebugXSFs)saveGridXsfDebug();
             //bGridFF   =true; 
             //bSurfAtoms=false;
-
             if ( chdir("..") == -1) { printf("ERROR in MolWorld_sp3::initGridFF() chdir(..) => exit()\n" ); exit(0); }
 
         }
         gridFF.shift0 = Vec3d{0.,0.,-2.0};
         //gridFF.shift0 = Vec3d{0.,0.,0.0};
-        
-        gridFF.evalCheck();    // WARRNING:  CHECK FOR gridFF TURNED OFF !!!!!!!!!!!!!!!!!!!!!!!!!
-
+        if(bCheckEval)gridFF.evalCheck();    // WARRNING:  CHECK FOR gridFF TURNED OFF !!!!!!!!!!!!!!!!!!!!!!!!!
+        return ffgrid;
     }
 
     // void initNBmol( int na, Vec3d* apos, Vec3d* fapos, int* atypes, bool bCleanCharge=true ){

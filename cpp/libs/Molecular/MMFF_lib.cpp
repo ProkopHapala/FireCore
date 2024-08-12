@@ -76,6 +76,26 @@ void* init( char* xyz_name, char* surf_name, char* smile_name, bool bMMFF, bool 
     return &W;
 }
 
+double* makeGridFF( const char* name, int* ffshape, int mode, bool bSaveDebugXSFs, double z0, Vec3d cel0, bool bAutoNPBC ){
+    sprintf(tmpstr, "%s.xyz", name );
+    int ret = W.params.loadXYZ( tmpstr, W.surf.natoms, &W.surf.apos, &W.surf.REQs, &W.surf.atypes, 0, &W.gridFF.grid.cell );
+    if     ( ret<0 ){ printf("ERROR in MolWorld_sp3::loadSurf() file(%s) not found => Exit() \n",         tmpstr ); exit(0); }
+    if     ( ret==0){ printf("ERROR in MolWorld_sp3::loadSurf() no lattice vectors in (%s) => Exit() \n", tmpstr ); exit(0); }
+    else if( ret>0 ){ W.gridFF.grid.updateCell(W.gridStep); W.gridFF.bCellSet=true;  }
+    //gridFF.grid.printCell(); 
+    //if(verbosity>0)printf("MolWorld_sp3::loadSurf(%s) 1 natoms %i apos %li atyps %li \n", name, surf.natoms, (long)surf.apos, (long)surf.atypes  );
+    //surf.print();
+    W.gridFF.mode=(GridFFmod)mode;
+    W.bSurfAtoms=true;
+    bool bCheckEval=false;
+    double* ff_ptr = W.initGridFF( name, true, bSaveDebugXSFs, z0, cel0, bAutoNPBC, bCheckEval );
+    ffshape[0]=W.gridFF.grid.n.x;
+    ffshape[1]=W.gridFF.grid.n.y;
+    ffshape[2]=W.gridFF.grid.n.z;
+    ffshape[3]=W.gridFF.perVoxel;
+    return ff_ptr;
+}
+
 int    run( int nstepMax, double dt, double Fconv, int ialg, double damping, double* outE, double* outF, double* outV, double* outVF, bool omp ){
     //printf( "bOpenMP = %i \n", omp );
     //W.rum_omp_ocl( nstepMax, dt, Fconv, 1000.0, 1000 ); 
