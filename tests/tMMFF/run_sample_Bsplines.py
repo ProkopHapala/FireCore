@@ -24,6 +24,48 @@ REs=[
 ### ==== ToDo: Extract these functions to GridUtils.py (?)
 
 
+
+def test_NURBS( g0=0.0, dg=0.5, dsamp=0.05 ):
+    Gs  = [ 0.0, 0.0, 0.0, 1.0, 2.0, 3.0, -0.5, 0.0, 0.0, 0.0  ]
+    Ws  = [ 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0  ]
+    Gs  = np.array(Gs); Ws=np.array(Ws)
+    ng=len(Gs); gmax=ng*dg
+    xgs = np.arange(g0, gmax, dg)     ;
+    xs  = np.arange(g0, gmax+1e-8,  dsamp)  ; nsamp=len(xs)
+    #Ws[3] = 10.1
+    #Ws[4] = 10.1
+    #Ws[5] = 10.1
+    Ws[6] = 100.0
+    #Ws[6] = .01
+
+    #plt.figure(figsize=(5,5))
+    #plt.plot( xgs, Gs, ":ok",  label="Gs" )
+    #for iw,w in enumerate([ 0.2, 0.5, 1.0, 1.5, 2.0 ]):
+    #    Ws[3] = w
+    #    FEout = mmff.sample_NURBS( xs, Gs, Ws, x0=g0, dx=dg )
+    #    #plt.subplot(2,1,1)    
+    #    plt.plot( xs, FEout[:,0], "-",  lw=0.5,  label=("E_fit(w=%2.2f)" %w) )
+
+    FEout = mmff.sample_NURBS( xs, Gs, Ws, x0=g0, dx=dg )
+
+    plt.figure(figsize=(5,10))
+    plt.subplot(2,1,1) 
+    plt.plot( xgs, Gs, ":ok",  label="Gs" )
+    plt.plot( xs, FEout[:,0], "-",  lw=0.5,  label="E_fit" )
+    #plt.ylim(Emin*1.2,-Emin*1.2)
+    plt.grid()
+    plt.legend()
+    #plt.title("Energy")
+    
+    Fnum = fu.numDeriv( FEout[:,0], xs ) #;print("Fnum ", Fnum)
+    plt.subplot(2,1,2) 
+    plt.plot( xs, -FEout[:,1], "-b", lw=0.5, label="F_fit" )
+    plt.plot( xs[1:-1], -Fnum, ":b", lw=2.0, label="F_num" )
+    #plt.ylim(Fmin*1.2,-Fmin*1.2)
+    plt.legend()
+    #plt.title("Force")
+    plt.grid()
+
 def test_fit_1D( g0=2.0, gmax=10.0, dg=0.2, dsamp=0.02, bUseForce=True, scErr=100.0, bHalf=False, title=None ):
     #x0 = 2.0
     #dx = 0.1
@@ -71,7 +113,10 @@ def test_fit_1D( g0=2.0, gmax=10.0, dg=0.2, dsamp=0.02, bUseForce=True, scErr=10
         #Gs, Ws = mmff.fit_Bspline( FEg[:,0].copy(), Ws=Ws,   dt=0.4, nmaxiter=1000, Ftol=1e-7 )
     dgs = dg
     if bHalf: dgs=dg*2
-    FEout = mmff.sample_Bspline( xs_, Gs, x0=g0, dx=dgs )
+    #FEout = mmff.sample_Bspline( xs_, Gs, x0=g0, dx=dgs )
+
+    FEout = mmff.sample_NURBS( xs_, Gs, Ws=np.ones(len(Gs)), x0=g0, dx=dgs )
+
     plt.figure(figsize=(5,10))
     plt.subplot(2,1,1)    
     plt.plot( xs, Ws, ":m", lw=1.5, label="Ws" )
@@ -189,9 +234,11 @@ def test_fit_3D( g0=(-5.0,-5.0,2.0), gmax=(5.0,-5.0,10.0), dg=(0.1,0.1,0.1), dsa
 #mmff.setVerbosity( 2 )
 mmff.setVerbosity( 3 )
 
+test_NURBS( g0=0.0, dg=0.5, dsamp=0.05 )
+
 #test_fit_1D( bUseForce=True )
-test_fit_1D( bUseForce=False, bHalf=False ,title="No-Half")
-test_fit_1D( bUseForce=False, bHalf=True  ,title="Half")
+#test_fit_1D( bUseForce=False, bHalf=False ,title="No-Half")
+#test_fit_1D( bUseForce=False, bHalf=True  ,title="Half")
 #test_fit_1D( g0=0.0, gmax=2.0, dg=0.1, bUseForce=False )
 
 #test_fit_2D(  )

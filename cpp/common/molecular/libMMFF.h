@@ -2,6 +2,7 @@
 #include "Forces.h"
 #include "InterpolateTricubic.h"
 #include "Bspline.h"
+#include "NURBS.h"
 
 extern "C"{
 
@@ -165,6 +166,10 @@ int fit3D_Bspline( const int* ns, double* Gs, double* Es, double* Ws, double Fto
 
 void sample_Bspline( double g0, double dg, int ng, double* Gs, int n, double* xs, double* fes ){
     Bspline::sample1D( g0,dg,ng,Gs, n, xs, (Vec2d*)fes );
+}
+
+void sample_NURBS( double g0, double dg, int ng, double* Gs, double* Ws, int n, double* xs, double* fes ){
+    NURBS::sample1D( g0,dg,ng,Gs, Ws, n, xs, (Vec2d*)fes );
 }
 
 void sample_Bspline2D( double* g0, double* dg, int* ng, double* G, int n, double* ps, double* fes ){
