@@ -227,7 +227,9 @@ void sample_SplineHermite3D_deriv( double* g0, double* dg, int* ng, double* Eg, 
 }
 
 void sample_SplineHermite3D_comb3( double* g0, double* dg, int* ng, double* EFg, int n, double* ps, double* fes, double* Cs ){
-    Spline_Hermite::sample3D_deriv_comb3( *(Vec3d*)g0, *(Vec3d*)dg, *(Vec3i*)ng, (Vec2d*)EFg, n, (Vec3d*)ps, (Quat4d*)fes, *(Vec3d*)Cs );
+    long t0 = getCPUticks();
+    Spline_Hermite::sample3D_deriv_comb3( *(Vec3d*)g0, *(Vec3d*)dg, *(Vec3i*)ng, (Vec2d*)EFg, n, (Vec3d*)ps, (Quat4d*)fes, *(Vec3d*)Cs );  // sample_SplineHermite3D_comb3(n=500) time=118.56[kTick] 237.12[tick/point]     with -Ofast (release compilation) 
+    double t = (getCPUticks()-t0); printf( "sample_SplineHermite3D_comb3(n=%i) time=%g[kTick] %g[tick/point]\n", n, t*(1.e-3), t/n );
 }
 
 void sample_SplineHermite2D_deriv( double* g0, double* dg, int* ng, double* Eg, double* dEg, int n, double* ps, double* fes ){

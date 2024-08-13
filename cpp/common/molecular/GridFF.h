@@ -560,6 +560,7 @@ double addForces_d( int natoms, Vec3d* apos, Quat4d* PLQs, Vec3d* fpos, bool bSu
         //for ( int ix=0; ix<grid.n.x; ix++ ){
         //    for ( int iy=0; iy<grid.n.y; iy++ ){
         //        for ( int iz=0; iz<grid.n.z; iz++ ){
+        double dz = -grid.dCell.c.z;
         const int ntot = grid.n.totprod();
         const int nzy  = grid.n.z*grid.n.y;
         int i=0;
@@ -574,9 +575,9 @@ double addForces_d( int natoms, Vec3d* apos, Quat4d* PLQs, Vec3d* fpos, bool bSu
                     //const int ibuff = ix + grid.n.x*( iy + grid.n.y * iz );
                     const int ibuff = iz + grid.n.z*( iy + grid.n.y * ix );
                     int i6 = ibuff*6;
-                    HHermite_d[i6+0] = qp.w; HHermite_d[i6+1] = qp.z;
-                    HHermite_d[i6+2] = ql.w; HHermite_d[i6+3] = ql.z;
-                    HHermite_d[i6+4] = qe.w; HHermite_d[i6+5] = qe.z;     
+                    HHermite_d[i6+0] = qp.w; HHermite_d[i6+1] = qp.z*dz;
+                    HHermite_d[i6+2] = ql.w; HHermite_d[i6+3] = ql.z*dz;
+                    HHermite_d[i6+4] = qe.w; HHermite_d[i6+5] = qe.z*dz;     
                     //if((ix==20)&&(iy==20)){
                     //    //printf( "GridFF::makeGridFF_Hherm_d[%i,%i,%i] PLQ(%g,%g,%g) \n", ix,iy,iz, qp.w, ql.w, qe.w );
                     //    printf( "GridFF::makeGridFF_Hherm_d[%i,%i,%i] pos(%7.4f,%7.4f,%7.4f) PLQ(%g) \n", ix,iy,iz, pos.x,pos.y,pos.z, qe.w );

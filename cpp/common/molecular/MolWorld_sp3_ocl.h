@@ -596,7 +596,7 @@ virtual void MDloop( int nIter, double Ftol = 1e-6 ) override {
     bChargeUpdated=false;
 }
 
-virtual void initGridFF( const char * name, bool bGrid=true, bool bSaveDebugXSFs=false, double z0=NAN, Vec3d cel0={-0.5,-0.5,0.0}, bool bAutoNPBC=true )override{
+virtual double* initGridFF( const char * name, bool bGrid=true, bool bSaveDebugXSFs=false, double z0=NAN, Vec3d cel0={-0.5,-0.5,0.0}, bool bAutoNPBC=true, bool bCheckEval=true )override{
     printf( "MolWorld_sp3_ocl::initGridFF() \n");
     if(verbosity>0)printf("MolWorld_sp3::initGridFF(%s,bGrid=%i,z0=%g,cel0={%g,%g,%g})\n",  name, bGrid, z0, cel0.x,cel0.y,cel0.z  );
     sprintf(tmpstr, "%s.lvs", name );
@@ -633,6 +633,7 @@ virtual void initGridFF( const char * name, bool bGrid=true, bool bSaveDebugXSFs
     printf( ">>time(init_ocl;GridFF_ocl): %g [s] \n", (getCPUticks()-T0)*tick2second  );
     bGridFF   =true; 
     //bSurfAtoms=false;
+    return 0;
 }
 
 virtual void swith_method()override{ 
