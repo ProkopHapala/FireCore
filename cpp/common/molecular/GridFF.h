@@ -479,13 +479,16 @@ double addForces_d( int natoms, Vec3d* apos, Quat4d* PLQs, Vec3d* fpos, bool bSu
         });
     }
 
+    //__attribute__((pure))
     __attribute__((hot))
     void evalGridFFPoint( int natoms_, Vec3d * apos_, Quat4d * REQs_, Vec3d pos, Quat4d& qp, Quat4d& ql, Quat4d& qe ){
         //const Vec3d pos = grid.pos0 + grid.dCell.c*iz + grid.dCell.b*iy + grid.dCell.a*ix;
         const double R2damp=Rdamp*Rdamp;    
         const double K=-alphaMorse;
-        qp = Quat4dZero; ql = Quat4dZero; qe = Quat4dZero;
-        #pragma omp for simd
+        qp = Quat4dZero; 
+        ql = Quat4dZero; 
+        qe = Quat4dZero;
+        //#pragma omp for simd
         for(int ia=0; ia<natoms_; ia++){
             const Vec3d dp0   = pos - apos_[ia];
             const Quat4d REQi = REQs_[ia];
@@ -517,14 +520,18 @@ double addForces_d( int natoms, Vec3d* apos, Quat4d* PLQs, Vec3d* fpos, bool bSu
 
     __attribute__((hot))  
     void makeGridFF_omp(int natoms_, Vec3d * apos_, Quat4d * REQs_ ){
-        printf( "GridFF::makeGridFF_omp() nPBC(%i,%i,%i) pos0(%g,%g,%g)\n", nPBC.x,nPBC.y,nPBC.z,  grid.pos0.x,grid.pos0.y,grid.pos0.z );        
+        printf( "GridFF::makeGridFF_omp()  nPBC(%i,%i,%i) npbc=%i natoms_=%i pos0(%g,%g,%g)\n", nPBC.x,nPBC.y,nPBC.z,  npbc, natoms_,  grid.pos0.x,grid.pos0.y,grid.pos0.z );        
         if(shifts==0)makePBCshifts( nPBC, lvec );
         const double R2damp=Rdamp*Rdamp;    
         const double K=-alphaMorse;
-        #pragma omp parallel
-        for ( int iz=0; iz<grid.n.z; iz++ ){
-            for ( int iy=0; iy<grid.n.y; iy++ ){
-                for ( int ix=0; ix<grid.n.x; ix++ ){
+
+        //for(int i=0; i<npbc; i++ ){ printf( "shifts[%i](%g,%g,%g) \n", i, shifts[i].x, shifts[i].y, shifts[i].z  ); };
+        //for(int ia=0; ia<natoms_; ia++)    { printf( "apos[%i] pos(%g,%g,%g) REQ(%g,%g,%g,%g) \n", ia, apos_[ia].x, apos_[ia].y, apos_[ia].z, REQs_[ia].x, REQs_[ia].y, REQs_[ia].z, REQs_[ia].w ); };
+        int ix=0,iy=0,iz=0;
+        #pragma omp parallel for shared(ix,iy,iz,FFPaul,FFLond,FFelec) collapse(3)
+        for ( iz=0; iz<grid.n.z; iz++ ){
+            for ( iy=0; iy<grid.n.y; iy++ ){
+                for ( ix=0; ix<grid.n.x; ix++ ){
                     Quat4d qp,ql,qe;
                     const Vec3d pos = grid.pos0 + grid.dCell.c*iz + grid.dCell.b*iy + grid.dCell.a*ix;
                     evalGridFFPoint( natoms_, apos_, REQs_, pos, qp, ql, qe );
@@ -540,29 +547,55 @@ double addForces_d( int natoms, Vec3d* apos, Quat4d* PLQs, Vec3d* fpos, bool bSu
 
     __attribute__((hot))  
     void makeGridFF_Hherm_d(int natoms_, Vec3d * apos_, Quat4d * REQs_ ){
-        printf( "GridFF::makeGridFF_Hherm_d() nPBC(%i,%i,%i) pos0(%g,%g,%g)\n", nPBC.x,nPBC.y,nPBC.z,  grid.pos0.x,grid.pos0.y,grid.pos0.z );        
+        printf( "GridFF::makeGridFF_Hherm_d() nPBC(%i,%i,%i)  npbc=%i natoms=%i pos0(%g,%g,%g) K=%g Rdamp=%g \n", nPBC.x,nPBC.y,nPBC.z,  npbc, natoms_,  grid.pos0.x,grid.pos0.y,grid.pos0.z, alphaMorse, Rdamp );   
+        //printf( "GridFF::makeGridFF_Hherm_d() grid.n(%i,%i,%i)\n", grid.n.x,grid.n.y,grid.n.z ); 
+        grid.printCell();    
         if(HHermite_d==0) _realloc( HHermite_d, grid.n.totprod()*6 );
         if(shifts==0)makePBCshifts( nPBC, lvec );
+        //for(int i=0; i<npbc; i++      ){ printf( "shifts[%i](%g,%g,%g) \n", i, shifts[i].x, shifts[i].y, shifts[i].z  ); };
+        //for(int ia=0; ia<natoms_; ia++){ printf( "apos[%i] pos(%g,%g,%g) REQ(%g,%g,%g,%g) \n", ia, apos_[ia].x, apos_[ia].y, apos_[ia].z, REQs_[ia].x, REQs_[ia].y, REQs_[ia].z, REQs_[ia].w ); };
         const double R2damp=Rdamp*Rdamp;    
         const double K=-alphaMorse;
-        #pragma omp parallel
-        for ( int iz=0; iz<grid.n.z; iz++ ){
-            for ( int iy=0; iy<grid.n.y; iy++ ){
-                for ( int ix=0; ix<grid.n.x; ix++ ){
+        //#pragma omp parallel for collapse(3)
+        //for ( int ix=0; ix<grid.n.x; ix++ ){
+        //    for ( int iy=0; iy<grid.n.y; iy++ ){
+        //        for ( int iz=0; iz<grid.n.z; iz++ ){
+        const int ntot = grid.n.totprod();
+        const int nzy  = grid.n.z*grid.n.y;
+        int i=0;
+        #pragma omp parallel for shared(i,HHermite_d)
+        for(int i=0; i<ntot; i++){
+            int iz =  i%grid.n.z;
+            int iy = (i/grid.n.z)%grid.n.y;
+            int ix =  i/nzy;
                     Quat4d qp,ql,qe;
                     const Vec3d pos = grid.pos0 + grid.dCell.c*iz + grid.dCell.b*iy + grid.dCell.a*ix;
                     evalGridFFPoint( natoms_, apos_, REQs_, pos, qp, ql, qe );
-                    const int ibuff = ix + grid.n.x*( iy + grid.n.y * iz );
-                    double* FF =  HHermite_d + ibuff*6;
-                    FF[0] = qp.w; FF[1] = qp.z;
-                    FF[2] = ql.w; FF[3] = ql.z;
-                    FF[4] = qe.w; FF[5] = qe.z;                
-                }
-            }
+                    //const int ibuff = ix + grid.n.x*( iy + grid.n.y * iz );
+                    const int ibuff = iz + grid.n.z*( iy + grid.n.y * ix );
+                    int i6 = ibuff*6;
+                    HHermite_d[i6+0] = qp.w; HHermite_d[i6+1] = qp.z;
+                    HHermite_d[i6+2] = ql.w; HHermite_d[i6+3] = ql.z;
+                    HHermite_d[i6+4] = qe.w; HHermite_d[i6+5] = qe.z;     
+                    //if((ix==20)&&(iy==20)){
+                    //    //printf( "GridFF::makeGridFF_Hherm_d[%i,%i,%i] PLQ(%g,%g,%g) \n", ix,iy,iz, qp.w, ql.w, qe.w );
+                    //    printf( "GridFF::makeGridFF_Hherm_d[%i,%i,%i] pos(%7.4f,%7.4f,%7.4f) PLQ(%g) \n", ix,iy,iz, pos.x,pos.y,pos.z, qe.w );
+                    //}  
         }
     }
     void makeGridFF_Hherm_d(){ makeGridFF_Hherm_d(natoms,apos,REQs); }
-    
+
+    void evalAtPoints( int n, Vec3d* ps, Quat4d* FFout, Quat4d PLQH, int natoms_, Vec3d * apos_, Quat4d * REQs_ ){
+        int i=0;
+        //#pragma omp parallel for shared(i)
+        for(int i=0; i<n; i++){
+            Quat4d qp,ql,qe;
+            //printf( "ps[%i](%7.3f,%7.3f,%7.3f)\n", i, ps[i].x,ps[i].y,ps[i].z  );
+            evalGridFFPoint( natoms_, apos_, REQs_, ps[i], qp, ql, qe );
+            FFout[i] = qp*PLQH.x + ql*PLQH.y + qe*PLQH.z;
+        }
+    }
+    void evalAtPoints( int n, Vec3d* ps, Quat4d* FFout, Quat4d PLQH ){ evalAtPoints( n, ps, FFout, PLQH, natoms, apos, REQs ); };
 
     double evalMorsePBC(  Vec3d pi, Quat4d REQi, Vec3d& fi, int natoms, Vec3d * apos, Quat4d * REQs ){
         //printf( "GridFF::evalMorsePBC() debug fi(%g,%g,%g) REQi(%g,%g,%g)\n",  fi.x,fi.y,fi.z, REQi.x,REQi.y,REQi.z,REQi.w  );
@@ -573,7 +606,7 @@ double addForces_d( int natoms, Vec3d* apos, Quat4d* PLQs, Vec3d* fpos, bool bSu
         //printf("GridFF::evalMorsePBC() npbc=%i natoms=%i bSymetrized=%i \n", npbc, natoms, bSymetrized );
         if(!bSymetrized){ printf("ERROR  GridFF::evalMorsePBC() not symmetrized, call  GridFF::setAtomsSymetrized() first => exit()\n"); exit(0); }
         if( (shifts==0) || (npbc==0) ){ printf("ERROR in GridFF::evalMorsePBC() pbc_shift not intitalized !\n"); };     
-        for(int j=0; j<natoms; j++){    // atom-atom
+        for(int j=0; j<natoms; j ++ ){    // atom-atom
             Vec3d fij = Vec3dZero;
             Vec3d dp0 = pi - apos[j] - shift0;
             Quat4d REQij; combineREQ( REQs[j], REQi, REQij );

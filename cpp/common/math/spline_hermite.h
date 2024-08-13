@@ -46,6 +46,28 @@
 //  p+1   -9.0   4.  
 //  p+2    3.0  -1.   
 
+
+/*
+ToDO: Quintic Hermite Spline - to match the 2nd derivative of the aproximated function
+https://www.rose-hulman.edu/~finn/CCLI/Notes/day09.pdf
+MA 323 Geometric Modelling, Course Notes: Day 09, Quintic Hermite Interpolation, David L. Finn
+H0(t) = 1              -  10*t^3 + 15  *t^4 -   6*t^5
+H1(t) =     t          -   6*t3  +  8  *t^4 -   3*t^5
+H2(t) =        0.5*t^2 - 1.5*t^3 + 1.5 *t^4 - 0.5*t^5
+H3(t) =                  0.5*t^3 -      t^4 + 0.5*t^5
+H4(t) =                   -4*t^3 +  7  *t^4 -   3*t^5
+H5(t) =                   10*t^3 - 15  *t^4 +   6*t^5
+
+//       t^0  t^1   t^2    t^3    t^4    t^5
+H0(t) =  1    0      0     -10    +15    -6
+H1(t) =  0    1      0     -6     +8     -3
+H2(t) =  0    0      0.5   -1.5   +1.5   -0.5
+H3(t) =  0    0      0     0.5    -1     +0.5
+H4(t) =  0    0      0     -4     +7     -3
+H5(t) =  0    0      0     10     -15    +6
+
+*/
+
 // ============ optimized
 
 namespace Spline_Hermite{

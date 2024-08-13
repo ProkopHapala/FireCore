@@ -45,7 +45,7 @@ void addAngConstrain( int i0,int i1,int i2, double ang0, double k ){
 
 bool checkInvariants( double maxVcog, double maxFcog, double maxTg ){ return W.checkInvariants( maxVcog, maxFcog, maxTg ); }
 void setTrjName     ( const char* trj_fname_, int savePerNsteps_, int* nPBC ){ W.trj_fname=trj_fname_; W.savePerNsteps=savePerNsteps_; if(verbosity>0)printf( "setTrjName(%s)\n", W.trj_fname ); W.nPBC_save=*(Vec3i*)nPBC; }
-int toXYZ           (const char* comment="#comment"){ return W.toXYZ(comment); }
+int  toXYZ          (const char* comment="#comment"){ return W.toXYZ(comment); }
 int saveXYZ( const char* fname, const char* comment, int imod){ 
     int ret=-1;
     switch (imod){
@@ -224,6 +224,10 @@ void sample_SplineHermite3D_f( float* g0, float* dg, int* ng, float* Eg, int n, 
 
 void sample_SplineHermite3D_deriv( double* g0, double* dg, int* ng, double* Eg, double* dEg, int n, double* ps, double* fes ){
     Spline_Hermite::sample3D_deriv( *(Vec3d*)g0, *(Vec3d*) dg, *(Vec3i*)ng, (Quat4d*)Eg, (Quat4d*)dEg, n, (Vec3d*)ps, (Quat4d*)fes ); 
+}
+
+void sample_SplineHermite3D_comb3( double* g0, double* dg, int* ng, double* EFg, int n, double* ps, double* fes, double* Cs ){
+    Spline_Hermite::sample3D_deriv_comb3( *(Vec3d*)g0, *(Vec3d*)dg, *(Vec3i*)ng, (Vec2d*)EFg, n, (Vec3d*)ps, (Quat4d*)fes, *(Vec3d*)Cs );
 }
 
 void sample_SplineHermite2D_deriv( double* g0, double* dg, int* ng, double* Eg, double* dEg, int n, double* ps, double* fes ){
