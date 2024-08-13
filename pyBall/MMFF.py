@@ -277,11 +277,21 @@ def sample_func( xs, ys=None, kind=0 ):
 # void sample_Bspline( double g0, double dg, int ng, double* Gs, int n, double* xs, double* fes ){
 lib.sample_Bspline.argtypes  = [c_double, c_double, c_int, c_double_p, c_int, c_double_p, c_double_p ]
 lib.sample_Bspline.restype   =  None
-def sample_Bspline( xs, Eps, x0=0.0, dx=1.0, fes=None ):
+def sample_Bspline( xs, Gs, x0=0.0, dx=1.0, fes=None ):
     n = len(xs)
     if fes is None: fes=np.zeros((n,2))
-    lib.sample_Bspline(x0, dx, len(Eps), _np_as(Eps,c_double_p), n, _np_as(xs,c_double_p), _np_as(fes,c_double_p) )
+    lib.sample_Bspline(x0, dx, len(Gs), _np_as(Gs,c_double_p), n, _np_as(xs,c_double_p), _np_as(fes,c_double_p) )
     return fes
+
+# void sample_NURBS( double g0, double dg, int ng, double* Gs, double* Ws, int n, double* xs, double* fes ){
+lib.sample_NURBS.argtypes  = [c_double, c_double, c_int, c_double_p, c_double_p, c_int, c_double_p, c_double_p ]
+lib.sample_NURBS.restype   =  None
+def sample_NURBS( xs, Gs, Ws, x0=0.0, dx=1.0, fes=None ):
+    n = len(xs)
+    if fes is None: fes=np.zeros((n,2))
+    lib.sample_NURBS(x0, dx, len(Gs), _np_as(Gs,c_double_p), _np_as(Ws,c_double_p), n, _np_as(xs,c_double_p), _np_as(fes,c_double_p) )
+    return fes
+
 
 # void sample_Bspline2D( double* g0, double* dg, int* ng, double* G, int n, double* ps, double* fes ){
 lib.sample_Bspline2D.argtypes  = [c_double_p, c_double_p, c_int_p, c_double_p,                c_int, c_double_p, c_double_p]
