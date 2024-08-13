@@ -168,7 +168,7 @@ def getPLQH( R0, E0, a, Q, H ):
     cH = e*e*H;
     return np.array([ cP, cL, Q, cH ])
 
-def test_gridFF( name="data/NaCl_1x1_L2", dsamp=0.02,  R0=3.5, E0=0.1, a=1.6, Q=0.4, H=0.0 ):
+def test_gridFF( name="data/NaCl_1x1_L2", dsamp=0.02,  R0=3.5, E0=0.1, a=1.6, Q=0.4, H=0.0, scErr=100.0, title=None, ):
     mmff.initParams()
     EFg = mmff.makeGridFF( name=name, mode=4 )
     #plotGridFF_1D( EFg, ix=20,iy=20 )
@@ -176,19 +176,32 @@ def test_gridFF( name="data/NaCl_1x1_L2", dsamp=0.02,  R0=3.5, E0=0.1, a=1.6, Q=
 
     zs = np.arange(0.0, 10.0, dsamp)
     ps = np.zeros( (len(zs), 3) )
-    ps[:,0] = 0.0
-    ps[:,1] = 0.0
+    ps[:,0] = 1.05
+    ps[:,1] = 1.05
     ps[:,2] = zs
     
     FF_ref = mmff.evalGridFFAtPoints( ps, PLQH=PLQH )
     FFout  = mmff.sample_SplineHermite3D_comb3( ps, EFg, g0=[0.0,0.0,0.0], dg=[0.1,0.1,0.1], fes=None, Cs=PLQH )
+    Emin = FF_ref[:,3].min(); 
+    Fmin = FF_ref[:,2].min()
 
+    plt.figure(figsize=(5,10))
+    plt.subplot(2,1,1);
     plt.plot( zs, FFout[:,3], "-g", lw=0.5, label="Etot_fit" )
-    plt.plot( zs, FF_ref[:,3], "-k", lw=0.5, label="Etot_ref" )
+    plt.plot( zs, FF_ref[:,3], ":k", lw=2.0, label="Etot_ref" )
+    plt.plot( zs, (FFout[:,3]-FF_ref[:,3])*scErr, "-r", lw=0.5, label=("Etot_err*%.2f" %scErr) )
     #plt.plot( zs, FFout[:,0], "-r", lw=0.5, label="Ftot_x" )
     #plt.plot( zs, FFout[:,1], "-g", lw=0.5, label="Ftot_y" )
     #plt.plot( zs, FFout[:,2], "-b", lw=0.5, label="Etot_z" )
-
+    plt.axhline(0.0, c="k", ls='--', lw=0.5)
+    plt.ylim( Emin, -Emin )
+    plt.legend()
+    plt.subplot(2,1,2);
+    plt.plot( zs, FFout[:,2],  "-g", lw=0.5, label="Etot_fit" )
+    plt.plot( zs, FF_ref[:,2], ":k", lw=2.0, label="Etot_ref" )
+    plt.plot( zs, (FFout[:,2]-FF_ref[:,2])*scErr, "-r", lw=0.5, label=("Etot_err*%.2f" %scErr) )
+    plt.axhline(0.0, c="k", ls='--', lw=0.5)
+    plt.ylim( Fmin, -Fmin )
     plt.legend()
 
     print( "ff.shape ", EFg.shape )
