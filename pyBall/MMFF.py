@@ -260,10 +260,22 @@ def makeGridFF( name, mode=1, bSaveDebugXSFs=False, z0=0, cel0=(-0.5,-0.5,0.0), 
     ffshape = np.zeros( 4, dtype=np.int32 )
     print( "ffshape ", ffshape )
     ff = lib.makeGridFF( name,  _np_as(ffshape,c_int_p), mode, bSaveDebugXSFs, z0, _np_as(cel0,c_double_p), bAutoNPBC )
+    #ffshape = ffshape[::-1]
     print( "ffshape ", ffshape )
     ff_ = np.ctypeslib.as_array(ff, ffshape )
     print( "makeGridFF() DONE" )
     return ff_
+
+# void evalGridFFAtPoints( int n, double* ps, double* FFout, double* PLQH ){
+lib.evalGridFFAtPoints.argtypes  = [ c_int, c_double_p, c_double_p, c_double_p ]
+lib.evalGridFFAtPoints.restype   =  None
+def evalGridFFAtPoints( ps, FFout=None, PLQH=[0.0,0.0,1.0,0.0] ):
+    n = len(ps)
+    if FFout is None: FFout=np.zeros( (n,4) )
+    PLQH = np.array( PLQH )
+    lib.evalGridFFAtPoints( n, _np_as(ps,c_double_p), _np_as(FFout,c_double_p), _np_as(PLQH,c_double_p) )
+    return FFout
+    
 
 # void sample_func( int n, double* xs, double* ys, int kind ){
 lib.sample_func.argtypes  = [c_int, c_double_p, c_double_p, c_int]
@@ -386,6 +398,19 @@ def sample_SplineHermite3D_deriv( ps, Eg, dEg, g0, dg, fes=None):
     lib.sample_SplineHermite3D_deriv( _np_as(g0,c_double_p), _np_as(dg,c_double_p), _np_as(ng,c_int_p), _np_as(Eg,c_double_p), _np_as(dEg,c_double_p), n, _np_as(ps,c_double_p), _np_as(fes,c_double_p) )
     return fes
 
+#void sample_SplineHermite3D_comb3( double* g0, double* dg, int* ng, double* EFg, int n, double* ps, double* fes, double* Cs ){
+lib.sample_SplineHermite3D_comb3.argtypes  = [c_double_p, c_double_p, c_int_p, c_double_p, c_int, c_double_p, c_double_p, c_double_p ]
+lib.sample_SplineHermite3D_comb3.restype   =  None
+def sample_SplineHermite3D_comb3( ps, EFg, g0, dg, fes=None, Cs=[1.0,1.0,1.0] ):
+    n = len(ps)
+    g0 = np.array(g0)
+    dg = np.array(dg)
+    ng = np.array( EFg.shape, np.int32 )
+    C = np.array(Cs,dtype=np.float64)
+    if fes is None: fes=np.zeros((n,4))
+    lib.sample_SplineHermite3D_comb3( _np_as(g0,c_double_p), _np_as(dg,c_double_p), _np_as(ng,c_int_p), _np_as(EFg,c_double_p), n, _np_as(ps,c_double_p), _np_as(fes,c_double_p), _np_as(C,c_double_p) )
+    return fes
+
 #void sample_SplineHermite2D( double* g0, double* dg, int* ng, double* Eg, int n, double* ps, double* fes )
 lib.sample_SplineHermite2D.argtypes  = [c_double_p, c_double_p, c_int_p, c_double_p, c_int, c_double_p, c_double_p]
 lib.sample_SplineHermite2D.restype   =  None
@@ -405,8 +430,8 @@ def sample_SplineHermite3D( ps, Eg, g0, dg, fes=None):
     n = len(ps)
     g0 = np.array(g0)
     dg = np.array(dg)
-    ng = np.array( Eg.shape, np.int32 )
     if fes is None: fes=np.zeros((n,4))
+    ng = np.array( Eg.shape, np.int32 )
     lib.sample_SplineHermite3D( _np_as(g0,c_double_p), _np_as(dg,c_double_p), _np_as(ng,c_int_p), _np_as(Eg,c_double_p), n, _np_as(ps,c_double_p), _np_as(fes,c_double_p) )
     return fes
 

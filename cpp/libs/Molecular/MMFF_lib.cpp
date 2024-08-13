@@ -96,6 +96,10 @@ double* makeGridFF( const char* name, int* ffshape, int mode, bool bSaveDebugXSF
     return ff_ptr;
 }
 
+void evalGridFFAtPoints( int n, double* ps, double* FFout, double* PLQH ){
+    W.gridFF.evalAtPoints( n, (Vec3d*)ps, (Quat4d*)FFout, *(Quat4d*)PLQH );
+}
+
 int    run( int nstepMax, double dt, double Fconv, int ialg, double damping, double* outE, double* outF, double* outV, double* outVF, bool omp ){
     //printf( "bOpenMP = %i \n", omp );
     //W.rum_omp_ocl( nstepMax, dt, Fconv, 1000.0, 1000 ); 
