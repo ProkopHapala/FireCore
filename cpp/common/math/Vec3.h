@@ -540,6 +540,7 @@ template <class T>
 class Vec6T { public:
 	union{
         struct{ Vec3T<T> lo,hi; };
+        struct{ T xx,yy,zz, yz,xz,xy; };
 		T array[6];
 	};
 };
