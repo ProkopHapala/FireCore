@@ -48,7 +48,7 @@ class MultipoleGrid{ public:
             Vec3i ipos;
             ruler.pos2box( pos, ipos, dpos );
             int icell = ruler.ixyz2i(ipos);
-            getMultipole ( dpos - poff, Qs[i], 1, coefs+(icell*4) );
+            Multiplole::project( dpos - poff, Qs[i], 1, coefs+(icell*4) );
         }
     };
 
@@ -65,7 +65,7 @@ class MultipoleGrid{ public:
             ruler.pos2box( pos, ipos, dpos );
             int icell = ruler.ixyz2i(ipos);
             //printf("%i (%g,%g,%g) (%i,%i,%i) %i \n", i, pos.x, pos.y, pos.z, ipos.x, ipos.y, ipos.z, icell );
-            getMultipole ( dpos - poff, Qs[i], 1, coefs+(icell*4) );
+            Multiplole::project( dpos - poff, Qs[i], 1, coefs+(icell*4) );
             cellNs   [icell]++;
             atom2cell[i] = icell;
         }

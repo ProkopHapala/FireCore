@@ -262,9 +262,9 @@ def makeGridFF( name, mode=1, bSaveDebugXSFs=False, z0=0, cel0=(-0.5,-0.5,0.0), 
     ff = lib.makeGridFF( name,  _np_as(ffshape,c_int_p), mode, bSaveDebugXSFs, z0, _np_as(cel0,c_double_p), bAutoNPBC )
     #ffshape = ffshape[::-1]
     print( "ffshape ", ffshape )
-    ff_ = np.ctypeslib.as_array(ff, ffshape )
+    #ff_ = np.ctypeslib.as_array(ff, ffshape )
     print( "makeGridFF() DONE" )
-    return ff_
+    #return ff_
 
 # void evalGridFFAtPoints( int n, double* ps, double* FFout, double* PLQH ){
 lib.evalGridFFAtPoints.argtypes  = [ c_int, c_double_p, c_double_p, c_double_p ]
@@ -562,6 +562,17 @@ def sampleSurf_vecs(ps, FEs=None, kind=1, ityp=-1, RvdW=1.487, EvdW=0.0006808, Q
     if FEs is None: FEs=np.zeros((n,4))
     lib.sampleSurf_vecs( n, ps, FEs, kind, ityp, RvdW, EvdW, Q, K, Rdamp, npbc, bSave )
     return FEs
+
+
+# void sampleSurf_new( int n, double* ps_, double* FEout_, int kind, double* REQ_, double K, double RQ ){
+lib.sampleSurf_new.argtypes  = [ c_int, array2d, array2d, c_int, array1d, c_double, c_double ]
+lib.sampleSurf_new.restype   =  None
+def sampleSurf_new( ps, FEout=None, kind=1, REQs=[1.487,0.0006808,0.0,0.0], K=-1.0, Rdamp=1.0 ):
+    n =len(ps)
+    if FEout is None: FEout=np.zeros( (n,4) )
+    REQs=np.array(REQs)
+    lib.sampleSurf_new( n, ps, FEout, kind, REQs, K, Rdamp )
+    return FEout
 
 # # void sampleSurf_vecs(char* name, int n, double* rs, double* Es, double* fs, int kind, double*REQ_, double K, double Rdamp ){
 # lib.sampleSurf_vecs.argtypes  = [c_char_p, c_int, array2d, array1d, array2d, c_int, c_int, c_double, c_double, c_double, array1d, c_bool] 

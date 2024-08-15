@@ -182,6 +182,25 @@ inline int fileExist(const char * fname ){
     }
 }
 
+
+bool checkAllFilesExist( int n, const char** fnames, bool bPrint=true ){
+    printf( "checkAllFilesExist() n=%i \n", n );
+    bool bExist=true;
+    for(int i=0; i<n; i++){
+        const char* fname = fnames[i];
+        //printf( "checkAllFilesExist()[%i] '%s' \n", i, fname );
+        if(fname==0) continue;
+        FILE* f=fopen( fname,"rb"); 
+        printf( "checkAllFilesExist()[%i] '%s' @file=%li \n", i, fname, (long)f );
+        if(0==f){ bExist=false; if(bPrint)printf("File(%s) Not Found\n", fname); }else{ fclose(f); };
+    };
+    //if(fname_Paul){ FILE* f=fopen( fname_Paul,"rb"); if(0==f){ printf("File(%s) Not Found\n", fname_Paul); bExist=false; }else{ fclose(f); };} 
+    //if(fname_Lond){ FILE* f=fopen( fname_Lond,"rb"); if(0==f){ printf("File(%s) Not Found\n", fname_Lond); bExist=false; }else{ fclose(f); };} 
+    //if(fname_Coul){ FILE* f=fopen( fname_Coul,"rb"); if(0==f){ printf("File(%s) Not Found\n", fname_Coul); bExist=false; }else{ fclose(f); };} 
+    return bExist;
+}
+
+
 #include <vector>
 #include <unistd.h>
 #include <dirent.h>

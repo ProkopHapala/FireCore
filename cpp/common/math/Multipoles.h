@@ -119,7 +119,7 @@ void project( const Vec3d* p0_, int n, const Vec3d * ps, const double * Qs, int 
     if(p0_){ p0=*p0_; }else{ p0=center(n, ps, Qs); }
     if(bClear) for( int i=0; i<10; i++ ) cs[i]=0;
     for( int i=0; i<n; i++){
-        project( ps[i]-center, Qs[i], order, cs );
+        project( ps[i]-p0, Qs[i], order, cs );
     }
 }
 
