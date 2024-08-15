@@ -194,12 +194,14 @@ void sampleSurf(char* name, int n, double* rs, double* Es, double* fs, int kind,
     }
     Quat4d REQ=W.nbmol.REQs[0];
     Quat4f PLQ = REQ2PLQ( REQ, K );
+    Quat4d PLQd= REQ2PLQ_d( REQ, K );
     printf( "DEBUG sampleSurf REQ(%g,%g,%g) \n", REQ.x, REQ.y, REQ.z );
     printf( "DEBUG sampleSurf PLQ(%g,%g,%g) \n", PLQ.x, PLQ.y, PLQ.z );
     //exit(0);
     double R2Q=RQ*RQ;
     for(int i=0; i<n; i++){
         Quat4f fe=Quat4fZero;
+        //Quat4d fed=Quat4dZero;
         W.nbmol.apos[0].z=rs[i];
         W.ff.cleanAtomForce();
         switch(kind){
@@ -209,11 +211,52 @@ void sampleSurf(char* name, int n, double* rs, double* Es, double* fs, int kind,
             case 10:         W.gridFF.addForce_surf(W.nbmol.apos[0], {1.,0.,0.}, fe );  break;
             case 11:         W.gridFF.addForce_surf(W.nbmol.apos[0], PLQ, fe );  break;
             case 12:         W.gridFF.addForce     (W.nbmol.apos[0], PLQ, fe );  break;
+
+            //case 13:         W.gridFF.addForce_surf(W.nbmol.apos[0], {1.,0.,0.}, fe );  break;
+
+            case 13: fe = (Quat4f) W.gridFF.getForce_HHermit( W.nbmol.apos[0], PLQd );   break;
+            case 14: fe = (Quat4f) W.gridFF.getForce_Bspline( W.nbmol.apos[0], PLQd );    break;  
+
         }
         fs[i]=fe.z;
         Es[i]=fe.e;
     }
 }
+
+
+void sampleSurf_new( int n, double* ps_, double* FEout_, int kind, double* REQ_, double K, double RQ ){
+    Vec3d*  ps   =((Vec3d*)ps_);
+    Quat4d* FEout=(Quat4d*)FEout_;
+    Quat4d  REQ=*((Quat4d*)REQ_);
+    Quat4f  PLQ = REQ2PLQ(   REQ, K );
+    Quat4d  PLQd= REQ2PLQ_d( REQ, K );
+    printf( "DEBUG sampleSurf REQ(%g,%g,%g) \n", REQ.x, REQ.y, REQ.z );
+    printf( "DEBUG sampleSurf PLQ(%g,%g,%g) \n", PLQ.x, PLQ.y, PLQ.z );
+    //exit(0);
+    double R2Q=RQ*RQ;
+    for(int i=0; i<n; i++){
+        Quat4f fef=Quat4fZero;
+        Quat4d fed=Quat4dZero;
+        Vec3d pi = ps[i];
+        if(W.nbmol.apos){
+            W.nbmol.apos[0]=pi;
+            W.ff.cleanAtomForce();
+        }
+        switch(kind){
+            case  0: fed.e=  W.nbmol.evalR         (W.surf );              break; 
+            case  1: fed.e=  W.nbmol.evalMorse     (W.surf, false, K,RQ  ); fed.f=W.nbmol.fapos[0]; break; 
+            //case  5: fe.e=   W.nbmol.evalMorsePLQ  (W.surf, PLQ, W.gridFF.grid.cell, {1,1,0},K,R2Q ); fe.f=(Vec3f)W.nbmol.fapos[0]; break; 
+            case 10:         W.gridFF.addForce_surf(pi, {1.,0.,0.}, fef ); fed=(Quat4d)fef; break;
+            case 11:         W.gridFF.addForce_surf(pi, PLQ, fef );        fed=(Quat4d)fef; break;
+            case 12:         W.gridFF.addForce     (pi, PLQ, fef );        fed=(Quat4d)fef; break;
+            //case 13:         W.gridFF.addForce_surf(W.nbmol.apos[0], {1.,0.,0.}, fe );  break;
+            case 13:   fed = W.gridFF.getForce_HHermit( pi, PLQd );   break;
+            case 14:   fed = W.gridFF.getForce_Bspline( pi, PLQd );   break;  
+        }
+        FEout[i]= fed;
+    }
+}
+
 
 int findHbonds( double Rcut, double Hcut, double angMax ){
     W.Hbonds.clear();

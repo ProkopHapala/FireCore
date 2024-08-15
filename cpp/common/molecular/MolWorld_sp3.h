@@ -996,6 +996,10 @@ void printPBCshifts(){
             if (chdir(name) == -1) { printf("ERROR in MolWorld_sp3::initGridFF() chdir(%s) => exit()\n", name ); exit(0); }
             getcwd(tmpstr, 1024 ); printf( "WD=`%s`\n", tmpstr );
 
+            gridFF.tryLoad_new( true );
+            ffgrid = gridFF.HHermite_d;
+
+            /*
             switch (gridFF.mode){
                 case GridFFmod::LinearFloat     :{
                     gridFF.tryLoad( "FFelec.bin", "FFPaul.bin", "FFLond.bin", false, false );
@@ -1012,6 +1016,8 @@ void printPBCshifts(){
                     gridFF.perVoxel=6;
                 } break;            
             }
+            */
+
             //gridFF.log_z( "initGridFF_iz_ix0_iy0.log" ,0,0);
             //bSaveDebugXSFs = true;
             if(bSaveDebugXSFs)saveGridXsfDebug();
@@ -2169,7 +2175,11 @@ void pullAtom( int ia, Vec3d* apos, Vec3d* fapos, float K=-2.0 ){
                 }
                 if(bSurfAtoms)[[likely]]{ 
                     if(bGridFF)[[likely]]{ 
-                        if  (bTricubic){ E+= gridFF.addForce_Tricubic( ffl.apos[ia], ffl.PLQd[ia], ffl.fapos[ia], true  ); }
+                        if  (bTricubic){ 
+                            E+= gridFF.addForce_Tricubic( ffl.apos[ia], ffl.PLQd[ia], ffl.fapos[ia], true  ); 
+
+
+                        }
                         else           { E+= gridFF.addForce         ( ffl.apos[ia], ffl.PLQs[ia], ffl.fapos[ia], true  ); }
                     }  // GridFF
                     else               { 

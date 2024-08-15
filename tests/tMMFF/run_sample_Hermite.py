@@ -170,7 +170,9 @@ def getPLQH( R0, E0, a, Q, H ):
 
 def test_gridFF( name="data/NaCl_1x1_L2", dsamp=0.02,  R0=3.5, E0=0.1, a=1.6, Q=0.4, H=0.0, scErr=100.0, title=None, ):
     mmff.initParams()
-    EFg = mmff.makeGridFF( name=name, mode=4 )
+    #EFg = 
+    mmff.makeGridFF( name=name, mode=4 )
+    print( "RETURNED TO PYTHON " )
     #plotGridFF_1D( EFg, ix=20,iy=20 )
     PLQH = getPLQH( R0, E0, a, Q, H )
 
@@ -181,7 +183,13 @@ def test_gridFF( name="data/NaCl_1x1_L2", dsamp=0.02,  R0=3.5, E0=0.1, a=1.6, Q=
     ps[:,2] = zs
     
     FF_ref = mmff.evalGridFFAtPoints( ps, PLQH=PLQH )
-    FFout  = mmff.sample_SplineHermite3D_comb3( ps, EFg, g0=[0.0,0.0,0.0], dg=[0.1,0.1,0.1], fes=None, Cs=PLQH )
+    
+    #FFout  = mmff.sample_SplineHermite3D_comb3( ps, EFg, g0=[0.0,0.0,0.0], dg=[0.1,0.1,0.1], fes=None, Cs=PLQH )
+
+    # Es,Fs = sampleSurf( name, zs, Es=None, fs=None, kind=1, atyp=0, Q=0.0, K=-1.0, Rdamp=1.0, pos0=(0.,0.,0.), bSave=False )
+
+    FFout = mmff.sampleSurf_new( ps, kind=13, REQs=[1.487,0.0006808,0.0,0.0], K=-1.0, Rdamp=1.0 )
+
     Emin = FF_ref[:,3].min(); 
     Fmin = FF_ref[:,2].min()
 
@@ -203,9 +211,10 @@ def test_gridFF( name="data/NaCl_1x1_L2", dsamp=0.02,  R0=3.5, E0=0.1, a=1.6, Q=
     plt.axhline(0.0, c="k", ls='--', lw=0.5)
     plt.ylim( Fmin, -Fmin )
     plt.legend()
-
-    print( "ff.shape ", EFg.shape )
+    
+    #print( "ff.shape ", EFg.shape )
     print( "test_gridFF() DONE" )
+    #return EFg
 
 
 R0 = 3.5
