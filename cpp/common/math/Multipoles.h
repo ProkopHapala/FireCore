@@ -147,6 +147,48 @@ Fqxx_z :      3z(z^2  + y^2  - 4*x^2 )        =  3z( r^2 - 5*x^2 )/r^7
 Fqxy_y :      3x( z^2 - 4*y^2 + x^2 )         =  3x( r^2 - 5*y^2 )/r^7
 Fqxy_z :      3y( z^2 - 4*y^2 + x^2 )         =  15xyz/r^7
 
+Fp_x   :	-(   Px*z^2  + Px*y^2 -2*Px*x^2  -3*Py*x*y  -3*Pz*x*z  )/r^5 =   ( Px*( r^2 - 3*x^2 ) - 3*(Py*x*y + Pz*x*z) )/r^5
+Fp_y   :	-(   Py*z^2  + Py*x^2 -2*Py*y^2  -3*Pz*y*z  -3*Px*x*y  )/r^5 =   ( Py*( r^2 - 3*y^2 ) - 3*(Px*x*y + Pz*y*z) )/r^5
+Fp_z   :	-(   Pz*y^2  + Pz*x^2 -2*Pz*z^2  -3*Py*y*z  -3*Px*x*z  )/r^5 =   ( Pz*( r^2 - 3*z^2 ) - 3*(Px*x*z + Py*y*z) )/r^5
+
+
+Fq_x  : -3*(Q_xz*z^3+Q_xy*y*z^2-4*Q_zz*x*z^2+Q_yy*x*z^2+3*Q_xx*x*z^2+Q_xz*y^2*z-5*Q_yz*x*y*z-4*Q_xz*x^2*z+Q_xy*y^3+Q_zz*x*y^2-4*Q_yy*x*y^2+3*Q_xx*x*y^2-4*Q_xy*x^2*y+Q_zz*x^3+Q_yy*x^3-2*Q_xx*x^3)
+Fq_y  : -3*(Q_yz*z^3-4*Q_zz*y*z^2+3*Q_yy*y*z^2+Q_xx*y*z^2+Q_xy*x*z^2-4*Q_yz*y^2*z-5*Q_xz*x*y*z+Q_yz*x^2*z+Q_zz*y^3-2*Q_yy*y^3+Q_xx*y^3-4*Q_xy*x*y^2+Q_zz*x^2*y+3*Q_yy*x^2*y-4*Q_xx*x^2*y+Q_xy*x^3)
+Fq_z  :  3*(Q_yy*z^3+Q_xx*z^3-4*Q_zz*y*z^2-4*Q_yz*y*z^2-4*Q_yy*y^2*z+Q_xx*y^2*z-5*Q_xz*x*y*z-5*Q_xy*x*y*z+Q_yy*x^2*z-4*Q_xx*x^2*z+Q_zz*y^3+Q_yz*y^3+Q_zz*x^2*y+Q_yz*x^2*y)
+
+
+Fq_x  : -3*(  -2*Q_xx*x^3  +3*Q_xx*x*z^2    +3*Q_xx*x*y^2            +Q_yy*x^3 +Q_yy*x*z^2 -4*Q_yy*x*y^2             +Q_zz*x^3  +Q_zz*x*y^2  -4*Q_zz*x*z^2                     +Q_xy*y^3  +Q_xy*y*z^2  -4*Q_xy*x^2*y                    +Q_xz*z^3   +Q_xz*y^2*z  -4*Q_xz*x^2*z       -5*Q_yz*x*y*z        )
+Fq_x  : -3*(   Q_xx*(-2*x^3 + 3*x*z^2 + 3*x*y^2)                     +Q_yy*(x^3 + x*z^2 - 4*x*y^2)                   +Q_zz*(x^3  +x*y^2  -4*x*z^2)                             +Q_xy*(y^3  +y*z^2  -4*x^2*y)                            +Q_xz*(z^3   +z*y^2  -4*z*x^2)               -5*Q_yz*(x*y*z)      )
+Fq_x  : -3*(   Q_xx*(-5*x^2 + 3*r^2 )*x                              +Q_yy*(r^2 - 5*y^2)*x                           +Q_zz*(r^2  -5*z^2)*x                                     +Q_xy*(r^2  -5*x^2)*y                                    +Q_xz*(r^2  -5*x^2)*z                        -5*Q_yz*(x*y*z)      )
+Fq_x  : -3*(   r^2*(  (3*Q_xx + Q_yy + Q_zz)*x   + (Q_xy*y+Q_xz*z)  )    -5*x*(Q_xx*x^2 + Q_yy*y^2 +  Q_zz*z^2)                                                                -5*x^2*(   Q_xy*y + Q_xz*z )                                                                          -5*Q_yz*(x*y*z)      )
+
+
+Fq_y  : -3*(  -2*Q_yy*y^3  +3*Q_yy*x^2*y   +3*Q_yy*y*z^2            +Q_xx*y^3       +Q_xx*y*z^2   -4*Q_xx*x^2*y      +Q_zz*x^2*y    +Q_zz*y^3     -4*Q_zz*y*z^2            +Q_xy*x*z^2     +Q_xy*x^3   -4*Q_xy*x*y^2                   +Q_yz*x^2*z      +Q_yz*z^3     -4*Q_yz*y^2*z                                          -5*Q_xz*x*y*z          )
+Fq_y  : -3*(  Q_yy*( -2*y^3  +3*( x^2*y   +y*z^2)                   +Q_xx*( y^3     +y*z^2   -4*x^2*y)                +Q_zz*( x^2*y       +y^3     -4y*z^2      )           +Q_xy*( x*z^2   +x^3        -4*x*y^2  )                     +Q_yz*( x^2*z      + z^3       -4* y^2*z     )                                        -5*Q_xz*(x*y*z)        )       
+Fq_y  : -3*(  Q_yy*( -3*y^2 + r^2  )*y                              +Q_xx*( r^2   -5*x^2)*y                           +Q_zz*( r^2                  -5z^2        )*y         +Q_xy*( r^2                 -5*y^2    )*x                   +Q_yz*( r^2                    -5* y^2       )*z                                      -5*Q_xz*(x*y*z)        )     
+
+
+Fq_x  : -3*(   r^2*( (3*Q_xx + Q_yy + Q_zz)*x  + (Q_xy*y+Q_xz*z)  )    -5*x*(Q_xx*x^2 + Q_yy*y^2 + Q_zz*z^2)   -5*x^2*( Q_xy*y + Q_xz*z )     -5*Q_yz*(x*y*z)  )
+Fq_y  : -3*(   r^2*( (3*Q_yy + Q_xx + Q_zz)*y  + (Q_xy*x+Q_yz*z)  )    -5*y*(Q_xx*x^2 + Q_yy*y^2 + Q_zz*z^2)   -5*y^2*( Q_xy*x + Q_yz*z )     -5*Q_xz*(x*y*z)  )
+Fq_z  : -3*(   r^2*( (3*Q_zz + Q_xx + Q_yy)*z  + (Q_xz*x+Q_yz*y)  )    -5*z*(Q_xx*x^2 + Q_yy*y^2 + Q_zz*z^2)   -5*z^2*( Q_xz*x + Q_yz*y )     -5*Q_xy*(x*y*z)  )
+
+
+Qd2 = (Q_xx*x^2 + Q_yy*y^2 + Q_zz*z^2)
+Qsum
+
+Fq_x  : -3*(   r^2*( (3*Q_xx + Q_yy + Q_zz)*x  + (Q_xy*y+Q_xz*z)  )    -5*( x*Qd2    +x^2*( Q_xy*y + Q_xz*z )     +Q_yz*(x*y*z) ) )
+Fq_y  : -3*(   r^2*( (3*Q_yy + Q_xx + Q_zz)*y  + (Q_xy*x+Q_yz*z)  )    -5*( y*Qd2    +y^2*( Q_xy*x + Q_yz*z )     +Q_xz*(x*y*z) ) )
+Fq_z  : -3*(   r^2*( (3*Q_zz + Q_xx + Q_yy)*z  + (Q_xz*x+Q_yz*y)  )    -5*( z*Qd2    +z^2*( Q_xz*x + Q_yz*y )     +Q_xy*(x*y*z) ) )
+
+
+Fq_x  : -3*(   r^2*(3*Q_xx + Q_yy + Q_zz)*x      -5*x*Qd2 + (r^2-5*x^2)*( Q_xy*y + Q_xz*z )     +Q_yz*(x*y*z) ) )
+Fq_y  : -3*(   r^2*(3*Q_yy + Q_xx + Q_zz)*y      -5*y*Qd2 + (r^2-5*y^2)*( Q_xy*x + Q_yz*z )     +Q_xz*(x*y*z) ) )
+Fq_z  : -3*(   r^2*(3*Q_zz + Q_xx + Q_yy)*z      -5*z*Qd2 + (r^2-5*z^2)*( Q_xz*x + Q_yz*y )     +Q_xy*(x*y*z) ) )
+
+
+
+ r^2*(Q_xy*y+Q_xz*z)    -5*x^2*( Q_xy*y + Q_xz*z )  =   (r^2-5*x^2)*( Q_xy*y + Q_xz*z )       =   Q_xy*y*(  r^2 -5*x^2  ) + Q_xz*z*( r^2 -5*x^2  )
+
 
 */
 double EFmultipole( const Vec3d& d, Vec3d& f, double * cs, int order=2 ){
@@ -167,28 +209,46 @@ double EFmultipole( const Vec3d& d, Vec3d& f, double * cs, int order=2 ){
     const double pd =  p.dot(d);
     E += ir2 * pd;
     const double scp = ir2*ir2*ir;
-    const Vec3d Fp{
-        //   cc               
-        // Question: are the signs correct? It is strange it can be reduced to dot-product
-        //(( p.x*d.x   +    p.y*d.y + p.z*d.z   )*3-r2)*d.x*scp,
-        //(( p.y*d.y   +    p.x*d.x + p.z*d.z   )*3-r2)*d.y*scp,
-        //(( p.z*d.z   +    p.x*d.x + p.y*d.y   )*3-r2)*d.z*scp
-        ( pd*3-r2)*d.x*scp,
-        ( pd*3-r2)*d.y*scp,
-        ( pd*3-r2)*d.z*scp
-    };
-    f.add(Fp);
+    // const Vec3d Fp{
+    //     //   cc               
+    //     // Question: are the signs correct? It is strange it can be reduced to dot-product
+    //     //(p.x*(r2-3*dd.xx) - 3*(p.y*dd.xy + p.z*dd.xz) )*scp,
+    //     //(p.y*(r2-3*dd.yy) - 3*(p.x*dd.xy + p.z*dd.yz) )*scp,
+    //     //(p.z*(r2-3*dd.zz) - 3*(p.x*dd.xz + p.y*dd.yz) )*scp,
+
+    //     //( p.x*r2 - 3*( p.x*d.x + p.y*d.y + p.z*d.z)*d.x )*scp,
+    //     //( p.y*r2 - 3*( p.y*d.y + p.x*d.x + p.z*d.z)*d.y )*scp,
+    //     //( p.z*r2 - 3*( p.z*d.z + p.x*d.x + p.y*d.y)*d.z )*scp,
+
+    //     ( p.x*r2 - 3*pd*d.x )*scp,
+    //     ( p.y*r2 - 3*pd*d.y )*scp,
+    //     ( p.z*r2 - 3*pd*d.z )*scp,
+    //     //( pd*3-r2)*d.x*scp,
+    //     //( pd*3-r2)*d.y*scp,
+    //     //( pd*3-r2)*d.z*scp
+    // };
+    //f.add(Fp);
+
+    f.add_mul( d, (pd*3-r2)*scp );
     if( order<2 ) return E*ir;
 
     // ---------- Quadrupole
     //E += ir2*ir2*ir2();
-    Vec6d q  = *(Vec6d*)(cs+4);
-    Vec6d dd{ d.x*d.x, d.y*d.y, d.z*d.z, d.y*d.z, d.x*d.z, d.x*d.y };
+    const Vec6d q  = *(Vec6d*)(cs+4);
+    //const Vec6d dd{ d.x*d.x, d.y*d.y, d.z*d.z, d.y*d.z, d.x*d.z, d.x*d.y };
+    const Vec3d dd{ d.x*d.x, d.y*d.y, d.z*d.z };
+    const double Qd2 = -5*( q.xx*dd.x + q.yy*dd.y + q.zz*dd.z );
+    const double xyz = 5*d.x*d.y*d.z;
+    const double Qsum = q.xx + q.yy + q.zz;
+    const double scq = scp *3* ir2;
     const Vec3d Fp{
         //   cc_c           ab_b  ab_a               
-        (( q.xx*dd.xx*5   +    (q.yy)*dd.xy + q.zz*d.z  )*3 - 9*r2 )*d.x*scp,
-        (( q.yy*dd.yy*5   +    *dd.xz + cs[3]*d.z       )*3 - 9*r2 )*d.y*scp,
-        (( q.zz*dd.zz*5   +    *dd.x + cs[2]*d.y        )*3 - 9*r2 )*d.z*scp
+        //(   r2*d.x*(2*q.xx + Qsum)  +d.x*Qd2 + (r2-5*dd.xx)*( q.xy*d.y + q.xz*d.z )     + q_yz*xyz ) * scq,
+        //(   r2*d.y*(2*q.yy + Qsum)  +d.y*Qd2 + (r2-5*dd.yy)*( q.xy*d.x + q.yz*d.z )     + q_xz*xyz ) * scq,
+        //(   r2*d.z*(2*q.zz + Qsum)  +d.z*Qd2 + (r2-5*dd.zz)*( q.xz*d.x + q.yz*d.y )     + q_xy*xyz ) * scq
+        (  d.x*( r2*(2*q.xx + Qsum) + Qd2) + (r2-5*dd.x)*( q.xy*d.y + q.xz*d.z )     + q.yz*xyz ) * scq,
+        (  d.y*( r2*(2*q.yy + Qsum) + Qd2) + (r2-5*dd.y)*( q.xy*d.x + q.yz*d.z )     + q.xz*xyz ) * scq,
+        (  d.z*( r2*(2*q.zz + Qsum) + Qd2) + (r2-5*dd.z)*( q.xz*d.x + q.yz*d.y )     + q.xy*xyz ) * scq
     };
     f.add(Fp);
     return E;
