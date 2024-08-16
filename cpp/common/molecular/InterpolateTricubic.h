@@ -587,11 +587,12 @@ inline Quat4d fe3d_comb2( const double tx, const double ty, const double tz, con
     alignas(32) const Quat4d bx  =  basis_val( tx );
     alignas(32) const Quat4d dx  = dbasis_val( tx );
 
-    const Quat4d* FEx = FE + ( i.x*n.y  + i.y )*n.z;
-    alignas(32) const Vec3d fe0 = fe2d_comb2( i.z, n.z, FEx, C, pz, dz, by, dy );
-    alignas(32) const Vec3d fe1 = fe2d_comb2( i.z, n.z, FEx, C, pz, dz, by, dy );
-    alignas(32) const Vec3d fe2 = fe2d_comb2( i.z, n.z, FEx, C, pz, dz, by, dy );
-    alignas(32) const Vec3d fe3 = fe2d_comb2( i.z, n.z, FEx, C, pz, dz, by, dy );
+    const int nyz = n.y*n.z;
+    const Quat4d* FEx = FE + (i.z + ( (i.y-1) + (i.x-1)*n.y )*n.z);
+    alignas(32) const Vec3d fe0 = fe2d_comb2( i.z, n.z, FEx      , C, pz, dz, by, dy );
+    alignas(32) const Vec3d fe1 = fe2d_comb2( i.z, n.z, FEx+nyz  , C, pz, dz, by, dy );
+    alignas(32) const Vec3d fe2 = fe2d_comb2( i.z, n.z, FEx+nyz*2, C, pz, dz, by, dy );
+    alignas(32) const Vec3d fe3 = fe2d_comb2( i.z, n.z, FEx+nyz*3, C, pz, dz, by, dy );
 
     return Quat4d{
         fe0.z*bx.x  +  fe1.z*bx.y  +  fe2.z*bx.z  +  fe3.z*bx.w, // E
@@ -599,6 +600,84 @@ inline Quat4d fe3d_comb2( const double tx, const double ty, const double tz, con
         fe0.x*bx.x  +  fe1.x*bx.y  +  fe2.x*bx.z  +  fe3.x*bx.w, // Fy
         fe0.y*bx.x  +  fe1.y*bx.y  +  fe2.y*bx.z  +  fe3.y*bx.w  // Fz  
     };
+}
+
+//__attribute__((always_inline))
+__attribute__((pure))
+__attribute__((hot)) 
+inline Vec2d fe1Dcomb3( const Vec2d* FE, const Vec3d& C, const Quat4d& p, const Quat4d& d ){
+    //const Quat4d p =  basis(x);
+    //const Quat4d d = dbasis(x);
+    alignas(32) const Vec2d a1 = FE[0];
+    alignas(32) const Vec2d b1 = FE[1];
+    alignas(32) const Vec2d c1 = FE[2];
+    alignas(32) const Vec2d a2 = FE[3];
+    alignas(32) const Vec2d b2 = FE[4];
+    alignas(32) const Vec2d c2 = FE[5];
+    alignas(32) const Quat4d cs{ 
+        a1.x*C.x + b1.x*C.y + c1.x*C.z,   // y1 
+        a2.x*C.x + b2.x*C.y + c2.x*C.z,   // y2
+        a1.y*C.x + b1.y*C.y + c1.y*C.z,   // dy1
+        a2.y*C.x + b2.y*C.y + c2.y*C.z};  // dy2
+    return Vec2d{ p.dot( cs ), d.dot( cs ) };
+    //printf( "i %i ", ix );
+    //return Vec2d{ a1.x*C.x + b1.x*C.y + c1.x*C.z, 0.0 };
+}
+
+__attribute__((pure))
+__attribute__((hot)) 
+inline Vec3d fe2d_comb3( int nz, const Vec2d* FE, const Vec3d& C, const Quat4d& pz, const Quat4d& dz, const Quat4d& by, const Quat4d& dy ){
+    //const Quat4d* FEx = FE + ( i.x*n.y  + i.y )*n.z;
+    alignas(32) const Vec2d fe0 = fe1Dcomb3( FE     , C, pz, dz );
+    alignas(32) const Vec2d fe1 = fe1Dcomb3( FE+nz*3, C, pz, dz );
+    alignas(32) const Vec2d fe2 = fe1Dcomb3( FE+nz*6, C, pz, dz );
+    alignas(32) const Vec2d fe3 = fe1Dcomb3( FE+nz*9, C, pz, dz );
+    return Vec3d{
+        fe0.x*dy.x  +  fe1.x*dy.y  +  fe2.x*dy.z  +  fe3.x*dy.w,  // Fy
+        fe0.y*by.x  +  fe1.y*by.y  +  fe2.y*by.z  +  fe3.y*by.w,  // Fz
+        fe0.x*by.x  +  fe1.x*by.y  +  fe2.x*by.z  +  fe3.x*by.w   // E
+    };
+}
+
+
+__attribute__((pure))
+__attribute__((hot)) 
+inline Quat4d fe3d_comb3( const Vec3d& t, const Vec3i i, const Vec3i n, const Vec2d* FE, const Vec3d& C ){
+    alignas(32) const Quat4d pz  =  basis(t.z);
+    alignas(32) const Quat4d dz  = dbasis(t.z);
+    alignas(32) const Quat4d by  =  basis_val( t.y );
+    alignas(32) const Quat4d dy  = dbasis_val( t.y );
+    alignas(32) const Quat4d bx  =  basis_val( t.x );
+    alignas(32) const Quat4d dx  = dbasis_val( t.x );
+
+    const int nyz = n.y*n.z*3;
+    const Vec2d* FEx = FE + (i.z + ( (i.y-1) + (i.x-1)*n.y )*n.z)*3;
+
+    // constant approx
+    //const Vec3d fe0 = fe2d_comb3( n.z, FEx      , C, pz, dz, by, dy );
+    //return Quat4d{ 0.0, fe0.x, fe0.y, fe0.z };
+
+    // linear approx
+    // const Vec3d fe0 = fe2d_comb3( n.z, FEx    , C, pz, dz, by, dy );
+    // const Vec3d fe1 = fe2d_comb3( n.z, FEx+nyz, C, pz, dz, by, dy );
+    // return Quat4d{ 
+    //     0.0, 
+    //     fe0.x*(1-t.x)+fe1.x*(t.x), 
+    //     fe0.y*(1-t.x)+fe1.y*(t.x),
+    //     fe0.z*(1-t.x)+fe1.z*(t.x),
+    // };
+
+    alignas(32) const Vec3d fe0 = fe2d_comb3( n.z, FEx      , C, pz, dz, by, dy );
+    alignas(32) const Vec3d fe1 = fe2d_comb3( n.z, FEx+nyz  , C, pz, dz, by, dy );
+    alignas(32) const Vec3d fe2 = fe2d_comb3( n.z, FEx+nyz*2, C, pz, dz, by, dy );
+    alignas(32) const Vec3d fe3 = fe2d_comb3( n.z, FEx+nyz*3, C, pz, dz, by, dy );
+    return Quat4d{
+        fe0.z*dx.x  +  fe1.z*dx.y  +  fe2.z*dx.z  +  fe3.z*dx.w, // Fx
+        fe0.x*bx.x  +  fe1.x*bx.y  +  fe2.x*bx.z  +  fe3.x*bx.w, // Fy
+        fe0.y*bx.x  +  fe1.y*bx.y  +  fe2.y*bx.z  +  fe3.y*bx.w, // Fz  
+        fe0.z*bx.x  +  fe1.z*bx.y  +  fe2.z*bx.z  +  fe3.z*bx.w  // E
+    };
+    
 }
 
 
@@ -730,67 +809,7 @@ void sample1D_deriv( const double g0, const double dg, const int ng, const Vec2d
 
 
 
-//__attribute__((always_inline))
-__attribute__((pure))
-__attribute__((hot)) 
-inline Vec2d fe1Dcomb3( const Vec2d* FE, const Vec3d& C, const Quat4d& p, const Quat4d& d ){
-    //const Quat4d p =  basis(x);
-    //const Quat4d d = dbasis(x);
-    alignas(32) const Vec2d a1 = FE[0];
-    alignas(32) const Vec2d b1 = FE[1];
-    alignas(32) const Vec2d c1 = FE[2];
-    alignas(32) const Vec2d a2 = FE[3];
-    alignas(32) const Vec2d b2 = FE[4];
-    alignas(32) const Vec2d c2 = FE[5];
-    alignas(32) const Quat4d cs{ 
-        a1.x*C.x + b1.x*C.y + c1.x*C.z,   // y1 
-        a2.x*C.x + b2.x*C.y + c2.x*C.z,   // y2
-        a1.y*C.x + b1.y*C.y + c1.y*C.z,   // dy1
-        a2.y*C.x + b2.y*C.y + c2.y*C.z};  // dy2
-    return Vec2d{ p.dot( cs ), d.dot( cs ) };
-    //printf( "i %i ", ix );
-    //return Vec2d{ a1.x*C.x + b1.x*C.y + c1.x*C.z, 0.0 };
-}
 
-__attribute__((pure))
-__attribute__((hot)) 
-inline Vec3d fe2d_comb3( int nz, const Vec2d* FE, const Vec3d& C, const Quat4d& pz, const Quat4d& dz, const Quat4d& by, const Quat4d& dy ){
-    //const Quat4d* FEx = FE + ( i.x*n.y  + i.y )*n.z;
-    alignas(32) const Vec2d fe0 = fe1Dcomb3( FE     , C, pz, dz );
-    alignas(32) const Vec2d fe1 = fe1Dcomb3( FE+nz*3, C, pz, dz );
-    alignas(32) const Vec2d fe2 = fe1Dcomb3( FE+nz*6, C, pz, dz );
-    alignas(32) const Vec2d fe3 = fe1Dcomb3( FE+nz*9, C, pz, dz );
-    return Vec3d{
-        fe0.x*dy.x  +  fe1.x*dy.y  +  fe2.x*dy.z  +  fe3.x*dy.w,  // Fy
-        fe0.y*by.x  +  fe1.y*by.y  +  fe2.y*by.z  +  fe3.y*by.w,  // Fz
-        fe0.x*by.x  +  fe1.x*by.y  +  fe2.x*by.z  +  fe3.x*by.w   // E
-    };
-}
-
-
-__attribute__((pure))
-__attribute__((hot)) 
-inline Quat4d fe3d_comb3( const Vec3d& t, const Vec3i i, const Vec3i n, const Vec2d* FE, const Vec3d& C ){
-    alignas(32) const Quat4d pz  =  basis(t.z);
-    alignas(32) const Quat4d dz  = dbasis(t.z);
-    alignas(32) const Quat4d by  =  basis_val( t.y );
-    alignas(32) const Quat4d dy  = dbasis_val( t.y );
-    alignas(32) const Quat4d bx  =  basis_val( t.x );
-    alignas(32) const Quat4d dx  = dbasis_val( t.x );
-
-    const Vec2d* FEx = FE + (i.z + ( i.y + i.x*n.y )*n.z)*3;
-    alignas(32) const Vec3d fe0 = fe2d_comb3( n.z, FEx, C, pz, dz, by, dy );
-    alignas(32) const Vec3d fe1 = fe2d_comb3( n.z, FEx, C, pz, dz, by, dy );
-    alignas(32) const Vec3d fe2 = fe2d_comb3( n.z, FEx, C, pz, dz, by, dy );
-    alignas(32) const Vec3d fe3 = fe2d_comb3( n.z, FEx, C, pz, dz, by, dy );
-
-    return Quat4d{
-        fe0.x*dx.x  +  fe1.x*dx.y  +  fe2.x*dx.z  +  fe3.x*dx.w, // Fx
-        fe0.x*bx.x  +  fe1.x*bx.y  +  fe2.x*bx.z  +  fe3.x*bx.w, // Fy
-        fe0.y*bx.x  +  fe1.y*bx.y  +  fe2.y*bx.z  +  fe3.y*bx.w, // Fz  
-        fe0.z*bx.x  +  fe1.z*bx.y  +  fe2.z*bx.z  +  fe3.z*bx.w  // E
-    };
-}
 
 
 __attribute__((hot)) 

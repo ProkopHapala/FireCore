@@ -228,6 +228,61 @@ def test_gridFF( name="data/NaCl_1x1_L2", mode=4, dsamp=0.02,  R0=3.5, E0=0.1, a
     print( "test_gridFF() DONE" )
     #return EFg
 
+def test_gridFF_lat( name="data/NaCl_1x1_L2", iax = 0, mode=4, dsamp=0.02,  R0=3.5, E0=0.1, a=1.6, Q=0.4, H=0.0, scErr=100.0, title=None, ):
+    print( "test_gridFF() START" )
+    #mode = 4
+    #mode = 1
+    mmff.makeGridFF( name=name, mode=mode )
+    #plotGridFF_1D( EFg, ix=20,iy=20 )
+    PLQH = getPLQH( R0, E0, a, Q, H )
+
+    ts = np.arange(0.0, 10.0, dsamp)
+    ps = np.zeros( (len(ts), 3) )
+    ps[:,0] = 1.05
+    ps[:,1] = 1.05
+    ps[:,2] = 2.0
+    ps[:,iax] = ts
+    
+    FF_ref = mmff.evalGridFFAtPoints( ps, PLQH=PLQH )
+    
+    #FFout  = mmff.sample_SplineHermite3D_comb3( ps, EFg, g0=[0.0,0.0,0.0], dg=[0.1,0.1,0.1], fes=None, Cs=PLQH )
+    # Es,Fs = sampleSurf( name, zs, Es=None, fs=None, kind=1, atyp=0, Q=0.0, K=-1.0, Rdamp=1.0, pos0=(0.,0.,0.), bSave=False )
+
+    ps_ = ps.copy(); ps_[:,2]+=-2.0;  
+
+    FFout = mmff.sampleSurf_new( ps_, PLQH, mode=mode, Rdamp=1.0 )
+    
+    Emin = FFout[:,3].min();
+    Fmin = FFout[:,2].min();
+
+    #Emin = FF_ref[:,3].min(); 
+    #Fmin = FF_ref[:,2].min()
+
+    plt.figure(figsize=(5,10))
+    plt.subplot(2,1,1);
+    plt.plot( ts, FFout[:,3], "-g", lw=0.5, label="Etot_fit" )
+    plt.plot( ts, FF_ref[:,3], ":k", lw=2.0, label="Etot_ref" )
+    plt.plot( ts, (FFout[:,3]-FF_ref[:,3])*scErr, "-r", lw=0.5, label=("Etot_err*%.2f" %scErr) )
+    #plt.plot( zs, FFout[:,0], "-r", lw=0.5, label="Ftot_x" )
+    #plt.plot( zs, FFout[:,1], "-g", lw=0.5, label="Ftot_y" )
+    #plt.plot( zs, FFout[:,2], "-b", lw=0.5, label="Etot_z" )
+    plt.axhline(0.0, c="k", ls='--', lw=0.5)
+    plt.ylim( Emin, -Emin )
+    plt.legend()
+    plt.subplot(2,1,2);
+    plt.plot( ts, FFout[:,iax],  "-g", lw=0.5, label="Ftot_fit" )
+    plt.plot( ts, FF_ref[:,iax], ":k", lw=2.0, label="Ftot_ref" )
+    plt.plot( ts, (FFout[:,iax]-FF_ref[:,iax])*scErr, "-r", lw=0.5, label=("Ftot_err*%.2f" %scErr) )
+    plt.axhline(0.0, c="k", ls='--', lw=0.5)
+    plt.ylim( Fmin, -Fmin )
+    plt.legend()
+
+    if ( title is not None ): plt.suptitle( title )
+    
+    #print( "ff.shape ", EFg.shape )
+    print( "test_gridFF() DONE" )
+    #return EFg
+
 
 R0 = 3.5
 E0 = 1.0
@@ -254,7 +309,13 @@ a  = 1.8
 #test_fit_2D( title="test mode=2", mode=3 )
 
 mmff.initParams()
-test_gridFF( mode=1, title="tri-linar force"          )
-test_gridFF( mode=4, title="Hybrid Hermite tri-cubic" )
+#test_gridFF( mode=1, title="tri-linar force"          )
+#test_gridFF( mode=4, title="Hybrid Hermite tri-cubic" )
+
+#test_gridFF_lat( mode=1, title="tri-linar force"          )
+#test_gridFF_lat( mode=4, title="Hybrid Hermite tri-cubic" )
+
+test_gridFF_lat( mode=4, title="Hybrid Hermite tri-cubic", Q=0.0, iax=1 )
+#test_gridFF_lat( mode=4, title="Hybrid Hermite tri-cubic", Q=0.0, iax=0 )
 
 plt.show()

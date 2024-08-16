@@ -311,6 +311,12 @@ inline float addForce_Tricubic( const Vec3d& p, const Quat4d& PLQ, Vec3d& f, boo
 }
 
 
+inline int fold_cubic2( int i, int n )const{
+    //i+=n*100;
+    return (i+(n<<8) )%n;
+    //if( i==0 )[[unlikely]]{  return n-1; } else if (i>n)[[unlikely]]{ return i-n; } else [[likely]] {  return i; };
+}
+
 __attribute__((hot))  
 inline Quat4d getForce_HHermit( Vec3d p, const Quat4d& PLQH, bool bSurf=true ) const {
     //printf( "GridFF::getForce_HHermit() p(%g,%g,%g)\n", p.x,p.y,p.z );
@@ -319,14 +325,16 @@ inline Quat4d getForce_HHermit( Vec3d p, const Quat4d& PLQH, bool bSurf=true ) c
     p.sub(grid.pos0);
     grid.diCell.dot_to( p, t );
     Vec3d inv_dg2{ -grid.diCell.xx, -grid.diCell.yy, -grid.diCell.zz };
-    int ix=(int)t.x;
-    int iy=(int)t.y;
-    int iz=(int)t.z;
+    const int ix=(int)t.x;
+    const int iy=(int)t.y;
+    const int iz=(int)t.z;
     //u.x=(u.x-((int)(u.x+10)-10))*grid.n.x-1;
     //u.y=(u.y-((int)(u.y+10)-10))*grid.n.y-1;
     //if(u.z<0.0){ u.z=0.0; }else if(u.z>1.0){ u.z=1.0; }; u.z=u.z*grid.n.z-1;
     //printf( "GridFF::getForce_HHermit() p(%g,%g,%g) i(%i,%i,%i) n(%i,%i,%i) inv_dg2(%g,%g,%g)\n", p.x,p.y,p.z, ix,iy,iz, grid.n.x,grid.n.y,grid.n.z,  inv_dg2.x,inv_dg2.y,inv_dg2.z );
-    Quat4d fe = Spline_Hermite::fe3d_comb3( Vec3d{t.x-ix-1,t.y-iy-1,t.z-iz}, Vec3i{ix,iy,iz}, grid.n, (Vec2d*)HHermite_d, PLQH.f );
+    const int ix_ = fold_cubic2( ix, grid.n.x );
+    const int iy_ = fold_cubic2( iy, grid.n.y );
+    Quat4d fe = Spline_Hermite::fe3d_comb3( Vec3d{t.x-ix,t.y-iy,t.z-iz}, Vec3i{ix_,iy_,iz}, grid.n, (Vec2d*)HHermite_d, PLQH.f );
     //{ const int i0 = (iz+grid.n.z*(iy+grid.n.y*ix))*6; printf( "GridFF::getForce_HHermit() p(%g,%g,%g) i(%i,%i,%i) VPLQ(%g,%g,%g) PLQ(%g,%g,%g) \n", p.x,p.y,p.z, ix,iy,iz, HHermite_d[i0+0], HHermite_d[i0+2], HHermite_d[i0+4], PLQH.x,PLQH.y,PLQH.z ); }
     fe.f.mul(inv_dg2);
     return fe;
