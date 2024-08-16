@@ -215,9 +215,9 @@ def test_gridFF( name="data/NaCl_1x1_L2", mode=4, dsamp=0.02,  R0=3.5, E0=0.1, a
     plt.ylim( Emin, -Emin )
     plt.legend()
     plt.subplot(2,1,2);
-    plt.plot( zs, FFout[:,2],  "-g", lw=0.5, label="Etot_fit" )
-    plt.plot( zs, FF_ref[:,2], ":k", lw=2.0, label="Etot_ref" )
-    plt.plot( zs, (FFout[:,2]-FF_ref[:,2])*scErr, "-r", lw=0.5, label=("Etot_err*%.2f" %scErr) )
+    plt.plot( zs, FFout[:,2],  "-g", lw=0.5, label="Ftot_fit" )
+    plt.plot( zs, FF_ref[:,2], ":k", lw=2.0, label="Ftot_ref" )
+    plt.plot( zs, (FFout[:,2]-FF_ref[:,2])*scErr, "-r", lw=0.5, label=("Ftot_err*%.2f" %scErr) )
     plt.axhline(0.0, c="k", ls='--', lw=0.5)
     plt.ylim( Fmin, -Fmin )
     plt.legend()
