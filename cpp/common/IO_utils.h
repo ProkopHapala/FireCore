@@ -7,6 +7,11 @@
 #include <cstdarg>
 #include <cstring>
 
+#include <vector>
+#include <unistd.h>
+#include <dirent.h>
+#include <sys/stat.h>
+
 #include <string>
 #include <vector>
 #include <unordered_map>
@@ -200,10 +205,19 @@ bool checkAllFilesExist( int n, const char** fnames, bool bPrint=true ){
     return bExist;
 }
 
+bool tryMakeDir( const char* dirname, bool bExit=true, bool bPrint=true ){
+    struct stat statbuf;
+    bool bDirReady=false;
+    if (stat(dirname, &statbuf) != 0) {   // Check if directory exists
+          if ( mkdir(dirname, 0755) == -1 ){ if(bPrint)printf("ERROR in tryMakeDir() cannot mkdir(%s)\n",                       dirname ); if(bExit)exit(0); }else{ bDirReady=true; }
+    }else if ( !S_ISDIR(statbuf.st_mode)  ){ if(bPrint)printf("ERROR in tryMakeDir() path(%s) exists but is not a directory\n", dirname ); if(bExit)exit(0); }else{ bDirReady=true; }
+    return bDirReady;
+}
 
-#include <vector>
-#include <unistd.h>
-#include <dirent.h>
+bool tryChangeDir( const char* dirname, bool bExit=true, bool bPrint=true, char* msg="tryChangeDir()" ){
+    if (chdir(dirname) == -1) { if(bPrint)printf("ERROR in %s chdir(%s) => exit()\n", msg, dirname ); if(bExit)exit(0); return true; }
+    return false;
+}
 
 //#include "Tree.h"
 

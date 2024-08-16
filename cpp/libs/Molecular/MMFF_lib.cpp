@@ -231,14 +231,9 @@ void sampleSurf_new( int n, double* ps_, double* FEout_, int mode, double* PLQH_
     Quat4d  PLQd = *(Quat4d*) PLQH_;
     Quat4f  PLQ  =  (Quat4f) PLQd;
     double R2Q=RQ*RQ;
-    W.gridFF.grid.printCell();
-
-    W.gridFF.gridN.x=W.gridFF.grid.n.x+3;
-    W.gridFF.gridN.y=W.gridFF.grid.n.y+3;
-    W.gridFF.gridN.z=W.gridFF.grid.n.z+3;
-
-    printf( "sampleSurf_new() gff.shift0(%g,%g,%g) gff.pos0(%g,%g,%g)\n", W.gridFF.shift0.x, W.gridFF.shift0.y, W.gridFF.shift0.z, W.gridFF.grid.pos0.x, W.gridFF.grid.pos0.y, W.gridFF.grid.pos0.z );
-    printf( "sampleSurf_new() gridN(%i,%i,%i) \n", W.gridFF.gridN.x, W.gridFF.gridN.y, W.gridFF.gridN.z );
+    //W.gridFF.grid.printCell();
+    //printf( "sampleSurf_new() gff.shift0(%g,%g,%g) gff.pos0(%g,%g,%g)\n", W.gridFF.shift0.x, W.gridFF.shift0.y, W.gridFF.shift0.z, W.gridFF.grid.pos0.x, W.gridFF.grid.pos0.y, W.gridFF.grid.pos0.z );
+    //printf( "sampleSurf_new() gridN(%i,%i,%i) \n", W.gridFF.gridN.x, W.gridFF.gridN.y, W.gridFF.gridN.z );
 
     //PLQd=Quat4d{1.0,0.0,0.0,0.0};
     long t0 = getCPUticks();
