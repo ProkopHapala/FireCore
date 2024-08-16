@@ -228,7 +228,7 @@ def test_gridFF( name="data/NaCl_1x1_L2", mode=4, dsamp=0.02,  R0=3.5, E0=0.1, a
     print( "test_gridFF() DONE" )
     #return EFg
 
-def test_gridFF_lat( name="data/NaCl_1x1_L2", iax = 0, mode=4, dsamp=0.02,  R0=3.5, E0=0.1, a=1.6, Q=0.4, H=0.0, scErr=100.0, title=None, ):
+def test_gridFF_lat( name="data/NaCl_1x1_L2", iax=0, p0=[1.05,1.05,2.0], mode=4, dsamp=0.02,  R0=3.5, E0=0.1, a=1.6, Q=0.4, H=0.0, scErr=100.0, title=None, ):
     print( "test_gridFF() START" )
     #mode = 4
     #mode = 1
@@ -238,9 +238,9 @@ def test_gridFF_lat( name="data/NaCl_1x1_L2", iax = 0, mode=4, dsamp=0.02,  R0=3
 
     ts = np.arange(0.0, 10.0, dsamp)
     ps = np.zeros( (len(ts), 3) )
-    ps[:,0] = 1.05
-    ps[:,1] = 1.05
-    ps[:,2] = 2.0
+    ps[:,0] = p0[0]
+    ps[:,1] = p0[1]
+    ps[:,2] = p0[2]
     ps[:,iax] = ts
     
     FF_ref = mmff.evalGridFFAtPoints( ps, PLQH=PLQH )
@@ -309,13 +309,23 @@ a  = 1.8
 #test_fit_2D( title="test mode=2", mode=3 )
 
 mmff.initParams()
-#test_gridFF( mode=1, title="tri-linar force"          )
-#test_gridFF( mode=4, title="Hybrid Hermite tri-cubic" )
+test_gridFF( mode=1, title="tri-linar force \n(z-cut)"          )
+test_gridFF( mode=4, title="Hybrid Hermite tri-cubic\n(z-cut)" )
 
 #test_gridFF_lat( mode=1, title="tri-linar force"          )
 #test_gridFF_lat( mode=4, title="Hybrid Hermite tri-cubic" )
 
-test_gridFF_lat( mode=4, title="Hybrid Hermite tri-cubic", Q=0.0, iax=1 )
-#test_gridFF_lat( mode=4, title="Hybrid Hermite tri-cubic", Q=0.0, iax=0 )
+Q = 0.0
+Q = 0.4
+p0 = [1.0,1.05,2.0]
+
+test_gridFF_lat( mode=1, title="tri-linar force \n(y-cut)"         , Q=Q, p0=p0, iax=1 )
+test_gridFF_lat( mode=4, title="Hybrid Hermite tri-cubic \n(y-cut)", Q=Q, p0=p0, iax=1 )
+
+test_gridFF_lat( mode=1, title="tri-linar force \n(x-cut)"         , Q=Q, p0=p0, iax=0 )
+test_gridFF_lat( mode=4, title="Hybrid Hermite tri-cubic \n(x-cut)", Q=Q, p0=p0, iax=0 )
+
+#test_gridFF_lat( mode=4, title="Hybrid Hermite tri-cubic", Q=0.0, p0=[1.0,1.05,2.0], iax=1 )
+#test_gridFF_lat( mode=4, title="Hybrid Hermite tri-cubic", Q=0.0, p0=[1.0,1.05,2.0], iax=0 )
 
 plt.show()
