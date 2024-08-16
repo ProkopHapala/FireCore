@@ -230,24 +230,15 @@ void sampleSurf_new( int n, double* ps_, double* FEout_, int mode, double* PLQH_
     Quat4d* FEout=(Quat4d*)FEout_;
     Quat4d  PLQd = *(Quat4d*) PLQH_;
     Quat4f  PLQ  =  (Quat4f) PLQd;
-    //Quat4d  REQ=*((Quat4d*)REQ_);
-    //Quat4f  PLQ = REQ2PLQ(   REQ, K );
-    //Quat4d  PLQd= REQ2PLQ_d( REQ, K );
-    //printf( "DEBUG sampleSurf REQ(%g,%g,%g) \n", REQ.x, REQ.y, REQ.z );
-    //printf( "DEBUG sampleSurf PLQ(%g,%g,%g) \n", PLQ.x, PLQ.y, PLQ.z );
-    //exit(0);
     double R2Q=RQ*RQ;
     W.gridFF.grid.printCell();
     printf( "sampleSurf_new() gff.shift0(%g,%g,%g) gff.pos0(%g,%g,%g)\n", W.gridFF.shift0.x, W.gridFF.shift0.y, W.gridFF.shift0.z, W.gridFF.grid.pos0.x, W.gridFF.grid.pos0.y, W.gridFF.grid.pos0.z );
     //PLQd=Quat4d{1.0,0.0,0.0,0.0};
+    long t0 = getCPUticks();
     for(int i=0; i<n; i++){
         Quat4f fef=Quat4fZero;
         Quat4d fed=Quat4dZero;
         Vec3d pi = ps[i];
-        if(W.nbmol.apos){
-            W.nbmol.apos[0]=pi;
-            W.ff.cleanAtomForce();
-        }
         switch(mode){
             case 1:   fef = W.gridFF.getForce( pi, PLQ );    fed=(Quat4d)fef; break;
             case 2:   fed = W.gridFF.getForce_d( pi, PLQd );       break;
@@ -256,6 +247,7 @@ void sampleSurf_new( int n, double* ps_, double* FEout_, int mode, double* PLQH_
         }
         FEout[i]= fed;
     }
+    double t = (getCPUticks()-t0); printf( "sampleSurf_new(mode=%i,n=%i) time=%g[kTick] %g[tick/point]\n", mode, n, t*(1.e-3), t/n );
 }
 
 
