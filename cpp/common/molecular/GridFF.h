@@ -334,7 +334,8 @@ inline Quat4d getForce_HHermit( Vec3d p, const Quat4d& PLQH, bool bSurf=true ) c
     //printf( "GridFF::getForce_HHermit() p(%g,%g,%g) i(%i,%i,%i) n(%i,%i,%i) inv_dg2(%g,%g,%g)\n", p.x,p.y,p.z, ix,iy,iz, grid.n.x,grid.n.y,grid.n.z,  inv_dg2.x,inv_dg2.y,inv_dg2.z );
     const int ix_ = fold_cubic2( ix, grid.n.x );
     const int iy_ = fold_cubic2( iy, grid.n.y );
-    Quat4d fe = Spline_Hermite::fe3d_comb3( Vec3d{t.x-ix,t.y-iy,t.z-iz}, Vec3i{ix_,iy_,iz}, grid.n, (Vec2d*)HHermite_d, PLQH.f );
+    //Quat4d fe = Spline_Hermite::fe3d_comb3( Vec3d{t.x-ix,t.y-iy,t.z-iz}, Vec3i{ix_,iy_,iz}, grid.n, (Vec2d*)HHermite_d, PLQH.f );
+    Quat4d fe = Spline_Hermite::fe3d_comb3( Vec3d{t.x-ix,t.y-iy,t.z-iz}, Vec3i{ix_,iy_,iz}, gridN, (Vec2d*)HHermite_d, PLQH.f );
     //{ const int i0 = (iz+grid.n.z*(iy+grid.n.y*ix))*6; printf( "GridFF::getForce_HHermit() p(%g,%g,%g) i(%i,%i,%i) VPLQ(%g,%g,%g) PLQ(%g,%g,%g) \n", p.x,p.y,p.z, ix,iy,iz, HHermite_d[i0+0], HHermite_d[i0+2], HHermite_d[i0+4], PLQH.x,PLQH.y,PLQH.z ); }
     fe.f.mul(inv_dg2);
     return fe;
@@ -673,7 +674,14 @@ double addForces_d( int natoms, Vec3d* apos, Quat4d* PLQs, Vec3d* fpos, bool bSu
         printf( "GridFF::makeGridFF_Hherm_d() grid.n(%i,%i,%i) nPBC(%i,%i,%i)  npbc=%i natoms=%i pos0(%g,%g,%g) K=%g Rdamp=%g \n",   grid.n.x,grid.n.y,grid.n.z,  nPBC.x,nPBC.y,nPBC.z,  npbc, natoms_,  grid.pos0.x,grid.pos0.y,grid.pos0.z, alphaMorse, Rdamp );   
         //printf( "GridFF::makeGridFF_Hherm_d() grid.n(%i,%i,%i)\n", grid.n.x,grid.n.y,grid.n.z ); 
         grid.printCell();    
-        if(HHermite_d==0) _realloc( HHermite_d, grid.n.totprod()*6 );
+        
+        gridN.x = grid.n.x+3;
+        gridN.y = grid.n.y+3;
+        gridN.z = grid.n.z+3;
+
+        //if(HHermite_d==0) _realloc( HHermite_d, grid.n.totprod()*6 );
+        if(HHermite_d==0) _realloc( HHermite_d, gridN.totprod()*6 );
+
         if(shifts==0)makePBCshifts( nPBC, lvec );
         //for(int i=0; i<npbc; i++      ){ printf( "shifts[%i](%g,%g,%g) \n", i, shifts[i].x, shifts[i].y, shifts[i].z  ); };
         //for(int ia=0; ia<natoms_; ia++){ printf( "apos[%i] pos(%g,%g,%g) REQ(%g,%g,%g,%g) \n", ia, apos_[ia].x, apos_[ia].y, apos_[ia].z, REQs_[ia].x, REQs_[ia].y, REQs_[ia].z, REQs_[ia].w ); };
@@ -685,19 +693,25 @@ double addForces_d( int natoms, Vec3d* apos, Quat4d* PLQs, Vec3d* fpos, bool bSu
         //        for ( int iz=0; iz<grid.n.z; iz++ ){
         // ToDo: Maybe we need larged grid ( +3 pixels ) to avoid boundary effects
         double dz = -grid.dCell.c.z;
-        const int ntot = grid.n.totprod();
-        const int nzy  = grid.n.z*grid.n.y;
+        //const int ntot = grid.n.totprod();
+        //const int nzy  = grid.n.z*grid.n.y;
+        
+        const int ntot = gridN.totprod();
+        const int nzy  = gridN.z*gridN.y;
+
         int i=0;
         #pragma omp parallel for shared(i,HHermite_d)
         for(int i=0; i<ntot; i++){
-            int iz =  i%grid.n.z;
-            int iy = (i/grid.n.z)%grid.n.y;
+            //int iz =  i%grid.n.z;
+            //int iy = (i/grid.n.z)%grid.n.y;
+            int iz =  i%gridN.z;
+            int iy = (i/gridN.z)%gridN.y;
             int ix =  i/nzy;
                     Quat4d qp,ql,qe;
                     const Vec3d pos = grid.pos0 + grid.dCell.c*iz + grid.dCell.b*iy + grid.dCell.a*ix;
                     evalGridFFPoint( natoms_, apos_, REQs_, pos, qp, ql, qe );
                     //const int ibuff = ix + grid.n.x*( iy + grid.n.y * iz );
-                    const int ibuff = iz + grid.n.z*( iy + grid.n.y * ix );
+                    const int ibuff = iz + gridN.z*( iy + gridN.y * ix );
                     int i6 = ibuff*6;
                     HHermite_d[i6+0] = qp.w; HHermite_d[i6+1] = qp.z*dz;
                     HHermite_d[i6+2] = ql.w; HHermite_d[i6+3] = ql.z*dz;
