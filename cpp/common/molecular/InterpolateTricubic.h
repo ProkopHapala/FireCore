@@ -33,7 +33,6 @@ inline Quat4T<T> basis_val( T x  ){
     };
 }
 
-
 template <class T>
 inline Quat4T<T> dbasis_val( T x ){
     //  p-1  -1.5   2.0  -0.5   
@@ -47,6 +46,50 @@ inline Quat4T<T> dbasis_val( T x ){
        -4.5*x2 +  4.0*x +  0.5,  
         1.5*x2 + -1.0*x
     };
+}
+
+template <class T>
+inline Quat4T<T> dbasis_val_mod( T x ){
+//       x3   x2   x   1
+//  ----------------------
+//  y0   2   -3        1
+//  y1  -2   +3
+// dy0   1   -2    1
+// dy1   1   -1
+//       x3   x2   x   1
+//  ----------------------
+//  y0   6   -6        0
+//  y1  -6   +6
+// dy0   3   -4    1
+// dy1   3   -2
+
+    // T K    =  3*x*(x - 1);
+	// c0        =  2*K        ;   //    6*x2 - 6*x
+	// c1        = -2*K        ;   //   -6*x2 + 6*x
+	// d0        =    K - x + 1;   //    3*x2 - 4*x + 1
+	// d1        =    K + x    ;   //    3*x2 - 2*x
+    const double f  = 0.5;
+
+    // ToDo: Derivative should consider convexity/concavity - For example assume it is parabola passing the 3 points
+
+    const double x2 = x*x;
+    //const double x3 = x2*x;
+    const double dy0 = 3*x2 - 4*x + 1;
+    const double dy1 = 3*x2 - 2*x;
+    return Quat4T<T>{
+        0                -f*dy0   ,    // -0.5*dy0  
+        6*x2 + -6*x      -f*dy1   ,    // -0.5*dy1
+       -6*x2 +  6*x      +f*dy0   ,    // +0.5*dy0
+        0                +f*dy1   ,    // +0.5*dy0
+    };
+
+    // const double x2 = x*x;
+    // return Quat4T<T>{
+    //    (-1.5*x2 +  2.0*x + -0.5 )*1.0,  
+    //    ( 4.5*x2 + -5.0*x)*1.1,  
+    //    (-4.5*x2 +  4.0*x +  0.5)*1.1,  
+    //     (1.5*x2 + -1.0*x)*1.0
+    // };
 }
 
 template <class T>
@@ -646,9 +689,11 @@ inline Quat4d fe3d_comb3( const Vec3d& t, const Vec3i i, const Vec3i n, const Ve
     alignas(32) const Quat4d pz  =  basis(t.z);
     alignas(32) const Quat4d dz  = dbasis(t.z);
     alignas(32) const Quat4d by  =  basis_val( t.y );
-    alignas(32) const Quat4d dy  = dbasis_val( t.y );
+    //alignas(32) const Quat4d dy  = dbasis_val( t.y );
+    alignas(32) const Quat4d dy  = dbasis_val_mod( t.y );
     alignas(32) const Quat4d bx  =  basis_val( t.x );
-    alignas(32) const Quat4d dx  = dbasis_val( t.x );
+    //alignas(32) const Quat4d dx  = dbasis_val( t.x );
+    alignas(32) const Quat4d dx  = dbasis_val_mod( t.x );
 
     const int nyz = n.y*n.z*3;
     //const Vec2d* FEx = FE + (i.z + ( (i.y-1) + (i.x-1)*n.y )*n.z)*3;
