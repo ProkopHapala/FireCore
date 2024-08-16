@@ -77,10 +77,11 @@ void* init( char* xyz_name, char* surf_name, char* smile_name, bool bMMFF, bool 
 }
 
 double* makeGridFF( const char* name, int* ffshape, int mode, bool bSaveDebugXSFs, double z0, Vec3d cel0, bool bAutoNPBC ){
-    sprintf(tmpstr, "%s.xyz", name );
-    int ret = W.params.loadXYZ( tmpstr, W.surf.natoms, &W.surf.apos, &W.surf.REQs, &W.surf.atypes, 0, &W.gridFF.grid.cell );
-    if     ( ret<0 ){ printf("ERROR in MolWorld_sp3::loadSurf() file(%s) not found => Exit() \n",         tmpstr ); exit(0); }
-    if     ( ret==0){ printf("ERROR in MolWorld_sp3::loadSurf() no lattice vectors in (%s) => Exit() \n", tmpstr ); exit(0); }
+    char fname[256];
+    sprintf(fname, "%s.xyz", name );
+    int ret = W.params.loadXYZ( fname, W.surf.natoms, &W.surf.apos, &W.surf.REQs, &W.surf.atypes, 0, &W.gridFF.grid.cell );
+    if     ( ret<0 ){ getcwd(tmpstr,1024); printf("ERROR in MMFF_lib::makeGridFF() file(%s) not found in path(%s)=> Exit() \n", fname, tmpstr ); exit(0); }
+    if     ( ret==0){                      printf("ERROR in MMFF_lib::makeGridFF() no lattice vectors in (%s) => Exit() \n",    fname ); exit(0); }
     else if( ret>0 ){ W.gridFF.grid.updateCell(W.gridStep); W.gridFF.bCellSet=true;  }
     //gridFF.grid.printCell(); 
     //if(verbosity>0)printf("MolWorld_sp3::loadSurf(%s) 1 natoms %i apos %li atyps %li \n", name, surf.natoms, (long)surf.apos, (long)surf.atypes  );
@@ -224,16 +225,21 @@ void sampleSurf(char* name, int n, double* rs, double* Es, double* fs, int kind,
 }
 
 
-void sampleSurf_new( int n, double* ps_, double* FEout_, int kind, double* REQ_, double K, double RQ ){
+void sampleSurf_new( int n, double* ps_, double* FEout_, int mode, double* PLQH_, double K, double RQ ){
     Vec3d*  ps   =((Vec3d*)ps_);
     Quat4d* FEout=(Quat4d*)FEout_;
-    Quat4d  REQ=*((Quat4d*)REQ_);
-    Quat4f  PLQ = REQ2PLQ(   REQ, K );
-    Quat4d  PLQd= REQ2PLQ_d( REQ, K );
-    printf( "DEBUG sampleSurf REQ(%g,%g,%g) \n", REQ.x, REQ.y, REQ.z );
-    printf( "DEBUG sampleSurf PLQ(%g,%g,%g) \n", PLQ.x, PLQ.y, PLQ.z );
+    Quat4d  PLQd = *(Quat4d*) PLQH_;
+    Quat4f  PLQ  =  (Quat4f) PLQd;
+    //Quat4d  REQ=*((Quat4d*)REQ_);
+    //Quat4f  PLQ = REQ2PLQ(   REQ, K );
+    //Quat4d  PLQd= REQ2PLQ_d( REQ, K );
+    //printf( "DEBUG sampleSurf REQ(%g,%g,%g) \n", REQ.x, REQ.y, REQ.z );
+    //printf( "DEBUG sampleSurf PLQ(%g,%g,%g) \n", PLQ.x, PLQ.y, PLQ.z );
     //exit(0);
     double R2Q=RQ*RQ;
+    W.gridFF.grid.printCell();
+    printf( "sampleSurf_new() gff.shift0(%g,%g,%g) gff.pos0(%g,%g,%g)\n", W.gridFF.shift0.x, W.gridFF.shift0.y, W.gridFF.shift0.z, W.gridFF.grid.pos0.x, W.gridFF.grid.pos0.y, W.gridFF.grid.pos0.z );
+    //PLQd=Quat4d{1.0,0.0,0.0,0.0};
     for(int i=0; i<n; i++){
         Quat4f fef=Quat4fZero;
         Quat4d fed=Quat4dZero;
@@ -242,16 +248,11 @@ void sampleSurf_new( int n, double* ps_, double* FEout_, int kind, double* REQ_,
             W.nbmol.apos[0]=pi;
             W.ff.cleanAtomForce();
         }
-        switch(kind){
-            case  0: fed.e=  W.nbmol.evalR         (W.surf );              break; 
-            case  1: fed.e=  W.nbmol.evalMorse     (W.surf, false, K,RQ  ); fed.f=W.nbmol.fapos[0]; break; 
-            //case  5: fe.e=   W.nbmol.evalMorsePLQ  (W.surf, PLQ, W.gridFF.grid.cell, {1,1,0},K,R2Q ); fe.f=(Vec3f)W.nbmol.fapos[0]; break; 
-            case 10:         W.gridFF.addForce_surf(pi, {1.,0.,0.}, fef ); fed=(Quat4d)fef; break;
-            case 11:         W.gridFF.addForce_surf(pi, PLQ, fef );        fed=(Quat4d)fef; break;
-            case 12:         W.gridFF.addForce     (pi, PLQ, fef );        fed=(Quat4d)fef; break;
-            //case 13:         W.gridFF.addForce_surf(W.nbmol.apos[0], {1.,0.,0.}, fe );  break;
-            case 13:   fed = W.gridFF.getForce_HHermit( pi, PLQd );   break;
-            case 14:   fed = W.gridFF.getForce_Bspline( pi, PLQd );   break;  
+        switch(mode){
+            case 1:   fef = W.gridFF.getForce( pi, PLQ );    fed=(Quat4d)fef; break;
+            case 2:   fed = W.gridFF.getForce_d( pi, PLQd );       break;
+            case 4:   fed = W.gridFF.getForce_HHermit( pi, PLQd ); break;
+            case 6:   fed = W.gridFF.getForce_Bspline( pi, PLQd ); break;  
         }
         FEout[i]= fed;
     }

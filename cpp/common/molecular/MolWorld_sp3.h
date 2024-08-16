@@ -989,15 +989,18 @@ void printPBCshifts(){
 
             // ========== Directory
             struct stat statbuf;
+            char wd0[1024]; getcwd(wd0,1024); printf( "initGridFF() 1 WD=`%s`\n", wd0 );
             if (stat(name, &statbuf) != 0) {   // Check if directory exists
                 if (mkdir(name, 0755) == -1  ) { printf("ERROR in MolWorld_sp3::initGridFF() cannot mkdir(`%s`) => exit()\n",                            name ); exit(0); }
             }else if ( ! S_ISDIR(statbuf.st_mode) ) { printf("ERROR in MolWorld_sp3::initGridFF() path `%s` exists but is not a directory. => exit()\n", name ); exit(0); }
-            getcwd(tmpstr, 1024 ); printf( "WD=`%s`\n", tmpstr );
+            
             if (chdir(name) == -1) { printf("ERROR in MolWorld_sp3::initGridFF() chdir(%s) => exit()\n", name ); exit(0); }
-            getcwd(tmpstr, 1024 ); printf( "WD=`%s`\n", tmpstr );
+            getcwd(tmpstr, 1024 ); printf( "initGridFF() 2 WD=`%s`\n", tmpstr );
 
             gridFF.tryLoad_new( true );
             ffgrid = gridFF.HHermite_d;
+
+
 
             /*
             switch (gridFF.mode){
@@ -1023,7 +1026,9 @@ void printPBCshifts(){
             if(bSaveDebugXSFs)saveGridXsfDebug();
             //bGridFF   =true; 
             //bSurfAtoms=false;
-            if ( chdir("..") == -1) { printf("ERROR in MolWorld_sp3::initGridFF() chdir(..) => exit()\n" ); exit(0); }
+            //if ( chdir("..") == -1) { printf("ERROR in MolWorld_sp3::initGridFF() chdir(..) => exit()\n" ); exit(0); }
+            if (chdir(wd0) == -1) { printf("ERROR in MolWorld_sp3::initGridFF() chdir(%s) => exit()\n", wd0 ); exit(0); }
+            getcwd(tmpstr, 1024 ); printf( "initGridFF() 3 WD=`%s`\n", tmpstr );
 
         }
         gridFF.shift0 = Vec3d{0.,0.,-2.0};
@@ -1086,10 +1091,11 @@ void printPBCshifts(){
  * @return True if the surface is successfully loaded, false otherwise.
  */
     bool loadSurf(const char* name, bool bGrid=true, bool bSaveDebugXSFs=false, double z0=NAN, Vec3d cel0={-0.5,-0.5,0.0} ){
-        sprintf(tmpstr, "%s.xyz", name );
-        int ret = params.loadXYZ( tmpstr, surf.natoms, &surf.apos, &surf.REQs, &surf.atypes, 0, &gridFF.grid.cell );
-        if     ( ret<0 ){ printf("ERROR in MolWorld_sp3::loadSurf() file(%s) not found => Exit() \n",         tmpstr ); exit(0); }
-        if     ( ret==0){ printf("ERROR in MolWorld_sp3::loadSurf() no lattice vectors in (%s) => Exit() \n", tmpstr ); exit(0); }
+        char fname[256];
+        sprintf(fname, "%s.xyz", name );
+        int ret = params.loadXYZ( fname, surf.natoms, &surf.apos, &surf.REQs, &surf.atypes, 0, &gridFF.grid.cell );
+        if     ( ret<0 ){ getcwd(tmpstr,1024); printf("ERROR in MolWorld_sp3::loadSurf() file(%s) not found in path(%s)=> Exit() \n", fname, tmpstr ); exit(0); }
+        if     ( ret==0){ printf("ERROR in MolWorld_sp3::loadSurf() no lattice vectors in (%s) => Exit() \n", fname ); exit(0); }
         else if( ret>0 ){ gridFF.grid.updateCell(gridStep); gridFF.bCellSet=true;  }
         //gridFF.grid.printCell(); 
         if(verbosity>0)printf("MolWorld_sp3::loadSurf(%s) 1 natoms %i apos %li atyps %li \n", name, surf.natoms, (long)surf.apos, (long)surf.atypes  );
