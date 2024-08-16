@@ -567,11 +567,11 @@ def sampleSurf_vecs(ps, FEs=None, kind=1, ityp=-1, RvdW=1.487, EvdW=0.0006808, Q
 # void sampleSurf_new( int n, double* ps_, double* FEout_, int kind, double* REQ_, double K, double RQ ){
 lib.sampleSurf_new.argtypes  = [ c_int, array2d, array2d, c_int, array1d, c_double, c_double ]
 lib.sampleSurf_new.restype   =  None
-def sampleSurf_new( ps, FEout=None, kind=1, REQs=[1.487,0.0006808,0.0,0.0], K=-1.0, Rdamp=1.0 ):
+def sampleSurf_new( ps, PLQH, FEout=None, mode=1, K=-1.0, Rdamp=1.0 ):
     n =len(ps)
     if FEout is None: FEout=np.zeros( (n,4) )
-    REQs=np.array(REQs)
-    lib.sampleSurf_new( n, ps, FEout, kind, REQs, K, Rdamp )
+    PLQH=np.array(PLQH)
+    lib.sampleSurf_new( n, ps, FEout, mode, PLQH, K, Rdamp )
     return FEout
 
 # # void sampleSurf_vecs(char* name, int n, double* rs, double* Es, double* fs, int kind, double*REQ_, double K, double Rdamp ){
