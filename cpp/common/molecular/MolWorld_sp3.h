@@ -897,53 +897,8 @@ void printPBCshifts(){
         bChargeUpdated=true;
     }
                                              
-                                             
-/**
- * Automatically calculates the number of periodic boundary conditions (nPBC) based on minimum length.
- * 
- * @param cell The cell dimensions represented by a 3x3 matrix (Mat3d).
- * @param nPBC The number of periodic boundary conditions in each direction (x, y, z). This parameter will be modified by the function.
- * @param Lmin The minimum length for calculating the number of periodic boundary conditions. Default value is 30.0.
- */
-    static void autoNPBC( const Mat3d& cell, Vec3i& nPBC, double Lmin=30.0 ){
-        if(nPBC.x!=0){ nPBC.x=(int)Lmin/cell.a.norm(); }
-        if(nPBC.y!=0){ nPBC.y=(int)Lmin/cell.b.norm(); }
-        if(nPBC.z!=0){ nPBC.z=(int)Lmin/cell.c.norm(); }
-        printf("autoNPBC(): (%i,%i,%i) \n", nPBC.x, nPBC.y, nPBC.z );
-    }
-
+                                            
     // =================== Initialization of different parts of the system ( different force-fields )
-
-/**
- * Saves the grid data in XSF format for debugging purposes.
- * 
- * @param bE Whether to save the energy-related grids (default: true)
- * @param bFz Whether to save the force-related grids (default: true)
- * @param bComb Whether to save the combined forcefield grid (default: true)
- * @param testREQ The test Quat4d value for evaluating the combined forcefield (default: Quat4d{ 1.487, 0.02609214441, 0., 0.})
- */
-    void saveGridXsfDebug( bool bE=true, bool bFz=true, bool bComb=true, Quat4d testREQ=Quat4d{ 1.487, 0.02609214441, 0., 0.} ){
-        // not testREQ.y [eV^0.5] = sqrt(Eii), 
-        // e.g. for Hydrogen 0.02609214441 ev^0.5 = sqrt( 0.0006808 eV )
-        // e.g. for Carbon   0.06106717612 ev^0.5 = sqrt( 0.0037292 eV )
-        if(bE){
-            if(gridFF.FFPaul) gridFF.grid.saveXSF( "FFLond_E.xsf", (float*)gridFF.FFLond, 4,3  );
-            if(gridFF.FFLond) gridFF.grid.saveXSF( "FFelec_E.xsf", (float*)gridFF.FFelec, 4,3  );
-            if(gridFF.FFelec) gridFF.grid.saveXSF( "FFPaul_E.xsf", (float*)gridFF.FFPaul, 4,3  );
-        }
-        if(bFz){
-            if(gridFF.FFPaul) gridFF.grid.saveXSF( "FFLond_z.xsf", (float*)gridFF.FFLond, 4,2  );
-            if(gridFF.FFLond) gridFF.grid.saveXSF( "FFelec_z.xsf", (float*)gridFF.FFelec, 4,2  );
-            if(gridFF.FFelec) gridFF.grid.saveXSF( "FFPaul_z.xsf", (float*)gridFF.FFPaul, 4,2  );
-        }
-        // ---- Save combined forcefield
-        if(bComb){
-            Quat4f * FFtot = new Quat4f[gridFF.grid.getNtot()];
-            gridFF.evalCombindGridFF ( testREQ, FFtot );
-            gridFF.grid.saveXSF( "E_PLQ.xsf",  (float*)FFtot, 4, 3, gridFF.natoms, gridFF.atypes, gridFF.apos );
-            delete [] FFtot;
-        }
-    }
 
 
 /**
@@ -971,64 +926,49 @@ void printPBCshifts(){
             gridFF.grid.center_cell( cel0 );
             //bGridFF=true;
             gridFF.bindSystem(surf.natoms, surf.atypes, surf.apos, surf.REQs );
-            if( isnan(z0) ){  z0=gridFF.findTop();   if(verbosity>0) printf("GridFF::findTop() %g \n", z0);  };
-            gridFF.grid.pos0.z=z0;
-            //gridFF.grid.pos0.z=-5;
-            if(verbosity>1)gridFF.grid.printCell();
-            gridFF.allocateFFs( bGridDouble );
-            //gridFF.tryLoad( "FFelec.bin", "FFPaul.bin", "FFLond.bin", false, {1,1,0}, bSaveDebugXSFs );
-            gridFF.nPBC=Vec3i{1,1,0};
-            if(bAutoNPBC){ autoNPBC( gridFF.grid.cell, gridFF.nPBC, 20.0 ); }
-            //gridFF.nPBC = (Vec3i){0,0,0};
-            //gridFF.nPBC = (Vec3i){1,1,0};
-            //gridFF.nPBC = (Vec3i){10,10,0};
-            gridFF.lvec = gridFF.grid.cell;     // ToDo: We should unify this
-            gridFF.makePBCshifts     ( gridFF.nPBC, gridFF.lvec );
-            gridFF.setAtomsSymetrized( gridFF.natoms, gridFF.atypes, gridFF.apos, gridFF.REQs, 0.1 );
-            //bSaveDebugXSFs=true;
+
+            gridFF.initGridFF( name, z0, bAutoNPBC );
+
+            // if( isnan(z0) ){  z0=gridFF.findTop();   if(verbosity>0) printf("GridFF::findTop() %g \n", z0);  };
+            // gridFF.grid.pos0.z=z0;
+            // //gridFF.grid.pos0.z=-5;
+            // if(verbosity>1)gridFF.grid.printCell();
+            // gridFF.allocateFFs( bGridDouble );
+            // //gridFF.tryLoad( "FFelec.bin", "FFPaul.bin", "FFLond.bin", false, {1,1,0}, bSaveDebugXSFs );
+            // gridFF.nPBC=Vec3i{1,1,0};
+            // if(bAutoNPBC){ autoNPBC( gridFF.grid.cell, gridFF.nPBC, 20.0 ); }
+            // //gridFF.nPBC = (Vec3i){0,0,0};
+            // //gridFF.nPBC = (Vec3i){1,1,0};
+            // //gridFF.nPBC = (Vec3i){10,10,0};
+            // gridFF.lvec = gridFF.grid.cell;     // ToDo: We should unify this
+            // gridFF.makePBCshifts     ( gridFF.nPBC, gridFF.lvec );
+            // gridFF.setAtomsSymetrized( gridFF.natoms, gridFF.atypes, gridFF.apos, gridFF.REQs, 0.1 );
+            // //bSaveDebugXSFs=true;
+            // gridFF.gridN=gridFF.grid.n; gridN.x+=3; gridN.y+=3;
 
             // ========== Directory
-            struct stat statbuf;
-            char wd0[1024]; getcwd(wd0,1024); printf( "initGridFF() 1 WD=`%s`\n", wd0 );
-            if (stat(name, &statbuf) != 0) {   // Check if directory exists
-                if (mkdir(name, 0755) == -1  ) { printf("ERROR in MolWorld_sp3::initGridFF() cannot mkdir(`%s`) => exit()\n",                            name ); exit(0); }
-            }else if ( ! S_ISDIR(statbuf.st_mode) ) { printf("ERROR in MolWorld_sp3::initGridFF() path `%s` exists but is not a directory. => exit()\n", name ); exit(0); }
-            
-            if (chdir(name) == -1) { printf("ERROR in MolWorld_sp3::initGridFF() chdir(%s) => exit()\n", name ); exit(0); }
-            getcwd(tmpstr, 1024 ); printf( "initGridFF() 2 WD=`%s`\n", tmpstr );
+            char wd0[1024]; getcwd(wd0,1024); //printf( "initGridFF() 1 WD=`%s`\n", wd0 );
+            //struct stat statbuf;
+            // if (stat(name, &statbuf) != 0) {   // Check if directory exists
+            //     if (mkdir(name, 0755) == -1  ) { printf("ERROR in MolWorld_sp3::initGridFF() cannot mkdir(`%s`) => exit()\n",                            name ); exit(0); }
+            //}else if ( ! S_ISDIR(statbuf.st_mode) ) { printf("ERROR in MolWorld_sp3::initGridFF() path `%s` exists but is not a directory. => exit()\n", name ); exit(0); }
+            // if (chdir(name) == -1) { printf("ERROR in MolWorld_sp3::initGridFF() chdir(%s) => exit()\n", name ); exit(0); }
+            //getcwd(tmpstr, 1024 ); printf( "initGridFF() 2 WD=`%s`\n", tmpstr );
+            tryMakeDir  ( name );
+            tryChangeDir( name );
 
             gridFF.tryLoad_new( true );
             ffgrid = gridFF.HHermite_d;
 
-
-
-            /*
-            switch (gridFF.mode){
-                case GridFFmod::LinearFloat     :{
-                    gridFF.tryLoad( "FFelec.bin", "FFPaul.bin", "FFLond.bin", false, false );
-                    gridFF.checkSum( false );
-                } break;
-                case GridFFmod::LinearDouble    :{
-                    gridFF.tryLoad( "FFelec_d.bin", "FFPaul_d.bin", "FFLond_d.bin", false, true ); 
-                    gridFF.checkSum( true );
-                    gridFF.makeVPLQH();
-                } break;
-                case GridFFmod::HermiteFloat    :{ printf("ERROR in MolWorld_sp3::initGridFF() GridFFmode::HermiteFloat NOT IMPLEMENTED \n"); exit(0); } break;
-                case GridFFmod::HermiteDouble   :{ 
-                    gridFF.makeGridFF_Hherm_d();  ffgrid=gridFF.HHermite_d;
-                    gridFF.perVoxel=6;
-                } break;            
-            }
-            */
-
             //gridFF.log_z( "initGridFF_iz_ix0_iy0.log" ,0,0);
             //bSaveDebugXSFs = true;
-            if(bSaveDebugXSFs)saveGridXsfDebug();
+            if(bSaveDebugXSFs)gridFF.saveXsfDebug();
             //bGridFF   =true; 
             //bSurfAtoms=false;
             //if ( chdir("..") == -1) { printf("ERROR in MolWorld_sp3::initGridFF() chdir(..) => exit()\n" ); exit(0); }
-            if (chdir(wd0) == -1) { printf("ERROR in MolWorld_sp3::initGridFF() chdir(%s) => exit()\n", wd0 ); exit(0); }
-            getcwd(tmpstr, 1024 ); printf( "initGridFF() 3 WD=`%s`\n", tmpstr );
+            //if (chdir(wd0) == -1) { printf("ERROR in MolWorld_sp3::initGridFF() chdir(%s) => exit()\n", wd0 ); exit(0); }
+            tryChangeDir( wd0 );
+            //getcwd(tmpstr, 1024 ); printf( "initGridFF() 3 WD=`%s`\n", tmpstr );
 
         }
         gridFF.shift0 = Vec3d{0.,0.,-2.0};

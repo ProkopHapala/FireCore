@@ -24,6 +24,21 @@ T sum( int n, T* data, T t ){
 };
 
 
+/**
+ * Automatically calculates the number of periodic boundary conditions (nPBC) based on minimum length.
+ * 
+ * @param cell The cell dimensions represented by a 3x3 matrix (Mat3d).
+ * @param nPBC The number of periodic boundary conditions in each direction (x, y, z). This parameter will be modified by the function.
+ * @param Lmin The minimum length for calculating the number of periodic boundary conditions. Default value is 30.0.
+ */
+inline void autoNPBC( const Mat3d& cell, Vec3i& nPBC, double Lmin=30.0 ){
+    if(nPBC.x!=0){ nPBC.x=(int)Lmin/cell.a.norm(); }
+    if(nPBC.y!=0){ nPBC.y=(int)Lmin/cell.b.norm(); }
+    if(nPBC.z!=0){ nPBC.z=(int)Lmin/cell.c.norm(); }
+    printf("autoNPBC(): (%i,%i,%i) \n", nPBC.x, nPBC.y, nPBC.z );
+}
+
+
 inline double evalDipole( int n, Vec3d* ps, Quat4d* REQs, Vec3d& Dout, Vec3d& p0out ){
     // we want to approximate charge distribution by charge `Q` and dipole `D` around center `C`
     // we choose center `c` so that it minimizes size of dipole `|d|^2`
@@ -671,31 +686,21 @@ double addForces_d( int natoms, Vec3d* apos, Quat4d* PLQs, Vec3d* fpos, bool bSu
 
     __attribute__((hot))  
     void makeGridFF_Hherm_d(int natoms_, Vec3d * apos_, Quat4d * REQs_ ){
-        printf( "GridFF::makeGridFF_Hherm_d() grid.n(%i,%i,%i) nPBC(%i,%i,%i)  npbc=%i natoms=%i pos0(%g,%g,%g) K=%g Rdamp=%g \n",   grid.n.x,grid.n.y,grid.n.z,  nPBC.x,nPBC.y,nPBC.z,  npbc, natoms_,  grid.pos0.x,grid.pos0.y,grid.pos0.z, alphaMorse, Rdamp );   
-        //printf( "GridFF::makeGridFF_Hherm_d() grid.n(%i,%i,%i)\n", grid.n.x,grid.n.y,grid.n.z ); 
-        grid.printCell();    
+        //printf( "GridFF::makeGridFF_Hherm_d() grid.n(%i,%i,%i) nPBC(%i,%i,%i)  npbc=%i natoms=%i pos0(%g,%g,%g) K=%g Rdamp=%g \n",   grid.n.x,grid.n.y,grid.n.z,  nPBC.x,nPBC.y,nPBC.z,  npbc, natoms_,  grid.pos0.x,grid.pos0.y,grid.pos0.z, alphaMorse, Rdamp );   
+        //printf( "GridFF::makeGridFF_Hherm_d() grid.n(%i,%i,%i) gridN(%i,%i,%i) \n", grid.n.x,grid.n.y,grid.n.z, gridN.x,gridN.y,gridN.z ); 
+        //grid.printCell();    
         
-        gridN.x = grid.n.x+3;
-        gridN.y = grid.n.y+3;
-        gridN.z = grid.n.z+3;
-
         //if(HHermite_d==0) _realloc( HHermite_d, grid.n.totprod()*6 );
         if(HHermite_d==0) _realloc( HHermite_d, gridN.totprod()*6 );
 
         if(shifts==0)makePBCshifts( nPBC, lvec );
-        //for(int i=0; i<npbc; i++      ){ printf( "shifts[%i](%g,%g,%g) \n", i, shifts[i].x, shifts[i].y, shifts[i].z  ); };
-        //for(int ia=0; ia<natoms_; ia++){ printf( "apos[%i] pos(%g,%g,%g) REQ(%g,%g,%g,%g) \n", ia, apos_[ia].x, apos_[ia].y, apos_[ia].z, REQs_[ia].x, REQs_[ia].y, REQs_[ia].z, REQs_[ia].w ); };
         const double R2damp=Rdamp*Rdamp;    
         const double K=-alphaMorse;
-        //#pragma omp parallel for collapse(3)
-        //for ( int ix=0; ix<grid.n.x; ix++ ){
-        //    for ( int iy=0; iy<grid.n.y; iy++ ){
-        //        for ( int iz=0; iz<grid.n.z; iz++ ){
-        // ToDo: Maybe we need larged grid ( +3 pixels ) to avoid boundary effects
+
         double dz = -grid.dCell.c.z;
+
         //const int ntot = grid.n.totprod();
         //const int nzy  = grid.n.z*grid.n.y;
-        
         const int ntot = gridN.totprod();
         const int nzy  = gridN.z*gridN.y;
 
@@ -708,7 +713,8 @@ double addForces_d( int natoms, Vec3d* apos, Quat4d* PLQs, Vec3d* fpos, bool bSu
             int iy = (i/gridN.z)%gridN.y;
             int ix =  i/nzy;
                     Quat4d qp,ql,qe;
-                    const Vec3d pos = grid.pos0 + grid.dCell.c*iz + grid.dCell.b*iy + grid.dCell.a*ix;
+                    //const Vec3d pos = grid.pos0 + grid.dCell.c*iz + grid.dCell.b*iy + grid.dCell.a*ix;
+                    const Vec3d pos = grid.pos0 + grid.dCell.c*iz + grid.dCell.b*(iy-1) + grid.dCell.a*(ix-1);
                     evalGridFFPoint( natoms_, apos_, REQs_, pos, qp, ql, qe );
                     //const int ibuff = ix + grid.n.x*( iy + grid.n.y * iz );
                     const int ibuff = iz + gridN.z*( iy + gridN.y * ix );
@@ -716,10 +722,6 @@ double addForces_d( int natoms, Vec3d* apos, Quat4d* PLQs, Vec3d* fpos, bool bSu
                     HHermite_d[i6+0] = qp.w; HHermite_d[i6+1] = qp.z*dz;
                     HHermite_d[i6+2] = ql.w; HHermite_d[i6+3] = ql.z*dz;
                     HHermite_d[i6+4] = qe.w; HHermite_d[i6+5] = qe.z*dz;     
-                    //if((ix==20)&&(iy==20)){
-                    //    //printf( "GridFF::makeGridFF_Hherm_d[%i,%i,%i] PLQ(%g,%g,%g) \n", ix,iy,iz, qp.w, ql.w, qe.w );
-                    //    printf( "GridFF::makeGridFF_Hherm_d[%i,%i,%i] pos(%7.4f,%7.4f,%7.4f) PLQ(%g) \n", ix,iy,iz, pos.x,pos.y,pos.z, qe.w );
-                    //}  
         }
         printf( "GridFF::makeGridFF_Hherm_d() DONE \n" );
     }
@@ -1114,6 +1116,28 @@ void checkSum( bool bDouble ){
     }
 } 
 
+void initGridFF( const char * name, double z0=NAN, bool bAutoNPBC=true, bool bSymetrize=true ){
+    if( isnan(z0) ){  z0=findTop();   
+    if(verbosity>0) printf("GridFF::findTop() %g \n", z0);  };
+    grid.pos0.z=z0;
+    if(verbosity>1)grid.printCell();
+    bool bGridDouble = (mode == GridFFmod::LinearDouble) || (mode == GridFFmod::HermiteDouble) || (mode == GridFFmod::BsplineDouble); 
+    allocateFFs( bGridDouble );
+    //gridFF.tryLoad( "FFelec.bin", "FFPaul.bin", "FFLond.bin", false, {1,1,0}, bSaveDebugXSFs );
+    nPBC=Vec3i{1,1,0};
+    if(bAutoNPBC){ autoNPBC( grid.cell, nPBC, 20.0 ); }
+    //gridFF.nPBC = (Vec3i){0,0,0};
+    //gridFF.nPBC = (Vec3i){1,1,0};
+    //gridFF.nPBC = (Vec3i){10,10,0};
+    lvec = grid.cell;     // ToDo: We should unify this
+    makePBCshifts( nPBC, lvec );
+    if(bSymetrize)setAtomsSymetrized( natoms, atypes, apos, REQs, 0.1 );
+    //bSaveDebugXSFs=true;
+    gridN=grid.n; gridN.x+=3; gridN.y+=3;
+}
+
+
+
  #ifdef IO_utils_h
     bool tryLoad( const char* fname_Coul, const char* fname_Paul, const char* fname_Lond, bool recalcFF=false, bool bDouble=false ){
         //printf( "GridFF::tryLoad() \n" );
@@ -1153,85 +1177,123 @@ void checkSum( bool bDouble ){
     }
 
     bool tryLoad_new( bool bPrint=true ){
-        printf( "GridFF::tryLoad_new() mode=%i \n", (int)mode );
+        //printf( "GridFF::tryLoad_new() mode=%i \n", (int)mode );
         //const char* fname_Coul=0; 
         //const char* fname_Paul=0; 
         //const char* fname_Lond=0;
         const char* fnames[3];
+        int npoint=0;
         int nbyte=0;
+        bool bRecalc = false; 
+        long t0 = getCPUticks();
         switch (mode){
             
             case GridFFmod::LinearFloat:{
                 fnames[0]="FFPaul_f.bin"; fnames[1]="FFLond_f.bin"; fnames[2]="FFelec_f.bin"; 
-                nbyte = grid.getNtot()*sizeof(Quat4f);
+                npoint = grid.n.totprod();
+                nbyte  = npoint*sizeof(Quat4f);
                 if( checkAllFilesExist( 3, fnames, bPrint ) ){
                     loadBin( fnames[0], nbyte, (char*)FFPaul );
                     loadBin( fnames[1], nbyte, (char*)FFLond );    
                     loadBin( fnames[2], nbyte, (char*)FFelec );
-                    return false;
                 }else{
+                    bRecalc=true;
                     makeGridFF_omp  ( apos_.size(), &apos_[0], &REQs_[0] ); 
                     saveBin( fnames[0], nbyte, (char*)FFPaul );
                     saveBin( fnames[1], nbyte, (char*)FFLond );    
                     saveBin( fnames[2], nbyte, (char*)FFelec );
-                    return true;
                 }
             } break;
             
             case GridFFmod::LinearDouble:{
                 fnames[0]="FFPaul_d.bin"; fnames[1]="FFLond_d.bin"; fnames[2]="FFelec_d.bin"; 
-                nbyte = grid.getNtot()*sizeof(Quat4d);
+                npoint = grid.n.totprod();
+                nbyte = npoint*sizeof(Quat4d);
                 if( checkAllFilesExist( 3, fnames, bPrint ) ){
                     loadBin( fnames[0], nbyte, (char*)FFPaul_d );
                     loadBin( fnames[1], nbyte, (char*)FFLond_d );    
                     loadBin( fnames[2], nbyte, (char*)FFelec_d );
-                    return false;
                 }else{
+                    bRecalc=true;
                     makeGridFF_omp_d( apos_.size(), &apos_[0], &REQs_[0] ); 
                     saveBin( fnames[0], nbyte, (char*)FFPaul_d );
                     saveBin( fnames[1], nbyte, (char*)FFLond_d );    
                     saveBin( fnames[2], nbyte, (char*)FFelec_d );
-                    return true;
                 }
             } break;
             
             case GridFFmod::HermiteFloat    :{ printf("ERROR in GridFF::tryLoad_new() GridFFmode::HermiteFloat NOT IMPLEMENTED \n"); exit(0); } break;
             case GridFFmod::HermiteDouble   :{ 
                 fnames[0] = "GridFF_HH_d.bin";
-                nbyte = grid.getNtot()*sizeof(double)*6;
+                npoint = gridN.totprod();
+                nbyte  = npoint*sizeof(double)*6;
                 perVoxel=6;
                 if( checkAllFilesExist( 1, fnames, bPrint ) ){
-                    //printf("Load HermiteDouble nbyte=%i \n", nbyte );
+                    printf("Load HermiteDouble npoint=%i nbyte=%i \n", npoint, nbyte );
                     _realloc( HHermite_d, nbyte );
                     loadBin( fnames[0], nbyte, (char*)HHermite_d );
-                    return false;
                 }else{
-                    //printf("recalc HermiteDouble nbyte=%i \n", nbyte);
+                    printf("Recalc & Load HermiteDouble npoint=%i nbyte=%i \n", npoint, nbyte );
+                    bRecalc=true;
                     makeGridFF_Hherm_d( apos_.size(), &apos_[0], &REQs_[0] ); 
                     saveBin( fnames[0], nbyte, (char*)HHermite_d );
-                    return true;
                 }
             } break;
 
             case GridFFmod::BsplineFloat    :{ printf("ERROR in GridFF::tryLoad_new() GridFFmode::BsplineFloat NOT IMPLEMENTED \n"); exit(0); } break;
             case GridFFmod::BsplineDouble   :{
                 fnames[0]="Bspline_Pauli_d.bin"; fnames[1]="Bspline_London_d.bin"; fnames[2]="Bspline_Coulomb_d.bin"; 
+                npoint = gridN.totprod();
+                nbyte  = npoint*sizeof(double)*3;
                 if( checkAllFilesExist( 3, fnames, bPrint ) ){
                     loadBin( fnames[0], nbyte, (char*)Bspline_Pauli );
                     loadBin( fnames[1], nbyte, (char*)Bspline_London );
                     loadBin( fnames[2], nbyte, (char*)Bspline_Coulomb );
-                    return false;
                 }else{
+                    bRecalc=true;
                     makeGridFF_Bspline_d( apos_.size(), &apos_[0], &REQs_[0] );
                     saveBin( fnames[0], nbyte, (char*)Bspline_Pauli );
                     saveBin( fnames[1], nbyte, (char*)Bspline_London );
                     saveBin( fnames[2], nbyte, (char*)Bspline_Coulomb );
-                    return true;
                 }
             } break;
         } // switch( mode )
-        printf( "GridFF::tryLoad_new() DONE \n", (int)mode );
+        double T = getCPUticks()-t0;
+        printf( "GridFF::tryLoad_new(mode=%i) DONE (recalc=%i) time %g[Mticks] %g[tick/point]\n", (int)mode, bRecalc, T*1.0e-6, T/(double)npoint );
+
+
         return false;
+    }
+
+/**
+ * Saves the grid data in XSF format for debugging purposes.
+ * 
+ * @param bE Whether to save the energy-related grids (default: true)
+ * @param bFz Whether to save the force-related grids (default: true)
+ * @param bComb Whether to save the combined forcefield grid (default: true)
+ * @param testREQ The test Quat4d value for evaluating the combined forcefield (default: Quat4d{ 1.487, 0.02609214441, 0., 0.})
+ */
+    void saveXsfDebug( bool bE=true, bool bFz=true, bool bComb=true, Quat4d testREQ=Quat4d{ 1.487, 0.02609214441, 0., 0.} ){
+        // not testREQ.y [eV^0.5] = sqrt(Eii), 
+        // e.g. for Hydrogen 0.02609214441 ev^0.5 = sqrt( 0.0006808 eV )
+        // e.g. for Carbon   0.06106717612 ev^0.5 = sqrt( 0.0037292 eV )
+        if(bE){
+            if(FFPaul) grid.saveXSF( "FFLond_E.xsf", (float*)FFLond, 4,3  );
+            if(FFLond) grid.saveXSF( "FFelec_E.xsf", (float*)FFelec, 4,3  );
+            if(FFelec) grid.saveXSF( "FFPaul_E.xsf", (float*)FFPaul, 4,3  );
+        }
+        if(bFz){
+            if(FFPaul) grid.saveXSF( "FFLond_z.xsf", (float*)FFLond, 4,2  );
+            if(FFLond) grid.saveXSF( "FFelec_z.xsf", (float*)FFelec, 4,2  );
+            if(FFelec) grid.saveXSF( "FFPaul_z.xsf", (float*)FFPaul, 4,2  );
+        }
+        // ---- Save combined forcefield
+        if(bComb){
+            Quat4f * FFtot = new Quat4f[grid.getNtot()];
+            evalCombindGridFF ( testREQ, FFtot );
+            grid.saveXSF( "E_PLQ.xsf",  (float*)FFtot, 4, 3, natoms, atypes, apos );
+            delete [] FFtot;
+        }
     }
 
 #endif

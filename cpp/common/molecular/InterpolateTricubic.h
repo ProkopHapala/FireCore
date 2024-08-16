@@ -651,7 +651,8 @@ inline Quat4d fe3d_comb3( const Vec3d& t, const Vec3i i, const Vec3i n, const Ve
     alignas(32) const Quat4d dx  = dbasis_val( t.x );
 
     const int nyz = n.y*n.z*3;
-    const Vec2d* FEx = FE + (i.z + ( (i.y-1) + (i.x-1)*n.y )*n.z)*3;
+    //const Vec2d* FEx = FE + (i.z + ( (i.y-1) + (i.x-1)*n.y )*n.z)*3;
+    const Vec2d* FEx = FE + (i.z + ( i.y + i.x*n.y )*n.z)*3;
 
     // constant approx
     //const Vec3d fe0 = fe2d_comb3( n.z, FEx      , C, pz, dz, by, dy );
