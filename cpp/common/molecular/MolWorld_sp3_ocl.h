@@ -69,7 +69,7 @@ void surf2ocl(Vec3i nPBC, bool bSaveDebug=false){
         ocl.download( ocl.itex_FE_Coul, gridFF.FFelec );
         err |=  ocl.finishRaw();    OCL_checkError(err, "surf2ocl.download.finish");
         printf( ">>time(ocl.makeGridFF(); ocl.download() %g \n", (getCPUticks()-T1)*tick2second );
-        saveGridXsfDebug();
+        gridFF.saveXsfDebug();
     }
     ocl.buffers[ocl.ibuff_atoms].release();
     ocl.buffers[ocl.ibuff_coefs].release();
@@ -626,7 +626,7 @@ virtual double* initGridFF( const char * name, bool bGrid=true, bool bSaveDebugX
         //init_ocl();
         surf2ocl( nPBC );
 
-        if(bSaveDebugXSFs)saveGridXsfDebug();
+        if(bSaveDebugXSFs)gridFF.saveXsfDebug();
 
         //surf2ocl( nPBC, false );
     }

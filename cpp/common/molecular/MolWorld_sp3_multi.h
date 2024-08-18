@@ -9,10 +9,13 @@
 //#include "OCL_DFT.h"
 //#include "OCL_PP.h"
 #include "OCL_MM.h"
+//#include "OCL_EFF.h"
 #include "datatypes_utils.h"
 
 #include "MultiSolverInterface.h"
 #include "Confs.h"
+
+
 
 struct FIRE_setup{
     float cvf_min   = -0.1f;  // minimum cosine for velocity damping in  move_FIRE_smooth()
@@ -2290,7 +2293,7 @@ void surf2ocl(Vec3i nPBC, bool bSaveDebug=false){
         ocl.download( ocl.itex_FE_Coul, gridFF.FFelec );    
         err |=  ocl.finishRaw();    OCL_checkError(err, "surf2ocl.download.finish");
         printf( ">>time(surf2ocl.download() %g \n", (getCPUticks()-T1)*tick2second );
-        if(bSaveDebug){ saveGridXsfDebug(); }
+        if(bSaveDebug){ gridFF.saveXsfDebug(); }
     }
     delete [] atoms_surf;
     delete [] REQs_surf;
