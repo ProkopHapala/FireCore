@@ -314,6 +314,7 @@ a  = 1.8
 mmff.initParams()
 #test_gridFF( mode=1, title="tri-linar force \n(z-cut)"          )
 #test_gridFF( mode=4, title="Hybrid Hermite tri-cubic\n(z-cut)" )
+test_gridFF( mode=6, title="Bspline (from HH)\n(z-cut)" )
 
 #test_gridFF_lat( mode=1, title="tri-linar force"          )
 #test_gridFF_lat( mode=4, title="Hybrid Hermite tri-cubic" )
@@ -323,8 +324,8 @@ Q = 0.4
 #p0 = [1.0,-5.05,2.0]
 p0 = [0.0,0.0,2.0]
 
-test_gridFF_lat( mode=1, title="tri-linar force \n(y-cut)"         , Q=Q, p0=p0, iax=1, tmin=-10, tmax=10 )
-test_gridFF_lat( mode=4, title="Hybrid Hermite tri-cubic \n(y-cut)", Q=Q, p0=p0, iax=1, tmin=-10, tmax=10. )
+#test_gridFF_lat( mode=1, title="tri-linar force \n(y-cut)"         , Q=Q, p0=p0, iax=1, tmin=-10, tmax=10 )
+#test_gridFF_lat( mode=4, title="Hybrid Hermite tri-cubic \n(y-cut)", Q=Q, p0=p0, iax=1, tmin=-10, tmax=10. )
 
 #test_gridFF_lat( mode=1, title="tri-linar force \n(x-cut)"         , Q=Q, p0=p0, iax=0 )
 #test_gridFF_lat( mode=4, title="Hybrid Hermite tri-cubic \n(x-cut)", Q=Q, p0=p0, iax=0 )

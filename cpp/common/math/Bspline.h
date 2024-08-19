@@ -836,7 +836,8 @@ double getVariations3D( const Vec3i ns, double* Gs,  double* Es, double* Ws, dou
 
 
 __attribute__((hot)) 
-int fit3D( const Vec3i ns, double* Gs,  double* Es, double* Ws, double Ftol, int nmaxiter=100, double dt=0.1 ){
+int fit3D( const Vec3i ns, double* Gs,  double* Es, double* Ws, double Ftol, int nmaxiter=100, double dt=0.1, bool bInitGE=false ){
+    long t0 = getCPUticks();
     if(verbosity>1)printf( "Bspline::fit3D() ns(%i,%i,%i) \n", ns.x,ns.y,ns.z  );
     const double F2max = Ftol*Ftol;
     const int nxy  = ns.x*ns.y;
@@ -848,16 +849,20 @@ int fit3D( const Vec3i ns, double* Gs,  double* Es, double* Ws, double Ftol, int
     //while(false){
     double err=0; 
     Vec3d  cfv;
+    if(bInitGE){ for(int i=0; i<nxyz; i++){ Gs[i]=Es[i]; }; };
     for(int i=0; i<nxy; i++){ vs[i]=0; };
     for(itr=0; itr<nmaxiter; itr++){
         for(int i=0; i<nxy; i++){ fs[i]=0; };
         //err = getVariations3D( ns, Gs, Es, Ws, fs, ps );
         err = getVariations3D_mod( ns, Gs, Es, Ws, fs, ps );
         cfv = move(dt,nxy,Gs,fs, vs );
-        if(verbosity>2)printf( "|F[%i]|=%g cos(f,v)=%g Error=%g \n",itr,sqrt(cfv.y), cfv.x/sqrt(cfv.y*cfv.z), sqrt(err) );
+        //if(verbosity>2)
+        printf( "|F[%i]|=%g cos(f,v)=%g Error=%g \n",itr,sqrt(cfv.y), cfv.x/sqrt(cfv.y*cfv.z), sqrt(err) );
         if(cfv.y<F2max){ break; };
     }
-    if(verbosity>1)printf( "|F[%i]|=%g Error=%g \n",itr,sqrt(cfv.y), sqrt(err) );        
+    //if(verbosity>1)
+    printf( "|F[%i]|=%g Error=%g \n",itr,sqrt(cfv.y), sqrt(err) );    
+    double t = getCPUticks()-t0; printf( "Bspline::fit3D() niter=%i nxyz=%i time %g[GTicks] %g[tick/(nxyz*iter)] \n", itr, t*1e-9, t/(nxyz*itr) );
     delete [] ps;
     delete [] fs;
     delete [] vs;
