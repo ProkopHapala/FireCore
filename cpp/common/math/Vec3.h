@@ -548,6 +548,52 @@ using Vec6i = Vec6T< int>;
 using Vec6f = Vec6T< float>;
 using Vec6d = Vec6T< double >;
 
+
+
+// Structured binding support for Vec3T
+// allows to do this :
+// Vec3f v{1,2,3};
+// auto [x,y,z] = v;
+
+// #include <tuple>
+
+// namespace std {
+//     template <class T>
+//     struct tuple_size<Vec3T<T>> : std::integral_constant<size_t, 3> {};
+
+//     template <class T, std::size_t Index>
+//     struct tuple_element<Index, Vec3T<T>> {
+//         using type = T;
+//     };
+// }
+
+// // Non-const get function
+// template <std::size_t Index, class T>
+// T& get(Vec3T<T>& v) {
+//     if constexpr (Index == 0) return v.x;
+//     else if constexpr (Index == 1) return v.y;
+//     else if constexpr (Index == 2) return v.z;
+//     else static_assert(Index < 3, "Index out of bounds for Vec3T");
+// }
+
+// // Const get function
+// template <std::size_t Index, class T>
+// const T& get(const Vec3T<T>& v) {
+//     if constexpr (Index == 0) return v.x;
+//     else if constexpr (Index == 1) return v.y;
+//     else if constexpr (Index == 2) return v.z;
+//     else static_assert(Index < 3, "Index out of bounds for Vec3T");
+// }
+
+// // Rvalue get function (for temporary objects)
+// template <std::size_t Index, class T>
+// T&& get(Vec3T<T>&& v) {
+//     if constexpr (Index == 0) return std::move(v.x);
+//     else if constexpr (Index == 1) return std::move(v.y);
+//     else if constexpr (Index == 2) return std::move(v.z);
+//     else static_assert(Index < 3, "Index out of bounds for Vec3T");
+// }
+
 #endif
 
 

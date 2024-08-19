@@ -190,6 +190,58 @@ int run( int nstepMax, double dt, double Fconv, int ialg, double* outE, double* 
     return itr;
 }
 
+
+void sample_ee( int n, double* RSs_, double* FEout_, int spin, double* KRSrho_, bool bEvalCoulomb, bool bEvalPauli, int iPauliModel ){
+    Quat4d* FEout =(Quat4d*)FEout_;
+    Vec3d* RSs    =(Vec3d*)RSs_;
+    Vec3d  KRSrho =*(Vec3d*)KRSrho_;
+    //using namespace std;
+    //auto [x, y, z] = RSs[0];
+    for(int i=0; i<n; i++){
+        double ri = RSs[i].x;
+        double si = RSs[i].y;
+        double sj = RSs[i].z;
+        Vec3d f=Vec3dZero;
+        Quat4d EFi=Quat4dZero;
+        Vec3d dR{0.0,0.0,ri};
+        if(bEvalCoulomb){
+            EFi.w += addCoulombGauss( dR, si, sj, f, EFi.y, EFi.z, 1.0 );
+        }
+        if(bEvalPauli){
+            // Pauli repulsion form this eFF paper http://aip.scitation.org/doi/10.1063/1.3272671  
+            // iPauliModel==0 Pauli repulasion from Valence-Bond theory  // Pauli repulsion only for electrons with same spin
+            // iPauliModel==0 Pauli repulasion as overlap between same spin orbitals 
+            if     ( iPauliModel == 1 ){              EFi.w += addPauliGauss_New    ( dR, si, sj, f, EFi.y, EFi.z, spin, KRSrho ); }
+            else if( iPauliModel == 2 ){  if(spin>0){ EFi.w += addPauliGaussVB      ( dR, si, sj, f, EFi.y, EFi.z ); } }
+            else if( iPauliModel == 0 ){  if(spin>0){ EFi.w += addDensOverlapGauss_S( dR, si*M_SQRT2, sj*M_SQRT2, ff.KPauliOverlap, f,  EFi.y, EFi.z ); } }
+       }
+       EFi.x=f.x;
+       FEout[i]=EFi;
+    }
+}
+
+void sample_EA( int n, double* RSs_, double* FEout_, double* KRSrho_,  double* aPar_,  bool bEvalAECoulomb, bool bCoreCoul, bool bEvalAEPauli ){
+    Vec3d* FEout  =(Vec3d*)FEout_;
+    Vec2d* RSs    =(Vec2d*)RSs_;
+    Vec3d  KRSrho =*(Vec3d*)KRSrho_;
+    Quat4d  aPar  =*(Quat4d*)aPar_;
+    for(int i=0; i<n; i++){
+        double ri = RSs[i].x;
+        double si = RSs[i].y;
+        Vec3d f=Vec3dZero;
+        Vec3d EFi=Vec3dZero;
+        Vec3d dR{0.0,0.0,ri};
+        double fs_junk=0;
+        if(bEvalAECoulomb){ EFi.z += addCoulombGauss  ( dR,  aPar.y, si, f, fs_junk, EFi.y, aPar.x );  }
+        if( bEvalAEPauli ){ EFi.z += addPauliGauss_New( dR, si, aPar.z,  f, EFi.y, fs_junk, 0, KRSrho, aPar.w       );    
+            if(bCoreCoul ){ EFi.z += addCoulombGauss  ( dR, si, aPar.z,  f, EFi.y, fs_junk,            aPar.w*2.0  ); }
+        }
+        EFi.x=f.x;
+        FEout[i]=EFi;
+    }
+
+}
+
 void save_fgo( char const* filename, bool bVel, bool bAppend ){ 
     if(bAppend){ ff.writeTo_fgo( filename, bVel, "a" ); }
     else       { ff.writeTo_fgo( filename, bVel, "w" ); } 
