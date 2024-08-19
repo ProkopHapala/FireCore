@@ -120,7 +120,7 @@ void project( const Vec3d* p0_, int n, const Vec3d * ps, const double * Qs, int 
     if(bClear) for( int i=0; i<10; i++ ) cs[i]=0;
     for( int i=0; i<n; i++){
         project( ps[i]-p0, Qs[i], order, cs );
-        printf( "project[ia=%3i] p(%+10.5e,%+10.5e,%+10.5e) Q=%+10.5e \n", i, ps[i].x,ps[i].y,ps[i].z,  Qs[i] );
+        //printf( "project[ia=%3i] p(%+10.5e,%+10.5e,%+10.5e) Q=%+10.5e \n", i, ps[i].x,ps[i].y,ps[i].z,  Qs[i] );
         //printf( "project[ia=%3i] Q=%+10.5e p(%+10.5e,%+10.5e,%+10.5e) Qxx,yy,zz(%+10.5e,%+10.5e,%+10.5e)|yz,xz,xy(%+10.5e,%+10.5e,%+10.5e)\n", i, cs[0], cs[1],cs[2],cs[3],  cs[4],cs[5],cs[6], cs[7],cs[8],cs[9] );
     }
 }
