@@ -228,7 +228,7 @@ def test_gridFF( name="data/NaCl_1x1_L2", mode=4, dsamp=0.02,  R0=3.5, E0=0.1, a
     print( "test_gridFF() DONE" )
     #return EFg
 
-def test_gridFF_lat( name="data/NaCl_1x1_L2", iax=0, p0=[1.05,1.05,2.0], mode=4, dsamp=0.02,  R0=3.5, E0=0.1, a=1.6, Q=0.4, H=0.0, scErr=100.0, title=None, ):
+def test_gridFF_lat( name="data/NaCl_1x1_L2", iax=0, tmin=0.0,tmax=10.0, p0=[1.05,1.05,2.0], mode=4, dsamp=0.02,  R0=3.5, E0=0.1, a=1.6, Q=0.4, H=0.0, scErr=100.0, title=None, ):
     print( "test_gridFF() START" )
     #mode = 4
     #mode = 1
@@ -236,13 +236,16 @@ def test_gridFF_lat( name="data/NaCl_1x1_L2", iax=0, p0=[1.05,1.05,2.0], mode=4,
     #plotGridFF_1D( EFg, ix=20,iy=20 )
     PLQH = getPLQH( R0, E0, a, Q, H )
 
-    ts = np.arange(0.0, 10.0, dsamp)
+    ts = np.arange( tmin, tmax, dsamp)
     ps = np.zeros( (len(ts), 3) )
     ps[:,0] = p0[0]
     ps[:,1] = p0[1]
     ps[:,2] = p0[2]
-    ps[:,iax] = ts
+    #ps[:,iax] = ts
     
+    ps[:,0] = ts
+    ps[:,1] = ts
+
     FF_ref = mmff.evalGridFFAtPoints( ps, PLQH=PLQH )
     
     #FFout  = mmff.sample_SplineHermite3D_comb3( ps, EFg, g0=[0.0,0.0,0.0], dg=[0.1,0.1,0.1], fes=None, Cs=PLQH )
@@ -315,12 +318,13 @@ mmff.initParams()
 #test_gridFF_lat( mode=1, title="tri-linar force"          )
 #test_gridFF_lat( mode=4, title="Hybrid Hermite tri-cubic" )
 
-Q = 0.0
-#Q = 0.4
-p0 = [1.0,1.05,2.0]
+#Q = 0.0
+Q = 0.4
+#p0 = [1.0,-5.05,2.0]
+p0 = [0.0,0.0,2.0]
 
-#test_gridFF_lat( mode=1, title="tri-linar force \n(y-cut)"         , Q=Q, p0=p0, iax=1 )
-test_gridFF_lat( mode=4, title="Hybrid Hermite tri-cubic \n(y-cut)", Q=Q, p0=p0, iax=1 )
+test_gridFF_lat( mode=1, title="tri-linar force \n(y-cut)"         , Q=Q, p0=p0, iax=1, tmin=-10, tmax=10 )
+test_gridFF_lat( mode=4, title="Hybrid Hermite tri-cubic \n(y-cut)", Q=Q, p0=p0, iax=1, tmin=-10, tmax=10. )
 
 #test_gridFF_lat( mode=1, title="tri-linar force \n(x-cut)"         , Q=Q, p0=p0, iax=0 )
 #test_gridFF_lat( mode=4, title="Hybrid Hermite tri-cubic \n(x-cut)", Q=Q, p0=p0, iax=0 )

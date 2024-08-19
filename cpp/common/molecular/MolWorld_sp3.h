@@ -926,47 +926,13 @@ void printPBCshifts(){
             gridFF.grid.center_cell( cel0 );
             //bGridFF=true;
             gridFF.bindSystem(surf.natoms, surf.atypes, surf.apos, surf.REQs );
-
             gridFF.initGridFF( name, z0, bAutoNPBC );
-
-            // if( isnan(z0) ){  z0=gridFF.findTop();   if(verbosity>0) printf("GridFF::findTop() %g \n", z0);  };
-            // gridFF.grid.pos0.z=z0;
-            // //gridFF.grid.pos0.z=-5;
-            // if(verbosity>1)gridFF.grid.printCell();
-            // gridFF.allocateFFs( bGridDouble );
-            // //gridFF.tryLoad( "FFelec.bin", "FFPaul.bin", "FFLond.bin", false, {1,1,0}, bSaveDebugXSFs );
-            // gridFF.nPBC=Vec3i{1,1,0};
-            // if(bAutoNPBC){ autoNPBC( gridFF.grid.cell, gridFF.nPBC, 20.0 ); }
-            // //gridFF.nPBC = (Vec3i){0,0,0};
-            // //gridFF.nPBC = (Vec3i){1,1,0};
-            // //gridFF.nPBC = (Vec3i){10,10,0};
-            // gridFF.lvec = gridFF.grid.cell;     // ToDo: We should unify this
-            // gridFF.makePBCshifts     ( gridFF.nPBC, gridFF.lvec );
-            // gridFF.setAtomsSymetrized( gridFF.natoms, gridFF.atypes, gridFF.apos, gridFF.REQs, 0.1 );
-            // //bSaveDebugXSFs=true;
-            // gridFF.gridN=gridFF.grid.n; gridN.x+=3; gridN.y+=3;
-
-            // ========== Directory
             char wd0[1024]; getcwd(wd0,1024); //printf( "initGridFF() 1 WD=`%s`\n", wd0 );
-            //struct stat statbuf;
-            // if (stat(name, &statbuf) != 0) {   // Check if directory exists
-            //     if (mkdir(name, 0755) == -1  ) { printf("ERROR in MolWorld_sp3::initGridFF() cannot mkdir(`%s`) => exit()\n",                            name ); exit(0); }
-            //}else if ( ! S_ISDIR(statbuf.st_mode) ) { printf("ERROR in MolWorld_sp3::initGridFF() path `%s` exists but is not a directory. => exit()\n", name ); exit(0); }
-            // if (chdir(name) == -1) { printf("ERROR in MolWorld_sp3::initGridFF() chdir(%s) => exit()\n", name ); exit(0); }
-            //getcwd(tmpstr, 1024 ); printf( "initGridFF() 2 WD=`%s`\n", tmpstr );
             tryMakeDir  ( name );
             tryChangeDir( name );
-
             gridFF.tryLoad_new( true );
             ffgrid = gridFF.HHermite_d;
-
-            //gridFF.log_z( "initGridFF_iz_ix0_iy0.log" ,0,0);
-            //bSaveDebugXSFs = true;
             if(bSaveDebugXSFs)gridFF.saveXsfDebug();
-            //bGridFF   =true; 
-            //bSurfAtoms=false;
-            //if ( chdir("..") == -1) { printf("ERROR in MolWorld_sp3::initGridFF() chdir(..) => exit()\n" ); exit(0); }
-            //if (chdir(wd0) == -1) { printf("ERROR in MolWorld_sp3::initGridFF() chdir(%s) => exit()\n", wd0 ); exit(0); }
             tryChangeDir( wd0 );
             //getcwd(tmpstr, 1024 ); printf( "initGridFF() 3 WD=`%s`\n", tmpstr );
 
