@@ -9,6 +9,8 @@
 #include "Forces.h"
 #include "MMFFparams.h"
 
+#include "Multipoles.h"
+
 #include "InterpolateTricubic.h"
 #include "Bspline.h"
 
@@ -140,6 +142,8 @@ class GridFF : public NBFF{ public:
     Vec3d dip_p0;
     Vec3d dip;
     double Q;
+
+    double Mpol[10];
 
     //double Rdamp  =  1.0;
     int iDebugEvalR = 0;
@@ -340,15 +344,22 @@ inline Quat4d getForce_HHermit( Vec3d p, const Quat4d& PLQH, bool bSurf=true ) c
     p.sub(grid.pos0);
     grid.diCell.dot_to( p, t );
     Vec3d inv_dg2{ -grid.diCell.xx, -grid.diCell.yy, -grid.diCell.zz };
-    const int ix=(int)t.x;
-    const int iy=(int)t.y;
-    const int iz=(int)t.z;
+    int ix=(int)t.x;
+    int iy=(int)t.y;
+    int iz=(int)t.z;
     //u.x=(u.x-((int)(u.x+10)-10))*grid.n.x-1;
     //u.y=(u.y-((int)(u.y+10)-10))*grid.n.y-1;
     //if(u.z<0.0){ u.z=0.0; }else if(u.z>1.0){ u.z=1.0; }; u.z=u.z*grid.n.z-1;
     //printf( "GridFF::getForce_HHermit() p(%g,%g,%g) i(%i,%i,%i) n(%i,%i,%i) inv_dg2(%g,%g,%g)\n", p.x,p.y,p.z, ix,iy,iz, grid.n.x,grid.n.y,grid.n.z,  inv_dg2.x,inv_dg2.y,inv_dg2.z );
+    if(t.x<0){ ix=ix-1; };
+    if(t.y<0){ iy=iy-1; };
     const int ix_ = fold_cubic2( ix, grid.n.x );
     const int iy_ = fold_cubic2( iy, grid.n.y );
+    //double dx=t.x-ix;
+    //double dy=t.y-iy;
+    //printf( "t.x %g dx %g ix %i \n", t.x, dx, ix );
+    //if(dx<0){ dx=dx-1; };
+    //if(dy<0){ dy=dy-1; };
     //Quat4d fe = Spline_Hermite::fe3d_comb3( Vec3d{t.x-ix,t.y-iy,t.z-iz}, Vec3i{ix_,iy_,iz}, grid.n, (Vec2d*)HHermite_d, PLQH.f );
     Quat4d fe = Spline_Hermite::fe3d_comb3( Vec3d{t.x-ix,t.y-iy,t.z-iz}, Vec3i{ix_,iy_,iz}, gridN, (Vec2d*)HHermite_d, PLQH.f );
     //{ const int i0 = (iz+grid.n.z*(iy+grid.n.y*ix))*6; printf( "GridFF::getForce_HHermit() p(%g,%g,%g) i(%i,%i,%i) VPLQ(%g,%g,%g) PLQ(%g,%g,%g) \n", p.x,p.y,p.z, ix,iy,iz, HHermite_d[i0+0], HHermite_d[i0+2], HHermite_d[i0+4], PLQH.x,PLQH.y,PLQH.z ); }
@@ -622,6 +633,7 @@ double addForces_d( int natoms, Vec3d* apos, Quat4d* PLQs, Vec3d* fpos, bool bSu
     // }
 
     void evalAtPoints( int n, Vec3d* ps, Quat4d* FFout, Quat4d PLQH, int natoms_, Vec3d * apos_, Quat4d * REQs_ ){
+        printf( "GridFF::evalAtPoints() n=%i natoms_=%i \n", n, natoms_ );
         int i=0;
         //#pragma omp parallel for shared(i)
         for(int i=0; i<n; i++){
@@ -631,7 +643,8 @@ double addForces_d( int natoms, Vec3d* apos, Quat4d* PLQs, Vec3d* fpos, bool bSu
             FFout[i] = qp*PLQH.x + ql*PLQH.y + qe*PLQH.z;
         }
     }
-    void evalAtPoints( int n, Vec3d* ps, Quat4d* FFout, Quat4d PLQH ){ evalAtPoints( n, ps, FFout, PLQH, natoms, apos, REQs ); };
+    //void evalAtPoints( int n, Vec3d* ps, Quat4d* FFout, Quat4d PLQH ){ evalAtPoints( n, ps, FFout, PLQH, natoms, apos, REQs ); };
+    void evalAtPoints( int n, Vec3d* ps, Quat4d* FFout, Quat4d PLQH ){ evalAtPoints( n, ps, FFout, PLQH, apos_.size(), apos_.data(), REQs_.data() ); };
 
     __attribute__((hot))  
     void makeGridFF_omp(int natoms_, Vec3d * apos_, Quat4d * REQs_ ){
@@ -924,7 +937,7 @@ double addForces_d( int natoms, Vec3d* apos, Quat4d* PLQs, Vec3d* fpos, bool bSu
     // }
 
 void setAtomsSymetrized( int n, int* atypes, Vec3d* apos, Quat4d* REQs, double d=0.1 ){
-    //printf( "evalGridFFs_symetrized() \n" );
+    printf( "evalGridFFs_symetrized() \n" );
     double cmax =-0.5+d;
     double cmin = 0.5-d;
     apos_  .clear();
@@ -1125,13 +1138,24 @@ void initGridFF( const char * name, double z0=NAN, bool bAutoNPBC=true, bool bSy
     allocateFFs( bGridDouble );
     //gridFF.tryLoad( "FFelec.bin", "FFPaul.bin", "FFLond.bin", false, {1,1,0}, bSaveDebugXSFs );
     nPBC=Vec3i{1,1,0};
-    if(bAutoNPBC){ autoNPBC( grid.cell, nPBC, 20.0 ); }
-    //gridFF.nPBC = (Vec3i){0,0,0};
-    //gridFF.nPBC = (Vec3i){1,1,0};
-    //gridFF.nPBC = (Vec3i){10,10,0};
+    //if(bAutoNPBC){ autoNPBC( grid.cell, nPBC, 20.0 ); }
+    //if(bAutoNPBC){ autoNPBC( grid.cell, nPBC, 40.0 ); }
+    //if(bAutoNPBC){ autoNPBC( grid.cell, nPBC, 60.0 ); }
+    if(bAutoNPBC){ autoNPBC( grid.cell, nPBC, 100.0 ); }
+    //nPBC = (Vec3i){10,10,0};
+    //nPBC = (Vec3i){1,1,0};
+    //nPBC = (Vec3i){10,10,0};
+    printf( "initGridFF() nPBC(%i,%i,%i)\n", nPBC.x, nPBC.y, nPBC.z );
     lvec = grid.cell;     // ToDo: We should unify this
     makePBCshifts( nPBC, lvec );
     if(bSymetrize)setAtomsSymetrized( natoms, atypes, apos, REQs, 0.1 );
+
+    //apos_.size(), &apos_[0], &REQs_[0];
+    std::vector<double> qs( apos_.size() ); for(int i=0; i<apos_.size(); i++){ qs[i]=REQs_[i].z; }
+    Vec3d p0;
+    Multiplole::project( &p0, apos_.size(), apos_.data(), qs.data(), 2, Mpol, true );
+    printf( "Mpol p0(%g,%g,%g) Q=%g p(%g,%g,%g) Qxx,yy,zz(%g,%g,%g)|yz,xz,xy(%g,%g,%g)\n", p0.x,p0.y,p0.z, Mpol[0], Mpol[1],Mpol[2],Mpol[3],  Mpol[4],Mpol[5],Mpol[6], Mpol[7],Mpol[8],Mpol[9] );
+
     //bSaveDebugXSFs=true;
     gridN=grid.n; gridN.x+=3; gridN.y+=3;
 }
