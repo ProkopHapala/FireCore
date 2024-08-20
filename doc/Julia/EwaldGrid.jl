@@ -424,7 +424,12 @@ pq_=copy(hcat([pq,]...)')
 #ps = [ pq,   [5.0,5.0],[5.0,6.0],[6.0,5.0],[6.0,6.0] ]; ps=copy(hcat(ps...)')
 #Qs = [ 1.0,  -0.25, -0.25, -0.25, -0.25 ]
 #pgs = [ [0.0,0.0],[0.0,0.1],[0.1,0.0],[0.1,0.1] ]; 
-#pgs = [ [0.0,0.0],[0.0,0.1],[0.1,0.0],[0.1,0.1],    [0.2,0.0],[0.2,0.1], [-0.1,0.0],[-0.1,0.1],    [0.0,0.2],[0.1,0.2], [0.0,-0.1],[0.1,-0.1],       ]; 
+
+# pgs = [ [0.0,0.0],[0.0,0.1],[0.1,0.0],[0.1,0.1],        ]; 
+# qgs = [ 0.25, 0.25, 0.25, 0.25,     ]
+
+pgs = [ [0.0,0.0],[0.0,0.1],[0.1,0.0],[0.1,0.1],    [0.2,0.0],[0.2,0.1], [-0.1,0.0],[-0.1,0.1],    [0.0,0.2],[0.1,0.2], [0.0,-0.1],[0.1,-0.1],       ]; 
+qgs = [ 0.25, 0.25, 0.25, 0.25,    0.0, 0.0, 0.0, 0.0,    0.0, 0.0, 0.0, 0.0 ]
 
 pgs = [ 
     [-0.1,-0.1],[-0.1,-0.0],[-0.1,0.1],[-0.1,0.2],
@@ -432,21 +437,23 @@ pgs = [
     [ 0.1,-0.1],[ 0.1,-0.0],[ 0.1,0.1],[ 0.1,0.2],
     [ 0.2,-0.1],[ 0.2,-0.0],[ 0.2,0.1],[ 0.2,0.2],
 ]; 
+qgs = [ 0.25, 0.25, 0.25, 0.25,    0.0, 0.0, 0.0, 0.0,    0.0, 0.0, 0.0, 0.0,   0.0, 0.0, 0.0, 0.0  ]
 
 pgs=copy(hcat(pgs...)')
 
 
-qgs = [ 0.25, 0.25, 0.25, 0.25,    0.0, 0.0, 0.0, 0.0,    0.0, 0.0, 0.0, 0.0,   0.0, 0.0, 0.0, 0.0  ]
+
 
 #pgs = [ [5.0,5.0],[5.0,6.0],[6.0,5.0],[6.0,6.0],  [4.0,5.0],[4.0,6.0],    [5.0,4.0],[6.0,4.0],     [7.0,5.0],[4.0,6.0],  [5.0,4.0],[6.0,4.0],     ];  pgs=copy(hcat(pgs...)')
 #qgs = [ 0.25, 0.25, 0.25, 0.25 ]
 
-Rs = [1.0,1.2, 1.7, 3.0]
+#Rs = [1.0,1.25, 2.0, 3.0]
+Rs = [1.5,2.0, 4.0]
 p1=[0.0,0.05]; p2=[0.05,0.05];
 #pqs = lerp_points( [0.0,0.0], [0.05,0.05], 10 )
 #pqs  = lerp_points( [0.0,0.0], [0.00,0.05], 10 )
 pqs  = lerp_points( p1, p2, 10 )
-prjs = get_optimal_projections( pqs, pgs, Rs, 32 )
+prjs = get_optimal_projections( pqs, pgs, Rs, 16 )
 
 
 #println("prjs "); display(prjs)
@@ -490,7 +497,7 @@ qs[1] *= -1.0
 #V = calculate_electrostatic_potential(grid, ps, Qs, mask_)
 
 
-pVs = generate_circle_points( pq, Rs, 32 )
+pVs = generate_circle_points( pq, Rs, 16 )
 
 V_ref,_ = evalV_J( pq_, qq, pVs, :false )
 qs_fit = fit_charges( pgs, pVs, V_ref, qgs0, 1.0 )
@@ -503,7 +510,7 @@ println("qs_fit ", sum(qs_fit), qs_fit)
 qsf = copy(qs); qsf[2:end]= qs_fit[:]; #println("qs_fit ", qsf)
 
 
-mask = create_circular_mask( grid, pq, 1.0, 3.0 )
+mask = create_circular_mask( grid, pq, Rs[1], Rs[end] )
 V     = calculate_electrostatic_potential(grid, ps, qs,  mask)
 V_fit = calculate_electrostatic_potential(grid, ps, qsf, mask)
 
