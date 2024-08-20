@@ -410,8 +410,77 @@ function lerp_points( p1::Vector{Float64}, p2::Vector{Float64}, n::Int, bEnd::Bo
 end
 
 
+# Function to generate points on a sphere starting from octahedron corners
+function generate_sphere_points_oct( ndiv::Int)
+    # Define the corners of the octahedron
+    verts = [
+        [1.0, 0.0, 0.0],
+        [-1.0, 0.0, 0.0],
+        [0.0, 1.0, 0.0],
+        [0.0, -1.0, 0.0],
+        [0.0, 0.0, 1.0],
+        [0.0, 0.0, -1.0]
+    ]
+    # Triangular faces of the octahedron
+    faces = [
+        (1, 3, 5), (1, 4, 5), (2, 3, 5), (2, 4, 5),
+        (1, 3, 6), (1, 4, 6), (2, 3, 6), (2, 4, 6)
+    ]
+    edges = [(1, 3), (1, 4), (1, 5), (1, 6), (2, 3), (2, 4), (2, 5), (2, 6), (3, 5), (3, 6), (4, 5), (4, 6)]
+
+    # verts = [
+    #     [ 1.0, 0.0, 0.0],
+    #     [-1.0, 0.0, 0.0],
+    #     [ 0.0, 1.0, 0.0],
+    # ]
+    # edges = [(1, 2), (2, 3), (3,1)]
+    # faces = [(1, 2, 3),]
+
+    ps = copy(verts)
+    #ps = []
+    d = 1.0/ndiv
+    # Generate edge points
+    for (i1, i2) in edges
+        v1, v2 = verts[i1], verts[i2]
+        for i in 1:ndiv-1
+            t = d*i
+            p = (1.0-t) * v1 + t * v2
+            p = p / norm(p)
+            push!(ps, p)
+        end
+    end
+
+    #Generate internal face points
+    for (i1, i2, i3) in faces
+        v1, v2, v3 = verts[i1], verts[i2], verts[i3]
+        for i in 1:(ndiv - 2)
+            for j in 1:(ndiv - i-1)
+                a = d*i
+                b = d*j
+                c = 1.0 - a - b
+                p = a * v1 + b * v2 + c * v3
+                #println( i," ",j," ", p )
+                p = p / norm(p)
+                push!(ps, p)
+            end
+        end
+    end
+    #print(size(ps))
+    return copy(hcat(ps...)')
+end
+
+
+
 
 # =========== Body
+
+ps = generate_sphere_points_oct( 4 )
+#println( "ps: ", size(ps) ); display(ps)
+plt = scatter( ps[:,1], ps[:,2], markersize=3, aspect_ratio=1 )
+
+display(plt)
+
+#==
 
 grid = Grid2D(  (0.0,0.0), (0.1,0.1), (100,100) )
 
@@ -487,7 +556,7 @@ pgs[:,2].+=pg0[2]
 
 ps = vcat(pq_, pgs )
 qs = vcat(qq,  qgs )
-qs[1] *= -1.0 
+qs[1] *= -1.0
 
 #ps = [ pq, ]   ; ps=hcat(ps...)
 #Qs = [ 1.0, ]
@@ -527,5 +596,8 @@ scatter!(plt_V, pVs[:, 1], pVs[:, 2], marker=:circle, color=:black, label="V sam
 scatter!(plt_V, pgs[:, 1], pgs[:, 2], marker=:cross, color=:red, label="grid charges", markersize=3)
 
 display(plt_V);
+==#
+
+
 
 
