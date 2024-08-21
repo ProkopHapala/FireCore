@@ -1011,7 +1011,7 @@ int fit3D_omp( const Vec3i ns, double* Gs, const double* Es, double* Ws, double 
             //int ix = i%ns.x;
             //int iy = (i/ns.x)%ns.y;
             const int iz  = (i/nxy);
-            const int iyx = (i + iz*nxy);
+            const int iyx = (i - iz*nxy);
             const int iy  = iyx/ns.x;
             const int ix  = iyx-iy*ns.x;
                     const bool zlo  = iz > 0;
@@ -1043,7 +1043,7 @@ int fit3D_omp( const Vec3i ns, double* Gs, const double* Es, double* Ws, double 
         #pragma omp for
         for(int i=0; i<nxyz; i++){
             const int iz  = (i/nxy);
-            const int iyx = (i + iz*nxy);
+            const int iyx = (i - iz*nxy);
             const int iy  = iyx/ns.x;
             const int ix  = iyx-iy*ns.x;
                     const bool zlo  = iz > 0;
