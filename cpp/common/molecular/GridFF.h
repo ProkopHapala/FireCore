@@ -606,15 +606,15 @@ double addForces_d( int natoms, Vec3d* apos, Quat4d* PLQs, Vec3d* fpos, bool bSu
             for(int ipbc=0; ipbc<npbc; ipbc++ ){
                 const Vec3d  dp = dp0 + shifts[ipbc];
                 //Vec3d  dp = dp0;
-                double r2     = dp.norm2();
-                double r      = sqrt(r2 + 1e-32);
+                const double r2     = dp.norm2();
+                const double r      = sqrt(r2 + 1e-32);
                 // ---- Coulomb
-                double ir2    = 1/(r2+R2damp);
-                double eQ     = COULOMB_CONST*REQi.z*sqrt(ir2);
+                const double ir2    = 1/(r2+R2damp);
+                const double eQ     = COULOMB_CONST*REQi.z*sqrt(ir2);
                 // ----- Morse
-                double e      = exp( K*(r-REQi.x) );
-                double eM     = e*REQi.y;
-                double de     = 2*K*eM/r;                    
+                const double e      = exp( K*(r-REQi.x) );
+                const double eM     = e*REQi.y;
+                const double de     = 2*K*eM/r;                    
                 // --- store
                 qp.e+=eM*e;   qp.f.add_mul( dp, -de*e   ); // repulsive part of Morse
                 ql.e+=eM*-2.; ql.f.add_mul( dp,  de     ); // attractive part of Morse
@@ -626,6 +626,56 @@ double addForces_d( int natoms, Vec3d* apos, Quat4d* PLQs, Vec3d* fpos, bool bSu
         //FFPaul[ibuff]=(Quat4f)qp;
         //FFLond[ibuff]=(Quat4f)ql;
         //FFelec[ibuff]=(Quat4f)qe;
+    }
+
+    __attribute__((hot))
+    void evalGridFFPoint_Mors( int npbc, Vec3d* shifts, int natoms_, Vec3d * apos_, Quat4d * REQs_, Vec3d pos, Quat4d& qp, Quat4d& ql ){
+        //const Vec3d pos = grid.pos0 + grid.dCell.c*iz + grid.dCell.b*iy + grid.dCell.a*ix;
+        const double R2damp=Rdamp*Rdamp;    
+        const double K=-alphaMorse;
+        qp = Quat4dZero; 
+        ql = Quat4dZero; 
+        //#pragma omp for simd
+        for(int ia=0; ia<natoms_; ia++){
+            const Vec3d dp0   = pos - apos_[ia];
+            const Quat4d REQi = REQs_[ia];
+            //if( (ibuff==0) ){ printf( "DEBUG a[%i] p(%g,%g,%g) Q %g \n", ia,apos_[ia].x, apos_[ia].y, apos[ia].z, REQi.z ); }              
+            for(int ipbc=0; ipbc<npbc; ipbc++ ){
+                const Vec3d  dp = dp0 + shifts[ipbc];
+                //Vec3d  dp = dp0;
+                const double r2     = dp.norm2();
+                const double r      = sqrt(r2 + 1e-32);
+                // ----- Morse
+                const double e      = exp( K*(r-REQi.x) );
+                const double eM     = e*REQi.y;
+                const double de     = 2*K*eM/r;                    
+                // --- store
+                qp.e+=eM*e;   qp.f.add_mul( dp, -de*e   ); // repulsive part of Morse
+                ql.e+=eM*-2.; ql.f.add_mul( dp,  de     ); // attractive part of Morse
+            }
+        }
+    }
+
+    __attribute__((pure))
+    __attribute__((hot))
+    Quat4d evalGridFFPoint_Coul( int npbc, Vec3d* shifts, int natoms_, const Vec3d * apos_, Quat4d * REQs_, Vec3d pos ) const {
+        const double R2damp=Rdamp*Rdamp;    
+        const double K=-alphaMorse;
+        Quat4d qe     = Quat4dZero;
+        //#pragma omp for simd
+        for(int ia=0; ia<natoms_; ia++){
+            const Vec3d dp0   = pos - apos_[ia];
+            const Quat4d REQi = REQs_[ia];
+            //if( (ibuff==0) ){ printf( "DEBUG a[%i] p(%g,%g,%g) Q %g \n", ia,apos_[ia].x, apos_[ia].y, apos[ia].z, REQi.z ); }              
+            for(int ipbc=0; ipbc<npbc; ipbc++ ){
+                const Vec3d  dp = dp0 + shifts[ipbc];
+                const double r2     = dp.norm2();
+                const double ir2    = 1/(r2+R2damp);
+                const double eQ     = COULOMB_CONST*REQi.z*sqrt(ir2);
+                qe.e+=eQ;     qe.f.add_mul( dp,  eQ*ir2 ); // Coulomb
+            }
+        }
+        return qe;
     }
 
     Quat4d evalMorsePBC_PLQ(  Vec3d pi, Quat4d PLQH, int natoms, Vec3d * apos, Quat4d * REQs ){
@@ -642,7 +692,7 @@ double addForces_d( int natoms, Vec3d* apos, Quat4d* PLQs, Vec3d* fpos, bool bSu
     // }
 
     void evalAtPoints( int n, Vec3d* ps, Quat4d* FFout, Quat4d PLQH, int natoms_, Vec3d * apos_, Quat4d * REQs_ ){
-        printf( "GridFF::evalAtPoints() n=%i natoms_=%i \n", n, natoms_ );
+        //printf( "GridFF::evalAtPoints() n=%i natoms_=%i \n", n, natoms_ );
         int i=0;
         //#pragma omp parallel for shared(i)
         for(int i=0; i<n; i++){
@@ -654,6 +704,27 @@ double addForces_d( int natoms, Vec3d* apos, Quat4d* PLQs, Vec3d* fpos, bool bSu
     }
     //void evalAtPoints( int n, Vec3d* ps, Quat4d* FFout, Quat4d PLQH ){ evalAtPoints( n, ps, FFout, PLQH, natoms, apos, REQs ); };
     void evalAtPoints( int n, Vec3d* ps, Quat4d* FFout, Quat4d PLQH ){ evalAtPoints( n, ps, FFout, PLQH, apos_.size(), apos_.data(), REQs_.data() ); };
+
+    void evalAtPoints_Split( int n, Vec3d* ps, Quat4d* FFout, Quat4d PLQH, int natoms_, Vec3d * apos_, Quat4d * REQs_ ){
+        //printf( "GridFF::evalAtPoints_Split() n=%i natoms_=%i \n", n, natoms_ );
+        int i=0;
+        Vec3d* shift_coul=0;
+        Vec3d* shift_mors=0;
+        int npbc_coul = makePBCshifts_( Vec3i{25,25,0}, lvec, shift_coul ); // Coulomb converge much more slowly with nPBC
+        int npbc_mors = makePBCshifts_( Vec3i{4 ,4 ,0}, lvec, shift_mors );
+        //#pragma omp parallel for shared(i)
+        //long t0 = getCPUticks();
+        for(int i=0; i<n; i++){
+            Quat4d qp,ql;evalGridFFPoint_Mors( npbc_mors, shift_mors,  natoms_, apos_, REQs_, ps[i], qp, ql );
+            Quat4d qe  = evalGridFFPoint_Coul( npbc_coul, shift_coul,  natoms_, apos_, REQs_, ps[i] );
+            FFout[i] = qp*PLQH.x + ql*PLQH.y + qe*PLQH.z;
+        }
+        //double T = (getCPUticks()-t0); printf( "evalAtPoints_Split(n=%i) time=%g[MTick] %g[kTick/point]\n", n, T*(1.e-6), (T*1e-3)/n );
+        delete[] shift_coul;
+        delete[] shift_mors;
+    }
+    void evalAtPoints_Split( int n, Vec3d* ps, Quat4d* FFout, Quat4d PLQH ){ evalAtPoints_Split( n, ps, FFout, PLQH, apos_.size(), apos_.data(), REQs_.data() ); };
+
 
     __attribute__((hot))  
     void makeGridFF_omp(int natoms_, Vec3d * apos_, Quat4d * REQs_ ){
@@ -714,10 +785,7 @@ double addForces_d( int natoms, Vec3d* apos, Quat4d* PLQs, Vec3d* fpos, bool bSu
         
         //if(HHermite_d==0) _realloc( HHermite_d, grid.n.totprod()*6 );
         if(HHermite_d==0) _realloc( HHermite_d, gridN.totprod()*6 );
-
         if(shifts==0)makePBCshifts( nPBC, lvec );
-        const double R2damp=Rdamp*Rdamp;    
-        const double K=-alphaMorse;
 
         double dz = -grid.dCell.c.z;
 
@@ -748,6 +816,42 @@ double addForces_d( int natoms, Vec3d* apos, Quat4d* PLQs, Vec3d* fpos, bool bSu
         printf( "GridFF::makeGridFF_Hherm_d() DONE \n" );
     }
     void makeGridFF_Hherm_d(){ makeGridFF_Hherm_d(natoms,apos,REQs); }
+
+
+    __attribute__((hot))  
+    void evalBsplineRef(int natoms_, Vec3d * apos_, Quat4d * REQs_, double* VPaul, double* VLond, double* VCoul ){
+        printf( "GridFF::makeGridFF_BsplineRef() DONE \n" );
+        Vec3d* shift_coul=0;
+        Vec3d* shift_mors=0;
+        int npbc_coul = makePBCshifts_( Vec3i{25,25,0}, lvec, shift_coul ); // Coulomb converge much more slowly with nPBC
+        int npbc_mors = makePBCshifts_( Vec3i{4 ,4 ,0}, lvec, shift_mors );
+        double dz = -grid.dCell.c.z;
+        const int ntot = gridN.totprod();
+        const int nxy  = gridN.x*gridN.y;
+        int i=0;
+        long t0=getCPUticks();
+        #pragma omp parallel for shared(i,HHermite_d)
+        for(int i=0; i<ntot; i++){
+            //int iz =  i%grid.n.z;
+            //int iy = (i/grid.n.z)%grid.n.y;
+            int iz =  i/nxy;
+            int ixy = i - iz*nxy;
+            int iy =  ixy/gridN.x;
+            int ix =  ixy - iy*gridN.x;
+                    const Vec3d pos = grid.pos0 + grid.dCell.c*iz + grid.dCell.b*iy + grid.dCell.a*ix;
+                    Quat4d qp,ql;evalGridFFPoint_Mors( npbc_mors, shift_mors,  natoms_, apos_, REQs_, pos, qp, ql );
+                    Quat4d qe  = evalGridFFPoint_Coul( npbc_coul, shift_coul,  natoms_, apos_, REQs_, pos );
+                    const int ibuff = ix + gridN.x*( iy + gridN.y * iz );
+                    VPaul[i] = qp.w; 
+                    VLond[i] = ql.w;
+                    VCoul[i] = qe.w;   
+        }
+        double T=getCPUticks()-t0;
+        delete [] shift_coul;
+        delete [] shift_mors;
+        printf( "GridFF::makeGridFF_BsplineRef(ntot=%i,natom=%i,npbc_coul=%i) DONE in %g [GTick] %g [kTick/point] \n", ntot, natoms_, npbc_coul,  T*1e-9, (T*1e-3)/ntot  );
+    }
+
 
     void makeVPLQHeval( int natoms_, Vec3d * apos_, Quat4d * REQs_ ){
         printf( "GridFF::makeVPLQHeval() \n" );
@@ -858,7 +962,7 @@ double addForces_d( int natoms, Vec3d* apos, Quat4d* PLQs, Vec3d* fpos, bool bSu
         _realloc( Bspline_London,   n );
         _realloc( Bspline_Coulomb,  n );
         double* Vtemp = new double[ n ];
-        double* Ws    = new double[ n ];  for(int i=0; i<n; i++){ Ws[i] = 1.0; }
+        //double* Ws    = new double[ n ];  for(int i=0; i<n; i++){ Ws[i] = 1.0; }
         printf( "GridFF::makeGridFF_Bspline_d() START Fitting @Vtemp=%li  @HHermite_d=%li \n", (long)Vtemp, (long)HHermite_d );
         
         //Vec3i nsrc{gridN.z,gridN.y,gridN.x};
@@ -866,12 +970,11 @@ double addForces_d( int natoms, Vec3d* apos, Quat4d* PLQs, Vec3d* fpos, bool bSu
         Vec3i nsrc=gridN; nsrc.swap( transp );
         printf( "GridFF::makeGridFF_Bspline_d() nsrc(%i,%i,%i) transp(%i,%i,%i) \n", nsrc.x, nsrc.y, nsrc.z, transp.x, transp.y, transp.z );
         
-        GridShape gHH,gBS;
-        //gHH.copy( grid ); gHH.n = ndst;
-        gHH.copy( grid ); gHH.n = gridN; gHH.swap_axes( transp ); //   printf("gHH.printCell():\n"); gHH.printCell();
-        gBS.copy( grid ); gBS.n = gridN;
-        gHH.saveXSF( "debug_HHPaul.xsf", HHermite_d, 6,0  );
-        gHH.saveXSF( "debug_HHCoul.xsf", HHermite_d, 6,4  );
+        // GridShape gHH,gBS;
+        // gHH.copy( grid ); gHH.n = gridN; gHH.swap_axes( transp ); //   printf("gHH.printCell():\n"); gHH.printCell();
+        // gBS.copy( grid ); gBS.n = gridN;
+        // gHH.saveXSF( "debug_HHPaul.xsf", HHermite_d, 6,0  );
+        // gHH.saveXSF( "debug_HHCoul.xsf", HHermite_d, 6,4  );
         // copyPitchTransp<double>( gridN, transp, Vtemp,0,1, (double*)HHermite_d, 0,6 );
         // gBS.saveXSF( "debug_VtempPaul.xsf", Vtemp,  1,0  );
 
@@ -881,9 +984,9 @@ double addForces_d( int natoms, Vec3d* apos, Quat4d* PLQs, Vec3d* fpos, bool bSu
         //copyPitchTransp<double>( gridN, transp, Vtemp,0,1, (double*)HHermite_d, 2,6 ); printf( "Bspline_Pauli COPIED\n" );  Bspline::fit3D( gridN, Bspline_London,  Vtemp, 0, Ftol, nmaxiter, dt, true );  printf( "GridFF::makeGridFF_Bspline_d() Fit(Bspline_London)  DONE \n" ); gBS.saveXSF( "debug_VtempLond.xsf", Vtemp,  1,0  ); gBS.saveXSF( "debug_BsplineLond.xsf", Bspline_London,  1,0 );
         //copyPitchTransp<double>( gridN, transp, Vtemp,0,1, (double*)HHermite_d, 4,6 ); printf( "Bspline_Pauli COPIED\n" );  Bspline::fit3D( gridN, Bspline_Coulomb, Vtemp, 0, Ftol, nmaxiter, dt, true );  printf( "GridFF::makeGridFF_Bspline_d() Fit(Bspline_Coulomb) DONE \n" ); gBS.saveXSF( "debug_VtempCoul.xsf", Vtemp,  1,0  ); gBS.saveXSF( "debug_BsplineCoul.xsf", Bspline_Coulomb, 1,0 );
 
-        copyPitchTransp<double>( gridN, transp, Vtemp,0,1, (double*)HHermite_d, 0,6 ); printf( "Bspline_Pauli COPIED\n" );  Bspline::fit3D_omp( gridN, Bspline_Pauli,   Vtemp, 0, Ftol, nmaxiter, dt, true );  printf( "GridFF::makeGridFF_Bspline_d() Fit(Bspline_Pauli)   DONE \n" ); gBS.saveXSF( "debug_VtempPaul.xsf", Vtemp,  1,0  ); gBS.saveXSF( "debug_BsplinePaul.xsf", Bspline_Pauli,   1,0 );
-        copyPitchTransp<double>( gridN, transp, Vtemp,0,1, (double*)HHermite_d, 2,6 ); printf( "Bspline_Pauli COPIED\n" );  Bspline::fit3D_omp( gridN, Bspline_London,  Vtemp, 0, Ftol, nmaxiter, dt, true );  printf( "GridFF::makeGridFF_Bspline_d() Fit(Bspline_London)  DONE \n" ); gBS.saveXSF( "debug_VtempLond.xsf", Vtemp,  1,0  ); gBS.saveXSF( "debug_BsplineLond.xsf", Bspline_London,  1,0 );
-        copyPitchTransp<double>( gridN, transp, Vtemp,0,1, (double*)HHermite_d, 4,6 ); printf( "Bspline_Pauli COPIED\n" );  Bspline::fit3D_omp( gridN, Bspline_Coulomb, Vtemp, 0, Ftol, nmaxiter, dt, true );  printf( "GridFF::makeGridFF_Bspline_d() Fit(Bspline_Coulomb) DONE \n" ); gBS.saveXSF( "debug_VtempCoul.xsf", Vtemp,  1,0  ); gBS.saveXSF( "debug_BsplineCoul.xsf", Bspline_Coulomb, 1,0 );
+        copyPitchTransp<double>( gridN, transp, Vtemp,0,1, (double*)HHermite_d, 0,6 ); Bspline::fit3D_omp( gridN, Bspline_Pauli,   Vtemp, 0, Ftol, nmaxiter, dt, true ); // printf( "GridFF::makeGridFF_Bspline_d() Fit(Bspline_Pauli)   DONE \n" ); //gBS.saveXSF( "debug_VtempPaul.xsf", Vtemp,  1,0  ); gBS.saveXSF( "debug_BsplinePaul.xsf", Bspline_Pauli,   1,0 );
+        copyPitchTransp<double>( gridN, transp, Vtemp,0,1, (double*)HHermite_d, 2,6 ); Bspline::fit3D_omp( gridN, Bspline_London,  Vtemp, 0, Ftol, nmaxiter, dt, true ); // printf( "GridFF::makeGridFF_Bspline_d() Fit(Bspline_London)  DONE \n" ); //gBS.saveXSF( "debug_VtempLond.xsf", Vtemp,  1,0  ); gBS.saveXSF( "debug_BsplineLond.xsf", Bspline_London,  1,0 );
+        copyPitchTransp<double>( gridN, transp, Vtemp,0,1, (double*)HHermite_d, 4,6 ); Bspline::fit3D_omp( gridN, Bspline_Coulomb, Vtemp, 0, Ftol, nmaxiter, dt, true ); // printf( "GridFF::makeGridFF_Bspline_d() Fit(Bspline_Coulomb) DONE \n" ); //gBS.saveXSF( "debug_VtempCoul.xsf", Vtemp,  1,0  ); gBS.saveXSF( "debug_BsplineCoul.xsf", Bspline_Coulomb, 1,0 );
 
         //double V2coulH=0;for( int i=0; i<n; i++ ){ V2coulH += HHermite_d[i*6+4]*HHermite_d[i*6+4]; }  printf("av(V2coulH)=%g\n", V2coulH/n );
         //double V2temp=0; for( int i=0; i<n; i++ ){ V2temp += Vtemp[i]*Vtemp[i]; }                     printf("av(V2temp)=%g\n",  V2temp/n  );
@@ -891,24 +994,37 @@ double addForces_d( int natoms, Vec3d* apos, Quat4d* PLQs, Vec3d* fpos, bool bSu
 
         printf( "GridFF::makeGridFF_Bspline_d() FINISHED Fitting \n" );
         delete [] Vtemp;
-        delete [] Ws;
+        //delete [] Ws;
         printf( "GridFF::makeGridFF_Bspline_d() DONE\n" );
     }
 
-    void makeGridFF_Bspline_d( int natoms_, Vec3d * apos_, Quat4d * REQs_, double Ftol=1e-8, int nmaxiter=1000, double dt=0.1 ){
+    void makeGridFF_Bspline_d( int natoms_, Vec3d * apos_, Quat4d * REQs_, double Ftol=1e-8, int nmaxiter=1000, double dt=0.3 ){
         printf( "GridFF::makeGridFF_Bspline_d() \n" );
         int n = gridN.totprod();
-        double* VPLQH = new double[ n ];
-        double* Vtemp = new double[ n ];
-        double* Ws    = new double[ n ];  for(int i=0; i<n; i++){ Ws[i] = 1.0; }
-        makeVPLQHeval( natoms_, apos_, REQs_ );
+        double* VPaul = new double[ n ];
+        double* VLond = new double[ n ];
+        double* VCoul = new double[ n ];
+        _realloc( Bspline_Pauli,    n );
+        _realloc( Bspline_London,   n );
+        _realloc( Bspline_Coulomb,  n );
+        //double* Ws    = new double[ n ];  for(int i=0; i<n; i++){ Ws[i] = 1.0; }
+        evalBsplineRef( natoms_, apos_, REQs_, VPaul, VLond, VCoul );
+
+        // GridShape gBS;
+        // gBS.copy( grid ); gBS.n = gridN;
+        // gBS.saveXSF( "debug_VPaul.xsf", VPaul, 1,0 );
+        // gBS.saveXSF( "debug_VLond.xsf", VLond, 1,0 );
+        // gBS.saveXSF( "debug_VCoul.xsf", VCoul, 1,0 );
+
         printf( "GridFF::makeGridFF_Bspline_d() START Fitting \n" );
-        copyPitch<double>( n, Vtemp,0,1, (double*)FFPaul_d, 3,4 ); Bspline::fit3D( gridN, Bspline_Pauli,   Vtemp, Ws, Ftol, nmaxiter, dt, true );  printf( "GridFF::makeGridFF_Bspline_d() Fit(Bspline_Pauli)   DONE \n" );
-        copyPitch<double>( n, Vtemp,0,1, (double*)FFLond_d, 3,4 ); Bspline::fit3D( gridN, Bspline_London,  Vtemp, Ws, Ftol, nmaxiter, dt, true );  printf( "GridFF::makeGridFF_Bspline_d() Fit(Bspline_London)  DONE \n" );
-        copyPitch<double>( n, Vtemp,0,1, (double*)FFelec_d, 3,4 ); Bspline::fit3D( gridN, Bspline_Coulomb, Vtemp, Ws, Ftol, nmaxiter, dt, true );  printf( "GridFF::makeGridFF_Bspline_d() Fit(Bspline_Coulomb) DONE \n" );
+        Bspline::fit3D_omp( gridN, Bspline_Pauli,   VPaul, 0, Ftol, nmaxiter, dt, true );  printf( "GridFF::makeGridFF_Bspline_d() Fit(Bspline_Pauli)   DONE \n" );
+        Bspline::fit3D_omp( gridN, Bspline_London,  VLond, 0, Ftol, nmaxiter, dt, true );  printf( "GridFF::makeGridFF_Bspline_d() Fit(Bspline_London)  DONE \n" );
+        Bspline::fit3D_omp( gridN, Bspline_Coulomb, VCoul, 0, Ftol, nmaxiter, dt, true );  printf( "GridFF::makeGridFF_Bspline_d() Fit(Bspline_Coulomb) DONE \n" );
         printf( "GridFF::makeGridFF_Bspline_d() FINISHED Fitting \n" );
-        delete [] Vtemp;
-        delete [] Ws;
+        delete [] VPaul;
+        delete [] VLond;
+        delete [] VCoul;
+        //delete [] Ws;
         printf( "GridFF::makeGridFF_Bspline_d() DONE\n" );
     }
 
@@ -1344,15 +1460,16 @@ void initGridFF( const char * name, double z0=NAN, bool bAutoNPBC=true, bool bSy
                     loadBin( fnames[2], nbyte, (char*)Bspline_Coulomb );
                 }else{
                     bRecalc=true;
-                    fnames[3]="GridFF_HH_d.bin";
-                    if( checkAllFilesExist( 1, fnames+3, bPrint ) ){
-                        _realloc( HHermite_d, npoint*6 );
-                        loadBin( fnames[3], nbyte*6, (char*)HHermite_d );
-                        makeGridFF_Bspline_HH_d( );
-                    }else{ // Recalc from scratch
-                        printf("ERROR in GridFF::tryLoad_new() BsplineDouble can be currently fitted only from existing GridFF_HH_d.bin \n"); exit(0);
-                        //makeGridFF_Bspline_d( apos_.size(), &apos_[0], &REQs_[0] );
-                    }
+                    // fnames[3]="GridFF_HH_d.bin";
+                    // if( checkAllFilesExist( 1, fnames+3, bPrint ) ){
+                    //     _realloc( HHermite_d, npoint*6 );
+                    //     loadBin( fnames[3], nbyte*6, (char*)HHermite_d );
+                    //     makeGridFF_Bspline_HH_d( );
+                    // }else{ // Recalc from scratch
+                    //     printf("ERROR in GridFF::tryLoad_new() BsplineDouble can be currently fitted only from existing GridFF_HH_d.bin \n"); exit(0);
+                    //     //makeGridFF_Bspline_d( apos_.size(), &apos_[0], &REQs_[0] );
+                    // }
+                    makeGridFF_Bspline_d( apos_.size(), &apos_[0], &REQs_[0] );
                     saveBin( fnames[0], nbyte, (char*)Bspline_Pauli );
                     saveBin( fnames[1], nbyte, (char*)Bspline_London );
                     saveBin( fnames[2], nbyte, (char*)Bspline_Coulomb );

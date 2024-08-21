@@ -267,13 +267,13 @@ def makeGridFF( name, mode=1, bSaveDebugXSFs=False, z0=0, cel0=(-0.5,-0.5,0.0), 
     #return ff_
 
 # void evalGridFFAtPoints( int n, double* ps, double* FFout, double* PLQH ){
-lib.evalGridFFAtPoints.argtypes  = [ c_int, c_double_p, c_double_p, c_double_p ]
+lib.evalGridFFAtPoints.argtypes  = [ c_int, c_double_p, c_double_p, c_double_p, c_bool ]
 lib.evalGridFFAtPoints.restype   =  None
-def evalGridFFAtPoints( ps, FFout=None, PLQH=[0.0,0.0,1.0,0.0] ):
+def evalGridFFAtPoints( ps, FFout=None, PLQH=[0.0,0.0,1.0,0.0], bSplit=False ):
     n = len(ps)
     if FFout is None: FFout=np.zeros( (n,4) )
     PLQH = np.array( PLQH )
-    lib.evalGridFFAtPoints( n, _np_as(ps,c_double_p), _np_as(FFout,c_double_p), _np_as(PLQH,c_double_p) )
+    lib.evalGridFFAtPoints( n, _np_as(ps,c_double_p), _np_as(FFout,c_double_p), _np_as(PLQH,c_double_p), bSplit )
     return FFout
     
 

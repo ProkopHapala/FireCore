@@ -97,8 +97,11 @@ double* makeGridFF( const char* name, int* ffshape, int mode, bool bSaveDebugXSF
     return ff_ptr;
 }
 
-void evalGridFFAtPoints( int n, double* ps, double* FFout, double* PLQH ){
-    W.gridFF.evalAtPoints( n, (Vec3d*)ps, (Quat4d*)FFout, *(Quat4d*)PLQH );
+void evalGridFFAtPoints( int n, double* ps, double* FFout, double* PLQH, bool bSplit ){
+    long t0 = getCPUticks();
+    if(bSplit){ W.gridFF.evalAtPoints_Split( n, (Vec3d*)ps, (Quat4d*)FFout, *(Quat4d*)PLQH ); }
+    else      { W.gridFF.evalAtPoints      ( n, (Vec3d*)ps, (Quat4d*)FFout, *(Quat4d*)PLQH ); }
+    double T = getCPUticks()-t0; printf( "evalGridFFAtPoints(n=%i,bSplit=%i) DONE in %g[MTicks] %g[kTick/point] \n", n, bSplit, T*1e-6, (T*1e-3)/n  );
 }
 
 int    run( int nstepMax, double dt, double Fconv, int ialg, double damping, double* outE, double* outF, double* outV, double* outVF, bool omp ){
