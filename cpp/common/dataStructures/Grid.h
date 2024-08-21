@@ -57,6 +57,26 @@ class GridShape{ public:
         updateCell(step);
     }
 
+    void copy( const GridShape& g ){
+        pos0=g.pos0;
+        cell=g.cell;
+        iCell=g.iCell;
+        dCell=g.dCell;
+        diCell=g.diCell;
+        n=g.n;
+    }
+
+    void swap_axes( Vec3i swp ){
+        pos0.swap( swp );
+        printf( "swapping axes BEFORE n(%i,%i,%i)\n", n.x,n.y,n.z );
+        n.swap( swp );
+        printf( "swapping axes AFTER n(%i,%i,%i)\n", n.x,n.y,n.z );
+        cell.swap_vecs(swp);
+        iCell.swap_vecs(swp);
+        dCell.swap_vecs(swp);
+        diCell.swap_vecs(swp);
+    }
+
     void center_cell( Vec3d c ){ cell.dot_to_T( c, pos0 ); }
 
 	//inline Vec3d * allocateArray_Vec3d(){ return new Vec3d[n.x*n.y*n.z); }

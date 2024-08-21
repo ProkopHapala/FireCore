@@ -99,9 +99,10 @@ def getCos( xs, freq ):
     return E,F
 
 def getCos2D( Xs, Ys, freq=(np.pi,np.pi) ):
-    E =           np.cos( freq[0]*Xs )*np.cos( freq[1]*Ys )
-    Fx = -freq[0]*np.sin( freq[0]*Xs )*np.cos( freq[1]*Ys )
-    Fy = -freq[1]*np.cos( freq[0]*Xs )*np.sin( freq[1]*Ys )
+    fx,fy = freq
+    E =      np.cos( fx*Xs )*np.cos( fy*Ys )
+    Fx = -fx*np.sin( fx*Xs )*np.cos( fy*Ys )
+    Fy = -fy*np.cos( fx*Xs )*np.sin( fy*Ys )
     return E,Fx,Fy
 
 def getCos3D( Xs, Ys, Zs, freq=(np.pi,np.pi,np.pi) ):
@@ -109,11 +110,28 @@ def getCos3D( Xs, Ys, Zs, freq=(np.pi,np.pi,np.pi) ):
     cx = np.cos( fx*Xs );  sx = np.sin( fx*Xs )
     cy = np.cos( fy*Ys );  sy = np.sin( fy*Ys )
     cz = np.cos( fz*Zs );  sz = np.sin( fz*Zs )
-    E =           cx*cy*cz
+    E =      cx*cy*cz
     Fx = -fx*sx*cy*cz
     Fy = -fy*cx*sy*cz
     Fz = -fz*cx*cy*sz
     return E,Fx,Fy,Fz
+
+
+def getGauss2D( Xs, Ys, w=1.00 ):
+    iw2=-1./(w*w)
+    E =      np.exp( (Xs**2 + Ys**2)*iw2 )
+    Fx = iw2*Xs*E
+    Fy = iw2*Ys*E
+    return E,Fx,Fy
+
+def getGauss3D( Xs, Ys, Zs, w=1.0 ):
+    iw2=-1./(w*w)
+    E =      np.exp( ( Xs**2 + Ys**2 + Zs**2 )*iw2 )
+    Fx = iw2*Xs*E
+    Fy = iw2*Ys*E
+    Fz = iw2*Zs*E
+    return E,Fx,Fy,Fz
+
 
 
 # ========= Grid sampling generator in 2D and 3D =========
