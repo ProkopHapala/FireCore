@@ -160,8 +160,10 @@ int fit2D_Bspline( const int* ns, double* Gs, double* Es, double* Ws, double Fto
     return Bspline::fit2D( *(Vec2i*)ns, Gs,  Es, Ws, Ftol, nmaxiter, dt );
 }
 
-int fit3D_Bspline( const int* ns, double* Gs, double* Es, double* Ws, double Ftol, int nmaxiter, double dt ){
-    return Bspline::fit3D( *(Vec3i*)ns, Gs,  Es, Ws, Ftol, nmaxiter, dt );
+int fit3D_Bspline( const int* ns, double* Gs, double* Es, double* Ws, double Ftol, int nmaxiter, double dt, bool bOMP ){
+    if(bOMP){ return Bspline::fit3D_omp( *(Vec3i*)ns, Gs,  Es, Ws, Ftol, nmaxiter, dt ); }
+    else    { return Bspline::fit3D    ( *(Vec3i*)ns, Gs,  Es, Ws, Ftol, nmaxiter, dt ); }
+
 }
 
 void sample_Bspline( double g0, double dg, int ng, double* Gs, int n, double* xs, double* fes ){
