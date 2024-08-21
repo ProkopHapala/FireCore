@@ -372,7 +372,7 @@ inline float addForce_HHermit( const Vec3d& p, const Quat4d& PLQ, Vec3d& f, bool
 
 __attribute__((hot))  
 inline Quat4d getForce_Bspline( Vec3d p, const Quat4d& PLQH, bool bSurf=true ) const {
-    printf( "GridFF::getForce_Bspline() p(%g,%g,%g)\n", p.x,p.y,p.z );
+    //printf( "GridFF::getForce_Bspline() p(%g,%g,%g)\n", p.x,p.y,p.z );
     Vec3d t;
     p.sub(shift0);
     p.sub(grid.pos0);
@@ -851,7 +851,7 @@ double addForces_d( int natoms, Vec3d* apos, Quat4d* PLQs, Vec3d* fpos, bool bSu
         printf( "GridFF::FitBsplines() DONE\n" );
     }
 
-    void makeGridFF_Bspline_HH_d( double Ftol=1e-8, int nmaxiter=1, double dt=0.0 ){
+    void makeGridFF_Bspline_HH_d( double Ftol=1e-8, int nmaxiter=100, double dt=0.1 ){
         int n = gridN.totprod();
         printf( "GridFF::makeGridFF_Bspline_d() n=%i \n", n );
         _realloc( Bspline_Pauli,    n );
@@ -861,12 +861,26 @@ double addForces_d( int natoms, Vec3d* apos, Quat4d* PLQs, Vec3d* fpos, bool bSu
         double* Ws    = new double[ n ];  for(int i=0; i<n; i++){ Ws[i] = 1.0; }
         printf( "GridFF::makeGridFF_Bspline_d() START Fitting @Vtemp=%li  @HHermite_d=%li \n", (long)Vtemp, (long)HHermite_d );
         
-        Vec3i ndst{gridN.z,gridN.y,gridN.x};
+        //Vec3i nsrc{gridN.z,gridN.y,gridN.x};
         Vec3i transp{2,1,0};
-        printf( "GridFF::makeGridFF_Bspline_d() ndst(%i,%i,%i) transp(%i,%i,%i) \n", ndst.x, ndst.y, ndst.z, transp.x, transp.y, transp.z );
-        copyPitchTransp<double>( ndst, transp, Vtemp,0,1, (double*)HHermite_d, 0,6 ); printf( "Bspline_Pauli COPIED\n" );  Bspline::fit3D( gridN, Bspline_Pauli,   Vtemp, Ws, Ftol, nmaxiter, dt, true );  printf( "GridFF::makeGridFF_Bspline_d() Fit(Bspline_Pauli)   DONE \n" );
-        copyPitchTransp<double>( ndst, transp, Vtemp,0,1, (double*)HHermite_d, 2,6 ); printf( "Bspline_Pauli COPIED\n" );  Bspline::fit3D( gridN, Bspline_London,  Vtemp, Ws, Ftol, nmaxiter, dt, true );  printf( "GridFF::makeGridFF_Bspline_d() Fit(Bspline_London)  DONE \n" );
-        copyPitchTransp<double>( ndst, transp, Vtemp,0,1, (double*)HHermite_d, 4,6 ); printf( "Bspline_Pauli COPIED\n" );  Bspline::fit3D( gridN, Bspline_Coulomb, Vtemp, Ws, Ftol, nmaxiter, dt, true );  printf( "GridFF::makeGridFF_Bspline_d() Fit(Bspline_Coulomb) DONE \n" );
+        Vec3i nsrc=gridN; nsrc.swap( transp );
+        printf( "GridFF::makeGridFF_Bspline_d() nsrc(%i,%i,%i) transp(%i,%i,%i) \n", nsrc.x, nsrc.y, nsrc.z, transp.x, transp.y, transp.z );
+        
+        GridShape gHH,gBS;
+        //gHH.copy( grid ); gHH.n = ndst;
+        gHH.copy( grid ); gHH.n = gridN; gHH.swap_axes( transp ); //   printf("gHH.printCell():\n"); gHH.printCell();
+        gBS.copy( grid ); gBS.n = gridN;
+        gHH.saveXSF( "debug_HHPaul.xsf", HHermite_d, 6,0  );
+        gHH.saveXSF( "debug_HHCoul.xsf", HHermite_d, 6,4  );
+        // copyPitchTransp<double>( gridN, transp, Vtemp,0,1, (double*)HHermite_d, 0,6 );
+        // gBS.saveXSF( "debug_VtempPaul.xsf", Vtemp,  1,0  );
+
+        //exit(0);
+        //return;
+        copyPitchTransp<double>( gridN, transp, Vtemp,0,1, (double*)HHermite_d, 0,6 ); printf( "Bspline_Pauli COPIED\n" );  Bspline::fit3D( gridN, Bspline_Pauli,   Vtemp, Ws, Ftol, nmaxiter, dt, true );  printf( "GridFF::makeGridFF_Bspline_d() Fit(Bspline_Pauli)   DONE \n" ); gBS.saveXSF( "debug_VtempPaul.xsf", Vtemp,  1,0  );
+        copyPitchTransp<double>( gridN, transp, Vtemp,0,1, (double*)HHermite_d, 2,6 ); printf( "Bspline_Pauli COPIED\n" );  //Bspline::fit3D( gridN, Bspline_London,  Vtemp, Ws, Ftol, nmaxiter, dt, true );  printf( "GridFF::makeGridFF_Bspline_d() Fit(Bspline_London)  DONE \n" ); gBS.saveXSF( "debug_VtempLond.xsf", Vtemp,  1,0  );
+        copyPitchTransp<double>( gridN, transp, Vtemp,0,1, (double*)HHermite_d, 4,6 ); printf( "Bspline_Pauli COPIED\n" );  //Bspline::fit3D( gridN, Bspline_Coulomb, Vtemp, Ws, Ftol, nmaxiter, dt, true );  printf( "GridFF::makeGridFF_Bspline_d() Fit(Bspline_Coulomb) DONE \n" ); gBS.saveXSF( "debug_VtempCoul.xsf", Vtemp,  1,0  );
+
 
         double V2coulH=0;for( int i=0; i<n; i++ ){ V2coulH += HHermite_d[i*6+4]*HHermite_d[i*6+4]; }  printf("av(V2coulH)=%g\n", V2coulH/n );
         double V2temp=0; for( int i=0; i<n; i++ ){ V2temp += Vtemp[i]*Vtemp[i]; }                     printf("av(V2temp)=%g\n",  V2temp/n  );

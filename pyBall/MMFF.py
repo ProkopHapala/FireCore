@@ -180,10 +180,10 @@ lib.fit3D_Bspline.restype   =  None
 def fit3D_Bspline( Es, Gs=None, Ws=None, Ftol=1e-6, nmaxiter=100, dt=0.1 ):
     ns = np.array( Es.shape[::-1], dtype=np.int32 ) 
     n  = Es.size
-    if Ws is None: Ws = np.zeros( ns )
+    if Ws is None: Ws = np.ones( ns )
     if Gs is None: Gs = Es[:].copy()
     lib.fit3D_Bspline( _np_as(ns,c_int_p) , _np_as(Gs,c_double_p), _np_as(Es,c_double_p), _np_as(Ws,c_double_p), Ftol, nmaxiter, dt )
-    return Gs, Ws
+    return Gs
 
 #void setupGrid( int* ns, double* cell, bool bAlloc ){
 lib.setupGrid.argtypes  = [ c_int_p, c_double_p, c_bool ]
