@@ -257,14 +257,19 @@ def test_fit_3D( g0=(-5.0,-5.0,2.0), gmax=(5.0,5.0,6.0), dg=(0.1,0.1,0.1), dsamp
     #Emin =  E_r.min()
     #Fmin = -Fy_r.max()
 
-    ix0=10;iy0=10;iz0=10;
+    ix0=10;iy0=10;iz0=50;
     #E[:,:,:]=0.0
     #E[iz0,iy0,ix0]=1.0
 
-    Gs = mmff.fit3D_Bspline( E, dt=0.1, nmaxiter=100, Ftol=1e-6, bOMP=False )
+    #Gs = mmff.fit3D_Bspline( E, dt=0.1, nmaxiter=100, Ftol=1e-6,  bOMP=False )
     Gs = mmff.fit3D_Bspline( E, dt=0.1, nmaxiter=1000, Ftol=1e-6, bOMP=True )
 
     plt.figure(figsize=(15,10))
+
+    plt.subplot(2,3,1); plt.imshow( E[iz0  ,:,:],  origin="lower" ) ;plt.colorbar(); plt.title("Es[iz= 0]")
+    plt.subplot(2,3,2); plt.imshow( E[iz0-1,:,:],  origin="lower" ) ;plt.colorbar(); plt.title("Es[iz=-1]")
+    plt.subplot(2,3,3); plt.imshow( E[iz0+1,:,:],  origin="lower" ) ;plt.colorbar(); plt.title("Es[iz=+1]")
+
     plt.subplot(2,3,4); plt.imshow( Gs[iz0  ,:,:],  origin="lower" ) ;plt.colorbar(); plt.title("Gs[iz= 0]")
     plt.subplot(2,3,5); plt.imshow( Gs[iz0-1,:,:],  origin="lower" ) ;plt.colorbar(); plt.title("Gs[iz=-1]")
     plt.subplot(2,3,6); plt.imshow( Gs[iz0+1,:,:],  origin="lower" ) ;plt.colorbar(); plt.title("Gs[iz=+1]")
