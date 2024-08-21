@@ -681,6 +681,7 @@ double getVariations3D( const Vec3i ns, double* Gs,  double* Es, double* Ws, dou
     return err2sum;
 }
 
+__attribute__((pure)) 
 __attribute__((hot)) 
 inline double assemleBound2D( const double B00, const double B01, const double B11, const double* Gs, const int i, const int nx, const bool ylo, const bool yhi){
     const bool xlo = i > 0;
@@ -817,6 +818,72 @@ double getVariations3D_mod( const Vec3i ns, const double* Gs, const double* Es, 
     return err2sum;
 }
 
+__attribute__((hot)) 
+double error_iz( int iz, const Vec3i ns, const double* Gs, const double* Es, const double* Ws, double* ps ){
+    constexpr double B0=2.0/3.0;
+    constexpr double B1=1.0/6.0;
+    constexpr double B000=B0*B0*B0;
+    constexpr double B001=B0*B0*B1;
+    constexpr double B011=B0*B1*B1;
+    constexpr double B111=B1*B1*B1;
+    const int nxy  = ns.x*ns.y;
+    double err2sum=0.0;
+    const int  iiz  = iz*nxy;
+    const bool zlo  = iz > 0;
+    const bool zhi  = iz < ns.z-1;
+    for(int iy=0; iy<ns.y; iy++){
+        const int  iiy = iy*ns.x;
+        const int  iyz = iiz+iiy;
+        const bool ylo = iy > 0;
+        const bool yhi = iy < ns.y-1;
+        for(int ix=0; ix<ns.x; ix++){
+            double  val  = assemleBound2D( B000,B001,B011, Gs+iyz    , ix, ns.x, ylo, yhi ); 
+            if(zlo) val += assemleBound2D( B001,B011,B111, Gs+iyz-nxy, ix, ns.x, ylo, yhi ); 
+            if(zhi) val += assemleBound2D( B001,B011,B111, Gs+iyz+nxy, ix, ns.x, ylo, yhi );     
+            const int i = ix + iyz;
+            double err = Es[i] - val;
+            //if((ix==6)&&(iy==10)&&(iz==10)){  printf("getVariations3D_mod()[%i,%i,%i] E=%g val=%g err=%g \n", ix,iy,iz, Es[i], val, err ); }
+            //Ws[i] = err;
+            if(Ws){ err*=Ws[i]; }
+            err2sum += err*err;
+            ps[i]    = err;
+            //Ws[i] = err;
+        }
+    }
+    return err2sum;
+}
+
+__attribute__((hot)) 
+void force_iz( int iz, const Vec3i ns, const double* ps, double* fs ){
+    constexpr double B0=2.0/3.0;
+    constexpr double B1=1.0/6.0;
+    constexpr double B000=B0*B0*B0;
+    constexpr double B001=B0*B0*B1;
+    constexpr double B011=B0*B1*B1;
+    constexpr double B111=B1*B1*B1;
+    const int nxy  = ns.x*ns.y;
+    //double err2sum=0.0;
+    const int  iiz  = iz*nxy;
+    const bool zlo  = iz > 0;
+    const bool zhi  = iz < ns.z-1;
+    for(int iy=0; iy<ns.y; iy++){
+        const int iiy  = iy*ns.x;
+        const int iyz  = iiz+iiy;
+        const bool ylo = iy > 0;
+        const bool yhi = iy < ns.y-1;
+        for(int ix=0; ix<ns.x; ix++){
+            double  val  = assemleBound2D( B000,B001,B011, ps+iyz    , ix, ns.x, ylo, yhi ); 
+            if(zlo) val += assemleBound2D( B001,B011,B111, ps+iyz-nxy, ix, ns.x, ylo, yhi ); 
+            if(zhi) val += assemleBound2D( B001,B011,B111, ps+iyz+nxy, ix, ns.x, ylo, yhi );     
+            const int i = ix + iyz;
+            //val*=-1;
+            fs[i] = val;
+        }
+    }
+    //return err2sum;
+}
+
+__attribute__((hot)) 
 double getVariations3D_omp( const Vec3i ns, const double* Gs, const double* Es, const double* Ws, double* fs, double* ps ){
     constexpr double B0=2.0/3.0;
     constexpr double B1=1.0/6.0;
@@ -831,63 +898,14 @@ double getVariations3D_omp( const Vec3i ns, const double* Gs, const double* Es, 
     // --- evaluate current spline
     //for(int i=0; i<nxyz; i++){ fs[i]=0; ps[i]=0;  }
     double err2sum = 0;
-    
-    #pragma omp parallel shared(fs,ps)
+    #pragma omp parallel shared(err2sum)
     {
-
-    // #pragma omp single
-    // {
-    //     int num_threads = omp_get_num_threads();
-    //     //int thread_id   = omp_get_thread_num();
-    //     printf("num_threads %i \n", num_threads );
-    // }
-    // --- evaluate current spline (in order to evelauet approximation error)
-    #pragma omp for reduction(+:err2sum)
-    for(int iz=0; iz<ns.z; iz++){
-        const int  iiz  = iz*nxy;
-        const bool zlo  = iz > 0;
-        const bool zhi  = iz < ns.z-1;
-        for(int iy=0; iy<ns.y; iy++){
-            const int  iiy = iy*ns.x;
-            const int  iyz = iiz+iiy;
-            const bool ylo = iy > 0;
-            const bool yhi = iy < ns.y-1;
-            for(int ix=0; ix<ns.x; ix++){
-                double  val  = assemleBound2D( B000,B001,B011, Gs+iyz    , ix, ns.x, ylo, yhi ); 
-                if(zlo) val += assemleBound2D( B001,B011,B111, Gs+iyz-nxy, ix, ns.x, ylo, yhi ); 
-                if(zhi) val += assemleBound2D( B001,B011,B111, Gs+iyz+nxy, ix, ns.x, ylo, yhi );     
-                const int i = ix + iyz;
-                double err = Es[i] - val;
-                //if((ix==6)&&(iy==10)&&(iz==10)){  printf("getVariations3D_mod()[%i,%i,%i] E=%g val=%g err=%g \n", ix,iy,iz, Es[i], val, err ); }
-                //Ws[i] = err;
-                //if(Ws){ err*=Ws[i]; }
-                err2sum += err*err;
-                ps[i]    = err;
-                //Ws[i] = err;
-            }
-        }
-    }
-    // --- distribute variational derivatives of approximation error
-    #pragma omp for
-    for(int iz=0; iz<ns.z; iz++){
-        const int  iiz  = iz*nxy;
-        const bool zlo  = iz > 0;
-        const bool zhi  = iz < ns.z-1;
-        for(int iy=0; iy<ns.y; iy++){
-            const int iiy  = iy*ns.x;
-            const int iyz  = iiz+iiy;
-            const bool ylo = iy > 0;
-            const bool yhi = iy < ns.y-1;
-            for(int ix=0; ix<ns.x; ix++){
-                double  val  = assemleBound2D( B000,B001,B011, ps+iyz    , ix, ns.x, ylo, yhi ); 
-                if(zlo) val += assemleBound2D( B001,B011,B111, ps+iyz-nxy, ix, ns.x, ylo, yhi ); 
-                if(zhi) val += assemleBound2D( B001,B011,B111, ps+iyz+nxy, ix, ns.x, ylo, yhi );     
-                const int i = ix + iyz;
-                //val*=-1;
-                fs[i] = val;
-            }
-        }
-    }
+        // --- evaluate current spline (in order to evelauet approximation error)
+        #pragma omp for reduction(+:err2sum)
+        for(int iz=0; iz<ns.z; iz++){ err2sum += error_iz( iz, ns, Gs, Es, Ws, ps ); }
+        // --- distribute variational derivatives of approximation error
+        #pragma omp for
+        for(int iz=0; iz<ns.z; iz++){  force_iz( iz, ns, ps, fs ); }
     }
     return err2sum;
 }
@@ -962,6 +980,8 @@ int fit3D( const Vec3i ns, double* Gs, const double* Es, double* Ws, double Ftol
 }
 
 
+
+
 __attribute__((hot)) 
 int fit3D_omp( const Vec3i ns, double* Gs, const double* Es, double* Ws, double Ftol, int nmaxiter=100, double dt=0.1, bool bInitGE=false ){
     long t0 = getCPUticks();
@@ -995,7 +1015,7 @@ int fit3D_omp( const Vec3i ns, double* Gs, const double* Es, double* Ws, double 
     //int ix=0,iy=0,iz=0;
     int niterdone = 0;
     //#pragma omp parallel shared(Gs,fs,ps,vs,itr)
-    #pragma omp parallel shared(itr)
+    #pragma omp parallel shared(itr,niterdone,nmaxiter,nxyz,vv,ff,vf,err2sum)
     {
     //for(itr=0; itr<nmaxiter; itr++){
     while(itr<nmaxiter){
@@ -1003,68 +1023,14 @@ int fit3D_omp( const Vec3i ns, double* Gs, const double* Es, double* Ws, double 
         #pragma omp single
         { err2sum=0.0; } 
         
-        //for(int iz=0; iz<ns.z; iz++){
-        //    for(int iy=0; iy<ns.y; iy++){
-        //        for(int ix=0; ix<ns.x; ix++){
         #pragma omp for reduction(+:err2sum)
-        for(int i=0; i<nxyz; i++){
-            //int ix = i%ns.x;
-            //int iy = (i/ns.x)%ns.y;
-            const int iz  = (i/nxy);
-            const int iyx = (i - iz*nxy);
-            const int iy  = iyx/ns.x;
-            const int ix  = iyx-iy*ns.x;
-                    const bool zlo  = iz > 0;
-                    const bool zhi  = iz < ns.z-1;
-                    const bool ylo = iy > 0;
-                    const bool yhi = iy < ns.y-1;
-                    const int  iyz = iz*nxy+iy*ns.x;
-                    double  val  = assemleBound2D( B000,B001,B011, Gs+iyz    , ix, ns.x, ylo, yhi ); 
-                    if(zlo) val += assemleBound2D( B001,B011,B111, Gs+iyz-nxy, ix, ns.x, ylo, yhi ); 
-                    if(zhi) val += assemleBound2D( B001,B011,B111, Gs+iyz+nxy, ix, ns.x, ylo, yhi );     
-                    const int i = ix + iyz;
-                    double err = Es[i] - val;
-                    //if((ix==6)&&(iy==10)&&(iz==10)){  printf("getVariations3D_mod()[%i,%i,%i] E=%g val=%g err=%g \n", ix,iy,iz, Es[i], val, err ); }
-                    //Ws[i] = err;
-                    //if(Ws){ err*=Ws[i]; }
-                    err2sum += err*err;
-                    ps[i]    = err;
-                    //Ws[i] = err;
-        }
-        //        }
-        //    }
-        // }
-
-        // --- distribute variational derivatives of approximation error
-        
-        //for(int iz=0; iz<ns.z; iz++){
-        //    for(int iy=0; iy<ns.y; iy++){
-        //        for(int ix=0; ix<ns.x; ix++){
+        for(int iz=0; iz<ns.z; iz++){ err2sum += error_iz( iz, ns, Gs, Es, Ws, ps ); }
         #pragma omp for
-        for(int i=0; i<nxyz; i++){
-            const int iz  = (i/nxy);
-            const int iyx = (i - iz*nxy);
-            const int iy  = iyx/ns.x;
-            const int ix  = iyx-iy*ns.x;
-                    const bool zlo  = iz > 0;
-                    const bool zhi  = iz < ns.z-1;
-                    const bool ylo = iy > 0;
-                    const bool yhi = iy < ns.y-1;
-                    const int  iyz = iz*nxy+iy*ns.x;
-                    double  val  = assemleBound2D( B000,B001,B011, ps+iyz    , ix, ns.x, ylo, yhi ); 
-                    if(zlo) val += assemleBound2D( B001,B011,B111, ps+iyz-nxy, ix, ns.x, ylo, yhi ); 
-                    if(zhi) val += assemleBound2D( B001,B011,B111, ps+iyz+nxy, ix, ns.x, ylo, yhi );     
-                    const int i = ix + iyz;
-                    //val*=-1;
-                    fs[i] = val;
-        }
-        //        }
-        //    }
-        //}
+        for(int iz=0; iz<ns.z; iz++){ force_iz( iz, ns, ps, fs ); }
 
         #pragma omp single
         { vf=0; ff=0; vv=0; }
-        //#pragma omp for reduction(+:vf,ff,vv)
+        #pragma omp for reduction(+:vf,ff,vv)
         for(int i=0; i<nxyz; i++){
             ff += fs[i]*fs[i];
             vf += vs[i]*fs[i];
