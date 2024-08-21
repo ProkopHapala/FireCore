@@ -182,7 +182,8 @@ def test_gridFF( name="data/NaCl_1x1_L2", mode=4, dsamp=0.02,  R0=3.5, E0=0.1, a
     ps[:,1] = 1.05
     ps[:,2] = zs
     
-    FF_ref = mmff.evalGridFFAtPoints( ps, PLQH=PLQH )
+    FF_ref = mmff.evalGridFFAtPoints( ps, PLQH=PLQH, bSplit=False )
+    FF_ref = mmff.evalGridFFAtPoints( ps, PLQH=PLQH, bSplit=True  )
     
     #FFout  = mmff.sample_SplineHermite3D_comb3( ps, EFg, g0=[0.0,0.0,0.0], dg=[0.1,0.1,0.1], fes=None, Cs=PLQH )
     # Es,Fs = sampleSurf( name, zs, Es=None, fs=None, kind=1, atyp=0, Q=0.0, K=-1.0, Rdamp=1.0, pos0=(0.,0.,0.), bSave=False )
@@ -196,8 +197,8 @@ def test_gridFF( name="data/NaCl_1x1_L2", mode=4, dsamp=0.02,  R0=3.5, E0=0.1, a
         ps_[:,2]+=-2.0;
     elif ( mode==6 ):   # Hibrid-Hermite interpolation of potential
         ps_[:,2]+=-2.0;
-        ps_[:,0]+= 0.1
-        ps_[:,1]+= 0.1
+        #ps_[:,0]+= 0.1
+        #ps_[:,1]+= 0.1
     
     FFout = mmff.sampleSurf_new( ps_, PLQH, mode=mode, Rdamp=1.0 )
     

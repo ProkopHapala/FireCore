@@ -34,6 +34,22 @@ void fitAABB( Vec6d& bb, int n, int* c2o, Vec3d* ps ){
     //return bb;
 }
 
+int makePBCshifts_( Vec3i nPBC, const Mat3d& lvec, Vec3d*& shifts ){
+    const int npbc = (nPBC.x*2+1)*(nPBC.y*2+1)*(nPBC.z*2+1);
+    //printf( "makePBCshifts_() npbc=%i nPBC{%i,%i,%i}\n", npbc, nPBC.x,nPBC.y,nPBC.z );
+    if(shifts==0)_realloc(shifts,npbc);
+    int ipbc=0;
+    for(int iz=-nPBC.z; iz<=nPBC.z; iz++){ 
+        for(int iy=-nPBC.y; iy<=nPBC.y; iy++){ 
+            for(int ix=-nPBC.x; ix<=nPBC.x; ix++){  
+                shifts[ipbc] = (lvec.a*ix) + (lvec.b*iy) + (lvec.c*iz);   
+                ipbc++; 
+            }
+        }
+    }
+    return npbc;
+}
+
 // Force-Field for Non-Bonded Interactions
 class NBFF: public ForceField{ public:
     
@@ -96,6 +112,9 @@ class NBFF: public ForceField{ public:
     int makePBCshifts( Vec3i nPBC_, bool bRealloc=true ){
         bPBC=true;
         nPBC=nPBC_;
+        if(bRealloc){ _dealloc(shifts); }
+        return makePBCshifts_(nPBC,lvec,shifts);
+        /*
         npbc = (nPBC.x*2+1)*(nPBC.y*2+1)*(nPBC.z*2+1);
         if(bRealloc) _realloc(shifts,npbc);
         int ipbc=0;
@@ -105,6 +124,7 @@ class NBFF: public ForceField{ public:
         }}}
         if(npbc!=ipbc){ printf( "ERROR in MMFFsp3_loc::makePBCshifts() final ipbc(%i)!=nbpc(%i) => Exit()\n", ipbc,npbc ); exit(0); }
         return npbc;
+        */
     }
 
     // pre-calculates PLQs from REQs (for faster evaluation in factorized form, especially when using grid)
