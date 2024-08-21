@@ -236,7 +236,7 @@ def test_fit_3D_debug( g0=(-2.0,-2.0,2.0), gmax=(2.0,2.0,6.0), dg=(0.2,0.2,0.2),
     if title is not None: plt.suptitle(title)
 
 
-def test_fit_3D( g0=(-2.0,-2.0,2.0), gmax=(2.0,2.0,6.0), dg=(0.2,0.2,0.2), dsamp=(0.05,0.05,0.05) ):
+def test_fit_3D( g0=(-5.0,-5.0,2.0), gmax=(5.0,5.0,6.0), dg=(0.1,0.1,0.1), dsamp=(0.05,0.05,0.05) ):
     cmap="bwr"
     Xs,Ys,Zs    = fu.make3Dsampling(  g0=g0, gmax=gmax, dg=dg )
     Xs_,Ys_,Zs_ = fu.make3Dsampling(  g0=g0, gmax=gmax, dg=dsamp )
@@ -261,17 +261,13 @@ def test_fit_3D( g0=(-2.0,-2.0,2.0), gmax=(2.0,2.0,6.0), dg=(0.2,0.2,0.2), dsamp
     #E[:,:,:]=0.0
     #E[iz0,iy0,ix0]=1.0
 
-    Ws = np.zeros( E.shape )
-    Gs = mmff.fit3D_Bspline( E, Ws=Ws, dt=0.1, nmaxiter=100, Ftol=1e-6 )
+    Gs = mmff.fit3D_Bspline( E, dt=0.1, nmaxiter=100, Ftol=1e-6, bOMP=False )
+    Gs = mmff.fit3D_Bspline( E, dt=0.1, nmaxiter=1000, Ftol=1e-6, bOMP=True )
 
-    # plt.figure(figsize=(15,10))
-    # plt.subplot(2,3,1); plt.imshow( Ws[iz0  ,:,:],  origin="lower" ) ;plt.colorbar(); plt.title("Ws[iz= 0]")
-    # plt.subplot(2,3,2); plt.imshow( Ws[iz0-1,:,:],  origin="lower" ) ;plt.colorbar(); plt.title("Ws[iz=-1]")
-    # plt.subplot(2,3,3); plt.imshow( Ws[iz0+1,:,:],  origin="lower" ) ;plt.colorbar(); plt.title("Ws[iz=+1]")
-
-    # plt.subplot(2,3,4); plt.imshow( Gs[iz0  ,:,:],  origin="lower" ) ;plt.colorbar(); plt.title("Gs[iz= 0]")
-    # plt.subplot(2,3,5); plt.imshow( Gs[iz0-1,:,:],  origin="lower" ) ;plt.colorbar(); plt.title("Gs[iz=-1]")
-    # plt.subplot(2,3,6); plt.imshow( Gs[iz0+1,:,:],  origin="lower" ) ;plt.colorbar(); plt.title("Gs[iz=+1]")
+    plt.figure(figsize=(15,10))
+    plt.subplot(2,3,4); plt.imshow( Gs[iz0  ,:,:],  origin="lower" ) ;plt.colorbar(); plt.title("Gs[iz= 0]")
+    plt.subplot(2,3,5); plt.imshow( Gs[iz0-1,:,:],  origin="lower" ) ;plt.colorbar(); plt.title("Gs[iz=-1]")
+    plt.subplot(2,3,6); plt.imshow( Gs[iz0+1,:,:],  origin="lower" ) ;plt.colorbar(); plt.title("Gs[iz=+1]")
 
     #E_f    = mmff.sample_Bspline3D( ps, Gs, g0, dg, fes=None  ).reshape(sh_samp+(3,))
 
