@@ -194,18 +194,22 @@ def test_gridFF( name="data/NaCl_1x1_L2", mode=4, dsamp=0.02,  R0=3.5, E0=0.1, a
         ps_[:,2]+=1.2;  
     elif ( mode==4 ):   # Hibrid-Hermite interpolation of potential
         ps_[:,2]+=-2.0;
+    elif ( mode==6 ):   # Hibrid-Hermite interpolation of potential
+        ps_[:,2]+=-2.0;
+        ps_[:,0]+= 0.1
+        ps_[:,1]+= 0.1
     
     FFout = mmff.sampleSurf_new( ps_, PLQH, mode=mode, Rdamp=1.0 )
     
-    Emin = FFout[:,3].min();
-    Fmin = FFout[:,2].min();
+    #Emin = FFout[:,3].min();
+    #Fmin = FFout[:,2].min();
 
-    #Emin = FF_ref[:,3].min(); 
-    #Fmin = FF_ref[:,2].min()
+    Emin = FF_ref[:,3].min(); 
+    Fmin = FF_ref[:,2].min()
 
     plt.figure(figsize=(5,10))
     plt.subplot(2,1,1);
-    plt.plot( zs, FFout[:,3], "-g", lw=0.5, label="Etot_fit" )
+    plt.plot( zs, FFout[:,3],  "-g", lw=0.5, label="Etot_fit" )
     plt.plot( zs, FF_ref[:,3], ":k", lw=2.0, label="Etot_ref" )
     plt.plot( zs, (FFout[:,3]-FF_ref[:,3])*scErr, "-r", lw=0.5, label=("Etot_err*%.2f" %scErr) )
     #plt.plot( zs, FFout[:,0], "-r", lw=0.5, label="Ftot_x" )

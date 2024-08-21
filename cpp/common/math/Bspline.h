@@ -986,31 +986,23 @@ __attribute__((hot))
 int fit3D_omp( const Vec3i ns, double* Gs, const double* Es, double* Ws, double Ftol, int nmaxiter=100, double dt=0.1, bool bInitGE=false ){
     long t0 = getCPUticks();
     if(verbosity>1)printf( "Bspline::fit3D_omp() ns(%i,%i,%i) \n", ns.x,ns.y,ns.z  );
-    constexpr double B0=2.0/3.0;
-    constexpr double B1=1.0/6.0;
-    constexpr double B000=B0*B0*B0;
-    constexpr double B001=B0*B0*B1;
-    constexpr double B011=B0*B1*B1;
-    constexpr double B111=B1*B1*B1;
-    //double sum_B = B000 + B001*6 + B011*12 + B111*8;
-    //printf( "getVariations3D_mod() sum_B %g \n", sum_B );
     const int nxy  = ns.x*ns.y;
     const int nxyz = nxy*ns.z;
-    double err2sum = 0;
     const double F2max = Ftol*Ftol;
     double* ps = new double[nxyz];
     double* fs = new double[nxyz];
     double* vs = new double[nxyz];
-    int itr=0;
-    //while(false){
-    //double err=0; 
-    if(bInitGE){ for(int i=0; i<nxyz; i++){ Gs[i]=Es[i]; }; };
-    for(int i=0; i<nxyz; i++){ vs[i]=0; };
-    //dt = 0.3;
 
+    // omp shared
     double vf = 0.0;
     double ff = 0.0;
     double vv = 0.0;
+    double err2sum = 0;
+    int    itr =0;
+
+    if(bInitGE){ for(int i=0; i<nxyz; i++){ Gs[i]=Es[i]; }; };
+    for(int i=0; i<nxyz; i++){ vs[i]=0; };
+    //dt = 0.3;
 
     //int ix=0,iy=0,iz=0;
     int niterdone = 0;
