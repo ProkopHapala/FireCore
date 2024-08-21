@@ -377,26 +377,26 @@ inline Quat4d getForce_Bspline( Vec3d p, const Quat4d& PLQH, bool bSurf=true ) c
     p.sub(shift0);
     p.sub(grid.pos0);
     grid.diCell.dot_to( p, t );
-    Vec3d inv_dg2{ -grid.iCell.xx, -grid.iCell.yy, -grid.iCell.zz };
+    Vec3d inv_dg2{ -grid.diCell.xx, -grid.diCell.yy, -grid.diCell.zz };
 
     //Quat4d fe = Quat4dZero;
     
-    // Quat4d fe = Bspline::fe3d( t, gridN, Bspline_Pauli   )*PLQH.x 
-    //           + Bspline::fe3d( t, gridN, Bspline_London  )*PLQH.y  
-    //           + Bspline::fe3d( t, gridN, Bspline_Coulomb )*PLQH.z;  
+    Quat4d fe = Bspline::fe3d( t, gridN, Bspline_Pauli   )*PLQH.x
+              + Bspline::fe3d( t, gridN, Bspline_London  )*PLQH.y  
+              + Bspline::fe3d( t, gridN, Bspline_Coulomb )*PLQH.z;  
 
     //Quat4d fe = Bspline::fe3d( t, gridN, Bspline_Coulomb );
     //printf( "GridFF::getForce_Bspline() p(%g,%g,%g) fe(%g,%g,%g,%g)\n", p.x,p.y,p.z, fe.x,fe.y,fe.z,fe.w );
 
 
-    Quat4d fe = Bspline::fe3d( t, gridN, Bspline_Coulomb );
+    //Quat4d fe = Bspline::fe3d( t, gridN, Bspline_Coulomb );
     //Quat4d fe = Bspline::fe3d( Vec3d{t.z,t.y,t.x}, Vec3i{gridN.z,gridN.y,gridN.x}, Bspline_Coulomb );
 
     //int i = ((int)t.z) + grid.n.z*( ((int)t.y) + ((int)t.x)*grid.n.y );
     //fe.w = Bspline_Coulomb[i];
     //printf( "GridFF::getForce_Bspline() p(%g,%g,%g) t(%g,%g,%g) Gs[%i]=%g \n", p.x,p.y,p.z,  t.x,t.y,t.z,  i, fe.w );
 
-    //fe.f.mul(inv_dg2);
+    fe.f.mul(inv_dg2);
     return fe;
 }
 __attribute__((hot))  
@@ -851,9 +851,9 @@ double addForces_d( int natoms, Vec3d* apos, Quat4d* PLQs, Vec3d* fpos, bool bSu
         printf( "GridFF::FitBsplines() DONE\n" );
     }
 
-    void makeGridFF_Bspline_HH_d( double Ftol=1e-8, int nmaxiter=100, double dt=0.1 ){
+    void makeGridFF_Bspline_HH_d( double Ftol=1e-8, int nmaxiter=1000, double dt=0.3 ){
         int n = gridN.totprod();
-        printf( "GridFF::makeGridFF_Bspline_d() n=%i \n", n );
+        printf( "GridFF::makeGridFF_Bspline_d() n=%i nmaxiter=%i Ftol=%g dt=%g \n", n );
         _realloc( Bspline_Pauli,    n );
         _realloc( Bspline_London,   n );
         _realloc( Bspline_Coulomb,  n );
@@ -877,14 +877,17 @@ double addForces_d( int natoms, Vec3d* apos, Quat4d* PLQs, Vec3d* fpos, bool bSu
 
         //exit(0);
         //return;
-        copyPitchTransp<double>( gridN, transp, Vtemp,0,1, (double*)HHermite_d, 0,6 ); printf( "Bspline_Pauli COPIED\n" );  Bspline::fit3D( gridN, Bspline_Pauli,   Vtemp, Ws, Ftol, nmaxiter, dt, true );  printf( "GridFF::makeGridFF_Bspline_d() Fit(Bspline_Pauli)   DONE \n" ); gBS.saveXSF( "debug_VtempPaul.xsf", Vtemp,  1,0  );
-        copyPitchTransp<double>( gridN, transp, Vtemp,0,1, (double*)HHermite_d, 2,6 ); printf( "Bspline_Pauli COPIED\n" );  //Bspline::fit3D( gridN, Bspline_London,  Vtemp, Ws, Ftol, nmaxiter, dt, true );  printf( "GridFF::makeGridFF_Bspline_d() Fit(Bspline_London)  DONE \n" ); gBS.saveXSF( "debug_VtempLond.xsf", Vtemp,  1,0  );
-        copyPitchTransp<double>( gridN, transp, Vtemp,0,1, (double*)HHermite_d, 4,6 ); printf( "Bspline_Pauli COPIED\n" );  //Bspline::fit3D( gridN, Bspline_Coulomb, Vtemp, Ws, Ftol, nmaxiter, dt, true );  printf( "GridFF::makeGridFF_Bspline_d() Fit(Bspline_Coulomb) DONE \n" ); gBS.saveXSF( "debug_VtempCoul.xsf", Vtemp,  1,0  );
+        //copyPitchTransp<double>( gridN, transp, Vtemp,0,1, (double*)HHermite_d, 0,6 ); printf( "Bspline_Pauli COPIED\n" );  Bspline::fit3D( gridN, Bspline_Pauli,   Vtemp, 0, Ftol, nmaxiter, dt, true );  printf( "GridFF::makeGridFF_Bspline_d() Fit(Bspline_Pauli)   DONE \n" ); gBS.saveXSF( "debug_VtempPaul.xsf", Vtemp,  1,0  ); gBS.saveXSF( "debug_BsplinePaul.xsf", Bspline_Pauli,   1,0 );
+        //copyPitchTransp<double>( gridN, transp, Vtemp,0,1, (double*)HHermite_d, 2,6 ); printf( "Bspline_Pauli COPIED\n" );  Bspline::fit3D( gridN, Bspline_London,  Vtemp, 0, Ftol, nmaxiter, dt, true );  printf( "GridFF::makeGridFF_Bspline_d() Fit(Bspline_London)  DONE \n" ); gBS.saveXSF( "debug_VtempLond.xsf", Vtemp,  1,0  ); gBS.saveXSF( "debug_BsplineLond.xsf", Bspline_London,  1,0 );
+        //copyPitchTransp<double>( gridN, transp, Vtemp,0,1, (double*)HHermite_d, 4,6 ); printf( "Bspline_Pauli COPIED\n" );  Bspline::fit3D( gridN, Bspline_Coulomb, Vtemp, 0, Ftol, nmaxiter, dt, true );  printf( "GridFF::makeGridFF_Bspline_d() Fit(Bspline_Coulomb) DONE \n" ); gBS.saveXSF( "debug_VtempCoul.xsf", Vtemp,  1,0  ); gBS.saveXSF( "debug_BsplineCoul.xsf", Bspline_Coulomb, 1,0 );
 
+        copyPitchTransp<double>( gridN, transp, Vtemp,0,1, (double*)HHermite_d, 0,6 ); printf( "Bspline_Pauli COPIED\n" );  Bspline::fit3D_omp( gridN, Bspline_Pauli,   Vtemp, 0, Ftol, nmaxiter, dt, true );  printf( "GridFF::makeGridFF_Bspline_d() Fit(Bspline_Pauli)   DONE \n" ); gBS.saveXSF( "debug_VtempPaul.xsf", Vtemp,  1,0  ); gBS.saveXSF( "debug_BsplinePaul.xsf", Bspline_Pauli,   1,0 );
+        copyPitchTransp<double>( gridN, transp, Vtemp,0,1, (double*)HHermite_d, 2,6 ); printf( "Bspline_Pauli COPIED\n" );  Bspline::fit3D_omp( gridN, Bspline_London,  Vtemp, 0, Ftol, nmaxiter, dt, true );  printf( "GridFF::makeGridFF_Bspline_d() Fit(Bspline_London)  DONE \n" ); gBS.saveXSF( "debug_VtempLond.xsf", Vtemp,  1,0  ); gBS.saveXSF( "debug_BsplineLond.xsf", Bspline_London,  1,0 );
+        copyPitchTransp<double>( gridN, transp, Vtemp,0,1, (double*)HHermite_d, 4,6 ); printf( "Bspline_Pauli COPIED\n" );  Bspline::fit3D_omp( gridN, Bspline_Coulomb, Vtemp, 0, Ftol, nmaxiter, dt, true );  printf( "GridFF::makeGridFF_Bspline_d() Fit(Bspline_Coulomb) DONE \n" ); gBS.saveXSF( "debug_VtempCoul.xsf", Vtemp,  1,0  ); gBS.saveXSF( "debug_BsplineCoul.xsf", Bspline_Coulomb, 1,0 );
 
-        double V2coulH=0;for( int i=0; i<n; i++ ){ V2coulH += HHermite_d[i*6+4]*HHermite_d[i*6+4]; }  printf("av(V2coulH)=%g\n", V2coulH/n );
-        double V2temp=0; for( int i=0; i<n; i++ ){ V2temp += Vtemp[i]*Vtemp[i]; }                     printf("av(V2temp)=%g\n",  V2temp/n  );
-        double V2coul=0; for( int i=0; i<n; i++ ){ V2coul += Bspline_Coulomb[i]*Bspline_Coulomb[i]; } printf("av(V2coul)=%g\n",  V2coul/n  );
+        //double V2coulH=0;for( int i=0; i<n; i++ ){ V2coulH += HHermite_d[i*6+4]*HHermite_d[i*6+4]; }  printf("av(V2coulH)=%g\n", V2coulH/n );
+        //double V2temp=0; for( int i=0; i<n; i++ ){ V2temp += Vtemp[i]*Vtemp[i]; }                     printf("av(V2temp)=%g\n",  V2temp/n  );
+        //double V2coul=0; for( int i=0; i<n; i++ ){ V2coul += Bspline_Coulomb[i]*Bspline_Coulomb[i]; } printf("av(V2coul)=%g\n",  V2coul/n  );
 
         printf( "GridFF::makeGridFF_Bspline_d() FINISHED Fitting \n" );
         delete [] Vtemp;
@@ -1332,9 +1335,7 @@ void initGridFF( const char * name, double z0=NAN, bool bAutoNPBC=true, bool bSy
                 fnames[0]="Bspline_Pauli_d.bin"; fnames[1]="Bspline_London_d.bin"; fnames[2]="Bspline_Coulomb_d.bin"; 
                 npoint = gridN.totprod();
                 nbyte  = npoint*sizeof(double);
-                DEBUG
                 if( checkAllFilesExist( 3, fnames, bPrint ) ){
-                    DEBUG
                     _realloc( Bspline_Pauli, npoint );
                     _realloc( Bspline_London, npoint );
                     _realloc( Bspline_Coulomb, npoint );

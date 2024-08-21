@@ -474,13 +474,15 @@ end
 
 # =========== Body
 
+
+#===
 ps = generate_sphere_points_oct( 4 )
 #println( "ps: ", size(ps) ); display(ps)
 plt = scatter( ps[:,1], ps[:,2], markersize=3, aspect_ratio=1 )
-
 display(plt)
+===#
 
-#==
+
 
 grid = Grid2D(  (0.0,0.0), (0.1,0.1), (100,100) )
 
@@ -510,16 +512,19 @@ qgs = [ 0.25, 0.25, 0.25, 0.25,    0.0, 0.0, 0.0, 0.0,    0.0, 0.0, 0.0, 0.0,   
 
 pgs=copy(hcat(pgs...)')
 
+#Rs = [1.0,1.25, 2.0, 3.0]
+Rs = [1.5,2.0, 4.0]
 
 
+
+# ========== Compute Optimal projections for all possible positions of charge within the grid
 
 #pgs = [ [5.0,5.0],[5.0,6.0],[6.0,5.0],[6.0,6.0],  [4.0,5.0],[4.0,6.0],    [5.0,4.0],[6.0,4.0],     [7.0,5.0],[4.0,6.0],  [5.0,4.0],[6.0,4.0],     ];  pgs=copy(hcat(pgs...)')
 #qgs = [ 0.25, 0.25, 0.25, 0.25 ]
 
-#Rs = [1.0,1.25, 2.0, 3.0]
-Rs = [1.5,2.0, 4.0]
-p1=[0.0,0.05]; p2=[0.05,0.05];
-#pqs = lerp_points( [0.0,0.0], [0.05,0.05], 10 )
+p1=[0.0,0.00]; p2=[0.05,0.05];
+#p1=[0.0,0.05]; p2=[0.05,0.05];
+pqs = lerp_points( [0.0,0.0], [0.05,0.05], 10 )
 #pqs  = lerp_points( [0.0,0.0], [0.00,0.05], 10 )
 pqs  = lerp_points( p1, p2, 10 )
 prjs = get_optimal_projections( pqs, pgs, Rs, 16 )
@@ -537,19 +542,19 @@ end
 display(plt)
 
 
-
+#===
 
 println("====================")
 
 pgs[:,1].+=pg0[1]
 pgs[:,2].+=pg0[2]
 
-# qgs0  = copy(qgs)
-# qblin = bilinear_project( pq-pg0 );  
-# println("qgs0 ", qgs0)
-# println("qblin ", qblin)
-# qgs0[1:4]=qblin[:]; 
-# println("qgs0 ", qgs0)
+qgs0  = copy(qgs)
+qblin = bilinear_project( pq-pg0 );  
+println("qgs0 ", qgs0)
+println("qblin ", qblin)
+qgs0[1:4]=qblin[:]; 
+println("qgs0 ", qgs0)
 
 
 
