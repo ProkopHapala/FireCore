@@ -238,6 +238,16 @@ def test_gridFF_lat( name="data/NaCl_1x1_L2", iax=0, tmin=0.0,tmax=10.0, p0=[1.0
     #mode = 4
     #mode = 1
     mmff.makeGridFF( name=name, mode=mode )
+
+    # Bspline_Pauli = mmff.getArrayPointer( "Bspline_Pauli" ); 
+    # print( "Bspline_Pauli.shape ", Bspline_Pauli.shape )
+    # #print( "Bspline_Pauli[0,0,:]", Bspline_Pauli[0,0,:] )
+    # line_x = np.tile( Bspline_Pauli[0,0,:], 2  ); plt.plot( line_x, "-r", lw=0.5, label="Bspline_Pauli_x" )
+    # line_y = np.tile( Bspline_Pauli[0,:,0], 2  ); plt.plot( line_y, "-g", lw=0.5, label="Bspline_Pauli_y" )
+    # line_z = np.tile( Bspline_Pauli[:,0,0], 2  ); plt.plot( line_z, "-b", lw=0.5, label="Bspline_Pauli_z" )
+    # plt.show()
+    # exit()
+
     #plotGridFF_1D( EFg, ix=20,iy=20 )
     PLQH = getPLQH( R0, E0, a, Q, H )
 

@@ -266,6 +266,19 @@ def makeGridFF( name, mode=1, bSaveDebugXSFs=False, z0=0, cel0=(-0.5,-0.5,0.0), 
     print( "makeGridFF() DONE" )
     #return ff_
 
+
+#double* getArrayPointer( const char* name, int* shape  ){
+lib.getArrayPointer.argtypes  = [ c_char_p, c_int_p ]
+lib.getArrayPointer.restype   =  c_double_p
+def getArrayPointer( name ):
+    name=name.encode('utf8')
+    shape = np.zeros( 4, dtype=np.int32 )
+    ptr = lib.getArrayPointer( name,  _np_as(shape,c_int_p) )
+    if ptr:
+        valid_shape = [dim for dim in shape if dim > 0]
+        return np.ctypeslib.as_array( ptr, valid_shape )
+    return None
+
 # void evalGridFFAtPoints( int n, double* ps, double* FFout, double* PLQH ){
 lib.evalGridFFAtPoints.argtypes  = [ c_int, c_double_p, c_double_p, c_double_p, c_bool ]
 lib.evalGridFFAtPoints.restype   =  None

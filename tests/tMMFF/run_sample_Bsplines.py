@@ -244,7 +244,7 @@ def test_fit_3D( g0=(-5.0,-5.0,2.0), gmax=(5.0,5.0,6.0), dg=(0.1,0.1,0.1), dsamp
     Xs,Ys,Zs    = fu.make3Dsampling(  g0=g0, gmax=gmax, dg=dg )
     Xs_,Ys_,Zs_ = fu.make3Dsampling(  g0=g0, gmax=gmax, dg=dsamp )
 
-    Xs_*=0.999999; Ys_*=0.999999; Zs_*=0.999999;
+    #Xs_*=0.999999; Ys_*=0.999999; Zs_*=0.999999;
 
     sh_samp = Xs_.shape
     ps      = fu.pack_ps3D(Xs_,Ys_,Ys_)
@@ -266,6 +266,8 @@ def test_fit_3D( g0=(-5.0,-5.0,2.0), gmax=(5.0,5.0,6.0), dg=(0.1,0.1,0.1), dsamp
 
     #Gs = mmff.fit3D_Bspline( E, dt=0.1, nmaxiter=100, Ftol=1e-6,  bOMP=False )
     Gs = mmff.fit3D_Bspline( E, dt=0.1, nmaxiter=1000, Ftol=1e-6, bOMP=True )
+
+    #Bspline_Pauli = mmff.getArrayPointer( "Bspline_Pauli" ); print( "Bspline_Pauli ", Bspline_Pauli.shape, Bspline_Pauli[0,0,:] )
 
     plt.figure(figsize=(15,10))
 

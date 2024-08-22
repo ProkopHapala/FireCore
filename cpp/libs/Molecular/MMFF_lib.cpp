@@ -97,6 +97,27 @@ double* makeGridFF( const char* name, int* ffshape, int mode, bool bSaveDebugXSF
     return ff_ptr;
 }
 
+
+
+
+
+double* getArrayPointer( const char* name, int* shape  ){
+    if(golbal_array_dict.find(name)!=golbal_array_dict.end()){
+        NDArray arr = golbal_array_dict[name];
+        (*(Quat4i*)shape) = arr.dims;  
+        if(arr.data==0){ printf("ERROR in MMFF_lib::getArrayPointer() golbal_array_dict[%s].data==NULL \n", name ); }
+        return arr.data;
+    }else{
+        printf("ERROR in MMFF_lib::getArrayPointer() golbal_array_dict[%s] not found \n", name );
+        //exit(0);
+    }
+    return 0;
+}
+
+
+
+
+
 void evalGridFFAtPoints( int n, double* ps, double* FFout, double* PLQH, bool bSplit ){
     long t0 = getCPUticks();
     if(bSplit){ W.gridFF.evalAtPoints_Split( n, (Vec3d*)ps, (Quat4d*)FFout, *(Quat4d*)PLQH ); }
