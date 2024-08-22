@@ -144,7 +144,7 @@ def test_fit_1D( g0=2.0, gmax=10.0, dg=0.2, dsamp=0.02, bUseForce=True, scErr=10
     #plt.show()
 
 
-def test_fit_2D( g0=(-5.0,2.0), gmax=(5.0,10.0), dg=(0.1,0.1), dsamp=(0.05,0.05), title=None ):
+def test_fit_2D( g0=(-5.0,2.0), gmax=(5.0,10.0), dg=(0.1,0.1), dsamp=(0.05,0.05), title=None, bPBC=True ):
     #cmap="RdBu_r"
     cmap="bwr"
     #x0 = 2.0
@@ -174,7 +174,7 @@ def test_fit_2D( g0=(-5.0,2.0), gmax=(5.0,10.0), dg=(0.1,0.1), dsamp=(0.05,0.05)
     #FEg[:,1] = F[:]
     Ecut = 100.0
 
-    Gs, Ws = mmff.fit2D_Bspline( E, Ws=None, dt=0.4, nmaxiter=1000, Ftol=1e-7 )
+    Gs, Ws = mmff.fit2D_Bspline( E, Ws=None, dt=0.4, nmaxiter=1000, Ftol=1e-7, bPBC=bPBC )
     E_f = mmff.sample_Bspline2D( ps, Gs, g0, dg, fes=None  ).reshape(sh_samp+(3,))
 
     Gmin = -np.abs(Gs).max()
@@ -196,41 +196,44 @@ def test_fit_2D( g0=(-5.0,2.0), gmax=(5.0,10.0), dg=(0.1,0.1), dsamp=(0.05,0.05)
     plt.axis('equal')
 
 
-def test_fit_2D_debug( g0=(-2.0,2.0), gmax=(2.0,6.0), dg=(0.2,0.2), title=None ):
+def test_fit_2D_debug( g0=(-2.0,-2.0), gmax=(2.0,2.0), dg=(0.2,0.2), title=None, bPBC=True ):
     cmap="bwr"
     Xs,Ys   = fu.make2Dsampling(  g0=g0, gmax=gmax, dg=dg )
 
-    E,  Fx,Fy = fu.getGauss2D( Xs,  Ys-4.0, w=0.5  )
+    E,  Fx,Fy      =  fu.getCos2D( Xs, Ys   )
+    #E,  Fx,Fy = fu.getGauss2D( Xs,  Ys-4.0, w=0.5  )
     Ws = np.zeros( E.shape )
 
     nplt = 5
     nitr = 10
 
-    plt.figure(figsize=(5*nplt,10))
+    plt.figure(figsize=(5*nplt,5*3))
     Gs = None
     for i in range(nplt):
         itr = i*nitr
-        Gs, Ws = mmff.fit2D_Bspline( E, Ws=Ws, Gs=Gs, dt=0.4, nmaxiter=nitr, Ftol=1e-12 )
-        plt.subplot(2,nplt,i+1     ); plt.imshow( Ws[:,:],  origin="lower" ) ;plt.colorbar(); plt.title("Ws[iter=%i]" %itr )
-        plt.subplot(2,nplt,nplt+i+1); plt.imshow( Gs[:,:],  origin="lower" ) ;plt.colorbar(); plt.title("Gs[iter=%i]" %itr )
+        Gs, Ws = mmff.fit2D_Bspline( E, Ws=Ws, Gs=Gs, dt=0.4, nmaxiter=nitr, Ftol=1e-12, bPBC=bPBC )
+        plt.subplot(3,nplt,i       +1); plt.imshow( Ws[:,:],  origin="lower"             ) ;plt.colorbar(); plt.title("Ws[iter=%i]" %itr )
+        plt.subplot(3,nplt,nplt  +i+1); plt.imshow( Gs[:,:],  origin="lower"             ) ;plt.colorbar(); plt.title("Gs[iter=%i]" %itr )
+        plt.subplot(3,nplt,nplt*2+i+1); plt.imshow( E [:,:],  origin="lower", cmap='bwr' ) ;plt.colorbar(); plt.title("Gs[iter=%i]" %itr )
     if title is not None: plt.suptitle(title)
 
-def test_fit_3D_debug( g0=(-2.0,-2.0,2.0), gmax=(2.0,2.0,6.0), dg=(0.2,0.2,0.2), dsamp=(0.05,0.05,0.05), title=None  ):
+def test_fit_3D_debug( g0=(-2.0,-2.0,-2.0), gmax=(2.0,2.0,2.0), dg=(0.2,0.2,0.2), title=None, bPBC=True  ):
     cmap="bwr"
-    Xs,Ys,Zs    = fu.make3Dsampling(  g0=g0, gmax=gmax, dg=dg )
+    Xs,Ys,Zs      = fu.make3Dsampling(  g0=g0, gmax=gmax, dg=dg )
 
-    E,  Fx,Fy,Fz        = fu.getGauss3D( Xs,  Ys , Zs-4.0, w=0.5  )
+    E,  Fx,Fy,Fz  =  fu.getCos3D( Xs, Ys, Zs   )
+    #E,  Fx,Fy,Fz        = fu.getGauss3D( Xs,  Ys , Zs-4.0, w=0.5  )
     Ws = np.zeros( E.shape )
     
     iz0=10
     nplt = 5
-    nitr = 10
+    nitr = 100
 
     plt.figure(figsize=(5*nplt,10))
     Gs = None
     for i in range(nplt):
         itr = i*nitr
-        Gs = mmff.fit3D_Bspline( E, Ws=Ws, Gs=Gs, dt=0.4, nmaxiter=nitr, Ftol=1e-12 )
+        Gs = mmff.fit3D_Bspline( E, Ws=Ws, Gs=Gs, dt=0.4, nmaxiter=nitr, Ftol=1e-12, bPBC=bPBC )
         plt.subplot(2,nplt,i+1     ); plt.imshow( Ws[iz0,:,:],  origin="lower" ) ;plt.colorbar(); plt.title("Ws[iter=%i]" %itr )
         plt.subplot(2,nplt,nplt+i+1); plt.imshow( Gs[iz0,:,:],  origin="lower" ) ;plt.colorbar(); plt.title("Gs[iter=%i]" %itr )
     if title is not None: plt.suptitle(title)
@@ -274,6 +277,14 @@ def test_fit_3D( g0=(-5.0,-5.0,2.0), gmax=(5.0,5.0,6.0), dg=(0.1,0.1,0.1), dsamp
     plt.subplot(2,3,5); plt.imshow( Gs[iz0-1,:,:],  origin="lower" ) ;plt.colorbar(); plt.title("Gs[iz=-1]")
     plt.subplot(2,3,6); plt.imshow( Gs[iz0+1,:,:],  origin="lower" ) ;plt.colorbar(); plt.title("Gs[iz=+1]")
 
+    #plt.subplot(2,3,1); plt.imshow( E[iz0  ,:,:],  origin="lower" ) ;plt.colorbar(); plt.title("Es[iz= 0]")
+    #plt.subplot(2,3,2); plt.imshow( E[iz0-1,:,:],  origin="lower" ) ;plt.colorbar(); plt.title("Es[iz=-1]")
+    #plt.subplot(2,3,3); plt.imshow( E[iz0+1,:,:],  origin="lower" ) ;plt.colorbar(); plt.title("Es[iz=+1]")
+
+    #plt.subplot(2,3,4); plt.imshow( Gs[iz0  ,:,:],  origin="lower" ) ;plt.colorbar(); plt.title("Gs[iz= 0]")
+    #plt.subplot(2,3,5); plt.imshow( Gs[iz0-1,:,:],  origin="lower" ) ;plt.colorbar(); plt.title("Gs[iz=-1]")
+    #plt.subplot(2,3,6); plt.imshow( Gs[iz0+1,:,:],  origin="lower" ) ;plt.colorbar(); plt.title("Gs[iz=+1]")
+
     #E_f    = mmff.sample_Bspline3D( ps, Gs, g0, dg, fes=None  ).reshape(sh_samp+(3,))
 
     #Gmin = -np.abs(Gs).max()
@@ -305,9 +316,9 @@ mmff.setVerbosity( 3 )
 #test_fit_2D( g0=(-1.0,-1.0), gmax=(1.0,1.0) )
 
 #test_fit_2D_debug( title="2D fit run debug" )
-#test_fit_3D_debug( title="3D fit run debug" )
+test_fit_3D_debug( title="3D fit run debug" )
 
-test_fit_3D(  )
+#test_fit_3D(  )
 
 
 plt.show()
