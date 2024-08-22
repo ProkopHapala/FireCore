@@ -194,6 +194,30 @@ inline Vec3d fe2d( const double tx, const double ty, const Quat4i i, const doubl
     };
 }
 
+//__attribute__((always_inline))
+__attribute__((pure))
+__attribute__((hot)) 
+inline Vec2d fe1Dcomb3( const Vec3d* E, const Vec3d& C, const Quat4d& p, const Quat4d& d ){
+    alignas(32) const Quat4d cs{ C.dot(E[0]), C.dot(E[1]), C.dot(E[2]), C.dot(E[3]) };
+    return Vec2d{ p.dot( cs ), d.dot( cs ) };
+}
+
+__attribute__((pure))
+__attribute__((hot)) 
+inline Vec3d fe2d_comb3( int nz, const Vec3d* E, Quat4i di, const Vec3d& C, const Quat4d& pz, const Quat4d& dz, const Quat4d& by, const Quat4d& dy ){
+    //const Quat4d* FEx = FE + ( i.x*n.y  + i.y )*n.z;
+    alignas(32) const Vec2d fe0 = fe1Dcomb3( E+di.x, C, pz, dz );
+    alignas(32) const Vec2d fe1 = fe1Dcomb3( E+di.y, C, pz, dz );
+    alignas(32) const Vec2d fe2 = fe1Dcomb3( E+di.z, C, pz, dz );
+    alignas(32) const Vec2d fe3 = fe1Dcomb3( E+di.w, C, pz, dz );
+    return Vec3d{
+        fe0.x*dy.x  +  fe1.x*dy.y  +  fe2.x*dy.z  +  fe3.x*dy.w,  // Fy
+        fe0.y*by.x  +  fe1.y*by.y  +  fe2.y*by.z  +  fe3.y*by.w,  // Fz
+        fe0.x*by.x  +  fe1.x*by.y  +  fe2.x*by.z  +  fe3.x*by.w   // E
+    };
+}
+
+
 __attribute__((pure))
 __attribute__((hot)) 
 inline Vec3d fe2d( const Vec2d u, const Vec2i n, const double* Es ){
@@ -258,10 +282,70 @@ Quat4d fe3d( const Vec3d u, const Vec3i n, const double* Es ){
         dz.dot( {Exy1.z, Exy2.z, Exy3.z, Exy4.z} ), // Fz
         bz.dot( {Exy1.z, Exy2.z, Exy3.z, Exy4.z} ), // E
     };
-    
-    
     //return Quat4d{0.0,0.0,0.0,Es[i0]};
+} 
 
+
+void make_inds_pbc( const int n, Quat4i* iqs ){
+    iqs[0]={0,1  ,2  ,3  };
+    iqs[1]={0,1  ,2  ,n-1};
+    iqs[2]={0,1  ,1-n,2-n};
+    iqs[3]={0,1-n,2-n,3-n};
+}
+
+inline Quat4i choose_inds_pbc( const int i, const int n, const Quat4i* iqs ){
+    if(i>=(n-3)){ return iqs[n-i]; }
+    return Quat4i{ 0, 1, 2, 3 };
+}
+
+inline int modulo( const int i, const int m ){
+    int result = i % m;
+    if (result < 0) {
+        result += m;
+    }
+    return result;
+}
+
+__attribute__((pure))
+__attribute__((hot)) 
+Quat4d fe3d_pbc_comb3( const Vec3d u, const Vec3i n, const Vec3d* Es, const Vec3d PLQ, const Quat4i* iys, const Quat4i* ixs ){
+    // We assume there are boundary added to simplify the index calculations
+	int    ix = (int)u.x  ,  iy = (int)u.y  ,  iz = (int)u.z  ;
+    const double tx = u.x - ix  ,  ty = u.y - iy  ,  tz = u.z - iz  ;
+    const double mx = 1-tx      ,  my = 1-ty      ,  mz = 1-tz      ;
+    if(  ((iz<1)||(iz>=n.z-2))  )[[unlikely]]{  return Quat4dZero; }
+
+    ix=modulo(ix-1,n.x);
+    iy=modulo(iy-1,n.z);
+    const Quat4i qy = choose_inds_pbc( iy, n.y, iys );
+    const Quat4i qx = choose_inds_pbc( ix, n.x, ixs );
+
+    //const int nxy = n.x*n.y;
+    const int nyz = n.z*n.y;
+
+    //printf( "ixyz(%i,%i,%i)  (%g,%g,%g)\n", ix,iy,iz,  u.x,u.y,u.z );
+    // inline Vec3d fe2d_comb3( int nz, const Vec3d* E, Quat4i di, const Vec3d& C, const Quat4d& pz, const Quat4d& dz, const Quat4d& by, const Quat4d& dy ){
+
+    const Quat4d bz =  basis( tz );
+    const Quat4d dz = dbasis( tz );
+    const Quat4d by =  basis( ty );
+    const Quat4d dy = dbasis( ty );
+
+    int i0 = (iz-1) + n.z*( iy + n.y*ix );  
+    const Vec3d E1 = fe2d_comb3( n.z, Es+(i0+nyz*qx.x ), qy, PLQ, bz, dz, by, dy );
+    const Vec3d E2 = fe2d_comb3( n.z, Es+(i0+nyz*qx.y ), qy, PLQ, bz, dz, by, dy );
+    const Vec3d E3 = fe2d_comb3( n.z, Es+(i0+nyz*qx.z ), qy, PLQ, bz, dz, by, dy );;
+    const Vec3d E4 = fe2d_comb3( n.z, Es+(i0+nyz*qx.w ), qy, PLQ, bz, dz, by, dy );
+
+    const Quat4d bx =  basis( tx );
+    const Quat4d dx = dbasis( tx );
+    return Quat4d{
+        bx.dot( {E1.x, E2.x, E3.x, E4.x} ), // Fx
+        bx.dot( {E1.y, E2.y, E3.y, E4.y} ), // Fy
+        dx.dot( {E1.z, E2.z, E3.z, E4.z} ), // Fz
+        bx.dot( {E1.z, E2.z, E3.z, E4.z} ), // E
+    };
+    //return Quat4d{0.0,0.0,0.0,Es[i0]};
 } 
 
 __attribute__((hot)) 

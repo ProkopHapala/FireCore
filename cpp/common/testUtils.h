@@ -91,6 +91,21 @@ int  dbg(int priority, const char *format, ...){
 }
 */
 
+
+inline void save1Dslice( const char* fname, int n, Vec3i i0, Vec3i di, Vec3i ns, int m, double* data, const char* fmt="%g "  ){
+    FILE* f=fopen(fname,"w");
+    for(int i=0;i<n;i++){
+        int ii = (i0.x+i*di.x) + ((i0.y+i*di.y) + (i0.z+i*di.z)*ns.x)*ns.y;
+        for(int j=0;j<m;j++){
+            fprintf(f,fmt, data[ii*m+j] );
+        }
+        fprintf(f,"\n");
+    }
+    fclose(f);
+}
+
+
+
 template<typename Func>
 double checkDeriv(Func getEF, double x, double dx, double& fE, double& f ){
     double f1=0,f2=0;

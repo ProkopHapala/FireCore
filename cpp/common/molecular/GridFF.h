@@ -19,6 +19,12 @@
 static bool bDebug__ = 0;
 
 
+struct NDArray{
+    double* data=0;
+    Quat4i  dims=Quat4i{-1,-1,-1,-1};
+};
+static std::unordered_map<std::string,NDArray> golbal_array_dict;
+
 template<typename T>
 T sum( int n, T* data, T t ){
     for(int i=0; i<n; i++){ t.add(data[i]); }
@@ -381,9 +387,14 @@ inline Quat4d getForce_Bspline( Vec3d p, const Quat4d& PLQH, bool bSurf=true ) c
 
     //Quat4d fe = Quat4dZero;
     
-    Quat4d fe = Bspline::fe3d( t, gridN, Bspline_Pauli   )*PLQH.x
-              + Bspline::fe3d( t, gridN, Bspline_London  )*PLQH.y  
-              + Bspline::fe3d( t, gridN, Bspline_Coulomb )*PLQH.z;  
+    Quat4d fe = Bspline::fe3d( t, grid.n, Bspline_Pauli   )*PLQH.x
+              + Bspline::fe3d( t, grid.n, Bspline_London  )*PLQH.y  
+              + Bspline::fe3d( t, grid.n, Bspline_Coulomb )*PLQH.z;  
+
+
+    // Quat4d fe = Bspline::fe3d( t, gridN, Bspline_Pauli   )*PLQH.x
+    //           + Bspline::fe3d( t, gridN, Bspline_London  )*PLQH.y  
+    //           + Bspline::fe3d( t, gridN, Bspline_Coulomb )*PLQH.z;  
 
     //Quat4d fe = Bspline::fe3d( t, gridN, Bspline_Coulomb );
     //printf( "GridFF::getForce_Bspline() p(%g,%g,%g) fe(%g,%g,%g,%g)\n", p.x,p.y,p.z, fe.x,fe.y,fe.z,fe.w );
@@ -826,8 +837,12 @@ double addForces_d( int natoms, Vec3d* apos, Quat4d* PLQs, Vec3d* fpos, bool bSu
         int npbc_coul = makePBCshifts_( Vec3i{25,25,0}, lvec, shift_coul ); // Coulomb converge much more slowly with nPBC
         int npbc_mors = makePBCshifts_( Vec3i{4 ,4 ,0}, lvec, shift_mors );
         double dz = -grid.dCell.c.z;
-        const int ntot = gridN.totprod();
-        const int nxy  = gridN.x*gridN.y;
+        Vec3i ns = grid.n;
+        //Vec3i ns = gridN;
+        const int ntot = ns.totprod();
+        const int nxy  = ns.x*ns.y;
+        
+        
         int i=0;
         long t0=getCPUticks();
         #pragma omp parallel for shared(i,HHermite_d)
@@ -836,12 +851,12 @@ double addForces_d( int natoms, Vec3d* apos, Quat4d* PLQs, Vec3d* fpos, bool bSu
             //int iy = (i/grid.n.z)%grid.n.y;
             int iz =  i/nxy;
             int ixy = i - iz*nxy;
-            int iy =  ixy/gridN.x;
-            int ix =  ixy - iy*gridN.x;
+            int iy =  ixy/ns.x;
+            int ix =  ixy - iy*ns.x;
                     const Vec3d pos = grid.pos0 + grid.dCell.c*iz + grid.dCell.b*iy + grid.dCell.a*ix;
                     Quat4d qp,ql;evalGridFFPoint_Mors( npbc_mors, shift_mors,  natoms_, apos_, REQs_, pos, qp, ql );
                     Quat4d qe  = evalGridFFPoint_Coul( npbc_coul, shift_coul,  natoms_, apos_, REQs_, pos );
-                    const int ibuff = ix + gridN.x*( iy + gridN.y * iz );
+                    const int ibuff = ix + ns.x*( iy + ns.y * iz );
                     VPaul[i] = qp.w; 
                     VLond[i] = ql.w;
                     VCoul[i] = qe.w;   
@@ -1000,7 +1015,9 @@ double addForces_d( int natoms, Vec3d* apos, Quat4d* PLQs, Vec3d* fpos, bool bSu
 
     void makeGridFF_Bspline_d( int natoms_, Vec3d * apos_, Quat4d * REQs_, double Ftol=1e-8, int nmaxiter=1000, double dt=0.3 ){
         printf( "GridFF::makeGridFF_Bspline_d() \n" );
-        int n = gridN.totprod();
+        //Vec3i ns = gridN;
+        Vec3i ns = grid.n;
+        int n = ns.totprod();
         double* VPaul = new double[ n ];
         double* VLond = new double[ n ];
         double* VCoul = new double[ n ];
@@ -1009,7 +1026,7 @@ double addForces_d( int natoms, Vec3d* apos, Quat4d* PLQs, Vec3d* fpos, bool bSu
         _realloc( Bspline_Coulomb,  n );
         //double* Ws    = new double[ n ];  for(int i=0; i<n; i++){ Ws[i] = 1.0; }
 
-       GridShape gBS; gBS.copy( grid ); gBS.n = gridN;
+       GridShape gBS; gBS.copy( grid ); // gBS.n = gridN;
 
         int nbyte = n*sizeof(double);
         const char* fnames[3] = { "Bspline_VPaul.bin", "Bspline_VLond.bin", "Bspline_VCoul.bin" };
@@ -1028,6 +1045,11 @@ double addForces_d( int natoms, Vec3d* apos, Quat4d* PLQs, Vec3d* fpos, bool bSu
             //gBS.saveXSF( "debug_VCoul.xsf", VCoul, 1,0 );
         }
         
+        //save1Dslice( "VPaul_x.log", n, Vec3i i0, Vec3i di, Vec3i ns, int m, double* data, const char* fmt="%g "  );
+
+        // golbal_array_dict.insert( { "Bspline_Pauli",   NDArray{ Bspline_Pauli, Quat4i{gridN.z,gridN.y,gridN.x,-1}} }  );
+
+        //exit(0);
         // GridShape gBS;
         // gBS.copy( grid ); gBS.n = gridN;
         // gBS.saveXSF( "debug_VPaul.xsf", VPaul, 1,0 );
@@ -1038,13 +1060,19 @@ double addForces_d( int natoms, Vec3d* apos, Quat4d* PLQs, Vec3d* fpos, bool bSu
         //bool bPBC=false;
         bool bPBC=true;
         bool bInitGE=true;
-        Bspline::fit3D_omp( gridN, Bspline_Pauli,   VPaul, 0, Ftol, nmaxiter, dt, bPBC, bInitGE );  printf( "GridFF::makeGridFF_Bspline_d() Fit(Bspline_Pauli)   DONE \n" );
-        Bspline::fit3D_omp( gridN, Bspline_London,  VLond, 0, Ftol, nmaxiter, dt, bPBC, bInitGE );  printf( "GridFF::makeGridFF_Bspline_d() Fit(Bspline_London)  DONE \n" );
-        Bspline::fit3D_omp( gridN, Bspline_Coulomb, VCoul, 0, Ftol, nmaxiter, dt, bPBC, bInitGE );  printf( "GridFF::makeGridFF_Bspline_d() Fit(Bspline_Coulomb) DONE \n" );
+        //nmaxiter=0;
+        
+        Bspline::fit3D_omp( ns, Bspline_Pauli,   VPaul, 0, Ftol, nmaxiter, dt, bPBC, bInitGE );  printf( "GridFF::makeGridFF_Bspline_d() Fit(Bspline_Pauli)   DONE \n" );
+        Bspline::fit3D_omp( ns, Bspline_London,  VLond, 0, Ftol, nmaxiter, dt, bPBC, bInitGE );  printf( "GridFF::makeGridFF_Bspline_d() Fit(Bspline_London)  DONE \n" );
+        Bspline::fit3D_omp( ns, Bspline_Coulomb, VCoul, 0, Ftol, nmaxiter, dt, bPBC, bInitGE );  printf( "GridFF::makeGridFF_Bspline_d() Fit(Bspline_Coulomb) DONE \n" );
 
-        //Bspline::fit3D( gridN, Bspline_Pauli,   VPaul, 0, Ftol, nmaxiter, dt, bPBC, bInitGE );  printf( "GridFF::makeGridFF_Bspline_d() Fit(Bspline_Pauli)   DONE \n" );
-        //Bspline::fit3D( gridN, Bspline_London,  VLond, 0, Ftol, nmaxiter, dt, bPBC, bInitGE );  printf( "GridFF::makeGridFF_Bspline_d() Fit(Bspline_London)  DONE \n" );
-        //Bspline::fit3D( gridN, Bspline_Coulomb, VCoul, 0, Ftol, nmaxiter, dt, bPBC, bInitGE );  printf( "GridFF::makeGridFF_Bspline_d() Fit(Bspline_Coulomb) DONE \n" );
+        //memcpy( Bspline_Pauli,   VPaul, nbyte );
+        //memcpy( Bspline_London,  VLond, nbyte );
+        //memcpy( Bspline_Coulomb, VCoul, nbyte );
+
+        //Bspline::fit3D( ns, Bspline_Pauli,   VPaul, 0, Ftol, nmaxiter, dt, bPBC, bInitGE );  printf( "GridFF::makeGridFF_Bspline_d() Fit(Bspline_Pauli)   DONE \n" );
+        //Bspline::fit3D( ns, Bspline_London,  VLond, 0, Ftol, nmaxiter, dt, bPBC, bInitGE );  printf( "GridFF::makeGridFF_Bspline_d() Fit(Bspline_London)  DONE \n" );
+        //Bspline::fit3D( ns, Bspline_Coulomb, VCoul, 0, Ftol, nmaxiter, dt, bPBC, bInitGE );  printf( "GridFF::makeGridFF_Bspline_d() Fit(Bspline_Coulomb) DONE \n" );
 
         if(bPBC){
             gBS.saveXSF( "debug_BsplinePaul_pbc.xsf",   Bspline_Pauli,   1,0 );
@@ -1485,7 +1513,9 @@ void initGridFF( const char * name, double z0=NAN, bool bAutoNPBC=true, bool bSy
             case GridFFmod::BsplineFloat    :{ printf("ERROR in GridFF::tryLoad_new() GridFFmode::BsplineFloat NOT IMPLEMENTED \n"); exit(0); } break;
             case GridFFmod::BsplineDouble   :{
                 fnames[0]="Bspline_Pauli_d.bin"; fnames[1]="Bspline_London_d.bin"; fnames[2]="Bspline_Coulomb_d.bin"; 
-                npoint = gridN.totprod();
+                //Vec3i ns = gridN;
+                Vec3i ns = grid.n;
+                npoint = ns.totprod();
                 nbyte  = npoint*sizeof(double);
                 if( checkAllFilesExist( 3, fnames, bPrint ) ){
                     _realloc( Bspline_Pauli, npoint );
@@ -1510,6 +1540,10 @@ void initGridFF( const char * name, double z0=NAN, bool bAutoNPBC=true, bool bSy
                     saveBin( fnames[1], nbyte, (char*)Bspline_London );
                     saveBin( fnames[2], nbyte, (char*)Bspline_Coulomb );
                 }
+                printf("GridFF::tryLoad_new() BsplineDouble DONE @Bspline_Pauli=%li  @Bspline_London=%li  @Bspline_Coulomb=%li \n", (long)Bspline_Pauli, (long)Bspline_London, (long)Bspline_Coulomb );
+                golbal_array_dict.insert( { "Bspline_Pauli",   NDArray{ Bspline_Pauli,   Quat4i{ns.z,ns.y,ns.x,-1}} }  );
+                golbal_array_dict.insert( { "Bspline_London",  NDArray{ Bspline_London,  Quat4i{ns.z,ns.y,ns.x,-1}} }  );
+                golbal_array_dict.insert( { "Bspline_Coulomb", NDArray{ Bspline_Coulomb, Quat4i{ns.z,ns.y,ns.x,-1}} }  );
             } break;
         } // switch( mode )
         double T = getCPUticks()-t0;
