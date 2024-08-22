@@ -1052,6 +1052,35 @@ void force_iz_pbc( int iz, const Vec3i ns, const double* ps, double* fs ){
     //return err2sum;
 }
 
+__attribute__((hot)) 
+double getVariations3D_mod2( const Vec3i ns, const double* Gs, const double* Es, double* Ws, double* fs, double* ps, bool bPBC ){
+    constexpr double B0=2.0/3.0;
+    constexpr double B1=1.0/6.0;
+    constexpr double B000=B0*B0*B0;
+    constexpr double B001=B0*B0*B1;
+    constexpr double B011=B0*B1*B1;
+    constexpr double B111=B1*B1*B1;
+    //double sum_B = B000 + B001*6 + B011*12 + B111*8;
+    //printf( "getVariations3D_mod() sum_B %g \n", sum_B );
+    const int nxy  = ns.x*ns.y;
+    const int nxyz = nxy*ns.z;
+    // --- evaluate current spline
+    //for(int i=0; i<nxyz; i++){ fs[i]=0; ps[i]=0;  }
+    double err2sum = 0;
+    // --- evaluate current spline (in order to evelauet approximation error)
+    for(int iz=0; iz<ns.z; iz++){ 
+        printf("getVariations3D_mod2().error[iz=%i] \n", iz);
+        if(bPBC){ err2sum += error_iz_pbc( iz, ns, Gs, Es, Ws, ps ); }
+        else    { err2sum += error_iz    ( iz, ns, Gs, Es, Ws, ps ); }            
+    }
+    for(int iz=0; iz<ns.z; iz++){ 
+        printf("getVariations3D_mod2().force[iz=%i] \n", iz);
+        if(bPBC){ force_iz_pbc( iz, ns, ps, fs ); }
+        else    { force_iz    ( iz, ns, ps, fs );     }
+    }
+    //printf("getVariations3D_mod() err %g ns(%i,%i,%i) \n", err2sum, ns.x, ns.y, ns.z );
+    return err2sum;
+}
 
 
 __attribute__((hot)) 
@@ -1113,16 +1142,17 @@ int fit2D( const Vec2i ns, double* Gs, const double* Es, double* Ws, double Ftol
 }
 
 __attribute__((hot)) 
-int fit3D( const Vec3i ns, double* Gs, const double* Es, double* Ws, double Ftol, int nmaxiter=100, double dt=0.1, bool bInitGE=false ){
+int fit3D( const Vec3i ns, double* Gs, const double* Es, double* Ws, double Ftol, int nmaxiter=100, double dt=0.1, bool bPBC=false, bool bInitGE=false ){
     long t0 = getCPUticks();
     //if(verbosity>1)
-    printf( "Bspline::fit3D() ns(%i,%i,%i) \n", ns.x,ns.y,ns.z  );
+    printf( "Bspline::fit3D() ns(%i,%i,%i)  Ftol=%g dt=%g nmaxiter=%i bPBC=%i \n", ns.x,ns.y,ns.z, Ftol, dt, nmaxiter, bPBC  );
     const double F2max = Ftol*Ftol;
     const int nxy  = ns.x*ns.y;
     const int nxyz = ns.x*ns.y*ns.z;
     double* ps = new double[nxyz];
     double* fs = new double[nxyz];
     double* vs = new double[nxyz];
+    DEBUG
     int itr=0;
     //while(false){
     double err=0; 
@@ -1130,14 +1160,19 @@ int fit3D( const Vec3i ns, double* Gs, const double* Es, double* Ws, double Ftol
     if(bInitGE){ for(int i=0; i<nxyz; i++){ Gs[i]=Es[i]; }; };
     for(int i=0; i<nxyz; i++){ vs[i]=0; };
     //dt = 0.3;
+    DEBUG
     for(itr=0; itr<nmaxiter; itr++){
         //for(int i=0; i<nxyz; i++){ fs[i]=0; };
         //err = getVariations3D( ns, Gs, Es, Ws, fs, ps );
-        err = getVariations3D_mod( ns, Gs, Es, Ws, fs, ps );
+        //err = getVariations3D_mod( ns, Gs, Es, Ws, fs, ps );
+        DEBUG
+        err = getVariations3D_mod2( ns, Gs, Es, Ws, fs, ps, bPBC );
         //err = getVariations3D_omp( ns, Gs, Es, Ws, fs, ps );
+        DEBUG
         cfv = move(dt,nxyz,Gs,fs,vs);
         //cfv = move_GD( dt, nxyz, Gs, fs );
         //if(verbosity>2)
+        DEBUG
         printf( "|F[%i]|=%g Error=%g \n",itr,sqrt(cfv.y), sqrt(err) );
         ///printf( "|F[%i]|=%g cos(f,v)=%g Error=%g \n",itr,sqrt(cfv.y), cfv.x/sqrt(cfv.y*cfv.z), sqrt(err) );
         if(cfv.y<F2max){ break; };
@@ -1156,7 +1191,8 @@ int fit3D( const Vec3i ns, double* Gs, const double* Es, double* Ws, double Ftol
 
 __attribute__((hot)) 
 int fit3D_omp( const Vec3i ns, double* Gs, const double* Es, double* Ws, double Ftol, int nmaxiter=100, double dt=0.1, bool bPBC=false, bool bInitGE=false ){
-    if(verbosity>1)printf( "Bspline::fit3D_omp() ns(%i,%i,%i) bPBC=%i dt=%g Ftol=%g nmaxiter=%i \n", ns.x,ns.y,ns.z, bPBC, dt, Ftol, nmaxiter );
+    //if(verbosity>1)
+    printf( "Bspline::fit3D_omp() ns(%i,%i,%i) bPBC=%i dt=%g Ftol=%g nmaxiter=%i bInitGE=% \n", ns.x,ns.y,ns.z, bPBC, dt, Ftol, nmaxiter, bInitGE );
     const int nxy  = ns.x*ns.y;
     const int nxyz = nxy*ns.z;
     const double F2max = Ftol*Ftol;
@@ -1171,6 +1207,8 @@ int fit3D_omp( const Vec3i ns, double* Gs, const double* Es, double* Ws, double 
     double err2sum = 0;
     int    itr =0;
 
+    DEBUG
+
     if(bInitGE){ for(int i=0; i<nxyz; i++){ Gs[i]=Es[i]; }; };
     for(int i=0; i<nxyz; i++){ vs[i]=0; };
     //dt = 0.3;
@@ -1179,6 +1217,7 @@ int fit3D_omp( const Vec3i ns, double* Gs, const double* Es, double* Ws, double 
     int niterdone = 0;
     long t0 = getCPUticks();
     //#pragma omp parallel shared(Gs,fs,ps,vs,itr)
+    DEBUG
     #pragma omp parallel shared(itr,niterdone,nmaxiter,nxyz,vv,ff,vf,err2sum)
     {
     //for(itr=0; itr<nmaxiter; itr++){

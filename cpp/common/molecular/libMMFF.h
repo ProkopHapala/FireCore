@@ -163,7 +163,7 @@ int fit2D_Bspline( const int* ns, double* Gs, double* Es, double* Ws, double Fto
 int fit3D_Bspline( const int* ns, double* Gs, double* Es, double* Ws, double Ftol, int nmaxiter, double dt, bool bPBC, bool bOMP ){
     printf("fit3D_Bspline: bOMP=%i bPBC=%i \n", bOMP, bPBC );
     if(bOMP){ return Bspline::fit3D_omp( *(Vec3i*)ns, Gs,  Es, Ws, Ftol, nmaxiter, dt, bPBC, false ); }
-    else    { return Bspline::fit3D    ( *(Vec3i*)ns, Gs,  Es, Ws, Ftol, nmaxiter, dt,       false ); }
+    else    { return Bspline::fit3D    ( *(Vec3i*)ns, Gs,  Es, Ws, Ftol, nmaxiter, dt, bPBC, false ); }
 
 }
 
