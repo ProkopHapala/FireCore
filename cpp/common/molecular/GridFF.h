@@ -1023,9 +1023,9 @@ double addForces_d( int natoms, Vec3d* apos, Quat4d* PLQs, Vec3d* fpos, bool bSu
             saveBin( fnames[0], nbyte, (char*)VPaul );
             saveBin( fnames[1], nbyte, (char*)VLond );
             saveBin( fnames[2], nbyte, (char*)VCoul );
-            gBS.saveXSF( "debug_VPaul.xsf", VPaul, 1,0 );
-            gBS.saveXSF( "debug_VLond.xsf", VLond, 1,0 );
-            gBS.saveXSF( "debug_VCoul.xsf", VCoul, 1,0 );
+            //gBS.saveXSF( "debug_VPaul.xsf", VPaul, 1,0 );
+            //gBS.saveXSF( "debug_VLond.xsf", VLond, 1,0 );
+            //gBS.saveXSF( "debug_VCoul.xsf", VCoul, 1,0 );
         }
         
         // GridShape gBS;
@@ -1035,15 +1035,26 @@ double addForces_d( int natoms, Vec3d* apos, Quat4d* PLQs, Vec3d* fpos, bool bSu
         // gBS.saveXSF( "debug_VCoul.xsf", VCoul, 1,0 );
 
         printf( "GridFF::makeGridFF_Bspline_d() START Fitting \n" );
+        //bool bPBC=false;
         bool bPBC=true;
         bool bInitGE=true;
-        //Bspline::fit3D_omp( gridN, Bspline_Pauli,   VPaul, 0, Ftol, nmaxiter, dt, bPBC, bInitGE );  printf( "GridFF::makeGridFF_Bspline_d() Fit(Bspline_Pauli)   DONE \n" );
-        //Bspline::fit3D_omp( gridN, Bspline_London,  VLond, 0, Ftol, nmaxiter, dt, bPBC, bInitGE );  printf( "GridFF::makeGridFF_Bspline_d() Fit(Bspline_London)  DONE \n" );
-        //Bspline::fit3D_omp( gridN, Bspline_Coulomb, VCoul, 0, Ftol, nmaxiter, dt, bPBC, bInitGE );  printf( "GridFF::makeGridFF_Bspline_d() Fit(Bspline_Coulomb) DONE \n" );
+        Bspline::fit3D_omp( gridN, Bspline_Pauli,   VPaul, 0, Ftol, nmaxiter, dt, bPBC, bInitGE );  printf( "GridFF::makeGridFF_Bspline_d() Fit(Bspline_Pauli)   DONE \n" );
+        Bspline::fit3D_omp( gridN, Bspline_London,  VLond, 0, Ftol, nmaxiter, dt, bPBC, bInitGE );  printf( "GridFF::makeGridFF_Bspline_d() Fit(Bspline_London)  DONE \n" );
+        Bspline::fit3D_omp( gridN, Bspline_Coulomb, VCoul, 0, Ftol, nmaxiter, dt, bPBC, bInitGE );  printf( "GridFF::makeGridFF_Bspline_d() Fit(Bspline_Coulomb) DONE \n" );
 
-        Bspline::fit3D( gridN, Bspline_Pauli,   VPaul, 0, Ftol, nmaxiter, dt, bPBC, bInitGE );  printf( "GridFF::makeGridFF_Bspline_d() Fit(Bspline_Pauli)   DONE \n" );
-        Bspline::fit3D( gridN, Bspline_London,  VLond, 0, Ftol, nmaxiter, dt, bPBC, bInitGE );  printf( "GridFF::makeGridFF_Bspline_d() Fit(Bspline_London)  DONE \n" );
-        Bspline::fit3D( gridN, Bspline_Coulomb, VCoul, 0, Ftol, nmaxiter, dt, bPBC, bInitGE );  printf( "GridFF::makeGridFF_Bspline_d() Fit(Bspline_Coulomb) DONE \n" );
+        //Bspline::fit3D( gridN, Bspline_Pauli,   VPaul, 0, Ftol, nmaxiter, dt, bPBC, bInitGE );  printf( "GridFF::makeGridFF_Bspline_d() Fit(Bspline_Pauli)   DONE \n" );
+        //Bspline::fit3D( gridN, Bspline_London,  VLond, 0, Ftol, nmaxiter, dt, bPBC, bInitGE );  printf( "GridFF::makeGridFF_Bspline_d() Fit(Bspline_London)  DONE \n" );
+        //Bspline::fit3D( gridN, Bspline_Coulomb, VCoul, 0, Ftol, nmaxiter, dt, bPBC, bInitGE );  printf( "GridFF::makeGridFF_Bspline_d() Fit(Bspline_Coulomb) DONE \n" );
+
+        if(bPBC){
+            gBS.saveXSF( "debug_BsplinePaul_pbc.xsf",   Bspline_Pauli,   1,0 );
+            gBS.saveXSF( "debug_BsplineLond_pbc.xsf",   Bspline_London,  1,0 );
+            gBS.saveXSF( "debug_BsplineCoul_pbc.xsf",   Bspline_Coulomb, 1,0 );
+        }else{
+            gBS.saveXSF( "debug_BsplinePaul_nopbc.xsf", Bspline_Pauli,   1,0 );
+            gBS.saveXSF( "debug_BsplineLond_nopbc.xsf", Bspline_London,  1,0 );
+            gBS.saveXSF( "debug_BsplineCoul_nopbc.xsf", Bspline_Coulomb, 1,0 );
+        }
 
         printf( "GridFF::makeGridFF_Bspline_d() FINISHED Fitting \n" );
         delete [] VPaul;
