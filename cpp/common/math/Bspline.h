@@ -29,6 +29,11 @@ inline bool checkIndexRange2( int imin, int imax, const char* name1, int i1, con
     return false;
 }
 
+inline bool outrange(int i, int imin, int imax ){
+    if     (i<=imin){ return true; }
+    else if(i>=imax){ return true; }
+    return false;
+}
 
 inline int biwrap( int i, int n ){ return (i<=0    )? n-1 : -1; }
 inline int diwrap( int i, int n ){ return (i>=(n-1))? 1-n :  1; }
@@ -976,8 +981,6 @@ void force_iz( int iz, const Vec3i ns, const double* ps, double* fs ){
     //return err2sum;
 }
 
-
-
 __attribute__((hot)) 
 double error_iz_pbc( int iz, const Vec3i ns, const double* Gs, const double* Es, double* Ws, double* ps ){
     //printf("error_iz_pbc(iz=%i) \n");
@@ -1002,9 +1005,21 @@ double error_iz_pbc( int iz, const Vec3i ns, const double* Gs, const double* Es,
             const int ibx = biwrap(ix,ns.x);
             const int idx = diwrap(ix,ns.x);
 
+            // if( outrange(i+iby+ibx,0,nxy)
+            // ||  outrange(i+iby    ,0,nxy)
+            // ||  outrange(i+iby+idx,0,nxy)
+            // ||  outrange(i    +ibx,0,nxy)
+            // ||  outrange(i        ,0,nxy)
+            // ||  outrange(i    +idx,0,nxy)
+            // ||  outrange(i+idy+ibx,0,nxy)
+            // ||  outrange(i+idy    ,0,nxy)
+            // ||  outrange(i+idy+idx,0,nxy) 
+            // )[[unlikely]]{ printf("getVariations2D_pbc() [%2i,%2i] %4i  xbd(%2i,%2i)  ybd(%4i,%4i)   {%4i,%4i,%4i, %4i,%4i,%4i, %4i,%4i,%4i}   nxy=%i \n", iy, ix,  i, ibx,idx, iby,idy,     i+iby+ibx,i+iby,i+iby+idx,     i+ibx,i,i+idx,  i+idy+ibx,i+idy,i+idy+idx, nxy );  }
+            //printf("getVariations2D_pbc() [%2i,%2i] %4i  xbd(%2i,%2i)  ybd(%4i,%4i)   {%4i,%4i,%4i, %4i,%4i,%4i, %4i,%4i,%4i}   nxy=%i \n", iy, ix,  i, ibx,idx, iby,idy,     i+iby+ibx,i+iby,i+iby+idx,     i+ibx,i,i+idx,  i+idy+ibx,i+idy,i+idy+idx, nxy );
+
             double  val  = assemleBound2D_pbc( B000,B001,B011, Gs    , i, ibx,idx,  iby,idy ); 
             if(zlo) val += assemleBound2D_pbc( B001,B011,B111, Gs-nxy, i, ibx,idx,  iby,idy ); 
-            if(zhi) val += assemleBound2D_pbc( B001,B011,B111, Gs+nxy, i, ibx,idx,  iby,idy ); 
+            if(zhi) val += assemleBound2D_pbc( B001,B011,B111, Gs+nxy, i, ibx,idx,  iby,idy );
 
             double err = Es[i] - val;
             //if((ix==6)&&(iy==10)&&(iz==10)){  printf("getVariations3D_mod()[%i,%i,%i] E=%g val=%g err=%g \n", ix,iy,iz, Es[i], val, err ); }
@@ -1012,7 +1027,7 @@ double error_iz_pbc( int iz, const Vec3i ns, const double* Gs, const double* Es,
             //if(Ws){ err*=Ws[i]; }
             err2sum += err*err;
             ps[i]    = err;
-            Ws[i] = err;
+            //Ws[i] = err;
         }
     }
     return err2sum;
@@ -1020,6 +1035,7 @@ double error_iz_pbc( int iz, const Vec3i ns, const double* Gs, const double* Es,
 
 __attribute__((hot)) 
 void force_iz_pbc( int iz, const Vec3i ns, const double* ps, double* fs ){
+    //printf("force_iz_pbc(iz=%i) \n");
     constexpr double B0=2.0/3.0;
     constexpr double B1=1.0/6.0;
     constexpr double B000=B0*B0*B0;
@@ -1069,12 +1085,12 @@ double getVariations3D_mod2( const Vec3i ns, const double* Gs, const double* Es,
     double err2sum = 0;
     // --- evaluate current spline (in order to evelauet approximation error)
     for(int iz=0; iz<ns.z; iz++){ 
-        printf("getVariations3D_mod2().error[iz=%i] \n", iz);
+        //printf("getVariations3D_mod2().error[iz=%i] \n", iz);
         if(bPBC){ err2sum += error_iz_pbc( iz, ns, Gs, Es, Ws, ps ); }
         else    { err2sum += error_iz    ( iz, ns, Gs, Es, Ws, ps ); }            
     }
     for(int iz=0; iz<ns.z; iz++){ 
-        printf("getVariations3D_mod2().force[iz=%i] \n", iz);
+        //printf("getVariations3D_mod2().force[iz=%i] \n", iz);
         if(bPBC){ force_iz_pbc( iz, ns, ps, fs ); }
         else    { force_iz    ( iz, ns, ps, fs );     }
     }
@@ -1152,7 +1168,6 @@ int fit3D( const Vec3i ns, double* Gs, const double* Es, double* Ws, double Ftol
     double* ps = new double[nxyz];
     double* fs = new double[nxyz];
     double* vs = new double[nxyz];
-    DEBUG
     int itr=0;
     //while(false){
     double err=0; 
@@ -1160,19 +1175,15 @@ int fit3D( const Vec3i ns, double* Gs, const double* Es, double* Ws, double Ftol
     if(bInitGE){ for(int i=0; i<nxyz; i++){ Gs[i]=Es[i]; }; };
     for(int i=0; i<nxyz; i++){ vs[i]=0; };
     //dt = 0.3;
-    DEBUG
     for(itr=0; itr<nmaxiter; itr++){
         //for(int i=0; i<nxyz; i++){ fs[i]=0; };
         //err = getVariations3D( ns, Gs, Es, Ws, fs, ps );
         //err = getVariations3D_mod( ns, Gs, Es, Ws, fs, ps );
-        DEBUG
         err = getVariations3D_mod2( ns, Gs, Es, Ws, fs, ps, bPBC );
         //err = getVariations3D_omp( ns, Gs, Es, Ws, fs, ps );
-        DEBUG
         cfv = move(dt,nxyz,Gs,fs,vs);
         //cfv = move_GD( dt, nxyz, Gs, fs );
         //if(verbosity>2)
-        DEBUG
         printf( "|F[%i]|=%g Error=%g \n",itr,sqrt(cfv.y), sqrt(err) );
         ///printf( "|F[%i]|=%g cos(f,v)=%g Error=%g \n",itr,sqrt(cfv.y), cfv.x/sqrt(cfv.y*cfv.z), sqrt(err) );
         if(cfv.y<F2max){ break; };
@@ -1192,7 +1203,7 @@ int fit3D( const Vec3i ns, double* Gs, const double* Es, double* Ws, double Ftol
 __attribute__((hot)) 
 int fit3D_omp( const Vec3i ns, double* Gs, const double* Es, double* Ws, double Ftol, int nmaxiter=100, double dt=0.1, bool bPBC=false, bool bInitGE=false ){
     //if(verbosity>1)
-    printf( "Bspline::fit3D_omp() ns(%i,%i,%i) bPBC=%i dt=%g Ftol=%g nmaxiter=%i bInitGE=% \n", ns.x,ns.y,ns.z, bPBC, dt, Ftol, nmaxiter, bInitGE );
+    printf( "Bspline::fit3D_omp() ns(%i,%i,%i) bPBC=%i dt=%g Ftol=%g nmaxiter=%i bInitGE=%i \n", ns.x,ns.y,ns.z, bPBC, dt, Ftol, nmaxiter, bInitGE );
     const int nxy  = ns.x*ns.y;
     const int nxyz = nxy*ns.z;
     const double F2max = Ftol*Ftol;
@@ -1207,8 +1218,6 @@ int fit3D_omp( const Vec3i ns, double* Gs, const double* Es, double* Ws, double 
     double err2sum = 0;
     int    itr =0;
 
-    DEBUG
-
     if(bInitGE){ for(int i=0; i<nxyz; i++){ Gs[i]=Es[i]; }; };
     for(int i=0; i<nxyz; i++){ vs[i]=0; };
     //dt = 0.3;
@@ -1217,7 +1226,6 @@ int fit3D_omp( const Vec3i ns, double* Gs, const double* Es, double* Ws, double 
     int niterdone = 0;
     long t0 = getCPUticks();
     //#pragma omp parallel shared(Gs,fs,ps,vs,itr)
-    DEBUG
     #pragma omp parallel shared(itr,niterdone,nmaxiter,nxyz,vv,ff,vf,err2sum)
     {
     //for(itr=0; itr<nmaxiter; itr++){
