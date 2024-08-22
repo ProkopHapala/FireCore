@@ -164,25 +164,25 @@ def fitEF_Bspline( dg, Fes, Gs=None, Ws=None, Ftol=1e-6, nmaxiter=100, dt=0.1 ):
     return Gs, Ws
 
 # int fit2D_Bspline( const int* ns, double* Gs, double* Es, double* Ws, double Ftol, int nmaxiter, double dt ){
-lib.fit2D_Bspline.argtypes  = [ c_int_p, c_double_p, c_double_p, c_double_p, c_double, c_int, c_double ]
+lib.fit2D_Bspline.argtypes  = [ c_int_p, c_double_p, c_double_p, c_double_p, c_double, c_int, c_double, c_bool ]
 lib.fit2D_Bspline.restype   =  None
-def fit2D_Bspline( Es, Gs=None, Ws=None, Ftol=1e-6, nmaxiter=100, dt=0.1 ):
+def fit2D_Bspline( Es, Gs=None, Ws=None, Ftol=1e-6, nmaxiter=100, dt=0.1, bPBC=False ):
     ns = Es.shape
     if Ws is None: Ws = np.ones( ns )
     if Gs is None: Gs = Es.copy()
     ns = np.array( ns[::-1], dtype=np.int32 ) 
-    lib.fit2D_Bspline( _np_as(ns,c_int_p) , _np_as(Gs,c_double_p), _np_as(Es,c_double_p), _np_as(Ws,c_double_p), Ftol, nmaxiter, dt )
+    lib.fit2D_Bspline( _np_as(ns,c_int_p) , _np_as(Gs,c_double_p), _np_as(Es,c_double_p), _np_as(Ws,c_double_p), Ftol, nmaxiter, dt, bPBC )
     return Gs, Ws
 
 # int fit3D_Bspline( const int* ns, double* Gs, double* Es, double* Ws, double Ftol, int nmaxiter, double dt, bool bOMP ){
-lib.fit3D_Bspline.argtypes  = [ c_int_p, c_double_p, c_double_p, c_double_p, c_double, c_int, c_double, c_bool ]
+lib.fit3D_Bspline.argtypes  = [ c_int_p, c_double_p, c_double_p, c_double_p, c_double, c_int, c_double, c_bool, c_bool ]
 lib.fit3D_Bspline.restype   =  None
-def fit3D_Bspline( Es, Gs=None, Ws=None, Ftol=1e-6, nmaxiter=100, dt=0.1, bOMP=True ):
+def fit3D_Bspline( Es, Gs=None, Ws=None, Ftol=1e-6, nmaxiter=100, dt=0.1, bPBC=False, bOMP=True ):
     ns = np.array( Es.shape[::-1], dtype=np.int32 ) 
     n  = Es.size
     if Ws is None: Ws = np.ones( ns )
     if Gs is None: Gs = Es[:].copy()
-    lib.fit3D_Bspline( _np_as(ns,c_int_p) , _np_as(Gs,c_double_p), _np_as(Es,c_double_p), _np_as(Ws,c_double_p), Ftol, nmaxiter, dt, bOMP )
+    lib.fit3D_Bspline( _np_as(ns,c_int_p) , _np_as(Gs,c_double_p), _np_as(Es,c_double_p), _np_as(Ws,c_double_p), Ftol, nmaxiter, dt, bPBC, bOMP )
     return Gs
 
 #void setupGrid( int* ns, double* cell, bool bAlloc ){
