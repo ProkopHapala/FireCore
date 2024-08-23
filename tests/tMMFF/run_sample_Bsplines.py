@@ -235,8 +235,8 @@ def test_comb3_2D( g0=(-2.0,-2.0), gmax=(0.0,0.0), dg=(0.1,0.1), dsamp=(0.05,0.0
 
     #Gs[:] = np.roll(Gs, shift=-1, axis=0).copy()
 
-    ps[:,0] += -0.00003
-    ps[:,1] += -0.005375
+    #ps[:,0] += -0.00003
+    #ps[:,1] += -0.005375
 
     E_f = mmff.sample_Bspline2D_comb3( ps, Gs, g0, dg,  Cs=Ccomb  ).reshape(sh_samp+(3,))
 
