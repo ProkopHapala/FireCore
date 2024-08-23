@@ -196,6 +196,86 @@ def test_fit_2D( g0=(-5.0,2.0), gmax=(5.0,10.0), dg=(0.1,0.1), dsamp=(0.05,0.05)
     plt.axis('equal')
 
 
+def test_comb3_2D( g0=(-2.0,-2.0), gmax=(0.0,0.0), dg=(0.1,0.1), dsamp=(0.05,0.05), title=None, scErr=1000.0, bPBC=True, Ccomb=[1.0,0.0,0.0], bFit=True ):
+    print( "test_comb3_2D START" )
+    cmap="bwr"
+    Xs,Ys   = fu.make2Dsampling(  g0=g0, gmax=gmax, dg=dg )
+    Xs_,Ys_ = fu.make2Dsampling(  g0=g0, gmax=gmax, dg=dsamp )
+    Xs_*=0.999999; Ys_*=0.999999;
+    sh_samp = Xs_.shape
+    ps      = fu.pack_ps2D( Xs_, Ys_)
+
+    print( "Xs.shape ", Xs.shape )
+    
+    #E, Fx,Fy,Fz = getLJ_atoms( apos, REs, Xs,Ys,Xs*0.0 )
+
+    E1,  Fx,Fy      =  fu.getCos2D( Xs,    Ys   )
+    E2,  Fx,Fy      =  fu.getCos2D( Xs*2,  Ys   )
+    E3,  Fx,Fy      =  fu.getCos2D( Xs,  Ys*2   )
+
+    E1_,  Fx,Fy     =  fu.getCos2D( Xs_,    Ys_   )
+    E2_,  Fx,Fy     =  fu.getCos2D( Xs_*2,  Ys_   )
+    E3_,  Fx,Fy     =  fu.getCos2D( Xs_,    Ys_*2 )
+
+    #E_r, Fx_r,Fy_r =  fu.getCos2D( Xs_, Ys_ )
+
+    Gs = np.zeros( E1.shape+(3,) )
+
+    if bFit:
+        G1, Ws = mmff.fit2D_Bspline( E1, dt=0.4, nmaxiter=1000, Ftol=1e-10, bPBC=bPBC )
+        G2, Ws = mmff.fit2D_Bspline( E2, dt=0.4, nmaxiter=1000, Ftol=1e-10, bPBC=bPBC )
+        G3, Ws = mmff.fit2D_Bspline( E3, dt=0.4, nmaxiter=1000, Ftol=1e-10, bPBC=bPBC )
+        Gs[:,:,0] = G1
+        Gs[:,:,1] = G2
+        Gs[:,:,2] = G3
+    else:
+        Gs[:,:,0] = E1
+        Gs[:,:,1] = E2
+        Gs[:,:,2] = E3
+
+    #Gs[:] = np.roll(Gs, shift=-1, axis=0).copy()
+
+    ps[:,0] += -0.00003
+    ps[:,1] += -0.005375
+
+    E_f = mmff.sample_Bspline2D_comb3( ps, Gs, g0, dg,  Cs=Ccomb  ).reshape(sh_samp+(3,))
+
+    Eref = E1_*Ccomb[0] + E2_*Ccomb[1] + E3_*Ccomb[2]
+
+    Err = (E_f[:,:,2]-Eref)
+
+    Wmax=Ws.max()
+    Emin=Eref.min()
+    #Emin=E_f.min()
+    dEmax = np.abs(Err[:,4:-8]).max()
+    extent=(g0[0],gmax[0],g0[1],gmax[1])
+    plt.figure(figsize=(20,10))
+    plt.subplot(2,4,4); plt.imshow( Ws [:,:],   origin="lower", extent=extent, vmin=-Wmax,  vmax=Wmax,  cmap=cmap ) ;plt.colorbar(); plt.title("Ws"    )
+    plt.subplot(2,4,1); plt.imshow( E_f[:,:,2], origin="lower", extent=extent, vmin=Emin,  vmax=-Emin,  cmap=cmap ) ;plt.colorbar(); plt.title("E_fit" )
+    plt.subplot(2,4,2); plt.imshow( Eref,       origin="lower", extent=extent, vmin=Emin,  vmax=-Emin,  cmap=cmap ) ;plt.colorbar(); plt.title("E_ref" )
+    plt.subplot(2,4,3); plt.imshow( Err,        origin="lower", extent=extent, vmin=-dEmax,vmax=dEmax,  cmap=cmap ) ;plt.colorbar(); plt.title("Error" ) #plt.title("Error *%i" %scErr)
+    plt.axis('equal')
+
+    ix0=Eref.shape[0]//2
+    iy0=Eref.shape[1]//2
+    plt.subplot(2,2,3); 
+    plt.plot( Eref[:,iy0  ],                    'g-',lw=0.5, label="E_ref(x)" ); 
+    plt.plot( E_f [:,iy0,2],                    'k-',lw=0.5, label="E_fit(x)" ); 
+    plt.plot((E_f[:,iy0,2]-Eref[:,iy0])*scErr,  'r-',lw=1.0, label=("Err(x)*%g" %scErr) ); 
+    plt.ylim(Emin,-Emin)
+    plt.grid()
+    plt.legend()
+
+    plt.subplot(2,2,4); 
+    plt.plot( Eref[ix0,:  ],                   'g-' ,lw=0.5, label="E_ref(y)" ); 
+    plt.plot( E_f[ix0,:,2],                    'k-' ,lw=0.5, label="E_fit(y)" );
+    plt.plot((E_f[ix0,:,2]-Eref[ix0,:])*scErr, 'r-' ,lw=1.0, label=("Err(y)*%g" %scErr) ); 
+    plt.ylim(Emin,-Emin)
+    plt.grid()
+    plt.legend()
+    print( "test_comb3_2D DONE" )
+
+
 def test_fit_2D_debug( g0=(-2.0,-2.0), gmax=(2.0,2.0), dg=(0.2,0.2), title=None, bPBC=True ):
     cmap="bwr"
     Xs,Ys   = fu.make2Dsampling(  g0=g0, gmax=gmax, dg=dg )
@@ -318,7 +398,9 @@ mmff.setVerbosity( 3 )
 #test_fit_2D( g0=(-1.0,-1.0), gmax=(1.0,1.0) )
 
 #test_fit_2D_debug( title="2D fit run debug" )
-test_fit_3D_debug( title="3D fit run debug" )
+#test_fit_3D_debug( title="3D fit run debug" )
+
+test_comb3_2D()
 
 #test_fit_3D(  )
 

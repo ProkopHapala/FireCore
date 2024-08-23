@@ -242,7 +242,6 @@ Quat4d fe3d_deriv( const Vec3d u, const Vec3i n, const Quat4d* FEs, const Quat4d
     // We assume there are boundary added to simplify the index calculations
 	const int    ix = (int)u.x  ,  iy = (int)u.y  ,  iz = (int)u.z  ;
     const double tx = u.x - ix  ,  ty = u.y - iy  ,  tz = u.z - iz  ;
-    const double mx = 1-tx      ,  my = 1-ty      ,  mz = 1-tz      ;
     if( 
         ((ix<0)||(ix>=n.x-3)) ||
         ((iy<0)||(iy>=n.y-3)) ||
@@ -463,8 +462,6 @@ Quat4d fe3d_v2( const Vec3d u, const Vec3i n, const double* Es ){
     // We assume there are boundary added to simplify the index calculations
 	const int    ix = (int)u.x  ,  iy = (int)u.y  ,  iz = (int)u.z  ;
     const double tx = u.x - ix  ,  ty = u.y - iy  ,  tz = u.z - iz  ;
-    const double mx = 1-tx      ,  my = 1-ty      ,  mz = 1-tz      ;
-
     if( 
         ((ix<0)||(ix>=n.x-3)) ||
         ((iy<0)||(iy>=n.y-3)) ||
@@ -502,8 +499,6 @@ Quat4d fe3d( const Vec3d u, const Vec3i n, const double* Es ){
     // We assume there are boundary added to simplify the index calculations
 	const int    ix = (int)u.x  ,  iy = (int)u.y  ,  iz = (int)u.z  ;
     const double tx = u.x - ix  ,  ty = u.y - iy  ,  tz = u.z - iz  ;
-    const double mx = 1-tx      ,  my = 1-ty      ,  mz = 1-tz      ;
-
     if( 
         ((ix<0)||(ix>=n.x-3)) ||
         ((iy<0)||(iy>=n.y-3)) ||
@@ -539,7 +534,6 @@ Quat4d fe3d_v4( const Quat4d PLQH, const Vec3d u, const Vec3i n, const Quat4d* V
     // We assume there are boundary added to simplify the index calculations
 	const int    ix = (int)u.x  ,  iy = (int)u.y  ,  iz = (int)u.z  ;
     const double tx = u.x - ix  ,  ty = u.y - iy  ,  tz = u.z - iz  ;
-    const double mx = 1-tx      ,  my = 1-ty      ,  mz = 1-tz      ;
     // if( 
     //     ((ix<0)||(ix>=n.x-3)) ||
     //     ((iy<0)||(iy>=n.y-3)) ||
