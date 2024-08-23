@@ -199,6 +199,9 @@ def test_gridFF( name="data/NaCl_1x1_L2", mode=4, dsamp=0.02,  R0=3.5, E0=0.1, a
         ps_[:,2]+=-2.0;
         #ps_[:,0]+= 0.1
         #ps_[:,1]+= 0.1
+        #ps_[:,0]+= 0.05
+        #ps_[:,0]+= 0.05
+        #ps_[:,1]+= 0.1
     
     FFout = mmff.sampleSurf_new( ps_, PLQH, mode=mode, Rdamp=1.0 )
     
@@ -256,10 +259,11 @@ def test_gridFF_lat( name="data/NaCl_1x1_L2", iax=0, tmin=0.0,tmax=10.0, p0=[1.0
     ps[:,0] = p0[0]
     ps[:,1] = p0[1]
     ps[:,2] = p0[2]
-    #ps[:,iax] = ts
+    ps[:,iax] = ts
+    #ps[:,iax] += 0.05
     
-    ps[:,0] = ts
-    ps[:,1] = ts
+    #ps[:,0] = ts
+    #ps[:,1] = ts
 
     FF_ref = mmff.evalGridFFAtPoints( ps, PLQH=PLQH )
     
@@ -349,6 +353,6 @@ p0 = [0.0,0.0,2.0]
 #test_gridFF_lat( mode=4, title="Hybrid Hermite tri-cubic", Q=0.0, p0=[1.0,1.05,2.0], iax=0 )
 
 
-test_gridFF_lat( mode=6, title="Bspline tri-cubic", Q=0.0, p0=[1.0,1.05,2.0], iax=0 )
+test_gridFF_lat( mode=6, title="Bspline tri-cubic", Q=0.0, p0=[1.0,1.0,2.0], iax=0 )
 
 plt.show()
