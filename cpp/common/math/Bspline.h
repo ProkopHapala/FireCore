@@ -206,6 +206,11 @@ __attribute__((pure))
 __attribute__((hot)) 
 inline Vec3d fe2d_comb3( int nz, const Vec3d* E, Quat4i di, const Vec3d& C, const Quat4d& pz, const Quat4d& dz, const Quat4d& by, const Quat4d& dy ){
     //const Quat4d* FEx = FE + ( i.x*n.y  + i.y )*n.z;
+    //alignas(32) const Vec2d fe0 = fe1Dcomb3( E+di.x*nz, C, pz, dz );
+    //alignas(32) const Vec2d fe1 = fe1Dcomb3( E+di.y*nz, C, pz, dz );
+    //alignas(32) const Vec2d fe2 = fe1Dcomb3( E+di.z*nz, C, pz, dz );
+    //alignas(32) const Vec2d fe3 = fe1Dcomb3( E+di.w*nz, C, pz, dz );
+    // ---- more efficient version expacts di is already multiplied by nz
     alignas(32) const Vec2d fe0 = fe1Dcomb3( E+di.x, C, pz, dz );
     alignas(32) const Vec2d fe1 = fe1Dcomb3( E+di.y, C, pz, dz );
     alignas(32) const Vec2d fe2 = fe1Dcomb3( E+di.z, C, pz, dz );
@@ -224,7 +229,6 @@ inline Vec3d fe2d( const Vec2d u, const Vec2i n, const double* Es ){
     // We assume there are boundary added to simplify the index calculations
 	const int    ix = (int)u.x  ,  iy = (int)u.y  ;
     const double tx = u.x - ix  ,  ty = u.y - iy  ;
-    const double mx = 1-tx      ,  my = 1-ty      ;
     if( ((ix<1)||(ix>=n.x-2)) || ((iy<1)||(iy>=n.y-2))  )[[unlikely]]{   
         return Vec3dZero;
         //printf( "ERROR: Bspline::fe2d() ixyz(%i,%i) out of range 0 .. (%i,%i) u(%g,%g)\n", ix,iy, n.x,n.y, u.x,u.y );   exit(0); 
@@ -253,7 +257,6 @@ Quat4d fe3d( const Vec3d u, const Vec3i n, const double* Es ){
     // We assume there are boundary added to simplify the index calculations
 	const int    ix = (int)u.x  ,  iy = (int)u.y  ,  iz = (int)u.z  ;
     const double tx = u.x - ix  ,  ty = u.y - iy  ,  tz = u.z - iz  ;
-    const double mx = 1-tx      ,  my = 1-ty      ,  mz = 1-tz      ;
     if( 
         ((ix<1)||(ix>=n.x-2)) ||
         ((iy<1)||(iy>=n.y-2)) ||
@@ -288,13 +291,13 @@ Quat4d fe3d( const Vec3d u, const Vec3i n, const double* Es ){
 
 void make_inds_pbc( const int n, Quat4i* iqs ){
     iqs[0]={0,1  ,2  ,3  };
-    iqs[1]={0,1  ,2  ,n-1};
-    iqs[2]={0,1  ,1-n,2-n};
+    iqs[1]={0,1  ,2  ,3-n};
+    iqs[2]={0,1  ,2-n,3-n};
     iqs[3]={0,1-n,2-n,3-n};
 }
 
 inline Quat4i choose_inds_pbc( const int i, const int n, const Quat4i* iqs ){
-    if(i>=(n-3)){ return iqs[n-i]; }
+    if(i>=(n-3)){ return iqs[i+4-n]; }
     return Quat4i{ 0, 1, 2, 3 };
 }
 
@@ -308,17 +311,48 @@ inline int modulo( const int i, const int m ){
 
 __attribute__((pure))
 __attribute__((hot)) 
-Quat4d fe3d_pbc_comb3( const Vec3d u, const Vec3i n, const Vec3d* Es, const Vec3d PLQ, const Quat4i* iys, const Quat4i* ixs ){
+Vec3d fe2d_pbc_comb3( const Vec2d u, const Vec2i n, const Vec3d* Es, const Vec3d PLQ, const Quat4i* yqs ){
+	int          ix = (int)u.x  ,  iy = (int)u.y  ;
+    const double tx = u.x - ix  ,  ty = u.y - iy  ;
+
+    //printf( "fe2d_pbc_comb3() ixy(%i,%i) u(%g,%g) n(%i,%i)\n", ix,iy, u.x,u.y,  n.x,n.y  );
+
+    if(  ((ix<1)||(ix>=n.x-2))  )[[unlikely]]{  return Vec3dZero; }
+
+    iy=modulo(iy-1,n.y);
+    const Quat4i qy = choose_inds_pbc( iy, n.y, yqs );
+    // if(ix==1){
+    // printf( "fe2d_pbc_comb3() iy=%i iq=%i iy+qy{%i,%i,%i,%i}  qy{%i,%i,%i,%i}\n", iy,  (iy>=(n.y-3))?(iy+4-n.y):(-1),  iy+qy.x,iy+qy.y,iy+qy.z,iy+qy.w,  qy.x,qy.y,qy.z,qy.w  );
+    // }
+
+    const Quat4d bx =  basis( tx );
+    const Quat4d dx = dbasis( tx );
+    const Quat4d by =  basis( ty );
+    const Quat4d dy = dbasis( ty );
+
+    int i = (ix-1) + n.x*iy;  
+    return fe2d_comb3( n.x, Es+i,  qy*n.x, PLQ, bx, dx, by, dy );
+
+
+    //Vec3d Ei = Es[i]; 
+    //printf( "fe2d_pbc_comb3() ixy[%i,%i] Etot=%g \n", ix,iy, PLQ.dot(Ei)  );
+    //return Vec3d{  0.0, 0.0,  PLQ.dot(Ei) };
+    //return Quat4d{0.0,0.0,0.0,Es[i0]};
+} 
+
+
+__attribute__((pure))
+__attribute__((hot)) 
+Quat4d fe3d_pbc_comb3( const Vec3d u, const Vec3i n, const Vec3d* Es, const Vec3d PLQ, const Quat4i* yqs, const Quat4i* xqs ){
     // We assume there are boundary added to simplify the index calculations
-	int    ix = (int)u.x  ,  iy = (int)u.y  ,  iz = (int)u.z  ;
+	int          ix = (int)u.x  ,  iy = (int)u.y  ,  iz = (int)u.z  ;
     const double tx = u.x - ix  ,  ty = u.y - iy  ,  tz = u.z - iz  ;
-    const double mx = 1-tx      ,  my = 1-ty      ,  mz = 1-tz      ;
     if(  ((iz<1)||(iz>=n.z-2))  )[[unlikely]]{  return Quat4dZero; }
 
     ix=modulo(ix-1,n.x);
-    iy=modulo(iy-1,n.z);
-    const Quat4i qy = choose_inds_pbc( iy, n.y, iys );
-    const Quat4i qx = choose_inds_pbc( ix, n.x, ixs );
+    iy=modulo(iy-1,n.y);
+    const Quat4i qy = choose_inds_pbc( iy, n.y, yqs );
+    const Quat4i qx = choose_inds_pbc( ix, n.x, xqs );
 
     //const int nxy = n.x*n.y;
     const int nyz = n.z*n.y;
@@ -349,6 +383,22 @@ Quat4d fe3d_pbc_comb3( const Vec3d u, const Vec3i n, const Vec3d* Es, const Vec3
 } 
 
 __attribute__((hot)) 
+void sample2D_comb3( const Vec2d g0, const Vec2d dg, const Vec2i ng, const Vec3d* Eg, const int n, const Vec2d* ps, Vec3d* fes, Vec3d C ){
+    printf( "Bspline::sample2D_comb3() ng[%i,%i] dg(%g,%g) g0(%g,%g) C(%g,%g) n=%i \n",   ng.x,ng.y,   dg.x,dg.y,   g0.x,g0.y,   C.x,C.y,C.z, n  );
+    Vec2d inv_dg; inv_dg.set_inv(dg); 
+    Quat4i yqs[4];
+    make_inds_pbc( ng.y, yqs );
+    for(int i=0; i<n; i++ ){
+        //printf( "sample2D_comb3()[%i] \n", i );
+        Vec3d fe = fe2d_pbc_comb3( (ps[i]-g0)*inv_dg, ng, Eg, C, yqs ); 
+        fe.x *= inv_dg.x;
+        fe.y *= inv_dg.y;
+        fes[i] = fe;
+    }
+}
+
+
+__attribute__((hot)) 
 void sample3D( const Vec3d g0, const Vec3d dg, const Vec3i ng, const double* Eg, const int n, const Vec3d* ps, Quat4d* fes ){
     printf( "Bspline::sample3D() ng[%i,%i,%i] dg(%g,%g,%g) g0(%g,%g,%g)\n",   ng.x,ng.y,ng.z, dg.x,dg.y,dg.z,   g0.x,g0.y,g0.z   );
     printf( "Bspline::sample3D() ps[0](%g,%g,%g) ps[%i](%g,%g,%g)\n",   ps[0].x,ps[0].y,ps[0].z,  n-1,  ps[n-1].x,ps[n-1].y,ps[n-1].z );
@@ -361,6 +411,11 @@ void sample3D( const Vec3d g0, const Vec3d dg, const Vec3i ng, const double* Eg,
         fes[i] = fe;
     }
 }
+
+
+
+
+
 
 // ================================================  
 // ===================   Fitting   ================
