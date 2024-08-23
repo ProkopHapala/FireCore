@@ -889,7 +889,7 @@ inline double assemleBound2D_pbc( const double B00, const double B01, const doub
     //if(ix>=(nx-1)){ ibx-=-1+nx; }else{ ibx-=nx; }
     return   Gs[i+ibx+iby]*B11 + Gs[i+iby]*B01 + Gs[i+idx+iby]*B11
            + Gs[i+ibx    ]*B01 + Gs[i    ]*B00 + Gs[i+idx    ]*B01
-           + Gs[i+ibx+iby]*B11 + Gs[i+idy]*B01 + Gs[i+idx+idy]*B11;
+           + Gs[i+ibx+idy]*B11 + Gs[i+idy]*B01 + Gs[i+idx+idy]*B11;
 }
 
 
