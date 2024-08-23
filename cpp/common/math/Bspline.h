@@ -678,178 +678,6 @@ int fit1D_EF( const double dg, const int n, double* Gs,  Vec2d* fes, Vec2d* Ws, 
     return itr;
 }
 
-__attribute__((hot)) 
-double getVariations2D( const Vec2i ns, double* Gs,  const double* Es, const double* Ws, double* fs, double* ps ){
-    constexpr double B0=2.0/3.0;
-    constexpr double B1=1.0/6.0;
-    constexpr double B00=B0*B0;
-    constexpr double B01=B0*B1;
-    constexpr double B11=B1*B1;
-    const int nxy  = ns.x*ns.y;
-    // --- evaluate current spline
-    for(int i=0; i<nxy; i++){ fs[i]=0; ps[i]=0;  }
-    // --- evaluate current spline (in order to evelauet approximation error)
-    double err2sum=0;
-    for(int iy=1; iy<ns.y-1; iy++){
-        int iiy = iy*ns.x;
-        for(int ix=1; ix<ns.x-1; ix++){
-            //printf("c1 ix,iy: %3i %3i \n", ix,iy );
-            double val=0; 
-            int       i = ix + iiy;
-            const int j = i;
-            const int i0 = i-ns.x;
-            const int i1 = i+ns.x;
-            val += 
-                + Gs[i0-1]*B11 + Gs[i0]*B01 + Gs[i0+1]*B11
-                + Gs[i -1]*B01 + Gs[i ]*B00 + Gs[i +1]*B01
-                + Gs[i1-1]*B11 + Gs[i1]*B01 + Gs[i1+1]*B11;
-            double err = Es[j] - val;
-            if(Ws){ err*=Ws[j]; }
-            err2sum += err*err;
-            ps[j] = err;
-            //Ws[j] = err;
-        }
-    }
-    // --- distribute variational derivatives of approximation error
-    for(int iy=0; iy<ns.y; iy++){
-        int iiy = iy*ns.x;
-        for(int ix=0; ix<ns.x; ix++){
-            //printf("c2 ix,iy: %3i %3i \n", ix,iy );
-            double val=0; 
-            int i  = ix + iiy;
-            const int j = i;
-            const int i0 = i-ns.x;
-            const int i1 = i+ns.x;
-            if( (ix>0)&&(ix<(ns.x-1)) && (iy>0)&&(iy<(ns.y-1))) [[likely]] {
-                val += 
-                    + ps[i0-1]*B11 + ps[i0]*B01 + ps[i0+1]*B11
-                    + ps[i -1]*B01 + ps[i ]*B00 + ps[i +1]*B01
-                    + ps[i1-1]*B11 + ps[i1]*B01 + ps[i1+1]*B11;
-                fs[j] = val;
-            }else{
-                fs[j] = 0;
-                //Gs[j] = 0;
-            }
-        }
-    }
-    return err2sum;
-}
-
-__attribute__((hot)) 
-double getVariations3D( const Vec3i ns, double* Gs,  double* Es, double* Ws, double* fs, double* ps ){
-    constexpr double B0=2.0/3.0;
-    constexpr double B1=1.0/6.0;
-    // constexpr double B00=B0*B0;
-    // constexpr double B01=B0*B1;
-    // constexpr double B11=B1*B1;
-    constexpr double B000=B0*B0*B0;
-    constexpr double B001=B0*B0*B1;
-    constexpr double B011=B0*B1*B1;
-    constexpr double B111=B1*B1*B1;
-    const int nxy  = ns.x*ns.y;
-    const int nxyz = ns.x*ns.y*ns.z;
-
-    // --- evaluate current spline
-    for(int i=0; i<nxyz; i++){ fs[i]=0; ps[i]=0;  }
-    double err2sum = 0;
-    // --- evaluate current spline (in order to evelauet approximation error)
-    for(int iz=1; iz<ns.z-1; iz++){
-        int iiz = iz*nxy;
-        for(int iy=1; iy<ns.y-1; iy++){
-            int iiy = iy*ns.x;
-            for(int ix=1; ix<ns.x-1; ix++){
-                double val=0; 
-                int        i = ix + iiy + iiz;
-                const int j = i;
-                int i0 = i-ns.x;
-                int i1 = i+ns.x;
-                
-                val += 
-                    + Gs[i0-1]*B011 + Gs[i0]*B001 + Gs[i0+1]*B011
-                    + Gs[i -1]*B001 + Gs[i ]*B000 + Gs[i +1]*B001
-                    + Gs[i1-1]*B011 + Gs[i1]*B001 + Gs[i1+1]*B011;
-
-                i   -= nxy;    i0 = i-ns.x;  i1 = i+ns.x;
-                val +=    
-                    + Gs[i0-1]*B111 + Gs[i0]*B011 + Gs[i0+1]*B111
-                    + Gs[i -1]*B011 + Gs[i ]*B001 + Gs[i +1]*B011
-                    + Gs[i1-1]*B111 + Gs[i1]*B011 + Gs[i1+1]*B111;  
-
-                i   += 2*nxy;  i0 = i-ns.x;  i1 = i+ns.x;
-                val +=
-                    + Gs[i0-1]*B111 + Gs[i0]*B011 + Gs[i0+1]*B111
-                    + Gs[i -1]*B011 + Gs[i ]*B001 + Gs[i +1]*B011
-                    + Gs[i1-1]*B111 + Gs[i1]*B011 + Gs[i1+1]*B111;        
-    
-                //val +=  Gs[i ];
-                double err = Es[j] - val;
-                //double err = val;
-                //double d =  Gs[i ];
-                //printf( "[%i,%i,%i] %g %g %g \n", ix,iy,iz, d, val, Es[i] );
-                if(Ws){ err*=Ws[j]; }
-                err2sum += err*err;
-                ps[j] = err;
-                Ws[j] = err;
-
-                // if(itr==0){
-                //     printf( "Gs[%i,%i,%i] G %g E %g p %g \n",    ix,iy,iz,    Gs[i], Es[i], ps[i] );
-                // }
-            }
-        }
-    }
-
-    // --- distribute variational derivatives of approximation error
-    for(int iz=0; iz<ns.z; iz++){
-        int iiz = iz*nxy;
-        for(int iy=0; iy<ns.y; iy++){
-            int iiy = iy*ns.x;
-            for(int ix=0; ix<ns.x; ix++){
-                double val=0; 
-                int i  = ix + iiy + iiz;
-                const int j = i;
-                int i0 = i-ns.x;
-                int i1 = i+ns.x;
-
-
-                if(  
-                    (ix>0)&&(ix<(ns.x-1)) &&
-                    (iy>0)&&(iy<(ns.y-1)) &&
-                    (iz>0)&&(iz<(ns.z-1))           
-                ) [[likely]] {
-
-                val += 
-                    + ps[i0-1]*B011 + ps[i0]*B001 + ps[i0+1]*B011
-                    + ps[i -1]*B001 + ps[i ]*B000 + ps[i +1]*B001
-                    + ps[i1-1]*B011 + ps[i1]*B001 + ps[i1+1]*B011;
-
-                i   -= nxy;    i0 = i-ns.x;  i1 = i+ns.x;
-                val +=    
-                    + ps[i0-1]*B111 + ps[i0]*B011 + ps[i0+1]*B111
-                    + ps[i -1]*B011 + ps[i ]*B001 + ps[i +1]*B011
-                    + ps[i1-1]*B111 + ps[i1]*B011 + ps[i1+1]*B111; 
-                i   += 2*nxy;  i0 = i-ns.x;  i1 = i+ns.x;
-                val +=
-                    + ps[i0-1]*B111 + ps[i0]*B011 + ps[i0+1]*B111
-                    + ps[i -1]*B011 + ps[i ]*B001 + ps[i +1]*B011
-                    + ps[i1-1]*B111 + ps[i1]*B011 + ps[i1+1]*B111; 
-
-                //val = ps[i];
-                //printf( "[%i,%i,%i] %g \n", ix,iy,iz, val );
-                fs[j] = val;
-                // if(itr==0){
-                //     printf( "Gs[%i,%i,%i] G %g p %g f %g\n", ix,iy,iz,  Gs[i], ps[i], fs[i]   );
-                // }
-
-                }else{
-                    fs[j] = 0;
-                    Gs[j] = 0;
-                }
-
-            }
-        }
-    }
-    return err2sum;
-}
 
 __attribute__((pure)) 
 __attribute__((hot)) 
@@ -884,9 +712,6 @@ inline double assemleBound2D( const double B00, const double B01, const double B
 __attribute__((pure)) 
 __attribute__((hot)) 
 inline double assemleBound2D_pbc( const double B00, const double B01, const double B11, const double* Gs, int i, int ibx, int idx, int iby, int idy ){
-    //int idx,ibx;
-    //if(ix<=0     ){ idx+=nx-1;  }else{ idx-=nx; }
-    //if(ix>=(nx-1)){ ibx-=-1+nx; }else{ ibx-=nx; }
     return   Gs[i+ibx+iby]*B11 + Gs[i+iby]*B01 + Gs[i+idx+iby]*B11
            + Gs[i+ibx    ]*B01 + Gs[i    ]*B00 + Gs[i+idx    ]*B01
            + Gs[i+ibx+idy]*B11 + Gs[i+idy]*B01 + Gs[i+idx+idy]*B11;
@@ -894,7 +719,7 @@ inline double assemleBound2D_pbc( const double B00, const double B01, const doub
 
 
 __attribute__((hot)) 
-double getVariations2D_mod( const Vec2i ns, double* Gs,  const double* Es, double* Ws, double* fs, double* ps ){
+double getVariations2D( const Vec2i ns, double* Gs,  const double* Es, double* Ws, double* fs, double* ps ){
     constexpr double B0=2.0/3.0;
     constexpr double B1=1.0/6.0;
     constexpr double B00=B0*B0;
@@ -987,70 +812,6 @@ double getVariations2D_pbc( const Vec2i ns, double* Gs,  const double* Es, doubl
             fs[i] = f;
         }
     }
-    return err2sum;
-}
-
-__attribute__((hot)) 
-double getVariations3D_mod( const Vec3i ns, const double* Gs, const double* Es, const double* Ws, double* fs, double* ps ){
-    constexpr double B0=2.0/3.0;
-    constexpr double B1=1.0/6.0;
-    constexpr double B000=B0*B0*B0;
-    constexpr double B001=B0*B0*B1;
-    constexpr double B011=B0*B1*B1;
-    constexpr double B111=B1*B1*B1;
-    double sum_B = B000 + B001*6 + B011*12 + B111*8;
-    //printf( "getVariations3D_mod() sum_B %g \n", sum_B );
-    const int nxy  = ns.x*ns.y;
-    const int nxyz = nxy*ns.z;
-    // --- evaluate current spline
-    //for(int i=0; i<nxyz; i++){ fs[i]=0; ps[i]=0;  }
-    double err2sum = 0;
-    // --- evaluate current spline (in order to evelauet approximation error)
-    for(int iz=0; iz<ns.z; iz++){
-        const int  iiz  = iz*nxy;
-        const bool zlo  = iz > 0;
-        const bool zhi  = iz < ns.z-1;
-        for(int iy=0; iy<ns.y; iy++){
-            const int  iiy = iy*ns.x;
-            const int  iyz = iiz+iiy;
-            const bool ylo = iy > 0;
-            const bool yhi = iy < ns.y-1;
-            for(int ix=0; ix<ns.x; ix++){
-                double  val  = assemleBound2D( B000,B001,B011, Gs+iyz    , ix, ns.x, ylo, yhi ); 
-                if(zlo) val += assemleBound2D( B001,B011,B111, Gs+iyz-nxy, ix, ns.x, ylo, yhi ); 
-                if(zhi) val += assemleBound2D( B001,B011,B111, Gs+iyz+nxy, ix, ns.x, ylo, yhi );     
-                const int i = ix + iyz;
-                double err = Es[i] - val;
-                //if((ix==6)&&(iy==10)&&(iz==10)){  printf("getVariations3D_mod()[%i,%i,%i] E=%g val=%g err=%g \n", ix,iy,iz, Es[i], val, err ); }
-                //Ws[i] = err;
-                if(Ws){ err*=Ws[i]; }
-                err2sum += err*err;
-                ps[i]    = err;
-                //Ws[i] = err;
-            }
-        }
-    }
-    // --- distribute variational derivatives of approximation error
-    for(int iz=0; iz<ns.z; iz++){
-        const int  iiz  = iz*nxy;
-        const bool zlo  = iz > 0;
-        const bool zhi  = iz < ns.z-1;
-        for(int iy=0; iy<ns.y; iy++){
-            const int iiy  = iy*ns.x;
-            const int iyz  = iiz+iiy;
-            const bool ylo = iy > 0;
-            const bool yhi = iy < ns.y-1;
-            for(int ix=0; ix<ns.x; ix++){
-                double  val  = assemleBound2D( B000,B001,B011, ps+iyz    , ix, ns.x, ylo, yhi ); 
-                if(zlo) val += assemleBound2D( B001,B011,B111, ps+iyz-nxy, ix, ns.x, ylo, yhi ); 
-                if(zhi) val += assemleBound2D( B001,B011,B111, ps+iyz+nxy, ix, ns.x, ylo, yhi );     
-                const int i = ix + iyz;
-                //val*=-1;
-                fs[i] = val;
-            }
-        }
-    }
-    //printf("getVariations3D_mod() err %g ns(%i,%i,%i) \n", err2sum, ns.x, ns.y, ns.z );
     return err2sum;
 }
 
@@ -1208,7 +969,7 @@ void force_iz_pbc( int iz, const Vec3i ns, const double* ps, double* fs ){
 }
 
 __attribute__((hot)) 
-double getVariations3D_mod2( const Vec3i ns, const double* Gs, const double* Es, double* Ws, double* fs, double* ps, bool bPBC ){
+double getVariations3D( const Vec3i ns, const double* Gs, const double* Es, double* Ws, double* fs, double* ps, bool bPBC ){
     constexpr double B0=2.0/3.0;
     constexpr double B1=1.0/6.0;
     constexpr double B000=B0*B0*B0;
@@ -1237,35 +998,6 @@ double getVariations3D_mod2( const Vec3i ns, const double* Gs, const double* Es,
     return err2sum;
 }
 
-
-__attribute__((hot)) 
-double getVariations3D_omp( const Vec3i ns, const double* Gs, const double* Es, const double* Ws, double* fs, double* ps ){
-    constexpr double B0=2.0/3.0;
-    constexpr double B1=1.0/6.0;
-    constexpr double B000=B0*B0*B0;
-    constexpr double B001=B0*B0*B1;
-    constexpr double B011=B0*B1*B1;
-    constexpr double B111=B1*B1*B1;
-    double sum_B = B000 + B001*6 + B011*12 + B111*8;
-    //printf( "getVariations3D_mod() sum_B %g \n", sum_B );
-    const int nxy  = ns.x*ns.y;
-    const int nxyz = nxy*ns.z;
-    // --- evaluate current spline
-    //for(int i=0; i<nxyz; i++){ fs[i]=0; ps[i]=0;  }
-    double err2sum = 0;
-    #pragma omp parallel shared(err2sum)
-    {
-        // --- evaluate current spline (in order to evelauet approximation error)
-        #pragma omp for reduction(+:err2sum)
-        for(int iz=0; iz<ns.z; iz++){ err2sum += error_iz( iz, ns, Gs, Es, Ws, ps ); }
-        // --- distribute variational derivatives of approximation error
-        #pragma omp for
-        for(int iz=0; iz<ns.z; iz++){  force_iz( iz, ns, ps, fs ); }
-    }
-    return err2sum;
-}
-
-
 __attribute__((hot)) 
 int fit2D( const Vec2i ns, double* Gs, const double* Es, double* Ws, double Ftol, int nmaxiter=100, double dt=0.1, bool bPBC=false ){
     //if(verbosity>1)
@@ -1282,9 +1014,8 @@ int fit2D( const Vec2i ns, double* Gs, const double* Es, double* Ws, double Ftol
     for(int i=0; i<nxy; i++){ vs[i]=0; };
     for(itr=0; itr<nmaxiter; itr++){
         //for(int i=0; i<nxy; i++){ fs[i]=0; };  // Not necessary - force is cleared inside getVariations2D
-        //err = getVariations2D( ns, Gs, Es, Ws, fs, ps );
         if(bPBC){ err = getVariations2D_pbc( ns, Gs, Es, Ws, fs, ps ); }
-        else    { err = getVariations2D_mod( ns, Gs, Es, Ws, fs, ps ); }
+        else    { err = getVariations2D    ( ns, Gs, Es, Ws, fs, ps ); }
         cfv = move(dt,nxy,Gs,fs,vs);
         if(verbosity>2)printf( "|F[%i]|=%g cos(f,v)=%g Error=%g \n",itr,sqrt(cfv.y), cfv.x/sqrt(cfv.y*cfv.z), sqrt(err) );
         if(cfv.y<F2max){ break; };
@@ -1316,9 +1047,7 @@ int fit3D( const Vec3i ns, double* Gs, const double* Es, double* Ws, double Ftol
     //dt = 0.3;
     for(itr=0; itr<nmaxiter; itr++){
         //for(int i=0; i<nxyz; i++){ fs[i]=0; };
-        //err = getVariations3D( ns, Gs, Es, Ws, fs, ps );
-        //err = getVariations3D_mod( ns, Gs, Es, Ws, fs, ps );
-        err = getVariations3D_mod2( ns, Gs, Es, Ws, fs, ps, bPBC );
+        err = getVariations3D( ns, Gs, Es, Ws, fs, ps, bPBC );
         //err = getVariations3D_omp( ns, Gs, Es, Ws, fs, ps );
         cfv = move(dt,nxyz,Gs,fs,vs);
         //cfv = move_GD( dt, nxyz, Gs, fs );
@@ -1423,48 +1152,6 @@ int fit3D_omp( const Vec3i ns, double* Gs, const double* Es, double* Ws, double 
     delete [] vs;
     return niterdone;
 }
-
-
-__attribute__((hot)) 
-int fit3D_CG( const Vec3i ns, double* Gs,  double* Es, double* Ws, double Ftol, int nmaxiter=100, double dt=0.1 ){
-    printf( "Bspline::fit3D() ns(%i,%i,%i) \n", ns.x,ns.y,ns.z  );
-    const double F2max = Ftol*Ftol;
-    const int nxy  = ns.x*ns.y;
-    const int nxyz = ns.x*ns.y*ns.z;
-    double* ps = new double[nxyz];
-    double* fs = new double[nxyz];
-    double* vs = new double[nxyz];
-    int itr=0;
-    //while(false){
-    for(itr=0; itr<nmaxiter; itr++){
-        getVariations3D( ns, Gs, Es, Ws, fs, ps );
-        // --- move
-        double vf = 0.0;
-        double ff = 0.0;
-        for(int i=0; i<nxyz; i++){
-            ff += fs[i]*fs[i];
-            vf += vs[i]*fs[i];
-        }
-        printf( "|F[%i]|=%g  <v|f>=%g \n",itr,  sqrt(ff), vf );
-        //printf( "p=%i v=%g f=%g \n",  Gs[1], vs[1], fs[1] );
-        if(ff<F2max){ break; }
-        if(vf<0){ 
-            //printf( "<v|f>[%i]=%g < 0  => v=0 \n", itr, vf );
-            for(int i=0; i<nxyz; i++){ vs[i]=0; }; 
-        }
-        for(int i=0; i<nxyz; i++){
-            vs[i] += fs[i]*dt;
-            Gs[i] += vs[i]*dt;
-            //Gs[i] += fs[i]*dt;  // GD
-        }
-        
-    }
-    delete [] ps;
-    delete [] fs;
-    delete [] vs;
-    return itr;
-}
-
 
 } // namespace SplineBcub{
 
