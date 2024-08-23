@@ -19,11 +19,8 @@ inline bool checkIndexRange( int imin, int imax, const char* name, int i, bool b
 inline bool checkIndexRange2( int imin, int imax, const char* name1, int i1, const char* name2, int i2, bool bExit=true, bool bPrint=true ){ 
     int i=i1+i2;
     if( (i<imin) || (i>imax) ){ 
-        DEBUG
         if(bPrint)printf( "ERROR: i(%i)=%s(%i)+%s(%i) out of range(%i,%i)\n", i, name1, i1, name2, i2, imin, imax ); 
-        DEBUG
         if(bExit )exit(0); 
-        DEBUG
         return true; 
     }
     return false;
@@ -288,6 +285,12 @@ Quat4d fe3d( const Vec3d u, const Vec3i n, const double* Es ){
     //return Quat4d{0.0,0.0,0.0,Es[i0]};
 } 
 
+// static const Quat4i cubic_qis[4] = {
+//     {0,1  ,2  ,3  },
+//     {0,1  ,2  ,3-n},
+//     {0,1  ,2-n,3-n},
+//     {0,1-n,2-n,3-n}
+// }; 
 
 void make_inds_pbc( const int n, Quat4i* iqs ){
     iqs[0]={0,1  ,2  ,3  };
@@ -343,16 +346,20 @@ Vec3d fe2d_pbc_comb3( const Vec2d u, const Vec2i n, const Vec3d* Es, const Vec3d
 
 __attribute__((pure))
 __attribute__((hot)) 
-Quat4d fe3d_pbc_comb3( const Vec3d u, const Vec3i n, const Vec3d* Es, const Vec3d PLQ, const Quat4i* yqs, const Quat4i* xqs ){
+Quat4d fe3d_pbc_comb3( const Vec3d u, const Vec3i n, const Vec3d* Es, const Vec3d PLQ, const Quat4i* xqis, const Quat4i* yqis ){
     // We assume there are boundary added to simplify the index calculations
 	int          ix = (int)u.x  ,  iy = (int)u.y  ,  iz = (int)u.z  ;
     const double tx = u.x - ix  ,  ty = u.y - iy  ,  tz = u.z - iz  ;
+    // ---- boundary conditions
     if(  ((iz<1)||(iz>=n.z-2))  )[[unlikely]]{  return Quat4dZero; }
 
-    ix=modulo(ix-1,n.x);
-    iy=modulo(iy-1,n.y);
-    const Quat4i qy = choose_inds_pbc( iy, n.y, yqs );
-    const Quat4i qx = choose_inds_pbc( ix, n.x, xqs );
+    //ix=modulo(ix-1,n.x); const Quat4i qx = choose_inds_pbc( ix, n.x, xqis );
+    //iy=modulo(iy-1,n.y); const Quat4i qy = choose_inds_pbc( iy, n.y, yqis );
+    //ix=modulo(ix-1,n.x); const Quat4i qx = choose_inds_pbc( ix, n.x, xqis );
+    //iy=modulo(iy-1,n.y); const Quat4i qy = choose_inds_pbc( iy, n.y, yqis );
+
+    ix=modulo(ix,n.x); const Quat4i qx = choose_inds_pbc( ix, n.x, xqis );
+    iy=modulo(iy,n.y); const Quat4i qy = choose_inds_pbc( iy, n.y, yqis );
 
     //const int nxy = n.x*n.y;
     const int nyz = n.z*n.y;
@@ -360,12 +367,13 @@ Quat4d fe3d_pbc_comb3( const Vec3d u, const Vec3i n, const Vec3d* Es, const Vec3
     //printf( "ixyz(%i,%i,%i)  (%g,%g,%g)\n", ix,iy,iz,  u.x,u.y,u.z );
     // inline Vec3d fe2d_comb3( int nz, const Vec3d* E, Quat4i di, const Vec3d& C, const Quat4d& pz, const Quat4d& dz, const Quat4d& by, const Quat4d& dy ){
 
+    
     const Quat4d bz =  basis( tz );
     const Quat4d dz = dbasis( tz );
     const Quat4d by =  basis( ty );
     const Quat4d dy = dbasis( ty );
 
-    int i0 = (iz-1) + n.z*( iy + n.y*ix );  
+    int i0 = (iz-1) + n.z*( iy + n.y*ix);  
     const Vec3d E1 = fe2d_comb3( n.z, Es+(i0+nyz*qx.x ), qy, PLQ, bz, dz, by, dy );
     const Vec3d E2 = fe2d_comb3( n.z, Es+(i0+nyz*qx.y ), qy, PLQ, bz, dz, by, dy );
     const Vec3d E3 = fe2d_comb3( n.z, Es+(i0+nyz*qx.z ), qy, PLQ, bz, dz, by, dy );;
@@ -379,6 +387,21 @@ Quat4d fe3d_pbc_comb3( const Vec3d u, const Vec3i n, const Vec3d* Es, const Vec3
         dx.dot( {E1.z, E2.z, E3.z, E4.z} ), // Fz
         bx.dot( {E1.z, E2.z, E3.z, E4.z} ), // E
     };
+    
+
+    // int i0 = (iz-1) + n.z*( iy + n.y*ix); 
+    // const Quat4d bz =  basis( tz );
+    // const Quat4d dz = dbasis( tz );
+    // Vec2d fe00 = fe1Dcomb3( Es+i0 + qy.x*n.z + qx.x*nyz, PLQ, bz, dz );
+    // Vec2d fe01 = fe1Dcomb3( Es+i0 + qy.y*n.z + qx.y*nyz, PLQ, bz, dz );
+    // Vec2d fe10 = fe1Dcomb3( Es+i0 + qy.x*n.z + qx.y*nyz, PLQ, bz, dz );
+    // Vec2d fe11 = fe1Dcomb3( Es+i0 + qy.y*n.z + qx.y*nyz, PLQ, bz, dz );
+    // return Quat4d{
+    //     0.0,0.0,0.0,
+    //     //fe00.x,
+    //     (1-tx)*( (1-ty)*fe00.x + ty*fe01.x ) + tx*( (1-ty)*fe10.x + ty*fe11.x ) ,
+    // };
+
     //return Quat4d{0.0,0.0,0.0,Es[i0]};
 } 
 
