@@ -275,7 +275,6 @@ def test_comb3_2D( g0=(-2.0,-2.0), gmax=(0.0,0.0), dg=(0.1,0.1), dsamp=(0.05,0.0
     plt.legend()
     print( "test_comb3_2D DONE" )
 
-
 def test_fit_2D_debug( g0=(-2.0,-2.0), gmax=(2.0,2.0), dg=(0.2,0.2), title=None, bPBC=True ):
     cmap="bwr"
     Xs,Ys   = fu.make2Dsampling(  g0=g0, gmax=gmax, dg=dg )
@@ -319,7 +318,7 @@ def test_fit_3D_debug( g0=(-2.0,-2.0,-2.0), gmax=(2.0,2.0,2.0), dg=(0.2,0.2,0.2)
     if title is not None: plt.suptitle(title)
 
 
-def test_fit_3D( g0=(-5.0,-5.0,2.0), gmax=(5.0,5.0,6.0), dg=(0.1,0.1,0.1), dsamp=(0.05,0.05,0.05) ):
+def test_fit_3D( g0=(-2.0,-2.0,-2.0), gmax=(2.0,2.0,2.0), dg=(0.2,0.2,0.2), dsamp=(0.05,0.05,0.05), bPBC=True  ):
     cmap="bwr"
     Xs,Ys,Zs    = fu.make3Dsampling(  g0=g0, gmax=gmax, dg=dg )
     Xs_,Ys_,Zs_ = fu.make3Dsampling(  g0=g0, gmax=gmax, dg=dsamp )
@@ -331,10 +330,10 @@ def test_fit_3D( g0=(-5.0,-5.0,2.0), gmax=(5.0,5.0,6.0), dg=(0.1,0.1,0.1), dsamp
     #ps, sh_samp = make2Dsampling_ps(  g0=g0, gmax=gmax, dg=dsamp )
     print( "Xs.shape ", Xs.shape )
     #E, Fx,Fy,Fz = getLJ_atoms( apos, REs, Xs,Ys,Xs*0.0 )
-    # E,  Fx,Fy,Fz        = fu.getCos3D( Xs,  Ys , Zs  )
-    # E_r, Fx_r,Fy_r,Fz_r = fu.getCos3D( Xs_, Ys_, Zs_ )
+    E,  Fx,Fy,Fz        = fu.getCos3D( Xs,  Ys , Zs  )
+    #E_r, Fx_r,Fy_r,Fz_r = fu.getCos3D( Xs_, Ys_, Zs_ )
 
-    E,  Fx,Fy,Fz        = fu.getGauss3D( Xs,  Ys , Zs-4.0, w=0.5  )
+    #E,  Fx,Fy,Fz        = fu.getGauss3D( Xs,  Ys , Zs-4.0, w=0.5  )
     # E_r, Fx_r,Fy_r,Fz_r = fu.getCos3D( Xs_, Ys_, Zs_ )
 
     #Emin =  E_r.min()
@@ -345,7 +344,7 @@ def test_fit_3D( g0=(-5.0,-5.0,2.0), gmax=(5.0,5.0,6.0), dg=(0.1,0.1,0.1), dsamp
     #E[iz0,iy0,ix0]=1.0
 
     #Gs = mmff.fit3D_Bspline( E, dt=0.1, nmaxiter=100, Ftol=1e-6,  bOMP=False )
-    Gs = mmff.fit3D_Bspline( E, dt=0.1, nmaxiter=1000, Ftol=1e-6, bOMP=True )
+    Gs = mmff.fit3D_Bspline( E, dt=0.1, nmaxiter=1000, Ftol=1e-6, bOMP=True, bPBC=bPBC )
 
     #Bspline_Pauli = mmff.getArrayPointer( "Bspline_Pauli" ); print( "Bspline_Pauli ", Bspline_Pauli.shape, Bspline_Pauli[0,0,:] )
 
@@ -384,6 +383,99 @@ def test_fit_3D( g0=(-5.0,-5.0,2.0), gmax=(5.0,5.0,6.0), dg=(0.1,0.1,0.1), dsamp
     # plt.subplot(2,3,6); plt.imshow( dE,         origin="lower", extent=extent, vmin=dEmin, vmax=-dEmin, cmap=cmap ) ;plt.colorbar(); plt.title("E(fit-ref)")
     # plt.axis('equal')
 
+
+
+
+def test_comb3_3D(g0=(-2.0,-2.0,-2.0), gmax=(2.0,2.0,2.5), dg=(0.1,0.1,0.1), dsamp=(0.05,0.05,0.05), title=None, scErr=1000.0, bPBC=True, Ccomb=[1.0,0.0,0.0], bFit=True, iax=2, Gs=None ):
+    print("test_comb3_3D START")
+    cmap = "bwr"
+    
+    x0=0.0; y0=0.0; z0=0.0;
+    ts = np.arange( g0[iax], gmax[iax], dsamp[iax])
+    ps = np.zeros( (len(ts), 3,) )
+    
+    ps[:,0] = x0
+    ps[:,1] = y0
+    ps[:,2] = z0
+    ps[:,iax] = ts
+
+    E1_, Fx, Fy, Fz = fu.getCos3D( ps[:,0],   ps[:,1],   ps[:,2] )
+    E2_, Fx, Fy, Fz = fu.getCos3D( ps[:,0]*2, ps[:,1],   ps[:,2] )
+    E3_, Fx, Fy, Fz = fu.getCos3D( ps[:,0],   ps[:,1]*2, ps[:,2] )
+
+    E_r =  E1_ * Ccomb[0] + E2_ * Ccomb[1] + E3_ * Ccomb[2]   
+
+    if Gs is None:
+        # Create 3D sampling grids
+        Xs, Ys, Zs = fu.make3Dsampling(g0=g0, gmax=gmax, dg=dg)
+        tgs = np.arange( g0[iax], gmax[iax], dg[iax])
+        # Generate 3D cosine functions
+        E1, Fx, Fy, Fz  = fu.getCos3D(Xs, Ys, Zs)
+        E2, Fx, Fy, Fz  = fu.getCos3D(Xs * 2, Ys, Zs)
+        E3, Fx, Fy, Fz  = fu.getCos3D(Xs, Ys * 2, Zs)
+
+        # Initialize Gs tensor for 3D case
+        Gs = np.zeros(E1.shape + (3,))
+
+        if bFit:
+            G1 = mmff.fit3D_Bspline(E1, dt=0.4, nmaxiter=1000, Ftol=1e-10, bPBC=bPBC)
+            G2 = mmff.fit3D_Bspline(E2, dt=0.4, nmaxiter=1000, Ftol=1e-10, bPBC=bPBC)
+            G3 = mmff.fit3D_Bspline(E3, dt=0.4, nmaxiter=1000, Ftol=1e-10, bPBC=bPBC)
+            Gs[:,:,:,0] = G1
+            Gs[:,:,:,1] = G2
+            Gs[:,:,:,2] = G3
+        else:
+            Gs[:,:,:,0] = E1
+            Gs[:,:,:,1] = E2
+            Gs[:,:,:,2] = E3
+
+        #print( "Gs.shape BEFOR ", Gs.shape )
+        #Gs = Gs.transpose( (2,1,0,3) ).copy()
+        #print( "Gs.shape AFTER ", Gs.shape )
+
+        #dpx = 0.05
+
+    ix0 = Gs.shape[0]//2
+    iy0 = Gs.shape[1]//2
+    iz0 = Gs.shape[2]//2
+    print( "ix0,iy0,iax Gs.shape", ix0,iy0,iz0,iax, Gs.shape )
+    
+    plt.figure(figsize=(5,5))
+    # plt.subplot(2,1,1)
+    # plt.plot( Gs[:,iy0,iz0,0], '.-', label="G(x)")
+    # plt.plot( Gs[ix0,:,iy0,0], '.-', label="G(y)")
+    # plt.plot( Gs[ix0,iy0,:,0], '.-', label="G(z)")
+
+    #dpy = 0.15
+    #dpxs = [0.0,0.05,0.1,0.15]
+    # dpxs = [0.0]
+    # plt.subplot(2,1,2)
+    # for dpx in dpxs:
+    #dpx = -0.1
+    ps_ = ps.copy()
+    #ps_[:,0] += dpx
+    #ps_[:,1] += dpx
+    #ps_[:,2] -= 0.1
+    E_f = mmff.sample_Bspline3D_comb3(ps_, Gs, g0, dg, Cs=Ccomb)
+    plt.plot( ts,  E_f[:,3] , '-', lw=0.5, label=("E_fit(z)" ))
+    #plt.plot( ts,  E_f[:,3] , '-', lw=0.5, label=("E_fit(z) dpx=%g" %dpx))
+    #plt.plot( ts, Err*scErr, 'r-', lw=1.0, label=("Err(z)*%g" % scErr))
+    
+    plt.plot( ts,  E_r      , 'k:', lw=1.0, label=("E_ref(z)" )    )
+    Emin = E_r.min()*1.2
+    plt.ylim(Emin,-Emin)
+    plt.grid()
+    plt.legend()
+
+    if title is not None: plt.title(title)
+    plt.savefig( "test_comb3_3D_iax_%i.png" %iax, bbox_inches='tight' )
+    print("test_comb3_3D DONE")
+
+    return Gs
+
+
+
+
 #mmff.setVerbosity( 2 )
 mmff.setVerbosity( 3 )
 
@@ -400,7 +492,13 @@ mmff.setVerbosity( 3 )
 #test_fit_2D_debug( title="2D fit run debug" )
 #test_fit_3D_debug( title="3D fit run debug" )
 
-test_comb3_2D()
+#test_comb3_2D()
+
+Gs = test_comb3_3D(   iax=0, title="x-cut" );
+test_comb3_3D( Gs=Gs, iax=1, title="y-cut" );
+test_comb3_3D( Gs=Gs, iax=2, title="z-cut" );
+#test_comb3_3D( iax=1 );
+#test_comb3_3D( iax=2 );
 
 #test_fit_3D(  )
 

@@ -344,6 +344,21 @@ def sample_Bspline2D_comb3( ps, Gs, g0, dg, fes=None, Cs=[1.0,1.0]  ):
     return  fes
 
 
+#void sample_Bspline3D_comb3( double* g0, double* dg, int* ng, double* G, int n, double* ps, double* fes, double* Cs ){
+lib.sample_Bspline3D_comb3.argtypes  = [c_double_p, c_double_p, c_int_p, c_double_p,                c_int, c_double_p, c_double_p, c_double_p ]
+lib.sample_Bspline3D_comb3.restype   =  None
+def sample_Bspline3D_comb3( ps, Gs, g0, dg, fes=None, Cs=[1.0,1.0,1.0] ):
+    n  = len(ps)
+    g0 = np.array(g0)
+    dg = np.array(dg)
+    #ng = np.array( Gs.shape[:3][::-1], np.int32 )
+    ng = np.array( Gs.shape[:3], np.int32 )
+    Cs = np.array( Cs )
+    if fes is None: fes=np.zeros((n,4))
+    lib.sample_Bspline3D_comb3( _np_as(g0,c_double_p), _np_as(dg,c_double_p), _np_as(ng,c_int_p), _np_as(Gs,c_double_p), n, _np_as(ps,c_double_p), _np_as(fes,c_double_p), _np_as(Cs,c_double_p) )
+    return fes
+
+
 #void sample_Bspline3D            ( double* g0, double* dg, int* ng, double* G,               int n, double* ps, double* fes ){
 #void sample_SplineHermite3D_deriv( double* g0, double* dg, int* ng, double* Eg, double* dEg, int n, double* ps, double* fes ){
 lib.sample_Bspline3D.argtypes  = [c_double_p, c_double_p, c_int_p, c_double_p,                c_int, c_double_p, c_double_p]

@@ -187,6 +187,12 @@ void sample_Bspline2D_comb3( double* g0, double* dg, int* ng, double* G, int n, 
     //double t = (getCPUticks()-t0); printf( "sample_Bspline2D(n=%i) time=%g[kTick] %g[tick/point]\n", n, t*(1.e-3), t/n );
 }
 
+void sample_Bspline3D_comb3( double* g0, double* dg, int* ng, double* G, int n, double* ps, double* fes, double* Cs ){
+    //long t0 = getCPUticks();
+    Bspline::sample3D_comb3( *(Vec3d*)g0, *(Vec3d*) dg, *(Vec3i*)ng, (Vec3d*)G, n, (Vec3d*)ps, (Quat4d*)fes, *(Vec3d*)Cs );    // sample3D(n=10000) time=2490.29[kTick] 249.029[tick/point]
+    //double t = (getCPUticks()-t0); printf( "sample_Bspline2D(n=%i) time=%g[kTick] %g[tick/point]\n", n, t*(1.e-3), t/n );
+}
+
 void sample_Bspline3D( double* g0, double* dg, int* ng, double* G, int n, double* ps, double* fes ){
     long t0 = getCPUticks();
     Bspline::sample3D( *(Vec3d*)g0, *(Vec3d*) dg, *(Vec3i*)ng, G, n, (Vec3d*)ps, (Quat4d*)fes );    // sample3D(n=10000) time=2490.29[kTick] 249.029[tick/point]
