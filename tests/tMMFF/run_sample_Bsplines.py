@@ -391,7 +391,7 @@ def test_comb3_3D(g0=(-2.0,-2.0,-2.0), gmax=(2.0,2.0,2.5), dg=(0.1,0.1,0.1), dsa
     cmap = "bwr"
     
     x0=0.0; y0=0.0; z0=0.0;
-    ts = np.arange( g0[iax], gmax[iax], dsamp[iax])
+    ts = np.arange( g0[iax]-1.0, gmax[iax]*2.0, dsamp[iax])
     ps = np.zeros( (len(ts), 3,) )
     
     ps[:,0] = x0
@@ -399,11 +399,19 @@ def test_comb3_3D(g0=(-2.0,-2.0,-2.0), gmax=(2.0,2.0,2.5), dg=(0.1,0.1,0.1), dsa
     ps[:,2] = z0
     ps[:,iax] = ts
 
-    E1_, Fx, Fy, Fz = fu.getCos3D( ps[:,0],   ps[:,1],   ps[:,2] )
-    E2_, Fx, Fy, Fz = fu.getCos3D( ps[:,0]*2, ps[:,1],   ps[:,2] )
-    E3_, Fx, Fy, Fz = fu.getCos3D( ps[:,0],   ps[:,1]*2, ps[:,2] )
+    E1_, Fx1, Fy1, Fz1 = fu.getCos3D( ps[:,0],   ps[:,1],   ps[:,2] )
+    E2_, Fx2, Fy2, Fz2 = fu.getCos3D( ps[:,0]*2, ps[:,1],   ps[:,2] )
+    E3_, Fx3, Fy3, Fz3 = fu.getCos3D( ps[:,0],   ps[:,1]*2, ps[:,2] )
 
     E_r =  E1_ * Ccomb[0] + E2_ * Ccomb[1] + E3_ * Ccomb[2]   
+
+    if  iax == 0:
+        F_r =   Fx1 * Ccomb[0] + Fx2 * Ccomb[1] + Fx3 * Ccomb[2]
+    elif iax == 1:
+        F_r =  Fy1 * Ccomb[0] + Fy2 * Ccomb[1] + Fy3 * Ccomb[2]
+    elif iax == 2:
+        F_r =  Fz1 * Ccomb[0] + Fz2 * Ccomb[1] + Fz3 * Ccomb[2]
+
 
     if Gs is None:
         # Create 3D sampling grids
@@ -418,12 +426,12 @@ def test_comb3_3D(g0=(-2.0,-2.0,-2.0), gmax=(2.0,2.0,2.5), dg=(0.1,0.1,0.1), dsa
         Gs = np.zeros(E1.shape + (3,))
 
         if bFit:
-            G1 = mmff.fit3D_Bspline(E1, dt=0.4, nmaxiter=1000, Ftol=1e-10, bPBC=bPBC)
-            G2 = mmff.fit3D_Bspline(E2, dt=0.4, nmaxiter=1000, Ftol=1e-10, bPBC=bPBC)
-            G3 = mmff.fit3D_Bspline(E3, dt=0.4, nmaxiter=1000, Ftol=1e-10, bPBC=bPBC)
-            Gs[:,:,:,0] = G1
-            Gs[:,:,:,1] = G2
-            Gs[:,:,:,2] = G3
+            G1 = mmff.fit3D_Bspline(E1.transpose( (2,1,0) ).copy(), dt=0.4, nmaxiter=1000, Ftol=1e-10, bPBC=bPBC)
+            G2 = mmff.fit3D_Bspline(E2.transpose( (2,1,0) ).copy(), dt=0.4, nmaxiter=1000, Ftol=1e-10, bPBC=bPBC)
+            G3 = mmff.fit3D_Bspline(E3.transpose( (2,1,0) ).copy(), dt=0.4, nmaxiter=1000, Ftol=1e-10, bPBC=bPBC)
+            Gs[:,:,:,0] = G1.transpose( (2,1,0) )
+            Gs[:,:,:,1] = G2.transpose( (2,1,0) )
+            Gs[:,:,:,2] = G3.transpose( (2,1,0) )
         else:
             Gs[:,:,:,0] = E1
             Gs[:,:,:,1] = E2
@@ -433,6 +441,9 @@ def test_comb3_3D(g0=(-2.0,-2.0,-2.0), gmax=(2.0,2.0,2.5), dg=(0.1,0.1,0.1), dsa
         #Gs = Gs.transpose( (2,1,0,3) ).copy()
         #print( "Gs.shape AFTER ", Gs.shape )
 
+        plt.figure()
+        plt.imshow(Gs[:,:,Gs.shape[2]//2,0], origin="lower", extent=(g0[0],gmax[0],g0[1],gmax[1]))
+
         #dpx = 0.05
 
     ix0 = Gs.shape[0]//2
@@ -440,32 +451,35 @@ def test_comb3_3D(g0=(-2.0,-2.0,-2.0), gmax=(2.0,2.0,2.5), dg=(0.1,0.1,0.1), dsa
     iz0 = Gs.shape[2]//2
     print( "ix0,iy0,iax Gs.shape", ix0,iy0,iz0,iax, Gs.shape )
     
-    plt.figure(figsize=(5,5))
+    plt.figure(figsize=(5,10))
     # plt.subplot(2,1,1)
     # plt.plot( Gs[:,iy0,iz0,0], '.-', label="G(x)")
     # plt.plot( Gs[ix0,:,iy0,0], '.-', label="G(y)")
     # plt.plot( Gs[ix0,iy0,:,0], '.-', label="G(z)")
 
-    #dpy = 0.15
-    #dpxs = [0.0,0.05,0.1,0.15]
-    # dpxs = [0.0]
-    # plt.subplot(2,1,2)
-    # for dpx in dpxs:
-    #dpx = -0.1
-    ps_ = ps.copy()
-    #ps_[:,0] += dpx
-    #ps_[:,1] += dpx
-    #ps_[:,2] -= 0.1
-    E_f = mmff.sample_Bspline3D_comb3(ps_, Gs, g0, dg, Cs=Ccomb)
-    plt.plot( ts,  E_f[:,3] , '-', lw=0.5, label=("E_fit(z)" ))
-    #plt.plot( ts,  E_f[:,3] , '-', lw=0.5, label=("E_fit(z) dpx=%g" %dpx))
-    #plt.plot( ts, Err*scErr, 'r-', lw=1.0, label=("Err(z)*%g" % scErr))
-    
-    plt.plot( ts,  E_r      , 'k:', lw=1.0, label=("E_ref(z)" )    )
+    E_f = mmff.sample_Bspline3D_comb3(ps, Gs, g0, dg, Cs=Ccomb)
+    Err = E_r - E_f[:,3]
+    Frr = E_f[:,iax] - F_r
+
+    plt.subplot(2,1,1)    
+    plt.plot( ts,  E_f[:,3], '-' , lw=0.5, label=("E_fit(z)" ))
+    plt.plot( ts,  E_r     , 'k:', lw=1.0, label=("E_ref(z)" )    )
+    plt.plot( ts, Err*scErr, 'r-', lw=1.0, label=("Err(z)*%g" % scErr))
     Emin = E_r.min()*1.2
     plt.ylim(Emin,-Emin)
     plt.grid()
     plt.legend()
+
+    plt.subplot(2,1,2)
+    plt.plot( ts,  E_f[:,iax],'-' , lw=0.5, label=("F_fit(z)" ))
+    plt.plot( ts,  F_r       ,'k:', lw=1.0, label=("F_ref(z)" )    )
+    plt.plot( ts,  Frr*scErr, 'r-', lw=1.0, label=("F_err(z)*%g" % scErr))
+    Fmin = F_r.min()*1.2
+    plt.ylim(Fmin,-Fmin)
+    plt.grid()
+    plt.legend()
+
+
 
     if title is not None: plt.title(title)
     plt.savefig( "test_comb3_3D_iax_%i.png" %iax, bbox_inches='tight' )
