@@ -300,7 +300,7 @@ void make_inds_pbc( const int n, Quat4i* iqs ){
 }
 
 inline Quat4i choose_inds_pbc( const int i, const int n, const Quat4i* iqs ){
-    if(i>=(n-3)){ return iqs[i+4-n]; }
+    if(i>=(n-3))[[unlikely]]{ return iqs[i+4-n]; }
     return Quat4i{ 0, 1, 2, 3 };
 }
 
@@ -378,9 +378,9 @@ Quat4d fe3d_pbc_comb3( const Vec3d u, const Vec3i n, const Vec3d* Es, const Vec3
     const Quat4d bx =  basis( tx );
     const Quat4d dx = dbasis( tx );
     return Quat4d{
-        bx.dot( {E1.x, E2.x, E3.x, E4.x} ), // Fx
-        bx.dot( {E1.y, E2.y, E3.y, E4.y} ), // Fy
-        dx.dot( {E1.z, E2.z, E3.z, E4.z} ), // Fz
+        dx.dot( {E1.z, E2.z, E3.z, E4.z} ), // Fx
+        bx.dot( {E1.x, E2.x, E3.x, E4.x} ), // Fy
+        bx.dot( {E1.y, E2.y, E3.y, E4.y} ), // Fz
         bx.dot( {E1.z, E2.z, E3.z, E4.z} ), // E
     };
 } 
@@ -404,10 +404,8 @@ __attribute__((hot))
 void sample3D_comb3( const Vec3d g0, const Vec3d dg, const Vec3i ng, const Vec3d* Eg, const int n, const Vec3d* ps, Quat4d* fes, Vec3d C ){
     printf( "Bspline::sample3D_comb3() ng[%i,%i,%i] dg(%g,%g,%g) g0(%g,%g,%g) C(%g,%g,%g) n=%i \n",   ng.x,ng.y,ng.z,   dg.x,dg.y,dg.z,   g0.x,g0.y,g0.z,   C.x,C.y,C.z, n  );
     Vec3d inv_dg; inv_dg.set_inv(dg); 
-    Quat4i yqs[4];
-    Quat4i xqs[4];
-    make_inds_pbc( ng.y, yqs );
-    make_inds_pbc( ng.y, yqs );
+    Quat4i xqs[4]; make_inds_pbc( ng.x, xqs );
+    Quat4i yqs[4]; make_inds_pbc( ng.y, yqs );
     for(int i=0; i<n; i++ ){
         //printf( "sample3D_comb3()[%i] \n", i );
         Quat4d fe = fe3d_pbc_comb3( (ps[i]-g0)*inv_dg, ng, Eg, C, xqs, yqs ); 
