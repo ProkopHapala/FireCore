@@ -23,6 +23,11 @@ class Atoms{ public:
     long   id      =0;
     int    n0      =0; // number of atoms in the first part of the system (e.g. ligand) 
     double* charge =0; // [natoms] array of atom charges
+    //int   * rootatom =0;  // [natoms] array of atom ids to which the electron pair is attached 
+    //Vec3d * rootdir  __attribute__((aligned(64))) =0;   // [natoms] vector connecting the electron pair to the atom to which the electron pair is attached (X->E_X)
+
+    void* userData = 0;
+
 
     void realloc ( int n, bool bAtypes=true, bool bCharge=true  ){ natoms=n;  _realloc(apos,natoms); if(bCharge)_realloc(charge,natoms); if(bAtypes)_realloc(atypes,natoms); }
     void allocNew( int n, bool bAtypes=true, bool bCharge=true  ){ natoms=n;  _alloc(apos,natoms);   if(bCharge)_alloc(charge,natoms);   if(bAtypes)_alloc(atypes,natoms);  }
@@ -35,6 +40,7 @@ class Atoms{ public:
         if(lvec  !=p.lvec  ){ lvec=new Mat3d; *lvec=*(p.lvec); }
         memcpy( atypes, p.atypes, sizeof(int)  *natoms );
         memcpy( apos,   p.apos,   sizeof(Vec3d)*natoms );
+        if(charge){ memcpy( charge, p.charge, sizeof(double)*natoms ); }
         
     }
 

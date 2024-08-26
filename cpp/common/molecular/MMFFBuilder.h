@@ -1696,6 +1696,41 @@ class Builder{  public:
         return n;
     }
 
+    int listEpairBonds( Vec2i*& bs, Vec3d*& dirs ){
+        std::vector<Vec2i> _bs;
+        std::vector<Vec3d> _dirs;
+        int nfound=0;
+        for( int ia=0; ia<atoms.size(); ia++ ){
+            int ic = atoms[ia].iconf;
+            if(ic<0)continue;
+            AtomConf& conf = confs[ic];
+            for(int i=0; i<N_NEIGH_MAX; i++){
+                int ib = conf.neighs[i];
+                int ja = bonds[ib].getNeighborAtom(ia);
+                if( atoms[ja].iconf == -1 ){
+                    int it = atoms[ja].type;
+                    if( params->atypes[it].name[0]=='E' ){
+                        //printf("listEpairBonds[%i](%i,%i) types(%s,%s) \n", nfound, ia, ja, params->atypes[atoms[ia].type].name, params->atypes[it].name  );
+                        _bs  .push_back( (Vec2i){ia,ja} );
+                        _dirs.push_back( atoms[ja].pos - atoms[ia].pos );
+//printf("listEpairBonds[%i](%i,%i) types(%s,%s) dir(%g,%g,%g)\n", nfound, ia, ja, params->atypes[atoms[ia].type].name, params->atypes[it].name, _dirs.back().x,_dirs.back().y,_dirs.back().z  );
+                        nfound++;   
+                    };
+                }
+            }
+        }
+        bs   = new Vec2i[nfound];
+        dirs = new Vec3d[nfound];
+        for(int i=0; i<nfound; i++){
+            bs  [i] = _bs  [i];
+            dirs[i] = _dirs[i];
+        }
+//exit(0);
+        return nfound;
+    }
+
+
+
     bool tryMakeSPConf(int ia, bool bAutoEPi=false){
         const AtomConf* conf = getAtomConf(ia);
         //printf("tryMakeSPConf %i conf %li\n", ia, (long)conf  );

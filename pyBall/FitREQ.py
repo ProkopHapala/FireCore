@@ -62,15 +62,15 @@ def cstr( s ):
 #  void setVerbosity( int verbosity_, int idebug_ ){
 lib.setVerbosity.argtypes  = [c_int, c_int] 
 lib.setVerbosity.restype   =  None
-def setVerbosity( verbosity=1, idebug=0 ):
-    return lib.setVerbosity( verbosity, idebug )
+def setVerbosity(verbosity=1, idebug=0):
+    return lib.setVerbosity(verbosity, idebug)
 
 #  void init_types(int ntyp, int* typeMask, double* typREQs ){
-lib.init_types.argtypes  = [c_int, c_int_p, c_double_p, c_bool ] 
+lib.init_types.argtypes  = [c_int, c_int_p, c_double_p, c_bool] 
 lib.init_types.restype   =  None
-def init_types(typeMask, typREQs=None, bCopy=True ):
+def init_types(typeMask, typREQs=None, bCopy=True):
     ntyp = len(typeMask)
-    return lib.init_types( ntyp, _np_as(typeMask,c_int_p), _np_as(typREQs,c_double_p), bCopy)
+    return lib.init_types(ntyp, _np_as(typeMask,c_int_p), _np_as(typREQs,c_double_p), bCopy)
 
 #  void setSystem( int isys, int na, int* types, double* ps, bool bCopy=false ){
 lib.setSystem.argtypes  = [c_int, c_int, c_int_p, c_double_p, c_bool] 
@@ -95,24 +95,24 @@ def setWeights(weights):
     return lib.setWeights(n, _np_as(weights,c_double_p))
 
 #  double run( int nstep, double ErrMax, double dt, bool bRigid ){
-lib.run.argtypes  = [c_int, c_double, c_double, c_int, c_int, c_int, c_bool, c_bool, c_double ] 
+lib.run.argtypes  = [c_int, c_double, c_double, c_int, c_int, c_int, c_bool, c_bool, c_double, c_bool] 
 lib.run.restype   =  c_double
-def run( nstep=1000, ErrMax=1e-8, dt=0.01, imodel=0, isampmode=2, ialg=0, bRegularize=False, bClamp=False, max_step=0.05 ):
-    return lib.run( nstep, ErrMax, dt, imodel, isampmode, ialg, bRegularize, bClamp, max_step )
+def run(nstep=1000, ErrMax=1e-8, dt=0.01, imodel=0, isampmode=2, ialg=2, bRegularize=False, bClamp=False, max_step=0.05, bEpairs=False):
+    return lib.run(nstep, ErrMax, dt, imodel, isampmode, ialg, bRegularize, bClamp, max_step, bEpairs)
 
 #void getEs( double* Es, bool bRigid ){
-lib.getEs.argtypes  = [ c_int, c_double_p,  c_int] 
+lib.getEs.argtypes  = [c_int, c_double_p,  c_int, c_bool] 
 lib.getEs.restype   =  c_double
-def getEs( imodel=1, Es=None, isampmode=0 ):
+def getEs(imodel=0, Es=None, isampmode=2, bEpairs=False):
     if Es is None: Es = np.zeros( nbatch )
-    Eerr = lib.getEs( imodel, _np_as(Es,c_double_p), isampmode )
+    Eerr = lib.getEs(imodel, _np_as(Es,c_double_p), isampmode, bEpairs)
     return Es
 
 
 #  double loadXYZ( char* fname, int n0, int* i0s, int ntest, int* itests, int* types0, int testtypes ){
-lib.loadXYZ.argtypes  = [c_char_p, c_int, c_int_p, c_int, c_int_p, c_int_p, c_int_p ] 
+lib.loadXYZ.argtypes  = [c_char_p, c_int, c_int_p, c_int, c_int_p, c_int_p, c_int_p] 
 lib.loadXYZ.restype   =  c_int
-def loadXYZ( fname,  i0s, itests, types0=None, testtypes=None, fname_AtomTypes="data/AtomTypes.dat" ):
+def loadXYZ(fname,  i0s, itests, types0=None, testtypes=None, fname_AtomTypes="data/AtomTypes.dat"):
     global nbatch
     n0     = len( i0s    )
     ntest  = len( itests )
@@ -120,39 +120,45 @@ def loadXYZ( fname,  i0s, itests, types0=None, testtypes=None, fname_AtomTypes="
     itests = np.array(itests,np.int32)
     if(types0    is not None): types0    = np.array(types0   ,np.int32)
     if(testtypes is not None): testtypes = np.array(testtypes,np.int32)
-    nbatch = lib.loadXYZ( cstr(fname), n0, _np_as(i0s,c_int_p), ntest, _np_as(itests,c_int_p), _np_as(types0,c_int_p), _np_as(testtypes,c_int_p), cstr(fname_AtomTypes) )
+    nbatch = lib.loadXYZ(cstr(fname), n0, _np_as(i0s,c_int_p), ntest, _np_as(itests,c_int_p), _np_as(types0,c_int_p), _np_as(testtypes,c_int_p), cstr(fname_AtomTypes))
     return nbatch
 
 # void loadTypes( const char* fname_ElemTypes, const char* fname_AtomTypes ){
-lib.loadTypes.argtypes  = [c_char_p, c_char_p ]
+lib.loadTypes.argtypes  = [c_char_p, c_char_p]
 lib.loadTypes.restype   =  None
-def loadTypes( fEtypes="data/ElementTypes.dat", fAtypes="data/AtomTypes.dat" ):
-    return lib.loadTypes( cstr(fEtypes), cstr(fAtypes) )
+def loadTypes(fEtypes="data/ElementTypes.dat", fAtypes="data/AtomTypes.dat"):
+    return lib.loadTypes(cstr(fEtypes), cstr(fAtypes))
 
 # void loadTypes_new( const char* fname_ElemTypes, const char* fname_AtomTypes ){
-lib.loadTypes_new.argtypes  = [c_char_p, c_char_p ]
+lib.loadTypes_new.argtypes  = [c_char_p, c_char_p]
 lib.loadTypes_new.restype   =  None
-def loadTypes_new( fEtypes="data/ElementTypes.dat", fAtypes="data/AtomTypes.dat" ):
-    return lib.loadTypes_new( cstr(fEtypes), cstr(fAtypes) )
+def loadTypes_new(fEtypes="data/ElementTypes.dat", fAtypes="data/AtomTypes.dat"):
+    return lib.loadTypes_new(cstr(fEtypes), cstr(fAtypes))
 
 # int loadTypeSelection( const char* fname ){
-lib.loadTypeSelection.argtypes  = [ c_char_p, c_int ]
+lib.loadTypeSelection.argtypes  = [c_char_p, c_int]
 lib.loadTypeSelection.restype   =  c_int
-def loadTypeSelection( fname="typeSelection.dat", imodel=1 ):
-    return lib.loadTypeSelection( cstr(fname), imodel )
+def loadTypeSelection(fname="typeSelection.dat", imodel=0):
+    return lib.loadTypeSelection(cstr(fname), imodel)
+
+# int loadTypeSelection_walls( const char* fname ){
+lib.loadTypeSelection_walls.argtypes  = [c_char_p]
+lib.loadTypeSelection_walls.restype   =  c_int
+def loadTypeSelection_walls(fname="typeSelection.dat"):
+    return lib.loadTypeSelection_walls(cstr(fname))
 
 #void loadWeights( const char* fname ){
-lib.loadWeights.argtypes  = [ c_char_p ]
+lib.loadWeights.argtypes  = [c_char_p]
 lib.loadWeights.restype   =  c_int
-def loadWeights( fname="weights.dat" ):
-    return lib.loadWeights( cstr(fname) )
+def loadWeights(fname="weights.dat"):
+    return lib.loadWeights(cstr(fname))
 
 # int loadXYZ_new( const char* fname, const char* fname_AtomTypes  ){
-lib.loadXYZ_new.argtypes  = [c_char_p, c_bool, c_bool ]
+lib.loadXYZ_new.argtypes  = [c_char_p, c_bool, c_bool]
 lib.loadXYZ_new.restype   =  c_int
-def loadXYZ_new( fname, bAddEpairs=False, bOutXYZ=False ):
+def loadXYZ_new(fname, bAddEpairs=False, bOutXYZ=False):
     global nbatch
-    nbatch = lib.loadXYZ_new( cstr(fname), bAddEpairs, bOutXYZ )
+    nbatch = lib.loadXYZ_new(cstr(fname), bAddEpairs, bOutXYZ)
     return nbatch
 
 #  void setType(int i, double* REQ )
@@ -186,7 +192,7 @@ def getIBuff(name,sh):
     name=name.encode('utf8')
     ptr = lib.getIBuff(name)
     if(ptr):
-        return np.ctypeslib.as_array( ptr, shape=sh)
+        return np.ctypeslib.as_array(ptr, shape=sh)
     else:
         return None
     
@@ -198,7 +204,7 @@ def getBuff(name,sh):
     name=name.encode('utf8')
     ptr = lib.getBuff(name)
     if(ptr):
-        return np.ctypeslib.as_array( ptr, shape=sh)
+        return np.ctypeslib.as_array(ptr, shape=sh)
     else:
         return None
 
