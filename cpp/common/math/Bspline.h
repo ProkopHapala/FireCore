@@ -316,6 +316,7 @@ __attribute__((pure))
 __attribute__((hot)) 
 Vec3d fe2d_pbc_comb3( const Vec2d u, const Vec2i n, const Vec3d* Es, const Vec3d PLQ, const Quat4i* yqs ){
 	int          ix = (int)u.x  ,  iy = (int)u.y  ;
+    if(u.y<0) iy--;
     const double tx = u.x - ix  ,  ty = u.y - iy  ;
 
     //printf( "fe2d_pbc_comb3() ixy(%i,%i) u(%g,%g) n(%i,%i)\n", ix,iy, u.x,u.y,  n.x,n.y  );
@@ -349,6 +350,8 @@ __attribute__((hot))
 Quat4d fe3d_pbc_comb3( const Vec3d u, const Vec3i n, const Vec3d* Es, const Vec3d PLQ, const Quat4i* xqis, const Quat4i* yqis ){
     // We assume there are boundary added to simplify the index calculations
 	int          ix = (int)u.x  ,  iy = (int)u.y  ,  iz = (int)u.z  ;
+    if(u.x<0) ix--;
+    if(u.y<0) iy--;
     const double tx = u.x - ix  ,  ty = u.y - iy  ,  tz = u.z - iz  ;
 
     //printf( "fe3d_pbc_comb3() ixyz(%i,%i,%i) u(%g,%g,%g) n(%i,%i,%i)\n", ix,iy,iz, u.x,u.y,u.z,  n.x,n.y,n.z  );
