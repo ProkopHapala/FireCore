@@ -365,7 +365,8 @@ class MolGUI : public AppSDL2OGL_3D { public:
     //void makeGridFF   (bool recalcFF=false, bool bRenderGridFF=true);
     //void renderGridFF( double isoVal=0.001, int isoSurfRenderType=0, double colorScale = 50. );
     int  renderSurfAtoms( Vec3i nPBC, bool bPointCross=false, float qsc=1, float Rsc=1, float Rsub=0 );
-    void renderGridFF( double isoVal=0.1, int isoSurfRenderType=0, double colorScale = 50. );
+    void renderGridFF    ( double isoVal=0.1, int isoSurfRenderType=0, double colorScale = 50. );
+    void renderGridFF_new( double isoVal=0.1, int isoSurfRenderType=0, double colorScale = 50., Quat4d REQ=Quat4d{ 1.487, sqrt(0.0006808), 0., 0.} );
     void renderESP( Quat4d REQ=Quat4d{ 1.487, 0.02609214441, 1., 0.} );
     void renderAFM( int iz, int offset );
     void renderAFM_trjs( int di );
@@ -1306,7 +1307,8 @@ void MolGUI::draw(){
             //Draw3D::atomsREQ( W->surf.natoms, W->surf.apos, W->surf.REQs, ogl_sph, 1., 0.1, 0., true, W->gridFF.shift0 );
             //Draw3D::atomsREQ( W->gridFF.apos_.size(), &W->gridFF.apos_[0], &W->gridFF.REQs_[0], ogl_sph, 1., 0.1, 0., true, W->gridFF.shift0 );
             Draw3D::atomsREQ( W->surf.natoms, W->surf.apos, W->surf.REQs, ogl_sph, 1., 0.1, 0., true, W->gridFF.shift0 );
-            if( (ogl_isosurf==0) && W->bGridFF ){ renderGridFF( subs_iso ); }
+            //if( (ogl_isosurf==0) && W->bGridFF ){ renderGridFF( subs_iso ); }
+            if( (ogl_isosurf==0) && W->bGridFF ){ renderGridFF_new( subs_iso ); }
             viewSubstrate( {-5,10}, {-5,10}, ogl_isosurf, W->gridFF.grid.cell.a, W->gridFF.grid.cell.b, W->gridFF.shift0 + W->gridFF.grid.pos0 );
         }else{
             if( ogl_surfatoms==0 ){ogl_surfatoms = renderSurfAtoms(  W->gridFF.nPBC, false );  }
@@ -1777,6 +1779,23 @@ void MolGUI::renderGridFF( double isoVal, int isoSurfRenderType, double colorScl
     glEndList();
     delete [] FFtot;
     if(verbosity>0) printf( "... MolGUI::renderGridFF() DONE\n" );
+}
+
+
+
+//void MolGUI::renderGridFF_new( double isoVal, int isoSurfRenderType, double colorScale, Quat4d REQ = Quat4d{ 1.487, sqrt(0.0006808), 0., 0.} ){
+void MolGUI::renderGridFF_new( double isoVal, int isoSurfRenderType, double colorScale, Quat4d REQ ){
+    if(verbosity>0) printf( "MolGUI::renderGridFF_new()\n" );
+    Quat4d PLQ = REQ2PLQ_d( REQ, W->gridFF.alphaMorse );
+    ogl_isosurf = glGenLists(1);
+    glNewList(ogl_isosurf, GL_COMPILE);
+    glShadeModel( GL_SMOOTH );
+    glEnable(GL_LIGHTING);
+    glEnable(GL_DEPTH_TEST);
+    //int nvert = renderSubstrate_( W->gridFF.grid, FFtot, W->gridFF.FFelec, +isoVal, sign, colorSclae ); 
+    int nvert = renderSubstrate_new( W->gridFF, 2.0, isoVal, PLQ, colorScale );  //printf("Debug: renderGridFF() renderSubstrate() -> nvert= %i ", nvert );
+    glEndList();
+    if(verbosity>0) printf( "... MolGUI::renderGridFF_new() DONE\n" );
 }
 
 int MolGUI::renderSurfAtoms( Vec3i nPBC, bool bPointCross, float qsc, float Rsc, float Rsub ){
