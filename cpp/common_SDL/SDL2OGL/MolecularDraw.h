@@ -226,6 +226,39 @@ int renderSubstrate_( const GridShape& grid, Quat4f * FF, Quat4f * FFel, double 
     return nvert;
 }
 
+int renderSubstrate_new( const GridFF& gff, double z0, double isoval, Quat4d PLQ, double sclr ){
+    Quat4d PL{PLQ.x,PLQ.y,0.0,0.0};
+    Quat4d Q {0.0,0.0,PLQ.y,0.0};
+    Vec3i gn = gff.grid.n;
+    Mat3d dCell = gff.grid.dCell;
+    int nvert = 0;
+    for ( int ib=1; ib<=gn.y; ib++ ){
+        glBegin(GL_TRIANGLE_STRIP);
+        for ( int ia=0; ia<=gn.x; ia++ ){
+
+            Vec3d p1 = dCell.a*ia + dCell.b*(ib-1); p1.z=z0;
+            Vec3d p2 = dCell.a*ia + dCell.b*(ib  ); p2.z=z0;
+
+            p1 = gff.findIso( isoval, p1, p1+Vec3d{0.0,0.0,-5.0}, PL, 0.02 );
+            p2 = gff.findIso( isoval, p2, p2+Vec3d{0.0,0.0,-5.0}, PL, 0.02 );
+
+            Vec3d f1,f2;
+            double el1 = gff.addAtom( p1, Q, f1 );
+            double el2 = gff.addAtom( p2, Q, f2 );
+
+            gff.addAtom( p1, PL, f1 );
+            gff.addAtom( p2, PL, f2 );
+
+            colorRB( el1*sclr ); glNormal3f(f1.x,f1.y,f1.z); glVertex3f(p1.x,p1.y,p1.z); nvert++;
+            colorRB( el2*sclr ); glNormal3f(f2.x,f2.y,f2.z); glVertex3f(p2.x,p2.y,p2.z); nvert++;
+
+        }
+        glEnd();
+    }
+    return nvert;
+}
+
+
 void viewSubstrate( int nx, int ny, int isoOgl, Vec3d a, Vec3d b, Vec3d pos0=Vec3dZero ){
     glPushMatrix();
     for( int ix = -nx; ix<=nx; ix++ ){

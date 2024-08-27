@@ -573,7 +573,7 @@ double addForces_d( int natoms, Vec3d* apos, Quat4d* PLQs, Vec3d* fpos, bool bSu
         return E;
     }
 
-    inline double addAtom( const Vec3d& pos, const Quat4d& PLQ, Vec3d& fout ){
+    inline double addAtom( const Vec3d& pos, const Quat4d& PLQ, Vec3d& fout )const{
         Quat4d fed;
         switch( mode ){
             case GridFFmod::LinearDouble: { fed=(Quat4d)getForce( pos, (Quat4f)PLQ ); }break;
@@ -587,6 +587,28 @@ double addForces_d( int natoms, Vec3d* apos, Quat4d* PLQs, Vec3d* fpos, bool bSu
         //printf("GridFF::addAtom() FE(%10.5f,%10.5f,%10.5f|%10.5f) pos(%7.5f,%7.5f,%7.5f) PLQ(%7.5f,%10.6f,%7.3f) \n",   fed.x,fed.y,fed.z,fed.w,     pos.x,pos.y,pos.z,  PLQ.x,PLQ.y,PLQ.z );
         fout.add( fed.f );
         return fed.e;
+    }
+
+    Vec3d findIso(double isoval, Vec3d p0, Vec3d p1, Quat4d& PLQ, double xtol = 0.01 )const{
+        Vec3d fout;  // Force output vector (unused in binary search)
+        // Evaluate energy at the endpoints
+        double f0 = addAtom(p0, PLQ, fout)-isoval;
+        double f1 = addAtom(p1, PLQ, fout)-isoval;
+        if( f0*f1 > 0.0) {
+            printf("ERROR GridFF::findIso() f(p0)*f(p1) > 0.0 f0=%g f1=%g\n", f0,f1);
+            //exit(0);
+            return p0;
+        }
+        double sgn = (f0 > 0.0) ? 1.0 : -1.0;
+        double r2tol = xtol*xtol;
+        Vec3d pmid;
+        while (  (p0-p1).norm2() > r2tol ) {
+            pmid  = (p0 + p1) * 0.5;
+            double fmid = addAtom(pmid, Quat4d(), fout);
+            if ( fmid*sgn > isoval) { p1 = pmid; } 
+            else                    { p0 = pmid; }
+        }
+        return pmid;
     }
 
     // =========================================================
