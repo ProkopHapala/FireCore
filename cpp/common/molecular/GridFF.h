@@ -16,6 +16,8 @@
 
 #include "NBFF.h"
 
+#include "IO_utils.h"
+
 static bool bDebug__ = 0;
 
 
@@ -139,7 +141,8 @@ class GridFF : public NBFF{ public:
     Quat4i cubic_yqis[4];
     Quat4i cubic_xqis[4];
 
-    GridFFmod mode = GridFFmod::LinearFloat;
+    //GridFFmod mode = GridFFmod::LinearFloat;
+    GridFFmod mode = GridFFmod::BsplineDouble;
     int perVoxel = 4;
 
     // ------ ToDo: this should be put inside NBFF
@@ -419,7 +422,6 @@ inline float addForce_Bspline( const Vec3d& p, const Quat4d& PLQ, Vec3d& f, bool
     return fe.e;
 }
 
-
 __attribute__((hot))  
 double addForces( int natoms, Vec3d* apos, Quat4f* PLQs, Vec3d* fpos, bool bSurf=true )const{ 
     double E=0;
@@ -571,6 +573,21 @@ double addForces_d( int natoms, Vec3d* apos, Quat4d* PLQs, Vec3d* fpos, bool bSu
         return E;
     }
 
+    inline double addAtom( const Vec3d& pos, const Quat4d& PLQ, Vec3d& fout ){
+        Quat4d fed;
+        switch( mode ){
+            case GridFFmod::LinearDouble: { fed=(Quat4d)getForce( pos, (Quat4f)PLQ ); }break;
+            case GridFFmod::LinearFloat:  { fed=getForce_d      ( pos, PLQ);          }break;
+            case GridFFmod::HermiteDouble:{ fed=getForce_HHermit( pos, PLQ );         }break;
+            case GridFFmod::BsplineDouble:{ fed=getForce_Bspline( pos, PLQ );         }break;
+            //case GridFFmod::HermiteFloat:  { }break;
+            //cast GridFFmod::BSplineFloat:  { }break;
+            default: { printf("ERROR GridFF::eval() mode=%i NOT IMPLEMENTED !!! \n", mode); exit(0); }
+        }
+        //printf("GridFF::addAtom() FE(%10.5f,%10.5f,%10.5f|%10.5f) pos(%7.5f,%7.5f,%7.5f) PLQ(%7.5f,%10.6f,%7.3f) \n",   fed.x,fed.y,fed.z,fed.w,     pos.x,pos.y,pos.z,  PLQ.x,PLQ.y,PLQ.z );
+        fout.add( fed.f );
+        return fed.e;
+    }
 
     // =========================================================
     // ================       Grid Preparation      ============
@@ -1265,14 +1282,17 @@ void evalGridFFs_symetrized( double d=0.1, Vec3i nPBC_=Vec3i{-1,-1,-1} ){
 // ============= Debugging and checking
 
 void getEFprofile( int n, Vec3d p0, Vec3d p1, Quat4d REQ, Quat4d* fes, bool bPrint=false){
-    if(bPrint){ printf("GridFF::getEFprofile(n=%i,p2{%6.3f,%6.3f,%6.3f},p1{,%6.3f,%6.3f,%6.3f}) \n", n, p0.x,p0.y,p0.z,  p1.x,p1.y,p1.z ); };
     Vec3d dp=p1-p0; dp.mul(1./n);
-    Quat4f PLQ = REQ2PLQ( REQ, alphaMorse );   //printf( "PLQ %6.3f %10.7f %6.3f \n", PLQ.x,PLQ.y,PLQ.z   );
+    //Quat4f PLQf = REQ2PLQ(   REQ, alphaMorse );   //printf( "PLQ %6.3f %10.7f %6.3f \n", PLQ.x,PLQ.y,PLQ.z   );
+    Quat4d PLQd = REQ2PLQ_d( REQ, alphaMorse );
+    if(bPrint){ printf("GridFF::getEFprofile(n=%i,p2{%6.3f,%6.3f,%6.3f},p1{,%6.3f,%6.3f,%6.3f}) REQ(%g,%g,%g)  PLQ(%g,%g,%g) shift0(%g,%g,%g) grid.pos0(%g,%g,%g) \n", n, p0.x,p0.y,p0.z,  p1.x,p1.y,p1.z, REQ.x,REQ.y,REQ.z,  PLQd.x,PLQd.y,PLQd.z, shift0.x,shift0.y,shift0.z, grid.pos0.x,grid.pos0.y,grid.pos0.z  ); };
     for(int i=0; i<n; i++){
         Vec3d  p  = p0 + dp*i;
-        Quat4f fe = getForce( p, PLQ, true );
-        if(fes)fes[i]=(Quat4d)fe;
-        if(bPrint){ printf( "%i %6.3f %6.3f %6.3f %g %g %g\n", i, p.x, p.y, p.z, fe.x,fe.y,fe.z  ); };
+        //Quat4f fe = getForce( p, PLQ, true );
+        //if(fes)fes[i]=(Quat4d)fe;
+        Quat4d fed=Quat4dZero;
+        fed.e = addAtom( p, PLQd, fed.f );
+        if(bPrint){ printf( "%i %6.3f %6.3f %6.3f    %g %g %g    %g\n", i, p.x, p.y, p.z, fed.x,fed.y,fed.z, fed.w  ); };
     }
 }
 
@@ -1466,7 +1486,7 @@ void initGridFF( const char * name, double z0=NAN, bool bAutoNPBC=true, bool bSy
     }
 
     bool tryLoad_new( bool bPrint=true ){
-        //printf( "GridFF::tryLoad_new() mode=%i \n", (int)mode );
+        printf( "GridFF::tryLoad_new() mode=%i \n", (int)mode );
         //const char* fname_Coul=0; 
         //const char* fname_Paul=0; 
         //const char* fname_Lond=0;

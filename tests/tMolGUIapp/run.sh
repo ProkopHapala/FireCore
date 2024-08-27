@@ -126,7 +126,7 @@ fi
 
 #./$name -x Si2505_111-H-brak-110-relaxed  -perframe 1
 #./$name -x Si2505_111-H-SiH3-relaxed      -perframe 1
-./$name -x Si2505_111-H-relaxed           -perframe 1
+#./$name -x Si2505_111-H-relaxed           -perframe 1
 
 
 
@@ -207,7 +207,8 @@ fi
 
 #./$name -x common_resources/polymer-2_new   -g common_resources/NaCl_1x1_L2   -Ftol 1e-6 -iParalel 0  -dt 0.05 -nogridff -perframe 1
 #./$name -x common_resources/polymer-2_new   -g common_resources/NaCl_1x1_L2   -Ftol 1e-12 -iParalel 0  -dt 0.05 -nogridff -perframe 100
-#./$name -x common_resources/polymer-2_new   -g common_resources/NaCl_1x1_L2   -Ftol 1e-6 -iParalel 0  -dt 0.05 -perframe 100
+#./$name -x common_resources/polymer-2_new   -g common_resources/NaCl_1x1_L2   -Ftol 1e-6 -iParalel 0  -dt 0.05 -perframe 1 -gridffmode 2
+./$name -x common_resources/polymer-2_new   -g common_resources/NaCl_1x1_L2   -Ftol 1e-6 -iParalel 0  -dt 0.05 -perframe 1 -gridffmode 6
 
 
 #./$name  -x common_resources/polymer-2_new-OH                                                -Ftol 1e-4 -iParalel 0 -perframe 1
