@@ -1039,6 +1039,7 @@ void printPBCshifts(){
         // --- we assume the lattice vectors are already loaded, and bPBC is set
         if( bPBC ){ builder.autoBondsPBC(); }
         else      { builder.autoBonds();    }
+        //checkAllAtomsBonded( bool bPrint=true, bool bExit=true, int nbmax=N_NEIGH_MAX, int nbmin=1 );
         builder.checkNumberOfBonds( true, true );
         //if(verbosity>2)builder.printBonds ();
     }
@@ -1294,6 +1295,10 @@ void printPBCshifts(){
             builder.toUFF( ffu, true );
         }else{
             if( ffl.bTorsion ){ builder.assignTorsions( true, true ); }  //exit(0);
+
+            builder.printAtomConfs();
+            builder.printBonds();
+
             builder.toMMFFsp3_loc( ffl, true, bEpairs, bUFF );   
             //ffl.printAtomParams();
             if(ffl.bTorsion){  ffl.printTorsions(); } // without electron pairs
@@ -1301,6 +1306,8 @@ void printPBCshifts(){
             //builder.toMMFFf4     ( ff4, true, bEpairs );  //ff4.printAtomParams(); ff4.printBKneighs(); 
             builder.toMMFFsp3    ( ff , true, bEpairs );
             ffl.flipPis( Vec3dOne );
+
+            ffl.printNeighs();
             //ff4.flipPis( Vec3fOne );
 
             //ffl.printAtomParams();

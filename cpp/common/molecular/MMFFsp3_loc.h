@@ -1342,7 +1342,14 @@ void makeBackNeighs( bool bCapNeighs=true ){
     //for(int i=0; i<natoms; i++){printf( "bkneigh[%i] (%i,%i,%i,%i) \n", i, bkneighs[i].x, bkneighs[i].y, bkneighs[i].z, bkneighs[i].w );}
     //checkBkNeighCPU();
     if(bCapNeighs){   // set neighbors for capping atoms
-        for(int ia=nnode; ia<natoms; ia++){ neighs[ia]=Quat4i{-1,-1,-1,-1};  neighs[ia].x = bkneighs[ia].x/4;  }
+        for(int ia=nnode; ia<natoms; ia++){ 
+            if( bkneighs[ia].x<0 ){
+                printf( "ERROR makeBackNeighs() capping atom[%i] has not back-neighbor (bkneighs[%i]==%i) => exit()\n", ia, ia, bkneighs[ia].x ); exit(0);
+                //continue;
+            }
+            neighs[ia]=Quat4i{-1,-1,-1,-1};  neighs[ia].x = bkneighs[ia].x/4;  
+            //printf("makeBackNeighs().bCapNeighs [ia=%i] ng.x=%i bkng.x=%i \n", ia, neighs[ia].x, bkneighs[ia].x );
+        }
     }
 }
 
