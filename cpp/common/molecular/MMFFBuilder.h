@@ -1193,7 +1193,7 @@ class Builder{  public:
                 int npi = confs[A.iconf].npi;
                 if( sp3types.count(A.type) == 0 ) continue;
                 A.type = assignSp3Type_pi( A.type, npi );
-                printf( "Builder::assignAllSp3Types() [ia=%i] ityp=%i \n", i, A.type );
+                //printf( "Builder::assignAllSp3Types() [ia=%i] ityp=%i \n", i, A.type );
             }
         }
     }
@@ -2116,7 +2116,25 @@ void assignTorsions( bool bNonPi=false, bool bNO=true ){
         return nbond;
     }
 
-    bool checkNumberOfBonds( bool bPrint=true, bool bExitOnError=true){
+    bool checkAllAtomsBonded( bool bPrint=true, bool bExit=true, int nbmax=N_NEIGH_MAX, int nbmin=1 ){
+        std::vector<int> nbonds(atoms.size(),0);
+        for(int ib=0; ib<bonds.size(); ib++){
+            const Bond& b = bonds[ib];
+            nbonds[b.atoms.i]++;
+            nbonds[b.atoms.j]++;
+        }
+        bool bRet = false;
+        for(int i=0; i<atoms.size(); i++){
+            int nb=nbonds[i];
+            if( (nb<nbmin)||(nb>nbmax) ){
+                printf( "ERROR in Builder::checkAllAtomsBonded(): atom[%i].nbonds is out of range (%i,%i)\n", i, nb, nbmin, nbmax );
+                bRet=true;
+            }
+        }
+        return bRet;
+    }
+
+    bool checkNumberOfBonds( bool bPrint=true, bool bExitOnError=true, bool bAllAtomsBonded=true ){
         const int na = atoms.size();
         std::vector<int> nbonds(na,0); 
         //for(int ia=0; ia<na; ia++){ printf( "checkNumberOfBonds nbonds[%i]=%i\n", ia, nbonds[ia] ); };
@@ -2131,12 +2149,13 @@ void assignTorsions( bool bNonPi=false, bool bNO=true ){
             const Atom& A = atoms[ia];
             const AtomType& t = params->atypes[A.type];
             //printf( "checkNumberOfBonds nbonds[%i]=%i\n", ia, nbonds[ia] );
+            if(bAllAtomsBonded) { if( nbonds[ia]<=0 ){ err|=true; if( bPrint ){ printf( "WARNING checkNumberOfBonds[%i] `%s` has no bonds nbond(%i)<1 bonds\n", ia, t.name, nbonds[ia] ); } } }
             if(A.iconf>=0){
                 const AtomConf& c = confs[A.iconf];
                 int nb = nbonds[ia];
                 if( nb>N_NEIGH_MAX){ err|=true; if( bPrint ){ printf( "WARNING checkNumberOfBonds[%i] `%s` nbonds(%i)>N_NEIGH_MAX (%i)\n", ia, t.name, nb, N_NEIGH_MAX ); } }
                 if( nb>t.valence  ){ err|=true; if( bPrint ){ printf( "WARNING checkNumberOfBonds[%i] `%s` nbonds(%i)>valence     (%i)\n", ia, t.name, nb, t.valence   ); } }
-                if( nb!=c.nbond   ){ err|=true; if( bPrint ){ printf( "WARNING checkNumberOfBonds[%i] `%s` nbonds(%i)!=conf.nbond  (%i)\n", ia, t.name, nb, c.nbond     ); } } 
+                if( nb!=c.nbond   ){ err|=true; if( bPrint ){ printf( "WARNING checkNumberOfBonds[%i] `%s` nbonds(%i)!=conf.nbond (%i)\n", ia, t.name, nb, c.nbond     ); } } 
             }else{
                 if( nbonds[ia]>1  ){ err|=true; if( bPrint ){ printf( "WARNING checkNumberOfBonds[%i] `%s` capping atom has %i>1 bonds\n", ia, t.name, nbonds[ia] ); } }
             }
@@ -3651,7 +3670,8 @@ void toMMFFsp3_loc( MMFFsp3_loc& ff, bool bRealloc=true, bool bEPairs=true, bool
 
         //params->printAtomTypeDict();
         int etyp=-1;  if(params) etyp=params->atomTypeDict["E"];
-        for(int i=0; i<ff.nnode;  i++){ ff.neighs[i]=Quat4i{-1,-1,-1,-1};  ff.bLs[i]=Quat4dZero, ff.bKs[i]=Quat4dZero, ff.Ksp[i]=Quat4dZero, ff.Kpp[i]=Quat4dZero; }; // back neighbors
+        for(int i=0; i<ff.natoms; i++){ ff.neighs[i]=Quat4i{-1,-1,-1,-1}; };
+        for(int i=0; i<ff.nnode;  i++){ ff.bLs[i]=Quat4dZero, ff.bKs[i]=Quat4dZero, ff.Ksp[i]=Quat4dZero, ff.Kpp[i]=Quat4dZero; }; // back neighbors
         for(int ia=0; ia<nAmax; ia++ ){
             const Atom& A =  atoms[ia];
             ff.apos  [ia] = A.pos;
@@ -3700,6 +3720,7 @@ void toMMFFsp3_loc( MMFFsp3_loc& ff, bool bRealloc=true, bool bEPairs=true, bool
                     const Bond& B = bonds[ib];
                     //{ int ti=atoms[B.atoms.a].type; int tj=atoms[B.atoms.b].type;   printf( "ia,ib[%4i,%4i] l0=%7.3f k=%7.2f ts(%3i,%3i) %s-%s \n", ia, ib, B.l0, B.k, ti,tj, params->atypes[ti].name, params->atypes[tj].name ); }
                     int ja = B.getNeighborAtom(ia);
+                    //{ printf( "ia=%4i ja=%4i ib=%i \n", ia, ja, ib ); }
                     const Atom& Aj =  atoms[ja];
                     AtomType& jtyp = params->atypes[Aj.type];
                     hs[k]  = atoms[ja].pos - A.pos;
