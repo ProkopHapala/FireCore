@@ -331,7 +331,7 @@ a  = 1.8
 #test_fit_2D( title="test mode=2", mode=3 )
 
 mmff.initParams()
-#test_gridFF( mode=1, title="tri-linar force \n(z-cut)"          )
+
 #test_gridFF( mode=4, title="Hybrid Hermite tri-cubic\n(z-cut)" )
 test_gridFF( mode=6, title="Bspline (from HH)\n(z-cut)" )
 
@@ -352,7 +352,10 @@ p0 = [0.0,0.0,2.0]
 #test_gridFF_lat( mode=4, title="Hybrid Hermite tri-cubic", Q=0.0, p0=[1.0,1.05,2.0], iax=1 )
 #test_gridFF_lat( mode=4, title="Hybrid Hermite tri-cubic", Q=0.0, p0=[1.0,1.05,2.0], iax=0 )
 
-
 test_gridFF_lat( mode=6, title="Bspline tri-cubic", Q=0.0, p0=[1.0,1.0,2.0], iax=0 )
+
+
+test_gridFF( mode=1, title="tri-linar force \n(z-cut)"          )
+test_gridFF_lat( mode=1, title="tri-Linear Force", Q=0.0, p0=[1.0,1.0,2.0], iax=0 )
 
 plt.show()

@@ -188,7 +188,7 @@ inline int fileExist(const char * fname ){
 }
 
 
-bool checkAllFilesExist( int n, const char** fnames, bool bPrint=true ){
+inline bool checkAllFilesExist( int n, const char** fnames, bool bPrint=true ){
     //printf( "checkAllFilesExist() n=%i \n", n );
     bool bExist=true;
     for(int i=0; i<n; i++){

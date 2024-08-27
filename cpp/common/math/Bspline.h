@@ -319,7 +319,7 @@ Vec3d fe2d_pbc_comb3( const Vec2d u, const Vec2i n, const Vec3d* Es, const Vec3d
     if(u.y<0) iy--;
     const double tx = u.x - ix  ,  ty = u.y - iy  ;
 
-    //printf( "fe2d_pbc_comb3() ixy(%i,%i) u(%g,%g) n(%i,%i)\n", ix,iy, u.x,u.y,  n.x,n.y  );
+    //printf( "Bspline::fe2d_pbc_comb3() ixy(%i,%i) u(%g,%g) n(%i,%i)\n", ix,iy, u.x,u.y,  n.x,n.y  );
 
     if(  ((ix<1)||(ix>=n.x-2))  )[[unlikely]]{  return Vec3dZero; }
 
@@ -354,7 +354,7 @@ Quat4d fe3d_pbc_comb3( const Vec3d u, const Vec3i n, const Vec3d* Es, const Vec3
     if(u.y<0) iy--;
     const double tx = u.x - ix  ,  ty = u.y - iy  ,  tz = u.z - iz  ;
 
-    //printf( "fe3d_pbc_comb3() ixyz(%i,%i,%i) u(%g,%g,%g) n(%i,%i,%i)\n", ix,iy,iz, u.x,u.y,u.z,  n.x,n.y,n.z  );
+    // printf( "Bspline::fe3d_pbc_comb3() ixyz(%3i,%3i,%3i)/n(%3i,%3i,%3i)  u(%g,%g,%g) \n", ix,iy,iz, n.x,n.y,n.z, u.x,u.y,u.z  ); 
 
     // ---- boundary conditions
     if(  ((iz<1)||(iz>=n.z-2))  )[[unlikely]]{  return Quat4dZero; }
@@ -362,7 +362,9 @@ Quat4d fe3d_pbc_comb3( const Vec3d u, const Vec3i n, const Vec3d* Es, const Vec3
     //if(  ((iy<1)||(iy>=n.y-2))  )[[unlikely]]{  return Quat4dZero; }
 
     ix=modulo(ix-1,n.x);
-    iy=modulo(iy-1,n.y); 
+    iy=modulo(iy-1,n.y);
+
+    //printf( "Bspline::fe3d_pbc_comb3() ixyz(%3i,%3i,%3i)/n(%3i,%3i,%3i)  u(%g,%g,%g) \n", ix,iy,iz, n.x,n.y,n.z, u.x,u.y,u.z  ); 
 
     const int nyz = n.z*n.y;
     const Quat4i qx = choose_inds_pbc( ix, n.x, xqis )*nyz;

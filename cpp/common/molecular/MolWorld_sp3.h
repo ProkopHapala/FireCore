@@ -939,7 +939,7 @@ void printPBCshifts(){
         }
         gridFF.shift0 = Vec3d{0.,0.,-2.0};
         //gridFF.shift0 = Vec3d{0.,0.,0.0};
-        if(bCheckEval)gridFF.evalCheck();    // WARRNING:  CHECK FOR gridFF TURNED OFF !!!!!!!!!!!!!!!!!!!!!!!!!
+        //if(bCheckEval)gridFF.evalCheck();    // WARRNING:  CHECK FOR gridFF TURNED OFF !!!!!!!!!!!!!!!!!!!!!!!!!
         return ffgrid;
     }
 
@@ -1949,28 +1949,7 @@ void pullAtom( int ia, Vec3d* apos, Vec3d* fapos, float K=-2.0 ){
         if(Ftol<0)Ftol=Ftol_default;
         ffu.bNonBonded     = bNonBonded;
         ffu.bNonBondNeighs = bNonBondNeighs;
-        //ffu.bNonBonded =  bGridFF;
         long T0 = getCPUticks();
-        //printf( "MolWorld_sp3::MDloop() \n" );
-        //ff.doPiPiI  =false;
-        //ff.doPiPiT  =false;
-        //ff.doPiSigma=false;
-        //ff.doAngles =false;
-
-        //verbosity = 1;
-        //ffl.run( nIter, 0.05, Ftol, 1000.0 );
-        //ffl.run_omp( nIter, 0.05, Ftol, 1000.0 );
-        //run_no_omp( nIter, 0.05, Ftol, 1000.0 );
-
-        //run_omp( 1, 0.05, Ftol, 1000.0 );
-        //run_omp( nIter, 0.05, Ftol, 1000.0 );
-        
-        //run_omp( 100, 0.05, Ftol, 1000.0 );
-        //run_omp( 1, opt.dt, Ftol, 1000.0 );
-        //run_omp( 2, opt.dt, Ftol, 1000.0 );
-        //run_omp( 100, opt.dt, Ftol, 1000.0 );
-        //run_omp( 500, 0.05, Ftol, 1000.0 );
-        //run_omp( 500, 0.05, Ftol, 1000.0 );
         int nitr=0;
         if(bUFF){
             switch(iParalel){
@@ -2024,28 +2003,9 @@ void pullAtom( int ia, Vec3d* apos, Vec3d* fapos, float K=-2.0 ){
         // if(damping>0){ cdamp = 1-damping; if(cdamp<0)cdamp=0;}
         double F2max = ffl.FmaxNonBonded*ffl.FmaxNonBonded;
 
-        // //constexpr bool bNonBondNeighs = false;
-        // //constexpr bool bNonBondNeighs = true;
-        // if( !bNonBonded ){
-        //     ffl.bSubtractAngleNonBond = false;
-        //     ffl.bSubtractBondNonBond  = false;
-        // }else if(bNonBondNeighs){
-        //     ffl.bSubtractAngleNonBond = true;
-        //     ffl.bSubtractBondNonBond  = false;
-        //     ffl.bClampNonBonded       = false;
-        //     nbmol.bClampNonBonded     = false;
-        // }else{ // check non-bonded clamp-and-subtract
-        //     //ffl.doAngles=false;
-        //     // ffl.doPiPiI =false;
-        //     // ffl.doPiPiT =false;
-        //     // ffl.doPiSigma=false;
-        //     ffl.bSubtractAngleNonBond = true;
-        //     ffl.bSubtractBondNonBond  = true;
-        //     ffl.bClampNonBonded       = true;
-        //     nbmol.bClampNonBonded     = true;
-        // }
-
         ffl.bNonBonded=bNonBonded; ffl.setNonBondStrategy( bNonBondNeighs*2-1 );
+
+        printf( "MolWorld_sp3::run_no_omp(itr=%i/%i) gridFF.mode=%i bGridFF=%i bSurfAtoms=%i   gridFF.Bspline_PLQ=%li  FFPaul_d=%li FFLond_d=%li FFelec_d=%li \n", itr,niter_max, gridFF.mode, bGridFF, bSurfAtoms, (long)gridFF.Bspline_PLQ, (long)gridFF.FFPaul_d, (long)gridFF.FFLond_d, (long)gridFF.FFelec_d );
 
         //printf( "MolWorld_sp3::run_no_omp() bNonBonded=%i bNonBondNeighs=%i bSubtractBondNonBond=%i bSubtractAngleNonBond=%i bClampNonBonded=%i\n", bNonBonded, bNonBondNeighs, ffl.bSubtractBondNonBond, ffl.bSubtractAngleNonBond, ffl.bClampNonBonded );
 
@@ -2086,15 +2046,9 @@ void pullAtom( int ia, Vec3d* apos, Vec3d* fapos, float K=-2.0 ){
                     }
                 }
                 if(bSurfAtoms)[[likely]]{ 
-                    if(bGridFF)[[likely]]{ 
-                        if  (bTricubic){ 
-                            E+= gridFF.addForce_Tricubic( ffl.apos[ia], ffl.PLQd[ia], ffl.fapos[ia], true  ); 
-
-
-                        }
-                        else           { E+= gridFF.addForce         ( ffl.apos[ia], ffl.PLQs[ia], ffl.fapos[ia], true  ); }
-                    }  // GridFF
-                    else               { 
+                    if(bGridFF)[[likely]]{  // with gridFF
+                        gridFF.addAtom( ffl.apos[ia], ffl.PLQd[ia], ffl.fapos[ia] );
+                    }else{ // Without gridFF (Direct pairwise atoms)
                         //{ E+= nbmol .evalMorse   ( surf, false,                  gridFF.alphaMorse, gridFF.Rdamp );  }
                         //{ E+= nbmol .evalMorsePBC    ( surf, gridFF.grid.cell, nPBC, gridFF.alphaMorse, gridFF.Rdamp );  }
                         { E+= gridFF.evalMorsePBC_sym( ffl.apos[ia], ffl.REQs[ia],  ffl.fapos[ia] );   }

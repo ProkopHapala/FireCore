@@ -241,8 +241,8 @@ class MolGUI : public AppSDL2OGL_3D { public:
 
     bool bBuilderChanged     = false;
 
-    //bool   bViewBuilder      = false;
-    bool   bViewBuilder      = true;
+    bool   bViewBuilder      = false;
+    //bool   bViewBuilder      = true;
     bool   bViewAxis         = false;
     bool   bViewCell         = false;
 
@@ -1267,6 +1267,7 @@ void MolGUI::draw(){
     W->pick_hray = (Vec3d)cam.rot.c;
     W->pick_ray0 = (Vec3d)ray0;
 
+    if( (frameCount==1) && (W->bGridFF) ){  W->gridFF.getEFprofileToFile( "gridFF_EFprofile.log", 200, Vec3d{0.0,0.0,-10.0}, Vec3d{0.0,0.0,10.0}, W->ffl.REQs[0] );  }  // Debug: save gridFF z-profile to file of atom[0] to "gridFF_EFprofile.log"
     if(bRunRelax){ 
         bool bRelaxOld = W->bConverged;
         //printf( "MolGUI::draw().W->MDloop(%i) \n", perFrame );    
@@ -1394,22 +1395,16 @@ void MolGUI::draw(){
         glPopMatrix();
     }
 
+    // Draw the actual system ( molecules : atoms, bonds etc. )
     if(bDoMM){
-        if( bViewBuilder ){ drawBuilder(); }
-        else if(W->builder.bPBC){ 
-            //Draw3D::drawPBC( (Vec3i){2,2,0}, W->builder.lvec, [&](Vec3i ixyz){drawSystem(ixyz);} ); 
-            //printf( "draw() W->npbc=%i \n", W->npbc );
-            //Draw3D::drawShifts( W->npbc, W->pbc_shifts, 4, [&](Vec3i ixyz){drawSystem(ixyz);} ); 
+        if( bViewBuilder ){ drawBuilder(); }   // Draw Builder 
+        else if(W->builder.bPBC){              // Draw System with PBC 
             Draw3D::drawShifts( W->npbc, W->pbc_shifts, W->ipbc0, [&](Vec3i ixyz){drawSystem(ixyz);} ); 
-
             Draw3D::drawBBox( W->bbox.a, W->bbox.b );
-
-        }else{ drawSystem(); }
-        //drawSystem(); // debug
-        //Draw3D::drawNeighs( W->ff, -1.0 );    
-        //Draw3D::drawVectorArray( W->ff.natoms, W->ff.apos, W->ff.fapos, 10000.0, 100.0 );
+        }else{ drawSystem(); }                // Draw System without PBC
     }
 
+    // Draw hydorgen bonds (if any)
     if( W->Hbonds.size() > 0 ){
         //int nfound = W->Hbonds.size();
         //printf( "findHb() Rc=%g nfound=%i \n", Rc, nfound );
@@ -1434,6 +1429,7 @@ void MolGUI::draw(){
         //}
     }
 
+    // Draw constraints (if any)
     if(constrs){
         // bond constrains
         glColor3f(0.0f,0.7f,0.0f);
@@ -2576,9 +2572,9 @@ void MolGUI::eventMode_default( const SDL_Event& event ){
                             bindMolecule(W);
                             bBuilderChanged = false;
                         }
-                        bViewBuilder    = false;
+                        //bViewBuilder    = false;
                     }else{
-                        bViewBuilder = true;
+                        //bViewBuilder = true;
                         W->updateBuilderFromFF();
                     }
 
