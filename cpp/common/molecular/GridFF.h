@@ -12,6 +12,7 @@
 #include "Multipoles.h"
 
 #include "InterpolateTricubic.h"
+#include "InterpolateTrilinear.h"
 #include "Bspline.h"
 
 #include "NBFF.h"
@@ -227,8 +228,6 @@ class GridFF : public NBFF{ public:
 __attribute__((hot))  
 inline Quat4f getForce( Vec3d p, const Quat4f& PLQ, bool bSurf=true ) const {
     //printf(  "getForce() p(%g,%g,%g) PLQ(%g,%g,%g,%g) bSurf=%i @FFPaul=%li @FFLond=%li @FFelec=%li \n", p.x,p.y,p.z,  PLQ.x,PLQ.y,PLQ.z,PLQ.w, (long)FFPaul,(long)FFLond,(long)FFelec );
-    #pragma omp SIMD
-    {
     Vec3d u;
     p.sub(shift0);
     p.sub(grid.pos0);
@@ -236,7 +235,6 @@ inline Quat4f getForce( Vec3d p, const Quat4f& PLQ, bool bSurf=true ) const {
     Vec3i n = grid.n;
     //printf( "pos(%g,%g,%g) u(%g,%g,%g)  p0(%g,%g,%g) \n", p.x,p.y,p.z, u.x,u.y,u.z,    grid.pos0.x,grid.pos0.y,grid.pos0.z );
     if( bSurf ){ double ivnz=1./n.z; double uzmax=1-ivnz*1.5; double uzmin=ivnz*0.5; if(u.z<uzmin){ u.z=uzmin; }else if(u.z>uzmax){u.z=uzmax; } } // "clamp" boundrary condition in z-direction
-
     // ---- PBC condiction ( within outer cell bboundaries ? )
     //u.x=(u.x-(int)u.x)*n.x;
     //u.y=(u.y-(int)u.y)*n.y;
@@ -244,79 +242,7 @@ inline Quat4f getForce( Vec3d p, const Quat4f& PLQ, bool bSurf=true ) const {
     u.x=(u.x-((int)(u.x+10)-10))*n.x;
     u.y=(u.y-((int)(u.y+10)-10))*n.y;
     u.z=(u.z-((int)(u.z+10)-10))*n.z;
-
-    //printf( "GridFF::getForce() u(%g,%g,%g) p(%g,%g,%g) shift(%g,%g,%g) p0(%g,%g,%g) \n", u.x,u.y,u.z,  p.x,p.y,p.z,  shift.x,shift.y,shift.z,   grid.pos0.x,grid.pos0.y,grid.pos0.z );
-
-    // ---- Clamp ( within outer cell bboundaries ? )
-    // {
-    // if((u.x<0.)||(u.x>1.)||(u.y<0.)||(u.y>1.)){ return Quat4fZero; };
-    // if((u.z<0.)||(u.z>1.)){ return Quat4fZero; };
-    // u.x*=n.x; 
-    // u.y*=n.y; 
-    // u.z*=n.z;
-    // }
-
-    //printf( " u(%g,%g,%g) \n", u.x,u.y,u.z );
-
-    // -----
-	const int   ix = (int)u.x  ,  iy = (int)u.y  ,  iz = (int)u.z  ;
-    const float tx = u.x - ix  ,  ty = u.y - iy  ,  tz = u.z - iz  ;
-    const float mx = 1-tx      ,  my = 1-ty      ,  mz = 1-tz      ;
-    //------
-    int kx = ix+1; kx=(kx<n.x)?kx:0;
-    int ky = iy+1; ky=(ky<n.y)?ky:0;
-    int kz = iz+1; kz=(kz<n.z)?kz:0;
-	//------
-	const float f00 = my*mz; 
-    const float f10 = ty*mz; 
-    const float f01 = my*tz; 
-    const float f11 = ty*tz;
-    const int   i00 = n.x*(iy + n.y*iz);
-    const int   i01 = n.x*(iy + n.y*kz);
-    const int   i10 = n.x*(ky + n.y*iz);
-    const int   i11 = n.x*(ky + n.y*kz);
-    const int 
-        i000=ix+i00, i100=kx+i00,
-        i001=ix+i01, i101=kx+i01,
-        i010=ix+i10, i110=kx+i10,
-        i011=ix+i11, i111=kx+i11;
-        
-    const float 
-        f000=mx*f00, f100=tx*f00,
-        f001=mx*f01, f101=tx*f01,
-        f010=mx*f10, f110=tx*f10,
-        f011=mx*f11, f111=tx*f11;
-    // { // DEBUG
-    //     Quat4f fDBG = FFPaul[ i000 ];
-    //     //printf( "GridFF::getForce() u(%g,%g,%g)/[%3i,%3i,%3i] fe(%g,%g,%g|%g) p0(%g,%g,%g) PLQ(%g,%g,%g)\n", u.x,u.y,u.z, grid.n.x,grid.n.y,grid.n.z, fDBG.x,fDBG.y,fDBG.z,fDBG.w, grid.pos0.x,grid.pos0.y,grid.pos0.z, PLQ.x,PLQ.y,PLQ.z );
-    // }
-    //printf( "GridFF::getForce() ixyz(%i,%i,%i) nxyz(%i,%i,%i) ntot=%i  ((%i,%i)(%i,%i))((%i,%i)(%i,%i))\n", ix,iy,iz, n.x, n.y, n.z, grid.getNtot(), i000, i001, i010, i011,  i100, i101, i110, i111 );
-
-	return  // 3 * 8 * 4 = 96 floats   // SIMD optimize ?????
-          ((FFPaul[ i000 ]*f000) + (FFPaul[ i100 ]*f100)
-         + (FFPaul[ i010 ]*f010) + (FFPaul[ i110 ]*f110)  
-         + (FFPaul[ i011 ]*f011) + (FFPaul[ i111 ]*f111)
-         + (FFPaul[ i001 ]*f001) + (FFPaul[ i101 ]*f101))*PLQ.x
-
-         +((FFLond[ i000 ]*f000) + (FFLond[ i100 ]*f100)
-         + (FFLond[ i010 ]*f010) + (FFLond[ i110 ]*f110)  
-         + (FFLond[ i011 ]*f011) + (FFLond[ i111 ]*f111)
-         + (FFLond[ i001 ]*f001) + (FFLond[ i101 ]*f101))*PLQ.y
-
-         +((FFelec[ i000 ]*f000) + (FFelec[ i100 ]*f100)
-         + (FFelec[ i010 ]*f010) + (FFelec[ i110 ]*f110)  
-         + (FFelec[ i011 ]*f011) + (FFelec[ i101 ]*f111)
-         + (FFelec[ i001 ]*f001) + (FFelec[ i101 ]*f101))*PLQ.z
-        ;
-    }
-
-
-	// return  // 3 * 8 * 4 = 96 floats   // SIMD optimize ?????
-    //       ((FFPaul[ i000 ]*f000) + (FFPaul[ i100 ]*f100)
-    //      + (FFPaul[ i010 ]*f010) + (FFPaul[ i110 ]*f110)  
-    //      + (FFPaul[ i011 ]*f011) + (FFPaul[ i111 ]*f111)
-    //      + (FFPaul[ i001 ]*f001) + (FFPaul[ i101 ]*f101));
-    // }
+    return Trilinear::fe3f_fe3( (Vec3f)u, n, PLQ.f, FFPaul, FFLond, FFelec );
 }
 __attribute__((hot))  
 inline float addForce( const Vec3d& p, const Quat4f& PLQ, Vec3d& f, bool bSurf=true )const{
@@ -324,6 +250,39 @@ inline float addForce( const Vec3d& p, const Quat4f& PLQ, Vec3d& f, bool bSurf=t
     f.add( (Vec3d)fe.f );   
     return fe.e;
 }
+
+__attribute__((hot))  
+inline Quat4d getForce_d( Vec3d p, const Quat4d& PLQ, bool bSurf=true ) const {
+    Vec3d u;
+    p.sub(shift0);
+    p.sub(grid.pos0);
+    grid.iCell.dot_to( p, u );
+    Vec3i n = grid.n;
+    //printf( "pos(%g,%g,%g) u(%g,%g,%g)  p0(%g,%g,%g) \n", p.x,p.y,p.z, u.x,u.y,u.z,    grid.pos0.x,grid.pos0.y,grid.pos0.z );
+    if( bSurf ){ double ivnz=1./n.z; double uzmax=1-ivnz*1.5; double uzmin=ivnz*0.5; if(u.z<uzmin){ u.z=uzmin; }else if(u.z>uzmax){u.z=uzmax; } } // "clamp" boundrary condition in z-direction
+    // ---- PBC condiction ( within outer cell bboundaries ? )
+    //u.x=(u.x-(int)u.x)*n.x;
+    //u.y=(u.y-(int)u.y)*n.y;
+    //u.z=(u.z-(int)u.z)*n.z;
+    u.x=(u.x-((int)(u.x+10)-10))*n.x;
+    u.y=(u.y-((int)(u.y+10)-10))*n.y;
+    u.z=(u.z-((int)(u.z+10)-10))*n.z;
+    return Trilinear::fe3d_fe3( u, n, PLQ.f, FFPaul_d, FFLond_d, FFelec_d );
+}
+__attribute__((hot))  
+inline double addForce_d( const Vec3d& p, const Quat4d& PLQ, Vec3d& f, bool bSurf=true )const{
+    Quat4d fe = getForce_d( p, PLQ, bSurf ); 
+    f.add( fe.f );   
+    return fe.e;
+}
+__attribute__((hot))  
+double addForces_d( int natoms, Vec3d* apos, Quat4d* PLQs, Vec3d* fpos, bool bSurf=true )const{ 
+    double E=0;
+    for(int ia=0; ia<natoms; ia++){ E+=addForce_d( apos[ia], PLQs[ia], fpos[ia], bSurf ); };
+    return E;
+}
+
+
 
 __attribute__((hot))  
 inline Quat4d getForce_Tricubic( Vec3d p, const Quat4d& PLQH, bool bSurf=true ) const {
@@ -448,110 +407,7 @@ inline void addForce( const Vec3d& pos, const Quat4f& PLQ, Quat4f& fe ) const {
     //printf( "p(%5.5e,%5.5e,%5.5e) g(%5.5e,%5.5e,%5.5e) f(%5.5e,%5.5e,%5.5e) \n", pos.x, pos.y, pos.z, gpos.x, gpos.y, gpos.z, f.x,f.y,f.z );
 }
 
-__attribute__((hot))  
-inline Quat4d getForce_d( Vec3d p, const Quat4d& PLQ, bool bSurf=true ) const {
-    #pragma omp SIMD
-    {
-    Vec3d u;
-    p.sub(shift0);
-    p.sub(grid.pos0);
-    grid.iCell.dot_to( p, u );
-    Vec3i n = grid.n;
-    //printf( "pos(%g,%g,%g) u(%g,%g,%g)  p0(%g,%g,%g) \n", p.x,p.y,p.z, u.x,u.y,u.z,    grid.pos0.x,grid.pos0.y,grid.pos0.z );
-    if( bSurf ){ double ivnz=1./n.z; double uzmax=1-ivnz*1.5; double uzmin=ivnz*0.5; if(u.z<uzmin){ u.z=uzmin; }else if(u.z>uzmax){u.z=uzmax; } } // "clamp" boundrary condition in z-direction
 
-    // ---- PBC condiction ( within outer cell bboundaries ? )
-    //u.x=(u.x-(int)u.x)*n.x;
-    //u.y=(u.y-(int)u.y)*n.y;
-    //u.z=(u.z-(int)u.z)*n.z;
-    u.x=(u.x-((int)(u.x+10)-10))*n.x;
-    u.y=(u.y-((int)(u.y+10)-10))*n.y;
-    u.z=(u.z-((int)(u.z+10)-10))*n.z;
-
-	const int    ix = (int)u.x  ,  iy = (int)u.y  ,  iz = (int)u.z  ;
-    const double tx = u.x - ix  ,  ty = u.y - iy  ,  tz = u.z - iz  ;
-    const double mx = 1-tx      ,  my = 1-ty      ,  mz = 1-tz      ;
-    //------
-    int kx = ix+1; kx=(kx<n.x)?kx:0;
-    int ky = iy+1; ky=(ky<n.y)?ky:0;
-    int kz = iz+1; kz=(kz<n.z)?kz:0;
-	//------
-	const double f00 = my*mz; 
-    const double f10 = ty*mz; 
-    const double f01 = my*tz; 
-    const double f11 = ty*tz;
-    const int   i00 = n.x*(iy + n.y*iz);
-    const int   i01 = n.x*(iy + n.y*kz);
-    const int   i10 = n.x*(ky + n.y*iz);
-    const int   i11 = n.x*(ky + n.y*kz);
-    const int 
-        i000=ix+i00, i100=kx+i00,
-        i001=ix+i01, i101=kx+i01,
-        i010=ix+i10, i110=kx+i10,
-        i011=ix+i11, i111=kx+i11;
-    
-    //printf( "GridFF::getForce_d() ixyz(%i,%i,%i) nxyz(%i,%i,%i) ntot=%i  ((%i,%i)(%i,%i))((%i,%i)(%i,%i))\n", ix,iy,iz, n.x, n.y, n.z, grid.getNtot(), i000, i001, i010, i011,  i100, i101, i110, i111 );
-
-    int ntot = grid.getNtot();
-    if( ((ix<0)||(ix>=n.x)) || 
-        ((iy<0)||(iy>=n.y)) ||
-        ((iz<0)||(iz>=n.z)) )[[unlikely]]{
-            printf( "ERROR GridFF::getForce_d() ntot=%i OUT_OF_RANGE((%i,%i)(%i,%i))((%i,%i)(%i,%i)) pos(%g,%g,%g) ixyz(%i,%i,%i) nxyz(%i,%i,%i) \n", p.x,p.y,p.z,   ix,iy,iz, n.x, n.y, n.z, grid.getNtot(), i000, i001, i010, i011,  i100, i101, i110, i111 );
-            exit(0);
-    }
-    if( (i000<0)||(i000>=ntot) || 
-        (i001<0)||(i001>=ntot) || 
-        (i010<0)||(i010>=ntot) || 
-        (i011<0)||(i011>=ntot) || 
-        (i100<0)||(i100>=ntot) || 
-        (i101<0)||(i101>=ntot) || 
-        (i110<0)||(i110>=ntot) || 
-        (i111<0)||(i111>=ntot) )[[unlikely]]{
-        printf( "ERROR GridFF::getForce_d() ntot=%i OUT_OF_RANGE((%i,%i)(%i,%i))((%i,%i)(%i,%i)) pos(%g,%g,%g) ixyz(%i,%i,%i) nxyz(%i,%i,%i) \n", p.x,p.y,p.z,   ix,iy,iz, n.x, n.y, n.z, grid.getNtot(), i000, i001, i010, i011,  i100, i101, i110, i111 );
-        exit(0);
-    }
-        //printf( "GridFF::getForce_d() ixyz(%i,%i,%i) nxyz(%i,%i,%i) ntot=%i  ((%i,%i)(%i,%i))((%i,%i)(%i,%i))\n", ix,iy,iz, n.x, n.y, n.z, grid.getNtot(), i000, i001, i010, i011,  i100, i101, i110, i111 );
-
-    const double 
-        f000=mx*f00, f100=tx*f00,
-        f001=mx*f01, f101=tx*f01,
-        f010=mx*f10, f110=tx*f10,
-        f011=mx*f11, f111=tx*f11;
-    // { // DEBUG
-    //     Quat4f fDBG = FFPaul[ i000 ];
-    //     //printf( "GridFF::getForce() u(%g,%g,%g)/[%3i,%3i,%3i] fe(%g,%g,%g|%g) p0(%g,%g,%g) PLQ(%g,%g,%g)\n", u.x,u.y,u.z, grid.n.x,grid.n.y,grid.n.z, fDBG.x,fDBG.y,fDBG.z,fDBG.w, grid.pos0.x,grid.pos0.y,grid.pos0.z, PLQ.x,PLQ.y,PLQ.z );
-    // }
-
-	return  // 3 * 8 * 4 = 96 doubles   // SIMD optimize ?????
-          ((FFPaul_d[ i000 ]*f000) + (FFPaul_d[ i100 ]*f100)
-         + (FFPaul_d[ i010 ]*f010) + (FFPaul_d[ i110 ]*f110)  
-         + (FFPaul_d[ i011 ]*f011) + (FFPaul_d[ i111 ]*f111)
-         + (FFPaul_d[ i001 ]*f001) + (FFPaul_d[ i101 ]*f101))*PLQ.x
-
-         +((FFLond_d[ i000 ]*f000) + (FFLond_d[ i100 ]*f100)
-         + (FFLond_d[ i010 ]*f010) + (FFLond_d[ i110 ]*f110)  
-         + (FFLond_d[ i011 ]*f011) + (FFLond_d[ i111 ]*f111)
-         + (FFLond_d[ i001 ]*f001) + (FFLond_d[ i101 ]*f101))*PLQ.y
-
-         +((FFelec_d[ i000 ]*f000) + (FFelec_d[ i100 ]*f100)
-         + (FFelec_d[ i010 ]*f010) + (FFelec_d[ i110 ]*f110)  
-         + (FFelec_d[ i011 ]*f011) + (FFelec_d[ i101 ]*f111)
-         + (FFelec_d[ i001 ]*f001) + (FFelec_d[ i101 ]*f101))*PLQ.z
-        ;
-    }
-}
-__attribute__((hot))  
-inline double addForce_d( const Vec3d& p, const Quat4d& PLQ, Vec3d& f, bool bSurf=true )const{
-    Quat4d fe = getForce_d( p, PLQ, bSurf ); 
-    f.add( fe.f );   
-    return fe.e;
-}
-__attribute__((hot))  
-double addForces_d( int natoms, Vec3d* apos, Quat4d* PLQs, Vec3d* fpos, bool bSurf=true )const{ 
-    double E=0;
-    for(int ia=0; ia<natoms; ia++){ E+=addForce_d( apos[ia], PLQs[ia], fpos[ia], bSurf ); };
-    return E;
-}
 
 
     __attribute__((hot))  
@@ -1652,6 +1508,202 @@ void initGridFF( const char * name, double z0=NAN, bool bAutoNPBC=true, bool bSy
     }
 
 #endif
+
+
+
+
+/*
+
+__attribute__((hot))  
+inline Quat4f getForce( Vec3d p, const Quat4f& PLQ, bool bSurf=true ) const {
+    //printf(  "getForce() p(%g,%g,%g) PLQ(%g,%g,%g,%g) bSurf=%i @FFPaul=%li @FFLond=%li @FFelec=%li \n", p.x,p.y,p.z,  PLQ.x,PLQ.y,PLQ.z,PLQ.w, (long)FFPaul,(long)FFLond,(long)FFelec );
+    #pragma omp SIMD
+    {
+    Vec3d u;
+    p.sub(shift0);
+    p.sub(grid.pos0);
+    grid.iCell.dot_to( p, u );
+    Vec3i n = grid.n;
+    //printf( "pos(%g,%g,%g) u(%g,%g,%g)  p0(%g,%g,%g) \n", p.x,p.y,p.z, u.x,u.y,u.z,    grid.pos0.x,grid.pos0.y,grid.pos0.z );
+    if( bSurf ){ double ivnz=1./n.z; double uzmax=1-ivnz*1.5; double uzmin=ivnz*0.5; if(u.z<uzmin){ u.z=uzmin; }else if(u.z>uzmax){u.z=uzmax; } } // "clamp" boundrary condition in z-direction
+
+    // ---- PBC condiction ( within outer cell bboundaries ? )
+    //u.x=(u.x-(int)u.x)*n.x;
+    //u.y=(u.y-(int)u.y)*n.y;
+    //u.z=(u.z-(int)u.z)*n.z;
+    u.x=(u.x-((int)(u.x+10)-10))*n.x;
+    u.y=(u.y-((int)(u.y+10)-10))*n.y;
+    u.z=(u.z-((int)(u.z+10)-10))*n.z;
+
+    //printf( "GridFF::getForce() u(%g,%g,%g) p(%g,%g,%g) shift(%g,%g,%g) p0(%g,%g,%g) \n", u.x,u.y,u.z,  p.x,p.y,p.z,  shift.x,shift.y,shift.z,   grid.pos0.x,grid.pos0.y,grid.pos0.z );
+
+    // ---- Clamp ( within outer cell bboundaries ? )
+    // {
+    // if((u.x<0.)||(u.x>1.)||(u.y<0.)||(u.y>1.)){ return Quat4fZero; };
+    // if((u.z<0.)||(u.z>1.)){ return Quat4fZero; };
+    // u.x*=n.x; 
+    // u.y*=n.y; 
+    // u.z*=n.z;
+    // }
+
+    //printf( " u(%g,%g,%g) \n", u.x,u.y,u.z );
+
+    // -----
+	const int   ix = (int)u.x  ,  iy = (int)u.y  ,  iz = (int)u.z  ;
+    const float tx = u.x - ix  ,  ty = u.y - iy  ,  tz = u.z - iz  ;
+    const float mx = 1-tx      ,  my = 1-ty      ,  mz = 1-tz      ;
+    //------
+    int kx = ix+1; kx=(kx<n.x)?kx:0;
+    int ky = iy+1; ky=(ky<n.y)?ky:0;
+    int kz = iz+1; kz=(kz<n.z)?kz:0;
+	//------
+	const float f00 = my*mz; 
+    const float f10 = ty*mz; 
+    const float f01 = my*tz; 
+    const float f11 = ty*tz;
+    const int   i00 = n.x*(iy + n.y*iz);
+    const int   i01 = n.x*(iy + n.y*kz);
+    const int   i10 = n.x*(ky + n.y*iz);
+    const int   i11 = n.x*(ky + n.y*kz);
+    const int 
+        i000=ix+i00, i100=kx+i00,
+        i001=ix+i01, i101=kx+i01,
+        i010=ix+i10, i110=kx+i10,
+        i011=ix+i11, i111=kx+i11;
+        
+    const float 
+        f000=mx*f00, f100=tx*f00,
+        f001=mx*f01, f101=tx*f01,
+        f010=mx*f10, f110=tx*f10,
+        f011=mx*f11, f111=tx*f11;
+    // { // DEBUG
+    //     Quat4f fDBG = FFPaul[ i000 ];
+    //     //printf( "GridFF::getForce() u(%g,%g,%g)/[%3i,%3i,%3i] fe(%g,%g,%g|%g) p0(%g,%g,%g) PLQ(%g,%g,%g)\n", u.x,u.y,u.z, grid.n.x,grid.n.y,grid.n.z, fDBG.x,fDBG.y,fDBG.z,fDBG.w, grid.pos0.x,grid.pos0.y,grid.pos0.z, PLQ.x,PLQ.y,PLQ.z );
+    // }
+    //printf( "GridFF::getForce() ixyz(%i,%i,%i) nxyz(%i,%i,%i) ntot=%i  ((%i,%i)(%i,%i))((%i,%i)(%i,%i))\n", ix,iy,iz, n.x, n.y, n.z, grid.getNtot(), i000, i001, i010, i011,  i100, i101, i110, i111 );
+
+	return  // 3 * 8 * 4 = 96 floats   // SIMD optimize ?????
+          ((FFPaul[ i000 ]*f000) + (FFPaul[ i100 ]*f100)
+         + (FFPaul[ i010 ]*f010) + (FFPaul[ i110 ]*f110)  
+         + (FFPaul[ i011 ]*f011) + (FFPaul[ i111 ]*f111)
+         + (FFPaul[ i001 ]*f001) + (FFPaul[ i101 ]*f101))*PLQ.x
+
+         +((FFLond[ i000 ]*f000) + (FFLond[ i100 ]*f100)
+         + (FFLond[ i010 ]*f010) + (FFLond[ i110 ]*f110)  
+         + (FFLond[ i011 ]*f011) + (FFLond[ i111 ]*f111)
+         + (FFLond[ i001 ]*f001) + (FFLond[ i101 ]*f101))*PLQ.y
+
+         +((FFelec[ i000 ]*f000) + (FFelec[ i100 ]*f100)
+         + (FFelec[ i010 ]*f010) + (FFelec[ i110 ]*f110)  
+         + (FFelec[ i011 ]*f011) + (FFelec[ i101 ]*f111)
+         + (FFelec[ i001 ]*f001) + (FFelec[ i101 ]*f101))*PLQ.z
+        ;
+    }
+
+
+	// return  // 3 * 8 * 4 = 96 floats   // SIMD optimize ?????
+    //       ((FFPaul[ i000 ]*f000) + (FFPaul[ i100 ]*f100)
+    //      + (FFPaul[ i010 ]*f010) + (FFPaul[ i110 ]*f110)  
+    //      + (FFPaul[ i011 ]*f011) + (FFPaul[ i111 ]*f111)
+    //      + (FFPaul[ i001 ]*f001) + (FFPaul[ i101 ]*f101));
+    // }
+}
+
+__attribute__((hot))  
+inline Quat4d getForce_d( Vec3d p, const Quat4d& PLQ, bool bSurf=true ) const {
+    #pragma omp SIMD
+    {
+    Vec3d u;
+    p.sub(shift0);
+    p.sub(grid.pos0);
+    grid.iCell.dot_to( p, u );
+    Vec3i n = grid.n;
+    //printf( "pos(%g,%g,%g) u(%g,%g,%g)  p0(%g,%g,%g) \n", p.x,p.y,p.z, u.x,u.y,u.z,    grid.pos0.x,grid.pos0.y,grid.pos0.z );
+    if( bSurf ){ double ivnz=1./n.z; double uzmax=1-ivnz*1.5; double uzmin=ivnz*0.5; if(u.z<uzmin){ u.z=uzmin; }else if(u.z>uzmax){u.z=uzmax; } } // "clamp" boundrary condition in z-direction
+
+    // ---- PBC condiction ( within outer cell bboundaries ? )
+    //u.x=(u.x-(int)u.x)*n.x;
+    //u.y=(u.y-(int)u.y)*n.y;
+    //u.z=(u.z-(int)u.z)*n.z;
+    u.x=(u.x-((int)(u.x+10)-10))*n.x;
+    u.y=(u.y-((int)(u.y+10)-10))*n.y;
+    u.z=(u.z-((int)(u.z+10)-10))*n.z;
+
+	const int    ix = (int)u.x  ,  iy = (int)u.y  ,  iz = (int)u.z  ;
+    const double tx = u.x - ix  ,  ty = u.y - iy  ,  tz = u.z - iz  ;
+    const double mx = 1-tx      ,  my = 1-ty      ,  mz = 1-tz      ;
+    //------
+    int kx = ix+1; kx=(kx<n.x)?kx:0;
+    int ky = iy+1; ky=(ky<n.y)?ky:0;
+    int kz = iz+1; kz=(kz<n.z)?kz:0;
+	//------
+	const double f00 = my*mz; 
+    const double f10 = ty*mz; 
+    const double f01 = my*tz; 
+    const double f11 = ty*tz;
+    const int   i00 = n.x*(iy + n.y*iz);
+    const int   i01 = n.x*(iy + n.y*kz);
+    const int   i10 = n.x*(ky + n.y*iz);
+    const int   i11 = n.x*(ky + n.y*kz);
+    const int 
+        i000=ix+i00, i100=kx+i00,
+        i001=ix+i01, i101=kx+i01,
+        i010=ix+i10, i110=kx+i10,
+        i011=ix+i11, i111=kx+i11;
+    
+    //printf( "GridFF::getForce_d() ixyz(%i,%i,%i) nxyz(%i,%i,%i) ntot=%i  ((%i,%i)(%i,%i))((%i,%i)(%i,%i))\n", ix,iy,iz, n.x, n.y, n.z, grid.getNtot(), i000, i001, i010, i011,  i100, i101, i110, i111 );
+
+    int ntot = grid.getNtot();
+    if( ((ix<0)||(ix>=n.x)) || 
+        ((iy<0)||(iy>=n.y)) ||
+        ((iz<0)||(iz>=n.z)) )[[unlikely]]{
+            printf( "ERROR GridFF::getForce_d() ntot=%i OUT_OF_RANGE((%i,%i)(%i,%i))((%i,%i)(%i,%i)) pos(%g,%g,%g) ixyz(%i,%i,%i) nxyz(%i,%i,%i) \n", p.x,p.y,p.z,   ix,iy,iz, n.x, n.y, n.z, grid.getNtot(), i000, i001, i010, i011,  i100, i101, i110, i111 );
+            exit(0);
+    }
+    if( (i000<0)||(i000>=ntot) || 
+        (i001<0)||(i001>=ntot) || 
+        (i010<0)||(i010>=ntot) || 
+        (i011<0)||(i011>=ntot) || 
+        (i100<0)||(i100>=ntot) || 
+        (i101<0)||(i101>=ntot) || 
+        (i110<0)||(i110>=ntot) || 
+        (i111<0)||(i111>=ntot) )[[unlikely]]{
+        printf( "ERROR GridFF::getForce_d() ntot=%i OUT_OF_RANGE((%i,%i)(%i,%i))((%i,%i)(%i,%i)) pos(%g,%g,%g) ixyz(%i,%i,%i) nxyz(%i,%i,%i) \n", p.x,p.y,p.z,   ix,iy,iz, n.x, n.y, n.z, grid.getNtot(), i000, i001, i010, i011,  i100, i101, i110, i111 );
+        exit(0);
+    }
+        //printf( "GridFF::getForce_d() ixyz(%i,%i,%i) nxyz(%i,%i,%i) ntot=%i  ((%i,%i)(%i,%i))((%i,%i)(%i,%i))\n", ix,iy,iz, n.x, n.y, n.z, grid.getNtot(), i000, i001, i010, i011,  i100, i101, i110, i111 );
+
+    const double 
+        f000=mx*f00, f100=tx*f00,
+        f001=mx*f01, f101=tx*f01,
+        f010=mx*f10, f110=tx*f10,
+        f011=mx*f11, f111=tx*f11;
+    // { // DEBUG
+    //     Quat4f fDBG = FFPaul[ i000 ];
+    //     //printf( "GridFF::getForce() u(%g,%g,%g)/[%3i,%3i,%3i] fe(%g,%g,%g|%g) p0(%g,%g,%g) PLQ(%g,%g,%g)\n", u.x,u.y,u.z, grid.n.x,grid.n.y,grid.n.z, fDBG.x,fDBG.y,fDBG.z,fDBG.w, grid.pos0.x,grid.pos0.y,grid.pos0.z, PLQ.x,PLQ.y,PLQ.z );
+    // }
+
+	return  // 3 * 8 * 4 = 96 doubles   // SIMD optimize ?????
+          ((FFPaul_d[ i000 ]*f000) + (FFPaul_d[ i100 ]*f100)
+         + (FFPaul_d[ i010 ]*f010) + (FFPaul_d[ i110 ]*f110)  
+         + (FFPaul_d[ i011 ]*f011) + (FFPaul_d[ i111 ]*f111)
+         + (FFPaul_d[ i001 ]*f001) + (FFPaul_d[ i101 ]*f101))*PLQ.x
+
+         +((FFLond_d[ i000 ]*f000) + (FFLond_d[ i100 ]*f100)
+         + (FFLond_d[ i010 ]*f010) + (FFLond_d[ i110 ]*f110)  
+         + (FFLond_d[ i011 ]*f011) + (FFLond_d[ i111 ]*f111)
+         + (FFLond_d[ i001 ]*f001) + (FFLond_d[ i101 ]*f101))*PLQ.y
+
+         +((FFelec_d[ i000 ]*f000) + (FFelec_d[ i100 ]*f100)
+         + (FFelec_d[ i010 ]*f010) + (FFelec_d[ i110 ]*f110)  
+         + (FFelec_d[ i011 ]*f011) + (FFelec_d[ i101 ]*f111)
+         + (FFelec_d[ i001 ]*f001) + (FFelec_d[ i101 ]*f101))*PLQ.z
+        ;
+    }
+}
+
+*/
+
 
 }; // class GridFF
 
