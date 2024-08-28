@@ -94,7 +94,7 @@ inline double evalDipole( int n, Vec3d* ps, Quat4d* REQs, Vec3d& Dout, Vec3d& p0
     return Q;
 }
 
-enum class GridFFmod{ LinearFloat=1, LinearDouble=2, HermiteFloat=3, HermiteDouble=4, BsplineFloat=5, BsplineDouble=6 };
+enum class GridFFmod{ Direct=0, LinearFloat=1, LinearDouble=2, HermiteFloat=3, HermiteDouble=4, BsplineFloat=5, BsplineDouble=6 };
 
 class GridFF : public NBFF{ public: 
     // -----  From NBFF 
@@ -432,8 +432,10 @@ inline void addForce( const Vec3d& pos, const Quat4f& PLQ, Quat4f& fe ) const {
     inline double addAtom( const Vec3d& pos, const Quat4d& PLQ, Vec3d& fout )const{
         Quat4d fed;
         switch( mode ){
-            case GridFFmod::LinearDouble: { fed=(Quat4d)getForce( pos, (Quat4f)PLQ ); }break;
-            case GridFFmod::LinearFloat:  { fed=getForce_d      ( pos, PLQ);          }break;
+            // void evalGridFFPoint( int natoms_, const Vec3d * apos_, const Quat4d * REQs_, Vec3d pos, Quat4d& qp, Quat4d& ql, Quat4d& qe )const{
+            case GridFFmod::Direct       :{ Quat4d qp,ql,qe; evalGridFFPoint( apos_.size(), apos_.data(), REQs_.data(), pos, qp, ql, qe ); fed = qp*PLQ.x + ql*PLQ.y + qe*PLQ.z; } 
+            case GridFFmod::LinearFloat  :{ fed=(Quat4d)getForce( pos, (Quat4f)PLQ ); }break;
+            case GridFFmod::LinearDouble :{ fed=getForce_d      ( pos, PLQ);          }break;
             case GridFFmod::HermiteDouble:{ fed=getForce_HHermit( pos, PLQ );         }break;
             case GridFFmod::BsplineDouble:{ fed=getForce_Bspline( pos, PLQ );         }break;
             //case GridFFmod::HermiteFloat:  { }break;
@@ -493,7 +495,7 @@ inline void addForce( const Vec3d& pos, const Quat4f& PLQ, Quat4f& fe ) const {
     }
 
     __attribute__((hot))  
-    void evalGridFFel(int natoms, Vec3d * apos, Quat4d * REQs, Vec3d * FF ){
+    void evalGridFFel(int natoms, const Vec3d * apos, const Quat4d * REQs, Vec3d * FF )const{
         //interateGrid3D( Vec3d{0.0,0.0,0.0}, grid.n, grid.dCell, [=](int ibuff, Vec3d p)->void{
         interateGrid3D( grid, [=](int ibuff, Vec3d p)->void{
             Vec3d f = Vec3dZero;
@@ -505,7 +507,7 @@ inline void addForce( const Vec3d& pos, const Quat4f& PLQ, Quat4f& fe ) const {
 
     //__attribute__((pure))
     __attribute__((hot))
-    void evalGridFFPoint( int natoms_, Vec3d * apos_, Quat4d * REQs_, Vec3d pos, Quat4d& qp, Quat4d& ql, Quat4d& qe ){
+    void evalGridFFPoint( int natoms_, const Vec3d * apos_, const Quat4d * REQs_, Vec3d pos, Quat4d& qp, Quat4d& ql, Quat4d& qe )const{
         //const Vec3d pos = grid.pos0 + grid.dCell.c*iz + grid.dCell.b*iy + grid.dCell.a*ix;
         const double R2damp=Rdamp*Rdamp;    
         const double K=-alphaMorse;
@@ -543,7 +545,7 @@ inline void addForce( const Vec3d& pos, const Quat4f& PLQ, Quat4f& fe ) const {
     }
 
     __attribute__((hot))
-    void evalGridFFPoint_Mors( int npbc, Vec3d* shifts, int natoms_, Vec3d * apos_, Quat4d * REQs_, Vec3d pos, Quat4d& qp, Quat4d& ql ){
+    void evalGridFFPoint_Mors( int npbc, const Vec3d* shifts, int natoms_, const Vec3d * apos_, const Quat4d * REQs_, Vec3d pos, Quat4d& qp, Quat4d& ql )const{
         //const Vec3d pos = grid.pos0 + grid.dCell.c*iz + grid.dCell.b*iy + grid.dCell.a*ix;
         const double R2damp=Rdamp*Rdamp;    
         const double K=-alphaMorse;
@@ -572,7 +574,7 @@ inline void addForce( const Vec3d& pos, const Quat4f& PLQ, Quat4f& fe ) const {
 
     __attribute__((pure))
     __attribute__((hot))
-    Quat4d evalGridFFPoint_Coul( int npbc, Vec3d* shifts, int natoms_, const Vec3d * apos_, Quat4d * REQs_, Vec3d pos ) const {
+    Quat4d evalGridFFPoint_Coul( int npbc, const Vec3d* shifts, int natoms_, const Vec3d * apos_, const Quat4d * REQs_, Vec3d pos ) const {
         const double R2damp=Rdamp*Rdamp;    
         const double K=-alphaMorse;
         Quat4d qe     = Quat4dZero;
@@ -592,20 +594,20 @@ inline void addForce( const Vec3d& pos, const Quat4f& PLQ, Quat4f& fe ) const {
         return qe;
     }
 
-    Quat4d evalMorsePBC_PLQ(  Vec3d pi, Quat4d PLQH, int natoms, Vec3d * apos, Quat4d * REQs ){
+    Quat4d evalMorsePBC_PLQ(  Vec3d pi, Quat4d PLQH, int natoms, const Vec3d * apos, const Quat4d * REQs )const{
         //printf( "GridFF::evalMorsePBC() debug fi(%g,%g,%g) REQi(%g,%g,%g)\n",  fi.x,fi.y,fi.z, REQi.x,REQi.y,REQi.z,REQi.w  );
         Quat4d qp,ql,qe;
         evalGridFFPoint( natoms, apos, REQs, pi, qp, ql, qe );
         return qp*PLQH.x + ql*PLQH.y + qe*PLQH.z;
     }
-    Quat4d evalMorsePBC_PLQ_sym( Vec3d  pi, Quat4d  PLQH ){ return evalMorsePBC_PLQ( pi, PLQH, apos_.size(), &apos_[0], &REQs_[0] ); }
+    Quat4d evalMorsePBC_PLQ_sym( Vec3d  pi, Quat4d  PLQH )const{ return evalMorsePBC_PLQ( pi, PLQH, apos_.size(), &apos_[0], &REQs_[0] ); }
     // Quat4d evalMorsePBCatoms_PLQ_sym( int na, Vec3d* ps, Quat4d* REQs, Vec3d* forces ){
     //     double E = 0;
     //     for(int ia=0; ia<na; ia++){ evalMorsePBC_PLQ_sym( ps[ia], REQs[ia], forces[ia] ); };
     //     return E;
     // }
 
-    void evalAtPoints( int n, Vec3d* ps, Quat4d* FFout, Quat4d PLQH, int natoms_, Vec3d * apos_, Quat4d * REQs_ ){
+    void evalAtPoints( int n, const Vec3d* ps, Quat4d* FFout, Quat4d PLQH, int natoms_, const Vec3d * apos_, const Quat4d * REQs_ )const{
         //printf( "GridFF::evalAtPoints() n=%i natoms_=%i \n", n, natoms_ );
         int i=0;
         //#pragma omp parallel for shared(i)
@@ -617,7 +619,7 @@ inline void addForce( const Vec3d& pos, const Quat4f& PLQ, Quat4f& fe ) const {
         }
     }
     //void evalAtPoints( int n, Vec3d* ps, Quat4d* FFout, Quat4d PLQH ){ evalAtPoints( n, ps, FFout, PLQH, natoms, apos, REQs ); };
-    void evalAtPoints( int n, Vec3d* ps, Quat4d* FFout, Quat4d PLQH ){ evalAtPoints( n, ps, FFout, PLQH, apos_.size(), apos_.data(), REQs_.data() ); };
+    void evalAtPoints( int n, const Vec3d* ps, Quat4d* FFout, Quat4d PLQH )const{ evalAtPoints( n, ps, FFout, PLQH, apos_.size(), apos_.data(), REQs_.data() ); };
 
     void evalAtPoints_Split( int n, Vec3d* ps, Quat4d* FFout, Quat4d PLQH, int natoms_, Vec3d * apos_, Quat4d * REQs_ ){
         //printf( "GridFF::evalAtPoints_Split() n=%i natoms_=%i \n", n, natoms_ );

@@ -1984,8 +1984,11 @@ void pullAtom( int ia, Vec3d* apos, Vec3d* fapos, float K=-2.0 ){
             double ticks = (getCPUticks() - T0);
             double t = ticks*tick2second;
             double c_smooth = 0.1;
-            time_per_iter = time_per_iter*(1-c_smooth) + ( t*1e+6/nitr )*c_smooth;
-            printf( "MolWorld_sp3::MDloop()  (bUFF=%i,iParalel=%i,bSurfAtoms=%i,bGridFF=%i,bPBC=%i,bNonBonded=%ibNonBondNeighs=%i,go.bExploring=%i,dt=%g,niter=%i) time=%g[ms/%i](%g[us/iter] tick2second=%g)\n", bUFF,iParalel,bSurfAtoms,bGridFF,bPBC,bNonBonded,bNonBondNeighs,go.bExploring,dt_default,nitr, t*1e+3,nitr, time_per_iter, tick2second );
+            
+            double titer =  ( t*1e+6/nitr );
+            if( (time_per_iter>(titer*2))||(time_per_iter<(titer*0.5)) ) time_per_iter=titer;
+            time_per_iter = time_per_iter*(1-c_smooth) + titer*c_smooth;
+            printf( "MolWorld_sp3::MDloop()  (bUFF=%i,iParalel=%i,bSurfAtoms=%i,bGridFF=%i,GridFF.mode=%i,GridFF.npbc=%i,npbc=%i,bPBC=%i,bNonBonded=%ibNonBondNeighs=%i,go.bExploring=%i,dt=%g,niter=%i) time=%g[ms/%i](%g[us/iter] tick2second=%g)\n", bUFF,iParalel,bSurfAtoms,bGridFF,(int)gridFF.mode,gridFF.npbc,npbc,bPBC,bNonBonded,bNonBondNeighs,go.bExploring,dt_default,nitr, t*1e+3,nitr, time_per_iter, tick2second );
         }
 
         //run( nIter );
@@ -2012,7 +2015,7 @@ void pullAtom( int ia, Vec3d* apos, Vec3d* fapos, float K=-2.0 ){
 
         ffl.bNonBonded=bNonBonded; ffl.setNonBondStrategy( bNonBondNeighs*2-1 );
 
-        printf( "MolWorld_sp3::run_no_omp(itr=%i/%i) gridFF.mode=%i bGridFF=%i bSurfAtoms=%i   gridFF.Bspline_PLQ=%li  FFPaul_d=%li FFLond_d=%li FFelec_d=%li \n", itr,niter_max, gridFF.mode, bGridFF, bSurfAtoms, (long)gridFF.Bspline_PLQ, (long)gridFF.FFPaul_d, (long)gridFF.FFLond_d, (long)gridFF.FFelec_d );
+        //printf( "MolWorld_sp3::run_no_omp(itr=%i/%i) gridFF.mode=%i bGridFF=%i bSurfAtoms=%i   gridFF.Bspline_PLQ=%li  FFPaul_d=%li FFLond_d=%li FFelec_d=%li \n", itr,niter_max, gridFF.mode, bGridFF, bSurfAtoms, (long)gridFF.Bspline_PLQ, (long)gridFF.FFPaul_d, (long)gridFF.FFLond_d, (long)gridFF.FFelec_d );
 
         //printf( "MolWorld_sp3::run_no_omp() bNonBonded=%i bNonBondNeighs=%i bSubtractBondNonBond=%i bSubtractAngleNonBond=%i bClampNonBonded=%i\n", bNonBonded, bNonBondNeighs, ffl.bSubtractBondNonBond, ffl.bSubtractAngleNonBond, ffl.bClampNonBonded );
 
