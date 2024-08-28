@@ -366,7 +366,7 @@ class MolGUI : public AppSDL2OGL_3D { public:
     //void renderGridFF( double isoVal=0.001, int isoSurfRenderType=0, double colorScale = 50. );
     int  renderSurfAtoms( Vec3i nPBC, bool bPointCross=false, float qsc=1, float Rsc=1, float Rsub=0 );
     void renderGridFF    ( double isoVal=0.1, int isoSurfRenderType=0, double colorScale = 50. );
-    void renderGridFF_new( double isoVal=0.1, int isoSurfRenderType=0, double colorScale = 50., Quat4d REQ=Quat4d{ 1.487, sqrt(0.0006808), 0., 0.} );
+    void renderGridFF_new( double isoVal=0.1, int isoSurfRenderType=0, double colorScale = 1., Quat4d REQ=Quat4d{ 1.487, sqrt(0.0006808), 0., 0.} );
     void renderESP( Quat4d REQ=Quat4d{ 1.487, 0.02609214441, 1., 0.} );
     void renderAFM( int iz, int offset );
     void renderAFM_trjs( int di );
@@ -1781,8 +1781,6 @@ void MolGUI::renderGridFF( double isoVal, int isoSurfRenderType, double colorScl
     if(verbosity>0) printf( "... MolGUI::renderGridFF() DONE\n" );
 }
 
-
-
 //void MolGUI::renderGridFF_new( double isoVal, int isoSurfRenderType, double colorScale, Quat4d REQ = Quat4d{ 1.487, sqrt(0.0006808), 0., 0.} ){
 void MolGUI::renderGridFF_new( double isoVal, int isoSurfRenderType, double colorScale, Quat4d REQ ){
     if(verbosity>0) printf( "MolGUI::renderGridFF_new()\n" );
@@ -1792,8 +1790,11 @@ void MolGUI::renderGridFF_new( double isoVal, int isoSurfRenderType, double colo
     glShadeModel( GL_SMOOTH );
     glEnable(GL_LIGHTING);
     glEnable(GL_DEPTH_TEST);
+    Vec2d zrange{-5.0,5.0};
+    {  W->gridFF.getEFprofileToFile( "gridFF_EFprofile_render.log", 200, Vec3d{0.0,0.0,zrange.x}, Vec3d{0.0,0.0,zrange.y}, Quat4d{REQ.x,REQ.y,0.0,0.0} );  }  // Debug: save gridFF z-profile to file of atom[0] to "gridFF_EFprofile_render.log"
     //int nvert = renderSubstrate_( W->gridFF.grid, FFtot, W->gridFF.FFelec, +isoVal, sign, colorSclae ); 
-    int nvert = renderSubstrate_new( W->gridFF, 2.0, isoVal, PLQ, colorScale );  //printf("Debug: renderGridFF() renderSubstrate() -> nvert= %i ", nvert );
+    //W->gridFF.findIso( isoVal, Vec3d{0.0,0.0,zrange.x}, Vec3d{0.0,0.0,zrange.y}, Quat4d{PLQ.x,PLQ.y,0.0,0.0}, 0.02 );
+    int nvert = renderSubstrate_new( W->gridFF, Vec2d{zrange.x,zrange.y}, isoVal, PLQ, colorScale );  //printf("Debug: renderGridFF() renderSubstrate() -> nvert= %i ", nvert );
     glEndList();
     if(verbosity>0) printf( "... MolGUI::renderGridFF_new() DONE\n" );
 }

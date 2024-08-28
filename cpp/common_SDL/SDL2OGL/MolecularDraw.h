@@ -226,21 +226,27 @@ int renderSubstrate_( const GridShape& grid, Quat4f * FF, Quat4f * FFel, double 
     return nvert;
 }
 
-int renderSubstrate_new( const GridFF& gff, double z0, double isoval, Quat4d PLQ, double sclr ){
+int renderSubstrate_new( const GridFF& gff, Vec2d zrange, double isoval, Quat4d PLQ, double sclr ){
     Quat4d PL{PLQ.x,PLQ.y,0.0,0.0};
     Quat4d Q {0.0,0.0,PLQ.y,0.0};
     Vec3i gn = gff.grid.n;
     Mat3d dCell = gff.grid.dCell;
     int nvert = 0;
+
+    printf( "\n", renderSubstrate_new );
     for ( int ib=1; ib<=gn.y; ib++ ){
         glBegin(GL_TRIANGLE_STRIP);
         for ( int ia=0; ia<=gn.x; ia++ ){
 
-            Vec3d p1 = dCell.a*ia + dCell.b*(ib-1); p1.z=z0;
-            Vec3d p2 = dCell.a*ia + dCell.b*(ib  ); p2.z=z0;
+            Vec3d p1 = dCell.a*ia + dCell.b*(ib-1); p1.z=zrange.x;
+            Vec3d p2 = dCell.a*ia + dCell.b*(ib  ); p2.z=zrange.x;
+            Vec3d p1_=p1; p1.z=zrange.y;
+            Vec3d p2_=p2; p2.z=zrange.y;
 
-            p1 = gff.findIso( isoval, p1, p1+Vec3d{0.0,0.0,-5.0}, PL, 0.02 );
-            p2 = gff.findIso( isoval, p2, p2+Vec3d{0.0,0.0,-5.0}, PL, 0.02 );
+            p1 = gff.findIso( isoval, p1, p1_, PL, 0.02 );
+            p2 = gff.findIso( isoval, p2, p2_, PL, 0.02 );
+
+            printf( "renderSubstrate_new[%i,%i] xy(%g,%g) z(%g|%g,%g) \n", ia,ib, p1.x,p1.y, p1.z, zrange.x, zrange.y, isoval );
 
             Vec3d f1,f2;
             double el1 = gff.addAtom( p1, Q, f1 );

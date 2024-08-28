@@ -445,24 +445,30 @@ inline void addForce( const Vec3d& pos, const Quat4f& PLQ, Quat4f& fe ) const {
         return fed.e;
     }
 
-    Vec3d findIso(double isoval, Vec3d p0, Vec3d p1, Quat4d& PLQ, double xtol = 0.01 )const{
+    Vec3d findIso(double isoval, Vec3d p0, Vec3d p1, const Quat4d PLQ, double xtol = 0.01 )const{
+        //printf( "GridFF::findIso() iso=%g p0(%6.3f,%6.3f,%6.3f) p1(%6.3f,%6.3f,%6.3f) PLQ(%g,%g,%g,%g) xtol=%g \n", isoval, p0.x,p0.y,p0.z, p1.x,p1.y,p1.z, PLQ.x,PLQ.y,PLQ.z,PLQ.w, xtol );
         Vec3d fout;  // Force output vector (unused in binary search)
         // Evaluate energy at the endpoints
         double f0 = addAtom(p0, PLQ, fout)-isoval;
         double f1 = addAtom(p1, PLQ, fout)-isoval;
+        //printf( "GridFF::findIso() iso=%g p0(%6.3f,%6.3f,%6.3f)f0=%fg p1(%6.3f,%6.3f,%6.3f)f1=%g PLQ(%g,%g,%g,%g) xtol=%g \n", isoval, p0.x,p0.y,p0.z,f0, p1.x,p1.y,p1.z,f1, PLQ.x,PLQ.y,PLQ.z,PLQ.w, xtol );
         if( f0*f1 > 0.0) {
-            printf("ERROR GridFF::findIso() f(p0)*f(p1) > 0.0 f0=%g f1=%g\n", f0,f1);
+            printf("ERROR GridFF::findIso() f[p0](%g)*f[p1](%g) > 0.0 \n", f0,f1);
             //exit(0);
             return p0;
         }
         double sgn = (f0 > 0.0) ? 1.0 : -1.0;
         double r2tol = xtol*xtol;
         Vec3d pmid;
+        int iter=0;
+
         while (  (p0-p1).norm2() > r2tol ) {
             pmid  = (p0 + p1) * 0.5;
-            double fmid = addAtom(pmid, Quat4d(), fout);
-            if ( fmid*sgn > isoval) { p1 = pmid; } 
-            else                    { p0 = pmid; }
+            double fmid = addAtom(pmid, PLQ, fout);
+            if ( (fmid-isoval)*sgn < 0.0 ) { p1 = pmid; } 
+            else                           { p0 = pmid; }
+            //printf( "p0.z=%6.3f p1.z=%6.3f fmid=%g \n", p0.z, p1.z, fmid );
+            iter++;
         }
         return pmid;
     }
@@ -1170,7 +1176,7 @@ void getEFprofile( int n, Vec3d p0, Vec3d p1, Quat4d REQ, Quat4d* fes, bool bPri
         //if(fes)fes[i]=(Quat4d)fe;
         Quat4d fed=Quat4dZero;
         fed.e = addAtom( p, PLQd, fed.f );
-        if(bPrint){ printf( "%i %6.3f %6.3f %6.3f    %g %g %g    %g\n", i, p.x, p.y, p.z, fed.x,fed.y,fed.z, fed.w  ); };
+        if(bPrint){ printf( "%4i %6.3f %6.3f %6.3f    %20.10e %20.10e %20.10e    %20.10e\n", i, p.x, p.y, p.z, fed.x,fed.y,fed.z, fed.w  ); };
     }
 }
 
