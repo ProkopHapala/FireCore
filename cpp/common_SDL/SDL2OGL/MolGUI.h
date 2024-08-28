@@ -1257,7 +1257,7 @@ void MolGUI::draw(){
     //if( (ogl_isosurf==0) && W->bGridFF ){ renderGridFF( subs_iso ); }
     //if( ogl_esp==0 ){ renderESP(); }
 
-    if(frameCount==1){ qCamera.pitch( M_PI );  qCamera0=qCamera; }
+    if(frameCount==0){ qCamera.pitch( M_PI );  qCamera0=qCamera; }
 
     //debug_scanSurfFF( 100, {0.,0.,z0_scan}, {0.0,3.0,z0_scan}, 10.0 );
 
@@ -1268,10 +1268,11 @@ void MolGUI::draw(){
     W->pick_hray = (Vec3d)cam.rot.c;
     W->pick_ray0 = (Vec3d)ray0;
 
-    if( (frameCount==1) && (W->bGridFF) ){ char fname[128]; 
-        sprintf(fname,"gridFF_EFprofile_mod%i.log",   (int)W->gridFF.mode ); W->gridFF.getEFprofileToFile( fname, 200, Vec3d{0.0,0.0,-10.0}, Vec3d{0.0,0.0,10.0}, W->ffl.REQs[0] ); 
-        sprintf(fname,"gridFF_EFprofile_mod%i_x.log", (int)W->gridFF.mode ); W->gridFF.getEFprofileToFile( fname, 200, Vec3d{-10.0,0.0,-2.0}, Vec3d{10.0,0.0,-2.0}, W->ffl.REQs[0] ); 
-        sprintf(fname,"gridFF_EFprofile_mod%i_y.log", (int)W->gridFF.mode ); W->gridFF.getEFprofileToFile( fname, 200, Vec3d{0.0,-10.0,-2.0}, Vec3d{0.0,10.0,-2.0}, W->ffl.REQs[0] );  
+    if( (frameCount==0) && (W->bGridFF) ){ char fname[128]; 
+        sprintf(fname,"gridFF_EFprofile_mod%i.log",   (int)W->gridFF.mode ); W->gridFF.getEFprofileToFile( fname, 1000, Vec3d{0.0,0.0,-10.0}, Vec3d{0.0,0.0,10.0}, W->ffl.REQs[0] ); 
+        sprintf(fname,"gridFF_EFprofile_mod%i_x.log", (int)W->gridFF.mode ); W->gridFF.getEFprofileToFile( fname, 1000, Vec3d{-10.0,0.0,0.0}, Vec3d{10.0,0.0,0.0}, W->ffl.REQs[0] ); 
+        sprintf(fname,"gridFF_EFprofile_mod%i_y.log", (int)W->gridFF.mode ); W->gridFF.getEFprofileToFile( fname, 1000, Vec3d{0.0,-10.0,0.0}, Vec3d{0.0,10.0,0.0}, W->ffl.REQs[0] );  
+        //exit(0);
     }  
     if(bRunRelax){ 
         bool bRelaxOld = W->bConverged;
@@ -1307,12 +1308,12 @@ void MolGUI::draw(){
     //printf( "bViewSubstrate %i ogl_isosurf %i W->bGridFF %i \n", bViewSubstrate, ogl_isosurf, W->bGridFF );
 
     if( bViewSubstrate ){
-        if( W->bGridFF ){
+        if( ( W->bGridFF )&&( ((int)(W->gridFF.mode))!=0) ){
             //Draw3D::atomsREQ( W->surf.natoms, W->surf.apos, W->surf.REQs, ogl_sph, 1., 0.1, 0., true, W->gridFF.shift0 );
             //Draw3D::atomsREQ( W->gridFF.apos_.size(), &W->gridFF.apos_[0], &W->gridFF.REQs_[0], ogl_sph, 1., 0.1, 0., true, W->gridFF.shift0 );
             Draw3D::atomsREQ( W->surf.natoms, W->surf.apos, W->surf.REQs, ogl_sph, 1., 0.1, 0., true, W->gridFF.shift0 );
             //if( (ogl_isosurf==0) && W->bGridFF ){ renderGridFF( subs_iso ); }
-            if( (ogl_isosurf==0) && W->bGridFF ){ renderGridFF_new( subs_iso ); }
+            if( (ogl_isosurf==0) ){ renderGridFF_new( subs_iso ); }
             //viewSubstrate( {-5,10}, {-5,10}, ogl_isosurf, W->gridFF.grid.cell.a, W->gridFF.grid.cell.b, W->gridFF.shift0 + W->gridFF.grid.pos0 );
             viewSubstrate( {-5,10}, {-5,10}, ogl_isosurf, W->gridFF.grid.cell.a, W->gridFF.grid.cell.b );
         }else{

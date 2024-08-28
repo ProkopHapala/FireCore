@@ -229,7 +229,7 @@ __attribute__((hot))
 inline Quat4f getForce( Vec3d p, const Quat4f& PLQ, bool bSurf=true ) const {
     //printf(  "getForce() p(%g,%g,%g) PLQ(%g,%g,%g,%g) bSurf=%i @FFPaul=%li @FFLond=%li @FFelec=%li \n", p.x,p.y,p.z,  PLQ.x,PLQ.y,PLQ.z,PLQ.w, (long)FFPaul,(long)FFLond,(long)FFelec );
     Vec3d u;
-    p.sub(shift0);
+    //p.sub(shift0);
     p.sub(grid.pos0);
     grid.iCell.dot_to( p, u );
     Vec3i n = grid.n;
@@ -254,7 +254,7 @@ inline float addForce( const Vec3d& p, const Quat4f& PLQ, Vec3d& f, bool bSurf=t
 __attribute__((hot))  
 inline Quat4d getForce_d( Vec3d p, const Quat4d& PLQ, bool bSurf=true ) const {
     Vec3d u;
-    p.sub(shift0);
+    //p.sub(shift0);
     p.sub(grid.pos0);
     grid.iCell.dot_to( p, u );
     Vec3i n = grid.n;
@@ -287,7 +287,7 @@ double addForces_d( int natoms, Vec3d* apos, Quat4d* PLQs, Vec3d* fpos, bool bSu
 __attribute__((hot))  
 inline Quat4d getForce_Tricubic( Vec3d p, const Quat4d& PLQH, bool bSurf=true ) const {
     Vec3d u;
-    p.sub(shift0);
+    //p.sub(shift0);
     p.sub(grid.pos0);
     grid.iCell.dot_to( p, u );
     u.x=(u.x-((int)(u.x+10)-10))*grid.n.x-1;
@@ -313,7 +313,7 @@ __attribute__((hot))
 inline Quat4d getForce_HHermit( Vec3d p, const Quat4d& PLQH, bool bSurf=true ) const {
     //printf( "GridFF::getForce_HHermit() p(%g,%g,%g)\n", p.x,p.y,p.z );
     Vec3d t;
-    p.sub(shift0);
+    //p.sub(shift0);
     p.sub(grid.pos0);
     grid.diCell.dot_to( p, t );
     Vec3d inv_dg2{ -grid.diCell.xx, -grid.diCell.yy, -grid.diCell.zz };
@@ -347,7 +347,7 @@ __attribute__((hot))
 inline Quat4d getForce_Bspline( Vec3d p, const Quat4d& PLQH, bool bSurf=true ) const {
     //printf( "GridFF::getForce_Bspline() p(%g,%g,%g)\n", p.x,p.y,p.z );
     Vec3d t;
-    p.sub(shift0);
+    //p.sub(shift0);
     p.sub(grid.pos0);
     grid.diCell.dot_to( p, t );
     Vec3d inv_dg2{ -grid.diCell.xx, -grid.diCell.yy, -grid.diCell.zz };
@@ -433,7 +433,9 @@ inline void addForce( const Vec3d& pos, const Quat4f& PLQ, Quat4f& fe ) const {
         Quat4d fed;
         switch( mode ){
             // void evalGridFFPoint( int natoms_, const Vec3d * apos_, const Quat4d * REQs_, Vec3d pos, Quat4d& qp, Quat4d& ql, Quat4d& qe )const{
-            case GridFFmod::Direct       :{ Quat4d qp,ql,qe; evalGridFFPoint( apos_.size(), apos_.data(), REQs_.data(), pos, qp, ql, qe ); fed = qp*PLQ.x + ql*PLQ.y + qe*PLQ.z; } 
+            case GridFFmod::Direct       :{ Quat4d qp,ql,qe; evalGridFFPoint( apos_.size(), apos_.data(), REQs_.data(), pos, qp, ql, qe ); fed = qp*PLQ.x + ql*PLQ.y + qe*PLQ.z; 
+                //printf( "GridFF::addAtom( E(%g,%g,%g|%g)  PLQ(%g,%g,%g)  pos(%g,%g,%g) \n", qp.e, ql.e, qe.e, fed.e,  PLQ.x,PLQ.y,PLQ.z, pos.x,pos.y,pos.z  );
+            } break;
             case GridFFmod::LinearFloat  :{ fed=(Quat4d)getForce( pos, (Quat4f)PLQ ); }break;
             case GridFFmod::LinearDouble :{ fed=getForce_d      ( pos, PLQ);          }break;
             case GridFFmod::HermiteDouble:{ fed=getForce_HHermit( pos, PLQ );         }break;
@@ -538,6 +540,7 @@ inline void addForce( const Vec3d& pos, const Quat4f& PLQ, Quat4f& fe ) const {
                 //qp.e += exp( -r2/0.16 ); // Debug
             }
         }
+        //printf( "evalGridFFPoint() E_PLQ(%g,%g,%g) pos(%g,%g,%g) \n", qp.e, ql.e, qe.e, pos.x, pos.y, pos.z );
         //const int ibuff = ix + grid.n.x*( iy + grid.n.y * iz );
         //FFPaul[ibuff]=(Quat4f)qp;
         //FFLond[ibuff]=(Quat4f)ql;
