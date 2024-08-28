@@ -1268,7 +1268,11 @@ void MolGUI::draw(){
     W->pick_hray = (Vec3d)cam.rot.c;
     W->pick_ray0 = (Vec3d)ray0;
 
-    if( (frameCount==1) && (W->bGridFF) ){  W->gridFF.getEFprofileToFile( "gridFF_EFprofile.log", 200, Vec3d{0.0,0.0,-10.0}, Vec3d{0.0,0.0,10.0}, W->ffl.REQs[0] );  }  // Debug: save gridFF z-profile to file of atom[0] to "gridFF_EFprofile.log"
+    if( (frameCount==1) && (W->bGridFF) ){ char fname[128]; 
+        sprintf(fname,"gridFF_EFprofile_mod%i.log",   (int)W->gridFF.mode ); W->gridFF.getEFprofileToFile( fname, 200, Vec3d{0.0,0.0,-10.0}, Vec3d{0.0,0.0,10.0}, W->ffl.REQs[0] ); 
+        sprintf(fname,"gridFF_EFprofile_mod%i_x.log", (int)W->gridFF.mode ); W->gridFF.getEFprofileToFile( fname, 200, Vec3d{-10.0,0.0,-2.0}, Vec3d{10.0,0.0,-2.0}, W->ffl.REQs[0] ); 
+        sprintf(fname,"gridFF_EFprofile_mod%i_y.log", (int)W->gridFF.mode ); W->gridFF.getEFprofileToFile( fname, 200, Vec3d{0.0,-10.0,-2.0}, Vec3d{0.0,10.0,-2.0}, W->ffl.REQs[0] );  
+    }  
     if(bRunRelax){ 
         bool bRelaxOld = W->bConverged;
         //printf( "MolGUI::draw().W->MDloop(%i) \n", perFrame );    
@@ -1309,7 +1313,8 @@ void MolGUI::draw(){
             Draw3D::atomsREQ( W->surf.natoms, W->surf.apos, W->surf.REQs, ogl_sph, 1., 0.1, 0., true, W->gridFF.shift0 );
             //if( (ogl_isosurf==0) && W->bGridFF ){ renderGridFF( subs_iso ); }
             if( (ogl_isosurf==0) && W->bGridFF ){ renderGridFF_new( subs_iso ); }
-            viewSubstrate( {-5,10}, {-5,10}, ogl_isosurf, W->gridFF.grid.cell.a, W->gridFF.grid.cell.b, W->gridFF.shift0 + W->gridFF.grid.pos0 );
+            //viewSubstrate( {-5,10}, {-5,10}, ogl_isosurf, W->gridFF.grid.cell.a, W->gridFF.grid.cell.b, W->gridFF.shift0 + W->gridFF.grid.pos0 );
+            viewSubstrate( {-5,10}, {-5,10}, ogl_isosurf, W->gridFF.grid.cell.a, W->gridFF.grid.cell.b );
         }else{
             if( ogl_surfatoms==0 ){ogl_surfatoms = renderSurfAtoms(  W->gridFF.nPBC, false );  }
             glCallList( ogl_surfatoms );
@@ -1791,7 +1796,7 @@ void MolGUI::renderGridFF_new( double isoVal, int isoSurfRenderType, double colo
     glEnable(GL_LIGHTING);
     glEnable(GL_DEPTH_TEST);
     Vec2d zrange{-5.0,5.0};
-    {  W->gridFF.getEFprofileToFile( "gridFF_EFprofile_render.log", 200, Vec3d{0.0,0.0,zrange.x}, Vec3d{0.0,0.0,zrange.y}, Quat4d{REQ.x,REQ.y,0.0,0.0} );  }  // Debug: save gridFF z-profile to file of atom[0] to "gridFF_EFprofile_render.log"
+    //{  W->gridFF.getEFprofileToFile( "gridFF_EFprofile_render.log", 200, Vec3d{0.0,0.0,zrange.x}, Vec3d{0.0,0.0,zrange.y}, Quat4d{REQ.x,REQ.y,0.0,0.0} );  }  // Debug: save gridFF z-profile to file of atom[0] to "gridFF_EFprofile_render.log"
     //int nvert = renderSubstrate_( W->gridFF.grid, FFtot, W->gridFF.FFelec, +isoVal, sign, colorSclae ); 
     //W->gridFF.findIso( isoVal, Vec3d{0.0,0.0,zrange.x}, Vec3d{0.0,0.0,zrange.y}, Quat4d{PLQ.x,PLQ.y,0.0,0.0}, 0.02 );
     int nvert = renderSubstrate_new( W->gridFF, Vec2d{zrange.x,zrange.y}, isoVal, PLQ, colorScale );  //printf("Debug: renderGridFF() renderSubstrate() -> nvert= %i ", nvert );
