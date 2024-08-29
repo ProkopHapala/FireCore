@@ -279,6 +279,29 @@ def getArrayPointer( name ):
         return np.ctypeslib.as_array( ptr, valid_shape )
     return None
 
+
+# int setupEwaldGrid( double* pos0, double* dCell, int* ns ){
+lib.setupEwaldGrid.argtypes  = [ c_double_p, c_double_p, c_int_p ]
+lib.setupEwaldGrid.restype   =  c_int
+def setupEwaldGrid( ns, pos0=[0.0,0.0,0.0], dCell=None, dg=[0.1,0.1,0.1] ):
+    if dCell is None: dCell = [[dg[0],0.,0.],[0.,dg[1],0.],[0.,0.,dg[2]]]
+    pos0  = np.array( pos0 )
+    dCell = np.array( dCell )
+    ns = np.array( ns, dtype=np.int32 )
+    return lib.setupEwaldGrid( _np_as(pos0,c_double_p), _np_as(dCell,c_double_p), _np_as(ns,c_int_p) )
+
+
+#void projectAtomsEwaldGrid( int na, double* apos, double* qs, double* dens ){
+lib.projectAtomsEwaldGrid.argtypes  = [ c_int, c_double_p, c_double_p, c_double_p ]
+lib.projectAtomsEwaldGrid.restype   =  None
+def projectAtomsEwaldGrid( apos, qs, dens=None, ns=None ):
+    na = len(apos)
+    apos = np.array( apos )
+    qs   = np.array( qs )
+    if dens is None: dens = np.zeros( ns, dtype=np.float64 )
+    lib.projectAtomsEwaldGrid( na, _np_as(apos,c_double_p), _np_as(qs,c_double_p), _np_as(dens,c_double_p) )
+    return dens
+
 # void evalGridFFAtPoints( int n, double* ps, double* FFout, double* PLQH ){
 lib.evalGridFFAtPoints.argtypes  = [ c_int, c_double_p, c_double_p, c_double_p, c_bool ]
 lib.evalGridFFAtPoints.restype   =  None

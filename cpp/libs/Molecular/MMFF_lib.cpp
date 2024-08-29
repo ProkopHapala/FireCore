@@ -114,8 +114,18 @@ double* getArrayPointer( const char* name, int* shape  ){
     return 0;
 }
 
+int setupEwaldGrid( double* pos0, double* dCell, int* ns ){
+    W.gewald.n     = *(Vec3i*)ns;
+    W.gewald.pos0  = *(Vec3d*)pos0;
+    W.gewald.dCell = *(Mat3d*)dCell;
+    W.gewald.updateCell_2();
+    W.gewald.printCell();
+    return W.gewald.n.totprod();
+}
 
-
+void projectAtomsEwaldGrid( int na, double* apos, double* qs, double* dens ){
+    W.gewald.project_atoms_on_grid(na, (Vec3d*)apos, qs, dens);
+}
 
 
 void evalGridFFAtPoints( int n, double* ps, double* FFout, double* PLQH, bool bSplit ){

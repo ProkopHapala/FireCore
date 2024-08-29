@@ -137,19 +137,17 @@ class Mat3T{
 // ====== dot product with vector
 
 	inline VEC dot( const VEC&  v ) const {
-		VEC vout;
-		vout.x = xx*v.x + xy*v.y + xz*v.z;
-		vout.y = yx*v.x + yy*v.y + yz*v.z;
-		vout.z = zx*v.x + zy*v.y + zz*v.z;
-		return vout;
+		return VEC{
+		    xx*v.x + xy*v.y + xz*v.z,
+		    yx*v.x + yy*v.y + yz*v.z,
+		    zx*v.x + zy*v.y + zz*v.z  };
 	}
 
     inline VEC dotT( const VEC&  v ) const {
-		VEC vout;
-		vout.x = xx*v.x + yx*v.y + zx*v.z;
-		vout.y = xy*v.x + yy*v.y + zy*v.z;
-		vout.z = xz*v.x + yz*v.y + zz*v.z;
-		return vout;
+		return VEC{
+		    xx*v.x + yx*v.y + zx*v.z,
+		    xy*v.x + yy*v.y + zy*v.z,
+		    xz*v.x + yz*v.y + zz*v.z };
 	}
 	inline VEC lincomb( T fx, T fy, T fz )const{  return dotT({fx,fy,fz}); }
 
