@@ -54,6 +54,8 @@ static MMFFparams* params_glob;
 #include "arrayAlgs.h"
 #include "SVG_render.h"
 
+#include "EwaldGrid.h"
+
 
 
 enum class MolWorldVersion{ BASIC=0, QM=1, GPU=2 };
@@ -119,6 +121,8 @@ class MolWorld_sp3 : public SolverInterface { public:
     NBFF         surf, nbmol;
 	GridFF       gridFF;
     bool bGridDouble = true;
+
+    EwaldGrid gewald;
 
     std::vector<int> atom2group;
     Groups groups;

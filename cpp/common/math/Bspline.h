@@ -3,7 +3,7 @@
 #define  Bspline_h
 
 #include "quaternion.h"
-#include "CG.h"
+//#include "CG.h"
 #include "globals.h"
 
 
