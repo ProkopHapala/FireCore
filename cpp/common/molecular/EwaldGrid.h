@@ -61,4 +61,84 @@ void project_atoms_on_grid( int na, const Vec3d* apos, const double* qs, double*
 }; // class GridFF
 
 
+
+
+#ifdef WITH_FFTW
+
+fftw_plan fft_plan;
+fftw_plan ifft_plan;
+fftw_complex *V=0, *rho=0;
+
+
+void laplace_reciprocal_kernel(){
+    int nx=grid.n.x;
+    int ny=grid.n.y;
+    int nz=grid.n.z;
+    // Solve the Laplace equation in Fourier space
+    double kConst  = (2.0 * M_PI / L) * (2.0 * M_PI / L); 
+    for (int ix = 0; ix < nx; ix++) {
+        double kx = (ix <= ny / 2) ? ix : ix - nx;
+        for (int iy = 0; iy < ny; iy++) {
+            double ky = (iy <= ny / 2) ? iy : iy - ny;
+            for (int iz = 0; iz < nzx; ++iz ) {
+                int index = ix * ny * nz + iy * nz + iz;
+                double kz = ( iz <= nz / 2) ? iz : iz - nz;
+
+                double k_squared = 1/( (kx * kx + ky * ky + kz * kz) * kConst );
+
+                if (k_squared != 0) {
+                    phi_hat[index][0] *= -k_squared; // Real part
+                    phi_hat[index][1] *= -k_squared; // Imaginary part
+                } else {
+                    phi_hat[index][0] = 0.0; // Avoid division by zero (DC component)
+                    phi_hat[index][1] = 0.0;
+                }
+            }
+        }
+    }
+}
+
+    void prepare_laplace(){
+        int nx=grid.n.x;
+        int ny=grid.n.y;
+        int nz=grid.n.z;
+        fftw_complex *in, *out;
+        V  = (fftw_complex*) fftw_malloc(sizeof(fftw_complex) * nx*ny*nz );
+        Vw = (fftw_complex*) fftw_malloc(sizeof(fftw_complex) * nx*ny*nz );
+        //fft_plan =            fftw_plan_dft_3d( nx,ny,nz, in, out, FFTW_FORWARD, FFTW_ESTIMATE);
+        fft_plan = fftw_plan_dft_3d( nx,ny,nz, V, Vw,   FFTW_FORWARD,  FFTW_ESTIMATE );
+        ifft_plan = fftw_plan_dft_3d( nx,ny,nz, Vwt, V, FFTW_BACKWARD, FFTW_ESTIMATE );
+
+
+    }
+
+    void solve_laplace(){
+        fftw_execute(fft_plan);
+        laplace_reciprocal_kernel
+        fftw_execute(backward_plan);
+    }
+
+    void destroy_laplace(){
+        fftw_destroy_plan(forward_plan);
+        fftw_destroy_plan(backward_plan);
+        fftw_free(fft_plan);
+        fftw_free(ifft_plan);
+    }
+
+#else
+
+    void prepare_laplace(){
+        printf("ERROR: you invoke prepare_laplace() while WITH_FFTW=false => exit()\n" ); exit(0);
+    }
+
+    void solve_laplace(){
+        printf("ERROR: you invoke solve_laplace() while WITH_FFTW=false => exit()\n" ); exit(0);
+    };
+
+    void destroy_laplace(){
+        printf("ERROR: you invoke destroy_laplace() while WITH_FFTW=false => exit()\n" ); exit(0);
+    }
+
+#endif 
+
 #endif
