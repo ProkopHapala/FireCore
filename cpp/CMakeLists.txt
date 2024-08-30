@@ -5,13 +5,14 @@ project ( SimpleSimulationEngine )
 
 option(WITH_SDL    "build with GUI and 3D graphics (SDL+OpenGL)"                           OFF)
 option(WITH_LUA    "build with Lua 5.2 for scripting inside interactive GUI"               OFF)
+option(WITH_FFTW   "build with FFTW3 for scripting inside interactive GUI"               OFF)
 option(WITH_OPENCL "build with OpenCL GPU acceleration? up to 100x speedup"                OFF)
 option(WITH_OMP    "build with OpenMP paralelization for multiple CPUs"                    OFF)
 option(WITH_AVX    "build with AVX256 SIMD intrinstic ? up to 10x speedup on 1CPU"         OFF)
 option(RELEASE     "build optimized release (-O3/-Ofast) rather than debug? (-g -Og)"      OFF)
 option(WITH_ASAN   "use runtime memory sanitizer (asan) to trace segfaults and mem-leaks?" OFF)
 
-message("OPTIONS: -DWITH_SDL=${WITH_SDL} -DWITH_LUA=${WITH_LUA} -DWITH_OPENCL=${WITH_OPENCL} -DWITH_OMP=${WITH_OMP} -DWITH_AVX=${WITH_AVX} -DRELEASE=${RELEASE} -DWITH_ASAN=${WITH_ASAN}" )
+message("OPTIONS: -DWITH_SDL=${WITH_SDL} -DWITH_LUA=${WITH_LUA} -DWITH_FFTW=${WITH_FFTW} -DWITH_OPENCL=${WITH_OPENCL} -DWITH_OMP=${WITH_OMP} -DWITH_AVX=${WITH_AVX} -DRELEASE=${RELEASE} -DWITH_ASAN=${WITH_ASAN}" )
 
 # ==============================
 # ==== FLAGS
@@ -28,6 +29,14 @@ if(WITH_LUA)
 else()
     set(LUA_LIBRARIES "")
 endif()
+
+if(WITH_FFTW)
+    add_definitions(-DWITH_FFTW)
+    find_package(FFTW3 REQUIRED)
+else()
+    set(LUA_LIBRARIES "")
+endif()
+
 
 if(RELEASE)
     set(CMAKE_BUILD_TYPE Release)
