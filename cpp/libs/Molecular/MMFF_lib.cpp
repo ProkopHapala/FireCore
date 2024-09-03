@@ -127,6 +127,26 @@ void projectAtomsEwaldGrid( int na, double* apos, double* qs, double* dens ){
     W.gewald.project_atoms_on_grid(na, (Vec3d*)apos, qs, dens);
 }
 
+void EwaldGridSolveLaplace( double* dens, double* Vout, bool bPrepare, bool bDestroy ){
+    if(bPrepare){ W.gewald.prepare_laplace( ); }
+                  W.gewald.solve_laplace( dens, Vout );
+    if(bDestroy){ W.gewald.destroy_laplace( ); }
+}
+
+void EwaldGridSolveLaplaceDebug( double* dens, double* Vout, double* densw, double* kerw, double* VwKer ){
+    int ntot = W.gewald.n.totprod();
+    
+    W.gewald.prepare_laplace( );
+    array2fftc( ntot, dens, W.gewald.V );
+    fftw_execute(W.gewald.fft_plan);   fftc2array( ntot, W.gewald.Vw,  densw  );
+    
+    for(int i=0; i<ntot; i++){  W.gewald.V[i][0]=1.0; W.gewald.V[i][1]=1.0; }
+    W.gewald.laplace_reciprocal_kernel( W.gewald.V  );  fftc2array( ntot, W.gewald.V,  kerw  );
+    W.gewald.laplace_reciprocal_kernel( W.gewald.Vw );  fftc2array( ntot, W.gewald.Vw, VwKer );
+    fftw_execute(W.gewald.ifft_plan);                   fftc2array( ntot, W.gewald.V,  Vout  );
+
+    W.gewald.destroy_laplace( );
+}
 
 void evalGridFFAtPoints( int n, double* ps, double* FFout, double* PLQH, bool bSplit ){
     long t0 = getCPUticks();
