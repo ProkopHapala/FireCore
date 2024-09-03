@@ -114,23 +114,40 @@ double* getArrayPointer( const char* name, int* shape  ){
     return 0;
 }
 
-int setupEwaldGrid( double* pos0, double* dCell, int* ns ){
+int setupEwaldGrid( double* pos0, double* dCell, int* ns, bool bPrint ){
     W.gewald.n     = *(Vec3i*)ns;
     W.gewald.pos0  = *(Vec3d*)pos0;
     W.gewald.dCell = *(Mat3d*)dCell;
     W.gewald.updateCell_2();
-    W.gewald.printCell();
+    if(bPrint){W.gewald.printCell();}
     return W.gewald.n.totprod();
 }
 
 void projectAtomsEwaldGrid( int na, double* apos, double* qs, double* dens ){
+    long t0 = getCPUticks();
     W.gewald.project_atoms_on_grid(na, (Vec3d*)apos, qs, dens);
+    double t = (getCPUticks()-t0)*1e-6; printf( "projectAtomsEwaldGrid() na=%i  ng(%i,%i,%i) T(project_atoms_on_grid)=%g [Mticks] \n", na, W.gewald.n.x,W.gewald.n.y,W.gewald.n.z, t );
 }
 
-void EwaldGridSolveLaplace( double* dens, double* Vout, bool bPrepare, bool bDestroy ){
-    if(bPrepare){ W.gewald.prepare_laplace( ); }
-                  W.gewald.solve_laplace( dens, Vout );
-    if(bDestroy){ W.gewald.destroy_laplace( ); }
+void EwaldGridSolveLaplace( double* dens, double* Vout, bool bPrepare, bool bDestroy, int flags, bool bOMP ){
+    // long t0 = getCPUticks();
+    // if(bPrepare){ W.gewald.prepare_laplace( flags ); }
+    // long t1 = getCPUticks();
+    //               W.gewald.solve_laplace( dens, Vout );
+    // long t2 = getCPUticks();
+    // printf( "prepare_laplace() flags=%i n(%i,%i,%i) T(prepare_laplace)= %g [Mticks] T(solve_laplace)= %g [Mticks] \n", flags, W.gewald.n.x,W.gewald.n.y,W.gewald.n.z, (t1-t0)*1e-6, (t2-t1)*1e-6 );
+    // if(bDestroy){ W.gewald.destroy_laplace( ); }
+
+    long t0 = getCPUticks();
+    
+    if(bPrepare){ if(bOMP){ W.gewald.prepare_laplace_omp( flags );}
+                  else    { W.gewald.prepare_laplace    ( flags );} }
+    long t1 = getCPUticks();
+    W.gewald.solve_laplace( dens, Vout );
+    long t2 = getCPUticks();
+    printf( "prepare_laplace() flags=%i  omp_max_threads=%i n(%i,%i,%i) T(prepare_laplace)= %g [Mticks] T(solve_laplace)= %g [Mticks] \n", flags, omp_get_max_threads(), W.gewald.n.x,W.gewald.n.y,W.gewald.n.z, (t1-t0)*1e-6, (t2-t1)*1e-6 );
+    if(bDestroy){ if(bOMP){ W.gewald.destroy_laplace_omp( ); }
+                  else    { W.gewald.destroy_laplace    ( ); } }
 }
 
 void EwaldGridSolveLaplaceDebug( double* dens, double* Vout, double* densw, double* kerw, double* VwKer ){

@@ -11,6 +11,7 @@
 #ifdef WITH_FFTW
 #include <fftw3.h>
 
+__attribute__((hot))
 void array2fftc( int n, const double* in, fftw_complex* out){
     for (int i=0; i<n; i++ ) {
         out[i][0] = in[i];
@@ -18,6 +19,7 @@ void array2fftc( int n, const double* in, fftw_complex* out){
     }
 }
 
+__attribute__((hot))
 void fftc2array( int n,  const fftw_complex* in, double* out) {
     for (int i=0; i<n; i++ ) { out[i] = in[i][0];}
 }
@@ -108,7 +110,7 @@ fftw_plan    fft_plan;
 fftw_plan    ifft_plan;
 fftw_complex *Vw=0,*V=0;
 
-
+__attribute__((hot))
 void laplace_reciprocal_kernel( fftw_complex* VV ){
     int nx=n.x;
     int ny=n.y;
@@ -117,37 +119,48 @@ void laplace_reciprocal_kernel( fftw_complex* VV ){
     double freq_y = (2.0 * M_PI) / cell.b.norm();
     double freq_z = (2.0 * M_PI) / cell.c.norm();
 
-    printf("laplace_reciprocal_kernel() nxyz(%i,%i,%i) freq(%g,%g,%g) \n", nx, ny, nz, freq_x, freq_y, freq_z );
+    //printf("laplace_reciprocal_kernel() nxyz(%i,%i,%i) freq(%g,%g,%g) \n", nx, ny, nz, freq_x, freq_y, freq_z );
 
     for (int ix = 0; ix < nx; ix++) {
-        const double kx =  ( (ix <= ny / 2) ? ix : ix - nx ) * freq_x;
+        const double kx  =  ( (ix <= ny / 2) ? ix : ix - nx ) * freq_x;
         for (int iy = 0; iy < ny; iy++) {
-            double ky = ( (iy <= ny / 2) ? iy : iy - ny ) * freq_y;
+            const double ky   = ( (iy <= ny / 2) ? iy : iy - ny ) * freq_y;
+            const double k2xy = ky*ky + kx*kx;
+            const int    ixy  = (ix*ny + iy)*nz;
             for (int iz = 0; iz < nz; ++iz ) {
-                int index = ix * ny * nz + iy * nz + iz;
-                double kz = ( ( iz <= nz / 2) ? iz : iz - nz ) * freq_z;
-                double k2 = kx*kx + ky*ky + kz*kz;
+                const int i     = iz + ixy;
+                const double kz = ( ( iz <= nz / 2) ? iz : iz - nz ) * freq_z;
+                const double k2 = k2xy + kz*kz;
                 if ( k2 > 1e-32 ){
-                    double invk2 = 1.0/k2;
-                    VV[index][0] *= invk2; // Real part
-                    VV[index][1] *= invk2; // Imaginary part
+                    const double invk2 = 1.0/k2;
+                    VV[i][0] *= invk2; // Real part
+                    VV[i][1] *= invk2; // Imaginary part
                 } else {
-                    VV[index][0] = 0.0; // Avoid division by zero (DC component)
-                    VV[index][1] = 0.0;
+                    VV[i][0] = 0.0; // Avoid division by zero (DC component)
+                    VV[i][1] = 0.0;
                 }
             }
         }
     }
 }
 
-    void prepare_laplace(){
+    void prepare_laplace( int flags=-1 ){
         int ntot = n.totprod();
         V  = (fftw_complex*) fftw_malloc(sizeof(fftw_complex) * ntot );
         Vw = (fftw_complex*) fftw_malloc(sizeof(fftw_complex) * ntot );
         //fft_plan =            fftw_plan_dft_3d( nx,ny,nz, in, out, FFTW_FORWARD, FFTW_ESTIMATE);
-        fft_plan  = fftw_plan_dft_3d( n.x,n.y,n.z, V,  Vw, FFTW_FORWARD,  FFTW_ESTIMATE | FFTW_PRESERVE_INPUT );
-        ifft_plan = fftw_plan_dft_3d( n.x,n.y,n.z, Vw, V,  FFTW_BACKWARD, FFTW_ESTIMATE | FFTW_PRESERVE_INPUT );
+        if(flags<0){ flags = FFTW_ESTIMATE | FFTW_PRESERVE_INPUT; }
 
+        // FFTW_PRESERVE_INPUT  // 1<<4
+        // FFTW_DESTROY_INPUT   // 1<<0
+
+        // FFTW_ESTIMATE    // 1<<6
+        // FFTW_MEASURE     // 0
+        // FFTW_PATIENT     // 1<<5
+        // FFTW_EXHAUSTIVE  // 1<<3
+
+        fft_plan  = fftw_plan_dft_3d( n.x,n.y,n.z, V,  Vw, FFTW_FORWARD,  flags );
+        ifft_plan = fftw_plan_dft_3d( n.x,n.y,n.z, Vw, V,  FFTW_BACKWARD, flags );
         /*
         https://www.fftw.org/fftw3_doc/Planner-Flags.html
         flags: This parameter provides hints to FFTW about how to optimize the planning process. The flags can include:
@@ -157,11 +170,28 @@ void laplace_reciprocal_kernel( fftw_complex* VV ){
         */
     }
 
+    void prepare_laplace_omp( int flags=-1 ){
+        int ntot = n.totprod();
+        fftw_init_threads();
+        V  = (fftw_complex*) fftw_malloc(sizeof(fftw_complex) * ntot );
+        Vw = (fftw_complex*) fftw_malloc(sizeof(fftw_complex) * ntot );
+        
+        if(flags<0){ flags = FFTW_ESTIMATE | FFTW_PRESERVE_INPUT; }
+        
+        fftw_plan_with_nthreads(4); 
+        fft_plan  = fftw_plan_dft_3d( n.x,n.y,n.z, V,  Vw, FFTW_FORWARD,  flags );
+        ifft_plan = fftw_plan_dft_3d( n.x,n.y,n.z, Vw, V,  FFTW_BACKWARD, flags );
+
+    }
+
+    __attribute__((hot))
     void solve_laplace( const double* dens, double* Vout=0 ){
         int ntot =  n.totprod();
         array2fftc( ntot, dens, V );
         fftw_execute(fft_plan);
+        long t0 = getCPUticks();
         laplace_reciprocal_kernel( Vw );
+        double t = (getCPUticks()-t0)*1e-6; printf( "solve_laplace() ng(%i,%i,%i) T(laplace_reciprocal_kernel)=%g [Mticks] \n", n.x,n.y,n.z, t );
         fftw_execute(ifft_plan);
         if(Vout) fftc2array( ntot, V, Vout );        
     }
@@ -171,6 +201,15 @@ void laplace_reciprocal_kernel( fftw_complex* VV ){
         fftw_destroy_plan(ifft_plan);
         fftw_free(V);
         fftw_free(Vw);
+    }
+
+    void destroy_laplace_omp(){
+        fftw_destroy_plan(fft_plan);
+        fftw_destroy_plan(ifft_plan);
+        fftw_free(V);
+        fftw_free(Vw);
+        fftw_cleanup_threads();
+
     }
 
 #else

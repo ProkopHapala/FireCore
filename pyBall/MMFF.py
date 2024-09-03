@@ -280,15 +280,15 @@ def getArrayPointer( name ):
     return None
 
 
-# int setupEwaldGrid( double* pos0, double* dCell, int* ns ){
-lib.setupEwaldGrid.argtypes  = [ c_double_p, c_double_p, c_int_p ]
+# int setupEwaldGrid( double* pos0, double* dCell, int* ns, bool bPrint ){
+lib.setupEwaldGrid.argtypes  = [ c_double_p, c_double_p, c_int_p, c_bool ]
 lib.setupEwaldGrid.restype   =  c_int
-def setupEwaldGrid( ns, pos0=[0.0,0.0,0.0], dCell=None, dg=[0.1,0.1,0.1] ):
+def setupEwaldGrid( ns, pos0=[0.0,0.0,0.0], dCell=None, dg=[0.1,0.1,0.1], bPrint=False ):
     if dCell is None: dCell = [[dg[0],0.,0.],[0.,dg[1],0.],[0.,0.,dg[2]]]
     pos0  = np.array( pos0 )
     dCell = np.array( dCell )
     ns = np.array( ns, dtype=np.int32 )
-    return lib.setupEwaldGrid( _np_as(pos0,c_double_p), _np_as(dCell,c_double_p), _np_as(ns,c_int_p) )
+    return lib.setupEwaldGrid( _np_as(pos0,c_double_p), _np_as(dCell,c_double_p), _np_as(ns,c_int_p), bPrint )
 
 
 #void projectAtomsEwaldGrid( int na, double* apos, double* qs, double* dens ){
@@ -303,12 +303,12 @@ def projectAtomsEwaldGrid( apos, qs, dens=None, ns=None ):
     return dens
 
 
-# void EwaldGridSolveLaplace( double* dens, double* Vout, bool bPrepare, bool bDestroy ){
-lib.EwaldGridSolveLaplace.argtypes  = [ c_double_p, c_double_p, c_bool, c_bool ]
+# void EwaldGridSolveLaplace( double* dens, double* Vout, bool bPrepare, bool bDestroy, int flags ){
+lib.EwaldGridSolveLaplace.argtypes  = [ c_double_p, c_double_p, c_bool, c_bool,  c_int ]
 lib.EwaldGridSolveLaplace.restype   =  None
-def EwaldGridSolveLaplace( dens, Vout=None, bPrepare=True, bDestroy=True ):
+def EwaldGridSolveLaplace( dens, Vout=None, bPrepare=True, bDestroy=True, flags=-1, bOMP=False ):
     if Vout is None: Vout = np.zeros( dens.shape, dtype=np.float64 )
-    lib.EwaldGridSolveLaplace( _np_as(dens,c_double_p), _np_as(Vout,c_double_p), bPrepare, bDestroy )
+    lib.EwaldGridSolveLaplace( _np_as(dens,c_double_p), _np_as(Vout,c_double_p), bPrepare, bDestroy, flags, bOMP )
     return Vout
 
 # void EwaldGridSolveLaplaceDebug( double* dens, double* Vout, double* densw, double* kerw, double* VwKer ){

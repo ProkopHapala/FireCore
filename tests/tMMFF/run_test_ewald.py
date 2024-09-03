@@ -10,6 +10,13 @@ from pyBall import MMFF as mmff
 #from pyBall import FunctionSampling as fu
 
 
+FFTW_PRESERVE_INPUT = 1 << 4
+FFTW_DESTROY_INPUT  = 1 << 0
+FFTW_ESTIMATE       = 1 << 6
+FFTW_MEASURE        = 0
+FFTW_PATIENT        = 1 << 5
+FFTW_EXHAUSTIVE     = 1 << 3
+
 def compute_potential(dens, dg):
     density_fft = np.fft.fftn(dens)   # Perform the forward 3D FFT of the density
     nx, ny, nz = dens.shape           # Get the dimensions of the density grid
@@ -36,7 +43,7 @@ def plot_fft_debug( Vs, nx=4, ny=3, iy=0, label="Python/numpy", iz=50 ):
     plt.subplot( ny, nx, iy*nx+4); plt.imshow( Vs[3][iz,:,:]     , cmap='bwr' ); plt.colorbar(); plt.title("V           "+label)
 
 
-def test_poison( apos, qs, bPlot=True, bDebug=True, iz=50, ns=[100,100,100], dg=[0.1,0.1,0.1] ):
+def test_poison( apos, qs, bPlot=True, bDebug=True, iz=50, ns=[100,100,100], dg=[0.1,0.1,0.1], flags=-1, bOMP=False ):
 
     mmff.setupEwaldGrid( ns, dg=dg )
     dens = mmff.projectAtomsEwaldGrid( apos, qs, ns=ns )
@@ -47,7 +54,7 @@ def test_poison( apos, qs, bPlot=True, bDebug=True, iz=50, ns=[100,100,100], dg=
     if bDebug:
         c_V, c_densw, c_kerw, c_VwKer = mmff.EwaldGridSolveLaplaceDebug( dens )
     else:
-        c_V = mmff.EwaldGridSolveLaplace( dens, bPrepare=True, bDestroy=True )
+        c_V = mmff.EwaldGridSolveLaplace( dens, bPrepare=True, bDestroy=True, flags=flags, bOMP=bOMP )
     #print("DEBUG 2 ")
     Vmax= 0.0001
     Qmax= dens.max()
@@ -90,5 +97,40 @@ apos=[
 qs = [ +1.,+1.,-1.,-1. ]
 
 
+
+ns=[200,200,200]
+
 #test_poison(  apos, qs, bDebug=True )
-test_poison(  apos, qs, bDebug=False )
+#test_poison(  apos, qs, bDebug=False, flags=FFTW_PRESERVE_INPUT | FFTW_ESTIMATE  )
+#test_poison(  apos, qs, bDebug=False, flags=FFTW_PRESERVE_INPUT | FFTW_MEASURE   )
+#test_poison(  apos, qs, bDebug=False, flags=FFTW_PRESERVE_INPUT | FFTW_PATIENT   )
+
+#test_poison(  apos, qs, bDebug=False, flags=FFTW_DESTROY_INPUT | FFTW_ESTIMATE  )
+#test_poison(  apos, qs, bDebug=False, flags=FFTW_DESTROY_INPUT | FFTW_MEASURE   )
+test_poison(  apos, qs, bDebug=False, flags=FFTW_DESTROY_INPUT | FFTW_PATIENT, ns=ns, bOMP=False )
+test_poison(  apos, qs, bDebug=False, flags=FFTW_DESTROY_INPUT | FFTW_PATIENT, ns=ns, bOMP=True  )
+
+performance_results='''
+
+using Build-opt -Ofast
+
+prepare_laplace() flags=80 n(100,100,100) T(prepare_laplace)= 163.56  [Mticks] T(solve_laplace)= 120.55  [Mticks]      FFTW_PRESERVE_INPUT | FFTW_ESTIMATE
+prepare_laplace() flags=16 n(100,100,100) T(prepare_laplace)= 6.46114 [Mticks] T(solve_laplace)= 117.883 [Mticks]      FFTW_PRESERVE_INPUT | FFTW_MEASURE 
+prepare_laplace() flags=48 n(100,100,100) T(prepare_laplace)= 6.57928 [Mticks] T(solve_laplace)= 116.977 [Mticks]      FFTW_PRESERVE_INPUT | FFTW_PATIENT
+prepare_laplace() flags=65 n(100,100,100) T(prepare_laplace)= 6.64837 [Mticks] T(solve_laplace)= 117.1   [Mticks]      FFTW_DESTROY_INPUT  | FFTW_ESTIMATE
+prepare_laplace() flags=1  n(100,100,100) T(prepare_laplace)= 6.57567 [Mticks] T(solve_laplace)= 116.077 [Mticks]      FFTW_DESTROY_INPUT  | FFTW_MEASURE
+prepare_laplace() flags=33 n(100,100,100) T(prepare_laplace)= 6.45647 [Mticks] T(solve_laplace)= 116.67  [Mticks]      FFTW_DESTROY_INPUT  | FFTW_PATIENT
+
+
+prepare_laplace() flags=80 n(100,100,100) T(prepare_laplace)= 17.8152 [Mticks] T(solve_laplace)= 108.935 [Mticks]     FFTW_PRESERVE_INPUT | FFTW_ESTIMATE
+prepare_laplace() flags=16 n(100,100,100) T(prepare_laplace)= 16.4503 [Mticks] T(solve_laplace)= 109.146 [Mticks]     FFTW_PRESERVE_INPUT | FFTW_MEASURE 
+prepare_laplace() flags=48 n(100,100,100) T(prepare_laplace)= 18.5292 [Mticks] T(solve_laplace)= 107.973 [Mticks]     FFTW_PRESERVE_INPUT | FFTW_PATIENT
+prepare_laplace() flags=1 n(100,100,100)  T(prepare_laplace)= 16.908  [Mticks] T(solve_laplace)= 107.678 [Mticks]     FFTW_DESTROY_INPUT  | FFTW_ESTIMATE
+prepare_laplace() flags=1 n(100,100,100)  T(prepare_laplace)= 17.912  [Mticks] T(solve_laplace)= 109.982 [Mticks]     FFTW_DESTROY_INPUT  | FFTW_MEASURE
+prepare_laplace() flags=33 n(100,100,100) T(prepare_laplace)= 17.9685 [Mticks] T(solve_laplace)= 107.581 [Mticks]     FFTW_DESTROY_INPUT  | FFTW_PATIENT
+
+
+with OpenMP
+prepare_laplace() flags=80 n(100,100,100) T(prepare_laplace)= 17.9227 [Mticks] T(solve_laplace)= 49.495 [Mticks] 
+
+'''
