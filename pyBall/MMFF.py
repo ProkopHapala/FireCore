@@ -302,6 +302,27 @@ def projectAtomsEwaldGrid( apos, qs, dens=None, ns=None ):
     lib.projectAtomsEwaldGrid( na, _np_as(apos,c_double_p), _np_as(qs,c_double_p), _np_as(dens,c_double_p) )
     return dens
 
+
+# void EwaldGridSolveLaplace( double* dens, double* Vout, bool bPrepare, bool bDestroy ){
+lib.EwaldGridSolveLaplace.argtypes  = [ c_double_p, c_double_p, c_bool, c_bool ]
+lib.EwaldGridSolveLaplace.restype   =  None
+def EwaldGridSolveLaplace( dens, Vout=None, bPrepare=True, bDestroy=True ):
+    if Vout is None: Vout = np.zeros( dens.shape, dtype=np.float64 )
+    lib.EwaldGridSolveLaplace( _np_as(dens,c_double_p), _np_as(Vout,c_double_p), bPrepare, bDestroy )
+    return Vout
+
+# void EwaldGridSolveLaplaceDebug( double* dens, double* Vout, double* densw, double* kerw, double* VwKer ){
+lib.EwaldGridSolveLaplaceDebug.argtypes  = [ c_double_p, c_double_p, c_double_p, c_double_p, c_double_p ]
+lib.EwaldGridSolveLaplaceDebug.restype   =  None
+def EwaldGridSolveLaplaceDebug( dens, Vout=None, densw=None, kerw=None, VwKer=None ):
+    if Vout  is None: Vout  = np.zeros( dens.shape, dtype=np.float64 )
+    if densw is None: densw = np.zeros( dens.shape, dtype=np.float64 )
+    if kerw  is None: kerw  = np.zeros( dens.shape, dtype=np.float64 )
+    if VwKer is None: VwKer = np.zeros( dens.shape, dtype=np.float64 )
+    lib.EwaldGridSolveLaplaceDebug( _np_as(dens,c_double_p), _np_as(Vout,c_double_p), _np_as(densw,c_double_p), _np_as(kerw,c_double_p), _np_as(VwKer,c_double_p) )
+    return Vout, densw, kerw, VwKer
+
+
 # void evalGridFFAtPoints( int n, double* ps, double* FFout, double* PLQH ){
 lib.evalGridFFAtPoints.argtypes  = [ c_int, c_double_p, c_double_p, c_double_p, c_bool ]
 lib.evalGridFFAtPoints.restype   =  None
