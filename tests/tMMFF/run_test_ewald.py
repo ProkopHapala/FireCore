@@ -43,6 +43,50 @@ def plot_fft_debug( Vs, nx=4, ny=3, iy=0, label="Python/numpy", iz=50 ):
     plt.subplot( ny, nx, iy*nx+4); plt.imshow( Vs[3][iz,:,:]     , cmap='bwr' ); plt.colorbar(); plt.title("V           "+label)
 
 
+def test_vs_direct( apos, qs, ns=[100,100,100], dg=[0.1,0.1,0.1], nPBC=[10,10,10], iz=50,iy=50,ix=55, iax=0 ):
+
+    mmff.setupEwaldGrid( ns, dg=dg )
+    dens = mmff.projectAtomsEwaldGrid( apos, qs, ns=ns )
+    #Vg, density_fft, Vw, ker_w = compute_potential(dens, dg)
+    Vg = mmff.EwaldGridSolveLaplace( dens )
+    lvec=[
+        [ ns[0]*dg[0], 0.0, 0.0 ],
+        [ 0.0, ns[1]*dg[1], 0.0 ],
+        [ 0.0, 0.0, ns[2]*dg[2] ],
+    ]
+
+    nps = ns[iax]
+    ps = np.zeros( (nps,3) )
+    ps[:,0] = dg[0]*ix
+    ps[:,1] = dg[1]*iy
+    ps[:,2] = dg[2]*iz
+    ps[:,iax] = np.linspace( 0.0, ns[iax]*dg[iax], nps, endpoint=False )
+
+    fe = mmff.sampleCoulombPBC(  ps, apos, qs, lvec=lvec, nPBC=nPBC )
+
+    plt.figure(figsize=(10,5))
+    plt.subplot(1,2,1); plt.imshow( dens[iz,:,:], cmap='bwr' ); plt.colorbar(); plt.title("Charge Density" )
+    plt.subplot(1,2,2); plt.imshow( Vg[iz,:,:],   cmap='bwr' ); plt.colorbar(); plt.title("V C++/FFTW3 "   )
+
+    Vgsc = 0.0001
+    Vg*=Vgsc
+    Vmin = np.min(Vg); Vmax= np.max(Vg); Vmax= np.maximum( Vmax, -Vmin )
+    plt.figure()
+    plt.plot( ps[:,iax], fe[:,3]*0.001, label="direct" )
+    if   iax == 0:
+        plt.plot( ps[:,iax], Vg[:,iy,ix], label="ewald"  )
+    elif iax == 1:
+        plt.plot( ps[:,iax], Vg[:,:,ix],  label="ewald"  )
+    elif iax == 2:
+        plt.plot( ps[:,iax], Vg[iz,iy,:], label="ewald"  )
+
+    plt.ylim( -Vmax, Vmax )
+    plt.legend()
+    plt.grid()
+    plt.show()
+
+
+
 def test_poison( apos, qs, bPlot=True, bDebug=True, iz=50, ns=[100,100,100], dg=[0.1,0.1,0.1], flags=-1, bOMP=False ):
 
     mmff.setupEwaldGrid( ns, dg=dg )
@@ -107,8 +151,15 @@ ns=[200,200,200]
 
 #test_poison(  apos, qs, bDebug=False, flags=FFTW_DESTROY_INPUT | FFTW_ESTIMATE  )
 #test_poison(  apos, qs, bDebug=False, flags=FFTW_DESTROY_INPUT | FFTW_MEASURE   )
-test_poison(  apos, qs, bDebug=False, flags=FFTW_DESTROY_INPUT | FFTW_PATIENT, ns=ns, bOMP=False )
-test_poison(  apos, qs, bDebug=False, flags=FFTW_DESTROY_INPUT | FFTW_PATIENT, ns=ns, bOMP=True  )
+#test_poison(  apos, qs, bDebug=False, flags=FFTW_DESTROY_INPUT | FFTW_ESTIMATE, ns=ns, bOMP=False )
+#test_poison(  apos, qs, bDebug=False, flags=FFTW_DESTROY_INPUT | FFTW_PATIENT, ns=ns, bOMP=False )
+#test_poison(  apos, qs, bDebug=False, flags=FFTW_DESTROY_INPUT | FFTW_PATIENT, ns=ns, bOMP=True  )
+
+
+
+test_vs_direct( apos, qs )
+    
+
 
 performance_results='''
 

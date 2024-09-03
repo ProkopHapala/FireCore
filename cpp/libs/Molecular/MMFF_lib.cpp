@@ -140,14 +140,16 @@ void EwaldGridSolveLaplace( double* dens, double* Vout, bool bPrepare, bool bDes
 
     long t0 = getCPUticks();
     
-    if(bPrepare){ if(bOMP){ W.gewald.prepare_laplace_omp( flags );}
-                  else    { W.gewald.prepare_laplace    ( flags );} }
+    // if(bPrepare){ if(bOMP){ W.gewald.prepare_laplace_omp( flags );}
+    //               else    { W.gewald.prepare_laplace    ( flags );} }
+    if(bPrepare){ W.gewald.prepare_laplace( flags ); }
     long t1 = getCPUticks();
     W.gewald.solve_laplace( dens, Vout );
     long t2 = getCPUticks();
     printf( "prepare_laplace() flags=%i  omp_max_threads=%i n(%i,%i,%i) T(prepare_laplace)= %g [Mticks] T(solve_laplace)= %g [Mticks] \n", flags, omp_get_max_threads(), W.gewald.n.x,W.gewald.n.y,W.gewald.n.z, (t1-t0)*1e-6, (t2-t1)*1e-6 );
-    if(bDestroy){ if(bOMP){ W.gewald.destroy_laplace_omp( ); }
-                  else    { W.gewald.destroy_laplace    ( ); } }
+    if(bDestroy){ W.gewald.destroy_laplace( ); }
+    // if(bDestroy){ if(bOMP){ W.gewald.destroy_laplace_omp( ); }
+    //               else    { W.gewald.destroy_laplace    ( ); } }
 }
 
 void EwaldGridSolveLaplaceDebug( double* dens, double* Vout, double* densw, double* kerw, double* VwKer ){

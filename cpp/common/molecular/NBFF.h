@@ -50,6 +50,45 @@ int makePBCshifts_( Vec3i nPBC, const Mat3d& lvec, Vec3d*& shifts ){
     return npbc;
 }
 
+__attribute__((pure))
+__attribute__((hot))
+Quat4d evalPointCoulPBC( Vec3d pos, int npbc, const Vec3d* shifts, int natoms, const Vec3d * apos, const double* Qs, double Rdamp ){
+    const double R2damp=Rdamp*Rdamp;    
+    //const double K=-alphaMorse;
+    Quat4d qe     = Quat4dZero;
+    //#pragma omp for simd
+    for(int ia=0; ia<natoms; ia++){
+        const Vec3d dp0   = pos - apos[ia];
+        const double Qi = Qs[ia];
+        //if( (ibuff==0) ){ printf( "DEBUG a[%i] p(%g,%g,%g) Q %g \n", ia,apos_[ia].x, apos_[ia].y, apos[ia].z, REQi.z ); }              
+        for(int ipbc=0; ipbc<npbc; ipbc++ ){
+            const Vec3d  dp = dp0 + shifts[ipbc];
+            const double r2     = dp.norm2();
+            const double ir2    = 1/(r2+R2damp);
+            const double eQ     = COULOMB_CONST*Qi*sqrt(ir2);
+            qe.e+=eQ;     qe.f.add_mul( dp,  eQ*ir2 ); // Coulomb
+        }
+    }
+    return qe;
+}
+
+
+void sampleCoulombPBC( int nps, const Vec3d* ps, Quat4d* fe, int natom,  Vec3d* apos, double* Qs, Mat3d lvec, Vec3i nPBC, double Rdamp ){
+    Vec3d * shifts =0;
+    int npbc = makePBCshifts_( nPBC, lvec, shifts );
+    makePBCshifts_( nPBC, lvec, shifts );
+    for(int ip=0; ip<nps; ip++){
+        Vec3d pos = ps[ip];
+        fe[ip] = evalPointCoulPBC( pos, npbc, shifts, natom, apos, Qs, Rdamp );
+    };
+    delete[] shifts;
+}
+
+
+
+
+
+
 // Force-Field for Non-Bonded Interactions
 class NBFF: public ForceField{ public:
     

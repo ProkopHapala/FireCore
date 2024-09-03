@@ -304,7 +304,7 @@ def projectAtomsEwaldGrid( apos, qs, dens=None, ns=None ):
 
 
 # void EwaldGridSolveLaplace( double* dens, double* Vout, bool bPrepare, bool bDestroy, int flags ){
-lib.EwaldGridSolveLaplace.argtypes  = [ c_double_p, c_double_p, c_bool, c_bool,  c_int ]
+lib.EwaldGridSolveLaplace.argtypes  = [ c_double_p, c_double_p, c_bool, c_bool,  c_int, c_bool ]
 lib.EwaldGridSolveLaplace.restype   =  None
 def EwaldGridSolveLaplace( dens, Vout=None, bPrepare=True, bDestroy=True, flags=-1, bOMP=False ):
     if Vout is None: Vout = np.zeros( dens.shape, dtype=np.float64 )
@@ -532,6 +532,22 @@ def sample_SplineHermite3D_f( ps, Eg, g0, dg, fes=None):
     if fes is None: fes=np.zeros((n,4), dtype=np.float32)
     lib.sample_SplineHermite3D_f( _np_as(g0,c_float_p), _np_as(dg,c_float_p), _np_as(ng,c_int_p), _np_as(Eg,c_float_p), n, _np_as(ps,c_float_p), _np_as(fes,c_float_p) )
     return fes
+
+#void sampleCoulombPBC( int nps, double* ps, double* fe, int natom,  double* apos, double* Qs, double* lvec, int* nPBC, double Rdamp ){
+lib.sampleCoulombPBC.argtypes  = [c_int, c_double_p, c_double_p, c_int, c_double_p, c_double_p, c_double_p, c_int_p, c_double]
+lib.sampleCoulombPBC.restype   =  None
+def sampleCoulombPBC( ps, apos, Qs, lvec=[[10.0,0.0,0.0],[10.0,0.0,0.0],[10.0,0.0,0.0]], nPBC=[1,1,1], fe=None, Rdamp=1e-32 ):
+    nps   = len(ps)
+    natom = len(apos)
+    ps    = np.array(ps,   dtype=np.float64)
+    apos  = np.array(apos, dtype=np.float64)
+    Qs    = np.array(Qs,   dtype=np.float64)
+    if fe is None: fe=np.zeros( (nps,4) )
+    lvec  = np.array(lvec, dtype=np.float64)
+    nPBC = np.array(nPBC,  dtype=np.int32)
+    lib.sampleCoulombPBC( nps, _np_as(ps,c_double_p), _np_as(fe,c_double_p), natom, _np_as(apos,c_double_p), _np_as(Qs,c_double_p), _np_as(lvec,c_double_p), _np_as(nPBC,c_int_p), Rdamp )
+    return fe
+
 
 # void sample_SplineConstr( double x0, double dx, int np, double* Eps, int n, double* xs, double* Es, double* Fs ){
 lib.sample_SplineConstr.argtypes  = [c_double, c_double, c_int, c_double_p, c_int, c_double_p, c_double_p, c_double_p]

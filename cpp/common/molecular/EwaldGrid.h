@@ -54,6 +54,7 @@ void fftc2array( const fftw_complex* in, double* out) const {
 #endif
 
 
+
 class EwaldGrid : public GridShape { public: 
 
 __attribute__((hot)) 
@@ -159,6 +160,8 @@ void laplace_reciprocal_kernel( fftw_complex* VV ){
         // FFTW_PATIENT     // 1<<5
         // FFTW_EXHAUSTIVE  // 1<<3
 
+        printf("prepare_laplace() nxyz(%i,%i,%i) flags=%i \n", n.x, n.y, n.z, flags );
+
         fft_plan  = fftw_plan_dft_3d( n.x,n.y,n.z, V,  Vw, FFTW_FORWARD,  flags );
         ifft_plan = fftw_plan_dft_3d( n.x,n.y,n.z, Vw, V,  FFTW_BACKWARD, flags );
         /*
@@ -170,6 +173,7 @@ void laplace_reciprocal_kernel( fftw_complex* VV ){
         */
     }
 
+/*
     void prepare_laplace_omp( int flags=-1 ){
         int ntot = n.totprod();
         fftw_init_threads();
@@ -183,7 +187,7 @@ void laplace_reciprocal_kernel( fftw_complex* VV ){
         ifft_plan = fftw_plan_dft_3d( n.x,n.y,n.z, Vw, V,  FFTW_BACKWARD, flags );
 
     }
-
+*/
     __attribute__((hot))
     void solve_laplace( const double* dens, double* Vout=0 ){
         int ntot =  n.totprod();
@@ -193,7 +197,7 @@ void laplace_reciprocal_kernel( fftw_complex* VV ){
         laplace_reciprocal_kernel( Vw );
         double t = (getCPUticks()-t0)*1e-6; printf( "solve_laplace() ng(%i,%i,%i) T(laplace_reciprocal_kernel)=%g [Mticks] \n", n.x,n.y,n.z, t );
         fftw_execute(ifft_plan);
-        if(Vout) fftc2array( ntot, V, Vout );        
+        if(Vout) fftc2array( ntot, V, Vout );
     }
 
     void destroy_laplace(){
@@ -203,6 +207,7 @@ void laplace_reciprocal_kernel( fftw_complex* VV ){
         fftw_free(Vw);
     }
 
+/*
     void destroy_laplace_omp(){
         fftw_destroy_plan(fft_plan);
         fftw_destroy_plan(ifft_plan);
@@ -211,6 +216,7 @@ void laplace_reciprocal_kernel( fftw_complex* VV ){
         fftw_cleanup_threads();
 
     }
+*/
 
 #else
 

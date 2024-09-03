@@ -579,7 +579,7 @@ inline void addForce( const Vec3d& pos, const Quat4f& PLQ, Quat4f& fe ) const {
     __attribute__((hot))
     Quat4d evalGridFFPoint_Coul( int npbc, const Vec3d* shifts, int natoms_, const Vec3d * apos_, const Quat4d * REQs_, Vec3d pos ) const {
         const double R2damp=Rdamp*Rdamp;    
-        const double K=-alphaMorse;
+        //const double K=-alphaMorse;
         Quat4d qe     = Quat4dZero;
         //#pragma omp for simd
         for(int ia=0; ia<natoms_; ia++){

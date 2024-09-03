@@ -256,6 +256,11 @@ void sample_SplineHermite1D_deriv( double g0, double dg, int ng, double* EFg, in
 }
 
 
+void sampleCoulombPBC( int nps, double* ps, double* fe, int natom,  double* apos, double* Qs, double* lvec, int* nPBC, double Rdamp ){
+    sampleCoulombPBC( nps, (Vec3d*)ps, (Quat4d*)fe, natom,  (Vec3d*)apos, Qs, *(Mat3d*)lvec, *(Vec3i*)nPBC, Rdamp );
+}
+
+
 
 inline double periodic_x2(double x, int nmax=100){
     //int ix    = (int)(x+nmax) - nmax; // fast floor
