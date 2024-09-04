@@ -24,41 +24,52 @@ void fftc2array( int n,  const fftw_complex* in, double* out) {
     for (int i=0; i<n; i++ ) { out[i] = in[i][0];}
 }
 
-
-/*
-
-void array2fftc( int ntot, const double* in, fftw_complex* out) const {
-    for (int ix = 0; ix < n.x; ix++) {
-        for (int iy = 0; iy < n.y; iy++) {
-            for (int iz = 0; iz < n.z; ++iz ) {
-                int index = ix * n.y * n.z + iy * n.z + iz;
-                out[index][0] = in[index];
-                out[index][1] = 0.0;
-            }
-        }
-    }
-}
-
-void fftc2array( const fftw_complex* in, double* out) const {
-    for (int ix = 0; ix < n.x; ix++) {
-        for (int iy = 0; iy < n.y; iy++) {
-            for (int iz = 0; iz < n.z; ++iz ) {
-                int index = ix * n.y * n.z + iy * n.z + iz;
-                out[index] = in[index][0];
-            }
-        }
-    }
-}
-*/
-
 #endif
 
 
 
 class EwaldGrid : public GridShape { public: 
 
+double* V_work  = 0; 
+double* vV_work = 0;  
+
 __attribute__((hot)) 
-void project_atom_on_grid( const Vec3d pi, const double qi, double* dens ) const {
+inline void project_atom_on_grid_linear( const Vec3d pi, const double qi, double* dens ) const {
+    //printf("project_atom_on_grid() pi(%g,%g,%g) q=%g \n", pi.x, pi.y, pi.z, qi );
+    const Vec3d gp = diCell.dot( pi-pos0 );
+    const int ix = (int) gp.x;
+    const int iy = (int) gp.y;
+    const int iz = (int) gp.z;
+    const double tx = gp.x - ix;
+    const double ty = gp.y - iy;
+    const double tz = gp.z - iz;
+    const double mx = 1-tx;
+    const double my = 1-ty;
+    const double mz = 1-tz;
+    //printf("project_atom_on_grid() pi(%g,%g,%g) q=%g \n", pi.x, pi.y, pi.z, qi );
+    const int nxy = n.x * n.y;
+    //int ii=0;
+
+    int ig = iz*nxy + iy*n.x + ix;
+
+    const double f00 = qi*my*mx;
+    const double f01 = qi*my*tx;
+    const double f10 = qi*ty*mx;
+    const double f11 = qi*ty*tx;
+
+    dens[ig          ] += f00*mz;
+    dens[ig+1        ] += f01*mz;
+    dens[ig  +n.x    ] += f10*mz;
+    dens[ig+1+n.x    ] += f11*mz;
+    dens[ig      +nxy] += f00*tz;
+    dens[ig+1+   +nxy] += f01*tz;
+    dens[ig  +n.x+nxy] += f10*tz;
+    dens[ig+1+n.x+nxy] += f11*tz;
+    
+}
+
+__attribute__((hot)) 
+void project_atom_on_grid_cubic( const Vec3d pi, const double qi, double* dens ) const {
     //printf("project_atom_on_grid() pi(%g,%g,%g) q=%g \n", pi.x, pi.y, pi.z, qi );
     const Vec3d gp = diCell.dot( pi-pos0 );
     const int ix = (int) gp.x;
@@ -100,7 +111,7 @@ void project_atom_on_grid( const Vec3d pi, const double qi, double* dens ) const
 
 
 __attribute__((hot)) 
-void project_atom_on_grid_quntic( const Vec3d pi, const double qi, double* dens ) const {
+void project_atom_on_grid_quintic( const Vec3d pi, const double qi, double* dens ) const {
     //printf("project_atom_on_grid() pi(%g,%g,%g) q=%g \n", pi.x, pi.y, pi.z, qi );
     const Vec3d gp = diCell.dot( pi-pos0 );
     const int ix = (int) gp.x;
@@ -118,14 +129,14 @@ void project_atom_on_grid_quntic( const Vec3d pi, const double qi, double* dens 
     const int nxy = n.x * n.y;
     //int ii=0;
     for (int dz = 0; dz < 6; dz++) {
-        const int gz  = iz + dz - 2;
+        const int gz  = iz + dz - 3;
         const int iiz = gz*nxy;
         for (int dy = 0; dy < 6; dy++) {
-            const int gy  = iy + dy - 2;
+            const int gy  = iy + dy - 3;
             const int iiy = iiz + gy*n.x;
             const double qbyz = qi * by.array[dy] * bz.array[dz];
             for (int dx = 0; dx < 6; dx++) {
-                const int gx = ix + dx - 2;
+                const int gx = ix + dx - 3;
                 const int ig = gx + iiy;
 
                 //printf("project_atom_on_grid()[%i] dxyz(%i,%i,%i) igxyz(%i,%i,%i) ig=%i /%i \n", ii, dx,dy,dz,   gx,gy,gz, ig, n.totprod() );
@@ -141,17 +152,150 @@ void project_atom_on_grid_quntic( const Vec3d pi, const double qi, double* dens 
 }
 
 __attribute__((hot)) 
-void project_atoms_on_grid( int na, const Vec3d* apos, const double* qs, double* dens ) const {
+void project_atoms_on_grid_linear( int na, const Vec3d* apos, const double* qs, double* dens ) const {
+    printf("project_atoms_on_grid_linear() na=%i \n", na );
     for (int ia=0; ia<na; ia++){
-        project_atom_on_grid( apos[ia], qs[ia], dens );
+        project_atom_on_grid_linear( apos[ia], qs[ia], dens );
     }
 }
+
+__attribute__((hot)) 
+void project_atoms_on_grid_cubic( int na, const Vec3d* apos, const double* qs, double* dens ) const {
+    printf("project_atoms_on_grid_cubic() na=%i \n", na );
+    for (int ia=0; ia<na; ia++){
+        project_atom_on_grid_cubic( apos[ia], qs[ia], dens );
+    }
+}
+
+__attribute__((hot)) 
+void project_atoms_on_grid_quintic( int na, const Vec3d* apos, const double* qs, double* dens ) const {
+    printf("project_atoms_on_grid_quintic() na=%i \n", na );
+    for (int ia=0; ia<na; ia++){
+        project_atom_on_grid_quintic( apos[ia], qs[ia], dens );
+    }
+}
+
+__attribute__((hot))
+double laplace_real( double* Vin, double* Vout, double cSOR ){
+    int nxy = n.x * n.y;
+    const double fac = 1/6.0;
+    double err2 = 0.0; 
+    for (int iz = 1; iz < n.z-1; ++iz ) {
+        for (int iy = 1; iy < n.y-1; iy++) {
+            for (int ix = 1; ix < n.x-1; ix++) {
+                const int i = iz*nxy + iy*n.z + ix;
+                double vi = 
+                    Vin[ i-1   ] + Vin[ i+1   ] + 
+                    Vin[ i-n.x ] + Vin[ i+n.x ] + 
+                    Vin[ i-nxy ] + Vin[ i+nxy ];
+                vi*=fac;
+                const double vo = Vin[i];
+                vi += (vi-vo)*cSOR; 
+                const double dv = vi - vo;
+                err2 += dv*dv;
+                Vout[i] = vi;
+            }
+        }
+    }
+    return err2;
+}
+
+inline int pbc_ifw(int i, int n){ i++; return (i<n )?  i :  i-n; };
+inline int pbc_ibk(int i, int n){ i--; return (i>=0)?  i :  i+n; };
+
+__attribute__((hot))
+double laplace_real_pbc( double* Vin, double* Vout, double cSOR=0.0 ){
+    int nxy = n.x * n.y;
+    const double fac = 1/6.0;
+    double err2 = 0.0; 
+    
+    for (int iz = 0; iz < n.z; ++iz ) {
+        const int iiz =          iz      *nxy;
+        const int ifz =  pbc_ifw(iz, n.z)*nxy;
+        const int ibz =  pbc_ibk(iz, n.z)*nxy;
+        for (int iy = 0; iy < n.y; iy++) {
+            const int iiy =          iy      *n.x;
+            const int ify =  pbc_ifw(iy, n.y)*n.x;
+            const int iby =  pbc_ibk(iy, n.y)*n.x;
+            for (int ix = 0; ix < n.x; ix++) {
+                const int ifx =  pbc_ifw(ix, n.x);
+                const int ibx =  pbc_ibk(ix, n.x);
+                double vi = 
+                    Vin[ ibx + iiy + iiz ] + Vin[ ifx + iiy + iiz ] + 
+                    Vin[ ix  + iby + iiz ] + Vin[ ix  + ify + iiz ] + 
+                    Vin[ ix  + iiy + ibz ] + Vin[ ix  + iiy + ifz ];
+                vi*=fac;
+                const int i = ix + iiy + iiz;
+                const double vo = Vin[ i ];
+                vi += (vi-vo)*cSOR; 
+                const double dv = vi - vo;
+                err2 += dv*dv;
+                Vout[i] = vi;
+            }
+        }
+    }
+    return err2;
+}
+
+__attribute__((hot))
+int laplace_real_loop( double* V, int nmaxiter=1000, double tol=1e-6, bool bPBC=true, double cSOR=0.0 ){
+    //bPBC = false;
+    int ntot = n.totprod();
+    double* V_ =0;
+    if(V_work ){ V_ = V_work;  }else{ double* V_ = new double[ntot]; };
+    printf("laplace_real_loop(bPBC=%i) nmaxiter=%i tol=%g @V=%li @V_=%li \n", bPBC,  nmaxiter, tol, (long)V, (long)V_ );
+    int iter=0;
+    for(iter=0; iter<nmaxiter; iter++){ 
+        if(bPBC){ laplace_real_pbc( V, V_, cSOR ); }
+        else    { laplace_real    ( V, V_, cSOR ); }
+        _swap( V, V_ );
+    }
+    if(iter%2==1){ for(int i=0; i<ntot; i++){ V_[i] = V[i]; } _swap( V, V_ ); }
+    printf("laplace_real_loop(bPBC=%i) DONE  iter=%i @V=%li @V_=%li \n", bPBC, iter, tol, (long)V, (long)V_ );
+    if(V_work ==0) delete[] V_;
+    return iter;
+}
+
+__attribute__((hot))
+int laplace_real_loop_inert( double* V, int nmaxiter=1000, double tol=1e-6, bool bPBC=true, double cSOR=0.0, double cV=0.5 ){
+    //bPBC = false;
+    int ntot = n.totprod();
+    double* V_ =0;
+    double* vV =0; 
+    if(V_work ){ V_ = V_work;  }else{ double* V_ = new double[ntot]; };
+    if(vV_work){ vV = vV_work; }else{ double* vV = new double[ntot]; };
+    printf("laplace_real_loop(bPBC=%i) nmaxiter=%i tol=%g @V=%li @V_=%li \n", bPBC,  nmaxiter, tol, (long)V, (long)V_ );
+    int iter=0;
+    for(iter=0; iter<nmaxiter; iter++){ 
+        if(bPBC){ laplace_real_pbc( V, V_, cSOR ); }
+        else    { laplace_real    ( V, V_, cSOR ); }
+        for(int i=0; i<ntot; i++){ 
+            double v = V_[i]-V[i];
+            if(iter>0){ v = v*cV + vV[i]*(1-cV); }
+            vV[i] = v; 
+            V_[i] = V[i] + v;
+        }
+        _swap( V, V_ );
+    }
+    if(iter%2==1){ for(int i=0; i<ntot; i++){ V_[i] = V[i]; } _swap( V, V_ ); }
+    printf("laplace_real_loop(bPBC=%i) DONE  iter=%i @V=%li @V_=%li \n", bPBC, iter, tol, (long)V, (long)V_ );
+    if(V_work ==0) delete[] V_;
+    if(vV_work==0) delete[] vV;
+    return iter;
+}
+
+
 
 #ifdef WITH_FFTW
 
 fftw_plan    fft_plan;
 fftw_plan    ifft_plan;
 fftw_complex *Vw=0,*V=0;
+
+
+
+
+
 
 __attribute__((hot))
 void laplace_reciprocal_kernel( fftw_complex* VV ){

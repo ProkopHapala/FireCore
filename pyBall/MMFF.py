@@ -291,24 +291,24 @@ def setupEwaldGrid( ns, pos0=[0.0,0.0,0.0], dCell=None, dg=[0.1,0.1,0.1], bPrint
     return lib.setupEwaldGrid( _np_as(pos0,c_double_p), _np_as(dCell,c_double_p), _np_as(ns,c_int_p), bPrint )
 
 
-#void projectAtomsEwaldGrid( int na, double* apos, double* qs, double* dens ){
-lib.projectAtomsEwaldGrid.argtypes  = [ c_int, c_double_p, c_double_p, c_double_p ]
+#void projectAtomsEwaldGrid( int na, double* apos, double* qs, double* dens, int order ){
+lib.projectAtomsEwaldGrid.argtypes  = [ c_int, c_double_p, c_double_p, c_double_p, c_int ]
 lib.projectAtomsEwaldGrid.restype   =  None
-def projectAtomsEwaldGrid( apos, qs, dens=None, ns=None ):
+def projectAtomsEwaldGrid( apos, qs, dens=None, ns=None, order=2 ):
     na = len(apos)
     apos = np.array( apos )
     qs   = np.array( qs )
     if dens is None: dens = np.zeros( ns, dtype=np.float64 )
-    lib.projectAtomsEwaldGrid( na, _np_as(apos,c_double_p), _np_as(qs,c_double_p), _np_as(dens,c_double_p) )
+    lib.projectAtomsEwaldGrid( na, _np_as(apos,c_double_p), _np_as(qs,c_double_p), _np_as(dens,c_double_p), order )
     return dens
 
 
-# void EwaldGridSolveLaplace( double* dens, double* Vout, bool bPrepare, bool bDestroy, int flags ){
-lib.EwaldGridSolveLaplace.argtypes  = [ c_double_p, c_double_p, c_bool, c_bool,  c_int, c_bool ]
+# void EwaldGridSolveLaplace( double* dens, double* Vout, bool bPrepare, bool bDestroy, int flags, int nBlur, double cSOR, double cV ){
+lib.EwaldGridSolveLaplace.argtypes  = [ c_double_p, c_double_p, c_bool, c_bool,  c_int, c_bool, c_int, c_double, c_double ]
 lib.EwaldGridSolveLaplace.restype   =  None
-def EwaldGridSolveLaplace( dens, Vout=None, bPrepare=True, bDestroy=True, flags=-1, bOMP=False ):
+def EwaldGridSolveLaplace( dens, Vout=None, bPrepare=True, bDestroy=True, flags=-1, bOMP=False, nBlur=0, cSOR=0.0, cV=0.5 ):
     if Vout is None: Vout = np.zeros( dens.shape, dtype=np.float64 )
-    lib.EwaldGridSolveLaplace( _np_as(dens,c_double_p), _np_as(Vout,c_double_p), bPrepare, bDestroy, flags, bOMP )
+    lib.EwaldGridSolveLaplace( _np_as(dens,c_double_p), _np_as(Vout,c_double_p), bPrepare, bDestroy, flags, bOMP, nBlur, cSOR, cV )
     return Vout
 
 # void EwaldGridSolveLaplaceDebug( double* dens, double* Vout, double* densw, double* kerw, double* VwKer ){

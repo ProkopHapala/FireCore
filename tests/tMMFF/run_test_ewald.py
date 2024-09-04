@@ -43,12 +43,12 @@ def plot_fft_debug( Vs, nx=4, ny=3, iy=0, label="Python/numpy", iz=50 ):
     plt.subplot( ny, nx, iy*nx+4); plt.imshow( Vs[3][iz,:,:]     , cmap='bwr' ); plt.colorbar(); plt.title("V           "+label)
 
 
-def test_vs_direct( apos, qs, ns=[100,100,100], dg=[0.1,0.1,0.1], nPBC=[10,10,10], iz=50,iy=50,ix=55, iax=0, scErr=100.0 ):
+def test_vs_direct( apos, qs, ns=[100,100,100], dg=[0.1,0.1,0.1], nPBC=[10,10,10], iz=50,iy=50,ix=55, iax=0, scErr=100.0, order=2, nBlur=4, cSOR=0.0, cV=0.5 ):
 
     mmff.setupEwaldGrid( ns, dg=dg )
-    dens = mmff.projectAtomsEwaldGrid( apos, qs, ns=ns )
+    dens = mmff.projectAtomsEwaldGrid( apos, qs, ns=ns, order=order )
     #Vg, density_fft, Vw, ker_w = compute_potential(dens, dg)
-    Vg = mmff.EwaldGridSolveLaplace( dens )
+    Vg = mmff.EwaldGridSolveLaplace( dens, nBlur=nBlur, cSOR=cSOR, cV=cV )
     lvec=[
         [ ns[0]*dg[0], 0.0, 0.0 ],
         [ 0.0, ns[1]*dg[1], 0.0 ],
@@ -58,13 +58,14 @@ def test_vs_direct( apos, qs, ns=[100,100,100], dg=[0.1,0.1,0.1], nPBC=[10,10,10
     #scEwald = 0.2
     COULOMB_CONST  =    14.3996448915 
 
-    scEwald = COULOMB_CONST * np.sqrt(2.0)/100.0  ;print("scEwald = ", scEwald)
+    c213 = 2.0**(1.0/3.0)
+    #scEwald = COULOMB_CONST * np.sqrt(2.0)/100.0  ;print("scEwald = ", scEwald)
+    scEwald = COULOMB_CONST*c213/100.0  ;print("scEwald = ", scEwald)
 
     Vg *= scEwald
 
     '''
     # ---- Plot 2D
-
     xs = np.linspace( 0.0, ns[0]*dg[0], ns[0], endpoint=False )
     ys = np.linspace( 0.0, ns[1]*dg[1], ns[1], endpoint=False )
     Xs,Ys = np.meshgrid( xs, ys )
@@ -78,7 +79,7 @@ def test_vs_direct( apos, qs, ns=[100,100,100], dg=[0.1,0.1,0.1], nPBC=[10,10,10
     plt.subplot(1,3,1); plt.imshow( dens[iz,:,:],                      cmap='bwr' ); plt.colorbar(); plt.title("Charge Density" )
     plt.subplot(1,3,2); plt.imshow( Vg[iz,:,:],   vmin=-1.0,vmax=1.0,  cmap='bwr' ); plt.colorbar(); plt.title("V ewald C++/FFTW3 " )
     plt.subplot(1,3,3); plt.imshow( fe[:,:,3],    vmin=-1.0,vmax=1.0,  cmap='bwr' ); plt.colorbar(); plt.title("V direct C++      " )
-    plt.show()
+    #plt.show()
     '''
 
     nps = ns[iax]
@@ -97,12 +98,15 @@ def test_vs_direct( apos, qs, ns=[100,100,100], dg=[0.1,0.1,0.1], nPBC=[10,10,10
 
     #Vgsc = 0.001
     #Vg*=scEwald
-    Vmin = np.min(Vg); Vmax= np.max(Vg); Vmax= np.maximum( Vmax, -Vmin )
+    #Vmin = np.min(Vg); Vmax= np.max(Vg); Vmax= np.maximum( Vmax, -Vmin )
+    Vmax = 1.2
     plt.figure()
     plt.plot( ps[:,iax], fe0[:,3],   '-', label="direct0" )
     plt.plot( ps[:,iax], fe [:,3],   ':', label="direct" )
     plt.plot( ps[:,iax], (fe[:,3]-fe0[:,3])*scErr,   '-', label="direct(0-pbc)", lw=0.5 )
     plt.plot( ps[:,iax], Vg[iz,iy,:],'-', label="ewald"  )
+
+    plt.plot( ps[:,iax], fe [:,3]/Vg[iz,iy,:],'-', label="ref/ewald"  )
 
     # if   iax == 0:
     #     plt.plot( ps[:,iax], Vg[:,iy,ix], label="ewald"  )
@@ -111,10 +115,17 @@ def test_vs_direct( apos, qs, ns=[100,100,100], dg=[0.1,0.1,0.1], nPBC=[10,10,10
     # elif iax == 2:
     #     plt.plot( ps[:,iax], Vg[iz,iy,:], label="ewald"  )
 
-    plt.ylim( -Vmax, Vmax )
+    #plt.ylim( -Vmax, Vmax )
+    plt.ylim( 0.995, 1.005  )
     plt.legend()
     plt.grid()
-    plt.show()
+
+    name = f"order_{order}_nBLur_{nBlur}_cV={cV:.2}_cSOR={cSOR:.2}"
+    plt.title( name );
+
+    plt.savefig( name+".png", bbox_inches='tight')
+
+    #plt.show()
     
 
 
@@ -189,9 +200,63 @@ ns=[200,200,200]
 
 
 
-test_vs_direct( apos, qs )
-    
+#test_vs_direct( apos, qs, order=1, nBlur=8 )
+#test_vs_direct( apos, qs, order=2, nBlur=2 )
+#test_vs_direct( apos, qs, order=2, nBlur=4 )
+#test_vs_direct( apos, qs, order=2, nBlur=8, cSOR=0.0  )
+#test_vs_direct( apos, qs, order=2, nBlur=8, cSOR=-0.2 )
+#test_vs_direct( apos, qs, order=2, nBlur=8, cSOR=+0.2 )
 
+#test_vs_direct( apos, qs, order=2, nBlur=4, cSOR=0.0  )
+#test_vs_direct( apos, qs, order=2, nBlur=4, cSOR=-0.1 )
+#test_vs_direct( apos, qs, order=2, nBlur=4, cSOR=-0.2 )
+#test_vs_direct( apos, qs, order=2, nBlur=4, cSOR=-0.3 )
+#test_vs_direct( apos, qs, order=2, nBlur=4, cSOR=-0.4 )
+#test_vs_direct( apos, qs, order=2, nBlur=4, cSOR=-0.5 )
+
+'''
+test_vs_direct( apos, qs, order=2, nBlur=4, cV=1.00 )
+test_vs_direct( apos, qs, order=2, nBlur=4, cV=0.95 )
+test_vs_direct( apos, qs, order=2, nBlur=4, cV=0.90 )
+test_vs_direct( apos, qs, order=2, nBlur=4, cV=0.85 ) # The best
+test_vs_direct( apos, qs, order=2, nBlur=4, cV=0.80 )
+test_vs_direct( apos, qs, order=2, nBlur=4, cV=0.75 )
+test_vs_direct( apos, qs, order=2, nBlur=4, cV=0.70 )
+test_vs_direct( apos, qs, order=2, nBlur=4, cV=0.65 )
+'''
+
+#test_vs_direct( apos, qs, order=3, nBlur=4, cV=0.85 )
+#test_vs_direct( apos, qs, order=3, nBlur=4, cV=0.90 )
+#test_vs_direct( apos, qs, order=3, nBlur=4, cV=0.95 )
+
+
+test_vs_direct( apos, qs, order=3, nBlur=2, cV=0.94, cSOR=+0.10 )
+#test_vs_direct( apos, qs, order=3, nBlur=2, cV=0.95, cSOR=+0.05 )
+#test_vs_direct( apos, qs, order=3, nBlur=2, cV=0.95, cSOR=+0.15 )
+#test_vs_direct( apos, qs, order=3, nBlur=2, cV=0.94, cSOR=-0.10 )
+#test_vs_direct( apos, qs, order=3, nBlur=2, cV=0.94, cSOR=-0.20 )
+
+#test_vs_direct( apos, qs, order=3, nBlur=2, cV=1.00 )
+#test_vs_direct( apos, qs, order=3, nBlur=2, cV=0.97 )
+#test_vs_direct( apos, qs, order=3, nBlur=2, cV=0.95 )
+#test_vs_direct( apos, qs, order=3, nBlur=2, cV=0.94 )
+#test_vs_direct( apos, qs, order=3, nBlur=2, cV=0.93 )
+#test_vs_direct( apos, qs, order=3, nBlur=2, cV=0.90 )
+
+# test_vs_direct( apos, qs, order=3, nBlur=2, cV=0.90 )
+# test_vs_direct( apos, qs, order=3, nBlur=2, cV=0.85 )
+# test_vs_direct( apos, qs, order=3, nBlur=2, cV=0.80 )
+# test_vs_direct( apos, qs, order=3, nBlur=2, cSOR=-0.10, cV=-2. )
+# test_vs_direct( apos, qs, order=3, nBlur=2, cSOR=-0.15, cV=-2. )
+# test_vs_direct( apos, qs, order=3, nBlur=2, cSOR=-0.20, cV=-2. )
+#test_vs_direct( apos, qs, order=3, nBlur=0 )
+
+#test_vs_direct( apos, qs, order=2, nBlur=4, cV=0.6 )
+#test_vs_direct( apos, qs, order=2, nBlur=4, cV=0.4 )
+#test_vs_direct( apos, qs, order=2, nBlur=4, cV=0.2 )
+#test_vs_direct( apos, qs, order=2, nBlur=0 )
+#test_vs_direct( apos, qs, order=3 )
+plt.show()
 
 performance_results='''
 
