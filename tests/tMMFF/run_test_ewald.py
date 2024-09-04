@@ -43,7 +43,7 @@ def plot_fft_debug( Vs, nx=4, ny=3, iy=0, label="Python/numpy", iz=50 ):
     plt.subplot( ny, nx, iy*nx+4); plt.imshow( Vs[3][iz,:,:]     , cmap='bwr' ); plt.colorbar(); plt.title("V           "+label)
 
 
-def test_vs_direct( apos, qs, ns=[100,100,100], dg=[0.1,0.1,0.1], nPBC=[10,10,10], iz=50,iy=50,ix=55, iax=0, scErr=100.0, order=2, nBlur=4, cSOR=0.0, cV=0.5 ):
+def test_vs_direct( apos, qs, ns=[100,100,100], dg=[0.1,0.1,0.1], nPBC=[30,30,30], iz=50,iy=50,ix=55, iax=0, scErr=100.0, order=2, nBlur=4, cSOR=0.0, cV=0.5 ):
 
     mmff.setupEwaldGrid( ns, dg=dg )
     dens = mmff.projectAtomsEwaldGrid( apos, qs, ns=ns, order=order )
@@ -58,7 +58,9 @@ def test_vs_direct( apos, qs, ns=[100,100,100], dg=[0.1,0.1,0.1], nPBC=[10,10,10
     #scEwald = 0.2
     COULOMB_CONST  =    14.3996448915 
 
-    c213 = 2.0**(1.0/3.0)
+    bulhar1 = 0.9973498924
+    bulhar2 = 0.99**(1./3.)
+    c213 = 2.0**(1.0/3.0)  * bulhar1
     #scEwald = COULOMB_CONST * np.sqrt(2.0)/100.0  ;print("scEwald = ", scEwald)
     scEwald = COULOMB_CONST*c213/100.0  ;print("scEwald = ", scEwald)
 
