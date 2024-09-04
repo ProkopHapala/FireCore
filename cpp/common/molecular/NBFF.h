@@ -76,7 +76,7 @@ Quat4d evalPointCoulPBC( Vec3d pos, int npbc, const Vec3d* shifts, int natoms, c
 void sampleCoulombPBC( int nps, const Vec3d* ps, Quat4d* fe, int natom,  Vec3d* apos, double* Qs, Mat3d lvec, Vec3i nPBC, double Rdamp ){
     Vec3d * shifts =0;
     int npbc = makePBCshifts_( nPBC, lvec, shifts );
-    makePBCshifts_( nPBC, lvec, shifts );
+    printf( "sampleCoulombPBC() npbc=%i nPBC{%i,%i,%i} nps=%i natom=%i \n", npbc, nPBC.x,nPBC.y,nPBC.z, nps, natom );
     for(int ip=0; ip<nps; ip++){
         Vec3d pos = ps[ip];
         fe[ip] = evalPointCoulPBC( pos, npbc, shifts, natom, apos, Qs, Rdamp );
