@@ -260,7 +260,20 @@ void sampleCoulombPBC( int nps, double* ps, double* fe, int natom,  double* apos
     sampleCoulombPBC( nps, (Vec3d*)ps, (Quat4d*)fe, natom,  (Vec3d*)apos, Qs, *(Mat3d*)lvec, *(Vec3i*)nPBC, Rdamp );
 }
 
+void projectMultiPole( double* p0, int n, double* ps, double* Qs, int order, double* cs ){
+    //Multiplole::center()
+    (*(Vec3d*)p0) = Multiplole::project( 0, n, (Vec3d*)ps, Qs, order, cs, true );
+    //void project( const Vec3d* p0_, int n, const Vec3d * ps, const double * Qs, int order, double * cs, bool bClear=true ){
+};
 
+void sampleMultipole( int n, double* ps_, double* fe_, double* p0_, int order, double* cs ){
+    Quat4d* fe = (Quat4d*)fe_;
+    Vec3d*  ps = (Vec3d*)ps_;
+    Vec3d   p0 = *(Vec3d*)p0_;
+    for(int i=0; i<n; i++){
+        fe[i].w = Multiplole::EFmultipole( ps[i]-p0, fe[i].f, cs, order );
+    }
+}
 
 inline double periodic_x2(double x, int nmax=100){
     //int ix    = (int)(x+nmax) - nmax; // fast floor
