@@ -322,6 +322,27 @@ def EwaldGridSolveLaplaceDebug( dens, Vout=None, densw=None, kerw=None, VwKer=No
     lib.EwaldGridSolveLaplaceDebug( _np_as(dens,c_double_p), _np_as(Vout,c_double_p), _np_as(densw,c_double_p), _np_as(kerw,c_double_p), _np_as(VwKer,c_double_p) )
     return Vout, densw, kerw, VwKer
 
+#void projectMultiPole( double* p0, int n, double* ps, double* Qs, int order, double* cs ){
+lib.projectMultiPole.argtypes  = [ c_double_p, c_int, c_double_p, c_double_p, c_int, c_double_p ]
+lib.projectMultiPole.restype   =  None
+def projectMultiPole( ps, Qs, order=2, p0=None, cs=None ):
+    n = len(ps)
+    ps = np.array( ps )
+    Qs = np.array( Qs )
+    if p0 is None: p0 = np.zeros( 3, dtype=np.float64 )
+    if cs is None: cs = np.zeros( n, dtype=np.float64 )
+    lib.projectMultiPole( _np_as(p0,c_double_p), n, _np_as(ps,c_double_p), _np_as(Qs,c_double_p), order, _np_as(cs,c_double_p) )
+    return cs, p0
+
+#void sampleMultipole( int n, double* ps_, double* fe_, double* p0_, int order, double* cs ){
+lib.sampleMultipole.argtypes  = [ c_int, c_double_p, c_double_p, c_double_p, c_int, c_double_p ]
+lib.sampleMultipole.restype   =  None
+def sampleMultipole( ps, p0, cs, order=2, fe=None ):
+    n = len(ps)
+    ps = np.array( ps )
+    #p0 = np.array( p0 )
+    if fe is None: fe = np.zeros( n, dtype=np.float64 )
+    lib.sampleMultipole( n, _np_as(fe,c_double_p), _np_as(ps,c_double_p), _np_as(p0,c_double_p), order, _np_as(cs,c_double_p) )
 
 # void evalGridFFAtPoints( int n, double* ps, double* FFout, double* PLQH ){
 lib.evalGridFFAtPoints.argtypes  = [ c_int, c_double_p, c_double_p, c_double_p, c_bool ]
@@ -332,7 +353,6 @@ def evalGridFFAtPoints( ps, FFout=None, PLQH=[0.0,0.0,1.0,0.0], bSplit=False ):
     PLQH = np.array( PLQH )
     lib.evalGridFFAtPoints( n, _np_as(ps,c_double_p), _np_as(FFout,c_double_p), _np_as(PLQH,c_double_p), bSplit )
     return FFout
-    
 
 # void sample_func( int n, double* xs, double* ys, int kind ){
 lib.sample_func.argtypes  = [c_int, c_double_p, c_double_p, c_int]
