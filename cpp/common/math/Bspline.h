@@ -78,6 +78,30 @@ Points:
 ddBasis: [ 0.0, 1.0,    -2.0,     1.0   ]
 */
 
+
+/*
+
+Quintic bspline
+
+Here's the explicit quintic B-spline basis function with real number coefficients instead of fractions:
+
+\[
+B_i(x) = 
+
+   0.00833 * x^5                                                              if  x < 1
+  -0.04167 * x^5 + 0.25 * x^4 - 0.5  * x^3 +  0.50 * x^2 -  0.25 * x + 0.05   if  x < 2 
+   0.08333 * x^5 - 0.75 * x^4 + 2.5  * x^3 -  4.25 * x^2 +  3.75 * x - 1.25   if  x < 3 
+  -0.08333 * x^5 + 1.00 * x^4 - 4.25 * x^3 +  9.50 * x^2 - 11.25 * x + 5.25   if  x < 4 
+   0.04167 * x^5 - 0.75 * x^4 + 4.25 * x^3 - 12.75 * x^2 + 18.75 * x - 10.5   if  x < 5
+  -0.00833 * x^5 + 0.25 * x^4 - 3.0  * x^3 + 20.00 * x^2 - 62.50 * x + 75.0   if  x < 6 
+
+
+These are the same quintic B-spline basis functions, but now expressed with real numbers for the coefficients.
+
+*/
+
+
+
 //#include <math.h>
 //#include <cstdlib>
 //#include <stdio.h>
@@ -93,6 +117,22 @@ namespace Bspline{
 constexpr static const double CPs[]{ 0.0,  1.0/6.0,   2.0/3.0,  1.0/6.0 };
 constexpr static const double DPs[]{ 0.0,  0.5,       0.0,     -0.5     };
 constexpr static const double APs[]{ 0.0,  1.0,      -2.0,      1.0     };
+
+
+template<typename T>
+Vec6T<T> basis5(T u){
+    constexpr T inv6 = 1./6.;
+    const T u2 = u*u;
+    const T t  = 1-u;
+    return Vec6T<T>{
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+    };
+}
 
 template<typename T>
 inline Quat4T<T> basis(T u){

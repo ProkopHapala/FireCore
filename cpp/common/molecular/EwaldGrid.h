@@ -98,6 +98,48 @@ void project_atom_on_grid( const Vec3d pi, const double qi, double* dens ) const
     }
 }
 
+
+__attribute__((hot)) 
+void project_atom_on_grid_quntic( const Vec3d pi, const double qi, double* dens ) const {
+    //printf("project_atom_on_grid() pi(%g,%g,%g) q=%g \n", pi.x, pi.y, pi.z, qi );
+    const Vec3d gp = diCell.dot( pi-pos0 );
+    const int ix = (int) gp.x;
+    const int iy = (int) gp.y;
+    const int iz = (int) gp.z;
+    const double tx = gp.x - ix;
+    const double ty = gp.y - iy;
+    const double tz = gp.z - iz;
+    // ToDo: Periodic Boundary Conditions for points which are close to the boundary
+    const Vec6d bx = Bspline::basis5(tx);
+    const Vec6d by = Bspline::basis5(ty);
+    const Vec6d bz = Bspline::basis5(tz);
+
+    //printf("project_atom_on_grid() pi(%g,%g,%g) q=%g \n", pi.x, pi.y, pi.z, qi );
+    const int nxy = n.x * n.y;
+    //int ii=0;
+    for (int dz = 0; dz < 6; dz++) {
+        const int gz  = iz + dz - 2;
+        const int iiz = gz*nxy;
+        for (int dy = 0; dy < 6; dy++) {
+            const int gy  = iy + dy - 2;
+            const int iiy = iiz + gy*n.x;
+            const double qbyz = qi * by.array[dy] * bz.array[dz];
+            for (int dx = 0; dx < 6; dx++) {
+                const int gx = ix + dx - 2;
+                const int ig = gx + iiy;
+
+                //printf("project_atom_on_grid()[%i] dxyz(%i,%i,%i) igxyz(%i,%i,%i) ig=%i /%i \n", ii, dx,dy,dz,   gx,gy,gz, ig, n.totprod() );
+                // ToDo: Periodic Boundary Conditions for points which are close to the boundary
+                //if (gx >= 0 && gx < nx && gy >= 0 && gy < ny && gz >= 0 && gz < nz) {
+                    dens[ig] += qbyz * bx.array[dx]; 
+                //}
+
+                //ii++;
+            }
+        }
+    }
+}
+
 __attribute__((hot)) 
 void project_atoms_on_grid( int na, const Vec3d* apos, const double* qs, double* dens ) const {
     for (int ia=0; ia<na; ia++){
