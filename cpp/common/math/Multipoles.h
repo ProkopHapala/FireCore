@@ -114,7 +114,7 @@ Vec3d center( int n, const Vec3d * ps, const double * Qs ){
 }
 
 __attribute__((hot)) 
-void project( const Vec3d* p0_, int n, const Vec3d * ps, const double * Qs, int order, double * cs, bool bClear=true ){
+Vec3d project( const Vec3d* p0_, int n, const Vec3d * ps, const double * Qs, int order, double * cs, bool bClear=true ){
     Vec3d p0;
     if(p0_){ p0=*p0_; }else{ p0=center(n, ps, Qs); }
     if(bClear) for( int i=0; i<10; i++ ) cs[i]=0;
@@ -123,6 +123,7 @@ void project( const Vec3d* p0_, int n, const Vec3d * ps, const double * Qs, int 
         //printf( "project[ia=%3i] p(%+10.5e,%+10.5e,%+10.5e) Q=%+10.5e \n", i, ps[i].x,ps[i].y,ps[i].z,  Qs[i] );
         //printf( "project[ia=%3i] Q=%+10.5e p(%+10.5e,%+10.5e,%+10.5e) Qxx,yy,zz(%+10.5e,%+10.5e,%+10.5e)|yz,xz,xy(%+10.5e,%+10.5e,%+10.5e)\n", i, cs[0], cs[1],cs[2],cs[3],  cs[4],cs[5],cs[6], cs[7],cs[8],cs[9] );
     }
+    return p0;
 }
 
 double Emultipole( const Vec3d& d, int order, double * cs ){
