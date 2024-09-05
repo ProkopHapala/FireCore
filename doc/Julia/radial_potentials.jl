@@ -315,13 +315,39 @@ function getCutted( EF::Function, fcut::Function, r, params )
     #end
 end
 
-function getMorseCut(r, R0, E0, Q, H, k, Rcut, fcut::Function)
+
+function getCutShift( EF::Function, fcut::Function, r, Rc0, Rcut, params )
+    #if r<Rcut
+    Ec,Fc      = EF( Rcut, params )
+
+    Cut,dCut = fcut( r, Rc0, Rcut )
+    E,F      = EF( r, params )
+
+    E-= Ec
+
+    return E*Cut, F*Cut + E*dCut
+    #else
+    #    return 0.,0.
+    #end
+end
+
+function getMorseCut(r, R0, E0, Q, H, k, fcut::Function)
     return getCutted( (r,params)->getMorseQH(r,params...), fcut, r, (R0, E0, Q, H, k))
 end
 
 function getLJQHcut(r, R0, E0, Q, H, fcut::Function)
     return getCutted( (r,params)->getLJQH(r,params...), fcut, r, (R0, E0, Q, H))
 end
+
+
+function getMorseCutShift(r, R0, E0, Q, H, k, fcut::Function, Rc0, Rcut )
+    return getCutShift( (r,params)->getMorseQH(r,params...), fcut, r, Rc0, Rcut, (R0, E0, Q, H, k))
+end
+
+function getLJQHcutShift(r, R0, E0, Q, H, fcut::Function, Rc0, Rcut )
+    return getCutShift( (r,params)->getLJQH(r,params...), fcut, r, Rc0, Rcut, (R0, E0, Q, H))
+end
+
 
 function combREQH( A, B )
     H = A[4] * B[4]
@@ -343,7 +369,7 @@ function smoothstep(x::Float64, x0::Float64, x1::Float64)
         E = 1.0
         F = 0.0
     elseif x > x1
-        E = 1.0
+        E = 0.0
         F = 0.0
     else
         dx = x1-x0
@@ -358,7 +384,7 @@ function smootherstep(x::Float64, x0::Float64, x1::Float64)
         E = 1.0
         F = 0.0
     elseif x > x1
-        E = 1.0
+        E = 0.0
         F = 0.0
     else
         dx = x1-x0
@@ -690,12 +716,13 @@ end
 
 # eval_forces = (position, velocity) -> eval_force_and_plot(position,velocity, plt, truss.bonds )
 
-xs = xrange( 1.01, 0.01, 600 )
+xs = xrange( 1.01, 0.01, 1000 )
 
 plt = plot( layout = (2, 1), size=(1000, 1000) )
 mins = []
 
-Rc    = 6.0
+Rc0   = 5.0
+Rc    = 8.0
 EvdW  = 0.01
 RvdW  = 3.5
 Ksr   = 1.7
@@ -725,7 +752,7 @@ REQH_OO      = combREQH( REQH_O_H2O, REQH_O_H2O )
 REQH_H2O     = combREQH( REQH_O_H2O, REQH_H_H2O )
 REQH_H2O_CH3 = combREQH( REQH_O_H2O, REQH_H_CH3 )
 
-xlim = [1.0, 10.0]
+xlim = [1.0, 12.0]
 
 println("REQH_H2O     = ", REQH_H2O)
 
@@ -737,12 +764,15 @@ push!( mins, plot_func( plt, xs, (x)->getLJQH( x, REQH_H2O...     ),     clr=:bl
 
 
 #fcut = (x)->smoothstep(x,4.0,6.0)
-#fcut = (x)->smootherstep(x,3.0,6.0)
-fcut = (x)->getR4(x,6.0, -1.0)
+fcut = (x)->smootherstep(x,Rc0,Rc)
+#fcut = (x)->getR4(x,6.0, -1.0)
+#fcut = (x)->getR8(x,6.0, -1.0)
 
 push!( mins, plot_func( plt, xs, fcut,        clr=:black   , label="fcut"  , dnum=:true   ) )
 
-push!( mins, plot_func( plt, xs, (x)->getLJQHcut( x, REQH_H2O..., fcut  ),     clr=:red   , label="LJQHcut H..O H2O"     ,  xlim=xlim, dnum=:true ) )
+push!( mins, plot_func( plt, xs, (x)->getLJQHcutShift( x, REQH_H2O..., smootherstep,Rc0,Rc),     clr=:red   , label="LJQHcut H..O H2O"     ,  xlim=xlim, dnum=:true ) )
+
+#push!( mins, plot_func( plt, xs, (x)->getLJQHcut( x, REQH_H2O..., fcut  ),     clr=:red   , label="LJQHcut H..O H2O"     ,  xlim=xlim, dnum=:true ) )
 #push!( mins, plot_func( plt, xs, (x)->getLJQHcut( x, REQH_OO...      ),     clr=:red    , label="LJQHcut O..O H2O"     ,  xlim=xlim, dnum=:true ) )
 #push!( mins, plot_func( plt, xs, (x)->getLJQHcut( x, REQH_HH...      ),     clr=:cyan   , label="LJQHcut H..O H2O"     ,  xlim=xlim, dnum=:true ) )
 #push!( mins, plot_func( plt, xs, (x)->getLJQHcut( x, REQH_H2O_CH3... ),     clr=:green  , label="LJQHcut H..H H2O,CH3" ,  xlim=xlim, dnum=:true ) )
