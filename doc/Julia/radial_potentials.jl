@@ -104,7 +104,7 @@ function getR4( r, Rc, E0 )
         r2  = r*r
         u2  = 1-(r2/Rc^2)
         E   = E0 * ( 1-u2*u2 ) - E0
-        F   = E0 * -4*(r/(Rc^2))*( u2*u2  ) 
+        F   = E0 * -4*(r/(Rc^2))*u2
     end
     return E,F
 end
@@ -179,6 +179,14 @@ function getR8x2( r, Rf, E0, Rc, K )
     return E,F
 end
 
+# ============ Coulomb potential ============
+
+function getCoulomb( r, Q )
+    Q *= Coulomb_const_eVA
+    E  = Q/r
+    F  = Q/r^2
+    return E,F
+end
 
 # ============ exponetial based polynomial potentials ============
 
@@ -269,15 +277,99 @@ function getLJs2( r, R0, E0 )
 end
 
 
-# ============  Damped Coulomb potential  ============
 
 
-function getCoulomb( r, Q )
-    Q *= Coulomb_const_eVA
-    E  = Q/r
-    F  = Q/r^2
-    return E,F
+
+
+# ============  REQH yype of potential  ============
+
+function getMorseQH( r, R0, E0, Q, H, k )
+    #return getMorse( r, R0, E0, k ) .+ getCoulomb( r, Q )
+    e  = exp( -k*(r-R0) )
+    E  = E0 *      ( e*e*(1+H) - 2*e )
+    F  = E0 * 2*k* ( e*e*(1+H) -   e ) 
+    Ec,Fc = getCoulomb( r, Q )
+    return E+Ec,F+Fc
 end
+
+function getLJQH( r, R0, E0, Q, H )
+    #return getMorse( r, R0, E0, k ) .+ getCoulomb( r, Q )
+    u  = R0/r
+    u6 = u^6
+    E  = E0 *    ( u6*u6*(1+H) - 2*u6 )
+    F  = E0 * 12*( u6*u6*(1+H) -   u6 )/r
+    Ec,Fc = getCoulomb( r, Q )
+    return E+Ec,F+Fc
+end
+
+# ============  General Cutted potentials  ============
+
+#function getCutted( EF::Function, fcut::Function, Rcut, params )
+function getCutted( EF::Function, fcut::Function, r, params )
+    #if r<Rcut
+    Cut,dCut = fcut( r )
+    E,F      = EF( r, params )
+    return E*Cut, F*Cut + E*dCut
+    #else
+    #    return 0.,0.
+    #end
+end
+
+function getMorseCut(r, R0, E0, Q, H, k, Rcut, fcut::Function)
+    return getCutted( (r,params)->getMorseQH(r,params...), fcut, r, (R0, E0, Q, H, k))
+end
+
+function getLJQHcut(r, R0, E0, Q, H, fcut::Function)
+    return getCutted( (r,params)->getLJQH(r,params...), fcut, r, (R0, E0, Q, H))
+end
+
+function combREQH( A, B )
+    H = A[4] * B[4]
+    H = (H>0.0) ? 0.0 : H
+    return (
+        A[1] + B[1],
+        sqrt(A[2] * B[2]),
+        A[3] * B[3],
+        H,
+    )
+end
+
+
+
+# ============  General Cut-off functions  ============
+
+function smoothstep(x::Float64, x0::Float64, x1::Float64)
+    if    x < x0
+        E = 1.0
+        F = 0.0
+    elseif x > x1
+        E = 1.0
+        F = 0.0
+    else
+        dx = x1-x0
+        u = (x-x0)/dx
+        E = 1 - u^2 * (3 - 2 * u)
+        F =   6 * u * (1 - u) / dx
+    end
+    return E, F
+end
+function smootherstep(x::Float64, x0::Float64, x1::Float64)
+    if    x < x0
+        E = 1.0
+        F = 0.0
+    elseif x > x1
+        E = 1.0
+        F = 0.0
+    else
+        dx = x1-x0
+        u = (x-x0)/dx
+        E = 1-    u^3 * (u * (u * 6 - 15) + 10)
+        F = 30 * u^2 * (u * (u - 2) + 1) / dx
+    end
+    return E, F
+end
+
+# ============  Damped Coulomb potential  ============
 
 function getCoulomb_dampC2( r, Q, Rdamp )
     Q *= Coulomb_const_eVA
@@ -598,7 +690,7 @@ end
 
 # eval_forces = (position, velocity) -> eval_force_and_plot(position,velocity, plt, truss.bonds )
 
-xs = xrange( 0.01, 0.01, 600 )
+xs = xrange( 1.01, 0.01, 600 )
 
 plt = plot( layout = (2, 1), size=(1000, 1000) )
 mins = []
@@ -617,10 +709,46 @@ Rdamp0 = 0.5
 Rdamp  = 2.0
 Adamp  = 1.0
 
+E0 = 1.0
+
+REQH_H_CH3 = ( 1.4 , 0.001,  0.05, +0.0 )
+REQH_H_H2O = ( 1.4 , 0.001,  0.2,  +0.9 )
+REQH_O_H2O = ( 1.66, 0.010, -0.4,  -0.8 )
+
+#REQH_H_CH3 = ( 1.4 , 0.001,  0.05, +0.0 )
+#REQH_H_H2O = ( 1.4 , 0.001,  0.2,  +0.0 )
+#REQH_O_H2O = ( 1.66, 0.010, -0.4,  -0.0 )
+
+
+REQH_HH      = combREQH( REQH_H_H2O, REQH_H_H2O )
+REQH_OO      = combREQH( REQH_O_H2O, REQH_O_H2O )
+REQH_H2O     = combREQH( REQH_O_H2O, REQH_H_H2O )
+REQH_H2O_CH3 = combREQH( REQH_O_H2O, REQH_H_CH3 )
+
 xlim = [1.0, 10.0]
 
+println("REQH_H2O     = ", REQH_H2O)
 
-push!( mins, plot_func( plt,  xs, (x)->getCoulomb(         x,Q     ),               clr=:black  , label="Coulomb"       ,  xlim=xlim ) )
+
+push!( mins, plot_func( plt, xs, (x)->getLJQH( x, REQH_H2O...     ),     clr=:blue   , label="LJQH H..O H2O"     ,  xlim=xlim, dnum=:true ) )
+#push!( mins, plot_func( plt, xs, (x)->getLJQH( x, REQH_OO...      ),     clr=:red    , label="LJQH O..O H2O"     ,  xlim=xlim, dnum=:true ) )
+#push!( mins, plot_func( plt, xs, (x)->getLJQH( x, REQH_HH...      ),     clr=:cyan   , label="LJQH H..O H2O"     ,  xlim=xlim, dnum=:true ) )
+#push!( mins, plot_func( plt, xs, (x)->getLJQH( x, REQH_H2O_CH3... ),     clr=:green  , label="LJQH H..H H2O,CH3" ,  xlim=xlim, dnum=:true ) )
+
+
+#fcut = (x)->smoothstep(x,4.0,6.0)
+#fcut = (x)->smootherstep(x,3.0,6.0)
+fcut = (x)->getR4(x,6.0, -1.0)
+
+push!( mins, plot_func( plt, xs, fcut,        clr=:black   , label="fcut"  , dnum=:true   ) )
+
+push!( mins, plot_func( plt, xs, (x)->getLJQHcut( x, REQH_H2O..., fcut  ),     clr=:red   , label="LJQHcut H..O H2O"     ,  xlim=xlim, dnum=:true ) )
+#push!( mins, plot_func( plt, xs, (x)->getLJQHcut( x, REQH_OO...      ),     clr=:red    , label="LJQHcut O..O H2O"     ,  xlim=xlim, dnum=:true ) )
+#push!( mins, plot_func( plt, xs, (x)->getLJQHcut( x, REQH_HH...      ),     clr=:cyan   , label="LJQHcut H..O H2O"     ,  xlim=xlim, dnum=:true ) )
+#push!( mins, plot_func( plt, xs, (x)->getLJQHcut( x, REQH_H2O_CH3... ),     clr=:green  , label="LJQHcut H..H H2O,CH3" ,  xlim=xlim, dnum=:true ) )
+
+
+#push!( mins, plot_func( plt,  xs, (x)->getCoulomb(         x,Q     ),               clr=:black  , label="Coulomb"       ,  xlim=xlim ) )
 
 #==
 push!( mins, plot_func( plt, xs, (x)->getCoulomb_dampC2(   x,Q,Rdamp),              clr=:red   , label="Coulomb_C2"   ,  xlim=xlim, dnum=:true ) )
@@ -645,8 +773,8 @@ push!( mins, plot_func( plt, xs, (x)->getCoulomb_cutR8(   x,Q,Rdamp),           
 
 #push!( mins, plot_func( plt, xs, (x)->getR_ir4r8( x, RvdW, EvdW, Rc, Rf, Ksr ), clr=:magenta , label="R_ir4r8" ,  dnum=:true  ) )
 
-#push!( mins, plot_func( plt, xs, (x)->getR4(x,Rc,E0),        clr=:black   , label="R4"     ) )
-#push!( mins, plot_func( plt, xs, (x)->getR8(x,Rc,E0),        clr=:black  , label="R2"     ) )
+#push!( mins, plot_func( plt, xs, (x)->getR4(x,Rc,E0),        clr=:black   , label="R4"  , dnum=:true   ) )
+#push!( mins, plot_func( plt, xs, (x)->getR8(x,Rc,E0),        clr=:black  , label="R2"  , dnum=:true    ) )
 #push!( mins, plot_func( plt, xs, (x)->getR4x2(x,R0+0.15,E0*1.85,Rc,Ksr),      clr=:red   , label="R4x2"  ,  dnum=:true  ) )
 #push!( mins, plot_func( plt, xs, (x)->getR8x2(x,R0+0.17,E0*3.50,Rc,Ksr*2.0),  clr=:green  , label="R2x2" ,  dnum=:true) )
 
@@ -659,25 +787,32 @@ push!( mins, plot_func( plt, xs, (x)->getCoulomb_cutR8(   x,Q,Rdamp),           
 #push!( mins, plot_func( plt, xs, (x)->getCoulomb_x2( x, RHb, EHb, Q, RvdW ),                                                    clr=:blue    , label="Coulomb_x2" ,       xlim=xlim, dnum=:true ) )
 #push!( mins, plot_func( plt, xs, (x)->getCoulomb_x2smooth( x, RHb, EHb, Q, RHb+0.8, 5.0 ),                                      clr=:blue    , label="Coulomb_x2smooth" , xlim=xlim, dnum=:true ) )
 #push!( mins, plot_func( plt, xs, (x)->getCoulomb_x2lor( x, RHb, EHb, Q, RvdW-0.7 ),                                             clr=:blue    , label="Coulomb_x2lor" ,    xlim=xlim, dnum=:true ) )
-push!( mins, plot_func( plt, xs, (x)->getCoulomb_x2lor2( x, RHb, EHb, Q, RHb+0.8, 5.0 ),                                         clr=:blue    , label="Coulomb_x2lor2" ,  xlim=xlim, dnum=:true ) )
+#push!( mins, plot_func( plt, xs, (x)->getCoulomb_x2lor2( x, RHb, EHb, Q, RHb+0.8, 5.0 ),                                         clr=:blue    , label="Coulomb_x2lor2" ,  xlim=xlim, dnum=:true ) )
 
-Emin = minimum( [min[1] for min in mins] ); ylims!( plt[1], Emin*1.5, -Emin )
-Fmin = minimum( [min[2] for min in mins] ); ylims!( plt[2], Fmin*1.5, -Fmin )
+
+#push!( mins, plot_func( plt, xs, (x)->smootherstep( x, 2.0, 6.0 ),     clr=:blue    , label="smootherstep" ,  xlim=xlim, dnum=:true ) )
+#push!( mins, plot_func( plt, xs, (x)->smoothstep(   x, 2.0, 6.0 ),     clr=:red     , label="smoothstep" ,    xlim=xlim, dnum=:true ) )
+
+
+Emin = minimum( [min[1] for min in mins] ); ylims!( plt[1], Emin*2.0, -Emin*2. )
+Fmin = minimum( [min[2] for min in mins] ); ylims!( plt[2], Fmin*2.0, -Fmin*2. )
+
+#ylims!( plt[1], -1.0, 1.0 )
 
 #println( "Emin = ", Emin )
 
-hline!( plt[1], [0.0], color=:black, label="", linestyle=:dash )
-hline!( plt[2], [0.0], color=:black, label="",linestyle=:dash )
+hline!( plt[1], [0.0],  color=:black, label="", linestyle=:dash )
+hline!( plt[2], [0.0],  color=:black, label="", linestyle=:dash )
 
-vline!( plt[1], [Rc],  color=:gray,  label="", linestyle=:dash )
-vline!( plt[1], [RvdW],  color=:black, label="", linestyle=:dash )
+vline!( plt[1], [Rc],   color=:gray,  label="", linestyle=:dash )
+vline!( plt[1], [RvdW], color=:black, label="", linestyle=:dash )
 vline!( plt[1], [RHb],  color=:black, label="", linestyle=:dash )
-vline!( plt[1], [0.0], color=:black, label="", linestyle=:dash )
+vline!( plt[1], [0.0],  color=:black, label="", linestyle=:dash )
 
-vline!( plt[2], [Rc],  color=:gray,  label="", linestyle=:dash )
-vline!( plt[2], [RvdW],  color=:black, label="", linestyle=:dash )
+vline!( plt[2], [Rc],   color=:gray,  label="", linestyle=:dash )
+vline!( plt[2], [RvdW], color=:black, label="", linestyle=:dash )
 vline!( plt[2], [RHb],  color=:black, label="", linestyle=:dash )
-vline!( plt[2], [0.0], color=:black, label="", linestyle=:dash )
+vline!( plt[2], [0.0],  color=:black, label="", linestyle=:dash )
 
 display(plt)
 
