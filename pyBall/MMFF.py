@@ -298,7 +298,7 @@ def projectAtomsEwaldGrid( apos, qs, dens=None, ns=None, order=2 ):
     na = len(apos)
     apos = np.array( apos )
     qs   = np.array( qs )
-    if dens is None: dens = np.zeros( ns, dtype=np.float64 )
+    if dens is None: dens = np.zeros( ns[::-1], dtype=np.float64 )
     lib.projectAtomsEwaldGrid( na, _np_as(apos,c_double_p), _np_as(qs,c_double_p), _np_as(dens,c_double_p), order )
     return dens
 

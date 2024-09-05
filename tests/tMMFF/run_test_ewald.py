@@ -43,14 +43,19 @@ def plot_fft_debug( Vs, nx=4, ny=3, iy=0, label="Python/numpy", iz=50 ):
     plt.subplot( ny, nx, iy*nx+4); plt.imshow( Vs[3][iz,:,:]     , cmap='bwr' ); plt.colorbar(); plt.title("V           "+label)
 
 
-def test_vs_direct( apos, qs, ns=[100,100,100], dg=[0.1,0.1,0.1], nPBC=[30,30,30], iz=50,iy=50,ix=55, iax=0, scErr=100.0, order=2, nBlur=4, cSOR=0.0, cV=0.5 ):
+def test_vs_direct( apos, qs, ns=[90,100,110], dg=[0.1,0.1,0.1], nPBC=[50,50,50], iax=0, scErr=100.0, order=2, nBlur=0, cSOR=0.0, cV=1.0 ):
+    apos = apos.copy()
+    apos[:,0] += dg[0]*ns[0]*0.5
+    apos[:,1] += dg[1]*ns[1]*0.5
+    apos[:,2] += dg[2]*ns[2]*0.5
+    print( "apos ", apos )
 
     mmff.setupEwaldGrid( ns, dg=dg )
     dens = mmff.projectAtomsEwaldGrid( apos, qs, ns=ns, order=order )
     #Vg, density_fft, Vw, ker_w = compute_potential(dens, dg)
     Vg = mmff.EwaldGridSolveLaplace( dens, nBlur=nBlur, cSOR=cSOR, cV=cV )
     lvec=[
-        [ ns[0]*dg[0], 0.0, 0.0 ],
+        [ ns[0]*dg[1], 0.0, 0.0 ],
         [ 0.0, ns[1]*dg[1], 0.0 ],
         [ 0.0, 0.0, ns[2]*dg[2] ],
     ]
@@ -58,33 +63,78 @@ def test_vs_direct( apos, qs, ns=[100,100,100], dg=[0.1,0.1,0.1], nPBC=[30,30,30
     #scEwald = 0.2
     COULOMB_CONST  =    14.3996448915 
 
-    bulhar1 = 0.9973498924
-    bulhar2 = 0.99**(1./3.)
-    c213 = 2.0**(1.0/3.0)  * bulhar1
-    #scEwald = COULOMB_CONST * np.sqrt(2.0)/100.0  ;print("scEwald = ", scEwald)
-    scEwald = COULOMB_CONST*c213/100.0  ;print("scEwald = ", scEwald)
+    # bulhar1 = 0.9973498924
+    # bulhar2 = 0.99**(1./3.)
+    # c213 = 2.0**(1.0/3.0)  * bulhar1
+    # scEwald = COULOMB_CONST * np.sqrt(2.0)/100.0  ;print("scEwald = ", scEwald)
+    #scEwald = COULOMB_CONST*c213/100.0  ;print("scEwald = ", scEwald)
 
+    #scEwald = COULOMB_CONST*np.sqrt(2.0) *(dg[0]*dg[1]*dg[2]) /( ns[0]*ns[1]*ns[2])  ;print("scEwald = ", scEwald)
+
+    #scEwald = COULOMB_CONST*np.sqrt(2.0) /( (dg[0]*dg[1]*dg[2]) * ns[0]*ns[1]*ns[2])  ;print("scEwald = ", scEwald)
+
+    scEwald = COULOMB_CONST*np.sqrt(2.0)/np.power( ns[0]*ns[1]*ns[2], 1./3.)  ;print("scEwald = ", scEwald)
+    
+    #scEwald = COULOMB_CONST*np.sqrt(2.0) / ( ( ns[0]*ns[1]*ns[2] ) * (dg[0]*dg[1]*dg[2]) ) ;print("scEwald = ", scEwald)
+
+    #scEwald = COULOMB_CONST*2 *  (dg[0]*dg[1]*dg[2]) *   1.102/np.sqrt( ns[0]**2 + ns[1]**2 + ns[2]**2)   ;print("scEwald = ", scEwald)
+
+
+    #scEwald1 = np.sqrt(2.0)/np.power( ns[0]*ns[1]*ns[2], 1./3.)  
+    #scEwald2 = 2.0         /np.sqrt( ns[0]**2 + ns[1]**2 + ns[2]**2)  
+    #scEwald = COULOMB_CONST*np.sqrt( scEwald1*scEwald2 )
+
+
+    #scEwald1 = np.sqrt(2.0)/np.power( ns[0]*ns[1]*ns[2], 1./3.)  
+    #scEwald2 = 2.0         /np.sqrt( ns[0]**2 + ns[1]**2 + ns[2]**2)  
+    #scEwald = COULOMB_CONST * (1./3.) * np.sqrt(0.5)/np.sqrt(3.) * ( ns[0]**2 + ns[1]**2 + ns[2]**2 )/( ns[0]*ns[1]*ns[2] ) 
+    #scEwald = COULOMB_CONST * (1./3.) * np.sqrt(0.5)/np.sqrt(3.) * ( ns[0]**2 + ns[1]**2 + ns[2]**2 )/( ns[0]*ns[1]*ns[2] ) 
+
+    #scEwald = COULOMB_CONST*( ns[0]**2 + ns[1]**2 + ns[2]**2 )/(ns[0]*ns[1]*ns[2])  ;print("scEwald = ", scEwald)
+
+    #scEwald = COULOMB_CONST*np.power( ns[0]*ns[1]*ns[2], 1./3.)/( ns[0]**2 + ns[1]**2 + ns[2]**2)  ;print("scEwald = ", scEwald)
+
+
+    #scEwald = COULOMB_CONST/100.0;    print("scEwald = ", scEwald)
+
+    print("scEwald = ", scEwald)
     Vg *= scEwald
 
-    '''
+    
     # ---- Plot 2D
-    xs = np.linspace( 0.0, ns[0]*dg[0], ns[0], endpoint=False )
-    ys = np.linspace( 0.0, ns[1]*dg[1], ns[1], endpoint=False )
-    Xs,Ys = np.meshgrid( xs, ys )
-    ps = np.zeros( (ns[0],ns[1],3) )
-    ps[:,:,0] = Xs
-    ps[:,:,1] = Ys
-    ps[:,:,2] = dg[2]*iz
-    ps = np.reshape( ps, (ns[0]*ns[1],3) )
-    fe = mmff.sampleCoulombPBC(  ps, apos, qs, lvec=lvec, nPBC=nPBC ).reshape( (ns[0],ns[1],4) )
-    plt.figure(figsize=(15,5))
-    plt.subplot(1,3,1); plt.imshow( dens[iz,:,:],                      cmap='bwr' ); plt.colorbar(); plt.title("Charge Density" )
-    plt.subplot(1,3,2); plt.imshow( Vg[iz,:,:],   vmin=-1.0,vmax=1.0,  cmap='bwr' ); plt.colorbar(); plt.title("V ewald C++/FFTW3 " )
-    plt.subplot(1,3,3); plt.imshow( fe[:,:,3],    vmin=-1.0,vmax=1.0,  cmap='bwr' ); plt.colorbar(); plt.title("V direct C++      " )
-    #plt.show()
-    '''
+    # dens2d =  np.sum( dens, axis=iax )
+    # plt.figure(figsize=(15,5))
+    # plt.subplot(1,3,1); plt.imshow( dens2d,                      cmap='bwr' ); plt.colorbar(); plt.title("Charge Density" )
+    # #plt.subplot(1,3,1); plt.imshow( dens[iz,:,:],                      cmap='bwr' ); plt.colorbar(); plt.title("Charge Density" )
+    # plt.subplot(1,3,2); plt.imshow( Vg[iz,:,:],   vmin=-1.0,vmax=1.0,  cmap='bwr' ); plt.colorbar(); plt.title("V ewald C++/FFTW3 " )
+    
+    # xs = np.linspace( 0.0, ns[0]*dg[0], ns[0], endpoint=False )
+    # ys = np.linspace( 0.0, ns[1]*dg[1], ns[1], endpoint=False )
+    # Xs,Ys = np.meshgrid( xs, ys )
+    # ps = np.zeros( (ns[0],ns[1],3) )
+    # ps[:,:,0] = Xs
+    # ps[:,:,1] = Ys
+    # ps[:,:,2] = dg[2]*iz
+    # ps = np.reshape( ps, (ns[0]*ns[1],3) )
+    # fe = mmff.sampleCoulombPBC(  ps, apos, qs, lvec=lvec, nPBC=nPBC ).reshape( (ns[0],ns[1],4) )
+    # plt.subplot(1,3,3); plt.imshow( fe[:,:,3],    vmin=-1.0,vmax=1.0,  cmap='bwr' ); plt.colorbar(); plt.title("V direct C++      " )
+    plt.show()
+    
 
-    nps = ns[iax]
+    
+    
+    ix=ns[0]//2
+    iy=ns[1]//2
+    iz=ns[2]//2
+
+    if iax==0:
+        Vgl = Vg[ iz, iy, : ]
+    elif iax==1:
+        Vgl = Vg[ iz, :, ix ]
+    elif iax==2:
+        Vgl = Vg[ :, iy, ix ]
+
+    nps = ns[iax]   ;print(  "nps ",nps, " Vg.shape=", Vg.shape, " iax ", iax );
     ps = np.zeros( (nps,3) )
     ps[:,0] = dg[0]*ix
     ps[:,1] = dg[1]*iy
@@ -106,19 +156,16 @@ def test_vs_direct( apos, qs, ns=[100,100,100], dg=[0.1,0.1,0.1], nPBC=[30,30,30
     plt.plot( ps[:,iax], fe0[:,3],   '-', label="direct0" )
     plt.plot( ps[:,iax], fe [:,3],   ':', label="direct" )
     plt.plot( ps[:,iax], (fe[:,3]-fe0[:,3])*scErr,   '-', label="direct(0-pbc)", lw=0.5 )
-    plt.plot( ps[:,iax], Vg[iz,iy,:],'-', label="ewald"  )
+    plt.plot( ps[:,iax], Vgl,'-', label="ewald"  )
 
-    plt.plot( ps[:,iax], fe [:,3]/Vg[iz,iy,:],'-', label="ref/ewald"  )
+    plt.plot( ps[:,iax], fe [:,3]/Vgl,'-', label="ref/ewald"  )
 
-    # if   iax == 0:
-    #     plt.plot( ps[:,iax], Vg[:,iy,ix], label="ewald"  )
-    # elif iax == 1:
-    #     plt.plot( ps[:,iax], Vg[:,:,ix],  label="ewald"  )
-    # elif iax == 2:
-    #     plt.plot( ps[:,iax], Vg[iz,iy,:], label="ewald"  )
+
 
     #plt.ylim( -Vmax, Vmax )
-    plt.ylim( 0.995, 1.005  )
+    #plt.ylim( -100.0, 100.0 )
+    plt.ylim( -1.0, 2.00  )
+    #plt.ylim( 0.995, 1.005  )
     plt.legend()
     plt.grid()
 
@@ -126,13 +173,14 @@ def test_vs_direct( apos, qs, ns=[100,100,100], dg=[0.1,0.1,0.1], nPBC=[30,30,30
     plt.title( name );
 
     plt.savefig( name+".png", bbox_inches='tight')
+    
 
     #plt.show()
     
 
 
 
-def test_poison( apos, qs, bPlot=True, bDebug=True, iz=50, ns=[100,100,100], dg=[0.1,0.1,0.1], flags=-1, bOMP=False ):
+def test_poison( apos, qs, bPlot=True, bDebug=True, iz=50, ns=[90,100,110], dg=[0.1,0.1,0.1], flags=-1, bOMP=False ):
 
     mmff.setupEwaldGrid( ns, dg=dg )
     dens = mmff.projectAtomsEwaldGrid( apos, qs, ns=ns )
@@ -171,17 +219,17 @@ def test_poison( apos, qs, bPlot=True, bDebug=True, iz=50, ns=[100,100,100], dg=
 # =========== Main
 
 d=0.4
-apos=[
+apos=np.array([
     #[5.0-d,5.0-d,5.0],
     #[5.0+d,5.0-d,5.0],
     #[5.0-d,5.0+d,5.0],
     #[5.0+d,5.0+d,5.0],
 
-    [5.0-d,5.0  ,5.0],
-    [5.0+d,5.0  ,5.0],
-    [5.0  ,5.0-d,5.0],
-    [5.0  ,5.0+d,5.0],
-]
+    [-d,.0,0.],
+    [+d,.0,0.],
+    [0.,-d,0.],
+    [0.,+d,0.],
+])
 #qs = [ -1.,+1.,+1.,-1. ]
 qs = [ +1.,+1.,-1.,-1. ]
 
@@ -227,12 +275,16 @@ test_vs_direct( apos, qs, order=2, nBlur=4, cV=0.70 )
 test_vs_direct( apos, qs, order=2, nBlur=4, cV=0.65 )
 '''
 
+test_vs_direct( apos, qs, order=3, nBlur=0, iax=0 )
+#test_vs_direct( apos, qs, order=3, nBlur=0, iax=1 )
+#test_vs_direct( apos, qs, order=3, nBlur=0, iax=2 )
+
 #test_vs_direct( apos, qs, order=3, nBlur=4, cV=0.85 )
 #test_vs_direct( apos, qs, order=3, nBlur=4, cV=0.90 )
 #test_vs_direct( apos, qs, order=3, nBlur=4, cV=0.95 )
 
 
-test_vs_direct( apos, qs, order=3, nBlur=2, cV=0.94, cSOR=+0.10 )
+#test_vs_direct( apos, qs, order=3, nBlur=2, cV=0.94, cSOR=+0.10 )
 #test_vs_direct( apos, qs, order=3, nBlur=2, cV=0.95, cSOR=+0.05 )
 #test_vs_direct( apos, qs, order=3, nBlur=2, cV=0.95, cSOR=+0.15 )
 #test_vs_direct( apos, qs, order=3, nBlur=2, cV=0.94, cSOR=-0.10 )
