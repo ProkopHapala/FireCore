@@ -43,8 +43,8 @@ export LD_PRELOAD
 #python3 run_sample_func.py
 #python3 run_sample_Bsplines.py
 #python3 run_sample_Hermite.py
-#python3 run_test_ewald.py
-python3 run_test_Multipole.py
+python3 run_test_ewald.py
+#python3 run_test_Multipole.py
 
 #python3 run_sample_surf.py
 

@@ -153,7 +153,7 @@ void project_atom_on_grid_quintic( const Vec3d pi, const double qi, double* dens
 
 __attribute__((hot)) 
 void project_atoms_on_grid_linear( int na, const Vec3d* apos, const double* qs, double* dens ) const {
-    printf("project_atoms_on_grid_linear() na=%i \n", na );
+    printf("project_atoms_on_grid_linear() na=%i ns(%i,%i,%i)\n", na, n.x,n.y,n.z );
     for (int ia=0; ia<na; ia++){
         project_atom_on_grid_linear( apos[ia], qs[ia], dens );
     }
@@ -161,7 +161,7 @@ void project_atoms_on_grid_linear( int na, const Vec3d* apos, const double* qs, 
 
 __attribute__((hot)) 
 void project_atoms_on_grid_cubic( int na, const Vec3d* apos, const double* qs, double* dens ) const {
-    printf("project_atoms_on_grid_cubic() na=%i \n", na );
+    printf("project_atoms_on_grid_cubic() na=%i ns(%i,%i,%i)\n", na, n.x,n.y,n.z );
     for (int ia=0; ia<na; ia++){
         project_atom_on_grid_cubic( apos[ia], qs[ia], dens );
     }
@@ -169,7 +169,7 @@ void project_atoms_on_grid_cubic( int na, const Vec3d* apos, const double* qs, d
 
 __attribute__((hot)) 
 void project_atoms_on_grid_quintic( int na, const Vec3d* apos, const double* qs, double* dens ) const {
-    printf("project_atoms_on_grid_quintic() na=%i \n", na );
+    printf("project_atoms_on_grid_quintic() na=%i ns(%i,%i,%i)\n", na, n.x,n.y,n.z );
     for (int ia=0; ia<na; ia++){
         project_atom_on_grid_quintic( apos[ia], qs[ia], dens );
     }
@@ -299,29 +299,59 @@ fftw_complex *Vw=0,*V=0;
 
 __attribute__((hot))
 void laplace_reciprocal_kernel( fftw_complex* VV ){
-    int nx=n.x;
-    int ny=n.y;
-    int nz=n.z;
-    double freq_x = (2.0 * M_PI) / cell.a.norm();
-    double freq_y = (2.0 * M_PI) / cell.b.norm();
-    double freq_z = (2.0 * M_PI) / cell.c.norm();
+    const int nx=n.x;
+    const int ny=n.y;
+    const int nz=n.z;
+    const double freq_x = (2.0 * M_PI) / cell.a.norm();
+    const double freq_y = (2.0 * M_PI) / cell.b.norm();
+    const double freq_z = (2.0 * M_PI) / cell.c.norm();
 
-    //printf("laplace_reciprocal_kernel() nxyz(%i,%i,%i) freq(%g,%g,%g) \n", nx, ny, nz, freq_x, freq_y, freq_z );
+    //double freq_z = (2.0 * M_PI) / cell.a.norm();
+    //double freq_y = (2.0 * M_PI) / cell.b.norm();
+    //double freq_x = (2.0 * M_PI) / cell.c.norm();
 
-    for (int ix = 0; ix < nx; ix++) {
-        const double kx  =  ( (ix <= ny / 2) ? ix : ix - nx ) * freq_x;
-        for (int iy = 0; iy < ny; iy++) {
-            const double ky   = ( (iy <= ny / 2) ? iy : iy - ny ) * freq_y;
-            const double k2xy = ky*ky + kx*kx;
-            const int    ixy  = (ix*ny + iy)*nz;
-            for (int iz = 0; iz < nz; ++iz ) {
-                const int i     = iz + ixy;
-                const double kz = ( ( iz <= nz / 2) ? iz : iz - nz ) * freq_z;
-                const double k2 = k2xy + kz*kz;
+    printf("laplace_reciprocal_kernel() nxyz(%i,%i,%i) Ls(%g,%g,%g) freq(%g,%g,%g) \n", nx,ny,nz,  cell.a.norm(),cell.b.norm(),cell.c.norm(), freq_x,freq_y,freq_z );
+
+    // for (int ix = 0; ix < nx; ix++) {
+    //     const double kx  =  ( (ix <= ny / 2) ? ix : ix - nx ) * freq_x;
+    //     for (int iy = 0; iy < ny; iy++) {
+    //         const double ky   = ( (iy <= ny / 2) ? iy : iy - ny ) * freq_y;
+    //         const double k2xy = ky*ky + kx*kx;
+    //         const int    ixy  = (ix*ny + iy)*nz;
+    //         for (int iz = 0; iz < nz; ++iz ) {
+    //             const int i     = iz + ixy;
+    //             const double kz = ( ( iz <= nz / 2) ? iz : iz - nz ) * freq_z;
+    //             const double k2 = k2xy + kz*kz;
+    //             if ( k2 > 1e-32 ){
+    //                 const double invk2 = 1.0/k2;
+    //                 VV[i][0] *= invk2; // Real part
+    //                 VV[i][1] *= invk2; // Imaginary part
+    //             } else {
+    //                 VV[i][0] = 0.0; // Avoid division by zero (DC component)
+    //                 VV[i][1] = 0.0;
+    //             }
+    //         }
+    //     }
+    // }
+    const int nx2=n.x/2;
+    const int ny2=n.y/2;
+    const int nz2=n.z/2;
+    for (int iz=0; iz<nz; iz++ ) {
+        const double kz = ( (iz<=nz2) ? iz : iz-nz ) * freq_z;
+        for (int iy=0; iy<ny; iy++) { 
+            const double ky   = ( (iy<=ny2) ? iy : iy-ny ) * freq_y;
+            const double k2yz = ky*ky + kz*kz;
+            const int    iyz=(iz*ny + iy)*nx;
+            for (int ix=0; ix<nx; ix++) {
+                const double kx  =  ( (ix<=nx2) ? ix : ix-nx ) * freq_x;
+                const double k2  = kx*kx + k2yz;
+                const int i      = ix + iyz;
                 if ( k2 > 1e-32 ){
                     const double invk2 = 1.0/k2;
                     VV[i][0] *= invk2; // Real part
                     VV[i][1] *= invk2; // Imaginary part
+                    //VV[i][0] *= k2; // Real part
+                    //VV[i][1] *= 0; // Imaginary part
                 } else {
                     VV[i][0] = 0.0; // Avoid division by zero (DC component)
                     VV[i][1] = 0.0;
@@ -348,8 +378,11 @@ void laplace_reciprocal_kernel( fftw_complex* VV ){
 
         printf("prepare_laplace() nxyz(%i,%i,%i) flags=%i \n", n.x, n.y, n.z, flags );
 
-        fft_plan  = fftw_plan_dft_3d( n.x,n.y,n.z, V,  Vw, FFTW_FORWARD,  flags );
-        ifft_plan = fftw_plan_dft_3d( n.x,n.y,n.z, Vw, V,  FFTW_BACKWARD, flags );
+        //fft_plan  = fftw_plan_dft_3d( n.x,n.y,n.z, V,  Vw, FFTW_FORWARD,  flags );
+        //ifft_plan = fftw_plan_dft_3d( n.x,n.y,n.z, Vw, V,  FFTW_BACKWARD, flags );
+
+        fft_plan  = fftw_plan_dft_3d( n.z,n.y,n.x, V,  Vw, FFTW_FORWARD,  flags );
+        ifft_plan = fftw_plan_dft_3d( n.z,n.y,n.x, Vw, V,  FFTW_BACKWARD, flags );
         /*
         https://www.fftw.org/fftw3_doc/Planner-Flags.html
         flags: This parameter provides hints to FFTW about how to optimize the planning process. The flags can include:
