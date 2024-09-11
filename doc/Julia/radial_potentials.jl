@@ -179,6 +179,153 @@ function getR8x2( r, Rf, E0, Rc, K )
     return E,F
 end
 
+# ============ Exp Approximations ============
+#==
+To approximate the function e^{-a*x} using the polynomial (1 - b x)^{2^n}
+b = a/2^n
+
+General formula:  ( (1-x/rmax)*sum_i{ c_i*(x/rmax)^(2^i) } )^(2^n)
+
+- **[1/1] Padé Approximant**:
+
+(1-a*x/2)/(1+a*x/2)
+
+- **[2/2] Padé Approximant**:
+
+
+(1 - a*x/2 + a^2*x^2/12 )/(1 + a*x/2 + a^2*x^2/12 )
+
+These approximants provide increasingly accurate rational function approximations to \( e^{-a x} \).
+
+
+==#
+
+function getExp( x, a )
+    e = exp( a*x )
+    E = e    
+    F = -e*a
+    return E,F
+end
+
+function pexp2( x, a )
+    rmax = 2.0/a
+    #return rmax, a
+    if x< (-rmax)
+        b = 1/rmax
+        p = (1. + x*b )
+        E =     p^2
+        F = -2*b*p
+        return E,F
+    else 
+        return 0.0,0.0
+    end
+end
+
+function pexp4( x, a )
+    rmax = 4.0/a
+    #return rmax, a
+    if x< (-rmax)
+        b = 1/rmax
+        p = (1. + x*b )
+        E =     p^4
+        F = -4*b*p^3
+        return E,F
+    else 
+        return 0.0,0.0
+    end
+end
+
+function pexp4_( x, a )
+    rmax = 4.0/a
+    #return rmax, a
+    if x< (-rmax)
+        b = 1/rmax
+        xb = x*b
+        p = (1. + xb )
+        p *= 1.0 + xb*-0.07 + (xb^2)*0.3 + (xb^4)*1.6 #+  + (xb^8)*1.0*0
+        E =     p^4
+        F = -4*b*p^3
+        return E,F
+    else 
+        return 0.0,0.0
+    end
+end
+
+function pexp8( x, a )
+    rmax = 8.0/a
+    #return rmax, a
+    if x< (-rmax)
+        b = 1/rmax
+        p = (1. + x*b )
+        E =     p^8
+        F = -8*b*p^7
+        return E,F
+    else 
+        return 0.0,0.0
+    end
+end
+
+function pexp8_( x, a )
+    # (1-a*x/2)/(1+a*x/2)
+    rmax = 8.0/a
+    #return rmax, a
+    #if x< (-rmax)
+        b = 1/rmax
+        xb = x*b
+        p = (1. + xb)   # this will make sure that node is ad rmax
+        p *= 1.0 + xb*-0.07 + xb*xb*0.3 + xb*xb*xb*xb*0.6 # this correct the curvature
+        E =     p^8
+        F = -8*b*p^7
+        return E,F
+    #else 
+    #    return 0.0,0.0
+    #end
+end
+
+function pexp8_pade1( x, a )
+    # (1-a*x/2)/(1+a*x/2)
+    rmax = 8.0/a
+    #return rmax, a
+    #if x< (-rmax)
+        b = 1/rmax
+        p = (1. + x*b*0.5 )/(1. - x*b*0.5 )
+        E =     p^8
+        F = -8*b*p^7
+        return E,F
+    #else 
+    #    return 0.0,0.0
+    #end
+end
+
+
+function pexp8__pade2( x, a )
+    # (1-a*x/2)/(1+a*x/2)
+    rmax = 8.0/a
+    #return rmax, a
+    #if x< (-rmax)
+        b = 1/rmax
+        p = (1. + x*b*0.5 + (x*b)^2/12 )/(1. - x*b*0.5 + (x*b)^2/12 )
+        E =     p^8
+        F = -8*b*p^7
+        return E,F
+    #else 
+    #    return 0.0,0.0
+    #end
+end
+
+function pexp16( x, a )
+    rmax = 16.0/a
+    if x<(-rmax)
+        b = 1/rmax
+        p = (1. + x*b )
+        E =     p^16
+        F = -16*b*p^15
+        return E,F
+    else 
+        return 0.0,0.0
+    end
+end
+
 # ============ Coulomb potential ============
 
 function getCoulomb( r, Q )
@@ -716,7 +863,7 @@ end
 
 # eval_forces = (position, velocity) -> eval_force_and_plot(position,velocity, plt, truss.bonds )
 
-xs = xrange( 1.01, 0.01, 1000 )
+xs = xrange( 0.001, 0.01, 1000 )
 
 plt = plot( layout = (2, 1), size=(1000, 1000) )
 mins = []
@@ -757,7 +904,7 @@ xlim = [1.0, 12.0]
 println("REQH_H2O     = ", REQH_H2O)
 
 
-push!( mins, plot_func( plt, xs, (x)->getLJQH( x, REQH_H2O...     ),     clr=:blue   , label="LJQH H..O H2O"     ,  xlim=xlim, dnum=:true ) )
+#push!( mins, plot_func( plt, xs, (x)->getLJQH( x, REQH_H2O...     ),     clr=:blue   , label="LJQH H..O H2O"     ,  xlim=xlim, dnum=:true ) )
 #push!( mins, plot_func( plt, xs, (x)->getLJQH( x, REQH_OO...      ),     clr=:red    , label="LJQH O..O H2O"     ,  xlim=xlim, dnum=:true ) )
 #push!( mins, plot_func( plt, xs, (x)->getLJQH( x, REQH_HH...      ),     clr=:cyan   , label="LJQH H..O H2O"     ,  xlim=xlim, dnum=:true ) )
 #push!( mins, plot_func( plt, xs, (x)->getLJQH( x, REQH_H2O_CH3... ),     clr=:green  , label="LJQH H..H H2O,CH3" ,  xlim=xlim, dnum=:true ) )
@@ -768,15 +915,29 @@ fcut = (x)->smootherstep(x,Rc0,Rc)
 #fcut = (x)->getR4(x,6.0, -1.0)
 #fcut = (x)->getR8(x,6.0, -1.0)
 
-push!( mins, plot_func( plt, xs, fcut,        clr=:black   , label="fcut"  , dnum=:true   ) )
-
-push!( mins, plot_func( plt, xs, (x)->getLJQHcutShift( x, REQH_H2O..., smootherstep,Rc0,Rc),     clr=:red   , label="LJQHcut H..O H2O"     ,  xlim=xlim, dnum=:true ) )
+#push!( mins, plot_func( plt, xs, fcut,        clr=:black   , label="fcut"  , dnum=:true   ) )
+#push!( mins, plot_func( plt, xs, (x)->getLJQHcutShift( x, REQH_H2O..., smootherstep,Rc0,Rc),     clr=:red   , label="LJQHcut H..O H2O"     ,  xlim=xlim, dnum=:true ) )
 
 #push!( mins, plot_func( plt, xs, (x)->getLJQHcut( x, REQH_H2O..., fcut  ),     clr=:red   , label="LJQHcut H..O H2O"     ,  xlim=xlim, dnum=:true ) )
 #push!( mins, plot_func( plt, xs, (x)->getLJQHcut( x, REQH_OO...      ),     clr=:red    , label="LJQHcut O..O H2O"     ,  xlim=xlim, dnum=:true ) )
 #push!( mins, plot_func( plt, xs, (x)->getLJQHcut( x, REQH_HH...      ),     clr=:cyan   , label="LJQHcut H..O H2O"     ,  xlim=xlim, dnum=:true ) )
 #push!( mins, plot_func( plt, xs, (x)->getLJQHcut( x, REQH_H2O_CH3... ),     clr=:green  , label="LJQHcut H..H H2O,CH3" ,  xlim=xlim, dnum=:true ) )
 
+alpha = -1.5
+
+push!( mins, plot_func( plt,  xs, (x)->getExp( x, alpha ),          clr=:black  ,  label="exp"       ,  xlim=xlim, dnum=:true ) )
+#push!( mins, plot_func( plt,  xs, (x)->pexp2( x, alpha ),          clr=:cyan   ,  label="pexp2"     ,  xlim=xlim, dnum=:true ) )
+#push!( mins, plot_func( plt,  xs, (x)->pexp4( x, alpha ),          clr=:green  , label="pexp4"     ,  xlim=xlim, dnum=:true ) )
+push!( mins, plot_func( plt,  xs, (x)->pexp4( x, alpha ),           clr=:red   ,  label="pexp4"     ,  xlim=xlim, dnum=:true ) )
+push!( mins, plot_func( plt,  xs, (x)->pexp4_( x, alpha ),          clr=:cyan   ,  label="pexp4_"     ,  xlim=xlim, dnum=:true ) )
+#push!( mins, plot_func( plt,  xs, (x)->pexp8( x, alpha ),           clr=:red   ,  label="pexp8"     ,  xlim=xlim, dnum=:true ) )
+#push!( mins, plot_func( plt,  xs, (x)->pexp8_( x, alpha ),          clr=:cyan   ,  label="pexp8_"     ,  xlim=xlim, dnum=:true ) )
+#push!( mins, plot_func( plt,  xs, (x)->pexp8__( x, alpha ),         clr=:cyan   ,  label="pexp8__"     ,  xlim=xlim, dnum=:true ) )
+
+#push!( mins, plot_func( plt,  xs, (x)->pexp8_( x, alpha ).*100,     clr=:blue   ,  label="pexp8_"     ,  xlim=xlim, dnum=:true ) )
+#push!( mins, plot_func( plt,  xs, (x)->pexp8__( x, alpha ).*100,    clr=:cyan   ,  label="pexp8__"     ,  xlim=xlim, dnum=:true ) )
+
+#push!( mins, plot_func( plt,  xs, (x)->pexp16( x, alpha ),          clr=:magenta, label="pexp16"     ,  xlim=xlim, dnum=:true ) )
 
 #push!( mins, plot_func( plt,  xs, (x)->getCoulomb(         x,Q     ),               clr=:black  , label="Coulomb"       ,  xlim=xlim ) )
 
