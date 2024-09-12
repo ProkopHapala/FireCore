@@ -1311,16 +1311,24 @@ __kernel void cleanForceMMFFf4(
 
 
 // ======================================================================
-//                           getSortRangeBuckets()
+//                           getShortRangeBuckets()
 // ======================================================================
 
-__kernel void getSortRangeBuckets(
+/*
+Algorithm:
+ * We do pairwise interactions only for particles which are in overlaping groups
+ * each group has neighborlist listing which groups overlap with it (or we can just check overlap of groups, for small systems thi may be faster)  
+ * work_group is identical with group_i, therefore we should make sure number of atoms in each group is ~ work_group_size
+ * for all particles in group_j we check if they are enclosed by bounding box of group_i
+    * if that is the case we add them to local memory
+ *
+*/
+__kernel void getShortRangeBuckets(
     const int4 ns,                  // 1
     // Dynamical
     __global float4*  atoms,        // 2
     __global float4*  forces,       // 3
     __global int2*    buckets,      // 4 // i0,n for bucket i
-    __global int*     cell2obj,     // 5 // bucket index for each atom, ToDo: we can get rid of this if we re-arange atoms so that atoms are already sorted by buckets
     __global float8*  BBs,          // 6 // bounding boxes (xmin,xmax,ymin,0,  ymax,zmin,zmax,0 )
     // Parameters
     __global float4*  REQKs,        // 4
@@ -1334,53 +1342,70 @@ __kernel void getSortRangeBuckets(
     // local size should be equal to maximum size of one bucket (i.e. maximum number of atoms in one bucket)
     __local float4 POS[16];  // atom positions
     __local float4 PAR[16];  // REQKs parameters
-    __local bool   mask[16]; // is the atoms within BB ?
+    __local bool   mask[16]; 
 
     const int iG = get_global_id  (0);
     const int nG = get_global_size(0);
     const int iL = get_local_id   (0);
     const int nL = get_local_size (0);
 
-    const int natoms=ns.x;
-    const int nnode =ns.y;
+    const int  ib = get_group_id(0);
+    const int2 bi = buckets[ib];
+    if(iL>bi.y) return; // check if atom within group range
+    //if(iG>=natoms) return;
 
-    if(iG>=natoms) return;
-
-    const int ib = get_group_id(0); 
-    const int nb = ns.w;             // number of buckets
+    const int nb     = ns.w;
+    const int natoms = ns.x;
+    //const int nnode =ns.y;
 
     // ========= Atom-to-Atom interaction ( N-body problem )    
     float4 posi  = atoms[iG];
     float4 REQKi = REQKs[iG];
     float4 fe    = float4Zero;
     float8 bbi   = BBs[ib];
+    float8 bbi2  = bbi; bbi2.lo.xyz+=Rcut;  bbi2.hi.xyz-=Rcut;
+
 
     for(int jb=0; jb<nb; jb++){ 
         int2 b = buckets[jb];
+
+        // --- PBC replicas ?
+
+        // We do not do this if we make neighborlist for groups
+        { // check if bbj overlaps with bbi?
+            float8 bbj = BBs[jb];
+            if (bbi2.hi.x < bbj.lo.x || bbi2.lo.x > bbj.hi.x ||  // Separated along x-axis?
+                bbi2.hi.y < bbj.lo.y || bbi2.lo.y > bbj.hi.y ||  // Separated along y-axis?
+                bbi2.hi.z < bbj.lo.z || bbi2.lo.z > bbj.hi.z)    // Separated along z-axis?
+            { // No overlap
+                continue; // skip this group_j
+            }
+        }
+
         int ia = b.x + iL;
         
-        // ToDo: wee need some better algorithm check wthich slots in local memory are free
+        
         // copy atoms to local memory
-        // we can do this untill we fill all local memory
-        //bool bIn = false;
+        //   * we copy only those atoms which are within the bounding box
+        //   * we need to know which atoms were copied, therefore we use mask[]
         mask[iL] = false;
         if( iL < b.y ){
             float4 p = atoms[ia];
+            // check if the particle from group_j is inside BBox of group_i
             if( (p.x<bbi.lo.x) && (p.x>bbi.hi.x) && 
                 (p.y<bbi.lo.y) && (p.y>bbi.hi.y) && 
                 (p.z<bbi.lo.z) && (p.z>bbi.hi.z) 
             ){
                 POS[iL]  = p;
                 PAR[iL]  = REQKs[ia];
-                //bIn = true; 
-                mask[iL] = true; 
+                mask[iL] = true;       // we need to know if the atom is in local memory or not
             }
         } 
         //mask[iL] = bIn; 
         barrier(CLK_LOCAL_MEM_FENCE);
 
         for (int j=0; j<nL; j++){
-            if( mask[iL] ){   // ToDo: Should interact withhimself in PBC ?
+            if( mask[j] ){
                 const float4 aj = POS[j];
                 const float3 dp = aj.xyz - posi.xyz;
                 float4 REQK = PAR[j];
@@ -1399,6 +1424,201 @@ __kernel void getSortRangeBuckets(
     
 }
 
+// ======================================================================
+//                           getShortRangeBuckets2()
+// ======================================================================
+// This algorithm assumes all atoms which overlap with group_i were already added to group_i list
+
+
+__kernel void getShortRangeBuckets2(
+    const int4 ns,                  // 1
+    // Dynamical
+    __global float4*  atoms,        // 2
+    __global float4*  forces,       // 3
+    __global int2*    buckets,      // 4 // {i0,n} particles which belong to group_i 
+    __global int2*    bucketsJs,    // 5 // {i0,n} particles which overlap with bounding box of group_i (i.e. can be from any group_j)
+    __global int*     overIndex,    //6 indexes of atoms in overlap split by  bucketsJs    
+    __global int*     overCell,    //6 indexes of atoms in overlap split by  bucketsJs    
+    // Parameters
+    __global float4*  REQKs,        // 8
+    __global cl_Mat3* lvecs,
+    const float Rcut,
+    const float SRdR,
+    const float SRamp,
+    const int bPBC
+    //const int4 nPBC,              // 7
+    //const cl_Mat3 lvec,           // 8
+    //const float Rdamp             // 9
+){
+    // local size should be equal to maximum size of one bucket (i.e. maximum number of atoms in one bucket)
+    __local float4 POS[16];  // atom positions
+    __local float4 PAR[16];  // REQKs parameters
+    __local int    Js [16];  // atom index
+    __local int    JCs[16];  // cell index
+
+    const int iG = get_global_id  (0);
+    const int nG = get_global_size(0);
+    const int iL = get_local_id   (0);
+    const int nL = get_local_size (0);
+
+    const int  ib = get_group_id(0);
+    const int2 bi = buckets[ib];
+    if(iL>bi.y) return; // check if atom within group range
+    //if(iG>=natoms) return;
+
+    const int natoms=ns.x;
+    const int nnode =ns.y;
+    const int nb = ns.w;             // number of buckets
+
+    // only if bPBC=true
+    const int iS = get_global_id  (1); // index of system
+    const cl_Mat3 lvec = lvecs[iS];
+
+    // ========= Atom-to-Atom interaction ( N-body problem )    
+    float4 posi  = atoms[iG];
+    float4 REQKi = REQKs[iG];
+    float4 fe    = float4Zero;
+    const int2 bj = bucketsJs[ib];
+    for (int j0=0; j0<bj.y; j0+=nL){      
+        const int j=j0+iL;
+        if(j<bj.y){  // copy to local memory  
+            int ja  = overIndex[bj.x+j];           
+            POS[iL] = atoms[ja];
+            PAR[iL] = REQKs[ja];
+            Js [iL] = ja;
+            JCs[iL] = overCell[ja];
+        }
+        barrier(CLK_LOCAL_MEM_FENCE);   
+        for (int j=0; j<nL; j++){
+            int ja = Js[j];
+            float4 aj = POS[j];
+            if(bPBC){
+                const int ilvec = JCs[j];
+                const int ilveca = ((ilvec&0xF0)>>4)-8;
+                const int ilvecb = ((ilvec&0x0F)   )-8;
+                aj += lvec.a*ilveca + lvec.a*ilvecb;
+            }
+            const float3 dp = aj.xyz - posi.xyz;
+            float4 REQK = PAR[j];
+            REQK.x +=REQKi.x;
+            REQK.yz*=REQKi.yz;
+            float4 fij = getR4repulsion( dp, REQK.x-SRdR, REQK.x, REQK.y*SRamp );
+            fe += fij;
+            //if(iG==4){ printf( "GPU_LJQ[%i,%i|%i] fj(%g,%g,%g) R2damp %g REQ(%g,%g,%g) r %g \n", iG,ji,0, fij.x,fij.y,fij.z, R2damp, REQK.x,REQK.y,REQK.z, length(dp)  ); } 
+        }
+        barrier(CLK_LOCAL_MEM_FENCE);
+    };
+    forces[iG] = fe;
+    //forces[iG] = fe*(-1.f);
+}
+
+// ======================================================================
+//                           sortAtomsToBucketOverlaps()
+// ======================================================================
+// This function will project all atoms into interaction bounding-box of each group
+// * each iG (thread) is one group
+// * groups share particles in local memory
+// NOTE: sortAtomsToBucketOverlaps() does not have to be run every cycle if atoms does not move too far (similar to neighor-list)
+__kernel void sortAtomsToBucketOverlaps(
+    const int4 ns,                  // 1
+    // Dynamical
+    __global float4*  atoms,        // 2
+    __global float4*  shifts,
+    __global int2*    buckets,      // 4 // i0,n for bucket i
+    __global float8*  BBs,          // 6 // bounding boxes (xmin,xmax,ymin,0,  ymax,zmin,zmax,0 )
+    __global int2*    bucketsJs,    // 5 // {i0,n} particles which overlap with bounding box of group_i (i.e. can be from any group_j)
+    __global int*     overIndex,    //6   indexes of atoms in overlap split by  bucketsJs  
+    __global int*     overCell,     //    index of PBC cell of the atoms in the overlpa
+    //__global float4*  overParams,   //6 indexes of atoms in overlap split by  bucketsJs  
+    //__global float4*  overPos,      //6 indexes of atoms in overlap split by  bucketsJs  
+    __global cl_Mat3* lvecs,
+    const int4 nPBC,
+    const float Rcut
+){
+    // local size should be equal to maximum size of one bucket (i.e. maximum number of atoms in one bucket)
+    __local int    IND[16]; 
+    __local float3 POS[16];  // atom positions
+    //__local float4 PAR[16];  // REQKs parameters
+    
+    const int iG = get_global_id  (0);
+    const int nG = get_global_size(0);
+    const int iL = get_local_id   (0);
+    const int nL = get_local_size (0);
+
+    const int  ib = get_group_id(0);
+    const int2 bi = buckets[ib];
+    if(iL>bi.y) return; // check if atom within group range
+    //if(iG>=natoms) return;
+
+    const int iS = get_global_id  (1); // index of system
+    const int nS = get_global_size(1); // number of systems
+    const int natoms=ns.x;  // number of atoms
+    const int nnode =ns.y;  // number of node atoms
+    const int nvec  =natoms+nnode; // number of vectors (atoms+node atoms)
+
+    const int nb     = ns.w;
+    const int i0v = iS*nvec;    // index of first atom in vectors array
+
+    // ========= Atom-to-Atom interaction ( N-body problem )    
+    float8 bbi   = BBs[ib];
+
+    int iB0 = bucketsJs[iG].x;
+
+    const cl_Mat3 lvec = lvecs[iS];
+    const bool bPBC = (nPBC.x+nPBC.y+nPBC.z)>0;
+
+    // For simplicity we go over all atoms - ignoring buckets
+    int nfound = 0;
+    for (int j0=0; j0<nG; j0+=nL){      
+        const int i=j0+iL;              
+        if(i<natoms){      
+            int ja  = i+i0v;              
+            POS[iL] = atoms[ja].xyz; 
+            IND[iL] = ja;
+        }
+        barrier(CLK_LOCAL_MEM_FENCE);   // wait until all atoms are read to local memory
+        for (int jl=0; jl<nL; jl++){    // loop over all atoms in local memory (like 32 atoms)
+            const int ja=j0+jl;         // index of atom in global memory
+            if( ja<natoms){   // if atom is not the same as current atom and it is not out of range,  // ToDo: Should atom interact with himself in PBC ?
+                const float3 p = POS[jl];    // read atom position   from local memory
+
+                if(bPBC){         
+                    //int ipbc=0;   
+                    //dp += shift0; 
+                    // Fixed PBC size
+                    for(int iy=-nPBC.y; iy<=nPBC.y; iy++){
+                        float3 dp = p + lvec.b.xyz*iy - lvec.a.xyz*nPBC.x;
+                        for(int ix=-nPBC.x; ix<=nPBC.x; ix++){
+                            if( (dp.x<bbi.lo.x) && (dp.x>bbi.hi.x) && 
+                                (dp.y<bbi.lo.y) && (dp.y>bbi.hi.y) && 
+                                (dp.z<bbi.lo.z) && (dp.z>bbi.hi.z) 
+                            ){
+                                int isave = iB0 + nfound;
+                                overIndex[isave] = IND[jl];
+                                overCell [isave] = (ix+8) + (iy+8)*16;
+                                nfound++;
+                            }
+                            //ipbc++; 
+                            dp += lvec.a.xyz; 
+                        }
+                        //dp    += lvec.a.xyz; 
+                    }
+                }else{
+                    if( (p.x<bbi.lo.x) && (p.x>bbi.hi.x) && 
+                        (p.y<bbi.lo.y) && (p.y>bbi.hi.y) && 
+                        (p.z<bbi.lo.z) && (p.z>bbi.hi.z) 
+                    ){
+                        int isave = iB0 + nfound;
+                        overIndex[isave] = IND[jl];
+                        //= overCell [];
+                        nfound++;
+                    }
+                }             
+            }
+        }
+        //barrier(CLK_LOCAL_MEM_FENCE);
+    }    
+}
 
 // ======================================================================
 //                           getNonBond()
