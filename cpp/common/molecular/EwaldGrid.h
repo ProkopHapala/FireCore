@@ -114,6 +114,8 @@ __attribute__((hot))
 void project_atom_on_grid_quintic( const Vec3d pi, const double qi, double* dens ) const {
     //printf("project_atom_on_grid() pi(%g,%g,%g) q=%g \n", pi.x, pi.y, pi.z, qi );
     const Vec3d gp = diCell.dot( pi-pos0 );
+
+    printf("project_atom_on_grid() pi(%7.3f,%7.3f,%7.3f) gp(%7.3f,%7.3f,%7.3f) \n", pi.x, pi.y, pi.z, gp.x, gp.y, gp.z );
     const int ix = (int) gp.x;
     const int iy = (int) gp.y;
     const int iz = (int) gp.z;
@@ -153,7 +155,7 @@ void project_atom_on_grid_quintic( const Vec3d pi, const double qi, double* dens
 
 __attribute__((hot)) 
 void project_atoms_on_grid_linear( int na, const Vec3d* apos, const double* qs, double* dens ) const {
-    printf("project_atoms_on_grid_linear() na=%i ns(%i,%i,%i)\n", na, n.x,n.y,n.z );
+    printf("project_atoms_on_grid_linear() na=%i ns(%i,%i,%i) pos0(%g,%g,%g)\n", na, n.x,n.y,n.z, pos0.x,pos0.y,pos0.z );
     for (int ia=0; ia<na; ia++){
         project_atom_on_grid_linear( apos[ia], qs[ia], dens );
     }
@@ -161,7 +163,7 @@ void project_atoms_on_grid_linear( int na, const Vec3d* apos, const double* qs, 
 
 __attribute__((hot)) 
 void project_atoms_on_grid_cubic( int na, const Vec3d* apos, const double* qs, double* dens ) const {
-    printf("project_atoms_on_grid_cubic() na=%i ns(%i,%i,%i)\n", na, n.x,n.y,n.z );
+    printf("project_atoms_on_grid_cubic() na=%i ns(%i,%i,%i) pos0(%g,%g,%g)\n", na, n.x,n.y,n.z, pos0.x,pos0.y,pos0.z );
     for (int ia=0; ia<na; ia++){
         project_atom_on_grid_cubic( apos[ia], qs[ia], dens );
     }
@@ -169,7 +171,7 @@ void project_atoms_on_grid_cubic( int na, const Vec3d* apos, const double* qs, d
 
 __attribute__((hot)) 
 void project_atoms_on_grid_quintic( int na, const Vec3d* apos, const double* qs, double* dens ) const {
-    printf("project_atoms_on_grid_quintic() na=%i ns(%i,%i,%i)\n", na, n.x,n.y,n.z );
+    printf("project_atoms_on_grid_quintic() na=%i ns(%i,%i,%i) pos0(%g,%g,%g)\n", na, n.x,n.y,n.z, pos0.x,pos0.y,pos0.z );
     for (int ia=0; ia<na; ia++){
         project_atom_on_grid_quintic( apos[ia], qs[ia], dens );
     }
