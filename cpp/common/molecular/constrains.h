@@ -92,7 +92,7 @@ struct DistConstr{
     DistConstr( Vec2i ias_, Vec2d ls_, Vec2d ks_, double flim_, Vec3d shift_=Vec3dZero ):ias(ias_),ls(ls_),ks(ks_),flim(flim_),shift(shift_),active(true){ };
 
     __attribute__((hot))  
-    inline double apply( Vec3d* ps, Vec3d* fs, Mat3d* lvec =0, Mat3d* dlvec =0 )const{
+    inline double apply( Vec3d* ps, Vec3d* fs, Mat3d* lvec =0, Mat3d* dlvec =0, Vec3d* Force =0  )const{
         Vec3d sh;
         if(lvec){ lvec->dot_to_T( shift, sh ); }else{ sh=shift; }
         Vec3d d   = ps[ias.b] -ps[ias.a] + sh;
@@ -103,6 +103,7 @@ struct DistConstr{
         d.mul(f/l);
         fs[ias.b].sub(d);
         fs[ias.a].add(d);
+        Force->set(d);
         //fs[ias.b].add(d);
         //fs[ias.a].sub(d);
         //printf( "DistConstr:apply(%i,%i) l %g E %g f %g | ls(%g,%g) ks(%g,%g) flim %g lvec %li |sh| %g \n", ias.b, ias.a, l, E,f, ls.x,ls.y, ks.x,ks.y, flim, (long)lvec, sh.norm() );
@@ -127,7 +128,7 @@ struct AngleConstr{
     AngleConstr( Vec3i ias_, Vec2d cs0_, double k_ ):ias(ias_),cs0(cs0_),k(k_),active(true){ };
 
     __attribute__((hot))  
-    inline double  apply( Vec3d* ps, Vec3d* fs, Mat3d* lvec =0, Mat3d* dlvec =0 )const{
+    inline double  apply( Vec3d* ps, Vec3d* fs, Mat3d* lvec =0, Mat3d* dlvec =0)const{
         Vec3d ashift,bshift;
         if(lvec){
             ashift=lvec->a*acell.a + lvec->b*acell.b + lvec->c*acell.c;
@@ -383,14 +384,14 @@ class Constrains{ public:
     }
 
     __attribute__((hot))  
-    double apply( Vec3d* ps, Vec3d* fs, Mat3d* lvec=0, Mat3d* dlvec=0 ){
+    double apply( Vec3d* ps, Vec3d* fs, Mat3d* lvec=0, Mat3d* dlvec=0, Vec3d* Force =0  ){
         //printf( "Constrains::apply n=%i \n", torsions.size() );
         double E=0;  
         int i=0;
         //if(iDriveUpdate>=nDriveUpdate){ iDriveUpdate=0; }
         //double t = iDriveUpdate/(double)nDriveUpdate;
         for( const SplineConstr& c : splines ){ E+= c.apply(ps,fs, lvec, dlvec ); }
-        for( const DistConstr&   c : bonds   ){ E+= c.apply(ps,fs, lvec, dlvec ); }
+        for( const DistConstr&   c : bonds   ){ E+= c.apply(ps,fs, lvec, dlvec, Force ); }
         for( const AngleConstr&  c : angles  ){ E+= c.apply(ps,fs, lvec, dlvec ); }
         i=0;
         //printf( "TorsionConstr::apply n=%i \n", torsions.size() );

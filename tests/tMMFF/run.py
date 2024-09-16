@@ -2,6 +2,7 @@ import sys
 import numpy as np
 import os
 import matplotlib.pyplot as plt
+import time
 
 sys.path.append("../../")
 from pyBall import atomicUtils as au
@@ -11,17 +12,73 @@ from pyBall import MMFF as mmff
 #======== Body
 
 mmff.setVerbosity( verbosity=1, idebug=1 )
-#mmff.init( xyz_name="data/pyridine", surf_name="data/NaCl_1x1_L2" )                             # all
-mmff.init( xyz_name="data/nHexadecan_dicarboxylic", bMMFF=True  )              # without MMFF
+mmff.init( xyz_name="data/dicarboxylic_acid_simple", constr_name="data/dicarboxylic_acid_simple.cons" ,bMMFF=True)
+#mmff.setSwitches(CheckInvariants=-1, PBC_nonBond=-1, PBC_evalAtom=-1, NonBonded=1, MMFF=1, doBonds=1, Angles=1, PiSigma=1, PiPiI=1, bNonBondNeighs=-1, bSurfAtoms=-1, bGridFF=-1, bTricubic=-1, bConstrZ=-1, bConstrains=-1)
+E = mmff.compute_Free_energy(4.48, 10)
+print("E=", E)
+
+
+
+
+
+'''
+natoms = 50
+N = 100
+
+#mmff.init( xyz_name="data/nHexadecan_dicarboxylic", bMMFF=True  )
+#     
 # E = 0.0
 # mmff.run(omp=True, nstepMax=20)
 # print( "E=", E )
 #for i in range(200):
 #mmff.addSnapshot()
-with open("gopt_trajectory.xyz", "w") as file:
-    pass
+# with open("gopt_trajectory.xyz", "w") as file:
+#     pass
+a = np.full( natoms*3, -10.0 )
+b = np.full( natoms*3, 10.0 )
+boundaryRules = np.zeros(natoms*3, dtype=int)
 
-mmff.printDatabase()
+RMSD_array = np.zeros(N)
+Fs_array = np.zeros(N) 
+nevals_array = np.zeros(N, dtype=np.int32)
+
+for k in range (N):
+    RMSD,Fs,nevals=mmff.runGlobalOptimization(maxeval=1000000, bSave=1, bShow=0, par_mut=np.array([0.1]), a=a, b=b, boundaryRules=boundaryRules)
+    RMSD_array[k] = RMSD
+    Fs_array[k] = Fs
+    nevals_array[k] = nevals
+
+data = np.column_stack((RMSD_array, Fs_array, nevals_array))
+np.savetxt('results.txt', data, delimiter=',', header='RMSD,Fs,nevals', comments='')
+'''
+
+# # Histogram RMSD
+# plt.figure(figsize=(10, 5))
+# plt.hist(RMSD_array, bins=20, edgecolor='black')
+# plt.xlabel('RMSD')
+# plt.ylabel('Frequency')
+# plt.title('Histogram of RMSD')
+# plt.grid(True)
+# plt.show()
+
+# # Histogram Fs
+# plt.figure(figsize=(10, 5))
+# plt.hist(Fs_array, bins=20, edgecolor='black')
+# plt.xlabel('Fs')
+# plt.ylabel('Frequency')
+# plt.title('Histogram of Fs')
+# plt.grid(True)
+# plt.show()
+
+# # Histogram nevals
+# plt.figure(figsize=(10, 5))
+# plt.hist(nevals_array, bins=20, edgecolor='black')
+# plt.xlabel('nevals')
+# plt.ylabel('Frequency')
+# plt.title('Histogram of nevals')
+# plt.grid(True)
+# plt.show()
+
 
 #mmff.init( xyz_name="data/pyridine", surf_name="data/NaCl_1x1_L2", bMMFF=False, gridStep=-1 )  # without gridFF
 #mmff.getBuffs()
@@ -30,7 +87,40 @@ mmff.printDatabase()
 #print( "FORCES:\n mmff.fapos:\n ", mmff.fapos )
 #mmff.plot(bForce=True, Fscale=10.0 )
 #plt.show()
+print("Konec Milane")
 exit(0)
+
+'''
+n = 10
+D = []
+N = 10000
+T = np.zeros(N)
+
+for _ in range(n):
+    mmff.init(xyz_name="data/polymer-2_new", surf_name="data/NaCl_1x1_L2", bMMFF=True)
+
+    start_time = time.time() 
+    mmff.run(nstepMax=N, outE=T, omp=True)
+    end_time = time.time() 
+
+    elapsed_time = end_time - start_time 
+    
+    average_T = T[8000:10000].mean()
+
+    D.append((average_T, elapsed_time))
+    print(f"{average_T:<20} K {elapsed_time:<20.4f} second")
+    mmff.clear()
+
+for average_T, elapsed_time in D:
+    print(f"{average_T:<10.4f} K {elapsed_time:<10.4f} second")
+
+plt.plot(T)
+plt.xlabel('Iterace')
+plt.ylabel('T')
+plt.title('Závislost T na iteraci')
+plt.grid(True)
+plt.show()
+'''
 
 
 '''
@@ -78,7 +168,7 @@ exit()
 '''
 
 
-
+'''
 # ============== Benzene_deriv.xyz
 mmff.initWithMolFile( "data/Benzene_deriv.xyz", bNonBonded=False, bOptimizer=True)
 mmff.getBuffs() #;print( mmff.ndims )
@@ -105,3 +195,4 @@ mmff.plot()
 #mmff.plot_selection( [1,2,3] )
 
 plt.show()
+'''

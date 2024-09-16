@@ -131,18 +131,18 @@ void scanTranslation_ax( int n, int* selection, double* vec, int nstep, double* 
 void scanTranslation( int n, int* selection, int ia0, int ia1, double l, int nstep, double* Es, const char* trjName, bool bAddjustCaps ){ 
     W.scanTranslation( n, selection, ia0, ia1, l, nstep, Es, trjName, bAddjustCaps ); 
 }
-void scanRotation_ax( int n, int* selection, double* p0, double* ax, double phi, int nstep, double* Es, const char* trjName ){
+void scanRotation_ax( int n, int* selection, double* p0, double* ax, double phi, int nstep, double* Es, double* Fs, const char* trjName ){
     if(p0==0) p0=(double*)&W.manipulation_p0;
     if(ax==0) ax=(double*)&W.manipulation_ax;
     if(selection==0){selection=W.manipulation_sel; n=W.manipulation_nsel; }
-    W.scanRotation_ax( n, selection, *(Vec3d*)p0, *(Vec3d*)ax, phi, nstep, Es, trjName );
+    W.scanRotation_ax( n, selection, *(Vec3d*)p0, *(Vec3d*)ax, phi, nstep, Es, Fs, trjName );
 }
-void scanRotation( int n, int* selection,int ia0, int iax0, int iax1, double phi, int nstep, double* Es, const char* trjName ){ 
-    W.scanRotation( n, selection,ia0, iax0, iax1, phi, nstep, Es, trjName );
+void scanRotation( int n, int* selection,int ia0, int iax0, int iax1, double phi, int nstep, double* Es, double* Fs, const char* trjName ){ 
+    W.scanRotation( n, selection,ia0, iax0, iax1, phi, nstep, Es, Fs, trjName );
 }
 
-void scanAngleToAxis_ax( int n, int* selection, double r, double R, double* p0, double* ax, int nstep, double* angs, double* Es, const char* trjName ){
-    W.scanAngleToAxis_ax( n, selection, r, R, *(Vec3d*)p0, *(Vec3d*)ax, nstep, angs, Es, trjName );
+void scanAngleToAxis_ax( int n, int* selection, double r, double R, double* p0, double* ax, int nstep, double* angs, double* Es, double* Fs, const char* trjName ){
+    W.scanAngleToAxis_ax( n, selection, r, R, *(Vec3d*)p0, *(Vec3d*)ax, nstep, angs, Es, Fs, trjName );
 }
 
 // ========= Force-Field Component Sampling  
@@ -256,6 +256,48 @@ void sample_DistConstr( double lmin, double lmax, double kmin, double kmax, doub
     }
 }
 
+void sample_evalBond( double k, double l0, int n, double* xs, double* Es, double* Fs ){
+    Vec3d p0={0,0,0};
+    Vec3d f0, h0;
+    for(int i=0; i<n; i++ ){
+        double x = xs[i];
+        Vec3d p1={x,0,0};
+        double dx;
+        h0.set(p0-p1);
+        h0.normalize();
+        Es[i] = evalBond( h0, 1.0-(p0-p1).norm(), k, f0);
+        Fs[i] = f0.x;
+    }
+}
+
+void sample_evalAtom( double k, double r0, int n, double* rs, double* Es, double* Fs, int ia ){
+    for(int i=0; i<n; i++ ){
+        Quat4f fe = Quat4fZero;
+        W.ffl.fapos[ia] = Vec3dZero; 
+        W.ffl.apos[ia].z = rs[i];
+        fe.e = W.ffl.eval_atom(ia); fe.f=(Vec3f)W.ffl.fapos[ia];
+        Es[i] = fe.e;
+        Fs[i] = fe.f.z;
+        printf( "i %i r %g E %g f %g \n", i, W.ffl.apos[ia].z, Es[i], Fs[i] );
+    }
+}
+
+void sample_getLJQH( int n, double* xs, double* Es, double* Fs, double* REQ){
+    Vec3d p0={0,0,0};
+    Vec3d f0, h0;
+    printf( "REQH_ %g %g %g %g \n", REQ[0], REQ[1], REQ[2], REQ[3] );
+    Quat4d REQH_ = *(Quat4d*)REQ;
+    for(int i=0; i<n; i++ ){
+        double x = xs[i];
+        Vec3d p1={x,0,0};
+        double dx;
+        h0.set(p0-p1);
+        Es[i] = getLJQH( h0, f0, REQH_, 1e-4);
+        Fs[i] = f0.x;
+    }
+
+}
+
 void sample_evalPiAling( double k, double ang0, double r1, double r2, int n, double* angles, double* Es, double* Fs ){
     Vec3d h1={1,0,0};
     Vec3d f1,f2;
@@ -292,6 +334,77 @@ void sample_evalAngleCosHalf( double k, double ang0, double r1, double r2, int n
     }
 }
 
+void sample_evalLJQs_ng4_PBC_atom_omp( int n, double* rs, double* Es, double* fs){
+    for (int i = 0; i < n; i++)
+    {
+        Quat4f fe = Quat4fZero;
+        W.ffl.fapos[0] = Vec3dZero; 
+        W.ffl.apos[0].z = rs[i];
+        fe.e = W.ffl.evalLJQs_ng4_PBC_atom_omp(0); fe.f=(Vec3f)W.ffl.fapos[0];
+        Es[i] = fe.e;
+        fs[i] = fe.f.z;
+    }
+}
+
+void sample_evalLJQs_ng4_atom_omp( int n, double* rs, double* Es, double* fs){
+    for (int i = 0; i < n; i++)
+    {
+        Quat4f fe = Quat4fZero;
+        W.ffl.fapos[0] = Vec3dZero; 
+        W.ffl.apos[0].z = rs[i];
+        fe.e = W.ffl.evalLJQs_ng4_atom_omp(0); fe.f=(Vec3f)W.ffl.fapos[0];
+        Es[i] = fe.e;
+        fs[i] = fe.f.z;
+    }
+}
+
+void sample_evalLJQs_PBC_atom_omp(double Fmax2, int n,  double* rs, double* Es, double* fs){
+    for (int i = 0; i < n; i++)
+    {
+        Quat4f fe = Quat4fZero;
+        W.ffl.fapos[0] = Vec3dZero; 
+        W.ffl.apos[0].z = rs[i];
+        fe.e = W.ffl.evalLJQs_PBC_atom_omp(0, Fmax2); fe.f=(Vec3f)W.ffl.fapos[0];
+        Es[i] = fe.e;
+        fs[i] = fe.f.z;
+    }
+}
+
+void sample_evalLJQs_atom_omp(double Fmax2, int n,  double* rs, double* Es, double* fs){
+    for (int i = 0; i < n; i++)
+    {
+        Quat4f fe = Quat4fZero;
+        W.ffl.fapos[0] = Vec3dZero; 
+        W.ffl.apos[0].z = rs[i];
+        fe.e = W.ffl.evalLJQs_atom_omp(0, Fmax2); fe.f=(Vec3f)W.ffl.fapos[0];
+        Es[i] = fe.e;
+        fs[i] = fe.f.z;
+    }
+}
+
+void sample_springbound( int n, double* rs, double* Es, double* fs, double x_min, double l, double k ){
+    printf( "sample_springbound x_min %g l %g k %g \n", x_min, l, k );
+    for(int i=0; i<n; i++){
+        Quat4f fe = Quat4fZero;
+        W.ffl.fapos[0] = Vec3dZero; 
+        W.ffl.apos[0].z = rs[i];
+        double E = springbound( W.ffl.apos[0].z-x_min, l, k, W.ffl.fapos[0].z );
+        fs[i]=W.ffl.fapos[0].z;
+        Es[i]=E;
+    }
+}
+
+void sample_applyConstr( int n, double* rs, double* Es, double* fs){
+    for(int i=0; i<n; i++){
+        Quat4f fe = Quat4fZero;
+        W.ffl.fapos[1] = Vec3dZero; 
+        W.ffl.apos[1].z = rs[i];
+        double E = W.constrs.apply(W.ffl.apos, W.ffl.fapos, &W.ffl.lvec);
+        printf( "i %i r %g E %g f %g \n", i, W.ffl.apos[1].z, E, W.ffl.fapos[1].z );
+        fs[i]=W.ffl.fapos[1].z;
+        Es[i]=E;
+    }
+}
 void sampleNonBond(int n, double* rs, double* Es, double* fs, int kind, double*REQi_,double*REQj_, double K, double Rdamp ){
     Quat4d REQi = *(Quat4d*)REQi_;
     Quat4d REQj = *(Quat4d*)REQj_;
@@ -426,18 +539,7 @@ void orient( const char* fname, int fw1,int fw2,  int up1,int up2,  int i0,  int
 
 //
 
-void setSwitches( int CheckInvariants, int PBC, int NonBonded, int MMFF, int Angles, int PiSigma, int PiPiI ){
-    #define _setbool(b,i) { if(i>0){b=true;}else if(i<0){b=false;} }
-    _setbool( W.bCheckInvariants, CheckInvariants  );
-    _setbool( W.bPBC         , PBC       );
-    _setbool( W.bNonBonded   , NonBonded );
-    _setbool( W.bMMFF        , MMFF      );
-    _setbool( W.ffl.doAngles , Angles    );
-    _setbool( W.ffl.doPiSigma, PiSigma   );
-    _setbool( W.ffl.doPiPiI  , PiPiI     );
-    W.ffl.bSubtractAngleNonBond = W.bNonBonded;
-    #undef _setbool
-}
+
 
 void setOptLog( int n, double* cos, double* f, double* v, double* dt, double* damp ){
     W.opt_log.n    = n;

@@ -122,17 +122,28 @@ struct AtomConf{
         return false;
     }
 
-    inline int countBonds(){ nbond=0; for(int i=0; i<N_NEIGH_MAX;++i){ if(neighs[i]>=0)nbond++; } return nbond; }
+    inline int countBonds(){ nbond=0; for(int i=0; i<N_NEIGH_MAX;i++){ if(neighs[i]>=0)nbond++; } return nbond; }
+
+    inline int findMinBondIndex(int i0){
+        int vmin=1000000;
+        int imin=-1;
+        for(int i=i0; i<N_NEIGH_MAX; i++){
+            int ngi=neighs[i]; 
+            if( (ngi>=0)&&(ngi<vmin) ){ imin=i; vmin=ngi; };
+        }
+        return imin;
+    }
 
     inline bool sortBonds(){ // bouble sort
         bool change=false;
-        for (int i = 0; i < N_NEIGH_MAX-1; ++i) {  // Bouble-sort
-            for (int j = 0; j < N_NEIGH_MAX - i - 1; ++j) {
-                int a  = neighs[j   ]; if(a<0)a=1000000-a;  // make sure that -1 comes last
-                int b = neighs[j + 1]; if(b<0)b=1000000-b;  // make sure that -1 comes last
-                if (a > b ) { _swap( neighs[j], neighs[j + 1]); change=true; }
-            }
+        for (int i=0; i<N_NEIGH_MAX-1; i++) {  // Bouble-sort
+            int imin = findMinBondIndex(i+1);
+            //printf( "sortBonds()[%i] imin=%i ngs{%i,%i,%i,%i}\n", i, imin, neighs[0],neighs[1],neighs[2],neighs[3] );
+            if( imin<0 ) break;
+            int ngi=neighs[i];
+            if( (ngi<0)|| (ngi>neighs[imin]) ){ _swap(neighs[i],neighs[imin]); };
         }
+        //printf( "sortBonds() DONE ngs{%i,%i,%i,%i}\n", neighs[0],neighs[1],neighs[2],neighs[3] );
         return change;
     }
 
@@ -3019,11 +3030,13 @@ void assignTorsions( bool bNonPi=false, bool bNO=true ){
 
     inline void changeBondInAtomConf( int ia, int ib, int jb ){ 
         int ic=atoms[ia].iconf; 
-        if(ic>=0) confs[ ic ].replaceNeigh( ib, jb ); 
-        if(jb<0){
-            confs[ ic ].sortBonds();
-            confs[ ic ].countBonds();
-            confs[ ic ].updateNtot();
+        //printf("changeBondInAtomConf ia=%i ib=%i jb=%i ic=%i\n", ia, ib, jb, ic);
+        if(ic>=0){ confs[ ic ].replaceNeigh( ib, jb ); 
+            if(jb<0){
+                confs[ ic ].sortBonds();
+                confs[ ic ].countBonds();
+                confs[ ic ].updateNtot();
+            }
         }
     }
 

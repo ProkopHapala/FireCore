@@ -436,8 +436,8 @@ class MMFFparams{ public:
 
     // TBD - shall we get rid of subtypes...?
     inline void assignSubTypes( AtomType& t ){
-        //printf( "assignSubTypes %s(iZ=%i)\n", t.name, t.iZ );
-        char tmp_name[8];
+        //printf( "assignSubTypes ==== %s(iZ=%i)\n", t.name, t.iZ );
+        char tmp_name[16];
         const char* ssub[3]{"3","2","1"};
         for(int i=0;i<3;i++){
             sprintf( tmp_name, "%s_%s", t.name, ssub[i] );  // from C generates names like C_3, C_2, C_1
@@ -451,13 +451,22 @@ class MMFFparams{ public:
     }
 
     inline void assignAllSubTypes(){
+        //printAtomTypes();
         int n=atypes.size();
-        std::vector<bool> doIt(256,true); // Warrning : we assume maximum proton number 256
+        //std::vector<bool> doIt(256,true); // Warrning : we assume maximum proton number 256
+        //std::vector<int> doIt(256,1);
+        int doIt[128]; for(int i=0;i<128;i++){ doIt[i]=1; };
+        //for(int i=0;i<50;i++){ printf("doIt[%i]==%i\n", i, doIt[i] ); };
+        //exit(0);
         for(int i=0;i<n;i++){
+            //printf( "assignAllSubTypes()[%i] atypes.size()=%i \n", i, atypes.size() );
             AtomType& t = atypes[i];
-            //printf( "assignAllSubTypes() t.iZ %i doIt.size()= %i \n", t.iZ, doIt.size() );
+            //printf( "assignAllSubTypes()[%i] t.iZ %i name=%s \n", i, t.iZ, t.name );
+            if( (t.iZ<=0)||(t.iZ>=128) ) continue;
+            //printf( "assignAllSubTypes() t.iZ %i doIt?=%i '%s'\n", t.iZ, doIt[t.iZ], t.name );
             //if( t.iZ>=doIt.size() ){ printf("ERROR: atype[%i] t.iZ(%i) > =doIt.size(%i) \n", i, t.iZ, doIt.size()  ); }
-            if(doIt[t.iZ]){ assignSubTypes(t); doIt[t.iZ]=false; }
+            if(doIt[t.iZ]){ assignSubTypes(t); doIt[t.iZ]=0; }
+            //assignSubTypes(t); 
         }
     }
 

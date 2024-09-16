@@ -440,7 +440,7 @@ class NBFF: public ForceField{ public:
                 double eij      = getLJQH( dpc, fij, REQij, R2damp );
                 if(bClampNonBonded)[[likely]]{ clampForce( fij, Fmax2 ); }
                 //printf( "getLJQs_PBC_omp[%i] dp(%6.3f,%6.3f,%6.3f) REQ(%g,%g,%g,%g) \n", eij, dp.x,dp.y,dp.z, REQij.x,REQij.y,REQij.z,REQij.w );
-                E +=eij;
+                E +=eij*0.5;
                 fx+=fij.x;
                 fy+=fij.y;
                 fz+=fij.z;
@@ -472,6 +472,7 @@ class NBFF: public ForceField{ public:
         const Quat4i ng   = neighs   [ia];
         const Quat4i ngC  = neighCell[ia];
         double E=0,fx=0,fy=0,fz=0;
+        //printf("ia=%i ng=(%i %i %i %i)\n", ia, ng.x, ng.y, ng.z, ng.w );
         //printf("DEBUG 1 id=%i ia=%i \n", id, ia );
         //#pragma omp simd collapse(2) reduction(+:E,fx,fy,fz)
         #pragma omp simd reduction(+:E,fx,fy,fz)
@@ -482,6 +483,7 @@ class NBFF: public ForceField{ public:
             const Vec3d dp     = apos[j]-pi;
             Vec3d fij          = Vec3dZero;
             const bool bBonded = ((j==ng.x)||(j==ng.y)||(j==ng.z)||(j==ng.w));
+            //if(bBonded) [[unlikely]]  { continue; }
             //printf("DEBUG 2 id=%i ia=%i j=%i \n", id, ia, j );
             for(int ipbc=0; ipbc<npbc; ipbc++){
                 // --- We calculate non-bonding interaction every time (most atom pairs are not bonded)
@@ -535,7 +537,7 @@ class NBFF: public ForceField{ public:
             Vec3d fij           = Vec3dZero;
             double eij = getLJQH( dp, fij, REQij, R2damp );
             if(bClampNonBonded)[[likely]]{ clampForce( fij, Fmax2 ); }
-            E +=eij;
+            E +=eij*0.5;
             fx+=fij.x;
             fy+=fij.y;
             fz+=fij.z;
@@ -578,7 +580,7 @@ class NBFF: public ForceField{ public:
             const Vec3d dp      = apos[j]-pi;
             Vec3d fij           = Vec3dZero;
             double eij = getLJQH( dp, fij, REQij, R2damp );
-            E +=eij;
+            E +=eij*0.5;
             fx+=fij.x;
             fy+=fij.y;
             fz+=fij.z;
@@ -929,7 +931,7 @@ class NBFF: public ForceField{ public:
                 }
             }}} // nPBC
             //if(i==0){ printf( "CPU atom[%i]  fe_Cou(%g,%g,%g|%g)  REQKi.z %g \n", i, fi.x,fi.y,fi.z,E, REQi.z ); }
-            //fapos[i].add(fi);
+            fapos[i].add(fi);
         }
         return E;
     }

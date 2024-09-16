@@ -186,7 +186,7 @@ class MolWorld_sp3_multi : public MolWorld_sp3, public MultiSolverInterface { pu
 
     const char* uploadPopName=0;
 
-    MolecularDatabase* database = 0;
+    
     long nStepConvSum = 0;
     long nStepNonConvSum = 0;
     long nStepExplorSum = 0;

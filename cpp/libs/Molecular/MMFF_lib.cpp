@@ -45,11 +45,12 @@ void init_buffers(){
 }
 
 // int loadmol(char* fname_mol ){ return W.loadmol(fname_mol ); }
-//lib.init( cstr(xyz_name), cstr(surf_name), cstr(smile_name),      bMMFF,      bEpairs,      bUFF,      b141,      bSimple,      bConj,      bCumulene,      nPBC,        gridStep, cstr(sElementTypes), cstr(sAtomTypes), cstr(sBondTypes), cstr(sAngleTypes), cstr(sDihedralTypes) )
-void* init( char* xyz_name, char* surf_name, char* smile_name, bool bMMFF, bool bEpairs, bool bUFF, bool b141, bool bSimple, bool bConj, bool bCumulene, int* nPBC, double gridStep, char* sElementTypes, char* sAtomTypes, char* sBondTypes, char* sAngleTypes, char* sDihedralTypes ){
+//lib.init( cstr(xyz_name), cstr(surf_name), cstr(smile_name),  cstr(constr_name),     bMMFF,      bEpairs,      bUFF,      b141,      bSimple,      bConj,      bCumulene,      nPBC,        gridStep, cstr(sElementTypes), cstr(sAtomTypes), cstr(sBondTypes), cstr(sAngleTypes), cstr(sDihedralTypes) )
+void* init( char* xyz_name, char* surf_name, char* smile_name, char* constr_name, bool bMMFF, bool bEpairs, bool bUFF, bool b141, bool bSimple, bool bConj, bool bCumulene, int* nPBC, double gridStep, char* sElementTypes, char* sAtomTypes, char* sBondTypes, char* sAngleTypes, char* sDihedralTypes ){
 	W.smile_name = smile_name;
 	W.xyz_name   = xyz_name;
 	W.surf_name  = surf_name;
+    W.constr_name= constr_name;
 	W.bMMFF      = bMMFF;
     W.bEpairs    = bEpairs;
     W.gridStep   = gridStep;
@@ -176,7 +177,7 @@ void sampleSurf(char* name, int n, double* rs, double* Es, double* fs, int kind,
     double R2Q=RQ*RQ;
     for(int i=0; i<n; i++){
         Quat4f fe=Quat4fZero;
-        W.nbmol.apos[0].z=rs[i];
+        W.ffl.apos[0].z=rs[i];
         W.ff.cleanAtomForce();
         switch(kind){
             case  0: fe.e=   W.nbmol.evalR         (W.surf ); break; 
@@ -186,10 +187,110 @@ void sampleSurf(char* name, int n, double* rs, double* Es, double* fs, int kind,
             case 11:         W.gridFF.addForce_surf(W.nbmol.apos[0], PLQ, fe );  break;
             case 12:         W.gridFF.addForce     (W.nbmol.apos[0], PLQ, fe );  break;
         }
-        fs[i]=fe.z;
+        fs[i]=fe.f.z;
         Es[i]=fe.e;
     }
 }
+
+void sample_addForce_Tricubic( int n, double* rs, double* Es, double* fs){
+    for (int i = 0; i < n; i++)
+    {
+        Quat4f fe = Quat4fZero;
+        W.ffl.fapos[0] = Vec3dZero; 
+        W.ffl.apos[0].z = rs[i];
+        fe.e = W.gridFF.addForce_Tricubic(W.ffl.apos[0], W.ffl.PLQd[0], W.ffl.fapos[0], true); fe.f=(Vec3f)W.ffl.fapos[0];
+        Es[i] = fe.e;
+        fs[i] = fe.f.z;
+    }
+}
+
+void sample_addForce( int n, double* rs, double* Es, double* fs){
+    for (int i = 0; i < n; i++)
+    {
+        Quat4f fe = Quat4fZero;
+        W.ffl.fapos[0] = Vec3dZero; 
+        W.ffl.apos[0].z = rs[i];
+        fe.e = W.gridFF.addForce(W.ffl.apos[0], W.ffl.PLQs[0], W.ffl.fapos[0], true); fe.f=(Vec3f)W.ffl.fapos[0];
+        Es[i] = fe.e;
+        fs[i] = fe.f.z;
+    }
+}
+
+void sample_evalMorsePBC_sym( int n, double* rs, double* Es, double* fs){
+    for (int i = 0; i < n; i++)
+    {
+        Quat4f fe = Quat4fZero;
+        W.ffl.fapos[0] = Vec3dZero; 
+        W.ffl.apos[0].z = rs[i];
+        fe.e = W.gridFF.evalMorsePBC_sym(W.ffl.apos[0], W.ffl.REQs[0], W.ffl.fapos[0]); fe.f=(Vec3f)W.ffl.fapos[0];
+        Es[i] = fe.e;
+        fs[i] = fe.f.z;
+    }
+}
+
+void setSwitches( int CheckInvariants, int PBC_nonBond, int PBC_evalAtom, int NonBonded, int MMFF, int doBonds, int Angles, int PiSigma, int PiPiI, int bNonBondNeighs, int bSurfAtoms, int bGridFF, int bTricubic, int bConstrZ, int bConstrains, int bExploring ){
+    #define _setbool(b,i) { if(i>0){b=true;}else if(i<0){b=false;} }
+    _setbool( W.bCheckInvariants, CheckInvariants  );
+    _setbool( W.bPBC         , PBC_nonBond       );
+    _setbool( W.ffl.bPBC     , PBC_evalAtom       );
+    _setbool( W.bNonBonded   , NonBonded );
+    _setbool( W.bMMFF        , MMFF      );
+    _setbool( W.ffl.doAngles , Angles    );
+    _setbool( W.ffl.doBonds  , doBonds   );
+    _setbool( W.ffl.doPiSigma, PiSigma   );
+    _setbool( W.ffl.doPiPiI  , PiPiI     );
+    _setbool( W.bNonBondNeighs, bNonBondNeighs);
+    _setbool( W.bSurfAtoms, bSurfAtoms   );
+    _setbool( W.bGridFF, bGridFF         );
+    if( W.bGridFF )
+        _setbool( W.bTricubic, bTricubic     );
+    _setbool( W.bConstrZ, bConstrZ       );
+    _setbool( W.bConstrains, bConstrains );
+    _setbool( W.go.bExploring, bExploring );
+    W.ffl.bSubtractAngleNonBond = W.bNonBonded;
+    #undef _setbool
+}
+
+void sample_movementOfAtom( int n, double* rs, double* Es, double* fs, int ia, bool radial){
+    if(!radial){
+        for(int i=0; i<n; i++){
+            W.ffl.apos[ia].z=rs[i];//move
+            W.ffl.fapos[ia]=Vec3dZero;
+            W.run_omp( 1, 0.01, 1e-6, 1000.0, -1.0, Es+i, 0, 0, 0 );//eval
+            fs[i]=W.ffl.fapos[ia].z;
+        }
+    }
+}
+
+void sample_lvecs( int n, double* xs, double* Es, double* fs){
+    Vec3d lvec1 = W.ffl.lvec.vecs[0];
+    double fs0;
+    // W.builder.lvec.vecs[1].set_mul(lvec1, 10);
+    // W.evalPBCshifts(W.nPBC, W.builder.lvec, W.pbc_shifts);
+    // W.run_omp(1, 0.01, 1e-6, 1000.0, -1.0, 0, &fs0, 0, 0); // eval
+    for (int i = 0; i < n; i++)
+    {
+        W.builder.lvec.vecs[0].set_mul(lvec1, xs[i]);
+        W.evalPBCshifts(W.nPBC, W.builder.lvec, W.pbc_shifts);
+        W.run_omp( 1, 0.01, 1e-6, 1000.0, -1.0, Es+i, fs+i, 0, 0 );//eval
+        //fs[i] -= fs0;
+    }
+}
+
+void runGlobalOptimization(int DoF, int Findex, double* _a, double* _b, int* _boundaryRules, 
+    double Fstar, int maxeval, int nRelax, int nExploring, int index_mut, int n_par, double* _par_mut,  int bShow, int bSave, int bDatabase, double* RMSD, double* outF, int* outN){
+        std::vector<double> a, b, par_mut;
+        std::vector<int> boundaryRules;
+        for(int i=0; i<DoF; i++){
+            a.push_back(_a[i]);
+            b.push_back(_b[i]);
+            boundaryRules.push_back(_boundaryRules[i]);
+        }
+        for(int i=0; i<n_par; i++){
+            par_mut.push_back(_par_mut[i]);
+        }
+        W.runGlobalOptimization(Findex, &a, &b, &boundaryRules, Fstar, maxeval, nRelax, nExploring, index_mut, &par_mut, bShow, bSave, bDatabase, RMSD, outF, outN);
+    }
 
 int findHbonds( double Rcut, double Hcut, double angMax ){
     W.Hbonds.clear();
@@ -371,6 +472,18 @@ void printDatabase(){
 
 void computeDistance(int i, int j, double* dist){
     *dist = W.computeDistance(i,j);
+}
+
+double compute_Free_energy(double l1, double l2, DistConstr *dc=0){
+    if(!dc){
+        if(W.constrs.bonds.size()>0){
+            dc = &W.constrs.bonds[0];
+        }else{
+            printf("No constraints found\n");
+            return 0;
+        }
+    }
+    return W.compute_Free_energy(l1, l2, dc);
 }
 
 } // extern "C"

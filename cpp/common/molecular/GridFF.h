@@ -661,13 +661,15 @@ double addForces_d( int natoms, Vec3d* apos, Quat4d* PLQs, Vec3d* fpos, bool bSu
     void makeGridFF_d(){ makeGridFF_omp_d(natoms,apos,REQs); }
 
     void makeVPLQH(){
-        printf( "GridFF::makeVPLQH() \n" );
+        printf( "GridFF::makeVPLQH() @VPLQH=%li \n", (long)VPLQH );
         gridN.x = grid.n.x+3;
         gridN.y = grid.n.y+3;
         gridN.z = grid.n.z+3;
         FEscale.set( -grid.diCell.xx, -grid.diCell.yy, -grid.diCell.zz, 1.0 );  // NOTE: this will not work for non-orthogonal grids
         _realloc0( VPLQH, gridN.totprod(), Quat4dNAN );
         _realloc0( V_debug, gridN.totprod(), 0.0/0.0 );
+
+        printf( "GridFF::makeVPLQH() @VPLQH=%li FFPaul_d=%li FFLond_d=%li FFelec_d=%li \n", (long)VPLQH, (long)FFPaul_d, (long)FFLond_d, (long)FFelec_d );
         for ( int iz=0; iz<gridN.z; iz++ ){
             int iz_ = fold_cubic( iz, grid.n.z );
             for ( int iy=0; iy<gridN.y; iy++ ){
@@ -678,8 +680,7 @@ double addForces_d( int natoms, Vec3d* apos, Quat4d* PLQs, Vec3d* fpos, bool bSu
                     //if( (iz==0)&&(iy==0) ){  printf( "GridFF::makeVPLQH() ix(%i) -> ix(%i)\n", ix, ix_ ); }
                     const int j = ix + grid.n.x*( iy + grid.n.y * iz );
                     VPLQH[ i ] = Quat4d{ FFPaul_d[j].w, FFLond_d[j].w, FFelec_d[j].w, 0.0 };
-
-                    V_debug[ i ] = FFelec_d[j].w; // debug
+                    //V_debug[ i ] = FFelec_d[j].w; // debug
                 }
             }
         }

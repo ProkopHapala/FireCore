@@ -18,8 +18,9 @@ c_bool_p   = ctypes.POINTER(c_bool)
 def _np_as(arr,atype):
     if arr is None:
         return None
-    else: 
-        return arr.ctypes.data_as(atype)
+    if not isinstance(arr, np.ndarray):
+        raise ValueError("arr must be a NumPy array")
+    return arr.ctypes.data_as(atype)
 
 cpp_utils.s_numpy_data_as_call = "_np_as(%s,%s)"
 
@@ -369,6 +370,37 @@ def sample_DistConstr( xs, lmin=1, lmax=1, kmin=1, kmax=1, flim=1e+300, Es=None,
     lib.sample_DistConstr(lmin, lmax, kmin, kmax, flim, n, _np_as(xs,c_double_p), _np_as(Es,c_double_p), _np_as(Fs,c_double_p))
     return Es,Fs
 
+#  void sample_evalBond( double k, double l0, int n, double* xs, double* Es, double* Fs ){
+lib.sample_evalBond.argtypes  = [c_double, c_double, c_int, c_double_p, c_double_p, c_double_p]
+lib.sample_evalBond.restype   =  None
+def sample_evalBond( xs, k=1.0, l0=1.0, Es=None, Fs=None):
+    n = len(xs)
+    if Es is None: Es=np.zeros(n)
+    if Fs is None: Fs=np.zeros(n)
+    lib.sample_evalBond(k, l0, n, _np_as(xs,c_double_p), _np_as(Es,c_double_p), _np_as(Fs,c_double_p))
+    return Es,Fs
+
+#  void sample_evalAtom( double k, double r0, int n, double* rs, double* Es, double* Fs, int ia ){
+lib.sample_evalAtom.argtypes  = [c_double, c_double, c_int, c_double_p, c_double_p, c_double_p, c_int]
+lib.sample_evalAtom.restype   =  None
+def sample_evalAtom( rs, k=1.0, r0=1.0, ia=0, Es=None, Fs=None):
+    n = len(rs)
+    if Es is None: Es=np.zeros(n)
+    if Fs is None: Fs=np.zeros(n)
+    lib.sample_evalAtom(k, r0, n, _np_as(rs,c_double_p), _np_as(Es,c_double_p), _np_as(Fs,c_double_p), ia)
+    return Es,Fs
+
+#  void sample_getLJQH( int n, double* xs, double* Es, double* Fs, double* REQ){
+lib.sample_getLJQH.argtypes  = [c_int, c_double_p, c_double_p, c_double_p, c_double_p]
+lib.sample_getLJQH.restype   =  None
+def sample_getLJQH( xs, Es=None, Fs=None, REQH=[1.0, 1.0, 1.0, 1.0]):
+    n = len(xs)
+    if Es is None: Es=np.zeros(n)
+    if Fs is None: Fs=np.zeros(n)
+    REQH = np.array(REQH)
+    lib.sample_getLJQH(n, _np_as(xs,c_double_p), _np_as(Es,c_double_p), _np_as(Fs,c_double_p), _np_as(REQH,c_double_p))
+    return Es,Fs
+
 #  void sample_evalPiAling( double K, double c0, int n, double* angles, double* Es, double* Fs ){
 lib.sample_evalPiAling.argtypes  = [c_double, c_double, c_double, c_double, c_int, c_double_p, c_double_p, c_double_p] 
 lib.sample_evalPiAling.restype   =  None
@@ -398,6 +430,144 @@ def sample_evalAngleCosHalf( angles, K=1.0, ang0=0.0, r1=1.,r2=1., Es=None, Fs=N
     if Fs is None: Fs=np.zeros(n)
     lib.sample_evalAngleCosHalf(K, ang0, r1, r2, n, _np_as(angles,c_double_p), _np_as(Es,c_double_p), _np_as(Fs,c_double_p))
     return Es,Fs
+
+# void sample_evalLJQs_ng4_PBC_atom_omp( int n, double* xs, double* Es, double* fs){
+lib.sample_evalLJQs_ng4_PBC_atom_omp.argtypes  = [c_int, c_double_p, c_double_p, c_double_p]
+lib.sample_evalLJQs_ng4_PBC_atom_omp.restype   =  None
+def sample_evalLJQs_ng4_PBC_atom_omp( xs, Es=None, Fs=None ):
+    n = len(xs)
+    if Es is None: Es=np.zeros(n)
+    if Fs is None: Fs=np.zeros(n)
+    lib.sample_evalLJQs_ng4_PBC_atom_omp(n, _np_as(xs,c_double_p), _np_as(Es,c_double_p), _np_as(Fs,c_double_p))
+    return Es,Fs
+
+# void sample_evalLJQs_ng4_atom_omp( int n, double* rs, double* Es, double* fs){
+lib.sample_evalLJQs_ng4_atom_omp.argtypes  = [c_int, c_double_p, c_double_p, c_double_p]
+lib.sample_evalLJQs_ng4_atom_omp.restype   =  None
+def sample_evalLJQs_ng4_atom_omp( xs, Es=None, Fs=None ):
+    n = len(xs)
+    if Es is None: Es=np.zeros(n)
+    if Fs is None: Fs=np.zeros(n)
+    lib.sample_evalLJQs_ng4_atom_omp(n, _np_as(xs,c_double_p), _np_as(Es,c_double_p), _np_as(Fs,c_double_p))
+    return Es,Fs
+
+# void sample_evalLJQs_PBC_atom_omp(double Fmax2, int n,  double* rs, double* Es, double* fs){
+lib.sample_evalLJQs_PBC_atom_omp.argtypes  = [c_double, c_int, c_double_p, c_double_p, c_double_p]
+lib.sample_evalLJQs_PBC_atom_omp.restype   =  None
+def sample_evalLJQs_PBC_atom_omp( xs, Es=None, Fs=None, Fmax2=100000.0 ):
+    n = len(xs)
+    if Es is None: Es=np.zeros(n)
+    if Fs is None: Fs=np.zeros(n)
+    lib.sample_evalLJQs_PBC_atom_omp(Fmax2, n, _np_as(xs,c_double_p), _np_as(Es,c_double_p), _np_as(Fs,c_double_p) )
+    return Es,Fs
+
+# void sample_evalLJQs_atom_omp(double Fmax2, int n,  double* rs, double* Es, double* fs){
+lib.sample_evalLJQs_atom_omp.argtypes  = [c_double, c_int, c_double_p, c_double_p, c_double_p]
+lib.sample_evalLJQs_atom_omp.restype   =  None
+def sample_evalLJQs_atom_omp( xs, Es=None, Fs=None, Fmax2=100000.0 ):
+    n = len(xs)
+    if Es is None: Es=np.zeros(n)
+    if Fs is None: Fs=np.zeros(n)
+    lib.sample_evalLJQs_atom_omp(Fmax2, n, _np_as(xs,c_double_p), _np_as(Es,c_double_p), _np_as(Fs,c_double_p) )
+    return Es,Fs
+
+# void sample_addForce_Tricubic( int n, double* rs, double* Es, double* fs){
+lib.sample_addForce_Tricubic.argtypes  = [c_int, c_double_p, c_double_p, c_double_p]
+lib.sample_addForce_Tricubic.restype   =  None
+def sample_addForce_Tricubic( xs, Es=None, Fs=None ):
+    n = len(xs)
+    if Es is None: Es=np.zeros(n)
+    if Fs is None: Fs=np.zeros(n)
+    lib.sample_addForce_Tricubic(n, _np_as(xs,c_double_p), _np_as(Es,c_double_p), _np_as(Fs,c_double_p))
+    return Es,Fs
+
+# void sample_addForce( int n, double* rs, double* Es, double* fs){
+lib.sample_addForce.argtypes  = [c_int, c_double_p, c_double_p, c_double_p]
+lib.sample_addForce.restype   =  None
+def sample_addForce( xs, Es=None, Fs=None ):
+    n = len(xs)
+    if Es is None: Es=np.zeros(n)
+    if Fs is None: Fs=np.zeros(n)
+    lib.sample_addForce(n, _np_as(xs,c_double_p), _np_as(Es,c_double_p), _np_as(Fs,c_double_p))
+    return Es,Fs
+
+# void sample_evalMorsePBC_sym( int n, double* rs, double* Es, double* fs){
+lib.sample_evalMorsePBC_sym.argtypes  = [c_int, c_double_p, c_double_p, c_double_p]
+lib.sample_evalMorsePBC_sym.restype   =  None
+def sample_evalMorsePBC_sym( xs, Es=None, Fs=None ):
+    n = len(xs)
+    if Es is None: Es=np.zeros(n)
+    if Fs is None: Fs=np.zeros(n)
+    lib.sample_evalMorsePBC_sym(n, _np_as(xs,c_double_p), _np_as(Es,c_double_p), _np_as(Fs,c_double_p))
+    return Es,Fs
+
+# void sample_springbound( int n, double* rs, double* Es, double* fs, double x_min, double l, double k ){
+lib.sample_springbound.argtypes  = [c_int, c_double_p, c_double_p, c_double_p, c_double, c_double, c_double]
+lib.sample_springbound.restype   =  None
+def sample_springbound( xs, Es=None, Fs=None, x_min=0.3, l=1.0, k=1.0 ):
+    n = len(xs)
+    if Es is None: Es=np.zeros(n)
+    if Fs is None: Fs=np.zeros(n)
+    print( Es.shape, Fs.shape )
+    lib.sample_springbound(n, _np_as(xs,c_double_p), _np_as(Es,c_double_p), _np_as(Fs,c_double_p), x_min, l, k)
+    return Es,Fs
+
+# void sample_applyConstr( int n, double* rs, double* Es, double* fs, double x_min, double l, double k ){
+lib.sample_applyConstr.argtypes  = [c_int, c_double_p, c_double_p, c_double_p, c_double, c_double, c_double]
+lib.sample_applyConstr.restype   =  None
+def sample_applyConstr( xs, Es=None, Fs=None, x_min=0.3, l=1.0, k=1.0 ):
+    n = len(xs)
+    if Es is None: Es=np.zeros(n)
+    if Fs is None: Fs=np.zeros(n)
+    lib.sample_applyConstr(n, _np_as(xs,c_double_p), _np_as(Es,c_double_p), _np_as(Fs,c_double_p), x_min, l, k)
+    return Es,Fs
+
+# void sample_movementOfAtom( int n, double* rs, double* Es, double* fs, int ia, bool radial){
+lib.sample_movementOfAtom.argtypes  = [c_int, c_double_p, c_double_p, c_double_p, c_int, c_bool]
+lib.sample_movementOfAtom.restype   =  None
+def sample_movementOfAtom( xs, Es=None, Fs=None, ia=0, radial=False ):
+    n = len(xs)
+    if Es is None: Es=np.zeros(n)
+    if Fs is None: Fs=np.zeros(n)
+    lib.sample_movementOfAtom(n, _np_as(xs,c_double_p), _np_as(Es,c_double_p), _np_as(Fs,c_double_p), ia, radial)
+    return Es,Fs
+
+# void sample_lvecs( int n, double* rs, double* Es, double* fs){
+lib.sample_lvecs.argtypes  = [c_int]#, c_double_p, c_double_p, c_double_p]
+lib.sample_lvecs.restype   =  None
+def sample_lvecs( xs, Es=None, Fs=None ):
+    n = len(xs)
+    if Es is None: Es=np.zeros(n)
+    if Fs is None: Fs=np.zeros(n)
+    lib.sample_lvecs(n, _np_as(xs,c_double_p), _np_as(Es,c_double_p), _np_as(Fs,c_double_p))
+    return Es,Fs
+
+
+
+# void runGlobalOptimization(int DoF, int Findex, double* _a, double* _b, int* _boundaryRules, double Fstar, int maxeval, int nRelax, int nExploring, int index_mut, int n_par, double* par_mut,  int bShow, int bSave, int bDatabase){
+lib.runGlobalOptimization.argtypes  = [c_int, c_int, c_double_p, c_double_p, c_int_p, c_double, c_int, c_int, c_int, c_int, c_int, c_double_p, c_int, c_int, c_int, c_double_p, c_double_p, c_int_p]
+lib.runGlobalOptimization.restype   =  None
+def runGlobalOptimization( Findex=0, a=None, b=None, boundaryRules=None, Fstar=-np.inf, maxeval= 100000, nRelax=1, nExploring=10000000, index_mut=0, par_mut=None, bShow=1, bSave=0, bDatabase=0, RMSD=None, Fs=None, nevals=None ):
+    if a is None:
+        ndims = getIBuff( "ndims", (6,) )
+        natoms = ndims[1]+ndims[2]
+        print( "natoms %i \n", natoms )
+        a = np.full( natoms*3, -10.0 )
+        b = np.full( natoms*3, 10.0 )
+        boundaryRules = np.zeros( natoms*3, dtype=np.int32 )
+        print("Stejně dělám tuhle kravinu")
+    if par_mut is None:
+        n_par = 0
+        par_mut = np.zeros(0)
+    else:
+        n_par = len(par_mut)
+    DoF = len(a)
+    if RMSD is None: RMSD=np.zeros(1)
+    if Fs is None: Fs=np.zeros(1)
+    if nevals is None: nevals=np.array([0], dtype=np.int32)
+
+    lib.runGlobalOptimization( DoF, Findex, _np_as(a,c_double_p), _np_as(b,c_double_p), _np_as(boundaryRules,c_int_p), Fstar, maxeval, nRelax, nExploring, index_mut, n_par, _np_as(par_mut,c_double_p), bShow, bSave, bDatabase, _np_as(RMSD, c_double_p), _np_as(Fs, c_double_p), _np_as(nevals, c_int_p) )
+    return RMSD,Fs,nevals
 
 #  void sampleNonBond(int n, double* rs, double* Es, double* fs, int kind, double*REQi_,double*REQj_, double K ){
 lib.sampleNonBond.argtypes  = [c_int, array1d, array1d, array1d, c_int, array1d, array1d, c_double, c_double ] 
@@ -614,14 +784,15 @@ def setVerbosity( verbosity=1, idebug=0 ):
 
 # interface to init on the C++ side (MMFF_lib.cpp)
 
-#void* init( char* xyz_name, char* surf_name, char* smile_name, bool bMMFF, bool bEpairs, bool bUFF, bool b141, bool bSimple, bool bConj, bool bCumulene, int* nPBC, double gridStep, char* sElementTypes, char* sAtomTypes, char* sBondTypes, char* sAngleTypes, char* sDihedralTypes ){
-#lib.init(      cstr(xyz_name), cstr(surf_name), cstr(smile_name),  bMMFF, bEpairs,   bUFF,   b141, bSimple,  bConj, bCumulene,    nPBC, gridStep, cstr(sElementTypes), cstr(sAtomTypes), cstr(sBondTypes), cstr(sAngleTypes), cstr(sDihedralTypes) )
-lib.init.argtypes  = [c_char_p,        c_char_p,         c_char_p, c_bool,  c_bool, c_bool, c_bool,  c_bool, c_bool,    c_bool, array1i, c_double,            c_char_p,         c_char_p,         c_char_p,          c_char_p,             c_char_p] 
+#void* init( char* xyz_name, char* surf_name, char* smile_name, char* constr_name, bool bMMFF, bool bEpairs, bool bUFF, bool b141, bool bSimple, bool bConj, bool bCumulene, int* nPBC, double gridStep, char* sElementTypes, char* sAtomTypes, char* sBondTypes, char* sAngleTypes, char* sDihedralTypes ){
+#lib.init(      cstr(xyz_name), cstr(surf_name), cstr(smile_name), cstr(constr_name), bMMFF, bEpairs,   bUFF,   b141, bSimple,  bConj, bCumulene,    nPBC, gridStep, cstr(sElementTypes), cstr(sAtomTypes), cstr(sBondTypes), cstr(sAngleTypes), cstr(sDihedralTypes) )
+lib.init.argtypes  = [c_char_p,        c_char_p,         c_char_p,          c_char_p,c_bool,  c_bool, c_bool, c_bool,  c_bool, c_bool,    c_bool, array1i, c_double,            c_char_p,         c_char_p,         c_char_p,          c_char_p,             c_char_p] 
 lib.init.restype   =  c_void_p
 def init(
         xyz_name  =None, 
         surf_name =None, 
         smile_name=None, 
+        constr_name=None,
         sElementTypes  = "data/ElementTypes.dat",
         sAtomTypes     = "data/AtomTypes.dat", 
         sBondTypes     = "data/BondTypes.dat", 
@@ -629,7 +800,7 @@ def init(
         sDihedralTypes = "data/DihedralTypes.dat",
         bMMFF=True, 
         bEpairs=False,  
-        nPBC=(1,3,0), 
+        nPBC=(1,1,0), 
         gridStep=0.1,
         bUFF=False,
         b141=True,
@@ -640,7 +811,7 @@ def init(
     global glob_bMMFF
     glob_bMMFF = bMMFF
     nPBC=np.array(nPBC,dtype=np.int32)
-    return lib.init( cstr(xyz_name), cstr(surf_name), cstr(smile_name), bMMFF, bEpairs, bUFF, b141, bSimple, bConj, bCumulene, nPBC, gridStep, cstr(sElementTypes), cstr(sAtomTypes), cstr(sBondTypes), cstr(sAngleTypes), cstr(sDihedralTypes) )
+    return lib.init( cstr(xyz_name), cstr(surf_name), cstr(smile_name), cstr(constr_name), bMMFF, bEpairs, bUFF, b141, bSimple, bConj, bCumulene, nPBC, gridStep, cstr(sElementTypes), cstr(sAtomTypes), cstr(sBondTypes), cstr(sAngleTypes), cstr(sDihedralTypes) )
 
 def tryInit():
     if not isInitialized:
@@ -683,11 +854,17 @@ def buildFF(bNonBonded=True, bOptimizer=True):
 #     fname_mol = fname_mol.encode('utf8')
 #     return lib.initWithSMILES(fname_mol, bPrint, bCap, bNonBonded, bOptimizer)
 
-#  void setSwitches( int doAngles, int doPiPiT, int  doPiSigma, int doPiPiI, int doBonded_, int PBC, int CheckInvariants )
-lib.setSwitches.argtypes  = [c_int, c_int, c_int , c_int, c_int, c_int, c_int] 
+# #  void setSwitches( int doAngles, int doPiPiT, int  doPiSigma, int doPiPiI, int doBonded_, int PBC, int CheckInvariants )
+# lib.setSwitches.argtypes  = [c_int, c_int, c_int , c_int, c_int, c_int, c_int] 
+# lib.setSwitches.restype   =  None
+# def setSwitches(doAngles=0, doPiPiT=0, doPiSigma=0, doPiPiI=0, doBonded=0, PBC=0, CheckInvariants=0):   # -1 - False, 0 - default, 1 - True
+#     return lib.setSwitches(doAngles, doPiPiT, doPiSigma, doPiPiI, doBonded, PBC, CheckInvariants)
+
+#  void setSwitches( int CheckInvariants, int PBC_nonBond, int PBC_evalAtom, int NonBonded, int MMFF, int Angles, int PiSigma, int PiPiI, int bNonBondNeighs, int bSurfAtoms, int bGridFF, int bTricubic, int bConstrZ, int bConstrains ){
+lib.setSwitches.argtypes  = [c_int, c_int, c_int, c_int, c_int, c_int, c_int , c_int, c_int, c_int, c_int , c_int, c_int, c_int, c_int, c_int]
 lib.setSwitches.restype   =  None
-def setSwitches(doAngles=0, doPiPiT=0, doPiSigma=0, doPiPiI=0, doBonded=0, PBC=0, CheckInvariants=0):
-    return lib.setSwitches(doAngles, doPiPiT, doPiSigma, doPiPiI, doBonded, PBC, CheckInvariants)
+def setSwitches( CheckInvariants=0, PBC_nonBond=0, PBC_evalAtom=0, NonBonded=0, MMFF=0, doBonds=0, Angles=0, PiSigma=0, PiPiI=0, bNonBondNeighs=0, bSurfAtoms=0, bGridFF=0, bTricubic=0, bConstrZ=0, bConstrains=0, bExploring=0 ):
+    return lib.setSwitches( CheckInvariants, PBC_nonBond, PBC_evalAtom, NonBonded, MMFF, doBonds, Angles, PiSigma, PiPiI, bNonBondNeighs, bSurfAtoms, bGridFF, bTricubic, bConstrZ, bConstrains, bExploring )
 
 #  bool checkInvariants( double maxVcog, double maxFcog, double maxTg )
 lib.checkInvariants.argtypes  = [c_double, c_double, c_double] 
@@ -874,22 +1051,24 @@ def scanTranslation( ia0, ia1, l, nstep, Es=None, sel=None, bWriteTrj=False):
     return lib.scanTranslation(n, _np_as(sel,c_int_p), ia0, ia1, l, nstep, _np_as(Es,c_double_p), bWriteTrj)
 
 #  void scanRotation_ax( int n, int* sel, double* p0, double* ax, double phi, int nstep, double* Es, bool bWriteTrj ){
-lib.scanRotation_ax.argtypes  = [c_int, c_int_p, c_double_p, c_double_p, c_double, c_int, c_double_p, c_bool] 
+lib.scanRotation_ax.argtypes  = [c_int, c_int_p, c_double_p, c_double_p, c_double, c_int, c_double_p, c_double_p, c_bool] 
 lib.scanRotation_ax.restype   =  None
-def scanRotation_ax( phi, nstep, sel=0, p0=None, ax=None,  Es=None, bWriteTrj=False):
+def scanRotation_ax( phi, nstep, sel=0, p0=None, ax=None,  Es=None, fs=None, bWriteTrj=False):
     n=0
     if sel is not None:
         n=len(sel)
         sel=np.array(sel,np.int32)
     if p0 is not None: p0=np.array(p0)
     if ax is not None: ax=np.array(ax)
-    lib.scanRotation_ax(n, _np_as(sel,c_int_p), _np_as(p0,c_double_p), _np_as(ax,c_double_p), phi, nstep, _np_as(Es,c_double_p), bWriteTrj)
-    return Es
+    if Es is None: Es=np.zeros(nstep)
+    if fs is None: fs=np.zeros(nstep)
+    lib.scanRotation_ax(n, _np_as(sel,c_int_p), _np_as(p0,c_double_p), _np_as(ax,c_double_p), phi, nstep, _np_as(Es,c_double_p), _np_as(fs,c_double_p), bWriteTrj)
+    return Es,fs
 
 #  void scanRotation( int n, int* sel,int ia0, int iax0, int iax1, double phi, int nstep, double* Es, bool bWriteTrj ){
-lib.scanRotation.argtypes  = [c_int, c_int_p, c_int, c_int, c_int, c_double, c_int, c_double_p, c_bool] 
+lib.scanRotation.argtypes  = [c_int, c_int_p, c_int, c_int, c_int, c_double, c_int, c_double_p, c_double_p, c_bool] 
 lib.scanRotation.restype   =  None
-def scanRotation( ia0, iax0, iax1, phi, nstep, sel=None, Es=None, bWriteTrj=False, _0=0):
+def scanRotation( ia0, iax0, iax1, phi, nstep, sel=None, Es=None, fs=None, bWriteTrj=False, _0=0):
     n=0
     if _0!=0: ia0 -=_0; iax0-=_0; iax1-=_0;
     if sel is not None:
@@ -897,14 +1076,14 @@ def scanRotation( ia0, iax0, iax1, phi, nstep, sel=None, Es=None, bWriteTrj=Fals
         sel=np.array(sel,np.int32)
         sel-=_0
     if Es is None: Es=np.zeros(nstep)
-    lib.scanRotation(n, _np_as(sel,c_int_p), ia0, iax0, iax1, phi, nstep, _np_as(Es,c_double_p), bWriteTrj)
-    return Es
+    lib.scanRotation(nstep, _np_as(sel,c_int_p), ia0, iax0, iax1, phi, nstep, _np_as(Es,c_double_p), _np_as(fs,c_double_p), bWriteTrj)
+    return Es,fs
 
-def scanBondRotation( ib, phi, nstep, Es=None, bWriteTrj=False, bPrintSel=False):
+def scanBondRotation( ib, phi, nstep, Es=None, fs=None, bWriteTrj=False, bPrintSel=False):
     nsel = splitAtBond(ib) 
     if bPrintSel: print( "split to:\n", selection[:nsel],"\n", selection[nsel:] )
     ias = bond2atom[ib,:]
-    return scanRotation( ias[0], ias[0], ias[1], phi, nstep, sel=None, Es=Es, bWriteTrj=bWriteTrj)
+    return scanRotation( ias[0], ias[0], ias[1], phi, nstep, sel=None, Es=Es, fs=fs, bWriteTrj=bWriteTrj)
 
 
 # =====================================
@@ -957,9 +1136,13 @@ def plot_selection(sel=None,ax1=0,ax2=1,ps=None, s=100):
 
 
 # ====================================
-# ========= Test Functions
+# ========= Free Energy
 # ====================================
-
+# double compute_Free_energy(double l1, double l2, DistConstr *dc){
+lib.compute_Free_energy.argtypes  = [c_double, c_double, c_void_p]
+lib.compute_Free_energy.restype   =  c_double
+def compute_Free_energy(l1, l2, dc=0):
+    return lib.compute_Free_energy(l1, l2, dc)
 
 # ====================================
 # ========= Python Functions

@@ -168,7 +168,8 @@ class MolWorld_sp3 : public SolverInterface { public:
 
 	// state
 	bool bConverged = false;
-	double  Etot=0;
+	double  Etot=0;         // total energy from physical system
+    double  Econstr=0;      // energy of arbitrary constrains
 	double  maxVcog = 1e-9;
 	double  maxFcog = 1e-9;
 	double  maxTg   = 1e-1;
@@ -264,6 +265,8 @@ class MolWorld_sp3 : public SolverInterface { public:
 
     bool bRelax=false;
 
+    MolecularDatabase* database = 0;
+
 
     // ========== from python interface
 
@@ -301,7 +304,7 @@ class MolWorld_sp3 : public SolverInterface { public:
             if(substitute_name)printf("substitute_name  (%s)\n", substitute_name );
             // TBD we should also print if we use UFF or not...
             printf( "MolWorld_sp3::init() bMMFF %i bUFF %i bRigid %i\n", bMMFF, bUFF, bRigid );
-        }
+        }        
         if(surf_name ){
             bGridFF = true;
             loadSurf( surf_name, bGridFF, idebug>0 );
@@ -559,10 +562,11 @@ virtual double solve( int nmax, double tol )override{
     }
 
     long t0=getCPUticks();
-    int nitr = run_omp_Milan( nmax, opt.dt_max, tol, 1000.0, -1. );
+    double E, F2;
+    int nitr = run_omp( nmax, opt.dt_max, tol, 1000.0, -1. , &E, &F2);
     long t=(getCPUticks()-t0); if(verbosity>1)printf( "time run_omp[%i] %g[Mtick] %g[ktick/iter]  %g[s] %g[ms/iter]\n", nitr, t*1e-6, t*1.e-3/nitr, t*tick2second, t*tick2second*1000/nitr  );
-    if(std::isnan(Etot)){ printf( "ERROR: Etot is NaN\n" ); }
-    return Etot;
+    //if(std::isnan(E)){ printf( "ERROR: Etot is NaN\n" ); }
+    return E;
 }
 
 /**
@@ -993,7 +997,7 @@ void printPBCshifts(){
             }else if ( ! S_ISDIR(statbuf.st_mode) ) { printf("ERROR in MolWorld_sp3::initGridFF() path `%s` exists but is not a directory. => exit()\n", surf_name ); exit(0); }
             getcwd(tmpstr, 1024 ); printf( "WD=`%s`\n", tmpstr );
             if (chdir(surf_name) == -1) { printf("ERROR in MolWorld_sp3::initGridFF() chdir(%s) => exit()\n", surf_name ); exit(0); }
-            getcwd(tmpstr, 1024 ); printf( "WD=`%s`\n", tmpstr );
+            // getcwd(tmpstr, 1024 ); printf( "WD=`%s`\n", tmpstr );
 
             // char name_P[256]; sprintf(name_P, "/FFelec_d.bin" );
             // char name_L[256]; sprintf(name_P, "/FFelec_d.bin" );
@@ -1003,7 +1007,7 @@ void printPBCshifts(){
             if(bGridDouble){  
                 gridFF.tryLoad( "FFelec_d.bin", "FFPaul_d.bin", "FFLond_d.bin", false, true ); 
                 gridFF.checkSum( true );
-                gridFF.makeVPLQH();
+                //gridFF.makeVPLQH();
             }
             gridFF.log_z( "initGridFF_iz_ix0_iy0.log" ,0,0);
             bSaveDebugXSFs = true;
@@ -1011,7 +1015,7 @@ void printPBCshifts(){
             //bGridFF   =true; 
             //bSurfAtoms=false;
 
-            if ( chdir("..") == -1) { printf("ERROR in MolWorld_sp3::initGridFF() chdir(..) => exit()\n" ); exit(0); }
+            if ( chdir(tmpstr) == -1) { printf("ERROR in MolWorld_sp3::initGridFF() chdir(..) => exit()\n" ); exit(0); }
 
         }
         gridFF.shift0 = Vec3d{0.,0.,-2.0};
@@ -1440,7 +1444,8 @@ void printPBCshifts(){
                 //setOptimizer( ffu.nDOFs, ffu.DOFs, ffu.fDOFs );
                 setOptimizer( ffu.natoms*3, (double*)ffu.apos, (double*)ffu.fapos );
                 ffu.vapos = (Vec3d*)opt.vel;
-            }                         
+            }         
+            //ff.init_rnd_Gauss();                
         }else{
             //initNBmol( ffl.natoms, ffl.apos, ffl.fapos, ffl.atypes ); 
             initNBmol( &ffl );
@@ -1474,6 +1479,7 @@ void printPBCshifts(){
                 ffl.vapos = (Vec3d*)opt.vel;
             }                         
             _realloc( manipulation_sel, ff.natoms );
+            ffl.init_rnd_Gauss(); 
         }
         //ffl.print_nonbonded();
     }
@@ -1796,13 +1802,13 @@ if(std::isnan(E)){printf("Before eval_atom\n");exit(1);}
                 if(ia<ffl.nnode){ E+=ffl.eval_atom(ia); }
 
 
-if(std::isnan(E)){printf("After eval_atom\n");exit(1);}
+if(std::isnan(E)){printf("After eval_atom\n");ffl.print();exit(1);}
                 // ----- Error is HERE
                 if(bPBC){ E+=ffl.evalLJQs_ng4_PBC_atom_omp( ia ); }
                 else    { E+=ffl.evalLJQs_ng4_atom_omp    ( ia ); } 
-if(std::isnan(E)){printf("After evalLJQs_ng4_atom_omp\n");exit(1);}
-bGridFF=false;
-                if   (bGridFF){ E+= gridFF.addForce          ( ffl.apos[ia], ffl.PLQs[ia], ffl.fapos[ia], true ); }        // GridFF
+if(std::isnan(E)){printf("After evalLJQs_ng4_atom_omp\n");ffl.print();exit(1);}
+
+                //if   (bGridFF){ E+= gridFF.addForce          ( ffl.apos[ia], ffl.PLQs[ia], ffl.fapos[ia], true ); }        // GridFF
 
                 if(ipicked==ia)[[unlikely]]{ 
                     const Vec3d f = getForceSpringRay( ffl.apos[ia], pick_hray, pick_ray0,  Kpick ); 
@@ -1846,6 +1852,7 @@ bGridFF=false;
                 #pragma omp for
                 for(int i=0; i<ffl.nvecs; i++){
                     if( bRelax ){
+                        printf("Relaxing\n");
                         ffl.move_atom_FIRE( i, opt.dt, 10000.0, opt.cv, opt.renorm_vf*opt.cf );
                         //ffl.move_atom_FIRE( i, dt, 10000.0, 0.9, 0 ); // Equivalent to MDdamp
                     }
@@ -1853,6 +1860,7 @@ bGridFF=false;
                 sprintf(tmpstr,"# %i E %g |F| %g istep=%i", gopt_ifound, Etot, sqrt(ffl.cvf.z), go.istep );
             }
             
+
             } 
             
             //#pragma omp barrier
@@ -2292,7 +2300,7 @@ void pullAtom( int ia, Vec3d* apos, Vec3d* fapos, float K=-2.0 ){
         return itr;
     }
   
-/**
+  /**
  * Runs the simulation using OpenMP parallelization.
  *
  * @param niter_max The maximum number of iterations.
@@ -2304,15 +2312,18 @@ void pullAtom( int ia, Vec3d* apos, Vec3d* fapos, float K=-2.0 ){
  * @param outF Pointer to an array to store the squared force at each iteration (optional).
  * @return The number of iterations performed.
  */
+int counter=0;
     __attribute__((hot))  
     int run_omp( int niter_max, double dt, double Fconv=1e-6, double Flim=1000, double timeLimit=0.02, double* outE=0, double* outF=0, double* outV=0, double* outVF=0 ){
         nloop++;
         if(dt>0){ opt.setTimeSteps(dt); }else{ dt=opt.dt; }
 
-        int ncpu = omp_get_num_threads(); printf("run_omp() ncpu=%i \n");
+        //go.bExploring = false;
+        //if(verbosity>1)int ncpu = omp_get_num_threads(); printf("run_omp() ncpu=%i \n");
         //printf( "run_omp() niter_max %i dt %g Fconv %g Flim %g timeLimit %g outE %li outF %li \n", niter_max, dt, Fconv, Flim, timeLimit, (long)outE, (long)outF );
         long T0 = getCPUticks();
         double E=0,F2=0,F2conv=Fconv*Fconv;
+        Econstr=0;
         double ff=0,vv=0,vf=0;
         int itr=0,niter=niter_max;
         bConverged = false;
@@ -2336,6 +2347,7 @@ void pullAtom( int ia, Vec3d* apos, Vec3d* fapos, float K=-2.0 ){
         //#pragma omp parallel shared(E,F2,ff,vv,vf,ffl) private(itr)
         #pragma omp parallel shared(niter,itr,E,F2,ff,vv,vf,ffl,T0,bConstrains,bConverged)
         while(itr<niter){
+            counter++;
             if(itr<niter){
             //#pragma omp barrier
             #pragma omp single
@@ -2381,7 +2393,7 @@ void pullAtom( int ia, Vec3d* apos, Vec3d* fapos, float K=-2.0 ){
 
                 //if     (bGridFF){ E+= gridFF.addMorseQH_PBC_omp( ffl.apos[ia], ffl.REQs[ia], ffl.fapos[ia] ); }  // NBFF
                 if(bConstrZ){
-                    springbound( ffl.apos[ia].z-ConstrZ_xmin, ConstrZ_l, ConstrZ_k, ffl.fapos[ia].z );
+                    Econstr += springbound( ffl.apos[ia].z-ConstrZ_xmin, ConstrZ_l, ConstrZ_k, ffl.fapos[ia].z );
                 }
                 if(ipicked==ia)[[unlikely]]{ 
                     const Vec3d f = getForceSpringRay( ffl.apos[ia], pick_hray, pick_ray0,  Kpick ); 
@@ -2394,9 +2406,10 @@ void pullAtom( int ia, Vec3d* apos, Vec3d* fapos, float K=-2.0 ){
             //         E+=ffl.eval_torsion(it); 
             //     }
             // }
+            Vec3d Force=Vec3dZero;
             #pragma omp single
             {
-                if(bConstrains  ){ E+=constrs.apply( ffl.apos, ffl.fapos, &ffl.lvec ); }
+                if(bConstrains  ){ E+=constrs.apply( ffl.apos, ffl.fapos, &ffl.lvec, 0, &Force ); }
                 if(go.bExploring){ go.constrs.apply( ffl.apos, ffl.fapos, &ffl.lvec ); }
             }
             // ---- assemble (we need to wait when all atoms are evaluated)
@@ -2423,12 +2436,12 @@ void pullAtom( int ia, Vec3d* apos, Vec3d* fapos, float K=-2.0 ){
                 }
                 #pragma omp single
                 { opt.vv=vv; opt.ff=ff; opt.vf=vf; F2=ff; opt.FIRE_update_params(); }
-
                 // ------ move
+                double q = 0.3748*log(go.T_target)+0.6744; //constant to correct temperature from uniform distribution
                 #pragma omp for
                 for(int i=0; i<ffl.nvecs; i++){
                     if( go.bExploring ){
-                        ffl.move_atom_Langevin( i, dt, 10000.0, go.gamma_damp, go.T_target ); 
+                        ffl.move_atom_Langevin( i, dt, 10000.0, go.gamma_damp, q*go.T_target ); 
                     }else{
                         //ffl.move_atom_MD( i, opt.dt, Flim, 0.9 );
                         //ffl.move_atom_MD( i, 0.05, Flim, 0.9 );
@@ -2437,7 +2450,11 @@ void pullAtom( int ia, Vec3d* apos, Vec3d* fapos, float K=-2.0 ){
                         //ffl.move_atom_FIRE( i, dt, 10000.0, 0.9, 0 ); // Equivalent to MDdamp
                     }
             } 
-            
+            if(outE)outE[itr]=E;
+            if(outF){
+                outF[itr]=Force.norm();
+                }
+
             //#pragma omp barrier
             #pragma omp single
             { 
@@ -2478,12 +2495,20 @@ void pullAtom( int ia, Vec3d* apos, Vec3d* fapos, float K=-2.0 ){
                 //if(verbosity>2){printf( "step[%i] E %g |F| %g ncpu[%i] \n", itr, E, sqrt(F2), omp_get_num_threads() );}
             }
             } // if(itr<niter)
+            
         } // while(itr<niter)
-           
+           printf( "run_omp() counter %i \n", counter );
         {
         double t = (getCPUticks() - T0)*tick2second;
         if( (itr>=niter_max)&&(verbosity>1)) [[unlikely]] {printf( "run_omp() NOT CONVERGED in %i/%i dt=%g E=%g |F|=%g time= %g [ms]( %g [us/%i iter]) \n", itr,niter_max, opt.dt, E,  sqrt(F2), t*1e+3, t*1e+6/itr, itr ); }
         }
+        if(outE)outE[0]=Etot;
+        if(outV)outV[0]=sqrt(vv);
+        double f_ = 0;
+        for(int i=0; i<opt.n; i++){ f_ += opt.force[i]; }
+        //for(int i=0; i<ffl.natoms; i++){ f_ += ffl.fapos[i].x; f_ +=ffl.fapos[i].y; }//printf("ffl.fapos[%i](%g %g %g))\n", i, ffl.fapos[i].x, ffl.fapos[i].y, ffl.fapos[i].z ); }
+        //for(int i=0; i<ffl.nnode; i++){ f_ += ffl.fpipos[i].x; f_ +=ffl.fpipos[i].y; }//printf("ffl.fapos[%i](%g %g %g))\n", i, ffl.fapos[i].x, ffl.fapos[i].y, ffl.fapos[i].z ); }
+        //if(outF)outF[0]=F2;
         return itr;
     }
 
@@ -2910,7 +2935,8 @@ void scanTranslation( int n, int* selection, int ia0, int ia1, double l, int nst
  * @param Es An array to store the energy values at each step (optional).
  * @param trjName The name of the trajectory file to write the rotational scan data (optional).
  */
-void scanRotation_ax( int n, int* selection, Vec3d p0, Vec3d ax, double phi, int nstep, double* Es, const char* trjName ){
+void scanRotation_ax( int n, int* selection, Vec3d p0, Vec3d ax, double phi, int nstep, double* Es, double* Fs, const char* trjName ){
+    printf( "MolWorld_sp3::scanRotation_ax()\n");
     //if(p0==0) p0=(double*)&manipulation_p0;
     //if(ax==0) ax=(double*)&manipulation_ax;
     //if(selection==0){selection=manipulation_sel; n=manipulation_nsel; }
@@ -2919,10 +2945,13 @@ void scanRotation_ax( int n, int* selection, Vec3d p0, Vec3d ax, double phi, int
     if(trjName){ file=fopen( trjName, "w" ); }
     //printf( "MolWorld_sp3_simple::scanRotation_ax() nstep=%i phi=%g nsel=%i ax(%g,%g,%g) p0(%g,%g,%g) \n", nstep, phi, n, ax.x,ax.y,ax.z,  p0.x,p0.y,p0.z );
     for(int i=0; i<nstep; i++){
-        double E = eval();
+        double E = 0;
+        double F = 0;
+        run_omp(1, 0.05, 1e-6, 1000, 0.02, &E, &F);
         Vec3d tq = torq( n, nbmol.apos, nbmol.fapos, p0, selection );
         if(file){  sprintf(tmpstr,"# rotScan[%i] E=%g tq=(%g,%g,%g)", i, E, tq.x,tq.y,tq.z );  toXYZ(tmpstr, false, file, true ); };
         if(Es)Es[i]=E;
+        if(Fs)Fs[i]=F;
         //printf("scanRotation_ax[%i] phi %g E %g \n", i, phi*i, E );
         ffl.rotateNodes(n, selection, p0, ax, dphi );
     }
@@ -2942,11 +2971,11 @@ void scanRotation_ax( int n, int* selection, Vec3d p0, Vec3d ax, double phi, int
  * @param Es An array to store the calculated energies.
  * @param trjName The name of the trajectory file to save the rotated configurations.
  */
-void scanRotation( int n, int* selection,int ia0, int iax0, int iax1, double phi, int nstep, double* Es, const char* trjName ){ Vec3d ax=(nbmol.apos[iax1]-nbmol.apos[iax0]).normalized(); scanRotation_ax(n,selection, nbmol.apos[ia0], ax, phi, nstep, Es, trjName ); };
+void scanRotation( int n, int* selection,int ia0, int iax0, int iax1, double phi, int nstep, double* Es, double* Fs, const char* trjName ){ Vec3d ax=(nbmol.apos[iax1]-nbmol.apos[iax0]).normalized(); scanRotation_ax(n,selection, nbmol.apos[ia0], ax, phi, nstep, Es, Fs, trjName ); };
 
 
-void scanAngleToAxis_ax( int n, int* selection, double r, double R, Vec3d p0, Vec3d ax, int nstep, double* angs, double* Es, const char* trjName ){
-    //printf( "scanAngleToAxis_ax()\n" );
+void scanAngleToAxis_ax( int n, int* selection, double r, double R, Vec3d p0, Vec3d ax, int nstep, double* angs, double* Es, double* Fs, const char* trjName ){
+    printf( "MolWorld_sp3::scanAngleToAxis_ax()");
     FILE* file=0;
     if(trjName){ file=fopen( trjName, "w" ); }
     for(int i=0; i<nstep; i++){
@@ -2965,7 +2994,9 @@ void scanAngleToAxis_ax( int n, int* selection, double r, double R, Vec3d p0, Ve
             d.add_mul(ax, r*cs.y  );            // add back new axial component 
             ffl.apos[ia] = p0 + d;
         }
-        double E = eval();
+        double E = 0;
+        double F = 0;
+        run_omp(1, 0.05, 1e-6, 1000, 0.02, &E, &F);
         if(file){ sprintf(tmpstr,"# scanAngleToAxis[%i] E=%g ", i, E);  toXYZ(tmpstr, false, file, true );  };
         if(Es)Es[i]=E;
     }
@@ -3123,7 +3154,11 @@ bool addSnapshot(bool ifNew = false, char* fname = 0)
     }
     if (ifNew)
     {
-        int ID = gopt.database->addIfNewDescriptor(&nbmol);
+        int ID;
+        if(!surf_name)
+            {ID = gopt.database->addIfNewDescriptor(&nbmol);}
+        else 
+            {ID = gopt.database->addIfNewDescriptor(&nbmol, &gridFF.grid.cell);}
         if (ID != -1)
         {
             printf("Same as %d\n", ID);
@@ -3138,55 +3173,91 @@ bool addSnapshot(bool ifNew = false, char* fname = 0)
 }
 
 void printDatabase(){
-    //if(database) database->print();
+    if(database) database->print();
 
-    int Findex = 0;
-    std::vector<double> a;
-    std::vector<double> b;
-    std::vector<int> boundaryRules;
-    for (int i = 0; i < nbmol.natoms * 3; i++)
-    {
-        a.push_back(-20);
-        b.push_back(20);
-        boundaryRules.push_back(1);
-    }
-    double Fstar = -99999999999;
-    int maxeval = 15000;
-    int nRelax = 1;
-    int nExplore = __INT_MAX__;
-    int bShow = 1;
-    int bSave = 0;
-    int bDatabase = 0;
-    runGlobalOptimization(Findex, &a, &b, &boundaryRules, Fstar, maxeval, nRelax, nExplore, bShow, bSave, bDatabase);
+    // if(!database){
+    //     database = new MolecularDatabase();
+    //     database->setDescriptors();
+    // }
+    // Atoms A;
+    // A.copyOf(nbmol);
+    
+    // for(int i = 0; i < nbmol.natoms; i++){
+    //     nbmol.apos[i].rotate(M_PI/2 , Vec3dZ);
+    //     nbmol.apos[i].add(Vec3d{4.5,0,0});
+    // }
+    // nbmol.print();A.print();
 
+    // // Měření času
+    // auto start = std::chrono::high_resolution_clock::now();
+    // double result = database->computeDistanceOnSurf(&nbmol, &A, &gridFF.grid.cell);
+    // auto end = std::chrono::high_resolution_clock::now();
+    // std::chrono::duration<double> elapsed = end - start;
+
+    // // Výpis výsledku a času
+    // printf("database->computeDistanceOnSurf(&nbmol, &nbmol, &surf): %g\n", result);
+    // std::cout << "Elapsed time: " << elapsed.count() << " seconds\n";
 }
 
 double computeDistance(int i, int j){
-    if(gopt.database) return gopt.database->computeDistance(i, j);
-    printf("Error, database does not exist"); return -1;
+    if(!gopt.database) {printf("Error, database does not exist"); return -1;}
+    if(!surf_name)return gopt.database->computeDistance(i, j);
+    return gopt.database->computeDistanceOnSurf(i, j, &gridFF.grid.cell);
 }
 
 void runGlobalOptimization(int Findex, std::vector<double>* a, std::vector<double>* b, std::vector<int>* boundaryRules, 
-    double Fstar, int maxeval, int nRelax, int nExploring, int bShow, int bSave, int bDatabase){
+    double Fstar, int maxeval, int nRelax, int nExploring, int index_mut, std::vector<double>* par_mut,  int bShow, int bSave, 
+    int bDatabase, double* RMSD, double* outF, int* outN){
     //gopt.init_heur(nbmol, params, Findex, a, b, boundaryRules, Fstar, maxeval, nRelax, nExploring, bShow, bSave, bDatabase)
-
-
-    std::vector<double> par_mut = {0.1};
-    std::vector<double> par_alg = {1e-5, 100, maxeval, 100};    
+    if(!database){
+        database = new MolecularDatabase();
+        database->setDescriptors();
+    }
+    database->addMember(&nbmol);
     
-    constrs.loadBonds("hexan-dicarboxylic.cons");
-    printf("\nbConstrains: %i\n", bConstrains);
-    bConstrains = true;
-
+    //std::vector<double> par_alg;// = {1, 100, maxeval, 100};    
+    std::vector<double> par_alg = {100};
     
-    gopt.init_heur(&nbmol, &params, Findex, a, b, boundaryRules, Fstar, maxeval, nRelax, nExploring, bShow, 2, 0);
-    gopt.SPSA(3, &par_mut, &par_alg);
+    gopt.init_heur(&nbmol, &params, Findex, a, b, boundaryRules, Fstar, maxeval, nRelax, nExploring, index_mut, par_mut, bShow, bSave, 0, outF, outN);
+    gopt.SPSA();
+    database->addMember(&nbmol);
+    *RMSD=database->computeDistance(0, database->getNMembers()-1);
+    //gopt.randomDescent(&par_alg);
     //gopt.randomBrutal(&nbmol, &params, 0, 0, 0, &boundaryRules, 0, maxeval, bShow, 3, &par_mut, &par_alg);
     //nbmol.print();
-printf("after optimization\n");
+
 }
 
+double compute_Free_energy(double l1, double l2, DistConstr *dc){
+    int nbStep = 100;
+    int nMDSteps = 1000;
+    go.T_target = 100;
+    double T = go.T_target;
+    go.bExploring = 1;
+    run_omp(nMDSteps, 0.05, 1e-20, 1000, 0.02, 0, 0);
+    std::vector<double> Forces(nMDSteps, 0.0);
+    std::vector<double> Es(nMDSteps, 0.0);
+    std::vector<double> Force(nbStep, 0.0);
+    std::vector<double> E(nbStep, 0.0);
+    double l0 = dc->ls.x;
+    double d = (l2 - l1) / nbStep;
+    double deltaF = 0;
+    for(int i = 0; i < nbStep; i++){
+        dc->ls.add(d);
+        run_omp(nMDSteps, 0.05, 1e-20, 1000, 0.02, Es.data(), Forces.data());
+        double probabilityAverage;
+        for(int j = 0; j < nMDSteps; j++){
+            probabilityAverage += exp(-Forces[j]*d/(T*const_kB));
+        }
+        probabilityAverage /= nMDSteps;
+        deltaF += -T*const_kB*log(probabilityAverage);
+        Force[i] = std::accumulate(Forces.begin(), Forces.end(), 0.0) / nMDSteps;
+        E[i] = std::accumulate(Es.begin(), Es.end(), 0.0) / nMDSteps;
+        printf("Force[%d] = %g, E[%d] = %g\n", i, Force[i], i, E[i]);
 
+    }
+    return deltaF;
+}
 
 
 

@@ -567,7 +567,7 @@ void scanTranslation_ax( int n, int* selection, Vec3d d, int nstep, double* Es,c
 }
 void scanTranslation( int n, int* selection, int ia0, int ia1, double l, int nstep, double* Es, const char* trjName, bool bAddjustCaps=false ){ Vec3d d=(nbmol.apos[ia1]-nbmol.apos[ia0]).normalized()*l; scanTranslation_ax(n,selection, d, nstep, Es, trjName , bAddjustCaps); };
 
-void scanRotation_ax( int n, int* selection, Vec3d p0, Vec3d ax, double phi, int nstep, double* Es, const char* trjName ){
+void scanRotation_ax( int n, int* selection, Vec3d p0, Vec3d ax, double phi, int nstep, double* Es, double* Fs, const char* trjName ){
     //if(p0==0) p0=(double*)&manipulation_p0;
     //if(ax==0) ax=(double*)&manipulation_ax;
     //if(selection==0){selection=manipulation_sel; n=manipulation_nsel; }
@@ -585,10 +585,10 @@ void scanRotation_ax( int n, int* selection, Vec3d p0, Vec3d ax, double phi, int
     }
     if(file){ fclose(file); }
 }
-void scanRotation( int n, int* selection,int ia0, int iax0, int iax1, double phi, int nstep, double* Es, const char* trjName ){ Vec3d ax=(nbmol.apos[iax1]-nbmol.apos[iax0]).normalized(); scanRotation_ax(n,selection, nbmol.apos[ia0], ax, phi, nstep, Es, trjName ); };
+void scanRotation( int n, int* selection,int ia0, int iax0, int iax1, double phi, int nstep, double* Es, double* Fs, const char* trjName ){ Vec3d ax=(nbmol.apos[iax1]-nbmol.apos[iax0]).normalized(); scanRotation_ax(n,selection, nbmol.apos[ia0], ax, phi, nstep, Es, Fs, trjName ); };
 
 
-void scanAngleToAxis_ax( int n, int* selection, double r, double R, Vec3d p0, Vec3d ax, int nstep, double* angs, double* Es, const char* trjName ){
+void scanAngleToAxis_ax( int n, int* selection, double r, double R, Vec3d p0, Vec3d ax, int nstep, double* angs, double* Es, double* Fs, const char* trjName ){
     //printf( "scanAngleToAxis_ax()\n" );
     FILE* file=0;
     if(trjName){ file=fopen( trjName, "w" ); }

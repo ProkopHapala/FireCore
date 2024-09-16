@@ -155,6 +155,7 @@ class Groups{ public:
         printf( "Groups::defPoseByAtoms()\n" );
         Group& g = groups[ig];
         // --- cog
+        printf( "weights[0] = %f", weights[0].x );
         if(i0>=0){
             if( a2g[i0]!=ig ){ printf("ERROR in Groups::defPoseByAtoms() COG atom(i0=%i) is not member of group ig(%i) => exit(0) \n", i0, ig ); exit(0); }
             for(int i=0; i<g.i0n.y; i++){
@@ -174,6 +175,7 @@ class Groups{ public:
                 weights[ia].x *= renorm;
             }
         }
+        printf("weights", weights, g.i0n.y );
         evalCog( ig );
         //printf( "Groups::defPoseByAtoms() cog(%g,%g,%g) \n", g.cog.x,g.cog.y,g.cog.z );
         // --- fw
@@ -304,6 +306,7 @@ class Groups{ public:
     int addGroup( int n, int* ias ){
         int ig = groups.size();
         groups.resize(ig+1);
+        realloc(n);
         fill( ig, n, ias );
         return ig;
     }

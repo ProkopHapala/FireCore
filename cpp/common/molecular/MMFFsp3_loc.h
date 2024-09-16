@@ -125,6 +125,9 @@ class MMFFsp3_loc : public NBFF { public:
 
     //int itr_DBG=0;
 
+    Vec3d rnd_Gauss[9973];
+
+
 // =========================== Functions
 
 // reallcoate MMFFsp3_loc
@@ -237,6 +240,34 @@ double optimalTimeStep(double m=1.0){
         Kmax=fmax(Kmax, bKs[i].w ); 
     }
     return M_PI*2.0*sqrt(m/Kmax)/10.0;  // dt=T/10;   T = 2*pi/omega = 2*pi*sqrt(m/k)
+}
+
+void init_rnd_Gauss(){
+    for (int i = 0; i < 9973; i++)
+    {
+        // for computing normal distribution from uniform distribution
+        double rnd0, rnd1;
+        double y0, y1, y2, y3;
+        double r0, r1;
+        r0 = 2;
+        r1 = 2;
+        while (r0 > 1.0)
+        {
+            rnd0 = randf(-1.0, 1.0);
+            rnd1 = randf(-1.0, 1.0);
+            r0 = rnd0 * rnd0 + rnd1 * rnd1;
+            y0 = rnd0 * sqrt(-2 * log(r0) / r0);
+            y1 = rnd1 * sqrt(-2 * log(r0) / r0);
+        }
+        while (r1 > 1.0)
+        {
+            rnd0 = randf(-1.0, 1.0);
+            rnd1 = randf(-1.0, 1.0);
+            r1 = rnd0 * rnd0 + rnd1 * rnd1;
+            y2 = rnd0 * sqrt(-2 * log(r1) / r1);
+        }
+        rnd_Gauss[i] = {y0, y1, y2};
+    }
 }
 
 // ============== Evaluation
@@ -386,6 +417,7 @@ double eval_atom(const int ia){
                 // } 
 
                 if(bSubtractBondNonBond) [[likely]] { // subtract non-bonded interactions between atoms which have common neighbor
+                //printf("bSubtractBondNonBond");
                     Vec3d fij=Vec3dZero;
                     //Quat4d REQij; combineREQ( REQs[ing],REQs[jng], REQij );
                     Quat4d REQij = _mixREQ(REQs[ia],REQs[ing]);  // combine van der Waals parameters for the pair of atoms
@@ -458,7 +490,7 @@ double eval_atom(const int ia){
     // {
     //     doAngles = false; // DEBUG
     // }
-
+bAngleCosHalf=1;
     if(doAngles){
 
     double  ssK,ssC0;
@@ -1197,10 +1229,35 @@ inline Vec3d move_atom_Langevin( int i, const float dt, const double Flim,  cons
     
     // --- generate randomg force from normal distribution (i.e. gaussian white noise)
     // -- this is too costly
-    //Vec3d rnd = {-6.,-6.,-6.};
-    //for(int i=0; i<12; i++){ rnd.add( randf(), randf(), randf() ); }    // ToDo: optimize this
-    // -- keep uniform distribution for now
+    // double q=1;
+    // Vec3d rnd = {-6.,-6.,-6.};
+    // for(int i=0; i<12; i++){ rnd.add( randf(), randf(), randf() ); }    // ToDo: optimize this
+
+    // for computing normal distribution from uniform distribution
+    // double q = 1;
+    // double rnd0, rnd1;
+    // double y0, y1, y2; 
+    // double r0,r1;r0 = 2;r1 = 2;
+    // while (r0 > 1.0)
+    // {
+    //     rnd0 = randf(-1.0, 1.0);
+    //     rnd1 = randf(-1.0, 1.0);
+    //     r0 = rnd0  * rnd0 + rnd1 * rnd1;
+    //     y0 = rnd0 * sqrt(-2 * log(r0) / r0);
+    //     y1 = rnd1 * sqrt(-2 * log(r0) / r0);
+    // }
+    // while (r1 > 1.0)
+    // {
+    //     rnd0 = randf(-1.0, 1.0);
+    //     rnd1 = randf(-1.0, 1.0);
+    //     r1 = rnd0  * rnd0 + rnd1 * rnd1;
+    //     y2 = rnd0 * sqrt(-2 * log(r1) / r1);
+    // }
+    // Vec3d rnd = {y0,y1,y2};
+
     Vec3d rnd = {randf(-1.0,1.0),randf(-1.0,1.0),randf(-1.0,1.0)};
+
+    //Vec3d rnd = rnd_Gauss[std::rand()%9973];
 
     //if(i==0){ printf( "dt=%g[arb.]  dt=%g[fs]\n", dt, dt*10.180505710774743  ); }
     f.add_mul( rnd, sqrt( 2*const_kB*T*gamma_damp/dt ) );
@@ -1742,7 +1799,7 @@ double eval_atom_debug(const int ia, bool bPrint=true){
             }
 
             // ----- Error is HERE
-            if(bSubtractAngleNonBond){
+            if(bSubtractAngleNonBond*0){
                 Vec3d fij=Vec3dZero;
                 //Quat4d REQij; combineREQ( REQs[ing],REQs[jng], REQij );
                 Quat4d REQij = _mixREQ(REQs[ing],REQs[jng]);
@@ -1794,6 +1851,7 @@ double eval_atom_debug(const int ia, bool bPrint=true){
 
     return E;
 }
+
 
 
 };

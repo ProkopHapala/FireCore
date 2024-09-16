@@ -91,7 +91,7 @@ fi
 #./$name -x common_resources/nHexadecan_dicarboxylic -b nHexadecan_dicarboxylic.cons -T 100 0.01
 #./$name -x common_resources/nHexadecan_dicarboxylic -b nHexadecan_dicarboxylic.cons -perframe 1000 -gopt 1000,1000 0.25,1.0
 #./$name -x common_resources/nHexadecan_dicarboxylic -b nHexadecan_dicarboxylic.cons -perframe 10000 -gopt 1000,1000 0.25,1.0
-#./$name -x common_resources/nHexadecan_dicarboxylic -drive nHexadecan_dicarboxylic.cons -perframe 10000 -gopt 1000,1000 0.25,1.0   T 1000 0.01
+#./$name -x common_resources/nHexadecan_dicarboxylic -drive nHexadecan_dicarboxylic.cons -perframe 10000 -gopt 1000,10000 0.25,1.0   T 1000 0.01
 #./$name -x data/hexan-dicarboxylic -b nHexadecan_dicarboxylic.cons -perframe 10000 -gopt 1000,1000 0.25,1.0 -verb 0
 
 #./$name -x common_resources/nHexadecan_dicarboxylic -b nHexadecan_dicarboxylic.cons
@@ -124,7 +124,7 @@ fi
 #./$name -x Si2505_111-noH-SiH3  -perframe 1   
 #./$name -x Si2505_111-noH-SiH3-relaxed  -perframe 1   
 
-./$name -x Si2505_111-H-brak-110-relaxed  -perframe 1   
+#./$name -x Si2505_111-H-brak-110-relaxed  -perframe 1   
 
 
 #./$name -x Si2505_111-H-SiH3-relaxed.xyz
@@ -197,7 +197,7 @@ fi
 
 #./$name -x common_resources/polymer-2_new   -g common_resources/NaCl_1x1_L2  -perframe 100  -Ftol 1e-2 -seed 654654   -verb 0
 #./$name -x common_resources/polymer-2_new   -g common_resources/NaCl_1x1_L2  -perframe 100  -T 10000 0.02  -Ftol 1e-2 -seed 654654   -verb 0
-#./$name -x common_resources/polymer-2_new   -g common_resources/NaCl_1x1_L2  -perframe 100  -gopt 1000,1000 0.0,0.0  -T 1000 0.05  -Ftol 1e-4 -seed 654654   -verb 0
+#./$name -x common_resources/polymer-2_new   -g common_resources/NaCl_1x1_L2  -perframe 100  -gopt 1000,10000 0.0,0.0  -T 1000 0.05  -Ftol 1e-4 -seed 654654   -verb 0
 #./$name -x common_resources/polymer-2_new   -g common_resources/NaCl_1x1_L2  -perframe 100  -gopt 1000,1000 0.0,0.0    -T 1000 0.1  -Ftol 1e-2 -seed 654654   -verb 0
 #./$name -x common_resources/polymer-2_new   -g common_resources/NaCl_1x1_L2  -drive polymer-2_new.cons -perframe 100  -gopt 1000,1000 0.0,0.0    -T 100 0.001  -Ftol 1e-2 -seed 654654   -verb 0
 #./$name -x common_resources/polymer-2_new   -g common_resources/NaCl_1x1_L2  -drive polymer-2_new.cons -perframe 100  -gopt 1000,1000 0.0,0.0    -T 1000 0.01  -Ftol 1e-6 -seed 654654   -verb 0 
@@ -292,7 +292,13 @@ fi
 #./$name -x common_resources/polymer-2_new -perframe 100  -col_damp 10 -1.0 -1.0 0.1   0.0 0.5
 
 
-
+# ===== Free energy
+#./$name -x common_resources/nucleobasis_CG -b common_resources/nucleobasis_CG.cons  -T 100 0.1 -perframe 10
+# ./$name -x common_resources/dicarboxylic_acid_simple -e 
+# ./$name -x common_resources/dicarboxylic_acid_simple -e -b common_resources/dicarboxylic_acid_simple.cons  
+# ./$name -x common_resources/dicarboxylic_acid_simple -e -b common_resources/dicarboxylic_acid_simple.cons  -T 10 0.1 -perframe 10
+# ./$name -x common_resources/dicarboxylic_acid_simple -e -b common_resources/dicarboxylic_acid_simple.cons  -T 100 0.1 -perframe 10
+./$name -x common_resources/dicarboxylic_acid_simple -e -b common_resources/dicarboxylic_acid_simple.cons  -T 300 0.1 -perframe 10
 
 
 #valgrind --log-file="valgrind.log" --leak-check=yes ./$name -x common_resources/H2O
