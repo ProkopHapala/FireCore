@@ -66,6 +66,32 @@ def test_NURBS( g0=0.0, dg=0.5, dsamp=0.05 ):
     #plt.title("Force")
     plt.grid()
 
+def test_eval_1D( g0=2.0, gmax=4.0, dg=0.2, dsamp=0.02, bUseForce=True, scErr=100.0, bHalf=False, title=None, order=3 ):
+    xs  = np.arange(g0, gmax+1e-8, dg)     ; ng=len(xs)
+    xs_ = np.arange(g0, gmax+1e-8, dsamp)  ; nsamp=len(xs_)
+    print("ng ", ng," nsamp ", nsamp)
+    
+    Gs = np.zeros(ng)
+
+    Gs[ ng//2 ]=1.0
+
+    #FEout = mmff.sample_Bspline( xs_, Gs, x0=g0, dx=dg, order=3 )
+    FEout = mmff.sample_Bspline( xs_, Gs, x0=g0, dx=dg, order=order )
+    Es = FEout[:,0]
+    Fs = FEout[:,1]
+
+    Fnum = fu.numDeriv( Es, xs_ )
+
+    #plt.figure(figsize=(5,10))
+    plt.subplot(2,1,1); 
+    plt.plot( xs,  Gs, "o",           label="Gs poins" );
+    plt.plot( xs_, FEout[:,0], "-",  lw=0.5,  label="E_spline" );
+    plt.subplot(2,1,2); 
+    plt.plot( xs_, FEout[:,1], "-",  lw=0.5,  label="F spline" );
+    plt.plot( xs_[1:-1], Fnum, ":b",       lw=2.0,  label="F_num" );
+
+
+
 def test_fit_1D( g0=2.0, gmax=10.0, dg=0.2, dsamp=0.02, bUseForce=True, scErr=100.0, bHalf=False, title=None ):
     #x0 = 2.0
     #dx = 0.1
@@ -493,6 +519,10 @@ def test_comb3_3D(g0=(-2.0,-2.0,-2.0), gmax=(2.0,2.0,2.5), dg=(0.1,0.1,0.1), dsa
 #mmff.setVerbosity( 2 )
 mmff.setVerbosity( 3 )
 
+plt.figure(figsize=(5,10))
+test_eval_1D(order=3)
+test_eval_1D(order=5)
+
 #test_NURBS( g0=0.0, dg=0.5, dsamp=0.05 )
 
 #test_fit_1D( bUseForce=True )
@@ -508,9 +538,9 @@ mmff.setVerbosity( 3 )
 
 #test_comb3_2D()
 
-Gs = test_comb3_3D(   iax=0, title="x-cut" );
-test_comb3_3D( Gs=Gs, iax=1, title="y-cut" );
-test_comb3_3D( Gs=Gs, iax=2, title="z-cut" );
+# Gs = test_comb3_3D(   iax=0, title="x-cut" );
+# test_comb3_3D( Gs=Gs, iax=1, title="y-cut" );
+# test_comb3_3D( Gs=Gs, iax=2, title="z-cut" );
 #test_comb3_3D( iax=1 );
 #test_comb3_3D( iax=2 );
 

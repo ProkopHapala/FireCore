@@ -545,6 +545,7 @@ class Vec6T { public:
         struct{ T xx,yy,zz, yz,xz,xy; };
 		T array[6];
 	};
+    inline T dot( Vec6T<T> a )const{ return xx*a.xx + yy*a.yy + zz*a.zz + yz*a.yz + xz*a.xz + xy*a.xy; }
 };
 using Vec6i = Vec6T< int>;
 using Vec6f = Vec6T< float>;

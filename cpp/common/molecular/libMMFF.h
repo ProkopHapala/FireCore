@@ -167,8 +167,12 @@ int fit3D_Bspline( const int* ns, double* Gs, double* Es, double* Ws, double Fto
 
 }
 
-void sample_Bspline( double g0, double dg, int ng, double* Gs, int n, double* xs, double* fes ){
-    Bspline::sample1D( g0,dg,ng,Gs, n, xs, (Vec2d*)fes );
+void sample_Bspline( double g0, double dg, int ng, double* Gs, int n, double* xs, double* fes, int order ){
+    switch (order) {
+        case 3 : { Bspline::sample1D   ( g0,dg,ng,Gs, n, xs, (Vec2d*)fes ); } break;
+        case 5 : { Bspline::sample1D_o5( g0,dg,ng,Gs, n, xs, (Vec2d*)fes ); } break;
+        default: { printf("ERROR: libMMFF::sample_Bspline() order=%i NOT IMPLEMENTED !!! => exit\n", order ); exit(0); } break;
+    }
 }
 
 void sample_NURBS( double g0, double dg, int ng, double* Gs, double* Ws, int n, double* xs, double* fes ){
