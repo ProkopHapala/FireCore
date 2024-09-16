@@ -131,14 +131,14 @@ void project_atom_on_grid_quintic( const Vec3d pi, const double qi, double* dens
     const int nxy = n.x * n.y;
     //int ii=0;
     for (int dz = 0; dz < 6; dz++) {
-        const int gz  = iz + dz - 3;
+        const int gz  = iz + dz - 2;
         const int iiz = gz*nxy;
         for (int dy = 0; dy < 6; dy++) {
-            const int gy  = iy + dy - 3;
+            const int gy  = iy + dy - 2;
             const int iiy = iiz + gy*n.x;
             const double qbyz = qi * by.array[dy] * bz.array[dz];
             for (int dx = 0; dx < 6; dx++) {
-                const int gx = ix + dx - 3;
+                const int gx = ix + dx - 2;
                 const int ig = gx + iiy;
 
                 //printf("project_atom_on_grid()[%i] dxyz(%i,%i,%i) igxyz(%i,%i,%i) ig=%i /%i \n", ii, dx,dy,dz,   gx,gy,gz, ig, n.totprod() );
