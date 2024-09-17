@@ -1470,9 +1470,8 @@ void initGridFF( const char * name, double z0=NAN, bool bAutoNPBC=true, bool bSy
                 }
 
                 pack_Bspline_d();
-                Bspline::make_inds_pbc( grid.n.x, cubic_xqis );
-                Bspline::make_inds_pbc( grid.n.y, cubic_yqis );
-
+                make_inds_pbc( grid.n.x, cubic_xqis );
+                make_inds_pbc( grid.n.y, cubic_yqis );
 
                 printf("GridFF::tryLoad_new() BsplineDouble DONE @Bspline_Pauli=%li  @Bspline_London=%li  @Bspline_Coulomb=%li \n", (long)Bspline_Pauli, (long)Bspline_London, (long)Bspline_Coulomb );
                 golbal_array_dict.insert( { "Bspline_Pauli",   NDArray{ Bspline_Pauli,   Quat4i{ns.z,ns.y,ns.x,-1}} }  );
