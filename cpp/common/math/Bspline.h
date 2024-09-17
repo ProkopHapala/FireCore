@@ -2,6 +2,7 @@
 #ifndef  Bspline_h
 #define  Bspline_h
 
+#include "Vec3.h"
 #include "quaternion.h"
 //#include "CG.h"
 #include "globals.h"
@@ -34,6 +35,44 @@ inline bool outrange(int i, int imin, int imax ){
 
 inline int biwrap( int i, int n ){ return (i<=0    )? n-1 : -1; }
 inline int diwrap( int i, int n ){ return (i>=(n-1))? 1-n :  1; }
+
+
+void make_inds_pbc( const int n, Quat4i* iqs ){
+    iqs[0]={0,1  ,2  ,3  };
+    iqs[1]={0,1  ,2  ,3-n};
+    iqs[2]={0,1  ,2-n,3-n};
+    iqs[3]={0,1-n,2-n,3-n};
+}
+
+inline Quat4i choose_inds_pbc( const int i, const int n, const Quat4i* iqs ){
+    if(i>=(n-3))[[unlikely]]{ return iqs[i+4-n]; }
+    return Quat4i{ i, i+1, i+2, i+3 };
+}
+
+void make_inds_pbc(const int n, Vec6i* iqs) {
+    iqs[0] = {0, 1,   2,   3,   4,   5  };
+    iqs[1] = {0, 1,   2,   3,   4,   5-n};
+    iqs[2] = {0, 1,   2,   3,   4-n, 5-n};
+    iqs[3] = {0, 1,   2,   3-n, 4-n, 5-n};
+    iqs[4] = {0, 1,   2-n, 3-n, 4-n, 5-n};
+    iqs[5] = {0, 1-n, 2-n, 3-n, 4-n, 5-n};
+}
+
+inline Vec6i choose_inds_pbc(const int i, const int n, const Vec6i* iqs) {
+    if (i >= (n - 5)) [[unlikely]] {
+        return iqs[i+6-n];
+    }
+    return Vec6i{ i, i+1, i+2, i+3, i+4, i+5 };
+}
+
+inline int modulo( const int i, const int m ){
+    int result = i % m;
+    if (result < 0) {
+        result += m;
+    }
+    return result;
+}
+
 
 /// Cubic B-spline 
 /// See:  https://www.studocu.com/en-us/document/university-of-michigan/computer-graphics/lecture-notes-lecture-37/839972
@@ -408,32 +447,6 @@ Quat4d fe3d( const Vec3d u, const Vec3i n, const double* Es ){
     //return Quat4d{0.0,0.0,0.0,Es[i0]};
 } 
 
-// static const Quat4i cubic_qis[4] = {
-//     {0,1  ,2  ,3  },
-//     {0,1  ,2  ,3-n},
-//     {0,1  ,2-n,3-n},
-//     {0,1-n,2-n,3-n}
-// }; 
-
-void make_inds_pbc( const int n, Quat4i* iqs ){
-    iqs[0]={0,1  ,2  ,3  };
-    iqs[1]={0,1  ,2  ,3-n};
-    iqs[2]={0,1  ,2-n,3-n};
-    iqs[3]={0,1-n,2-n,3-n};
-}
-
-inline Quat4i choose_inds_pbc( const int i, const int n, const Quat4i* iqs ){
-    if(i>=(n-3))[[unlikely]]{ return iqs[i+4-n]; }
-    return Quat4i{ 0, 1, 2, 3 };
-}
-
-inline int modulo( const int i, const int m ){
-    int result = i % m;
-    if (result < 0) {
-        result += m;
-    }
-    return result;
-}
 
 __attribute__((pure))
 __attribute__((hot)) 

@@ -83,13 +83,16 @@ def plot1Dcut(apos, Vg, i0, dg, Ls, iax=0, nPBC=[10,10,10], Vmax=1.0, scErr=100.
     plt.legend()
     plt.grid()
 
-def test_vs_direct( apos, qs, ns=[80,120,120], dg=[0.1/0.8,0.1/1.2,0.1/1.2], nPBC=[60,30,30], scErr=100.0, order=2, bPython=False, bOMP=False, nBlur=0, cSOR=0.0, cV=0.5, yrange=None ):
+def test_vs_direct( apos, qs, ns=[100,100,100], dg=[0.1,0.1,0.1], nPBC=[30,30,30], scErr=100.0, order=2, bPython=False, bOMP=False, nBlur=0, cSOR=0.0, cV=0.5, yrange=None ):
     apos = apos.copy()
     print( "apos ", apos )
     Ls = [ ns[0]*dg[0], ns[1]*dg[1], ns[2]*dg[2] ]                                # lenghts along each axis  
     pos0=np.array( [ -0.5*Ls[0], -0.5*Ls[1], -0.5*Ls[2] ] )                       # origin of grid - half of the grid size
     mmff.setupEwaldGrid( ns, dg=dg, pos0=pos0 )                                   # setup grid in C++ for projection
     dens = mmff.projectAtomsEwaldGrid( apos, qs, ns=ns, order=order )             # project atoms to grid using C++ 
+
+    # perhaps we should find better reference than direct sum in reals space
+    #  * perhaps using [Madelung Constant](https://en.wikipedia.org/wiki/Madelung_constant) for some known crystals
 
     Qtot = np.abs(dens).sum();        print("Qtot = ", Qtot, np.abs(qs).sum() )   # check if the total charge is conserved in projection ( should be same as sum of qs )
     
@@ -153,7 +156,9 @@ qs = [ +1.,+1.,-1.,-1. ]
 
 
 
-#test_vs_direct( apos, qs,  ns=[100,100,100], dg=[0.10,0.10,0.10] )   # GOOD, This is perfect
+#test_vs_direct( apos, qs,  ns=[100,100,100], dg=[0.10,0.10,0.10], order=2 )   # GOOD, This is perfect
+
+test_vs_direct( apos, qs,  ns=[100,100,100], dg=[0.10,0.10,0.10], order=3 )  
 
 # --- change voxel size  homogeneously in all directions
 #test_vs_direct( apos, qs,  ns=[100,100,100], dg=[0.15,0.15,0.15] )   # GOOD, This is perfect
@@ -189,8 +194,20 @@ qs = [ +1.,+1.,-1.,-1. ]
 #test_vs_direct( apos, qs, ns=[100,100,100], dg=[0.10,0.20,0.10], nPBC=[30,30,30] )    # NOT SO PERFECT, iax1 goes to ~1.5 almost
 #test_vs_direct( apos, qs, ns=[100,100,100], dg=[0.10,0.20,0.10], nPBC=[60,30,30] )    # NOT SO PERFECT, iax1 goes to ~1.5 almost
 
-test_vs_direct( apos, qs,  ns=[100,100,100], dg=[0.10,0.20,0.10], nPBC=[30,30,30], order=3 )    # NOT SO PERFECT, iax1 goes to ~1.5 almost
-test_vs_direct( apos, qs,  ns=[100,100,100], dg=[0.10,0.20,0.10], nPBC=[60,30,30], order=3 )    # Almost perfect
+#test_vs_direct( apos, qs,  ns=[100,100,100], dg=[0.10,0.20,0.10], nPBC=[30,30,30], order=3, bPython=True )    # NOT SO PERFECT, iax1 goes to ~1.5 almost
+
+#test_vs_direct( apos, qs,  ns=[100,100,100], dg=[0.10,0.20,0.10], nPBC=[100,100,100], order=3, bPython=True ) 
+
+#test_vs_direct( apos, qs,  ns=[100,100,100], dg=[0.10,0.20,0.10], nPBC=[30,30,30], order=3, bPython=True )    # Almost perfect
+#test_vs_direct( apos, qs,  ns=[100,100,100], dg=[0.10,0.20,0.10], nPBC=[60,30,30], order=3 )    # Almost perfect
+#test_vs_direct( apos, qs,  ns=[100,100,100], dg=[0.10,0.20,0.10], nPBC=[30,60,30], order=3 )    # Almost perfect
+#test_vs_direct( apos, qs,  ns=[100,100,100], dg=[0.10,0.20,0.10], nPBC=[30,30,60], order=3 )    # Almost perfect
+#test_vs_direct( apos, qs,  ns=[100,100,100], dg=[0.20,0.10,0.10], nPBC=[30,60,30], order=3 )    # Almost perfect
+
+#test_vs_direct( apos, qs,  ns=[100,100,100], dg=[0.10,0.20,0.10], nPBC=[120,60,60], order=3, bPython=True )    # Almost perfect
+
+#test_vs_direct( apos, qs,  ns=[100,100,100], dg=[0.10,0.20,0.10], nPBC=[30,30,30], order=3 )    # NOT SO PERFECT, iax1 goes to ~1.5 almost
+#test_vs_direct( apos, qs,  ns=[100,100,100], dg=[0.10,0.20,0.10], nPBC=[60,30,30], order=3 )    # Almost perfect
 
 
 #test_vs_direct( apos, qs,  ns=[100,100,100], dg=[0.10,0.20,0.10], nPBC=[60,30,30], order=3, nBlur=4, cV=0.85  )    # Almost perfect

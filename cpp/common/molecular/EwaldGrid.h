@@ -34,10 +34,23 @@ void fftc2array_mul( int n, const fftw_complex* in, double* out, double f) {
 
 
 
+inline int pbc_ifw(int i, int n){ i++; return (i<n )?  i :  i-n; };
+inline int pbc_ibk(int i, int n){ i--; return (i>=0)?  i :  i+n; };
+
 class EwaldGrid : public GridShape { public: 
 
 double* V_work  = 0; 
 double* vV_work = 0;  
+
+bool bCubicPBCIndexesDone = false;
+Quat4i xqs_o3[4];
+Quat4i yqs_o3[4];
+Quat4i zqs_o3[4];
+
+bool bQuinticPBCIndexesDone = false;
+Vec6i xqs_o5[6];
+Vec6i yqs_o5[6];
+Vec6i zqs_o5[6];
 
 __attribute__((hot)) 
 inline void project_atom_on_grid_linear( const Vec3d pi, const double qi, double* dens ) const {
@@ -115,6 +128,48 @@ void project_atom_on_grid_cubic( const Vec3d pi, const double qi, double* dens )
     }
 }
 
+__attribute__((hot)) 
+void project_atom_on_grid_cubic_pbc(const Vec3d pi, const double qi, double* dens) const {
+    // Convert atomic position to grid position
+    const Vec3d gp = diCell.dot(pi - pos0);
+    const int ix = (int) gp.x;
+    const int iy = (int) gp.y;
+    const int iz = (int) gp.z;
+    const double tx = gp.x - ix;
+    const double ty = gp.y - iy;
+    const double tz = gp.z - iz;
+
+    // Calculate the B-spline weights
+    const Quat4d bx = Bspline::basis(tx);
+    const Quat4d by = Bspline::basis(ty);
+    const Quat4d bz = Bspline::basis(tz);
+
+    // Retrieve the number of grid points in each direction
+    const int nxy = n.x * n.y;
+
+    // Pre-calculate periodic boundary condition indices for each dimension
+    const Quat4i xqs = choose_inds_pbc(ix-1, n.x, xqs_o3 );  // Assuming you pre-calculate xqs, yqs, zqs
+    const Quat4i yqs = choose_inds_pbc(iy-1, n.y, yqs_o3 );
+    const Quat4i zqs = choose_inds_pbc(iz-1, n.z, zqs_o3 );
+
+    // Loop over the B-spline grid contributions
+    for (int dz = 0; dz < 4; dz++) {
+        const int gz = zqs.array[dz];
+        const int iiz = gz * nxy;
+        for (int dy = 0; dy < 4; dy++) {
+            const int gy = yqs.array[dy];
+            const int iiy = iiz + gy * n.x;
+            const double qbyz = qi * by.array[dy] * bz.array[dz];
+            for (int dx = 0; dx < 4; dx++) {
+                const int gx = xqs.array[dx];
+                const int ig = gx + iiy;
+                dens[ig] += qbyz * bx.array[dx];
+            }
+        }
+    }
+}
+
+
 
 __attribute__((hot)) 
 void project_atom_on_grid_quintic( const Vec3d pi, const double qi, double* dens ) const {
@@ -160,7 +215,52 @@ void project_atom_on_grid_quintic( const Vec3d pi, const double qi, double* dens
 }
 
 __attribute__((hot)) 
-void project_atoms_on_grid_linear( int na, const Vec3d* apos, const double* qs, double* dens ) const {
+void project_atom_on_grid_quintic_pbc(const Vec3d pi, const double qi, double* dens) const {
+    // Convert atomic position to grid position
+    const Vec3d gp = diCell.dot(pi - pos0);
+
+    const int ix = (int) gp.x;
+    const int iy = (int) gp.y;
+    const int iz = (int) gp.z;
+    const double tx = gp.x - ix;
+    const double ty = gp.y - iy;
+    const double tz = gp.z - iz;
+
+    // Calculate the quintic B-spline weights
+    const Vec6d bx = Bspline::basis5(tx);
+    const Vec6d by = Bspline::basis5(ty);
+    const Vec6d bz = Bspline::basis5(tz);
+
+    // Retrieve the number of grid points in each direction
+    const int nxy = n.x * n.y;
+
+    // Pre-calculate periodic boundary condition indices for each dimension
+    const Vec6T xqs = choose_inds_pbc(ix-2, n.x, xqs_o5 );  // Assuming you pre-calculate xqs, yqs, zqs
+    const Vec6T yqs = choose_inds_pbc(iy-2, n.y, yqs_o5 );
+    const Vec6T zqs = choose_inds_pbc(iz-2, n.z, zqs_o5 );
+
+    // Loop over the B-spline grid contributions
+    for (int dz = 0; dz < 6; dz++) {
+        const int gz = zqs.array[dz];
+        const int iiz = gz * nxy;
+        for (int dy = 0; dy < 6; dy++) {
+            const int gy = yqs.array[dy];
+            const int iiy = iiz + gy * n.x;
+            const double qbyz = qi * by.array[dy] * bz.array[dz];
+            for (int dx = 0; dx < 6; dx++) {
+                const int gx = xqs.array[dx];
+                const int ig = gx + iiy;
+
+                // Apply density contribution with periodic boundary condition
+                dens[ig] += qbyz * bx.array[dx];
+            }
+        }
+    }
+}
+
+
+__attribute__((hot)) 
+void project_atoms_on_grid_linear( int na, const Vec3d* apos, const double* qs, double* dens, bool bPBC=true ) {
     //printf("project_atoms_on_grid_linear() na=%i ns(%i,%i,%i) pos0(%g,%g,%g)\n", na, n.x,n.y,n.z, pos0.x,pos0.y,pos0.z );
     for (int ia=0; ia<na; ia++){
         project_atom_on_grid_linear( apos[ia], qs[ia], dens );
@@ -168,19 +268,29 @@ void project_atoms_on_grid_linear( int na, const Vec3d* apos, const double* qs, 
 }
 
 __attribute__((hot)) 
-void project_atoms_on_grid_cubic( int na, const Vec3d* apos, const double* qs, double* dens ) const {
-    //printf("project_atoms_on_grid_cubic() na=%i ns(%i,%i,%i) pos0(%g,%g,%g)\n", na, n.x,n.y,n.z, pos0.x,pos0.y,pos0.z );
-    for (int ia=0; ia<na; ia++){
-        project_atom_on_grid_cubic( apos[ia], qs[ia], dens );
+void project_atoms_on_grid_cubic( int na, const Vec3d* apos, const double* qs, double* dens, bool bPBC=true ) {
+    if( bCubicPBCIndexesDone && bPBC ){ 
+        make_inds_pbc(n.x, xqs_o3); 
+        make_inds_pbc(n.y, yqs_o3); 
+        make_inds_pbc(n.z, zqs_o3);
+        bCubicPBCIndexesDone=true;
     }
+    //printf("project_atoms_on_grid_cubic() na=%i ns(%i,%i,%i) pos0(%g,%g,%g)\n", na, n.x,n.y,n.z, pos0.x,pos0.y,pos0.z );
+    if(bPBC){ for (int ia=0; ia<na; ia++){ project_atom_on_grid_cubic_pbc( apos[ia], qs[ia], dens ); } }
+    else    { for (int ia=0; ia<na; ia++){ project_atom_on_grid_cubic    ( apos[ia], qs[ia], dens ); } }
 }
 
 __attribute__((hot)) 
-void project_atoms_on_grid_quintic( int na, const Vec3d* apos, const double* qs, double* dens ) const {
+void project_atoms_on_grid_quintic( int na, const Vec3d* apos, const double* qs, double* dens, bool bPBC=true ) {
     //printf("project_atoms_on_grid_quintic() na=%i ns(%i,%i,%i) pos0(%g,%g,%g)\n", na, n.x,n.y,n.z, pos0.x,pos0.y,pos0.z );
-    for (int ia=0; ia<na; ia++){
-        project_atom_on_grid_quintic( apos[ia], qs[ia], dens );
+    if( bQuinticPBCIndexesDone && bPBC ){ 
+        make_inds_pbc(n.x, xqs_o5); 
+        make_inds_pbc(n.y, yqs_o5); 
+        make_inds_pbc(n.z, zqs_o5);
+        bQuinticPBCIndexesDone = true;
     }
+    if(bPBC){ for (int ia=0; ia<na; ia++){ project_atom_on_grid_quintic_pbc( apos[ia], qs[ia], dens ); } }
+    else    { for (int ia=0; ia<na; ia++){ project_atom_on_grid_quintic    ( apos[ia], qs[ia], dens ); } }  
 }
 
 __attribute__((hot))
@@ -207,9 +317,6 @@ double laplace_real( double* Vin, double* Vout, double cSOR ){
     }
     return err2;
 }
-
-inline int pbc_ifw(int i, int n){ i++; return (i<n )?  i :  i-n; };
-inline int pbc_ibk(int i, int n){ i--; return (i>=0)?  i :  i+n; };
 
 __attribute__((hot))
 double laplace_real_pbc( double* Vin, double* Vout, double cSOR=0.0 ){
