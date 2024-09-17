@@ -158,17 +158,17 @@ void EwaldGridSolveLaplace( double* dens, double* Vout, bool bPrepare, bool bDes
 
     //if(nBlur>0)W.gewald.laplace_real_loop( Vout, nBlur, 1e-32, true, cSOR );
     long t3=0,t4=0;
-    // if(nBlur>0){
-    //     int ntot = W.gewald.n.totprod();
-    //     _allocIfNull( W.gewald.V_work,  ntot );
-    //     _allocIfNull( W.gewald.vV_work, ntot );
-    //     t3 = getCPUticks();
-    //     if( cV<-1.0 ){ W.gewald.laplace_real_loop      ( Vout, nBlur, 1e-32, true, cSOR     ); }
-    //     else         { W.gewald.laplace_real_loop_inert( Vout, nBlur, 1e-32, true, cSOR, cV ); }
-    //     t4 = getCPUticks();
-    // }
+    if(nBlur>0){
+        int ntot = W.gewald.n.totprod();
+        _allocIfNull( W.gewald.V_work,  ntot );
+        _allocIfNull( W.gewald.vV_work, ntot );
+        t3 = getCPUticks();
+        if( cV<-1.0 ){ W.gewald.laplace_real_loop      ( Vout, nBlur, 1e-32, true, cSOR     ); }
+        else         { W.gewald.laplace_real_loop_inert( Vout, nBlur, 1e-32, true, cSOR, cV ); }
+        t4 = getCPUticks();
+    }
 
-    printf( "prepare_laplace() flags=%i  omp_max_threads=%i n(%i,%i,%i) T(prepare_laplace)= %g [Mticks] T(solve_laplace)= %g [Mticks] T(laplace_real_loop)= %g [Mticks]\n", flags, omp_get_max_threads(), W.gewald.n.x,W.gewald.n.y,W.gewald.n.z, (t1-t0)*1e-6, (t2-t1)*1e-6, (t4-t3)*1e-6 );
+    printf( "EwaldGridSolveLaplace() flags=%i  omp_max_threads=%i n(%i,%i,%i) T(prepare_laplace)= %g [Mticks] T(solve_laplace)= %g [Mticks] T(laplace_real_loop)= %g [Mticks]\n", flags, omp_get_max_threads(), W.gewald.n.x,W.gewald.n.y,W.gewald.n.z, (t1-t0)*1e-6, (t2-t1)*1e-6, (t4-t3)*1e-6 );
     // if(bDestroy){ if(bOMP){ W.gewald.destroy_laplace_omp( ); }
     //               else    { W.gewald.destroy_laplace    ( ); } }
 }
