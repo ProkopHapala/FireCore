@@ -83,7 +83,7 @@ def plot1Dcut(apos, Vg, i0, dg, Ls, iax=0, nPBC=[10,10,10], Vmax=1.0, scErr=100.
     plt.legend()
     plt.grid()
 
-def test_vs_direct( apos, qs, ns=[80,120,120], dg=[0.1/0.8,0.1/1.2,0.1/1.2], nPBC=[60,30,30], scErr=100.0, order=2, bPython=False ):
+def test_vs_direct( apos, qs, ns=[80,120,120], dg=[0.1/0.8,0.1/1.2,0.1/1.2], nPBC=[60,30,30], scErr=100.0, order=2, bPython=False, bOMP=False, nBlur=0, cSOR=0.0, cV=0.5, yrange=None ):
     apos = apos.copy()
     print( "apos ", apos )
     Ls = [ ns[0]*dg[0], ns[1]*dg[1], ns[2]*dg[2] ]                                # lenghts along each axis  
@@ -93,40 +93,54 @@ def test_vs_direct( apos, qs, ns=[80,120,120], dg=[0.1/0.8,0.1/1.2,0.1/1.2], nPB
 
     Qtot = np.abs(dens).sum();        print("Qtot = ", Qtot, np.abs(qs).sum() )   # check if the total charge is conserved in projection ( should be same as sum of qs )
     
-    if bPython:
-        Vg,(density_fft, Vw, ker_w) = compute_potential(dens, dg, bInternals=True )
-    else:
-        print( "ERROR not implemented yet !!!" )
-        exit()
-
     # set voxel through which we cut the 3D grid Vg in debug plots
     ix0=ns[0]//2
     iy0=ns[1]//2
     iz0=ns[2]//2
     i0 = (ix0,iy0,iz0)
 
-    # ---- 2D debug plots
-    # dens2d =  np.sum( dens, axis=iax )
-    plt.figure(figsize=(15,10))
-    extent  =[  -Ls[0]*0.5  , +Ls[0]*0.5,    -Ls[1]*0.5  ,+Ls[1]*0.5      ]
-    extent_w=[  -np.pi/dg[0], +np.pi/dg[0],  -np.pi/dg[1],+np.pi/dg[1]    ]
-    # --- plot in real-space (cartesian) coordinates
-    plt.subplot(2,3,1  ); plt.imshow( dens [iz0,:,:],                        cmap='bwr', extent=extent  , origin="lower" ); plt.colorbar(); plt.title("Charge Density" )
-    plt.subplot(2,3,2  ); plt.imshow( ker_w[iz0,:,:],                        cmap='bwr', extent=extent_w, origin="lower" ); plt.colorbar(); plt.title("ker_w" )
-    plt.subplot(2,3,3  ); plt.imshow( Vg   [iz0,:,:],   vmin=-1.0,vmax=1.0,  cmap='bwr', extent=extent  , origin="lower" ); plt.colorbar(); plt.title("V ewald C++/FFTW3 " )
-    # --- plot in pixel-coordinates
-    plt.subplot(2,3,3+1); plt.imshow( dens [iz0,:,:],                        cmap='bwr'               , origin="lower" ); plt.colorbar(); plt.title("Charge Density" )
-    plt.subplot(2,3,3+2); plt.imshow( ker_w[iz0,:,:],                        cmap='bwr'               , origin="lower" ); plt.colorbar(); plt.title("ker_w" )
-    plt.subplot(2,3,3+3); plt.imshow( Vg   [iz0,:,:],   vmin=-1.0,vmax=1.0,  cmap='bwr'               , origin="lower" ); plt.colorbar(); plt.title("V ewald C++/FFTW3 " )
-    
+    if bPython:
+        Vg,(density_fft, Vw, ker_w) = compute_potential(dens, dg, bInternals=True )
+
+        # ---- 2D debug plots
+        # dens2d =  np.sum( dens, axis=iax )
+        plt.figure(figsize=(15,10))
+        extent  =[  -Ls[0]*0.5  , +Ls[0]*0.5,    -Ls[1]*0.5  ,+Ls[1]*0.5      ]
+        extent_w=[  -np.pi/dg[0], +np.pi/dg[0],  -np.pi/dg[1],+np.pi/dg[1]    ]
+        # --- plot in real-space (cartesian) coordinates
+        plt.subplot(2,3,1  ); plt.imshow( dens [iz0,:,:],                        cmap='bwr', extent=extent  , origin="lower" ); plt.colorbar(); plt.title("Charge Density" )
+        plt.subplot(2,3,2  ); plt.imshow( ker_w[iz0,:,:],                        cmap='bwr', extent=extent_w, origin="lower" ); plt.colorbar(); plt.title("ker_w" )
+        plt.subplot(2,3,3  ); plt.imshow( Vg   [iz0,:,:],   vmin=-1.0,vmax=1.0,  cmap='bwr', extent=extent  , origin="lower" ); plt.colorbar(); plt.title("V ewald C++/FFTW3 " )
+        # --- plot in pixel-coordinates
+        plt.subplot(2,3,3+1); plt.imshow( dens [iz0,:,:],                        cmap='bwr'               , origin="lower" ); plt.colorbar(); plt.title("Charge Density" )
+        plt.subplot(2,3,3+2); plt.imshow( ker_w[iz0,:,:],                        cmap='bwr'               , origin="lower" ); plt.colorbar(); plt.title("ker_w" )
+        plt.subplot(2,3,3+3); plt.imshow( Vg   [iz0,:,:],   vmin=-1.0,vmax=1.0,  cmap='bwr'               , origin="lower" ); plt.colorbar(); plt.title("V ewald C++/FFTW3 " )
+
+    else:
+        Vg = mmff.EwaldGridSolveLaplace( dens, nBlur=nBlur, cSOR=cSOR, cV=cV, bOMP=bOMP )
+        #Vg = mmff.EwaldGridSolveLaplace( dens  )
+        
+        # dV = dg[0]*dg[1]*dg[2]
+        # ntot = ns[0]*ns[1]*ns[2]
+        # scEwald = COULOMB_CONST * 4.0* np.pi / (ntot*dV)  
+        # print("Ewald(C++) mmff.EwaldGridSolveLaplace() scEwald = ", scEwald)
+        # Vg *= scEwald
+
     # ---- 1D debug plots
     plt.figure(figsize=(10,5))
     plt.subplot(1,2,1); plot1Dcut( apos, Vg, i0=i0, dg=dg, Ls=Ls, iax=0, nPBC=nPBC, scErr=scErr )
     plt.subplot(1,2,2); plot1Dcut( apos, Vg, i0=i0, dg=dg, Ls=Ls, iax=1, nPBC=nPBC, scErr=scErr )
     #plt.subplot(1,3,3); plot1Dcut( Vg, i0=i0, dg=dg, lvec=lvec, iax=2, nPBC=nPBC, scErr=scErr )
-    
-    plt.tight_layout()
+
+    if yrange is not None:
+        plt.subplot(1,2,1); plt.ylim(yrange)
+        plt.subplot(1,2,2); plt.ylim(yrange)
+
+    #plt.tight_layout()
     #plt.show()
+
+    #super title
+    plt.suptitle( "order=" + str(order) + " nBlur=" + str(nBlur) + " cSOR=" + str(cSOR) + " cV=" + str(cV) )
     
 d=0.6
 apos=np.array([
@@ -139,75 +153,110 @@ qs = [ +1.,+1.,-1.,-1. ]
 
 
 
-#test_vs_direct( apos, qs, bPython=True, ns=[100,100,100], dg=[0.10,0.10,0.10] )   # GOOD, This is perfect
+#test_vs_direct( apos, qs,  ns=[100,100,100], dg=[0.10,0.10,0.10] )   # GOOD, This is perfect
 
 # --- change voxel size  homogeneously in all directions
-#test_vs_direct( apos, qs, bPython=True, ns=[100,100,100], dg=[0.15,0.15,0.15] )   # GOOD, This is perfect
-#test_vs_direct( apos, qs, bPython=True, ns=[100,100,100], dg=[0.07,0.07,0.07] )   # GOOD, This is perfect
+#test_vs_direct( apos, qs,  ns=[100,100,100], dg=[0.15,0.15,0.15] )   # GOOD, This is perfect
+#test_vs_direct( apos, qs,  ns=[100,100,100], dg=[0.07,0.07,0.07] )   # GOOD, This is perfect
 
 # --- change number of grid points homogeneously in all directions
-#test_vs_direct( apos, qs, bPython=True, ns=[150,150,150], dg=[0.10,0.10,0.10] )    # GOOD, This is perfect
-#test_vs_direct( apos, qs, bPython=True, ns=[80,80,80],    dg=[0.10,0.10,0.10] )    # GOOD, This is perfect
+#test_vs_direct( apos, qs,  ns=[150,150,150], dg=[0.10,0.10,0.10] )    # GOOD, This is perfect
+#test_vs_direct( apos, qs,  ns=[80,80,80],    dg=[0.10,0.10,0.10] )    # GOOD, This is perfect
 
 # ========= Changing step size in two directions
 
 # --- change voxel size  homogeneously in xy-directions
-#test_vs_direct( apos, qs, bPython=True, ns=[100,100,100], dg=[0.15,0.15,0.10] )    # GOOD, This is perfect
-#test_vs_direct( apos, qs, bPython=True, ns=[100,100,100], dg=[0.07,0.07,0.10] )    # GOOD, This is perfect
+#test_vs_direct( apos, qs,  ns=[100,100,100], dg=[0.15,0.15,0.10] )    # GOOD, This is perfect
+#test_vs_direct( apos, qs,  ns=[100,100,100], dg=[0.07,0.07,0.10] )    # GOOD, This is perfect
 
 # --- change voxel size  homogeneously in xz-directions
-#test_vs_direct( apos, qs, bPython=True, ns=[100,100,100], dg=[0.07,0.10,0.07] )    # Quite good
-#test_vs_direct( apos, qs, bPython=True, ns=[100,100,100], dg=[0.15,0.10,0.15] )    # Quite good
+#test_vs_direct( apos, qs,  ns=[100,100,100], dg=[0.07,0.10,0.07] )    # Quite good
+#test_vs_direct( apos, qs,  ns=[100,100,100], dg=[0.15,0.10,0.15] )    # Quite good
 
 # --- change voxel size  homogeneously in yz-directions
-#test_vs_direct( apos, qs, bPython=True, ns=[100,100,100], dg=[0.10,0.07,0.07] )    # Quite good
-#test_vs_direct( apos, qs, bPython=True, ns=[100,100,100], dg=[0.10,0.15,0.15] )    # Quite good
+#test_vs_direct( apos, qs,  ns=[100,100,100], dg=[0.10,0.07,0.07] )    # Quite good
+#test_vs_direct( apos, qs,  ns=[100,100,100], dg=[0.10,0.15,0.15] )    # Quite good
 
 
 # ========= Changing step size in one direction
 
 
 # --- change voxel size  only in x-directions
-#test_vs_direct( apos, qs, bPython=True, ns=[100,100,100], dg=[0.07,0.10,0.10] )    # Quite good
-#test_vs_direct( apos, qs, bPython=True, ns=[100,100,100], dg=[0.15,0.10,0.10] )    # Quite good
-#test_vs_direct( apos, qs, bPython=True, ns=[100,100,100], dg=[0.20,0.10,0.10] )    # NOT SO PERFECT, iax0 goes to ~1.5 almost
+#test_vs_direct( apos, qs, ns=[100,100,100], dg=[0.07,0.10,0.10] )    # Quite good
+#test_vs_direct( apos, qs, ns=[100,100,100], dg=[0.15,0.10,0.10] )    # Quite good
+#test_vs_direct( apos, qs, ns=[100,100,100], dg=[0.20,0.10,0.10] )    # NOT SO PERFECT, iax0 goes to ~1.5 almost
 
-#test_vs_direct( apos, qs, bPython=True, ns=[100,100,100], dg=[0.10,0.20,0.10], nPBC=[30,30,30] )    # NOT SO PERFECT, iax1 goes to ~1.5 almost
-#test_vs_direct( apos, qs, bPython=True, ns=[100,100,100], dg=[0.10,0.20,0.10], nPBC=[60,30,30] )    # NOT SO PERFECT, iax1 goes to ~1.5 almost
+#test_vs_direct( apos, qs, ns=[100,100,100], dg=[0.10,0.20,0.10], nPBC=[30,30,30] )    # NOT SO PERFECT, iax1 goes to ~1.5 almost
+#test_vs_direct( apos, qs, ns=[100,100,100], dg=[0.10,0.20,0.10], nPBC=[60,30,30] )    # NOT SO PERFECT, iax1 goes to ~1.5 almost
 
-test_vs_direct( apos, qs, bPython=True, ns=[100,100,100], dg=[0.10,0.20,0.10], nPBC=[30,30,30], order=3 )    # NOT SO PERFECT, iax1 goes to ~1.5 almost
-test_vs_direct( apos, qs, bPython=True, ns=[100,100,100], dg=[0.10,0.20,0.10], nPBC=[60,30,30], order=3 )    # NOT SO PERFECT, iax1 goes to ~1.5 almost
+test_vs_direct( apos, qs,  ns=[100,100,100], dg=[0.10,0.20,0.10], nPBC=[30,30,30], order=3 )    # NOT SO PERFECT, iax1 goes to ~1.5 almost
+test_vs_direct( apos, qs,  ns=[100,100,100], dg=[0.10,0.20,0.10], nPBC=[60,30,30], order=3 )    # Almost perfect
 
-#test_vs_direct( apos, qs, bPython=True, ns=[100,100,100], dg=[0.10,0.20,0.10], order=3 )    # NOT SO PERFECT, iax1 goes to ~1.5 almost
-#test_vs_direct( apos, qs, bPython=True, ns=[100,100,100], dg=[0.10,0.10,0.20] )    # GOOD, This is perfect
+
+#test_vs_direct( apos, qs,  ns=[100,100,100], dg=[0.10,0.20,0.10], nPBC=[60,30,30], order=3, nBlur=4, cV=0.85  )    # Almost perfect
+
+#test_vs_direct( apos, qs, ns=[100,100,100], dg=[0.10,0.20,0.10], order=3 )    # NOT SO PERFECT, iax1 goes to ~1.5 almost
+#test_vs_direct( apos, qs, ns=[100,100,100], dg=[0.10,0.10,0.20] )    # GOOD, This is perfect
 
 # --- change voxel size  only in y-directions
-#test_vs_direct( apos, qs, bPython=True, ns=[100,100,100], dg=[0.10,0.07,0.10] )    # Quite good
-#test_vs_direct( apos, qs, bPython=True, ns=[100,100,100], dg=[0.10,0.15,0.10] )    # Quite good
+#test_vs_direct( apos, qs, ns=[100,100,100], dg=[0.10,0.07,0.10] )    # Quite good
+#test_vs_direct( apos, qs, ns=[100,100,100], dg=[0.10,0.15,0.10] )    # Quite good
 
 # --- change voxel size  only in z-directions
-#test_vs_direct( apos, qs, bPython=True, ns=[100,100,100], dg=[0.10,0.10,0.07] )    # GOOD, This is perfect
-#test_vs_direct( apos, qs, bPython=True, ns=[100,100,100], dg=[0.10,0.10,0.15] )    # GOOD, This is perfect
+#test_vs_direct( apos, qs,  ns=[100,100,100], dg=[0.10,0.10,0.07] )    # GOOD, This is perfect
+#test_vs_direct( apos, qs,  ns=[100,100,100], dg=[0.10,0.10,0.15] )    # GOOD, This is perfect
 
 
 
 
 # ========= Changing number of grid points in different directions
 
-#test_vs_direct( apos, qs, bPython=True, ns=[150,100,100], dg=[0.10,0.10,0.10] )    # 
-#test_vs_direct( apos, qs, bPython=True, ns=[100,150,100], dg=[0.10,0.10,0.10] )    # 
-#test_vs_direct( apos, qs, bPython=True, ns=[100,100,150], dg=[0.10,0.10,0.10] )    # GOOD, This is perfect
+#test_vs_direct( apos, qs,  ns=[150,100,100], dg=[0.10,0.10,0.10] )    # 
+#test_vs_direct( apos, qs,  ns=[100,150,100], dg=[0.10,0.10,0.10] )    # 
+#test_vs_direct( apos, qs,  ns=[100,100,150], dg=[0.10,0.10,0.10] )    # GOOD, This is perfect
 
 
-#test_vs_direct( apos, qs, bPython=True, ns=[200,100,100], dg=[0.10,0.10,0.10] )    # NOT SO PERFECT - iax=0 goes up to 1.2
-#test_vs_direct( apos, qs, bPython=True, ns=[100,200,100], dg=[0.10,0.10,0.10] )    # NOT SO PERFECT -  iax=1 goes up to 1.2
+#test_vs_direct( apos, qs,  ns=[200,100,100], dg=[0.10,0.10,0.10] )    # NOT SO PERFECT - iax=0 goes up to 1.2
+#test_vs_direct( apos, qs,  ns=[100,200,100], dg=[0.10,0.10,0.10] )    # NOT SO PERFECT -  iax=1 goes up to 1.2
 
 
-#test_vs_direct( apos, qs, bPython=True, ns=[50,100,100], dg=[0.10,0.10,0.10] )    # NOT SO PERFECT - iax=1 goes up to 1.2
-#test_vs_direct( apos, qs, bPython=True, ns=[100,50,100], dg=[0.10,0.10,0.10] )    # NOT SO PERFECT -  iax=0 goes up to 1.2
+#test_vs_direct( apos, qs,  ns=[50,100,100], dg=[0.10,0.10,0.10] )    # NOT SO PERFECT - iax=1 goes up to 1.2
+#test_vs_direct( apos, qs,  ns=[100,50,100], dg=[0.10,0.10,0.10] )    # NOT SO PERFECT -  iax=0 goes up to 1.2
 
 
-#test_vs_direct( apos, qs, bPython=True, ns=[100,100,200], dg=[0.10,0.10,0.10] )   # GOOD, This is perfect
-#test_vs_direct( apos, qs, bPython=True, ns=[100,100,50], dg=[0.10,0.10,0.10] )    # GOOD, This is perfect
+#test_vs_direct( apos, qs,  ns=[100,100,200], dg=[0.10,0.10,0.10] )   # GOOD, This is perfect
+#test_vs_direct( apos, qs,  ns=[100,100,50], dg=[0.10,0.10,0.10] )    # GOOD, This is perfect
+
+
+
+# ========= Real space smoothening from Bspline(order=3)
+#test_vs_direct( apos, qs,  ns=[100,100,100], dg=[0.10,0.20,0.10], nPBC=[60,30,30], order=3, nBlur=2, cV=0.85, yrange=[0.98,1.02] )    # Almost perfect
+#test_vs_direct( apos, qs,  ns=[100,100,100], dg=[0.10,0.20,0.10], nPBC=[60,30,30], order=3, nBlur=2, cV=0.90, yrange=[0.98,1.02] )    # Almost perfect
+#test_vs_direct( apos, qs,  ns=[100,100,100], dg=[0.10,0.20,0.10], nPBC=[60,30,30], order=3, nBlur=2, cV=0.93, yrange=[0.98,1.02] )    # Almost perfect  # BEST
+#test_vs_direct( apos, qs,  ns=[100,100,100], dg=[0.10,0.20,0.10], nPBC=[60,30,30], order=3, nBlur=2, cV=0.95, yrange=[0.98,1.02] )    # Almost perfect
+#test_vs_direct( apos, qs,  ns=[100,100,100], dg=[0.10,0.20,0.10], nPBC=[60,30,30], order=3, nBlur=2, cV=0.97, yrange=[0.98,1.02] )    # Almost perfect
+#test_vs_direct( apos, qs,  ns=[100,100,100], dg=[0.10,0.20,0.10], nPBC=[60,30,30], order=3, nBlur=3, cV=0.85, yrange=[0.98,1.02] )    # Almost perfect
+#test_vs_direct( apos, qs,  ns=[100,100,100], dg=[0.10,0.20,0.10], nPBC=[60,30,30], order=3, nBlur=3, cV=0.90, yrange=[0.98,1.02] )    # Almost perfect
+#test_vs_direct( apos, qs,  ns=[100,100,100], dg=[0.10,0.20,0.10], nPBC=[60,30,30], order=3, nBlur=3, cV=0.94, yrange=[0.98,1.02] )    # Almost perfect
+#test_vs_direct( apos, qs,  ns=[100,100,100], dg=[0.10,0.20,0.10], nPBC=[60,30,30], order=3, nBlur=3, cV=0.95, yrange=[0.98,1.02] )    # Almost perfect  # BEST
+#test_vs_direct( apos, qs,  ns=[100,100,100], dg=[0.10,0.20,0.10], nPBC=[60,30,30], order=3, nBlur=3, cV=0.96, yrange=[0.98,1.02] )    # Almost perfect
+#test_vs_direct( apos, qs,  ns=[100,100,100], dg=[0.10,0.20,0.10], nPBC=[60,30,30], order=3, nBlur=4, cV=0.85, yrange=[0.98,1.02] )    # Almost perfect
+#test_vs_direct( apos, qs,  ns=[100,100,100], dg=[0.10,0.20,0.10], nPBC=[60,30,30], order=3, nBlur=4, cV=0.90, yrange=[0.98,1.02] )    # Almost perfect
+#test_vs_direct( apos, qs,  ns=[100,100,100], dg=[0.10,0.20,0.10], nPBC=[60,30,30], order=3, nBlur=4, cV=0.95, yrange=[0.98,1.02] )    # Almost perfect
+#test_vs_direct( apos, qs,  ns=[100,100,100], dg=[0.10,0.20,0.10], nPBC=[60,30,30], order=3, nBlur=4, cV=0.85, yrange=[0.99,1.01] )    # Almost perfect
+#test_vs_direct( apos, qs,  ns=[100,100,100], dg=[0.10,0.20,0.10], nPBC=[60,30,30], order=3, nBlur=4, cV=0.90, yrange=[0.99,1.01] )    # Almost perfect
+#test_vs_direct( apos, qs,  ns=[100,100,100], dg=[0.10,0.20,0.10], nPBC=[60,30,30], order=3, nBlur=4, cV=0.95, yrange=[0.99,1.01] )    # Almost perfect  # BEST
+
+# ========= Real space smoothening from Bspline(order=2)
+
+#test_vs_direct( apos, qs,  ns=[100,100,100], dg=[0.10,0.20,0.10], nPBC=[60,30,30], order=2, nBlur=4, cV=0.850, yrange=[0.99,1.01] )   # Almost perfect
+#test_vs_direct( apos, qs,  ns=[100,100,100], dg=[0.10,0.20,0.10], nPBC=[60,30,30], order=2, nBlur=4, cV=0.900, yrange=[0.99,1.01] )   # Almost perfect
+#test_vs_direct( apos, qs,  ns=[100,100,100], dg=[0.10,0.20,0.10], nPBC=[60,30,30], order=2, nBlur=4, cV=0.930, yrange=[0.99,1.01] )   # Almost perfect
+#test_vs_direct( apos, qs,  ns=[100,100,100], dg=[0.10,0.20,0.10], nPBC=[60,30,30], order=2, nBlur=4, cV=0.935, yrange=[0.99,1.01] )   # Almost perfect  # BEST
+#test_vs_direct( apos, qs,  ns=[100,100,100], dg=[0.10,0.20,0.10], nPBC=[60,30,30], order=2, nBlur=4, cV=0.940, yrange=[0.99,1.01] )   # Almost perfect
+#test_vs_direct( apos, qs,  ns=[100,100,100], dg=[0.10,0.20,0.10], nPBC=[60,30,30], order=2, nBlur=4, cV=0.950, yrange=[0.99,1.01] )   # Almost perfect
+#test_vs_direct( apos, qs,  ns=[100,100,100], dg=[0.10,0.20,0.10], nPBC=[60,30,30], order=2, nBlur=4, cV=0.960, yrange=[0.99,1.01] )   # Almost perfect
+#test_vs_direct( apos, qs,  ns=[100,100,100], dg=[0.10,0.15,0.10], nPBC=[45,30,30], order=2, nBlur=4, cV=0.930, yrange=[0.99,1.01] )   # Almost perfect  # BEST
+#test_vs_direct( apos, qs,  ns=[100,100,100], dg=[0.10,0.15,0.10], nPBC=[45,30,30], order=2, nBlur=4, cV=0.935, yrange=[0.99,1.01] )   # Almost perfect  # BEST
 
 plt.show()
