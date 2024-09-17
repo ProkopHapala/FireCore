@@ -543,6 +543,7 @@ class Vec6T { public:
 	union{
         struct{ Vec3T<T> lo,hi; };
         struct{ T xx,yy,zz, yz,xz,xy; };
+        struct{ T a,b,c, d,e,f; };
 		T array[6];
 	};
     inline T dot( Vec6T<T> a )const{ return xx*a.xx + yy*a.yy + zz*a.zz + yz*a.yz + xz*a.xz + xy*a.xy; }

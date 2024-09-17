@@ -148,9 +148,9 @@ void project_atom_on_grid_cubic_pbc(const Vec3d pi, const double qi, double* den
     const int nxy = n.x * n.y;
 
     // Pre-calculate periodic boundary condition indices for each dimension
-    const Quat4i xqs = choose_inds_pbc(ix-1, n.x, xqs_o3 );  // Assuming you pre-calculate xqs, yqs, zqs
-    const Quat4i yqs = choose_inds_pbc(iy-1, n.y, yqs_o3 );
-    const Quat4i zqs = choose_inds_pbc(iz-1, n.z, zqs_o3 );
+    const Quat4i xqs = choose_inds_pbc_3(ix-1, n.x, xqs_o3 );  // Assuming you pre-calculate xqs, yqs, zqs
+    const Quat4i yqs = choose_inds_pbc_3(iy-1, n.y, yqs_o3 );
+    const Quat4i zqs = choose_inds_pbc_3(iz-1, n.z, zqs_o3 );
 
     // Loop over the B-spline grid contributions
     for (int dz = 0; dz < 4; dz++) {
@@ -235,9 +235,9 @@ void project_atom_on_grid_quintic_pbc(const Vec3d pi, const double qi, double* d
     const int nxy = n.x * n.y;
 
     // Pre-calculate periodic boundary condition indices for each dimension
-    const Vec6T xqs = choose_inds_pbc(ix-2, n.x, xqs_o5 );  // Assuming you pre-calculate xqs, yqs, zqs
-    const Vec6T yqs = choose_inds_pbc(iy-2, n.y, yqs_o5 );
-    const Vec6T zqs = choose_inds_pbc(iz-2, n.z, zqs_o5 );
+    const Vec6T xqs = choose_inds_pbc_5(ix-2, n.x, xqs_o5 );  // Assuming you pre-calculate xqs, yqs, zqs
+    const Vec6T yqs = choose_inds_pbc_5(iy-2, n.y, yqs_o5 );
+    const Vec6T zqs = choose_inds_pbc_5(iz-2, n.z, zqs_o5 );
 
     // Loop over the B-spline grid contributions
     for (int dz = 0; dz < 6; dz++) {
@@ -284,9 +284,9 @@ __attribute__((hot))
 void project_atoms_on_grid_quintic( int na, const Vec3d* apos, const double* qs, double* dens, bool bPBC=true ) {
     //printf("project_atoms_on_grid_quintic() na=%i ns(%i,%i,%i) pos0(%g,%g,%g)\n", na, n.x,n.y,n.z, pos0.x,pos0.y,pos0.z );
     if( bQuinticPBCIndexesDone && bPBC ){ 
-        make_inds_pbc(n.x, xqs_o5); 
-        make_inds_pbc(n.y, yqs_o5); 
-        make_inds_pbc(n.z, zqs_o5);
+        make_inds_pbc_5(n.x, xqs_o5); 
+        make_inds_pbc_5(n.y, yqs_o5); 
+        make_inds_pbc_5(n.z, zqs_o5);
         bQuinticPBCIndexesDone = true;
     }
     if(bPBC){ for (int ia=0; ia<na; ia++){ project_atom_on_grid_quintic_pbc( apos[ia], qs[ia], dens ); } }
@@ -517,11 +517,11 @@ void laplace_reciprocal_kernel( fftw_complex* VV ){
 
 #else
 
-    void prepare_laplace(){
+    void prepare_laplace( int flags=-1 ){
         printf("ERROR: you invoke prepare_laplace() while WITH_FFTW=false => exit()\n" ); exit(0);
     }
 
-    void solve_laplace(){
+    void solve_laplace( const double* dens, double* Vout=0 ){
         printf("ERROR: you invoke solve_laplace() while WITH_FFTW=false => exit()\n" ); exit(0);
     };
 

@@ -138,6 +138,15 @@ glob_bMMFF    = True
 # ====================================
 
 
+# void samplePBCindexes( int n, int* inds, int ng, int* iout, int order ){
+lib.samplePBCindexes.argtypes  = [ c_int, array1i, c_int, array2i, c_int ]
+lib.samplePBCindexes.restype   =  None
+def samplePBCindexes( inds, ng, iout=None, order=3 ):
+    n = len(inds)
+    if iout is None: iout = np.zeros( (n,(order+1)), dtype=np.int32 )
+    lib.samplePBCindexes( n, inds, ng, iout, order )
+    return iout
+
 #  int fit_Bspline( double dg, const int n, double* Gs, double* Es, double* Ws, double Ftol, int nmaxiter, double dt ){
 lib.fit_Bspline.argtypes  = [ c_int, c_double_p, c_double_p, c_double_p, c_double, c_int, c_double ]
 lib.fit_Bspline.restype   =  None
