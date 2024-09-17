@@ -513,15 +513,26 @@ def test_comb3_3D(g0=(-2.0,-2.0,-2.0), gmax=(2.0,2.0,2.5), dg=(0.1,0.1,0.1), dsa
 
     return Gs
 
-
+def test_PBCindexes( n=60, ng=20, order=3 ):
+    
+    inds = np.array( range(n), dtype=np.int32 )-(n//2)
+    iout = mmff.samplePBCindexes( inds, ng=ng, order=order )
+    plt.figure()
+    for i in range(order+1):
+        plt.plot( inds, iout[:,i], '.-', label=("%i" %i ) )
+    plt.grid()
+    plt.suptitle("order="+str(order) )
 
 
 #mmff.setVerbosity( 2 )
 mmff.setVerbosity( 3 )
 
-plt.figure(figsize=(5,10))
-test_eval_1D(order=3)
-test_eval_1D(order=5)
+test_PBCindexes( order=3 )
+test_PBCindexes( order=5 )
+
+#plt.figure(figsize=(5,10))
+#test_eval_1D(order=3)
+#test_eval_1D(order=5)
 
 #test_NURBS( g0=0.0, dg=0.5, dsamp=0.05 )
 

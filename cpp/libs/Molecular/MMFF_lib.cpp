@@ -136,6 +136,9 @@ void projectAtomsEwaldGrid( int na, double* apos, double* qs, double* dens, int 
     double t = (getCPUticks()-t0)*1e-6; printf( "projectAtomsEwaldGrid(order=%i) na=%i ng(%i,%i,%i) T(project_atoms_on_grid)=%g [Mticks] \n", order, na, W.gewald.n.x,W.gewald.n.y,W.gewald.n.z, t );
 }
 
+
+#ifdef WITH_FFTW
+
 void EwaldGridSolveLaplace( double* dens, double* Vout, bool bPrepare, bool bDestroy, int flags, bool bOMP, int nBlur, double cSOR, double cV ){
     // long t0 = getCPUticks();
     // if(bPrepare){ W.gewald.prepare_laplace( flags ); }
@@ -187,6 +190,8 @@ void EwaldGridSolveLaplaceDebug( double* dens, double* Vout, double* densw, doub
 
     W.gewald.destroy_laplace( );
 }
+
+#endif // WITH_FFTW
 
 void evalGridFFAtPoints( int n, double* ps, double* FFout, double* PLQH, bool bSplit ){
     long t0 = getCPUticks();

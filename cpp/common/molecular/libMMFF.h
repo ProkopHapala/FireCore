@@ -3,6 +3,7 @@
 #include "InterpolateTricubic.h"
 #include "Bspline.h"
 #include "NURBS.h"
+#include "Multipoles.h"
 
 extern "C"{
 
@@ -148,6 +149,30 @@ void scanAngleToAxis_ax( int n, int* selection, double r, double R, double* p0, 
 
 // ========= Force-Field Component Sampling  
 
+void samplePBCindexes( int n, int* inds, int ng, int* iout, int order ){
+
+    Quat4i xqs3[4+5];
+    Vec6i  xqs5[6+5];
+    if      (order==3){ 
+        make_inds_pbc  (ng, xqs3);  
+        //for(int i=0; i<4; i++){  printf( "xqs3[%i]{%i,%i,%i,%i}\n",       i, xqs3[i].x,xqs3[i].y,xqs3[i].z,xqs3[i].w ); };  
+    }
+    else if (order==5){ 
+        make_inds_pbc_5(ng, xqs5);  
+        //for(int i=0; i<6; i++){  printf( "xqs5[%i]{%i,%i,%i,%i,%i,%i}\n", i, xqs5[i].a,xqs5[i].b,xqs5[i].c,xqs5[i].d,xqs5[i].e,xqs5[i].f  ); };  
+    }
+    else{ printf("ERROR in samplePBCindexes() order=%i not implemented \n"); exit(0); }
+    for(int ii=0; ii<n; ii++){
+        int i   = inds[ii];
+        int* is = iout + (order+1)*ii;
+        if     ( order==3 ){ i=modulo(i-1, ng); *((Quat4i*)is) = choose_inds_pbc_3( i, ng, xqs3 ); }
+        else if( order==5 ){ i=modulo(i-2, ng); *((Vec6i* )is) = choose_inds_pbc_5( i, ng, xqs5 ); }
+
+        //if     ( order==3 ){ *((Quat4i*)is) = Quat4i{i,i+1,i+2,i+3}; }
+        //else if( order==5 ){ *((Vec6i* )is) = Vec6i {i,i+1,i+2,i+3,i+4,i+5};  }
+    }
+}
+
 int fit_Bspline( const int n, double* Gs, double* Es, double* Ws, double Ftol, int nmaxiter, double dt, bool bHalf ){
     //return Bspline::fit1D_old( n, Gs, Es, Ws, Ftol, nmaxiter, dt );
     return Bspline::fit1D( n, Gs, Es, Ws, Ftol, nmaxiter, dt, bHalf );
@@ -259,10 +284,10 @@ void sample_SplineHermite1D_deriv( double g0, double dg, int ng, double* EFg, in
     Spline_Hermite::sample1D_deriv( g0, dg, ng, (Vec2d*)EFg, n, ps, (Vec2d*)fes );  
 }
 
-
 void sampleCoulombPBC( int nps, double* ps, double* fe, int natom,  double* apos, double* Qs, double* lvec, int* nPBC, double Rdamp ){
     sampleCoulombPBC( nps, (Vec3d*)ps, (Quat4d*)fe, natom,  (Vec3d*)apos, Qs, *(Mat3d*)lvec, *(Vec3i*)nPBC, Rdamp );
 }
+
 
 void projectMultiPole( double* p0, int n, double* ps, double* Qs, int order, double* cs ){
     //Multiplole::center()

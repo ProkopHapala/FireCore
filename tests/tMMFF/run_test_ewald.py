@@ -160,6 +160,7 @@ qs = [ +1.,+1.,-1.,-1. ]
 
 test_vs_direct( apos, qs,  ns=[100,100,100], dg=[0.10,0.10,0.10], order=3 )  
 
+
 # --- change voxel size  homogeneously in all directions
 #test_vs_direct( apos, qs,  ns=[100,100,100], dg=[0.15,0.15,0.15] )   # GOOD, This is perfect
 #test_vs_direct( apos, qs,  ns=[100,100,100], dg=[0.07,0.07,0.07] )   # GOOD, This is perfect

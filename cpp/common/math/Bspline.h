@@ -45,11 +45,25 @@ void make_inds_pbc( const int n, Quat4i* iqs ){
 }
 
 inline Quat4i choose_inds_pbc( const int i, const int n, const Quat4i* iqs ){
-    if(i>=(n-3))[[unlikely]]{ return iqs[i+4-n]; }
+    if(i>=(n-3))[[unlikely]]{ 
+        const int ii = i+4-n;
+        //printf( "choose_inds_pbc() ii=%i i=%i n=%i \n", ii, i, n );
+        return iqs[ii]; 
+    }
+    return Quat4i{ 0, +1, +2, +3 };
+}
+
+inline Quat4i choose_inds_pbc_3( const int i, const int n, const Quat4i* iqs ){
+    if(i>=(n-3))[[unlikely]]{ 
+        const int ii = i+4-n;
+        //printf( "choose_inds_pbc() ii=%i i=%i n=%i \n", ii, i, n );
+        const Quat4i& d = iqs[ii];
+        return Quat4i{ i+d.x, i+d.y, i+d.z, i+d.w }   ; 
+    }
     return Quat4i{ i, i+1, i+2, i+3 };
 }
 
-void make_inds_pbc(const int n, Vec6i* iqs) {
+void make_inds_pbc_5(const int n, Vec6i* iqs) {
     iqs[0] = {0, 1,   2,   3,   4,   5  };
     iqs[1] = {0, 1,   2,   3,   4,   5-n};
     iqs[2] = {0, 1,   2,   3,   4-n, 5-n};
@@ -58,9 +72,12 @@ void make_inds_pbc(const int n, Vec6i* iqs) {
     iqs[5] = {0, 1-n, 2-n, 3-n, 4-n, 5-n};
 }
 
-inline Vec6i choose_inds_pbc(const int i, const int n, const Vec6i* iqs) {
+inline Vec6i choose_inds_pbc_5(const int i, const int n, const Vec6i* iqs) {
     if (i >= (n - 5)) [[unlikely]] {
-        return iqs[i+6-n];
+        const int ii = i+6-n;
+        //return iqs[i+6-n];
+        const Vec6i& d = iqs[ii];
+        return Vec6i{ i+d.a, i+d.b, i+d.c, i+d.d, i+d.e, i+d.f }   ; 
     }
     return Vec6i{ i, i+1, i+2, i+3, i+4, i+5 };
 }
