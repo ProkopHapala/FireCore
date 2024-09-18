@@ -288,7 +288,7 @@ inline Quat4T<T> ddbasis(T u){
 
 
 
-inline double project1D_cubic( double x, double x0, double dx, int n, double* ys, Quat4i* xqs ){
+inline double project1D_cubic( double w, double x, double x0, double dx, int n, double* ys, Quat4i* xqs ){
     // Convert atomic position to grid position
     double gp = (x-x0)/dx;
     int ix = (int) gp;
@@ -301,7 +301,7 @@ inline double project1D_cubic( double x, double x0, double dx, int n, double* ys
     double sum = 0;
     for (int dx = 0; dx < 4; dx++) {
         const int gx = xq.array[dx];
-        double    yi = bx.array[dx];
+        double    yi = bx.array[dx] * w;
         //printf( "project1D_cubic()[%i] gx(%3i) yi(%10.5f) \n", dx, gx, yi );
         ys[gx]   += yi;
         sum += yi;
@@ -309,7 +309,7 @@ inline double project1D_cubic( double x, double x0, double dx, int n, double* ys
     return sum;
 }
 
-inline double project1D_quintic( double x, double x0, double dx, int n, double* ys, Vec6i* xqs ){
+inline double project1D_quintic( double w, double x, double x0, double dx, int n, double* ys, Vec6i* xqs ){
     // Convert atomic position to grid position
     double gp = (x-x0)/dx;
     int ix = (int) gp;
@@ -321,11 +321,34 @@ inline double project1D_quintic( double x, double x0, double dx, int n, double* 
     double sum = 0;
     for (int dx = 0; dx < 6; dx++) {
         const int gx = xq.array[dx];
-        double yi = bx.array[dx];
+        double yi = bx.array[dx] * w;
         ys[gx]   += yi;
         sum += yi;
     }
     return sum;
+}
+
+void project2D_cubic( double w, const Vec2d pi, const Vec2d g0, const Vec2d inv_dg, const Vec2i n, double* ys, Quat4i* xqs, Quat4i* yqs ){
+    Vec2d gp = (pi-g0)*inv_dg;
+    int ix = (int) gp.x;     if(gp.x<0) ix--;
+    int iy = (int) gp.y;     if(gp.y<0) iy--;
+    const double tx = gp.x - ix;
+    const double ty = gp.y - iy;
+    const Quat4d bx = Bspline::basis(tx);
+    const Quat4d by = Bspline::basis(ty);
+    const int nxy = n.x * n.y;
+    ix=modulo(ix-1,n.x); const Quat4i xq = choose_inds_pbc_3(ix, n.x, xqs );  // Assuming you pre-calculate xqs, yqs, zqs
+    iy=modulo(iy-1,n.y); const Quat4i yq = choose_inds_pbc_3(iy, n.y, yqs );
+    for (int dy = 0; dy < 4; dy++) {
+        const int gy  = yq.array[dy];
+        const int iiy = gy * n.x;
+        const double qbyz = w * by.array[dy];
+        for (int dx = 0; dx < 4; dx++) {
+            const int gx = xq.array[dx];
+            const int ig = gx + iiy;
+            ys[ig] += qbyz * bx.array[dx];
+        }
+    }
 }
 
 
