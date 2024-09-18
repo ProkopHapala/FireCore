@@ -73,7 +73,7 @@ def plot1Dcut(apos, Vg, i0, dg, Ls, iax=0, nPBC=[10,10,10], Vmax=1.0, scErr=100.
 
     vd_vg = fe[:, 3] / Vgl  # Ratio of direct potential (reference) to Ewald potential
     factor = np.average(vd_vg[0:nt//3])  # Average in a safe distance from charges
-    print("plot1Dcut() iax=", iax, " nt ", nt, " dt ", dt, "Lt ", Lt, " factor ", factor)
+    #print("plot1Dcut() iax=", iax, " nt ", nt, " dt ", dt, "Lt ", Lt, " factor ", factor)
     # Plotting
     plt.plot(ts, Vgl,   '-k', label="V ewald")
     plt.plot(ts, vd_vg, '-', label="ref/ewald")
@@ -83,11 +83,11 @@ def plot1Dcut(apos, Vg, i0, dg, Ls, iax=0, nPBC=[10,10,10], Vmax=1.0, scErr=100.
     plt.legend()
     plt.grid()
 
-def test_vs_direct( apos, qs, ns=[100,100,100], dg=[0.1,0.1,0.1], nPBC=[30,30,30], scErr=100.0, order=2, bPython=False, bOMP=False, nBlur=0, cSOR=0.0, cV=0.5, yrange=None ):
+def test_vs_direct( apos, qs, ns=[100,100,100], dg=[0.1,0.1,0.1], nPBC=[30,30,30], pos0=None, scErr=100.0, order=2, bPython=False, bOMP=False, nBlur=0, cSOR=0.0, cV=0.5, yrange=None, bPlot1D=True ):
     apos = apos.copy()
     print( "apos ", apos )
     Ls = [ ns[0]*dg[0], ns[1]*dg[1], ns[2]*dg[2] ]                                # lenghts along each axis  
-    pos0=np.array( [ -0.5*Ls[0], -0.5*Ls[1], -0.5*Ls[2] ] )                       # origin of grid - half of the grid size
+    if pos0 is None: pos0=np.array( [ -0.5*Ls[0], -0.5*Ls[1], -0.5*Ls[2] ] )                       # origin of grid - half of the grid size
     mmff.setupEwaldGrid( ns, dg=dg, pos0=pos0 )                                   # setup grid in C++ for projection
     dens = mmff.projectAtomsEwaldGrid( apos, qs, ns=ns, order=order )             # project atoms to grid using C++ 
 
@@ -130,20 +130,18 @@ def test_vs_direct( apos, qs, ns=[100,100,100], dg=[0.1,0.1,0.1], nPBC=[30,30,30
         # Vg *= scEwald
 
     # ---- 1D debug plots
-    plt.figure(figsize=(10,5))
-    plt.subplot(1,2,1); plot1Dcut( apos, Vg, i0=i0, dg=dg, Ls=Ls, iax=0, nPBC=nPBC, scErr=scErr )
-    plt.subplot(1,2,2); plot1Dcut( apos, Vg, i0=i0, dg=dg, Ls=Ls, iax=1, nPBC=nPBC, scErr=scErr )
-    #plt.subplot(1,3,3); plot1Dcut( Vg, i0=i0, dg=dg, lvec=lvec, iax=2, nPBC=nPBC, scErr=scErr )
-
-    if yrange is not None:
-        plt.subplot(1,2,1); plt.ylim(yrange)
-        plt.subplot(1,2,2); plt.ylim(yrange)
-
-    #plt.tight_layout()
-    #plt.show()
-
-    #super title
-    plt.suptitle( "order=" + str(order) + " nBlur=" + str(nBlur) + " cSOR=" + str(cSOR) + " cV=" + str(cV) )
+    if bPlot1D:
+        plt.figure(figsize=(10,5))
+        plt.subplot(1,2,1); plot1Dcut( apos, Vg, i0=i0, dg=dg, Ls=Ls, iax=0, nPBC=nPBC, scErr=scErr )
+        plt.subplot(1,2,2); plot1Dcut( apos, Vg, i0=i0, dg=dg, Ls=Ls, iax=1, nPBC=nPBC, scErr=scErr )
+        #plt.subplot(1,3,3); plot1Dcut( Vg, i0=i0, dg=dg, lvec=lvec, iax=2, nPBC=nPBC, scErr=scErr )
+        if yrange is not None:
+            plt.subplot(1,2,1); plt.ylim(yrange)
+            plt.subplot(1,2,2); plt.ylim(yrange)
+        #plt.tight_layout()
+        #plt.show()
+        #super title
+        plt.suptitle( "order=" + str(order) + " nBlur=" + str(nBlur) + " cSOR=" + str(cSOR) + " cV=" + str(cV) )
     
 d=0.6
 apos=np.array([
@@ -158,7 +156,12 @@ qs = [ +1.,+1.,-1.,-1. ]
 
 #test_vs_direct( apos, qs,  ns=[100,100,100], dg=[0.10,0.10,0.10], order=2 )   # GOOD, This is perfect
 
-test_vs_direct( apos, qs,  ns=[100,100,100], dg=[0.10,0.10,0.10], order=3 )  
+#test_vs_direct( apos, qs,  ns=[100,100,100], dg=[0.10,0.10,0.10], order=3, bPython=True )  
+#test_vs_direct( apos, qs,  ns=[100,100,100], dg=[0.10,0.10,0.10], order=3, bPython=True, pos0=[0,0,-5.0] )  
+#test_vs_direct( apos, qs,  ns=[100,100,100], dg=[0.10,0.10,0.10], order=2, bPython=True, pos0=[0,0,-5.0] )  
+
+test_vs_direct( apos, qs,  ns=[16,16,16], dg=[0.10,0.10,0.10], order=2, bPython=True, pos0=[-0.8,-0.8,-0.8], bPlot1D=False )
+test_vs_direct( apos, qs,  ns=[16,16,16], dg=[0.10,0.10,0.10], order=2, bPython=True, pos0=[ 0.0, 0.0,-0.8], bPlot1D=False )  
 
 
 # --- change voxel size  homogeneously in all directions

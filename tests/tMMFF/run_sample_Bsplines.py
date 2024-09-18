@@ -523,12 +523,42 @@ def test_PBCindexes( n=60, ng=20, order=3 ):
     plt.grid()
     plt.suptitle("order="+str(order) )
 
+def test_project1D( xs,  g0=0.0, dg=0.1, ng=20, order=3 ):
+    L = ng*dg
+    ys = mmff.projectBspline1D( xs, g0, dg, ng, order=order )
+    Qtot = ys.sum(); print( "Qtot ",Qtot," order=",order," xs=", xs );
+
+    xg = np.arange( ng )*dg + g0    #;print("xg ", xg )
+
+    xg = np.concatenate([xg, xg+L ])  # Shift and concatenate x-array
+    ys = np.concatenate([ys, ys   ]) 
+
+    plt.figure()
+    #plt.plot( xg, ys, '.-', label=("order=%i" %order) )
+    plt.plot( xg, ys, '.-', label=("x[0]=%7.4f Qtot=%g" %(xs[0],Qtot) ) )
+    plt.axvline(L*0,ls='--', c='r')
+    plt.axvline(L*1,ls='--', c='r')
+    plt.axvline(L*2,ls='--', c='r')
+    plt.grid()
+    plt.legend()
+    #plt.suptitle("order="+str(order) )
 
 #mmff.setVerbosity( 2 )
 mmff.setVerbosity( 3 )
 
-test_PBCindexes( order=3 )
-test_PBCindexes( order=5 )
+#test_PBCindexes( order=3 )
+#test_PBCindexes( order=5 )
+
+
+
+
+#test_project1D( [ 0.050, 1.050] , g0=0.0, dg=0.1, ng=20, order=3 )
+#test_project1D( [ 0.025, 1.025] , g0=0.0, dg=0.1, ng=20, order=3 )
+test_project1D( [ 0.000, 1.000] , g0=0.0, dg=0.1, ng=20, order=3 )
+test_project1D( [-0.025, 0.975] , g0=0.0, dg=0.1, ng=20, order=3 )
+test_project1D( [-0.050, 0.950] , g0=0.0, dg=0.1, ng=20, order=3 )
+#test_project1D( [0.05, 1.0] , g0=0.0, dg=0.1, ng=20, order=5 )
+#plt.legend()
 
 #plt.figure(figsize=(5,10))
 #test_eval_1D(order=3)

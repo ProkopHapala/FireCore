@@ -151,8 +151,8 @@ void scanAngleToAxis_ax( int n, int* selection, double r, double R, double* p0, 
 
 void samplePBCindexes( int n, int* inds, int ng, int* iout, int order ){
 
-    Quat4i xqs3[4+5];
-    Vec6i  xqs5[6+5];
+    Quat4i xqs3[4];
+    Vec6i  xqs5[6];
     if      (order==3){ 
         make_inds_pbc  (ng, xqs3);  
         //for(int i=0; i<4; i++){  printf( "xqs3[%i]{%i,%i,%i,%i}\n",       i, xqs3[i].x,xqs3[i].y,xqs3[i].z,xqs3[i].w ); };  
@@ -167,9 +167,27 @@ void samplePBCindexes( int n, int* inds, int ng, int* iout, int order ){
         int* is = iout + (order+1)*ii;
         if     ( order==3 ){ i=modulo(i-1, ng); *((Quat4i*)is) = choose_inds_pbc_3( i, ng, xqs3 ); }
         else if( order==5 ){ i=modulo(i-2, ng); *((Vec6i* )is) = choose_inds_pbc_5( i, ng, xqs5 ); }
+    }
+}
 
-        //if     ( order==3 ){ *((Quat4i*)is) = Quat4i{i,i+1,i+2,i+3}; }
-        //else if( order==5 ){ *((Vec6i* )is) = Vec6i {i,i+1,i+2,i+3,i+4,i+5};  }
+
+void projectBspline1D( int nx, double* xs, double g0, double dg, int ng, double* ys, int order ){
+    Quat4i xqs3[4];
+    Vec6i  xqs5[6];
+    //printf("projectBspline1D() nx=%i g0=%g dg=%g ng=%i order=%i \n", nx, g0, dg, ng, order );
+    if      (order==3){ 
+        make_inds_pbc  (ng, xqs3);  
+        //for(int i=0; i<4; i++){  printf( "xqs3[%i]{%i,%i,%i,%i}\n",       i, xqs3[i].x,xqs3[i].y,xqs3[i].z,xqs3[i].w ); };  
+    }
+    else if (order==5){ 
+        make_inds_pbc_5(ng, xqs5);  
+        //for(int i=0; i<6; i++){  printf( "xqs5[%i]{%i,%i,%i,%i,%i,%i}\n", i, xqs5[i].a,xqs5[i].b,xqs5[i].c,xqs5[i].d,xqs5[i].e,xqs5[i].f  ); };  
+    }
+    else{ printf("ERROR in samplePBCindexes() order=%i not implemented \n", order ); exit(0); }
+    for(int i=0; i<nx; i++){
+        double x   = xs[i];
+        if     ( order==3 ){ Bspline::project1D_cubic  ( x, g0, dg, ng, ys, xqs3 ); }
+        else if( order==5 ){ Bspline::project1D_quintic( x, g0, dg, ng, ys, xqs5 ); }
     }
 }
 

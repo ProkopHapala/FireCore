@@ -56,7 +56,7 @@ __attribute__((hot))
 inline void project_atom_on_grid_linear( const Vec3d pi, const double qi, double* dens ) const {
     //printf("project_atom_on_grid() pi(%g,%g,%g) q=%g \n", pi.x, pi.y, pi.z, qi );
     const Vec3d gp = diCell.dot( pi-pos0 );
-    const int ix = (int) gp.x;
+    const int ix = (int) gp.x; 
     const int iy = (int) gp.y;
     const int iz = (int) gp.z;
     const double tx = gp.x - ix;
@@ -132,9 +132,9 @@ __attribute__((hot))
 void project_atom_on_grid_cubic_pbc(const Vec3d pi, const double qi, double* dens) const {
     // Convert atomic position to grid position
     const Vec3d gp = diCell.dot(pi - pos0);
-    const int ix = (int) gp.x;
-    const int iy = (int) gp.y;
-    const int iz = (int) gp.z;
+    int ix = (int) gp.x;     if(gp.x<0) ix--;
+    int iy = (int) gp.y;     if(gp.y<0) iy--;
+    int iz = (int) gp.z;     if(gp.z<0) iz--;
     const double tx = gp.x - ix;
     const double ty = gp.y - iy;
     const double tz = gp.z - iz;
@@ -148,9 +148,9 @@ void project_atom_on_grid_cubic_pbc(const Vec3d pi, const double qi, double* den
     const int nxy = n.x * n.y;
 
     // Pre-calculate periodic boundary condition indices for each dimension
-    const Quat4i xqs = choose_inds_pbc_3(ix-1, n.x, xqs_o3 );  // Assuming you pre-calculate xqs, yqs, zqs
-    const Quat4i yqs = choose_inds_pbc_3(iy-1, n.y, yqs_o3 );
-    const Quat4i zqs = choose_inds_pbc_3(iz-1, n.z, zqs_o3 );
+    ix=modulo(ix-1,n.x); const Quat4i xqs = choose_inds_pbc_3(ix, n.x, xqs_o3 );  // Assuming you pre-calculate xqs, yqs, zqs
+    iy=modulo(iy-1,n.y); const Quat4i yqs = choose_inds_pbc_3(iy, n.y, yqs_o3 );
+    iz=modulo(iz-1,n.z); const Quat4i zqs = choose_inds_pbc_3(iz, n.z, zqs_o3 );
 
     // Loop over the B-spline grid contributions
     for (int dz = 0; dz < 4; dz++) {
@@ -218,10 +218,9 @@ __attribute__((hot))
 void project_atom_on_grid_quintic_pbc(const Vec3d pi, const double qi, double* dens) const {
     // Convert atomic position to grid position
     const Vec3d gp = diCell.dot(pi - pos0);
-
-    const int ix = (int) gp.x;
-    const int iy = (int) gp.y;
-    const int iz = (int) gp.z;
+    int ix = (int) gp.x;    if(gp.x<0) ix--;
+    int iy = (int) gp.y;    if(gp.y<0) iy--;
+    int iz = (int) gp.z;    if(gp.z<0) iz--;
     const double tx = gp.x - ix;
     const double ty = gp.y - iy;
     const double tz = gp.z - iz;
@@ -235,9 +234,9 @@ void project_atom_on_grid_quintic_pbc(const Vec3d pi, const double qi, double* d
     const int nxy = n.x * n.y;
 
     // Pre-calculate periodic boundary condition indices for each dimension
-    const Vec6T xqs = choose_inds_pbc_5(ix-2, n.x, xqs_o5 );  // Assuming you pre-calculate xqs, yqs, zqs
-    const Vec6T yqs = choose_inds_pbc_5(iy-2, n.y, yqs_o5 );
-    const Vec6T zqs = choose_inds_pbc_5(iz-2, n.z, zqs_o5 );
+    ix=modulo(ix-2,n.x); const Vec6i xqs = choose_inds_pbc_5(ix, n.x, xqs_o5 );  // Assuming you pre-calculate xqs, yqs, zqs
+    iy=modulo(iy-2,n.y); const Vec6i yqs = choose_inds_pbc_5(iy, n.y, yqs_o5 );
+    iz=modulo(iz-2,n.z); const Vec6i zqs = choose_inds_pbc_5(iz, n.z, zqs_o5 );
 
     // Loop over the B-spline grid contributions
     for (int dz = 0; dz < 6; dz++) {

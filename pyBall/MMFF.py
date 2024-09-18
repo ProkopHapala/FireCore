@@ -147,6 +147,18 @@ def samplePBCindexes( inds, ng, iout=None, order=3 ):
     lib.samplePBCindexes( n, inds, ng, iout, order )
     return iout
 
+# void projectBspline1D( int nx, double* xs, double g0, double dg, int ng, double* ys, int order ){
+lib.projectBspline1D.argtypes  = [ c_int, c_double_p, c_double, c_double, c_int, c_double_p, c_int ]
+lib.projectBspline1D.restype   =  None
+def projectBspline1D( xs, g0, dg, ng, ys=None, order=3 ):
+    n = len(xs)
+    xs = np.array( xs )
+    if ys is None: ys = np.zeros( ng )
+    lib.projectBspline1D( n, _np_as(xs,c_double_p), g0, dg, ng, _np_as(ys,c_double_p), order )
+    return ys
+                                  
+
+
 #  int fit_Bspline( double dg, const int n, double* Gs, double* Es, double* Ws, double Ftol, int nmaxiter, double dt ){
 lib.fit_Bspline.argtypes  = [ c_int, c_double_p, c_double_p, c_double_p, c_double, c_int, c_double ]
 lib.fit_Bspline.restype   =  None

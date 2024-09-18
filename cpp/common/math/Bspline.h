@@ -286,6 +286,49 @@ inline Quat4T<T> ddbasis(T u){
     };
 }
 
+
+
+inline double project1D_cubic( double x, double x0, double dx, int n, double* ys, Quat4i* xqs ){
+    // Convert atomic position to grid position
+    double gp = (x-x0)/dx;
+    int ix = (int) gp;
+    if(gp<0) ix--; // because (int) does not work as floor() for negative numbers
+    const double tx = gp - ix;
+    const Quat4d bx = Bspline::basis(tx);
+    ix=modulo(ix-1,n); 
+    const Quat4i xq = choose_inds_pbc_3(ix, n, xqs );
+    //printf( "project1D_cubic() ix(%3i) tx(%8.4f) x(%8.4f) x0(%8.4f) dx(%8.4f) \n", ix, tx, x,  x0,dx );
+    double sum = 0;
+    for (int dx = 0; dx < 4; dx++) {
+        const int gx = xq.array[dx];
+        double    yi = bx.array[dx];
+        //printf( "project1D_cubic()[%i] gx(%3i) yi(%10.5f) \n", dx, gx, yi );
+        ys[gx]   += yi;
+        sum += yi;
+    }
+    return sum;
+}
+
+inline double project1D_quintic( double x, double x0, double dx, int n, double* ys, Vec6i* xqs ){
+    // Convert atomic position to grid position
+    double gp = (x-x0)/dx;
+    int ix = (int) gp;
+    if(gp<0) ix--; // because (int) does not work as floor() for negative numbers
+    const double tx = gp - ix;
+    const Vec6d bx = Bspline::basis5(tx);
+    ix=modulo(ix-2,n); 
+    const Vec6i xq = choose_inds_pbc_5(ix, n, xqs );
+    double sum = 0;
+    for (int dx = 0; dx < 6; dx++) {
+        const int gx = xq.array[dx];
+        double yi = bx.array[dx];
+        ys[gx]   += yi;
+        sum += yi;
+    }
+    return sum;
+}
+
+
 // ======================================================  
 // ===================   Interpolation   ================
 // ======================================================
