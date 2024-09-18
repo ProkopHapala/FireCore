@@ -2,6 +2,7 @@ import sys
 import numpy as np
 import os
 import matplotlib.pyplot as plt
+import matplotlib.patches as patches
 
 sys.path.append("../../")
 from pyBall import MMFF as mmff
@@ -159,6 +160,7 @@ def test_project_dens( apos, qs, ns=[100,100,100], dg=[0.1,0.1,0.1], pos0=None, 
     vmax=+1; vmin=-1; 
     if yrange is not None: vmin,vmax=yrange
     plt.imshow( dens [iz0,:,:],        cmap='bwr', vmin=vmin, vmax=vmax, extent=extent, origin="lower" ); plt.colorbar(); plt.title("Charge Density" )
+    plt.gca().add_patch( patches.Rectangle( (extent[0],extent[2]),     (extent[1]-extent[0]), (extent[3]-extent[2]), edgecolor='r', facecolor='none' )  )
     plt.axis('equal')
 
 def test_project2D( xs,  g0=[0.0,0.0], dg=[0.1,0.1], ng=[16,16], order=3, ws=None ):
@@ -168,11 +170,14 @@ def test_project2D( xs,  g0=[0.0,0.0], dg=[0.1,0.1], ng=[16,16], order=3, ws=Non
     #print( "Qtot ",Qtot," order=",order," xs=", xs );
     print( "Qtot ",QtotAbs," order=",order, " g0 ", g0 );
 
+    extent=(g0[0],g0[0]+Ls[0],g0[1],g0[1]+Ls[1])
     plt.figure()
     #plt.plot( xg, ys, '.-', label=("order=%i" %order) )
-    plt.imshow( ys, origin="lower", extent=(g0[0],g0[0]+Ls[0],g0[1],g0[1]+Ls[1]), vmin=-1.0,vmax=1.0,  cmap='bwr' )
+    plt.imshow( ys, origin="lower", extent=extent, vmin=-1.0,vmax=1.0,  cmap='bwr' )
     plt.colorbar()
     plt.axis('equal')
+    plt.gca().add_patch( patches.Rectangle( (extent[0],extent[2]),     (extent[1]-extent[0]), (extent[3]-extent[2]), edgecolor='r', facecolor='none' )  )
+
     plt.suptitle("g0="+str(g0)+"order="+str(order) )
 
 d=0.6
@@ -192,8 +197,8 @@ qs = [ +1.,+1.,-1.,-1. ]
 #test_vs_direct( apos, qs,  ns=[100,100,100], dg=[0.10,0.10,0.10], order=3, bPython=True, pos0=[0,0,-5.0] )  
 #test_vs_direct( apos, qs,  ns=[100,100,100], dg=[0.10,0.10,0.10], order=2, bPython=True, pos0=[0,0,-5.0] )  
 
-#test_vs_direct( apos, qs,  ns=[16,16,16], dg=[0.10,0.10,0.10], order=2, bPython=True, pos0=[-0.8,-0.8,-0.8], bPlot1D=False )
-#test_vs_direct( apos, qs,  ns=[16,16,16], dg=[0.10,0.10,0.10], order=2, bPython=True, pos0=[ 0.0, 0.0,-0.8], bPlot1D=False )  
+test_vs_direct( apos, qs,  ns=[16,16,16], dg=[0.10,0.10,0.10], order=2, bPython=True, pos0=[-0.8,-0.8,-0.8], bPlot1D=False )
+test_vs_direct( apos, qs,  ns=[16,16,16], dg=[0.10,0.10,0.10], order=2, bPython=True, pos0=[ 0.0, 0.0,-0.8], bPlot1D=False )  
 
 #test_project_dens( apos, qs, ns=[16,16,16], pos0=[0.0,0.0,0.0],     order=2 )
 #test_project_dens( apos, qs, ns=[16,16,16], pos0=[-0.8,-0.8,-0.8], order=2 )
