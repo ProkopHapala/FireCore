@@ -142,7 +142,39 @@ def test_vs_direct( apos, qs, ns=[100,100,100], dg=[0.1,0.1,0.1], nPBC=[30,30,30
         #plt.show()
         #super title
         plt.suptitle( "order=" + str(order) + " nBlur=" + str(nBlur) + " cSOR=" + str(cSOR) + " cV=" + str(cV) )
-    
+
+def test_project_dens( apos, qs, ns=[100,100,100], dg=[0.1,0.1,0.1], pos0=None, order=2, yrange=None ):
+    apos = apos.copy()
+    #print( "apos ", apos )
+    Ls = [ ns[0]*dg[0], ns[1]*dg[1], ns[2]*dg[2] ]                                # lenghts along each axis  
+    if pos0 is None: pos0=np.array( [ -0.5*Ls[0], -0.5*Ls[1], -0.5*Ls[2] ] )      # origin of grid - half of the grid size
+    mmff.setupEwaldGrid( ns, dg=dg, pos0=pos0 )                                   # setup grid in C++ for projection
+    dens = mmff.projectAtomsEwaldGrid( apos, qs, ns=ns, order=order )             # project atoms to grid using C++ 
+    Qtot = np.abs(dens).sum();        print("Qtot = ", Qtot, np.abs(qs).sum() )   # check if the total charge is conserved in projection ( should be same as sum of qs )
+    ix0=ns[0]//2
+    iy0=ns[1]//2
+    iz0=ns[2]//2
+    plt.figure(figsize=(5,5))
+    extent  =[  pos0[0], pos0[0]+Ls[0],   pos0[1], pos0[1]+Ls[1],]
+    vmax=+1; vmin=-1; 
+    if yrange is not None: vmin,vmax=yrange
+    plt.imshow( dens [iz0,:,:],        cmap='bwr', vmin=vmin, vmax=vmax, extent=extent, origin="lower" ); plt.colorbar(); plt.title("Charge Density" )
+    plt.axis('equal')
+
+def test_project2D( xs,  g0=[0.0,0.0], dg=[0.1,0.1], ng=[16,16], order=3, ws=None ):
+    Ls = [ng[0]*dg[0], ng[1]*dg[1]  ]
+    ys = mmff.projectBspline2D( xs, g0, dg, ng, order=order, ws=ws )
+    Qtot = ys.sum(); QtotAbs=np.abs(ys).sum();
+    #print( "Qtot ",Qtot," order=",order," xs=", xs );
+    print( "Qtot ",QtotAbs," order=",order, " g0 ", g0 );
+
+    plt.figure()
+    #plt.plot( xg, ys, '.-', label=("order=%i" %order) )
+    plt.imshow( ys, origin="lower", extent=(g0[0],g0[0]+Ls[0],g0[1],g0[1]+Ls[1]), vmin=-1.0,vmax=1.0,  cmap='bwr' )
+    plt.colorbar()
+    plt.axis('equal')
+    plt.suptitle("g0="+str(g0)+"order="+str(order) )
+
 d=0.6
 apos=np.array([
     [-d,.0,0.],
@@ -160,8 +192,15 @@ qs = [ +1.,+1.,-1.,-1. ]
 #test_vs_direct( apos, qs,  ns=[100,100,100], dg=[0.10,0.10,0.10], order=3, bPython=True, pos0=[0,0,-5.0] )  
 #test_vs_direct( apos, qs,  ns=[100,100,100], dg=[0.10,0.10,0.10], order=2, bPython=True, pos0=[0,0,-5.0] )  
 
-test_vs_direct( apos, qs,  ns=[16,16,16], dg=[0.10,0.10,0.10], order=2, bPython=True, pos0=[-0.8,-0.8,-0.8], bPlot1D=False )
-test_vs_direct( apos, qs,  ns=[16,16,16], dg=[0.10,0.10,0.10], order=2, bPython=True, pos0=[ 0.0, 0.0,-0.8], bPlot1D=False )  
+#test_vs_direct( apos, qs,  ns=[16,16,16], dg=[0.10,0.10,0.10], order=2, bPython=True, pos0=[-0.8,-0.8,-0.8], bPlot1D=False )
+#test_vs_direct( apos, qs,  ns=[16,16,16], dg=[0.10,0.10,0.10], order=2, bPython=True, pos0=[ 0.0, 0.0,-0.8], bPlot1D=False )  
+
+#test_project_dens( apos, qs, ns=[16,16,16], pos0=[0.0,0.0,0.0],     order=2 )
+#test_project_dens( apos, qs, ns=[16,16,16], pos0=[-0.8,-0.8,-0.8], order=2 )
+test_project_dens( apos, qs, ns=[16,16,16], pos0=[ 0.0, 0.0,-0.8], order=2 )
+
+test_project2D( apos[:,:2].copy(), g0=[ 0.0, 0.0], order=3, ws=qs )
+#test_project2D( apos[:,:2].copy(), g0=[-0.8,-0.8], order=3, ws=qs )
 
 
 # --- change voxel size  homogeneously in all directions

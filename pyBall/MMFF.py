@@ -147,17 +147,36 @@ def samplePBCindexes( inds, ng, iout=None, order=3 ):
     lib.samplePBCindexes( n, inds, ng, iout, order )
     return iout
 
-# void projectBspline1D( int nx, double* xs, double g0, double dg, int ng, double* ys, int order ){
-lib.projectBspline1D.argtypes  = [ c_int, c_double_p, c_double, c_double, c_int, c_double_p, c_int ]
+# void projectBspline1D( int nx, double* xs, double* ws, double g0, double dg, int ng, double* ys, int order ){
+lib.projectBspline1D.argtypes  = [ c_int, c_double_p, c_double_p, c_double, c_double, c_int, c_double_p, c_int ]
 lib.projectBspline1D.restype   =  None
-def projectBspline1D( xs, g0, dg, ng, ys=None, order=3 ):
+def projectBspline1D( xs, g0, dg, ng, ys=None, ws=None, order=3 ):
     n = len(xs)
     xs = np.array( xs )
     if ys is None: ys = np.zeros( ng )
-    lib.projectBspline1D( n, _np_as(xs,c_double_p), g0, dg, ng, _np_as(ys,c_double_p), order )
+    if ws is None: ws = np.ones( n )
+    lib.projectBspline1D( n, _np_as(xs,c_double_p), _np_as(ws,c_double_p), g0, dg, ng, _np_as(ys,c_double_p), order )
     return ys
                                   
-
+# void projectBspline2D( int nx, double* ps_, double* ws, double* g0_, double* dg_, int* ng_, double* ys, int order ){
+lib.projectBspline2D.argtypes  = [ c_int, c_double_p, c_double_p, c_double_p, c_double_p, c_int_p, c_double_p, c_int ]
+lib.projectBspline2D.restype   =  None
+def projectBspline2D( xs, g0, dg, ng, ys=None, ws=None, order=3 ):
+    n = len(xs)
+    xs = np.array( xs )
+    dg = np.array( dg )
+    g0 = np.array( g0 )
+    ng = np.array( ng, dtype=np.int32 )
+    if ys is None: 
+        ys = np.zeros( ng )
+    else:
+        ys = np.array( ys )
+    if ws is None: 
+        ws = np.ones( n )
+    else:
+        ws = np.array( ws )
+    lib.projectBspline2D( n, _np_as(xs,c_double_p), _np_as(ws,c_double_p), _np_as(g0,c_double_p), _np_as(dg,c_double_p), _np_as(ng,c_int_p), _np_as(ys,c_double_p), order )
+    return ys
 
 #  int fit_Bspline( double dg, const int n, double* Gs, double* Es, double* Ws, double Ftol, int nmaxiter, double dt ){
 lib.fit_Bspline.argtypes  = [ c_int, c_double_p, c_double_p, c_double_p, c_double, c_int, c_double ]

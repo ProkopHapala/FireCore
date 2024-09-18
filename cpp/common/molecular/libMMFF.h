@@ -171,7 +171,7 @@ void samplePBCindexes( int n, int* inds, int ng, int* iout, int order ){
 }
 
 
-void projectBspline1D( int nx, double* xs, double g0, double dg, int ng, double* ys, int order ){
+void projectBspline1D( int nx, double* xs, double* ws, double g0, double dg, int ng, double* ys, int order ){
     Quat4i xqs3[4];
     Vec6i  xqs5[6];
     //printf("projectBspline1D() nx=%i g0=%g dg=%g ng=%i order=%i \n", nx, g0, dg, ng, order );
@@ -186,8 +186,38 @@ void projectBspline1D( int nx, double* xs, double g0, double dg, int ng, double*
     else{ printf("ERROR in samplePBCindexes() order=%i not implemented \n", order ); exit(0); }
     for(int i=0; i<nx; i++){
         double x   = xs[i];
-        if     ( order==3 ){ Bspline::project1D_cubic  ( x, g0, dg, ng, ys, xqs3 ); }
-        else if( order==5 ){ Bspline::project1D_quintic( x, g0, dg, ng, ys, xqs5 ); }
+        double w   = ws[i];
+        if     ( order==3 ){ Bspline::project1D_cubic  ( w, x, g0, dg, ng, ys, xqs3 ); }
+        else if( order==5 ){ Bspline::project1D_quintic( w, x, g0, dg, ng, ys, xqs5 ); }
+    }
+}
+
+void projectBspline2D( int nx, double* ps_, double* ws, double* g0_, double* dg_, int* ng_, double* ys, int order ){
+    Vec2d*ps =  (Vec2d*)ps_;
+    Vec2d g0 = *(Vec2d*)g0_;
+    Vec2d dg = *(Vec2d*)dg_;
+    Vec2i ng = *(Vec2i*)ng_;
+    Vec2d inv_dg{ 1/dg.x, 1/dg.y };
+
+    Quat4i xqs3[4];
+    Quat4i yqs3[4];
+    //Vec6i  xqs5[6];
+    //Vec6i  yqs5[6];
+    //printf("projectBspline1D() nx=%i g0=%g dg=%g ng=%i order=%i \n", nx, g0, dg, ng, order );
+    if      (order==3){ 
+        make_inds_pbc  (ng.x, xqs3);  
+        make_inds_pbc  (ng.y, yqs3);  
+    } 
+    // else if (order==5){ 
+    //     make_inds_pbc_5(ng.x, xqs5);  
+    //     make_inds_pbc_5(ng.y, yqs5); 
+    // }
+    else{ printf("ERROR in samplePBCindexes() order=%i not implemented \n", order ); exit(0); }
+    for(int i=0; i<nx; i++){
+        Vec2d pi   = ps[i];
+        double w   = ws[i];
+        if     ( order==3 ){ Bspline::project2D_cubic  ( w, pi, g0, inv_dg, ng, ys, xqs3, yqs3 ); }
+        //else if( order==5 ){ Bspline::project1D_quintic( w, x, g0, dg, ng, ys, xqs5 ); }
     }
 }
 

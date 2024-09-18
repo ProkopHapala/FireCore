@@ -543,6 +543,30 @@ def test_project1D( xs,  g0=0.0, dg=0.1, ng=20, order=3 ):
     plt.legend()
     #plt.suptitle("order="+str(order) )
 
+def test_project2D( xs,  g0=[0.0,0.0], dg=[0.1,0.1], ng=[16,16], order=3, ws=None ):
+    Ls = [ng[0]*dg[0], ng[1]*dg[1]  ]
+    ys = mmff.projectBspline2D( xs, g0, dg, ng, order=order, ws=ws )
+    Qtot = ys.sum(); QtotAbs=np.abs(ys).sum();
+    #print( "Qtot ",Qtot," order=",order," xs=", xs );
+    print( "Qtot ",QtotAbs," order=",order, " g0 ", g0 );
+
+    #xg = np.arange( ng )*dg + g0      #;print("xg ", xg )
+    #xg = np.concatenate([xg, xg+L ])  # Shift and concatenate x-array
+    #ys = np.concatenate([ys, ys   ]) 
+
+    plt.figure()
+    #plt.plot( xg, ys, '.-', label=("order=%i" %order) )
+    plt.imshow( ys, origin="lower", extent=(g0[0],g0[0]+Ls[0],g0[1],g0[1]+Ls[1]), vmin=-1.0,vmax=1.0,  cmap='bwr' )
+
+    #plt.axvline(L*0,ls='--', c='r')
+    #plt.axvline(L*1,ls='--', c='r')
+    #plt.axvline(L*2,ls='--', c='r')
+    #plt.grid()
+    #plt.legend()
+    plt.colorbar()
+    plt.suptitle("g0="+str(g0)+"order="+str(order) )
+
+
 #mmff.setVerbosity( 2 )
 mmff.setVerbosity( 3 )
 
@@ -554,11 +578,28 @@ mmff.setVerbosity( 3 )
 
 #test_project1D( [ 0.050, 1.050] , g0=0.0, dg=0.1, ng=20, order=3 )
 #test_project1D( [ 0.025, 1.025] , g0=0.0, dg=0.1, ng=20, order=3 )
-test_project1D( [ 0.000, 1.000] , g0=0.0, dg=0.1, ng=20, order=3 )
-test_project1D( [-0.025, 0.975] , g0=0.0, dg=0.1, ng=20, order=3 )
-test_project1D( [-0.050, 0.950] , g0=0.0, dg=0.1, ng=20, order=3 )
+# test_project1D( [ 0.000, 1.000] , g0=0.0, dg=0.1, ng=20, order=3 )
+# test_project1D( [-0.025, 0.975] , g0=0.0, dg=0.1, ng=20, order=3 )
+# test_project1D( [-0.050, 0.950] , g0=0.0, dg=0.1, ng=20, order=3 )
 #test_project1D( [0.05, 1.0] , g0=0.0, dg=0.1, ng=20, order=5 )
 #plt.legend()
+
+d=0.6
+apos=np.array([
+    [-d,.0],
+    [+d,.0],
+    [0.,-d],
+    [0.,+d],
+])
+qs = [ +1.,+1.,-1.,-1. ]
+
+test_project2D( apos, g0=[ 0.0, 0.0], order=3, ws=qs )
+test_project2D( apos, g0=[-0.8,-0.8], order=3, ws=qs )
+
+
+
+
+
 
 #plt.figure(figsize=(5,10))
 #test_eval_1D(order=3)
