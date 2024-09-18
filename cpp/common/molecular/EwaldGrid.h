@@ -152,6 +152,9 @@ void project_atom_on_grid_cubic_pbc(const Vec3d pi, const double qi, double* den
     iy=modulo(iy-1,n.y); const Quat4i yqs = choose_inds_pbc_3(iy, n.y, yqs_o3 );
     iz=modulo(iz-1,n.z); const Quat4i zqs = choose_inds_pbc_3(iz, n.z, zqs_o3 );
 
+    printf( "project_atom_on_grid_cubic_pbc() ixyz(%i,%i,%i) xqs(%i,%i,%i,%i) yqs(%i,%i,%i,%i) nxyz(%i,%i,%i)\n", ix,iy,iz,  xqs.x,xqs.y,xqs.z,xqs.w,   yqs.x,yqs.y,yqs.z,yqs.w,   n.x,n.y,n.z );
+
+
     // Loop over the B-spline grid contributions
     for (int dz = 0; dz < 4; dz++) {
         const int gz = zqs.array[dz];
@@ -268,10 +271,11 @@ void project_atoms_on_grid_linear( int na, const Vec3d* apos, const double* qs, 
 
 __attribute__((hot)) 
 void project_atoms_on_grid_cubic( int na, const Vec3d* apos, const double* qs, double* dens, bool bPBC=true ) {
-    if( bCubicPBCIndexesDone && bPBC ){ 
+    if( (!bCubicPBCIndexesDone) && bPBC ){ 
         make_inds_pbc(n.x, xqs_o3); 
         make_inds_pbc(n.y, yqs_o3); 
         make_inds_pbc(n.z, zqs_o3);
+        for(int i=0; i<4; i++){  printf( "xqs_o3[%i]{%i,%i,%i,%i}\n",       i, xqs_o3[i].x,xqs_o3[i].y,xqs_o3[i].z,xqs_o3[i].w ); };  
         bCubicPBCIndexesDone=true;
     }
     //printf("project_atoms_on_grid_cubic() na=%i ns(%i,%i,%i) pos0(%g,%g,%g)\n", na, n.x,n.y,n.z, pos0.x,pos0.y,pos0.z );
@@ -282,7 +286,7 @@ void project_atoms_on_grid_cubic( int na, const Vec3d* apos, const double* qs, d
 __attribute__((hot)) 
 void project_atoms_on_grid_quintic( int na, const Vec3d* apos, const double* qs, double* dens, bool bPBC=true ) {
     //printf("project_atoms_on_grid_quintic() na=%i ns(%i,%i,%i) pos0(%g,%g,%g)\n", na, n.x,n.y,n.z, pos0.x,pos0.y,pos0.z );
-    if( bQuinticPBCIndexesDone && bPBC ){ 
+    if( (!bQuinticPBCIndexesDone) && bPBC ){ 
         make_inds_pbc_5(n.x, xqs_o5); 
         make_inds_pbc_5(n.y, yqs_o5); 
         make_inds_pbc_5(n.z, zqs_o5);

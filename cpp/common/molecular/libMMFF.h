@@ -207,6 +207,7 @@ void projectBspline2D( int nx, double* ps_, double* ws, double* g0_, double* dg_
     if      (order==3){ 
         make_inds_pbc  (ng.x, xqs3);  
         make_inds_pbc  (ng.y, yqs3);  
+        for(int i=0; i<4; i++){  printf( "xqs3[%i]{%i,%i,%i,%i}\n",       i, xqs3[i].x,xqs3[i].y,xqs3[i].z,xqs3[i].w ); };  
     } 
     // else if (order==5){ 
     //     make_inds_pbc_5(ng.x, xqs5);  

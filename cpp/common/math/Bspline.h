@@ -339,6 +339,9 @@ void project2D_cubic( double w, const Vec2d pi, const Vec2d g0, const Vec2d inv_
     const int nxy = n.x * n.y;
     ix=modulo(ix-1,n.x); const Quat4i xq = choose_inds_pbc_3(ix, n.x, xqs );  // Assuming you pre-calculate xqs, yqs, zqs
     iy=modulo(iy-1,n.y); const Quat4i yq = choose_inds_pbc_3(iy, n.y, yqs );
+
+    printf( "project2D_cubic() ixy(%i,%i) xqs(%i,%i,%i,%i) yqs(%i,%i,%i,%i) nxyz(%i,%i) \n", ix,iy,  xq.x,xq.y,xq.z,xq.w,   yq.x,yq.y,yq.z,yq.w,   n.x,n.y );
+
     for (int dy = 0; dy < 4; dy++) {
         const int gy  = yq.array[dy];
         const int iiy = gy * n.x;
