@@ -297,13 +297,12 @@ lib.makeGridFF.restype   =  c_double_p
 def makeGridFF( name, mode=1, bSaveDebugXSFs=False, z0=0, cel0=(-0.5,-0.5,0.0), bAutoNPBC=True ):
     name=name.encode('utf8')
     cel0 = np.array( cel0 )
-    ffshape = np.zeros( 4, dtype=np.int32 )
-    print( "ffshape ", ffshape )
+    ffshape = np.zeros( 4, dtype=np.int32 )   #;print( "ffshape ", ffshape )
     ff = lib.makeGridFF( name,  _np_as(ffshape,c_int_p), mode, bSaveDebugXSFs, z0, _np_as(cel0,c_double_p), bAutoNPBC )
     #ffshape = ffshape[::-1]
-    print( "ffshape ", ffshape )
+    #print( "ffshape ", ffshape )
     #ff_ = np.ctypeslib.as_array(ff, ffshape )
-    print( "makeGridFF() DONE" )
+    #print( "makeGridFF() DONE" )
     #return ff_
 
 

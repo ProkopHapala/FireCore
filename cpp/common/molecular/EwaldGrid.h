@@ -404,10 +404,10 @@ int laplace_real_loop_inert( double* V, int nmaxiter=1000, double tol=1e-6, bool
     double* vV =0; 
     if(V_work ){ V_ = V_work;  }else{ double* V_ = new double[ntot]; };
     if(vV_work){ vV = vV_work; }else{ double* vV = new double[ntot]; };
-    printf("laplace_real_loop_inert(bPBC=%i) nmaxiter=%i tol=%g @V=%li @V_=%li \n", bPBC,  nmaxiter, tol, (long)V, (long)V_ );
+    //printf("laplace_real_loop_inert(bPBC=%i) nmaxiter=%i tol=%g @V=%li @V_=%li \n", bPBC,  nmaxiter, tol, (long)V, (long)V_ );
     int iter=0;
     for(iter=0; iter<nmaxiter; iter++){ 
-        printf("laplace_real_loop_inert()[iter=%i]\n", iter );
+        //printf("laplace_real_loop_inert()[iter=%i]\n", iter );
         if(bPBC){ laplace_real_pbc( V, V_, cSOR ); }
         else    { laplace_real    ( V, V_, cSOR ); }
         for(int i=0; i<ntot; i++){ 
@@ -557,7 +557,7 @@ void laplace_reciprocal_kernel( fftw_complex* VV ){
             else         { laplace_real_loop_inert( Vout, nBlur, 1e-32, true, cSOR, cV ); }
             t4 = getCPUticks();
         }
-        printf( "EwaldGrid::solve_laplace_macro() flags=%i  omp_max_threads=%i n(%i,%i,%i) T(prepare_laplace)= %g [Mticks] T(solve_laplace)= %g [Mticks] T(laplace_real_loop)= %g [Mticks]\n", flags, omp_get_max_threads(), n.x,n.y,n.z, (t1-t0)*1e-6, (t2-t1)*1e-6, (t4-t3)*1e-6 );
+        printf( "EwaldGrid::solve_laplace_macro() DONE flags=%i  omp_max_threads=%i n(%i,%i,%i) T(prepare_laplace)= %g [Mticks] T(solve_laplace)= %g [Mticks] T(laplace_real_loop)= %g [Mticks]\n", flags, omp_get_max_threads(), n.x,n.y,n.z, (t1-t0)*1e-6, (t2-t1)*1e-6, (t4-t3)*1e-6 );
         // if(bDestroy){ if(bOMP){ destroy_laplace_omp( ); } else { destroy_laplace    ( ); } }
     }
 

@@ -1095,7 +1095,7 @@ class NBFF: public ForceField{ public:
 
     int makePBCshifts( Vec3i nPBC, const Mat3d& lvec ){
         npbc = (nPBC.x*2+1)*(nPBC.y*2+1)*(nPBC.z*2+1);
-        printf( "NBFF::makePBCshifts() npbc=%i nPBC{%i,%i,%i}\n", npbc, nPBC.x,nPBC.y,nPBC.z );
+        //printf( "NBFF::makePBCshifts() npbc=%i nPBC{%i,%i,%i}\n", npbc, nPBC.x,nPBC.y,nPBC.z );
         _realloc(shifts,npbc);
         int ipbc=0;
         for(int iz=-nPBC.z; iz<=nPBC.z; iz++){ 
