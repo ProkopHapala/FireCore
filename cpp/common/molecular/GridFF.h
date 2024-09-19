@@ -16,6 +16,7 @@
 #include "Bspline.h"
 
 #include "NBFF.h"
+#include "EwaldGrid.h"
 
 #include "IO_utils.h"
 
@@ -136,6 +137,10 @@ class GridFF : public NBFF{ public:
     double *Bspline_Pauli   = 0;
     double *Bspline_London  = 0;
     double *Bspline_Coulomb = 0;
+
+    bool bUseEwald=false;
+    EwaldGrid* ewald = 0;
+
 
     Vec3d  *Bspline_PLQ     = 0;
 
@@ -736,21 +741,19 @@ inline void addForce( const Vec3d& pos, const Quat4f& PLQ, Quat4f& fe ) const {
     }
     void makeGridFF_Hherm_d(){ makeGridFF_Hherm_d(natoms,apos,REQs); }
 
-
     __attribute__((hot))  
     void evalBsplineRef(int natoms_, Vec3d * apos_, Quat4d * REQs_, double* VPaul, double* VLond, double* VCoul ){
         printf( "GridFF::makeGridFF_BsplineRef() DONE \n" );
-        Vec3d* shift_coul=0;
+        Vec3d* shift_coul=0; int npbc_coul=0;
         Vec3d* shift_mors=0;
-        int npbc_coul = makePBCshifts_( Vec3i{25,25,0}, lvec, shift_coul ); // Coulomb converge much more slowly with nPBC
+        bool bEvalCoulomb = !bUseEwald;
+        if(bEvalCoulomb) npbc_coul = makePBCshifts_( Vec3i{25,25,0}, lvec, shift_coul ); // Coulomb converge much more slowly with nPBC
         int npbc_mors = makePBCshifts_( Vec3i{4 ,4 ,0}, lvec, shift_mors );
         double dz = -grid.dCell.c.z;
         Vec3i ns = grid.n;
         //Vec3i ns = gridN;
         const int ntot = ns.totprod();
         const int nxy  = ns.x*ns.y;
-        
-        
         int i=0;
         long t0=getCPUticks();
         #pragma omp parallel for shared(i,HHermite_d)
@@ -761,20 +764,21 @@ inline void addForce( const Vec3d& pos, const Quat4f& PLQ, Quat4f& fe ) const {
             int ixy = i - iz*nxy;
             int iy =  ixy/ns.x;
             int ix =  ixy - iy*ns.x;
-                    const Vec3d pos = grid.pos0 + grid.dCell.c*iz + grid.dCell.b*iy + grid.dCell.a*ix;
-                    Quat4d qp,ql;evalGridFFPoint_Mors( npbc_mors, shift_mors,  natoms_, apos_, REQs_, pos, qp, ql );
-                    Quat4d qe  = evalGridFFPoint_Coul( npbc_coul, shift_coul,  natoms_, apos_, REQs_, pos );
-                    const int ibuff = ix + ns.x*( iy + ns.y * iz );
-                    VPaul[i] = qp.w; 
-                    VLond[i] = ql.w;
-                    VCoul[i] = qe.w;   
+            const Vec3d pos = grid.pos0 + grid.dCell.c*iz + grid.dCell.b*iy + grid.dCell.a*ix;
+            Quat4d qp,ql;evalGridFFPoint_Mors( npbc_mors, shift_mors,  natoms_, apos_, REQs_, pos, qp, ql );
+            const int ibuff = ix + ns.x*( iy + ns.y * iz );
+            VPaul[i] = qp.w; 
+            VLond[i] = ql.w;
+            if(bEvalCoulomb){           
+                Quat4d qe  = evalGridFFPoint_Coul( npbc_coul, shift_coul,  natoms_, apos_, REQs_, pos );
+                VCoul[i] = qe.w;   
+            }
         }
         double T=getCPUticks()-t0;
-        delete [] shift_coul;
+        if(bEvalCoulomb){  delete [] shift_coul; }
         delete [] shift_mors;
-        printf( "GridFF::makeGridFF_BsplineRef(ntot=%i,natom=%i,npbc_coul=%i) DONE in %g [GTick] %g [kTick/point] \n", ntot, natoms_, npbc_coul,  T*1e-9, (T*1e-3)/ntot  );
+        printf( "GridFF::makeGridFF_BsplineRef(ntot=%i,natom=%i,npbc_coul=%i,bEvalCoulomb=%i) DONE in %g [GTick] %g [kTick/point] \n", ntot, natoms_, npbc_coul, bEvalCoulomb,  T*1e-9, (T*1e-3)/ntot  );
     }
-
 
     void makeVPLQHeval( int natoms_, Vec3d * apos_, Quat4d * REQs_ ){
         printf( "GridFF::makeVPLQHeval() \n" );
@@ -878,7 +882,9 @@ inline void addForce( const Vec3d& pos, const Quat4f& PLQ, Quat4f& fe ) const {
         printf( "GridFF::FitBsplines() DONE\n" );
     }
 
+    [[deprecated]]
     void makeGridFF_Bspline_HH_d( double Ftol=1e-8, int nmaxiter=1000, double dt=0.3 ){
+        
         int n = gridN.totprod();
         printf( "GridFF::makeGridFF_Bspline_d() n=%i nmaxiter=%i Ftol=%g dt=%g \n", n );
         _realloc( Bspline_Pauli,    n );
@@ -922,7 +928,7 @@ inline void addForce( const Vec3d& pos, const Quat4f& PLQ, Quat4f& fe ) const {
     }
 
     void makeGridFF_Bspline_d( int natoms_, Vec3d * apos_, Quat4d * REQs_, double Ftol=1e-8, int nmaxiter=1000, double dt=0.3 ){
-        printf( "GridFF::makeGridFF_Bspline_d() \n" );
+        printf( "GridFF::makeGridFF_Bspline_d() bUseEwald=%i \n", bUseEwald );
         //Vec3i ns = gridN;
         Vec3i ns = grid.n;
         int n = ns.totprod();
@@ -944,7 +950,14 @@ inline void addForce( const Vec3d& pos, const Quat4f& PLQ, Quat4f& fe ) const {
             loadBin( fnames[1], nbyte, (char*)VLond );
             loadBin( fnames[2], nbyte, (char*)VCoul );
         }else{
-            evalBsplineRef( natoms_, apos_, REQs_, VPaul, VLond, VCoul );
+            if(bUseEwald){
+                evalBsplineRef( natoms_, apos_, REQs_, VPaul, VLond, 0     );
+                std::vector<double> qs(natoms); for( int i=0; i<natoms_; i++ ){ qs[i] = REQs_[i].z; }
+                ewald->copy( grid );
+                ewald->potential_of_atoms( VCoul, natoms_, apos_, qs.data() );
+            }else{
+                evalBsplineRef( natoms_, apos_, REQs_, VPaul, VLond, VCoul );
+            }
             saveBin( fnames[0], nbyte, (char*)VPaul );
             saveBin( fnames[1], nbyte, (char*)VLond );
             saveBin( fnames[2], nbyte, (char*)VCoul );
