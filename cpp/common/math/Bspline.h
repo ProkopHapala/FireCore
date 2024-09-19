@@ -1315,7 +1315,7 @@ int fit3D( const Vec3i ns, double* Gs, const double* Es, double* Ws, double Ftol
 __attribute__((hot)) 
 int fit3D_omp( const Vec3i ns, double* Gs, const double* Es, double* Ws, double Ftol, int nmaxiter=100, double dt=0.1, bool bPBC=false, bool bInitGE=false ){
     //if(verbosity>1)
-    printf( "Bspline::fit3D_omp() ns(%i,%i,%i) bPBC=%i dt=%g Ftol=%g nmaxiter=%i bInitGE=%i \n", ns.x,ns.y,ns.z, bPBC, dt, Ftol, nmaxiter, bInitGE );
+    //printf( "Bspline::fit3D_omp() ns(%i,%i,%i) bPBC=%i dt=%g Ftol=%g nmaxiter=%i bInitGE=%i \n", ns.x,ns.y,ns.z, bPBC, dt, Ftol, nmaxiter, bInitGE );
     const int nxy  = ns.x*ns.y;
     const int nxyz = nxy*ns.z;
     const double F2max = Ftol*Ftol;
@@ -1377,10 +1377,10 @@ int fit3D_omp( const Vec3i ns, double* Gs, const double* Es, double* Ws, double 
         {
             //cfv = move_GD( dt, nxyz, Gs, fs );
             //if(verbosity>2)
-            printf( "|F[%i]|=%g Error=%g \n",itr,sqrt(ff), sqrt(err2sum) );
+            //printf( "|F[%i]|=%7.2e Error=%7.2e \n",itr,sqrt(ff), sqrt(err2sum) );
             ///printf( "|F[%i]|=%g cos(f,v)=%g Error=%g \n",itr,sqrt(cfv.y), cfv.x/sqrt(cfv.y*cfv.z), sqrt(err) );
             if(ff<F2max){ 
-                printf( "Bspline::fit3D_omp() DONE |F[%i]|=%g Error=%g \n",itr,sqrt(ff), sqrt(err2sum) );   
+                //printf( "Bspline::fit3D_omp() DONE |F[%i]|=%7.2e Error=%7.2e \n",itr,sqrt(ff), sqrt(err2sum) );   
                 niterdone=itr;
                 itr=nmaxiter+1; 
             };
@@ -1389,8 +1389,7 @@ int fit3D_omp( const Vec3i ns, double* Gs, const double* Es, double* Ws, double 
     }
     }
     //if(verbosity>1)
-     
-    double t = getCPUticks()-t0; printf( "Bspline::fit3D_omp() niter=%i nxyz=%i time %g[GTicks] %g[tick/(nxyz*iter)] \n", niterdone, t*1e-9, t/(nxyz*niterdone) );
+    double t = getCPUticks()-t0; printf( "Bspline::fit3D_omp() RMS=%7.2e |F|=%7.2e niter(%4i) nxyz=(%8i) time %g[GTicks] %g[tick/(nxyz*iter)] \n", sqrt(err2sum), sqrt(ff), niterdone,nxyz, t*1e-9, t/(nxyz*niterdone) );
     delete [] ps;
     delete [] fs;
     delete [] vs;

@@ -936,7 +936,7 @@ void printPBCshifts(){
             tryChangeDir( name );
             gridFF.bUseEwald = bUseEwald;
             gridFF.ewald     = &gewald;
-            gridFF.tryLoad_new( true );
+            gridFF.tryLoad_new();
             ffgrid = gridFF.HHermite_d;
             if(bSaveDebugXSFs)gridFF.saveXsfDebug();
             tryChangeDir( wd0 );

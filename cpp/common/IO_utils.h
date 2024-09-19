@@ -356,7 +356,7 @@ inline int saveBin( const char *fname, int n, char * data ){
     ptr_myfile=fopen( fname,"wb");
     if (!ptr_myfile){ printf("saveBin(): Unable to open file `%s` for writing !!!\n", fname ); return -1; }
     int nchar = 1024;
-    printf( "saveBin %s nbyte=%i @data=%li \n", fname, n, data );
+    //printf( "saveBin %s nbyte=%i @data=%li \n", fname, n, data );
     for( int i=1; i<=n; i+=nchar ){
         int len = nchar;
         if( (n-i)<nchar ) len = (n-i);
@@ -377,6 +377,133 @@ inline int loadBin( const char *fname, int n, char * data ){
         if( (n-i)<nchar ) len = (n-i);
         fread( data+i, sizeof(char), len, ptr_myfile);
     }
+    fclose(ptr_myfile);
+    return 0;
+}
+
+
+inline int save_npy(const char *fname, int ndims, int* shape, const char *data, int nBytePerElement=8, const char *dtype="<f8", bool fortran_order = false) {
+    FILE *ptr_myfile = fopen(fname, "wb");
+    if (!ptr_myfile) {   printf("saveNpy(): Unable to open file `%s` for writing !!!\n", fname); return -1; }
+    // Write magic string and version number (1.0)
+    const char magic_string[] = "\x93NUMPY";
+    fwrite(magic_string, sizeof(char), 6, ptr_myfile);
+    char version[2] = {1, 0};  // Version 1.0
+    fwrite(version, sizeof(char), 2, ptr_myfile);
+    // Create the shape string using sprintf
+    char shape_str[256];
+    int pos = 0;  // Track position in buffer
+    pos += sprintf(shape_str + pos, "(");
+    for (int i = 0; i < ndims; ++i) {
+        pos += sprintf(shape_str + pos, "%d", shape[i]);  // Add shape dimension
+        //printf( "saveNpy()[dim=%i] shape_str=`%s`\n", i, shape_str );
+        if ( (ndims==1) || (i<ndims-1)   ) {
+            pos += sprintf(shape_str + pos, ", ");  // Add comma and space if not the last dimension
+        }
+    }
+    sprintf(shape_str + pos, ")");  // Close the shape string
+    //printf( "saveNpy() shape_str=`%s`\n", shape_str );
+    // Create the header
+    char header[1024];  // You can adjust size if needed
+    snprintf(header, sizeof(header), "{'descr': '%s', 'fortran_order': %s, 'shape': %s, }\n", dtype, fortran_order ? "True" : "False", shape_str );
+    printf( "saveNpy() header=`%s`\n", header );
+    // Calculate padding for alignment to 16 bytes
+    int header_len = strlen(header);
+    int padding = 16 - ((10 + header_len) % 16);  // 10 bytes for magic, version, header length
+    header_len += padding;
+    // Write header length (in little endian)
+    unsigned short header_size = header_len;  // max header size should fit in unsigned short for version 1.0
+    fwrite(&header_size, sizeof(header_size), 1, ptr_myfile);
+    // Write the actual header
+    fwrite(header, sizeof(char), strlen(header), ptr_myfile);
+    for (int i = 0; i < padding; i++) {  fputc(' ', ptr_myfile);   } // Padding with spaces
+    //fputc('\n', ptr_myfile);  // Final newline
+    int n_elements = 1;  for (int i=0; i<ndims; ++i) { n_elements *= shape[i]; }   // Calculate the total number of elements
+    fwrite(data, nBytePerElement, n_elements, ptr_myfile);   // Write the binary data
+    fclose(ptr_myfile);
+    return 0;
+}
+
+inline int load_npy(const char *fname, int &ndims, int* &shape, char* &data, int &nBytePerElement, char* &dtype) {
+    FILE *ptr_myfile = fopen(fname, "rb");
+    if (!ptr_myfile) {
+        printf("readNpy(): Unable to open file `%s` for reading !!!\n", fname);
+        return -1;
+    }
+
+    // Read magic string and version number
+    char magic_string[6];
+    fread(magic_string, sizeof(char), 6, ptr_myfile);
+
+    char version[2];
+    fread(version, sizeof(char), 2, ptr_myfile);
+
+    // Read header length
+    unsigned short header_size;
+    fread(&header_size, sizeof(unsigned short), 1, ptr_myfile);
+
+    // Read the header
+    char* header = (char*)malloc(header_size + 1);
+    fread(header, sizeof(char), header_size, ptr_myfile);
+    header[header_size] = '\0';  // Null-terminate the header for easier parsing
+
+    // Extract dtype
+    char* descr_start = strstr(header, "'descr': '") + 10;  // Start of dtype value
+    char* descr_end = strchr(descr_start, '\'');
+    int descr_len = descr_end - descr_start;
+    dtype = (char*)malloc(descr_len + 1);
+    strncpy(dtype, descr_start, descr_len);
+    dtype[descr_len] = '\0';  // Null-terminate dtype string
+
+    // Determine bytes per element based on dtype
+    if      ( strcmp(dtype, "<f8") == 0 ){ nBytePerElement = 8; } 
+    else if ( strcmp(dtype, "<f4") == 0 ){ nBytePerElement = 4; } 
+    else if ( strcmp(dtype, "<i4") == 0 ){ nBytePerElement = 4; } 
+    else if ( strcmp(dtype, "<i8") == 0 ){ nBytePerElement = 8; } 
+    else if ( strcmp(dtype, "<u1") == 0 ){ nBytePerElement = 1; } 
+    else {
+        printf("readNpy(): Unsupported dtype `%s`\n", dtype);
+        free(header);
+        fclose(ptr_myfile);
+        return -2;
+    }
+
+    // Extract shape
+    char* shape_start = strstr(header, "'shape': (") + 9;  // Start of shape
+    char* shape_end = strchr(shape_start, ')');
+    char shape_str[256];
+    strncpy(shape_str, shape_start, shape_end - shape_start);
+    shape_str[shape_end - shape_start] = '\0';  // Null-terminate shape string
+
+    // Count dimensions
+    ndims = 1;
+    for (char* c = shape_str; *c != '\0'; ++c) {
+        if (*c == ',') ndims++;
+    }
+
+    // Parse shape into array
+    shape = (int*)malloc(ndims * sizeof(int));
+    char* token = strtok(shape_str, ", ");
+    int dim = 0;
+    while (token) {
+        shape[dim++] = atoi(token);
+        token = strtok(NULL, ", ");
+    }
+
+    // Calculate number of elements
+    int n_elements = 1;
+    for (int i = 0; i < ndims; ++i) {
+        n_elements *= shape[i];
+    }
+
+    // Allocate buffer for data
+    data = (char*)malloc(n_elements * nBytePerElement);
+
+    // Read binary data
+    fread(data, nBytePerElement, n_elements, ptr_myfile);
+
+    // Clean up
+    free(header);
     fclose(ptr_myfile);
     return 0;
 }

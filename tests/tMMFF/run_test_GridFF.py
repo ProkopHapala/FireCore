@@ -49,7 +49,8 @@ def getPLQH( R0, E0, a, Q, H ):
     return np.array([ cP, cL, Q, cH ])
 
 def test_gridFF( name="data/NaCl_1x1_L2", mode=4, dsamp=0.02,  R0=3.5, E0=0.1, a=1.6, Q=0.4, H=0.0, scErr=100.0, title=None, ):
-    print( "test_gridFF() START" )
+    print( "py======= test_gridFF() START" );
+    #print( "test_gridFF() START" )
     #mode = 4
     #mode = 1
     mmff.makeGridFF( name=name, mode=mode )
@@ -106,11 +107,13 @@ def test_gridFF( name="data/NaCl_1x1_L2", mode=4, dsamp=0.02,  R0=3.5, E0=0.1, a
     if ( title is not None ): plt.suptitle( title )
     
     #print( "ff.shape ", EFg.shape )
-    print( "test_gridFF() DONE" )
+    #print( "test_gridFF() DONE" )
+    print( "py======= test_gridFF() DONE" );
     #return EFg
 
 def test_gridFF_lat( name="data/NaCl_1x1_L2", iax=0, tmin=0.0,tmax=10.0, p0=[1.05,1.05,2.0], mode=4, dsamp=0.02,  R0=3.5, E0=0.1, a=1.6, Q=0.4, H=0.0, scErr=100.0, title=None, ):
-    print( "test_gridFF() START" )
+    print( "py======= test_gridFF_lat() START" );
+    #print( "test_gridFF() START" )
     #mode = 4
     #mode = 1
     mmff.makeGridFF( name=name, mode=mode )
@@ -169,7 +172,8 @@ def test_gridFF_lat( name="data/NaCl_1x1_L2", iax=0, tmin=0.0,tmax=10.0, p0=[1.0
     if ( title is not None ): plt.suptitle( title )
     
     #print( "ff.shape ", EFg.shape )
-    print( "test_gridFF() DONE" )
+    #print( "test_gridFF() DONE" )
+    print( "py======= test_gridFF_lat() DONE" );
     #return EFg
 
 
