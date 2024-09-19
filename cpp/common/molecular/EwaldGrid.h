@@ -296,6 +296,28 @@ void project_atoms_on_grid_quintic( int na, const Vec3d* apos, const double* qs,
     else    { for (int ia=0; ia<na; ia++){ project_atom_on_grid_quintic    ( apos[ia], qs[ia], dens ); } }  
 }
 
+int setup( Vec3d pos0_, Mat3d dCell_, Vec3i ns_, bool bPrint=false ){
+    n     = ns_;
+    pos0  = pos0_;
+    dCell = dCell_;
+    updateCell_2();
+    if(bPrint){printCell();}
+    return n.totprod();
+}
+
+void projectAtoms( int na, Vec3d* apos, double* qs, double* dens, int order ){
+    long t0 = getCPUticks();
+    switch(order){
+        case 1: project_atoms_on_grid_linear ( na, apos, qs, dens ); break;
+        case 2: project_atoms_on_grid_cubic  ( na, apos, qs, dens ); break;
+        case 3: project_atoms_on_grid_quintic( na, apos, qs, dens ); break;
+        default: printf("ERROR in projectAtomsEwaldGrid() order=%i NOT IMPLEMETED !!! \n", order ); exit(0); break;
+    }
+    //if( bQuintic ){  }
+    //else          { W.gewald.project_atoms_on_grid        ( na, (Vec3d*)apos, qs, dens ); }
+    double t = (getCPUticks()-t0)*1e-6; printf( "EwaldGrid::projectAtoms(order=%i) na=%i ng(%i,%i,%i) T(project_atoms_on_grid)=%g [Mticks] \n", order, na, n.x,n.y,n.z, t );
+}
+
 __attribute__((hot))
 double laplace_real( double* Vin, double* Vout, double cSOR ){
     int nxy = n.x * n.y;
@@ -515,6 +537,39 @@ void laplace_reciprocal_kernel( fftw_complex* VV ){
         fftw_destroy_plan(ifft_plan);
         fftw_free(V);
         fftw_free(Vw);
+    }
+
+    void solve_laplace_macro( double* dens, double* Vout, bool bPrepare=true, bool bDestroy=true, int flags=-1, bool bOMP=false, int nBlur=0, double cSOR=0, double cV=0.95 ){
+        long t0 = getCPUticks();
+        //if(bPrepare){ if(bOMP){ prepare_laplace_omp( flags );} else { prepare_laplace( flags );} }
+        if(bPrepare){ prepare_laplace( flags ); }
+        long t1 = getCPUticks();
+        solve_laplace( dens, Vout );
+        long t2 = getCPUticks();
+        if(bDestroy){ destroy_laplace( ); }
+        long t3=0,t4=0;
+        if(nBlur>0){
+            int ntot = n.totprod();
+            _allocIfNull( V_work,  ntot );
+            _allocIfNull( vV_work, ntot );
+            t3 = getCPUticks();
+            if( cV<-1.0 ){ laplace_real_loop      ( Vout, nBlur, 1e-32, true, cSOR     ); }
+            else         { laplace_real_loop_inert( Vout, nBlur, 1e-32, true, cSOR, cV ); }
+            t4 = getCPUticks();
+        }
+        printf( "EwaldGrid::solve_laplace_macro() flags=%i  omp_max_threads=%i n(%i,%i,%i) T(prepare_laplace)= %g [Mticks] T(solve_laplace)= %g [Mticks] T(laplace_real_loop)= %g [Mticks]\n", flags, omp_get_max_threads(), n.x,n.y,n.z, (t1-t0)*1e-6, (t2-t1)*1e-6, (t4-t3)*1e-6 );
+        // if(bDestroy){ if(bOMP){ destroy_laplace_omp( ); } else { destroy_laplace    ( ); } }
+    }
+
+    void potential_of_atoms( double* VCoul, int natoms, Vec3d* apos, double* qs, int order=3, int nBlur=4, double cV=0.95 ){
+        printf("EwaldGrid::potential_of_atoms() natoms=%i order=%i nBlur=%i cV=%g \n", natoms, order, nBlur, cV );
+        int ntot = n.totprod();
+        double* dens  = new double[ ntot ];
+        //double* qs    = new double[ natoms_ ]; for( int i=0; i<natoms_; i++ ){ qs[i] = REQs_[i].z; }
+        projectAtoms( natoms, apos, qs, dens, order );
+        solve_laplace_macro( dens, VCoul, true, true, -1, false, nBlur, 0, cV );
+        delete [] dens;
+        //delete [] qs;
     }
 
 

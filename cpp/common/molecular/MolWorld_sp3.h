@@ -915,7 +915,7 @@ void printPBCshifts(){
  * @param cel0 The initial cell position.
  * @param bAutoNPBC Flag indicating whether to automatically set non-periodic boundary conditions.
  */
-    virtual double* initGridFF( const char * name, bool bGrid=true, bool bSaveDebugXSFs=false, double z0=NAN, Vec3d cel0={-0.5,-0.5,0.0}, bool bAutoNPBC=true, bool bCheckEval=true ){
+    virtual double* initGridFF( const char * name, bool bGrid=true, bool bSaveDebugXSFs=false, double z0=NAN, Vec3d cel0={-0.5,-0.5,0.0}, bool bAutoNPBC=true, bool bCheckEval=true, bool bUseEwald=true ){
         //if(verbosity>0)
         printf("MolWorld_sp3::initGridFF(%s,bGrid=%i,bGridDouble=%i,gridStep=%g,z0=%g,cel0={%g,%g,%g} )\n",  name, bGrid, bGridDouble, gridStep, z0, cel0.x,cel0.y,cel0.z  );
         sprintf(tmpstr, "%s.lvs", name );
@@ -934,6 +934,8 @@ void printPBCshifts(){
             char wd0[1024]; getcwd(wd0,1024); //printf( "initGridFF() 1 WD=`%s`\n", wd0 );
             tryMakeDir  ( name );
             tryChangeDir( name );
+            gridFF.bUseEwald = bUseEwald;
+            gridFF.ewald     = &gewald;
             gridFF.tryLoad_new( true );
             ffgrid = gridFF.HHermite_d;
             if(bSaveDebugXSFs)gridFF.saveXsfDebug();
