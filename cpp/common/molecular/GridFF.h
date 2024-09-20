@@ -14,6 +14,7 @@
 #include "InterpolateTricubic.h"
 #include "InterpolateTrilinear.h"
 #include "Bspline.h"
+#include "VecN.h"
 
 #include "NBFF.h"
 #include "EwaldGrid.h"
@@ -615,9 +616,17 @@ inline void addForce( const Vec3d& pos, const Quat4f& PLQ, Quat4f& fe ) const {
     //     return E;
     // }
 
-    void evalAtPoints( int n, const Vec3d* ps, Quat4d* FFout, Quat4d PLQH, int natoms_, const Vec3d * apos_, const Quat4d * REQs_ )const{
+    void evalAtPoints( int n, const Vec3d* ps, Quat4d* FFout, Quat4d PLQH, int natoms_, const Vec3d * apos_, const Quat4d * REQs_, Vec3i* nPBC=0 ){
         //printf( "GridFF::evalAtPoints() n=%i natoms_=%i \n", n, natoms_ );
         int i=0;
+        // backup 
+        Vec3d* shifts_=shifts;
+        int    npbc_ = npbc;
+        bool bUserPBC = (nPBC!=0);
+        if( bUserPBC ){
+            shifts=0;
+            npbc = makePBCshifts_( *nPBC, lvec, shifts ); 
+        }
         //#pragma omp parallel for shared(i)
         for(int i=0; i<n; i++){
             Quat4d qp,ql,qe;
@@ -625,9 +634,14 @@ inline void addForce( const Vec3d& pos, const Quat4f& PLQ, Quat4f& fe ) const {
             evalGridFFPoint( natoms_, apos_, REQs_, ps[i], qp, ql, qe );
             FFout[i] = qp*PLQH.x + ql*PLQH.y + qe*PLQH.z;
         }
+        // restore
+        if( bUserPBC ){
+            npbc  = npbc_;
+            shifts = shifts_;
+        }
     }
     //void evalAtPoints( int n, Vec3d* ps, Quat4d* FFout, Quat4d PLQH ){ evalAtPoints( n, ps, FFout, PLQH, natoms, apos, REQs ); };
-    void evalAtPoints( int n, const Vec3d* ps, Quat4d* FFout, Quat4d PLQH )const{ evalAtPoints( n, ps, FFout, PLQH, apos_.size(), apos_.data(), REQs_.data() ); };
+    void evalAtPoints( int n, const Vec3d* ps, Quat4d* FFout, Quat4d PLQH, Vec3i* nPBC=0 ){ evalAtPoints( n, ps, FFout, PLQH, apos_.size(), apos_.data(), REQs_.data(), nPBC ); };
 
     void evalAtPoints_Split( int n, Vec3d* ps, Quat4d* FFout, Quat4d PLQH, int natoms_, Vec3d * apos_, Quat4d * REQs_ ){
         //printf( "GridFF::evalAtPoints_Split() n=%i natoms_=%i \n", n, natoms_ );
@@ -955,10 +969,18 @@ inline void addForce( const Vec3d& pos, const Quat4f& PLQ, Quat4f& fe ) const {
         bool bPBC=true;
         bool bInitGE=true;
         //nmaxiter=0;
-        
-        printf( "GridFF::makeGridFF_Bspline_d().fit(Bspline_Pauli  ) : "); Bspline::fit3D_omp( ns, Bspline_Pauli,   VPaul, 0, Ftol, nmaxiter, dt, bPBC, bInitGE );  //printf( "GridFF::makeGridFF_Bspline_d() Fit(Bspline_Pauli)   DONE \n" );
-        printf( "GridFF::makeGridFF_Bspline_d().fit(Bspline_London ) : "); Bspline::fit3D_omp( ns, Bspline_London,  VLond, 0, Ftol, nmaxiter, dt, bPBC, bInitGE );  //printf( "GridFF::makeGridFF_Bspline_d() Fit(Bspline_London)  DONE \n" );
-        printf( "GridFF::makeGridFF_Bspline_d().fit(Bspline_Coulomb) : "); Bspline::fit3D_omp( ns, Bspline_Coulomb, VCoul, 0, Ftol, nmaxiter, dt, bPBC, bInitGE );  //printf( "GridFF::makeGridFF_Bspline_d() Fit(Bspline_Coulomb) DONE \n" );
+
+        Quat4d testREQ{  1.8, sqrt(0.0091063), 0.6*0.3, 0.0 }; // ~ Oxygen
+        Quat4f testPLQ = REQ2PLQ( testREQ, alphaMorse );
+        Vec3d vmaxs{ VecN::absmax( n, VPaul ), VecN::absmax( n, VLond ), VecN::absmax( n, VCoul ) };
+        printf( "GridFF::makeGridFF_Bspline_d() testPLQ( Paul=%g, Lond=%g, Coul=%g )  vmaxs( P=%g, L=%g, C=%g )\n", testPLQ.x, testPLQ.y, testPLQ.z, vmaxs.x, vmaxs.y, vmaxs.z );
+        dt = 0.001;
+        Ftol=1e-6;
+        nmaxiter=50000;
+        int niter=0;
+        printf( "GridFF::makeGridFF_Bspline_d().fit(Bspline_Pauli  ) : "); niter=Bspline::fit3D_omp( ns, Bspline_Pauli,   VPaul, 0, Ftol, nmaxiter, dt, bPBC, bInitGE, vmaxs.x*1e-3 ); if(niter>=nmaxiter-1){printf("fit3D_omp not cnverged => exit() \n"); exit(0);}; //printf( "GridFF::makeGridFF_Bspline_d() Fit(Bspline_Pauli)   DONE \n" );
+        printf( "GridFF::makeGridFF_Bspline_d().fit(Bspline_London ) : "); niter=Bspline::fit3D_omp( ns, Bspline_London,  VLond, 0, Ftol, nmaxiter, dt, bPBC, bInitGE, vmaxs.y*1e-3 ); if(niter>=nmaxiter-1){printf("fit3D_omp not cnverged => exit() \n"); exit(0);}; //printf( "GridFF::makeGridFF_Bspline_d() Fit(Bspline_London)  DONE \n" );
+        printf( "GridFF::makeGridFF_Bspline_d().fit(Bspline_Coulomb) : "); niter=Bspline::fit3D_omp( ns, Bspline_Coulomb, VCoul, 0, Ftol, nmaxiter, dt, bPBC, bInitGE, vmaxs.z*1e-3 ); if(niter>=nmaxiter-1){printf("fit3D_omp not cnverged => exit() \n"); exit(0);}; //printf( "GridFF::makeGridFF_Bspline_d() Fit(Bspline_Coulomb) DONE \n" );
 
         if(bPBC){
             gBS.saveXSF( "debug_BsplinePaul_pbc.xsf",   Bspline_Pauli,   1,0 );

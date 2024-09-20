@@ -383,14 +383,15 @@ def sampleMultipole( ps, p0, cs, order=2, fe=None ):
     if fe is None: fe = np.zeros( n, dtype=np.float64 )
     lib.sampleMultipole( n, _np_as(fe,c_double_p), _np_as(ps,c_double_p), _np_as(p0,c_double_p), order, _np_as(cs,c_double_p) )
 
-# void evalGridFFAtPoints( int n, double* ps, double* FFout, double* PLQH ){
-lib.evalGridFFAtPoints.argtypes  = [ c_int, c_double_p, c_double_p, c_double_p, c_bool ]
+# void evalGridFFAtPoints( int n, double* ps, double* FFout, double* PLQH, int* nPBC ){
+lib.evalGridFFAtPoints.argtypes  = [ c_int, c_double_p, c_double_p, c_double_p, c_bool, c_int_p  ]
 lib.evalGridFFAtPoints.restype   =  None
-def evalGridFFAtPoints( ps, FFout=None, PLQH=[0.0,0.0,1.0,0.0], bSplit=False ):
+def evalGridFFAtPoints( ps, FFout=None, PLQH=[0.0,0.0,1.0,0.0], bSplit=False, nPBC=None ):
     n = len(ps)
     if FFout is None: FFout=np.zeros( (n,4) )
     PLQH = np.array( PLQH )
-    lib.evalGridFFAtPoints( n, _np_as(ps,c_double_p), _np_as(FFout,c_double_p), _np_as(PLQH,c_double_p), bSplit )
+    if nPBC is not None: nPBC = np.array( nPBC, dtype=np.int32 )
+    lib.evalGridFFAtPoints( n, _np_as(ps,c_double_p), _np_as(FFout,c_double_p), _np_as(PLQH,c_double_p), bSplit, _np_as(nPBC,c_int_p) )
     return FFout
 
 # void sample_func( int n, double* xs, double* ys, int kind ){

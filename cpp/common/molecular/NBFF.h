@@ -41,6 +41,7 @@ int makePBCshifts_( Vec3i nPBC, const Mat3d& lvec, Vec3d*& shifts ){
     int ipbc=0;
     for(int iz=-nPBC.z; iz<=nPBC.z; iz++){ 
         for(int iy=-nPBC.y; iy<=nPBC.y; iy++){ 
+            //printf( "makePBCshifts_() iz=%i iy=%i \n", iz,iy );
             for(int ix=-nPBC.x; ix<=nPBC.x; ix++){  
                 shifts[ipbc] = (lvec.a*ix) + (lvec.b*iy) + (lvec.c*iz);   
                 ipbc++; 
