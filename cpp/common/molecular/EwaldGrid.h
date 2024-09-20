@@ -39,6 +39,8 @@ inline int pbc_ibk(int i, int n){ i--; return (i>=0)?  i :  i+n; };
 
 class EwaldGrid : public GridShape { public: 
 
+
+Vec3d dipole;
 double* V_work  = 0; 
 double* vV_work = 0;  
 
@@ -280,7 +282,7 @@ void project_atoms_on_grid_cubic( int na, const Vec3d* apos, const double* qs, d
     }
     //printf("project_atoms_on_grid_cubic() na=%i ns(%i,%i,%i) pos0(%g,%g,%g)\n", na, n.x,n.y,n.z, pos0.x,pos0.y,pos0.z );
     if(bPBC){ for (int ia=0; ia<na; ia++){ project_atom_on_grid_cubic_pbc( apos[ia], qs[ia], dens ); } }
-    else    { for (int ia=0; ia<na; ia++){ project_atom_on_grid_cubic    ( apos[ia], qs[ia], dens ); } }
+    else    { for (int ia=0; ia<na; ia++){ project_atom_on_grid_cubic    ( apos[ia], qs[ia], dens );  } }
 }
 
 __attribute__((hot)) 
@@ -307,6 +309,8 @@ int setup( Vec3d pos0_, Mat3d dCell_, Vec3i ns_, bool bPrint=false ){
 
 void projectAtoms( int na, Vec3d* apos, double* qs, double* dens, int order ){
     long t0 = getCPUticks();
+
+    for (int ia=0; ia<na; ia++){  dipole.add_mul(apos[ia],qs[ia]); };  // dipole for slab correction and debugging
     switch(order){
         case 1: project_atoms_on_grid_linear ( na, apos, qs, dens ); break;
         case 2: project_atoms_on_grid_cubic  ( na, apos, qs, dens ); break;
@@ -425,6 +429,25 @@ int laplace_real_loop_inert( double* V, int nmaxiter=1000, double tol=1e-6, bool
     return iter;
 }
 
+void slabPotential( int nz, double* Vin, double* Vout ){
+    // ToDo: There should be some better correction of the potential.
+    //  See article: https://pubs.aip.org/aip/jcp/article/111/7/3155/294442/Ewald-summation-for-systems-with-slab-geometry
+    double Vol       = getVolume();
+    double dz = dCell.c.norm(); 
+    Vec3d  hz = dCell.c *(1/dz);
+    double Vcor = COULOMB_CONST * hz.dot(dipole)/Vol;
+    for (int iz=0; iz<nz; iz++ ) {
+        double Vcor_z = Vcor * (iz*dz);
+        for (int iy=0; iy<n.y; iy++) { 
+            const int    iyz=(iz*n.y + iy)*n.x;
+            for (int ix=0; ix<n.x; ix++) {
+                const int i      = ix + iyz;
+                Vout[i] = Vin[i] + Vcor_z;
+            }
+        }
+    }
+}
+
 #ifdef WITH_FFTW
 
 fftw_plan    fft_plan;
@@ -539,12 +562,17 @@ void laplace_reciprocal_kernel( fftw_complex* VV ){
         fftw_free(Vw);
     }
 
-    void solve_laplace_macro( double* dens, double* Vout, bool bPrepare=true, bool bDestroy=true, int flags=-1, bool bOMP=false, int nBlur=0, double cSOR=0, double cV=0.95 ){
+    void solve_laplace_macro( double* dens, int nz, double* Vout, bool bPrepare=true, bool bDestroy=true, int flags=-1, bool bOMP=false, int nBlur=0, double cSOR=0, double cV=0.95 ){
         long t0 = getCPUticks();
         //if(bPrepare){ if(bOMP){ prepare_laplace_omp( flags );} else { prepare_laplace( flags );} }
         if(bPrepare){ prepare_laplace( flags ); }
+
+        bool bSlab = (nz>0);
+        double* Vtmp = Vout;
+        if(bSlab){ Vtmp = new double[n.totprod()]; }
+
         long t1 = getCPUticks();
-        solve_laplace( dens, Vout );
+        solve_laplace( dens, Vtmp );
         long t2 = getCPUticks();
         if(bDestroy){ destroy_laplace( ); }
         long t3=0,t4=0;
@@ -553,21 +581,27 @@ void laplace_reciprocal_kernel( fftw_complex* VV ){
             _allocIfNull( V_work,  ntot );
             _allocIfNull( vV_work, ntot );
             t3 = getCPUticks();
-            if( cV<-1.0 ){ laplace_real_loop      ( Vout, nBlur, 1e-32, true, cSOR     ); }
-            else         { laplace_real_loop_inert( Vout, nBlur, 1e-32, true, cSOR, cV ); }
+            if( cV<-1.0 ){ laplace_real_loop      ( Vtmp, nBlur, 1e-32, true, cSOR     ); }
+            else         { laplace_real_loop_inert( Vtmp, nBlur, 1e-32, true, cSOR, cV ); }
             t4 = getCPUticks();
         }
+
+        if( bSlab ){ 
+            slabPotential( nz, Vtmp, Vout ); 
+            delete[] Vtmp;
+        }
+    
         printf( "EwaldGrid::solve_laplace_macro() DONE flags=%i  omp_max_threads=%i n(%i,%i,%i) T(prepare_laplace)= %g [Mticks] T(solve_laplace)= %g [Mticks] T(laplace_real_loop)= %g [Mticks]\n", flags, omp_get_max_threads(), n.x,n.y,n.z, (t1-t0)*1e-6, (t2-t1)*1e-6, (t4-t3)*1e-6 );
         // if(bDestroy){ if(bOMP){ destroy_laplace_omp( ); } else { destroy_laplace    ( ); } }
     }
 
-    void potential_of_atoms( double* VCoul, int natoms, Vec3d* apos, double* qs, int order=3, int nBlur=4, double cV=0.95 ){
+    void potential_of_atoms( int nz, double* VCoul, int natoms, Vec3d* apos, double* qs, int order=3, int nBlur=4, double cV=0.95 ){
         printf("EwaldGrid::potential_of_atoms() natoms=%i order=%i nBlur=%i cV=%g \n", natoms, order, nBlur, cV );
         int ntot = n.totprod();
         double* dens  = new double[ ntot ];
         //double* qs    = new double[ natoms_ ]; for( int i=0; i<natoms_; i++ ){ qs[i] = REQs_[i].z; }
         projectAtoms( natoms, apos, qs, dens, order );
-        solve_laplace_macro( dens, VCoul, true, true, -1, false, nBlur, 0, cV );
+        solve_laplace_macro( dens, nz, VCoul, true, true, -1, false, nBlur, 0, cV );
         delete [] dens;
         //delete [] qs;
     }

@@ -934,7 +934,8 @@ inline void addForce( const Vec3d& pos, const Quat4f& PLQ, Quat4f& fe ) const {
                 evalBsplineRef( natoms_, apos_, REQs_, VPaul, VLond, 0     );
                 std::vector<double> qs(natoms); for( int i=0; i<natoms_; i++ ){ qs[i] = REQs_[i].z; }
                 ewald->copy( grid );
-                ewald->potential_of_atoms( VCoul, natoms_, apos_, qs.data() );
+                ewald->enlarge( Vec3d{0.0,0.0,20.0} ); // add 20A of Vaccuum to simulated slabe (not periodic in z direction)
+                ewald->potential_of_atoms( grid.n.z, VCoul, natoms_, apos_, qs.data() );
             }else{
                 evalBsplineRef( natoms_, apos_, REQs_, VPaul, VLond, VCoul );
             }
@@ -968,6 +969,9 @@ inline void addForce( const Vec3d& pos, const Quat4f& PLQ, Quat4f& fe ) const {
             save_npy( "debug_BsplinePaul_pbc.npy", 3, (int*)&sh, (char*)Bspline_Pauli   );
             save_npy( "debug_BsplineLond_pbc.npy", 3, (int*)&sh, (char*)Bspline_London  );
             save_npy( "debug_BsplineCoul_pbc.npy", 3, (int*)&sh, (char*)Bspline_Coulomb );
+            save_npy( "debug_VPaul_pbc.npy", 3, (int*)&sh, (char*)VPaul   );
+            save_npy( "debug_VLond_pbc.npy", 3, (int*)&sh, (char*)VLond  );
+            save_npy( "debug_VCoul_pbc.npy", 3, (int*)&sh, (char*)VCoul );
         }else{
             gBS.saveXSF( "debug_BsplinePaul_nopbc.xsf", Bspline_Pauli,   1,0 );
             gBS.saveXSF( "debug_BsplineLond_nopbc.xsf", Bspline_London,  1,0 );
