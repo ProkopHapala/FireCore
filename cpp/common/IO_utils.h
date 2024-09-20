@@ -406,7 +406,7 @@ inline int save_npy(const char *fname, int ndims, int* shape, const char *data, 
     // Create the header
     char header[1024];  // You can adjust size if needed
     snprintf(header, sizeof(header), "{'descr': '%s', 'fortran_order': %s, 'shape': %s, }\n", dtype, fortran_order ? "True" : "False", shape_str );
-    printf( "saveNpy() header=`%s`\n", header );
+    printf( "saveNpy(%s) header=%s", fname, header );
     // Calculate padding for alignment to 16 bytes
     int header_len = strlen(header);
     int padding = 16 - ((10 + header_len) % 16);  // 10 bytes for magic, version, header length

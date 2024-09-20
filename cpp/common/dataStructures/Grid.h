@@ -66,6 +66,17 @@ class GridShape{ public:
         n=g.n;
     }
 
+    void enlarge( Vec3i dn ){
+        n+=dn;
+        updateCell_2();
+    }
+
+    void enlarge( Vec3d dLs ){
+        Vec3d ds{ dCell.a.norm(), dCell.b.norm(), dCell.c.norm() };
+        Vec3i dn{ (int)(dLs.x/ds.x + 0.5), (int)(dLs.y/ds.y+0.5), (int)(dLs.z/ds.z+0.5) };
+        enlarge( dn );
+    }
+
     void swap_axes( Vec3i swp ){
         pos0.swap( swp );
         printf( "swapping axes BEFORE n(%i,%i,%i)\n", n.x,n.y,n.z );
@@ -133,6 +144,8 @@ class GridShape{ public:
         }
         return i;
     }
+
+    double getVolume(){ return cell.determinant(); }
 
 	int init(double R, double step, bool bPow2=false){
         cell = Mat3d{ (2*R),0.0,0.0,  0.0,(2*R),0.0,  0.0,0.0,(2*R) };
