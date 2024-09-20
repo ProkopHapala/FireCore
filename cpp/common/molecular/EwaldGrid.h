@@ -432,7 +432,7 @@ int laplace_real_loop_inert( double* V, int nmaxiter=1000, double tol=1e-6, bool
 void slabPotential( int nz, double* Vin, double* Vout ){
     // ToDo: There should be some better correction of the potential.
     //  See article: https://pubs.aip.org/aip/jcp/article/111/7/3155/294442/Ewald-summation-for-systems-with-slab-geometry
-    double Vol       = getVolume();
+    double Vol       = getVolume() * (  nz* -1.0 /(n.z) );
     double dz = dCell.c.norm(); 
     Vec3d  hz = dCell.c *(1/dz);
     double Vcor = COULOMB_CONST * hz.dot(dipole)/Vol;
@@ -443,6 +443,7 @@ void slabPotential( int nz, double* Vin, double* Vout ){
             for (int ix=0; ix<n.x; ix++) {
                 const int i      = ix + iyz;
                 Vout[i] = Vin[i] + Vcor_z;
+                //Vout[i] = Vin[i] + Vcor_z*0.0000000000; // Debug
             }
         }
     }

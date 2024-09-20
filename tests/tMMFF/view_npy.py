@@ -28,10 +28,11 @@ def cut2(dat,f=0.5,iax=0, n=[1,1], bPlot=True, vmax=0.1 ):
     if bPlot: plt.imshow( ys, origin='lower', vmin=-vmax,vmax=vmax, cmap='bwr' )
     return ys
 
-def cut1d_xyz( dat, f=[0.8,0.5,0.5],n=2):
-    cut(dat,f=f,iax=0, n=n, bPlot=True )
-    cut(dat,f=f,iax=1, n=n, bPlot=True)
-    cut(dat,f=f,iax=2, n=n, bPlot=True)
+def cut1d_xyz( dat, f=[0.8,0.5,0.5],n=2, iaxs=[0,1,2], label=""):
+    for iax in iaxs: cut(dat,f=f,iax=iax, n=n, bPlot=True, label=label)
+    # cut(dat,f=f,iax=0, n=n, bPlot=True )
+    # cut(dat,f=f,iax=1, n=n, bPlot=True)
+    # cut(dat,f=f,iax=2, n=n, bPlot=True)
     plt.legend()
     plt.grid()
     plt.title(name)    
@@ -50,17 +51,29 @@ files=[
 ]
 
 
-f=[0.8,0.5,0.5]
+#f =[0.10,0.5,0.5]
+#f2=[0.15,0.5,0.5]
+#f3=[0.20,0.5,0.5]
+
+f =[0.10,0.50,0.50]
+f2=[0.10,0.25,0.25]
+f3=[0.20,0.00,0.00]
+
 iax = 1
 
 fig1 = plt.figure(1,figsize=(15,10))
-fig2 = plt.figure(2,figsize=(15,10))
+#fig2 = plt.figure(2,figsize=(15,10))
 
 for i,name in enumerate(files):
     dat = np.load(path+name)
-    print( "name ", name, dat.shape )
-    plt.figure(fig1.number); plt.subplot(2,3,i+1);  cut1d_xyz(dat, f=f, n=2 )
-    plt.figure(fig2.number); plt.subplot(2,3,i+1);  cut2(dat,f=f[iax],iax=iax, n=[0,0], bPlot=True); plt.title(name)  
+    vmax = np.abs(dat).max()
+    print( "name ", name, dat.shape," vmax=", vmax )
+    #plt.figure(fig1.number); plt.subplot(2,3,i+1);  cut1d_xyz(dat, f=f, n=2 )
+    plt.figure(fig1.number); plt.subplot(2,3,i+1);  
+    cut1d_xyz(dat, f=f , n=2, iaxs=[1,2] )
+    cut1d_xyz(dat, f=f2, n=2, iaxs=[1,2] )
+    cut1d_xyz(dat, f=f3, n=2, iaxs=[1,2] )
+    #plt.figure(fig2.number); plt.subplot(2,3,i+1);  cut2(dat,f=f[iax],iax=iax, n=[0,0], bPlot=True); plt.title(name)  
 
 
 plt.show()
