@@ -1,12 +1,7 @@
-/*
-Non-Bonded Force-Field
-
-    should be easily plugged with any molecular dynamics, by either sharing pointer to same data buffer, or by copying data
-    
-*/
-
 #ifndef NBFF_h
 #define NBFF_h
+/// @file NBFF.h  @brief Non-Bonded Force-Field, implements n-body interactions between particles using non-covalent poentials such as Lenard-Jones / Morse and Coulomb potential
+/// @ingroup Classical_Molecular_Mechanics
 
 #include "fastmath.h"
 //#include "Vec2.h"
@@ -85,12 +80,9 @@ void sampleCoulombPBC( int nps, const Vec3d* ps, Quat4d* fe, int natom,  Vec3d* 
     delete[] shifts;
 }
 
-
-
-
-
-
-// Force-Field for Non-Bonded Interactions
+    
+/// @brief Non-Bonded Force-Field, implements n-body interactions between particles using non-covalent poentials such as Lenard-Jones / Morse and Coulomb potential including peridic boundary conditions (PBC)
+/// @details NBFF has many functions paralelized using OpenMP. It also implements short-range (i.e. finite-cutoff) interactions accelerated by axis-aligned bounding boxes (AABB)
 class NBFF: public ForceField{ public:
     
     // ---  inherited from Atoms

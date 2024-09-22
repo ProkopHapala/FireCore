@@ -1,6 +1,10 @@
 
 #ifndef GaussianBasis_h
 #define GaussianBasis_h
+/// @file GaussianBasis.h @brief Implements functions for evaluation of interaction between gaussian functions such as product, overlap, kinetic energy and electrostatic interaction 
+/// @todo what is the relation between  GaussianBasis.h and InteractionsGauss.h ?
+/// @ingroup Electron_Forcefield
+/// @ingroup Atomic_Basiset_Quantum_Chemistry
 
 #include "fastmath.h"
 #include "physics_constants.h"

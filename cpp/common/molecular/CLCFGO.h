@@ -1,6 +1,8 @@
 
 #ifndef CLCFGO_h
 #define CLCFGO_h
+/// @file CLCFGO.h @brief Implements multi-center electron forcefield solver based on Compact Linear Combination of Floating Gaussian Orbitals
+/// @ingroup Electron_Forcefield
 
 #include "fastmath.h"
 #include "Vec2.h"
@@ -17,54 +19,44 @@
 #include "InteractionsGauss.h"
 #include "GaussianBasis.h"
 
-/// \defgroup Molecular  Molecular
+// ##################################################################
+// #### Compact Linear Combination of Floating Gaussian Orbitals ####
+// ##################################################################
 
-/*!
-\ingroup Molecular
- @{
-
-##################################################################
-#### Compact Linear Combination of Floating Gaussian Orbitals ####
-##################################################################
-
-## Idea :
- - Bonding orbitals (BO) are highly localized occupied Molecular orbitas (MOs)
-    - This high localization makes evaluation of many interaction very efficient (linear scaling and highly peraelized), almost like a forcefield
-    - Using only spherical functions makes formulation and evaluation of many integrals very simple. Although nothing prevent us from extending to non-spherical function in future
-    - It is strongly inspired by eFF (electron force-field) and original method of "Floating Gaussian Orbitals" ... one can say it is generalization of these methods
- - We do not Diagonalize any matrix.
-    - Diagonalization of Mamiltonian in quantum solutions is in fact just a way of minimizing the variational functional ( which is obvious from Car-Parrignelo method and from using iterative solver such as Conjugate-Gradient for solving sparse hamiltonian )
-    - In our case the optimization problem is rather non-linear ( Energy is not linear with respect to movement of basis functions ), therefore we use non-linear optimization algorithm such as FIRE not only for ions but also for electron degrees of freedom
-    - We do multiple steps of linear optimization (changing expansion coefs for fixed geometry) per one step of non-linear one (moving atoms and floating functions). although non-linear optimization is posible, linear one is actually faster.
- - How to ensure orthogonality of occupied orbitals?
-    - normaly orthogonality is ensured by diagonalization of Hamiltonian, but we want to avoid this cost.
-    - We use "Pauli repulsion" or "overlpa froce" instead
- - Since main computational cost in many DFT codes is evaluation of integrals (overlap, kinetic, electrostatic, exchange correlation) we try to minimize number of these integrals
-   - we go opposite direction than "frozen/contracted gaussian orbitals". In FGO gaussians of several widths are combined with fixed linear combination coefficient under one object assigned to single variational parameter in the Hamiltonian matrix. This way size of Hamiltonian is limited.
-   - But in our case we do not solve Hamoltonian matrix (O(N^3) cost) instead we just move it by a linear solver (O(N) cost). Therefore, in our case the calculation of the integrals is the time limiting step.
- - Electrostatic potential is calculated by multipole expansion of orbital density with distance. Thanks to high localization we can do this expansion very fast (Like fast multipole method)
-    - Electron denisty of each orbital (which is linear combination of basis functions) is re-projected on few axuliary basis functions
-     \f$   rho(r)=phi(r) = sum_i{ c_i chi_i(r)} sum_j{ c_j chi_j(r)}  \f$
- - The main problem is evaluation of exchange-correlation. Which is non-linear and cannot be easily experesed as combination of orbitals.
-    - This can be done on a real-space grid, but that is very costly perhaps
-    - We can use some approximation from Fireball ... e.g. McWeda approximation of Pavel Jelinek
-    - We can oalso sort of fit some empirical approximation using machine learning etc.
-
-
-    IDEA 1) - multiple function per one center. Each can have different cutoff.
-       - Variation of coeficients is much faster than variation of position ( re-evaluation of integrals is not required )
-
-
- ### Make alternative with Gaussian Orbitals (instead of numerica basis)
-    - It makes it possible to express auxuliary density functions exactly
-
-   \f$     rho_ij(r)                                                                \f$
-   \f$        = Gauss(r-R_i) * Gauss(r-R_j)                                         \f$
-   \f$        = \exp( -w_i*( (x-x_i)^2 + (y-y_i)^2 + (y-y_i)^2 ) ) * \exp( -w_j*( (x-x_j)^2 + (y-y_j)^2 + (y-y_i)^2 ) ) \f$
-   \f$        = \exp( -w_i*( (x-x_i)^2 + (y-y_i)^2 + (y-y_i)^2 ) -wj*( (x-x_j)^2 + (y-y_j)^2 + (y-y_j)^2 )  )         \f$
-   \f$        x : wi*(x-x_i)^2 + wj*(x-x_j)^2   =    (w_i+w_j)x^2   - 2*(w_i*x_i+w_j*x_j)x - (w_i*x_i^2+w_j*x_j^2)        \f$
-    - http://www.tina-vision.net/docs/memos/2003-003.pdf
-*/
+/// @brief Compact Linear Combination of Floating Gaussian Orbitals - an implementation of multi-center electron-forcefield solver 
+/// @details
+/// ## Ideas:
+///  - Bonding orbitals (BO) are highly localized occupied Molecular orbitas (MOs)
+///     - This high localization makes evaluation of many interaction very efficient (linear scaling and highly peraelized), almost like a forcefield
+///     - Using only spherical functions makes formulation and evaluation of many integrals very simple. Although nothing prevent us from extending to non-spherical function in future
+///     - It is strongly inspired by eFF (electron force-field) and original method of "Floating Gaussian Orbitals" ... one can say it is generalization of these methods
+///  - We do not Diagonalize any matrix.
+///     - Diagonalization of Mamiltonian in quantum solutions is in fact just a way of minimizing the variational functional ( which is obvious from Car-Parrignelo method and from using iterative solver such as Conjugate-Gradient for solving sparse hamiltonian )
+///     - In our case the optimization problem is rather non-linear ( Energy is not linear with respect to movement of basis functions ), therefore we use non-linear optimization algorithm such as FIRE not only for ions but also for electron degrees of freedom
+///     - We do multiple steps of linear optimization (changing expansion coefs for fixed geometry) per one step of non-linear one (moving atoms and floating functions). although non-linear optimization is posible, linear one is actually faster.
+///  - How to ensure orthogonality of occupied orbitals?
+///     - normaly orthogonality is ensured by diagonalization of Hamiltonian, but we want to avoid this cost.
+///     - We use "Pauli repulsion" or "overlpa froce" instead
+///  - Since main computational cost in many DFT codes is evaluation of integrals (overlap, kinetic, electrostatic, exchange correlation) we try to minimize number of these integrals
+///    - we go opposite direction than "frozen/contracted gaussian orbitals". In FGO gaussians of several widths are combined with fixed linear combination coefficient under one object assigned to single variational parameter in the Hamiltonian matrix. This way size of Hamiltonian is limited.
+///    - But in our case we do not solve Hamoltonian matrix (O(N^3) cost) instead we just move it by a linear solver (O(N) cost). Therefore, in our case the calculation of the integrals is the time limiting step.
+///  - Electrostatic potential is calculated by multipole expansion of orbital density with distance. Thanks to high localization we can do this expansion very fast (Like fast multipole method)
+///     - Electron denisty of each orbital (which is linear combination of basis functions) is re-projected on few axuliary basis functions
+///      \f$   rho(r)=phi(r) = sum_i{ c_i chi_i(r)} sum_j{ c_j chi_j(r)}  \f$
+///  - The main problem is evaluation of exchange-correlation. Which is non-linear and cannot be easily experesed as combination of orbitals.
+///     - This can be done on a real-space grid, but that is very costly perhaps
+///     - We can use some approximation from Fireball ... e.g. McWeda approximation of Pavel Jelinek
+///     - We can oalso sort of fit some empirical approximation using machine learning etc.
+///     IDEA 1) - multiple function per one center. Each can have different cutoff.
+///        - Variation of coeficients is much faster than variation of position ( re-evaluation of integrals is not required )
+///  ### Make alternative with Gaussian Orbitals (instead of numerica basis)
+///     - It makes it possible to express auxuliary density functions exactly
+///    \f$     rho_ij(r)                                                                \f$
+///    \f$        = Gauss(r-R_i) * Gauss(r-R_j)                                         \f$
+///    \f$        = \exp( -w_i*( (x-x_i)^2 + (y-y_i)^2 + (y-y_i)^2 ) ) * \exp( -w_j*( (x-x_j)^2 + (y-y_j)^2 + (y-y_i)^2 ) ) \f$
+///    \f$        = \exp( -w_i*( (x-x_i)^2 + (y-y_i)^2 + (y-y_i)^2 ) -wj*( (x-x_j)^2 + (y-y_j)^2 + (y-y_j)^2 )  )         \f$
+///    \f$        x : wi*(x-x_i)^2 + wj*(x-x_j)^2   =    (w_i+w_j)x^2   - 2*(w_i*x_i+w_j*x_j)x - (w_i*x_i^2+w_j*x_j^2)        \f$
+///     - http://www.tina-vision.net/docs/memos/2003-003.pdf
 class CLCFGO{ public:
 // ToDo : Later properly
 constexpr static const Quat4d default_AtomParams[] = {

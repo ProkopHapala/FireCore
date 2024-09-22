@@ -1,9 +1,8 @@
 
 #ifndef CLCFSF_h
 #define CLCFSF_h
-
-/// @file
-/// @ingroup Molecular
+/// @file CLCFSF.h @brief Alternative implementation of multi-center electron forcefield solver based on Compact Linear Combination of Floating Spherical Functions
+/// @ingroup Electron_Forcefield
 
 #include "fastmath.h"
 #include "Vec2.h"
@@ -564,7 +563,5 @@ class CLCFSF{ public:
     }
 
 };
-
-/// @}
 
 #endif

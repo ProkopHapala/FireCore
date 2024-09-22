@@ -1,9 +1,10 @@
 
 #ifndef EFF_h
 #define EFF_h
-
-/// @file
-/// @ingroup eFF
+/// @file EFF.h @brief Implements electron force-field solver based on Floating Gaussian Orbitals
+/// @defgroup Electron_Forcefield  Electron_Forcefield
+/// @addtogroup Electron_Forcefield
+/// @{
 
 #include "fastmath.h"
 //#include "Vec2.h"
@@ -935,5 +936,5 @@ void writeTo_fgo( char const* filename, bool bVel=false, const char* fmode="w" )
 }
 
 };
-
+/// @}
 #endif
