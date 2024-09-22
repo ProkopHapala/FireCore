@@ -1,6 +1,8 @@
 
 #ifndef UFF_h
 #define UFF_h
+/// @file UFF.h @brief Implements universal forcefield accodring to article J. Am. Chem. Soc. 1992, 114, 25, 10024–10035 @link https://doi.org/10.1021/ja00051a040 [ref] @endlink, or generally any bond-topology forcefield composed of bonds, angles, torsions (proper-dihedrals) and plane-inversions (improper-dihedrals) 
+/// @ingroup Classical_Molecular_Mechanics
 
 #include <omp.h>
 #include "fastmath.h"   // fast math operations
@@ -46,6 +48,7 @@ bool checkVec3Matches( int n, Vec3d* v, Vec3d* v_, const char* label, int iPrint
     return bMatch;
 }
 
+/// @brief Implements universal forcefield accodring to article J. Am. Chem. Soc. 1992, 114, 25, 10024–10035 @link https://doi.org/10.1021/ja00051a040 [ref] @endlink, or generally any bond-topology forcefield composed of bonds, angles, torsions (proper-dihedrals) and plane-inversions (improper-dihedrals) 
 class UFF : public NBFF { public:
 
     // === inherited

@@ -1,5 +1,9 @@
 #ifndef MMFFparams_h
 #define MMFFparams_h
+/// @file MMFFparams.h @brief This file contains class MMFFparams, which stores parameters for the Molecular Mechanics Force-field
+/// @defgroup Classical_Molecular_Mechanics  Classical_Molecular_Mechanics
+/// @addtogroup Classical_Molecular_Mechanics
+/// @{
 
 #include  "globals.h"
 
@@ -15,6 +19,7 @@
 
 #include "Atoms.h"
 
+/// @brief Type of bond in clssical molecular mechanics force-field
 class BondType{ public:
     double  length;    // bond equilibrium distance
     double  stiffness; // bond force constant
@@ -28,6 +33,7 @@ class BondType{ public:
     inline uint64_t        id   (){ return getId( atoms.x, atoms.y, order ); }
 };
 
+/// @brief  Type of angle in clssical molecular mechanics force-field
 class AngleType{ public:
     double angle0;    // equilibrium angle
     double stiffness; // angle force constant
@@ -37,7 +43,7 @@ class AngleType{ public:
     inline uint64_t        id   (){ return getId( atoms.x, atoms.y, atoms.z ); }
 };
 
-
+/// @brief  Type of dihedral (Torsion) angle in clssical molecular mechanics force-field
 class DihedralType{ public:
     Quat4i atoms; // atoms involved in the dihedral, a-b-c-d
     int    bo;    // bond order of central atoms
@@ -49,6 +55,7 @@ class DihedralType{ public:
     inline        uint64_t id   (){ return getId(atoms.x,atoms.y,atoms.z,atoms.w,bo); }
 };
 
+/// @brief Type of elemenet (e.g. H, C, O, N, etc.)
 class ElementType{ public:
     char      name[4];    // symbol
     uint8_t   iZ;         // atomic number
@@ -81,7 +88,7 @@ class ElementType{ public:
     inline uint8_t nepair(){ return (neval-valence)/2; };
 };
 
-// atom type class
+/// @brief Type of atom defined by its bonding topology and chemical environment (e.g. C_sp2, C_sp3, O_sp2_COOH ) 
 class AtomType{ public:
     char      name[8];    // symbol
     uint8_t   iZ;         // atomic number
@@ -142,15 +149,12 @@ static const int z2typ0[]{
     5  //F 
 };
 
-/**
- * @file MMFFparams.h
- * @brief This file contains the declaration of the MMFFparams class, which stores parameters for the Molecular Mechanics Force-field
- * 
- * The MMFFparams class contains vectors and maps that store information about the different types of atoms, bonds, angles, and dihedrals. 
- * It also contains default values for bond length and stiffness, as well as a default non-bonding parameters for hydrogen-like atoms.
- * The class provides methods for initializing and printing the atom and element type dictionaries, as well as methods for retrieving the atom and element types of a given string. 
- * It also provides methods for retrieving the root parent of an atom type and converting a string to an atom type.
- */
+///  @file MMFFparams.h
+///  @brief This file contains the declaration of the MMFFparams class, which stores parameters for the Molecular Mechanics Force-field
+///  The MMFFparams class contains vectors and maps that store information about the different types of atoms, bonds, angles, and dihedrals. 
+///  It also contains default values for bond length and stiffness, as well as a default non-bonding parameters for hydrogen-like atoms.
+///  The class provides methods for initializing and printing the atom and element type dictionaries, as well as methods for retrieving the atom and element types of a given string. 
+///  It also provides methods for retrieving the root parent of an atom type and converting a string to an atom type.
 class MMFFparams{ public:
 
     // http://www.science.uwaterloo.ca/~cchieh/cact/c120/bondel.html
@@ -925,5 +929,7 @@ class MMFFparams{ public:
     //////////////
 
 };
+
+/// @}
 
 #endif

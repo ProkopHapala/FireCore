@@ -1,9 +1,8 @@
 
 #ifndef EFF_old_h
 #define EFF_old_h
-
-/// @file
-/// @ingroup eFF
+/// @file EFF_old.h @brief Old implementation of electron force-field solver based on Floating Gaussian Orbitals  @deprecated
+/// @ingroup Electron_Forcefield
 
 #include "fastmath.h"
 //#include "Vec2.h"
@@ -11,12 +10,9 @@
 #include "quaternion.h"
 #include "Forces.h"
 
-
 #include "InteractionsGauss_old.h"
 
-
 /*
-
 eFF : Electron Force Field
 ---------------------------
 

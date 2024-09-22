@@ -1,15 +1,12 @@
 
 #ifndef InteractionsGauss_old_h
 #define InteractionsGauss_old_h
+/// @file InteractionsGauss_old.h @brief Old  @deprecated
+/// @ingroup Electron_Forcefield
 
 #include "physics_constants.h"
 
-/// @file
-/// @ingroup eFF
-
-/*!  \addtogroup eFF Electron Force Field
- @{
-
+/*! 
 eFF : Electron Force Field
 ---------------------------
 
@@ -27,7 +24,7 @@ Hai Xiao, Andrés Jaramillo-Botero, Patrick L. Theofanis, William A. Goddard,
     * H2 Molecule perhaps cannot be stable without this contribution ( i.e. with fixed radius of electron blobs )
 
 ### Params
- \verbatim
+ @verbatim
             a             b             c           d           e           s-core
 Al     0.486000       1.049000      0.207000                              1.660000
 Si     0.320852       2.283269      0.814857                              1.691398
@@ -37,12 +34,8 @@ O     25.080199       0.331574      1.276183     12.910142    3.189333    0.1678
 Erf approximation:
  Gaussian:    F = (x2-1)**2 / sqrtPi
  Erf          E = x*(1 + x2 * ( -0.66666666666 + 0.2*x2 ) ) * (2/(16.0/15.0))
-\endverbatim
+ @endverbatim
 */
-
-
-
-
 
 // ================================================================
 // ========= Kinetic

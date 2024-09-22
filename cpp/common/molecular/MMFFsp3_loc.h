@@ -1,6 +1,8 @@
 
 #ifndef MMFFsp3_loc_h
 #define MMFFsp3_loc_h
+/// @file MMFFsp3_loc.h  @brief Classical Molecular-Mechanics force-filed for bonding interactions (i.e. topology based) using representation localized on atoms to optimize memory access especially for paralel evaluation  
+/// @ingroup Classical_Molecular_Mechanics
 
 #define ANG_HALF_COS  1
 
@@ -23,15 +25,16 @@
 // ========================
 // ====   MMFFsp3_loc  ====
 // ========================
-/*
-    This is a local version of MMFFsp3, i.e. we store all parameters per atom, and we compute energy and forces for each atom separately. 
-    The recoil forces on neighbors are stored in a temporary array fneigh. Which is latter assembled into the global force array fapos.
-    This allows for efficient parallelization, since we avoid synchronization of the global force array fapos or using atomic operations.
-    The drawback is that we need to allocate additional memory for fneigh and possibly lower the performance due to cache misses.
-*/
 
-//class MMFFsp3_loc: public NBFF { public:
-
+/// @brief Classical Molecular-Mechanics force-filed for bonding interactions (i.e. topology based) using representation localized on atoms to optimize memory access especially for paralel evaluation   
+/// @details  MMFFsp3_loc stores and evaluates bonds and angles by functions and datastructures localized on "node" atoms (e.g. carbon, not capping atoms like hydrogen)     
+/// The dihedral angles and "inproper" dihedrals are not evaluated directly, but are simulated by angular terms invoilving explicit orientation of pi-orbitals on node atom (which are stored as 3D vectors, and dynamically updated)
+//  Torsions (proper dihedrals) are simulated by k_pp term (pi-pi alignment interaction) and plane-inversions (inproper dihedrals) are simulated by k_sp term (pi-sigma alignment interaction)
+/// This is a local version of MMFFsp3, i.e. we store all parameters per atom, and we compute energy and forces for each atom separately. 
+/// The recoil forces on neighbors are stored in a temporary array fneigh. Which is latter assembled into the global force array fapos.
+/// This allows for efficient parallelization, since we avoid synchronization of the global force array fapos or using atomic operations.
+/// The drawback is that we need to allocate additional memory for fneigh, and the overhead of assembling fneigh into fapos.
+/// @todo We should test performance of of atomic writes in MMFFsp3_loc::eval_atom() versus assembling fneigh into fapos in MMFFsp3_loc::assemble_atom( ia );
 class MMFFsp3_loc : public NBFF { public:
     static constexpr const int nneigh_max = 4; // maximum number of neighbors
 

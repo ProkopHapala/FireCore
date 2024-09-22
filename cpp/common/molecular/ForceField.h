@@ -1,6 +1,8 @@
 
 #ifndef ForceField_h
 #define ForceField_h
+/// @file ForceField.h       @brief Base classes for classical Molecular Dynamics force-fields
+/// @ingroup Classical_Molecular_Mechanics
 
 #include "fastmath.h"
 //#include "Vec2.h"
@@ -48,6 +50,7 @@ inline double cos_damp_lin( double c, double& cv, double D, double cmin, double 
     return cf;
 }
 
+/// @brief Inelastic damping of particle collisions should, in principle, stabilize MD simulations and allow larger time steps. But it seems it does not help in pracice @deprecated
 class CollisionDamping{ public:
     bool    bBond = false; // if true we use collision damping
     bool    bAng  = false;
@@ -124,6 +127,7 @@ class CollisionDamping{ public:
 
 };
 
+/// @brief Base class for classical Molecular Dynamics force-fields, it implements mostly integrators of equaions of motion optimizer and thermostat
 class ForceField: public Atoms{ public:
 
     // ---  inherited from Atoms
