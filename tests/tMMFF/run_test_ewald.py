@@ -213,7 +213,8 @@ for ix in range(0,10):
         apos.append( [(ix-5)+0.5, (iy-5)+0.5, +d] ); qs.append(+0.01)
         apos.append( [(ix-5)+0.5, (iy-5)+0.5, -d] ); qs.append(-0.01)
 
-test_vs_direct( apos, qs,  ns=[100,100,100], dg=[0.10,0.10,0.10], order=3, bSlab=True, nPBC=[30,30,0] )   # GOOD, This is perfect
+test_vs_direct( apos, qs,  ns=[100,100,100], dg=[0.10,0.10,0.10], order=3, bSlab=True,  nPBC=[30,30,0] )
+test_vs_direct( apos, qs,  ns=[100,100,100], dg=[0.10,0.10,0.10], order=3, bSlab=False, nPBC=[30,30,0] )
 
 #test_vs_direct( apos, qs,  ns=[100,100,100], dg=[0.10,0.10,0.10], order=3, bPython=True )  
 #test_vs_direct( apos, qs,  ns=[100,100,100], dg=[0.10,0.10,0.10], order=3, bPython=True, pos0=[0,0,-5.0] )  
