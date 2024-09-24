@@ -45,7 +45,7 @@ def compute_potential(dens, dg, bInternals=False):
         internals = None
     return V, internals
 
-def plot1Dcut(apos, Vg, i0, dg, Ls, iax=0, nPBC=[10,10,10], Vmax=1.0, scErr=100.0):
+def plot1Dcut(apos, Vg, i0, dg, Ls, iax=0, nPBC=[10,10,10], vmax=5.0, scErr=100.0):
     ix, iy, iz = i0  # unpack voxel through which we plot the debug cuts
     lvec=np.array( [[Ls[0],0.0,0.0], [0.0,Ls[1],0.0], [0.0,0.0,Ls[2]] ]) # lattice vectors, cubic grid
     # 1D Cut the Ewald potential along the [iax] axis  
@@ -77,14 +77,14 @@ def plot1Dcut(apos, Vg, i0, dg, Ls, iax=0, nPBC=[10,10,10], Vmax=1.0, scErr=100.
     #print("plot1Dcut() iax=", iax, " nt ", nt, " dt ", dt, "Lt ", Lt, " factor ", factor)
     # Plotting
     plt.plot(ts, Vgl,   '-k', label="V ewald")
-    plt.plot(ts, vd_vg, '-', label="ref/ewald")
+    #plt.plot(ts, vd_vg, '-', label="ref/ewald")
     plt.plot(ts, fe[:, 3],  '--', label="V direct " + str(nPBC))
     plt.title("cut1D iax=" + str(iax) + " n=" + str(len(ts)) + " tmax=" + str(ts.max()))
-    plt.ylim(-2.0, 2.0)
+    plt.ylim(-vmax, vmax )
     plt.legend()
     plt.grid()
 
-def test_vs_direct( apos, qs, ns=[100,100,100], dg=[0.1,0.1,0.1], nPBC=[30,30,30], pos0=None, scErr=100.0, order=2, bPython=False, bOMP=False, nBlur=0, cSOR=0.0, cV=0.5, yrange=None, bPlot1D=True ):
+def test_vs_direct( apos, qs, ns=[100,100,100], dg=[0.1,0.1,0.1], nPBC=[30,30,30], pos0=None, scErr=100.0, order=2, bPython=False, bOMP=False, nBlur=0, cSOR=0.0, cV=0.5, yrange=None, bPlot1D=True , bSlab=False, z_slab=10.0 ):
     apos = apos.copy()
     print( "apos ", apos )
     Ls = [ ns[0]*dg[0], ns[1]*dg[1], ns[2]*dg[2] ]                                # lenghts along each axis  
@@ -121,7 +121,9 @@ def test_vs_direct( apos, qs, ns=[100,100,100], dg=[0.1,0.1,0.1], nPBC=[30,30,30
         plt.subplot(2,3,3+3); plt.imshow( Vg   [iz0,:,:],   vmin=-1.0,vmax=1.0,  cmap='bwr'               , origin="lower" ); plt.colorbar(); plt.title("V ewald C++/FFTW3 " )
 
     else:
-        Vg = mmff.EwaldGridSolveLaplace( dens, nBlur=nBlur, cSOR=cSOR, cV=cV, bOMP=bOMP )
+        nz_slab=-1
+        if bSlab: nz_slab = int(z_slab/dg[2])
+        Vg = mmff.EwaldGridSolveLaplace(  dens, nz_slab=nz_slab, nBlur=nBlur, cSOR=cSOR, cV=cV, bOMP=bOMP )
         #Vg = mmff.EwaldGridSolveLaplace( dens  )
         
         # dV = dg[0]*dg[1]*dg[2]
@@ -132,13 +134,15 @@ def test_vs_direct( apos, qs, ns=[100,100,100], dg=[0.1,0.1,0.1], nPBC=[30,30,30
 
     # ---- 1D debug plots
     if bPlot1D:
-        plt.figure(figsize=(10,5))
-        plt.subplot(1,2,1); plot1Dcut( apos, Vg, i0=i0, dg=dg, Ls=Ls, iax=0, nPBC=nPBC, scErr=scErr )
-        plt.subplot(1,2,2); plot1Dcut( apos, Vg, i0=i0, dg=dg, Ls=Ls, iax=1, nPBC=nPBC, scErr=scErr )
+        plt.figure(figsize=(15,5))
+        plt.subplot(1,3,1); plot1Dcut( apos, Vg, i0=i0, dg=dg, Ls=Ls, iax=0, nPBC=nPBC, scErr=scErr )
+        plt.subplot(1,3,2); plot1Dcut( apos, Vg, i0=i0, dg=dg, Ls=Ls, iax=1, nPBC=nPBC, scErr=scErr )
+        plt.subplot(1,3,3); plot1Dcut( apos, Vg, i0=i0, dg=dg, Ls=Ls, iax=2, nPBC=nPBC, scErr=scErr )
         #plt.subplot(1,3,3); plot1Dcut( Vg, i0=i0, dg=dg, lvec=lvec, iax=2, nPBC=nPBC, scErr=scErr )
         if yrange is not None:
-            plt.subplot(1,2,1); plt.ylim(yrange)
-            plt.subplot(1,2,2); plt.ylim(yrange)
+            plt.subplot(1,3,1); plt.ylim(yrange)
+            plt.subplot(1,3,2); plt.ylim(yrange)
+            plt.subplot(1,3,3); plt.ylim(yrange)
         #plt.tight_layout()
         #plt.show()
         #super title
@@ -180,31 +184,49 @@ def test_project2D( xs,  g0=[0.0,0.0], dg=[0.1,0.1], ng=[16,16], order=3, ws=Non
 
     plt.suptitle("g0="+str(g0)+"order="+str(order) )
 
+
+
+
+# d=0.6
+# apos=np.array([
+#     [-d,.0,0.],
+#     [+d,.0,0.],
+#     [0.,-d,0.],
+#     [0.,+d,0.],
+# ])
+# qs = [ +1.,+1.,-1.,-1. ]
+
+
+
+# d=0.6
+# apos=np.array([
+#     [0.,.0,-d],
+#     [0.,.0,+d],
+# ])
+# qs = [ +1.,-1. ]
+
 d=0.6
-apos=np.array([
-    [-d,.0,0.],
-    [+d,.0,0.],
-    [0.,-d,0.],
-    [0.,+d,0.],
-])
-qs = [ +1.,+1.,-1.,-1. ]
+apos = []
+qs   = [] 
+for ix in range(0,10):
+    for iy in range(0,10):
+        apos.append( [(ix-5)+0.5, (iy-5)+0.5, +d] ); qs.append(+0.01)
+        apos.append( [(ix-5)+0.5, (iy-5)+0.5, -d] ); qs.append(-0.01)
 
-
-
-#test_vs_direct( apos, qs,  ns=[100,100,100], dg=[0.10,0.10,0.10], order=2 )   # GOOD, This is perfect
+test_vs_direct( apos, qs,  ns=[100,100,100], dg=[0.10,0.10,0.10], order=3, bSlab=True, nPBC=[30,30,0] )   # GOOD, This is perfect
 
 #test_vs_direct( apos, qs,  ns=[100,100,100], dg=[0.10,0.10,0.10], order=3, bPython=True )  
 #test_vs_direct( apos, qs,  ns=[100,100,100], dg=[0.10,0.10,0.10], order=3, bPython=True, pos0=[0,0,-5.0] )  
 #test_vs_direct( apos, qs,  ns=[100,100,100], dg=[0.10,0.10,0.10], order=2, bPython=True, pos0=[0,0,-5.0] )  
 
-test_vs_direct( apos, qs,  ns=[16,16,16], dg=[0.10,0.10,0.10], order=2, bPython=True, pos0=[-0.8,-0.8,-0.8], bPlot1D=False )
-test_vs_direct( apos, qs,  ns=[16,16,16], dg=[0.10,0.10,0.10], order=2, bPython=True, pos0=[ 0.0, 0.0,-0.8], bPlot1D=False )  
+#test_vs_direct( apos, qs,  ns=[16,16,16], dg=[0.10,0.10,0.10], order=2, bPython=True, pos0=[-0.8,-0.8,-0.8], bPlot1D=False )
+#test_vs_direct( apos, qs,  ns=[16,16,16], dg=[0.10,0.10,0.10], order=2, bPython=True, pos0=[ 0.0, 0.0,-0.8], bPlot1D=False )  
 
 #test_project_dens( apos, qs, ns=[16,16,16], pos0=[0.0,0.0,0.0],     order=2 )
 #test_project_dens( apos, qs, ns=[16,16,16], pos0=[-0.8,-0.8,-0.8], order=2 )
-test_project_dens( apos, qs, ns=[16,16,16], pos0=[ 0.0, 0.0,-0.8], order=2 )
+#test_project_dens( apos, qs, ns=[16,16,16], pos0=[ 0.0, 0.0,-0.8], order=2 )
 
-test_project2D( apos[:,:2].copy(), g0=[ 0.0, 0.0], order=3, ws=qs )
+#test_project2D( apos[:,:2].copy(), g0=[ 0.0, 0.0], order=3, ws=qs )
 #test_project2D( apos[:,:2].copy(), g0=[-0.8,-0.8], order=3, ws=qs )
 
 

@@ -40,7 +40,7 @@ inline int pbc_ibk(int i, int n){ i--; return (i>=0)?  i :  i+n; };
 class EwaldGrid : public GridShape { public: 
 
 
-Vec3d dipole;
+Vec3d dipole = Vec3dZero;
 double* V_work  = 0; 
 double* vV_work = 0;  
 
@@ -309,13 +309,14 @@ int setup( Vec3d pos0_, Mat3d dCell_, Vec3i ns_, bool bPrint=false ){
 
 void projectAtoms( int na, Vec3d* apos, double* qs, double* dens, int order ){
     long t0 = getCPUticks();
-
+    dipole=Vec3dZero;
     for (int ia=0; ia<na; ia++){  dipole.add_mul(apos[ia],qs[ia]); };  // dipole for slab correction and debugging
+    printf( "EwaldGrid::projectAtoms() na=%i dipole(%g,%g,%g) \n", na, dipole.x,dipole.y,dipole.z   );
     switch(order){
         case 1: project_atoms_on_grid_linear ( na, apos, qs, dens ); break;
         case 2: project_atoms_on_grid_cubic  ( na, apos, qs, dens ); break;
         case 3: project_atoms_on_grid_quintic( na, apos, qs, dens ); break;
-        default: printf("ERROR in projectAtomsEwaldGrid() order=%i NOT IMPLEMETED !!! \n", order ); exit(0); break;
+        default: printf("ERROR in projectAtoms() order=%i NOT IMPLEMETED !!! \n", order ); exit(0); break;
     }
     //if( bQuintic ){  }
     //else          { W.gewald.project_atoms_on_grid        ( na, (Vec3d*)apos, qs, dens ); }
@@ -429,15 +430,19 @@ int laplace_real_loop_inert( double* V, int nmaxiter=1000, double tol=1e-6, bool
     return iter;
 }
 
-void slabPotential( int nz, double* Vin, double* Vout ){
+void slabPotential( int nz_slab, double* Vin, double* Vout ){ // 
     // ToDo: There should be some better correction of the potential.
     //  See article: https://pubs.aip.org/aip/jcp/article/111/7/3155/294442/Ewald-summation-for-systems-with-slab-geometry
-    double Vol       = getVolume() * (  nz* -1.0 /(n.z) );
-    double dz = dCell.c.norm(); 
-    Vec3d  hz = dCell.c *(1/dz);
-    double Vcor = COULOMB_CONST * hz.dot(dipole)/Vol;
-    for (int iz=0; iz<nz; iz++ ) {
-        double Vcor_z = Vcor * (iz*dz);
+    //double Vol       = getVolume() * ( nz_slab /(n.z) );
+    double Vol       = getVolume();
+    double dz = dCell.c.norm();   // lenght of grid step along z-axis
+    Vec3d  hz = dCell.c *(1/dz);  // normalized direction of z-axis 
+    //double dVcor  =  16.0 * COULOMB_CONST * hz.dot(dipole)/Vol;
+    double dVcor  = 4.0 *M_PI * COULOMB_CONST * hz.dot(dipole)/Vol;
+    double Vcor0 = -dVcor * cell.c.norm()/2; // 0.5*Lz
+    printf( "EwaldGrid::slabPotential() dipole(%g,%g,%g) dz=%g [A] Vol=%g[A^3] dVcor=%g [eV/A] \n", dipole.x,dipole.y,dipole.z, dz, Vol, dVcor );
+    for (int iz=0; iz<nz_slab; iz++ ) {
+        double Vcor_z = Vcor0 + dVcor * (iz*dz);
         for (int iy=0; iy<n.y; iy++) { 
             const int    iyz=(iz*n.y + iy)*n.x;
             for (int ix=0; ix<n.x; ix++) {
@@ -563,12 +568,12 @@ void laplace_reciprocal_kernel( fftw_complex* VV ){
         fftw_free(Vw);
     }
 
-    void solve_laplace_macro( double* dens, int nz, double* Vout, bool bPrepare=true, bool bDestroy=true, int flags=-1, bool bOMP=false, int nBlur=0, double cSOR=0, double cV=0.95 ){
+    void solve_laplace_macro( double* dens, int nz_slab, double* Vout, bool bPrepare=true, bool bDestroy=true, int flags=-1, bool bOMP=false, int nBlur=0, double cSOR=0, double cV=0.95 ){
         long t0 = getCPUticks();
         //if(bPrepare){ if(bOMP){ prepare_laplace_omp( flags );} else { prepare_laplace( flags );} }
         if(bPrepare){ prepare_laplace( flags ); }
 
-        bool bSlab = (nz>0);
+        bool bSlab = (nz_slab>0);
         double* Vtmp = Vout;
         if(bSlab){ Vtmp = new double[n.totprod()]; }
 
@@ -588,7 +593,7 @@ void laplace_reciprocal_kernel( fftw_complex* VV ){
         }
 
         if( bSlab ){ 
-            slabPotential( nz, Vtmp, Vout ); 
+            slabPotential( nz_slab, Vtmp, Vout ); 
             delete[] Vtmp;
         }
     

@@ -124,56 +124,63 @@ int setupEwaldGrid( double* pos0, double* dCell, int* ns, bool bPrint ){
 }
 
 void projectAtomsEwaldGrid( int na, double* apos, double* qs, double* dens, int order ){
-    long t0 = getCPUticks();
-    switch(order){
-        case 1: W.gewald.project_atoms_on_grid_linear ( na, (Vec3d*)apos, qs, dens ); break;
-        case 2: W.gewald.project_atoms_on_grid_cubic  ( na, (Vec3d*)apos, qs, dens ); break;
-        case 3: W.gewald.project_atoms_on_grid_quintic( na, (Vec3d*)apos, qs, dens ); break;
-        default: printf("ERROR in projectAtomsEwaldGrid() order=%i NOT IMPLEMETED !!! \n", order ); exit(0); break;
-    }
-    //if( bQuintic ){  }
-    //else          { W.gewald.project_atoms_on_grid        ( na, (Vec3d*)apos, qs, dens ); }
-    double t = (getCPUticks()-t0)*1e-6; printf( "projectAtomsEwaldGrid(order=%i) na=%i ng(%i,%i,%i) T(project_atoms_on_grid)=%g [Mticks] \n", order, na, W.gewald.n.x,W.gewald.n.y,W.gewald.n.z, t );
+    // long t0 = getCPUticks();
+    // switch(order){
+    //     case 1: W.gewald.project_atoms_on_grid_linear ( na, (Vec3d*)apos, qs, dens ); break;
+    //     case 2: W.gewald.project_atoms_on_grid_cubic  ( na, (Vec3d*)apos, qs, dens ); break;
+    //     case 3: W.gewald.project_atoms_on_grid_quintic( na, (Vec3d*)apos, qs, dens ); break;
+    //     default: printf("ERROR in projectAtomsEwaldGrid() order=%i NOT IMPLEMETED !!! \n", order ); exit(0); break;
+    // }
+    // //if( bQuintic ){  }
+    // //else          { W.gewald.project_atoms_on_grid        ( na, (Vec3d*)apos, qs, dens ); }
+    // double t = (getCPUticks()-t0)*1e-6; printf( "projectAtomsEwaldGrid(order=%i) na=%i ng(%i,%i,%i) T(project_atoms_on_grid)=%g [Mticks] \n", order, na, W.gewald.n.x,W.gewald.n.y,W.gewald.n.z, t );
+    W.gewald.projectAtoms( na, (Vec3d*)apos, qs, dens, order );
 }
 
 
 #ifdef WITH_FFTW
 
-void EwaldGridSolveLaplace( double* dens, double* Vout, bool bPrepare, bool bDestroy, int flags, bool bOMP, int nBlur, double cSOR, double cV ){
+void EwaldGridSolveLaplace( double* dens, int nz_slab, double* Vout, bool bPrepare, bool bDestroy, int flags, bool bOMP, int nBlur, double cSOR, double cV ){
+    // // long t0 = getCPUticks();
+    // // if(bPrepare){ W.gewald.prepare_laplace( flags ); }
+    // // long t1 = getCPUticks();
+    // //               W.gewald.solve_laplace( dens, Vout );
+    // // long t2 = getCPUticks();
+    // // printf( "prepare_laplace() flags=%i n(%i,%i,%i) T(prepare_laplace)= %g [Mticks] T(solve_laplace)= %g [Mticks] \n", flags, W.gewald.n.x,W.gewald.n.y,W.gewald.n.z, (t1-t0)*1e-6, (t2-t1)*1e-6 );
+    // // if(bDestroy){ W.gewald.destroy_laplace( ); }
+
     // long t0 = getCPUticks();
+    
+    // // if(bPrepare){ if(bOMP){ W.gewald.prepare_laplace_omp( flags );}
+    // //               else    { W.gewald.prepare_laplace    ( flags );} }
     // if(bPrepare){ W.gewald.prepare_laplace( flags ); }
     // long t1 = getCPUticks();
-    //               W.gewald.solve_laplace( dens, Vout );
+    // W.gewald.solve_laplace( dens, Vout );
     // long t2 = getCPUticks();
-    // printf( "prepare_laplace() flags=%i n(%i,%i,%i) T(prepare_laplace)= %g [Mticks] T(solve_laplace)= %g [Mticks] \n", flags, W.gewald.n.x,W.gewald.n.y,W.gewald.n.z, (t1-t0)*1e-6, (t2-t1)*1e-6 );
+
     // if(bDestroy){ W.gewald.destroy_laplace( ); }
 
-    long t0 = getCPUticks();
-    
-    // if(bPrepare){ if(bOMP){ W.gewald.prepare_laplace_omp( flags );}
-    //               else    { W.gewald.prepare_laplace    ( flags );} }
-    if(bPrepare){ W.gewald.prepare_laplace( flags ); }
-    long t1 = getCPUticks();
-    W.gewald.solve_laplace( dens, Vout );
-    long t2 = getCPUticks();
+    // //if(nBlur>0)W.gewald.laplace_real_loop( Vout, nBlur, 1e-32, true, cSOR );
+    // long t3=0,t4=0;
+    // if(nBlur>0){
+    //     int ntot = W.gewald.n.totprod();
+    //     _allocIfNull( W.gewald.V_work,  ntot );
+    //     _allocIfNull( W.gewald.vV_work, ntot );
+    //     t3 = getCPUticks();
+    //     if( cV<-1.0 ){ W.gewald.laplace_real_loop      ( Vout, nBlur, 1e-32, true, cSOR     ); }
+    //     else         { W.gewald.laplace_real_loop_inert( Vout, nBlur, 1e-32, true, cSOR, cV ); }
+    //     t4 = getCPUticks();
+    // }
 
-    if(bDestroy){ W.gewald.destroy_laplace( ); }
+    // printf( "EwaldGridSolveLaplace() flags=%i  omp_max_threads=%i n(%i,%i,%i) T(prepare_laplace)= %g [Mticks] T(solve_laplace)= %g [Mticks] T(laplace_real_loop)= %g [Mticks]\n", flags, omp_get_max_threads(), W.gewald.n.x,W.gewald.n.y,W.gewald.n.z, (t1-t0)*1e-6, (t2-t1)*1e-6, (t4-t3)*1e-6 );
+    // // if(bDestroy){ if(bOMP){ W.gewald.destroy_laplace_omp( ); }
+    // //               else    { W.gewald.destroy_laplace    ( ); } }
 
-    //if(nBlur>0)W.gewald.laplace_real_loop( Vout, nBlur, 1e-32, true, cSOR );
-    long t3=0,t4=0;
-    if(nBlur>0){
-        int ntot = W.gewald.n.totprod();
-        _allocIfNull( W.gewald.V_work,  ntot );
-        _allocIfNull( W.gewald.vV_work, ntot );
-        t3 = getCPUticks();
-        if( cV<-1.0 ){ W.gewald.laplace_real_loop      ( Vout, nBlur, 1e-32, true, cSOR     ); }
-        else         { W.gewald.laplace_real_loop_inert( Vout, nBlur, 1e-32, true, cSOR, cV ); }
-        t4 = getCPUticks();
-    }
 
-    printf( "EwaldGridSolveLaplace() flags=%i  omp_max_threads=%i n(%i,%i,%i) T(prepare_laplace)= %g [Mticks] T(solve_laplace)= %g [Mticks] T(laplace_real_loop)= %g [Mticks]\n", flags, omp_get_max_threads(), W.gewald.n.x,W.gewald.n.y,W.gewald.n.z, (t1-t0)*1e-6, (t2-t1)*1e-6, (t4-t3)*1e-6 );
-    // if(bDestroy){ if(bOMP){ W.gewald.destroy_laplace_omp( ); }
-    //               else    { W.gewald.destroy_laplace    ( ); } }
+    W.gewald.solve_laplace_macro( dens, nz_slab, Vout, bPrepare, bDestroy, flags, bOMP, nBlur, cSOR, cV );
+
+
+
 }
 
 void EwaldGridSolveLaplaceDebug( double* dens, double* Vout, double* densw, double* kerw, double* VwKer ){

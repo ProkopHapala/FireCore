@@ -8,19 +8,7 @@ from pyBall import atomicUtils as au
 from pyBall import MMFF as mmff
 from pyBall import FunctionSampling as fu
 
-
-# =============
-
-apos = [
-    [-2.0,0.0,0.0],
-    [ 2.0,0.0,0.0],
-]
-REs=[
-    [3.5,1.0],
-    [3.5,1.0],
-]
-
-# =============
+# =============  Functions
 
 def getPLQH( R0, E0, a, Q, H ):
     e  = np.exp(a*R0);
@@ -200,6 +188,19 @@ def test_gridFF_2D( name="data/NaCl_1x1_L2", axs=(0,1), tmin=[0.0,0.0],tmax=[10.
     print( "py======= test_gridFF_lat() DONE" );
     #return EFg
 
+# ============= BODY
+
+# apos = [
+#     [-2.0,0.0,0.0],
+#     [ 2.0,0.0,0.0],
+# ]
+# REs=[
+#     [3.5,1.0],
+#     [3.5,1.0],
+# ]
+
+
+
 
 
 
@@ -215,8 +216,8 @@ p0 = [-2.0,-2.0,0.0]
 
 mmff.initParams()
 
-test_gridFF    ( mode=6, title="Bspline_o3 \n(z-cut)" ,    Q=0.0, )
-test_gridFF_lat( mode=6, title="Bspline_o3 \n(lat iax=0)", Q=0.0, )
+# test_gridFF    ( mode=6, title="Bspline_o3 \n(z-cut)" ,    Q=0.0, )
+# test_gridFF_lat( mode=6, title="Bspline_o3 \n(lat iax=0)", Q=0.0, )
 #test_gridFF_lat( mode=6, title="Bspline_o3 \n(lat iax=0)", Q=0.0, p0=p0, iax=0 )
 
 #test_gridFF    ( mode=1, title="tri-linar force \n(z-cut)"          )
