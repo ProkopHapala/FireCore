@@ -8,6 +8,11 @@
 #include "Grid.h"
 #include "Bspline.h"
 //#include "VecN.h"
+#include "IO_utils.h"
+
+#ifdef WITH_OMP
+#include <omp.h>
+#endif
 
 #ifdef WITH_FFTW
 #include <fftw3.h>
@@ -633,8 +638,13 @@ void laplace_reciprocal_kernel( fftw_complex* VV ){
             slabPotential( nz_slab, Vtmp, Vout ); 
             delete[] Vtmp;
         }
+
+        int nCPUs=1;
+        #ifdef WITH_OMP
+            nCPUs=omp_get_max_threads();
+        #endif
     
-        printf( "EwaldGrid::solve_laplace_macro() DONE flags=%i  omp_max_threads=%i n(%i,%i,%i) T(prepare_laplace)= %g [Mticks] T(solve_laplace)= %g [Mticks] T(laplace_real_loop)= %g [Mticks]\n", flags, omp_get_max_threads(), n.x,n.y,n.z, (t1-t0)*1e-6, (t2-t1)*1e-6, (t4-t3)*1e-6 );
+        printf( "EwaldGrid::solve_laplace_macro() DONE flags=%i nCPUs=%i n(%i,%i,%i) T(prepare_laplace)= %g [Mticks] T(solve_laplace)= %g [Mticks] T(laplace_real_loop)= %g [Mticks]\n", flags, nCPUs, n.x,n.y,n.z, (t1-t0)*1e-6, (t2-t1)*1e-6, (t4-t3)*1e-6 );
         // if(bDestroy){ if(bOMP){ destroy_laplace_omp( ); } else { destroy_laplace    ( ); } }
     }
 
@@ -642,7 +652,6 @@ void laplace_reciprocal_kernel( fftw_complex* VV ){
         printf("EwaldGrid::potential_of_atoms() natoms=%i order=%i nBlur=%i cV=%g \n", natoms, order, nBlur, cV );
         int ntot = n.totprod();
         double* dens  = new double[ ntot ];
-        //double* qs    = new double[ natoms_ ]; for( int i=0; i<natoms_; i++ ){ qs[i] = REQs_[i].z; }
         if(bClearCharge){ for(int i=0; i<ntot; i++){ dens[i]=0; }; }
         projectAtoms( natoms, apos, qs, dens, order );
         solve_laplace_macro( dens, nz, VCoul, true, true, -1, false, nBlur, 0, cV );

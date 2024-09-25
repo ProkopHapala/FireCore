@@ -54,12 +54,12 @@ def test_gridFF_npy( name="data/NaCl_1x1_L2",  ps_xy=[(0.0,0.0),(0.0,0.5),(0.5,0
     #plt.show()
     print( "py======= test_gridFF() DONE" );
 
-def test_gridFF( name="data/NaCl_1x1_L2", mode=6, dsamp=0.02,  R0=3.5, E0=0.1, a=1.6, Q=0.4, H=0.0, scErr=100.0, title=None, bSaveFig=True):
+def test_gridFF( name="data/NaCl_1x1_L2", mode=6, dsamp=0.02,  R0=3.5, E0=0.1, a=1.6, Q=0.4, H=0.0, scErr=100.0, title=None, bSaveFig=True, bRefine=True):
     print( "py======= test_gridFF() START" );
     #print( "test_gridFF() START" )
     #mode = 4
     #mode = 1
-    mmff.makeGridFF( name=name, mode=mode )
+    mmff.makeGridFF( name=name, mode=mode, bRefine=bRefine )
     #plotGridFF_1D( EFg, ix=20,iy=20 )
     PLQH = getPLQH( R0, E0, a, Q, H )
 
@@ -118,12 +118,12 @@ def test_gridFF( name="data/NaCl_1x1_L2", mode=6, dsamp=0.02,  R0=3.5, E0=0.1, a
     print( "py======= test_gridFF() DONE" );
     #return EFg
 
-def test_gridFF_lat( name="data/NaCl_1x1_L2", iax=0, tmin=0.0,tmax=10.0, p0=[1.05,1.05,2.0], mode=6, dsamp=0.02,  R0=3.5, E0=0.1, a=1.6, Q=0.4, H=0.0, scErr=100.0, title=None, bSaveFig=True ):
+def test_gridFF_lat( name="data/NaCl_1x1_L2", iax=0, tmin=0.0,tmax=10.0, p0=[1.05,1.05,2.0], mode=6, dsamp=0.02,  R0=3.5, E0=0.1, a=1.6, Q=0.4, H=0.0, scErr=100.0, title=None, bSaveFig=True, bRefine=True ):
     print( "py======= test_gridFF_lat() START" );
     #print( "test_gridFF() START" )
     #mode = 4
     #mode = 1
-    mmff.makeGridFF( name=name, mode=mode )
+    mmff.makeGridFF( name=name, mode=mode, bRefine=bRefine )
 
     #plotGridFF_1D( EFg, ix=20,iy=20 )
     PLQH = getPLQH( R0, E0, a, Q, H )
@@ -260,13 +260,13 @@ mmff.initParams()
 #test_gridFF    ( mode=1, title="tri-linar force \n(z-cut)"          )
 #test_gridFF_lat( mode=1, title="tri-Linear Force", Q=0.0, p0=p0, iax=0 )
 
-# test_gridFF    ( mode=6, title="Bspline_o3 \n(z-cut)" ,    Q=0.4, E0=0 )
-# test_gridFF_lat( mode=6, title="Bspline_o3 \n(lat iax=0)", Q=0.4, E0=0 )
+test_gridFF    ( mode=6, title="Bspline_o3 \n(z-cut)" ,    Q=0.4, E0=0, bRefine=False )
+test_gridFF_lat( mode=6, title="Bspline_o3 \n(lat iax=0)", Q=0.4, E0=0 )
 
 
 
 
-test_gridFF_npy( ps_xy=[(0.0,0.0),(0.0,0.5),(0.5,0.0),(0.5,0.5)], mode=6, title="" )
+#test_gridFF_npy( ps_xy=[(0.0,0.0),(0.0,0.5),(0.5,0.0),(0.5,0.5)], mode=6, title="" )
 
 
 
