@@ -84,7 +84,7 @@ def plot1Dcut(apos, Vg, i0, dg, Ls, iax=0, nPBC=[10,10,10], vmax=5.0, scErr=100.
     plt.legend()
     plt.grid()
 
-def test_vs_direct( apos, qs, ns=[100,100,100], dg=[0.1,0.1,0.1], nPBC=[30,30,30], pos0=None, scErr=100.0, order=2, bPython=False, bOMP=False, nBlur=0, cSOR=0.0, cV=0.5, yrange=None, bPlot1D=True , bSlab=False, z_slab=10.0 ):
+def test_vs_direct( apos, qs, ns=[100,100,100], dg=[0.1,0.1,0.1], nPBC=[30,30,30], pos0=None, scErr=100.0, order=2, bPython=False, bOMP=False, nBlur=0, cSOR=0.0, cV=0.5, yrange=None, bPlot1D=True , bSlab=False, z_slab=None ):
     apos = apos.copy()
     print( "apos ", apos )
     Ls = [ ns[0]*dg[0], ns[1]*dg[1], ns[2]*dg[2] ]                                # lenghts along each axis  
@@ -122,7 +122,9 @@ def test_vs_direct( apos, qs, ns=[100,100,100], dg=[0.1,0.1,0.1], nPBC=[30,30,30
 
     else:
         nz_slab=-1
-        if bSlab: nz_slab = int(z_slab/dg[2])
+        if bSlab: 
+            if z_slab is None: z_slab = Ls[2] 
+            nz_slab = int(z_slab/dg[2])
         Vg = mmff.EwaldGridSolveLaplace(  dens, nz_slab=nz_slab, nBlur=nBlur, cSOR=cSOR, cV=cV, bOMP=bOMP )
         #Vg = mmff.EwaldGridSolveLaplace( dens  )
         
@@ -198,23 +200,32 @@ def test_project2D( xs,  g0=[0.0,0.0], dg=[0.1,0.1], ng=[16,16], order=3, ws=Non
 
 
 
-# d=0.6
-# apos=np.array([
-#     [0.,.0,-d],
-#     [0.,.0,+d],
-# ])
-# qs = [ +1.,-1. ]
-
 d=0.6
-apos = []
-qs   = [] 
-for ix in range(0,10):
-    for iy in range(0,10):
-        apos.append( [(ix-5)+0.5, (iy-5)+0.5, +d] ); qs.append(+0.01)
-        apos.append( [(ix-5)+0.5, (iy-5)+0.5, -d] ); qs.append(-0.01)
+apos=np.array([
+    [0.,.0,-d],
+    [0.,.0,+d],
+])
+qs = [ +1.,-1. ]
 
-test_vs_direct( apos, qs,  ns=[100,100,100], dg=[0.10,0.10,0.10], order=3, bSlab=True,  nPBC=[30,30,0] )
-test_vs_direct( apos, qs,  ns=[100,100,100], dg=[0.10,0.10,0.10], order=3, bSlab=False, nPBC=[30,30,0] )
+# d=0.6
+# apos = []
+# qs   = [] 
+# for ix in range(0,10):
+#     for iy in range(0,10):
+#         apos.append( [(ix-5)+0.5, (iy-5)+0.5, +d] ); qs.append(+0.01)
+#         apos.append( [(ix-5)+0.5, (iy-5)+0.5, -d] ); qs.append(-0.01)
+
+
+# ----- testing slab dipole correction
+test_vs_direct( apos, qs,  ns=[100,100,100], dg=[0.10,0.10,0.10], order=3, bSlab=True,  nPBC=[100,100,0] )
+test_vs_direct( apos, qs,  ns=[100,100,150], dg=[0.10,0.10,0.10], order=3, bSlab=True,  nPBC=[100,100,0] )
+test_vs_direct( apos, qs,  ns=[100,100,200], dg=[0.10,0.10,0.10], order=3, bSlab=True,  nPBC=[100,100,0] )
+test_vs_direct( apos, qs,  ns=[100,100,300], dg=[0.10,0.10,0.10], order=3, bSlab=True,  nPBC=[100,100,0] )
+test_vs_direct( apos, qs,  ns=[100,100,400], dg=[0.10,0.10,0.10], order=3, bSlab=True,  nPBC=[100,100,0] )
+#test_vs_direct( apos, qs,  ns=[100,100,100], dg=[0.10,0.10,0.10], order=3, bSlab=False, nPBC=[200,200,0] )
+
+#test_vs_direct( apos, qs,  ns=[100,100,100], dg=[0.10,0.10,0.10], order=3, bSlab=True,  nPBC=[100,100,0] )
+#test_vs_direct( apos, qs,  ns=[100,100,100], dg=[0.10,0.10,0.10], order=3, bSlab=False, nPBC=[100,100,0] )
 
 #test_vs_direct( apos, qs,  ns=[100,100,100], dg=[0.10,0.10,0.10], order=3, bPython=True )  
 #test_vs_direct( apos, qs,  ns=[100,100,100], dg=[0.10,0.10,0.10], order=3, bPython=True, pos0=[0,0,-5.0] )  

@@ -41,39 +41,43 @@ def cut1d_xyz( dat, f=[0.8,0.5,0.5],n=2, iaxs=[0,1,2], label=""):
 
 path="data/NaCl_1x1_L2/"
 
-files=[
-"debug_BsplineCoul_pbc.npy",
-"debug_BsplineLond_pbc.npy",
-"debug_BsplinePaul_pbc.npy",
-"debug_VCoul_pbc.npy",
-"debug_VLond_pbc.npy",
-"debug_VPaul_pbc.npy",    
-]
+# files=[
+# "debug_BsplineCoul_pbc.npy",
+# "debug_BsplineLond_pbc.npy",
+# "debug_BsplinePaul_pbc.npy",
+# "debug_VCoul_pbc.npy",
+# "debug_VLond_pbc.npy",
+# "debug_VPaul_pbc.npy",    
+# ]
+# #f =[0.10,0.5,0.5]
+# #f2=[0.15,0.5,0.5]
+# #f3=[0.20,0.5,0.5]
+# f =[0.10,0.50,0.50]
+# f2=[0.10,0.25,0.25]
+# f3=[0.20,0.00,0.00]
+# iax = 1
+# fig1 = plt.figure(1,figsize=(15,10))
+# #fig2 = plt.figure(2,figsize=(15,10))
+# for i,name in enumerate(files):
+#     dat = np.load(path+name)
+#     vmax = np.abs(dat).max()
+#     print( "name ", name, dat.shape," vmax=", vmax )
+#     #plt.figure(fig1.number); plt.subplot(2,3,i+1);  cut1d_xyz(dat, f=f, n=2 )
+#     plt.figure(fig1.number); plt.subplot(2,3,i+1);  
+#     cut1d_xyz(dat, f=f , n=2, iaxs=[1,2] )
+#     cut1d_xyz(dat, f=f2, n=2, iaxs=[1,2] )
+#     cut1d_xyz(dat, f=f3, n=2, iaxs=[1,2] )
+#     #plt.figure(fig2.number); plt.subplot(2,3,i+1);  cut2(dat,f=f[iax],iax=iax, n=[0,0], bPlot=True); plt.title(name)  
 
 
-#f =[0.10,0.5,0.5]
-#f2=[0.15,0.5,0.5]
-#f3=[0.20,0.5,0.5]
 
-f =[0.10,0.50,0.50]
-f2=[0.10,0.25,0.25]
-f3=[0.20,0.00,0.00]
 
-iax = 1
+dat = np.load(path+"debug_VCoul_pbc.npy")
 
-fig1 = plt.figure(1,figsize=(15,10))
-#fig2 = plt.figure(2,figsize=(15,10))
+plt.plot( dat[:,:,1] );
+plt.plot( dat[:,1,:] );
+plt.plot( dat[1,:,:] );
 
-for i,name in enumerate(files):
-    dat = np.load(path+name)
-    vmax = np.abs(dat).max()
-    print( "name ", name, dat.shape," vmax=", vmax )
-    #plt.figure(fig1.number); plt.subplot(2,3,i+1);  cut1d_xyz(dat, f=f, n=2 )
-    plt.figure(fig1.number); plt.subplot(2,3,i+1);  
-    cut1d_xyz(dat, f=f , n=2, iaxs=[1,2] )
-    cut1d_xyz(dat, f=f2, n=2, iaxs=[1,2] )
-    cut1d_xyz(dat, f=f3, n=2, iaxs=[1,2] )
-    #plt.figure(fig2.number); plt.subplot(2,3,i+1);  cut2(dat,f=f[iax],iax=iax, n=[0,0], bPlot=True); plt.title(name)  
 
 
 plt.show()

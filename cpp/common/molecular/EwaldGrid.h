@@ -431,7 +431,8 @@ int laplace_real_loop_inert( double* V, int nmaxiter=1000, double tol=1e-6, bool
 }
 
 void slabPotential( int nz_slab, double* Vin, double* Vout ){ // 
-    // ToDo: There should be some better correction of the potential.
+    // NOTE: the cell must be sufficiently large in z-direction, recomanded at lease 2 x as big as in x,y , i.e. L_z > 2 * max( L_x, L_y ) 
+    // ToDo: We assume the cell is neutral, if cell as non-zero net charge there should be another term, described in the paper  
     //  See article: https://pubs.aip.org/aip/jcp/article/111/7/3155/294442/Ewald-summation-for-systems-with-slab-geometry
     //double Vol       = getVolume() * ( nz_slab /(n.z) );
     double Vol       = getVolume();
@@ -440,6 +441,7 @@ void slabPotential( int nz_slab, double* Vin, double* Vout ){ //
     //double dVcor  =  16.0 * COULOMB_CONST * hz.dot(dipole)/Vol;
     double dVcor  = 4.0 *M_PI * COULOMB_CONST * hz.dot(dipole)/Vol;
     double Vcor0 = -dVcor * cell.c.norm()/2; // 0.5*Lz
+    printf( "EwaldGrid::slabPotential() ns(%i,%i,%i) Ls(%g,%g,%g) nz_slab=%i \n", n.x,n.y,n.z, cell.a.norm(), cell.b.norm(), cell.c.norm(), nz_slab );
     printf( "EwaldGrid::slabPotential() dipole(%g,%g,%g) dz=%g [A] Vol=%g[A^3] dVcor=%g [eV/A] \n", dipole.x,dipole.y,dipole.z, dz, Vol, dVcor );
     for (int iz=0; iz<nz_slab; iz++ ) {
         double Vcor_z = Vcor0 + dVcor * (iz*dz);
