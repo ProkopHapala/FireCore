@@ -918,9 +918,9 @@ void printPBCshifts(){
  * @param cel0 The initial cell position.
  * @param bAutoNPBC Flag indicating whether to automatically set non-periodic boundary conditions.
  */
-    virtual void initGridFF( const char * name, bool bGrid=true, bool bSaveDebugXSFs=false, double z0=NAN, Vec3d cel0={-0.5,-0.5,0.0}, bool bAutoNPBC=true, bool bCheckEval=true, bool bUseEwald=true, bool bFit=true ){
+    virtual void initGridFF( const char * name, double z0=NAN, Vec3d cel0={-0.5,-0.5,0.0}, bool bSymetrize=true, bool bAutoNPBC=true, bool bCheckEval=true, bool bUseEwald=true, bool bFit=true ){
         //if(verbosity>0)
-        printf("MolWorld_sp3::initGridFF(%s,bGrid=%i,bAutoNPBC=%i bCheckEval=%i bUseEwald=%i bFit=%i bGridDouble=%i gridStep=%g,z0=%g,cel0={%g,%g,%g} )\n",  name, bGrid,bAutoNPBC,bCheckEval,bUseEwald,bFit, bGridDouble, gridStep, z0, cel0.x,cel0.y,cel0.z  );
+        printf("MolWorld_sp3::initGridFF(%s,bSymetrize=%i,bAutoNPBC=%i bCheckEval=%i bUseEwald=%i bFit=%i bGridDouble=%i gridStep=%g,z0=%g,cel0={%g,%g,%g} )\n",  name, bSymetrize, bAutoNPBC,bCheckEval,bUseEwald,bFit, bGridDouble, gridStep, z0, cel0.x,cel0.y,cel0.z  );
         sprintf(tmpstr, "%s.lvs", name );
         if( file_exist(tmpstr) ){  gridFF.grid.loadCell( tmpstr, gridStep );  gridFF.bCellSet=true; }
         if( !gridFF.bCellSet ){
@@ -929,23 +929,19 @@ void printPBCshifts(){
             return;
         }
         //double* ffgrid = 0;
-        if(bGrid){
-            gridFF.grid.center_cell( cel0 );
-            //bGridFF=true;
-            gridFF.bindSystem(surf.natoms, surf.atypes, surf.apos, surf.REQs );
-            gridFF.initGridFF( name, z0, bAutoNPBC );
-            char wd0[1024]; getcwd(wd0,1024); //printf( "initGridFF() 1 WD=`%s`\n", wd0 );
-            tryMakeDir  ( name );
-            tryChangeDir( name );
-            gridFF.bUseEwald = bUseEwald;
-            gridFF.ewald     = &gewald;
-            gridFF.tryLoad_new(bFit);
-            //ffgrid = gridFF.HHermite_d;
-            if(bSaveDebugXSFs)gridFF.saveXsfDebug();
-            tryChangeDir( wd0 );
-            //getcwd(tmpstr, 1024 ); printf( "initGridFF() 3 WD=`%s`\n", tmpstr );
-
-        }
+        gridFF.grid.center_cell( cel0 );
+        //bGridFF=true;
+        gridFF.bindSystem(surf.natoms, surf.atypes, surf.apos, surf.REQs );
+        gridFF.initGridFF( name, z0, bAutoNPBC, bSymetrize );
+        char wd0[1024]; getcwd(wd0,1024); //printf( "initGridFF() 1 WD=`%s`\n", wd0 );
+        tryMakeDir  ( name );
+        tryChangeDir( name );
+        gridFF.bUseEwald = bUseEwald;
+        gridFF.ewald     = &gewald;
+        gridFF.tryLoad_new(bFit, bSymetrize );
+        //ffgrid = gridFF.HHermite_d;
+        tryChangeDir( wd0 );
+        //getcwd(tmpstr, 1024 ); printf( "initGridFF() 3 WD=`%s`\n", tmpstr );
         gridFF.shift0 = Vec3d{0.,0.,-2.0};
         //gridFF.shift0 = Vec3d{0.,0.,0.0};
         //if(bCheckEval)gridFF.evalCheck();    // WARRNING:  CHECK FOR gridFF TURNED OFF !!!!!!!!!!!!!!!!!!!!!!!!!
@@ -1016,7 +1012,10 @@ void printPBCshifts(){
         if(verbosity>0)printf("MolWorld_sp3::loadSurf(%s) 1 natoms %i apos %li atyps %li \n", name, surf.natoms, (long)surf.apos, (long)surf.atypes  );
         //surf.print();
         bSurfAtoms=true;
-        initGridFF( name,bGrid,bSaveDebugXSFs,z0,cel0 );
+        if(bGrid){
+            bool bSymmetrize=true;
+            initGridFF( name,z0,cel0, bSymmetrize );
+        }
         return true;
     }
 

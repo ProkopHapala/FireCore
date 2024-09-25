@@ -1211,7 +1211,7 @@ void setAtomsSymetrized( int n, int* atypes, Vec3d* apos, Quat4d* REQs, double d
         }
     }
     //printf( "GridFF::setAtomsSymetrized() END na_new=%i na_old=%i \n", atypes_.size(), n );
-    bindSystem( atypes_.size(), &atypes_[0], &apos_[0], &REQs_[0] );
+    //bindSystem( atypes_.size(), &atypes_[0], &apos_[0], &REQs_[0] );
     bSymetrized = true;
 }
 
@@ -1430,8 +1430,8 @@ void initGridFF( const char * name, double z0=NAN, bool bAutoNPBC=true, bool bSy
         return recalcFF;
     }
 
-    bool tryLoad_new( bool bFit=true, bool bPrint=false ){
-        printf( "GridFF::tryLoad_new() mode=%i \n", (int)mode );
+    bool tryLoad_new( bool bFit=true, bool bSymetrize=true, bool bPrint=false ){
+        printf( "GridFF::tryLoad_new() mode=%i bFit=%i bSymetrize=%i \n", (int)mode, bFit, bSymetrize );
         //const char* fname_Coul=0; 
         //const char* fname_Paul=0; 
         //const char* fname_Lond=0;
@@ -1440,6 +1440,17 @@ void initGridFF( const char * name, double z0=NAN, bool bAutoNPBC=true, bool bSy
         int nbyte=0;
         bool bRecalc = false; 
         long t0 = getCPUticks();
+
+        int     na   = natoms; 
+        Vec3d*  aps  = apos;
+        Quat4d* reqs = REQs;
+        if(bSymetrize){
+            na   = apos_.size(); 
+            aps  = &apos_[0];
+            reqs = &REQs_[0];
+        }
+        printf( "GridFF::tryLoad_new() na=%i @apos=%li @REQs=%li \n", na, (long)aps, (long)reqs );
+
         switch (mode){
             
             case GridFFmod::LinearFloat:{
@@ -1452,7 +1463,7 @@ void initGridFF( const char * name, double z0=NAN, bool bAutoNPBC=true, bool bSy
                     loadBin( fnames[2], nbyte, (char*)FFelec );
                 }else{
                     bRecalc=true;
-                    makeGridFF_omp  ( apos_.size(), &apos_[0], &REQs_[0] ); 
+                    makeGridFF_omp  ( na, aps, reqs ); 
                     saveBin( fnames[0], nbyte, (char*)FFPaul );
                     saveBin( fnames[1], nbyte, (char*)FFLond );    
                     saveBin( fnames[2], nbyte, (char*)FFelec );
@@ -1469,7 +1480,7 @@ void initGridFF( const char * name, double z0=NAN, bool bAutoNPBC=true, bool bSy
                     loadBin( fnames[2], nbyte, (char*)FFelec_d );
                 }else{
                     bRecalc=true;
-                    makeGridFF_omp_d( apos_.size(), &apos_[0], &REQs_[0] ); 
+                    makeGridFF_omp_d(  na, aps, reqs ); 
                     saveBin( fnames[0], nbyte, (char*)FFPaul_d );
                     saveBin( fnames[1], nbyte, (char*)FFLond_d );    
                     saveBin( fnames[2], nbyte, (char*)FFelec_d );
@@ -1489,7 +1500,7 @@ void initGridFF( const char * name, double z0=NAN, bool bAutoNPBC=true, bool bSy
                 }else{
                     printf("Recalc & Load HermiteDouble npoint=%i nbyte=%i \n", npoint, nbyte );
                     bRecalc=true;
-                    makeGridFF_Hherm_d( apos_.size(), &apos_[0], &REQs_[0] ); 
+                    makeGridFF_Hherm_d(  na, aps, reqs ); 
                     saveBin( fnames[0], nbyte, (char*)HHermite_d );
                 }
             } break;
@@ -1514,7 +1525,7 @@ void initGridFF( const char * name, double z0=NAN, bool bAutoNPBC=true, bool bSy
                     bool bSaveNPY=true;
                     bool bSaveXSF=true;
                     printf( "tryLoad_new() mode=BsplineDouble   bSaveNPY=%i bSaveXSF=%i bFit=%i \n", bSaveNPY, bSaveXSF, bFit );
-                    done = makeGridFF_Bspline_d( apos_.size(), &apos_[0], &REQs_[0], bSaveNPY, bSaveXSF, bFit );
+                    done = makeGridFF_Bspline_d(  na, aps, reqs, bSaveNPY, bSaveXSF, bFit );
                     if(done){
                         saveBin( fnames[0], nbyte, (char*)Bspline_Pauli );
                         saveBin( fnames[1], nbyte, (char*)Bspline_London );

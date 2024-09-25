@@ -19,8 +19,29 @@ def getPLQH( R0, E0, a, Q, H ):
 
 def test_gridFF_npy( name="data/NaCl_1x1_L2",  ps_xy=[(0.0,0.0),(0.0,0.5),(0.5,0.0),(0.5,0.5)], mode=6, title="", bSaveFig=False, Vname= "VCoul" ):
     print( "py======= test_gridFF_npy() START" );
+    
     fname="debug_"+Vname+".npy"
-    mmff.makeGridFF( name=name, mode=mode, bFit=False )
+    fname="debug_"+Vname+".npy"
+    
+    mmff.makeGridFF( name=name, mode=mode, bSymmetrize=False, bFit=False )
+
+    # ----- 2D "debug_Ewald_dens.npy"
+    dens = np.load(name+"/"+"debug_Ewald_dens.npy")
+    V    = np.load(name+"/"+"debug_Ewald_V.npy")
+
+    Qtot=dens.sum();
+    Qabs=np.abs(dens).sum();
+    print( "Qtot= ",Qtot," Qabs=", Qabs );
+
+    plt.figure(figsize=(15,10))
+    plt.subplot(2,2,1); plt.imshow( dens[:,:,0].transpose() ); plt.title("dens(z,y)");
+    plt.subplot(2,2,3); plt.imshow( V   [:,:,0].transpose() ); plt.title("V(z,y)");
+    plt.subplot(2,2,2); plt.imshow( dens[10,:,:]            ); plt.title("dens(x,y)");
+    plt.subplot(2,2,4); plt.imshow( V   [10,:,:]            ); plt.title("V(x,y)");
+
+    # ----- 1D "debug_"+Vname+".npy"
+    plt.figure()
+    fname="debug_"+Vname+".npy"
     dat = np.load(name+"/"+fname)
     nz,ny,nx = dat.shape
     for i,p in enumerate(ps_xy):
