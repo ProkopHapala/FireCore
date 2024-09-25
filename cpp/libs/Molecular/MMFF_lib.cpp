@@ -76,7 +76,7 @@ void* init( char* xyz_name, char* surf_name, char* smile_name, bool bMMFF, bool 
     return &W;
 }
 
-void makeGridFF( const char* name, int* ffshape, int mode, double z0, double* cel0, bool bSymmetrize, bool bAutoNPBC, bool bFit ){
+void makeGridFF( const char* name, int* ffshape, int mode, double z0, double* cel0, bool bSymmetrize, bool bAutoNPBC, bool bFit, bool bRefine ){
     char fname[256];
     sprintf(fname, "%s.xyz", name );
     int ret = W.params.loadXYZ( fname, W.surf.natoms, &W.surf.apos, &W.surf.REQs, &W.surf.atypes, 0, &W.gridFF.grid.cell );
@@ -90,8 +90,8 @@ void makeGridFF( const char* name, int* ffshape, int mode, double z0, double* ce
     W.bSurfAtoms=true;
     bool bCheckEval=false;
     bool bUseEwald =true;
-    printf("MMFF_lib::makeGridFF() bAutoNPBC=%i bCheckEval=%i bUseEwald=%i bFit=%i \n", bAutoNPBC, bCheckEval, bUseEwald, bFit );
-    W.initGridFF( name, z0, *(Vec3d*)cel0, bSymmetrize, bAutoNPBC, bCheckEval, bUseEwald, bFit );
+    printf("MMFF_lib::makeGridFF() bAutoNPBC=%i bCheckEval=%i bUseEwald=%i bFit=%i bRefine=%i \n", bAutoNPBC, bCheckEval, bUseEwald, bFit, bRefine );
+    W.initGridFF( name, z0, *(Vec3d*)cel0, bSymmetrize, bAutoNPBC, bCheckEval, bUseEwald, bFit, bRefine );
     ffshape[0]=W.gridFF.grid.n.x;
     ffshape[1]=W.gridFF.grid.n.y;
     ffshape[2]=W.gridFF.grid.n.z;

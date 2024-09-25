@@ -922,7 +922,7 @@ inline void addForce( const Vec3d& pos, const Quat4f& PLQ, Quat4f& fe ) const {
     }
 
     void tryLoadGridFF_potentials( int natoms_, Vec3d * apos_, Quat4d * REQs_, int ntot, double*& VPaul, double*& VLond, double*& VCoul, bool bSaveNPY=false, bool bSaveXSF=false, bool bForceRecalc=false ){
-        //printf( "GridFF::makeGridFF_Bspline_d() START Fitting \n" );
+        printf( "GridFF::tryLoadGridFF_potentials() natoms_=%i bUseEwald=%i bForceRecalc=%i bSaveNPY=%i bSaveXSF=%i \n", natoms_, bUseEwald, bForceRecalc, bSaveNPY, bSaveXSF );
         //bool bPBC  = false;
         //Vec3i ns = gridN;
         //Vec3i ns = grid.n;
@@ -942,7 +942,7 @@ inline void addForce( const Vec3d& pos, const Quat4f& PLQ, Quat4f& fe ) const {
         }else{
             if(bUseEwald){
                 evalBsplineRef( natoms_, apos_, REQs_, VPaul, VLond, 0 );
-                std::vector<double> qs(natoms); for( int i=0; i<natoms_; i++ ){ qs[i] = REQs_[i].z; }
+                std::vector<double> qs(natoms_); for( int i=0; i<natoms_; i++ ){ qs[i] = REQs_[i].z; }
                 ewald->copy( grid );
                 ewald->enlarge( Vec3d{0.0,0.0,20.0} ); // add 20A of Vaccuum to simulated slabe (not periodic in z direction)
                 ewald->potential_of_atoms( grid.n.z, VCoul, natoms_, apos_, qs.data() );
@@ -966,13 +966,14 @@ inline void addForce( const Vec3d& pos, const Quat4f& PLQ, Quat4f& fe ) const {
         }
     }
 
-    bool makeGridFF_Bspline_d( int natoms_, Vec3d * apos_, Quat4d * REQs_, bool bSaveNPY=false, bool bSaveXSF=false, bool bFit=true ){
+    bool makeGridFF_Bspline_d( int natoms_, Vec3d * apos_, Quat4d * REQs_, bool bSaveNPY=false, bool bSaveXSF=false, bool bFit=true, bool bRefine=true ){
         printf( "GridFF::makeGridFF_Bspline_d() bUseEwald=%i bSaveNPY=%i bSaveXSF=%i bFit=%i \n", bUseEwald, bSaveNPY, bSaveXSF, bFit );
         //Vec3i ns = gridN;
         Vec3i ns = grid.n;
         int ntot = ns.totprod();
         //int nbyte = ntot*sizeof(double);
         double *VPaul=0, *VLond=0, *VCoul=0;
+        DEBUG
         tryLoadGridFF_potentials( natoms_, apos_, REQs_, ntot, VPaul, VLond, VCoul, bSaveNPY, bSaveXSF );
         if(!bFit){
             printf( "GridFF::makeGridFF_Bspline_d() bFit=false => exit() \n" );
@@ -988,12 +989,11 @@ inline void addForce( const Vec3d& pos, const Quat4f& PLQ, Quat4f& fe ) const {
         _realloc( Bspline_Coulomb, ntot );
         Quat4d testREQ{  1.8, sqrt(0.0091063), 0.6*0.3, 0.0 }; // ~ Oxygen
         Quat4f testPLQ = REQ2PLQ( testREQ, alphaMorse );
-        Vec3d vmaxs{ 
-            VecN::absmax( ntot, VPaul ), 
-            VecN::absmax( ntot, VLond ), 
-            VecN::absmax( ntot, VCoul ) 
-        };
-        printf( "GridFF::makeGridFF_Bspline_d() testPLQ( Paul=%g, Lond=%g, Coul=%g )  vmaxs( P=%g, L=%g, C=%g )\n", testPLQ.x, testPLQ.y, testPLQ.z, vmaxs.x, vmaxs.y, vmaxs.z );
+        
+        double vmax_Paul = VecN::absmax( ntot, VPaul );
+        double vmax_Lond = VecN::absmax( ntot, VLond ); 
+        double vmax_Coul = VecN::absmax( ntot, VCoul );
+        printf( "GridFF::makeGridFF_Bspline_d() testPLQ( Paul=%g, Lond=%g, Coul=%g )  vmaxs( P=%g, L=%g, C=%g )\n", testPLQ.x, testPLQ.y, testPLQ.z, vmax_Paul, vmax_Lond, vmax_Coul );
         
         bool bInitGE = true;
         double Ftol  = 1e-6;
@@ -1007,18 +1007,18 @@ inline void addForce( const Vec3d& pos, const Quat4f& PLQ, Quat4f& fe ) const {
         printf("GridFF::makeGridFF_Bspline_d() ========= FITTING start======== \n");
         int niter=0;
         printf( "GridFF::makeGridFF_Bspline_d().fit(Bspline_Pauli  ) : \n"); 
-        niter=Bspline::fit3D_omp( ns, Bspline_Pauli,   VPaul, 0, Ftol_pre, nmaxiter_pre, dt_pre, bPBC, bInitGE );                    // raw pre-fit 
-        niter=Bspline::fit3D_omp( ns, Bspline_Pauli,   VPaul, 0, Ftol    , nmaxiter    , dt    , bPBC,  false, vmaxs.x*1e-3 );   // refine fit
+        niter=           Bspline::fit3D_omp( ns, Bspline_Pauli,   VPaul, 0, Ftol_pre, nmaxiter_pre, dt_pre, bPBC, bInitGE );                   // raw pre-fit 
+        if(bRefine)niter=Bspline::fit3D_omp( ns, Bspline_Pauli,   VPaul, 0, Ftol    , nmaxiter    , dt    , bPBC,  false, vmax_Paul*1e-3 );    // refine fit
         if(niter>=nmaxiter-1){printf("fit3D_omp not cnverged => exit() \n"); exit(0);}; //printf( "GridFF::makeGridFF_Bspline_d() Fit(Bspline_Pauli)   DONE \n" );
         
         printf( "GridFF::makeGridFF_Bspline_d().fit(Bspline_London ) : \n"); 
-        niter=Bspline::fit3D_omp( ns, Bspline_London,  VLond, 0, Ftol_pre, nmaxiter_pre, dt_pre, bPBC, bInitGE );  // raw pre-fit 
-        niter=Bspline::fit3D_omp( ns, Bspline_London,  VLond, 0, Ftol    , nmaxiter,     dt,     bPBC,   false, vmaxs.y*1e-3 ); // refine fit
+        niter=           Bspline::fit3D_omp( ns, Bspline_London,  VLond, 0, Ftol_pre, nmaxiter_pre, dt_pre, bPBC, bInitGE );                   // raw pre-fit 
+        if(bRefine)niter=Bspline::fit3D_omp( ns, Bspline_London,  VLond, 0, Ftol    , nmaxiter,     dt,     bPBC,   false, vmax_Lond*1e-3 );   // refine fit
         if(niter>=nmaxiter-1){printf("fit3D_omp not cnverged => exit() \n"); exit(0);}; //printf( "GridFF::makeGridFF_Bspline_d() Fit(Bspline_London)  DONE \n" );
         
         printf( "GridFF::makeGridFF_Bspline_d().fit(Bspline_Coulomb) : \n"); 
-        niter=Bspline::fit3D_omp( ns, Bspline_Coulomb, VCoul, 0, Ftol_pre, nmaxiter_pre, dt_pre, bPBC, bInitGE ); 
-        niter=Bspline::fit3D_omp( ns, Bspline_Coulomb, VCoul, 0, Ftol,     nmaxiter,     dt,     bPBC,   false, vmaxs.z*1e-3 ); 
+        niter=           Bspline::fit3D_omp( ns, Bspline_Coulomb, VCoul, 0, Ftol_pre, nmaxiter_pre, dt_pre, bPBC, bInitGE );                  // raw pre-fit 
+        if(bRefine)niter=Bspline::fit3D_omp( ns, Bspline_Coulomb, VCoul, 0, Ftol,     nmaxiter,     dt,     bPBC,   false, vmax_Coul*1e-3 );  // refine fit
         if(niter>=nmaxiter-1){printf("fit3D_omp not cnverged => exit() \n"); exit(0);}; //printf( "GridFF::makeGridFF_Bspline_d() Fit(Bspline_Coulomb) DONE \n" );
 
         printf("GridFF::makeGridFF_Bspline_d() ========= FITTING finish ======== \n");
@@ -1430,8 +1430,8 @@ void initGridFF( const char * name, double z0=NAN, bool bAutoNPBC=true, bool bSy
         return recalcFF;
     }
 
-    bool tryLoad_new( bool bFit=true, bool bSymetrize=true, bool bPrint=false ){
-        printf( "GridFF::tryLoad_new() mode=%i bFit=%i bSymetrize=%i \n", (int)mode, bFit, bSymetrize );
+    bool tryLoad_new( bool bSymetrize=true, bool bFit=true, bool bRefine=true, bool bPrint=false ){
+        printf( "GridFF::tryLoad_new() mode=%i bSymetrize=%i bFit=%i bRefine=%i \n", (int)mode, bSymetrize, bFit, bRefine );
         //const char* fname_Coul=0; 
         //const char* fname_Paul=0; 
         //const char* fname_Lond=0;
@@ -1524,8 +1524,8 @@ void initGridFF( const char * name, double z0=NAN, bool bAutoNPBC=true, bool bSy
                     bRecalc=true;
                     bool bSaveNPY=true;
                     bool bSaveXSF=true;
-                    printf( "tryLoad_new() mode=BsplineDouble   bSaveNPY=%i bSaveXSF=%i bFit=%i \n", bSaveNPY, bSaveXSF, bFit );
-                    done = makeGridFF_Bspline_d(  na, aps, reqs, bSaveNPY, bSaveXSF, bFit );
+                    printf( "tryLoad_new() mode=BsplineDouble   bSaveNPY=%i bSaveXSF=%i bFit=%i bRefine=%i \n", bSaveNPY, bSaveXSF, bFit, bRefine );
+                    done = makeGridFF_Bspline_d(  na, aps, reqs, bSaveNPY, bSaveXSF, bFit, bRefine);
                     if(done){
                         saveBin( fnames[0], nbyte, (char*)Bspline_Pauli );
                         saveBin( fnames[1], nbyte, (char*)Bspline_London );

@@ -2305,9 +2305,10 @@ void surf2ocl(Vec3i nPBC, bool bSaveDebug=false){
     //exit(0);
 }
 
-virtual double* initGridFF( const char * name, bool bGrid=true, bool bSaveDebugXSFs=false, double z0=NAN, Vec3d cel0={-0.5,-0.5,0.0}, bool bAutoNPBC=true, bool bCheckEval=true )override{
+//virtual double* initGridFF( const char * name, bool bGrid=true, bool bSaveDebugXSFs=false, double z0=NAN, Vec3d cel0={-0.5,-0.5,0.0}, bool bAutoNPBC=true, bool bCheckEval=true )override{
+virtual void initGridFF( const char * name, double z0=NAN, Vec3d cel0={-0.5,-0.5,0.0}, bool bSymetrize=true, bool bAutoNPBC=true, bool bCheckEval=true, bool bUseEwald=true, bool bFit=true, bool bRefine=true ){
     printf( "MolWorld_sp3_multi::initGridFF() \n");
-    if(verbosity>0)printf("MolWorld_sp3_multi::initGridFF(%s,bGrid=%i,z0=%g,cel0={%g,%g,%g})\n",  name, bGrid, z0, cel0.x,cel0.y,cel0.z  );
+    if(verbosity>0)printf("MolWorld_sp3_multi::initGridFF(%s,bGrid=%i,z0=%g,cel0={%g,%g,%g})\n",  name, z0, cel0.x,cel0.y,cel0.z  );
     if(gridFF.grid.n.anyEqual(0)){ printf("ERROR in MolWorld_sp3_multi::initGridFF() zero grid.n(%i,%i,%i) => Exit() \n", gridFF.grid.n.x,gridFF.grid.n.y,gridFF.grid.n.z ); exit(0); };
     gridFF.grid.center_cell( cel0 );
     bGridFF=true;
@@ -2329,11 +2330,12 @@ virtual double* initGridFF( const char * name, bool bGrid=true, bool bSaveDebugX
     //gridFF.shift0 = Vec3d{0.,0., 0.0};
     gridFF.shift0 = Vec3d{0.,0.,-2.0};
     //gridFF.shift0 = Vec3d{0.,0.,-6.0};
+    double bSaveDebugXSFs=false;
     surf2ocl( gridFF.nPBC, bSaveDebugXSFs );
     printf( ">>time(init_ocl;GridFF_ocl): %g [s] \n", (getCPUticks()-T0)*tick2second  );
     bGridFF   =true; 
     // evalCheckGridFF_ocl();   // here are not initialized buffers atoms.aforce,REQs, so it will crash.
-    return 0;
+    //return 0;
 }
 
 
