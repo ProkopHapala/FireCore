@@ -291,14 +291,17 @@ def saveXSF( name, FF, cell=None ):
     lib.saveXSF( name, _np_as(FF,c_double_p), _np_as(ns,c_int_p), _np_as(cell,c_double_p) )
 
 
-#double* makeGridFF( const char* name, int* ffshape, intl mode=, bool bSaveDebugXSFs=false, double z0=NAN, Vec3d cel0={-0.5,-0.5,0.0}  ){
-lib.makeGridFF.argtypes  = [ c_char_p, c_int_p, c_int, c_bool, c_double, c_double_p, c_bool ]
-lib.makeGridFF.restype   =  c_double_p
-def makeGridFF( name, mode=1, bSaveDebugXSFs=False, z0=0, cel0=(-0.5,-0.5,0.0), bAutoNPBC=True ):
+# void makeGridFF( const char* name, int* ffshape, int mode, int bSaveDebugXSFs, double z0, Vec3d cel0, int bAutoNPBC, int bFit ){
+#lib.makeGridFF.argtypes  = [ c_char_p, c_int_p, c_int, c_int, c_double, c_double_p, c_int, c_int ]
+#void makeGridFF( const char* name, int* ffshape, int mode, bool bSaveDebugXSFs, double z0, double* cel0, bool bAutoNPBC, bool bFit ){
+lib.makeGridFF.argtypes  = [ c_char_p, c_int_p, c_int, c_bool, c_double, c_double_p, c_bool, c_bool ]
+lib.makeGridFF.restype   =  None
+def makeGridFF( name, mode=1, bSaveDebugXSFs=False, z0=0.0, cel0=[-0.5,-0.5,0.0], bAutoNPBC=True, bFit=True ):
     name=name.encode('utf8')
     cel0 = np.array( cel0 )
     ffshape = np.zeros( 4, dtype=np.int32 )   #;print( "ffshape ", ffshape )
-    ff = lib.makeGridFF( name,  _np_as(ffshape,c_int_p), mode, bSaveDebugXSFs, z0, _np_as(cel0,c_double_p), bAutoNPBC )
+    print("mmff.makeGridFF: bFit=", int(bFit), " bSaveDebugXSFs=", int(bSaveDebugXSFs), " bAutoNPBC=", int(bAutoNPBC) )
+    lib.makeGridFF( name,  _np_as(ffshape,c_int_p), mode, bSaveDebugXSFs, int(z0), _np_as(cel0,c_double_p), bAutoNPBC, bFit )
     #ffshape = ffshape[::-1]
     #print( "ffshape ", ffshape )
     #ff_ = np.ctypeslib.as_array(ff, ffshape )

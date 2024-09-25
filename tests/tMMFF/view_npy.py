@@ -71,13 +71,28 @@ path="data/NaCl_1x1_L2/"
 
 
 
+fname= "debug_VCoul_pbc.npy"
+dat = np.load(path+fname)
 
-dat = np.load(path+"debug_VCoul_pbc.npy")
+#plt.plot( dat[:,:,1] );
+#plt.plot( dat[:,1,:] );
+#plt.plot( dat[1,:,:] );
+nz,ny,nx = dat.shape
+# iy = int( 0.5*ny )
+# ix = int( 0.5*nx )
+# iz = int( 0.5*nz )
+# iy = int( 0.5*ny )
+# ix = int( 0.5*nx )
 
-plt.plot( dat[:,:,1] );
-plt.plot( dat[:,1,:] );
-plt.plot( dat[1,:,:] );
 
+#plt.plot( dat[iz,iy,:], label='x' );
+#plt.plot( dat[iz,:,ix], label='y' );
 
-
+plt.plot( dat[:,int(0.0*ny),int(0.0*nx)], label='z (0.0,0.0)' );
+plt.plot( dat[:,int(0.5*ny),int(0.0*nx)], label='z (0.5,0.0)' );
+plt.plot( dat[:,int(0.0*ny),int(0.5*nx)], label='z (0.0,0.5)' );
+plt.plot( dat[:,int(0.5*ny),int(0.5*nx)], label='z (0.5,0.5)' );
+plt.legend()
+plt.grid()
+plt.title(fname)
 plt.show()
