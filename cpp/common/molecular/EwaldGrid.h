@@ -39,7 +39,10 @@ inline int pbc_ibk(int i, int n){ i--; return (i>=0)?  i :  i+n; };
 
 class EwaldGrid : public GridShape { public: 
 
-
+double Qtot=0.0;
+double Qabs=0.0;
+double Qtot_g=0.0;
+double Qabs_g=0.0;
 Vec3d dipole = Vec3dZero;
 double* V_work  = 0; 
 double* vV_work = 0;  
@@ -90,7 +93,7 @@ inline void project_atom_on_grid_linear( const Vec3d pi, const double qi, double
 }
 
 __attribute__((hot)) 
-void project_atom_on_grid_cubic( const Vec3d pi, const double qi, double* dens ) const {
+double project_atom_on_grid_cubic( const Vec3d pi, const double qi, double* dens ) const {
     //printf("project_atom_on_grid() pi(%g,%g,%g) q=%g \n", pi.x, pi.y, pi.z, qi );
     const Vec3d gp = diCell.dot( pi-pos0 );
     const int ix = (int) gp.x;
@@ -107,6 +110,7 @@ void project_atom_on_grid_cubic( const Vec3d pi, const double qi, double* dens )
     //printf("project_atom_on_grid() pi(%g,%g,%g) q=%g \n", pi.x, pi.y, pi.z, qi );
     const int nxy = n.x * n.y;
     //int ii=0;
+    double Qsum=0;
     for (int dz = 0; dz < 4; dz++) {
         const int gz  = iz + dz - 1;
         const int iiz = gz*nxy;
@@ -117,21 +121,17 @@ void project_atom_on_grid_cubic( const Vec3d pi, const double qi, double* dens )
             for (int dx = 0; dx < 4; dx++) {
                 const int gx = ix + dx - 1;
                 const int ig = gx + iiy;
-
-                //printf("project_atom_on_grid()[%i] dxyz(%i,%i,%i) igxyz(%i,%i,%i) ig=%i /%i \n", ii, dx,dy,dz,   gx,gy,gz, ig, n.totprod() );
-                // ToDo: Periodic Boundary Conditions for points which are close to the boundary
-                //if (gx >= 0 && gx < nx && gy >= 0 && gy < ny && gz >= 0 && gz < nz) {
-                    dens[ig] += qbyz * bx.array[dx]; 
-                //}
-
-                //ii++;
+                double qi = qbyz * bx.array[dx]; 
+                dens[ig] += qi;
+                Qsum += qi;
             }
         }
     }
+    return Qsum;
 }
 
 __attribute__((hot)) 
-void project_atom_on_grid_cubic_pbc(const Vec3d pi, const double qi, double* dens) const {
+double project_atom_on_grid_cubic_pbc(const Vec3d pi, const double qi, double* dens) const {
     // Convert atomic position to grid position
     const Vec3d gp = diCell.dot(pi - pos0);
     int ix = (int) gp.x;     if(gp.x<0) ix--;
@@ -156,8 +156,8 @@ void project_atom_on_grid_cubic_pbc(const Vec3d pi, const double qi, double* den
 
     printf( "project_atom_on_grid_cubic_pbc() ixyz(%i,%i,%i) xqs(%i,%i,%i,%i) yqs(%i,%i,%i,%i) nxyz(%i,%i,%i)\n", ix,iy,iz,  xqs.x,xqs.y,xqs.z,xqs.w,   yqs.x,yqs.y,yqs.z,yqs.w,   n.x,n.y,n.z );
 
-
     // Loop over the B-spline grid contributions
+    double Qsum=0;
     for (int dz = 0; dz < 4; dz++) {
         const int gz = zqs.array[dz];
         const int iiz = gz * nxy;
@@ -168,16 +168,19 @@ void project_atom_on_grid_cubic_pbc(const Vec3d pi, const double qi, double* den
             for (int dx = 0; dx < 4; dx++) {
                 const int gx = xqs.array[dx];
                 const int ig = gx + iiy;
-                dens[ig] += qbyz * bx.array[dx];
+                double qi = qbyz * bx.array[dx];
+                dens[ig] += qi;
+                Qsum += qi;
             }
         }
     }
+    return Qsum;
 }
 
 
 
 __attribute__((hot)) 
-void project_atom_on_grid_quintic( const Vec3d pi, const double qi, double* dens ) const {
+double project_atom_on_grid_quintic( const Vec3d pi, const double qi, double* dens ) const {
     //printf("project_atom_on_grid() pi(%g,%g,%g) q=%g \n", pi.x, pi.y, pi.z, qi );
     const Vec3d gp = diCell.dot( pi-pos0 );
 
@@ -196,6 +199,7 @@ void project_atom_on_grid_quintic( const Vec3d pi, const double qi, double* dens
     //printf("project_atom_on_grid() pi(%g,%g,%g) q=%g \n", pi.x, pi.y, pi.z, qi );
     const int nxy = n.x * n.y;
     //int ii=0;
+    double Qsum=0;
     for (int dz = 0; dz < 6; dz++) {
         const int gz  = iz + dz - 2;
         const int iiz = gz*nxy;
@@ -206,21 +210,17 @@ void project_atom_on_grid_quintic( const Vec3d pi, const double qi, double* dens
             for (int dx = 0; dx < 6; dx++) {
                 const int gx = ix + dx - 2;
                 const int ig = gx + iiy;
-
-                //printf("project_atom_on_grid()[%i] dxyz(%i,%i,%i) igxyz(%i,%i,%i) ig=%i /%i \n", ii, dx,dy,dz,   gx,gy,gz, ig, n.totprod() );
-                // ToDo: Periodic Boundary Conditions for points which are close to the boundary
-                //if (gx >= 0 && gx < nx && gy >= 0 && gy < ny && gz >= 0 && gz < nz) {
-                    dens[ig] += qbyz * bx.array[dx]; 
-                //}
-
-                //ii++;
+                double qi = qbyz * bx.array[dx];
+                dens[ig] += qi;
+                Qsum += qi;
             }
         }
     }
+    return Qsum;
 }
 
 __attribute__((hot)) 
-void project_atom_on_grid_quintic_pbc(const Vec3d pi, const double qi, double* dens) const {
+double project_atom_on_grid_quintic_pbc(const Vec3d pi, const double qi, double* dens) const {
     // Convert atomic position to grid position
     const Vec3d gp = diCell.dot(pi - pos0);
     int ix = (int) gp.x;    if(gp.x<0) ix--;
@@ -244,6 +244,7 @@ void project_atom_on_grid_quintic_pbc(const Vec3d pi, const double qi, double* d
     iz=modulo(iz-2,n.z); const Vec6i zqs = choose_inds_pbc_5(iz, n.z, zqs_o5 );
 
     // Loop over the B-spline grid contributions
+    double Qsum=0;
     for (int dz = 0; dz < 6; dz++) {
         const int gz = zqs.array[dz];
         const int iiz = gz * nxy;
@@ -254,12 +255,13 @@ void project_atom_on_grid_quintic_pbc(const Vec3d pi, const double qi, double* d
             for (int dx = 0; dx < 6; dx++) {
                 const int gx = xqs.array[dx];
                 const int ig = gx + iiy;
-
-                // Apply density contribution with periodic boundary condition
-                dens[ig] += qbyz * bx.array[dx];
+                double qi = qbyz * bx.array[dx];
+                dens[ig] += qi;
+                Qsum += qi;
             }
         }
     }
+    return Qsum;
 }
 
 
@@ -280,9 +282,17 @@ void project_atoms_on_grid_cubic( int na, const Vec3d* apos, const double* qs, d
         for(int i=0; i<4; i++){  printf( "xqs_o3[%i]{%i,%i,%i,%i}\n",       i, xqs_o3[i].x,xqs_o3[i].y,xqs_o3[i].z,xqs_o3[i].w ); };  
         bCubicPBCIndexesDone=true;
     }
+    Qtot_g=0;
+    Qabs_g=0;
     //printf("project_atoms_on_grid_cubic() na=%i ns(%i,%i,%i) pos0(%g,%g,%g)\n", na, n.x,n.y,n.z, pos0.x,pos0.y,pos0.z );
-    if(bPBC){ for (int ia=0; ia<na; ia++){ project_atom_on_grid_cubic_pbc( apos[ia], qs[ia], dens ); } }
-    else    { for (int ia=0; ia<na; ia++){ project_atom_on_grid_cubic    ( apos[ia], qs[ia], dens );  } }
+    for (int ia=0; ia<na; ia++){ 
+        double qg;
+        if(bPBC){ qg=project_atom_on_grid_cubic_pbc( apos[ia], qs[ia], dens ); } 
+        else    { qg=project_atom_on_grid_cubic    ( apos[ia], qs[ia], dens ); }
+        printf( "project_atoms_on_grid_quintic() qs[%i]=%g   qg=%g |qi-qg|=%20.10e \n", ia, qs[ia], qg, qs[ia]-qg );
+        Qtot_g += qg;
+        Qabs_g += fabs(qg);    
+    }
 }
 
 __attribute__((hot)) 
@@ -294,8 +304,18 @@ void project_atoms_on_grid_quintic( int na, const Vec3d* apos, const double* qs,
         make_inds_pbc_5(n.z, zqs_o5);
         bQuinticPBCIndexesDone = true;
     }
-    if(bPBC){ for (int ia=0; ia<na; ia++){ project_atom_on_grid_quintic_pbc( apos[ia], qs[ia], dens ); } }
-    else    { for (int ia=0; ia<na; ia++){ project_atom_on_grid_quintic    ( apos[ia], qs[ia], dens ); } }  
+    Qtot_g=0;
+    Qabs_g=0;
+    for (int ia=0; ia<na; ia++){
+        double qg;
+        if(bPBC){ qg=project_atom_on_grid_quintic_pbc( apos[ia], qs[ia], dens ); }
+        else    { qg=project_atom_on_grid_quintic    ( apos[ia], qs[ia], dens ); }
+        printf( "project_atoms_on_grid_quintic() qs[%i]=%g   qg=%g  |qi-qg|=%20.10e  \n", ia, qs[ia], qg, qs[ia]-qg );
+        Qtot_g += qg;
+        Qabs_g += fabs(qg);
+    }
+    //if(bPBC){ for (int ia=0; ia<na; ia++){ project_atom_on_grid_quintic_pbc( apos[ia], qs[ia], dens ); } }
+    //else    { for (int ia=0; ia<na; ia++){ project_atom_on_grid_quintic    ( apos[ia], qs[ia], dens ); } }  
 }
 
 int setup( Vec3d pos0_, Mat3d dCell_, Vec3i ns_, bool bPrint=false ){
@@ -310,7 +330,9 @@ int setup( Vec3d pos0_, Mat3d dCell_, Vec3i ns_, bool bPrint=false ){
 void projectAtoms( int na, Vec3d* apos, double* qs, double* dens, int order ){
     long t0 = getCPUticks();
     dipole=Vec3dZero;
-    for (int ia=0; ia<na; ia++){  dipole.add_mul(apos[ia],qs[ia]); };  // dipole for slab correction and debugging
+    Qabs=0;
+    Qtot=0;
+    for (int ia=0; ia<na; ia++){ dipole.add_mul(apos[ia],qs[ia]); Qtot+=qs[ia]; Qabs+=fabs(qs[ia]); };  // dipole for slab correction and debugging
     printf( "EwaldGrid::projectAtoms() na=%i dipole(%g,%g,%g) \n", na, dipole.x,dipole.y,dipole.z   );
     switch(order){
         case 1: project_atoms_on_grid_linear ( na, apos, qs, dens ); break;
@@ -594,6 +616,19 @@ void laplace_reciprocal_kernel( fftw_complex* VV ){
             t4 = getCPUticks();
         }
 
+        { // save debug numpy
+            bool bSaveNPY = true;
+            bool bSaveXSF = false;
+            if(bSaveNPY){
+                Vec3i sh{n.z,n.y,n.x};
+                save_npy( "debug_Ewald_V.npy",    3, (int*)&sh, (char*)Vtmp );
+                save_npy( "debug_Ewald_dens.npy", 3, (int*)&sh, (char*)dens );
+            }
+            // if(bSaveXSF){
+            //     gBS.saveXSF( "debug_VCoul.xsf",   VCoul, 1,0 );
+            // }
+        }
+
         if( bSlab ){ 
             slabPotential( nz_slab, Vtmp, Vout ); 
             delete[] Vtmp;
@@ -603,11 +638,12 @@ void laplace_reciprocal_kernel( fftw_complex* VV ){
         // if(bDestroy){ if(bOMP){ destroy_laplace_omp( ); } else { destroy_laplace    ( ); } }
     }
 
-    void potential_of_atoms( int nz, double* VCoul, int natoms, Vec3d* apos, double* qs, int order=3, int nBlur=4, double cV=0.95 ){
+    void potential_of_atoms( int nz, double* VCoul, int natoms, Vec3d* apos, double* qs, int order=3, int nBlur=4, double cV=0.95, bool bClearCharge=true ){
         printf("EwaldGrid::potential_of_atoms() natoms=%i order=%i nBlur=%i cV=%g \n", natoms, order, nBlur, cV );
         int ntot = n.totprod();
         double* dens  = new double[ ntot ];
         //double* qs    = new double[ natoms_ ]; for( int i=0; i<natoms_; i++ ){ qs[i] = REQs_[i].z; }
+        if(bClearCharge){ for(int i=0; i<ntot; i++){ dens[i]=0; }; }
         projectAtoms( natoms, apos, qs, dens, order );
         solve_laplace_macro( dens, nz, VCoul, true, true, -1, false, nBlur, 0, cV );
         delete [] dens;
