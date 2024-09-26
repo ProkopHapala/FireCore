@@ -930,7 +930,7 @@ void printPBCshifts(){
         }
         //double* ffgrid = 0;
         gridFF.grid.center_cell( cel0 );
-        //bGridFF=true;
+        bGridFF=true;
         gridFF.bindSystem(surf.natoms, surf.atypes, surf.apos, surf.REQs );
         gridFF.initGridFF( name, z0, bAutoNPBC, bSymetrize );
         char wd0[1024]; getcwd(wd0,1024); //printf( "initGridFF() 1 WD=`%s`\n", wd0 );

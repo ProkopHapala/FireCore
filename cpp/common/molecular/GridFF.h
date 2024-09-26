@@ -14,6 +14,7 @@
 #include "InterpolateTricubic.h"
 #include "InterpolateTrilinear.h"
 #include "Bspline.h"
+#include "Bspline_fit.h"
 #include "VecN.h"
 
 #include "NBFF.h"
@@ -627,7 +628,7 @@ inline void addForce( const Vec3d& pos, const Quat4f& PLQ, Quat4f& fe ) const {
             shifts=0;
             npbc = makePBCshifts_( *nPBC, lvec, shifts ); 
         }
-        //#pragma omp parallel for shared(i)
+        #pragma omp parallel for shared(i)
         for(int i=0; i<n; i++){
             Quat4d qp,ql,qe;
             //printf( "ps[%i](%7.3f,%7.3f,%7.3f)\n", i, ps[i].x,ps[i].y,ps[i].z  );
@@ -643,15 +644,18 @@ inline void addForce( const Vec3d& pos, const Quat4f& PLQ, Quat4f& fe ) const {
     //void evalAtPoints( int n, Vec3d* ps, Quat4d* FFout, Quat4d PLQH ){ evalAtPoints( n, ps, FFout, PLQH, natoms, apos, REQs ); };
     void evalAtPoints( int n, const Vec3d* ps, Quat4d* FFout, Quat4d PLQH, Vec3i* nPBC=0 ){ evalAtPoints( n, ps, FFout, PLQH, apos_.size(), apos_.data(), REQs_.data(), nPBC ); };
 
-    void evalAtPoints_Split( int n, Vec3d* ps, Quat4d* FFout, Quat4d PLQH, int natoms_, Vec3d * apos_, Quat4d * REQs_ ){
-        //printf( "GridFF::evalAtPoints_Split() n=%i natoms_=%i \n", n, natoms_ );
+    void evalAtPoints_Split( int n, Vec3d* ps, Quat4d* FFout, Quat4d PLQH, int natoms_, Vec3d * apos_, Quat4d * REQs_, Vec3i* nPBC=0 ){
+        Vec3i nPBC_coul{25,25,0}; if(nPBC) nPBC_coul=*nPBC;
+        printf( "GridFF::evalAtPoints_Split() n=%i natoms_=%i nPBC_Coul(%i,%i,%i)\n", n, natoms_ , nPBC_coul.z,nPBC_coul.y,nPBC_coul.z );
         int i=0;
         Vec3d* shift_coul=0;
         Vec3d* shift_mors=0;
-        int npbc_coul = makePBCshifts_( Vec3i{25,25,0}, lvec, shift_coul ); // Coulomb converge much more slowly with nPBC
+        int npbc_coul = makePBCshifts_( nPBC_coul, lvec, shift_coul ); // Coulomb converge much more slowly with nPBC
         int npbc_mors = makePBCshifts_( Vec3i{4 ,4 ,0}, lvec, shift_mors );
         //#pragma omp parallel for shared(i)
         //long t0 = getCPUticks();
+        printf( "GridFF::evalAtPoints_Split() npbc_coul=%i npbc_mors=%i \n", npbc_coul, npbc_mors );
+        #pragma omp parallel for shared(i)
         for(int i=0; i<n; i++){
             Quat4d qp,ql;evalGridFFPoint_Mors( npbc_mors, shift_mors,  natoms_, apos_, REQs_, ps[i], qp, ql );
             Quat4d qe  = evalGridFFPoint_Coul( npbc_coul, shift_coul,  natoms_, apos_, REQs_, ps[i] );
@@ -661,7 +665,7 @@ inline void addForce( const Vec3d& pos, const Quat4f& PLQ, Quat4f& fe ) const {
         delete[] shift_coul;
         delete[] shift_mors;
     }
-    void evalAtPoints_Split( int n, Vec3d* ps, Quat4d* FFout, Quat4d PLQH ){ evalAtPoints_Split( n, ps, FFout, PLQH, apos_.size(), apos_.data(), REQs_.data() ); };
+    void evalAtPoints_Split( int n, Vec3d* ps, Quat4d* FFout, Quat4d PLQH, Vec3i* nPBC=0 ){ evalAtPoints_Split( n, ps, FFout, PLQH, apos_.size(), apos_.data(), REQs_.data(), nPBC ); };
 
 
     __attribute__((hot))  
@@ -973,7 +977,6 @@ inline void addForce( const Vec3d& pos, const Quat4f& PLQ, Quat4f& fe ) const {
         int ntot = ns.totprod();
         //int nbyte = ntot*sizeof(double);
         double *VPaul=0, *VLond=0, *VCoul=0;
-        DEBUG
         tryLoadGridFF_potentials( natoms_, apos_, REQs_, ntot, VPaul, VLond, VCoul, bSaveNPY, bSaveXSF );
         if(!bFit){
             printf( "GridFF::makeGridFF_Bspline_d() bFit=false => exit() \n" );
@@ -995,14 +998,15 @@ inline void addForce( const Vec3d& pos, const Quat4f& PLQ, Quat4f& fe ) const {
         double vmax_Coul = VecN::absmax( ntot, VCoul );
         printf( "GridFF::makeGridFF_Bspline_d() testPLQ( Paul=%g, Lond=%g, Coul=%g )  vmaxs( P=%g, L=%g, C=%g )\n", testPLQ.x, testPLQ.y, testPLQ.z, vmax_Paul, vmax_Lond, vmax_Coul );
         
-        bool bInitGE = true;
+        bool   bPBC = true;
+        bool   bInitGE = true;
         double Ftol  = 1e-6;
         double dt    = 0.001;
         int nmaxiter = 50000;
         
-        double Ftol_pre     = 1e-6;
+        double Ftol_pre     = 1e-8;
         double dt_pre       = 0.1;
-        int    nmaxiter_pre = 1000; 
+        int    nmaxiter_pre = 2000; 
 
         printf("GridFF::makeGridFF_Bspline_d() ========= FITTING start======== \n");
         int niter=0;
@@ -1059,7 +1063,7 @@ inline void addForce( const Vec3d& pos, const Quat4f& PLQ, Quat4f& fe ) const {
     }
 
     void pack_Bspline_d( ){
-        //printf( "GridFF::pack_Bspline_d() \n" );
+        printf( "GridFF::pack_Bspline_d() grid.n(%i,%i,%i) @Bspline_Pauli=%li @Bspline_London=%li @Bspline_Coulomb=%li \n", grid.n.x,grid.n.y,grid.n.z, (long)Bspline_Pauli, (long)Bspline_London, (long)Bspline_Coulomb );
         int ntot = grid.n.totprod();
         _realloc( Bspline_PLQ, ntot );
         for(int ix=0; ix<grid.n.x; ix++){
@@ -1071,7 +1075,7 @@ inline void addForce( const Vec3d& pos, const Quat4f& PLQ, Quat4f& fe ) const {
                 }
             }
         }
-        //printf( "GridFF::pack_Bspline_d() DONE \n" );
+        printf( "GridFF::pack_Bspline_d() DONE @Bspline_PLQ=%li\n", (long)Bspline_PLQ );
     }
 
     double evalMorsePBC(  Vec3d pi, Quat4d REQi, Vec3d& fi, int natoms, Vec3d * apos, Quat4d * REQs ){
@@ -1507,33 +1511,40 @@ void initGridFF( const char * name, double z0=NAN, bool bAutoNPBC=true, bool bSy
 
             case GridFFmod::BsplineFloat    :{ printf("ERROR in GridFF::tryLoad_new() GridFFmode::BsplineFloat NOT IMPLEMENTED \n"); exit(0); } break;
             case GridFFmod::BsplineDouble   :{
-                fnames[0]="Bspline_Pauli_d.bin"; fnames[1]="Bspline_London_d.bin"; fnames[2]="Bspline_Coulomb_d.bin"; 
+                //fnames[0]="Bspline_Pauli_d.bin"; fnames[1]="Bspline_London_d.bin"; fnames[2]="Bspline_Coulomb_d.bin";
+                fnames[0]="Bspline_PLQ_d.bin";
                 //Vec3i ns = gridN;
                 Vec3i ns = grid.n;
                 npoint = ns.totprod();
                 nbyte  = npoint*sizeof(double);
                 bool done=false;
+                // if( checkAllFilesExist( 3, fnames, bPrint ) ){
+                //     //_realloc( Bspline_Pauli, npoint );
+                //     //_realloc( Bspline_London, npoint );
+                //     //_realloc( Bspline_Coulomb, npoint );
+                //     //loadBin( fnames[0], nbyte, (char*)Bspline_Pauli );
+                //     //loadBin( fnames[1], nbyte, (char*)Bspline_London );
+                //     //loadBin( fnames[2], nbyte, (char*)Bspline_Coulomb );
                 if( checkAllFilesExist( 3, fnames, bPrint ) ){
-                    _realloc( Bspline_Pauli, npoint );
-                    _realloc( Bspline_London, npoint );
-                    _realloc( Bspline_Coulomb, npoint );
-                    loadBin( fnames[0], nbyte, (char*)Bspline_Pauli );
-                    loadBin( fnames[1], nbyte, (char*)Bspline_London );
-                    loadBin( fnames[2], nbyte, (char*)Bspline_Coulomb );
+                    _realloc( Bspline_PLQ, npoint*3 );
+                    loadBin( fnames[0], nbyte*3, (char*)Bspline_PLQ );
+                    done=true;
                 }else{
                     bRecalc=true;
                     bool bSaveNPY=true;
-                    bool bSaveXSF=true;
+                    bool bSaveXSF=false;
                     printf( "tryLoad_new() mode=BsplineDouble   bSaveNPY=%i bSaveXSF=%i bFit=%i bRefine=%i \n", bSaveNPY, bSaveXSF, bFit, bRefine );
                     done = makeGridFF_Bspline_d(  na, aps, reqs, bSaveNPY, bSaveXSF, bFit, bRefine);
                     if(done){
-                        saveBin( fnames[0], nbyte, (char*)Bspline_Pauli );
-                        saveBin( fnames[1], nbyte, (char*)Bspline_London );
-                        saveBin( fnames[2], nbyte, (char*)Bspline_Coulomb );
+                        // saveBin( fnames[0], nbyte, (char*)Bspline_Pauli );
+                        // saveBin( fnames[1], nbyte, (char*)Bspline_London );
+                        // saveBin( fnames[2], nbyte, (char*)Bspline_Coulomb );
+                        pack_Bspline_d();
+                        saveBin( fnames[0], nbyte*3, (char*)Bspline_PLQ );
                     }
                 }
                 if(done){
-                    pack_Bspline_d();
+                    //pack_Bspline_d();
                     make_inds_pbc( grid.n.x, cubic_xqis );
                     make_inds_pbc( grid.n.y, cubic_yqis );
                     // printf("GridFF::tryLoad_new() BsplineDouble DONE @Bspline_Pauli=%li  @Bspline_London=%li  @Bspline_Coulomb=%li \n", (long)Bspline_Pauli, (long)Bspline_London, (long)Bspline_Coulomb );
