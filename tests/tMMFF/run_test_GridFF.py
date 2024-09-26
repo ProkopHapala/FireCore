@@ -17,35 +17,45 @@ def getPLQH( R0, E0, a, Q, H ):
     cH = e*e*H;
     return np.array([ cP, cL, Q, cH ])
 
-def test_gridFF_npy( name="data/NaCl_1x1_L2",  ps_xy=[(0.0,0.0),(0.0,0.5),(0.5,0.0),(0.5,0.5)], mode=6, title="", bSaveFig=False, Vname= "VCoul" ):
+def test_gridFF_npy_Ewald( name="data/NaCl_1x1_L2",  ps_xy=[(0.0,0.0),(0.0,0.5),(0.5,0.0),(0.5,0.5)], mode=6, title="", bSaveFig=False, Vname= "VCoul" ):
     print( "py======= test_gridFF_npy() START" );
     
+    # ----- 1D Ewald Debug
     fname="debug_"+Vname+".npy"
     fname="debug_"+Vname+".npy"
-    
     mmff.makeGridFF( name=name, mode=mode, bSymmetrize=False, bFit=False )
-
     # ----- 2D "debug_Ewald_dens.npy"
     dens = np.load(name+"/"+"debug_Ewald_dens.npy")
     V    = np.load(name+"/"+"debug_Ewald_V.npy")
-
     Qtot=dens.sum();
     Qabs=np.abs(dens).sum();
     print( "Qtot= ",Qtot," Qabs=", Qabs );
-
     plt.figure(figsize=(15,10))
     plt.subplot(2,2,1); plt.imshow( dens[:,:,0].transpose() ); plt.title("dens(z,y)");
     plt.subplot(2,2,3); plt.imshow( V   [:,:,0].transpose() ); plt.title("V(z,y)");
     plt.subplot(2,2,2); plt.imshow( dens[10,:,:]            ); plt.title("dens(x,y)");
     plt.subplot(2,2,4); plt.imshow( V   [10,:,:]            ); plt.title("V(x,y)");
+    plt.grid()
+    plt.legend()
+    plt.title(title+" "+Vname)
+    
+    if bSaveFig:
+        plt.savefig(name+"/"+fname+".png")
+    print( "py======= test_gridFF() DONE" );
 
+#def test_gridFF_npy( name="data/NaCl_1x1_L2",  ps_xy=[(0.0,0.0),(0.0,0.5),(0.5,0.0),(0.5,0.5)], mode=6, title="", bSaveFig=False, Vname= "Coul" ):
+def test_gridFF_npy( name="data/NaCl_1x1_L2",  ps_xy=[(0.0,0.0)], mode=6, title="", bSaveFig=False, Vname= "Coul", Bsc=2./3. ):
+    print( "py======= test_gridFF_npy() START" );
     # ----- 1D "debug_"+Vname+".npy"
     plt.figure()
-    fname="debug_"+Vname+".npy"
-    dat = np.load(name+"/"+fname)
+    fname="debug_V"+Vname+".npy"
+
+    dat  = np.load(name+"/"+fname)
+    datB = np.load(name+"/"+"debug_Bspline"+Vname+"_pbc.npy")
     nz,ny,nx = dat.shape
     for i,p in enumerate(ps_xy):
-        plt.plot( dat[:,int(p[1]*ny),int(p[0]*nx)], label='z-cut '+str(p) );
+        plt.plot( dat [:,int(p[1]*ny),int(p[0]*nx)],       label='z-cut '+str(p) );
+        plt.plot( datB[:,int(p[1]*ny),int(p[0]*nx)]*Bsc, '--', label='z-cut '+str(p) );
     plt.grid()
     plt.legend()
     plt.title(title+" "+Vname)
@@ -54,7 +64,30 @@ def test_gridFF_npy( name="data/NaCl_1x1_L2",  ps_xy=[(0.0,0.0),(0.0,0.5),(0.5,0
     #plt.show()
     print( "py======= test_gridFF() DONE" );
 
-def test_gridFF( name="data/NaCl_1x1_L2", mode=6, dsamp=0.02,  R0=3.5, E0=0.1, a=1.6, Q=0.4, H=0.0, scErr=100.0, title=None, bSaveFig=True, bRefine=True):
+
+#def test_gridFF_npy( name="data/NaCl_1x1_L2",  ps_xy=[(0.0,0.0),(0.0,0.5),(0.5,0.0),(0.5,0.5)], mode=6, title="", bSaveFig=False, Vname= "Coul" ):
+def test_gridFF_npy_lat( name="data/NaCl_1x1_L2", ps_zy=[(0.0,0.0)], mode=6, title="", bSaveFig=False, Vname= "Coul", Bsc=2./3. ):
+    print( "py======= test_gridFF_npy() START" );
+    # ----- 1D "debug_"+Vname+".npy"
+    plt.figure()
+    fname="debug_V"+Vname+".npy"
+
+    dat  = np.load(name+"/"+fname)
+    datB = np.load(name+"/"+"debug_Bspline"+Vname+"_pbc.npy")
+    nz,ny,nx = dat.shape
+    for i,p in enumerate(ps_zy):
+        plt.plot( dat [int(p[1]*ny),int(p[0]*nx),:],           label='Vref z-cut '+str(p) );
+        plt.plot( datB[int(p[1]*ny),int(p[0]*nx),:]*Bsc, '--', label='Bspl z-cut '+str(p) );
+    plt.grid()
+    plt.legend()
+    plt.title(title+" "+Vname)
+    if bSaveFig:
+        plt.savefig(name+"/"+fname+".png")
+    #plt.show()
+    print( "py======= test_gridFF() DONE" );
+
+
+def test_gridFF( name="data/NaCl_1x1_L2", mode=6, dsamp=0.02, p0=[0.0,0.0,2.0], R0=3.5, E0=0.1, a=1.6, Q=0.4, H=0.0, scErr=100.0, title=None, bSaveFig=True, bRefine=True, nPBC=None ):
     print( "py======= test_gridFF() START" );
     #print( "test_gridFF() START" )
     #mode = 4
@@ -67,12 +100,12 @@ def test_gridFF( name="data/NaCl_1x1_L2", mode=6, dsamp=0.02,  R0=3.5, E0=0.1, a
     ps = np.zeros( (len(zs), 3) )
     #ps[:,0] = 1.05
     #ps[:,1] = 1.05
-    ps[:,0] = 0.0
-    ps[:,1] = 0.0
+    ps[:,0] = p0[0]
+    ps[:,1] = p0[1]
     ps[:,2] = zs
     
-    FF_ref = mmff.evalGridFFAtPoints( ps, PLQH=PLQH, bSplit=False )
-    FF_ref = mmff.evalGridFFAtPoints( ps, PLQH=PLQH, bSplit=True  )
+    #FF_ref = mmff.evalGridFFAtPoints( ps, PLQH=PLQH, bSplit=False, nPBC=nPBC )
+    FF_ref = mmff.evalGridFFAtPoints( ps, PLQH=PLQH, bSplit=True, nPBC=nPBC  )
     
     #FFout  = mmff.sample_SplineHermite3D_comb3( ps, EFg, g0=[0.0,0.0,0.0], dg=[0.1,0.1,0.1], fes=None, Cs=PLQH )
     # Es,Fs = sampleSurf( name, zs, Es=None, fs=None, kind=1, atyp=0, Q=0.0, K=-1.0, Rdamp=1.0, pos0=(0.,0.,0.), bSave=False )
@@ -88,8 +121,8 @@ def test_gridFF( name="data/NaCl_1x1_L2", mode=6, dsamp=0.02,  R0=3.5, E0=0.1, a
     #Emin = FFout[:,3].min();
     #Fmin = FFout[:,2].min();
 
-    Emin = FF_ref[:,3].min(); 
-    Fmin = FF_ref[:,2].min()
+    Emin = FF_ref[:,3].min()*5; 
+    Fmin = FF_ref[:,2].min()*5;
 
     plt.figure(figsize=(5,10))
     plt.subplot(2,1,1);
@@ -110,7 +143,9 @@ def test_gridFF( name="data/NaCl_1x1_L2", mode=6, dsamp=0.02,  R0=3.5, E0=0.1, a
     plt.ylim( Fmin, -Fmin )
     plt.legend()
 
-    if ( title is not None ): plt.suptitle( title )
+    title_ = str(p0)
+    if ( title is not None ): title_=title+"\n"+title_
+    plt.suptitle( title_ )
     if ( bSaveFig ): plt.savefig( "test_gridFF_zcut.png", bbox_inches='tight' )
     
     #print( "ff.shape ", EFg.shape )
@@ -118,7 +153,7 @@ def test_gridFF( name="data/NaCl_1x1_L2", mode=6, dsamp=0.02,  R0=3.5, E0=0.1, a
     print( "py======= test_gridFF() DONE" );
     #return EFg
 
-def test_gridFF_lat( name="data/NaCl_1x1_L2", iax=0, tmin=0.0,tmax=10.0, p0=[1.05,1.05,2.0], mode=6, dsamp=0.02,  R0=3.5, E0=0.1, a=1.6, Q=0.4, H=0.0, scErr=100.0, title=None, bSaveFig=True, bRefine=True ):
+def test_gridFF_lat( name="data/NaCl_1x1_L2", iax=0, tmin=0.0,tmax=10.0, p0=[1.05,1.05,2.0], mode=6, dsamp=0.02,  R0=3.5, E0=0.1, a=1.6, Q=0.4, H=0.0, scErr=100.0, title=None, bSaveFig=True, bRefine=True, nPBC=None ):
     print( "py======= test_gridFF_lat() START" );
     #print( "test_gridFF() START" )
     #mode = 4
@@ -139,7 +174,7 @@ def test_gridFF_lat( name="data/NaCl_1x1_L2", iax=0, tmin=0.0,tmax=10.0, p0=[1.0
     #ps[:,0] = ts
     #ps[:,1] = ts
 
-    FF_ref = mmff.evalGridFFAtPoints( ps, PLQH=PLQH, nPBC=[100,100,0] )
+    FF_ref = mmff.evalGridFFAtPoints( ps, PLQH=PLQH, nPBC=nPBC )
     
     #FFout  = mmff.sample_SplineHermite3D_comb3( ps, EFg, g0=[0.0,0.0,0.0], dg=[0.1,0.1,0.1], fes=None, Cs=PLQH )
     # Es,Fs = sampleSurf( name, zs, Es=None, fs=None, kind=1, atyp=0, Q=0.0, K=-1.0, Rdamp=1.0, pos0=(0.,0.,0.), bSave=False )
@@ -260,14 +295,18 @@ mmff.initParams()
 #test_gridFF    ( mode=1, title="tri-linar force \n(z-cut)"          )
 #test_gridFF_lat( mode=1, title="tri-Linear Force", Q=0.0, p0=p0, iax=0 )
 
-test_gridFF    ( mode=6, title="Bspline_o3 \n(z-cut)" ,    Q=0.4, E0=0, bRefine=False )
-test_gridFF_lat( mode=6, title="Bspline_o3 \n(lat iax=0)", Q=0.4, E0=0 )
+test_gridFF    ( mode=6, title="Bspline_o3 \n(z-cut)" , p0=[0.0,0.0],  Q=0.4, E0=0, bRefine=False, nPBC=[100,100,0] )
+test_gridFF    ( mode=6, title="Bspline_o3 \n(z-cut)" , p0=[2.0,2.0],  Q=0.4, E0=0, bRefine=False, nPBC=[100,100,0] )
+
+#test_gridFF_lat( mode=6, title="Bspline_o3 \n(lat iax=0)", Q=0.4, E0=0 )
 
 
 
 
 #test_gridFF_npy( ps_xy=[(0.0,0.0),(0.0,0.5),(0.5,0.0),(0.5,0.5)], mode=6, title="" )
 
-
+#test_gridFF_npy( ps_xy=[(0.0,0.0)], mode=6, title="" )
+#test_gridFF_npy_lat( ps_zy=[(0.0,0.0)], mode=6, title="" )
+test_gridFF_npy_lat( ps_zy=[(0.1,0.1)], mode=6, title="" )
 
 plt.show()

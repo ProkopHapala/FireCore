@@ -2,6 +2,7 @@
 #include "Forces.h"
 #include "InterpolateTricubic.h"
 #include "Bspline.h"
+#include "Bspline_fit.h"
 #include "NURBS.h"
 #include "Multipoles.h"
 
