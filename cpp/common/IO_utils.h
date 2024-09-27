@@ -187,12 +187,15 @@ inline int fileExist(const char * fname ){
     }
 }
 
-
-inline bool checkAllFilesExist( int n, const char** fnames, bool bPrint=true ){
+inline bool checkAllFilesExist( int n, const char** fnames, bool bPrint=true, bool bExit=true ){
     //printf( "checkAllFilesExist() n=%i \n", n );
     bool bExist=true;
     for(int i=0; i<n; i++){
         const char* fname = fnames[i];
+        if( 0==fname ){ 
+            if(bExit){ printf("ERROR in checkAllFilesExist() fnames[%i]==null => exit() \n", i ); exit(0); }
+            continue;
+        }
         //printf( "checkAllFilesExist()[%i] '%s' \n", i, fname );
         if(fname==0) continue;
         FILE* f=fopen( fname,"rb"); 

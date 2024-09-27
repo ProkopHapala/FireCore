@@ -1525,7 +1525,7 @@ void initGridFF( const char * name, double z0=NAN, bool bAutoNPBC=true, bool bSy
                 //     //loadBin( fnames[0], nbyte, (char*)Bspline_Pauli );
                 //     //loadBin( fnames[1], nbyte, (char*)Bspline_London );
                 //     //loadBin( fnames[2], nbyte, (char*)Bspline_Coulomb );
-                if( checkAllFilesExist( 3, fnames, bPrint ) ){
+                if( checkAllFilesExist( 1, fnames, bPrint ) ){
                     _realloc( Bspline_PLQ, npoint*3 );
                     loadBin( fnames[0], nbyte*3, (char*)Bspline_PLQ );
                     done=true;
