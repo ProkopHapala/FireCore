@@ -347,7 +347,7 @@ class Quat4T {
 
 // ======= Conversion : Angle & Axis
 
-    inline void fromUniformS3(VEC u){ // u is vec of 3 random numbers from (0..1)
+    constexpr inline void fromUniformS3(VEC u){ // u is vec of 3 random numbers from (0..1)
         //  http://planning.cs.uiuc.edu/node198.html
         T a=sqrt(1-u.x);
         T b=sqrt(  u.x);
@@ -359,10 +359,10 @@ class Quat4T {
         w = b*cos(u.z);
     }
 
-    inline void setRandomRotation(){ fromUniformS3( {randf(), randf(), randf()} ); }
+    constexpr inline void setRandomRotation(){ fromUniformS3( {randf(), randf(), randf()} ); }
 
 
-	inline void fromAngleAxis( T angle, const VEC& axis ){
+	constexpr inline void fromAngleAxis( T angle, const VEC& axis ){
 		T ir   = 1/axis.norm();
 		VEC  hat  = axis * ir;
 		T a    = 0.5 * angle;
@@ -373,7 +373,7 @@ class Quat4T {
 		z = sa * hat.z;
 	};
 
-	void fromCosAngleAxis( T scal_prod, const VEC& axis ){
+	constexpr void fromCosAngleAxis( T scal_prod, const VEC& axis ){
 	// we assume -phi instead of phi!!!, minus effectively implies sa -> -s
 		constexpr T cos_cutoff = 1 - 1e-6;
 		T cosphi, sinphi, sa, phi, sgn_sinphi;
@@ -428,7 +428,7 @@ class Quat4T {
 	}
 	*/
 
-	void fromTrackball( T p1x, T p1y, T p2x, T p2y ){
+	constexpr void fromTrackball( T p1x, T p1y, T p2x, T p2y ){
 		VEC  axis; // axis of rotation
 		//T phi;  // angle of rotation
 		VEC  p1, p2, d;
@@ -480,9 +480,9 @@ class Quat4T {
 
 // =======  pitch, yaw, roll
 
-	inline void dpitch( T angle ){ T ca,sa; sincos_taylor2(angle*(T)0.5,sa,ca); pitch( ca, sa );  };
-	inline void pitch ( T angle ){ angle*=(T)0.5; pitch( cos(angle), sin(angle) );  };
-    inline void pitch ( T ca, T sa ) {
+	constexpr inline void dpitch( T angle ){ T ca,sa; sincos_taylor2(angle*(T)0.5,sa,ca); pitch( ca, sa );  };
+	constexpr inline void pitch ( T angle ){ angle*=(T)0.5; pitch( cos(angle), sin(angle) );  };
+    constexpr inline void pitch ( T ca, T sa ) {
         T x_ =  x * ca + w * sa;
         T y_ =  y * ca + z * sa;
         T z_ = -y * sa + z * ca;
@@ -490,9 +490,9 @@ class Quat4T {
         x = x_; y = y_; z = z_;
     };
 
-	inline void dyaw( T angle ){ T ca,sa; sincos_taylor2(angle*(T)0.5,sa,ca); yaw( ca, sa );  };
-	inline void yaw ( T angle ){ angle*=(T)0.5; yaw( cos(angle), sin(angle) );  };
-    inline void yaw ( T ca, T sa ) {
+	constexpr inline void dyaw( T angle ){ T ca,sa; sincos_taylor2(angle*(T)0.5,sa,ca); yaw( ca, sa );  };
+	constexpr inline void yaw ( T angle ){ angle*=(T)0.5; yaw( cos(angle), sin(angle) );  };
+    constexpr inline void yaw ( T ca, T sa ) {
         T x_ =  x * ca - z * sa;
         T y_ =  y * ca + w * sa;
         T z_ =  x * sa + z * ca;
@@ -500,9 +500,9 @@ class Quat4T {
         x = x_; y = y_; z = z_;
     };
 
-	inline void droll( T angle ){ T ca,sa; sincos_taylor2(angle*(T)0.5,sa,ca); roll( ca, sa );  };
-	inline void roll ( T angle ){ angle*=(T)0.5; roll( cos(angle), sin(angle) );  };
-    inline void roll ( T ca, T sa ) {
+	constexpr inline void droll( T angle ){ T ca,sa; sincos_taylor2(angle*(T)0.5,sa,ca); roll( ca, sa );  };
+	constexpr inline void roll ( T angle ){ angle*=(T)0.5; roll( cos(angle), sin(angle) );  };
+    constexpr inline void roll ( T ca, T sa ) {
         T x_ =  x * ca + y * sa;
         T y_ = -x * sa + y * ca;
         T z_ =  z * ca + w * sa;
@@ -511,9 +511,9 @@ class Quat4T {
     };
 
 
-	inline void dpitch2( T angle ){ T ca,sa; sincos_taylor2(angle*(T)0.5,sa,ca); pitch2( ca, sa );  };
-	inline void pitch2 ( T angle ){ angle*=(T)0.5; pitch2( cos(angle), sin(angle) );  };
-    inline void pitch2 ( T ca, T sa ) {
+	constexpr inline void dpitch2( T angle ){ T ca,sa; sincos_taylor2(angle*(T)0.5,sa,ca); pitch2( ca, sa );  };
+	constexpr inline void pitch2 ( T angle ){ angle*=(T)0.5; pitch2( cos(angle), sin(angle) );  };
+    constexpr inline void pitch2 ( T ca, T sa ) {
         T x_ =  sa * w + ca * x;
         T y_ = -sa * z + ca * y;
         T z_ =  sa * y + ca * z;
@@ -521,9 +521,9 @@ class Quat4T {
         x = x_; y = y_; z = z_;
     };
 
-	inline void dyaw2( T angle ){ T ca,sa; sincos_taylor2(angle*(T)0.5,sa,ca); yaw2( ca, sa );  };
-	inline void yaw2 ( T angle ){ angle*=(T)0.5; yaw2( cos(angle), sin(angle) );  };
-    inline void yaw2 ( T ca, T sa ) {
+	constexpr inline void dyaw2( T angle ){ T ca,sa; sincos_taylor2(angle*(T)0.5,sa,ca); yaw2( ca, sa );  };
+	constexpr inline void yaw2 ( T angle ){ angle*=(T)0.5; yaw2( cos(angle), sin(angle) );  };
+    constexpr inline void yaw2 ( T ca, T sa ) {
         T x_ = + sa * z  + ca * x;
         T y_ = + sa * w  + ca * y;
         T z_ = - sa * x  + ca * z;
@@ -531,9 +531,9 @@ class Quat4T {
         x = x_; y = y_; z = z_;
     };
 
-	inline void droll2( T angle ){ T ca,sa; sincos_taylor2(angle*(T)0.5,sa,ca); roll2( ca, sa );  };
-	inline void roll2 ( T angle ){ angle*=(T)0.5; roll2( cos(angle), sin(angle) );  };
-    inline void roll2 ( T ca, T sa ) {
+	constexpr inline void droll2( T angle ){ T ca,sa; sincos_taylor2(angle*(T)0.5,sa,ca); roll2( ca, sa );  };
+	constexpr inline void roll2 ( T angle ){ angle*=(T)0.5; roll2( cos(angle), sin(angle) );  };
+    constexpr inline void roll2 ( T ca, T sa ) {
         //ca *=0.5; sa *=0.5; // seems that should be just half
         T x_ = - sa * y + ca * x;
         T y_ = + sa * x + ca * y;
@@ -544,7 +544,7 @@ class Quat4T {
 
 // ====== Differential rotation
 
-	inline void dRot_exact ( T dt, const VEC& omega ) {
+	constexpr inline void dRot_exact ( T dt, const VEC& omega ) {
 		T hx   = omega.x;
 		T hy   = omega.y;
 		T hz   = omega.z;
@@ -564,7 +564,7 @@ class Quat4T {
 	};
 
 
-	inline void dRot_taylor2 ( T dt, VEC& omega ) {
+	constexpr inline void dRot_taylor2 ( T dt, VEC& omega ) {
 		T hx   = omega.x;
 		T hy   = omega.y;
 		T hz   = omega.z;
@@ -585,7 +585,7 @@ class Quat4T {
 	};
 
 
-	inline void toMatrix( MAT& result) const {
+	constexpr inline void toMatrix( MAT& result) const {
 		    T r2 = w*w + x*x + y*y + z*z;
 		    //T s  = (r2 > 0) ? 2d / r2 : 0;
 			T s  = 2 / r2;
@@ -608,7 +608,7 @@ class Quat4T {
 	};
 
 
-    inline void toMatrix_T( MAT& result) const {
+    constexpr inline void toMatrix_T( MAT& result) const {
 		    T r2 = w*w + x*x + y*y + z*z;
 		    //T s  = (r2 > 0) ? 2d / r2 : 0;
 			T s  = 2 / r2;
@@ -653,7 +653,7 @@ class Quat4T {
 	};
 */
 
-	inline void toMatrix_unitary( MAT& result)  const  {
+	constexpr inline void toMatrix_unitary( MAT& result)  const  {
 		T x2 = 2*x;
 		T y2 = 2*y;
 		T z2 = 2*z;
@@ -677,7 +677,7 @@ class Quat4T {
 		result.zz = 1 - ( xx + yy );
 	};
 
-    inline void toMatrix_unitary_T( MAT& result)  const  {
+    constexpr inline void toMatrix_unitary_T( MAT& result)  const  {
 		T x2 = 2*x;
 		T y2 = 2*y;
 		T z2 = 2*z;
@@ -703,12 +703,12 @@ class Quat4T {
 
     // This allos passing Quad to functions accepting Mat3f (e.g. to plotting functions)
     //inline explicit operator Mat3T<T>()const{ Mat3T<T> mat; toMatrix_unitary(mat); return mat; }
-    inline Mat3T<T> toMat () const {  Mat3T<T> mat; toMatrix_unitary  (mat); return mat; };
-    inline Mat3T<T> toMatT() const {  Mat3T<T> mat; toMatrix_unitary_T(mat); return mat; };
+    constexpr inline Mat3T<T> toMat () const {  Mat3T<T> mat; toMatrix_unitary  (mat); return mat; };
+    constexpr inline Mat3T<T> toMatT() const {  Mat3T<T> mat; toMatrix_unitary_T(mat); return mat; };
 
 	// this will compute force on quaternion from force on some point "p" in coordinate system of the quaternion
 	//   EXAMPLE : if "p" is atom in molecule, it should be local coordinate in molecular local space, not global coordante after quaternion rotation is applied
-	inline void addForceFromPoint( const VEC& p, const VEC& fp, QUAT& fq ) const {
+	constexpr inline void addForceFromPoint( const VEC& p, const VEC& fp, QUAT& fq ) const {
 		// dE/dx = dE/dpx * dpx/dx
 		// dE/dx = fx
 		T px_x =    p.b*y +             p.c*z;
@@ -734,12 +734,12 @@ class Quat4T {
 	}
 
     //T makeOrthoU( const VEC& a ){ T c = dot(a);          add_mul(a, -c); return c; }
-	inline T outproject( const QUAT& q ){ T cdot = dot(q); add_mul( q, -cdot ); return cdot; };
+	constexpr inline T outproject( const QUAT& q ){ T cdot = dot(q); add_mul( q, -cdot ); return cdot; };
 
-	inline void fromMatrix ( const VEC& a, const VEC& b, const VEC& c ) { fromMatrix( a.x,  a.y,  a.z,  b.x,  b.y,  b.z,  c.x,  c.y,  c.z  );  }
-	inline void fromMatrix ( const MAT& M                             ) { fromMatrix( M.ax, M.ay, M.az, M.bx, M.by, M.bz, M.cx, M.cy, M.cz );  }
-	inline void fromMatrixT( const MAT& M                             ) { fromMatrix( M.ax, M.bx, M.cx, M.ay, M.by, M.cy, M.az, M.bz, M.cz );  }
-	inline void fromMatrix ( T m00, T m01, T m02,    T m10, T m11, T m12,        T m20, T m21, T m22) {
+	constexpr inline void fromMatrix ( const VEC& a, const VEC& b, const VEC& c ) { fromMatrix( a.x,  a.y,  a.z,  b.x,  b.y,  b.z,  c.x,  c.y,  c.z  );  }
+	constexpr inline void fromMatrix ( const MAT& M                             ) { fromMatrix( M.ax, M.ay, M.az, M.bx, M.by, M.bz, M.cx, M.cy, M.cz );  }
+	constexpr inline void fromMatrixT( const MAT& M                             ) { fromMatrix( M.ax, M.bx, M.cx, M.ay, M.by, M.cy, M.az, M.bz, M.cz );  }
+	constexpr inline void fromMatrix ( T m00, T m01, T m02,    T m10, T m11, T m12,        T m20, T m21, T m22) {
         // Use the Graphics Gems code, from
         // ftp://ftp.cis.upenn.edu/pub/graphics/shoemake/quatut.ps.Z
         T t = m00 + m11 + m22;
@@ -776,7 +776,7 @@ class Quat4T {
 	}
 
     //template<typename T>
-    inline Mat3T<T> rotateVectors( int n, Vec3T<T>* v0s, Vec3T<T>* vs, const bool bT )const{
+    constexpr inline Mat3T<T> rotateVectors( int n, Vec3T<T>* v0s, Vec3T<T>* vs, const bool bT )const{
         Mat3T<T> mrot;
         if(bT){ toMatrix_T(mrot); }else{ toMatrix(mrot); };
         //if(bool bT){ toMatrix_unitary_T(mrot); }else{ toMatrix_unitary(mrot); };
@@ -785,7 +785,7 @@ class Quat4T {
     }
 
     //template<typename T>
-    inline Mat3T<T> rotatePoints0( int n, Vec3T<T>* p0s, Vec3T<T>* ps, const Vec3T<T>& toPos, const bool bT )const{
+    constexpr inline Mat3T<T> rotatePoints0( int n, Vec3T<T>* p0s, Vec3T<T>* ps, const Vec3T<T>& toPos, const bool bT )const{
         Mat3T<T> mrot;
         if(bT){ toMatrix_T(mrot); }else{ toMatrix(mrot); };
         //if(bool bT){ toMatrix_unitary_T(mrot); }else{ toMatrix_unitary(mrot); };
@@ -793,7 +793,7 @@ class Quat4T {
         return mrot;
     }
 
-    inline Mat3T<T> rotatePoints( int n, Vec3T<T>* p0s, Vec3T<T>* ps, const Vec3T<T>& pos0, const bool bT )const{
+    constexpr inline Mat3T<T> rotatePoints( int n, Vec3T<T>* p0s, Vec3T<T>* ps, const Vec3T<T>& pos0, const bool bT )const{
         Mat3T<T> mrot;
         if(bT){ toMatrix_T(mrot); }else{ toMatrix(mrot); };
         //if(bool bT){ toMatrix_unitary_T(mrot); }else{ toMatrix_unitary(mrot); };
@@ -801,9 +801,9 @@ class Quat4T {
         return mrot;
     }
 
-    inline QUAT& setIfLower  (const QUAT& a){ if(a.x<x)x=a.x;if(a.y<y)y=a.y;if(a.z<z)z=a.z;if(a.w<w)w=a.w; return *this; }
-    inline QUAT& setIfGreater(const QUAT& a){ if(a.x>x)x=a.x;if(a.y>y)y=a.y;if(a.z>z)z=a.z;if(a.w>w)w=a.w; return *this; }
-    inline void update_bounds(QUAT& pmin,QUAT& pmax)const{ 
+    constexpr inline QUAT& setIfLower  (const QUAT& a){ if(a.x<x)x=a.x;if(a.y<y)y=a.y;if(a.z<z)z=a.z;if(a.w<w)w=a.w; return *this; }
+    constexpr inline QUAT& setIfGreater(const QUAT& a){ if(a.x>x)x=a.x;if(a.y>y)y=a.y;if(a.z>z)z=a.z;if(a.w>w)w=a.w; return *this; }
+    constexpr inline void update_bounds(QUAT& pmin,QUAT& pmax)const{ 
         if ( x < pmin.x ){ pmin.x=x; } else if ( x > pmax.x ){ pmax.x=x; };
         if ( y < pmin.y ){ pmin.y=y; } else if ( y > pmax.y ){ pmax.y=y; };
         if ( z < pmin.z ){ pmin.z=z; } else if ( z > pmax.z ){ pmax.z=z; };
@@ -819,7 +819,7 @@ class QUAT : public Quat4T< T, VEC, MAT, QUAT >{  };
 */
 
 template<typename T1,typename T2>
-inline Quat4T<T2> cast(const Quat4T<T1>& i){ return Quat4T<T2>{ (T2)i.x, (T2)i.y, (T2)i.z, (T2)i.w }; };
+constexpr inline Quat4T<T2> cast(const Quat4T<T1>& i){ return Quat4T<T2>{ (T2)i.x, (T2)i.y, (T2)i.z, (T2)i.w }; };
 
 //inline float4 cast(const Quat4T<T1>& i){ return float4{ (float)i.x; (float)i.y; (float)i.z; (float)i.w }; };
 //inline float4 cast(const Quat4T<T1>& i){ Quat4T<T2> o; o.x=(T2)i.x; o.y=(T2)i.y; o.z=(T2)i.z; o.w=(T2)i.w; return o; };
