@@ -87,7 +87,7 @@ def test_gridFF_npy_lat( name="data/NaCl_1x1_L2", ps_zy=[(0.0,0.0)], mode=6, tit
     print( "py======= test_gridFF() DONE" );
 
 
-def test_gridFF( name="data/NaCl_1x1_L2", mode=6, dsamp=0.02, p0=[0.0,0.0,2.0], R0=3.5, E0=0.1, a=1.6, Q=0.4, H=0.0, scErr=100.0, title=None, bSaveFig=True, bRefine=True, nPBC=None ):
+def test_gridFF( name="data/NaCl_1x1_L2", mode=6, dsamp=0.02, p0=[0.0,0.0,2.0], R0=3.5, E0=0.1, a=1.6, Q=0.4, H=0.0, scErr=100.0, Emax=None, Fmax=None, maxSc=5.0, title=None, bSaveFig=True, bRefine=True, nPBC=None ):
     print( "py======= test_gridFF() START" );
     #print( "test_gridFF() START" )
     #mode = 4
@@ -121,8 +121,8 @@ def test_gridFF( name="data/NaCl_1x1_L2", mode=6, dsamp=0.02, p0=[0.0,0.0,2.0], 
     #Emin = FFout[:,3].min();
     #Fmin = FFout[:,2].min();
 
-    Emin = FF_ref[:,3].min()*5; 
-    Fmin = FF_ref[:,2].min()*5;
+    if Emax is None: Emax = -FF_ref[:,3].min()*maxSc; 
+    if Fmax is None: Fmax = -FF_ref[:,2].min()*maxSc;
 
     plt.figure(figsize=(5,10))
     plt.subplot(2,1,1);
@@ -133,17 +133,17 @@ def test_gridFF( name="data/NaCl_1x1_L2", mode=6, dsamp=0.02, p0=[0.0,0.0,2.0], 
     #plt.plot( zs, FFout[:,1], "-g", lw=0.5, label="Ftot_y" )
     #plt.plot( zs, FFout[:,2], "-b", lw=0.5, label="Etot_z" )
     plt.axhline(0.0, c="k", ls='--', lw=0.5)
-    plt.ylim( Emin, -Emin )
+    plt.ylim( -Emax, Emax )
     plt.legend()
     plt.subplot(2,1,2);
     plt.plot( zs, FFout[:,2],  "-g", lw=0.5, label="Ftot_fit" )
     plt.plot( zs, FF_ref[:,2], ":k", lw=2.0, label="Ftot_ref" )
     plt.plot( zs, (FFout[:,2]-FF_ref[:,2])*scErr, "-r", lw=0.5, label=("Ftot_err*%.2f" %scErr) )
     plt.axhline(0.0, c="k", ls='--', lw=0.5)
-    plt.ylim( Fmin, -Fmin )
+    plt.ylim( -Fmax, Fmax )
     plt.legend()
 
-    title_ = str(p0)
+    title_ = "p0="+str(p0)+"\nnPBC="+str(nPBC)
     if ( title is not None ): title_=title+"\n"+title_
     plt.suptitle( title_ )
     if ( bSaveFig ): plt.savefig( "test_gridFF_zcut.png", bbox_inches='tight' )
@@ -295,18 +295,28 @@ mmff.initParams()
 #test_gridFF    ( mode=1, title="tri-linar force \n(z-cut)"          )
 #test_gridFF_lat( mode=1, title="tri-Linear Force", Q=0.0, p0=p0, iax=0 )
 
-test_gridFF    ( mode=6, title="Bspline_o3 \n(z-cut)" , p0=[0.0,0.0],  Q=0.4, E0=0, bRefine=False, nPBC=[100,100,0] )
-test_gridFF    ( mode=6, title="Bspline_o3 \n(z-cut)" , p0=[2.0,2.0],  Q=0.4, E0=0, bRefine=False, nPBC=[100,100,0] )
+
+#Emax=0.01 
+#Fmax=0.01
+
+Emax=0.00001 
+Fmax=0.00001
+
+#test_gridFF    ( mode=6, title="Bspline_o3 \n(z-cut)" , p0=[0.0,0.0],  Q=0.4, E0=0, bRefine=False, nPBC=[50 ,50 ,0], Emax=Emax, Fmax=Fmax )
+#test_gridFF    ( mode=6, title="Bspline_o3 \n(z-cut)" , p0=[0.0,0.0],  Q=0.4, E0=0, bRefine=False, nPBC=[100,100,0], Emax=Emax, Fmax=Fmax )
+#test_gridFF    ( mode=6, title="Bspline_o3 \n(z-cut)" , p0=[0.0,0.0],  Q=0.4, E0=0, bRefine=False, nPBC=[150,150,0], Emax=Emax, Fmax=Fmax )
+
+#test_gridFF    ( mode=6, title="Bspline_o3 \n(z-cut)" , p0=[0.0,0.0],  Q=0.4, E0=0, bRefine=False, nPBC=[100,100,0], Emax=Emax, Fmax=Fmax )
+#test_gridFF    ( mode=6, title="Bspline_o3 \n(z-cut)" , p0=[0.0,0.0],  Q=0.4, E0=0, bRefine=False, nPBC=[300,300,0], Emax=Emax, Fmax=Fmax )
+test_gridFF    ( mode=6, title="Bspline_o3 \n(z-cut)" , p0=[0.0,0.0],  Q=0.4, E0=0, bRefine=False, nPBC=[400,400,0], Emax=Emax, Fmax=Fmax )
+#test_gridFF    ( mode=6, title="Bspline_o3 \n(z-cut)" , p0=[2.0,2.0],  Q=0.4, E0=0, bRefine=False, nPBC=[100,100,0], Emax=Emax, Fmax=Fmax )
 
 #test_gridFF_lat( mode=6, title="Bspline_o3 \n(lat iax=0)", Q=0.4, E0=0 )
-
-
-
 
 #test_gridFF_npy( ps_xy=[(0.0,0.0),(0.0,0.5),(0.5,0.0),(0.5,0.5)], mode=6, title="" )
 
 #test_gridFF_npy( ps_xy=[(0.0,0.0)], mode=6, title="" )
 #test_gridFF_npy_lat( ps_zy=[(0.0,0.0)], mode=6, title="" )
-test_gridFF_npy_lat( ps_zy=[(0.1,0.1)], mode=6, title="" )
+#test_gridFF_npy_lat( ps_zy=[(0.1,0.1)], mode=6, title="" )
 
 plt.show()
