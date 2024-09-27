@@ -252,7 +252,7 @@ Vec6T<T> dbasis5(T t){
 }
 
 template<typename T>
-inline Quat4T<T> basis(T u){
+constexpr inline Quat4T<T> basis(T u){
     constexpr T inv6 = 1./6.;
     const T u2 = u*u;
     const T t  = 1-u;
