@@ -207,7 +207,7 @@ constexpr static const double APs[]{ 0.0,  1.0,      -2.0,      1.0     };
 
 
 template<typename T>
-Vec6T<T> basis5(T t){
+constexpr Vec6T<T> basis5(T t){
     constexpr T inv6 = 1./6.;
     const T t2 = t*t;
     const T t3 = t2*t;
@@ -230,7 +230,7 @@ Vec6T<T> basis5(T t){
 }
 
 template<typename T>
-Vec6T<T> dbasis5(T t){
+constexpr inline Vec6T<T> dbasis5(T t){
     constexpr T inv6 = 1./6.;
     const T t2 = t*t;
     const T t3 = t2*t;
@@ -265,7 +265,7 @@ constexpr inline Quat4T<T> basis(T u){
 }
 
 template<typename T>
-inline Quat4T<T> dbasis(T u){
+constexpr inline Quat4T<T> dbasis(T u){
     const T u2 = u*u;
     const T t  = 1-u;
     return Quat4T<T>{
@@ -277,7 +277,7 @@ inline Quat4T<T> dbasis(T u){
 }
 
 template<typename T>
-inline Quat4T<T> ddbasis(T u){
+constexpr inline Quat4T<T> ddbasis(T u){
     return Quat4T<T>{
         1-u,
         3*u-2,
@@ -467,6 +467,21 @@ inline Vec3d fe2d_comb3( int nz, const Vec3d* E, Quat4i di, const Vec3d& C, cons
     };
 }
 
+__attribute__((pure))
+__attribute__((hot)) 
+inline Vec3d fe2d_pbc( int nz, const double* E, Quat4i di, const Quat4d& pz, const Quat4d& dz, const Quat4d& by, const Quat4d& dy ){
+    alignas(32) Vec2d fe0,fe1,fe2,fe3;
+    { alignas(32) const Quat4d cs = *(Quat4d*)(E+di.x); fe0.x=pz.dot( cs ); fe0.y=dz.dot( cs ); } // z-stride 0
+    { alignas(32) const Quat4d cs = *(Quat4d*)(E+di.y); fe1.x=pz.dot( cs ); fe1.y=dz.dot( cs ); } // z-stride 1
+    { alignas(32) const Quat4d cs = *(Quat4d*)(E+di.z); fe2.x=pz.dot( cs ); fe2.y=dz.dot( cs ); } // z-stride 2
+    { alignas(32) const Quat4d cs = *(Quat4d*)(E+di.w); fe3.x=pz.dot( cs ); fe3.y=dz.dot( cs ); } // z-stride 3
+    return Vec3d{
+        fe0.x*dy.x  +  fe1.x*dy.y  +  fe2.x*dy.z  +  fe3.x*dy.w,  // Fy
+        fe0.y*by.x  +  fe1.y*by.y  +  fe2.y*by.z  +  fe3.y*by.w,  // Fz
+        fe0.x*by.x  +  fe1.x*by.y  +  fe2.x*by.z  +  fe3.x*by.w   // E
+    };
+}
+
 
 __attribute__((pure))
 __attribute__((hot)) 
@@ -536,6 +551,54 @@ Quat4d fe3d( const Vec3d u, const Vec3i n, const double* Es ){
 
 __attribute__((pure))
 __attribute__((hot)) 
+Quat4d fe3d_pbc( const Vec3d u, const Vec3i n, const double* Es, const Quat4i* xqis, const Quat4i* yqis ){
+	int          ix = (int)u.x  ,  iy = (int)u.y  ,  iz = (int)u.z  ;
+    if(u.x<0) ix--;
+    if(u.y<0) iy--;
+    const double tx = u.x - ix  ,  ty = u.y - iy  ,  tz = u.z - iz  ;
+
+    // ---- boundary conditions
+    //if(  ((iz<1)||(iz>=n.z-2))  )[[unlikely]]{  
+    if(  ((iz<2)||(iz>=n.z-3))  )[[unlikely]]{ 
+        //printf( "Bspline::fe3d_pbc_comb3() iz=%i n.z=%i  ixy(%i,%i) \n", iz, n.z, ix, iy );    
+        return Quat4dZero; 
+    }
+
+    ix=modulo(ix-1,n.x);
+    iy=modulo(iy-1,n.y);
+
+    //printf( "Bspline::fe3d_pbc_comb3() ixyz(%3i,%3i,%3i)/n(%3i,%3i,%3i)  u(%g,%g,%g) \n", ix,iy,iz, n.x,n.y,n.z, u.x,u.y,u.z  ); 
+
+    const int nyz = n.z*n.y;
+    const Quat4i qx = choose_inds_pbc( ix, n.x, xqis )*nyz;
+    const Quat4i qy = choose_inds_pbc( iy, n.y, yqis )*n.z;
+
+    const Quat4d bz =  basis( tz );
+    const Quat4d dz = dbasis( tz );
+    const Quat4d by =  basis( ty );
+    const Quat4d dy = dbasis( ty );
+    //int i0 = (iz-2) + n.z*( iy + n.y*ix);  
+    //int i0 = (iz-1) + n.z*( iy + n.y*ix); 
+    int i0 = iz + n.z*( iy + n.y*ix);  
+    const Vec3d E1 = fe2d_pbc( n.z, Es+(i0+qx.x ), qy, bz, dz, by, dy );
+    const Vec3d E2 = fe2d_pbc( n.z, Es+(i0+qx.y ), qy, bz, dz, by, dy );
+    const Vec3d E3 = fe2d_pbc( n.z, Es+(i0+qx.z ), qy, bz, dz, by, dy );;
+    const Vec3d E4 = fe2d_pbc( n.z, Es+(i0+qx.w ), qy, bz, dz, by, dy );
+    const Quat4d bx =  basis( tx );
+    const Quat4d dx = dbasis( tx );
+    return Quat4d{
+        dx.dot( {E1.z, E2.z, E3.z, E4.z} ), // Fx
+        bx.dot( {E1.x, E2.x, E3.x, E4.x} ), // Fy
+        bx.dot( {E1.y, E2.y, E3.y, E4.y} ), // Fz
+        bx.dot( {E1.z, E2.z, E3.z, E4.z} ), // E
+    };
+} 
+
+
+
+
+__attribute__((pure))
+__attribute__((hot)) 
 Vec3d fe2d_pbc_comb3( const Vec2d u, const Vec2i n, const Vec3d* Es, const Vec3d PLQ, const Quat4i* yqs ){
 	int          ix = (int)u.x  ,  iy = (int)u.y  ;
     if(u.y<0) iy--;
@@ -565,6 +628,8 @@ Vec3d fe2d_pbc_comb3( const Vec2d u, const Vec2i n, const Vec3d* Es, const Vec3d
     //return Vec3d{  0.0, 0.0,  PLQ.dot(Ei) };
     //return Quat4d{0.0,0.0,0.0,Es[i0]};
 } 
+
+
 
 
 __attribute__((pure))
