@@ -1004,9 +1004,13 @@ inline void addForce( const Vec3d& pos, const Quat4f& PLQ, Quat4f& fe ) const {
         double dt    = 0.001;
         int nmaxiter = 50000;
         
-        double Ftol_pre     = 1e-8;
+        //double Ftol_pre     = 1e-8;
+        //double dt_pre       = 0.1;
+        //int    nmaxiter_pre = 2000; 
+
+        double Ftol_pre     = 1e-10;
         double dt_pre       = 0.1;
-        int    nmaxiter_pre = 2000; 
+        int    nmaxiter_pre = 5000; 
 
         printf("GridFF::makeGridFF_Bspline_d() ========= FITTING start======== \n");
         int niter=0;
