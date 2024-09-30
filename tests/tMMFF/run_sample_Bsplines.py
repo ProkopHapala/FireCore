@@ -92,14 +92,15 @@ def test_eval_1D( g0=2.0, gmax=4.0, dg=0.2, dsamp=0.02, bUseForce=True, scErr=10
 
 
 
-def test_fit_1D( g0=-2.0, ng=10, dg=0.2, dsamp=0.02, bUseForce=False, scErr=100.0, bHalf=False, bPBC=True, Kreg=0.01, title=None ):
+def test_fit_1D( g0=-2.0, ng=10, dg=0.2, dsamp=0.02, bUseForce=False, scErr=20.0, bHalf=False, bPBC=True, Kreg=0.01, title=None ):
     #x0 = 2.0
     #dx = 0.1
     gmax=g0+ng*dg 
     Dg = gmax-g0
     if bHalf: dg = dg*0.5
-    xs  = np.arange(g0,    gmax,    dg    ); ng=len(xs)
-    xs_ = np.arange(g0-Dg, gmax+Dg, dsamp ); nsamp=len(xs_)
+    xs  = np.arange(g0,    gmax,      dg    ); ng=len(xs)
+    xs_ = np.arange(g0,    gmax+1e-8, dsamp ); nsamp=len(xs_)
+    #xs_ = np.arange(g0-Dg, gmax+Dg, dsamp ); nsamp=len(xs_)
     xsg=xs; 
     if bHalf: xsg=xs[::2]
     
@@ -144,33 +145,52 @@ def test_fit_1D( g0=-2.0, ng=10, dg=0.2, dsamp=0.02, bUseForce=False, scErr=100.
         #Gs, Ws_ = mmff.fit_Bspline( E, Ws=Ws,   dt=1.0, nmaxiter=1000, Ftol=1e-9, bHalf=bHalf )
         #Gs, Ws = mmff.fit_Bspline( FEg[:,0].copy(), Ws=Ws,   dt=0.4, nmaxiter=1000, Ftol=1e-7 )
 
+        dgb_vG = mmff.getArrayPointer("dgb_vG"); print(dgb_vG.shape)
+        dgb_dF = mmff.getArrayPointer("dgb_dF"); print(dgb_dF.shape)
+
 
     FEout = mmff.sample_Bspline( xs_, Gs, x0=g0, dx=dgs )
     #FEout = mmff.sample_NURBS( xs_, Gs, Ws=np.ones(len(Gs)), x0=g0, dx=dgs )
 
-    plt.figure(figsize=(5,10))
-    plt.subplot(2,1,1)    
+    plt.figure(figsize=(10,15))
+    plt.subplot(3,1,1)    
     plt.plot( xs, Ws*10.0, "-c", lw=1.0, label="Ws" )
     #plt.plot( xs, EWs, ".-k" )
-
-    plt.plot( xsg, Gs,          ".-m", lw=0.25, label="Gs" )
+    plt.plot( xsg, Gs,         ".-m", lw=0.25, label="Gs" )
     plt.plot( xs_, E_ref,      ":k",  lw=1.5,  label="E_ref" )
     plt.plot( xs_, FEout[:,0], "-g",  lw=0.5,  label="E_fit" )
     #plt.plot( xs_, FEout0[:,0],"--k",  lw=0.5,  label="E_fit0" )
     plt.plot( xs_, (FEout[:,0]-E_ref)*scErr, "-r", lw=0.5, label=("error*%g" % scErr) )
     #print( "Gs: ", Gs )
     plt.ylim(Emin*1.2,-Emin*1.2)
+    plt.xlim(g0,gmax*1.5)
     plt.grid()
     plt.legend()
     plt.title("Energy")
-    plt.subplot(2,1,2)
+    plt.subplot(3,1,2)
     #plt.plot( xs,  -F ,       ".-k", lw=0.5, label="F_ref" )    
     plt.plot( xs_, -F_ref ,     ":k", lw=1.5, label="F_ref" )    
     plt.plot( xs_, -FEout[:,1], "-g", lw=0.5, label="F_fit" )
     plt.plot( xs_, (FEout[:,1]-F_ref)*scErr, "-r", lw=0.5, label=("error*%g" % scErr) )
     plt.ylim(Fmin*1.2,-Fmin*1.2)
+    plt.xlim(g0,gmax*1.5)
     plt.legend()
     plt.title("Force")
+    plt.grid()
+
+    plt.subplot(3,1,3)
+    plt.plot( xs, dgb_vG[:,0],      ".-r",  lw=1.0,  label="dgb_vG[0]" )
+    plt.plot( xs, dgb_vG[:,1],      ".-g",  lw=1.0,  label="dgb_vG[1]" )
+    plt.plot( xs, dgb_vG[:,2],      ".-c",  lw=1.0,  label="dgb_vG[2]" )
+    plt.plot( xs, dgb_vG[:,3],      ".-b",  lw=1.0,  label="dgb_vG[3]" )
+    # plt.plot( xs, dgb_dF[:,0],      ":r",  lw=1.0,  label="dgb_dF[0]" )
+    # plt.plot( xs, dgb_dF[:,1],      ":g",  lw=1.0,  label="dgb_dF[1]" )
+    # plt.plot( xs, dgb_dF[:,2],      ":c",  lw=1.0,  label="dgb_dF[2]" )
+    # plt.plot( xs, dgb_dF[:,3],      ":b",  lw=1.0,  label="dgb_dF[3]" )
+    plt.xlim(g0,gmax*1.5)
+    plt.legend()
+    plt.title("Force")
+    plt.title("Regularization")
     plt.grid()
     if title is not None: plt.suptitle(title)
     #plt.show()
@@ -614,7 +634,8 @@ qs = [ +1.,+1.,-1.,-1. ]
 #test_fit_1D( bUseForce=False, bHalf=True  ,title="Half")
 #test_fit_1D( g0=0.0, gmax=2.0, dg=0.1, bUseForce=False )
 
-test_fit_1D( g0=0.0, ng=10, dg=0.2 )
+#test_fit_1D( g0=0.0, ng=10, dg=0.25 )
+test_fit_1D( g0=0.0, ng=8, dg=0.25 )
 
 
 
