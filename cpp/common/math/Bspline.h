@@ -482,6 +482,39 @@ inline Vec3d fe2d_pbc( int nz, const double* E, Quat4i di, const Quat4d& pz, con
     };
 }
 
+__attribute__((pure))
+__attribute__((hot)) 
+inline Vec2d fe1d_pbc_macro( double x, int n, const double* Es, const Quat4i* xqis ){
+    int          i = (int)x;
+    if(x<0) i--;
+    const double t = x - i;
+    i=modulo(i-1,n);
+    const Quat4i q = choose_inds_pbc( i, n, xqis );
+    const Quat4d b =  basis( t );
+    const Quat4d d = dbasis( t );
+    alignas(32) const Quat4d cs = {Es[q.x],Es[q.y],Es[q.z],Es[q.w]};
+    return Vec2d{
+        b.dot( cs ),
+        d.dot( cs )
+    };
+}
+
+__attribute__((pure))
+__attribute__((hot)) 
+inline Vec2d fe1d_pbc_imacro( double i, int n, const double* Es, const Quat4i* xqis, Quat4d b, Quat4d d ){
+    //int          i = (int)x;  if(x<0) i--;
+    //const double t = x - i;
+    i=modulo(i-1,n);
+    const Quat4i q = choose_inds_pbc( i, n, xqis );
+    //const Quat4d b =  basis( t );
+    //const Quat4d d = dbasis( t );
+    alignas(32) const Quat4d cs = {Es[q.x],Es[q.y],Es[q.z],Es[q.w]};
+    return Vec2d{
+        b.dot( cs ),
+        d.dot( cs )
+    };
+}
+
 
 __attribute__((pure))
 __attribute__((hot)) 
@@ -592,6 +625,30 @@ Quat4d fe3d_pbc( const Vec3d u, const Vec3i n, const double* Es, const Quat4i* x
         bx.dot( {E1.y, E2.y, E3.y, E4.y} ), // Fz
         bx.dot( {E1.z, E2.z, E3.z, E4.z} ), // E
     };
+} 
+
+
+
+__attribute__((pure))
+__attribute__((hot)) 
+Vec3d fe2d_pbc_macro( const Vec2d u, const Vec2i n, const double* Es, const Quat4i* xqis, const Quat4i* yqis ){
+	int          ix = (int)u.x  ,  iy = (int)u.y;
+    if(u.x<0) ix--;
+    if(u.y<0) iy--;
+    const double tx = u.x - ix  ,  ty = u.y - iy;
+
+    ix=modulo(ix-1,n.x);
+    iy=modulo(iy-1,n.y);
+
+    const Quat4i qx = choose_inds_pbc( ix, n.x, xqis );
+    const Quat4i qy = choose_inds_pbc( iy, n.y, yqis )*n.x;
+
+    const Quat4d bx =  basis( tx );
+    const Quat4d dx = dbasis( tx );
+    const Quat4d by =  basis( ty );
+    const Quat4d dy = dbasis( ty );
+    int i0 = iy*n.x + ix;  
+    return fe2d_pbc( n.x, Es+i0, qy, bx, dx, by, dy );
 } 
 
 

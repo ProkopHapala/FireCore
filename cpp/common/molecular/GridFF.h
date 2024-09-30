@@ -15,6 +15,8 @@
 #include "InterpolateTrilinear.h"
 #include "Bspline.h"
 #include "Bspline_fit.h"
+#include "Bspline_fit_2D.h"
+#include "Bspline_fit_3D.h"
 #include "VecN.h"
 
 #include "NBFF.h"

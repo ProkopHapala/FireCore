@@ -3,6 +3,8 @@
 #include "InterpolateTricubic.h"
 #include "Bspline.h"
 #include "Bspline_fit.h"
+#include "Bspline_fit_2D.h"
+#include "Bspline_fit_3D.h"
 #include "NURBS.h"
 #include "Multipoles.h"
 
@@ -223,10 +225,20 @@ void projectBspline2D( int nx, double* ps_, double* ws, double* g0_, double* dg_
     }
 }
 
-int fit_Bspline( const int n, double* Gs, double* Es, double* Ws, double Ftol, int nmaxiter, double dt, bool bHalf ){
+// int fit_Bspline( const int n, double* Gs, double* Es, double* Ws, double Ftol, int nmaxiter, double dt, bool bHalf ){
+//     //return Bspline::fit1D_old( n, Gs, Es, Ws, Ftol, nmaxiter, dt );
+//     return Bspline::fit1D( n, Gs, Es, Ws, Ftol, nmaxiter, dt, bHalf );
+// }
+
+int fit_Bspline( const int n, double* Gs, double* Es, double* Ws, double Ftol, int nmaxiter, double dt, bool bPBC, bool bRegForce, bool bHalf  ){
     //return Bspline::fit1D_old( n, Gs, Es, Ws, Ftol, nmaxiter, dt );
-    return Bspline::fit1D( n, Gs, Es, Ws, Ftol, nmaxiter, dt, bHalf );
+    if (bHalf){
+        return Bspline::fit1D_old2( n, Gs, Es, Ws, Ftol, nmaxiter, dt, bHalf );
+    }else{
+        return Bspline::fit1D     ( n, Gs, Es, Ws, Ftol, nmaxiter, dt, bPBC, bRegForce );
+    }
 }
+
 int fitEF_Bspline( double dg, const int n, double* Gs, double* fes, double* Ws, double Ftol, int nmaxiter, double dt ){
     return Bspline::fit1D_EF( dg, n, Gs,  (Vec2d*)fes, (Vec2d*)Ws, Ftol, nmaxiter, dt );
 }
