@@ -178,10 +178,10 @@ def projectBspline2D( xs, g0, dg, ng, ys=None, ws=None, order=3 ):
     lib.projectBspline2D( n, _np_as(xs,c_double_p), _np_as(ws,c_double_p), _np_as(g0,c_double_p), _np_as(dg,c_double_p), _np_as(ng,c_int_p), _np_as(ys,c_double_p), order )
     return ys
 
-#  int fit_Bspline( double dg, const int n, double* Gs, double* Es, double* Ws, double Ftol, int nmaxiter, double dt ){
-lib.fit_Bspline.argtypes  = [ c_int, c_double_p, c_double_p, c_double_p, c_double, c_int, c_double ]
+#  int fit_Bspline( const int n, double* Gs, double* Es, double* Ws, double Ftol, int nmaxiter, double dt, bool bPBC, bool bRegForce, bool bHalf  ){
+lib.fit_Bspline.argtypes  = [ c_int, c_double_p, c_double_p, c_double_p, c_double, c_int, c_double,  c_bool,c_bool,c_bool  ]
 lib.fit_Bspline.restype   =  None
-def fit_Bspline( Es, Gs=None, Ws=None, Ftol=1e-6, nmaxiter=100, dt=0.1, bHalf=False ):
+def fit_Bspline( Es, Gs=None, Ws=None, Ftol=1e-6, nmaxiter=100, dt=0.1, bPBC=True, bRegForce=True, bHalf=False ):
     n = len(Es)
     if(bHalf): 
         n = n//2
@@ -190,7 +190,7 @@ def fit_Bspline( Es, Gs=None, Ws=None, Ftol=1e-6, nmaxiter=100, dt=0.1, bHalf=Fa
     else:
         if Ws is None: Ws = np.ones( n )
         if Gs is None: Gs = Es.copy()
-    lib.fit_Bspline( n, _np_as(Gs,c_double_p), _np_as(Es,c_double_p), _np_as(Ws,c_double_p), Ftol, nmaxiter, dt, bHalf )
+    lib.fit_Bspline( n, _np_as(Gs,c_double_p), _np_as(Es,c_double_p), _np_as(Ws,c_double_p), Ftol, nmaxiter, dt, bPBC, bRegForce, bHalf )
     return Gs, Ws
 
 # int fitEF_Bspline( const int n, const double* Gs, double* fes, double* Ws, double Ftol, int nmaxiter, double dt ){
