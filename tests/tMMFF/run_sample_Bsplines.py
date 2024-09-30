@@ -92,7 +92,7 @@ def test_eval_1D( g0=2.0, gmax=4.0, dg=0.2, dsamp=0.02, bUseForce=True, scErr=10
 
 
 
-def test_fit_1D( g0=-2.0, ng=10, dg=0.2, dsamp=0.02, bUseForce=False, scErr=100.0, bHalf=False, bPBC=True, Kreg=0.1, title=None ):
+def test_fit_1D( g0=-2.0, ng=10, dg=0.2, dsamp=0.02, bUseForce=False, scErr=100.0, bHalf=False, bPBC=True, Kreg=0.01, title=None ):
     #x0 = 2.0
     #dx = 0.1
     gmax=g0+ng*dg 

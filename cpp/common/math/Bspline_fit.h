@@ -283,7 +283,7 @@ int fit1D( const int n, double* Gs,  double* Es, double* Ws, double Ftol, int nm
             //f2reg = regularizationForceMidpoint_1D( n, Gs, fs, Kreg, xqis );
             for(int i=0; i<n; i++){ Ws[i]=0.0; };
             f2reg = regularizationForceMidpoint_1D( n, Gs, Ws, Kreg, xqis );
-            //for(int i=0; i<n; i++){ fs[i]+=Ws[i]; };
+            for(int i=0; i<n; i++){ fs[i]+=Ws[i]; };
         }
         Vec3d cfv = move(dt,n,Gs,fs, vs );
         if(verbosity>2)printf( "fit1D |F[%i]|=%g |Err|=%g |Freg|=%g cos(f,v)=%g\n",itr,sqrt(cfv.y), sqrt(err2sum), sqrt(f2reg), cfv.x/sqrt(cfv.y*cfv.z) );
