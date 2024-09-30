@@ -26,13 +26,6 @@
 
 static bool bDebug__ = 0;
 
-
-struct NDArray{
-    double* data=0;
-    Quat4i  dims=Quat4i{-1,-1,-1,-1};
-};
-static std::unordered_map<std::string,NDArray> golbal_array_dict;
-
 template<typename T>
 T sum( int n, T* data, T t ){
     for(int i=0; i<n; i++){ t.add(data[i]); }

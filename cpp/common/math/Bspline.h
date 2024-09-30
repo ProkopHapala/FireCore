@@ -7,7 +7,6 @@
 //#include "CG.h"
 #include "globals.h"
 
-
 inline bool checkIndexRange( int imin, int imax, const char* name, int i, bool bExit=true, bool bPrint=true ){ 
     if( (i<imin) || (i>imax) ){ 
         if(bPrint)printf( "ERROR: %s(%i) out of range(%i,%i)\n", name, i, imin, imax ); 
