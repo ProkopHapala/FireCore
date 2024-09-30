@@ -208,7 +208,7 @@ double getVariations1D_pbc( const int n, const double* Gs, const double* Es, con
     for(int i=0; i<n; i++){
             const int ib = biwrap(i,n);
             const int id = diwrap(i,n);
-            double val = Gs[i+ib]*B1 + Gs[i]*B0 + Gs[i+id]*B0;
+            double val = Gs[i+ib]*B1 + Gs[i]*B0 + Gs[i+id]*B1;
             //double val = Gs[i-1]*B1 + Gs[i]*B0 + Gs[i+1]*B1;
         double err = Es[i] - val;
         if(Ws){ err*=Ws[i]; }
@@ -220,7 +220,7 @@ double getVariations1D_pbc( const int n, const double* Gs, const double* Es, con
     for(int i=0; i<n; i++){
         const int ib = biwrap(i,n);
         const int id = diwrap(i,n);
-        double val = ps[i+ib]*B1 + ps[i]*B0 + ps[i+id]*B0;
+        double val = ps[i+ib]*B1 + ps[i]*B0 + ps[i+id]*B1;
         //double val = ps[i-1]*B1 + ps[i]*B0 + ps[i+1]*B1;
         fs[i] = val;
     }
@@ -228,27 +228,28 @@ double getVariations1D_pbc( const int n, const double* Gs, const double* Es, con
 }
 
 
-inline double regularizationForceMidpoint_1D( int n, const double* Gs, double* fs, const Quat4i* xqis ){
-    
+inline double regularizationForceMidpoint_1D( int n, const double* Gs, double* fs, double Kreg, const Quat4i* xqis ){
+    // E_reg= sum_i Kreg*( f(x_i) - f(x_i+0.5) )^2 + Kreg*( f(x_i) - f(x_i-0.5) )^2  
+    // dE_reg/dG_i = 2*Kreg*( f(x_i) - f(x_i+0.5) )*df(x_i)/dG_i + 2*Kreg*( f(x_i) - f(x_i-0.5) )*df(x_i)/dG_i
     double dB   =  dBs[0]; // derivative of B-spline basis function at point  p
     double dBfw =  dBs[1]; // derivative of B-spline basis function at point  p+0.5
     double dBbk = -dBs[1]; // derivative of B-spline basis function at point  p-0.5
-    double reg_var=0;
     double f2reg=0;
     for(int i=0; i<n; i++){
         const double x = i;
         const double f_ref = fe1d_pbc_macro( x, n, Gs, xqis ).y;      //   Force at point colocated with the grid point  G_i
         double freg = 0;
-        {   // forward point
-            const double  vG = dB - dBfw; // difference of B-spline basis functions at point  p and p+0.5
-            const double  dF = f_ref - fe1d_pbc_macro( x+0.5, n, Gs, xqis).y;
-            freg += 2.0 * vG * dF;
-        }
         {  // backward point
-            const double  vG = dB - dBbk; // difference of B-spline basis functions at point  p and p-0.5
-            const double  dF = f_ref - fe1d_pbc_macro( x-0.5, n, Gs, xqis).y;
+            const double  vG = dB - dBbk;                                     // difference of B-spline basis functions at point  p and p-0.5
+            const double  dF = f_ref - fe1d_pbc_macro( x-0.5, n, Gs, xqis).y; // differece of spline derivative (force) at point  p and p-0.5
             freg += 2.0 * vG * dF;
         }
+        {   // forward point
+            const double  vG = dB - dBfw;                                      // difference of B-spline basis functions at point  p and p+0.5
+            const double  dF = f_ref - fe1d_pbc_macro( x+0.5, n, Gs, xqis).y; // differece of spline derivative (force) at point  p and p+0.5
+            freg += 2.0 * vG * dF;
+        }
+        freg *= -Kreg;
         fs[i] += freg;
         f2reg += freg*freg;
     }
@@ -257,12 +258,14 @@ inline double regularizationForceMidpoint_1D( int n, const double* Gs, double* f
 
 
 __attribute__((hot)) 
-int fit1D( const int n, double* Gs,  double* Es, double* Ws, double Ftol, int nmaxiter=100, double dt=0.1, bool bPBC=false, bool bRegForce=false ){
-    if(verbosity>1)printf("Bspline::fit1D() !!!!!!\n");
+int fit1D( const int n, double* Gs,  double* Es, double* Ws, double Ftol, int nmaxiter=100, double dt=0.1, double Kreg=-1.0, bool bPBC=false ){
+    //if(verbosity>1)
+    printf("Bspline::fit1D() bPBC=%i Kreg=%g Ftol=%g nmaxiter=%i dt=%g \n", bPBC, Kreg, Ftol, nmaxiter, dt );
     const double F2max = Ftol*Ftol;
     double* ps = new double[n];
     double* fs = new double[n];
     double* vs = new double[n];
+    bool bRegForce = Kreg>0;
     Quat4i xqis[4];
     if(bRegForce){ make_inds_pbc( n, xqis ); }
     int itr=0;
@@ -270,17 +273,24 @@ int fit1D( const int n, double* Gs,  double* Es, double* Ws, double Ftol, int nm
     //if( ckeckRange(n, 1, Gs, -1.e+6, +1.e+6, "Gs", true ) && ckeckRange(n, 1, Gs, -1.e+6, +1.e+6, "Gs", true ) ){ printf("ERROR in fit1D()=> exit\n"); exit(0); };
     bool bErr = false;
     double err2sum=0;
+    double f2reg=0;
     for(itr=0; itr<nmaxiter; itr++){        
-        if(bPBC){ err2sum = getVariations1D_pbc( n, Gs, Es, Ws, fs, ps ); }
-        else    { err2sum = getVariations1D    ( n, Gs, Es, Ws, fs, ps ); }
+        //if(bPBC){ err2sum = getVariations1D_pbc( n, Gs, Es, Ws, fs, ps ); }
+        //else    { err2sum = getVariations1D    ( n, Gs, Es, Ws, fs, ps ); }
+        if(bPBC){ err2sum = getVariations1D_pbc( n, Gs, Es, 0, fs, ps ); }
+        else    { err2sum = getVariations1D    ( n, Gs, Es, 0, fs, ps ); }
         if( bRegForce ){
-            regularizationForceMidpoint_1D( n, Gs, fs, xqis );
+            //f2reg = regularizationForceMidpoint_1D( n, Gs, fs, Kreg, xqis );
+            for(int i=0; i<n; i++){ Ws[i]=0.0; };
+            f2reg = regularizationForceMidpoint_1D( n, Gs, Ws, Kreg, xqis );
+            //for(int i=0; i<n; i++){ fs[i]+=Ws[i]; };
         }
         Vec3d cfv = move(dt,n,Gs,fs, vs );
-        if(verbosity>2)printf( "|F[%i]|=%g cos(f,v)=%g\n",itr,sqrt(cfv.y), cfv.x/sqrt(cfv.y*cfv.z) );
+        if(verbosity>2)printf( "fit1D |F[%i]|=%g |Err|=%g |Freg|=%g cos(f,v)=%g\n",itr,sqrt(cfv.y), sqrt(err2sum), sqrt(f2reg), cfv.x/sqrt(cfv.y*cfv.z) );
         if(cfv.y<F2max){ break; };
     }
-    if(verbosity>1)printf( "Bspline::fit1D() iter=%i err=%g \n", itr, sqrt(err2sum) );
+    //if(verbosity>1)
+    printf( "Bspline::fit1D() iter=%i err=%g \n", itr, sqrt(err2sum) );
     delete [] ps;
     delete [] fs;
     delete [] vs;
@@ -290,7 +300,7 @@ int fit1D( const int n, double* Gs,  double* Es, double* Ws, double Ftol, int nm
 
 __attribute__((hot)) 
 int fit1D_old2( const int n, double* Gs,  double* Es, double* Ws, double Ftol, int nmaxiter=100, double dt=0.1, bool bHalf=false ){
-    if(verbosity>1)printf("Bspline::fit1D() !!!!!!\n");
+    if(verbosity>1)printf("Bspline::fit1D_old2() !!!!!!\n");
     const double F2max = Ftol*Ftol;
     int n2=n; if(bHalf){ n2=2*n; }
     double* ps = new double[n2];
@@ -308,7 +318,7 @@ int fit1D_old2( const int n, double* Gs,  double* Es, double* Ws, double Ftol, i
         if(verbosity>2)printf( "|F[%i]|=%g cos(f,v)=%g\n",itr,sqrt(cfv.y), cfv.x/sqrt(cfv.y*cfv.z) );
         if(cfv.y<F2max){ break; };
     }
-    if(verbosity>1)printf( "Bspline::fit1D() iter=%i err=%g \n", itr, sqrt(err2sum) );
+    if(verbosity>1)printf( "Bspline::fit1D_old2() iter=%i err=%g \n", itr, sqrt(err2sum) );
     delete [] ps;
     delete [] fs;
     delete [] vs;

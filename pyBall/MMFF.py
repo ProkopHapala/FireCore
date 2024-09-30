@@ -178,10 +178,10 @@ def projectBspline2D( xs, g0, dg, ng, ys=None, ws=None, order=3 ):
     lib.projectBspline2D( n, _np_as(xs,c_double_p), _np_as(ws,c_double_p), _np_as(g0,c_double_p), _np_as(dg,c_double_p), _np_as(ng,c_int_p), _np_as(ys,c_double_p), order )
     return ys
 
-#  int fit_Bspline( const int n, double* Gs, double* Es, double* Ws, double Ftol, int nmaxiter, double dt, bool bPBC, bool bRegForce, bool bHalf  ){
-lib.fit_Bspline.argtypes  = [ c_int, c_double_p, c_double_p, c_double_p, c_double, c_int, c_double,  c_bool,c_bool,c_bool  ]
+#  int fit_Bspline( const int n, double* Gs, double* Es, double* Ws, double Ftol, int nmaxiter, double dt, double Kreg, bool bPBC, bool bHalf  ){
+lib.fit_Bspline.argtypes  = [ c_int, c_double_p, c_double_p, c_double_p, c_double, c_int, c_double, c_double,  c_bool,c_bool  ]
 lib.fit_Bspline.restype   =  None
-def fit_Bspline( Es, Gs=None, Ws=None, Ftol=1e-6, nmaxiter=100, dt=0.1, bPBC=True, bRegForce=True, bHalf=False ):
+def fit_Bspline( Es, Gs=None, Ws=None, Ftol=1e-6, nmaxiter=100, dt=0.1, Kreg=-1.0, bPBC=True, bHalf=False ):
     n = len(Es)
     if(bHalf): 
         n = n//2
@@ -190,7 +190,7 @@ def fit_Bspline( Es, Gs=None, Ws=None, Ftol=1e-6, nmaxiter=100, dt=0.1, bPBC=Tru
     else:
         if Ws is None: Ws = np.ones( n )
         if Gs is None: Gs = Es.copy()
-    lib.fit_Bspline( n, _np_as(Gs,c_double_p), _np_as(Es,c_double_p), _np_as(Ws,c_double_p), Ftol, nmaxiter, dt, bPBC, bRegForce, bHalf )
+    lib.fit_Bspline( n, _np_as(Gs,c_double_p), _np_as(Es,c_double_p), _np_as(Ws,c_double_p), Ftol, nmaxiter, dt, Kreg, bPBC, bHalf )
     return Gs, Ws
 
 # int fitEF_Bspline( const int n, const double* Gs, double* fes, double* Ws, double Ftol, int nmaxiter, double dt ){
@@ -406,13 +406,13 @@ def sample_func( xs, ys=None, kind=0 ):
     lib.sample_func( n, _np_as(xs,c_double_p), _np_as(ys,c_double_p), kind )
     return ys
 
-# void sample_Bspline( double g0, double dg, int ng, double* Gs, int n, double* xs, double* fes , int order ){
-lib.sample_Bspline.argtypes  = [c_double, c_double, c_int, c_double_p, c_int, c_double_p, c_double_p, c_int ]
+# void sample_Bspline( double g0, double dg, int ng, double* Gs, int n, double* xs, double* fes , int order, bool bPBC ){
+lib.sample_Bspline.argtypes  = [c_double, c_double, c_int, c_double_p, c_int, c_double_p, c_double_p, c_int, c_bool ]
 lib.sample_Bspline.restype   =  None
-def sample_Bspline( xs, Gs, x0=0.0, dx=1.0, fes=None, order=3 ):
+def sample_Bspline( xs, Gs, x0=0.0, dx=1.0, fes=None, order=3, bPBC=True ):
     n = len(xs)
     if fes is None: fes=np.zeros((n,2))
-    lib.sample_Bspline(x0, dx, len(Gs), _np_as(Gs,c_double_p), n, _np_as(xs,c_double_p), _np_as(fes,c_double_p), order )
+    lib.sample_Bspline(x0, dx, len(Gs), _np_as(Gs,c_double_p), n, _np_as(xs,c_double_p), _np_as(fes,c_double_p), order, bPBC )
     return fes
 
 # void sample_NURBS( double g0, double dg, int ng, double* Gs, double* Ws, int n, double* xs, double* fes ){
