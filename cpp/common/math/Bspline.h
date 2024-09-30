@@ -359,6 +359,68 @@ void project2D_cubic( double w, const Vec2d pi, const Vec2d g0, const Vec2d inv_
 // ===================   Interpolation   ================
 // ======================================================
 
+// __attribute__((pure))
+// __attribute__((hot)) 
+// Quat4d fe3d_pbc( const Vec3d u, const Vec3i n, const double* Es, const Quat4i* xqis, const Quat4i* yqis ){
+// 	int          ix = (int)u.x  ,  iy = (int)u.y  ,  iz = (int)u.z  ;
+//     if(u.x<0) ix--;
+//     if(u.y<0) iy--;
+//     const double tx = u.x - ix  ,  ty = u.y - iy  ,  tz = u.z - iz  ;
+//     ix=modulo(ix-1,n.x);
+//     iy=modulo(iy-1,n.y);
+//     const int nyz = n.z*n.y;
+//     const Quat4i qx = choose_inds_pbc( ix, n.x, xqis )*nyz;
+//     const Quat4i qy = choose_inds_pbc( iy, n.y, yqis )*n.z;
+//     const Quat4d bz =  basis( tz );
+//     const Quat4d dz = dbasis( tz );
+//     const Quat4d by =  basis( ty );
+//     const Quat4d dy = dbasis( ty );
+//     //int i0 = (iz-2) + n.z*( iy + n.y*ix);  
+//     //int i0 = (iz-1) + n.z*( iy + n.y*ix); 
+//     int i0 = iz + n.z*( iy + n.y*ix);  
+//     const Vec3d E1 = fe2d_pbc( n.z, Es+(i0+qx.x ), qy, bz, dz, by, dy );
+//     const Vec3d E2 = fe2d_pbc( n.z, Es+(i0+qx.y ), qy, bz, dz, by, dy );
+//     const Vec3d E3 = fe2d_pbc( n.z, Es+(i0+qx.z ), qy, bz, dz, by, dy );;
+//     const Vec3d E4 = fe2d_pbc( n.z, Es+(i0+qx.w ), qy, bz, dz, by, dy );
+// } 
+
+
+__attribute__((pure))
+__attribute__((hot)) 
+inline Vec2d fe1d_pbc_macro( double x, int n, const double* Es, const Quat4i* xqis ){
+    int    i = (int)x;
+    if(x<0) i--;
+    const double t = x - i;
+    i=modulo(i-1,n);
+    const Quat4i q = choose_inds_pbc_3( i, n, xqis );
+    //printf( "Bspline::fe1d_pbc_macro(x=%8.4f) t=%8.4f i=%3i/%3i  q(%i,%i,%i,%i) \n", x, t, i,n, q.x,q.y,q.z,q.w );
+    const Quat4d b =  basis( t );
+    const Quat4d d = dbasis( t );
+    alignas(32) const Quat4d cs = {Es[q.x],Es[q.y],Es[q.z],Es[q.w]};
+    return Vec2d{
+        b.dot( cs ),
+        d.dot( cs )
+    };
+}
+
+// __attribute__((pure))
+// __attribute__((hot)) 
+// inline Vec2d fe1d_pbc_imacro( double i, int n, const double* Es, const Quat4i* xqis, Quat4d b, Quat4d d ){
+//     //int          i = (int)x;  if(x<0) i--;
+//     //const double t = x - i;
+//     i=modulo(i-1,n);
+//     //const Quat4i q = choose_inds_pbc( i, n, xqis );
+//     const Quat4i q = choose_inds_pbc_3( i, n, xqis );
+//     //const Quat4d b =  basis( t );
+//     //const Quat4d d = dbasis( t );
+//     //printf( "Bspline::fe1d_pbc_imacro() i=%i  q(%i,%i,%i,%i) \n", i, q.x,q.y,q.z,q.w );
+//     alignas(32) const Quat4d cs = {Es[q.x],Es[q.y],Es[q.z],Es[q.w]};
+//     return Vec2d{
+//         b.dot( cs ),
+//         d.dot( cs )
+//     };
+// }
+
 __attribute__((hot)) 
 void sample1D( const double g0, const double dg, const int ng, const double* Gs, const int n, const double* ps, Vec2d* fes ){
     const double inv_dg = 1/dg; 
@@ -377,6 +439,20 @@ void sample1D( const double g0, const double dg, const int ng, const double* Gs,
             p.dot( gs ),
             d.dot( gs )*inv_dg,
         };
+    }
+}
+
+
+
+__attribute__((hot)) 
+void sample1D_pbc( const double g0, const double dg, const int ng, const double* Gs, const int n, const double* ps, Vec2d* fes ){
+    const double inv_dg = 1/dg; 
+    Quat4i xqis[4];
+    make_inds_pbc( ng, xqis );
+    for(int i=0; i<n; i++ ){
+        Vec2d fe = fe1d_pbc_macro( (ps[i]-g0)*inv_dg, ng, Gs, xqis );
+        fe.y *= inv_dg;
+        fes[i]= fe;
     }
 }
 
@@ -479,39 +555,6 @@ inline Vec3d fe2d_pbc( int nz, const double* E, Quat4i di, const Quat4d& pz, con
         fe0.x*dy.x  +  fe1.x*dy.y  +  fe2.x*dy.z  +  fe3.x*dy.w,  // Fy
         fe0.y*by.x  +  fe1.y*by.y  +  fe2.y*by.z  +  fe3.y*by.w,  // Fz
         fe0.x*by.x  +  fe1.x*by.y  +  fe2.x*by.z  +  fe3.x*by.w   // E
-    };
-}
-
-__attribute__((pure))
-__attribute__((hot)) 
-inline Vec2d fe1d_pbc_macro( double x, int n, const double* Es, const Quat4i* xqis ){
-    int          i = (int)x;
-    if(x<0) i--;
-    const double t = x - i;
-    i=modulo(i-1,n);
-    const Quat4i q = choose_inds_pbc( i, n, xqis );
-    const Quat4d b =  basis( t );
-    const Quat4d d = dbasis( t );
-    alignas(32) const Quat4d cs = {Es[q.x],Es[q.y],Es[q.z],Es[q.w]};
-    return Vec2d{
-        b.dot( cs ),
-        d.dot( cs )
-    };
-}
-
-__attribute__((pure))
-__attribute__((hot)) 
-inline Vec2d fe1d_pbc_imacro( double i, int n, const double* Es, const Quat4i* xqis, Quat4d b, Quat4d d ){
-    //int          i = (int)x;  if(x<0) i--;
-    //const double t = x - i;
-    i=modulo(i-1,n);
-    const Quat4i q = choose_inds_pbc( i, n, xqis );
-    //const Quat4d b =  basis( t );
-    //const Quat4d d = dbasis( t );
-    alignas(32) const Quat4d cs = {Es[q.x],Es[q.y],Es[q.z],Es[q.w]};
-    return Vec2d{
-        b.dot( cs ),
-        d.dot( cs )
     };
 }
 

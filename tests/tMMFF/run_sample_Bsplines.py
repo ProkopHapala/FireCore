@@ -92,20 +92,22 @@ def test_eval_1D( g0=2.0, gmax=4.0, dg=0.2, dsamp=0.02, bUseForce=True, scErr=10
 
 
 
-def test_fit_1D( g0=2.0, gmax=10.0, dg=0.2, dsamp=0.02, bUseForce=True, scErr=100.0, bHalf=False, title=None ):
+def test_fit_1D( g0=-2.0, ng=10, dg=0.2, dsamp=0.02, bUseForce=False, scErr=100.0, bHalf=False, bPBC=True, Kreg=0.1, title=None ):
     #x0 = 2.0
     #dx = 0.1
+    gmax=g0+ng*dg 
+    Dg = gmax-g0
     if bHalf: dg = dg*0.5
-    xs  = np.arange(g0, gmax+1e-8, dg)     ; ng=len(xs)
-    xs_ = np.arange(g0, gmax+1e-8, dsamp)  ; nsamp=len(xs_)
+    xs  = np.arange(g0,    gmax,    dg    ); ng=len(xs)
+    xs_ = np.arange(g0-Dg, gmax+Dg, dsamp ); nsamp=len(xs_)
     xsg=xs; 
     if bHalf: xsg=xs[::2]
     
-    E,F         = fu.getLJ( xs,  3.5, 1.0 )
-    E_ref,F_ref = fu.getLJ( xs_, 3.5, 1.0 )
+    # E,F         = fu.getLJ( xs,  3.5, 1.0 )
+    # E_ref,F_ref = fu.getLJ( xs_, 3.5, 1.0 )
     
-    #E,F         = getCos( xs,  np.pi )
-    #E_ref,F_ref = getCos( xs_, np.pi )
+    E,F         = fu.getCos( xs,  np.pi )
+    E_ref,F_ref = fu.getCos( xs_, np.pi )
 
     #print( "E_ref ", E_ref )
     #print( "F_ref ", F_ref )
@@ -115,13 +117,20 @@ def test_fit_1D( g0=2.0, gmax=10.0, dg=0.2, dsamp=0.02, bUseForce=True, scErr=10
     #print( "Emin ", Emin," Fmin ", Fmin )
     Ecut = -2.0
     #Ws = 1/np.sqrt( (E/Ecut)**2 + 1 ); # EWs = E*Ws
-    Ws = 1/( E - Ecut );
+    #Ws = 1/( E - Ecut );
     #E*=Ws
     #FEg[:,1]*=-1
 
     #Ecut2 =  1.0
     #mask    = E>Ecut2
     #E[mask] = Ecut2
+
+    dgs = dg; 
+    if bHalf: dgs=dg*2
+
+    Gs = E.copy()
+    
+    #FEout0 = mmff.sample_Bspline( xs_, Gs, x0=g0, dx=dgs )
 
     if bUseForce:
         FEg = np.zeros( (len(xs),2) )
@@ -131,26 +140,23 @@ def test_fit_1D( g0=2.0, gmax=10.0, dg=0.2, dsamp=0.02, bUseForce=True, scErr=10
         Ws     = np.zeros((ng,2));  Ws[:,0]=1.0; Ws[:,1]=0.0;
         Gs, Ws = mmff.fitEF_Bspline( dg, FEg, Gs=Gs, Ws=Ws, Ftol=1e-6, nmaxiter=1000, dt=0.1 )
     else:
-
-        Gs, Ws_ = mmff.fit_Bspline( E, Ws=None, dt=0.4, nmaxiter=1000, Ftol=1e-7, bHalf=bHalf )
-
+        Gs, Ws = mmff.fit_Bspline( E, Ws=None, dt=0.4, nmaxiter=200, Ftol=1e-12, Kreg=Kreg, bHalf=bHalf, bPBC=bPBC )
         #Gs, Ws_ = mmff.fit_Bspline( E, Ws=Ws,   dt=1.0, nmaxiter=1000, Ftol=1e-9, bHalf=bHalf )
-
         #Gs, Ws = mmff.fit_Bspline( FEg[:,0].copy(), Ws=Ws,   dt=0.4, nmaxiter=1000, Ftol=1e-7 )
-    dgs = dg
-    if bHalf: dgs=dg*2
-    #FEout = mmff.sample_Bspline( xs_, Gs, x0=g0, dx=dgs )
 
-    FEout = mmff.sample_NURBS( xs_, Gs, Ws=np.ones(len(Gs)), x0=g0, dx=dgs )
+
+    FEout = mmff.sample_Bspline( xs_, Gs, x0=g0, dx=dgs )
+    #FEout = mmff.sample_NURBS( xs_, Gs, Ws=np.ones(len(Gs)), x0=g0, dx=dgs )
 
     plt.figure(figsize=(5,10))
     plt.subplot(2,1,1)    
-    plt.plot( xs, Ws, ":m", lw=1.5, label="Ws" )
+    plt.plot( xs, Ws*10.0, "-c", lw=1.0, label="Ws" )
     #plt.plot( xs, EWs, ".-k" )
-    #plt.plot( xs, E, ".-k", label="E_ref" )
-    #plt.plot( xsg, Gs,          ".-m", lw=0.25, label="Gs" )
-    plt.plot( xs_, E_ref,      "-k",  lw=0.5,  label="E_ref" )
-    plt.plot( xs_, FEout[:,0], "-b",  lw=0.5,  label="E_fit" )
+
+    plt.plot( xsg, Gs,          ".-m", lw=0.25, label="Gs" )
+    plt.plot( xs_, E_ref,      ":k",  lw=1.5,  label="E_ref" )
+    plt.plot( xs_, FEout[:,0], "-g",  lw=0.5,  label="E_fit" )
+    #plt.plot( xs_, FEout0[:,0],"--k",  lw=0.5,  label="E_fit0" )
     plt.plot( xs_, (FEout[:,0]-E_ref)*scErr, "-r", lw=0.5, label=("error*%g" % scErr) )
     #print( "Gs: ", Gs )
     plt.ylim(Emin*1.2,-Emin*1.2)
@@ -159,8 +165,8 @@ def test_fit_1D( g0=2.0, gmax=10.0, dg=0.2, dsamp=0.02, bUseForce=True, scErr=10
     plt.title("Energy")
     plt.subplot(2,1,2)
     #plt.plot( xs,  -F ,       ".-k", lw=0.5, label="F_ref" )    
-    plt.plot( xs_, -F_ref ,     "-k", lw=0.5, label="F_ref" )    
-    plt.plot( xs_, -FEout[:,1], "-b", lw=0.5, label="F_fit" )
+    plt.plot( xs_, -F_ref ,     ":k", lw=1.5, label="F_ref" )    
+    plt.plot( xs_, -FEout[:,1], "-g", lw=0.5, label="F_fit" )
     plt.plot( xs_, (FEout[:,1]-F_ref)*scErr, "-r", lw=0.5, label=("error*%g" % scErr) )
     plt.ylim(Fmin*1.2,-Fmin*1.2)
     plt.legend()
@@ -572,10 +578,6 @@ mmff.setVerbosity( 3 )
 
 #test_PBCindexes( order=3 )
 #test_PBCindexes( order=5 )
-
-
-
-
 #test_project1D( [ 0.050, 1.050] , g0=0.0, dg=0.1, ng=20, order=3 )
 #test_project1D( [ 0.025, 1.025] , g0=0.0, dg=0.1, ng=20, order=3 )
 # test_project1D( [ 0.000, 1.000] , g0=0.0, dg=0.1, ng=20, order=3 )
@@ -593,8 +595,8 @@ apos=np.array([
 ])
 qs = [ +1.,+1.,-1.,-1. ]
 
-test_project2D( apos, g0=[ 0.0, 0.0], order=3, ws=qs )
-test_project2D( apos, g0=[-0.8,-0.8], order=3, ws=qs )
+# test_project2D( apos, g0=[ 0.0, 0.0], order=3, ws=qs )
+# test_project2D( apos, g0=[-0.8,-0.8], order=3, ws=qs )
 
 
 
@@ -611,6 +613,11 @@ test_project2D( apos, g0=[-0.8,-0.8], order=3, ws=qs )
 #test_fit_1D( bUseForce=False, bHalf=False ,title="No-Half")
 #test_fit_1D( bUseForce=False, bHalf=True  ,title="Half")
 #test_fit_1D( g0=0.0, gmax=2.0, dg=0.1, bUseForce=False )
+
+test_fit_1D( g0=0.0, ng=10, dg=0.2 )
+
+
+
 
 #test_fit_2D(  )
 #test_fit_2D( g0=(-1.0,-1.0), gmax=(1.0,1.0) )

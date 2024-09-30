@@ -230,12 +230,12 @@ void projectBspline2D( int nx, double* ps_, double* ws, double* g0_, double* dg_
 //     return Bspline::fit1D( n, Gs, Es, Ws, Ftol, nmaxiter, dt, bHalf );
 // }
 
-int fit_Bspline( const int n, double* Gs, double* Es, double* Ws, double Ftol, int nmaxiter, double dt, bool bPBC, bool bRegForce, bool bHalf  ){
-    //return Bspline::fit1D_old( n, Gs, Es, Ws, Ftol, nmaxiter, dt );
+int fit_Bspline( const int n, double* Gs, double* Es, double* Ws, double Ftol, int nmaxiter, double dt, double Kreg, bool bPBC, bool bHalf  ){
+    printf("fit_Bspline() bPBC=%i Ftol=%g Kreg=%g nmaxiter=%i dt=%g \n", bPBC, Ftol, Kreg, nmaxiter, dt );
     if (bHalf){
         return Bspline::fit1D_old2( n, Gs, Es, Ws, Ftol, nmaxiter, dt, bHalf );
     }else{
-        return Bspline::fit1D     ( n, Gs, Es, Ws, Ftol, nmaxiter, dt, bPBC, bRegForce );
+        return Bspline::fit1D     ( n, Gs, Es, Ws, Ftol, nmaxiter, dt, Kreg, bPBC );
     }
 }
 
@@ -254,10 +254,16 @@ int fit3D_Bspline( const int* ns, double* Gs, double* Es, double* Ws, double Fto
 
 }
 
-void sample_Bspline( double g0, double dg, int ng, double* Gs, int n, double* xs, double* fes, int order ){
+void sample_Bspline( double g0, double dg, int ng, double* Gs, int n, double* xs, double* fes, int order, bool bPBC ){
     switch (order) {
-        case 3 : { Bspline::sample1D   ( g0,dg,ng,Gs, n, xs, (Vec2d*)fes ); } break;
-        case 5 : { Bspline::sample1D_o5( g0,dg,ng,Gs, n, xs, (Vec2d*)fes ); } break;
+        case 3 : { 
+            if(bPBC){ Bspline::sample1D_pbc( g0,dg,ng,Gs,n, xs, (Vec2d*)fes ); }
+            else    { Bspline::sample1D    ( g0,dg,ng,Gs,n, xs, (Vec2d*)fes ); } 
+        } break;
+        case 5 : { 
+            if(bPBC){ printf("ERROR: libMMFF::sample_Bspline() order=%i NOT IMPLEMENTED with bPBC=true !!! => exit\n", order ); exit(0); }
+            Bspline::sample1D_o5( g0,dg,ng,Gs, n, xs, (Vec2d*)fes ); 
+        } break;
         default: { printf("ERROR: libMMFF::sample_Bspline() order=%i NOT IMPLEMENTED !!! => exit\n", order ); exit(0); } break;
     }
 }
