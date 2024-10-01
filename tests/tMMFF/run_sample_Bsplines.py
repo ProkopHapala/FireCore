@@ -457,8 +457,6 @@ def test_fit_3D( g0=(-2.0,-2.0,-2.0), gmax=(2.0,2.0,2.0), dg=(0.2,0.2,0.2), dsam
     # plt.axis('equal')
 
 
-
-
 def test_comb3_3D(g0=(-2.0,-2.0,-2.0), gmax=(2.0,2.0,2.5), dg=(0.1,0.1,0.1), dsamp=(0.05,0.05,0.05), title=None, scErr=1000.0, bPBC=True, Ccomb=[1.0,0.0,0.0], bFit=True, iax=2, Gs=None ):
     print("test_comb3_3D START")
     cmap = "bwr"
