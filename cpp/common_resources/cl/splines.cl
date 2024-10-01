@@ -68,12 +68,12 @@ inline float4 dbasis(float u) {
     );
 }
 
-inline float2 fe1Dcomb3(const float3* E, const float3 C, const float4 p, const float4 d) {
+inline float2 fe1Dcomb3(__global const float3* E, const float3 C, const float4 p, const float4 d) {
     float4 cs = (float4)(dot(C, E[0]), dot(C, E[1]), dot(C, E[2]), dot(C, E[3]));
     return (float2)(dot(p, cs), dot(d, cs));
 }
 
-inline float3 fe2d_comb3(int nz, const float3* E, int4 di, const float3 C, const float4 pz, const float4 dz, const float4 by, const float4 dy) {
+inline float3 fe2d_comb3(int nz, __global const float3* E, int4 di, const float3 C, const float4 pz, const float4 dz, const float4 by, const float4 dy) {
     float2 fe0 = fe1Dcomb3(E + di.x, C, pz, dz);
     float2 fe1 = fe1Dcomb3(E + di.y, C, pz, dz);
     float2 fe2 = fe1Dcomb3(E + di.z, C, pz, dz);
@@ -86,7 +86,7 @@ inline float3 fe2d_comb3(int nz, const float3* E, int4 di, const float3 C, const
     );
 }
 
-inline float4 fe3d_pbc_comb3(const float3 u, const int3 n, const float3* Es, const float3 PLQ, const int4* xqis, const int4* yqis) {
+inline float4 fe3d_pbc_comb3(const float3 u, const int3 n, __global const float3* Es, const float3 PLQ, __local const int4* xqis, __local int4* yqis) {
     int ix = (int)u.x;
     int iy = (int)u.y;
     int iz = (int)u.z;
