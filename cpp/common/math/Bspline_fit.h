@@ -228,8 +228,9 @@ double getVariations1D_pbc( const int n, const double* Gs, const double* Es, con
     return err2sum;
 }
 
-static std::vector<Quat4d> dgb_vG;
-static std::vector<Quat4d> dgb_dF;
+static std::vector<Quat4d> dgb_Bs;
+static std::vector<Quat4d> dgb_dBs;
+static std::vector<Quat4d> dgb_dFs;
 
 inline double regularizationForceMidpoint_1D( int n, const double* Gs, double* fs, double Kreg, const Quat4i* xqis ){
     // E_reg= sum_i Kreg*( f(x_i) - f(x_i+0.5) )^2 + Kreg*( f(x_i) - f(x_i-0.5) )^2  
@@ -249,32 +250,32 @@ inline double regularizationForceMidpoint_1D( int n, const double* Gs, double* f
             const double  dF = f_ref - fe1d_pbc_macro( x-0.5, n, Gs, xqis).y; // differece of spline derivative (force) at point  p and p-0.5
             freg += 2.0 * vG * dF;
 
-            dgb_vG[i].y=vG*dF;
-            dgb_dF[i].y=dF;
+            dgb_dBs[i].y=vG*dF;
+            dgb_dFs[i].y=dF;
         }
         {   // forward point
             const double  vG = dB - dBfw;                                      // difference of B-spline basis functions at point  p and p+0.5
             const double  dF = f_ref - fe1d_pbc_macro( x+0.5, n, Gs, xqis).y; // differece of spline derivative (force) at point  p and p+0.5
             freg += 2.0 * vG * dF;
 
-            dgb_vG[i].z=vG*dF;
-            dgb_dF[i].z=dF;
+            dgb_dBs[i].z=vG*dF;
+            dgb_dFs[i].z=dF;
         }
         {  // backward point
             const double  vG = dB - dBbk2;                                     // difference of B-spline basis functions at point  p and p-0.5
             const double  dF = f_ref - fe1d_pbc_macro( x-1.5, n, Gs, xqis).y; // differece of spline derivative (force) at point  p and p-0.5
             freg += 2.0 * vG * dF;
 
-            dgb_vG[i].x=vG*dF;
-            dgb_dF[i].x=dF;
+            dgb_dBs[i].x=vG*dF;
+            dgb_dFs[i].x=dF;
         }
         {   // forward point
             const double  vG = dB - dBfw2;                                      // difference of B-spline basis functions at point  p and p+0.5
             const double  dF = f_ref - fe1d_pbc_macro( x+1.5, n, Gs, xqis).y; // differece of spline derivative (force) at point  p and p+0.5
             freg += 2.0 * vG * dF;
 
-            dgb_vG[i].w=vG*dF;
-            dgb_dF[i].w=dF;
+            dgb_dBs[i].w=vG*dF;
+            dgb_dFs[i].w=dF;
         }
         freg *= -Kreg;
         fs[i] += freg;
@@ -283,6 +284,38 @@ inline double regularizationForceMidpoint_1D( int n, const double* Gs, double* f
     return f2reg;
 }
 
+
+
+inline double regularizationForceMidpoint_1D_sub( int n, int nsub, const double* Gs, double* fs, double Kreg, const Quat4i* xqis ){
+    // E_reg= sum_i Kreg*( f(x_i) - f(x_i+0.5) )^2 + Kreg*( f(x_i) - f(x_i-0.5) )^2  
+    // dE_reg/dG_i = 2*Kreg*( f(x_i) - f(x_i+0.5) )*df(x_i)/dG_i + 2*Kreg*( f(x_i) - f(x_i-0.5) )*df(x_i)/dG_i
+    double f2reg=0; 
+    double dt = 1.0/nsub;
+    for(int i=0; i<n; i++){
+        const double x = i;
+        double f_0 = fe1d_pbc_macro( (double)(i  ), n, Gs, xqis ).y; 
+        double f_1 = fe1d_pbc_macro( (double)(i+1), n, Gs, xqis ).y;
+        for(int j=0; j<nsub; j++){
+            double t = (j+0.5)*dt;
+            double f01ref = f_0*(1-t) + f_1*t;  // linear approximation of f(x_i+0.5)
+            double f01fit = fe1d_pbc_macro( i+t, n, Gs, xqis ).y;
+            Quat4d dBs    = dbasis(t);
+            double dF     = f01ref - f01fit;
+
+            dgb_Bs [i*nsub+j]=basis(t);
+            dgb_dBs[i*nsub+j]=dBs;
+            dgb_dFs[i*nsub+j].x=f01ref;
+            dgb_dFs[i*nsub+j].y=f01fit;
+            dgb_dFs[i*nsub+j].z=dF;
+            dgb_dFs[i*nsub+j].w=t;
+
+        }
+        //freg *= -Kreg;
+        //fs[i] += freg;
+        //f2reg += freg*freg;
+    }
+    return f2reg;
+}
 
 
 
@@ -306,10 +339,14 @@ int fit1D( const int n, double* Gs,  double* Es, double* Ws, double Ftol, int nm
     double f2reg=0;
     double f2sum=0;
 
-    dgb_vG.resize(n);
-    dgb_dF.resize(n);
-    golbal_array_dict.insert( { "dgb_vG",   NDArray{ (double*)dgb_vG.data(),   Quat4i{n,4,-1,-1}} }  );
-    golbal_array_dict.insert( { "dgb_dF",   NDArray{ (double*)dgb_dF.data(),   Quat4i{n,4,-1,-1}} }  );
+    int nsub = 20;
+    int nij = n*nsub;
+    dgb_dBs.resize(nij);
+    dgb_dFs.resize(nij);
+    dgb_Bs.resize(nij);
+    golbal_array_dict.insert( { "dgb_vG",   NDArray{ (double*)dgb_dBs.data(),   Quat4i{nij,4,-1,-1}} }  );
+    golbal_array_dict.insert( { "dgb_dF",   NDArray{ (double*)dgb_dFs.data(),   Quat4i{nij,4,-1,-1}} }  );
+    golbal_array_dict.insert( { "dgb_Bs",   NDArray{ (double*)dgb_Bs .data(),   Quat4i{nij,4,-1,-1}} }  );
 
     for(itr=0; itr<nmaxiter; itr++){        
         //if(bPBC){ err2sum = getVariations1D_pbc( n, Gs, Es, Ws, fs, ps ); }
@@ -319,7 +356,8 @@ int fit1D( const int n, double* Gs,  double* Es, double* Ws, double Ftol, int nm
         if( bRegForce ){
             //f2reg = regularizationForceMidpoint_1D( n, Gs, fs, Kreg, xqis );
             for(int i=0; i<n; i++){ Ws[i]=0.0; };
-            f2reg = regularizationForceMidpoint_1D( n, Gs, Ws, Kreg, xqis );
+            //f2reg = regularizationForceMidpoint_1D( n, Gs, Ws, Kreg, xqis );
+            f2reg = regularizationForceMidpoint_1D_sub( n, nsub, Gs, Ws, Kreg, xqis );
             //for(int i=0; i<n; i++){ fs[i]+=Ws[i]; };
         }
         Vec3d cfv = move(dt,n,Gs,fs, vs );

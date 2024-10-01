@@ -111,7 +111,7 @@ def test_gridFF( name="data/NaCl_1x1_L2", mode=6, dsamp=0.02, p0=[0.0,0.0,2.0], 
     # Es,Fs = sampleSurf( name, zs, Es=None, fs=None, kind=1, atyp=0, Q=0.0, K=-1.0, Rdamp=1.0, pos0=(0.,0.,0.), bSave=False )
 
     ps_ = ps.copy();
-
+    #ps_[:,2] -= 0.1   # NOTE - this corrects just the electrostatics (not useful for Morse)
     # ps_[:,2]+=-2.0+3.25;
     # ps_[:,0]+=2.0;
     # ps_[:,1]+=2.0;
@@ -153,7 +153,7 @@ def test_gridFF( name="data/NaCl_1x1_L2", mode=6, dsamp=0.02, p0=[0.0,0.0,2.0], 
     print( "py======= test_gridFF() DONE" );
     #return EFg
 
-def test_gridFF_lat( name="data/NaCl_1x1_L2", iax=0, tmin=0.0,tmax=10.0, p0=[1.05,1.05,2.0], mode=6, dsamp=0.02,  R0=3.5, E0=0.1, a=1.6, Q=0.4, H=0.0, scErr=100.0, title=None, bSaveFig=True, bRefine=True, nPBC=None ):
+def test_gridFF_lat( name="data/NaCl_1x1_L2", iax=0, tmin=0.0,tmax=10.0, p0=[1.05,1.05,2.0], mode=6, dsamp=0.02,  R0=3.5, E0=0.1, a=1.6, Q=0.4, H=0.0, scErr=100.0, title=None, Emax=None, Fmax=None, maxSc=5.0, bSaveFig=True, bRefine=True, nPBC=None ):
     print( "py======= test_gridFF_lat() START" );
     #print( "test_gridFF() START" )
     #mode = 4
@@ -180,17 +180,21 @@ def test_gridFF_lat( name="data/NaCl_1x1_L2", iax=0, tmin=0.0,tmax=10.0, p0=[1.0
     # Es,Fs = sampleSurf( name, zs, Es=None, fs=None, kind=1, atyp=0, Q=0.0, K=-1.0, Rdamp=1.0, pos0=(0.,0.,0.), bSave=False )
 
     ps_ = ps.copy(); 
+    #ps_[:,2] += 0.1   # NOTE - this corrects just the electrostatics (not useful for Morse)
     # ps_[:,2]+=-2.0+3.25;
     # ps_[:,0]+=2.0;
     # ps_[:,1]+=2.0;
 
     FFout = mmff.sampleSurf_new( ps_, PLQH, mode=mode, Rdamp=1.0 )
     
-    Emin = FFout[:,3].min();
-    Fmin = FFout[:,2].min();
+    # Emin = FFout[:,3].min();
+    # Fmin = FFout[:,2].min();
 
     #Emin = FF_ref[:,3].min(); 
     #Fmin = FF_ref[:,2].min()
+
+    if Emax is None: Emax = -FF_ref[:,3].min()*maxSc; 
+    if Fmax is None: Fmax = -FF_ref[:,2].min()*maxSc;
 
     plt.figure(figsize=(5,10))
     plt.subplot(2,1,1);
@@ -201,17 +205,20 @@ def test_gridFF_lat( name="data/NaCl_1x1_L2", iax=0, tmin=0.0,tmax=10.0, p0=[1.0
     #plt.plot( zs, FFout[:,1], "-g", lw=0.5, label="Ftot_y" )
     #plt.plot( zs, FFout[:,2], "-b", lw=0.5, label="Etot_z" )
     plt.axhline(0.0, c="k", ls='--', lw=0.5)
-    plt.ylim( Emin, -Emin )
+    plt.ylim( -Emax, Emax )
     plt.legend()
     plt.subplot(2,1,2);
     plt.plot( ts, FFout[:,iax],  "-g", lw=0.5, label="Ftot_fit" )
     plt.plot( ts, FF_ref[:,iax], ":k", lw=2.0, label="Ftot_ref" )
     plt.plot( ts, (FFout[:,iax]-FF_ref[:,iax])*scErr, "-r", lw=0.5, label=("Ftot_err*%.2f" %scErr) )
     plt.axhline(0.0, c="k", ls='--', lw=0.5)
-    plt.ylim( Fmin, -Fmin )
+    plt.ylim( -Fmax, Fmax )
     plt.legend()
 
-    if ( title is not None ): plt.suptitle( title )
+
+    title_ = "p0="+str(p0)+"\nnPBC="+str(nPBC)
+    if ( title is not None ): title_=title+"\n"+title_
+    plt.suptitle( title_ )
     if ( bSaveFig ): plt.savefig( "test_gridFF_lat.png", bbox_inches='tight' )
     
     #print( "ff.shape ", EFg.shape )
@@ -306,12 +313,24 @@ Fmax=0.00001
 #test_gridFF    ( mode=6, title="Bspline_o3 \n(z-cut)" , p0=[0.0,0.0],  Q=0.4, E0=0, bRefine=False, nPBC=[100,100,0], Emax=Emax, Fmax=Fmax )
 #test_gridFF    ( mode=6, title="Bspline_o3 \n(z-cut)" , p0=[0.0,0.0],  Q=0.4, E0=0, bRefine=False, nPBC=[150,150,0], Emax=Emax, Fmax=Fmax )
 
-test_gridFF    ( mode=6, title="Bspline_o3 \n(z-cut)" , p0=[0.0,0.0],  Q=0.4, E0=0, bRefine=False, nPBC=[100,100,0], Emax=Emax, Fmax=Fmax )
-test_gridFF    ( mode=6, title="Bspline_o3 \n(z-cut)" , p0=[0.0,0.0],  Q=0.4, E0=0, bRefine=False, nPBC=[300,300,0], Emax=Emax, Fmax=Fmax )
+#test_gridFF    ( mode=6, title="Bspline_o3 \n(z-cut)" , p0=[0.0,0.0],  Q=0.4, E0=0, bRefine=False, nPBC=[100,100,0], Emax=Emax, Fmax=Fmax )
+#test_gridFF    ( mode=6, title="Bspline_o3 \n(z-cut)" , p0=[0.0,0.0],  Q=0.4, E0=0, bRefine=False, nPBC=[300,300,0], Emax=Emax, Fmax=Fmax )
 test_gridFF    ( mode=6, title="Bspline_o3 \n(z-cut)" , p0=[0.0,0.0],  Q=0.4, E0=0, bRefine=False, nPBC=[400,400,0], Emax=Emax, Fmax=Fmax )
-#test_gridFF    ( mode=6, title="Bspline_o3 \n(z-cut)" , p0=[2.0,2.0],  Q=0.4, E0=0, bRefine=False, nPBC=[100,100,0], Emax=Emax, Fmax=Fmax )
+test_gridFF    ( mode=6, title="Bspline_o3 \n(z-cut)" , p0=[2.0,2.0],  Q=0.4, E0=0, bRefine=False, nPBC=[400,400,0], Emax=Emax, Fmax=Fmax )
 
-#test_gridFF_lat( mode=6, title="Bspline_o3 \n(lat iax=0)", Q=0.4, E0=0 )
+Emax=0.01 
+Fmax=0.01
+
+test_gridFF_lat( mode=6, title="Bspline_o3 \n(lat iax=0)", p0=[0.0,0.0,2.0], nPBC=[400,400,0],  Q=0.4, E0=0.0, Emax=Emax, Fmax=Fmax  )
+test_gridFF_lat( mode=6, title="Bspline_o3 \n(lat iax=0)", p0=[2.0,2.0,2.0], nPBC=[400,400,0],  Q=0.4, E0=0.0, Emax=Emax, Fmax=Fmax  )
+
+Emax=0.1 
+Fmax=0.1
+
+# test_gridFF    ( mode=6, title="Bspline_o3 \n(z-cut)" , p0=[0.0,0.0],  Q=0.0, E0=0.1, bRefine=False, nPBC=[5,5,0], Emax=Emax, Fmax=Fmax )
+# test_gridFF    ( mode=6, title="Bspline_o3 \n(z-cut)" , p0=[2.0,2.0],  Q=0.0, E0=0.1, bRefine=False, nPBC=[5,5,0], Emax=Emax, Fmax=Fmax )
+# test_gridFF_lat( mode=6, title="Bspline_o3 \n(lat iax=0)", p0=[0.0,0.0,2.0], Q=0.0, E0=0.1 )
+# test_gridFF_lat( mode=6, title="Bspline_o3 \n(lat iax=0)", p0=[2.0,2.0,2.0], Q=0.0, E0=0.1 )
 
 #test_gridFF_npy( ps_xy=[(0.0,0.0),(0.0,0.5),(0.5,0.0),(0.5,0.5)], mode=6, title="" )
 

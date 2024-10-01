@@ -743,8 +743,8 @@ Quat4d fe3d_pbc_comb3( const Vec3d u, const Vec3i n, const Vec3d* Es, const Vec3
     // printf( "Bspline::fe3d_pbc_comb3() ixyz(%3i,%3i,%3i)/n(%3i,%3i,%3i)  u(%g,%g,%g) \n", ix,iy,iz, n.x,n.y,n.z, u.x,u.y,u.z  ); 
 
     // ---- boundary conditions
-    //if(  ((iz<1)||(iz>=n.z-2))  )[[unlikely]]{  
-    if(  ((iz<2)||(iz>=n.z-3))  )[[unlikely]]{ 
+    if(  ((iz<1)||(iz>=n.z-2))  )[[unlikely]]{  
+    //if(  ((iz<2)||(iz>=n.z-3))  )[[unlikely]]{ 
         //printf( "Bspline::fe3d_pbc_comb3() iz=%i n.z=%i  ixy(%i,%i) \n", iz, n.z, ix, iy );    
         return Quat4dZero; 
     }
@@ -767,8 +767,8 @@ Quat4d fe3d_pbc_comb3( const Vec3d u, const Vec3i n, const Vec3d* Es, const Vec3
     const Quat4d by =  basis( ty );
     const Quat4d dy = dbasis( ty );
     //int i0 = (iz-2) + n.z*( iy + n.y*ix);  
-    //int i0 = (iz-1) + n.z*( iy + n.y*ix); 
-    int i0 = iz + n.z*( iy + n.y*ix);  
+    int i0 = (iz-1) + n.z*( iy + n.y*ix); 
+    //int i0 = iz + n.z*( iy + n.y*ix);  
     const Vec3d E1 = fe2d_comb3( n.z, Es+(i0+qx.x ), qy, PLQ, bz, dz, by, dy );
     const Vec3d E2 = fe2d_comb3( n.z, Es+(i0+qx.y ), qy, PLQ, bz, dz, by, dy );
     const Vec3d E3 = fe2d_comb3( n.z, Es+(i0+qx.z ), qy, PLQ, bz, dz, by, dy );;
