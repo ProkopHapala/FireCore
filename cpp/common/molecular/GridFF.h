@@ -942,9 +942,10 @@ inline void addForce( const Vec3d& pos, const Quat4f& PLQ, Quat4f& fe ) const {
             if(bUseEwald){
                 evalBsplineRef( natoms_, apos_, REQs_, VPaul, VLond, 0 );
                 std::vector<double> qs(natoms_); for( int i=0; i<natoms_; i++ ){ qs[i] = REQs_[i].z; }
+                std::vector<Vec3d>  ps(natoms_); for( int i=0; i<natoms_; i++ ){  Vec3d p=apos_[i];  p.z-=grid.dCell.c.z; ps[i]=p; } // NOTE: For some unknown reason we have to shift atoms by 1 pixel in z-direction (perhaps something about grid alignement)
                 ewald->copy( grid );
                 ewald->enlarge( Vec3d{0.0,0.0,20.0} ); // add 20A of Vaccuum to simulated slabe (not periodic in z direction)
-                ewald->potential_of_atoms( grid.n.z, VCoul, natoms_, apos_, qs.data() );
+                ewald->potential_of_atoms( grid.n.z, VCoul, natoms_, ps.data(), qs.data() );
             }else{
                 evalBsplineRef( natoms_, apos_, REQs_, VPaul, VLond, VCoul );
             }

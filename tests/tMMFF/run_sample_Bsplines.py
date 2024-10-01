@@ -147,6 +147,9 @@ def test_fit_1D( g0=-2.0, ng=10, dg=0.2, dsamp=0.02, bUseForce=False, scErr=20.0
 
         dgb_vG = mmff.getArrayPointer("dgb_vG"); print(dgb_vG.shape)
         dgb_dF = mmff.getArrayPointer("dgb_dF"); print(dgb_dF.shape)
+        dgb_Bs = mmff.getArrayPointer("dgb_Bs"); print(dgb_dF.shape)
+        nsub=20
+        xs__  = np.arange(g0,    gmax,      dg/nsub    )+0.5*dg/nsub; ng=len(xs__)
 
 
     FEout = mmff.sample_Bspline( xs_, Gs, x0=g0, dx=dgs )
@@ -172,6 +175,7 @@ def test_fit_1D( g0=-2.0, ng=10, dg=0.2, dsamp=0.02, bUseForce=False, scErr=20.0
     plt.plot( xs_, -F_ref ,     ":k", lw=1.5, label="F_ref" )    
     plt.plot( xs_, -FEout[:,1], "-g", lw=0.5, label="F_fit" )
     plt.plot( xs_, (FEout[:,1]-F_ref)*scErr, "-r", lw=0.5, label=("error*%g" % scErr) )
+    plt.plot( xs__, dgb_dF[:,2]*5.0,      "-k",  lw=2.0,  label="dgb_dFG[2](fit-ref)" )
     plt.ylim(Fmin*1.2,-Fmin*1.2)
     plt.xlim(g0,gmax*1.5)
     plt.legend()
@@ -179,10 +183,27 @@ def test_fit_1D( g0=-2.0, ng=10, dg=0.2, dsamp=0.02, bUseForce=False, scErr=20.0
     plt.grid()
 
     plt.subplot(3,1,3)
-    plt.plot( xs, dgb_vG[:,0],      ".-r",  lw=1.0,  label="dgb_vG[0]" )
-    plt.plot( xs, dgb_vG[:,1],      ".-g",  lw=1.0,  label="dgb_vG[1]" )
-    plt.plot( xs, dgb_vG[:,2],      ".-c",  lw=1.0,  label="dgb_vG[2]" )
-    plt.plot( xs, dgb_vG[:,3],      ".-b",  lw=1.0,  label="dgb_vG[3]" )
+
+
+    plt.plot( xs__, dgb_vG[:,0],      "-r",  lw=0.5,  label="dgb_vG[0]" )
+    plt.plot( xs__, dgb_vG[:,1],      "-g",  lw=0.5,  label="dgb_vG[1]" )
+    plt.plot( xs__, dgb_vG[:,2],      "-c",  lw=0.5,  label="dgb_vG[2]" )
+    plt.plot( xs__, dgb_vG[:,3],      "-b",  lw=0.5,  label="dgb_vG[3]" )
+
+    # plt.plot( xs__, dgb_Bs[:,0],      "-r",  lw=1.0,  label="dgb_Bs[0]" )
+    # plt.plot( xs__, dgb_Bs[:,1],      "-g",  lw=1.0,  label="dgb_Bs[1]" )
+    # plt.plot( xs__, dgb_Bs[:,2],      "-c",  lw=1.0,  label="dgb_Bs[2]" )
+    # plt.plot( xs__, dgb_Bs[:,3],      "-b",  lw=1.0,  label="dgb_Bs[3]" )
+
+    plt.plot( xs__, dgb_dF[:,0],      ":k",  lw=1.0,  label="dgb_dFG[0](ref)" )
+    plt.plot( xs__, dgb_dF[:,1],      "--k", lw=1.0,  label="dgb_dFG[1](fit)" )
+    plt.plot( xs__, dgb_dF[:,2],      "-k",  lw=2.0,  label="dgb_dFG[2](fit-ref)" )
+    #plt.plot( xs__, dgb_dF[:,3],      "-m",  lw=1.0,  label="dgb_dFG[2](t)" )
+
+    # plt.plot( xs, dgb_vG[:,0],      ".-r",  lw=1.0,  label="dgb_vG[0]" )
+    # plt.plot( xs, dgb_vG[:,1],      ".-g",  lw=1.0,  label="dgb_vG[1]" )
+    # plt.plot( xs, dgb_vG[:,2],      ".-c",  lw=1.0,  label="dgb_vG[2]" )
+    # plt.plot( xs, dgb_vG[:,3],      ".-b",  lw=1.0,  label="dgb_vG[3]" )
     # plt.plot( xs, dgb_dF[:,0],      ":r",  lw=1.0,  label="dgb_dF[0]" )
     # plt.plot( xs, dgb_dF[:,1],      ":g",  lw=1.0,  label="dgb_dF[1]" )
     # plt.plot( xs, dgb_dF[:,2],      ":c",  lw=1.0,  label="dgb_dF[2]" )
