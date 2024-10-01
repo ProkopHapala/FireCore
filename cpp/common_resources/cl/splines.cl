@@ -14,9 +14,9 @@ inline int modulo(int i, int m) {
 
 inline int4 make_inds_pbc(const int n, const int iG) {
     switch( iG ){
-        case 0: { return (int4)(0, 1, 2, 3);       }
-        case 1: { return (int4)(0, 1, 2, 3-n);     }
-        case 2: { return (int4)(0, 1, 2-n, 3-n);   }
+        case 0: { return (int4)(0, 1,   2,   3  ); }
+        case 1: { return (int4)(0, 1,   2,   3-n); }
+        case 2: { return (int4)(0, 1,   2-n, 3-n); }
         case 3: { return (int4)(0, 1-n, 2-n, 3-n); }
     }
     return (int4)(-100, -100, -100, -100);
@@ -68,16 +68,16 @@ inline float4 dbasis(float u) {
     );
 }
 
-inline float2 fe1Dcomb3(__global const float3* E, const float3 C, const float4 p, const float4 d) {
+inline float2 fe1Dcomb(__global const float4* E, const float4 C, const float4 p, const float4 d) {
     float4 cs = (float4)(dot(C, E[0]), dot(C, E[1]), dot(C, E[2]), dot(C, E[3]));
     return (float2)(dot(p, cs), dot(d, cs));
 }
 
-inline float3 fe2d_comb3(int nz, __global const float3* E, int4 di, const float3 C, const float4 pz, const float4 dz, const float4 by, const float4 dy) {
-    float2 fe0 = fe1Dcomb3(E + di.x, C, pz, dz);
-    float2 fe1 = fe1Dcomb3(E + di.y, C, pz, dz);
-    float2 fe2 = fe1Dcomb3(E + di.z, C, pz, dz);
-    float2 fe3 = fe1Dcomb3(E + di.w, C, pz, dz);
+inline float3 fe2d_comb(int nz, __global const float4* E, int4 di, const float4 C, const float4 pz, const float4 dz, const float4 by, const float4 dy) {
+    float2 fe0 = fe1Dcomb(E + di.x, C, pz, dz);
+    float2 fe1 = fe1Dcomb(E + di.y, C, pz, dz);
+    float2 fe2 = fe1Dcomb(E + di.z, C, pz, dz);
+    float2 fe3 = fe1Dcomb(E + di.w, C, pz, dz);
     
     return (float3)(
         fe0.x * dy.x + fe1.x * dy.y + fe2.x * dy.z + fe3.x * dy.w,
@@ -86,7 +86,7 @@ inline float3 fe2d_comb3(int nz, __global const float3* E, int4 di, const float3
     );
 }
 
-inline float4 fe3d_pbc_comb3(const float3 u, const int3 n, __global const float3* Es, const float3 PLQ, __local const int4* xqis, __local int4* yqis) {
+inline float4 fe3d_pbc_comb(const float3 u, const int3 n, __global const float4* Es, const float4 PLQH, __local const int4* xqis, __local int4* yqis) {
     int ix = (int)u.x;
     int iy = (int)u.y;
     int iz = (int)u.z;
@@ -114,10 +114,10 @@ inline float4 fe3d_pbc_comb3(const float3 u, const int3 n, __global const float3
     
     int i0 = (iz - 1) + n.z * (iy + n.y * ix);
     
-    float3 E1 = fe2d_comb3(n.z, Es + (i0 + qx.x), qy, PLQ, bz, dz, by, dy);
-    float3 E2 = fe2d_comb3(n.z, Es + (i0 + qx.y), qy, PLQ, bz, dz, by, dy);
-    float3 E3 = fe2d_comb3(n.z, Es + (i0 + qx.z), qy, PLQ, bz, dz, by, dy);
-    float3 E4 = fe2d_comb3(n.z, Es + (i0 + qx.w), qy, PLQ, bz, dz, by, dy);
+    float3 E1 = fe2d_comb(n.z, Es + (i0 + qx.x), qy, PLQH, bz, dz, by, dy);
+    float3 E2 = fe2d_comb(n.z, Es + (i0 + qx.y), qy, PLQH, bz, dz, by, dy);
+    float3 E3 = fe2d_comb(n.z, Es + (i0 + qx.z), qy, PLQH, bz, dz, by, dy);
+    float3 E4 = fe2d_comb(n.z, Es + (i0 + qx.w), qy, PLQH, bz, dz, by, dy);
     
     float4 bx = basis(tx);
     float4 dx = dbasis(tx);
@@ -130,15 +130,15 @@ inline float4 fe3d_pbc_comb3(const float3 u, const int3 n, __global const float3
     );
 }
 
-__kernel void sample3D_comb3(
-    const float3 g0,
-    const float3 dg,
-    const int3 ng,
-    __global const float3* Eg,
+__kernel void sample3D_comb(
+    const float4 g0,
+    const float4 dg,
+    const int4 ng,
+    __global const float4* Eg,
     const int n,
-    __global const float3* ps,
+    __global const float4* ps,
     __global float4* fes,
-    const float3 C
+    const float4 C
     //__global int4* xqs,
     //__global int4* yqs
 ) {
@@ -153,10 +153,10 @@ __kernel void sample3D_comb3(
     barrier(CLK_LOCAL_MEM_FENCE);
 
 
-    float3 inv_dg = 1.0f / dg;
-    float3 p = ps[iG];
-    float3 u = (p - g0) * inv_dg;
-    float4 fe = fe3d_pbc_comb3(u, ng, Eg, C, xqs, yqs);
+    float3 inv_dg = 1.0f / dg.xyz;
+    float3 p = ps[iG].xyz;
+    float3 u = (p - g0.xyz) * inv_dg;
+    float4 fe = fe3d_pbc_comb(u, ng.xyz, Eg, C, xqs, yqs);
     fe.xyz *= inv_dg;
     fes[iG] = fe;
 }

@@ -31,36 +31,46 @@ class OCLSplines:
             print( "OCLSplines() called from path=", os.getcwd() )
             print(f"Error compiling OpenCL program: {e}")
 
-    def sample3D_comb3(self, g0, dg, ng, Eg, ps, C):
+    def prepare_sample3D(self, g0, dg, ng, Eg ):
+        g0 = np.array(g0+(0,), dtype=np.float32)
+        dg = np.array(dg+(0,), dtype=np.float32)
+        ng = np.array(ng+(0,), dtype=np.int32)
+        self.grid3D_shape = (g0, dg, ng)
+        self.E3D_buf      = cl_array.to_device(self.queue, Eg.astype(np.float32) )
+
+    def sample3D_comb(self, ps, C):
         """
-        __kernel void sample3D_comb3(
-            const float3 g0,
-            const float3 dg,
-            const int3 ng,
-            __global const float3* Eg,
+        __kernel void sample3D_comb(
+            const float4 g0,
+            const float4 dg,
+            const int4 ng,
+            __global const float4* Eg,
             const int n,
-            __global const float3* ps,
+            __global const float4* ps,
             __global float4* fes,
-            const float3 C,
-            __global int4* xqs,
-            __global int4* yqs
+            const float4 C
         ) {
         """
         n = len(ps)
-        g0 = np.array(g0, dtype=np.float32)
-        dg = np.array(dg, dtype=np.float32)
-        ng = np.array(ng, dtype=np.int32)
-        C  = np.array(C,  dtype=np.float32)
+
         
-        Eg_buf  = cl_array.to_device(self.queue, Eg.astype(np.float32))
-        ps_buf  = cl_array.to_device(self.queue, ps.astype(np.float32))
+        #self.prepare_sample3D( g0, dg, ng, Eg )
+
+        C       = np.array(C , dtype=np.float32)
+        ps_buf  = cl_array.to_device(self.queue, ps.astype(np.float32) )
         fes_buf = cl_array.empty(    self.queue, (n, 4), dtype=np.float32)
-        xqs = make_inds_pbc(ng[0])
-        yqs = make_inds_pbc(ng[1])
 
         nG = roundup_global_size( n, self.nloc )
+        (g0, dg, ng) = self.grid3D_shape
+
         
-        self.prg.sample3D_comb3(self.queue, (nG,), (self.nloc,),      g0, dg, ng, Eg_buf.data, np.int32(n),  ps_buf.data, fes_buf.data, C, xqs, yqs )
+
+        print("g0", g0)
+        print("dg", dg)
+        print("ng", ng)
+
+
+        self.prg.sample3D_comb(self.queue, (nG,), (self.nloc,),  g0, dg, ng, self.E3D_buf.data, np.int32(n),  ps_buf.data, fes_buf.data, C )
         
         return fes_buf.get()
 
