@@ -152,13 +152,40 @@ __kernel void sample3D_comb(
     else if (iL<8){ int i=iL-4; yqs[i ]=make_inds_pbc(ng.y,i ); };
     barrier(CLK_LOCAL_MEM_FENCE);
 
+    if( iG==0 ){
+        printf( "ng(%i,%i,%i) g0(%g,%g,%g) dg(%g,%g,%g) C(%g,%g,%g) \n", ng.x,ng.y,ng.z,   g0.x,g0.y,g0.z,   dg.x,dg.y,dg.z,   C.x,C.y,C.z );
+        //printf("xqs[0](%i,%i,%i,%i)\n xqs[1](%i,%i,%i,%i)\n xqs[2](%i,%i,%i,%i)\n xqs[3](%i,%i,%i,%i)\n", xqs[0].x, xqs[0].y, xqs[0].z, xqs[0].w,   xqs[1].x, xqs[1].y, xqs[1].z, xqs[1].w,   xqs[2].x, xqs[2].y, xqs[2].z, xqs[2].w,  xqs[3].x, xqs[3].y, xqs[3].z, xqs[3].w   );
+        //for(int i=0; i<ng; i++){  printf("Gs[%i]=%f\n", i, Gs[i]); }
+        for(int i=0; i<n; i++){
+            float3 inv_dg = 1.0f / dg.xyz;
+            float3 p = ps[i].xyz;
+            //printf( "ps[%3i] ( %8.4f, %8.4f, %8.4f,) \n", i, p.x,p.y,p.z );
 
+            float3 u = (p - g0.xyz) * inv_dg;
+
+            // int ix = (int)u.x; 
+            // int iy = (int)u.y;
+            // int iz = (int)u.z;
+            // int ixyz = iz + ng.z*( iy + ng.y*ix);
+            // float4 Es = Eg[ixyz];
+            // //printf( "Eg[%3i,%3i,%3i]=(%g,%g,%g,%g) \n", ix,iy,iz, Es.x,Es.y,Es.z,Es.w );
+            // float E = dot(Es,C);
+            // fes[i] = (float4){E,E,E,E};
+
+            float4 fe = fe3d_pbc_comb(u, ng.xyz, Eg, C, xqs, yqs);
+            fes[i] = fe;
+        }
+
+    }
+
+    /*
     float3 inv_dg = 1.0f / dg.xyz;
     float3 p = ps[iG].xyz;
     float3 u = (p - g0.xyz) * inv_dg;
     float4 fe = fe3d_pbc_comb(u, ng.xyz, Eg, C, xqs, yqs);
     fe.xyz *= inv_dg;
     fes[iG] = fe;
+    */
 }
 
 
