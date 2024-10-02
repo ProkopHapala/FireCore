@@ -1,5 +1,8 @@
 ﻿#ifndef  Buckets3D_h
 #define  Buckets3D_h
+/// @file Buckets.h @brief contains Buckets class, for accelarating neighbourhood search for particle-in-cell on rectangular 3D grids.
+/// @ingroup Grids
+/// @ingroup Neighbours
 
 #include "integerOps.h"
 #include "fastmath.h"
@@ -7,6 +10,7 @@
 #include "grids3D.h"
 #include "Buckets.h"
 
+/// @brief Class for accelarating neighbourhood search for particle-in-cell on rectangular 3D grids.
 class Buckets3D : public Buckets, public CubeGridRuler { public:
 
     bool bResizing=false;
