@@ -1,23 +1,29 @@
 
 #ifndef  Buckets_h
 #define  Buckets_h
+/// @file Buckets.h @brief contains Buckets class, which is a class for storing indices of objects in buckets (groups) used typically to accelarate neighbourhood search
+/// @defgroup Neighbours  Neighbours
+/// @addtogroup Neighbours
+/// @{
 
 #include "macroUtils.h"
 
+/// @brief Class for storing indices of objects in buckets (groups) used typically to accelarate neighbourhood search
+/// @details contains bi-dierectional mapping between objects and buckets, 1 object is only in 1 bucket, 1 bucket may contain many objects, maping stored in simple array, with offset (start,end) of each bucket stored separately
 class Buckets{ public:
 
-    int ncell,nobj;
-    int* cellNs=0;   //[ncell] number of objects contained in given cell, it may be not necessary as it can be computed as cellI0s[i+1]-cellI0s[i], but it is more convenient to have it here
-    int* cellI0s=0;  //[ncell] index of first object contained given cell in the array cell2obj
-    int* cell2obj=0; //[nobj]  indices of objects contained in given cell
-
-    int  maxInBucket=0;
-    
+    int  maxInBucket=0; /// maximum allowed number of objects in any bucket
     int  nobjSize=-1;
 
-    int* obj2cell=0; 
+    int ncell,nobj;
+    int* cellNs=0;   /// [ncell] number of objects contained in given cell, it may be not necessary as it can be computed as cellI0s[i+1]-cellI0s[i], but it is more convenient to have it here
+    int* cellI0s=0;  /// [ncell] index of first object contained given cell in the array cell2obj
+    int* cell2obj=0; /// [nobj]  indices of objects contained in given cell
+    int* obj2cell=0;   // [nobj] index of cell containing given object, if object is not in any cell, then obj2cell[i]==-1
     //int  nobj_bind=-1;
     //int* obj2cell_bind=0; 
+
+    // =========== Functions
 
     inline int addToCell( int icell, int iobj ){
         int j = cellI0s[icell] + cellNs[icell];
@@ -47,12 +53,7 @@ class Buckets{ public:
         } 
     }
 
-    /**
-     * @brief Updates the offsets of the buckets (cellI0s) based on the number of elements in each bucket (cellNs). It also determines the maximum number of elements in a bucket (maxInBucket).
-     * 
-     * This function updates the offsets of the buckets based on the number of elements in each bucket.
-     * It also determines the maximum number of elements in a bucket.
-     */
+    /// @brief Updates the offsets of the buckets (cellI0s) based on the number of elements in each bucket (cellNs). It also determines the maximum number of elements in a bucket (maxInBucket).
     inline void updateOffsets(){   
         int ntot=0;
         maxInBucket=0;
@@ -66,7 +67,7 @@ class Buckets{ public:
     }
 
     /**
-     * Assigns objects to cells based on the given mapping. The result is stored in the array cell2obj.
+     * @brief Assigns objects to cells based on the given mapping. The result is stored in the array cell2obj.
      * 
      * @param nobj The number of objects.
      * @param obj2cell An array representing the mapping of objects to cells.
@@ -86,7 +87,7 @@ class Buckets{ public:
 
 
     /**
-     * Updates the cells based on the given object-to-cell mapping.
+     * @brief Updates the cells based on the given object-to-cell mapping.
      * This function performs the following steps:
      * 1. Cleans the cells.
      * 2. Counts the number of objects in each cell.
@@ -166,4 +167,5 @@ class Buckets{ public:
 
 };
 
+/// @}
 #endif

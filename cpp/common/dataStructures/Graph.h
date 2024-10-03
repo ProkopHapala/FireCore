@@ -1,6 +1,9 @@
 
 #ifndef Graph_h
 #define Graph_h
+/// @file Graph.h @brief Implements generic graph structure for fast neigbor search in arbitrary dimentions
+/// @ingroup Topology
+
 
 //  algorithm copied from
 //    https://www.geeksforgeeks.org/bridge-in-a-graph/

@@ -1,6 +1,9 @@
 
 #ifndef CircularArray_h
 #define CircularArray_h
+/// @file CircularArray.h @brief contains CircularArray class, to implement FIFO queue with fixed size
+/// @ingroup Utilities
+
 #include <vector>
 
 template<typename T>
