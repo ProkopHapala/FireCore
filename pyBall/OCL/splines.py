@@ -129,9 +129,9 @@ class OCLSplines:
         # print("ng", ng)
         self.prg.sample3D_comb(self.queue, (nG,), (self.nloc,),  g0, dg, ng, self.E3D_buf.data, np.int32(n),  ps_buf.data, fes_buf.data, C )
         fe = fes_buf.get()
-        fe[:,0] *= -1./dg[0]
-        fe[:,1] *= -1./dg[1]
-        fe[:,2] *= -1./dg[2]
+        # fe[:,0] *= -1./dg[0]
+        # fe[:,1] *= -1./dg[1]
+        # fe[:,2] *= -1./dg[2]
         return fe
 
     def sample1D_pbc(self, g0, dg, ng, Gs, ps):

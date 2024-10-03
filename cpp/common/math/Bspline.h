@@ -655,6 +655,9 @@ Quat4d fe3d_pbc( const Vec3d u, const Vec3i n, const double* Es, const Quat4i* x
     //int i0 = (iz-2) + n.z*( iy + n.y*ix);  
     //int i0 = (iz-1) + n.z*( iy + n.y*ix); 
     int i0 = iz + n.z*( iy + n.y*ix);  
+
+    //printf( "CPU fe3d_pbc_comb() u(%8.4f,%8.4f,%8.4f) ixyz(%i,%i,%i) n(%i,%i,%i) \n", u.x,u.y,u.z, ix,iy,iz, n.x,n.y,n.z );
+
     const Vec3d E1 = fe2d_pbc( n.z, Es+(i0+qx.x ), qy, bz, dz, by, dy );
     const Vec3d E2 = fe2d_pbc( n.z, Es+(i0+qx.y ), qy, bz, dz, by, dy );
     const Vec3d E3 = fe2d_pbc( n.z, Es+(i0+qx.z ), qy, bz, dz, by, dy );;
@@ -768,6 +771,10 @@ Quat4d fe3d_pbc_comb3( const Vec3d u, const Vec3i n, const Vec3d* Es, const Vec3
     const Quat4d dy = dbasis( ty );
     //int i0 = (iz-2) + n.z*( iy + n.y*ix);  
     int i0 = (iz-1) + n.z*( iy + n.y*ix); 
+
+    //printf( "CPU fe3d_pbc_comb() u(%8.4f,%8.4f,%8.4f) ixyz(%i,%i,%i) n(%i,%i,%i) \n", u.x,u.y,u.z, ix,iy,iz, n.x,n.y,n.z );
+    printf( "CPU fe3d_pbc_comb() u(%8.4f,%8.4f,%8.4f) ixyz(%i,%i,%i) qx(%i,%i,%i,%i) \n", u.x,u.y,u.z, ix,iy,iz, qx.x,qx.y,qx.z,qx.w );
+
     //int i0 = iz + n.z*( iy + n.y*ix);  
     const Vec3d E1 = fe2d_comb3( n.z, Es+(i0+qx.x ), qy, PLQ, bz, dz, by, dy );
     const Vec3d E2 = fe2d_comb3( n.z, Es+(i0+qx.y ), qy, PLQ, bz, dz, by, dy );
