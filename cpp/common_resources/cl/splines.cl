@@ -236,3 +236,126 @@ __kernel void sample1D_pbc(
     fe.y *= inv_dg;
     fes[iG] = fe;
 }
+
+
+// =============================================
+// ===================== Fitting
+// =============================================
+
+float conv3x3_pbc( __global const float* Gs, const float3 B, const int iiz, const int3 ix, const int3 iy ){
+    return  Gs[ix.x+iy.x+iiz]*B.z + Gs[ix.y+iy.x+iiz]*B.y + Gs[ix.z+iy.x+iiz]*B.z  +
+            Gs[ix.x+iy.y+iiz]*B.y + Gs[ix.y+iy.y+iiz]*B.x + Gs[ix.z+iy.y+iiz]*B.y  +
+            Gs[ix.x+iy.z+iiz]*B.z + Gs[ix.y+iy.z+iiz]*B.y + Gs[ix.z+iy.z+iiz]*B.z  ;
+}
+
+float conv_3x3_tex( sampler_t samp, __read_only image3d_t tex, float3 B, int4 coord ){
+    return
+      read_imagef(tex, samp, coord + (int4)(-1,-1,0,0) ).x * B.z
+    + read_imagef(tex, samp, coord + (int4)( 0,-1,0,0) ).x * B.y
+    + read_imagef(tex, samp, coord + (int4)( 1,-1,0,0) ).x * B.z
+
+    + read_imagef(tex, samp, coord + (int4)(-1, 0,0,0) ).x * B.y
+    + read_imagef(tex, samp, coord                     ).x * B.x
+    + read_imagef(tex, samp, coord + (int4)( 1, 0,0,0) ).x * B.y
+
+    + read_imagef(tex, samp, coord + (int4)(-1, 1,0,0) ).x * B.z
+    + read_imagef(tex, samp, coord + (int4)( 0, 1,0,0) ).x * B.y
+    + read_imagef(tex, samp, coord + (int4)( 1, 1,0,0) ).x * B.z;
+
+}
+
+__kernel void BsplineConv3D(
+    const int4 ns,
+    __global const float* Gs,
+    __global const float* G0,
+    __global       float* out
+) {
+    const int ix = get_global_id(0);
+    const int iy = get_global_id(1);
+    const int iz = get_global_id(2);
+    if (ix >= ns.x || iy >= ns.y || iz >= ns.z) return;
+
+
+    const float  B0 = 2.0/3.0;
+    const float  B1 = 1.0/6.0;
+    const float3 Bs = (float3){B0*B0, B0*B1, B1*B1 };
+    
+    const int3 ixs =  (int3){ modulo(ix-1, ns.x)*ns.x,  modulo(ix, ns.x)*ns.x,   modulo(ix+1, ns.x)  };
+    const int3 iys = ((int3){ modulo(iy-1, ns.y)*ns.x,  modulo(iy, ns.y)*ns.x,   modulo(iy+1, ns.y)  })*ns.x;
+
+    float val=0;
+    const int                 iiz = modulo(iz, ns.z)*ns.y*ns.x;  val += conv3x3_pbc( Gs, Bs, iiz, ixs, iys ) * B0;
+    if(iz>0     ){ const int  biz = modulo(iz, ns.z)*ns.y*ns.x;  val += conv3x3_pbc( Gs, Bs, biz, ixs, iys ) * B1; }
+    if(iz<ns.z-1){ const int  diz = modulo(iz, ns.z)*ns.y*ns.x;  val += conv3x3_pbc( Gs, Bs, diz, ixs, iys ) * B1; }
+
+    const int i = iiz + iys.y + ixs.y;
+
+    if (G0 != NULL) { val-=G0[i]; }
+
+    out[i] =  val;
+}
+
+// =============================================
+// ===================== Fitting  Texture Version
+// =============================================
+
+__constant sampler_t samp_pbc = CLK_NORMALIZED_COORDS_FALSE | CLK_ADDRESS_REPEAT | CLK_FILTER_NEAREST;
+
+__kernel void BsplineConv3D_tex(
+    const int4 ns,
+    __read_only image3d_t Gs,
+    __global const float* G0,
+    __global       float* out    
+) {
+
+    const int ix = get_global_id(0);
+    const int iy = get_global_id(1);
+    const int iz = get_global_id(2);
+    
+    if (ix >= ns.x || iy >= ns.y || iz >= ns.z) return;
+
+    const float  B0 = 2.0/3.0;
+    const float  B1 = 1.0/6.0;
+    const float3 Bs = (float3){B0*B0, B0*B1, B1*B1 };
+
+    int4 coord = (int4){ix, iy, iz, 0};
+
+    float          val  = conv_3x3_tex( samp_pbc, Gs, Bs, coord                  ) * B0;
+    if(iz>0     ){ val += conv_3x3_tex( samp_pbc, Gs, Bs, coord-(int4){0,0,0,-1} ) * B1; } 
+    if(iz<ns.z-1){ val += conv_3x3_tex( samp_pbc, Gs, Bs, coord-(int4){0,0,0, 1} ) * B1; }
+
+    const int i = ix + ns.x * ( iy* + iz*ns.y );
+    
+    if (G0 != NULL) { val-=G0[i]; }
+    out[i] =  val;
+
+    //out[i] =  E_fit - G0[i];
+
+}
+
+__kernel void move(
+    const int  ntot,
+    __global float* p,
+    __global float* v,
+    __global float* f,  
+    const float4 par
+) {
+
+    const int i = get_global_id(0);
+    if (i > ntot ) return;
+
+    // leap frog
+    float vi =  v[i];
+    float pi =  p[i];
+    float fi  = f[i];
+
+    vi *=    par.z;
+    vi += fi*par.x;
+    pi += vi*par.y;
+
+    v[i]=vi;
+    p[i]=pi;
+}
+
+
+
