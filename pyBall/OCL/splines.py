@@ -115,7 +115,6 @@ class OCLSplines:
         """
         n = len(ps)
 
-        
         #self.prepare_sample3D( g0, dg, ng, Eg )
 
         C       = np.array(C , dtype=np.float32)
@@ -125,16 +124,15 @@ class OCLSplines:
         nG = roundup_global_size( n, self.nloc )
         (g0, dg, ng) = self.grid3D_shape
 
-        
-
-        print("g0", g0)
+        # print("g0", g0)
         print("dg", dg)
-        print("ng", ng)
-
-
+        # print("ng", ng)
         self.prg.sample3D_comb(self.queue, (nG,), (self.nloc,),  g0, dg, ng, self.E3D_buf.data, np.int32(n),  ps_buf.data, fes_buf.data, C )
-        
-        return fes_buf.get()
+        fe = fes_buf.get()
+        fe[:,0] *= -1./dg[0]
+        fe[:,1] *= -1./dg[1]
+        fe[:,2] *= -1./dg[2]
+        return fe
 
     def sample1D_pbc(self, g0, dg, ng, Gs, ps):
         """
