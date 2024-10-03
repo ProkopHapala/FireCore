@@ -31,7 +31,7 @@ inline int4 choose_inds_pbc(const int i, const int n, const int4* iqs) {
         const int ii = i + 4 - n;
         return iqs[ii];
     }
-    return (int4)(i, i+1, i+2, i+3);
+    return (int4)(i, +1, +2, +3);
 }
 
 inline int4 choose_inds_pbc_3( const int i, const int n, const int4* iqs ){
@@ -117,18 +117,16 @@ inline float4 fe3d_pbc_comb(const float3 u, const int3 n, __global const float4*
     
     const int i0 = (iz - 1) + n.z * (iy + n.y * ix);
 
-    printf( "GPU fe3d_pbc_comb() u(%8.4f,%8.4f,%8.4f) ixyz(%i,%i,%i) n(%i,%i,%i) \n", u.x,u.y,u.z, ix,iy,iz, n.x,n.y,n.z );
+    //printf( "GPU fe3d_pbc_comb() u(%8.4f,%8.4f,%8.4f) ixyz(%i,%i,%i) n(%i,%i,%i) \n", u.x,u.y,u.z, ix,iy,iz, n.x,n.y,n.z );
+    printf( "GPU fe3d_pbc_comb() u(%8.4f,%8.4f,%8.4f) ixyz(%i,%i,%i) qx(%i,%i,%i,%i) \n", u.x,u.y,u.z, ix,iy,iz, qx.x,qx.y,qx.z,qx.w );
     
+    //return (float4){ 0.0f, 0.0f, 0.0f, dot(PLQH, Es[ i0 ])  };
+
     float3 E1 = fe2d_comb(n.z, Es + (i0 + qx.x), qy, PLQH, bz, dz, by, dy);
     float3 E2 = fe2d_comb(n.z, Es + (i0 + qx.y), qy, PLQH, bz, dz, by, dy);
     float3 E3 = fe2d_comb(n.z, Es + (i0 + qx.z), qy, PLQH, bz, dz, by, dy);
     float3 E4 = fe2d_comb(n.z, Es + (i0 + qx.w), qy, PLQH, bz, dz, by, dy);
     
-    // const float3 E1 = (float3){0.0f,0.0f,0.0f};
-    // const float3 E2 = (float3){0.0f,0.0f,0.0f};
-    // const float3 E3 = (float3){0.0f,0.0f,0.0f};
-    // const float3 E4 = (float3){0.0f,0.0f,0.0f};
-
     const float4 bx = basis(tx);
     const float4 dx = dbasis(tx);
     
@@ -162,12 +160,15 @@ __kernel void sample3D_comb(
     else if (iL<8){ int i=iL-4; yqs[i ]=make_inds_pbc(ng.y,i ); };
     barrier(CLK_LOCAL_MEM_FENCE);
 
+    const float3 inv_dg = 1.0f / dg.xyz;
+
+
     if( iG==0 ){
         printf( "GPU sample3D_comb() ng(%i,%i,%i) g0(%g,%g,%g) dg(%g,%g,%g) C(%g,%g,%g) \n", ng.x,ng.y,ng.z,   g0.x,g0.y,g0.z,   dg.x,dg.y,dg.z,   C.x,C.y,C.z );
-        //printf("xqs[0](%i,%i,%i,%i)\n xqs[1](%i,%i,%i,%i)\n xqs[2](%i,%i,%i,%i)\n xqs[3](%i,%i,%i,%i)\n", xqs[0].x, xqs[0].y, xqs[0].z, xqs[0].w,   xqs[1].x, xqs[1].y, xqs[1].z, xqs[1].w,   xqs[2].x, xqs[2].y, xqs[2].z, xqs[2].w,  xqs[3].x, xqs[3].y, xqs[3].z, xqs[3].w   );
+        printf("xqs[0](%i,%i,%i,%i)\n xqs[1](%i,%i,%i,%i)\n xqs[2](%i,%i,%i,%i)\n xqs[3](%i,%i,%i,%i)\n", xqs[0].x, xqs[0].y, xqs[0].z, xqs[0].w,   xqs[1].x, xqs[1].y, xqs[1].z, xqs[1].w,   xqs[2].x, xqs[2].y, xqs[2].z, xqs[2].w,  xqs[3].x, xqs[3].y, xqs[3].z, xqs[3].w   );
         //for(int i=0; i<ng; i++){  printf("Gs[%i]=%f\n", i, Gs[i]); }
         for(int i=0; i<n; i++){
-            float3 inv_dg = 1.0f / dg.xyz;
+            
             float3 p = ps[i].xyz;
             //printf( "ps[%3i] ( %8.4f, %8.4f, %8.4f,) \n", i, p.x,p.y,p.z );
 
@@ -183,6 +184,8 @@ __kernel void sample3D_comb(
             // float4 fe  = (float4){E,E,E,E};
 
             float4 fe = fe3d_pbc_comb(u, ng.xyz, Eg, C, xqs, yqs);
+
+            fe.xyz *= -inv_dg;
 
             //printf( "GPU sample3D_comb()[%i] fe(%g,%g,%g | %g) \n",i, fe.x, fe.y, fe.z, fe.w );
             fes[i] = fe;
