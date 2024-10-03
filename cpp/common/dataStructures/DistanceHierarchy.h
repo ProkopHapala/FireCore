@@ -1,6 +1,8 @@
 
 #ifndef  DistanceHierarchy_h
 #define  DistanceHierarchy_h
+/// @file DistanceHierarchy.h @brief Implements generic tree-like structure for fast neigbor search in arbitrary dimentions
+/// @ingroup Neighbours
 
 #include <vector>
 

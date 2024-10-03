@@ -1,6 +1,8 @@
 
 #ifndef  containers_h
 #define  containers_h
+/// @file containers.h @brief contains Buckets class, for accelarating neighbourhood search for particle-in-cell on rectangular 3D grids.
+/// @ingroup Utilities
 
 #include <string>
 #include <vector>
@@ -30,6 +32,9 @@ V* setp( std::unordered_map<K,V*>& map, const K& key, const V* val, bool bReplac
 }
 
 // ================== Ditionary
+
+/// @brief Dictionary with string keys and int values, generaly used as short-hand for python like dictionary
+/// @tparam T type of the values stored in the dictionary (beside the index)
 template<typename T>
 class Dict{ public:
     std::unordered_map<std::string,int> map;

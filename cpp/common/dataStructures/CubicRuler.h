@@ -1,6 +1,8 @@
 
 #ifndef  CubicRuller_h
 #define  CubicRuller_h
+/// @file CubicRuller.h @brief Class for generic operation on cubic grids. The class keeps track of the dimensions, and implement grid algorithms. But the pointer to the actual data is not kept inside this class.
+/// @ingroup Grids
 
 #include "Vec3.h"
 #include "Mat3.h"
@@ -31,6 +33,7 @@ inline void id2xyz( int_fast64_t id,  int_fast16_t& ix, int_fast16_t& iy, int_fa
 
 // ===== class CubicRuler
 
+/// @brief Class for generic operation on cubic grids. The class keeps track of the dimensions, and implement grid algorithms. But the pointer to the actual data is not kept inside this class.
 class CubicRuler {
     public:
     Vec3d pos0;
