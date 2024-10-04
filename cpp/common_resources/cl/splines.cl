@@ -31,7 +31,7 @@ inline int4 choose_inds_pbc(const int i, const int n, const int4* iqs) {
         const int ii = i + 4 - n;
         return iqs[ii];
     }
-    return (int4)(i, +1, +2, +3);
+    return (int4)(0, +1, +2, +3);
 }
 
 inline int4 choose_inds_pbc_3( const int i, const int n, const int4* iqs ){
@@ -107,7 +107,8 @@ inline float4 fe3d_pbc_comb(const float3 u, const int3 n, __global const float4*
     // int4 qx = xqis[ix%4] * nyz;
     // int4 qy = yqis[iy%4] * n.z;
 
-    const int4 qx = choose_inds_pbc( ix, n.x, xqis )*nyz;
+    int4 qx = choose_inds_pbc( ix, n.x, xqis );
+    //const int4 qx = choose_inds_pbc( ix, n.x, xqis )*nyz;
     const int4 qy = choose_inds_pbc( iy, n.y, yqis )*n.z;
 
     const float4 bz = basis(tz);
@@ -118,7 +119,8 @@ inline float4 fe3d_pbc_comb(const float3 u, const int3 n, __global const float4*
     const int i0 = (iz - 1) + n.z * (iy + n.y * ix);
 
     //printf( "GPU fe3d_pbc_comb() u(%8.4f,%8.4f,%8.4f) ixyz(%i,%i,%i) n(%i,%i,%i) \n", u.x,u.y,u.z, ix,iy,iz, n.x,n.y,n.z );
-    printf( "GPU fe3d_pbc_comb() u(%8.4f,%8.4f,%8.4f) ixyz(%i,%i,%i) qx(%i,%i,%i,%i) \n", u.x,u.y,u.z, ix,iy,iz, qx.x,qx.y,qx.z,qx.w );
+    printf( "GPU fe3d_pbc_comb() u(%8.4f,%8.4f,%8.4f) ixyz(%i,%i,%i) qx(%i,%i,%i,%i) nyz=%i\n", u.x,u.y,u.z, ix,iy,iz, qx.x,qx.y,qx.z,qx.w, nyz );
+    qx*=nyz;
     
     //return (float4){ 0.0f, 0.0f, 0.0f, dot(PLQH, Es[ i0 ])  };
 
@@ -164,8 +166,8 @@ __kernel void sample3D_comb(
 
 
     if( iG==0 ){
-        printf( "GPU sample3D_comb() ng(%i,%i,%i) g0(%g,%g,%g) dg(%g,%g,%g) C(%g,%g,%g) \n", ng.x,ng.y,ng.z,   g0.x,g0.y,g0.z,   dg.x,dg.y,dg.z,   C.x,C.y,C.z );
-        printf("xqs[0](%i,%i,%i,%i)\n xqs[1](%i,%i,%i,%i)\n xqs[2](%i,%i,%i,%i)\n xqs[3](%i,%i,%i,%i)\n", xqs[0].x, xqs[0].y, xqs[0].z, xqs[0].w,   xqs[1].x, xqs[1].y, xqs[1].z, xqs[1].w,   xqs[2].x, xqs[2].y, xqs[2].z, xqs[2].w,  xqs[3].x, xqs[3].y, xqs[3].z, xqs[3].w   );
+        printf("GPU sample3D_comb() ng(%i,%i,%i) g0(%g,%g,%g) dg(%g,%g,%g) C(%g,%g,%g) \n", ng.x,ng.y,ng.z,   g0.x,g0.y,g0.z,   dg.x,dg.y,dg.z,   C.x,C.y,C.z );
+        printf("GPU xqs[0](%i,%i,%i,%i) xqs[1](%i,%i,%i,%i) xqs[2](%i,%i,%i,%i) xqs[3](%i,%i,%i,%i)\n", xqs[0].x, xqs[0].y, xqs[0].z, xqs[0].w,   xqs[1].x, xqs[1].y, xqs[1].z, xqs[1].w,   xqs[2].x, xqs[2].y, xqs[2].z, xqs[2].w,  xqs[3].x, xqs[3].y, xqs[3].z, xqs[3].w   );
         //for(int i=0; i<ng; i++){  printf("Gs[%i]=%f\n", i, Gs[i]); }
         for(int i=0; i<n; i++){
             
