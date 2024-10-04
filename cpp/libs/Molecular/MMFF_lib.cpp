@@ -150,10 +150,10 @@ void EwaldGridSolveLaplaceDebug( double* dens, double* Vout, double* densw, doub
 #endif // WITH_FFTW
 
 void evalGridFFAtPoints( int n, double* ps, double* FFout, double* PLQH, bool bSplit, int* nPBC ){
-    long t0 = getCPUticks();
+    //long t0 = getCPUticks();
     if(bSplit){ W.gridFF.evalAtPoints_Split( n, (Vec3d*)ps, (Quat4d*)FFout, *(Quat4d*)PLQH, (Vec3i*)nPBC ); }
     else      { W.gridFF.evalAtPoints      ( n, (Vec3d*)ps, (Quat4d*)FFout, *(Quat4d*)PLQH, (Vec3i*)nPBC ); }
-    double T = getCPUticks()-t0; printf( "evalGridFFAtPoints(n=%i,bSplit=%i) DONE in %g[MTicks] %g[kTick/point] \n", n, bSplit, T*1e-6, (T*1e-3)/n  );
+    //double T = getCPUticks()-t0; printf( "evalGridFFAtPoints(n=%i,bSplit=%i) DONE in %g[MTicks] %g[kTick/point] \n", n, bSplit, T*1e-6, (T*1e-3)/n  );
 }
 
 int    run( int nstepMax, double dt, double Fconv, int ialg, double damping, double* outE, double* outF, double* outV, double* outVF, bool omp ){
@@ -291,17 +291,17 @@ void sampleSurf_new( int n, double* ps_, double* FEout_, int mode, double* PLQH_
     //printf( "sampleSurf_new() gridN(%i,%i,%i) \n", W.gridFF.gridN.x, W.gridFF.gridN.y, W.gridFF.gridN.z );
 
     //PLQd=Quat4d{1.0,0.0,0.0,0.0};
-    {
-        Vec3i ng = W.gridFF.grid.n;
-        Vec3d g0 = W.gridFF.grid.pos0;
-        Vec3d dg = Vec3d{ W.gridFF.grid.dCell.xx, W.gridFF.grid.dCell.yy, W.gridFF.grid.dCell.zz };
-        Quat4d C = PLQd;
-        Quat4i* xqs = W.gridFF.cubic_xqis;
-        printf("CPU sampleSurf_new() ng(%i,%i,%i) g0(%g,%g,%g) dg(%g,%g,%g) C(%g,%g,%g) \n", ng.x,ng.y,ng.z,   g0.x,g0.y,g0.z,   dg.x,dg.y,dg.z,   C.x,C.y,C.z );
-        printf("CPU sampleSurf_new() xqs[0](%i,%i,%i,%i) xqs[1](%i,%i,%i,%i) xqs[2](%i,%i,%i,%i) xqs[3](%i,%i,%i,%i)\n", xqs[0].x, xqs[0].y, xqs[0].z, xqs[0].w,   xqs[1].x, xqs[1].y, xqs[1].z, xqs[1].w,   xqs[2].x, xqs[2].y, xqs[2].z, xqs[2].w,  xqs[3].x, xqs[3].y, xqs[3].z, xqs[3].w   );
-    }
+    // {
+    //     Vec3i ng = W.gridFF.grid.n;
+    //     Vec3d g0 = W.gridFF.grid.pos0;
+    //     Vec3d dg = Vec3d{ W.gridFF.grid.dCell.xx, W.gridFF.grid.dCell.yy, W.gridFF.grid.dCell.zz };
+    //     Quat4d C = PLQd;
+    //     Quat4i* xqs = W.gridFF.cubic_xqis;
+    //     printf("CPU sampleSurf_new() ng(%i,%i,%i) g0(%g,%g,%g) dg(%g,%g,%g) C(%g,%g,%g) \n", ng.x,ng.y,ng.z,   g0.x,g0.y,g0.z,   dg.x,dg.y,dg.z,   C.x,C.y,C.z );
+    //     printf("CPU sampleSurf_new() xqs[0](%i,%i,%i,%i) xqs[1](%i,%i,%i,%i) xqs[2](%i,%i,%i,%i) xqs[3](%i,%i,%i,%i)\n", xqs[0].x, xqs[0].y, xqs[0].z, xqs[0].w,   xqs[1].x, xqs[1].y, xqs[1].z, xqs[1].w,   xqs[2].x, xqs[2].y, xqs[2].z, xqs[2].w,  xqs[3].x, xqs[3].y, xqs[3].z, xqs[3].w   );
+    // }
     
-    long t0 = getCPUticks();
+    //long t0 = getCPUticks();
     for(int i=0; i<n; i++){
         Quat4f fef=Quat4fZero;
         Quat4d fed=Quat4dZero;
@@ -314,7 +314,7 @@ void sampleSurf_new( int n, double* ps_, double* FEout_, int mode, double* PLQH_
         }
         FEout[i]= fed;
     }
-    double t = (getCPUticks()-t0); printf( "sampleSurf_new(mode=%i,n=%i) time=%g[kTick] %g[tick/point]\n", mode, n, t*(1.e-3), t/n );
+    //double t = (getCPUticks()-t0); printf( "sampleSurf_new(mode=%i,n=%i) time=%g[kTick] %g[tick/point]\n", mode, n, t*(1.e-3), t/n );
 }
 
 

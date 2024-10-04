@@ -40,7 +40,7 @@ def test_gridFF_vs_ocl( path="data/NaCl_1x1_L2", mode=6, dsamp=0.02, p0=[0.0,0.0
     #g0   = (2.0,2.0,0.0)
     dg   = (0.1,0.1,0.1)
     ps_ocl = ut.points_to_ocl(ps)
-    VPLQ = ut.load_potential_comb( path )  ;print( "VPLQ.shape=", VPLQ.shape )
+    VPLQ = ut.load_potential_comb( path )  #;print( "VPLQ.shape=", VPLQ.shape )
     ocl_splines.prepare_sample3D( g0, dg, VPLQ.shape[:3], VPLQ )
     fe_cl = ocl_splines.sample3D_comb(  ps_ocl, PLQH )
 
@@ -71,11 +71,8 @@ def test_gridFF_vs_ocl( path="data/NaCl_1x1_L2", mode=6, dsamp=0.02, p0=[0.0,0.0
     plt.ylim( -Fmax, Fmax )
     plt.legend()
 
-
-
-
-    title_ = "p0="+str(p0)+"\nnPBC="+str(nPBC)
-    if ( title is not None ): title_=title+"\n"+title_
+    title_ = "iax="+str(iax)+"\n p0="+str(p0)+"\nnPBC="+str(nPBC)
+    if ( title is not None ): title_=title+title_
     plt.suptitle( title_ )
     if ( bSaveFig ): plt.savefig( "test_gridFF_zcut.png", bbox_inches='tight' )
     

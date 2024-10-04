@@ -119,7 +119,7 @@ inline float4 fe3d_pbc_comb(const float3 u, const int3 n, __global const float4*
     const int i0 = (iz - 1) + n.z * (iy + n.y * ix);
 
     //printf( "GPU fe3d_pbc_comb() u(%8.4f,%8.4f,%8.4f) ixyz(%i,%i,%i) n(%i,%i,%i) \n", u.x,u.y,u.z, ix,iy,iz, n.x,n.y,n.z );
-    printf( "GPU fe3d_pbc_comb() u(%8.4f,%8.4f,%8.4f) ixyz(%i,%i,%i) qx(%i,%i,%i,%i) nyz=%i\n", u.x,u.y,u.z, ix,iy,iz, qx.x,qx.y,qx.z,qx.w, nyz );
+    //printf( "GPU fe3d_pbc_comb() u(%8.4f,%8.4f,%8.4f) ixyz(%i,%i,%i) qx(%i,%i,%i,%i) nyz=%i\n", u.x,u.y,u.z, ix,iy,iz, qx.x,qx.y,qx.z,qx.w, nyz );
     qx*=nyz;
     
     //return (float4){ 0.0f, 0.0f, 0.0f, dot(PLQH, Es[ i0 ])  };
@@ -160,49 +160,38 @@ __kernel void sample3D_comb(
     __local int4 yqs[4];
     if      (iL<4){             xqs[iL]=make_inds_pbc(ng.x,iL); }
     else if (iL<8){ int i=iL-4; yqs[i ]=make_inds_pbc(ng.y,i ); };
+    const float3 inv_dg = 1.0f / dg.xyz;
     barrier(CLK_LOCAL_MEM_FENCE);
 
-    const float3 inv_dg = 1.0f / dg.xyz;
+    // if( iG==0 ){
+    //     printf("GPU sample3D_comb() ng(%i,%i,%i) g0(%g,%g,%g) dg(%g,%g,%g) C(%g,%g,%g) \n", ng.x,ng.y,ng.z,   g0.x,g0.y,g0.z,   dg.x,dg.y,dg.z,   C.x,C.y,C.z );
+    //     printf("GPU xqs[0](%i,%i,%i,%i) xqs[1](%i,%i,%i,%i) xqs[2](%i,%i,%i,%i) xqs[3](%i,%i,%i,%i)\n", xqs[0].x, xqs[0].y, xqs[0].z, xqs[0].w,   xqs[1].x, xqs[1].y, xqs[1].z, xqs[1].w,   xqs[2].x, xqs[2].y, xqs[2].z, xqs[2].w,  xqs[3].x, xqs[3].y, xqs[3].z, xqs[3].w   );
+    //     //for(int i=0; i<ng; i++){  printf("Gs[%i]=%f\n", i, Gs[i]); }
+    //     for(int i=0; i<n; i++){
+    //         float3 p = ps[i].xyz;
+    //         //printf( "ps[%3i] ( %8.4f, %8.4f, %8.4f,) \n", i, p.x,p.y,p.z );
+    //         float3 u = (p - g0.xyz) * inv_dg;
+    //         // int ix = (int)u.x; 
+    //         // int iy = (int)u.y;
+    //         // int iz = (int)u.z;
+    //         // int ixyz = iz + ng.z*( iy + ng.y*ix);
+    //         // float4 Es = Eg[ixyz];
+    //         // //printf( "Eg[%3i,%3i,%3i]=(%g,%g,%g,%g) \n", ix,iy,iz, Es.x,Es.y,Es.z,Es.w );
+    //         // float E = dot(Es,C);
+    //         // float4 fe  = (float4){E,E,E,E};
+    //         float4 fe = fe3d_pbc_comb(u, ng.xyz, Eg, C, xqs, yqs);
+    //         fe.xyz *= -inv_dg;
+    //         //printf( "GPU sample3D_comb()[%i] fe(%g,%g,%g | %g) \n",i, fe.x, fe.y, fe.z, fe.w );
+    //         fes[i] = fe;
+    //     }
+    // }
 
-
-    if( iG==0 ){
-        printf("GPU sample3D_comb() ng(%i,%i,%i) g0(%g,%g,%g) dg(%g,%g,%g) C(%g,%g,%g) \n", ng.x,ng.y,ng.z,   g0.x,g0.y,g0.z,   dg.x,dg.y,dg.z,   C.x,C.y,C.z );
-        printf("GPU xqs[0](%i,%i,%i,%i) xqs[1](%i,%i,%i,%i) xqs[2](%i,%i,%i,%i) xqs[3](%i,%i,%i,%i)\n", xqs[0].x, xqs[0].y, xqs[0].z, xqs[0].w,   xqs[1].x, xqs[1].y, xqs[1].z, xqs[1].w,   xqs[2].x, xqs[2].y, xqs[2].z, xqs[2].w,  xqs[3].x, xqs[3].y, xqs[3].z, xqs[3].w   );
-        //for(int i=0; i<ng; i++){  printf("Gs[%i]=%f\n", i, Gs[i]); }
-        for(int i=0; i<n; i++){
-            
-            float3 p = ps[i].xyz;
-            //printf( "ps[%3i] ( %8.4f, %8.4f, %8.4f,) \n", i, p.x,p.y,p.z );
-
-            float3 u = (p - g0.xyz) * inv_dg;
-
-            // int ix = (int)u.x; 
-            // int iy = (int)u.y;
-            // int iz = (int)u.z;
-            // int ixyz = iz + ng.z*( iy + ng.y*ix);
-            // float4 Es = Eg[ixyz];
-            // //printf( "Eg[%3i,%3i,%3i]=(%g,%g,%g,%g) \n", ix,iy,iz, Es.x,Es.y,Es.z,Es.w );
-            // float E = dot(Es,C);
-            // float4 fe  = (float4){E,E,E,E};
-
-            float4 fe = fe3d_pbc_comb(u, ng.xyz, Eg, C, xqs, yqs);
-
-            fe.xyz *= -inv_dg;
-
-            //printf( "GPU sample3D_comb()[%i] fe(%g,%g,%g | %g) \n",i, fe.x, fe.y, fe.z, fe.w );
-            fes[i] = fe;
-        }
-
-    }
-
-    /*
-    float3 inv_dg = 1.0f / dg.xyz;
     float3 p = ps[iG].xyz;
     float3 u = (p - g0.xyz) * inv_dg;
     float4 fe = fe3d_pbc_comb(u, ng.xyz, Eg, C, xqs, yqs);
-    fe.xyz *= inv_dg;
+    fe.xyz *= -inv_dg;
     fes[iG] = fe;
-    */
+    
 }
 
 
@@ -285,31 +274,41 @@ __kernel void BsplineConv3D(
     const int4 ns,
     __global const float* Gs,
     __global const float* G0,
-    __global       float* out
+    __global       float* out,
+    const float2 coefs
 ) {
     const int ix = get_global_id(0);
     const int iy = get_global_id(1);
     const int iz = get_global_id(2);
-    if (ix >= ns.x || iy >= ns.y || iz >= ns.z) return;
 
+    //if( (ix==0)&&(iy==0)&&(iz==0) ){ printf("GPU BsplineConv3D() ns{%i,%i,%i,%i}\n", ns.x,ns.y,ns.z,ns.w); }
+    if( (ix>=ns.x) || (iy>=ns.y) || (iz>=ns.z) ) return;
 
     const float  B0 = 2.0/3.0;
     const float  B1 = 1.0/6.0;
     const float3 Bs = (float3){B0*B0, B0*B1, B1*B1 };
     
-    const int3 ixs =  (int3){ modulo(ix-1, ns.x)*ns.x,  modulo(ix, ns.x)*ns.x,   modulo(ix+1, ns.x)  };
-    const int3 iys = ((int3){ modulo(iy-1, ns.y)*ns.x,  modulo(iy, ns.y)*ns.x,   modulo(iy+1, ns.y)  })*ns.x;
+    const int3 ixs =  (int3){ modulo(ix-1,ns.x),  ix,   modulo(ix+1,ns.x)  };
+    const int3 iys = ((int3){ modulo(iy-1,ns.y),  iy,   modulo(iy+1,ns.y)  })*ns.x;
+
+    const int nxy = ns.x*ns.y;
 
     float val=0;
-    const int                 iiz = modulo(iz, ns.z)*ns.y*ns.x;  val += conv3x3_pbc( Gs, Bs, iiz, ixs, iys ) * B0;
-    if(iz>0     ){ const int  biz = modulo(iz, ns.z)*ns.y*ns.x;  val += conv3x3_pbc( Gs, Bs, biz, ixs, iys ) * B1; }
-    if(iz<ns.z-1){ const int  diz = modulo(iz, ns.z)*ns.y*ns.x;  val += conv3x3_pbc( Gs, Bs, diz, ixs, iys ) * B1; }
-
+    const int iiz =iz*nxy;  val += conv3x3_pbc( Gs, Bs, iiz                  , ixs, iys ) * B0;
+    if(iz>0     ){          val += conv3x3_pbc( Gs, Bs, modulo(iz, ns.z)*nxy , ixs, iys ) * B1; }
+    if(iz<ns.z-1){          val += conv3x3_pbc( Gs, Bs, modulo(iz, ns.z)*nxy , ixs, iys ) * B1; }
+    
     const int i = iiz + iys.y + ixs.y;
-
-    if (G0 != NULL) { val-=G0[i]; }
-
+    val*=coefs.x;
+    if (G0 != NULL) { val+=G0[i]*coefs.y; }
     out[i] =  val;
+
+    // const int i = ix + ns.x*( iy + ns.y*iz);
+    // // out[i] =  Gs[i];
+    // // out[i] =  G0[i];
+    // out[i] =  G0[i] - Gs[i];
+
+
 }
 
 // =============================================
@@ -329,7 +328,8 @@ __kernel void BsplineConv3D_tex(
     const int iy = get_global_id(1);
     const int iz = get_global_id(2);
     
-    if (ix >= ns.x || iy >= ns.y || iz >= ns.z) return;
+    //if( (ix==0)&&(iy==0)&&(iz==0) ){ printf("GPU BsplineConv3D_tex() ns{%i,%i,%i,%i}\n", ns.x,ns.y,ns.z,ns.w); }
+    if( (ix>=ns.x) || (iy>=ns.y) || (iz>=ns.z) ) return;
 
     const float  B0 = 2.0/3.0;
     const float  B1 = 1.0/6.0;
@@ -346,8 +346,6 @@ __kernel void BsplineConv3D_tex(
     if (G0 != NULL) { val-=G0[i]; }
     out[i] =  val;
 
-    //out[i] =  E_fit - G0[i];
-
 }
 
 __kernel void move(
@@ -355,10 +353,11 @@ __kernel void move(
     __global float* p,
     __global float* v,
     __global float* f,  
-    const float4 par
+    const float4 MDpar
 ) {
 
     const int i = get_global_id(0);
+    //if( i==0 ){ printf("GPU move() ntot=%i MDpar{%g,%g,%g,%g}\n", ntot,  MDpar.x, MDpar.y, MDpar.z,MDpar.w); }
     if (i > ntot ) return;
 
     // leap frog
@@ -366,9 +365,9 @@ __kernel void move(
     float pi =  p[i];
     float fi  = f[i];
 
-    vi *=    par.z;
-    vi += fi*par.x;
-    pi += vi*par.y;
+    vi *=    MDpar.z;
+    vi += fi*MDpar.x;
+    pi += vi*MDpar.y;
 
     v[i]=vi;
     p[i]=pi;

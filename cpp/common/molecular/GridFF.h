@@ -640,20 +640,27 @@ inline void addForce( const Vec3d& pos, const Quat4f& PLQ, Quat4f& fe ) const {
     void evalAtPoints( int n, const Vec3d* ps, Quat4d* FFout, Quat4d PLQH, Vec3i* nPBC=0 ){ evalAtPoints( n, ps, FFout, PLQH, apos_.size(), apos_.data(), REQs_.data(), nPBC ); };
 
     void evalAtPoints_Split( int n, Vec3d* ps, Quat4d* FFout, Quat4d PLQH, int natoms_, Vec3d * apos_, Quat4d * REQs_, Vec3i* nPBC=0 ){
+        Vec3i nPBC_mors{4,4,0};
         Vec3i nPBC_coul{25,25,0}; if(nPBC) nPBC_coul=*nPBC;
-        printf( "GridFF::evalAtPoints_Split() n=%i natoms_=%i nPBC_Coul(%i,%i,%i)\n", n, natoms_ , nPBC_coul.z,nPBC_coul.y,nPBC_coul.z );
+        bool bCoul = fabs(PLQH.z) > 1e-32;
+        bool bMors = fmax( fabs(PLQH.x), fabs(PLQH.y) ) > 1e-32;
+        //printf( "GridFF::evalAtPoints_Split() n=%i natoms_=%i bCoul=%i bMors=%i nPBC_Coul(%i,%i,%i) nPBC_Coul(%i,%i,%i)\n", n, natoms_, bCoul,bMors, nPBC_coul.x,nPBC_coul.y,nPBC_coul.z, nPBC_mors.x,nPBC_mors.y,nPBC_mors.z );
         int i=0;
         Vec3d* shift_coul=0;
         Vec3d* shift_mors=0;
-        int npbc_coul = makePBCshifts_( nPBC_coul, lvec, shift_coul ); // Coulomb converge much more slowly with nPBC
-        int npbc_mors = makePBCshifts_( Vec3i{4 ,4 ,0}, lvec, shift_mors );
+        int npbc_coul=0;
+        int npbc_mors=0;
+        if(bCoul){ npbc_coul = makePBCshifts_( nPBC_coul, lvec, shift_coul ); } // Coulomb converge much more slowly with nPBC
+        if(bMors){ npbc_mors = makePBCshifts_( nPBC_mors, lvec, shift_mors ); }
         //#pragma omp parallel for shared(i)
         //long t0 = getCPUticks();
-        printf( "GridFF::evalAtPoints_Split() npbc_coul=%i npbc_mors=%i \n", npbc_coul, npbc_mors );
+        //printf( "GridFF::evalAtPoints_Split() npbc_coul=%i npbc_mors=%i \n", npbc_coul, npbc_mors );
+        printf( "GridFF::evalAtPoints_Split() n=%i natoms_=%i bCoul=%i bMors=%i nPBC_Coul(%i,%i,%i|%i) nPBC_Coul(%i,%i,%i|%i)\n", n, natoms_, bCoul,bMors, nPBC_coul.x,nPBC_coul.y,nPBC_coul.z,npbc_coul, nPBC_mors.x,nPBC_mors.y,nPBC_mors.z,npbc_mors );
         #pragma omp parallel for shared(i)
         for(int i=0; i<n; i++){
-            Quat4d qp,ql;evalGridFFPoint_Mors( npbc_mors, shift_mors,  natoms_, apos_, REQs_, ps[i], qp, ql );
-            Quat4d qe  = evalGridFFPoint_Coul( npbc_coul, shift_coul,  natoms_, apos_, REQs_, ps[i] );
+            Quat4d qp=Quat4dZero,ql=Quat4dZero,qe=Quat4dZero;
+            if(bMors){    evalGridFFPoint_Mors( npbc_mors, shift_mors,  natoms_, apos_, REQs_, ps[i], qp, ql ); }
+            if(bCoul){ qe=evalGridFFPoint_Coul( npbc_coul, shift_coul,  natoms_, apos_, REQs_, ps[i]         ); }
             FFout[i] = qp*PLQH.x + ql*PLQH.y + qe*PLQH.z;
         }
         //double T = (getCPUticks()-t0); printf( "evalAtPoints_Split(n=%i) time=%g[MTick] %g[kTick/point]\n", n, T*(1.e-6), (T*1e-3)/n );
@@ -1380,16 +1387,16 @@ void initGridFF( const char * name, double z0=NAN, bool bAutoNPBC=true, bool bSy
     //nPBC = (Vec3i){10,10,0};
     //nPBC = (Vec3i){1,1,0};
     //nPBC = (Vec3i){10,10,0};
-    printf( "GridFF::initGridFF() nPBC(%i,%i,%i)\n", nPBC.x, nPBC.y, nPBC.z );
+    //printf( "GridFF::initGridFF() nPBC(%i,%i,%i)\n", nPBC.x, nPBC.y, nPBC.z );
     lvec = grid.cell;     // ToDo: We should unify this
     makePBCshifts( nPBC, lvec );
     if(bSymetrize)setAtomsSymetrized( natoms, atypes, apos, REQs, 0.1 );
 
     //apos_.size(), &apos_[0], &REQs_[0];
     std::vector<double> qs( apos_.size() ); for(int i=0; i<apos_.size(); i++){ qs[i]=REQs_[i].z; }
-    Vec3d p0;
-    Multiplole::project( &p0, apos_.size(), apos_.data(), qs.data(), 2, Mpol, true );
-    printf( "GridFF::initGridFF() Mpol p0(%g,%g,%g) Q=%g p(%g,%g,%g) Qxx,yy,zz(%g,%g,%g)|yz,xz,xy(%g,%g,%g)\n", p0.x,p0.y,p0.z, Mpol[0], Mpol[1],Mpol[2],Mpol[3],  Mpol[4],Mpol[5],Mpol[6], Mpol[7],Mpol[8],Mpol[9] );
+    Vec3d qcog;
+    Multiplole::project( &qcog, apos_.size(), apos_.data(), qs.data(), 2, Mpol, true );
+    printf( "GridFF::initGridFF() nPBC(%i,%i,%i|%i) Mpol qcog(%g,%g,%g) Q=%g dipol(%g,%g,%g) quadrupol:xx,yy,zz(%g,%g,%g)yz,xz,xy(%g,%g,%g)\n", nPBC.x,nPBC.x,nPBC.x,npbc, qcog.x,qcog.y,qcog.z, Mpol[0], Mpol[1],Mpol[2],Mpol[3],  Mpol[4],Mpol[5],Mpol[6], Mpol[7],Mpol[8],Mpol[9] );
     //bSaveDebugXSFs=true;
     gridN=grid.n; gridN.x+=3; gridN.y+=3;
 }
@@ -1453,7 +1460,7 @@ void initGridFF( const char * name, double z0=NAN, bool bAutoNPBC=true, bool bSy
             aps  = &apos_[0];
             reqs = &REQs_[0];
         }
-        printf( "GridFF::tryLoad_new() na=%i @apos=%li @REQs=%li \n", na, (long)aps, (long)reqs );
+        //printf( "GridFF::tryLoad_new() na=%i @apos=%li @REQs=%li \n", na, (long)aps, (long)reqs );
 
         switch (mode){
             
@@ -1533,7 +1540,7 @@ void initGridFF( const char * name, double z0=NAN, bool bAutoNPBC=true, bool bSy
                     bRecalc=true;
                     bool bSaveNPY=true;
                     bool bSaveXSF=false;
-                    printf( "tryLoad_new() mode=BsplineDouble   bSaveNPY=%i bSaveXSF=%i bFit=%i bRefine=%i \n", bSaveNPY, bSaveXSF, bFit, bRefine );
+                    //printf( "tryLoad_new() mode=BsplineDouble bSaveNPY=%i bSaveXSF=%i bFit=%i bRefine=%i \n", bSaveNPY, bSaveXSF, bFit, bRefine );
                     done = makeGridFF_Bspline_d(  na, aps, reqs, bSaveNPY, bSaveXSF, bFit, bRefine);
                     if(done){
                         // saveBin( fnames[0], nbyte, (char*)Bspline_Pauli );
@@ -1555,7 +1562,7 @@ void initGridFF( const char * name, double z0=NAN, bool bAutoNPBC=true, bool bSy
             } break;
         } // switch( mode )
         double T = getCPUticks()-t0;
-        printf( "GridFF::tryLoad_new(mode=%i) DONE (recalc=%i) time %g[Mticks] %g[tick/point]\n", (int)mode, bRecalc, T*1.0e-6, T/(double)npoint );
+        //printf( "GridFF::tryLoad_new(mode=%i) DONE (recalc=%i) time %g[Mticks] %g[tick/point]\n", (int)mode, bRecalc, T*1.0e-6, T/(double)npoint );
         return false;
     }
 

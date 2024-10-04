@@ -53,8 +53,8 @@ def get_cl_info( device ):
 
     # Retrieve various characteristics
     fast_math_options = cl.characterize.get_fast_inaccurate_build_options(device)
-    simd_group_size = cl.characterize.get_simd_group_size(device, 4)  # Assuming float4
-    double_support = cl.characterize.has_amd_double_support(device)
+    simd_group_size   = cl.characterize.get_simd_group_size(device, 4)  # Assuming float4
+    double_support    = cl.characterize.has_amd_double_support(device)
     #src_cache_support = cl.characterize.has_src_build_cache(device)
 
     # Print results
@@ -73,9 +73,9 @@ def local_memory_float4_per_workgroup( device, local_size=32, sp_per_cu=128 ):
     return local_memory_per_workgroup( device, local_size=local_size, sp_per_cu=sp_per_cu )/(4*4)
 
 class OCLSplines:
-    def __init__(self, nloc = 32 ):
-        self.nloc= nloc
-        self.ctx = cl.create_some_context()
+    def __init__(self, nloc=32 ):
+        self.nloc  = nloc
+        self.ctx   = cl.create_some_context()
         self.queue = cl.CommandQueue(self.ctx)
 
         get_cl_info( self.ctx.devices[0] )
@@ -84,14 +84,13 @@ class OCLSplines:
         #print( " local_memory_per_workgroup() size=", local_size, " __local []  ", local_memory_per_workgroup( self.ctx.devices[0], local_size=32, sp_per_cu=128 ), " Byte " );
         print( " local_memory_per_workgroup() size=", local_size, " __local []  ", local_memory_float_per_workgroup( self.ctx.devices[0], local_size=32, sp_per_cu=128 ), " float32 " );
 
-
-        
         try:
             with open('../../cpp/common_resources/cl/splines.cl', 'r') as f:
                 self.prg = cl.Program(self.ctx, f.read()).build()
         except Exception as e:
             print( "OCLSplines() called from path=", os.getcwd() )
             print(f"Error compiling OpenCL program: {e}")
+            exit(0)
 
     def prepare_sample3D(self, g0, dg, ng, Eg ):
         g0 = np.array(g0+(0,), dtype=np.float32)
@@ -125,13 +124,10 @@ class OCLSplines:
         (g0, dg, ng) = self.grid3D_shape
 
         # print("g0", g0)
-        print("dg", dg)
+        # print("dg", dg)
         # print("ng", ng)
         self.prg.sample3D_comb(self.queue, (nG,), (self.nloc,),  g0, dg, ng, self.E3D_buf.data, np.int32(n),  ps_buf.data, fes_buf.data, C )
         fe = fes_buf.get()
-        # fe[:,0] *= -1./dg[0]
-        # fe[:,1] *= -1./dg[1]
-        # fe[:,2] *= -1./dg[2]
         return fe
 
     def sample1D_pbc(self, g0, dg, ng, Gs, ps):
@@ -169,6 +165,9 @@ class OCLSplines:
 
 
     def allocate_cl_buffers(self, ns=None, E0=None, nByte=4):
+
+        print(f"OCLSplines::allocate_cl_buffers().1 Queue: {self.queue}, Context: {self.ctx}")
+
         if ns is None:
             ns = E0.shape
         ntot = np.int32(ns[0] * ns[1] * ns[2])
@@ -184,9 +183,11 @@ class OCLSplines:
         if E0 is not None:
             cl.enqueue_copy(self.queue, self.G0_buf,  E0.astype(np.float32))
             cl.enqueue_copy(self.queue, self.Gs_buf,  E0.astype(np.float32))
-            cl.enqueue_copy(self.queue, self.E3D_tex, E0.astype(np.float32))
+            #cl.enqueue_copy(self.queue, self.E3D_tex, E0.astype(np.float32))
         
         self.ns = np.array(ns, dtype=np.int32)
+
+        print(f"OCLSplines::allocate_cl_buffers().2 Queue: {self.queue}, Context: {self.ctx}")
 
     def prepare_fit_buffers(self, g0, dg, ng, Eg):
         img_format = cl.ImageFormat(cl.channel_order.R, cl.channel_type.FLOAT)
@@ -224,33 +225,60 @@ class OCLSplines:
         
         return p_buf.get(), v_buf.get()
 
-    def fit3D(self, ns=None, E_ref=None, Gs=None, nmaxiter=100, dt=0.1, cdamp=0.98, bAlloc=True, nPerStep=10 ):
+    def fit3D(self, ns=None, E_ref=None, nmaxiter=100, dt=0.3, Ftol=1e-9, cdamp=0.98, bAlloc=True, nPerStep=10, bConvTrj=False ):
         
+        print(f"OCLSplines::fit3D().1 Queue: {self.queue}, Context: {self.ctx}")
+
         if bAlloc:
             ns  = E_ref.shape
+            ns_bak = ns
             self.allocate_cl_buffers(E0=E_ref)
 
-        ns = np.array( ns, dtype=np.int32 )
+        print(f"OCLSplines::fit3D().2 Queue: {self.queue}, Context: {self.ctx}")
+
+        ns = np.array( ns+(0,), dtype=np.int32 )
+        #ns = np.array( ns, dtype=np.int32 )
         lsh = (4,4,4)
 
-        par = [dt, dt, cdamp, 0]
-        par = np.array( par, dtype=np.int32 )
 
-        gsh  = roundup_global_size_3d( ns )
+        cs_Err = np.array( [-1.0,1.0], dtype=np.float32 )
+        cs_F   = np.array( [ 1.0,0.0], dtype=np.float32 )
+
+        MDpar = [dt, dt, cdamp, 0]
+        MDpar = np.array( MDpar, dtype=np.float32 )
+
+        gsh  = roundup_global_size_3d( ns, lsh )
         ntot = np.int32( ns[0]*ns[1]*ns[2] )
-        nG   = roundup_global_size_3d( ntot )
-        for i in range(nmaxiter):
+        nL   = 32
+        nG   = roundup_global_size( ntot, nL )
+        nStepMax = nmaxiter // nPerStep
+
+        print( "gsh ", gsh, " lsh ", lsh, " ns ", ns )
+
+        out = np.zeros( ns_bak, dtype=np.float32)
+
+        ConvTrj=None
+        if bConvTrj:
+            ConvTrj = np.zeros( (nStepMax,3) ) + np.nan
+            
+        print(f"OCLSplines::fit3D().3 Queue: {self.queue}, Context: {self.ctx}")
+
+        for i in range(nStepMax):
             for j in range(nPerStep):
-                self.prg.BsplineConv3D    (self.queue, gsh,     lsh, ns,   self.Gs_buf.data,  self.G0_buf.data,  self.dGs_buf.data )    # dG = (Bconv * G) - E0
-                self.prg.BsplineConv3D    (self.queue, gsh,     lsh, ns,   self.dGs_buf.data, None            ,  self.fGs_buf.data )    # 
-                #self.prg.BsplineConv3D_tex(self.queue, gsh,     lsh, ns,   self.E3D_tex,     self.G0_buf.data,  self.dGs_buf.data )
-                self.prg.move             (self.queue, (nG,), (32,), ntot, self.Gs_buf.data, self.vGs_buf.data, self.fGs_buf.data )
-            f = self.fGs_buf.get()
-            Ftot = f.norm()
+                self.prg.BsplineConv3D (self.queue, gsh,   lsh,   ns,   self.Gs_buf,  self.G0_buf,  self.dGs_buf, cs_Err )   # self.queue.finish() 
+                self.prg.BsplineConv3D (self.queue, gsh,   lsh,   ns,   self.dGs_buf, None       ,  self.fGs_buf, cs_F   )   # self.queue.finish() 
+                self.prg.move          (self.queue, (nG,), (nL,), ntot, self.Gs_buf,  self.vGs_buf, self.fGs_buf, MDpar  )   # self.queue.finish() 
+                self.queue.finish() 
+            cl.enqueue_copy(self.queue, out, self.fGs_buf); Ftot = np.max(np.abs(out))
+            if bConvTrj:
+                cl.enqueue_copy(self.queue, out, self.dGs_buf); Etot = np.max(np.abs(out))
+                ConvTrj[i,:] = (0.0+i*nPerStep,Ftot,Etot)
 
+            print( f"Ftot[{i*nPerStep}] {Ftot}" )
+            if Ftot<Ftol:  break
 
-        Gs = Gs_buf.get()
-        return Gs
+        # cl.enqueue_copy(self.queue, out, self.fGs_buf); Ftot = out.norm()
+        return out, ConvTrj
 
 # Example usage
 if __name__ == "__main__":

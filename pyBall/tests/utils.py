@@ -50,8 +50,8 @@ def load_potential_comb( path ):
     VPLQ[:,:,:,1] = VLond
     VPLQ[:,:,:,2] = VCoul
     VPLQ[:,:,:,3] = 0.0
-    print("VPLQ.shape(BEFORE) = ", VPLQ.shape)
+    #print("VPLQ.shape(BEFORE) = ", VPLQ.shape)
     VPLQ = VPLQ.transpose( (2,1,0,3) ).copy()
-    sh = VPLQ.shape; print("sh = ", sh)
-    print("VPLQ.shape(AFTER) = ", VPLQ.shape)
+    #sh = VPLQ.shape; print("sh = ", sh)
+    #print("VPLQ.shape(AFTER) = ", VPLQ.shape)
     return VPLQ
