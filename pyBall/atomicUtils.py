@@ -445,7 +445,8 @@ def rotMatPCA( ps, bUnBorm=False ):
         for i in range(3): vs[i]*=(es[i]/emax)
     return( vs )
     
-def makeRotMatAng( ang, ax1=0, ax2=1 ):
+def makeRotMatAng( ang, ax=(0,1) ):
+    ax1,ax2=ax
     ca=np.cos(ang)
     sa=np.sin(ang)
     rot=np.eye(3)
@@ -629,6 +630,10 @@ def writeToXYZ( fout, es, xyzs, qs=None, Rs=None, comment="#comment", bHeader=Tr
         na = sum(mask)
     else:
         mask = [True]*na
+    # print( "writeToXYZ len(es,xyzs,qs,mask) ", len(es), len(xyzs),  len(qs), len(mask) )
+    # print( "writeToXYZ es ", es )
+    # print( "writeToXYZ qs ", qs )
+    # print( "writeToXYZ xyzs ", xyzs )
     if   (Rs is not None):
         for i,xyz in enumerate( xyzs ):
             if mask[i]: fout.write("%s %f %f %f %f %f \n"  %( es[i], xyz[0], xyz[1], xyz[2], qs[i], Rs[i] ) )
@@ -680,34 +685,33 @@ def loadAtomsNP(fname=None, fin=None, bReadN=False, nmax=10000, comments=None ):
         if comments is not None:
             if line[0]=='#':
                 comments.append(line)
-                continue
+                continue        
         wds = line.split()
         try:
             #print( "line", line )
             #print( "wds", wds )
-            xyzs.append( ( float(wds[1]), float(wds[2]), float(wds[3]) ) )
-            try:
-                iz    = int(wds[0]) 
-                Zs    .append(iz)
-                enames.append( elements.ELEMENTS[iz] )
-            except:
-                typname = wds[0]
-                ename = typname.split('_')[0]
-                #print( "ename: ", ename, " line ", line )
-                enames.append( typname )
-                Zs    .append( elements.ELEMENT_DICT[ename][0] )
+            xyz = ( float(wds[1]), float(wds[2]), float(wds[3]) )
             try:
                 q = float(wds[4])
             except:
                 q = 0
-            qs.append(q)
+            try:
+                iz    = int(wds[0]) 
+                ename = elements.ELEMENTS[iz]
+            except:
+                ename = wds[0]
+                iz    = elements.ELEMENT_DICT[ename][0]
+            enames.append( ename )
+            Zs    .append( iz    )
+            qs    .append( q     )
+            xyzs  .append( xyz   )
             ia+=1
         except:
             #print("loadAtomsNP("+fname+")cannot interpet line: ", line)
             if bReadN and (ia==0):
                 try:
                     nmax=int(wds[0])
-                    print("nmax: ", nmax)
+                    #print("nmax: ", nmax)
                 except:
                     pass
         if(ia>=nmax): break
@@ -736,20 +740,21 @@ def load_xyz(fname=None, fin=None, bReadN=False, bReadComment=True, nmax=10000 )
     for line in fin:
         wds = line.split()
         try:
-            xyzs.append( ( float(wds[1]), float(wds[2]), float(wds[3]) ) )
-            try:
-                iz    = int(wds[0]) 
-                Zs    .append(iz)
-                enames.append( elements.ELEMENTS[iz] )
-            except:
-                ename = wds[0]
-                enames.append( ename )
-                Zs    .append( elements.ELEMENT_DICT[ename][0] )
+            xyz = ( float(wds[1]), float(wds[2]), float(wds[3]) )
             try:
                 q = float(wds[4])
             except:
                 q = 0
-            qs.append(q)
+            try:
+                iz    = int(wds[0]) 
+                ename = elements.ELEMENTS[iz]
+            except:
+                ename = wds[0]
+                iz    = elements.ELEMENT_DICT[ename][0]
+            enames.append( ename )
+            Zs    .append( iz    )
+            qs    .append( q     )
+            xyzs  .append( xyz   )
             ia+=1
         except:
             #print("cannot interpet line: ", line)
@@ -765,6 +770,25 @@ def load_xyz(fname=None, fin=None, bReadN=False, bReadComment=True, nmax=10000 )
     qs   = np.array( qs )
     return xyzs,Zs,enames,qs,comment
 
+def string_to_matrix( s, nx=3,ny=3, bExactSize=False ):
+    elements = []
+    for item in s.split():
+        try:  # Try to convert each element to a float
+            elements.append(float(item))
+        except ValueError:  # If conversion fails, ignore (e.g., "lvs")
+            continue
+    n=len(elements)
+    nxy=nx*ny
+    if (n<nxy):
+        print( f"string_to_matrix(): n({n})<nx({nx})*ny(ny)" )
+        exit()
+    elif (n>nxy) and (bExactSize):
+        print( f"string_to_matrix(): n({n})>nx({nx})*ny(ny)" )
+        exit()
+    else:
+        elements=elements[:nxy]
+    matrix = np.array(elements).reshape(nx,ny)   # Convert the list of elements into a 3x3 NumPy array
+    return matrix
 
 
 def loadMol(fname=None, fin=None, bReadN=False, nmax=10000 ):
@@ -1118,8 +1142,17 @@ class AtomicSystem( ):
         self.lvec    = lvec
         self.aux_labels = None
         if fname is not None:
-            if( '.mol' == fname.split('.')[0] ):
+            ext = fname.split('.')[-1]
+            #print( f"AtomicSystem.__init__({fname}) ext=", ext  )
+            if( 'mol' == ext ):
                 self.apos,self.atypes,self.enames,self.qs,self.bonds = loadMol(fname=fname, bReadN=bReadN )
+            if( 'xyz' == ext ):
+                self.apos,self.atypes,self.enames,self.qs, comment = load_xyz(fname=fname, bReadN=bReadN )
+                if comment is not None:
+                    if comment[:3] == 'lvs':      
+                        self.lvec = string_to_matrix( comment, nx=3,ny=3, bExactSize=False )
+                        #print( f"AtomicSystem.__init__({fname}) lvec=\n", self.lvec   )
+                #print( f"AtomicSystem.__init__({fname}) comment=", comment  )
             else:
                 self.apos,self.atypes,self.enames,self.qs = loadAtomsNP(fname=fname , bReadN=bReadN )
 
@@ -1311,6 +1344,22 @@ class AtomicSystem( ):
     
     def orientPCA(self, perm=None):
         orientPCA(self.apos, perm=perm )
+
+    def shift(self, vec, sel=None ):
+        if sel is None: 
+            self.apos[:,0] += vec[0]
+            self.apos[:,1] += vec[1]
+            self.apos[:,2] += vec[2]
+        else:
+            self.apos[sel,0] += vec[0]
+            self.apos[sel,1] += vec[1]
+            self.apos[sel,2] += vec[2]
+
+    def rotate_ax(self, ang, ax=(0,1), p0=None ):
+        rot = makeRotMatAng( ang, ax=ax )
+        if p0  is not None: self.apos[:,:]-=p0[None,:]
+        mulpos( self.apos, rot )
+        if p0  is not None: self.apos[:,:]+=p0[None,:]
 
     def delete_atoms(self, lst ):
         st = set(lst)
