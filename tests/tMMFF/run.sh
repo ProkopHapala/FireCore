@@ -33,7 +33,7 @@ export OMP_NUM_THREADS
 #echo   $LD_PRELOAD
 #export LD_PRELOAD
 
-#python3 run.py
+python3 run.py
 #python3 run_gui.py
 #python3 run_surf_lattice.py
 #python3 run_propandiol.py
@@ -44,7 +44,7 @@ export OMP_NUM_THREADS
 #python3 run_sample_Hermite.py
 #python3 run_test_ewald.py
 #python3 run_test_GridFF.py
-python3 run_test_GridFF_ocl.py
+#python3 run_test_GridFF_ocl.py
 #python3 run_test_Multipole.py
 
 #python3 run_sample_surf.py

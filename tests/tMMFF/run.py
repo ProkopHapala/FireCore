@@ -11,8 +11,8 @@ from pyBall import MMFF as mmff
 #======== Body
 
 mmff.setVerbosity( verbosity=1, idebug=1 )
-#mmff.init( xyz_name="data/pyridine", surf_name="data/NaCl_1x1_L2" )                             # all
-mmff.init( xyz_name="data/nHexadecan_dicarboxylic", bMMFF=True  )              # without MMFF
+#mmff.init( xyz_name="data/xyz/pyridine", surf_name="data/NaCl_1x1_L2" )                             # all
+mmff.init( xyz_name="data/xyz/nHexadecan_dicarboxylic", bMMFF=True  )              # without MMFF
 # E = 0.0
 # mmff.run(omp=True, nstepMax=20)
 # print( "E=", E )
@@ -23,7 +23,7 @@ with open("gopt_trajectory.xyz", "w") as file:
 
 mmff.printDatabase()
 
-#mmff.init( xyz_name="data/pyridine", surf_name="data/NaCl_1x1_L2", bMMFF=False, gridStep=-1 )  # without gridFF
+#mmff.init( xyz_name="dataxyz//pyridine", surf_name="dataxyz/NaCl_1x1_L2", bMMFF=False, gridStep=-1 )  # without gridFF
 #mmff.getBuffs()
 #mmff.eval()
 #mmff.relax(1000)
@@ -55,9 +55,9 @@ exit()
 
 '''
 # ======== Oritent Molecule
-xyzs,Zs,enames,qs = au.loadAtomsNP( "data/Benzene_deriv.xyz" )
+xyzs,Zs,enames,qs = au.loadAtomsNP( "data/xyz/Benzene_deriv.xyz" )
 au.orient( 2, (5,2), (1,3), xyzs, bFlipXZ=True )
-au.saveXYZ( enames, xyzs, "data/Benzene_deriv_.xyz", qs=qs, Rs=None )
+au.saveXYZ( enames, xyzs, "data/xyz/Benzene_deriv_.xyz", qs=qs, Rs=None )
 plt.plot( xyzs[:,0],xyzs[:,1], "o" )
 plt.axis('equal')
 plt.show()
@@ -80,7 +80,7 @@ exit()
 
 
 # ============== Benzene_deriv.xyz
-mmff.initWithMolFile( "data/Benzene_deriv.xyz", bNonBonded=False, bOptimizer=True)
+mmff.initWithMolFile( "data/xyz/Benzene_deriv.xyz", bNonBonded=False, bOptimizer=True)
 mmff.getBuffs() #;print( mmff.ndims )
 
 #nsel = mmff.splitAtBond(5)  ;print( "split to:\n", mmff.selection[:nsel],"\n", mmff.selection[nsel:] )
