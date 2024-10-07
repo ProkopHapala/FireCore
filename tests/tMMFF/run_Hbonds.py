@@ -155,7 +155,7 @@ def run_rnd_opt( typstr, fname, nitr = 1000, qH=0.2, qX=-0.2, xshift=-0.3, clr=N
 
 #alg_name = alg_names[ialg]
 mmff.setVerbosity( verbosity=2, idebug=0 )
-mmff.init( xyz_name="data/"+xyz_name, bMMFF=True )     
+mmff.init( xyz_name="data/xyz/"+xyz_name, bMMFF=True )     
 #mmff.getBuffs()
 #mmff.eval()
 #rs = np.linspace(1.5,20.0, 100 )

@@ -38,8 +38,8 @@ ln -s $dir/$name .
 
 # ====== Small Molecules On Substrate
 
-#./$name -x common_resources/H2O               -g common_resources/NaCl_1x1_L2
-#./$name -x common_resources/pyridine         -g common_resources/NaCl_1x1_L2
-#./$name -x common_resources/CH2O -g common_resources/NaCl_1x1_L2
-./$name -x common_resources/PTCDA -g common_resources/NaCl_1x1_L2
+#./$name -x common_resources/xyz/H2O               -g common_resources/xyz/NaCl_1x1_L2
+#./$name -x common_resources/xyz/pyridine         -g common_resources/xyz/NaCl_1x1_L2
+#./$name -x common_resources/xyz/CH2O -g common_resources/xyz/NaCl_1x1_L2
+./$name -x common_resources/xyz/PTCDA -g common_resources/xyz/NaCl_1x1_L2
 

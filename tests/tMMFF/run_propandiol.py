@@ -25,7 +25,7 @@ alg_names=["GD","MDdamp","FIRE","FIREsmooth"]
 
 alg_name = alg_names[ialg]
 mmff.setVerbosity( verbosity=1, idebug=0 )
-mmff.init( xyz_name="data/"+xyz_name, bMMFF=True  )     
+mmff.init( xyz_name="data/xyz/"+xyz_name, bMMFF=True  )     
 mmff.getBuffs()
 mmff.eval()
 
