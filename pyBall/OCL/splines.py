@@ -1,9 +1,33 @@
 import sys
 import os
 import numpy as np
+import ctypes
 import pyopencl as cl
 import pyopencl.array as cl_array
+import pyopencl.cltypes as cltypes
 import matplotlib.pyplot as plt
+import time
+
+bytePerFloat = 4
+
+# cl_Mat3_dtype = np.dtype([
+#     ('a', cltypes.float4),
+#     ('b', cltypes.float4),
+#     ('c', cltypes.float4)
+# ], align=True)
+
+# cl_Mat3_dtype = np.dtype([
+#     ('a', np.float32, 4),
+#     ('b', np.float32, 4),
+#     ('c', np.float32, 4)
+# ], align=True)
+
+# class cl_Mat3(ctypes.Structure):
+#     _fields_ = [
+#         ("a", cltypes.float4),
+#         ("b", cltypes.float4),
+#         ("c", cltypes.float4)
+#     ]
 
 def make_inds_pbc(n): 
     return np.array([
@@ -73,6 +97,7 @@ def local_memory_float4_per_workgroup( device, local_size=32, sp_per_cu=128 ):
     return local_memory_per_workgroup( device, local_size=local_size, sp_per_cu=sp_per_cu )/(4*4)
 
 class OCLSplines:
+
     def __init__(self, nloc=32 ):
         self.nloc  = nloc
         self.ctx   = cl.create_some_context()
@@ -91,6 +116,12 @@ class OCLSplines:
             print( "OCLSplines() called from path=", os.getcwd() )
             print(f"Error compiling OpenCL program: {e}")
             exit(0)
+
+
+        self.atoms_buff  = None
+        self.REQs_buff       = None
+        self.V_Paul_buff     = None
+        self.V_Lond_buff     = None
 
     def prepare_sample3D(self, g0, dg, ng, Eg ):
         g0 = np.array(g0+(0,), dtype=np.float32)
@@ -279,6 +310,74 @@ class OCLSplines:
 
         # cl.enqueue_copy(self.queue, out, self.fGs_buf); Ftot = out.norm()
         return out, ConvTrj
+    
+    def prepare_Morse_buffers(self, na, nxyz, bytePerFloat=4 ):
+        print( "OCLSplines::prepare_Morse_buffers() " )
+        #ntot=ng[0]*ng[1]*ng[2]
+        self.atoms_buff  = cl.Buffer(self.ctx, cl.mem_flags.READ_ONLY,  size=na*4*bytePerFloat)
+        self.REQs_buff   = cl.Buffer(self.ctx, cl.mem_flags.READ_ONLY,  size=na*4*bytePerFloat)
+        self.V_Paul_buff = cl.Buffer(self.ctx, cl.mem_flags.WRITE_ONLY, size=nxyz*bytePerFloat)
+        self.V_Lond_buff = cl.Buffer(self.ctx, cl.mem_flags.WRITE_ONLY, size=nxyz*bytePerFloat)
+        
+    def make_MorseFF(self, atoms, REQs, nPBC=(4, 4, 0), dg=(0.1, 0.1, 0.1), ng=None,            lvec=[[20.0, 0.0, 0.0], [0.0, 20.0, 0.0], [0.0, 0.0, 20.0]],                     grid_p0=(0.0, 0.0, 0.0), GFFParams=(0.1, 1.5, 0.0, 0.0)):
+
+        T00 = time.perf_counter()
+
+        na = len(atoms)
+
+        if ng is None:
+            ng = (int(lvec[0][0] / dg[0]), int(lvec[1][1] / dg[1]), int(lvec[2][2] / dg[2]))
+        nxyz = ng[0]*ng[1]*ng[2]
+
+        if self.atoms_buff is None:
+            self.prepare_Morse_buffers(na, nxyz)
+
+        atoms_np = np.asarray(atoms, dtype=np.float32)
+        reqs_np = np.asarray(REQs, dtype=np.float32)
+
+        cl.enqueue_copy(self.queue, self.atoms_buff, atoms_np)
+        cl.enqueue_copy(self.queue, self.REQs_buff, reqs_np)
+
+        na_cl   = np.int32(na)
+        nPBC_cl = np.array(nPBC+(0,),      dtype=np.int32   )
+        ng_cl   = np.array(ng+(0,),        dtype=np.int32   )
+
+        lvec_a = np.array( [*lvec[0],0.],   dtype=np.float32   )
+        lvec_b = np.array( [*lvec[1],0.],   dtype=np.float32   )
+        lvec_c = np.array( [*lvec[2],0.],   dtype=np.float32   )
+        grid_p0_cl   = np.array(grid_p0+(0.0,),   dtype=np.float32 )
+        GFFParams_cl = np.array(GFFParams, dtype=np.float32 )
+
+        print( "lvec_a ", lvec_a )
+        print( "lvec_b ", lvec_b )
+        print( "lvec_c ", lvec_c )
+        print( "grid_p0_cl ",   grid_p0_cl )
+        print( "GFFParams_cl ", GFFParams_cl )
+        ng_ = ng[::-1]; print("ng_ ", ng_)
+
+        V_Paul = np.zeros( ng_, dtype=np.float32)
+        V_Lond = np.zeros( ng_, dtype=np.float32)
+
+        nL = self.nloc
+        nG = roundup_global_size(nxyz, nL)
+
+        #measure exact execution time
+        
+        T0 = time.perf_counter()
+
+        self.prg.make_MorseFF(self.queue, (nG,), (nL,),
+                            na_cl, self.atoms_buff, self.REQs_buff, self.V_Paul_buff, self.V_Lond_buff,
+                            nPBC_cl, ng_cl, lvec_a,lvec_b,lvec_c, grid_p0_cl, GFFParams_cl)
+    
+        # Copy results back to host
+        cl.enqueue_copy(self.queue, V_Paul, self.V_Paul_buff)
+        cl.enqueue_copy(self.queue, V_Lond, self.V_Lond_buff)
+        print( "make_MorseFF() time[s] ", time.perf_counter()-T0,   "   preparation  ", T0-T00 )
+        # print( "V_Lond.min,max ", V_Lond.min(), V_Lond.max() )
+        # print( "V_Paul.min,max ", V_Paul.min(), V_Paul.max() )
+        return V_Paul, V_Lond
+
+
 
 # Example usage
 if __name__ == "__main__":

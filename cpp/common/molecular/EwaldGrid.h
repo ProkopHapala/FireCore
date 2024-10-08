@@ -97,6 +97,10 @@ inline void project_atom_on_grid_linear( const Vec3d pi, const double qi, double
     
 }
 
+inline void split_atoms_parallel( int na, Vec3d* apos, double Rcut ){
+    // -- split atoms so that we are sure they do no overlap within Rcut => we can project them on grid without fear of memory write collision
+}
+
 __attribute__((hot)) 
 double project_atom_on_grid_cubic( const Vec3d pi, const double qi, double* dens ) const {
     //printf("project_atom_on_grid() pi(%g,%g,%g) q=%g \n", pi.x, pi.y, pi.z, qi );

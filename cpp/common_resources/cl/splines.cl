@@ -1,11 +1,21 @@
 
-#pragma OPENCL EXTENSION cl_khr_fp64 : enable
+//#pragma OPENCL EXTENSION cl_khr_fp64 : enable
+#pragma OPENCL EXTENSION cl_khr_3d_image_writes : enable
 
-typedef struct {
+typedef struct __attribute__ ((packed)){
     float4 a;
     float4 b;
     float4 c;
-} Mat3;
+} cl_Mat3;
+
+#define  float4Zero  (float4){0.f,0.f,0.f,0.f}
+#define  float3Zero  (float3){0.f,0.f,0.f}
+#define  float2Zero  (float3){0.f,0.f,0.f}
+
+#define R2SAFE          1e-4f
+#define COULOMB_CONST   14.3996448915f       // [ eV*Ang/e^2 ]
+#define const_kB        8.617333262145e-5f   // [ eV/K ]
+
 
 inline int modulo(int i, int m) {
     int result = i % m;
@@ -373,5 +383,232 @@ __kernel void move(
     p[i]=pi;
 }
 
+__attribute__((reqd_work_group_size(32,1,1)))
+__kernel void make_MorseFF(
+    const int nAtoms,                // 1
+    __global float4*  atoms,         // 2
+    __global float4*  REQs,          // 3
+    __global float* FE_Paul,         // 4
+    __global float* FE_Lond,         // 5
+    //__global * FE_Coul,
+    const int4     nPBC,             // 6
+    const int4     nGrid,            // 7
+    //const cl_Mat3  lvec,           
+    const float4  lvec_a,            // 8
+    const float4  lvec_b,            // 9
+    const float4  lvec_c,            // 10
+    const float4  grid_p0,           // 11
+    const float4  GFFParams          // 12
+){
+    __local float4 LATOMS[32];
+    __local float4 LCLJS [32];
+    const int iG = get_global_id (0);
+    const int nG = get_global_size(0);
+    const int iL = get_local_id  (0);
+    const int nL = get_local_size(0);
+    const int nab = nGrid.x*nGrid.y;
+    const int ia  =  iG%nGrid.x; 
+    const int ib  = (iG%nab)/nGrid.x;
+    const int ic  =  iG/nab; 
+
+    const float  alphaMorse = GFFParams.y;
+    const float  R2damp     = GFFParams.x*GFFParams.x;
+    const float3 dGrid_a = lvec_a.xyz*(1.f/(float)nGrid.x);
+    const float3 dGrid_b = lvec_b.xyz*(1.f/(float)nGrid.y);
+    const float3 dGrid_c = lvec_c.xyz*(1.f/(float)nGrid.z); 
+    const float3 shift_b = lvec_b.xyz + lvec_a.xyz*(nPBC.x*-2.f-1.f);      //  shift in scan(iy)
+    const float3 shift_c = lvec_c.xyz + lvec_b.xyz*(nPBC.y*-2.f-1.f);      //  shift in scan(iz) 
+    
+    //if( (ia==0)&&(ib==0) ){  printf(  "GPU ic %i nGrid(%i,%i,%i)\n", ic, nGrid.x,nGrid.y,nGrid.z );}
+
+    const int nMax = nab*nGrid.z;
+    if(iG>=nMax) return;
+
+    const float3 pos    = grid_p0.xyz  + dGrid_a.xyz*ia      + dGrid_b.xyz*ib      + dGrid_c.xyz*ic       // grid point within cell
+                                       +  lvec_a.xyz*-nPBC.x + lvec_b.xyz*-nPBC.y + lvec_c.xyz*-nPBC.z;  // most negative PBC-cell
+
+    //const float3  shift0 = lvec.a.xyz*-nPBC.x + lvec .b.xyz*-nPBC.y + lvec.c.xyz*-nPBC.z;
+    float fe_Paul = 0.0f;
+    float fe_Lond = 0.0f;
+    //float4 fe_Coul = float4Zero;
+    for (int j0=0; j0<nAtoms; j0+= nL ){
+        const int i = j0 + iL;
+        LATOMS[iL] = atoms[i];
+        LCLJS [iL] = REQs [i];
+        barrier(CLK_LOCAL_MEM_FENCE);
+        for (int jl=0; jl<nL; jl++){
+            const int ja=jl+j0;
+            if( ja<nAtoms ){ 
+                const float4 REQK =       LCLJS [jl];
+                float3       dp   = pos - LATOMS[jl].xyz;
+            
+                //if( (i0==0)&&(j==0)&&(iG==0) )printf( "pbc NONE dp(%g,%g,%g)\n", dp.x,dp.y,dp.z ); 
+                //dp+=lvec.a.xyz*-nPBC.x + lvec.b.xyz*-nPBC.y + lvec.c.xyz*-nPBC.z;
+
+                //float3 shift=shift0; 
+                for(int iz=-nPBC.z; iz<=nPBC.z; iz++){
+                    for(int iy=-nPBC.y; iy<=nPBC.y; iy++){
+                        for(int ix=-nPBC.x; ix<=nPBC.x; ix++){
+
+                            //if( (i0==0)&&(j==0)&&(iG==0) )printf( "pbc[%i,%i,%i] dp(%g,%g,%g)\n", ix,iy,iz, dp.x,dp.y,dp.z );   
+                            float  r2  = dot(dp,dp);
+                            float  r   = sqrt(r2+1e-32 );
+                            // ---- Electrostatic
+                            //float ir2  = 1.f/(r2+R2damp); 
+                            //float   E  = COULOMB_CONST*REQK.z*sqrt(ir2);
+                            //fe_Coul   += (float4)(dp*(E*ir2), E );
+                            // ---- Morse ( Pauli + Dispersion )
+                            float    e = exp( -alphaMorse*(r-REQK.x) );
+                            float   eM = REQK.y*e;
+                            fe_Paul += eM * e;
+                            fe_Lond += eM * -2.0f;
+
+                            // if((iG==0)&&(j==0)){
+                            //     //float3 sh = dp - pos + LCLJS[j].xyz + lvec.a.xyz*-nPBC.x + lvec .b.xyz*-nPBC.y + lvec.c.xyz*-nPBC.z;
+                            //     float3 sh = shift;
+                            //     printf( "GPU(%2i,%2i,%2i) sh(%7.3f,%7.3f,%7.3f)\n", ix,iy,iz, sh.x,sh.y,sh.z  );
+                            // }
+                            //ipbc++; 
+                            
+                            dp   +=lvec_a.xyz;
+                            //shift+=lvec.a.xyz;
+                        }
+                        dp   +=shift_b;
+                        //shift+=shift_b;
+                        //dp+=lvec.a.xyz*(nPBC.x*-2.f-1.f);
+                        //dp+=lvec.b.xyz;
+                    }
+                    dp   +=shift_c;
+                    //shift+=shift_c;
+                    //dp+=lvec.b.xyz*(nPBC.y*-2.f-1.f);
+                    //dp+=lvec.c.xyz;
+                }
+
+            }
+        }
+        barrier(CLK_LOCAL_MEM_FENCE);
+    }
+    FE_Paul[iG] = fe_Paul;
+    FE_Lond[iG] = fe_Lond;
+    //FE_Coul[iG] = fe_Coul;
+    //int4 coord = (int4){ia,ib,ic,0};
+    //write_imagef( FE_Paul, coord, (float4){pos,(float)iG} );
+    //write_imagef( FE_Paul, coord, fe_Paul );
+    //write_imagef( FE_Lond, coord, fe_Lond );
+    //write_imagef( FE_Coul, coord, fe_Coul );
+}
 
 
+__attribute__((reqd_work_group_size(32,1,1)))
+__kernel void make_MorseFF_f4(
+    const int nAtoms,                // 1
+    __global float4*  atoms,         // 2
+    __global float4*  REQs,          // 3
+    __global float4* FE_Paul,
+    __global float4* FE_Lond,
+    // __global float4* FE_Coul,
+    const int4     nPBC,             // 7
+    const int4     nGrid,            // 8
+    const cl_Mat3  lvec,             // 9
+    const float4   grid_p0,          // 10
+    const float4   GFFParams         // 11
+){
+    __local float4 LATOMS[32];
+    __local float4 LCLJS [32];
+    const int iG = get_global_id (0);
+    const int nG = get_global_size(0);
+    const int iL = get_local_id  (0);
+    const int nL = get_local_size(0);
+    const int nab = nGrid.x*nGrid.y;
+    const int ia  =  iG%nGrid.x; 
+    const int ib  = (iG%nab)/nGrid.x;
+    const int ic  =  iG/nab; 
+
+    const float  alphaMorse = GFFParams.y;
+    const float  R2damp     = GFFParams.x*GFFParams.x;
+    const float3 dGrid_a = lvec.a.xyz*(1.f/(float)nGrid.x);
+    const float3 dGrid_b = lvec.b.xyz*(1.f/(float)nGrid.y);
+    const float3 dGrid_c = lvec.c.xyz*(1.f/(float)nGrid.z); 
+    const float3 shift_b = lvec.b.xyz + lvec.a.xyz*(nPBC.x*-2.f-1.f);      //  shift in scan(iy)
+    const float3 shift_c = lvec.c.xyz + lvec.b.xyz*(nPBC.y*-2.f-1.f);      //  shift in scan(iz) 
+    
+    const int nMax = nab*nGrid.z;
+    if(iG>=nMax) return;
+
+    const float3 pos    = grid_p0.xyz  + dGrid_a.xyz*ia      + dGrid_b.xyz*ib      + dGrid_c.xyz*ic       // grid point within cell
+                                       +  lvec.a.xyz*-nPBC.x + lvec .b.xyz*-nPBC.y + lvec.c.xyz*-nPBC.z;  // most negative PBC-cell
+
+    //const float3  shift0 = lvec.a.xyz*-nPBC.x + lvec .b.xyz*-nPBC.y + lvec.c.xyz*-nPBC.z;
+    float4 fe_Paul = float4Zero;
+    float4 fe_Lond = float4Zero;
+    //float4 fe_Coul = float4Zero;
+    for (int j0=0; j0<nAtoms; j0+= nL ){
+        const int i = j0 + iL;
+        LATOMS[iL] = atoms[i];
+        LCLJS [iL] = REQs [i];
+        barrier(CLK_LOCAL_MEM_FENCE);
+        for (int jl=0; jl<nL; jl++){
+            const int ja=jl+j0;
+            if( ja<nAtoms ){ 
+                const float4 REQK =       LCLJS [jl];
+                float3       dp   = pos - LATOMS[jl].xyz;
+            
+                //if( (i0==0)&&(j==0)&&(iG==0) )printf( "pbc NONE dp(%g,%g,%g)\n", dp.x,dp.y,dp.z ); 
+                //dp+=lvec.a.xyz*-nPBC.x + lvec.b.xyz*-nPBC.y + lvec.c.xyz*-nPBC.z;
+
+                //float3 shift=shift0; 
+                for(int iz=-nPBC.z; iz<=nPBC.z; iz++){
+                    for(int iy=-nPBC.y; iy<=nPBC.y; iy++){
+                        for(int ix=-nPBC.x; ix<=nPBC.x; ix++){
+
+                            //if( (i0==0)&&(j==0)&&(iG==0) )printf( "pbc[%i,%i,%i] dp(%g,%g,%g)\n", ix,iy,iz, dp.x,dp.y,dp.z );   
+                            float  r2  = dot(dp,dp);
+                            float  r   = sqrt(r2+1e-32 );
+                            // ---- Electrostatic
+                            //float ir2  = 1.f/(r2+R2damp); 
+                            //float   E  = COULOMB_CONST*REQK.z*sqrt(ir2);
+                            //fe_Coul   += (float4)(dp*(E*ir2), E );
+                            // ---- Morse ( Pauli + Dispersion )
+                            float    e = exp( -alphaMorse*(r-REQK.x) );
+                            float   eM = REQK.y*e;
+                            float   de = 2.f*alphaMorse*eM/r;
+                            float4  fe = (float4)( dp*de, eM );
+                            fe_Paul += fe * e;
+                            fe_Lond += fe * (float4)( -1.0f,-1.0f,-1.0f, -2.0f );
+
+                            // if((iG==0)&&(j==0)){
+                            //     //float3 sh = dp - pos + LCLJS[j].xyz + lvec.a.xyz*-nPBC.x + lvec .b.xyz*-nPBC.y + lvec.c.xyz*-nPBC.z;
+                            //     float3 sh = shift;
+                            //     printf( "GPU(%2i,%2i,%2i) sh(%7.3f,%7.3f,%7.3f)\n", ix,iy,iz, sh.x,sh.y,sh.z  );
+                            // }
+                            //ipbc++; 
+                            
+                            dp   +=lvec.a.xyz;
+                            //shift+=lvec.a.xyz;
+                        }
+                        dp   +=shift_b;
+                        //shift+=shift_b;
+                        //dp+=lvec.a.xyz*(nPBC.x*-2.f-1.f);
+                        //dp+=lvec.b.xyz;
+                    }
+                    dp   +=shift_c;
+                    //shift+=shift_c;
+                    //dp+=lvec.b.xyz*(nPBC.y*-2.f-1.f);
+                    //dp+=lvec.c.xyz;
+                }
+
+            }
+        }
+        barrier(CLK_LOCAL_MEM_FENCE);
+    }
+
+    FE_Paul[iG] = fe_Paul;
+    FE_Lond[iG] = fe_Lond;
+    //FE_Coul[iG] = fe_Coul;
+
+    //int4 coord = (int4){ia,ib,ic,0};
+    //write_imagef( FE_Paul, coord, (float4){pos,(float)iG} );
+    //write_imagef( FE_Paul, coord, fe_Paul );
+    //write_imagef( FE_Lond, coord, fe_Lond );
+    //write_imagef( FE_Coul, coord, fe_Coul );
+}

@@ -2,7 +2,7 @@ import os
 import numpy as np
 import matplotlib.pyplot as plt
 
-from . import utils as ut
+from .  import utils as ut
 from .. import atomicUtils as au
 from .. import MMFF as mmff
 from .. import FunctionSampling as fu
