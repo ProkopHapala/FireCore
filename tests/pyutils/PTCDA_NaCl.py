@@ -21,9 +21,13 @@ mol = au.AtomicSystem( fname=path+mol_name )
 # mol.apos-=cog
 # mol.orientPCA()
 
-
 surf_name="NaCl_1x1_L3.xyz"
 surf = au.AtomicSystem( fname=path+surf_name )
+
+surf_sym = surf.atoms_symmetrized()
+surf_sym.saveXYZ('NaCl_1x1_L3_sym.xyz')
+#exit()
+
 s8x8 = surf.clonePBC(nPBC=(npbc,npbc,1) )
 s8x8.saveXYZ('NaCl_8x8_L3.xyz')
 

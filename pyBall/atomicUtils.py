@@ -630,7 +630,7 @@ def writeToXYZ( fout, es, xyzs, qs=None, Rs=None, comment="#comment", bHeader=Tr
         na = sum(mask)
     else:
         mask = [True]*na
-    # print( "writeToXYZ len(es,xyzs,qs,mask) ", len(es), len(xyzs),  len(qs), len(mask) )
+    #print( "writeToXYZ len(es,xyzs,qs,mask) ", len(es), len(xyzs),  len(qs), len(mask) )
     # print( "writeToXYZ es ", es )
     # print( "writeToXYZ qs ", qs )
     # print( "writeToXYZ xyzs ", xyzs )
@@ -697,7 +697,7 @@ def loadAtomsNP(fname=None, fin=None, bReadN=False, nmax=10000, comments=None ):
                 q = 0
             try:
                 iz    = int(wds[0]) 
-                ename = elements.ELEMENTS[iz]
+                ename = elements.ELEMENTS[iz-1][1]
             except:
                 ename = wds[0]
                 iz    = elements.ELEMENT_DICT[ename][0]
@@ -747,7 +747,7 @@ def load_xyz(fname=None, fin=None, bReadN=False, bReadComment=True, nmax=10000 )
                 q = 0
             try:
                 iz    = int(wds[0]) 
-                ename = elements.ELEMENTS[iz]
+                ename = elements.ELEMENTS[iz-1][1]
             except:
                 ename = wds[0]
                 iz    = elements.ELEMENT_DICT[ename][0]
@@ -847,7 +847,6 @@ def read_lammps_lvec( fin ):
     ylo = ylo_bound - min(0.0,yz)
     yhi = yhi_bound - max(0.0,yz)
     return np.array( ( (xhi-xlo,0.,0.), (xy,yhi-ylo,0.), (xz,yz,zhi-zlo) ) )
-
 
 def readLammpsTrj(fname=None, fin=None, bReadN=False, nmax=100, selection=None ):
 
@@ -1127,6 +1126,135 @@ def makeVectros( apos, ip0, b1, b2, _0=1 ):
         up = tryAverage( b2[1], apos, _0=_0 ) - tryAverage( b2[0], apos, _0=_0 )
     return p0, fw, up
 
+def loadElementTypes( fname='ElementTypes.dat', bDict=False ):
+    lst = []
+    with open(fname,'r') as fin:
+        lines = fin.readlines()
+        for line in lines:
+            if( line[0]=='#' ): continue
+            wds = line.split()
+            # He        2   2   0   0   0xFFC0CB  0.849     1.1810    0.00242838984   0.098   0.00000000000   0.00000000000
+            name = wds[0]
+            rec = [ name ] + [ int(w) for w in wds[1:4] ] + [ wds[5] ] + [ float(w) for w in wds[6:12] ]
+            lst.append( rec )
+    if bDict: return { rec[0]:rec for rec in lst }
+    return lst
+
+def getVdWparams( iZs, etypes=None, fname='ElementTypes.dat' ):
+    if etypes is None: etypes = loadElementTypes( fname=fname, bDict=False )
+    return np.array( [( etypes[i][6],etypes[i][7] ) for i in iZs  ] )
+
+def iz2enames( iZs ):
+    return [ elements.ELEMENTS[iz-1][1] for iz in iZs ]
+
+def atoms_symmetrized( atypes, apos, lvec, qs=None, REQs=None, d=0.1):
+    """
+    Symmetrize atoms in a unit cell by replicating atoms near the cell boundaries.
+
+    Parameters:
+    - n (int): Number of atoms.
+    - atypes (np.ndarray): Array of atom types with shape (n,).
+    - apos (np.ndarray): Array of atom positions with shape (n, 3).
+    - REQs (np.ndarray): Array of quaternions with shape (n, 4).
+    - grid_cell (np.ndarray): 3x3 matrix representing the unit cell vectors as columns.
+    - d (float): Threshold distance from the cell boundaries (default is 0.1).
+
+    Returns:
+    - new_atypes (np.ndarray): Array of symmetrized atom types.
+    - new_apos (np.ndarray): Array of symmetrized atom positions.
+    - new_REQs (np.ndarray): Array of symmetrized quaternions.
+    """
+    n = len(atypes)
+    # Compute inverse transformation matrix M
+    M = np.linalg.inv(lvec)
+
+    # Define boundary thresholds
+    cmax = -0.5 + d
+    cmin =  0.5 - d
+
+    # Extract lattice vectors a and b from grid_cell
+    a = lvec[:, 0]  # First column
+    b = lvec[:, 1]  # Second column
+
+    # Transform atom positions using the inverse matrix M
+    p_transformed = apos @ M.T  # Shape: (n, 3)
+    p_a = p_transformed[:, 0]
+    p_b = p_transformed[:, 1]
+
+    # Determine if atoms are near the boundaries in a and b directions
+    alo = p_a < cmax
+    ahi = p_a > cmin
+    blo = p_b < cmax
+    bhi = p_b > cmin
+
+    aa = alo | ahi  # Atoms near the a-direction boundaries
+    bb = blo | bhi  # Atoms near the b-direction boundaries
+
+    # Calculate weighting factor based on replica count
+    ws = 1.0 / ((1 + aa.astype(float)) * (1 + bb.astype(float)))
+
+    bREQs = REQs is not None
+    bQs   = qs   is not None
+
+    new_REQs = None
+    if bREQs:
+        REQs_adj = REQs.copy()
+        REQs_adj[:, 2] *= ws  # Adjust Q
+        REQs_adj[:, 1] *= ws  # Adjust E0
+        new_REQs = list(REQs_adj)
+
+    new_qs = None
+    if bQs:
+        qs_adj = qs.copy()
+        qs_adj *= ws
+        new_qs = list(qs_adj)
+
+    # Initialize lists with original atoms
+    new_atypes = list(atypes)
+    new_apos   = list(apos)
+    new_ws     = list(ws)
+    
+    # Determine shifts based on boundary conditions
+    shift_a = np.where(alo[:, np.newaxis], a, -a)  # Shape: (n, 3)
+    shift_b = np.where(blo[:, np.newaxis], b, -b)  # Shape: (n, 3)
+
+    # Replicate atoms shifted by a
+    if np.any(aa):
+        indices_a = np.where(aa)[0]
+        new_atypes.extend(atypes[indices_a])
+        new_apos.extend(apos[indices_a] + shift_a[indices_a])
+        new_ws.extend( ws[indices_a] )
+        if bREQs: new_REQs.extend(REQs_adj[indices_a])
+        if bQs:   new_qs  .extend(qs_adj[indices_a])
+
+    # Replicate atoms shifted by b
+    if np.any(bb):
+        indices_b = np.where(bb)[0]
+        new_atypes.extend(atypes[indices_b])
+        new_apos  .extend(apos[indices_b] + shift_b[indices_b])
+        new_ws    .extend( ws[indices_b] )
+        if bREQs: new_REQs.extend(REQs_adj[indices_b])
+        if bQs:   new_qs.  extend(qs_adj[indices_b])
+
+        # Replicate atoms shifted by both a and b
+        indices_ab = np.where(aa & bb)[0]
+        if len(indices_ab) > 0:
+            new_atypes.extend(atypes[indices_ab])
+            new_apos  .extend(apos[indices_ab] + shift_a[indices_ab] + shift_b[indices_ab])
+            new_ws    .extend( ws[indices_ab] )
+            if bREQs:  new_REQs.extend(REQs_adj[indices_ab])
+            if bQs:    new_qs.extend(qs_adj[indices_ab])
+
+    # Convert lists back to NumPy arrays
+    new_atypes = np.array(new_atypes, dtype=atypes.dtype )
+    new_apos   = np.array(new_apos,   dtype=apos.dtype   )
+    new_ws     = np.array(new_ws,     dtype=ws.dtype   )
+    if bREQs: new_REQs   = np.array(new_REQs, dtype=REQs.dtype   )
+    if bQs:   new_qs     = np.array(new_qs,   dtype=qs.dtype     )
+
+    return new_atypes, new_apos, new_qs, new_REQs, new_ws
+
+
 # ========================== Class Geom
 
 class AtomicSystem( ):
@@ -1284,6 +1412,12 @@ class AtomicSystem( ):
             if enames is not None: enames[:] = self.enames[:]
 
         return AtomicSystem(apos=apos, atypes=atypes, enames=enames, lvec=lvec, qs=qs ) 
+
+    def symmetrized(self, d=0.1 ):
+        # def atoms_symmetrized( atypes, apos, lvec, qs=None, REQs=None, d=0.1):
+        atypes, apos, qs, REQs, ws = atoms_symmetrized( self.atypes, self.apos, self.lvec, qs=self.qs, d=d );
+        enames = iz2enames( atypes )
+        return AtomicSystem( apos=apos, atypes=atypes, enames=enames, lvec=self.lvec.copy(), qs=qs ), ws 
 
     def selectSubset(self, inds ):
         if self.atypes is not None: 
