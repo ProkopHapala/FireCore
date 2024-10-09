@@ -21,7 +21,7 @@ def autoPBC(lvec,Rcut=20.0,mask=(1,1,0)):
             nPBC[i] = int(Rcut/L)+1
     return tuple(nPBC)
 
-def test_gridFF_ocl( fname="./data/xyz/NaCl_1x1_L2.xyz", Element_Types_name="./data/ElementTypes.dat", bSymetrize=False, mode=6, dsamp=0.02, p0=[0.0,0.0,2.0], R0=3.5, E0=0.1, a=1.6, Q=0.4, H=0.0, scErr=100.0, iax=2, Emax=None, Fmax=None, maxSc=5.0, title=None, bSaveFig=True, bRefine=True, nPBC=[100,100,0], bRealSpace=False ):
+def test_gridFF_ocl( fname="./data/xyz/NaCl_1x1_L1.xyz", Element_Types_name="./data/ElementTypes.dat", bSymetrize=False, mode=6, dsamp=0.02, p0=[0.0,0.0,2.0], R0=3.5, E0=0.1, a=1.6, Q=0.4, H=0.0, scErr=100.0, iax=2, Emax=None, Fmax=None, maxSc=5.0, title=None, bSaveFig=True, bRefine=True, nPBC=[100,100,0], bRealSpace=False ):
     print( "py======= test_gridFF() START" );
 
     #Element_Types_name="/home/prokop/git/FireCore/tests/tMMFF/data/ElementTypes.dat"
@@ -50,18 +50,35 @@ def test_gridFF_ocl( fname="./data/xyz/NaCl_1x1_L2.xyz", Element_Types_name="./d
     REQs[:,2]  = atoms.qs
     REQs[:,3]  = 0.0
 
-
-
     #---- Test Charge-to-grid projection
 
-    # Qgrid = ocl_splines.project_atoms_on_grid_quintic_pbc(atoms, ng, g0, dg )
-    # return
+    #xyzq[:,2]=0.0
+
+    Qgrid = ocl_splines.project_atoms_on_grid_quintic_pbc(xyzq, dg=(0.1,0.1,0.1),  lvec=atoms.lvec )
+
+    plt.figure( figsize=(25,5) )
+    plt.subplot(1,6,1); plt.imshow( Qgrid[166,:,:], cmap='bwr' ); plt.colorbar()
+    plt.subplot(1,6,2); plt.imshow( Qgrid[167,:,:], cmap='bwr' ); plt.colorbar()
+    plt.subplot(1,6,3); plt.imshow( Qgrid[168,:,:], cmap='bwr' ); plt.colorbar()
+    plt.subplot(1,6,4); plt.imshow( Qgrid[169,:,:], cmap='bwr' ); plt.colorbar()
+    plt.subplot(1,6,5); plt.imshow( Qgrid[170,:,:], cmap='bwr' ); plt.colorbar()
+    plt.subplot(1,6,6); plt.imshow( Qgrid[171,:,:], cmap='bwr' ); plt.colorbar()
+    #plt.subplot(1,6,6); plt.imshow( Qgrid[172,:,:], cmap='bwr' ); plt.colorbar()
+
+    #print( Qgrid[:,0,0], Qgrid[0,:,0], Qgrid[0,0,:], )
+    # for iz in range(10):
+    #     plt.figure()
+    #     iiz=iz*3
+    #     plt.imshow( Qgrid[:,:,iiz] )
+    #     plt.title( f"Qgrid[{iz}] {iz*3}" )
+
+    return
 
     #---- Test Morse
 
     nPBC = autoPBC(atoms.lvec,Rcut=20.0); print("autoPBC: ", nPBC )
 
-    V_Paul, V_Lond = ocl_splines.make_MorseFF( xyzq, REQs, nPBC=nPBC, dg=(0.1,0.1,0.1), lvec=atoms.lvec, grid_p0=(0.0,0.0,0.0), GFFParams=(0.1,1.5,0.0,0.0)  )
+    V_Paul, V_Lond = ocl_splines.make_MorseFF( xyzq, REQs, nPBC=nPBC, lvec=atoms.lvec, grid_p0=(0.0,0.0,0.0), GFFParams=(0.1,1.5,0.0,0.0)  )
 
     print( "V_Paul.shape ", V_Paul.shape )
     plt.figure()

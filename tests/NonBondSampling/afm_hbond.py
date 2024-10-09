@@ -19,12 +19,12 @@ params={
 }
 
 samples = [
-    "OHO-h_1-uracil",
+    #"OHO-h_1-uracil",
     #"OHO-h_1-cytosine",
     #"HN-h-p-adenine",
-    #"HHO-h-p_1-guanine",
+    "HHO-h-p_1-guanine",
     #"formic_dimer",
-    #"PTCDA-",
+    #"PTCDA",
 ]
 
 tips=[
@@ -218,6 +218,7 @@ def makeSamplePoints( mol, fname="test", bPlot=True, bPointInfo=True ):
 
 for isamp,sample_name in enumerate(samples):
     sample = au.AtomicSystem( "./AFM/Samples/Nucleobases/%s.xyz" %sample_name )
+    #sample = au.AtomicSystem( "../../cpp/common_resources/xyz/%s.xyz" %sample_name )
     points, ns = makeSamplePoints( sample, fname=sample_name )
     for itip,tip_name in enumerate(tips):
         tip = au.AtomicSystem( "./AFM/Tips/%s.xyz" %tip_name )
