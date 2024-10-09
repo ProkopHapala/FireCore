@@ -612,3 +612,294 @@ __kernel void make_MorseFF_f4(
     //write_imagef( FE_Lond, coord, fe_Lond );
     //write_imagef( FE_Coul, coord, fe_Coul );
 }
+
+
+int pbc_ifw(int i, int n){ i++; return (i<n )?  i :  i-n; };
+int pbc_ibk(int i, int n){ i--; return (i>=0)?  i :  i+n; };
+
+__kernel void laplace_real_pbc( 
+    int4 ng,
+    __global float* Vin, 
+    __global float* Vout, 
+    float cSOR
+){
+
+    const int ix = get_global_id(0);
+    const int iy = get_global_id(1);
+    const int iz = get_global_id(2);
+    if( (ix>=ng.x) || (iy>=ng.y) || (iz>=ng.z) ) return;
+
+    int nxy = ng.x * ng.y;
+    const float fac = 1.0f/6.0f;
+    //float err2 = 0.0; 
+    
+    const int iiz =          iz       *nxy;
+    const int ifz =  pbc_ifw(iz, ng.z)*nxy;
+    const int ibz =  pbc_ibk(iz, ng.z)*nxy;
+    
+    const int iiy =          iy       *ng.x;
+    const int ify =  pbc_ifw(iy, ng.y)*ng.x;
+    const int iby =  pbc_ibk(iy, ng.y)*ng.x;
+    const int ifx =  pbc_ifw(ix, ng.x);
+    const int ibx =  pbc_ibk(ix, ng.x);
+
+    double vi = 
+    Vin[ ibx + iiy + iiz ] + Vin[ ifx + iiy + iiz ] + 
+    Vin[ ix  + iby + iiz ] + Vin[ ix  + ify + iiz ] + 
+    Vin[ ix  + iiy + ibz ] + Vin[ ix  + iiy + ifz ];
+
+    vi*=fac;
+    const int i = ix + iiy + iiz;
+    const float vo = Vin[ i ];
+    vi += (vi-vo)*cSOR; 
+    const float dv = vi - vo;
+    
+    //err2 += dv*dv;
+    Vout[i] = vi;
+}
+
+
+
+
+// float4 Bspline_basis(const float u) {
+//     const float inv6 = 1.0f / 6.0f;
+//     const float u2 = u * u;
+//     const float t = 1.0f - u;
+//     return (float4)(
+//         inv6 * t * t * t,
+//         inv6 * (3.0f * u2 * (u - 2.0f) + 4.0f),
+//         inv6 * (3.0f * u * (1.0f + u - u2) + 1.0f),
+//         inv6 * u2 * u
+//     );
+// }
+// float4 Bspline_dbasis(const float u) {
+//     const float u2 = u * u;
+//     const float t = 1.0f - u;
+//     return (float4)(
+//         -0.5f * t * t,
+//         0.5f * (3.0f * u2 - 4.0f * u),
+//         0.5f * (-3.0f * u2 + 2.0f * u + 1.0f),
+//         0.5f * u2
+//     );
+// }
+
+void Bspline_basis(const float u, float * ws) {
+    const float inv6 = 1.0f / 6.0f;
+    const float u2 = u * u;
+    const float t = 1.0f - u;
+    //return (float4)(
+    ws[0]=    inv6 * t * t * t;
+    ws[1]=    inv6 * (3.0f * u2 * (u - 2.0f) + 4.0f);
+    ws[2]=    inv6 * (3.0f * u * (1.0f + u - u2) + 1.0f);
+    ws[3]=    inv6 * u2 * u;
+    //);
+}
+
+void Bspline_dbasis(const float u, float * ws) {
+    const float u2 = u * u;
+    const float t = 1.0f - u;
+    //return (float4)(
+    ws[0]=    -0.5f * t * t;
+    ws[1]=     0.5f * ( 3.0f * u2 - 4.0f * u);
+    ws[2]=     0.5f * (-3.0f * u2 + 2.0f * u + 1.0f);
+    ws[3]=     0.5f * u2;
+    //);
+}
+
+
+void Bspline_basis5(const float t, float * ws){
+    const float inv6 = 1.f/6.f;
+    const float t2 = t*t;
+    const float t3 = t2*t;
+    const float t4 = t2*t2;
+    const float t5 = t3*t2;
+    //return (float8){                                                  
+    ws[0]=  -0.008333333333333333*t5  +0.041666666666666666*t4  -0.08333333333333333*t3 +0.08333333333333333*t2  -0.041666666666666666*t   +0.008333333333333333;
+    ws[1]=   0.041666666666666666*t5  -0.166666666666666666*t4  +0.16666666666666666*t3 +0.16666666666666666*t2  -0.416666666666666666*t   +0.216666666666666666;        
+    ws[2]=  -0.083333333333333333*t5  +0.250000000000000000*t4                          -0.50000000000000000*t2                            +0.550000000000000000;  
+    ws[3]=   0.083333333333333333*t5  -0.166666666666666666*t4  -0.16666666666666666*t3 +0.16666666666666666*t2  +0.416666666666666666*t   +0.216666666666666666;
+    ws[4]=  -0.041666666666666666*t5  +0.041666666666666666*t4  +0.08333333333333333*t3 +0.08333333333333333*t2  +0.041666666666666666*t   +0.008333333333333333; 
+    ws[5]=   0.008333333333333333*t5;
+    //     0.f,0.f,
+    //};
+}
+
+
+void Bspline_dbasis5(const float t, float * ws){
+    const float inv6 = 1.f/6.f;
+    const float t2 = t*t;
+    const float t3 = t2*t;
+    const float t4 = t2*t2;
+    //return (float8){           
+    ws[0]=    -0.0416666666666667*t4	+0.166666666666667*t3	-0.25*t2   +0.166666666666667*t	-0.041666666666666666;	
+    ws[1]=     0.2083333333333333*t4	-0.666666666666667*t3	+0.50*t2   +0.333333333333333*t -0.416666666666666666;	
+    ws[2]=    -0.4166666666666667*t4	+1.000000000000000*t3	           -1.000000000000000*t                      ;	
+    ws[3]=     0.4166666666666667*t4	-0.666666666666667*t3	-0.50*t2   +0.333333333333333*t	+0.416666666666666666;	
+    ws[4]=    -0.2083333333333333*t4	+0.166666666666667*t3	+0.25*t2   +0.166666666666667*t	+0.041666666666666666;	
+    ws[5]=     0.0416666666666667*t4;
+    //};
+}
+
+
+__kernel void project_atom_on_grid_cubic_pbc(
+    const int na,                   // 1 number of atoms
+    __global const float4* atoms,   // 2 Atom positions and charges
+    __global       float*  Qgrid,   // 3 Output grid
+    const int4 ng,                  // 4 grid size
+    const float3 g0,                // 5 grid orgin
+    const float3 dg                 // 6 grid dimensions
+) {
+    int iG = get_global_id(0);
+    const int iL = get_local_id(0);
+    if (iG >= na) return;
+
+    __local int4 xqs[4];
+    __local int4 yqs[4];
+    __local int4 zqs[4];
+    if      (iL<4 ){             xqs[iL]=make_inds_pbc(ng.x,iL); }
+    else if (iL<8 ){ int i=iL-4; yqs[i ]=make_inds_pbc(ng.y,i ); }
+    else if (iL<12){ int i=iL-8; yqs[i ]=make_inds_pbc(ng.y,i ); };
+    barrier(CLK_LOCAL_MEM_FENCE);
+
+
+    // Load atom position and charge
+    float4 atom = atoms[iG];
+    //float3 pos  = (float3)(atom_data.x, atom_data.y, atom_data.z);
+    //float charge = atom_data.w;
+
+    // Convert to grid coordinates
+    float3      g = (atom.xyz - g0) / dg;
+    int3       gi = (int3  ){(int)g.x, (int)g.y, (int)g.z};
+    float3 t      = (float3){     g.x - gi.x, g.y - gi.y, g.z - gi.z};
+
+    // Compute weights for cubic B-spline interpolation
+    float wx[4], wy[4], wz[4];
+    Bspline_basis(t.x, wx);
+    Bspline_basis(t.y, wy);
+    Bspline_basis(t.z, wz);
+
+    const int nxy = ng.x * ng.y;
+    // Pre-calculate periodic boundary condition indices for each dimension
+    gi.x=modulo(gi.x-1,ng.x); const int4 xq = choose_inds_pbc_3(gi.x, ng.x, xqs );  const int* xq_ = (int*)&xq;
+    gi.y=modulo(gi.y-1,ng.y); const int4 yq = choose_inds_pbc_3(gi.y, ng.y, yqs );  const int* yq_ = (int*)&xq;
+    gi.z=modulo(gi.z-1,ng.z); const int4 zq = choose_inds_pbc_3(gi.z, ng.z, zqs );  const int* zq_ = (int*)&xq;
+
+    //float4 Bspline_dbasis();
+
+    for (int dz = 0; dz < 4; dz++) {
+        const int gz  = zq_[dz];
+        const int iiz = gz * nxy;
+        for (int dy = 0; dy < 4; dy++) {
+            const int gy = yq_[dy];
+            const int iiy = iiz + gy * ng.x;
+            const double qbyz = atom.w * wy[dy] * wz[dz];
+            for (int dx = 0; dx < 4; dx++) {
+                const int gx = xq_[dx];
+                const int ig = gx + iiy;
+                double qi = qbyz * wx[dx];
+                Qgrid[ig] += qi;
+            }
+        }
+    }
+
+}
+
+inline void make_inds_pbc_5(const int n, const int iG, __local int inds[6]) {
+    switch (iG) {
+        case 0:  inds[0]=0;    inds[1]=1;    inds[2]=2;    inds[3]=3;    inds[4]=4;    inds[5]=5;    break;
+        case 1:  inds[0]=0;    inds[1]=1;    inds[2]=2;    inds[3]=3;    inds[4]=4;    inds[5]=5-n;  break;
+        case 2:  inds[0]=0;    inds[1]=1;    inds[2]=2;    inds[3]=3;    inds[4]=4-n;  inds[5]=5-n;  break;
+        case 3:  inds[0]=0;    inds[1]=1;    inds[2]=2;    inds[3]=3-n;  inds[4]=4-n;  inds[5]=5-n;  break;
+        case 4:  inds[0]=0;    inds[1]=1;    inds[2]=2-n;  inds[3]=3-n;  inds[4]=4-n;  inds[5]=5-n;  break;
+        case 5:  inds[0]=0;    inds[1]=1-n;  inds[2]=2-n;  inds[3]=3-n;  inds[4]=4-n;  inds[5]=5-n;  break;
+        default: inds[0]=-100; inds[1]=-100; inds[2]=-100; inds[3]=-100; inds[4]=-100; inds[5]=-100; break;
+    }
+}
+
+inline void choose_inds_pbc_5(const int i, const int n, const int iqs[6][6], int out[6]) {
+    if (i >= (n - 5)) {
+        const int ii  = i+6-n;
+        const int* qi = iqs[ii];
+              out[0]=i+qi[0];    out[1]=i+qi[1];    out[2]=i+qi[2];    out[3]=i+qi[3];    out[4]=i+qi[4];    out[5]=i+qi[5];
+    } else {  out[0]=i;          out[1]=i+1;        out[2]=i+2;        out[3]=i+3;        out[4]=i+4;        out[5]=i+5;      }
+}
+
+
+__kernel void project_atoms_on_grid_quintic_pbc(
+    const int num_atoms,            // 1 number of atoms
+    __global const float4* atoms,   // 2 Atom positions and charges
+    __global       float*  Qgrid,   // 3 Output grid
+    const int4 ng,                  // 4 Grid size
+    const float3 g0,                // 5 Grid origin
+    const float3 dg                 // 6 Grid dimensions
+) {
+    int iG = get_global_id(0);
+    const int iL = get_local_id(0);
+    if (iG >= num_atoms) return;
+
+    // Declare and initialize shared memory for periodic boundary condition indices
+    __local int xqs[6][6];
+    __local int yqs[6][6];
+    __local int zqs[6][6];
+    if      (iL<6 ) { const int i=iL;    make_inds_pbc_5(ng.x,i,xqs[i]); }
+    else if (iL<12) { const int i=iL-6;  make_inds_pbc_5(ng.y,i,yqs[i]); }
+    else if (iL<18) { const int i=iL-12; make_inds_pbc_5(ng.z,i,zqs[i]); }
+    barrier(CLK_LOCAL_MEM_FENCE);
+
+    // Load atom position and charge
+    float4 atom = atoms[iG];
+    float3 g    = (atom.xyz - g0) / dg;
+    int3   gi   = (int3  ){(int)g.x,(int)g.y,(int)g.z};
+    float3 t    = (float3){g.x-gi.x, g.y-gi.y, g.z-gi.z};
+
+    // Compute weights for quintic B-spline interpolation
+    float bx[6], by[6], bz[6];
+    Bspline_basis5(t.x, bx);
+    Bspline_basis5(t.y, by);
+    Bspline_basis5(t.z, bz);
+
+    const int nxy = ng.x * ng.y;
+    
+    // Pre-calculate periodic boundary condition indices for each dimension
+    gi.x = modulo(gi.x - 2, ng.x); const int* xq_ = xqs[gi.x % 6];
+    gi.y = modulo(gi.y - 2, ng.y); const int* yq_ = yqs[gi.y % 6];
+    gi.z = modulo(gi.z - 2, ng.z); const int* zq_ = zqs[gi.z % 6];
+
+    // Loop over the B-spline grid contributions
+    for (int dz = 0; dz < 6; dz++) {
+        const int gz  = zq_[dz];
+        const int iiz = gz * nxy;
+        for (int dy = 0; dy < 6; dy++) {
+            const int gy  = yq_[dy];
+            const int iiy = iiz + gy * ng.x;
+            const float qbyz = atom.w * by[dy] * bz[dz];
+            for (int dx = 0; dx < 6; dx++) {
+                const int gx = xq_[dx];
+                const int ig = gx + iiy;
+                float qi = qbyz * bx[dx];
+                Qgrid[ig] += qi;
+            }
+        }
+    }
+}
+
+__kernel void poissonW(
+    const int4   ns,
+    __global float2* A,
+    __global float2* out,
+    const float4 dCell     // 
+){    
+    const int iG = get_global_id (0);
+    if(iG>=ns.w) return;
+    const int nab = ns.x*ns.y;
+    const int ix  =  iG%ns.x; 
+    const int iy  = (iG%nab)/ns.x;
+    const int iz  =  iG/nab; 
+    float4 k = (float4){ ix/(0.5f*ns.x), iy/(0.5f*ns.y), iz/(0.5f*ns.z), 0};
+    k = 1.0f-fabs(k-1.0f); 
+    float  f = dCell.w/dot( k, k );    // dCell.w = 4*pi*eps0*dV - rescaling constant
+    if(iG==0)f=0;
+    if(iG<ns.w){ 
+        out[iG] = A[iG]*f;
+    }
+};

@@ -8,6 +8,10 @@ import pyopencl.cltypes as cltypes
 import matplotlib.pyplot as plt
 import time
 
+#from gpyfft.fft import FFT
+
+FFT = None
+
 bytePerFloat = 4
 
 # cl_Mat3_dtype = np.dtype([
@@ -97,6 +101,13 @@ def local_memory_float4_per_workgroup( device, local_size=32, sp_per_cu=128 ):
     return local_memory_per_workgroup( device, local_size=local_size, sp_per_cu=sp_per_cu )/(4*4)
 
 class OCLSplines:
+
+    flag_atoms  = 0b000001  # 1
+    flag_REQs   = 0b000010  # 2
+    flag_qs     = 0b000100  # 4
+    flag_VMorse = 0b001000  # 8
+    flag_VCoul  = 0b010000  # 16
+    flag_Qgrid  = 0b100000  # 32
 
     def __init__(self, nloc=32 ):
         self.nloc  = nloc
@@ -194,6 +205,26 @@ class OCLSplines:
 
     # ============ Fitting
 
+    # def _allocate_buffer(self, flag_name, buffer_name, size, mem_flags=cl.mem_flags.READ_ONLY):
+    #     if self._get_flag(flag_name) and getattr(self, f'{buffer_name}_buff') is None:
+    #         setattr(self, f'{buffer_name}_buff', cl.Buffer(self.ctx, mem_flags, size=size)
+
+    # def allocate_cl_buffers(self, flags, sizes):
+    #     for name in ['atoms', 'REQs', 'qs', 'VMorse', 'VCoul', 'Qgrid']:
+    #         mem_flags = cl.mem_flags.WRITE_ONLY if name in ['VMorse', 'VCoul', 'Qgrid'] else cl.mem_flags.READ_ONLY
+    #         self._allocate_buffer(name, name, sizes[name], mem_flags)
+
+    # def try_buff(self, flags, sz ):
+    #     getattr(self, buffer_name)
+    #     if flags & self.flag_atoms and self.atoms_buff is None:
+    #         self.atoms_buff = cl.Buffer(self.ctx, cl.mem_flags.READ_ONLY, sz )
+
+    # def try_make_buff(self, cond, name, buff, sz ):
+    #     buff_name = name+"_buff"
+    #     buff = getattr(self, buff_name)
+    #     if cond and ( buff is None ):
+    #         buff = cl.Buffer(self.ctx, cl.mem_flags.READ_WRITE, sz )
+    #         setattr(self, buff_name, buff )
 
     def allocate_cl_buffers(self, ns=None, E0=None, nByte=4):
 
@@ -311,15 +342,42 @@ class OCLSplines:
         # cl.enqueue_copy(self.queue, out, self.fGs_buf); Ftot = out.norm()
         return out, ConvTrj
     
+
+    def try_buff(self, name, names, sz ):
+        if name in names:
+            buff_name = name+"_buff"
+            if hasattr(self,buff_name): 
+                buff = getattr(self, buff_name)
+                if not ( buff is None or buff.size != sz ):
+                    return
+            print( "try_buff(",buff_name,") reallocate to [bytes]: ", sz )
+            buff = cl.Buffer(self.ctx, cl.mem_flags.READ_WRITE, sz )
+            setattr(self, buff_name, buff )
+
+    def try_make_buffs(self, names, na, nxyz, bytePerFloat=4):
+        self.try_buff("atoms",  names, na*4*bytePerFloat)
+        self.try_buff("REQs",   names, na*4*bytePerFloat)
+        self.try_buff("V_Paul", names, nxyz*bytePerFloat)
+        self.try_buff("V_Lond", names, nxyz*bytePerFloat)
+        self.try_buff("Qgrid",  names, nxyz*bytePerFloat)
+        self.try_buff("V_Coul", names, nxyz*bytePerFloat)
+    
     def prepare_Morse_buffers(self, na, nxyz, bytePerFloat=4 ):
-        print( "OCLSplines::prepare_Morse_buffers() " )
+        #print( "OCLSplines::prepare_Morse_buffers() " )
         #ntot=ng[0]*ng[1]*ng[2]
+        # -- used_by: make_MorseFF, project_atoms_on_grid
         self.atoms_buff  = cl.Buffer(self.ctx, cl.mem_flags.READ_ONLY,  size=na*4*bytePerFloat)
+        # -- used_by: make_MorseFF
         self.REQs_buff   = cl.Buffer(self.ctx, cl.mem_flags.READ_ONLY,  size=na*4*bytePerFloat)
         self.V_Paul_buff = cl.Buffer(self.ctx, cl.mem_flags.WRITE_ONLY, size=nxyz*bytePerFloat)
         self.V_Lond_buff = cl.Buffer(self.ctx, cl.mem_flags.WRITE_ONLY, size=nxyz*bytePerFloat)
-        
+        # -- used_by: project_atoms_on_grid, 
+        self.Qgrid_buff = cl.Buffer(self.ctx, cl.mem_flags.WRITE_ONLY, size=nxyz*bytePerFloat )
+        # -- used_by: project_atoms_on_grid, poisson
+        self.V_Coul_buff = cl.Buffer(self.ctx, cl.mem_flags.WRITE_ONLY, size=nxyz*bytePerFloat )
+
     def make_MorseFF(self, atoms, REQs, nPBC=(4, 4, 0), dg=(0.1, 0.1, 0.1), ng=None,            lvec=[[20.0, 0.0, 0.0], [0.0, 20.0, 0.0], [0.0, 0.0, 20.0]],                     grid_p0=(0.0, 0.0, 0.0), GFFParams=(0.1, 1.5, 0.0, 0.0)):
+
 
         T00 = time.perf_counter()
 
@@ -329,8 +387,11 @@ class OCLSplines:
             ng = (int(lvec[0][0] / dg[0]), int(lvec[1][1] / dg[1]), int(lvec[2][2] / dg[2]))
         nxyz = ng[0]*ng[1]*ng[2]
 
-        if self.atoms_buff is None:
-            self.prepare_Morse_buffers(na, nxyz)
+        # if self.atoms_buff is None or self.atoms_buff.size != na*4*4:   
+        #     self.prepare_Morse_buffers(na, nxyz)
+
+        buff_names={'atoms','REQs','V_Paul','V_Lond'}
+        self.try_make_buffs(buff_names, na, nxyz)
 
         atoms_np = np.asarray(atoms, dtype=np.float32)
         reqs_np = np.asarray(REQs, dtype=np.float32)
@@ -348,18 +409,20 @@ class OCLSplines:
         grid_p0_cl   = np.array(grid_p0+(0.0,),   dtype=np.float32 )
         GFFParams_cl = np.array(GFFParams, dtype=np.float32 )
 
-        print( "lvec_a ", lvec_a )
-        print( "lvec_b ", lvec_b )
-        print( "lvec_c ", lvec_c )
-        print( "grid_p0_cl ",   grid_p0_cl )
-        print( "GFFParams_cl ", GFFParams_cl )
-        ng_ = ng[::-1]; print("ng_ ", ng_)
+        #print( "lvec_a ", lvec_a )
+        #print( "lvec_b ", lvec_b )
+        #print( "lvec_c ", lvec_c )
+        #print( "grid_p0_cl ",   grid_p0_cl )
+        #print( "GFFParams_cl ", GFFParams_cl )
+        ng_ = ng[::-1]; #print("ng_ ", ng_)
 
         V_Paul = np.zeros( ng_, dtype=np.float32)
         V_Lond = np.zeros( ng_, dtype=np.float32)
 
         nL = self.nloc
         nG = roundup_global_size(nxyz, nL)
+
+        npbc = (nPBC[0]*2+1)*(nPBC[1]*2+1)*(nPBC[2]*2+1)
 
         #measure exact execution time
         
@@ -372,49 +435,107 @@ class OCLSplines:
         # Copy results back to host
         cl.enqueue_copy(self.queue, V_Paul, self.V_Paul_buff)
         cl.enqueue_copy(self.queue, V_Lond, self.V_Lond_buff)
-        print( "make_MorseFF() time[s] ", time.perf_counter()-T0,   "   preparation  ", T0-T00 )
+
+        nops = na_cl * nxyz * npbc
+        dT=time.perf_counter()-T0
+        print( "make_MorseFF() time[s] ", dT,   "   preparation  ", T0-T00, " nGops ", nops*1e-9," GOPs ",  (nops*1e-9)/dT , " V_Paul.nbytes ", V_Paul.nbytes*1e-6, "[Mbyte] na,nxyz,npbc ", na_cl, nxyz, npbc  )
         # print( "V_Lond.min,max ", V_Lond.min(), V_Lond.max() )
         # print( "V_Paul.min,max ", V_Paul.min(), V_Paul.max() )
         return V_Paul, V_Lond
+    
+    def prepare_project_atoms_buffers(self, na, nxyz,  bytePerFloat=4  ):
+        self.atoms_buff = cl.Buffer(self.ctx, cl.mem_flags.READ_ONLY,  size=na*4*bytePerFloat       )
+        self.Qgrid_buff = cl.Buffer(self.ctx, cl.mem_flags.WRITE_ONLY, size=nxyz*bytePerFloat )
 
+    def project_atoms_on_grid_quintic_pbc(self, atoms, ng, g0, dg):
+        na   = len(atoms)
+        nxyz = ng[0]*ng[1]*ng[2]
+        
+        # if self.atoms_buff is None or self.atoms_buff.size != na*4*4:   
+        #     self.prepare_project_atoms_buffers(na, nxyz)
 
+        buff_names={'atoms','Qgrid'}
+        self.try_make_buffs(buff_names, None, nxyz)
+        
+        atoms_np = np.array(atoms, dtype=np.float32)
+        cl.enqueue_copy(self.queue, self.atoms_buff, atoms_np)
+        
+        ng_cl = np.array(ng+(0,), dtype=np.int32)
+        g0_cl = np.array(g0,      dtype=np.float32)
+        dg_cl = np.array(dg,      dtype=np.float32)
+        
+        nL = self.nloc
+        nG = roundup_global_size(nxyz, nL)
+        
+        self.prg.project_atoms_on_grid_quintic_pbc(
+            self.queue, (nG,), (nL,),
+            np.int32(na), self.atoms_buff, self.Qgrid_buff,
+            ng_cl, g0_cl, dg_cl
+        )
+        
+        Qgrid = np.zeros(ng, dtype=np.float32)
+        cl.enqueue_copy(self.queue, Qgrid, self.Qgrid_buff)
+        #self.Qgrid=Qgrid
+        return Qgrid
 
-# Example usage
-if __name__ == "__main__":
-    ocl_splines = OCLSplines()
+    def poissonW(self, ng , dV=0.001 ):
+        nxyz = ng[0]*ng[1]*ng[2]
+        
+        buff_names={'Qgrid','V_Coul'}
+        self.try_make_buffs(buff_names, 0, nxyz)
+                
+        dCell=(0.0,0.0,0.0,4*np.pi*dV)
+        dCell_cl = np.array(dCell, dtype=np.float32)
+        ns_cl    = np.array( ng+(nxyz,),               dtype=np.int32   )
+        
+        nL = self.nloc
+        nG = roundup_global_size(nxyz, nL)
 
-    # 3D example
-    # g0_3d = [0, 0, 0]
-    # dg_3d = [0.1, 0.1, 0.1]
-    # ng_3d = [64, 64, 64]
-    # Eg_3d = np.random.rand(64, 64, 64, 3).astype(np.float32)
-    # ps_3d = np.random.rand(1000, 3).astype(np.float32) * 6.3
-    # C_3d = [1, 1, 1]
+        self.prg.poissonW(
+            self.queue, (nG,), (nL,),
+            ns_cl, self.Qgrid_buff, self.V_Coul_buff,
+            dCell_cl
+        )
+        
+        out = np.zeros(N, dtype=np.complex64)
+        cl.enqueue_copy(self.queue, out, self.out_buff)
+    
+        return out
 
-    # result_3d = ocl_splines.sample3D_comb3(g0_3d, dg_3d, ng_3d, Eg_3d, ps_3d, C_3d)
+    def poisson(self, dg=(0.1, 0.1, 0.1), lvec=[[20.0, 0.0, 0.0], [0.0, 20.0, 0.0], [0.0, 0.0, 20.0]] ):
 
-    # plt.figure(figsize=(10, 8))
-    # plt.scatter(ps_3d[:, 0], ps_3d[:, 1], c=result_3d[:, 3], cmap='viridis')
-    # plt.colorbar(label='Energy')
-    # plt.title('3D Spline Interpolation')
-    # plt.xlabel('X')
-    # plt.ylabel('Y')
-    # plt.show()
+        if ng is None:
+            ng = (int(lvec[0][0] / dg[0]), int(lvec[1][1] / dg[1]), int(lvec[2][2] / dg[2]))
+        nxyz = ng[0]*ng[1]*ng[2]
 
-    # 1D example
-    g0_1d = 0
-    dg_1d = 0.1
-    ng_1d = 100
-    Gs_1d = np.sin(np.linspace(0, 2*np.pi, ng_1d)).astype(np.float32)
-    ps_1d = np.linspace(0, 10, 1000).astype(np.float32)
+        buff_names={'atoms','Qgrid','V_Coul'}
+        self.try_make_buffs(buff_names, None, nxyz)
 
-    result_1d = ocl_splines.sample1D_pbc(g0_1d, dg_1d, ng_1d, Gs_1d, ps_1d)
+        transform = FFT(self.ctx, self.queue, self.Qgrid_buff, axes=(0, 1, 2))
 
-    plt.figure(figsize=(10, 6))
-    plt.plot(ps_1d, result_1d[:, 0], label='Interpolated')
-    plt.plot(np.linspace(0, 10, ng_1d), Gs_1d, 'ro', label='Original')
-    plt.title('1D Spline Interpolation with PBC')
-    plt.xlabel('X')
-    plt.ylabel('Y')
-    plt.legend()
-    plt.show()
+        event, = transform.enqueue()
+
+        nL = self.nloc
+        nG = roundup_global_size(nxyz, nL)
+
+        dV = dg[0]*dg[1]*dg[2]
+        dCell=(0.0,0.0,0.0,4*np.pi*dV)
+        ns_cl    = np.array( ng+(nxyz,),               dtype=np.int32   )
+        dCell_cl = np.array( dCell, dtype=np.float32 )
+
+        event.wait()
+        self.prg.poissonW(
+            self.queue, (nG,), (nL,),
+            ns_cl, self.Qgrid_buff, self.Vcoul_buff,
+            dCell_cl
+        )
+
+        inverse_transform = FFT(self.ctx, self.queue, self.Vcoul_buff, axes=(0, 1, 2))
+
+        Vcoul = np.zeros( ng, dtype=np.float32   )   
+
+        event, = inverse_transform.enqueue()
+        event.wait()
+
+        cl.enqueue_copy(self.queue, Vcoul, self.Vcoul_buff )
+

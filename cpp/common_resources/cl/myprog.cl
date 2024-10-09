@@ -868,7 +868,7 @@ __kernel void laplace_real_pbc(
 //     );
 // }
 
-float4 Bspline_basis(const float u, float * ws) {
+void Bspline_basis(const float u, float * ws) {
     const float inv6 = 1.0f / 6.0f;
     const float u2 = u * u;
     const float t = 1.0f - u;
@@ -880,7 +880,7 @@ float4 Bspline_basis(const float u, float * ws) {
     //);
 }
 
-float4 Bspline_dbasis(const float u, float * ws) {
+void Bspline_dbasis(const float u, float * ws) {
     const float u2 = u * u;
     const float t = 1.0f - u;
     //return (float4)(
@@ -892,7 +892,7 @@ float4 Bspline_dbasis(const float u, float * ws) {
 }
 
 
-float8 Bspline_basis5(const float t, float * ws){
+void Bspline_basis5(const float t, float * ws){
     const float inv6 = 1.f/6.f;
     const float t2 = t*t;
     const float t3 = t2*t;
@@ -910,7 +910,7 @@ float8 Bspline_basis5(const float t, float * ws){
 }
 
 
-float8 Bspline_dbasis5(const float t, float * ws){
+void Bspline_dbasis5(const float t, float * ws){
     const float inv6 = 1.f/6.f;
     const float t2 = t*t;
     const float t3 = t2*t;
@@ -924,12 +924,6 @@ float8 Bspline_dbasis5(const float t, float * ws){
     ws[5]=     0.0416666666666667*t4;
     //};
 }
-
-
-
-
-
-
 
 
 __kernel void project_atom_on_grid_cubic_pbc(
