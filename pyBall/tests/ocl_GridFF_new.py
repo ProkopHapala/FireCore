@@ -12,7 +12,16 @@ from ..OCL.splines import OCLSplines
 os.environ['PYOPENCL_CTX'] = '0'
 ocl_splines = OCLSplines()
 
-def test_gridFF_ocl( fname="./data/xyz/NaCl_1x1_L2.xyz", Element_Types_name="./data/ElementTypes.dat", bSymetrize=True, mode=6, dsamp=0.02, p0=[0.0,0.0,2.0], R0=3.5, E0=0.1, a=1.6, Q=0.4, H=0.0, scErr=100.0, iax=2, Emax=None, Fmax=None, maxSc=5.0, title=None, bSaveFig=True, bRefine=True, nPBC=[100,100,0], bRealSpace=False ):
+def autoPBC(lvec,Rcut=20.0,mask=(1,1,0)):
+    nPBC = [0,0,0]
+    for i in range(3):
+        if mask[i]>0:
+            L = np.linalg.norm(lvec[i])  # Length of the cell in each direction
+            #print( "L ",L,"[",i,"] Rcut ", Rcut  )
+            nPBC[i] = int(Rcut/L)+1
+    return tuple(nPBC)
+
+def test_gridFF_ocl( fname="./data/xyz/NaCl_1x1_L2.xyz", Element_Types_name="./data/ElementTypes.dat", bSymetrize=False, mode=6, dsamp=0.02, p0=[0.0,0.0,2.0], R0=3.5, E0=0.1, a=1.6, Q=0.4, H=0.0, scErr=100.0, iax=2, Emax=None, Fmax=None, maxSc=5.0, title=None, bSaveFig=True, bRefine=True, nPBC=[100,100,0], bRealSpace=False ):
     print( "py======= test_gridFF() START" );
 
     #Element_Types_name="/home/prokop/git/FireCore/tests/tMMFF/data/ElementTypes.dat"
@@ -20,12 +29,15 @@ def test_gridFF_ocl( fname="./data/xyz/NaCl_1x1_L2.xyz", Element_Types_name="./d
     print( os.getcwd() )
     atoms = au.AtomicSystem(  fname=fname )
     if bSymetrize:
+        na_before = len(atoms.atypes)
         atoms, ws = atoms.symmetrized()
         #print( "ws ",    ws    )
     REvdW = au.getVdWparams( atoms.atypes, fname=Element_Types_name )
     #print( "REvdW ", REvdW )
-    if bSymetrize: REvdW[:,1] *= ws
-    print( "REvdW ", REvdW )
+    if bSymetrize: 
+        REvdW[:,1] *= ws
+        print( "n_atoms (symetrized): ", len(atoms.atypes)," before symmertization: ", na_before )
+    #print( "REvdW ", REvdW )
 
     na = len(atoms.atypes)
     REQs=np.zeros( (na,4), dtype=np.float32 )
@@ -38,7 +50,18 @@ def test_gridFF_ocl( fname="./data/xyz/NaCl_1x1_L2.xyz", Element_Types_name="./d
     REQs[:,2]  = atoms.qs
     REQs[:,3]  = 0.0
 
-    V_Paul, V_Lond = ocl_splines.make_MorseFF( xyzq, REQs, nPBC=(4,4,0), dg=(0.1,0.1,0.1), lvec=atoms.lvec, grid_p0=(0.0,0.0,0.0), GFFParams=(0.1,1.5,0.0,0.0)  )
+
+
+    #---- Test Charge-to-grid projection
+
+    # Qgrid = ocl_splines.project_atoms_on_grid_quintic_pbc(atoms, ng, g0, dg )
+    # return
+
+    #---- Test Morse
+
+    nPBC = autoPBC(atoms.lvec,Rcut=20.0); print("autoPBC: ", nPBC )
+
+    V_Paul, V_Lond = ocl_splines.make_MorseFF( xyzq, REQs, nPBC=nPBC, dg=(0.1,0.1,0.1), lvec=atoms.lvec, grid_p0=(0.0,0.0,0.0), GFFParams=(0.1,1.5,0.0,0.0)  )
 
     print( "V_Paul.shape ", V_Paul.shape )
     plt.figure()
