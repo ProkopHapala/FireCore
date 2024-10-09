@@ -816,7 +816,7 @@ inline void make_inds_pbc_5(const int n, const int iG, __local int inds[6]) {
     }
 }
 
-inline void choose_inds_pbc_5(const int i, const int n, const int iqs[6][6], int out[6]) {
+inline void choose_inds_pbc_5(const int i, const int n, __local const int iqs[6][6], int out[6]) {
     if (i >= (n - 5)) {
         const int ii  = i+6-n;
         const int* qi = iqs[ii];
@@ -826,16 +826,18 @@ inline void choose_inds_pbc_5(const int i, const int n, const int iqs[6][6], int
 
 
 __kernel void project_atoms_on_grid_quintic_pbc(
-    const int num_atoms,            // 1 number of atoms
+    const int na,                   // 1 number of atoms
     __global const float4* atoms,   // 2 Atom positions and charges
-    __global       float*  Qgrid,   // 3 Output grid
-    const int4 ng,                  // 4 Grid size
-    const float3 g0,                // 5 Grid origin
-    const float3 dg                 // 6 Grid dimensions
+    __global       float2* Qgrid,   // 3 Output grid (complex, in order to be compatible with poisson)
+    const int4   ng,                // 4 Grid size
+    const float4 g0,                // 5 Grid origin
+    const float4 dg                 // 6 Grid dimensions
 ) {
     int iG = get_global_id(0);
     const int iL = get_local_id(0);
-    if (iG >= num_atoms) return;
+    if (iG >= na) return;
+
+    
 
     // Declare and initialize shared memory for periodic boundary condition indices
     __local int xqs[6][6];
@@ -846,9 +848,61 @@ __kernel void project_atoms_on_grid_quintic_pbc(
     else if (iL<18) { const int i=iL-12; make_inds_pbc_5(ng.z,i,zqs[i]); }
     barrier(CLK_LOCAL_MEM_FENCE);
 
+    if( iG==0 ){
+        // printf("GPU project_atoms_on_grid_quintic_pbc() ng(%i,%i,%i) g0(%g,%g,%g) dg(%g,%g,%g) \n", ng.x,ng.y,ng.z,   g0.x,g0.y,g0.z,   dg.x,dg.y,dg.z );
+        // for(int i=0; i<6; i++){ int* q=xqs[i]; printf("GPU xqs[0](%4i,%4i,%4i,%4i,%4i,%4i) \n", q[0],  q[1], q[2], q[3], q[4], q[5] ); }
+        // for(int i=0; i<6; i++){ int* q=yqs[i]; printf("GPU yqs[0](%4i,%4i,%4i,%4i,%4i,%4i) \n", q[0],  q[1], q[2], q[3], q[4], q[5] ); }
+        // for(int i=0; i<6; i++){ int* q=zqs[i]; printf("GPU zqs[0](%4i,%4i,%4i,%4i,%4i,%4i) \n", q[0],  q[1], q[2], q[3], q[4], q[5] ); }
+        // for(int ia=0; ia<na; ia++){ printf("GPU atom[%i](%8.4f,%8.4f,%8.4f |%8.4f) \n", ia, atoms[ia].x, atoms[ia].y, atoms[ia].z, atoms[ia].w ); }
+
+        // float4 atom = atoms[iG];
+        // float3 g    = (atom.xyz - g0.xyz) / dg.xyz;
+        // int3   gi   = (int3  ){(int)g.x,(int)g.y,(int)g.z};
+        // float3 t    = (float3){g.x-gi.x, g.y-gi.y, g.z-gi.z};
+
+        // // Compute weights for quintic B-spline interpolation
+        // float bx[6], by[6], bz[6];
+        // Bspline_basis5(t.x, bx);
+        // Bspline_basis5(t.y, by);
+        // Bspline_basis5(t.z, bz);
+
+        // const int nxy = ng.x * ng.y;
+        
+        // int xq[6];
+        // int yq[6];
+        // int zq[6];
+        // // Pre-calculate periodic boundary condition indices for each dimension
+        // gi.x = modulo(gi.x - 2, ng.x); choose_inds_pbc_5(gi.x,ng.x, xqs, xq );
+        // gi.y = modulo(gi.y - 2, ng.y); choose_inds_pbc_5(gi.y,ng.y, yqs, yq );
+        // gi.z = modulo(gi.z - 2, ng.z); choose_inds_pbc_5(gi.z,ng.z, zqs, zq );
+
+        // printf("GPU gi(%4i,%4i,%4i)   \n", gi.x,gi.y,gi.z );
+        // printf("GPU xq(%4i,%4i,%4i,%4i,%4i,%4i)\n", xq[0],xq[1],xq[2],xq[3],xq[4],xq[5] );
+        // printf("GPU yq(%4i,%4i,%4i,%4i,%4i,%4i)\n", yq[0],yq[1],yq[2],yq[3],yq[4],yq[5] );
+        // printf("GPU zq(%4i,%4i,%4i,%4i,%4i,%4i)\n", zq[0],zq[1],zq[2],zq[3],zq[4],zq[5] );
+
+        // for (int dz = 0; dz < 6; dz++) {
+        //     const int gz  = zq[dz];
+        //     const int iiz = gz * nxy;
+        //     for (int dy = 0; dy < 6; dy++) {
+        //         const int gy  = yq[dy];
+        //         const int iiy = iiz + gy * ng.x;
+        //         const float qbyz = atom.w * by[dy] * bz[dz];
+        //         for (int dx = 0; dx < 6; dx++) {
+        //             const int gx = xq[dx];
+        //             const int ig = gx + iiy;
+        //             float qi = qbyz * bx[dx];
+        //             //Qgrid[ig].x += qi;
+        //             Qgrid[ig] = (float2){qi,0.0f};
+        //         }
+        //     }
+        // }
+
+    }
+
     // Load atom position and charge
     float4 atom = atoms[iG];
-    float3 g    = (atom.xyz - g0) / dg;
+    float3 g    = (atom.xyz - g0.xyz) / dg.xyz;
     int3   gi   = (int3  ){(int)g.x,(int)g.y,(int)g.z};
     float3 t    = (float3){g.x-gi.x, g.y-gi.y, g.z-gi.z};
 
@@ -860,34 +914,43 @@ __kernel void project_atoms_on_grid_quintic_pbc(
 
     const int nxy = ng.x * ng.y;
     
+    int xq[6];
+    int yq[6];
+    int zq[6];
     // Pre-calculate periodic boundary condition indices for each dimension
-    gi.x = modulo(gi.x - 2, ng.x); const int* xq_ = xqs[gi.x % 6];
-    gi.y = modulo(gi.y - 2, ng.y); const int* yq_ = yqs[gi.y % 6];
-    gi.z = modulo(gi.z - 2, ng.z); const int* zq_ = zqs[gi.z % 6];
+    gi.x = modulo( gi.x-2, ng.x ); choose_inds_pbc_5(gi.x,ng.x, xqs, xq );
+    gi.y = modulo( gi.y-2, ng.y ); choose_inds_pbc_5(gi.y,ng.y, yqs, yq );
+    gi.z = modulo( gi.z-2, ng.z ); choose_inds_pbc_5(gi.z,ng.z, zqs, zq );
 
-    // Loop over the B-spline grid contributions
     for (int dz = 0; dz < 6; dz++) {
-        const int gz  = zq_[dz];
+        const int gz  = zq[dz];
         const int iiz = gz * nxy;
         for (int dy = 0; dy < 6; dy++) {
-            const int gy  = yq_[dy];
+            const int gy  = yq[dy];
             const int iiy = iiz + gy * ng.x;
             const float qbyz = atom.w * by[dy] * bz[dz];
             for (int dx = 0; dx < 6; dx++) {
-                const int gx = xq_[dx];
+                const int gx = xq[dx];
                 const int ig = gx + iiy;
                 float qi = qbyz * bx[dx];
-                Qgrid[ig] += qi;
+                //Qgrid[ig].x += qi;
+                Qgrid[ig] = (float2){qi,0.0f};
             }
         }
     }
+
+    //const int ig = gi.z*nxy + gi.y*ng.x + gi.x;
+
+    //Qgrid[ig] = (float2){gi.y*1.0f,0.0f};
+
+    
 }
 
 __kernel void poissonW(
-    const int4   ns,
-    __global float2* A,
-    __global float2* out,
-    const float4 dCell     // 
+    const int4   ns,         // (nx,ny,nz,nxyz)
+    __global float2* rho_k,  // input array  rho(k) - fourier coefficients (complex)
+    __global float2* V_k,    // output array V(k)   - fourier coefficients (complex)
+    const float4 coefs       // (0,0,0, 4*pi*eps0*dV)
 ){    
     const int iG = get_global_id (0);
     if(iG>=ns.w) return;
@@ -897,9 +960,9 @@ __kernel void poissonW(
     const int iz  =  iG/nab; 
     float4 k = (float4){ ix/(0.5f*ns.x), iy/(0.5f*ns.y), iz/(0.5f*ns.z), 0};
     k = 1.0f-fabs(k-1.0f); 
-    float  f = dCell.w/dot( k, k );    // dCell.w = 4*pi*eps0*dV - rescaling constant
+    float  f = coefs.w/dot( k, k );    // dCell.w = 4*pi*eps0*dV - rescaling constant
     if(iG==0)f=0;
     if(iG<ns.w){ 
-        out[iG] = A[iG]*f;
+        V_k[iG] = rho_k[iG]*f;
     }
 };

@@ -359,7 +359,8 @@ class OCLSplines:
         self.try_buff("REQs",   names, na*4*bytePerFloat)
         self.try_buff("V_Paul", names, nxyz*bytePerFloat)
         self.try_buff("V_Lond", names, nxyz*bytePerFloat)
-        self.try_buff("Qgrid",  names, nxyz*bytePerFloat)
+        self.try_buff("Qgrid",  names, nxyz*2*bytePerFloat)
+        self.try_buff("Vgrid",  names, nxyz*2*bytePerFloat)
         self.try_buff("V_Coul", names, nxyz*bytePerFloat)
     
     def prepare_Morse_buffers(self, na, nxyz, bytePerFloat=4 ):
@@ -443,42 +444,67 @@ class OCLSplines:
         # print( "V_Paul.min,max ", V_Paul.min(), V_Paul.max() )
         return V_Paul, V_Lond
     
-    def prepare_project_atoms_buffers(self, na, nxyz,  bytePerFloat=4  ):
-        self.atoms_buff = cl.Buffer(self.ctx, cl.mem_flags.READ_ONLY,  size=na*4*bytePerFloat       )
-        self.Qgrid_buff = cl.Buffer(self.ctx, cl.mem_flags.WRITE_ONLY, size=nxyz*bytePerFloat )
-
-    def project_atoms_on_grid_quintic_pbc(self, atoms, ng, g0, dg):
+    def project_atoms_on_grid_quintic_pbc(self, atoms, ng=None,   dg=(0.1, 0.1, 0.1),    lvec=[[20.0, 0.0, 0.0], [0.0, 20.0, 0.0], [0.0, 0.0, 20.0]],                     g0=(0.0, 0.0, 0.0) ):
+        """
+        __kernel void project_atoms_on_grid_quintic_pbc(
+            const int num_atoms,            // 1 number of atoms
+            __global const float4* atoms,   // 2 Atom positions and charges
+            __global       float*  Qgrid,   // 3 Output grid
+            const int4   ng,                // 4 Grid size
+            const float4 g0,                // 5 Grid origin
+            const float4 dg                 // 6 Grid dimensions
+        ) {
+        """
         na   = len(atoms)
+
+        if ng is None:
+            ng = (int(lvec[0][0] / dg[0]), int(lvec[1][1] / dg[1]), int(lvec[2][2] / dg[2]))
         nxyz = ng[0]*ng[1]*ng[2]
         
         # if self.atoms_buff is None or self.atoms_buff.size != na*4*4:   
         #     self.prepare_project_atoms_buffers(na, nxyz)
 
         buff_names={'atoms','Qgrid'}
-        self.try_make_buffs(buff_names, None, nxyz)
+        self.try_make_buffs(buff_names, na, nxyz)
         
         atoms_np = np.array(atoms, dtype=np.float32)
         cl.enqueue_copy(self.queue, self.atoms_buff, atoms_np)
         
         ng_cl = np.array(ng+(0,), dtype=np.int32)
-        g0_cl = np.array(g0,      dtype=np.float32)
-        dg_cl = np.array(dg,      dtype=np.float32)
+        g0_cl = np.array(g0+(0.,), dtype=np.float32)
+        dg_cl = np.array(dg+(0.,), dtype=np.float32)
         
         nL = self.nloc
         nG = roundup_global_size(nxyz, nL)
-        
+
         self.prg.project_atoms_on_grid_quintic_pbc(
             self.queue, (nG,), (nL,),
             np.int32(na), self.atoms_buff, self.Qgrid_buff,
             ng_cl, g0_cl, dg_cl
         )
         
-        Qgrid = np.zeros(ng, dtype=np.float32)
+        Qgrid = np.zeros( ng[::-1]+(2,), dtype=np.float32)
+        print( "Qgrid.shape", Qgrid.shape )
         cl.enqueue_copy(self.queue, Qgrid, self.Qgrid_buff)
+
+        Qgrid = Qgrid[:,:,:,0].copy()   # take just the real part
+
+        #print( Qgrid[:,0,0], Qgrid[0,:,0], Qgrid[0,0,:], )
+
+        print( "project_atoms_on_grid_quintic_pbc() DONE Qtot=", Qgrid.sum()," Qabs=", np.abs(Qgrid).sum()," Qmin=", Qgrid.min()," Qmax=", Qgrid.max() )
+
         #self.Qgrid=Qgrid
         return Qgrid
 
     def poissonW(self, ng , dV=0.001 ):
+        """
+        __kernel void poissonW(
+            const int4   ns,
+            __global float2* A,
+            __global float2* out,
+            const float4 dCell     // 
+        ){ 
+        """
         nxyz = ng[0]*ng[1]*ng[2]
         
         buff_names={'Qgrid','V_Coul'}
@@ -508,7 +534,7 @@ class OCLSplines:
             ng = (int(lvec[0][0] / dg[0]), int(lvec[1][1] / dg[1]), int(lvec[2][2] / dg[2]))
         nxyz = ng[0]*ng[1]*ng[2]
 
-        buff_names={'atoms','Qgrid','V_Coul'}
+        buff_names={'atoms','Qgrid','Vgrid'}
         self.try_make_buffs(buff_names, None, nxyz)
 
         transform = FFT(self.ctx, self.queue, self.Qgrid_buff, axes=(0, 1, 2))
