@@ -5,7 +5,7 @@ import matplotlib.pyplot as plt
 from . import utils as ut
 from .. import atomicUtils as au
 from .. import FunctionSampling as fu
-from ..OCL.splines import OCLSplines
+from ..OCL.splines import OCLSplines, GridShape
 
 # =============  Functions
 
@@ -50,6 +50,32 @@ def test_gridFF_ocl( fname="./data/xyz/NaCl_1x1_L1.xyz", Element_Types_name="./d
     REQs[:,2]  = atoms.qs
     REQs[:,3]  = 0.0
 
+
+    #---- Test Poisson
+    
+    grid = GridShape( dg=(0.1,0.1,0.1),  lvec=atoms.lvec)
+    ocl_splines.set_grid( grid )
+    Vgrid = ocl_splines.makeCoulombEwald( xyzq )
+
+    # xline = Vgrid.sum(axis=(1,2)); plt.plot( xline )
+    # yline = Vgrid.sum(axis=(0,2)); plt.plot( yline )
+    # zline = Vgrid.sum(axis=(0,1)); plt.plot( zline )
+
+    # plt.figure( figsize=(25,5) )
+    # plt.subplot(1,6,1); plt.imshow( Vgrid[166,:,:], cmap='bwr' ); plt.colorbar()
+    # plt.subplot(1,6,2); plt.imshow( Vgrid[167,:,:], cmap='bwr' ); plt.colorbar()
+    # plt.subplot(1,6,3); plt.imshow( Vgrid[168,:,:], cmap='bwr' ); plt.colorbar()
+    # plt.subplot(1,6,4); plt.imshow( Vgrid[169,:,:], cmap='bwr' ); plt.colorbar()
+    # plt.subplot(1,6,5); plt.imshow( Vgrid[170,:,:], cmap='bwr' ); plt.colorbar()
+    # plt.subplot(1,6,6); plt.imshow( Vgrid[171,:,:], cmap='bwr' ); plt.colorbar()
+
+    plt.figure( figsize=(15,5) )
+    plt.subplot(1,3,1); plt.imshow( Vgrid[170,:,:], cmap='bwr' ); plt.colorbar(); plt.title( "Vgrid[170,:,:]" );
+    plt.subplot(1,3,2); plt.imshow( Vgrid[:,0,:  ], cmap='bwr' ); plt.colorbar(); plt.title( "Vgrid[:,0,:  ]" );
+    plt.subplot(1,3,3); plt.imshow( Vgrid[:,:,0  ], cmap='bwr' ); plt.colorbar(); plt.title( "Vgrid[:,:,0  ]" );
+
+    return
+
     #---- Test Charge-to-grid projection
 
     #xyzq[:,2]=0.0
@@ -73,12 +99,12 @@ def test_gridFF_ocl( fname="./data/xyz/NaCl_1x1_L1.xyz", Element_Types_name="./d
     #     plt.title( f"Qgrid[{iz}] {iz*3}" )
 
     return
-
+    
     #---- Test Morse
 
     nPBC = autoPBC(atoms.lvec,Rcut=20.0); print("autoPBC: ", nPBC )
 
-    V_Paul, V_Lond = ocl_splines.make_MorseFF( xyzq, REQs, nPBC=nPBC, lvec=atoms.lvec, grid_p0=(0.0,0.0,0.0), GFFParams=(0.1,1.5,0.0,0.0)  )
+    V_Paul, V_Lond = ocl_splines.make_MorseFF( xyzq, REQs, nPBC=nPBC, lvec=atoms.lvec, g0=(0.0,0.0,0.0), GFFParams=(0.1,1.5,0.0,0.0)  )
 
     print( "V_Paul.shape ", V_Paul.shape )
     plt.figure()
@@ -106,54 +132,5 @@ def test_gridFF_ocl( fname="./data/xyz/NaCl_1x1_L1.xyz", Element_Types_name="./d
     plt.show()
     plt.show()
 
-    exit()
-
-    #plotGridFF_1D( EFg, ix=20,iy=20 )
-    PLQH  = ut.getPLQH( R0, E0, a, Q, H )
-
-    ps,ts = ut.make_sample_points( p0, t0=0.0, tmax=10.0, dsamp=dsamp, iax=iax )    
-    
-    # ---- OpenCL
-    g0   = (-2.0,-2.0,0.0)
-    dg   = (0.1,0.1,0.1)
-    ps_ocl = ut.points_to_ocl(ps)
-    VPLQ = ut.load_potential_comb( path )  #;print( "VPLQ.shape=", VPLQ.shape )
-    ocl_splines.prepare_sample3D( g0, dg, VPLQ.shape[:3], VPLQ )
-    fe_cl = ocl_splines.sample3D_comb(  ps_ocl, PLQH )
-
-    if bRealSpace:
-        #FF_ref = mmff.evalGridFFAtPoints( ps, PLQH=PLQH, bSplit=False, nPBC=nPBC )
-        FF_ref = mmff.evalGridFFAtPoints( ps, PLQH=PLQH, bSplit=True, nPBC=nPBC  )
-        plt.subplot(2,1,2);
-        if Emax is None: Emax = -FF_ref[:,3].min()*maxSc; 
-        if Fmax is None: Fmax = -FF_ref[:,2].min()*maxSc;
-
-    # plt.figure(figsize=(5,10))
-    # plt.subplot(2,1,1);
-    # plt.plot( ts, fe_cl[:,3], '-k' , lw=1.0, label='OpenCL')
-    # plt.plot( ts, FFout[:,3], "-g" , lw=0.5, label="Etot_fit" )
-    # if bRealSpace:
-    #     plt.plot( ts, FF_ref[:,3], ":k", lw=2.0, label="Etot_ref" )
-    #     plt.plot( ts, (FFout[:,3]-FF_ref[:,3])*scErr, "-r", lw=0.5, label=("Etot_err*%.2f" %scErr) )
-    # plt.axhline(0.0, c="k", ls='--', lw=0.5)
-    # plt.ylim( -Emax, Emax )
-    # plt.legend()
-    # plt.subplot(2,1,2);
-    # plt.plot( ts, fe_cl[:,iax], '-k' , lw=1.0, label='OpenCL')
-    # plt.plot( ts, FFout[:,iax], "-g" , lw=0.5, label="Ftot_fit" )
-    # if bRealSpace:
-    #     plt.plot( ts, FF_ref[:,2], ":k", lw=2.0, label="Ftot_ref" )
-    #     plt.plot( ts, (FFout[:,2]-FF_ref[:,2])*scErr, "-r", lw=0.5, label=("Ftot_err*%.2f" %scErr) )
-    # plt.axhline(0.0, c="k", ls='--', lw=0.5)
-    # plt.ylim( -Fmax, Fmax )
-    # plt.legend()
-
-    # title_ = "iax="+str(iax)+"\n p0="+str(p0)+"\nnPBC="+str(nPBC)
-    # if ( title is not None ): title_=title+title_
-    # plt.suptitle( title_ )
-    if ( bSaveFig ): plt.savefig( "test_gridFF_zcut.png", bbox_inches='tight' )
-    
-    #print( "ff.shape ", EFg.shape )
-    #print( "test_gridFF() DONE" )
     print( "py======= test_gridFF() DONE" );
-    #return EFg
+
