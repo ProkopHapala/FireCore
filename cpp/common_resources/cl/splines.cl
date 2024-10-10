@@ -617,49 +617,6 @@ __kernel void make_MorseFF_f4(
 int pbc_ifw(int i, int n){ i++; return (i<n )?  i :  i-n; };
 int pbc_ibk(int i, int n){ i--; return (i>=0)?  i :  i+n; };
 
-__kernel void laplace_real_pbc( 
-    int4 ng,
-    __global float* Vin, 
-    __global float* Vout, 
-    float cSOR
-){
-
-    const int ix = get_global_id(0);
-    const int iy = get_global_id(1);
-    const int iz = get_global_id(2);
-    if( (ix>=ng.x) || (iy>=ng.y) || (iz>=ng.z) ) return;
-
-    int nxy = ng.x * ng.y;
-    const float fac = 1.0f/6.0f;
-    //float err2 = 0.0; 
-    
-    const int iiz =          iz       *nxy;
-    const int ifz =  pbc_ifw(iz, ng.z)*nxy;
-    const int ibz =  pbc_ibk(iz, ng.z)*nxy;
-    
-    const int iiy =          iy       *ng.x;
-    const int ify =  pbc_ifw(iy, ng.y)*ng.x;
-    const int iby =  pbc_ibk(iy, ng.y)*ng.x;
-    const int ifx =  pbc_ifw(ix, ng.x);
-    const int ibx =  pbc_ibk(ix, ng.x);
-
-    double vi = 
-    Vin[ ibx + iiy + iiz ] + Vin[ ifx + iiy + iiz ] + 
-    Vin[ ix  + iby + iiz ] + Vin[ ix  + ify + iiz ] + 
-    Vin[ ix  + iiy + ibz ] + Vin[ ix  + iiy + ifz ];
-
-    vi*=fac;
-    const int i = ix + iiy + iiz;
-    const float vo = Vin[ i ];
-    vi += (vi-vo)*cSOR; 
-    const float dv = vi - vo;
-    
-    //err2 += dv*dv;
-    Vout[i] = vi;
-}
-
-
-
 
 // float4 Bspline_basis(const float u) {
 //     const float inv6 = 1.0f / 6.0f;
@@ -848,57 +805,13 @@ __kernel void project_atoms_on_grid_quintic_pbc(
     else if (iL<18) { const int i=iL-12; make_inds_pbc_5(ng.z,i,zqs[i]); }
     barrier(CLK_LOCAL_MEM_FENCE);
 
-    if( iG==0 ){
-        // printf("GPU project_atoms_on_grid_quintic_pbc() ng(%i,%i,%i) g0(%g,%g,%g) dg(%g,%g,%g) \n", ng.x,ng.y,ng.z,   g0.x,g0.y,g0.z,   dg.x,dg.y,dg.z );
-        // for(int i=0; i<6; i++){ int* q=xqs[i]; printf("GPU xqs[0](%4i,%4i,%4i,%4i,%4i,%4i) \n", q[0],  q[1], q[2], q[3], q[4], q[5] ); }
-        // for(int i=0; i<6; i++){ int* q=yqs[i]; printf("GPU yqs[0](%4i,%4i,%4i,%4i,%4i,%4i) \n", q[0],  q[1], q[2], q[3], q[4], q[5] ); }
-        // for(int i=0; i<6; i++){ int* q=zqs[i]; printf("GPU zqs[0](%4i,%4i,%4i,%4i,%4i,%4i) \n", q[0],  q[1], q[2], q[3], q[4], q[5] ); }
-        // for(int ia=0; ia<na; ia++){ printf("GPU atom[%i](%8.4f,%8.4f,%8.4f |%8.4f) \n", ia, atoms[ia].x, atoms[ia].y, atoms[ia].z, atoms[ia].w ); }
-
-        // float4 atom = atoms[iG];
-        // float3 g    = (atom.xyz - g0.xyz) / dg.xyz;
-        // int3   gi   = (int3  ){(int)g.x,(int)g.y,(int)g.z};
-        // float3 t    = (float3){g.x-gi.x, g.y-gi.y, g.z-gi.z};
-
-        // // Compute weights for quintic B-spline interpolation
-        // float bx[6], by[6], bz[6];
-        // Bspline_basis5(t.x, bx);
-        // Bspline_basis5(t.y, by);
-        // Bspline_basis5(t.z, bz);
-
-        // const int nxy = ng.x * ng.y;
-        
-        // int xq[6];
-        // int yq[6];
-        // int zq[6];
-        // // Pre-calculate periodic boundary condition indices for each dimension
-        // gi.x = modulo(gi.x - 2, ng.x); choose_inds_pbc_5(gi.x,ng.x, xqs, xq );
-        // gi.y = modulo(gi.y - 2, ng.y); choose_inds_pbc_5(gi.y,ng.y, yqs, yq );
-        // gi.z = modulo(gi.z - 2, ng.z); choose_inds_pbc_5(gi.z,ng.z, zqs, zq );
-
-        // printf("GPU gi(%4i,%4i,%4i)   \n", gi.x,gi.y,gi.z );
-        // printf("GPU xq(%4i,%4i,%4i,%4i,%4i,%4i)\n", xq[0],xq[1],xq[2],xq[3],xq[4],xq[5] );
-        // printf("GPU yq(%4i,%4i,%4i,%4i,%4i,%4i)\n", yq[0],yq[1],yq[2],yq[3],yq[4],yq[5] );
-        // printf("GPU zq(%4i,%4i,%4i,%4i,%4i,%4i)\n", zq[0],zq[1],zq[2],zq[3],zq[4],zq[5] );
-
-        // for (int dz = 0; dz < 6; dz++) {
-        //     const int gz  = zq[dz];
-        //     const int iiz = gz * nxy;
-        //     for (int dy = 0; dy < 6; dy++) {
-        //         const int gy  = yq[dy];
-        //         const int iiy = iiz + gy * ng.x;
-        //         const float qbyz = atom.w * by[dy] * bz[dz];
-        //         for (int dx = 0; dx < 6; dx++) {
-        //             const int gx = xq[dx];
-        //             const int ig = gx + iiy;
-        //             float qi = qbyz * bx[dx];
-        //             //Qgrid[ig].x += qi;
-        //             Qgrid[ig] = (float2){qi,0.0f};
-        //         }
-        //     }
-        // }
-
-    }
+    // if( iG==0 ){
+    //     printf("GPU project_atoms_on_grid_quintic_pbc() ng(%i,%i,%i) g0(%g,%g,%g) dg(%g,%g,%g) \n", ng.x,ng.y,ng.z,   g0.x,g0.y,g0.z,   dg.x,dg.y,dg.z );
+    //     for(int i=0; i<6; i++){ int* q=xqs[i]; printf("GPU xqs[0](%4i,%4i,%4i,%4i,%4i,%4i) \n", q[0],  q[1], q[2], q[3], q[4], q[5] ); }
+    //     for(int i=0; i<6; i++){ int* q=yqs[i]; printf("GPU yqs[0](%4i,%4i,%4i,%4i,%4i,%4i) \n", q[0],  q[1], q[2], q[3], q[4], q[5] ); }
+    //     for(int i=0; i<6; i++){ int* q=zqs[i]; printf("GPU zqs[0](%4i,%4i,%4i,%4i,%4i,%4i) \n", q[0],  q[1], q[2], q[3], q[4], q[5] ); }
+    //     for(int ia=0; ia<na; ia++){ printf("GPU atom[%i](%8.4f,%8.4f,%8.4f |%8.4f) \n", ia, atoms[ia].x, atoms[ia].y, atoms[ia].z, atoms[ia].w ); }
+    // }
 
     // Load atom position and charge
     float4 atom = atoms[iG];
@@ -938,12 +851,8 @@ __kernel void project_atoms_on_grid_quintic_pbc(
             }
         }
     }
-
     //const int ig = gi.z*nxy + gi.y*ng.x + gi.x;
-
     //Qgrid[ig] = (float2){gi.y*1.0f,0.0f};
-
-    
 }
 
 __kernel void poissonW(
@@ -966,3 +875,78 @@ __kernel void poissonW(
         V_k[iG] = rho_k[iG]*f;
     }
 };
+
+
+__kernel void laplace_real_pbc( 
+    int4 ng,
+    __global float* Vin, 
+    __global float* Vout, 
+    __global float* vV, 
+    float cSOR, 
+    float cV
+){
+    const int ix = get_global_id(0);
+    const int iy = get_global_id(1);
+    const int iz = get_global_id(2);
+    if( (ix>=ng.x) || (iy>=ng.y) || (iz>=ng.z) ) return;
+
+    int nxy = ng.x * ng.y;
+    const float fac = 1.0f/6.0f;
+    
+    const int iiz =          iz       *nxy;
+    const int ifz =  pbc_ifw(iz, ng.z)*nxy;
+    const int ibz =  pbc_ibk(iz, ng.z)*nxy;
+    
+    const int iiy =          iy       *ng.x;
+    const int ify =  pbc_ifw(iy, ng.y)*ng.x;
+    const int iby =  pbc_ibk(iy, ng.y)*ng.x;
+    const int ifx =  pbc_ifw(ix, ng.x);
+    const int ibx =  pbc_ibk(ix, ng.x);
+
+    float vi = 
+    Vin[ ibx + iiy + iiz ] + Vin[ ifx + iiy + iiz ] + 
+    Vin[ ix  + iby + iiz ] + Vin[ ix  + ify + iiz ] + 
+    Vin[ ix  + iiy + ibz ] + Vin[ ix  + iiy + ifz ];
+
+    vi *= fac;
+    const int i = ix + iiy + iiz;
+    const float vo = Vin[ i ];
+    vi += (vi-vo)*cSOR; 
+    
+    if(vV != 0){   // inertia
+        float v = vi - vo;                 // velocity ( change between new and old potential )
+        v       = v*cV + vV[i]*(1.0f-cV);  // inertia ( mixing of new and old change )
+        vV[i]   = v;                       // store updated velocity ( change )
+        vi      = v + vo;                  // new potantial corrected by intertia
+    }
+
+    Vout[i] = vi;
+
+    // double v = V_[i]-V[i];
+    // if(iter>0){ v = v*cV + vV[i]*(1-cV); }
+    // vV[i] = v; 
+    // V_[i] = V[i] + v;
+
+}
+
+__kernel void slabPotential( 
+    int nz_slab,
+    __global float* Vin, 
+    __global float* Vout,
+    float4 params,  // (dz, Vol, dVcor, Vcor0)
+    int4 ng
+){
+    const int ix = get_global_id(0);
+    const int iy = get_global_id(1);
+    const int iz = get_global_id(2);
+    if( (ix>=ng.x) || (iy>=ng.y) || (iz>=nz_slab) ) return;
+
+    float dz    = params.x;
+    float dVcor = params.z;
+    float Vcor0 = params.w;
+
+    float Vcor_z = Vcor0 + dVcor * (iz*dz);
+    const int i = ix + (iz*ng.y + iy)*ng.x;
+    Vout[i] = Vin[i] + Vcor_z;
+}
+
