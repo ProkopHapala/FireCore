@@ -52,7 +52,7 @@ def test_gridFF_ocl( fname="./data/xyz/NaCl_1x1_L1.xyz", Element_Types_name="./d
 
 
     #---- Test Poisson
-    
+    """
     grid = GridShape( dg=(0.1,0.1,0.1),  lvec=atoms.lvec)
     ocl_splines.set_grid( grid )
     Vgrid = ocl_splines.makeCoulombEwald( xyzq )
@@ -75,9 +75,9 @@ def test_gridFF_ocl( fname="./data/xyz/NaCl_1x1_L1.xyz", Element_Types_name="./d
     plt.subplot(1,3,3); plt.imshow( Vgrid[:,:,0  ], cmap='bwr' ); plt.colorbar(); plt.title( "Vgrid[:,:,0  ]" );
 
     return
-
+    """
     #---- Test Charge-to-grid projection
-
+    """
     #xyzq[:,2]=0.0
 
     Qgrid = ocl_splines.project_atoms_on_grid_quintic_pbc(xyzq, dg=(0.1,0.1,0.1),  lvec=atoms.lvec )
@@ -99,7 +99,7 @@ def test_gridFF_ocl( fname="./data/xyz/NaCl_1x1_L1.xyz", Element_Types_name="./d
     #     plt.title( f"Qgrid[{iz}] {iz*3}" )
 
     return
-    
+    """
     #---- Test Morse
 
     nPBC = autoPBC(atoms.lvec,Rcut=20.0); print("autoPBC: ", nPBC )

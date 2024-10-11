@@ -19,10 +19,6 @@ p0 = [-2.0,-2.0,0.0]
 #mol_name="PTCDA.xyz"
 #gff.test_gridFF_vocl( fname="data/xyz/NaCl_1x1_L2.xyz" )
 
-
 gff.test_gridFF_ocl( fname="/home/prokop/git/FireCore/tests/pyutils/NaCl_8x8_L3.xyz" )
-
-
-
 
 plt.show()
