@@ -42,18 +42,23 @@ def compute_potential(dens, dg, bInternals=False):
         internals = None
     return V, internals
 
-def plot1Dcut(apos, qs, Vg, i0, dg, Ls, iax=0, nPBC=[10,10,10], vmax=5.0, scErr=100.0):
-    ix, iy, iz = i0  # unpack voxel through which we plot the debug cuts
-    lvec=np.array( [[Ls[0],0.0,0.0], [0.0,Ls[1],0.0], [0.0,0.0,Ls[2]] ]) # lattice vectors, cubic grid
+
+def select_cut_1d(V, iax, i0s):
+    ix, iy, iz = i0s  # unpack voxel through which we plot the debug cuts
     # 1D Cut the Ewald potential along the [iax] axis  
     if iax == 0:
-        Vgl = Vg[iz, iy, :]  # Along x-axis
+        return V[iz, iy, :]  # Along x-axis
     elif iax == 1:
-        Vgl = Vg[iz, :, ix]  # Along y-axis
+        return V[iz, :, ix]  # Along y-axis
     elif iax == 2:
-        Vgl = Vg[:, iy, ix]  # Along z-axis
+        return V[:, iy, ix]  # Along z-axis
     else:
         raise ValueError("Invalid axis index. iax must be 0, 1, or 2.")
+
+def plot1Dcut(apos, qs, Vg, i0, dg, Ls, iax=0, nPBC=[10,10,10], vmax=5.0, scErr=100.0, Vref=None ):
+    #ix, iy, iz = i0  # unpack voxel through which we plot the debug cuts
+    lvec=np.array( [[Ls[0],0.0,0.0], [0.0,Ls[1],0.0], [0.0,0.0,Ls[2]] ]) # lattice vectors, cubic grid
+    Vgl = select_cut_1d( Vg, iax, i0 )
 
     #ns = Vg.shape[::-1]  # grid is ordered  [x,y,z], so ns=(nx,ny,nz)
     nt = Vgl.size
@@ -67,21 +72,25 @@ def plot1Dcut(apos, qs, Vg, i0, dg, Ls, iax=0, nPBC=[10,10,10], vmax=5.0, scErr=
     ps[:, iax] = ts  # Only vary along the chosen axis
 
     # Calculate reference potentials using the direct (real space) sum
-    fe  = mmff.sampleCoulombPBC(ps, apos, qs, lvec=lvec, nPBC=nPBC)
+    if Vref is None:
+        fe  = mmff.sampleCoulombPBC(ps, apos, qs, lvec=lvec, nPBC=nPBC)
+        Vref = fe[:, 3]
+    else:
+        Vref = select_cut_1d( Vref, iax, i0)
 
-    vd_vg = fe[:, 3] / Vgl  # Ratio of direct potential (reference) to Ewald potential
+    vd_vg = Vref/ Vgl  # Ratio of direct potential (reference) to Ewald potential
     factor = np.average(vd_vg[0:nt//3])  # Average in a safe distance from charges
     #print("plot1Dcut() iax=", iax, " nt ", nt, " dt ", dt, "Lt ", Lt, " factor ", factor)
     # Plotting
     plt.plot(ts, Vgl,   '-k', label="V ewald")
-    #plt.plot(ts, vd_vg, '-', label="ref/ewald")
-    plt.plot(ts, fe[:, 3],  '--', label="V direct " + str(nPBC))
+    plt.plot(ts, vd_vg, '-',  label="ref/ewald")
+    plt.plot(ts, Vref,  '--', label="Vref " + str(nPBC))
     plt.title("cut1D iax=" + str(iax) + " n=" + str(len(ts)) + " tmax=" + str(ts.max()))
     plt.ylim(-vmax, vmax )
     plt.legend()
     plt.grid()
 
-def test_vs_direct( apos, qs, ns=[100,100,100], dg=[0.1,0.1,0.1], nPBC=[30,30,30], pos0=None, scErr=100.0, order=2, bPython=False, bOMP=False, nBlur=0, cSOR=0.0, cV=0.5, yrange=None, bPlot1D=True , bSlab=False, z_slab=None ):
+def test_vs_direct( apos, qs, ns=[100,100,100], dg=[0.1,0.1,0.1], nPBC=[30,30,30], pos0=None, scErr=100.0, order=2, bPython=False, bPlotDebug=True, bOMP=False, nBlur=0, cSOR=0.0, cV=0.5, yrange=None, bPlot1D=True , bSlab=False, z_slab=None ):
     apos = apos.copy()
     print( "apos ", apos )
     Ls = [ ns[0]*dg[0], ns[1]*dg[1], ns[2]*dg[2] ]                                # lenghts along each axis  
@@ -103,19 +112,20 @@ def test_vs_direct( apos, qs, ns=[100,100,100], dg=[0.1,0.1,0.1], nPBC=[30,30,30
     if bPython:
         Vg,(density_fft, Vw, ker_w) = compute_potential(dens, dg, bInternals=True )
 
-        # ---- 2D debug plots
-        # dens2d =  np.sum( dens, axis=iax )
-        plt.figure(figsize=(15,10))
-        extent  =[  -Ls[0]*0.5  , +Ls[0]*0.5,    -Ls[1]*0.5  ,+Ls[1]*0.5      ]
-        extent_w=[  -np.pi/dg[0], +np.pi/dg[0],  -np.pi/dg[1],+np.pi/dg[1]    ]
-        # --- plot in real-space (cartesian) coordinates
-        plt.subplot(2,3,1  ); plt.imshow( dens [iz0,:,:],                        cmap='bwr', extent=extent  , origin="lower" ); plt.colorbar(); plt.title("Charge Density" )
-        plt.subplot(2,3,2  ); plt.imshow( ker_w[iz0,:,:],                        cmap='bwr', extent=extent_w, origin="lower" ); plt.colorbar(); plt.title("ker_w" )
-        plt.subplot(2,3,3  ); plt.imshow( Vg   [iz0,:,:],   vmin=-1.0,vmax=1.0,  cmap='bwr', extent=extent  , origin="lower" ); plt.colorbar(); plt.title("V ewald C++/FFTW3 " )
-        # --- plot in pixel-coordinates
-        plt.subplot(2,3,3+1); plt.imshow( dens [iz0,:,:],                        cmap='bwr'               , origin="lower" ); plt.colorbar(); plt.title("Charge Density" )
-        plt.subplot(2,3,3+2); plt.imshow( ker_w[iz0,:,:],                        cmap='bwr'               , origin="lower" ); plt.colorbar(); plt.title("ker_w" )
-        plt.subplot(2,3,3+3); plt.imshow( Vg   [iz0,:,:],   vmin=-1.0,vmax=1.0,  cmap='bwr'               , origin="lower" ); plt.colorbar(); plt.title("V ewald C++/FFTW3 " )
+        if bPlotDebug:
+            # ---- 2D debug plots
+            # dens2d =  np.sum( dens, axis=iax )
+            plt.figure(figsize=(15,10))
+            extent  =[  -Ls[0]*0.5  , +Ls[0]*0.5,    -Ls[1]*0.5  ,+Ls[1]*0.5      ]
+            extent_w=[  -np.pi/dg[0], +np.pi/dg[0],  -np.pi/dg[1],+np.pi/dg[1]    ]
+            # --- plot in real-space (cartesian) coordinates
+            plt.subplot(2,3,1  ); plt.imshow( dens [iz0,:,:],                        cmap='bwr', extent=extent  , origin="lower" ); plt.colorbar(); plt.title("Charge Density" )
+            plt.subplot(2,3,2  ); plt.imshow( ker_w[iz0,:,:],                        cmap='bwr', extent=extent_w, origin="lower" ); plt.colorbar(); plt.title("ker_w" )
+            plt.subplot(2,3,3  ); plt.imshow( Vg   [iz0,:,:],   vmin=-1.0,vmax=1.0,  cmap='bwr', extent=extent  , origin="lower" ); plt.colorbar(); plt.title("V ewald" )
+            # --- plot in pixel-coordinates
+            plt.subplot(2,3,3+1); plt.imshow( dens [iz0,:,:],                        cmap='bwr'               , origin="lower" ); plt.colorbar(); plt.title("Charge Density" )
+            plt.subplot(2,3,3+2); plt.imshow( ker_w[iz0,:,:],                        cmap='bwr'               , origin="lower" ); plt.colorbar(); plt.title("ker_w" )
+            plt.subplot(2,3,3+3); plt.imshow( Vg   [iz0,:,:],   vmin=-1.0,vmax=1.0,  cmap='bwr'               , origin="lower" ); plt.colorbar(); plt.title("V ewald" )
 
     else:
         nz_slab=-1

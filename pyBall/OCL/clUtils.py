@@ -16,7 +16,7 @@ def try_load_clFFT():
     global FFT
     if FFT is None:
         from gpyfft.fft import FFT as FFT_
-        FFT = FFT_
+        FFT = FFT_        
 
 def make_inds_pbc(n): 
     return np.array([
