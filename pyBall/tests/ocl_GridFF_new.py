@@ -2,15 +2,15 @@ import os
 import numpy as np
 import matplotlib.pyplot as plt
 
-from . import utils as ut
+#from . import utils as ut
 from .. import atomicUtils as au
-from .. import FunctionSampling as fu
-from ..OCL.splines import OCLSplines, GridShape
+#from .. import FunctionSampling as fu
+from ..OCL.GridFF import GridFF_cl, GridShape
 
 # =============  Functions
 
 os.environ['PYOPENCL_CTX'] = '0'
-ocl_splines = OCLSplines()
+clgff = GridFF_cl()
 
 def autoPBC(lvec,Rcut=20.0,mask=(1,1,0)):
     nPBC = [0,0,0]
@@ -52,10 +52,10 @@ def test_gridFF_ocl( fname="./data/xyz/NaCl_1x1_L1.xyz", Element_Types_name="./d
 
 
     #---- Test Poisson
-    """
+    
     grid = GridShape( dg=(0.1,0.1,0.1),  lvec=atoms.lvec)
-    ocl_splines.set_grid( grid )
-    Vgrid = ocl_splines.makeCoulombEwald( xyzq )
+    clgff.set_grid( grid )
+    Vgrid = clgff.makeCoulombEwald( xyzq )
 
     # xline = Vgrid.sum(axis=(1,2)); plt.plot( xline )
     # yline = Vgrid.sum(axis=(0,2)); plt.plot( yline )
@@ -75,12 +75,12 @@ def test_gridFF_ocl( fname="./data/xyz/NaCl_1x1_L1.xyz", Element_Types_name="./d
     plt.subplot(1,3,3); plt.imshow( Vgrid[:,:,0  ], cmap='bwr' ); plt.colorbar(); plt.title( "Vgrid[:,:,0  ]" );
 
     return
-    """
+    
     #---- Test Charge-to-grid projection
     """
     #xyzq[:,2]=0.0
 
-    Qgrid = ocl_splines.project_atoms_on_grid_quintic_pbc(xyzq, dg=(0.1,0.1,0.1),  lvec=atoms.lvec )
+    Qgrid = clgff.project_atoms_on_grid_quintic_pbc(xyzq, dg=(0.1,0.1,0.1),  lvec=atoms.lvec )
 
     plt.figure( figsize=(25,5) )
     plt.subplot(1,6,1); plt.imshow( Qgrid[166,:,:], cmap='bwr' ); plt.colorbar()
@@ -101,10 +101,10 @@ def test_gridFF_ocl( fname="./data/xyz/NaCl_1x1_L1.xyz", Element_Types_name="./d
     return
     """
     #---- Test Morse
-
+    """
     nPBC = autoPBC(atoms.lvec,Rcut=20.0); print("autoPBC: ", nPBC )
 
-    V_Paul, V_Lond = ocl_splines.make_MorseFF( xyzq, REQs, nPBC=nPBC, lvec=atoms.lvec, g0=(0.0,0.0,0.0), GFFParams=(0.1,1.5,0.0,0.0)  )
+    V_Paul, V_Lond = clgff.make_MorseFF( xyzq, REQs, nPBC=nPBC, lvec=atoms.lvec, g0=(0.0,0.0,0.0), GFFParams=(0.1,1.5,0.0,0.0)  )
 
     print( "V_Paul.shape ", V_Paul.shape )
     plt.figure()
@@ -131,6 +131,6 @@ def test_gridFF_ocl( fname="./data/xyz/NaCl_1x1_L1.xyz", Element_Types_name="./d
     plt.grid()
     plt.show()
     plt.show()
-
+    """
     print( "py======= test_gridFF() DONE" );
 
