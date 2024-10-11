@@ -3,7 +3,7 @@ import os
 import matplotlib.pyplot as plt
 
 from . import utils as ut
-from ..OCL.splines import OCLSplines
+from ..OCL.GridFF import GridFF_cl
 #from .. import atomicUtils as au
 #from .. import MMFF as mmff
 #from .. import FunctionSampling as fu
@@ -11,7 +11,7 @@ from ..OCL.splines import OCLSplines
 # set the environment variable PYOPENCL_CTX='0' to avoid being asked again.
 #sys.env['PYOPENCL_CTX'] = '0'
 os.environ['PYOPENCL_CTX'] = '0'
-ocl_splines = OCLSplines()
+clgff = GridFF_cl()
 
 def test_eval_1D( g0=0.0, ng=10, dg=0.1, dsamp=0.02, bUseForce=True, scErr=100.0, bHalf=False, title=None, order=3 ):
     gmax = g0 + dg*ng
@@ -19,7 +19,7 @@ def test_eval_1D( g0=0.0, ng=10, dg=0.1, dsamp=0.02, bUseForce=True, scErr=100.0
     Gs = np.sin(2*np.pi*xs).astype(np.float32)               ;print("Gs = ", Gs)
     ps = np.linspace( -gmax, gmax*2, 100, endpoint=False ).astype(np.float32)
 
-    result_1d = ocl_splines.sample1D_pbc(g0, dg, ng, Gs, ps)
+    result_1d = clgff.sample1D_pbc(g0, dg, ng, Gs, ps)
 
     plt.figure(figsize=(10, 6))
     plt.plot(ps, result_1d[:, 0],'-k' ,lw=1.0, label='Interpolated')
@@ -41,8 +41,8 @@ def test_eval_3D( path="./data/NaCl_1x1_L2/", dsamp=0.02, p0=[0.0,0.0,2.0], R0=3
 
     ps, ts = ut.make_sample_points_f4(p0, dsamp=dsamp)
 
-    ocl_splines.prepare_sample3D( g0, dg, VPLQ.shape[:3], VPLQ )
-    fe = ocl_splines.sample3D_comb(  ps, PLQH )
+    clgff.prepare_sample3D( g0, dg, VPLQ.shape[:3], VPLQ )
+    fe = clgff.sample3D_comb(  ps, PLQH )
 
     #plt.figure(figsize=(10, 6))
     plt.plot( ts, fe[:, 3],'-k' ,lw=1.0, label='Interpolated')

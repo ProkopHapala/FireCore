@@ -6,12 +6,12 @@ from .  import utils as ut
 from .. import atomicUtils as au
 from .. import MMFF as mmff
 from .. import FunctionSampling as fu
-from ..OCL.splines import OCLSplines
+from ..OCL.GridFF import GridFF_cl
 
 # =============  Functions
 
 os.environ['PYOPENCL_CTX'] = '0'
-ocl_splines = OCLSplines()
+ocl_splines = GridFF_cl()
 
 def test_gridFF_vs_ocl( path="data/xyz/NaCl_1x1_L2", mode=6, dsamp=0.02, p0=[0.0,0.0,2.0], R0=3.5, E0=0.1, a=1.6, Q=0.4, H=0.0, scErr=100.0, iax=2, Emax=None, Fmax=None, maxSc=5.0, title=None, bSaveFig=True, bRefine=True, nPBC=[100,100,0], bRealSpace=False ):
     print( "py======= test_gridFF() START" );
