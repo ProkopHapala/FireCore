@@ -189,17 +189,45 @@ def test_gridFF_ocl( fname="./data/xyz/NaCl_1x1_L1.xyz", Element_Types_name="./d
 
         if bFit:
             clgff.make_MorseFF( xyzq, REQs, nPBC=nPBC, lvec=atoms.lvec, g0=(0.0,0.0,0.0), GFFParams=(0.1,1.5,0.0,0.0), bReturn=False )
-            V_Paul = clgff.fit3D( clgff.V_Paul_buff  )
-            V_Lond = clgff.fit3D( clgff.V_Lond_buff )
+            V_Paul,trj_paul = clgff.fit3D( clgff.V_Paul_buff , bConvTrj=True )
+            V_Lond,trj_lond = clgff.fit3D( clgff.V_Lond_buff , bConvTrj=True )
+
+            # --- cdamp scan
+            # for damp in [0.05,0.10,0.15,0.20,0.25]:
+            #     print(" damp =  ", damp )
+            #     #V_Paul,trj_paul = clgff.fit3D( clgff.V_Paul_buff, damp=damp, bConvTrj=True )
+            #     #plt.plot( trj_paul[:,0], trj_paul[:,1], label=("Paul |F| %8.4f" %damp) )
+            #     V_Lond,trj_lond = clgff.fit3D( clgff.V_Lond_buff, damp=damp, bConvTrj=True )
+            #     plt.plot( trj_lond[:,0], trj_lond[:,1], label=("Lond |F| %8.4f" %damp))
+
+            # --- dt scan
+            #for dt in [0.10,0.15,0.20,0.25,0.30,0.35,0.40,0.45]:
+            # for dt in [0.30,0.35,0.40,0.45,0.50,0.55,0.60,0.67]:
+            #     print(" dt =  ", dt )
+            #     V_Paul,trj_paul = clgff.fit3D( clgff.V_Paul_buff, dt=dt, damp=0.15, bConvTrj=True )
+            #     plt.plot( trj_paul[:,0], trj_paul[:,1], label=("Paul |F| dt=%8.4f" %dt) )
+            #     #V_Lond,trj_lond = clgff.fit3D( clgff.V_Lond_buff, dt=dt, damp=0.15, bConvTrj=True )
+            #     #plt.plot( trj_lond[:,0], trj_lond[:,1], label=("Lond |F| dt=%8.4f" %dt))
+
+            plt.plot( trj_paul[:,0], trj_paul[:,1], label="Paul |F|" )
+            plt.plot( trj_paul[:,0], trj_paul[:,2], label="Paul |E|" )
+            plt.plot( trj_lond[:,0], trj_lond[:,1], label="Lond |F|" )
+            plt.plot( trj_lond[:,0], trj_lond[:,2], label="Lond |E|" )
+            plt.legend()
+            plt.grid()
+            plt.xlabel('iteration')
+            plt.yscale('log')
+            plt.title( "GridFF Bspline fitting error" )
+            plt.show()
 
         else:
 
             V_Paul, V_Lond = clgff.make_MorseFF( xyzq, REQs, nPBC=nPBC, lvec=atoms.lvec, g0=(0.0,0.0,0.0), GFFParams=(0.1,1.5,0.0,0.0)  )
 
             print( "V_Paul.shape ", V_Paul.shape )
-            plt.figure()
-            plt.plot( V_Paul[:,0,0], label="V_Paul(0,0,z)" )
-            plt.plot( V_Lond[:,0,0], label="V_Lond(0,0,z)" )
+            plt.figure() 
+            plt.plot( V_Paul[:,0,0],   label="V_Paul(0,0,z)" )
+            plt.plot( V_Lond[:,0,0],   label="V_Lond(0,0,z)" )
             plt.plot( V_Paul[:,20,20], label="V_Paul(20,20,z)" )
             plt.plot( V_Lond[:,20,20], label="V_Lond(20,20,z)" )
             plt.legend()
