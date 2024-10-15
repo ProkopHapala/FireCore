@@ -28,12 +28,12 @@ export OMP_NUM_THREADS
 #rm *.bin
 
 # ------- asan (Memory Sanitizer)
-#LD_PRELOAD=$(g++ -print-file-name=libasan.so)
-#LD_PRELOAD=$LD_PRELOAD  $(g++ -print-file-name=libfftw3.so)
-#echo   $LD_PRELOAD
-#export LD_PRELOAD
+LD_PRELOAD=$(g++ -print-file-name=libasan.so)
+LD_PRELOAD=$LD_PRELOAD  $(g++ -print-file-name=libfftw3.so)
+echo   $LD_PRELOAD
+export LD_PRELOAD
 
-python3 run.py
+#python3 run.py
 #python3 run_gui.py
 #python3 run_surf_lattice.py
 #python3 run_propandiol.py
@@ -43,7 +43,7 @@ python3 run.py
 #python3 run_sample_Bsplines.py
 #python3 run_sample_Hermite.py
 #python3 run_test_ewald.py
-#python3 run_test_GridFF.py
+python3 run_test_GridFF.py
 #python3 run_test_GridFF_ocl.py
 #python3 run_test_Multipole.py
 

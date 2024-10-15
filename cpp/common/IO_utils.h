@@ -427,89 +427,228 @@ inline int save_npy(const char *fname, int ndims, int* shape, const char *data, 
     return 0;
 }
 
-inline int load_npy(const char *fname, int &ndims, int* &shape, char* &data, int &nBytePerElement, char* &dtype) {
-    FILE *ptr_myfile = fopen(fname, "rb");
-    if (!ptr_myfile) {
-        printf("readNpy(): Unable to open file `%s` for reading !!!\n", fname);
-        return -1;
+
+class NumpyFile{ public:
+    int ndims; 
+    int shape[8]; 
+    int ntot;
+    int nBytePerElement;
+    char dtype[8];
+    char* data=0;
+
+    NumpyFile( const char* fname ){
+        if (load(fname) != 0) {
+            printf( "ERROR NumpyFile::NumpyFile(%s): Unable to load file.\n", fname ); exit(0);
+            // Handle load error appropriately
+            data = 0;
+        }
     }
 
-    // Read magic string and version number
-    char magic_string[6];
-    fread(magic_string, sizeof(char), 6, ptr_myfile);
+    void save(char* fname, bool fortran_order = false ){
+        save_npy(fname, ndims, shape, data, nBytePerElement, dtype, fortran_order );
+    }
 
-    char version[2];
-    fread(version, sizeof(char), 2, ptr_myfile);
+    void print(){
+        printf("NumpyFile() dtype=`%s` nbyte=%i ntot=%i shape(", dtype, nBytePerElement, ntot );
+        for(int i=0; i<ndims; i++){ printf( "%i,", shape[i] ); }
+        printf(")\n");
+    }
 
-    // Read header length
-    unsigned short header_size;
-    fread(&header_size, sizeof(unsigned short), 1, ptr_myfile);
+    inline int load(const char *fname ) {
+        char cwd[128]; getcwd(cwd, 128); printf( "NumpyFile::load(%s/%s)\n", cwd, fname );
+        FILE *ptr_myfile = fopen(fname, "rb");
+        if (!ptr_myfile) {   printf("ERROR NumpyFile::load(%s): unable to open file for reading !!!\n", fname);  return -1;  }
 
-    // Read the header
-    char* header = (char*)malloc(header_size + 1);
-    fread(header, sizeof(char), header_size, ptr_myfile);
-    header[header_size] = '\0';  // Null-terminate the header for easier parsing
+        // Read magic string
+        char magic_string[7];     if (fread(magic_string, 1, 6, ptr_myfile) != 6) { printf("ERROR NumpyFile::load(%s): Unable to read magic string.\n", fname);              fclose(ptr_myfile);  return -1; }
+        magic_string[6] = '\0';   if (strncmp(magic_string, "\x93NUMPY", 6) != 0) { printf("ERROR NumpyFile::load(%s): Invalid magic string (%s).\n", fname, magic_string ); fclose(ptr_myfile);  return -1; }
+        printf("NumpyFile::load() magic_string=%s\n", magic_string);
 
-    // Extract dtype
-    char* descr_start = strstr(header, "'descr': '") + 10;  // Start of dtype value
-    char* descr_end = strchr(descr_start, '\'');
-    int descr_len = descr_end - descr_start;
-    dtype = (char*)malloc(descr_len + 1);
-    strncpy(dtype, descr_start, descr_len);
-    dtype[descr_len] = '\0';  // Null-terminate dtype string
+        // Read version
+        unsigned char version[2];   if (fread(version, 1, 2, ptr_myfile) != 2) {     printf("ERROR NumpyFile::load(%s): Unable to read version.\n", fname);  fclose(ptr_myfile);  return -1;   }
+        printf("NumpyFile::load() version=%d.%d\n", version[0], version[1]);
 
-    // Determine bytes per element based on dtype
-    if      ( strcmp(dtype, "<f8") == 0 ){ nBytePerElement = 8; } 
-    else if ( strcmp(dtype, "<f4") == 0 ){ nBytePerElement = 4; } 
-    else if ( strcmp(dtype, "<i4") == 0 ){ nBytePerElement = 4; } 
-    else if ( strcmp(dtype, "<i8") == 0 ){ nBytePerElement = 8; } 
-    else if ( strcmp(dtype, "<u1") == 0 ){ nBytePerElement = 1; } 
-    else {
-        printf("readNpy(): Unsupported dtype `%s`\n", dtype);
-        free(header);
+        // Read header length based on version
+        uint32_t header_length;
+        if (version[0] == 1) { // Version 1.0: 2-byte little endian header length
+            uint16_t header_len_16;
+            if (fread(&header_len_16, 1, 2, ptr_myfile) != 2) {  printf("ERROR NumpyFile::load(%s): Unable to read 2-byte header length.\n", fname); fclose(ptr_myfile);     return -1;     }
+            header_length = header_len_16;
+        }else if (version[0] == 2 || version[0] == 3) {   // Version 2.0 and above: 4-byte little endian header length
+            if (fread(&header_length, 1, 4, ptr_myfile) != 4) {  printf("ERROR NumpyFile::load(%s): Unable to read 4-byte header length.\n", fname);  fclose(ptr_myfile);  return -1;    }
+        } else                                                {  printf("ERROR NumpyFile::load(%s): Unsupported .npy version %d.%d\n", fname, version[0], version[1]);  fclose(ptr_myfile); return -1;  }
+        printf("NumpyFile::load() header_length=%i\n", header_length);
+
+        // Read the header
+        char header[header_length + 1];
+        if (fread(header, 1, header_length, ptr_myfile) != header_length) { printf("ERROR NumpyFile::load(%s): Unable to read header.\n", fname); fclose(ptr_myfile);   return -1;  }
+        header[header_length] = '\0';  // Null-terminate the header for easier parsing
+        printf("NumpyFile::load() header='%s'\n", header);
+
+        // Extract dtype
+        char* descr_start = strstr(header, "'descr': '");
+        if (!descr_start)                                                 { printf("ERROR NumpyFile::load(%s): 'descr' not found in header.\n", fname); fclose(ptr_myfile); return -1;}
+        descr_start += strlen("'descr': '");
+        char* descr_end = strchr(descr_start, '\'');
+        if (!descr_end) { printf("ERROR NumpyFile::load(%s): 'descr' value not properly terminated.\n", fname); fclose(ptr_myfile); return -1; }
+        int descr_len = descr_end - descr_start;
+        if (descr_len >= sizeof(dtype)) { printf("ERROR NumpyFile::load(%s): 'descr' value too long.\n", fname); fclose(ptr_myfile); return -1; }
+        strncpy(dtype, descr_start, descr_len);
+        dtype[descr_len] = '\0';  // Null-terminate dtype string
+        printf("NumpyFile::load() dtype='%s'\n", dtype);
+
+        // Determine bytes per element based on dtype
+        if      (strcmp(dtype, "<f8") == 0) { nBytePerElement = 8; } 
+        else if (strcmp(dtype, "<f4") == 0) { nBytePerElement = 4; } 
+        else if (strcmp(dtype, "<i4") == 0) { nBytePerElement = 4; } 
+        else if (strcmp(dtype, "<i8") == 0) { nBytePerElement = 8; } 
+        else if (strcmp(dtype, "<u1") == 0) { nBytePerElement = 1; } 
+        else { printf("NumpyFile::load(%s): Unsupported dtype `%s`\n", fname, dtype); fclose(ptr_myfile);  return -2;  }
+
+        // Extract shape
+        char* shape_start = strstr(header, "'shape': (");
+        if (!shape_start) { printf("ERROR NumpyFile::load(%s): 'shape' not found in header.\n", fname);  fclose(ptr_myfile); return -1;
+        }
+        shape_start += strlen("'shape': (");
+        char* shape_end = strchr(shape_start, ')');
+        if (!shape_end) { printf("ERROR NumpyFile::load(%s): 'shape' value not properly terminated.\n", fname); fclose(ptr_myfile); return -1; }
+        int shape_str_len = shape_end - shape_start;
+        if (shape_str_len >= 256) { printf("ERROR NumpyFile::load(%s): 'shape' string too long.\n", fname);  fclose(ptr_myfile);   return -1;  }
+        char shape_str[256];
+        strncpy(shape_str, shape_start, shape_str_len);
+        shape_str[shape_str_len] = '\0';  // Null-terminate shape string
+
+        // Count dimensions
+        ndims = 1;
+        for (char* c = shape_str; *c != '\0'; ++c) {
+            if (*c == ',') ndims++;
+        } if (ndims > 8) { printf("ERROR NumpyFile::load(%s): Too many dimensions (%d).\n", fname, ndims);     fclose(ptr_myfile); return -1;  }
+
+        // Parse shape into array
+        char* token = strtok(shape_str, ", ");
+        int dim = 0;
+        while (token && dim < ndims) {
+            shape[dim++] = atoi(token);
+            token = strtok(NULL, ", ");
+        }
+
+        // Calculate number of elements
+        ntot = 1;
+        for (int i = 0; i < ndims; ++i) {
+            ntot *= shape[i];
+        }
+
+        // Allocate buffer for data
+        data = new char[ntot * nBytePerElement];
+        if (!data) { printf("ERROR NumpyFile::load(%s): Memory allocation failed.\n", fname); fclose(ptr_myfile); return -1; }
+
+        // Read binary data
+        size_t items_read = fread(data, nBytePerElement, ntot, ptr_myfile);
+        if (items_read != (size_t)ntot) { printf("ERROR NumpyFile::load(%s): Unable to read data. Expected %d elements, got %zu.\n", fname, ntot, items_read);  delete[] data;fclose(ptr_myfile); return -1;  }
+
         fclose(ptr_myfile);
-        return -2;
+        return 0;
     }
 
-    // Extract shape
-    char* shape_start = strstr(header, "'shape': (") + 9;  // Start of shape
-    char* shape_end = strchr(shape_start, ')');
-    char shape_str[256];
-    strncpy(shape_str, shape_start, shape_end - shape_start);
-    shape_str[shape_end - shape_start] = '\0';  // Null-terminate shape string
-
-    // Count dimensions
-    ndims = 1;
-    for (char* c = shape_str; *c != '\0'; ++c) {
-        if (*c == ',') ndims++;
+/*
+    inline int load(const char *fname ) {
+        DEBUG
+        FILE *ptr_myfile = fopen(fname, "rb");
+        if (!ptr_myfile) {
+            printf("ERROR NumpyFile::load(%s): unable to open file for reading !!!\n", fname);
+            return -1;
+        }
+        DEBUG
+        printf( "NumpyFile::load(%s) \n", fname );
+        // Read magic string and version number
+        char magic_string[6];
+        fread(magic_string, sizeof(char), 6, ptr_myfile);
+        printf( "NumpyFile::load() magic_string=%s\n", magic_string );
+        DEBUG
+        char version[2];
+        fread(version, sizeof(char), 2, ptr_myfile);
+        printf( "NumpyFile::load() version=%s\n", version );
+        DEBUG
+        // Read header length
+        unsigned short nheader;
+        fread(&nheader, sizeof(unsigned short), 1, ptr_myfile);
+        printf( "NumpyFile::load() nheader=%i\n", nheader );
+        DEBUG
+        // Read the header
+        //std::vector<char> header(header_size + 1);
+        char header[nheader + 1];
+        fread(header, sizeof(char), nheader, ptr_myfile);
+        header[nheader] = '\0';  // Null-terminate the header for easier parsing
+        printf( "NumpyFile::load() header='%s'\n", header );
+        DEBUG
+        // Extract dtype
+        char* descr_start = strstr(header, "'descr': '") + 10;  // Start of dtype value
+        char* descr_end = strchr(descr_start, '\'');
+        int descr_len = descr_end - descr_start;
+        //printf( "NumpyFile::load() descr_start='%d'\n", descr_start );
+        //dtype = new char[descr_len + 1];
+        strncpy(dtype, descr_start, descr_len);
+        dtype[descr_len] = '\0';  // Null-terminate dtype string
+        printf( "NumpyFile::load() dtype='%s'\n", dtype );
+        DEBUG
+        // Determine bytes per element based on dtype
+        if      ( strcmp(dtype, "<f8") == 0 ){ nBytePerElement = 8; } 
+        else if ( strcmp(dtype, "<f4") == 0 ){ nBytePerElement = 4; } 
+        else if ( strcmp(dtype, "<i4") == 0 ){ nBytePerElement = 4; } 
+        else if ( strcmp(dtype, "<i8") == 0 ){ nBytePerElement = 8; } 
+        else if ( strcmp(dtype, "<u1") == 0 ){ nBytePerElement = 1; } 
+        else {
+            printf("readNpy(): Unsupported dtype `%s`\n", dtype);
+            //free(header);
+            fclose(ptr_myfile);
+            return -2;
+        }
+        DEBUG
+        // Extract shape
+        char* shape_start = strstr(header, "'shape': (") + 9;  // Start of shape
+        char* shape_end = strchr(shape_start, ')');
+        char shape_str[256];
+        strncpy(shape_str, shape_start, shape_end - shape_start);
+        shape_str[shape_end - shape_start] = '\0';  // Null-terminate shape string
+        DEBUG
+        // Count dimensions
+        ndims = 1;
+        for (char* c = shape_str; *c != '\0'; ++c) {
+            if (*c == ',') ndims++;
+        }
+        DEBUG
+        // Parse shape into array
+        //shape = (int*)malloc(ndims * sizeof(int));
+        char* token = strtok(shape_str, ", ");
+        int dim = 0;
+        while (token) {
+            shape[dim++] = atoi(token);
+            token = strtok(NULL, ", ");
+        }
+        DEBUG
+        // Calculate number of elements
+        int ntot = 1;
+        for (int i = 0; i < ndims; ++i) {
+            ntot *= shape[i];
+        }
+        DEBUG
+        // Allocate buffer for data
+        data = (char*)malloc(ntot * nBytePerElement);
+        data = new char[ ntot * nBytePerElement ];
+        DEBUG
+        // Read binary data
+        fread(data, nBytePerElement, ntot, ptr_myfile);
+        DEBUG
+        // Clean up
+        //free(header);
+        fclose(ptr_myfile);
+        return 0;
     }
+*/
 
-    // Parse shape into array
-    shape = (int*)malloc(ndims * sizeof(int));
-    char* token = strtok(shape_str, ", ");
-    int dim = 0;
-    while (token) {
-        shape[dim++] = atoi(token);
-        token = strtok(NULL, ", ");
-    }
+};
 
-    // Calculate number of elements
-    int n_elements = 1;
-    for (int i = 0; i < ndims; ++i) {
-        n_elements *= shape[i];
-    }
 
-    // Allocate buffer for data
-    data = (char*)malloc(n_elements * nBytePerElement);
-
-    // Read binary data
-    fread(data, nBytePerElement, n_elements, ptr_myfile);
-
-    // Clean up
-    free(header);
-    fclose(ptr_myfile);
-    return 0;
-}
 
 inline char * fgets_comment( char * line, int num, FILE * stream ){
     constexpr int NMaxComment = 10;
