@@ -21,12 +21,24 @@ class GridFF_cl:
 
     def __init__(self, nloc=32 ):
         self.nloc  = nloc
-        self.ctx   = cl.create_some_context()
-        self.queue = cl.CommandQueue(self.ctx)
+        #self.ctx   = cl.create_some_context()
+        #self.queue = cl.CommandQueue(self.ctx)
         self.grid  = None   # instance of GridShape, if initialized
         self.gcl   = None   # instance of GridCL, if initialized
  
-        clu.get_cl_info( self.ctx.devices[0] )
+
+        # # Get a list of available OpenCL platforms
+        # platforms = cl.get_platforms()
+        # # Print information about each platform
+        # print("Available OpenCL Platforms:")
+        # for i, platform in enumerate(platforms):
+        #     print(f"{i}. {platform.name}")
+        # # Prompt the user to select a platform
+        # platform_choice = int(input("Enter the number of the platform you want to use: "))
+        # platform = platforms[platform_choice]
+        #clu.get_cl_info( self.ctx.devices[0] )
+
+        self.ctx,self.queue = clu.get_nvidia_device( what="nvidia")
 
         local_size = 64
         #print( " local_memory_per_workgroup() size=", local_size, " __local []  ", clu.local_memory_per_workgroup( self.ctx.devices[0], local_size=32, sp_per_cu=128 ), " Byte " );

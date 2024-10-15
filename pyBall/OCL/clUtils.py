@@ -12,13 +12,34 @@ bytePerFloat = 4
 
 FFT = None
 
+
+import pyopencl as cl
+
+def get_nvidia_device( what="nvidia"):
+    platforms = cl.get_platforms()
+    for platform in platforms:
+        devices = platform.get_devices()
+        for device in devices:
+            if what in device.name.lower():
+                # Create the OpenCL context and command queue
+                ctx = cl.Context([device])
+                queue = cl.CommandQueue(ctx)
+                # Print information about the selected device
+                print(f"Selected device: {device.name}")
+                get_cl_info(device)
+                return ctx, queue
+    # If no NVIDIA device is found, return None
+    print("pyOepnCL error: No {what} device found.")
+    return None, None
+
+
 def try_load_clFFT():
     global FFT
     if FFT is None:
         from gpyfft.fft import FFT as FFT_
-        FFT = FFT_        
+        FFT = FFT_
 
-def make_inds_pbc(n): 
+def make_inds_pbc(n):
     return np.array([
     [ 0, 1,   2,   3   ],
     [ 0, 1,   2,   3-n ],
