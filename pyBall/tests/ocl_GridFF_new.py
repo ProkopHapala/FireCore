@@ -105,8 +105,8 @@ def test_Ewald( apos, qs, ns=[100,100,100], dg=(0.1,0.1,0.1), nPBC=[30,30,30], p
         plt.suptitle( "order=" + str(order) + " nBlur=" + str(nBlur) + " cSOR=" + str(cSOR) + " cV=" + str(cV) )
 
 
-def test_gridFF_ocl( fname="./data/xyz/NaCl_1x1_L1.xyz", Element_Types_name="./data/ElementTypes.dat", bSymetrize=False, bMorse=True, bEwald=False, bFit=True,  mode=6, dsamp=0.02, p0=[0.0,0.0,2.0], R0=3.5, E0=0.1, a=1.6, Q=0.4, H=0.0, scErr=100.0, iax=2, Emax=None, Fmax=None, maxSc=5.0, title=None, bSaveFig=True, bRefine=True, nPBC=[100,100,0], bRealSpace=False ):
-    print( "py======= test_gridFF() START" );
+def test_gridFF_ocl( fname="./data/xyz/NaCl_1x1_L1.xyz", Element_Types_name="./data/ElementTypes.dat", bSymetrize=False, bMorse=True, bEwald=False, bFit=True,  mode=6, dsamp=0.02, p0=[0.0,0.0,2.0], R0=3.5, E0=0.1, a=1.6, Q=0.4, H=0.0, scErr=100.0, iax=2, Emax=None, Fmax=None, maxSc=5.0, title=None, bSaveFig=True, bRefine=True, nPBC=[100,100,0], bRealSpace=False, save_name=None ):
+    print( "py======= test_gridFF_ocl() START" );
 
     #Element_Types_name="/home/prokop/git/FireCore/tests/tMMFF/data/ElementTypes.dat"
 
@@ -186,11 +186,23 @@ def test_gridFF_ocl( fname="./data/xyz/NaCl_1x1_L1.xyz", Element_Types_name="./d
     if bMorse:
         nPBC = autoPBC(atoms.lvec,Rcut=20.0); print("autoPBC: ", nPBC )
 
-
         if bFit:
             clgff.make_MorseFF( xyzq, REQs, nPBC=nPBC, lvec=atoms.lvec, g0=(0.0,0.0,0.0), GFFParams=(0.1,1.5,0.0,0.0), bReturn=False )
             V_Paul,trj_paul = clgff.fit3D( clgff.V_Paul_buff , bConvTrj=True )
             V_Lond,trj_lond = clgff.fit3D( clgff.V_Lond_buff , bConvTrj=True )
+
+            if save_name is not None:
+                path = os.path.basename( fname )
+                path = "./data/" + os.path.splitext( path )[0]
+                print( "test_gridFF_ocl() path = ", path )
+                if not os.path.exists( path ):
+                    os.makedirs( path )
+                if save_name=='double3':
+                    PLQ = np.zeros( V_Paul.shape + (3,) )
+                    PLQ[:,:,:,0] = V_Paul
+                    PLQ[:,:,:,1] = V_Lond
+                    #PLQ[:,:,2] = 0.0 # electrostatic
+                    np.save( path+"/Bspline_PLQd.npy", PLQ )
 
             # --- cdamp scan
             # for damp in [0.05,0.10,0.15,0.20,0.25]:

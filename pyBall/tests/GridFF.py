@@ -145,7 +145,7 @@ def test_gridFF( name="data/xyz/NaCl_1x1_L2", mode=6, dsamp=0.02, p0=[0.0,0.0,2.
     print( "py======= test_gridFF() DONE" );
     #return EFg
 
-def test_gridFF_lat( name="data/NaCl_1x1_L2", iax=0, tmin=0.0,tmax=10.0, p0=[1.05,1.05,2.0], mode=6, dsamp=0.02,  R0=3.5, E0=0.1, a=1.6, Q=0.4, H=0.0, scErr=100.0, title=None, Emax=None, Fmax=None, maxSc=5.0, bSaveFig=True, bRefine=True, nPBC=None ):
+def test_gridFF_lat( name="data/xyz/NaCl_1x1_L2", iax=0, tmin=0.0,tmax=10.0, p0=[1.05,1.05,2.0], mode=6, dsamp=0.02,  R0=3.5, E0=0.1, a=1.6, Q=0.4, H=0.0, scErr=100.0, title=None, Emax=None, Fmax=None, maxSc=5.0, bSaveFig=True, bRefine=True, nPBC=None ):
     print( "py======= test_gridFF_lat() START" );
     #print( "test_gridFF() START" )
     #mode = 4
@@ -156,7 +156,6 @@ def test_gridFF_lat( name="data/NaCl_1x1_L2", iax=0, tmin=0.0,tmax=10.0, p0=[1.0
     PLQH = ut.getPLQH( R0, E0, a, Q, H )
 
     ps,ts = ut.make_sample_points( p0, t0=0.0, tmax=10.0, dsamp=dsamp, iax=iax )    
-
 
     FF_ref = mmff.evalGridFFAtPoints( ps, PLQH=PLQH, nPBC=nPBC )
     

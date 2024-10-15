@@ -809,13 +809,15 @@ class MMFFparams{ public:
         double junk; 
         int npi;
         double Q,H;
-        // read all lines
+        //printf("MMFFparams::loadXYZ() natoms=%i \n", natoms ); 
         for(int i=0; i<natoms; i++){
             line = fgets( buff, nbuf, pFile );
+            if(line == NULL) { printf( "ERORR in MMFFparams::loadXYZ(%s) Unexpected end of file while reading atom %i (natom=%i)\n", fname, i, natoms ); fclose(pFile); exit(0); }
+            //printf("MMFFparams::fgets[%i](%s)\n", i, line ); 
             //int nret = sscanf( line, "%s %lf %lf %lf %lf \n", at_name, &apos[i].x, &apos[i].y, &apos[i].z, &Q, &npi );
             int nret = sscanf( line, "%s %lf %lf %lf %lf %lf %i", at_name, &apos[i].x, &apos[i].y, &apos[i].z, &Q, &H, &npi  );
             //printf( "MMFFparams::loadXYZ() atom[%i] %s xyz(%12.6f,%12.6f,%12.6f) Q,Hb(%12.6f,%12.6f) npi=%i\n", i, at_name, apos[i].x, apos[i].y, apos[i].z, Q, H, npi  );
-            if( nret < 4 ){ printf( "ERROR in MMFFparams::loadXYZ: position of atom %i is not complete => Exit()\n", i  ); printf("%s\n", line ); exit(0); }
+            if( nret < 4 ){ printf( "ERROR in MMFFparams::loadXYZ: position of atom %i is not complete => Exit()\n", i  ); printf("%s\n", line ); fclose(pFile); exit(0); }
             if( nret < 5 ){ Q=0; };
             if( nret < 6 ){ H=0; };
             if( nret < 7 ){ npi=-1; };
@@ -829,8 +831,10 @@ class MMFFparams{ public:
                 if(atype_)atype[i] = -1;
                 if(REQs_)REQs[i]  = default_REQ;
             }
+            //printf( "MMFFparams::loadXYZ() atom[%3i] atyp(%3i) xyz(%12.6f,%12.6f,%12.6f) REQs(%12.6f,%12.6f,%12.6f,%12.6f) \n", i, atype[i], apos[i].x, apos[i].y, apos[i].z, REQs[i].x,REQs[i].y,REQs[i].z, REQs[i].w  );
         }
         fclose(pFile);
+        printf( "MMFFparams::loadXYZ() DONE \n" );
         return ret;
     }
 

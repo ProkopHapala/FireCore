@@ -933,9 +933,12 @@ void printPBCshifts(){
         bGridFF=true;
         gridFF.bindSystem(surf.natoms, surf.atypes, surf.apos, surf.REQs );
         gridFF.initGridFF( name, z0, bAutoNPBC, bSymetrize );
-        char wd0[1024]; getcwd(wd0,1024); //printf( "initGridFF() 1 WD=`%s`\n", wd0 );
-        tryMakeDir  ( name );
-        tryChangeDir( name );
+        char wd0[1024]; getcwd(wd0,1024); printf( "MolWorld_sp3::initGridFF() 1 wd0=`%s`\n", wd0 );
+        const char* last_slash = strrchr(name, '/');
+        const char* result = (last_slash) ? last_slash + 1 : name;
+        char wd[128]; sprintf( wd, "data/%s", result); printf( "MolWorld_sp3::initGridFF() 1 wd=`%s`\n", wd );
+        tryMakeDir  ( wd );
+        tryChangeDir( wd );
         gridFF.bUseEwald = bUseEwald;
         gridFF.ewald     = &gewald;
         gridFF.tryLoad_new( bSymetrize, bFit, bRefine );

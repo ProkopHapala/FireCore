@@ -655,7 +655,7 @@ inline void addForce( const Vec3d& pos, const Quat4f& PLQ, Quat4f& fe ) const {
         //#pragma omp parallel for shared(i)
         //long t0 = getCPUticks();
         //printf( "GridFF::evalAtPoints_Split() npbc_coul=%i npbc_mors=%i \n", npbc_coul, npbc_mors );
-        printf( "GridFF::evalAtPoints_Split() n=%i natoms_=%i bCoul=%i bMors=%i nPBC_Coul(%i,%i,%i|%i) nPBC_Coul(%i,%i,%i|%i)\n", n, natoms_, bCoul,bMors, nPBC_coul.x,nPBC_coul.y,nPBC_coul.z,npbc_coul, nPBC_mors.x,nPBC_mors.y,nPBC_mors.z,npbc_mors );
+        printf( "GridFF::evalAtPoints_Split() n=%i natoms_=%i bCoul=%i bMors=%i nPBC_Coul(%i,%i,%i|%i) nPBC_mors(%i,%i,%i|%i)\n", n, natoms_, bCoul,bMors,   nPBC_coul.x,nPBC_coul.y,nPBC_coul.z,npbc_coul,   nPBC_mors.x,nPBC_mors.y,nPBC_mors.z,npbc_mors );
         #pragma omp parallel for shared(i)
         for(int i=0; i<n; i++){
             Quat4d qp=Quat4dZero,ql=Quat4dZero,qe=Quat4dZero;
@@ -1443,6 +1443,8 @@ void initGridFF( const char * name, double z0=NAN, bool bAutoNPBC=true, bool bSy
 
     bool tryLoad_new( bool bSymetrize=true, bool bFit=true, bool bRefine=true, bool bPrint=false ){
         printf( "GridFF::tryLoad_new() mode=%i bSymetrize=%i bFit=%i bRefine=%i \n", (int)mode, bSymetrize, bFit, bRefine );
+        // print current directory
+        char cwd[128]; getcwd(cwd, 128); printf( "Current  directory: %s\n", cwd );
         //const char* fname_Coul=0; 
         //const char* fname_Paul=0; 
         //const char* fname_Lond=0;
@@ -1519,7 +1521,8 @@ void initGridFF( const char * name, double z0=NAN, bool bAutoNPBC=true, bool bSy
             case GridFFmod::BsplineFloat    :{ printf("ERROR in GridFF::tryLoad_new() GridFFmode::BsplineFloat NOT IMPLEMENTED \n"); exit(0); } break;
             case GridFFmod::BsplineDouble   :{
                 //fnames[0]="Bspline_Pauli_d.bin"; fnames[1]="Bspline_London_d.bin"; fnames[2]="Bspline_Coulomb_d.bin";
-                fnames[0]="Bspline_PLQ_d.bin";
+                fnames[0]="Bspline_PLQd.npy";
+                fnames[1]="Bspline_PLQ_d.bin";
                 //Vec3i ns = gridN;
                 Vec3i ns = grid.n;
                 npoint = ns.totprod();
@@ -1532,11 +1535,18 @@ void initGridFF( const char * name, double z0=NAN, bool bAutoNPBC=true, bool bSy
                 //     //loadBin( fnames[0], nbyte, (char*)Bspline_Pauli );
                 //     //loadBin( fnames[1], nbyte, (char*)Bspline_London );
                 //     //loadBin( fnames[2], nbyte, (char*)Bspline_Coulomb );
-                if( checkAllFilesExist( 1, fnames, bPrint ) ){
+                if(       fileExist( fnames[0] ) ){
+                    printf( "GridFF::tryLoad_new() load Bspline_PLQ from %s\n", fnames[0] );
+                    //_realloc( Bspline_PLQ, npoint*3 );
+                    NumpyFile npy(fnames[0]);
+                    npy.print();
+                    Bspline_PLQ = (Vec3d*)npy.data;
+                } else if( fileExist( fnames[1] ) ){
                     _realloc( Bspline_PLQ, npoint*3 );
-                    loadBin( fnames[0], nbyte*3, (char*)Bspline_PLQ );
+                    loadBin( fnames[1], nbyte*3, (char*)Bspline_PLQ );
                     done=true;
                 }else{
+                    printf( "GridFF::tryLoad_new() GridFFmod::BsplineDouble no file exist, but we do not want generate new, takes too long, we lazy \n" ); exit(0);
                     bRecalc=true;
                     bool bSaveNPY=true;
                     bool bSaveXSF=false;
