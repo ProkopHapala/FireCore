@@ -370,6 +370,8 @@ inline Quat4d getForce_Bspline( Vec3d p, const Quat4d& PLQH, bool bSurf=true ) c
     //Quat4d fe = Bspline::fe3d( Vec3d{t.z,t.y,t.x}, Vec3i{gridN.z,gridN.y,gridN.x}, Bspline_Coulomb );
 
     //int i = ((int)t.z) + grid.n.z*( ((int)t.y) + ((int)t.x)*grid.n.y );
+    //fe.w = Bspline_PLQ[i].dot( PLQH.f );
+    //printf( "GridFF::getForce_Bspline() p(%8.4f,%8.4f,%8.4f) ixyz(%4i,%4i,%4i,%8i) BsplinePLQ(%g,%g,%g)\n", p.x,p.y,p.z,  ((int)t.z), ((int)t.y), ((int)t.x), i,    Bspline_PLQ[i].x,Bspline_PLQ[i].y,Bspline_PLQ[i].z  );
     //fe.w = Bspline_Coulomb[i];
     //printf( "GridFF::getForce_Bspline() p(%g,%g,%g) t(%g,%g,%g) Gs[%i]=%g \n", p.x,p.y,p.z,  t.x,t.y,t.z,  i, fe.w );
 
@@ -667,7 +669,8 @@ inline void addForce( const Vec3d& pos, const Quat4f& PLQ, Quat4f& fe ) const {
         delete[] shift_coul;
         delete[] shift_mors;
     }
-    void evalAtPoints_Split( int n, Vec3d* ps, Quat4d* FFout, Quat4d PLQH, Vec3i* nPBC=0 ){ evalAtPoints_Split( n, ps, FFout, PLQH, apos_.size(), apos_.data(), REQs_.data(), nPBC ); };
+    //void evalAtPoints_Split( int n, Vec3d* ps, Quat4d* FFout, Quat4d PLQH, Vec3i* nPBC=0 ){ evalAtPoints_Split( n, ps, FFout, PLQH, apos_.size(), apos_.data(), REQs_.data(), nPBC ); };
+    void evalAtPoints_Split( int n, Vec3d* ps, Quat4d* FFout, Quat4d PLQH, Vec3i* nPBC=0 ){ evalAtPoints_Split( n, ps, FFout, PLQH, natoms, apos, REQs, nPBC ); };
 
 
     __attribute__((hot))  
@@ -973,7 +976,7 @@ inline void addForce( const Vec3d& pos, const Quat4f& PLQ, Quat4f& fe ) const {
         }
     }
 
-    bool makeGridFF_Bspline_d( int natoms_, Vec3d * apos_, Quat4d * REQs_, bool bSaveNPY=false, bool bSaveXSF=false, bool bFit=true, bool bRefine=true ){
+    bool makeGridFF_Bspline_d( int natoms_, Vec3d * apos_, Quat4d * REQs_, bool bSaveNPY=false, bool bSaveXSF=false, bool bFit=true, bool bRefine=false ){
         printf( "GridFF::makeGridFF_Bspline_d() bUseEwald=%i bSaveNPY=%i bSaveXSF=%i bFit=%i \n", bUseEwald, bSaveNPY, bSaveXSF, bFit );
         //Vec3i ns = gridN;
         Vec3i ns = grid.n;
@@ -1371,7 +1374,7 @@ void checkSum( bool bDouble ){
     }
 } 
 
-void initGridFF( const char * name, double z0=NAN, bool bAutoNPBC=true, bool bSymetrize=true ){
+void initGridFF( const char * name, double z0=NAN, bool bAutoNPBC=true, bool bSymetrize=false ){
     if( isnan(z0) ){  z0=findTop();   
     if(verbosity>0) printf("GridFF::findTop() %g \n", z0);  };
     grid.pos0.z=z0;
@@ -1546,7 +1549,7 @@ void initGridFF( const char * name, double z0=NAN, bool bAutoNPBC=true, bool bSy
                     loadBin( fnames[1], nbyte*3, (char*)Bspline_PLQ );
                     done=true;
                 }else{
-                    printf( "GridFF::tryLoad_new() GridFFmod::BsplineDouble no file exist, but we do not want generate new, takes too long, we lazy \n" ); exit(0);
+                    //printf( "GridFF::tryLoad_new() GridFFmod::BsplineDouble no file exist, but we do not want generate new, takes too long, we lazy \n" ); exit(0);
                     bRecalc=true;
                     bool bSaveNPY=true;
                     bool bSaveXSF=false;
@@ -1557,9 +1560,25 @@ void initGridFF( const char * name, double z0=NAN, bool bAutoNPBC=true, bool bSy
                         // saveBin( fnames[1], nbyte, (char*)Bspline_London );
                         // saveBin( fnames[2], nbyte, (char*)Bspline_Coulomb );
                         pack_Bspline_d();
-                        saveBin( fnames[0], nbyte*3, (char*)Bspline_PLQ );
+                        saveBin( fnames[1], nbyte*3, (char*)Bspline_PLQ );
+                        Quat4i sh{grid.n.x,grid.n.y,grid.n.z,3};
+                        save_npy( fnames[0], 4,(int*)&sh, (char*)Bspline_PLQ );
                     }
                 }
+
+                { // Debug - check content of Bspline_PLQ
+                    //printf( "GridFF::tryLoad_new() \n", grid.n.x,grid.n.y,grid.n.z,  grid.dCell.xx, grid.dCell.yy, grid.dCell.zz,  grid.cell.xx, grid.cell.yy, grid.cell.zz, grid.pos0, grid.pos0, grid.pos0 )
+                    grid.printCell();
+                    Vec3d vmin=Vec3dmax,vmax=Vec3dmin;
+                    for(int i=0; i<npoint; i++){ Bspline_PLQ[i].update_bounds(vmin,vmax); }
+                    printf( "GridFF::tryLoad_new() Bspline_PLQ Paul(%g,%g) Lond(%g,%g) Coul(%g,%g) \n", vmin.x,vmax.x, vmin.y,vmax.y, vmin.z,vmax.z  );
+                    // int ix=18, iy=18, nxy=grid.n.x*grid.n.y;
+                    // for(int iz=0; iz<grid.n.z; iz++){
+                    //     int i= iz*nxy + iy*grid.n.x + ix; 
+                    //     printf( "GridFF::tryLoad_new()  Bspline_PLQ[%4i,%4i,%4i|%8i](%g,%g,%g)\n", ix,iy,iz,i, Bspline_PLQ[i].x,Bspline_PLQ[i].y,Bspline_PLQ[i].z);
+                    // }
+                }
+
                 if(done){
                     //pack_Bspline_d();
                     make_inds_pbc( grid.n.x, cubic_xqis );

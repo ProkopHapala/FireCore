@@ -108,7 +108,7 @@ def test_gridFF( name="data/xyz/NaCl_1x1_L2", mode=6, dsamp=0.02, p0=[0.0,0.0,2.
     # ps_[:,0]+=2.0;
     # ps_[:,1]+=2.0;
     
-    FFout = mmff.sampleSurf_new( ps_, PLQH, mode=mode, Rdamp=1.0 )
+    FFout = mmff.sampleSurf_new( ps_, PLQH, mode=mode, Rdamp=1.0 )  # * 15.1
     
     #Emin = FFout[:,3].min();
     #Fmin = FFout[:,2].min();

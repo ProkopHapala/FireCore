@@ -304,9 +304,9 @@ __kernel void BsplineConv3D(
     const int nxy = ns.x*ns.y;
 
     float val=0;
-    const int iiz =iz*nxy;  val += conv3x3_pbc( Gs, Bs, iiz                  , ixs, iys ) * B0;
-    if(iz>0     ){          val += conv3x3_pbc( Gs, Bs, modulo(iz, ns.z)*nxy , ixs, iys ) * B1; }
-    if(iz<ns.z-1){          val += conv3x3_pbc( Gs, Bs, modulo(iz, ns.z)*nxy , ixs, iys ) * B1; }
+    const int iiz =iz*nxy;  val += conv3x3_pbc( Gs, Bs, iiz                    , ixs, iys ) * B0;
+    if(iz>0     ){          val += conv3x3_pbc( Gs, Bs, modulo(iz-1, ns.z)*nxy , ixs, iys ) * B1; }
+    if(iz<ns.z-1){          val += conv3x3_pbc( Gs, Bs, modulo(iz+1, ns.z)*nxy , ixs, iys ) * B1; }
     
     const int i = iiz + iys.y + ixs.y;
     val*=coefs.x;
