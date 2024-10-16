@@ -296,7 +296,7 @@ def saveXSF( name, FF, cell=None ):
 #void makeGridFF( const char* name, int* ffshape, int mode, double z0, double* cel0, bool bSymmetrize, bool bAutoNPBC, bool bFit ){
 lib.makeGridFF.argtypes  = [ c_char_p, c_int_p, c_int, c_double, c_double_p, c_bool, c_bool, c_bool, c_bool ]
 lib.makeGridFF.restype   =  None
-def makeGridFF( name, mode=1, z0=0.0, cel0=[-0.5,-0.5,0.0], bSymmetrize=True, bAutoNPBC=True, bFit=True, bRefine=True ):
+def makeGridFF( name, mode=1, z0=0.0, cel0=[-0.5,-0.5,0.0], bSymmetrize=False, bAutoNPBC=True, bFit=True, bRefine=True ):
     name=name.encode('utf8')
     cel0 = np.array( cel0 )
     ffshape = np.zeros( 4, dtype=np.int32 )   #;print( "ffshape ", ffshape )

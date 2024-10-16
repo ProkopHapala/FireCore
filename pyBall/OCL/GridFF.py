@@ -25,8 +25,9 @@ class GridFF_cl:
         #self.queue = cl.CommandQueue(self.ctx)
         self.grid  = None   # instance of GridShape, if initialized
         self.gcl   = None   # instance of GridCL, if initialized
- 
 
+        self.cl = cl
+ 
         # # Get a list of available OpenCL platforms
         # platforms = cl.get_platforms()
         # # Print information about each platform
@@ -192,66 +193,14 @@ class GridFF_cl:
         self.prg.move(self.queue, (ntot,), None,  np.int32(ntot), p_buf.data, v_buf.data, f_buf.data, np.float32(par))
         
         return p_buf.get(), v_buf.get()
-
-    def fit3D_old(self, ns=None, E_ref=None, nmaxiter=100, dt=0.3, Ftol=1e-9, cdamp=0.98, bAlloc=True, nPerStep=10, bConvTrj=False ):
-        print(f"GridFF_cl::fit3D().1 Queue: {self.queue}, Context: {self.ctx}")
-
-        if bAlloc:
-            ns  = E_ref.shape
-            ns_bak = ns
-            self.allocate_cl_buffers(E0=E_ref)
-
-        print(f"GridFF_cl::fit3D().2 Queue: {self.queue}, Context: {self.ctx}")
-
-        ns = np.array( ns+(0,), dtype=np.int32 )
-        #ns = np.array( ns, dtype=np.int32 )
-        lsh = (4,4,4)
-
-        cs_Err = np.array( [-1.0,1.0], dtype=np.float32 )
-        cs_F   = np.array( [ 1.0,0.0], dtype=np.float32 )
-
-        MDpar = [dt, dt, cdamp, 0]
-        MDpar = np.array( MDpar, dtype=np.float32 )
-
-        gsh  = clu.roundup_global_size_3d( ns, lsh )
-        ntot = np.int32( ns[0]*ns[1]*ns[2] )
-        nL   = 32
-        nG   = clu.roundup_global_size( ntot, nL )
-        nStepMax = nmaxiter // nPerStep
-
-        print( "gsh ", gsh, " lsh ", lsh, " ns ", ns )
-
-        out = np.zeros( ns_bak, dtype=np.float32)
-
-        ConvTrj=None
-        if bConvTrj:
-            ConvTrj = np.zeros( (nStepMax,3) ) + np.nan
-            
-        print(f"GridFF_cl::fit3D().3 Queue: {self.queue}, Context: {self.ctx}")
-
-        for i in range(nStepMax):
-            for j in range(nPerStep):
-                #self.prg.BsplineConv3D (self.queue, gsh,   lsh,   ns,   self.Gs_buf,  self.G0_buf,  self.dGs_buf, cs_Err )   # self.queue.finish() 
-                self.prg.BsplineConv3D (self.queue, gsh,   lsh,   ns,   self.dGs_buf, None       ,  self.fGs_buf, cs_F   )   # self.queue.finish() 
-                self.prg.move          (self.queue, (nG,), (nL,), ntot, self.Gs_buf,  self.vGs_buf, self.fGs_buf, MDpar  )   # self.queue.finish() 
-                self.queue.finish() 
-            cl.enqueue_copy(self.queue, out, self.fGs_buf); Ftot = np.max(np.abs(out))
-            if bConvTrj:
-                cl.enqueue_copy(self.queue, out, self.dGs_buf); Etot = np.max(np.abs(out))
-                ConvTrj[i,:] = (0.0+i*nPerStep,Ftot,Etot)
-
-            print( f"Ftot[{i*nPerStep}] {Ftot}" )
-            if Ftot<Ftol:  break
-
-        # cl.enqueue_copy(self.queue, out, self.fGs_buf); Ftot = out.norm()
-        return out, ConvTrj
     
-    def fit3D(self, Ref_buff, nmaxiter=500, dt=0.5, Ftol=1e-12, damp=0.15, nPerStep=10, bConvTrj=False, bReturn=True, bPrint=False ):
+    def fit3D(self, Ref_buff, nmaxiter=300, dt=0.5, Ftol=1e-16, damp=0.15, nPerStep=50, bConvTrj=False, bReturn=True, bPrint=False, bTime=True, bDebug=True ):
         #print(f"GridFF_cl::fit3D().1 Queue: {self.queue}, Context: {self.ctx}")
         print(f"GridFF_cl::fit3D() dt={dt}, damp={damp} nmaxiter={nmaxiter} Ftol{Ftol}")
+        T00=time.perf_counter()
         cdamp=1.-damp
 
-        ns   = self.gsh.ns[::-1] 
+        ns   = self.gsh.ns #[::-1] 
         nxyz = self.gcl.nxyz
 
         buff_names={'Gs','dGs','fGs','vGs'}
@@ -269,17 +218,14 @@ class GridFF_cl:
         nL   = 32
         nG   = clu.roundup_global_size( nxyz, nL )
         nStepMax = nmaxiter // nPerStep
-
-        print( "gsh ", gsh, " lsh ", lsh, " ns ", ns )
-
-        out = np.zeros( ns, dtype=np.float32)
+        #print( "GridFF_cl::::fit3D() gsh ", gsh, " lsh ", lsh, " ns ", ns )
+        out = np.zeros( ns[::-1], dtype=np.float32)
 
         ConvTrj=None
         if bConvTrj:
             ConvTrj = np.zeros( (nStepMax,3) ) + np.nan
             
-        print(f"GridFF_cl::fit3D().3 Queue: {self.queue}, Context: {self.ctx}")
-
+        #print(f"GridFF_cl::fit3D() Queue: {self.queue}, Context: {self.ctx}")
         """
         __kernel void setMul(
             const int  ntot,
@@ -288,24 +234,59 @@ class GridFF_cl:
             float c
         ) {
         """
-        self.prg.setMul(self.queue, (nG,), (nL,), nxyz,  Ref_buff,  self.Gs_buff, np.float32(1.0) )   # self.queue.finish() 
+
+        T0=time.perf_counter()
+
+        # if bDebug:
+        #     cl.enqueue_copy(self.queue, out, Ref_buff);
+        #     print( "GridFF_Cl::fit3D() debug Ref_buff.min,max: ", out.min(), out.max() )
+
+        self.prg.setMul(self.queue, (nG,), (nL,), nxyz,  Ref_buff,  self.Gs_buff,  np.float32(1.0) ) # setup force
+        self.prg.setMul(self.queue, (nG,), (nL,), nxyz,  Ref_buff,  self.vGs_buff, np.float32(0.0) ) # setup velocity
+        
+        # if bDebug:
+        #     cl.enqueue_copy(self.queue, self.Gs_buff, Ref_buff);
+        #     print( "GridFF_Cl::fit3D() debug Gs_buff.min,max: ", out.min(), out.max() )
+
+        # --- debug run
+        # for i in range(1):
+        #     plt.figure(); cl.enqueue_copy(self.queue, out, self.Gs_buff); self.queue.finish(); plt.imshow( out[1,:,:] ); plt.title("Gs_buff"); #plt.show()
+        #     self.prg.BsplineConv3D (self.queue, gsh,   lsh,   ns_cl, self.Gs_buff,  Ref_buff,      self.dGs_buff, cs_Err    )  
+        #     plt.figure(); cl.enqueue_copy(self.queue, out, self.dGs_buff); self.queue.finish(); plt.imshow( out[1,:,:] ); plt.title("dGs_buff"); #plt.show()
+        #     self.prg.BsplineConv3D (self.queue, gsh,   lsh,   ns_cl, self.dGs_buff, None       ,   self.fGs_buff, cs_F      ) 
+        #     plt.figure(); cl.enqueue_copy(self.queue, out, self.fGs_buff); self.queue.finish(); plt.imshow( out[1,:,:] ); plt.title("fGs_buff"); 
+        #     plt.show()
+        #     exit()
+
+        nstepdone=0
         for i in range(nStepMax):
             for j in range(nPerStep):
                 self.prg.BsplineConv3D (self.queue, gsh,   lsh,   ns_cl, self.Gs_buff,  Ref_buff,      self.dGs_buff, cs_Err    )   # self.queue.finish() 
                 self.prg.BsplineConv3D (self.queue, gsh,   lsh,   ns_cl, self.dGs_buff, None       ,   self.fGs_buff, cs_F      )   # self.queue.finish() 
                 self.prg.move          (self.queue, (nG,), (nL,), nxyz,  self.Gs_buff,  self.vGs_buff, self.fGs_buff, MDpar_cl  )   # self.queue.finish() 
-                self.queue.finish() 
-            cl.enqueue_copy(self.queue, out, self.fGs_buff); Ftot = np.max(np.abs(out))
+                nstepdone+=1
+            cl.enqueue_copy(self.queue, out, self.fGs_buff); self.queue.finish(); Ftot = np.max(np.abs(out))
             if bConvTrj:
-                cl.enqueue_copy(self.queue, out, self.dGs_buff); Etot = np.max(np.abs(out))
+                cl.enqueue_copy(self.queue, out, self.dGs_buff); self.queue.finish(); Etot = np.max(np.abs(out))
                 ConvTrj[i,:] = (0.0+i*nPerStep,Ftot,Etot)
                 if bPrint: print( f"GridFF::fit3D()[{i*nPerStep}] |F|={Ftot} |E|={Etot}" )
             else:
                 if bPrint: print( f"GridFF::fit3D()[{i*nPerStep}] |F|={Ftot} " )
             if Ftot<Ftol:  break
 
+        if bTime:
+            self.queue.finish()
+            dT=time.perf_counter()-T0
+            nops = nstepdone*nxyz
+            self.queue.finish()
+            print( "GridFF_cl::fit3D() time[s] ", dT, "  preparation[s]  ", T0-T00, "[s] nGOPs: ", nops*1e-9," speed[GOPs/s]: ", (nops*1e-9)/dT , " nstep, nxyz ", nstepdone, nxyz  )
+
         if bReturn:
-            # cl.enqueue_copy(self.queue, out, self.fGs_buf); Ftot = out.norm()
+            cl.enqueue_copy(self.queue, out, self.Gs_buff);
+            # finish opencl
+            self.queue.finish()
+            if bDebug:
+                print( "GridFF_cl::fit3D() DONE Gs_buff.min,max: ", out.min(), out.max() )
             return out, ConvTrj
 
 
@@ -360,7 +341,7 @@ class GridFF_cl:
         # -- used_by: project_atoms_on_grid, poisson
         self.V_Coul_buff = cl.Buffer(self.ctx, cl.mem_flags.WRITE_ONLY, size=nxyz*bytePerFloat )
 
-    def make_MorseFF(self, atoms, REQs, nPBC=(4, 4, 0), dg=(0.1, 0.1, 0.1), ng=None,            lvec=[[20.0, 0.0, 0.0], [0.0, 20.0, 0.0], [0.0, 0.0, 20.0]],                     g0=(0.0, 0.0, 0.0), GFFParams=(0.1, 1.5, 0.0, 0.0), bReturn=True ):
+    def make_MorseFF(self, atoms, REQs, nPBC=(4, 4, 0), dg=(0.1, 0.1, 0.1), ng=None,            lvec=[[20.0, 0.0, 0.0], [0.0, 20.0, 0.0], [0.0, 0.0, 20.0]],                     g0=(0.0, 0.0, 0.0), GFFParams=(0.1, 1.5, 0.0, 0.0), bTime=True, bReturn=True ):
 
         T00 = time.perf_counter()
 
@@ -390,16 +371,19 @@ class GridFF_cl:
                             na_cl, self.atoms_buff, self.REQs_buff, self.V_Paul_buff, self.V_Lond_buff,
                             nPBC_cl, self.gcl.ns, self.gcl.a,self.gcl.b,self.gcl.c, self.gcl.g0, GFFParams_cl)
     
-        if bReturn:
+        if bTime:
+            self.queue.finish()
+            dT=time.perf_counter()-T0
             npbc = (nPBC[0]*2+1)*(nPBC[1]*2+1)*(nPBC[2]*2+1)
+            nops = na_cl * nxyz * npbc
+            print( "GridFF_cl::make_MorseFF() time[s] ", dT,   "  preparation[s]  ", T0-T00, "[s] nGOPs: ", nops*1e-9," speed[GOPs/s]: ", (nops*1e-9)/dT , " na,nxyz,npbc ", na_cl, nxyz, npbc  )
+
+        if bReturn:
             sh = self.gsh.ns[::-1]
             V_Paul = np.zeros( sh, dtype=np.float32)
             V_Lond = np.zeros( sh, dtype=np.float32)
             cl.enqueue_copy(self.queue, V_Paul, self.V_Paul_buff)
             cl.enqueue_copy(self.queue, V_Lond, self.V_Lond_buff)
-            nops = na_cl * nxyz * npbc
-            dT=time.perf_counter()-T0
-            print( "make_MorseFF() time[s] ", dT,   "  preparation[s]  ", T0-T00, "[s] nGOPs: ", nops*1e-9," speed[GOPs/s]: ", (nops*1e-9)/dT , " V_Paul.nbytes: ", V_Paul.nbytes*1e-6, "[Mbyte] na,nxyz,npbc ", na_cl, nxyz, npbc  )
             # print( "V_Lond.min,max ", V_Lond.min(), V_Lond.max() )
             # print( "V_Paul.min,max ", V_Paul.min(), V_Paul.max() )
             return V_Paul, V_Lond
@@ -440,11 +424,11 @@ class GridFF_cl:
         if bReturn:
             sh = self.gsh.ns[::-1]+(2,)
             Qgrid = np.zeros( sh, dtype=np.float32)
-            print( "Qgrid.shape", Qgrid.shape )
+            #print( "Qgrid.shape", Qgrid.shape )
             cl.enqueue_copy(self.queue, Qgrid, self.Qgrid_buff)
             Qgrid = Qgrid[:,:,:,0].copy()   # take just the real part
             #print( Qgrid[:,0,0], Qgrid[0,:,0], Qgrid[0,0,:], )
-            print( "project_atoms_on_grid_quintic_pbc() DONE Qtot=", Qgrid.sum()," Qabs=", np.abs(Qgrid).sum()," Qmin=", Qgrid.min()," Qmax=", Qgrid.max() )
+            print( "GridFF_cl::project_atoms_on_grid_quintic_pbc() DONE Qtot=", Qgrid.sum()," Qabs=", np.abs(Qgrid).sum()," Qmin=", Qgrid.min()," Qmax=", Qgrid.max() )
             #self.Qgrid=Qgrid
             return Qgrid
 

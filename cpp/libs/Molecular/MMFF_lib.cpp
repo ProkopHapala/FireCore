@@ -287,6 +287,8 @@ void sampleSurf_new( int n, double* ps_, double* FEout_, int mode, double* PLQH_
     Quat4d  PLQd = *(Quat4d*) PLQH_;
     Quat4f  PLQ  =  (Quat4f) PLQd;
     double R2Q=RQ*RQ;
+
+    printf( "sampleSurf_new() n=%i mode=%i PLQH(%g,%g,%g,%g) K=%g RQ=%g \n", n, mode, PLQd.x, PLQd.y, PLQd.z, PLQd.w, K, RQ  );
     //W.gridFF.grid.printCell();
     //printf( "sampleSurf_new() gff.shift0(%g,%g,%g) gff.pos0(%g,%g,%g)\n", W.gridFF.shift0.x, W.gridFF.shift0.y, W.gridFF.shift0.z, W.gridFF.grid.pos0.x, W.gridFF.grid.pos0.y, W.gridFF.grid.pos0.z );
     //printf( "sampleSurf_new() gridN(%i,%i,%i) \n", W.gridFF.gridN.x, W.gridFF.gridN.y, W.gridFF.gridN.z );

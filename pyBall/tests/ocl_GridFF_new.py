@@ -1,12 +1,14 @@
 import os
 import numpy as np
 import matplotlib.pyplot as plt
+import time
 
 #from . import utils as ut
 from .. import atomicUtils as au
 #from .. import FunctionSampling as fu
 from ..OCL.GridFF import GridFF_cl, GridShape
 from .Ewald import compute_potential, plot1Dcut
+
 
 # =============  Functions
 
@@ -105,8 +107,10 @@ def test_Ewald( apos, qs, ns=[100,100,100], dg=(0.1,0.1,0.1), nPBC=[30,30,30], p
         plt.suptitle( "order=" + str(order) + " nBlur=" + str(nBlur) + " cSOR=" + str(cSOR) + " cV=" + str(cV) )
 
 
-def test_gridFF_ocl( fname="./data/xyz/NaCl_1x1_L1.xyz", Element_Types_name="./data/ElementTypes.dat", bSymetrize=False, bMorse=True, bEwald=False, bFit=True,  mode=6, dsamp=0.02, p0=[0.0,0.0,2.0], R0=3.5, E0=0.1, a=1.6, Q=0.4, H=0.0, scErr=100.0, iax=2, Emax=None, Fmax=None, maxSc=5.0, title=None, bSaveFig=True, bRefine=True, nPBC=[100,100,0], bRealSpace=False, save_name=None ):
+def test_gridFF_ocl( fname="./data/xyz/NaCl_1x1_L1.xyz", Element_Types_name="./data/ElementTypes.dat", bSymetrize=False, bMorse=True, bEwald=False, bFit=True, bDebug=True,  mode=6, dsamp=0.02, p0=[0.0,0.0,2.0], R0=3.5, E0=0.1, a=1.6, Q=0.4, H=0.0, scErr=100.0, iax=2, Emax=None, Fmax=None, maxSc=5.0, title=None, bSaveFig=True, bRefine=True, nPBC=[100,100,0], bRealSpace=False, save_name=None ):
     print( "py======= test_gridFF_ocl() START" );
+
+    T00 = time.perf_counter()
 
     #Element_Types_name="/home/prokop/git/FireCore/tests/tMMFF/data/ElementTypes.dat"
 
@@ -134,6 +138,9 @@ def test_gridFF_ocl( fname="./data/xyz/NaCl_1x1_L1.xyz", Element_Types_name="./d
     REQs[:,2]  = atoms.qs
     REQs[:,3]  = 0.0
 
+    grid = GridShape( dg=(0.1,0.1,0.1),  lvec=atoms.lvec)
+    clgff.set_grid( grid )
+    
     if bEwald:
         #---- Test Charge-to-grid projection
         """
@@ -161,9 +168,7 @@ def test_gridFF_ocl( fname="./data/xyz/NaCl_1x1_L1.xyz", Element_Types_name="./d
         """
 
         #---- Test Poisson
-        
-        grid = GridShape( dg=(0.1,0.1,0.1),  lvec=atoms.lvec)
-        clgff.set_grid( grid )
+        #clgff.set_grid( grid )
         Vgrid = clgff.makeCoulombEwald( xyzq )
 
         # xline = Vgrid.sum(axis=(1,2)); plt.plot( xline )
@@ -187,9 +192,35 @@ def test_gridFF_ocl( fname="./data/xyz/NaCl_1x1_L1.xyz", Element_Types_name="./d
         nPBC = autoPBC(atoms.lvec,Rcut=20.0); print("autoPBC: ", nPBC )
 
         if bFit:
-            clgff.make_MorseFF( xyzq, REQs, nPBC=nPBC, lvec=atoms.lvec, g0=(0.0,0.0,0.0), GFFParams=(0.1,1.5,0.0,0.0), bReturn=False )
-            V_Paul,trj_paul = clgff.fit3D( clgff.V_Paul_buff , bConvTrj=True )
-            V_Lond,trj_lond = clgff.fit3D( clgff.V_Lond_buff , bConvTrj=True )
+            #g0 = ( -grid.Ls[0]*0.5, -grid.Ls[1]*0.5, p0[2] ) 
+            g0 = ( -grid.Ls[0]*0.5, -grid.Ls[1]*0.5, 0.0 )
+            #g0 = ( -grid.Ls[0]*0.5, -grid.Ls[1]*0.5, -p0[2] ) 
+            #T0 = time.perf_counter()
+            clgff.make_MorseFF( xyzq, REQs, nPBC=nPBC, lvec=atoms.lvec, g0=g0, GFFParams=(0.1,1.5,0.0,0.0), bReturn=False )
+            #T_morse = time.perf_counter()
+
+            # if bDebug:
+            #     sh = clgff.gsh.ns[::-1]
+            #     VPaul_ref = np.zeros( sh, dtype=np.float32); clgff.cl.enqueue_copy(clgff.queue, VPaul_ref, clgff.V_Paul_buff ); clgff.queue.finish()
+            #     VLond_ref = np.zeros( sh, dtype=np.float32); clgff.cl.enqueue_copy(clgff.queue, VLond_ref, clgff.V_Lond_buff ); clgff.queue.finish()
+            #     plt.figure(figsize=(10,5))
+            #     #plt.subplot(1,2,1); plt.imshow( V_Paul[:,:,1] ); plt.colorbar()
+            #     #plt.subplot(1,2,2); plt.imshow( V_Lond[:,:,1] ); plt.colorbar()
+            #     plt.subplot(1,2,1); plt.imshow( VPaul_ref[1,:,:] ); plt.colorbar(); plt.title("VPaul_ref")
+            #     plt.subplot(1,2,2); plt.imshow( VLond_ref[1,:,:] ); plt.colorbar(); plt.title("VLond_ref")
+
+            nPerStep=50
+            #nPerStep=5
+
+            V_Paul,trj_paul = clgff.fit3D( clgff.V_Paul_buff, nPerStep=nPerStep, bConvTrj=True ); #T_fit_P = time.perf_counter()
+            V_Lond,trj_lond = clgff.fit3D( clgff.V_Lond_buff, nPerStep=nPerStep, bConvTrj=True ); #T_fit_ = time.perf_counter()
+
+            # if bDebug:
+            #         plt.figure(figsize=(10,5))
+            #         #plt.subplot(1,2,1); plt.imshow( V_Paul[:,:,1] ); plt.colorbar()
+            #         #plt.subplot(1,2,2); plt.imshow( V_Lond[:,:,1] ); plt.colorbar()
+            #         plt.subplot(1,2,1); plt.imshow( V_Paul[1,:,:] ); plt.colorbar(); plt.title("V_Paul_fit")
+            #         plt.subplot(1,2,2); plt.imshow( V_Lond[1,:,:] ); plt.colorbar(); plt.title("V_Lond_fit")
 
             if save_name is not None:
                 path = os.path.basename( fname )
@@ -198,14 +229,18 @@ def test_gridFF_ocl( fname="./data/xyz/NaCl_1x1_L1.xyz", Element_Types_name="./d
                 if not os.path.exists( path ):
                     os.makedirs( path )
                 if save_name=='double3':
+                    V_Paul = V_Paul.transpose( (2,1,0) )
+                    V_Lond = V_Lond.transpose( (2,1,0) )
                     PLQ = np.zeros( V_Paul.shape + (3,) )
                     PLQ[:,:,:,0] = V_Paul
                     PLQ[:,:,:,1] = V_Lond
                     #PLQ[:,:,2] = 0.0 # electrostatic
-                    np.save( path+"/Bspline_PLQd.npy", PLQ )
+                    full_name = path+"/Bspline_PLQd_ocl.npy"; print("test_gridFF_ocl() - save Morse to: ", full_name)
+                    np.save( full_name, PLQ )
 
             # --- cdamp scan
-            # for damp in [0.05,0.10,0.15,0.20,0.25]:
+            #plt.figure(figsize=(5,5))
+            # for damp in [0.05,0.10,0.15,0.20,0.25,0.30,0.35,0.40,0.50]:
             #     print(" damp =  ", damp )
             #     #V_Paul,trj_paul = clgff.fit3D( clgff.V_Paul_buff, damp=damp, bConvTrj=True )
             #     #plt.plot( trj_paul[:,0], trj_paul[:,1], label=("Paul |F| %8.4f" %damp) )
@@ -213,24 +248,29 @@ def test_gridFF_ocl( fname="./data/xyz/NaCl_1x1_L1.xyz", Element_Types_name="./d
             #     plt.plot( trj_lond[:,0], trj_lond[:,1], label=("Lond |F| %8.4f" %damp))
 
             # --- dt scan
-            #for dt in [0.10,0.15,0.20,0.25,0.30,0.35,0.40,0.45]:
-            # for dt in [0.30,0.35,0.40,0.45,0.50,0.55,0.60,0.67]:
+            # plt.figure(figsize=(5,5))
+            # #for dt in [0.10,0.15,0.20,0.25,0.30,0.35,0.40,0.45]:
+            # #for dt in [0.30,0.35,0.40,0.45,0.50,0.55,0.60,0.67]:
+            # for dt in [0.30,0.40,0.50,0.60,0.70,0.80,0.90,1.00]:
             #     print(" dt =  ", dt )
-            #     V_Paul,trj_paul = clgff.fit3D( clgff.V_Paul_buff, dt=dt, damp=0.15, bConvTrj=True )
-            #     plt.plot( trj_paul[:,0], trj_paul[:,1], label=("Paul |F| dt=%8.4f" %dt) )
-            #     #V_Lond,trj_lond = clgff.fit3D( clgff.V_Lond_buff, dt=dt, damp=0.15, bConvTrj=True )
-            #     #plt.plot( trj_lond[:,0], trj_lond[:,1], label=("Lond |F| dt=%8.4f" %dt))
+            #     # V_Paul,trj_paul = clgff.fit3D( clgff.V_Paul_buff, dt=dt, damp=0.30, bConvTrj=True )
+            #     # plt.plot( trj_paul[:,0], trj_paul[:,1], label=("Paul |F| dt=%8.4f" %dt) )
+            #     V_Lond,trj_lond = clgff.fit3D( clgff.V_Lond_buff, dt=dt, damp=0.15, bConvTrj=True )
+            #     plt.plot( trj_lond[:,0], trj_lond[:,1], label=("Lond |F| dt=%8.4f" %dt))
 
+            plt.figure(figsize=(5,5))
             plt.plot( trj_paul[:,0], trj_paul[:,1], label="Paul |F|" )
             plt.plot( trj_paul[:,0], trj_paul[:,2], label="Paul |E|" )
             plt.plot( trj_lond[:,0], trj_lond[:,1], label="Lond |F|" )
             plt.plot( trj_lond[:,0], trj_lond[:,2], label="Lond |E|" )
+
             plt.legend()
             plt.grid()
             plt.xlabel('iteration')
             plt.yscale('log')
             plt.title( "GridFF Bspline fitting error" )
-            plt.show()
+
+            #plt.show()
 
         else:
 
@@ -259,8 +299,8 @@ def test_gridFF_ocl( fname="./data/xyz/NaCl_1x1_L1.xyz", Element_Types_name="./d
             plt.plot( V_Lond_cut_rep, label=f"V_Lond(x,{iy},{iz}) - replicated")
             plt.legend()
             plt.grid()
-            plt.show()
-            plt.show()
+            #plt.show()
+            #plt.show()
         
     print( "py======= test_gridFF() DONE" );
 
