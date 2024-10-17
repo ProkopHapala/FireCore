@@ -36,6 +36,21 @@ def autoPBC(lvec,Rcut=20.0,mask=(1,1,0)):
             nPBC[i] = int(Rcut/L)+1
     return tuple(nPBC)
 
+def Bspline_basis5(t):
+    ws = np.zeros( (len(t),6) )
+    inv6 = 1./6.;
+    t2 = t*t;
+    t3 = t2*t;
+    t4 = t2*t2;
+    t5 = t3*t2;                                                 
+    ws[:,0]=  -0.008333333333333333*t5  +0.041666666666666666*t4  -0.08333333333333333*t3 +0.08333333333333333*t2  -0.041666666666666666*t   +0.008333333333333333;
+    ws[:,1]=   0.041666666666666666*t5  -0.166666666666666666*t4  +0.16666666666666666*t3 +0.16666666666666666*t2  -0.416666666666666666*t   +0.216666666666666666;        
+    ws[:,2]=  -0.083333333333333333*t5  +0.250000000000000000*t4                          -0.50000000000000000*t2                            +0.550000000000000000;  
+    ws[:,3]=   0.083333333333333333*t5  -0.166666666666666666*t4  -0.16666666666666666*t3 +0.16666666666666666*t2  +0.416666666666666666*t   +0.216666666666666666;
+    ws[:,4]=  -0.041666666666666666*t5  +0.041666666666666666*t4  +0.08333333333333333*t3 +0.08333333333333333*t2  +0.041666666666666666*t   +0.008333333333333333; 
+    ws[:,5]=   0.008333333333333333*t5;
+    return ws
+
 def test_Ewald( apos, qs, ns=[100,100,100], dg=(0.1,0.1,0.1), nPBC=[30,30,30], pos0=None, scErr=100.0, order=2, bPython=True, bOCL=True, bPlotPy=False,  bPlotOcl=True, bOMP=False, nBlur=0, cSOR=0.0, cV=0.5, yrange=None, bPlot1D=True , bSlab=False, z_slab=None ):
     try_load_mmff()
 
@@ -110,7 +125,7 @@ def test_Ewald( apos, qs, ns=[100,100,100], dg=(0.1,0.1,0.1), nPBC=[30,30,30], p
         plt.suptitle( "order=" + str(order) + " nBlur=" + str(nBlur) + " cSOR=" + str(cSOR) + " cV=" + str(cV) )
 
 
-def test_gridFF_ocl( fname="./data/xyz/NaCl_1x1_L1.xyz", Element_Types_name="./data/ElementTypes.dat", bSymetrize=False, bMorse=True, bEwald=False, bFit=True, bDebug=True,  mode=6, dsamp=0.02, p0=[0.0,0.0,2.0], R0=3.5, E0=0.1, a=1.6, Q=0.4, H=0.0, scErr=100.0, iax=2, Emax=None, Fmax=None, maxSc=5.0, title=None, bSaveFig=True, bRefine=True, nPBC=[100,100,0], bRealSpace=False, save_name=None ):
+def test_gridFF_ocl( fname="./data/xyz/NaCl_1x1_L1.xyz", Element_Types_name="./data/ElementTypes.dat", bSymetrize=False, bMorse=False, bEwald=False, bFit=True, bDebug=True,  mode=6, dsamp=0.02, p0=[0.0,0.0,2.0], R0=3.5, E0=0.1, a=1.6, Q=0.4, H=0.0, scErr=100.0, iax=2, Emax=None, Fmax=None, maxSc=5.0, title=None, bSaveFig=True, bRefine=True, nPBC=[100,100,0], bRealSpace=False, save_name=None ):
     print( "py======= test_gridFF_ocl() START" );
 
     T00 = time.perf_counter()
@@ -172,7 +187,9 @@ def test_gridFF_ocl( fname="./data/xyz/NaCl_1x1_L1.xyz", Element_Types_name="./d
 
         #---- Test Poisson
         #clgff.set_grid( grid )
-        Vgrid = clgff.makeCoulombEwald( xyzq )
+        #Vgrid = clgff.makeCoulombEwald( xyzq )
+
+        Vgrid = clgff.makeCoulombEwald_slab( xyzq )
 
         # xline = Vgrid.sum(axis=(1,2)); plt.plot( xline )
         # yline = Vgrid.sum(axis=(0,2)); plt.plot( yline )
@@ -186,10 +203,15 @@ def test_gridFF_ocl( fname="./data/xyz/NaCl_1x1_L1.xyz", Element_Types_name="./d
         # plt.subplot(1,6,5); plt.imshow( Vgrid[170,:,:], cmap='bwr' ); plt.colorbar()
         # plt.subplot(1,6,6); plt.imshow( Vgrid[171,:,:], cmap='bwr' ); plt.colorbar()
 
-        plt.figure( figsize=(15,5) )
-        plt.subplot(1,3,1); plt.imshow( Vgrid[170,:,:], cmap='bwr' ); plt.colorbar(); plt.title( "Vgrid[170,:,:]" );
-        plt.subplot(1,3,2); plt.imshow( Vgrid[:,0,:  ], cmap='bwr' ); plt.colorbar(); plt.title( "Vgrid[:,0,:  ]" );
-        plt.subplot(1,3,3); plt.imshow( Vgrid[:,:,0  ], cmap='bwr' ); plt.colorbar(); plt.title( "Vgrid[:,:,0  ]" );
+        vmax = max( Vgrid.max(), -Vgrid.min() )
+
+        plt.figure( figsize=(30,5) )
+        plt.subplot(1,6,1); plt.imshow( Vgrid[:,0,:  ], vmin=-vmax, vmax=vmax, cmap='bwr' ); plt.colorbar(); plt.title( "Vgrid[:,0,:  ]" );
+        plt.subplot(1,6,2); plt.imshow( Vgrid[:,:,20 ], vmin=-vmax, vmax=vmax, cmap='bwr' ); plt.colorbar(); plt.title( "Vgrid[:,:,0  ]" );
+        plt.subplot(1,6,3); plt.imshow( Vgrid[32,:,:],                         cmap='bwr' ); plt.colorbar(); plt.title( "Vgrid[32,:,:]" );
+        plt.subplot(1,6,4); plt.imshow( Vgrid[340,:,:],                        cmap='bwr' ); plt.colorbar(); plt.title( "Vgrid[341,:,:]" );
+        plt.subplot(1,6,5); plt.imshow( Vgrid[200:300,20,:],                      cmap='bwr' ); plt.colorbar(); plt.title( "Vgrid[200:,20,:]" );
+        plt.subplot(1,6,6); plt.imshow( Vgrid[200:300,:,0],                       cmap='bwr' ); plt.colorbar(); plt.title( "Vgrid[200:,:,0]" );
     
     if bMorse:
         nPBC = autoPBC(atoms.lvec,Rcut=20.0); print("autoPBC: ", nPBC )
@@ -275,35 +297,31 @@ def test_gridFF_ocl( fname="./data/xyz/NaCl_1x1_L1.xyz", Element_Types_name="./d
 
             #plt.show()
 
-        else:
-
-            V_Paul, V_Lond = clgff.make_MorseFF( xyzq, REQs, nPBC=nPBC, lvec=atoms.lvec, g0=(0.0,0.0,0.0), GFFParams=(0.1,1.5,0.0,0.0)  )
-
-            print( "V_Paul.shape ", V_Paul.shape )
-            plt.figure() 
-            plt.plot( V_Paul[:,0,0],   label="V_Paul(0,0,z)" )
-            plt.plot( V_Lond[:,0,0],   label="V_Lond(0,0,z)" )
-            plt.plot( V_Paul[:,20,20], label="V_Paul(20,20,z)" )
-            plt.plot( V_Lond[:,20,20], label="V_Lond(20,20,z)" )
-            plt.legend()
-            #plt.yscale('log')
-            plt.grid()
-
-            ix=0
-            iy=0
-            iz=5
-            replicate_count = 3  # Number of replications
-            V_Paul_cut = V_Paul[iz,iy,:]; V_Paul_cut_rep = np.tile(V_Paul_cut, replicate_count)
-            V_Lond_cut = V_Lond[iz,iy,:]; V_Lond_cut_rep = np.tile(V_Lond_cut, replicate_count)
-            
-            plt.figure()
-            # Plot the replicated 1D cuts
-            plt.plot( V_Paul_cut_rep, label=f"V_Paul(x,{iy},{iz}) - replicated")
-            plt.plot( V_Lond_cut_rep, label=f"V_Lond(x,{iy},{iz}) - replicated")
-            plt.legend()
-            plt.grid()
-            #plt.show()
-            #plt.show()
+        # else:
+        #     V_Paul, V_Lond = clgff.make_MorseFF( xyzq, REQs, nPBC=nPBC, lvec=atoms.lvec, g0=(0.0,0.0,0.0), GFFParams=(0.1,1.5,0.0,0.0)  )
+        #     print( "V_Paul.shape ", V_Paul.shape )
+        #     plt.figure() 
+        #     plt.plot( V_Paul[:,0,0],   label="V_Paul(0,0,z)" )
+        #     plt.plot( V_Lond[:,0,0],   label="V_Lond(0,0,z)" )
+        #     plt.plot( V_Paul[:,20,20], label="V_Paul(20,20,z)" )
+        #     plt.plot( V_Lond[:,20,20], label="V_Lond(20,20,z)" )
+        #     plt.legend()
+        #     #plt.yscale('log')
+        #     plt.grid()
+        #     ix=0
+        #     iy=0
+        #     iz=5
+        #     replicate_count = 3  # Number of replications
+        #     V_Paul_cut = V_Paul[iz,iy,:]; V_Paul_cut_rep = np.tile(V_Paul_cut, replicate_count)
+        #     V_Lond_cut = V_Lond[iz,iy,:]; V_Lond_cut_rep = np.tile(V_Lond_cut, replicate_count)
+        #     plt.figure()
+        #     # Plot the replicated 1D cuts
+        #     plt.plot( V_Paul_cut_rep, label=f"V_Paul(x,{iy},{iz}) - replicated")
+        #     plt.plot( V_Lond_cut_rep, label=f"V_Lond(x,{iy},{iz}) - replicated")
+        #     plt.legend()
+        #     plt.grid()
+        #     #plt.show()
+        #     #plt.show()
         
     print( "py======= test_gridFF() DONE" );
 
