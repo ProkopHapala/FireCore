@@ -395,6 +395,27 @@ __kernel void setMul(
     out[i] = v[i]*c;
 }
 
+__kernel void setCMul(
+    const int  ntot,
+    __global float2* v,
+    __global float* out,  
+    float2 c
+) {
+    const int i = get_global_id(0);
+    //if( i==0 ){ printf("GPU move() ntot=%i MDpar{%g,%g,%g,%g}\n", ntot,  MDpar.x, MDpar.y, MDpar.z,MDpar.w); }
+    if (i > ntot ) return;
+    out[i] = v[i].x*c.x + v[i].y*c.y;
+}
+
+__kernel void set(
+    const int  ntot,
+    __global float* out,  
+    float c
+) {
+    const int i = get_global_id(0);
+    if (i > ntot ) return;
+    out[i] = c;
+}
 
 __attribute__((reqd_work_group_size(32,1,1)))
 __kernel void make_MorseFF(
@@ -760,6 +781,9 @@ __kernel void project_atom_on_grid_cubic_pbc(
     // Convert to grid coordinates
     float3      g = (atom.xyz - g0) / dg;
     int3       gi = (int3  ){(int)g.x, (int)g.y, (int)g.z};
+    if(g.x<0) gi.x--;
+    if(g.y<0) gi.y--;
+    if(g.z<0) gi.z--;
     float3 t      = (float3){     g.x - gi.x, g.y - gi.y, g.z - gi.z};
 
     // Compute weights for cubic B-spline interpolation
@@ -823,7 +847,7 @@ __kernel void project_atoms_on_grid_quintic_pbc(
     const float4 g0,                // 5 Grid origin
     const float4 dg                 // 6 Grid dimensions
 ) {
-    int iG = get_global_id(0);
+    int       iG = get_global_id(0);
     const int iL = get_local_id(0);
     
     // Declare and initialize shared memory for periodic boundary condition indices
@@ -842,12 +866,43 @@ __kernel void project_atoms_on_grid_quintic_pbc(
     //     for(int i=0; i<6; i++){ int* q=yqs[i]; printf("GPU yqs[0](%4i,%4i,%4i,%4i,%4i,%4i) \n", q[0],  q[1], q[2], q[3], q[4], q[5] ); }
     //     for(int i=0; i<6; i++){ int* q=zqs[i]; printf("GPU zqs[0](%4i,%4i,%4i,%4i,%4i,%4i) \n", q[0],  q[1], q[2], q[3], q[4], q[5] ); }
     //     for(int ia=0; ia<na; ia++){ printf("GPU atom[%i](%8.4f,%8.4f,%8.4f |%8.4f) \n", ia, atoms[ia].x, atoms[ia].y, atoms[ia].z, atoms[ia].w ); }
+    //     int ia = 0;
+    //     float4 atom = atoms[ia];
+    //     float3 g    = (atom.xyz - g0.xyz) / dg.xyz;
+    //     int3   gi   = (int3  ){(int)g.x,(int)g.y,(int)g.z};
+    //     if(g.x<0) gi.x--;
+    //     if(g.y<0) gi.y--;
+    //     if(g.z<0) gi.z--;
+    //     float3 t    = (float3){g.x-gi.x, g.y-gi.y, g.z-gi.z};
+    //     printf( "GPU g(%g,%g,%g) gi(%i,%i,%i) t(%g,%g,%g)\n", g.x,g.y,g.z, gi.x,gi.y,gi.z, t.x,t.y,t.z );
+    //     // Compute weights for quintic B-spline interpolation
+    //     float bx[6], by[6], bz[6];
+    //     Bspline_basis5(t.x, bx);
+    //     Bspline_basis5(t.y, by);
+    //     Bspline_basis5(t.z, bz);
+    //     const int nxy = ng.x * ng.y;
+    //     int xq[6];
+    //     int yq[6];
+    //     int zq[6];
+    //     // Pre-calculate periodic boundary condition indices for each dimension
+    //     gi.x = modulo( gi.x-2, ng.x ); choose_inds_pbc_5(gi.x,ng.x, xqs, xq );
+    //     gi.y = modulo( gi.y-2, ng.y ); choose_inds_pbc_5(gi.y,ng.y, yqs, yq );
+    //     gi.z = modulo( gi.z-2, ng.z ); choose_inds_pbc_5(gi.z,ng.z, zqs, zq );
+    //     for (int dz = 0; dz < 6; dz++) {
+    //         const int gz    = zq[dz];
+    //         const int iiz   = gz * nxy;
+    //         const float qbz = atom.w * bz[dz];
+    //         printf( "GPU dz[%i] gz[%i] qbz %g t(%g,%g,%g)\n", dz, gz, qbz, t.x,t.y,t.z );
+    //     }
     // }
 
     // Load atom position and charge
     float4 atom = atoms[iG];
     float3 g    = (atom.xyz - g0.xyz) / dg.xyz;
     int3   gi   = (int3  ){(int)g.x,(int)g.y,(int)g.z};
+    if(g.x<0) gi.x--;
+    if(g.y<0) gi.y--;
+    if(g.z<0) gi.z--;
     float3 t    = (float3){g.x-gi.x, g.y-gi.y, g.z-gi.z};
 
     // Compute weights for quintic B-spline interpolation
@@ -867,12 +922,13 @@ __kernel void project_atoms_on_grid_quintic_pbc(
     gi.z = modulo( gi.z-2, ng.z ); choose_inds_pbc_5(gi.z,ng.z, zqs, zq );
 
     for (int dz = 0; dz < 6; dz++) {
-        const int gz  = zq[dz];
-        const int iiz = gz * nxy;
+        const int gz    = zq[dz];
+        const int iiz   = gz * nxy;
+        const float qbz = atom.w * bz[dz];
         for (int dy = 0; dy < 6; dy++) {
             const int gy  = yq[dy];
             const int iiy = iiz + gy * ng.x;
-            const float qbyz = atom.w * by[dy] * bz[dz];
+            const float qbyz =  by[dy] * qbz;
             for (int dx = 0; dx < 6; dx++) {
                 const int gx = xq[dx];
                 const int ig = gx + iiy;
@@ -893,6 +949,9 @@ __kernel void poissonW(
     const float4 coefs       // (0,0,0, 4*pi*eps0*dV)
 ){    
     const int iG = get_global_id (0);
+    if(iG==0){
+        printf("GPU poissonW() ns(%i,%i,%i,%i) coefs(%g,%g,%g,%g) \n", ns.x,ns.y,ns.z,ns.w, coefs.x,coefs.y,coefs.z,coefs.w );
+    }
     if(iG>=ns.w) return;
     const int nab = ns.x*ns.y;
     const int ix  =  iG%ns.x; 
