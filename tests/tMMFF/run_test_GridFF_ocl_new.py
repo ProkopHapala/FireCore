@@ -4,6 +4,7 @@ import os
 import matplotlib.pyplot as plt
 
 sys.path.append("../../")
+
 from pyBall.tests import ocl_GridFF_new as gff
 
 # =============  Functions

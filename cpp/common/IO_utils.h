@@ -455,18 +455,18 @@ class NumpyFile{ public:
     }
 
     inline int load(const char *fname ) {
-        char cwd[128]; getcwd(cwd, 128); printf( "NumpyFile::load(%s/%s)\n", cwd, fname );
+        //char cwd[128]; getcwd(cwd, 128); printf( "NumpyFile::load(%s/%s)\n", cwd, fname );
         FILE *ptr_myfile = fopen(fname, "rb");
         if (!ptr_myfile) {   printf("ERROR NumpyFile::load(%s): unable to open file for reading !!!\n", fname);  return -1;  }
 
         // Read magic string
         char magic_string[7];     if (fread(magic_string, 1, 6, ptr_myfile) != 6) { printf("ERROR NumpyFile::load(%s): Unable to read magic string.\n", fname);              fclose(ptr_myfile);  return -1; }
         magic_string[6] = '\0';   if (strncmp(magic_string, "\x93NUMPY", 6) != 0) { printf("ERROR NumpyFile::load(%s): Invalid magic string (%s).\n", fname, magic_string ); fclose(ptr_myfile);  return -1; }
-        printf("NumpyFile::load() magic_string=%s\n", magic_string);
+        //printf("NumpyFile::load() magic_string=%s\n", magic_string);
 
         // Read version
         unsigned char version[2];   if (fread(version, 1, 2, ptr_myfile) != 2) {     printf("ERROR NumpyFile::load(%s): Unable to read version.\n", fname);  fclose(ptr_myfile);  return -1;   }
-        printf("NumpyFile::load() version=%d.%d\n", version[0], version[1]);
+        //printf("NumpyFile::load() version=%d.%d\n", version[0], version[1]);
 
         // Read header length based on version
         uint32_t header_length;
@@ -477,13 +477,13 @@ class NumpyFile{ public:
         }else if (version[0] == 2 || version[0] == 3) {   // Version 2.0 and above: 4-byte little endian header length
             if (fread(&header_length, 1, 4, ptr_myfile) != 4) {  printf("ERROR NumpyFile::load(%s): Unable to read 4-byte header length.\n", fname);  fclose(ptr_myfile);  return -1;    }
         } else                                                {  printf("ERROR NumpyFile::load(%s): Unsupported .npy version %d.%d\n", fname, version[0], version[1]);  fclose(ptr_myfile); return -1;  }
-        printf("NumpyFile::load() header_length=%i\n", header_length);
+        //printf("NumpyFile::load() header_length=%i\n", header_length);
 
         // Read the header
         char header[header_length + 1];
         if (fread(header, 1, header_length, ptr_myfile) != header_length) { printf("ERROR NumpyFile::load(%s): Unable to read header.\n", fname); fclose(ptr_myfile);   return -1;  }
         header[header_length] = '\0';  // Null-terminate the header for easier parsing
-        printf("NumpyFile::load() header='%s'\n", header);
+        //printf("NumpyFile::load() header='%s'\n", header);
 
         // Extract dtype
         char* descr_start = strstr(header, "'descr': '");
@@ -495,7 +495,7 @@ class NumpyFile{ public:
         if (descr_len >= sizeof(dtype)) { printf("ERROR NumpyFile::load(%s): 'descr' value too long.\n", fname); fclose(ptr_myfile); return -1; }
         strncpy(dtype, descr_start, descr_len);
         dtype[descr_len] = '\0';  // Null-terminate dtype string
-        printf("NumpyFile::load() dtype='%s'\n", dtype);
+        //printf("NumpyFile::load() dtype='%s'\n", dtype);
 
         // Determine bytes per element based on dtype
         if      (strcmp(dtype, "<f8") == 0) { nBytePerElement = 8; } 
@@ -507,8 +507,7 @@ class NumpyFile{ public:
 
         // Extract shape
         char* shape_start = strstr(header, "'shape': (");
-        if (!shape_start) { printf("ERROR NumpyFile::load(%s): 'shape' not found in header.\n", fname);  fclose(ptr_myfile); return -1;
-        }
+        if (!shape_start) { printf("ERROR NumpyFile::load(%s): 'shape' not found in header.\n", fname);  fclose(ptr_myfile); return -1;}
         shape_start += strlen("'shape': (");
         char* shape_end = strchr(shape_start, ')');
         if (!shape_end) { printf("ERROR NumpyFile::load(%s): 'shape' value not properly terminated.\n", fname); fclose(ptr_myfile); return -1; }
