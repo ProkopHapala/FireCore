@@ -3,12 +3,15 @@ import numpy as np
 import matplotlib.pyplot as plt
 import time
 
+#exit()
 #from . import utils as ut
 from .. import atomicUtils as au
 #from .. import FunctionSampling as fu
+#exit()
 from ..OCL.GridFF import GridFF_cl, GridShape
-from .Ewald import compute_potential, plot1Dcut
-
+#exit()
+#from .Ewald import compute_potential, plot1Dcut
+from .utils import compute_potential, plot1Dcut
 
 # =============  Functions
 
@@ -134,7 +137,7 @@ def test_gridFF_ocl( fname="./data/xyz/NaCl_1x1_L1.xyz", Element_Types_name="./d
     xyzq[:,:3] = atoms.apos
     xyzq[:,3]  = atoms.qs
     REQs[:,0]  = REvdW[:,0]
-    REQs[:,1]  = REvdW[:,1]
+    REQs[:,1]  = np.sqrt(REvdW[:,1])
     REQs[:,2]  = atoms.qs
     REQs[:,3]  = 0.0
 

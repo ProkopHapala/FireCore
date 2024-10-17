@@ -408,15 +408,17 @@ int fit3D( const Vec3i ns, double* Gs, const double* Es, double* Ws, double Ftol
 }
 
 __attribute__((hot)) 
-int fit3D_omp( const Vec3i ns, double* Gs, const double* Es, double* Ws, double Ftol, int nmaxiter=100, double dt=0.1, bool bPBC=false, bool bInitGE=false, const double Esafe=-1.0 ){
+int fit3D_omp( const Vec3i ns, double* Gs, const double* Es, double* Ws, double Ftol, int nmaxiter=100, double dt=0.3, double damp=0.0, bool bPBC=false, bool bInitGE=false, const double Esafe=-1.0 ){
     //if(verbosity>1)
-    //printf( "Bspline::fit3D_omp() ns(%i,%i,%i) bPBC=%i dt=%g Ftol=%g nmaxiter=%i bInitGE=%i \n", ns.x,ns.y,ns.z, bPBC, dt, Ftol, nmaxiter, bInitGE );
+    //printf( "Bspline::fit3D_omp() ns(%i,%i,%i) bPBC=%i dt=%g damp=%g Ftol=%g nmaxiter=%i bInitGE=%i \n", ns.x,ns.y,ns.z, bPBC, dt, damp, Ftol, nmaxiter, bInitGE );
     const int nxy  = ns.x*ns.y;
     const int nxyz = nxy*ns.z;
     const double F2max = Ftol*Ftol;
     double* ps = new double[nxyz];
     double* fs = new double[nxyz];
     double* vs = new double[nxyz];
+
+    double cdamp = 1-damp;
 
     // omp shared
     double vf = 0.0;
@@ -465,8 +467,11 @@ int fit3D_omp( const Vec3i ns, double* Gs, const double* Es, double* Ws, double 
         }
         #pragma omp for
         for(int i=0; i<nxyz; i++){
-            vs[i] += fs[i]*dt;
-            Gs[i] += vs[i]*dt;
+            double vi=vs[i];
+            vi    *= cdamp;
+            vi    += fs[i]*dt;
+            Gs[i] += vi*dt;
+            vs[i] = vi;
         }
         #pragma omp single
         {

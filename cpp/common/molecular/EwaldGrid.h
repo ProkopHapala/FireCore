@@ -162,9 +162,7 @@ double project_atom_on_grid_cubic_pbc(const Vec3d pi, const double qi, double* d
     ix=modulo(ix-1,n.x); const Quat4i xqs = choose_inds_pbc_3(ix, n.x, xqs_o3 );  // Assuming you pre-calculate xqs, yqs, zqs
     iy=modulo(iy-1,n.y); const Quat4i yqs = choose_inds_pbc_3(iy, n.y, yqs_o3 );
     iz=modulo(iz-1,n.z); const Quat4i zqs = choose_inds_pbc_3(iz, n.z, zqs_o3 );
-
-    printf( "project_atom_on_grid_cubic_pbc() ixyz(%i,%i,%i) xqs(%i,%i,%i,%i) yqs(%i,%i,%i,%i) nxyz(%i,%i,%i)\n", ix,iy,iz,  xqs.x,xqs.y,xqs.z,xqs.w,   yqs.x,yqs.y,yqs.z,yqs.w,   n.x,n.y,n.z );
-
+    //printf( "project_atom_on_grid_cubic_pbc() ixyz(%i,%i,%i) xqs(%i,%i,%i,%i) yqs(%i,%i,%i,%i) nxyz(%i,%i,%i)\n", ix,iy,iz,  xqs.x,xqs.y,xqs.z,xqs.w,   yqs.x,yqs.y,yqs.z,yqs.w,   n.x,n.y,n.z );
     // Loop over the B-spline grid contributions
     double Qsum=0;
     for (int dz = 0; dz < 4; dz++) {
@@ -288,7 +286,7 @@ void project_atoms_on_grid_cubic( int na, const Vec3d* apos, const double* qs, d
         make_inds_pbc(n.x, xqs_o3); 
         make_inds_pbc(n.y, yqs_o3); 
         make_inds_pbc(n.z, zqs_o3);
-        for(int i=0; i<4; i++){  printf( "xqs_o3[%i]{%i,%i,%i,%i}\n",       i, xqs_o3[i].x,xqs_o3[i].y,xqs_o3[i].z,xqs_o3[i].w ); };  
+        //for(int i=0; i<4; i++){  printf( "xqs_o3[%i]{%i,%i,%i,%i}\n",       i, xqs_o3[i].x,xqs_o3[i].y,xqs_o3[i].z,xqs_o3[i].w ); };  
         bCubicPBCIndexesDone=true;
     }
     Qtot_g=0;
@@ -298,7 +296,7 @@ void project_atoms_on_grid_cubic( int na, const Vec3d* apos, const double* qs, d
         double qg;
         if(bPBC){ qg=project_atom_on_grid_cubic_pbc( apos[ia], qs[ia], dens ); } 
         else    { qg=project_atom_on_grid_cubic    ( apos[ia], qs[ia], dens ); }
-        printf( "project_atoms_on_grid_quintic() qs[%i]=%g   qg=%g |qi-qg|=%20.10e \n", ia, qs[ia], qg, qs[ia]-qg );
+        //printf( "project_atoms_on_grid_quintic() qs[%i]=%g   qg=%g |qi-qg|=%20.10e \n", ia, qs[ia], qg, qs[ia]-qg );
         Qtot_g += qg;
         Qabs_g += fabs(qg);    
     }
@@ -319,7 +317,7 @@ void project_atoms_on_grid_quintic( int na, const Vec3d* apos, const double* qs,
         double qg;
         if(bPBC){ qg=project_atom_on_grid_quintic_pbc( apos[ia], qs[ia], dens ); }
         else    { qg=project_atom_on_grid_quintic    ( apos[ia], qs[ia], dens ); }
-        printf( "project_atoms_on_grid_quintic() qs[%i]=%g   qg=%g  |qi-qg|=%20.10e  \n", ia, qs[ia], qg, qs[ia]-qg );
+        //printf( "project_atoms_on_grid_quintic() qs[%i]=%g   qg=%g  |qi-qg|=%20.10e  \n", ia, qs[ia], qg, qs[ia]-qg );
         Qtot_g += qg;
         Qabs_g += fabs(qg);
     }
@@ -342,7 +340,7 @@ void projectAtoms( int na, Vec3d* apos, double* qs, double* dens, int order ){
     Qabs=0;
     Qtot=0;
     for (int ia=0; ia<na; ia++){ dipole.add_mul(apos[ia],qs[ia]); Qtot+=qs[ia]; Qabs+=fabs(qs[ia]); };  // dipole for slab correction and debugging
-    printf( "EwaldGrid::projectAtoms() na=%i dipole(%g,%g,%g) \n", na, dipole.x,dipole.y,dipole.z   );
+    //printf( "EwaldGrid::projectAtoms() na=%i dipole(%g,%g,%g) \n", na, dipole.x,dipole.y,dipole.z   );
     switch(order){
         case 1: project_atoms_on_grid_linear ( na, apos, qs, dens ); break;
         case 2: project_atoms_on_grid_cubic  ( na, apos, qs, dens ); break;
@@ -419,7 +417,7 @@ int laplace_real_loop( double* V, int nmaxiter=1000, double tol=1e-6, bool bPBC=
     int ntot = n.totprod();
     double* V_ =0;
     if(V_work ){ V_ = V_work;  }else{ double* V_ = new double[ntot]; };
-    printf("laplace_real_loop(bPBC=%i) nmaxiter=%i tol=%g @V=%li @V_=%li \n", bPBC,  nmaxiter, tol, (long)V, (long)V_ );
+    //printf("laplace_real_loop(bPBC=%i) nmaxiter=%i tol=%g @V=%li @V_=%li \n", bPBC,  nmaxiter, tol, (long)V, (long)V_ );
     int iter=0;
     for(iter=0; iter<nmaxiter; iter++){ 
         if(bPBC){ laplace_real_pbc( V, V_, cSOR ); }

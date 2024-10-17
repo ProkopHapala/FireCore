@@ -195,6 +195,7 @@ class GridFF_cl:
         return p_buf.get(), v_buf.get()
     
     def fit3D(self, Ref_buff, nmaxiter=300, dt=0.5, Ftol=1e-16, damp=0.15, nPerStep=50, bConvTrj=False, bReturn=True, bPrint=False, bTime=True, bDebug=True ):
+        # NOTE / ToDo : It is a bit strange than GridFF.h::makeGridFF_Bspline_d() the fit is fastes with damp=0.0 but here damp=0.15 performs better
         #print(f"GridFF_cl::fit3D().1 Queue: {self.queue}, Context: {self.ctx}")
         print(f"GridFF_cl::fit3D() dt={dt}, damp={damp} nmaxiter={nmaxiter} Ftol{Ftol}")
         T00=time.perf_counter()

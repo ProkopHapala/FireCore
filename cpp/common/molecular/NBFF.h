@@ -111,9 +111,10 @@ class NBFF: public ForceField{ public:
     double drSR  = 0.5;     // R_SR = R_cut - drSR
     double ampSR = 0.15;   // Amplitude of short-range repulsion  = ampSR * EvdW
 
-    double alphaMorse = 1.5; // alpha parameter for Morse potential
-    //double  KMorse  = 1.5; // spring constant for Morse potential
-    double  Rdamp     = 1.0; // damping radius for LJQ and MorseQ
+    double alphaMorse = 1.5;     // alpha parameter for Morse potential
+    //double  KMorse  = 1.5;     // spring constant for Morse potential
+    double  Rdamp     = 1.0; // damping radius for Coulomb potential r_=sqrt(d.norm(2)+Rdamp^2)
+    //double  Rdamp     = 1.0e-32; // damping radius for Coulomb potential r_=sqrt(d.norm(2)+Rdamp^2)
     Mat3d   lvec __attribute__((aligned(64)));  // lattice vectors
     Vec3i   nPBC;  // number of periodic images in each direction 
     bool    bPBC=false; // periodic boundary conditions ?
