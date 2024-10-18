@@ -420,8 +420,8 @@ __kernel void set(
 __attribute__((reqd_work_group_size(32,1,1)))
 __kernel void make_MorseFF(
     const int nAtoms,                // 1
-    __global float4*  atoms,         // 2
-    __global float4*  REQs,          // 3
+    __global const float4*  atoms,         // 2
+    __global const float4*  REQs,          // 3
     __global float* FE_Paul,         // 4
     __global float* FE_Lond,         // 5
     //__global * FE_Coul,
@@ -553,19 +553,21 @@ __kernel void make_MorseFF(
 }
 
 
+
+
 __attribute__((reqd_work_group_size(32,1,1)))
 __kernel void make_MorseFF_f4(
     const int nAtoms,                // 1
-    __global float4*  atoms,         // 2
-    __global float4*  REQs,          // 3
-    __global float4* FE_Paul,
-    __global float4* FE_Lond,
+    __global const float4*  atoms,         // 2
+    __global const float4*  REQs,          // 3
+    __global float4* FE_Paul,        // 4
+    __global float4* FE_Lond,        // 5
     // __global float4* FE_Coul,
-    const int4     nPBC,             // 7
-    const int4     nGrid,            // 8
-    const cl_Mat3  lvec,             // 9
-    const float4   grid_p0,          // 10
-    const float4   GFFParams         // 11
+    const int4     nPBC,             // 6
+    const int4     nGrid,            // 7
+    const cl_Mat3  lvec,             // 8
+    const float4   grid_p0,          // 9
+    const float4   GFFParams         // 10
 ){
     __local float4 LATOMS[32];
     __local float4 LCLJS [32];
@@ -666,6 +668,91 @@ __kernel void make_MorseFF_f4(
     //write_imagef( FE_Lond, coord, fe_Lond );
     //write_imagef( FE_Coul, coord, fe_Coul );
 }
+
+
+__attribute__((reqd_work_group_size(32,1,1)))
+__kernel void make_Coulomb_points(
+    const int nAtoms,                // 1
+    const int np,                    // 2
+    __global const float4*  atoms,   // 3
+    __global const float4*  ps,      // 4
+    __global       float4*  FE_Coul, // 5
+    const int4     nPBC,             // 6
+    const float4   lvec_a,            // 8
+    const float4   lvec_b,            // 9
+    const float4   lvec_c,            // 10
+    const float4   GFFParams         // 9
+){
+    __local float4 LATOMS[32];
+    const int iG = get_global_id (0);
+    //const int nG = get_global_size(0);
+    const int iL = get_local_id  (0);
+    const int nL = get_local_size(0);
+
+    //const float  alphaMorse = GFFParams.y;
+    const float  R2damp     = GFFParams.x*GFFParams.x;
+    const float3 shift_b = lvec_b.xyz + lvec_a.xyz*(nPBC.x*-2.f-1.f);      //  shift in scan(iy)
+    const float3 shift_c = lvec_c.xyz + lvec_b.xyz*(nPBC.y*-2.f-1.f);      //  shift in scan(iz) 
+    
+    if(iG>=np) return;
+
+    // if( iG==0 ){
+    //     printf( "GPU make_Coulomb_points() nAtoms=%i np=%i nPBC(%i,%i,%i)\n", nAtoms, np, nPBC.x,nPBC.y,nPBC.z );
+    //     printf( "GPU make_Coulomb_points() lvec_a(%8.4f,%8.4f,%8.4f) lvec_b(%8.4f,%8.4f,%8.4f) lvec_c(%8.4f,%8.4f,%8.4f)\n", lvec_a.x,lvec_a.y,lvec_a.z,   lvec_b.x,lvec_b.y,lvec_b.z,   lvec_c.x,lvec_c.y,lvec_c.z  );
+    //     for(int i=0; i<nAtoms; i++){ printf( "GPU atom[%i] (%8.4f,%8.4f,%8.4f|%8.4f)\n", i, atoms[i].x,atoms[i].y,atoms[i].z,atoms[i].w ); }
+    //     //for(int i=0; i<np; i++){ printf( "GPU ps[%i] (%8.4f,%8.4f,%8.4f)\n", i, ps[i].x,ps[i].y,ps[i].z ); }
+    // }
+
+    const float3 pos    = ps[iG].xyz +  lvec_a.xyz*-nPBC.x + lvec_b.xyz*-nPBC.y + lvec_c.xyz*-nPBC.z;  // most negative PBC-cell
+
+    float4 fe_Coul = (float4)(0.0f, 0.0f, 0.0f, 0.0f);
+    float4 c       = (float4)(0.0f, 0.0f, 0.0f, 0.0f);
+
+    for (int j0=0; j0<nAtoms; j0+= nL ){
+        const int i = j0 + iL;
+        LATOMS[iL] = atoms[i];
+        barrier(CLK_LOCAL_MEM_FENCE);
+        for (int jl=0; jl<nL; jl++){
+            const int ja=jl+j0;
+            if( ja<nAtoms ){ 
+                const float4 atom = LATOMS[jl];
+                float3       dp   = pos - atom.xyz;
+        
+                //float3 shift=shift0; 
+                for(int iz=-nPBC.z; iz<=nPBC.z; iz++){
+                    for(int iy=-nPBC.y; iy<=nPBC.y; iy++){
+                        for(int ix=-nPBC.x; ix<=nPBC.x; ix++){
+
+                            //if( (i0==0)&&(j==0)&&(iG==0) )printf( "pbc[%i,%i,%i] dp(%g,%g,%g)\n", ix,iy,iz, dp.x,dp.y,dp.z );   
+                            const float  r2  = dot(dp,dp);
+                            const float ir2  = 1.f/(r2+R2damp); 
+                            const float ir   = sqrt(ir2 );
+                            const float   E  = COULOMB_CONST*atom.w*ir;
+
+                            const float4 fei = (float4)(dp*(E*ir2), E );   
+
+                            // Kahan Summation to reduce numerical iaccuracy ( https://en.wikipedia.org/wiki/Kahan_summation_algorithm )
+                            const float4 y = fei - c;
+                            const float4 t = fe_Coul + y;
+                            c              = t - fe_Coul - y;
+                            fe_Coul        = t;
+
+                            dp   +=lvec_a.xyz;
+                        }
+                        dp   +=shift_b;
+                    }
+                    dp   +=shift_c;
+                }
+
+            }
+        }
+        barrier(CLK_LOCAL_MEM_FENCE);
+    }
+    //FE_Paul[iG] = fe_Paul;
+    //FE_Lond[iG] = fe_Lond;
+    FE_Coul[iG] = fe_Coul;
+}
+
 
 
 int pbc_ifw(int i, int n){ i++; return (i<n )?  i :  i-n; };
@@ -969,9 +1056,9 @@ __kernel void poissonW(
 
 __kernel void laplace_real_pbc( 
     int4 ng,
-    __global float* Vin, 
-    __global float* Vout, 
-    __global float* vV, 
+    __global const float* Vin, 
+    __global       float* Vout, 
+    __global       float* vV, 
     float cSOR, 
     float cV
 ){
@@ -980,9 +1067,10 @@ __kernel void laplace_real_pbc(
     const int iz = get_global_id(2);
     if( (ix>=ng.x) || (iy>=ng.y) || (iz>=ng.z) ) return;
 
+    //if( (ix==0) && (iy==0) && (iz==0) ){ printf( "GPU laplace_real_pbc() global_sz(%i,%i,%i) ns(%i,%i,%i) cSOR=%g cV=%g @vV=%li \n ",  (int)get_global_size(0), (int)get_global_size(1), (int)get_global_size(2), ng.x, ng.y, ng.z, cSOR, cV, (long)vV  ); }
+
     int nxy = ng.x * ng.y;
-    const float fac = 1.0f/6.0f;
-    
+
     const int iiz =          iz       *nxy;
     const int ifz =  pbc_ifw(iz, ng.z)*nxy;
     const int ibz =  pbc_ibk(iz, ng.z)*nxy;
@@ -998,12 +1086,15 @@ __kernel void laplace_real_pbc(
     Vin[ ix  + iby + iiz ] + Vin[ ix  + ify + iiz ] + 
     Vin[ ix  + iiy + ibz ] + Vin[ ix  + iiy + ifz ];
 
+    const float fac = 1.0f/6.0f;
     vi *= fac;
+    
     const int i = ix + iiy + iiz;
+
     const float vo = Vin[ i ];
     vi += (vi-vo)*cSOR; 
-    
     if(vV != 0){   // inertia
+        //if( (ix==0) && (iy==0) && (iz==0) ){ printf( "GPU laplace_real_pbc() @vV=%li \n ", (long)vV );}
         float v = vi - vo;                 // velocity ( change between new and old potential )
         v       = v*cV + vV[i]*(1.0f-cV);  // inertia ( mixing of new and old change )
         vV[i]   = v;                       // store updated velocity ( change )
@@ -1011,7 +1102,7 @@ __kernel void laplace_real_pbc(
     }
 
     Vout[i] = vi;
-
+    //Vout[i] = vo;
     // double v = V_[i]-V[i];
     // if(iter>0){ v = v*cV + vV[i]*(1-cV); }
     // vV[i] = v; 
@@ -1021,8 +1112,8 @@ __kernel void laplace_real_pbc(
 
 __kernel void slabPotential( 
     int4 ns,
-    __global float2* Vin,   // real and imag part ( result of Particle Mesh Ewald poissin solever using clFFT
-    __global float*  Vout,
+    __global const float2* Vin,   // real and imag part ( result of Particle Mesh Ewald poissin solever using clFFT
+    __global       float*  Vout,
     float4 params,          // (dz, Vol, dVcor, Vcor0)
     int4 ng
 ){
