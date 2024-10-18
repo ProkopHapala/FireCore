@@ -303,26 +303,30 @@ class GridFF_cl:
             setattr(self, buff_name, buff )
 
 
-    def try_make_buffs(self, names, na, nxyz, bytePerFloat=4):
+    def try_make_buffs(self, names, na, nps, bytePerFloat=4):
+        print("try_make_buffs na=", na," nxyz=",  np, " nxyz*bytePerFloat=", nps*bytePerFloat ) 
         self.try_buff("atoms",  names, na*4*bytePerFloat)
         self.try_buff("REQs",   names, na*4*bytePerFloat)
-        self.try_buff("V_Paul", names, nxyz*bytePerFloat)
-        self.try_buff("V_Lond", names, nxyz*bytePerFloat)
-        self.try_buff("Qgrid",  names, nxyz*2*bytePerFloat)
-        self.try_buff("Vgrid",  names, nxyz*2*bytePerFloat)
-        self.try_buff("V_Coul", names, nxyz*bytePerFloat)
+        self.try_buff("V_Paul", names, nps*bytePerFloat)
+        self.try_buff("V_Lond", names, nps*bytePerFloat)
+        self.try_buff("Qgrid",  names, nps*2*bytePerFloat)
+        self.try_buff("Vgrid",  names, nps*2*bytePerFloat)
+        self.try_buff("V_Coul", names, nps*bytePerFloat)
 
         # fitting buffers      
-        self.try_buff("Gs",  names, nxyz*bytePerFloat )
-        self.try_buff("fGs", names, nxyz*bytePerFloat )
-        self.try_buff("dGs", names, nxyz*bytePerFloat )
-        self.try_buff("vGs", names, nxyz*bytePerFloat )
+        self.try_buff("Gs",  names, nps*bytePerFloat )
+        self.try_buff("fGs", names, nps*bytePerFloat )
+        self.try_buff("dGs", names, nps*bytePerFloat )
+        self.try_buff("vGs", names, nps*bytePerFloat )
 
         # New buffers for laplace_real_loop_inert
-        #self.try_buff("V1", names, nxyz*bytePerFloat)
-        #self.try_buff("V2", names, nxyz*bytePerFloat)
-        #self.try_buff("vV", names, nxyz*bytePerFloat)
+        self.try_buff("V1", names, nps*bytePerFloat)
+        self.try_buff("V2", names, nps*bytePerFloat)
+        self.try_buff("vV", names, nps*bytePerFloat)
         
+        self.try_buff("FEps", names, nps*4*bytePerFloat)
+        self.try_buff("ps",   names, nps*4*bytePerFloat)
+
         # New buffers for laplace_real_pbc and slabPotential
         # self.try_buff("Vin", names, nxyz*bytePerFloat)
         # self.try_buff("Vout", names, nxyz*bytePerFloat)
@@ -389,6 +393,58 @@ class GridFF_cl:
             # print( "V_Paul.min,max ", V_Paul.min(), V_Paul.max() )
             return V_Paul, V_Lond
     
+
+    def make_Coulomb_points(self, atoms, ps, nPBC=(25, 25, 0), lvec=None, Ls=None, GFFParams=(0.1, 1.5, 0.0, 0.0), bTime=True, bReturn=True):
+        if Ls   is None: Ls   = self.gsh.Ls 
+        if lvec is None: lvec = [[Ls[0],0.0,0.0],[0.0,Ls[1],0.0],[0.0,0.0,Ls[2]]]
+        T00 = time.perf_counter()
+
+        na  = len(atoms)
+        nps = len(ps)
+
+        # Buffer creation: atoms, ps, and FE_Coul buffers
+        buff_names = {'atoms', 'ps', 'FEps'}
+        self.try_make_buffs(buff_names, na, nps )
+
+        # Convert input data to NumPy arrays and enqueue them to the device buffers
+        atoms_np = np.asarray(atoms, dtype=np.float32 )
+        ps_np    = np.asarray(ps,    dtype=np.float32 )
+        cl.enqueue_copy(self.queue, self.atoms_buff, atoms_np)
+        cl.enqueue_copy(self.queue, self.ps_buff,    ps_np)
+
+        #nPBC=(20,20,0)
+        # Set up kernel parameters
+        na_cl = np.int32(na)
+        np_cl = np.int32(nps)
+        nPBC_cl = np.array(nPBC + (0,), dtype=np.int32)
+        #lvec_a = np.array( lvec, dtype=np.float32)
+        #lvec_b = np.array( lvec, dtype=np.float32)
+        lvec_c = np.array( [lvec[2][0],lvec[2][1],lvec[2][2],0.0], dtype=np.float32)
+        GFFParams_cl = np.array(GFFParams, dtype=np.float32)
+
+        # Work-group sizes
+        nL = self.nloc
+        nG = clu.roundup_global_size(nps, nL)
+
+        # Kernel invocation
+        T0 = time.perf_counter()
+        self.prg.make_Coulomb_points(self.queue, (nG,), (nL,),
+                                na_cl, np_cl, self.atoms_buff, self.ps_buff, self.FEps_buff,
+                                nPBC_cl, self.gcl.a, self.gcl.b, lvec_c, GFFParams_cl)
+
+        if bTime:
+            self.queue.finish()
+            dT = time.perf_counter() - T0
+            npbc = (nPBC[0] * 2 + 1) * (nPBC[1] * 2 + 1) * (nPBC[2] * 2 + 1)
+            nops = na_cl * nps * npbc
+            print("GridFF_cl::make_Coulomb_points() time[s]:", dT, " preparation[s]:", T0 - T00, "[s] nGOPs:", nops * 1e-9, " speed[GOPs/s]:", (nops * 1e-9) / dT, " na, nps, npbc:", na_cl, nps, npbc)
+
+        # Return results if needed
+        if bReturn:
+            FE_Coul = np.zeros( (nps,4), dtype=np.float32)
+            cl.enqueue_copy(self.queue, FE_Coul, self.FEps_buff)
+            return FE_Coul
+
 
     def _project_atoms_on_grid_quintic_pbc(self, sz_glob, sz_loc, na, ns ):
         """
@@ -463,7 +519,8 @@ class GridFF_cl:
         self.prepare_poisson( sh=sh )
 
         ns_cl    = np.array( (*sh[::-1],nxyz), dtype=np.int32 )
-        sc_ewald = 4*np.pi*dV*COULOMB_CONST
+        #sc_ewald = 4*np.pi*dV*COULOMB_CONST
+        sc_ewald = 4*np.pi*dV*dV*COULOMB_CONST
         coefs_cl = np.array( (0.0,0.0,0.0, sc_ewald ), dtype=np.float32 )
 
         nL = self.nloc
@@ -540,7 +597,7 @@ class GridFF_cl:
         return Vout
 
 
-    def laplace_real_loop_inert(self, nmaxiter=1000, tol=1e-6, bPBC=True, cSOR=0.0, cV=0.5, bReturn=False, sh=None ):
+    def laplace_real_loop_inert(self, niter=4, cSOR=0.0, cV=0.8, bReturn=False, sh=None ):
         print( "GridFF_cl::laplace_real_loop_inert() " )
 
         if sh is None: sh=self.gsh.ns[::-1]
@@ -550,29 +607,39 @@ class GridFF_cl:
         self.try_make_buffs(buff_names, 0, nxyz )
 
         sz_loc = (4,4,4)
-        sz_glob = clu.roundup_global_size_3d( self.gsh.ns, sz_loc )
+        sz_glob = clu.roundup_global_size_3d( sh[::-1], sz_loc )
 
-        ns_cl   = np.array( (*sh,0), dtype=np.int32 )
+        ns_cl   = np.array( (*sh[::-1],0), dtype=np.int32 )
         C_cl    = np.array( (1.0,0.0), dtype=np.float32 )
         cV_cl   = np.float32(cV)
         cSOR_cl = np.float32(cSOR)
 
         szl = (self.nloc,)
-        szg = ( clu.roundup_global_size( self.gcl.nxyz, self.nloc), )
-        self.prg.setCMul(self.queue, szg, szl, nxyz,  self.Vgrid_buff,  self.V1_buff, C_cl ) # copy real part from complex Vgrid to scalar V1
+        szg = ( clu.roundup_global_size( nxyz, self.nloc), )
+        self.prg.setCMul( self.queue, szg,  szl, nxyz, self.Vgrid_buff,  self.V1_buff, C_cl ) # copy real part from complex Vgrid to scalar V1
+        self.prg.set    ( self.queue, szg,  szl, nxyz, self.vV_buff, np.float32(0.0) )        # initialize velocity to zero
+        last_buff=1
+        #self.prg.laplace_real_pbc(     self.queue, sz_glob, sz_loc,       ns_cl, self.V1_buff, self.V2_buff, self.vV_buff, cSOR_cl, np.float32(0.0) )
+        self.prg.laplace_real_pbc(     self.queue, sz_glob, sz_loc,       ns_cl, self.V1_buff, self.V2_buff, None,         cSOR_cl, np.float32(0.0) )
+        last_buff=2
 
-        self.prg.laplace_real_pbc(     self.queue, sz_glob, sz_loc,       ns_cl, self.V1_buff, self.V2_buff, self.vV_buff, cSOR_cl, np.float32(0.0) )
-        for iter in range(nmaxiter):
+        for iter in range(niter):
             if iter % 2 == 0:
                 self.prg.laplace_real_pbc( self.queue, sz_glob, sz_loc,    ns_cl, self.V2_buff, self.V1_buff, self.vV_buff, cSOR_cl,cV_cl )
+                last_buff=1
             else:
                 self.prg.laplace_real_pbc( self.queue, sz_glob, sz_loc,    ns_cl, self.V1_buff, self.V2_buff, self.vV_buff, cSOR_cl,cV_cl )
-        #if iter % 2 == 1:
-        #    cl.enqueue_copy(self.queue, self.V__buff, self.V_buff)    self.V_buff, self.V__buff = self.V__buff, self.V_buff
+                last_buff=2
+
         if bReturn:
-            result = np.empty_like(V)
-            cl.enqueue_copy(self.queue, result, self.V_buff)
-        return result, iter
+            V = np.empty(sh, dtype=np.float32)
+            nxyz_ = V.shape[0] * V.shape[1] * V.shape[2]
+            print(f"V shape: {V.shape}|{nxyz_},{nxyz}, V2_buff size: {self.V2_buff.size}")
+            if last_buff == 2:
+                cl.enqueue_copy(self.queue, V, self.V2_buff)
+            elif last_buff == 1:
+                cl.enqueue_copy(self.queue, V, self.V1_buff)
+            return V
     
     def makeCoulombEwald(self, atoms ):
         print( "GridFF_cl::makeCoulombEwald() " )
@@ -605,7 +672,7 @@ class GridFF_cl:
         return Vgrid
 
 
-    def makeCoulombEwald_slab(self, atoms, Lz_slab=20.0, bDipoleCoorection=False, bReturn=True ):
+    def makeCoulombEwald_slab(self, atoms, Lz_slab=20.0, niter=4, bDipoleCoorection=False, bReturn=True ):
         print( "GridFF_cl::makeCoulombEwald() " )
         clu.try_load_clFFT()
         if self.gcl is None: 
@@ -656,7 +723,8 @@ class GridFF_cl:
         else:
             print("GridFF_cl::makeCoulombEwald_slab().poisson")
             Vgrid = self.poisson( bReturn=True, sh=sh )
-            Vcoul = Vgrid[:,:,:,0].copy()
+            #Vcoul = Vgrid[:,:,:,0].copy()
+            Vcoul = self.laplace_real_loop_inert( bReturn=True, niter=niter, sh=sh )
             print("GridFF_cl::makeCoulombEwald_slab() DONE Vgrid.shape ", Vgrid.shape, " Vcoul.shape ", Vcoul.shape )
 
         return Vcoul
