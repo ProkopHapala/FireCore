@@ -220,7 +220,22 @@ def make_atoms_arrays( atoms=None, fname=None, bSymetrize=False, Element_Types_n
 
     return xyzq, REQs, atoms
 
-def test_gridFF_ocl( fname="./data/xyz/NaCl_1x1_L1.xyz", Element_Types_name="./data/ElementTypes.dat", bSymetrize=False, bMorse=False, bEwald=False, bFit=True, bCoulBrute=False, bDebug=True,  mode=6, dsamp=0.02, p0=[0.0,0.0,2.0], R0=3.5, E0=0.1, a=1.6, Q=0.4, H=0.0, scErr=100.0, iax=2, Emax=None, Fmax=None, maxSc=5.0, title=None, bSaveFig=True, bRefine=True, nPBC=[100,100,0], bRealSpace=False, save_name=None ):
+
+def plotTrjs( trjs, names ):
+    plt.figure(figsize=(5,5))
+    for i,trj in enumerate(trjs):
+        #plt.plot( trj[:,0], trj[:,1], label=names[i] )
+        plt.plot( trj[:,0], trj[:,1], label=names[i]+" |F|" )
+        plt.plot( trj[:,0], trj[:,2], label=names[i]+" |E|" )
+    plt.legend()
+    plt.grid()
+    plt.xlabel('iteration')
+    plt.yscale('log')
+    plt.title( "GridFF Bspline fitting error" )
+    plt.show()
+
+
+def test_gridFF_ocl( fname="./data/xyz/NaCl_1x1_L1.xyz", Element_Types_name="./data/ElementTypes.dat", job="PLQ", b2D=False, bSymetrize=False, bFit=True, save_name=None ):
     print( "py======= test_gridFF_ocl() START" );
 
     T00 = time.perf_counter()
@@ -229,13 +244,11 @@ def test_gridFF_ocl( fname="./data/xyz/NaCl_1x1_L1.xyz", Element_Types_name="./d
 
     xyzq, REQs, atoms = make_atoms_arrays( fname=fname, bSymetrize=bSymetrize, Element_Types_name=Element_Types_name )
 
-    
     grid = GridShape( dg=(0.1,0.1,0.1),  lvec=atoms.lvec)
     clgff.set_grid( grid )
 
-    b2D = True
-    #b2D = False
-    if bCoulBrute:
+    if job=="brute":
+            
         nPBC=(60,60, 0)
         if b2D:
             plt.figure(figsize=(7,5))
@@ -246,10 +259,74 @@ def test_gridFF_ocl( fname="./data/xyz/NaCl_1x1_L1.xyz", Element_Types_name="./d
             coulomb_brute_1D( xyzq, kind='z',  p0=[2.0,2.0,2.0], bPlot=True )
             coulomb_brute_1D( xyzq, kind='xy', p0=[0.0,0.0,2.0], bPlot=True )
         plt.show()
-        exit(0)
     
-    if bEwald:
-        #---- Test Charge-to-grid projection
+    elif job=="PLQ":
+        
+        # --- Morse
+        g0 = ( -grid.Ls[0]*0.5, -grid.Ls[1]*0.5, 0.0 )
+        nPBC_mors = autoPBC(atoms.lvec,Rcut=20.0); print("autoPBC(nPBC_mors): ", nPBC_mors )
+        clgff.make_MorseFF( xyzq, REQs, nPBC=nPBC_mors, lvec=atoms.lvec, g0=g0, GFFParams=(0.1,1.5,0.0,0.0), bReturn=False )
+        V_Paul,trj_paul = clgff.fit3D( clgff.V_Paul_buff, nPerStep=50, nmaxiter=500, damp=0.15, bConvTrj=True ); #T_fit_P = time.perf_counter()
+        V_Lond,trj_lond = clgff.fit3D( clgff.V_Lond_buff, nPerStep=50, nmaxiter=500, damp=0.15, bConvTrj=True ); #T_fit_ = time.perf_counter()
+
+        # --- Coulomb
+        Vcoul = clgff.makeCoulombEwald_slab( xyzq, niter=2 )
+        #VcoulB,trj_coul = clgff.fit3D( clgff.V1_buff, nPerStep=100, nmaxiter=3000, damp=0.05, bConvTrj=True ); #T_fit_ = time.perf_counter()
+        VcoulB,trj_coul = clgff.fit3D( clgff.V_Coul_buff, nPerStep=50, nmaxiter=500, damp=0.15, bConvTrj=True ); #T_fit_ = time.perf_counter()
+
+        plotTrjs( [trj_paul,trj_lond,trj_coul], ["Paul", "Lond", "Coul"] )
+
+        if save_name=='double3':
+            path = os.path.basename( fname )
+            path = "./data/" + os.path.splitext( path )[0]
+            print( "test_gridFF_ocl() path = ", path )
+            V_Paul = V_Paul.transpose( (2,1,0) )
+            V_Lond = V_Lond.transpose( (2,1,0) )
+            V_Coul = VcoulB.transpose( (2,1,0) )
+            PLQ = np.zeros( V_Paul.shape + (3,) )
+            PLQ[:,:,:,0] = V_Paul
+            PLQ[:,:,:,1] = V_Lond
+            PLQ[:,:,:,2] = V_Coul
+            full_name = path+"/Bspline_PLQd_ocl.npy"; print("test_gridFF_ocl() - save Morse to: ", full_name)
+            np.save( full_name, PLQ )
+
+        #cmap='plasma'
+        #cmap='inferno'
+        #cmap='magma'
+        plt.figure( figsize=(16,8) )
+        # plt.subplot(1,3,1); plt.imshow( V_Paul[:,:,0] ); plt.colorbar(); plt.title( "V_Paul[:,:,0]" );
+        # plt.subplot(1,3,2); plt.imshow( V_Lond[:,:,0] ); plt.colorbar(); plt.title( "V_Lond[:,:,0]" );
+        # plt.subplot(1,3,3); plt.imshow( V_Coul[:,:,0] ); plt.colorbar(); plt.title( "V_Coul[:,:,0]" );
+        plt.subplot(1,3,1); plt.imshow( V_Paul[0,:,:].transpose() ); plt.colorbar(); plt.title( "V_Paul[0,:,:]" );
+        plt.subplot(1,3,2); plt.imshow( V_Lond[0,:,:].transpose() ); plt.colorbar(); plt.title( "V_Lond[0,:,:]" );
+        plt.subplot(1,3,3); plt.imshow( V_Coul[0,:,:].transpose() ); plt.colorbar(); plt.title( "V_Coul[0,:,:]" );
+        # #plt.subplot(1,2,1); plt.imshow( V_Paul[0,:,:], cmap='bwr' ); plt.colorbar(); plt.title( "V_Paul[0,:,:]" );
+        # #plt.subplot(1,2,2); plt.imshow( Vcoul [0,:,:], cmap='bwr' ); plt.colorbar(); plt.title( "Vcoul [0,:,:]" );
+        # #plt.subplot(1,2,1); plt.imshow( V_Paul[:,:,0], cmap='bwr' ); plt.colorbar(); plt.title( "V_Paul[0,:,:]" );
+        # #plt.subplot(1,2,1); plt.imshow( V_Lond[:,:,0], cmap='bwr' ); plt.colorbar(); plt.title( "V_Lond[0,:,:]" );
+        # #plt.subplot(1,2,2); plt.imshow( Vcoul [:,:,0], cmap='bwr' ); plt.colorbar(); plt.title( "Vcoul [0,:,:]" );
+        # plt.subplot(1,2,1); plt.imshow( Vcoul [5,:,:] ); plt.colorbar(); plt.title( "V_Lond[0,:,:]" );
+        # plt.subplot(1,2,2); plt.imshow( Vcoul [:,:,0] ); plt.colorbar(); plt.title( "Vcoul [0,:,:]" );
+
+
+
+
+        # --- Check the inverted axis of the V grid
+        # plt.figure( figsize=(16,8) )
+        # V = np.empty( [400,40,40], dtype=np.float32)
+        # clgff.cl.enqueue_copy(clgff.queue, V, clgff.V2_buff)
+        # plt.subplot(1,2,1); plt.imshow( V [-5,:,:] ); plt.colorbar(); plt.title( "V_[0,:,:]" );
+        # plt.subplot(1,2,2); plt.imshow( V [200:,:,0] ); plt.colorbar(); plt.title( "V_ [0,:,:]" );
+        # print( "V_Before[:10,0,0] \n", V[::-1,-1,-1][:10] )
+        # print( "V_after[:10,0,0] \n", Vcoul[:10,0,0] )
+
+        plt.show()
+        exit(0)
+
+
+
+    elif job=="Ewald":
+        
         """
         #xyzq[:,2]=0.0
 
@@ -358,7 +435,7 @@ def test_gridFF_ocl( fname="./data/xyz/NaCl_1x1_L1.xyz", Element_Types_name="./d
         # plt.subplot(1,6,6); plt.imshow( Vbrute, cmap='bwr' ); plt.colorbar(); plt.title( "Vbrute[200:300,:,0]" );
 
         xyzq_sym, _, _ = make_atoms_arrays( atoms=atoms, bSymetrize=True, Element_Types_name=Element_Types_name )
-        Vbrute = coulomb_brute_1D( xyzq_sym, kind='z', p0=[0.0,0.0,0.0], bPlot=False )
+        Vbrute         = coulomb_brute_1D( xyzq_sym, kind='z', p0=[0.0,0.0,0.0], bPlot=False )
 
         plt.figure( figsize=(7,5) )
         ysc = 0.03
@@ -370,7 +447,8 @@ def test_gridFF_ocl( fname="./data/xyz/NaCl_1x1_L1.xyz", Element_Types_name="./d
         plt.grid()
         plt.show()
 
-    if bMorse:
+    elif job=="Morse":
+    
         nPBC = autoPBC(atoms.lvec,Rcut=20.0); print("autoPBC: ", nPBC )
 
         if bFit:
@@ -479,6 +557,9 @@ def test_gridFF_ocl( fname="./data/xyz/NaCl_1x1_L1.xyz", Element_Types_name="./d
         #     plt.grid()
         #     #plt.show()
         #     #plt.show()
+    
+    
+
         
     print( "py======= test_gridFF() DONE" );
 
