@@ -186,6 +186,8 @@ double project_atom_on_grid_cubic_pbc(const Vec3d pi, const double qi, double* d
 
 
 
+int iDBG=0;
+
 __attribute__((hot)) 
 double project_atom_on_grid_quintic( const Vec3d pi, const double qi, double* dens ) const {
     //printf("project_atom_on_grid() pi(%g,%g,%g) q=%g \n", pi.x, pi.y, pi.z, qi );
@@ -202,6 +204,8 @@ double project_atom_on_grid_quintic( const Vec3d pi, const double qi, double* de
     const Vec6d bx = Bspline::basis5(tx);
     const Vec6d by = Bspline::basis5(ty);
     const Vec6d bz = Bspline::basis5(tz);
+
+    //printf("CPU atom[%i]  gi(%3i,%3i,%3i) (%8.4f,%8.4f,%8.4f |%8.4f) \n", iDBG, ix,iy,iz,  pi.x, pi.y, pi.z, qi ); 
 
     //printf("project_atom_on_grid() pi(%g,%g,%g) q=%g \n", pi.x, pi.y, pi.z, qi );
     const int nxy = n.x * n.y;
@@ -241,6 +245,8 @@ double project_atom_on_grid_quintic_pbc(const Vec3d pi, const double qi, double*
     const Vec6d bx = Bspline::basis5(tx);
     const Vec6d by = Bspline::basis5(ty);
     const Vec6d bz = Bspline::basis5(tz);
+
+    printf("CPU atom[%i]  gi(%3i,%3i,%3i) (%8.4f,%8.4f,%8.4f |%8.4f) \n", iDBG, ix,iy,iz,  pi.x, pi.y, pi.z, qi ); 
 
     // Retrieve the number of grid points in each direction
     const int nxy = n.x * n.y;
@@ -282,6 +288,7 @@ void project_atoms_on_grid_linear( int na, const Vec3d* apos, const double* qs, 
 
 __attribute__((hot)) 
 void project_atoms_on_grid_cubic( int na, const Vec3d* apos, const double* qs, double* dens, bool bPBC=true ) {
+    printf("project_atoms_on_grid_cubic() na=%i ns(%i,%i,%i) pos0(%g,%g,%g) bPBC=%i\n", na, n.x,n.y,n.z, pos0.x,pos0.y,pos0.z, bPBC );
     if( (!bCubicPBCIndexesDone) && bPBC ){ 
         make_inds_pbc(n.x, xqs_o3); 
         make_inds_pbc(n.y, yqs_o3); 
@@ -291,7 +298,6 @@ void project_atoms_on_grid_cubic( int na, const Vec3d* apos, const double* qs, d
     }
     Qtot_g=0;
     Qabs_g=0;
-    //printf("project_atoms_on_grid_cubic() na=%i ns(%i,%i,%i) pos0(%g,%g,%g)\n", na, n.x,n.y,n.z, pos0.x,pos0.y,pos0.z );
     for (int ia=0; ia<na; ia++){ 
         double qg;
         if(bPBC){ qg=project_atom_on_grid_cubic_pbc( apos[ia], qs[ia], dens ); } 
@@ -304,7 +310,7 @@ void project_atoms_on_grid_cubic( int na, const Vec3d* apos, const double* qs, d
 
 __attribute__((hot)) 
 void project_atoms_on_grid_quintic( int na, const Vec3d* apos, const double* qs, double* dens, bool bPBC=true ) {
-    //printf("project_atoms_on_grid_quintic() na=%i ns(%i,%i,%i) pos0(%g,%g,%g)\n", na, n.x,n.y,n.z, pos0.x,pos0.y,pos0.z );
+    printf("project_atoms_on_grid_quintic() na=%i ns(%i,%i,%i) pos0(%g,%g,%g) bPBC=%i\n", na, n.x,n.y,n.z, pos0.x,pos0.y,pos0.z, bPBC );
     if( (!bQuinticPBCIndexesDone) && bPBC ){ 
         make_inds_pbc_5(n.x, xqs_o5); 
         make_inds_pbc_5(n.y, yqs_o5); 
@@ -314,6 +320,7 @@ void project_atoms_on_grid_quintic( int na, const Vec3d* apos, const double* qs,
     Qtot_g=0;
     Qabs_g=0;
     for (int ia=0; ia<na; ia++){
+        iDBG=ia;
         double qg;
         if(bPBC){ qg=project_atom_on_grid_quintic_pbc( apos[ia], qs[ia], dens ); }
         else    { qg=project_atom_on_grid_quintic    ( apos[ia], qs[ia], dens ); }
@@ -656,6 +663,14 @@ void laplace_reciprocal_kernel( fftw_complex* VV ){
         double* dens  = new double[ ntot ];
         if(bClearCharge){ for(int i=0; i<ntot; i++){ dens[i]=0; }; }
         projectAtoms( natoms, apos, qs, dens, order );
+
+
+        { // debug - save charge density
+            Vec3i sh{n.z,n.y,n.x};
+            save_npy( "Qgrid.npy", 3, (int*)&sh, (char*)dens );
+            
+        }
+
         solve_laplace_macro( dens, nz, VCoul, true, true, -1, false, nBlur, 0, cV );
         delete [] dens;
         //delete [] qs;
