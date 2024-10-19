@@ -111,11 +111,14 @@ class GridShape:
         if Ls   is None: Ls = (lvec[0][0],lvec[1][1],lvec[2][2])
         if ns   is None: ns = (int((Ls[0]/dg[0])+0.5),int((Ls[1]/dg[1])+0.5),int((Ls[2]/dg[2])+0.5))
         self.ns   = ns
+        self.nxyz = np.prod(ns)
         self.Ls   = Ls
         self.g0 = g0
         self.dg   = dg
         self.lvec = lvec
         self.dV   = dg[0]*dg[1]*dg[2] 
+        self.V    = self.dV*self.nxyz
+        
 
     def __str__(self):
         return f"GridShape(ns={self.ns}, Ls={self.Ls}, pos0={self.pos0}, dg={self.dg}, lvec={self.lvec})"

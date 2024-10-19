@@ -534,36 +534,8 @@ class GridFF_cl:
             cl.enqueue_copy ( self.queue, Vgrid, self.Vgrid_buff         )
             return Vgrid
 
-    def poissonW(self, sz_glob, sz_loc, ng , dV=0.001 ):
-        """
-        __kernel void poissonW(
-            const int4   ns,
-            __global float2* A,
-            __global float2* out,
-            const float4 dCell     // 
-        ){ 
-        """
-        nxyz = self.gcl.nxyz
-        
-        buff_names={'Qgrid','Vgrid'}
-        self.try_make_buffs(buff_names, 0, nxyz)
-                
-        coefs    =(0.0,0.0,0.0,4*np.pi*dV)
-        coefs_cl = np.array( coefs,        dtype=np.float32 )
-        ns_cl    = np.array( ng+(nxyz,),   dtype=np.int32   )
-        
-        self.prg.poissonW( self.queue, sz_glob, sz_loc,
-            ns_cl, self.Qgrid_buff, self.Vgrid_buff,
-            coefs_cl
-        )
-        
-        out = np.zeros(N, dtype=np.complex64)
-        cl.enqueue_copy(self.queue, out, self.out_buff)
-    
-        return out
-
-    def slabPotential(self, nz_slab, dz, Vol, dVcor, Vcor0, bDownload=True):
-        buff_names = {'Vgrid', 'V_coul'}
+    def slabPotential_old(self, nz_slab, dz, Vol, dVcor, Vcor0, bDownload=True):
+        buff_names = {'Vgrid', 'V_Coul'}
         self.try_make_buffs(buff_names, 0, self.gcl.nxyz )
         ns_cl  = np.array( self.gsh.ns+(nz_slab,),  dtype=np.int32   )
         params = np.array( [dz, Vol, dVcor, Vcor0], dtype=np.float32 )
@@ -575,27 +547,27 @@ class GridFF_cl:
             Vout = np.empty_like(Vin)
             cl.enqueue_copy(self.queue, Vout, self.Vout_buff)
             return Vout
-    
-    def _laplace_real_pbc(self, sz_glob, sz_loc, cSOR):
-
-        self.prg.laplace_real_pbc(  self.queue, sz_glob, sz_loc,
-            self.gcl.ng, self.Vin_buff, self.Vout_buff, cSOR
-        )
-    
-    def laplace_real_pbc(self, Vin, cSOR=0.0):
-        nxyz = Vin.shape[0] * Vin.shape[1] * Vin.shape[2]
-        buff_names = {'Vin', 'Vout'}
-        self.try_make_buffs(buff_names, 0, nxyz)        
-        cl.enqueue_copy(self.queue, self.Vin_buff, Vin.astype(np.float32))
         
-        sz_loc = (4,4,4)
-        sz_glob = clu.roundup_global_size_3d( self.gsh.ns, sz_loc )
-        self._laplace_real_pbc( sz_loc, sz_glob, cSOR, np.float32(cSOR) )
-       
-        Vout = np.empty_like(Vin)
-        cl.enqueue_copy(self.queue, Vout, self.Vout_buff)
-        return Vout
-
+    def slabPotential(self,  Vin_buff, nz_slab, dipol=0.0,  bDownload=True):
+        dz  = self.gsh.dg[2]
+        Lz  = self.gsh.Ls[2] 
+        dL_slab = nz_slab * dz
+        Lz_slab = Lz + dL_slab
+        Vol = self.gsh.V * Lz_slab/Lz
+        dVcor  = 4.0 * np.pi * COULOMB_CONST * dipol/Vol;
+        Vcor0 = -dVcor * Lz_slab/2;
+        buff_names = {'V_Coul'}
+        self.try_make_buffs(buff_names, 0, self.gcl.nxyz )
+        ns_cl  = np.array( self.gsh.ns+(nz_slab,),  dtype=np.int32   )
+        print( "GridFF_cl::slabPotential() ns_cl ", ns_cl )
+        params = np.array( [dz, Vol, dVcor, Vcor0], dtype=np.float32 )
+        sz_loc  = (4,4,4,)
+        sz_glob = clu.roundup_global_size_3d( self.gsh.ns, sz_loc)
+        self.prg.slabPotential( self.queue, sz_glob, sz_loc, ns_cl, Vin_buff, self.V_Coul_buff, params )
+        if bDownload:
+            V_Coul = np.empty( self.gsh.ns[::-1], dtype=np.float32  )
+            cl.enqueue_copy(self.queue, V_Coul, self.V_Coul_buff)
+            return V_Coul
 
     def laplace_real_loop_inert(self, niter=4, cSOR=0.0, cV=0.8, bReturn=False, sh=None ):
         print( "GridFF_cl::laplace_real_loop_inert() " )
@@ -640,6 +612,11 @@ class GridFF_cl:
             elif last_buff == 1:
                 cl.enqueue_copy(self.queue, V, self.V1_buff)
             return V
+        else:
+            if last_buff == 2:
+                return self.V2_buff
+            elif last_buff == 1:
+                return self.V1_buff
     
     def makeCoulombEwald(self, atoms ):
         print( "GridFF_cl::makeCoulombEwald() " )
@@ -672,7 +649,7 @@ class GridFF_cl:
         return Vgrid
 
 
-    def makeCoulombEwald_slab(self, atoms, Lz_slab=20.0, niter=4, bDipoleCoorection=False, bReturn=True ):
+    def makeCoulombEwald_slab(self, atoms, Lz_slab=20.0, dipol=0.0, niter=4, bDipoleCoorection=False, bReturn=True ):
         print( "GridFF_cl::makeCoulombEwald() " )
         clu.try_load_clFFT()
         if self.gcl is None: 
@@ -698,34 +675,28 @@ class GridFF_cl:
 
         print("GridFF_cl::makeCoulombEwald_slab()._project_atoms_on_grid_quintic_pbc")
         self._project_atoms_on_grid_quintic_pbc( sz_glob, sz_loc, np.int32(na), ns_cl  )    
-
-        # if bReturn:
-        #     sh_ = (*sh,2)
-        #     Qgrid = np.zeros( sh_, dtype=np.float32)
-        #     #print( "Qgrid.shape", Qgrid.shape )
-        #     cl.enqueue_copy(self.queue, Qgrid, self.Qgrid_buff)
-        #     Qgrid = Qgrid[:,:,:,0].copy()   # take just the real part
-        #     #print( Qgrid[:,0,0], Qgrid[0,:,0], Qgrid[0,0,:], )
-        #     print( "GridFF_cl::makeCoulombEwald_slab().project DONE Qgrid.shape=", Qgrid.shape,"  Qtot= ", Qgrid.sum()," Qabs=", np.abs(Qgrid).sum()," Qmin=", Qgrid.min()," Qmax=", Qgrid.max() )
-        #     #self.Qgrid=Qgrid
-        #     return Qgrid
         
-        if bDipoleCoorection:
-            self.poisson( bReturn=False, sh=sh )
-            #Vgrid = Vgrid[:,:,:,0].copy()
-            #print( "Vgrid min,max", Vgrid.min(), Vgrid.max() )
-            # ToDo: We should distinguis between z-dimension of the slab and of the extended grid !!!
-            dipole_z = np.sum( atoms[:,2]*atoms[:,3] )
-            Vol      = self.gsh.getVolume()
-            dVcor    = 4.0 *np.pi * COULOMB_CONST * dipole_z/Vol;
-            Vcor0    = -dVcor * self.gsh.Ls[2]/2;
-            Vcoul = self.slabPotential( nz_slab, dz, Vol, dVcor, Vcor0, bDownload=True)
-        else:
-            print("GridFF_cl::makeCoulombEwald_slab().poisson")
-            Vgrid = self.poisson( bReturn=True, sh=sh )
-            #Vcoul = Vgrid[:,:,:,0].copy()
-            Vcoul = self.laplace_real_loop_inert( bReturn=True, niter=niter, sh=sh )
-            print("GridFF_cl::makeCoulombEwald_slab() DONE Vgrid.shape ", Vgrid.shape, " Vcoul.shape ", Vcoul.shape )
+        self.poisson( bReturn=False, sh=sh )
+        Vin_buff = self.laplace_real_loop_inert( bReturn=False, niter=niter, sh=sh )
+
+        Vcoul = self.slabPotential( Vin_buff, nz_slab, dipol=dipol, bDownload=True)
+
+        # if bDipoleCoorection:
+        #     self.poisson( bReturn=False, sh=sh )
+        #     #Vgrid = Vgrid[:,:,:,0].copy()
+        #     #print( "Vgrid min,max", Vgrid.min(), Vgrid.max() )
+        #     # ToDo: We should distinguis between z-dimension of the slab and of the extended grid !!!
+        #     dipole_z = np.sum( atoms[:,2]*atoms[:,3] )
+        #     Vol      = self.gsh.getVolume()
+        #     dVcor    = 4.0 *np.pi * COULOMB_CONST * dipole_z/Vol;
+        #     Vcor0    = -dVcor * self.gsh.Ls[2]/2;
+        #     Vcoul = self.slabPotential( nz_slab, dz, Vol, dVcor, Vcor0, bDownload=True)
+        # else:
+        #     print("GridFF_cl::makeCoulombEwald_slab().poisson")
+        #     Vgrid = self.poisson( bReturn=True, sh=sh )
+        #     #Vcoul = Vgrid[:,:,:,0].copy()
+        #     Vcoul = self.laplace_real_loop_inert( bReturn=True, niter=niter, sh=sh )
+        #     print("GridFF_cl::makeCoulombEwald_slab() DONE Vgrid.shape ", Vgrid.shape, " Vcoul.shape ", Vcoul.shape )
 
         return Vcoul
 

@@ -1036,9 +1036,7 @@ __kernel void poissonW(
     const float4 coefs       // (0,0,0, 4*pi*eps0*dV)
 ){    
     const int iG = get_global_id (0);
-    if(iG==0){
-        printf("GPU poissonW() ns(%i,%i,%i,%i) coefs(%g,%g,%g,%g) \n", ns.x,ns.y,ns.z,ns.w, coefs.x,coefs.y,coefs.z,coefs.w );
-    }
+    //if(iG==0){  printf("GPU poissonW() ns(%i,%i,%i,%i) coefs(%g,%g,%g,%g) \n", ns.x,ns.y,ns.z,ns.w, coefs.x,coefs.y,coefs.z,coefs.w ); }
     if(iG>=ns.w) return;
     const int nab = ns.x*ns.y;
     const int ix  =  iG%ns.x; 
@@ -1111,23 +1109,28 @@ __kernel void laplace_real_pbc(
 }
 
 __kernel void slabPotential( 
-    int4 ns,
-    __global const float2* Vin,   // real and imag part ( result of Particle Mesh Ewald poissin solever using clFFT
-    __global       float*  Vout,
-    float4 params,          // (dz, Vol, dVcor, Vcor0)
-    int4 ng
+    int4 ng,
+    __global const float*  Vin,   // 1
+    __global       float*  Vout,  // 2
+    float4 params                 // 3 (dz, Vol, dVcor, Vcor0)          
 ){
     const int ix = get_global_id(0);
     const int iy = get_global_id(1);
     const int iz = get_global_id(2);
-    if( (ix>=ng.x) || (iy>=ng.y) || (iz>=ns.w) ) return;
+    if( (ix>=ng.x) || (iy>=ng.y) || (iz>=ng.w) ) return;
 
-    float dz    = params.x;
-    float dVcor = params.z;
-    float Vcor0 = params.w;
+    const float dz    = params.x;
+    const float dVcor = params.z;
+    const float Vcor0 = params.w;
+    const float Vcor_z = Vcor0 + dVcor * (iz*dz);
 
-    float Vcor_z = Vcor0 + dVcor * (iz*dz);
+    const int nz_ = ng[2] + ng[3];
+    //const int j = ix + ng.x*(iy + ng.y*(nz_-iz) );   // We found that the potential is inverted in z-direction ( maybe also x,y ? )
+    const int j = (ng[0]-ix-1) + ng.x*( (ng[1]-iy-1) + ng.y*(nz_-iz-1) );  // maybe is is inverted also x,y ?
+
     const int i = ix + ng.x*(iy + ng.y*iz);
-    Vout[i] = Vin[i].x + Vcor_z;
+
+    Vout[i] = Vin[j] + Vcor_z;
+    //Vout[i] = Vin[i] + Vcor_z;
 }
 
