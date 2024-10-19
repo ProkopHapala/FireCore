@@ -195,7 +195,7 @@ class GridFF_cl:
         return p_buf.get(), v_buf.get()
     
     def fit3D(self, Ref_buff, nmaxiter=300, dt=0.5, Ftol=1e-16, damp=0.15, nPerStep=50, bConvTrj=False, bReturn=True, bPrint=False, bTime=True, bDebug=True ):
-        # NOTE / ToDo : It is a bit strange than GridFF.h::makeGridFF_Bspline_d() the fit is fastes with damp=0.0 but here damp=0.15 performs better
+        # NOTE / TODO : It is a bit strange than GridFF.h::makeGridFF_Bspline_d() the fit is fastes with damp=0.0 but here damp=0.15 performs better
         #print(f"GridFF_cl::fit3D().1 Queue: {self.queue}, Context: {self.ctx}")
         print(f"GridFF_cl::fit3D() dt={dt}, damp={damp} nmaxiter={nmaxiter} Ftol{Ftol}")
         T00=time.perf_counter()
@@ -650,7 +650,7 @@ class GridFF_cl:
 
 
     def makeCoulombEwald_slab(self, atoms, Lz_slab=20.0, dipol=0.0, niter=4, bDipoleCoorection=False, bReturn=True ):
-        print( "GridFF_cl::makeCoulombEwald() " )
+        print( "GridFF_cl::makeCoulombEwald_slab() " )
         clu.try_load_clFFT()
         if self.gcl is None: 
             print("ERROR in GridFF_cl::makeCoulombEwald() gcl is None, => please call set_grid() first " )
@@ -671,32 +671,28 @@ class GridFF_cl:
 
         self.try_make_buffs(buff_names, na, nxyz_slab )
         atoms_np = np.array(atoms, dtype=np.float32)
+
+        # NOTE / TODO : This is strange, not sure why we need to shift the coordinates
+        atoms_np[:,0] += self.gcl.dg[0] * 1 
+        atoms_np[:,1] += self.gcl.dg[1] * 1
+        atoms_np[:,2] += self.gcl.dg[2] * (-1 + 4 - 0.075)   # NOTE / TODO : shift -1 is because we do the same shift on CPU (in GridFF::tryLoadGridFF_potentials() ), this make sure that Qgrid_gpu and Qgrid_cpu are the same.   But align V_Coul with CPU we need to shift by 4 (see below)
+
+
         cl.enqueue_copy(self.queue, self.atoms_buff, atoms_np)
 
         print("GridFF_cl::makeCoulombEwald_slab()._project_atoms_on_grid_quintic_pbc")
-        self._project_atoms_on_grid_quintic_pbc( sz_glob, sz_loc, np.int32(na), ns_cl  )    
+        self._project_atoms_on_grid_quintic_pbc( sz_glob, sz_loc, np.int32(na), ns_cl  )   
+
+        if True: # bSaveDebug
+            #sh    = self.gsh.ns[::-1]
+            Qgrid = np.zeros( (*sh,2,), dtype=np.float32 )
+            cl.enqueue_copy(self.queue, Qgrid, self.Qgrid_buff )
+            np.save( "./data/NaCl_1x1_L3/Qgrid_ocl.npy", Qgrid[:,:,:,0] )
         
         self.poisson( bReturn=False, sh=sh )
         Vin_buff = self.laplace_real_loop_inert( bReturn=False, niter=niter, sh=sh )
 
         Vcoul = self.slabPotential( Vin_buff, nz_slab, dipol=dipol, bDownload=True)
-
-        # if bDipoleCoorection:
-        #     self.poisson( bReturn=False, sh=sh )
-        #     #Vgrid = Vgrid[:,:,:,0].copy()
-        #     #print( "Vgrid min,max", Vgrid.min(), Vgrid.max() )
-        #     # ToDo: We should distinguis between z-dimension of the slab and of the extended grid !!!
-        #     dipole_z = np.sum( atoms[:,2]*atoms[:,3] )
-        #     Vol      = self.gsh.getVolume()
-        #     dVcor    = 4.0 *np.pi * COULOMB_CONST * dipole_z/Vol;
-        #     Vcor0    = -dVcor * self.gsh.Ls[2]/2;
-        #     Vcoul = self.slabPotential( nz_slab, dz, Vol, dVcor, Vcor0, bDownload=True)
-        # else:
-        #     print("GridFF_cl::makeCoulombEwald_slab().poisson")
-        #     Vgrid = self.poisson( bReturn=True, sh=sh )
-        #     #Vcoul = Vgrid[:,:,:,0].copy()
-        #     Vcoul = self.laplace_real_loop_inert( bReturn=True, niter=niter, sh=sh )
-        #     print("GridFF_cl::makeCoulombEwald_slab() DONE Vgrid.shape ", Vgrid.shape, " Vcoul.shape ", Vcoul.shape )
 
         return Vcoul
 

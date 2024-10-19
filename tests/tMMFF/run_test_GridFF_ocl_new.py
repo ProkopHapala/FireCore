@@ -27,9 +27,9 @@ a  = 1.8
 Q = 0.4
 p0 = [-2.0,-2.0,0.0]
 
-#name="NaCl_1x1_L3"
+name="NaCl_1x1_L3"
 #name="NaCl_1x1_L2"
-name="NaCl_8x8_L3"
+#name="NaCl_8x8_L3"
 #mol_name="PTCDA.xyz"
 #gff.test_gridFF_ocl( fname="data/xyz/NaCl_1x1_L2.xyz" )
 #gff.test_gridFF_ocl( fname="data/xyz/"+name+".xyz", save_name="double3", bMorse=True, bEwald=False  )

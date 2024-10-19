@@ -10,15 +10,113 @@ from pyBall.tests import utils as ut
 
 # =============  Functions
 
+def load_potential(filename):
+    """Load potential components from a .npy file."""
+    data = np.load(filename)
+    VPaul, VLond, VCoul = data[..., 0], data[..., 1], data[..., 2]
+    return VPaul, VLond, VCoul
+
+def plot_potentials(V_cpu, V_gpu, slice_idx=4):
+    """Plot CPU vs GPU potentials for each component."""
+    components = ['VPaul', 'VLond', 'VCoul']
+    plt.figure(figsize=(15, 5))
+    for i, comp in enumerate(components, 1):
+
+        Vcpui = V_cpu[i-1][:, :, slice_idx]
+        Vgpui = V_gpu[i-1][:, :, slice_idx]
+
+        plt.subplot(3, 3, i)
+        plt.imshow( Vcpui, origin='lower')
+        plt.colorbar()
+        plt.title(f"{comp} CPU")
+        
+        plt.subplot(3, 3, i+3)
+        plt.imshow( Vgpui, origin='lower')
+        plt.colorbar()
+        plt.title(f"{comp} GPU")
+
+        plt.subplot(3, 3, i+6)
+        plt.imshow( Vgpui-Vcpui, origin='lower')
+        plt.colorbar()
+        plt.title(f"{comp} GPU")
+    plt.tight_layout()
+    #plt.show()
+
+def plot_1D_comparison(V_cpu, V_gpu, PLQH, ix=0, iy=0, iz=4, ylim=(-1.0, 1.0)):
+    """Plot 1D combined potentials for CPU and GPU."""
+    Ecpu_z = V_cpu[0][ix, iy, :] * PLQH[0] + V_cpu[1][ix, iy, :] * PLQH[1] + V_cpu[2][ix, iy, :] * PLQH[2]
+    Egpu_z = V_gpu[0][ix, iy, :] * PLQH[0] + V_gpu[1][ix, iy, :] * PLQH[1] + V_gpu[2][ix, iy, :] * PLQH[2]
+
+    Ecpu_x = V_cpu[0][:, iy, iz] * PLQH[0] + V_cpu[1][:, iy, iz] * PLQH[1] + V_cpu[2][:, iy, iz] * PLQH[2]
+    Egpu_x = V_gpu[0][:, iy, iz] * PLQH[0] + V_gpu[1][:, iy, iz] * PLQH[1] + V_gpu[2][:, iy, iz] * PLQH[2]
+
+    Ecpu_y = V_cpu[0][ix, :, iz] * PLQH[0] + V_cpu[1][ix, :, iz] * PLQH[1] + V_cpu[2][ix, :, iz] * PLQH[2]
+    Egpu_y = V_gpu[0][ix, :, iz] * PLQH[0] + V_gpu[1][ix, :, iz] * PLQH[1] + V_gpu[2][ix, :, iz] * PLQH[2]
+
+    plt.figure(figsize=(10, 5))
+    #plt.plot(combined_cpu[4:], ':', lw=1.5, label="V_PLQ CPU "+str(PLQH))   # NOTE: TODO: We see that GPU is shifted by 4 voxels with respect to GPU
+    plt.plot(Ecpu_z, ':', lw=1.5, label="V_PLQ(z) CPU "+str(PLQH)) 
+    plt.plot(Egpu_z, '-', lw=0.5, label="V_PLQ(z) GPU "+str(PLQH))
+
+    plt.plot(Ecpu_x, ':', lw=1.5, label="V_PLQ(x) CPU "+str(PLQH)) 
+    plt.plot(Egpu_x, '-', lw=0.5, label="V_PLQ(x) GPU "+str(PLQH))
+
+    plt.plot(Ecpu_y, ':', lw=1.5, label="V_PLQ(y) CPU "+str(PLQH)) 
+    plt.plot(Egpu_y, '-', lw=0.5, label="V_PLQ(y) GPU "+str(PLQH))
+
+    #plt.ylim(ylim)
+    plt.grid(True)
+    plt.legend()
+    plt.xlabel('Index (Z-axis)')
+    plt.ylabel('Combined Potential')
+    plt.title('1D Potential Slice Comparison')
+    #plt.show()
+
+def compare_potentials( name="NaCl_1x1_L3", R0=3.5, E0=1.0, a=-1.5, Q=0.0 ):
+    # File paths
+    cpu_file = "./data/"+name+"/Bspline_PLQd.npy"
+    gpu_file = "./data/"+name+"/Bspline_PLQd_ocl.npy"
+    print( f"Comparing CPU and GPU potentials for {name}." )
+    # Load potentials
+    V_cpu = load_potential(cpu_file)
+    V_gpu = load_potential(gpu_file)
+
+    plot_potentials(V_cpu, V_gpu, slice_idx=1)
+
+    PLQH = ut.getPLQH(R0=R0, E0=E0, Q=Q, H=0, a=a )  # Replace with actual parameters
+
+    plot_1D_comparison(V_cpu, V_gpu, PLQH, ix=0, iy=0)
+
+
+# =============  Main
+
 R0 = 3.5
 E0 = 1.0
-a  = 1.8
-
+a  = 1.5
 #Q = 0.0
 Q = 0.4
+
 #p0 = [1.0,-5.05,2.0]
 #p0 = [0.0,0.0,2.0]
 p0 = [-2.0,-2.0,0.0]
+
+
+# Qcpu = np.load("./data/NaCl_1x1_L3/Qgrid.npy")
+# Qgpu = np.load("./data/NaCl_1x1_L3/Qgrid_ocl.npy")
+# plt.figure(figsize=(15,5))
+# print( "Qcpu min,max ", Qcpu.min(), Qcpu.max() )
+# print( "Qgpu min,max ", Qgpu.min(), Qgpu.max() )
+# # where is the maximum, in 3d ?
+# argmax_cpu = np.unravel_index(np.argmax(Qcpu), Qcpu.shape)
+# argmax_gpu = np.unravel_index(np.argmax(Qgpu), Qgpu.shape)
+# print( "argmax(Qcpu) ", argmax_cpu, "\nargmax(Qgpu) ", argmax_gpu )
+# plt.subplot(1,3,1); plt.imshow( Qcpu[300:,:,20] ); plt.colorbar(); plt.title("CPU Qgrid")
+# plt.subplot(1,3,2); plt.imshow( Qgpu[300:,:,20] ); plt.colorbar(); plt.title("GPU Qgrid")
+# #plt.subplot(1,3,3); plt.imshow( Qgpu[:,:,0]-Qcpu[:,:,0] ); plt.colorbar(); plt.title("CPU-GPU Qgrid")
+# plt.show()
+# exit()
+
+compare_potentials( name="NaCl_1x1_L3", R0=R0, E0=E0, a=a, Q=Q ); plt.show(); exit()
 
 mmff.initParams()
 
@@ -89,7 +187,8 @@ Fmax=0.1
 # plt.legend()
 # plt.show()
 
-gff.test_gridFF    ( mode=6, name="data/xyz/NaCl_1x1_L2", p0=[0.0,0.0,2.0],  Q=0.0, E0=0.1, bRefine=False, nPBC=[5,5,0], Emax=Emax, Fmax=Fmax )
+#gff.test_gridFF    ( mode=6, name="data/xyz/NaCl_1x1_L2", p0=[0.0,0.0,2.0],  Q=0.0, E0=0.1, bRefine=False, nPBC=[5,5,0], Emax=Emax, Fmax=Fmax )
+gff.test_gridFF    ( mode=6, name="data/xyz/NaCl_1x1_L3", p0=[0.0,0.0,2.0],  Q=0.0, E0=0.1, bRefine=False, nPBC=[5,5,0], Emax=Emax, Fmax=Fmax )
 #gff.test_gridFF    ( mode=6, name="data/xyz/NaCl_8x8_L3", p0=[2.0,2.0,2.0],  Q=0.0, E0=0.1, bRefine=False, nPBC=[5,5,0], Emax=Emax, Fmax=Fmax )
 
 #gff.test_gridFF    ( mode=6, title="Bspline_o3 \n(z-cut)" , p0=[0.0,0.0,2.0],  Q=0.0, E0=0.1, bRefine=False, nPBC=[5,5,0], Emax=Emax, Fmax=Fmax )
