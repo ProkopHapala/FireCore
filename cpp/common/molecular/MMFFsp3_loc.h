@@ -1523,6 +1523,19 @@ bool checkNans( bool bExit=true, bool bNg=true, bool bPi=true, bool bA=true ){
     return ret;
 }
 
+
+// rotate selected atoms including their caps
+void setFromRef( Vec3d* aref, Vec3d* piref, Vec3d dp=Vec3dZero, Mat3d rot=Mat3dIdentity ){
+    //printf( "MMFFsp3_loc::setFromRef()  \n" );
+    for(int i=0;i<natoms; i++){
+        Vec3d ap; rot.dot_to_T( aref[i], ap );
+        ap.add( dp );
+        apos[i]= ap;
+        if( i<nnode ){ rot.dot_to_T( piref[i], pipos[i] ); }
+    }
+}
+
+
 // rotate selected atoms including their caps
 void rotateNodes(int n, int* sel, Vec3d p0, Vec3d ax, double phi ){
     //printf( "MMFFsp3_loc::rotateNodes() nsel=%i phi=%g ax(%g,%g,%g) p0(%g,%g,%g) \n", n,  phi, ax.x,ax.y,ax.z,   p0.x,p0.y,p0.z );

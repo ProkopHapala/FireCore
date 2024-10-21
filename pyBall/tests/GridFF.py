@@ -77,7 +77,7 @@ def test_gridFF_npy_lat( name="data/NaCl_1x1_L2", ps_zy=[(0.0,0.0)], mode=6, tit
     #plt.show()
     print( "py======= test_gridFF() DONE" );
 
-def test_gridFF( name="data/xyz/NaCl_1x1_L2", mode=6, dsamp=0.02, p0=[0.0,0.0,2.0], R0=3.5, E0=0.1, a=1.6, Q=0.4, H=0.0, scErr=100.0, Emax=None, Fmax=None, maxSc=5.0, title=None, bSaveFig=True, bRefine=True, nPBC=None ):
+def test_gridFF( name="data/xyz/NaCl_1x1_L2", mode=6, dsamp=0.02, tmin=0.0,tmax=10.0, p0=[0.0,0.0,2.0], R0=3.5, E0=0.1, a=1.6, Q=0.4, H=0.0, scErr=100.0, Emax=None, Fmax=None, maxSc=5.0, title=None, bSaveFig=True, bRefine=True, nPBC=None ):
     print( "py======= test_gridFF() START" );
     #print( "test_gridFF() START" )
     #mode = 4
@@ -86,15 +86,7 @@ def test_gridFF( name="data/xyz/NaCl_1x1_L2", mode=6, dsamp=0.02, p0=[0.0,0.0,2.
     #plotGridFF_1D( EFg, ix=20,iy=20 )
     PLQH = ut.getPLQH( R0, E0, a, Q, H )
 
-    # zs = np.arange(0.0, 10.0, dsamp)
-    # ps = np.zeros( (len(zs), 3) )
-    # #ps[:,0] = 1.05
-    # #ps[:,1] = 1.05
-    # ps[:,0] = p0[0]
-    # ps[:,1] = p0[1]
-    # ps[:,2] = zs
-
-    ps,ts = ut.make_sample_points( p0, t0=0.0, tmax=10.0, dsamp=dsamp, iax=2 )
+    ps,ts = ut.make_sample_points( p0, t0=tmin, tmax=tmax, dsamp=dsamp, iax=2 )
     
     #FF_ref = mmff.evalGridFFAtPoints( ps, PLQH=PLQH, bSplit=False, nPBC=nPBC )
     FF_ref = mmff.evalGridFFAtPoints( ps, PLQH=PLQH, bSplit=True, nPBC=nPBC  )
@@ -103,10 +95,6 @@ def test_gridFF( name="data/xyz/NaCl_1x1_L2", mode=6, dsamp=0.02, p0=[0.0,0.0,2.
     # Es,Fs = sampleSurf( name, zs, Es=None, fs=None, kind=1, atyp=0, Q=0.0, K=-1.0, Rdamp=1.0, pos0=(0.,0.,0.), bSave=False )
 
     ps_ = ps.copy();
-    #ps_[:,2] -= 0.1   # NOTE - this corrects just the electrostatics (not useful for Morse)
-    # ps_[:,2]+=-2.0+3.25;
-    # ps_[:,0]+=2.0;
-    # ps_[:,1]+=2.0;
     
     FFout = mmff.sampleSurf_new( ps_, PLQH, mode=mode, Rdamp=1.0 )  # * 15.1
     
@@ -155,18 +143,17 @@ def test_gridFF_lat( name="data/xyz/NaCl_1x1_L2", iax=0, tmin=0.0,tmax=10.0, p0=
     #plotGridFF_1D( EFg, ix=20,iy=20 )
     PLQH = ut.getPLQH( R0, E0, a, Q, H )
 
-    ps,ts = ut.make_sample_points( p0, t0=0.0, tmax=10.0, dsamp=dsamp, iax=iax )    
+    ps,ts = ut.make_sample_points( p0, t0=tmin, tmax=tmax, dsamp=dsamp, iax=iax )    
 
     FF_ref = mmff.evalGridFFAtPoints( ps, PLQH=PLQH, nPBC=nPBC )
+
+    print( "ps ", ps)
+    print( "FF_ref ", FF_ref)
     
     #FFout  = mmff.sample_SplineHermite3D_comb3( ps, EFg, g0=[0.0,0.0,0.0], dg=[0.1,0.1,0.1], fes=None, Cs=PLQH )
     # Es,Fs = sampleSurf( name, zs, Es=None, fs=None, kind=1, atyp=0, Q=0.0, K=-1.0, Rdamp=1.0, pos0=(0.,0.,0.), bSave=False )
 
     ps_ = ps.copy(); 
-    #ps_[:,2] += 0.1   # NOTE - this corrects just the electrostatics (not useful for Morse)
-    # ps_[:,2]+=-2.0+3.25;
-    # ps_[:,0]+=2.0;
-    # ps_[:,1]+=2.0;
 
     FFout = mmff.sampleSurf_new( ps_, PLQH, mode=mode, Rdamp=1.0 )
     
@@ -190,6 +177,7 @@ def test_gridFF_lat( name="data/xyz/NaCl_1x1_L2", iax=0, tmin=0.0,tmax=10.0, p0=
     plt.axhline(0.0, c="k", ls='--', lw=0.5)
     plt.ylim( -Emax, Emax )
     plt.legend()
+    plt.grid()
     plt.subplot(2,1,2);
     plt.plot( ts, FFout[:,iax],  "-g", lw=0.5, label="Ftot_fit" )
     plt.plot( ts, FF_ref[:,iax], ":k", lw=2.0, label="Ftot_ref" )
@@ -197,6 +185,7 @@ def test_gridFF_lat( name="data/xyz/NaCl_1x1_L2", iax=0, tmin=0.0,tmax=10.0, p0=
     plt.axhline(0.0, c="k", ls='--', lw=0.5)
     plt.ylim( -Fmax, Fmax )
     plt.legend()
+    plt.grid()
 
 
     title_ = "p0="+str(p0)+"\nnPBC="+str(nPBC)

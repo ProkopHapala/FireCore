@@ -299,6 +299,10 @@ class ForceField: public Atoms{ public:
         for(int i=0; i<natoms; i++){ vapos[i]=Vec3dZero;  } 
     }
 
+    void copyForcesTo( Vec3d* fapos_ ){ for(int i=0; i<natoms; i++){ fapos_[i]=fapos[i]; } }
+    void copyPosTo   ( Vec3d* apos_  ){ for(int i=0; i<natoms; i++){ apos_[i]=apos[i]; } }
+
+
 };
 
 #endif

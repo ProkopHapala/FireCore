@@ -15,6 +15,7 @@ extern "C"{
 void setVerbosity( int verbosity_, int idebug_ ){
     verbosity = verbosity_;
     idebug    = idebug_;
+    std::cout.sync_with_stdio(true); // Make sure C++  stdout is synchronized with Python stdout , see https://chatgpt.com/c/67165c16-23ac-8003-965f-e84decdc725e
 }
 
 // ================ INITIALIZATION
