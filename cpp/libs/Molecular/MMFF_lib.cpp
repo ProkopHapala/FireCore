@@ -23,12 +23,15 @@ extern "C"{
 
 void init_buffers(){
     //printf( "init_buffers() \n" );
-    buffers .insert( { "apos",   (double*)W.nbmol.apos } );
+    buffers .insert( { "apos",   (double*)W.nbmol.apos  } );
     buffers .insert( { "fapos",  (double*)W.nbmol.fapos } );
+    buffers .insert( { "REQs",   (double*)W.nbmol.REQs  } );
     if(W.bMMFF){
         buffers .insert( { "DOFs",      W.ffl.DOFs  } );
         buffers .insert( { "fDOFs",     W.ffl.fDOFs } );
         buffers .insert( { "vDOFs",     W.opt.vel  } );
+        //buffers .insert( { "REQs",   (double*)W.ffl.REQs  } );
+        buffers .insert( { "PLQs",   (double*)W.ffl.PLQd  } );
         if(!W.bUFF){
             buffers .insert( { "pipos",  (double*)W.ffl.pipos   } );
             buffers .insert( { "fpipos", (double*)W.ffl.fpipos } );
@@ -37,6 +40,7 @@ void init_buffers(){
     }else{
         W.ff.natoms=W.nbmol.natoms;
     }
+    printf( "MMFF_lib.cpp::init_buffers() ndims{nDOFs=%i,natoms=%i,nnode=%i,ncap=%i,npi=%i,nbonds=%i,nvecs=%i,ne=%i,ie0=%i}\n", W.ff.nDOFs, W.ff.natoms, W.ff.nnode, W.ff.ncap, W.ff.npi, W.ff.nbonds, W.ff.nvecs, W.ff.ne, W.ff.ie0 );
     ibuffers.insert( { "ndims",    &W.ff.nDOFs } );
     buffers .insert( { "Es",       &W.ff.Etot  } );
     ibuffers.insert( { "selection", W.manipulation_sel  } );
@@ -165,6 +169,42 @@ int    run( int nstepMax, double dt, double Fconv, int ialg, double damping, dou
     else   { return W.run_no_omp(nstepMax,dt,Fconv, 1000.0,  damping, outE, outF, outV, outVF ); }
     //else   { return W.run       (nstepMax,dt,Fconv,ialg,       outE, outF, outV, outVF ); }
 }
+
+void  scan( int nconf, double* poss, double* rots, double* Es, double* aforces, double* aposs, bool omp, bool bRelax, int niter_max, double dt, double Fconv, double Flim ){
+    if(bRelax){
+        if(omp){ printf("ERROR: scan_relaxed() not implemented witht OMP\n"); exit(0); } 
+        else   { W.scan_relaxed( nconf, (Vec3d*)poss, (Mat3d*)rots, Es, (Vec3d*)aforces, (Vec3d*)aposs, omp, niter_max, dt, Fconv, Flim );  }
+    }else{
+        if(omp){ printf("ERROR: scan_rigid() not implemented witht OMP\n"); exit(0); } 
+        else   { W.scan_rigid( nconf, (Vec3d*)poss, (Mat3d*)rots, Es, (Vec3d*)aforces, (Vec3d*)aposs, omp ); }
+    }
+}
+
+
+void setSwitches2( int CheckInvariants, int PBC, int NonBonded, int NonBondNeighs,  int SurfAtoms, int GridFF, int MMFF, int Angles, int PiSigma, int PiPiI ){
+    #define _setbool(b,i) { if(i>0){b=true;}else if(i<0){b=false;} }
+    _setbool( W.bCheckInvariants, CheckInvariants  );
+    _setbool( W.bPBC           , PBC       );
+    
+    _setbool( W.bNonBonded     , NonBonded );
+    _setbool( W.bNonBondNeighs , NonBondNeighs );
+    
+    _setbool( W.bSurfAtoms   , SurfAtoms );
+    _setbool( W.bGridFF      , GridFF    );
+
+    _setbool( W.bMMFF        , MMFF      );
+    _setbool( W.ffl.doAngles , Angles    );
+    _setbool( W.ffl.doPiSigma, PiSigma   );
+    _setbool( W.ffl.doPiPiI  , PiPiI     );
+
+    printf( "setSwitches2() W.bCheckInvariants==%i bPBC=%i | bNonBonded=%i bNonBondNeighs=%i | bSurfAtoms=%i bGridFF=%i | bMMFF=%i doAngles=%i doPiSigma=%i doPiPiI=%i \n", W.bCheckInvariants, W.bPBC,  W.bNonBonded, W.bNonBondNeighs, W.bSurfAtoms, W.bGridFF, W.bMMFF, W.ffl.doAngles, W.ffl.doPiSigma, W.ffl.doPiPiI );
+
+    //W.ffl.bSubtractAngleNonBond = W.bNonBonded;
+    #undef _setbool
+}
+
+
+
 
 int substituteMolecule( const char* fname, int ib, double* up, int ipivot, bool bSwapBond ){
     return W.substituteMolecule( fname, ib, *(Vec3d*)up, ipivot, bSwapBond );
@@ -303,6 +343,14 @@ void sampleSurf_new( int n, double* ps_, double* FEout_, int mode, double* PLQH_
     //     printf("CPU sampleSurf_new() ng(%i,%i,%i) g0(%g,%g,%g) dg(%g,%g,%g) C(%g,%g,%g) \n", ng.x,ng.y,ng.z,   g0.x,g0.y,g0.z,   dg.x,dg.y,dg.z,   C.x,C.y,C.z );
     //     printf("CPU sampleSurf_new() xqs[0](%i,%i,%i,%i) xqs[1](%i,%i,%i,%i) xqs[2](%i,%i,%i,%i) xqs[3](%i,%i,%i,%i)\n", xqs[0].x, xqs[0].y, xqs[0].z, xqs[0].w,   xqs[1].x, xqs[1].y, xqs[1].z, xqs[1].w,   xqs[2].x, xqs[2].y, xqs[2].z, xqs[2].w,  xqs[3].x, xqs[3].y, xqs[3].z, xqs[3].w   );
     // }
+
+    { // debug
+        for(int i=0; i<4; i++ ){ 
+            Quat4i xq = W.gridFF.cubic_xqis[i];
+            Quat4i yq = W.gridFF.cubic_yqis[i];
+            printf("sampleSurf_new() gridFF qs[%] xs(%3i,%3i,%3i,%3i) ys(%3i,%3i,%3i,%3i) \n", i, xq.x, xq.y, xq.z, xq.w,   yq.x, yq.y, yq.z, yq.w ); 
+        }
+    }
     
     //long t0 = getCPUticks();
     for(int i=0; i<n; i++){

@@ -351,7 +351,7 @@ inline float addForce_HHermit( const Vec3d& p, const Quat4d& PLQ, Vec3d& f, bool
 
 __attribute__((hot))  
 inline Quat4d getForce_Bspline( Vec3d p, const Quat4d& PLQH, bool bSurf=true ) const {
-    //printf( "GridFF::getForce_Bspline() p(%g,%g,%g)\n", p.x,p.y,p.z );
+    //printf( "GridFF::getForce_Bspline() p(%8.4f,%8.4f,%8.4f) PLQH(%8.4f,%8.4f,%8.4f,%8.4f)\n", p.x,p.y,p.z, PLQH.x,PLQH.y,PLQH.z,PLQH.w );
     Vec3d t;
     //p.sub(shift0);
     p.sub(grid.pos0);
@@ -361,6 +361,8 @@ inline Quat4d getForce_Bspline( Vec3d p, const Quat4d& PLQH, bool bSurf=true ) c
     //Quat4d fe = Quat4dZero;
     
     Quat4d fe = Bspline::fe3d_pbc_comb3( t, grid.n, Bspline_PLQ, PLQH.f, cubic_xqis, cubic_yqis ); 
+
+    //printf( "GridFF::getForce_Bspline() p(%8.4f,%8.4f,%8.4f) g0(%8.4f,%8.4f,%8.4f) PLQH(%8.4f,%8.4f,%8.4f,%8.4f) fe(%g,%g,%g,%g)\n", p.x,p.y,p.z, grid.pos0.x,grid.pos0.y,grid.pos0.z, PLQH.x,PLQH.y,PLQH.z,PLQH.w, fe.x,fe.w,fe.z,fe.w ); 
 
     // Quat4d fe = Bspline::fe3d( t, grid.n, Bspline_Pauli   )*PLQH.x
     //           + Bspline::fe3d( t, grid.n, Bspline_London  )*PLQH.y  
@@ -465,7 +467,7 @@ inline void addForce( const Vec3d& pos, const Quat4f& PLQ, Quat4f& fe ) const {
         double f1 = addAtom(p1, PLQ, fout)-isoval;
         //printf( "GridFF::findIso() iso=%g p0(%6.3f,%6.3f,%6.3f)f0=%fg p1(%6.3f,%6.3f,%6.3f)f1=%g PLQ(%g,%g,%g,%g) xtol=%g \n", isoval, p0.x,p0.y,p0.z,f0, p1.x,p1.y,p1.z,f1, PLQ.x,PLQ.y,PLQ.z,PLQ.w, xtol );
         if( f0*f1 > 0.0) {
-            printf("ERROR GridFF::findIso() f[p0](%g)*f[p1](%g) > 0.0 \n", f0,f1);
+            //printf("ERROR GridFF::findIso() f[p0](%g)*f[p1](%g) > 0.0 \n", f0,f1);
             //exit(0);
             return p0;
         }
@@ -1561,6 +1563,7 @@ void initGridFF( const char * name, double z0=NAN, bool bAutoNPBC=true, bool bSy
                     NumpyFile npy(fnames[0]);
                     npy.print();
                     Bspline_PLQ = (Vec3d*)npy.data;
+                    done=true;
                 } else if( fileExist( fnames[1] ) ){
                     _realloc( Bspline_PLQ, npoint*3 );
                     loadBin( fnames[1], nbyte*3, (char*)Bspline_PLQ );
@@ -1592,7 +1595,7 @@ void initGridFF( const char * name, double z0=NAN, bool bAutoNPBC=true, bool bSy
                     //     printf( "GridFF::tryLoad_new()  Bspline_PLQ[%4i,%4i,%4i|%8i](%g,%g,%g)\n", ix,iy,iz,i, Bspline_PLQ[i].x,Bspline_PLQ[i].y,Bspline_PLQ[i].z);
                     // }
                 }
-
+                
                 if(done){
                     //pack_Bspline_d();
                     make_inds_pbc( grid.n.x, cubic_xqis );
@@ -1601,6 +1604,8 @@ void initGridFF( const char * name, double z0=NAN, bool bAutoNPBC=true, bool bSy
                     // golbal_array_dict.insert( { "Bspline_Pauli",   NDArray{ Bspline_Pauli,   Quat4i{ns.z,ns.y,ns.x,-1}} }  );
                     // golbal_array_dict.insert( { "Bspline_London",  NDArray{ Bspline_London,  Quat4i{ns.z,ns.y,ns.x,-1}} }  );
                     // golbal_array_dict.insert( { "Bspline_Coulomb", NDArray{ Bspline_Coulomb, Quat4i{ns.z,ns.y,ns.x,-1}} }  );
+                }else{
+                    printf( "ERROR GridFF::tryLoad_new( mode=BsplineDouble ) NOT DONE, cubic_xqis,yqis  not initialized !!! => exit(0); \n"); exit(0);
                 }
             } break;
         } // switch( mode )

@@ -389,7 +389,7 @@ def sampleMultipole( ps, p0, cs, order=2, fe=None ):
 # void evalGridFFAtPoints( int n, double* ps, double* FFout, double* PLQH, int* nPBC ){
 lib.evalGridFFAtPoints.argtypes  = [ c_int, c_double_p, c_double_p, c_double_p, c_bool, c_int_p  ]
 lib.evalGridFFAtPoints.restype   =  None
-def evalGridFFAtPoints( ps, FFout=None, PLQH=[0.0,0.0,1.0,0.0], bSplit=False, nPBC=None ):
+def evalGridFFAtPoints( ps, FFout=None, PLQH=[0.0,0.0,1.0,0.0], bSplit=True, nPBC=None ):
     n = len(ps)
     if FFout is None: FFout=np.zeros( (n,4) )
     PLQH = np.array( PLQH )
@@ -804,20 +804,21 @@ def getBuffs( NEIGH_MAX=4 ):
     #natom=nnode+ncap
     #nvecs=natom+npi
     #nDOFs=nvecs*3
-
     global ffflags
     ffflags = getBBuff( "ffflags" , (14,) )
-
     global ndims,Es
-    ndims = getIBuff( "ndims", (6,) )  # [nDOFs,natoms,nnode,ncap,npi,nbonds]
+    ndims = getIBuff( "ndims", (9,) )  # [nDOFs,natoms,nnode,ncap,npi,nbonds]
+    global nDOFs,natoms,nnode,ncap,npi,nvecs,nbonds,ne,ie0
+    # MFF_lib.cpp::init_buffers() ndims{nDOFs=9,natoms=3,nnode=1,ncap=2,npi=0,nbonds=2,nvecs=3,ne=0,ie0=3}
+    nDOFs=ndims[0]; natoms=ndims[1];  nnode=ndims[2]; ncap=ndims[3]; npi=ndims[4]; nbonds=ndims[5]; nvecs=ndims[6]; ne=ndims[7]; ie0=ndims[8]
+    print( "getBuffs(): nDOFs=%i nvecs=%i  natoms=%i nnode=%i ncap=%i npi=%i nbonds=%i nvecs=%i ne=%i ie0=%i " %(nDOFs,nvecs,natoms,nnode,ncap,npi,nbonds,nvecs,ne,ie0) )
     Es    = getBuff ( "Es",    (6,) )  # [ Etot,Eb,Ea, Eps,EppT,EppI; ]
-    global nDOFs,natoms,nnode,ncap,npi,nvecs
-    nDOFs=ndims[0]; nnode=ndims[1]; ncap=ndims[2];nvecs=ndims[3]; natoms=nnode+ncap; npi=nnode
-    print( "getBuffs(): nDOFs %i nvecs %i  natoms %i nnode %i ncap %i npi %i" %(nDOFs,nvecs,natoms,nnode,ncap,npi) )
-    global DOFs,fDOFs,vDOFs,apos,fapos,pipos,fpipos,bond_l0,bond_k, bond2atom,neighs,selection
+    global DOFs,fDOFs,vDOFs,apos,fapos,REQs,PLQs,pipos,fpipos,bond_l0,bond_k, bond2atom,neighs,selection
     #Ebuf     = getEnergyTerms( )
     apos      = getBuff ( "apos",     (natoms,3) )
     fapos     = getBuff ( "fapos",    (natoms,3) )
+    REQs      = getBuff ( "REQs",     (natoms,4) )
+    PLQs      = getBuff ( "PLQs",     (natoms,4) )
     if glob_bMMFF:
         DOFs      = getBuff ( "DOFs",     (nvecs,3)  )
         fDOFs     = getBuff ( "fDOFs",    (nvecs,3)  ) 
@@ -830,6 +831,7 @@ def getBuffs( NEIGH_MAX=4 ):
         #bond2atom = getIBuff( "bond2atom",(nbonds,2) )
         neighs   = getIBuff( "neighs",  (nnode,NEIGH_MAX) )
         selection = getIBuff( "selection",  (natoms) )
+    print( "getBuffs DONE" )
 
 #  void init_buffers()
 lib.init_buffers.argtypes  = []
@@ -976,6 +978,12 @@ lib.setSwitches.restype   =  None
 def setSwitches(doAngles=0, doPiPiT=0, doPiSigma=0, doPiPiI=0, doBonded=0, PBC=0, CheckInvariants=0):
     return lib.setSwitches(doAngles, doPiPiT, doPiSigma, doPiPiI, doBonded, PBC, CheckInvariants)
 
+# void setSwitches2( int CheckInvariants, int PBC, int NonBonded, int NonBondNeighs,  int SurfAtoms, int GridFF, int MMFF, int Angles, int PiSigma, int PiPiI ){
+lib.setSwitches2.argtypes  = [c_int, c_int, c_int, c_int, c_int, c_int, c_int, c_int, c_int, c_int]
+lib.setSwitches2.restype   =  None
+def setSwitches( CheckInvariants=0, PBC=0, NonBonded=0, NonBondNeighs=0, SurfAtoms=0, GridFF=0, MMFF=0, Angles=0, PiSigma=0, PiPiI=0):
+    return lib.setSwitches2(CheckInvariants, PBC, NonBonded, NonBondNeighs, SurfAtoms, GridFF, MMFF, Angles, PiSigma, PiPiI)
+
 #  bool checkInvariants( double maxVcog, double maxFcog, double maxTg )
 lib.checkInvariants.argtypes  = [c_double, c_double, c_double] 
 lib.checkInvariants.restype   =  c_bool
@@ -1047,6 +1055,19 @@ lib. run.argtypes  = [c_int, c_double, c_double, c_int, c_double, c_double_p, c_
 lib. run.restype   =  c_int
 def run(nstepMax=1000, dt=-1, Fconv=1e-6, ialg=2, damping=-1.0, outE=None, outF=None, outV=None, outVF=None, omp=False):
     return lib.run(nstepMax, dt, Fconv, ialg, damping, _np_as(outE,c_double_p), _np_as(outF,c_double_p), _np_as(outV,c_double_p), _np_as(outVF,c_double_p), omp )
+
+#lib.scan.argtypes  = [c_int, array2d, array2d, array1d, array2d, array2d, c_bool, c_bool, c_int, c_double, c_double, c_double]
+# int  scan( int nconf, double* poss, double* rots, double* Es, double* aforces, double* aposs, bool omp, bool bRelax, int niter_max, double dt, double Fconv, double Flim ){
+lib.scan.argtypes = [ c_int, c_double_p, c_double_p, c_double_p, c_double_p, c_double_p, c_bool, c_bool, c_int, c_double, c_double, c_double ]
+lib.scan.restype   =  None
+def scan(poss, rots=None, Es=None, aforces=None, aposs=None,  bF=False,bP=False, omp=False, bRelax=False, niter_max=10000, dt=0.05, Fconv=1e-5, Flim=100.0 ):
+    nconf=len(poss)
+    if Es is None: Es=np.zeros(nconf)
+    if (aforces is None) and bF: aforces=np.zeros( (nconf,natoms,3) )
+    if (aposs is None) and bP:   aposs=np.zeros(   (nconf,natoms,3) )
+    #lib.scan(nconf, poss, rots, Es, aforces, aposs, omp, bRelax, niter_max, dt, Fconv, Flim )
+    lib.scan( nconf, _np_as(poss,c_double_p), _np_as(rots,c_double_p), _np_as(Es,c_double_p), _np_as(aforces,c_double_p), _np_as(aposs,c_double_p), omp, bRelax, niter_max, dt, Fconv, Flim )
+    return Es, aforces, aposs 
 
 # ========= Lattice Optimization
 

@@ -40,7 +40,7 @@ fi
 
 # ====== Small Molecules
 
-./$name -x common_resources/xyz/C2H4          -iParalel 0
+#./$name -x common_resources/xyz/C2H4          -iParalel 0
 
 #./$name -x common_resources/xyz/H2O       -uff  -iParalel 0  -verb 2   -perframe 1 -dt 0.0001
 #./$name -x common_resources/xyz/H2O       -uff  -iParalel 0  -verb 2   -perframe 1 -dt 0.01
@@ -134,6 +134,9 @@ fi
 # ====== Small Molecules On Substrate
 
 #./$name -x common_resources/xyz/H2O       -g common_resources/xyz/NaCl_1x1_L2
+./$name -x common_resources/xyz/H2O       -g common_resources/xyz/NaCl_1x1_L3
+
+
 #./$name -x common_resources/xyz/H2O       -g common_resources/xyz/NaCl_1x1_L2 -tricubic
 
 #./$name -x common_resources/xyz/H2O       -g common_resources/xyz/NaCl_1x1_L2  -lua makeGUI.lua

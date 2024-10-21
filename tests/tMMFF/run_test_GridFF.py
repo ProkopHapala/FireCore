@@ -116,7 +116,7 @@ p0 = [-2.0,-2.0,0.0]
 # plt.show()
 # exit()
 
-compare_potentials( name="NaCl_1x1_L3", R0=R0, E0=E0, a=a, Q=Q ); plt.show(); exit()
+#compare_potentials( name="NaCl_1x1_L3", R0=R0, E0=E0, a=a, Q=Q ); plt.show(); exit()
 
 mmff.initParams()
 
@@ -188,7 +188,7 @@ Fmax=0.1
 # plt.show()
 
 #gff.test_gridFF    ( mode=6, name="data/xyz/NaCl_1x1_L2", p0=[0.0,0.0,2.0],  Q=0.0, E0=0.1, bRefine=False, nPBC=[5,5,0], Emax=Emax, Fmax=Fmax )
-gff.test_gridFF    ( mode=6, name="data/xyz/NaCl_1x1_L3", p0=[0.0,0.0,2.0],  Q=0.0, E0=0.1, bRefine=False, nPBC=[5,5,0], Emax=Emax, Fmax=Fmax )
+#gff.test_gridFF    ( mode=6, name="data/xyz/NaCl_1x1_L3", p0=[0.0,0.0,2.0],  Q=0.0, E0=0.1, bRefine=False, nPBC=[5,5,0], Emax=Emax, Fmax=Fmax )
 #gff.test_gridFF    ( mode=6, name="data/xyz/NaCl_8x8_L3", p0=[2.0,2.0,2.0],  Q=0.0, E0=0.1, bRefine=False, nPBC=[5,5,0], Emax=Emax, Fmax=Fmax )
 
 #gff.test_gridFF    ( mode=6, title="Bspline_o3 \n(z-cut)" , p0=[0.0,0.0,2.0],  Q=0.0, E0=0.1, bRefine=False, nPBC=[5,5,0], Emax=Emax, Fmax=Fmax )
@@ -197,6 +197,8 @@ gff.test_gridFF    ( mode=6, name="data/xyz/NaCl_1x1_L3", p0=[0.0,0.0,2.0],  Q=0
 #gff.test_gridFF_lat( mode=6, title="Bspline_o3 \n(lat iax=0)", p0=[2.0,2.0,2.0], Q=0.0, E0=0.1 )
 
 #gff.test_gridFF_npy( ps_xy=[(0.0,0.0),(0.0,0.5),(0.5,0.0),(0.5,0.5)], mode=6, title="" )
+
+gff.test_gridFF_lat( mode=6, name="data/xyz/NaCl_1x1_L3", p0=[0.0,0.0,0.5], Q=0.0, E0=0.1, bRefine=False, nPBC=[5,5,0] )
 
 #gff.test_gridFF_npy( ps_xy=[(0.0,0.0)], mode=6, title="" )
 #gff.test_gridFF_npy_lat( ps_zy=[(0.0,0.0)], mode=6, title="" )

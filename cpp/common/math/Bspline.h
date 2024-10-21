@@ -769,6 +769,12 @@ Quat4d fe3d_pbc_comb3( const Vec3d u, const Vec3i n, const Vec3d* Es, const Vec3
     const Quat4i qx = choose_inds_pbc( ix, n.x, xqis )*nyz;
     const Quat4i qy = choose_inds_pbc( iy, n.y, yqis )*n.z;
 
+    // if( (ix>n.x-4) ){
+    //     const Quat4i q = choose_inds_pbc( ix, n.x, xqis );
+    //     printf( "ix %3i q(%3i,%3i,%3i,%3i) \n", ix, q.x,q.y,q.z,q.w );
+    //     return Quat4dZero;
+    // }
+
     const Quat4d bz =  basis( tz );
     const Quat4d dz = dbasis( tz );
     const Quat4d by =  basis( ty );
