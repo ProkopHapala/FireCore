@@ -227,6 +227,7 @@ int renderSubstrate_( const GridShape& grid, Quat4f * FF, Quat4f * FFel, double 
 }
 
 int renderSubstrate_new( const GridFF& gff, Vec2d zrange, double isoval, Quat4d PLQ, double sclr ){
+    printf( "renderSubstrate_new()\n" );
     Quat4d PL{PLQ.x,PLQ.y,0.0,0.0};
     Quat4d Q {0.0,0.0,PLQ.y,0.0};
     Vec3i gn = gff.grid.n;
@@ -237,15 +238,31 @@ int renderSubstrate_new( const GridFF& gff, Vec2d zrange, double isoval, Quat4d 
         glBegin(GL_TRIANGLE_STRIP);
         for ( int ia=0; ia<=gn.x; ia++ ){
 
-            Vec3d p1 = dCell.a*ia + dCell.b*(ib-1); p1.z=zrange.x;
-            Vec3d p2 = dCell.a*ia + dCell.b*(ib  ); p2.z=zrange.x;
-            Vec3d p1_=p1; p1.z=zrange.y;
-            Vec3d p2_=p2; p2.z=zrange.y;
+            Vec3d p1a = dCell.a*ia + dCell.b*(ib-1); p1a.z=zrange.x;
+            Vec3d p2a = dCell.a*ia + dCell.b*(ib  ); p2a.z=zrange.x;
+            const Vec3d p1b=p1a; p1a.z=zrange.y;
+            const Vec3d p2b=p2a; p2a.z=zrange.y;
 
-            p1 = gff.findIso( isoval, p1, p1_, PL, 0.02 );
-            p2 = gff.findIso( isoval, p2, p2_, PL, 0.02 );
+            const Vec3d p1 = gff.findIso( isoval, p1a, p1b, PL, 0.02 );
+            const Vec3d p2 = gff.findIso( isoval, p2a, p2b, PL, 0.02 );
 
             //printf( "renderSubstrate_new[%i,%i] xy(%g,%g) z(%g|%g,%g) \n", ia,ib, p1.x,p1.y, p1.z, zrange.x, zrange.y, isoval );
+
+            if( isnan(p1.z) ){
+                //std::vector<100> vals;
+                //double f0 = addAtom(p0, PLQ, fout)-isoval;
+                printf( "renderSubstrate_new() failed to find isovalue %g at p(%g,%g) zrange(%g,%g) => z-scan: \n", isoval, p1a.x,p1a.y, zrange.x, zrange.y );
+                Vec3d fout;
+                int n=100;
+                Vec3d dp=(p1b-p1a)*(1./n);
+                for(int i=0;i<n;i++){
+                    Vec3d p = p1a + dp*(i*1.);
+                    double e = gff.addAtom( p, PLQ, fout);
+                    printf( "%8.4f %g\n", p.z, e );
+                }
+                exit(0);
+                return -1;
+            }
 
             Vec3d f1,f2;
             double el1 = gff.addAtom( p1, Q, f1 );

@@ -27,8 +27,8 @@ mmff.setVerbosity( verbosity=1, idebug=1 )
 
 #mmff.init( xyz_name="data/xyz/pyridine", surf_name="data/NaCl_1x1_L2" )    
 #mmff.init( xyz_name="data/xyz/nHexadecan_dicarboxylic", bMMFF=True  )     
-#mmff.init( xyz_name="data/xyz/O", surf_name="data/xyz/NaCl_1x1_L3" )  
-mmff.init( xyz_name="data/xyz/H2O", surf_name="data/xyz/NaCl_1x1_L3" )    
+mmff.init( xyz_name="data/xyz/O", surf_name="data/xyz/NaCl_1x1_L3" )  
+#mmff.init( xyz_name="data/xyz/H2O", surf_name="data/xyz/NaCl_1x1_L3" )    
 #mmff.init( xyz_name="data/xyz/PTCDA", surf_name="data/xyz/NaCl_1x1_L3" )    
 mmff.getBuffs()
 
@@ -36,11 +36,11 @@ mmff.getBuffs()
 
 mmff.setSwitches( NonBonded=-1, MMFF=-1, SurfAtoms=0, GridFF=1 )
 
-#mmff.PLQs[:,2 ] = 0.0 # delete Coulomb (charges)
-mmff.PLQs[:,:2] = 0.0 # delete Morse (EvdW)
+mmff.PLQs[:,2 ] = 0.0 # delete Coulomb (charges)
+#mmff.PLQs[:,:2] = 0.0 # delete Morse (EvdW)
 scanPlot( nscan=1000, span=(0.0,8.0), dir=(1.0,0.0,0.0), p0=(0.0,0.0,0.0), label="E_x" )
 scanPlot( nscan=1000, span=(0.0,8.0), dir=(0.0,1.0,0.0), p0=(0.0,0.0,0.0), label="E_y" )
-scanPlot( nscan=1000, span=(0.0,8.0), dir=(0.0,0.0,1.0), p0=(0.0,0.0,0.0), label="E_z" )
+scanPlot( nscan=1000, span=(-5.0,5.0), dir=(0.0,0.0,1.0), p0=(0.0,0.0,0.0), label="E_z" )
 
 plt.legend()
 plt.grid()

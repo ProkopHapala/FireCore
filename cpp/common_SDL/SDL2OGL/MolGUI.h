@@ -1789,8 +1789,10 @@ void MolGUI::renderGridFF( double isoVal, int isoSurfRenderType, double colorScl
 
 //void MolGUI::renderGridFF_new( double isoVal, int isoSurfRenderType, double colorScale, Quat4d REQ = Quat4d{ 1.487, sqrt(0.0006808), 0., 0.} ){
 void MolGUI::renderGridFF_new( double isoVal, int isoSurfRenderType, double colorScale, Quat4d REQ ){
-    if(verbosity>0) printf( "MolGUI::renderGridFF_new()\n" );
+    //if(verbosity>0) 
+    
     Quat4d PLQ = REQ2PLQ_d( REQ, W->gridFF.alphaMorse );
+    printf( "MolGUI::renderGridFF_new() isoVal=%g REQ{%g,%g,%g,%g} PLQ{%g,%g,%g,%g}\n", isoVal, REQ.x, REQ.y, REQ.z,  REQ.z, PLQ.x, PLQ.y, PLQ.z, PLQ.w );
     ogl_isosurf = glGenLists(1);
     glNewList(ogl_isosurf, GL_COMPILE);
     glShadeModel( GL_SMOOTH );
