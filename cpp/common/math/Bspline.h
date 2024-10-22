@@ -746,14 +746,20 @@ Quat4d fe3d_pbc_comb3( const Vec3d u, const Vec3i n, const Vec3d* Es, const Vec3
     if(u.y<0) iy--;
     const double tx = u.x - ix  ,  ty = u.y - iy  ,  tz = u.z - iz  ;
 
-    // printf( "Bspline::fe3d_pbc_comb3() ixyz(%3i,%3i,%3i)/n(%3i,%3i,%3i)  u(%g,%g,%g) \n", ix,iy,iz, n.x,n.y,n.z, u.x,u.y,u.z  ); 
+    //printf( "Bspline::fe3d_pbc_comb3() ixyz(%3i,%3i,%3i)/n(%3i,%3i,%3i)  u(%g,%g,%g) \n", ix,iy,iz, n.x,n.y,n.z, u.x,u.y,u.z  ); 
 
     // ---- boundary conditions
-    if(  ((iz<1)||(iz>=n.z-2))  )[[unlikely]]{  
-    //if(  ((iz<2)||(iz>=n.z-3))  )[[unlikely]]{ 
-        //printf( "Bspline::fe3d_pbc_comb3() iz=%i n.z=%i  ixy(%i,%i) \n", iz, n.z, ix, iy );    
-        return Quat4dZero; 
-    }
+    // if(  ((iz<1)||(iz>=n.z-2))  )[[unlikely]]{  
+    // //if(  ((iz<2)||(iz>=n.z-3))  )[[unlikely]]{ 
+    //     //printf( "Bspline::fe3d_pbc_comb3() iz=%i n.z=%i  ixy(%i,%i) \n", iz, n.z, ix, iy );    
+    //     return Quat4dZero; 
+    // }
+
+    //if( iz<1 )[[unlikely]]{ iz==1; }else if( iz>=n.z-2 ) [[unlikely]]{ iz=; }
+    iz = _clamp( iz, 3, n.z-5 );
+
+    //printf( "Bspline::fe3d_pbc_comb3() ixyz(%3i,%3i,%3i)/n(%3i,%3i,%3i)  u(%g,%g,%g) \n", ix,iy,iz, n.x,n.y,n.z, u.x,u.y,u.z  ); 
+
     //printf( "Bspline::fe3d_pbc_comb3() ixyz(%5i,%5i,%5i) @Es=%li \n", ix,iy,iz, (long)Es );  
 
     //if(  ((ix<1)||(ix>=n.x-2))  )[[unlikely]]{  return Quat4dZero; }

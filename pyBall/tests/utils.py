@@ -6,10 +6,12 @@ import os
 COULOMB_CONST  =    14.3996448915 
 
 def getPLQH( R0, E0, a, Q, H ):
+    
     e  = np.exp(a*R0);
     cL = e*E0;
     cP = e*cL;
     cH = e*e*H;
+    print( "getPLQH cL,cP,e ", cL, cP, e, "  R0,E0,a ", R0, E0, a )
     return np.array([ cP, cL, Q, cH ])
 
 def make_sample_points( p0, t0=0.0, tmax=10.0, dsamp=0.02, iax=2 ):
@@ -68,6 +70,30 @@ def load_potential_comb( path ):
     #sh = VPLQ.shape; print("sh = ", sh)
     #print("VPLQ.shape(AFTER) = ", VPLQ.shape)
     return VPLQ
+
+def soft_clamp(y, dy=None, y1=100, y2=200 ):
+    """
+    Applies a soft clamp to y, smoothly transitioning values above y1 towards y2.
+    Also computes the derivative dy accordingly using the chain rule.
+
+    Parameters:
+    - y: np.ndarray, input values to clamp
+    - dy: np.ndarray, derivatives of y with respect to some variable x
+    - y1: float, lower threshold for clamping
+    - y2: float, upper threshold for clamping
+
+    Returns:
+    - y_new: np.ndarray, clamped y values
+    - dy_new: np.ndarray, updated derivatives
+    """    
+    mask   = y > y1 
+    y12    = y2 - y1
+    invdy  = 1.0 / y12
+    z = (y[mask] - y1) * invdy
+    y[mask]   = y1 + y12 * (1 - 1 / (1 + z))
+    if dy is not None:
+        dy[mask] *= 1.0 / (1.0 + z)**2
+    return y, dy
 
 def compute_potential(dens, dg, bInternals=False):
     """

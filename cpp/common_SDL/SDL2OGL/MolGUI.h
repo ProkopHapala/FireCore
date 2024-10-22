@@ -1268,15 +1268,16 @@ void MolGUI::draw(){
     W->pick_hray = (Vec3d)cam.rot.c;
     W->pick_ray0 = (Vec3d)ray0;
 
-    if( (frameCount==0) && (W->bGridFF) ){ char fname[128]; 
-        sprintf(fname,"gridFF_EFprofile_mod%i.log",   (int)W->gridFF.mode ); W->gridFF.getEFprofileToFile( fname, 1000, Vec3d{0.0,0.0,-10.0}, Vec3d{0.0,0.0,10.0}, W->ffl.REQs[0] ); 
-        sprintf(fname,"gridFF_EFprofile_mod%i_x.log", (int)W->gridFF.mode ); W->gridFF.getEFprofileToFile( fname, 1000, Vec3d{-10.0,0.0,0.0}, Vec3d{10.0,0.0,0.0}, W->ffl.REQs[0] ); 
-        sprintf(fname,"gridFF_EFprofile_mod%i_y.log", (int)W->gridFF.mode ); W->gridFF.getEFprofileToFile( fname, 1000, Vec3d{0.0,-10.0,0.0}, Vec3d{0.0,10.0,0.0}, W->ffl.REQs[0] );  
-        //exit(0);
-    }  
+    // if( (frameCount==0) && (W->bGridFF) ){ char fname[128]; 
+    //     sprintf(fname,"gridFF_EFprofile_mod%i.log",   (int)W->gridFF.mode ); W->gridFF.getEFprofileToFile( fname, 1000, Vec3d{0.0,0.0,-10.0}, Vec3d{0.0,0.0,10.0}, W->ffl.REQs[0] ); 
+    //     sprintf(fname,"gridFF_EFprofile_mod%i_x.log", (int)W->gridFF.mode ); W->gridFF.getEFprofileToFile( fname, 1000, Vec3d{-10.0,0.0,0.0}, Vec3d{10.0,0.0,0.0}, W->ffl.REQs[0] ); 
+    //     sprintf(fname,"gridFF_EFprofile_mod%i_y.log", (int)W->gridFF.mode ); W->gridFF.getEFprofileToFile( fname, 1000, Vec3d{0.0,-10.0,0.0}, Vec3d{0.0,10.0,0.0}, W->ffl.REQs[0] );  
+    //     //exit(0);
+    // }  
+
     if(bRunRelax){ 
         bool bRelaxOld = W->bConverged;
-        //printf( "MolGUI::draw().W->MDloop(%i) \n", perFrame );    
+        //printf( "MolGUI::draw().W->MDloop(%i) bUFF %i \n", perFrame, W->bUFF );    
         W->MDloop(perFrame); 
         // if( W->bConverged && !bRelaxOld ){  // it relaxed just now
         //     if(ogl_MO>0){ int iHOMO = W->getHOMO(); renderOrbital( iHOMO + which_MO );  }
@@ -1354,7 +1355,7 @@ void MolGUI::draw(){
         //         Draw3D::drawSphereOctLines(8,0.5,apos[ia]);
         //     }
         // }
-
+  
         Quat4f *gpos=0,*gfw=0,*gup=0; int ng=W->getGroupPose( gpos, gfw, gup );
         if(gpos){
             for(int ig=0; ig<ng; ig++){
@@ -1462,7 +1463,7 @@ void MolGUI::draw(){
             glEnd();
         }
     }
-
+    
     glColor3f(0.0f,0.5f,0.0f); showBonds();
 
     //visual_FF_test();
@@ -1500,7 +1501,7 @@ void MolGUI::draw(){
 
     if(bViewBuilder){ glColor3f( 0.f,1.f,0.f ); for(int ia : W->builder.selection ){ Draw3D::drawSphereOctLines( 8, 0.5, W->builder.atoms[ia].pos ); } }
     else            { glColor3f( 0.f,1.f,0.f ); for(int ia : W->selection         ){ Draw3D::drawSphereOctLines( 8, 0.5, W->nbmol.apos[ia]        ); } }
-
+    
     // --- Drawing Population of geometies overlay
     if(frameCount>=1){ 
         if(frameCount==1){
@@ -1521,7 +1522,6 @@ void MolGUI::draw(){
         } } 
     }
     
-
     //if(iangPicked>=0){
     //    glColor3f(0.,1.,0.);      Draw3D::angle( W->ff.ang2atom[iangPicked], W->ff.ang_cs0[iangPicked], W->ff.apos, fontTex3D );
     //}

@@ -456,6 +456,7 @@ inline void addForce( const Vec3d& pos, const Quat4f& PLQ, Quat4f& fe ) const {
         }
         //printf("GridFF::addAtom() FE(%10.5f,%10.5f,%10.5f|%10.5f) pos(%7.5f,%7.5f,%7.5f) PLQ(%7.5f,%10.6f,%7.3f) \n",   fed.x,fed.y,fed.z,fed.w,     pos.x,pos.y,pos.z,  PLQ.x,PLQ.y,PLQ.z );
         fout.add( fed.f );
+        //fout.sub( fed.f );
         return fed.e;
     }
 
@@ -592,7 +593,8 @@ inline void addForce( const Vec3d& pos, const Quat4f& PLQ, Quat4f& fe ) const {
     __attribute__((pure))
     __attribute__((hot))
     Quat4d evalGridFFPoint_Coul( int npbc, const Vec3d* shifts, int natoms_, const Vec3d * apos_, const Quat4d * REQs_, Vec3d pos ) const {
-        const double R2damp=Rdamp*Rdamp;    
+        //const double R2damp=Rdamp*Rdamp;    
+        const double R2damp=1e-32; 
         //const double K=-alphaMorse;
         Quat4d qe     = Quat4dZero;
         //#pragma omp for simd
@@ -611,6 +613,38 @@ inline void addForce( const Vec3d& pos, const Quat4f& PLQ, Quat4f& fe ) const {
         return qe;
     }
 
+    __attribute__((pure))
+    __attribute__((hot))
+    Quat4d evalGridFFPoint_REQ( Quat4d REQ, int npbc, const Vec3d* shifts, int natoms_, const Vec3d * apos_, const Quat4d * REQs_, Vec3d pos ) const {
+        //const double R2damp=Rdamp*Rdamp;    
+        const double R2damp=1e-32; 
+        const double K=-alphaMorse;
+        Quat4d qe     = Quat4dZero;
+        //#pragma omp for simd
+        for(int ia=0; ia<natoms_; ia++){
+            const Vec3d dp0   = pos - apos_[ia];
+            Quat4d REQ; combineREQ( REQ, REQs_[ia], REQ );
+            //if( (ibuff==0) ){ printf( "DEBUG a[%i] p(%g,%g,%g) Q %g \n", ia,apos_[ia].x, apos_[ia].y, apos[ia].z, REQi.z ); }              
+            for(int ipbc=0; ipbc<npbc; ipbc++ ){
+                const Vec3d  dp = dp0 + shifts[ipbc];
+                const double r2     = dp.norm2();
+                const double ir2    = 1/(r2+R2damp);
+                const double  r     = sqrt( r2   );
+                const double eQ     = COULOMB_CONST*REQ.z*sqrt(ir2);
+
+                // Morse:
+                const double  e  = exp( K*(r-REQ.x) );
+                const double  Ae = REQ.y*e;
+                //const double  He  = e * ( (REQ.w<0) ? REQH.w*REQH.y : 0.0 );  // H-bond correction
+                const double E =  Ae*(e - 2)            + eQ;
+                const double F = (Ae*(e - 1)*2 )*-K/r   - eQ*ir2;
+                qe.f.set_mul( dp, F );
+                qe.e = E;
+            }
+        }
+        return qe;
+    }
+
     Quat4d evalMorsePBC_PLQ(  Vec3d pi, Quat4d PLQH, int natoms, const Vec3d * apos, const Quat4d * REQs )const{
         //printf( "GridFF::evalMorsePBC() debug fi(%g,%g,%g) REQi(%g,%g,%g)\n",  fi.x,fi.y,fi.z, REQi.x,REQi.y,REQi.z,REQi.w  );
         Quat4d qp,ql,qe;
@@ -623,6 +657,23 @@ inline void addForce( const Vec3d& pos, const Quat4f& PLQ, Quat4f& fe ) const {
     //     for(int ia=0; ia<na; ia++){ evalMorsePBC_PLQ_sym( ps[ia], REQs[ia], forces[ia] ); };
     //     return E;
     // }
+
+    void evalAtPoints_REQ( int n, Vec3d* ps, Quat4d* FFout, Quat4d REQ, int natoms_, Vec3d * apos_, Quat4d * REQs_, Vec3i* nPBC_=0 ){
+        Vec3i nPBC__ = nPBC;
+        if(nPBC_) nPBC__=*nPBC_;
+        //printf( "GridFF::evalAtPoints_Split() n=%i natoms_=%i bCoul=%i bMors=%i nPBC_Coul(%i,%i,%i) nPBC_Coul(%i,%i,%i)\n", n, natoms_, bCoul,bMors, nPBC_coul.x,nPBC_coul.y,nPBC_coul.z, nPBC_mors.x,nPBC_mors.y,nPBC_mors.z );
+        int i=0;
+        Vec3d* shifts=0;
+        int npbc=makePBCshifts_( nPBC__, lvec, shifts );;
+        printf( "GridFF::evalAtPoints_REQ() n=%i natoms_=%i REQ(%g,%g,%g,%g) nPBC(%i,%i,%i|%i)\n", n, natoms_, REQ.x,REQ.y,REQ.z,REQ.w, nPBC.x,nPBC.y,nPBC.z, npbc );
+        #pragma omp parallel for shared(i)
+        for(int i=0; i<n; i++){
+            FFout[i] = evalGridFFPoint_REQ( REQ, npbc, shifts,  natoms_, apos_, REQs_, ps[i] );
+        }
+        //double T = (getCPUticks()-t0); printf( "evalAtPoints_Split(n=%i) time=%g[MTick] %g[kTick/point]\n", n, T*(1.e-6), (T*1e-3)/n );
+        delete[] shifts;
+    }
+    void evalAtPoints_REQ( int n, Vec3d* ps, Quat4d* FFout, Quat4d REQH, Vec3i* nPBC=0 ){ evalAtPoints_REQ( n, ps, FFout, REQH, natoms, apos, REQs, nPBC ); };
 
     void evalAtPoints( int n, const Vec3d* ps, Quat4d* FFout, Quat4d PLQH, int natoms_, const Vec3d * apos_, const Quat4d * REQs_, Vec3i* nPBC=0 ){
         //printf( "GridFF::evalAtPoints() n=%i natoms_=%i \n", n, natoms_ );
@@ -667,7 +718,7 @@ inline void addForce( const Vec3d& pos, const Quat4f& PLQ, Quat4f& fe ) const {
         //#pragma omp parallel for shared(i)
         //long t0 = getCPUticks();
         //printf( "GridFF::evalAtPoints_Split() npbc_coul=%i npbc_mors=%i \n", npbc_coul, npbc_mors );
-        printf( "GridFF::evalAtPoints_Split() n=%i natoms_=%i bCoul=%i bMors=%i nPBC_Coul(%i,%i,%i|%i) nPBC_mors(%i,%i,%i|%i)\n", n, natoms_, bCoul,bMors,   nPBC_coul.x,nPBC_coul.y,nPBC_coul.z,npbc_coul,   nPBC_mors.x,nPBC_mors.y,nPBC_mors.z,npbc_mors );
+        printf( "GridFF::evalAtPoints_Split() n=%i natoms_=%i PLQH(%g,%g,%g,%g) bCoul=%i bMors=%i nPBC_Coul(%i,%i,%i|%i) nPBC_mors(%i,%i,%i|%i)\n", n, natoms_, bCoul,bMors,  PLQH.x,PLQH.y,PLQH.z,PLQH.w, nPBC_coul.x,nPBC_coul.y,nPBC_coul.z,npbc_coul,   nPBC_mors.x,nPBC_mors.y,nPBC_mors.z,npbc_mors );
         #pragma omp parallel for shared(i)
         for(int i=0; i<n; i++){
             Quat4d qp=Quat4dZero,ql=Quat4dZero,qe=Quat4dZero;
@@ -975,10 +1026,11 @@ inline void addForce( const Vec3d& pos, const Quat4f& PLQ, Quat4f& fe ) const {
             if(bUseEwald){
                 evalBsplineRef( natoms_, apos_, REQs_, VPaul, VLond, 0 );
                 std::vector<double> qs(natoms_); for( int i=0; i<natoms_; i++ ){ qs[i] = REQs_[i].z; }
-                std::vector<Vec3d>  ps(natoms_); for( int i=0; i<natoms_; i++ ){  Vec3d p=apos_[i];  p.z-=grid.dCell.c.z; ps[i]=p; } // NOTE: For some unknown reason we have to shift atoms by 1 pixel in z-direction (perhaps something about grid alignement)
+                //std::vector<Vec3d>  ps(natoms_); for( int i=0; i<natoms_; i++ ){  Vec3d p=apos_[i];  p.z-=grid.dCell.c.z; ps[i]=p; } // NOTE: For some unknown reason we have to shift atoms by 1 pixel in z-direction (perhaps something about grid alignement)
                 ewald->copy( grid );
                 ewald->enlarge( Vec3d{0.0,0.0,20.0} ); // add 20A of Vaccuum to simulated slabe (not periodic in z direction)
-                ewald->potential_of_atoms( grid.n.z, VCoul, natoms_, ps.data(), qs.data() );
+                //ewald->potential_of_atoms( grid.n.z, VCoul, natoms_, ps.data(), qs.data() );
+                ewald->potential_of_atoms( grid.n.z, VCoul, natoms_, apos_, qs.data() );
             }else{
                 evalBsplineRef( natoms_, apos_, REQs_, VPaul, VLond, VCoul );
             }
@@ -1401,27 +1453,23 @@ void checkSum( bool bDouble ){
     }
 } 
 
-void initGridFF( const char * name, double z0=NAN, bool bAutoNPBC=true, bool bSymetrize=false ){
-    if( isnan(z0) ){  z0=findTop();   
-    if(verbosity>0) printf("GridFF::findTop() %g \n", z0);  };
+void initGridFF( const char * name, double z0=NAN, bool bAutoNPBC=true, bool bSymetrize=false, double rAutoPBC=20.0 ){
+    printf( "GridFF::initGridFF(%s) bSymetrize=%i bAutoNPBC=%i z0=%g \n", name, bSymetrize, bAutoNPBC, z0 );
+    if( isnan(z0) ){  
+        z0=findTop();   
+        //if(verbosity>0) 
+        printf("GridFF::findTop() z0=%g \n", z0);  
+    }
     grid.pos0.z=z0;
     if(verbosity>1)grid.printCell();
     bool bGridDouble = (mode == GridFFmod::LinearDouble) || (mode == GridFFmod::HermiteDouble) || (mode == GridFFmod::BsplineDouble); 
     allocateFFs( bGridDouble );
     //gridFF.tryLoad( "FFelec.bin", "FFPaul.bin", "FFLond.bin", false, {1,1,0}, bSaveDebugXSFs );
     nPBC=Vec3i{1,1,0};
-    if(bAutoNPBC){ autoNPBC( grid.cell, nPBC, 20.0 ); }
-    //if(bAutoNPBC){ autoNPBC( grid.cell, nPBC, 40.0 ); }
-    //if(bAutoNPBC){ autoNPBC( grid.cell, nPBC, 60.0 ); }
-    //if(bAutoNPBC){ autoNPBC( grid.cell, nPBC, 100.0 ); }
-    //nPBC = (Vec3i){10,10,0};
-    //nPBC = (Vec3i){1,1,0};
-    //nPBC = (Vec3i){10,10,0};
-    //printf( "GridFF::initGridFF() nPBC(%i,%i,%i)\n", nPBC.x, nPBC.y, nPBC.z );
+    if(bAutoNPBC){ autoNPBC( grid.cell, nPBC, 20.0 ); }   //printf( "GridFF::initGridFF() nPBC(%i,%i,%i)\n", nPBC.x, nPBC.y, nPBC.z );
     lvec = grid.cell;     // ToDo: We should unify this
     makePBCshifts( nPBC, lvec );
     if(bSymetrize)setAtomsSymetrized( natoms, atypes, apos, REQs, 0.1 );
-
     //apos_.size(), &apos_[0], &REQs_[0];
     std::vector<double> qs( apos_.size() ); for(int i=0; i<apos_.size(); i++){ qs[i]=REQs_[i].z; }
     Vec3d qcog;
@@ -1647,201 +1695,6 @@ void initGridFF( const char * name, double z0=NAN, bool bAutoNPBC=true, bool bSy
     }
 
 #endif
-
-
-
-
-/*
-
-__attribute__((hot))  
-inline Quat4f getForce( Vec3d p, const Quat4f& PLQ, bool bSurf=true ) const {
-    //printf(  "getForce() p(%g,%g,%g) PLQ(%g,%g,%g,%g) bSurf=%i @FFPaul=%li @FFLond=%li @FFelec=%li \n", p.x,p.y,p.z,  PLQ.x,PLQ.y,PLQ.z,PLQ.w, (long)FFPaul,(long)FFLond,(long)FFelec );
-    #pragma omp SIMD
-    {
-    Vec3d u;
-    p.sub(shift0);
-    p.sub(grid.pos0);
-    grid.iCell.dot_to( p, u );
-    Vec3i n = grid.n;
-    //printf( "pos(%g,%g,%g) u(%g,%g,%g)  p0(%g,%g,%g) \n", p.x,p.y,p.z, u.x,u.y,u.z,    grid.pos0.x,grid.pos0.y,grid.pos0.z );
-    if( bSurf ){ double ivnz=1./n.z; double uzmax=1-ivnz*1.5; double uzmin=ivnz*0.5; if(u.z<uzmin){ u.z=uzmin; }else if(u.z>uzmax){u.z=uzmax; } } // "clamp" boundrary condition in z-direction
-
-    // ---- PBC condiction ( within outer cell bboundaries ? )
-    //u.x=(u.x-(int)u.x)*n.x;
-    //u.y=(u.y-(int)u.y)*n.y;
-    //u.z=(u.z-(int)u.z)*n.z;
-    u.x=(u.x-((int)(u.x+10)-10))*n.x;
-    u.y=(u.y-((int)(u.y+10)-10))*n.y;
-    u.z=(u.z-((int)(u.z+10)-10))*n.z;
-
-    //printf( "GridFF::getForce() u(%g,%g,%g) p(%g,%g,%g) shift(%g,%g,%g) p0(%g,%g,%g) \n", u.x,u.y,u.z,  p.x,p.y,p.z,  shift.x,shift.y,shift.z,   grid.pos0.x,grid.pos0.y,grid.pos0.z );
-
-    // ---- Clamp ( within outer cell bboundaries ? )
-    // {
-    // if((u.x<0.)||(u.x>1.)||(u.y<0.)||(u.y>1.)){ return Quat4fZero; };
-    // if((u.z<0.)||(u.z>1.)){ return Quat4fZero; };
-    // u.x*=n.x; 
-    // u.y*=n.y; 
-    // u.z*=n.z;
-    // }
-
-    //printf( " u(%g,%g,%g) \n", u.x,u.y,u.z );
-
-    // -----
-	const int   ix = (int)u.x  ,  iy = (int)u.y  ,  iz = (int)u.z  ;
-    const float tx = u.x - ix  ,  ty = u.y - iy  ,  tz = u.z - iz  ;
-    const float mx = 1-tx      ,  my = 1-ty      ,  mz = 1-tz      ;
-    //------
-    int kx = ix+1; kx=(kx<n.x)?kx:0;
-    int ky = iy+1; ky=(ky<n.y)?ky:0;
-    int kz = iz+1; kz=(kz<n.z)?kz:0;
-	//------
-	const float f00 = my*mz; 
-    const float f10 = ty*mz; 
-    const float f01 = my*tz; 
-    const float f11 = ty*tz;
-    const int   i00 = n.x*(iy + n.y*iz);
-    const int   i01 = n.x*(iy + n.y*kz);
-    const int   i10 = n.x*(ky + n.y*iz);
-    const int   i11 = n.x*(ky + n.y*kz);
-    const int 
-        i000=ix+i00, i100=kx+i00,
-        i001=ix+i01, i101=kx+i01,
-        i010=ix+i10, i110=kx+i10,
-        i011=ix+i11, i111=kx+i11;
-        
-    const float 
-        f000=mx*f00, f100=tx*f00,
-        f001=mx*f01, f101=tx*f01,
-        f010=mx*f10, f110=tx*f10,
-        f011=mx*f11, f111=tx*f11;
-    // { // DEBUG
-    //     Quat4f fDBG = FFPaul[ i000 ];
-    //     //printf( "GridFF::getForce() u(%g,%g,%g)/[%3i,%3i,%3i] fe(%g,%g,%g|%g) p0(%g,%g,%g) PLQ(%g,%g,%g)\n", u.x,u.y,u.z, grid.n.x,grid.n.y,grid.n.z, fDBG.x,fDBG.y,fDBG.z,fDBG.w, grid.pos0.x,grid.pos0.y,grid.pos0.z, PLQ.x,PLQ.y,PLQ.z );
-    // }
-    //printf( "GridFF::getForce() ixyz(%i,%i,%i) nxyz(%i,%i,%i) ntot=%i  ((%i,%i)(%i,%i))((%i,%i)(%i,%i))\n", ix,iy,iz, n.x, n.y, n.z, grid.getNtot(), i000, i001, i010, i011,  i100, i101, i110, i111 );
-
-	return  // 3 * 8 * 4 = 96 floats   // SIMD optimize ?????
-          ((FFPaul[ i000 ]*f000) + (FFPaul[ i100 ]*f100)
-         + (FFPaul[ i010 ]*f010) + (FFPaul[ i110 ]*f110)  
-         + (FFPaul[ i011 ]*f011) + (FFPaul[ i111 ]*f111)
-         + (FFPaul[ i001 ]*f001) + (FFPaul[ i101 ]*f101))*PLQ.x
-
-         +((FFLond[ i000 ]*f000) + (FFLond[ i100 ]*f100)
-         + (FFLond[ i010 ]*f010) + (FFLond[ i110 ]*f110)  
-         + (FFLond[ i011 ]*f011) + (FFLond[ i111 ]*f111)
-         + (FFLond[ i001 ]*f001) + (FFLond[ i101 ]*f101))*PLQ.y
-
-         +((FFelec[ i000 ]*f000) + (FFelec[ i100 ]*f100)
-         + (FFelec[ i010 ]*f010) + (FFelec[ i110 ]*f110)  
-         + (FFelec[ i011 ]*f011) + (FFelec[ i101 ]*f111)
-         + (FFelec[ i001 ]*f001) + (FFelec[ i101 ]*f101))*PLQ.z
-        ;
-    }
-
-
-	// return  // 3 * 8 * 4 = 96 floats   // SIMD optimize ?????
-    //       ((FFPaul[ i000 ]*f000) + (FFPaul[ i100 ]*f100)
-    //      + (FFPaul[ i010 ]*f010) + (FFPaul[ i110 ]*f110)  
-    //      + (FFPaul[ i011 ]*f011) + (FFPaul[ i111 ]*f111)
-    //      + (FFPaul[ i001 ]*f001) + (FFPaul[ i101 ]*f101));
-    // }
-}
-
-__attribute__((hot))  
-inline Quat4d getForce_d( Vec3d p, const Quat4d& PLQ, bool bSurf=true ) const {
-    #pragma omp SIMD
-    {
-    Vec3d u;
-    p.sub(shift0);
-    p.sub(grid.pos0);
-    grid.iCell.dot_to( p, u );
-    Vec3i n = grid.n;
-    //printf( "pos(%g,%g,%g) u(%g,%g,%g)  p0(%g,%g,%g) \n", p.x,p.y,p.z, u.x,u.y,u.z,    grid.pos0.x,grid.pos0.y,grid.pos0.z );
-    if( bSurf ){ double ivnz=1./n.z; double uzmax=1-ivnz*1.5; double uzmin=ivnz*0.5; if(u.z<uzmin){ u.z=uzmin; }else if(u.z>uzmax){u.z=uzmax; } } // "clamp" boundrary condition in z-direction
-
-    // ---- PBC condiction ( within outer cell bboundaries ? )
-    //u.x=(u.x-(int)u.x)*n.x;
-    //u.y=(u.y-(int)u.y)*n.y;
-    //u.z=(u.z-(int)u.z)*n.z;
-    u.x=(u.x-((int)(u.x+10)-10))*n.x;
-    u.y=(u.y-((int)(u.y+10)-10))*n.y;
-    u.z=(u.z-((int)(u.z+10)-10))*n.z;
-
-	const int    ix = (int)u.x  ,  iy = (int)u.y  ,  iz = (int)u.z  ;
-    const double tx = u.x - ix  ,  ty = u.y - iy  ,  tz = u.z - iz  ;
-    const double mx = 1-tx      ,  my = 1-ty      ,  mz = 1-tz      ;
-    //------
-    int kx = ix+1; kx=(kx<n.x)?kx:0;
-    int ky = iy+1; ky=(ky<n.y)?ky:0;
-    int kz = iz+1; kz=(kz<n.z)?kz:0;
-	//------
-	const double f00 = my*mz; 
-    const double f10 = ty*mz; 
-    const double f01 = my*tz; 
-    const double f11 = ty*tz;
-    const int   i00 = n.x*(iy + n.y*iz);
-    const int   i01 = n.x*(iy + n.y*kz);
-    const int   i10 = n.x*(ky + n.y*iz);
-    const int   i11 = n.x*(ky + n.y*kz);
-    const int 
-        i000=ix+i00, i100=kx+i00,
-        i001=ix+i01, i101=kx+i01,
-        i010=ix+i10, i110=kx+i10,
-        i011=ix+i11, i111=kx+i11;
-    
-    //printf( "GridFF::getForce_d() ixyz(%i,%i,%i) nxyz(%i,%i,%i) ntot=%i  ((%i,%i)(%i,%i))((%i,%i)(%i,%i))\n", ix,iy,iz, n.x, n.y, n.z, grid.getNtot(), i000, i001, i010, i011,  i100, i101, i110, i111 );
-
-    int ntot = grid.getNtot();
-    if( ((ix<0)||(ix>=n.x)) || 
-        ((iy<0)||(iy>=n.y)) ||
-        ((iz<0)||(iz>=n.z)) )[[unlikely]]{
-            printf( "ERROR GridFF::getForce_d() ntot=%i OUT_OF_RANGE((%i,%i)(%i,%i))((%i,%i)(%i,%i)) pos(%g,%g,%g) ixyz(%i,%i,%i) nxyz(%i,%i,%i) \n", p.x,p.y,p.z,   ix,iy,iz, n.x, n.y, n.z, grid.getNtot(), i000, i001, i010, i011,  i100, i101, i110, i111 );
-            exit(0);
-    }
-    if( (i000<0)||(i000>=ntot) || 
-        (i001<0)||(i001>=ntot) || 
-        (i010<0)||(i010>=ntot) || 
-        (i011<0)||(i011>=ntot) || 
-        (i100<0)||(i100>=ntot) || 
-        (i101<0)||(i101>=ntot) || 
-        (i110<0)||(i110>=ntot) || 
-        (i111<0)||(i111>=ntot) )[[unlikely]]{
-        printf( "ERROR GridFF::getForce_d() ntot=%i OUT_OF_RANGE((%i,%i)(%i,%i))((%i,%i)(%i,%i)) pos(%g,%g,%g) ixyz(%i,%i,%i) nxyz(%i,%i,%i) \n", p.x,p.y,p.z,   ix,iy,iz, n.x, n.y, n.z, grid.getNtot(), i000, i001, i010, i011,  i100, i101, i110, i111 );
-        exit(0);
-    }
-        //printf( "GridFF::getForce_d() ixyz(%i,%i,%i) nxyz(%i,%i,%i) ntot=%i  ((%i,%i)(%i,%i))((%i,%i)(%i,%i))\n", ix,iy,iz, n.x, n.y, n.z, grid.getNtot(), i000, i001, i010, i011,  i100, i101, i110, i111 );
-
-    const double 
-        f000=mx*f00, f100=tx*f00,
-        f001=mx*f01, f101=tx*f01,
-        f010=mx*f10, f110=tx*f10,
-        f011=mx*f11, f111=tx*f11;
-    // { // DEBUG
-    //     Quat4f fDBG = FFPaul[ i000 ];
-    //     //printf( "GridFF::getForce() u(%g,%g,%g)/[%3i,%3i,%3i] fe(%g,%g,%g|%g) p0(%g,%g,%g) PLQ(%g,%g,%g)\n", u.x,u.y,u.z, grid.n.x,grid.n.y,grid.n.z, fDBG.x,fDBG.y,fDBG.z,fDBG.w, grid.pos0.x,grid.pos0.y,grid.pos0.z, PLQ.x,PLQ.y,PLQ.z );
-    // }
-
-	return  // 3 * 8 * 4 = 96 doubles   // SIMD optimize ?????
-          ((FFPaul_d[ i000 ]*f000) + (FFPaul_d[ i100 ]*f100)
-         + (FFPaul_d[ i010 ]*f010) + (FFPaul_d[ i110 ]*f110)  
-         + (FFPaul_d[ i011 ]*f011) + (FFPaul_d[ i111 ]*f111)
-         + (FFPaul_d[ i001 ]*f001) + (FFPaul_d[ i101 ]*f101))*PLQ.x
-
-         +((FFLond_d[ i000 ]*f000) + (FFLond_d[ i100 ]*f100)
-         + (FFLond_d[ i010 ]*f010) + (FFLond_d[ i110 ]*f110)  
-         + (FFLond_d[ i011 ]*f011) + (FFLond_d[ i111 ]*f111)
-         + (FFLond_d[ i001 ]*f001) + (FFLond_d[ i101 ]*f101))*PLQ.y
-
-         +((FFelec_d[ i000 ]*f000) + (FFelec_d[ i100 ]*f100)
-         + (FFelec_d[ i010 ]*f010) + (FFelec_d[ i110 ]*f110)  
-         + (FFelec_d[ i011 ]*f011) + (FFelec_d[ i101 ]*f111)
-         + (FFelec_d[ i001 ]*f001) + (FFelec_d[ i101 ]*f101))*PLQ.z
-        ;
-    }
-}
-
-*/
 
 
 }; // class GridFF

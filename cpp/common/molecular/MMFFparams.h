@@ -716,7 +716,7 @@ class MMFFparams{ public:
     }
 
     // vector with all non-bonded parameters
-    inline void assignRE( int ityp, Quat4d& REQ, bool bSqrtE=false, bool bHB=true )const{
+    inline void assignRE( int ityp, Quat4d& REQ, bool bSqrtE=true, bool bHB=true )const{
         REQ.x    = atypes[ityp].RvdW;
         double e = atypes[ityp].EvdW;
         if(bSqrtE) e=sqrt(e);
@@ -724,7 +724,7 @@ class MMFFparams{ public:
         //if(bHB) REQ.w = atypes[ityp].Hb; // Hbond Correction
     }
 
-    void assignREs( int n, int * itypes, Quat4d * REQs, bool bSqrtE=false, bool bQ0=false )const{
+    void assignREs( int n, int * itypes, Quat4d * REQs, bool bSqrtE=true, bool bQ0=false )const{
         printf( "MMFFparams::assignREs(%i) @itypes=%li \n", n, (long)itypes );
         for(int i=0; i<n; i++){
             const int ityp = itypes[i];

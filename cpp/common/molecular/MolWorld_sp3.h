@@ -314,7 +314,9 @@ class MolWorld_sp3 : public SolverInterface { public:
         }
         if(surf_name ){
             bGridFF = true;
-            loadSurf( surf_name, bGridFF, idebug>0 );
+            //double z0 = 0.0;   // This is how we have it in python API i.e. MMFF.py
+            double z0 = NAN;   // This makes inconsistency with python API i.e. MMFF.py
+            loadSurf( surf_name, bGridFF, idebug>0, z0 );
         }
         if ( smile_name ){               
             insertSMILES( smile_name );    
@@ -954,19 +956,6 @@ void printPBCshifts(){
         //return ffgrid;
     }
 
-    // void initNBmol( int na, Vec3d* apos, Vec3d* fapos, int* atypes, bool bCleanCharge=true ){
-    //     if(verbosity>0)printf( "MolWorld_sp3::initNBmol() na %i \n", na  );
-    //     nbmol.bindOrRealloc( na, apos, fapos, 0, atypes );    
-    //     //nbmol.bindOrRealloc( na, apos, fapos, 0, 0 );   
-    //     //builder.export_atypes( nbmol.atypes );     
-    //     builder.export_REQs( nbmol.REQs   );    
-    //     nbmol  .makePLQs   ( gridFF.alphaMorse );  ffl.PLQs=nbmol.PLQs; 
-    //     nbmol  .makePLQd   ( gridFF.alphaMorse );  ffl.PLQd=nbmol.PLQd; 
-    //     if(bCleanCharge)for(int i=builder.atoms.size(); i<na; i++){ nbmol.REQs[i].z=0; }  // Make sure that atoms not present in Builder has well-defined chanrge                       
-    //     params.assignREs( na, nbmol.atypes, nbmol.REQs, true, false  );
-    //     if(verbosity>1)nbmol.print();                              
-    // }
-
     void initNBmol( NBFF* ff, bool bCleanCharge=true ){
         if(verbosity>0)printf( "MolWorld_sp3::initNBmol() na %i \n", ff->natoms  );
         //void bindOrRealloc(int n_, Vec3d* apos_, Vec3d* fapos_, Quat4d* REQs_, int* atypes_ ){
@@ -976,6 +965,7 @@ void printPBCshifts(){
         builder.export_REQs( nbmol.REQs   );       ff->REQs=nbmol.REQs;
         nbmol  .makePLQs   ( gridFF.alphaMorse );  ff->PLQs=nbmol.PLQs; 
         nbmol  .makePLQd   ( gridFF.alphaMorse );  ff->PLQd=nbmol.PLQd; 
+        nbmol.print_nonbonded();
         if(bCleanCharge)for(int i=builder.atoms.size(); i<ff->natoms; i++){ nbmol.REQs[i].z=0; }  // Make sure that atoms not present in Builder has well-defined chanrge        
         params.assignREs( ff->natoms, nbmol.atypes, nbmol.REQs, true, false  );
         if(verbosity>1)nbmol.print();                              
@@ -1016,7 +1006,7 @@ void printPBCshifts(){
         else if( ret>0 ){ gridFF.grid.updateCell(gridStep); gridFF.bCellSet=true;  }
         //gridFF.grid.printCell(); 
         if(verbosity>0)printf("MolWorld_sp3::loadSurf(%s) 1 natoms %i apos %li atyps %li \n", name, surf.natoms, (long)surf.apos, (long)surf.atypes  );
-        //surf.print();
+        surf.print_nonbonded();
         bSurfAtoms=true;
         if(bGrid){
             bool bSymmetrize=true;
@@ -2326,14 +2316,10 @@ double eval_no_omp(){
                     }
                 }
 
-                //if(bGridFF){ E+= gridFF.addForce    ( ffl.apos[ia], ffl.PLQs[ia], ffl.fapos[ia], true  ); }  // GridFF  float
-                //if(bGridFF){ E+= gridFF.addForce_d  ( ffl.apos[ia], ffl.PLQd[ia], ffl.fapos[ia], true  ); }  // GridFF  double
                 if(bSurfAtoms)[[likely]]{ 
-                    if(bGridFF)[[likely]]{ 
-                        if  (bTricubic){ E+= gridFF.addForce_Tricubic( ffl.apos[ia], ffl.PLQd[ia], ffl.fapos[ia], true  ); }
-                        else           { E+= gridFF.addForce         ( ffl.apos[ia], ffl.PLQs[ia], ffl.fapos[ia], true  ); }
-                    }  // GridFF
-                    else               { 
+                    if(bGridFF)[[likely]]{  // with gridFF
+                        gridFF.addAtom( ffl.apos[ia], ffl.PLQd[ia], ffl.fapos[ia] );
+                    }else{ // Without gridFF (Direct pairwise atoms)
                         //{ E+= nbmol .evalMorse   ( surf, false,                  gridFF.alphaMorse, gridFF.Rdamp );  }
                         //{ E+= nbmol .evalMorsePBC    ( surf, gridFF.grid.cell, nPBC, gridFF.alphaMorse, gridFF.Rdamp );  }
                         { E+= gridFF.evalMorsePBC_sym( ffl.apos[ia], ffl.REQs[ia],  ffl.fapos[ia] );   }

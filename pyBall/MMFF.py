@@ -291,17 +291,15 @@ def saveXSF( name, FF, cell=None ):
     lib.saveXSF( name, _np_as(FF,c_double_p), _np_as(ns,c_int_p), _np_as(cell,c_double_p) )
 
 
-# void makeGridFF( const char* name, int* ffshape, int mode, int bSaveDebugXSFs, double z0, Vec3d cel0, int bAutoNPBC, int bFit ){
-#lib.makeGridFF.argtypes  = [ c_char_p, c_int_p, c_int, c_int, c_double, c_double_p, c_int, c_int ]
-#void makeGridFF( const char* name, int* ffshape, int mode, double z0, double* cel0, bool bSymmetrize, bool bAutoNPBC, bool bFit ){
+#void makeGridFF( const char* name, int* ffshape, int mode, double z0, double* cel0, bool bSymmetrize, bool bAutoNPBC, bool bFit, bool bRefine ){
 lib.makeGridFF.argtypes  = [ c_char_p, c_int_p, c_int, c_double, c_double_p, c_bool, c_bool, c_bool, c_bool ]
 lib.makeGridFF.restype   =  None
-def makeGridFF( name, mode=1, z0=0.0, cel0=[-0.5,-0.5,0.0], bSymmetrize=False, bAutoNPBC=True, bFit=True, bRefine=True ):
+def makeGridFF( name, mode=1, z0=np.nan, cel0=[-0.5,-0.5,0.0], bSymmetrize=False, bAutoNPBC=True, bFit=True, bRefine=True ):
     name=name.encode('utf8')
     cel0 = np.array( cel0 )
     ffshape = np.zeros( 4, dtype=np.int32 )   #;print( "ffshape ", ffshape )
     #print("mmff.makeGridFF: ", " bSymmetrize=", bSymmetrize, " bAutoNPBC=", bAutoNPBC, " bFit=", bFit  )
-    lib.makeGridFF( name,  _np_as(ffshape,c_int_p), mode, int(z0), _np_as(cel0,c_double_p), bSymmetrize, bAutoNPBC, bFit, bRefine )
+    lib.makeGridFF( name,  _np_as(ffshape,c_int_p), mode, float(z0), _np_as(cel0,c_double_p), bSymmetrize, bAutoNPBC, bFit, bRefine )
     #ffshape = ffshape[::-1]
     #print( "ffshape ", ffshape )
     #ff_ = np.ctypeslib.as_array(ff, ffshape )

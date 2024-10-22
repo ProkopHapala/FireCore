@@ -77,14 +77,14 @@ def test_gridFF_npy_lat( name="data/NaCl_1x1_L2", ps_zy=[(0.0,0.0)], mode=6, tit
     #plt.show()
     print( "py======= test_gridFF() DONE" );
 
-def test_gridFF( name="data/xyz/NaCl_1x1_L2", mode=6, dsamp=0.02, tmin=0.0,tmax=10.0, p0=[0.0,0.0,2.0], R0=3.5, E0=0.1, a=1.6, Q=0.4, H=0.0, scErr=100.0, Emax=None, Fmax=None, maxSc=5.0, title=None, bSaveFig=True, bRefine=True, nPBC=None ):
+def test_gridFF( name="data/xyz/NaCl_1x1_L2", mode=6, dsamp=0.02, tmin=0.0,tmax=10.0, p0=[0.0,0.0,2.0], R0=1.5, E0=0.1, a=1.5, Q=0.4, H=0.0, scErr=100.0, Emax=None, Fmax=None, maxSc=5.0, title=None, bSaveFig=True, bRefine=True, nPBC=None ):
     print( "py======= test_gridFF() START" );
     #print( "test_gridFF() START" )
     #mode = 4
     #mode = 1
     mmff.makeGridFF( name=name, mode=mode, bRefine=bRefine )
     #plotGridFF_1D( EFg, ix=20,iy=20 )
-    PLQH = ut.getPLQH( R0, E0, a, Q, H )
+    PLQH = ut.getPLQH( R0, E0, a, Q, H );  print( " test_gridFF ", [R0,E0,Q,H]," a ",a," PLQH ", PLQH )
 
     ps,ts = ut.make_sample_points( p0, t0=tmin, tmax=tmax, dsamp=dsamp, iax=2 )
     
@@ -115,6 +115,7 @@ def test_gridFF( name="data/xyz/NaCl_1x1_L2", mode=6, dsamp=0.02, tmin=0.0,tmax=
     plt.axhline(0.0, c="k", ls='--', lw=0.5)
     plt.ylim( -Emax, Emax )
     plt.legend()
+    plt.grid()
     plt.subplot(2,1,2);
     plt.plot( ts, FFout[:,2],  "-g", lw=0.5, label="Ftot_fit" )
     plt.plot( ts, FF_ref[:,2], ":k", lw=2.0, label="Ftot_ref" )
@@ -122,6 +123,7 @@ def test_gridFF( name="data/xyz/NaCl_1x1_L2", mode=6, dsamp=0.02, tmin=0.0,tmax=
     plt.axhline(0.0, c="k", ls='--', lw=0.5)
     plt.ylim( -Fmax, Fmax )
     plt.legend()
+    plt.grid()
 
     title_ = "p0="+str(p0)+"\nnPBC="+str(nPBC)
     if ( title is not None ): title_=title+"\n"+title_
@@ -133,7 +135,7 @@ def test_gridFF( name="data/xyz/NaCl_1x1_L2", mode=6, dsamp=0.02, tmin=0.0,tmax=
     print( "py======= test_gridFF() DONE" );
     #return EFg
 
-def test_gridFF_lat( name="data/xyz/NaCl_1x1_L2", iax=0, tmin=0.0,tmax=10.0, p0=[1.05,1.05,2.0], mode=6, dsamp=0.02,  R0=3.5, E0=0.1, a=1.6, Q=0.4, H=0.0, scErr=100.0, title=None, Emax=None, Fmax=None, maxSc=5.0, bSaveFig=True, bRefine=True, nPBC=None ):
+def test_gridFF_lat( name="data/xyz/NaCl_1x1_L2", iax=0, tmin=0.0,tmax=10.0, p0=[1.05,1.05,2.0], mode=6, dsamp=0.02,  R0=1.5, E0=0.1, a=1.5, Q=0.4, H=0.0, scErr=100.0, title=None, Emax=None, Fmax=None, maxSc=5.0, bSaveFig=True, bRefine=True, nPBC=None ):
     print( "py======= test_gridFF_lat() START" );
     #print( "test_gridFF() START" )
     #mode = 4
@@ -141,7 +143,7 @@ def test_gridFF_lat( name="data/xyz/NaCl_1x1_L2", iax=0, tmin=0.0,tmax=10.0, p0=
     mmff.makeGridFF( name=name, mode=mode, bRefine=bRefine )
 
     #plotGridFF_1D( EFg, ix=20,iy=20 )
-    PLQH = ut.getPLQH( R0, E0, a, Q, H )
+    PLQH = ut.getPLQH( R0, E0, a, Q, H ) ; print( " test_gridFF ", [R0,E0,Q,H]," a ",a," PLQH ", PLQH )
 
     ps,ts = ut.make_sample_points( p0, t0=tmin, tmax=tmax, dsamp=dsamp, iax=iax )    
 
@@ -199,7 +201,7 @@ def test_gridFF_lat( name="data/xyz/NaCl_1x1_L2", iax=0, tmin=0.0,tmax=10.0, p0=
     #return EFg
 
 
-def test_gridFF_2D( name="data/NaCl_1x1_L2", axs=(0,1), tmin=[0.0,0.0],tmax=[10.0,10.0], p0=[1.05,1.05,2.0], mode=6, dsamp=0.1,  R0=3.5, E0=0.1, a=1.6, Q=0.4, H=0.0, scErr=100.0, title=None, bSaveFig=True ):
+def test_gridFF_2D( name="data/NaCl_1x1_L2", axs=(0,1), tmin=[0.0,0.0],tmax=[10.0,10.0], p0=[1.05,1.05,2.0], mode=6, dsamp=0.1,  R0=1.5, E0=0.1, a=1.5, Q=0.4, H=0.0, scErr=100.0, title=None, bSaveFig=True ):
     print( "py======= test_gridFF_lat() START" );
     #print( "test_gridFF() START" )
     #mode = 4

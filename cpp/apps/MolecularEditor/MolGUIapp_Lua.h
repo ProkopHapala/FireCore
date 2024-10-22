@@ -35,16 +35,15 @@ int l_addLuaButton(lua_State *L){
     Vec3i SliderButtonInt = Lua::getVec3i (L,3);
     Vec3d MinMaxCur       = Lua::getVec3  (L,4);
     const char* command   = Lua::getString(L,5);
-    DEBUG
+
     int ipanel = app->gui.panels.size();
     printf( "l_addLuaButton: label(%s) command(%s) xyw(%i,%i,%i) SliderButtonInt(%i,%i,%i) MinMaxCur(%g,%g,%g)\n",  label, command,  xyw.x, xyw.y, xyw.z,  SliderButtonInt.x,SliderButtonInt.y,SliderButtonInt.z, MinMaxCur.x,MinMaxCur.y,MinMaxCur.z  );
     GUIPanel* panel = (GUIPanel*)app->gui.addPanel( new GUIPanel( label, xyw.x,xyw.y, xyw.x+xyw.z*fontSizeDef,xyw.y+fontSizeDef*2, SliderButtonInt.x>0, SliderButtonInt.y>0, SliderButtonInt.z>0 ) );
     //GUIPanel* panel = ((GUIPanel*)app->gui.addPanel( new GUIPanel( "Mol. Orb.", 5,ylay.x0,5+100,ylay.x1, true, true, true ) ) );
     panel->setRange(MinMaxCur.x,MinMaxCur.y);
     panel->setValue(MinMaxCur.z);
-    DEBUG
+    
     panel->setCommand( [&](GUIAbstractPanel* p){ 
-        DEBUG
         GUIPanel* p_ = (GUIPanel*)p;
         printf( "l_addLuaButton.caption(%s) @L=%li \n", p->caption.c_str(), (long)L );
         const char* command = p->caption.c_str();
@@ -55,7 +54,6 @@ int l_addLuaButton(lua_State *L){
         }
         return true;
     } );
-    DEBUG
     //panel->setCommand( app->actions.get( command ) );
     //app->setPanelAction( ipanel, command  );
     lua_pushinteger(L, ipanel);

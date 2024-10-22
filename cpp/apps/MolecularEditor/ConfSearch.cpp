@@ -270,7 +270,7 @@ AppMolecularEditor2::AppMolecularEditor2( int& id, int WIDTH_, int HEIGHT_ ) : A
     builder.insertMolecule( &mol, {6.0,6.0,2.0}, rot, false );
 
     world.printAtomInfo();
-    builder.toMMFF( &world, &params );                                 DEBUG
+    builder.toMMFF( &world, &params );                                 
     world.printAtomInfo(); //exit(0);
     //world.allocFragment( nFrag );
     //opt.bindArrays( 8*world.nFrag, (double*)world.poses, new double[8*world.nFrag], (double*)world.poseFs );
@@ -278,7 +278,7 @@ AppMolecularEditor2::AppMolecularEditor2( int& id, int WIDTH_, int HEIGHT_ ) : A
     //opt.bindArrays( 8*world.nFrag, world.poses, world.poseVs, world.poseFs );
     world.allocateDyn();
     world.initDyn();
-    opt.bindArrays( world.nDyn, world.dynPos, world.dynVel, world.dynForce, NULL ); DEBUG
+    opt.bindArrays( world.nDyn, world.dynPos, world.dynVel, world.dynForce, NULL );
     opt.setInvMass( 1.0 );
     opt.cleanVel  ( );
     //exit(0);
@@ -298,8 +298,6 @@ AppMolecularEditor2::AppMolecularEditor2( int& id, int WIDTH_, int HEIGHT_ ) : A
     //params.fillBondParams( world.nbonds, world.bond2atom, mol.bondType, mol.atomType, world.bond_0, world.bond_k );
     */
 
-    DEBUG
-
     //printf( "bond 8 %g \n", world.bond_0[8] );
     //printf( "bond 9 %g \n", world.bond_0[9] );
     //Vec2i iat = bond2atom[8];
@@ -316,7 +314,6 @@ AppMolecularEditor2::AppMolecularEditor2( int& id, int WIDTH_, int HEIGHT_ ) : A
     manipulator.enabled = new int[manipulator.nenabled];
     std::memcpy( manipulator.enabled, (const int[]){0,1,2,3,4,5,6,7,8,9}, manipulator.nenabled*sizeof(int) );
 
-    DEBUG
     //exit(0);
 
     conf1.bind( 5, world.atypes, world.apos );
@@ -333,8 +330,6 @@ AppMolecularEditor2::AppMolecularEditor2( int& id, int WIDTH_, int HEIGHT_ ) : A
     atomdist.types  = conf1.types;
     */
 
-    DEBUG
-
     atomdist.copyOf(conf1);
     /*
     atomdist.realloc(30);
@@ -345,16 +340,11 @@ AppMolecularEditor2::AppMolecularEditor2( int& id, int WIDTH_, int HEIGHT_ ) : A
     ); }
     */
 
-    DEBUG
-
     atomdist.initRuler( world.Collision_box.a+Vec3d{-2.0,-2.0,-2.0}, world.Collision_box.b+Vec3d{3.0,3.0,3.0}, 2.0 );
     printf( "atomdist.ruler: %i (%i,%i,%i)\n ", atomdist.ruler.ntot, atomdist.ruler.n.x, atomdist.ruler.n.y, atomdist.ruler.n.z );
 
     //atomdist.toCells( 0.5 );
     atomdist.toCells();
-
-
-    DEBUG
 
     conf1.pos[0].add(0.1,0.0,0.0);
 
