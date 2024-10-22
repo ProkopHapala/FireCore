@@ -2092,7 +2092,7 @@ void assignTorsions( bool bNonPi=false, bool bNO=true ){
     inline Vec3d pbcShift( Vec3i G ){ return lvec.a*G.a + lvec.b*G.b + lvec.c*G.c; }
 
     // find 
-    int autoBondsPBC( double R=-1.20, int i0=0, int imax=-1, Vec3i npbc=Vec3iOne ){
+    int autoBondsPBC( double R=-1.35, int i0=0, int imax=-1, Vec3i npbc=Vec3iOne ){
         //printf( "MM::Builder::autoBondsPBC() \n" );
         //if(verbosity>0){ printf( "MM::Builder::autoBondsPBC() \n" );                             }
         if(verbosity>1){ printf( "MM::Builder::autoBondsPBC() builder.lvec: \n" ); lvec.print(); };
@@ -3266,7 +3266,8 @@ void assignTorsions( bool bNonPi=false, bool bNO=true ){
                 int ne=0,npi=0; 
                 Quat4d REQ=REQs[i];
                 if(params){  //printf( "params \n" );
-                    params->assignRE( ityp, REQ );
+                    params->assignRE( ityp, REQ, true );
+                    // printf( "MM::Builder::loadXYZ_Atoms() assignRE[%i] REQ(%g,%g,%g)\n", i, REQ.x,REQ.y,REQ.z );
                     ne = params->atypes[ityp].nepair;
                     REQ.z=REQs[i].z;
                 }

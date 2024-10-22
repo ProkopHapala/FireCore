@@ -113,20 +113,18 @@ void bakeMMFF(){
 void prepareOpt(){
     //opt.bindArrays( 8*world.nFrag, world.poses, world.poseVs, world.poseFs );
     //printf("DEBUG a.0\n");
-    world.allocateDyn();   //printf("DEBUG a.1\n");
-    world.initDyn();       //printf("DEBUG a.2\n");
-    opt.bindArrays( world.nDyn, world.dynPos, world.dynVel, world.dynForce, world.dynInvMass );  //printf("DEBUG a.3\n");
-    opt.setInvMass( 1.0 ); //printf("DEBUG a.4\n");
-    opt.cleanVel  ( );     //printf("DEBUG a.5\n");
+    world.allocateDyn();   
+    world.initDyn();       
+    opt.bindArrays( world.nDyn, world.dynPos, world.dynVel, world.dynForce, world.dynInvMass );
+    opt.setInvMass( 1.0 ); 
+    opt.cleanVel  ( );     
     //exit(0);
     //printf("POSE_pos   : \n"); printPoses( world.nFrag, world.poses  );
     //printf("POSE_Force : \n"); printPoses( world.nFrag, world.poseFs );
-    //DEBUG
 }
 
 double relaxNsteps( int nsteps, double F2conf ){
     double F2=1e+300;
-    //DEBUG
     for(int itr=0; itr<nsteps; itr++){
         //printf( "===== relaxNsteps itr %i \n", itr );
         world.cleanAtomForce();
@@ -143,7 +141,6 @@ double relaxNsteps( int nsteps, double F2conf ){
         if(F2<F2conf) break;
         world.checkPoseUnitary();
         world.fromDym();
-        //DEBUG
         printf( ">> itr %i F2 %g dt %g qrot (%g,%g,%g,%g) int %li \n", itr, F2, opt.dt, world.poses[4], world.poses[5], world.poses[6], world.poses[7], world.gridFF.FFPaul );
         //printf( ">> itr %i F2 %g dt %g poses (%g,%g,%g,%g, %g,%g,%g,%g) \n", itr, F2, world.poses[0], world.poses[1], world.poses[2], world.poses[3], world.poses[4], world.poses[5], world.poses[6], world.poses[7] );
     }

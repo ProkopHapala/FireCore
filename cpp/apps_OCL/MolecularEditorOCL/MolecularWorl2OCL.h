@@ -161,9 +161,9 @@ class RigidMolecularWorldOCL{ public:
         FEs  = new Quat4f[nAtoms];
         poss = new Quat4f[nAtoms];
         PLQs = new Quat4f[nAtoms];
-        id_poss = cl->newBuffer( "poss", nAtoms, sizeof(Quat4f), NULL, CL_MEM_READ_WRITE  ); DEBUG;
-        id_FEs  = cl->newBuffer( "FEs",  nAtoms, sizeof(Quat4f), NULL, CL_MEM_READ_WRITE  ); DEBUG;
-        id_PLQs = cl->newBuffer( "PLQs", nAtoms, sizeof(Quat4f), NULL, CL_MEM_READ_WRITE  ); DEBUG;
+        id_poss = cl->newBuffer( "poss", nAtoms, sizeof(Quat4f), NULL, CL_MEM_READ_WRITE  ); 
+        id_FEs  = cl->newBuffer( "FEs",  nAtoms, sizeof(Quat4f), NULL, CL_MEM_READ_WRITE  ); 
+        id_PLQs = cl->newBuffer( "PLQs", nAtoms, sizeof(Quat4f), NULL, CL_MEM_READ_WRITE  ); 
     };
 
     void prepareBuffers( int nSystems_, int nMols_, Vec3i nGrid, float* FFpaul, float* FFlond, float* FFelec ){
@@ -178,14 +178,14 @@ class RigidMolecularWorldOCL{ public:
         invMasses    = new float2[nMolInstances];
         PLQinTypes   = new Quat4f[atomsInTypes.size()];
 
-        id_mol2atoms    = cl->newBuffer( "molTypes",     nMolInstances,       sizeof(int2)  , NULL,                CL_MEM_READ_WRITE ); DEBUG;
-        id_atomsInTypes = cl->newBuffer( "atomsInTypes", atomsInTypes.size(), sizeof(float8), atomsInTypes.data(), CL_MEM_READ_WRITE | CL_MEM_COPY_HOST_PTR ); DEBUG;
-        id_PLQinTypes   = cl->newBuffer( "PLQinTypes"  , atomsInTypes.size(), sizeof(Quat4f), NULL,          CL_MEM_READ_WRITE ); DEBUG;
+        id_mol2atoms    = cl->newBuffer( "molTypes",     nMolInstances,       sizeof(int2)  , NULL,                CL_MEM_READ_WRITE );
+        id_atomsInTypes = cl->newBuffer( "atomsInTypes", atomsInTypes.size(), sizeof(float8), atomsInTypes.data(), CL_MEM_READ_WRITE | CL_MEM_COPY_HOST_PTR );
+        id_PLQinTypes   = cl->newBuffer( "PLQinTypes"  , atomsInTypes.size(), sizeof(Quat4f), NULL,          CL_MEM_READ_WRITE );
 
-        id_poses        = cl->newBuffer( "poses",        nMolInstances, sizeof(float8), NULL, CL_MEM_READ_WRITE  ); DEBUG;
-        id_fposes       = cl->newBuffer( "fposes",       nMolInstances, sizeof(float8), NULL, CL_MEM_READ_WRITE  ); DEBUG;
-        id_vposes       = cl->newBuffer( "vposes",       nMolInstances, sizeof(float8), NULL, CL_MEM_READ_WRITE  ); DEBUG;
-        id_invMasses    = cl->newBuffer( "invMasses",    nMolInstances, sizeof(float2), NULL, CL_MEM_READ_WRITE  ); DEBUG;
+        id_poses        = cl->newBuffer( "poses",        nMolInstances, sizeof(float8), NULL, CL_MEM_READ_WRITE  ); 
+        id_fposes       = cl->newBuffer( "fposes",       nMolInstances, sizeof(float8), NULL, CL_MEM_READ_WRITE  );
+        id_vposes       = cl->newBuffer( "vposes",       nMolInstances, sizeof(float8), NULL, CL_MEM_READ_WRITE  );
+        id_invMasses    = cl->newBuffer( "invMasses",    nMolInstances, sizeof(float2), NULL, CL_MEM_READ_WRITE  ); 
 
         cl_image_format imgFormat = (cl_image_format){CL_RGBA,CL_FLOAT};
         id_FFPaul = cl->newBufferImage3D( "FFPaul", nGrid.x, nGrid.y, nGrid.z, sizeof(float), FFpaul, CL_MEM_READ_ONLY  | CL_MEM_COPY_HOST_PTR , {CL_RGBA, CL_FLOAT} );

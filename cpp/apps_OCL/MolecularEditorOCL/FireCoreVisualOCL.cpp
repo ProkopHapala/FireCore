@@ -546,10 +546,10 @@ void TestAppFireCoreVisual::makeGridFF( bool recalcFF, bool bRenderGridFF ) {
 
 void TestAppFireCoreVisual::drawSystem( Vec3d ixyz ){
     bool bOrig = (ixyz.x==0)&&(ixyz.y==0)&&(ixyz.z==0);
-    //glColor3f(0.0f,0.0f,0.0f); Draw3D::bondsPBC  ( ff.nbonds, ff.bond2atom, ff.apos, &builder.bondPBC[0], builder.lvec ); // DEBUG
-    glColor3f(0.0f,0.0f,0.0f); Draw3D::bondsPBC  ( ff.nbonds, ff.bond2atom, ff.apos, ff.pbcShifts ); // DEBUG
-    if(bOrig&&mm_bAtoms){ glColor3f(0.0f,0.0f,0.0f); Draw3D::atomLabels( ff.natoms, ff.apos, fontTex3D                     ); }                     //DEBUG
-    Draw3D::atoms( ff.natoms, ff.apos, atypes, params, ogl_sph, 1.0, mm_Rsc, mm_Rsub );       //DEBUG
+    //glColor3f(0.0f,0.0f,0.0f); Draw3D::bondsPBC  ( ff.nbonds, ff.bond2atom, ff.apos, &builder.bondPBC[0], builder.lvec ); 
+    glColor3f(0.0f,0.0f,0.0f); Draw3D::bondsPBC  ( ff.nbonds, ff.bond2atom, ff.apos, ff.pbcShifts ); 
+    if(bOrig&&mm_bAtoms){ glColor3f(0.0f,0.0f,0.0f); Draw3D::atomLabels( ff.natoms, ff.apos, fontTex3D                     ); }                    
+    Draw3D::atoms( ff.natoms, ff.apos, atypes, params, ogl_sph, 1.0, mm_Rsc, mm_Rsub );       
 }
 
 void TestAppFireCoreVisual::drawSystemQMMM(){
@@ -572,16 +572,16 @@ void TestAppFireCoreVisual::drawSystemQMMM(){
 
 void TestAppFireCoreVisual::saveScreenshot( int i, const char* fname ){
     char str[64];
-    sprintf( str, fname, i );               // DEBUG
+    sprintf( str, fname, i );               
     printf( "save to %s \n", str );
-    unsigned int *screenPixels = new unsigned int[WIDTH*HEIGHT*4];  //DEBUG
-    glFlush();                                                      //DEBUG
-    glFinish();                                                     //DEBUG
+    unsigned int *screenPixels = new unsigned int[WIDTH*HEIGHT*4];  
+    glFlush();                                                      
+    glFinish();                                                     
     //glReadPixels(0, 0, WIDTH, HEIGHT, GL_RGB, GL_UNSIGNED_INT, screenPixels);
-    glReadPixels(0, 0, WIDTH, HEIGHT, GL_RGBA, GL_UNSIGNED_BYTE, screenPixels);   //DEBUG
-    //SDL_Surface *bitmap = SDL_CreateRGBSurfaceFrom(screenPixels, WIDTH, HEIGHT, 32, WIDTH*4, 0xff000000, 0x00ff0000, 0x0000ff00, 0x000000ff );   //DEBUG
-    SDL_Surface *bitmap = SDL_CreateRGBSurfaceFrom(screenPixels, WIDTH, HEIGHT, 32, WIDTH*4, 0x000000ff, 0x0000ff00, 0x00ff0000, 0xff000000 );   //DEBUG
-    SDL_SaveBMP(bitmap, str);    //DEBUG
+    glReadPixels(0, 0, WIDTH, HEIGHT, GL_RGBA, GL_UNSIGNED_BYTE, screenPixels);   
+    //SDL_Surface *bitmap = SDL_CreateRGBSurfaceFrom(screenPixels, WIDTH, HEIGHT, 32, WIDTH*4, 0xff000000, 0x00ff0000, 0x0000ff00, 0x000000ff );   
+    SDL_Surface *bitmap = SDL_CreateRGBSurfaceFrom(screenPixels, WIDTH, HEIGHT, 32, WIDTH*4, 0x000000ff, 0x0000ff00, 0x00ff0000, 0xff000000 );   
+    SDL_SaveBMP(bitmap, str);    
     SDL_FreeSurface(bitmap);
     delete[] screenPixels;
 }

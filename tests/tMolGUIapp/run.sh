@@ -134,7 +134,9 @@ fi
 # ====== Small Molecules On Substrate
 
 #./$name -x common_resources/xyz/H2O       -g common_resources/xyz/NaCl_1x1_L2
-./$name -x common_resources/xyz/H2O       -g common_resources/xyz/NaCl_1x1_L3
+#./$name -x common_resources/xyz/H2O       -g common_resources/xyz/NaCl_1x1_L3 -perframe 1 -dt 0.05
+#./$name -x common_resources/xyz/H2O       -g common_resources/xyz/NaCl_1x1_L3 -perframe 1 -dt 0.05 -nogridff
+
 
 
 #./$name -x common_resources/xyz/H2O       -g common_resources/xyz/NaCl_1x1_L2 -tricubic
@@ -154,8 +156,23 @@ fi
 #./$name -x common_resources/xyz/N_2edge_assay_1  -g common_resources/NaCl_1x1_L2 -e
 
 
-#./$name -x common_resources/xyz/PTCDA -g common_resources/NaCl_1x1_L2
-#./$name -x common_resources/xyz/PTCDA -g common_resources/NaCl_1x1_L2 -lua test_add_mols.lua
+#./$name -x common_resources/xyz/PTCDA -g common_resources/xyz/NaCl_1x1_L3
+#./$name -x common_resources/xyz/PTCDA -g common_resources/xyz/NaCl_1x1_L3 -uff -iParalel 0
+
+#./$name -x common_resources/xyz/guanine -g common_resources/xyz/NaCl_1x1_L3 -uff -iParalel 0
+#./$name -x common_resources/xyz/uracil -g common_resources/xyz/NaCl_1x1_L3 -uff -iParalel 0
+
+#./$name -x common_resources/xyz/guanine -g common_resources/xyz/NaCl_1x1_L3 -iParalel 0
+#./$name -x common_resources/xyz/uracil -g common_resources/xyz/NaCl_1x1_L3 -iParalel 0
+
+#./$name -x common_resources/xyz/guanine-cytosine -g common_resources/xyz/NaCl_1x1_L3 -iParalel 0
+#./$name -x common_resources/xyz/guanine-cytosine -g common_resources/xyz/NaCl_1x1_L3 -iParalel 0 -e
+./$name -x common_resources/xyz/guanine-cytosine -g common_resources/xyz/NaCl_1x1_L3 -iParalel 1 -e -nPBC 0,0,0
+
+#./$name -x common_resources/xyz/guanine-cytosine -g common_resources/xyz/NaCl_1x1_L3 -iParalel 0 -uff -dt 0.01
+
+
+#./$name -x common_resources/xyz/PTCDA -g common_resources/xyz/NaCl_1x1_L2 -lua test_add_mols.lua
 
 # ====== Polymers
 

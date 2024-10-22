@@ -479,12 +479,14 @@ class NBFF: public ForceField{ public:
         const Quat4d  REQi    = REQs[ia];
         const double  R2damp = Rdamp*Rdamp;
         double E=0,fx=0,fy=0,fz=0;
-        #pragma omp simd reduction(+:E,fx,fy,fz)
+        //#pragma omp simd reduction(+:E,fx,fy,fz)
         for (int j=0; j<natoms; j++){ 
             //if(ia==j)continue;   ToDo: Maybe we can keep there some ignore list ?
             if(ia==j)[[unlikely]]{continue;}
             const Quat4d& REQj  = REQs[j];
             const Quat4d  REQij = _mixREQ(REQi,REQj); 
+
+            //printf( "DEBUG evalLJQs_PBC_atom_omp() [ua=%i,j=%i] REQij(%g,%g,%g,%g) REQj(%g,%g,%g,%g)  REQi(%g,%g,%g,%g) \n", ia, j, REQij.x,REQij.y,REQij.z,REQij.w,  REQj.x,REQj.y,REQj.z,REQj.w,  REQi.x,REQi.y,REQi.z,REQi.w );
             const Vec3d dp      = apos[j]-pi;
             Vec3d fij           = Vec3dZero;
             for(int ipbc=0; ipbc<npbc; ipbc++){
@@ -500,6 +502,7 @@ class NBFF: public ForceField{ public:
             }
         }
         fapos[ia].add( Vec3d{fx,fy,fz} );
+        //exit(0);
         return E;
     }
     __attribute__((hot))  
@@ -1106,8 +1109,10 @@ class NBFF: public ForceField{ public:
     void print_nonbonded(){
         printf("NBFF::print_nonbonded(n=%i)\n", natoms );
         for(int i=0; i<natoms; i++){
-            if(atypes){ printf("nb_atom[%i] REQ(%7.3f,%g,%g,%g) pos(%7.3f,%7.3f,%7.3f) atyp %i \n", i, REQs[i].x,REQs[i].y,REQs[i].z,REQs[i].w,   apos[i].x,apos[i].y,apos[i].z, atypes[i] ); }
-            else      { printf("nb_atom[%i] REQ(%7.3f,%g,%g,%g) pos(%7.3f,%7.3f,%7.3f) \n",         i, REQs[i].x,REQs[i].y,REQs[i].z,REQs[i].w,   apos[i].x,apos[i].y,apos[i].z            ); }
+            Quat4d PLQ = Quat4dNAN; 
+            if(PLQd){PLQ = PLQd[i];}
+            if(atypes){ printf("nb_atom[%i] REQ(%7.3f,%g,%g,%g) PLQ(%12.8f,%12.8f,%8.4f,%g) pos(%7.3f,%7.3f,%7.3f) atyp %i \n", i, REQs[i].x,REQs[i].y,REQs[i].z,REQs[i].w, PLQ.x,PLQ.y,PLQ.z,PLQ.w,  apos[i].x,apos[i].y,apos[i].z, atypes[i] ); }
+            else      { printf("nb_atom[%i] REQ(%7.3f,%g,%g,%g) PLQ(%12.8f,%12.8f,%8.4f,%g) pos(%7.3f,%7.3f,%7.3f) \n",         i, REQs[i].x,REQs[i].y,REQs[i].z,REQs[i].w, PLQ.x,PLQ.y,PLQ.z,PLQ.w,  apos[i].x,apos[i].y,apos[i].z            ); }
         }
     }
 

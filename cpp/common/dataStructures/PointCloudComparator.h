@@ -382,7 +382,7 @@ class TypePointsComparator{
             dist += disti;
             //break;
         }
-        //printf( "DEBUG 6\n" );
+
         return dist;
     }
 
@@ -390,23 +390,23 @@ class TypePointsComparator{
         if(n!=ntot) return 1e+300; // bad number of points
         int ntypes = typedComps.size();
         int * ns = new int[ntypes];  for( int ityp=0; ityp<ntypes; ityp++ ){ ns[ityp]=0; }
-        //printf( "DEBUG 4\n" );
+
         for(int i=0; i<ntot; i++){
             int t    = ptypes[i];
             auto got = typeSet.find( t );
-            //printf( "DEBUG 4.1\n" );
+
             if( got == typeSet.end() ) return 1e+300; // unknow type
             int ityp = got->second;
             int ni = ns[ityp];
-            //printf( "DEBUG 4.2\n" );
+
             //printf( "%i %i   %i %i \n", ityp, ni, typedComps[ityp]->n, typedComps[ ityp ]->points );
             if( ni >= typedComps[ityp]->n ) return 1e+300; // bad number of typed points
             //typedComps[ ityp ]->points[ni] = points[i];
             pstmp[ityp][ni] = points[i];
             ns[ityp]        = ni+1;
-            //printf( "DEBUG 4.3\n" );
+
         }
-        //printf( "DEBUG 5\n" );
+ 
         delete ns;
         return dist();
     }

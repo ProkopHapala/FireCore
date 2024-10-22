@@ -257,7 +257,7 @@ int renderSubstrate_new( const GridFF& gff, Vec2d zrange, double isoval, Quat4d 
                 Vec3d dp=(p1b-p1a)*(1./n);
                 for(int i=0;i<n;i++){
                     Vec3d p = p1a + dp*(i*1.);
-                    double e = gff.addAtom( p, PLQ, fout);
+                    double e = gff.addAtom( p, PL, fout);
                     printf( "%8.4f %g\n", p.z, e );
                 }
                 exit(0);
