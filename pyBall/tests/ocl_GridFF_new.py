@@ -192,7 +192,7 @@ def coulomb_brute_1D( atoms, kind='z', p0=[0.0,0.0,2.0], bPlot=False, nPBC=(60,6
         return FEps
         #plt.show()
 
-def make_atoms_arrays( atoms=None, fname=None, bSymetrize=False, Element_Types_name="./data/ElementTypes.dat" ): 
+def make_atoms_arrays( atoms=None, fname=None, bSymetrize=False, Element_Types_name="./data/ElementTypes.dat", bSqrtEvdw=True ): 
     #print( os.getcwd() )
     if atoms is None:
         atoms = au.AtomicSystem( fname=fname )
@@ -214,7 +214,10 @@ def make_atoms_arrays( atoms=None, fname=None, bSymetrize=False, Element_Types_n
     xyzq[:,:3] = atoms.apos
     xyzq[:,3]  = atoms.qs
     REQs[:,0]  = REvdW[:,0]
-    REQs[:,1]  = np.sqrt(REvdW[:,1])
+    if bSqrtEvdw:
+        REQs[:,1]  = np.sqrt(REvdW[:,1])
+    else:
+        REQs[:,1]  = REvdW[:,1]
     REQs[:,2]  = atoms.qs
     REQs[:,3]  = 0.0
 
@@ -235,7 +238,7 @@ def plotTrjs( trjs, names ):
     plt.show()
 
 
-def test_gridFF_ocl( fname="./data/xyz/NaCl_1x1_L1.xyz", Element_Types_name="./data/ElementTypes.dat", job="PLQ", b2D=False, bSymetrize=False, bFit=True, save_name=None ):
+def test_gridFF_ocl( fname="./data/xyz/NaCl_1x1_L1.xyz", Element_Types_name="./data/ElementTypes.dat", job="PLQ", b2D=False, bSymetrize=False, bFit=True, save_name=None, z0=np.nan ):
     print( "py======= test_gridFF_ocl() START" );
 
     T00 = time.perf_counter()
@@ -243,6 +246,9 @@ def test_gridFF_ocl( fname="./data/xyz/NaCl_1x1_L1.xyz", Element_Types_name="./d
     #Element_Types_name="/home/prokop/git/FireCore/tests/tMMFF/data/ElementTypes.dat"
 
     xyzq, REQs, atoms = make_atoms_arrays( fname=fname, bSymetrize=bSymetrize, Element_Types_name=Element_Types_name )
+
+    if np.isnan(z0): z0 = xyzq[0,2].max()
+    print( "test_gridFF_ocl() z0= ", z0 )
 
     grid = GridShape( dg=(0.1,0.1,0.1),  lvec=atoms.lvec)
     clgff.set_grid( grid )
@@ -263,7 +269,7 @@ def test_gridFF_ocl( fname="./data/xyz/NaCl_1x1_L1.xyz", Element_Types_name="./d
     elif job=="PLQ":
         
         # --- Morse
-        g0 = ( -grid.Ls[0]*0.5, -grid.Ls[1]*0.5, 0.0 )
+        g0 = ( -grid.Ls[0]*0.5, -grid.Ls[1]*0.5, z0 )
         nPBC_mors = autoPBC(atoms.lvec,Rcut=20.0); print("autoPBC(nPBC_mors): ", nPBC_mors )
         clgff.make_MorseFF( xyzq, REQs, nPBC=nPBC_mors, lvec=atoms.lvec, g0=g0, GFFParams=(0.1,1.5,0.0,0.0), bReturn=False )
         V_Paul,trj_paul = clgff.fit3D( clgff.V_Paul_buff, nPerStep=50, nmaxiter=500, damp=0.15, bConvTrj=True ); #T_fit_P = time.perf_counter()
