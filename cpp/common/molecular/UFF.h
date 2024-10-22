@@ -1521,7 +1521,6 @@ class UFF : public NBFF { public:
 
     __attribute__((hot))  
     int run_omp( int niter, double dt, double Fconv, double Flim, double damping=0.1 ){
-        DEBUG
         double F2conv = Fconv*Fconv;
         double Enb=0,ff=0,vv=0,vf=0;
         //double cdamp = 1-damping; if(cdamp<0)cdamp=0;
@@ -1530,7 +1529,6 @@ class UFF : public NBFF { public:
         const double Fmax2     = FmaxNonBonded*FmaxNonBonded;
         const bool bSubNonBond = SubNBTorstionFactor>0;
         int    itr=0;
-        DEBUG
         #pragma omp parallel shared( Enb, Eb, Ea, Ed, Ei, ff,vv,vf ) private(itr)
         for(itr=0; itr<niter; itr++){
             // This {} should be done just by one of the processors

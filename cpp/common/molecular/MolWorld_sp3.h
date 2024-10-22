@@ -892,18 +892,28 @@ void printPBCshifts(){
  */
     void autoCharges(bool bVerbose=false, bool bFromScratch=false ){
         //if(verbosity>0)
-        //printf("MolWorld_sp3::autoCharges() \n");
+        printf("MolWorld_sp3::autoCharges() ff.natoms=%i @nbmol.REQs=%li @ff.REQs=%li @ffu.REQs=%li @ffl.REQs=%li \n", ff.natoms, (long)nbmol.REQs, (long)ff.REQs, (long)ffu.REQs, (long)ffl.REQs  );
         //printf("MolWorld_sp3::autoCharges() START REQ.q[-1] \n", nbmol.REQs[nbmol.natoms-1].z );
         //bVerbose=true;
-        qeq.realloc( ff.natoms );
-        params.assignQEq ( ff.natoms, ff.atype, qeq.affins, qeq.hards );
+
+        ForceField* ff;
+        if(bUFF){ ff = &ffu; }else{ ff = &ffl; }
+
+        qeq.realloc( ff->natoms );
+        params.assignQEq ( ff->natoms, ff->atypes, qeq.affins, qeq.hards );
         int etyp = params.getAtomType("E");    //Constrain electron pairs
-        qeq.constrainTypes( ff.atype, etyp );
+        qeq.constrainTypes( ff->atypes, etyp );
+        
         if(!bFromScratch){ copy( qeq.n, 4,2,(double*)nbmol.REQs, 1,0,(double*)qeq.qs ); }  // Initial charges 
         //for(int i=0; i<qeq.n; i++){ printf( "qeq.qs[%i]=%g  REQ.z=%g  \n", i, qeq.qs[i], nbmol.REQs[i].z );}
-        qeq.relaxChargeMD ( ff.apos, 1000, 1e-2, 0.1, 0.0, bVerbose, bFromScratch );
+        qeq.relaxChargeMD ( ff->apos, 1000, 1e-2, 0.1, 0.0, bVerbose, bFromScratch );
         copy( qeq.n, 1,0,(double*)qeq.qs, 4,2,(double*)nbmol.REQs );
         if(bFromScratch){ ffl.chargeToEpairs( QEpair, etyp ); }
+        if(bUFF){
+            for(int i=0; i<ffu.natoms; i++){
+                printf( "uff[ia=%i] atype[%i] REQs(%g,%g,%g)\n", i, ffu.atypes[i], nbmol.REQs[i].x, nbmol.REQs[i].y, nbmol.REQs[i].z );
+            }
+        }
         nbmol.evalPLQs(gridFF.alphaMorse);
         printf("MolWorld_sp3::autoCharges() END REQ.q[-1] \n", nbmol.REQs[nbmol.natoms-1].z );
         bChargeUpdated=true;
@@ -1352,7 +1362,6 @@ void printPBCshifts(){
         print("MolWorld_sp3::makeFFs()\n" );
         makeMMFFs();
         if ( bUFF ){
-            //initNBmol( ffu.natoms, ffu.apos, ffu.fapos, ffu.atypes ); 
             initNBmol( &ffu );
             setNonBond( bNonBonded );
             ffu.go = &go;
@@ -1360,7 +1369,14 @@ void printPBCshifts(){
             ffu.atomForceFunc = [&](int ia,const Vec3d p,Vec3d& f)->double{    
                 //printf( "ffu.atomForceFunc() ia=%i \n", ia  );
                 double E=0;
-                if   (bGridFF){ E+= gridFF.addForce( p, nbmol.PLQs[ia], f, true  ); }  // GridFF
+                if   (bGridFF){ 
+                    E += gridFF.addAtom( p, nbmol.PLQd[ia], f );
+                    //Vec3d fi=Vec3dZero;
+                    //E+= gridFF.addForce( p, nbmol.PLQs[ia], fi, true  ); 
+                    //E += gridFF.addAtom( p, nbmol.PLQd[ia], fi );
+                    //printf("MolWorld_sp3::ffu.atomForceFunc(ia=%i,gridFF.mode=%i) p(%g,%g,%g) fi(%g,%g,%g) PLQ(%g,%g,%g) @gridFF.Bspline_PLQ=%li \n", ia, (int)gridFF.mode, p.x, p.y, p.z, fi.x,fi.y,fi.z, nbmol.PLQs[ia].x, nbmol.PLQs[ia].y, nbmol.PLQs[ia].z, (long)gridFF.Bspline_PLQ );
+                    //f.add( fi );
+                }  // GridFF
                 if(bConstrZ){
                     springbound( p.z-ConstrZ_xmin, ConstrZ_l, ConstrZ_k, f.z );
                 }
@@ -1368,15 +1384,16 @@ void printPBCshifts(){
                     const Vec3d fs = getForceSpringRay( p, pick_hray, pick_ray0,  Kpick ); 
                     f.add( fs );
                 }
+                
                 return E;
             };
+
             if(bOptimizer){ 
                 //setOptimizer( ffu.nDOFs, ffu.DOFs, ffu.fDOFs );
                 setOptimizer( ffu.natoms*3, (double*)ffu.apos, (double*)ffu.fapos );
                 ffu.vapos = (Vec3d*)opt.vel;
             }                         
         }else{
-            //initNBmol( ffl.natoms, ffl.apos, ffl.fapos, ffl.atypes ); 
             initNBmol( &ffl );
             //ffl.printAtomParams();
             setNonBond( bNonBonded );
@@ -2118,6 +2135,10 @@ double eval_no_omp(){
                 if(bSurfAtoms)[[likely]]{ 
                     if(bGridFF)[[likely]]{  // with gridFF
                         gridFF.addAtom( ffl.apos[ia], ffl.PLQd[ia], ffl.fapos[ia] );
+                        //Vec3d fi=Vec3dZero;
+                        //gridFF.addAtom( ffl.apos[ia], ffl.PLQd[ia], fi );
+                        //printf("MolWorld_sp3::ffu.atomForceFunc(ia=%i,gridFF.mode=%i) p(%g,%g,%g) fi(%g,%g,%g) PLQ(%g,%g,%g)\n", ia, (int)gridFF.mode, ffl.apos[ia].x, ffl.apos[ia].y, ffl.apos[ia].z, fi.x,fi.y,fi.z, ffl.PLQd[ia].x, ffl.PLQd[ia].y, ffl.PLQd[ia].z );
+                        //ffl.fapos[ia].add( fi );
                     }else{ // Without gridFF (Direct pairwise atoms)
                         //{ E+= nbmol .evalMorse   ( surf, false,                  gridFF.alphaMorse, gridFF.Rdamp );  }
                         //{ E+= nbmol .evalMorsePBC    ( surf, gridFF.grid.cell, nPBC, gridFF.alphaMorse, gridFF.Rdamp );  }
@@ -2259,8 +2280,7 @@ double eval_no_omp(){
     int run_omp( int niter_max, double dt, double Fconv=1e-6, double Flim=1000, double timeLimit=0.02, double* outE=0, double* outF=0, double* outV=0, double* outVF=0 ){
         nloop++;
         if(dt>0){ opt.setTimeSteps(dt); }else{ dt=opt.dt; }
-
-        int ncpu = omp_get_num_threads(); printf("MolWorld_sp3::run_omp() ncpu=%i \n");
+        //int ncpu = omp_get_num_threads(); printf("MolWorld_sp3::run_omp() ncpu=%i \n", ncpu );
         //printf( "run_omp() niter_max %i dt %g Fconv %g Flim %g timeLimit %g outE %li outF %li \n", niter_max, dt, Fconv, Flim, timeLimit, (long)outE, (long)outF );
         long T0 = getCPUticks();
         double E=0,F2=0,F2conv=Fconv*Fconv;
@@ -2403,7 +2423,7 @@ double eval_no_omp(){
                     double t = (getCPUticks() - T0)*tick2second;
                     if(verbosity>1) [[unlikely]] { printf( "MolWorld_sp3::run_omp() CONVERGED in %i/%i nsteps E=%g |F|=%g time= %g [ms]( %g [us/%i iter])\n", itr,niter_max, E, sqrt(F2), t*1e+3, t*1e+6/itr, itr ); }
 
-                    printf( "MolWorld_sp3::run_omp() CONVERGED in %i/%i nsteps E=%g |F|=%g time= %g [ms]( %g [us/%i iter])\n", itr,niter_max, E, sqrt(F2), t*1e+3, t*1e+6/itr, itr );
+                    //printf( "MolWorld_sp3::run_omp() CONVERGED in %i/%i nsteps E=%g |F|=%g time= %g [ms]( %g [us/%i iter])\n", itr,niter_max, E, sqrt(F2), t*1e+3, t*1e+6/itr, itr );
                     if(bGopt  && (!go.bExploring) ){
                         gopt_ifound++;
                         sprintf(tmpstr,"# %i E %g |F| %g istep=%i", gopt_ifound, Etot, sqrt(F2), go.istep );

@@ -2349,9 +2349,9 @@ void MolGUI::mouse_default( const SDL_Event& event ){
                             W->selection.push_back(W->ipicked); 
                             //if( Qpanel==0 ){ printf( "MolGUI::mouse_default() Qpanel==0 \n" ); exit(0); }
                             // printf( "MolGUI::mouse_default() @Qpanel=%li @W=%li W->nbmol.REQs=%li W->ipicked=%i \n", (long)Qpanel, (long)W, (long)W->nbmol.REQs, W->ipicked );
-                            // int ip = W->ipicked;             DEBUG
-                            // double z = W->nbmol.REQs[ip].z;  DEBUG
-                            // Qpanel->value = z;               DEBUG
+                            // int ip = W->ipicked;             
+                            // double z = W->nbmol.REQs[ip].z;  
+                            // Qpanel->value = z;               
                             if( Qpanel ){ 
                                 Qpanel->value = W->nbmol.REQs[W->ipicked].z;
                                 Qpanel->redraw=true;
