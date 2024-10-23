@@ -45,7 +45,7 @@ We are working on implementation of *[full density-based model (FDBM)](https://p
 
 To install all library dependencies. On Ubuntu 22.04 this can be done by running:
 ```
-sudo apt-get install cmake g++ gfortran intel-mkl libmkl_intel_lp64 libmkl_intel_core libmkl_intel_thread libsdl2-dev libsdl2-image-dev nvidia-opencl-dev libclfft-dev python3-numpy python3-matplotlib
+sudo apt-get install cmake g++ gfortran intel-mkl libmkl-intel-lp64 libmkl-core libmkl-intel-thread libsdl2-dev libsdl2-image-dev nvidia-opencl-dev libclfft-dev python3-numpy python3-matplotlib libfftw3-3 libfftw3-dev
 ```
 however individual parts can be installed independently. For example, it is possible to use DFT-Fireball without OpenCL or OpenGL. Therefore dependencies can be split as follows:
 
@@ -53,7 +53,7 @@ however individual parts can be installed independently. For example, it is poss
     * (without SDL or OpenCL): `cmake g++`
     * GUI 3D Graphics (SDL & OpenGL): `libsdl2-dev libsdl2-image-dev`
     * GPU acceleration (OpenCL): `nvidia-opencl-dev libclfft-dev` 
-* Fortran (Fireball-DFT): `gfortran intel-mkl libmkl_intel_lp64 libmkl_intel_core libmkl_intel_thread`
+* Fortran (Fireball-DFT): `gfortran intel-mkl libmkl-intel-lp64 libmkl-core libmkl-intel-thread`
 * Python API: `python3-numpy python3-matplotlib`
 
 ## C/C++ Modules (classical forcefields, molecular manipulation, grids, OpenCL, GUI)
@@ -66,7 +66,7 @@ Most of estential parts of the package are written in C++, icluding MMFF, gridFF
     * GPU acceleration (OpenCL): `nvidia-opencl-dev libclfft-dev` 
 3. Create a build directory in `cpp/Build` and navigate into it
 4. Configure cmake project: from inside `cpp/Build` 
-5. run     `cmake .. -DWITH_SDL=ON -DWITH_OPENCL=ON`
+5. run     `cmake .. -DWITH_SDL=ON -DWITH_OPENCL=ON -DWITH_FFTW=ON`
     * options `-DWITH_SDL=OFF` and `-DWITH_OPENCL=OFF` can be eventually switched to reduce compilation time and/or limit library dependencies
 6. compile by running `make` inside `cpp/Build` directory
 7. Run tests:
@@ -78,7 +78,7 @@ Most of estential parts of the package are written in C++, icluding MMFF, gridFF
 Only Fortran module is Fireball-DFT program. Its installation is optional. It is currently required only for operation of QMMM modules and plotting of molecular orbitals and FDBM AFM simulations. 
 
 1. install Fortran compiler: `gfortran`
-2. install intel mkl libraries and other dependencies: `intel-mkl libmkl_intel_lp64 libmkl_intel_core libmkl_intel_thread`
+2. install intel mkl libraries and other dependencies: `intel-mkl libmkl-intel-lp64 libmkl-core libmkl-intel-thread`
 3. create directory `FireCore/Build`
 4. run `FireCore/make.sh` which will compile source codes from `fortran` directory into `Build` directory
 5. run test:
