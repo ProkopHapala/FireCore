@@ -45,7 +45,7 @@ We are working on implementation of *[full density-based model (FDBM)](https://p
 
 To install all library dependencies. On Ubuntu 22.04 this can be done by running:
 ```
-sudo apt-get install cmake g++ gfortran intel-mkl libmkl_intel_lp64 libmkl_intel_core libmkl_intel_thread libsdl2-dev libsdl2-image-dev nvidia-opencl-dev libclfft-dev python3-numpy python3-matplotlib
+sudo apt-get install cmake g++ gfortran intel-mkl libmkl-intel-lp64 libmkl-core libmkl-intel-thread libsdl2-dev libsdl2-image-dev nvidia-opencl-dev libclfft-dev python3-numpy python3-matplotlib
 ```
 however individual parts can be installed independently. For example, it is possible to use DFT-Fireball without OpenCL or OpenGL. Therefore dependencies can be split as follows:
 
