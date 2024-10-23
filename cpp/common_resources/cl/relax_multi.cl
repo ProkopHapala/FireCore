@@ -1002,8 +1002,9 @@ __kernel void updateAtomsMMFFf4(
         if( cons.w>0.f ){            // if stiffness is positive, we have constraint
             float4 cK = constrK[ iaa ];
             cK = max( cK, (float4){0.0f,0.0f,0.0f,0.0f} );
-            fe.xyz += (cons.xyz - pe.xyz)*cK.xyz; // add constraint force
-            //if(iS==0){printf( "GPU::constr[ia=%i] (%g,%g,%g|K=%g)\n", iG, cons.x,cons.y,cons.z,cons.w ); }
+            const float3 fc = (cons.xyz - pe.xyz)*cK.xyz;
+            fe.xyz += fc; // add constraint force
+            if(iS==0){printf( "GPU::constr[ia=%i|iS=%i] (%g,%g,%g|K=%g) fc(%g,%g,%g) cK(%g,%g,%g)\n", iG, iS, cons.x,cons.y,cons.z,cons.w, fc.x,fc.y,fc.z , cK.x, cK.y, cK.z ); }
         }
     }
 

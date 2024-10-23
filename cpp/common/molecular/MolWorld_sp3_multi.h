@@ -1369,26 +1369,29 @@ void setup_NBFF_ocl(){
     if(!task_NBFF   )task_NBFF   = ocl.setup_getNonBond       ( ffl.natoms, ffl.nnode, nPBC  );
 }
 
-void picked2GPU( int ipick,  double K ){
-    //printf( "picked2GPU() ipick %i iSystemCur %i \n", ipick, iSystemCur );
+void picked2GPU( int ipick,  float K ){
+    printf( "picked2GPU() ipick %i iSystemCur %i \n", ipick, iSystemCur );
     int i0a = ocl.nAtoms*iSystemCur;
     int i0v = ocl.nvecs *iSystemCur;
     if(ipick>=0){
-        Quat4f& acon = constr[i0a + ipick];
+        Quat4f& acon  = constr [i0a + ipick];
+        Quat4f& aconK = constrK[i0a + ipick];
         Vec3f hray   = (Vec3f)pick_hray;
         Vec3f ray0   = (Vec3f)pick_ray0;
         const Quat4f& atom = atoms [i0v + ipick];
         float c = hray.dot( atom.f ) - hray.dot( ray0 );
         acon.f = ray0 + hray*c;
         acon.w = K;
+        aconK = Quat4f{K,K,K,K};
     }else{
         for(int i=0; i<ocl.nAtoms; i++){ constr[i0a + i].w=-1.0;  };
-        for(int i: constrain_list     ){ constr[i0a + i].w=Kfix;  };
-        // for(int ia=0; ia<ocl.nAtoms; ia++){ 
-        //     int iaa = i0a + ia; 
-        //     constr [iaa].w=ffls[iSystemCur]->constr [ia];
-        //     constrK[iaa].w=ffls[iSystemCur]->constrK[ia];
-        // };
+        for(int i=0; i<ocl.nAtoms; i++){ constrK[i0a + i]=Quat4fZero; };
+        //for(int i: constrain_list     ){ constr[i0a + i].w=Kfix;  };
+        for(int ia=0; ia<ocl.nAtoms; ia++){ 
+            int iaa = i0a + ia; 
+            constr [iaa]=(Quat4f)ffls[iSystemCur].constr [ia];
+            constrK[iaa]=(Quat4f)ffls[iSystemCur].constrK[ia];
+        };
     }
     //for(int i=0; i<ocl.nAtoms; i++){ printf( "CPU:constr[%i](%7.3f,%7.3f,%7.3f |K= %7.3f) \n", i, constr[i0a+i].x,constr[i0a+i].y,constr[i0a+i].z,  constr[i0a+i].w   ); }
     ocl.upload( ocl.ibuff_constr,  constr  );   // ToDo: instead of updating the whole buffer we may update just relevant part?
