@@ -429,7 +429,9 @@ class OCLsystem{ public:
             program_=program;
         }
         //printf( "newKernel() program %li %li \n", (long)program_, (long)program );
-        int err=0; kernels.push_back( clCreateKernel( program_, name, &err ) );  OCL_checkError(err, "newKernel"); 
+        int err=0; kernels.push_back( clCreateKernel( program_, name, &err ) );  
+        OCL_checkError__(err, "newKernel",0,name);
+        //OCL_checkError(err, "newKernel"); 
         int i = kernels.size()-1;
         kernel_dict.insert( { name, i } );
         return i;

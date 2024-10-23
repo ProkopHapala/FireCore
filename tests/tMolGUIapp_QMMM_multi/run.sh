@@ -73,7 +73,7 @@ nsys=50
 #./$name -x BB.HNH-h.NHO-hh                          -iParalel 1 -perframe 10
 #./$name -x BB.HNH-h.NHO-hh -b BB.HNH-h.NHO-hh.hbonds -iParalel 1 -perframe 50 
 #./$name -m 40 -x BB.HNH-h.NHO-hh -b BB.HNH-h.NHO-hh.hbonds -iParalel 1 -perframe 50 -pop lattice_scan_1d_all.xyz
-./$name  -m 30 -x BB.HNH-h.NHO-hh -b BB.HNH-h.NHO-hh.hbonds -iParalel 1 -perframe 50 -pop lattice_scan_1d_all.xyz -latscan 40,0 0.2,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0
+#./$name  -m 30 -x BB.HNH-h.NHO-hh -b BB.HNH-h.NHO-hh.hbonds -iParalel 1 -perframe 50 -pop lattice_scan_1d_all.xyz -latscan 40,0 0.2,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0
 #./$name -x BB.HNH-h.NHO-hh -b BB.HNH-h.NHO-hh.hbonds -iParalel 1
 #./$name -x BB.HNH-h.NHO-hh -b BB.HNH-h.NHO-hh.hbonds -dlvec -2.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0
 #./$name -x BB.HNH-h.NHO-hh -b BB.HNH-h.NHO-hh.hbonds -dlvec -0.5,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0
@@ -87,7 +87,7 @@ nsys=50
 #./$name -m 10    -x common_resources/xyz/H2O           -g common_resources/xyz/NaCl_1x1_L2
 #./$name -m $nsys -x common_resources/xyz/pyridine      -g common_resources/xyz/NaCl_1x1_L2
 #./$name -m $nsys -x common_resources/xyz/pyridine  110 -g common_resources/xyz/NaCl_1x1_L2
-#./$name -m $nsys -x common_resources/xyz/PTCDA         -g common_resources/xyz/NaCl_1x1_L2
+./$name -m $nsys -x common_resources/xyz/PTCDA         -g common_resources/xyz/NaCl_1x1_L2
 #./$name -m $nsys -x common_resources/xyz/PTCDA_SAM     -g common_resources/xyz/NaCl_1x1_L2
 #./$name -m $nsys -x common_resources/xyz/BPBA          -g common_resources/xyz/NaCl_1x1_L2
 #./$name -m $nsys -x common_resources/xyz/BPBA          -g common_resources/xyz/NaCl_1x1_L2 -e
@@ -123,4 +123,4 @@ nsys=50
 #valgrind --leak-check=yes --track-origins=yes  --log-file="valgrind.log" ./$name -x common_resources/xyz/HCOOH -m 10
 
 
-grep GPU_GFF_z out.log | cut -c 11-  > GPU_makeGridFF.log
+#grep GPU_GFF_z out.log | cut -c 11-  > GPU_makeGridFF.log

@@ -36,7 +36,7 @@
         printf( "ARG ss[0] `%s` ss[1] `%s`\n", ss[0], ss[1] );
         sscanf(ss[0],"%i,%i", &W->latscan_n.x, &W->latscan_n.y );
         sscanf(ss[1],"%lf,%lf,%lf,%lf,%lf,%lf,%lf,%lf,%lf", &m->a.x,&m->a.y,&m->a.z,  &m->b.x,&m->b.y,&m->b.z,  &m->c.x,&m->c.y,&m->c.z ); 
-        printf( "ARG W->latscan_n(%i,%i) latscan_dlvec ", W->latscan_n.x, W->latscan_n.y ); printMat(*(W->latscan_dlvec)); 
+        printf( "ARG W->latscan_n(%i,%i) latscan_dlvec \n", W->latscan_n.x, W->latscan_n.y ); printMat(*(W->latscan_dlvec)); 
     } }; // test
 
     // set verbosity

@@ -106,6 +106,7 @@ class MolWorld_sp3_multi : public MolWorld_sp3, public MultiSolverInterface { pu
     OCL_MM     ocl;
     FIRE_setup fire_setup{0.1,0.1};
 
+    int iParalel_default=3;
     //int nSystems    = 1;
     int iSysFMax=-1;
     //int iSystemCur  = 5;    // currently selected system replica
@@ -161,6 +162,7 @@ class MolWorld_sp3_multi : public MolWorld_sp3, public MultiSolverInterface { pu
     OCLtask* task_cleanF=0;
     OCLtask* task_NBFF=0;
     OCLtask* task_NBFF_Grid=0;
+    OCLtask* task_NBFF_Grid_Bspline=0;
     OCLtask* task_SurfAtoms=0;
     OCLtask* task_MMFF=0;
     OCLtask* task_move=0;
@@ -188,6 +190,9 @@ class MolWorld_sp3_multi : public MolWorld_sp3, public MultiSolverInterface { pu
     Quat4f* afm_ps=0;
 
     const char* uploadPopName=0;
+
+    bool bMILAN = false;
+    bool bSaveToDatabase=false;
 
     MolecularDatabase* database = 0;
     long nStepConvSum = 0;
@@ -324,9 +329,10 @@ virtual void init() override {
     iParalelMax= 4;
     iParalelMin=-1;
     //iParalel=1;
-    iParalel=3;
+    //iParalel=3;
     //iParalel=iParalelMax;
 
+    if(database)
     if(!database){
         database = new MolecularDatabase();
         database->setDescriptors();
@@ -811,20 +817,23 @@ double evalVFs( double Fconv=1e-6 ){
         if( ( f2 < F2conv ) && (!gopts[isys].bExploring) ){            // Start Exploring
             int i0v = isys * ocl.nvecs;
             unpack( ffls[isys].nvecs,  ffls[isys].apos, atoms+i0v);
-            int sameMember = database->addIfNewDescriptor(&ffls[isys]);
-            if(sameMember==-1){
-                std::vector<double> theta;
-                for(auto g : groups.groups){
-                    theta.push_back( g.fw.dot(Vec3dZ)/g.fw.norm()/2/M_PI*360 );
+            
+            if(bMILAN){
+                int sameMember = database->addIfNewDescriptor(&ffls[isys]);
+                if(sameMember==-1){
+                    std::vector<double> theta;
+                    for(auto g : groups.groups){
+                        theta.push_back( g.fw.dot(Vec3dZ)/g.fw.norm()/2/M_PI*360 );
+                    }
+                    sprintf(tmpstr,"# %i E %g |F| %g istep=%i isys=%i,", database->getNMembers(), 0.5*fire[isys].vv, sqrt(f2), gopts[isys].istep, isys );
+                    nbmol.copyOf( ffls[isys] );
+                    Vec3d cog = nbmol.getBBcog();
+                    for(int i=0; i<nbmol.natoms; i++){
+                        nbmol.apos[i].sub( cog );
+                    }
+                    saveXYZ( "gopt.xyz", tmpstr, false, "a", nPBC_save );
+                    database->convergedStructure.push_back(true);
                 }
-                sprintf(tmpstr,"# %i E %g |F| %g istep=%i isys=%i,", database->getNMembers(), 0.5*fire[isys].vv, sqrt(f2), gopts[isys].istep, isys );
-                nbmol.copyOf( ffls[isys] );
-                Vec3d cog = nbmol.getBBcog();
-                for(int i=0; i<nbmol.natoms; i++){
-                    nbmol.apos[i].sub( cog );
-                }
-                saveXYZ( "gopt.xyz", tmpstr, false, "a", nPBC_save );
-                database->convergedStructure.push_back(true);
             }
             
             // //printf( "evalVFs() iSys=%i CONVERGED |F|=%g \n", isys, sqrt(f2) );
@@ -1010,7 +1019,7 @@ virtual double solve_multi ( int nmax, double tol )override{
     int nitrdione;
     switch(iParalel){
         case -1: bOcl=false;  nitrdione = run_multi_serial(nmax,tol);  break; 
-        case  0:
+        case  0: //break;
         case  1: bOcl=false;  nitrdione = run_omp_ocl( nmax, tol    ); break; 
         case  2: bOcl=true;   nitrdione = run_omp_ocl( nmax, tol    ); break; 
         case  3: bOcl=true;   nitrdione = run_ocl_opt( nmax, tol    ); break; 
@@ -1312,14 +1321,24 @@ void setup_MMFFf4_ocl(){
     if(!task_MMFF  )   task_MMFF   = ocl.setup_getMMFFf4        ( ffl.natoms, ffl.nnode, bPBC );
 
     Vec3i nPBC_=nPBC; if(!bPBC){ nPBC_=Vec3iZero; }; printf( "MolWorld_sp3_multi::setup_MMFFf4_ocl() bPBC=%i nPBC(%i,%i,%i) n", bPBC, nPBC_.x,nPBC_.y,nPBC_.z );
-    if((!task_NBFF_Grid)&&bGridFF ){ task_NBFF_Grid = ocl.setup_getNonBond_GridFF( ffl.natoms, ffl.nnode, nPBC_ ); } 
-    if(!task_NBFF                 ){ 
-        task_NBFF      = ocl.setup_getNonBond       ( ffl.natoms, ffl.nnode, nPBC_ ); 
+
+    if(bGridFF) switch( gridFF.mode ){
+        case GridFFmod::LinearFloat: [[fallthrough]]
+        case GridFFmod::LinearDouble:   if(!task_NBFF_Grid         ){ 
+            printf( "MolWorld_sp3_multi::setup_MMFFf4_ocl() GridFFmod::%i => ocl.setup_getNonBond_GridFF() \n", gridFF.mode );
+            task_NBFF_Grid         = ocl.setup_getNonBond_GridFF        ( ffl.natoms, ffl.nnode, nPBC_ ); } break;
+        case GridFFmod::BsplineFloat:  [[fallthrough]]
+        case GridFFmod::BsplineDouble:  if(!task_NBFF_Grid_Bspline ){ 
+            printf( "MolWorld_sp3_multi::setup_MMFFf4_ocl() GridFFmod::%i => ocl.setup_getNonBond_GridFF_Bspline() \n", gridFF.mode );
+            task_NBFF_Grid_Bspline = ocl.setup_getNonBond_GridFF_Bspline( ffl.natoms, ffl.nnode, nPBC_ ); } break;
+        default: { printf( "MolWorld_sp3_multi::setup_MMFFf4_ocl() GridFFmod::%i not implemented \n", gridFF.mode ); } break;
     }
+
+    if(!task_NBFF  ){  task_NBFF      = ocl.setup_getNonBond       ( ffl.natoms, ffl.nnode, nPBC_ );  }
 
     // OCLtask* getSurfMorse(  Vec3i nPBC_, int na=0, float4* atoms=0, float4* REQs=0, int na_s=0, float4* atoms_s=0, float4* REQs_s=0,  bool bRun=true, OCLtask* task=0 ){
     if(!task_SurfAtoms && bSurfAtoms ){ 
-        if( bDONE_surf2ocl==false ){ printf("ERROR in MolWorld_sp3_multi::setup_MMFFf4_ocl() must call MolWorld_sp3_multi::surf2ocl() first\n"); }
+        if( bDONE_surf2ocl==false ){ printf("ERROR in MolWorld_sp3_multi::setup_MMFFf4_ocl() must call MolWorld_sp3_multi::surf2ocl() first\n"); exit(0); }
         task_SurfAtoms = ocl.getSurfMorse( gridFF.nPBC, gridFF.natoms, 0,0,0,0,0,false ); 
     } 
     // ocl.makeGridFF( gridFF.grid, nPBC, gridFF.natoms, (float4*)atoms_surf, (float4*)REQs_surf, true );
@@ -1551,16 +1570,17 @@ int debug_eval(){
 }
 
 int run_ocl_opt( int niter, double Fconv=1e-6 ){ 
-    //printf("MolWorld_sp3_multi::run_ocl_opt() niter=%i \n", niter );
+    //printf("MolWorld_sp3_multi::run_ocl_opt() niter=%i bGroups=%i ocl.nGroupTot=%i \n", niter, bGroups, ocl.nGroupTot );
     //for(int i=0;i<npbc;i++){ printf( "CPU ipbc %i shift(%7.3g,%7.3g,%7.3g)\n", i, pbc_shifts[i].x,pbc_shifts[i].y,pbc_shifts[i].z ); }
     //debug_eval(); return 0;
 
     double F2conv = Fconv*Fconv;
     picked2GPU( ipicked,  1.0 );
+
     int err=0;
     if( task_MMFF==0)setup_MMFFf4_ocl();
 
-    //int nPerVFs = _min(1,niter);
+    //int nPerVFs = 1;
     nPerVFs = _min(10,niter);
     //int nPerVFs = _min(50,niter);
     int nVFs    = niter/nPerVFs;
@@ -1571,32 +1591,29 @@ int run_ocl_opt( int niter, double Fconv=1e-6 ){
     bool dovdW=true;
     //bool dovdW=false;
     ocl.bSubtractVdW=dovdW;
-    
+
     if(ocl.nGroupTot<=0){ bGroups = false; };
     bool bExplore = false;
     //for(int isys=0; isys<nSystems; isys++){ if(gopts[isys].bExploring) bExplore = true; }
-
-
+    bool bBspline = (gridFF.mode==GridFFmod::BsplineFloat) || (gridFF.mode==GridFFmod::BsplineDouble);
     for(int i=0; i<nVFs; i++){
 
-        // if(bGroups){
-        //     ocl.upload( ocl.ibuff_gtorqs,  gtorqs  );
-        //     ocl.upload( ocl.ibuff_gforces, gforces );
-        // }
+        if(bGroups){
+            ocl.upload( ocl.ibuff_gtorqs,  gtorqs  );
+            ocl.upload( ocl.ibuff_gforces, gforces );
+        }
 
-        // bExplore = false;
-        // for(int isys=0; isys<nSystems; isys++){ 
-        //     if(gopts[isys].bExploring) bExplore = true; 
-            
-        // }
+        bExplore = false;
+        for(int isys=0; isys<nSystems; isys++){ 
+            if(gopts[isys].bExploring) bExplore = true; 
+        }
 
         if(bAnimManipulation){ animate(); }
-
-        bExplore = updateMultiExploring( Fconv );
-
+        if(bMILAN){
+            bExplore = updateMultiExploring( Fconv );
+        }
         bool bGroupDrive = bGroups && bExplore;
         //bGroupDrive = false;
-
         
         //printf( "CPU::bbox(%g,%g,%g)(%g,%g,%g)(%g,%g,%g)\n", bbox.a.x,bbox.a.y,bbox.a.z,   bbox.b.x,bbox.b.y,bbox.b.z,   bbox.c.x,bbox.c.y,bbox.c.z );
         //for(int ia=0; ia<ffl.natoms; ia++){      if( ffl.constr[ia].w > 0 ) printf( "CPU:atom[%i] constr(%g,%g,%g|%g) constrK(%g,%g,%g|%g)\n", ia, ffl.constr[ia].x,ffl.constr[ia].y,ffl.constr[ia].z,ffl.constr[ia].w,   ffl.constrK[ia].x,ffl.constrK[ia].y,ffl.constrK[ia].z,ffl.constrK[ia].w  ); }
@@ -1618,7 +1635,12 @@ int run_ocl_opt( int niter, double Fconv=1e-6 ){
                 if(dovdW)[[likely]]{
                     if(bSurfAtoms)[[likely]]{
                         if  (bGridFF)[[likely]]{ 
-                            err |= task_NBFF_Grid ->enque_raw();   //OCL_checkError(err, "task_NBFF_Grid->enque_raw(); ");
+                            if(bBspline)[[likely]]{
+                                //printf( " task_NBFF_Grid_Bspline ->enque_raw(); \n" );
+                                err |= task_NBFF_Grid_Bspline ->enque_raw(); //OCL_checkError(err, "task_NBFF_Grid->enque_raw(); ");
+                            }else{
+                                err |= task_NBFF_Grid ->enque_raw();   //OCL_checkError(err, "task_NBFF_Grid->enque_raw(); ");
+                            }
                         }else { 
                             //printf( "task_NBFF(), task_SurfAtoms() \n" );
                             err |= task_NBFF     ->enque_raw();  //OCL_checkError(err, "MolWorld_sp3_multi::run_ocl_opt().task_NBFF()" ); 
@@ -1636,11 +1658,9 @@ int run_ocl_opt( int niter, double Fconv=1e-6 ){
             niterdone++;
             nloop++;
         }
-        
         //ocl.download( ocl.ibuff_atoms,    atoms   );
         //ocl.download( ocl.ibuff_aforces,  aforces );
         F2 = evalVFs( Fconv );
-
         // if(bGroups){ // Check Groups
         //     printf("MolWorld_sp3_multi::eval_MMFFf4_ocl()[niterdone=%i/%i]\n", niterdone, niter );
         //     ocl.download( ocl.ibuff_gcenters, gcenters );
@@ -1684,11 +1704,13 @@ int run_ocl_opt( int niter, double Fconv=1e-6 ){
         err|= ocl.download( ocl.ibuff_gfws, gfws );
         err|= ocl.download( ocl.ibuff_gups, gups );
     }
+
     err|= ocl.download( ocl.ibuff_atoms,    atoms   );
     err|= ocl.download( ocl.ibuff_aforces,  aforces );
     err|= ocl.finishRaw();  
     OCL_checkError(err, "run_ocl_opt().finishRaw()");
-    checkBordersOfBbox();
+    
+    if(bMILAN){ checkBordersOfBbox(); }
     double t=(getCPUticks()-T0)*tick2second;
     if(verbosity>0)printf( "run_ocl_opt(nSys=%i|iPara=%i,bSurfAtoms=%i,bGridFF=%i,bExplore=%i) NOT CONVERGED in %i steps, |F|(%g)>%g time %g [ms]( %g [us/step]) bGridFF=%i iSysFMax=%i dovdW=%i \n", nSystems, iParalel, bSurfAtoms, bGridFF, bExplore,  niter, sqrt(F2), Fconv, t*1000, t*1e+6/niterdone, bGridFF, iSysFMax, dovdW ); 
     //if(database->getNMembers()>0)    printf("%i  converged: %s\n", database->getNMembers(), database->convergedStructure.back() ? "true" : "false");
@@ -2065,8 +2087,10 @@ virtual char* getStatusString( char* s, int nmax ) override {
 bool first=true;
 uint64_t zeroT=0;
 virtual void MDloop( int nIter, double Ftol = -1 ) override {
+    if(iParalel<-100){ iParalel=iParalel_default; };
+
     if(Ftol<0)  Ftol = Ftol_default;
-    //printf( "MolWorld_sp3_ocl::MDloop(%i) bGridFF %i bOcl %i bMMFF %i \n", nIter, bGridFF, bOcl, bMMFF );
+    //printf( "MolWorld_sp3_ocl::MDloop(%i) bGridFF %i bOcl %i bMMFF %i iParalel=%i \n", nIter, bGridFF, bOcl, bMMFF, iParalel );
     //bMMFF=false;
     if(first){ zeroT = getCPUticks(); first=false; }
 
@@ -2085,7 +2109,7 @@ virtual void MDloop( int nIter, double Ftol = -1 ) override {
     int nitrdione=0;
     switch(iParalel){
         case -1: bOcl=false;  nitrdione = run_multi_serial(nIter,Ftol);  break; 
-        case  0:
+        case  0: bOcl=false;  nitrdione = MolWorld_sp3::run_no_omp( nIter, Ftol ); break;
         case  1: bOcl=false;  nitrdione = run_omp_ocl( nIter, Ftol    ); break; 
         case  2: bOcl=true;   nitrdione = run_omp_ocl( nIter, Ftol    ); break; 
         case  3: bOcl=true;   nitrdione = run_ocl_opt( nIter, Ftol    ); break; 
@@ -2137,19 +2161,19 @@ virtual void MDloop( int nIter, double Ftol = -1 ) override {
     icurIter+=nitrdione;
     bChargeUpdated=false;
 
-    std::ofstream file("minima.dat", std::ios::app);  // otevření souboru pro přidání na konec
-
-    if(icurIter%1000 < 200){
-        if(icurIter<1000) {
-            printf("%15s %20s %20s %20s %20s %20s %20s %20s %20s %20s\n", "Nb Iteration", "Totally", "Unique converged", "Time", "nbConverged", "nbEvaluation", "nStepConvAvg", "nStepNonConvAvg", "nStepExploringAvg", "total evaluation");
-            file << "Iterations" << " " << "Totally" << " " << "Unique" << " " << "Time"  << "\n";
+    if( bMILAN && bSaveToDatabase  ){ // Milan
+        std::ofstream file("minima.dat", std::ios::app); 
+        if(icurIter%1000 < 200){
+            if(icurIter<1000) {
+                printf("%15s %20s %20s %20s %20s %20s %20s %20s %20s %20s\n", "Nb Iteration", "Totally", "Unique converged", "Time", "nbConverged", "nbEvaluation", "nStepConvAvg", "nStepNonConvAvg", "nStepExploringAvg", "total evaluation");
+                file << "Iterations" << " " << "Totally" << " " << "Unique" << " " << "Time"  << "\n";
+            }
+            // /((double)(nbConverged+nbNonConverged))"nStepSaveAvg",
+            printf("%15d %20d %20d %20g %20d %20d %20g %20g %20g %20d \n", icurIter, database->totalEntries, database->getNMembers(), (getCPUticks()-zeroT)*tick2second, nbConverged, nbEvaluation*nPerVFs, (nStepNonConvSum+nStepConvSum)/(double)(nbConverged+nbNonConverged), nStepNonConvSum/((double)nbNonConverged), nStepExplorSum/((double)nExploring), (nStepConvSum+nStepNonConvSum+nStepExplorSum) );
+            file << icurIter << " " << database->totalEntries << " " << database->getNMembers() << " " <<  (getCPUticks()-zeroT)*tick2second << "\n";
         }
-        // /((double)(nbConverged+nbNonConverged))"nStepSaveAvg",
-        printf("%15d %20d %20d %20g %20d %20d %20g %20g %20g %20d \n", icurIter, database->totalEntries, database->getNMembers(), (getCPUticks()-zeroT)*tick2second, nbConverged, nbEvaluation*nPerVFs, (nStepNonConvSum+nStepConvSum)/(double)(nbConverged+nbNonConverged), nStepNonConvSum/((double)nbNonConverged), nStepExplorSum/((double)nExploring), (nStepConvSum+nStepNonConvSum+nStepExplorSum) );
-        file << icurIter << " " << database->totalEntries << " " << database->getNMembers() << " " <<  (getCPUticks()-zeroT)*tick2second << "\n";
+        file.close();  // zavření souboru
     }
-
-    file.close();  // zavření souboru
 }
 
 virtual void swith_method()override{ 
@@ -2263,15 +2287,14 @@ bool evalCheckGridFF_ocl( int imin=0, int imax=1, bool bExit=true, bool bPrint=t
     return err;
 }
 
-void surf2ocl(Vec3i nPBC, bool bSaveDebug=false){
+void surf2ocl( Vec3i nPBC ){
     int err=0;
-    printf( "surf2ocl() gridFF.natoms=%i nPBC(%i,%i,%i)\n", gridFF.natoms, nPBC.x,nPBC.y,nPBC.z );
-    long T0=getCPUticks();
+    printf( " MolWorld_sp3_multi::surf2ocl() gridFF.natoms=%i nPBC(%i,%i,%i)\n", gridFF.natoms, nPBC.x,nPBC.y,nPBC.z );
+    //long T0=getCPUticks();
     Quat4f* atoms_surf = new Quat4f[gridFF.natoms];
     Quat4f* REQs_surf  = new Quat4f[gridFF.natoms];
     pack( gridFF.natoms, gridFF.apos, atoms_surf, sq(gridFF.Rdamp) );
     pack( gridFF.natoms, gridFF.REQs, REQs_surf                     );   // ToDo: H-bonds should be here
-    long T1=getCPUticks();
     ocl.GFFparams.x = gridFF.Rdamp;
     ocl.GFFparams.y = gridFF.alphaMorse;
     //v2f4( gridFF.grid.pos0, ocl.grid_p0 );
@@ -2279,8 +2302,18 @@ void surf2ocl(Vec3i nPBC, bool bSaveDebug=false){
     ocl.grid_shift0.f = (Vec3f)gridFF.shift0;
     //printf( "grid_p0(%g,%g,%g) grid_shift0(%g,%g,%g)\n", ocl.grid_p0.x,ocl.grid_p0.y,ocl.grid_p0.z,    ocl.grid_shift0.x,ocl.grid_shift0.y,ocl.grid_shift0.z  );
     //exit(0);
-    ocl.makeGridFF( gridFF.grid, nPBC, gridFF.natoms, (float4*)atoms_surf, (float4*)REQs_surf, true );
-    err |=  ocl.finishRaw();    OCL_checkError(err, "surf2ocl.makeGridFF.finish");
+    ocl.surf2ocl(  gridFF.grid, nPBC, gridFF.natoms, (float4*)atoms_surf, (float4*)REQs_surf );
+    delete [] atoms_surf;
+    delete [] REQs_surf;
+    bDONE_surf2ocl = true;
+}   
+
+ void make_gridFF_ocl( bool bSaveDebug=false ){
+    if(bDONE_surf2ocl==false){ printf("ERROR in MolWorld_sp3_multi::make_gridFF_ocl() call surf2ocl() first \n"); exit(0); };
+    int err=0;
+    long T1=getCPUticks();
+    ocl.makeGridFF( true );
+    err |=  ocl.finishRaw();    OCL_checkError(err, "make_gridFF_ocl.makeGridFF.finish");
     //ocl.addDipoleField( gridFF.grid, (float4*)dipole_ps, (float4*), true );
     printf( ">>time(ocl.makeGridFF() %g \n", (getCPUticks()-T1)*tick2second );
     bool bDownload =true; // WARRNING : if I set this OFF it crashes unexpectedly
@@ -2291,51 +2324,117 @@ void surf2ocl(Vec3i nPBC, bool bSaveDebug=false){
         ocl.download( ocl.itex_FE_Paul, gridFF.FFPaul );  
         ocl.download( ocl.itex_FE_Lond, gridFF.FFLond );
         ocl.download( ocl.itex_FE_Coul, gridFF.FFelec );    
-        err |=  ocl.finishRaw();    OCL_checkError(err, "surf2ocl.download.finish");
-        printf( ">>time(surf2ocl.download() %g \n", (getCPUticks()-T1)*tick2second );
+        err |=  ocl.finishRaw();    OCL_checkError(err, "make_gridFF_ocl.download.finish");
+        printf( ">>time(make_gridFF_ocl.download() %g \n", (getCPUticks()-T1)*tick2second );
         if(bSaveDebug){ gridFF.saveXsfDebug(); }
     }
-    delete [] atoms_surf;
-    delete [] REQs_surf;
     //  ToDo: We do no release these buffers because we use them for kernell:: getSurfMorse()
     //ocl.buffers[ocl.ibuff_atoms_surf].release();
     //ocl.buffers[ocl.ibuff_REQs_surf ].release();
-    err |=  ocl.finishRaw();    OCL_checkError(err, "surf2ocl.makeGridFF.atoms_surf.release");
-    bDONE_surf2ocl = true;
+    err |=  ocl.finishRaw();    OCL_checkError(err, "make_gridFF_ocl.makeGridFF.atoms_surf.release");
+    //bDONE_surf2ocl = true;
     //exit(0);
 }
 
 //virtual double* initGridFF( const char * name, bool bGrid=true, bool bSaveDebugXSFs=false, double z0=NAN, Vec3d cel0={-0.5,-0.5,0.0}, bool bAutoNPBC=true, bool bCheckEval=true )override{
-virtual void initGridFF( const char * name, double z0=NAN, Vec3d cel0={-0.5,-0.5,0.0}, bool bSymetrize=true, bool bAutoNPBC=true, bool bCheckEval=true, bool bUseEwald=true, bool bFit=true, bool bRefine=true ){
-    printf( "MolWorld_sp3_multi::initGridFF() \n");
-    if(verbosity>0)printf("MolWorld_sp3_multi::initGridFF(%s,bGrid=%i,z0=%g,cel0={%g,%g,%g})\n",  name, z0, cel0.x,cel0.y,cel0.z  );
-    if(gridFF.grid.n.anyEqual(0)){ printf("ERROR in MolWorld_sp3_multi::initGridFF() zero grid.n(%i,%i,%i) => Exit() \n", gridFF.grid.n.x,gridFF.grid.n.y,gridFF.grid.n.z ); exit(0); };
+virtual void initGridFF( const char * name, double z0=NAN, Vec3d cel0={-0.5,-0.5,0.0}, bool bSymetrize=true, bool bAutoNPBC=true, bool bCheckEval=true, bool bUseEwald=true, bool bFit=true, bool bRefine=true ) override {
+    int err=0;
+    //printf( "MolWorld_sp3_multi::initGridFF() \n");
+    
+    
+    // if(verbosity>0)printf("MolWorld_sp3_multi::initGridFF(%s,bGrid=%i,z0=%g,cel0={%g,%g,%g})\n",  name, z0, cel0.x,cel0.y,cel0.z  );
+    // if(gridFF.grid.n.anyEqual(0)){ printf("ERROR in MolWorld_sp3_multi::initGridFF() zero grid.n(%i,%i,%i) => Exit() \n", gridFF.grid.n.x,gridFF.grid.n.y,gridFF.grid.n.z ); exit(0); };
+    // gridFF.grid.center_cell( cel0 );
+    // bGridFF=true;
+    // gridFF.bindSystem        ( surf  .natoms, surf  .atypes, surf.apos  , surf.REQs        );
+    // gridFF.setAtomsSymetrized( gridFF.natoms, gridFF.atypes, gridFF.apos, gridFF.REQs, 0.1 );
+    // //gridFF.setAtomsSymetrized(surf.natoms, surf.atypes, surf.apos, surf.REQs );
+    // gridFF.evalCellDipole();
+    // if( ( fabs(gridFF.Q)>1e-6 ) || (gridFF.dip.norm2()>1e-8) ){ printf("ERROR: GridFF has dipole and dipole correction not yet implemented => exit() \n"); exit(0); }
+    // if( isnan(z0) ){ z0=gridFF.findTop();   if(verbosity>0) printf("GridFF::findTop() %g \n", z0);  };
+    // gridFF.grid.pos0.z=z0;
+    // gridFF.lvec = gridFF.grid.cell;
+    // //if(verbosity>1)
+    // //gridFF.grid.printCell();
+    // gridFF.nPBC=Vec3i{1,1,0};
+    // if(bAutoNPBC){ autoNPBC( gridFF.grid.cell, gridFF.nPBC, 20.0 ); }
+    // gridFF.makePBCshifts   ( gridFF.nPBC,      gridFF.lvec       );
+    // long T0 = getCPUticks();
+    // //bSurfAtoms=false;
+    // //gridFF.shift0 = Vec3d{0.,0., 0.0};
+    // gridFF.shift0 = Vec3d{0.,0.,-2.0};
+    // //gridFF.shift0 = Vec3d{0.,0.,-6.0};
+    // double bSaveDebugXSFs=false;
+
+    bool bOnGPU=false; // Currently we have not implemented B-spline GridFF on GPU
+
+     //if(verbosity>0)
+    printf("MolWorld_sp3_multi::initGridFF(%s,bSymetrize=%i,bAutoNPBC=%i bCheckEval=%i bUseEwald=%i bFit=%i bRefine=%i bGridDouble=%i gridStep=%g,z0=%g,cel0={%g,%g,%g} )\n",  name, bSymetrize, bAutoNPBC,bCheckEval,bUseEwald,bFit,bRefine, bGridDouble, gridStep, z0, cel0.x,cel0.y,cel0.z  );
+    sprintf(tmpstr, "%s.lvs", name );
+    if( file_exist(tmpstr) ){  gridFF.grid.loadCell( tmpstr, gridStep );  gridFF.bCellSet=true; }
+    if( !gridFF.bCellSet ){
+        bGridFF=false; 
+        printf( "WARRNING!!! GridFF not initialized because %s not found\n", tmpstr );
+        return;
+    }
+    //double* ffgrid = 0;
     gridFF.grid.center_cell( cel0 );
     bGridFF=true;
-    gridFF.bindSystem        ( surf  .natoms, surf  .atypes, surf.apos  , surf.REQs        );
-    gridFF.setAtomsSymetrized( gridFF.natoms, gridFF.atypes, gridFF.apos, gridFF.REQs, 0.1 );
-    //gridFF.setAtomsSymetrized(surf.natoms, surf.atypes, surf.apos, surf.REQs );
-    gridFF.evalCellDipole();
-    if( ( fabs(gridFF.Q)>1e-6 ) || (gridFF.dip.norm2()>1e-8) ){ printf("ERROR: GridFF has dipole and dipole correction not yet implemented => exit() \n"); exit(0); }
-    if( isnan(z0) ){ z0=gridFF.findTop();   if(verbosity>0) printf("GridFF::findTop() %g \n", z0);  };
-    gridFF.grid.pos0.z=z0;
-    gridFF.lvec = gridFF.grid.cell;
-    //if(verbosity>1)
-    //gridFF.grid.printCell();
-    gridFF.nPBC=Vec3i{1,1,0};
-    if(bAutoNPBC){ autoNPBC( gridFF.grid.cell, gridFF.nPBC, 20.0 ); }
-    gridFF.makePBCshifts   ( gridFF.nPBC,      gridFF.lvec       );
-    long T0 = getCPUticks();
-    //bSurfAtoms=false;
-    //gridFF.shift0 = Vec3d{0.,0., 0.0};
+    gridFF.bindSystem(surf.natoms, surf.atypes, surf.apos, surf.REQs );
+    gridFF.initGridFF( name, z0, bAutoNPBC, bSymetrize );
+    char wd0[1024]; getcwd(wd0,1024); printf( "MolWorld_sp3::initGridFF() 1 wd0=`%s`\n", wd0 );
+    const char* last_slash = strrchr(name, '/');
+    const char* result = (last_slash) ? last_slash + 1 : name;
+    char wd[128]; sprintf( wd, "data/%s", result); printf( "MolWorld_sp3::initGridFF() 1 wd=`%s`\n", wd );
+    tryMakeDir  ( wd );
+    tryChangeDir( wd );
+    gridFF.bUseEwald = bUseEwald;
+    gridFF.ewald     = &gewald;
+    //ffgrid = gridFF.HHermite_d;
+    //getcwd(tmpstr, 1024 ); printf( "initGridFF() 3 WD=`%s`\n", tmpstr );
     gridFF.shift0 = Vec3d{0.,0.,-2.0};
-    //gridFF.shift0 = Vec3d{0.,0.,-6.0};
-    double bSaveDebugXSFs=false;
-    surf2ocl( gridFF.nPBC, bSaveDebugXSFs );
-    printf( ">>time(init_ocl;GridFF_ocl): %g [s] \n", (getCPUticks()-T0)*tick2second  );
-    bGridFF   =true; 
-    // evalCheckGridFF_ocl();   // here are not initialized buffers atoms.aforce,REQs, so it will crash.
-    //return 0;
+    //gridFF.shift0 = Vec3d{0.,0.,0.0};
+    //if(bCheckEval)gridFF.evalCheck();    // WARRNING:  CHECK FOR gridFF TURNED OFF !!!!!!!!!!!!!!!!!!!!!!!!!
+    //return ffgrid;
+
+    surf2ocl(  gridFF.nPBC );
+
+    if(bOnGPU){
+        bool bSaveDebugXSFs=false;
+        make_gridFF_ocl( bSaveDebugXSFs );
+        //surf2ocl( gridFF.nPBC, bSaveDebugXSFs );
+        //printf( ">>time(init_ocl;GridFF_ocl): %g [s] \n", (getCPUticks()-T0)*tick2second  );
+        bGridFF   =true; 
+        // evalCheckGridFF_ocl();   // here are not initialized buffers atoms.aforce,REQs, so it will crash.
+        //return 0;
+    }else{
+        gridFF.tryLoad_new( bSymetrize, bFit, bRefine );
+        bGridFF   =true; 
+        //  copy to GPU
+        int nxyz = gridFF.Bspline_to_f4(true);
+        ocl.ibuff_BsplinePLQ = ocl.newBuffer( "BsplinePLQ", nxyz, sizeof(float4), 0, CL_MEM_READ_ONLY  );
+        err = ocl.upload( ocl.ibuff_BsplinePLQ, gridFF.Bspline_PLQf ); OCL_checkError(err, "MolWorld_sp3_multi::initGridFF().upload(BsplinePLQ)");
+        GridShape& gsh = gridFF.grid;
+        ocl.grid_step    = Quat4f{ (float)gsh.dCell.xx, (float)gsh.dCell.yy, (float)gsh.dCell.zz, 0.0 };
+        ocl.grid_invStep.f.set_inv( ocl.grid_step.f );
+
+        { // Debug
+            for(int i=0; i<nxyz; i++){ gridFF.Bspline_PLQf[i]=Quat4fZero; }
+            err = ocl.download( ocl.ibuff_BsplinePLQ, gridFF.Bspline_PLQf);  OCL_checkError(err, "MolWorld_sp3_multi::initGridFF().download(BsplinePLQ)");
+            Vec3d  min1=Vec3dZero,max1=Vec3dZero;
+            Quat4f min2=Quat4fZero,max2=Quat4fZero;
+            for(int i=0; i<nxyz; i++){ 
+                gridFF.Bspline_PLQf[i].update_bounds( min2, max2 );
+                gridFF.Bspline_PLQ [i].update_bounds( min1, max1 );
+            }
+            printf( "Bspline_PLQ  min(%g,%g,%g   ) max(%g,%g,%g   ) \n", min1.x,min1.y,min1.z,        max1.x,max1.y,max1.z        );
+            printf( "Bspline_PLQf min(%g,%g,%g,%g) max(%g,%g,%g,%g) \n", min2.x,min2.y,min2.z,min2.w, max2.x,max2.y,max2.z,max2.w );
+
+        }
+
+        //exit(0);
+    }
+    tryChangeDir( wd0 );
 }
 
 

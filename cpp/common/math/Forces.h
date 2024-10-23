@@ -521,7 +521,7 @@ inline Quat4d REQ2PLQ_d( const Quat4d& REQ, double K ){
     double cL = e*REQ.y;
     double cP = e*cL;
     double cH = e*e*REQ.w;
-    printf( "getPLQH cL,cP,e(%g,%g,%g) R0,E0,K(%g,%g,%g) \n", cL, cP, e, REQ.x, REQ.y, K );
+    //printf( "getPLQH cL,cP,e(%g,%g,%g) R0,E0,K(%g,%g,%g) \n", cL, cP, e, REQ.x, REQ.y, K );
     return Quat4d{ cP, cL, REQ.z, cH };
 }
 

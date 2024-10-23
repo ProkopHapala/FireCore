@@ -93,7 +93,7 @@ void makeGridFF( const char* name, int* ffshape, int mode, double z0, double* ce
     //gridFF.grid.printCell(); 
     //if(verbosity>0)printf("MolWorld_sp3::loadSurf(%s) 1 natoms %i apos %li atyps %li \n", name, surf.natoms, (long)surf.apos, (long)surf.atypes  );
     //surf.print();
-    W.surf.print_nonbonded();
+    //W.surf.print_nonbonded();
     W.gridFF.mode=(GridFFmod)mode;
     W.bSurfAtoms=true;
     //printf("MMFF_lib::makeGridFF() bAutoNPBC=%i bCheckEval=%i bUseEwald=%i bFit=%i bRefine=%i \n", bAutoNPBC, bCheckEval, bUseEwald, bFit, bRefine );

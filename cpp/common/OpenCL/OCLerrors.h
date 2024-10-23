@@ -103,10 +103,10 @@ void OCL_check_error(cl_int err, const char *operation=0, char *filename=0, int 
         //fprintf(stderr, "Error code was \"%s\" (%d)\n", OCL_err_code(err), err);
         //if(i==-999999){ fprintf(stderr, "OCL_ERROR(%i) %s during operation '%s'", err, OCL_err_code(err), operation ); }
         //else          { fprintf(stderr, "OCL_ERROR(%i) %s during operation '%s'", err, OCL_err_code(err), operation, i, name );  }
-        fprintf(stderr, "OCL_ERROR(%i) %s", err, OCL_err_code(err));
-        if(operation)fprintf(stderr, " during %s", operation );
-        if(filename )fprintf(stderr, "%s #line=%i", filename, line );
-        if(name     )fprintf(stderr, "%s[%i]", name, i );
+        fprintf(stderr, "OCL_ERROR(%i) %s ", err, OCL_err_code(err));
+        if(operation)fprintf(stderr, " during %s ", operation );
+        if(filename )fprintf(stderr, "%s #line=%i ", filename, line );
+        if(name     )fprintf(stderr, "%s [%i] ", name, i );
         fprintf(stderr, "\n" );
         exit(0);
     }
