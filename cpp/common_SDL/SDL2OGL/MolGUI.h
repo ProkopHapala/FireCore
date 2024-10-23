@@ -1463,7 +1463,7 @@ void MolGUI::draw(){
             glEnd();
         }
     }
-    
+
     glColor3f(0.0f,0.5f,0.0f); showBonds();
 
     //visual_FF_test();
@@ -1501,7 +1501,7 @@ void MolGUI::draw(){
 
     if(bViewBuilder){ glColor3f( 0.f,1.f,0.f ); for(int ia : W->builder.selection ){ Draw3D::drawSphereOctLines( 8, 0.5, W->builder.atoms[ia].pos ); } }
     else            { glColor3f( 0.f,1.f,0.f ); for(int ia : W->selection         ){ Draw3D::drawSphereOctLines( 8, 0.5, W->nbmol.apos[ia]        ); } }
-    
+
     // --- Drawing Population of geometies overlay
     if(frameCount>=1){ 
         if(frameCount==1){
@@ -1521,13 +1521,14 @@ void MolGUI::draw(){
             Draw3D::neighs_multi(natoms,4,M_neighs,M_neighCell,M_apos, W->pbc_shifts, isys, nvec ); 
         } } 
     }
-    
+
     //if(iangPicked>=0){
     //    glColor3f(0.,1.,0.);      Draw3D::angle( W->ff.ang2atom[iangPicked], W->ff.ang_cs0[iangPicked], W->ff.apos, fontTex3D );
     //}
     if(useGizmo){ gizmo.draw(); }
     if(bHexDrawing)drawingHex(5.0);
     if(bViewAxis){ glLineWidth(3);  Draw3D::drawAxis(1.0); glLineWidth(1); }
+
 };
 
 void MolGUI::printMSystem( int isys, int perAtom, int na, int nvec, bool bNg, bool bNgC, bool bPos ){

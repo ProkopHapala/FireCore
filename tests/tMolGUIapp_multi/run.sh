@@ -109,6 +109,13 @@ touch minima.dat
 #./$name -m $nsys -x common_resources/xyz/pyridine      -g common_resources/xyz/NaCl_1x1_L2
 #./$name -m $nsys -x common_resources/xyz/pyridine  110 -g common_resources/xyz/NaCl_1x1_L2
 #./$name -m $nsys -x common_resources/xyz/PTCDA         -g common_resources/xyz/NaCl_1x1_L2
+
+#./$name -m 1 -x common_resources/xyz/PTCDA         -g common_resources/xyz/NaCl_1x1_L2 -iParalel 3  -verb 4 -perframe 1
+#./$name -m 1 -x common_resources/xyz/PTCDA         -g common_resources/xyz/NaCl_1x1_L2 -iParalel 3  -verb 4
+./$name -m 1 -x common_resources/xyz/PTCDA         -g common_resources/xyz/NaCl_1x1_L2 -iParalel 3 
+#./$name -m 1 -x common_resources/xyz/PTCDA         -g common_resources/xyz/NaCl_1x1_L2 -iParalel -1
+#./$name -m 1 -x common_resources/xyz/PTCDA         -g common_resources/xyz/NaCl_1x1_L2 -iParalel 0 -verb 3
+
 #./$name -m $nsys -x common_resources/xyz/PTCDA_SAM     -g common_resources/xyz/NaCl_1x1_L2
 #./$name -m $nsys -x common_resources/xyz/BPBA          -g common_resources/xyz/NaCl_1x1_L2
 #./$name -m $nsys -x common_resources/xyz/BPBA          -g common_resources/xyz/NaCl_1x1_L2 -e
@@ -153,7 +160,7 @@ touch minima.dat
 #./$name -m 1000 -x common_resources/xyz/polymer-2_new              -g common_resources/xyz/NaCl_1x1_L2    -Ftol 1e-4   -perframe 200  -iParalel 3   -group  9,20,17,1,9  0,1,7,9,15,17   -bbox -30.0,-30.0,-10.0,30.0,30.0,10.0,1.0,1.0,1.0
 #./$name -m 10   -x common_resources/xyz/polymer-2_new              -g common_resources/xyz/NaCl_1x1_L2    -Ftol 1e-4   -perframe 200  -iParalel 3   -group  9,20,17,1,9  0,1,7,9,15,17  -bbox -30.0,-30.0,-10.0,30.0,30.0,10.0,1.0,1.0,1.0  -nogridff -dt 0.05 
 
-./$name -m 1000 -x common_resources/xyz/polymer-2_new-OH         -g common_resources/xyz/NaCl_1x1_L2   -verb 0  -dt 0.1  -Ftol 1e-4   -perframe 200  -iParalel 3   -group  9,20,17,1,9  0,1,7,9,15,17  -group  12,19,16,3,12  12,3,2,6,14,16 -bbox -4.02,-4.02,-10.0,20.10,20.20,20.0,1e-3,1e-3,1.0
+#./$name -m 1000 -x common_resources/xyz/polymer-2_new-OH         -g common_resources/xyz/NaCl_1x1_L2   -verb 0  -dt 0.1  -Ftol 1e-4   -perframe 200  -iParalel 3   -group  9,20,17,1,9  0,1,7,9,15,17  -group  12,19,16,3,12  12,3,2,6,14,16 -bbox -4.02,-4.02,-10.0,20.10,20.20,20.0,1e-3,1e-3,1.0
 
 #./$name -m 10   -x common_resources/xyz/polymer-2_new          -dt 0.05   -g common_resources/xyz/NaCl_1x1_L2    -Ftol 1e-4   -perframe 200  -iParalel 3 -group  9,20,17,1,9  0,1,7,9,15,17   -c 10
 #./$name -m 1000 -x common_resources/xyz/polymer-2_new                     -g common_resources/xyz/NaCl_1x1_L2    -Ftol 1e-4   -perframe 200  -iParalel 3   -group  9,20,17,1,9  0,1,7,9,15,17  -c 10

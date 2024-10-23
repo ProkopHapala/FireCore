@@ -92,6 +92,8 @@ class OCL_MM: public OCLsystem { public:
     int itex_FE_Paul=-1;
     int itex_FE_Lond=-1;
     int itex_FE_Coul=-1;
+    int ibuff_BsplinePLQ=-1;
+
     int ibuff_atoms_surf=-1;
     int ibuff_REQs_surf =-1;
     int ibuff_dipole_ps=-1;
@@ -121,11 +123,14 @@ class OCL_MM: public OCLsystem { public:
     Quat4f  grid_p0       { 0.f, 0.f, 0.f, 0.f }; // grid origin
     Quat4f  grid_shift0   { 0.f, 0.f, 0.f, 0.f }; // grid shift
     Quat4f  grid_shift0_p0{ 0.f, 0.f, 0.f, 0.f }; // grid shift + origin
+    Quat4f  grid_step     { 0.f, 0.f, 0.f, 0.f }; // grid cell step ( assuming it is orghogonal )
+    Quat4f  grid_invStep  { 0.f, 0.f, 0.f, 0.f }; // inverse grid cell step (assuming it is orghogonal)
 
     cl_Mat3 cl_dGrid;       // grid cell step (voxel rhombus)
     cl_Mat3 cl_diGrid;      // inverse grid cell step
     cl_Mat3 cl_grid_lvec;   // grid lattice vectors
     cl_Mat3 cl_grid_ilvec;  // inverse grid lattice vectors
+
     
     // =================== PP_AFM - Probe Particle AFM variables
 
@@ -163,13 +168,15 @@ class OCL_MM: public OCLsystem { public:
         sprintf( srcpath, "%s/relax_multi.cl", cl_src_dir );     
         buildProgram( srcpath, program_relax );
         newTask( "getNonBond"             ,program_relax, 2);
+        newTask( "getNonBond_GridFF"      ,program_relax, 2);
+        newTask( "getNonBond_GridFF_Bspline",program_relax, 2);
         newTask( "getMMFFf4"              ,program_relax, 2);
         newTask( "cleanForceMMFFf4"       ,program_relax, 2);
         newTask( "updateGroups"           ,program_relax, 1);
         newTask( "groupForce"             ,program_relax, 2);
         newTask( "updateAtomsMMFFf4"      ,program_relax, 2);
         newTask( "printOnGPU"             ,program_relax, 2);
-        newTask( "getNonBond_GridFF"      ,program_relax, 2);
+
         newTask( "getSurfMorse"           ,program_relax, 2);
         newTask( "make_GridFF"            ,program_relax, 1);
         newTask( "sampleGridFF"           ,program_relax, 1);
@@ -181,7 +188,7 @@ class OCL_MM: public OCLsystem { public:
         newTask( "PPAFM_scan"             ,program_relax, 1);
         newTask( "PPAFM_scan_df"          ,program_relax, 1);
 
-        newTask( "getSortRangeBuckets"    ,program_relax, 1); 
+        newTask( "getShortRangeBuckets"    ,program_relax, 1); 
 
         //newTask( "write_toImg"     ,program_relax, 3,{0,0,0,0},{1,1,1,0} ); 
         printf( "... makeKrenels_MM() DONE \n" );
@@ -444,6 +451,62 @@ class OCL_MM: public OCLsystem { public:
         // __read_only image3d_t  FE_Coul, // 12
         // const cl_Mat3  grid_invd,       // 13
         // const float4   grid_p0          // 14
+    }
+
+    OCLtask* setup_getNonBond_GridFF_Bspline( int na, int nNode, Vec3i nPBC_, OCLtask* task=0){
+        printf("setup_getNonBond_GridFF_Bspline(na=%i,nnode=%i) itex_FE_Paul=%i itex_FE_Lond=%i itex_FE_Coul=%i\n", na, nNode,  itex_FE_Paul,itex_FE_Lond,itex_FE_Coul );
+        if(ibuff_BsplinePLQ<0){ printf( "ERROR in setup_getNonBond_GridFF_Bspline() GridFF buffer not initialized( ibuff_BsplinePLQ=%i ) => Exit() \n", ibuff_BsplinePLQ ); exit(0); }
+        if(task==0) task = getTask("getNonBond_GridFF_Bspline");        
+        //int nloc = 1;
+        //int nloc = 4;
+        //int nloc = 8;
+        int nloc = 32;
+        //int nloc = 64;
+        task->local.x  = nloc;
+        task->global.x = na + nloc-(na%nloc);
+        task->global.y = nSystems;
+        grid_shift0_p0 = grid_p0;
+
+        useKernel( task->ikernel );
+        nDOFs.x=na; 
+        nDOFs.y=nNode; 
+
+        v2i4( nPBC_, nPBC );
+        // ------- Maybe We do-not need to do this every frame ?
+        int err=0;
+        err |= _useArg   ( nDOFs );           // 1
+        // Dynamical
+        err |= useArgBuff( ibuff_atoms     ); // 2
+        err |= useArgBuff( ibuff_aforces   ); // 3
+        // parameters
+        err |= useArgBuff( ibuff_REQs      );  // 4
+        err |= useArgBuff( ibuff_neighs    );  // 5
+        err |= useArgBuff( ibuff_neighCell );  // 6
+        err |= useArgBuff( ibuff_lvecs     );  // 7
+        err |= _useArg( nPBC               );  // 8
+        err |= _useArg( GFFparams          );  // 9
+        err |= useArgBuff( ibuff_BsplinePLQ);  // 10
+        err |= _useArg( grid_n             );  // 11
+        err |= _useArg( grid_invStep       );  // 12
+        err |= _useArg( grid_shift0_p0     );  // 13
+        OCL_checkError(err, "setup_getNonBond_GridFF_Bspline");
+        return task;
+        // const int4 ns,                  // 1 // dimensions of the system (natoms,nnode,nvec)
+        // // Dynamical
+        // __global float4*  atoms,        // 2 // positions of atoms
+        // __global float4*  forces,       // 3 // forces on atoms
+        // // Parameters
+        // __global float4*  REQKs,        // 4 // parameters of Lenard-Jones potential, Coulomb and Hydrogen Bond (RvdW,EvdW,Q,H)
+        // __global int4*    neighs,       // 5 // indexes neighbors of atoms
+        // __global int4*    neighCell,    // 6 // indexes of cells of neighbor atoms
+        // __global cl_Mat3* lvecs,        // 7 // lattice vectors of the system
+        // const int4 nPBC,                // 8 // number of PBC images in each direction
+        // const float4  GFFParams,        // 9 // parameters of Grid-Force-Field (GFF) (RvdW,EvdW,Q,H)
+        // // GridFF
+        // __global float4*  BsplinePLQ,   // 10 // Grid-Force-Field (GFF) for Pauli repulsion
+        // const int4     grid_ns,         // 11 // origin of the grid
+        // const float4   grid_d,          // 12 // origin of the grid
+        // const float4   grid_p0          // 13 // origin of the grid
     }
 
     OCLtask* setup_getMMFFf4( int na, int nNode, bool bPBC=false, OCLtask* task=0){
@@ -839,11 +902,18 @@ class OCL_MM: public OCLsystem { public:
         exit(0);
     }
 
-    OCLtask* makeGridFF( const GridShape& grid, Vec3i nPBC_, int na=0, float4* atoms=0, float4* REQs=0, bool bRun=true, OCLtask* task=0 ){
+    void surf2ocl( const GridShape& grid, Vec3i nPBC_, int na=0, float4* atoms=0, float4* REQs=0 ){
+        int err=0;
         setGridShape( grid );
         v2i4( nPBC_, nPBC );
         if(ibuff_atoms_surf<0) ibuff_atoms_surf = newBuffer( "atoms_surf", na, sizeof(float4), 0, CL_MEM_READ_ONLY );
         if(ibuff_REQs_surf <0) ibuff_REQs_surf  = newBuffer( "REQs_surf",  na, sizeof(float4), 0, CL_MEM_READ_ONLY );
+        if(atoms){ err |= upload( ibuff_atoms_surf, atoms, na ); OCL_checkError(err, "makeGridFF().upload(atoms)" ); natom_surf = na; }
+        if(REQs ){ err |= upload( ibuff_REQs_surf , REQs , na ); OCL_checkError(err, "makeGridFF().upload(REQs )" ); }
+        OCL_checkError(err, "surf2ocl()" );
+    }
+
+    OCLtask* makeGridFF( bool bRun=true, OCLtask* task=0 ){
         printf( "OCL_MM::makeGridFF() grid_n(%i,%i,%i)\n", grid_n.x,grid_n.y,grid_n.z );
         if(itex_FE_Paul<=0) itex_FE_Paul         = newBufferImage3D( "FEPaul", grid_n.x, grid_n.y, grid_n.z, sizeof(float)*4, 0, CL_MEM_READ_WRITE, {CL_RGBA, CL_FLOAT} );
         if(itex_FE_Lond<=0) itex_FE_Lond         = newBufferImage3D( "FFLond", grid_n.x, grid_n.y, grid_n.z, sizeof(float)*4, 0, CL_MEM_READ_WRITE, {CL_RGBA, CL_FLOAT} );
@@ -864,8 +934,7 @@ class OCL_MM: public OCLsystem { public:
 
         //printf( "makeGridFF() na=%i nG=%i(%i,%i,%i) nPBC(%i,%i,%i) \n", na, task->global.x, grid_n.x,grid_n.y,grid_n.z,  nPBC.x,nPBC.y,nPBC.z );
         //printf("ibuff_atoms_surf %li, ibuff_REQs_surf %li \n", ibuff_atoms_surf, ibuff_REQs_surf );
-        if(atoms){ err |= upload( ibuff_atoms_surf, atoms, na ); OCL_checkError(err, "makeGridFF().upload(atoms)" ); natom_surf = na; }
-        if(REQs ){ err |= upload( ibuff_REQs_surf , REQs , na ); OCL_checkError(err, "makeGridFF().upload(REQs )" ); }
+
         useKernel( task->ikernel );
         err |= useArg    ( natom_surf       ); // 1
         err |= useArgBuff( ibuff_atoms_surf ); // 2

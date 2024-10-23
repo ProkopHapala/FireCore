@@ -45,7 +45,7 @@ int main(int argc, char *argv[]){
         printf( "ss[0] `%s` ss[1] `%s`\n", ss[0], ss[1] );
         sscanf(ss[0],"%i,%i", &prelat_nstep, &prelat_nItrMax );
         sscanf(ss[1],"%lf,%lf,%lf,%lf,%lf,%lf,%lf,%lf,%lf", &m->a.x,&m->a.y,&m->a.z,  &m->b.x,&m->b.y,&m->b.z,  &m->c.x,&m->c.y,&m->c.z );
-        printf( "prelat_dlvec(%i,%i) latscan_dlvec ", prelat_nstep, prelat_nItrMax  ); printMat(prelat_dlvec);
+        printf( "prelat_dlvec(%i,%i) latscan_dlvec \n", prelat_nstep, prelat_nItrMax  ); printMat(prelat_dlvec);
     } }; // test
 
     // ========== Before initMol

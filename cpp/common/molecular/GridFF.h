@@ -140,6 +140,7 @@ class GridFF : public NBFF{ public:
 
 
     Vec3d  *Bspline_PLQ     = 0;
+    Quat4f *Bspline_PLQf    = 0;
 
     Quat4i cubic_yqis[4];
     Quat4i cubic_xqis[4];
@@ -1165,6 +1166,16 @@ inline void addForce( const Vec3d& pos, const Quat4f& PLQ, Quat4f& fe ) const {
             }
         }
         printf( "GridFF::pack_Bspline_d() DONE @Bspline_PLQ=%li\n", (long)Bspline_PLQ );
+    }
+
+    int Bspline_to_f4( bool bAlloc ){
+        int nxyz = grid.n.totprod();
+        if(bAlloc) _realloc( Bspline_PLQf, nxyz );
+        for(int i=0; i<nxyz; i++){
+            Vec3d v = Bspline_PLQ[i];
+            Bspline_PLQf[i] = Quat4f{ (float)v.x, (float)v.y, (float)v.z, 0 };
+        }
+        return nxyz;
     }
 
     double evalMorsePBC(  Vec3d pi, Quat4d REQi, Vec3d& fi, int natoms, Vec3d * apos, Quat4d * REQs ){

@@ -158,9 +158,10 @@ class MolWorld_sp3 : public SolverInterface { public:
 
     int  icurIter = 0;
     int  iterPerFrame=50;
-    int  iParalel=1; 
+    int  iParalel   =  -101; 
     int  iParalelMax=1;
     int  iParalelMin=0;
+    int iParalel_default=1;
     bool bOcl=false; // used only in Ocl version
 
     double gridStep = 0.1; 
@@ -975,7 +976,7 @@ void printPBCshifts(){
         builder.export_REQs( nbmol.REQs   );       ff->REQs=nbmol.REQs;
         nbmol  .makePLQs   ( gridFF.alphaMorse );  ff->PLQs=nbmol.PLQs; 
         nbmol  .makePLQd   ( gridFF.alphaMorse );  ff->PLQd=nbmol.PLQd; 
-        nbmol.print_nonbonded();
+        //nbmol.print_nonbonded();
         if(bCleanCharge)for(int i=builder.atoms.size(); i<ff->natoms; i++){ nbmol.REQs[i].z=0; }  // Make sure that atoms not present in Builder has well-defined chanrge        
         params.assignREs( ff->natoms, nbmol.atypes, nbmol.REQs, true, false  );
         if(verbosity>1)nbmol.print();                              
@@ -1016,7 +1017,7 @@ void printPBCshifts(){
         else if( ret>0 ){ gridFF.grid.updateCell(gridStep); gridFF.bCellSet=true;  }
         //gridFF.grid.printCell(); 
         if(verbosity>0)printf("MolWorld_sp3::loadSurf(%s) 1 natoms %i apos %li atyps %li \n", name, surf.natoms, (long)surf.apos, (long)surf.atypes  );
-        surf.print_nonbonded();
+        //surf.print_nonbonded();
         bSurfAtoms=true;
         if(bGrid){
             bool bSymmetrize=true;
@@ -1974,6 +1975,7 @@ void pullAtom( int ia, Vec3d* apos, Vec3d* fapos, float K=-2.0 ){
 }
 
     virtual void MDloop( int nIter, double Ftol=-1 ){
+        if(iParalel<-100){ iParalel=iParalel_default; };
         if(Ftol<0)Ftol=Ftol_default;
         ffu.bNonBonded     = bNonBonded;
         ffu.bNonBondNeighs = bNonBondNeighs;
@@ -2074,6 +2076,8 @@ double eval_no_omp(){
 
     __attribute__((hot))  
     int run_no_omp( int niter_max, double dt, double Fconv=1e-6, double Flim=1000, double damping=-1.0, double* outE=0, double* outF=0, double* outV=0, double* outVF=0 ){
+        //printf( "MolWorld_sp3::run_no_omp() niter_max %i dt %g Fconv %g Flim %g damping %g out{E,vv,ff,vf}(%li,%li,%li,%li) \n", niter_max, dt, Fconv, Flim, damping, (long)outE, (long)outF, (long)outV, (long)outVF );
+        printf( "MolWorld_sp3::run_no_omp() ffl.natoms=%i \n", ffl.natoms );
         nloop++;
         if(dt>0){ opt.setTimeSteps(dt); }else{ dt=opt.dt; }
         //if(verbosity>1)[[unlikely]]{ printf( "MolWorld_sp3::run_no_omp() niter_max %i dt %g Fconv %g Flim %g damping %g out{E,vv,ff,vf}(%li,%li,%li,%li) \n", niter_max, dt, Fconv, Flim, damping, (long)outE, (long)outF, (long)outV, (long)outVF ); }
