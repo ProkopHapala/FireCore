@@ -63,8 +63,9 @@ static MMFFparams* params_glob;
 enum class MolWorldVersion{ BASIC=0, QM=1, GPU=2 };
 //static inline MolWorldVersion operator|(MolWorldVersion a, MolWorldVersion b) { return (MolWorldVersion)( ((int)a) | ((int)b)  );  };
 //static inline MolWorldVersion operator&(MolWorldVersion a, MolWorldVersion b) { return (MolWorldVersion)( ((int)a) & ((int)b)  );  };
-static inline int operator|(MolWorldVersion a, MolWorldVersion b) { return ( ((int)a) | ((int)b)  );  };
-static inline int operator&(MolWorldVersion a, MolWorldVersion b) { return ( ((int)a) & ((int)b)  );  };
+//static inline int operator|(MolWorldVersion a, MolWorldVersion b) { return ( ((int)a) | ((int)b)  );  };
+//static inline int operator&(MolWorldVersion a, MolWorldVersion b) { return ( ((int)a) & ((int)b)  );  };
+//bool hasFlag(MolWorldVersion value, MolWorldVersion flag) { return (bool)( ((int)value) & ((int)flag)  );  }
 
 /// @brief Comprehensive class storing the state of a molecular simulation including bonding,non-bodning of molecules and molecules with substrate
 /// @details It impolements SolverInterface, various methods of initialization and various similation loops (serial or OpenMP parallelized)   
@@ -278,7 +279,7 @@ class MolWorld_sp3 : public SolverInterface { public:
 
     // ========== from python interface
 
-    virtual MolWorldVersion getMolWorldVersion() const { return MolWorldVersion::BASIC; };
+    virtual int getMolWorldVersion() const { return (int)MolWorldVersion::BASIC; };
 
     virtual int getGroupPose( Quat4f*& gpos, Quat4f*& gfw, Quat4f*& gup ){ gpos=0; gfw=0; gup=0; return 0; };
     virtual void stopExploring (){ go.bExploring=false; };

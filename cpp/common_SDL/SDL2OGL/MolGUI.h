@@ -528,7 +528,8 @@ void MolGUI::initWiggets(){
     //       ->setCommand( [&](GUIAbstractPanel* p){ W->nbmol.REQs[W->ipicked].z = ((GUIPanel *)p)->value; return 0; } );
     // (GUIPanel*)gui.addPanel( Qpanel );
 
-    // --- table of lattice vectors binding to the builder.lvec
+    // ------ Table(   Lattice Vectros )
+
     ylay.step(6);
     Table* tab1 = new Table( 9, sizeof(W->builder.lvec.a), (char*)&W->builder.lvec );
     tab1->addColum( &(W->builder.lvec.a.x), 1, DataType::Double    );
@@ -536,7 +537,8 @@ void MolGUI::initWiggets(){
     tab1->addColum( &(W->builder.lvec.a.z), 1, DataType::Double    );
     ((TableView*)gui.addPanel( new TableView( tab1, "lattice", 5, ylay.x0,  0, 0, 3, 3 ) ))->input = new GUITextInput();
 
-    // --- change zoom
+    // ------ GUIPanel(   "Zoom: " )
+
     ylay.step(3); 
     ((GUIPanel*)gui.addPanel( new GUIPanel( "Zoom: ", 5,ylay.x0,5+100,ylay.x1, true, true ) ) )
         ->setRange(5.0,50.0)
@@ -544,19 +546,23 @@ void MolGUI::initWiggets(){
         //->command = [&](GUIAbstractPanel* p){ zoom = ((GUIPanel *)p)->value; return 0; };
         ->setCommand( [&](GUIAbstractPanel* p){ zoom = ((GUIPanel *)p)->value; return 0; } );
 
-    // --- change picking mode
+    // ------ DropDownList(   "Pick Mode:"  )
+
     ylay.step(3); 
     ((DropDownList*)gui.addPanel( new DropDownList("Pick Mode:",5,ylay.x0,5+100, 3 ) ) )
         ->addItem("pick_atoms")
         ->addItem("pick_bonds")
         ->addItem("pick_angles");
 
-    // --- select fragment
+
+    // ------ DropDownList(   "Fragments:" )
+
     ylay.step(3); 
     panel_Frags = ((DropDownList*)gui.addPanel( new DropDownList("Fragments:",5,ylay.x0,5+100, 3 ) ) );
     panel_Frags->setCommand( [&](GUIAbstractPanel* me_){ int i=((DropDownList*)me_)->iSelected; printf( "panel_Frags %02i \n", i );  W->selectFragment(i); return 0; } );   
 
-    // --- select view
+    // ------ DropDownList(   "View Side"  )
+
     ylay.step(6); 
     ((DropDownList*)gui.addPanel( new DropDownList("View Side",5,ylay.x0,5+100, 3 ) ) )
         ->addItem("Top")
@@ -586,9 +592,11 @@ void MolGUI::initWiggets(){
     GUIPanel*     p   =0;
     MultiPanel*   mp  =0;
     CheckBoxList* chk =0;
-    // ------ Edit
+
+    // ------ MultiPanel(    "Edit"   )
+
     ylay.step( 1 ); ylay.step( 2 );
-    mp= new MultiPanel( "Edit", gx.x0, ylay.x0, gx.x1, 0,-8); gui.addPanel( mp ); panel_Edit=mp;
+    mp= new MultiPanel( "Edit", gx.x0, ylay.x0, gx.x1, 0,-13); gui.addPanel( mp ); panel_Edit=mp;
     //GUIPanel* addPanel( const std::string& caption, Vec3d vals{min,max,val}, bool isSlider, bool isButton, bool isInt, bool viewVal, bool bCmdOnSlider );
     // mp->addPanel( "Sel.All", {0.0,1.0, 0.0},  0,1,0,0,0 )->command = [&](GUIAbstractPanel* p){ 
     //     if(bViewBuilder){ W->builder.selection.clear(); for(int i=0; i<W->builder.atoms.size(); i++)W->builder.selection.insert(i); return 0; }
@@ -599,29 +607,27 @@ void MolGUI::initWiggets(){
     //     else            { std::unordered_set<int> s(W->selection.begin(),        W->selection.end());         W->selection.clear();         for(int i=0; i<W->nbmol.natoms;         i++) if( !s.contains(i) )W->selection.push_back(i);       return 0;  }
     // };
 
-
-    mp->addPanel( "print.nonB",  {0.0,1.0, 0.0},  0,1,0,0,0 )->command = [&](GUIAbstractPanel* p){ W->ffl.print_nonbonded();   return 0; };
-    mp->addPanel( "print.Aconf", {0.0,1.0, 0.0},  0,1,0,0,0 )->command = [&](GUIAbstractPanel* p){ W->builder.printAtomConfs(); return 0; };
-
-    mp->addPanel( "Sel.All", {0.0,1.0, 0.0},  0,1,0,0,0 )->command = [&](GUIAbstractPanel* p){ if(bViewBuilder){ W->builder.selectAll();     }else{ W->selectAll();    } return 0; };
-    mp->addPanel( "Sel.Inv", {0.0,1.0, 0.0},  0,1,0,0,0 )->command = [&](GUIAbstractPanel* p){ if(bViewBuilder){ W->builder.selectInverse(); }else{ W->selectInverse();} return 0; };
-    mp->addPanel( "Sel.Cap", {0.0,1.0, 0.0},  0,1,0,0,0 )->command = [&](GUIAbstractPanel* p){ W->builder.selectCaping(); for(int ia: W->builder.selection) W->selection.push_back(ia); return 0; };
-    mp->addPanel( "Add.CapHs",{0.0,1.0, 0.0}, 0,1,0,0,0 )->command = [&](GUIAbstractPanel* p){ 
+    mp->addPanel( "print.nonB",  {0.0,1.0, 0.0},  0,1,0,0,0 )->command = [&](GUIAbstractPanel* p){ W->ffl.print_nonbonded();   return 0; };   // 1
+    mp->addPanel( "print.Aconf", {0.0,1.0, 0.0},  0,1,0,0,0 )->command = [&](GUIAbstractPanel* p){ W->builder.printAtomConfs(); return 0; };  // 2
+    mp->addPanel( "Sel.All", {0.0,1.0, 0.0},  0,1,0,0,0 )->command = [&](GUIAbstractPanel* p){ if(bViewBuilder){ W->builder.selectAll();     }else{ W->selectAll();    } return 0; };  // 3
+    mp->addPanel( "Sel.Inv", {0.0,1.0, 0.0},  0,1,0,0,0 )->command = [&](GUIAbstractPanel* p){ if(bViewBuilder){ W->builder.selectInverse(); }else{ W->selectInverse();} return 0; };  // 4
+    mp->addPanel( "Sel.Cap", {0.0,1.0, 0.0},  0,1,0,0,0 )->command = [&](GUIAbstractPanel* p){ W->builder.selectCaping(); for(int ia: W->builder.selection) W->selection.push_back(ia); return 0; }; // 5
+    mp->addPanel( "Add.CapHs",{0.0,1.0, 0.0}, 0,1,0,0,0 )->command = [&](GUIAbstractPanel* p){  // 6
         //printf("====== AtomConf before Add.CapHs \n"); W->builder.printAtomConfs();
         bBuilderChanged = W->builder.addAllCapsByPi( W->params.getAtomType("H") ) > 0; 
         //printf("====== AtomConf After Add.CapHs \n"); 
         //W->builder.printAtomConfs();
-        return 0; };
+        return 0; }; 
     //mp->addPanel( "rot3a"  , {0.0,1.0, 0.0},  0,1,0,0,0 )->command = [&](GUIAbstractPanel* p){ W->rot3a();            return 0; };
-    mp->addPanel( "toCOG"  , {-3.0,3.0,0.0},  0,1,0,0,0 )->command = [&](GUIAbstractPanel* p){ if(bViewBuilder){W->selectionFromBuilder();} W->center(true);         if(bViewBuilder){W->updateBuilderFromFF();} return 0; };
-    mp->addPanel( "toPCAxy", {-3.0,3.0,0.0},  0,1,0,0,0 )->command = [&](GUIAbstractPanel* p){ if(bViewBuilder){W->selectionFromBuilder();} W->alignToAxis({2,1,0}); if(bViewBuilder){W->updateBuilderFromFF();} return 0; };
-    p=mp->addPanel( "save.xyz",{-3.0,3.0,0.0},  0,1,0,0,0 );p->command = [&](GUIAbstractPanel* p){ const char* fname = ((GUIPanel*)p)->inputText.c_str(); if(bViewBuilder){ W->builder.save2xyz(fname);}else{W->saveXYZ(fname);} return 0; }; p->inputText="out.xyz";
-    p=mp->addPanel( "save.mol:",{-3.0,3.0,0.0},  0,1,0,0,0 );p->command = [&](GUIAbstractPanel* p){ const char* fname = ((GUIPanel*)p)->inputText.c_str(); W->updateBuilderFromFF(); W->builder.saveMol(fname); return 0; }; p->inputText="out.mol";
+    mp->addPanel( "toCOG"  , {-3.0,3.0,0.0},  0,1,0,0,0 )->command = [&](GUIAbstractPanel* p){ if(bViewBuilder){W->selectionFromBuilder();} W->center(true);         if(bViewBuilder){W->updateBuilderFromFF();} return 0; }; // 7
+    mp->addPanel( "toPCAxy", {-3.0,3.0,0.0},  0,1,0,0,0 )->command = [&](GUIAbstractPanel* p){ if(bViewBuilder){W->selectionFromBuilder();} W->alignToAxis({2,1,0}); if(bViewBuilder){W->updateBuilderFromFF();} return 0; }; // 5
+    p=mp->addPanel( "save.xyz",{-3.0,3.0,0.0},  0,1,0,0,0 );p->command = [&](GUIAbstractPanel* p){ const char* fname = ((GUIPanel*)p)->inputText.c_str(); if(bViewBuilder){ W->builder.save2xyz(fname);}else{W->saveXYZ(fname);} return 0; }; p->inputText="out.xyz";  // 9
+    p=mp->addPanel( "save.mol:",{-3.0,3.0,0.0},  0,1,0,0,0 );p->command = [&](GUIAbstractPanel* p){ const char* fname = ((GUIPanel*)p)->inputText.c_str(); W->updateBuilderFromFF(); W->builder.saveMol(fname); return 0; }; p->inputText="out.mol";  // 10
 
     //mp->addPanel( "VdwRim", {1.0,3.0,1.5},  0,1,0,0,0 )->command = [&](GUIAbstractPanel* p){  double R=((GUIPanel*)p)->value; dipoleMap.points_along_rim( R, {5.0,0.0,0.0}, Vec2d{0.0,0.1} );  bDipoleMap=true;  return 0; };
     //mp->addPanel( "VdwRim", {1.0,3.0,1.5},  0,1,0,0,0 )->command = [&](GUIAbstractPanel* p){  double R=((GUIPanel*)p)->value; dipoleMap.prepareRim( 5, {1.0,2.0}, {0.4,0.6}, {0.0,-7.0,0.0}, {1.0,0.0} );  bDipoleMap=true;  return 0; };
     //mp->addPanel( "VdwRim", {1.0,3.0,1.5},  0,1,0,0,0 )->command = [&](GUIAbstractPanel* p){  double R=((GUIPanel*)p)->value;   double Rs[]{R,R+0.1,R+0.2,R+0.3,R+0.5};  dipoleMap.prepareRim2( 5, Rs, 0.3, {0.0,-7.0,0.0}, {1.0,0.0} );  bDipoleMap=true;  return 0; };
-    mp->addPanel( "VdwRim", {1.0,3.0,1.5},  0,1,0,0,0 )->command = [&](GUIAbstractPanel* p){ 
+    mp->addPanel( "VdwRim", {1.0,3.0,1.5},  0,1,0,0,0 )->command = [&](GUIAbstractPanel* p){  // 11
         //double Rs[]{0.5,0.7,0.9,1.1,1.3,1.5,1.7,1.9,2.5,3.0,3.5,4.5,6.0,8.0,10.0};  
         double Rs[20]{0.3, 0.4, 0.5, 0.6, 0.7, 0.9, 1.1, 1.3, 1.5, 1.7, 2.0, 2.5, 3.0, 3.5, 4.5, 6.0, 8.0, 10.0, 14.0, 20.0 };  
         //dipoleMap.prepareRim2( 15, Rs, 0.3, {0.0,-7.0,0.0}, {1.0,0.0} ); 
@@ -644,9 +650,9 @@ void MolGUI::initWiggets(){
         scanSurfFF( 100, apos[W->ipicked]+Vec3d{0.0,0.0,-5.0}, apos[W->ipicked]+Vec3d{0.0,0.0,+5.0}, W->ffl.REQs[W->ipicked], iscan, iview, sc, Vec3dX );
         //scanSurfFF( 100, apos[W->ipicked]-Vec3d{0.0,0.0,5.0}, apos[W->ipicked]-Vec3d{0.0,0.0,1.0}, particle_REQ, iscan, iview, sc );
     };
-    mp->addPanel( "scanSurfFF",  {-3.0,3.0,0.0}, 1,1,0,1,1 )->command = lamb_scanSurf;
-    mp->addPanel( "SurfFF_view", {-0.01,1.01,0}, 1,1,1,1,1 )->command = lamb_scanSurf;
-    mp->addPanel( "SurfFF_scan", {-0.01,1.01,0}, 1,1,1,1,1 )->command = lamb_scanSurf;
+    mp->addPanel( "scanSurfFF",  {-3.0,3.0,0.0}, 1,1,0,1,1 )->command = lamb_scanSurf;   // 12
+    mp->addPanel( "SurfFF_view", {-0.01,1.01,0}, 1,1,1,1,1 )->command = lamb_scanSurf;   // 13
+    mp->addPanel( "SurfFF_scan", {-0.01,1.01,0}, 1,1,1,1,1 )->command = lamb_scanSurf;   // 14
     ylay.step( (mp->nsubs+1)*2 ); ylay.step( 2 );
 
     // mp= new MultiPanel( "Run", gx.x0, ylay.x0, gx.x1, 0,-2); gui.addPanel( mp ); //panel_NonBondPlot=mp;
@@ -654,12 +660,16 @@ void MolGUI::initWiggets(){
     // mp->addPanel( "NonBondNG", {-3.0,3.0,0.0},  0,1,0,0,0 )->command = [&](GUIAbstractPanel* p){ W->bNonBondNeighs=!W->bNonBondNeighs; return 0; };
     // mp->addPanel( "Grid",      {-3.0,3.0,0.0},  0,1,0,0,0 )->command = [&](GUIAbstractPanel* p){ W->bGridFF=!W->bGridFF;               return 0; };
     
+    // ------ CheckBoxList( "Run" )
+
     chk = new CheckBoxList( gx.x0, ylay.x0, gx.x1 );   gui.addPanel( chk );  chk->caption ="Run"; //chk->bgColor = 0xFFE0E0E0;
     chk->addBox( "NonBond"   , &W->bNonBonded     );
     chk->addBox( "NonBondNG" , &W->bNonBondNeighs );
     chk->addBox( "GridFF"    , &W->bGridFF        );
     chk->addBox( "tricubic"  , &W->bTricubic      );
-    ylay.step( chk->boxes.size()*2 ); ylay.step( 2 );
+    ylay.step( (chk->boxes.size()+1)*2 ); ylay.step( 2 );
+
+    // ------ MultiPanel(   BondLenghs   )
 
     // ==== bond length calculation
     auto blFunc = [&](GUIAbstractPanel* p){
@@ -672,7 +682,7 @@ void MolGUI::initWiggets(){
         bViewBondLabels  = false;
         bViewAtomLabels  = false;
     };
-    ylay.step( 1 ); ylay.step( 2 );
+
     mp= new MultiPanel( "BondLenghs", gx.x0, ylay.x0, gx.x1, 0,-3); gui.addPanel( mp );
     p=mp->addPanel( "types:",  {1.0,3.0,1.5 },  0,1,0,0,0 );p->command=blFunc; BondLengh_types=p; p->inputText="Si-Si";
     //p=mp->addPanel( "min.BL:", {2.2,2.6,2.30},  1,1,0,1,1 );p->command=blFunc; BondLengh_min=p;
@@ -682,7 +692,9 @@ void MolGUI::initWiggets(){
     printf( "MolGUI::initWiggets() WorldVersion=%i \n", W->getMolWorldVersion() );
     //exit(0);
 
-    if( W->getMolWorldVersion() & MolWorldVersion::QM ){ 
+    // ------ GUIPanel(   Mol. Orb.   )
+
+    if( W->getMolWorldVersion() & (int)MolWorldVersion::QM ){ 
         // --- Selection of orbital to plot
         ylay.step((mp->nsubs+1)*2); ylay.step( 2 );
         panel_iMO = ((GUIPanel*)gui.addPanel( new GUIPanel( "Mol. Orb.", 5,ylay.x0,5+100,ylay.x1, true, true, true ) ) );
@@ -1666,7 +1678,7 @@ void MolGUI::drawHUD(){
     glPopMatrix();
 
 
-    if( W->getMolWorldVersion() == MolWorldVersion::GPU ){
+    if( W->getMolWorldVersion() == (int)MolWorldVersion::GPU ){
         glPushMatrix();
         bool  bExplors[W->nSystems];
         float Fconvs  [W->nSystems];
@@ -2552,7 +2564,7 @@ void MolGUI::eventMode_default( const SDL_Event& event ){
                 case SDLK_c: W->autoCharges(); break;
                 
                 case SDLK_v:{ 
-                    if( W->getMolWorldVersion() & MolWorldVersion::GPU ){ makeAFM(); }else{ printf( "makeAFM(): is supported only in GPU version of MolWorld \n" ); } 
+                    if( W->getMolWorldVersion() & (int)MolWorldVersion::GPU ){ makeAFM(); }else{ printf( "makeAFM(): is supported only in GPU version of MolWorld \n" ); } 
                     } break;
                 case SDLK_KP_MULTIPLY:  afm_iz++; if(afm_iz>=afm_scan_grid.n.z-afm_nconv)afm_iz=0;  renderAFM(afm_iz,2); break;
                 case SDLK_KP_DIVIDE:    afm_iz--; if(afm_iz<0)afm_iz=afm_scan_grid.n.z-1-afm_nconv; renderAFM(afm_iz,2);  break;
