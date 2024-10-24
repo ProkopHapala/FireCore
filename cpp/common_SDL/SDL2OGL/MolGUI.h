@@ -179,6 +179,7 @@ class MolGUI : public AppSDL2OGL_3D { public:
     //int gui_mode = Gui_Mode::edit;
     DropDownList* panel_Frags=0;
     GUIPanel*     panel_iMO  =0;
+    GUIPanel*     panel_AFM  =0;
 
     GUIPanel*  BondLengh_types=0;
     GUIPanel*  BondLengh_min=0;
@@ -371,7 +372,7 @@ class MolGUI : public AppSDL2OGL_3D { public:
     void renderAFM( int iz, int offset );
     void renderAFM_trjs( int di );
     void Fz2df( int nxy, int izmin, int izmax, const Quat4f* afm_Fout, float* dfout );
-    void makeAFM();
+    void makeAFM( int iz=-1 );
     void lattice_scan( int n1, int n2, const Mat3d& dlvec );
     void makeBondLengths0();
     void makeBondColoring( Vec2i typs, Vec2d lrange, double*& clr,bool bNew=true);
@@ -690,13 +691,14 @@ void MolGUI::initWiggets(){
     p=mp->addPanel( "min.BL:", {2.2,2.6,2.32},  1,1,0,1,1 );p->command=blFunc; BondLengh_min=p;
     p=mp->addPanel( "max.BL:", {2.2,2.6,2.43},  1,1,0,1,1 );p->command=blFunc; BondLengh_max=p;
     printf( "MolGUI::initWiggets() WorldVersion=%i \n", W->getMolWorldVersion() );
+     ylay.step((mp->nsubs+1)*2);
     //exit(0);
 
     // ------ GUIPanel(   Mol. Orb.   )
 
     if( W->getMolWorldVersion() & (int)MolWorldVersion::QM ){ 
         // --- Selection of orbital to plot
-        ylay.step((mp->nsubs+1)*2); ylay.step( 2 );
+        ylay.step( 2 );
         panel_iMO = ((GUIPanel*)gui.addPanel( new GUIPanel( "Mol. Orb.", 5,ylay.x0,5+100,ylay.x1, true, true, true ) ) );
         panel_iMO->setRange(-5.0,5.0);
         panel_iMO->setValue(0.0);
@@ -704,6 +706,21 @@ void MolGUI::initWiggets(){
             which_MO = ((GUIPanel *)p)->value;
             int iHOMO = W->getHOMO(); printf( "plot HOMO+%i (HOMO=eig#%i) \n", iHOMO+which_MO, iHOMO );
             renderOrbital( iHOMO + which_MO );
+        return 0; });
+        ylay.step( 2 );
+    }
+
+    // ------ GUIPanel(   Mol. Orb.   )
+
+    if( W->getMolWorldVersion() & (int)MolWorldVersion::GPU ){ 
+        // --- Selection of orbital to plot
+        ylay.step( 2 );
+        panel_AFM = ((GUIPanel*)gui.addPanel( new GUIPanel( "AFM iz", 5,ylay.x0,5+100,ylay.x1, true, true, true ) ) );
+        panel_AFM->setRange(0,20.0);
+        panel_AFM->setValue(2);
+        panel_AFM->setCommand( [&](GUIAbstractPanel* p){ 
+            afm_iz = ((GUIPanel *)p)->value;
+            makeAFM( afm_iz );
         return 0; });
     }
 
@@ -1933,21 +1950,20 @@ void MolGUI::Fz2df( int nxy, int izmin, int izmax, const Quat4f* afm_Fout, float
 }
 
 void MolGUI::renderAFM( int iz, int offset ){
+    printf( "MolGUI::renderAFM( iz=%i, offset=%i afm_scan_grid.n.z=%i afm_nconv=%i)\n", iz, offset, afm_scan_grid.n.z, afm_nconv );
     if(afm_Fout==0){ printf("WARRNING: MolGUI::renderAFM() but afm_Fout not allocated \n"); return; };
     if(iz<0 )iz=0;
     if(iz>=afm_scan_grid.n.z)iz=afm_scan_grid.n.z-1;
     int pitch = 4;
     int nxy =afm_scan_grid.n.x * afm_scan_grid.n.y;
     float* data_iz =  (float*)(afm_Fout + iz*nxy);
-
     float* dfdata=0;
     if(afm_bDf){
         dfdata= new float[nxy];
         float* data_iz = &dfdata[0];
         Fz2df( nxy, iz, iz+afm_nconv, afm_Fout, data_iz );
     }
-
-    printf( "MolGUI::renderAFM() %li \n", ogl_afm ); //exit(0);
+    printf( "MolGUI::renderAFM() ogl_afm=%i \n", ogl_afm ); //exit(0);
     if(ogl_afm>0)glDeleteLists(ogl_afm,1);
     ogl_afm = glGenLists(1);
     glNewList(ogl_afm, GL_COMPILE);
@@ -1958,14 +1974,14 @@ void MolGUI::renderAFM( int iz, int offset ){
     double vmin=+1e+300;
     double vmax=-1e+300;
     for(int i=0; i<nxy; i++){ float f=data_iz[i*pitch+offset]; vmin=fmin(f,vmin); vmax=fmax(f,vmax);  }
-
     //_realloc(afm_ps, nxy);
     //for(int i=0; i<nxy; i++){ afm_ps[i]=(Vec3d)afm_ps0[i].f; }
 
     glPushMatrix();
     glTranslatef( 0.0,0.0,-5.0 - iz * afm_scan_grid.dCell.c.z );
-    printf( "MolGUI::renderAFM() vmin=%g vmax=%g \n", vmin, vmax );
-    Draw3D::drawScalarField( {afm_scan_grid.n.x,afm_scan_grid.n.y}, afm_ps0,                                  data_iz, pitch,offset, vmax, vmin, Draw::colors_afmhot );
+    printf( "MolGUI::renderAFM() vmin=%g vmax=%g @data_iz=%li @colors_afmhot=%li\n", vmin, vmax, (long)data_iz, (long)Draw::colors_afmhot );
+    Draw3D::drawScalarField( {afm_scan_grid.n.x,afm_scan_grid.n.y}, afm_ps0,                                  data_iz, pitch,offset, vmin,vmax, Draw::colors_afmhot );
+
     //Draw3D::drawColorScale( 10, Vec3dZero, Vec3dY, Vec3dX, Draw::colors_afmhot );
     //Draw3D::drawScalarGrid ( {afm_scan_grid.n.x,afm_scan_grid.n.y}, afm_scan_grid.pos0, afm_scan_grid.dCell.a, afm_scan_grid.dCell.a, data_iz, pitch,offset, vmin, vmax );
     glPopMatrix();
@@ -2001,15 +2017,17 @@ void MolGUI::renderAFM_trjs( int di ){
 };
 
 
-void MolGUI::makeAFM(){
-    printf( "MolGUI::makeAFM() %li \n", ogl_afm ); //exit(0);
+void MolGUI::makeAFM( int iz ){
+    printf( "\n ==== MolGUI::makeAFM() %li \n", ogl_afm ); //exit(0);
     afm_ff_grid.cell = W->builder.lvec;
     afm_ff_grid.updateCell(0.1);
     W->evalAFM_FF ( afm_ff_grid,   afm_ff,                        false );
     W->evalAFMscan( afm_scan_grid, afm_Fout, afm_PPpos, &afm_ps0, false );
     MolGUI::renderAFM_trjs( 5 );
     //MolGUI::renderAFM(  afm_scan_grid.n.z-10, 2 );
+    if(iz>0){ afm_iz=iz; }
     MolGUI::renderAFM(  afm_iz, 2 );
+    printf( "\n ==== MolGUI::makeAFM() DONE \n\n", ogl_afm ); //exit(0);
 };
 
 void MolGUI::drawPi0s( float sc=1.0 ){
@@ -2378,9 +2396,9 @@ void MolGUI::mouse_default( const SDL_Event& event ){
                     bDragging=false;
                     break;
                 case SDL_BUTTON_RIGHT:{ 
-                    int ib = W->builder.pickBond( (Vec3d)ray0, (Vec3d)cam.rot.c, 0.3 );
-                    //printf( "MolGUI::pickBond: %i \n", ib  );
-                    if(ib>=0){ printf( "MolGUI::delete bond: %i \n", ib  );  W->builder.deleteBond(ib); bBuilderChanged=true; }
+                    // int ib = W->builder.pickBond( (Vec3d)ray0, (Vec3d)cam.rot.c, 0.3 );
+                    // //printf( "MolGUI::pickBond: %i \n", ib  );
+                    // if(ib>=0){ printf( "MolGUI::delete bond: %i \n", ib  );  W->builder.deleteBond(ib); bBuilderChanged=true; }
                     W->ipicked=-1; 
                 } break;
             }break;
