@@ -203,7 +203,7 @@ class MolWorld_sp3_multi : public MolWorld_sp3, public MultiSolverInterface { pu
     int  nbEvaluation=0;
     int  nExploring=0;
 
-virtual MolWorldVersion getMolWorldVersion() const override { return MolWorldVersion::GPU; };
+virtual int getMolWorldVersion() const override { return (int)MolWorldVersion::GPU; };
 
 // ==================================
 //         Initialization
@@ -1370,7 +1370,7 @@ void setup_NBFF_ocl(){
 }
 
 void picked2GPU( int ipick,  float K ){
-    printf( "picked2GPU() ipick %i iSystemCur %i \n", ipick, iSystemCur );
+    //printf( "MolWorld_sp3_multi::picked2GPU() ipick %i iSystemCur %i \n", ipick, iSystemCur );
     int i0a = ocl.nAtoms*iSystemCur;
     int i0v = ocl.nvecs *iSystemCur;
     if(ipick>=0){

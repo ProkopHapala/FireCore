@@ -60,6 +60,8 @@ class MolWorld_sp3_QMMM_multi : public MolWorld_sp3_multi { public:
 
     // ==== Functions Definition
 
+virtual int getMolWorldVersion() const override { return (int)MolWorldVersion::QM | (int)MolWorldVersion::GPU; };
+
 virtual void init(){
     //MolWorld_sp3    ::init( bGrid );
     //MolWorld_sp3_multi::init( bGrid );
