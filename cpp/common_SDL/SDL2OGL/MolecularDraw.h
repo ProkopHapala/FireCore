@@ -234,6 +234,8 @@ int renderSubstrate_new( const GridFF& gff, Vec2d zrange, double isoval, Quat4d 
     Mat3d dCell = gff.grid.dCell;
     int nvert = 0;
     //printf( "\n", renderSubstrate_new );
+    glDisable(GL_LIGHTING);
+    glNormal3f(0.0,0.0,1.0);
     for ( int ib=1; ib<=gn.y; ib++ ){
         glBegin(GL_TRIANGLE_STRIP);
         for ( int ia=0; ia<=gn.x; ia++ ){
@@ -264,15 +266,18 @@ int renderSubstrate_new( const GridFF& gff, Vec2d zrange, double isoval, Quat4d 
                 return -1;
             }
 
-            Vec3d f1,f2;
+            Vec3d f1=Vec3dZ,f2=Vec3dZ;
             double el1 = gff.addAtom( p1, Q, f1 );
             double el2 = gff.addAtom( p2, Q, f2 );
 
             gff.addAtom( p1, PL, f1 );
             gff.addAtom( p2, PL, f2 );
+            
+            colorRB( el1*sclr ); glVertex3f(p1.x,p1.y,p1.z); nvert++;
+            colorRB( el2*sclr ); glVertex3f(p2.x,p2.y,p2.z); nvert++;
 
-            colorRB( el1*sclr ); glNormal3f(f1.x,f1.y,f1.z); glVertex3f(p1.x,p1.y,p1.z); nvert++;
-            colorRB( el2*sclr ); glNormal3f(f2.x,f2.y,f2.z); glVertex3f(p2.x,p2.y,p2.z); nvert++;
+            //colorRB( el1*sclr ); glNormal3f(f1.x,f1.y,f1.z); glVertex3f(p1.x,p1.y,p1.z); nvert++;
+            //colorRB( el2*sclr ); glNormal3f(f2.x,f2.y,f2.z); glVertex3f(p2.x,p2.y,p2.z); nvert++;
 
         }
         glEnd();

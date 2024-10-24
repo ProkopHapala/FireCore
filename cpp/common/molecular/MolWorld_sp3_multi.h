@@ -1240,24 +1240,45 @@ void saveDebugXYZreplicas( int itr, double F ){
     }
 }
 
+
+void findAFMGrid(){
+
+
+}
+
 virtual void evalAFMscan( GridShape& scan, Quat4f*& OutFE, Quat4f*& OutPos, Quat4f** ps=0, bool bSaveDebug=false )override{ 
+    
+    printf( "MolWrold_sp3_multi::evalAFMscan() scan.ns(%i,%i,%i) \n", scan.n.x,scan.n.y,scan.n.z );
     int err=0;
     //Quat4f* OutFE =0;
     //Quat4f* OutPos=0;
     //if( OutFE_  ){ OutFE =OutFE_;  }else{ OutFE =new Quat4f[scan.n.totprod()];   }
     //if( OutPos_ ){ OutPos=OutPos_; }else{ OutPos=new Quat4f[scan.n.totprod()]; }
-    if( OutFE ==0 ){ OutFE =new Quat4f[scan.n.totprod()]; }
-    if( OutPos==0 ){ OutPos=new Quat4f[scan.n.totprod()]; }
-    int nxy = scan.n.x*scan.n.y;
-    _realloc( afm_ps, nxy );
 
+    // ---- update scan bounds
     // ToDo: ztop should be probably found and used in  evalAFM_FF()
     int i0v = iSystemCur*ocl.nvecs;
     float ztop= -1e+300;
-    for( int i=0; i<ocl.nAtoms; i++ ){ ztop=fmax( atoms[i0v+i].z, ztop ); };
-    printf( "MolWrold_sp3_multi::evalAFMscan() ztop=%g \n", ztop );
+    Vec2f pmin=Vec2fmax,pmax=Vec2fmin;
+    for( int i=0; i<ocl.nAtoms; i++ ){
+        Quat4f p = atoms[i0v+i];
+        p.xy().update_bounds(pmin,pmax);
+        ztop=fmax( atoms[i0v+i].z, ztop );
+    };
+    float margin=3.0;
+    pmin.x-=margin,pmin.y-=margin, pmax.x+=margin, pmax.y+=margin;
+    printf( "MolWrold_sp3_multi::evalAFMscan() ztop=%g pmin(%g,%g) pmax(%g,%g)\n", ztop, pmin.x,pmin.y, pmax.x, pmax.y );
+    scan.pos0=Vec3d{pmin.x,pmin.y,ztop+4.0+5.0+1.0};
+    scan.cell.a=Vec3d{pmax.x-pmin.x,0.0,0.0};
+    scan.cell.b=Vec3d{pmax.x-pmin.x,0.0,0.0};
+    scan.autoN( scan.dCell.xx );
+    scan.printCell();
 
-    scan.pos0=Vec3d{0.0,0.0,ztop+4.0+5.0+1.0};
+    int nxy = scan.n.x*scan.n.y;
+    if( OutFE ==0 ){ OutFE =new Quat4f[scan.n.totprod()]; }
+    if( OutPos==0 ){ OutPos=new Quat4f[scan.n.totprod()]; }
+    _realloc( afm_ps, nxy );
+
     for(int iy=0; iy<scan.n.y; iy++) for(int ix=0; ix<scan.n.x; ix++){ afm_ps[iy*scan.n.x+ix].f = (Vec3f)(  scan.pos0 + scan.dCell.a*ix + scan.dCell.b*iy ); afm_ps[iy*scan.n.x+ix].w=0; }
     printf( "MolWrold_sp3_multi::evalAFMscan() scan.ns(%i,%i,%i) nxy=%i \n", scan.n.x,scan.n.y,scan.n.z,nxy );
     long T0=getCPUticks();
@@ -1268,8 +1289,8 @@ virtual void evalAFMscan( GridShape& scan, Quat4f*& OutFE, Quat4f*& OutPos, Quat
     int ntot = scan.n.x*scan.n.y*scan.n.z;
     Quat4f vmin=Quat4fmax,vmax=Quat4fmin;
     for(int i=0; i<ntot; i++){ OutFE[i].update_bounds( vmin, vmax ); }
-    printf( "MolWrold_sp3_multi::evalAFMscan() vmin{%g,%g,%g,%g} vmax{%g,%g,%g,%g} \n", vmin.x,vmin.y,vmin.z,vmin.w,  vmax.x,vmax.y,vmax.z,vmax.w  );
-    //bSaveDebug=true;
+    printf( "MolWrold_sp3_multi::evalAFMscan() vmin{%g,%g,%g|%g} vmax{%g,%g,%g|%g} \n", vmin.x,vmin.y,vmin.z,vmin.w,  vmax.x,vmax.y,vmax.z,vmax.w  );
+    bSaveDebug=true;
     //bSaveDebug=false; 
     if(bSaveDebug){ 
         scan.saveXSF( "AFM_E.xsf",       (float*)OutFE, 4,3 );
