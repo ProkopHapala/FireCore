@@ -38,8 +38,8 @@ mmff.setSwitches( NonBonded=-1, MMFF=-1, SurfAtoms=0, GridFF=1 )
 
 mmff.PLQs[:,2 ] = 0.0 # delete Coulomb (charges)
 #mmff.PLQs[:,:2] = 0.0 # delete Morse (EvdW)
-scanPlot( nscan=1000, span=(0.0,8.0), dir=(1.0,0.0,0.0), p0=(0.0,0.0,0.0), label="E_x" )
-scanPlot( nscan=1000, span=(0.0,8.0), dir=(0.0,1.0,0.0), p0=(0.0,0.0,0.0), label="E_y" )
+scanPlot( nscan=1000, span=(0.0,8.0), dir=(1.0,0.0,0.0), p0=(0.0,0.0,0.0),  label="E_x" )
+scanPlot( nscan=1000, span=(0.0,8.0), dir=(0.0,1.0,0.0), p0=(0.0,0.0,0.0),  label="E_y" )
 scanPlot( nscan=1000, span=(-5.0,5.0), dir=(0.0,0.0,1.0), p0=(0.0,0.0,0.0), label="E_z" )
 
 plt.legend()

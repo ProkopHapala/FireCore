@@ -86,6 +86,243 @@ inline float4 dbasis(float u) {
     );
 }
 
+// =================== 3D Interpolation - scalar ========================== 
+
+inline float2 fe1D(__global const float* E, const float4 p, const float4 d) {
+    const float4 cs = (float4)(E[0], E[1], E[2], E[3]); // ToDo: may be more efficient if we use float4* directly ?
+    return (float2)(dot(p, cs), dot(d, cs));
+}
+
+inline float3 fe2d(int nz, __global const float* E, int4 di, const float4 pz, const float4 dz, const float4 by, const float4 dy) {
+    const float2 fe0 = fe1D(E + di.x, pz, dz);
+    const float2 fe1 = fe1D(E + di.y, pz, dz);
+    const float2 fe2 = fe1D(E + di.z, pz, dz);
+    const float2 fe3 = fe1D(E + di.w, pz, dz);
+    return (float3)(
+        fe0.x * dy.x + fe1.x * dy.y + fe2.x * dy.z + fe3.x * dy.w,
+        fe0.y * by.x + fe1.y * by.y + fe2.y * by.z + fe3.y * by.w,
+        fe0.x * by.x + fe1.x * by.y + fe2.x * by.z + fe3.x * by.w
+    );
+}
+
+inline float4 fe3d_pbc(const float3 u, const int3 n, __global const float* Es, __local const int4* xqis, __local int4* yqis) {
+    int ix = (int)u.x;
+    int iy = (int)u.y;
+    int iz = (int)u.z;
+    if (u.x < 0) ix--;
+    if (u.y < 0) iy--;
+    const float tx = u.x - ix;
+    const float ty = u.y - iy;
+    const float tz = u.z - iz;
+
+    if ((iz < 1) || (iz >= n.z - 2)) {
+        return (float4)(0.0f, 0.0f, 0.0f, 0.0f);
+    }
+
+    ix = modulo(ix-1, n.x);
+    iy = modulo(iy-1, n.y);
+
+    const int nyz = n.z * n.y;
+    // int4 qx = xqis[ix%4] * nyz;
+    // int4 qy = yqis[iy%4] * n.z;
+
+    int4 qx = choose_inds_pbc( ix, n.x, xqis );
+    //const int4 qx = choose_inds_pbc( ix, n.x, xqis )*nyz;
+    const int4 qy = choose_inds_pbc( iy, n.y, yqis )*n.z;
+
+    const float4 bz = basis(tz);
+    const float4 dz = dbasis(tz);
+    const float4 by = basis(ty);
+    const float4 dy = dbasis(ty);
+    
+    const int i0 = (iz - 1) + n.z * (iy + n.y * ix);
+
+    //printf( "GPU fe3d_pbc_comb() u(%8.4f,%8.4f,%8.4f) ixyz(%i,%i,%i) n(%i,%i,%i) \n", u.x,u.y,u.z, ix,iy,iz, n.x,n.y,n.z );
+    //printf( "GPU fe3d_pbc_comb() u(%8.4f,%8.4f,%8.4f) ixyz(%i,%i,%i) qx(%i,%i,%i,%i) nyz=%i\n", u.x,u.y,u.z, ix,iy,iz, qx.x,qx.y,qx.z,qx.w, nyz );
+    qx*=nyz;
+    
+    //return (float4){ 0.0f, 0.0f, 0.0f, dot(PLQH, Es[ i0 ])  };
+
+    float3 E1 = fe2d(n.z, Es + (i0 + qx.x), qy, bz, dz, by, dy);
+    float3 E2 = fe2d(n.z, Es + (i0 + qx.y), qy, bz, dz, by, dy);
+    float3 E3 = fe2d(n.z, Es + (i0 + qx.z), qy, bz, dz, by, dy);
+    float3 E4 = fe2d(n.z, Es + (i0 + qx.w), qy, bz, dz, by, dy);
+    
+    const float4 bx = basis(tx);
+    const float4 dx = dbasis(tx);
+    
+    return (float4)(
+        dot(dx, (float4)(E1.z, E2.z, E3.z, E4.z)),
+        dot(bx, (float4)(E1.x, E2.x, E3.x, E4.x)),
+        dot(bx, (float4)(E1.y, E2.y, E3.y, E4.y)),
+        dot(bx, (float4)(E1.z, E2.z, E3.z, E4.z))
+    );
+}
+
+__kernel void sample3D(
+    const float4 g0,
+    const float4 dg,
+    const int4 ng,
+    __global const float* Eg,
+    const int n,
+    __global const float4* ps,
+    __global float4* fes
+) {
+    const int iG = get_global_id(0);
+    const int iL = get_local_id(0);
+    if (iG >= n) return;
+
+    __local int4 xqs[4];
+    __local int4 yqs[4];
+    if      (iL<4){             xqs[iL]=make_inds_pbc(ng.x,iL); }
+    else if (iL<8){ int i=iL-4; yqs[i ]=make_inds_pbc(ng.y,i ); };
+    const float3 inv_dg = 1.0f / dg.xyz;
+    barrier(CLK_LOCAL_MEM_FENCE);
+
+    float3 p = ps[iG].xyz;
+    float3 u = (p - g0.xyz) * inv_dg;
+    float4 fe = fe3d_pbc(u, ng.xyz, Eg, xqs, yqs);
+    fe.xyz *= -inv_dg;
+    fes[iG] = fe;
+}
+
+
+__kernel void sample3D_grid(
+    const float4 g0,
+    const float4 dg,
+    const int4   ng,
+    __global const float* Eg,
+    const float4 samp_g0,
+    const float4 samp_dg,
+    const int4   samp_ng,
+    __global float4* fes
+) {
+    const int iG = get_global_id(0);
+    const int iL = get_local_id(0);
+    const int nxyz = samp_ng.w; 
+    if (iG >= nxyz ) return;
+
+    __local int4 xqs[4];
+    __local int4 yqs[4];
+    if      (iL<4){             xqs[iL]=make_inds_pbc(ng.x,iL); }
+    else if (iL<8){ int i=iL-4; yqs[i ]=make_inds_pbc(ng.y,i ); };
+    const float3 inv_dg = 1.0f / dg.xyz;
+    barrier(CLK_LOCAL_MEM_FENCE);
+
+    const float3 g = (float3)(iG % samp_ng.x, (iG / samp_ng.x) % samp_ng.y, iG / (samp_ng.x * samp_ng.y));
+    const float3 p = samp_g0.xyz + samp_dg.xyz * g;
+    const float3 u = (p - g0.xyz) * inv_dg;
+    float4 fe = fe3d_pbc(u, ng.xyz, Eg, xqs, yqs);
+    fe.xyz *= -inv_dg;
+    fes[iG] = fe;
+}
+
+// =================== 3D Interpolation - float2 ========================== 
+
+inline float2 fe1Dcomb2(__global const float2* E, const float2 C, const float4 p, const float4 d) {
+    const float4 cs = (float4)(dot(C, E[0]), dot(C, E[1]), dot(C, E[2]), dot(C, E[3]));
+    return (float2)(dot(p, cs), dot(d, cs));
+}
+
+inline float3 fe2d_comb2(int nz, __global const float2* E, int4 di, const float2 C, const float4 pz, const float4 dz, const float4 by, const float4 dy) {
+    const float2 fe0 = fe1Dcomb2(E + di.x, C, pz, dz);
+    const float2 fe1 = fe1Dcomb2(E + di.y, C, pz, dz);
+    const float2 fe2 = fe1Dcomb2(E + di.z, C, pz, dz);
+    const float2 fe3 = fe1Dcomb2(E + di.w, C, pz, dz);
+    
+    return (float3)(
+        fe0.x * dy.x + fe1.x * dy.y + fe2.x * dy.z + fe3.x * dy.w,
+        fe0.y * by.x + fe1.y * by.y + fe2.y * by.z + fe3.y * by.w,
+        fe0.x * by.x + fe1.x * by.y + fe2.x * by.z + fe3.x * by.w
+    );
+}
+
+inline float4 fe3d_pbc_comb2(const float3 u, const int3 n, __global const float2* Es, const float2 PL, __local const int4* xqis, __local int4* yqis) {
+    int ix = (int)u.x;
+    int iy = (int)u.y;
+    int iz = (int)u.z;
+    if (u.x < 0) ix--;
+    if (u.y < 0) iy--;
+    const float tx = u.x - ix;
+    const float ty = u.y - iy;
+    const float tz = u.z - iz;
+
+    if ((iz < 1) || (iz >= n.z - 2)) {
+        return (float4)(0.0f, 0.0f, 0.0f, 0.0f);
+    }
+
+    ix = modulo(ix-1, n.x);
+    iy = modulo(iy-1, n.y);
+
+    const int nyz = n.z * n.y;
+    // int4 qx = xqis[ix%4] * nyz;
+    // int4 qy = yqis[iy%4] * n.z;
+
+    int4 qx = choose_inds_pbc( ix, n.x, xqis );
+    //const int4 qx = choose_inds_pbc( ix, n.x, xqis )*nyz;
+    const int4 qy = choose_inds_pbc( iy, n.y, yqis )*n.z;
+
+    const float4 bz = basis(tz);
+    const float4 dz = dbasis(tz);
+    const float4 by = basis(ty);
+    const float4 dy = dbasis(ty);
+    
+    const int i0 = (iz - 1) + n.z * (iy + n.y * ix);
+
+    //printf( "GPU fe3d_pbc_comb() u(%8.4f,%8.4f,%8.4f) ixyz(%i,%i,%i) n(%i,%i,%i) \n", u.x,u.y,u.z, ix,iy,iz, n.x,n.y,n.z );
+    //printf( "GPU fe3d_pbc_comb() u(%8.4f,%8.4f,%8.4f) ixyz(%i,%i,%i) qx(%i,%i,%i,%i) nyz=%i\n", u.x,u.y,u.z, ix,iy,iz, qx.x,qx.y,qx.z,qx.w, nyz );
+    qx*=nyz;
+    
+    //return (float4){ 0.0f, 0.0f, 0.0f, dot(PLQH, Es[ i0 ])  };
+
+    float3 E1 = fe2d_comb2(n.z, Es + (i0 + qx.x), qy, PL, bz, dz, by, dy);
+    float3 E2 = fe2d_comb2(n.z, Es + (i0 + qx.y), qy, PL, bz, dz, by, dy);
+    float3 E3 = fe2d_comb2(n.z, Es + (i0 + qx.z), qy, PL, bz, dz, by, dy);
+    float3 E4 = fe2d_comb2(n.z, Es + (i0 + qx.w), qy, PL, bz, dz, by, dy);
+    
+    const float4 bx = basis(tx);
+    const float4 dx = dbasis(tx);
+    
+    return (float4)(
+        dot(dx, (float4)(E1.z, E2.z, E3.z, E4.z)),
+        dot(bx, (float4)(E1.x, E2.x, E3.x, E4.x)),
+        dot(bx, (float4)(E1.y, E2.y, E3.y, E4.y)),
+        dot(bx, (float4)(E1.z, E2.z, E3.z, E4.z))
+    );
+}
+
+__kernel void sample3D_comb2(
+    const float4 g0,
+    const float4 dg,
+    const int4 ng,
+    __global const float2* Eg,
+    const int n,
+    __global const float4* ps,
+    __global float4* fes,
+    const float2 C
+) {
+    const int iG = get_global_id(0);
+    const int iL = get_local_id(0);
+    if (iG >= n) return;
+
+    __local int4 xqs[4];
+    __local int4 yqs[4];
+    if      (iL<4){             xqs[iL]=make_inds_pbc(ng.x,iL); }
+    else if (iL<8){ int i=iL-4; yqs[i ]=make_inds_pbc(ng.y,i ); };
+    const float3 inv_dg = 1.0f / dg.xyz;
+    barrier(CLK_LOCAL_MEM_FENCE);
+
+    float3 p = ps[iG].xyz;
+    float3 u = (p - g0.xyz) * inv_dg;
+    float4 fe = fe3d_pbc_comb2(u, ng.xyz, Eg, C, xqs, yqs);
+    fe.xyz *= -inv_dg;
+    fes[iG] = fe;
+}
+
+
+// =================== 3D Interpolation - float4 ========================== 
+
+
 inline float2 fe1Dcomb(__global const float4* E, const float4 C, const float4 p, const float4 d) {
     const float4 cs = (float4)(dot(C, E[0]), dot(C, E[1]), dot(C, E[2]), dot(C, E[3]));
     return (float2)(dot(p, cs), dot(d, cs));
@@ -211,6 +448,9 @@ __kernel void sample3D_comb(
     fes[iG] = fe;
     
 }
+
+
+// =================== 3D Interpolation - float4 ========================== 
 
 
 inline float2 fe1d_pbc_macro(float x, int n, __global const float* Es, __local const int4* xqis ){
@@ -430,8 +670,8 @@ __kernel void make_MorseFF(
     const int nAtoms,                // 1
     __global const float4*  atoms,         // 2
     __global const float4*  REQs,          // 3
-    __global float* FE_Paul,         // 4
-    __global float* FE_Lond,         // 5
+    __global float* E_Paul,         // 4
+    __global float* E_Lond,         // 5
     //__global * FE_Coul,
     const int4     nPBC,             // 6
     const int4     nGrid,            // 7
@@ -490,8 +730,8 @@ __kernel void make_MorseFF(
                                        +  lvec_a.xyz*-nPBC.x + lvec_b.xyz*-nPBC.y + lvec_c.xyz*-nPBC.z;  // most negative PBC-cell
 
     //const float3  shift0 = lvec.a.xyz*-nPBC.x + lvec .b.xyz*-nPBC.y + lvec.c.xyz*-nPBC.z;
-    float fe_Paul = 0.0f;
-    float fe_Lond = 0.0f;
+    float Paul = 0.0f;
+    float Lond = 0.0f;
     //float4 fe_Coul = float4Zero;
     for (int j0=0; j0<nAtoms; j0+= nL ){
         const int i = j0 + iL;
@@ -522,8 +762,8 @@ __kernel void make_MorseFF(
                             // ---- Morse ( Pauli + Dispersion )
                             float    e = exp( -alphaMorse*(r-REQK.x) );
                             float   eM = REQK.y*e;
-                            fe_Paul += eM * e;
-                            fe_Lond += eM * -2.0f;
+                            Paul += eM * e;
+                            Lond += eM * -2.0f;
 
                             // if((iG==0)&&(j==0)){
                             //     //float3 sh = dp - pos + LCLJS[j].xyz + lvec.a.xyz*-nPBC.x + lvec .b.xyz*-nPBC.y + lvec.c.xyz*-nPBC.z;
@@ -550,8 +790,8 @@ __kernel void make_MorseFF(
         }
         barrier(CLK_LOCAL_MEM_FENCE);
     }
-    FE_Paul[iG] = fe_Paul;
-    FE_Lond[iG] = fe_Lond;
+    E_Paul[iG] = Paul;
+    E_Lond[iG] = Lond;
     //FE_Coul[iG] = fe_Coul;
     //int4 coord = (int4){ia,ib,ic,0};
     //write_imagef( FE_Paul, coord, (float4){pos,(float)iG} );
