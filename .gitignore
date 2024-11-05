@@ -26,3 +26,4 @@ cpp/Build
 cpp/Build-*
 cpp/build
 cpp/build-*
+.aider*

@@ -266,6 +266,25 @@ def test_gridFF_ocl( fname="./data/xyz/NaCl_1x1_L1.xyz", Element_Types_name="./d
             coulomb_brute_1D( xyzq, kind='xy', p0=[0.0,0.0,2.0], bPlot=True )
         plt.show()
     
+    elif job=="PLQ_lin":
+
+        path = os.path.basename( fname )
+        path = "./data/" + os.path.splitext( path )[0]
+        print( "test_gridFF_ocl() path = ", path )
+
+        g0 = ( -grid.Ls[0]*0.5, -grid.Ls[1]*0.5, z0 )
+        nPBC_mors = autoPBC(atoms.lvec,Rcut=20.0); print("autoPBC(nPBC_mors): ", nPBC_mors )
+        FE_Paul, FE_Lond = clgff.make_MorseFF_f4( xyzq, REQs, nPBC=nPBC_mors, lvec=atoms.lvec, g0=g0, GFFParams=(0.1,1.5,0.0,0.0), bReturn=True )
+
+        np.save( path+"FE_Paul.npy", FE_Paul )
+        np.save( path+"FE_Lond.npy", FE_Lond )
+        
+        clgff.makeCoulombEwald_slab( xyzq, niter=2 )
+
+        FE_Coul = clgff.sample3D_grid( clgff.V_Coul_buff, clgff.grid3D_shape )
+
+        np.save( path+"FE_Coul.npy", FE_Coul )
+    
     elif job=="PLQ":
         
         # --- Morse

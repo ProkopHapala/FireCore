@@ -71,6 +71,7 @@ class GridFF_cl:
 
     def sample3D_comb(self, ps, C):
         """
+        wrapper for 
         __kernel void sample3D_comb(
             const float4 g0,
             const float4 dg,
@@ -99,6 +100,64 @@ class GridFF_cl:
         self.prg.sample3D_comb(self.queue, (nG,), (self.nloc,),  g0, dg, ng, self.E3D_buf.data, np.int32(n),  ps_buf.data, fes_buf.data, C )
         fe = fes_buf.get()
         return fe
+    
+
+    def sample3D(self, ps, buff):
+        '''
+         wrapper for 
+        __kernel void sample3D(
+            const float4 g0,
+            const float4 dg,
+            const int4 ng,
+            __global const float* Eg,
+            const int n,
+            __global const float4* ps,
+            __global float4* fes
+        '''
+        n = len(ps)
+
+        #self.prepare_sample3D( g0, dg, ng, Eg )
+
+        ps_buf  = cl_array.to_device(self.queue, ps.astype(np.float32) )
+        fes_buf = cl_array.empty(    self.queue, (n, 4), dtype=np.float32)
+
+        nG = clu.roundup_global_size( n, self.nloc )
+        (g0, dg, ng) = self.grid3D_shape
+
+        # print("g0", g0)
+        # print("dg", dg)
+        # print("ng", ng)
+        self.prg.sample3D(self.queue, (nG,), (self.nloc,),  g0, dg, ng, buff, np.int32(n),  ps_buf.data, fes_buf.data )
+        fe = fes_buf.get()
+        return fe
+
+    def sample3D_grid(self, ps, V_buff, samp_grid ):
+        '''
+         wrapper for 
+        __kernel void sample3D_grid(
+            const float4 g0,
+            const float4 dg,
+            const int4   ng,
+            __global const float* Eg,
+            const float4 samp_g0,
+            const float4 samp_dg,
+            const int4   samp_ng,
+            __global float4* fes
+        '''
+        n = len(ps)
+
+        #self.prepare_sample3D( g0, dg, ng, Eg )
+
+        fes_buf = cl_array.empty(    self.queue, (n, 4), dtype=np.float32)
+
+        nG = clu.roundup_global_size( n, self.nloc )
+        (g0, dg, ng) = self.grid3D_shape
+        (samp_g0, samp_dg, samp_ng) = samp_grid
+
+        self.prg.sample3D_grid(self.queue, (nG,), (self.nloc,),  g0, dg, ng, V_buff, samp_g0, samp_dg, samp_ng,  fes_buf.data )
+        fe = fes_buf.get()
+        return fe
+
 
     def sample1D_pbc(self, g0, dg, ng, Gs, ps):
         """
@@ -302,7 +361,6 @@ class GridFF_cl:
             buff = cl.Buffer(self.ctx, cl.mem_flags.READ_WRITE, sz )
             setattr(self, buff_name, buff )
 
-
     def try_make_buffs(self, names, na, nps, bytePerFloat=4):
         print("try_make_buffs na=", na," nxyz=",  np, " nxyz*bytePerFloat=", nps*bytePerFloat ) 
         self.try_buff("atoms",  names, na*4*bytePerFloat)
@@ -330,7 +388,6 @@ class GridFF_cl:
         # New buffers for laplace_real_pbc and slabPotential
         # self.try_buff("Vin", names, nxyz*bytePerFloat)
         # self.try_buff("Vout", names, nxyz*bytePerFloat)
-
 
     def prepare_Morse_buffers(self, na, nxyz, bytePerFloat=4 ):
         #print( "GridFF_cl::prepare_Morse_buffers() " )
@@ -393,6 +450,52 @@ class GridFF_cl:
             # print( "V_Paul.min,max ", V_Paul.min(), V_Paul.max() )
             return V_Paul, V_Lond
     
+    def make_MorseFF_f4(self, atoms, REQs, nPBC=(4, 4, 0), dg=(0.1, 0.1, 0.1), ng=None,            lvec=[[20.0, 0.0, 0.0], [0.0, 20.0, 0.0], [0.0, 0.0, 20.0]],                     g0=(0.0, 0.0, 0.0), GFFParams=(0.1, 1.5, 0.0, 0.0), bTime=True, bReturn=True ):
+
+        T00 = time.perf_counter()
+
+        grid = GridShape( ns=ng, dg=dg, lvec=lvec, g0=g0 )
+        self.set_grid( grid )
+
+        na   = len(atoms)
+        nxyz = self.gcl.nxyz
+
+        buff_names={'atoms','REQs','FE_Paul','FE_Lond'}
+        self.try_make_buffs(buff_names, na, nxyz)
+
+        atoms_np = np.asarray(atoms, dtype=np.float32)
+        reqs_np  = np.asarray(REQs, dtype=np.float32)
+        cl.enqueue_copy(self.queue, self.atoms_buff, atoms_np)
+        cl.enqueue_copy(self.queue, self.REQs_buff, reqs_np)
+
+        na_cl        = np.int32(na)
+        nPBC_cl      = np.array(nPBC+(0,), dtype=np.int32   )
+        GFFParams_cl = np.array(GFFParams, dtype=np.float32 )
+
+        nL = self.nloc
+        nG = clu.roundup_global_size(nxyz, nL)
+
+        T0 = time.perf_counter()
+        self.prg.make_MorseFF_f4(self.queue, (nG,), (nL,),
+                            na_cl, self.atoms_buff, self.REQs_buff, self.FE_Paul_buff, self.FE_Lond_buff,
+                            nPBC_cl, self.gcl.ns, self.gcl.a,self.gcl.b,self.gcl.c, self.gcl.g0, GFFParams_cl)
+    
+        if bTime:
+            self.queue.finish()
+            dT=time.perf_counter()-T0
+            npbc = (nPBC[0]*2+1)*(nPBC[1]*2+1)*(nPBC[2]*2+1)
+            nops = na_cl * nxyz * npbc
+            print( "GridFF_cl::make_MorseFF() time[s] ", dT,   "  preparation[s]  ", T0-T00, "[s] nGOPs: ", nops*1e-9," speed[GOPs/s]: ", (nops*1e-9)/dT , " na,nxyz,npbc ", na_cl, nxyz, npbc  )
+
+        if bReturn:
+            sh = self.gsh.ns[::-1]
+            FE_Paul = np.zeros( sh+(4,), dtype=np.float32)
+            FE_Lond = np.zeros( sh+(4,), dtype=np.float32)
+            cl.enqueue_copy(self.queue, FE_Paul, self.FE_Paul_buff)
+            cl.enqueue_copy(self.queue, FE_Lond, self.FE_Lond_buff)
+            # print( "V_Lond.min,max ", V_Lond.min(), V_Lond.max() )
+            # print( "V_Paul.min,max ", V_Paul.min(), V_Paul.max() )
+            return FE_Paul, FE_Lond
 
     def make_Coulomb_points(self, atoms, ps, nPBC=(25, 25, 0), lvec=None, Ls=None, GFFParams=(0.1, 1.5, 0.0, 0.0), bTime=True, bReturn=True):
         if Ls   is None: Ls   = self.gsh.Ls 
@@ -692,8 +795,6 @@ class GridFF_cl:
         self.poisson( bReturn=False, sh=sh )
         Vin_buff = self.laplace_real_loop_inert( bReturn=False, niter=niter, sh=sh )
 
-        Vcoul = self.slabPotential( Vin_buff, nz_slab, dipol=dipol, bDownload=True)
-
-        return Vcoul
+        return self.slabPotential( Vin_buff, nz_slab, dipol=dipol, bDownload=bReturn )
 
 
