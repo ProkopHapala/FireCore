@@ -247,7 +247,7 @@ def plotMolecule( mol ):
     choice=( '#808080', '#8080f0' )
     colors = [ choice[bo==-1] for bo in BO ]
 
-    BO = np.array(BO,dtype=np.float); BO[BO<1.0]=1.5      #print( BO )
+    BO = np.array(BO,dtype=float); BO[BO<1.0]=1.5      #print( BO )
     lws = (BO-0.8)*8
     
     pu.plotBonds( links=ibonds, ps=apos, lws=lws, axes=(0,1), colors=colors )

@@ -17,6 +17,12 @@ COULOMB_CONST  =    14.3996448915
 
 bytePerFloat = 4
 
+def prepare_grid3d(g0, dg, ng):
+    g0 = np.array(g0+(0,), dtype=np.float32)
+    dg = np.array(dg+(0,), dtype=np.float32)
+    ng = np.array(ng+(0,), dtype=np.int32)
+    return (g0, dg, ng)
+
 class GridFF_cl:
 
     def __init__(self, nloc=32 ):
@@ -58,16 +64,60 @@ class GridFF_cl:
         # self.V_Paul_buff   = None
         # self.V_Lond_buff   = None
 
+    def try_make_buff( self, buff_name, sz):
+        if hasattr(self,buff_name): 
+            buff = getattr(self, buff_name)
+            if not ( buff is None or buff.size != sz ):
+                return
+        print( "try_make_buff(",buff_name,") reallocate to [bytes]: ", sz )
+        buff = cl.Buffer(self.ctx, cl.mem_flags.READ_WRITE, sz )
+        setattr(self, buff_name, buff )
+
+    def try_buff(self, name, names, sz ):
+        if name in names: self.try_make_buff( name+"_buff" , sz)
+
+    def try_make_buffs(self, names, na, nps, bytePerFloat=4):
+        print("try_make_buffs na=", na," nxyz=",  np, " nxyz*bytePerFloat=", nps*bytePerFloat ) 
+        self.try_buff("atoms",  names, na*4*bytePerFloat)
+        self.try_buff("REQs",   names, na*4*bytePerFloat)
+        self.try_buff("V_Paul", names, nps*bytePerFloat)
+        self.try_buff("V_Lond", names, nps*bytePerFloat)
+        self.try_buff("V_Coul", names, nps*bytePerFloat)
+        self.try_buff("Qgrid",  names, nps*2*bytePerFloat)
+        self.try_buff("Vgrid",  names, nps*2*bytePerFloat)
+
+        # fitting buffers      
+        self.try_buff("Gs",  names, nps*bytePerFloat )
+        self.try_buff("fGs", names, nps*bytePerFloat )
+        self.try_buff("dGs", names, nps*bytePerFloat )
+        self.try_buff("vGs", names, nps*bytePerFloat )
+
+        # New buffers for laplace_real_loop_inert
+        self.try_buff("V1", names, nps*bytePerFloat)
+        self.try_buff("V2", names, nps*bytePerFloat)
+        self.try_buff("vV", names, nps*bytePerFloat)
+        
+        self.try_buff("FEps", names, nps*4*bytePerFloat)
+        self.try_buff("ps",   names, nps*4*bytePerFloat)
+
+        self.try_buff("FE_Paul", names, nps*4*bytePerFloat)
+        self.try_buff("FE_Lond", names, nps*4*bytePerFloat)
+        self.try_buff("FE_Coul", names, nps*4*bytePerFloat)
+
+        # New buffers for laplace_real_pbc and slabPotential
+        # self.try_buff("Vin", names, nxyz*bytePerFloat)
+        # self.try_buff("Vout", names, nxyz*bytePerFloat)
+
     def set_grid(self, gsh : GridShape ):
         self.gsh = gsh
         self.gcl = GridCL(gsh)
 
-    def prepare_sample3D(self, g0, dg, ng, Eg ):
-        g0 = np.array(g0+(0,), dtype=np.float32)
-        dg = np.array(dg+(0,), dtype=np.float32)
-        ng = np.array(ng+(0,), dtype=np.int32)
-        self.grid3D_shape = (g0, dg, ng)
-        self.E3D_buf      = cl_array.to_device(self.queue, Eg.astype(np.float32) )
+    # def prepare_sample3D(self, g0, dg, ng, Eg ):
+    #     g0 = np.array(g0+(0,), dtype=np.float32)
+    #     dg = np.array(dg+(0,), dtype=np.float32)
+    #     ng = np.array(ng+(0,), dtype=np.int32)
+    #     #self.grid3D_shape = (g0, dg, ng)
+    #     #self.E3D_buf      = cl_array.to_device(self.queue, Eg.astype(np.float32) )
 
     def sample3D_comb(self, ps, C):
         """
@@ -87,12 +137,16 @@ class GridFF_cl:
 
         #self.prepare_sample3D( g0, dg, ng, Eg )
 
+        #self.try_make_buff( FE_buff, n*   )
+
         C       = np.array(C , dtype=np.float32)
         ps_buf  = cl_array.to_device(self.queue, ps.astype(np.float32) )
         fes_buf = cl_array.empty(    self.queue, (n, 4), dtype=np.float32)
 
         nG = clu.roundup_global_size( n, self.nloc )
         (g0, dg, ng) = self.grid3D_shape
+
+        
 
         # print("g0", g0)
         # print("dg", dg)
@@ -122,16 +176,17 @@ class GridFF_cl:
         fes_buf = cl_array.empty(    self.queue, (n, 4), dtype=np.float32)
 
         nG = clu.roundup_global_size( n, self.nloc )
-        (g0, dg, ng) = self.grid3D_shape
+        #(g0, dg, ng) = self.grid3D_shape
+        
 
         # print("g0", g0)
         # print("dg", dg)
         # print("ng", ng)
-        self.prg.sample3D(self.queue, (nG,), (self.nloc,),  g0, dg, ng, buff, np.int32(n),  ps_buf.data, fes_buf.data )
+        self.prg.sample3D(self.queue, (nG,), (self.nloc,),  self.gcl.g0, self.gcl.dg, self.gcl.ns, buff, np.int32(n),  ps_buf.data, fes_buf.data )
         fe = fes_buf.get()
         return fe
 
-    def sample3D_grid(self, ps, V_buff, samp_grid ):
+    def sample3D_grid(self, V_buff, samp_grid, bReturn=True ):
         '''
          wrapper for 
         __kernel void sample3D_grid(
@@ -144,19 +199,27 @@ class GridFF_cl:
             const int4   samp_ng,
             __global float4* fes
         '''
-        n = len(ps)
 
         #self.prepare_sample3D( g0, dg, ng, Eg )
-
-        fes_buf = cl_array.empty(    self.queue, (n, 4), dtype=np.float32)
-
-        nG = clu.roundup_global_size( n, self.nloc )
-        (g0, dg, ng) = self.grid3D_shape
         (samp_g0, samp_dg, samp_ng) = samp_grid
+        #ntot = samp_ng[0]*samp_ng[1]*samp_ng[2]
+        ntot = samp_ng[3]
 
-        self.prg.sample3D_grid(self.queue, (nG,), (self.nloc,),  g0, dg, ng, V_buff, samp_g0, samp_dg, samp_ng,  fes_buf.data )
-        fe = fes_buf.get()
-        return fe
+        self.try_make_buff( "FE_buff", ntot*4*bytePerFloat )
+        #fes_buf = cl_array.empty( self.queue, (ntot, 4), dtype=np.float32)
+
+        nG = clu.roundup_global_size( ntot, self.nloc )
+        #(g0, dg, ng) = self.grid3D_shape
+        
+        self.prg.sample3D_grid(self.queue, (nG,), (self.nloc,),  self.gcl.g0, self.gcl.dg, self.gcl.ns, V_buff, samp_g0, samp_dg, samp_ng, self.FE_buff )
+        #fe = fes_buf.get()
+        if bReturn:
+            sh = samp_ng[:3][::-1]
+            FE = np.zeros( (*sh,4), dtype=np.float32)
+            cl.enqueue_copy(self.queue, FE, self.FE_buff )
+
+            print( "GridFF_cl::sample3D_grid() FE min max ",  FE.min(), FE.max() )
+            return FE
 
 
     def sample1D_pbc(self, g0, dg, ng, Gs, ps):
@@ -192,37 +255,29 @@ class GridFF_cl:
 
     # ============ Fitting
 
-    def allocate_cl_buffers(self, ns=None, E0=None, nByte=4):
-
-        print(f"GridFF_cl::allocate_cl_buffers().1 Queue: {self.queue}, Context: {self.ctx}")
-
-        if ns is None:
-            ns = E0.shape
-        ntot = np.int32(ns[0] * ns[1] * ns[2])
-
-        self.G0_buf  = cl.Buffer(self.ctx, cl.mem_flags.READ_ONLY,  size=ntot *nByte)   # Reference
-        self.Gs_buf  = cl.Buffer(self.ctx, cl.mem_flags.READ_WRITE, size=ntot *nByte)
-        self.fGs_buf = cl.Buffer(self.ctx, cl.mem_flags.READ_WRITE, size=ntot *nByte)   # variational derivative
-        self.dGs_buf = cl.Buffer(self.ctx, cl.mem_flags.READ_WRITE, size=ntot *nByte)   # fitting error
-        self.vGs_buf = cl.Buffer(self.ctx, cl.mem_flags.READ_WRITE, size=ntot *nByte)   # velocity of Gs update
-
-        #self.E3D_tex = cl.Image(self.ctx, cl.mem_flags.READ_ONLY, cl.ImageFormat(cl.channel_order.R, cl.channel_type.FLOAT),  shape=ns  )
-        
-        if E0 is not None:
-            cl.enqueue_copy(self.queue, self.G0_buf,  E0.astype(np.float32))
-            cl.enqueue_copy(self.queue, self.Gs_buf,  E0.astype(np.float32))
-            #cl.enqueue_copy(self.queue, self.E3D_tex, E0.astype(np.float32))
-        
-        self.ns = np.array(ns, dtype=np.int32)
-
-        print(f"GridFF_cl::allocate_cl_buffers().2 Queue: {self.queue}, Context: {self.ctx}")
+    # def allocate_cl_buffers(self, ns=None, E0=None, nByte=4):
+    #     print(f"GridFF_cl::allocate_cl_buffers().1 Queue: {self.queue}, Context: {self.ctx}")
+    #     if ns is None:
+    #         ns = E0.shape
+    #     ntot = np.int32(ns[0] * ns[1] * ns[2])
+    #     self.G0_buf  = cl.Buffer(self.ctx, cl.mem_flags.READ_ONLY,  size=ntot *nByte)   # Reference
+    #     self.Gs_buf  = cl.Buffer(self.ctx, cl.mem_flags.READ_WRITE, size=ntot *nByte)
+    #     self.fGs_buf = cl.Buffer(self.ctx, cl.mem_flags.READ_WRITE, size=ntot *nByte)   # variational derivative
+    #     self.dGs_buf = cl.Buffer(self.ctx, cl.mem_flags.READ_WRITE, size=ntot *nByte)   # fitting error
+    #     self.vGs_buf = cl.Buffer(self.ctx, cl.mem_flags.READ_WRITE, size=ntot *nByte)   # velocity of Gs update
+    #     #self.E3D_tex = cl.Image(self.ctx, cl.mem_flags.READ_ONLY, cl.ImageFormat(cl.channel_order.R, cl.channel_type.FLOAT),  shape=ns  )
+    #     if E0 is not None:
+    #         cl.enqueue_copy(self.queue, self.G0_buf,  E0.astype(np.float32))
+    #         cl.enqueue_copy(self.queue, self.Gs_buf,  E0.astype(np.float32))
+    #         #cl.enqueue_copy(self.queue, self.E3D_tex, E0.astype(np.float32))
+    #     self.ns = np.array(ns, dtype=np.int32)
+    #     print(f"GridFF_cl::allocate_cl_buffers().2 Queue: {self.queue}, Context: {self.ctx}")
 
     def prepare_fit_buffers(self, g0, dg, ng, Eg):
         img_format = cl.ImageFormat(cl.channel_order.R, cl.channel_type.FLOAT)
         #self.E3D_buf = cl_array.to_device(self.queue, Eg.astype(np.float32))
         self.E3D_buf = cl.Buffer(self.ctx, cl.mem_flags.READ_WRITE | cl.mem_flags.COPY_HOST_PTR  )
         self.E3D_tex = cl.Image(self.ctx, cl.mem_flags.READ_ONLY   | cl.mem_flags.COPY_HOST_PTR,  img_format ,  shape=ng, hostbuf=Eg.astype(np.float32))
-
 
     def BsplineConv3D(self, Gs, G0):
         ns = np.array(Gs.shape, dtype=np.int32)
@@ -348,46 +403,6 @@ class GridFF_cl:
             if bDebug:
                 print( "GridFF_cl::fit3D() DONE Gs_buff.min,max: ", out.min(), out.max() )
             return out, ConvTrj
-
-
-    def try_buff(self, name, names, sz ):
-        if name in names:
-            buff_name = name+"_buff"
-            if hasattr(self,buff_name): 
-                buff = getattr(self, buff_name)
-                if not ( buff is None or buff.size != sz ):
-                    return
-            print( "try_buff(",buff_name,") reallocate to [bytes]: ", sz )
-            buff = cl.Buffer(self.ctx, cl.mem_flags.READ_WRITE, sz )
-            setattr(self, buff_name, buff )
-
-    def try_make_buffs(self, names, na, nps, bytePerFloat=4):
-        print("try_make_buffs na=", na," nxyz=",  np, " nxyz*bytePerFloat=", nps*bytePerFloat ) 
-        self.try_buff("atoms",  names, na*4*bytePerFloat)
-        self.try_buff("REQs",   names, na*4*bytePerFloat)
-        self.try_buff("V_Paul", names, nps*bytePerFloat)
-        self.try_buff("V_Lond", names, nps*bytePerFloat)
-        self.try_buff("Qgrid",  names, nps*2*bytePerFloat)
-        self.try_buff("Vgrid",  names, nps*2*bytePerFloat)
-        self.try_buff("V_Coul", names, nps*bytePerFloat)
-
-        # fitting buffers      
-        self.try_buff("Gs",  names, nps*bytePerFloat )
-        self.try_buff("fGs", names, nps*bytePerFloat )
-        self.try_buff("dGs", names, nps*bytePerFloat )
-        self.try_buff("vGs", names, nps*bytePerFloat )
-
-        # New buffers for laplace_real_loop_inert
-        self.try_buff("V1", names, nps*bytePerFloat)
-        self.try_buff("V2", names, nps*bytePerFloat)
-        self.try_buff("vV", names, nps*bytePerFloat)
-        
-        self.try_buff("FEps", names, nps*4*bytePerFloat)
-        self.try_buff("ps",   names, nps*4*bytePerFloat)
-
-        # New buffers for laplace_real_pbc and slabPotential
-        # self.try_buff("Vin", names, nxyz*bytePerFloat)
-        # self.try_buff("Vout", names, nxyz*bytePerFloat)
 
     def prepare_Morse_buffers(self, na, nxyz, bytePerFloat=4 ):
         #print( "GridFF_cl::prepare_Morse_buffers() " )
@@ -651,7 +666,7 @@ class GridFF_cl:
             cl.enqueue_copy(self.queue, Vout, self.Vout_buff)
             return Vout
         
-    def slabPotential(self,  Vin_buff, nz_slab, dipol=0.0,  bDownload=True):
+    def slabPotential(self,  Vin_buff, nz_slab, dipol=0.0,  bDownload=True, bTranspose=False):
         dz  = self.gsh.dg[2]
         Lz  = self.gsh.Ls[2] 
         dL_slab = nz_slab * dz
@@ -666,9 +681,15 @@ class GridFF_cl:
         params = np.array( [dz, Vol, dVcor, Vcor0], dtype=np.float32 )
         sz_loc  = (4,4,4,)
         sz_glob = clu.roundup_global_size_3d( self.gsh.ns, sz_loc)
-        self.prg.slabPotential( self.queue, sz_glob, sz_loc, ns_cl, Vin_buff, self.V_Coul_buff, params )
+        if bTranspose:
+            self.prg.slabPotential_zyx( self.queue, sz_glob, sz_loc, ns_cl, Vin_buff, self.V_Coul_buff, params )
+        else:
+            self.prg.slabPotential( self.queue, sz_glob, sz_loc, ns_cl, Vin_buff, self.V_Coul_buff, params )
         if bDownload:
-            V_Coul = np.empty( self.gsh.ns[::-1], dtype=np.float32  )
+            if bTranspose:
+                V_Coul = np.empty( self.gsh.ns, dtype=np.float32  )
+            else:
+                V_Coul = np.empty( self.gsh.ns[::-1], dtype=np.float32  )
             cl.enqueue_copy(self.queue, V_Coul, self.V_Coul_buff)
             return V_Coul
 
@@ -752,7 +773,7 @@ class GridFF_cl:
         return Vgrid
 
 
-    def makeCoulombEwald_slab(self, atoms, Lz_slab=20.0, dipol=0.0, niter=4, bDipoleCoorection=False, bReturn=True ):
+    def makeCoulombEwald_slab(self, atoms, Lz_slab=20.0, dipol=0.0, niter=4, bDipoleCoorection=False, bReturn=True, bTranspose=False):
         print( "GridFF_cl::makeCoulombEwald_slab() " )
         clu.try_load_clFFT()
         if self.gcl is None: 
@@ -795,6 +816,6 @@ class GridFF_cl:
         self.poisson( bReturn=False, sh=sh )
         Vin_buff = self.laplace_real_loop_inert( bReturn=False, niter=niter, sh=sh )
 
-        return self.slabPotential( Vin_buff, nz_slab, dipol=dipol, bDownload=bReturn )
+        return self.slabPotential( Vin_buff, nz_slab, dipol=dipol, bDownload=bReturn, bTranspose=bTranspose )
 
 
