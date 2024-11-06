@@ -209,12 +209,42 @@ __kernel void sample3D_grid(
     const float3 inv_dg = 1.0f / dg.xyz;
     barrier(CLK_LOCAL_MEM_FENCE);
 
-    const float3 g = (float3)(iG % samp_ng.x, (iG / samp_ng.x) % samp_ng.y, iG / (samp_ng.x * samp_ng.y));
+    // if(iG==0){ 
+    //     printf( "GPU sample3D_grid() g0(%8.4f,%8.4f,%8.4f) dg(%8.4f,%8.4f,%8.4f) ng(%i,%i,%i) \n", g0.x,g0.y,g0.z, dg.x,dg.y,dg.z, ng.x,ng.y,ng.z );
+    //     printf( "GPU sample3D_grid() samp_g0(%8.4f,%8.4f,%8.4f) samp_dg(%8.4f,%8.4f,%8.4f) samp_ng(%i,%i,%i) \n", samp_g0.x,samp_g0.y,samp_g0.z, samp_dg.x,samp_dg.y,samp_dg.z, samp_ng.x,samp_ng.y,samp_ng.z ); 
+        
+    // }
+
+    // if( iG==0 ){
+    //     printf( "GPU sample3D_grid() samp_g0(%8.4f,%8.4f,%8.4f) samp_dg(%8.4f,%8.4f,%8.4f) samp_ng(%i,%i,%i|%i) \n", samp_g0.x,samp_g0.y,samp_g0.z, samp_dg.x,samp_dg.y,samp_dg.z, samp_ng.x,samp_ng.y,samp_ng.z,samp_ng.w );
+    //     printf("GPU sample3D_comb() ng(%i,%i,%i) g0(%g,%g,%g) dg(%g,%g,%g) \n", ng.x,ng.y,ng.z,   g0.x,g0.y,g0.z,   dg.x,dg.y,dg.z );
+    //     //printf("GPU xqs[0](%i,%i,%i,%i) xqs[1](%i,%i,%i,%i) xqs[2](%i,%i,%i,%i) xqs[3](%i,%i,%i,%i)\n", xqs[0].x, xqs[0].y, xqs[0].z, xqs[0].w,   xqs[1].x, xqs[1].y, xqs[1].z, xqs[1].w,   xqs[2].x, xqs[2].y, xqs[2].z, xqs[2].w,  xqs[3].x, xqs[3].y, xqs[3].z, xqs[3].w   );
+    //     //for(int i=0; i<ng; i++){  printf("Gs[%i]=%f\n", i, Gs[i]); }
+    //     for(int i=0; i<10; i++){
+    //         //float3 p = ps[i].xyz;
+    //         int ii = i +   samp_ng.x*10 +    10*samp_ng.x*samp_ng.y;
+    //         const float3 g = (float3)( ii % samp_ng.x, (ii / samp_ng.x) % samp_ng.y, ii / (samp_ng.x * samp_ng.y));
+    //         const float3 p = samp_g0.xyz + samp_dg.xyz * g;
+    //         float3 u = (p - g0.xyz) * inv_dg;
+    //         float4 fe = fe3d_pbc(u, ng.xyz, Eg, xqs, yqs);
+    //         fe.xyz *= -inv_dg;
+    //         printf( "GPU sample3D_comb()[%i|%i] g(%8.4f,%8.4f,%8.4f) p(%8.4f,%8.4f,%8.4f) u(%8.4f,%8.4f,%8.4f)   fe(%g,%g,%g | %g) \n",  i, ii,   g.x,g.y,g.z,   p.x,p.y,p.z,  u.x,u.y,u.z,   fe.x, fe.y, fe.z, fe.w );
+    //         fes[i] = fe;
+    //     }
+    // }
+
+    const int ix = iG % samp_ng.x;
+    const int iy = (iG / samp_ng.x) % samp_ng.y;
+    const int iz = iG / (samp_ng.x * samp_ng.y);
+
+    const float3 g = (float3)(ix, iy, iz );
     const float3 p = samp_g0.xyz + samp_dg.xyz * g;
     const float3 u = (p - g0.xyz) * inv_dg;
     float4 fe = fe3d_pbc(u, ng.xyz, Eg, xqs, yqs);
     fe.xyz *= -inv_dg;
     fes[iG] = fe;
+
+    //if( (ix==10) && (iy==10) ){     printf( "GPU sample3D_comb()[%i|%i,%i,%i] p(%8.4f,%8.4f,%8.4f) u(%8.4f,%8.4f,%8.4f)   fe(%g,%g,%g | %g) \n",  iG, ix,iy,iz,   p.x,p.y,p.z,  u.x,u.y,u.z,   fe.x, fe.y, fe.z, fe.w ); }
 }
 
 // =================== 3D Interpolation - float2 ========================== 
@@ -800,9 +830,6 @@ __kernel void make_MorseFF(
     //write_imagef( FE_Coul, coord, fe_Coul );
 }
 
-
-
-
 __attribute__((reqd_work_group_size(32,1,1)))
 __kernel void make_MorseFF_f4(
     const int nAtoms,                // 1
@@ -813,11 +840,13 @@ __kernel void make_MorseFF_f4(
     // __global float4* FE_Coul,
     const int4     nPBC,             // 6
     const int4     nGrid,            // 7
-    const cl_Mat3  lvec,             // 8
+    const float4  lvec_a,            // 8
+    const float4  lvec_b,            // 9
+    const float4  lvec_c,            // 10
     const float4   grid_p0,          // 9
     const float4   GFFParams         // 10
 ){
-    __local float4 LATOMS[32];
+ __local float4 LATOMS[32];
     __local float4 LCLJS [32];
     const int iG = get_global_id (0);
     const int nG = get_global_size(0);
@@ -830,17 +859,17 @@ __kernel void make_MorseFF_f4(
 
     const float  alphaMorse = GFFParams.y;
     const float  R2damp     = GFFParams.x*GFFParams.x;
-    const float3 dGrid_a = lvec.a.xyz*(1.f/(float)nGrid.x);
-    const float3 dGrid_b = lvec.b.xyz*(1.f/(float)nGrid.y);
-    const float3 dGrid_c = lvec.c.xyz*(1.f/(float)nGrid.z); 
-    const float3 shift_b = lvec.b.xyz + lvec.a.xyz*(nPBC.x*-2.f-1.f);      //  shift in scan(iy)
-    const float3 shift_c = lvec.c.xyz + lvec.b.xyz*(nPBC.y*-2.f-1.f);      //  shift in scan(iz) 
-    
+    const float3 dGrid_a = lvec_a.xyz*(1.f/(float)nGrid.x);
+    const float3 dGrid_b = lvec_b.xyz*(1.f/(float)nGrid.y);
+    const float3 dGrid_c = lvec_c.xyz*(1.f/(float)nGrid.z); 
+    const float3 shift_b = lvec_b.xyz + lvec_a.xyz*(nPBC.x*-2.f-1.f);      //  shift in scan(iy)
+    const float3 shift_c = lvec_c.xyz + lvec_b.xyz*(nPBC.y*-2.f-1.f);      //  shift in scan(iz) 
+
     const int nMax = nab*nGrid.z;
     if(iG>=nMax) return;
 
     const float3 pos    = grid_p0.xyz  + dGrid_a.xyz*ia      + dGrid_b.xyz*ib      + dGrid_c.xyz*ic       // grid point within cell
-                                       +  lvec.a.xyz*-nPBC.x + lvec .b.xyz*-nPBC.y + lvec.c.xyz*-nPBC.z;  // most negative PBC-cell
+                                       +  lvec_a.xyz*-nPBC.x + lvec_b.xyz*-nPBC.y + lvec_c.xyz*-nPBC.z;  // most negative PBC-cell
 
     //const float3  shift0 = lvec.a.xyz*-nPBC.x + lvec .b.xyz*-nPBC.y + lvec.c.xyz*-nPBC.z;
     float4 fe_Paul = float4Zero;
@@ -887,7 +916,7 @@ __kernel void make_MorseFF_f4(
                             // }
                             //ipbc++; 
                             
-                            dp   +=lvec.a.xyz;
+                            dp   +=lvec_a.xyz;
                             //shift+=lvec.a.xyz;
                         }
                         dp   +=shift_b;
@@ -1390,3 +1419,31 @@ __kernel void slabPotential(
     //Vout[i] = Vin[i] + Vcor_z;
 }
 
+
+
+__kernel void slabPotential_zyx( 
+    int4 ng,
+    __global const float*  Vin,   // 1
+    __global       float*  Vout,  // 2
+    float4 params                 // 3 (dz, Vol, dVcor, Vcor0)          
+){
+    const int ix = get_global_id(0);
+    const int iy = get_global_id(1);
+    const int iz = get_global_id(2);
+    if( (ix>=ng.x) || (iy>=ng.y) || (iz>=ng.w) ) return;
+
+    const float dz    = params.x;
+    const float dVcor = params.z;
+    const float Vcor0 = params.w;
+    const float Vcor_z = Vcor0 + dVcor * (iz*dz);
+
+    const int nz_ = ng[2] + ng[3];
+    //const int j = ix + ng.x*(iy + ng.y*(nz_-iz) );   // We found that the potential is inverted in z-direction ( maybe also x,y ? )
+    const int j = (ng[0]-ix-1) + ng.x*( (ng[1]-iy-1) + ng.y*(nz_-iz-1) );  // maybe is is inverted also x,y ?
+
+    //const int i = ix + ng.x*(iy + ng.y*iz);
+    const int i = iz + ng.z*(iy + ng.y*ix);
+
+    Vout[i] = Vin[j] + Vcor_z;
+    //Vout[i] = Vin[i] + Vcor_z;
+}

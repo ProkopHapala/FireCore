@@ -267,23 +267,40 @@ def test_gridFF_ocl( fname="./data/xyz/NaCl_1x1_L1.xyz", Element_Types_name="./d
         plt.show()
     
     elif job=="PLQ_lin":
-
+        
         path = os.path.basename( fname )
-        path = "./data/" + os.path.splitext( path )[0]
+        path = "./data/" + os.path.splitext( path )[0] + "/"
         print( "test_gridFF_ocl() path = ", path )
+        
+        # ----- Morse -----
 
         g0 = ( -grid.Ls[0]*0.5, -grid.Ls[1]*0.5, z0 )
         nPBC_mors = autoPBC(atoms.lvec,Rcut=20.0); print("autoPBC(nPBC_mors): ", nPBC_mors )
         FE_Paul, FE_Lond = clgff.make_MorseFF_f4( xyzq, REQs, nPBC=nPBC_mors, lvec=atoms.lvec, g0=g0, GFFParams=(0.1,1.5,0.0,0.0), bReturn=True )
-
         np.save( path+"FE_Paul.npy", FE_Paul )
         np.save( path+"FE_Lond.npy", FE_Lond )
+    
+        # ----- Coulomb -----
+
+        Vcoul = clgff.makeCoulombEwald_slab( xyzq, niter=2, bTranspose=True )
+        grid3D_shape = (clgff.gcl.g0, clgff.gcl.dg, clgff.gcl.ns)
         
-        clgff.makeCoulombEwald_slab( xyzq, niter=2 )
-
-        FE_Coul = clgff.sample3D_grid( clgff.V_Coul_buff, clgff.grid3D_shape )
-
+        FE_Coul = clgff.sample3D_grid( clgff.V_Coul_buff, grid3D_shape )
+        
         np.save( path+"FE_Coul.npy", FE_Coul )
+
+        print( "SUMMARY:  FE_Paul.shape, FE_Lond.shape, FE_Coul.shape ", FE_Paul.shape, FE_Lond.shape, FE_Coul.shape )
+
+        plt.figure( figsize=(16,8) )
+        iChan = 0
+        iSlice = 5
+        
+        plt.subplot(1,3,1); plt.imshow( FE_Paul[iSlice,:,:,iChan].transpose() ); plt.colorbar(); plt.title( f"FE_Paul[{iSlice},:,:,{iChan}]" );
+        plt.subplot(1,3,2); plt.imshow( FE_Lond[iSlice,:,:,iChan].transpose() ); plt.colorbar(); plt.title( f"FE_Lond[{iSlice},:,:,{iChan}]" );
+        #plt.subplot(1,3,1); plt.imshow( Vcoul[iSlice,:,:]        .transpose() );  plt.colorbar(); plt.title( f"V_Paul[{iSlice},:,:]" );
+        #plt.subplot(1,3,2); plt.imshow( FE_Coul[:,:,iSlice,iChan].transpose() );  plt.colorbar(); plt.title( f"FE_Coul[:,:,{iSlice},{iChan}]" );
+        plt.subplot(1,3,3); plt.imshow( FE_Coul[iSlice,:,:,iChan].transpose() );  plt.colorbar(); plt.title( f"FE_Coul[{iSlice},:,:,{iChan}]" );
+        
     
     elif job=="PLQ":
         
