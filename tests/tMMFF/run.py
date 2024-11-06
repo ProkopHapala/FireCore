@@ -10,15 +10,34 @@ from pyBall import MMFF as mmff
 
 
 #======== Body
-
-mmff.setVerbosity( verbosity=1, idebug=1 )
-mmff.init( xyz_name="data/dicarboxylic_acid_simple", constr_name="data/dicarboxylic_acid_simple.cons" ,bMMFF=True)
-#mmff.setSwitches(CheckInvariants=-1, PBC_nonBond=-1, PBC_evalAtom=-1, NonBonded=1, MMFF=1, doBonds=1, Angles=1, PiSigma=1, PiPiI=1, bNonBondNeighs=-1, bSurfAtoms=-1, bGridFF=-1, bTricubic=-1, bConstrZ=-1, bConstrains=-1)
-E = mmff.compute_Free_energy(4.48, 10)
+'''
+###### Mexican hat potential
+mmff.init( xyz_name="data/H", bMMFF=True )
+collectiveVariable = np.array([0], dtype=np.int32)
+E = mmff.compute_Free_energy(0.5, 2.0, collectiveVariable)
 print("E=", E)
+print("Konec Milane")
+'''
 
+'''
+mmff.setVerbosity( verbosity=1, idebug=1 )
+mmff.init( xyz_name="data/enthropic_spring_10", constr_name="data/enthropic_spring_10.cons" ,bMMFF=True)
+mmff.setSwitches(CheckInvariants=-1, PBC_nonBond=-1, PBC_evalAtom=-1, NonBonded=-1, MMFF=1, doBonds=1, Angles=-1, PiSigma=-1, PiPiI=-1, bNonBondNeighs=-1, bSurfAtoms=-1, bGridFF=-1, bTricubic=-1, bConstrZ=-1, bConstrains=-1)
+colectiveVariable = np.array([0], dtype=np.int32)
+E = mmff.compute_Free_energy(1.0, 7.0, colectiveVariable)
+# print("E=", E)
+'''
 
-
+mmff.init( xyz_name="data/three_atoms", bMMFF=True, nPBC=(2, 2, 2))#, constr_name="data/three_atom.cons" ) #nPBC=(2, 2, 2)
+colectiveVariable = np.array([0], dtype=np.int32)
+nbStep = 100
+nMDsteps = 1000000
+t_damp = 20
+T = 300
+dt = 0.05
+E = mmff.compute_Free_energy(0.0, 5.0, colectiveVariable, nbStep=nbStep, nMDsteps=nMDsteps, t_damp=t_damp, T=T, dt=dt)
+mmff.setSwitches(CheckInvariants=-1, PBC_nonBond=-1, PBC_evalAtom=-1, NonBonded=1, MMFF=1, doBonds=-1, Angles=-1, PiSigma=-1, PiPiI=-1, bNonBondNeighs=-1, bSurfAtoms=-1, bGridFF=-1, bTricubic=-1, bConstrZ=-1, bConstrains=-1)
+print("E=", E)
 
 
 '''
@@ -87,7 +106,6 @@ np.savetxt('results.txt', data, delimiter=',', header='RMSD,Fs,nevals', comments
 #print( "FORCES:\n mmff.fapos:\n ", mmff.fapos )
 #mmff.plot(bForce=True, Fscale=10.0 )
 #plt.show()
-print("Konec Milane")
 exit(0)
 
 '''

@@ -364,7 +364,8 @@ public:
     {
         if (!atoms || i > nMembers || i < 0)
             return;
-        a->realloc(atoms[i].natoms);
+        if(atoms[i].natoms != a->natoms)
+            a->realloc(atoms[i].natoms);
         a->copyOf(atoms[i]);
     };
 

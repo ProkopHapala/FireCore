@@ -339,14 +339,14 @@ inline double getLJQH( const Vec3d& dp, Vec3d& f, const Quat4d& REQH, const doub
     double E,F;
     // ---- Electrostatic
     const double ir2_ = 1/( r2 + R2damp  );
-    E =  COULOMB_CONST*REQH.z*sqrt( ir2_ );
-    F =  E*ir2_ ;
+    E =  0*COULOMB_CONST*REQH.z*sqrt( ir2_ );
+    F =  0*E*ir2_ ;
     // --- LJ 
     const double  ir2 = 1/r2;
     const double  u2  = REQH.x*REQH.x*ir2;
     const double  u6  = u2*u2*u2;
     const double vdW  = u6*REQH.y;
-    const double   H  = u6*u6* ((REQH.w<0) ? REQH.w*REQH.y : 0.0);  // H-bond correction
+    const double   H  = 0*u6*u6* ((REQH.w<0) ? REQH.w*REQH.y : 0.0);  // H-bond correction
     E   +=  (u6-2.)*vdW + H             ;
     F   += ((u6-1.)*vdW + H )*ir2*12 ;
     f.set_mul( dp, -F );

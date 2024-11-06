@@ -1214,6 +1214,8 @@ inline double move_atom_GD(int i, float dt, double Flim){
     //fapos[i] = Vec3dZero;
     return fr2;
 }
+
+Vec3d F_prev;
 // update atom positions using molecular dynamics (damped leap-frog)
 __attribute__((hot))  
 inline Vec3d move_atom_Langevin( int i, const float dt, const double Flim,  const double gamma_damp=0.1, double T=300 ){
@@ -1234,42 +1236,53 @@ inline Vec3d move_atom_Langevin( int i, const float dt, const double Flim,  cons
     // for(int i=0; i<12; i++){ rnd.add( randf(), randf(), randf() ); }    // ToDo: optimize this
 
     // for computing normal distribution from uniform distribution
-    // double q = 1;
-    // double rnd0, rnd1;
-    // double y0, y1, y2; 
-    // double r0,r1;r0 = 2;r1 = 2;
-    // while (r0 > 1.0)
-    // {
-    //     rnd0 = randf(-1.0, 1.0);
-    //     rnd1 = randf(-1.0, 1.0);
-    //     r0 = rnd0  * rnd0 + rnd1 * rnd1;
-    //     y0 = rnd0 * sqrt(-2 * log(r0) / r0);
-    //     y1 = rnd1 * sqrt(-2 * log(r0) / r0);
-    // }
-    // while (r1 > 1.0)
-    // {
-    //     rnd0 = randf(-1.0, 1.0);
-    //     rnd1 = randf(-1.0, 1.0);
-    //     r1 = rnd0  * rnd0 + rnd1 * rnd1;
-    //     y2 = rnd0 * sqrt(-2 * log(r1) / r1);
-    // }
-    // Vec3d rnd = {y0,y1,y2};
+    double rnd0, rnd1;
+    double y0, y1, y2; 
+    double r0,r1;r0 = 2;r1 = 2;
+    while (r0 > 1.0)
+    {
+        rnd0 = randf(-1.0, 1.0);
+        rnd1 = randf(-1.0, 1.0);
+        r0 = rnd0  * rnd0 + rnd1 * rnd1;
+        y0 = rnd0 * sqrt(-2 * log(r0) / r0);
+        y1 = rnd1 * sqrt(-2 * log(r0) / r0);
+    }
+    while (r1 > 1.0)
+    {
+        rnd0 = randf(-1.0, 1.0);
+        rnd1 = randf(-1.0, 1.0);
+        r1 = rnd0  * rnd0 + rnd1 * rnd1;
+        y2 = rnd0 * sqrt(-2 * log(r1) / r1);
+    }
+    Vec3d rnd = {y0,y1,y2};
 
-    Vec3d rnd = {randf(-1.0,1.0),randf(-1.0,1.0),randf(-1.0,1.0)};
+    //Vec3d rnd = {randf(-1.0,1.0),0,0};//,randf(-1.0,1.0),randf(-1.0,1.0)};
 
     //Vec3d rnd = rnd_Gauss[std::rand()%9973];
 
     //if(i==0){ printf( "dt=%g[arb.]  dt=%g[fs]\n", dt, dt*10.180505710774743  ); }
     f.add_mul( rnd, sqrt( 2*const_kB*T*gamma_damp/dt ) );
 
-    v.add_mul( f, dt );      
-    if(bPi)v.add_mul( p, -p.dot(v) );                     
-    p.add_mul( v, dt );
-    if(bPi)p.normalize();
-    
-    apos [i] = p;
-    vapos[i] = v;
 
+    // // --- update velocity and position by leap-frog
+    // v.add_mul( f, dt );      
+    // if(bPi)v.add_mul( p, -p.dot(v) );                     
+    // p.add_mul( v, dt );
+    // if(bPi)p.normalize();
+
+
+
+    if (i == 2)
+    {
+        //velocity verlet
+        p.add_mul( v, dt);
+        p.add_mul( F_prev, dt*dt/2 );
+        v.add_mul( f, 0.5*dt );
+        v.add_mul( F_prev, 0.5*dt );
+        apos[i] = p;
+        vapos[i] = v;
+        F_prev=f;
+    }
     return cvf;
 }
 Vec3d move_Langevin( const float dt, const double Flim,  const double gamma_damp=0.1, double T=300 ){

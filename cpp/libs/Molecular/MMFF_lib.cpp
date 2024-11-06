@@ -474,16 +474,17 @@ void computeDistance(int i, int j, double* dist){
     *dist = W.computeDistance(i,j);
 }
 
-double compute_Free_energy(double l1, double l2, DistConstr *dc=0){
-    if(!dc){
+double compute_Free_energy(double l1, double l2, int n=0, int* dc=0, int nbSteps = 100, int nMDsteps = 10000, double t_damp = 100, double T = 300, double dt = 0.05){
+    if(!n){
         if(W.constrs.bonds.size()>0){
-            dc = &W.constrs.bonds[0];
+            *dc = 0;
+            n  = 1;
         }else{
             printf("No constraints found\n");
             return 0;
         }
     }
-    return W.compute_Free_energy(l1, l2, dc);
+    return W.compute_Free_energy(l1, l2, n, dc, nbSteps, nMDsteps, t_damp, T, dt);
 }
 
 } // extern "C"

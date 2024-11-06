@@ -1139,10 +1139,12 @@ def plot_selection(sel=None,ax1=0,ax2=1,ps=None, s=100):
 # ========= Free Energy
 # ====================================
 # double compute_Free_energy(double l1, double l2, DistConstr *dc){
-lib.compute_Free_energy.argtypes  = [c_double, c_double, c_void_p]
+lib.compute_Free_energy.argtypes  = [c_double, c_double, c_int, c_int_p, c_int, c_int, c_double, c_double, c_double]
 lib.compute_Free_energy.restype   =  c_double
-def compute_Free_energy(l1, l2, dc=0):
-    return lib.compute_Free_energy(l1, l2, dc)
+def compute_Free_energy(l1, l2, dc=0, nbStep=100, nMDsteps=10000, t_damp=100, T=300, dt=0.05):
+    n=len(dc)
+    print(dc)
+    return lib.compute_Free_energy(l1, l2, n, _np_as(dc, c_int_p), nbStep, nMDsteps, t_damp, T, dt)
 
 # ====================================
 # ========= Python Functions

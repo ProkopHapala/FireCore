@@ -18,7 +18,7 @@
 
 #define const_eV_Angstrom  1.602176634e-9
 
-#define const_timeu      1.0180505710774743e-14   // F = m*a = m* l/t^2 => [eV/A] = [amu * A / dt^2 ] => dt^2= (A^2*amu) / (eV) = sqrt(1.6605390666050e-27 * (1e-10)^2 /1.602176634e-19 ) = 1.0180506e-14 s
+#define const_timeu      1.0180505710774743e-14   // F = m*a = m* l/t^2 => [eV/A] = [amu * A / dt^2 ] => dt^2= (A^2*amu) / (eV) = sqrt( 1.6605390666050e-27 * (1e-10)^2 /1.602176634e-19 ) = 1.0180506e-14 s
 #define const_timefs     10.180505710774743       
 #define const_fs_timeu   0.09822694750238489      // timeu/fs = 1/10.18050571077474 
 

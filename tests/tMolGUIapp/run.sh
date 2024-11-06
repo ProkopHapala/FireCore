@@ -293,12 +293,16 @@ fi
 
 
 # ===== Free energy
-#./$name -x common_resources/nucleobasis_CG -b common_resources/nucleobasis_CG.cons  -T 100 0.1 -perframe 10
+# ./$name -x common_resources/nucleobasis_CG -b common_resources/nucleobasis_CG.cons  -T 100 0.1 -perframe 10
 # ./$name -x common_resources/dicarboxylic_acid_simple -e 
 # ./$name -x common_resources/dicarboxylic_acid_simple -e -b common_resources/dicarboxylic_acid_simple.cons  
 # ./$name -x common_resources/dicarboxylic_acid_simple -e -b common_resources/dicarboxylic_acid_simple.cons  -T 10 0.1 -perframe 10
 # ./$name -x common_resources/dicarboxylic_acid_simple -e -b common_resources/dicarboxylic_acid_simple.cons  -T 100 0.1 -perframe 10
-./$name -x common_resources/dicarboxylic_acid_simple -e -b common_resources/dicarboxylic_acid_simple.cons  -T 300 0.1 -perframe 10
+# ./$name -x common_resources/dicarboxylic_acid_simple -e -b common_resources/dicarboxylic_acid_simple.cons  -T 300 0.1 -perframe 10
+
+# ./$name -x data/enthropic_spring_10 -b data/enthropic_spring_10.cons -T 300 0.1 -perframe 10
+
+./$name -x data/three_atoms  -T 300 0.2 -perframe 10
 
 
 #valgrind --log-file="valgrind.log" --leak-check=yes ./$name -x common_resources/H2O
