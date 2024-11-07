@@ -638,7 +638,13 @@ class GridFF_cl:
 
         ns_cl    = np.array( (*sh[::-1],nxyz), dtype=np.int32 )
         #sc_ewald = 4*np.pi*dV*COULOMB_CONST
-        sc_ewald = 4*np.pi*dV*dV*COULOMB_CONST
+        #sc_ewald = 4*np.pi*dV*dV*COULOMB_CONST   # This Seems wrong
+
+        sc_ewald = ( 4.0*np.pi*dV*COULOMB_CONST ) / ( nxyz )    # This normalization makes physical sense, and the result is independnet on number of grid points, however, the poential is too small (much smaller than real space reference)
+        # See discussion of normalization constant here: https://chatgpt.com/share/672d095b-9304-8012-ac50-de5cbe5cba18
+        # also chack how normalization constant is done in /home/prokop/git/FireCore/cpp/common/molecular/EwaldGrid.h   EwaldGrid::laplace_reciprocal_kernel( fftw_complex* VV ){ 
+        # see https://github.com/ProkopHapala/FireCore/blob/079f9244f486d365362e1766b837e3aa4df6d368/cpp/common/molecular/EwaldGrid.h#L502
+
         coefs_cl = np.array( (0.0,0.0,0.0, sc_ewald ), dtype=np.float32 )
 
         nL = self.nloc
@@ -649,7 +655,8 @@ class GridFF_cl:
             sh_ = (*sh,2)
             print( "sh ", sh_ )
             Vgrid = np.zeros( sh_, dtype=np.float32   )  
-            cl.enqueue_copy ( self.queue, Vgrid, self.Vgrid_buff         )
+            cl.enqueue_copy ( self.queue, Vgrid, self.Vgrid_buff )
+            print( "Vgrid min,max ", Vgrid.min(), Vgrid.max(), " sc_ewald ", sc_ewald, " dV ", dV, " nxyz ", nxyz )
             return Vgrid
 
     def slabPotential_old(self, nz_slab, dz, Vol, dVcor, Vcor0, bDownload=True):
@@ -773,7 +780,7 @@ class GridFF_cl:
         return Vgrid
 
 
-    def makeCoulombEwald_slab(self, atoms, Lz_slab=20.0, dipol=0.0, niter=4, bDipoleCoorection=False, bReturn=True, bTranspose=False):
+    def makeCoulombEwald_slab(self, atoms, Lz_slab=20.0, dipol=0.0, niter=4, bDipoleCoorection=False, bReturn=True, bTranspose=False, bSaveQgrid=False, bCheckVin=False, bCheckPoisson=False ):
         print( "GridFF_cl::makeCoulombEwald_slab() " )
         clu.try_load_clFFT()
         if self.gcl is None: 
@@ -801,20 +808,26 @@ class GridFF_cl:
         atoms_np[:,1] += self.gcl.dg[1] * 1
         atoms_np[:,2] += self.gcl.dg[2] * (-1 + 4 - 0.075)   # NOTE / TODO : shift -1 is because we do the same shift on CPU (in GridFF::tryLoadGridFF_potentials() ), this make sure that Qgrid_gpu and Qgrid_cpu are the same.   But align V_Coul with CPU we need to shift by 4 (see below)
 
-
         cl.enqueue_copy(self.queue, self.atoms_buff, atoms_np)
 
         print("GridFF_cl::makeCoulombEwald_slab()._project_atoms_on_grid_quintic_pbc")
         self._project_atoms_on_grid_quintic_pbc( sz_glob, sz_loc, np.int32(na), ns_cl  )   
 
-        if True: # bSaveDebug
+        if bSaveQgrid: 
             #sh    = self.gsh.ns[::-1]
             Qgrid = np.zeros( (*sh,2,), dtype=np.float32 )
             cl.enqueue_copy(self.queue, Qgrid, self.Qgrid_buff )
+            print("Qgrid min,max ", Qgrid[:,:,:,0].min(), Qgrid[:,:,:,0].max() )
             np.save( "./data/NaCl_1x1_L3/Qgrid_ocl.npy", Qgrid[:,:,:,0] )
         
-        self.poisson( bReturn=False, sh=sh )
+        self.poisson( bReturn=bCheckPoisson, sh=sh )
         Vin_buff = self.laplace_real_loop_inert( bReturn=False, niter=niter, sh=sh )
+
+        if bCheckVin:
+            sh=self.gsh.ns[::-1]
+            Vin = np.empty(sh, dtype=np.float32)
+            cl.enqueue_copy(self.queue, Vin, Vin_buff)
+            print("Vin min,max ", Vin.min(), Vin.max() )
 
         return self.slabPotential( Vin_buff, nz_slab, dipol=dipol, bDownload=bReturn, bTranspose=bTranspose )
 
