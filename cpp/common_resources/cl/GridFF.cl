@@ -731,11 +731,9 @@ __kernel void make_MorseFF(
     const float3 shift_b = lvec_b.xyz + lvec_a.xyz*(nPBC.x*-2.f-1.f);      //  shift in scan(iy)
     const float3 shift_c = lvec_c.xyz + lvec_b.xyz*(nPBC.y*-2.f-1.f);      //  shift in scan(iz) 
     
-    // if( (ia==0)&&(ib==0)&&(ic==0) ){  
+    //if( (ia==0)&&(ib==0)&&(ic==0) ){  
     //     printf(  "GPU nAtoms %i alphaMorse(%g) R2damp(%g) \n", nAtoms, alphaMorse, R2damp );
-    //     for(int ia=0; ia<nAtoms; ia++){
-    //         printf(  "GPU atom[%i] pos(%8.4f,%8.4f,%8.4f|%8.4f) REQs (%16.8f,%16.8f,%16.8f,%16.8f) R2damp(%g) \n", ic,    atoms[ia].x, atoms[ia].y, atoms[ia].z, atoms[ia].w,    REQs[ia].x, REQs[ia].y, REQs[ia].z, REQs[ia].w );
-    //     }
+    //       for(int ia=0; ia<nAtoms; ia++){printf(  "GPU atom[%i] pos(%8.4f,%8.4f,%8.4f|%8.4f) REQs (%16.8f,%16.8f,%16.8f,%16.8f) R2damp(%g) \n", ic,    atoms[ia].x, atoms[ia].y, atoms[ia].z, atoms[ia].w,    REQs[ia].x, REQs[ia].y, REQs[ia].z, REQs[ia].w );}
     //     for (int iz=0; iz<nGrid.z; iz++ ){
     //         const float3 pos    = grid_p0.xyz  + dGrid_a.xyz*ia      + dGrid_b.xyz*ib      + dGrid_c.xyz*iz;          // +  lvec_a.xyz*-nPBC.x + lvec_b.xyz*-nPBC.y + lvec_c.xyz*-nPBC.z;  // most negative PBC-cell
     //         int    ia   = 0;
@@ -750,7 +748,7 @@ __kernel void make_MorseFF(
     //         //fe_Lond += eM * -2.0f;
     //         printf( "GPU pos(%8.4f,%8.4f,%8.4f) iz=%i dp(%8.4f,%8.4f,%8.4f|r=%8.4f) e=%g EPaul=%g ELond=%g alphaMorse=%g R0=%g E0=%g \n", pos.x,pos.y,pos.z,  iz, dp.x,dp.y,dp.z, r, e, eM*e, eM*-2.0f,  alphaMorse, REQK.x, REQK.y );
     //     }
-    // }
+    //}
     //if( (ia==0)&&(ib==0) ){  printf(  "GPU ic %i nGrid(%i,%i,%i)\n", ic, nGrid.x,nGrid.y,nGrid.z );}
 
     const int nMax = nab*nGrid.z;

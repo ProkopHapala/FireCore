@@ -312,11 +312,42 @@ def test_gridFF_ocl( fname="./data/xyz/NaCl_1x1_L1.xyz", Element_Types_name="./d
         V_Lond,trj_lond = clgff.fit3D( clgff.V_Lond_buff, nPerStep=50, nmaxiter=500, damp=0.15, bConvTrj=True ); #T_fit_ = time.perf_counter()
 
         # --- Coulomb
-        Vcoul = clgff.makeCoulombEwald_slab( xyzq, niter=2 )
+        Vcoul = clgff.makeCoulombEwald_slab( xyzq, niter=2, bSaveQgrid=True, bCheckVin=True, bCheckPoisson=True )
+
         #VcoulB,trj_coul = clgff.fit3D( clgff.V1_buff, nPerStep=100, nmaxiter=3000, damp=0.05, bConvTrj=True ); #T_fit_ = time.perf_counter()
         VcoulB,trj_coul = clgff.fit3D( clgff.V_Coul_buff, nPerStep=50, nmaxiter=500, damp=0.15, bConvTrj=True ); #T_fit_ = time.perf_counter()
 
         plotTrjs( [trj_paul,trj_lond,trj_coul], ["Paul", "Lond", "Coul"] )
+
+        # -- total max,min over 3d grid of V_Paul,V_Lond,VcoulB 
+        print( "Paul  min,max = ", V_Paul.min(), V_Paul.max() )
+        print( "Lond  min,max = ", V_Lond.min(), V_Lond.max() ) 
+        print( "Coul  min,max = ", Vcoul.min(),  Vcoul.max()  )  
+        print( "CoulB min,max = ", VcoulB.min(), VcoulB.max() )
+
+        axs=(1,2)
+        minPaul = V_Paul.max( axis=axs )
+        maxPaul = V_Paul.max( axis=axs )
+        minLond = V_Lond.min( axis=axs )
+        maxLond = V_Lond.max( axis=axs )
+        minCoul = VcoulB.min( axis=axs )
+        maxCoul = VcoulB.max( axis=axs )
+        plt.plot( minPaul, label="V_Paul.min" )
+        plt.plot( maxPaul, label="V_Paul.max" )
+        plt.plot( minLond, label="V_Lond.min" )
+        plt.plot( maxLond, label="V_Lond.max" )
+        plt.plot( minCoul, label="V_Coul.min" )
+        plt.plot( maxCoul, label="V_Coul.max" )
+        plt.show()
+
+
+        # V_Paul = V_Paul.max(axis=0)
+        # V_Lond = V_Lond.max(axis=0)
+        # VcoulB = VcoulB.max(axis=0)
+        # V_Coul = VcoulB.max(axis=0)
+        # V_max = np.maximum( V_Paul, V_Lond )
+        # V_max = np.maximum( V_max, VcoulB )
+        # print( "V_max.shape ", V_max.shape )
 
         if save_name=='double3':
             path = os.path.basename( fname )
@@ -365,7 +396,7 @@ def test_gridFF_ocl( fname="./data/xyz/NaCl_1x1_L1.xyz", Element_Types_name="./d
         # print( "V_after[:10,0,0] \n", Vcoul[:10,0,0] )
 
         plt.show()
-        exit(0)
+        #exit(0)
 
 
 
