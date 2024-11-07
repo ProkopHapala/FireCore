@@ -367,7 +367,7 @@ class MolGUI : public AppSDL2OGL_3D { public:
     //void renderGridFF( double isoVal=0.001, int isoSurfRenderType=0, double colorScale = 50. );
     int  renderSurfAtoms( Vec3i nPBC, bool bPointCross=false, float qsc=1, float Rsc=1, float Rsub=0 );
     void renderGridFF    ( double isoVal=0.1, int isoSurfRenderType=0, double colorScale = 50. );
-    void renderGridFF_new( double isoVal=0.1, int isoSurfRenderType=0, double colorScale = 1., Quat4d REQ=Quat4d{ 1.487, sqrt(0.0006808), 0., 0.} );
+    void renderGridFF_new( double isoVal=0.1, int isoSurfRenderType=0, double colorScale = 0.02, Quat4d REQ=Quat4d{ 1.487, sqrt(0.0006808), 0., 0.} );
     void renderESP( Quat4d REQ=Quat4d{ 1.487, 0.02609214441, 1., 0.} );
     void renderAFM( int iz, int offset );
     void renderAFM_trjs( int di );

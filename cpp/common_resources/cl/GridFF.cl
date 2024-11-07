@@ -1224,20 +1224,20 @@ __kernel void project_atoms_on_grid_quintic_pbc(
     barrier(CLK_LOCAL_MEM_FENCE);
     if (iG >= na) return;
 
-    if( iG==0 ){
+    // if( iG==0 ){
     //     printf("GPU project_atoms_on_grid_quintic_pbc() ng(%i,%i,%i) g0(%g,%g,%g) dg(%g,%g,%g) \n", ng.x,ng.y,ng.z,   g0.x,g0.y,g0.z,   dg.x,dg.y,dg.z );
     //     for(int i=0; i<6; i++){ int* q=xqs[i]; printf("GPU xqs[0](%4i,%4i,%4i,%4i,%4i,%4i) \n", q[0],  q[1], q[2], q[3], q[4], q[5] ); }
     //     for(int i=0; i<6; i++){ int* q=yqs[i]; printf("GPU yqs[0](%4i,%4i,%4i,%4i,%4i,%4i) \n", q[0],  q[1], q[2], q[3], q[4], q[5] ); }
     //     for(int i=0; i<6; i++){ int* q=zqs[i]; printf("GPU zqs[0](%4i,%4i,%4i,%4i,%4i,%4i) \n", q[0],  q[1], q[2], q[3], q[4], q[5] ); }
-        for(int ia=0; ia<na; ia++){ 
-            float4 atom = atoms[ia];
-            float3 g    = (atom.xyz - g0.xyz) / dg.xyz;
-            int3   gi   = (int3  ){(int)g.x,(int)g.y,(int)g.z};
-            if(g.x<0) gi.x--;
-            if(g.y<0) gi.y--;
-            if(g.z<0) gi.z--;
-            printf("GPU atom[%i]  gi(%3i,%3i,%3i) (%8.4f,%8.4f,%8.4f |%8.4f) \n", ia, gi.x,gi.y,gi.z,  atoms[ia].x, atoms[ia].y, atoms[ia].z, atoms[ia].w ); 
-        }
+    //     for(int ia=0; ia<na; ia++){ 
+    //         float4 atom = atoms[ia];
+    //         float3 g    = (atom.xyz - g0.xyz) / dg.xyz;
+    //         int3   gi   = (int3  ){(int)g.x,(int)g.y,(int)g.z};
+    //         if(g.x<0) gi.x--;
+    //         if(g.y<0) gi.y--;
+    //         if(g.z<0) gi.z--;
+    //         printf("GPU atom[%i]  gi(%3i,%3i,%3i) (%8.4f,%8.4f,%8.4f |%8.4f) \n", ia, gi.x,gi.y,gi.z,  atoms[ia].x, atoms[ia].y, atoms[ia].z, atoms[ia].w ); 
+    //     }
     //     int ia = 0;
     //     float4 atom = atoms[ia];
     //     float3 g    = (atom.xyz - g0.xyz) / dg.xyz;
@@ -1246,7 +1246,7 @@ __kernel void project_atoms_on_grid_quintic_pbc(
     //     if(g.y<0) gi.y--;
     //     if(g.z<0) gi.z--;
     //     float3 t    = (float3){g.x-gi.x, g.y-gi.y, g.z-gi.z};
-    // printf( "GPU g(%g,%g,%g) gi(%i,%i,%i) t(%g,%g,%g)\n", g.x,g.y,g.z, gi.x,gi.y,gi.z, t.x,t.y,t.z );
+    //     printf( "GPU g(%g,%g,%g) gi(%i,%i,%i) t(%g,%g,%g)\n", g.x,g.y,g.z, gi.x,gi.y,gi.z, t.x,t.y,t.z );
     //     // Compute weights for quintic B-spline interpolation
     //     float bx[6], by[6], bz[6];
     //     Bspline_basis5(t.x, bx);
@@ -1266,7 +1266,7 @@ __kernel void project_atoms_on_grid_quintic_pbc(
     //         const float qbz = atom.w * bz[dz];
     //         printf( "GPU dz[%i] gz[%i] qbz %g t(%g,%g,%g)\n", dz, gz, qbz, t.x,t.y,t.z );
     //     }
-    }
+    // }
 
     // Load atom position and charge
     float4 atom = atoms[iG];

@@ -461,7 +461,7 @@ inline void addForce( const Vec3d& pos, const Quat4f& PLQ, Quat4f& fe ) const {
         return fed.e;
     }
 
-    Vec3d findIso(double isoval, Vec3d p0, Vec3d p1, const Quat4d PLQ, double xtol = 0.01 )const{
+    Vec3d findIso(double isoval, Vec3d p0, Vec3d p1, const Quat4d PLQ, double xtol = 0.01, bool bPrintError=true )const{
         //printf( "GridFF::findIso() iso=%g p0(%6.3f,%6.3f,%6.3f) p1(%6.3f,%6.3f,%6.3f) PLQ(%g,%g,%g,%g) xtol=%g \n", isoval, p0.x,p0.y,p0.z, p1.x,p1.y,p1.z, PLQ.x,PLQ.y,PLQ.z,PLQ.w, xtol );
         Vec3d fout;  // Force output vector (unused in binary search)
         // Evaluate energy at the endpoints
@@ -469,7 +469,7 @@ inline void addForce( const Vec3d& pos, const Quat4f& PLQ, Quat4f& fe ) const {
         double f1 = addAtom(p1, PLQ, fout)-isoval;
         //printf( "GridFF::findIso() iso=%g p0(%6.3f,%6.3f,%6.3f)f0=%fg p1(%6.3f,%6.3f,%6.3f)f1=%g PLQ(%g,%g,%g,%g) xtol=%g \n", isoval, p0.x,p0.y,p0.z,f0, p1.x,p1.y,p1.z,f1, PLQ.x,PLQ.y,PLQ.z,PLQ.w, xtol );
         if( f0*f1 > 0.0) {
-            printf("ERROR GridFF::findIso()  E1(%g)*E2(%g) > 0.0 |  p0(%8.4f,%8.4f,%8.4f) p1(%8.4f,%8.4f,%8.4f) PLQ(%g,%g,%g,%g) \n", f0,f1,  p0.x,p0.y,p0.z, p1.x,p1.y,p1.z, PLQ.x,PLQ.y,PLQ.z,PLQ.w );
+            if(bPrintError) printf("ERROR GridFF::findIso()  E1(%10.5e)*E2(%10.5e) > 0.0 |  p0(%8.4f,%8.4f,%8.4f) p1(%8.4f,%8.4f,%8.4f) PLQ(%10.5e,%10.5e,%10.5e,%10.5e) \n", f0,f1,  p0.x,p0.y,p0.z, p1.x,p1.y,p1.z, PLQ.x,PLQ.y,PLQ.z,PLQ.w );
             //exit(0);
             //return p0;
             return Vec3dNAN;
