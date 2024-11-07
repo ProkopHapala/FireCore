@@ -4,9 +4,9 @@
 #include "AtomicConfiguration.h"
 #include "molecular_utils.h"
 
-//void colorRB( float f ){ glColor3f( 0.5+f, 0.5, 0.5-f ); }
+void colorRB( float f ){ glColor3f( 0.5+f, 0.5, 0.5-f ); }
 //void colorRB( float f ){ glColor3f( 0.5+f, 0.5+f, 0.5+f ); }
-void colorRB( float f ){ glColor3f( 0.5-f, 0.5-f, 0.5-f ); }
+void colorBW( float f ){ glColor3f( 0.5-f, 0.5-f, 0.5-f ); }
 
 void printPoses( int n, double * poses ){
     for( int i=0; i<n; i++ ){
@@ -226,7 +226,7 @@ int renderSubstrate_( const GridShape& grid, Quat4f * FF, Quat4f * FFel, double 
     return nvert;
 }
 
-int renderSubstrate_new( const GridFF& gff, Vec2d zrange, double isoval, Quat4d PLQ, double sclr ){
+int renderSubstrate_new( const GridFF& gff, Vec2d zrange, double isoval, Quat4d PLQ, double sclr, bool bErrNan=false ){
     printf( "renderSubstrate_new() gff.mode=%i @gff.Bspline_PLQ=%li \n", gff.mode, (long)gff.Bspline_PLQ );
     Quat4d PL{PLQ.x,PLQ.y,0.0,0.0};
     Quat4d Q {0.0,0.0,PLQ.y,0.0};
@@ -245,26 +245,31 @@ int renderSubstrate_new( const GridFF& gff, Vec2d zrange, double isoval, Quat4d 
             const Vec3d p1b=p1a; p1a.z=zrange.y;
             const Vec3d p2b=p2a; p2a.z=zrange.y;
 
-            const Vec3d p1 = gff.findIso( isoval, p1a, p1b, PL, 0.02 );
-            const Vec3d p2 = gff.findIso( isoval, p2a, p2b, PL, 0.02 );
+            Vec3d p1 = gff.findIso( isoval, p1a, p1b, PL, 0.02, bErrNan );
+            Vec3d p2 = gff.findIso( isoval, p2a, p2b, PL, 0.02, bErrNan );
 
             //printf( "renderSubstrate_new[%i,%i] xy(%g,%g) z(%g|%g,%g) \n", ia,ib, p1.x,p1.y, p1.z, zrange.x, zrange.y, isoval );
 
             if( isnan(p1.z) ){
                 //std::vector<100> vals;
                 //double f0 = addAtom(p0, PLQ, fout)-isoval;
-                printf( "renderSubstrate_new() failed to find isovalue %g at p(%g,%g) zrange(%g,%g) => z-scan: \n", isoval, p1a.x,p1a.y, zrange.x, zrange.y );
-                Vec3d fout;
-                int n=100;
-                Vec3d dp=(p1b-p1a)*(1./n);
-                for(int i=0;i<n;i++){
-                    Vec3d p = p1a + dp*(i*1.);
-                    double e = gff.addAtom( p, PL, fout);
-                    printf( "%8.4f %g\n", p.z, e );
+                if(bErrNan){
+                    printf( "renderSubstrate_new() failed to find isovalue %g at p(%g,%g) zrange(%g,%g) => z-scan: \n", isoval, p1a.x,p1a.y, zrange.x, zrange.y );
+                    Vec3d fout;
+                    int n=100;
+                    Vec3d dp=(p1b-p1a)*(1./n);
+                    for(int i=0;i<n;i++){
+                        Vec3d p = p1a + dp*(i*1.);
+                        double e = gff.addAtom( p, PL, fout);
+                        printf( "%8.4f %g\n", p.z, e );
+                    }
+                    exit(0);
+                    return -1;
+                }else{
+                    p1.z = zrange.y;
                 }
-                exit(0);
-                return -1;
             }
+            if( isnan(p2.z) ){ p2.z = zrange.y; }
 
             Vec3d f1=Vec3dZ,f2=Vec3dZ;
             double el1 = gff.addAtom( p1, Q, f1 );
@@ -272,6 +277,8 @@ int renderSubstrate_new( const GridFF& gff, Vec2d zrange, double isoval, Quat4d 
 
             gff.addAtom( p1, PL, f1 );
             gff.addAtom( p2, PL, f2 );
+
+            //printf( "renderSubstrate_new()[%i,%i] el1,el2 %10.5e,%10.5e  (el1,el2)*sclr %10.5e,%10.5e  sclr=%10.5e \n", ia,ib, el1,el2, el1*sclr, el2*sclr, sclr  );
             
             colorRB( el1*sclr ); glVertex3f(p1.x,p1.y,p1.z); nvert++;
             colorRB( el2*sclr ); glVertex3f(p2.x,p2.y,p2.z); nvert++;

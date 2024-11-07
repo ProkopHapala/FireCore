@@ -322,6 +322,7 @@ def test_gridFF_ocl( fname="./data/xyz/NaCl_1x1_L1.xyz", Element_Types_name="./d
             path = os.path.basename( fname )
             path = "./data/" + os.path.splitext( path )[0]
             print( "test_gridFF_ocl() path = ", path )
+            if not os.path.exists( path ): os.makedirs( path )
             V_Paul = V_Paul.transpose( (2,1,0) )
             V_Lond = V_Lond.transpose( (2,1,0) )
             V_Coul = VcoulB.transpose( (2,1,0) )
@@ -329,7 +330,8 @@ def test_gridFF_ocl( fname="./data/xyz/NaCl_1x1_L1.xyz", Element_Types_name="./d
             PLQ[:,:,:,0] = V_Paul
             PLQ[:,:,:,1] = V_Lond
             PLQ[:,:,:,2] = V_Coul
-            full_name = path+"/Bspline_PLQd_ocl.npy"; print("test_gridFF_ocl() - save Morse to: ", full_name)
+            full_name = path+"/Bspline_PLQd_ocl.npy"; 
+            print("test_gridFF_ocl() - save Morse to: ", full_name)
             np.save( full_name, PLQ )
 
         #cmap='plasma'

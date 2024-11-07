@@ -170,10 +170,20 @@ fi
 #./$name -x common_resources/xyz/guanine-cytosine -g common_resources/xyz/NaCl_1x1_L3 -iParalel 0 -e -nPBC 0,0,0
 
 #./$name -x common_resources/xyz/guanine-cytosine -g common_resources/xyz/NaCl_1x1_L3 -iParalel 0 -uff -dt 0.01  -nPBC 0,0,0
-./$name -x common_resources/xyz/guanine-cytosine -g common_resources/xyz/NaCl_1x1_L3 -iParalel 0  -dt 0.01 -nPBC 0,0,0
+#./$name -x common_resources/xyz/guanine-cytosine -g common_resources/xyz/NaCl_1x1_L3 -iParalel 0  -dt 0.01 -nPBC 0,0,0
 
 
 #./$name -x common_resources/xyz/PTCDA -g common_resources/xyz/NaCl_1x1_L2 -lua test_add_mols.lua
+
+
+
+./$name -x common_resources/xyz/PTCDA -g common_resources/xyz/NaCl_8x8_L3          -nPBC 0,0,0
+#./$name -x common_resources/xyz/PTCDA -g common_resources/xyz/NaCl_8x8_L3_NaHole   -nPBC 0,0,0
+#./$name -x common_resources/xyz/PTCDA -g common_resources/xyz/NaCl_8x8_L3_ClHole   -nPBC 0,0,0
+#./$name -x common_resources/xyz/PTCDA -g common_resources/xyz/NaCl_8x8_L3_NaClHole -nPBC 0,0,0
+
+
+
 
 # ====== Polymers
 
