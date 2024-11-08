@@ -12,6 +12,7 @@ from ..OCL.GridFF import GridFF_cl, GridShape
 #exit()
 #from .Ewald import compute_potential, plot1Dcut
 from .utils import compute_potential, plot1Dcut
+#from ..plotUtils import plot1Dcut
 
 # =============  Functions
 
@@ -51,7 +52,7 @@ def Bspline_basis5(t):
     ws[:,5]=   0.008333333333333333*t5;
     return ws
 
-def test_Ewald( apos, qs, ns=[100,100,100], dg=(0.1,0.1,0.1), nPBC=[30,30,30], pos0=None, scErr=100.0, order=2, bPython=True, bOCL=True, bPlotPy=False,  bPlotOcl=True, bOMP=False, nBlur=0, cSOR=0.0, cV=0.5, yrange=None, bPlot1D=True , bSlab=False, z_slab=None ):
+def test_Ewald( apos, qs, ns=[100,100,100], dg=(0.1,0.1,0.1), nPBC=[30,30,30], pos0=None, scErr=100.0, order=2, bPython=True, bOCL=True, bPlotPy=False,  bPlotOcl=True, bOMP=False, nBlur=0, cSOR=0.0, cV=0.5, yrange=None, bPlot1D=True , bSlab=False, z_slab=None, bOld=False ):
     try_load_mmff()
 
     apos = apos.copy()
@@ -97,7 +98,7 @@ def test_Ewald( apos, qs, ns=[100,100,100], dg=(0.1,0.1,0.1), nPBC=[30,30,30], p
         xyzq[:,1] = apos[:,1]
         xyzq[:,2] = apos[:,2]
         xyzq[:,3] = qs
-        Vocl = clgff.makeCoulombEwald( xyzq )
+        Vocl = clgff.makeCoulombEwald( xyzq, bOld=bOld )
 
         print( "Vocl min,max", Vocl.min(), Vocl.max() )
 
@@ -361,7 +362,7 @@ def test_gridFF_ocl( fname="./data/xyz/NaCl_1x1_L1.xyz", Element_Types_name="./d
             PLQ[:,:,:,0] = V_Paul
             PLQ[:,:,:,1] = V_Lond
             PLQ[:,:,:,2] = V_Coul
-            full_name = path+"/Bspline_PLQd_ocl.npy"; 
+            full_name = path+"/Bspline_PLQd.npy"; 
             print("test_gridFF_ocl() - save Morse to: ", full_name)
             np.save( full_name, PLQ )
 

@@ -2,6 +2,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 from   matplotlib import collections  as mc
 from . import elements
+#from . import utils as ut
 
 def read_gnuplot_2d(fname):
     f = open(fname,'r')
