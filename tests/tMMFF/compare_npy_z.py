@@ -18,7 +18,9 @@ def normalpath(path):
 #     return path
 
 fname1 = normalpath( "~/git/FireCore/tests/tMMFF/data/NaCl_1x1_L3/Bspline_PLQd.npy" )
-fname2 = normalpath( "~/git/FireCore/tests/tMMFF/data/NaCl_8x8_L3/Bspline_PLQd.npy" )
+fname2 = normalpath( "~/git/FireCore/tests/tMMFF/data/NaCl_1x1_L3/Bspline_PLQd_ocl.npy" )
+#fname2 = normalpath( "~/git/FireCore/tests/tMMFF/data/NaCl_8x8_L3/Bspline_PLQd.npy" )
+
 
 dat1 = np.load(fname1)  ;print("dat1.shape", dat1.shape)
 dat2 = np.load(fname2)  ;print("dat2.shape", dat2.shape)
@@ -26,7 +28,7 @@ dat2 = np.load(fname2)  ;print("dat2.shape", dat2.shape)
 nz1,ny1,nx1,_ = dat1.shape
 nz2,ny2,nx2,_ = dat2.shape
 
-iChan=2
+iChan=0
 cx=0.0
 cy=0.0
 
@@ -36,11 +38,13 @@ channame=['Pauli', 'London', 'Coulomb']
 for iChan in range(3):
     print(iChan)
     plt.subplot(1,3,iChan+1);
-    #plt.plot( dat1[int(cx*nx1),int(cy*ny1),:,iChan], label=channame[iChan]+' NaCl_1x1_L3' );
+    plt.plot( dat1[int(cx*nx1),int(cy*ny1),:,iChan], label=channame[iChan]+' NaCl_1x1_L3' );
+    plt.plot( dat2[int(cx*nx2),int(cy*ny2),:,iChan], label=channame[iChan]+' NaCl_1x1_L3_ocl' );
     #plt.plot( dat2[int(cx*nx2),int(cy*ny2),:,iChan], label=channame[iChan]+' NaCl_8x8_L3' );
 
-    plt.plot( dat1[int(cx*nx1),:,5,iChan], label=channame[iChan]+' NaCl_1x1_L3' );
-    plt.plot( dat2[int(cx*nx2),:,5,iChan], label=channame[iChan]+' NaCl_8x8_L3' );
+    #plt.plot( dat1[int(cx*nx1),:,5,iChan], label=channame[iChan]+' NaCl_1x1_L3' );
+    #plt.plot( dat2[int(cx*nx2),:,5,iChan], label=channame[iChan]+' NaCl_1x1_L3 ocl' );
+    #plt.plot( dat2[int(cx*nx2),:,5,iChan], label=channame[iChan]+' NaCl_8x8_L3' );
     plt.legend()
     plt.grid()
 plt.title(fname1+"\n"+fname2)

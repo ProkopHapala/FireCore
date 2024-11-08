@@ -31,10 +31,10 @@ p0 = [-2.0,-2.0,0.0]
 #name="NaCl_1x1_L2"
 
 #name="NaCl_1x1_L3"
-name="NaCl_8x8_L3"
+#name="NaCl_8x8_L3"
 #name="NaCl_8x8_L3_NaHole"
 #name="NaCl_8x8_L3_ClHole"
-#name="NaCl_8x8_L3_NaClHole"
+name="NaCl_8x8_L3_NaClHole"
 #mol_name="PTCDA.xyz"
 #gff.test_gridFF_ocl( fname="data/xyz/NaCl_1x1_L2.xyz" )
 #gff.test_gridFF_ocl( fname="data/xyz/"+name+".xyz", save_name="double3", bMorse=True, bEwald=False  )
@@ -42,9 +42,12 @@ name="NaCl_8x8_L3"
 
 gff.test_gridFF_ocl( fname="data/xyz/"+name+".xyz", save_name="double3", job="PLQ" )
 
-name="NaCl_1x1_L3"
-print("# =================== \n\n\n\ NOW ", name, " =================== \n")
-gff.test_gridFF_ocl( fname="data/xyz/"+name+".xyz", save_name="double3", job="PLQ" )
+
+
+
+# name="NaCl_1x1_L3"
+# print("# =================== \n\n\n\ NOW ", name, " =================== \n")
+# gff.test_gridFF_ocl( fname="data/xyz/"+name+".xyz", save_name="double3", job="PLQ" )
 
 #gff.test_gridFF_ocl( fname="data/xyz/"+name+".xyz", save_name="double3", job="PLQ_lin" )
 
@@ -77,6 +80,7 @@ qs = [ +1.,+1.,-1.,-1. ]
 # ])
 # qs = [ +1.,-1. ]
 
+#gff.test_Ewald( apos, qs,  ns=(100,100,100), dg=(0.10,0.10,0.10), order=3, bSlab=True,  nPBC=(100,100,0), bOld=True )
 #gff.test_Ewald( apos, qs,  ns=(100,100,100), dg=(0.10,0.10,0.10), order=3, bSlab=True,  nPBC=(100,100,0) )
 # gff.test_Ewald( apos, qs,  ns=[100,100,150], dg=[0.10,0.10,0.10], order=3, bSlab=True,  nPBC=[100,100,0] )
 # gff.test_Ewald( apos, qs,  ns=[100,100,200], dg=[0.10,0.10,0.10], order=3, bSlab=True,  nPBC=[100,100,0] )

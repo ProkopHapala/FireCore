@@ -1,6 +1,6 @@
 import numpy as np
 import os
-#import matplotlib.pyplot as plt
+import matplotlib.pyplot as plt
 #import matplotlib.patches as patches
 
 COULOMB_CONST  =    14.3996448915 

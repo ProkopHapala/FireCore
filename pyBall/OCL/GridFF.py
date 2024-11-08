@@ -616,6 +616,13 @@ class GridFF_cl:
         event, = self.inverse_transform.enqueue()
         event.wait()
 
+    def _poisson_old(self, sz_glob, sz_loc, ns, coefs_cl ):
+        event, = self.transform.enqueue() 
+        event.wait()
+        self.prg.poissonW_old( self.queue, sz_glob, sz_loc,       ns, self.Qgrid_buff, self.Vgrid_buff, coefs_cl )
+        event, = self.inverse_transform.enqueue()
+        event.wait()
+
     def prepare_poisson(self, sh=None):
         if sh is None: sh=self.gsh.ns[::-1] 
         print("GridFF_cl::prepare_poisson() sh=", sh )
@@ -624,7 +631,7 @@ class GridFF_cl:
         self.transform         = clu.FFT(self.ctx, self.queue, self.Qgrid_cla, axes=(0, 1, 2))
         self.inverse_transform = clu.FFT(self.ctx, self.queue, self.Vgrid_cla, axes=(0, 1, 2))
 
-    def poisson(self, bReturn=True, sh=None, dV=None ):
+    def poisson_old(self, bReturn=True, sh=None, dV=None ):
 
         clu.try_load_clFFT()
         if sh is None: sh=self.gsh.ns[::-1] 
@@ -638,18 +645,18 @@ class GridFF_cl:
 
         ns_cl    = np.array( (*sh[::-1],nxyz), dtype=np.int32 )
         #sc_ewald = 4*np.pi*dV*COULOMB_CONST
-        #sc_ewald = 4*np.pi*dV*dV*COULOMB_CONST   # This Seems wrong
+        sc_ewald = 4*np.pi*dV*dV*COULOMB_CONST   # This Seems wrong
 
-        sc_ewald = ( 4.0*np.pi*dV*COULOMB_CONST ) / ( nxyz )    # This normalization makes physical sense, and the result is independnet on number of grid points, however, the poential is too small (much smaller than real space reference)
+        #sc_ewald = ( 4.0*np.pi*dV*COULOMB_CONST ) / ( nxyz )    # This normalization makes physical sense, and the result is independnet on number of grid points, however, the poential is too small (much smaller than real space reference)
         # See discussion of normalization constant here: https://chatgpt.com/share/672d095b-9304-8012-ac50-de5cbe5cba18
-        # also chack how normalization constant is done in /home/prokop/git/FireCore/cpp/common/molecular/EwaldGrid.h   EwaldGrid::laplace_reciprocal_kernel( fftw_complex* VV ){ 
+        # also chack how normalization constant is done in /home/prokop/git/FireCore/cpp/common/molecular/EwaldGrid.h   EwaldGrid::laplace_reciprocal_kernel()
         # see https://github.com/ProkopHapala/FireCore/blob/079f9244f486d365362e1766b837e3aa4df6d368/cpp/common/molecular/EwaldGrid.h#L502
 
         coefs_cl = np.array( (0.0,0.0,0.0, sc_ewald ), dtype=np.float32 )
 
         nL = self.nloc
         nG = clu.roundup_global_size( nxyz, nL)
-        self._poisson( (nG,), (nL,), ns_cl, coefs_cl )        
+        self._poisson_old( (nG,), (nL,), ns_cl, coefs_cl )        
 
         if bReturn:
             sh_ = (*sh,2)
@@ -658,6 +665,50 @@ class GridFF_cl:
             cl.enqueue_copy ( self.queue, Vgrid, self.Vgrid_buff )
             print( "Vgrid min,max ", Vgrid.min(), Vgrid.max(), " sc_ewald ", sc_ewald, " dV ", dV, " nxyz ", nxyz )
             return Vgrid
+
+    def poisson(self, bReturn=True, sh=None, dV=None):
+        if sh is None:
+            sh = self.gsh.ns[::-1]
+        nxyz = np.int32(sh[0] * sh[1] * sh[2])
+
+        if dV is None:
+            dV = self.gsh.dV
+
+        buff_names = {'Qgrid', 'Vgrid'}
+        self.try_make_buffs(buff_names, 0, nxyz)
+        self.prepare_poisson(sh=sh)
+
+        ns_cl = np.array((*sh[::-1], nxyz), dtype=np.int32)
+
+        # Compute frequencies
+        Lx = sh[2] * self.gsh.dg[0]
+        Ly = sh[1] * self.gsh.dg[1]
+        Lz = sh[0] * self.gsh.dg[2]
+
+        freq_x = 2.0 * np.pi / Lx
+        freq_y = 2.0 * np.pi / Ly
+        freq_z = 2.0 * np.pi / Lz
+
+        scEwald = COULOMB_CONST * 4.0 * np.pi / (nxyz * dV)
+
+        #coefs_cl = np.array((freq_x, freq_y, freq_z, 0.0), dtype=np.float32)
+        coefs_cl = np.array((freq_x, freq_y, freq_z, scEwald), dtype=np.float32)
+
+        nL = self.nloc
+        nG = clu.roundup_global_size(nxyz, nL)
+        self._poisson((nG,), (nL,), ns_cl, coefs_cl)
+
+        if bReturn:
+            sh_ = (*sh, 2)
+            Vgrid = np.zeros(sh_, dtype=np.float32)
+            cl.enqueue_copy(self.queue, Vgrid, self.Vgrid_buff)
+            # Apply scaling factor after inverse FFT
+            scEwald = COULOMB_CONST * 4.0 * np.pi / (nxyz * dV)
+            Vgrid *= scEwald
+            print("Vgrid min,max ", Vgrid.min(), Vgrid.max(), " scEwald ", scEwald, " dV ", dV, " nxyz ", nxyz)
+            return Vgrid
+
+
 
     def slabPotential_old(self, nz_slab, dz, Vol, dVcor, Vcor0, bDownload=True):
         buff_names = {'Vgrid', 'V_Coul'}
@@ -749,7 +800,7 @@ class GridFF_cl:
             elif last_buff == 1:
                 return self.V1_buff
     
-    def makeCoulombEwald(self, atoms ):
+    def makeCoulombEwald(self, atoms, bOld=False ):
         print( "GridFF_cl::makeCoulombEwald() " )
         clu.try_load_clFFT()
         if self.gcl is None: 
@@ -773,9 +824,12 @@ class GridFF_cl:
         # cl.enqueue_copy(self.queue, Vcoul, self.Vcoul_buff )
         # return Vcoul
     
-        Vgrid = self.poisson()
-        Vgrid = Vgrid[:,:,:,0].copy()
+        if bOld:
+            Vgrid = self.poisson_old()
+        else:
+            Vgrid = self.poisson()
 
+        Vgrid = Vgrid[:,:,:,0].copy()
         #print( "Vgrid min,max", Vgrid.min(), Vgrid.max() )
         return Vgrid
 
@@ -806,7 +860,11 @@ class GridFF_cl:
         # NOTE / TODO : This is strange, not sure why we need to shift the coordinates
         atoms_np[:,0] += self.gcl.dg[0] * 1 
         atoms_np[:,1] += self.gcl.dg[1] * 1
-        atoms_np[:,2] += self.gcl.dg[2] * (-1 + 4 - 0.075)   # NOTE / TODO : shift -1 is because we do the same shift on CPU (in GridFF::tryLoadGridFF_potentials() ), this make sure that Qgrid_gpu and Qgrid_cpu are the same.   But align V_Coul with CPU we need to shift by 4 (see below)
+        #atoms_np[:,2] += self.gcl.dg[2] * (-1 + 4 - 0.075)   # NOTE / TODO : shift -1 is because we do the same shift on CPU (in GridFF::tryLoadGridFF_potentials() ), this make sure that Qgrid_gpu and Qgrid_cpu are the same.   But align V_Coul with CPU we need to shift by 4 (see below)
+
+        atoms_np[:,2] += self.gcl.dg[2] * 1      # NOTE / TODO : This works with new normalization (tested by compare_npy_z.py with respect to C++ EwaldGrid.h for NaCl_1x1_L3 ) ( see GridFF_cl::poisson()  vs GridFF_cl::poisson_old() )
+        #atoms_np[:,2] += self.gcl.dg[2] * (-1 )
+        #atoms_np[:,2] += self.gcl.dg[2] * 1
 
         cl.enqueue_copy(self.queue, self.atoms_buff, atoms_np)
 
