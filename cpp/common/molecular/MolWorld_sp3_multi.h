@@ -191,7 +191,7 @@ class MolWorld_sp3_multi : public MolWorld_sp3, public MultiSolverInterface { pu
 
     const char* uploadPopName=0;
 
-    bool bMILAN = false;
+    bool bMILAN = false; 
     bool bSaveToDatabase=false;
 
     MolecularDatabase* database = 0;
