@@ -1,4 +1,3 @@
-
 #ifndef FitREQ_h
 #define FitREQ_h
 
@@ -60,10 +59,10 @@ void rigid_transform( Vec3d shift, Vec3d* unshift, Vec3d dir, Vec3d up, int n, V
 }
 
 struct AddedData{
-    int    nep=0;
-    Vec2i* bs=0;
-    Vec3d* dirs=0;
-    int*  isep=0;
+    int nep=0;                // number of electron pairs
+    Vec2i* epairAndHostIndex=0;  // array of (host_atom_index, epair_index) pairs
+    Vec3d* dirs=0;           // directions of electron pairs
+    Vec2i* bs=0;            // bonds between electron pairs and host atoms
 };
 
 /**
@@ -568,12 +567,31 @@ void addAndReorderEpairs(Atoms*& atoms, FILE* fout=nullptr) {
     }
 
     // Store epair data in atoms object
-    AddedData* ad = new AddedData();
-    ad->nep  = nep_found;
-    ad->bs   = bs;      // Transfer ownership of builder-allocated memory
-    ad->dirs = dirs;    // Transfer ownership of builder-allocated memory
-    ad->isep = isep;
-    atoms->userData = ad;
+    //atoms->userData = atoms->userData;
+
+            // nep  = ad->nep;
+            // bs   = ad->bs;
+            // dirs = ad->dirs;
+            // isep = ad->isep;
+
+    // int nep=0;                // number of electron pairs
+    // Vec2i* epairAndHostIndex=0;  // array of (host_atom_index, epair_index) pairs
+    // Vec3d* dirs=0;           // directions of electron pairs
+    // Vec2i* bs=0;            // bonds between electron pairs and host atoms
+
+    // Store electron pair relationships in AddedData
+    AddedData* data =  new AddedData();
+    atoms->userData = data;
+    data->nep  = nep_found;
+    data->bs   = bs;
+    data->dirs = dirs;
+    data->epairAndHostIndex = new Vec2i[nep_found];
+    // Store host-epair relationships - note we swap i,j since we want (host,epair) pairs
+    for(int i=0; i<nep_found; i++){
+        data->epairAndHostIndex[i] = {bs[i].y, bs[i].x};  // bs[i].y is host atom, bs[i].x is epair
+    }
+    atoms->userData = data;
+
 
     // Write output if requested
     if(fout) {
@@ -642,152 +660,6 @@ int loadXYZ_new( const char* fname, bool bAddEpairs=false, bool bOutXYZ=false ){
     return nbatch;
 }
 
-
-/**
- * Loads XYZ file and creates Atoms objects for each molecule inside it. It saves the molecules to the "samples" vector.
- * Optionally adds electron pairs and outputs XYZ file with epairs.
- *
- * @param fname The name of the XYZ file to load.
- * @param bAddEpairs Flag indicating whether to add epairs to the loaded atoms.
- * @param bOutXYZ Flag indicating whether to output XYZ file with epairs.
- * @return The number of batches created.
- */
-int loadXYZ_new_bak( const char* fname, bool bAddEpairs=false, bool bOutXYZ=false ){
-    printf( "FitREQ::loadXYZ_new()\n" );
-    FILE* fin = fopen( fname, "r" );
-    if(fin==0){ printf("cannot open '%s' \n", fname ); exit(0);}
-    const int nline=1024;
-    char line[1024];
-    char at_name[8];
-    // --- Open output file
-    FILE* fout=0;
-    if(bAddEpairs && bOutXYZ){
-        sprintf(line,"%s_Epairs.xyz", fname );
-        fout = fopen(line,"w");
-    }
-    int il   = 0;
-    nbatch=0;
-    Atoms* atoms=0;
-    while( fgets(line, nline, fin) ){
-        if      ( il==0 ){               // --- Read number of atoms
-            int na=-1;
-            sscanf( line, "%i", &na );
-            if( (na>0)&&(na<10000) ){
-                atoms = new Atoms(na);
-            }else{ printf( "ERROR in FitREQ::loadXYZ() Suspicious number of atoms (%i) while reading `%s`  => Exit() \n", na, fname ); exit(0); }
-        }else if( il==1 ){               // --- Read comment line ( read reference energy )
-            sscanf( line, "%*s %*s %i %*s %lf ", &(atoms->n0), &(atoms->Energy) );
-        }else if( il<atoms->natoms+2 ){  // --- Road atom line (type, position, charge)
-            double x,y,z,q;
-            int nret = sscanf( line, "%s %lf %lf %lf %lf", at_name, &x, &y, &z, &q );
-            if(nret<5){q=0;}
-            int i=il-2;
-            atoms->apos[i].set(x,y,z);
-            atoms->atypes[i]=params->getAtomType(at_name);
-            atoms->charge[i]=q;
-        }
-        il++;
-        if( il >= atoms->natoms+2 ){    // ---- store sample atoms to batch
-            if(bAddEpairs){
-                // add Epairs
-                Atoms* bak = atoms; 
-                int n0bak  = bak->n0;
-                int natbak = bak->natoms;
-                int n1bak  = natbak - n0bak;
-//for(int i=0; i<atoms->natoms; i++){printf( "000 atoms[%i] %s pos=%g %g %g q=%g\n", i, params->atypes[atoms->atypes[i]].name, atoms->apos[i].x, atoms->apos[i].y, atoms->apos[i].z, atoms->charge[i] );};printf("\n");
-                atoms = addEpairs( atoms );
-                atoms->n0 = bak->n0;
-                atoms->Energy = bak->Energy;
-                for(int i=0; i<natbak; i++){ atoms->charge[i] = bak->charge[i]; }
-                delete bak;
-                // find root atoms and directions
-                Vec2i* bs   = 0;
-                Vec3d* dirs = 0;
-                int nep_found = builder.listEpairBonds( bs, dirs );
-                for(int i=0; i < nep_found; i++){dirs[i].normalize();};
-                int*  isep=0;
-                isep = new int[atoms->natoms];
-                for(int i=0; i < natbak; i++){ isep[i]=0; }
-                for(int i=natbak; i < atoms->natoms; i++){ isep[i]=1; } // Epairs are after atoms
-//for(int i=0; i<atoms->natoms; i++){printf( "BEFORE atoms[%i] %s pos=%g %g %g q=%g\n", i, params->atypes[atoms->atypes[i]].name, atoms->apos[i].x, atoms->apos[i].y, atoms->apos[i].z, atoms->charge[i] );};
-//for(int i=0; i<nep_found; i++){printf( "BEFORE Epair[%i] %i %i\n", i, bs[i].x, bs[i].y );};
-//printf("\n");
-                // shuffle atoms so that they are ordered as Atoms(mol1), Epairs(mol1), Atoms(mol2), Epairs(mol2)
-                Atoms bak2; bak2.copyOf( *atoms ); 
-                std::vector<Vec2i> bsbak( bs, bs+nep_found );
-                std::vector<Vec3d> dirsbak( dirs, dirs+nep_found );
-                // Atoms(mol1): nothing to do
-                // Epairs(mol1)
-                int iE=-1;
-                for(int i=0; i<nep_found; i++) {
-                    if(bsbak[i].x<n0bak){
-                        iE++;
-                        int j=n0bak+iE;
-                        int k=bsbak[i].y;
-                        atoms->apos[j]   = bak2.apos[k];
-                        atoms->atypes[j] = bak2.atypes[k];
-                        atoms->charge[j] = bak2.charge[k];
-                        atoms->n0++;
-                        bs[iE].x = bsbak[i].x;
-                        bs[iE].y = j;
-                        dirs[iE] = dirsbak[i];
-                        isep[j] = 1;
-                    }
-                }
-                int nE0 = iE+1;
-                int nE1 = atoms->natoms - natbak - nE0;
-                // Atoms(mol2)
-                for(int i=0; i<n1bak; i++){
-                    int j=atoms->n0+i;
-                    int k=n0bak+i;
-                    atoms->apos[j]   = bak2.apos[k];
-                    atoms->atypes[j] = bak2.atypes[k];
-                    atoms->charge[j] = bak2.charge[k];
-                    isep[j] = 0;
-                }
-                // Epairs(mol2)
-                iE=-1;
-                for(int i=0; i<nep_found; i++) {
-                    if(bsbak[i].x>=n0bak){
-                        iE++;
-                        int j=n0bak+nE0+n1bak+iE;
-                        int k=bsbak[i].y;
-                        atoms->apos[j]   = bak2.apos[k];
-                        atoms->atypes[j] = bak2.atypes[k];
-                        atoms->charge[j] = bak2.charge[k];
-                        bs[nE0+iE].x = bsbak[i].x+nE0;
-                        bs[nE0+iE].y = j;
-                        dirs[nE0+iE] = dirsbak[i];
-                        isep[j] = 1;
-                    }
-                }
-                //delete bak2; 
-//for(int i=0; i<atoms->natoms; i++){printf( "AFTER atoms[%i] %s pos=%g %g %g q=%g isep=%d\n", i, params->atypes[atoms->atypes[i]].name, atoms->apos[i].x, atoms->apos[i].y, atoms->apos[i].z, atoms->charge[i], isep[i] );};
-//for(int i=0; i<nep_found; i++){printf( "AFTER Epair[%i] %i %i\n", i, bs[i].x, bs[i].y );};
-//printf("FIN QUA\n");exit(0);
-//if(nbatch==0){for(int i=0; i<nep_found; i++){printf( "AFTER Epair[%i] %i %i\n", i, bs[i].x, bs[i].y );};}
-                // store root atoms and directions
-                AddedData * ad = new AddedData();
-                ad->nep  = nep_found;
-                ad->bs   = bs;
-                ad->dirs = dirs;
-                ad->isep = isep;
-                atoms->userData = ad;
-                if(fout){
-                    sprintf(line,"#	n0 %i E_tot %g", atoms->n0, atoms->Energy ); 
-                    params->writeXYZ( fout, atoms, line, 0, true );
-                }
-            }
-            samples.push_back( atoms );
-            il=0; nbatch++;
-        }
-    }
-    if(fout)fclose(fout);
-    fclose(fin);
-    //init_types_new();
-    return nbatch;
-}
-
 /**
  * @brief reads non-colvalent interaction parameter REQH(Rvdw,Evdw,Q,Hb) of given atom-type from aproprieate degrees of freedom (DOF) according to index stored in typToREQ[ityp]. If index of DOF is negative, the parameter is not read.  
  * @param ityp Index of the type
@@ -835,43 +707,47 @@ double evalDerivsSamp( double* Eout=0 ){
     //printf( "FitREQ::evalDerivsSamp() nbatch %i imodel %i verbosity %i \n", samples.size(), imodel, verbosity );
     tryRealocSamp();
     double Error = 0.0;
-    std::vector<double> qs_;
-    std::vector<Vec3d>  apos_; 
-    std::vector<int>    isep_;
-    std::vector<Vec3d>  dirs_; 
+    //std::vector<double> qs_;
+    //std::vector<Vec3d>  apos_;   // atomic positions
+    //std::vector<int>    isep_;   // 0=root, 1=electron pair
+    //std::vector<Vec3d>  dirs_; 
     for(int i=0; i<samples.size(); i++){
         const Atoms* atoms = samples[i];
-        qs_.resize(atoms->natoms);
-        apos_.resize(atoms->natoms);
-        isep_.resize(atoms->natoms);
-        dirs_.resize(atoms->natoms);
+        double qs  [atoms->natoms];
+        Vec3d  apos[atoms->natoms];   // atomic positions
+        int    isep[atoms->natoms];   // 0=root, 1=electron pair
+        Vec3d  dirs[atoms->natoms]; 
+        // qs_.resize(atoms->natoms);
+        // apos_.resize(atoms->natoms);
+        // isep_.resize(atoms->natoms);
+        // dirs_.resize(atoms->natoms);
         for(int j=0; j<atoms->natoms; j++){
-            qs_[j]   = atoms->charge[j];
-            apos_[j] = atoms->apos[j];
-            isep_[j] = 0;
-            dirs_[j] = Vec3dZero;
+            qs[j]   = atoms->charge[j];
+            apos[j] = atoms->apos[j];
+            isep[j] = 0;
+            dirs[j] = Vec3dZero;
         }
         // electron pairs
         int nep=0;
         Vec2i* bs   = 0;
         if( bEpairs ){
-            int*  isep = 0;
+            int*  isep  = 0;
             Vec3d* dirs = 0;
             AddedData * ad = (AddedData*)atoms->userData;
             nep  = ad->nep;
             bs   = ad->bs;
             dirs = ad->dirs;
-            isep = ad->isep;
+            //isep = ad->isep;
             // set values of the Epairs' and root atoms' charges according to the current values of the parameters
             for(int j=0; j<nep; j++){
                 int iX=bs[j].x;
                 int iE=bs[j].y;
                 double q  = typeREQs[atoms->atypes[iE]].z;
-                qs_[iE]   = q;
-                qs_[iX]   = qs_[iX] - q;
-                apos_[iE] = apos_[iX] + dirs[j] * typeREQs[atoms->atypes[iE]].w;
-                dirs_[iE] = dirs[j];
-                isep_[iE] = 1;
+                qs[iE]   = q;
+                qs[iX]   = qs[iX] - q;
+                apos[iE] = apos[iX] + dirs[j] * typeREQs[atoms->atypes[iE]].w;
+                dirs[iE] = dirs[j];
+                isep[iE] = 1;
             }
 //for(int j=0; j<nep; j++){printf( "dirs[%i] %g %g %g\n", j, dirs[j].x, dirs[j].y, dirs[j].z );};
 //for(int j=0; j<atoms->natoms; j++){printf( "atom[%i] %g %g %g\n", j, dirs_[j].x, dirs_[j].y, dirs_[j].z );};
@@ -880,17 +756,17 @@ double evalDerivsSamp( double* Eout=0 ){
         int     nj      = atoms->n0;
         int*    jtyp    = atoms->atypes;
         //Vec3d*  jpos  = atoms->apos;
-        Vec3d*  jpos    = apos_.data();
-        double* jq      = qs_.data();
-        int*    jisep   = isep_.data();
-        Vec3d*  jdirs   = dirs_.data();
+        Vec3d*  jpos    = apos;
+        double* jq      = qs;
+        int*    jisep   = isep;
+        Vec3d*  jdirs   = dirs;
         int     na      = atoms->natoms - atoms->n0;
         int*    atypes  = atoms->atypes + atoms->n0;
         //Vec3d* apos   = atoms->apos   + atoms->n0;
-        Vec3d*  apos    = apos_.data()  + atoms->n0;
-        double* aq      = qs_.data()    + atoms->n0;
-        int*    aisep   = isep_.data()  + atoms->n0;
-        Vec3d*  adirs   = dirs_.data()  + atoms->n0;
+        // Vec3d*  apos    = apos_.data()  + atoms->n0;
+        double* aq      = qs    + atoms->n0;
+        int*    aisep   = isep  + atoms->n0;
+        Vec3d*  adirs   = dirs  + atoms->n0;
         double Eref=atoms->Energy;
         double wi = 1.0; 
         if(weights) wi = weights[i];
@@ -907,7 +783,7 @@ double evalDerivsSamp( double* Eout=0 ){
 //exit(0);
         switch (imodel){
             //case 0:  E = evalExampleDerivs_LJQ        (na, atypes, apos, aq, aisep, adirs, nj, jtyp, jpos, jq, jisep, jdirs, nep, bs); break; 
-            case 1:  E = evalExampleDerivs_LJQH1      (na, atypes, apos, aq, aisep, adirs, nj, jtyp, jpos, jq, jisep, jdirs, nep, bs); break; 
+            //case 1:  E = evalExampleDerivs_LJQH1      (na, atypes, apos, aq, aisep, adirs, nj, jtyp, jpos, jq, jisep, jdirs, nep, bs); break; 
             case 2:  E = evalExampleDerivs_LJQH2      (na, atypes, apos, aq, aisep, adirs, nj, jtyp, jpos, jq, jisep, jdirs, nep, bs); break;
             //case 3:  E = evalExampleDerivs_LJQH1H2    (na, atypes, apos, aq, aisep, adirs, nj, jtyp, jpos, jq, jisep, jdirs, nep, bs); break;
             //case 4:  E = evalExampleDerivs_BuckQ      (na, atypes, apos, aq, aisep, adirs, nj, jtyp, jpos, jq, jisep, jdirs, nep, bs); break;
@@ -937,8 +813,13 @@ double evalDerivsSamp( double* Eout=0 ){
         } 
         if(Eout){ Eout[i]=E; };
         double dE = (E - Eref);
+        double dEw = 2.0*dE*wi;
         Error += dE*dE*wi;
-        acumDerivs( atoms->natoms, jtyp, 2.0*dE*wi );
+        acumDerivs    ( atoms->natoms,     jtyp, dEw );
+        AddedData* data = (AddedData*)atoms->userData;
+        if(data && data->nep > 0){
+            acumHostDerivs( data->nep, data->epairAndHostIndex, jtyp, dEw );
+        }
     }
     return Error;
 }
@@ -949,11 +830,11 @@ double evalDerivsSamp( double* Eout=0 ){
  * @param types An array of integers representing the types of atoms in the system.
  * @param dE The difference between the energy of the system and the reference energy (scalled by the weight for this sample (system)
 */
-void acumDerivs( int n, int* types, double dEw){
+void acumDerivs( int n, int* types, double dEw ){
     
     for(int i=0; i<n; i++){
-        int t            = types[i];
-        const Quat4i& tt = typToREQ[t];
+        int t            = types[i];     // map atom index i to atom type t
+        const Quat4i& tt = typToREQ[t];  // get index of degrees of freedom for atom type t
         const Quat4d  f  = fs[i];
         if(tt.x>=0)fDOFs[tt.x]+=f.x*dEw;
         if(tt.y>=0)fDOFs[tt.y]+=f.y*dEw;
@@ -963,6 +844,16 @@ void acumDerivs( int n, int* types, double dEw){
         //if((tt.x>=0)||(tt.y>=0))printf( "acumDerivs i= %i dE= %g f.x= %g fDOFs= %g f.y= %g fDOFs= %g\n", i, dE, f.x, fDOFs[tt.x], f.y, fDOFs[tt.y] );
     }
     //exit(0);
+}
+
+void acumHostDerivs( int nepair, Vec2i* epairAndHostIndex, int* types, double dEw  ){
+    for(int i=0; i<nepair; i++){
+        Vec2i ab         = epairAndHostIndex[i];
+        int t            = types[ab.i];  // map atom index i to atom type t
+        const Quat4i& tt = typToREQ[t];  // get index of degrees of freedom for atom type t
+        const Quat4d&  f = fs[ab.j];     // get variation from the host atom
+        if(tt.z>=0)fDOFs[tt.z]  -= f.z*dEw;  // we subtract the variational derivative of the host atom charge because the charge is transfered from host to the electron pair
+    }
 }
 
 /**
@@ -1004,8 +895,8 @@ double evalExampleDerivs_LJQH1( int n, int* types, Vec3d* ps, double* aq, int* a
             double Eel    = Q * dE_dQ;
             double dE_dri = 0.0;
             double dE_drj = 0.0;
-            if(aisep[i]==1){dE_dri+=corr_elec(ir,ir2,Q,d,adirs,i,nep,bs,nj,jpos,j,ps,dE_dQ);}
-            if(jisep[j]==1){dE_drj-=corr_elec(ir,ir2,Q,d,jdirs,j,nep,bs,0, ps,i,jpos,dE_dQ);}          
+            if(aisep[i]==1){dE_dri+=corr_elec(ir,ir2,Q,d,adirs,i,nep,bs,nj,jpos,j,ps,dE_dQ);}  // if i is in elecron pair subtract the charge transfer
+            if(jisep[j]==1){dE_drj-=corr_elec(ir,ir2,Q,d,jdirs,j,nep,bs,0, ps,i,jpos,dE_dQ);}  // if j is in elecron pair subtract the charge transfer       
             // --- Lennard-Jones
             double h1p     = 1.0 + H1;
             double u2      = ir2 * ( R0 * R0 );
