@@ -4,7 +4,7 @@
 
 gnuplot -e "
     set terminal pngcairo size 1920,1080 enhanced font 'Verdana,10';
-    set output 'TI_plot.png';
+    set output 'results/TI_plot.png';
     set title 'TI plot';
     set xlabel 'lamda';
     set ylabel 'Energy [eV]';
@@ -12,9 +12,9 @@ gnuplot -e "
     set format x '%.1f';
     set mxtics 5;
 
-    plot 'TI_plot.dat' using 1:2 with lines title 'Thermodynamic integration', \
-         '/home/kocimil1/Documents/testing_space/Free_energy/Three_particle_problem/reference.dat' using 1:2 with lines title 'Reference';
+    plot 'results/TI_plot.dat' using 1:2:3 with yerrorbars title 'Thermodynamic integration', \
+         'results/TI_plot.dat' using 1:6 with lines title 'Reference';
 "
 # show the plot
-display TI_plot.png
+#display results/TI_plot.png
 

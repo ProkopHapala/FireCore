@@ -338,10 +338,10 @@ class MolWorld_sp3 : public SolverInterface { public:
         //printf( "MolWorld_sp3::init() ffl.neighs=%li ffl.neighCell-%li \n", ffl.neighs, ffl.neighCell );
         //ffl.printNeighs();
         //if(verbosity>0) 
-        ffl.neighs[0].x = -1;
-        ffl.neighs[1].x = -1;
-        ffl.neighs[2].x = -1;
-
+        // ffl.neighs[0].x = -1;
+        // ffl.neighs[1].x = -1;
+        // ffl.neighs[2].x = -1;
+        run_omp(10000, 0.05);
 
         printf( "#### MolWorld_sp3::init() DONE\n\n");
     }
@@ -2322,6 +2322,8 @@ void pullAtom( int ia, Vec3d* apos, Vec3d* fapos, float K=-2.0 ){
 int counter=0;
     __attribute__((hot))  
     int run_omp( int niter_max, double dt, double Fconv=1e-6, double Flim=1000, double timeLimit=0.02, double* outE=0, double* outF=0, double* outV=0, double* outVF=0 ){
+        ffl.doAngles=false;
+        bNonBonded=false;
         nloop++;
         if(dt>0){ opt.setTimeSteps(dt); }else{ dt=opt.dt; }
 
@@ -2352,295 +2354,380 @@ int counter=0;
         // }
         if(bCheckStuck){ checkStuck( RStuck ); }
 
-
-///////////////// full version of run_omp()
-        //#pragma omp parallel shared(E,F2,ff,vv,vf,ffl) private(itr)
-//         #pragma omp parallel shared(niter,itr,E,F2,ff,vv,vf,ffl,T0,bConstrains,bConverged)
-//         while(itr<niter){
+/*
+/////////////// full version of run_omp()
+        #pragma omp parallel shared(E,F2,ff,vv,vf,ffl) private(itr)
+        #pragma omp parallel shared(niter,itr,E,F2,ff,vv,vf,ffl,T0,bConstrains,bConverged)
+        while(itr<niter){
             
-//             if(itr<niter){
-//             //#pragma omp barrier
-//             #pragma omp single
-//             {E=0;F2=0;ff=0;vv=0;vf=0;
-//                 if( bGopt         ) go.update();
-//                 if( go.bExploring ) bConverged = false;
-//             }
-//             //------ eval forces
-//             //#pragma omp barrier
-//             #pragma omp for reduction(+:E)
-//             for(int ia=0; ia<ffl.natoms; ia++){ counter++;
-//                 {                 ffl.fapos[ia           ] = Vec3dZero; } // atom pos force
-//                 if(ia<ffl.nnode){ ffl.fapos[ia+ffl.natoms] = Vec3dZero; } // atom pi  force
-//                 //if(verbosity>3)
-//                 //printf( "atom[%i]@cpu[%i/%i]\n", ia, omp_get_thread_num(), omp_get_num_threads()  );
-//                 if(ia<ffl.nnode){ E+=ffl.eval_atom(ia); }
-//                 //if(ia<ffl.nnode){ E+=ffl.eval_atom_opt(ia); }
+            if(itr<niter){
+            //#pragma omp barrier
+            #pragma omp single
+            {E=0;F2=0;ff=0;vv=0;vf=0;
+                if( bGopt         ) go.update();
+                if( go.bExploring ) bConverged = false;
+            }
+            //------ eval forces
+            //#pragma omp barrier
+            #pragma omp for reduction(+:E)
+            for(int ia=0; ia<ffl.natoms; ia++){ counter++;
+                {                 ffl.fapos[ia           ] = Vec3dZero; } // atom pos force
+                if(ia<ffl.nnode){ ffl.fapos[ia+ffl.natoms] = Vec3dZero; } // atom pi  force
+                //if(verbosity>3)
+                //printf( "atom[%i]@cpu[%i/%i]\n", ia, omp_get_thread_num(), omp_get_num_threads()  );
+                if(ia<ffl.nnode){ E+=ffl.eval_atom(ia); }
+                //if(ia<ffl.nnode){ E+=ffl.eval_atom_opt(ia); }
 
-//                 // ----- Error is HERE
-//                 if(bNonBonded){
-//                     if(bNonBondNeighs)[[likely]]{
-//                         if(bPBC)[[likely]]{ E+=ffl.evalLJQs_ng4_PBC_atom_omp( ia ); }
-//                         else              { E+=ffl.evalLJQs_ng4_atom_omp    ( ia ); } 
-//                     }else{
-//                         if(bPBC)[[likely]]{ E+=ffl.evalLJQs_PBC_atom_omp( ia, F2max ); }
-//                         else              { E+=ffl.evalLJQs_atom_omp    ( ia, F2max ); } 
-//                     }
+                // ----- Error is HERE
+                if(bNonBonded){
+                    if(bNonBondNeighs)[[likely]]{
+                        if(bPBC)[[likely]]{ E+=ffl.evalLJQs_ng4_PBC_atom_omp( ia ); }
+                        else              { E+=ffl.evalLJQs_ng4_atom_omp    ( ia ); } 
+                    }else{
+                        if(bPBC)[[likely]]{ E+=ffl.evalLJQs_PBC_atom_omp( ia, F2max ); }
+                        else              { E+=ffl.evalLJQs_atom_omp    ( ia, F2max ); } 
+                    }
 
-//                 }
+                }
 
-//                 //if(bGridFF){ E+= gridFF.addForce    ( ffl.apos[ia], ffl.PLQs[ia], ffl.fapos[ia], true  ); }  // GridFF  float
-//                 //if(bGridFF){ E+= gridFF.addForce_d  ( ffl.apos[ia], ffl.PLQd[ia], ffl.fapos[ia], true  ); }  // GridFF  double
-//                 if(bSurfAtoms)[[likely]]{ 
-//                     if(bGridFF)[[likely]]{ 
-//                         if  (bTricubic){ E+= gridFF.addForce_Tricubic( ffl.apos[ia], ffl.PLQd[ia], ffl.fapos[ia], true  ); }
-//                         else           { E+= gridFF.addForce         ( ffl.apos[ia], ffl.PLQs[ia], ffl.fapos[ia], true  ); }
-//                     }  // GridFF
-//                     else               { 
-//                         //{ E+= nbmol .evalMorse   ( surf, false,                  gridFF.alphaMorse, gridFF.Rdamp );  }
-//                         //{ E+= nbmol .evalMorsePBC    ( surf, gridFF.grid.cell, nPBC, gridFF.alphaMorse, gridFF.Rdamp );  }
-//                         { E+= gridFF.evalMorsePBC_sym( ffl.apos[ia], ffl.REQs[ia],  ffl.fapos[ia] );   }
-//                     }
-//                 }
+                //if(bGridFF){ E+= gridFF.addForce    ( ffl.apos[ia], ffl.PLQs[ia], ffl.fapos[ia], true  ); }  // GridFF  float
+                //if(bGridFF){ E+= gridFF.addForce_d  ( ffl.apos[ia], ffl.PLQd[ia], ffl.fapos[ia], true  ); }  // GridFF  double
+                if(bSurfAtoms)[[likely]]{ 
+                    if(bGridFF)[[likely]]{ 
+                        if  (bTricubic){ E+= gridFF.addForce_Tricubic( ffl.apos[ia], ffl.PLQd[ia], ffl.fapos[ia], true  ); }
+                        else           { E+= gridFF.addForce         ( ffl.apos[ia], ffl.PLQs[ia], ffl.fapos[ia], true  ); }
+                    }  // GridFF
+                    else               { 
+                        //{ E+= nbmol .evalMorse   ( surf, false,                  gridFF.alphaMorse, gridFF.Rdamp );  }
+                        //{ E+= nbmol .evalMorsePBC    ( surf, gridFF.grid.cell, nPBC, gridFF.alphaMorse, gridFF.Rdamp );  }
+                        { E+= gridFF.evalMorsePBC_sym( ffl.apos[ia], ffl.REQs[ia],  ffl.fapos[ia] );   }
+                    }
+                }
 
-//                 //if     (bGridFF){ E+= gridFF.addMorseQH_PBC_omp( ffl.apos[ia], ffl.REQs[ia], ffl.fapos[ia] ); }  // NBFF
-//                 if(bConstrZ){
-//                     Econstr += springbound( ffl.apos[ia].z-ConstrZ_xmin, ConstrZ_l, ConstrZ_k, ffl.fapos[ia].z );
-//                 }
-//                 if(ipicked==ia)[[unlikely]]{ 
-//                     const Vec3d f = getForceSpringRay( ffl.apos[ia], pick_hray, pick_ray0,  Kpick ); 
-//                     ffl.fapos[ia].add( f );
-//                 }
-//             }
-//             // if(ffl.bTorsion){
-//             //     #pragma omp for reduction(+:E)
-//             //     for(int it=0; it<ffl.ntors; it++){ 
-//             //         E+=ffl.eval_torsion(it); 
-//             //     }
-//             // }
-
-// //ffl.apos[2] = Vec3d({0.0, 5.0, 5.0});
-
-// #pragma omp single
-//             {
-// //printf("E=%f\n", E);
-//             if (bConstrains)
-//                 {
-//                     Econstr += constrs.apply(ffl.apos, ffl.fapos, &ffl.lvec);
-//                     E += Econstr;
-//                 }
-// //printf("E=%f\n", E);
-//                 if (go.bExploring)
-//                 {
-//                     //E+=go.constrs.apply(ffl.apos, ffl.fapos, &ffl.lvec);
-//             }
-// //printf("E=%f\n", E);
-//                 if (bFreeEnergyCalc && outE && outF)
-//                 {
-//                     // with constrained Colective variable
-//                     /*
-//                     outE[itr] = Econstr;
-//                     Vec3d direction = ffl.apos[colVar.bonds[0].ias.b] - ffl.apos[colVar.bonds[0].ias.a];
-//                     direction.normalize();
-//                     Vec3d value = ffl.fapos[colVar.bonds[0].ias.b] - ffl.fapos[colVar.bonds[0].ias.a];
-//                     outF[itr] = -direction.dot(value);
-//                     //colVar.apply(ffl.apos, 0, &ffl.lvec, 0, &outF[itr]);
-//                     if (outV)
-//                     {
-//                         outV[itr] = 0;
-//                         double l0 = 0;
-//                         for (DistConstr &dc : colVar.bonds)
-//                         {
-//                             l0 += dc.ls.x;
-//                             outV[itr] += (ffl.apos[dc.ias.a] - ffl.apos[dc.ias.b]).norm();
-//                         }
-//                         if (abs(outV[itr] - l0) > 0.5)
-//                         {
-//                             itr--;
-//                         }
-//                         //outV[itr] = ffl.evalKineticEnergy();
-//                     }*/
-//                    // for atom in potential of two atoms
-//                    outE[itr] = E;
-//                    Vec3d direction = ffl.apos[1] - ffl.apos[0];
-//                    direction.normalize();
-//                    double value0, value1;
-//                    value0 = ffl.fapos[0].dot(direction);
-//                    value1 = ffl.fapos[1].dot(direction);
-//                    outF[itr] = value0 - value1;
-//                    if(outV){
-//                     outV[itr] = ffl.vapos[2].norm2();
-//                    }
-//                 }
-               
-
-//             }                
-
-//             // ---- assemble (we need to wait when all atoms are evaluated)
-//             //#pragma omp barrier
-//             #pragma omp for
-//             for(int ia=0; ia<ffl.natoms; ia++){
-//                 ffl.assemble_atom( ia );
-//             }
-//             // #pragma omp barrier
-//             // #pragma omp for reduction(+:F2)
-//             // for(int i=0; i<ffl.nvecs; i++){
-//             //     F2 += ffl.move_atom_MD     ( i, dt, Flim, 0.95 );
-//             //     //F2 += ffl.move_atom_kvaziFIRE( i, dt, Flim );
-//             // }
-//             //#pragma omp barrier
-            
-//             //#pragma omp barrier
-//             // --- FIRE pre
-//                 #pragma omp for reduction(+:vf,vv,ff)
-//                 for(int i=0; i<opt.n; i++){
-//                     double v=opt.vel  [i];
-//                     double f=opt.force[i];
-//                     vv+=v*v; ff+=f*f; vf+=v*f;
-//                 }
-//                 #pragma omp single
-//                 { opt.vv=vv; opt.ff=ff; opt.vf=vf; F2=ff; opt.FIRE_update_params(); }
-//                 // ------ move
-//                 double q = 0.3748*log(go.T_target)+0.6744; //constant to correct temperature from uniform distribution
-//                 #pragma omp for
-//                 for(int i=0; i<ffl.nvecs; i++){
-//                     if( go.bExploring ){
-//                         ffl.move_atom_Langevin( i, dt, 10000.0, go.gamma_damp, go.T_target ); 
-//                     }else{
-//                         //ffl.move_atom_MD( i, opt.dt, Flim, 0.9 );
-//                         //ffl.move_atom_MD( i, 0.05, Flim, 0.9 );
-//                         //ffl.move_atom_MD( i, 0.05, 1000.0, 0.9 );
-//                         ffl.move_atom_FIRE( i, opt.dt, 10000.0, opt.cv, opt.renorm_vf*opt.cf );
-//                         //ffl.move_atom_FIRE( i, dt, 10000.0, 0.9, 0 ); // Equivalent to MDdamp
-//                     }
-//             }
-// if(ffl.apos[2].x>10.0)ffl.apos[2].x-=20;
-// if(ffl.apos[2].x<-10.0)ffl.apos[2].x+=20;
-// if(ffl.apos[2].y>5.0)ffl.apos[2].y-=10;
-// if(ffl.apos[2].y<-5.0)ffl.apos[2].y+=10;
-// if(ffl.apos[2].z>5.0)ffl.apos[2].z-=10;
-// if(ffl.apos[2].z<-5.0)ffl.apos[2].z+=10;
-//             //#pragma omp barrier
-//             #pragma omp single
-//             { 
-//                 Etot=E;
-//                 itr++; 
-//                 // if(timeLimit>0)[[unlikely]]{
-//                 //     double t = (getCPUticks() - T0)*tick2second;
-//                 //     if(t>0.02){ 
-//                 //         niter=0; 
-//                 //         if(verbosity>1) [[unlikely]] { printf( "run_omp() ended due to time limit after %i nsteps ( %6.3f [s]) \n", itr, t ); }
-//                 //     }
-//                 // }
-//                 if(F2<F2conv)[[unlikely]]{ 
-//                     niter=0; 
-//                     bConverged = true;
-//                     double t = (getCPUticks() - T0)*tick2second;
-//                     if(verbosity>1) [[unlikely]] { printf( "run_omp() CONVERGED in %i/%i nsteps E=%g |F|=%g time= %g [ms]( %g [us/%i iter])\n", itr,niter_max, E, sqrt(F2), t*1e+3, t*1e+6/itr, itr ); }
-
-//                     printf( "run_omp() CONVERGED in %i/%i nsteps E=%g |F|=%g time= %g [ms]( %g [us/%i iter])\n", itr,niter_max, E, sqrt(F2), t*1e+3, t*1e+6/itr, itr );
-//                     if(bGopt  && (!go.bExploring) ){
-//                         gopt_ifound++;
-//                         sprintf(tmpstr,"# %i E %g |F| %g istep=%i", gopt_ifound, Etot, sqrt(F2), go.istep );
-//                         printf( "run_omp().save %s \n", tmpstr );
-//                         saveXYZ( "gopt.xyz", tmpstr, false, "a", nPBC_save );
-//                         go.startExploring();
-//                         //go.apply_kick( ffl.natoms, ffl.apos, ffl.vapos );
-//                         bConverged=false;
-//                         // if(bToCOG && bGridFF ){ 
-//                         //     Vec3d cog=average( ffl.natoms, ffl.apos );   cog.z=0;  
-//                         //     move( ffl.natoms, ffl.apos, cog*-1.0 ); 
-//                         // }
-//                     }
-//                 }else{
-//                     if( bCheckStuck  )[[unlikely]]{ handleStuckAtom(itr, Vec3d{opt.vf,opt.vv,opt.ff} ); }
-//                 }
-//                 //printf( "step[%i] E %g |F| %g ncpu[%i] \n", itr, E, sqrt(F2), omp_get_num_threads() ); 
-//                 //{printf( "step[%i] dt %g(%g) cv %g cf %g cos_vf %g \n", itr, opt.dt, opt.dt_min, opt.cv, opt.cf, opt.cos_vf );}
-//                 //if(verbosity>2){printf( "step[%i] E %g |F| %g ncpu[%i] \n", itr, E, sqrt(F2), omp_get_num_threads() );}
-//             }
-//             } // if(itr<niter)
-//         } // while(itr<niter)
-//            //printf( "run_omp() counter %i \n", counter );
-//            //printf( "contrs[0].norm() %g \n", constrs.bonds[0].ls.x );
-//         {
-//         double t = (getCPUticks() - T0)*tick2second;
-//         if( (itr>=niter_max)&&(verbosity>1)) [[unlikely]] {printf( "run_omp() NOT CONVERGED in %i/%i dt=%g E=%g |F|=%g time= %g [ms]( %g [us/%i iter]) \n", itr,niter_max, opt.dt, E,  sqrt(F2), t*1e+3, t*1e+6/itr, itr ); }
-//         }
-        //if(outE)outE[0]=Etot;
-        // if(outV)outV[0]=sqrt(vv);
-        // double f_ = 0;
-        // for(int i=0; i<opt.n; i++){ f_ += opt.force[i]; }
-        //for(int i=0; i<ffl.natoms; i++){ f_ += ffl.fapos[i].x; f_ +=ffl.fapos[i].y; }//printf("ffl.fapos[%i](%g %g %g))\n", i, ffl.fapos[i].x, ffl.fapos[i].y, ffl.fapos[i].z ); }
-        //for(int i=0; i<ffl.nnode; i++){ f_ += ffl.fpipos[i].x; f_ +=ffl.fpipos[i].y; }//printf("ffl.fapos[%i](%g %g %g))\n", i, ffl.fapos[i].x, ffl.fapos[i].y, ffl.fapos[i].z ); }
-        //if(outF)outF[0]=F2;
+                //if     (bGridFF){ E+= gridFF.addMorseQH_PBC_omp( ffl.apos[ia], ffl.REQs[ia], ffl.fapos[ia] ); }  // NBFF
+                if(bConstrZ){
+                    Econstr += springbound( ffl.apos[ia].z-ConstrZ_xmin, ConstrZ_l, ConstrZ_k, ffl.fapos[ia].z );
+                }
+                if(ipicked==ia)[[unlikely]]{ 
+                    const Vec3d f = getForceSpringRay( ffl.apos[ia], pick_hray, pick_ray0,  Kpick ); 
+                    ffl.fapos[ia].add( f );
+                }
+            }
+            // if(ffl.bTorsion){
+            //     #pragma omp for reduction(+:E)
+            //     for(int it=0; it<ffl.ntors; it++){ 
+            //         E+=ffl.eval_torsion(it); 
+            //     }
+            // }
 
 
-////////////////////// only the used part of run_omp() when calculating three particles (two still, one moving)
-// three atom problem
-#pragma omp parallel shared(niter, itr, E, F2, ff, vv, vf, ffl, T0, bConstrains, bConverged)
-        while (itr < niter)
-        {
-            // to zero Energy and forces
-            E = 0;
-            for (int ia = 0; ia < ffl.natoms; ia++)
+#pragma omp single
             {
-                ffl.fapos[ia] = Vec3dZero;
-            }
-
-            // calculate energy and forces
-            for(int ia=0; ia<ffl.natoms; ia++){
-                E += ffl.evalLJQs_atom_omp(ia, F2max);
-            }
             if (bConstrains)
-            {
-                Econstr += constrs.apply(ffl.apos, ffl.fapos, &ffl.lvec);
-                E += Econstr;
-            }
+                {
+                    Econstr += constrs.apply(ffl.apos, ffl.fapos, &ffl.lvec);
+                    E += Econstr;
+                }
+                if (go.bExploring)
+                {
+                    //E+=go.constrs.apply(ffl.apos, ffl.fapos, &ffl.lvec);
+                }
+
+                if (bFreeEnergyCalc && outF)
+                {
+                    Vec3d direction = ffl.apos[colVar.bonds[0].ias.b] - ffl.apos[colVar.bonds[0].ias.a];
+                    direction.normalize();
+                    double value0, value1;
+                    value0 = ffl.fapos[colVar.bonds[0].ias.b].dot(direction);
+                    value1 = ffl.fapos[colVar.bonds[0].ias.a].dot(direction);
+                    outF[itr] = (value0 - value1)*0.5; // 0.5 is because of model where the collective variable is abs(x1-x0) and x1 = (x+lamba/2, y, z) and x0 = (x-lamba/2, y, z)
+
+                    // aware array outV is connected with array positions in calculate_Free_energy() function
+                    if (outV)
+                    {
+                        //outV[itr] = ffl.vapos[2].norm2();
+                        outV[itr] = ffl.evalKineticEnergy();
+                    }
+                    if (outE)
+                    {
+                        outE[itr] = E;
+                    }
+                }
+
+            }                
+
+            // ---- assemble (we need to wait when all atoms are evaluated)
+            //#pragma omp barrier
+            #pragma omp for
             for(int ia=0; ia<ffl.natoms; ia++){
                 ffl.assemble_atom( ia );
             }
+            // #pragma omp barrier
+            // #pragma omp for reduction(+:F2)
+            // for(int i=0; i<ffl.nvecs; i++){
+            //     F2 += ffl.move_atom_MD     ( i, dt, Flim, 0.95 );
+            //     //F2 += ffl.move_atom_kvaziFIRE( i, dt, Flim );
+            // }
+            //#pragma omp barrier
+            
+            //#pragma omp barrier
+            // --- FIRE pre
+                #pragma omp for reduction(+:vf,vv,ff)
+                for(int i=0; i<opt.n; i++){
+                    double v=opt.vel  [i];
+                    double f=opt.force[i];
+                    vv+=v*v; ff+=f*f; vf+=v*f;
+                }
+                #pragma omp single
+                { opt.vv=vv; opt.ff=ff; opt.vf=vf; F2=ff; opt.FIRE_update_params(); }
+                // ------ move
+                double q = 0.3748*log(go.T_target)+0.6744; //constant to correct temperature from uniform distribution
+                #pragma omp for
+                for(int i=0; i<ffl.nvecs; i++){
+                    if( go.bExploring ){
+                        ffl.move_atom_Langevin( i, dt, 10000.0, go.gamma_damp, go.T_target ); 
+                    }else{
+                        //ffl.move_atom_MD( i, opt.dt, Flim, 0.9 );
+                        //ffl.move_atom_MD( i, 0.05, Flim, 0.9 );
+                        //ffl.move_atom_MD( i, 0.05, 1000.0, 0.9 );
+                        ffl.move_atom_FIRE( i, opt.dt, 10000.0, opt.cv, opt.renorm_vf*opt.cf );
+                        //ffl.move_atom_FIRE( i, dt, 10000.0, 0.9, 0 ); // Equivalent to MDdamp
+                    }
+            }
+            //#pragma omp barrier
+            #pragma omp single
+            { 
+                Etot=E;
+                itr++; 
+                // if(timeLimit>0)[[unlikely]]{
+                //     double t = (getCPUticks() - T0)*tick2second;
+                //     if(t>0.02){ 
+                //         niter=0; 
+                //         if(verbosity>1) [[unlikely]] { printf( "run_omp() ended due to time limit after %i nsteps ( %6.3f [s]) \n", itr, t ); }
+                //     }
+                // }
+                if(F2<F2conv)[[unlikely]]{ 
+                    niter=0; 
+                    bConverged = true;
+                    double t = (getCPUticks() - T0)*tick2second;
+                    if(verbosity>1) [[unlikely]] { printf( "run_omp() CONVERGED in %i/%i nsteps E=%g |F|=%g time= %g [ms]( %g [us/%i iter])\n", itr,niter_max, E, sqrt(F2), t*1e+3, t*1e+6/itr, itr ); }
 
-            // prepare output
-            if (bFreeEnergyCalc && outE && outF)
+                    printf( "run_omp() CONVERGED in %i/%i nsteps E=%g |F|=%g time= %g [ms]( %g [us/%i iter])\n", itr,niter_max, E, sqrt(F2), t*1e+3, t*1e+6/itr, itr );
+                    if(bGopt  && (!go.bExploring) ){
+                        gopt_ifound++;
+                        sprintf(tmpstr,"# %i E %g |F| %g istep=%i", gopt_ifound, Etot, sqrt(F2), go.istep );
+                        printf( "run_omp().save %s \n", tmpstr );
+                        saveXYZ( "gopt.xyz", tmpstr, false, "a", nPBC_save );
+                        go.startExploring();
+                        //go.apply_kick( ffl.natoms, ffl.apos, ffl.vapos );
+                        bConverged=false;
+                        // if(bToCOG && bGridFF ){ 
+                        //     Vec3d cog=average( ffl.natoms, ffl.apos );   cog.z=0;  
+                        //     move( ffl.natoms, ffl.apos, cog*-1.0 ); 
+                        // }
+                    }
+                }else{
+                    if( bCheckStuck  )[[unlikely]]{ handleStuckAtom(itr, Vec3d{opt.vf,opt.vv,opt.ff} ); }
+                }
+                //printf( "step[%i] E %g |F| %g ncpu[%i] \n", itr, E, sqrt(F2), omp_get_num_threads() ); 
+                //{printf( "step[%i] dt %g(%g) cv %g cf %g cos_vf %g \n", itr, opt.dt, opt.dt_min, opt.cv, opt.cf, opt.cos_vf );}
+                //if(verbosity>2){printf( "step[%i] E %g |F| %g ncpu[%i] \n", itr, E, sqrt(F2), omp_get_num_threads() );}
+            }
+            } // if(itr<niter)
+        } // while(itr<niter)
+           //printf( "run_omp() counter %i \n", counter );
+           //printf( "contrs[0].norm() %g \n", constrs.bonds[0].ls.x );
+        {
+        double t = (getCPUticks() - T0)*tick2second;
+        if( (itr>=niter_max)&&(verbosity>1)) [[unlikely]] {printf( "run_omp() NOT CONVERGED in %i/%i dt=%g E=%g |F|=%g time= %g [ms]( %g [us/%i iter]) \n", itr,niter_max, opt.dt, E,  sqrt(F2), t*1e+3, t*1e+6/itr, itr ); }
+        }
+        // if(outE)outE[0]=Etot;
+        // if(outV)outV[0]=sqrt(vv);
+        // double f_ = 0;
+        // for(int i=0; i<opt.n; i++){ f_ += opt.force[i]; }
+        // for(int i=0; i<ffl.natoms; i++){ f_ += ffl.fapos[i].x; f_ +=ffl.fapos[i].y; }//printf("ffl.fapos[%i](%g %g %g))\n", i, ffl.fapos[i].x, ffl.fapos[i].y, ffl.fapos[i].z ); }
+        // for(int i=0; i<ffl.nnode; i++){ f_ += ffl.fpipos[i].x; f_ +=ffl.fpipos[i].y; }//printf("ffl.fapos[%i](%g %g %g))\n", i, ffl.fapos[i].x, ffl.fapos[i].y, ffl.fapos[i].z ); }
+        // if(outF)outF[0]=F2;
+*/
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+/////////////// full version of run_omp()
+#pragma omp parallel shared(E, F2, ff, vv, vf, ffl) private(itr)
+#pragma omp parallel shared(niter, itr, E, F2, ff, vv, vf, ffl, T0, bConstrains, bConverged)
+        while (itr < niter)
+        {
+            E = 0;
+#pragma omp for reduction(+ : E)
+            for (int ia = 0; ia < ffl.natoms; ia++)
             {
-                outE[itr] = E;
-                Vec3d direction = ffl.apos[1] - ffl.apos[0];
-                direction.normalize();
-                double value0, value1;
-                value0 = ffl.fapos[0].dot(direction);
-                value1 = ffl.fapos[1].dot(direction);
-                outF[itr] = (value0 - value1);
-
-                // aware array outV is connected with array positions in calculate_Free_energy() function
-                if (outV)
                 {
-                    outV[itr] = ffl.vapos[2].norm2();
+                    ffl.fapos[ia] = Vec3dZero;
+                } 
+                if (ia < ffl.nnode)
+                {
+                    E += ffl.eval_atom(ia);
+                }
+
+                if (ipicked == ia) [[unlikely]]
+                {
+                    const Vec3d f = getForceSpringRay(ffl.apos[ia], pick_hray, pick_ray0, Kpick);
+                    ffl.fapos[ia].add(f);
                 }
             }
 
-            // move atoms (atom 0 and 1 have forbiden movement in move_atom_Langevin function)
+#pragma omp single
+            {
+
+
+
+                if (bFreeEnergyCalc && outF)
+                {
+                    Vec3d direction = ffl.apos[colVar.bonds[0].ias.b] - ffl.apos[colVar.bonds[0].ias.a];
+                    direction.normalize();
+                    double value0, value1;
+                    ffl.fapos[colVar.bonds[0].ias.b].div({1.0,1.0,1.0});
+                    ffl.fapos[colVar.bonds[0].ias.a].div({1.0,1.0,1.0});
+                    value0 = ffl.fapos[colVar.bonds[0].ias.a].dot(direction);
+                    value1 = ffl.fapos[colVar.bonds[0].ias.b].dot(direction);
+                    outF[itr] = (value0 - value1) * 0.5 / 1; // 0.5 is because of model where the collective variable is abs(x1-x0) and x1 = (x+lamba/2, y, z) and x0 = (x-lamba/2, y, z)
+                    ffl.fapos[colVar.bonds[0].ias.b].mul({1.0,1.0,1.0});
+                    ffl.fapos[colVar.bonds[0].ias.a].mul({1.0,1.0,1.0});
+                    // aware array outV is connected with array positions in calculate_Free_energy() function
+                    if (outV)
+                    {
+    double chain_length = 0;
+    for (int i = 0; i < ffl.natoms; i++)
+    {
+        int k = 0;
+        while (ffl.neighs[i].array[k] != -1)
+        {
+            chain_length += ffl.apos[ffl.neighs[i].array[k]].dist(ffl.apos[i]);
+            k++;
+        }
+    }
+    chain_length /= 2;
+    double segment_length = chain_length / (ffl.natoms-1);
+
+
+
+                        // outV[itr] = ffl.vapos[2].norm2();
+                        // Vec3d direction = ffl.apos[colVar.bonds[0].ias.b] - ffl.apos[colVar.bonds[0].ias.a];
+                        // outV[itr] = direction.norm();
+                        outV[itr] = segment_length;
+                    }
+                    if (outE)
+                    {
+                        outE[itr] = ffl.evalKineticEnergy();
+                    }
+                }
+
+                Econstr += constrs.apply(ffl.apos, ffl.fapos, &ffl.lvec);
+                E += Econstr;
+            }
+#pragma omp for
             for (int ia = 0; ia < ffl.natoms; ia++)
             {
-                ffl.move_atom_Langevin(ia, dt, 10000.0, go.gamma_damp, go.T_target);
+                ffl.assemble_atom(ia);
             }
 
-            // pseudo periodic boundary conditions
-            if (ffl.apos[2].x > 10.0)
-                ffl.apos[2].x -= 20;
-            if (ffl.apos[2].x < -10.0)
-                ffl.apos[2].x += 20;
-            if (ffl.apos[2].y > 5.0)
-                ffl.apos[2].y -= 10;
-            if (ffl.apos[2].y < -5.0)
-                ffl.apos[2].y += 10;
-            if (ffl.apos[2].z > 5.0)
-                ffl.apos[2].z -= 10;
-            if (ffl.apos[2].z < -5.0)
-                ffl.apos[2].z += 10;
+#pragma omp for
+            for (int i = 0; i < ffl.nvecs; i++)
+            {
+                ffl.move_atom_Langevin(i, dt, 10000.0, go.gamma_damp, go.T_target);
+            }
 
-            itr++; 
+            itr++;
         }
 
+        /*
+        ////////////////////// only the used part of run_omp() when calculating three particles (two still, one moving)
+        // three atom problem
+        #pragma omp parallel shared(niter, itr, E, F2, ff, vv, vf, ffl, T0, bConstrains, bConverged)
+                while (itr < niter)
+                {
+                    // to zero Energy and forces
+                    E = 0;
+                    for (int ia = 0; ia < ffl.natoms; ia++)
+                    {
+                        ffl.fapos[ia] = Vec3dZero;
+                    }
+
+                    // calculate energy and forces
+                    for(int ia=0; ia<ffl.natoms; ia++){
+                        E += ffl.evalLJQs_atom_omp(ia, F2max);
+                    }
+                    if (bConstrains)
+                    {
+                        Econstr += constrs.apply(ffl.apos, ffl.fapos, &ffl.lvec);
+                        E += Econstr;
+                    }
+                    for(int ia=0; ia<ffl.natoms; ia++){
+                        ffl.assemble_atom( ia );
+                    }
+
+                    // prepare output
+                    if (bFreeEnergyCalc && outF)
+                    {
+                        Vec3d direction = ffl.apos[1] - ffl.apos[0];
+                        direction.normalize();
+                        double value0, value1;
+                        value0 = ffl.fapos[0].dot(direction);
+                        value1 = ffl.fapos[1].dot(direction);
+                        outF[itr] = -value1;//(value0 - value1)*0.5; // 0.5 is because of model where the collective variable is abs(x1-x0) and x1 = (x+lamba/2, y, z) and x0 = (x-lamba/2, y, z)
+
+                        // aware array outV is connected with array positions in calculate_Free_energy() function
+                        if (outV)
+                        {
+                            //outV[itr] = ffl.vapos[2].norm2();
+                            outV[itr] = ffl.evalKineticEnergy();
+                        }
+                        if (outE)
+                        {
+                            outE[itr] = E;
+                        }
+                    }
+
+                    // move atoms (atom 0 and 1 have forbiden movement in move_atom_Langevin function)
+                    for (int ia = 0; ia < ffl.natoms; ia++)
+                    {
+                        ffl.move_atom_Langevin(ia, dt, 10000.0, go.gamma_damp, go.T_target);
+                    }
+
+                    // pseudo periodic boundary conditions
+                    if (ffl.apos[2].x > 10.0)
+                        ffl.apos[2].x -= 20;
+                    if (ffl.apos[2].x < -10.0)
+                        ffl.apos[2].x += 20;
+                    if (ffl.apos[2].y > 5.0)
+                        ffl.apos[2].y -= 10;
+                    if (ffl.apos[2].y < -5.0)
+                        ffl.apos[2].y += 10;
+                    if (ffl.apos[2].z > 5.0)
+                        ffl.apos[2].z -= 10;
+                    if (ffl.apos[2].z < -5.0)
+                        ffl.apos[2].z += 10;
+
+                    itr++;
+                }
+        */
         return itr;
     }
 
@@ -3361,7 +3448,7 @@ void runGlobalOptimization(int Findex, std::vector<double>* a, std::vector<doubl
 }
 
 
-void MD_with_mexican_hat(int nbStep, int nbMDSteps, int nbMDStepsThermalize, double* lamda, double d, std::vector<double>* dE_dLamda){ // somewhere is missing constant 2, because the free energy calculated by this means is twice as small as it should be
+void MD_with_mexican_hat(int nbStep, int nbMDSteps, int nbMDStepsThermalize, double* lamda, double d, std::vector<double>* dE_dLamda){ 
     int atom = 0;
     double f, r, inv_c;
 
@@ -3388,9 +3475,70 @@ void MD_with_mexican_hat(int nbStep, int nbMDSteps, int nbMDStepsThermalize, dou
     }
 }
 
+void JE_init(int nbInits, int nbMDSteps, int nbMDStepsThermalize, double lamda_init, double d, double* position){
+    int atom = 0;
+    double f, r, inv_c;
+    int n = nbMDSteps/nbInits;
+    int L = 0;
+
+    ffl.apos[atom].set(0, 0, 0);
+
+    for(int i = 0; i < nbMDStepsThermalize; i++){
+        r = ffl.apos[atom].x;
+        inv_c = 1/lamda_init;
+        f = - 4.0 * d * inv_c * r * inv_c * ( r * inv_c * r * inv_c - 1);
+        ffl.fapos[atom].set(f, 0, 0);
+        ffl.move_atom_Langevin( atom, dt_default, 10000.0, go.gamma_damp, go.T_target );
+    }
+
+    for(int i = 0; i < nbMDSteps; i++){
+        r = ffl.apos[atom].x;
+        inv_c = 1/lamda_init;
+        f = - 4.0 * d * inv_c * r * inv_c * ( r * inv_c * r * inv_c - 1);
+        ffl.fapos[atom].set(f, 0, 0);
+        ffl.move_atom_Langevin( atom, dt_default, 10000.0, go.gamma_damp, go.T_target );
+        n--;
+        if(n == 0){
+            position[L] = r;
+            n = nbMDSteps/nbInits;
+            L++;
+        }
+
+    }
+
+}
+
+void JE_propagation(double initial_position, double* lamda, int nbSteps, double d, double* W, int nbMD = 1000){
+    int atom = 0;
+    double r, inv_c;
+    int n = 1000;
+    double E, f;
+
+    inv_c = 1/lamda[0];
+    r = initial_position;
+    double E_prev = d * ( r * r * inv_c * inv_c - 1) * ( r * r * inv_c * inv_c - 1);
+
+    for(int L = 1; L < nbSteps; L++){
+        inv_c = 1/lamda[L];
+        printf("r = %f\n", r);
+        for (int t = 0; t < nbMD; t++)
+        {
+            f = -4.0 * d * inv_c * r * inv_c * (r * inv_c * r * inv_c - 1);
+            ffl.fapos[atom].set(f, 0, 0);
+            ffl.move_atom_Langevin(atom, dt_default, 10000.0, go.gamma_damp, go.T_target);
+            r = ffl.apos[atom].x;
+        }
+        
+
+        if(L>1)E_prev = E;
+        E = d * ( r * r * inv_c * inv_c - 1) * ( r * r * inv_c * inv_c - 1);
+
+        W[L] += E - E_prev;
+    }
+}
 
 
-double compute_Free_energy(double lamda1, double lamda2, int n, int *dc, int nbStep = 100, int nMDSteps = 100000, double tdamp = 100.0, double T = 300, double dt = 0.05){
+double compute_Free_energy(double lamda1, double lamda2, int n, int *dc, int nbStep = 100, int nMDSteps = 100000, int nEQsteps = 10000, double tdamp = 100.0, double T = 300, double dt = 0.05){
     // set global parameters
     double gamma = 1/(dt*tdamp); // = go.gamma_damp
     go.gamma_damp = gamma;
@@ -3399,12 +3547,70 @@ double compute_Free_energy(double lamda1, double lamda2, int n, int *dc, int nbS
     go.bExploring = true;
     bConstrains = true;
     bFreeEnergyCalc = true;
+/*
+int nbInits = 1000;
+    std::vector<std::vector<double>> W(nbInits, std::vector<double>(nMDSteps));
+    std::vector<double> initial_positions(nbInits, 0.0);
 
+    double d =0.1;
+
+    int nbMDStepsThermalize = 1000;
+    std::vector<double> lamda(nbStep);
+    double d_lamda = (lamda2 - lamda1) / (nbStep - 1);
+    for (int i = 0; i < nbStep; ++i) {
+        lamda[i] = lamda1 + i * d_lamda;
+    }
+
+
+    JE_init(nbInits, nMDSteps, nbMDStepsThermalize, lamda1, d, initial_positions.data());
     
+    std::vector<double> boltzman_factor(nbStep, 0.0);
+    std::vector<double> sigma_boltzman_factor(nbStep, 0.0);
+    for (int i=0; i<nbInits; i++) {
+        JE_propagation(initial_positions[i], lamda.data(), nbStep, d, W[i].data());
+    }
+    std::vector<double> F_JE(nbStep, 0.0);
+    std::vector<double> sigma_JE(nbStep, 0.0);
+    for (int L = 0; L < nbStep; L++) {
+        for (int i = 0; i < nbInits; i++) {
+            double W_i = 0.0;
+            for (int l = 0; l < L; l++) {
+                W_i += W[i][l];
+            }
+            boltzman_factor[L] += exp(-W_i / const_kB / T);
+        }
+        boltzman_factor[L] /= nbInits;
+        for (int i = 0; i < nbInits; i++) {
+            double W_i = 0.0;
+            for (int l = 0; l < L; l++) {
+                W_i += W[i][l];
+            }
+            sigma_boltzman_factor[L] += (exp(-W_i / const_kB / T) - boltzman_factor[L]) * 
+                                        (exp(-W_i / const_kB / T) - boltzman_factor[L]);
+        }
+        sigma_boltzman_factor[L] /= nbInits;
+        sigma_boltzman_factor[L] = sqrt(sigma_boltzman_factor[L]);
+        F_JE[L] = -const_kB * T * log(boltzman_factor[L]);
+        sigma_JE[L] = const_kB * T * sigma_boltzman_factor[L] / boltzman_factor[L];
+
+        printf("F_JE[%d] = %f ± %f\n", L, F_JE[L], sigma_JE[L]);
+    }
+
+    double deltaF = F_JE[nbStep-1] - F_JE[0];
+
+std::vector<double> Ref(nbStep, 0.0);
+    std::ofstream file("results/JE_plot.dat");
+    file << "lamda" << " " << "JE" << " " <<"sigma_JE" << " " << "Ref" <<std::endl;
+    for (int i = 0; i < nbStep; i++)
+    {
+        file << lamda[i] << " " << (F_JE[i]) << " " << sigma_JE[i] << " " << Ref[i] << std::endl;
+    }
+    file.close();
+*/
     // Mexican hat potential (work)
 /*  double d = 0.1;
       
-    std::vector<std::vector<double>> dE_dLamda(nbStep, std::vector<double>(nMDSteps));
+    std::vector<std::vector<double>> dE_dLamda(nbStep, std::vector<double>(nMDSteps))+;
     int nbMDStepsThermalize = 1000;
     std::vector<double> lamda(nbStep);
     double d_lamda = (lamda2 - lamda1) / (nbStep - 1);
@@ -3434,149 +3640,154 @@ double compute_Free_energy(double lamda1, double lamda2, int n, int *dc, int nbS
 
 
 
+    // Entropic spring
 
-//     // Entropic spring (NOT work)
-//     for(int i = 0; i < n; i++){
-//         // constrs.bonds[dc[i]].ls.set(lamda1/n);
-//         // colVar.bonds.push_back(constrs.bonds[dc[i]]);
-//     }
+    // Read stiffness value from file
+    double stiffness;
+    FILE* file1 = fopen("stiffness.txt", "r");
+    if (!file1) {
+        printf("Error: Could not open stiffness.txt\n");
+        return 0.0;  // Return early with error value
+    }
+    fscanf(file1, "%lf", &stiffness);
+    fclose(file1);
 
-//     std::vector<std::vector<double>> Energy(nbStep, std::vector<double>(nMDSteps));
-//     std::vector<std::vector<double>> dE_dLamda(nbStep, std::vector<double>(nMDSteps));
-//     std::vector<std::vector<double>> positions(nbStep, std::vector<double>(nMDSteps));
-
-//     std::vector<double> lamda(nbStep);
-//     double d_lamda = (lamda2 - lamda1) / (nbStep - 1);
-//     for (int i = 0; i < nbStep; ++i) {
-//         lamda[i] = lamda1 + i * d_lamda;
-//     }
-
-// // equilibrate the system and other rutines
-// double l  = __DBL_MAX__;
-// int averageNb = 8;
-// std::vector<double> delta_l1(averageNb, 1.0);
-// int count = __INT_MAX__; 
-// Vec3d d = Vec3dZero;
-// int eq_limit = 10000;
-// #define EQUILIBRATE(lamda0)                                                                       \
-// {                                                                                           \
-//     count = 0;                                                                              \
-//     for (double &i : delta_l1)                                                              \
-//     {                                                                                       \
-//         i = randf(0.0, 999.9);                                                              \
-//     }                                                                                       \
-//     while (true)                                                                            \
-//     {                                                                                       \
-//         run_omp(1, 0.05, 1e-20, 1000, 0.02, 0, 0);                                          \
-//         d = Vec3dZero;                                                                      \
-//         for (int i = 0; i < n; i++)                                                         \
-//         {                                                                                   \
-//         }                                                                                   \
-//         l = d.norm();                                                                       \
-//         delta_l1[count % averageNb] = l - lamda0;                       \
-//         count++;                                                                            \
-//         if (abs(std::accumulate(delta_l1.begin(), delta_l1.end(), 0.0) / averageNb) < 1e-4) \
-//             {break;}                                                                          \
-//         if (count > eq_limit)                                                                  \
-//             break;                                                                          \
-//     }                                                                                       \
-// }
-//             // d.add(ffl.apos[constrs.bonds[dc[i]].ias.b]);                                    \
-//             // d.sub(ffl.apos[constrs.bonds[dc[i]].ias.a]);                                    \
-
-// // #define MOVE()                                    \
-// // {                                                 \
-// //     for (int i = 0; i < n; i++)                   \
-// //     {                                             \
-// //         constrs.bonds[dc[i]].ls.add(d_lamda / n); \
-// //         colVar.bonds[i].ls.add(d_lamda / n);      \
-// //     }                                             \
-// // }
-
-// #define MOVE_three_atoms() \
-// {                          \
-// ffl.apos[0].x -= d_lamda*0.5;   \
-// ffl.apos[1].x += d_lamda*0.5; \
-// }
-
-// double E_K = 0;
-// double T_measured = 0;
-// #define MEASURE_TEMPERATURE() \
-// {                             \
-//     E_K = ffl.evalKineticEnergy(); \
-//     T_measured = 2 * E_K / (3 * const_kB * ffl.natoms); \
-// }
-
-// // calculate chain length
-// double chain_length = 0;
-// for (int i = 0; i < ffl.natoms; i++)
-// {
-//     int k = 0;
-//     while (ffl.neighs[i].array[k] != -1)
-//     {
-//         chain_length += ffl.apos[ffl.neighs[i].array[k]].dist(ffl.apos[i]);
-//         k++;
-//     }
-// }
-// chain_length /= 2;
-
-// std::vector<double> Fs(nbStep, 0.0);
-// std::vector<double> TI(nbStep, 0.0);
-// std::vector<double> Ref(nbStep, 0.0);
-// std::vector<double> w(nMDSteps, 0.0);
-
-// #pragma omp parallel for
-// for (int L = 0; L < nbStep; L++)
-// {
-//     //EQUILIBRATE(lamda[L]);
-//     run_omp(10000, dt);
-//     run_omp(nMDSteps, dt, 1e-20, 1000, 0.02, Energy[L].data(), dE_dLamda[L].data(), positions[L].data()); // run MD simulation
-//     //MOVE();
-//     MOVE_three_atoms();
-//     double f = 0;
-//     for (int i = 0; i < nMDSteps; i++)
-//     {
-//         f += dE_dLamda[L][i];
-//     }
-//     Fs[L] = f / nMDSteps;
-
-//     if (L > 0)
-//     {
-//         TI[L] = TI[L - 1] + 0.5 * (Fs[L] + Fs[L - 1]) * d_lamda;
-//         //Ref[L] = Ref[L - 1] + 3 * const_kB * T * (double)ffl.natoms / (chain_length * chain_length) * lamda[L] * d_lamda;
-//     }
-//     else
-//     {
-//         TI[L] = 0.0;
-//         //Ref[L] = 3 * const_kB * T * (double)ffl.natoms / (chain_length * chain_length) * lamda[L] * d_lamda;
-//     }
-//     double lamda_bar = std::accumulate(positions[L].begin(), positions[L].end(), 0.0) / nMDSteps;
-//     double v2 = lamda_bar;
-//     T_measured =2 * 0.5*1.66053906660e-27 *1 * v2*sq( 1e-10/1.0180505710774743e-14 )/ (3 * 1.380649e-23);
-//    //Ref[L]=std::accumulate(Energy[L].begin(), Energy[L].end(), 0.0)/nMDSteps;
-//     //if(L>0 && L<nbStep-1)Ref[L]=(TI[L+1]-TI[L-1])/2/d_lamda;
-//     //MEASURE_TEMPERATURE(); 
-//     printf("ffl.apos[0]=(%f, %f, %f), ffl.apos[1]=(%f, %f, %f), lamda=%f, lamda_bar=%f, TI=%f, Ref=%f, T_measured=%f\n", ffl.apos[0].x, ffl.apos[0].y, ffl.apos[0].z, ffl.apos[1].x, ffl.apos[1].y, ffl.apos[1].z, lamda[L], lamda_bar, TI[L], Ref[L], T_measured);
-// }
-// double deltaF = TI[nbStep - 1];
-// for(auto& t: TI){
-//     t *= 2;
-// }
+    // Apply the stiffness value to all atoms
+    for(int ai=0; ai<ffl.natoms; ai++){
+        ffl.bKs[ai].x = stiffness;
+        ffl.bKs[ai].y = stiffness;
+    }
 
 
+    for(int i = 0; i < n; i++){
+        constrs.bonds[dc[i]].ls.set(lamda1/n);
+        colVar.bonds.push_back(constrs.bonds[dc[i]]);
+    }
 
-
-
-
-
-
-
-
-
-    // Three atom problem
     std::vector<std::vector<double>> Energy(nbStep, std::vector<double>(nMDSteps));
     std::vector<std::vector<double>> dE_dLamda(nbStep, std::vector<double>(nMDSteps));
-    std::vector<std::vector<double>> positions(nbStep, std::vector<double>(nMDSteps));      // I am using 
+    std::vector<std::vector<double>> positions(nbStep, std::vector<double>(nMDSteps));
+
+    std::vector<double> lamda(nbStep);
+    double d_lamda = (lamda2 - lamda1) / (nbStep - 1);
+    for (int i = 0; i < nbStep; ++i) {
+        lamda[i] = lamda1 + i * d_lamda;
+    }
+
+// equilibrate the system and other rutines
+double l  = __DBL_MAX__;
+int averageNb = 8;
+std::vector<double> delta_l1(averageNb, 1.0);
+int count = __INT_MAX__; 
+Vec3d d = Vec3dZero;
+int eq_limit = 10000;
+#define EQUILIBRATE(lamda0)                                                                       \
+{                                                                                           \
+    count = 0;                                                                              \
+    for (double &i : delta_l1)                                                              \
+    {                                                                                       \
+        i = randf(0.0, 999.9);                                                              \
+    }                                                                                       \
+    while (true)                                                                            \
+    {                                                                                       \
+        run_omp(1, 0.05, 1e-20, 1000, 0.02, 0, 0);                                          \
+        d = Vec3dZero;                                                                      \
+        for (int i = 0; i < n; i++)                                                         \
+        {                                                                                   \
+        }                                                                                   \
+        l = d.norm();                                                                       \
+        delta_l1[count % averageNb] = l - lamda0;                       \
+        count++;                                                                            \
+        if (abs(std::accumulate(delta_l1.begin(), delta_l1.end(), 0.0) / averageNb) < 1e-4) \
+            {break;}                                                                          \
+        if (count > eq_limit)                                                                  \
+            break;                                                                          \
+    }                                                                                       \
+}
+            // d.add(ffl.apos[constrs.bonds[dc[i]].ias.b]);                                    \
+            // d.sub(ffl.apos[constrs.bonds[dc[i]].ias.a]);                                    \
+
+#define MOVE()                                    \
+{                                                 \
+    for (int i = 0; i < n; i++)                   \
+    {                                             \
+        constrs.bonds[dc[i]].ls.add(d_lamda / n); \
+        colVar.bonds[i].ls.add(d_lamda / n);      \
+    }                                             \
+}
+
+double T_measured = 0;
+
+printf("nMDsteps = %d\n", nMDSteps);
+
+    std::vector<double> Fs(nbStep, 0.0);
+    std::vector<double> sigmaF(nbStep, 0.0);
+    std::vector<double> TI(nbStep, 0.0);
+    std::vector<double> sigmaTI(nbStep, 0.0);
+    std::vector<double> Ref(nbStep, 0.0);
+
+    #pragma omp parallel for
+    for (int L = 0; L < nbStep; L++)
+    {
+        //EQUILIBRATE(lamda[L]);
+        run_omp(nEQsteps, dt);
+        run_omp(nMDSteps, dt, 1e-20, 1000, 0.02, Energy[L].data(), dE_dLamda[L].data(), positions[L].data()); // run MD simulation
+
+
+    // calculate chain length
+
+
+
+        double lamda_bar = std::accumulate(positions[L].begin(), positions[L].end(), 0.0) / nMDSteps;
+
+
+        MOVE();
+
+        double f = 0;
+        for (int i = 0; i < nMDSteps; i++)
+        {
+            f += dE_dLamda[L][i];
+        }
+        Fs[L] = f / nMDSteps;
+        double sigma = 0;
+        for(int i = 0; i < nMDSteps; i++){
+            sigma += (dE_dLamda[L][i] - Fs[L]) * (dE_dLamda[L][i] - Fs[L]);
+        }
+        sigmaF[L] = std::sqrt(sigma / (nMDSteps - 1));
+
+        if (L > 0)
+        {
+            TI[L] = TI[L - 1] + 0.5 * (Fs[L] + Fs[L - 1]) * d_lamda;
+            double variance_contribution = 0.25 * d_lamda * d_lamda * (sigmaF[L] * sigmaF[L] + sigmaF[L - 1] * sigmaF[L - 1]);
+            sigmaTI[L] = std::sqrt(sigmaTI[L - 1] * sigmaTI[L - 1] + variance_contribution);
+
+
+            double constant = 3 * const_kB * T / (lamda_bar * lamda_bar * ((double)ffl.natoms-1));
+            printf("constant=%f, segment_length=%f, natoms=%d\n", constant, lamda_bar, ffl.natoms);
+            Ref[L] = Ref[L - 1] + 0.5* constant * (lamda[L] + lamda[L-1]) * d_lamda;
+            //Ref[L] = 0.5 * constant * lamda[L] * lamda[L] - Ref[0];
+        }
+        else
+        {
+            TI[L] = 0.0;
+            sigmaTI[L] = 0.0;
+            Ref[0] = 0.0;
+double constant = 3 * const_kB * T / (1.2 * 1.2 * ((double)ffl.natoms-1));
+            //Ref[L] = 0.5 * constant * lamda[L] * lamda[L];
+        }
+
+        double Ek = std::accumulate(Energy[L].begin(), Energy[L].end(), 0.0) / nMDSteps;
+        T_measured = 2 * Ek / (3 * const_kB * ffl.natoms);
+
+        printf("lamda=%f, lamda_bar=%f, TI=%f, Ref=%f, T_measured=%f\n", lamda[L], lamda_bar, TI[L], Ref[L], T_measured);
+    }
+        Ref[0] = 0.0;
+
+/*
+    //////////////////////////// Three atom problem ////////////////////////////////////
+    //std::vector<std::vector<double>> Energy(nbStep, std::vector<double>(nMDSteps));
+    std::vector<std::vector<double>> dE_dLamda(nbStep, std::vector<double>(nMDSteps));
+    //std::vector<std::vector<double>> positions(nbStep, std::vector<double>(nMDSteps));
 
     std::vector<double> lamda(nbStep);
     double d_lamda = (lamda2 - lamda1) / (nbStep - 1);
@@ -3594,14 +3805,16 @@ ffl.apos[1].x += d_lamda*0.5; \
     double T_measured = 0;
 
     std::vector<double> Fs(nbStep, 0.0);
+    std::vector<double> sigmaF(nbStep, 0.0);
     std::vector<double> TI(nbStep, 0.0);
-    std::vector<double> w(nMDSteps, 0.0);
+    std::vector<double> sigmaTI(nbStep, 0.0);
 
 #pragma omp parallel for
     for (int L = 0; L < nbStep; L++)
     {
         run_omp(10000, dt);     //equilibrate 
-        run_omp(nMDSteps, dt, 1e-20, 1000, 0.02, Energy[L].data(), dE_dLamda[L].data(), positions[L].data()); // run MD simulation
+        //run_omp(nMDSteps, dt, 1e-20, 1000, 0.02, Energy[L].data(), dE_dLamda[L].data(), positions[L].data()); // run MD simulation
+        run_omp(nMDSteps, dt, 1e-20, 1000, 0.02, nullptr, dE_dLamda[L].data(), nullptr); // run MD simulation
         MOVE_three_atoms();
 
         double f = 0; //averaging
@@ -3610,35 +3823,49 @@ ffl.apos[1].x += d_lamda*0.5; \
             f += dE_dLamda[L][i];
         }
         Fs[L] = f / nMDSteps;
+        double sigma = 0;
+        for(int i = 0; i < nMDSteps; i++){
+            sigma += (dE_dLamda[L][i] - Fs[L]) * (dE_dLamda[L][i] - Fs[L]);
+        }
+        sigmaF[L] = std::sqrt(sigma / (nMDSteps - 1));
 
         if (L > 0)
         {
-            TI[L] = TI[L - 1] + 0.5 * (Fs[L] + Fs[L - 1]) * d_lamda;    // trapezoidal rule
+            // TI calculation (unchanged)
+            TI[L] = TI[L - 1] + 0.5 * (Fs[L] + Fs[L - 1]) * d_lamda;
+
+            // Error propagation for trapezoidal rule
+            double variance_contribution = 0.25 * d_lamda * d_lamda * (sigmaF[L] * sigmaF[L] + sigmaF[L - 1] * sigmaF[L - 1]);
+            sigmaTI[L] = std::sqrt(sigmaTI[L - 1] * sigmaTI[L - 1] + variance_contribution);
         }
         else
         {
             TI[L] = 0.0;
+            sigmaTI[L] = 0.0;
         }
 
-        double lamda_bar = std::accumulate(positions[L].begin(), positions[L].end(), 0.0) / nMDSteps;
-        double v2 = lamda_bar;
-        T_measured = 2 * 0.5 * 1.66053906660e-27 * 1 * v2 * sq(1e-10 / 1.0180505710774743e-14) / (3 * 1.380649e-23);
+        // double lamda_bar = std::accumulate(positions[L].begin(), positions[L].end(), 0.0) / nMDSteps;
+        // double v2 = lamda_bar;
+        // T_measured = 2 * 0.5 * 1.66053906660e-27 * 1.0 * v2 * sq(1e-10 / 1.0180505710774743e-14) / (3 * 1.380649e-23);
+        // T_measured = 2 * lamda_bar / (3 * const_kB * 1);
 
-        printf("ffl.apos[0]=(%f, %f, %f), ffl.apos[1]=(%f, %f, %f), lamda=%f, lamda_bar=%f, TI=%f, T_measured=%f\n", ffl.apos[0].x, ffl.apos[0].y, ffl.apos[0].z, ffl.apos[1].x, ffl.apos[1].y, ffl.apos[1].z, lamda[L], lamda_bar, TI[L], T_measured);
+        // printf("ffl.apos[0]=(%f, %f, %f), ffl.apos[1]=(%f, %f, %f), lamda=%f, lamda_bar=%f, TI=%f, T_measured=%f\n", ffl.apos[0].x, ffl.apos[0].y, ffl.apos[0].z, ffl.apos[1].x, ffl.apos[1].y, ffl.apos[1].z, lamda[L], lamda_bar, TI[L], T_measured);
     }
+*/
+
+/*
     double deltaF = TI[nbStep - 1];
 
     // save lamda and TI into dat file with headers "lamda" and "FreeEnergy"
-    std::ofstream file("TI_plot.dat");
-    file << "lamda" << " " << "FreeEnergy" << std::endl;
+    std::ofstream file("results/TI_plot.dat");
+    file << "lamda" << " " << "TI" << " " <<"TI_sigma" << " " << "F_average" << " " << "F_sigma" << " " << "Ref" <<std::endl;
     for (int i = 0; i < nbStep; i++)
     {
-        file << lamda[i] << " " << (TI[i]) <<  std::endl;
+        file << lamda[i] << " " << (TI[i]) << " " << sigmaTI[i] << " " << Fs[i] << " " << sigmaF[i] << " " << Ref[i] << std::endl;
     }
     file.close();
 
-    printf("deltaF=%f\n", deltaF);
-
+    printf("deltaF=%f\n", deltaF);*/
     return deltaF;
 }
 };

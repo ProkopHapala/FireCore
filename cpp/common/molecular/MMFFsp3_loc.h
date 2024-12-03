@@ -490,7 +490,7 @@ double eval_atom(const int ia){
     // {
     //     doAngles = false; // DEBUG
     // }
-bAngleCosHalf=1;
+
     if(doAngles){
 
     double  ssK,ssC0;
@@ -1254,7 +1254,7 @@ inline Vec3d move_atom_Langevin( int i, const float dt, const double Flim,  cons
         r1 = rnd0  * rnd0 + rnd1 * rnd1;
         y2 = rnd0 * sqrt(-2 * log(r1) / r1);
     }
-    Vec3d rnd = {y0,y1,y2};
+    Vec3d rnd = {y0,0*y1,0*y2};
 
     //Vec3d rnd = {randf(-1.0,1.0),0,0};//,randf(-1.0,1.0),randf(-1.0,1.0)};
 
@@ -1264,25 +1264,25 @@ inline Vec3d move_atom_Langevin( int i, const float dt, const double Flim,  cons
     f.add_mul( rnd, sqrt( 2*const_kB*T*gamma_damp/dt ) );
 
 
-    // // --- update velocity and position by leap-frog
-    // v.add_mul( f, dt );      
-    // if(bPi)v.add_mul( p, -p.dot(v) );                     
-    // p.add_mul( v, dt );
-    // if(bPi)p.normalize();
+    // --- update velocity and position by leap-frog
+    v.add_mul( f, dt );      
+    if(bPi)v.add_mul( p, -p.dot(v) );                     
+    p.add_mul( v, dt );
+    if(bPi)p.normalize();
 
 
 
-    if (i == 2)
-    {
-        //velocity verlet
-        p.add_mul( v, dt);
-        p.add_mul( F_prev, dt*dt/2 );
-        v.add_mul( f, 0.5*dt );
-        v.add_mul( F_prev, 0.5*dt );
+    // if (i == 2)
+    // {
+        // //velocity verlet
+        // p.add_mul( v, dt);
+        // p.add_mul( F_prev, dt*dt/2 );
+        // v.add_mul( f, 0.5*dt );
+        // v.add_mul( F_prev, 0.5*dt );
         apos[i] = p;
         vapos[i] = v;
         F_prev=f;
-    }
+    // }
     return cvf;
 }
 Vec3d move_Langevin( const float dt, const double Flim,  const double gamma_damp=0.1, double T=300 ){

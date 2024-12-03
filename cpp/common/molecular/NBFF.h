@@ -531,6 +531,7 @@ class NBFF: public ForceField{ public:
         //#pragma omp simd reduction(+:E,fx,fy,fz)
         for (int j=0; j<natoms; j++){ 
             if(ia==j)[[unlikely]]{continue;}
+            //if(ia<2 && j<2){continue;}
             const Quat4d& REQj  = REQs[j];
             const Quat4d  REQij = _mixREQ(REQi,REQj); 
             const Vec3d dp      = apos[j]-pi;
@@ -1064,7 +1065,7 @@ class NBFF: public ForceField{ public:
     void checkREQlimits( const Quat4d vmin=Quat4d{ 0.2,0.0,-1.0,-1.0}, const Quat4d vmax=Quat4d{ 3.0,0.2,+1.0,+1.0}  ){
         if( REQs==0 ){ printf( "NBFF::checkREQlimits() REQs is NULL=> Exit()\n" ); exit(0); }
         if( checkLimits( natoms, 4, (double*)REQs, (double*)&vmin, (double*)&vmax, "REQs" ) ){
-            printf("ERROR NBFF::checkREQlimits(): REQs are out of range (%g,%g,%g,%g) .. (%g,%g,%g,%g) => Exit() \n", vmin.x,vmin.y,vmin.z,vmin.w,  vmax.x,vmax.y,vmax.z,vmax.w ); print_nonbonded(); exit(0);
+            printf("ERROR NBFF::checkREQlimits(): REQs are out of range (%g,%g,%g,%g) .. (%g,%g,%g,%g) => Exit() \n", vmin.x,vmin.y,vmin.z,vmin.w,  vmax.x,vmax.y,vmax.z,vmax.w ); print_nonbonded(); //exit(0);
         }
     }
 

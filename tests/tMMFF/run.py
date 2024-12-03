@@ -10,24 +10,92 @@ from pyBall import MMFF as mmff
 
 
 #======== Body
-'''
+
 ###### Mexican hat potential
+
+nbStep = 100
+nMDsteps = 100000
+nEQsteps = 10000
+t_damp = 20
+T = 10
+dt = 0.05
+
 mmff.init( xyz_name="data/H", bMMFF=True )
 collectiveVariable = np.array([0], dtype=np.int32)
-E = mmff.compute_Free_energy(0.5, 2.0, collectiveVariable)
+E = mmff.compute_Free_energy(0.5, 4.0, collectiveVariable, nbStep=nbStep, nMDsteps=nMDsteps, nEQsteps=nEQsteps, t_damp=t_damp, T=T, dt=dt)
 print("E=", E)
 print("Konec Milane")
-'''
 
-'''
+
+
+'''# entropic spring
+nbStep = 100
+nMDsteps = 100000
+t_damp = 100
+T = 500
+dt = 0.05
+N = [5, 10, 20, 30]
+
+import argparse
+
+# Create parser for command-line arguments
+parser = argparse.ArgumentParser(description='Run simulation with specified parameters')
+parser.add_argument('--nMDsteps', type=int, help='Number of MD steps')
+parser.add_argument('--nEQsteps', type=int, help='Number of equilibration steps')
+parser.add_argument('--t_damp', type=float, help='Damping time')
+parser.add_argument('--T', type=float, help='Temperature')
+parser.add_argument('--dt', type=float, help='Time step')
+parser.add_argument('--nSteps', type=int, help='Number of steps')
+parser.add_argument('--N', type=int, help='System size')
+parser.add_argument('--k', type=float, help='Spring constant')
+parser.add_argument('--K', type=float, help='Spring constant')
+
+# Parse arguments
+args = parser.parse_args()
+
+# Assign values from command line arguments
+MY_N = args.N
+MY_K = args.K  # Kept constant as it wasn't in command line args
+MY_k = args.k  # Kept constant as it wasn't in command line args
+MY_nbStep = args.nSteps
+MY_nMDsteps = args.nMDsteps
+MY_nEQsteps = args.nEQsteps
+MY_t_damp = args.t_damp
+MY_T = args.T
+MY_dt = args.dt
+
+xyz_name = "data/enthropic_spring_"+str(MY_N)
+constr_name = "data/enthropic_spring_"+str(MY_N)+".cons"
+
+
+with open(constr_name, "r") as file:
+    line = file.readline().strip()
+parts = line.split()
+for i in range(5, 7):
+    parts[i] = str(MY_K)
+
+# Join the parts back together
+new_line = ' '.join(parts)
+
+# Write the modified content back to the file
+with open(constr_name, "w") as file:
+    file.write(new_line)
+
+with open("stiffness.txt", "w") as file:
+    file.write(str(MY_K))
+
+
 mmff.setVerbosity( verbosity=1, idebug=1 )
-mmff.init( xyz_name="data/enthropic_spring_10", constr_name="data/enthropic_spring_10.cons" ,bMMFF=True)
+mmff.init( xyz_name=xyz_name, constr_name=constr_name ,bMMFF=True)
 mmff.setSwitches(CheckInvariants=-1, PBC_nonBond=-1, PBC_evalAtom=-1, NonBonded=-1, MMFF=1, doBonds=1, Angles=-1, PiSigma=-1, PiPiI=-1, bNonBondNeighs=-1, bSurfAtoms=-1, bGridFF=-1, bTricubic=-1, bConstrZ=-1, bConstrains=-1)
 colectiveVariable = np.array([0], dtype=np.int32)
-E = mmff.compute_Free_energy(1.0, 7.0, colectiveVariable)
-# print("E=", E)
+E = mmff.compute_Free_energy(1.0, 3.0, colectiveVariable, nbStep=MY_nbStep, nMDsteps=MY_nMDsteps, nEQsteps=MY_nbStep, t_damp=MY_t_damp, T=MY_T, dt=MY_dt)
+print("E=", E)
 '''
 
+
+
+'''
 mmff.init( xyz_name="data/three_atoms", bMMFF=True, nPBC=(2, 2, 2))#, constr_name="data/three_atom.cons" ) #nPBC=(2, 2, 2)
 colectiveVariable = np.array([0], dtype=np.int32)
 nbStep = 100
@@ -38,7 +106,7 @@ dt = 0.05
 E = mmff.compute_Free_energy(0.0, 5.0, colectiveVariable, nbStep=nbStep, nMDsteps=nMDsteps, t_damp=t_damp, T=T, dt=dt)
 mmff.setSwitches(CheckInvariants=-1, PBC_nonBond=-1, PBC_evalAtom=-1, NonBonded=1, MMFF=1, doBonds=-1, Angles=-1, PiSigma=-1, PiPiI=-1, bNonBondNeighs=-1, bSurfAtoms=-1, bGridFF=-1, bTricubic=-1, bConstrZ=-1, bConstrains=-1)
 print("E=", E)
-
+'''
 
 '''
 natoms = 50
