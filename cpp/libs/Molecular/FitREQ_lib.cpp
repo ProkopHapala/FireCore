@@ -104,6 +104,7 @@ double run( int nstep, double Fmax, double dt, int imodel, int isampmode, int ia
             case 1: F2 = W.move_MD( dt, max_step ); break;
             case 2: F2 = W.move_GD_BB_short( i, dt, max_step ); break;
             case 3: F2 = W.move_GD_BB_long( i, dt, max_step ); break;
+            case 4: F2 = W.move_MD_nodamp( dt, max_step ); break;
         }
         // regularization must be done before evaluation of derivatives
         if(bClamp     ){ W.limit_params();         }
