@@ -66,6 +66,7 @@ void loadTypes_new( const char* fname_ElemTypes, const char* fname_AtomTypes ){
 
 int loadXYZ_new( const char* fname, bool bAddEpairs, bool bOutXYZ ){
     return W.loadXYZ_new( fname, bAddEpairs, bOutXYZ );
+    //return W.loadXYZ_new_bak( fname, bAddEpairs, bOutXYZ );
 }
 
 void setWeights( int n, double* weights ){

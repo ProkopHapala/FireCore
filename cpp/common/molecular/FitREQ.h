@@ -13,8 +13,6 @@
 #include "MMFFBuilder.h"
 #include "functions.h"
 
-
-
 /**
  * Saves the coordinates of composite system comprising atoms stored in two systems A and B to a file in XYZ format. 
  * 
@@ -226,7 +224,7 @@ int loadTypeSelection_walls( const char* fname ){
         Quat4i tm;
         Quat4d tx0l, tx0h;
         Quat4d tkl, tkh;
-        int nw = sscanf( line, "%s %i %i %i %i %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf\n", 
+        int nw = sscanf( line, "%s %i %i %i %i %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf\n", 
         at_name, &tm.x,&tm.y,&tm.z,&tm.w, &tx0l.x,&tkl.x,&tx0h.x,&tkh.x, &tx0l.y,&tkl.y,&tx0h.y,&tkh.y, &tx0l.z,&tkl.z,&tx0h.z,&tkh.z, &tx0l.w,&tkl.w,&tx0h.w,&tkh.w ); 
         if(nw==21){ ntypesel++; }
     }
@@ -400,6 +398,194 @@ int init_types_walls( int ntypesel, int* tsel, Quat4i* typeMask, Quat4d* ts0_low
     return nDOFs;
 }
 
+
+// add electron pairs
+Atoms* addEpairs( Atoms* mol ){
+    //MM::Builder builder;
+    builder.params = params;
+    builder.clear();
+    if(mol->lvec){ builder.lvec = *(mol->lvec); builder.bPBC=true; }
+    builder.insertAtoms(*mol);
+    //int ia0=builder.frags[ifrag].atomRange.a;
+    //int ic0=builder.frags[ifrag].confRange.a;
+    //builder.printBonds();
+    //builder.printAtomConfs(true, false );
+    //if(iret<0){ printf("!!! exit(0) in MolWorld_sp3::loadGeom(%s)\n", name); exit(0); }
+    //builder.addCappingTypesByIz(1);  // insert H caps
+    //for( int it : builder.capping_types ){ printf( "capping_type[%i] iZ=%i name=`%s`  \n", it, builder.params->atypes[it].iZ, builder.params->atypes[it].name ); };
+    builder.tryAddConfsToAtoms( 0, -1 );
+    builder.cleanPis();
+    //if(verbosity>2)
+    //builder.printAtomConfs(false);
+    //builder.export_atypes(atypes);
+    // ------- Load lattice vectros
+    // NOTE: ERROR IS HERE:  autoBonds() -> insertBond() -> tryAddBondToAtomConf( int ib, int ia, bool bCheck )
+    //       probably we try to add multiple bonds for hydrogen ?
+    if( builder.bPBC ){ 
+        builder.autoBondsPBC( -.5,  0      , mol->n0     ); // we should not add bonds between rigid and flexible parts
+        builder.autoBondsPBC( -.5,  mol->n0, mol->natoms ); 
+    }else{ 
+        builder.autoBonds( -.5,  0      , mol->n0     ); // we should not add bonds between rigid and flexible parts
+        builder.autoBonds( -.5,  mol->n0, mol->natoms ); 
+    }
+    builder.checkNumberOfBonds( true, true );
+    //if(verbosity>2)
+    //builder.printBonds ();
+    //if( fAutoCharges>0 )builder.chargeByNeighbors( true, fAutoCharges, 10, 0.5 );
+    //if(substitute_name) substituteMolecule( substitute_name, isubs, Vec3dZ );
+    //if( builder.checkNeighsRepeat( true ) ){ printf( "ERROR: some atoms has repating neighbors => exit() \n"); exit(0); };
+    // --- Add Epairs
+    builder.bDummyEpair = true;
+    builder.autoAllConfEPi( ); 
+    // --- add Epairs to atoms like =O (i.e. with 2 just one neighbor)
+    builder.setPiLoop       ( 0, -1, 10 );
+    builder.addAllEpairsByPi( 0, -1 );    
+    //builder.printAtomConfs( false, true );
+    //builder.assignAllBondParams();    //if(verbosity>1)
+    //builder.finishFragment(ifrag);    
+    return builder.exportAtoms(); 
+}
+
+/**
+ * @brief Process a molecular system by adding electron pairs and reordering atoms to maintain a specific structure
+ * 
+ * This function performs the following steps:
+ * 1. Adds electron pairs to the molecular system using the builder
+ * 2. Identifies root atoms and directions for electron pairs
+ * 3. Reorders atoms to maintain the structure: Atoms(mol1), Epairs(mol1), Atoms(mol2), Epairs(mol2)
+ * 4. Stores the electron pair data in the atoms' userData
+ * 
+ * @param atoms Input molecular system to process
+ * @param fout Optional file pointer to write XYZ output (can be null)
+ * @return void, but modifies atoms in place
+ */
+void addAndReorderEpairs(Atoms*& atoms, FILE* fout=nullptr) {
+    printf( "addAndReorderEpairs()\n" );
+    // Store original system information
+    Atoms* bak = atoms;
+    int n0bak  = bak->n0;      // Number of atoms in first molecule
+    int natbak = bak->natoms;  // Total number of atoms before adding epairs
+    int n1bak  = natbak - n0bak; // Number of atoms in second molecule
+
+    // Add electron pairs to the system
+    atoms = addEpairs(atoms);  // This modifies the builder's state
+    atoms->n0 = bak->n0;
+    atoms->Energy = bak->Energy;
+    for(int i=0; i<natbak; i++){ atoms->charge[i] = bak->charge[i]; }
+    delete bak;
+
+    // Get electron pair information from builder
+    Vec2i* bs=nullptr;    // Builder will allocate memory for these
+    Vec3d* dirs=nullptr;  // Builder will allocate memory for these
+    int nep_found = builder.listEpairBonds(bs, dirs);  // This uses builder's state from addEpairs
+    if(nep_found <= 0) {
+        printf("Warning: No electron pairs found\n");
+        return;
+    }
+
+    // Store original bonds and directions before any reordering
+    std::vector<Vec2i> bsbak;
+    std::vector<Vec3d> dirsbak;
+    bsbak.reserve(nep_found);
+    dirsbak.reserve(nep_found);
+    for(int i=0; i < nep_found; i++){
+        dirs[i].normalize();
+        bsbak.push_back(bs[i]);
+        dirsbak.push_back(dirs[i]);
+    }
+
+    // Initialize array marking which atoms are electron pairs
+    int* isep = new int[atoms->natoms];
+    for(int i=0; i < natbak; i++){ isep[i]=0; }         // Original atoms
+    for(int i=natbak; i < atoms->natoms; i++){ isep[i]=1; } // New epairs
+
+    // Make temporary copy for reordering
+    Atoms bak2;
+    bak2.copyOf(*atoms);
+
+    // Process electron pairs for first molecule (mol1)
+    int nE0 = 0;  // Number of epairs in first molecule
+    for(int i=0; i<nep_found; i++) {
+        if(bsbak[i].x < n0bak) {  // Check if root atom is in first molecule
+            int j = n0bak + nE0;   // Target position for this epair
+            int k = bsbak[i].y;    // Source position of this epair
+            
+            if(j < atoms->natoms && k < bak2.natoms) {  // Bounds check
+                // Copy epair data to its new position
+                atoms->apos[j]   = bak2.apos[k];
+                atoms->atypes[j] = bak2.atypes[k];
+                atoms->charge[j] = bak2.charge[k];
+                atoms->n0++;
+                
+                // Update bond and direction information
+                if(nE0 < nep_found) {  // Bounds check
+                    bs[nE0].x = bsbak[i].x;  // Root atom index stays same
+                    bs[nE0].y = j;           // Update epair's new position
+                    dirs[nE0] = dirsbak[i];
+                    isep[j] = 1;
+                    nE0++;
+                }
+            }
+        }
+    }
+
+    int nE1 = atoms->natoms - natbak - nE0;  // Number of epairs in second molecule
+
+    // Copy atoms from second molecule (mol2)
+    for(int i=0; i<n1bak && (atoms->n0 + i) < atoms->natoms; i++) {
+        int j = atoms->n0 + i;     // Target position
+        int k = n0bak + i;         // Source position
+        
+        if(k < bak2.natoms) {  // Bounds check
+            atoms->apos[j]   = bak2.apos[k];
+            atoms->atypes[j] = bak2.atypes[k];
+            atoms->charge[j] = bak2.charge[k];
+            isep[j] = 0;
+        }
+    }
+
+    // Process electron pairs for second molecule (mol2)
+    int iE = -1;
+    for(int i=0; i<nep_found; i++) {
+        if(bsbak[i].x >= n0bak) {  // Check if root atom is in second molecule
+            iE++;
+            int j = n0bak + nE0 + n1bak + iE;  // Target position for this epair
+            int k = bsbak[i].y;                // Source position of this epair
+            
+            if(j < atoms->natoms && k < bak2.natoms && (nE0+iE) < nep_found) {  // Bounds check
+                // Copy epair data to its new position
+                atoms->apos[j]   = bak2.apos[k];
+                atoms->atypes[j] = bak2.atypes[k];
+                atoms->charge[j] = bak2.charge[k];
+                
+                // Update bond and direction information
+                bs[nE0+iE].x = bsbak[i].x + nE0;  // Adjust root atom index
+                bs[nE0+iE].y = j;
+                dirs[nE0+iE] = dirsbak[i];
+                isep[j] = 1;
+            }
+        }
+    }
+
+    // Store epair data in atoms object
+    AddedData* ad = new AddedData();
+    ad->nep  = nep_found;
+    ad->bs   = bs;      // Transfer ownership of builder-allocated memory
+    ad->dirs = dirs;    // Transfer ownership of builder-allocated memory
+    ad->isep = isep;
+    atoms->userData = ad;
+
+    // Write output if requested
+    if(fout) {
+        char line[1024];
+        sprintf(line, "#	n0 %i E_tot %g", atoms->n0, atoms->Energy);
+        params->writeXYZ(fout, atoms, line, 0, true);
+    }
+
+    printf( "addAndReorderEpairs() DONE \n" );
+}
+
+
 /**
  * Loads XYZ file and creates Atoms objects for each molecule inside it. It saves the molecules to the "samples" vector.
  * Optionally adds electron pairs and outputs XYZ file with epairs.
@@ -410,6 +596,63 @@ int init_types_walls( int ntypesel, int* tsel, Quat4i* typeMask, Quat4d* ts0_low
  * @return The number of batches created.
  */
 int loadXYZ_new( const char* fname, bool bAddEpairs=false, bool bOutXYZ=false ){
+    printf( "FitREQ::loadXYZ_new()\n" );
+    FILE* fin = fopen( fname, "r" );
+    if(fin==0){ printf("cannot open '%s' \n", fname ); exit(0);}
+    const int nline=1024;
+    char line[1024];
+    char at_name[8];
+    // --- Open output file
+    FILE* fout=0;
+    if(bAddEpairs && bOutXYZ){
+        sprintf(line,"%s_Epairs.xyz", fname );
+        fout = fopen(line,"w");
+    }
+    int il   = 0;
+    nbatch=0;
+    Atoms* atoms=0;
+    while( fgets(line, nline, fin) ){
+        if      ( il==0 ){               // --- Read number of atoms
+            int na=-1;
+            sscanf( line, "%i", &na );
+            if( (na>0)&&(na<10000) ){
+                atoms = new Atoms(na);
+            }else{ printf( "ERROR in FitREQ::loadXYZ() Suspicious number of atoms (%i) while reading `%s`  => Exit() \n", na, fname ); exit(0); }
+        }else if( il==1 ){               // --- Read comment line ( read reference energy )
+            sscanf( line, "%*s %*s %i %*s %lf ", &(atoms->n0), &(atoms->Energy) );
+        }else if( il<atoms->natoms+2 ){  // --- Road atom line (type, position, charge)
+            double x,y,z,q;
+            int nret = sscanf( line, "%s %lf %lf %lf %lf", at_name, &x, &y, &z, &q );
+            if(nret<5){q=0;}
+            int i=il-2;
+            atoms->apos[i].set(x,y,z);
+            atoms->atypes[i]=params->getAtomType(at_name);
+            atoms->charge[i]=q;
+        }
+        il++;
+        if( il >= atoms->natoms+2 ){    // ---- store sample atoms to batch
+            if(bAddEpairs){ addAndReorderEpairs(atoms, fout); }
+            samples.push_back( atoms );
+            il=0; nbatch++;
+        }
+    }
+    if(fout)fclose(fout);
+    fclose(fin);
+    //init_types_new();
+    return nbatch;
+}
+
+
+/**
+ * Loads XYZ file and creates Atoms objects for each molecule inside it. It saves the molecules to the "samples" vector.
+ * Optionally adds electron pairs and outputs XYZ file with epairs.
+ *
+ * @param fname The name of the XYZ file to load.
+ * @param bAddEpairs Flag indicating whether to add epairs to the loaded atoms.
+ * @param bOutXYZ Flag indicating whether to output XYZ file with epairs.
+ * @return The number of batches created.
+ */
+int loadXYZ_new_bak( const char* fname, bool bAddEpairs=false, bool bOutXYZ=false ){
     printf( "FitREQ::loadXYZ_new()\n" );
     FILE* fin = fopen( fname, "r" );
     if(fin==0){ printf("cannot open '%s' \n", fname ); exit(0);}
@@ -458,8 +701,8 @@ int loadXYZ_new( const char* fname, bool bAddEpairs=false, bool bOutXYZ=false ){
                 for(int i=0; i<natbak; i++){ atoms->charge[i] = bak->charge[i]; }
                 delete bak;
                 // find root atoms and directions
-                Vec2i* bs=0;
-                Vec3d* dirs=0;
+                Vec2i* bs   = 0;
+                Vec3d* dirs = 0;
                 int nep_found = builder.listEpairBonds( bs, dirs );
                 for(int i=0; i < nep_found; i++){dirs[i].normalize();};
                 int*  isep=0;
@@ -467,7 +710,7 @@ int loadXYZ_new( const char* fname, bool bAddEpairs=false, bool bOutXYZ=false ){
                 for(int i=0; i < natbak; i++){ isep[i]=0; }
                 for(int i=natbak; i < atoms->natoms; i++){ isep[i]=1; } // Epairs are after atoms
 //for(int i=0; i<atoms->natoms; i++){printf( "BEFORE atoms[%i] %s pos=%g %g %g q=%g\n", i, params->atypes[atoms->atypes[i]].name, atoms->apos[i].x, atoms->apos[i].y, atoms->apos[i].z, atoms->charge[i] );};
-//for(int i=0; i<nep_found; i++){printf( "BEFORE Epair[%i] %i %i %g %g %g\n", i, bs[i].x, bs[i].y, dirs[i].x, dirs[i].y, dirs[i].z );};
+//for(int i=0; i<nep_found; i++){printf( "BEFORE Epair[%i] %i %i\n", i, bs[i].x, bs[i].y );};
 //printf("\n");
                 // shuffle atoms so that they are ordered as Atoms(mol1), Epairs(mol1), Atoms(mol2), Epairs(mol2)
                 Atoms bak2; bak2.copyOf( *atoms ); 
@@ -476,7 +719,7 @@ int loadXYZ_new( const char* fname, bool bAddEpairs=false, bool bOutXYZ=false ){
                 // Atoms(mol1): nothing to do
                 // Epairs(mol1)
                 int iE=-1;
-                for(int i=0; i<nep_found; i++){ 
+                for(int i=0; i<nep_found; i++) {
                     if(bsbak[i].x<n0bak){
                         iE++;
                         int j=n0bak+iE;
@@ -504,7 +747,7 @@ int loadXYZ_new( const char* fname, bool bAddEpairs=false, bool bOutXYZ=false ){
                 }
                 // Epairs(mol2)
                 iE=-1;
-                for(int i=0; i<nep_found; i++){ 
+                for(int i=0; i<nep_found; i++) {
                     if(bsbak[i].x>=n0bak){
                         iE++;
                         int j=n0bak+nE0+n1bak+iE;
@@ -520,9 +763,9 @@ int loadXYZ_new( const char* fname, bool bAddEpairs=false, bool bOutXYZ=false ){
                 }
                 //delete bak2; 
 //for(int i=0; i<atoms->natoms; i++){printf( "AFTER atoms[%i] %s pos=%g %g %g q=%g isep=%d\n", i, params->atypes[atoms->atypes[i]].name, atoms->apos[i].x, atoms->apos[i].y, atoms->apos[i].z, atoms->charge[i], isep[i] );};
-//for(int i=0; i<nep_found; i++){printf( "AFTER Epair[%i] %i %i %g %g %g\n", i, bs[i].x, bs[i].y, dirs[i].x, dirs[i].y, dirs[i].z );};
+//for(int i=0; i<nep_found; i++){printf( "AFTER Epair[%i] %i %i\n", i, bs[i].x, bs[i].y );};
 //printf("FIN QUA\n");exit(0);
-//if(nbatch==0){for(int i=0; i<nep_found; i++){printf( "AFTER Epair[%i] %i %i %g %g %g\n", i, bs[i].x, bs[i].y, dirs[i].x, dirs[i].y, dirs[i].z );};}
+//if(nbatch==0){for(int i=0; i<nep_found; i++){printf( "AFTER Epair[%i] %i %i\n", i, bs[i].x, bs[i].y );};}
                 // store root atoms and directions
                 AddedData * ad = new AddedData();
                 ad->nep  = nep_found;
@@ -543,53 +786,6 @@ int loadXYZ_new( const char* fname, bool bAddEpairs=false, bool bOutXYZ=false ){
     fclose(fin);
     //init_types_new();
     return nbatch;
-}
-
-// add electron pairs
-Atoms* addEpairs( Atoms* mol ){
-    //MM::Builder builder;
-    builder.params = params;
-    builder.clear();
-    if(mol->lvec){ builder.lvec = *(mol->lvec); builder.bPBC=true; }
-    builder.insertAtoms(*mol);
-    //int ia0=builder.frags[ifrag].atomRange.a;
-    //int ic0=builder.frags[ifrag].confRange.a;
-    //builder.printBonds();
-    //builder.printAtomConfs(true, false );
-    //if(iret<0){ printf("!!! exit(0) in MolWorld_sp3::loadGeom(%s)\n", name); exit(0); }
-    //builder.addCappingTypesByIz(1);  // insert H caps
-    //for( int it : builder.capping_types ){ printf( "capping_type[%i] iZ=%i name=`%s`  \n", it, builder.params->atypes[it].iZ, builder.params->atypes[it].name ); };
-    builder.tryAddConfsToAtoms( 0, -1 );
-    builder.cleanPis();
-    //if(verbosity>2)
-    //builder.printAtomConfs(false);
-    //builder.export_atypes(atypes);
-    // ------- Load lattice vectros
-    // NOTE: ERROR IS HERE:  autoBonds() -> insertBond() -> tryAddBondToAtomConf( int ib, int ia, bool bCheck )
-    //       probably we try to add multiple bonds for hydrogen ?
-    if( builder.bPBC ){ 
-        builder.autoBondsPBC( -.5,  0      , mol->n0     ); // we should not add bonds between rigid and flexible parts
-        builder.autoBondsPBC( -.5,  mol->n0, mol->natoms ); 
-    }else{ 
-        builder.autoBonds( -.5,  0      , mol->n0     ); // we should not add bonds between rigid and flexible parts
-        builder.autoBonds( -.5,  mol->n0, mol->natoms ); 
-    }
-    builder.checkNumberOfBonds( true, true );
-    //if(verbosity>2)
-    //builder.printBonds ();
-    //if( fAutoCharges>0 )builder.chargeByNeighbors( true, fAutoCharges, 10, 0.5 );
-    //if(substitute_name) substituteMolecule( substitute_name, isubs, Vec3dZ );
-    //if( builder.checkNeighsRepeat( true ) ){ printf( "ERROR: some atoms has repating neighbors => exit() \n"); exit(0); };
-    // --- Add Epairs
-    builder.bDummyEpair = true;
-    builder.autoAllConfEPi( ); 
-    // --- add Epairs to atoms like =O (i.e. with 2 just one neighbor)
-    builder.setPiLoop       ( 0, -1, 10 );
-    builder.addAllEpairsByPi( 0, -1 );    
-    //builder.printAtomConfs( false, true );
-    //builder.assignAllBondParams();    //if(verbosity>1)
-    //builder.finishFragment(ifrag);    
-    return builder.exportAtoms(); 
 }
 
 /**
@@ -908,8 +1104,6 @@ double evalExampleDerivs_LJQH2( int n, int* types, Vec3d* ps, double* aq, int* a
     return Etot;
 }
 
-
-
 double evalExampleDerivs_BuckQH1( int n, int* types, Vec3d* ps, double* aq, int* aisep, Vec3d* adirs, int nj=0, int* jtyp=0, Vec3d* jpos=0, double* jq=0, int* jisep=0, Vec3d* jdirs=0, int nep=0, Vec2i* bs=0){
     double Etot  = 0.0;
     double alpha = 12.0; //double alpha = 19.0/2.0 + sqrt(73.0)/2.0;
@@ -1046,15 +1240,12 @@ double evalExampleDerivs_BuckQH2( int n, int* types, Vec3d* ps, double* aq, int*
     return Etot;
 }
 
-
-
-/* The Morse potential can be written in the form:
-   E = epsilon * { exp[-2*alpha*(r-R0)] - 2 * exp[-alpha*(r-R0)] }
-   so that it goes to zero as r goes to infinity
-   alpha is a free parameter; it can be chosen such as:
-   - alpha = 6/R0, which corresponds to the same curvature at the minimum of the LJ potential
-   - have the dispersion part as close as possible to LJ (not derived yet)
-   - alpha is fitted to reference data (not implemented yet)*/
+/**
+ * @brief Evaluates the variational derivatives of the fitting error (sumed batch training samples) with respect to all fitting parameters (i.e. non-covalent interaction parameters REQH(Rvdw,Evdw,Q,Hb) for each atom type). The atomic systems are not assumed rigid (i.e. the atomic positions can vary freely from sample to sample).
+ * 
+ * @param Eout array to store the non-covalent interaction energy values of each atomic system in the batch. if Eout==null, the function will not store the energy values.
+ * @return double, returns the total fitting error.
+ */
 double evalExampleDerivs_MorseQ( int n, int* types, Vec3d* ps, double* aq, int* aisep, Vec3d* adirs, int nj=0, int* jtyp=0, Vec3d* jpos=0, double* jq=0, int* jisep=0, Vec3d* jdirs=0, int nep=0, Vec2i* bs=0){
     double Etot = 0.0;
     //printf( "evalExampleDerivs_MorseQ (n=%i,nj=%i)\n", n,nj );
@@ -1237,9 +1428,6 @@ double evalExampleDerivs_MorseQH2( int n, int* types, Vec3d* ps, double* aq, int
     return Etot;
 }
 
-
-
-
 // ======================================
 // =========  OPTIMIZE  =================
 // ======================================
@@ -1290,7 +1478,7 @@ void regularization_force_walls(){
 }
 
 /**
- * Limits the fitted non-covalent interaction parameters REQH(Rvdw,Evdw,Q,Hb) to be btween minimum and maximum (REQmin and REQmax).
+ * Limits the fitted non-colvalent interaction parameters REQH(Rvdw,Evdw,Q,Hb) to be btween minimum and maximum (REQmin and REQmax).
  * 
  * @param none
  * @return void

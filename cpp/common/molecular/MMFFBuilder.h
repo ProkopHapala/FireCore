@@ -1706,6 +1706,8 @@ class Builder{  public:
             AtomConf& conf = confs[ic];
             for(int i=0; i<N_NEIGH_MAX; i++){
                 int ib = conf.neighs[i];
+                if(ib<0)continue;
+                if(ib>=bonds.size()){ printf("ERROR listEpairBonds[%i](ia=%i) ib(%i)>bonds.size(%i) \n", nfound, ia, ib, bonds.size() ); exit(0); }
                 int ja = bonds[ib].getNeighborAtom(ia);
                 if( atoms[ja].iconf == -1 ){
                     int it = atoms[ja].type;

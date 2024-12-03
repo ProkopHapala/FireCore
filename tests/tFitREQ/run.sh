@@ -14,9 +14,9 @@ make -j4 FitREQ_lib
 cd $wd
 
 # ------- asan (Memory Sanitizer)
-# LD_PRELOAD=$(g++ -print-file-name=libasan.so)
-# echo   $LD_PRELOAD
-# export LD_PRELOAD
+LD_PRELOAD=$(g++ -print-file-name=libasan.so)
+echo   $LD_PRELOAD
+export LD_PRELOAD
 
 echo "#=========== RUN"
 python3 opt_mini.py
