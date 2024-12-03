@@ -670,9 +670,9 @@ double evalDerivsSamp( double* Eout=0 ){
             for(int j=0; j<nep; j++){
                 int iX=bs[j].x;
                 int iE=bs[j].y;
-                double q = typeREQs[atoms->atypes[iE]].z;
-                qs_[iE] = q;
-                qs_[iX] = qs_[iX] - q;
+                double q  = typeREQs[atoms->atypes[iE]].z;
+                qs_[iE]   = q;
+                qs_[iX]   = qs_[iX] - q;
                 apos_[iE] = apos_[iX] + dirs[j] * typeREQs[atoms->atypes[iE]].w;
                 dirs_[iE] = dirs[j];
                 isep_[iE] = 1;
@@ -681,20 +681,20 @@ double evalDerivsSamp( double* Eout=0 ){
 //for(int j=0; j<atoms->natoms; j++){printf( "atom[%i] %g %g %g\n", j, dirs_[j].x, dirs_[j].y, dirs_[j].z );};
 //exit(0);
         }
-        int     nj     = atoms->n0;
-        int*    jtyp   = atoms->atypes;
-        //Vec3d*  jpos   = atoms->apos;
-        Vec3d* jpos     = apos_.data();
-        double* jq     = qs_.data();
-        int*    jisep  = isep_.data();
-        Vec3d* jdirs  = dirs_.data();
-        int     na     = atoms->natoms - atoms->n0;
-        int*    atypes = atoms->atypes + atoms->n0;
-        //Vec3d*  apos   = atoms->apos   + atoms->n0;
-        Vec3d* apos  = apos_.data() + atoms->n0;
-        double* aq     = qs_.data() + atoms->n0;
-        int*    aisep  = isep_.data() + atoms->n0;
-        Vec3d*  adirs   = dirs_.data() + atoms->n0;
+        int     nj      = atoms->n0;
+        int*    jtyp    = atoms->atypes;
+        //Vec3d*  jpos  = atoms->apos;
+        Vec3d*  jpos    = apos_.data();
+        double* jq      = qs_.data();
+        int*    jisep   = isep_.data();
+        Vec3d*  jdirs   = dirs_.data();
+        int     na      = atoms->natoms - atoms->n0;
+        int*    atypes  = atoms->atypes + atoms->n0;
+        //Vec3d* apos   = atoms->apos   + atoms->n0;
+        Vec3d*  apos    = apos_.data()  + atoms->n0;
+        double* aq      = qs_.data()    + atoms->n0;
+        int*    aisep   = isep_.data()  + atoms->n0;
+        Vec3d*  adirs   = dirs_.data()  + atoms->n0;
         double Eref=atoms->Energy;
         double wi = 1.0; 
         if(weights) wi = weights[i];
@@ -769,6 +769,9 @@ void acumDerivs( int n, int* types, double dEw){
     //exit(0);
 }
 
+/**
+ * @brief Calculates the correction to the electrostatic energy and its derivative with respect to the charge.
+ */
 double corr_elec( double ir, double ir2, double Q, Vec3d d, Vec3d* dirs, int i, int nep, Vec2i* bs, int nj, Vec3d* pos, int j, Vec3d* ps, double &dE_dQ){
     double dE_dr = ir * ir2 * COULOMB_CONST * Q * d.dot(dirs[i]);
     for(int k=0; k<nep; k++){
@@ -2623,6 +2626,57 @@ double move_MD_nodamp( double dt, double max_step=-0.1 ){
     }
     return F2;
 }
+
+double run( int nstep, double Fmax, double dt, int imodel_, int isampmode, int ialg, bool bRegularize, bool bClamp, double max_step, bool bEpairs_ ){
+    imodel=imodel_;
+    bEpairs=bEpairs_;
+    double Err=0;
+    if( verbosity>1){ printf( "run( nstep %i Fmax %g dt %g isamp %i )\n", nstep, Fmax, dt, isampmode  ); }
+    double F2max=Fmax*Fmax;
+    double F2;
+    for(int i=0; i<nstep; i++){
+        //printf("[%i]  DOFs=", i);for(int j=0;j<W.nDOFs;j++){ printf("%g ",W. DOFs[j]); };printf("\n");
+        DOFsToTypes(); 
+        clean_derivs();
+        //printf("[%i]  DOFs=", i);for(int j=0;j<W.nDOFs;j++){ printf("%g ",W. DOFs[j]); };printf("\n");
+        switch(isampmode){
+            case 0: Err = evalDerivsRigid(); break;
+            case 1: Err = evalDerivs     (); break;
+            case 2: Err = evalDerivsSamp (); break;
+        }   
+        if( verbosity>1){
+            printf("step= %i DOFs= ", i);for(int j=0;j<nDOFs;j++){ printf("%g ",DOFs[j]); };printf("\n");
+            //if(bRegularize){ W.regularization_force(); }
+            printf("step= %i fDOFs= ", i);for(int j=0;j<nDOFs;j++){ printf("%g ",fDOFs[j]); };printf("\n");
+        }
+        if(bRegularize){ regularization_force_walls(); }
+        if( verbosity>1){ printf("step= %i after_reg fDOFs= ", i);for(int j=0;j<nDOFs;j++){ printf("%g ",fDOFs[j]); };printf("\n"); }
+//exit(0);        
+        switch(ialg){
+            case 0: F2 = move_GD( dt, max_step ); break;
+            case 1: F2 = move_MD( dt, max_step ); break;
+            case 2: F2 = move_GD_BB_short( i, dt, max_step ); break;
+            case 3: F2 = move_GD_BB_long( i, dt, max_step ); break;
+            case 4: F2 = move_MD_nodamp( dt, max_step ); break;
+        }
+        // regularization must be done before evaluation of derivatives
+        if(bClamp     ){ limit_params();         }
+        //printf("step= %i dt= %g\n", i, dt );
+        if( verbosity>1){
+            printf("step= %i RMSE= %g |F|= %g\n", i, sqrt(Err), sqrt(abs(F2)) );
+            printf("[%i]\n", i );
+        }
+        if( F2<0.0   ){ printf("DYNAMICS STOPPED after %i iterations \n", i); printf("VERY FINAL DOFs= ");for(int j=0;j<nDOFs;j++){ printf("%.15g ",DOFs[j]); };printf("\n"); return Err; }
+        if( F2<F2max ){ printf("CONVERGED in %i iterations \n", i);           printf("VERY FINAL DOFs= ");for(int j=0;j<nDOFs;j++){ printf("%.15g ",DOFs[j]); };printf("\n"); return Err; }
+    }
+    printf("step= %i DOFs= ", nstep); for(int j=0;j<nDOFs;j++){ printf("%g ",DOFs[j]); };printf("\n");
+    printf("VERY FINAL DOFs= ");      for(int j=0;j<nDOFs;j++){ printf("%.15g ",DOFs[j]); };printf("\n");
+    return Err;
+}
+
+
+
+
 
 // ------------------------------------------------------------------------------------------------
 // --------------------------- NOT USED (ANYMORE OR YET) ------------------------------------------
