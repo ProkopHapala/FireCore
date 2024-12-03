@@ -1312,7 +1312,7 @@ __kernel void project_atoms_on_grid_quintic_pbc(
     //Qgrid[ig] = (float2){gi.y*1.0f,0.0f};
 }
 
-__kernel void poissonW(
+__kernel void poissonW_old(
     const int4   ns,         // (nx,ny,nz,nxyz)
     __global float2* rho_k,  // input array  rho(k) - fourier coefficients (complex)
     __global float2* V_k,    // output array V(k)   - fourier coefficients (complex)
@@ -1333,6 +1333,41 @@ __kernel void poissonW(
         V_k[iG] = rho_k[iG]*f;
     }
 };
+
+__kernel void poissonW(
+    const int4   ns,         // (nx, ny, nz, nxyz)
+    __global float2* rho_k,  // input array  rho(k) - Fourier coefficients (complex)
+    __global float2* V_k,    // output array V(k)   - Fourier coefficients (complex)
+    const float4 coefs       // (freq_x, freq_y, freq_z, unused)
+){
+    const int iG = get_global_id(0);
+    if (iG >= ns.w) return;
+    const int nx = ns.x;
+    const int ny = ns.y;
+    const int nz = ns.z;
+    const int nab = nx * ny;
+    const int ix = iG % nx;
+    const int iy = (iG % nab) / nx;
+    const int iz = iG / nab;
+
+    const int nx2 = nx / 2;
+    const int ny2 = ny / 2;
+    const int nz2 = nz / 2;
+
+    const float freq_x = coefs.x;
+    const float freq_y = coefs.y;
+    const float freq_z = coefs.z;
+
+    const float kx = ((ix <= nx2) ? ix : ix - nx) * freq_x;
+    const float ky = ((iy <= ny2) ? iy : iy - ny) * freq_y;
+    const float kz = ((iz <= nz2) ? iz : iz - nz) * freq_z;
+
+    const float k2 = kx * kx + ky * ky + kz * kz;
+
+    const float f = (k2 > 1e-32) ? ( coefs.w / k2) : 0.0f;
+
+    V_k[iG] = rho_k[iG] * f;
+}
 
 
 __kernel void laplace_real_pbc( 
