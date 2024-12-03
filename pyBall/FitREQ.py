@@ -66,26 +66,26 @@ def setVerbosity(verbosity=1, idebug=0):
     return lib.setVerbosity(verbosity, idebug)
 
 #  void init_types(int ntyp, int* typeMask, double* typREQs ){
-lib.init_types.argtypes  = [c_int, c_int_p, c_double_p, c_bool] 
-lib.init_types.restype   =  None
-def init_types(typeMask, typREQs=None, bCopy=True):
-    ntyp = len(typeMask)
-    return lib.init_types(ntyp, _np_as(typeMask,c_int_p), _np_as(typREQs,c_double_p), bCopy)
+# lib.init_types.argtypes  = [c_int, c_int_p, c_double_p, c_bool] 
+# lib.init_types.restype   =  None
+# def init_types(typeMask, typREQs=None, bCopy=True):
+#     ntyp = len(typeMask)
+#     return lib.init_types(ntyp, _np_as(typeMask,c_int_p), _np_as(typREQs,c_double_p), bCopy)
 
 #  void setSystem( int isys, int na, int* types, double* ps, bool bCopy=false ){
-lib.setSystem.argtypes  = [c_int, c_int, c_int_p, c_double_p, c_bool] 
-lib.setSystem.restype   =  None
-def setSystem(isys, types, ps, bCopy=False):
-    na=len(types)
-    return lib.setSystem(isys, na, _np_as(types,c_int_p), _np_as(ps,c_double_p), bCopy)
+# lib.setSystem.argtypes  = [c_int, c_int, c_int_p, c_double_p, c_bool] 
+# lib.setSystem.restype   =  None
+# def setSystem(isys, types, ps, bCopy=False):
+#     na=len(types)
+#     return lib.setSystem(isys, na, _np_as(types,c_int_p), _np_as(ps,c_double_p), bCopy)
 
 #  void setRigidSamples( int n, double* Es_, Mat3d* poses_, bool bCopy ){
-lib.setRigidSamples.argtypes  = [c_int, c_double_p, c_double_p, c_bool, c_bool] 
-lib.setRigidSamples.restype   =  None
-def setRigidSamples(Es, poses, bCopy=False, bAlloc=False):
-    if Es    is not None: n = len(Es)
-    if poses is not None: n = len(poses)
-    return lib.setRigidSamples(n, _np_as(Es,c_double_p), _np_as(poses,c_double_p), bCopy, bAlloc)
+# lib.setRigidSamples.argtypes  = [c_int, c_double_p, c_double_p, c_bool, c_bool] 
+# lib.setRigidSamples.restype   =  None
+# def setRigidSamples(Es, poses, bCopy=False, bAlloc=False):
+#     if Es    is not None: n = len(Es)
+#     if poses is not None: n = len(poses)
+#     return lib.setRigidSamples(n, _np_as(Es,c_double_p), _np_as(poses,c_double_p), bCopy, bAlloc)
 
 #void setWeights( int n, double* weights ){
 lib.setWeights.argtypes  = [c_int, c_double_p]
@@ -110,24 +110,24 @@ def getEs(imodel=0, Es=None, isampmode=2, bEpairs=False):
 
 
 #  double loadXYZ( char* fname, int n0, int* i0s, int ntest, int* itests, int* types0, int testtypes ){
-lib.loadXYZ.argtypes  = [c_char_p, c_int, c_int_p, c_int, c_int_p, c_int_p, c_int_p] 
-lib.loadXYZ.restype   =  c_int
-def loadXYZ(fname,  i0s, itests, types0=None, testtypes=None, fname_AtomTypes="data/AtomTypes.dat"):
-    global nbatch
-    n0     = len( i0s    )
-    ntest  = len( itests )
-    i0s    = np.array(i0s   ,np.int32)
-    itests = np.array(itests,np.int32)
-    if(types0    is not None): types0    = np.array(types0   ,np.int32)
-    if(testtypes is not None): testtypes = np.array(testtypes,np.int32)
-    nbatch = lib.loadXYZ(cstr(fname), n0, _np_as(i0s,c_int_p), ntest, _np_as(itests,c_int_p), _np_as(types0,c_int_p), _np_as(testtypes,c_int_p), cstr(fname_AtomTypes))
-    return nbatch
+# lib.loadXYZ.argtypes  = [c_char_p, c_int, c_int_p, c_int, c_int_p, c_int_p, c_int_p] 
+# lib.loadXYZ.restype   =  c_int
+# def loadXYZ(fname,  i0s, itests, types0=None, testtypes=None, fname_AtomTypes="data/AtomTypes.dat"):
+#     global nbatch
+#     n0     = len( i0s    )
+#     ntest  = len( itests )
+#     i0s    = np.array(i0s   ,np.int32)
+#     itests = np.array(itests,np.int32)
+#     if(types0    is not None): types0    = np.array(types0   ,np.int32)
+#     if(testtypes is not None): testtypes = np.array(testtypes,np.int32)
+#     nbatch = lib.loadXYZ(cstr(fname), n0, _np_as(i0s,c_int_p), ntest, _np_as(itests,c_int_p), _np_as(types0,c_int_p), _np_as(testtypes,c_int_p), cstr(fname_AtomTypes))
+#     return nbatch
 
-# void loadTypes( const char* fname_ElemTypes, const char* fname_AtomTypes ){
-lib.loadTypes.argtypes  = [c_char_p, c_char_p]
-lib.loadTypes.restype   =  None
-def loadTypes(fEtypes="data/ElementTypes.dat", fAtypes="data/AtomTypes.dat"):
-    return lib.loadTypes(cstr(fEtypes), cstr(fAtypes))
+# # void loadTypes( const char* fname_ElemTypes, const char* fname_AtomTypes ){
+# lib.loadTypes.argtypes  = [c_char_p, c_char_p]
+# lib.loadTypes.restype   =  None
+# def loadTypes(fEtypes="data/ElementTypes.dat", fAtypes="data/AtomTypes.dat"):
+#     return lib.loadTypes(cstr(fEtypes), cstr(fAtypes))
 
 # void loadTypes_new( const char* fname_ElemTypes, const char* fname_AtomTypes ){
 lib.loadTypes_new.argtypes  = [c_char_p, c_char_p]

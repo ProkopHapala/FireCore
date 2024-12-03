@@ -21,9 +21,9 @@ void setVerbosity( int verbosity_, int idebug_ ){
     idebug    = idebug_;
 }
 
-void init_types(int ntyp, int* typeMask, double* typREQs, bool bCopy ){
-    W.init_types( ntyp, (Quat4i*)typeMask, (Quat4d*)typREQs, bCopy );
-}
+// void init_types(int ntyp, int* typeMask, double* typREQs, bool bCopy ){
+//     W.init_types( ntyp, (Quat4i*)typeMask, (Quat4d*)typREQs, bCopy );
+// }
 
 int loadTypeSelection( const char* fname, int imodel ){
     return W.loadTypeSelection( fname, imodel );
@@ -37,26 +37,26 @@ int loadWeights( const char* fname ){
     return W.loadWeights( fname );
 }
 
-void setSystem( int isys, int na, int* types, double* ps, bool bCopy=false ){
-    W.setSystem( isys, na, types, (Vec3d*)ps, bCopy );
-}
+// void setSystem( int isys, int na, int* types, double* ps, bool bCopy=false ){
+//     W.setSystem( isys, na, types, (Vec3d*)ps, bCopy );
+// }
 
-void setRigidSamples( int n, double* Es_, double* poses_, bool bCopy, bool bAlloc ){
-    W.setRigidSamples( n, Es_, (Mat3d*)poses_, bCopy );
-}
+// void setRigidSamples( int n, double* Es_, double* poses_, bool bCopy, bool bAlloc ){
+//     W.setRigidSamples( n, Es_, (Mat3d*)poses_, bCopy );
+// }
 
-int loadXYZ( const char* fname, int n0, int* i0s, int ntest, int* itests, int* types0, int* testtypes, const char* fname_AtomTypes  ){
-    bool bReadTypes = !(types0 && testtypes);
-    if( bReadTypes && !W.params ){ params.loadAtomTypes( fname_AtomTypes ); W.params=&params; }
-    return W.loadXYZ( fname, n0, i0s, ntest, itests, types0, testtypes );
-}
+// int loadXYZ( const char* fname, int n0, int* i0s, int ntest, int* itests, int* types0, int* testtypes, const char* fname_AtomTypes  ){
+//     bool bReadTypes = !(types0 && testtypes);
+//     if( bReadTypes && !W.params ){ params.loadAtomTypes( fname_AtomTypes ); W.params=&params; }
+//     return W.loadXYZ( fname, n0, i0s, ntest, itests, types0, testtypes );
+// }
 
-void loadTypes( const char* fname_ElemTypes, const char* fname_AtomTypes ){
-    params.loadElementTypes( fname_ElemTypes );
-    params.loadAtomTypes( fname_AtomTypes ); 
-    W.params=&params;
-    W.init_types_par();
-}
+// void loadTypes( const char* fname_ElemTypes, const char* fname_AtomTypes ){
+//     params.loadElementTypes( fname_ElemTypes );
+//     params.loadAtomTypes( fname_AtomTypes ); 
+//     W.params=&params;
+//     W.init_types_par();
+// }
 
 void loadTypes_new( const char* fname_ElemTypes, const char* fname_AtomTypes ){
     params.loadElementTypes( fname_ElemTypes );
@@ -132,8 +132,8 @@ double getEs( int imodel, double* Es, int isampmode, bool bEpairs ){
     W.imodel=imodel;
     W.bEpairs=bEpairs;
     switch(isampmode){
-        case 0: return W.evalDerivsRigid( Es ); break;
-        case 1: return W.evalDerivs     ( Es ); break;
+        //case 0: return W.evalDerivsRigid( Es ); break;
+        //case 1: return W.evalDerivs     ( Es ); break;
         case 2: return W.evalDerivsSamp ( Es ); break;
     }
     //printf("FINAL DOFs= ");for(int j=0;j<W.nDOFs;j++){ printf("%g ",W. DOFs[j]); };printf("\n");
