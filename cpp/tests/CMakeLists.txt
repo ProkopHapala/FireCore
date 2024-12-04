@@ -17,6 +17,6 @@ target_link_libraries(test_add PRIVATE
 )
 
 # Register the test with CTest
-add_test(NAME AddTest COMMAND test_add)
-set_tests_properties(AddTest PROPERTIES WORKING_DIRECTORY "${CMAKE_BINARY_DIR}/tests")
+add_test(NAME AddTest COMMAND "${CMAKE_BINARY_DIR}/tests/test_add")
+
 
