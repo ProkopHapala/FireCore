@@ -20,4 +20,3 @@ target_link_libraries(test_add PRIVATE
 
 # Register the test with CTest using the correct path
 add_test(NAME AddTest COMMAND test_add)
-
