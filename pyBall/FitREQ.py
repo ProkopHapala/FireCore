@@ -110,6 +110,15 @@ def getEs(imodel=0, Es=None, isampmode=2, bEpairs=False):
     Eerr = lib.getEs(imodel, _np_as(Es,c_double_p), isampmode, bEpairs)
     return Es
 
+# void getParamScan( int iDOF, int imodel,  int n, double* xs,  double* Es, double* Fs ){
+lib.getParamScan.argtypes  = [c_int, c_int, c_int, c_double_p, c_double_p, c_double_p]
+lib.getParamScan.restype   = None
+def getParamScan( iDOF, xs, Es=None, Fs=None, imodel=2 ):
+    n = len(xs)
+    if Es is None: Es = np.zeros( n )
+    if Fs is None: Fs = np.zeros( n )
+    lib.getParamScan(iDOF, imodel, n, _np_as(xs,c_double_p), _np_as(Es,c_double_p), _np_as(Fs,c_double_p))
+    return Es,Fs
 
 #  double loadXYZ( char* fname, int n0, int* i0s, int ntest, int* itests, int* types0, int testtypes ){
 # lib.loadXYZ.argtypes  = [c_char_p, c_int, c_int_p, c_int, c_int_p, c_int_p, c_int_p] 

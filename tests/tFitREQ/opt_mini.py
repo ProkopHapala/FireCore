@@ -42,6 +42,34 @@ nbatch = fit.loadXYZ_new( "input_all.xyz", bAddEpairs, bOutXYZ )     # load refe
 
 fit.getBuffs()
 
+print( "fit.nDOFs ", fit.nDOFs )
+DOFnames = [
+"E_N3.Q", # 0
+"E_NR.Q", # 1
+"E_N2.Q", # 2 
+"E_O3.Q", # 3
+"E_O2.Q", # 4
+"N_3.H",  # 5
+"N_R.H",  # 6
+"N_2.H",  # 7
+"O_3.H",  # 8
+"O_2.H",  # 9
+"H_N.H",  # 10
+"H_O.H"   # 11
+]
+xs = np.linspace( -0.99, 0.99, 100 )
+iDOFs = [0,1,2,3,4]        # Electron Pair charges
+iDOFs = [5,6,7,8,9,10,11]  # H2 correction 
+for iDOF in iDOFs:
+    y = fit.DOFs[iDOF]    # store backup value of this DOF
+    Es,Fs = fit.getParamScan( iDOF, xs, imodel=2 )   # do 1D scan
+    print( "iDOF", iDOF, DOFnames[iDOF], "Es", Es )
+    plt.plot(xs,Es)       # plot 1D scan
+    fit.DOFs[iDOF] = y    # restore
+plt.show()
+
+
+'''
 ws     = np.genfromtxt( "weights_all.dat" )
 fit.setWeights(ws)
 
@@ -55,3 +83,4 @@ Err = fit.run( nstep=nstep, ErrMax=ErrMax, dt=dt, imodel=imodel, isampmode=isamp
 # ------ write optimized results
 Es = fit.getEs( imodel=imodel, isampmode=isampmode, bEpairs=bEpairs )
 np.savetxt("firecore.dat", Es )
+'''

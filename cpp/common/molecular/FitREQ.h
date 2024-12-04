@@ -91,7 +91,7 @@ class FitREQ{ public:
     Quat4d*    typeKreg      =0; // [ntype] regulatization stiffness
     Quat4d*    typeKreg_low  =0; // [ntype] regulatization stiffness (lower wall)
     Quat4d*    typeKreg_high =0; // [ntype] regulatization stiffness (upper wall)
-    
+
     Quat4i*    typToREQ      =0; // [ntype] map each unique atom type to place in DOFs;
     std::vector<Vec2i> REQtoTyp; // Maps DOF index to (type_index, component)
     
@@ -1287,7 +1287,7 @@ void printDOFs() const {
         const Vec2i& rt = REQtoTyp[i];
         char* tname = params->atypes[rt.x].name;
         const char comp = "REQH"[rt.y];
-        printf("%3i ->(%3i|%i) %8s: %c: %g dE/d%c: %g \n", i, rt.x,rt.y, tname,  comp, DOFs[i], comp, fDOFs[i]);
+        printf("%3i ->(%3i|%i) %8s.%c : %g dE/d%c: %g \n", i, rt.x,rt.y, tname,  comp, DOFs[i], comp, fDOFs[i]);
     }
     //printf("\n");
 }

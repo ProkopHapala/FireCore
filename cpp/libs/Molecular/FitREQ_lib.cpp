@@ -141,6 +141,15 @@ double getEs( int imodel, double* Es, int isampmode, bool bEpairs ){
     return 0;
 }
 
+void getParamScan( int iDOF, int imodel,  int n, double* xs,  double* Es, double* Fs ){
+    W.imodel=imodel;
+    for(int i=0; i<n; i++){
+        W.DOFs[iDOF] = xs[i];
+        if(Fs)Es[i] = W.evalDerivsSamp();
+        if(Fs)Fs[i] = W.fDOFs[iDOF];
+    }
+}
+
 // void init_buffers(){
 //     ibuffers.insert( { "ndims", (int*)&W.nDOFs } );
 //     buffers .insert( { "DOFs",   (double*)W.DOFs  } );
