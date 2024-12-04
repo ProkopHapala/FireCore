@@ -137,6 +137,8 @@ function(setup_precompiled_headers target)
     target_precompile_headers(${target} PRIVATE ${all_headers})
 endfunction()
 
+enable_testing()
+
 include_directories(
         ${COMMON_SRCS}
         ${COMMON_SRCS}/math
@@ -160,6 +162,10 @@ file (GLOB_RECURSE _COMMON_SRCS_     ${COMMON_SRCS}/*.h     ${COMMON_SRCS}/*.cpp
 
 add_subdirectory( ${MY_SRC_DIR}/common   ${MY_BIN_SHARE}/common    )
 add_subdirectory( ${MY_SRC_DIR}/libs    )
+
+# ====== Tests
+
+add_subdirectory( ${MY_SRC_DIR}/tests )
 
 # ====== OpenCL
 
