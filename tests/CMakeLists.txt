@@ -17,4 +17,8 @@ target_link_libraries(test_add PRIVATE
 )
 
 # Register the test with CTest
-add_test(NAME AddTest COMMAND test_add)
+add_test(NAME AddTest COMMAND "${CMAKE_BINARY_DIR}/tests/test_add")
+
+message(STATUS "Executable test_add should be built at: ${CMAKE_BINARY_DIR}/tests/test_add")
+
+
