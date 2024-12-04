@@ -166,7 +166,6 @@ add_subdirectory( ${MY_SRC_DIR}/libs    )
 # ====== Tests
 
 add_subdirectory( ${MY_SRC_DIR}/tests )
-add_subdirectory( ${MY_SRC_DIR}/../tests )
 
 # ====== OpenCL
 
