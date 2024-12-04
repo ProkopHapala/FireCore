@@ -109,7 +109,7 @@ endif()
 # ==== DIRS
 # ==============================
 
-SET( MY_SRC_DIR    "${CMAKE_SOURCE_DIR}" )
+SET( MY_SRC_DIR    "${CMAKE_SOURCE_DIR}/cpp" )
 SET( MY_BIN_SHARE  "${MY_SRC_DIR}/Build"       )
 
 SET( COMMON_SRCS      "${MY_SRC_DIR}/common"     )
@@ -165,7 +165,7 @@ add_subdirectory( ${MY_SRC_DIR}/libs    )
 
 # ====== Tests
 
-add_subdirectory( ${MY_SRC_DIR}/tests )
+add_subdirectory( tests )
 
 # ====== OpenCL
 
