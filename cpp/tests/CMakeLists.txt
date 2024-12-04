@@ -17,4 +17,4 @@ target_link_libraries(test_add PRIVATE
 )
 
 # Register the test with CTest
-add_test(NAME AddTest COMMAND test_add)
+add_test(NAME AddTest COMMAND cpp/tests/test_add)
