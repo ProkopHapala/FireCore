@@ -21,8 +21,6 @@ jobs:
 
     - name: Create Build repository
       run: mkdir ${{github.workspace}}/cpp/Build
-    - name: Move to build
-      run: cd ${{github.workspace}}/cpp/Build
       
     - name: CMake
       run: cmake ${{github.workspace}}/cpp
