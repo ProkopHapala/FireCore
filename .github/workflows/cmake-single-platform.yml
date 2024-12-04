@@ -30,6 +30,11 @@ jobs:
     - name: Build
       # Build your program with the given configuration
       run: cmake --build ${{github.workspace}}/cpp/Build --config ${{env.BUILD_TYPE}}
+      
+    - name: Make
+      # Build your program with the given configuration
+      run: make ${{github.workspace}}/cpp/Build -j19
+      
 
     - name: Test
       working-directory: ${{github.workspace}}/cpp/Build
