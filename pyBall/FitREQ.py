@@ -135,11 +135,11 @@ lib.loadTypes_new.restype   =  None
 def loadTypes_new(fEtypes="data/ElementTypes.dat", fAtypes="data/AtomTypes.dat"):
     return lib.loadTypes_new(cstr(fEtypes), cstr(fAtypes))
 
-# int loadTypeSelection( const char* fname ){
-lib.loadTypeSelection.argtypes  = [c_char_p, c_int]
-lib.loadTypeSelection.restype   =  c_int
-def loadTypeSelection(fname="typeSelection.dat", imodel=0):
-    return lib.loadTypeSelection(cstr(fname), imodel)
+# # int loadTypeSelection( const char* fname ){
+# lib.loadTypeSelection.argtypes  = [c_char_p, c_int]
+# lib.loadTypeSelection.restype   =  c_int
+# def loadTypeSelection(fname="typeSelection.dat", imodel=0):
+#     return lib.loadTypeSelection(cstr(fname), imodel)
 
 # int loadTypeSelection_walls( const char* fname ){
 lib.loadTypeSelection_walls.argtypes  = [c_char_p]

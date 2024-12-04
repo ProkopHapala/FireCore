@@ -1701,6 +1701,7 @@ class Builder{  public:
         std::vector<Vec3d> _dirs;
         int nfound=0;
         for( int ia=0; ia<atoms.size(); ia++ ){
+            // NOTE: we must loop over host atoms because e-pairs are capping atoms, so they don't have neighbor-list (conf)
             int ic = atoms[ia].iconf;
             if(ic<0)continue;
             AtomConf& conf = confs[ic];
@@ -1713,9 +1714,9 @@ class Builder{  public:
                     int it = atoms[ja].type;
                     if( params->atypes[it].name[0]=='E' ){
                         //printf("listEpairBonds[%i](%i,%i) types(%s,%s) \n", nfound, ia, ja, params->atypes[atoms[ia].type].name, params->atypes[it].name  );
-                        _bs  .push_back( (Vec2i){ia,ja} );
+                        _bs  .push_back( (Vec2i){ia,ja} );   //   ia = Host_atom_index ja= Electron_Pair_Index
                         _dirs.push_back( atoms[ja].pos - atoms[ia].pos );
-//printf("listEpairBonds[%i](%i,%i) types(%s,%s) dir(%g,%g,%g)\n", nfound, ia, ja, params->atypes[atoms[ia].type].name, params->atypes[it].name, _dirs.back().x,_dirs.back().y,_dirs.back().z  );
+                        //printf("listEpairBonds[%i](%i,%i) types(%s,%s) dir(%g,%g,%g)\n", nfound, ia, ja, params->atypes[atoms[ia].type].name, params->atypes[it].name, _dirs.back().x,_dirs.back().y,_dirs.back().z  );
                         nfound++;   
                     };
                 }
@@ -2039,7 +2040,7 @@ void assignTorsions( bool bNonPi=false, bool bNO=true ){
 
     void autoBonds( double R=-0.5, int i0=0, int imax=-1 ){
         //printf( "MM::Builder::autoBonds() \n" );
-        if(verbosity>0){ printf( "MM::Builder::autoBonds() \n" ); }
+        //if(verbosity>0){ printf( "MM::Builder::autoBonds() \n" ); }
         if(imax<0)imax=atoms.size();
         bool byParams = (R<0);
         double Rfac   = -R;
@@ -2068,7 +2069,7 @@ void assignTorsions( bool bNonPi=false, bool bNO=true ){
     void autoBondsPBC( double R=-0.5, int i0=0, int imax=-1, Vec3i npbc=Vec3iOne ){
         //printf( "MM::Builder::autoBondsPBC() \n" );
         //if(verbosity>0){ printf( "MM::Builder::autoBondsPBC() \n" );                             }
-        if(verbosity>1){ printf( "MM::Builder::autoBondsPBC() builder.lvec: \n" ); lvec.print(); };
+        //if(verbosity>1){ printf( "MM::Builder::autoBondsPBC() builder.lvec: \n" ); lvec.print(); };
         if(imax<0)imax=atoms.size();
         bool byParams = (R<0);
         double Rfac   = -R;

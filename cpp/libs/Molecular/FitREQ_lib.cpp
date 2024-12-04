@@ -25,9 +25,7 @@ void setVerbosity( int verbosity_, int idebug_ ){
 //     W.init_types( ntyp, (Quat4i*)typeMask, (Quat4d*)typREQs, bCopy );
 // }
 
-int loadTypeSelection( const char* fname, int imodel ){
-    return W.loadTypeSelection( fname, imodel );
-}
+//int loadTypeSelection( const char* fname, int imodel ){    return W.loadTypeSelection( fname, imodel );}
 
 int loadTypeSelection_walls( const char* fname ){
     return W.loadTypeSelection_walls( fname );

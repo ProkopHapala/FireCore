@@ -20,7 +20,7 @@ class Atoms{ public:
     // --- for global optimization
     Mat3d * lvec   =0;  // ToDo: should this be pointer or full array ?
     double Energy  =0;
-    long   id      =0;
+    long   id      =-1;
     int    n0      =0; // number of atoms in the first part of the system (e.g. ligand) 
     double* charge =0; // [natoms] array of atom charges
     //int   * rootatom =0;  // [natoms] array of atom ids to which the electron pair is attached 
@@ -36,6 +36,8 @@ class Atoms{ public:
 
     //void bindOrRealloc(){}
     void copyOf(const Atoms& p){
+        Energy  = p.Energy;
+        n0      = p.n0; 
         if(natoms!=p.natoms)realloc(p.natoms);
         if(lvec  !=p.lvec  ){ lvec=new Mat3d; *lvec=*(p.lvec); }
         memcpy( atypes, p.atypes, sizeof(int)  *natoms );

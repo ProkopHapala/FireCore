@@ -9,7 +9,7 @@ wd=`pwd`
 #echo "#=========== Compile C++"
 cd ../../cpp/Build/libs/Molecular/
 pwd
-rm libFitREQ_lib.so
+rm   libFitREQ_lib.so
 make -j4 FitREQ_lib
 cd $wd
 

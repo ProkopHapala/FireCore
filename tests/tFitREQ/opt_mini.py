@@ -20,7 +20,8 @@ imodel = 2        #  0=LJQ     1=LJQH1     2=LJQH2     3=LJQH1H2
                   # 20=LJr9Q  21=LJr9QH1  22=LJr9QH2  23=LJr9QH1H2
 isampmode   = 2    # do not change it
 ialg        = 2         # 0=GD 1=MD 2=GD_BB_short 3=GD_BB_long
-nstep       = 100000
+#nstep       = 10
+nstep       = 1
 dt          = 0.01
 ErrMax      = 1e-8
 bRegularize = True
@@ -29,10 +30,11 @@ max_step    = 0.01
 bEpairs     = True
 bAddEpairs  = bEpairs
 bOutXYZ     = False
+verbosity   = 3    # Added to enable debug printing
 
 # ------ load stuff
 #fit.setVerbosity(1)
-fit.setVerbosity(0)
+fit.setVerbosity(verbosity)
 fit.loadTypes_new( )     # load atom types
 fit.loadTypeSelection_walls( fname="typeSelection.dat" )     # load atom types
 nbatch = fit.loadXYZ_new( "input_all.xyz", bAddEpairs, bOutXYZ )     # load reference geometry
@@ -49,4 +51,3 @@ Err = fit.run( nstep=nstep, ErrMax=ErrMax, dt=dt, imodel=imodel, isampmode=isamp
 # ------ write optimized results
 Es = fit.getEs( imodel=imodel, isampmode=isampmode, bEpairs=bEpairs )
 np.savetxt("firecore.dat", Es )
-
