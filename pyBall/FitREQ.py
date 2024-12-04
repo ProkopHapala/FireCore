@@ -65,6 +65,8 @@ lib.setVerbosity.restype   =  None
 def setVerbosity(verbosity=1, idebug=0):
     return lib.setVerbosity(verbosity, idebug)
 
+
+
 #  void init_types(int ntyp, int* typeMask, double* typREQs ){
 # lib.init_types.argtypes  = [c_int, c_int_p, c_double_p, c_bool] 
 # lib.init_types.restype   =  None
@@ -178,6 +180,13 @@ def getType(i, REQ=None):
 
 # =============== Buffers
 
+#  void init_buffers()
+lib.init_buffers.argtypes  = []
+lib.init_buffers.restype   =  None
+def init_buffers():
+    #print( "init_buffers()" )
+    return lib.init_buffers()
+
 #printBuffNames(){
 lib.printBuffNames.argtypes = []
 lib.printBuffNames.restype  = None
@@ -208,39 +217,64 @@ def getBuff(name,sh):
     else:
         return None
 
-def getBuffs():
+
+#def getBuffs( nnode, npi, ncap, nbond, NEIGH_MAX=4 ):
+def getBuffs( ):
+    print( "getBuffs()" )
     init_buffers()
-    global ndims,nDOFs,ntype,nbatch,n0,n1, params
-    ndims = getIBuff( "ndims", (6,) )  # [nDOFs,natoms,nnode,ncap,npi,nbonds]
-    nDOFs=ndims[0]; ntype=ndims[1]; nbatch=ndims[2];n0=ndims[3];n1=ndims[4]; 
-    print( "getBuffs(): nDOFs %i ntype %i nbatch %i n0 %i n1 %i" %(nDOFs,ntype,nbatch,n0,n1) )
-    params     = getBuff( "params", 4 )
+    print( "getBuffs().1" )
+    global ndims,typToREQ
+    ndims = getIBuff( "ndims", (6,) )  # [nDOFs,ntype,nbatch,n0,n1,imodel]
+    global nDOFs,ntype,nbatch,n0,n1,imodel
+    nDOFs=ndims[0]; ntype=ndims[1]; nbatch=ndims[2]; n0=ndims[3]; n1=ndims[4]; imodel=ndims[5]
+    typToREQ      = getIBuff( "typToREQ",    (ntype,) )
+    print( "getBuffs().2" )
+    global DOFs,fDOFs,vDOFs
+    DOFs          = getBuff ( "DOFs",   (nDOFs,)  )
+    fDOFs         = getBuff ( "fDOFs",  (nDOFs,)  ) 
+    vDOFs         = getBuff ( "vDOFs",  (nDOFs,)  ) 
+    global typeREQs,  typeREQsMin,   typeREQsMax
+    typeREQs      = getBuff ( "typeREQs",    (ntype,) )
+    typeREQsMin   = getBuff ( "typeREQsMin", (ntype,) )
+    typeREQsMax   = getBuff ( "typeREQsMax", (ntype,) )
+    global typeREQs0, typeREQs0_low, typeREQs0_high
+    typeREQs0     = getBuff ( "typeREQs0",   (ntype,) )
+    typeREQs0_low = getBuff ( "typeREQs0_low",   (ntype,) )
+    typeREQs0_high= getBuff ( "typeREQs0_high",  (ntype,) )
+    global typeKreg,  typeKreg_low,  typeKreg_high
+    typeKreg      = getBuff ( "typeKreg",    (ntype,) )
+    typeKreg_low  = getBuff ( "typeKreg_low", (ntype,) )
+    typeKreg_high = getBuff ( "typeKreg_high", (ntype,) )
+    print( "getBuffs().3" )
 
-    global DOFs,fDOFs,typeREQs,typeREQsMin,typeREQsMax,typeREQs0,typeKreg,typToREQ,weights,Es,poses,ps1,ps2,ps3, types1,types2,types3
-    DOFs       = getBuff ( "DOFs",     nDOFs  )
-    fDOFs      = getBuff ( "fDOFs",    nDOFs  )
-    typToREQ   = getIBuff( "typToREQ",    (ntype,4)  )
-    typeREQs   = getBuff ( "typeREQs",    (ntype,4)  )
-    typeREQs0  = getBuff ( "typeREQs0",   (ntype,4)  )
-    typeREQsMin= getBuff ( "typeREQsMin", (ntype,4)  )
-    typeREQsMax= getBuff ( "typeREQsMax", (ntype,4)  )
-    typeKreg   = getBuff ( "typeKreg",    (ntype,4)  )
+# def getBuffs():
+#     init_buffers()
+#     global ndims,nDOFs,ntype,nbatch,n0,n1, params
+#     ndims = getIBuff( "ndims", (6,) )  # [nDOFs,natoms,nnode,ncap,npi,nbonds]
+#     nDOFs=ndims[0]; ntype=ndims[1]; nbatch=ndims[2];n0=ndims[3];n1=ndims[4]; 
+#     print( "getBuffs(): nDOFs %i ntype %i nbatch %i n0 %i n1 %i" %(nDOFs,ntype,nbatch,n0,n1) )
+#     params     = getBuff( "params", 4 )
+
+#     global DOFs,fDOFs,typeREQs,typeREQsMin,typeREQsMax,typeREQs0,typeKreg,typToREQ,weights,Es,poses,ps1,ps2,ps3, types1,types2,types3
+#     DOFs       = getBuff ( "DOFs",     nDOFs  )
+#     fDOFs      = getBuff ( "fDOFs",    nDOFs  )
+#     typToREQ   = getIBuff( "typToREQ",    (ntype,4)  )
+#     typeREQs   = getBuff ( "typeREQs",    (ntype,4)  )
+#     typeREQs0  = getBuff ( "typeREQs0",   (ntype,4)  )
+#     typeREQsMin= getBuff ( "typeREQsMin", (ntype,4)  )
+#     typeREQsMax= getBuff ( "typeREQsMax", (ntype,4)  )
+#     typeKreg   = getBuff ( "typeKreg",    (ntype,4)  )
     
-    weights = getBuff ( "weights",  nbatch )
-    Es       = getBuff ( "Es",       nbatch ) 
-    poses    = getBuff ( "poses",  (nbatch,3,3) )
-    ps1      = getBuff ( "ps1",    (n0,3)    )
-    #ps2      = getBuff ( "ps2",  (n1,3)   )
-    #ps3      = getBuff ( "ps3",  (n1,3)   )
-    types1   = getIBuff( "types1", n0 )
-    #types2   = getIBuff( "types2", n1 )
-    #types3   = getIBuff( "types3", n1 )
+#     weights = getBuff ( "weights",  nbatch )
+#     Es       = getBuff ( "Es",       nbatch ) 
+#     poses    = getBuff ( "poses",  (nbatch,3,3) )
+#     ps1      = getBuff ( "ps1",    (n0,3)    )
+#     #ps2      = getBuff ( "ps2",  (n1,3)   )
+#     #ps3      = getBuff ( "ps3",  (n1,3)   )
+#     types1   = getIBuff( "types1", n0 )
+#     #types2   = getIBuff( "types2", n1 )
+#     #types3   = getIBuff( "types3", n1 )
 
-#  void init_buffers()
-lib.init_buffers.argtypes  = []
-lib.init_buffers.restype   =  None
-def init_buffers():
-    return lib.init_buffers()
 
 ################## Python ###############
 

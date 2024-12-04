@@ -38,6 +38,10 @@ fit.setVerbosity(verbosity)
 fit.loadTypes_new( )     # load atom types
 fit.loadTypeSelection_walls( fname="typeSelection.dat" )     # load atom types
 nbatch = fit.loadXYZ_new( "input_all.xyz", bAddEpairs, bOutXYZ )     # load reference geometry
+
+
+fit.getBuffs()
+
 ws     = np.genfromtxt( "weights_all.dat" )
 fit.setWeights(ws)
 

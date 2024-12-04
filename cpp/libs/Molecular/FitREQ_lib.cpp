@@ -21,6 +21,8 @@ void setVerbosity( int verbosity_, int idebug_ ){
     idebug    = idebug_;
 }
 
+
+
 // void init_types(int ntyp, int* typeMask, double* typREQs, bool bCopy ){
 //     W.init_types( ntyp, (Quat4i*)typeMask, (Quat4d*)typREQs, bCopy );
 // }
@@ -139,37 +141,58 @@ double getEs( int imodel, double* Es, int isampmode, bool bEpairs ){
     return 0;
 }
 
+// void init_buffers(){
+//     ibuffers.insert( { "ndims", (int*)&W.nDOFs } );
+//     buffers .insert( { "DOFs",   (double*)W.DOFs  } );
+//     buffers .insert( { "fDOFs",  (double*)W.fDOFs } );
+    
+//     ibuffers.insert( { "typToREQ",   (int*)   W.typToREQ  } );
+//     buffers .insert( { "typeREQs",   (double*)W.typeREQs  } );
+//     buffers .insert( { "typeREQs0",  (double*)W.typeREQs0 } );
+//     buffers .insert( { "typeREQsMin",(double*)W.typeREQsMin } );
+//     buffers .insert( { "typeREQsMax",(double*)W.typeREQsMax } );
+//     buffers .insert( { "typeKreg",   (double*)W.typeKreg  } );
+//     //buffers .insert( { "weights",          W.weights  } );
+//     buffers .insert( { "Es",               W.Es       } );
+//     //if(W.poses)
+//     buffers .insert( { "poses",   (double*)W.poses  } );
+//     buffers .insert( { "params",  &W.Kneutral       } );
+//     //printf( "init_buffers() @Es %li @poses %li \n", (long)W.Es, (long)W.poses  );
+//     //printf( "init_buffers() W.system0 @ %li %li %li \n", (long)W.system0, (long)W.systemTest0, (long)W.systemTest );
+//     buffers .insert( { "ps1",    (double*)W.system0    ->apos  } );
+//     //buffers .insert( { "ps2",    (double*)W.systemTest0->apos  } );
+//     //buffers .insert( { "ps3",    (double*)W.systemTest ->apos  } );
+//     ibuffers.insert( { "types1", (int*)W.system0    ->atypes } );
+//     //ibuffers.insert( { "types2", (int*)W.systemTest0->atypes } );
+//     //ibuffers.insert( { "types3", (int*)W.systemTest ->atypes } );
+// }
+
+
+
 void init_buffers(){
+    //printf( "init_buffers() \n" );
 
-    ibuffers.insert( { "ndims", (int*)&W.nDOFs } );
-    
-    buffers .insert( { "DOFs",   (double*)W.DOFs  } );
-    buffers .insert( { "fDOFs",  (double*)W.fDOFs } );
-    
-    ibuffers.insert( { "typToREQ",   (int*)   W.typToREQ  } );
-    buffers .insert( { "typeREQs",   (double*)W.typeREQs  } );
-    buffers .insert( { "typeREQs0",  (double*)W.typeREQs0 } );
-    buffers .insert( { "typeREQsMin",(double*)W.typeREQsMin } );
-    buffers .insert( { "typeREQsMax",(double*)W.typeREQsMax } );
-    buffers .insert( { "typeKreg",   (double*)W.typeKreg  } );
+    ibuffers.insert( { "ndims", &W.nDOFs  } );
+    ibuffers.insert( { "typToREQ",      (int*)W.typToREQ  } );
 
-    //buffers .insert( { "weights",          W.weights  } );
-    buffers .insert( { "Es",               W.Es       } );
-    //if(W.poses)
-    buffers .insert( { "poses",   (double*)W.poses  } );
-    buffers .insert( { "params",  &W.Kneutral       } );
+    buffers.insert( { "DOFs",  (double*)W.DOFs  } );
+    buffers.insert( { "fDOFs", (double*)W.fDOFs } );
+    buffers.insert( { "vDOFs", (double*)W.fDOFs } );
 
-    //printf( "init_buffers() @Es %li @poses %li \n", (long)W.Es, (long)W.poses  );
+    buffers.insert( { "typeREQs",       (double*)W.typeREQs  } );
+    buffers.insert( { "typeREQsMin",    (double*)W.typeREQsMin  } );
+    buffers.insert( { "typeREQsMax",    (double*)W.typeREQsMax  } );
 
-    //printf( "init_buffers() W.system0 @ %li %li %li \n", (long)W.system0, (long)W.systemTest0, (long)W.systemTest );
-    buffers .insert( { "ps1",    (double*)W.system0    ->apos  } );
-    //buffers .insert( { "ps2",    (double*)W.systemTest0->apos  } );
-    //buffers .insert( { "ps3",    (double*)W.systemTest ->apos  } );
-    
-    ibuffers.insert( { "types1", (int*)W.system0    ->atypes } );
-    //ibuffers.insert( { "types2", (int*)W.systemTest0->atypes } );
-    //ibuffers.insert( { "types3", (int*)W.systemTest ->atypes } );
-    
+    buffers.insert( { "typeREQs0",      (double*)W.typeREQs0 } );
+    buffers.insert( { "typeREQs0_low",  (double*)W.typeREQs0_low } );
+    buffers.insert( { "typeREQs0_high", (double*)W.typeREQs0_high } );
+
+    buffers.insert( { "typeKreg",       (double*)W.typeKreg  } );
+    buffers.insert( { "typeKreg_low",   (double*)W.typeKreg_low  } );
+    buffers.insert( { "typeKreg_high",  (double*)W.typeKreg_high  } );
+
+    //ibuffers.insert( { "vDOFs", (double*)W.fDOFs } );
+    //printBuffNames();
 }
 
 } // extern "C"
