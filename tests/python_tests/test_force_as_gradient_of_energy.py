@@ -4,7 +4,7 @@ import os
 import matplotlib.pyplot as plt
 
 sys.path.append("/../")
-from pyBall import MMFF as mmff
+#from pyBall import MMFF as mmff
 
 
 def numDeriv( xs, Es): 
@@ -49,7 +49,7 @@ Fnum = numDeriv(xs,Es)     #ratios = Fs[1:-1]/Fnum    ;print("ratios", ratios)
 xs/=np.pi
 plt.figure(); plt.plot(xs, Es, label="E"); plt.plot(xs, Fs, label="F_ana");  plt.plot(xs[1:-1], Fnum, label="F_num"); plt.grid(); plt.legend()
 plt.show()
-'''
+
 
 
 # ----- Bond
@@ -59,7 +59,7 @@ Fnum = numDeriv(xs,Es)     #ratios = Fs[1:-1]/Fnum    ;print("ratios", ratios)
 plt.figure(); plt.plot(xs, Es, label="E"); plt.plot(xs, Fs, label="F_ana");  plt.plot(xs[1:-1], Fnum, label="F_num"); plt.grid(); plt.legend()
 plt.show()
 
-
+'''
 '''
 # ----- evalAtom
 xs    = np.linspace(-3.0,3.0,1000)
