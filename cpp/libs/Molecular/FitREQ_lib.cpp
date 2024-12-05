@@ -125,8 +125,8 @@ double run( int nstep, double Fmax, double dt, int imodel, int isampmode, int ia
 //     return Err;
 // }
 
-void setType(int i, double* REQ ){ W.setType( i, *(Quat4d*)REQ ); }
-void getType(int i, double* REQ ){ W.getType( i, *(Quat4d*)REQ ); }
+void setTypeToDOFs  (int i, double* REQ ){ W.setTypeToDOFs  ( i, *(Quat4d*)REQ ); }
+void getTypeFromDOFs(int i, double* REQ ){ W.getTypeFromDOFs( i, *(Quat4d*)REQ ); }
 
 double getEs( int imodel, double* Es, int isampmode, bool bEpairs ){
     //printf("USED DOFs= ");for(int j=0;j<W.nDOFs;j++){ printf("%g ",W. DOFs[j]); };printf("\n");
@@ -145,8 +145,11 @@ void getParamScan( int iDOF, int imodel,  int n, double* xs,  double* Es, double
     W.imodel=imodel;
     for(int i=0; i<n; i++){
         W.DOFs[iDOF] = xs[i];
-        if(Fs)Es[i] = W.evalDerivsSamp();
+        W.DOFsToTypes();
+        double E = W.evalDerivsSamp();
+        if(Fs)Es[i] = E;
         if(Fs)Fs[i] = W.fDOFs[iDOF];
+        if( verbosity>1){ printf( "getParamScan()[%3i] W.DOFs[%3i]: %20.10f E: %20.10f  F: %20.10f \n", i, iDOF, W.DOFs[iDOF], E, W.fDOFs[iDOF] ); }
     }
 }
 

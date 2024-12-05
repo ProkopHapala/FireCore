@@ -334,7 +334,8 @@ int init_types_walls( int ntypesel, int* tsel, Quat4i* typeMask, Quat4d* ts0_low
             }
         }
     }
-    DOFsFromTypes(); 
+    //DOFsFromTypes(); 
+    typesToDOFs();
     printf(  "init_types_walls() 2 ntypesel=%i ntypes=%i nDOFs=%i \n", ntypesel, ntype_ , nDOFs);
     // Build inverse mapping from DOFs to types
     REQtoTyp.resize(nDOFs);
@@ -592,27 +593,45 @@ int loadXYZ_new( const char* fname, bool bAddEpairs=false, bool bOutXYZ=false ){
     return nbatch;
 }
 
+void DOFsToTypes(){
+    printf( "DOFsToTypes() \n" );
+    for(int i=0; i<nDOFs; i++){
+        const Vec2i& rt = REQtoTyp[i];
+        //printf("%i -> %i|%i  = %s.%c \n", i, rt.x, rt.y,  params->atypes[rt.x].name, comp);
+        printf( "DOFsToType()[%3i] rt(%3i|%i) %8s.%c  %g \n", i, rt.x,rt.y,   params->atypes[rt.x].name,"REQH"[rt.y], DOFs[i] );
+        typeREQs[rt.x].array[rt.y] = DOFs[i];
+    }
+}
+
+void DOFsFromTypes(){
+    for(int i=0; i<nDOFs; i++){
+        const Vec2i& rt = REQtoTyp[i];
+        DOFs[i] = typeREQs[rt.x].array[rt.y];
+    }
+}
+
 /**
  * @brief reads non-colvalent interaction parameter REQH(Rvdw,Evdw,Q,Hb) of given atom-type from aproprieate degrees of freedom (DOF) according to index stored in typToREQ[ityp]. If index of DOF is negative, the parameter is not read.  
  * @param ityp Index of the type
  */
-inline void DOFsToType(int ityp){
+inline void typeFromDOFs(int ityp){
     const Quat4i& tt = typToREQ[ityp];
     Quat4d& REQ      = typeREQs[ityp];
     if(tt.x>=0)REQ.x = DOFs[tt.x];
     if(tt.y>=0)REQ.y = DOFs[tt.y];
     if(tt.z>=0)REQ.z = DOFs[tt.z];
     if(tt.w>=0)REQ.w = DOFs[tt.w];
+    //printf( "DOFsToType(%i) %g %g %g %g \n", ityp,   tt.x,tt.y,tt.z,tt.w,  REQ.x,REQ.y,REQ.z,REQ.w ); // Debug
 }
-void DOFsToTypes(){ for(int i=0; i<ntype; i++ ){ DOFsToType(i); } }
-void getType(int i, Quat4d& REQ ){ typeREQs[i]=REQ; DOFsToType(i); }
+void typesFromDOFs(){ for(int i=0; i<ntype; i++ ){ typeFromDOFs(i); } }
+void getTypeFromDOFs(int i, Quat4d& REQ ){ typeREQs[i]=REQ; typeFromDOFs(i); }
 
 /**
  * @brief writes non-colvalent interaction parameter REQH(Rvdw,Evdw,Q,Hb) of given atom-type from aproprieate degrees of freedom (DOF) according to index stored in typToREQ[ityp]. If index of DOF is negative, the parameter is not writen.  
  * 
  * @param ityp The index of the type.
  */
-inline void DOFsFromType(int ityp){
+inline void typeToDOFs(int ityp){
     const Quat4i& tt  = typToREQ[ityp];
     const Quat4d& REQ = typeREQs[ityp];
     if(tt.x>=0)DOFs[tt.x] = REQ.x;
@@ -620,8 +639,8 @@ inline void DOFsFromType(int ityp){
     if(tt.z>=0)DOFs[tt.z] = REQ.z;
     if(tt.w>=0)DOFs[tt.w] = REQ.w;
 }
-void DOFsFromTypes(){ for(int i=0; i<ntype; i++ ){ DOFsFromType(i); } }
-void setType(int i, Quat4d REQ ){ typeREQs[i]=REQ; DOFsFromType(i); }
+void typesToDOFs(){ for(int i=0; i<ntype; i++ ){ typeToDOFs(i); } }
+void setTypeToDOFs(int i, Quat4d REQ ){ typeREQs[i]=REQ; typeToDOFs(i); }
 
 // ======================================
 // =========  EVAL DERIVS  ==============
@@ -668,6 +687,8 @@ double evalDerivsSamp( double* Eout=0 ){
     //std::vector<int>    isep_;   // 0=root, 1=electron pair
     //std::vector<Vec3d>  dirs_; 
 
+    //printf( "FitREQ::evalDerivsSamp() \n" );printDOFs();
+
     int nsamp = samples.size();
     nsamp = _min( nsamp, 5 ); // DEBUG ONLY
     for(int i=0; i<nsamp; i++){
@@ -701,6 +722,7 @@ double evalDerivsSamp( double* Eout=0 ){
         //printf( "======== evalDerivsSamp()[isample=%i] \n", i, atoms->natoms, nep, na, nj );    
         //printDebugArrays( na, atypes, apos, aq, aisep, nj, jtyp, jpos, jq, jisep, nep, bs, atoms, bEpairs);
 
+        printAtomsParams( 0, atoms->natoms, atoms->atypes,apos, typeREQs, Qs );
         switch (imodel){
             //case 0:  E = evalExampleDerivs_LJQ        (na, atypes, apos, aq, aisep, adirs, nj, jtyp, jpos, jq, jisep, jdirs, nep, bs); break; 
             //case 1:  E = evalExampleDerivs_LJQH1      (na, atypes, apos, aq, aisep, adirs, nj, jtyp, jpos, jq, jisep, jdirs, nep, bs); break; 
@@ -739,6 +761,7 @@ double evalDerivsSamp( double* Eout=0 ){
             if(verbosity>0) printf( "skipped sample [%i] E(%g)>EmaxSample(%g) atoms too close \n", i, E, EmaxSample );
             continue;
         } 
+        printf( "evalDerivsSamp() isamp: %3i E: %20.10f Eref: %20.10f \n", i, E, Eref );
         if(Eout){ Eout[i]=E; };
         double dE  = (E - Eref);
         double dEw = 2.0*dE*wi;
@@ -813,8 +836,22 @@ double corr_elec( double ir, double ir2, double Q, Vec3d d, Vec3d* dirs, int i, 
     return dE_dr;
 }
 
+
+void printAtomsParams( int i0, int n, int* types, Vec3d* ps, Quat4d* typeREQs, double* Qs ){
+    printf("# i  ti   pi(xyz)   REQi(REQH)   Qi\n");
+    for(int ii=0; ii<n; ii++){
+        const int i=i0+ii;
+        const Quat4d& REQi = typeREQs[types[i]];
+        printf("Atom[%3i] %3i=%-8s pos(%7.3f,%7.3f,%7.3f) REQH(%7.3f,%7.3f,%7.3f,%7.3f) Q: %7.3f \n",  i, types[i], params->atypes[types[i]].name, ps[i].x, ps[i].y, ps[i].z,REQi.x, REQi.y, REQi.z, REQi.w, Qs[i] );
+    }
+}
+
+
+
+
 double evalExampleDerivs_LJQH2( int i0, int ni, int j0, int nj, int* types, Vec3d* ps, Quat4d* typeREQs, double* Qs, Quat4d* dEdREQs ){
     double Etot = 0.0;
+    
     for(int ii=0; ii<ni; ii++){ // loop over all atoms[i] in system
         const int      i    = i0+ii;
         const Vec3d&  pi    = ps      [i ]; 
@@ -849,6 +886,8 @@ double evalExampleDerivs_LJQH2( int i0, int ni, int j0, int nj, int* types, Vec3
             const double ELJ     =  E0 * dE_deps;
             // --- Energy and forces
             Etot    +=  ELJ + Eel;
+            //printf( "evalExampleDerivs_LJQH2()[%3i,%3i] (%8s,%8s) ELJ:  %20.10f   Eel: %20.10f \n", i,j, params->atypes[ti].name, params->atypes[tj].name , ELJ,Eel  );
+            { int itypPrint=4; if( (ti==itypPrint) || (tj==itypPrint) ){ printf( "evalExampleDerivs_LJQH2()[%3i,%3i] (%8s,%8s) ELJ,Eel: %12.3e,%12.3e Q(%12.3e|%12.3e,%12.3e) dEdREQH(%12.3e,%12.3e,%12.3e,%12.3e)\n", i,j, params->atypes[ti].name, params->atypes[tj].name , ELJ,Eel, Q,Qi,Qj,  dE_dR0, dE_deps, dE_dQ, dE_dH2  ); } }
             fREQi.x +=  dE_dR0;                    // dEtot/dR0_i
             fREQi.y +=  dE_deps * 0.5 * REQj.y;    // dEtot/dE0_i
             fREQi.z +=  dE_dQ   * Qj;              // dEtot/dQ_i
@@ -926,6 +965,46 @@ double evalExampleDerivs( Func func, int i0, int ni, int j0, int nj, int* types,
 // ======================================
 // =========  OPTIMIZE  =================
 // ======================================
+
+double run( int nstep, double Fmax, double dt, int imodel_, int isampmode, int ialg, bool bRegularize, bool bClamp, double max_step, bool bEpairs_ ){
+    imodel=imodel_;
+    bEpairs=bEpairs_;
+    double Err=0;
+    if( verbosity>1){ printf( "FitREQ::run() nstep %i Fmax %g dt %g isamp %i \n", nstep, Fmax, dt, isampmode  ); }
+    double F2max=Fmax*Fmax;
+    double F2;
+    for(int i=0; i<nstep; i++){
+        //printf("[%i]  DOFs=", i);for(int j=0;j<W.nDOFs;j++){ printf("%g ",W. DOFs[j]); };printf("\n");
+        DOFsToTypes(); 
+        clean_derivs();
+        //printf("[%i]  DOFs=", i);for(int j=0;j<W.nDOFs;j++){ printf("%g ",W. DOFs[j]); };printf("\n");
+        switch(isampmode){
+            //case 0: Err = evalDerivsRigid(); break;
+            //case 1: Err = evalDerivs     (); break;
+            case 2: Err = evalDerivsSamp (); break;
+        }   
+        if( verbosity>0)printStepDOFinfo( i, Err, "FitREQ::run() BEFORE REGULARIZATION" );
+        if(bRegularize){ regularization_force_walls(); }
+        if( verbosity>0)printStepDOFinfo( i, Err, "FitREQ::run() AFTER  REGULARIZATION" );
+        //exit(0);        
+        switch(ialg){
+            case 0: F2 = move_GD( dt, max_step ); break;
+            case 1: F2 = move_MD( dt, max_step ); break;
+            case 2: F2 = move_GD_BB_short( i, dt, max_step ); break;
+            case 3: F2 = move_GD_BB_long( i, dt, max_step ); break;
+            case 4: F2 = move_MD_nodamp( dt, max_step ); break;
+        }
+        // regularization must be done before evaluation of derivatives
+        if(bClamp     ){ limit_params();  }
+        //printf("step= %i dt= %g\n", i, dt );
+        printStepDOFinfo( i, Err, "FitREQ::run() AFTER MOVE" );
+        if( F2<0.0   ){ printf("DYNAMICS STOPPED after %i iterations \n", i); printf("VERY FINAL DOFs= ");for(int j=0;j<nDOFs;j++){ printf("%.15g ",DOFs[j]); };printf("\n"); return Err; }
+        if( F2<F2max ){ printf("CONVERGED in %i iterations \n", i);           printf("VERY FINAL DOFs= ");for(int j=0;j<nDOFs;j++){ printf("%.15g ",DOFs[j]); };printf("\n"); return Err; }
+    }
+    printf("step= %i DOFs= ", nstep); for(int j=0;j<nDOFs;j++){ printf("%g ",DOFs[j]); };printf("\n");
+    printf("VERY FINAL DOFs= ");      for(int j=0;j<nDOFs;j++){ printf("%.15g ",DOFs[j]); };printf("\n");
+    return Err;
+}
 
 /**
  * Calculates the regularization force for each degree of freedom (DOF) based on the difference between the current and target values of the fitted non-colvalent interaction parameters REQH(Rvdw,Evdw,Q,Hb).
@@ -1187,47 +1266,7 @@ void printStepDOFinfo( int istep, double Err, const char* label="" ){
         printf("step= %i fDOFs= ", istep);for(int j=0;j<nDOFs;j++){ printf("%g ",fDOFs[j]); };printf("\n");
     }
     if( isnan(Err)                   ){ printf( "ERROR in %s step: %i Err= %g \n"        , label, istep, Err ); exit(0); }
-    if ( bd.x < -1e-8 || bd.y > 1e-8 ){ printf( "ERROR in %s step: %i Fmin,max= %g %g \n", label, istep, bd.x, bd.y ); exit(0); }
-}
-
-double run( int nstep, double Fmax, double dt, int imodel_, int isampmode, int ialg, bool bRegularize, bool bClamp, double max_step, bool bEpairs_ ){
-    imodel=imodel_;
-    bEpairs=bEpairs_;
-    double Err=0;
-    if( verbosity>1){ printf( "FitREQ::run() nstep %i Fmax %g dt %g isamp %i \n", nstep, Fmax, dt, isampmode  ); }
-    double F2max=Fmax*Fmax;
-    double F2;
-    for(int i=0; i<nstep; i++){
-        //printf("[%i]  DOFs=", i);for(int j=0;j<W.nDOFs;j++){ printf("%g ",W. DOFs[j]); };printf("\n");
-        DOFsToTypes(); 
-        clean_derivs();
-        //printf("[%i]  DOFs=", i);for(int j=0;j<W.nDOFs;j++){ printf("%g ",W. DOFs[j]); };printf("\n");
-        switch(isampmode){
-            //case 0: Err = evalDerivsRigid(); break;
-            //case 1: Err = evalDerivs     (); break;
-            case 2: Err = evalDerivsSamp (); break;
-        }   
-        if( verbosity>0)printStepDOFinfo( i, Err, "FitREQ::run() BEFORE REGULARIZATION" );
-        if(bRegularize){ regularization_force_walls(); }
-        if( verbosity>0)printStepDOFinfo( i, Err, "FitREQ::run() BEFORE REGULARIZATION" );
-        //exit(0);        
-        switch(ialg){
-            case 0: F2 = move_GD( dt, max_step ); break;
-            case 1: F2 = move_MD( dt, max_step ); break;
-            case 2: F2 = move_GD_BB_short( i, dt, max_step ); break;
-            case 3: F2 = move_GD_BB_long( i, dt, max_step ); break;
-            case 4: F2 = move_MD_nodamp( dt, max_step ); break;
-        }
-        // regularization must be done before evaluation of derivatives
-        if(bClamp     ){ limit_params();  }
-        //printf("step= %i dt= %g\n", i, dt );
-        printStepDOFinfo( i, Err, "FitREQ::run() AFTER MOVE" );
-        if( F2<0.0   ){ printf("DYNAMICS STOPPED after %i iterations \n", i); printf("VERY FINAL DOFs= ");for(int j=0;j<nDOFs;j++){ printf("%.15g ",DOFs[j]); };printf("\n"); return Err; }
-        if( F2<F2max ){ printf("CONVERGED in %i iterations \n", i);           printf("VERY FINAL DOFs= ");for(int j=0;j<nDOFs;j++){ printf("%.15g ",DOFs[j]); };printf("\n"); return Err; }
-    }
-    printf("step= %i DOFs= ", nstep); for(int j=0;j<nDOFs;j++){ printf("%g ",DOFs[j]); };printf("\n");
-    printf("VERY FINAL DOFs= ");      for(int j=0;j<nDOFs;j++){ printf("%.15g ",DOFs[j]); };printf("\n");
-    return Err;
+    if ( bd.x < -1e+8 || bd.y > 1e+8 ){ printf( "ERROR in %s step: %i Fmin,max= %g %g \n", label, istep, bd.x, bd.y ); exit(0); }
 }
 
 const char* REQcomponentToStr(int i){

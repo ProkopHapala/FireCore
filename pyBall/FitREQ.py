@@ -172,19 +172,19 @@ def loadXYZ_new(fname, bAddEpairs=False, bOutXYZ=False):
     nbatch = lib.loadXYZ_new(cstr(fname), bAddEpairs, bOutXYZ)
     return nbatch
 
-#  void setType(int i, double* REQ )
-lib.setType.argtypes  = [c_int, c_double_p] 
-lib.setType.restype   =  None
-def setType(i, REQ):
+#  void setTypeToDOFs(int i, double* REQ )
+lib.setTypeToDOFs.argtypes  = [c_int, c_double_p] 
+lib.setTypeToDOFs.restype   =  None
+def setTypeToDOFs(i, REQ):
     REQ=np.array(REQ)
-    return lib.setType(i, _np_as(REQ,c_double_p))
+    return lib.setTypeToDOFs(i, _np_as(REQ,c_double_p))
 
-#  void getType(int i, double* REQ )
-lib.getType.argtypes  = [c_int, c_double_p] 
-lib.getType.restype   =  None
-def getType(i, REQ=None):
+#  void getTypeFromDOFs(int i, double* REQ )
+lib.getTypeFromDOFs.argtypes  = [c_int, c_double_p] 
+lib.getTypeFromDOFs.restype   =  None
+def getTypeFromDOFs(i, REQ=None):
     if(REQ is None): REQ=np.zeros(4)
-    lib.getType(i, _np_as(REQ,c_double_p))
+    lib.getTypeFromDOFs(i, _np_as(REQ,c_double_p))
     return REQ
 
 # =============== Buffers

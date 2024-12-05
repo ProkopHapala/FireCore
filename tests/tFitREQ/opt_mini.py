@@ -37,8 +37,8 @@ verbosity   = 3    # Added to enable debug printing
 fit.setVerbosity(verbosity)
 fit.loadTypes_new( )     # load atom types
 fit.loadTypeSelection_walls( fname="typeSelection.dat" )     # load atom types
-nbatch = fit.loadXYZ_new( "input_all.xyz", bAddEpairs, bOutXYZ )     # load reference geometry
-
+#nbatch = fit.loadXYZ_new( "input_all.xyz", bAddEpairs, bOutXYZ )     # load reference geometry
+nbatch = fit.loadXYZ_new( "input_small.xyz", bAddEpairs, bOutXYZ )     # load reference geometry
 
 fit.getBuffs()
 
@@ -57,30 +57,38 @@ DOFnames = [
 "H_N.H",  # 10
 "H_O.H"   # 11
 ]
-xs = np.linspace( -0.99, 0.99, 100 )
-iDOFs = [0,1,2,3,4]        # Electron Pair charges
-iDOFs = [5,6,7,8,9,10,11]  # H2 correction 
-for iDOF in iDOFs:
-    y = fit.DOFs[iDOF]    # store backup value of this DOF
-    Es,Fs = fit.getParamScan( iDOF, xs, imodel=2 )   # do 1D scan
-    print( "iDOF", iDOF, DOFnames[iDOF], "Es", Es )
-    plt.plot(xs,Es)       # plot 1D scan
-    fit.DOFs[iDOF] = y    # restore
+
+# ------ Plot 1D parameter scan
+iDOF = 2
+xs = np.linspace( -0.99, 0.99, 10 )
+Es,Fs = fit.getParamScan( iDOF, xs, imodel=2 )   # do 1D scan
+plt.plot(xs,Es)       # plot 1D scan
+print( "iDOF", iDOF, DOFnames[iDOF], "Es", Es )
 plt.show()
 
 
-'''
+# xs = np.linspace( -0.99, 0.99, 100 )
+# iDOFs = [0,1,2,3,4]        # Electron Pair charges
+# iDOFs = [5,6,7,8,9,10,11]  # H2 correction 
+# for iDOF in iDOFs:
+#     y = fit.DOFs[iDOF]    # store backup value of this DOF
+#     Es,Fs = fit.getParamScan( iDOF, xs, imodel=2 )   # do 1D scan
+#     print( "iDOF", iDOF, DOFnames[iDOF], "Es", Es )
+#     plt.plot(xs,Es)       # plot 1D scan
+#     fit.DOFs[iDOF] = y    # restore
+# plt.show()
+
+
 ws     = np.genfromtxt( "weights_all.dat" )
 fit.setWeights(ws)
 
 # ------ write unoptimized results
-Es = fit.getEs( imodel=imodel, isampmode=isampmode, bEpairs=bEpairs )
-np.savetxt("firecore0.dat", Es )
+# Es = fit.getEs( imodel=imodel, isampmode=isampmode, bEpairs=bEpairs )
+# np.savetxt("firecore0.dat", Es )
 
-# ------ optimize parameters (fit)
-Err = fit.run( nstep=nstep, ErrMax=ErrMax, dt=dt, imodel=imodel, isampmode=isampmode, ialg=ialg, bRegularize=bRegularize, bClamp=bClamp, max_step=max_step, bEpairs=bEpairs )
+# # ------ optimize parameters (fit)
+#Err = fit.run( nstep=nstep, ErrMax=ErrMax, dt=dt, imodel=imodel, isampmode=isampmode, ialg=ialg, bRegularize=bRegularize, bClamp=bClamp, max_step=max_step, bEpairs=bEpairs )
 
-# ------ write optimized results
-Es = fit.getEs( imodel=imodel, isampmode=isampmode, bEpairs=bEpairs )
-np.savetxt("firecore.dat", Es )
-'''
+# # ------ write optimized results
+# Es = fit.getEs( imodel=imodel, isampmode=isampmode, bEpairs=bEpairs )
+# np.savetxt("firecore.dat", Es )
