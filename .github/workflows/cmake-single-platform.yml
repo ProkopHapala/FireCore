@@ -20,7 +20,7 @@ jobs:
     - uses: actions/checkout@v4
 
     - name: Create Build repository
-      run: mkdir ${{github.workspace}}/Build
+      run: mkdir ${{github.workspace}}/cpp/Build
       
     - name: CMake
       run: cmake ${{github.workspace}}
@@ -31,16 +31,12 @@ jobs:
       
     - name: Make
       # Build your program with the given configuration
-      run: make ${{github.workspace}}/Build -j19
+      run: make ${{github.workspace}}/cpp/Build -j19
 
-    - name: Move
-      # Only run this step if Make was successful
-      if: success()
-      run: mv ${{github.workspace}}/Build/tests/test_add ${{github.workspace}}/tests
       
       # Execute tests defined by the CMake configuration.
       # See https://cmake.org/cmake/help/latest/manual/ctest.1.html for more detail
     - name: Test
-      working-directory: ${{github.workspace}}
-      run: ctest ${{github.workspace}}/Build -V # --test-dir ${{github.workspace}}/tests
+      working-directory: ${{github.workspace}}/cpp/Build/tests
+      run: ctest ${{github.workspace}}/cpp/Build -V # --test-dir ${{github.workspace}}/tests
 
