@@ -10,7 +10,7 @@ FetchContent_MakeAvailable(googletest)
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/tests)
 
 # Add the executable for the test
-add_executable(test_add tests/test_add.cpp)
+add_executable(test_add test_add.cpp)
 
 # Link against gtest and gtest_main
 target_link_libraries(test_add PRIVATE 
@@ -19,4 +19,4 @@ target_link_libraries(test_add PRIVATE
 )
 
 # Register the test with CTest using the correct path
-add_test(NAME AddTest COMMAND tests/test_add)
+add_test(NAME AddTest COMMAND $<TARGET_FILE:test_add>)
