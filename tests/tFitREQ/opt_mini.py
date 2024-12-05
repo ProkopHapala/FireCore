@@ -38,7 +38,8 @@ fit.setVerbosity(verbosity)
 fit.loadTypes_new( )     # load atom types
 fit.loadTypeSelection_walls( fname="typeSelection.dat" )     # load atom types
 #nbatch = fit.loadXYZ_new( "input_all.xyz", bAddEpairs, bOutXYZ )     # load reference geometry
-nbatch = fit.loadXYZ_new( "input_small.xyz", bAddEpairs, bOutXYZ )     # load reference geometry
+#nbatch = fit.loadXYZ_new( "input_small.xyz", bAddEpairs, bOutXYZ )     # load reference geometry
+nbatch = fit.loadXYZ_new( "input_single.xyz", bAddEpairs, bOutXYZ )     # load reference geometry
 
 fit.getBuffs()
 
@@ -60,7 +61,7 @@ DOFnames = [
 
 # ------ Plot 1D parameter scan
 iDOF = 2
-xs = np.linspace( -0.99, 0.99, 10 )
+xs = np.linspace( -0.99, 0.99, 2 )
 Es,Fs = fit.getParamScan( iDOF, xs, imodel=2 )   # do 1D scan
 plt.plot(xs,Es)       # plot 1D scan
 print( "iDOF", iDOF, DOFnames[iDOF], "Es", Es )

@@ -101,7 +101,7 @@ class FitREQ{ public:
     double*   DOFs_old =0;   // [nDOFs]
     double*   fDOFs_old=0;   // [nDOFs]
 
-    bool      bEpairs = false;   // do electron pairs ?
+    bool      bEpairs = true;   // do electron pairs ?
     bool      bOptEpR = false;  // optimize electron pair distance (from host atom) ?
     bool      bEvalJ  = false; // Should we evaluate variational derivatives on Fregment J 
     bool      bWriteJ = false; // Should we write variational derivatives to Fregment J ( inner loop over j )
@@ -650,6 +650,7 @@ void clean_fs(int n){ for(int i=0; i<n; i++){fs[i]=Quat4dZero;} }
 
 
 void fillTempArrays( const Atoms* atoms, Vec3d* apos, double* Qs  ){
+    printf( "FillTempArrays() bEpairs=%i \n", bEpairs );
     for(int j=0; j<atoms->natoms; j++){
         Qs[j]   = atoms->charge[j];
         apos[j] = atoms->apos [j];
@@ -659,10 +660,13 @@ void fillTempArrays( const Atoms* atoms, Vec3d* apos, double* Qs  ){
         AddedData * ad = (AddedData*)atoms->userData;
         int   nep = ad->nep;
         Vec2i* bs = ad->bs;
+        printf( "FillTempArrays() 2  ad->nep=%i \n", ad->nep );
         for(int j=0; j<ad->nep; j++){
             int    iX  = bs[j].x; // index of the host atom
             int    iE  = bs[j].y; // index of the electron pair
-            double Qep = typeREQs[atoms->atypes[iE]].z; // charge of the electron pair
+            Quat4d REQ = typeREQs[atoms->atypes[iE]];
+            printf( "FillTempArrays()[iap=%i] iE=%i iX=%i  name=%8s REQ(%12.3e,%12.3e,%12.3e,%12.3e) \n", j, iE, iX, params->atypes[atoms->atypes[iE]].name, REQ.x,REQ.y,REQ.z,REQ.w );
+            double Qep = REQ.z; // charge of the electron pair
             Qs[iE]     = Qep;
             Qs[iX]    -= Qep;
             apos[iE] = apos[iX] + ad->dirs[j] * typeREQs[atoms->atypes[iE]].w;   // We move the electron pair to proper distance from the atom
