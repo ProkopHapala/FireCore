@@ -1,7 +1,7 @@
 import sys
-#import numpy as np
+import numpy as np
 import os
-#import matplotlib.pyplot as plt
+import matplotlib.pyplot as plt
 
 sys.path.append("/../")
 #from pyBall import MMFF as mmff
