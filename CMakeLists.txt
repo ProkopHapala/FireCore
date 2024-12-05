@@ -164,7 +164,7 @@ add_subdirectory( ${MY_SRC_DIR}/common   ${MY_BIN_SHARE}/common    )
 add_subdirectory( ${MY_SRC_DIR}/libs    )
 
 # ====== Tests
-set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_SOURCE_DIR}/tests)
+# set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_SOURCE_DIR}/tests)
 add_subdirectory( tests )
 
 # ====== OpenCL
