@@ -11,6 +11,10 @@ sys.path.append("/home/prokop/git/FireCore-fitREQH")
 from pyBall import FitREQ as fit
 from pyBall import atomicUtils as au
 
+
+
+
+
 # ============== Setup
 imodel = 2        #  0=LJQ     1=LJQH1     2=LJQH2     3=LJQH1H2
                   #  4=BuckQ   5=BuckQH1   6=BuckQH2   7=BuckQH1H2
@@ -32,16 +36,126 @@ bAddEpairs  = bEpairs
 bOutXYZ     = False
 verbosity   = 3    # Added to enable debug printing
 
+
+# ============== functions
+
+def read_xyz_data(fname="input_all.xyz"):
+    """Read XYZ file and extract Etot and x0 values from comment lines"""
+    print("read_xyz_data()\n")
+    print("Reading XYZ file:", fname)
+    Etots = []
+    x0s = []
+    with open(fname, 'r') as f:
+        while True:
+            line = f.readline()
+            #print(line)
+            if not line: break
+            if line.startswith('# n0'):
+                #print(line)
+                # Parse line like "# n0 5 Etot .70501356708840164618 x0 1.40"
+                parts = line.split()
+                Etot  = float(parts[4])
+                x0    = float(parts[6])
+                Etots.append(Etot)
+                x0s.append(x0)
+            # Skip the rest of the xyz structure
+            #natoms = int(line) if line[0].isdigit() else 0
+            #for _ in range(natoms):
+            #    f.readline()
+    return np.array(Etots), np.array(x0s)
+
+def split_and_weight_curves(Etots, x0s, n_before_min=4):
+    """
+    Split energy curves based on x0 discontinuities and assign weights.
+    
+    Args:
+        Etots: numpy array of total energies
+        x0s: numpy array of x0 values (monotonic within each curve)
+        n_before_min: number of points before minimum to keep with positive weight
+    
+    Returns:
+        weights: numpy array of weights (0.0 or 1.0)
+    """
+    weights = np.zeros_like(Etots)
+    
+    # Find where x0 values reset (non-monotonic changes)
+    dx0 = np.diff(x0s)
+    curve_starts = np.where(dx0 < 0)[0] + 1
+    
+    # Add start and end indices to process all segments
+    all_splits = np.concatenate(([0], curve_starts, [len(x0s)]))
+    
+    # Process each curve segment
+    for start, end in zip(all_splits[:-1], all_splits[1:]):
+        segment = Etots[start:end]
+        if len(segment) == 0:
+            continue
+            
+        # Find minimum in this segment
+        min_idx = np.argmin(segment) + start
+        icut = min_idx-n_before_min
+        weight_start = max(icut, start)
+        weights[weight_start:end] = 1.0
+    
+    return weights
+
+def genWeights(Erefs, Ecut ):
+    mask = Erefs<Ecut
+    weights = np.zeros( len(Erefs) )
+    weights[mask] = 1.0
+    return weights
+
+def plotWeights(Erefs, weights):
+    plt.plot( Erefs  ,'.-', lw=0.5, ms=1.0, label="E_ref")
+    plt.plot( weights, lw=1.0, label="weights")
+    plt.legend()
+    plt.xlabel("#sample(conf)")
+    plt.ylabel("E [kcal/mol]")
+
+
+def plotDOFscans( iDOFs, xs, label ):
+    plt.figure()
+    for iDOF in iDOFs:
+        y = fit.DOFs[iDOF]    # store backup value of this DOF
+        Es,Fs = fit.scanParam( iDOF, xs, imodel=imodel )   # do 1D scan
+        #print( "iDOF", iDOF, DOFnames[iDOF], "Es", Es )
+        plt.plot(xs,Es, '-', label=DOFnames[iDOF] )       # plot 1D scan
+        fit.DOFs[iDOF] = y    # restore
+    plt.legend()
+    plt.xlabel("DOF value")
+    plt.ylabel("E [kcal/mol]")    
+    plt.title( label )
+    plt.grid()
+plt.show()
+
+# ============== Setup
+
 # ------ load stuff
 #fit.setVerbosity(1)
 fit.setVerbosity(verbosity)
 fit.loadTypes_new( )     # load atom types
+
+fname = "input_all.xyz"
 fit.loadTypeSelection_walls( fname="typeSelection.dat" )     # load atom types
-#nbatch = fit.loadXYZ_new( "input_all.xyz", bAddEpairs, bOutXYZ )     # load reference geometry
+nbatch = fit.loadXYZ_new( fname, bAddEpairs, bOutXYZ )     # load reference geometry
 #nbatch = fit.loadXYZ_new( "input_small.xyz", bAddEpairs, bOutXYZ )     # load reference geometry
-nbatch = fit.loadXYZ_new( "input_single.xyz", bAddEpairs, bOutXYZ )     # load reference geometry
+#nbatch = fit.loadXYZ_new( "input_single.xyz", bAddEpairs, bOutXYZ )     # load reference geometry
 
 fit.getBuffs()
+
+#ws     = np.genfromtxt( "weights_all.dat" )
+ev2kcal = 23.060548
+#Erefs   = fit.export_Erefs()*ev2kcal  #;print( "Erefs:\n", Erefs )
+#weights = genWeights( Erefs, Ecut=-2.0 )
+#weights = split_and_weight_curves( Erefs, n_before_min=4, jump_threshold=1.0 )
+Etots, x0s = read_xyz_data(fname)  #;print( "x0s:\n", x0s )
+weights = split_and_weight_curves(Etots, x0s, n_before_min=4)
+#plotWeights( Etots, weights ); 
+#plt.plot(x0s)
+#plt.show(); exit()
+fit.setWeights( weights )
+
+
 
 print( "fit.nDOFs ", fit.nDOFs )
 DOFnames = [
@@ -59,36 +173,30 @@ DOFnames = [
 "H_O.H"   # 11
 ]
 
-# ------ Plot 1D parameter scan
-iDOF = 2
-xs = np.linspace( -0.99, 0.99, 2 )
-Es,Fs = fit.getParamScan( iDOF, xs, imodel=2 )   # do 1D scan
-plt.plot(xs,Es)       # plot 1D scan
-print( "iDOF", iDOF, DOFnames[iDOF], "Es", Es )
-plt.show()
-
-
-# xs = np.linspace( -0.99, 0.99, 100 )
-# iDOFs = [0,1,2,3,4]        # Electron Pair charges
-# iDOFs = [5,6,7,8,9,10,11]  # H2 correction 
-# for iDOF in iDOFs:
-#     y = fit.DOFs[iDOF]    # store backup value of this DOF
-#     Es,Fs = fit.getParamScan( iDOF, xs, imodel=2 )   # do 1D scan
-#     print( "iDOF", iDOF, DOFnames[iDOF], "Es", Es )
-#     plt.plot(xs,Es)       # plot 1D scan
-#     fit.DOFs[iDOF] = y    # restore
+# ---- Plot 2D parameter scan
+# iDOFx = 11 ; xs = np.linspace(   0.0,  1.0,  30 ) # "H_O.H"  # 11
+# #iDOFy = 8  ; ys = np.linspace(  -1.0,  0.0,  30 ) # "O_3.H"  # 8
+# iDOFy = 9  ; ys = np.linspace(  -1.0,  0.0,  30 ) # "O_3.H"  # 9
+# Es,Fx,Fy = fit.scanParam2D( iDOFx, iDOFy, xs, ys, imodel=2, bRegularize=False)
+# extent = [xs[0],xs[-1],ys[0],ys[-1]]
+# plt.imshow(Es, origin='lower', extent=extent)
+# plt.colorbar()
+# plt.xlabel(DOFnames[iDOFx])
+# plt.ylabel(DOFnames[iDOFy])
 # plt.show()
 
-
-ws     = np.genfromtxt( "weights_all.dat" )
-fit.setWeights(ws)
+# ------ Plot 1D parameter scans
+# plotDOFscans( [0,1,2,3,4], np.linspace(  -1.0,  0.0,  30 ), label="Q Epairs"  )
+# plotDOFscans( [5,6,7,8,9], np.linspace(  0.99, 0.0,  30 ), label="H2  X=O,N" )
+# plotDOFscans( [10,11]    , np.linspace(  0.0,  0.99, 30 ), label="H2  H-"   )
+# plt.show()
 
 # ------ write unoptimized results
 # Es = fit.getEs( imodel=imodel, isampmode=isampmode, bEpairs=bEpairs )
 # np.savetxt("firecore0.dat", Es )
 
 # # ------ optimize parameters (fit)
-#Err = fit.run( nstep=nstep, ErrMax=ErrMax, dt=dt, imodel=imodel, isampmode=isampmode, ialg=ialg, bRegularize=bRegularize, bClamp=bClamp, max_step=max_step, bEpairs=bEpairs )
+Err = fit.run( nstep=nstep, ErrMax=ErrMax, dt=dt, imodel=imodel, isampmode=isampmode, ialg=ialg, bRegularize=bRegularize, bClamp=bClamp, max_step=max_step, bEpairs=bEpairs )
 
 # # ------ write optimized results
 # Es = fit.getEs( imodel=imodel, isampmode=isampmode, bEpairs=bEpairs )

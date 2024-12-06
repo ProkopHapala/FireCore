@@ -101,6 +101,9 @@ class FitREQ{ public:
     double*   DOFs_old =0;   // [nDOFs]
     double*   fDOFs_old=0;   // [nDOFs]
 
+    std::vector<Vec3d> DOFregX;  // regularization positions (xmin,x0,xmax) for each DOF
+    std::vector<Vec3d> DOFregK;  // regularization stiffness (Kmin,K0,Kmax) for each DOF
+
     bool      bEpairs = true;   // do electron pairs ?
     bool      bOptEpR = false;  // optimize electron pair distance (from host atom) ?
     bool      bEvalJ  = false; // Should we evaluate variational derivatives on Fregment J 
@@ -113,6 +116,11 @@ class FitREQ{ public:
     //double max_step      = 0.05; // maximal variation (in percentage) of any parameters allowed in one step during optimization
     double Rfac_tooClose = 0.0;
     double kMorse        = 1.6;
+
+    double EijMax    = 5.0;
+    int isamp_debug  = 0;
+    int iBadFound    = 0; 
+    int nBadFoundMax = 10;
 
     //double* Rs =0,Es =0,Qs =0;
     //double* fRs=0,fEs=0,fQs=0;
@@ -132,7 +140,7 @@ class FitREQ{ public:
 
     // Temporary array for accumulation of derivs
     int     nmax = 0;
-    Quat4d* fs   = 0; //[nmax] 
+    //Quat4d* fs   = 0; //[nmax]    // this is now thread local for better parallelization
     //std::vector<Vec3d> fs;
 
     std::vector<Atoms> batch_vec;    // ToDo: would be more convenient to store Atoms* rather than Atoms
@@ -174,7 +182,7 @@ void realloc( int nDOFs_ ){
 void tryRealocSamp(){
     int n=nmax;
     for(int i=0; i<samples.size(); i++){ int ni = samples[i]->natoms; if(ni>n){ n=ni;} }
-    if(n>nmax){ _realloc( fs, n );  nmax=n; };
+    //if(n>nmax){ _realloc( fs, n );  nmax=n; };
 }
 
 /**
@@ -185,7 +193,7 @@ void tryRealocSamp(){
  * @return The number of types loaded.
 */
 int loadTypeSelection_walls( const char* fname ){
-    printf( "FitREQ::loadTypeSelection_walls(fname=%s) \n", fname );
+    if(verbosity>0)printf( "FitREQ::loadTypeSelection_walls(fname=%s) \n", fname );
     FILE* fin = fopen( fname, "r" );
     if(fin==0){ printf("cannot open '%s' \n", fname ); exit(0);}
     const int nline=1024;
@@ -234,7 +242,7 @@ int loadTypeSelection_walls( const char* fname ){
         int ityp = params->getAtomType(at_name);
         t.push_back( ityp );
         AtomType& t  = params->atypes[ityp];  
-        printf( "ityp(%i): %s tm(%i,%i,%i,%i)   R(xl=%lf,Kl=%lf|xh=%lf,Kh=%lf) E(xl=%lf,Kl=%lf|xh=%lf,Kh=%lf)  Q(xl=%lf,Kl=%lf|xh=%lf,Kh=%lf)  H(xl=%lf,Kl=%lf|xh=%lf,Kh=%lf)  \n", 
+        if(verbosity>0)printf( "ityp(%i): %s tm(%i,%i,%i,%i)   R(xl=%lf,Kl=%lf|xh=%lf,Kh=%lf) E(xl=%lf,Kl=%lf|xh=%lf,Kh=%lf)  Q(xl=%lf,Kl=%lf|xh=%lf,Kh=%lf)  H(xl=%lf,Kl=%lf|xh=%lf,Kh=%lf)  \n", 
         ityp, at_name,  tm.x,tm.y,tm.z,tm.w,    tx0l.x,tkl.x,tx0h.x,tkh.x,   tx0l.y,tkl.y,tx0h.y,tkh.y,    tx0l.z,tkl.z,tx0h.z,tkh.z,    tx0l.w,tkl.w,tx0h.w,tkh.w );
         //tREQs.push_back( Quat4d{ t.RvdW, t.EvdW, t.Qbase, t.Hb } );
     }
@@ -269,6 +277,25 @@ int loadWeights( const char* fname ){
     return n;
 }
 
+void initDOFregs(){
+    printf( "FitREQ::initDOFregs() nDOFs=%i \n", nDOFs );
+    DOFregX.resize(nDOFs);
+    DOFregK.resize(nDOFs);
+    for(int i=0; i<nDOFs; i++){
+        const Vec2i& rt = REQtoTyp[i];        // which type and which component (REQH)
+        DOFregX[i] = Vec3d{
+            typeREQs0_low [rt.x].array[rt.y],  // xmin
+            typeREQs0     [rt.x].array[rt.y],  // x0
+            typeREQs0_high[rt.x].array[rt.y]   // xmax
+        };
+        DOFregK[i] = Vec3d{
+            typeKreg_low  [rt.x].array[rt.y],  // Kmin
+            typeKreg      [rt.x].array[rt.y],  // K0
+            typeKreg_high [rt.x].array[rt.y]   // Kmax
+        };
+    }
+}
+
 /**
  * Initializes the types of the FitREQ object. This function calculates the number of degrees of freedom (nDOFs) and initializes the typToREQ array, which maps each atom type to its corresponding REQ values.
  * @param ntype_ The number of types.
@@ -284,7 +311,7 @@ int loadWeights( const char* fname ){
  */
 int init_types_walls( int ntypesel, int* tsel, Quat4i* typeMask, Quat4d* ts0_low, Quat4d* tk_low, Quat4d* ts0_high, Quat4d* tk_high ){
     int ntype_ = params->atypes.size();
-    printf( "FitREQ::init_types_walls() ntypesel=%i ntypes=%i \n", ntypesel, ntype_ );
+    //printf( "FitREQ::init_types_walls() ntypesel=%i ntypes=%i \n", ntypesel, ntype_ );
     int nDOFs=0;
     typToREQ = new Quat4i[ntype_];
     for(int i=0; i<ntype_; i++){
@@ -301,7 +328,7 @@ int init_types_walls( int ntypesel, int* tsel, Quat4i* typeMask, Quat4d* ts0_low
                         tt.array[k]=-1;
                     }
                 }
-                printf(  "init_types_walls() [%i] typeMask(%i,%i,%i,%i) typToREQ(%i,%i,%i,%i) nDOF %i\n", i, tm.x,tm.y,tm.z,tm.w, tt.x,tt.y,tt.z,tt.w, nDOFs );
+                //printf(  "init_types_walls() [%i] typeMask(%i,%i,%i,%i) typToREQ(%i,%i,%i,%i) nDOF %i\n", i, tm.x,tm.y,tm.z,tm.w, tt.x,tt.y,tt.z,tt.w, nDOFs );
                 bFound=true;
                 break;
             }
@@ -319,10 +346,12 @@ int init_types_walls( int ntypesel, int* tsel, Quat4i* typeMask, Quat4d* ts0_low
     typeREQs       = new Quat4d[ntype]; for(int i=0; i<ntype; i++){ typeREQs      [i] = Quat4d{ params->atypes[i].RvdW, sqrt(params->atypes[i].EvdW), params->atypes[i].Qbase, params->atypes[i].Hb }; }  // We do square root of EvdW, no need to do it in evalExampleDerivs_*
     typeREQsMin    = new Quat4d[ntype]; for(int i=0; i<ntype; i++){ typeREQsMin   [i] = Quat4d{ -1e300, -1e300, -1e300, -1e300 }; }
     typeREQsMax    = new Quat4d[ntype]; for(int i=0; i<ntype; i++){ typeREQsMax   [i] = Quat4d{ 1e+300, 1e+300, 1e+300, 1e+300 }; }
-    typeREQs0_low  = new Quat4d[ntype]; for(int i=0; i<ntype; i++){ typeREQs0_low [i] = Quat4dZero; }
-    typeKreg_low   = new Quat4d[ntype]; for(int i=0; i<ntype; i++){ typeKreg_low  [i] = Quat4dZero; }
-    typeREQs0_high = new Quat4d[ntype]; for(int i=0; i<ntype; i++){ typeREQs0_high[i] = Quat4dZero; }
-    typeKreg_high  = new Quat4d[ntype]; for(int i=0; i<ntype; i++){ typeKreg_high [i] = Quat4dZero; }
+    typeREQs0_low  = new Quat4d[ntype]; for(int i=0; i<ntype; i++){ typeREQs0_low [i] = Quat4dZero;  }
+    typeREQs0      = new Quat4d[ntype]; for(int i=0; i<ntype; i++){ typeREQs0     [i] = typeREQs[i]; } // Initialize equilibrium point to current (initial) values
+    typeREQs0_high = new Quat4d[ntype]; for(int i=0; i<ntype; i++){ typeREQs0_high[i] = Quat4dZero;  }
+    typeKreg_low   = new Quat4d[ntype]; for(int i=0; i<ntype; i++){ typeKreg_low  [i] = Quat4dZero;  }
+    typeKreg       = new Quat4d[ntype]; for(int i=0; i<ntype; i++){ typeKreg      [i] = Quat4dZero;  }
+    typeKreg_high  = new Quat4d[ntype]; for(int i=0; i<ntype; i++){ typeKreg_high [i] = Quat4dZero;  }
     for(int i=0; i<ntype; i++){ 
         for(int j=0; j<ntypesel; j++){
             if(tsel[j]==i){
@@ -336,7 +365,7 @@ int init_types_walls( int ntypesel, int* tsel, Quat4i* typeMask, Quat4d* ts0_low
     }
     //DOFsFromTypes(); 
     typesToDOFs();
-    printf(  "init_types_walls() 2 ntypesel=%i ntypes=%i nDOFs=%i \n", ntypesel, ntype_ , nDOFs);
+    //printf(  "init_types_walls() 2 ntypesel=%i ntypes=%i nDOFs=%i \n", ntypesel, ntype_ , nDOFs);
     // Build inverse mapping from DOFs to types
     REQtoTyp.resize(nDOFs);
     for(int i=0; i<ntype; i++){
@@ -346,10 +375,12 @@ int init_types_walls( int ntypesel, int* tsel, Quat4i* typeMask, Quat4d* ts0_low
         if(tt.z>=0) REQtoTyp[tt.z] = Vec2i{i,2};
         if(tt.w>=0) REQtoTyp[tt.w] = Vec2i{i,3};
     }
-    printf(  "init_types_walls() 3 ntypesel=%i ntypes=%i nDOFs=%i \n", ntypesel, ntype_ , nDOFs);
+    initDOFregs();
+    //printf(  "init_types_walls() 3 ntypesel=%i ntypes=%i nDOFs=%i \n", ntypesel, ntype_ , nDOFs);
     if(verbosity>0){
         printDOFsToTypes();
         printTypesToDOFs();
+        printDOFregularization();
     }    
     return nDOFs;
 }
@@ -593,12 +624,17 @@ int loadXYZ_new( const char* fname, bool bAddEpairs=false, bool bOutXYZ=false ){
     return nbatch;
 }
 
+int export_Erefs( double* Erefs ){
+    if(Erefs){ for(int i=0; i<nbatch; i++){ Erefs[i] = samples[i]->Energy; } }
+    return nbatch;
+}
+
 void DOFsToTypes(){
-    printf( "DOFsToTypes() \n" );
+    //printf( "DOFsToTypes() \n" );
     for(int i=0; i<nDOFs; i++){
         const Vec2i& rt = REQtoTyp[i];
         //printf("%i -> %i|%i  = %s.%c \n", i, rt.x, rt.y,  params->atypes[rt.x].name, comp);
-        printf( "DOFsToType()[%3i] rt(%3i|%i) %8s.%c  %g \n", i, rt.x,rt.y,   params->atypes[rt.x].name,"REQH"[rt.y], DOFs[i] );
+        //printf( "DOFsToType()[%3i] rt(%3i|%i) %8s.%c  %g \n", i, rt.x,rt.y,   params->atypes[rt.x].name,"REQH"[rt.y], DOFs[i] );
         typeREQs[rt.x].array[rt.y] = DOFs[i];
     }
 }
@@ -646,11 +682,11 @@ void setTypeToDOFs(int i, Quat4d REQ ){ typeREQs[i]=REQ; typeToDOFs(i); }
 // =========  EVAL DERIVS  ==============
 // ======================================
 
-void clean_fs(int n){ for(int i=0; i<n; i++){fs[i]=Quat4dZero;} }
+//void clean_fs(int n){ for(int i=0; i<n; i++){fs[i]=Quat4dZero;} }
 
 
 void fillTempArrays( const Atoms* atoms, Vec3d* apos, double* Qs  ){
-    printf( "FillTempArrays() bEpairs=%i \n", bEpairs );
+    //printf( "FillTempArrays() bEpairs=%i \n", bEpairs );
     for(int j=0; j<atoms->natoms; j++){
         Qs[j]   = atoms->charge[j];
         apos[j] = atoms->apos [j];
@@ -660,12 +696,12 @@ void fillTempArrays( const Atoms* atoms, Vec3d* apos, double* Qs  ){
         AddedData * ad = (AddedData*)atoms->userData;
         int   nep = ad->nep;
         Vec2i* bs = ad->bs;
-        printf( "FillTempArrays() 2  ad->nep=%i \n", ad->nep );
+        //printf( "FillTempArrays() 2  ad->nep=%i \n", ad->nep );
         for(int j=0; j<ad->nep; j++){
             int    iX  = bs[j].x; // index of the host atom
             int    iE  = bs[j].y; // index of the electron pair
             Quat4d REQ = typeREQs[atoms->atypes[iE]];
-            printf( "FillTempArrays()[iap=%i] iE=%i iX=%i  name=%8s REQ(%12.3e,%12.3e,%12.3e,%12.3e) \n", j, iE, iX, params->atypes[atoms->atypes[iE]].name, REQ.x,REQ.y,REQ.z,REQ.w );
+            //printf( "FillTempArrays()[iap=%i] iE=%i iX=%i  name=%8s REQ(%12.3e,%12.3e,%12.3e,%12.3e) \n", j, iE, iX, params->atypes[atoms->atypes[iE]].name, REQ.x,REQ.y,REQ.z,REQ.w );
             double Qep = REQ.z; // charge of the electron pair
             Qs[iE]     = Qep;
             Qs[iX]    -= Qep;
@@ -684,7 +720,7 @@ void fillTempArrays( const Atoms* atoms, Vec3d* apos, double* Qs  ){
  */
 double evalDerivsSamp( double* Eout=0 ){ 
     //printf( "FitREQ::evalDerivsSamp() nbatch %i imodel %i verbosity %i \n", samples.size(), imodel, verbosity );
-    tryRealocSamp();
+    //tryRealocSamp();
     double Error = 0.0;
     //std::vector<double> qs_;
     //std::vector<Vec3d>  apos_;   // atomic positions
@@ -694,12 +730,16 @@ double evalDerivsSamp( double* Eout=0 ){
     //printf( "FitREQ::evalDerivsSamp() \n" );printDOFs();
 
     int nsamp = samples.size();
-    nsamp = _min( nsamp, 5 ); // DEBUG ONLY
+    //nsamp = _min( nsamp, 5 ); // DEBUG ONLY
+    #pragma omp parallel for reduction(+:Error) schedule(dynamic)
     for(int i=0; i<nsamp; i++){
+        isamp_debug = i;
+        double wi   = (weights)? weights[i] : 1.0; 
+        if(wi<1e-300)continue;
         const Atoms* atoms = samples[i];
         double Qs  [atoms->natoms];
         Vec3d  apos[atoms->natoms];   // atomic positions
-        //Quat4d fs  [atoms->natoms];
+        Quat4d fs  [atoms->natoms];
         //int    isEp[atoms->natoms];   // 0=root, 1=electron pair
         fillTempArrays( atoms, apos, Qs );
 
@@ -708,10 +748,8 @@ double evalDerivsSamp( double* Eout=0 ){
         int     ni      = atoms->natoms - atoms->n0;
         int     i0      = atoms->n0;
        
-        double Eref=atoms->Energy;
-        double wi = 1.0; 
-        if(weights) wi = weights[i];
-        clean_fs(atoms->natoms);
+        //clean_fs(atoms->natoms);
+        for(int i=0; i<atoms->natoms; i++){ fs[i]=Quat4dZero; }
         double E=0;
         bool bJ = bEvalJ && ( ~bWriteJ );
 
@@ -726,18 +764,22 @@ double evalDerivsSamp( double* Eout=0 ){
         //printf( "======== evalDerivsSamp()[isample=%i] \n", i, atoms->natoms, nep, na, nj );    
         //printDebugArrays( na, atypes, apos, aq, aisep, nj, jtyp, jpos, jq, jisep, nep, bs, atoms, bEpairs);
 
-        printAtomsParams( 0, atoms->natoms, atoms->atypes,apos, typeREQs, Qs );
+        //printAtomsParams( 0, atoms->natoms, atoms->atypes,apos, typeREQs, Qs );
         switch (imodel){
             //case 0:  E = evalExampleDerivs_LJQ        (na, atypes, apos, aq, aisep, adirs, nj, jtyp, jpos, jq, jisep, jdirs, nep, bs); break; 
             //case 1:  E = evalExampleDerivs_LJQH1      (na, atypes, apos, aq, aisep, adirs, nj, jtyp, jpos, jq, jisep, jdirs, nep, bs); break; 
             //double evalExampleDerivs_LJQH2( int i0, int ni, int j0, int nj, int* types, Vec3d* ps, Quat4d* typeREQs, double* Qs, Quat4d* dEdREQ ){
-            case 2:{ 
+            case 0:{ 
+                E =   evalExampleDerivs( funcVar_LJQH2, i0, ni, j0, nj, atoms->atypes, apos, typeREQs, Qs, fs );    // variational derivatives on molecule 1
+                if(bJ)evalExampleDerivs( funcVar_LJQH2, j0, nj, i0, ni, atoms->atypes, apos, typeREQs, Qs, fs );    // variational derivatives on molecule 2
+            }break;
+            case 1:{ 
                 E =   evalExampleDerivs_LJQH2( i0, ni, j0, nj, atoms->atypes, apos, typeREQs, Qs, fs );    // variational derivatives on molecule 1
                 if(bJ)evalExampleDerivs_LJQH2( j0, nj, i0, ni, atoms->atypes, apos, typeREQs, Qs, fs );    // variational derivatives on molecule 2
             }break;
-            case 3:{ 
-                E =   evalExampleDerivs( funcVar_LJQH2, i0, ni, j0, nj, atoms->atypes, apos, typeREQs, Qs, fs );    // variational derivatives on molecule 1
-                if(bJ)evalExampleDerivs( funcVar_LJQH2, j0, nj, i0, ni, atoms->atypes, apos, typeREQs, Qs, fs );    // variational derivatives on molecule 2
+            case 2:{ 
+                E =   evalExampleDerivs_MorseQH2( i0, ni, j0, nj, atoms->atypes, apos, typeREQs, Qs, fs );    // variational derivatives on molecule 1
+                if(bJ)evalExampleDerivs_MorseQH2( j0, nj, i0, ni, atoms->atypes, apos, typeREQs, Qs, fs );    // variational derivatives on molecule 2
             }break;
             //case 3:  E = evalExampleDerivs_LJQH1H2    (na, atypes, apos, aq, aisep, adirs, nj, jtyp, jpos, jq, jisep, jdirs, nep, bs); break;
             //case 4:  E = evalExampleDerivs_BuckQ      (na, atypes, apos, aq, aisep, adirs, nj, jtyp, jpos, jq, jisep, jdirs, nep, bs); break;
@@ -765,15 +807,18 @@ double evalDerivsSamp( double* Eout=0 ){
             if(verbosity>0) printf( "skipped sample [%i] E(%g)>EmaxSample(%g) atoms too close \n", i, E, EmaxSample );
             continue;
         } 
-        printf( "evalDerivsSamp() isamp: %3i E: %20.10f Eref: %20.10f \n", i, E, Eref );
+        //printf( "evalDerivsSamp() isamp: %3i E: %20.10f Eref: %20.10f \n", i, E, Eref );
         if(Eout){ Eout[i]=E; };
-        double dE  = (E - Eref);
-        double dEw = 2.0*dE*wi;
-        Error += dE*dE*wi;
-        acumDerivs ( atoms->natoms, atoms->atypes, dEw );
+
+        
+        double Eref = atoms->Energy;
+        double dE   = E - Eref;
+        double dEw  = 2.0*dE*wi;
+        Error      += dE*dE*wi;
+        acumDerivs ( atoms->natoms, atoms->atypes, dEw, fs );
         if( bEpairs ){
             AddedData * ad = (AddedData*)atoms->userData;
-            acumHostDerivs( ad->nep, ad->bs, atoms->atypes, dEw );
+            acumHostDerivs( ad->nep, ad->bs, atoms->atypes, dEw, fs );
         }
     }
     return Error;
@@ -800,28 +845,38 @@ void printDebugArrays(int na, int* atypes, Vec3d* apos, double* aq, int* aisep, 
     //printf("\n=== End Debug Print ===\n\n");
 }
 
-void acumDerivs( int n, int* types, double dEw ){
+void acumDerivs( int n, int* types, double dEw, Quat4d* fs ){
     for(int i=0; i<n; i++){
         int t            = types[i];     // map atom index i to atom type t
         const Quat4i& tt = typToREQ[t];  // get index of degrees of freedom for atom type t
         const Quat4d  f  = fs[i];
-        if(tt.x>=0)fDOFs[tt.x]+=f.x*dEw;
-        if(tt.y>=0)fDOFs[tt.y]+=f.y*dEw;
-        if(tt.z>=0)fDOFs[tt.z]+=f.z*dEw;
-        if(tt.w>=0)fDOFs[tt.w]+=f.w*dEw;
+        if(tt.x>=0){ 
+            #pragma omp atomic
+            fDOFs[tt.x]+=f.x*dEw; }
+        if(tt.y>=0){ 
+            #pragma omp atomic
+            fDOFs[tt.y]+=f.y*dEw; }
+        if(tt.z>=0){ 
+            #pragma omp atomic
+             fDOFs[tt.z]+=f.z*dEw; }
+        if(tt.w>=0){ 
+            #pragma omp atomic
+            fDOFs[tt.w]+=f.w*dEw; }
         //if((tt.y>=0)&&(i==0))printf( "acumDerivs i= %i f= %g f*dEw= %g fDOFs= %g\n", i, f.y, f.y*dEw, fDOFs[tt.y] );
         //if((tt.x>=0)||(tt.y>=0))printf( "acumDerivs i= %i dE= %g f.x= %g fDOFs= %g f.y= %g fDOFs= %g\n", i, dE, f.x, fDOFs[tt.x], f.y, fDOFs[tt.y] );
     }
     //exit(0);
 }
 
-void acumHostDerivs( int nepair, Vec2i* epairAndHostIndex, int* types, double dEw  ){
+void acumHostDerivs( int nepair, Vec2i* epairAndHostIndex, int* types, double dEw, Quat4d* fs  ){
     for(int i=0; i<nepair; i++){
         Vec2i ab         = epairAndHostIndex[i];
         int t            = types[ab.i];      // map atom index i to atom type t
         const Quat4i& tt = typToREQ[t];      // get index of degrees of freedom for atom type t
         const Quat4d&  f = fs[ab.j];         // get variation from the host atom
-        if(tt.z>=0)fDOFs[tt.z]  -= f.z*dEw;  // we subtract the variational derivative of the host atom charge because the charge is transfered from host to the electron pair
+        if(tt.z>=0){ 
+            #pragma omp atomic
+            fDOFs[tt.z]  -= f.z*dEw; } // we subtract the variational derivative of the host atom charge because the charge is transfered from host to the electron pair
     }
 }
 
@@ -842,7 +897,8 @@ double corr_elec( double ir, double ir2, double Q, Vec3d d, Vec3d* dirs, int i, 
 
 
 void printAtomsParams( int i0, int n, int* types, Vec3d* ps, Quat4d* typeREQs, double* Qs ){
-    printf("# i  ti   pi(xyz)   REQi(REQH)   Qi\n");
+    printf("printAtomsParams()\n");
+    //printf("# i  ti   pi(xyz)   REQi(REQH)   Qi\n");
     for(int ii=0; ii<n; ii++){
         const int i=i0+ii;
         const Quat4d& REQi = typeREQs[types[i]];
@@ -850,12 +906,48 @@ void printAtomsParams( int i0, int n, int* types, Vec3d* ps, Quat4d* typeREQs, d
     }
 }
 
+void saveDebugXYZ( int i0, int n, int* types, Vec3d* ps, Quat4d* typeREQs, double* Qs, const char* fname="debug.xyz", const char* comment="" ){
+    FILE* fout = fopen(fname,"a");
+    fprintf(fout, "%i\n", n );
+    fprintf(fout, "%s\n", comment );
+    for(int ii=0; ii<n; ii++){ // loop over all atoms[i] in system
+        const int      i    = i0+ii;
+        const Vec3d&  pi    = ps      [i ]; 
+        const double  Qi    = Qs      [i ]; 
+        const int     ti    = types   [i ];
+        const Quat4d& REQi  = typeREQs[ti];
+        fprintf(fout, "%c %7.3f %7.3f %7.3f    %7.3f \n", params->atypes[ti].name[0], pi.x, pi.y, pi.z, Qi );
+    }
+    fclose(fout);
+}
 
+double findRmin( Atoms* atoms, Vec2i* inds=0 ){
+    double rmin = 1e+300;
+    int ni = atoms->n0;
+    int n0 = atoms->n0;
+    int nj = atoms->natoms - n0;
+    for(int i=0; i<ni; i++){ // loop over all atoms[i] in system
+        int itype        = atoms->atypes[i];
+        if(params->atypes[itype].name[0]=='E'){ continue; } // ignore electron pairs ( ToDo: should be done in more robuts way )
+        const Vec3d&  pi = atoms->apos[i ]; 
+        for(int jj=0; jj<nj; jj++){ // loop over all atoms[j] in system0
+            const int   j        = n0+jj;
+            const int   jtype    = atoms->atypes[j];
+            if(params->atypes[jtype].name[0]=='E'){ continue; } // ignore electron pairs ( ToDo: should be done in more robuts way )
+            const Vec3d      dij = atoms->apos[j] - pi;
+            const double r       = dij.norm();
+            if(r<rmin){
+                rmin=r;
+                if(inds){ inds->i=i; inds->j=j; }
+            }
+        }
+    }
+    return rmin;
+}
 
 
 double evalExampleDerivs_LJQH2( int i0, int ni, int j0, int nj, int* types, Vec3d* ps, Quat4d* typeREQs, double* Qs, Quat4d* dEdREQs ){
     double Etot = 0.0;
-    
     for(int ii=0; ii<ni; ii++){ // loop over all atoms[i] in system
         const int      i    = i0+ii;
         const Vec3d&  pi    = ps      [i ]; 
@@ -876,34 +968,113 @@ double evalExampleDerivs_LJQH2( int i0, int ni, int j0, int nj, int* types, Vec3
             const double sH      = (H2<0.0) ? 1.0 : 0.0; // sH=1.0 if H2<0
             H2 *= sH;
             // --- Electrostatic
-            const double ir2     = 1.0 / dij.norm2();
-            const double ir      = sqrt( ir2 );
+            const double r       = dij.norm();
+            const double ir      = 1/r;
             const double dE_dQ   = ir * COULOMB_CONST;
             const double Eel     = Q * dE_dQ;
-            const double u2      = ir2 * ( R0 * R0 );
-            const double u4      = u2 * u2;
-            const double u6      = u4 * u2;
+            const double u       = R0/r;
+            const double u3      = u*u*u;
+            const double u6      = u3*u3;
             const double u6p     = ( 1.0 + H2 ) * u6;                     
-            const double dE_deps = u6 * ( u6p - 2.0 );
+            const double dE_dE0  = u6 * ( u6p - 2.0 );
             const double dE_dR0  = 12.0 * (E0/R0) * u6 * ( u6p - 1.0 );
             const double dE_dH2  = -E0 * u6 * u6;
-            const double ELJ     =  E0 * dE_deps;
+            const double ELJ     =  E0 * dE_dE0;
+
+            if(ELJ>EijMax){ 
+                char comment[256];
+                double rmin = findRmin( samples[isamp_debug] );
+                sprintf(comment, "evalExampleDerivs_LJQH2(isamp=%3i)[%3i,%3i] (%8s,%8s) r: %20.10f rmin: %20.10f ELJ:  %20.10f Eref: %20.10f", isamp_debug, i,j, params->atypes[ti].name, params->atypes[tj].name , r, rmin, ELJ,  samples[isamp_debug]->Energy  );
+                //printf( "evalExampleDerivs_LJQH2(isamp=%3i)[%3i,%3i] (%8s,%8s) r: %20.10f ELJ:  %20.10f \n", isamp_debug, i,j, params->atypes[ti].name, params->atypes[tj].name , r, ELJ  ); 
+                printf( "%s\n", comment );
+                saveDebugXYZ( 0, ni+nj, types, ps, typeREQs, Qs, "debug.xyz", comment );
+                iBadFound++; if(iBadFound>=nBadFoundMax){ printf("ERROR in evalExampleDerivs_LJQH2(): too many bad pairs (%i) \n", iBadFound); exit(0); }
+            }
             // --- Energy and forces
             Etot    +=  ELJ + Eel;
             //printf( "evalExampleDerivs_LJQH2()[%3i,%3i] (%8s,%8s) ELJ:  %20.10f   Eel: %20.10f \n", i,j, params->atypes[ti].name, params->atypes[tj].name , ELJ,Eel  );
-            { int itypPrint=4; if( (ti==itypPrint) || (tj==itypPrint) ){ printf( "evalExampleDerivs_LJQH2()[%3i,%3i] (%8s,%8s) ELJ,Eel: %12.3e,%12.3e Q(%12.3e|%12.3e,%12.3e) dEdREQH(%12.3e,%12.3e,%12.3e,%12.3e)\n", i,j, params->atypes[ti].name, params->atypes[tj].name , ELJ,Eel, Q,Qi,Qj,  dE_dR0, dE_deps, dE_dQ, dE_dH2  ); } }
+            //{ int itypPrint=4; if( (ti==itypPrint) || (tj==itypPrint) ){ printf( "evalExampleDerivs_LJQH2()[%3i,%3i] (%8s,%8s) ELJ,Eel: %12.3e,%12.3e Q(%12.3e|%12.3e,%12.3e) dEdREQH(%12.3e,%12.3e,%12.3e,%12.3e)\n", i,j, params->atypes[ti].name, params->atypes[tj].name , ELJ,Eel, Q,Qi,Qj,  dE_dR0, dE_deps, dE_dQ, dE_dH2  ); } }
             fREQi.x +=  dE_dR0;                    // dEtot/dR0_i
-            fREQi.y +=  dE_deps * 0.5 * REQj.y;    // dEtot/dE0_i
+            fREQi.y +=  dE_dE0  * 0.5 * REQj.y;    // dEtot/dE0_i
             fREQi.z +=  dE_dQ   * Qj;              // dEtot/dQ_i
             fREQi.w +=  dE_dH2  * REQj.w * sH;     // dEtot/dH2i
             if(bWriteJ){ dEdREQs[j].add( Quat4d{
                         dE_dR0,                    // dEtot/dR0_j
-                        dE_deps * 0.5 * REQi.y,    // dEtot/dE0_j
+                        dE_dE0  * 0.5 * REQi.y,    // dEtot/dE0_j
                         dE_dQ   * Qi,              // dEtot/dQ_j
                         dE_dH2  * REQi.w * sH,     // dEtot/dH2j
             }); }
         }
         dEdREQs[i].add(fREQi);
+    }
+//printf( "debug Etot= %g\n", Etot );exit(0);    
+    return Etot;
+}
+
+double evalExampleDerivs_MorseQH2( int i0, int ni, int j0, int nj, int* types, Vec3d* ps, Quat4d* typeREQs, double* Qs, Quat4d* dEdREQs ){
+        double Etot = 0.0;
+    for(int ii=0; ii<ni; ii++){ // loop over all atoms[i] in system
+        const int      i    = i0+ii;
+        const Vec3d&  pi    = ps      [i ]; 
+        const double  Qi    = Qs      [i ]; 
+        const int     ti    = types   [i ];
+        const Quat4d& REQi  = typeREQs[ti];
+        Quat4d        fREQi = Quat4dZero;
+        for(int jj=0; jj<nj; jj++){ // loop over all atoms[j] in system0
+            const int   j        = j0+jj;
+            const double     Qj  = Qs[j];
+            const Vec3d      dij = ps[j] - pi;
+            const int        tj  = types[j];
+            const Quat4d& REQj   = typeREQs[tj];
+            const double R0      = REQi.x + REQj.x;
+            const double E0      = REQi.y * REQj.y; 
+            const double Q       = Qi     * Qj    ;
+            double       H2      = REQi.w * REQj.w;      // expected H2<0
+            const double sH      = (H2<0.0) ? 1.0 : 0.0; // sH=1.0 if H2<0
+            H2 *= sH;
+            // --- Electrostatic
+            double r      = dij.norm();
+            double ir     = 1/r;
+            double dE_dQ  = ir * COULOMB_CONST;
+            double Eel    = Q * dE_dQ;
+            double dE_dri = 0.0;
+            double dE_drj = 0.0;         
+            // --- Morse
+            //double alpha   = 6.0 / R0;
+            double alpha   = 1.6; 
+            double e       = exp( -alpha * ( r - R0 ) );
+            double e2      = e * e;
+            double e2p     = ( 1.0 - H2 ) * e2;
+            double dE_dE0  = e2p - 2.0 * e;
+            double dE_dR0  = 2.0 * alpha * E0 * ( e2p - e );
+            double dE_dH2  = - E0 * e2;
+            double ELJ     = E0 * dE_dE0;
+            // --- Energy and forces
+            if(ELJ>EijMax){ 
+                char comment[256];
+                double rmin = findRmin( samples[isamp_debug] );
+                sprintf(comment, "evalExampleDerivs_MorseQH2(isamp=%3i)[%3i,%3i] (%8s,%8s) r: %20.10f rmin: %20.10f ELJ:  %20.10f Eref: %20.10f", isamp_debug, i,j, params->atypes[ti].name, params->atypes[tj].name , r, rmin, ELJ,  samples[isamp_debug]->Energy  );
+                //printf( "evalExampleDerivs_LJQH2(isamp=%3i)[%3i,%3i] (%8s,%8s) r: %20.10f ELJ:  %20.10f \n", isamp_debug, i,j, params->atypes[ti].name, params->atypes[tj].name , r, ELJ  ); 
+                printf( "%s\n", comment );
+                saveDebugXYZ( 0, ni+nj, types, ps, typeREQs, Qs, "debug.xyz", comment );
+                iBadFound++; if(iBadFound>=nBadFoundMax){ printf("ERROR in evalExampleDerivs_LJQH2(): too many bad pairs (%i) \n", iBadFound); exit(0); }
+            }
+            // --- Energy and forces
+            Etot    +=  ELJ + Eel;
+            //printf( "evalExampleDerivs_LJQH2()[%3i,%3i] (%8s,%8s) ELJ:  %20.10f   Eel: %20.10f \n", i,j, params->atypes[ti].name, params->atypes[tj].name , ELJ,Eel  );
+            //{ int itypPrint=4; if( (ti==itypPrint) || (tj==itypPrint) ){ printf( "evalExampleDerivs_LJQH2()[%3i,%3i] (%8s,%8s) ELJ,Eel: %12.3e,%12.3e Q(%12.3e|%12.3e,%12.3e) dEdREQH(%12.3e,%12.3e,%12.3e,%12.3e)\n", i,j, params->atypes[ti].name, params->atypes[tj].name , ELJ,Eel, Q,Qi,Qj,  dE_dR0, dE_deps, dE_dQ, dE_dH2  ); } }
+            fREQi.x +=  dE_dR0;                    // dEtot/dR0_i
+            fREQi.y +=  dE_dE0  * 0.5 * REQj.y;    // dEtot/dE0_i
+            fREQi.z +=  dE_dQ   * Qj;              // dEtot/dQ_i
+            fREQi.w +=  dE_dH2  * REQj.w * sH;     // dEtot/dH2i
+            if(bWriteJ){ dEdREQs[j].add( Quat4d{
+                        dE_dR0,                    // dEtot/dR0_j
+                        dE_dE0  * 0.5 * REQi.y,    // dEtot/dE0_j
+                        dE_dQ   * Qi,              // dEtot/dQ_j
+                        dE_dH2  * REQi.w * sH,     // dEtot/dH2j
+            }); }
+//printf( "debug i= %i j= %i fsi.x= %g fsi.y= %g fsi.z= %g fsi.w= %g fsj.x= %g fsj.y= %g fsj.z= %g fsj.w= %g\n", i, j, fsi.x, fsi.y, fsi.z, fsi.w, fsj.x, fsj.y, fsj.z, fsj.w );
+        }
     }
 //printf( "debug Etot= %g\n", Etot );exit(0);    
     return Etot;
@@ -988,7 +1159,8 @@ double run( int nstep, double Fmax, double dt, int imodel_, int isampmode, int i
             case 2: Err = evalDerivsSamp (); break;
         }   
         if( verbosity>0)printStepDOFinfo( i, Err, "FitREQ::run() BEFORE REGULARIZATION" );
-        if(bRegularize){ regularization_force_walls(); }
+        //if(bRegularize){ regularization_force_walls(); }
+        if(bRegularize){ regularizeDOFs(); }
         if( verbosity>0)printStepDOFinfo( i, Err, "FitREQ::run() AFTER  REGULARIZATION" );
         //exit(0);        
         switch(ialg){
@@ -1028,31 +1200,69 @@ void regularization_force(){
     }
 }
 
+
+inline double constrain( double x, double xmin, double xmax, double Kmin, double Kmax, double& f ){
+    double E=0;
+    if(x<xmin){
+        double d = x-xmin; 
+        f =      -d*Kmin;
+        E = 0.5*d*d*Kmin;
+    }else if(x>xmax){
+        double d = x-xmax; 
+        f =      -d*Kmax;
+        E = 0.5*d*d*Kmax;
+    }
+    return E;
+}
+
 void regularization_force_walls(){
+    double E = 0;
     for(int i=0; i<ntype; i++ ){
-        const Quat4i& tt    = typToREQ [i];
-        const Quat4d& REQ   = typeREQs [i];
+        const Quat4i& tt    = typToREQ      [i];
+        const Quat4d& REQ   = typeREQs      [i];
         const Quat4d& REQ0l = typeREQs0_low [i];
         const Quat4d& Kl    = typeKreg_low  [i];
         const Quat4d& REQ0h = typeREQs0_high[i];
         const Quat4d& Kh    = typeKreg_high [i];
-        if(tt.x>=0){
-            if(REQ.x<REQ0l.x){fDOFs[tt.x] -= Kl.x*(REQ0l.x-REQ.x);}
-            if(REQ.x>REQ0h.x){fDOFs[tt.x] -= Kh.x*(REQ0h.x-REQ.x);}
-        }
-        if(tt.y>=0){
-            if(REQ.y<REQ0l.y){fDOFs[tt.y] -= Kl.y*(REQ0l.y-REQ.y);}
-            if(REQ.y>REQ0h.y){fDOFs[tt.y] -= Kh.y*(REQ0h.y-REQ.y);}
-        }
-        if(tt.z>=0){
-            if(REQ.z<REQ0l.z){fDOFs[tt.z] -= Kl.z*(REQ0l.z-REQ.z);}
-            if(REQ.z>REQ0h.z){fDOFs[tt.z] -= Kh.z*(REQ0h.z-REQ.z);}
-        }
-        if(tt.w>=0){
-            if(REQ.w<REQ0l.w){fDOFs[tt.w] -= Kl.w*(REQ0l.w-REQ.w);}
-            if(REQ.w>REQ0h.w){fDOFs[tt.w] -= Kh.w*(REQ0h.w-REQ.w);}
+        if(tt.x>=0){ E+= constrain( REQ.x, REQ0l.x, REQ0h.x, Kl.x,Kh.x, fDOFs[tt.x] ); }
+        if(tt.x>=0){ E+= constrain( REQ.y, REQ0l.y, REQ0h.y, Kl.y,Kh.y, fDOFs[tt.y] ); }
+        if(tt.x>=0){ E+= constrain( REQ.z, REQ0l.z, REQ0h.z, Kl.z,Kh.z, fDOFs[tt.z] ); }
+        if(tt.x>=0){ E+= constrain( REQ.w, REQ0l.w, REQ0h.w, Kl.w,Kh.w, fDOFs[tt.w] ); }
+        // if(tt.x>=0){
+        //     if(REQ.x<REQ0l.x){fDOFs[tt.x] -= Kl.x*(REQ0l.x-REQ.x);}
+        //     if(REQ.x>REQ0h.x){fDOFs[tt.x] -= Kh.x*(REQ0h.x-REQ.x);}
+        // }
+        // if(tt.y>=0){
+        //     if(REQ.y<REQ0l.y){fDOFs[tt.y] -= Kl.y*(REQ0l.y-REQ.y);}
+        //     if(REQ.y>REQ0h.y){fDOFs[tt.y] -= Kh.y*(REQ0h.y-REQ.y);}
+        // }
+        // if(tt.z>=0){
+        //     if(REQ.z<REQ0l.z){fDOFs[tt.z] -= Kl.z*(REQ0l.z-REQ.z);}
+        //     if(REQ.z>REQ0h.z){fDOFs[tt.z] -= Kh.z*(REQ0h.z-REQ.z);}
+        // }
+        // if(tt.w>=0){
+        //     if(REQ.w<REQ0l.w){fDOFs[tt.w] -= Kl.w*(REQ0l.w-REQ.w);}
+        //     if(REQ.w>REQ0h.w){fDOFs[tt.w] -= Kh.w*(REQ0h.w-REQ.w);}
+        // }
+    }
+}
+
+// New regularization function operating per-DOF
+double regularizeDOFs(){
+    double Etot = 0;
+    for(int i=0; i<nDOFs; i++){
+        const Vec3d& regX = DOFregX[i];
+        const Vec3d& regK = DOFregK[i];
+        // Hard walls outside [xmin,xmax]
+        Etot += constrain(DOFs[i], regX.x, regX.z, regK.x, regK.z, fDOFs[i]);
+        // Soft harmonic around x0
+        if(regK.y > 0){
+            double d  = DOFs[i] - regX.y;
+            fDOFs[i] -= d * regK.y;
+            Etot     += 0.5 * d * d * regK.y;
         }
     }
+    return Etot;
 }
 
 /**
@@ -1333,6 +1543,17 @@ void printDOFs() const {
         printf("%3i ->(%3i|%i) %8s.%c : %g dE/d%c: %g \n", i, rt.x,rt.y, tname,  comp, DOFs[i], comp, fDOFs[i]);
     }
     //printf("\n");
+}
+
+void printDOFregularization(){
+    printf( "\nprintDOFregularization()\n" );
+    //printf("DOF  Type      Comp  Current       Position(min,x0,max)           Stiffness(min,k0,max)\n");
+    for(int i=0; i<nDOFs; i++){
+        const Vec2i& rt   = REQtoTyp[i];
+        const Vec3d& regX = DOFregX[i];
+        const Vec3d& regK = DOFregK[i];
+        printf("[%2i] %8s.%c(%8.3f) reg: x(%8.3f,%8.3f,%8.3f) K(%8.3f,%8.3f,%8.3f)\n",   i, params->atypes[rt.x].name, "REQH"[rt.y],  DOFs[i],    regX.x, regX.y, regX.z,      regK.x, regK.y, regK.z        );
+    }
 }
 
 }; // class FitREQ

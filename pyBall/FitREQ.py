@@ -89,12 +89,24 @@ def setVerbosity(verbosity=1, idebug=0):
 #     if poses is not None: n = len(poses)
 #     return lib.setRigidSamples(n, _np_as(Es,c_double_p), _np_as(poses,c_double_p), bCopy, bAlloc)
 
+
+# int export_Erefs( double* Erefs ){ 
+lib.export_Erefs.argtypes  = [c_double_p]
+lib.export_Erefs.restype   =  c_int
+def export_Erefs(Erefs=None, n=None):
+    if Erefs is None:
+        if n is None: n = lib.export_Erefs(_np_as(None,c_double_p))
+        Erefs = np.zeros(n)
+    lib.export_Erefs(_np_as(Erefs,c_double_p))
+    return Erefs
+
 #void setWeights( int n, double* weights ){
 lib.setWeights.argtypes  = [c_int, c_double_p]
 lib.setWeights.restype   =  None
 def setWeights(weights):
     n = len(weights)
-    return lib.setWeights(n, _np_as(weights,c_double_p))
+    lib.setWeights(n, _np_as(weights,c_double_p))
+    
 
 #  double run( int nstep, double ErrMax, double dt, bool bRigid ){
 lib.run.argtypes  = [c_int, c_double, c_double, c_int, c_int, c_int, c_bool, c_bool, c_double, c_bool] 
@@ -110,15 +122,26 @@ def getEs(imodel=0, Es=None, isampmode=2, bEpairs=False):
     Eerr = lib.getEs(imodel, _np_as(Es,c_double_p), isampmode, bEpairs)
     return Es
 
-# void getParamScan( int iDOF, int imodel,  int n, double* xs,  double* Es, double* Fs ){
-lib.getParamScan.argtypes  = [c_int, c_int, c_int, c_double_p, c_double_p, c_double_p]
-lib.getParamScan.restype   = None
-def getParamScan( iDOF, xs, Es=None, Fs=None, imodel=2 ):
+# void scanParam( int iDOF, int imodel,  int n, double* xs,  double* Es, double* Fs, bool bRegularize ){
+lib.scanParam.argtypes  = [c_int, c_int, c_int, c_double_p, c_double_p, c_double_p, c_bool]
+lib.scanParam.restype   = None
+def scanParam( iDOF, xs, Es=None, Fs=None, imodel=2, bRegularize=False ):
     n = len(xs)
     if Es is None: Es = np.zeros( n )
     if Fs is None: Fs = np.zeros( n )
-    lib.getParamScan(iDOF, imodel, n, _np_as(xs,c_double_p), _np_as(Es,c_double_p), _np_as(Fs,c_double_p))
+    lib.scanParam(iDOF, imodel, n, _np_as(xs,c_double_p), _np_as(Es,c_double_p), _np_as(Fs,c_double_p), bRegularize )
     return Es,Fs
+
+#void scanParam2D( int iDOFx, int iDOFy, int imodel, int nx, int ny, double* xs, double* ys,  double* Es, double* Fx, double* Fy, bool bRegularize ){
+lib.scanParam2D.argtypes  = [c_int, c_int, c_int, c_int, c_int, c_double_p, c_double_p, c_double_p, c_double_p, c_double_p, c_bool]
+lib.scanParam2D.restype   = None
+def scanParam2D(iDOFx, iDOFy, xs, ys, Es=None, Fx=None, Fy=None, imodel=2, bRegularize=False):
+    nx, ny = len(xs), len(ys)
+    if Es is None: Es = np.zeros((ny,nx))
+    if Fx is None: Fx = np.zeros((ny,nx))
+    if Fy is None: Fy = np.zeros((ny,nx))
+    lib.scanParam2D(iDOFx, iDOFy, imodel, nx, ny, _np_as(xs,c_double_p), _np_as(ys,c_double_p),    _np_as(Es,c_double_p), _np_as(Fx,c_double_p), _np_as(Fy,c_double_p), bRegularize)
+    return Es, Fx, Fy
 
 #  double loadXYZ( char* fname, int n0, int* i0s, int ntest, int* itests, int* types0, int testtypes ){
 # lib.loadXYZ.argtypes  = [c_char_p, c_int, c_int_p, c_int, c_int_p, c_int_p, c_int_p] 
@@ -226,18 +249,17 @@ def getBuff(name,sh):
     else:
         return None
 
-
 #def getBuffs( nnode, npi, ncap, nbond, NEIGH_MAX=4 ):
 def getBuffs( ):
-    print( "getBuffs()" )
+    #print( "getBuffs()" )
     init_buffers()
-    print( "getBuffs().1" )
+    #print( "getBuffs().1" )
     global ndims,typToREQ
     ndims = getIBuff( "ndims", (6,) )  # [nDOFs,ntype,nbatch,n0,n1,imodel]
     global nDOFs,ntype,nbatch,n0,n1,imodel
     nDOFs=ndims[0]; ntype=ndims[1]; nbatch=ndims[2]; n0=ndims[3]; n1=ndims[4]; imodel=ndims[5]
     typToREQ      = getIBuff( "typToREQ",    (ntype,) )
-    print( "getBuffs().2" )
+    #print( "getBuffs().2" )
     global DOFs,fDOFs,vDOFs
     DOFs          = getBuff ( "DOFs",   (nDOFs,)  )
     fDOFs         = getBuff ( "fDOFs",  (nDOFs,)  ) 
@@ -254,7 +276,7 @@ def getBuffs( ):
     typeKreg      = getBuff ( "typeKreg",    (ntype,) )
     typeKreg_low  = getBuff ( "typeKreg_low", (ntype,) )
     typeKreg_high = getBuff ( "typeKreg_high", (ntype,) )
-    print( "getBuffs().3" )
+    #print( "getBuffs().3" )
 
 # def getBuffs():
 #     init_buffers()

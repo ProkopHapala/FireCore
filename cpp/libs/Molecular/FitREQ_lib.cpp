@@ -77,53 +77,11 @@ void setWeights( int n, double* weights ){
    //for(int i=0; i<n; i++){ printf("lib.weights[%i]=%g\n",i,W.weights[i]); }       
 }
 
+int export_Erefs( double* Erefs ){ return W.export_Erefs( Erefs ); }
+
 double run( int nstep, double Fmax, double dt, int imodel, int isampmode, int ialg, bool bRegularize, bool bClamp, double max_step, bool bEpairs ){
     return W.run( nstep, Fmax, dt, imodel, isampmode, ialg, bRegularize, bClamp, max_step, bEpairs );
 }
-
-
-// double run( int nstep, double Fmax, double dt, int imodel, int isampmode, int ialg, bool bRegularize, bool bClamp, double max_step, bool bEpairs ){
-//     W.imodel=imodel;
-//     W.bEpairs=bEpairs;
-//     double Err=0;
-//     printf( "run( nstep %i Fmax %g dt %g isamp %i )\n", nstep, Fmax, dt, isampmode  );
-//     double F2max=Fmax*Fmax;
-//     double F2;
-//     for(int i=0; i<nstep; i++){
-//         //printf("[%i]  DOFs=", i);for(int j=0;j<W.nDOFs;j++){ printf("%g ",W. DOFs[j]); };printf("\n");
-//         W.DOFsToTypes(); 
-//         W.clean_derivs();
-//         //printf("[%i]  DOFs=", i);for(int j=0;j<W.nDOFs;j++){ printf("%g ",W. DOFs[j]); };printf("\n");
-//         switch(isampmode){
-//             case 0: Err = W.evalDerivsRigid(); break;
-//             case 1: Err = W.evalDerivs     (); break;
-//             case 2: Err = W.evalDerivsSamp (); break;
-//         }   
-//         printf("step= %i DOFs= ", i);for(int j=0;j<W.nDOFs;j++){ printf("%g ",W.DOFs[j]); };printf("\n");
-//         //if(bRegularize){ W.regularization_force(); }
-//         printf("step= %i fDOFs= ", i);for(int j=0;j<W.nDOFs;j++){ printf("%g ",W.fDOFs[j]); };printf("\n");
-//         if(bRegularize){ W.regularization_force_walls(); }
-//         printf("step= %i after_reg fDOFs= ", i);for(int j=0;j<W.nDOFs;j++){ printf("%g ",W.fDOFs[j]); };printf("\n");
-// //exit(0);        
-//         switch(ialg){
-//             case 0: F2 = W.move_GD( dt, max_step ); break;
-//             case 1: F2 = W.move_MD( dt, max_step ); break;
-//             case 2: F2 = W.move_GD_BB_short( i, dt, max_step ); break;
-//             case 3: F2 = W.move_GD_BB_long( i, dt, max_step ); break;
-//             case 4: F2 = W.move_MD_nodamp( dt, max_step ); break;
-//         }
-//         // regularization must be done before evaluation of derivatives
-//         if(bClamp     ){ W.limit_params();         }
-//         //printf("step= %i dt= %g\n", i, dt );
-//         printf("step= %i RMSE= %g |F|= %g\n", i, sqrt(Err), sqrt(abs(F2)) );
-//         printf("[%i]\n", i );
-//         if( F2<0.0 ){ printf("DYNAMICS STOPPED after %i iterations \n", i); printf("VERY FINAL DOFs= ");for(int j=0;j<W.nDOFs;j++){ printf("%.15g ",W. DOFs[j]); };printf("\n"); return Err; }
-//         if( F2<F2max ){ printf("CONVERGED in %i iterations \n", i); printf("VERY FINAL DOFs= ");for(int j=0;j<W.nDOFs;j++){ printf("%.15g ",W. DOFs[j]); };printf("\n"); return Err; }
-//     }
-//     printf("step= %i DOFs= ", nstep);for(int j=0;j<W.nDOFs;j++){ printf("%g ",W. DOFs[j]); };printf("\n");
-//     printf("VERY FINAL DOFs= ");for(int j=0;j<W.nDOFs;j++){ printf("%.15g ",W. DOFs[j]); };printf("\n");
-//     return Err;
-// }
 
 void setTypeToDOFs  (int i, double* REQ ){ W.setTypeToDOFs  ( i, *(Quat4d*)REQ ); }
 void getTypeFromDOFs(int i, double* REQ ){ W.getTypeFromDOFs( i, *(Quat4d*)REQ ); }
@@ -141,17 +99,40 @@ double getEs( int imodel, double* Es, int isampmode, bool bEpairs ){
     return 0;
 }
 
-void getParamScan( int iDOF, int imodel,  int n, double* xs,  double* Es, double* Fs ){
+void scanParam( int iDOF, int imodel,  int n, double* xs,  double* Es, double* Fs, bool bRegularize ){
+    //printf( "scanParam() iDOF %i imodel %i n %i \n", iDOF, imodel, n );
     W.imodel=imodel;
     for(int i=0; i<n; i++){
         W.DOFs[iDOF] = xs[i];
         W.DOFsToTypes();
         double E = W.evalDerivsSamp();
+        //if(bRegularize){ W.regularization_force_walls(); }
+        if(bRegularize){ W.regularizeDOFs(); }
         if(Fs)Es[i] = E;
         if(Fs)Fs[i] = W.fDOFs[iDOF];
-        if( verbosity>1){ printf( "getParamScan()[%3i] W.DOFs[%3i]: %20.10f E: %20.10f  F: %20.10f \n", i, iDOF, W.DOFs[iDOF], E, W.fDOFs[iDOF] ); }
+        //if( verbosity>1){ printf( "scanParam()[%3i] W.DOFs[%3i]: %20.10f E: %20.10f  F: %20.10f \n", i, iDOF, W.DOFs[iDOF], E, W.fDOFs[iDOF] ); }
     }
 }
+
+void scanParam2D( int iDOFx, int iDOFy, int imodel, int nx, int ny, double* xs, double* ys,  double* Es, double* Fx, double* Fy, bool bRegularize ){
+    printf( "scanParam() iDOF %i imodel %i nx %i ny %i \n", iDOFx, imodel, nx, ny );
+    W.imodel=imodel;
+    for(int iy=0; iy<ny; iy++){
+        W.DOFs[iDOFy] = ys[iy];
+        for(int ix=0; ix<nx; ix++){
+            int i = iy*nx + ix; 
+            //printf( "scanParam2D() ix %i iy %i i %i \n", ix, iy, i );
+            W.DOFs[iDOFx] = xs[ix];
+            W.DOFsToTypes();
+            double E = W.evalDerivsSamp();
+            if(bRegularize){ W.regularizeDOFs(); }
+            if(Es)Es[i] = E;
+            if(Fx)Fx[i] = W.fDOFs[iDOFx];
+            if(Fy)Fy[i] = W.fDOFs[iDOFy];
+        }
+    }
+}
+
 
 // void init_buffers(){
 //     ibuffers.insert( { "ndims", (int*)&W.nDOFs } );
