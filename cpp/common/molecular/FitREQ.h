@@ -731,7 +731,8 @@ double evalDerivsSamp( double* Eout=0 ){
 
     int nsamp = samples.size();
     //nsamp = _min( nsamp, 5 ); // DEBUG ONLY
-    #pragma omp parallel for reduction(+:Error) schedule(dynamic)
+    //#pragma omp parallel for reduction(+:Error) schedule(dynamic)
+    #pragma omp parallel for reduction(+:Error)
     for(int i=0; i<nsamp; i++){
         isamp_debug = i;
         double wi   = (weights)? weights[i] : 1.0; 
