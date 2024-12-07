@@ -55,6 +55,7 @@ void setWeights( int n, double* weights ){
 int export_Erefs( double* Erefs ){ return W.export_Erefs( Erefs ); }
 
 double run( int nstep, double Fmax, double dt, int imodel_, int ialg, int iparallel, bool bClamp, double max_step ){
+    printf( "run(nstep=%6i,nsamp=%6i,iparallel=%i) bEvalJ=%i bWriteJ=%i bJ=%i \n", nstep, W.samples.size(), iparallel, W.bEvalJ, W.bWriteJ, (W.bEvalJ&&(~W.bWriteJ)) );
     long t0 = getCPUticks();
     double Err=0;
     switch (iparallel){
@@ -63,7 +64,7 @@ double run( int nstep, double Fmax, double dt, int imodel_, int ialg, int iparal
         case 2:{ Err=W.run_omp( nstep, Fmax, dt, imodel_, ialg,        bClamp, max_step ); } break;
     }
     double T = (getCPUticks()-t0);
-    printf( "Time: run(nstep=%6i,nsamp=%6i,iparallel=%i) T= %8.3f [GTicks] %8.3f [ticks/conf]\n", nstep, W.samples.size(), iparallel, T/(W.samples.size()*nstep), T );
+    printf( "Time: run(nstep=%6i,nsamp=%6i,iparallel=%i) T= %8.3f [MTicks] %8.3f [ticks/conf]\n", nstep, W.samples.size(), iparallel, T*1e-6, T/(W.samples.size()*nstep) );
     return Err;
 }
 

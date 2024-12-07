@@ -16,7 +16,7 @@ from pyBall import atomicUtils as au
 
 
 # ============== Setup
-imodel = 2        #  0=LJQ     1=LJQH1     2=LJQH2     3=LJQH1H2
+imodel = 1        #  0=LJQ     1=LJQH1     2=LJQH2     3=LJQH1H2
                   #  4=BuckQ   5=BuckQH1   6=BuckQH2   7=BuckQH1H2
                   #  8=MorseQ  9=MorseQH1 10=MorseQH2 11=MorseQH1H2
                   # 12=LJx2Q  13=LJx2QH1  14=LJx2QH2  15=LJx2QH1H2
@@ -214,10 +214,14 @@ DOFnames = [
 #def getEs(imodel=0, Es=None, Fs=None, bOmp=False, bDOFtoTypes=False, bEs=True, bFs=False ):
 
 # # ------ optimize parameters (fit)
+#fit.setSwitches(EvalJ=0, WriteJ=0, CheckRepulsion=0, Regularize=0, Epairs=0)
+fit.setSwitches(EvalJ=1, WriteJ=1 )
+#fit.setSwitches(EvalJ=1, WriteJ=-1 )
 
-Err = fit.run( nstep=100, Fmax=1e-300, dt=0.0, imodel=imodel, iparallel=0, ialg=0,  bClamp=bClamp )
-Err = fit.run( nstep=100, Fmax=1e-300, dt=0.0, imodel=imodel, iparallel=1, ialg=0,  bClamp=bClamp )
-Err = fit.run( nstep=100, Fmax=1e-300, dt=0.0, imodel=imodel, iparallel=2, ialg=0,  bClamp=bClamp )
+nstep = 5000
+Err = fit.run( nstep=nstep, Fmax=1e-300, dt=0.0, imodel=imodel, iparallel=0, ialg=0,  bClamp=bClamp )
+Err = fit.run( nstep=nstep, Fmax=1e-300, dt=0.0, imodel=imodel, iparallel=1, ialg=0,  bClamp=bClamp )
+Err = fit.run( nstep=nstep, Fmax=1e-300, dt=0.0, imodel=imodel, iparallel=2, ialg=0,  bClamp=bClamp )
 
 # # ------ write optimized results
 # Es = fit.getEs( imodel=imodel, isampmode=isampmode, bEpairs=bEpairs )
