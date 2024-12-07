@@ -721,7 +721,7 @@ double eval_sample( int isamp, const Atoms* atoms, double wi, Quat4d* fs ) const
     int     i0 = atoms->n0;
     for(int i=0; i<atoms->natoms; i++){ fs[i]=Quat4dZero; }
     double E=0;
-    bool bJ = bEvalJ && ( ~bWriteJ );
+    bool bJ = bEvalJ && ( !bWriteJ );
     switch (imodel){
         case 0:{ 
             E =   evalExampleDerivs( funcVar_LJQH2, i0, ni, j0, nj, atoms->atypes, apos, typeREQs, Qs, fs );    // variational derivatives on molecule 1
