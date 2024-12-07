@@ -88,11 +88,11 @@ def setWeights(weights):
     n = len(weights)
     lib.setWeights(n, _np_as(weights,c_double_p))
     
-#  double run( int nstep, double Fmax, double dt, int imodel_, int ialg, bool bOMP, bool bClamp, double max_step ){
-lib.run.argtypes  = [c_int, c_double, c_double, c_int, c_int, c_bool, c_bool, c_double]
+#  double run( int nstep, double Fmax, double dt, int imodel_, int ialg, int iparallel, bool bClamp, double max_step ){
+lib.run.argtypes  = [c_int, c_double, c_double, c_int, c_int, c_int, c_bool, c_double]
 lib.run.restype   =  c_double
-def run(nstep=1000, Fmax=1e-8, dt=0.01, imodel=0, ialg=2, bOMP=True, bClamp=False, max_step=0.05):
-    return lib.run(nstep, Fmax, dt, imodel, ialg, bOMP, bClamp, max_step)
+def run(nstep=1000, Fmax=1e-8, dt=0.01, imodel=0, ialg=2, iparallel=2, bClamp=False, max_step=0.05):
+    return lib.run(nstep, Fmax, dt, imodel, ialg, iparallel, bClamp, max_step)
 
 # double getEs( int imodel, double* Es, double* Fs, bool bOmp, bool bDOFtoTypes ){
 lib.getEs.argtypes  = [c_int, c_double_p,  c_double_p, c_bool, c_bool]

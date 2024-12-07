@@ -681,8 +681,7 @@ void setTypeToDOFs(int i, Quat4d REQ ){ typeREQs[i]=REQ; typeToDOFs(i); }
 
 //void clean_fs(int n){ for(int i=0; i<n; i++){fs[i]=Quat4dZero;} }
 
-
-void fillTempArrays( const Atoms* atoms, Vec3d* apos, double* Qs  ){
+void fillTempArrays( const Atoms* atoms, Vec3d* apos, double* Qs  )const{
     //printf( "FillTempArrays() bEpairs=%i \n", bEpairs );
     for(int j=0; j<atoms->natoms; j++){
         Qs[j]   = atoms->charge[j];
@@ -708,6 +707,58 @@ void fillTempArrays( const Atoms* atoms, Vec3d* apos, double* Qs  ){
     }
 }
 
+double eval_sample( int i, const Atoms* atoms, Quat4d* fs ) const {
+    double wi   = (weights)? weights[i] : 1.0; 
+    if(wi<1e-300) return 0;
+    double Qs  [atoms->natoms];
+    Vec3d  apos[atoms->natoms];   // atomic positions
+    fillTempArrays( atoms, apos, Qs );
+    int     nj = atoms->n0;
+    int     j0 = 0; 
+    int     ni = atoms->natoms - atoms->n0;
+    int     i0 = atoms->n0;
+    for(int i=0; i<atoms->natoms; i++){ fs[i]=Quat4dZero; }
+    double E=0;
+    bool bJ = bEvalJ && ( ~bWriteJ );
+    switch (imodel){
+        case 0:{ 
+            E =   evalExampleDerivs( funcVar_LJQH2, i0, ni, j0, nj, atoms->atypes, apos, typeREQs, Qs, fs );    // variational derivatives on molecule 1
+            if(bJ)evalExampleDerivs( funcVar_LJQH2, j0, nj, i0, ni, atoms->atypes, apos, typeREQs, Qs, fs );    // variational derivatives on molecule 2
+        }break;
+        case 1:{ 
+            E =   evalExampleDerivs_LJQH2( i0, ni, j0, nj, atoms->atypes, apos, typeREQs, Qs, fs );    // variational derivatives on molecule 1
+            if(bJ)evalExampleDerivs_LJQH2( j0, nj, i0, ni, atoms->atypes, apos, typeREQs, Qs, fs );    // variational derivatives on molecule 2
+        }break;
+        case 2:{ 
+            E =   evalExampleDerivs_MorseQH2( i0, ni, j0, nj, atoms->atypes, apos, typeREQs, Qs, fs );    // variational derivatives on molecule 1
+            if(bJ)evalExampleDerivs_MorseQH2( j0, nj, i0, ni, atoms->atypes, apos, typeREQs, Qs, fs );    // variational derivatives on molecule 2
+        }break;
+    }
+    if( E>EmaxSample ){
+        if(verbosity>0) printf( "skipped sample [%i] E(%g)>EmaxSample(%g) atoms too close \n", i, E, EmaxSample );
+        return E;
+    } 
+    return E;
+}
+
+double eval_sample_error( int i, double& E ){
+    //isamp_debug = i;
+    Atoms* atoms  = samples[i];
+    double wi     = (weights)? weights[i] : 1.0;
+    Quat4d fs  [atoms->natoms];
+    E = eval_sample( i, atoms, fs );
+    //printf( "evalDerivsSamp() isamp: %3i E: %20.10f Eref: %20.10f \n", i, E, Eref );
+    double Eref   = atoms->Energy;
+    double dE     = E - Eref;
+    double dEw    = 2.0*dE*wi;
+    double Error  = dE*dE*wi;
+    acumDerivs( atoms->natoms, atoms->atypes, dEw, fs );
+    if( bEpairs ){
+        AddedData * ad = (AddedData*)atoms->userData;
+        acumHostDerivs( ad->nep, ad->bs, atoms->atypes, dEw, fs );
+    }
+    return Error;
+}
 
 /**
  * @brief Evaluates the variational derivatives of the fitting error (sumed batch training samples) with respect to all fitting parameters (i.e. non-covalent interaction parameters REQH(Rvdw,Evdw,Q,Hb) for each atom type). The atomic systems are not assumed rigid (i.e. the atomic positions can vary freely from sample to sample).
@@ -715,116 +766,30 @@ void fillTempArrays( const Atoms* atoms, Vec3d* apos, double* Qs  ){
  * @param Eout array to store the non-covalent interaction energy values of each atomic system in the batch. if Eout==null, the function will not store the energy values.
  * @return double, returns the total fitting error.
  */
-double evalDerivsSamp_noOmp( double* Eout=0 ){ 
-    printf( "evalDerivsSamp_noOmp() \n" );
+double evalSamples_noOmp( double* Eout=0 ){ 
+    //printf( "evalSamples_noOmp() \n" );
     double Error = 0.0;
     int nsamp = samples.size();
-    //#pragma omp parallel for reduction(+:Error)
     for(int i=0; i<nsamp; i++){
-        isamp_debug = i;
-        double wi   = (weights)? weights[i] : 1.0; 
-        if(wi<1e-300)continue;
-        const Atoms* atoms = samples[i];
-        double Qs  [atoms->natoms];
-        Vec3d  apos[atoms->natoms];   // atomic positions
-        Quat4d fs  [atoms->natoms];
-        fillTempArrays( atoms, apos, Qs );
-        int     nj      = atoms->n0;
-        int     j0      = 0; 
-        int     ni      = atoms->natoms - atoms->n0;
-        int     i0      = atoms->n0;
-        for(int i=0; i<atoms->natoms; i++){ fs[i]=Quat4dZero; }
-        double E=0;
-        bool bJ = bEvalJ && ( ~bWriteJ );
-        switch (imodel){
-            case 0:{ 
-                E =   evalExampleDerivs( funcVar_LJQH2, i0, ni, j0, nj, atoms->atypes, apos, typeREQs, Qs, fs );    // variational derivatives on molecule 1
-                if(bJ)evalExampleDerivs( funcVar_LJQH2, j0, nj, i0, ni, atoms->atypes, apos, typeREQs, Qs, fs );    // variational derivatives on molecule 2
-            }break;
-            case 1:{ 
-                E =   evalExampleDerivs_LJQH2( i0, ni, j0, nj, atoms->atypes, apos, typeREQs, Qs, fs );    // variational derivatives on molecule 1
-                if(bJ)evalExampleDerivs_LJQH2( j0, nj, i0, ni, atoms->atypes, apos, typeREQs, Qs, fs );    // variational derivatives on molecule 2
-            }break;
-            case 2:{ 
-                E =   evalExampleDerivs_MorseQH2( i0, ni, j0, nj, atoms->atypes, apos, typeREQs, Qs, fs );    // variational derivatives on molecule 1
-                if(bJ)evalExampleDerivs_MorseQH2( j0, nj, i0, ni, atoms->atypes, apos, typeREQs, Qs, fs );    // variational derivatives on molecule 2
-            }break;
-        }
-        if( E>EmaxSample ){
-            if(verbosity>0) printf( "skipped sample [%i] E(%g)>EmaxSample(%g) atoms too close \n", i, E, EmaxSample );
-            continue;
-        } 
-        //printf( "evalDerivsSamp() isamp: %3i E: %20.10f Eref: %20.10f \n", i, E, Eref );
-        if(Eout){ Eout[i]=E; };
-        double Eref = atoms->Energy;
-        double dE   = E - Eref;
-        double dEw  = 2.0*dE*wi;
-        Error      += dE*dE*wi;
-        acumDerivs_noOmp( atoms->natoms, atoms->atypes, dEw, fs );
-        if( bEpairs ){
-            AddedData * ad = (AddedData*)atoms->userData;
-            acumHostDerivs_noOmp( ad->nep, ad->bs, atoms->atypes, dEw, fs );
-        }
+       double E; 
+       Error+=eval_sample_error( i, E );
+       if(Eout)Eout[i]=E;
     }
     return Error;
 }
 
-
-double evalDerivsSamp_omp( double* Eout=0 ){ 
-    printf( "evalDerivsSamp_omp() \n" );
+double evalSamples_omp( double* Eout=0 ){ 
+    //printf( "evalSamples_omp() \n" );
     double Error = 0.0;
     int nsamp = samples.size();
     #pragma omp parallel for reduction(+:Error)
     for(int i=0; i<nsamp; i++){
-        isamp_debug = i;
-        double wi   = (weights)? weights[i] : 1.0; 
-        if(wi<1e-300)continue;
-        const Atoms* atoms = samples[i];
-        double Qs  [atoms->natoms];
-        Vec3d  apos[atoms->natoms];   // atomic positions
-        Quat4d fs  [atoms->natoms];
-        fillTempArrays( atoms, apos, Qs );
-        int     nj      = atoms->n0;
-        int     j0      = 0; 
-        int     ni      = atoms->natoms - atoms->n0;
-        int     i0      = atoms->n0;
-        for(int i=0; i<atoms->natoms; i++){ fs[i]=Quat4dZero; }
-        double E=0;
-        bool bJ = bEvalJ && ( ~bWriteJ );
-        switch (imodel){
-            case 0:{ 
-                E =   evalExampleDerivs( funcVar_LJQH2, i0, ni, j0, nj, atoms->atypes, apos, typeREQs, Qs, fs );    // variational derivatives on molecule 1
-                if(bJ)evalExampleDerivs( funcVar_LJQH2, j0, nj, i0, ni, atoms->atypes, apos, typeREQs, Qs, fs );    // variational derivatives on molecule 2
-            }break;
-            case 1:{ 
-                E =   evalExampleDerivs_LJQH2( i0, ni, j0, nj, atoms->atypes, apos, typeREQs, Qs, fs );    // variational derivatives on molecule 1
-                if(bJ)evalExampleDerivs_LJQH2( j0, nj, i0, ni, atoms->atypes, apos, typeREQs, Qs, fs );    // variational derivatives on molecule 2
-            }break;
-            case 2:{ 
-                E =   evalExampleDerivs_MorseQH2( i0, ni, j0, nj, atoms->atypes, apos, typeREQs, Qs, fs );    // variational derivatives on molecule 1
-                if(bJ)evalExampleDerivs_MorseQH2( j0, nj, i0, ni, atoms->atypes, apos, typeREQs, Qs, fs );    // variational derivatives on molecule 2
-            }break;
-        }
-        if( E>EmaxSample ){
-            if(verbosity>0) printf( "skipped sample [%i] E(%g)>EmaxSample(%g) atoms too close \n", i, E, EmaxSample );
-            continue;
-        } 
-        //printf( "evalDerivsSamp() isamp: %3i E: %20.10f Eref: %20.10f \n", i, E, Eref );
-        if(Eout){ Eout[i]=E; };
-        double Eref = atoms->Energy;
-        double dE   = E - Eref;
-        double dEw  = 2.0*dE*wi;
-        Error      += dE*dE*wi;
-        acumDerivs ( atoms->natoms, atoms->atypes, dEw, fs );
-        if( bEpairs ){
-            AddedData * ad = (AddedData*)atoms->userData;
-            acumHostDerivs( ad->nep, ad->bs, atoms->atypes, dEw, fs );
-        }
+       double E; 
+       Error+=eval_sample_error( i, E );
+       if(Eout)Eout[i]=E;
     }
     return Error;
 }
-
-
 
 void printDebugArrays(int na, int* atypes, Vec3d* apos, double* aq, int* aisep, int nj, int* jtyp, Vec3d* jpos, double* jq, int* jisep, int nep, Vec2i* bs, const Atoms* atoms, bool bEpairs) {
     //printf("=== DEBUG: Arrays in evalDerivsSamp ===\n");
@@ -954,7 +919,7 @@ void saveDebugXYZ( int i0, int n, int* types, Vec3d* ps, double* Qs, const char*
     fclose(fout);
 }
 
-double findRmin( Atoms* atoms, Vec2i* inds=0 ){
+double findRmin( Atoms* atoms, Vec2i* inds=0 )const{
     double rmin = 1e+300;
     int ni = atoms->n0;
     int n0 = atoms->n0;
@@ -978,7 +943,7 @@ double findRmin( Atoms* atoms, Vec2i* inds=0 ){
     return rmin;
 }
 
-bool checkSampleRepulsion( double Eij, int i, int j, int ti, int tj, double r, bool bPrint=true, bool bSave=true ){
+bool checkSampleRepulsion( double Eij, int i, int j, int ti, int tj, double r, bool bPrint=true, bool bSave=true )const{
     if(Eij<EijMax) return false;
     char comment[256];
     //char comment[256];
@@ -988,11 +953,11 @@ bool checkSampleRepulsion( double Eij, int i, int j, int ti, int tj, double r, b
     if(bPrint)printf( "%s\n", comment );
     if(bSave)samples[isamp_debug]->saveXYZ( "debug.xyz", "a", true, true, Vec3i{1,1,1}, comment );
     //saveDebugXYZ( 0, ni+nj, types, ps, typeREQs, Qs, "debug.xyz", comment );
-    iBadFound++; if(iBadFound>=nBadFoundMax){ printf("ERROR in evalExampleDerivs_LJQH2(): too many bad pairs (%i) \n", iBadFound); exit(0); }
+    //iBadFound++; if(iBadFound>=nBadFoundMax){ printf("ERROR in evalExampleDerivs_LJQH2(): too many bad pairs (%i) \n", iBadFound); exit(0); }
     return true;
 }
 
-double evalExampleDerivs_LJQH2( int i0, int ni, int j0, int nj, int* types, Vec3d* ps, Quat4d* typeREQs, double* Qs, Quat4d* dEdREQs ){
+double evalExampleDerivs_LJQH2( int i0, int ni, int j0, int nj, int* types, Vec3d* ps, Quat4d* typeREQs, double* Qs, Quat4d* dEdREQs )const{
     double Etot = 0.0;
     for(int ii=0; ii<ni; ii++){ // loop over all atoms[i] in system
         const int      i    = i0+ii;
@@ -1026,7 +991,7 @@ double evalExampleDerivs_LJQH2( int i0, int ni, int j0, int nj, int* types, Vec3
             const double dE_dR0  = 12.0 * (E0/R0) * u6 * ( u6p - 1.0 );
             const double dE_dH2  = -E0 * u6 * u6;
             const double ELJ     =  E0 * dE_dE0;
-            if(bCheckRepulsion)[[unlikely]]{ checkSampleRepulsion( ELJ, i,j, ti,tj, r, true, true ); }
+            //if(bCheckRepulsion)[[unlikely]]{ checkSampleRepulsion( ELJ, i,j, ti,tj, r, true, true ); }
             // --- Energy and forces
             Etot    +=  ELJ + Eel;
             //printf( "evalExampleDerivs_LJQH2()[%3i,%3i] (%8s,%8s) ELJ:  %20.10f   Eel: %20.10f \n", i,j, params->atypes[ti].name, params->atypes[tj].name , ELJ,Eel  );
@@ -1049,7 +1014,7 @@ double evalExampleDerivs_LJQH2( int i0, int ni, int j0, int nj, int* types, Vec3
     return Etot;
 }
 
-double evalExampleDerivs_MorseQH2( int i0, int ni, int j0, int nj, int* types, Vec3d* ps, Quat4d* typeREQs, double* Qs, Quat4d* dEdREQs ){
+double evalExampleDerivs_MorseQH2( int i0, int ni, int j0, int nj, int* types, Vec3d* ps, Quat4d* typeREQs, double* Qs, Quat4d* dEdREQs )const{
         double Etot = 0.0;
     for(int ii=0; ii<ni; ii++){ // loop over all atoms[i] in system
         const int      i    = i0+ii;
@@ -1087,7 +1052,7 @@ double evalExampleDerivs_MorseQH2( int i0, int ni, int j0, int nj, int* types, V
             double dE_dR0  = 2.0 * alpha * E0 * ( e2p - e );
             double dE_dH2  = - E0 * e2;
             double ELJ     = E0 * dE_dE0;
-            if(bCheckRepulsion)[[unlikely]]{ checkSampleRepulsion( ELJ, i,j, ti,tj, r, true, true ); }
+            //if(bCheckRepulsion)[[unlikely]]{ checkSampleRepulsion( ELJ, i,j, ti,tj, r, true, true ); }
             // --- Energy and forces
             Etot    +=  ELJ + Eel;
             //printf( "evalExampleDerivs_MorseQH2()[%3i,%3i] (%8s,%8s) ELJ:  %20.10f   Eel: %20.10f \n", i,j, params->atypes[ti].name, params->atypes[tj].name , ELJ,Eel  );
@@ -1128,7 +1093,7 @@ inline static double funcVar_LJQH2( double r, double R0, double E0, double Q, do
 }
 
 template <typename Func>
-double evalExampleDerivs( Func func, int i0, int ni, int j0, int nj, int* types, Vec3d* ps, Quat4d* typeREQs, double* Qs, Quat4d* dEdREQs ){
+double evalExampleDerivs( Func func, int i0, int ni, int j0, int nj, int* types, Vec3d* ps, Quat4d* typeREQs, double* Qs, Quat4d* dEdREQs )const{
     double Etot = 0.0;
     for(int ii=0; ii<ni; ii++){ // loop over all atoms[i] in system
         const int      i    = i0+ii;
@@ -1181,10 +1146,10 @@ double run( int nstep, double Fmax, double dt, int imodel_, int ialg, bool bOMP,
     for(int i=0; i<nstep; i++){
         //printf("[%i]  DOFs=", i);for(int j=0;j<W.nDOFs;j++){ printf("%g ",W. DOFs[j]); };printf("\n");
         DOFsToTypes(); 
-        clean_derivs();
+        clean_fDOFs();
         //printf("[%i]  DOFs=", i);for(int j=0;j<W.nDOFs;j++){ printf("%g ",W. DOFs[j]); };printf("\n");
-        if(bOMP){ Err = evalDerivsSamp_omp  (); }
-        else    { Err = evalDerivsSamp_noOmp(); }
+        if(bOMP){ Err = evalSamples_omp  (); }
+        else    { Err = evalSamples_noOmp(); }
         if( verbosity>0)printStepDOFinfo( i, Err, "FitREQ::run() BEFORE REGULARIZATION" );
         if(bRegularize){ regularizeDOFs(); }
         //if( verbosity>0)printStepDOFinfo( i, Err, "FitREQ::run() AFTER  REGULARIZATION" );
@@ -1200,12 +1165,59 @@ double run( int nstep, double Fmax, double dt, int imodel_, int ialg, bool bOMP,
         if(bClamp     ){ limit_params();  }
         //printf("step= %i dt= %g\n", i, dt );
         //printStepDOFinfo( i, Err, "FitREQ::run() AFTER MOVE" );
-        if( F2<0.0   ){ printf("DYNAMICS STOPPED after %i iterations \n", i); printf("VERY FINAL DOFs= ");for(int j=0;j<nDOFs;j++){ printf("%.15g ",DOFs[j]); };printf("\n"); return Err; }
+        //if( F2<0.0   ){ printf("DYNAMICS STOPPED after %i iterations \n", i); printf("VERY FINAL DOFs= ");for(int j=0;j<nDOFs;j++){ printf("%.15g ",DOFs[j]); };printf("\n"); return Err; }
         if( F2<F2max ){ printf("CONVERGED in %i iterations \n", i);           printf("VERY FINAL DOFs= ");for(int j=0;j<nDOFs;j++){ printf("%.15g ",DOFs[j]); };printf("\n"); return Err; }
     }
     printf("step= %i DOFs= ", nstep); for(int j=0;j<nDOFs;j++){ printf("%g ",DOFs[j]); };printf("\n");
     printf("VERY FINAL DOFs= ");      for(int j=0;j<nDOFs;j++){ printf("%.15g ",DOFs[j]); };printf("\n");
     return Err;
+}
+
+double run_omp( int nstep, double Fmax, double dt, int imodel_, int ialg, bool bClamp, double max_step ){
+    imodel=imodel_;
+    double Err=0;
+    if( verbosity>1){ printf( "FitREQ::run() nstep %i Fmax %g dt %g isamp %i \n", nstep, Fmax, dt ); }
+    double F2max=Fmax*Fmax;
+    double F2;
+    int nsamp = samples.size();
+    double Error=0;
+    int itr=0;
+    #pragma omp parallel shared(itr, Error, nsamp, nstep, dt, max_step)
+    while(itr<nstep){
+        #pragma omp single
+        {
+            DOFsToTypes(); 
+            clean_fDOFs();
+            Error = 0.0;
+        }
+        #pragma omp parallel for reduction(+:Error)
+        for(int i=0; i<nsamp; i++){
+            double E; 
+            Error+=eval_sample_error( i, E );
+        }
+        #pragma omp single
+        {
+            if( verbosity>0)printStepDOFinfo( itr, Err, "FitREQ::run() BEFORE REGULARIZATION" );
+            if(bRegularize){ regularizeDOFs(); }      
+            switch(ialg){
+                case 0: F2 = move_GD         (      dt, max_step ); break;
+                case 1: F2 = move_MD         (      dt, max_step ); break;
+                case 2: F2 = move_GD_BB_short( itr, dt, max_step ); break;
+                case 3: F2 = move_GD_BB_long ( itr, dt, max_step ); break;
+                case 4: F2 = move_MD_nodamp  (      dt, max_step ); break;
+            }
+            if(bClamp     ){ limit_params();  }
+            if( F2<F2max ){ 
+                printf("CONVERGED in %i iterations \n", itr);           
+                printf("VERY FINAL DOFs= ");for(int j=0;j<nDOFs;j++){ printf("%.15g ",DOFs[j]); };printf("\n");  
+                itr = nstep;  // to terminate the while-loop
+            }
+            itr++;
+        }
+    } // while(itr<nstep){
+    printf("step= %i DOFs= ", nstep); for(int j=0;j<nDOFs;j++){ printf("%g ",DOFs[j]); };printf("\n");
+    printf("VERY FINAL DOFs= ");      for(int j=0;j<nDOFs;j++){ printf("%.15g ",DOFs[j]); };printf("\n");
+    return Error;
 }
 
 /**
@@ -1467,7 +1479,7 @@ double move_MD_nodamp( double dt, double max_step=-0.1 ){
 }
 
 /// @brief Cleans the derivative array by setting all its elements to zero.
-void clean_derivs(){ for(int i=0; i<nDOFs; i++){fDOFs[i]=0;} }
+void clean_fDOFs(){ for(int i=0; i<nDOFs; i++){fDOFs[i]=0;} }
 
 Vec2d getMinMax( int n, double* vec ){
     Vec2d bd = Vec2d{+1e+300,-1e+300};

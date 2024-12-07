@@ -34,7 +34,7 @@ max_step    = 0.01
 bEpairs     = True
 bAddEpairs  = bEpairs
 bOutXYZ     = False
-verbosity   = 3    # Added to enable debug printing
+verbosity   = 0    # Added to enable debug printing
 
 
 # ============== functions
@@ -173,9 +173,7 @@ weights = split_and_weight_curves(Etots, x0s, n_before_min=4)
 #plt.show(); exit()
 fit.setWeights( weights )
 
-
-test_getEs_openmp()
-
+#test_getEs_openmp()
 
 #print( "fit.nDOFs ", fit.nDOFs )
 DOFnames = [
@@ -215,16 +213,11 @@ DOFnames = [
 # ------ write unoptimized results
 #def getEs(imodel=0, Es=None, Fs=None, bOmp=False, bDOFtoTypes=False, bEs=True, bFs=False ):
 
-
-
-
-
-
-
-
-
 # # ------ optimize parameters (fit)
-#Err = fit.run( nstep=nstep, ErrMax=ErrMax, dt=dt, imodel=imodel, isampmode=isampmode, ialg=ialg, bRegularize=bRegularize, bClamp=bClamp, max_step=max_step, bEpairs=bEpairs )
+
+Err = fit.run( nstep=100, Fmax=1e-300, dt=0.0, imodel=imodel, iparallel=0, ialg=0,  bClamp=bClamp )
+Err = fit.run( nstep=100, Fmax=1e-300, dt=0.0, imodel=imodel, iparallel=1, ialg=0,  bClamp=bClamp )
+Err = fit.run( nstep=100, Fmax=1e-300, dt=0.0, imodel=imodel, iparallel=2, ialg=0,  bClamp=bClamp )
 
 # # ------ write optimized results
 # Es = fit.getEs( imodel=imodel, isampmode=isampmode, bEpairs=bEpairs )

@@ -54,8 +54,17 @@ void setWeights( int n, double* weights ){
 
 int export_Erefs( double* Erefs ){ return W.export_Erefs( Erefs ); }
 
-double run( int nstep, double Fmax, double dt, int imodel_, int ialg, bool bOMP, bool bClamp, double max_step ){
-    return W.run( nstep, Fmax, dt, imodel_, ialg, bOMP, bClamp, max_step );
+double run( int nstep, double Fmax, double dt, int imodel_, int ialg, int iparallel, bool bClamp, double max_step ){
+    long t0 = getCPUticks();
+    double Err=0;
+    switch (iparallel){
+        case 0:{ Err=W.run    ( nstep, Fmax, dt, imodel_, ialg, false, bClamp, max_step ); } break;
+        case 1:{ Err=W.run    ( nstep, Fmax, dt, imodel_, ialg, true,  bClamp, max_step ); } break;
+        case 2:{ Err=W.run_omp( nstep, Fmax, dt, imodel_, ialg,        bClamp, max_step ); } break;
+    }
+    double T = (getCPUticks()-t0);
+    printf( "Time: run(nstep=%6i,nsamp=%6i,iparallel=%i) T= %8.3f [GTicks] %8.3f [ticks/conf]\n", nstep, W.samples.size(), iparallel, T/(W.samples.size()*nstep), T );
+    return Err;
 }
 
 void setTypeToDOFs  (int i, double* REQ ){ W.setTypeToDOFs  ( i, *(Quat4d*)REQ ); }
@@ -65,10 +74,10 @@ double getEs( int imodel, double* Es, double* Fs, bool bOmp, bool bDOFtoTypes ){
     //printf( "getEs() imodel %i bOmp %i bDOFtoTypes %i \n", imodel, bOmp, bDOFtoTypes );
     W.imodel=imodel;
     if(bDOFtoTypes)W.DOFsToTypes(); 
-    W.clean_derivs();
+    W.clean_fDOFs();
     double E = 0;
-    if( bOmp ){ E = W.evalDerivsSamp_omp  ( Es ); }
-    else      { E = W.evalDerivsSamp_noOmp( Es ); }
+    if( bOmp ){ E = W.evalSamples_omp  ( Es ); }
+    else      { E = W.evalSamples_noOmp( Es ); }
     if( Fs ){ for(int i=0; i<W.nDOFs; i++){ Fs[i] = W.fDOFs[i]; } }
     return E;
 }
@@ -79,7 +88,7 @@ void scanParam( int iDOF, int imodel,  int n, double* xs,  double* Es, double* F
     for(int i=0; i<n; i++){
         W.DOFs[iDOF] = xs[i];
         W.DOFsToTypes();
-        double E = W.evalDerivsSamp_omp();
+        double E = W.evalSamples_omp();
         //if(bRegularize){ W.regularization_force_walls(); }
         if(bRegularize){ W.regularizeDOFs(); }
         if(Fs)Es[i] = E;
@@ -98,7 +107,7 @@ void scanParam2D( int iDOFx, int iDOFy, int imodel, int nx, int ny, double* xs, 
             //printf( "scanParam2D() ix %i iy %i i %i \n", ix, iy, i );
             W.DOFs[iDOFx] = xs[ix];
             W.DOFsToTypes();
-            double E = W.evalDerivsSamp_omp();
+            double E = W.evalSamples_omp();
             if(bRegularize){ W.regularizeDOFs(); }
             if(Es)Es[i] = E;
             if(Fx)Fx[i] = W.fDOFs[iDOFx];
