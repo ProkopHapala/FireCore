@@ -132,6 +132,12 @@ class Atoms{ public:
         }}};
     }
 
+    void saveXYZ( const char* fname, const char* mode="w", bool bN=false, bool bComment=false, Vec3i nPBC=Vec3i{1,1,1}, const char* comment="", bool bEnergy=true ){
+        FILE* fout = fopen(fname, mode );
+        atomsToXYZ( fout, bN, bComment, nPBC, comment, bEnergy );
+        fclose(fout);
+    }
+
     
 
     void toNewLattice( const Mat3d& lvec_new, Atoms* source=0 ){

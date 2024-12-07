@@ -39,10 +39,28 @@ verbosity   = 3    # Added to enable debug printing
 
 # ============== functions
 
+def check_array_difference(arr1, arr2, name, max_error=1e-8, err_message="arrays differs" ):
+    dmax = (arr1-arr2).max()
+    print(f"{name} dmax={dmax}")
+    if not np.allclose(arr1, arr2, atol=max_error):
+        print(f"{name} arrays differ:")
+        for i, (v1, v2) in enumerate(zip(arr1, arr2)):
+            if not np.isclose(v1, v2): print(f"{i}\t{v1}\t{v2}")
+        assert False, f"{name} "+err_message
+
+def test_getEs_openmp():
+    E1, Es1, Fs1 = fit.getEs(imodel=imodel, bOmp=False, bEs=True, bFs=True)
+    E2, Es2, Fs2 = fit.getEs(imodel=imodel, bOmp=True,  bEs=True, bFs=True)
+    check_array_difference(Es1, Es2, "Es w/o OpenMP")
+    check_array_difference(Fs1, Fs2, "Fs w/o OpenMP")
+    print( "test_getEs_openmp() E1,E2", E1, E2 )
+    assert np.isclose(E1, E2), f"E values differ: E1={E1}, E2={E2}"
+    print( "test_getEs_openmp() passed " )
+
 def read_xyz_data(fname="input_all.xyz"):
     """Read XYZ file and extract Etot and x0 values from comment lines"""
-    print("read_xyz_data()\n")
-    print("Reading XYZ file:", fname)
+    #print("read_xyz_data()\n")
+    #print("Reading XYZ file:", fname)
     Etots = []
     x0s = []
     with open(fname, 'r') as f:
@@ -133,13 +151,13 @@ plt.show()
 # ------ load stuff
 #fit.setVerbosity(1)
 fit.setVerbosity(verbosity)
-fit.loadTypes_new( )     # load atom types
+fit.loadTypes( )     # load atom types
 
 fname = "input_all.xyz"
-fit.loadTypeSelection_walls( fname="typeSelection.dat" )     # load atom types
-nbatch = fit.loadXYZ_new( fname, bAddEpairs, bOutXYZ )     # load reference geometry
-#nbatch = fit.loadXYZ_new( "input_small.xyz", bAddEpairs, bOutXYZ )     # load reference geometry
-#nbatch = fit.loadXYZ_new( "input_single.xyz", bAddEpairs, bOutXYZ )     # load reference geometry
+fit.loadTypeSelection( fname="typeSelection.dat" )     # load atom types
+nbatch = fit.loadXYZ( fname, bAddEpairs, bOutXYZ )     # load reference geometry
+#nbatch = fit.loadXYZ( "input_small.xyz", bAddEpairs, bOutXYZ )     # load reference geometry
+#nbatch = fit.loadXYZ( "input_single.xyz", bAddEpairs, bOutXYZ )     # load reference geometry
 
 fit.getBuffs()
 
@@ -156,8 +174,10 @@ weights = split_and_weight_curves(Etots, x0s, n_before_min=4)
 fit.setWeights( weights )
 
 
+test_getEs_openmp()
 
-print( "fit.nDOFs ", fit.nDOFs )
+
+#print( "fit.nDOFs ", fit.nDOFs )
 DOFnames = [
 "E_N3.Q", # 0
 "E_NR.Q", # 1
@@ -191,12 +211,20 @@ DOFnames = [
 # plotDOFscans( [10,11]    , np.linspace(  0.0,  0.99, 30 ), label="H2  H-"   )
 # plt.show()
 
+
 # ------ write unoptimized results
-# Es = fit.getEs( imodel=imodel, isampmode=isampmode, bEpairs=bEpairs )
-# np.savetxt("firecore0.dat", Es )
+#def getEs(imodel=0, Es=None, Fs=None, bOmp=False, bDOFtoTypes=False, bEs=True, bFs=False ):
+
+
+
+
+
+
+
+
 
 # # ------ optimize parameters (fit)
-Err = fit.run( nstep=nstep, ErrMax=ErrMax, dt=dt, imodel=imodel, isampmode=isampmode, ialg=ialg, bRegularize=bRegularize, bClamp=bClamp, max_step=max_step, bEpairs=bEpairs )
+#Err = fit.run( nstep=nstep, ErrMax=ErrMax, dt=dt, imodel=imodel, isampmode=isampmode, ialg=ialg, bRegularize=bRegularize, bClamp=bClamp, max_step=max_step, bEpairs=bEpairs )
 
 # # ------ write optimized results
 # Es = fit.getEs( imodel=imodel, isampmode=isampmode, bEpairs=bEpairs )

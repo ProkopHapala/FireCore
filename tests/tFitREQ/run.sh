@@ -20,4 +20,5 @@ export LD_PRELOAD
 
 echo "#=========== RUN"
 > debug.xyz
-python3 opt_mini.py 2> asan.log | tee OUT
+python3 -u opt_mini.py 2> asan.log | tee OUT
+#python3 opt_mini.py

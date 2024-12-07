@@ -65,30 +65,11 @@ lib.setVerbosity.restype   =  None
 def setVerbosity(verbosity=1, idebug=0):
     return lib.setVerbosity(verbosity, idebug)
 
-
-
-#  void init_types(int ntyp, int* typeMask, double* typREQs ){
-# lib.init_types.argtypes  = [c_int, c_int_p, c_double_p, c_bool] 
-# lib.init_types.restype   =  None
-# def init_types(typeMask, typREQs=None, bCopy=True):
-#     ntyp = len(typeMask)
-#     return lib.init_types(ntyp, _np_as(typeMask,c_int_p), _np_as(typREQs,c_double_p), bCopy)
-
-#  void setSystem( int isys, int na, int* types, double* ps, bool bCopy=false ){
-# lib.setSystem.argtypes  = [c_int, c_int, c_int_p, c_double_p, c_bool] 
-# lib.setSystem.restype   =  None
-# def setSystem(isys, types, ps, bCopy=False):
-#     na=len(types)
-#     return lib.setSystem(isys, na, _np_as(types,c_int_p), _np_as(ps,c_double_p), bCopy)
-
-#  void setRigidSamples( int n, double* Es_, Mat3d* poses_, bool bCopy ){
-# lib.setRigidSamples.argtypes  = [c_int, c_double_p, c_double_p, c_bool, c_bool] 
-# lib.setRigidSamples.restype   =  None
-# def setRigidSamples(Es, poses, bCopy=False, bAlloc=False):
-#     if Es    is not None: n = len(Es)
-#     if poses is not None: n = len(poses)
-#     return lib.setRigidSamples(n, _np_as(Es,c_double_p), _np_as(poses,c_double_p), bCopy, bAlloc)
-
+# void setSwitches( int EvalJ, int WriteJ, int CheckRepulsion, int Regularize, int Epairs){
+lib.setSwitches.argtypes  = [c_int, c_int, c_int, c_int, c_int]
+lib.setSwitches.restype   =  None    
+def setSwitches(EvalJ=0, WriteJ=0, CheckRepulsion=0, Regularize=0, Epairs=0):
+    return lib.setSwitches(EvalJ, WriteJ, CheckRepulsion, Regularize, Epairs)
 
 # int export_Erefs( double* Erefs ){ 
 lib.export_Erefs.argtypes  = [c_double_p]
@@ -107,20 +88,20 @@ def setWeights(weights):
     n = len(weights)
     lib.setWeights(n, _np_as(weights,c_double_p))
     
-
-#  double run( int nstep, double ErrMax, double dt, bool bRigid ){
-lib.run.argtypes  = [c_int, c_double, c_double, c_int, c_int, c_int, c_bool, c_bool, c_double, c_bool] 
+#  double run( int nstep, double Fmax, double dt, int imodel_, int ialg, bool bOMP, bool bClamp, double max_step ){
+lib.run.argtypes  = [c_int, c_double, c_double, c_int, c_int, c_bool, c_bool, c_double]
 lib.run.restype   =  c_double
-def run(nstep=1000, ErrMax=1e-8, dt=0.01, imodel=0, isampmode=2, ialg=2, bRegularize=False, bClamp=False, max_step=0.05, bEpairs=False):
-    return lib.run(nstep, ErrMax, dt, imodel, isampmode, ialg, bRegularize, bClamp, max_step, bEpairs)
+def run(nstep=1000, Fmax=1e-8, dt=0.01, imodel=0, ialg=2, bOMP=True, bClamp=False, max_step=0.05):
+    return lib.run(nstep, Fmax, dt, imodel, ialg, bOMP, bClamp, max_step)
 
-#void getEs( double* Es, bool bRigid ){
-lib.getEs.argtypes  = [c_int, c_double_p,  c_int, c_bool] 
+# double getEs( int imodel, double* Es, double* Fs, bool bOmp, bool bDOFtoTypes ){
+lib.getEs.argtypes  = [c_int, c_double_p,  c_double_p, c_bool, c_bool]
 lib.getEs.restype   =  c_double
-def getEs(imodel=0, Es=None, isampmode=2, bEpairs=False):
-    if Es is None: Es = np.zeros( nbatch )
-    Eerr = lib.getEs(imodel, _np_as(Es,c_double_p), isampmode, bEpairs)
-    return Es
+def getEs(imodel=0, Es=None, Fs=None, bOmp=False, bDOFtoTypes=False, bEs=True, bFs=False ):
+    if bEs and (Es is None): Es = np.zeros( nbatch )
+    if bFs and (Fs is None): Fs = np.zeros( nDOFs  )
+    Eerr = lib.getEs(imodel, _np_as(Es,c_double_p), _np_as(Es,c_double_p), bOmp, bDOFtoTypes)
+    return Eerr, Es, Fs
 
 # void scanParam( int iDOF, int imodel,  int n, double* xs,  double* Es, double* Fs, bool bRegularize ){
 lib.scanParam.argtypes  = [c_int, c_int, c_int, c_double_p, c_double_p, c_double_p, c_bool]
@@ -143,43 +124,17 @@ def scanParam2D(iDOFx, iDOFy, xs, ys, Es=None, Fx=None, Fy=None, imodel=2, bRegu
     lib.scanParam2D(iDOFx, iDOFy, imodel, nx, ny, _np_as(xs,c_double_p), _np_as(ys,c_double_p),    _np_as(Es,c_double_p), _np_as(Fx,c_double_p), _np_as(Fy,c_double_p), bRegularize)
     return Es, Fx, Fy
 
-#  double loadXYZ( char* fname, int n0, int* i0s, int ntest, int* itests, int* types0, int testtypes ){
-# lib.loadXYZ.argtypes  = [c_char_p, c_int, c_int_p, c_int, c_int_p, c_int_p, c_int_p] 
-# lib.loadXYZ.restype   =  c_int
-# def loadXYZ(fname,  i0s, itests, types0=None, testtypes=None, fname_AtomTypes="data/AtomTypes.dat"):
-#     global nbatch
-#     n0     = len( i0s    )
-#     ntest  = len( itests )
-#     i0s    = np.array(i0s   ,np.int32)
-#     itests = np.array(itests,np.int32)
-#     if(types0    is not None): types0    = np.array(types0   ,np.int32)
-#     if(testtypes is not None): testtypes = np.array(testtypes,np.int32)
-#     nbatch = lib.loadXYZ(cstr(fname), n0, _np_as(i0s,c_int_p), ntest, _np_as(itests,c_int_p), _np_as(types0,c_int_p), _np_as(testtypes,c_int_p), cstr(fname_AtomTypes))
-#     return nbatch
-
-# # void loadTypes( const char* fname_ElemTypes, const char* fname_AtomTypes ){
-# lib.loadTypes.argtypes  = [c_char_p, c_char_p]
-# lib.loadTypes.restype   =  None
-# def loadTypes(fEtypes="data/ElementTypes.dat", fAtypes="data/AtomTypes.dat"):
-#     return lib.loadTypes(cstr(fEtypes), cstr(fAtypes))
-
 # void loadTypes_new( const char* fname_ElemTypes, const char* fname_AtomTypes ){
-lib.loadTypes_new.argtypes  = [c_char_p, c_char_p]
-lib.loadTypes_new.restype   =  None
-def loadTypes_new(fEtypes="data/ElementTypes.dat", fAtypes="data/AtomTypes.dat"):
-    return lib.loadTypes_new(cstr(fEtypes), cstr(fAtypes))
-
-# # int loadTypeSelection( const char* fname ){
-# lib.loadTypeSelection.argtypes  = [c_char_p, c_int]
-# lib.loadTypeSelection.restype   =  c_int
-# def loadTypeSelection(fname="typeSelection.dat", imodel=0):
-#     return lib.loadTypeSelection(cstr(fname), imodel)
+lib.loadTypes.argtypes  = [c_char_p, c_char_p]
+lib.loadTypes.restype   =  None
+def loadTypes(fEtypes="data/ElementTypes.dat", fAtypes="data/AtomTypes.dat"):
+    return lib.loadTypes(cstr(fEtypes), cstr(fAtypes))
 
 # int loadTypeSelection_walls( const char* fname ){
-lib.loadTypeSelection_walls.argtypes  = [c_char_p]
-lib.loadTypeSelection_walls.restype   =  c_int
-def loadTypeSelection_walls(fname="typeSelection.dat"):
-    return lib.loadTypeSelection_walls(cstr(fname))
+lib.loadTypeSelection.argtypes  = [c_char_p]
+lib.loadTypeSelection.restype   =  c_int
+def loadTypeSelection(fname="typeSelection.dat"):
+    return lib.loadTypeSelection(cstr(fname))
 
 #void loadWeights( const char* fname ){
 lib.loadWeights.argtypes  = [c_char_p]
@@ -188,11 +143,11 @@ def loadWeights(fname="weights.dat"):
     return lib.loadWeights(cstr(fname))
 
 # int loadXYZ_new( const char* fname, const char* fname_AtomTypes  ){
-lib.loadXYZ_new.argtypes  = [c_char_p, c_bool, c_bool]
-lib.loadXYZ_new.restype   =  c_int
-def loadXYZ_new(fname, bAddEpairs=False, bOutXYZ=False):
+lib.loadXYZ.argtypes  = [c_char_p, c_bool, c_bool]
+lib.loadXYZ.restype   =  c_int
+def loadXYZ(fname, bAddEpairs=False, bOutXYZ=False):
     global nbatch
-    nbatch = lib.loadXYZ_new(cstr(fname), bAddEpairs, bOutXYZ)
+    nbatch = lib.loadXYZ(cstr(fname), bAddEpairs, bOutXYZ)
     return nbatch
 
 #  void setTypeToDOFs(int i, double* REQ )
@@ -277,35 +232,6 @@ def getBuffs( ):
     typeKreg_low  = getBuff ( "typeKreg_low", (ntype,) )
     typeKreg_high = getBuff ( "typeKreg_high", (ntype,) )
     #print( "getBuffs().3" )
-
-# def getBuffs():
-#     init_buffers()
-#     global ndims,nDOFs,ntype,nbatch,n0,n1, params
-#     ndims = getIBuff( "ndims", (6,) )  # [nDOFs,natoms,nnode,ncap,npi,nbonds]
-#     nDOFs=ndims[0]; ntype=ndims[1]; nbatch=ndims[2];n0=ndims[3];n1=ndims[4]; 
-#     print( "getBuffs(): nDOFs %i ntype %i nbatch %i n0 %i n1 %i" %(nDOFs,ntype,nbatch,n0,n1) )
-#     params     = getBuff( "params", 4 )
-
-#     global DOFs,fDOFs,typeREQs,typeREQsMin,typeREQsMax,typeREQs0,typeKreg,typToREQ,weights,Es,poses,ps1,ps2,ps3, types1,types2,types3
-#     DOFs       = getBuff ( "DOFs",     nDOFs  )
-#     fDOFs      = getBuff ( "fDOFs",    nDOFs  )
-#     typToREQ   = getIBuff( "typToREQ",    (ntype,4)  )
-#     typeREQs   = getBuff ( "typeREQs",    (ntype,4)  )
-#     typeREQs0  = getBuff ( "typeREQs0",   (ntype,4)  )
-#     typeREQsMin= getBuff ( "typeREQsMin", (ntype,4)  )
-#     typeREQsMax= getBuff ( "typeREQsMax", (ntype,4)  )
-#     typeKreg   = getBuff ( "typeKreg",    (ntype,4)  )
-    
-#     weights = getBuff ( "weights",  nbatch )
-#     Es       = getBuff ( "Es",       nbatch ) 
-#     poses    = getBuff ( "poses",  (nbatch,3,3) )
-#     ps1      = getBuff ( "ps1",    (n0,3)    )
-#     #ps2      = getBuff ( "ps2",  (n1,3)   )
-#     #ps3      = getBuff ( "ps3",  (n1,3)   )
-#     types1   = getIBuff( "types1", n0 )
-#     #types2   = getIBuff( "types2", n1 )
-#     #types3   = getIBuff( "types3", n1 )
-
 
 ################## Python ###############
 
