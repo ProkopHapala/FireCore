@@ -85,8 +85,8 @@ void export_epairs(Atoms* sample, int offset) {
             int ih = adata->bs[i].x;
             int ie = adata->bs[i].y;
             Vec2i& epi = ieps[offset+ih];
-            if(epi.x == -1){ epi.x = ie; }
-            else           { epi.y = ie; }
+            if(epi.x == -1){ epi.x = ie + offset; }  // Store global index
+            else           { epi.y = ie + offset; }
         }
     }
 }
@@ -117,53 +117,50 @@ void prepare_samples() {
     }
 }
 
+void tryAddAtomToDOF(int idof, int type, int baseIdx, int& count, int ia, int icomp, bool bWrite, float val=1.0f ) {
+    if(ia < 0) return;                   // is this valid atom index ?
+    if( atypes[ia] != type ) return;     // is this the right type ?
+    if(bWrite) {
+        DOFtoAtom[baseIdx + count] = ia;
+        Quat4f coef = Quat4fZero;
+        coef.array[icomp] = val;    // Normal coefficient for regular atoms
+        DOFcofefs[baseIdx + count] = coef;
+    }
+    count++;
+}
+
 int processDOFmappings(bool bWrite=false) {
     int nfound = 0;
-    std::vector<int> nextIndex;
-    if(bWrite){
-        nextIndex.resize(nDOFs, 0);
-    }
     // Process each DOF
     for(int idof=0; idof<nDOFs; idof++) {
         Vec2i typeComp = REQtoTyp[idof];
         int   type     = typeComp.x;
         int   icomp    = typeComp.y;
-        
-        // Count atoms of this type
+        // Count number of atoms relevant for this DOF
         int count = 0;
-        for(int i=0; i<natomsTot; i++) {
-            if(atypes[i] == type){
-                if(bWrite){
-                    int baseIdx = DOFnis[idof].x;
-                    int idx     = nextIndex[idof]++;
-                    DOFtoAtom [baseIdx + idx] = i;
-                    // Set coefficient vector (like {0,0,1,0} for Q component)
-                    Quat4f coef = Quat4fZero;
-                    coef.array[icomp] = 1.0f;
-                    DOFcofefs[baseIdx + idx] = coef;
-                }
-                count++;
+        int baseIdx = nfound;  // Start index for this DOF's entries
+        // First process all atoms of this type
+        for(int ia=0; ia<natomsTot; ia++) {
+            tryAddAtomToDOF(idof, type, baseIdx, count, ia, icomp, bWrite);
+            // For charge component, also process electron pairs
+            if(icomp == 2) {  // charge component
+                Vec2i ep = ieps[ia];
+                tryAddAtomToDOF(idof, type, baseIdx, count, ep.x, 2, bWrite, -1.0f );  // -1 for negative coef
+                tryAddAtomToDOF(idof, type, baseIdx, count, ep.y, 2, bWrite, -1.0f );
             }
         }
-        if(bWrite){
-            DOFnis[idof] = Vec2i{nfound, count};
-        }
+        DOFnis[idof] = Vec2i{nfound, count};
         nfound += count;
     }
     return nfound;
 }
 
 void prepareDOFMappings() {
-    // First pass: count total DOF indices
-    nDOFsTot = processDOFmappings(false);
-    
-    // Allocate arrays
+    DOFnis   .resize(nDOFs);
+    nDOFsTot = processDOFmappings(false);  // First pass: count total DOF indices
     DOFtoAtom.resize(nDOFsTot);
     DOFcofefs.resize(nDOFsTot);
-    DOFnis.resize(nDOFs);
-    
-    // Second pass: build mappings
-    processDOFmappings(true);
+    processDOFmappings(true);   // Second pass: build mappings
 }
 
 /*
