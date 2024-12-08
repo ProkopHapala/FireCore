@@ -53,7 +53,7 @@ class FitREQ_ocl : public FitREQ { public:
     std::vector<float>   fDOFs_;     // [nDOFs]    derivatives of REQH parameters
     std::vector<Vec2i>   DOFnis;    // [nDOFs] Ranges for DOF mappings
     std::vector<int>     DOFtoAtom; // [nInds]  list of atom indexes relevant for each DOF
-    std::vector<float>   DOFcofefs; // [nInds] Factors for update of each DOF from the atom dEdREQH parameters   fDOFi = dot( DOFcofefs[i], dEdREQH[i] )
+    std::vector<Quat4f>  DOFcofefs; // [nInds] Factors for update of each DOF from the atom dEdREQH parameters   fDOFi = dot( DOFcofefs[i], dEdREQH[i] )
     
     // Buffer sizes and counts
     int natomsTot = 0;     // Total number of atoms across all samples
@@ -117,41 +117,53 @@ void prepare_samples() {
     }
 }
 
-void prepareDOFMappings() {
-    // First pass: count total DOF indices
-    nDOFsTot = 0;
-    DOFnis.resize(nDOFs);
-    
+int processDOFmappings(bool bWrite=false) {
+    int nfound = 0;
+    std::vector<int> nextIndex;
+    if(bWrite){
+        nextIndex.resize(nDOFs, 0);
+    }
+    // Process each DOF
     for(int idof=0; idof<nDOFs; idof++) {
-        // Get type and component from REQtoTyp
         Vec2i typeComp = REQtoTyp[idof];
         int   type     = typeComp.x;
+        int   icomp    = typeComp.y;
         
         // Count atoms of this type
         int count = 0;
         for(int i=0; i<natomsTot; i++) {
-            if(atypes[i] == type) count++;
-        }
-        
-        DOFnis[idof] = Vec2i{nDOFsTot, count};
-        nDOFsTot += count;
-    }
-    
-    // Second pass: build DOFtoAtom mapping
-    DOFtoAtom.resize(nDOFsTot);
-    std::vector<int> nextIndex(nDOFs, 0);
-    
-    for(int i=0; i<natomsTot; i++) {
-        int type = atypes[i];
-        // Find DOFs that map to this type
-        for(int idof=0; idof<nDOFs; idof++) {
-            if(REQtoTyp[idof].x == type) {
-                int baseIdx = DOFnis[idof].x;
-                int idx = nextIndex[idof]++;
-                DOFtoAtom[baseIdx + idx] = i;
+            if(atypes[i] == type){
+                if(bWrite){
+                    int baseIdx = DOFnis[idof].x;
+                    int idx     = nextIndex[idof]++;
+                    DOFtoAtom [baseIdx + idx] = i;
+                    // Set coefficient vector (like {0,0,1,0} for Q component)
+                    Quat4f coef = Quat4fZero;
+                    coef.array[icomp] = 1.0f;
+                    DOFcofefs[baseIdx + idx] = coef;
+                }
+                count++;
             }
         }
+        if(bWrite){
+            DOFnis[idof] = Vec2i{nfound, count};
+        }
+        nfound += count;
     }
+    return nfound;
+}
+
+void prepareDOFMappings() {
+    // First pass: count total DOF indices
+    nDOFsTot = processDOFmappings(false);
+    
+    // Allocate arrays
+    DOFtoAtom.resize(nDOFsTot);
+    DOFcofefs.resize(nDOFsTot);
+    DOFnis.resize(nDOFs);
+    
+    // Second pass: build mappings
+    processDOFmappings(true);
 }
 
 /*
