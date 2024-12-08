@@ -58,12 +58,81 @@ void rigid_transform( Vec3d shift, Vec3d* unshift, Vec3d dir, Vec3d up, int n, V
     }
 }
 
-struct AddedData{
-    int nep=0;                   // number of electron pairs
-    Vec2i* bs=0;                 // bonds between electron pairs and host atoms  (host_atom_index, epair_index)
-    Vec3d* dirs=0;               // directions of electron pairs
-};
+inline double getEpairAtom( double r, double Hij, double k, double& dEdH ){
+    dEdH = exp( -k * r );
+    return Hij * dEdH;
+}
 
+struct AddedData{
+    int    nep  =0;      // number of electron pairs
+    Vec2i* bs   =0;      // bonds between electron pairs and host atoms  (host_atom_index, epair_index)
+    Vec3d* dirs =0;      // directions of electron pairs
+
+    // New members for H-bond optimization
+    double  Emodel0     = NAN;     // Static model energy without H-bond corrections
+    int     HBna        = 0;       // Number of atoms with significant H-bond corrections
+    int     HBn0        = -1;      // Split point between fragment 1 and 2 in HB-filtered arrays
+    int*    HBatomsInd  = 0;       // Index of host atom for electron pairs (-1 for non-electron-pair atoms)
+    int*    HBatomsHost = 0;       // Index of host atom for electron pairs (-1 for non-electron-pair atoms)
+    int*    HBatomsType = 0;       // Positions of H-bond corrected atoms
+    Vec3d*  HBatomsPos  = 0;       // Positions of H-bond corrected atoms
+    Quat4d* HBatomsREQs = 0;       // REQ parameters of H-bond corrected atoms
+
+    AddedData() = default;
+    AddedData(int natoms, int nhb) {
+        realloc(natoms, nhb);
+    }
+
+    void realloc(int natoms, int nhb) {
+        HBna = nhb;
+        _realloc0( bs, natoms,   Vec2i{-1,-1} );
+        _realloc0( dirs, natoms, Vec3dNAN );
+        if(nhb==0) return;
+        _realloc0( HBatomsInd,   nhb, -1 );
+        _realloc0( HBatomsHost,  nhb, -1 );
+        _realloc0( HBatomsType,  nhb, -1 );
+        _realloc0( HBatomsPos,   nhb, Vec3dNAN );
+        _realloc0( HBatomsREQs,  nhb, Quat4dNAN );
+    }
+
+    void dealloc() {
+        _dealloc( bs );
+        _dealloc( dirs );
+        if(HBna==0) return;
+        _dealloc( HBatomsInd );
+        _dealloc( HBatomsHost );
+        _dealloc( HBatomsType );
+        _dealloc( HBatomsPos );
+        _dealloc( HBatomsREQs );
+    }
+
+    ~AddedData() {
+        dealloc();
+    }
+
+    int initFromREQs( int natoms, int n0, Quat4d* REQs, int* atypes, Vec3d* apos, bool bWrite=false ) {
+        // Select only hydrogen bonded atoms
+        int nfound  =  0;
+        int nfound0 = -1;
+        for(int ia=0; ia<natoms; ia++ ) {
+            Quat4d REQ = REQs[ia];
+            if( fabs(REQ.w) < 1e-300 ) continue;
+            if( bWrite ) {
+                HBatomsInd [nfound] = ia;
+                HBatomsHost[nfound] = bs[ia].x;
+                HBatomsType[nfound] = atypes[ia];
+                HBatomsPos [nfound] = apos[ia];
+                HBatomsREQs[nfound] = REQ;
+            }
+            if( ia < n0 ) nfound0 = nfound;
+            nfound++;
+        }
+        HBna = nfound;
+        HBn0 = nfound0+1;
+        return nfound;
+    }
+
+};
 
 // =================================
 // ====   class    FitREQ       ====
@@ -141,6 +210,9 @@ class FitREQ{ public:
 
     MM::Builder builder;
     MMFFparams* params=0; 
+
+    // New members for H-bond optimization
+    bool bEvalOnlyCorrections = false;
 
 // =================================
 // =========== Functions ===========
@@ -550,7 +622,7 @@ void addAndReorderEpairs(Atoms*& atoms, FILE* fout=nullptr) {
     }
 
     // Store electron pair relationships in AddedData
-    AddedData* data =  new AddedData();
+    AddedData* data = new AddedData();
     data->nep       = nep_found;
     data->bs        = bs;       //  bs[i].x is epair index, bs[i].y is host atom index
     data->dirs      = dirs;   
@@ -710,7 +782,7 @@ void fillTempArrays( const Atoms* atoms, Vec3d* apos, double* Qs  )const{
 }
 
 __attribute__((hot)) 
-double eval_sample( int isamp, const Atoms* atoms, double wi, Quat4d* fs ) const {
+double evalSample( int isamp, const Atoms* atoms, double wi, Quat4d* fs ) const {
     //double wi   = (weights)? weights[isamp] : 1.0; 
     alignas(32) double Qs  [atoms->natoms];
     alignas(32) Vec3d  apos[atoms->natoms];   // atomic positions
@@ -743,19 +815,41 @@ double eval_sample( int isamp, const Atoms* atoms, double wi, Quat4d* fs ) const
     return E;
 }
 
+double evalSample_corr( int isamp, const AddedData* adata, double wi, Quat4d* fs ) const {
+    int     nj = adata->HBn0;
+    int     j0 = 0; 
+    int     ni = adata->HBna - adata->HBn0;
+    int     i0 = adata->HBn0;
+    for(int i=0; i<adata->HBna; i++){ fs[i]=Quat4dZero; }
+    double E=0;
+    bool bJ = bEvalJ && ( !bWriteJ );
+    switch (imodel){
+        case 1:{ 
+            // double evalExampleDerivs_LJQH2_corr( int i0, int ni, int j0, int nj, Vec3d* ps, Quat4d* REQs, int* host, Quat4d* dEdREQs ) const {
+            E =   evalExampleDerivs_LJQH2_corr   ( i0, ni, j0, nj, adata->HBatomsPos, adata->HBatomsREQs, adata->HBatomsHost, fs );    // variational derivatives on molecule 1
+            if(bJ)evalExampleDerivs_LJQH2_corr   ( j0, nj, i0, ni, adata->HBatomsPos, adata->HBatomsREQs, adata->HBatomsHost, fs );    // variational derivatives on molecule 2
+        }break;
+    }
+    if( E>EmaxSample ){
+        if(verbosity>0) printf( "skipped sample [%i] E(%g)>EmaxSample(%g) atoms too close \n", isamp, E, EmaxSample );
+        return E;
+    } 
+    return E;
+}
+
 __attribute__((hot)) 
-double eval_sample_error( int isamp, double& E ){
+double evalSampleError( int isamp, double& E ){
     //isamp_debug = i;
     Atoms* atoms  = samples[isamp];
     double wi     = (weights)? weights[isamp] : 1.0;
     if(wi<1e-300) return 0;
     alignas(32) Quat4d fs  [atoms->natoms];
-    E = eval_sample( isamp, atoms, wi, fs );
+    E = evalSample( isamp, atoms, wi, fs );
     //printf( "evalDerivsSamp() isamp: %3i E: %20.10f Eref: %20.10f \n", i, E, Eref );
-    double Eref   = atoms->Energy;
-    double dE     = E - Eref;
-    double dEw    = 2.0*dE*wi;
-    double Error  = dE*dE*wi;
+    double Eref    = atoms->Energy;
+    double dE      = E - Eref;
+    double dEw     = 2.0*dE*wi;
+    double Error   = dE*dE*wi;
     double* fDOFs_ = fDOFs;
     if(bBroadcastFDOFs){ 
         fDOFs_ = sample_fdofs + isamp*nDOFs; 
@@ -768,6 +862,34 @@ double eval_sample_error( int isamp, double& E ){
     }
     return Error;
 }
+
+__attribute__((hot)) 
+double evalSampleError_corr( int isamp, double& E ){
+    //isamp_debug = i;
+    Atoms* atoms  = samples[isamp];
+    const AddedData* adata = (const AddedData*)(atoms->userData);
+    double wi     = (weights)? weights[isamp] : 1.0;
+    if(wi<1e-300) return 0;
+    alignas(32) Quat4d fs  [adata->HBna];
+    E = evalSample_corr( isamp, adata, wi, fs );
+    //printf( "evalDerivsSamp() isamp: %3i E: %20.10f Eref: %20.10f \n", i, E, Eref );
+    double Emodel0 = adata->Emodel0;
+    double Eref    = atoms->Energy;
+    double dE      = E - Emodel0 - Eref;
+    double dEw     = 2.0*dE*wi;
+    double Error   = dE*dE*wi;
+    double* fDOFs_ = fDOFs;
+    if(bBroadcastFDOFs){ 
+        fDOFs_ = sample_fdofs + isamp*nDOFs; 
+        for(int k=0; k<nDOFs; k++){ fDOFs_[k]=0; }
+    }
+    acumDerivs_corr( adata->HBna, adata->HBatomsType, adata->HBatomsHost, dEw, fs, fDOFs_ );
+    return Error;
+}
+
+// =========== Correction Only optimized versions of evalSample and evalSampleError
+
+
 
 /**
  * @brief Evaluates the variational derivatives of the fitting error (sumed batch training samples) with respect to all fitting parameters (i.e. non-covalent interaction parameters REQH(Rvdw,Evdw,Q,Hb) for each atom type). The atomic systems are not assumed rigid (i.e. the atomic positions can vary freely from sample to sample).
@@ -782,7 +904,8 @@ double evalSamples_noOmp( double* Eout=0 ){
     int nsamp = samples.size();
     for(int i=0; i<nsamp; i++){
        double E; 
-       Error+=eval_sample_error( i, E );
+       Error+=evalSampleError( i, E );
+       if(bEvalOnlyCorrections){ ((AddedData*)samples[i]->userData)->Emodel0 = E; }
        if(Eout)Eout[i]=E;
     }
     return Error;
@@ -796,7 +919,7 @@ double evalSamples_omp( double* Eout=0 ){
     #pragma omp parallel for reduction(+:Error)
     for(int i=0; i<nsamp; i++){
        double E; 
-       Error+=eval_sample_error( i, E );
+       Error+=evalSampleError( i, E );
        if(Eout)Eout[i]=E;
     }
     return Error;
@@ -887,8 +1010,29 @@ void acumHostDerivs( int nepair, Vec2i* epairAndHostIndex, int* types, double dE
     }
 }
 
+
+__attribute__((hot)) 
+void acumDerivs_corr( int n, int* types, int* host, double dEw, Quat4d* fs, double* fDOFs ){
+    for(int i=0; i<n; i++){
+        int t            = types[i];     // map atom index i to atom type t
+        int ih           = host[i];
+        const Quat4i& tt = typToREQ[t];  // get index of degrees of freedom for atom type t
+        const Quat4d  f  = fs[i];
+        if(tt.x>=0){ fDOFs[tt.x]+=f.x*dEw; }
+        if(tt.y>=0){ fDOFs[tt.y]+=f.y*dEw; }
+        if(tt.z>=0){ fDOFs[tt.z]+=f.z*dEw; }
+        if(tt.w>=0){ fDOFs[tt.w]+=f.w*dEw; }
+        if(ih>=0){  // electron pair
+            const Quat4i& tth = typToREQ[ih];       // get index of degrees of freedom for atom type ih
+            if(tth.z>=0){ fDOFs[tth.z]-=f.z*dEw; }  // we subtract the variational derivative of the host atom charge because the charge is transfered from host to the electron pair
+        }
+    }
+}
+
+
+
 /**
- * @brief Calculates the correction to the electrostatic energy and its derivative with respect to the charge.
+ * Calculates the correction to the electrostatic energy and its derivative with respect to the charge.
  */
 __attribute__((hot)) 
 double corr_elec( double ir, double ir2, double Q, Vec3d d, Vec3d* dirs, int i, int nep, Vec2i* bs, int nj, Vec3d* pos, int j, Vec3d* ps, double &dE_dQ){
@@ -972,9 +1116,61 @@ bool checkSampleRepulsion( double Eij, int i, int j, int ti, int tj, double r, b
     //iBadFound++; if(iBadFound>=nBadFoundMax){ printf("ERROR in evalExampleDerivs_LJQH2(): too many bad pairs (%i) \n", iBadFound); exit(0); }
     return true;
 }
-
+    
+// Optimized versions of evaluation functions
 __attribute__((hot)) 
-double evalExampleDerivs_LJQH2( int i0, int ni, int j0, int nj, int* __restrict__ types, Vec3d* ps, Quat4d* __restrict__ typeREQs, double* __restrict__ Qs, Quat4d* __restrict__ dEdREQs )const{
+double evalExampleDerivs_LJQH2_corr( int i0, int ni, int j0, int nj, Vec3d* ps, Quat4d* REQs, int* host, Quat4d* dEdREQs ) const {
+    double Etot = 0.0;
+    for(int ii=0; ii<ni; ii++) {
+        const int     i     = i0+ii;
+        const Vec3d&  pi    = ps[i];
+        const int     ih    = host[i];
+        const bool    bEpi  = ih>=0;  // is this atom an electron pair?
+        const Quat4d& REQi  = REQs[ii];
+        Quat4d        fREQi = Quat4dZero;
+        for(int jj=0; jj<nj; jj++) {
+            const int j = j0+jj;
+            const Quat4d& REQj = REQs[j];
+            double H         = REQi.w * REQj.w;   
+            if( H>-1e+300 ){ continue; } // only atractive H-bonds
+            int jh           = host[j];
+            const double R0  = REQi.x + REQj.x;
+            const double E0  = REQi.y * REQj.y;
+            const double Q   = REQi.z + REQj.z;
+            const Vec3d  dij = ps[j] - pi;
+            const double r       = dij.norm();
+            const double ir      = 1/r;
+            const double dE_dQ   = ir * COULOMB_CONST;
+            const double Eel     = Q * dE_dQ;
+            Etot += Eel;
+            if       (bEpi ){ // i is an electron pair
+                double dE_dH;
+                Etot     += getEpairAtom( r, H, REQi.x, dE_dH );
+                fREQi.z  += dE_dQ * REQj.z;  // dEtot/dH2i
+                fREQi.w  += dE_dH * REQj.w;  // dEtot/dH2i
+            }else if (jh>=0){ // j is an electron pair
+                double dE_dH;
+                Etot     += getEpairAtom( r, H, REQj.x, dE_dH ); // Note - radius of electron REQi.x is used for decay constant
+                fREQi.w  += dE_dH * REQi.w;  // dEtot/dH2i
+            }else{           // both i and j are real atoms
+                const double u       = R0/r;
+                const double u3      = u*u*u;
+                const double u6      = u3*u3;
+                const double u6p     = (1.0 + H) * u6;
+                const double dE_dE0  = u6 * (u6p - 2.0);
+                const double dE_dH   = -E0 * u6 * u6;
+                Etot                +=  E0 * dE_dE0;
+                fREQi.w             +=  dE_dH * REQj.w;     // dEtot/dH2i
+            }
+        }
+        dEdREQs[i].add(fREQi);
+    }
+    return Etot;
+}
+    
+__attribute__((hot)) 
+//double evalExampleDerivs_LJQH2( int i0, int ni, int j0, int nj, int*  types, Vec3d* ps, Quat4d*  typeREQs, double* Qs, Quat4d* dEdREQs )const{
+double evalExampleDerivs_LJQH2( int i0, int ni, int j0, int nj, int* __restrict__ types, Vec3d* __restrict__ ps, Quat4d* __restrict__ typeREQs, double* __restrict__ Qs, Quat4d* __restrict__ dEdREQs )const{
     double Etot = 0.0;
     for(int ii=0; ii<ni; ii++){ // loop over all atoms[i] in system
         const int      i    = i0+ii;
@@ -1055,11 +1251,9 @@ double evalExampleDerivs_MorseQH2( int i0, int ni, int j0, int nj, int* __restri
             H2 *= sH;
             // --- Electrostatic
             double r      = dij.norm();
-            double ir     = 1/r;
-            double dE_dQ  = ir * COULOMB_CONST;
-            double Eel    = Q * dE_dQ;
-            double dE_dri = 0.0;
-            double dE_drj = 0.0;         
+            double ir     = 1/r;    
+            const double dE_dQ   = ir * COULOMB_CONST;
+            const double Eel     = Q * dE_dQ;
             // --- Morse
             //double alpha   = 6.0 / R0;
             double alpha   = 1.6; 
@@ -1175,7 +1369,7 @@ double run( int nstep, double Fmax, double dt, int imodel_, int ialg, bool bOMP,
         }
         else    { Err = evalSamples_noOmp(); }
         if( verbosity>0)printStepDOFinfo( i, Err, "FitREQ::run() BEFORE REGULARIZATION" );
-        if(bRegularize){ regularizeDOFs(); }
+        if(bRegularize){ regularizeDOFs(); }      
         //if( verbosity>0)printStepDOFinfo( i, Err, "FitREQ::run() AFTER  REGULARIZATION" );
         //exit(0);        
         switch(ialg){
@@ -1219,7 +1413,7 @@ double run_omp( int nstep, double Fmax, double dt, int imodel_, int ialg, bool b
         #pragma omp for reduction(+:Error)
         for(int i=0; i<nsamp; i++){
             double E; 
-            Error+=eval_sample_error( i, E );
+            Error+=evalSampleError( i, E );
         }
         #pragma omp single
         {
