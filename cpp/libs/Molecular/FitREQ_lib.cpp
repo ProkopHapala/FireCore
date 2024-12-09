@@ -103,7 +103,7 @@ void setWeights( int n, double* weights ){
 int export_Erefs( double* Erefs ){ return W.export_Erefs( Erefs ); }
 
 double run( int ialg, int iparallel, int nstep, double Fmax, double dt, double max_step, double damping, bool bClamp ){
-    printf( "run(nsamp=%6i,ialg=%i,nstep=%6i,iparallel=%i) bEvalJ=%i bWriteJ=%i bJ=%i \n",  W.samples.size(), ialg, iparallel, nstep, W.bEvalJ, W.bWriteJ, (W.bEvalJ&&(!W.bWriteJ)) );
+    printf( "run(ialg=%i,iparallel=%i,imodel=%i,nstep=%6i,nsamp=%6i) bEvalJ=%i bWriteJ=%i bJ=%i \n", ialg, iparallel, W.imodel, nstep, W.samples.size(),  W.bEvalJ, W.bWriteJ, (W.bEvalJ&&(!W.bWriteJ)) );
     long t0 = getCPUticks();
     double Err=0;
     switch (iparallel){
@@ -132,9 +132,9 @@ double optimize_random(int nstep, double stepSize=0.1) {
 void setTypeToDOFs  (int i, double* REQ ){ W.setTypeToDOFs  ( i, *(Quat4d*)REQ ); }
 void getTypeFromDOFs(int i, double* REQ ){ W.getTypeFromDOFs( i, *(Quat4d*)REQ ); }
 
-double getEs( int imodel, double* Es, double* Fs, bool bOmp, bool bDOFtoTypes ){
-    //printf( "getEs() imodel %i bOmp %i bDOFtoTypes %i \n", imodel, bOmp, bDOFtoTypes );
-    W.imodel=imodel;
+double getEs( double* Es, double* Fs, bool bOmp, bool bDOFtoTypes ){
+    //printf( "getEs() bOmp %i bDOFtoTypes %i \n", imodel, bOmp, bDOFtoTypes );
+    //W.imodel=imodel;
     if(bDOFtoTypes)W.DOFsToTypes(); 
     W.clean_fDOFs();
     double E = 0;
@@ -145,10 +145,10 @@ double getEs( int imodel, double* Es, double* Fs, bool bOmp, bool bDOFtoTypes ){
     return E;
 }
 
-void scanParam( int iDOF, int imodel,  int n, double* xs,  double* Es, double* Fs, bool bRegularize ){
+void scanParam( int iDOF, int n, double* xs,  double* Es, double* Fs, bool bRegularize ){
     //printf( "scanParam() iDOF %i imodel %i n %i \n", iDOF, imodel, n );
     W.clear_fDOFbounds();
-    W.imodel=imodel;
+    //W.imodel=imodel;
     for(int i=0; i<n; i++){
         W.DOFs[iDOF] = xs[i];
         double E = W.evalFitError( i, W.iparallel>0 );
@@ -158,10 +158,10 @@ void scanParam( int iDOF, int imodel,  int n, double* xs,  double* Es, double* F
     }
 }
 
-void scanParam2D( int iDOFx, int iDOFy, int imodel, int nx, int ny, double* xs, double* ys,  double* Es, double* Fx, double* Fy, bool bRegularize ){
+void scanParam2D( int iDOFx, int iDOFy, int nx, int ny, double* xs, double* ys,  double* Es, double* Fx, double* Fy, bool bRegularize ){
     //printf( "scanParam() iDOF %i imodel %i nx %i ny %i \n", iDOFx, imodel, nx, ny );
     W.clear_fDOFbounds();
-    W.imodel=imodel;
+    //W.imodel=imodel;
     for(int iy=0; iy<ny; iy++){
         W.DOFs[iDOFy] = ys[iy];
         for(int ix=0; ix<nx; ix++){

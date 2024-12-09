@@ -1296,7 +1296,7 @@ double evalExampleDerivs_LJQH2( int i0, int ni, int j0, int nj, int* __restrict_
             fREQi.y +=  dE_dE0  * 0.5 * REQj.y;    // dEtot/dE0_i
             fREQi.z +=  dE_dQ   * Qj;              // dEtot/dQ_i
             fREQi.w +=  dE_dH   * REQj.w * sH;     // dEtot/dH2i
-            //printf( "evalExampleDerivs_LJQH2()[%3i,%3i] (%8s,%8s) dE_dH:  %20.10f   ELJ: %20.10f \n", i,j, params->atypes[ti].name, params->atypes[tj].name, dE_dH, ELJ );
+            //printf( "evalExampleDerivs_LJQH2()[%3i,%3i] (%8s,%8s) dE_dH:  %20.10f   ELJ: %20.10f \n", i,j, params->atypes[ti].name, params->atypes[tj].name, dE_dH, ELJ, sH, REQj.w, REQi.w );
             if( bWJ ){ dEdREQs[j].add( Quat4d{
                         dE_dR0,                    // dEtot/dR0_j
                         dE_dE0  * 0.5 * REQi.y,    // dEtot/dE0_j

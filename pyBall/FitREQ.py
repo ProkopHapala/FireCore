@@ -104,35 +104,35 @@ lib.run.restype   =  c_double
 def run(ialg=2, iparallel=1, nstep=100, Fmax=1e-8, dt=0.01, max_step=0.05, damping=0.0, bClamp=False):
     return lib.run( ialg, iparallel, nstep, Fmax, dt, max_step, damping, bClamp )
 
-# double getEs( int imodel, double* Es, double* Fs, bool bOmp, bool bDOFtoTypes ){
-lib.getEs.argtypes  = [c_int, c_double_p,  c_double_p, c_bool, c_bool]
+# double getEs( double* Es, double* Fs, bool bOmp, bool bDOFtoTypes ){
+lib.getEs.argtypes  = [ c_double_p,  c_double_p, c_bool, c_bool]
 lib.getEs.restype   =  c_double
-def getEs(imodel=0, Es=None, Fs=None, bOmp=False, bDOFtoTypes=False, bEs=True, bFs=False ):
+def getEs(Es=None, Fs=None, bOmp=False, bDOFtoTypes=False, bEs=True, bFs=False ):
     if bEs and (Es is None): Es = np.zeros( nbatch )
     if bFs and (Fs is None): Fs = np.zeros( nDOFs  )
-    Eerr = lib.getEs(imodel, _np_as(Es,c_double_p), _np_as(Fs,c_double_p), bOmp, bDOFtoTypes)
+    Eerr = lib.getEs(_np_as(Es,c_double_p), _np_as(Fs,c_double_p), bOmp, bDOFtoTypes)
     #print("Es", Es)
     return Eerr, Es, Fs
 
-# void scanParam( int iDOF, int imodel,  int n, double* xs,  double* Es, double* Fs, bool bRegularize ){
-lib.scanParam.argtypes  = [c_int, c_int, c_int, c_double_p, c_double_p, c_double_p, c_bool]
+# void scanParam( int iDOF, int n, double* xs,  double* Es, double* Fs, bool bRegularize ){
+lib.scanParam.argtypes  = [c_int, c_int, c_double_p, c_double_p, c_double_p, c_bool]
 lib.scanParam.restype   = None
-def scanParam( iDOF, xs, Es=None, Fs=None, imodel=2, bRegularize=False ):
+def scanParam( iDOF, xs, Es=None, Fs=None, bRegularize=False ):
     n = len(xs)
     if Es is None: Es = np.zeros( n )
     if Fs is None: Fs = np.zeros( n )
-    lib.scanParam(iDOF, imodel, n, _np_as(xs,c_double_p), _np_as(Es,c_double_p), _np_as(Fs,c_double_p), bRegularize )
+    lib.scanParam(iDOF, n, _np_as(xs,c_double_p), _np_as(Es,c_double_p), _np_as(Fs,c_double_p), bRegularize )
     return Es,Fs
 
-#void scanParam2D( int iDOFx, int iDOFy, int imodel, int nx, int ny, double* xs, double* ys,  double* Es, double* Fx, double* Fy, bool bRegularize ){
-lib.scanParam2D.argtypes  = [c_int, c_int, c_int, c_int, c_int, c_double_p, c_double_p, c_double_p, c_double_p, c_double_p, c_bool]
+#void scanParam2D( int iDOFx, int iDOFy, int nx, int ny, double* xs, double* ys,  double* Es, double* Fx, double* Fy, bool bRegularize ){
+lib.scanParam2D.argtypes  = [c_int, c_int, c_int, c_int, c_double_p, c_double_p, c_double_p, c_double_p, c_double_p, c_bool]
 lib.scanParam2D.restype   = None
-def scanParam2D(iDOFx, iDOFy, xs, ys, Es=None, Fx=None, Fy=None, imodel=2, bRegularize=False):
+def scanParam2D(iDOFx, iDOFy, xs, ys, Es=None, Fx=None, Fy=None, bRegularize=False):
     nx, ny = len(xs), len(ys)
     if Es is None: Es = np.zeros((ny,nx))
     if Fx is None: Fx = np.zeros((ny,nx))
     if Fy is None: Fy = np.zeros((ny,nx))
-    lib.scanParam2D(iDOFx, iDOFy, imodel, nx, ny, _np_as(xs,c_double_p), _np_as(ys,c_double_p),    _np_as(Es,c_double_p), _np_as(Fx,c_double_p), _np_as(Fy,c_double_p), bRegularize)
+    lib.scanParam2D(iDOFx, iDOFy, nx, ny, _np_as(xs,c_double_p), _np_as(ys,c_double_p),    _np_as(Es,c_double_p), _np_as(Fx,c_double_p), _np_as(Fy,c_double_p), bRegularize)
     return Es, Fx, Fy
 
 # void loadTypes_new( const char* fname_ElemTypes, const char* fname_AtomTypes ){
