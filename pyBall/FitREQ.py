@@ -60,17 +60,17 @@ def cstr( s ):
     if s is None: return None
     return s.encode('utf8')
 
-#  void setVerbosity( int verbosity_, int idebug_ ){
-lib.setVerbosity.argtypes  = [c_int, c_int] 
+#  void setVerbosity( int verbosity_, int idebug_, int PrintDOFs, int PrintfDOFs, int PrintBeforReg, int PrintAfterReg ){
+lib.setVerbosity.argtypes  = [c_int, c_int, c_int, c_int, c_int, c_int]
 lib.setVerbosity.restype   =  None
-def setVerbosity(verbosity=1, idebug=0):
-    return lib.setVerbosity(verbosity, idebug)
+def setVerbosity(verbosity=1, idebug=0, PrintDOFs=0, PrintfDOFs=0, PrintBeforReg=0, PrintAfterReg=0):
+    return lib.setVerbosity(verbosity, idebug, PrintDOFs, PrintfDOFs, PrintBeforReg, PrintAfterReg)
 
-# void setSwitches( int EvalJ, int WriteJ, int CheckRepulsion, int Regularize, int AddRegError, int Epairs, int BroadcastFDOFs, int UdateDOFbounds){
-lib.setSwitches.argtypes  = [c_int, c_int, c_int, c_int, c_int, c_int, c_int, c_int]
-lib.setSwitches.restype   =  None    
-def setSwitches(EvalJ=0, WriteJ=0, CheckRepulsion=0, Regularize=0, AddRegError=0, Epairs=0, BroadcastFDOFs=0, UdateDOFbounds=0):
-    return lib.setSwitches(EvalJ, WriteJ, CheckRepulsion, Regularize, AddRegError, Epairs, BroadcastFDOFs, UdateDOFbounds)
+# void setup( int imodel, int EvalJ, int WriteJ, int CheckRepulsion, int Regularize, int AddRegError, int Epairs, int BroadcastFDOFs, int UdateDOFbounds){
+lib.setup.argtypes  = [c_int,c_int, c_int, c_int, c_int, c_int, c_int, c_int, c_int]
+lib.setup.restype   =  None    
+def setup(imodel=1, EvalJ=0, WriteJ=0, CheckRepulsion=0, Regularize=0, AddRegError=0, Epairs=0, BroadcastFDOFs=0, UdateDOFbounds=0):
+    return lib.setup( imodel,EvalJ, WriteJ, CheckRepulsion, Regularize, AddRegError, Epairs, BroadcastFDOFs, UdateDOFbounds)
 
 #void setFilter( double EmodelCut, double EmodelCutStart, int iWeightModel, int ListOverRepulsive, int SaveOverRepulsive, int PrintOverRepulsive, int DiscardOverRepulsive, int WeightByEmodel ){
 lib.setFilter.argtypes  = [c_double, c_double, c_int, c_int, c_int, c_int, c_int, c_int]
@@ -98,11 +98,11 @@ def setWeights(weights):
     n = len(weights)
     lib.setWeights(n, _np_as(weights,c_double_p))
     
-#  double run( int nstep, double Fmax, double dt, int imodel_, int ialg, int iparallel, bool bClamp, double max_step ){
-lib.run.argtypes  = [c_int, c_double, c_double, c_int, c_int, c_int, c_bool, c_double]
+# double run( int ialg, int iparallel, int nstep, double Fmax, double dt, double max_step, double damping, bool bClamp ){
+lib.run.argtypes  = [c_int, c_int, c_int, c_double, c_double, c_double, c_double, c_bool]
 lib.run.restype   =  c_double
-def run(nstep=1000, Fmax=1e-8, dt=0.01, imodel=0, ialg=2, iparallel=2, bClamp=False, max_step=0.05):
-    return lib.run(nstep, Fmax, dt, imodel, ialg, iparallel, bClamp, max_step)
+def run(ialg=2, iparallel=1, nstep=100, Fmax=1e-8, dt=0.01, max_step=0.05, damping=0.0, bClamp=False):
+    return lib.run( ialg, iparallel, nstep, Fmax, dt, max_step, damping, bClamp )
 
 # double getEs( int imodel, double* Es, double* Fs, bool bOmp, bool bDOFtoTypes ){
 lib.getEs.argtypes  = [c_int, c_double_p,  c_double_p, c_bool, c_bool]

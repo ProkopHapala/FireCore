@@ -18,9 +18,17 @@ OptRandomWalk ropt;
 
 extern "C"{
 
-void setVerbosity( int verbosity_, int idebug_ ){
+void setVerbosity( int verbosity_, int idebug_, int PrintDOFs, int PrintfDOFs, int PrintBeforReg, int PrintAfterReg ){
     verbosity = verbosity_;
     idebug    = idebug_;
+    #define _setbool(name) { if(name>0){W.b##name=true;}else if(name<0){W.b##name=false;} }
+    _setbool( PrintDOFs     );
+    _setbool( PrintfDOFs    );
+    _setbool( PrintBeforReg );
+    _setbool( PrintAfterReg );
+    #undef _setbool
+    printf( "setVerbosity() verbosity %i idebug %i \n", verbosity, idebug );
+    printf( "setVerbosity() PrintDOFs %i PrintfDOFs %i PrintBeforReg %i PrintAfterReg %i \n", W.bPrintDOFs, W.bPrintfDOFs, W.bPrintBeforReg, W.bPrintAfterReg );
 }
 
 // bool  bEvalJ          = false;    // Should we evaluate variational derivatives on Fregment J 
@@ -32,7 +40,8 @@ void setVerbosity( int verbosity_, int idebug_ ){
 // //bool  bOptEpR = false;          // Should we optimize electron pair distance (from host atom) ?
 // bool  bBroadcastFDOFs = false;    // Should we broadcast fDOFs (each sample to its own chunk of memory) to prevent atomic-write conflicts ?
 // bool  bUdateDOFbounds = true;     // Should we update fDOFbounds after each sample ?
-void setSwitches( int EvalJ, int WriteJ, int CheckRepulsion, int Regularize, int AddRegError, int Epairs, int BroadcastFDOFs, int UdateDOFbounds){
+void setup( int imodel, int EvalJ, int WriteJ, int CheckRepulsion, int Regularize, int AddRegError, int Epairs, int BroadcastFDOFs, int UdateDOFbounds){
+    W.imodel = imodel;
     #define _setbool(name) { if(name>0){W.b##name=true;}else if(name<0){W.b##name=false;} }
     _setbool( EvalJ          );
     _setbool( WriteJ         );
@@ -65,8 +74,7 @@ void setFilter( double EmodelCut, double EmodelCutStart, int iWeightModel, int L
     _setbool( DiscardOverRepulsive );
     _setbool( WeightByEmodel );
     #undef _setbool
-    printf( "setFilter(): EmodelCut=%g EmodelCutStart=%g iWeightModel=%i ListOverRepulsive=%i SaveOverRepulsive=%i PrintOverRepulsive=%i DiscardOverRepulsive=%i \n", 
-        W.EmodelCut, W.EmodelCutStart, W.iWeightModel, W.bListOverRepulsive, W.bSaveOverRepulsive, W.bPrintOverRepulsive, W.bDiscardOverRepulsive );
+    printf( "setFilter(): EmodelCut=%g EmodelCutStart=%g iWeightModel=%i ListOverRepulsive=%i SaveOverRepulsive=%i PrintOverRepulsive=%i DiscardOverRepulsive=%i \n",  W.EmodelCut, W.EmodelCutStart, W.iWeightModel, W.bListOverRepulsive, W.bSaveOverRepulsive, W.bPrintOverRepulsive, W.bDiscardOverRepulsive );
     { printf( "setFilter() weight samples:\n #i     E            weight \n" ); int n=10; for(int i=0; i<=n; i++){  double wi,E=W.EmodelCutStart+i*(W.EmodelCut-W.EmodelCutStart)/n; W.smoothWeight( E, wi ); printf( "%3i %16.8e %16.8e \n", i, E, wi ); } }
 }
 
@@ -94,14 +102,14 @@ void setWeights( int n, double* weights ){
 
 int export_Erefs( double* Erefs ){ return W.export_Erefs( Erefs ); }
 
-double run( int nstep, double Fmax, double dt, int imodel_, int ialg, int iparallel, bool bClamp, double max_step ){
-    printf( "run(nstep=%6i,nsamp=%6i,iparallel=%i) bEvalJ=%i bWriteJ=%i bJ=%i \n", nstep, W.samples.size(), iparallel, W.bEvalJ, W.bWriteJ, (W.bEvalJ&&(!W.bWriteJ)) );
+double run( int ialg, int iparallel, int nstep, double Fmax, double dt, double max_step, double damping, bool bClamp ){
+    printf( "run(nsamp=%6i,ialg=%i,nstep=%6i,iparallel=%i) bEvalJ=%i bWriteJ=%i bJ=%i \n",  W.samples.size(), ialg, iparallel, nstep, W.bEvalJ, W.bWriteJ, (W.bEvalJ&&(!W.bWriteJ)) );
     long t0 = getCPUticks();
     double Err=0;
     switch (iparallel){
-        case 0:{ Err=W.run    ( nstep, Fmax, dt, imodel_, ialg, false, bClamp, max_step ); } break;
-        case 1:{ Err=W.run    ( nstep, Fmax, dt, imodel_, ialg, true,  bClamp, max_step ); } break;
-        case 2:{ Err=W.run_omp( nstep, Fmax, dt, imodel_, ialg,        bClamp, max_step ); } break;
+        case 0:{ Err=W.run    ( ialg, nstep, Fmax, dt, max_step, damping, bClamp, false ); } break;
+        case 1:{ Err=W.run    ( ialg, nstep, Fmax, dt, max_step, damping, bClamp, true  ); } break;
+        case 2:{ Err=W.run_omp( ialg, nstep, Fmax, dt, max_step, damping, bClamp        ); } break;
     }
     double T = (getCPUticks()-t0);
     printf( "Time: run(nstep=%6i,nsamp=%6i,iparallel=%i) T= %8.3f [MTicks] %8.3f [ticks/conf]\n", nstep, W.samples.size(), iparallel, T*1e-6, T/(W.samples.size()*nstep) );
@@ -139,6 +147,7 @@ double getEs( int imodel, double* Es, double* Fs, bool bOmp, bool bDOFtoTypes ){
 
 void scanParam( int iDOF, int imodel,  int n, double* xs,  double* Es, double* Fs, bool bRegularize ){
     //printf( "scanParam() iDOF %i imodel %i n %i \n", iDOF, imodel, n );
+    W.clear_fDOFbounds();
     W.imodel=imodel;
     for(int i=0; i<n; i++){
         W.DOFs[iDOF] = xs[i];
@@ -151,6 +160,7 @@ void scanParam( int iDOF, int imodel,  int n, double* xs,  double* Es, double* F
 
 void scanParam2D( int iDOFx, int iDOFy, int imodel, int nx, int ny, double* xs, double* ys,  double* Es, double* Fx, double* Fy, bool bRegularize ){
     //printf( "scanParam() iDOF %i imodel %i nx %i ny %i \n", iDOFx, imodel, nx, ny );
+    W.clear_fDOFbounds();
     W.imodel=imodel;
     for(int iy=0; iy<ny; iy++){
         W.DOFs[iDOFy] = ys[iy];

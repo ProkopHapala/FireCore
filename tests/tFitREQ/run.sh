@@ -18,6 +18,9 @@ LD_PRELOAD=$(g++ -print-file-name=libasan.so)
 echo   $LD_PRELOAD
 export LD_PRELOAD
 
+
+stty cols 200   # set terminal width
+
 echo "#=========== RUN"
 > debug.xyz
 python3 -u opt_mini.py 2> asan.log | tee OUT
