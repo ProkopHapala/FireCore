@@ -21,7 +21,14 @@ class OptRandomWalk{ public:
     double * Xdir  = 0; // decent solution at reasonable distance from Xbest (not too far, not too close) which approximates soft-mode direction
     double * scales = 0;
 
+    // limits 
+    double * Xmin = 0;
+    double * XMax = 0;
+
     int nTryDir = 0;
+
+    double cDir = 1.2;
+    double cBack = 0.2;
 
     //double biasDir;
     //double biasSpread;
@@ -30,7 +37,11 @@ class OptRandomWalk{ public:
 
     double stepSize=0.1;
     double Ebest,E;
-    double Edir,Rdir; // dir bias
+    double Edir,Rdir; // dir bias, like second best solution
+
+    int  iMutAlg = 0;
+    bool bLimit  = true;
+
 
     // ====  Functions
 
@@ -60,23 +71,35 @@ class OptRandomWalk{ public:
         double cfw    = 0.5 + 1.0/nTryDir;
         double cbak   = 0.5;
         double c      = cfw+cbak;
-        for( int i=0; i<n; i++){
-            //X[i] = X[i] + (randf()-0.5);
-            //X[i] = Xbest[i] + (randf()-0.5)*scales[i]*step;
-            //X[i] = Xbest[i] + (randf()-0.5)*scales[i]*step  +  (Xdir[i]-Xbest[i])*rndDir;
-            //X[i] = Xbest[i] + (randf()-0.5)*scales[i]*step  +  (Xdir[i]-Xbest[i])*(rndDir*3.0-1.0);
-            //X[i] = Xbest[i] + (randf()-0.5)*scales[i]*step  +  (Xdir[i]-Xbest[i])*(rndDir*0.75-0.25);
-            X[i] = Xbest[i] + (randf()-0.5)*scales[i]*step  +  (Xdir[i]-Xbest[i])*(rndDir*1.2-0.2);
-            //X[i] = Xbest[i] + (randf()-0.5)*scales[i]*step  +  (Xdir[i]-Xbest[i])*(rndDir*c-cbak);
+        switch ( iMutAlg ){
+            case -1:{ int i = rand()%n;        X[i] = Xbest[i] + (randf()-0.5)*scales[i]*step; break; }        // random step along single random axis
+            case  0:{ for( int i=0; i<n; i++){ X[i] = Xbest[i] + (randf()-0.5)*scales[i]*step; }; break; }     // random step along all axes
+            case  1:{ for( int i=0; i<n; i++){ X[i] = Xbest[i] + (randf()-0.5)*scales[i]*step  +  (Xdir[i]-Xbest[i])*(rndDir*cDir-cBack); }; break; } // random step along soft-mode direction
+            default:{
+                printf( "OptRandomWalk::mutate() iMutAlg %i not implemented \n", iMutAlg );
+                exit(0);
+            } 
         }
+        //X[i] = X[i] + (randf()-0.5);
+        //X[i] = Xbest[i] + (randf()-0.5)*scales[i]*step;
+        //X[i] = Xbest[i] + (randf()-0.5)*scales[i]*step  +  (Xdir[i]-Xbest[i])*rndDir;
+        //X[i] = Xbest[i] + (randf()-0.5)*scales[i]*step  +  (Xdir[i]-Xbest[i])*rndDir;
+        //X[i] = Xbest[i] + (randf()-0.5)*scales[i]*step  +  (Xdir[i]-Xbest[i])*(rndDir*1.2-0.2);
+        //X[i] = Xbest[i] + (randf()-0.5)*scales[i]*step  +  (Xdir[i]-Xbest[i])*(rndDir*3.0-1.0);
+        //X[i] = Xbest[i] + (randf()-0.5)*scales[i]*step  +  (Xdir[i]-Xbest[i])*(rndDir*0.75-0.25);
+        //X[i] = Xbest[i] + (randf()-0.5)*scales[i]*step  +  (Xdir[i]-Xbest[i])*(rndDir*c-cbak);
     }
 
-    void run( int nstep ){
+    void limit(){ for(int i=0; i<n; i++){ _clamp(X[i],Xmin[i],XMax[i]);} }
+
+    void run( int nstep, bool bStart=true ){
+        if(bStart){ start(); }
         for(int i=0; i<nstep;i++){
             mutate( stepSize );
+            if(bLimit)limit();
             E = getEnergy( n, X );
             if(E<Ebest){
-                printf( "Energy improved %g -> %g \n", Ebest, E );
+                if(verbosity>0)printf( "Energy improved %g -> %g \n", Ebest, E );
                 VecN::set(n,X,Xbest);
                 //Rdir = VecN::err2( n, X, Xbest );
                 Edir = 1e+300;
@@ -100,7 +123,7 @@ class OptRandomWalk{ public:
     }
 
     void start(){
-         Ebest = getEnergy( n, X );
+        Ebest = getEnergy( n, X );
     }
 
 };

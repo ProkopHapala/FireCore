@@ -12,6 +12,8 @@
 #include "MMFFBuilder.h"
 #include "functions.h"
 
+//#include "OptRandomWalk.h"
+
 /**
  * Saves the coordinates of composite system comprising atoms stored in two systems A and B to a file in XYZ format. 
  * 
@@ -153,7 +155,8 @@ class FitREQ{ public:
     
     //NBFF* nbff;
     int nDOFs=0,ntype=0,nbatch=0,n0=0,n1=0;
-    int imodel=1;
+    int imodel   =1;
+    int iparallel=1;
     alignas(32) Quat4d*    typeREQs      =0; // [ntype] parameters for each type
     alignas(32) Quat4d*    typeREQsMin   =0; // [ntype] equlibirum value of parameters for regularization 
     alignas(32) Quat4d*    typeREQsMax   =0; // [ntype] equlibirum value of parameters for regularization 
@@ -187,6 +190,7 @@ class FitREQ{ public:
     bool  bWriteJ         = false;    // Should we write variational derivatives to Fregment J ( inner loop over j )
     bool  bCheckRepulsion = false;    // Should we check maximum repulsion (EijMax) inside inner loop over j for each sample atoms ?
     bool  bRegularize     = true;     // Should we apply additional regularization forces to otimizer ( beside the true variational forces from inter-atomic forcefield ? )
+    bool  bAddRegError    = true;     // Should we add regularization error to total error ?
     bool  bEpairs         = true;     // Should we add electron pairs to the molecule ?
     //bool  bOptEpR = false;          // Should we optimize electron pair distance (from host atom) ?
     bool bBroadcastFDOFs = false;
@@ -1351,6 +1355,26 @@ double evalExampleDerivs( Func func, int i0, int ni, int j0, int nj, int* types,
 // ======================================
 
 __attribute__((hot)) 
+double evalFitError(int itr, bool bOMP=true){
+    double Err=0.0;
+    DOFsToTypes(); 
+    clean_fDOFs();
+    if(bOMP){ 
+        Err = evalSamples_omp(); 
+        reduce_sample_fdofs();
+    }else{ 
+        Err = evalSamples_noOmp(); 
+    }
+    if( verbosity>0)printStepDOFinfo( itr, Err, "FitREQ::run() BEFORE REGULARIZATION" );
+    if(bRegularize){ 
+        double Ereg = regularizeDOFs(); 
+        if(bAddRegError)Err += Ereg;
+    }   
+    if( verbosity>0)printStepDOFinfo( itr, Err, "FitREQ::run() BEFORE REGULARIZATION" );
+    return Err;
+}
+
+__attribute__((hot)) 
 double run( int nstep, double Fmax, double dt, int imodel_, int ialg, bool bOMP, bool bClamp, double max_step ){
     imodel=imodel_;
     double Err=0;
@@ -1358,25 +1382,13 @@ double run( int nstep, double Fmax, double dt, int imodel_, int ialg, bool bOMP,
     if(bOMP){ bBroadcastFDOFs=true; realloc_sample_fdofs();  }
     double F2max=Fmax*Fmax;
     double F2;
-    for(int i=0; i<nstep; i++){
-        //printf("[%i]  DOFs=", i);for(int j=0;j<W.nDOFs;j++){ printf("%g ",W. DOFs[j]); };printf("\n");
-        DOFsToTypes(); 
-        clean_fDOFs();
-        //printf("[%i]  DOFs=", i);for(int j=0;j<W.nDOFs;j++){ printf("%g ",W. DOFs[j]); };printf("\n");
-        if(bOMP){ 
-            Err = evalSamples_omp(); 
-            reduce_sample_fdofs();
-        }
-        else    { Err = evalSamples_noOmp(); }
-        if( verbosity>0)printStepDOFinfo( i, Err, "FitREQ::run() BEFORE REGULARIZATION" );
-        if(bRegularize){ regularizeDOFs(); }      
-        //if( verbosity>0)printStepDOFinfo( i, Err, "FitREQ::run() AFTER  REGULARIZATION" );
-        //exit(0);        
+    for(int itr=0; itr<nstep; itr++){
+        Err = evalFitError( itr, bOMP );
         switch(ialg){
             case 0: F2 = move_GD( dt, max_step ); break;
             case 1: F2 = move_MD( dt, max_step ); break;
-            case 2: F2 = move_GD_BB_short( i, dt, max_step ); break;
-            case 3: F2 = move_GD_BB_long( i, dt, max_step ); break;
+            case 2: F2 = move_GD_BB_short( itr, dt, max_step ); break;
+            case 3: F2 = move_GD_BB_long( itr, dt, max_step ); break;
             case 4: F2 = move_MD_nodamp( dt, max_step ); break;
         }
         // regularization must be done before evaluation of derivatives
@@ -1384,7 +1396,7 @@ double run( int nstep, double Fmax, double dt, int imodel_, int ialg, bool bOMP,
         //printf("step= %i dt= %g\n", i, dt );
         //printStepDOFinfo( i, Err, "FitREQ::run() AFTER MOVE" );
         //if( F2<0.0   ){ printf("DYNAMICS STOPPED after %i iterations \n", i); printf("VERY FINAL DOFs= ");for(int j=0;j<nDOFs;j++){ printf("%.15g ",DOFs[j]); };printf("\n"); return Err; }
-        if( F2<F2max ){ printf("CONVERGED in %i iterations \n", i); }
+        if( F2<F2max ){ printf("CONVERGED in %i iterations \n", itr); }
     }
     printf("VERY FINAL  DOFs= "); for(int j=0;j<nDOFs;j++){ printf("%.15g ", DOFs[j]); };printf("\n");
     printf("VERY FINAL fDOFs= "); for(int j=0;j<nDOFs;j++){ printf("%.15g ",fDOFs[j]); };printf("\n");
@@ -1419,7 +1431,10 @@ double run_omp( int nstep, double Fmax, double dt, int imodel_, int ialg, bool b
         {
             reduce_sample_fdofs();
             if( verbosity>0)printStepDOFinfo( itr, Err, "FitREQ::run() BEFORE REGULARIZATION" );
-            if(bRegularize){ regularizeDOFs(); }      
+            if(bRegularize){ 
+                double Ereg = regularizeDOFs(); 
+                if(bAddRegError)Err += Ereg;
+            }   
             switch(ialg){
                 case 0: F2 = move_GD         (      dt, max_step ); break;
                 case 1: F2 = move_MD         (      dt, max_step ); break;

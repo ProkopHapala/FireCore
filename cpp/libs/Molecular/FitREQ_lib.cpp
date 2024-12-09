@@ -5,9 +5,11 @@
 #include "testUtils.h"
 #include "FitREQ.h"
 
+MMFFparams params;
 FitREQ W;
 
-MMFFparams params;
+#include "OptRandomWalk.h"
+OptRandomWalk ropt;
 
 //============================
 
@@ -68,6 +70,19 @@ double run( int nstep, double Fmax, double dt, int imodel_, int ialg, int iparal
     return Err;
 }
 
+static double evalFitError( int n, double * Xs ){
+    for(int i=0; i<W.nDOFs; i++) { W.DOFs[i] = Xs[i]; }
+    return W.evalFitError( -1, W.iparallel>0 );
+};
+
+double optimize_random(int nstep, double stepSize=0.1) {
+    ropt.getEnergy = evalFitError;
+    ropt.realloc(W.nDOFs, W.DOFs);
+    ropt.run(nstep, stepSize);
+    ropt.dealloc();
+    return ropt.Ebest;
+}
+
 void setTypeToDOFs  (int i, double* REQ ){ W.setTypeToDOFs  ( i, *(Quat4d*)REQ ); }
 void getTypeFromDOFs(int i, double* REQ ){ W.getTypeFromDOFs( i, *(Quat4d*)REQ ); }
 
@@ -88,10 +103,7 @@ void scanParam( int iDOF, int imodel,  int n, double* xs,  double* Es, double* F
     W.imodel=imodel;
     for(int i=0; i<n; i++){
         W.DOFs[iDOF] = xs[i];
-        W.DOFsToTypes();
-        double E = W.evalSamples_omp();
-        //if(bRegularize){ W.regularization_force_walls(); }
-        if(bRegularize){ W.regularizeDOFs(); }
+        double E = W.evalFitError( i, W.iparallel>0 );
         if(Fs)Es[i] = E;
         if(Fs)Fs[i] = W.fDOFs[iDOF];
         //if( verbosity>1){ printf( "scanParam()[%3i] W.DOFs[%3i]: %20.10f E: %20.10f  F: %20.10f \n", i, iDOF, W.DOFs[iDOF], E, W.fDOFs[iDOF] ); }
@@ -107,9 +119,7 @@ void scanParam2D( int iDOFx, int iDOFy, int imodel, int nx, int ny, double* xs, 
             int i = iy*nx + ix; 
             //printf( "scanParam2D() ix %i iy %i i %i \n", ix, iy, i );
             W.DOFs[iDOFx] = xs[ix];
-            W.DOFsToTypes();
-            double E = W.evalSamples_omp();
-            if(bRegularize){ W.regularizeDOFs(); }
+            double E = W.evalFitError( i, W.iparallel>0 );
             if(Es)Es[i] = E;
             if(Fx)Fx[i] = W.fDOFs[iDOFx];
             if(Fy)Fy[i] = W.fDOFs[iDOFy];
