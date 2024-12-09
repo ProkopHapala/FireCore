@@ -12,6 +12,8 @@
 #include "MMFFBuilder.h"
 #include "functions.h"
 
+#include "IO_utils.h"
+
 //#include "OptRandomWalk.h"
 
 /**
@@ -183,6 +185,7 @@ class FitREQ{ public:
     alignas(32) double*   vDOFs=0;       // [nDOFs]
     alignas(32) double*   DOFs_old =0;   // [nDOFs]
     alignas(32) double*   fDOFs_old=0;   // [nDOFs]
+    alignas(32) Vec2d*    fDOFbounds=0; // [nDOFs] minimum and maximum value of fDOFs over all samples
 
     alignas(32) double*   sample_fdofs = 0; // [nDOFs*nsamples] - arrays for parallelization to avoid atomic-write conflicts
 
@@ -193,16 +196,25 @@ class FitREQ{ public:
     bool  bAddRegError    = true;     // Should we add regularization error to total error ?
     bool  bEpairs         = true;     // Should we add electron pairs to the molecule ?
     //bool  bOptEpR = false;          // Should we optimize electron pair distance (from host atom) ?
-    bool bBroadcastFDOFs = false;
+    bool  bBroadcastFDOFs = false;    // Should we broadcast fDOFs (each sample to its own chunk of memory) to prevent atomic-write conflicts ?
+    bool  bUdateDOFbounds = true;     // Should we update fDOFbounds after each sample ?
+
+    // what to do with samples with E>EmodelCut ?
+    bool bListOverRepulsive    = true;   // Should we list overrepulsive samples? 
+    bool bSaveOverRepulsive    = false;  // Should we save overrepulsive samples to .xyz file?
+    bool bPrintOverRepulsive   = true;   // Should we print overrepulsive samples? 
+    bool bDiscardOverRepulsive = true;   // Should we discard overrepulsive samples? ( i.e. ignore them as training examples )
+    bool bWeightByEmodel       = true;   // Should we weight samples by their model energy ?
+    std::vector<int> overRepulsiveList;  // List of overrepulsive samples indexes (for recent epoch)
+    char* fname_overRepulsive  = "overRepulsive.xyz";
 
     // parameters
-    double EmaxSample = 100.0; // maximum energy for sampling
-    double Kneutral      = 1.0;
-    //double max_step      = 0.1345;
-    //double max_step      = 0.05; // maximal variation (in percentage) of any parameters allowed in one step during optimization
-    double Rfac_tooClose = 0.0;
-    double kMorse        = 1.6;
+    int    iWeightModel    = 1;    // weight of model energy 1=linear, 2=cubic_smooth_step  
+    double EmodelCut       = 10.0; // sample model energy when we consider it too repulsive and ignore it during fitting
+    double EmodelCutStart  = 5.0;  // sample model energy when we start to decrease weight in the fitting  
+    double kMorse          = 1.6;
 
+    // check pairwise repulsion betwee atoms within one sample
     double EijMax    = 5.0;
     int isamp_debug  = 0;
     int iBadFound    = 0; 
@@ -235,6 +247,8 @@ void realloc( int nDOFs_ ){
     _realloc( vDOFs, nDOFs ); for(int i=0;i<nDOFs;i++){vDOFs[i]=0;}
     _realloc(  DOFs_old, nDOFs );
     _realloc( fDOFs_old, nDOFs );
+    _realloc( fDOFbounds, nDOFs );
+
     //Rs=DOFs;Es=DOFs+nR;Qs=DOFs+nR+nE;
     //fRs=fDOFs;fEs=fDOFs+nR;fQs=fDOFs+nR+nE;
 }
@@ -786,7 +800,7 @@ void fillTempArrays( const Atoms* atoms, Vec3d* apos, double* Qs  )const{
 }
 
 __attribute__((hot)) 
-double evalSample( int isamp, const Atoms* atoms, double wi, Quat4d* fs ) const {
+double evalSample( int isamp, const Atoms* atoms, double wi, Quat4d* fREQs ) const {
     //double wi   = (weights)? weights[isamp] : 1.0; 
     alignas(32) double Qs  [atoms->natoms];
     alignas(32) Vec3d  apos[atoms->natoms];   // atomic positions
@@ -795,27 +809,23 @@ double evalSample( int isamp, const Atoms* atoms, double wi, Quat4d* fs ) const 
     int     j0 = 0; 
     int     ni = atoms->natoms - atoms->n0;
     int     i0 = atoms->n0;
-    for(int i=0; i<atoms->natoms; i++){ fs[i]=Quat4dZero; }
+    for(int i=0; i<atoms->natoms; i++){ fREQs[i]=Quat4dZero; }
     double E=0;
     bool bJ = bEvalJ && ( !bWriteJ );
     switch (imodel){
         case 0:{ 
-            E =   evalExampleDerivs( funcVar_LJQH2, i0, ni, j0, nj, atoms->atypes, apos, typeREQs, Qs, fs );    // variational derivatives on molecule 1
-            if(bJ)evalExampleDerivs( funcVar_LJQH2, j0, nj, i0, ni, atoms->atypes, apos, typeREQs, Qs, fs );    // variational derivatives on molecule 2
+            E =   evalExampleDerivs( funcVar_LJQH2, i0, ni, j0, nj, atoms->atypes, apos, typeREQs, Qs, fREQs );    // variational derivatives on molecule 1
+            if(bJ)evalExampleDerivs( funcVar_LJQH2, j0, nj, i0, ni, atoms->atypes, apos, typeREQs, Qs, fREQs );    // variational derivatives on molecule 2
         }break;
         case 1:{ 
-            E =   evalExampleDerivs_LJQH2   ( i0, ni, j0, nj, atoms->atypes, apos, typeREQs, Qs, fs );    // variational derivatives on molecule 1
-            if(bJ)evalExampleDerivs_LJQH2   ( j0, nj, i0, ni, atoms->atypes, apos, typeREQs, Qs, fs );    // variational derivatives on molecule 2
+            E =   evalExampleDerivs_LJQH2   ( i0, ni, j0, nj, atoms->atypes, apos, typeREQs, Qs, fREQs );    // variational derivatives on molecule 1
+            if(bJ)evalExampleDerivs_LJQH2   ( j0, nj, i0, ni, atoms->atypes, apos, typeREQs, Qs, fREQs );    // variational derivatives on molecule 2
         }break;
         case 2:{ 
-            E =   evalExampleDerivs_MorseQH2( i0, ni, j0, nj, atoms->atypes, apos, typeREQs, Qs, fs );    // variational derivatives on molecule 1
-            if(bJ)evalExampleDerivs_MorseQH2( j0, nj, i0, ni, atoms->atypes, apos, typeREQs, Qs, fs );    // variational derivatives on molecule 2
+            E =   evalExampleDerivs_MorseQH2( i0, ni, j0, nj, atoms->atypes, apos, typeREQs, Qs, fREQs );    // variational derivatives on molecule 1
+            if(bJ)evalExampleDerivs_MorseQH2( j0, nj, i0, ni, atoms->atypes, apos, typeREQs, Qs, fREQs );    // variational derivatives on molecule 2
         }break;
     }
-    if( E>EmaxSample ){
-        if(verbosity>0) printf( "skipped sample [%i] E(%g)>EmaxSample(%g) atoms too close \n", isamp, E, EmaxSample );
-        return E;
-    } 
     return E;
 }
 
@@ -834,11 +844,34 @@ double evalSample_corr( int isamp, const AddedData* adata, double wi, Quat4d* fs
             if(bJ)evalExampleDerivs_LJQH2_corr   ( j0, nj, i0, ni, adata->HBatomsPos, adata->HBatomsREQs, adata->HBatomsHost, fs );    // variational derivatives on molecule 2
         }break;
     }
-    if( E>EmaxSample ){
-        if(verbosity>0) printf( "skipped sample [%i] E(%g)>EmaxSample(%g) atoms too close \n", isamp, E, EmaxSample );
-        return E;
-    } 
     return E;
+}
+
+__attribute__((hot)) 
+void smoothWeight( double E, double& wi )const{
+    switch (iWeightModel){
+        case 1:{ wi = linstep_down   ( E, EmodelCutStart, EmodelCut);} break;
+        case 2:{ wi = smoothstep_down( E, EmodelCutStart, EmodelCut);} break;
+    }
+}
+
+__attribute__((hot)) 
+void handleOverRepulsive( int isamp, double E, const Atoms* atoms, double wi ){
+    if(bListOverRepulsive   ){ if(E>EmodelCut) overRepulsiveList.push_back( isamp  );  };
+    if(bPrintOverRepulsive || bSaveOverRepulsive ){
+        char tmp[256];
+        sprintf(tmp, "sample[%4i] Eref: %16.6e Emodel: %16.6e wi: %16.6e EmodelCutStart,EmodelCut: %16.6e %16.6e", isamp, atoms->Energy, E, wi, EmodelCutStart, EmodelCut );
+        //if(bSaveOverRepulsive ){ atoms->saveXYZ( fname_overRepulsive, "a", true, true, {1,1,1}, tmp, true ); };
+        //if(bSaveOverRepulsive ){ params->saveXYZ( fname_overRepulsive, "a", true, true, {1,1,1}, tmp, true ); };
+        if(bSaveOverRepulsive ){  saveDebugXYZ( 0, atoms->natoms, atoms->atypes, atoms->apos, fname_overRepulsive, tmp );}
+        if(bPrintOverRepulsive){ printf( "handleOverRepulsive() skipped %s \n", tmp ); }
+    }    
+}
+
+void printOverRepulsiveList(){
+    printf( "printOverRepulsiveList() nfound=%i: { ", overRepulsiveList.size() );
+    for(auto i : overRepulsiveList){ printf( "%i,", i ); }  
+    printf( "}\n" );  
 }
 
 __attribute__((hot)) 
@@ -847,23 +880,29 @@ double evalSampleError( int isamp, double& E ){
     Atoms* atoms  = samples[isamp];
     double wi     = (weights)? weights[isamp] : 1.0;
     if(wi<1e-300) return 0;
-    alignas(32) Quat4d fs  [atoms->natoms];
-    E = evalSample( isamp, atoms, wi, fs );
-    //printf( "evalDerivsSamp() isamp: %3i E: %20.10f Eref: %20.10f \n", i, E, Eref );
+    alignas(32) Quat4d fREQs [atoms->natoms];
+    alignas(32) double fDOFs_[atoms->natoms];
+    E = evalSample( isamp, atoms, wi, fREQs );
+    if(verbosity>3)printf( "evalSampleError() isamp: %3i Emodel: %20.6f Eref: %20.6f \n", isamp, E, atoms->Energy );
+    if( E>EmodelCutStart ){ 
+        if(bWeightByEmodel){ smoothWeight( E, wi ); };
+        handleOverRepulsive( isamp, E, atoms, wi );  
+        if( weights ) weights[isamp] = wi;   // store to weights so that we know 
+        if( bDiscardOverRepulsive && (E>EmodelCut) ){ return 0; }  
+    }
     double Eref    = atoms->Energy;
     double dE      = E - Eref;
     double dEw     = 2.0*dE*wi;
     double Error   = dE*dE*wi;
-    double* fDOFs_ = fDOFs;
-    if(bBroadcastFDOFs){ 
-        fDOFs_ = sample_fdofs + isamp*nDOFs; 
-        for(int k=0; k<nDOFs; k++){ fDOFs_[k]=0; }
-    }
-    acumDerivs( atoms->natoms, atoms->atypes, dEw, fs, fDOFs_ );
+    double* fDOFs__ = bBroadcastFDOFs ? sample_fdofs + isamp*nDOFs : fDOFs_;   // broadcast fDOFs ?
+    for(int k=0; k<nDOFs; k++){ fDOFs__[k]=0; }                                // clean fDOFs
+    acumDerivs( atoms->natoms, atoms->atypes, dEw, fREQs, fDOFs_ );               // accumulate fDOFs from fREQs
     if( bEpairs ){
         AddedData * ad = (AddedData*)atoms->userData;
-        acumHostDerivs( ad->nep, ad->bs, atoms->atypes, dEw, fs, fDOFs_ );
+        acumHostDerivs( ad->nep, ad->bs, atoms->atypes, dEw, fREQs, fDOFs_ );
     }
+    if( bUdateDOFbounds  ){ updateDOFbounds( fDOFs__ ); }
+    if( !bBroadcastFDOFs ){ for(int k=0; k<nDOFs; k++){ fDOFs[k] += fDOFs__[k]; } }
     return Error;
 }
 
@@ -874,8 +913,9 @@ double evalSampleError_corr( int isamp, double& E ){
     const AddedData* adata = (const AddedData*)(atoms->userData);
     double wi     = (weights)? weights[isamp] : 1.0;
     if(wi<1e-300) return 0;
-    alignas(32) Quat4d fs  [adata->HBna];
-    E = evalSample_corr( isamp, adata, wi, fs );
+    alignas(32) Quat4d fREQs  [adata->HBna];
+    E = evalSample_corr( isamp, adata, wi, fREQs );
+    //if(bWeightByEmodel){ if(E>EmodelCut){ return 0; } smoothWeight(E,wi); }
     //printf( "evalDerivsSamp() isamp: %3i E: %20.10f Eref: %20.10f \n", i, E, Eref );
     double Emodel0 = adata->Emodel0;
     double Eref    = atoms->Energy;
@@ -887,7 +927,7 @@ double evalSampleError_corr( int isamp, double& E ){
         fDOFs_ = sample_fdofs + isamp*nDOFs; 
         for(int k=0; k<nDOFs; k++){ fDOFs_[k]=0; }
     }
-    acumDerivs_corr( adata->HBna, adata->HBatomsType, adata->HBatomsHost, dEw, fs, fDOFs_ );
+    acumDerivs_corr( adata->HBna, adata->HBatomsType, adata->HBatomsHost, dEw, fREQs, fDOFs_ );
     return Error;
 }
 
@@ -903,29 +943,42 @@ double evalSampleError_corr( int isamp, double& E ){
  */
 __attribute__((hot)) 
 double evalSamples_noOmp( double* Eout=0 ){ 
+    //bListOverRepulsive = true;
+    if( bListOverRepulsive ) overRepulsiveList.clear();
+    if( bSaveOverRepulsive ) clearFile( fname_overRepulsive );
+    if( bUdateDOFbounds    ){ for(int i=0; i<nDOFs; i++){fDOFbounds[i] = Vec2d{1.e+300,-1.e+300}; } } // clean fDOFbounds
+    bBroadcastFDOFs    = false; 
     //printf( "evalSamples_noOmp() \n" );
     double Error = 0.0;
     int nsamp = samples.size();
-    for(int i=0; i<nsamp; i++){
-       double E; 
-       Error+=evalSampleError( i, E );
-       if(bEvalOnlyCorrections){ ((AddedData*)samples[i]->userData)->Emodel0 = E; }
-       if(Eout)Eout[i]=E;
+    for(int isamp=0; isamp<nsamp; isamp++){
+        double E; 
+        Error+=evalSampleError( isamp, E );
+        if(bEvalOnlyCorrections){ ((AddedData*)samples[isamp]->userData)->Emodel0 = E; }
+        if(Eout){
+            if( bListOverRepulsive ){ if(overRepulsiveList.back()==isamp) E=NAN; }
+            Eout[isamp]=E;
+            //printf( "evalSamples_noOmp() isamp: %3i Emodel: %20.6f Eref: %20.6f \n", isamp, E, samples[isamp]->Energy );
+        }
     }
+    if(bListOverRepulsive){ printOverRepulsiveList(); }
     return Error;
 }
 
 __attribute__((hot)) 
 double evalSamples_omp( double* Eout=0 ){ 
+    bListOverRepulsive = false;
+    bBroadcastFDOFs    = true; 
     //printf( "evalSamples_omp() \n" );
     double Error = 0.0;
     int nsamp = samples.size();
     #pragma omp parallel for reduction(+:Error)
-    for(int i=0; i<nsamp; i++){
+    for(int isamp=0; isamp<nsamp; isamp++){
        double E; 
-       Error+=evalSampleError( i, E );
-       if(Eout)Eout[i]=E;
+       Error+=evalSampleError( isamp, E );
+       if(Eout)Eout[isamp]=E;
     }
+    if(bBroadcastFDOFs){ reduce_sample_fdofs(); }
     return Error;
 }
 
@@ -951,11 +1004,11 @@ void printDebugArrays(int na, int* atypes, Vec3d* apos, double* aq, int* aisep, 
 }
 
 __attribute__((hot)) 
-void acumDerivs_omp_atomic( int n, int* types, double dEw, Quat4d* fs ){
+void acumDerivs_omp_atomic( int n, int* types, double dEw, Quat4d* fREQs ){
     for(int i=0; i<n; i++){
         int t            = types[i];     // map atom index i to atom type t
         const Quat4i& tt = typToREQ[t];  // get index of degrees of freedom for atom type t
-        const Quat4d  f  = fs[i];
+        const Quat4d  f  = fREQs[i];
         if(tt.x>=0){ 
             #pragma omp atomic
             fDOFs[tt.x]+=f.x*dEw; }
@@ -975,12 +1028,12 @@ void acumDerivs_omp_atomic( int n, int* types, double dEw, Quat4d* fs ){
 }
 
 __attribute__((hot)) 
-void acumHostDerivs_omp_atomic( int nepair, Vec2i* epairAndHostIndex, int* types, double dEw, Quat4d* fs  ){
+void acumHostDerivs_omp_atomic( int nepair, Vec2i* epairAndHostIndex, int* types, double dEw, Quat4d* fREQs  ){
     for(int i=0; i<nepair; i++){
         Vec2i ab         = epairAndHostIndex[i];
         int t            = types[ab.i];      // map atom index i to atom type t
         const Quat4i& tt = typToREQ[t];      // get index of degrees of freedom for atom type t
-        const Quat4d&  f = fs[ab.j];         // get variation from the host atom
+        const Quat4d&  f = fREQs[ab.j];         // get variation from the host atom
         if(tt.z>=0){ 
             #pragma omp atomic
             fDOFs[tt.z]  -= f.z*dEw; } // we subtract the variational derivative of the host atom charge because the charge is transfered from host to the electron pair
@@ -988,11 +1041,11 @@ void acumHostDerivs_omp_atomic( int nepair, Vec2i* epairAndHostIndex, int* types
 }
 
 __attribute__((hot)) 
-void acumDerivs( int n, int* types, double dEw, Quat4d* fs, double* fDOFs ){
+void acumDerivs( int n, int* types, double dEw, Quat4d* fREQs, double* fDOFs ){
     for(int i=0; i<n; i++){
         int t            = types[i];     // map atom index i to atom type t
         const Quat4i& tt = typToREQ[t];  // get index of degrees of freedom for atom type t
-        const Quat4d  f  = fs[i];
+        const Quat4d  f  = fREQs[i];
         if(tt.x>=0){ fDOFs[tt.x]+=f.x*dEw; }
         if(tt.y>=0){ fDOFs[tt.y]+=f.y*dEw; }
         if(tt.z>=0){ fDOFs[tt.z]+=f.z*dEw; }
@@ -1004,24 +1057,24 @@ void acumDerivs( int n, int* types, double dEw, Quat4d* fs, double* fDOFs ){
 }
 
 __attribute__((hot)) 
-void acumHostDerivs( int nepair, Vec2i* epairAndHostIndex, int* types, double dEw, Quat4d* fs, double* fDOFs  ){
+void acumHostDerivs( int nepair, Vec2i* epairAndHostIndex, int* types, double dEw, Quat4d* fREQs, double* fDOFs  ){
     for(int i=0; i<nepair; i++){
         Vec2i ab         = epairAndHostIndex[i];
         int t            = types[ab.i];      // map atom index i to atom type t
         const Quat4i& tt = typToREQ[t];      // get index of degrees of freedom for atom type t
-        const Quat4d&  f = fs[ab.j];         // get variation from the host atom
+        const Quat4d&  f = fREQs[ab.j];         // get variation from the host atom
         if(tt.z>=0){ fDOFs[tt.z]  -= f.z*dEw; } // we subtract the variational derivative of the host atom charge because the charge is transfered from host to the electron pair
     }
 }
 
 
 __attribute__((hot)) 
-void acumDerivs_corr( int n, int* types, int* host, double dEw, Quat4d* fs, double* fDOFs ){
+void acumDerivs_corr( int n, int* types, int* host, double dEw, Quat4d* fREQs, double* fDOFs ){
     for(int i=0; i<n; i++){
         int t            = types[i];     // map atom index i to atom type t
         int ih           = host[i];
         const Quat4i& tt = typToREQ[t];  // get index of degrees of freedom for atom type t
-        const Quat4d  f  = fs[i];
+        const Quat4d  f  = fREQs[i];
         if(tt.x>=0){ fDOFs[tt.x]+=f.x*dEw; }
         if(tt.y>=0){ fDOFs[tt.y]+=f.y*dEw; }
         if(tt.z>=0){ fDOFs[tt.z]+=f.z*dEw; }
@@ -1069,16 +1122,16 @@ void printAtomParamDerivs( int na, Quat4d* dEdREQs, int isamp ){
     }
 }
 
-void saveDebugXYZ( int i0, int n, int* types, Vec3d* ps, double* Qs, const char* fname="debug.xyz", const char* comment="" ){
+void saveDebugXYZ( int i0, int n, int* types, Vec3d* ps, const char* fname="debug.xyz", const char* comment="" ){
     FILE* fout = fopen(fname,"a");
     fprintf(fout, "%i\n", n );
     fprintf(fout, "%s\n", comment );
     for(int ii=0; ii<n; ii++){ // loop over all atoms[i] in system
         const int      i    = i0+ii;
         const Vec3d&  pi    = ps      [i ]; 
-        const double  Qi    = Qs      [i ]; 
+        //const double  Qi    = Qs      [i ]; 
         const int     ti    = types   [i ];
-        fprintf(fout, "%c %7.3f %7.3f %7.3f    %7.3f \n", params->atypes[ti].name[0], pi.x, pi.y, pi.z, Qi );
+        fprintf(fout, "%c %7.3f %7.3f %7.3f    %7.3f \n", params->atypes[ti].name[0], pi.x, pi.y, pi.z );
     }
     fclose(fout);
 }
@@ -1123,7 +1176,7 @@ bool checkSampleRepulsion( double Eij, int i, int j, int ti, int tj, double r, b
     
 // Optimized versions of evaluation functions
 __attribute__((hot)) 
-double evalExampleDerivs_LJQH2_corr( int i0, int ni, int j0, int nj, Vec3d* ps, Quat4d* REQs, int* host, Quat4d* dEdREQs ) const {
+static double evalExampleDerivs_LJQH2_corr( int i0, int ni, int j0, int nj, Vec3d* ps, Quat4d* REQs, int* host, Quat4d* dEdREQs ){
     double Etot = 0.0;
     for(int ii=0; ii<ni; ii++) {
         const int     i     = i0+ii;
@@ -1167,7 +1220,7 @@ double evalExampleDerivs_LJQH2_corr( int i0, int ni, int j0, int nj, Vec3d* ps, 
                 fREQi.w             +=  dE_dH * REQj.w;     // dEtot/dH2i
             }
         }
-        dEdREQs[i].add(fREQi);
+        if(dEdREQs)dEdREQs[i].add(fREQi);
     }
     return Etot;
 }
@@ -1176,6 +1229,7 @@ __attribute__((hot))
 //double evalExampleDerivs_LJQH2( int i0, int ni, int j0, int nj, int*  types, Vec3d* ps, Quat4d*  typeREQs, double* Qs, Quat4d* dEdREQs )const{
 double evalExampleDerivs_LJQH2( int i0, int ni, int j0, int nj, int* __restrict__ types, Vec3d* __restrict__ ps, Quat4d* __restrict__ typeREQs, double* __restrict__ Qs, Quat4d* __restrict__ dEdREQs )const{
     double Etot = 0.0;
+    const bool bWJ = bWriteJ&&dEdREQs;
     for(int ii=0; ii<ni; ii++){ // loop over all atoms[i] in system
         const int      i    = i0+ii;
         const Vec3d&  pi    = ps      [i ]; 
@@ -1217,14 +1271,14 @@ double evalExampleDerivs_LJQH2( int i0, int ni, int j0, int nj, int* __restrict_
             fREQi.y +=  dE_dE0  * 0.5 * REQj.y;    // dEtot/dE0_i
             fREQi.z +=  dE_dQ   * Qj;              // dEtot/dQ_i
             fREQi.w +=  dE_dH2  * REQj.w * sH;     // dEtot/dH2i
-            if(bWriteJ){ dEdREQs[j].add( Quat4d{
+            if( bWJ ){ dEdREQs[j].add( Quat4d{
                         dE_dR0,                    // dEtot/dR0_j
                         dE_dE0  * 0.5 * REQi.y,    // dEtot/dE0_j
                         dE_dQ   * Qi,              // dEtot/dQ_j
                         dE_dH2  * REQi.w * sH,     // dEtot/dH2j
             }); }
         }
-        dEdREQs[i].add(fREQi);
+        if(dEdREQs)dEdREQs[i].add(fREQi);
     }
     // printAtomParamDerivs( ni+nj, dEdREQs, isamp_debug );
     //printf( "debug Etot= %g\n", Etot );exit(0);    
@@ -1234,6 +1288,7 @@ double evalExampleDerivs_LJQH2( int i0, int ni, int j0, int nj, int* __restrict_
 __attribute__((hot)) 
 double evalExampleDerivs_MorseQH2( int i0, int ni, int j0, int nj, int* __restrict__ types, Vec3d* __restrict__ ps, Quat4d* __restrict__ typeREQs, double* __restrict__ Qs, Quat4d* __restrict__ dEdREQs )const{
     double Etot = 0.0;
+    const bool bWJ = bWriteJ&&dEdREQs;
     for(int ii=0; ii<ni; ii++){ // loop over all atoms[i] in system
         const int      i    = i0+ii;
         const Vec3d&  pi    = ps      [i ]; 
@@ -1260,7 +1315,7 @@ double evalExampleDerivs_MorseQH2( int i0, int ni, int j0, int nj, int* __restri
             const double Eel     = Q * dE_dQ;
             // --- Morse
             //double alpha   = 6.0 / R0;
-            double alpha   = 1.6; 
+            double alpha   = kMorse; 
             double e       = exp( -alpha * ( r - R0 ) );
             double e2      = e * e;
             double e2p     = ( 1.0 - H2 ) * e2;
@@ -1277,7 +1332,7 @@ double evalExampleDerivs_MorseQH2( int i0, int ni, int j0, int nj, int* __restri
             fREQi.y +=  dE_dE0  * 0.5 * REQj.y;    // dEtot/dE0_i
             fREQi.z +=  dE_dQ   * Qj;              // dEtot/dQ_i
             fREQi.w +=  dE_dH2  * REQj.w * sH;     // dEtot/dH2i
-            if(bWriteJ){ dEdREQs[j].add( Quat4d{
+            if( bWJ ){ dEdREQs[j].add( Quat4d{
                         dE_dR0,                    // dEtot/dR0_j
                         dE_dE0  * 0.5 * REQi.y,    // dEtot/dE0_j
                         dE_dQ   * Qi,              // dEtot/dQ_j
@@ -1285,7 +1340,7 @@ double evalExampleDerivs_MorseQH2( int i0, int ni, int j0, int nj, int* __restri
             }); }
             //printf( "debug i= %i j= %i fsi.x= %g fsi.y= %g fsi.z= %g fsi.w= %g fsj.x= %g fsj.y= %g fsj.z= %g fsj.w= %g\n", i, j, fsi.x, fsi.y, fsi.z, fsi.w, fsj.x, fsj.y, fsj.z, fsj.w );
         }
-        dEdREQs[i].add(fREQi);
+        if(dEdREQs)dEdREQs[i].add(fREQi);
     }
     //printAtomParamDerivs( ni+nj, dEdREQs, isamp_debug );
     //printf( "debug Etot= %g\n", Etot );exit(0);    
@@ -1312,6 +1367,7 @@ inline static double funcVar_LJQH2( double r, double R0, double E0, double Q, do
 template <typename Func>
 double evalExampleDerivs( Func func, int i0, int ni, int j0, int nj, int* types, Vec3d* ps, Quat4d* typeREQs, double* Qs, Quat4d* dEdREQs )const{
     double Etot = 0.0;
+    const bool bWJ = bWriteJ&&dEdREQs;
     for(int ii=0; ii<ni; ii++){ // loop over all atoms[i] in system
         const int      i    = i0+ii;
         const Vec3d&  pi    = ps      [i ]; 
@@ -1336,14 +1392,14 @@ double evalExampleDerivs( Func func, int i0, int ni, int j0, int nj, int* types,
             fREQi.y +=  fREQH.y * 0.5 * REQj.y;    // dEtot/dE0_i
             fREQi.z +=  fREQH.z   * Qj;            // dEtot/dQ_i
             fREQi.w +=  fREQH.w  * REQj.w * sH;    // dEtot/dH2i
-            if(bWriteJ){ dEdREQs[j].add( Quat4d{
+            if(bWJ){ dEdREQs[j].add( Quat4d{
                         fREQH.x,                   // dEtot/dR0_j
                         fREQH.y * 0.5 * REQi.y,    // dEtot/dE0_j
                         fREQH.z   * Qi,            // dEtot/dQ_j
                         fREQH.w  * REQi.w * sH,    // dEtot/dH2j
             }); }
         }
-        dEdREQs[i].add(fREQi);
+        if(dEdREQs)dEdREQs[i].add(fREQi);
     }
 //printf( "debug Etot= %g\n", Etot );exit(0);    
     return Etot;
@@ -1359,12 +1415,8 @@ double evalFitError(int itr, bool bOMP=true){
     double Err=0.0;
     DOFsToTypes(); 
     clean_fDOFs();
-    if(bOMP){ 
-        Err = evalSamples_omp(); 
-        reduce_sample_fdofs();
-    }else{ 
-        Err = evalSamples_noOmp(); 
-    }
+    if(bOMP){  Err = evalSamples_omp();   }
+    else    {  Err = evalSamples_noOmp(); }
     if( verbosity>0)printStepDOFinfo( itr, Err, "FitREQ::run() BEFORE REGULARIZATION" );
     if(bRegularize){ 
         double Ereg = regularizeDOFs(); 
@@ -1391,11 +1443,7 @@ double run( int nstep, double Fmax, double dt, int imodel_, int ialg, bool bOMP,
             case 3: F2 = move_GD_BB_long( itr, dt, max_step ); break;
             case 4: F2 = move_MD_nodamp( dt, max_step ); break;
         }
-        // regularization must be done before evaluation of derivatives
-        if(bClamp     ){ limit_params();  }
-        //printf("step= %i dt= %g\n", i, dt );
-        //printStepDOFinfo( i, Err, "FitREQ::run() AFTER MOVE" );
-        //if( F2<0.0   ){ printf("DYNAMICS STOPPED after %i iterations \n", i); printf("VERY FINAL DOFs= ");for(int j=0;j<nDOFs;j++){ printf("%.15g ",DOFs[j]); };printf("\n"); return Err; }
+        if( bClamp ){ limit_params(); } // TODO: should we put this before evalFitError() ?
         if( F2<F2max ){ printf("CONVERGED in %i iterations \n", itr); }
     }
     printf("VERY FINAL  DOFs= "); for(int j=0;j<nDOFs;j++){ printf("%.15g ", DOFs[j]); };printf("\n");
@@ -1728,6 +1776,11 @@ double move_MD_nodamp( double dt, double max_step=-0.1 ){
 
 /// @brief Cleans the derivative array by setting all its elements to zero.
 void clean_fDOFs(){ for(int i=0; i<nDOFs; i++){fDOFs[i]=0;} }
+void updateDOFbounds( double* fDOFs_ ){
+    for(int i=0; i<nDOFs; i++){
+        fDOFbounds[i].enclose( fDOFs_[i] );
+    }
+}
 
 Vec2d getMinMax( int n, double* vec ){
     Vec2d bd = Vec2d{+1e+300,-1e+300};

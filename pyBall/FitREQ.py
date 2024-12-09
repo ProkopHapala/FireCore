@@ -48,6 +48,7 @@ array3d  = np.ctypeslib.ndpointer(dtype=np.double, ndim=3, flags='CONTIGUOUS')
 # ========= Globals
 # ====================================
 
+bWeightsSet = False
 #isInitialized = False
 #nfound = -1
 
@@ -65,11 +66,18 @@ lib.setVerbosity.restype   =  None
 def setVerbosity(verbosity=1, idebug=0):
     return lib.setVerbosity(verbosity, idebug)
 
-# void setSwitches( int EvalJ, int WriteJ, int CheckRepulsion, int Regularize, int Epairs){
-lib.setSwitches.argtypes  = [c_int, c_int, c_int, c_int, c_int]
+# void setSwitches( int EvalJ, int WriteJ, int CheckRepulsion, int Regularize, int AddRegError, int Epairs, int BroadcastFDOFs, int UdateDOFbounds){
+lib.setSwitches.argtypes  = [c_int, c_int, c_int, c_int, c_int, c_int, c_int, c_int]
 lib.setSwitches.restype   =  None    
-def setSwitches(EvalJ=0, WriteJ=0, CheckRepulsion=0, Regularize=0, Epairs=0):
-    return lib.setSwitches(EvalJ, WriteJ, CheckRepulsion, Regularize, Epairs)
+def setSwitches(EvalJ=0, WriteJ=0, CheckRepulsion=0, Regularize=0, AddRegError=0, Epairs=0, BroadcastFDOFs=0, UdateDOFbounds=0):
+    return lib.setSwitches(EvalJ, WriteJ, CheckRepulsion, Regularize, AddRegError, Epairs, BroadcastFDOFs, UdateDOFbounds)
+
+#void setFilter( double EmodelCut, double EmodelCutStart, int iWeightModel, int ListOverRepulsive, int SaveOverRepulsive, int PrintOverRepulsive, int DiscardOverRepulsive, int WeightByEmodel ){
+lib.setFilter.argtypes  = [c_double, c_double, c_int, c_int, c_int, c_int, c_int, c_int]
+lib.setFilter.restype   =  None
+def setFilter( EmodelCut=1.0, EmodelCutStart=None, EmodelCutFactor=0.75, iWeightModel=1, ListOverRepulsive=0, SaveOverRepulsive=0, PrintOverRepulsive=0, DiscardOverRepulsive=0, WeightByEmodel=0 ):
+    if EmodelCutStart is None: EmodelCutStart = EmodelCut*EmodelCutFactor
+    return lib.setFilter( EmodelCut, EmodelCutStart, iWeightModel, ListOverRepulsive, SaveOverRepulsive, PrintOverRepulsive, DiscardOverRepulsive, WeightByEmodel )
 
 # int export_Erefs( double* Erefs ){ 
 lib.export_Erefs.argtypes  = [c_double_p]
@@ -85,6 +93,8 @@ def export_Erefs(Erefs=None, n=None):
 lib.setWeights.argtypes  = [c_int, c_double_p]
 lib.setWeights.restype   =  None
 def setWeights(weights):
+    global bWeightsSet
+    bWeightsSet = True
     n = len(weights)
     lib.setWeights(n, _np_as(weights,c_double_p))
     
@@ -100,7 +110,8 @@ lib.getEs.restype   =  c_double
 def getEs(imodel=0, Es=None, Fs=None, bOmp=False, bDOFtoTypes=False, bEs=True, bFs=False ):
     if bEs and (Es is None): Es = np.zeros( nbatch )
     if bFs and (Fs is None): Fs = np.zeros( nDOFs  )
-    Eerr = lib.getEs(imodel, _np_as(Es,c_double_p), _np_as(Es,c_double_p), bOmp, bDOFtoTypes)
+    Eerr = lib.getEs(imodel, _np_as(Es,c_double_p), _np_as(Fs,c_double_p), bOmp, bDOFtoTypes)
+    #print("Es", Es)
     return Eerr, Es, Fs
 
 # void scanParam( int iDOF, int imodel,  int n, double* xs,  double* Es, double* Fs, bool bRegularize ){
@@ -215,10 +226,11 @@ def getBuffs( ):
     nDOFs=ndims[0]; ntype=ndims[1]; nbatch=ndims[2]; n0=ndims[3]; n1=ndims[4]; imodel=ndims[5]
     typToREQ      = getIBuff( "typToREQ",    (ntype,) )
     #print( "getBuffs().2" )
-    global DOFs,fDOFs,vDOFs
+    global DOFs,fDOFs,vDOFs, fDOFbounds
     DOFs          = getBuff ( "DOFs",   (nDOFs,)  )
     fDOFs         = getBuff ( "fDOFs",  (nDOFs,)  ) 
     vDOFs         = getBuff ( "vDOFs",  (nDOFs,)  ) 
+    fDOFbounds    = getBuff ( "fDOFbounds", (nDOFs,2)  ) 
     global typeREQs,  typeREQsMin,   typeREQsMax
     typeREQs      = getBuff ( "typeREQs",    (ntype,) )
     typeREQsMin   = getBuff ( "typeREQsMin", (ntype,) )
@@ -231,6 +243,9 @@ def getBuffs( ):
     typeKreg      = getBuff ( "typeKreg",    (ntype,) )
     typeKreg_low  = getBuff ( "typeKreg_low", (ntype,) )
     typeKreg_high = getBuff ( "typeKreg_high", (ntype,) )
+    if bWeightsSet:
+        global weights
+        weights = getBuff ( "weights",    (nbatch,) )
     #print( "getBuffs().3" )
 
 ################## Python ###############

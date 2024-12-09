@@ -108,9 +108,9 @@ class Atoms{ public:
         return 0;
     }
 
-    void atomsToXYZ(FILE* file, bool bN=false, bool bComment=false, Vec3i nPBC=Vec3i{1,1,1}, const char* comment="", bool bEnergy=true ){
-        printf( "Atoms::atomsToXYZ() natoms=%i @file=%li @atypes=%li @apos=%li @lvec=%li\n", natoms, (long)file, (long)atypes, (long)apos, (long)lvec );
-        if( (file==0)||(atypes==0)||(apos==0)||(lvec==0) ){   printf( "ERROR Atoms::atomsToXYZ() encountered NULL pointer @file=%li @atypes=%li @apos=%li @lvec=%li\n", (long)file, (long)atypes, (long)apos, (long)lvec );    }
+    void atomsToXYZ(FILE* file, bool bN=false, bool bComment=false, Vec3i nPBC=Vec3i{1,1,1}, const char* comment="", bool bEnergy=true )const{
+        //printf( "Atoms::atomsToXYZ() natoms=%i @file=%li @atypes=%li @apos=%li @lvec=%li\n", natoms, (long)file, (long)atypes, (long)apos, (long)lvec );
+        if( (file==0)||(atypes==0)||(apos==0)){   printf( "ERROR Atoms::atomsToXYZ() encountered NULL pointer @file=%p @atypes=%p @apos=%p \n", file, atypes, apos );    }
         int npbc=nPBC.totprod();
         //printf( "atomsToXYZ() atypes=%li   natoms=%i npbc=%i natoms*npbc=%i \n", (long)atypes, natoms, npbc, natoms*npbc );
         if(bN      )fprintf( file, "%i\n", natoms*npbc );
@@ -132,13 +132,12 @@ class Atoms{ public:
         }}};
     }
 
-    void saveXYZ( const char* fname, const char* mode="w", bool bN=false, bool bComment=false, Vec3i nPBC=Vec3i{1,1,1}, const char* comment="", bool bEnergy=true ){
+    void saveXYZ( const char* fname, const char* mode="w", bool bN=false, bool bComment=false, Vec3i nPBC=Vec3i{1,1,1}, const char* comment="", bool bEnergy=true )const{
         FILE* fout = fopen(fname, mode );
         atomsToXYZ( fout, bN, bComment, nPBC, comment, bEnergy );
         fclose(fout);
     }
 
-    
 
     void toNewLattice( const Mat3d& lvec_new, Atoms* source=0 ){
         Vec3d* apos_  =apos;

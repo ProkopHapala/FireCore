@@ -11,10 +11,6 @@ sys.path.append("/home/prokop/git/FireCore-fitREQH")
 from pyBall import FitREQ as fit
 from pyBall import atomicUtils as au
 
-
-
-
-
 # ============== Setup
 imodel = 1        #  0=LJQ     1=LJQH1     2=LJQH2     3=LJQH1H2
                   #  4=BuckQ   5=BuckQH1   6=BuckQH2   7=BuckQH1H2
@@ -34,7 +30,7 @@ max_step    = 0.01
 bEpairs     = True
 bAddEpairs  = bEpairs
 bOutXYZ     = False
-verbosity   = 0    # Added to enable debug printing
+verbosity   = 3    # Added to enable debug printing
 
 
 # ============== functions
@@ -123,13 +119,20 @@ def genWeights(Erefs, Ecut ):
     weights[mask] = 1.0
     return weights
 
-def plotWeights(Erefs, weights):
-    plt.plot( Erefs  ,'.-', lw=0.5, ms=1.0, label="E_ref")
-    plt.plot( weights, lw=1.0, label="weights")
+def plotEWs(Erefs=None, weights=None, Emodel=None, bLimEref=True, Emin=None):
+    plt.figure( figsize=(15,5) )
+    if( Erefs   is not None): plt.plot( Erefs  ,'.-', lw=0.5, ms=1.0, label="E_ref")
+    if( Emodel  is not None): plt.plot( Emodel,'.-', lw=0.5, ms=1.0, label="E_model")
+    if( weights is not None): plt.plot( weights, lw=0.5, label="weights")
     plt.legend()
     plt.xlabel("#sample(conf)")
     plt.ylabel("E [kcal/mol]")
-
+    plt.grid()
+    if Emin is not None:
+        plt.ylim( Emin*1.1, -Emin*1.1 )
+    elif bLimEref:
+        Emin =  Erefs.min()
+        plt.ylim( Emin*1.1, -Emin*1.1 )
 
 def plotDOFscans( iDOFs, xs, label ):
     plt.figure()
@@ -154,24 +157,35 @@ fit.setVerbosity(verbosity)
 fit.loadTypes( )     # load atom types
 
 fname = "input_all.xyz"
+#fname = "input_2CH2NH.xyz"
+
 fit.loadTypeSelection( fname="typeSelection.dat" )     # load atom types
 nbatch = fit.loadXYZ( fname, bAddEpairs, bOutXYZ )     # load reference geometry
 #nbatch = fit.loadXYZ( "input_small.xyz", bAddEpairs, bOutXYZ )     # load reference geometry
 #nbatch = fit.loadXYZ( "input_single.xyz", bAddEpairs, bOutXYZ )     # load reference geometry
 
+Etots, x0s = read_xyz_data(fname)  #;print( "x0s:\n", x0s )
+#weights = split_and_weight_curves(Etots, x0s, n_before_min=4)
+weights = np.ones( len(Etots) )
+fit.setWeights( weights )
 fit.getBuffs()
-
+#print( "fit.weights ", fit.weights )
 #ws     = np.genfromtxt( "weights_all.dat" )
 ev2kcal = 23.060548
 #Erefs   = fit.export_Erefs()*ev2kcal  #;print( "Erefs:\n", Erefs )
 #weights = genWeights( Erefs, Ecut=-2.0 )
 #weights = split_and_weight_curves( Erefs, n_before_min=4, jump_threshold=1.0 )
-Etots, x0s = read_xyz_data(fname)  #;print( "x0s:\n", x0s )
-weights = split_and_weight_curves(Etots, x0s, n_before_min=4)
 #plotWeights( Etots, weights ); 
 #plt.plot(x0s)
 #plt.show(); exit()
-fit.setWeights( weights )
+
+
+#fit.setFilter( EmodelCutStart=0.0, EmodelCut=0.5, iWeightModel=2, PrintOverRepulsive=1, DiscardOverRepulsive=1, SaveOverRepulsive=-1, ListOverRepulsive=1 )
+fit.setFilter( EmodelCutStart=0.0, EmodelCut=0.5, iWeightModel=2, PrintOverRepulsive=-1, DiscardOverRepulsive=1, SaveOverRepulsive=1, ListOverRepulsive=-1 )
+#fit.setFilter( Emax=0.4, PrintOverRepulsive=-1, DiscardOverRepulsive=-1, SaveOverRepulsive=-1, ListOverRepulsive=-1 )
+E,Es,Fs = fit.getEs( imodel=0, bOmp=False, bDOFtoTypes=False, bEs=True, bFs=False )
+plotEWs( Erefs=Etots, weights=fit.weights, Emodel=Es, Emin=-1.5 ); 
+plt.show(); exit()
 
 #test_getEs_openmp()
 
@@ -220,22 +234,24 @@ DOFnames = [
 # fit.setSwitches(EvalJ=1, WriteJ=-1 ); Err = fit.run( nstep=nstep, Fmax=1e-300, dt=0.0, imodel=imodel, iparallel=0, ialg=0, bClamp=bClamp )
 
 
-nstep = 5000
 
-fit.setSwitches(EvalJ=-1, WriteJ=-1 )
-Err = fit.run( nstep=nstep, Fmax=1e-300, dt=0.0, imodel=imodel, iparallel=0, ialg=0,  bClamp=bClamp )
-Err = fit.run( nstep=nstep, Fmax=1e-300, dt=0.0, imodel=imodel, iparallel=1, ialg=0,  bClamp=bClamp )
-Err = fit.run( nstep=nstep, Fmax=1e-300, dt=0.0, imodel=imodel, iparallel=2, ialg=0,  bClamp=bClamp )
 
-fit.setSwitches(EvalJ=1, WriteJ=1 )
-Err = fit.run( nstep=nstep, Fmax=1e-300, dt=0.0, imodel=imodel, iparallel=0, ialg=0,  bClamp=bClamp )
-Err = fit.run( nstep=nstep, Fmax=1e-300, dt=0.0, imodel=imodel, iparallel=1, ialg=0,  bClamp=bClamp )
-Err = fit.run( nstep=nstep, Fmax=1e-300, dt=0.0, imodel=imodel, iparallel=2, ialg=0,  bClamp=bClamp )
 
-fit.setSwitches(EvalJ=1, WriteJ=-1 )
-Err = fit.run( nstep=nstep, Fmax=1e-300, dt=0.0, imodel=imodel, iparallel=0, ialg=0,  bClamp=bClamp )
-Err = fit.run( nstep=nstep, Fmax=1e-300, dt=0.0, imodel=imodel, iparallel=1, ialg=0,  bClamp=bClamp )
-Err = fit.run( nstep=nstep, Fmax=1e-300, dt=0.0, imodel=imodel, iparallel=2, ialg=0,  bClamp=bClamp )
+
+# ------ Test diffirent write-J options with different parallelization
+# nstep = 5000
+# fit.setSwitches(EvalJ=-1, WriteJ=-1 )
+# Err = fit.run( nstep=nstep, Fmax=1e-300, dt=0.0, imodel=imodel, iparallel=0, ialg=0,  bClamp=bClamp )
+# Err = fit.run( nstep=nstep, Fmax=1e-300, dt=0.0, imodel=imodel, iparallel=1, ialg=0,  bClamp=bClamp )
+# Err = fit.run( nstep=nstep, Fmax=1e-300, dt=0.0, imodel=imodel, iparallel=2, ialg=0,  bClamp=bClamp )
+# fit.setSwitches(EvalJ=1, WriteJ=1 )
+# Err = fit.run( nstep=nstep, Fmax=1e-300, dt=0.0, imodel=imodel, iparallel=0, ialg=0,  bClamp=bClamp )
+# Err = fit.run( nstep=nstep, Fmax=1e-300, dt=0.0, imodel=imodel, iparallel=1, ialg=0,  bClamp=bClamp )
+# Err = fit.run( nstep=nstep, Fmax=1e-300, dt=0.0, imodel=imodel, iparallel=2, ialg=0,  bClamp=bClamp )
+# fit.setSwitches(EvalJ=1, WriteJ=-1 )
+# Err = fit.run( nstep=nstep, Fmax=1e-300, dt=0.0, imodel=imodel, iparallel=0, ialg=0,  bClamp=bClamp )
+# Err = fit.run( nstep=nstep, Fmax=1e-300, dt=0.0, imodel=imodel, iparallel=1, ialg=0,  bClamp=bClamp )
+# Err = fit.run( nstep=nstep, Fmax=1e-300, dt=0.0, imodel=imodel, iparallel=2, ialg=0,  bClamp=bClamp )
 
 # # ------ write optimized results
 # Es = fit.getEs( imodel=imodel, isampmode=isampmode, bEpairs=bEpairs )

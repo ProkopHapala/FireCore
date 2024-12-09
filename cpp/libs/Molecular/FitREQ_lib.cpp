@@ -23,15 +23,53 @@ void setVerbosity( int verbosity_, int idebug_ ){
     idebug    = idebug_;
 }
 
-void setSwitches( int EvalJ, int WriteJ, int CheckRepulsion, int Regularize, int Epairs){
+// bool  bEvalJ          = false;    // Should we evaluate variational derivatives on Fregment J 
+// bool  bWriteJ         = false;    // Should we write variational derivatives to Fregment J ( inner loop over j )
+// bool  bCheckRepulsion = false;    // Should we check maximum repulsion (EijMax) inside inner loop over j for each sample atoms ?
+// bool  bRegularize     = true;     // Should we apply additional regularization forces to otimizer ( beside the true variational forces from inter-atomic forcefield ? )
+// bool  bAddRegError    = true;     // Should we add regularization error to total error ?
+// bool  bEpairs         = true;     // Should we add electron pairs to the molecule ?
+// //bool  bOptEpR = false;          // Should we optimize electron pair distance (from host atom) ?
+// bool  bBroadcastFDOFs = false;    // Should we broadcast fDOFs (each sample to its own chunk of memory) to prevent atomic-write conflicts ?
+// bool  bUdateDOFbounds = true;     // Should we update fDOFbounds after each sample ?
+void setSwitches( int EvalJ, int WriteJ, int CheckRepulsion, int Regularize, int AddRegError, int Epairs, int BroadcastFDOFs, int UdateDOFbounds){
     #define _setbool(name) { if(name>0){W.b##name=true;}else if(name<0){W.b##name=false;} }
     _setbool( EvalJ          );
     _setbool( WriteJ         );
     _setbool( CheckRepulsion );
     _setbool( Regularize     );
+    _setbool( AddRegError    );
     _setbool( Epairs         );
+    _setbool( BroadcastFDOFs );
+    _setbool( UdateDOFbounds );
     #undef _setbool
 }
+
+//bool bListOverRepulsive    = true;   // Should we list overrepulsive samples? 
+//bool bSaveOverRepulsive    = false;  // Should we save overrepulsive samples to .xyz file?
+//bool bPrintOverRepulsive   = true;   // Should we print overrepulsive samples? 
+//bool bDiscardOverRepulsive = true;   // Should we discard overrepulsive samples? ( i.e. ignore them as training examples )
+
+// int    iWeightModel    = 1;    // weight of model energy 1=linear, 2=cubic_smooth_step  
+// double EmodelCut       = 10.0; // sample model energy when we consider it too repulsive and ignore it during fitting
+// double EmodelCutStart  = 5.0;  // sample model energy when we start to decrease weight in the fitting  
+
+void setFilter( double EmodelCut, double EmodelCutStart, int iWeightModel, int ListOverRepulsive, int SaveOverRepulsive, int PrintOverRepulsive, int DiscardOverRepulsive, int WeightByEmodel ){
+    W.EmodelCut      = EmodelCut;
+    W.EmodelCutStart = EmodelCutStart;
+    W.iWeightModel   = iWeightModel;
+    #define _setbool(name) { if(name>0){W.b##name=true;}else if(name<0){W.b##name=false;} }
+    _setbool( ListOverRepulsive );
+    _setbool( SaveOverRepulsive );
+    _setbool( PrintOverRepulsive);
+    _setbool( DiscardOverRepulsive );
+    _setbool( WeightByEmodel );
+    #undef _setbool
+    printf( "setFilter(): EmodelCut=%g EmodelCutStart=%g iWeightModel=%i ListOverRepulsive=%i SaveOverRepulsive=%i PrintOverRepulsive=%i DiscardOverRepulsive=%i \n", 
+        W.EmodelCut, W.EmodelCutStart, W.iWeightModel, W.bListOverRepulsive, W.bSaveOverRepulsive, W.bPrintOverRepulsive, W.bDiscardOverRepulsive );
+    { printf( "setFilter() weight samples:\n #i     E            weight \n" ); int n=10; for(int i=0; i<=n; i++){  double wi,E=W.EmodelCutStart+i*(W.EmodelCut-W.EmodelCutStart)/n; W.smoothWeight( E, wi ); printf( "%3i %16.8e %16.8e \n", i, E, wi ); } }
+}
+
 
 int loadTypeSelection( const char* fname ){
     return W.loadTypeSelection( fname );
@@ -94,6 +132,7 @@ double getEs( int imodel, double* Es, double* Fs, bool bOmp, bool bDOFtoTypes ){
     double E = 0;
     if( bOmp ){ E = W.evalSamples_omp  ( Es ); }
     else      { E = W.evalSamples_noOmp( Es ); }
+    //for(int i=0; i<W.samples.size(); i++){ printf( "getEs() sample[%i] E: %20.10f \n", i, Es[i] ); }
     if( Fs ){ for(int i=0; i<W.nDOFs; i++){ Fs[i] = W.fDOFs[i]; } }
     return E;
 }
@@ -137,6 +176,8 @@ void init_buffers(){
     buffers.insert( { "fDOFs", (double*)W.fDOFs } );
     buffers.insert( { "vDOFs", (double*)W.fDOFs } );
 
+    buffers.insert( { "fDOFbounds",     (double*)W.fDOFbounds } );
+    
     buffers.insert( { "typeREQs",       (double*)W.typeREQs  } );
     buffers.insert( { "typeREQsMin",    (double*)W.typeREQsMin  } );
     buffers.insert( { "typeREQsMax",    (double*)W.typeREQsMax  } );
@@ -148,6 +189,8 @@ void init_buffers(){
     buffers.insert( { "typeKreg",       (double*)W.typeKreg  } );
     buffers.insert( { "typeKreg_low",   (double*)W.typeKreg_low  } );
     buffers.insert( { "typeKreg_high",  (double*)W.typeKreg_high  } );
+
+    if(W.weights)buffers.insert( { "weights", (double*)W.weights  } );
 
     //ibuffers.insert( { "vDOFs", (double*)W.fDOFs } );
     //printBuffNames();
