@@ -306,73 +306,48 @@ int loadDOFSelection( const char* fname ){
     char line[1024];
     char at_name[8];
     
-    // First pass - count DOFs
-    int nDOFs_new = 0;
-    while( fgets(line, nline, fin) ){
-        if(line[0]=='#')continue;
-        int comp;
-        if(sscanf( line, "%s %i", at_name, &comp ) == 2){
-            nDOFs_new++;
-        }
-    }
-    realloc(nDOFs_new);
-    nDOFs = nDOFs_new;
-    
-    // Initialize arrays with default values
-    int ntype_ = params->atypes.size();
-    typToREQ       = new Quat4i[ntype_]; for(int i=0; i<ntype_; i++){typToREQ[i] = Quat4i{-1,-1,-1,-1};  } // -1 means parameter not fitted
-    typeREQs       = new Quat4d[ntype_]; for(int i=0; i<ntype_; i++){ typeREQs      [i] = Quat4d{ params->atypes[i].RvdW, sqrt(params->atypes[i].EvdW), params->atypes[i].Qbase, params->atypes[i].Hb }; }
-    typeREQsMin    = new Quat4d[ntype_]; for(int i=0; i<ntype_; i++){ typeREQsMin   [i] = Quat4d{ -1e+300, -1e+300, -1e+300, -1e+300 }; }
-    typeREQsMax    = new Quat4d[ntype_]; for(int i=0; i<ntype_; i++){ typeREQsMax   [i] = Quat4d{  1e+300,  1e+300,  1e+300,  1e+300 }; }
-    typeREQs0_low  = new Quat4d[ntype_]; for(int i=0; i<ntype_; i++){ typeREQs0_low [i] = Quat4dZero; }
-    typeREQs0      = new Quat4d[ntype_]; for(int i=0; i<ntype_; i++){ typeREQs0     [i] = typeREQs[i]; }
-    typeREQs0_high = new Quat4d[ntype_]; for(int i=0; i<ntype_; i++){ typeREQs0_high[i] = Quat4dZero; }
-    typeKreg_low   = new Quat4d[ntype_]; for(int i=0; i<ntype_; i++){ typeKreg_low  [i] = Quat4dZero; }
-    typeKreg       = new Quat4d[ntype_]; for(int i=0; i<ntype_; i++){ typeKreg      [i] = Quat4dZero; }
-    typeKreg_high  = new Quat4d[ntype_]; for(int i=0; i<ntype_; i++){ typeKreg_high [i] = Quat4dZero; }
+    // Initialize DOF-related arrays
+    std::vector<Vec2i> REQtoTyp_;
+    std::vector<Vec3d> DOFregX_;
+    std::vector<Vec3d> DOFregK_;
+    std::vector<Vec2d> DOFlimits_;
 
-    // Second pass - read DOFs
-    fseek( fin, 0, SEEK_SET );
+    // First pass - read DOFs and populate DOF-related arrays
     int iDOF = 0;
-    int nwMin = 1+1 + 2 + 2 + 2;
-    int nw_xstart = nwMin +1;
     while( fgets(line, nline, fin) ){
         if(line[0]=='#')continue;
         int comp;
         double xmin, xmax, xlo, xhi, klo, khi, xstart;
         int nw = sscanf( line, "%s %i %lf %lf %lf %lf %lf %lf %lf",  at_name, &comp, &xmin, &xmax, &xlo, &xhi, &klo, &khi, &xstart );
-        if(nw != nwMin){ printf("ERROR in loadDOFSelection(): expected min. %i words, got %i in line '%s'\n", line); exit(0); }
+        if(nw < 7){ printf("ERROR in loadDOFSelection(): expected min. 7 words, got %i in line '%s'\n", nw, line); exit(0); }
         int ityp = params->getAtomType(at_name);
         if(ityp < 0){  printf("ERROR in loadDOFSelection(): unknown atom type %s\n", at_name); exit(0); }
-        // Store DOF index in typToREQ
-        typToREQ[ityp].array[comp] = iDOF;
-        // Store parameter bounds and regularization
-        typeREQsMin   [ityp].array[comp] = xmin;
-        typeREQsMax   [ityp].array[comp] = xmax;
-        typeREQs0_low [ityp].array[comp] = xlo;
-        typeREQs0_high[ityp].array[comp] = xhi;
-        typeKreg_low  [ityp].array[comp] = klo;
-        typeKreg_high [ityp].array[comp] = khi;
-        if(nw>=nw_xstart){
-            typeREQs      [ityp].array[comp] = xstart;
-            typeREQs0     [ityp].array[comp] = xstart;
-        }
+
+        // Add new DOF
+        REQtoTyp_.push_back( {ityp, comp} );
+        DOFregX_ .push_back( {xlo, xstart, xhi} );
+        DOFregK_ .push_back( {klo, 0.0,    khi} );
+        DOFlimits_.push_back( {xmin, xmax} );
+
         if(verbosity>0){ printf( "DOF[%3i] type %3i=%-8s comp %i=%c  range(%g,%g) reg(x0=(%g,%g),K=(%g,%g)) start=%g\n",  iDOF, ityp, at_name, comp, "REQH"[comp], xmin, xmax, xlo, xhi, klo, khi, xstart );}
         iDOF++;
     }
     fclose(fin);
-    
-    // Build inverse mapping from DOFs to types
-    REQtoTyp.resize(nDOFs);
-    for(int i=0; i<ntype_; i++){
-        const Quat4i& tt = typToREQ[i];
-        if(tt.x>=0) REQtoTyp[tt.x] = Vec2i{i,0};
-        if(tt.y>=0) REQtoTyp[tt.y] = Vec2i{i,1};
-        if(tt.z>=0) REQtoTyp[tt.z] = Vec2i{i,2};
-        if(tt.w>=0) REQtoTyp[tt.w] = Vec2i{i,3};
-    }
-    
-    initDOFregs();
+
+    // Now we know the number of DOFs
+    int nDOFs_new = REQtoTyp_.size();
+    realloc(nDOFs_new);
+    nDOFs = nDOFs_new;
+
+    // Transfer data from temporary vectors to class members
+    REQtoTyp = REQtoTyp_;
+    DOFregX  = DOFregX_;
+    DOFregK  = DOFregK_;
+    DOFlimits = DOFlimits_;
+
+    // Initialize type-related arrays using a separate function
+    initTypeParamsFromDOFs();
+
     if(verbosity>0){
         printDOFsToTypes();
         printTypesToDOFs();
@@ -380,6 +355,28 @@ int loadDOFSelection( const char* fname ){
     }
     
     return nDOFs;
+}
+
+void initTypeParamsFromDOFs() {
+    for (int iDOF=0; iDOF<nDOFs; iDOF++) {
+        Vec2i rt = REQtoTyp[iDOF];
+        int ityp = rt.x;
+        int comp = rt.y;
+
+        typToREQ[ityp].array[comp] = iDOF;
+
+        typeREQs[ityp].array[comp] = DOFregX[iDOF].y;  // Initialize with xstart
+        typeREQs0[ityp].array[comp] = DOFregX[iDOF].y;
+
+        typeREQsMin[ityp].array[comp] = DOFlimits[iDOF].x;
+        typeREQsMax[ityp].array[comp] = DOFlimits[iDOF].y;
+
+        typeREQs0_low[ityp].array[comp] = DOFregX[iDOF].x;
+        typeREQs0_high[ityp].array[comp] = DOFregX[iDOF].z;
+
+        typeKreg_low[ityp].array[comp] = DOFregK[iDOF].x;
+        typeKreg_high[ityp].array[comp] = DOFregK[iDOF].z;
+    }
 }
 
 /**
