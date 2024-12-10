@@ -179,7 +179,7 @@ class FitREQ{ public:
     std::vector<Vec2i> REQtoTyp;  // Maps DOF index to (type_index, component)
     std::vector<Vec3d> DOFregX;   // regularization positions (xmin,x0,xmax) for each DOF
     std::vector<Vec3d> DOFregK;   // regularization stiffness (Kmin,K0,Kmax) for each DOF
-    std::vector<Vec2d> DOFlimits;  // regularization stiffness (Kmin,K0,Kmax) for each DOF
+    std::vector<Vec2d> DOFlimits;   // limits (xmin,xmax) for each DOF
 
     alignas(32) double*   DOFs =0;       // [nDOFs]
     alignas(32) double*   fDOFs=0;       // [nDOFs]
