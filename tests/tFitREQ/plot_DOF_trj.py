@@ -18,12 +18,44 @@ def extract_dof_names(output_file):
             if reading_dofs:
                 if '->' in line:
                     # Extract the DOF name after the '=' sign
-                    name = line.split('=')[1].strip()
-                    dof_names.append(name)
+                    name = line.split('|')[1][1:]
+                    dof_names.append( name.strip() )
                 elif line.strip() == '':
                     reading_dofs = False
                     break
     return dof_names
+
+def read_DOF_trj(output_file):
+    # Initialize lists to store data
+    steps      = []
+    dofs_data  = []
+    fdofs_data = []
+    # Read the output file
+    with open(output_file, 'r') as f:
+        for line in f:
+            if '_REG:  step:' not in line: continue
+            parts = line.strip().split()
+            step = int(parts[parts.index('step:') + 1])
+            if ' DOFs:' in line:  # Note the space before DOFs to avoid matching fDOFs
+                # Extract DOFs values
+                dof_idx = parts.index('DOFs:') + 1
+                dofs = [float(x) for x in parts[dof_idx:]]
+                if len(steps) == 0 or steps[-1] != step:
+                    steps.append(step)
+                    dofs_data.append(dofs)
+            elif 'fDOFs:' in line:
+                # Extract fDOFs values
+                fdof_idx = parts.index('fDOFs:') + 1
+                fdofs = [float(x) for x in parts[fdof_idx:]]
+                fdofs_data.append(fdofs)
+    # Convert to numpy arrays for easier plotting
+    if( len(steps) == 0 ):
+        print("ERROR in read_DOF_trj() len(steps) == 0")
+        exit()
+    steps      = np.array(steps)
+    dofs_data  = np.array(dofs_data)
+    fdofs_data = np.array(fdofs_data)
+    return steps, dofs_data, fdofs_data
 
 def plot_dofs_fdofs(output_file="OUT", figsize=(12, 8)):
     """
@@ -33,44 +65,13 @@ def plot_dofs_fdofs(output_file="OUT", figsize=(12, 8)):
         output_file (str): Path to the output file containing DOFs and fDOFs data
         figsize (tuple): Figure size in inches (width, height)
     """
+
+    steps, dofs_data, fdofs_data = read_DOF_trj(output_file)
+
     # Get DOF names
     dof_names = extract_dof_names(output_file)
-
     # if dof_names contains .H should be full line '-' if not should doted ':'
-    dof_ls = [ '-' if '.H' in name else ':' for name in dof_names ]
-    
-    # Initialize lists to store data
-    steps      = []
-    dofs_data  = []
-    fdofs_data = []
-    
-    # Read the output file
-    with open(output_file, 'r') as f:
-        for line in f:
-            if 'BEFOR_REG' not in line:
-                continue
-                
-            parts = line.strip().split()
-            if 'step:' in line:
-                step = int(parts[parts.index('step:') + 1])
-                
-                if ' DOFs:' in line:  # Note the space before DOFs to avoid matching fDOFs
-                    # Extract DOFs values
-                    dof_idx = parts.index('DOFs:') + 1
-                    dofs = [float(x) for x in parts[dof_idx:]]
-                    if len(steps) == 0 or steps[-1] != step:
-                        steps.append(step)
-                        dofs_data.append(dofs)
-                elif 'fDOFs:' in line:
-                    # Extract fDOFs values
-                    fdof_idx = parts.index('fDOFs:') + 1
-                    fdofs = [float(x) for x in parts[fdof_idx:]]
-                    fdofs_data.append(fdofs)
-    
-    # Convert to numpy arrays for easier plotting
-    steps = np.array(steps)
-    dofs_data = np.array(dofs_data)
-    fdofs_data = np.array(fdofs_data)
+    dof_ls = [ '--' if 'E'==name[0] else '-' for name in dof_names ]
     
     # Create figure with two subplots
     fig, (ax1, ax2) = plt.subplots(2, 1, figsize=figsize)

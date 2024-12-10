@@ -107,11 +107,11 @@ def run(ialg=2, iparallel=1, nstep=100, Fmax=1e-8, dt=0.01, max_step=0.05, dampi
 # double getEs( double* Es, double* Fs, bool bOmp, bool bDOFtoTypes ){
 lib.getEs.argtypes  = [ c_double_p,  c_double_p, c_bool, c_bool]
 lib.getEs.restype   =  c_double
-def getEs(Es=None, Fs=None, bOmp=False, bDOFtoTypes=False, bEs=True, bFs=False ):
+def getEs(Es=None, Fs=None, bOmp=False, bDOFtoTypes=True, bEs=True, bFs=False ):
     if bEs and (Es is None): Es = np.zeros( nbatch )
     if bFs and (Fs is None): Fs = np.zeros( nDOFs  )
     Eerr = lib.getEs(_np_as(Es,c_double_p), _np_as(Fs,c_double_p), bOmp, bDOFtoTypes)
-    #print("Es", Es)
+    #print("getEs(): Es", Es)
     return Eerr, Es, Fs
 
 # void scanParam( int iDOF, int n, double* xs,  double* Es, double* Fs, bool bRegularize ){
@@ -140,6 +140,12 @@ lib.loadTypes.argtypes  = [c_char_p, c_char_p]
 lib.loadTypes.restype   =  None
 def loadTypes(fEtypes="data/ElementTypes.dat", fAtypes="data/AtomTypes.dat"):
     return lib.loadTypes(cstr(fEtypes), cstr(fAtypes))
+
+#int loadDOFSelection( const char* fname ){
+lib.loadDOFSelection.argtypes  = [c_char_p]
+lib.loadDOFSelection.restype   =  c_int
+def loadDOFSelection(fname="DOFSelection.dat"):
+    return lib.loadDOFSelection(cstr(fname))
 
 # int loadTypeSelection_walls( const char* fname ){
 lib.loadTypeSelection.argtypes  = [c_char_p]

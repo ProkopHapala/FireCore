@@ -2,6 +2,7 @@
 #ifndef OptRandomWalk_h
 #define OptRandomWalk_h
 
+#include "globals.h"
 //#include <cstddef>
 #include <math.h>
 #include "macroUtils.h"

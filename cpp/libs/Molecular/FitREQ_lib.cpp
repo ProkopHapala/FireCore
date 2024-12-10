@@ -79,6 +79,10 @@ void setFilter( double EmodelCut, double EmodelCutStart, int iWeightModel, int L
 }
 
 
+int loadDOFSelection( const char* fname ){
+    return W.loadDOFSelection( fname );
+}
+
 int loadTypeSelection( const char* fname ){
     return W.loadTypeSelection( fname );
 }
@@ -132,8 +136,8 @@ double optimize_random(int nstep, double stepSize=0.1) {
 void setTypeToDOFs  (int i, double* REQ ){ W.setTypeToDOFs  ( i, *(Quat4d*)REQ ); }
 void getTypeFromDOFs(int i, double* REQ ){ W.getTypeFromDOFs( i, *(Quat4d*)REQ ); }
 
-double getEs( double* Es, double* Fs, bool bOmp, bool bDOFtoTypes ){
-    //printf( "getEs() bOmp %i bDOFtoTypes %i \n", imodel, bOmp, bDOFtoTypes );
+double getEs( double* Es, double* Fs, bool bOmp, bool bDOFtoTypes){
+    printf( "getEs() imodel %i nDOFs %i bOmp %i bDOFtoTypes %i @DOFtoTyp=%p  @Es=%p @Fs=%p \n", W.imodel, W.nDOFs, bOmp, bDOFtoTypes, W.DOFtoTyp, Es, Fs );
     //W.imodel=imodel;
     if(bDOFtoTypes)W.DOFsToTypes(); 
     W.clean_fDOFs();

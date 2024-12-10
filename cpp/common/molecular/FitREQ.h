@@ -172,11 +172,11 @@ class FitREQ{ public:
     alignas(32) Quat4d*    typeKreg_high =0; // [ntype] regulatization stiffness (upper wall)
 
     alignas(32) Quat4i*    typToREQ      =0; // [ntype] map each unique atom type to place in DOFs;
-    // alignas(32)  Vec2i* REQtoTyp; // Maps DOF index to (type_index, component)
+    // alignas(32)  Vec2i* DOFtoTyp; // Maps DOF index to (type_index, component)
     // alignas(32)  Vec3d* DOFregX;  // regularization positions (xmin,x0,xmax) for each DOF
     // alignas(32)  Vec3d* DOFregK;  // regularization stiffness (Kmin,K0,Kmax) for each DOF
 
-    std::vector<Vec2i> REQtoTyp;  // Maps DOF index to (type_index, component)
+    std::vector<Vec2i> DOFtoTyp;  // Maps DOF index to (type_index, component)
     std::vector<Vec3d> DOFregX;   // regularization positions (xmin,x0,xmax) for each DOF
     std::vector<Vec3d> DOFregK;   // regularization stiffness (Kmin,K0,Kmax) for each DOF
     std::vector<Vec2d> DOFlimits;   // limits (xmin,xmax) for each DOF
@@ -215,6 +215,7 @@ class FitREQ{ public:
     bool bPrintBeforReg = true;
     bool bPrintAfterReg = false;
 
+    std::vector<int> typesPresent;
 
     // parameters
     int    iWeightModel    = 1;    // weight of model energy 1=linear, 2=cubic_smooth_step  
@@ -250,34 +251,74 @@ class FitREQ{ public:
 void realloc_DOFs( int nDOFs_ ){
     //nDOFs=nR+nE+nQ;
     nDOFs=nDOFs_;
-    _realloc0(  DOFs, nDOFs,0.0 );
+    _realloc0(  DOFs, nDOFs, 0.0 );
     _realloc0( fDOFs, nDOFs, 0.0 );
-    _realloc0( vDOFs, nDOFs, 0.0); 
-    _realloc0(  DOFs_old,  nDOFs,0.0 );
+    _realloc0( vDOFs, nDOFs, 0.0 ); 
+    _realloc0(  DOFs_old,  nDOFs, 0.0 );
     _realloc0( fDOFs_old,  nDOFs, 0.0 );
     _realloc0( fDOFbounds, nDOFs, Vec2dZero );
     //Rs=DOFs;Es=DOFs+nR;Qs=DOFs+nR+nE;
     //fRs=fDOFs;fEs=fDOFs+nR;fQs=fDOFs+nR+nE;
 }
 
+void initDOFs(){
+    for (int iDOF=0; iDOF<nDOFs; iDOF++) {
+        double xstart = DOFregX[iDOF].y;
+        DOFs[iDOF] = xstart;
+        fDOFs[iDOF] = 0.0;
+        vDOFs[iDOF] = 0.0;
+    }
+}
+
 void realloc_sample_fdofs(){
     _realloc0( sample_fdofs, nDOFs*samples.size(), 0.0 );
+}
+
+
+void initTypeParamsFromDOFs() {
+    for (int iDOF=0; iDOF<nDOFs; iDOF++) {
+        Vec2i rt = DOFtoTyp[iDOF];
+        int ityp = rt.x;
+        int comp = rt.y;
+        typToREQ[ityp].array[comp] = iDOF;
+        double xstart = DOFregX[iDOF].y;
+        printf("ityp=%i comp=%i iDOF=%i xstart=%g\n", ityp, comp, iDOF, xstart);
+        typeREQs      [ityp].array[comp] = xstart;  // Initialize with xstart
+        typeREQs0     [ityp].array[comp] = xstart;
+        typeREQsMin   [ityp].array[comp] = DOFlimits[iDOF].x;
+        typeREQsMax   [ityp].array[comp] = DOFlimits[iDOF].y;
+        typeREQs0_low [ityp].array[comp] = DOFregX  [iDOF].x;
+        typeREQs0_high[ityp].array[comp] = DOFregX  [iDOF].z;
+        typeKreg_low  [ityp].array[comp] = DOFregK  [iDOF].x;
+        typeKreg_high [ityp].array[comp] = DOFregK  [iDOF].z;
+    }
+}
+
+int initAllTypes(){
+    ntype = params->atypes.size();
+    printf( "FitREQ::initAllTypes() ntype=%i \n", ntype );
+    reallocTypeParams(ntype);
+    for(int i=0; i<ntype; i++){
+        Quat4d tREQH = Quat4d{ params->atypes[i].RvdW, sqrt(params->atypes[i].EvdW), params->atypes[i].Qbase, params->atypes[i].Hb };
+        typeREQs [i] = tREQH;
+        typeREQs0[i] = tREQH;
+    }
+    return ntype;
 }
 
 void reallocTypeParams(int ntype_) {
     ntype = ntype_;
     _realloc0( typToREQ,       ntype_, Quat4i{-1,-1,-1,-1} );
     _realloc0( typeREQs,       ntype_, Quat4dZero );
+    _realloc0( typeREQs0,      ntype_, Quat4dZero );
     _realloc0( typeREQsMin,    ntype_, Quat4d{ -1e+300, -1e+300, -1e+300, -1e+300 } );
     _realloc0( typeREQsMax,    ntype_, Quat4d{  1e+300,  1e+300,  1e+300,  1e+300 } );
     _realloc0( typeREQs0_low,  ntype_, Quat4dZero );
-    _realloc0( typeREQs0,      ntype_, Quat4dZero );
     _realloc0( typeREQs0_high, ntype_, Quat4dZero );
     _realloc0( typeKreg_low,   ntype_, Quat4dZero );
     _realloc0( typeKreg,       ntype_, Quat4dZero );
     _realloc0( typeKreg_high,  ntype_, Quat4dZero );
 }
-
 
 void reduce_sample_fdofs(){
     int nsamples = samples.size();
@@ -285,6 +326,34 @@ void reduce_sample_fdofs(){
     for(int i=0; i<nsamples; i++){
         double* fs = sample_fdofs + i*nDOFs;
         for(int j=0; j<nDOFs; j++){ fDOFs[j] += fs[j]; }
+    }
+}
+
+void printTypeParams( bool bOnlyPresent=true ){
+    printf("printTypeParams():\n");
+    int ntype = params->atypes.size();
+    bool bCounted = typesPresent.size() > 0;
+    for(int i=0; i<ntype; i++){
+        int ncount = -1;
+        if(bCounted){
+            ncount = typesPresent[i];
+            if( bOnlyPresent && (ncount==0) ){ continue; }
+        }
+        Quat4d tREQH = typeREQs[i]; 
+        printf("type %3i %-8s count: %3i REQH: %10.3f %10.3f %10.3f %10.3f \n", i, params->atypes[i].name, ncount, tREQH.x, tREQH.y, tREQH.z, tREQH.w );
+    }
+}
+
+void countTypesPresent( ){
+    typesPresent.resize( params->atypes.size() );
+    for( int it=0; it<typesPresent.size(); it++ ){ typesPresent[it]=0; }
+    int nsamples = samples.size();
+    for( int isamp=0; isamp<nsamples; isamp++ ){
+        const Atoms* atoms = samples[isamp];
+        for(int i=0; i<atoms->natoms; i++){
+            int ityp = atoms->atypes[i];
+            typesPresent[ityp]+=1;
+        }
     }
 }
 
@@ -301,60 +370,52 @@ void reduce_sample_fdofs(){
  * @return Number of DOFs loaded
  */
 int loadDOFSelection( const char* fname ){
+    initAllTypes();
+    printf("loadDOFSelection() fname=%s\n", fname);
     FILE* fin = fopen( fname, "r" );
     if(fin==0){ printf("cannot open '%s' \n", fname ); exit(0);}
     const int nline=1024;
     char line[1024];
     char at_name[8];
-    int nw_min    = 1 + 1 + 2 + 2 +2;
+    int nw_min    = 1 + 1 + 2 + 2 +2 + 1;
     int nw_xstart = nw_min + 1;
-    // First pass - read DOFs and populate DOF-related arrays
+    DOFtoTyp .clear();
+    DOFregX  .clear();
+    DOFregK  .clear();
+    DOFlimits.clear();
     int iDOF = 0;
     while( fgets(line, nline, fin) ){
         if(line[0]=='#')continue;
         int comp;
-        double xmin, xmax, xlo, xhi, klo, khi, xstart;
-        int nw = sscanf( line, "%s %i %lf %lf %lf %lf %lf %lf %lf",  at_name, &comp, &xmin, &xmax, &xlo, &xhi, &klo, &khi, &xstart );
+        double xmin, xmax, xlo, xhi, klo, khi, K0, xstart;
+        int nw = sscanf( line, "%s %i %lf %lf %lf %lf %lf %lf %lf %lf",  at_name, &comp, &xmin, &xmax, &xlo, &xhi, &klo, &khi, &K0, &xstart );
         if(nw < nw_min){ printf("ERROR in loadDOFSelection(): expected min. %i words, got %i in line '%s'\n", nw_min, nw, line); exit(0); }
         int ityp = params->getAtomType(at_name);
         if(ityp < 0){  printf("ERROR in loadDOFSelection(): unknown atom type %s\n", at_name); exit(0); }
         // Add new DOF
-        if(nw<nw_xstart){ xstart = typeREQs0[ityp].array[comp]; }
-        REQtoTyp .push_back( {ityp, comp}       );
+        if(nw<nw_xstart){ 
+            printf("iDOF: %i %8s.%i xstart missing (nw=%i) => xstart=%g \n", iDOF, at_name, comp, nw, typeREQs0[ityp].array[comp]  );
+            xstart = typeREQs0[ityp].array[comp]; 
+        }
+        DOFtoTyp .push_back( {ityp, comp}       );
         DOFregX  .push_back( {xlo, xstart, xhi} );
-        DOFregK  .push_back( {klo, 0.0,    khi} );
+        DOFregK  .push_back( {klo, K0,     khi} );
         DOFlimits.push_back( {xmin, xmax}       );
-        if(verbosity>0){ printf( "DOF[%3i] type %3i=%-8s comp %i=%c  range(%g,%g) reg(x0=(%g,%g),K=(%g,%g)) start=%g\n",  iDOF, ityp, at_name, comp, "REQH"[comp], xmin, xmax, xlo, xhi, klo, khi, xstart );}
+        //if(verbosity>0)
+            printf( "DOF[%3i] %3i|%i %-8s %c  range(%g,%g) reg(x0=(%g,%g),K=(%g,%g)) xstart=%g\n",  iDOF, ityp,comp,  at_name, "REQH"[comp], xmin, xmax, xlo, xhi, klo, khi, xstart );
         iDOF++;
     }
     fclose(fin);
-    realloc_DOFs( REQtoTyp.size() );
-    reallocTypeParams( params->atypes.size() );
+    realloc_DOFs( DOFtoTyp.size() );
+    initDOFs();
     initTypeParamsFromDOFs();
+    //DOFsToTypes();
     if(verbosity>0){
         printDOFsToTypes();
         printTypesToDOFs();
         printDOFregularization();
     }
     return nDOFs;
-}
-
-void initTypeParamsFromDOFs() {
-    for (int iDOF=0; iDOF<nDOFs; iDOF++) {
-        Vec2i rt = REQtoTyp[iDOF];
-        int ityp = rt.x;
-        int comp = rt.y;
-        typToREQ[ityp].array[comp] = iDOF;
-        double xstart = DOFregX[iDOF].y;
-        typeREQs      [ityp].array[comp] = xstart;  // Initialize with xstart
-        typeREQs0     [ityp].array[comp] = xstart;
-        typeREQsMin   [ityp].array[comp] = DOFlimits[iDOF].x;
-        typeREQsMax   [ityp].array[comp] = DOFlimits[iDOF].y;
-        typeREQs0_low [ityp].array[comp] = DOFregX  [iDOF].x;
-        typeREQs0_high[ityp].array[comp] = DOFregX  [iDOF].z;
-        typeKreg_low  [ityp].array[comp] = DOFregK  [iDOF].x;
-        typeKreg_high [ityp].array[comp] = DOFregK  [iDOF].z;
-    }
 }
 
 /**
@@ -365,7 +426,7 @@ void initTypeParamsFromDOFs() {
  * @return The number of types loaded.
 */
 int loadTypeSelection( const char* fname ){
-    if(verbosity>0)printf( "FitREQ::loadTypeSelection(fname=%s) \n", fname );
+    printf( "FitREQ::loadTypeSelection(fname=%s) \n", fname );
     FILE* fin = fopen( fname, "r" );
     if(fin==0){ printf("cannot open '%s' \n", fname ); exit(0);}
     const int nline=1024;
@@ -440,7 +501,7 @@ void initDOFregs(){
     DOFregK.resize(nDOFs);
     DOFlimits.resize(nDOFs);
     for(int i=0; i<nDOFs; i++){
-        const Vec2i& rt = REQtoTyp[i];        // which type and which component (REQH)
+        const Vec2i& rt = DOFtoTyp[i];        // which type and which component (REQH)
         DOFregX[i] = Vec3d{
             typeREQs0_low [rt.x].array[rt.y],  // xmin
             typeREQs0     [rt.x].array[rt.y],  // x0
@@ -472,15 +533,8 @@ void initDOFregs(){
  * @return The number of degrees of freedom.
  */
 int init_types( int ntypesel, int* tsel, Quat4i* typeMask,  Quat4d* tmin, Quat4d* tmax, Quat4d* tx_lo, Quat4d* tx_hi, Quat4d* tk_lo,  Quat4d* tk_hi ){
-    ntype = params->atypes.size();
-    //printf( "FitREQ::init_types() ntypesel=%i ntypes=%i \n", ntypesel, ntype_ );
+    int ntype = initAllTypes();
     int nDOFs=0;
-    reallocTypeParams(ntype);
-    for(int i=0; i<ntype; i++){
-        Quat4d tREQH = Quat4d{ params->atypes[i].RvdW, sqrt(params->atypes[i].EvdW), params->atypes[i].Qbase, params->atypes[i].Hb };
-        typeREQs[i]  = tREQH;
-        typeREQs0[i] = tREQH;
-    }
     for(int i=0; i<ntype; i++){
         bool bFound=false;
         for(int j=0; j<ntypesel; j++){
@@ -521,13 +575,13 @@ int init_types( int ntypesel, int* tsel, Quat4i* typeMask,  Quat4d* tmin, Quat4d
     //DOFsFromTypes(); 
     typesToDOFs();
     // Build inverse mapping from DOFs to types
-    REQtoTyp.resize(nDOFs);
+    DOFtoTyp.resize(nDOFs);
     for(int i=0; i<ntype; i++){
         const Quat4i& tt = typToREQ[i];
-        if(tt.x>=0) REQtoTyp[tt.x] = Vec2i{i,0};
-        if(tt.y>=0) REQtoTyp[tt.y] = Vec2i{i,1};
-        if(tt.z>=0) REQtoTyp[tt.z] = Vec2i{i,2};
-        if(tt.w>=0) REQtoTyp[tt.w] = Vec2i{i,3};
+        if(tt.x>=0) DOFtoTyp[tt.x] = Vec2i{i,0};
+        if(tt.y>=0) DOFtoTyp[tt.y] = Vec2i{i,1};
+        if(tt.z>=0) DOFtoTyp[tt.z] = Vec2i{i,2};
+        if(tt.w>=0) DOFtoTyp[tt.w] = Vec2i{i,3};
     }
     initDOFregs();
     if(verbosity>0){
@@ -773,6 +827,8 @@ int loadXYZ( const char* fname, bool bAddEpairs=false, bool bOutXYZ=false ){
     if(fout)fclose(fout);
     fclose(fin);
     //init_types();
+    countTypesPresent( );
+    printTypeParams( true );
     return nbatch;
 }
 
@@ -782,10 +838,9 @@ int export_Erefs( double* Erefs ){
 }
 
 void DOFsToTypes(){
-    //printf( "DOFsToTypes() \n" );
+    //printf( "DOFsToTypes() nDOFs: %i @DOFtoTyp=%p \n", nDOFs, DOFtoTyp );
     for(int i=0; i<nDOFs; i++){
-        const Vec2i& rt = REQtoTyp[i];
-        //printf("%i -> %i|%i  = %s.%c \n", i, rt.x, rt.y,  params->atypes[rt.x].name, comp);
+        const Vec2i& rt = DOFtoTyp[i];
         //printf( "DOFsToType()[%3i] rt(%3i|%i) %8s.%c  %g \n", i, rt.x,rt.y,   params->atypes[rt.x].name,"REQH"[rt.y], DOFs[i] );
         typeREQs[rt.x].array[rt.y] = DOFs[i];
     }
@@ -793,7 +848,7 @@ void DOFsToTypes(){
 
 void DOFsFromTypes(){
     for(int i=0; i<nDOFs; i++){
-        const Vec2i& rt = REQtoTyp[i];
+        const Vec2i& rt = DOFtoTyp[i];
         DOFs[i] = typeREQs[rt.x].array[rt.y];
     }
 }
@@ -945,19 +1000,21 @@ double evalSampleError( int isamp, double& E ){
     double wi     = (weights)? weights[isamp] : 1.0;
     if(wi<1e-300) return 0;
     alignas(32) Quat4d fREQs [atoms->natoms];
-    alignas(32) double fDOFs_[atoms->natoms];
+    alignas(32) double fDOFs_[nDOFs];
     E = evalSample( isamp, atoms, wi, fREQs );
-    if(verbosity>3)printf( "evalSampleError() isamp: %3i Emodel: %20.6f Eref: %20.6f \n", isamp, E, atoms->Energy );
+    //if(verbosity>3)
+    //printf( "evalSampleError() isamp: %3i Emodel: %20.6f Eref: %20.6f bBroadcastFDOFs=%i @sample_fdofs=%p \n", isamp, E, atoms->Energy, bBroadcastFDOFs, sample_fdofs );
     if( E>EmodelCutStart ){ 
         if(bWeightByEmodel){ smoothWeight( E, wi ); };
         handleOverRepulsive( isamp, E, atoms, wi );  
         if( weights ) weights[isamp] = wi;   // store to weights so that we know 
-        if( bDiscardOverRepulsive && (E>EmodelCut) ){ return 0; }  
+        if( bDiscardOverRepulsive && (E>EmodelCut) ){ E=NAN; return 0; }  
     }
     double Eref    = atoms->Energy;
     double dE      = E - Eref;
     double dEw     = 2.0*dE*wi;
     double Error   = dE*dE*wi;
+    //printf( "evalSampleError() isamp: %3i Emodel: %20.6f Eref: %20.6f bBroadcastFDOFs=%i @sample_fdofs=%p \n", isamp, E, atoms->Energy, bBroadcastFDOFs, sample_fdofs );
     double* fDOFs__ = bBroadcastFDOFs ? sample_fdofs + isamp*nDOFs : fDOFs_;   // broadcast fDOFs ?
     for(int k=0; k<nDOFs; k++){ fDOFs__[k]=0; }                                // clean fDOFs
     acumDerivs( atoms->natoms, atoms->atypes, dEw, fREQs, fDOFs_ );            // accumulate fDOFs from fREQs
@@ -966,7 +1023,12 @@ double evalSampleError( int isamp, double& E ){
         acumHostDerivs( ad->nep, ad->bs, atoms->atypes, dEw, fREQs, fDOFs_ );
     }
     if( bUdateDOFbounds  ){ updateDOFbounds( fDOFs__ ); }
-    if( !bBroadcastFDOFs ){ for(int k=0; k<nDOFs; k++){ fDOFs[k] += fDOFs__[k]; } }
+    
+    if( !bBroadcastFDOFs ){ 
+        double F2=0.0;
+        for(int k=0; k<nDOFs; k++){ double fi=fDOFs__[k]; fDOFs[k] += fi; F2+=fi*fi;  } 
+        printf( "evalSampleError() isamp: %3i Eref: %20.6f Emodel: %20.6f |F|= f: %20.6f  wi: %20.6f dEw: %20.6f \n", isamp, atoms->Energy, E, sqrt(F2), wi, dEw );
+    }
     return Error;
 }
 
@@ -1009,22 +1071,21 @@ void clear_fDOFbounds(){
  */
 __attribute__((hot)) 
 double evalSamples_noOmp( double* Eout=0 ){ 
-    //bListOverRepulsive = true;
     if( bListOverRepulsive   ) overRepulsiveList.clear();
     if( bSaveOverRepulsive   ) clearFile( fname_overRepulsive );
     if( bClearDOFboundsEpoch ) clear_fDOFbounds(); // clean fDOFbounds
     bBroadcastFDOFs    = false; 
-    //printf( "evalSamples_noOmp() \n" );
     double Error = 0.0;
     int nsamp = samples.size();
+    printf( "evalSamples_noOmp() nsamp=%i\n", nsamp );
     for(int isamp=0; isamp<nsamp; isamp++){
         double E; 
         Error+=evalSampleError( isamp, E );
         if(bEvalOnlyCorrections){ ((AddedData*)samples[isamp]->userData)->Emodel0 = E; }
         if(Eout){
-            if( bListOverRepulsive ){ if(overRepulsiveList.back()==isamp) E=NAN; }
+            //if( bListOverRepulsive ){ if(overRepulsiveList.back()==isamp) E=NAN; }
+            //printf( "evalSamples_noOmp() isamp: %3i Emodel: %20.6f Eref: %20.6f @Eout=%p \n", isamp, E, samples[isamp]->Energy, Eout );
             Eout[isamp]=E;
-            //printf( "evalSamples_noOmp() isamp: %3i Emodel: %20.6f Eref: %20.6f \n", isamp, E, samples[isamp]->Energy );
         }
     }
     if(bListOverRepulsive){ printOverRepulsiveList(); }
@@ -1035,9 +1096,9 @@ __attribute__((hot))
 double evalSamples_omp( double* Eout=0 ){ 
     bListOverRepulsive = false;
     bBroadcastFDOFs    = true; 
-    //printf( "evalSamples_omp() \n" );
-    double Error = 0.0;
+    double Error       = 0.0;
     int nsamp = samples.size();
+    printf( "evalSamples_omp() nsamp=%i\n", nsamp );
     #pragma omp parallel for reduction(+:Error)
     for(int isamp=0; isamp<nsamp; isamp++){
        double E; 
@@ -1047,6 +1108,10 @@ double evalSamples_omp( double* Eout=0 ){
     if(bBroadcastFDOFs){ reduce_sample_fdofs(); }
     return Error;
 }
+
+
+
+
 
 void printDebugArrays(int na, int* atypes, Vec3d* apos, double* aq, int* aisep, int nj, int* jtyp, Vec3d* jpos, double* jq, int* jisep, int nep, Vec2i* bs, const Atoms* atoms, bool bEpairs) {
     //printf("=== DEBUG: Arrays in evalDerivsSamp ===\n");
@@ -1498,6 +1563,7 @@ __attribute__((hot))
 double run( int ialg, int nstep, double Fmax, double dt, double max_step, double damping, bool bClamp, bool bOMP ){
     if( verbosity>1){ printf( "FitREQ::run() imodel %i ialg %i nstep %i Fmax %g dt %g max_step %g \n", imodel, ialg, nstep, Fmax, dt, max_step ); }
     double Err=0;
+    //noiseToDOFs(0.2);
     clear_fDOFbounds();
     if(bOMP){ bBroadcastFDOFs=true; realloc_sample_fdofs();  }
     double F2max=Fmax*Fmax;
@@ -1568,74 +1634,122 @@ double run_omp( int ialg, int nstep, double Fmax, double dt, double max_step, do
     return Error;
 }
 
+
+/**
+ * Limits the fitted non-colvalent interaction parameters REQH(Rvdw,Evdw,Q,Hb) to be btween minimum and maximum (REQmin and REQmax).
+ * 
+ * @param none
+ * @return void
+ */
+// __attribute__((hot)) 
+// void limit_params(){
+//     for(int i=0; i<ntype; i++ ){
+//         const Quat4i& tt     = typToREQ[i];
+//         const Quat4d& REQ    = typeREQs [i];
+//         const Quat4d& REQmin = typeREQsMin[i];
+//         const Quat4d& REQmax = typeREQsMax[i];
+//         // Note: should we limit derivatives or the value itself?
+//         if(tt.x>=0){ DOFs[tt.x]=_clamp(DOFs[tt.x],REQmin.x,REQmax.x ); }
+//         if(tt.y>=0){ DOFs[tt.y]=_clamp(DOFs[tt.y],REQmin.y,REQmax.y ); }
+//         if(tt.z>=0){ DOFs[tt.z]=_clamp(DOFs[tt.z],REQmin.z,REQmax.z ); }
+//         if(tt.w>=0){ DOFs[tt.w]=_clamp(DOFs[tt.w],REQmin.w,REQmax.w ); }
+//         //if(tt.x>=0){ fDOFs[tt.x]=_clamp(fDOFs[tt.x],REQmin.x,REQmax.x ); }
+//         //if(tt.y>=0){ fDOFs[tt.y]=_clamp(fDOFs[tt.y],REQmin.y,REQmax.y ); }
+//         //if(tt.z>=0){ fDOFs[tt.z]=_clamp(fDOFs[tt.z],REQmin.z,REQmax.z ); }
+//         //if(tt.w>=0){ fDOFs[tt.w]=_clamp(fDOFs[tt.w],REQmin.w,REQmax.w ); }
+//     }
+// }
+
 /**
  * Calculates the regularization force for each degree of freedom (DOF) based on the difference between the current and target values of the fitted non-colvalent interaction parameters REQH(Rvdw,Evdw,Q,Hb).
  * The regularization force tries to minimize the difference between the current (REQ) and the default value (REQ0) of the parameters. Its strength is controlled by the regularization stiffness (Kreg).
  * The resulting forces are stored in the fDOFs array.
  */
-__attribute__((hot)) 
-void regularization_force(){
-    for(int i=0; i<ntype; i++ ){
-        const Quat4i& tt       = typToREQ [i];
-        const Quat4d& REQ      = typeREQs [i];
-        const Quat4d& REQ0     = typeREQs0[i];
-        const Quat4d& K        = typeKreg [i];
-        if(tt.x>=0)fDOFs[tt.x] = (REQ0.x-REQ.x)*K.x;
-        if(tt.y>=0)fDOFs[tt.y] = (REQ0.y-REQ.y)*K.y;
-        if(tt.z>=0)fDOFs[tt.z] = (REQ0.z-REQ.z)*K.z;
-        if(tt.w>=0)fDOFs[tt.w] = (REQ0.w-REQ.w)*K.w;
-    }
-}
+// __attribute__((hot)) 
+// void regularization_force(){
+//     for(int i=0; i<ntype; i++ ){
+//         const Quat4i& tt       = typToREQ [i];
+//         const Quat4d& REQ      = typeREQs [i];
+//         const Quat4d& REQ0     = typeREQs0[i];
+//         const Quat4d& K        = typeKreg [i];
+//         if(tt.x>=0)fDOFs[tt.x] = (REQ0.x-REQ.x)*K.x;
+//         if(tt.y>=0)fDOFs[tt.y] = (REQ0.y-REQ.y)*K.y;
+//         if(tt.z>=0)fDOFs[tt.z] = (REQ0.z-REQ.z)*K.z;
+//         if(tt.w>=0)fDOFs[tt.w] = (REQ0.w-REQ.w)*K.w;
+//     }
+// }
+
+// __attribute__((hot)) 
+// void regularization_force_walls(){
+//     double E = 0;
+//     for(int i=0; i<ntype; i++ ){
+//         const Quat4i& tt    = typToREQ      [i];
+//         const Quat4d& REQ   = typeREQs      [i];
+//         const Quat4d& REQ0l = typeREQs0_low [i];
+//         const Quat4d& Kl    = typeKreg_low  [i];
+//         const Quat4d& REQ0h = typeREQs0_high[i];
+//         const Quat4d& Kh    = typeKreg_high [i];
+//         if(tt.x>=0){ E+= constrain( REQ.x, REQ0l.x, REQ0h.x, Kl.x,Kh.x, fDOFs[tt.x] ); }
+//         if(tt.x>=0){ E+= constrain( REQ.y, REQ0l.y, REQ0h.y, Kl.y,Kh.y, fDOFs[tt.y] ); }
+//         if(tt.x>=0){ E+= constrain( REQ.z, REQ0l.z, REQ0h.z, Kl.z,Kh.z, fDOFs[tt.z] ); }
+//         if(tt.x>=0){ E+= constrain( REQ.w, REQ0l.w, REQ0h.w, Kl.w,Kh.w, fDOFs[tt.w] ); }
+//     }
+// }
+
+// __attribute__((hot)) 
+// inline double constrain( double x, double xmin, double xmax, double Kmin, double Kmax, double& f ){
+//     double E=0;
+//     if(x<xmin){
+//         double d = x-xmin; 
+//         f =      -d*Kmin;
+//         E = 0.5*d*d*Kmin;
+//     }else if(x>xmax){
+//         double d = x-xmax; 
+//         f =      -d*Kmax;
+//         E = 0.5*d*d*Kmax;
+//     }
+//     return E;
+// }
 
 __attribute__((hot)) 
-inline double constrain( double x, double xmin, double xmax, double Kmin, double Kmax, double& f ){
-    double E=0;
-    if(x<xmin){
-        double d = x-xmin; 
-        f =      -d*Kmin;
-        E = 0.5*d*d*Kmin;
-    }else if(x>xmax){
-        double d = x-xmax; 
-        f =      -d*Kmax;
-        E = 0.5*d*d*Kmax;
+__attribute__((pure))
+static inline double constrain( double x, const Vec3d& regX, const Vec3d& regK, double& fout ){
+    double E = 0;
+    double f = 0;
+    if(x<regX.x){
+        double d = x-regX.x; 
+        f        =      -d*regK.x;
+        E        = 0.5*d*d*regK.x;
+    }else if(x>regX.z){
+        double d = x-regX.x; 
+        f        =      -d*regK.z;
+        E        = 0.5*d*d*regK.z;
     }
+    if( regK.y > 0){
+        double d  = x-regX.y;
+        f        -=       d*regK.y;
+        E        += 0.5*d*d*regK.y;
+    }
+    fout += f;
     return E;
 }
 
-__attribute__((hot)) 
-void regularization_force_walls(){
-    double E = 0;
-    for(int i=0; i<ntype; i++ ){
-        const Quat4i& tt    = typToREQ      [i];
-        const Quat4d& REQ   = typeREQs      [i];
-        const Quat4d& REQ0l = typeREQs0_low [i];
-        const Quat4d& Kl    = typeKreg_low  [i];
-        const Quat4d& REQ0h = typeREQs0_high[i];
-        const Quat4d& Kh    = typeKreg_high [i];
-        if(tt.x>=0){ E+= constrain( REQ.x, REQ0l.x, REQ0h.x, Kl.x,Kh.x, fDOFs[tt.x] ); }
-        if(tt.x>=0){ E+= constrain( REQ.y, REQ0l.y, REQ0h.y, Kl.y,Kh.y, fDOFs[tt.y] ); }
-        if(tt.x>=0){ E+= constrain( REQ.z, REQ0l.z, REQ0h.z, Kl.z,Kh.z, fDOFs[tt.z] ); }
-        if(tt.x>=0){ E+= constrain( REQ.w, REQ0l.w, REQ0h.w, Kl.w,Kh.w, fDOFs[tt.w] ); }
-    }
+void noiseToDOFs(double d){
+    for(int i=0; i<nDOFs; i++){ DOFs[i]+=randf(-d,d); }
 }
+
 
 // New regularization function operating per-DOF
 __attribute__((hot)) 
 double regularizeDOFs(){
-    double Etot = 0;
-    for(int i=0; i<nDOFs; i++){
-        const Vec3d& regX = DOFregX[i];
-        const Vec3d& regK = DOFregK[i];
-        // Hard walls outside [xmin,xmax]
-        Etot += constrain(DOFs[i], regX.x, regX.z, regK.x, regK.z, fDOFs[i]);
-        // Soft harmonic around x0
-        if(regK.y > 0){
-            double d  = DOFs[i] - regX.y;
-            fDOFs[i] -= d * regK.y;
-            Etot     += 0.5 * d * d * regK.y;
-        }
+    //printf("regularizeDOFs() nDOFs=%i @DOFregX=%p @DOFregX=%p @DOFs=%p @fDOFs=%p @DOFtoTyp=%p \n",  nDOFs, DOFregX, DOFregK, DOFs, fDOFs, DOFtoTyp); 
+    double E = 0;
+    for(int i=0; i<nDOFs; i++){   
+        E += constrain( DOFs[i], DOFregX[i], DOFregK[i], fDOFs[i] );
+        //{ Vec2i tc    = DOFtoTyp[i]; printf( "regularizeDOFs() i: %3i   %8s|%c x: %10.3e f: %10.3e E: %10.3e\n", i,  params->atypes[tc.x].name, "REQH"[tc.y],  DOFs[i], fDOFs[i], E );   }
     }
-    return Etot;
+    //printf( "regularizeDOFs() END E: %10.3e\n", E );
+    return E;
 }
 
 __attribute__((hot)) 
@@ -1646,30 +1760,7 @@ void limitDOFs(){
     //printf("limitDOFs() DOFs: "); for(int i=0;i<nDOFs;i++){  printf("%8.2e ", DOFlimits[i].y); };printf("\n");
 }
 
-/**
- * Limits the fitted non-colvalent interaction parameters REQH(Rvdw,Evdw,Q,Hb) to be btween minimum and maximum (REQmin and REQmax).
- * 
- * @param none
- * @return void
- */
-__attribute__((hot)) 
-void limit_params(){
-    for(int i=0; i<ntype; i++ ){
-        const Quat4i& tt     = typToREQ[i];
-        const Quat4d& REQ    = typeREQs [i];
-        const Quat4d& REQmin = typeREQsMin[i];
-        const Quat4d& REQmax = typeREQsMax[i];
-        // Note: should we limit derivatives or the value itself?
-        if(tt.x>=0){ DOFs[tt.x]=_clamp(DOFs[tt.x],REQmin.x,REQmax.x ); }
-        if(tt.y>=0){ DOFs[tt.y]=_clamp(DOFs[tt.y],REQmin.y,REQmax.y ); }
-        if(tt.z>=0){ DOFs[tt.z]=_clamp(DOFs[tt.z],REQmin.z,REQmax.z ); }
-        if(tt.w>=0){ DOFs[tt.w]=_clamp(DOFs[tt.w],REQmin.w,REQmax.w ); }
-        //if(tt.x>=0){ fDOFs[tt.x]=_clamp(fDOFs[tt.x],REQmin.x,REQmax.x ); }
-        //if(tt.y>=0){ fDOFs[tt.y]=_clamp(fDOFs[tt.y],REQmin.y,REQmax.y ); }
-        //if(tt.z>=0){ fDOFs[tt.z]=_clamp(fDOFs[tt.z],REQmin.z,REQmax.z ); }
-        //if(tt.w>=0){ fDOFs[tt.w]=_clamp(fDOFs[tt.w],REQmin.w,REQmax.w ); }
-    }
-}
+
 
 /**
  * This function limits the time step based on the maximum step size and the actual maximum force magnitude in the fDOFs array. It is used in the gradient descent and molecular dynamics optimization algorithms to make sure it is stable.
@@ -1831,12 +1922,8 @@ double move_MD( double dt, double max_step=-0.1, double damp=0.1, bool bClimbBre
 }
 
 /// @brief Cleans the derivative array by setting all its elements to zero.
-void clean_fDOFs(){ for(int i=0; i<nDOFs; i++){fDOFs[i]=0;} }
-void updateDOFbounds( double* fDOFs_ ){
-    for(int i=0; i<nDOFs; i++){
-        fDOFbounds[i].enclose( fDOFs_[i] );
-    }
-}
+void clean_fDOFs    ()                { for(int i=0; i<nDOFs; i++){ fDOFs[i]=0;                          }}
+void updateDOFbounds( double* fDOFs_ ){ for(int i=0; i<nDOFs; i++){ fDOFbounds[i].enclose( fDOFs_[i] );  }}
 
 Vec2d getMinMax( int n, double* vec ){
     Vec2d bd = Vec2d{+1e+300,-1e+300};
@@ -1856,8 +1943,8 @@ void printStepDOFinfo( int istep, double Err, const char* label="" ){
     }else if( verbosity>1){
         double F2 = 0.0;                           for(int i=0; i<nDOFs; i++){ F2 += fDOFs[i]*fDOFs[i]; }
         double F = sqrt(F2);
-        if(bPrintDOFs ){ printf("%s step: %5i |E|: %8.3e |F|: %8.3e  DOFs: ",label, istep, Err, F );for(int j=0; j<nDOFs; j++){ printf("%10.2e ",DOFs[j]); }; printf("\n"); }
-        if(bPrintfDOFs){ printf("%s step: %5i |E|: %8.3e |F|: %8.3e fDOFs: ",label, istep, Err, F );for(int j=0; j<nDOFs; j++){ printf("%10.2e ",fDOFs[j]); };printf("\n"); }
+        if(bPrintDOFs ){ printf("%s step: %5i |E|: %8.3e |F|: %8.3e  DOFs: ",label, istep, Err, F ); for(int j=0; j<nDOFs; j++){ printf("%10.2e ", DOFs[j]); }; printf("\n"); }
+        if(bPrintfDOFs){ printf("%s step: %5i |E|: %8.3e |F|: %8.3e fDOFs: ",label, istep, Err, F ); for(int j=0; j<nDOFs; j++){ printf("%10.2e ",fDOFs[j]); }; printf("\n"); }
     }
     if( isnan(Err)                   ){ printf( "ERROR in %s step: %i Err= %g \n"        , label, istep, Err ); exit(0); }
     if ( bd.x < -1e+8 || bd.y > 1e+8 ){ printf( "ERROR in %s step: %i Fmin,max= %g %g \n", label, istep, bd.x, bd.y ); exit(0); }
@@ -1874,7 +1961,7 @@ const char* REQcomponentToStr(int i){
 }
 
 void printDOFmapping() {
-    printf("=== DOF Mapping ===\n");
+    printf("printDOFmapping()\n");
     for(int i=0; i<ntype; i++){
         const Quat4i& tt = typToREQ[i];
         if(tt.x>=0 || tt.y>=0 || tt.z>=0 || tt.w>=0){
@@ -1885,15 +1972,14 @@ void printDOFmapping() {
             if(tt.w>=0) printf("  DOF[%3d] -> %s (H-bond param)\n",   tt.w, REQcomponentToStr(3));
         }
     }
-    printf("=================\n");
 }
 
 void printDOFsToTypes() const {
     printf("printDOFsToTypes() nDOFs=%i\n", nDOFs);
     for(int i=0; i<nDOFs; i++){
-        const Vec2i& rt = REQtoTyp[i];
+        const Vec2i& rt = DOFtoTyp[i];
         const char comp = "REQH"[rt.y];
-        printf("%i -> %i|%i  = %s.%c \n", i, rt.x, rt.y,  params->atypes[rt.x].name, comp);
+        printf("%3i -> %3i|%i  %-8s %c \n", i, rt.x, rt.y,  params->atypes[rt.x].name, comp);
     }
     //printf("\n");
 }
@@ -1903,12 +1989,12 @@ void printTypesToDOFs() const {
     for(int i=0; i<ntype; i++){
         const Quat4i& tt = typToREQ[i];
         if(tt.x>=0 || tt.y>=0 || tt.z>=0 || tt.w>=0){
-            printf("%d(%s): ", i, params->atypes[i].name);
-            if(tt.x>=0) printf("R=%d,", tt.x);
-            if(tt.y>=0) printf("E=%d,", tt.y);
-            if(tt.z>=0) printf("Q=%d,", tt.z);
-            if(tt.w>=0) printf("H=%d,", tt.w);
-            printf("\n");
+            printf("%-8s %3i { ", params->atypes[i].name, i );
+            if(tt.x>=0) printf("R=%d ", tt.x);
+            if(tt.y>=0) printf("E=%d ", tt.y);
+            if(tt.z>=0) printf("Q=%d ", tt.z);
+            if(tt.w>=0) printf("H=%d ", tt.w);
+            printf("}\n");
         }
     }
     //printf("\n");
@@ -1917,7 +2003,7 @@ void printTypesToDOFs() const {
 void printDOFs() const {
     printf("printDOFvalues() nDOFs=%i\n", nDOFs);
     for(int i=0; i<nDOFs; i++){
-        const Vec2i& rt = REQtoTyp[i];
+        const Vec2i& rt = DOFtoTyp[i];
         char* tname = params->atypes[rt.x].name;
         const char comp = "REQH"[rt.y];
         printf("%3i ->(%3i|%i) %8s.%c : %20.10f dE/d%c: %20.10f \n", i, rt.x,rt.y, tname,  comp, DOFs[i], comp, fDOFs[i]);
@@ -1926,14 +2012,15 @@ void printDOFs() const {
 }
 
 void printDOFregularization(){
-    printf( "\nprintDOFregularization()\n" );
+    printf( "printDOFregularization()\n" );
     //printf("DOF  Type      Comp  Current       Position(min,x0,max)           Stiffness(min,k0,max)\n");
     for(int i=0; i<nDOFs; i++){
-        const Vec2i& rt   = REQtoTyp[i];
+        const Vec2i& rt   = DOFtoTyp[i];
         const Vec2d& lim  = DOFlimits[i];
         const Vec3d& regX = DOFregX[i];
         const Vec3d& regK = DOFregK[i];
-        printf("[%2i] %8s.%c(%8.3f) limits( %8.3e %8.3e ) reg: x(%8.3f,%8.3f,%8.3f) K(%8.3f,%8.3f,%8.3f)\n",   i, params->atypes[rt.x].name, "REQH"[rt.y],  DOFs[i], lim.x, lim.y,   regX.x, regX.y, regX.z,      regK.x, regK.y, regK.z        );
+        //printf("[%2i] %8s.%c(%8.3f) limits( %10.2e %10.2e ) reg: x(%10.2e,%10.2e,%10.2e ) K(%10.2e,%10.2e,%10.2e )\n",   i, params->atypes[rt.x].name, "REQH"[rt.y],  DOFs[i], lim.x, lim.y,   regX.x, regX.y, regX.z,      regK.x, regK.y, regK.z        );
+        printf("DOF: %2i %-8s %c x: %10.3f limits( %10.2e %10.2e ) reg: x( %10.3f %10.3f %10.3f ) K( %10.3f %10.3f %10.3f )\n",   i, params->atypes[rt.x].name, "REQH"[rt.y],  DOFs[i], lim.x, lim.y,   regX.x, regX.y, regX.z,      regK.x, regK.y, regK.z        );
     }
 }
 

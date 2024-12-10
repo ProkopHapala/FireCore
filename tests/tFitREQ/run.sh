@@ -14,15 +14,16 @@ make -j4 FitREQ_lib
 cd $wd
 
 # ------- asan (Memory Sanitizer)
-#LD_PRELOAD=$(g++ -print-file-name=libasan.so)
-#echo   $LD_PRELOAD
-#export LD_PRELOAD
+LD_PRELOAD=$(g++ -print-file-name=libasan.so)
+echo   $LD_PRELOAD
+export LD_PRELOAD
 
 
 stty cols 200   # set terminal width
 
 echo "#=========== RUN"
-> debug.xyz
+#> debug.xyz
+#python3 -u opt_mini.py
 python3 -u opt_mini.py 2> asan.log | tee OUT
 python3 plot_DOF_trj.py
 #python3 opt_mini.py

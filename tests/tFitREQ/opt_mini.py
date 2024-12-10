@@ -155,17 +155,23 @@ plt.show()
 
 # ------ load stuff
 #fit.setVerbosity(1)
-fit.setVerbosity(verbosity, PrintDOFs=1, PrintfDOFs=1, PrintBeforReg=1, PrintAfterReg=-1 )
+fit.setVerbosity(verbosity, PrintDOFs=1, PrintfDOFs=1, PrintBeforReg=-1, PrintAfterReg=1 )
+#fit.setVerbosity(verbosity, PrintDOFs=1, PrintfDOFs=1, PrintBeforReg=-1, PrintAfterReg=1 )
 fit.loadTypes( )     # load atom types
 
 
 
 #fname = "input_single.xyz"
-fname = "input_all.xyz"
+#fname = "input_all.xyz"
 #fname = "input_2CH2NH.xyz"
 
-#fit.loadTypeSelection( fname="typeSelection.dat" )     # load atom types
-fit.loadTypeSelection( fname="typeSelection_bak2.dat" )     # load atom types
+#fit.loadTypeSelection( fname="typeSelection.dat" )       
+#fit.loadTypeSelection( fname="typeSelection_bak2.dat" ) 
+#fit.loadDOFSelection( fname="dofSelection.dat" )        
+
+fname = "input_2CH2NH.xyz"
+fit.loadDOFSelection( fname="dofSelection_N2.dat" )          
+
 nbatch = fit.loadXYZ( fname, bAddEpairs, bOutXYZ )     # load reference geometry
 #nbatch = fit.loadXYZ( "input_small.xyz", bAddEpairs, bOutXYZ )     # load reference geometry
 #nbatch = fit.loadXYZ( "input_single.xyz", bAddEpairs, bOutXYZ )     # load reference geometry
@@ -186,22 +192,20 @@ ev2kcal = 23.060548
 #plt.show(); exit()
 
 
-#fit.setup( imodel=1, EvalJ=1, WriteJ=1, Regularize=-1 )
-fit.setup( imodel=2, EvalJ=1, WriteJ=1, Regularize=1 )
+fit.setup( imodel=1, EvalJ=1, WriteJ=1, Regularize=1 )
+#fit.setup( imodel=2, EvalJ=1, WriteJ=1, Regularize=-1 )
 
 #fit.setFilter( EmodelCutStart=0.0, EmodelCut=0.5, iWeightModel=2, PrintOverRepulsive=1, DiscardOverRepulsive=1, SaveOverRepulsive=-1, ListOverRepulsive=1 )
-fit.setFilter( EmodelCutStart=0.0, EmodelCut=0.5, iWeightModel=2, PrintOverRepulsive=-1, DiscardOverRepulsive=1, SaveOverRepulsive=1, ListOverRepulsive=-1 )
+#fit.setFilter( EmodelCutStart=0.0, EmodelCut=0.5, iWeightModel=2, PrintOverRepulsive=-1, DiscardOverRepulsive=1, SaveOverRepulsive=1, ListOverRepulsive=-1 )
 #fit.setFilter( Emax=0.4, PrintOverRepulsive=-1, DiscardOverRepulsive=-1, SaveOverRepulsive=-1, ListOverRepulsive=-1 )
-
-#Err = fit.run( iparallel=0, ialg=0, nstep=100, Fmax=1e-8, dt=0.01, max_step=0.1,  bClamp=False )
 
 E,Es,Fs = fit.getEs( bOmp=False, bDOFtoTypes=False, bEs=True, bFs=False )
 plotEWs( Erefs=Etots, weights=fit.weights, Emodel=Es, Emin=-1.5 ); plt.title( "BEFORE OPTIMIZATION" )
-#plt.show(); # exit()
+#plt.show(); exit()
 
-Err = fit.run( iparallel=0, ialg=0, nstep=100, Fmax=1e-8, dt=0.005, max_step=-1,  bClamp=False )
-#Err = fit.run( iparallel=0, ialg=0, nstep=1000, Fmax=1e-8, dt=0.005, max_step=-1,  bClamp=False )
-#Err = fit.run( iparallel=0, ialg=1, nstep=100, Fmax=1e-8, dt=0.01, damping=0.1,   max_step=-1,  bClamp=True )
+#Err = fit.run( iparallel=0, ialg=0, nstep=100, Fmax=1e-8, dt=0.005, max_step=-1,  bClamp=True )
+Err = fit.run( iparallel=0, ialg=0, nstep=1000, Fmax=1e-8, dt=0.003, max_step=-1,  bClamp=True )
+#Err = fit.run( iparallel=0, ialg=1, nstep=100, Fmax=1e-8, dt=0.1, damping=0.01,   max_step=-1,  bClamp=True )
 
 # ----- Combined hybrid optimization ( start with gradient descent, continue with dynamical descent) )
 #Err = fit.run( iparallel=0, ialg=0, nstep=20,  Fmax=1e-2, dt=0.005, max_step=-1,  bClamp=False )
