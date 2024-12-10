@@ -162,15 +162,15 @@ fit.loadTypes( )     # load atom types
 
 
 #fname = "input_single.xyz"
-#fname = "input_all.xyz"
+fname = "input_all.xyz"
 #fname = "input_2CH2NH.xyz"
 
 #fit.loadTypeSelection( fname="typeSelection.dat" )       
 #fit.loadTypeSelection( fname="typeSelection_bak2.dat" ) 
-#fit.loadDOFSelection( fname="dofSelection.dat" )        
+fit.loadDOFSelection( fname="dofSelection.dat" )        
 
-fname = "input_2CH2NH.xyz"
-fit.loadDOFSelection( fname="dofSelection_N2.dat" )          
+#fname = "input_2CH2NH.xyz"
+#fit.loadDOFSelection( fname="dofSelection_N2.dat" )          
 
 nbatch = fit.loadXYZ( fname, bAddEpairs, bOutXYZ )     # load reference geometry
 #nbatch = fit.loadXYZ( "input_small.xyz", bAddEpairs, bOutXYZ )     # load reference geometry
@@ -204,8 +204,8 @@ plotEWs( Erefs=Etots, weights=fit.weights, Emodel=Es, Emin=-1.5 ); plt.title( "B
 #plt.show(); exit()
 
 #Err = fit.run( iparallel=0, ialg=0, nstep=100, Fmax=1e-8, dt=0.005, max_step=-1,  bClamp=True )
-Err = fit.run( iparallel=0, ialg=0, nstep=1000, Fmax=1e-8, dt=0.003, max_step=-1,  bClamp=True )
-#Err = fit.run( iparallel=0, ialg=1, nstep=100, Fmax=1e-8, dt=0.1, damping=0.01,   max_step=-1,  bClamp=True )
+#Err = fit.run( iparallel=0, ialg=0, nstep=100, Fmax=1e-8, dt=0.001, max_step=-1,  bClamp=True )
+Err = fit.run( iparallel=0, ialg=1, nstep=1000, Fmax=1e-8, dt=0.001, damping=0.005,   max_step=-1,  bClamp=True )
 
 # ----- Combined hybrid optimization ( start with gradient descent, continue with dynamical descent) )
 #Err = fit.run( iparallel=0, ialg=0, nstep=20,  Fmax=1e-2, dt=0.005, max_step=-1,  bClamp=False )
