@@ -520,7 +520,11 @@ int init_types( int ntypesel, int* tsel, Quat4i* typeMask,  Quat4d* tmin, Quat4d
     int ntype_ = params->atypes.size();
     //printf( "FitREQ::init_types() ntypesel=%i ntypes=%i \n", ntypesel, ntype_ );
     int nDOFs=0;
-    typToREQ = new Quat4i[ntype_];
+    initTypeParams(ntype_);
+    for(int i=0; i<ntype_; i++){
+        typeREQs[i] = Quat4d{ params->atypes[i].RvdW, sqrt(params->atypes[i].EvdW), params->atypes[i].Qbase, params->atypes[i].Hb };
+        typeREQs0[i] = typeREQs[i];
+    }
     for(int i=0; i<ntype_; i++){
         bool bFound=false;
         for(int j=0; j<ntypesel; j++){
@@ -548,17 +552,7 @@ int init_types( int ntypesel, int* tsel, Quat4i* typeMask,  Quat4d* tmin, Quat4d
         }
     }
     realloc(nDOFs);
-    ntype = ntype_; 
-    //typeREQs       = new Quat4d[ntype]; for(int i=0; i<ntype; i++){ typeREQs      [i] = Quat4d{ params->atypes[i].RvdW, params->atypes[i].EvdW, params->atypes[i].Qbase, params->atypes[i].Hb }; }
-    typeREQs       = new Quat4d[ntype]; for(int i=0; i<ntype; i++){ typeREQs      [i] = Quat4d{ params->atypes[i].RvdW, sqrt(params->atypes[i].EvdW), params->atypes[i].Qbase, params->atypes[i].Hb }; }  // We do square root of EvdW, no need to do it in evalExampleDerivs_*
-    typeREQsMin    = new Quat4d[ntype]; for(int i=0; i<ntype; i++){ typeREQsMin   [i] = Quat4d{ -1e+300, -1e+300, -1e+300, -1e+300 }; }
-    typeREQsMax    = new Quat4d[ntype]; for(int i=0; i<ntype; i++){ typeREQsMax   [i] = Quat4d{  1e+300,  1e+300,  1e+300,  1e+300 }; }
-    typeREQs0_low  = new Quat4d[ntype]; for(int i=0; i<ntype; i++){ typeREQs0_low [i] = Quat4dZero;  }
-    typeREQs0      = new Quat4d[ntype]; for(int i=0; i<ntype; i++){ typeREQs0     [i] = typeREQs[i]; } // Initialize equilibrium point to current (initial) values
-    typeREQs0_high = new Quat4d[ntype]; for(int i=0; i<ntype; i++){ typeREQs0_high[i] = Quat4dZero;  }
-    typeKreg_low   = new Quat4d[ntype]; for(int i=0; i<ntype; i++){ typeKreg_low  [i] = Quat4dZero;  }
-    typeKreg       = new Quat4d[ntype]; for(int i=0; i<ntype; i++){ typeKreg      [i] = Quat4dZero;  }
-    typeKreg_high  = new Quat4d[ntype]; for(int i=0; i<ntype; i++){ typeKreg_high [i] = Quat4dZero;  }
+    ntype = ntype_;
     for(int j=0; j<ntypesel; j++){
         int it=tsel[j];
         typeREQsMin   [it] = tmin  [j];
@@ -586,6 +580,19 @@ int init_types( int ntypesel, int* tsel, Quat4i* typeMask,  Quat4d* tmin, Quat4d
         printDOFregularization();
     }    
     return nDOFs;
+}
+
+void initTypeParams(int ntype_) {
+    _realloc0( typToREQ,       ntype_, Quat4i{-1,-1,-1,-1} );
+    _realloc0( typeREQs,       ntype_, Quat4dZero );
+    _realloc0( typeREQsMin,    ntype_, Quat4d{ -1e+300, -1e+300, -1e+300, -1e+300 } );
+    _realloc0( typeREQsMax,    ntype_, Quat4d{  1e+300,  1e+300,  1e+300,  1e+300 } );
+    _realloc0( typeREQs0_low,  ntype_, Quat4dZero );
+    _realloc0( typeREQs0,      ntype_, Quat4dZero );
+    _realloc0( typeREQs0_high, ntype_, Quat4dZero );
+    _realloc0( typeKreg_low,   ntype_, Quat4dZero );
+    _realloc0( typeKreg,       ntype_, Quat4dZero );
+    _realloc0( typeKreg_high,  ntype_, Quat4dZero );
 }
 
 
