@@ -210,7 +210,6 @@ class FitREQ{ public:
     std::vector<int> overRepulsiveList;  // List of overrepulsive samples indexes (for recent epoch)
     char* fname_overRepulsive  = "overRepulsive.xyz";
 
-
     bool bPrintDOFs     = false;
     bool bPrintfDOFs    = true;
     bool bPrintBeforReg = true;
@@ -248,34 +247,37 @@ class FitREQ{ public:
  * 
  * @param nDOFs_ The new size of the DOFs array.
  */
-void realloc( int nDOFs_ ){
+void realloc_DOFs( int nDOFs_ ){
     //nDOFs=nR+nE+nQ;
     nDOFs=nDOFs_;
-    _realloc(  DOFs, nDOFs );
-    _realloc( fDOFs, nDOFs );
-    _realloc( vDOFs, nDOFs ); for(int i=0;i<nDOFs;i++){vDOFs[i]=0;}
-    _realloc(  DOFs_old, nDOFs );
-    _realloc( fDOFs_old, nDOFs );
-    _realloc( fDOFbounds, nDOFs );
-
+    _realloc0(  DOFs, nDOFs,0.0 );
+    _realloc0( fDOFs, nDOFs, 0.0 );
+    _realloc0( vDOFs, nDOFs, 0.0); 
+    _realloc0(  DOFs_old,  nDOFs,0.0 );
+    _realloc0( fDOFs_old,  nDOFs, 0.0 );
+    _realloc0( fDOFbounds, nDOFs, Vec2dZero );
     //Rs=DOFs;Es=DOFs+nR;Qs=DOFs+nR+nE;
     //fRs=fDOFs;fEs=fDOFs+nR;fQs=fDOFs+nR+nE;
 }
 
-/**
- * This function reallocates the memory for the fs array if the number of atoms in any batch is greater than the current maximum number of atoms.
- * It first determines the maximum number of atoms in any batch and then checks if it is greater than the current maximum number of atoms.
- * If it is, then it reallocates the memory for the fs array to accommodate the new maximum number of atoms.
- */
-// void tryRealocSamp(){
-//     int n=nmax;
-//     for(int i=0; i<samples.size(); i++){ int ni = samples[i]->natoms; if(ni>n){ n=ni;} }
-//     if(n>nmax){ _realloc( fs, n );  nmax=n; };
-// }
-
 void realloc_sample_fdofs(){
     _realloc0( sample_fdofs, nDOFs*samples.size(), 0.0 );
 }
+
+void reallocTypeParams(int ntype_) {
+    ntype = ntype_;
+    _realloc0( typToREQ,       ntype_, Quat4i{-1,-1,-1,-1} );
+    _realloc0( typeREQs,       ntype_, Quat4dZero );
+    _realloc0( typeREQsMin,    ntype_, Quat4d{ -1e+300, -1e+300, -1e+300, -1e+300 } );
+    _realloc0( typeREQsMax,    ntype_, Quat4d{  1e+300,  1e+300,  1e+300,  1e+300 } );
+    _realloc0( typeREQs0_low,  ntype_, Quat4dZero );
+    _realloc0( typeREQs0,      ntype_, Quat4dZero );
+    _realloc0( typeREQs0_high, ntype_, Quat4dZero );
+    _realloc0( typeKreg_low,   ntype_, Quat4dZero );
+    _realloc0( typeKreg,       ntype_, Quat4dZero );
+    _realloc0( typeKreg_high,  ntype_, Quat4dZero );
+}
+
 
 void reduce_sample_fdofs(){
     int nsamples = samples.size();
@@ -285,7 +287,6 @@ void reduce_sample_fdofs(){
         for(int j=0; j<nDOFs; j++){ fDOFs[j] += fs[j]; }
     }
 }
-
 
 /**
  * @brief Load DOF selection from new format file that specifies individual degrees of freedom per type
@@ -305,13 +306,8 @@ int loadDOFSelection( const char* fname ){
     const int nline=1024;
     char line[1024];
     char at_name[8];
-    
-    // Initialize DOF-related arrays
-    std::vector<Vec2i> REQtoTyp_;
-    std::vector<Vec3d> DOFregX_;
-    std::vector<Vec3d> DOFregK_;
-    std::vector<Vec2d> DOFlimits_;
-
+    int nw_min    = 1 + 1 + 2 + 2 +2;
+    int nw_xstart = nw_min + 1;
     // First pass - read DOFs and populate DOF-related arrays
     int iDOF = 0;
     while( fgets(line, nline, fin) ){
@@ -319,41 +315,27 @@ int loadDOFSelection( const char* fname ){
         int comp;
         double xmin, xmax, xlo, xhi, klo, khi, xstart;
         int nw = sscanf( line, "%s %i %lf %lf %lf %lf %lf %lf %lf",  at_name, &comp, &xmin, &xmax, &xlo, &xhi, &klo, &khi, &xstart );
-        if(nw < 7){ printf("ERROR in loadDOFSelection(): expected min. 7 words, got %i in line '%s'\n", nw, line); exit(0); }
+        if(nw < nw_min){ printf("ERROR in loadDOFSelection(): expected min. %i words, got %i in line '%s'\n", nw_min, nw, line); exit(0); }
         int ityp = params->getAtomType(at_name);
         if(ityp < 0){  printf("ERROR in loadDOFSelection(): unknown atom type %s\n", at_name); exit(0); }
-
         // Add new DOF
-        REQtoTyp_.push_back( {ityp, comp} );
-        DOFregX_ .push_back( {xlo, xstart, xhi} );
-        DOFregK_ .push_back( {klo, 0.0,    khi} );
-        DOFlimits_.push_back( {xmin, xmax} );
-
+        if(nw<nw_xstart){ xstart = typeREQs0[ityp].array[comp]; }
+        REQtoTyp .push_back( {ityp, comp}       );
+        DOFregX  .push_back( {xlo, xstart, xhi} );
+        DOFregK  .push_back( {klo, 0.0,    khi} );
+        DOFlimits.push_back( {xmin, xmax}       );
         if(verbosity>0){ printf( "DOF[%3i] type %3i=%-8s comp %i=%c  range(%g,%g) reg(x0=(%g,%g),K=(%g,%g)) start=%g\n",  iDOF, ityp, at_name, comp, "REQH"[comp], xmin, xmax, xlo, xhi, klo, khi, xstart );}
         iDOF++;
     }
     fclose(fin);
-
-    // Now we know the number of DOFs
-    int nDOFs_new = REQtoTyp_.size();
-    realloc(nDOFs_new);
-    nDOFs = nDOFs_new;
-
-    // Transfer data from temporary vectors to class members
-    REQtoTyp = REQtoTyp_;
-    DOFregX  = DOFregX_;
-    DOFregK  = DOFregK_;
-    DOFlimits = DOFlimits_;
-
-    // Initialize type-related arrays using a separate function
+    realloc_DOFs( REQtoTyp.size() );
+    reallocTypeParams( params->atypes.size() );
     initTypeParamsFromDOFs();
-
     if(verbosity>0){
         printDOFsToTypes();
         printTypesToDOFs();
         printDOFregularization();
     }
-    
     return nDOFs;
 }
 
@@ -362,20 +344,16 @@ void initTypeParamsFromDOFs() {
         Vec2i rt = REQtoTyp[iDOF];
         int ityp = rt.x;
         int comp = rt.y;
-
         typToREQ[ityp].array[comp] = iDOF;
-
-        typeREQs[ityp].array[comp] = DOFregX[iDOF].y;  // Initialize with xstart
-        typeREQs0[ityp].array[comp] = DOFregX[iDOF].y;
-
-        typeREQsMin[ityp].array[comp] = DOFlimits[iDOF].x;
-        typeREQsMax[ityp].array[comp] = DOFlimits[iDOF].y;
-
-        typeREQs0_low[ityp].array[comp] = DOFregX[iDOF].x;
-        typeREQs0_high[ityp].array[comp] = DOFregX[iDOF].z;
-
-        typeKreg_low[ityp].array[comp] = DOFregK[iDOF].x;
-        typeKreg_high[ityp].array[comp] = DOFregK[iDOF].z;
+        double xstart = DOFregX[iDOF].y;
+        typeREQs      [ityp].array[comp] = xstart;  // Initialize with xstart
+        typeREQs0     [ityp].array[comp] = xstart;
+        typeREQsMin   [ityp].array[comp] = DOFlimits[iDOF].x;
+        typeREQsMax   [ityp].array[comp] = DOFlimits[iDOF].y;
+        typeREQs0_low [ityp].array[comp] = DOFregX  [iDOF].x;
+        typeREQs0_high[ityp].array[comp] = DOFregX  [iDOF].z;
+        typeKreg_low  [ityp].array[comp] = DOFregK  [iDOF].x;
+        typeKreg_high [ityp].array[comp] = DOFregK  [iDOF].z;
     }
 }
 
@@ -395,21 +373,6 @@ int loadTypeSelection( const char* fname ){
     char at_name[8];
     int ntypesel = 0;
     int nwExpected = 1+4 + 8 + 16;
-    // while( fgets(line, nline, fin) ){
-    //     if(line[0]=='#')continue;
-    //     Quat4i tm;
-    //     Quat4d tx0l, tx0h;
-    //     Quat4d tkl, tkh;
-    //     int nw = sscanf( line, "%s %i %i %i %i %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf\n", 
-    //     at_name, &tm.x,&tm.y,&tm.z,&tm.w, &tx0l.x,&tkl.x,&tx0h.x,&tkh.x, &tx0l.y,&tkl.y,&tx0h.y,&tkh.y, &tx0l.z,&tkl.z,&tx0h.z,&tkh.z, &tx0l.w,&tkl.w,&tx0h.w,&tkh.w ); // 20
-    //     if(nw!=nwExpected){
-    //         printf("ERROR: FitREQ::loadTypeSelection(fname=%s) line[%i] has %i words (expected %i) \n", fname, ntypesel, nw, nwExpected );
-    //         printf("line[%i]: %s", ntypesel, line );
-    //         exit(0);
-    //     }
-    //     ntypesel++;
-    // }
-    //fseek( fin, 0, SEEK_SET );
     std::vector<int> t;
     std::vector<Quat4i> typeMask;
     std::vector<Quat4d> tx_hi, tx_lo;
@@ -421,9 +384,6 @@ int loadTypeSelection( const char* fname ){
         Quat4d tx0l, tx0h, tx0m; // position  of regularization constrain  low, high, medium
         Quat4d tkl,  tkh,  tkm;  // stiffness of regularization constrain  low, high, medium
         Quat4d tkMin, tkMax;
-        //printf( "line[%i]: %s", ntypesel, line );
-        //int nw = sscanf( line, "%s %i %i %i %i %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf\n", 
-        //at_name, &tm.x,&tm.y,&tm.z,&tm.w, &tkMin.x,&tkMin.y,&tkMin.z,&tkMin.y,  &tkMax.x,&tkMax.y,&tkMax.z,&tkMax.w,   &tx0l.x,&tkl.x,&tx0h.x,&tkh.x, &tx0l.y,&tkl.y,&tx0h.y,&tkh.y, &tx0l.z,&tkl.z,&tx0h.z,&tkh.z, &tx0l.w,&tkl.w,&tx0h.w,&tkh.w ); // 20
         int nw = sscanf( line, "%s   %i %i %i %i   %lf %lf %lf %lf   %lf %lf %lf %lf   %lf %lf %lf %lf    %lf %lf %lf %lf    %lf %lf %lf %lf    %lf %lf %lf %lf\n", 
          at_name,  &tm.x,&tm.y,&tm.z,&tm.w, &tkMin.x,&tkMin.y,&tkMin.z,&tkMin.w,  &tkMax.x,&tkMax.y,&tkMax.z,&tkMax.w,   &tx0l.x,&tx0l.y,&tx0l.z,&tx0l.w,    &tx0h.x,&tx0h.y,&tx0h.z,&tx0h.w,    &tkl.x,&tkl.y,&tkl.z,&tkl.w,    &tkh.x,&tkh.y,&tkh.z,&tkh.w );
         if(nw!=nwExpected){
@@ -431,7 +391,6 @@ int loadTypeSelection( const char* fname ){
             printf("line[%i]: %s", ntypesel, line );
             exit(0);
         }
-        //if(tm.z!=0){printf("ERROR: FitREQ::loadTypeSelection() mask_Q should be 0 for now\n"); exit(0); }
         typeMask.push_back( tm );
         tk_Min  .push_back( tkMin );
         tk_Max  .push_back( tkMax );
@@ -443,12 +402,8 @@ int loadTypeSelection( const char* fname ){
         int ityp = params->getAtomType(at_name);
         t.push_back( ityp );
         AtomType& t  = params->atypes[ityp];  
-        //if(verbosity>0)printf( "ityp(%i):%-8s tm(%i,%i,%i,%i) tMin(%lf,%lf,%lf%lf) tMax(%lf,%lf,%lf,%lf) R(xl=%lf,Kl=%lf|xh=%lf,Kh=%lf) E(xl=%lf,Kl=%lf|xh=%lf,Kh=%lf)  Q(xl=%lf,Kl=%lf|xh=%lf,Kh=%lf)  H(xl=%lf,Kl=%lf|xh=%lf,Kh=%lf)  \n", 
-        //ityp, at_name,  tm.x,tm.y,tm.z,tm.w,    tx0l.x,tkl.x,tx0h.x,tkh.x,   tx0l.y,tkl.y,tx0h.y,tkh.y,    tx0l.z,tkl.z,tx0h.z,tkh.z,    tx0l.w,tkl.w,tx0h.w,tkh.w );
-
         if(verbosity>0)printf( "ityp(%3i):%-8s tm(%i,%i,%i,%i) tMin(%lf,%lf,%lf%lf) tMax(%lf,%lf,%lf,%lf) xlo(%lf,%lf,%lf,%lf) xhi(%lf,%lf,%lf,%lf) Klo(%lf,%lf,%lf,%lf) Khi(%lf,%lf,%lf,%lf)  \n", 
         ityp, at_name,  tm.x,tm.y,tm.z,tm.w, tkMin.x,tkMin.y,tkMin.z,tkMin.w,  tkMax.x,tkMax.y,tkMax.z,tkMax.w,   tx0l.x,tx0l.y,tx0l.z,tx0l.w,    tx0h.x,tx0h.y,tx0h.z,tx0h.w,    tkl.x,tkl.y,tkl.z,tkl.w,    tkh.x,tkh.y,tkh.z,tkh.w );
-        //tREQs.push_back( Quat4d{ t.RvdW, t.EvdW, t.Qbase, t.Hb } );
     }
     fclose(fin);
     init_types( ntypesel, &t[0], &typeMask[0], &tk_Min[0], &tk_Max[0], &tx_lo[0], &tx_hi[0], &tk_lo[0], &tk_hi[0]);
@@ -517,15 +472,16 @@ void initDOFregs(){
  * @return The number of degrees of freedom.
  */
 int init_types( int ntypesel, int* tsel, Quat4i* typeMask,  Quat4d* tmin, Quat4d* tmax, Quat4d* tx_lo, Quat4d* tx_hi, Quat4d* tk_lo,  Quat4d* tk_hi ){
-    int ntype_ = params->atypes.size();
+    ntype = params->atypes.size();
     //printf( "FitREQ::init_types() ntypesel=%i ntypes=%i \n", ntypesel, ntype_ );
     int nDOFs=0;
-    initTypeParams(ntype_);
-    for(int i=0; i<ntype_; i++){
-        typeREQs[i] = Quat4d{ params->atypes[i].RvdW, sqrt(params->atypes[i].EvdW), params->atypes[i].Qbase, params->atypes[i].Hb };
-        typeREQs0[i] = typeREQs[i];
+    reallocTypeParams(ntype);
+    for(int i=0; i<ntype; i++){
+        Quat4d tREQH = Quat4d{ params->atypes[i].RvdW, sqrt(params->atypes[i].EvdW), params->atypes[i].Qbase, params->atypes[i].Hb };
+        typeREQs[i]  = tREQH;
+        typeREQs0[i] = tREQH;
     }
-    for(int i=0; i<ntype_; i++){
+    for(int i=0; i<ntype; i++){
         bool bFound=false;
         for(int j=0; j<ntypesel; j++){
             if(tsel[j]==i){
@@ -551,8 +507,8 @@ int init_types( int ntypesel, int* tsel, Quat4i* typeMask,  Quat4d* tmin, Quat4d
             }
         }
     }
-    realloc(nDOFs);
-    ntype = ntype_;
+    realloc_DOFs(nDOFs);
+    ntype = ntype;
     for(int j=0; j<ntypesel; j++){
         int it=tsel[j];
         typeREQsMin   [it] = tmin  [j];
@@ -581,20 +537,6 @@ int init_types( int ntypesel, int* tsel, Quat4i* typeMask,  Quat4d* tmin, Quat4d
     }    
     return nDOFs;
 }
-
-void initTypeParams(int ntype_) {
-    _realloc0( typToREQ,       ntype_, Quat4i{-1,-1,-1,-1} );
-    _realloc0( typeREQs,       ntype_, Quat4dZero );
-    _realloc0( typeREQsMin,    ntype_, Quat4d{ -1e+300, -1e+300, -1e+300, -1e+300 } );
-    _realloc0( typeREQsMax,    ntype_, Quat4d{  1e+300,  1e+300,  1e+300,  1e+300 } );
-    _realloc0( typeREQs0_low,  ntype_, Quat4dZero );
-    _realloc0( typeREQs0,      ntype_, Quat4dZero );
-    _realloc0( typeREQs0_high, ntype_, Quat4dZero );
-    _realloc0( typeKreg_low,   ntype_, Quat4dZero );
-    _realloc0( typeKreg,       ntype_, Quat4dZero );
-    _realloc0( typeKreg_high,  ntype_, Quat4dZero );
-}
-
 
 // add electron pairs
 Atoms* addEpairs( Atoms* mol ){
