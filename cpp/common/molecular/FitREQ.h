@@ -286,6 +286,102 @@ void reduce_sample_fdofs(){
     }
 }
 
+
+/**
+ * @brief Load DOF selection from new format file that specifies individual degrees of freedom per type
+ * Format: typename comp Min Max xlo xhi Klo Khi xstart
+ * where:
+ * - typename: Atom type name (e.g. "N_3", "H_O")
+ * - comp: Which component (0=R, 1=E, 2=Q, 3=H) 
+ * - Min/Max: Hard limits on parameter value
+ * - xlo/xhi: Regularization targets
+ * - Klo/Khi: Regularization constants
+ * - xstart: Initial value
+ * @return Number of DOFs loaded
+ */
+int loadDOFSelection( const char* fname ){
+    FILE* fin = fopen( fname, "r" );
+    if(fin==0){ printf("cannot open '%s' \n", fname ); exit(0);}
+    const int nline=1024;
+    char line[1024];
+    char at_name[8];
+    
+    // First pass - count DOFs
+    int nDOFs_new = 0;
+    while( fgets(line, nline, fin) ){
+        if(line[0]=='#')continue;
+        int comp;
+        if(sscanf( line, "%s %i", at_name, &comp ) == 2){
+            nDOFs_new++;
+        }
+    }
+    realloc(nDOFs_new);
+    nDOFs = nDOFs_new;
+    
+    // Initialize arrays with default values
+    int ntype_ = params->atypes.size();
+    typToREQ       = new Quat4i[ntype_]; for(int i=0; i<ntype_; i++){typToREQ[i] = Quat4i{-1,-1,-1,-1};  } // -1 means parameter not fitted
+    typeREQs       = new Quat4d[ntype_]; for(int i=0; i<ntype_; i++){ typeREQs      [i] = Quat4d{ params->atypes[i].RvdW, sqrt(params->atypes[i].EvdW), params->atypes[i].Qbase, params->atypes[i].Hb }; }
+    typeREQsMin    = new Quat4d[ntype_]; for(int i=0; i<ntype_; i++){ typeREQsMin   [i] = Quat4d{ -1e+300, -1e+300, -1e+300, -1e+300 }; }
+    typeREQsMax    = new Quat4d[ntype_]; for(int i=0; i<ntype_; i++){ typeREQsMax   [i] = Quat4d{  1e+300,  1e+300,  1e+300,  1e+300 }; }
+    typeREQs0_low  = new Quat4d[ntype_]; for(int i=0; i<ntype_; i++){ typeREQs0_low [i] = Quat4dZero; }
+    typeREQs0      = new Quat4d[ntype_]; for(int i=0; i<ntype_; i++){ typeREQs0     [i] = typeREQs[i]; }
+    typeREQs0_high = new Quat4d[ntype_]; for(int i=0; i<ntype_; i++){ typeREQs0_high[i] = Quat4dZero; }
+    typeKreg_low   = new Quat4d[ntype_]; for(int i=0; i<ntype_; i++){ typeKreg_low  [i] = Quat4dZero; }
+    typeKreg       = new Quat4d[ntype_]; for(int i=0; i<ntype_; i++){ typeKreg      [i] = Quat4dZero; }
+    typeKreg_high  = new Quat4d[ntype_]; for(int i=0; i<ntype_; i++){ typeKreg_high [i] = Quat4dZero; }
+
+    // Second pass - read DOFs
+    fseek( fin, 0, SEEK_SET );
+    int iDOF = 0;
+    int nwMin = 1+1 + 2 + 2 + 2;
+    int nw_xstart = nwMin +1;
+    while( fgets(line, nline, fin) ){
+        if(line[0]=='#')continue;
+        int comp;
+        double xmin, xmax, xlo, xhi, klo, khi, xstart;
+        int nw = sscanf( line, "%s %i %lf %lf %lf %lf %lf %lf %lf",  at_name, &comp, &xmin, &xmax, &xlo, &xhi, &klo, &khi, &xstart );
+        if(nw != nwMin){ printf("ERROR in loadDOFSelection(): expected min. %i words, got %i in line '%s'\n", line); exit(0); }
+        int ityp = params->getAtomType(at_name);
+        if(ityp < 0){  printf("ERROR in loadDOFSelection(): unknown atom type %s\n", at_name); exit(0); }
+        // Store DOF index in typToREQ
+        typToREQ[ityp].array[comp] = iDOF;
+        // Store parameter bounds and regularization
+        typeREQsMin   [ityp].array[comp] = xmin;
+        typeREQsMax   [ityp].array[comp] = xmax;
+        typeREQs0_low [ityp].array[comp] = xlo;
+        typeREQs0_high[ityp].array[comp] = xhi;
+        typeKreg_low  [ityp].array[comp] = klo;
+        typeKreg_high [ityp].array[comp] = khi;
+        if(nw>=nw_xstart){
+            typeREQs      [ityp].array[comp] = xstart;
+            typeREQs0     [ityp].array[comp] = xstart;
+        }
+        if(verbosity>0){ printf( "DOF[%3i] type %3i=%-8s comp %i=%c  range(%g,%g) reg(x0=(%g,%g),K=(%g,%g)) start=%g\n",  iDOF, ityp, at_name, comp, "REQH"[comp], xmin, xmax, xlo, xhi, klo, khi, xstart );}
+        iDOF++;
+    }
+    fclose(fin);
+    
+    // Build inverse mapping from DOFs to types
+    REQtoTyp.resize(nDOFs);
+    for(int i=0; i<ntype_; i++){
+        const Quat4i& tt = typToREQ[i];
+        if(tt.x>=0) REQtoTyp[tt.x] = Vec2i{i,0};
+        if(tt.y>=0) REQtoTyp[tt.y] = Vec2i{i,1};
+        if(tt.z>=0) REQtoTyp[tt.z] = Vec2i{i,2};
+        if(tt.w>=0) REQtoTyp[tt.w] = Vec2i{i,3};
+    }
+    
+    initDOFregs();
+    if(verbosity>0){
+        printDOFsToTypes();
+        printTypesToDOFs();
+        printDOFregularization();
+    }
+    
+    return nDOFs;
+}
+
 /**
  * Load a file of types involved in the parameter fitting. The file should contain lines with the following format:
  * atom_name mask_RvdW mask_EvdW mask_Q mask_Hb
@@ -657,8 +753,8 @@ void addAndReorderEpairs(Atoms*& atoms, FILE* fout=nullptr) {
                 bs  [nE0+iE].y = j;
                 dirs[nE0+iE]   = dirsbak[i];
                 isep[j] = 1;
-            }
         }
+    }
     }
 
     // Store electron pair relationships in AddedData
@@ -1238,7 +1334,7 @@ static double evalExampleDerivs_LJQH2_corr( int i0, int ni, int j0, int nj, Vec3
                 const double u       = R0/r;
                 const double u3      = u*u*u;
                 const double u6      = u3*u3;
-                const double u6p     = (1.0 + H) * u6;
+                const double u6p     = (1.0 + H) * u6;                     
                 const double dE_dE0  = u6 * (u6p - 2.0);
                 const double dE_dH   = -E0 * u6 * u6;
                 Etot                +=  E0 * dE_dE0;
