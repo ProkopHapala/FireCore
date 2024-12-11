@@ -221,7 +221,14 @@ class FitREQ{ public:
     int    iWeightModel    = 1;    // weight of model energy 1=linear, 2=cubic_smooth_step  
     double EmodelCut       = 10.0; // sample model energy when we consider it too repulsive and ignore it during fitting
     double EmodelCutStart  = 5.0;  // sample model energy when we start to decrease weight in the fitting  
-    double kMorse          = 1.6;
+    double invWsum         = 1.0;
+
+    //double kMorse          = 1.4;
+    //double kMorse          = 1.5;
+    //double kMorse          = 1.6;
+    //double kMorse          = 1.7;
+    double kMorse          = 1.8;
+    
 
     // check pairwise repulsion betwee atoms within one sample
     double EijMax    = 5.0;
@@ -355,6 +362,19 @@ void countTypesPresent( ){
             typesPresent[ityp]+=1;
         }
     }
+}
+
+double updateWeightsSum(){
+    double wsum = 0.0;
+    int nsamples = samples.size();
+    if(weights==0){
+        wsum=nsamples;
+    }else{
+        for(int i=0; i<samples.size(); i++){ wsum += weights[i]; }
+    }
+    invWsum = 1.0/wsum;
+    printf("updateWeightsSum() nsamples=%i sum=%g invWsum=%g \n", samples.size(), wsum, invWsum );
+    return wsum;
 }
 
 int loadWeights( const char* fname ){
@@ -1013,8 +1033,9 @@ double evalSampleError( int isamp, double& E ){
     // }
     double Eref    = atoms->Energy;
     double dE      = E - Eref;
+    wi*= invWsum;
     double dEw     = 2.0*dE*wi;
-    double Error   = dE*dE*wi;
+    double Error   =  dE*dE*wi;
     //printf( "evalSampleError() isamp: %3i Emodel: %20.6f Eref: %20.6f bBroadcastFDOFs=%i @sample_fdofs=%p \n", isamp, E, atoms->Energy, bBroadcastFDOFs, sample_fdofs );
     double* fDOFs__ = bBroadcastFDOFs ? sample_fdofs + isamp*nDOFs : fDOFs_;   // broadcast fDOFs ?
     for(int k=0; k<nDOFs; k++){ fDOFs__[k]=0; }                                // clean fDOFs
@@ -1379,18 +1400,19 @@ double evalExampleDerivs_LJQH2( int i0, int ni, int j0, int nj, int* __restrict_
             const double R0      = REQi.x + REQj.x;
             const double E0      = REQi.y * REQj.y; 
             const double Q       = Qi     * Qj    ;
-            double       H2      = REQi.w * REQj.w;      // expected H2<0
-            const double sH      = (H2<0.0) ? 1.0 : 0.0; // sH=1.0 if H2<0
-            H2 *= sH;
+            double       H       = REQi.w * REQj.w;      // expected H2<0
+            const double sH      = (H<0.0) ? 1.0 : 0.0; // sH=1.0 if H2<0
+            H *= sH;
             // --- Electrostatic
             const double r       = dij.norm();
             const double ir      = 1/r;
             const double dE_dQ   = ir * COULOMB_CONST;
             const double Eel     = Q * dE_dQ;
+
             const double u       = R0/r;
             const double u3      = u*u*u;
             const double u6      = u3*u3;
-            const double u6p     = ( 1.0 + H2 ) * u6;                     
+            const double u6p     = ( 1.0 + H ) * u6;                     
             const double dE_dE0  = u6 * ( u6p - 2.0 );
             const double dE_dR0  = 12.0 * (E0/R0) * u6 * ( u6p - 1.0 );
             const double dE_dH  = -E0 * u6 * u6;
@@ -1423,6 +1445,7 @@ __attribute__((hot))
 double evalExampleDerivs_MorseQH2( int i0, int ni, int j0, int nj, int* __restrict__ types, Vec3d* __restrict__ ps, Quat4d* __restrict__ typeREQs, double* __restrict__ Qs, Quat4d* __restrict__ dEdREQs )const{
     double Etot = 0.0;
     const bool bWJ = bWriteJ&&dEdREQs;
+    const double alpha   = kMorse; 
     for(int ii=0; ii<ni; ii++){ // loop over all atoms[i] in system
         const int      i    = i0+ii;
         const Vec3d&  pi    = ps      [i ]; 
@@ -1439,24 +1462,25 @@ double evalExampleDerivs_MorseQH2( int i0, int ni, int j0, int nj, int* __restri
             const double R0      = REQi.x + REQj.x;
             const double E0      = REQi.y * REQj.y; 
             const double Q       = Qi     * Qj    ;
-            double       H2      = REQi.w * REQj.w;      // expected H2<0
-            const double sH      = (H2<0.0) ? 1.0 : 0.0; // sH=1.0 if H2<0
-            H2 *= sH;
+            double       H       = REQi.w * REQj.w;      // expected H2<0
+            const double sH      = (H<0.0) ? 1.0 : 0.0; // sH=1.0 if H2<0
+            H *= sH;
             // --- Electrostatic
-            double r      = dij.norm();
-            double ir     = 1/r;    
+            double r             = dij.norm();
+            double ir            = 1/r;    
             const double dE_dQ   = ir * COULOMB_CONST;
             const double Eel     = Q * dE_dQ;
+
             // --- Morse
             //double alpha   = 6.0 / R0;
-            double alpha   = kMorse; 
+            
             double e       = exp( -alpha * ( r - R0 ) );
             double e2      = e * e;
-            double e2p     = ( 1.0 - H2 ) * e2;
+            double e2p     = ( 1.0 + H ) * e2;
             double dE_dE0  = e2p - 2.0 * e;
             double dE_dR0  = 2.0 * alpha * E0 * ( e2p - e );
             double dE_dH   = - E0 * e2;
-            double ELJ     = E0 * dE_dE0;
+            double ELJ     =   E0 * dE_dE0;
             //if(bCheckRepulsion)[[unlikely]]{ checkSampleRepulsion( ELJ, i,j, ti,tj, r, true, true ); }
             // --- Energy and forces
             Etot    +=  ELJ + Eel;
@@ -1464,11 +1488,11 @@ double evalExampleDerivs_MorseQH2( int i0, int ni, int j0, int nj, int* __restri
             //{ int itypPrint=4; if( (ti==itypPrint) || (tj==itypPrint) ){ printf( "evalExampleDerivs_LJQH2()[%3i,%3i] (%8s,%8s) ELJ,Eel: %12.3e,%12.3e Q(%12.3e|%12.3e,%12.3e) dEdREQH(%12.3e,%12.3e,%12.3e,%12.3e)\n", i,j, params->atypes[ti].name, params->atypes[tj].name , ELJ,Eel, Q,Qi,Qj,  dE_dR0, dE_deps, dE_dQ, dE_dH2  ); } }
             fREQi.x +=  dE_dR0;                    // dEtot/dR0_i
             fREQi.y +=  dE_dE0  * 0.5 * REQj.y;    // dEtot/dE0_i
-            fREQi.z +=  dE_dQ   * Qj;              // dEtot/dQ_i
+            fREQi.z +=  -dE_dQ   * Qj;              // dEtot/dQ_i
             fREQi.w +=  dE_dH   * REQj.w * sH;     // dEtot/dH2i
             if( bWJ ){ dEdREQs[j].add( Quat4d{
                         dE_dR0,                    // dEtot/dR0_j
-                        dE_dE0  * 0.5 * REQi.y,    // dEtot/dE0_j
+                        -dE_dE0 * 0.5 * REQi.y,    // dEtot/dE0_j
                         dE_dQ   * Qi,              // dEtot/dQ_j
                         dE_dH   * REQi.w * sH,     // dEtot/dH2j
             }); }
@@ -1565,12 +1589,14 @@ double evalFitError(int itr, bool bOMP=true, bool bEvalSamples=true){
 __attribute__((hot)) 
 double run( int ialg, int nstep, double Fmax, double dt, double max_step, double damping, bool bClamp, bool bOMP ){
     if( verbosity>1){ printf( "FitREQ::run() imodel %i ialg %i nstep %i Fmax %g dt %g max_step %g \n", imodel, ialg, nstep, Fmax, dt, max_step ); }
+    if(weights){updateWeightsSum();}
     double Err=0;
     //noiseToDOFs(0.2);
     clear_fDOFbounds();
     if(bOMP){ bBroadcastFDOFs=true; realloc_sample_fdofs();  }
     double F2max=Fmax*Fmax;
     double F2;
+    int nsamp = samples.size();
     for(int itr=0; itr<nstep; itr++){
         Err = evalFitError( itr, bOMP );
         switch(ialg){
@@ -1591,6 +1617,7 @@ __attribute__((hot))
 double run_omp( int ialg, int nstep, double Fmax, double dt, double max_step, double damping, bool bClamp ){
     double Err=0;
     if( verbosity>1){ printf( "FitREQ::run() nstep %i Fmax %g dt %g isamp %i \n", nstep, Fmax, dt ); }
+    if(weights){updateWeightsSum();}
     double F2max=Fmax*Fmax;
     double F2;
     int nsamp = samples.size();
@@ -1868,10 +1895,11 @@ void printStepDOFinfo( int istep, double Err, const char* label="" ){
         printf( "%s step: %i Err= %g  min,max= %g %g \n", label, istep, Err, bd.x, bd.y );
         printDOFs(); 
     }else if( verbosity>1){
+        //int nsamp = samples.size();
         double F2 = 0.0;                           for(int i=0; i<nDOFs; i++){ F2 += fDOFs[i]*fDOFs[i]; }
         double F = sqrt(F2);
-        if(bPrintDOFs ){ printf("%s step: %5i |E|: %8.3e |F|: %8.3e  DOFs: ",label, istep, Err, F ); for(int j=0; j<nDOFs; j++){ printf("%10.2e ", DOFs[j]); }; printf("\n"); }
-        if(bPrintfDOFs){ printf("%s step: %5i |E|: %8.3e |F|: %8.3e fDOFs: ",label, istep, Err, F ); for(int j=0; j<nDOFs; j++){ printf("%10.2e ",fDOFs[j]); }; printf("\n"); }
+        if(bPrintDOFs ){ printf("%s step: %5i |E|: %8.3e |F|: %8.3e  DOFs: ",label, istep, Err, F); for(int j=0; j<nDOFs; j++){ printf("%10.2e ", DOFs[j]); }; printf("\n"); }
+        if(bPrintfDOFs){ printf("%s step: %5i |E|: %8.3e |F|: %8.3e fDOFs: ",label, istep, Err, F); for(int j=0; j<nDOFs; j++){ printf("%10.2e ",fDOFs[j]); }; printf("\n"); }
     }
     if( isnan(Err)                   ){ printf( "ERROR in %s step: %i Err= %g \n"        , label, istep, Err ); exit(0); }
     if ( bd.x < -1e+8 || bd.y > 1e+8 ){ printf( "ERROR in %s step: %i Fmin,max= %g %g \n", label, istep, bd.x, bd.y ); exit(0); }

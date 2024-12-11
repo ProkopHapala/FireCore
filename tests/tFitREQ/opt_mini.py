@@ -36,6 +36,10 @@ bAddEpairs  = bEpairs
 bOutXYZ     = False
 verbosity   = 2    # Added to enable debug printing
 
+#bMorse = False   # Lenard-Jones
+bMorse = True   # Morse
+
+
 # ============== functions
 
 # ============== Setup
@@ -52,9 +56,10 @@ fit.loadTypes( )     # load atom types
 fname = "input_all.xyz"
 #fname = "input_2CH2NH.xyz"
 
-#fit.loadTypeSelection( fname="typeSelection.dat" )       
-#fit.loadTypeSelection( fname="typeSelection_bak2.dat" ) 
-fit.loadDOFSelection( fname="dofSelection.dat" )        
+if bMorse:
+    fit.loadDOFSelection( fname="dofSelection_Morse.dat" )
+else:
+    fit.loadDOFSelection( fname="dofSelection_LJ.dat" )   
 
 #fname = "input_2CH2NH.xyz"
 #fit.loadDOFSelection( fname="dofSelection_N2.dat" )          
@@ -67,16 +72,21 @@ Erefs, x0s = fit.read_xyz_data(fname)  #;print( "x0s:\n", x0s )
 #weights = split_and_weight_curves(Erefs, x0s, n_before_min=4)
 
 EminPlot = np.min(Erefs)
+EminPlot = -0.5
 
-#weights = np.ones( len(Erefs) )
-weights0 = fit.split_and_weight_curves( Erefs, x0s, n_before_min=4, weight_func=lambda E: fit.exp_weight_func(E,a=0.5, alpha=10.0) )
+weights0 = np.ones( len(Erefs) )*0.5
+
+if bMorse:
+    fit.setup( imodel=2, EvalJ=1, WriteJ=1, Regularize=1 )
+    weights0 = fit.split_and_weight_curves( Erefs, x0s, n_before_min=100, weight_func=lambda E: fit.exp_weight_func(E,a=0.5, alpha=4.0) )
+else:
+    fit.setup( imodel=1, EvalJ=1, WriteJ=1, Regularize=1 )
+    weights0 = fit.split_and_weight_curves( Erefs, x0s, n_before_min=2, weight_func=lambda E: fit.exp_weight_func(E,a=0.5, alpha=4.0) )
 # plotEWs( Erefs=Erefs, weights0=weights0, Emin=-1.5 ); plt.title( "Weighting" )
 # plt.show(); exit()
 
 fit.setWeights( weights0 )
 fit.getBuffs()
-
-
 
 #print( "fit.weights ", fit.weights )
 #ws     = np.genfromtxt( "weights_all.dat" )
@@ -88,22 +98,25 @@ ev2kcal = 23.060548
 #plt.plot(x0s)
 #plt.show(); exit()
 
-
-fit.setup( imodel=1, EvalJ=1, WriteJ=1, Regularize=1 )
-#fit.setup( imodel=2, EvalJ=1, WriteJ=1, Regularize=-1 )
-
 #fit.setFilter( EmodelCutStart=0.0, EmodelCut=0.5, iWeightModel=2, PrintOverRepulsive=1, DiscardOverRepulsive=1, SaveOverRepulsive=-1, ListOverRepulsive=1 )
 #fit.setFilter( EmodelCutStart=0.0, EmodelCut=0.5, iWeightModel=2, PrintOverRepulsive=-1, DiscardOverRepulsive=1, SaveOverRepulsive=1, ListOverRepulsive=-1 )
 fit.setFilter( EmodelCutStart=0.0, EmodelCut=0.5, PrintOverRepulsive=-1, DiscardOverRepulsive=-1, SaveOverRepulsive=-1, ListOverRepulsive=-1 )
+#fit.setFilter( EmodelCutStart=0.0, EmodelCut=0.5, iWeightModel=2, PrintOverRepulsive=-1, DiscardOverRepulsive=1, SaveOverRepulsive=1, ListOverRepulsive=-1 )
+#fit.setFilter( EmodelCutStart=0.0, EmodelCut=0.5, PrintOverRepulsive=-1, DiscardOverRepulsive=-1, SaveOverRepulsive=-1, ListOverRepulsive=-1 )
+
+
+
 
 E,Es,Fs = fit.getEs( bOmp=False, bDOFtoTypes=False, bEs=True, bFs=False )
 fit.plotEWs( Erefs=Erefs, Emodel=Es, weights=fit.weights, weights0=weights0,  Emin=EminPlot ); plt.title( "BEFORE OPTIMIZATION" )
 #plt.show(); exit()
 
-
-#Err = fit.run( iparallel=0, ialg=0, nstep=100, Fmax=1e-8, dt=0.005, max_step=-1,  bClamp=True )
-#Err = fit.run( iparallel=0, ialg=0, nstep=1000, Fmax=1e-2, dt=0.001, max_step=-1,  bClamp=True )
-Err = fit.run( iparallel=0, ialg=1, nstep=1000, Fmax=1e-2, dt=0.01, damping=0.1,   max_step=-1,  bClamp=True )
+if bMorse:
+    #Err = fit.run( iparallel=0, ialg=0, nstep=1000, Fmax=1e-4, dt=0.1, max_step=-1,  bClamp=True )
+    Err = fit.run( iparallel=0, ialg=1, nstep=1000, Fmax=1e-4, dt=0.5, damping=0.1,   max_step=-1,  bClamp=True )
+else:
+    #Err = fit.run( iparallel=0, ialg=0, nstep=1000, Fmax=1e-4, dt=0.01, max_step=-1,  bClamp=True )
+    Err = fit.run( iparallel=0, ialg=1, nstep=1000, Fmax=1e-4, dt=0.1, damping=0.1,   max_step=-1,  bClamp=True )
 
 # ----- Combined hybrid optimization ( start with gradient descent, continue with dynamical descent) )
 #Err = fit.run( iparallel=0, ialg=0, nstep=20,  Fmax=1e-2, dt=0.005, max_step=-1,  bClamp=False )

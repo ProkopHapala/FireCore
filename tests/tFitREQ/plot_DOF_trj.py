@@ -19,6 +19,7 @@ def extract_dof_names(output_file):
                 if '->' in line:
                     # Extract the DOF name after the '=' sign
                     name = line.split('|')[1][1:]
+                    #print (line, name)
                     dof_names.append( name.strip() )
                 elif line.strip() == '':
                     reading_dofs = False
