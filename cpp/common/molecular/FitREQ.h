@@ -196,6 +196,7 @@ class FitREQ{ public:
     bool  bRegularize     = true;     // Should we apply additional regularization forces to otimizer ( beside the true variational forces from inter-atomic forcefield ? )
     bool  bAddRegError    = true;     // Should we add regularization error to total error ?
     bool  bEpairs         = true;     // Should we add electron pairs to the molecule ?
+    bool  bEpairDistByType = false;   // Should we use different electron pair distances for different atom types ?
     //bool  bOptEpR = false;          // Should we optimize electron pair distance (from host atom) ?
     bool  bBroadcastFDOFs = false;    // Should we broadcast fDOFs (each sample to its own chunk of memory) to prevent atomic-write conflicts ?
     bool  bUdateDOFbounds = true;     // Should we update fDOFbounds after each sample ?
@@ -227,7 +228,8 @@ class FitREQ{ public:
     //double kMorse          = 1.5;
     //double kMorse          = 1.6;
     //double kMorse          = 1.7;
-    double kMorse          = 1.8;
+    double kMorse            = 1.8;
+    double Lepairs           = 1.0;
     
 
     // check pairwise repulsion betwee atoms within one sample
@@ -933,7 +935,9 @@ void fillTempArrays( const Atoms* atoms, Vec3d* apos, double* Qs  )const{
             double Qep = REQ.z; // charge of the electron pair
             Qs[iE]     = Qep;
             Qs[iX]    -= Qep;
-            apos[iE] = apos[iX] + ad->dirs[j] * typeREQs[atoms->atypes[iE]].w;   // We move the electron pair to proper distance from the atom
+            double lep = Lepairs;
+            if( bEpairDistByType ){ typeREQs[atoms->atypes[iE]].w; }
+            apos[iE] = apos[iX] + ad->dirs[j] * lep;  // We move the electron pair to proper distance from the atom
             //isEp[iE] = 1;
         }
     }

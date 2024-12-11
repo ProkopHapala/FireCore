@@ -15,10 +15,15 @@ fit.plt = plt
 
 np.set_printoptions(linewidth=200)
 
+ref_path = "/home/prokop/Desktop/CARBSIS/PEOPLE/Paolo/FitREQ/DFT_2D/"
+#name = "H2O-D1_H2O-A1"
+#name = "H2O-D1_H2O-A1"
+name = "HCOOH-D1_HCOOH-A1"
+
 # ============== Setup
-imodel = 1        
-isampmode   = 2    # do not change it
-ialg        = 2    # 0=GD 1=MD 2=GD_BB_short 3=GD_BB_long
+imodel      = 1    
+isampmode   = 2    
+ialg        = 2         
 #nstep       = 10
 nstep       = 1
 dt          = 0.01
@@ -34,7 +39,6 @@ verbosity   = 2    # Added to enable debug printing
 bMorse = False   # Lenard-Jones
 #bMorse = True   # Morse
 
-
 # ============== functions
 
 # ============== Setup
@@ -46,15 +50,19 @@ fit.setVerbosity(verbosity, PrintDOFs=1, PrintfDOFs=1, PrintBeforReg=-1, PrintAf
 fit.loadTypes( )     # load atom types
 
 
-
 #fname = "input_single.xyz"
-fname = "input_all.xyz"
+#fname = ref_path +"/"+ name + "/all.xyz"
+fname = ref_path +"/"+ "/concatenated_all.xyz"
 #fname = "input_2CH2NH.xyz"
 
 if bMorse:
     fit.loadDOFSelection( fname="dofSelection_Morse.dat" )
+    #fit.loadDOFSelection( fname="dofSelection_H2O_Morse.dat" )
+    #fit.loadDOFSelection( fname="dofSelection_HCOOH_Morse.dat" )
 else:
     fit.loadDOFSelection( fname="dofSelection_LJ.dat" )   
+    #fit.loadDOFSelection( fname="dofSelection_HCOOH_LJ.dat" ) 
+    #fit.loadDOFSelection( fname="dofSelection_HCOOH_LJ.dat" ) 
 
 #fname = "input_2CH2NH.xyz"
 #fit.loadDOFSelection( fname="dofSelection_N2.dat" )          
@@ -64,19 +72,21 @@ nbatch = fit.loadXYZ( fname, bAddEpairs, bOutXYZ )     # load reference geometry
 #nbatch = fit.loadXYZ( "input_single.xyz", bAddEpairs, bOutXYZ )     # load reference geometry
 
 Erefs, x0s = fit.read_xyz_data(fname)  #;print( "x0s:\n", x0s )
-#weights, nseg = split_and_weight_curves(Erefs, x0s, n_before_min=4)
+#weights = split_and_weight_curves(Erefs, x0s, n_before_min=4)
 
-EminPlot = np.min(Erefs)
-EminPlot = -0.5
+EminPlot = np.min(Erefs)*fit.ev2kcal
+#EminPlot = -0.5
 
 weights0 = np.ones( len(Erefs) )*0.5
 
+
+fit.setGlobalParams( kMorse=1.8, Lepairs=1.0 )
 if bMorse:
     fit.setup( imodel=2, EvalJ=1, WriteJ=1, Regularize=1 )
-    weights0, nseg = fit.split_and_weight_curves( Erefs, x0s, n_before_min=100, weight_func=lambda E: fit.exp_weight_func(E,a=0.5, alpha=4.0) )
+    weights0, lens = fit.split_and_weight_curves( Erefs, x0s, n_before_min=100, weight_func=lambda E: fit.exp_weight_func(E,a=1.0, alpha=4.0) )
 else:
     fit.setup( imodel=1, EvalJ=1, WriteJ=1, Regularize=1 )
-    weights0, nseg = fit.split_and_weight_curves( Erefs, x0s, n_before_min=2, weight_func=lambda E: fit.exp_weight_func(E,a=0.5, alpha=4.0) )
+    weights0, lens = fit.split_and_weight_curves( Erefs, x0s, n_before_min=2, weight_func=lambda E: fit.exp_weight_func(E,a=1.0, alpha=4.0) )
 # plotEWs( Erefs=Erefs, weights0=weights0, Emin=-1.5 ); plt.title( "Weighting" )
 # plt.show(); exit()
 
@@ -85,7 +95,6 @@ fit.getBuffs()
 
 #print( "fit.weights ", fit.weights )
 #ws     = np.genfromtxt( "weights_all.dat" )
-ev2kcal = 23.060548
 #Erefs   = fit.export_Erefs()*ev2kcal  #;print( "Erefs:\n", Erefs )
 #weights = genWeights( Erefs, Ecut=-2.0 )
 #weights = split_and_weight_curves( Erefs, n_before_min=4, jump_threshold=1.0 )
@@ -99,16 +108,13 @@ fit.setFilter( EmodelCutStart=0.0, EmodelCut=0.5, PrintOverRepulsive=-1, Discard
 #fit.setFilter( EmodelCutStart=0.0, EmodelCut=0.5, iWeightModel=2, PrintOverRepulsive=-1, DiscardOverRepulsive=1, SaveOverRepulsive=1, ListOverRepulsive=-1 )
 #fit.setFilter( EmodelCutStart=0.0, EmodelCut=0.5, PrintOverRepulsive=-1, DiscardOverRepulsive=-1, SaveOverRepulsive=-1, ListOverRepulsive=-1 )
 
-
-
-
 E,Es,Fs = fit.getEs( bOmp=False, bDOFtoTypes=False, bEs=True, bFs=False )
-fit.plotEWs( Erefs=Erefs, Emodel=Es, weights=fit.weights, weights0=weights0,  Emin=EminPlot ); plt.title( "BEFORE OPTIMIZATION" )
+#fit.plotEWs( Erefs=Erefs, Emodel=Es, weights=fit.weights, weights0=weights0,  Emin=EminPlot ); plt.title( "BEFORE OPTIMIZATION" )
 #plt.show(); exit()
 
 if bMorse:
     #Err = fit.run( iparallel=0, ialg=0, nstep=1000, Fmax=1e-4, dt=0.1, max_step=-1,  bClamp=True )
-    Err = fit.run( iparallel=0, ialg=1, nstep=1000, Fmax=1e-4, dt=0.5, damping=0.1,   max_step=-1,  bClamp=True )
+    Err = fit.run( iparallel=0, ialg=1, nstep=1000, Fmax=1e-8, dt=0.5, damping=0.1,   max_step=-1,  bClamp=True )
 else:
     #Err = fit.run( iparallel=0, ialg=0, nstep=1000, Fmax=1e-4, dt=0.01, max_step=-1,  bClamp=True )
     Err = fit.run( iparallel=0, ialg=1, nstep=1000, Fmax=1e-4, dt=0.1, damping=0.1,   max_step=-1,  bClamp=True )
@@ -121,7 +127,38 @@ print( "fit.fDOFmin ", fit.fDOFbounds[:,0] )
 print( "fit.fDOFmax ", fit.fDOFbounds[:,1] )
 
 E,Es,Fs = fit.getEs( bOmp=False, bDOFtoTypes=False, bEs=True, bFs=False );
-fit.plotEWs( Erefs=Erefs, Emodel=Es, weights=fit.weights, Emin=EminPlot );   plt.title( "AFTER OPTIMIZATION" )
+#fit.plotEWs( Erefs=Erefs, Emodel=Es, weights=fit.weights, Emin=EminPlot );   plt.title( "AFTER OPTIMIZATION" )
+
+lens=np.array(lens)
+nmax = np.max(lens) 
+nseg = len(lens)
+Eplot = np.zeros( (nseg, nmax)  ); Eplot[:,:] = np.nan
+Eplot_ = np.zeros( (nseg, nmax)  ); Eplot_[:,:] = np.nan
+
+ii = 0
+for i in range( len(lens) ):
+    ni = lens[i]
+    #Eplot[i,0:lens[i]] = Es[i]
+    Eplot [i,0:ni] = Erefs[ii:ii+ni]
+    Eplot_[i,0:ni] = Es   [ii:ii+ni]
+    ii+=ni
+dEplot = Eplot - Eplot_
+plt.figure(figsize=(20,12))
+Emin = np.min(Erefs)
+dEmax = max( -np.nanmin(dEplot),np.nanmax(dEplot) )
+dEmax = 0.1
+print( "dEmax: ", dEmax, "Emin ", Emin )
+#Emax = np.max(Eplot)
+plt.subplot(6,1,1); plt.imshow( Eplot [:nseg//2,:].T, origin='lower', vmin=Emin,   vmax=-Emin, cmap='bwr', extent=[ 0, len(lens), 0, 180.0 ] )
+plt.subplot(6,1,2); plt.imshow( Eplot_[:nseg//2,:].T, origin='lower', vmin=Emin,   vmax=-Emin, cmap='bwr', extent=[ 0, len(lens), 0, 180.0 ] )
+plt.subplot(6,1,3); plt.imshow( dEplot[:nseg//2,:].T, origin='lower', vmin=-dEmax, vmax=dEmax, cmap='bwr', extent=[ 0, len(lens), 0, 180.0 ] )
+plt.subplot(6,1,4); plt.imshow( Eplot [nseg//2:,:].T, origin='lower', vmin=Emin,   vmax=-Emin, cmap='bwr', extent=[ 0, len(lens), 0, 180.0 ] )
+plt.subplot(6,1,5); plt.imshow( Eplot_[nseg//2:,:].T, origin='lower', vmin=Emin,   vmax=-Emin, cmap='bwr', extent=[ 0, len(lens), 0, 180.0 ] )
+plt.subplot(6,1,6); plt.imshow( dEplot[nseg//2:,:].T, origin='lower', vmin=-dEmax, vmax=dEmax, cmap='bwr', extent=[ 0, len(lens), 0, 180.0 ] )
+#plt.colorbar()
+plt.xlabel("DOF")
+plt.ylabel("segment")
+plt.tight_layout()
 
 
 plt.show(); # exit()

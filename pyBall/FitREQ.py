@@ -49,7 +49,7 @@ array3d  = np.ctypeslib.ndpointer(dtype=np.double, ndim=3, flags='CONTIGUOUS')
 # ====================================
 # ========= Globals
 # ====================================
-
+ev2kcal = 23.060548
 bWeightsSet = False
 #isInitialized = False
 #nfound = -1
@@ -67,6 +67,12 @@ lib.setVerbosity.argtypes  = [c_int, c_int, c_int, c_int, c_int, c_int]
 lib.setVerbosity.restype   =  None
 def setVerbosity(verbosity=1, idebug=0, PrintDOFs=0, PrintfDOFs=0, PrintBeforReg=0, PrintAfterReg=0):
     return lib.setVerbosity(verbosity, idebug, PrintDOFs, PrintfDOFs, PrintBeforReg, PrintAfterReg)
+
+# void setGlobalParams( double kMorse, double Lepairs ){
+lib.setGlobalParams.argtypes  = [c_double, c_double]
+lib.setGlobalParams.restype   =  None
+def setGlobalParams(kMorse=1.6, Lepairs=0.5):
+    return lib.setGlobalParams(kMorse, Lepairs)
 
 # void setup( int imodel, int EvalJ, int WriteJ, int CheckRepulsion, int Regularize, int AddRegError, int Epairs, int BroadcastFDOFs, int UdateDOFbounds){
 lib.setup.argtypes  = [c_int,c_int, c_int, c_int, c_int, c_int, c_int, c_int, c_int]
@@ -322,7 +328,7 @@ def read_xyz_data(fname="input_all.xyz"):
             #    f.readline()
     return np.array(Erefs), np.array(x0s)
 
-def split_and_weight_curves(Erefs, x0s, n_before_min=4, weight_func=None ):
+def split_and_weight_curves(Erefs, x0s, n_before_min=4, weight_func=None, EminMin=-0.02 ):
     """
     Split energy curves based on x0 discontinuities and assign weights.
     
@@ -342,25 +348,38 @@ def split_and_weight_curves(Erefs, x0s, n_before_min=4, weight_func=None ):
     
     # Add start and end indices to process all segments
     all_splits = np.concatenate(([0], curve_starts, [len(x0s)]))
-    
+
+    lens = []
     # Process each curve segment
     for start, end in zip(all_splits[:-1], all_splits[1:]):
         segment = Erefs[start:end]
-        if len(segment) == 0:
-            continue
+        n = len(segment)
+        lens.append(n)
+        #print(  )
+        if len(segment) == 0: continue
         imin = np.argmin(segment) + start
-        icut = imin - n_before_min
-        weight_start = max(icut, start)
-        if weight_func is None:
-            weights[weight_start:end] = 1.0
-        else:
-            weights[weight_start:end] = weight_func(Erefs[weight_start:end])
-    
-    return weights
 
-def exp_weight_func(Erefs, a=1.0, alpha=3.0 ):
+        Emin = np.min(segment)
+        if Emin < EminMin:
+            icut = imin - n_before_min
+            weight_start = max(icut, start)
+            if weight_func is None:
+                weights[weight_start:end] = 1.0
+            else:
+                weights[weight_start:end] = weight_func(Erefs[weight_start:end])
+        else:
+            print("Emin=", Emin)
+            if weight_func is None:
+                weights[start:end] = 1.0
+            else:
+                weights[start:end] = weight_func( Erefs[start:end] )
+                #weights[start:end] = 1.0
+    
+    return weights, lens
+
+def exp_weight_func(Erefs, a=1.0, alpha=3.0, Emin0=0.1 ):
     Emin = np.min(Erefs)
-    return np.exp( alpha*(Erefs-Emin)/Emin )*a
+    return np.exp( -alpha*(Erefs-Emin)/( np.abs(Emin) + Emin0 ) )*a
 
 def genWeights(Erefs, Ecut ):
     mask = Erefs<Ecut
@@ -368,20 +387,26 @@ def genWeights(Erefs, Ecut ):
     weights[mask] = 1.0
     return weights
 
-def plotEWs(Erefs=None,Emodel=None,  weights=None,  weights0=None, bLimEref=True, Emin=None, EminFac=1.2):
+def plotEWs(Erefs=None,Emodel=None,  weights=None,  weights0=None, bLimEref=True, Emin=None, EminFac=1.2 , bKcal=True):
+    E_units = 1.0
+    if bKcal: 
+        E_units = ev2kcal
+        units="[kcal/mol]"
+    else:
+        units="[eV]" 
     plt.figure( figsize=(15,5) )
-    if( Erefs    is not None): plt.plot( Erefs   ,'.k' , lw=0.5, ms=1.0, label="E_ref")
-    if( Emodel   is not None): plt.plot( Emodel  ,'.-r', lw=0.5, ms=1.0, label="E_model")
+    if( Erefs    is not None): plt.plot( Erefs*E_units   ,'.k' , lw=0.5, ms=1.0, label="E_ref")
+    if( Emodel   is not None): plt.plot( Emodel*E_units  ,'.-r', lw=0.5, ms=1.0, label="E_model")
     if( weights  is not None): plt.plot( weights ,'-g' , lw=0.5,         label="weights")
     if( weights0 is not None): plt.plot( weights0,'--c', lw=0.5,         label="weights0")
     plt.legend()
     plt.xlabel("#sample(conf)")
-    plt.ylabel("E [kcal/mol]")
+    plt.ylabel("E "+units)
     plt.grid()
     if Emin is not None:
         plt.ylim( Emin*EminFac, -Emin*EminFac )
     elif bLimEref:
-        Emin =  Erefs.min()
+        Emin =  Erefs.min()*EminFac
         plt.ylim( Emin*EminFac, -Emin*EminFac )
 
 def plotDOFscans( iDOFs, xs, DOFnames, bEs=True, bFs=False,  label="plotDOFscans", bEvalSamples=False ):

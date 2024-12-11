@@ -54,6 +54,11 @@ void setup( int imodel, int EvalJ, int WriteJ, int CheckRepulsion, int Regulariz
     #undef _setbool
 }
 
+void setGlobalParams( double kMorse, double Lepairs ){
+    W.kMorse   = kMorse;
+    W.Lepairs  = Lepairs;
+}
+
 //bool bListOverRepulsive    = true;   // Should we list overrepulsive samples? 
 //bool bSaveOverRepulsive    = false;  // Should we save overrepulsive samples to .xyz file?
 //bool bPrintOverRepulsive   = true;   // Should we print overrepulsive samples? 
