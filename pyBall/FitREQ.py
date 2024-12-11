@@ -10,6 +10,8 @@ import sys
 from . import cpp_utils_ as cpp_utils
 #import cpp_utils_ as cpp_utils
 
+plt = None
+
 c_double_p = ctypes.POINTER(c_double)
 c_int_p    = ctypes.POINTER(c_int)
 
@@ -114,25 +116,25 @@ def getEs(Es=None, Fs=None, bOmp=False, bDOFtoTypes=True, bEs=True, bFs=False ):
     #print("getEs(): Es", Es)
     return Eerr, Es, Fs
 
-# void scanParam( int iDOF, int n, double* xs,  double* Es, double* Fs, bool bRegularize ){
+# void scanParam( int iDOF, int n, double* xs,  double* Es, double* Fs, bool bRegularize, bool bEvalSamples ){
 lib.scanParam.argtypes  = [c_int, c_int, c_double_p, c_double_p, c_double_p, c_bool]
 lib.scanParam.restype   = None
-def scanParam( iDOF, xs, Es=None, Fs=None, bRegularize=False ):
+def scanParam( iDOF, xs, Es=None, Fs=None, bEvalSamples=True ):
     n = len(xs)
     if Es is None: Es = np.zeros( n )
     if Fs is None: Fs = np.zeros( n )
-    lib.scanParam(iDOF, n, _np_as(xs,c_double_p), _np_as(Es,c_double_p), _np_as(Fs,c_double_p), bRegularize )
+    lib.scanParam(iDOF, n, _np_as(xs,c_double_p), _np_as(Es,c_double_p), _np_as(Fs,c_double_p), bEvalSamples )
     return Es,Fs
 
-#void scanParam2D( int iDOFx, int iDOFy, int nx, int ny, double* xs, double* ys,  double* Es, double* Fx, double* Fy, bool bRegularize ){
+# void scanParam2D( int iDOFx, int iDOFy, int nx, int ny, double* xs, double* ys,  double* Es, double* Fx, double* Fy, bool bRegularize, bool bEvalSamples ){
 lib.scanParam2D.argtypes  = [c_int, c_int, c_int, c_int, c_double_p, c_double_p, c_double_p, c_double_p, c_double_p, c_bool]
 lib.scanParam2D.restype   = None
-def scanParam2D(iDOFx, iDOFy, xs, ys, Es=None, Fx=None, Fy=None, bRegularize=False):
+def scanParam2D(iDOFx, iDOFy, xs, ys, Es=None, Fx=None, Fy=None, bEvalSamples=True):
     nx, ny = len(xs), len(ys)
     if Es is None: Es = np.zeros((ny,nx))
     if Fx is None: Fx = np.zeros((ny,nx))
     if Fy is None: Fy = np.zeros((ny,nx))
-    lib.scanParam2D(iDOFx, iDOFy, nx, ny, _np_as(xs,c_double_p), _np_as(ys,c_double_p),    _np_as(Es,c_double_p), _np_as(Fx,c_double_p), _np_as(Fy,c_double_p), bRegularize)
+    lib.scanParam2D(iDOFx, iDOFy, nx, ny, _np_as(xs,c_double_p), _np_as(ys,c_double_p),    _np_as(Es,c_double_p), _np_as(Fx,c_double_p), _np_as(Fy,c_double_p), bEvalSamples)
     return Es, Fx, Fy
 
 # void loadTypes_new( const char* fname_ElemTypes, const char* fname_AtomTypes ){
@@ -148,10 +150,10 @@ def loadDOFSelection(fname="DOFSelection.dat"):
     return lib.loadDOFSelection(cstr(fname))
 
 # int loadTypeSelection_walls( const char* fname ){
-lib.loadTypeSelection.argtypes  = [c_char_p]
-lib.loadTypeSelection.restype   =  c_int
-def loadTypeSelection(fname="typeSelection.dat"):
-    return lib.loadTypeSelection(cstr(fname))
+# lib.loadTypeSelection.argtypes  = [c_char_p]
+# lib.loadTypeSelection.restype   =  c_int
+# def loadTypeSelection(fname="typeSelection.dat"):
+#     return lib.loadTypeSelection(cstr(fname))
 
 #void loadWeights( const char* fname ){
 lib.loadWeights.argtypes  = [c_char_p]
@@ -274,6 +276,129 @@ def EnergyFromXYZ(fname):
     Es = np.array(Es)
     xs = np.array(xs)
     return Es,xs
+
+
+
+def check_array_difference(arr1, arr2, name, max_error=1e-8, err_message="arrays differs" ):
+    dmax = (arr1-arr2).max()
+    print(f"{name} dmax={dmax}")
+    if not np.allclose(arr1, arr2, atol=max_error):
+        print(f"{name} arrays differ:")
+        for i, (v1, v2) in enumerate(zip(arr1, arr2)):
+            if not np.isclose(v1, v2): print(f"{i}\t{v1}\t{v2}")
+        assert False, f"{name} "+err_message
+
+def test_getEs_openmp():
+    E1, Es1, Fs1 = fit.getEs(imodel=imodel, bOmp=False, bEs=True, bFs=True)
+    E2, Es2, Fs2 = fit.getEs(imodel=imodel, bOmp=True,  bEs=True, bFs=True)
+    check_array_difference(Es1, Es2, "Es w/o OpenMP")
+    check_array_difference(Fs1, Fs2, "Fs w/o OpenMP")
+    print( "test_getEs_openmp() E1,E2", E1, E2 )
+    assert np.isclose(E1, E2), f"E values differ: E1={E1}, E2={E2}"
+    print( "test_getEs_openmp() passed " )
+
+def read_xyz_data(fname="input_all.xyz"):
+    """Read XYZ file and extract Etot and x0 values from comment lines"""
+    #print("read_xyz_data()\n")
+    #print("Reading XYZ file:", fname)
+    Erefs = []
+    x0s = []
+    with open(fname, 'r') as f:
+        while True:
+            line = f.readline()
+            #print(line)
+            if not line: break
+            if line.startswith('# n0'):
+                #print(line)
+                # Parse line like "# n0 5 Etot .70501356708840164618 x0 1.40"
+                parts = line.split()
+                Etot  = float(parts[4])
+                x0    = float(parts[6])
+                Erefs.append(Etot)
+                x0s.append(x0)
+            # Skip the rest of the xyz structure
+            #natoms = int(line) if line[0].isdigit() else 0
+            #for _ in range(natoms):
+            #    f.readline()
+    return np.array(Erefs), np.array(x0s)
+
+def split_and_weight_curves(Erefs, x0s, n_before_min=4, weight_func=None ):
+    """
+    Split energy curves based on x0 discontinuities and assign weights.
+    
+    Args:
+        Erefs: numpy array of total energies
+        x0s: numpy array of x0 values (monotonic within each curve)
+        n_before_min: number of points before minimum to keep with positive weight
+    
+    Returns:
+        weights: numpy array of weights (0.0 or 1.0)
+    """
+    weights = np.zeros_like(Erefs)
+    
+    # Find where x0 values reset (non-monotonic changes)
+    dx0 = np.diff(x0s)
+    curve_starts = np.where(dx0 < 0)[0] + 1
+    
+    # Add start and end indices to process all segments
+    all_splits = np.concatenate(([0], curve_starts, [len(x0s)]))
+    
+    # Process each curve segment
+    for start, end in zip(all_splits[:-1], all_splits[1:]):
+        segment = Erefs[start:end]
+        if len(segment) == 0:
+            continue
+        imin = np.argmin(segment) + start
+        icut = imin - n_before_min
+        weight_start = max(icut, start)
+        if weight_func is None:
+            weights[weight_start:end] = 1.0
+        else:
+            weights[weight_start:end] = weight_func(Erefs[weight_start:end])
+    
+    return weights
+
+def exp_weight_func(Erefs, a=1.0, alpha=3.0 ):
+    Emin = np.min(Erefs)
+    return np.exp( alpha*(Erefs-Emin)/Emin )*a
+
+def genWeights(Erefs, Ecut ):
+    mask = Erefs<Ecut
+    weights = np.zeros( len(Erefs) )
+    weights[mask] = 1.0
+    return weights
+
+def plotEWs(Erefs=None,Emodel=None,  weights=None,  weights0=None, bLimEref=True, Emin=None, EminFac=1.2):
+    plt.figure( figsize=(15,5) )
+    if( Erefs    is not None): plt.plot( Erefs   ,'.k' , lw=0.5, ms=1.0, label="E_ref")
+    if( Emodel   is not None): plt.plot( Emodel  ,'.-r', lw=0.5, ms=1.0, label="E_model")
+    if( weights  is not None): plt.plot( weights ,'-g' , lw=0.5,         label="weights")
+    if( weights0 is not None): plt.plot( weights0,'--c', lw=0.5,         label="weights0")
+    plt.legend()
+    plt.xlabel("#sample(conf)")
+    plt.ylabel("E [kcal/mol]")
+    plt.grid()
+    if Emin is not None:
+        plt.ylim( Emin*EminFac, -Emin*EminFac )
+    elif bLimEref:
+        Emin =  Erefs.min()
+        plt.ylim( Emin*EminFac, -Emin*EminFac )
+
+def plotDOFscans( iDOFs, xs, DOFnames, bEs=True, bFs=False,  label="plotDOFscans", bEvalSamples=False ):
+    plt.figure()
+    for iDOF in iDOFs:
+        y = DOFs[iDOF]    # store backup value of this DOF
+        Es,Fs = scanParam( iDOF, xs, bEvalSamples=bEvalSamples )   # do 1D scan
+        #print( "iDOF", iDOF, DOFnames[iDOF], "Es", Es )
+        if bEs: plt.plot(xs,Es, '-', label=DOFnames[iDOF] )       # plot 1D scan
+        if bFs: plt.plot(xs,Fs, '-', label=DOFnames[iDOF] )       # plot 1D scan
+        DOFs[iDOF] = y    # restore
+    plt.legend()
+    plt.xlabel("DOF value")
+    plt.ylabel("E [kcal/mol]")    
+    plt.title( label )
+    plt.grid()
+    plt.show()
 
 
 

@@ -83,9 +83,9 @@ int loadDOFSelection( const char* fname ){
     return W.loadDOFSelection( fname );
 }
 
-int loadTypeSelection( const char* fname ){
-    return W.loadTypeSelection( fname );
-}
+// int loadTypeSelection( const char* fname ){
+//     return W.loadTypeSelection( fname );
+// }
 
 int loadWeights( const char* fname ){
     return W.loadWeights( fname );
@@ -124,7 +124,6 @@ static double evalFitError( int n, double * Xs ){
     for(int i=0; i<W.nDOFs; i++) { W.DOFs[i] = Xs[i]; }
     return W.evalFitError( -1, W.iparallel>0 );
 };
-
 double optimize_random(int nstep, double stepSize=0.1) {
     ropt.getEnergy = evalFitError;
     ropt.realloc(W.nDOFs, W.DOFs);
@@ -149,30 +148,34 @@ double getEs( double* Es, double* Fs, bool bOmp, bool bDOFtoTypes){
     return E;
 }
 
-void scanParam( int iDOF, int n, double* xs,  double* Es, double* Fs, bool bRegularize ){
+void scanParam( int iDOF, int n, double* xs,  double* Es, double* Fs, bool bEvalSamples ){
     //printf( "scanParam() iDOF %i imodel %i n %i \n", iDOF, imodel, n );
     W.clear_fDOFbounds();
-    //W.imodel=imodel;
+    //W.bRegularize=bRegularize;
+    bool bOmp = W.iparallel>0;
+    if(bOmp){ W.bBroadcastFDOFs=true; W.realloc_sample_fdofs();  }
     for(int i=0; i<n; i++){
         W.DOFs[iDOF] = xs[i];
-        double E = W.evalFitError( i, W.iparallel>0 );
+        double E = W.evalFitError( i, bOmp, bEvalSamples );
         if(Fs)Es[i] = E;
         if(Fs)Fs[i] = W.fDOFs[iDOF];
         //if( verbosity>1){ printf( "scanParam()[%3i] W.DOFs[%3i]: %20.10f E: %20.10f  F: %20.10f \n", i, iDOF, W.DOFs[iDOF], E, W.fDOFs[iDOF] ); }
     }
 }
 
-void scanParam2D( int iDOFx, int iDOFy, int nx, int ny, double* xs, double* ys,  double* Es, double* Fx, double* Fy, bool bRegularize ){
+void scanParam2D( int iDOFx, int iDOFy, int nx, int ny, double* xs, double* ys,  double* Es, double* Fx, double* Fy, bool bEvalSamples ){
     //printf( "scanParam() iDOF %i imodel %i nx %i ny %i \n", iDOFx, imodel, nx, ny );
     W.clear_fDOFbounds();
-    //W.imodel=imodel;
+    //W.bRegularize=bRegularize;
+    bool bOmp = W.iparallel>0;
+    if(bOmp){ W.bBroadcastFDOFs=true; W.realloc_sample_fdofs();  }
     for(int iy=0; iy<ny; iy++){
         W.DOFs[iDOFy] = ys[iy];
         for(int ix=0; ix<nx; ix++){
             int i = iy*nx + ix; 
             //printf( "scanParam2D() ix %i iy %i i %i \n", ix, iy, i );
             W.DOFs[iDOFx] = xs[ix];
-            double E = W.evalFitError( i, W.iparallel>0 );
+            double E = W.evalFitError( i, bOmp );
             if(Es)Es[i] = E;
             if(Fx)Fx[i] = W.fDOFs[iDOFx];
             if(Fy)Fy[i] = W.fDOFs[iDOFy];

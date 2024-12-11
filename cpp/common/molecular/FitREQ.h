@@ -158,7 +158,7 @@ class FitREQ{ public:
     //NBFF* nbff;
     int nDOFs=0,ntype=0,nbatch=0,n0=0,n1=0;
     int imodel   =1;
-    int iparallel=1;
+    int iparallel=0;
     alignas(32) Quat4d*    typeREQs      =0; // [ntype] parameters for each type
     alignas(32) Quat4d*    typeREQsMin   =0; // [ntype] equlibirum value of parameters for regularization 
     alignas(32) Quat4d*    typeREQsMax   =0; // [ntype] equlibirum value of parameters for regularization 
@@ -340,7 +340,7 @@ void printTypeParams( bool bOnlyPresent=true ){
             if( bOnlyPresent && (ncount==0) ){ continue; }
         }
         Quat4d tREQH = typeREQs[i]; 
-        printf("type %3i %-8s count: %3i REQH: %10.3f %10.3f %10.3f %10.3f \n", i, params->atypes[i].name, ncount, tREQH.x, tREQH.y, tREQH.z, tREQH.w );
+        printf("type %3i %-8s count: %6i REQH: %10.3f %10.3f %10.3f %10.3f \n", i, params->atypes[i].name, ncount, tREQH.x, tREQH.y, tREQH.z, tREQH.w );
     }
 }
 
@@ -355,6 +355,30 @@ void countTypesPresent( ){
             typesPresent[ityp]+=1;
         }
     }
+}
+
+int loadWeights( const char* fname ){
+    FILE* fin = fopen( fname, "r" );
+    if(fin==0){ printf("cannot open '%s' \n", fname ); exit(0);}
+    const int nline=1024;
+    char line[1024];
+    int n = 0;
+    while( fgets(line, nline, fin) ){
+        double w;
+        sscanf( line, "%g\n", &w ); 
+        n++;
+    }
+    fseek( fin, 0, SEEK_SET );
+    _realloc( weights, n );
+    int i = 0;
+    while( fgets(line, nline, fin) ){
+        double w;
+        sscanf( line, "%g\n", &w ); 
+        weights[i]=w;
+        i++;
+    }
+    fclose(fin);
+    return n;
 }
 
 /**
@@ -418,13 +442,14 @@ int loadDOFSelection( const char* fname ){
     return nDOFs;
 }
 
-/**
- * Load a file of types involved in the parameter fitting. The file should contain lines with the following format:
- * atom_name mask_RvdW mask_EvdW mask_Q mask_Hb
- * where mask_RvdW, mask_EvdW, mask_Q, and mask_Hb are integers representing the indices of the fitting parameters for the RvdW, EvdW, Q, and Hb parameters, respectively.
- * @param fname The name of the file to load.
- * @return The number of types loaded.
-*/
+
+/*
+
+//  Load a file of types involved in the parameter fitting. The file should contain lines with the following format:
+//  atom_name mask_RvdW mask_EvdW mask_Q mask_Hb
+//  where mask_RvdW, mask_EvdW, mask_Q, and mask_Hb are integers representing the indices of the fitting parameters for the RvdW, EvdW, Q, and Hb parameters, respectively.
+//  @param fname The name of the file to load.
+//  @return The number of types loaded.
 int loadTypeSelection( const char* fname ){
     printf( "FitREQ::loadTypeSelection(fname=%s) \n", fname );
     FILE* fin = fopen( fname, "r" );
@@ -471,30 +496,6 @@ int loadTypeSelection( const char* fname ){
     return ntypesel;
 }
 
-int loadWeights( const char* fname ){
-    FILE* fin = fopen( fname, "r" );
-    if(fin==0){ printf("cannot open '%s' \n", fname ); exit(0);}
-    const int nline=1024;
-    char line[1024];
-    int n = 0;
-    while( fgets(line, nline, fin) ){
-        double w;
-        sscanf( line, "%g\n", &w ); 
-        n++;
-    }
-    fseek( fin, 0, SEEK_SET );
-    _realloc( weights, n );
-    int i = 0;
-    while( fgets(line, nline, fin) ){
-        double w;
-        sscanf( line, "%g\n", &w ); 
-        weights[i]=w;
-        i++;
-    }
-    fclose(fin);
-    return n;
-}
-
 void initDOFregs(){
     printf( "FitREQ::initDOFregs() nDOFs=%i \n", nDOFs );
     DOFregX.resize(nDOFs);
@@ -519,19 +520,18 @@ void initDOFregs(){
     }
 }
 
-/**
- * Initializes the types of the FitREQ object. This function calculates the number of degrees of freedom (nDOFs) and initializes the typToREQ array, which maps each atom type to its corresponding REQ values.
- * @param ntype_ The number of types.
- * @param ntypesel The number of selected types.
- * @param tsel An array of integers representing the selected types.
- * @param typeMask An array of Quat4i indicating which of the 4 parameters (Rvdw,Evdw,Q,Hb) are free to be fitted.
- * @param typeREQs An array of Quat4d objects representing the non-colvalent interaction parameters (Rvdw,Evdw,Q,Hb) for each type.
- * @param typeREQsMin An array of Quat4d objects representing the minimum values of the non-colvalent interaction parameters (Rvdw,Evdw,Q,Hb) for each type.
- * @param typeREQsMax An array of Quat4d objects representing the maximum values of the non-colvalent interaction parameters (Rvdw,Evdw,Q,Hb) for each type.
- * @param typeREQs0 An array of Quat4d objects representing the equilibrium values of the non-colvalent interaction parameters (Rvdw,Evdw,Q,Hb) for each type.
- * @param typeKreg An array of Quat4d objects representing the regularization stiffness for each type.
- * @return The number of degrees of freedom.
- */
+
+//  Initializes the types of the FitREQ object. This function calculates the number of degrees of freedom (nDOFs) and initializes the typToREQ array, which maps each atom type to its corresponding REQ values.
+//  @param ntype_ The number of types.
+//  @param ntypesel The number of selected types.
+//  @param tsel An array of integers representing the selected types.
+//  @param typeMask An array of Quat4i indicating which of the 4 parameters (Rvdw,Evdw,Q,Hb) are free to be fitted.
+//  @param typeREQs An array of Quat4d objects representing the non-colvalent interaction parameters (Rvdw,Evdw,Q,Hb) for each type.
+//  @param typeREQsMin An array of Quat4d objects representing the minimum values of the non-colvalent interaction parameters (Rvdw,Evdw,Q,Hb) for each type.
+//  @param typeREQsMax An array of Quat4d objects representing the maximum values of the non-colvalent interaction parameters (Rvdw,Evdw,Q,Hb) for each type.
+//  @param typeREQs0 An array of Quat4d objects representing the equilibrium values of the non-colvalent interaction parameters (Rvdw,Evdw,Q,Hb) for each type.
+//  @param typeKreg An array of Quat4d objects representing the regularization stiffness for each type.
+//  @return The number of degrees of freedom.
 int init_types( int ntypesel, int* tsel, Quat4i* typeMask,  Quat4d* tmin, Quat4d* tmax, Quat4d* tx_lo, Quat4d* tx_hi, Quat4d* tk_lo,  Quat4d* tk_hi ){
     int ntype = initAllTypes();
     int nDOFs=0;
@@ -591,6 +591,7 @@ int init_types( int ntypesel, int* tsel, Quat4i* typeMask,  Quat4d* tmin, Quat4d
     }    
     return nDOFs;
 }
+*/
 
 // add electron pairs
 Atoms* addEpairs( Atoms* mol ){
@@ -998,18 +999,18 @@ double evalSampleError( int isamp, double& E ){
     //isamp_debug = i;
     Atoms* atoms  = samples[isamp];
     double wi     = (weights)? weights[isamp] : 1.0;
-    if(wi<1e-300) return 0;
+    if(wi<-1e-300) return 0;
     alignas(32) Quat4d fREQs [atoms->natoms];
     alignas(32) double fDOFs_[nDOFs];
     E = evalSample( isamp, atoms, wi, fREQs );
     //if(verbosity>3)
     //printf( "evalSampleError() isamp: %3i Emodel: %20.6f Eref: %20.6f bBroadcastFDOFs=%i @sample_fdofs=%p \n", isamp, E, atoms->Energy, bBroadcastFDOFs, sample_fdofs );
-    if( E>EmodelCutStart ){ 
-        if(bWeightByEmodel){ smoothWeight( E, wi ); };
-        handleOverRepulsive( isamp, E, atoms, wi );  
-        if( weights ) weights[isamp] = wi;   // store to weights so that we know 
-        if( bDiscardOverRepulsive && (E>EmodelCut) ){ E=NAN; return 0; }  
-    }
+    // if( E>EmodelCutStart ){ 
+    //     if(bWeightByEmodel){ smoothWeight( E, wi ); };
+    //     handleOverRepulsive( isamp, E, atoms, wi );  
+    //     if( weights ) weights[isamp] = wi;   // store to weights so that we know 
+    //     if( bDiscardOverRepulsive && (E>EmodelCut) ){ E=NAN; return 0; }  
+    // }
     double Eref    = atoms->Energy;
     double dE      = E - Eref;
     double dEw     = 2.0*dE*wi;
@@ -1544,12 +1545,14 @@ double evalExampleDerivs( Func func, int i0, int ni, int j0, int nj, int* types,
 // ======================================
 
 __attribute__((hot)) 
-double evalFitError(int itr, bool bOMP=true){
+double evalFitError(int itr, bool bOMP=true, bool bEvalSamples=true){
     double Err=0.0;
     DOFsToTypes(); 
     clean_fDOFs();
-    if(bOMP){  Err = evalSamples_omp();   }
-    else    {  Err = evalSamples_noOmp(); }
+    if(bEvalSamples)[[likely]]{
+        if(bOMP){  Err = evalSamples_omp();   }
+        else    {  Err = evalSamples_noOmp(); }
+    }
     if(bPrintBeforReg)printStepDOFinfo( itr, Err, "BEFOR_REG: " );
     if(bRegularize){ 
         double Ereg = regularizeDOFs(); 
@@ -1634,94 +1637,17 @@ double run_omp( int ialg, int nstep, double Fmax, double dt, double max_step, do
     return Error;
 }
 
-
-/**
- * Limits the fitted non-colvalent interaction parameters REQH(Rvdw,Evdw,Q,Hb) to be btween minimum and maximum (REQmin and REQmax).
- * 
- * @param none
- * @return void
- */
-// __attribute__((hot)) 
-// void limit_params(){
-//     for(int i=0; i<ntype; i++ ){
-//         const Quat4i& tt     = typToREQ[i];
-//         const Quat4d& REQ    = typeREQs [i];
-//         const Quat4d& REQmin = typeREQsMin[i];
-//         const Quat4d& REQmax = typeREQsMax[i];
-//         // Note: should we limit derivatives or the value itself?
-//         if(tt.x>=0){ DOFs[tt.x]=_clamp(DOFs[tt.x],REQmin.x,REQmax.x ); }
-//         if(tt.y>=0){ DOFs[tt.y]=_clamp(DOFs[tt.y],REQmin.y,REQmax.y ); }
-//         if(tt.z>=0){ DOFs[tt.z]=_clamp(DOFs[tt.z],REQmin.z,REQmax.z ); }
-//         if(tt.w>=0){ DOFs[tt.w]=_clamp(DOFs[tt.w],REQmin.w,REQmax.w ); }
-//         //if(tt.x>=0){ fDOFs[tt.x]=_clamp(fDOFs[tt.x],REQmin.x,REQmax.x ); }
-//         //if(tt.y>=0){ fDOFs[tt.y]=_clamp(fDOFs[tt.y],REQmin.y,REQmax.y ); }
-//         //if(tt.z>=0){ fDOFs[tt.z]=_clamp(fDOFs[tt.z],REQmin.z,REQmax.z ); }
-//         //if(tt.w>=0){ fDOFs[tt.w]=_clamp(fDOFs[tt.w],REQmin.w,REQmax.w ); }
-//     }
-// }
-
-/**
- * Calculates the regularization force for each degree of freedom (DOF) based on the difference between the current and target values of the fitted non-colvalent interaction parameters REQH(Rvdw,Evdw,Q,Hb).
- * The regularization force tries to minimize the difference between the current (REQ) and the default value (REQ0) of the parameters. Its strength is controlled by the regularization stiffness (Kreg).
- * The resulting forces are stored in the fDOFs array.
- */
-// __attribute__((hot)) 
-// void regularization_force(){
-//     for(int i=0; i<ntype; i++ ){
-//         const Quat4i& tt       = typToREQ [i];
-//         const Quat4d& REQ      = typeREQs [i];
-//         const Quat4d& REQ0     = typeREQs0[i];
-//         const Quat4d& K        = typeKreg [i];
-//         if(tt.x>=0)fDOFs[tt.x] = (REQ0.x-REQ.x)*K.x;
-//         if(tt.y>=0)fDOFs[tt.y] = (REQ0.y-REQ.y)*K.y;
-//         if(tt.z>=0)fDOFs[tt.z] = (REQ0.z-REQ.z)*K.z;
-//         if(tt.w>=0)fDOFs[tt.w] = (REQ0.w-REQ.w)*K.w;
-//     }
-// }
-
-// __attribute__((hot)) 
-// void regularization_force_walls(){
-//     double E = 0;
-//     for(int i=0; i<ntype; i++ ){
-//         const Quat4i& tt    = typToREQ      [i];
-//         const Quat4d& REQ   = typeREQs      [i];
-//         const Quat4d& REQ0l = typeREQs0_low [i];
-//         const Quat4d& Kl    = typeKreg_low  [i];
-//         const Quat4d& REQ0h = typeREQs0_high[i];
-//         const Quat4d& Kh    = typeKreg_high [i];
-//         if(tt.x>=0){ E+= constrain( REQ.x, REQ0l.x, REQ0h.x, Kl.x,Kh.x, fDOFs[tt.x] ); }
-//         if(tt.x>=0){ E+= constrain( REQ.y, REQ0l.y, REQ0h.y, Kl.y,Kh.y, fDOFs[tt.y] ); }
-//         if(tt.x>=0){ E+= constrain( REQ.z, REQ0l.z, REQ0h.z, Kl.z,Kh.z, fDOFs[tt.z] ); }
-//         if(tt.x>=0){ E+= constrain( REQ.w, REQ0l.w, REQ0h.w, Kl.w,Kh.w, fDOFs[tt.w] ); }
-//     }
-// }
-
-// __attribute__((hot)) 
-// inline double constrain( double x, double xmin, double xmax, double Kmin, double Kmax, double& f ){
-//     double E=0;
-//     if(x<xmin){
-//         double d = x-xmin; 
-//         f =      -d*Kmin;
-//         E = 0.5*d*d*Kmin;
-//     }else if(x>xmax){
-//         double d = x-xmax; 
-//         f =      -d*Kmax;
-//         E = 0.5*d*d*Kmax;
-//     }
-//     return E;
-// }
-
 __attribute__((hot)) 
 __attribute__((pure))
 static inline double constrain( double x, const Vec3d& regX, const Vec3d& regK, double& fout ){
     double E = 0;
     double f = 0;
     if(x<regX.x){
-        double d = x-regX.x; 
+        double d = x      -regX.x; 
         f        =      -d*regK.x;
         E        = 0.5*d*d*regK.x;
     }else if(x>regX.z){
-        double d = x-regX.x; 
+        double d = x      -regX.z; 
         f        =      -d*regK.z;
         E        = 0.5*d*d*regK.z;
     }
@@ -1905,7 +1831,8 @@ double move_MD( double dt, double max_step=-0.1, double damp=0.1, bool bClimbBre
     double cdamp = 1.0-damp;
     if(bClimbBreak){
         double fv = 0.0; for(int i=0; i<nDOFs; i++){ fv += vDOFs[i]*fDOFs[i]; }
-        if(fv<0.0){      for(int i=0; i<nDOFs; i++){       vDOFs[i] = 0.0;    } } 
+        printf( "move_MD fv= %g\n", fv );
+        if(fv<0.0){      for(int i=0; i<nDOFs; i++){       vDOFs[i] = 0.0;    }; printf( "ClimbBreak\n" ); } 
     }
     double F2 = 0.0;
     if(max_step>0.0){ dt=limit_dt_MD(dt,max_step,cdamp); };

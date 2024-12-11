@@ -14,9 +14,9 @@ make -j4 FitREQ_lib
 cd $wd
 
 # ------- asan (Memory Sanitizer)
-LD_PRELOAD=$(g++ -print-file-name=libasan.so)
-echo   $LD_PRELOAD
-export LD_PRELOAD
+#LD_PRELOAD=$(g++ -print-file-name=libasan.so)
+#echo   $LD_PRELOAD
+#export LD_PRELOAD
 
 
 stty cols 200   # set terminal width
