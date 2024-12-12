@@ -1,4 +1,5 @@
 
+from ast import arg
 import numpy as np
 from   ctypes import c_int, c_double, c_bool, c_float, c_char_p, c_bool, c_void_p, c_char_p
 import ctypes as ct
@@ -10,6 +11,8 @@ import sys
 #import cpp_utils
 from . import cpp_utils_ as cpp_utils
 #cpp_utils = cpp_utils_
+
+lib = None
 
 c_double_p = ct.POINTER(c_double)
 c_int_p    = ct.POINTER(c_int)
@@ -54,9 +57,22 @@ header_strings = [
 
 mkldir = "/home/prokop/SW/intel/compilers_and_libraries_2019.5.281/linux/mkl/lib/intel64_lin/"
 
-cpp_utils.BUILD_PATH = os.path.normpath( cpp_utils.PACKAGE_PATH + '/../build/' ) 
-#lib = cpp_utils.loadLib('FireCore', recompile=False, mode=ct.RTLD_GLOBAL )
-lib = cpp_utils.loadLib('FireCore', recompile=False, mode=ct.RTLD_LOCAL )
+argDict={}
+
+def reload():
+    global lib
+    bReaload = False
+    if lib is not None: 
+        cpp_utils.unload_lib(lib)
+        bReaload = True
+    cpp_utils.BUILD_PATH = os.path.normpath( cpp_utils.PACKAGE_PATH + '/../build/' ) 
+    #lib = cpp_utils.loadLib('FireCore', recompile=False, mode=ct.RTLD_GLOBAL )
+    lib = cpp_utils.loadLib('FireCore', recompile=False, mode=ct.RTLD_LOCAL )
+    if bReaload:
+        cpp_utils.set_args_dict(lib, argDict)
+    return lib
+
+lib = reload()
 
 '''
 loadLib( mkldir+"libmkl_def.so"        )
@@ -72,42 +88,47 @@ array2d  = np.ctypeslib.ndpointer(dtype=np.double, ndim=2, flags='CONTIGUOUS')
 array3d  = np.ctypeslib.ndpointer(dtype=np.double, ndim=3, flags='CONTIGUOUS')
 # ========= C functions
 
+
+
 #  void firecore_setVerbosity( int verbosity_, int idebugWrite_ )
-lib.firecore_setVerbosity.argtypes  = [c_int, c_int ] 
-lib.firecore_setVerbosity.restype   =  None
+# lib.firecore_setVerbosity.argtypes  = [c_int, c_int ] 
+# lib.firecore_setVerbosity.restype   =  None
+argDict["firecore_setVerbosity"]=( None, [c_int, c_int ] )
 def setVerbosity( verbosity=0, idebugWrite=0 ):
     return lib.firecore_setVerbosity(verbosity, idebugWrite ) 
 
 #  subroutine firecore_init( natoms_, atomTypes, atomsPos )
-lib.firecore_init.argtypes  = [c_int, array1i, array2d ] 
-lib.firecore_init.restype   =  None
+# lib.firecore_init.argtypes  = [c_int, array1i, array2d ] 
+# lib.firecore_init.restype   =  None
+argDict["firecore_init"]=( None, [c_int, array1i, array2d ]  )
 def init(atomTypes, atomPos ):
+    #atomTypes = np.array( atomTypes , np.int32   )
+    #atomPos   = np.array( atomPos   , np.float64 )
+    #print("firecore_init() atomTypes: ", type(atomTypes), atomTypes.dtype )
+    #print("firecore_init() atomPos  : ", type(atomPos),   atomPos.dtype )
+    #print("firecore_init() \n atomTypes:" , atomTypes, "\n atomPos:", atomPos )
     natoms = len(atomTypes)
-    return  lib.firecore_init(natoms, atomTypes, atomPos )
+    return lib.firecore_init(natoms, atomTypes, atomPos )
 
 #  subroutine firecore_evalForce( nmax_scf, forces_ )
-lib.firecore_evalForce.argtypes  = [c_int, array2d, array2d, array1d, c_int ] 
-lib.firecore_evalForce.restype   =  None
+#lib.firecore_evalForce.argtypes  = [c_int, array2d, array2d, array1d, c_int ] 
+#lib.firecore_evalForce.restype   =  None
+argDict["firecore_evalForce"]=( None, [c_int, array2d, array2d, array1d, c_int ] )
 def evalForce( pos, forces=None, nmax_scf=100, Es=None, ixyz=-1 ):
-    if Es is None:
-        Es = np.zeros(8)
-    if forces is None:
-        forces = np.zeros( pos.shape )
+    if Es     is None: Es     = np.zeros(8)
+    if forces is None: forces = np.zeros( pos.shape )
     lib.firecore_evalForce( nmax_scf, pos, forces, Es, ixyz )
     return forces
 
 # "void firecore_relax( nmax_scf, positions_, forces_, fixPos, energies )",
-lib.firecore_relax.argtypes  = [c_int, c_int, array2d, array2d, array2i, array1d ] 
-lib.firecore_relax.restype   =  None
+#lib.firecore_relax.argtypes  = [c_int, c_int, array2d, array2d, array2i, array1d ] 
+#lib.firecore_relax.restype   =  None
+argDict["firecore_relax"]=( None, [c_int, c_int, array2d, array2d, array2i, array1d ] )
 def relax( pos, forces=None, fixPos=None, nstepf=1000, nmax_scf=100, Es=None, ):
-    if Es is None:
-        Es = np.zeros(8)
-    if forces is None:
-        forces = np.zeros( pos.shape )
-    if forces is None:
-        forces = np.zeros( pos.shape )
-    if fixPos is None:
-        fixPos=np.zeros(pos.shape,np.int32)
+    if Es     is None: Es     = np.zeros(8)
+    if forces is None: forces = np.zeros( pos.shape )
+    if fixPos is None: 
+        fixPos = np.zeros( pos.shape, np.int32 )
     else:
         if( isinstance(fixPos[0],int) ):
             fixPos_=np.zeros(pos.shape,np.int32)
@@ -120,25 +141,24 @@ def relax( pos, forces=None, fixPos=None, nstepf=1000, nmax_scf=100, Es=None, ):
     return forces
 
 #  void getCharges( double* charges )
-lib.firecore_getCharges.argtypes  = [array2d] 
-lib.firecore_getCharges.restype   =  None
+#lib.firecore_getCharges.argtypes  = [array2d] 
+#lib.firecore_getCharges.restype   =  None
+argDict["firecore_getCharges"]=( None, [array2d] )
 def getCharges(charges):
     return lib.firecore_getCharges(charges) 
 
-
 #  "void firecore_getPointer_wfcoef( double* bbnkre )
-lib.firecore_getPointer_wfcoef.argtypes  = [array2d] 
-lib.firecore_getPointer_wfcoef.restype   =  None
+#lib.firecore_getPointer_wfcoef.argtypes  = [array2d] 
+#lib.firecore_getPointer_wfcoef.restype   =  None
+argDict["firecore_getPointer_wfcoef"]=( None, [array2d] )
 def getPointer_wfcoef(charges):
     return lib.firecore_getPointer_wfcoef(charges) 
 
-
-
-
 #"void firecore_get_wfcoef( int ikp, double* wfcoefs )",
 #  void getCharges( double* charges )
-lib.firecore_get_wfcoef.argtypes  = [c_int, array2d] 
-lib.firecore_get_wfcoef.restype   =  None
+#lib.firecore_get_wfcoef.argtypes  = [c_int, array2d] 
+#lib.firecore_get_wfcoef.restype   =  None
+argDict["firecore_get_wfcoef"]=( None, [c_int, array2d] )
 def get_wfcoef(wfcoef=None,norb=None, ikp=1):
     if(wfcoef is None):
         wfcoef=np.zeros( (norb,norb) )
@@ -146,63 +166,63 @@ def get_wfcoef(wfcoef=None,norb=None, ikp=1):
     return wfcoef
 
 #"void firecore_set_wfcoef( int iMO, int ikp, double* wfcoefs )",
-lib.firecore_set_wfcoef.argtypes  = [c_int,c_int, array1d] 
-lib.firecore_set_wfcoef.restype   =  None
+#lib.firecore_set_wfcoef.argtypes  = [c_int,c_int, array1d] 
+#lib.firecore_set_wfcoef.restype   =  None
+argDict["firecore_set_wfcoef"]=( None, [c_int,c_int, array1d] )
 def set_wfcoef(wfcoef,iMO=1,ikp=1):
     return lib.firecore_set_wfcoef(iMO,ikp,wfcoef)
 
 #  void preinit( ) 
-lib.firecore_preinit.argtypes  = [] 
-lib.firecore_preinit.restype   =  None
+#lib.firecore_preinit.argtypes  = [] 
+#lib.firecore_preinit.restype   =  None
+argDict["firecore_preinit"]=( None, [] )
 def preinit():
     return lib.firecore_preinit() 
 
-
-
 #  void set_lvs( double* lvs )
-lib.firecore_set_lvs.argtypes  = [array2d] 
-lib.firecore_set_lvs.restype   =  None
+#lib.firecore_set_lvs.argtypes  = [array2d] 
+#lib.firecore_set_lvs.restype   =  None
+argDict["firecore_set_lvs"]=( None, [array2d] )
 def set_lvs(lvs):
     return lib.firecore_set_lvs(lvs) 
 
 #  void assembleH( int iforce, int Kscf, double* positions )
-lib.firecore_assembleH.argtypes  = [c_int, c_int, array2d ] 
-lib.firecore_assembleH.restype   =  None
+#lib.firecore_assembleH.argtypes  = [c_int, c_int, array2d ] 
+#lib.firecore_assembleH.restype   =  None
+argDict["firecore_assembleH"]=( None, [c_int, c_int, array2d ] )
 def assembleH( positions, iforce=0, Kscf=1 ):
     return lib.firecore_assembleH(iforce, Kscf, positions) 
 
-
-
 #  void solveH( double* k_temp, int ikpoint )
-lib.firecore_solveH.argtypes  = [ array1d, c_int] 
-lib.firecore_solveH.restype   =  None
+#lib.firecore_solveH.argtypes  = [ array1d, c_int] 
+#lib.firecore_solveH.restype   =  None
+argDict["firecore_solveH"]=( None, [ array1d, c_int] )
 def solveH(k_temp=None, ikpoint=1):
     if k_temp is None:
         k_temp = np.array([0.0,0.0,0.0])
     return lib.firecore_solveH(k_temp, ikpoint ) 
 
-
-
 #  void updateCharges( double sigmatol, double* sigma )
-lib.firecore_updateCharges.argtypes  = [c_double, c_double_p] 
-lib.firecore_updateCharges.restype   =  None
+#lib.firecore_updateCharges.argtypes  = [c_double, c_double_p] 
+#lib.firecore_updateCharges.restype   =  None
+argDict["firecore_updateCharges"]=( None, [c_double, c_double_p] )
 def updateCharges( sigmatol=1e-6, sigma=None):
     if sigma is None:
         sigma = np.zeros(1)
     lib.firecore_updateCharges(sigmatol, _np_as(sigma,c_double_p)) 
     return sigma
 
-
 #  void SCF( int nmax_scf, double* positions, int iforce  )
-lib.firecore_SCF.argtypes  = [c_int, array2d, c_int] 
-lib.firecore_SCF.restype   =  None
+#lib.firecore_SCF.argtypes  = [c_int, array2d, c_int] 
+#lib.firecore_SCF.restype   =  None
+argDict["firecore_SCF"]=( None, [c_int, array2d, c_int] )
 def SCF( positions, iforce=0, nmax_scf=200 ):
     return lib.firecore_SCF( nmax_scf, positions, iforce ) 
 
-
 #  void setupGrid( double Ecut, int ifixg0, doube* g0,  int ngrid, double* dCell  )
-lib.firecore_setupGrid.argtypes  = [c_double, c_int, array1d, array1i, array2d ] 
-lib.firecore_setupGrid.restype   =  None
+#lib.firecore_setupGrid.argtypes  = [c_double, c_int, array1d, array1i, array2d ] 
+#lib.firecore_setupGrid.restype   =  None
+argDict["firecore_setupGrid"]=( None, [c_double, c_int, array1d, array1i, array2d ] )
 def setupGrid(Ecut=100, g0=None, ngrid=None, dCell=None):
     if g0 is None:
         ifixg0=0
@@ -224,8 +244,9 @@ def setupGrid(Ecut=100, g0=None, ngrid=None, dCell=None):
     return ngrid, dCell, lvs
 
 #  void getGridMO( int iMO, double* ewfaux )
-lib.firecore_getGridMO.argtypes  = [ c_int, array3d ] 
-lib.firecore_getGridMO.restype   =  None
+#lib.firecore_getGridMO.argtypes  = [ c_int, array3d ] 
+#lib.firecore_getGridMO.restype   =  None
+argDict["firecore_getGridMO"]=( None, [ c_int, array3d ] )
 def getGridMO(iMO, ewfaux=None, ngrid=None):
     if ewfaux is None:
         ewfaux = np.zeros(ngrid)
@@ -233,8 +254,9 @@ def getGridMO(iMO, ewfaux=None, ngrid=None):
     return ewfaux
 
 #  void getGridDens( int imo0, int imo1, double* ewfaux )
-lib.firecore_getGridDens.argtypes  = [ array3d, c_double, c_double ] 
-lib.firecore_getGridDens.restype   =  None
+#lib.firecore_getGridDens.argtypes  = [ array3d, c_double, c_double ] 
+#lib.firecore_getGridDens.restype   =  None
+argDict["firecore_getGridDens"]=( None, [ array3d, c_double, c_double ] )
 def getGridDens(ewfaux=None, ngrid=None, Cden = 1.0, Cden0 = 0.0 ):
     #ngrid=ngrid[::-1]
     print( " getGridDens() ngrid ", ngrid ); #exit(0)
@@ -244,14 +266,16 @@ def getGridDens(ewfaux=None, ngrid=None, Cden = 1.0, Cden0 = 0.0 ):
     return ewfaux 
 
 #  void firecore_MOtoXSF( int iMO )
-lib.firecore_orb2xsf.argtypes  = [ c_int ] 
-lib.firecore_orb2xsf.restype   =  None
+#lib.firecore_orb2xsf.argtypes  = [ c_int ] 
+#lib.firecore_orb2xsf.restype   =  None
+argDict["firecore_orb2xsf"]=( None, [ c_int ] )
 def orb2xsf(iMO):
     lib.firecore_orb2xsf(iMO )
 
 #  void firecore_dens2xsf( int iMO )
-lib.firecore_dens2xsf.argtypes  = [ c_double ] 
-lib.firecore_dens2xsf.restype   =  None
+#lib.firecore_dens2xsf.argtypes  = [ c_double ] 
+#lib.firecore_dens2xsf.restype   =  None
+argDict["firecore_dens2xsf"]=( None, [ c_double ] )
 def dens2xsf( f_den0=0.0 ):
     print( "DEBUG FireCore.py:: dens2xsf()" )
     lib.firecore_dens2xsf( f_den0 )
@@ -269,8 +293,9 @@ def getpsi(in1=1, issh=1, n=50, dx=0.1, x0=0.0, ys=None, l=0, m=1, theta=0.0, ph
 '''
 
 #"void firecore_getpsi( int in1, int issh, int n, double* poss, double* ys )",
-lib.firecore_getpsi.argtypes  = [c_int, c_int, c_int, c_int,    c_int, array2d, array1d ] 
-lib.firecore_getpsi.restype   =  None
+#lib.firecore_getpsi.argtypes  = [c_int, c_int, c_int, c_int,    c_int, array2d, array1d ] 
+#lib.firecore_getpsi.restype   =  None
+argDict["firecore_getpsi"]=( None, [c_int, c_int, c_int, c_int,    c_int, array2d, array1d ] )
 def getpsi( poss, ys=None, in1=1, issh=1, l=0, m=1 ):
     n = len(poss)
     if ys is None:
@@ -279,8 +304,9 @@ def getpsi( poss, ys=None, in1=1, issh=1, l=0, m=1 ):
     return ys
 
 #void firecore_orb2points( int iband, int ikpoint, int npoints, double* points, double* ewfaux )
-lib.firecore_orb2points.argtypes  = [c_int, c_int, c_int, array2d, array1d ] 
-lib.firecore_orb2points.restype   =  None
+#lib.firecore_orb2points.argtypes  = [c_int, c_int, c_int, array2d, array1d ] 
+#lib.firecore_orb2points.restype   =  None
+argDict["firecore_orb2points"]=( None, [c_int, c_int, c_int, array2d, array1d ] )
 def orb2points( poss, ys=None, iMO=1,  ikpoint=1 ):
     n = len(poss)
     if ys is None:
@@ -289,6 +315,13 @@ def orb2points( poss, ys=None, iMO=1,  ikpoint=1 ):
     return ys
 
 
+
+cpp_utils.set_args_dict(lib, argDict)
+
+#===================================
+# ========= Python Functions
+#===================================
+
 def run_nonSCF( atomType, atomPos ):
     preinit()
     norb = init( atomType, atomPos )
@@ -296,10 +329,6 @@ def run_nonSCF( atomType, atomPos ):
     solveH()
     sigma=updateCharges(); #print( sigma )
     return norb, sigma
-
-#===================================
-# ========= Python Functions
-#===================================
 
 def initialize( atomType=None, atomPos=None, verbosity=0 ):
     global norb
