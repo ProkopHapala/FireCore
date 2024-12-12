@@ -11,7 +11,7 @@ subroutine firecore_setVerbosity( verbosity_, idebugWrite_ ) bind(c, name='firec
     integer(c_int),intent(in), value :: idebugWrite_
     verbosity   = verbosity_
     idebugWrite = idebugWrite_
-    write(*,*) "DEBUG firecore_setVerbosity() ", verbosity, idebugWrite_
+    !write(*,*) "DEBUG firecore_setVerbosity() ", verbosity, idebugWrite_
 end subroutine
 
 ! see : https://stackoverflow.com/questions/29153501/when-i-pass-a-pointer-from-fortran-to-c-the-value-of-the-first-element-is-lost
@@ -93,7 +93,7 @@ subroutine firecore_preinit( )  bind(c, name='firecore_preinit' )
     use integrals !, only : fdataLocation
     implicit none
     ! ========= body
-    write(*,*) "DEBUG firecore_preinit() verbosity=", verbosity
+    !write(*,*) "DEBUG firecore_preinit() verbosity=", verbosity
     if(verbosity.gt.0)write(*,*) "firecore_preinit() "
     iparam_file = 0
     call initconstants ! (sigma, sigmaold, scf_achieved)
@@ -103,7 +103,7 @@ subroutine firecore_preinit( )  bind(c, name='firecore_preinit' )
     call set_default_params ()
     igrid = 1
     call checksum_options ()
-    write(*,*) "DEBUG firecore_preinit() END verbosity=", verbosity
+    !write(*,*) "DEBUG firecore_preinit() END verbosity=", verbosity
     !write(*,*) "DEBUG firecore_preinit() icluster", icluster
 end subroutine
 
@@ -130,7 +130,7 @@ subroutine firecore_init( natoms_, atomTypes, atomsPos ) bind(c, name='firecore_
     real, dimension (3) :: vector
     logical zindata
     ! ====== Body
-    write(*,*) "DEBUG firecore_init() verbosity=", verbosity
+    !write(*,*) "DEBUG firecore_init() verbosity=", verbosity
     if(verbosity.gt.0)write(*,*) "firecore_init() "
     natoms = natoms_
     if(verbosity.gt.0) then
@@ -322,7 +322,7 @@ subroutine firecore_evalForce( nmax_scf, positions_, forces_, energies, ixyzfile
     !real time_begin
     !real time_end
     ! ====== Body
-    write(*,*) "DEBUG firecore_evalForce() verbosity=", verbosity
+    ! write(*,*) "DEBUG firecore_evalForce() verbosity=", verbosity
     if(verbosity.gt.0)write(*,*) "firecore_evalForce() "
 
     ratom(:,:) = positions_(:,:)
@@ -330,10 +330,10 @@ subroutine firecore_evalForce( nmax_scf, positions_, forces_, energies, ixyzfile
     ftot(:,:) = 0
     ikpoint   = 1
 
-    do i=1,natoms  
-        !write (*,*) "DEBUG firecore_evalForce() atom ", i, positions_(1,i), positions_(2,i), positions_(3,i)
-        write (*,*) "DEBUG firecore_evalForce() atom ", i, iatyp(i), ratom(1,i), ratom(2,i), ratom(3,i)
-    end do
+    !do i=1,natoms  
+    !    !write (*,*) "DEBUG firecore_evalForce() atom ", i, positions_(1,i), positions_(2,i), positions_(3,i)
+    !    write (*,*) "DEBUG firecore_evalForce() atom ", i, iatyp(i), ratom(1,i), ratom(2,i), ratom(3,i)
+    !end do
 
     scf_achieved = .false.
     max_scf_iterations = nmax_scf
@@ -352,13 +352,13 @@ subroutine firecore_evalForce( nmax_scf, positions_, forces_, energies, ixyzfile
         !Qin(:,:) = Qin(:,:)*(1.0-bmix) + Qout(:,:)*bmix   ! linear mixer 
         call mixer ()
     end do ! Kscf
-    write(*,*) "DEBUG firecore_evalForce 1"
+    !write(*,*) "DEBUG firecore_evalForce 1"
     call getenergy_mcweda ()
-    write(*,*) "DEBUG firecore_evalForce 2"
+    !write(*,*) "DEBUG firecore_evalForce 2"
     call getforces_mcweda ()
-    write(*,*) "DEBUG firecore_evalForce 3"
+    !write(*,*) "DEBUG firecore_evalForce 3"
     forces_(:,:) = ftot(:,:)
-    write(*,*) "DEBUG firecore_evalForce 4"
+    !write(*,*) "DEBUG firecore_evalForce 4"
     energies(1) = etot    ! total energy
     energies(2) = ebs     ! band structure energy
     energies(3) = uiiuee     ! electrostatic
@@ -366,12 +366,12 @@ subroutine firecore_evalForce( nmax_scf, positions_, forces_, energies, ixyzfile
     energies(5) = uxcdcc     ! double counting correction ?
     energies(6) = atomic_energy
     energies(7) = efermi
-    write(*,*) "DEBUG firecore_evalForce 5"
+    !write(*,*) "DEBUG firecore_evalForce 5"
     !call cpu_time (time_end)
     !write (*,*) ' FIREBALL RUNTIME : ',time_end-time_begin,'[sec]'
-    write(*,*) "DEBUG firecore_evalForce 6"
+    !write(*,*) "DEBUG firecore_evalForce 6"
     if(ixyzfile .gt. 0) call write_to_xyz( "#firecore_evalForce() ", ixyzfile )
-    write(*,*) "DEBUG firecore_evalForce 7"
+    !write(*,*) "DEBUG firecore_evalForce 7"
     if(verbosity.gt.0)write (*,*) '!!!! SCF LOOP DONE in ', Kscf, " iterations"
     return
 end subroutine firecore_evalForce
@@ -409,7 +409,7 @@ subroutine firecore_relax( nstep, nmax_scf, positions_, forces_, fixPos, energie
     real, dimension (3) :: k_temp
     character (40) namewf
     ! ====== Body
-    write(*,*) "DEBUG firecore_relax() verbosity=", verbosity
+    !write(*,*) "DEBUG firecore_relax() verbosity=", verbosity
     ikpoint = 1
     fragxyz(:,:) = fixPos(:,:)
     ratom(:,:)   = positions_(:,:) 

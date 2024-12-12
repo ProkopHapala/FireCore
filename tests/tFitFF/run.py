@@ -7,17 +7,18 @@ sys.path.append("../../")
 from pyBall import atomicUtils as au
 from pyBall import MMFF as mmff
 from pyBall import FFFit as fff
-#from pyBall import FireCore as fc
+from pyBall import FireCore as fc
+fff.fc = fc
 
 #======== Body
 
 apos,iZs,enames,qs = au.loadAtomsNP( "C2H4.xyz" )
 print( "Before relaxation: apos=\n", apos )
 
-fff.fc.initialize( atomType=iZs, atomPos=apos, verbosity=3 )
-#fff.fc.relax( apos, forces=None, fixPos=[0,2,3], nstepf=1000, nmax_scf=100, Es=None )
-#fff.fc.relax( apos, forces=None, fixPos=[0,2,3], nstepf=1000, nmax_scf=100, Es=None )
-fff.fc.relax( apos, forces=None, fixPos=[-1], nstepf=1000, nmax_scf=100, Es=None )
+fc.initialize( atomType=iZs, atomPos=apos, verbosity=3 )
+fc.relax( apos, forces=None, fixPos=[0,2,3], nstepf=1000, nmax_scf=100, Es=None )
+fc.relax( apos, forces=None, fixPos=[0,2,3], nstepf=1000, nmax_scf=100, Es=None )
+fc.relax( apos, forces=None, fixPos=[-1   ], nstepf=1000, nmax_scf=100, Es=None )
 print( "After relaxation: apos=\n", apos )
 
 sel=[1,4,5]
