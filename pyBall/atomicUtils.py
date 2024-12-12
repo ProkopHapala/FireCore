@@ -202,14 +202,14 @@ def getAtomRadius( atypes, eparams=elements.ELEMENTS, icol=6 ):
 def getAtomRadiusNP( atypes, eparams=elements.ELEMENTS ):
     return np.array( getAtomRadius( atypes, eparams ) ) 
 
-def findBondsNP( apos, atypes=None, Rcut=3.0, RvdwCut=1.2, RvdWs=None, byRvdW=True ):
+def findBondsNP( apos, atypes=None, Rcut=3.0, RvdwCut=1.5, RvdWs=None, byRvdW=True ):
     bonds  = []
     rbs    = []
     iatoms = np.arange( len(apos), dtype=int )
     if byRvdW:
         if  RvdWs is None:
             RvdWs = getAtomRadiusNP( atypes, eparams=elements.ELEMENTS )
-            print( "findBondsNP() RvdWs=", RvdWs )
+            #print( "findBondsNP() RvdWs=", RvdWs, RvdwCut  )
     else:
         RvdWs = np.ones(len(apos))*Rcut
     for i,pi in enumerate(apos):
@@ -254,6 +254,7 @@ def findHBondsNP( apos, atypes=None, Rb=1.5, Rh=2.5, angMax=60.0, typs1={"H"}, t
 
 def neigh_bonds( natoms, bonds ):
     neighs = [{} for i in range(natoms) ]
+    #print( "neigh_bonds() bonds=", bonds )
     for ib, b in enumerate(bonds):
         i = b[0]; j = b[1]; 
         neighs[i][j] = ib
@@ -1254,7 +1255,6 @@ def atoms_symmetrized( atypes, apos, lvec, qs=None, REQs=None, d=0.1):
 
     return new_atypes, new_apos, new_qs, new_REQs, new_ws
 
-
 # ========================== Class Geom
 
 class AtomicSystem( ):
@@ -1318,7 +1318,7 @@ class AtomicSystem( ):
         for i in range(len(self.bonds)):
             print( "[%i] (%i,%i) (%s,%s)" %( i, self.bonds[i,0],self.bonds[i,1],  self.enames[self.bonds[i,0]], self.enames[self.bonds[i,1]] ) )
 
-    def findBonds(self, Rcut=3.0, RvdwCut=1.2, RvdWs=None, byRvdW=True ):
+    def findBonds(self, Rcut=3.0, RvdwCut=1.5, RvdWs=None, byRvdW=True ):
         if self.atypes is None:
             self.atypes = [ elements.ELEMENT_DICT[e][0] for e in self.enames ]
         self.bonds, rs = findBondsNP( self.apos, self.atypes, Rcut=Rcut, RvdwCut=RvdwCut, RvdWs=RvdWs, byRvdW=byRvdW )
@@ -1338,6 +1338,18 @@ class AtomicSystem( ):
             self.findBonds()
         self.ngs = neigh_bonds( len(self.apos), self.bonds )
         return self.ngs
+
+    def find_groups(self):
+        if self.ngs is None: self.neighs()
+        ngs = self.ngs
+        #print( ngs )
+        groups = { }
+        for inod in range(len(self.apos)):
+            if len(ngs[inod]) > 1: groups[inod] = [inod]
+        for inod,g in groups.items():
+            inod = g[0] 
+            g += [ ia for ia in ngs[inod].keys() if ia not in groups ] 
+        return groups
 
     def select_by_ename( self, elist ):
         return [ i for i,e in enumerate(self.enames) if e in elist ]
@@ -1368,6 +1380,29 @@ class AtomicSystem( ):
     
     def projectAlongBondDir( self, i0, i1 ):
         return projectAlongBondDir( self.apos, i0, i1 )
+
+    def store_bond_lengths(self):
+        bond_lengths = {}
+        bonds = self.findBonds()  # Get all bonds in the system
+        for bond in bonds:
+            ia,ja = bond
+            if ia>ja: ia,ja = ja,ia
+            length = np.linalg.norm(self.apos[ia]-self.apos[ja])
+            bond_lengths[(ia,ja)] = length
+        self.bond_legths = bond_lengths
+        return bond_lengths
+
+    def restore_bond_length(self, ij, L=None ):
+        ia,ja= ij
+        d = self.apos[ja] - self.apos[ia]
+        Lnow = np.linalg.norm(d)
+        if L is None:
+            if ia>ja: i,j = ja,ia
+            else:     i,j = ia,ja
+            L = self.bond_lengths[(i,j)]
+        f = L / Lnow
+        self.apos[ia] = self.apos[ja] + d * f
+
 
     def clonePBC(self,nPBC=(1,1,1) ):
         nx,ny,nz= nPBC
