@@ -152,7 +152,7 @@ def loadTypes(fEtypes="data/ElementTypes.dat", fAtypes="data/AtomTypes.dat"):
 #int loadDOFSelection( const char* fname ){
 lib.loadDOFSelection.argtypes  = [c_char_p]
 lib.loadDOFSelection.restype   =  c_int
-def loadDOFSelection(fname="DOFSelection.dat"):
+def loadDOFSelection(fname="dofSelection.dat"):
     return lib.loadDOFSelection(cstr(fname))
 
 # int loadTypeSelection_walls( const char* fname ){
@@ -303,6 +303,112 @@ def test_getEs_openmp():
     assert np.isclose(E1, E2), f"E values differ: E1={E1}, E2={E2}"
     print( "test_getEs_openmp() passed " )
 
+def find_all_dirs(base_path):
+    return [ item for item in os.listdir(base_path) if os.path.isdir(os.path.join(base_path, item)) ]
+
+def extract_fragment_names( directories=None, base_path='./'):
+    if directories is None:
+        directories  = find_all_dirs(base_path)
+    first_molecules  = set()
+    second_molecules = set()
+    for directory in directories:
+        parts = directory.split("_")
+        if len(parts) == 2:
+            first_molecules .add(parts[0])
+            second_molecules.add(parts[1])
+        else:
+            print(f"Warning: Directory name {directory} does not contain two molecules")
+    sorted_first  = sorted(list(first_molecules))
+    sorted_second = sorted(list(second_molecules))
+    return sorted_first, sorted_second
+
+def combine_fragments( frags1, frags2 ):
+    return [ f"{f1}_{f2}" for f1 in frags1 for f2 in frags2 ]
+
+def concatenate_xyz_files(directories=None, base_path='./', fname="all.xyz", output_file="all.xyz", mode='w'):
+    """
+    Concatenates all.xyz files from specified directories, adding the directory name
+    to the comment lines (starting with '#'), and writes directly to an output file.
+
+    Args:
+        directories (list): A list of directory names to process.
+        base_path (str): The base path to the directories containing the all.xyz files.
+        output_file (str): The path to the output file.
+    """
+    if directories is None:
+        directories = find_all_dirs(base_path)
+    marks = []
+    with open(output_file, mode) as outfile:
+        i=0
+        for directory in directories:
+            dir_path  = os.path.join(base_path, directory)
+            file_path = os.path.join(dir_path, fname)
+            if not os.path.exists(file_path):
+                print(f"Warning: file not found in {directory}. Skipping it...")
+                continue
+            with open(file_path, 'r') as infile:
+                i0 = i
+                for line in infile:
+                    if line.startswith("#"):
+                        new_line = f"{line.strip()} {directory}\n"
+                        outfile.write(new_line)
+                        i+=1
+                    else:
+                        outfile.write(line)
+                i1 = i
+            marks.append( (i0,i1) )
+    return marks
+
+def read_file_comments(fname, comment_sign='#'):
+    with open(fname, 'r') as f:
+        return [ line.strip() for line in f if line.startswith(comment_sign) ]
+
+def extract_comments_and_types(fname, comment_sign='#'):
+    type_names = set()  # Use a set to avoid duplicates
+    comment_lines = []
+    i=0
+    with open(fname, 'r') as file:
+        for line in file:
+            if line.startswith(comment_sign):
+                comment_lines.append(line)
+            else:
+                parts = line.split()
+                if parts: 
+                    if "_" in parts[0]:
+                        #parts = parts[0].split("_")
+                        type_names.add(parts[0])
+                #print(parts)
+                #i+=1
+            #if i>10: break
+    return type_names, comment_lines
+
+def add_epair_types(types):
+    epair_types = []
+    for t1 in types:
+        # copy type name without "_" (N_3 -> N3)
+        epair_types.append( "E_"+t1.replace("_","") )
+    # add to set
+    types.update(epair_types)
+    return types
+
+
+def comment_non_matching_lines( type_names, fname_in, bWriteAsComment=False, fname_out="dofSelection.dat"):
+    with open(fname_in, 'r') as file:
+        lines = file.readlines()
+    with open(fname_out, 'w') as file:
+        for line in lines: 
+            if line.startswith('#'):
+                file.write(line)
+                continue
+            parts = line.split()
+            if parts:
+                typename = parts[0]  # The first column is the type name
+                if typename not in type_names:
+                    if bWriteAsComment:
+                        file.write(f"# {line.strip()}\n")  # Comment out the line
+                else:
+                    file.write(line)  # Keep the line as is
+
 def read_xyz_data(fname="input_all.xyz"):
     """Read XYZ file and extract Etot and x0 values from comment lines"""
     #print("read_xyz_data()\n")
@@ -327,6 +433,66 @@ def read_xyz_data(fname="input_all.xyz"):
             #for _ in range(natoms):
             #    f.readline()
     return np.array(Erefs), np.array(x0s)
+
+def mark_molecule_blocks(lines, ):
+    marks = []
+    lens  = []
+    #current_mark = 0
+    prev_angle  = None
+    prev_mol    = None
+    angle_data  = []
+    nxs   = []   #store number of nx for each angle (iy)
+    i0 = 0
+    i1 = -1
+    nx = 0
+    for i,line in enumerate(lines):
+        i1 = i
+        parts = line.split()
+        #E     = float(parts[4]) 
+        #r     = float(parts[6]) 
+        angle = float(parts[8])  # Extract angle after 'z'
+        mol   = parts[-1].strip()  # Last word is the molecule pair
+        #print( i, E, angle, r, mol, line )
+        if prev_mol is None: prev_mol = mol
+        if mol != prev_mol:
+            angle_data.append( nxs )
+            nxs = []
+            marks.append( (i0,i1) )
+            i0 = i1
+            #print( len(marks), (i0,i1), mol, prev_mol, angle )
+            prev_mol = mol
+        if prev_angle is None: prev_angle = angle
+        if angle != prev_angle:
+            nxs.append( nx )
+            nx=0
+            prev_angle = angle
+        nx += 1
+    # Append the last molecule pair
+    if prev_angle is not None:
+        marks.append( (i0,i1) )
+        angle_data.append( nxs )
+    return marks, angle_data
+
+def slice_and_reshape(Es, marks, angle_data):
+    Eplots = []
+    nmol   = len(marks)
+    if nmol != len(angle_data):
+        print(f"Error: len(marks={nmol}) != len(angle_data={len(angle_data)})")
+        exit(0)
+    for i in range( nmol ):
+        i0,i1    = marks[i]
+        nxs      = angle_data[i]
+        nx       = np.max(nxs)
+        ny       = len(nxs) 
+        Eplot    = np.empty( (ny,nx) )
+        Eplot[:,:] = np.nan
+        for iy in range(ny):
+            nxi             = nxs[iy]
+            #print(  len(Es), "i0:i0+nxi ", i0,i0+nxi )
+            Eplot[iy,0:nxi] = Es[i0:i0+nxi]
+            i0+=nxi
+        Eplots.append(Eplot)
+    return Eplots
 
 def split_and_weight_curves(Erefs, x0s, n_before_min=4, weight_func=None, EminMin=-0.02 ):
     """
@@ -426,7 +592,55 @@ def plotDOFscans( iDOFs, xs, DOFnames, bEs=True, bFs=False,  label="plotDOFscans
     plt.show()
 
 
+def plot_Epanels(Eplots, ref_dirs, bColorbar=True, Emin=-5.0, bKcal=False ):
+    E_units = 1.0
+    if bKcal: 
+        E_units = ev2kcal
+    nmols = len(Eplots)
+    if nmols != len(ref_dirs):
+        print(f"Error: len(Eplots={nmols}) != len(ref_dirs={len(ref_dirs)})")
+        return
+    fig, axs = plt.subplots( 1,nmols, figsize=(20, 3))  # 3 rows for Erefs, Emodel, Ediff
+    for i in range(nmols):
+        # Plot Reference Energies
+        im = axs[i].imshow(Eplots[i].T*E_units, aspect='auto', origin='lower', vmin=Emin, vmax=-Emin, cmap='bwr' )
+        axs[i].set_title(f"Ref: {ref_dirs[i]}")
+        axs[i].set_ylabel('Reference Energies')
+        if bColorbar:  plt.colorbar(im, ax=axs[i])
+    plt.tight_layout()
+    return fig
 
+def plot_Epanels_diff(Emodels, Erefs, ref_dirs, bColorbar=True, Emin=-5.0, bKcal=False ):
+    E_units = 1.0
+    if bKcal: 
+        E_units = ev2kcal
+    nmols = len(Erefs)
+    if nmols != len(ref_dirs):
+        print(f"Error: len(Erefs={nmols}) != len(ref_dirs={len(ref_dirs)})")
+        return
+    fig, axs = plt.subplots( 3,nmols, figsize=(20, 6))  # 3 rows for Erefs, Emodel, Ediff
+    for i in range(nmols):
+
+        Emodel = Emodels[i]
+        Eref   = Erefs[i]
+        # Plot Reference Energies
+        im = axs[0, i].imshow(Eref.T*E_units, aspect='auto', origin='lower', vmin=Emin, vmax=-Emin, cmap='bwr' )
+        axs[0, i].set_title(f"Ref: {ref_dirs[i]}")
+        axs[0, i].set_ylabel('Reference Energies')
+        if bColorbar:  plt.colorbar(im, ax=axs[0, i])
+    
+        # Plot Model Energies
+        im = axs[1, i].imshow(Emodel.T*E_units, aspect='auto', origin='lower', vmin=Emin, vmax=-Emin, cmap='bwr' )
+        axs[1, i].set_ylabel('Model Energies')
+        if bColorbar: plt.colorbar(im, ax=axs[1, i])
+
+        # Plot Difference
+        Ediff = Emodel - Eref  # Calculate difference
+        im = axs[2, i].imshow(Ediff.T*E_units, aspect='auto', origin='lower', vmin=Emin, vmax=-Emin, cmap='bwr' )
+        axs[2, i].set_ylabel('Error ')
+        if bColorbar: plt.colorbar(im, ax=axs[2, i])
+    plt.tight_layout()
+    return fig
 
 
 

@@ -39,9 +39,59 @@ verbosity   = 2    # Added to enable debug printing
 bMorse = False   # Lenard-Jones
 #bMorse = True   # Morse
 
-# ============== functions
-
 # ============== Setup
+
+#ref_path = "/home/prokop/Desktop/CARBSIS/PEOPLE/Paolo/FitREQ/DFT_2D/"
+
+#ref_dirs = fit.find_all_dirs( ref_path ); #print(ref_dirs)
+#frags1, frags2 = fit.extract_fragment_names( base_path=ref_path ); print( "donors:\n", frags1, "\nacceptors:\n", frags2 )
+
+#donors    = ['C4H3NO2-D1', 'C4H5N-D1', 'CH2NH-D1',            'H2O-D1', 'HCONH2-D1', 'HCOOH-D1',             'NH3-D1'] 
+#acceptors = ['C4H3NO2-A1', 'C5H5N-A1', 'CH2NH-A1', 'CH2O-A1', 'H2O-A1', 'HCONH2-A1', 'HCOOH-A1', 'HCOOH-A2', 'NH3-A1']
+
+donors    = [
+'H2O-D1', 
+'NH3-D1'
+#'CH2NH-D1',
+#'HCOOH-D1', 
+#'HCONH2-D1', 
+#'C4H3NO2-D1', 
+#'C4H5N-D1', 
+] 
+acceptors = [
+'H2O-A1', 
+'NH3-A1',
+# 'CH2O-A1', 
+# 'CH2NH-A1', 
+# 'HCOOH-A1', 
+# 'HCOOH-A2', 
+# 'HCONH2-A1', 
+# 'C4H3NO2-A1', 
+# 'C5H5N-A1', 
+]
+
+ref_dirs = fit.combine_fragments( donors, acceptors )  ;print( "ref_dirs:\n", ref_dirs )
+
+marks    = fit.concatenate_xyz_files( directories=ref_dirs, base_path=ref_path, fname='all.xyz', output_file='all.xyz' )
+
+#fname = "input_single.xyz"
+#fname = ref_path +"/"+ name + "/all.xyz"
+#fname = ref_path +"/"+ "/concatenated_all.xyz"
+fname = 'all.xyz'
+#fname = "input_2CH2NH.xyz"
+
+#comments          = fit.read_file_comments(fname) #;print( "comments:\n", comments )
+type_names,comments = fit.extract_comments_and_types(fname);  fit.add_epair_types(type_names);  print( "type_names:\n", type_names ); #exit()
+marks, angle_data = fit.mark_molecule_blocks( comments )
+#print( "marks:\n", marks )
+#print( "angle_data:\n", angle_data )
+
+Erefs, x0s = fit.read_xyz_data(fname)  #;print( "x0s:\n", x0s )
+EminRef = np.min(Erefs)
+Eplots = fit.slice_and_reshape(Erefs, marks, angle_data)
+
+#fit.plot_Epanels(Eplots, ref_dirs, bColorbar=True, Emin=EminRef)
+#plt.show(); exit()
 
 # ------ load stuff
 #fit.setVerbosity(1)
@@ -49,20 +99,16 @@ fit.setVerbosity(verbosity, PrintDOFs=1, PrintfDOFs=1, PrintBeforReg=-1, PrintAf
 #fit.setVerbosity(verbosity, PrintDOFs=1, PrintfDOFs=1, PrintBeforReg=-1, PrintAfterReg=1 )
 fit.loadTypes( )     # load atom types
 
-
-#fname = "input_single.xyz"
-#fname = ref_path +"/"+ name + "/all.xyz"
-fname = ref_path +"/"+ "/concatenated_all.xyz"
-#fname = "input_2CH2NH.xyz"
-
 if bMorse:
-    fit.loadDOFSelection( fname="dofSelection_Morse.dat" )
+    #fit.loadDOFSelection( fname="dofSelection_Morse.dat" )
     #fit.loadDOFSelection( fname="dofSelection_H2O_Morse.dat" )
     #fit.loadDOFSelection( fname="dofSelection_HCOOH_Morse.dat" )
+    fit.comment_non_matching_lines( type_names, fname_in="dofSelection_Morse.dat"); fit.loadDOFSelection()
 else:
-    fit.loadDOFSelection( fname="dofSelection_LJ.dat" )   
+    #fit.loadDOFSelection( fname="dofSelection_LJ.dat" )   
     #fit.loadDOFSelection( fname="dofSelection_HCOOH_LJ.dat" ) 
     #fit.loadDOFSelection( fname="dofSelection_HCOOH_LJ.dat" ) 
+    fit.comment_non_matching_lines( type_names, fname_in="dofSelection_LJ.dat"); fit.loadDOFSelection()
 
 #fname = "input_2CH2NH.xyz"
 #fit.loadDOFSelection( fname="dofSelection_N2.dat" )          
@@ -114,51 +160,63 @@ E,Es,Fs = fit.getEs( bOmp=False, bDOFtoTypes=False, bEs=True, bFs=False )
 
 if bMorse:
     #Err = fit.run( iparallel=0, ialg=0, nstep=1000, Fmax=1e-4, dt=0.1, max_step=-1,  bClamp=True )
-    Err = fit.run( iparallel=0, ialg=1, nstep=1000, Fmax=1e-8, dt=0.5, damping=0.1,   max_step=-1,  bClamp=True )
+    Err = fit.run( iparallel=0, ialg=1, nstep=100, Fmax=1e-8, dt=0.5, damping=0.1,   max_step=-1,  bClamp=True )
 else:
     #Err = fit.run( iparallel=0, ialg=0, nstep=1000, Fmax=1e-4, dt=0.01, max_step=-1,  bClamp=True )
-    Err = fit.run( iparallel=0, ialg=1, nstep=1000, Fmax=1e-4, dt=0.1, damping=0.1,   max_step=-1,  bClamp=True )
+    Err = fit.run( iparallel=0, ialg=1, nstep=100, Fmax=1e-4, dt=0.1, damping=0.1,   max_step=-1,  bClamp=True )
 
 # ----- Combined hybrid optimization ( start with gradient descent, continue with dynamical descent) )
 #Err = fit.run( iparallel=0, ialg=0, nstep=20,  Fmax=1e-2, dt=0.005, max_step=-1,  bClamp=False )
 #Err = fit.run( iparallel=0, ialg=1, nstep=100, Fmax=1e-8, dt=0.01, damping=0.1,   max_step=-1,  bClamp=True )
 
-print( "fit.fDOFmin ", fit.fDOFbounds[:,0] )
-print( "fit.fDOFmax ", fit.fDOFbounds[:,1] )
+# print( "fit.fDOFmin ", fit.fDOFbounds[:,0] )
+# print( "fit.fDOFmax ", fit.fDOFbounds[:,1] )
 
 E,Es,Fs = fit.getEs( bOmp=False, bDOFtoTypes=False, bEs=True, bFs=False );
 #fit.plotEWs( Erefs=Erefs, Emodel=Es, weights=fit.weights, Emin=EminPlot );   plt.title( "AFTER OPTIMIZATION" )
 
-lens=np.array(lens)
-nmax = np.max(lens) 
-nseg = len(lens)
-Eplot = np.zeros( (nseg, nmax)  ); Eplot[:,:] = np.nan
-Eplot_ = np.zeros( (nseg, nmax)  ); Eplot_[:,:] = np.nan
+Eplots_ref = fit.slice_and_reshape(Erefs, marks, angle_data)
+Eplots_mod = fit.slice_and_reshape(Es,    marks, angle_data)
+fig = fit.plot_Epanels_diff(Eplots_mod, Eplots_ref, ref_dirs, Emin=EminRef*fit.ev2kcal, bColorbar=True, bKcal=True)
+plt.savefig( "opt_2D.png" )
 
-ii = 0
-for i in range( len(lens) ):
-    ni = lens[i]
-    #Eplot[i,0:lens[i]] = Es[i]
-    Eplot [i,0:ni] = Erefs[ii:ii+ni]
-    Eplot_[i,0:ni] = Es   [ii:ii+ni]
-    ii+=ni
-dEplot = Eplot - Eplot_
-plt.figure(figsize=(20,12))
-Emin = np.min(Erefs)
-dEmax = max( -np.nanmin(dEplot),np.nanmax(dEplot) )
-dEmax = 0.1
-print( "dEmax: ", dEmax, "Emin ", Emin )
-#Emax = np.max(Eplot)
-plt.subplot(6,1,1); plt.imshow( Eplot [:nseg//2,:].T, origin='lower', vmin=Emin,   vmax=-Emin, cmap='bwr', extent=[ 0, len(lens), 0, 180.0 ] )
-plt.subplot(6,1,2); plt.imshow( Eplot_[:nseg//2,:].T, origin='lower', vmin=Emin,   vmax=-Emin, cmap='bwr', extent=[ 0, len(lens), 0, 180.0 ] )
-plt.subplot(6,1,3); plt.imshow( dEplot[:nseg//2,:].T, origin='lower', vmin=-dEmax, vmax=dEmax, cmap='bwr', extent=[ 0, len(lens), 0, 180.0 ] )
-plt.subplot(6,1,4); plt.imshow( Eplot [nseg//2:,:].T, origin='lower', vmin=Emin,   vmax=-Emin, cmap='bwr', extent=[ 0, len(lens), 0, 180.0 ] )
-plt.subplot(6,1,5); plt.imshow( Eplot_[nseg//2:,:].T, origin='lower', vmin=Emin,   vmax=-Emin, cmap='bwr', extent=[ 0, len(lens), 0, 180.0 ] )
-plt.subplot(6,1,6); plt.imshow( dEplot[nseg//2:,:].T, origin='lower', vmin=-dEmax, vmax=dEmax, cmap='bwr', extent=[ 0, len(lens), 0, 180.0 ] )
-#plt.colorbar()
-plt.xlabel("DOF")
-plt.ylabel("segment")
-plt.tight_layout()
+# Eplot     = reformat_and_pad_data(Es   , lens)  # Reformat and pad data
+# Eplot_ref = reformat_and_pad_data(Erefs, lens)
+#plot_data(Eplot, ref_dirs)  # Plot the data
+
+#plot_data_panels(Eplot, Eplot_ref, ref_dirs, bColorbar=True)
+
+
+# ======= old plotting in single imshow
+# lens=np.array(lens)
+# nmax = np.max(lens) 
+# nseg = len(lens)
+# Eplot  = np.zeros( (nseg, nmax)  ); Eplot[:,:]  = np.nan
+# Eplot_ = np.zeros( (nseg, nmax)  ); Eplot_[:,:] = np.nan
+# ii = 0
+# for i in range( len(lens) ):
+#     ni = lens[i]
+#     #Eplot[i,0:lens[i]] = Es[i]
+#     Eplot [i,0:ni] = Erefs[ii:ii+ni]
+#     Eplot_[i,0:ni] = Es   [ii:ii+ni]
+#     ii+=ni
+# dEplot = Eplot - Eplot_
+# plt.figure(figsize=(20,12))
+# Emin = np.min(Erefs)
+# dEmax = max( -np.nanmin(dEplot),np.nanmax(dEplot) )
+# dEmax = 0.1
+# print( "dEmax: ", dEmax, "Emin ", Emin )
+# #Emax = np.max(Eplot)
+# plt.subplot(6,1,1); plt.imshow( Eplot [:nseg//2,:].T, origin='lower', vmin=Emin,   vmax=-Emin, cmap='bwr', extent=[ 0, len(lens), 0, 180.0 ] )
+# plt.subplot(6,1,2); plt.imshow( Eplot_[:nseg//2,:].T, origin='lower', vmin=Emin,   vmax=-Emin, cmap='bwr', extent=[ 0, len(lens), 0, 180.0 ] )
+# plt.subplot(6,1,3); plt.imshow( dEplot[:nseg//2,:].T, origin='lower', vmin=-dEmax, vmax=dEmax, cmap='bwr', extent=[ 0, len(lens), 0, 180.0 ] )
+# plt.subplot(6,1,4); plt.imshow( Eplot [nseg//2:,:].T, origin='lower', vmin=Emin,   vmax=-Emin, cmap='bwr', extent=[ 0, len(lens), 0, 180.0 ] )
+# plt.subplot(6,1,5); plt.imshow( Eplot_[nseg//2:,:].T, origin='lower', vmin=Emin,   vmax=-Emin, cmap='bwr', extent=[ 0, len(lens), 0, 180.0 ] )
+# plt.subplot(6,1,6); plt.imshow( dEplot[nseg//2:,:].T, origin='lower', vmin=-dEmax, vmax=dEmax, cmap='bwr', extent=[ 0, len(lens), 0, 180.0 ] )
+# #plt.colorbar()
+# plt.xlabel("DOF")
+# plt.ylabel("segment")
+# plt.tight_layout()
 
 
 plt.show(); # exit()
