@@ -216,6 +216,9 @@ class FitREQ{ public:
     bool bPrintBeforReg = true;
     bool bPrintAfterReg = false;
 
+    bool bSaveSampleToXYZ = false;
+    char* xyz_out         = "out.xyz";
+
     std::vector<int> typesPresent;
 
     // parameters
@@ -1007,7 +1010,7 @@ void handleOverRepulsive( int isamp, double E, const Atoms* atoms, double wi ){
         sprintf(tmp, "sample[%4i] Eref: %16.6e Emodel: %16.6e wi: %16.6e EmodelCutStart,EmodelCut: %16.6e %16.6e", isamp, atoms->Energy, E, wi, EmodelCutStart, EmodelCut );
         //if(bSaveOverRepulsive ){ atoms->saveXYZ( fname_overRepulsive, "a", true, true, {1,1,1}, tmp, true ); };
         //if(bSaveOverRepulsive ){ params->saveXYZ( fname_overRepulsive, "a", true, true, {1,1,1}, tmp, true ); };
-        if(bSaveOverRepulsive ){  saveDebugXYZ( 0, atoms->natoms, atoms->atypes, atoms->apos, fname_overRepulsive, tmp );}
+        if(bSaveOverRepulsive ){ saveDebugXYZ( 0, atoms->natoms, atoms->atypes, atoms->apos, fname_overRepulsive, tmp );}
         if(bPrintOverRepulsive){ printf( "handleOverRepulsive() skipped %s \n", tmp ); }
     }    
 }
@@ -1035,6 +1038,12 @@ double evalSampleError( int isamp, double& E ){
     //     if( weights ) weights[isamp] = wi;   // store to weights so that we know 
     //     if( bDiscardOverRepulsive && (E>EmodelCut) ){ E=NAN; return 0; }  
     // }
+    if( bSaveSampleToXYZ ){
+        char comment[256];
+        sprintf(comment, "# %4i Eref: %16.6e Emodel: %16.6e wi: %16.6e", isamp, atoms->Energy, E, wi );
+        //printf( "evalSampleError() saving %s comment: %s \n", xyz_out, comment );
+        saveDebugXYZ( 0, atoms->natoms, atoms->atypes, atoms->apos, xyz_out, comment );
+    }
     double Eref    = atoms->Energy;
     double dE      = E - Eref;
     wi*= invWsum;
@@ -1280,7 +1289,7 @@ void printAtomParamDerivs( int na, Quat4d* dEdREQs, int isamp ){
     }
 }
 
-void saveDebugXYZ( int i0, int n, int* types, Vec3d* ps, const char* fname="debug.xyz", const char* comment="" ){
+void saveDebugXYZ( int i0, int n, const int* types, const Vec3d* ps, const char* fname="debug.xyz", const char* comment="" )const{
     FILE* fout = fopen(fname,"a");
     fprintf(fout, "%i\n", n );
     fprintf(fout, "%s\n", comment );
@@ -1289,7 +1298,8 @@ void saveDebugXYZ( int i0, int n, int* types, Vec3d* ps, const char* fname="debu
         const Vec3d&  pi    = ps      [i ]; 
         //const double  Qi    = Qs      [i ]; 
         const int     ti    = types   [i ];
-        fprintf(fout, "%c %7.3f %7.3f %7.3f    %7.3f \n", params->atypes[ti].name[0], pi.x, pi.y, pi.z );
+        //printf( "atom[%i] ti=%i\n", ii, ti );
+        fprintf(fout, "%c %7.3f %7.3f %7.3f \n", params->atypes[ti].name[0], pi.x, pi.y, pi.z );
     }
     fclose(fout);
 }

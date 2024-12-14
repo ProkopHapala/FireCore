@@ -112,13 +112,13 @@ lib.run.restype   =  c_double
 def run(ialg=2, iparallel=1, nstep=100, Fmax=1e-8, dt=0.01, max_step=0.05, damping=0.0, bClamp=False):
     return lib.run( ialg, iparallel, nstep, Fmax, dt, max_step, damping, bClamp )
 
-# double getEs( double* Es, double* Fs, bool bOmp, bool bDOFtoTypes ){
-lib.getEs.argtypes  = [ c_double_p,  c_double_p, c_bool, c_bool]
+# double getEs( double* Es, double* Fs, bool bOmp, bool bDOFtoTypes, char* xyz_name){
+lib.getEs.argtypes  = [ c_double_p,  c_double_p, c_bool, c_bool, c_char_p ]
 lib.getEs.restype   =  c_double
-def getEs(Es=None, Fs=None, bOmp=False, bDOFtoTypes=True, bEs=True, bFs=False ):
+def getEs(Es=None, Fs=None, bOmp=False, bDOFtoTypes=True, bEs=True, bFs=False, xyz_name=None  ):
     if bEs and (Es is None): Es = np.zeros( nbatch )
     if bFs and (Fs is None): Fs = np.zeros( nDOFs  )
-    Eerr = lib.getEs(_np_as(Es,c_double_p), _np_as(Fs,c_double_p), bOmp, bDOFtoTypes)
+    Eerr = lib.getEs(_np_as(Es,c_double_p), _np_as(Fs,c_double_p), bOmp, bDOFtoTypes, cstr(xyz_name) )
     #print("getEs(): Es", Es)
     return Eerr, Es, Fs
 
@@ -642,5 +642,33 @@ def plot_Epanels_diff(Emodels, Erefs, ref_dirs, bColorbar=True, Emin=-5.0, bKcal
     plt.tight_layout()
     return fig
 
-
-
+def plot2Dlong_diff( Erefs, Es, lens  ):
+    lens = np.array(lens)
+    nmax = np.max(lens) 
+    nseg = len(lens)
+    Eplot  = np.zeros( (nseg, nmax)  ); Eplot[:,:]  = np.nan
+    Eplot_ = np.zeros( (nseg, nmax)  ); Eplot_[:,:] = np.nan
+    ii = 0
+    for i in range( len(lens) ):
+        ni = lens[i]
+        #Eplot[i,0:lens[i]] = Es[i]
+        Eplot [i,0:ni] = Erefs[ii:ii+ni]
+        Eplot_[i,0:ni] = Es   [ii:ii+ni]
+        ii+=ni
+    dEplot = Eplot - Eplot_
+    plt.figure(figsize=(20,12))
+    Emin = np.min(Erefs)
+    dEmax = max( -np.nanmin(dEplot),np.nanmax(dEplot) )
+    dEmax = 0.1
+    print( "dEmax: ", dEmax, "Emin ", Emin )
+    #Emax = np.max(Eplot)
+    plt.subplot(6,1,1); plt.imshow( Eplot [:nseg//2,:].T, origin='lower', vmin=Emin,   vmax=-Emin, cmap='bwr', extent=[ 0, len(lens), 0, 180.0 ] )
+    plt.subplot(6,1,2); plt.imshow( Eplot_[:nseg//2,:].T, origin='lower', vmin=Emin,   vmax=-Emin, cmap='bwr', extent=[ 0, len(lens), 0, 180.0 ] )
+    plt.subplot(6,1,3); plt.imshow( dEplot[:nseg//2,:].T, origin='lower', vmin=-dEmax, vmax=dEmax, cmap='bwr', extent=[ 0, len(lens), 0, 180.0 ] )
+    plt.subplot(6,1,4); plt.imshow( Eplot [nseg//2:,:].T, origin='lower', vmin=Emin,   vmax=-Emin, cmap='bwr', extent=[ 0, len(lens), 0, 180.0 ] )
+    plt.subplot(6,1,5); plt.imshow( Eplot_[nseg//2:,:].T, origin='lower', vmin=Emin,   vmax=-Emin, cmap='bwr', extent=[ 0, len(lens), 0, 180.0 ] )
+    plt.subplot(6,1,6); plt.imshow( dEplot[nseg//2:,:].T, origin='lower', vmin=-dEmax, vmax=dEmax, cmap='bwr', extent=[ 0, len(lens), 0, 180.0 ] )
+    #plt.colorbar()
+    plt.xlabel("DOF")
+    plt.ylabel("segment")
+    plt.tight_layout()

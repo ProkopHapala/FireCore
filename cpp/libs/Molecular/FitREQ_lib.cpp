@@ -140,9 +140,10 @@ double optimize_random(int nstep, double stepSize=0.1) {
 void setTypeToDOFs  (int i, double* REQ ){ W.setTypeToDOFs  ( i, *(Quat4d*)REQ ); }
 void getTypeFromDOFs(int i, double* REQ ){ W.getTypeFromDOFs( i, *(Quat4d*)REQ ); }
 
-double getEs( double* Es, double* Fs, bool bOmp, bool bDOFtoTypes){
-    printf( "getEs() imodel %i nDOFs %i bOmp %i bDOFtoTypes %i @DOFtoTyp=%p  @Es=%p @Fs=%p \n", W.imodel, W.nDOFs, bOmp, bDOFtoTypes, W.DOFtoTyp, Es, Fs );
+double getEs( double* Es, double* Fs, bool bOmp, bool bDOFtoTypes, char* xyz_name){
+    printf( "getEs() imodel %i nDOFs %i bOmp %i bDOFtoTypes %i xyz_name=%s @DOFtoTyp=%p  @Es=%p @Fs=%p \n", W.imodel, W.nDOFs, bOmp, bDOFtoTypes, xyz_name, W.DOFtoTyp, Es, Fs );
     //W.imodel=imodel;
+    if(xyz_name){ W.xyz_out=xyz_name; W.bSaveSampleToXYZ=true; }else{ W.bSaveSampleToXYZ=false; }
     if(bDOFtoTypes)W.DOFsToTypes(); 
     W.clean_fDOFs();
     double E = 0;

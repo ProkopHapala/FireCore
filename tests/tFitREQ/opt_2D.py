@@ -188,40 +188,8 @@ plt.savefig( "opt_2D.png" )
 
 
 # ======= old plotting in single imshow
-# lens=np.array(lens)
-# nmax = np.max(lens) 
-# nseg = len(lens)
-# Eplot  = np.zeros( (nseg, nmax)  ); Eplot[:,:]  = np.nan
-# Eplot_ = np.zeros( (nseg, nmax)  ); Eplot_[:,:] = np.nan
-# ii = 0
-# for i in range( len(lens) ):
-#     ni = lens[i]
-#     #Eplot[i,0:lens[i]] = Es[i]
-#     Eplot [i,0:ni] = Erefs[ii:ii+ni]
-#     Eplot_[i,0:ni] = Es   [ii:ii+ni]
-#     ii+=ni
-# dEplot = Eplot - Eplot_
-# plt.figure(figsize=(20,12))
-# Emin = np.min(Erefs)
-# dEmax = max( -np.nanmin(dEplot),np.nanmax(dEplot) )
-# dEmax = 0.1
-# print( "dEmax: ", dEmax, "Emin ", Emin )
-# #Emax = np.max(Eplot)
-# plt.subplot(6,1,1); plt.imshow( Eplot [:nseg//2,:].T, origin='lower', vmin=Emin,   vmax=-Emin, cmap='bwr', extent=[ 0, len(lens), 0, 180.0 ] )
-# plt.subplot(6,1,2); plt.imshow( Eplot_[:nseg//2,:].T, origin='lower', vmin=Emin,   vmax=-Emin, cmap='bwr', extent=[ 0, len(lens), 0, 180.0 ] )
-# plt.subplot(6,1,3); plt.imshow( dEplot[:nseg//2,:].T, origin='lower', vmin=-dEmax, vmax=dEmax, cmap='bwr', extent=[ 0, len(lens), 0, 180.0 ] )
-# plt.subplot(6,1,4); plt.imshow( Eplot [nseg//2:,:].T, origin='lower', vmin=Emin,   vmax=-Emin, cmap='bwr', extent=[ 0, len(lens), 0, 180.0 ] )
-# plt.subplot(6,1,5); plt.imshow( Eplot_[nseg//2:,:].T, origin='lower', vmin=Emin,   vmax=-Emin, cmap='bwr', extent=[ 0, len(lens), 0, 180.0 ] )
-# plt.subplot(6,1,6); plt.imshow( dEplot[nseg//2:,:].T, origin='lower', vmin=-dEmax, vmax=dEmax, cmap='bwr', extent=[ 0, len(lens), 0, 180.0 ] )
-# #plt.colorbar()
-# plt.xlabel("DOF")
-# plt.ylabel("segment")
-# plt.tight_layout()
-
 
 plt.show(); # exit()
-
-
 
 #test_getEs_openmp()
 
@@ -270,11 +238,6 @@ DOFnames = [
 # nstep = 5000
 # fit.setSwitches(EvalJ=1, WriteJ=1  ); Err = fit.run( nstep=nstep, Fmax=1e-300, dt=0.0, imodel=imodel, iparallel=0, ialg=0, bClamp=bClamp )
 # fit.setSwitches(EvalJ=1, WriteJ=-1 ); Err = fit.run( nstep=nstep, Fmax=1e-300, dt=0.0, imodel=imodel, iparallel=0, ialg=0, bClamp=bClamp )
-
-
-
-
-
 
 # ------ Test diffirent write-J options with different parallelization
 # nstep = 5000
