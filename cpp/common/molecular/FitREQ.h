@@ -467,179 +467,13 @@ int loadDOFSelection( const char* fname ){
     return nDOFs;
 }
 
-
-/*
-
-//  Load a file of types involved in the parameter fitting. The file should contain lines with the following format:
-//  atom_name mask_RvdW mask_EvdW mask_Q mask_Hb
-//  where mask_RvdW, mask_EvdW, mask_Q, and mask_Hb are integers representing the indices of the fitting parameters for the RvdW, EvdW, Q, and Hb parameters, respectively.
-//  @param fname The name of the file to load.
-//  @return The number of types loaded.
-int loadTypeSelection( const char* fname ){
-    printf( "FitREQ::loadTypeSelection(fname=%s) \n", fname );
-    FILE* fin = fopen( fname, "r" );
-    if(fin==0){ printf("cannot open '%s' \n", fname ); exit(0);}
-    const int nline=1024;
-    char line[1024];
-    char at_name[8];
-    int ntypesel = 0;
-    int nwExpected = 1+4 + 8 + 16;
-    std::vector<int> t;
-    std::vector<Quat4i> typeMask;
-    std::vector<Quat4d> tx_hi, tx_lo;
-    std::vector<Quat4d> tk_hi, tk_lo;
-    std::vector<Quat4d> tk_Min, tk_Max;
-    while( fgets(line, nline, fin) ){
-        if(line[0]=='#')continue;
-        Quat4i tm;               // on/off regularization constrain {}   Quat because of REQH componets
-        Quat4d tx0l, tx0h, tx0m; // position  of regularization constrain  low, high, medium
-        Quat4d tkl,  tkh,  tkm;  // stiffness of regularization constrain  low, high, medium
-        Quat4d tkMin, tkMax;
-        int nw = sscanf( line, "%s   %i %i %i %i   %lf %lf %lf %lf   %lf %lf %lf %lf   %lf %lf %lf %lf    %lf %lf %lf %lf    %lf %lf %lf %lf    %lf %lf %lf %lf\n", 
-         at_name,  &tm.x,&tm.y,&tm.z,&tm.w, &tkMin.x,&tkMin.y,&tkMin.z,&tkMin.w,  &tkMax.x,&tkMax.y,&tkMax.z,&tkMax.w,   &tx0l.x,&tx0l.y,&tx0l.z,&tx0l.w,    &tx0h.x,&tx0h.y,&tx0h.z,&tx0h.w,    &tkl.x,&tkl.y,&tkl.z,&tkl.w,    &tkh.x,&tkh.y,&tkh.z,&tkh.w );
-        if(nw!=nwExpected){
-            printf("ERROR: FitREQ::loadTypeSelection(fname=%s) line[%i] has %i words (expected %i) \n", fname, ntypesel, nw, nwExpected );
-            printf("line[%i]: %s", ntypesel, line );
-            exit(0);
-        }
-        typeMask.push_back( tm );
-        tk_Min  .push_back( tkMin );
-        tk_Max  .push_back( tkMax );
-        tx_lo   .push_back( tx0l );
-        tx_hi   .push_back( tx0h );
-        tk_lo   .push_back( tkl );
-        tk_hi   .push_back( tkh );
-        ntypesel++;
-        int ityp = params->getAtomType(at_name);
-        t.push_back( ityp );
-        AtomType& t  = params->atypes[ityp];  
-        if(verbosity>0)printf( "ityp(%3i):%-8s tm(%i,%i,%i,%i) tMin(%lf,%lf,%lf%lf) tMax(%lf,%lf,%lf,%lf) xlo(%lf,%lf,%lf,%lf) xhi(%lf,%lf,%lf,%lf) Klo(%lf,%lf,%lf,%lf) Khi(%lf,%lf,%lf,%lf)  \n", 
-        ityp, at_name,  tm.x,tm.y,tm.z,tm.w, tkMin.x,tkMin.y,tkMin.z,tkMin.w,  tkMax.x,tkMax.y,tkMax.z,tkMax.w,   tx0l.x,tx0l.y,tx0l.z,tx0l.w,    tx0h.x,tx0h.y,tx0h.z,tx0h.w,    tkl.x,tkl.y,tkl.z,tkl.w,    tkh.x,tkh.y,tkh.z,tkh.w );
-    }
-    fclose(fin);
-    init_types( ntypesel, &t[0], &typeMask[0], &tk_Min[0], &tk_Max[0], &tx_lo[0], &tx_hi[0], &tk_lo[0], &tk_hi[0]);
-    return ntypesel;
-}
-
-void initDOFregs(){
-    printf( "FitREQ::initDOFregs() nDOFs=%i \n", nDOFs );
-    DOFregX.resize(nDOFs);
-    DOFregK.resize(nDOFs);
-    DOFlimits.resize(nDOFs);
-    for(int i=0; i<nDOFs; i++){
-        const Vec2i& rt = DOFtoTyp[i];        // which type and which component (REQH)
-        DOFregX[i] = Vec3d{
-            typeREQs0_low [rt.x].array[rt.y],  // xmin
-            typeREQs0     [rt.x].array[rt.y],  // x0
-            typeREQs0_high[rt.x].array[rt.y]   // xmax
-        };
-        DOFregK[i] = Vec3d{
-            typeKreg_low  [rt.x].array[rt.y],  // Kmin
-            typeKreg      [rt.x].array[rt.y],  // K0
-            typeKreg_high [rt.x].array[rt.y]   // Kmax
-        };
-        DOFlimits[i] = Vec2d{
-            typeREQsMin[rt.x].array[rt.y],  // hard min
-            typeREQsMax[rt.x].array[rt.y]   // hard max
-        };
-    }
-}
-
-
-//  Initializes the types of the FitREQ object. This function calculates the number of degrees of freedom (nDOFs) and initializes the typToREQ array, which maps each atom type to its corresponding REQ values.
-//  @param ntype_ The number of types.
-//  @param ntypesel The number of selected types.
-//  @param tsel An array of integers representing the selected types.
-//  @param typeMask An array of Quat4i indicating which of the 4 parameters (Rvdw,Evdw,Q,Hb) are free to be fitted.
-//  @param typeREQs An array of Quat4d objects representing the non-colvalent interaction parameters (Rvdw,Evdw,Q,Hb) for each type.
-//  @param typeREQsMin An array of Quat4d objects representing the minimum values of the non-colvalent interaction parameters (Rvdw,Evdw,Q,Hb) for each type.
-//  @param typeREQsMax An array of Quat4d objects representing the maximum values of the non-colvalent interaction parameters (Rvdw,Evdw,Q,Hb) for each type.
-//  @param typeREQs0 An array of Quat4d objects representing the equilibrium values of the non-colvalent interaction parameters (Rvdw,Evdw,Q,Hb) for each type.
-//  @param typeKreg An array of Quat4d objects representing the regularization stiffness for each type.
-//  @return The number of degrees of freedom.
-int init_types( int ntypesel, int* tsel, Quat4i* typeMask,  Quat4d* tmin, Quat4d* tmax, Quat4d* tx_lo, Quat4d* tx_hi, Quat4d* tk_lo,  Quat4d* tk_hi ){
-    int ntype = initAllTypes();
-    int nDOFs=0;
-    for(int i=0; i<ntype; i++){
-        bool bFound=false;
-        for(int j=0; j<ntypesel; j++){
-            if(tsel[j]==i){
-                const Quat4i& tm=typeMask[j];
-                Quat4i&       tt=typToREQ[i];
-                for(int k=0; k<4; k++){
-                    if(tm.array[k]){
-                        tt.array[k]=nDOFs;
-                        nDOFs++;
-                    }else{
-                        tt.array[k]=-1;
-                    }
-                }
-                //printf(  "init_types() [%i] typeMask(%i,%i,%i,%i) typToREQ(%i,%i,%i,%i) nDOF %i\n", i, tm.x,tm.y,tm.z,tm.w, tt.x,tt.y,tt.z,tt.w, nDOFs );
-                bFound=true;
-                break;
-            }
-        }
-        if(!bFound){
-            Quat4i&       tt=typToREQ[i];
-            for(int j=0; j<4; j++){
-                tt.array[j]=-1;
-            }
-        }
-    }
-    realloc_DOFs(nDOFs);
-    ntype = ntype;
-    for(int j=0; j<ntypesel; j++){
-        int it=tsel[j];
-        typeREQsMin   [it] = tmin  [j];
-        typeREQsMax   [it] = tmax  [j];
-        typeREQs0_low [it] = tx_lo [j];
-        typeREQs0_high[it] = tx_hi [j];
-        typeKreg_low  [it] = tk_lo [j];
-        typeKreg_high [it] = tk_hi [j];
-    }
-    //DOFsFromTypes(); 
-    typesToDOFs();
-    // Build inverse mapping from DOFs to types
-    DOFtoTyp.resize(nDOFs);
-    for(int i=0; i<ntype; i++){
-        const Quat4i& tt = typToREQ[i];
-        if(tt.x>=0) DOFtoTyp[tt.x] = Vec2i{i,0};
-        if(tt.y>=0) DOFtoTyp[tt.y] = Vec2i{i,1};
-        if(tt.z>=0) DOFtoTyp[tt.z] = Vec2i{i,2};
-        if(tt.w>=0) DOFtoTyp[tt.w] = Vec2i{i,3};
-    }
-    initDOFregs();
-    if(verbosity>0){
-        printDOFsToTypes();
-        printTypesToDOFs();
-        printDOFregularization();
-    }    
-    return nDOFs;
-}
-*/
-
-// add electron pairs
 Atoms* addEpairs( Atoms* mol ){
-    //MM::Builder builder;
     builder.params = params;
     builder.clear();
     if(mol->lvec){ builder.lvec = *(mol->lvec); builder.bPBC=true; }
     builder.insertAtoms(*mol);
-    //int ia0=builder.frags[ifrag].atomRange.a;
-    //int ic0=builder.frags[ifrag].confRange.a;
-    //builder.printBonds();
-    //builder.printAtomConfs(true, false );
-    //if(iret<0){ printf("!!! exit(0) in MolWorld_sp3::loadGeom(%s)\n", name); exit(0); }
-    //builder.addCappingTypesByIz(1);  // insert H caps
-    //for( int it : builder.capping_types ){ printf( "capping_type[%i] iZ=%i name=`%s`  \n", it, builder.params->atypes[it].iZ, builder.params->atypes[it].name ); };
     builder.tryAddConfsToAtoms( 0, -1 );
     builder.cleanPis();
-    //if(verbosity>2)
-    //builder.printAtomConfs(false);
-    //builder.export_atypes(atypes);
-    // ------- Load lattice vectros
-    // NOTE: ERROR IS HERE:  autoBonds() -> insertBond() -> tryAddBondToAtomConf( int ib, int ia, bool bCheck )
-    //       probably we try to add multiple bonds for hydrogen ?
     if( builder.bPBC ){ 
         builder.autoBondsPBC( -.5,  0      , mol->n0     ); // we should not add bonds between rigid and flexible parts
         builder.autoBondsPBC( -.5,  mol->n0, mol->natoms ); 
@@ -648,20 +482,10 @@ Atoms* addEpairs( Atoms* mol ){
         builder.autoBonds( -.5,  mol->n0, mol->natoms ); 
     }
     builder.checkNumberOfBonds( true, true );
-    //if(verbosity>2)
-    //builder.printBonds ();
-    //if( fAutoCharges>0 )builder.chargeByNeighbors( true, fAutoCharges, 10, 0.5 );
-    //if(substitute_name) substituteMolecule( substitute_name, isubs, Vec3dZ );
-    //if( builder.checkNeighsRepeat( true ) ){ printf( "ERROR: some atoms has repating neighbors => exit() \n"); exit(0); };
-    // --- Add Epairs
     builder.bDummyEpair = true;
     builder.autoAllConfEPi( ); 
-    // --- add Epairs to atoms like =O (i.e. with 2 just one neighbor)
     builder.setPiLoop       ( 0, -1, 10 );
-    builder.addAllEpairsByPi( 0, -1 );    
-    //builder.printAtomConfs( false, true );
-    //builder.assignAllBondParams();    //if(verbosity>1)
-    //builder.finishFragment(ifrag);    
+    builder.addAllEpairsByPi( 0, -1 );       
     return builder.exportAtoms(); 
 }
 
@@ -1341,7 +1165,56 @@ bool checkSampleRepulsion( double Eij, int i, int j, int ti, int tj, double r, b
     //iBadFound++; if(iBadFound>=nBadFoundMax){ printf("ERROR in evalExampleDerivs_LJQH2(): too many bad pairs (%i) \n", iBadFound); exit(0); }
     return true;
 }
-    
+
+// Optimized versions of evaluation functions
+__attribute__((hot)) 
+static double evalExampleDerivs_LJQH2_uncorr( int i0, int ni, int j0, int nj, Vec3d* ps, Quat4d* REQs, int* host, int* fitted, Quat4d* dEdREQs ){
+    // this function compute energy of pairs of atoms which are not fitted, and  not variational derivatives, i.e. they are not included in the optimization
+    double Etot = 0.0;
+    for(int ii=0; ii<ni; ii++) {
+        const int     i     = i0+ii;
+        const Vec3d&  pi    = ps[i];
+        const int     ih    = host[i];
+        const bool    bEpi  = ih>=0;  // is this atom an electron pair?
+        const Quat4d& REQi  = REQs[ii];
+        //Quat4d        fREQi = Quat4dZero;
+        const int     doi   = fitted[i];
+        for(int jj=0; jj<nj; jj++) {
+            if( doi && fitted[jj] ) continue;  // if atom i or j is fitted, skip
+            const int j = j0+jj;
+            const Quat4d& REQj = REQs[j];
+            double H         = REQi.w * REQj.w;   
+            if( H>-1e+300 ){ continue; } // only atractive H-bonds
+            int jh           = host[j];
+            const double R0  = REQi.x + REQj.x;
+            const double E0  = REQi.y * REQj.y;
+            const double Q   = REQi.z + REQj.z;
+            const Vec3d  dij = ps[j] - pi;
+            const double r       = dij.norm();
+            const double ir      = 1/r;
+            const double dE_dQ   = ir * COULOMB_CONST;
+            const double Eel     = Q * dE_dQ;
+            Etot += Eel;
+            if       (bEpi ){ // i is an electron pair
+                double dE_dH;
+                Etot     += getEpairAtom( r, H, REQi.x, dE_dH );
+            }else if (jh>=0){ // j is an electron pair
+                double dE_dH;
+                Etot     += getEpairAtom( r, H, REQj.x, dE_dH ); // Note - radius of electron REQi.x is used for decay constant
+            }else{           // both i and j are real atoms
+                const double u       = R0/r;
+                const double u3      = u*u*u;
+                const double u6      = u3*u3;
+                const double u6p     = (1.0 + H) * u6;                     
+                const double dE_dE0  = u6 * (u6p - 2.0);
+                Etot                +=  E0 * dE_dE0;
+            }
+        }
+    }
+    return Etot;
+}
+
+
 // Optimized versions of evaluation functions
 __attribute__((hot)) 
 static double evalExampleDerivs_LJQH2_corr( int i0, int ni, int j0, int nj, Vec3d* ps, Quat4d* REQs, int* host, Quat4d* dEdREQs ){
