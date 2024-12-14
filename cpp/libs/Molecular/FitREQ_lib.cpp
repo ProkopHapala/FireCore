@@ -102,7 +102,7 @@ void loadTypes( const char* fname_ElemTypes, const char* fname_AtomTypes ){
     W.params=&params;
 }
 
-int loadXYZ( const char* fname, bool bAddEpairs, bool bOutXYZ ){  return W.loadXYZ( fname, bAddEpairs, bOutXYZ );}
+int loadXYZ( const char* fname, bool bAddEpairs, bool bOutXYZ, bool bEvalOnlyCorrections ){ W.bEvalOnlyCorrections=bEvalOnlyCorrections; return W.loadXYZ( fname, bAddEpairs, bOutXYZ );}
 
 void setWeights( int n, double* weights ){
    _realloc( W.weights, n );

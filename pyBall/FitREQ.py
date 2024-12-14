@@ -167,12 +167,12 @@ lib.loadWeights.restype   =  c_int
 def loadWeights(fname="weights.dat"):
     return lib.loadWeights(cstr(fname))
 
-# int loadXYZ_new( const char* fname, const char* fname_AtomTypes  ){
-lib.loadXYZ.argtypes  = [c_char_p, c_bool, c_bool]
+# int loadXYZ( const char* fname, bool bAddEpairs, bool bOutXYZ, bool bEvalOnlyCorrections ){ 
+lib.loadXYZ.argtypes  = [c_char_p, c_bool, c_bool, c_bool]
 lib.loadXYZ.restype   =  c_int
-def loadXYZ(fname, bAddEpairs=False, bOutXYZ=False):
+def loadXYZ(fname, bAddEpairs=False, bOutXYZ=False, bEvalOnlyCorrections=False ):
     global nbatch
-    nbatch = lib.loadXYZ(cstr(fname), bAddEpairs, bOutXYZ)
+    nbatch = lib.loadXYZ(cstr(fname), bAddEpairs, bOutXYZ, bEvalOnlyCorrections)
     return nbatch
 
 #  void setTypeToDOFs(int i, double* REQ )

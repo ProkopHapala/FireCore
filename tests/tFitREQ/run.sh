@@ -28,5 +28,5 @@ echo "#=========== RUN"
 #python3 -u opt_2D.py 
 #python3 -u opt_2D.py 2> asan.log | tee OUT
 python3 -u opt_2D_2.py 2> asan.log | tee OUT
-#python3 plot_DOF_trj.py
+python3 plot_DOF_trj.py
 #python3 opt_mini.py
