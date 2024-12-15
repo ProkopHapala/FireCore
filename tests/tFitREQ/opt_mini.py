@@ -48,18 +48,20 @@ fit.loadTypes( )     # load atom types
 
 
 #fname = "input_single.xyz"
-fname = "input_all.xyz"
-#fname = "input_2CH2NH.xyz"
+#fname = "input_all.xyz"
+fname = "input_2CH2NH.xyz"
 
 if bMorse:
     fit.loadDOFSelection( fname="dofSelection_Morse.dat" )
+    #fit.loadDOFSelection( fname="dofSelection_CH2NH_Morse.dat" )   
 else:
-    fit.loadDOFSelection( fname="dofSelection_LJ.dat" )   
+    #fit.loadDOFSelection( fname="dofSelection_LJ.dat" )   
+    fit.loadDOFSelection( fname="dofSelection_CH2NH_LJ.dat" )   
 
 #fname = "input_2CH2NH.xyz"
 #fit.loadDOFSelection( fname="dofSelection_N2.dat" )          
 
-nbatch = fit.loadXYZ( fname, bAddEpairs, bOutXYZ )     # load reference geometry
+nbatch = fit.loadXYZ( fname, bAddEpairs, bOutXYZ, bEvalOnlyCorrections=True )     # load reference geometry
 #nbatch = fit.loadXYZ( "input_small.xyz", bAddEpairs, bOutXYZ )     # load reference geometry
 #nbatch = fit.loadXYZ( "input_single.xyz", bAddEpairs, bOutXYZ )     # load reference geometry
 
@@ -77,8 +79,8 @@ if bMorse:
 else:
     fit.setup( imodel=1, EvalJ=1, WriteJ=1, Regularize=1 )
     weights0, nseg = fit.split_and_weight_curves( Erefs, x0s, n_before_min=2, weight_func=lambda E: fit.exp_weight_func(E,a=0.5, alpha=4.0) )
-# plotEWs( Erefs=Erefs, weights0=weights0, Emin=-1.5 ); plt.title( "Weighting" )
-# plt.show(); exit()
+#plotEWs( Erefs=Erefs, weights0=weights0, Emin=-1.5 ); plt.title( "Weighting" )
+#plt.show(); exit()
 
 fit.setWeights( weights0 )
 fit.getBuffs()
@@ -99,12 +101,9 @@ fit.setFilter( EmodelCutStart=0.0, EmodelCut=0.5, PrintOverRepulsive=-1, Discard
 #fit.setFilter( EmodelCutStart=0.0, EmodelCut=0.5, iWeightModel=2, PrintOverRepulsive=-1, DiscardOverRepulsive=1, SaveOverRepulsive=1, ListOverRepulsive=-1 )
 #fit.setFilter( EmodelCutStart=0.0, EmodelCut=0.5, PrintOverRepulsive=-1, DiscardOverRepulsive=-1, SaveOverRepulsive=-1, ListOverRepulsive=-1 )
 
-
-
-
 E,Es,Fs = fit.getEs( bOmp=False, bDOFtoTypes=False, bEs=True, bFs=False )
 fit.plotEWs( Erefs=Erefs, Emodel=Es, weights=fit.weights, weights0=weights0,  Emin=EminPlot ); plt.title( "BEFORE OPTIMIZATION" )
-#plt.show(); exit()
+plt.show(); exit()
 
 if bMorse:
     #Err = fit.run( iparallel=0, ialg=0, nstep=1000, Fmax=1e-4, dt=0.1, max_step=-1,  bClamp=True )

@@ -40,7 +40,8 @@ void setVerbosity( int verbosity_, int idebug_, int PrintDOFs, int PrintfDOFs, i
 // //bool  bOptEpR = false;          // Should we optimize electron pair distance (from host atom) ?
 // bool  bBroadcastFDOFs = false;    // Should we broadcast fDOFs (each sample to its own chunk of memory) to prevent atomic-write conflicts ?
 // bool  bUdateDOFbounds = true;     // Should we update fDOFbounds after each sample ?
-void setup( int imodel, int EvalJ, int WriteJ, int CheckRepulsion, int Regularize, int AddRegError, int Epairs, int BroadcastFDOFs, int UdateDOFbounds){
+// bool  bEvalOnlyCorrections = false;  // Split evaluation and optimization to Emodel0 and Ecorrection (where only Ecorrection is updated every iteration)
+void setup( int imodel, int EvalJ, int WriteJ, int CheckRepulsion, int Regularize, int AddRegError, int Epairs, int BroadcastFDOFs, int UdateDOFbounds, int EvalOnlyCorrections){
     W.imodel = imodel;
     #define _setbool(name) { if(name>0){W.b##name=true;}else if(name<0){W.b##name=false;} }
     _setbool( EvalJ          );
@@ -51,6 +52,7 @@ void setup( int imodel, int EvalJ, int WriteJ, int CheckRepulsion, int Regulariz
     _setbool( Epairs         );
     _setbool( BroadcastFDOFs );
     _setbool( UdateDOFbounds );
+    _setbool( EvalOnlyCorrections );
     #undef _setbool
 }
 
@@ -141,12 +143,25 @@ void setTypeToDOFs  (int i, double* REQ ){ W.setTypeToDOFs  ( i, *(Quat4d*)REQ )
 void getTypeFromDOFs(int i, double* REQ ){ W.getTypeFromDOFs( i, *(Quat4d*)REQ ); }
 
 double getEs( double* Es, double* Fs, bool bOmp, bool bDOFtoTypes, char* xyz_name){
-    printf( "getEs() imodel %i nDOFs %i bOmp %i bDOFtoTypes %i xyz_name=%s @DOFtoTyp=%p  @Es=%p @Fs=%p \n", W.imodel, W.nDOFs, bOmp, bDOFtoTypes, xyz_name, W.DOFtoTyp, Es, Fs );
+    printf( "getEs() imodel %i nDOFs %i bOmp %i bDOFtoTypes %i bEvalOnlyCorrections=%i xyz_name=%s @DOFtoTyp=%p  @Es=%p @Fs=%p \n", W.imodel, W.nDOFs, bOmp, bDOFtoTypes, W.bEvalOnlyCorrections, xyz_name, W.DOFtoTyp, Es, Fs );
     //W.imodel=imodel;
     if(xyz_name){ W.xyz_out=xyz_name; W.bSaveSampleToXYZ=true; }else{ W.bSaveSampleToXYZ=false; }
     if(bDOFtoTypes)W.DOFsToTypes(); 
     W.clean_fDOFs();
     double E = 0;
+    if(W.bEvalOnlyCorrections){
+       int isamp=0;
+       W.printSampleFitSplit(isamp);
+       W.printSampleFittedAtoms(isamp);
+       double Ecorr=0, Efull=0;  
+       W.evalSample_uncorr   ( isamp );
+       W.evalSampleError_corr( isamp, Ecorr );
+       W.evalSampleError     ( isamp, Efull );
+       exit(0);
+       W.evalSamples_uncorr();
+       E = W.evalSamples_corr( Es ); 
+       
+    }else
     if( bOmp ){ E = W.evalSamples_omp  ( Es ); }
     else      { E = W.evalSamples_noOmp( Es ); }
     //for(int i=0; i<W.samples.size(); i++){ printf( "getEs() sample[%i] E: %20.10f \n", i, Es[i] ); }

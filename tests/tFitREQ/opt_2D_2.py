@@ -36,8 +36,8 @@ bAddEpairs  = bEpairs
 bOutXYZ     = False
 verbosity   = 2    # Added to enable debug printing
 
-#bMorse = False   # Lenard-Jones
-bMorse = True   # Morse
+bMorse = False   # Lenard-Jones
+#bMorse = True   # Morse
 
 # ============== Setup
 
@@ -82,7 +82,7 @@ fname = 'all.xyz'
 
 # comments          = fit.read_file_comments(fname) #;print( "comments:\n", comments )
 type_names,comments = fit.extract_comments_and_types(fname)
-marks, angle_data = fit.mark_molecule_blocks( comments )
+marks, angle_data   = fit.mark_molecule_blocks( comments )
 # print( "marks:\n", marks )
 # print( "angle_data:\n", angle_data )
 
@@ -110,7 +110,9 @@ if bMorse:
     #fit.loadDOFSelection( fname="dofSelection_HCOOH_Morse.dat" )
     #fit.loadDOFSelection( fname="dofSelection_HCOOH_Morse.dat" )
 else:
-    fit.loadDOFSelection( fname="dofSelection_LJ.dat" )   
+    #fit.loadDOFSelection( fname="dofSelection_LJ.dat" )   
+    fit.loadDOFSelection( fname="dofSelection_H2O_LJ.dat" )  
+    #fit.loadDOFSelection( fname="dofSelection_CH2NH_LJ.dat" )   
     #fit.loadDOFSelection( fname="dofSelection_HCOOH_LJ.dat" ) 
     #fit.loadDOFSelection( fname="dofSelection_HCOOH_LJ.dat" ) 
 
@@ -161,7 +163,7 @@ fit.setFilter( EmodelCutStart=0.0, EmodelCut=0.5, PrintOverRepulsive=-1, Discard
 
 E,Es,Fs = fit.getEs( bOmp=False, bDOFtoTypes=False, bEs=True, bFs=False )
 fit.plotEWs( Erefs=Erefs, Emodel=Es, weights=fit.weights, weights0=weights0,  Emin=EminPlot ); plt.title( "BEFORE OPTIMIZATION" )
-#plt.show(); exit()
+plt.show(); exit()
 
 if bMorse:
     #Err = fit.run( iparallel=0, ialg=0, nstep=1000, Fmax=1e-4, dt=0.1, max_step=-1,  bClamp=True )
