@@ -62,15 +62,28 @@ void rigid_transform( Vec3d shift, Vec3d* unshift, Vec3d dir, Vec3d up, int n, V
     }
 }
 
-inline double getEpairAtom( double r, double Hij, double k, double& dEdH ){
-    dEdH = exp( -k * r );
+inline double getEpairAtom( double r, double Hij, double w, double& dEdH, double& dEdw ){
+    /*
+    double iw = 1.0/w;
+    double u = r*iw; 
+    dEdH = exp( -u );
+    dEdw = dEdH*u*iw;
+    //dEdH = exp( -u*u );
     return Hij * dEdH;
+    */
+
+    if( r<w ){
+        return Hij;
+    }else{
+        return 0.0;
+    }
 }
 
 struct AddedData{
     int    nep  =0;      // number of electron pairs
     Vec2i* bs   =0;      // bonds between electron pairs and host atoms  (host_atom_index, epair_index)
     Vec3d* dirs =0;      // directions of electron pairs
+    int*   host = 0;       // [natoms]  Index of host atom for electron pairs (-1 for non-electron-pair atoms)
 
     // New members for H-bond optimization
     double  Emodel0     = NAN;     // Static model energy without H-bond corrections
@@ -82,7 +95,7 @@ struct AddedData{
     //int*    HBatomsType = 0;       // [HBna]  Positions of H-bond corrected atoms
     //Vec3d*  HBatomsPos  = 0;       // [HBna]  Positions of H-bond corrected atoms
     //Quat4d* HBatomsREQs = 0;       // [HBna]  REQ parameters of H-bond corrected atoms
-    int*    host = 0;       // [natoms]  Index of host atom for electron pairs (-1 for non-electron-pair atoms)
+    //int*    host = 0;       // [natoms]  Index of host atom for electron pairs (-1 for non-electron-pair atoms)
     //int*    type = 0;       // [natoms]  Positions of H-bond corrected atoms
     Quat4d* REQs = 0;       // [natoms]  REQ parameters of H-bond corrected atoms
 
@@ -96,7 +109,7 @@ struct AddedData{
         // _realloc0( dirs, natoms, Vec3dNAN );
         if(nhb==0) return;
         _realloc0( HBtoFit, natoms, -1 );
-        _realloc0( host,    natoms, -1 );
+        //_realloc0( host,    natoms, -1 );
         _realloc0( REQs,    natoms, Quat4dNAN );
         _realloc0( HBatomsInd, nhb, -1 );
         // _realloc0( HBatomsHost, nhb, -1 );
@@ -110,7 +123,7 @@ struct AddedData{
         // _dealloc( dirs );
         if(HBna==0) return;
         _dealloc( HBtoFit     );
-        _dealloc( host );
+        //_dealloc( host );
         _dealloc( REQs );
         _dealloc( HBatomsInd  );
         //_dealloc( HBatomsHost );
@@ -687,6 +700,10 @@ void addAndReorderEpairs(Atoms*& atoms, FILE* fout=nullptr) {
     data->nep       = nep_found;
     data->bs        = bs;       //  bs[i].x is epair index, bs[i].y is host atom index
     data->dirs      = dirs;   
+    _realloc0( data->host, atoms->natoms, -1 );
+    for(int i=0; i<nep_found; i++){ data->host[bs[i].y] = bs[i].x; } // bs[i].x is host atom index, bs[i].y is epair index
+    //data->isep      = isep;
+
     if(bEvalOnlyCorrections){
         int naFit = initFittedAdata( atoms, 0 );  // first pass just count the number of fitted atoms
         data->reallocHB( atoms->natoms, naFit );  // then we can allocate the arrays
@@ -852,6 +869,7 @@ void fillTempArrays( const Atoms* atoms, Vec3d* apos, double* Qs  )const{
 __attribute__((hot)) 
 double evalSample( int isamp, const Atoms* atoms, double wi, Quat4d* fREQs ) const {
     //double wi   = (weights)? weights[isamp] : 1.0; 
+    const AddedData* adata = (const AddedData*)(atoms->userData);
     alignas(32) double Qs  [atoms->natoms];
     alignas(32) Vec3d  apos[atoms->natoms];   // atomic positions
     fillTempArrays( atoms, apos, Qs );
@@ -875,6 +893,14 @@ double evalSample( int isamp, const Atoms* atoms, double wi, Quat4d* fREQs ) con
             E =   evalExampleDerivs_MorseQH2( i0, ni, j0, nj, atoms->atypes, apos, typeREQs, Qs, fREQs );    // variational derivatives on molecule 1
             if(bJ)evalExampleDerivs_MorseQH2( j0, nj, i0, ni, atoms->atypes, apos, typeREQs, Qs, fREQs );    // variational derivatives on molecule 2
         }break;
+        case 3:{ 
+            E =   evalExampleDerivs_LJQH2_SR   ( i0, ni, j0, nj, atoms->atypes, apos, typeREQs, Qs, adata->host, fREQs );    // variational derivatives on molecule 1
+            if(bJ)evalExampleDerivs_LJQH2_SR   ( j0, nj, i0, ni, atoms->atypes, apos, typeREQs, Qs, adata->host, fREQs );    // variational derivatives on molecule 2
+        }break;
+        //case 4:{ 
+        //    E =   evalExampleDerivs_MorseQH2_SR( i0, ni, j0, nj, atoms->atypes, apos, typeREQs, Qs, fREQs );    // variational derivatives on molecule 1
+        //    if(bJ)evalExampleDerivs_MorseQH2_SR( j0, nj, i0, ni, atoms->atypes, apos, typeREQs, Qs, fREQs );    // variational derivatives on molecule 2
+        //}break;
     }
     return E;
 }
@@ -1322,12 +1348,13 @@ static double evalExampleDerivs_LJQH2_uncorr( int i0, int ni, int j0, int nj, Ve
             const double dE_dQ   = ir * COULOMB_CONST;
             const double Eel     = Q * dE_dQ;
             double Eij = Eel;
+            double dE_dH;
+            double dE_dw;
             if       (bEpi ){ // i is an electron pair
-                double dE_dH;
-                Eij  += getEpairAtom( r, H, REQi.x, dE_dH );
+                Eij  += getEpairAtom( r, H, REQi.x, dE_dH, dE_dw );
             }else if (jh>=0){ // j is an electron pair
                 double dE_dH;
-                Eij  += getEpairAtom( r, H, REQj.x, dE_dH ); // Note - radius of electron REQi.x is used for decay constant
+                Eij  += getEpairAtom( r, H, REQj.x, dE_dH, dE_dw ); // Note - radius of electron REQi.x is used for decay constant
             }else{           // both i and j are real atoms
                 const double u       = R0/r;
                 const double u3      = u*u*u;
@@ -1377,14 +1404,15 @@ static double evalExampleDerivs_LJQH2_corr( int i0, int ni, int j0, int nj, int*
             const double dE_dQ   = ir * COULOMB_CONST;
             const double Eel     = Q * dE_dQ;
             double Eij = Eel;
+            double dE_dw;
             if       (bEpi ){ // i is an electron pair
-                double dE_dH;
-                Eij     += getEpairAtom( r, H, REQi.x, dE_dH );
+                double dE_dH;    
+                Eij     += getEpairAtom( r, H, REQi.x, dE_dH, dE_dw );
                 fREQi.z  += dE_dQ * REQj.z;  // dEtot/dH2i
                 fREQi.w  += dE_dH * REQj.w;  // dEtot/dH2i
             }else if (jh>=0){ // j is an electron pair
                 double dE_dH;
-                Eij     += getEpairAtom( r, H, REQj.x, dE_dH ); // Note - radius of electron REQi.x is used for decay constant
+                Eij     += getEpairAtom( r, H, REQj.x, dE_dH, dE_dw ); // Note - radius of electron REQi.x is used for decay constant
                 fREQi.w  += dE_dH * REQi.w;  // dEtot/dH2i
             }else{           // both i and j are real atoms
                 const double u       = R0/r;
@@ -1407,9 +1435,93 @@ static double evalExampleDerivs_LJQH2_corr( int i0, int ni, int j0, int nj, int*
 }
     
 __attribute__((hot)) 
+double evalExampleDerivs_LJQH2_SR( int i0, int ni, int j0, int nj, int*  types, Vec3d* ps, Quat4d* typeREQs, double* Qs, int* host, Quat4d* dEdREQs )const{
+    //printf("evalExampleDerivs_LJQH2() i0: %i ni: %i j0: %i nj: %i \n", i0, ni, j0, nj );
+    // this differes form evalExampleDerivs_LJQH2() in that it uses short range corrections for electron pairs
+    double Etot = 0.0;
+    const bool bWJ = bWriteJ&&dEdREQs;
+    for(int ii=0; ii<ni; ii++){ // loop over all atoms[i] in system
+        const int      i    = i0+ii;
+        const int     ih    = host[i];
+        const bool    bEpi  = ih>=0;
+        const Vec3d&  pi    = ps      [i ]; 
+        const double  Qi    = Qs      [i ]; 
+        const int     ti    = types   [i ];
+        const Quat4d& REQi  = typeREQs[ti];
+        Quat4d        fREQi = Quat4dZero;
+
+        //if( bEpi ){ Vec3d dr = ps[ih]-pi; printf( "i ih |dij|=%g \n", i, ih, dr.norm() );  }
+        for(int jj=0; jj<nj; jj++){ 
+            const int   j        = j0+jj;
+            const int   jh       = host[j];
+            const double     Qj  = Qs[j];
+            const Vec3d      dij = ps[j] - pi;
+            const int        tj  = types[j];
+            const Quat4d& REQj   = typeREQs[tj];
+            const double R0      = REQi.x + REQj.x;
+            const double E0      = REQi.y * REQj.y; 
+            const double Q       = Qi     * Qj    ;
+            double       H       = REQi.w * REQj.w;     // expected H2<0
+            const double sH      = (H<0.0) ? 1.0 : 0.0; // sH=1.0 if H2<0
+            H *= sH;
+            // --- Electrostatic
+            const double r       = dij.norm();
+            const double ir      = 1/r;
+            const double dE_dQ   = ir * COULOMB_CONST;
+            const double Eel     = Q * dE_dQ;
+
+            double Eij    = Eel;
+            double dE_dR0 = 0.0;
+            double dE_dE0 = 0.0;
+            double dE_dH  = 0.0;
+            double dE_dw  = 0.0;
+            if( bEpi ){        // i is an electron pair, j is a real atom
+                Eij              += getEpairAtom( r, H, REQi.x, dE_dH, dE_dw );
+                //printf( "evalExampleDerivs_LJQH2_SR() i(e): %3i j: %3i i.R: %10.3e i.H: %10.3e j.H: %10.3e i.Q: %10.3e j.Q: %10.3e  Eij %10.3e \n", i, j, REQi.x, REQi.w, REQj.w,  Qi, Qj, Eij  );
+                dE_dE0           = 0; // We should figure out if we want to optimize E0 or H as amplitude of the short range (?) maybe both
+                dE_dR0           = 0; // TODO: later we will optimize radiaus of the gaussian (?)
+            }else if( jh>=0 ){ // j is an electron pair, i is a real atom
+                Eij              += getEpairAtom( r, H, REQj.x, dE_dH, dE_dw );
+                //printf( "evalExampleDerivs_LJQH2_SR() i: %3i j(e): %3i j.R: %10.3e i.H: %10.3e j.H: %10.3e i.Q: %10.3e j.Q: %10.3e  Eij  %10.3e \n", i, j, REQj.x, REQi.w, REQj.w,  Qi, Qj, Eij  );
+                dE_dE0           = 0; // We should figure out if we want to optimize E0 or H as amplitude of the short range (?) maybe both
+                dE_dR0           = 0; // TODO: later we will optimize radiaus of the gaussian (?)
+            }else{
+                const double u   = R0/r;
+                const double u3  = u*u*u;
+                const double u6  = u3*u3;
+                const double u6p = ( 1.0 + H ) * u6;                     
+                dE_dE0           = u6 * ( u6p - 2.0 );
+                dE_dR0           = 12.0 * (E0/R0) * u6 * ( u6p - 1.0 );
+                dE_dH            = -E0 * u6 * u6;
+                Eij              += E0 * dE_dE0;
+            }
+
+            if( bWJ ){ dEdREQs[j].add( Quat4d{
+                        dE_dR0,                    // dEtot/dR0_j
+                       -dE_dE0  * 0.5 * REQi.y,    // dEtot/dE0_j
+                        dE_dQ   * Qi,              // dEtot/dQ_j
+                        dE_dH   * REQi.w * sH,     // dEtot/dH2j
+            }); }
+
+            //if(bCheckRepulsion)[[unlikely]]{ checkSampleRepulsion( ELJ, i,j, ti,tj, r, true, true ); }
+            // --- Energy and forces
+            Etot    +=  Eij;
+            fREQi.x +=  dE_dR0;                    // dEtot/dR0_i
+            fREQi.y +=  dE_dE0  * 0.5 * REQj.y;    // dEtot/dE0_i
+            fREQi.z += -dE_dQ   * Qj;              // dEtot/dQ_i
+            fREQi.w +=  dE_dH   * REQj.w * sH;     // dEtot/dH2i
+        }
+        if(dEdREQs)dEdREQs[i].add(fREQi);
+    }
+    // printAtomParamDerivs( ni+nj, dEdREQs, isamp_debug );
+    //printf( "debug Etot= %g\n", Etot );exit(0);    
+    return Etot;
+}
+
+__attribute__((hot)) 
 //double evalExampleDerivs_LJQH2( int i0, int ni, int j0, int nj, int*  types, Vec3d* ps, Quat4d*  typeREQs, double* Qs, Quat4d* dEdREQs )const{
 double evalExampleDerivs_LJQH2( int i0, int ni, int j0, int nj, int* __restrict__ types, Vec3d* __restrict__ ps, Quat4d* __restrict__ typeREQs, double* __restrict__ Qs, Quat4d* __restrict__ dEdREQs )const{
-    printf("evalExampleDerivs_LJQH2() i0: %i ni: %i j0: %i nj: %i \n", i0, ni, j0, nj );
+    //printf("evalExampleDerivs_LJQH2() i0: %i ni: %i j0: %i nj: %i \n", i0, ni, j0, nj );
     double Etot = 0.0;
     const bool bWJ = bWriteJ&&dEdREQs;
     for(int ii=0; ii<ni; ii++){ // loop over all atoms[i] in system
@@ -1448,7 +1560,7 @@ double evalExampleDerivs_LJQH2( int i0, int ni, int j0, int nj, int* __restrict_
             //if(bCheckRepulsion)[[unlikely]]{ checkSampleRepulsion( ELJ, i,j, ti,tj, r, true, true ); }
             // --- Energy and forces
             Etot    +=  ELJ + Eel;
-            printf( "evalExampleDerivs_LJQH2() i: %3i j: %3i  Eij: %10.3e\n", i, j, ELJ + Eel );
+            //printf( "evalExampleDerivs_LJQH2() i: %3i j: %3i  Eij: %10.3e\n", i, j, ELJ + Eel );
             //printf( "evalExampleDerivs_LJQH2() i: %3i j: %3i H: %10.3e R0: %10.3e E0: %10.3e Q: %10.3e Eel: %10.3e Eij: %10.3e\n", i, j, R0,E0,Q,H,  ELJ + Eel );
             //printf( "evalExampleDerivs_LJQH2()[%3i,%3i] (%8s,%8s) ELJ:  %20.10f   Eel: %20.10f \n", i,j, params->atypes[ti].name, params->atypes[tj].name , ELJ,Eel  );
             //{ int itypPrint=4; if( (ti==itypPrint) || (tj==itypPrint) ){ printf( "evalExampleDerivs_LJQH2()[%3i,%3i] (%8s,%8s) ELJ,Eel: %12.3e,%12.3e Q(%12.3e|%12.3e,%12.3e) dEdREQH(%12.3e,%12.3e,%12.3e,%12.3e)\n", i,j, params->atypes[ti].name, params->atypes[tj].name , ELJ,Eel, Q,Qi,Qj,  dE_dR0, dE_deps, dE_dQ, dE_dH2  ); } }
@@ -1470,6 +1582,7 @@ double evalExampleDerivs_LJQH2( int i0, int ni, int j0, int nj, int* __restrict_
     //printf( "debug Etot= %g\n", Etot );exit(0);    
     return Etot;
 }
+
 
 __attribute__((hot)) 
 double evalExampleDerivs_MorseQH2( int i0, int ni, int j0, int nj, int* __restrict__ types, Vec3d* __restrict__ ps, Quat4d* __restrict__ typeREQs, double* __restrict__ Qs, Quat4d* __restrict__ dEdREQs )const{

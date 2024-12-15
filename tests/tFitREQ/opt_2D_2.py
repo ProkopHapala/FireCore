@@ -67,7 +67,7 @@ acceptors = [
 # 'HCONH2-A1', 
 # 'HCOOH-A1', 
 # 'HCOOH-A2', 
-# 'NH3-A1'
+'NH3-A1', 
 ]
 
 ref_dirs = fit.combine_fragments( donors, acceptors )  ;print( "ref_dirs:\n", ref_dirs )
@@ -111,7 +111,8 @@ if bMorse:
     #fit.loadDOFSelection( fname="dofSelection_HCOOH_Morse.dat" )
 else:
     #fit.loadDOFSelection( fname="dofSelection_LJ.dat" )   
-    fit.loadDOFSelection( fname="dofSelection_H2O_LJ.dat" )  
+    #fit.loadDOFSelection( fname="dofSelection_H2O_LJ.dat" )  
+    fit.loadDOFSelection( fname="dofSelection_H2O_NH3_LJ.dat" )  
     #fit.loadDOFSelection( fname="dofSelection_CH2NH_LJ.dat" )   
     #fit.loadDOFSelection( fname="dofSelection_HCOOH_LJ.dat" ) 
     #fit.loadDOFSelection( fname="dofSelection_HCOOH_LJ.dat" ) 
@@ -119,7 +120,7 @@ else:
 #fname = "input_2CH2NH.xyz"
 #fit.loadDOFSelection( fname="dofSelection_N2.dat" )          
 
-nbatch = fit.loadXYZ( fname, bAddEpairs, bOutXYZ, bEvalOnlyCorrections=True )     # load reference geometry
+nbatch = fit.loadXYZ( fname, bAddEpairs, bOutXYZ )     # load reference geometry
 #nbatch = fit.loadXYZ( "input_small.xyz", bAddEpairs, bOutXYZ )     # load reference geometry
 #nbatch = fit.loadXYZ( "input_single.xyz", bAddEpairs, bOutXYZ )     # load reference geometry
 #exit(0)
@@ -128,17 +129,19 @@ Erefs, x0s = fit.read_xyz_data(fname)  #;print( "x0s:\n", x0s )
 #weights = split_and_weight_curves(Erefs, x0s, n_before_min=4)
 
 EminPlot = np.min(Erefs)*fit.ev2kcal
+EminRef = np.min(Erefs)
 #EminPlot = -0.5
 
 weights0 = np.ones( len(Erefs) )*0.5
 
 
-fit.setGlobalParams( kMorse=1.8, Lepairs=1.0 )
+fit.setGlobalParams( kMorse=1.8, Lepairs=2.0 )
 if bMorse:
     fit.setup( imodel=2, EvalJ=1, WriteJ=1, Regularize=1 )
     weights0, lens = fit.split_and_weight_curves( Erefs, x0s, n_before_min=100, weight_func=lambda E: fit.exp_weight_func(E,a=1.0, alpha=4.0) )
 else:
-    fit.setup( imodel=1, EvalJ=1, WriteJ=1, Regularize=1 )
+    #fit.setup( imodel=1, EvalJ=1, WriteJ=1, Regularize=1 )
+    fit.setup( imodel=3, EvalJ=1, WriteJ=1, Regularize=1 )
     weights0, lens = fit.split_and_weight_curves( Erefs, x0s, n_before_min=2, weight_func=lambda E: fit.exp_weight_func(E,a=1.0, alpha=4.0) )
 # plotEWs( Erefs=Erefs, weights0=weights0, Emin=-1.5 ); plt.title( "Weighting" )
 # plt.show(); exit()
@@ -161,8 +164,15 @@ fit.setFilter( EmodelCutStart=0.0, EmodelCut=0.5, PrintOverRepulsive=-1, Discard
 #fit.setFilter( EmodelCutStart=0.0, EmodelCut=0.5, iWeightModel=2, PrintOverRepulsive=-1, DiscardOverRepulsive=1, SaveOverRepulsive=1, ListOverRepulsive=-1 )
 #fit.setFilter( EmodelCutStart=0.0, EmodelCut=0.5, PrintOverRepulsive=-1, DiscardOverRepulsive=-1, SaveOverRepulsive=-1, ListOverRepulsive=-1 )
 
-E,Es,Fs = fit.getEs( bOmp=False, bDOFtoTypes=False, bEs=True, bFs=False )
+E,Es,Fs = fit.getEs( bOmp=False, bDOFtoTypes=False, bEs=True, bFs=False, xyz_name="all_out_debug.xyz" )
 fit.plotEWs( Erefs=Erefs, Emodel=Es, weights=fit.weights, weights0=weights0,  Emin=EminPlot ); plt.title( "BEFORE OPTIMIZATION" )
+#plt.show(); exit()
+
+Eplots_ref = fit.slice_and_reshape(Erefs, marks, angle_data)
+Eplots_mod = fit.slice_and_reshape(Es,    marks, angle_data)
+fig = fit.plot_Epanels_diff(Eplots_mod, Eplots_ref, ref_dirs, Emin=EminRef*fit.ev2kcal, bColorbar=True, bKcal=True )
+#plt.savefig( "opt_2D.png" )
+
 plt.show(); exit()
 
 if bMorse:
