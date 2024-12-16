@@ -437,6 +437,17 @@ def read_xyz_data(fname="input_all.xyz"):
             #    f.readline()
     return np.array(Erefs), np.array(x0s)
 
+def loadDOFnames( fname="dofSelection.dat", comps="REQH" ):
+    names = []
+    with open(fname, 'r') as f:
+        for line in f:
+            if line.startswith('#'):
+                continue
+            parts = line.split()
+            icomp = int(parts[1])
+            names.append( parts[0]+"."+ comps[icomp] )
+    return names
+
 def mark_molecule_blocks(lines, ):
     marks = []
     lens  = []
@@ -579,21 +590,44 @@ def plotEWs(Erefs=None,Emodel=None,  weights=None,  weights0=None, bLimEref=True
         Emin =  Erefs.min()*EminFac
         plt.ylim( Emin*EminFac, -Emin*EminFac )
 
-def plotDOFscans( iDOFs, xs, DOFnames, bEs=True, bFs=False,  label="plotDOFscans", bEvalSamples=False ):
-    plt.figure()
+def numDeriv( x, y):
+    dx = x[2:]-x[:-2]
+    dy = y[2: ]-y [:-2]
+    xs = x[1:-1]
+    return dy/dx, xs
+
+def plotDOFscans( iDOFs, xs, DOFnames, bEs=True, bFs=False,  title="plotDOFscans", bEvalSamples=False ):
+    plt.figure(figsize=(8,10.0))
+    color_cycle = plt.rcParams['axes.prop_cycle'].by_key()['color']
+    ncol = len(color_cycle)
     for iDOF in iDOFs:
         y = DOFs[iDOF]    # store backup value of this DOF
         Es,Fs = scanParam( iDOF, xs, bEvalSamples=bEvalSamples )   # do 1D scan
         #print( "iDOF", iDOF, DOFnames[iDOF], "Es", Es )
-        if bEs: plt.plot(xs,Es, '-', label=DOFnames[iDOF] )       # plot 1D scan
-        if bFs: plt.plot(xs,Fs, '-', label=DOFnames[iDOF] )       # plot 1D scan
+        # take color from standard matplotlib color cycle
+        c = color_cycle[iDOF % ncol]
+        if bEs: 
+            plt.subplot(2,1,1); plt.plot(xs,Es, '-', color=c, label="E "+DOFnames[iDOF] )       # plot 1D scan
+        if bFs: 
+            Fs_num, xs_num = numDeriv(xs,Es)
+            plt.subplot(2,1,2); plt.plot(xs,Fs*0.208,    '-', lw=1.0, color=c, label="F "+DOFnames[iDOF] )       # This is error in the E_O3 charge derivative
+            plt.subplot(2,1,2); plt.plot(xs_num,-Fs_num, ':', lw=1.5, color=c, label="F "+DOFnames[iDOF] ) 
         DOFs[iDOF] = y    # restore
+
+    plt.subplot(2,1,1);
     plt.legend()
     plt.xlabel("DOF value")
-    plt.ylabel("E [kcal/mol]")    
-    plt.title( label )
+    plt.ylabel("E [kcal/mol]")   
     plt.grid()
-    plt.show()
+
+    plt.subplot(2,1,2);
+    plt.xlabel("DOF value")
+    plt.ylabel("F [kcal/mol/A]")   
+    plt.grid()
+
+    plt.suptitle( title )
+    
+    #plt.show()
 
 
 def plot_Epanels(Eplots, ref_dirs, bColorbar=True, Emin=-5.0, bKcal=False ):
