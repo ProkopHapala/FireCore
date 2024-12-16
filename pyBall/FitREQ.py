@@ -1,4 +1,5 @@
 
+#from nt import write
 import numpy as np
 from   ctypes import c_int, c_double, c_bool, c_float, c_char_p, c_bool, c_void_p, c_char_p
 import ctypes
@@ -116,6 +117,8 @@ def run(ialg=2, iparallel=1, nstep=100, Fmax=1e-8, dt=0.01, max_step=0.05, dampi
 lib.getEs.argtypes  = [ c_double_p,  c_double_p, c_bool, c_bool, c_char_p ]
 lib.getEs.restype   =  c_double
 def getEs(Es=None, Fs=None, bOmp=False, bDOFtoTypes=True, bEs=True, bFs=False, xyz_name=None  ):
+    if xyz_name is None: 
+        with open(xyz_name,'w') as f: f.write("")
     if bEs and (Es is None): Es = np.zeros( nbatch )
     if bFs and (Fs is None): Fs = np.zeros( nDOFs  )
     Eerr = lib.getEs(_np_as(Es,c_double_p), _np_as(Fs,c_double_p), bOmp, bDOFtoTypes, cstr(xyz_name) )
@@ -562,7 +565,8 @@ def plotEWs(Erefs=None,Emodel=None,  weights=None,  weights0=None, bLimEref=True
         units="[eV]" 
     plt.figure( figsize=(15,5) )
     if( Erefs    is not None): plt.plot( Erefs*E_units   ,'.k' , lw=0.5, ms=1.0, label="E_ref")
-    if( Emodel   is not None): plt.plot( Emodel*E_units  ,'.-r', lw=0.5, ms=1.0, label="E_model")
+    #if( Emodel   is not None): plt.plot( Emodel*E_units  ,'.-r', lw=0.5, ms=1.0, label="E_model")
+    if( Emodel   is not None): plt.plot( Emodel*E_units  ,'-r', lw=0.5, ms=1.0, label="E_model")
     if( weights  is not None): plt.plot( weights ,'-g' , lw=0.5,         label="weights")
     if( weights0 is not None): plt.plot( weights0,'--c', lw=0.5,         label="weights0")
     plt.legend()

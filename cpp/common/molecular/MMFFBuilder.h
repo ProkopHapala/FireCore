@@ -87,8 +87,10 @@ struct AtomConf{
 
     //AtomConf() = default;
 
+    inline int sum_bonds()const{ return nbond+npi+ne+nH; }
+
     // compute the number of pi bonds
-    inline int fillIn_npi_sp3(){ npi=4-nbond-ne-nH; n=4; return npi; };
+    inline int fillIn_npi_sp3(){ npi=4-nbond-ne-nH; npi=(npi>2)?2:npi; n=4; return npi; };
 
     // cleanup
     inline int clean_pi_sp3  (){ npi=0; n=nbond+ne+nH;   return n;   };
@@ -107,7 +109,8 @@ struct AtomConf{
 
     // add a bond (or pi bond, or electron pair, or capping atom) into an atom neighbor list
     inline bool addNeigh(int ib, uint8_t& ninc ){
-        if(n>=N_NEIGH_MAX)return false;
+        n=sum_bonds();
+        if(n>=N_NEIGH_MAX){ return false; }
         if(ib>=0){ neighs[nbond]=ib; }else{ neighs[N_NEIGH_MAX-(n-nbond)-1]=ib; };
         ninc++;
         n++;
@@ -715,11 +718,12 @@ class Builder{  public:
             //printf( "MM::Builder.addBondToAtomConf ia %i ib %i ADDED \n", ia, ib );
             bool success = confs[ic].addBond(ib);
             if(!success){
-                printf("ERROR: in confs[%i].addBond(%i) => exit \n", ic, ib); 
-                confs[ic].print();
+                printf("ERROR: in Builder::tryAddBondToAtomConf(ia=%i) confs[%i].addBond(%i) failed => exit \n", ia, ic, ib); 
                 int it1 = atoms[bonds[ib].atoms.a].type;
                 int it2 = atoms[bonds[ib].atoms.b].type;
-                printf( "\nbond(%i-%i) %s-%s \n", bonds[ib].atoms.a, bonds[ib].atoms.b, params->atypes[it1].name, params->atypes[it2].name );
+                int it  = atoms[ia].type;
+                printf("ia %i t %i %-8s ic %i", ia, it, params->atypes[it].name ); confs[ic].print();
+                printf( "\nbond[%i](%i-%i) %s-%s \n", ib, bonds[ib].atoms.a, bonds[ib].atoms.b, params->atypes[it1].name, params->atypes[it2].name );
                 exit(0); 
             }
             //int order = bonds[ib].type;
@@ -1605,15 +1609,19 @@ class Builder{  public:
         //params->assignRE( ityp, REQ );
         AtomConf& conf = confs[ic];
         int ne = params->atypes[ityp].nepair;
+        if(conf.npi>2){ printf( "ERROR int autoConfEPi(ia=%i).1 np(%i)>2 => Exit() \n", ia, conf.npi, N_NEIGH_MAX ); exit(0); }
         if  ( (conf.nbond+conf.nH+ne)>N_NEIGH_MAX  ){ printf( "ERROR int autoConfEPi(ia=%i) ne(%i)+nb(%i)+nH(%i)>N_NEIGH_MAX(%i) => Exit() \n", ia, ne, conf.nbond, conf.nH, N_NEIGH_MAX ); exit(0);}
         else{ conf.ne=ne; }
         conf.fillIn_npi_sp3();
+        if(conf.npi>2){ printf( "ERROR int autoConfEPi(ia=%i).2 np(%i)>2 => Exit() \n", ia, conf.npi, N_NEIGH_MAX ); exit(0); }
         int nb = conf.nbond;
         if(nb>=2){ // for less than 2 neighbors makeConfGeom does not make sense
             Vec3d hs[4];
             //AtomConf* conf = tryGetNeighDirs( ia, hs );
             loadNeighbors( ia, conf.nbond, conf.neighs, hs );
             makeConfGeom (     conf.nbond, conf.npi,    hs );
+
+            
 
             // { // Debug
             //     sprintf( tmpstr, "atom%03i_hs.xyz", ia );
@@ -1638,6 +1646,7 @@ class Builder{  public:
                 }
             }
         }
+        if(conf.npi>2){ printf( "ERROR int autoConfEPi(ia=%i).3 np(%i)>2 => Exit() \n", ia, conf.npi, N_NEIGH_MAX ); exit(0); }
         return true;
     }
     int autoAllConfEPi( int ia0=0, int imax=-1 ){
@@ -1651,10 +1660,12 @@ class Builder{  public:
     }
 
     bool addEpairsByPi(int ia, double l=-0.5 ){
+        /// Add electron-pair (i.e. positively charge dummy atom) to all node atoms
         //printf( "addEpairsByPi[%i] \n", ia  );
         int ic=atoms[ia].iconf;
         if(ic<0)return false;
         int ityp=atoms[ia].type;
+        //printf( "addEpairsByPi[%i] l=%g t: %i %-8s \n", ia, l, ityp, params->atypes[ityp].name  );
         AtomConf& conf = confs[ic];
         int ne = conf.ne;
         if( (ne<1)||(conf.nbond>1)||(conf.npi<1) )return false;
@@ -1687,11 +1698,48 @@ class Builder{  public:
         }
         return true;
     }
-    int addAllEpairsByPi( int ia0=0, int imax=-1, bool byPi=true ){
+    int addAllEpairsByPi( int ia0=0, int imax=-1, bool byPi=true, bool bUseParams=true, double Lep=-0.5 ){
+        //printf( "addEpairsByPi[%i] l=%g\n", ia, l  );
         int n=0;
         if(imax<0){ imax=atoms.size(); }
         for(int ia=ia0;ia<imax;ia++){
+            double l = Lep;
+            if(bUseParams){
+                int ityp=atoms[ia].type;
+                l = params->atypes[ityp].Hb;
+            }
             if( addEpairsByPi(ia ) ){n++;}
+        }
+        return n;
+    }
+
+
+    bool addSigmaHole(int ia, double l=-0.5 ){
+        //printf( "addSigmaHole[%i] l=%g \n", ia, l  );
+        /// Add sigma hole (positively charge dummy atom) to all node atoms with just 1 neighbor
+        int ic=atoms[ia].iconf;
+        if(ic<0)return false;             // check if it is node atom
+        int ityp=atoms[ia].type;
+        //printf( "addSigmaHole[%i] l=%g t: %i %-8s \n", ia, l, ityp, params->atypes[ityp].name  );
+        AtomConf& conf = confs[ic];
+        if(conf.nbond!=1) return false;  // check if there is jsut 1 neighbor
+        int ib  = conf.neighs[0];
+        int iab = bonds[ib].getNeighborAtom(ia);
+        Vec3d h = atoms[ia].pos - atoms[iab].pos;
+        h.normalize();
+        addEpair(ia,h,l);
+        return true;
+    }
+    int addSigmaHoles( int ia0=0, int imax=-1, bool bUseParams=true, double Lep=-0.5  ){
+        int n=0;
+        if(imax<0){ imax=atoms.size(); }
+        for(int ia=ia0;ia<imax;ia++){
+            double l = Lep;
+            if(bUseParams){
+                int ityp=atoms[ia].type;
+                l = params->atypes[ityp].Hb;
+            }
+            if( addSigmaHole(ia ) ){n++;}
         }
         return n;
     }
@@ -2533,6 +2581,11 @@ void assignTorsions( bool bNonPi=false, bool bNO=true ){
             }
             puts("");
         }
+    }
+
+    void printCappingTypes()const{
+        printf(" # MM::Builder.printCappingTypes(nc=%i) \n", capping_types.size() );
+        for(int it: capping_types ){ printf("capping_types[%3i] %8s \n", it, params->atypes[it].name ); }
     }
 
     void chargeByNeighbors( bool bClean, double factor=0.05, int niters=1, double damp=0.5 ){

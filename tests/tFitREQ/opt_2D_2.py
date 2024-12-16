@@ -135,13 +135,13 @@ EminRef = np.min(Erefs)
 weights0 = np.ones( len(Erefs) )*0.5
 
 
-fit.setGlobalParams( kMorse=1.8, Lepairs=2.0 )
+fit.setGlobalParams( kMorse=1.8, Lepairs=0.7 )
 if bMorse:
     fit.setup( imodel=2, EvalJ=1, WriteJ=1, Regularize=1 )
     weights0, lens = fit.split_and_weight_curves( Erefs, x0s, n_before_min=100, weight_func=lambda E: fit.exp_weight_func(E,a=1.0, alpha=4.0) )
 else:
-    #fit.setup( imodel=1, EvalJ=1, WriteJ=1, Regularize=1 )
-    fit.setup( imodel=3, EvalJ=1, WriteJ=1, Regularize=1 )
+    fit.setup( imodel=1, EvalJ=1, WriteJ=1, Regularize=1 )
+    #fit.setup( imodel=3, EvalJ=1, WriteJ=1, Regularize=1 )
     weights0, lens = fit.split_and_weight_curves( Erefs, x0s, n_before_min=2, weight_func=lambda E: fit.exp_weight_func(E,a=1.0, alpha=4.0) )
 # plotEWs( Erefs=Erefs, weights0=weights0, Emin=-1.5 ); plt.title( "Weighting" )
 # plt.show(); exit()
@@ -168,19 +168,19 @@ E,Es,Fs = fit.getEs( bOmp=False, bDOFtoTypes=False, bEs=True, bFs=False, xyz_nam
 fit.plotEWs( Erefs=Erefs, Emodel=Es, weights=fit.weights, weights0=weights0,  Emin=EminPlot ); plt.title( "BEFORE OPTIMIZATION" )
 #plt.show(); exit()
 
-Eplots_ref = fit.slice_and_reshape(Erefs, marks, angle_data)
-Eplots_mod = fit.slice_and_reshape(Es,    marks, angle_data)
-fig = fit.plot_Epanels_diff(Eplots_mod, Eplots_ref, ref_dirs, Emin=EminRef*fit.ev2kcal, bColorbar=True, bKcal=True )
-#plt.savefig( "opt_2D.png" )
+# Eplots_ref = fit.slice_and_reshape(Erefs, marks, angle_data)
+# Eplots_mod = fit.slice_and_reshape(Es,    marks, angle_data)
+# fig = fit.plot_Epanels_diff(Eplots_mod, Eplots_ref, ref_dirs, Emin=EminRef*fit.ev2kcal, bColorbar=True, bKcal=True )
+# plt.savefig( "opt_2D.png" )
 
-plt.show(); exit()
+#plt.show(); exit()
 
 if bMorse:
     #Err = fit.run( iparallel=0, ialg=0, nstep=1000, Fmax=1e-4, dt=0.1, max_step=-1,  bClamp=True )
-    Err = fit.run( iparallel=0, ialg=1, nstep=1000, Fmax=1e-8, dt=0.5, damping=0.1,   max_step=-1,  bClamp=True )
+    Err = fit.run( iparallel=0, ialg=1, nstep=100, Fmax=1e-8, dt=0.5, damping=0.1,   max_step=-1,  bClamp=True )
 else:
     #Err = fit.run( iparallel=0, ialg=0, nstep=1000, Fmax=1e-4, dt=0.01, max_step=-1,  bClamp=True )
-    Err = fit.run( iparallel=0, ialg=1, nstep=1000, Fmax=1e-4, dt=0.1, damping=0.1,   max_step=-1,  bClamp=True )
+    Err = fit.run( iparallel=0, ialg=1, nstep=100, Fmax=1e-4, dt=0.1, damping=0.1,   max_step=-1,  bClamp=True )
 
 # ----- Combined hybrid optimization ( start with gradient descent, continue with dynamical descent) )
 #Err = fit.run( iparallel=0, ialg=0, nstep=20,  Fmax=1e-2, dt=0.005, max_step=-1,  bClamp=False )
@@ -198,11 +198,10 @@ fit.plotEWs( Erefs=Erefs, Emodel=Es, weights=fit.weights, Emin=EminPlot );   plt
 
 #plot_data_panels(Eplot, Eplot_ref, ref_dirs, bColorbar=True)
 
-#Eplots_ref = fit.slice_and_reshape(Erefs, marks, angle_data)
-#Eplots_mod = fit.slice_and_reshape(Es,    marks, angle_data)
-#fit.plot_Epanels_diff(Eplots_mod, Eplots_ref, ref_dirs, bColorbar=True)
 
-
+Eplots_ref = fit.slice_and_reshape(Erefs, marks, angle_data)
+Eplots_mod = fit.slice_and_reshape(Es,    marks, angle_data)
+fig = fit.plot_Epanels_diff(Eplots_mod, Eplots_ref, ref_dirs, Emin=EminRef*fit.ev2kcal, bColorbar=True, bKcal=True )
 
 plt.show(); # exit()
 

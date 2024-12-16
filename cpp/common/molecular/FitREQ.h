@@ -63,20 +63,20 @@ void rigid_transform( Vec3d shift, Vec3d* unshift, Vec3d dir, Vec3d up, int n, V
 }
 
 inline double getEpairAtom( double r, double Hij, double w, double& dEdH, double& dEdw ){
-    /*
+    
     double iw = 1.0/w;
     double u = r*iw; 
     dEdH = exp( -u );
     dEdw = dEdH*u*iw;
     //dEdH = exp( -u*u );
     return Hij * dEdH;
-    */
+    
 
-    if( r<w ){
-        return Hij;
-    }else{
-        return 0.0;
-    }
+    // if( r<w ){
+    //     return Hij;
+    // }else{
+    //     return 0.0;
+    // }
 }
 
 struct AddedData{
@@ -475,6 +475,8 @@ Atoms* addEpairs( Atoms* mol ){
     builder.clear();
     if(mol->lvec){ builder.lvec = *(mol->lvec); builder.bPBC=true; }
     builder.insertAtoms(*mol);
+    //builder.printCappingTypes();
+    //builder.printAtomConfs(false, true );
     builder.tryAddConfsToAtoms( 0, -1 );
     builder.cleanPis();
     if( builder.bPBC ){ 
@@ -484,11 +486,16 @@ Atoms* addEpairs( Atoms* mol ){
         builder.autoBonds( -.5,  0      , mol->n0     ); // we should not add bonds between rigid and flexible parts
         builder.autoBonds( -.5,  mol->n0, mol->natoms ); 
     }
+    //builder.printAtomConfs(false, true );
     builder.checkNumberOfBonds( true, true );
     builder.bDummyEpair = true;
     builder.autoAllConfEPi( ); 
+    //builder.printAtomConfs(false, true );
     builder.setPiLoop       ( 0, -1, 10 );
-    builder.addAllEpairsByPi( 0, -1 );       
+    builder.addAllEpairsByPi( 0, -1 );  
+    builder.addSigmaHoles();     
+    //builder.printAtomConfs(false, true );
+    //exit(0);
     return builder.exportAtoms(); 
 }
 
@@ -1475,16 +1482,13 @@ double evalExampleDerivs_LJQH2_SR( int i0, int ni, int j0, int nj, int*  types, 
             double dE_dE0 = 0.0;
             double dE_dH  = 0.0;
             double dE_dw  = 0.0;
-            if( bEpi ){        // i is an electron pair, j is a real atom
-                Eij              += getEpairAtom( r, H, REQi.x, dE_dH, dE_dw );
-                //printf( "evalExampleDerivs_LJQH2_SR() i(e): %3i j: %3i i.R: %10.3e i.H: %10.3e j.H: %10.3e i.Q: %10.3e j.Q: %10.3e  Eij %10.3e \n", i, j, REQi.x, REQi.w, REQj.w,  Qi, Qj, Eij  );
-                dE_dE0           = 0; // We should figure out if we want to optimize E0 or H as amplitude of the short range (?) maybe both
-                dE_dR0           = 0; // TODO: later we will optimize radiaus of the gaussian (?)
-            }else if( jh>=0 ){ // j is an electron pair, i is a real atom
-                Eij              += getEpairAtom( r, H, REQj.x, dE_dH, dE_dw );
-                //printf( "evalExampleDerivs_LJQH2_SR() i: %3i j(e): %3i j.R: %10.3e i.H: %10.3e j.H: %10.3e i.Q: %10.3e j.Q: %10.3e  Eij  %10.3e \n", i, j, REQj.x, REQi.w, REQj.w,  Qi, Qj, Eij  );
-                dE_dE0           = 0; // We should figure out if we want to optimize E0 or H as amplitude of the short range (?) maybe both
-                dE_dR0           = 0; // TODO: later we will optimize radiaus of the gaussian (?)
+            const bool bEpj = jh>=0;
+            if( bEpi||bEpj ){     // i or j is an electron pair
+                // double w=0; 
+                // if( bEpj       ){ w += REQj.x; }
+                // if( bEpi       ){ w += REQi.x; }
+                // if( bEpi&&bEpi ){ w *= 0.5;    }
+                // Eij += getEpairAtom( r, H, w, dE_dH, dE_dw );
             }else{
                 const double u   = R0/r;
                 const double u3  = u*u*u;
