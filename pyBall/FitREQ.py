@@ -592,7 +592,7 @@ def plotEWs(Erefs=None,Emodel=None,  weights=None,  weights0=None, bLimEref=True
 
 def numDeriv( x, y):
     dx = x[2:]-x[:-2]
-    dy = y[2: ]-y [:-2]
+    dy = y[2:]-y[:-2]
     xs = x[1:-1]
     return dy/dx, xs
 
@@ -602,7 +602,9 @@ def plotDOFscans( iDOFs, xs, DOFnames, bEs=True, bFs=False,  title="plotDOFscans
     ncol = len(color_cycle)
     for iDOF in iDOFs:
         y = DOFs[iDOF]    # store backup value of this DOF
+        #print( f"#======= DOF[{iDOF}]: {xs}" )
         Es,Fs = scanParam( iDOF, xs, bEvalSamples=bEvalSamples )   # do 1D scan
+        #print( f"#======= fDOF[{iDOF}]: {Efs}" )
         #print( "iDOF", iDOF, DOFnames[iDOF], "Es", Es )
         # take color from standard matplotlib color cycle
         c = color_cycle[iDOF % ncol]
@@ -610,7 +612,11 @@ def plotDOFscans( iDOFs, xs, DOFnames, bEs=True, bFs=False,  title="plotDOFscans
             plt.subplot(2,1,1); plt.plot(xs,Es, '-', color=c, label="E "+DOFnames[iDOF] )       # plot 1D scan
         if bFs: 
             Fs_num, xs_num = numDeriv(xs,Es)
-            plt.subplot(2,1,2); plt.plot(xs,Fs*0.208,    '-', lw=1.0, color=c, label="F "+DOFnames[iDOF] )       # This is error in the E_O3 charge derivative
+            print ( "# ======== iDOF", iDOF, DOFnames[iDOF] ); 
+            print ( "# i            x               E               dEdDOF       dEdDOF_num  " ); 
+            for i in range(1, len(xs)-1 ): print( " %3i %15.5f %15.5f %15.5f %15.5f"%(i, xs[i], Es[i], Fs[i], Fs_num[i-1]) )
+
+            plt.subplot(2,1,2); plt.plot(xs,Fs,    '-', lw=1.0, color=c, label="F "+DOFnames[iDOF] )       # This is error in the E_O3 charge derivative
             plt.subplot(2,1,2); plt.plot(xs_num,-Fs_num, ':', lw=1.5, color=c, label="F "+DOFnames[iDOF] ) 
         DOFs[iDOF] = y    # restore
 
