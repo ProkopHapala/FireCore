@@ -23,7 +23,7 @@ jobs:
       run: mkdir ${{github.workspace}}/cpp/Build
       
     - name: CMake
-      run: cmake ${{github.workspace}}
+      run: cmake ${{github.workspace}/cpp}
 
     # - name: Build
     #   # Build your program with the given configuration
