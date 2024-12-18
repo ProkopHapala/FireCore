@@ -25,7 +25,7 @@ jobs:
     - name: CMake
       run: |
         cd ${{github.workspace}}/cpp/Build
-        cmake ..
+        cmake .. -DWITH_SDL=ON -DWITH_OPENCL=ON -DWITH_FFTW=ON
 
     # - name: Build
     #   # Build your program with the given configuration
@@ -35,7 +35,7 @@ jobs:
       # Build your program with the given configuration
       run: |
         cd ${{github.workspace}}/cpp/Build
-        make
+        make -j19
         pwd
 
     - name: Test
