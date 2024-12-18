@@ -75,10 +75,10 @@ marks    = fit.concatenate_xyz_files( directories=ref_dirs, base_path=ref_path, 
 #fname = "input_single.xyz"
 #fname = ref_path +"/"+ name + "/all.xyz"
 #fname = ref_path +"/"+ "/concatenated_all.xyz"
-#fname = 'all.xyz'
+fname = 'all.xyz'
 #fname = "input_2CH2NH.xyz"
 #fname="H2O_1D.xyz"
-fname="H2O_single.xyz"
+#fname="H2O_single.xyz"
 #fname="just_Epair_2x2.xyz"
 #fname="just_Epair_1x1_ee.xyz"
 #fname="just_Epair_1x1_eh.xyz"
@@ -156,11 +156,12 @@ fit.setup( imodel=imodel, Regularize=-1 )
 #fit.plotDOFscans( list(range(len(dof_names))), np.linspace( -1.0+1e-6,  1.0-1e-6,  100 ), dof_names, title="DOF scan 1D" , bFs=True , bEvalSamples=True  )
 
 #fit.plotDOFscans( list(range(len(dof_names))), np.linspace( -1.0+1e-6,  1.0-1e-6,  5 ), dof_names, title="DOF scan 1D" , bFs=True , bEvalSamples=True  )
-
 fit.plotDOFscans( list(range(len(dof_names))), np.linspace( -1.0+1e-6,  1.0-1e-6,  100 ), dof_names, title="DOF scan 1D" , bFs=True , bEvalSamples=True  )
 
-fit.checkDOFderiv( 0, x0=0.5, d=0.001, bEvalSamples=True )
-fit.checkDOFderiv( 1, x0=0.5, d=0.001, bEvalSamples=True )
+for i in range(len(dof_names)):
+    fit.checkDOFderiv( i, x0=0.5, d=0.001, bEvalSamples=True )
+#fit.checkDOFderiv( 0, x0=0.5, d=0.001, bEvalSamples=True )
+#fit.checkDOFderiv( 1, x0=0.5, d=0.001, bEvalSamples=True )
 
 plt.show()
 

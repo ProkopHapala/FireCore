@@ -216,6 +216,8 @@ class FitREQ{ public:
     bool bPrintBeforReg = true;
     bool bPrintAfterReg = false;
 
+    bool bUpdateHostCharge = true;
+
     bool bSaveSampleToXYZ = false;
     char* xyz_out         = "out.xyz";
 
@@ -882,7 +884,9 @@ void fillTempArrays( const Atoms* atoms, Vec3d* apos, double* Qs  )const{
             //printf( "FillTempArrays()[iap=%3i] iE=%3i iX=%3i  t %3i %-8s iDOF=%3i Qep=%12.3e \n", j, iE, iX, ityp, params->atypes[ityp].name,  tt.z, Qep );
 
             Qs[iE]     = Qep;
-            //Qs[iX]    -= Qep;
+            if(bUpdateHostCharge){
+                Qs[iX]    -= Qep;
+            }
             double lep = Lepairs;
             if( bEpairDistByType ){ typeREQs[atoms->atypes[iE]].w; }
             apos[iE] = apos[iX] + ad->dirs[j] * lep;  // We move the electron pair to proper distance from the atom
@@ -1040,9 +1044,9 @@ double evalSampleError( int isamp, double& E ){
     double* fDOFs__ = bBroadcastFDOFs ? sample_fdofs + isamp*nDOFs : fDOFs_;   // broadcast fDOFs ?
     for(int k=0; k<nDOFs; k++){ fDOFs__[k]=0; }                                // clean fDOFs
     acumDerivs( atoms->natoms, atoms->atypes, dEw, fREQs, fDOFs_ );            // accumulate fDOFs from fREQs
-    if( bEpairs ){
+    if( bEpairs && bUpdateHostCharge ){
         AddedData * ad = (AddedData*)atoms->userData;
-        //acumHostDerivs( ad->nep, ad->bs, atoms->atypes, dEw, fREQs, fDOFs_ );
+        acumHostDerivs( ad->nep, ad->bs, atoms->atypes, dEw, fREQs, fDOFs_ );
     }
     if( bUdateDOFbounds  ){ updateDOFbounds( fDOFs__ ); }
     
@@ -1226,12 +1230,17 @@ void acumDerivs( int n, int* types, double dEw, Quat4d* fREQs, double* fDOFs ){
 
 __attribute__((hot)) 
 void acumHostDerivs( int nepair, Vec2i* epairAndHostIndex, int* types, double dEw, Quat4d* fREQs, double* fDOFs  ){
+    //printf( "acumHostDerivs() nepair %i\n", nepair );
     for(int i=0; i<nepair; i++){
-        Vec2i ab         = epairAndHostIndex[i];
-        int t            = types[ab.i];      // map atom index i to atom type t
-        const Quat4i& tt = typToREQ[t];      // get index of degrees of freedom for atom type t
-        const Quat4d&  f = fREQs[ab.j];         // get variation from the host atom
-        if(tt.z>=0){ fDOFs[tt.z]  -= f.z*dEw; } // we subtract the variational derivative of the host atom charge because the charge is transfered from host to the electron pair
+        Vec2i b             = epairAndHostIndex[i];
+        int  tE             = types[b.y];        // type of the electron pair
+        const Quat4i&  ttE  = typToREQ[tE];      // get index of degrees of freedom for atom type t
+        //printf( "acumHostDerivs() iEpair %i t %i %-8s tt.z %i f.z %g f.z*dEw %g dEw %g\n", i, t, params->atypes[t].name, tt.z, f.z, f.z*dEw, dEw );
+        if(ttE.z>=0){ 
+            //int tX              = types[b.x];        // type of the host atom
+            fDOFs[ttE.z]       -= fREQs[b.x].z*dEw; 
+            //printf( "acumHostDerivs() iEpair %3i t %3i %-8s tt.z %2i f.z %10.2e f.z*dEw %10.2e dEw %10.2e\n", i, tE, params->atypes[tE].name, ttE.z, fREQs[b.x].z, fREQs[b.x].z*dEw, dEw );
+        } // we subtract the variational derivative of the host atom charge because the charge is transfered from host to the electron pair
     }
 }
 
