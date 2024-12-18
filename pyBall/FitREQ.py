@@ -596,7 +596,7 @@ def numDeriv( x, y):
     xs = x[1:-1]
     return dy/dx, xs
 
-def plotDOFscans( iDOFs, xs, DOFnames, bEs=True, bFs=False,  title="plotDOFscans", bEvalSamples=False ):
+def plotDOFscans( iDOFs, xs, DOFnames, bEs=True, bFs=False,  title="plotDOFscans", bEvalSamples=True, bPrint=False ):
     plt.figure(figsize=(8,10.0))
     color_cycle = plt.rcParams['axes.prop_cycle'].by_key()['color']
     ncol = len(color_cycle)
@@ -612,12 +612,12 @@ def plotDOFscans( iDOFs, xs, DOFnames, bEs=True, bFs=False,  title="plotDOFscans
             plt.subplot(2,1,1); plt.plot(xs,Es, '-', color=c, label="E "+DOFnames[iDOF] )       # plot 1D scan
         if bFs: 
             Fs_num, xs_num = numDeriv(xs,Es)
-            print ( "# ======== iDOF", iDOF, DOFnames[iDOF] ); 
-            print ( "# i            x               E               dEdDOF       dEdDOF_num  " ); 
-            for i in range(1, len(xs)-1 ): print( " %3i %15.5f %15.5f %15.5f %15.5f"%(i, xs[i], Es[i], Fs[i], Fs_num[i-1]) )
-
             plt.subplot(2,1,2); plt.plot(xs,Fs,    '-', lw=1.0, color=c, label="F "+DOFnames[iDOF] )       # This is error in the E_O3 charge derivative
             plt.subplot(2,1,2); plt.plot(xs_num,-Fs_num, ':', lw=1.5, color=c, label="F "+DOFnames[iDOF] ) 
+            if bPrint:
+                print ( "# plotDOFscans DOF ", iDOF, DOFnames[iDOF], " dx= ", xs[1]-xs[0] ); 
+                print ( "#  i          x              E            F_ana=-dE/dDOF     F_num          F_ana-F_num          // F_num=-(E[i+1]-E[i-1])/(x[i+1]-x[i-1])" ); 
+                for i in range(1, len(xs)-1 ): print( " %3i %15.5f %15.5f %15.5f %15.5f %15.5f"%(i, xs[i], Es[i], Fs[i], -Fs_num[i-1], Fs[i]+Fs_num[i-1]) )
         DOFs[iDOF] = y    # restore
 
     plt.subplot(2,1,1);
@@ -635,6 +635,11 @@ def plotDOFscans( iDOFs, xs, DOFnames, bEs=True, bFs=False,  title="plotDOFscans
     
     #plt.show()
 
+def checkDOFderiv( iDOF, x0=0.5, d=0.001, bEvalSamples=True ):
+        xs = np.array([x0-d,x0,x0+d])
+        Es,Fs = scanParam( iDOF, xs, bEvalSamples=bEvalSamples )   # do 1D scan
+        F_num = numDeriv(xs,Es)[0][0]
+        print( f"checkDOFderiv(iDOF={iDOF}) x={x0} d={d} F_ana=-dE/dx={Fs[1]} F_num=-(E(x+d)-E(x-d))/(2d)={-F_num} F_ana-F_num={Fs[1]+F_num}" )
 
 def plot_Epanels(Eplots, ref_dirs, bColorbar=True, Emin=-5.0, bKcal=False ):
     E_units = 1.0

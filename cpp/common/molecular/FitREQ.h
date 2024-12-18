@@ -862,7 +862,7 @@ void fillTempArrays( const Atoms* atoms, Vec3d* apos, double* Qs  )const{
             if( tt.z>=0 ){ Qs[j] = DOFs[tt.z]; };
         //}
         //isEp[j] = 0;
-        printf( "FillTempArrays()[ia=%3i] t %3i %-8s iDOF=%3i Q=%12.3e \n", j, ityp, params->atypes[ityp].name,  tt.z, Qs[j] );
+        //printf( "FillTempArrays()[ia=%3i] t %3i %-8s iDOF=%3i Q=%12.3e \n", j, ityp, params->atypes[ityp].name,  tt.z, Qs[j] );
     }
     if( bEpairs ){  // electron pairs
         AddedData * ad = (AddedData*)atoms->userData;
@@ -879,7 +879,7 @@ void fillTempArrays( const Atoms* atoms, Vec3d* apos, double* Qs  )const{
             int ityp = atoms->atypes[iE];
             Quat4i tt = typToREQ[ityp];
             double Qep = DOFs[tt.z];
-            printf( "FillTempArrays()[iap=%3i] iE=%3i iX=%3i  t %3i %-8s iDOF=%3i Qep=%12.3e \n", j, iE, iX, ityp, params->atypes[ityp].name,  tt.z, Qep );
+            //printf( "FillTempArrays()[iap=%3i] iE=%3i iX=%3i  t %3i %-8s iDOF=%3i Qep=%12.3e \n", j, iE, iX, ityp, params->atypes[ityp].name,  tt.z, Qep );
 
             Qs[iE]     = Qep;
             //Qs[iX]    -= Qep;
@@ -1009,7 +1009,7 @@ void printOverRepulsiveList(){
 
 __attribute__((hot)) 
 double evalSampleError( int isamp, double& E ){
-    printf( "========== evalSampleError() isamp = %i \n", isamp );
+    //printf( "evalSampleError() isamp = %i \n", isamp );
     //isamp_debug = i;
     Atoms* atoms  = samples[isamp];
     double wi     = (weights)? weights[isamp] : 1.0;
@@ -1211,19 +1211,16 @@ void acumDerivs( int n, int* types, double dEw, Quat4d* fREQs, double* fDOFs ){
         int t            = types[ia];    // [natom] map atom index i to atom type t
         const Quat4i& tt = typToREQ[t];  // [ntype] get DOF index for type t
         const Quat4d  f  = fREQs[ia];    // [natom] variational derivative of parameters of atom i
-        
         if(tt.x>=0){ fDOFs[tt.x]+=f.x*dEw; }
         if(tt.y>=0){ fDOFs[tt.y]+=f.y*dEw; }
         if(tt.z>=0){ fDOFs[tt.z]+=f.z*dEw; }
         if(tt.w>=0){ fDOFs[tt.w]+=f.w*dEw; }
         //if( ( tt.x>=0 ) || ( tt.y>=0 ) || ( tt.z>=0 ) || ( tt.w>=0 ) )printf( "acumDerivs() ia: %3i  %2i|%-8s  dEw= %g fREQ( %10.2e %10.2e %10.2e %10.2e ) tt(%2i,%2i,%2i,%2i)\n", ia, t, params->atypes[t].name, dEw, f.x,f.y,f.z,f.w, tt.x,tt.y,tt.z,tt.w );
-        if( ( tt.x>=0 ) || ( tt.y>=0 ) || ( tt.z>=0 ) || ( tt.w>=0 ) )printf( "acumDerivs() ia: %3i  %2i|%-8s f.z %10.2e f.z*dEw %10.2e dEw %10.2e \n", ia, t, params->atypes[t].name, f.z, f.z*dEw, dEw );
+        //if( ( tt.x>=0 ) || ( tt.y>=0 ) || ( tt.z>=0 ) || ( tt.w>=0 ) )printf( "acumDerivs() ia: %3i  %2i|%-8s f.z %10.2e f.z*dEw %10.2e dEw %10.2e \n", ia, t, params->atypes[t].name, f.z, f.z*dEw, dEw );
         //if((tt.y>=0)&&(i==0))printf( "acumDerivs i= %i f= %g f*dEw= %g fDOFs= %g\n", i, f.y, f.y*dEw, fDOFs[tt.y] );
         //if((tt.x>=0)||(tt.y>=0))printf( "acumDerivs i= %i dE= %g f.x= %g fDOFs= %g f.y= %g fDOFs= %g\n", i, dE, f.x, fDOFs[tt.x], f.y, fDOFs[tt.y] );
     }
-    for(int i=0; i<nDOFs; i++){
-        printf( "acumDerivs() fDOFs[%3i] %10.2e\n", i, fDOFs[i] );
-    }
+    //for(int i=0; i<nDOFs; i++){  printf( "acumDerivs() fDOFs[%3i] %10.2e\n", i, fDOFs[i] );}
     //exit(0);
 }
 
@@ -1550,15 +1547,16 @@ __attribute__((hot))
 //double evalExampleDerivs_LJQH2( int i0, int ni, int j0, int nj, int*  types, Vec3d* ps, Quat4d*  typeREQs, double* Qs, Quat4d* dEdREQs )const{
 double evalExampleDerivs_LJQH2( int i0, int ni, int j0, int nj, int* __restrict__ types, Vec3d* __restrict__ ps, Quat4d* __restrict__ typeREQs, double* __restrict__ Qs, Quat4d* __restrict__ dEdREQs )const{
     const bool bWJ = bWriteJ&&dEdREQs;
-    printf("evalExampleDerivs_LJQH2() i0: %i ni: %i j0: %i nj: %i bWJ=%i\n", i0, ni, j0, nj, bWJ );
+    // printf("evalExampleDerivs_LJQH2() i0: %i ni: %i j0: %i nj: %i bWJ=%i\n", i0, ni, j0, nj, bWJ );
+    // 
+    // for(int i=0; i<ni+nj; i++){
+    //     const Vec3d&  pi    = ps      [i ]; 
+    //     const double  Qi    = Qs      [i ]; 
+    //     const int     ti    = types   [i ];
+    //     const Quat4d& REQi  = typeREQs[ti];
+    //     printf( "evalExampleDerivs_LJQH2() i: %3i REQH( %10.3e %10.3e %10.3e %10.3e) Q: %10.3e pos( %10.3f %10.3f %10.3f )\n", i,  REQi.x,REQi.y,REQi.z,REQi.w, Qi, pi.x,pi.y,pi.z );
+    // }
     double Etot = 0.0;
-    for(int i=0; i<ni+nj; i++){
-        const Vec3d&  pi    = ps      [i ]; 
-        const double  Qi    = Qs      [i ]; 
-        const int     ti    = types   [i ];
-        const Quat4d& REQi  = typeREQs[ti];
-        printf( "evalExampleDerivs_LJQH2() i: %3i REQH( %10.3e %10.3e %10.3e %10.3e) Q: %10.3e pos( %10.3f %10.3f %10.3f )\n", i,  REQi.x,REQi.y,REQi.z,REQi.w, Qi, pi.x,pi.y,pi.z );
-    }
     for(int ii=0; ii<ni; ii++){ // loop over all atoms[i] in system
         const int      i    = i0+ii;
         const Vec3d&  pi    = ps      [i ]; 
@@ -1583,9 +1581,7 @@ double evalExampleDerivs_LJQH2( int i0, int ni, int j0, int nj, int* __restrict_
             const double ir      = 1/r;
             const double dE_dQ   = ir * COULOMB_CONST;
             const double Eel     = Q * dE_dQ;
-
-            printf( "evalExampleDerivs_LJQH2() i: %3i j: %3i  r: %10.3e ir: %10.3e dE_dQ: %10.3e Eel: %10.3e Qi: %10.3e Qj: %10.3e\n", i, j, r, ir, dE_dQ, Eel, Qi, Qj );
-
+            //printf( "evalExampleDerivs_LJQH2() i: %3i j: %3i  r: %10.3e ir: %10.3e dE_dQ: %10.3e Eel: %10.3e Qi: %10.3e Qj: %10.3e\n", i, j, r, ir, dE_dQ, Eel, Qi, Qj );
             const double u       = R0/r;
             const double u3      = u*u*u;
             const double u6      = u3*u3;

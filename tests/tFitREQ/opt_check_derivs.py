@@ -78,7 +78,7 @@ marks    = fit.concatenate_xyz_files( directories=ref_dirs, base_path=ref_path, 
 #fname = 'all.xyz'
 #fname = "input_2CH2NH.xyz"
 #fname="H2O_1D.xyz"
-#fname="H2O_single.xyz"
+fname="H2O_single.xyz"
 #fname="just_Epair_2x2.xyz"
 #fname="just_Epair_1x1_ee.xyz"
 #fname="just_Epair_1x1_eh.xyz"
@@ -113,8 +113,8 @@ else:
 fit.loadDOFSelection( dof_fname)
 dof_names = fit.loadDOFnames( dof_fname )
 
-#nbatch = fit.loadXYZ( fname, bAddEpairs, bOutXYZ )     # load reference geometry
-nbatch = fit.loadXYZ( fname, bAddEpairs=False, bOutXYZ=bOutXYZ )     # load reference geometry
+nbatch = fit.loadXYZ( fname, bAddEpairs, bOutXYZ )     # load reference geometry
+#nbatch = fit.loadXYZ( fname, bAddEpairs=False, bOutXYZ=bOutXYZ )     # load reference geometry
 
 Erefs, x0s = fit.read_xyz_data(fname)  #;print( "x0s:\n", x0s )
 #weights = split_and_weight_curves(Erefs, x0s, n_before_min=4)
@@ -155,8 +155,12 @@ print( "len(dof_names)", len(dof_names), dof_names )
 fit.setup( imodel=imodel, Regularize=-1 )
 #fit.plotDOFscans( list(range(len(dof_names))), np.linspace( -1.0+1e-6,  1.0-1e-6,  100 ), dof_names, title="DOF scan 1D" , bFs=True , bEvalSamples=True  )
 
+#fit.plotDOFscans( list(range(len(dof_names))), np.linspace( -1.0+1e-6,  1.0-1e-6,  5 ), dof_names, title="DOF scan 1D" , bFs=True , bEvalSamples=True  )
 
-fit.plotDOFscans( list(range(len(dof_names))), np.linspace( -1.0+1e-6,  1.0-1e-6,  5 ), dof_names, title="DOF scan 1D" , bFs=True , bEvalSamples=True  )
+fit.plotDOFscans( list(range(len(dof_names))), np.linspace( -1.0+1e-6,  1.0-1e-6,  100 ), dof_names, title="DOF scan 1D" , bFs=True , bEvalSamples=True  )
+
+fit.checkDOFderiv( 0, x0=0.5, d=0.001, bEvalSamples=True )
+fit.checkDOFderiv( 1, x0=0.5, d=0.001, bEvalSamples=True )
 
 plt.show()
 
