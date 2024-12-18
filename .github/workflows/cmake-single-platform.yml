@@ -36,5 +36,5 @@ jobs:
       run: make ${{github.workspace}}/cpp/Build -j19
 
     - name: Test
-      run: ctest ${{github.workspace}}/cpp/Build -V --test-dir ${{github.workspace}}/cpp/tests
+      run: ctest ${{github.workspace}}/cpp/Build -V
 
