@@ -23,7 +23,9 @@ jobs:
       run: mkdir ${{github.workspace}}/cpp/Build
       
     - name: CMake
-      cmake -B${{ github.workspace }}/cpp/Build -S${{ github.workspace }}/cpp -DCMAKE_BUILD_TYPE=${{ env.BUILD_TYPE }}
+      run: |
+        cd ${{github.workspace}}/cpp/Build
+        cmake ..
 
     # - name: Build
     #   # Build your program with the given configuration
