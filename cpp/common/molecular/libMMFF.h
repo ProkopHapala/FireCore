@@ -2,6 +2,11 @@
 #include "Forces.h"
 #include "InterpolateTricubic.h"
 #include "Bspline.h"
+#include "Bspline_fit.h"
+#include "Bspline_fit_2D.h"
+#include "Bspline_fit_3D.h"
+#include "NURBS.h"
+#include "Multipoles.h"
 
 extern "C"{
 
@@ -10,6 +15,8 @@ extern "C"{
 void setVerbosity( int verbosity_, int idebug_ ){
     verbosity = verbosity_;
     idebug    = idebug_;
+    //std::cout.sync_with_stdio(true); // Make sure C++  stdout is synchronized with Python stdout , see https://chatgpt.com/c/67165c16-23ac-8003-965f-e84decdc725e
+    setbuf(stdout, NULL);
 }
 
 // ================ INITIALIZATION
@@ -44,7 +51,7 @@ void addAngConstrain( int i0,int i1,int i2, double ang0, double k ){
 
 bool checkInvariants( double maxVcog, double maxFcog, double maxTg ){ return W.checkInvariants( maxVcog, maxFcog, maxTg ); }
 void setTrjName     ( const char* trj_fname_, int savePerNsteps_, int* nPBC ){ W.trj_fname=trj_fname_; W.savePerNsteps=savePerNsteps_; if(verbosity>0)printf( "setTrjName(%s)\n", W.trj_fname ); W.nPBC_save=*(Vec3i*)nPBC; }
-int toXYZ           (const char* comment="#comment"){ return W.toXYZ(comment); }
+int  toXYZ          (const char* comment="#comment"){ return W.toXYZ(comment); }
 int saveXYZ( const char* fname, const char* comment, int imod){ 
     int ret=-1;
     switch (imod){
@@ -147,19 +154,142 @@ void scanAngleToAxis_ax( int n, int* selection, double r, double R, double* p0, 
 
 // ========= Force-Field Component Sampling  
 
-int fit_Bspline( const int n, double* Gs, double* Es, double* Ws, double Ftol, int nmaxiter, double dt ){
-    return Bspline::fit1D( n, Gs, Es, Ws, Ftol, nmaxiter, dt );
+void samplePBCindexes( int n, int* inds, int ng, int* iout, int order ){
+
+    Quat4i xqs3[4];
+    Vec6i  xqs5[6];
+    if      (order==3){ 
+        make_inds_pbc  (ng, xqs3);  
+        //for(int i=0; i<4; i++){  printf( "xqs3[%i]{%i,%i,%i,%i}\n",       i, xqs3[i].x,xqs3[i].y,xqs3[i].z,xqs3[i].w ); };  
+    }
+    else if (order==5){ 
+        make_inds_pbc_5(ng, xqs5);  
+        //for(int i=0; i<6; i++){  printf( "xqs5[%i]{%i,%i,%i,%i,%i,%i}\n", i, xqs5[i].a,xqs5[i].b,xqs5[i].c,xqs5[i].d,xqs5[i].e,xqs5[i].f  ); };  
+    }
+    else{ printf("ERROR in samplePBCindexes() order=%i not implemented \n"); exit(0); }
+    for(int ii=0; ii<n; ii++){
+        int i   = inds[ii];
+        int* is = iout + (order+1)*ii;
+        if     ( order==3 ){ i=modulo(i-1, ng); *((Quat4i*)is) = choose_inds_pbc_3( i, ng, xqs3 ); }
+        else if( order==5 ){ i=modulo(i-2, ng); *((Vec6i* )is) = choose_inds_pbc_5( i, ng, xqs5 ); }
+    }
 }
+
+
+void projectBspline1D( int nx, double* xs, double* ws, double g0, double dg, int ng, double* ys, int order ){
+    Quat4i xqs3[4];
+    Vec6i  xqs5[6];
+    //printf("projectBspline1D() nx=%i g0=%g dg=%g ng=%i order=%i \n", nx, g0, dg, ng, order );
+    if      (order==3){ 
+        make_inds_pbc  (ng, xqs3);  
+        //for(int i=0; i<4; i++){  printf( "xqs3[%i]{%i,%i,%i,%i}\n",       i, xqs3[i].x,xqs3[i].y,xqs3[i].z,xqs3[i].w ); };  
+    }
+    else if (order==5){ 
+        make_inds_pbc_5(ng, xqs5);  
+        //for(int i=0; i<6; i++){  printf( "xqs5[%i]{%i,%i,%i,%i,%i,%i}\n", i, xqs5[i].a,xqs5[i].b,xqs5[i].c,xqs5[i].d,xqs5[i].e,xqs5[i].f  ); };  
+    }
+    else{ printf("ERROR in samplePBCindexes() order=%i not implemented \n", order ); exit(0); }
+    for(int i=0; i<nx; i++){
+        double x   = xs[i];
+        double w   = ws[i];
+        if     ( order==3 ){ Bspline::project1D_cubic  ( w, x, g0, dg, ng, ys, xqs3 ); }
+        else if( order==5 ){ Bspline::project1D_quintic( w, x, g0, dg, ng, ys, xqs5 ); }
+    }
+}
+
+void projectBspline2D( int nx, double* ps_, double* ws, double* g0_, double* dg_, int* ng_, double* ys, int order ){
+    Vec2d*ps =  (Vec2d*)ps_;
+    Vec2d g0 = *(Vec2d*)g0_;
+    Vec2d dg = *(Vec2d*)dg_;
+    Vec2i ng = *(Vec2i*)ng_;
+    Vec2d inv_dg{ 1/dg.x, 1/dg.y };
+
+    Quat4i xqs3[4];
+    Quat4i yqs3[4];
+    //Vec6i  xqs5[6];
+    //Vec6i  yqs5[6];
+    //printf("projectBspline1D() nx=%i g0=%g dg=%g ng=%i order=%i \n", nx, g0, dg, ng, order );
+    if      (order==3){ 
+        make_inds_pbc  (ng.x, xqs3);  
+        make_inds_pbc  (ng.y, yqs3);  
+        for(int i=0; i<4; i++){  printf( "xqs3[%i]{%i,%i,%i,%i}\n",       i, xqs3[i].x,xqs3[i].y,xqs3[i].z,xqs3[i].w ); };  
+    } 
+    // else if (order==5){ 
+    //     make_inds_pbc_5(ng.x, xqs5);  
+    //     make_inds_pbc_5(ng.y, yqs5); 
+    // }
+    else{ printf("ERROR in samplePBCindexes() order=%i not implemented \n", order ); exit(0); }
+    for(int i=0; i<nx; i++){
+        Vec2d pi   = ps[i];
+        double w   = ws[i];
+        if     ( order==3 ){ Bspline::project2D_cubic  ( w, pi, g0, inv_dg, ng, ys, xqs3, yqs3 ); }
+        //else if( order==5 ){ Bspline::project1D_quintic( w, x, g0, dg, ng, ys, xqs5 ); }
+    }
+}
+
+// int fit_Bspline( const int n, double* Gs, double* Es, double* Ws, double Ftol, int nmaxiter, double dt, bool bHalf ){
+//     //return Bspline::fit1D_old( n, Gs, Es, Ws, Ftol, nmaxiter, dt );
+//     return Bspline::fit1D( n, Gs, Es, Ws, Ftol, nmaxiter, dt, bHalf );
+// }
+
+int fit_Bspline( const int n, double* Gs, double* Es, double* Ws, double Ftol, int nmaxiter, double dt, double Kreg, bool bPBC, bool bHalf  ){
+    printf("fit_Bspline() bPBC=%i Ftol=%g Kreg=%g nmaxiter=%i dt=%g \n", bPBC, Ftol, Kreg, nmaxiter, dt );
+    if (bHalf){
+        return Bspline::fit1D_old2( n, Gs, Es, Ws, Ftol, nmaxiter, dt, bHalf );
+    }else{
+        return Bspline::fit1D     ( n, Gs, Es, Ws, Ftol, nmaxiter, dt, Kreg, bPBC );
+    }
+}
+
 int fitEF_Bspline( double dg, const int n, double* Gs, double* fes, double* Ws, double Ftol, int nmaxiter, double dt ){
     return Bspline::fit1D_EF( dg, n, Gs,  (Vec2d*)fes, (Vec2d*)Ws, Ftol, nmaxiter, dt );
 }
 
-int fit3D_Bspline( const int* ns, double* Gs, double* Es, double* Ws, double Ftol, int nmaxiter, double dt ){
-    return Bspline::fit3D( *(Vec3i*)ns, Gs,  Es, Ws, Ftol, nmaxiter, dt );
+int fit2D_Bspline( const int* ns, double* Gs, double* Es, double* Ws, double Ftol, int nmaxiter, double dt, bool bPBC ){
+    return Bspline::fit2D( *(Vec2i*)ns, Gs,  Es, Ws, Ftol, nmaxiter, dt, bPBC );
 }
 
-void sample_Bspline( double g0, double dg, int ng, double* Gs, int n, double* xs, double* fes ){
-    Bspline::sample1D( g0,dg,ng,Gs, n, xs, (Vec2d*)fes );
+int fit3D_Bspline( const int* ns, double* Gs, double* Es, double* Ws, double Ftol, int nmaxiter, double dt, bool bPBC, bool bOMP ){
+    printf("fit3D_Bspline: bOMP=%i bPBC=%i \n", bOMP, bPBC );
+    if(bOMP){ return Bspline::fit3D_omp( *(Vec3i*)ns, Gs,  Es, Ws, Ftol, nmaxiter, dt, bPBC, false ); }
+    else    { return Bspline::fit3D    ( *(Vec3i*)ns, Gs,  Es, Ws, Ftol, nmaxiter, dt, bPBC, false ); }
+
+}
+
+void sample_Bspline( double g0, double dg, int ng, double* Gs, int n, double* xs, double* fes, int order, bool bPBC ){
+    switch (order) {
+        case 3 : { 
+            if(bPBC){ Bspline::sample1D_pbc( g0,dg,ng,Gs,n, xs, (Vec2d*)fes ); }
+            else    { Bspline::sample1D    ( g0,dg,ng,Gs,n, xs, (Vec2d*)fes ); } 
+        } break;
+        case 5 : { 
+            if(bPBC){ printf("ERROR: libMMFF::sample_Bspline() order=%i NOT IMPLEMENTED with bPBC=true !!! => exit\n", order ); exit(0); }
+            Bspline::sample1D_o5( g0,dg,ng,Gs, n, xs, (Vec2d*)fes ); 
+        } break;
+        default: { printf("ERROR: libMMFF::sample_Bspline() order=%i NOT IMPLEMENTED !!! => exit\n", order ); exit(0); } break;
+    }
+}
+
+void sample_NURBS( double g0, double dg, int ng, double* Gs, double* Ws, int n, double* xs, double* fes ){
+    NURBS::sample1D( g0,dg,ng,Gs, Ws, n, xs, (Vec2d*)fes );
+}
+
+void sample_Bspline2D( double* g0, double* dg, int* ng, double* G, int n, double* ps, double* fes ){
+    long t0 = getCPUticks();
+    Bspline::sample2D( *(Vec2d*)g0, *(Vec2d*) dg, *(Vec2i*)ng, G, n, (Vec2d*)ps, (Vec3d*)fes );    // sample3D(n=10000) time=2490.29[kTick] 249.029[tick/point]
+    double t = (getCPUticks()-t0); printf( "sample_Bspline2D(n=%i) time=%g[kTick] %g[tick/point]\n", n, t*(1.e-3), t/n );
+}
+
+void sample_Bspline2D_comb3( double* g0, double* dg, int* ng, double* G, int n, double* ps, double* fes, double* Cs ){
+    //long t0 = getCPUticks();
+    Bspline::sample2D_comb3( *(Vec2d*)g0, *(Vec2d*) dg, *(Vec2i*)ng, (Vec3d*)G, n, (Vec2d*)ps, (Vec3d*)fes, *(Vec3d*)Cs );    // sample3D(n=10000) time=2490.29[kTick] 249.029[tick/point]
+    //double t = (getCPUticks()-t0); printf( "sample_Bspline2D(n=%i) time=%g[kTick] %g[tick/point]\n", n, t*(1.e-3), t/n );
+}
+
+void sample_Bspline3D_comb3( double* g0, double* dg, int* ng, double* G, int n, double* ps, double* fes, double* Cs ){
+    //long t0 = getCPUticks();
+    Bspline::sample3D_comb3( *(Vec3d*)g0, *(Vec3d*) dg, *(Vec3i*)ng, (Vec3d*)G, n, (Vec3d*)ps, (Quat4d*)fes, *(Vec3d*)Cs );    // sample3D(n=10000) time=2490.29[kTick] 249.029[tick/point]
+    //double t = (getCPUticks()-t0); printf( "sample_Bspline2D(n=%i) time=%g[kTick] %g[tick/point]\n", n, t*(1.e-3), t/n );
 }
 
 void sample_Bspline3D( double* g0, double* dg, int* ng, double* G, int n, double* ps, double* fes ){
@@ -168,16 +298,28 @@ void sample_Bspline3D( double* g0, double* dg, int* ng, double* G, int n, double
     double t = (getCPUticks()-t0); printf( "sample_Bspline3D(n=%i) time=%g[kTick] %g[tick/point]\n", n, t*(1.e-3), t/n );
 }
 
-
-
 void sample_SplineHermite( double g0, double dg, int ng, double* Eg, int n, double* xs, double* fes ){
     Spline_Hermite::sample1D( g0,dg,ng,Eg, n, xs, (Vec2d*)fes );
+}
+
+void sample_SplineHermite_comb( double g0, double dg, int ng, double* Eg, int n, double* xs, double* fes, int ncomb, double* Cs ){
+    switch(ncomb){
+        case 2:{ Spline_Hermite::sample1D_deriv_comb2( g0,dg,ng,(Quat4d*)Eg, n, xs, (Vec2d*)fes, *(Vec2d*)Cs ); } break;
+    }
 }
 
 void sample_SplineHermite2D( double* g0, double* dg, int* ng, double* Eg, int n, double* ps, double* fes ){
     long t0 = getCPUticks();
     Spline_Hermite::sample2D( *(Vec2d*)g0, *(Vec2d*)dg, *(Vec2i*)ng, Eg, n, (Vec2d*)ps, (Vec3d*)fes );     //    54 [tick/point] with -Ofast
     //Spline_Hermite::sample2D_avx( *(Vec2d*)g0, *(Vec2d*)dg, *(Vec2i*)ng, Eg, n, (Vec2d*)ps, (Vec3d*)fes );   //   43 [tick/point] with -Ofast  
+    double t = (getCPUticks()-t0); printf( "sample2D(n=%i) time=%g[kTick] %g[tick/point]\n", n, t*(1.e-3), t/n );
+}
+
+void sample_SplineHermite2D_comb( double* g0, double* dg, int* ng, double* Gs, int n, double* ps, double* fes, int ncomb, double* Cs ){
+    long t0 = getCPUticks();
+    switch ( ncomb ){
+        case 2: {  Spline_Hermite::sample2D_deriv_comb( *(Vec2d*)g0, *(Vec2d*)dg, *(Vec2i*)ng, (Quat4d*)Gs, n, (Vec2d*)ps, (Vec3d*)fes, *(Vec2d*)Cs );  } break;
+    }
     double t = (getCPUticks()-t0); printf( "sample2D(n=%i) time=%g[kTick] %g[tick/point]\n", n, t*(1.e-3), t/n );
 }
 
@@ -198,6 +340,12 @@ void sample_SplineHermite3D_deriv( double* g0, double* dg, int* ng, double* Eg, 
     Spline_Hermite::sample3D_deriv( *(Vec3d*)g0, *(Vec3d*) dg, *(Vec3i*)ng, (Quat4d*)Eg, (Quat4d*)dEg, n, (Vec3d*)ps, (Quat4d*)fes ); 
 }
 
+void sample_SplineHermite3D_comb3( double* g0, double* dg, int* ng, double* EFg, int n, double* ps, double* fes, double* Cs ){
+    long t0 = getCPUticks();
+    Spline_Hermite::sample3D_deriv_comb3( *(Vec3d*)g0, *(Vec3d*)dg, *(Vec3i*)ng, (Vec2d*)EFg, n, (Vec3d*)ps, (Quat4d*)fes, *(Vec3d*)Cs );  // sample_SplineHermite3D_comb3(n=500) time=118.56[kTick] 237.12[tick/point]     with -Ofast (release compilation) 
+    double t = (getCPUticks()-t0); printf( "sample_SplineHermite3D_comb3(n=%i) time=%g[kTick] %g[tick/point]\n", n, t*(1.e-3), t/n );
+}
+
 void sample_SplineHermite2D_deriv( double* g0, double* dg, int* ng, double* Eg, double* dEg, int n, double* ps, double* fes ){
     Spline_Hermite::sample2D_deriv( *(Vec2d*)g0, *(Vec2d*)dg, *(Vec2i*)ng, (Quat4d*)Eg, (Quat4d*)dEg, n, (Vec2d*)ps, (Quat4d*)fes );  
 }
@@ -206,7 +354,25 @@ void sample_SplineHermite1D_deriv( double g0, double dg, int ng, double* EFg, in
     Spline_Hermite::sample1D_deriv( g0, dg, ng, (Vec2d*)EFg, n, ps, (Vec2d*)fes );  
 }
 
+void sampleCoulombPBC( int nps, double* ps, double* fe, int natom,  double* apos, double* Qs, double* lvec, int* nPBC, double Rdamp ){
+    sampleCoulombPBC( nps, (Vec3d*)ps, (Quat4d*)fe, natom,  (Vec3d*)apos, Qs, *(Mat3d*)lvec, *(Vec3i*)nPBC, Rdamp );
+}
 
+
+void projectMultiPole( double* p0, int n, double* ps, double* Qs, int order, double* cs ){
+    //Multiplole::center()
+    (*(Vec3d*)p0) = Multiplole::project( 0, n, (Vec3d*)ps, Qs, order, cs, true );
+    //void project( const Vec3d* p0_, int n, const Vec3d * ps, const double * Qs, int order, double * cs, bool bClear=true ){
+};
+
+void sampleMultipole( int n, double* ps_, double* fe_, double* p0_, int order, double* cs ){
+    Quat4d* fe = (Quat4d*)fe_;
+    Vec3d*  ps = (Vec3d*)ps_;
+    Vec3d   p0 = *(Vec3d*)p0_;
+    for(int i=0; i<n; i++){
+        fe[i].w = Multiplole::EFmultipole( ps[i]-p0, fe[i].f, cs, order );
+    }
+}
 
 inline double periodic_x2(double x, int nmax=100){
     //int ix    = (int)(x+nmax) - nmax; // fast floor

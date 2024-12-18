@@ -1,9 +1,9 @@
 
 #ifndef AOIntegrals_h
 #define AOIntegrals_h
-
-/// @file
-/// \ingroup Molecular
+/// @file AOIntegrals.h @brief Implements the calculation of integrals between atomic orbitals (mostly s,p symmetry) 
+/// @defgroup Atomic_Basiset_Quantum_Chemistry  Atomic_Basiset_Quantum_Chemistry
+/// @addtogroup Atomic_Basiset_Quantum_Chemistry
 /// @{
 
 #include <stdint.h>
@@ -394,8 +394,7 @@ void integrateCylFunc( Func1 func1, Func2 func2, int order, int nint, double dz,
     delete [] ws;
 }
 
-///  @}
-
+/// @}
 #endif
 
 

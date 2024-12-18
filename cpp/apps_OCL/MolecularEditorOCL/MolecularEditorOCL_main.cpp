@@ -328,10 +328,10 @@ void AppMolecularEditorOCL::initRigidSubstrate(){
 
 AppMolecularEditorOCL::AppMolecularEditorOCL( int& id, int WIDTH_, int HEIGHT_ ) : AppSDL2OGL_3D( id, WIDTH_, HEIGHT_ ) {
 
-    cl = new OCLsystem();  DEBUG
+    cl = new OCLsystem(); 
     cl->init();
-    gridFFocl.init( cl, "cl/FF.cl" ); DEBUG
-    clworld  .init( cl, "cl/relaxMolecules.cl" ); DEBUG
+    gridFFocl.init( cl, "cl/FF.cl" ); 
+    clworld  .init( cl, "cl/relaxMolecules.cl" ); 
 
     fontTex = makeTexture( "common_resources/dejvu_sans_mono_RGBA_inv.bmp" );
 
@@ -363,7 +363,7 @@ AppMolecularEditorOCL::AppMolecularEditorOCL( int& id, int WIDTH_, int HEIGHT_ )
     printf( "type %s \n", params.atypes[ params.atypNames.find( "H" )->second ].toString( str ) );
     printf( "type %s \n", params.atypes[ params.atypNames.find( "O" )->second ].toString( str ) );
     printf( "type %s \n", params.atypes[ params.atypNames.find( "N" )->second ].toString( str ) );
-    DEBUG
+  
     /*
     auto it = params.atypNames.find( "C" );
     if( it != params.atypNames.end() ){
@@ -377,35 +377,35 @@ AppMolecularEditorOCL::AppMolecularEditorOCL( int& id, int WIDTH_, int HEIGHT_ )
     //mol.atypNames = &params.atypNames;
     //exit(0);
 
-    DEBUG
+
     //builder.loadMolType( "inputs/water_T5_ax.xyz", "H2O" );
     builder.loadMolType( "inputs/water_ax.xyz", "H2O" );
     builder.loadMolType( "inputs/NaIon.xyz", "Na+" );
     builder.loadMolType( "inputs/ClIon.xyz", "Cl-" );
     builder.loadMolType( "inputs/OHion.xyz", "OH-" );
-    DEBUG
+
     for( Molecule* mol : builder.molTypes ){
         //mol->atypNames = &params.atypNames;
         mol->printAtomInfo();
         params.assignREs( mol->natoms, mol->atomType, mol->REQs );
         clworld.addMolType( *mol );
     }
-    DEBUG
+
     Mat3d rot; rot.setOne();
     //builder.insertMolecule( "OH-", {0.0,0.0,8.0}, rot, true );
     builder.insertMolecule( "H2O", {0.9,1.1,8.0}, rot, true );
     builder.insertMolecule( "H2O", {4.0,4.0,8.0}, rot, true );
-    DEBUG
+
 
     world.printAtomInfo();
-    builder.toMMFF( &world );                                 DEBUG
+    builder.toMMFF( &world );                                 
     world.printAtomInfo(); //exit(0);
     //world.allocFragment( nFrag );
     //opt.bindArrays( 8*world.nFrag, (double*)world.poses, new double[8*world.nFrag], (double*)world.poseFs );
     //opt.bindArrays( 8*world.nFrag, world.poses, world.poseVs, world.poseFs );
     world.allocateDyn();
     world.initDyn();
-    opt.bindArrays( world.nDyn, world.dynPos, world.dynVel, world.dynForce ); DEBUG
+    opt.bindArrays( world.nDyn, world.dynPos, world.dynVel, world.dynForce );
     opt.setInvMass( 1.0 );
     opt.cleanVel  ( );
     //exit(0);
@@ -413,11 +413,7 @@ AppMolecularEditorOCL::AppMolecularEditorOCL( int& id, int WIDTH_, int HEIGHT_ )
     printf("POSE_Force : \n"); printPoses( world.nFrag, world.poseFs );
     //exit(0);
 
-    DEBUG
-
     initRigidSubstrate();
-
-    DEBUG
 
     //int nMols  = 1;
     int nMols    = world.nFrag;
@@ -427,9 +423,6 @@ AppMolecularEditorOCL::AppMolecularEditorOCL( int& id, int WIDTH_, int HEIGHT_ )
     //clworld.prepareBuffers( nSystems, nMols, world.gridFF.grid.n, world.gridFF.FFPaul_f, world.gridFF.FFLond_f, world.gridFF.FFelec_f );
     clworld.alpha = world.gridFF.alphaMorseMorse;
     clworld.prepareBuffers( nSystems, nMols, world.gridFF );
-
-    DEBUG
-
 
     /*
     GPU 1 pos(4.10676,3.82665,3.86912) PLQ(3.04128,-0.563395,0.197332) fe(5.58798e-05,8.68301e-05,4.14168e-05)
@@ -555,15 +548,14 @@ AppMolecularEditorOCL::AppMolecularEditorOCL( int& id, int WIDTH_, int HEIGHT_ )
 
     //exit(0);
 
-    DEBUG
 
     clworld.updateMolStats();
     clworld.setupKernel_getForceRigidSystemSurfGrid( world.gridFF.grid, world.gridFF.alphaMorseMorse, 0.5, 1 );
-    clworld.upload_mol2atoms(); DEBUG
-    clworld.upload_poses();     DEBUG
-    //printf( "DEBUG : upload_poses(); DONE\n ");
-    //clworld.clean_vposes();     DEBUG
-    //clworld.upload_vposes();    DEBUG
+    clworld.upload_mol2atoms();
+    clworld.upload_poses();     
+    //printf( "ebug : upload_poses(); DONE\n ");
+    //clworld.clean_vposes();     
+    //clworld.upload_vposes();    
 
     long t1;
     t1=getCPUticks();
@@ -579,34 +571,6 @@ AppMolecularEditorOCL::AppMolecularEditorOCL( int& id, int WIDTH_, int HEIGHT_ )
 
     //exit(0);
 
-
-    /*
-    clworld.task_getForceRigidSystemSurfGrid->enque();  DEBUG
-    clworld.download_poses();    DEBUG
-    clworld.download_fposes();   DEBUG
-    clFinish(cl->commands);      DEBUG;
-    */
-
-    /*
-    int nAtoms =  clworld.countAtomsInSystem( 0 ); DEBUG;
-    clworld.prepareBuffers_getFEgrid( nAtoms );         DEBUG;
-    printf( "nAtoms %i \n", nAtoms );
-    clworld.system2PLQs( 0, clworld.PLQs );        DEBUG;
-    clworld.system2poss( 0, clworld.poss );        DEBUG;
-    clworld.upload_PLQs();
-    clworld.setupKernel_getFEgrid( world.gridFF.grid ); DEBUG;
-    */
-
-    //clworld.upload_PLQs();
-    //clworld.upload_poss();
-    //clworld.task_getFEgrid->enque();
-    //clworld.download_FEs();
-    //clFinish(cl->commands);
-
-    //exit(0);
-
-    DEBUG
-
     atoms_tmp  = new float8[1000];
     fatoms_tmp = new Vec3f [1000];
     atom_count = clworld.system2atoms( isystem, atoms_tmp );
@@ -619,8 +583,6 @@ AppMolecularEditorOCL::AppMolecularEditorOCL( int& id, int WIDTH_, int HEIGHT_ )
     manipulator.nenabled = 10;
     manipulator.enabled = new int[manipulator.nenabled];
     std::memcpy( manipulator.enabled, (const int[]){0,1,2,3,4,5,6,7,8,9}, manipulator.nenabled*sizeof(int) );
-
-    DEBUG
     //exit(0);
 
 /*
@@ -789,7 +751,7 @@ void AppMolecularEditorOCL::stepCPU( double& F2, bool randomConf ){
         world.tryFragPose( 0, false, shift, qrot );
     }
 
-    world.frags2atoms();       //printf( "DEBUG 5.2\n" );
+    world.frags2atoms();       
     world.eval_FFgrid();
     world.eval_MorseQ_On2_fragAware();
 
@@ -799,12 +761,12 @@ void AppMolecularEditorOCL::stepCPU( double& F2, bool randomConf ){
     }
 
     world.cleanPoseTemps();
-    world.aforce2frags();      //printf( "DEBUG 5.4\n" );
+    world.aforce2frags();     ;
 
     for(int i=0; i<world.natoms; i++ ){ Draw3D::drawVecInPos( world.aforce[i]*10.0, world.apos[i] ); }
 
     world.toDym(true);
-    F2 = opt.move_FIRE();  //printf( "DEBUG 5.5\n" );
+    F2 = opt.move_FIRE();  
     world.checkPoseUnitary();
     world.fromDym();
 }

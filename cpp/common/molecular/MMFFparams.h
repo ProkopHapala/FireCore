@@ -1,5 +1,9 @@
 #ifndef MMFFparams_h
 #define MMFFparams_h
+/// @file MMFFparams.h @brief This file contains class MMFFparams, which stores parameters for the Molecular Mechanics Force-field
+/// @defgroup Classical_Molecular_Mechanics  Classical_Molecular_Mechanics
+/// @addtogroup Classical_Molecular_Mechanics
+/// @{
 
 #include  "globals.h"
 
@@ -15,6 +19,7 @@
 
 #include "Atoms.h"
 
+/// @brief Type of bond in clssical molecular mechanics force-field
 class BondType{ public:
     double  length;    // bond equilibrium distance
     double  stiffness; // bond force constant
@@ -28,6 +33,7 @@ class BondType{ public:
     inline uint64_t        id   (){ return getId( atoms.x, atoms.y, order ); }
 };
 
+/// @brief  Type of angle in clssical molecular mechanics force-field
 class AngleType{ public:
     double angle0;    // equilibrium angle
     double stiffness; // angle force constant
@@ -37,7 +43,7 @@ class AngleType{ public:
     inline uint64_t        id   (){ return getId( atoms.x, atoms.y, atoms.z ); }
 };
 
-
+/// @brief  Type of dihedral (Torsion) angle in clssical molecular mechanics force-field
 class DihedralType{ public:
     Quat4i atoms; // atoms involved in the dihedral, a-b-c-d
     int    bo;    // bond order of central atoms
@@ -49,6 +55,7 @@ class DihedralType{ public:
     inline        uint64_t id   (){ return getId(atoms.x,atoms.y,atoms.z,atoms.w,bo); }
 };
 
+/// @brief Type of elemenet (e.g. H, C, O, N, etc.)
 class ElementType{ public:
     char      name[4];    // symbol
     uint8_t   iZ;         // atomic number
@@ -81,7 +88,7 @@ class ElementType{ public:
     inline uint8_t nepair(){ return (neval-valence)/2; };
 };
 
-// atom type class
+/// @brief Type of atom defined by its bonding topology and chemical environment (e.g. C_sp2, C_sp3, O_sp2_COOH ) 
 class AtomType{ public:
     char      name[8];    // symbol
     uint8_t   iZ;         // atomic number
@@ -142,15 +149,12 @@ static const int z2typ0[]{
     5  //F 
 };
 
-/**
- * @file MMFFparams.h
- * @brief This file contains the declaration of the MMFFparams class, which stores parameters for the Molecular Mechanics Force-field
- * 
- * The MMFFparams class contains vectors and maps that store information about the different types of atoms, bonds, angles, and dihedrals. 
- * It also contains default values for bond length and stiffness, as well as a default non-bonding parameters for hydrogen-like atoms.
- * The class provides methods for initializing and printing the atom and element type dictionaries, as well as methods for retrieving the atom and element types of a given string. 
- * It also provides methods for retrieving the root parent of an atom type and converting a string to an atom type.
- */
+///  @file MMFFparams.h
+///  @brief This file contains the declaration of the MMFFparams class, which stores parameters for the Molecular Mechanics Force-field
+///  The MMFFparams class contains vectors and maps that store information about the different types of atoms, bonds, angles, and dihedrals. 
+///  It also contains default values for bond length and stiffness, as well as a default non-bonding parameters for hydrogen-like atoms.
+///  The class provides methods for initializing and printing the atom and element type dictionaries, as well as methods for retrieving the atom and element types of a given string. 
+///  It also provides methods for retrieving the root parent of an atom type and converting a string to an atom type.
 class MMFFparams{ public:
 
     // http://www.science.uwaterloo.ca/~cchieh/cact/c120/bondel.html
@@ -521,6 +525,16 @@ class MMFFparams{ public:
     inline const AtomType* getAtomTypeObj(const char* s, bool bErr=true)const{ return &atypes[getAtomType(s,bErr)];  }
 
 
+    Vec2i parseBondAtomTypes( const char* str, bool bErr=true ){
+        // char sep='-',
+        char name1[8];  
+        char name2[8];
+        sscanf( str, "%[^-]-%s", name1, name2 );
+        //printf( "parseBondAtomTypes(): (%s,%s) str=%s\n", name1, name2, str );
+        return Vec2i{ getAtomType(name1, bErr), getAtomType(name1, bErr) }; 
+    }
+
+
     inline const ElementType* elementOfAtomType( int it )const{ return &etypes[atypes[it].element]; }
 
     // following the graph and getting the ancestor
@@ -711,7 +725,7 @@ class MMFFparams{ public:
     }
 
     // vector with all non-bonded parameters
-    inline void assignRE( int ityp, Quat4d& REQ, bool bSqrtE=false, bool bHB=true )const{
+    inline void assignRE( int ityp, Quat4d& REQ, bool bSqrtE=true, bool bHB=true )const{
         REQ.x    = atypes[ityp].RvdW;
         double e = atypes[ityp].EvdW;
         if(bSqrtE) e=sqrt(e);
@@ -719,7 +733,7 @@ class MMFFparams{ public:
         //if(bHB) REQ.w = atypes[ityp].Hb; // Hbond Correction
     }
 
-    void assignREs( int n, int * itypes, Quat4d * REQs, bool bSqrtE=false, bool bQ0=false )const{
+    void assignREs( int n, int * itypes, Quat4d * REQs, bool bSqrtE=true, bool bQ0=false )const{
         printf( "MMFFparams::assignREs(%i) @itypes=%li \n", n, (long)itypes );
         for(int i=0; i<n; i++){
             const int ityp = itypes[i];
@@ -804,13 +818,15 @@ class MMFFparams{ public:
         double junk; 
         int npi;
         double Q,H;
-        // read all lines
+        //printf("MMFFparams::loadXYZ() natoms=%i \n", natoms ); 
         for(int i=0; i<natoms; i++){
             line = fgets( buff, nbuf, pFile );
+            if(line == NULL) { printf( "ERORR in MMFFparams::loadXYZ(%s) Unexpected end of file while reading atom %i (natom=%i)\n", fname, i, natoms ); fclose(pFile); exit(0); }
+            //printf("MMFFparams::fgets[%i](%s)\n", i, line ); 
             //int nret = sscanf( line, "%s %lf %lf %lf %lf \n", at_name, &apos[i].x, &apos[i].y, &apos[i].z, &Q, &npi );
             int nret = sscanf( line, "%s %lf %lf %lf %lf %lf %i", at_name, &apos[i].x, &apos[i].y, &apos[i].z, &Q, &H, &npi  );
             //printf( "MMFFparams::loadXYZ() atom[%i] %s xyz(%12.6f,%12.6f,%12.6f) Q,Hb(%12.6f,%12.6f) npi=%i\n", i, at_name, apos[i].x, apos[i].y, apos[i].z, Q, H, npi  );
-            if( nret < 4 ){ printf( "ERROR in MMFFparams::loadXYZ: position of atom %i is not complete => Exit()\n", i  ); printf("%s\n", line ); exit(0); }
+            if( nret < 4 ){ printf( "ERROR in MMFFparams::loadXYZ: position of atom %i is not complete => Exit()\n", i  ); printf("%s\n", line ); fclose(pFile); exit(0); }
             if( nret < 5 ){ Q=0; };
             if( nret < 6 ){ H=0; };
             if( nret < 7 ){ npi=-1; };
@@ -824,8 +840,10 @@ class MMFFparams{ public:
                 if(atype_)atype[i] = -1;
                 if(REQs_)REQs[i]  = default_REQ;
             }
+            //printf( "MMFFparams::loadXYZ() atom[%3i] atyp(%3i) xyz(%12.6f,%12.6f,%12.6f) REQs(%12.6f,%12.6f,%12.6f,%12.6f) \n", i, atype[i], apos[i].x, apos[i].y, apos[i].z, REQs[i].x,REQs[i].y,REQs[i].z, REQs[i].w  );
         }
         fclose(pFile);
+        printf( "MMFFparams::loadXYZ() DONE \n" );
         return ret;
     }
 
@@ -924,5 +942,7 @@ class MMFFparams{ public:
     //////////////
 
 };
+
+/// @}
 
 #endif

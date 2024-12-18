@@ -321,7 +321,7 @@ AppMolecularEditorOCL::AppMolecularEditorOCL( int& id, int WIDTH_, int HEIGHT_ )
     printf( "type %s \n", params.atypes[ params.atypNames.find( "H" )->second ].toString( str ) );
     printf( "type %s \n", params.atypes[ params.atypNames.find( "O" )->second ].toString( str ) );
     printf( "type %s \n", params.atypes[ params.atypNames.find( "N" )->second ].toString( str ) );
-    DEBUG
+
     /*
     auto it = params.atypNames.find( "C" );
     if( it != params.atypNames.end() ){
@@ -335,7 +335,7 @@ AppMolecularEditorOCL::AppMolecularEditorOCL( int& id, int WIDTH_, int HEIGHT_ )
     //mol.atypNames = &params.atypNames;
     //exit(0);
 
-    DEBUG
+
     //builder.loadMolType( "inputs/water_T5_ax.xyz", "H2O" );
     //builder.loadMolType( "inputs/water_ax.xyz", "H2O" );
     //builder.loadMolType( "inputs/NaIon.xyz", "Na+" );
@@ -345,28 +345,27 @@ AppMolecularEditorOCL::AppMolecularEditorOCL( int& id, int WIDTH_, int HEIGHT_ )
     //builder.loadMolType( "inputs/Campher.xyz", "Campher" );
     builder.loadMolType( "inputs/ClIon.xyz"  , "Cl-"     );
 
-    DEBUG
+
     for( Molecule* mol : builder.molTypes ){
         //mol->atypNames = &params.atypNames;
         mol->printAtomInfo();
         params.assignREs( mol->natoms, mol->atomType, mol->REQs );
         clworld.addMolType( *mol );
     }
-    DEBUG
+
     Mat3d rot; rot.setOne();
     //builder.insertMolecule( "OH-", {0.0,0.0,8.0}, rot, true );
     builder.insertMolecule( "Cl-",     {4.0,4.0,22.0}, rot, true );
     builder.insertMolecule( "Campher", {4.0,4.0,16.0}, rot, true );
-    DEBUG
 
     //exit(0);
 
     world.printAtomInfo();
-    builder.toMMFF( &world );                                 DEBUG
+    builder.toMMFF( &world );                           
     world.printAtomInfo(); //exit(0);
     world.allocateDyn();
     world.initDyn();
-    opt.bindArrays( world.nDyn, world.dynPos, world.dynVel, world.dynForce ); DEBUG
+    opt.bindArrays( world.nDyn, world.dynPos, world.dynVel, world.dynForce );
     opt.setInvMass( 1.0 );
     opt.cleanVel  ( );
     //exit(0);
@@ -374,11 +373,7 @@ AppMolecularEditorOCL::AppMolecularEditorOCL( int& id, int WIDTH_, int HEIGHT_ )
     printf("POSE_Force : \n"); printPoses( world.nFrag, world.poseFs );
     //exit(0);
 
-    DEBUG
-
     initRigidSubstrate();
-
-    DEBUG
 
     //int nMols  = 1;
     int nMols    = world.nFrag;
@@ -501,15 +496,11 @@ AppMolecularEditorOCL::AppMolecularEditorOCL( int& id, int WIDTH_, int HEIGHT_ )
 
     //exit(0);
 
-    DEBUG
-
     clworld.updateMolStats();
     clworld.setupKernel_getForceRigidSystemSurfGrid( world.gridFF.grid, world.gridFF.alphaMorse, 0.5, 1 );
-    clworld.upload_mol2atoms(); DEBUG
-    clworld.upload_poses();     DEBUG
-    //printf( "DEBUG : upload_poses(); DONE\n ");
-    //clworld.clean_vposes();     DEBUG
-    //clworld.upload_vposes();    DEBUG
+    clworld.upload_mol2atoms(); 
+    clworld.upload_poses();   
+
 
     printf( "clFlush: %s \n ", OCL_err_code( clFlush(cl->commands) ) );
     
@@ -537,8 +528,6 @@ AppMolecularEditorOCL::AppMolecularEditorOCL( int& id, int WIDTH_, int HEIGHT_ )
     double T = (getCPUticks()-t1);
     printf( "relaxStepGPU time %3.3e \n", T  );
 
-    DEBUG
-
     atoms_tmp  = new float8[1000];
     fatoms_tmp = new Vec3f [1000];
     atom_count = clworld.system2atoms( isystem, atoms_tmp );
@@ -552,7 +541,7 @@ AppMolecularEditorOCL::AppMolecularEditorOCL( int& id, int WIDTH_, int HEIGHT_ )
     manipulator.enabled = new int[manipulator.nenabled];
     std::memcpy( manipulator.enabled, (const int[]){0,1,2,3,4,5,6,7,8,9}, manipulator.nenabled*sizeof(int) );
 
-    DEBUG
+
     //exit(0);
 
 

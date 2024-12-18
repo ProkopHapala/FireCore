@@ -63,16 +63,18 @@ class Vec3T{
 	inline VEC zxy() const { return {z,x,y}; };
 	inline VEC zyx() const { return {z,y,x}; };
 
-    inline VEC  swap   (const Vec3T<int>& inds          ) const{ return {array[inds.x],array[inds.y],array[inds.z]}; };
-    inline void swap_to(const Vec3T<int>& inds, VEC& out) const{ out.x=array[inds.x]; out.y=array[inds.y]; out.z=array[inds.z]; };
+    
+    inline VEC  swaped (const Vec3T<int>& inds          ) const{ return VEC{array[inds.x],array[inds.y],array[inds.z]}; };
+    inline void swap   (const Vec3T<int>& inds          ){ *this=swaped(inds); };
+    //inline void swap_to(const Vec3T<int>& inds, VEC& out) const{ out.x=array[inds.x]; out.y=array[inds.y]; out.z=array[inds.z]; };
 
-	inline VEC& set( T f                    ) { x=f;   y=f;   z=f;   return *this; };
+	inline VEC& set( T f              ) { x=f;   y=f;   z=f;   return *this; };
     inline VEC& set( T fx, T fy, T fz ) { x=fx;  y=fy;  z=fz;  return *this; };
-    inline VEC& set( const VEC& v              ) { x=v.x; y=v.y; z=v.z; return *this; };
-	inline VEC& set( T* arr                 ) { x=arr[0]; y=arr[1]; z=arr[2]; return *this; };
+    inline VEC& set( const VEC& v     ) { x=v.x; y=v.y; z=v.z; return *this; };
+	inline VEC& set( T* arr           ) { x=arr[0]; y=arr[1]; z=arr[2]; return *this; };
 
     inline VEC& get( T& fx, T& fy, T& fz ) { fx=x;  fy=y;  fz=z;           return *this; };
-	inline VEC& get( T* arr                    ) { arr[0]=x; arr[1]=y; arr[2]=z; return *this; };
+	inline VEC& get( T* arr              ) { arr[0]=x; arr[1]=y; arr[2]=z; return *this; };
 
     inline VEC& add( T f ) { x+=f; y+=f; z+=f; return *this;};
     inline VEC& mul( T f ) { x*=f; y*=f; z*=f; return *this;};
@@ -540,12 +542,61 @@ template <class T>
 class Vec6T { public:
 	union{
         struct{ Vec3T<T> lo,hi; };
+        struct{ T xx,yy,zz, yz,xz,xy; };
+        struct{ T a,b,c, d,e,f; };
 		T array[6];
 	};
+    inline T dot( Vec6T<T> a )const{ return xx*a.xx + yy*a.yy + zz*a.zz + yz*a.yz + xz*a.xz + xy*a.xy; }
 };
 using Vec6i = Vec6T< int>;
 using Vec6f = Vec6T< float>;
 using Vec6d = Vec6T< double >;
+
+
+
+// Structured binding support for Vec3T
+// allows to do this :
+// Vec3f v{1,2,3};
+// auto [x,y,z] = v;
+
+// #include <tuple>
+
+// namespace std {
+//     template <class T>
+//     struct tuple_size<Vec3T<T>> : std::integral_constant<size_t, 3> {};
+
+//     template <class T, std::size_t Index>
+//     struct tuple_element<Index, Vec3T<T>> {
+//         using type = T;
+//     };
+// }
+
+// // Non-const get function
+// template <std::size_t Index, class T>
+// T& get(Vec3T<T>& v) {
+//     if constexpr (Index == 0) return v.x;
+//     else if constexpr (Index == 1) return v.y;
+//     else if constexpr (Index == 2) return v.z;
+//     else static_assert(Index < 3, "Index out of bounds for Vec3T");
+// }
+
+// // Const get function
+// template <std::size_t Index, class T>
+// const T& get(const Vec3T<T>& v) {
+//     if constexpr (Index == 0) return v.x;
+//     else if constexpr (Index == 1) return v.y;
+//     else if constexpr (Index == 2) return v.z;
+//     else static_assert(Index < 3, "Index out of bounds for Vec3T");
+// }
+
+// // Rvalue get function (for temporary objects)
+// template <std::size_t Index, class T>
+// T&& get(Vec3T<T>&& v) {
+//     if constexpr (Index == 0) return std::move(v.x);
+//     else if constexpr (Index == 1) return std::move(v.y);
+//     else if constexpr (Index == 2) return std::move(v.z);
+//     else static_assert(Index < 3, "Index out of bounds for Vec3T");
+// }
 
 #endif
 

@@ -122,8 +122,6 @@ AppMolecularEditor2::AppMolecularEditor2( int& id, int WIDTH_, int HEIGHT_ ) : A
 
     for(auto kv : params.atomTypeDict) { printf( ">>%s<< %i \n", kv.first.c_str(), kv.second ); };
 
-    DEBUG
-
     char str[1024];
     printf( "type %s \n", (params.atomTypeNames[ params.atomTypeDict.find( "C" )->second ]).c_str() );
     printf( "type %s \n", (params.atomTypeNames[ params.atomTypeDict.find( "H" )->second ]).c_str() );
@@ -138,8 +136,6 @@ AppMolecularEditor2::AppMolecularEditor2( int& id, int WIDTH_, int HEIGHT_ ) : A
         printf("not found\n");
     }
     */
-
-    DEBUG
 
     mol.atomTypeNames = &params.atomTypeNames;
     mol.atomTypeDict  = &params.atomTypeDict;
@@ -282,7 +278,6 @@ AppMolecularEditor2::AppMolecularEditor2( int& id, int WIDTH_, int HEIGHT_ ) : A
         if(world.gridFF.FFLond) loadBin( "data/FFLond-.bin", world.gridFF.grid.getNtot()*sizeof(Vec3d), (char*)world.gridFF.FFLond );
     }
 
-    DEBUG
     int iatom = 11;
     printf( "testREQ   (%g,%g,%g) -> PLQ (%g,%g,%g) \n", testREQ.x, testREQ.y, testREQ.z, testPLQ.x, testPLQ.y, testPLQ.z   );
     printf( "REQs[%i] (%g,%g,%g) -> PLQ (%g,%g,%g) \n",  iatom, world.REQ[iatom].x, world.REQ[iatom].y, world.REQ[iatom].z, world.PLQ[iatom].x, world.PLQ[iatom].y, world.PLQ[iatom].z );
@@ -295,11 +290,9 @@ AppMolecularEditor2::AppMolecularEditor2( int& id, int WIDTH_, int HEIGHT_ ) : A
     //world.gridFF.evalCombindGridFF_CheckInterp( Vec3d{ 2.181, 0.0243442, 0.0}, FFtot );
     //saveXSF( "FFtot_z_CheckInterp.xsf", world.gridFF.grid, FFtot, 2, world.gridFF.natoms, world.gridFF.apos, world.gridFF.atypes );
 
-    DEBUG
     world.gridFF.evalCombindGridFF            ( testREQ, FFtot );
     //saveXSF( "FFtot_z.xsf",             world.gridFF.grid, FFtot, 2, world.gridFF.natoms, world.gridFF.apos, world.gridFF.atypes );
     world.gridFF.grid.saveXSF<float>( "FFtot_z.xsf", (float*)FFtot, 4,3, world.gridFF.natoms, world.gridFF.atypes, world.gridFF.apos );
-    DEBUG
 
     isoOgl = glGenLists(1);
     glNewList(isoOgl, GL_COMPILE);
@@ -307,13 +300,11 @@ AppMolecularEditor2::AppMolecularEditor2( int& id, int WIDTH_, int HEIGHT_ ) : A
     //renderSubstrate( iso_points.size(), &iso_points[0], GL_POINTS );
     //renderSubstrate_( world.gridFF.grid, FFtot, 0.1, true );
 
-    DEBUG
     //renderSubstrate_( world.gridFF.grid, FFtot, 0.01, true );
-    DEBUG
     renderSubstrate_( world.gridFF.grid, FFtot, world.gridFF.FFelec, 0.01, true, 0.1);
     Draw3D::drawAxis(1.0);
     glEndList();
-    DEBUG
+
 }
 
 void AppMolecularEditor2::draw(){

@@ -16,7 +16,7 @@ LambdaDict funcs2; // functions to be called after initMol
     #include "MolGUIapp_multi_Lua.h"
 #endif // WITH_LUA
 
-int iParalel=-100; 
+//int iParalel=-100; 
 
 int main(int argc, char *argv[]){
 	SDL_Init(SDL_INIT_VIDEO);
@@ -61,7 +61,7 @@ int main(int argc, char *argv[]){
         };
         funcs2["-lua"]={1,[&](const char** ss){ if( Lua::dofile(theLua,ss[0]) ){ printf( "ERROR in funcs[-lua] dofile(%s) => exit()\n", ss[0] ); exit(0); }; }};
     #endif // WITH_LUA
-
+    //funcs["-iParalel"]={1,[&](const char** ss){ sscanf(ss[0],"%i", &W->iParalel); printf( "ARG -iParalel %i \n", W->iParalel ); }};   
     process_args( argc, argv, funcs2, false );
 
     // --- Apply after-initialization settings and hacks 

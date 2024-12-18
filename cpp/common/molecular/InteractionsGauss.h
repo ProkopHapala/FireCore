@@ -1,16 +1,13 @@
 
 #ifndef InteractionsGauss_h
 #define InteractionsGauss_h
+/// @file InteractionsGauss.h @brief Implements functions for evaluation of interaction between gaussian functions such as product, overlap, kinetic energy and electrostatic interaction
+/// @ingroup Electron_Forcefield
 
 #include "math.h"
 #include "fastmath.h"
 
-/// @file
-/// @ingroup eFF
-
-/*!  \addtogroup eFF Electron Force Field
- @{
-
+/*!  
 eFF : Electron Force Field
 ---------------------------
 

@@ -1091,10 +1091,11 @@ void drawMeshWireframe(const CMesh& msh){ drawLines( msh.nedge, (int*)msh.edges,
     }
 
     void drawScalarField( Vec2i ns, const Quat4f* ps,const  float* data, int pitch, int offset, double vmin, double vmax, const uint32_t * colors, int ncol ){
-        //printf( " debug_draw_GridFF \n" );
+        printf( " Draw3D::drawScalarField() ns(%i,%i) vrange(%g,%g) @ps=%li @data=%li @colors=%li ncol=%i pitch=%i offset=%i \n", ns.x, ns.y, vmin, vmax, (long)ps, (long)data, (long)colors, ncol, pitch, offset );
         double z0  = 1.5;
         double dz0 = 0.1;
-        double clsc = 1/(vmax-vmin);
+        double clsc = 1./(vmax-vmin);
+        if( (clsc<0)||(clsc>1e+300) ){ printf( "ERROR in drawScalarField() vrange(%g,%g) -> clsc=%g => exit() \n", vmin, vmax, clsc ); exit(0); }
         glShadeModel(GL_SMOOTH);
         //glEnable( GL_POLYGON_SMOOTH);
         for(int iy=1;iy<ns.y;iy++){
@@ -1102,14 +1103,18 @@ void drawMeshWireframe(const CMesh& msh){ drawLines( msh.nedge, (int*)msh.edges,
             for(int ix=0;ix<ns.x;ix++){
                 Vec3f p;
                 int i = (iy-1)*ns.x + ix;
-                double c = clamp( clsc*(data[i*pitch+offset]-vmin), 0, 1 );
+                int ii = i*pitch+offset;
+                //printf( "drawScalarField()[%i,%i] i=%i ii=%i \n", ix,iy, i, ii  );
+                double c = clamp( clsc*(data[i]-vmin), 0., 1. );
+                //printf( "c=%g, clsc=%g, data[i]=%g, vmin=%g \n", c, clsc, data[i], vmin );
                 if(colors){ Draw::colorScale( c,ncol,colors); }else{ glColor3f(c,c,c); }
                 //p = (gsh.dCell.a*(ix + (gsh.n.x*-0.5))) + (gsh.dCell.b*(iy-1 + (gsh.n.y*-0.5) ));
                 p = ps[i].f;
                 glVertex3f(p.x,p.y,p.z);
 
                 i += ns.x;
-                c = clamp(  clsc*(data[i*pitch+offset]-vmin), 0, 1 );
+                ii = i*pitch+offset;
+                c = clamp(  clsc*(data[ii]-vmin), 0., 1. );
                 if(colors){ Draw::colorScale( c,ncol,colors); }else{ glColor3f(c,c,c); }
                 p = ps[i].f;
                 glVertex3f(p.x,p.y,p.z);

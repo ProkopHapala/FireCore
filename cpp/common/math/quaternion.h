@@ -61,37 +61,37 @@ class Quat4T {
 		T array[4];
 	};
 
-    inline explicit operator Quat4T<double>()const{ return (Quat4T<double>){ (double)x, (double)y, (double)z, (double)w }; }
-    inline explicit operator Quat4T<float> ()const{ return (Quat4T<float>) { (float )x, (float )y, (float )z, (float )w }; }
-    inline explicit operator Quat4T<int>   ()const{ return (Quat4T<int>)   { (int   )x, (int   )y, (int   )z, (int   )w }; }
+    constexpr inline explicit operator Quat4T<double>()const{ return (Quat4T<double>){ (double)x, (double)y, (double)z, (double)w }; }
+    constexpr inline explicit operator Quat4T<float> ()const{ return (Quat4T<float>) { (float )x, (float )y, (float )z, (float )w }; }
+    constexpr inline explicit operator Quat4T<int>   ()const{ return (Quat4T<int>)   { (int   )x, (int   )y, (int   )z, (int   )w }; }
 
-    inline explicit operator float4  ()const{ return float4 { (double)x, (double)y, (double)z, (double)w }; }
-    inline explicit operator double4 ()const{ return double4{ (float )x, (float )y, (float )z, (float )w }; }
-	inline explicit operator int4    ()const{ return int4   { (int   )x, (int   )y, (int   )z, (int   )w }; }
+    constexpr inline explicit operator float4  ()const{ return float4 { (double)x, (double)y, (double)z, (double)w }; }
+    constexpr inline explicit operator double4 ()const{ return double4{ (float )x, (float )y, (float )z, (float )w }; }
+	constexpr inline explicit operator int4    ()const{ return int4   { (int   )x, (int   )y, (int   )z, (int   )w }; }
 
     //inline       T& operator[](int i){ return array[i]; }
     //inline const T& operator[](int i){ return array[i]; }
 
-    inline void set   ( T f                     ){ x=f   ; y=f   ; z=f   ; w=f   ; }
-	inline void set   ( const  QUAT& q          ){ x=q.x ; y=q.y ; z=q.z ; w=q.w ; }
-	inline void set   ( T fx, T fy, T fz, T fw  ){ x=fx  ; y=fy  ; z=fz  ; w=fw  ; }
-	inline void setXYZ( const VEC& v            ){ x=v.x ; y=v.y ; z=v.z ;         }
-	inline void setOne(                         ){ x=y=z=0; w=1;                   }
+    constexpr inline void set   ( T f                     ){ x=f   ; y=f   ; z=f   ; w=f   ; }
+	constexpr inline void set   ( const  QUAT& q          ){ x=q.x ; y=q.y ; z=q.z ; w=q.w ; }
+	constexpr inline void set   ( T fx, T fy, T fz, T fw  ){ x=fx  ; y=fy  ; z=fz  ; w=fw  ; }
+	constexpr inline void setXYZ( const VEC& v            ){ x=v.x ; y=v.y ; z=v.z ;         }
+	constexpr inline void setOne(                         ){ x=y=z=0; w=1;                   }
 
 
 
 	// swizzles
-	inline VEC2 xy() const { return {x,y}; };
-	inline VEC2 xz() const { return {x,z}; };
-    inline VEC2 xw() const { return {x,w}; };
+	constexpr inline VEC2 xy() const { return {x,y}; };
+	constexpr inline VEC2 xz() const { return {x,z}; };
+    constexpr inline VEC2 xw() const { return {x,w}; };
 
-	inline VEC2 yx() const { return {y,x}; };
-    inline VEC2 yz() const { return {y,z}; };
-    inline VEC2 yw() const { return {y,w}; };
+	constexpr inline VEC2 yx() const { return {y,x}; };
+    constexpr inline VEC2 yz() const { return {y,z}; };
+    constexpr inline VEC2 yw() const { return {y,w}; };
 
-	inline VEC2 zx() const { return {z,x}; };
-    inline VEC2 zy() const { return {z,y}; };
-    inline VEC2 zw() const { return {z,w}; };
+	constexpr inline VEC2 zx() const { return {z,x}; };
+    constexpr inline VEC2 zy() const { return {z,y}; };
+    constexpr inline VEC2 zw() const { return {z,w}; };
 
     inline VEC2 wx() const { return {w,x}; };
     inline VEC2 wy() const { return {w,y}; };
@@ -100,8 +100,8 @@ class Quat4T {
 
 
 
-    inline void setView_XY (){set(1.0,0.0,0.0,0.0);}    // top view  x=x, y=-y,
-    inline void setView_XYm(){set(0.0,0.0,0.0,1.0);}  // bottom view
+    constexpr inline void setView_XY (){set(1.0,0.0,0.0,0.0);}    // top view  x=x, y=-y,
+    constexpr inline void setView_XYm(){set(0.0,0.0,0.0,1.0);}  // bottom view
     //inline void set( 0.0,0.0,1.0,0.0 );  // bottom view
     //inline void set( 0.0,1.0,0.0,0.0 );  // top view  x=-x, y=y,
     //inline void setView_(){set( +0.70710678118,0.0,0.0,  0.70710678118 );} // side down
@@ -111,44 +111,44 @@ class Quat4T {
     //inline void setView_(){set( 0.0,0.0, +0.70710678118, 0.70710678118 );} // y=-x, x=y
     //inline void setView_(){set( 0.0,0.0, -0.70710678118, 0.70710678118 );} // y=x, x=-y
 
-	inline void setInverseUnitary( const  QUAT& q){ x=-q.x; y=-q.y; z=-q.z; w=q.w; };
-	inline void setInverse       ( const  QUAT& q){ setInverseUnitary(); mul(1./q.norm2()); };
+	constexpr inline void setInverseUnitary( const  QUAT& q){ x=-q.x; y=-q.y; z=-q.z; w=q.w; };
+	constexpr inline void setInverse       ( const  QUAT& q){ setInverseUnitary(); mul(1./q.norm2()); };
 
-	inline QUAT get_inv(){ QUAT q; q.x=-x; q.y=-y; q.z=-z; q.w=w; return q; }
+	constexpr inline QUAT get_inv(){ QUAT q; q.x=-x; q.y=-y; q.z=-z; q.w=w; return q; }
 
-    inline bool allEqual(T f)const{ return (x==f)&&(y==f)&&(z==f)&&(w==f);};
-    inline bool anyEqual(T f)const{ return (x==f)||(y==f)||(z==f)||(w==f);};
+    constexpr inline bool allEqual(T f)const{ return (x==f)&&(y==f)&&(z==f)&&(w==f);};
+    constexpr inline bool anyEqual(T f)const{ return (x==f)||(y==f)||(z==f)||(w==f);};
 
 // ====== basic aritmetic
 
 // ============== Basic Math
 
-    inline void mul        ( T f                                  ){ x*=f;            y*=f;           z*=f;           w*=f;            };
-    inline void add        ( const QUAT& v                        ){ x+=v.x;          y+=v.y;         z+=v.z;         w+=v.w;          };
-    inline void sub        ( const QUAT& v                        ){ x-=v.x;          y-=v.y;         z-=v.z;         w-=v.w;          };
-	inline void set_add    ( const QUAT& a, const QUAT& b         ){ x =a.x+b.x;      y =a.y+b.y;     z =a.z+b.z;     w =a.w+b.w;      };
-	inline void set_sub    ( const QUAT& a, const QUAT& b         ){ x =a.x-b.x;      y =a.y-b.y;     z =a.z-b.z;     w =a.w-b.w;      };
-	inline void set_mul    ( const QUAT& a, T f                   ){ x =a.x*f;        y =a.y*f;       z =a.z*f;       w =a.w*f;        };
-	inline void set_mul    ( const QUAT& a, const QUAT& b         ){ x =a.x*b.x;      y =a.y*b.y;     z =a.z*b.z;     w =a.w*b.w;      };
-	inline void add_mul    ( const QUAT& a, T f                ){ x+=a.x*f;        y+=a.y*f;       z+=a.z*f;       w+=a.w*f;        };
-	inline void set_add_mul( const QUAT& a, const QUAT& b, T f ){ x =a.x + f*b.x;  y =a.y + f*b.y; z =a.z + f*b.z; w =a.w + f*b.w;  };
+    constexpr inline void mul        ( T f                                  ){ x*=f;            y*=f;           z*=f;           w*=f;            };
+    constexpr inline void add        ( const QUAT& v                        ){ x+=v.x;          y+=v.y;         z+=v.z;         w+=v.w;          };
+    constexpr inline void sub        ( const QUAT& v                        ){ x-=v.x;          y-=v.y;         z-=v.z;         w-=v.w;          };
+	constexpr inline void set_add    ( const QUAT& a, const QUAT& b         ){ x =a.x+b.x;      y =a.y+b.y;     z =a.z+b.z;     w =a.w+b.w;      };
+	constexpr inline void set_sub    ( const QUAT& a, const QUAT& b         ){ x =a.x-b.x;      y =a.y-b.y;     z =a.z-b.z;     w =a.w-b.w;      };
+	constexpr inline void set_mul    ( const QUAT& a, T f                   ){ x =a.x*f;        y =a.y*f;       z =a.z*f;       w =a.w*f;        };
+	constexpr inline void set_mul    ( const QUAT& a, const QUAT& b         ){ x =a.x*b.x;      y =a.y*b.y;     z =a.z*b.z;     w =a.w*b.w;      };
+	constexpr inline void add_mul    ( const QUAT& a, T f                ){ x+=a.x*f;        y+=a.y*f;       z+=a.z*f;       w+=a.w*f;        };
+	constexpr inline void set_add_mul( const QUAT& a, const QUAT& b, T f ){ x =a.x + f*b.x;  y =a.y + f*b.y; z =a.z + f*b.z; w =a.w + f*b.w;  };
 
-    inline T dot  ( QUAT q   ) const {  return       w*q.w + x*q.x + y*q.y + z*q.z;   }
-    inline T norm2(          ) const {  return       w*  w + x*  x + y*  y + z*  z;   }
-	inline T norm (          ) const {  return sqrt( w*  w + x*  x + y*  y + z*  z ); }
-    inline T normalize() {
+    constexpr inline T dot  ( QUAT q   ) const {  return       w*q.w + x*q.x + y*q.y + z*q.z;   }
+    constexpr inline T norm2(          ) const {  return       w*  w + x*  x + y*  y + z*  z;   }
+	constexpr inline T norm (          ) const {  return sqrt( w*  w + x*  x + y*  y + z*  z ); }
+    constexpr inline T normalize() {
 		T norm  = sqrt( x*x + y*y + z*z + w*w );
 		T inorm = 1/norm;
 		x *= inorm;    y *= inorm;    z *= inorm;   w *= inorm;
 		return norm;
     }
-    inline void normalizeW(){
+    constexpr inline void normalizeW(){
         double r2 = x*x + y*y + z*z;
         if(r2>1){ printf( "ERROR Quat4<T>::normalizeW() r2>1\n"); exit(0); };
         w = sqrt( 1-r2 );
     }
 
-    inline void checkNormalized( T D2 ){
+    constexpr inline void checkNormalized( T D2 ){
         T r2 =  x*x + y*y + z*z + w*w;
         //printf( " (%g,%g,%g,%g) r2 %g \n", x,y,z,w,   r2 );
         T d2 = r2 - 1;
@@ -158,7 +158,7 @@ class Quat4T {
         }
     }
 
-    inline T normalize_taylor3(){
+    constexpr inline T normalize_taylor3(){
         // sqrt(1+x) ~= 1 + 0.5*x - 0.125*x*x
         // sqrt(r2) = sqrt((r2-1)+1) ~= 1 + 0.5*(r2-1)
         // 1/sqrt(1+x) ~= 1 - 0.5*x + (3/8)*x^2 - (5/16)*x^3 + (35/128)*x^4 - (63/256)*x^5
@@ -171,7 +171,7 @@ class Quat4T {
         return dr2;
     }
 
-    inline T normalize_hybrid(T dr4max){
+    constexpr inline T normalize_hybrid(T dr4max){
         T dr2    = x*x+y*y+z*z+w*w-1;
         T dr4    = dr2*dr2;
         T invr;
@@ -184,20 +184,20 @@ class Quat4T {
         return dr2;
     }
 
-    inline T makeOrthoU(const QUAT& q){ T c = dot(q);           add_mul(q,-c); return c; }
-    inline T makeOrtho (const QUAT& q){ T c = dot(q)/q.norm2(); add_mul(q,-c); return c; }
+    constexpr inline T makeOrthoU(const QUAT& q){ T c = dot(q);           add_mul(q,-c); return c; }
+    constexpr inline T makeOrtho (const QUAT& q){ T c = dot(q)/q.norm2(); add_mul(q,-c); return c; }
 
 // ====== Quaternion multiplication
 
 
-	inline void setQmul( const QUAT& a, const QUAT& b) {
+	constexpr inline void setQmul( const QUAT& a, const QUAT& b) {
         x =  a.x * b.w + a.y * b.z - a.z * b.y + a.w * b.x;
         y = -a.x * b.z + a.y * b.w + a.z * b.x + a.w * b.y;
         z =  a.x * b.y - a.y * b.x + a.z * b.w + a.w * b.z;
         w = -a.x * b.x - a.y * b.y - a.z * b.z + a.w * b.w;
     };
 
-    inline void qmul( const QUAT& a) {
+    constexpr inline void qmul( const QUAT& a) {
         T aw = a.w, ax = a.x, ay = a.y, az = a.z;
         T x_ =  x * aw + y * az - z * ay + w * ax;
         T y_ = -x * az + y * aw + z * ax + w * ay;
@@ -206,7 +206,7 @@ class Quat4T {
         x = x_; y = y_; z = z_;
     };
 
-    inline void qmul_T( const QUAT& a) {
+    constexpr inline void qmul_T( const QUAT& a) {
         T aw = a.w, ax = a.x, ay = a.y, az = a.z;
         T x_ =  ax * w + ay * z - az * y + aw * x;
         T y_ = -ax * z + ay * w + az * x + aw * y;
@@ -215,7 +215,7 @@ class Quat4T {
         x = x_; y = y_; z = z_;
     };
 
-    inline void qmul_it( QUAT& a) const {
+    constexpr inline void qmul_it( QUAT& a) const {
         T aw = a.w, ax = a.x, ay = a.y, az = a.z;
         a.x =  x * aw + y * az - z * ay + w * ax;
         a.y = -x * az + y * aw + z * ax + w * ay;
@@ -223,7 +223,7 @@ class Quat4T {
         a.w = -x * ax - y * ay - z * az + w * aw;
     };
 
-    inline void qmul_it_T( QUAT& a) const {
+    constexpr inline void qmul_it_T( QUAT& a) const {
         T aw = a.w, ax = a.x, ay = a.y, az = a.z;
         a.x = -x * aw - y * az + z * ay + w * ax;
         a.y = +x * az - y * aw - z * ax + w * ay;
@@ -231,7 +231,7 @@ class Quat4T {
         a.w = +x * ax + y * ay + z * az + w * aw;
     };
 
-    inline QUAT operator%( const QUAT& b)const{ 
+    constexpr inline QUAT operator%( const QUAT& b)const{ 
         return QUAT{
              x * b.w + y * b.z - z * b.y + w * b.x,
             -x * b.z + y * b.w + z * b.x + w * b.y,
@@ -240,7 +240,7 @@ class Quat4T {
         };
     }
 
-    inline VEC operator%( const VEC& v)const{  // Hamilton product ( q * v ) vector is rotated by quaternion
+    constexpr inline VEC operator%( const VEC& v)const{  // Hamilton product ( q * v ) vector is rotated by quaternion
         T tx = 2*( z*v.y - y*v.z  + w*v.x);
         T ty = 2*( x*v.z - z*v.x  + w*v.y);
         T tz = 2*( y*v.x - x*v.y  + w*v.z);
@@ -251,7 +251,7 @@ class Quat4T {
         };
     }
 
-    inline VEC operator|( const VEC& v )const{  // inverse Hamilton product ( v * q ) vector is rotated by quaternion backwards
+    constexpr inline VEC operator|( const VEC& v )const{  // inverse Hamilton product ( v * q ) vector is rotated by quaternion backwards
         T tx = 2*( y*v.z - z*v.y  + w*v.x);
         T ty = 2*( z*v.x - x*v.z  + w*v.y);
         T tz = 2*( x*v.y - y*v.x  + w*v.z);
@@ -262,7 +262,7 @@ class Quat4T {
         };
     }
 
-    inline void transformVec( const VEC& vec, VEC& out ) const{
+    constexpr inline void transformVec( const VEC& vec, VEC& out ) const{
         //QUAT qv; qv.set(vec.x,vec.y,vec.z,0.0);
         //qmul_it  (qv);
         //qmul_it_T(qv);
@@ -291,7 +291,7 @@ class Quat4T {
         // 15 mult, 12 add
     }
 
-    inline void untransformVec( const VEC& vec, VEC& out ) const{
+    constexpr inline void untransformVec( const VEC& vec, VEC& out ) const{
         T tx = 2*( y*vec.z - z*vec.y  + w*vec.x);
         T ty = 2*( z*vec.x - x*vec.z  + w*vec.y);
         T tz = 2*( x*vec.y - y*vec.x  + w*vec.z);
@@ -300,9 +300,9 @@ class Quat4T {
         out.z   = vec.z + x*ty - y*tx;
     }
 
-    inline void invertUnitary() { x=-x; y=-y; z=-z; }
+    constexpr inline void invertUnitary() { x=-x; y=-y; z=-z; }
 
-    inline void invert() {
+    constexpr inline void invert() {
 		T norm = sqrt( x*x + y*y + z*z + w*w );
 		if ( norm > 0.0 ) {
 			T invNorm = 1/norm;
@@ -311,12 +311,12 @@ class Quat4T {
     };
 
     //inline QUAT operator+ ( T f   ) const { return QUAT{ x+f, y+f, z+f, w+f }; };
-    inline QUAT operator* ( T f   ) const { return QUAT{ x*f, y*f, z*f, w*f }; };
+    constexpr inline QUAT operator* ( T f   ) const { return QUAT{ x*f, y*f, z*f, w*f }; };
 
-    inline QUAT operator+ ( const QUAT& vi ) const { return QUAT{ x+vi.x, y+vi.y, z+vi.z, w+vi.w }; };
-    inline QUAT operator- ( const QUAT& vi ) const { return QUAT{ x-vi.x, y-vi.y, z-vi.z, w-vi.w }; };
-    inline QUAT operator* ( const QUAT& vi ) const { return QUAT{ x*vi.x, y*vi.y, z*vi.z, w*vi.w }; };
-    inline QUAT operator/ ( const QUAT& vi ) const { return QUAT{ x/vi.x, y/vi.y, z/vi.z, w/vi.w }; };
+    constexpr inline QUAT operator+ ( const QUAT& vi ) const { return QUAT{ x+vi.x, y+vi.y, z+vi.z, w+vi.w }; };
+    constexpr inline QUAT operator- ( const QUAT& vi ) const { return QUAT{ x-vi.x, y-vi.y, z-vi.z, w-vi.w }; };
+    constexpr inline QUAT operator* ( const QUAT& vi ) const { return QUAT{ x*vi.x, y*vi.y, z*vi.z, w*vi.w }; };
+    constexpr inline QUAT operator/ ( const QUAT& vi ) const { return QUAT{ x/vi.x, y/vi.y, z/vi.z, w/vi.w }; };
 
 // ======= metric
     // https://fgiesen.wordpress.com/2013/01/07/small-note-on-quaternion-distance-metrics/
@@ -325,19 +325,19 @@ class Quat4T {
     //  rho(q,q0)   = |q - q0|
     //  rho(q,q0)   = arccos( dot(q,q) )  ~=   1 - dot(q,q)
 
-    inline double dist_cos( const QUAT& q0 ) const {
+    constexpr inline double dist_cos( const QUAT& q0 ) const {
         double cdot = dot( q0 );
         return 1-((cdot>=0)?cdot:-cdot);    // consider q=-q
     }
 
-    inline double ddist_cos( const QUAT& q0, QUAT& dRdq ) const {
+    constexpr inline double ddist_cos( const QUAT& q0, QUAT& dRdq ) const {
         dRdq.set(q0);
         double cdot = dot( q0 );
         if( cdot<0 ){ dRdq.mul(-1); cdot=-cdot; };  // consider q=-q
         return 1-cdot;
     }
 
-    inline double sub_paralel_fast( const QUAT& q ) {
+    constexpr inline double sub_paralel_fast( const QUAT& q ) {
         // substract component of *this paralel to q assuming that q is normalized
         double cdot = dot( q );
         add_mul( q, -cdot );
@@ -347,7 +347,7 @@ class Quat4T {
 
 // ======= Conversion : Angle & Axis
 
-    inline void fromUniformS3(VEC u){ // u is vec of 3 random numbers from (0..1)
+    constexpr inline void fromUniformS3(VEC u){ // u is vec of 3 random numbers from (0..1)
         //  http://planning.cs.uiuc.edu/node198.html
         T a=sqrt(1-u.x);
         T b=sqrt(  u.x);
@@ -359,10 +359,10 @@ class Quat4T {
         w = b*cos(u.z);
     }
 
-    inline void setRandomRotation(){ fromUniformS3( {randf(), randf(), randf()} ); }
+    constexpr inline void setRandomRotation(){ fromUniformS3( {randf(), randf(), randf()} ); }
 
 
-	inline void fromAngleAxis( T angle, const VEC& axis ){
+	constexpr inline void fromAngleAxis( T angle, const VEC& axis ){
 		T ir   = 1/axis.norm();
 		VEC  hat  = axis * ir;
 		T a    = 0.5 * angle;
@@ -373,7 +373,7 @@ class Quat4T {
 		z = sa * hat.z;
 	};
 
-	void fromCosAngleAxis( T scal_prod, const VEC& axis ){
+	constexpr void fromCosAngleAxis( T scal_prod, const VEC& axis ){
 	// we assume -phi instead of phi!!!, minus effectively implies sa -> -s
 		constexpr T cos_cutoff = 1 - 1e-6;
 		T cosphi, sinphi, sa, phi, sgn_sinphi;
@@ -428,7 +428,7 @@ class Quat4T {
 	}
 	*/
 
-	void fromTrackball( T p1x, T p1y, T p2x, T p2y ){
+	constexpr void fromTrackball( T p1x, T p1y, T p2x, T p2y ){
 		VEC  axis; // axis of rotation
 		//T phi;  // angle of rotation
 		VEC  p1, p2, d;
@@ -480,9 +480,9 @@ class Quat4T {
 
 // =======  pitch, yaw, roll
 
-	inline void dpitch( T angle ){ T ca,sa; sincos_taylor2(angle*(T)0.5,sa,ca); pitch( ca, sa );  };
-	inline void pitch ( T angle ){ angle*=(T)0.5; pitch( cos(angle), sin(angle) );  };
-    inline void pitch ( T ca, T sa ) {
+	constexpr inline void dpitch( T angle ){ T ca,sa; sincos_taylor2(angle*(T)0.5,sa,ca); pitch( ca, sa );  };
+	constexpr inline void pitch ( T angle ){ angle*=(T)0.5; pitch( cos(angle), sin(angle) );  };
+    constexpr inline void pitch ( T ca, T sa ) {
         T x_ =  x * ca + w * sa;
         T y_ =  y * ca + z * sa;
         T z_ = -y * sa + z * ca;
@@ -490,9 +490,9 @@ class Quat4T {
         x = x_; y = y_; z = z_;
     };
 
-	inline void dyaw( T angle ){ T ca,sa; sincos_taylor2(angle*(T)0.5,sa,ca); yaw( ca, sa );  };
-	inline void yaw ( T angle ){ angle*=(T)0.5; yaw( cos(angle), sin(angle) );  };
-    inline void yaw ( T ca, T sa ) {
+	constexpr inline void dyaw( T angle ){ T ca,sa; sincos_taylor2(angle*(T)0.5,sa,ca); yaw( ca, sa );  };
+	constexpr inline void yaw ( T angle ){ angle*=(T)0.5; yaw( cos(angle), sin(angle) );  };
+    constexpr inline void yaw ( T ca, T sa ) {
         T x_ =  x * ca - z * sa;
         T y_ =  y * ca + w * sa;
         T z_ =  x * sa + z * ca;
@@ -500,9 +500,9 @@ class Quat4T {
         x = x_; y = y_; z = z_;
     };
 
-	inline void droll( T angle ){ T ca,sa; sincos_taylor2(angle*(T)0.5,sa,ca); roll( ca, sa );  };
-	inline void roll ( T angle ){ angle*=(T)0.5; roll( cos(angle), sin(angle) );  };
-    inline void roll ( T ca, T sa ) {
+	constexpr inline void droll( T angle ){ T ca,sa; sincos_taylor2(angle*(T)0.5,sa,ca); roll( ca, sa );  };
+	constexpr inline void roll ( T angle ){ angle*=(T)0.5; roll( cos(angle), sin(angle) );  };
+    constexpr inline void roll ( T ca, T sa ) {
         T x_ =  x * ca + y * sa;
         T y_ = -x * sa + y * ca;
         T z_ =  z * ca + w * sa;
@@ -511,9 +511,9 @@ class Quat4T {
     };
 
 
-	inline void dpitch2( T angle ){ T ca,sa; sincos_taylor2(angle*(T)0.5,sa,ca); pitch2( ca, sa );  };
-	inline void pitch2 ( T angle ){ angle*=(T)0.5; pitch2( cos(angle), sin(angle) );  };
-    inline void pitch2 ( T ca, T sa ) {
+	constexpr inline void dpitch2( T angle ){ T ca,sa; sincos_taylor2(angle*(T)0.5,sa,ca); pitch2( ca, sa );  };
+	constexpr inline void pitch2 ( T angle ){ angle*=(T)0.5; pitch2( cos(angle), sin(angle) );  };
+    constexpr inline void pitch2 ( T ca, T sa ) {
         T x_ =  sa * w + ca * x;
         T y_ = -sa * z + ca * y;
         T z_ =  sa * y + ca * z;
@@ -521,9 +521,9 @@ class Quat4T {
         x = x_; y = y_; z = z_;
     };
 
-	inline void dyaw2( T angle ){ T ca,sa; sincos_taylor2(angle*(T)0.5,sa,ca); yaw2( ca, sa );  };
-	inline void yaw2 ( T angle ){ angle*=(T)0.5; yaw2( cos(angle), sin(angle) );  };
-    inline void yaw2 ( T ca, T sa ) {
+	constexpr inline void dyaw2( T angle ){ T ca,sa; sincos_taylor2(angle*(T)0.5,sa,ca); yaw2( ca, sa );  };
+	constexpr inline void yaw2 ( T angle ){ angle*=(T)0.5; yaw2( cos(angle), sin(angle) );  };
+    constexpr inline void yaw2 ( T ca, T sa ) {
         T x_ = + sa * z  + ca * x;
         T y_ = + sa * w  + ca * y;
         T z_ = - sa * x  + ca * z;
@@ -531,9 +531,9 @@ class Quat4T {
         x = x_; y = y_; z = z_;
     };
 
-	inline void droll2( T angle ){ T ca,sa; sincos_taylor2(angle*(T)0.5,sa,ca); roll2( ca, sa );  };
-	inline void roll2 ( T angle ){ angle*=(T)0.5; roll2( cos(angle), sin(angle) );  };
-    inline void roll2 ( T ca, T sa ) {
+	constexpr inline void droll2( T angle ){ T ca,sa; sincos_taylor2(angle*(T)0.5,sa,ca); roll2( ca, sa );  };
+	constexpr inline void roll2 ( T angle ){ angle*=(T)0.5; roll2( cos(angle), sin(angle) );  };
+    constexpr inline void roll2 ( T ca, T sa ) {
         //ca *=0.5; sa *=0.5; // seems that should be just half
         T x_ = - sa * y + ca * x;
         T y_ = + sa * x + ca * y;
@@ -544,7 +544,7 @@ class Quat4T {
 
 // ====== Differential rotation
 
-	inline void dRot_exact ( T dt, const VEC& omega ) {
+	constexpr inline void dRot_exact ( T dt, const VEC& omega ) {
 		T hx   = omega.x;
 		T hy   = omega.y;
 		T hz   = omega.z;
@@ -564,7 +564,7 @@ class Quat4T {
 	};
 
 
-	inline void dRot_taylor2 ( T dt, VEC& omega ) {
+	constexpr inline void dRot_taylor2 ( T dt, VEC& omega ) {
 		T hx   = omega.x;
 		T hy   = omega.y;
 		T hz   = omega.z;
@@ -585,7 +585,7 @@ class Quat4T {
 	};
 
 
-	inline void toMatrix( MAT& result) const {
+	constexpr inline void toMatrix( MAT& result) const {
 		    T r2 = w*w + x*x + y*y + z*z;
 		    //T s  = (r2 > 0) ? 2d / r2 : 0;
 			T s  = 2 / r2;
@@ -608,7 +608,7 @@ class Quat4T {
 	};
 
 
-    inline void toMatrix_T( MAT& result) const {
+    constexpr inline void toMatrix_T( MAT& result) const {
 		    T r2 = w*w + x*x + y*y + z*z;
 		    //T s  = (r2 > 0) ? 2d / r2 : 0;
 			T s  = 2 / r2;
@@ -653,7 +653,7 @@ class Quat4T {
 	};
 */
 
-	inline void toMatrix_unitary( MAT& result)  const  {
+	constexpr inline void toMatrix_unitary( MAT& result)  const  {
 		T x2 = 2*x;
 		T y2 = 2*y;
 		T z2 = 2*z;
@@ -677,7 +677,7 @@ class Quat4T {
 		result.zz = 1 - ( xx + yy );
 	};
 
-    inline void toMatrix_unitary_T( MAT& result)  const  {
+    constexpr inline void toMatrix_unitary_T( MAT& result)  const  {
 		T x2 = 2*x;
 		T y2 = 2*y;
 		T z2 = 2*z;
@@ -703,12 +703,12 @@ class Quat4T {
 
     // This allos passing Quad to functions accepting Mat3f (e.g. to plotting functions)
     //inline explicit operator Mat3T<T>()const{ Mat3T<T> mat; toMatrix_unitary(mat); return mat; }
-    inline Mat3T<T> toMat () const {  Mat3T<T> mat; toMatrix_unitary  (mat); return mat; };
-    inline Mat3T<T> toMatT() const {  Mat3T<T> mat; toMatrix_unitary_T(mat); return mat; };
+    constexpr inline Mat3T<T> toMat () const {  Mat3T<T> mat; toMatrix_unitary  (mat); return mat; };
+    constexpr inline Mat3T<T> toMatT() const {  Mat3T<T> mat; toMatrix_unitary_T(mat); return mat; };
 
 	// this will compute force on quaternion from force on some point "p" in coordinate system of the quaternion
 	//   EXAMPLE : if "p" is atom in molecule, it should be local coordinate in molecular local space, not global coordante after quaternion rotation is applied
-	inline void addForceFromPoint( const VEC& p, const VEC& fp, QUAT& fq ) const {
+	constexpr inline void addForceFromPoint( const VEC& p, const VEC& fp, QUAT& fq ) const {
 		// dE/dx = dE/dpx * dpx/dx
 		// dE/dx = fx
 		T px_x =    p.b*y +             p.c*z;
@@ -734,12 +734,12 @@ class Quat4T {
 	}
 
     //T makeOrthoU( const VEC& a ){ T c = dot(a);          add_mul(a, -c); return c; }
-	inline T outproject( const QUAT& q ){ T cdot = dot(q); add_mul( q, -cdot ); return cdot; };
+	constexpr inline T outproject( const QUAT& q ){ T cdot = dot(q); add_mul( q, -cdot ); return cdot; };
 
-	inline void fromMatrix ( const VEC& a, const VEC& b, const VEC& c ) { fromMatrix( a.x,  a.y,  a.z,  b.x,  b.y,  b.z,  c.x,  c.y,  c.z  );  }
-	inline void fromMatrix ( const MAT& M                             ) { fromMatrix( M.ax, M.ay, M.az, M.bx, M.by, M.bz, M.cx, M.cy, M.cz );  }
-	inline void fromMatrixT( const MAT& M                             ) { fromMatrix( M.ax, M.bx, M.cx, M.ay, M.by, M.cy, M.az, M.bz, M.cz );  }
-	inline void fromMatrix ( T m00, T m01, T m02,    T m10, T m11, T m12,        T m20, T m21, T m22) {
+	constexpr inline void fromMatrix ( const VEC& a, const VEC& b, const VEC& c ) { fromMatrix( a.x,  a.y,  a.z,  b.x,  b.y,  b.z,  c.x,  c.y,  c.z  );  }
+	constexpr inline void fromMatrix ( const MAT& M                             ) { fromMatrix( M.ax, M.ay, M.az, M.bx, M.by, M.bz, M.cx, M.cy, M.cz );  }
+	constexpr inline void fromMatrixT( const MAT& M                             ) { fromMatrix( M.ax, M.bx, M.cx, M.ay, M.by, M.cy, M.az, M.bz, M.cz );  }
+	constexpr inline void fromMatrix ( T m00, T m01, T m02,    T m10, T m11, T m12,        T m20, T m21, T m22) {
         // Use the Graphics Gems code, from
         // ftp://ftp.cis.upenn.edu/pub/graphics/shoemake/quatut.ps.Z
         T t = m00 + m11 + m22;
@@ -776,7 +776,7 @@ class Quat4T {
 	}
 
     //template<typename T>
-    inline Mat3T<T> rotateVectors( int n, Vec3T<T>* v0s, Vec3T<T>* vs, const bool bT )const{
+    constexpr inline Mat3T<T> rotateVectors( int n, Vec3T<T>* v0s, Vec3T<T>* vs, const bool bT )const{
         Mat3T<T> mrot;
         if(bT){ toMatrix_T(mrot); }else{ toMatrix(mrot); };
         //if(bool bT){ toMatrix_unitary_T(mrot); }else{ toMatrix_unitary(mrot); };
@@ -785,7 +785,7 @@ class Quat4T {
     }
 
     //template<typename T>
-    inline Mat3T<T> rotatePoints0( int n, Vec3T<T>* p0s, Vec3T<T>* ps, const Vec3T<T>& toPos, const bool bT )const{
+    constexpr inline Mat3T<T> rotatePoints0( int n, Vec3T<T>* p0s, Vec3T<T>* ps, const Vec3T<T>& toPos, const bool bT )const{
         Mat3T<T> mrot;
         if(bT){ toMatrix_T(mrot); }else{ toMatrix(mrot); };
         //if(bool bT){ toMatrix_unitary_T(mrot); }else{ toMatrix_unitary(mrot); };
@@ -793,7 +793,7 @@ class Quat4T {
         return mrot;
     }
 
-    inline Mat3T<T> rotatePoints( int n, Vec3T<T>* p0s, Vec3T<T>* ps, const Vec3T<T>& pos0, const bool bT )const{
+    constexpr inline Mat3T<T> rotatePoints( int n, Vec3T<T>* p0s, Vec3T<T>* ps, const Vec3T<T>& pos0, const bool bT )const{
         Mat3T<T> mrot;
         if(bT){ toMatrix_T(mrot); }else{ toMatrix(mrot); };
         //if(bool bT){ toMatrix_unitary_T(mrot); }else{ toMatrix_unitary(mrot); };
@@ -801,9 +801,9 @@ class Quat4T {
         return mrot;
     }
 
-    inline QUAT& setIfLower  (const QUAT& a){ if(a.x<x)x=a.x;if(a.y<y)y=a.y;if(a.z<z)z=a.z;if(a.w<w)w=a.w; return *this; }
-    inline QUAT& setIfGreater(const QUAT& a){ if(a.x>x)x=a.x;if(a.y>y)y=a.y;if(a.z>z)z=a.z;if(a.w>w)w=a.w; return *this; }
-    inline void update_bounds(QUAT& pmin,QUAT& pmax)const{ 
+    constexpr inline QUAT& setIfLower  (const QUAT& a){ if(a.x<x)x=a.x;if(a.y<y)y=a.y;if(a.z<z)z=a.z;if(a.w<w)w=a.w; return *this; }
+    constexpr inline QUAT& setIfGreater(const QUAT& a){ if(a.x>x)x=a.x;if(a.y>y)y=a.y;if(a.z>z)z=a.z;if(a.w>w)w=a.w; return *this; }
+    constexpr inline void update_bounds(QUAT& pmin,QUAT& pmax)const{ 
         if ( x < pmin.x ){ pmin.x=x; } else if ( x > pmax.x ){ pmax.x=x; };
         if ( y < pmin.y ){ pmin.y=y; } else if ( y > pmax.y ){ pmax.y=y; };
         if ( z < pmin.z ){ pmin.z=z; } else if ( z > pmax.z ){ pmax.z=z; };
@@ -819,7 +819,7 @@ class QUAT : public Quat4T< T, VEC, MAT, QUAT >{  };
 */
 
 template<typename T1,typename T2>
-inline Quat4T<T2> cast(const Quat4T<T1>& i){ return Quat4T<T2>{ (T2)i.x, (T2)i.y, (T2)i.z, (T2)i.w }; };
+constexpr inline Quat4T<T2> cast(const Quat4T<T1>& i){ return Quat4T<T2>{ (T2)i.x, (T2)i.y, (T2)i.z, (T2)i.w }; };
 
 //inline float4 cast(const Quat4T<T1>& i){ return float4{ (float)i.x; (float)i.y; (float)i.z; (float)i.w }; };
 //inline float4 cast(const Quat4T<T1>& i){ Quat4T<T2> o; o.x=(T2)i.x; o.y=(T2)i.y; o.z=(T2)i.z; o.w=(T2)i.w; return o; };

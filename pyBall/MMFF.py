@@ -139,14 +139,59 @@ glob_bMMFF    = True
 # ====================================
 
 
-#  int fit_Bspline( double dg, const int n, double* Gs, double* Es, double* Ws, double Ftol, int nmaxiter, double dt ){
-lib.fit_Bspline.argtypes  = [ c_int, c_double_p, c_double_p, c_double_p, c_double, c_int, c_double ]
+# void samplePBCindexes( int n, int* inds, int ng, int* iout, int order ){
+lib.samplePBCindexes.argtypes  = [ c_int, array1i, c_int, array2i, c_int ]
+lib.samplePBCindexes.restype   =  None
+def samplePBCindexes( inds, ng, iout=None, order=3 ):
+    n = len(inds)
+    if iout is None: iout = np.zeros( (n,(order+1)), dtype=np.int32 )
+    lib.samplePBCindexes( n, inds, ng, iout, order )
+    return iout
+
+# void projectBspline1D( int nx, double* xs, double* ws, double g0, double dg, int ng, double* ys, int order ){
+lib.projectBspline1D.argtypes  = [ c_int, c_double_p, c_double_p, c_double, c_double, c_int, c_double_p, c_int ]
+lib.projectBspline1D.restype   =  None
+def projectBspline1D( xs, g0, dg, ng, ys=None, ws=None, order=3 ):
+    n = len(xs)
+    xs = np.array( xs )
+    if ys is None: ys = np.zeros( ng )
+    if ws is None: ws = np.ones( n )
+    lib.projectBspline1D( n, _np_as(xs,c_double_p), _np_as(ws,c_double_p), g0, dg, ng, _np_as(ys,c_double_p), order )
+    return ys
+                                  
+# void projectBspline2D( int nx, double* ps_, double* ws, double* g0_, double* dg_, int* ng_, double* ys, int order ){
+lib.projectBspline2D.argtypes  = [ c_int, c_double_p, c_double_p, c_double_p, c_double_p, c_int_p, c_double_p, c_int ]
+lib.projectBspline2D.restype   =  None
+def projectBspline2D( xs, g0, dg, ng, ys=None, ws=None, order=3 ):
+    n = len(xs)
+    xs = np.array( xs )
+    dg = np.array( dg )
+    g0 = np.array( g0 )
+    ng = np.array( ng, dtype=np.int32 )
+    if ys is None: 
+        ys = np.zeros( ng )
+    else:
+        ys = np.array( ys )
+    if ws is None: 
+        ws = np.ones( n )
+    else:
+        ws = np.array( ws )
+    lib.projectBspline2D( n, _np_as(xs,c_double_p), _np_as(ws,c_double_p), _np_as(g0,c_double_p), _np_as(dg,c_double_p), _np_as(ng,c_int_p), _np_as(ys,c_double_p), order )
+    return ys
+
+#  int fit_Bspline( const int n, double* Gs, double* Es, double* Ws, double Ftol, int nmaxiter, double dt, double Kreg, bool bPBC, bool bHalf  ){
+lib.fit_Bspline.argtypes  = [ c_int, c_double_p, c_double_p, c_double_p, c_double, c_int, c_double, c_double,  c_bool,c_bool  ]
 lib.fit_Bspline.restype   =  None
-def fit_Bspline( Es, Gs=None, Ws=None, Ftol=1e-6, nmaxiter=100, dt=0.1 ):
+def fit_Bspline( Es, Gs=None, Ws=None, Ftol=1e-6, nmaxiter=100, dt=0.1, Kreg=-1.0, bPBC=True, bHalf=False ):
     n = len(Es)
-    if Ws is None: Ws = np.zeros( n )
-    if Gs is None: Gs = Es.copy()
-    lib.fit_Bspline( n, _np_as(Gs,c_double_p), _np_as(Es,c_double_p), _np_as(Ws,c_double_p), Ftol, nmaxiter, dt )
+    if(bHalf): 
+        n = n//2
+        if Ws is None: Ws = np.ones( n*2 )
+        if Gs is None: Gs = Es[::2].copy()
+    else:
+        if Ws is None: Ws = np.ones( n )
+        if Gs is None: Gs = Es.copy()
+    lib.fit_Bspline( n, _np_as(Gs,c_double_p), _np_as(Es,c_double_p), _np_as(Ws,c_double_p), Ftol, nmaxiter, dt, Kreg, bPBC, bHalf )
     return Gs, Ws
 
 # int fitEF_Bspline( const int n, const double* Gs, double* fes, double* Ws, double Ftol, int nmaxiter, double dt ){
@@ -154,25 +199,32 @@ lib.fitEF_Bspline.argtypes  = [ c_double,  c_int, c_double_p, c_double_p, c_doub
 lib.fitEF_Bspline.restype   =  None
 def fitEF_Bspline( dg, Fes, Gs=None, Ws=None, Ftol=1e-6, nmaxiter=100, dt=0.1 ):
     n = len(Fes)
-    if Ws is None: Ws = np.zeros( (n,2) )
-    if Gs is None:
-        Gs = Fes[:,0].copy()
+    if Ws is None: Ws = np.ones( (n,2) )
+    if Gs is None: Gs = Fes[:,0].copy()
     lib.fitEF_Bspline( dg, n, _np_as(Gs,c_double_p), _np_as(Fes,c_double_p), _np_as(Ws,c_double_p), Ftol, nmaxiter, dt )
     return Gs, Ws
 
-# int fit3D_Bspline( const int* ns, double* Gs, double* Es, double* Ws, double Ftol, int nmaxiter, double dt ){
-lib.fit3D_Bspline.argtypes  = [ c_int_p, c_double_p, c_double_p, c_double_p, c_double, c_int, c_double ]
+# int fit2D_Bspline( const int* ns, double* Gs, double* Es, double* Ws, double Ftol, int nmaxiter, double dt ){
+lib.fit2D_Bspline.argtypes  = [ c_int_p, c_double_p, c_double_p, c_double_p, c_double, c_int, c_double, c_bool ]
+lib.fit2D_Bspline.restype   =  None
+def fit2D_Bspline( Es, Gs=None, Ws=None, Ftol=1e-6, nmaxiter=100, dt=0.1, bPBC=False ):
+    ns = Es.shape
+    if Ws is None: Ws = np.ones( ns )
+    if Gs is None: Gs = Es.copy()
+    ns = np.array( ns[::-1], dtype=np.int32 ) 
+    lib.fit2D_Bspline( _np_as(ns,c_int_p) , _np_as(Gs,c_double_p), _np_as(Es,c_double_p), _np_as(Ws,c_double_p), Ftol, nmaxiter, dt, bPBC )
+    return Gs, Ws
+
+# int fit3D_Bspline( const int* ns, double* Gs, double* Es, double* Ws, double Ftol, int nmaxiter, double dt, bool bOMP ){
+lib.fit3D_Bspline.argtypes  = [ c_int_p, c_double_p, c_double_p, c_double_p, c_double, c_int, c_double, c_bool, c_bool ]
 lib.fit3D_Bspline.restype   =  None
-def fit3D_Bspline( Es, Gs=None, Ws=None, Ftol=1e-6, nmaxiter=100, dt=0.1 ):
-    #ns = np.array( Es.shape, dtype=np.int32 ) 
+def fit3D_Bspline( Es, Gs=None, Ws=None, Ftol=1e-6, nmaxiter=100, dt=0.1, bPBC=False, bOMP=True ):
     ns = np.array( Es.shape[::-1], dtype=np.int32 ) 
     n  = Es.size
-    if Ws is None: Ws = np.zeros( ns )
+    if Ws is None: Ws = np.ones( ns )
     if Gs is None: Gs = Es[:].copy()
-    #print( "Es\n", Es  )
-    #print( "Gs\n", Gs  )
-    lib.fit3D_Bspline( _np_as(ns,c_int_p) , _np_as(Gs,c_double_p), _np_as(Es,c_double_p), _np_as(Ws,c_double_p), Ftol, nmaxiter, dt )
-    return Gs, Ws
+    lib.fit3D_Bspline( _np_as(ns,c_int_p) , _np_as(Gs,c_double_p), _np_as(Es,c_double_p), _np_as(Ws,c_double_p), Ftol, nmaxiter, dt, bPBC, bOMP )
+    return Gs
 
 #void setupGrid( int* ns, double* cell, bool bAlloc ){
 lib.setupGrid.argtypes  = [ c_int_p, c_double_p, c_bool ]
@@ -240,6 +292,110 @@ def saveXSF( name, FF, cell=None ):
     lib.saveXSF( name, _np_as(FF,c_double_p), _np_as(ns,c_int_p), _np_as(cell,c_double_p) )
 
 
+#void makeGridFF( const char* name, int* ffshape, int mode, double z0, double* cel0, bool bSymmetrize, bool bAutoNPBC, bool bFit, bool bRefine ){
+lib.makeGridFF.argtypes  = [ c_char_p, c_int_p, c_int, c_double, c_double_p, c_bool, c_bool, c_bool, c_bool ]
+lib.makeGridFF.restype   =  None
+def makeGridFF( name, mode=1, z0=np.nan, cel0=[-0.5,-0.5,0.0], bSymmetrize=False, bAutoNPBC=True, bFit=True, bRefine=True ):
+    name=name.encode('utf8')
+    cel0 = np.array( cel0 )
+    ffshape = np.zeros( 4, dtype=np.int32 )   #;print( "ffshape ", ffshape )
+    #print("mmff.makeGridFF: ", " bSymmetrize=", bSymmetrize, " bAutoNPBC=", bAutoNPBC, " bFit=", bFit  )
+    lib.makeGridFF( name,  _np_as(ffshape,c_int_p), mode, float(z0), _np_as(cel0,c_double_p), bSymmetrize, bAutoNPBC, bFit, bRefine )
+    #ffshape = ffshape[::-1]
+    #print( "ffshape ", ffshape )
+    #ff_ = np.ctypeslib.as_array(ff, ffshape )
+    #print( "makeGridFF() DONE" )
+    #return ff_
+
+
+#double* getArrayPointer( const char* name, int* shape  ){
+lib.getArrayPointer.argtypes  = [ c_char_p, c_int_p ]
+lib.getArrayPointer.restype   =  c_double_p
+def getArrayPointer( name ):
+    name=name.encode('utf8')
+    shape = np.zeros( 4, dtype=np.int32 )
+    ptr = lib.getArrayPointer( name,  _np_as(shape,c_int_p) )
+    if ptr:
+        valid_shape = [dim for dim in shape if dim > 0]
+        return np.ctypeslib.as_array( ptr, valid_shape )
+    return None
+
+
+# int setupEwaldGrid( double* pos0, double* dCell, int* ns, bool bPrint ){
+lib.setupEwaldGrid.argtypes  = [ c_double_p, c_double_p, c_int_p, c_bool ]
+lib.setupEwaldGrid.restype   =  c_int
+def setupEwaldGrid( ns, pos0=[0.0,0.0,0.0], dCell=None, dg=[0.1,0.1,0.1], bPrint=False ):
+    if dCell is None: dCell = [[dg[0],0.,0.],[0.,dg[1],0.],[0.,0.,dg[2]]]
+    pos0  = np.array( pos0 )
+    dCell = np.array( dCell )
+    ns = np.array( ns, dtype=np.int32 )
+    return lib.setupEwaldGrid( _np_as(pos0,c_double_p), _np_as(dCell,c_double_p), _np_as(ns,c_int_p), bPrint )
+
+
+#void projectAtomsEwaldGrid( int na, double* apos, double* qs, double* dens, int order ){
+lib.projectAtomsEwaldGrid.argtypes  = [ c_int, c_double_p, c_double_p, c_double_p, c_int ]
+lib.projectAtomsEwaldGrid.restype   =  None
+def projectAtomsEwaldGrid( apos, qs, dens=None, ns=None, order=2 ):
+    na = len(apos)
+    apos = np.array( apos )
+    qs   = np.array( qs )
+    if dens is None: dens = np.zeros( ns[::-1], dtype=np.float64 )
+    lib.projectAtomsEwaldGrid( na, _np_as(apos,c_double_p), _np_as(qs,c_double_p), _np_as(dens,c_double_p), order )
+    return dens
+
+
+#void EwaldGridSolveLaplace( double* dens, int nz, double* Vout, bool bPrepare, bool bDestroy, int flags, bool bOMP, int nBlur, double cSOR, double cV ){
+lib.EwaldGridSolveLaplace.argtypes  = [ c_double_p, c_int, c_double_p, c_bool, c_bool,  c_int, c_bool, c_int, c_double, c_double ]
+lib.EwaldGridSolveLaplace.restype   =  None
+def EwaldGridSolveLaplace( dens, nz_slab=-1, Vout=None, bPrepare=True, bDestroy=True, flags=-1, bOMP=False, nBlur=0, cSOR=0.0, cV=0.5 ):
+    if Vout is None: Vout = np.zeros( dens.shape, dtype=np.float64 )
+    lib.EwaldGridSolveLaplace( _np_as(dens,c_double_p), nz_slab, _np_as(Vout,c_double_p), bPrepare, bDestroy, flags, bOMP, nBlur, cSOR, cV )
+    return Vout
+
+# void EwaldGridSolveLaplaceDebug( double* dens, double* Vout, double* densw, double* kerw, double* VwKer ){
+lib.EwaldGridSolveLaplaceDebug.argtypes  = [ c_double_p, c_double_p, c_double_p, c_double_p, c_double_p ]
+lib.EwaldGridSolveLaplaceDebug.restype   =  None
+def EwaldGridSolveLaplaceDebug( dens, Vout=None, densw=None, kerw=None, VwKer=None ):
+    if Vout  is None: Vout  = np.zeros( dens.shape, dtype=np.float64 )
+    if densw is None: densw = np.zeros( dens.shape, dtype=np.float64 )
+    if kerw  is None: kerw  = np.zeros( dens.shape, dtype=np.float64 )
+    if VwKer is None: VwKer = np.zeros( dens.shape, dtype=np.float64 )
+    lib.EwaldGridSolveLaplaceDebug( _np_as(dens,c_double_p), _np_as(Vout,c_double_p), _np_as(densw,c_double_p), _np_as(kerw,c_double_p), _np_as(VwKer,c_double_p) )
+    return Vout, densw, kerw, VwKer
+
+#void projectMultiPole( double* p0, int n, double* ps, double* Qs, int order, double* cs ){
+lib.projectMultiPole.argtypes  = [ c_double_p, c_int, c_double_p, c_double_p, c_int, c_double_p ]
+lib.projectMultiPole.restype   =  None
+def projectMultiPole( ps, Qs, order=2, p0=None, cs=None ):
+    n = len(ps)
+    ps = np.array( ps )
+    Qs = np.array( Qs )
+    if p0 is None: p0 = np.zeros( 3, dtype=np.float64 )
+    if cs is None: cs = np.zeros( n, dtype=np.float64 )
+    lib.projectMultiPole( _np_as(p0,c_double_p), n, _np_as(ps,c_double_p), _np_as(Qs,c_double_p), order, _np_as(cs,c_double_p) )
+    return cs, p0
+
+#void sampleMultipole( int n, double* ps_, double* fe_, double* p0_, int order, double* cs ){
+lib.sampleMultipole.argtypes  = [ c_int, c_double_p, c_double_p, c_double_p, c_int, c_double_p ]
+lib.sampleMultipole.restype   =  None
+def sampleMultipole( ps, p0, cs, order=2, fe=None ):
+    n = len(ps)
+    ps = np.array( ps )
+    #p0 = np.array( p0 )
+    if fe is None: fe = np.zeros( n, dtype=np.float64 )
+    lib.sampleMultipole( n, _np_as(fe,c_double_p), _np_as(ps,c_double_p), _np_as(p0,c_double_p), order, _np_as(cs,c_double_p) )
+
+# void evalGridFFAtPoints( int n, double* ps, double* FFout, double* PLQH, int* nPBC ){
+lib.evalGridFFAtPoints.argtypes  = [ c_int, c_double_p, c_double_p, c_double_p, c_bool, c_int_p  ]
+lib.evalGridFFAtPoints.restype   =  None
+def evalGridFFAtPoints( ps, FFout=None, PLQH=[0.0,0.0,1.0,0.0], bSplit=True, nPBC=None ):
+    n = len(ps)
+    if FFout is None: FFout=np.zeros( (n,4) )
+    PLQH = np.array( PLQH )
+    if nPBC is not None: nPBC = np.array( nPBC, dtype=np.int32 )
+    lib.evalGridFFAtPoints( n, _np_as(ps,c_double_p), _np_as(FFout,c_double_p), _np_as(PLQH,c_double_p), bSplit, _np_as(nPBC,c_int_p) )
+    return FFout
+
 # void sample_func( int n, double* xs, double* ys, int kind ){
 lib.sample_func.argtypes  = [c_int, c_double_p, c_double_p, c_int]
 lib.sample_func.restype   =  None
@@ -249,14 +405,65 @@ def sample_func( xs, ys=None, kind=0 ):
     lib.sample_func( n, _np_as(xs,c_double_p), _np_as(ys,c_double_p), kind )
     return ys
 
-# void sample_Bspline( double g0, double dg, int ng, double* Gs, int n, double* xs, double* fes ){
-lib.sample_Bspline.argtypes  = [c_double, c_double, c_int, c_double_p, c_int, c_double_p, c_double_p ]
+# void sample_Bspline( double g0, double dg, int ng, double* Gs, int n, double* xs, double* fes , int order, bool bPBC ){
+lib.sample_Bspline.argtypes  = [c_double, c_double, c_int, c_double_p, c_int, c_double_p, c_double_p, c_int, c_bool ]
 lib.sample_Bspline.restype   =  None
-def sample_Bspline( xs, Eps, x0=0.0, dx=1.0, fes=None ):
+def sample_Bspline( xs, Gs, x0=0.0, dx=1.0, fes=None, order=3, bPBC=True ):
     n = len(xs)
     if fes is None: fes=np.zeros((n,2))
-    lib.sample_Bspline(x0, dx, len(Eps), _np_as(Eps,c_double_p), n, _np_as(xs,c_double_p), _np_as(fes,c_double_p) )
+    lib.sample_Bspline(x0, dx, len(Gs), _np_as(Gs,c_double_p), n, _np_as(xs,c_double_p), _np_as(fes,c_double_p), order, bPBC )
     return fes
+
+# void sample_NURBS( double g0, double dg, int ng, double* Gs, double* Ws, int n, double* xs, double* fes ){
+lib.sample_NURBS.argtypes  = [c_double, c_double, c_int, c_double_p, c_double_p, c_int, c_double_p, c_double_p ]
+lib.sample_NURBS.restype   =  None
+def sample_NURBS( xs, Gs, Ws, x0=0.0, dx=1.0, fes=None ):
+    n = len(xs)
+    if fes is None: fes=np.zeros((n,2))
+    lib.sample_NURBS(x0, dx, len(Gs), _np_as(Gs,c_double_p), _np_as(Ws,c_double_p), n, _np_as(xs,c_double_p), _np_as(fes,c_double_p) )
+    return fes
+
+
+# void sample_Bspline2D( double* g0, double* dg, int* ng, double* G, int n, double* ps, double* fes ){
+lib.sample_Bspline2D.argtypes  = [c_double_p, c_double_p, c_int_p, c_double_p,                c_int, c_double_p, c_double_p]
+lib.sample_Bspline2D.restype   =  None
+def sample_Bspline2D( ps, Gs, g0, dg, fes=None):
+    n = len(ps)
+    g0 = np.array(g0)
+    dg = np.array(dg)
+    ng = np.array( Gs.shape[::-1], np.int32 )
+    if fes is None: fes=np.zeros((n,3))
+    lib.sample_Bspline2D( _np_as(g0,c_double_p), _np_as(dg,c_double_p), _np_as(ng,c_int_p), _np_as(Gs,c_double_p), n, _np_as(ps,c_double_p), _np_as(fes,c_double_p) )
+    return fes
+
+#void sample_Bspline2D_comb3( double* g0, double* dg, int* ng, double* G, int n, double* ps, double* fes, double* Cs ){
+lib.sample_Bspline2D_comb3.argtypes  = [c_double_p, c_double_p, c_int_p, c_double_p,                c_int, c_double_p, c_double_p, c_double_p]
+lib.sample_Bspline2D_comb3.restype   =  None
+def sample_Bspline2D_comb3( ps, Gs, g0, dg, fes=None, Cs=[1.0,1.0]  ):
+    n  = len(ps)
+    g0 = np.array(g0)
+    dg = np.array(dg)
+    ng = np.array( Gs.shape[:2][::-1], np.int32 )
+    Cs = np.array( Cs )
+    if fes is None: fes=np.zeros((n,3))
+    lib.sample_Bspline2D_comb3( _np_as(g0,c_double_p), _np_as(dg,c_double_p), _np_as(ng,c_int_p), _np_as(Gs,c_double_p), n, _np_as(ps,c_double_p), _np_as(fes,c_double_p), _np_as(Cs,c_double_p) )
+    return  fes
+
+
+#void sample_Bspline3D_comb3( double* g0, double* dg, int* ng, double* G, int n, double* ps, double* fes, double* Cs ){
+lib.sample_Bspline3D_comb3.argtypes  = [c_double_p, c_double_p, c_int_p, c_double_p,                c_int, c_double_p, c_double_p, c_double_p ]
+lib.sample_Bspline3D_comb3.restype   =  None
+def sample_Bspline3D_comb3( ps, Gs, g0, dg, fes=None, Cs=[1.0,1.0,1.0] ):
+    n  = len(ps)
+    g0 = np.array(g0)
+    dg = np.array(dg)
+    #ng = np.array( Gs.shape[:3][::-1], np.int32 )
+    ng = np.array( Gs.shape[:3], np.int32 )
+    Cs = np.array( Cs )
+    if fes is None: fes=np.zeros((n,4))
+    lib.sample_Bspline3D_comb3( _np_as(g0,c_double_p), _np_as(dg,c_double_p), _np_as(ng,c_int_p), _np_as(Gs,c_double_p), n, _np_as(ps,c_double_p), _np_as(fes,c_double_p), _np_as(Cs,c_double_p) )
+    return fes
+
 
 #void sample_Bspline3D            ( double* g0, double* dg, int* ng, double* G,               int n, double* ps, double* fes ){
 #void sample_SplineHermite3D_deriv( double* g0, double* dg, int* ng, double* Eg, double* dEg, int n, double* ps, double* fes ){
@@ -274,10 +481,20 @@ def sample_Bspline3D( ps, Eg, g0, dg, fes=None):
 #void sample_SplineHermite( double g0, double dg, int ng, double* Eg, int n, double* xs, double* fes ){
 lib.sample_SplineHermite.argtypes  = [c_double, c_double, c_int, c_double_p, c_int, c_double_p, c_double_p ]
 lib.sample_SplineHermite.restype   =  None
-def sample_SplineHermite( xs, Eps, x0=0.0, dx=1.0, fes=None ):
+def sample_SplineHermite( xs, Eps, g0=0.0, dg=1.0, fes=None ):
     n = len(xs)
     if fes is None: fes=np.zeros((n,2))
-    lib.sample_SplineHermite(x0, dx, len(Eps), _np_as(Eps,c_double_p), n, _np_as(xs,c_double_p), _np_as(fes,c_double_p) )
+    lib.sample_SplineHermite(g0, dg, len(Eps), _np_as(Eps,c_double_p), n, _np_as(xs,c_double_p), _np_as(fes,c_double_p) )
+    return fes
+
+#void sample_SplineHermite_comb( double g0, double dg, int ng, double* Eg, int n, double* xs, double* fes, int ncomb, double* Cs ){
+lib.sample_SplineHermite_comb.argtypes  = [c_double, c_double, c_int, c_double_p, c_int, c_double_p, c_double_p, c_int, c_double_p ]
+lib.sample_SplineHermite_comb.restype   =  None
+def sample_SplineHermite_comb( xs, Eps, Cs, ncomb=2, g0=0.0, dg=1.0, fes=None ):
+    n = len(xs)
+    if fes is None: fes=np.zeros((n,2))
+    Cs = np.array(Cs,dtype=np.float64)
+    lib.sample_SplineHermite_comb(g0, dg, len(Eps), _np_as(Eps,c_double_p), n, _np_as(xs,c_double_p), _np_as(fes,c_double_p), ncomb, _np_as(Cs,c_double_p) )
     return fes
 
 #void sample1D_deriv( const double g0, const double dg, const int ng, const Vec2d* FE, const int n, const double* ps, Vec2d* fes ){
@@ -302,6 +519,21 @@ def sample_SplineHermite2D_deriv( ps, Eg, dEg, g0, dg, fes=None):
     lib.sample_SplineHermite2D_deriv( _np_as(g0,c_double_p), _np_as(dg,c_double_p), _np_as(ng,c_int_p), _np_as(Eg,c_double_p), _np_as(dEg,c_double_p),  n, _np_as(ps,c_double_p), _np_as(fes,c_double_p) )
     return fes
 
+
+# void sample_SplineHermite2D_comb( double* g0, double* dg, int* ng, double* Gs, int n, double* ps, double* fes, int ncomb, double* Cs ){
+lib.sample_SplineHermite2D_comb.argtypes  = [c_double_p, c_double_p, c_int_p, c_double_p,  c_int, c_double_p, c_double_p, c_int, c_double_p ]
+lib.sample_SplineHermite2D_comb.restype   =  None
+def sample_SplineHermite2D_comb( ps, Gs, g0, dg, ncomb=2, fes=None, Cs=[1.0,1.0] ):
+    n = len(ps)
+    g0 = np.array(g0)
+    dg = np.array(dg)
+    #ng = np.array( Gs.shape[:2][::-1], np.int32 )
+    ng = np.array( Gs.shape[:2], np.int32 )    # y-axis should be fastest
+    C = np.array(Cs,dtype=np.float64)
+    if fes is None: fes=np.zeros((n,3))
+    lib.sample_SplineHermite2D_comb( _np_as(g0,c_double_p), _np_as(dg,c_double_p), _np_as(ng,c_int_p), _np_as(Gs,c_double_p), n,_np_as(ps,c_double_p), _np_as(fes,c_double_p), ncomb, _np_as(C,c_double_p) )
+    return fes
+
 #void sample_SplineHermite3D_deriv( double* g0, double* dg, int* ng, double* Eg, double* dEg, int n, double* ps, double* fes ){
 lib.sample_SplineHermite3D_deriv.argtypes  = [c_double_p, c_double_p, c_int_p, c_double_p, c_double_p,  c_int, c_double_p, c_double_p]
 lib.sample_SplineHermite3D_deriv.restype   =  None
@@ -314,6 +546,19 @@ def sample_SplineHermite3D_deriv( ps, Eg, dEg, g0, dg, fes=None):
     lib.sample_SplineHermite3D_deriv( _np_as(g0,c_double_p), _np_as(dg,c_double_p), _np_as(ng,c_int_p), _np_as(Eg,c_double_p), _np_as(dEg,c_double_p), n, _np_as(ps,c_double_p), _np_as(fes,c_double_p) )
     return fes
 
+#void sample_SplineHermite3D_comb3( double* g0, double* dg, int* ng, double* EFg, int n, double* ps, double* fes, double* Cs ){
+lib.sample_SplineHermite3D_comb3.argtypes  = [c_double_p, c_double_p, c_int_p, c_double_p, c_int, c_double_p, c_double_p, c_double_p ]
+lib.sample_SplineHermite3D_comb3.restype   =  None
+def sample_SplineHermite3D_comb3( ps, EFg, g0, dg, fes=None, Cs=[1.0,1.0,1.0] ):
+    n = len(ps)
+    g0 = np.array(g0)
+    dg = np.array(dg)
+    ng = np.array( EFg.shape, np.int32 )
+    C = np.array(Cs,dtype=np.float64)
+    if fes is None: fes=np.zeros((n,4))
+    lib.sample_SplineHermite3D_comb3( _np_as(g0,c_double_p), _np_as(dg,c_double_p), _np_as(ng,c_int_p), _np_as(EFg,c_double_p), n, _np_as(ps,c_double_p), _np_as(fes,c_double_p), _np_as(C,c_double_p) )
+    return fes
+
 #void sample_SplineHermite2D( double* g0, double* dg, int* ng, double* Eg, int n, double* ps, double* fes )
 lib.sample_SplineHermite2D.argtypes  = [c_double_p, c_double_p, c_int_p, c_double_p, c_int, c_double_p, c_double_p]
 lib.sample_SplineHermite2D.restype   =  None
@@ -321,7 +566,7 @@ def sample_SplineHermite2D( ps, Eg, g0, dg, fes=None):
     n = len(ps)
     g0 = np.array(g0)
     dg = np.array(dg)
-    ng = np.array( Eg.shape, np.int32 )
+    ng = np.array( Eg.shape[::-1], np.int32 )
     if fes is None: fes=np.zeros((n,3))
     lib.sample_SplineHermite2D( _np_as(g0,c_double_p), _np_as(dg,c_double_p), _np_as(ng,c_int_p), _np_as(Eg,c_double_p), n, _np_as(ps,c_double_p), _np_as(fes,c_double_p) )
     return fes
@@ -333,8 +578,8 @@ def sample_SplineHermite3D( ps, Eg, g0, dg, fes=None):
     n = len(ps)
     g0 = np.array(g0)
     dg = np.array(dg)
-    ng = np.array( Eg.shape, np.int32 )
     if fes is None: fes=np.zeros((n,4))
+    ng = np.array( Eg.shape, np.int32 )
     lib.sample_SplineHermite3D( _np_as(g0,c_double_p), _np_as(dg,c_double_p), _np_as(ng,c_int_p), _np_as(Eg,c_double_p), n, _np_as(ps,c_double_p), _np_as(fes,c_double_p) )
     return fes
 
@@ -349,6 +594,22 @@ def sample_SplineHermite3D_f( ps, Eg, g0, dg, fes=None):
     if fes is None: fes=np.zeros((n,4), dtype=np.float32)
     lib.sample_SplineHermite3D_f( _np_as(g0,c_float_p), _np_as(dg,c_float_p), _np_as(ng,c_int_p), _np_as(Eg,c_float_p), n, _np_as(ps,c_float_p), _np_as(fes,c_float_p) )
     return fes
+
+#void sampleCoulombPBC( int nps, double* ps, double* fe, int natom,  double* apos, double* Qs, double* lvec, int* nPBC, double Rdamp ){
+lib.sampleCoulombPBC.argtypes  = [c_int, c_double_p, c_double_p, c_int, c_double_p, c_double_p, c_double_p, c_int_p, c_double]
+lib.sampleCoulombPBC.restype   =  None
+def sampleCoulombPBC( ps, apos, Qs, lvec=[[10.0,0.0,0.0],[10.0,0.0,0.0],[10.0,0.0,0.0]], nPBC=[1,1,1], fe=None, Rdamp=1e-32 ):
+    nps   = len(ps)
+    natom = len(apos)
+    ps    = np.array(ps,   dtype=np.float64)
+    apos  = np.array(apos, dtype=np.float64)
+    Qs    = np.array(Qs,   dtype=np.float64)
+    if fe is None: fe=np.zeros( (nps,4) )
+    lvec  = np.array(lvec, dtype=np.float64)
+    nPBC = np.array(nPBC,  dtype=np.int32)
+    lib.sampleCoulombPBC( nps, _np_as(ps,c_double_p), _np_as(fe,c_double_p), natom, _np_as(apos,c_double_p), _np_as(Qs,c_double_p), _np_as(lvec,c_double_p), _np_as(nPBC,c_int_p), Rdamp )
+    return fe
+
 
 # void sample_SplineConstr( double x0, double dx, int np, double* Eps, int n, double* xs, double* Es, double* Fs ){
 lib.sample_SplineConstr.argtypes  = [c_double, c_double, c_int, c_double_p, c_int, c_double_p, c_double_p, c_double_p]
@@ -635,6 +896,17 @@ def sampleSurf_vecs(ps, FEs=None, kind=1, ityp=-1, RvdW=1.487, EvdW=0.0006808, Q
     lib.sampleSurf_vecs( n, ps, FEs, kind, ityp, RvdW, EvdW, Q, K, Rdamp, npbc, bSave )
     return FEs
 
+
+# void sampleSurf_new( int n, double* ps_, double* FEout_, int kind, double* REQ_, double K, double RQ ){
+lib.sampleSurf_new.argtypes  = [ c_int, array2d, array2d, c_int, array1d, c_double, c_double ]
+lib.sampleSurf_new.restype   =  None
+def sampleSurf_new( ps, PLQH, FEout=None, mode=1, K=-1.0, Rdamp=1.0 ):
+    n =len(ps)
+    if FEout is None: FEout=np.zeros( (n,4) )
+    PLQH=np.array(PLQH)
+    lib.sampleSurf_new( n, ps, FEout, mode, PLQH, K, Rdamp )
+    return FEout
+
 # # void sampleSurf_vecs(char* name, int n, double* rs, double* Es, double* fs, int kind, double*REQ_, double K, double Rdamp ){
 # lib.sampleSurf_vecs.argtypes  = [c_char_p, c_int, array2d, array1d, array2d, c_int, c_int, c_double, c_double, c_double, array1d, c_bool] 
 # lib.sampleSurf_vecs.restype   =  None
@@ -700,20 +972,21 @@ def getBuffs( NEIGH_MAX=4 ):
     #natom=nnode+ncap
     #nvecs=natom+npi
     #nDOFs=nvecs*3
-
     global ffflags
     ffflags = getBBuff( "ffflags" , (14,) )
-
     global ndims,Es
-    ndims = getIBuff( "ndims", (6,) )  # [nDOFs,natoms,nnode,ncap,npi,nbonds]
+    ndims = getIBuff( "ndims", (9,) )  # [nDOFs,natoms,nnode,ncap,npi,nbonds]
+    global nDOFs,natoms,nnode,ncap,npi,nvecs,nbonds,ne,ie0
+    # MFF_lib.cpp::init_buffers() ndims{nDOFs=9,natoms=3,nnode=1,ncap=2,npi=0,nbonds=2,nvecs=3,ne=0,ie0=3}
+    nDOFs=ndims[0]; natoms=ndims[1];  nnode=ndims[2]; ncap=ndims[3]; npi=ndims[4]; nbonds=ndims[5]; nvecs=ndims[6]; ne=ndims[7]; ie0=ndims[8]
+    print( "getBuffs(): nDOFs=%i nvecs=%i  natoms=%i nnode=%i ncap=%i npi=%i nbonds=%i nvecs=%i ne=%i ie0=%i " %(nDOFs,nvecs,natoms,nnode,ncap,npi,nbonds,nvecs,ne,ie0) )
     Es    = getBuff ( "Es",    (6,) )  # [ Etot,Eb,Ea, Eps,EppT,EppI; ]
-    global nDOFs,natoms,nnode,ncap,npi,nvecs
-    nDOFs=ndims[0]; nnode=ndims[1]; ncap=ndims[2];nvecs=ndims[3]; natoms=nnode+ncap; npi=nnode
-    print( "getBuffs(): nDOFs %i nvecs %i  natoms %i nnode %i ncap %i npi %i" %(nDOFs,nvecs,natoms,nnode,ncap,npi) )
-    global DOFs,fDOFs,vDOFs,apos,fapos,pipos,fpipos,bond_l0,bond_k, bond2atom,neighs,selection
+    global DOFs,fDOFs,vDOFs,apos,fapos,REQs,PLQs,pipos,fpipos,bond_l0,bond_k, bond2atom,neighs,selection
     #Ebuf     = getEnergyTerms( )
     apos      = getBuff ( "apos",     (natoms,3) )
     fapos     = getBuff ( "fapos",    (natoms,3) )
+    REQs      = getBuff ( "REQs",     (natoms,4) )
+    PLQs      = getBuff ( "PLQs",     (natoms,4) )
     if glob_bMMFF:
         DOFs      = getBuff ( "DOFs",     (nvecs,3)  )
         fDOFs     = getBuff ( "fDOFs",    (nvecs,3)  ) 
@@ -726,6 +999,7 @@ def getBuffs( NEIGH_MAX=4 ):
         #bond2atom = getIBuff( "bond2atom",(nbonds,2) )
         neighs   = getIBuff( "neighs",  (nnode,NEIGH_MAX) )
         selection = getIBuff( "selection",  (natoms) )
+    print( "getBuffs DONE" )
 
 #  void init_buffers()
 lib.init_buffers.argtypes  = []
@@ -813,6 +1087,19 @@ def init(
     nPBC=np.array(nPBC,dtype=np.int32)
     return lib.init( cstr(xyz_name), cstr(surf_name), cstr(smile_name), cstr(constr_name), bMMFF, bEpairs, bUFF, b141, bSimple, bConj, bCumulene, nPBC, gridStep, cstr(sElementTypes), cstr(sAtomTypes), cstr(sBondTypes), cstr(sAngleTypes), cstr(sDihedralTypes) )
 
+
+#void initParams          ( const char* sElementTypes, const char* sAtomTypes, const char* sBondTypes, const char* sAngleTypes, const char* sDihedralTypes ){
+lib.initParams.argtypes  = [c_char_p, c_char_p, c_char_p, c_char_p, c_char_p]
+lib.initParams.restype   =  None
+def initParams(
+        sElementTypes  = "data/ElementTypes.dat",
+        sAtomTypes     = "data/AtomTypes.dat", 
+        sBondTypes     = "data/BondTypes.dat", 
+        sAngleTypes    = "data/AngleTypes.dat",
+        sDihedralTypes = "data/DihedralTypes.dat",
+    ):
+    return lib.initParams(  cstr(sElementTypes), cstr(sAtomTypes), cstr(sBondTypes), cstr(sAngleTypes), cstr(sDihedralTypes) )
+
 def tryInit():
     if not isInitialized:
         init()
@@ -865,6 +1152,12 @@ lib.setSwitches.argtypes  = [c_int, c_int, c_int, c_int, c_int, c_int, c_int , c
 lib.setSwitches.restype   =  None
 def setSwitches( CheckInvariants=0, PBC_nonBond=0, PBC_evalAtom=0, NonBonded=0, MMFF=0, doBonds=0, Angles=0, PiSigma=0, PiPiI=0, bNonBondNeighs=0, bSurfAtoms=0, bGridFF=0, bTricubic=0, bConstrZ=0, bConstrains=0, bExploring=0 ):
     return lib.setSwitches( CheckInvariants, PBC_nonBond, PBC_evalAtom, NonBonded, MMFF, doBonds, Angles, PiSigma, PiPiI, bNonBondNeighs, bSurfAtoms, bGridFF, bTricubic, bConstrZ, bConstrains, bExploring )
+
+# void setSwitches2( int CheckInvariants, int PBC, int NonBonded, int NonBondNeighs,  int SurfAtoms, int GridFF, int MMFF, int Angles, int PiSigma, int PiPiI ){
+lib.setSwitches2.argtypes  = [c_int, c_int, c_int, c_int, c_int, c_int, c_int, c_int, c_int, c_int]
+lib.setSwitches2.restype   =  None
+def setSwitches( CheckInvariants=0, PBC=0, NonBonded=0, NonBondNeighs=0, SurfAtoms=0, GridFF=0, MMFF=0, Angles=0, PiSigma=0, PiPiI=0):
+    return lib.setSwitches2(CheckInvariants, PBC, NonBonded, NonBondNeighs, SurfAtoms, GridFF, MMFF, Angles, PiSigma, PiPiI)
 
 #  bool checkInvariants( double maxVcog, double maxFcog, double maxTg )
 lib.checkInvariants.argtypes  = [c_double, c_double, c_double] 
@@ -937,6 +1230,19 @@ lib. run.argtypes  = [c_int, c_double, c_double, c_int, c_double, c_double_p, c_
 lib. run.restype   =  c_int
 def run(nstepMax=1000, dt=-1, Fconv=1e-6, ialg=2, damping=-1.0, outE=None, outF=None, outV=None, outVF=None, omp=False):
     return lib.run(nstepMax, dt, Fconv, ialg, damping, _np_as(outE,c_double_p), _np_as(outF,c_double_p), _np_as(outV,c_double_p), _np_as(outVF,c_double_p), omp )
+
+#lib.scan.argtypes  = [c_int, array2d, array2d, array1d, array2d, array2d, c_bool, c_bool, c_int, c_double, c_double, c_double]
+# int  scan( int nconf, double* poss, double* rots, double* Es, double* aforces, double* aposs, bool omp, bool bRelax, int niter_max, double dt, double Fconv, double Flim ){
+lib.scan.argtypes = [ c_int, c_double_p, c_double_p, c_double_p, c_double_p, c_double_p, c_bool, c_bool, c_int, c_double, c_double, c_double ]
+lib.scan.restype   =  None
+def scan(poss, rots=None, Es=None, aforces=None, aposs=None,  bF=False,bP=False, omp=False, bRelax=False, niter_max=10000, dt=0.05, Fconv=1e-5, Flim=100.0 ):
+    nconf=len(poss)
+    if Es is None: Es=np.zeros(nconf)
+    if (aforces is None) and bF: aforces=np.zeros( (nconf,natoms,3) )
+    if (aposs is None) and bP:   aposs=np.zeros(   (nconf,natoms,3) )
+    #lib.scan(nconf, poss, rots, Es, aforces, aposs, omp, bRelax, niter_max, dt, Fconv, Flim )
+    lib.scan( nconf, _np_as(poss,c_double_p), _np_as(rots,c_double_p), _np_as(Es,c_double_p), _np_as(aforces,c_double_p), _np_as(aposs,c_double_p), omp, bRelax, niter_max, dt, Fconv, Flim )
+    return Es, aforces, aposs 
 
 # ========= Lattice Optimization
 

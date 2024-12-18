@@ -1,20 +1,21 @@
-﻿
-#ifndef Atoms_h
+﻿#ifndef Atoms_h
 #define Atoms_h
+/// @file Atoms.h      @brief Base class for any systems composed of atoms (e.g. molecules, crystals ...)
+/// @ingroup Classical_Molecular_Mechanics
 
 #include <string.h>
 #include <stdio.h>
 #include "Vec3.h"
 #include "Mat3.h"
 
-// ToDo later: make Atoms Child of  Points
+// ToDo later: make Atoms Child of  Points (?)
 class Points{ public:
     int     n=0;
     Vec3d * ps=0;
 };
 
 
-
+/// @brief  Base class (Interface) eventual additional data that can be stored in Atoms class or any other generic/abstract base class
 class MetaData{ public:
    /*virtual void print()=0;
    virtual char* tostr(int id)=0;*/
@@ -23,7 +24,7 @@ class MetaData{ public:
 };
 
 
-
+/// @brief Base class for any systems composed of atoms (e.g. molecules, crystals ...), it store atomic posiitons and types, energy and Id of the system (for database), eventually additional data can be stored using poionter to MetaData class.
 class Atoms{ public:
     int     natoms =0;  // number of atoms in the system
     int   * atypes =0;  // [natoms] array of atom type indices

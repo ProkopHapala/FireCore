@@ -728,48 +728,263 @@ __kernel void projectOrbDenToGrid_texture_2(
 
 
 
-__kernel void projectWfAtPoints_tex(
-    const int nAtoms,            //1
-    __global float4*  atoms,     //2
-    __global float4*  coefs,     //3
-    int   nPos,                  //4
-    __global float4*  poss,      //5
-    __global float2*  out,       //6
-    __read_only image2d_t imgIn  //7
+// ========================================================================= 
+// ========================================================================= 
+// ===================== Project Point Charges on Grid  ====================
+// ========================================================================= 
+// ========================================================================= 
+
+// void make_inds_pbc(const int n, int4* indices) {
+//     indices[0] = (int4){0, 1, 2, 3};
+//     indices[1] = (int4){0, 1, 2, 3 - n};
+//     indices[2] = (int4){0, 1, 2 - n, 3 - n};
+//     indices[3] = (int4){0, 1 - n, 2 - n, 3 - n};
+// }
+
+inline int modulo(int i, int m) {
+    int result = i % m;
+    return (result < 0) ? (result + m) : result;
+}
+
+
+int4 make_inds_pbc(const int n, const int iG) {
+    switch( iG ){
+        case 0: { return (int4)(0, 1,   2,   3  ); }
+        case 1: { return (int4)(0, 1,   2,   3-n); }
+        case 2: { return (int4)(0, 1,   2-n, 3-n); }
+        case 3: { return (int4)(0, 1-n, 2-n, 3-n); }
+    }
+    return (int4)(-100, -100, -100, -100);
+}
+
+int8 make_inds_pbc_5(const int n, const int iG) {
+    switch( iG ){
+        case 0: { return (int8){0, 1,   2,   3,   4,   5  ,-100,-100 }; }
+        case 1: { return (int8){0, 1,   2,   3,   4,   5-n,-100,-100 }; }
+        case 2: { return (int8){0, 1,   2,   3,   4-n, 5-n,-100,-100 }; }
+        case 3: { return (int8){0, 1,   2,   3-n, 4-n, 5-n,-100,-100 }; }
+        case 4: { return (int8){0, 1,   2-n, 3-n, 4-n, 5-n,-100,-100 }; }
+        case 5: { return (int8){0, 1-n, 2-n, 3-n, 4-n, 5-n,-100,-100 }; }
+    }
+    return (int8)(-100,-100,-100,-100, -100,-100,-100,-100);
+}
+
+inline int4 choose_inds_pbc(const int i, const int n, const int4* iqs) {
+    if (i >= (n-3)) {
+        const int ii = i + 4 - n;
+        return iqs[ii];
+    }
+    return (int4)(0, +1, +2, +3);
+}
+
+// inline int4 choose_inds_pbc_3( const int i, const int n, const int4* iqs ){
+//     if(i>=(n-3)){ 
+//         const int ii = i+4-n;
+//         //printf( "choose_inds_pbc() ii=%i i=%i n=%i \n", ii, i, n );
+//         const int4 d = iqs[ii];
+//         return (int4){ i+d.x, i+d.y, i+d.z, i+d.w }; 
+//     }
+//     return (int4){ i, i+1, i+2, i+3 };
+// }
+
+inline int4 choose_inds_pbc_3( const int i, const int n, const int4* iqs ){
+    if(i>=(n-3)){ 
+        const int ii = i+4-n;
+        //printf( "choose_inds_pbc() ii=%i i=%i n=%i \n", ii, i, n );
+        const int4 d = iqs[ii];
+        return (int4){ i+d.x, i+d.y, i+d.z, i+d.w }; 
+    }
+    return (int4){ i, i+1, i+2, i+3 };
+}
+
+
+
+int pbc_ifw(int i, int n){ i++; return (i<n )?  i :  i-n; };
+int pbc_ibk(int i, int n){ i--; return (i>=0)?  i :  i+n; };
+
+__kernel void laplace_real_pbc( 
+    int4 ng,
+    __global float* Vin, 
+    __global float* Vout, 
+    float cSOR
 ){
-    __local float4 LATOMS[N_LOCAL];
-    __local float4 LCOEFS[N_LOCAL];
-    const int iG = get_global_id (0);
-    const int iL = get_local_id  (0);
-    const int nL = get_local_size(0);
+
+    const int ix = get_global_id(0);
+    const int iy = get_global_id(1);
+    const int iz = get_global_id(2);
+    if( (ix>=ng.x) || (iy>=ng.y) || (iz>=ng.z) ) return;
+
+    int nxy = ng.x * ng.y;
+    const float fac = 1.0f/6.0f;
+    //float err2 = 0.0; 
     
-    if(iG>nPos) return;
-    float3 pos  = poss[iG].xyz;
-    float2 wf   = (float2) (0.0f,0.0f);
-    //printf( "projectWfAtPoints_tex %i (%g, %g,%g) \n", iG, poss[iG].x, poss[iG].y, poss[iG].z  );
-    //if(iG==0){ for(int i=0; i<nAtoms; i++){ printf( "atom[%i] atom(%g,%g,%g,%g) coefs(%g,%g,%g,%g)\n", i, atoms[i].x, atoms[i].y, atoms[i].z,atoms[i].w,  coefs[i].x, coefs[i].y, coefs[i].z,coefs[i].w ); }  }
-    //if(iG==0){ for(int i=0; i<30; i++){ float x=i*0.1; float2 xy=lerp_basis( x*wf_tiles_per_angstroem, 1.1, imgIn ); printf( "i %i x %g (%g,%g) \n",i, x, xy.x, xy.y ); } }
-    for (int i0=0; i0<nAtoms; i0+= nL ){
-        int i = i0 + iL;
-        // TODO : we can optimize it here - load just the atom which are close to center of the block !!!!!
-        //        BUT it will be better/faster to do this on CPU ... atoms-buffer should be already segment to blocks each considering to local work-group (3D tile)
-        LATOMS[iL] = atoms[i];
-        LCOEFS[iL] = coefs[i];
-        barrier(CLK_LOCAL_MEM_FENCE);
-        for (int j=0; j<nL; j++){
-            if( (j+i0)<nAtoms ){ 
-                float4 xyzq  = LATOMS[j];
-                float4 cs    = LCOEFS[j];
-                //wf.x += sp3( pos-xyzq.xyz, cs, xyzq.w );
-                //wf.x += sp3_tex( (pos-xyzq.xyz)*10.f, cs, xyzq.w, imgIn );
-                //wf.x = read_imagef( imgIn, sampler_wrf, pos.xy*8 ).x;
-                float3 dp = (pos-xyzq.xyz)*wf_tiles_per_angstroem; ///0.529177210903f);
-                //printf( "iG %i x %g r %g \n", iG, pos.x, length(dp) );
-                //wf.x +=         sp3_tex( dp, cs, xyzq.w, imgIn );
-                wf.x += dot( cs,  sp3_tex( dp,     xyzq.w, imgIn ) );
+    const int iiz =          iz       *nxy;
+    const int ifz =  pbc_ifw(iz, ng.z)*nxy;
+    const int ibz =  pbc_ibk(iz, ng.z)*nxy;
+    
+    const int iiy =          iy       *ng.x;
+    const int ify =  pbc_ifw(iy, ng.y)*ng.x;
+    const int iby =  pbc_ibk(iy, ng.y)*ng.x;
+    const int ifx =  pbc_ifw(ix, ng.x);
+    const int ibx =  pbc_ibk(ix, ng.x);
+
+    double vi = 
+    Vin[ ibx + iiy + iiz ] + Vin[ ifx + iiy + iiz ] + 
+    Vin[ ix  + iby + iiz ] + Vin[ ix  + ify + iiz ] + 
+    Vin[ ix  + iiy + ibz ] + Vin[ ix  + iiy + ifz ];
+
+    vi*=fac;
+    const int i = ix + iiy + iiz;
+    const float vo = Vin[ i ];
+    vi += (vi-vo)*cSOR; 
+    const float dv = vi - vo;
+    
+    //err2 += dv*dv;
+    Vout[i] = vi;
+}
+
+
+
+
+// float4 Bspline_basis(const float u) {
+//     const float inv6 = 1.0f / 6.0f;
+//     const float u2 = u * u;
+//     const float t = 1.0f - u;
+//     return (float4)(
+//         inv6 * t * t * t,
+//         inv6 * (3.0f * u2 * (u - 2.0f) + 4.0f),
+//         inv6 * (3.0f * u * (1.0f + u - u2) + 1.0f),
+//         inv6 * u2 * u
+//     );
+// }
+// float4 Bspline_dbasis(const float u) {
+//     const float u2 = u * u;
+//     const float t = 1.0f - u;
+//     return (float4)(
+//         -0.5f * t * t,
+//         0.5f * (3.0f * u2 - 4.0f * u),
+//         0.5f * (-3.0f * u2 + 2.0f * u + 1.0f),
+//         0.5f * u2
+//     );
+// }
+
+void Bspline_basis(const float u, float * ws) {
+    const float inv6 = 1.0f / 6.0f;
+    const float u2 = u * u;
+    const float t = 1.0f - u;
+    //return (float4)(
+    ws[0]=    inv6 * t * t * t;
+    ws[1]=    inv6 * (3.0f * u2 * (u - 2.0f) + 4.0f);
+    ws[2]=    inv6 * (3.0f * u * (1.0f + u - u2) + 1.0f);
+    ws[3]=    inv6 * u2 * u;
+    //);
+}
+
+void Bspline_dbasis(const float u, float * ws) {
+    const float u2 = u * u;
+    const float t = 1.0f - u;
+    //return (float4)(
+    ws[0]=    -0.5f * t * t;
+    ws[1]=     0.5f * ( 3.0f * u2 - 4.0f * u);
+    ws[2]=     0.5f * (-3.0f * u2 + 2.0f * u + 1.0f);
+    ws[3]=     0.5f * u2;
+    //);
+}
+
+
+void Bspline_basis5(const float t, float * ws){
+    const float inv6 = 1.f/6.f;
+    const float t2 = t*t;
+    const float t3 = t2*t;
+    const float t4 = t2*t2;
+    const float t5 = t3*t2;
+    //return (float8){                                                  
+    ws[0]=  -0.008333333333333333*t5  +0.041666666666666666*t4  -0.08333333333333333*t3 +0.08333333333333333*t2  -0.041666666666666666*t   +0.008333333333333333;
+    ws[1]=   0.041666666666666666*t5  -0.166666666666666666*t4  +0.16666666666666666*t3 +0.16666666666666666*t2  -0.416666666666666666*t   +0.216666666666666666;        
+    ws[2]=  -0.083333333333333333*t5  +0.250000000000000000*t4                          -0.50000000000000000*t2                            +0.550000000000000000;  
+    ws[3]=   0.083333333333333333*t5  -0.166666666666666666*t4  -0.16666666666666666*t3 +0.16666666666666666*t2  +0.416666666666666666*t   +0.216666666666666666;
+    ws[4]=  -0.041666666666666666*t5  +0.041666666666666666*t4  +0.08333333333333333*t3 +0.08333333333333333*t2  +0.041666666666666666*t   +0.008333333333333333; 
+    ws[5]=   0.008333333333333333*t5;
+    //     0.f,0.f,
+    //};
+}
+
+
+void Bspline_dbasis5(const float t, float * ws){
+    const float inv6 = 1.f/6.f;
+    const float t2 = t*t;
+    const float t3 = t2*t;
+    const float t4 = t2*t2;
+    //return (float8){           
+    ws[0]=    -0.0416666666666667*t4	+0.166666666666667*t3	-0.25*t2   +0.166666666666667*t	-0.041666666666666666;	
+    ws[1]=     0.2083333333333333*t4	-0.666666666666667*t3	+0.50*t2   +0.333333333333333*t -0.416666666666666666;	
+    ws[2]=    -0.4166666666666667*t4	+1.000000000000000*t3	           -1.000000000000000*t                      ;	
+    ws[3]=     0.4166666666666667*t4	-0.666666666666667*t3	-0.50*t2   +0.333333333333333*t	+0.416666666666666666;	
+    ws[4]=    -0.2083333333333333*t4	+0.166666666666667*t3	+0.25*t2   +0.166666666666667*t	+0.041666666666666666;	
+    ws[5]=     0.0416666666666667*t4;
+    //};
+}
+
+
+__kernel void project_atom_on_grid_cubic_pbc(
+    const int num_atoms,
+    __global const float4* atoms,   // Atom positions and charges
+    __global       float*  Qgrid,   // Output grid
+    const int4 ng,                  // grid size
+    const float3 g0,       // grid orgin
+    const float3 dg    // grid dimensions
+) {
+    int iG = get_global_id(0);
+    const int iL = get_local_id(0);
+    if (iG >= num_atoms) return;
+
+    __local int4 xqs[4];
+    __local int4 yqs[4];
+    __local int4 zqs[4];
+    if      (iL<4 ){             xqs[iL]=make_inds_pbc(ng.x,iL); }
+    else if (iL<8 ){ int i=iL-4; yqs[i ]=make_inds_pbc(ng.y,i ); }
+    else if (iL<12){ int i=iL-8; yqs[i ]=make_inds_pbc(ng.y,i ); };
+    barrier(CLK_LOCAL_MEM_FENCE);
+
+
+    // Load atom position and charge
+    float4 atom = atoms[iG];
+    //float3 pos  = (float3)(atom_data.x, atom_data.y, atom_data.z);
+    //float charge = atom_data.w;
+
+    // Convert to grid coordinates
+    float3      g = (atom.xyz - g0) / dg;
+    int3       gi = (int3  ){(int)g.x, (int)g.y, (int)g.z};
+    float3 t      = (float3){     g.x - gi.x, g.y - gi.y, g.z - gi.z};
+
+    // Compute weights for cubic B-spline interpolation
+    float wx[4], wy[4], wz[4];
+    Bspline_basis(t.x, wx);
+    Bspline_basis(t.y, wy);
+    Bspline_basis(t.z, wz);
+
+    const int nxy = ng.x * ng.y;
+    // Pre-calculate periodic boundary condition indices for each dimension
+    gi.x=modulo(gi.x-1,ng.x); const int4 xq = choose_inds_pbc_3(gi.x, ng.x, xqs );  const int* xq_ = (int*)&xq;
+    gi.y=modulo(gi.y-1,ng.y); const int4 yq = choose_inds_pbc_3(gi.y, ng.y, yqs );  const int* yq_ = (int*)&xq;
+    gi.z=modulo(gi.z-1,ng.z); const int4 zq = choose_inds_pbc_3(gi.z, ng.z, zqs );  const int* zq_ = (int*)&xq;
+
+    //float4 Bspline_dbasis();
+
+    for (int dz = 0; dz < 4; dz++) {
+        const int gz  = zq_[dz];
+        const int iiz = gz * nxy;
+        for (int dy = 0; dy < 4; dy++) {
+            const int gy = yq_[dy];
+            const int iiy = iiz + gy * ng.x;
+            const double qbyz = atom.w * wy[dy] * wz[dz];
+            for (int dx = 0; dx < 4; dx++) {
+                const int gx = xq_[dx];
+                const int ig = gx + iiy;
+                double qi = qbyz * wx[dx];
+                Qgrid[ig] += qi;
             }
         }
-        barrier(CLK_LOCAL_MEM_FENCE);
     }
-    out[iG] = wf;
+
 }

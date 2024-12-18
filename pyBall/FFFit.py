@@ -6,6 +6,9 @@ import sys
 from . import atomicUtils as au
 #from . import MMFF as mmff
 
+
+fc = None   # FireCore module, initialize externally like fitff.fc = FireCore
+
 verbosity=0
 
 def exprange( xmax, n=10 ):
@@ -50,7 +53,7 @@ def makeRotationScan_firecore( nstep, selection, rot, p0, apos, nmax_scf=200 ):
     for i in range(nstep):
         #fc.SCF( positions, iforce=iforce, nmax_scf=nmax_scf )
         fc.evalForce( apos, forces=forces, nmax_scf=nmax_scf, Es=Etemp, ixyz=i )
-        print( "makeRotationScan_firecore() step# ", i," E[eV]= ", Etemp[0] )
+        print( "makeRotationScan_firecore() step# %3i E[eV]= " %i, Etemp[0] )
         Es[i] = Etemp[0]
         apos[selection,:]-=p0
         for ia in selection:

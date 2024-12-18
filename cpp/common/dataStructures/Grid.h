@@ -57,6 +57,37 @@ class GridShape{ public:
         updateCell(step);
     }
 
+    void copy( const GridShape& g ){
+        pos0=g.pos0;
+        cell=g.cell;
+        iCell=g.iCell;
+        dCell=g.dCell;
+        diCell=g.diCell;
+        n=g.n;
+    }
+
+    void enlarge( Vec3i dn ){
+        n+=dn;
+        updateCell_2();
+    }
+
+    void enlarge( Vec3d dLs ){
+        Vec3d ds{ dCell.a.norm(), dCell.b.norm(), dCell.c.norm() };
+        Vec3i dn{ (int)(dLs.x/ds.x + 0.5), (int)(dLs.y/ds.y+0.5), (int)(dLs.z/ds.z+0.5) };
+        enlarge( dn );
+    }
+
+    void swap_axes( Vec3i swp ){
+        pos0.swap( swp );
+        printf( "swapping axes BEFORE n(%i,%i,%i)\n", n.x,n.y,n.z );
+        n.swap( swp );
+        printf( "swapping axes AFTER n(%i,%i,%i)\n", n.x,n.y,n.z );
+        cell.swap_vecs(swp);
+        iCell.swap_vecs(swp);
+        dCell.swap_vecs(swp);
+        diCell.swap_vecs(swp);
+    }
+
     void center_cell( Vec3d c ){ cell.dot_to_T( c, pos0 ); }
 
 	//inline Vec3d * allocateArray_Vec3d(){ return new Vec3d[n.x*n.y*n.z); }
@@ -113,6 +144,8 @@ class GridShape{ public:
         }
         return i;
     }
+
+    double getVolume(){ return cell.determinant(); }
 
 	int init(double R, double step, bool bPow2=false){
         cell = Mat3d{ (2*R),0.0,0.0,  0.0,(2*R),0.0,  0.0,0.0,(2*R) };
@@ -220,11 +253,10 @@ class GridShape{ public:
     }
 
     template<typename T>
-    void toXSF( FILE* fout, const T* FF, int pitch, int offset ) const {
-        printf( "GridShape::toXSF() stride %i offset %i ns(%i,%i,%i)\n", pitch, offset, n.x, n.y, n.z );
+    Vec2d toXSF( FILE* fout, const T* FF, int pitch, int offset ) const {
+        //printf( "GridShape::toXSF() stride %i offset %i ns(%i,%i,%i)\n", pitch, offset, n.x, n.y, n.z );
         headerToXsf( fout );
         int nx  = n.x; 	int ny  = n.y; 	int nz  = n.z; int nxy = ny * nx;
-
         double vmin=1e+300;
         double vmax=-1e+300;
         for ( int ic=0; ic<nz; ic++ ){
@@ -233,18 +265,15 @@ class GridShape{ public:
                 for ( int ia=0; ia<nx; ia++ ){
                    int i = i3D( ia, ib, ic );
                    fprintf( fout, "%6.5e\n", FF[i*pitch+offset] );
-
-                    vmin=fmin( vmin, FF[i*pitch+offset]);
-                    vmax=fmax( vmax, FF[i*pitch+offset]);
-
+                   vmin=fmin( vmin, FF[i*pitch+offset]);
+                   vmax=fmax( vmax, FF[i*pitch+offset]);
                 }
             }
         }
-
-        printf( "GridShape::toXSF() vmin %g vmax %g \n", vmin, vmax);
-
+        //printf( "GridShape::toXSF() vmin %g vmax %g \n", vmin, vmax);
         fprintf( fout, "   END_DATAGRID_3D\n" );
         fprintf( fout, "END_BLOCK_DATAGRID_3D\n" );
+        return Vec2d{ vmin, vmax };
     }
 
     template<typename T>

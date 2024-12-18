@@ -60,7 +60,7 @@ class MolWorld_sp3_QMMM : public MolWorld_sp3 { public:
 
     // ==== Functions Definition
 
-    virtual MolWorldVersion getMolWorldVersion() const override { return MolWorldVersion::QM; };
+    virtual int getMolWorldVersion() const override { return (int)MolWorldVersion::QM; };
 
 
 virtual void init( ){

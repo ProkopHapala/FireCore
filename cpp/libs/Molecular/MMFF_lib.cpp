@@ -23,12 +23,15 @@ extern "C"{
 
 void init_buffers(){
     //printf( "init_buffers() \n" );
-    buffers .insert( { "apos",   (double*)W.nbmol.apos } );
+    buffers .insert( { "apos",   (double*)W.nbmol.apos  } );
     buffers .insert( { "fapos",  (double*)W.nbmol.fapos } );
+    buffers .insert( { "REQs",   (double*)W.nbmol.REQs  } );
     if(W.bMMFF){
         buffers .insert( { "DOFs",      W.ffl.DOFs  } );
         buffers .insert( { "fDOFs",     W.ffl.fDOFs } );
         buffers .insert( { "vDOFs",     W.opt.vel  } );
+        //buffers .insert( { "REQs",   (double*)W.ffl.REQs  } );
+        buffers .insert( { "PLQs",   (double*)W.ffl.PLQd  } );
         if(!W.bUFF){
             buffers .insert( { "pipos",  (double*)W.ffl.pipos   } );
             buffers .insert( { "fpipos", (double*)W.ffl.fpipos } );
@@ -37,6 +40,7 @@ void init_buffers(){
     }else{
         W.ff.natoms=W.nbmol.natoms;
     }
+    printf( "MMFF_lib.cpp::init_buffers() ndims{nDOFs=%i,natoms=%i,nnode=%i,ncap=%i,npi=%i,nbonds=%i,nvecs=%i,ne=%i,ie0=%i}\n", W.ff.nDOFs, W.ff.natoms, W.ff.nnode, W.ff.ncap, W.ff.npi, W.ff.nbonds, W.ff.nvecs, W.ff.ne, W.ff.ie0 );
     ibuffers.insert( { "ndims",    &W.ff.nDOFs } );
     buffers .insert( { "Es",       &W.ff.Etot  } );
     ibuffers.insert( { "selection", W.manipulation_sel  } );
@@ -77,6 +81,91 @@ void* init( char* xyz_name, char* surf_name, char* smile_name, char* constr_name
     return &W;
 }
 
+void makeGridFF( const char* name, int* ffshape, int mode, double z0, double* cel0, bool bSymmetrize, bool bAutoNPBC, bool bFit, bool bRefine ){
+    bool bCheckEval=false;
+    bool bUseEwald =true;
+    printf("MMFF_lib::makeGridFF() bAutoNPBC=%i bCheckEval=%i bUseEwald=%i bFit=%i bRefine=%i \n", bAutoNPBC, bCheckEval, bUseEwald, bFit, bRefine );
+    char fname[256];
+    sprintf(fname, "%s.xyz", name );
+    int ret = W.params.loadXYZ( fname, W.surf.natoms, &W.surf.apos, &W.surf.REQs, &W.surf.atypes, 0, &W.gridFF.grid.cell );
+    if     ( ret<0 ){ getcwd(tmpstr,1024); printf("ERROR in MMFF_lib::makeGridFF() file(%s) not found in path(%s)=> Exit() \n", fname, tmpstr ); exit(0); }
+    if     ( ret==0){                      printf("ERROR in MMFF_lib::makeGridFF() no lattice vectors in (%s) => Exit() \n",    fname ); exit(0); }
+    else if( ret>0 ){ W.gridFF.grid.updateCell(W.gridStep); W.gridFF.bCellSet=true;  }
+    //gridFF.grid.printCell(); 
+    //if(verbosity>0)printf("MolWorld_sp3::loadSurf(%s) 1 natoms %i apos %li atyps %li \n", name, surf.natoms, (long)surf.apos, (long)surf.atypes  );
+    //surf.print();
+    //W.surf.print_nonbonded();
+    W.gridFF.mode=(GridFFmod)mode;
+    W.bSurfAtoms=true;
+    //printf("MMFF_lib::makeGridFF() bAutoNPBC=%i bCheckEval=%i bUseEwald=%i bFit=%i bRefine=%i \n", bAutoNPBC, bCheckEval, bUseEwald, bFit, bRefine );
+    W.initGridFF( name, z0, *(Vec3d*)cel0, bSymmetrize, bAutoNPBC, bCheckEval, bUseEwald, bFit, bRefine );
+    ffshape[0]=W.gridFF.grid.n.x;
+    ffshape[1]=W.gridFF.grid.n.y;
+    ffshape[2]=W.gridFF.grid.n.z;
+    ffshape[3]=W.gridFF.perVoxel;
+    //return ff_ptr;
+}
+
+double* getArrayPointer( const char* name, int* shape  ){
+    if(golbal_array_dict.find(name)!=golbal_array_dict.end()){
+        NDArray arr = golbal_array_dict[name];
+        (*(Quat4i*)shape) = arr.dims;  
+        if(arr.data==0){ printf("ERROR in MMFF_lib::getArrayPointer() golbal_array_dict[%s].data==NULL \n", name ); }
+        return arr.data;
+    }else{
+        printf("ERROR in MMFF_lib::getArrayPointer() golbal_array_dict[%s] not found \n", name );
+        //exit(0);
+    }
+    return 0;
+}
+
+int setupEwaldGrid( double* pos0, double* dCell, int* ns, bool bPrint ){
+    W.gewald.n     = *(Vec3i*)ns;
+    W.gewald.pos0  = *(Vec3d*)pos0;
+    W.gewald.dCell = *(Mat3d*)dCell;
+    W.gewald.updateCell_2();
+    if(bPrint){W.gewald.printCell();}
+    return W.gewald.n.totprod();
+}
+
+void projectAtomsEwaldGrid( int na, double* apos, double* qs, double* dens, int order ){
+    W.gewald.projectAtoms( na, (Vec3d*)apos, qs, dens, order );
+}
+
+
+#ifdef WITH_FFTW
+
+void EwaldGridSolveLaplace( double* dens, int nz_slab, double* Vout, bool bPrepare, bool bDestroy, int flags, bool bOMP, int nBlur, double cSOR, double cV ){
+    W.gewald.solve_laplace_macro( dens, nz_slab, Vout, bPrepare, bDestroy, flags, bOMP, nBlur, cSOR, cV );
+}
+
+void EwaldGridSolveLaplaceDebug( double* dens, double* Vout, double* densw, double* kerw, double* VwKer ){
+    int ntot = W.gewald.n.totprod();
+    
+    W.gewald.prepare_laplace( );
+    array2fftc( ntot, dens, W.gewald.V );
+    fftw_execute(W.gewald.fft_plan);   fftc2array( ntot, W.gewald.Vw,  densw  );
+    
+    for(int i=0; i<ntot; i++){  W.gewald.V[i][0]=1.0; W.gewald.V[i][1]=1.0; }
+    W.gewald.laplace_reciprocal_kernel( W.gewald.V  );  fftc2array( ntot, W.gewald.V,  kerw  );
+    W.gewald.laplace_reciprocal_kernel( W.gewald.Vw );  fftc2array( ntot, W.gewald.Vw, VwKer );
+    fftw_execute(W.gewald.ifft_plan);                   fftc2array( ntot, W.gewald.V,  Vout  );
+
+    W.gewald.destroy_laplace( );
+}
+
+#endif // WITH_FFTW
+
+void evalGridFFAtPoints( int n, double* ps, double* FFout, double* PLQH, bool bSplit, int* nPBC ){
+    //long t0 = getCPUticks();
+    if(bSplit){ W.gridFF.evalAtPoints_Split( n, (Vec3d*)ps, (Quat4d*)FFout, *(Quat4d*)PLQH, (Vec3i*)nPBC ); }
+    else      { 
+        //W.gridFF.evalAtPoints      ( n, (Vec3d*)ps, (Quat4d*)FFout, *(Quat4d*)PLQH, (Vec3i*)nPBC ); 
+        W.gridFF.evalAtPoints_REQ  ( n, (Vec3d*)ps, (Quat4d*)FFout, *(Quat4d*)PLQH, (Vec3i*)nPBC ); 
+    }
+    //double T = getCPUticks()-t0; printf( "evalGridFFAtPoints(n=%i,bSplit=%i) DONE in %g[MTicks] %g[kTick/point] \n", n, bSplit, T*1e-6, (T*1e-3)/n  );
+}
+
 int    run( int nstepMax, double dt, double Fconv, int ialg, double damping, double* outE, double* outF, double* outV, double* outVF, bool omp ){
     //printf( "bOpenMP = %i \n", omp );
     //W.rum_omp_ocl( nstepMax, dt, Fconv, 1000.0, 1000 ); 
@@ -85,6 +174,42 @@ int    run( int nstepMax, double dt, double Fconv, int ialg, double damping, dou
     else   { return W.run_no_omp(nstepMax,dt,Fconv, 1000.0,  damping, outE, outF, outV, outVF ); }
     //else   { return W.run       (nstepMax,dt,Fconv,ialg,       outE, outF, outV, outVF ); }
 }
+
+void  scan( int nconf, double* poss, double* rots, double* Es, double* aforces, double* aposs, bool omp, bool bRelax, int niter_max, double dt, double Fconv, double Flim ){
+    if(bRelax){
+        if(omp){ printf("ERROR: scan_relaxed() not implemented witht OMP\n"); exit(0); } 
+        else   { W.scan_relaxed( nconf, (Vec3d*)poss, (Mat3d*)rots, Es, (Vec3d*)aforces, (Vec3d*)aposs, omp, niter_max, dt, Fconv, Flim );  }
+    }else{
+        if(omp){ printf("ERROR: scan_rigid() not implemented witht OMP\n"); exit(0); } 
+        else   { W.scan_rigid( nconf, (Vec3d*)poss, (Mat3d*)rots, Es, (Vec3d*)aforces, (Vec3d*)aposs, omp ); }
+    }
+}
+
+
+void setSwitches2( int CheckInvariants, int PBC, int NonBonded, int NonBondNeighs,  int SurfAtoms, int GridFF, int MMFF, int Angles, int PiSigma, int PiPiI ){
+    #define _setbool(b,i) { if(i>0){b=true;}else if(i<0){b=false;} }
+    _setbool( W.bCheckInvariants, CheckInvariants  );
+    _setbool( W.bPBC           , PBC       );
+    
+    _setbool( W.bNonBonded     , NonBonded );
+    _setbool( W.bNonBondNeighs , NonBondNeighs );
+    
+    _setbool( W.bSurfAtoms   , SurfAtoms );
+    _setbool( W.bGridFF      , GridFF    );
+
+    _setbool( W.bMMFF        , MMFF      );
+    _setbool( W.ffl.doAngles , Angles    );
+    _setbool( W.ffl.doPiSigma, PiSigma   );
+    _setbool( W.ffl.doPiPiI  , PiPiI     );
+
+    printf( "setSwitches2() W.bCheckInvariants==%i bPBC=%i | bNonBonded=%i bNonBondNeighs=%i | bSurfAtoms=%i bGridFF=%i | bMMFF=%i doAngles=%i doPiSigma=%i doPiPiI=%i \n", W.bCheckInvariants, W.bPBC,  W.bNonBonded, W.bNonBondNeighs, W.bSurfAtoms, W.bGridFF, W.bMMFF, W.ffl.doAngles, W.ffl.doPiSigma, W.ffl.doPiPiI );
+
+    //W.ffl.bSubtractAngleNonBond = W.bNonBonded;
+    #undef _setbool
+}
+
+
+
 
 int substituteMolecule( const char* fname, int ib, double* up, int ipivot, bool bSwapBond ){
     return W.substituteMolecule( fname, ib, *(Vec3d*)up, ipivot, bSwapBond );
@@ -171,13 +296,16 @@ void sampleSurf(char* name, int n, double* rs, double* Es, double* fs, int kind,
     }
     Quat4d REQ=W.nbmol.REQs[0];
     Quat4f PLQ = REQ2PLQ( REQ, K );
+    Quat4d PLQd= REQ2PLQ_d( REQ, K );
     printf( "DEBUG sampleSurf REQ(%g,%g,%g) \n", REQ.x, REQ.y, REQ.z );
     printf( "DEBUG sampleSurf PLQ(%g,%g,%g) \n", PLQ.x, PLQ.y, PLQ.z );
     //exit(0);
     double R2Q=RQ*RQ;
     for(int i=0; i<n; i++){
         Quat4f fe=Quat4fZero;
-        W.ffl.apos[0].z=rs[i];
+        //Quat4d fed=Quat4dZero;
+        W.nbmol.apos[0].z=rs[i];
+
         W.ff.cleanAtomForce();
         switch(kind){
             case  0: fe.e=   W.nbmol.evalR         (W.surf ); break; 
@@ -186,11 +314,18 @@ void sampleSurf(char* name, int n, double* rs, double* Es, double* fs, int kind,
             case 10:         W.gridFF.addForce_surf(W.nbmol.apos[0], {1.,0.,0.}, fe );  break;
             case 11:         W.gridFF.addForce_surf(W.nbmol.apos[0], PLQ, fe );  break;
             case 12:         W.gridFF.addForce     (W.nbmol.apos[0], PLQ, fe );  break;
+
+            //case 13:         W.gridFF.addForce_surf(W.nbmol.apos[0], {1.,0.,0.}, fe );  break;
+
+            case 13: fe = (Quat4f) W.gridFF.getForce_HHermit( W.nbmol.apos[0], PLQd );   break;
+            case 14: fe = (Quat4f) W.gridFF.getForce_Bspline( W.nbmol.apos[0], PLQd );    break;  
+
         }
         fs[i]=fe.f.z;
         Es[i]=fe.e;
     }
 }
+
 
 void sample_addForce_Tricubic( int n, double* rs, double* Es, double* fs){
     for (int i = 0; i < n; i++)
@@ -291,6 +426,55 @@ void runGlobalOptimization(int DoF, int Findex, double* _a, double* _b, int* _bo
         }
         W.runGlobalOptimization(Findex, &a, &b, &boundaryRules, Fstar, maxeval, nRelax, nExploring, index_mut, &par_mut, bShow, bSave, bDatabase, RMSD, outF, outN);
     }
+
+
+void sampleSurf_new( int n, double* ps_, double* FEout_, int mode, double* PLQH_, double K, double RQ ){
+    Vec3d*  ps   =((Vec3d*)ps_);
+    Quat4d* FEout=(Quat4d*)FEout_;
+    Quat4d  PLQd = *(Quat4d*) PLQH_;
+    Quat4f  PLQ  =  (Quat4f) PLQd;
+    double R2Q=RQ*RQ;
+
+    printf( "sampleSurf_new() n=%i mode=%i PLQH(%g,%g,%g,%g) K=%g RQ=%g \n", n, mode, PLQd.x, PLQd.y, PLQd.z, PLQd.w, K, RQ  );
+    //W.gridFF.grid.printCell();
+    //printf( "sampleSurf_new() gff.shift0(%g,%g,%g) gff.pos0(%g,%g,%g)\n", W.gridFF.shift0.x, W.gridFF.shift0.y, W.gridFF.shift0.z, W.gridFF.grid.pos0.x, W.gridFF.grid.pos0.y, W.gridFF.grid.pos0.z );
+    //printf( "sampleSurf_new() gridN(%i,%i,%i) \n", W.gridFF.gridN.x, W.gridFF.gridN.y, W.gridFF.gridN.z );
+
+    //PLQd=Quat4d{1.0,0.0,0.0,0.0};
+    // {
+    //     Vec3i ng = W.gridFF.grid.n;
+    //     Vec3d g0 = W.gridFF.grid.pos0;
+    //     Vec3d dg = Vec3d{ W.gridFF.grid.dCell.xx, W.gridFF.grid.dCell.yy, W.gridFF.grid.dCell.zz };
+    //     Quat4d C = PLQd;
+    //     Quat4i* xqs = W.gridFF.cubic_xqis;
+    //     printf("CPU sampleSurf_new() ng(%i,%i,%i) g0(%g,%g,%g) dg(%g,%g,%g) C(%g,%g,%g) \n", ng.x,ng.y,ng.z,   g0.x,g0.y,g0.z,   dg.x,dg.y,dg.z,   C.x,C.y,C.z );
+    //     printf("CPU sampleSurf_new() xqs[0](%i,%i,%i,%i) xqs[1](%i,%i,%i,%i) xqs[2](%i,%i,%i,%i) xqs[3](%i,%i,%i,%i)\n", xqs[0].x, xqs[0].y, xqs[0].z, xqs[0].w,   xqs[1].x, xqs[1].y, xqs[1].z, xqs[1].w,   xqs[2].x, xqs[2].y, xqs[2].z, xqs[2].w,  xqs[3].x, xqs[3].y, xqs[3].z, xqs[3].w   );
+    // }
+
+    { // debug
+        for(int i=0; i<4; i++ ){ 
+            Quat4i xq = W.gridFF.cubic_xqis[i];
+            Quat4i yq = W.gridFF.cubic_yqis[i];
+            printf("sampleSurf_new() gridFF qs[%] xs(%3i,%3i,%3i,%3i) ys(%3i,%3i,%3i,%3i) \n", i, xq.x, xq.y, xq.z, xq.w,   yq.x, yq.y, yq.z, yq.w ); 
+        }
+    }
+    
+    //long t0 = getCPUticks();
+    for(int i=0; i<n; i++){
+        Quat4f fef=Quat4fZero;
+        Quat4d fed=Quat4dZero;
+        Vec3d pi = ps[i];
+        switch(mode){
+            case 1:   fef = W.gridFF.getForce( pi, PLQ );    fed=(Quat4d)fef; break;
+            case 2:   fed = W.gridFF.getForce_d( pi, PLQd );       break;
+            case 4:   fed = W.gridFF.getForce_HHermit( pi, PLQd ); break;
+            case 6:   fed = W.gridFF.getForce_Bspline( pi, PLQd ); break;  
+        }
+        FEout[i]= fed;
+    }
+    //double t = (getCPUticks()-t0); printf( "sampleSurf_new(mode=%i,n=%i) time=%g[kTick] %g[tick/point]\n", mode, n, t*(1.e-3), t/n );
+}
+
 
 int findHbonds( double Rcut, double Hcut, double angMax ){
     W.Hbonds.clear();

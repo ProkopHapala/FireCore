@@ -1,6 +1,8 @@
 
 #ifndef CLCFGO_Structs_h
 #define CLCFGO_Structs_h
+/// @file CLCFGO_Structs.h @brief Implements multi-center electron forcefield solver based on Compact Linear Combination of Floating Gaussian Orbitals like (CLCFGO) but using structs, in order to see performance difference and add/remove particles more easily (for interactive simulations)
+/// @ingroup Electron_Forcefield
 
 #include "fastmath.h"
 #include "Vec2.h"
@@ -17,11 +19,7 @@
 #include "InteractionsGauss.h"
 #include "GaussianBasis.h"
 
-/// \defgroup Molecular  Molecular
-
 /*!
-\ingroup Molecular
- @{
 
 ##################################################################
 #### Compact Linear Combination of Floating Gaussian Orbitals ####
@@ -1847,7 +1845,5 @@ void printElectrons(){
 }
 
 };
-
-/// @}
 
 #endif

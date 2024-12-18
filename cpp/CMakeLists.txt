@@ -5,13 +5,14 @@ project ( SimpleSimulationEngine )
 
 option(WITH_SDL    "build with GUI and 3D graphics (SDL+OpenGL)"                           OFF)
 option(WITH_LUA    "build with Lua 5.2 for scripting inside interactive GUI"               OFF)
+option(WITH_FFTW   "build with FFTW3 for scripting inside interactive GUI"                 OFF)
 option(WITH_OPENCL "build with OpenCL GPU acceleration? up to 100x speedup"                OFF)
 option(WITH_OMP    "build with OpenMP paralelization for multiple CPUs"                    OFF)
 option(WITH_AVX    "build with AVX256 SIMD intrinstic ? up to 10x speedup on 1CPU"         OFF)
 option(RELEASE     "build optimized release (-O3/-Ofast) rather than debug? (-g -Og)"      OFF)
 option(WITH_ASAN   "use runtime memory sanitizer (asan) to trace segfaults and mem-leaks?" OFF)
 
-message("OPTIONS: -DWITH_SDL=${WITH_SDL} -DWITH_LUA=${WITH_LUA} -DWITH_OPENCL=${WITH_OPENCL} -DWITH_OMP=${WITH_OMP} -DWITH_AVX=${WITH_AVX} -DRELEASE=${RELEASE} -DWITH_ASAN=${WITH_ASAN}" )
+message("OPTIONS: -DWITH_SDL=${WITH_SDL} -DWITH_LUA=${WITH_LUA} -DWITH_FFTW=${WITH_FFTW} -DWITH_OPENCL=${WITH_OPENCL} -DWITH_OMP=${WITH_OMP} -DWITH_AVX=${WITH_AVX} -DRELEASE=${RELEASE} -DWITH_ASAN=${WITH_ASAN}" )
 
 # ==============================
 # ==== FLAGS
@@ -28,6 +29,20 @@ if(WITH_LUA)
 else()
     set(LUA_LIBRARIES "")
 endif()
+
+if(WITH_FFTW)
+    add_definitions(-DWITH_FFTW)
+    #find_package(FFTW3 REQUIRED)
+    find_package(PkgConfig REQUIRED)
+    pkg_search_module(FFTW3 REQUIRED fftw3)
+    include_directories(${FFTW3_INCLUDE_DIRS})
+    link_directories(${FFTW3_LIBRARY_DIRS})
+    set(FFTW_LIBRARIES -lfftw3 -lfftw3_omp ${OpenMP_CXX_LIBRARIES})
+    #set(FFTW_LIBRARIES -lfftw3 -lfftw3_omp )
+else()
+    set(FFTW_LIBRARIES "")
+endif()
+
 
 if(RELEASE)
     set(CMAKE_BUILD_TYPE Release)
@@ -50,12 +65,11 @@ if (  CMAKE_BUILD_TYPE MATCHES Debug )
         SET( AXULIARY_COMPILE_FLAGS "-g -Og -march=native")
     endif()
     #set(CMAKE_CXX_CPPCHECK "cppcheck")
-    message("DEBUG BUILD FFLAGS : " )
+    #message("DEBUG BUILD FFLAGS : " )
 else()
     #SET( AXULIARY_COMPILE_FLAGS "-w -O3 -fPIC ")
     #SET( AXULIARY_COMPILE_FLAGS "-w -O2 -march=native")
     #SET( AXULIARY_COMPILE_FLAGS "-w -O2 -march=native")
-    ### flags for optimize
     SET( AXULIARY_COMPILE_FLAGS "-w -Ofast -march=native -mtune=native")
     #SET( AXULIARY_COMPILE_FLAGS "-w -Ofast -march=native -fopt-info-vec-all")
 endif()
@@ -71,7 +85,7 @@ endif()
 SET( IGNORE_WARRNING_FLAGS "-Wno-int-to-pointer-cast -Wno-switch -Wno-reorder -Wno-deprecated -Wno-maybe-uninitialized -Wno-char-subscripts -Wno-write-strings -Wno-format -Wno-parentheses -Wno-unused-but-set-variable  -Wno-narrowing -Wno-unused-result  -Wno-sign-compare -Wno-strict-aliasing -Wno-unused-variable -Wno-unused-value -Wno-comment -Wno-misleading-indentation " )
 SET( WARRNING_TO_ERROR     "-Werror=return-type -Werror=init-self -Werror=uninitialized -Werror=implicit-fallthrough -Werror=tautological-compare -Werror=delete-non-virtual-dtor")
 SET( CMAKE_CXX_FLAGS  "${CMAKE_CXX_FLAGS} ${AXULIARY_COMPILE_FLAGS} ${IGNORE_WARRNING_FLAGS} ${WARRNING_TO_ERROR}" )
-message("RELEASE BUILD FFLAGS : " )
+message("BUILD FFLAGS : " )
 message ( ${CMAKE_CXX_FLAGS} )
 
 ### this is for compile_commands.json   (it should help various IDEs and other tool to understand the project)
@@ -123,6 +137,8 @@ function(setup_precompiled_headers target)
     target_precompile_headers(${target} PRIVATE ${all_headers})
 endfunction()
 
+enable_testing()
+
 include_directories(
         ${COMMON_SRCS}
         ${COMMON_SRCS}/math
@@ -146,6 +162,10 @@ file (GLOB_RECURSE _COMMON_SRCS_     ${COMMON_SRCS}/*.h     ${COMMON_SRCS}/*.cpp
 
 add_subdirectory( ${MY_SRC_DIR}/common   ${MY_BIN_SHARE}/common    )
 add_subdirectory( ${MY_SRC_DIR}/libs    )
+
+# ====== Tests
+# set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_SOURCE_DIR}/tests)
+add_subdirectory( tests )
 
 # ====== OpenCL
 

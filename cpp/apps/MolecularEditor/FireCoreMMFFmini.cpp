@@ -199,10 +199,7 @@ TestAppMMFFmini::TestAppMMFFmini( int& id, int WIDTH_, int HEIGHT_ ) : AppSDL2OG
         printf( "WARRNING : we ignore non-bonded interactions !!!! \n" );
     }
 
-
-    DEBUG
     makeGridFF();
-    DEBUG
 
     qmmm.init(6);
     qmmm.params=&params;

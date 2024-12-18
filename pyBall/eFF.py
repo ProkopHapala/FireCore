@@ -273,6 +273,28 @@ def evalNumDerivs( Fnum=None, d=0.01):
     lib.evalNumDerivs( Fnum, d )
     return Fnum
 
+
+#void sample_ee( int n, double* RSs_, double* FEout_, int spin, double* KRSrho_, bool bEvalCoulomb, bool bEvalPauli, int iPauliModel ){
+lib.sample_ee.argtypes  = [c_int, array2d, array2d, c_int, array1d, c_bool, c_bool, c_int ]
+lib.sample_ee.restype   =  None
+def sample_ee( RSs, spin, FEout=None, KRSrho=[1.125,0.9,-0.2], bEvalCoulomb=True, bEvalPauli=True, iPauliModel=1 ):
+    n = len(RSs)
+    FEout = np.zeros(n)
+    KRSrho = np.array(KRSrho)
+    lib.sample_ee(n, RSs, FEout, spin, KRSrho, bEvalCoulomb, bEvalPauli, iPauliModel )
+    return FEout
+
+#void sample_EA( int n, double* RSs_, double* FEout_, double* KRSrho_,  double* aPar_,  bool bEvalAECoulomb, bool bCoreCoul, bool bEvalAEPauli ){
+lib.sample_EA.argtypes  = [c_int, array2d, array2d, array1d, array1d, c_bool, c_bool, c_bool ]
+lib.sample_EA.restype   =  None
+def sample_EA( RSs, FEout=None, KRSrho=[1.125,0.9,-0.2], aPar=[4.,0.1,0.1,2.0], bEvalAECoulomb=True, bCoreCoul=True, bEvalAEPauli=True ):
+    n = len(RSs)
+    FEout = np.zeros(n)
+    KRSrho = np.array(KRSrho)
+    aPar = np.array(aPar)
+    lib.sample_EA(n, RSs, FEout, KRSrho, aPar, bEvalAECoulomb, bCoreCoul, bEvalAEPauli )
+
+
 # =========  Tests
 
 def printEs():

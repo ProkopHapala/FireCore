@@ -1,0 +1,46 @@
+## This starter workflow is for a CMake project running on a single platform. There is a different starter workflow if you need cross-platform coverage.
+# See: https://github.com/actions/starter-workflows/blob/main/ci/cmake-multi-platform.yml
+name: CMake on a single platform
+
+on:
+  push:
+    branches: [ "Milan1" ]
+  pull_request:
+    branches: [ "Milan1" ]
+
+env:
+  # Customize the CMake build type here (Release, Debug, RelWithDebInfo, etc.)
+  BUILD_TYPE: Release
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Create Build repository
+      run: mkdir ${{github.workspace}}/cpp/Build
+      
+    - name: CMake
+      run: |
+        sudo apt-get install cmake g++ gfortran intel-mkl libmkl-intel-lp64 libmkl-core libmkl-intel-thread libsdl2-dev libsdl2-image-dev nvidia-opencl-dev libclfft-dev libfftw3-dev
+        cd ${{github.workspace}}/cpp/Build
+        cmake .. -DWITH_SDL=ON -DWITH_FFTW=ON
+
+    # - name: Build
+    #   # Build your program with the given configuration
+    #   run: cmake --build ${{github.workspace}}/cpp/Build
+      
+    - name: Make
+      # Build your program with the given configuration
+      run: |
+        cd ${{github.workspace}}/cpp/Build
+        make
+
+    - name: Test
+      run: |
+        cd ${{github.workspace}}/cpp/Build
+        ctest -V
+
+

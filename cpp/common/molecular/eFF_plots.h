@@ -1,7 +1,8 @@
 
 #ifndef eFF_plots_h
 #define eFF_plots_h
-
+/// @file eFF_plots.h @brief Plotting utility functions for Electron Force-Field
+/// @ingroup Electron_Forcefield
 
 #include "MMFFBuilder.h"
 

@@ -37,7 +37,7 @@ add_executable( MolGUIapp
 	$<TARGET_OBJECTS:SDL2OGL>  
 )
 setup_precompiled_headers( MolGUIapp )
-target_link_libraries( MolGUIapp ${OPENGL_LIBRARIES} ${SDL2_LIBRARIES} ${LUA_LIBRARIES} )
+target_link_libraries( MolGUIapp ${OPENGL_LIBRARIES} ${SDL2_LIBRARIES} ${LUA_LIBRARIES} ${FFTW_LIBRARIES} )
 
 
 add_executable( MolGUIapp_QMMM
@@ -46,7 +46,7 @@ add_executable( MolGUIapp_QMMM
 	$<TARGET_OBJECTS:SDL2OGL>  
 )
 setup_precompiled_headers( MolGUIapp_QMMM )
-target_link_libraries( MolGUIapp_QMMM ${OPENGL_LIBRARIES} ${SDL2_LIBRARIES} ${LUA_LIBRARIES} )
+target_link_libraries( MolGUIapp_QMMM ${OPENGL_LIBRARIES} ${SDL2_LIBRARIES} ${LUA_LIBRARIES} ${FFTW_LIBRARIES} )
 
 
 add_executable( FireCoreMMFFmini

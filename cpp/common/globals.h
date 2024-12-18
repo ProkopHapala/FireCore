@@ -11,4 +11,5 @@ static char tmpstr[ntmpstr];
 
 static double tick2second=1e-9;
 
+
 //#endif

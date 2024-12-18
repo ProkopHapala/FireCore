@@ -6,14 +6,20 @@
 void Draw::colorScale( double d, int ncol, const uint32_t * colors ){
     constexpr float inv255 = 1.0f/255.0f;
     //double d_bak = d;
+    _clamp(d,0.000001,0.999999);
     d*=(ncol-1);
     int icol = (int)d;
-    if(icol<0) Draw::setRGB( colors[0] );
-    else if(icol>=ncol-1){ uint32_t i=colors[ncol-1];  glColor3f( ((i)&0xFF)*inv255, ((i>>8)&0xFF)*inv255, ((i>>16)&0xFF)*inv255  ); return; }
-    else if(icol<      0){ uint32_t i=colors[    0 ];  glColor3f( ((i)&0xFF)*inv255, ((i>>8)&0xFF)*inv255, ((i>>16)&0xFF)*inv255  ); return; }
+    // if(icol<0) Draw::setRGB( colors[0] );
+    // else if(icol>=ncol-1){ uint32_t i=colors[ncol-1];  glColor3f( ((i)&0xFF)*inv255, ((i>>8)&0xFF)*inv255, ((i>>16)&0xFF)*inv255  ); return; }
+    // else if(icol<      0){ uint32_t i=colors[    0 ];  glColor3f( ((i)&0xFF)*inv255, ((i>>8)&0xFF)*inv255, ((i>>16)&0xFF)*inv255  ); return; }
     //if(icol>=ncol-1){ printf( "ERROR: Draw::colorScale() icol(%i)>=ncol(%i)-1 d=%g  d_bak=%g \n", icol, ncol, d, d_bak ); }
     d-=icol; double md = 1-d; // linear interpolation coefficients
-    //printf( "d,md %g %g \n", d, md );
+    //printf( "Draw::colorScale() d,md %g %g icol/ncol %i/%i \n", d, md, icol, ncol );    
+    
+    if( (icol<0)||((icol+1)>ncol)){
+        printf( "Draw::colorScale() icol/ncol %i/%i d,md %g %g \n", icol, ncol, d, md );   
+        exit(0);
+    }
     uint32_t clr1=colors[icol  ];
     uint32_t clr2=colors[icol+1];
     glColor3f(

@@ -113,8 +113,8 @@ void Plot2D::autoAxes(double dx, double dy){
     n0=(int)(bounds.y0/dy)-1;  axBounds.y0 = dy*n0;
     n1=(int)(bounds.y1/dy)+1;  axBounds.y1 = dy*n1; nYTicks=(n1-n0)+1;
     //printf("y(%g:%g) dy %g ny(%i:%i) nYTicks %i \n", bounds.y0, bounds.y1, dy,   n0, n1, nYTicks );
-    if( xTicks==NULL ) delete xTicks;
-    if( yTicks==NULL ) delete yTicks;
+    if( xTicks==NULL ) delete [] xTicks;
+    if( yTicks==NULL ) delete [] yTicks;
     //double x0    = (axBounds.x0 - axPos.x);  x0 = 2*x0 - dx*(int)(x0/dx);
     //double y0    = (axBounds.y0 - axPos.y);  y0 = 2*y0 - dy*(int)(y0/dy);
     //printf("DEBUG 2.1.1\n");
@@ -267,7 +267,7 @@ void Plot2D::init( ){
 void Plot2D::clear( bool bDeep ){
     if(bDeep){
         for(DataLine2D* line: lines ){
-            delete line;
+            delete [] line;
         }
     }
     lines.clear();
@@ -275,7 +275,7 @@ void Plot2D::clear( bool bDeep ){
 }
 
 void Plot2D::erase( int i ){
-    delete lines[i];
+    delete [] lines[i];
     lines.erase( lines.begin() + i );
 }
 

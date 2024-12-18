@@ -1,6 +1,8 @@
 #ifndef MolGUIapp_argv_h
 #define MolGUIapp_argv_h
 
+    // ==== funcs are executed before initialization MolWorld_sp3 ( therefore affect the intitialization process )
+
     funcs["-col_damp"]={6,[&](const char** ss){
         //printf( "ss[0](%s)\n", ss[0] ); printf( "ss[1](%s)\n", ss[1] );printf( "ss[2](%s)\n", ss[2] );printf( "ss[3](%s)\n", ss[3] );printf( "ss[4](%s)\n", ss[4] );exit(0);
         int n; double cB, cNB, cAng=0, cm,dR1,dR2;
@@ -34,7 +36,7 @@
         printf( "ARG ss[0] `%s` ss[1] `%s`\n", ss[0], ss[1] );
         sscanf(ss[0],"%i,%i", &W->latscan_n.x, &W->latscan_n.y );
         sscanf(ss[1],"%lf,%lf,%lf,%lf,%lf,%lf,%lf,%lf,%lf", &m->a.x,&m->a.y,&m->a.z,  &m->b.x,&m->b.y,&m->b.z,  &m->c.x,&m->c.y,&m->c.z ); 
-        printf( "ARG W->latscan_n(%i,%i) latscan_dlvec ", W->latscan_n.x, W->latscan_n.y ); printMat(*(W->latscan_dlvec)); 
+        printf( "ARG W->latscan_n(%i,%i) latscan_dlvec \n", W->latscan_n.x, W->latscan_n.y ); printMat(*(W->latscan_dlvec)); 
     } }; // test
 
     // set verbosity
@@ -61,9 +63,15 @@
     funcs["-tricubic"]={0,[&](const char** ss){ W->bTricubic=true; }};
     funcs["-bbox"]={1,[&](const char** ss){ Mat3d m;  sscanf(ss[0],"%lf,%lf,%lf,%lf,%lf,%lf,%lf,%lf,%lf",  &m.ax,&m.ay,&m.az,  &m.bx,&m.by,&m.bz,  &m.cx,&m.cy,&m.cz );  W->bbox=m; }};
 
+    funcs["-gridffmode"]={1,[&](const char** ss){ sscanf( ss[0],"%i", (int*)&(W->gridFF.mode) );   printf( "-griffmode=%i ss(%s) \n", (int)W->gridFF.mode  );    }};
     funcs["-nogridff"]={0,[&](const char** ss){ W->bGridFF=false; }}; // AutoCharge
     funcs["-group"]={3,[&](const char** ss){  }};
+
+    funcs["-nPBC"]={1,[&](const char** ss){ sscanf( ss[0],"%lf,%lf,%lf", &(W->nPBC.x),&(W->nPBC.y),&(W->nPBC.z) ); }};
     
+
+    // ==== funcs2 are executed after initialization MolWorld_sp3 ( therefore may have no effect on initialization process )
+
     funcs2["-c"]={1,[&](const char** ss){ 
         //printf( "MolGUIapp_argv.h :: [-c] `%s`\n", ss[0] );
         int ic=-1; Quat4d k=Quat4d{W->Kfix,W->Kfix,W->Kfix,0};  

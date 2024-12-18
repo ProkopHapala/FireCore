@@ -1,12 +1,7 @@
-/*
-Non-Bonded Force-Field
-
-    should be easily plugged with any molecular dynamics, by either sharing pointer to same data buffer, or by copying data
-    
-*/
-
 #ifndef NBFF_h
 #define NBFF_h
+/// @file NBFF.h  @brief Non-Bonded Force-Field, implements n-body interactions between particles using non-covalent poentials such as Lenard-Jones / Morse and Coulomb potential
+/// @ingroup Classical_Molecular_Mechanics
 
 #include "fastmath.h"
 //#include "Vec2.h"
@@ -34,7 +29,60 @@ void fitAABB( Vec6d& bb, int n, int* c2o, Vec3d* ps ){
     //return bb;
 }
 
-// Force-Field for Non-Bonded Interactions
+int makePBCshifts_( Vec3i nPBC, const Mat3d& lvec, Vec3d*& shifts ){
+    const int npbc = (nPBC.x*2+1)*(nPBC.y*2+1)*(nPBC.z*2+1);
+    //printf( "makePBCshifts_() npbc=%i nPBC{%i,%i,%i}\n", npbc, nPBC.x,nPBC.y,nPBC.z );
+    if(shifts==0)_realloc(shifts,npbc);
+    int ipbc=0;
+    for(int iz=-nPBC.z; iz<=nPBC.z; iz++){ 
+        for(int iy=-nPBC.y; iy<=nPBC.y; iy++){ 
+            //printf( "makePBCshifts_() iz=%i iy=%i \n", iz,iy );
+            for(int ix=-nPBC.x; ix<=nPBC.x; ix++){  
+                shifts[ipbc] = (lvec.a*ix) + (lvec.b*iy) + (lvec.c*iz);   
+                ipbc++; 
+            }
+        }
+    }
+    return npbc;
+}
+
+__attribute__((pure))
+__attribute__((hot))
+Quat4d evalPointCoulPBC( Vec3d pos, int npbc, const Vec3d* shifts, int natoms, const Vec3d * apos, const double* Qs, double Rdamp ){
+    const double R2damp=Rdamp*Rdamp;    
+    //const double K=-alphaMorse;
+    Quat4d qe     = Quat4dZero;
+    //#pragma omp for simd
+    for(int ia=0; ia<natoms; ia++){
+        const Vec3d dp0   = pos - apos[ia];
+        const double Qi = Qs[ia];
+        //if( (ibuff==0) ){ printf( "DEBUG a[%i] p(%g,%g,%g) Q %g \n", ia,apos_[ia].x, apos_[ia].y, apos[ia].z, REQi.z ); }              
+        for(int ipbc=0; ipbc<npbc; ipbc++ ){
+            const Vec3d  dp = dp0 + shifts[ipbc];
+            const double r2     = dp.norm2();
+            const double ir2    = 1/(r2+R2damp);
+            const double eQ     = COULOMB_CONST*Qi*sqrt(ir2);
+            qe.e+=eQ;     qe.f.add_mul( dp,  eQ*ir2 ); // Coulomb
+        }
+    }
+    return qe;
+}
+
+
+void sampleCoulombPBC( int nps, const Vec3d* ps, Quat4d* fe, int natom,  Vec3d* apos, double* Qs, Mat3d lvec, Vec3i nPBC, double Rdamp ){
+    Vec3d * shifts =0;
+    int npbc = makePBCshifts_( nPBC, lvec, shifts );
+    //printf( "sampleCoulombPBC() npbc=%i nPBC{%i,%i,%i} nps=%i natom=%i \n", npbc, nPBC.x,nPBC.y,nPBC.z, nps, natom );
+    for(int ip=0; ip<nps; ip++){
+        Vec3d pos = ps[ip];
+        fe[ip] = evalPointCoulPBC( pos, npbc, shifts, natom, apos, Qs, Rdamp );
+    };
+    delete[] shifts;
+}
+
+    
+/// @brief Non-Bonded Force-Field, implements n-body interactions between particles using non-covalent poentials such as Lenard-Jones / Morse and Coulomb potential including peridic boundary conditions (PBC)
+/// @details NBFF has many functions paralelized using OpenMP. It also implements short-range (i.e. finite-cutoff) interactions accelerated by axis-aligned bounding boxes (AABB)
 class NBFF: public ForceField{ public:
     
     // ---  inherited from Atoms
@@ -63,9 +111,10 @@ class NBFF: public ForceField{ public:
     double drSR  = 0.5;     // R_SR = R_cut - drSR
     double ampSR = 0.15;   // Amplitude of short-range repulsion  = ampSR * EvdW
 
-    double alphaMorse = 1.5; // alpha parameter for Morse potential
-    //double  KMorse  = 1.5; // spring constant for Morse potential
-    double  Rdamp     = 1.0; // damping radius for LJQ and MorseQ
+    double alphaMorse = 1.5;     // alpha parameter for Morse potential
+    //double  KMorse  = 1.5;     // spring constant for Morse potential
+    double  Rdamp     = 1.0; // damping radius for Coulomb potential r_=sqrt(d.norm(2)+Rdamp^2)
+    //double  Rdamp     = 1.0e-32; // damping radius for Coulomb potential r_=sqrt(d.norm(2)+Rdamp^2)
     Mat3d   lvec __attribute__((aligned(64)));  // lattice vectors
     Vec3i   nPBC;  // number of periodic images in each direction 
     bool    bPBC=false; // periodic boundary conditions ?
@@ -96,6 +145,9 @@ class NBFF: public ForceField{ public:
     int makePBCshifts( Vec3i nPBC_, bool bRealloc=true ){
         bPBC=true;
         nPBC=nPBC_;
+        if(bRealloc){ _dealloc(shifts); }
+        return makePBCshifts_(nPBC,lvec,shifts);
+        /*
         npbc = (nPBC.x*2+1)*(nPBC.y*2+1)*(nPBC.z*2+1);
         if(bRealloc) _realloc(shifts,npbc);
         int ipbc=0;
@@ -105,6 +157,7 @@ class NBFF: public ForceField{ public:
         }}}
         if(npbc!=ipbc){ printf( "ERROR in MMFFsp3_loc::makePBCshifts() final ipbc(%i)!=nbpc(%i) => Exit()\n", ipbc,npbc ); exit(0); }
         return npbc;
+        */
     }
 
     // pre-calculates PLQs from REQs (for faster evaluation in factorized form, especially when using grid)
@@ -426,12 +479,14 @@ class NBFF: public ForceField{ public:
         const Quat4d  REQi    = REQs[ia];
         const double  R2damp = Rdamp*Rdamp;
         double E=0,fx=0,fy=0,fz=0;
-        #pragma omp simd reduction(+:E,fx,fy,fz)
+        //#pragma omp simd reduction(+:E,fx,fy,fz)
         for (int j=0; j<natoms; j++){ 
             //if(ia==j)continue;   ToDo: Maybe we can keep there some ignore list ?
             if(ia==j)[[unlikely]]{continue;}
             const Quat4d& REQj  = REQs[j];
             const Quat4d  REQij = _mixREQ(REQi,REQj); 
+
+            //printf( "DEBUG evalLJQs_PBC_atom_omp() [ua=%i,j=%i] REQij(%g,%g,%g,%g) REQj(%g,%g,%g,%g)  REQi(%g,%g,%g,%g) \n", ia, j, REQij.x,REQij.y,REQij.z,REQij.w,  REQj.x,REQj.y,REQj.z,REQj.w,  REQi.x,REQi.y,REQi.z,REQi.w );
             const Vec3d dp      = apos[j]-pi;
             Vec3d fij           = Vec3dZero;
             for(int ipbc=0; ipbc<npbc; ipbc++){
@@ -447,6 +502,7 @@ class NBFF: public ForceField{ public:
             }
         }
         fapos[ia].add( Vec3d{fx,fy,fz} );
+        //exit(0);
         return E;
     }
     __attribute__((hot))  
@@ -1039,7 +1095,7 @@ class NBFF: public ForceField{ public:
 
     int makePBCshifts( Vec3i nPBC, const Mat3d& lvec ){
         npbc = (nPBC.x*2+1)*(nPBC.y*2+1)*(nPBC.z*2+1);
-        printf( "NBFF::makePBCshifts() npbc=%i nPBC{%i,%i,%i}\n", npbc, nPBC.x,nPBC.y,nPBC.z );
+        //printf( "NBFF::makePBCshifts() npbc=%i nPBC{%i,%i,%i}\n", npbc, nPBC.x,nPBC.y,nPBC.z );
         _realloc(shifts,npbc);
         int ipbc=0;
         for(int iz=-nPBC.z; iz<=nPBC.z; iz++){ 
@@ -1056,8 +1112,10 @@ class NBFF: public ForceField{ public:
     void print_nonbonded(){
         printf("NBFF::print_nonbonded(n=%i)\n", natoms );
         for(int i=0; i<natoms; i++){
-            if(atypes){ printf("nb_atom[%i] REQ(%7.3f,%g,%g,%g) pos(%7.3f,%7.3f,%7.3f) atyp %i \n", i, REQs[i].x,REQs[i].y,REQs[i].z,REQs[i].w,   apos[i].x,apos[i].y,apos[i].z, atypes[i] ); }
-            else      { printf("nb_atom[%i] REQ(%7.3f,%g,%g,%g) pos(%7.3f,%7.3f,%7.3f) \n",         i, REQs[i].x,REQs[i].y,REQs[i].z,REQs[i].w,   apos[i].x,apos[i].y,apos[i].z            ); }
+            Quat4d PLQ = Quat4dNAN; 
+            if(PLQd){PLQ = PLQd[i];}
+            if(atypes){ printf("nb_atom[%i] REQ(%7.3f,%g,%g,%g) PLQ(%12.8f,%12.8f,%8.4f,%g) pos(%7.3f,%7.3f,%7.3f) atyp %i \n", i, REQs[i].x,REQs[i].y,REQs[i].z,REQs[i].w, PLQ.x,PLQ.y,PLQ.z,PLQ.w,  apos[i].x,apos[i].y,apos[i].z, atypes[i] ); }
+            else      { printf("nb_atom[%i] REQ(%7.3f,%g,%g,%g) PLQ(%12.8f,%12.8f,%8.4f,%g) pos(%7.3f,%7.3f,%7.3f) \n",         i, REQs[i].x,REQs[i].y,REQs[i].z,REQs[i].w, PLQ.x,PLQ.y,PLQ.z,PLQ.w,  apos[i].x,apos[i].y,apos[i].z            ); }
         }
     }
 

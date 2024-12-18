@@ -112,6 +112,28 @@ class MolWorld_sp3_simple{ public:
 
 // =================== Functions
 
+/// @param i0 Index of the first atom in the constraint.
+/// @param i1 Index of the second atom in the constraint.
+/// @param lmin Minimum allowed distance between the atoms.
+/// @param lmax Maximum allowed distance between the atoms.
+/// @param kmin Force constant for the minimum distance constraint.
+/// @param kmax Force constant for the maximum distance constraint.
+/// @param flim Force limit beyond which the constraint is considered violated.
+/// @param shift Vector shift applied to the constraint.
+/// @param bOldIndex If true, indices are treated as old indices and are permuted using builder.atom_permut.
+
+/// Adds a distance constraint between two atoms.
+///
+/// @param i0 Index of the first atom in the constraint.
+/// @param i1 Index of the second atom in the constraint.
+/// @param lmin Minimum allowed distance between the atoms.
+/// @param lmax Maximum allowed distance between the atoms.
+/// @param kmin Force constant for the minimum distance constraint.
+/// @param kmax Force constant for the maximum distance constraint.
+/// @param flim Force limit beyond which the constraint is considered violated.
+/// @param shift Vector shift applied to the constraint.
+/// @param bOldIndex If true, indices are treated as old indices and are permuted using builder.atom_permut.
+
 void addDistConstrain( int i0,int i1, double lmin=1.0,double lmax=2.0,double kmin=0.0,double kmax=1.0,double flim=10.0, Vec3d shift=Vec3dZero, bool bOldIndex=false ){
     if(bOldIndex){
         i0 = builder.atom_permut[i0];
@@ -126,6 +148,22 @@ void addDistConstrain( int i0,int i1, double lmin=1.0,double lmax=2.0,double kmi
 
 int makePBCshifts( Vec3i nPBC, const Mat3d& lvec ){
     npbc = (nPBC.x*2+1)*(nPBC.y*2+1)*(nPBC.z*2+1);
+    /// Initializes the non-bonded force field (NBFF) for the molecule.
+    ///
+    /// @param na Number of atoms.
+    /// @param apos Pointer to the array of atomic positions.
+    /// @param fapos Pointer to the array of fixed atomic positions (if any).
+    /// @param atypes Pointer to the array of atomic types.
+    /// @param bCleanCharge If true, ensures that atoms not present in the Builder have well-defined charges.
+    
+    /// @brief MolWorld_sp3_simple::makePBCshifts
+    /// Generates periodic boundary condition (PBC) shifts based on the lattice vectors.
+    ///
+    /// @param nPBC Number of PBC cells in each dimension.
+    /// @param lvec Lattice vectors.
+    /// @return Number of PBC shifts generated.
+    
+    
     pbc_shifts = new Vec3d[npbc];
     int ipbc=0;
     for(int iz=-nPBC.z; iz<=nPBC.z; iz++){ for(int iy=-nPBC.y; iy<=nPBC.y; iy++){ for(int ix=-nPBC.x; ix<=nPBC.x; ix++){  
@@ -169,6 +207,15 @@ int loadGeom( const char* name ){ // TODO : overlaps with buildFF()
         builder.bPBC=true;
         readMatrix( tmpstr, 3, 3, (double*)&builder.lvec );
     }
+    /// Initializes the parameters for the molecular system.
+    ///
+    /// @param sElemTypes Path to the element types file.
+    /// @param sAtomTypes Path to the atom types file.
+    /// @param sBondTypes Path to the bond types file.
+    /// @param sAngleTypes Path to the angle types file.
+    /// @param sDihedralTypes Path to the dihedral types file (optional).
+    
+    
     bPBC=builder.bPBC;
     int ia0=builder.frags[ifrag].atomRange.a;
     if( bPBC ){
@@ -202,7 +249,30 @@ void initParams( const char* sElemTypes, const char* sAtomTypes, const char* sBo
     params.init( sElemTypes, sAtomTypes, sBondTypes, sAngleTypes, sDihedralTypes );
     builder.bindParams(&params);
     params_glob = &params;
+    /// Builds a molecule from an XYZ file and initializes the molecular system.
+    ///
+    /// @param xyz_name The name of the XYZ file.
+    /// @return The index of the fragment created.
+    
+    
+    /// @brief MolWorld_sp3_simple::makeMMFF
+    /// Converts the molecule to MMFF format and assigns force field parameters.
+    
+    
+    /// @brief MolWorld_sp3_simple::makeFFs
+    /// Initializes the force field and non-bonded molecular parameters.
+    
+    
+    /// @brief MolWorld_sp3_simple::initParams
+    /// Initializes the parameters for the molecular system.
+    ///
+    /// @param sElemTypes Path to the element types file.
+    /// @param sAtomTypes Path to the atom types file.
+    /// @param sBondTypes Path to the bond types file.
+    /// @param sAngleTypes Path to the angle types file.
+    /// @param sDihedralTypes Path
     builder.capAtomEpair.type = params.getAtomType("E");
+    /// builder.addCappingTypesByIz(200); // electron pairs
     builder.addCappingTypesByIz(1);   // hydrogens
     builder.addCappingTypesByIz(200); // electron pairs
     //params.printAtomTypeDict();
@@ -304,6 +374,24 @@ virtual void makeFFs(){
 
 int relax_pi( int niter, double dt, double Fconv, double Flim=1000.0 ){
     printf( "MMFFsp3_loc::relax_pi() niter=%i dt=%g Fconv=%g \n", niter, dt, Fconv );
+    /// Initializes an empty MolWorld_sp3_simple object.
+    /// This function sets up the necessary parameters and structures for an empty system.
+    /// It does not load any molecules or perform any other initialization tasks.
+    
+    /// @brief MolWorld_sp3_simple::init
+    /// Initializes the MolWorld_sp3_simple object.
+    /// This function initializes parameters, builds molecules, and sets up force fields.
+    /// It also prints messages indicating the progress of the initialization process.
+    
+    /// @brief MolWorld_sp3_simple::eval
+    /// Evaluates the total energy of the system.
+    /// This function calculates the energy using the MMFF force field and non-bonded interactions.
+    /// It returns the total energy of the system.
+    
+    /// @brief MolWorld_sp3_simple::MDloop
+    /// Performs a molecular dynamics loop.
+    /// This function runs a specified number of iterations, evaluating the energy and forces,
+    ///
     double F2conv = Fconv*Fconv;
     double E=0,F2=0;
     int    itr=0;
@@ -333,6 +421,24 @@ int relax_pi( int niter, double dt, double Fconv, double Flim=1000.0 ){
         //if(verbosity>2)
         //printf( "relax_pi[%i] E %g |F| %g \n", itr, E, F2 );
         toXYZ( "#comment", false, file, true, false );
+        /// Initializes the MolWorld_sp3_simple object.
+        /// This function initializes parameters, builds molecules, and sets up force fields.
+        /// It also prints messages indicating the progress of the initialization process.
+        
+        /// @brief MolWorld_sp3_simple::eval
+        /// Evaluates the total energy of the system.
+        /// This function calculates the energy using the MMFF force field and non-bonded interactions.
+        /// It returns the total energy of the system.
+        
+        /// @brief MolWorld_sp3_simple::MDloop
+        /// Performs a molecular dynamics loop.
+        /// This function runs a specified number of iterations, evaluating the energy and forces,
+        /// and updating the positions of the atoms.
+        /// @param nIter Number of iterations for the MD loop.
+        /// @param Ftol Force tolerance for convergence.
+        
+        /// @brief MolWorld_sp3_simple::run
+        /// Runs the simulation for a specified number of steps.
         if(F2<F2conv){ fclose(file); return itr; }
     }
     fclose(file);
@@ -359,8 +465,62 @@ virtual void init( bool bGrid=false ){
         //if(substitute_name)printf("substitute_name  (%s)\n", substitute_name );
     }
     if ( smile_name ){               
+        /// Clears the MolWorld_sp3_simple object.
+        /// This function deallocates memory and resets pointers to zero.
+        /// It also prints a message indicating that the clear operation is complete.
+        
+        /// @brief MolWorld_sp3_simple::init
+        /// Initializes the MolWorld_sp3_simple object.
+        /// This function initializes parameters, builds molecules, and sets up force fields.
+        /// It also prints messages indicating the progress of the initialization process.
+        
+        /// @brief MolWorld_sp3_simple::eval
+        /// Evaluates the total energy of the system.
+        /// This function calculates the energy using the MMFF force field and non-bonded interactions.
+        /// It returns the total energy of the system.
+         /// Clears the MolWorld_sp3_simple object.
+         /// This function deallocates memory and resets pointers to zero.
+         /// It also prints a message indicating that the clear operation is complete.
+         
+         /// @brief MolWorld_sp3_simple::init
+         /// Initializes the MolWorld_sp3_simple object.
+         /// This function initializes parameters, builds molecules, and sets up force fields.
+         /// It also prints messages indicating the progress of the initialization process.
+         
+         /// @brief MolWorld_sp3_simple::eval
+         /// Evaluates the total energy of the system.
+         /// This function calculates the energy using the MMFF force field and non-bonded interactions.
+         /// It returns the total energy of the system.
+         
+         /// @brief MolWorld_sp3_simple::MDloop
+         /// Performs a molecular dynamics loop.
+         /// This function runs a specified number of iterations, evaluating the energy and forces,
+         /// and updating
+        
+        /// @brief MolWorld_sp3_simple::MDloop
+        /// Performs a molecular dynamics loop.
+        /// This function runs a specified number of iterations, evaluating the energy and forces,
+        /// and updating
         insertSMILES( smile_name );    
         builder.addAllCapTopo();       
+        /// Evaluates the total energy of the system.
+        /// This function calculates the energy using the MMFF force field and non-bonded interactions.
+        /// It returns the total energy of the system.
+        
+        /// @brief MolWorld_sp3_simple::MDloop
+        /// Performs a molecular dynamics loop.
+        /// This function runs a specified number of iterations, evaluating the energy and forces,
+        /// and updating the positions of the atoms.
+        /// @param nIter Number of iterations for the MD loop.
+        /// @param Ftol Force tolerance for convergence.
+        
+        /// @brief MolWorld_sp3_simple::run
+        /// Runs the simulation for a specified number of steps.
+        /// This function performs the main simulation loop, evaluating the energy and forces,
+        /// and updating the positions of the atoms.
+        /// @param nstepMax Maximum number of steps for the simulation.
+        /// @param dt Time step for the simulation.
+        /// @param Fconv
         builder.randomizeAtomPos(1.0); 
         bMMFF=true;
     }else if ( xyz_name ){
@@ -407,6 +567,18 @@ void pullAtom( int ia, float K=-2.0 ){
     Vec3d f = getForceSpringRay( nbmol.apos[ia], pick_hray, pick_ray0, K ); nbmol.fapos[ia].add( f );
 }
 
+
+
+/// @param nIter Number of iterations for the MD loop.
+/// @param Ftol Force tolerance for convergence.
+
+/// /// Performs a molecular dynamics loop.
+/// Performs a molecular dynamics loop.
+/// This function runs a specified number of iterations, evaluating the energy and forces,
+/// and updating the positions of the atoms.
+/// @param nIter Number of iterations for the MD loop.
+/// @param Ftol Force tolerance for convergence.
+
 virtual void MDloop( int nIter, double Ftol = 1e-6 ){
     for(int itr=0; itr<nIter; itr++){
         double E = eval();
@@ -439,6 +611,20 @@ virtual int run( int nstepMax, double dt=-1, double Fconv=1e-6, int ialg=2, doub
         Etot = eval();
         switch(ialg){
             case  0: ffl.move_GD      (opt.dt);      break;
+            /// @param maxVcog Maximum allowed velocity center of gravity.
+            /// @param maxFcog Maximum allowed force center of gravity.
+            /// @param maxTg Maximum allowed torque.
+            /// @return True if any of the invariants exceed the specified limits, false otherwise.
+            
+            /// @brief MolWorld_sp3_simple::toXYZ
+            /// @param comment Comment to be added to the XYZ file.
+            /// @param bNodeOnly If true, only node atoms are written to the XYZ file.
+            /// @param file File pointer to write the XYZ data. If null, the default xyz_file is used.
+            /// @param bPi If true, pi-atoms are included in the XYZ file.
+            /// @param just_Element If true, only the element names are written in the XYZ file.
+            /// @return 0 on success, -1 on error.
+            
+            /// @brief MolWorld_sp3_simple::save
             case -1: opt.move_LeapFrog(opt.dt);      break;
             case  1: F2 = opt.move_MD (opt.dt,opt.damping); break;
             case  2: F2 = opt.move_FIRE();          break;
@@ -450,6 +636,20 @@ virtual int run( int nstepMax, double dt=-1, double Fconv=1e-6, int ialg=2, doub
         if(verbosity>0){ printf("[%i] Etot %g[eV] |F| %g [eV/A] \n", itr, Etot, sqrt(F2) ); };
         if(F2<F2conv){
             if(verbosity>0){ printf("Converged in %i iteration Etot %g[eV] |F| %g[eV/A] <(Fconv=%g) \n", itr, Etot, sqrt(F2), Fconv ); };
+            /// @param maxVcog Maximum allowed velocity center of gravity.
+            /// @param maxFcog Maximum allowed force center of gravity.
+            /// @param maxTg Maximum allowed torque.
+            /// @return True if any of the invariants exceed the specified limits, false otherwise.
+            
+            /// @brief MolWorld_sp3_simple::toXYZ
+            /// @param comment Comment to be added to the XYZ file.
+            /// @param bNodeOnly If true, only node atoms are written to the XYZ file.
+            /// @param file File pointer to write the XYZ data. If null, the default xyz_file is used.
+            /// @param bPi If true, pi-atoms are included in the XYZ file.
+            /// @param just_Element If true, only the element names are written in the XYZ file.
+            /// @return 0 on success, -1 on error.
+            
+            /// @brief MolWorld_sp3_simple::save
             break;
         }
         if( (trj_fname) && (itr%savePerNsteps==0) ){

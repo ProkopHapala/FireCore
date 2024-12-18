@@ -1,11 +1,14 @@
 
 #ifndef CMesh_h
 #define CMesh_h
+/// @file CMesh.h @brief 3D mesh class
+/// @ingroup Geometry
+/// @ingroup Topology
 
 #include "Vec2.h"
 #include "Vec3.h"
 
-// CMesh ... C like "constant" or C-language (vs. C++)
+/// @brief minimalistic C-like class for basic 3D mesh comprising 3D vertices, edges, triangles, and polygons (faces).
 class CMesh{ public:
     int nvert ;
     int nedge ;

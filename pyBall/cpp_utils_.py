@@ -2,9 +2,11 @@
 import os
 import ctypes
 
-clean_build = True 
+loaded_libs = {} 
+
+clean_build    = True 
 recompile_glob = True
-lib_ext   ='.so'
+lib_ext        ='.so'
 s_numpy_data_as_call = "_np_as(%s,%s)"
 
 def work_dir( v__file__ ): 
@@ -15,6 +17,13 @@ BUILD_PATH   = os.path.normpath( PACKAGE_PATH + '../../../cpp/Build/libs/CombatM
 
 #print (" PACKAGE_PATH : ", PACKAGE_PATH)
 #print (" BUILD_PATH   : ", BUILD_PATH)
+
+def set_args_dict( lib, argDict):
+    for k,v in  argDict.items():
+        f = lib.__getattr__(k)
+        f.restype  = v[0]
+        f.argtypes = v[1]
+        
 
 def compile_lib( name,
         #FFLAGS = "-std=c++11 -Og -g -Wall",
@@ -50,9 +59,30 @@ def make( what="" ):
     os.chdir ( current_directory )
 
 def loadLib( cpp_name, recompile=True, mode=ctypes.RTLD_LOCAL ):
-    if recompile and recompile_glob:
+    if recompile and recompile_glob:  
         make(cpp_name)
-    return ctypes.CDLL(  BUILD_PATH + "/lib" + cpp_name + lib_ext, mode ) 
+    lib_path = BUILD_PATH + "/lib" + cpp_name + lib_ext
+    if lib_path in loaded_libs: 
+        unload_lib_by_path(lib_path)  # Unload if already loaded
+    lib = ctypes.CDLL(lib_path, mode)
+    loaded_libs[lib_path] = lib  # Store the loaded library
+    return lib
+
+def unload_lib_by_path(lib_path):
+    if lib_path in loaded_libs:
+        lib = loaded_libs.pop(lib_path)  # Remove from dictionary
+        try:
+            # Attempt to find and use dlclose (more common on Unix-like systems)
+            unload_lib(lib)
+            print(f"Library {lib_path} unloaded successfully.")
+        except (AttributeError, OSError) as e:
+            print(f"Warning: Could not unload library {lib_path} properly.")
+            print(f"Error: {e}")
+
+def unload_lib(lib):
+    dlclose_func          = ctypes.CDLL(None).dlclose
+    dlclose_func.argtypes = [ctypes.c_void_p]
+    dlclose_func(lib._handle)
 
 
 # ============ automatic C-python interface generation

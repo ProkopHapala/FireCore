@@ -1,5 +1,7 @@
 #ifndef MMFFBuilder_h
 #define MMFFBuilder_h
+/// @file MMFFBuilder.h   @brief Classes for building and editing molecular topology and building instances of force-fields for paticular molecule or system 
+/// @ingroup Classical_Molecular_Mechanics
 
 #include <string>
 #include <vector>
@@ -35,7 +37,7 @@
 
 // =============== Structs for Atoms, Bonds etc...
 
-// TBD builder is the only one in a namespace...
+/// @namespace MM       @brief Molecular-Mechanics namespace
 namespace MM{
 
 static const double const_eVA2_Nm = 16.02176634;
@@ -43,15 +45,17 @@ static const double const_eVA2_Nm = 16.02176634;
 // ============================
 // ========= Atom
 // ============================
+
+/// @brief Atom context in Molecular-Mechanics  structure with 3D coordinates, type, neighborlist etc.
 struct Atom{
     constexpr const static Quat4d HcapREQ    = Quat4d{ 1.4870, 0.026095977, 0., 0. }; // sqrt(0.000681)=0.026095977
     constexpr const static Quat4d defaultREQ = Quat4d{ 1.7,    0.061067605, 0., 0. }; // sqrt(0.0037292524)=0.061067605
     int id;
-    int type;
-    int frag;
-    int iconf;
-    Vec3d  pos;
-    Quat4d REQ;   // constexpr Vec3d{1.7,sqrt(0.0037292524),0}
+    int type;    ///< atomic type
+    int frag;    ///< to which fragment it belongs ?
+    int iconf;   ///< index of the configuration object keeping the list of bonded neighbors
+    Vec3d  pos;  ///< atomic coordinates
+    Quat4d REQ;  /// non-covaloent interaction parameters {RvdW,EvdW,Q}              constexpr Vec3d{1.7,sqrt(0.0037292524),0}
     //Atom() = default;
 
     void print()const{ printf( " Atom{id %i t %i c %i f %i REQ(%g,%g,%g,%g) pos(%g,%g,%g)}", id, type, iconf, frag, REQ.x, REQ.y, REQ.z,REQ.w, pos.x,pos.y,pos.z ); }
@@ -73,14 +77,15 @@ enum class NeighType: int {
 // ========= AtomConf
 // ============================
 
+/// @brief Atom configurations contains information about bonding topology of the atoms (list of neighbors, number of sigma-bonds, pi-orbitas and free electron pairs)
 struct AtomConf{
 
     int iatom=-1;
-    uint8_t n     =0;
-    uint8_t nbond =0;
-    uint8_t npi   =0; // pi bonds
-    uint8_t ne    =0; // electron pairs
-    uint8_t nH    =0; // capping atoms
+    uint8_t n     =0; ///< total sum, should be equal to valency of the atom
+    uint8_t nbond =0; ///< number of sigma bonds
+    uint8_t npi   =0; ///< number of pi-orbitals (bonds)
+    uint8_t ne    =0; ///< number of electron pairs
+    uint8_t nH    =0; ///< number of capping atoms (e.g. hydrogen)
     int neighs[N_NEIGH_MAX]; // neighs  - NOTE: bonds not atoms !!!!
 
     Vec3d  pi_dir{0.,0.,0.};
@@ -187,13 +192,16 @@ struct AtomConf{
 // ============================
 // ========= Bond
 // ============================
+/// @brief Bond store information about atom and bond indexes linked by the bond and bond parameters (equlibirum lengh, stiffness, pi-stiffness), and index of replica in periodic-boundary conditions
 struct Bond{
     // --- this breaks {<brace-enclosed initializer list>} in C++11
-    int    type  = -1;
-    Vec2i  atoms = (Vec2i){-1,-1};
-    double l0=1.0,k=0.0,kpp=0;
-    Vec3i8 ipbc=Vec3i8{0,0,0}; // for periodic boundary conditions
-    double order=0.0; // actual bond order
+    int    type  = -1;             ///< type of the bond ( e.g. single, double, triple )
+    Vec2i  atoms = (Vec2i){-1,-1}; ///< indexes of atoms linked by the bond
+    double l0=1.0; ///< equlibirum bond length
+    double k=0.0;  ///< bond stiffness
+    double kpp=0;  ///< pi-pi stiffness
+    Vec3i8 ipbc=Vec3i8{0,0,0}; ///< index of cell image in periodic boundary conditions
+    double order=0.0; ///< actual bond order (unlike type can be non-integer, e.g. for aromatic bonds)
     //int    type;
     //Vec2i  atoms;
     //double l0,k;
@@ -213,6 +221,7 @@ struct Bond{
 // ============================
 // ========= Angle
 // ============================
+/// @brief Angle store information about atom indexes linked by the angle and angle parameters (equlibirum angle, stiffness)
 struct Angle{
 
     // --- this breaks {<brace-enclosed initializer list>} in C++11
@@ -223,11 +232,11 @@ struct Angle{
     //Angle()=default;
 
     int type;
-    Vec2i  bonds;
-    double a0;
-    double k;
-    double C0,C1,C2,C3;
-    Vec3i  atoms;
+    Vec2i  bonds;        ///< indexes of the bonds linked by the angle
+    double a0;           ///< equeilibrium angle
+    double k;            ///< stiffness 
+    double C0,C1,C2,C3;  ///< and coeffiicients of expansion of the angle potential
+    Vec3i  atoms;        ///< indexes of the atoms involved in the angle
 
     void print()const{ printf( " Angle{t %i b(%i,%i) a0 %g k %g}", type, bonds.i, bonds.j, a0, k ); }
 
@@ -238,6 +247,7 @@ struct Angle{
 // ============================
 // ========= Dihedral
 // ============================
+/// @brief Dihedral angle store information about atom and bond indexes linked by the dihedral angle and dihedral angle parameters (equlibirum angle, stiffness)
 struct Dihedral{
 
     // --- this breaks {<brace-enclosed initializer list>} in C++11
@@ -247,11 +257,11 @@ struct Dihedral{
     //double k=0;
 
     int    type;
-    Vec3i  bonds;
-    Quat4i atoms;
-    int    d,n;
-    double k;
-    double a0;
+    Vec3i  bonds;   ///< indexes of the bonds linked by the angle
+    Quat4i atoms;   ///< indexes of the atoms involved in the angle
+    int    d,n;    /// multiplicity and number of terms in the dihedral potential
+    double k;    ///< stiffness 
+    double a0;   ///< equeilibrium angle
 
     //Dihedral()=default;
 
@@ -265,6 +275,7 @@ struct Dihedral{
 // ============================
 // ========= Inversion
 // ============================
+/// @brief Inproper dihedral angle store information about atom and bond indexes linked by the dihedral angle and dihedral angle parameters (equlibirum angle, stiffness)
 struct Inversion{
 
     // --- this breaks {<brace-enclosed initializer list>} in C++11
@@ -274,10 +285,10 @@ struct Inversion{
     //double k=0;
 
     int    type;
-    Vec3i  bonds;
-    Quat4i atoms;
-    double k;
-    double C0,C1,C2;
+    Vec3i  bonds;   ///< indexes of the bonds linked by the angle
+    Quat4i atoms;   ///< indexes of the atoms involved in the angle
+    double k;        ///< stiffness 
+    double C0,C1,C2; ///< and coeffiicients of expansion of the angle potential
 
     void print()const{ printf( " Inversion{t %i b(%i,%i,%i) k %g C0 %g C1 %g C2 %g}", type, bonds.a, bonds.b,bonds.c, k, C0, C1, C2 ); }
 
@@ -289,7 +300,7 @@ struct Inversion{
 // ============================
 // ========= Fragment
 // ============================
-//#ifdef Molecule_h
+/// @brief Fragment groups range of atoms and bonds (and angles, dihedrals, inversions) that belong e.g. to the same molecule, or to the same residue. Useful especially for rigid-body dynamics and Bound-Boxes acceleration of non-covalent interactions
 struct Fragment{
     int   imolType;
     Vec2i atomRange;
@@ -317,7 +328,7 @@ struct Fragment{
         atomRange{atomRange_},bondRange{0,0},angRange{0,0},dihRange{0,0}, //mol{mol_},
         pos0s{pos0s_}{};
 };
-//#endif // Molecule_h
+
 
 // ============================
 // ========= splitByBond
@@ -368,6 +379,8 @@ int splitByBond( int ib, int nb, Vec2i* bond2atom, Vec3d* apos, int* selection, 
 // ============================
 // ========= Builder
 // ============================
+/// @brief Comprehensive builder for for building and editing molecular topology and building instances of force-fields for paticular molecule or system.
+/// @details It implements many algorithms for automatic finding of bonding topology, assignment of atomic types, adding/removing explicit free electron paris and capping atoms, substitution, segmentation to groups, etc.
 class Builder{  public:
     //int verbosity = 0;
     //bool bDebug = false;
@@ -639,6 +652,11 @@ class Builder{  public:
         int ic=atoms[ia].iconf;
         if(ic>=0){ return &confs[ic]; }
         return 0;
+    }
+
+    Vec2i getBondAtomTypes(int ib){
+        const MM::Bond& b = bonds[ib];
+        return Vec2i{ atoms[b.atoms.a].type, atoms[b.atoms.b].type };
     }
 
     int getBondToNeighbor( int ia, int ja )const {
@@ -1199,7 +1217,7 @@ class Builder{  public:
                 int npi = confs[A.iconf].npi;
                 if( sp3types.count(A.type) == 0 ) continue;
                 A.type = assignSp3Type_pi( A.type, npi );
-                printf( "Builder::assignAllSp3Types() [ia=%i] ityp=%i \n", i, A.type );
+                //printf( "Builder::assignAllSp3Types() [ia=%i] ityp=%i \n", i, A.type );
             }
         }
     }
@@ -2074,7 +2092,7 @@ void assignTorsions( bool bNonPi=false, bool bNO=true ){
     inline Vec3d pbcShift( Vec3i G ){ return lvec.a*G.a + lvec.b*G.b + lvec.c*G.c; }
 
     // find 
-    int autoBondsPBC( double R=-1.20, int i0=0, int imax=-1, Vec3i npbc=Vec3iOne ){
+    int autoBondsPBC( double R=-1.35, int i0=0, int imax=-1, Vec3i npbc=Vec3iOne ){
         //printf( "MM::Builder::autoBondsPBC() \n" );
         //if(verbosity>0){ printf( "MM::Builder::autoBondsPBC() \n" );                             }
         if(verbosity>1){ printf( "MM::Builder::autoBondsPBC() builder.lvec: \n" ); lvec.print(); };
@@ -2122,7 +2140,25 @@ void assignTorsions( bool bNonPi=false, bool bNO=true ){
         return nbond;
     }
 
-    bool checkNumberOfBonds( bool bPrint=true, bool bExitOnError=true){
+    bool checkAllAtomsBonded( bool bPrint=true, bool bExit=true, int nbmax=N_NEIGH_MAX, int nbmin=1 ){
+        std::vector<int> nbonds(atoms.size(),0);
+        for(int ib=0; ib<bonds.size(); ib++){
+            const Bond& b = bonds[ib];
+            nbonds[b.atoms.i]++;
+            nbonds[b.atoms.j]++;
+        }
+        bool bRet = false;
+        for(int i=0; i<atoms.size(); i++){
+            int nb=nbonds[i];
+            if( (nb<nbmin)||(nb>nbmax) ){
+                printf( "ERROR in Builder::checkAllAtomsBonded(): atom[%i].nbonds is out of range (%i,%i)\n", i, nb, nbmin, nbmax );
+                bRet=true;
+            }
+        }
+        return bRet;
+    }
+
+    bool checkNumberOfBonds( bool bPrint=true, bool bExitOnError=true, bool bAllAtomsBonded=true ){
         const int na = atoms.size();
         std::vector<int> nbonds(na,0); 
         //for(int ia=0; ia<na; ia++){ printf( "checkNumberOfBonds nbonds[%i]=%i\n", ia, nbonds[ia] ); };
@@ -2137,12 +2173,13 @@ void assignTorsions( bool bNonPi=false, bool bNO=true ){
             const Atom& A = atoms[ia];
             const AtomType& t = params->atypes[A.type];
             //printf( "checkNumberOfBonds nbonds[%i]=%i\n", ia, nbonds[ia] );
+            if(bAllAtomsBonded) { if( nbonds[ia]<=0 ){ err|=true; if( bPrint ){ printf( "WARNING checkNumberOfBonds[%i] `%s` has no bonds nbond(%i)<1 bonds\n", ia, t.name, nbonds[ia] ); } } }
             if(A.iconf>=0){
                 const AtomConf& c = confs[A.iconf];
                 int nb = nbonds[ia];
                 if( nb>N_NEIGH_MAX){ err|=true; if( bPrint ){ printf( "WARNING checkNumberOfBonds[%i] `%s` nbonds(%i)>N_NEIGH_MAX (%i)\n", ia, t.name, nb, N_NEIGH_MAX ); } }
                 if( nb>t.valence  ){ err|=true; if( bPrint ){ printf( "WARNING checkNumberOfBonds[%i] `%s` nbonds(%i)>valence     (%i)\n", ia, t.name, nb, t.valence   ); } }
-                if( nb!=c.nbond   ){ err|=true; if( bPrint ){ printf( "WARNING checkNumberOfBonds[%i] `%s` nbonds(%i)!=conf.nbond  (%i)\n", ia, t.name, nb, c.nbond     ); } } 
+                if( nb!=c.nbond   ){ err|=true; if( bPrint ){ printf( "WARNING checkNumberOfBonds[%i] `%s` nbonds(%i)!=conf.nbond (%i)\n", ia, t.name, nb, c.nbond     ); } } 
             }else{
                 if( nbonds[ia]>1  ){ err|=true; if( bPrint ){ printf( "WARNING checkNumberOfBonds[%i] `%s` capping atom has %i>1 bonds\n", ia, t.name, nbonds[ia] ); } }
             }
@@ -3029,6 +3066,7 @@ void assignTorsions( bool bNonPi=false, bool bNO=true ){
     }
 
     inline void changeBondInAtomConf( int ia, int ib, int jb ){ 
+        //printf("changeBondInAtomConf ia=%i ib=%i jb=%i \n", ia, ib, jb);
         int ic=atoms[ia].iconf; 
         //printf("changeBondInAtomConf ia=%i ib=%i jb=%i ic=%i\n", ia, ib, jb, ic);
         if(ic>=0){ confs[ ic ].replaceNeigh( ib, jb ); 
@@ -3041,7 +3079,7 @@ void assignTorsions( bool bNonPi=false, bool bNO=true ){
     }
 
     void deleteBond(int ib){
-        int jb = bonds.size()-1;
+        int   jb = bonds.size()-1;
         Vec2i bi = bonds[ib].atoms;
         if(ib!=jb){ // not last bond   
             Vec2i bj = bonds[jb].atoms; 
@@ -3228,7 +3266,8 @@ void assignTorsions( bool bNonPi=false, bool bNO=true ){
                 int ne=0,npi=0; 
                 Quat4d REQ=REQs[i];
                 if(params){  //printf( "params \n" );
-                    params->assignRE( ityp, REQ );
+                    params->assignRE( ityp, REQ, true );
+                    // printf( "MM::Builder::loadXYZ_Atoms() assignRE[%i] REQ(%g,%g,%g)\n", i, REQ.x,REQ.y,REQ.z );
                     ne = params->atypes[ityp].nepair;
                     REQ.z=REQs[i].z;
                 }
@@ -3659,7 +3698,8 @@ void toMMFFsp3_loc( MMFFsp3_loc& ff, bool bRealloc=true, bool bEPairs=true, bool
 
         //params->printAtomTypeDict();
         int etyp=-1;  if(params) etyp=params->atomTypeDict["E"];
-        for(int i=0; i<ff.nnode;  i++){ ff.neighs[i]=Quat4i{-1,-1,-1,-1};  ff.bLs[i]=Quat4dZero, ff.bKs[i]=Quat4dZero, ff.Ksp[i]=Quat4dZero, ff.Kpp[i]=Quat4dZero; }; // back neighbors
+        for(int i=0; i<ff.natoms; i++){ ff.neighs[i]=Quat4i{-1,-1,-1,-1}; };
+        for(int i=0; i<ff.nnode;  i++){ ff.bLs[i]=Quat4dZero, ff.bKs[i]=Quat4dZero, ff.Ksp[i]=Quat4dZero, ff.Kpp[i]=Quat4dZero; }; // back neighbors
         for(int ia=0; ia<nAmax; ia++ ){
             const Atom& A =  atoms[ia];
             ff.apos  [ia] = A.pos;
@@ -3706,8 +3746,9 @@ void toMMFFsp3_loc( MMFFsp3_loc& ff, bool bRealloc=true, bool bEPairs=true, bool
                 for(int k=0; k<conf.nbond; k++){
                     int ib = conf.neighs[k];
                     const Bond& B = bonds[ib];
-                    { int ti=atoms[B.atoms.a].type; int tj=atoms[B.atoms.b].type;   printf( "ia,ib[%4i,%4i] l0=%7.3f k=%7.2f ts(%3i,%3i) %s-%s \n", ia, ib, B.l0, B.k, ti,tj, params->atypes[ti].name, params->atypes[tj].name ); }
+                    //{ int ti=atoms[B.atoms.a].type; int tj=atoms[B.atoms.b].type;   printf( "ia,ib[%4i,%4i] l0=%7.3f k=%7.2f ts(%3i,%3i) %s-%s \n", ia, ib, B.l0, B.k, ti,tj, params->atypes[ti].name, params->atypes[tj].name ); }
                     int ja = B.getNeighborAtom(ia);
+                    //{ printf( "ia=%4i ja=%4i ib=%i \n", ia, ja, ib ); }
                     const Atom& Aj =  atoms[ja];
                     AtomType& jtyp = params->atypes[Aj.type];
                     hs[k]  = atoms[ja].pos - A.pos;
