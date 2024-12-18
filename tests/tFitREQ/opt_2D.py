@@ -13,7 +13,7 @@ from pyBall import atomicUtils as au
 
 fit.plt = plt
 
-np.set_printoptions(linewidth=200)
+np.set_printoptions(linewidth=300)
 
 ref_path = "/home/prokop/Desktop/CARBSIS/PEOPLE/Paolo/FitREQ/DFT_2D/"
 #name = "H2O-D1_H2O-A1"
@@ -52,9 +52,9 @@ bMorse = True   # Morse
 donors    = [
 'H2O-D1', 
 'NH3-D1'
-#'CH2NH-D1',
-#'HCOOH-D1', 
-#'HCONH2-D1', 
+'CH2NH-D1',
+'HCOOH-D1', 
+'HCONH2-D1', 
 #'C4H3NO2-D1', 
 #'C4H5N-D1', 
 ] 
@@ -62,15 +62,15 @@ acceptors = [
 'H2O-A1', 
 'NH3-A1',
 'CH2O-A1', 
-#'CH2NH-A1', 
-#'HCOOH-A1', 
-#'HCOOH-A2', 
+#'CH2NH-A1',    # This makes it crash
+'HCOOH-A1', 
+'HCOOH-A2', 
 #'HCONH2-A1', 
 #'C4H3NO2-A1', 
 #'C5H5N-A1', 
 ]
 
-ref_dirs = fit.combine_fragments( donors, acceptors )  ;print( "ref_dirs:\n", ref_dirs )
+ref_dirs = fit.combine_fragments( donors, acceptors, path=ref_path )  ;print( "ref_dirs:\n", ref_dirs )
 
 marks    = fit.concatenate_xyz_files( directories=ref_dirs, base_path=ref_path, fname='all.xyz', output_file='all.xyz' )
 
@@ -86,7 +86,7 @@ marks, angle_data = fit.mark_molecule_blocks( comments )
 #print( "marks:\n", marks )
 #print( "angle_data:\n", angle_data )
 
-Erefs, x0s = fit.read_xyz_data(fname)  #;print( "x0s:\n", x0s )
+Erefs, x0s = fit.read_xyz_data(fname) ;print(f"Erefs.shape(): {np.shape(Erefs)}"); #;print( "x0s:\n", x0s )
 EminRef = np.min(Erefs)
 Eplots = fit.slice_and_reshape(Erefs, marks, angle_data)
 
@@ -175,10 +175,10 @@ E,Es,Fs = fit.getEs( bOmp=False, bDOFtoTypes=False, bEs=True, bFs=False )
 
 if bMorse:
     #Err = fit.run( iparallel=0, ialg=0, nstep=1000, Fmax=1e-4, dt=0.1, max_step=-1,  bClamp=True )
-    Err = fit.run( iparallel=0, ialg=1, nstep=100, Fmax=1e-8, dt=0.5, damping=0.1,   max_step=-1,  bClamp=True )
+    Err = fit.run( iparallel=0, ialg=1, nstep=1000, Fmax=1e-8, dt=0.5, damping=0.1,   max_step=-1,  bClamp=True )
 else:
     #Err = fit.run( iparallel=0, ialg=0, nstep=1000, Fmax=1e-4, dt=0.01, max_step=-1,  bClamp=True )
-    Err = fit.run( iparallel=0, ialg=1, nstep=100, Fmax=1e-8, dt=0.1, damping=0.05,   max_step=-1,  bClamp=True )
+    Err = fit.run( iparallel=0, ialg=1, nstep=1000, Fmax=1e-8, dt=0.1, damping=0.05,   max_step=-1,  bClamp=True )
 
 # ----- Combined hybrid optimization ( start with gradient descent, continue with dynamical descent) )
 #Err = fit.run( iparallel=0, ialg=0, nstep=20,  Fmax=1e-2, dt=0.005, max_step=-1,  bClamp=False )
@@ -190,9 +190,10 @@ else:
 E,Es,Fs = fit.getEs( bOmp=False, bDOFtoTypes=False, bEs=True, bFs=False );
 #fit.plotEWs( Erefs=Erefs, Emodel=Es, weights=fit.weights, Emin=EminPlot );   plt.title( "AFTER OPTIMIZATION" )
 
-Eplots_ref = fit.slice_and_reshape(Erefs, marks, angle_data)
-Eplots_mod = fit.slice_and_reshape(Es,    marks, angle_data)
-fig = fit.plot_Epanels_diff(Eplots_mod, Eplots_ref, ref_dirs, Emin=EminRef*fit.ev2kcal, bColorbar=True, bKcal=True)
+Eplots_ref = fit.slice_and_reshape(Erefs, marks, angle_data); print( "len(plots_ref): ",  len(Eplots_ref) )
+Eplots_mod = fit.slice_and_reshape(Es,    marks, angle_data); print( "len(Eplots_mod): ", len(Eplots_mod) )
+#fig = fit.plot_Epanels_diff(Eplots_mod, Eplots_ref, ref_dirs, Emin=EminRef*fit.ev2kcal, bColorbar=True, bKcal=True)
+fit.plot_Epanels_diff_separate(Eplots_mod, Eplots_ref, ref_dirs, Emin=EminRef*fit.ev2kcal, bColorbar=True, bKcal=True, save_prefix="opt_2D_", bClose=True )
 plt.savefig( "opt_2D.png" )
 
 # Eplot     = reformat_and_pad_data(Es   , lens)  # Reformat and pad data

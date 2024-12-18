@@ -1,4 +1,3 @@
-
 #from nt import write
 import numpy as np
 from   ctypes import c_int, c_double, c_bool, c_float, c_char_p, c_bool, c_void_p, c_char_p
@@ -325,8 +324,14 @@ def extract_fragment_names( directories=None, base_path='./'):
     sorted_second = sorted(list(second_molecules))
     return sorted_first, sorted_second
 
-def combine_fragments( frags1, frags2 ):
-    return [ f"{f1}_{f2}" for f1 in frags1 for f2 in frags2 ]
+def combine_fragments( frags1, frags2, path=None):
+    dirs = [ f"{f1}_{f2}" for f1 in frags1 for f2 in frags2 ]
+    if path is not None:
+        # check if ech path made by combine_fragments exists
+        dirs_ = [ d for d in dirs if os.path.exists( os.path.join(path,d) ) ]
+        return dirs_
+    else:
+        return dirs
 
 def concatenate_xyz_files(directories=None, base_path='./', fname="all.xyz", output_file="all.xyz", mode='w'):
     """
@@ -347,7 +352,7 @@ def concatenate_xyz_files(directories=None, base_path='./', fname="all.xyz", out
             dir_path  = os.path.join(base_path, directory)
             file_path = os.path.join(dir_path, fname)
             if not os.path.exists(file_path):
-                print(f"Warning: file not found in {directory}. Skipping it...")
+                print(f"Warning in concatenate_xyz_files(): file {fname} not found in {directory}. Skipping it...")
                 continue
             with open(file_path, 'r') as infile:
                 i0 = i
@@ -733,3 +738,68 @@ def plot2Dlong_diff( Erefs, Es, lens  ):
     plt.xlabel("DOF")
     plt.ylabel("segment")
     plt.tight_layout()
+
+def plot_Epanels_diff_separate(Emodels, Erefs, ref_dirs, save_prefix=None, bColorbar=True, Emin=-5.0, bKcal=False, bClose=False):
+    """
+    Plot each donor-acceptor pair in a separate figure with three panels (reference, model, difference).
+    
+    Args:
+        Emodels: List of model energy arrays
+        Erefs: List of reference energy arrays
+        ref_dirs: List of reference directory names (donor-acceptor pairs)
+        save_prefix: If provided, save each figure as '{save_prefix}_{ref_dir}.png'
+        bColorbar: Whether to show colorbar
+        Emin: Minimum energy for colormap scale
+        bKcal: If True, convert energies to kcal/mol
+        bClose: If True, close each figure after saving
+    
+    Returns:
+        List of figure handles
+    """
+    E_units = 1.0
+    if bKcal: 
+        E_units = ev2kcal
+    nmols = len(Erefs)
+    if nmols != len(ref_dirs):
+        print(f"Error: len(Erefs={nmols}) != len(ref_dirs={len(ref_dirs)})")
+        return []
+    
+    figs = []
+    for i in range(nmols):
+        fig, axs = plt.subplots(3, 1, figsize=(4,6))  # 3 rows, 1 column
+        
+        Emodel = Emodels[i]
+        Eref   = Erefs[i]
+        
+        # Plot Reference Energies
+        im = axs[0].imshow(Eref.T*E_units, aspect='auto', origin='lower', vmin=Emin, vmax=-Emin, cmap='bwr')
+        axs[0].set_ylabel('Reference Energies')
+        if bColorbar: plt.colorbar(im, ax=axs[0])
+        axs[0].set_title(f"{ref_dirs[i]}")
+        
+        # Plot Model Energies
+        im = axs[1].imshow(Emodel.T*E_units, aspect='auto', origin='lower', vmin=Emin, vmax=-Emin, cmap='bwr')
+        axs[1].set_ylabel('Model Energies')
+        if bColorbar: plt.colorbar(im, ax=axs[1])
+        
+        # Plot Difference
+        Ediff = Emodel - Eref
+        im = axs[2].imshow(Ediff.T*E_units, aspect='auto', origin='lower', vmin=Emin, vmax=-Emin, cmap='bwr')
+        axs[2].set_ylabel('Error')
+        if bColorbar: plt.colorbar(im, ax=axs[2])
+        
+        plt.tight_layout()
+        
+        if save_prefix is not None:
+            # Clean ref_dir name for filename (remove special characters)
+            clean_name = ref_dirs[i].replace('/', '_').replace('\\', '_')
+            filename = f"{save_prefix}_{clean_name}.png"
+            fig.savefig(filename)
+            print(f"Saved figure to: {filename}")
+        
+        if bClose:
+            plt.close(fig)
+        else:
+            figs.append(fig)
+    
+    return figs

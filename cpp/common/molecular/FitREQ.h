@@ -2032,6 +2032,15 @@ double evalFitError(int itr, bool bOMP=true, bool bEvalSamples=true){
     return Err;
 }
 
+void printDOFvalues(){
+    printf( "FitREQ::printDOFvalues() \n" );
+    printf( "# i          ityp    type_name                x                   dE/dx \n" );
+    for(int i=0;i<nDOFs;i++){
+        int ityp = DOFtoTyp[i].x;
+        printf( "DOF %3i  t: %3i  %8s %c :  %30.15f   %10.2e \n", i, ityp, params->atypes[ityp].name, "REQH"[DOFtoTyp[i].y],  DOFs[i], fDOFs[i] );
+    }
+}
+
 __attribute__((hot)) 
 double run( int ialg, int nstep, double Fmax, double dt, double max_step, double damping, bool bClamp, bool bOMP ){
     bSaveSampleToXYZ=false; 
@@ -2057,6 +2066,7 @@ double run( int ialg, int nstep, double Fmax, double dt, double max_step, double
     }
     printf("VERY FINAL |E|=%.15g  DOFs= ",Err     ); for(int j=0;j<nDOFs;j++){ printf("%.15g ", DOFs[j]); };printf("\n");
     printf("VERY FINAL |F|=%.15g fDOFs= ",sqrt(F2)); for(int j=0;j<nDOFs;j++){ printf("%.15g ",fDOFs[j]); };printf("\n");
+    printDOFvalues();
     return Err;
 }
 
@@ -2109,6 +2119,7 @@ double run_omp( int ialg, int nstep, double Fmax, double dt, double max_step, do
     } // while(itr<nstep){
     printf("VERY FINAL  DOFs= "); for(int j=0;j<nDOFs;j++){ printf("%.15g ", DOFs[j]); };printf("\n");
     printf("VERY FINAL fDOFs= "); for(int j=0;j<nDOFs;j++){ printf("%.15g ",fDOFs[j]); };printf("\n");
+    printDOFvalues();
     return Error;
 }
 
@@ -2306,8 +2317,8 @@ double move_MD( double dt, double max_step=-0.1, double damp=0.1, bool bClimbBre
     double cdamp = 1.0-damp;
     if(bClimbBreak){
         double fv = 0.0; for(int i=0; i<nDOFs; i++){ fv += vDOFs[i]*fDOFs[i]; }
-        printf( "move_MD fv= %g\n", fv );
-        if(fv<0.0){      for(int i=0; i<nDOFs; i++){       vDOFs[i] = 0.0;    }; printf( "ClimbBreak\n" ); } 
+        //printf( "move_MD fv= %g\n", fv );
+        if(fv<0.0){      for(int i=0; i<nDOFs; i++){       vDOFs[i] = 0.0;    }; printf( "ClimbBreak <f|v>=%g\n", fv ); } 
     }
     double F2 = 0.0;
     if(max_step>0.0){ dt=limit_dt_MD(dt,max_step,cdamp); };
