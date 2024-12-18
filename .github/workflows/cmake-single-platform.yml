@@ -17,10 +17,10 @@ jobs:
     steps:
       - name: Build and Test
         run: |
-          mkdir -p ${{ github.workspace }}/cpp/Build
+          mkdir ${{ github.workspace }}/cpp/Build
           
-          cmake -B${{ github.workspace }}/cpp/Build -S${{ github.workspace }}/cpp -DCMAKE_BUILD_TYPE=${{ env.BUILD_TYPE }}
+          cmake ${{ github.workspace }}/cpp
           
-          cmake --build ${{ github.workspace }}/cpp/Build -- -j19
+          make ${{ github.workspace }}/cpp/Build -- -j19
           
-          ctest --test-dir ${{ github.workspace }}/cpp/Build --output-on-failure --verbose
+          ctest ${{github.workspace}}/cpp/Build -V --test-dir ${{github.workspace}}/cpp/Build/tests
