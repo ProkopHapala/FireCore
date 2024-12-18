@@ -33,7 +33,8 @@ jobs:
       
     - name: Make
       # Build your program with the given configuration
-      run: |
-        make ${{github.workspace}}/cpp/Build -j19
-        ctest ${{github.workspace}}/cpp/Build -V --test-dir ${{github.workspace}}/cpp/Build/tests
+      run: make ${{github.workspace}}/cpp/Build -j19
+
+    - name: Test
+      run: ctest ${{github.workspace}}/cpp/Build -V --test-dir ${{github.workspace}}/cpp/tests
 
