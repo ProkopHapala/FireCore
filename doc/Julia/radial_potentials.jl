@@ -424,10 +424,6 @@ function getLJs2( r, R0, E0 )
 end
 
 
-
-
-
-
 # ============  REQH yype of potential  ============
 
 function getMorseQH( r, R0, E0, Q, H, k )
@@ -451,6 +447,12 @@ end
 
 # ============  General Cutted potentials  ============
 
+function getClmaped( func::Function, clamp_func::Function, r, params, y1, y2)
+    E_, F_ = func(r, params)    
+    E,  F  = clamp_func(E_, F_, y1, y2)
+    return E, F
+end
+
 #function getCutted( EF::Function, fcut::Function, Rcut, params )
 function getCutted( EF::Function, fcut::Function, r, params )
     #if r<Rcut
@@ -461,7 +463,6 @@ function getCutted( EF::Function, fcut::Function, r, params )
     #    return 0.,0.
     #end
 end
-
 
 function getCutShift( EF::Function, fcut::Function, r, Rc0, Rcut, params )
     #if r<Rcut
@@ -505,6 +506,64 @@ function combREQH( A, B )
         A[3] * B[3],
         H,
     )
+end
+
+
+# ========================
+
+# Soft clamp function for scalars
+function soft_clamp(y, dy, y1, y2)
+    """
+    Applies a soft clamp to a scalar y, smoothly transitioning values above y1 towards y2.
+    Also computes the derivative dy accordingly using the chain rule.
+
+    Parameters:
+    - y: Float, input value to clamp
+    - dy: Float, derivative of y with respect to some variable x
+    - y1: Float, lower threshold for clamping
+    - y2: Float, upper threshold for clamping
+
+    Returns:
+    - y_new: Float, clamped y value
+    - dy_new: Float, updated derivative
+    """
+    if y > y1
+        y12 = y2 - y1
+        invdy = 1.0 / y12
+        z = (y - y1) * invdy
+        y_new = y1 + y12 * (1 - 1 / (1 + z))
+        dy_new = dy / (1.0 + z)^2
+    else
+        y_new = y
+        dy_new = dy
+    end
+    return y_new, dy_new
+end
+
+# Soft clamp exponential function for scalars
+function soft_clamp_exp(y, min_value, max_value, width=10.0)
+    """
+    Soft clamp function for a scalar, smoothly clamping values.
+
+    Parameters:
+    - y: Float, input value
+    - min_value: Float, minimum clamp value
+    - max_value: Float, maximum clamp value
+    - width: Float, width of the transition region
+
+    Returns:
+    - y_new: Float, output value after applying the soft clamp
+    """
+    if y > max_value && max_value < Inf
+        z = (y - max_value) / width
+        y_new = max_value + (y - max_value) / (1 + exp(z))
+    elseif y < min_value && min_value > -Inf
+        z = (y - min_value) / -width
+        y_new = min_value + (y - min_value) / (1 + exp(z))
+    else
+        y_new = y
+    end
+    return y_new
 end
 
 
@@ -1006,4 +1065,3 @@ vline!( plt[2], [RHb],  color=:black, label="", linestyle=:dash )
 vline!( plt[2], [0.0],  color=:black, label="", linestyle=:dash )
 
 display(plt)
-
