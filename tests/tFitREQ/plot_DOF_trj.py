@@ -13,17 +13,19 @@ def extract_dof_names(output_file):
     with open(output_file, 'r') as f:
         for line in f:
             if 'printDOFsToTypes()' in line:
+                dof_names = []
                 reading_dofs = True
                 continue
             if reading_dofs:
                 if '->' in line:
                     # Extract the DOF name after the '=' sign
                     name = line.split('|')[1][1:]
-                    #print (line, name)
+                    print (name, "    line: ", line, )
                     dof_names.append( name.strip() )
                 elif line.strip() == '':
                     reading_dofs = False
                     break
+    print(dof_names)
     return dof_names
 
 def read_DOF_trj(output_file):

@@ -75,10 +75,10 @@ marks    = fit.concatenate_xyz_files( directories=ref_dirs, base_path=ref_path, 
 #fname = "input_single.xyz"
 #fname = ref_path +"/"+ name + "/all.xyz"
 #fname = ref_path +"/"+ "/concatenated_all.xyz"
-fname = 'all.xyz'
+#fname = 'all.xyz'
 #fname = "input_2CH2NH.xyz"
 #fname="H2O_1D.xyz"
-#fname="H2O_single.xyz"
+fname="H2O_single.xyz"
 #fname="just_Epair_2x2.xyz"
 #fname="just_Epair_1x1_ee.xyz"
 #fname="just_Epair_1x1_eh.xyz"
@@ -109,7 +109,8 @@ if bMorse:
     dof_fname = "dofSelection_H2O_Morse.dat" 
 else:
     #dof_fname="dofSelection_LJ.dat" 
-    dof_fname="dofSelection_H2O_LJ.dat" 
+    #dof_fname="dofSelection_H2O_LJ.dat" 
+    dof_fname="dofSelection_H2O_LJSR.dat" 
 fit.loadDOFSelection( dof_fname)
 dof_names = fit.loadDOFnames( dof_fname )
 
@@ -130,7 +131,8 @@ if bMorse:
     imodel = 2
     weights0, lens = fit.split_and_weight_curves( Erefs, x0s, n_before_min=100, weight_func=lambda E: fit.exp_weight_func(E,a=1.0, alpha=4.0) )
 else:
-    imodel = 1
+    #imodel = 1
+    imodel = 3
     weights0, lens = fit.split_and_weight_curves( Erefs, x0s, n_before_min=2, weight_func=lambda E: fit.exp_weight_func(E,a=1.0, alpha=4.0) )
 fit.setup( imodel=imodel, EvalJ=1, WriteJ=1, Regularize=1 )
 # plotEWs( Erefs=Erefs, weights0=weights0, Emin=-1.5 ); plt.title( "Weighting" )
@@ -150,13 +152,26 @@ fit.setFilter( EmodelCutStart=0.0, EmodelCut=0.5, PrintOverRepulsive=-1, Discard
 #fit.plotEWs( Erefs=Erefs, Emodel=Es, weights=fit.weights, weights0=weights0,  Emin=EminPlot ); plt.title( "BEFORE OPTIMIZATION" )
 #plt.show(); #exit()
 
+#exclude = set(["E_O3.Q", "E_HO.Q", "E_O3.H", "E_HO.H", "O_3.H", "H_O.H"])
+#exclude = set(["E_O3.R", "E_HO.R", "O_3.H", "H_O.H"])
+#exclude = set(["E_O3.R", "E_HO.R" ])
+exclude = set([])
+iDOFs = list(range(len(dof_names)))
+dof_names_ = [ dof_names[i] for i in iDOFs if dof_names[i] not in exclude ]
+iDOFs_     = [ iDOFs[i]     for i in iDOFs if dof_names[i] not in exclude ]
+print( "dof_fnames  ", dof_names )
+print( "dof_fnames_ ", dof_names_ )
+print( "iDOFs_      ", iDOFs_ )
+#exit()
+
 # ------ Plot 1D parameter scans
 print( "len(dof_names)", len(dof_names), dof_names )
 fit.setup( imodel=imodel, Regularize=-1 )
 #fit.plotDOFscans( list(range(len(dof_names))), np.linspace( -1.0+1e-6,  1.0-1e-6,  100 ), dof_names, title="DOF scan 1D" , bFs=True , bEvalSamples=True  )
 
 #fit.plotDOFscans( list(range(len(dof_names))), np.linspace( -1.0+1e-6,  1.0-1e-6,  5 ), dof_names, title="DOF scan 1D" , bFs=True , bEvalSamples=True  )
-fit.plotDOFscans( list(range(len(dof_names))), np.linspace( -1.0+1e-6,  1.0-1e-6,  100 ), dof_names, title="DOF scan 1D" , bFs=True , bEvalSamples=True  )
+#fit.plotDOFscans( iDOFs_, np.linspace( -1.0+1e-6,  1.0-1e-6,  100 ), dof_names, title="DOF scan 1D" , bFs=True , bEvalSamples=True  )
+fit.plotDOFscans( iDOFs_, np.linspace( 0.0+1e-6,      1.0-1e-6,  100 ), dof_names, title="DOF scan 1D" , bFs=True , bEvalSamples=True  )
 
 for i in range(len(dof_names)):
     fit.checkDOFderiv( i, x0=0.5, d=0.001, bEvalSamples=True )

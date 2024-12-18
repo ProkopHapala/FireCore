@@ -62,21 +62,27 @@ void rigid_transform( Vec3d shift, Vec3d* unshift, Vec3d dir, Vec3d up, int n, V
     }
 }
 
-inline double getEpairAtom( double r, double Hij, double w, double& dEdH, double& dEdw ){
-    
+inline double getSR( double r, double Hij, double w, double& dEdH, double& dEdw ){
     double iw = 1.0/w;
-    double u = r*iw; 
+    double u  = r*iw; 
     dEdH = exp( -u );
-    dEdw = dEdH*u*iw;
+    dEdw = dEdH*u*iw * Hij;
     //dEdH = exp( -u*u );
     return Hij * dEdH;
-    
-
     // if( r<w ){
     //     return Hij;
     // }else{
     //     return 0.0;
     // }
+}
+
+inline double getSR2( double r, double Hij, double w, double& dEdH, double& dEdw ){
+    //printf( "getSR2();" );
+    double iw = 1.0/w;
+    double u  = r*iw; 
+    dEdH = exp( -u*u );
+    dEdw = dEdH*2*u*u*iw * Hij;
+    return Hij * dEdH;
 }
 
 struct AddedData{
@@ -179,6 +185,7 @@ class FitREQ{ public:
     std::vector<Vec3d> DOFregX;   // regularization positions (xmin,x0,xmax) for each DOF
     std::vector<Vec3d> DOFregK;   // regularization stiffness (Kmin,K0,Kmax) for each DOF
     std::vector<Vec2d> DOFlimits;   // limits (xmin,xmax) for each DOF
+    std::vector<double> DOFinvMass;   // inverse mass for each DOF ( for dynamical relaxation )
 
     alignas(32) double*   DOFs =0;       // [nDOFs]
     alignas(32) double*   fDOFs=0;       // [nDOFs]
@@ -430,18 +437,20 @@ int loadDOFSelection( const char* fname ){
     const int nline=1024;
     char line[1024];
     char at_name[8];
-    int nw_min    = 1 + 1 + 2 + 2 +2 + 1;
+    //              at_name,comp, xmin,xmax, xlo,xhi, klo,khi, K0,       xstart     invMass     
+    int nw_min    = 1 + 1 + 2 + 2 + 2 +1;
     int nw_xstart = nw_min + 1;
     DOFtoTyp .clear();
     DOFregX  .clear();
     DOFregK  .clear();
     DOFlimits.clear();
+    DOFinvMass.clear();
     int iDOF = 0;
     while( fgets(line, nline, fin) ){
         if(line[0]=='#')continue;
         int comp;
-        double xmin, xmax, xlo, xhi, klo, khi, K0, xstart;
-        int nw = sscanf( line, "%s %i %lf %lf %lf %lf %lf %lf %lf %lf",  at_name, &comp, &xmin, &xmax, &xlo, &xhi, &klo, &khi, &K0, &xstart );
+        double xmin, xmax, xlo, xhi, klo, khi, K0, xstart, invMass;
+        int nw = sscanf( line, "%s %i %lf %lf %lf %lf %lf %lf %lf %lf %lf",  at_name, &comp, &xmin, &xmax, &xlo, &xhi, &klo, &khi, &K0, &xstart, &invMass );
         if(nw < nw_min){ printf("ERROR in loadDOFSelection(): expected min. %i words, got %i in line '%s'\n", nw_min, nw, line); exit(0); }
         int ityp = params->getAtomType(at_name);
         if(ityp < 0){  printf("ERROR in loadDOFSelection(): unknown atom type %s\n", at_name); exit(0); }
@@ -451,12 +460,14 @@ int loadDOFSelection( const char* fname ){
             printf("iDOF: %i %8s.%i xstart missing (nw=%i) => xstart=%g \n", iDOF, at_name, comp, nw, typeREQs0[ityp].array[comp]  );
             xstart = typeREQs0[ityp].array[comp]; 
         }
+        if (nw<nw_xstart+1){ printf("iDOF: %i %8s.%i invMass missing (nw=%i) => invMass=%g \n", iDOF, at_name, comp, nw, 1.0 ); invMass = 1.0; }
         DOFtoTyp .push_back( {ityp, comp}       );
         DOFregX  .push_back( {xlo, xstart, xhi} );
         DOFregK  .push_back( {klo, K0,     khi} );
         DOFlimits.push_back( {xmin, xmax}       );
+        DOFinvMass.push_back( invMass           );
         //if(verbosity>0)
-            printf( "DOF[%3i] %3i|%i %-8s %c  range(%g,%g) reg(x0=(%g,%g),K=(%g,%g)) xstart=%g\n",  iDOF, ityp,comp,  at_name, "REQH"[comp], xmin, xmax, xlo, xhi, klo, khi, xstart );
+            printf( "DOF[%3i] %3i|%i %-8s %c  range(%g,%g) reg(x0=(%g,%g),K=(%g,%g)) xstart=%g invMass=%g\n",  iDOF, ityp,comp,  at_name, "REQH"[comp], xmin, xmax, xlo, xhi, klo, khi, xstart, invMass );
         iDOF++;
     }
     fclose(fin);
@@ -765,7 +776,7 @@ int loadXYZ( const char* fname, bool bAddEpairs=false, bool bOutXYZ=false ){
         }else if( il<atoms->natoms+2 ){  // --- Road atom line (type, position, charge)
             double x,y,z,q;
             int nret = sscanf( line, "%s %lf %lf %lf %lf", at_name, &x, &y, &z, &q );
-            printf( ".xyz[%i] %s %lf %lf %lf %lf\n", il, at_name, x, y, z, q );
+            //printf( ".xyz[%i] %s %lf %lf %lf %lf\n", il, at_name, x, y, z, q );
             if(nret<5){q=0;}
             int i=il-2;
             atoms->apos[i].set(x,y,z);
@@ -1392,10 +1403,10 @@ static double evalExampleDerivs_LJQH2_uncorr( int i0, int ni, int j0, int nj, Ve
             double dE_dH;
             double dE_dw;
             if       (bEpi ){ // i is an electron pair
-                Eij  += getEpairAtom( r, H, REQi.x, dE_dH, dE_dw );
+                Eij  += getSR( r, H, REQi.x, dE_dH, dE_dw );
             }else if (jh>=0){ // j is an electron pair
                 double dE_dH;
-                Eij  += getEpairAtom( r, H, REQj.x, dE_dH, dE_dw ); // Note - radius of electron REQi.x is used for decay constant
+                Eij  += getSR( r, H, REQj.x, dE_dH, dE_dw ); // Note - radius of electron REQi.x is used for decay constant
             }else{           // both i and j are real atoms
                 const double u       = R0/r;
                 const double u3      = u*u*u;
@@ -1448,12 +1459,12 @@ static double evalExampleDerivs_LJQH2_corr( int i0, int ni, int j0, int nj, int*
             double dE_dw;
             if       (bEpi ){ // i is an electron pair
                 double dE_dH;    
-                Eij     += getEpairAtom( r, H, REQi.x, dE_dH, dE_dw );
+                Eij     += getSR( r, H, REQi.x, dE_dH, dE_dw );
                 fREQi.z  += dE_dQ * REQj.z;  // dEtot/dH2i
                 fREQi.w  += dE_dH * REQj.w;  // dEtot/dH2i
             }else if (jh>=0){ // j is an electron pair
                 double dE_dH;
-                Eij     += getEpairAtom( r, H, REQj.x, dE_dH, dE_dw ); // Note - radius of electron REQi.x is used for decay constant
+                Eij     += getSR( r, H, REQj.x, dE_dH, dE_dw ); // Note - radius of electron REQi.x is used for decay constant
                 fREQi.w  += dE_dH * REQi.w;  // dEtot/dH2i
             }else{           // both i and j are real atoms
                 const double u       = R0/r;
@@ -1477,7 +1488,7 @@ static double evalExampleDerivs_LJQH2_corr( int i0, int ni, int j0, int nj, int*
     
 __attribute__((hot)) 
 double evalExampleDerivs_LJQH2_SR( int i0, int ni, int j0, int nj, int*  types, Vec3d* ps, Quat4d* typeREQs, double* Qs, int* host, Quat4d* dEdREQs )const{
-    //printf("evalExampleDerivs_LJQH2() i0: %i ni: %i j0: %i nj: %i \n", i0, ni, j0, nj );
+    //printf("evalExampleDerivs_LJQH2_SR() i0: %i ni: %i j0: %i nj: %i \n", i0, ni, j0, nj );
     // this differes form evalExampleDerivs_LJQH2() in that it uses short range corrections for electron pairs
     double Etot = 0.0;
     const bool bWJ = bWriteJ&&dEdREQs;
@@ -1517,12 +1528,21 @@ double evalExampleDerivs_LJQH2_SR( int i0, int ni, int j0, int nj, int*  types, 
             double dE_dH  = 0.0;
             double dE_dw  = 0.0;
             const bool bEpj = jh>=0;
-            if( bEpi||bEpj ){     // i or j is an electron pair
-                // double w=0; 
-                // if( bEpj       ){ w += REQj.x; }
-                // if( bEpi       ){ w += REQi.x; }
-                // if( bEpi&&bEpi ){ w *= 0.5;    }
-                // Eij += getEpairAtom( r, H, w, dE_dH, dE_dw );
+            // if( bEpi||bEpj ){     // i or j is an electron pair
+            //     double w=0; 
+            //     if( bEpj       ){ w += REQj.x; }
+            //     if( bEpi       ){ w += REQi.x; }
+            //     if( bEpi&&bEpi ){ w *= 0.5;    }
+            //     Eij += getSR( r, H, w, dE_dH, dE_dw );
+            
+            if( bEpi ){  
+                Eij += getSR2( r, H, REQi.x, dE_dH, dE_dw );
+                dE_dH*=-1.0;
+                dEdREQs[i].x += -dE_dw;
+            }else if( bEpj ){
+                Eij += getSR2( r, H, REQj.x, dE_dH, dE_dw );
+                dE_dH*=-1.0;
+                if( bWJ )dEdREQs[j].x += -dE_dw;
             }else{
                 const double u   = R0/r;
                 const double u3  = u*u*u;
@@ -2118,7 +2138,7 @@ double move_MD( double dt, double max_step=-0.1, double damp=0.1, bool bClimbBre
         double f = fDOFs[i];
         double v = vDOFs[i];
         v       *= cdamp;
-        v       += f*dt;
+        v       += f*dt * DOFinvMass[i];
         vDOFs[i] = v;
         DOFs[i] += v*dt;
         F2      += f*f;
@@ -2226,7 +2246,7 @@ void printDOFregularization(){
         const Vec3d& regX = DOFregX[i];
         const Vec3d& regK = DOFregK[i];
         //printf("[%2i] %8s.%c(%8.3f) limits( %10.2e %10.2e ) reg: x(%10.2e,%10.2e,%10.2e ) K(%10.2e,%10.2e,%10.2e )\n",   i, params->atypes[rt.x].name, "REQH"[rt.y],  DOFs[i], lim.x, lim.y,   regX.x, regX.y, regX.z,      regK.x, regK.y, regK.z        );
-        printf("DOF: %2i %-8s %c x: %10.3f limits( %10.2e %10.2e ) reg: x( %10.3f %10.3f %10.3f ) K( %10.3f %10.3f %10.3f )\n",   i, params->atypes[rt.x].name, "REQH"[rt.y],  DOFs[i], lim.x, lim.y,   regX.x, regX.y, regX.z,      regK.x, regK.y, regK.z        );
+        printf("DOF: %2i %-8s %c x: %10.3f limits( %10.2e %10.2e ) reg: x( %10.3f %10.3f %10.3f ) K( %10.3f %10.3f %10.3f ) invMass: %10.3f\n",   i, params->atypes[rt.x].name, "REQH"[rt.y],  DOFs[i], lim.x, lim.y,   regX.x, regX.y, regX.z,      regK.x, regK.y, regK.z , DOFinvMass[i] );
     }
 }
 
