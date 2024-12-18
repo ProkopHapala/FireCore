@@ -36,5 +36,8 @@ jobs:
       run: make ${{github.workspace}}/cpp/Build -j19
 
     - name: Test
-      run: ctest ${{github.workspace}}/cpp/Build -V
+      run: |
+        pwd
+        ctest -V
+
 
