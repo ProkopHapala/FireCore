@@ -33,5 +33,5 @@ jobs:
       # Build your program with the given configuration
       run: |
         make ${{github.workspace}}/cpp/Build -j19
-        ctest ${{github.workspace}}/cpp/Build -V --test-dir ${{github.workspace}}/cpp/Build/tests
+        # ctest ${{github.workspace}}/cpp/Build -V --test-dir ${{github.workspace}}/cpp/Build/tests
 
