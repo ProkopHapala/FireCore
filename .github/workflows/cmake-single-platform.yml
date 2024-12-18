@@ -37,6 +37,6 @@ jobs:
       # Execute tests defined by the CMake configuration.
       # See https://cmake.org/cmake/help/latest/manual/ctest.1.html for more detail
     - name: Test
-      working-directory: ${{github.workspace}}/cpp/tests
+      working-directory: ${{github.workspace}}/cpp
       run: ctest ${{github.workspace}}/cpp -V #--test-dir ${{github.workspace}}/cpp/Build/tests
 
