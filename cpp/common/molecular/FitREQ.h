@@ -923,8 +923,12 @@ double evalSample( int isamp, const Atoms* atoms, double wi, Quat4d* fREQs ) con
             if(bJ)evalExampleDerivs_MorseQH2( j0, nj, i0, ni, atoms->atypes, apos, typeREQs, Qs, fREQs );    // variational derivatives on molecule 2
         }break;
         case 3:{ 
-            E =   evalExampleDerivs_LJQH2_SR   ( i0, ni, j0, nj, atoms->atypes, apos, typeREQs, Qs, adata->host, fREQs );    // variational derivatives on molecule 1
-            if(bJ)evalExampleDerivs_LJQH2_SR   ( j0, nj, i0, ni, atoms->atypes, apos, typeREQs, Qs, adata->host, fREQs );    // variational derivatives on molecule 2
+            E =   evalExampleDerivs_LJQH2_SR  ( i0, ni, j0, nj, atoms->atypes, apos, typeREQs, Qs, adata->host, fREQs );    // variational derivatives on molecule 1
+            if(bJ)evalExampleDerivs_LJQH2_SR  ( j0, nj, i0, ni, atoms->atypes, apos, typeREQs, Qs, adata->host, fREQs );    // variational derivatives on molecule 2
+        }break;
+        case 4:{ 
+            E =   evalExampleDerivs_LJQr8H2   ( i0, ni, j0, nj, atoms->atypes, apos, typeREQs, Qs, fREQs );     // variational derivatives on molecule 1
+            if(bJ)evalExampleDerivs_LJQr8H2   ( i0, ni, j0, nj, atoms->atypes, apos, typeREQs, Qs, fREQs );     // variational derivatives on molecule 2
         }break;
         //case 4:{ 
         //    E =   evalExampleDerivs_MorseQH2_SR( i0, ni, j0, nj, atoms->atypes, apos, typeREQs, Qs, fREQs );    // variational derivatives on molecule 1
@@ -1053,7 +1057,7 @@ double evalSampleError( int isamp, double& E ){
     if( !bBroadcastFDOFs ){ 
         double F2=0.0;
         for(int k=0; k<nDOFs; k++){ double fi=fDOFs__[k]; fDOFs[k] += fi; F2+=fi*fi;  } 
-        //printf( "evalSampleError() isamp: %3i Eref: %20.6f Emodel: %20.6f |F|= f: %20.6f  wi: %20.6f dEw: %20.6f \n", isamp, atoms->Energy, E, sqrt(F2), wi, dEw );
+        //printf( "evalSampleError() isamp: %3i Eref: %20.6f Emodel: %20.6f |F|: %20.6f  wi: %20.6f dEw: %20.6f \n", isamp, atoms->Energy, E, sqrt(F2), wi, dEw );
     }
     return Error;
 }
@@ -1531,24 +1535,84 @@ double evalExampleDerivs_LJQH2_SR( int i0, int ni, int j0, int nj, int*  types, 
             }
 
             if( bWJ ){ dEdREQs[j].add( Quat4d{
-                        dE_dR0,                    // dEtot/dR0_j
-                       -dE_dE0  * 0.5 * REQi.y,    // dEtot/dE0_j
-                        dE_dQ   * Qi,              // dEtot/dQ_j
-                        dE_dH   * REQi.w * sH,     // dEtot/dH2j
+                        -dE_dR0,                    // dEtot/dR0_j
+                        -dE_dE0  * 0.5 * REQi.y,    // dEtot/dE0_j
+                        -dE_dQ   * Qi,              // dEtot/dQ_j
+                         dE_dH   * REQi.w * sH,     // dEtot/dH2j
             }); }
 
             //if(bCheckRepulsion)[[unlikely]]{ checkSampleRepulsion( ELJ, i,j, ti,tj, r, true, true ); }
             // --- Energy and forces
             Etot    +=  Eij;
-            fREQi.x +=  dE_dR0;                    // dEtot/dR0_i
-            fREQi.y +=  dE_dE0  * 0.5 * REQj.y;    // dEtot/dE0_i
-            fREQi.z +=  dE_dQ   * Qj;              // dEtot/dQ_i
+            fREQi.x += -dE_dR0;                    // dEtot/dR0_i
+            fREQi.y += -dE_dE0  * 0.5 * REQj.y;    // dEtot/dE0_i
+            fREQi.z += -dE_dQ   * Qj;              // dEtot/dQ_i
             fREQi.w +=  dE_dH   * REQj.w * sH;     // dEtot/dH2i
         }
         if(dEdREQs)dEdREQs[i].add(fREQi);
     }
     // printAtomParamDerivs( ni+nj, dEdREQs, isamp_debug );
     //printf( "debug Etot= %g\n", Etot );exit(0);    
+    return Etot;
+}
+
+double evalExampleDerivs_LJQr8H2( int i0, int ni, int j0, int nj, int* __restrict__ types, Vec3d* __restrict__ ps, Quat4d* __restrict__ typeREQs, double* __restrict__ Qs, Quat4d* __restrict__ dEdREQs )const{
+    const bool bWJ = bWriteJ&&dEdREQs;
+    //printf("evalExampleDerivs_LJQr8H2() i0: %i ni: %i j0: %i nj: %i \n", i0, ni, j0, nj );
+    double Etot = 0.0;
+    for(int ii=0; ii<ni; ii++){ // loop over all atoms[i] in system
+        const int      i    = i0+ii;
+        const Vec3d&  pi    = ps      [i ]; 
+        const double  Qi    = Qs      [i ]; 
+        const int     ti    = types   [i ];
+        const Quat4d& REQi  = typeREQs[ti];
+        Quat4d        fREQi = Quat4dZero;
+        for(int jj=0; jj<nj; jj++){ 
+            const int   j        = j0+jj;
+            const double     Qj  = Qs[j];
+            const Vec3d      dij = ps[j] - pi;
+            const int        tj  = types[j];
+            const Quat4d& REQj   = typeREQs[tj];
+            const double R0      = REQi.x + REQj.x;
+            const double E0      = REQi.y * REQj.y; 
+            const double Q       = Qi     * Qj    ;
+            double       H       = REQi.w * REQj.w;      // expected H2<0
+            const double sH      = (H<0.0) ? 1.0 : 0.0; // sH=1.0 if H2<0
+            H *= sH;
+            // --- Electrostatic
+            const double r       = dij.norm();
+            const double ir      = 1/r;
+            const double dE_dQ   = ir * COULOMB_CONST;
+            const double Eel     = Q * dE_dQ;
+            //printf( "evalExampleDerivs_LJQH2() i: %3i j: %3i  r: %10.3e ir: %10.3e dE_dQ: %10.3e Eel: %10.3e Qi: %10.3e Qj: %10.3e\n", i, j, r, ir, dE_dQ, Eel, Qi, Qj );      
+            // --- Lennard-Jones
+            const double u       = R0*ir;
+            const double u2      = u  * u;
+            const double u4      = u2 * u2;
+            const double u6      = u4 * u2;
+            const double u2p     = ( 1.0 + H ) * u2;                     
+            const double dE_dE0  = u6 * ( 3.0 * u2p - 4.0 );
+            const double dE_dR0  = 24.0 * E0 / R0 * u6 * ( u2p - 1.0 );
+            const double dE_dH   = -3.0 * E0 * u6 * u2;
+            
+            const double ELJ     = E0 * dE_dE0;
+            // --- Energy and forces
+            Etot    +=  ELJ + Eel;
+            fREQi.x += -dE_dR0;                    // dEtot/dR0_i
+            fREQi.y += -dE_dE0  * 0.5 * REQj.y;    // dEtot/dE0_i
+            fREQi.z += -dE_dQ   * Qj;              // dEtot/dQ_i
+            fREQi.w +=  dE_dH   * REQj.w * sH;     // dEtot/dH2i
+            //printf( "evalExampleDerivs_LJQH2()[%3i,%3i] (%8s,%8s) dE_dH:  %20.10f   ELJ: %20.10f \n", i,j, params->atypes[ti].name, params->atypes[tj].name, dE_dH, ELJ, sH, REQj.w, REQi.w );
+            if( bWJ ){ dEdREQs[j].add( Quat4d{
+                       -dE_dR0,                    // dEtot/dR0_j
+                       -dE_dE0  * 0.5 * REQi.y,    // dEtot/dE0_j
+                       -dE_dQ   * Qi,              // dEtot/dQ_j
+                        dE_dH   * REQi.w * sH,     // dEtot/dH2j
+            }); }
+        }
+        if(dEdREQs)dEdREQs[i].add(fREQi);
+    }
+//printf( "debug Etot= %g\n", Etot );exit(0);    
     return Etot;
 }
 
@@ -1606,15 +1670,15 @@ double evalExampleDerivs_LJQH2( int i0, int ni, int j0, int nj, int* __restrict_
             //printf( "evalExampleDerivs_LJQH2() i: %3i j: %3i H: %10.3e R0: %10.3e E0: %10.3e Q: %10.3e Eel: %10.3e Eij: %10.3e\n", i, j, R0,E0,Q,H,  ELJ + Eel );
             //printf( "evalExampleDerivs_LJQH2()[%3i,%3i] (%8s,%8s) ELJ:  %20.10f   Eel: %20.10f \n", i,j, params->atypes[ti].name, params->atypes[tj].name , ELJ,Eel  );
             //{ int itypPrint=4; if( (ti==itypPrint) || (tj==itypPrint) ){ printf( "evalExampleDerivs_LJQH2()[%3i,%3i] (%8s,%8s) ELJ,Eel: %12.3e,%12.3e Q(%12.3e|%12.3e,%12.3e) dEdREQH(%12.3e,%12.3e,%12.3e,%12.3e)\n", i,j, params->atypes[ti].name, params->atypes[tj].name , ELJ,Eel, Q,Qi,Qj,  dE_dR0, dE_deps, dE_dQ, dE_dH2  ); } }
-            fREQi.x +=  dE_dR0;                    // dEtot/dR0_i
-            fREQi.y +=  dE_dE0  * 0.5 * REQj.y;    // dEtot/dE0_i
-            fREQi.z +=  -dE_dQ   * Qj;              // dEtot/dQ_i
+            fREQi.x += -dE_dR0;                    // dEtot/dR0_i
+            fREQi.y += -dE_dE0  * 0.5 * REQj.y;    // dEtot/dE0_i
+            fREQi.z += -dE_dQ   * Qj;              // dEtot/dQ_i
             fREQi.w +=  dE_dH   * REQj.w * sH;     // dEtot/dH2i
             //printf( "evalExampleDerivs_LJQH2()[%3i,%3i] (%8s,%8s) dE_dH:  %20.10f   ELJ: %20.10f \n", i,j, params->atypes[ti].name, params->atypes[tj].name, dE_dH, ELJ, sH, REQj.w, REQi.w );
             if( bWJ ){ dEdREQs[j].add( Quat4d{
-                        dE_dR0,                    // dEtot/dR0_j
-                        -dE_dE0  * 0.5 * REQi.y,    // dEtot/dE0_j
-                        -dE_dQ   * Qi,              // dEtot/dQ_j
+                       -dE_dR0,                    // dEtot/dR0_j
+                       -dE_dE0  * 0.5 * REQi.y,    // dEtot/dE0_j
+                       -dE_dQ   * Qi,              // dEtot/dQ_j
                         dE_dH   * REQi.w * sH,     // dEtot/dH2j
             }); }
         }
@@ -1671,15 +1735,15 @@ double evalExampleDerivs_MorseQH2( int i0, int ni, int j0, int nj, int* __restri
             Etot    +=  ELJ + Eel;
             //printf( "evalExampleDerivs_MorseQH2()[%3i,%3i] (%8s,%8s) ELJ:  %20.10f   Eel: %20.10f \n", i,j, params->atypes[ti].name, params->atypes[tj].name , ELJ,Eel  );
             //{ int itypPrint=4; if( (ti==itypPrint) || (tj==itypPrint) ){ printf( "evalExampleDerivs_LJQH2()[%3i,%3i] (%8s,%8s) ELJ,Eel: %12.3e,%12.3e Q(%12.3e|%12.3e,%12.3e) dEdREQH(%12.3e,%12.3e,%12.3e,%12.3e)\n", i,j, params->atypes[ti].name, params->atypes[tj].name , ELJ,Eel, Q,Qi,Qj,  dE_dR0, dE_deps, dE_dQ, dE_dH2  ); } }
-            fREQi.x +=  dE_dR0;                    // dEtot/dR0_i
-            fREQi.y +=  dE_dE0  * 0.5 * REQj.y;    // dEtot/dE0_i
+            fREQi.x +=  -dE_dR0;                    // dEtot/dR0_i
+            fREQi.y +=  -dE_dE0  * 0.5 * REQj.y;    // dEtot/dE0_i
             fREQi.z +=  -dE_dQ   * Qj;              // dEtot/dQ_i
             fREQi.w +=  dE_dH   * REQj.w * sH;     // dEtot/dH2i
             if( bWJ ){ dEdREQs[j].add( Quat4d{
-                        dE_dR0,                    // dEtot/dR0_j
+                        -dE_dR0,                    // dEtot/dR0_j
                         -dE_dE0 * 0.5 * REQi.y,    // dEtot/dE0_j
                         -dE_dQ   * Qi,              // dEtot/dQ_j
-                        dE_dH   * REQi.w * sH,     // dEtot/dH2j
+                         dE_dH   * REQi.w * sH,     // dEtot/dH2j
             }); }
             //printf( "debug i= %i j= %i fsi.x= %g fsi.y= %g fsi.z= %g fsi.w= %g fsj.x= %g fsj.y= %g fsj.z= %g fsj.w= %g\n", i, j, fsi.x, fsi.y, fsi.z, fsi.w, fsj.x, fsj.y, fsj.z, fsj.w );
         }
@@ -1792,7 +1856,7 @@ double run( int ialg, int nstep, double Fmax, double dt, double max_step, double
             case 3: F2 = move_GD_BB_long ( itr, dt, max_step          ); break;
         }
         if( bClamp ){ limitDOFs(); } // TODO: should we put this before evalFitError() ?
-        if( F2<F2max ){ printf("CONVERGED in %i iterations \n", itr); break; }
+        if( F2<F2max ){ printf("CONVERGED in %i iterations (|F|=%g < F2max= %g) \n", itr, sqrt(F2), Fmax ); break; }
     }
     printf("VERY FINAL |E|=%.15g  DOFs= ",Err     ); for(int j=0;j<nDOFs;j++){ printf("%.15g ", DOFs[j]); };printf("\n");
     printf("VERY FINAL |F|=%.15g fDOFs= ",sqrt(F2)); for(int j=0;j<nDOFs;j++){ printf("%.15g ",fDOFs[j]); };printf("\n");

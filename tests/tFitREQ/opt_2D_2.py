@@ -36,8 +36,8 @@ bAddEpairs  = bEpairs
 bOutXYZ     = False
 verbosity   = 2    # Added to enable debug printing
 
-#bMorse = False   # Lenard-Jones
-bMorse = True   # Morse
+bMorse = False   # Lenard-Jones
+#bMorse = True   # Morse
 
 # ============== Setup
 
@@ -112,7 +112,8 @@ if bMorse:
 else:
     #fit.loadDOFSelection( fname="dofSelection_LJ.dat" )   
     #fit.loadDOFSelection( fname="dofSelection_H2O_LJ.dat" )  
-    fit.loadDOFSelection( fname="dofSelection_H2O_LJ.dat" )  
+    #fit.loadDOFSelection( fname="dofSelection_H2O_LJ.dat" )  
+    fit.loadDOFSelection( fname="dofSelection_H2O_LJr8.dat" )  
     #fit.loadDOFSelection( fname="dofSelection_CH2NH_LJ.dat" )   
     #fit.loadDOFSelection( fname="dofSelection_HCOOH_LJ.dat" ) 
     #fit.loadDOFSelection( fname="dofSelection_HCOOH_LJ.dat" ) 
@@ -141,6 +142,7 @@ if bMorse:
     weights0, lens = fit.split_and_weight_curves( Erefs, x0s, n_before_min=100, weight_func=lambda E: fit.exp_weight_func(E,a=1.0, alpha=4.0) )
 else:
     fit.setup( imodel=1, EvalJ=1, WriteJ=1, Regularize=1 )
+    fit.setup( imodel=4, EvalJ=1, WriteJ=1, Regularize=1 )
     #fit.setup( imodel=3, EvalJ=1, WriteJ=1, Regularize=1 )
     weights0, lens = fit.split_and_weight_curves( Erefs, x0s, n_before_min=2, weight_func=lambda E: fit.exp_weight_func(E,a=1.0, alpha=4.0) )
 # plotEWs( Erefs=Erefs, weights0=weights0, Emin=-1.5 ); plt.title( "Weighting" )
