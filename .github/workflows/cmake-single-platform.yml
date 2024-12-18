@@ -24,7 +24,7 @@ jobs:
       
     - name: CMake
       run: |
-        sudo apt-get install cmake g++ gfortran intel-mkl libmkl-intel-lp64 libmkl-core libmkl-intel-thread libsdl2-dev libsdl2-image-dev nvidia-opencl-dev libclfft-dev libfftw3-dev | grep "error"
+        sudo apt-get install cmake g++ gfortran intel-mkl libmkl-intel-lp64 libmkl-core libmkl-intel-thread libsdl2-dev libsdl2-image-dev nvidia-opencl-dev libclfft-dev libfftw3-dev
         cd ${{github.workspace}}/cpp/Build
         cmake .. -DWITH_SDL=ON -DWITH_FFTW=ON
 
