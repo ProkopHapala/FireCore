@@ -117,7 +117,7 @@ def run(ialg=2, iparallel=1, nstep=100, Fmax=1e-8, dt=0.01, max_step=0.05, dampi
 lib.getEs.argtypes  = [ c_double_p,  c_double_p, c_bool, c_bool, c_char_p ]
 lib.getEs.restype   =  c_double
 def getEs(Es=None, Fs=None, bOmp=False, bDOFtoTypes=True, bEs=True, bFs=False, xyz_name=None  ):
-    if xyz_name is None: 
+    if xyz_name is not None: 
         with open(xyz_name,'w') as f: f.write("")
     if bEs and (Es is None): Es = np.zeros( nbatch )
     if bFs and (Fs is None): Fs = np.zeros( nDOFs  )
@@ -667,27 +667,39 @@ def plot_Epanels_diff(Emodels, Erefs, ref_dirs, bColorbar=True, Emin=-5.0, bKcal
     if nmols != len(ref_dirs):
         print(f"Error: len(Erefs={nmols}) != len(ref_dirs={len(ref_dirs)})")
         return
-    fig, axs = plt.subplots( 3,nmols, figsize=(20, 6))  # 3 rows for Erefs, Emodel, Ediff
+    fig, axs = plt.subplots( 3,nmols, figsize=(nmols*4, 6))  # 3 rows for Erefs, Emodel, Ediff
     for i in range(nmols):
+        # Check if axs is 1D or 2D
+        if nmols == 1:
+            # Use single index for axs
+            ax_ref   = axs[0]
+            ax_model = axs[1]
+            ax_diff  = axs[2]
+        else:
+            # Use double indexing for axs
+            ax_ref   = axs[0, i]
+            ax_model = axs[1, i]
+            ax_diff  = axs[2, i]
 
         Emodel = Emodels[i]
         Eref   = Erefs[i]
+        
         # Plot Reference Energies
-        im = axs[0, i].imshow(Eref.T*E_units, aspect='auto', origin='lower', vmin=Emin, vmax=-Emin, cmap='bwr' )
-        axs[0, i].set_title(f"Ref: {ref_dirs[i]}")
-        axs[0, i].set_ylabel('Reference Energies')
-        if bColorbar:  plt.colorbar(im, ax=axs[0, i])
+        im = ax_ref.imshow(Eref.T*E_units, aspect='auto', origin='lower', vmin=Emin, vmax=-Emin, cmap='bwr' )
+        ax_ref.set_ylabel('Reference Energies')
+        if bColorbar:  plt.colorbar(im, ax=ax_ref)
+        ax_ref.set_title(f"Ref: {ref_dirs[i]}")
     
         # Plot Model Energies
-        im = axs[1, i].imshow(Emodel.T*E_units, aspect='auto', origin='lower', vmin=Emin, vmax=-Emin, cmap='bwr' )
-        axs[1, i].set_ylabel('Model Energies')
-        if bColorbar: plt.colorbar(im, ax=axs[1, i])
+        im = ax_model.imshow(Emodel.T*E_units, aspect='auto', origin='lower', vmin=Emin, vmax=-Emin, cmap='bwr' )
+        ax_model.set_ylabel('Model Energies')
+        if bColorbar: plt.colorbar(im, ax=ax_model)
 
         # Plot Difference
         Ediff = Emodel - Eref  # Calculate difference
-        im = axs[2, i].imshow(Ediff.T*E_units, aspect='auto', origin='lower', vmin=Emin, vmax=-Emin, cmap='bwr' )
-        axs[2, i].set_ylabel('Error ')
-        if bColorbar: plt.colorbar(im, ax=axs[2, i])
+        im = ax_diff.imshow(Ediff.T*E_units, aspect='auto', origin='lower', vmin=Emin, vmax=-Emin, cmap='bwr' )
+        ax_diff.set_ylabel('Error ')
+        if bColorbar: plt.colorbar(im, ax=ax_diff)
     plt.tight_layout()
     return fig
 

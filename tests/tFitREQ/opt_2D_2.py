@@ -36,8 +36,8 @@ bAddEpairs  = bEpairs
 bOutXYZ     = False
 verbosity   = 2    # Added to enable debug printing
 
-bMorse = False   # Lenard-Jones
-#bMorse = True   # Morse
+#bMorse = False   # Lenard-Jones
+bMorse = True   # Morse
 
 # ============== Setup
 
@@ -67,7 +67,7 @@ acceptors = [
 # 'HCONH2-A1', 
 # 'HCOOH-A1', 
 # 'HCOOH-A2', 
-'NH3-A1', 
+#'NH3-A1', 
 ]
 
 ref_dirs = fit.combine_fragments( donors, acceptors )  ;print( "ref_dirs:\n", ref_dirs )
@@ -112,7 +112,7 @@ if bMorse:
 else:
     #fit.loadDOFSelection( fname="dofSelection_LJ.dat" )   
     #fit.loadDOFSelection( fname="dofSelection_H2O_LJ.dat" )  
-    fit.loadDOFSelection( fname="dofSelection_H2O_NH3_LJ.dat" )  
+    fit.loadDOFSelection( fname="dofSelection_H2O_LJ.dat" )  
     #fit.loadDOFSelection( fname="dofSelection_CH2NH_LJ.dat" )   
     #fit.loadDOFSelection( fname="dofSelection_HCOOH_LJ.dat" ) 
     #fit.loadDOFSelection( fname="dofSelection_HCOOH_LJ.dat" ) 
@@ -164,7 +164,7 @@ fit.setFilter( EmodelCutStart=0.0, EmodelCut=0.5, PrintOverRepulsive=-1, Discard
 #fit.setFilter( EmodelCutStart=0.0, EmodelCut=0.5, iWeightModel=2, PrintOverRepulsive=-1, DiscardOverRepulsive=1, SaveOverRepulsive=1, ListOverRepulsive=-1 )
 #fit.setFilter( EmodelCutStart=0.0, EmodelCut=0.5, PrintOverRepulsive=-1, DiscardOverRepulsive=-1, SaveOverRepulsive=-1, ListOverRepulsive=-1 )
 
-E,Es,Fs = fit.getEs( bOmp=False, bDOFtoTypes=False, bEs=True, bFs=False, xyz_name="all_out_debug.xyz" )
+E,Es,Fs = fit.getEs( bOmp=False, bDOFtoTypes=False, bEs=True, bFs=False )
 fit.plotEWs( Erefs=Erefs, Emodel=Es, weights=fit.weights, weights0=weights0,  Emin=EminPlot ); plt.title( "BEFORE OPTIMIZATION" )
 #plt.show(); exit()
 
@@ -174,7 +174,6 @@ fit.plotEWs( Erefs=Erefs, Emodel=Es, weights=fit.weights, weights0=weights0,  Em
 # plt.savefig( "opt_2D.png" )
 
 #plt.show(); exit()
-
 if bMorse:
     #Err = fit.run( iparallel=0, ialg=0, nstep=1000, Fmax=1e-4, dt=0.1, max_step=-1,  bClamp=True )
     Err = fit.run( iparallel=0, ialg=1, nstep=100, Fmax=1e-8, dt=0.5, damping=0.1,   max_step=-1,  bClamp=True )
@@ -189,7 +188,8 @@ else:
 # print( "fit.fDOFmin ", fit.fDOFbounds[:,0] )
 # print( "fit.fDOFmax ", fit.fDOFbounds[:,1] )
 
-E,Es,Fs = fit.getEs( bOmp=False, bDOFtoTypes=False, bEs=True, bFs=False, xyz_name="opt_2D_out.xyz");
+#E,Es,Fs = fit.getEs( bOmp=False, bDOFtoTypes=False, bEs=True, bFs=False, xyz_name="opt_2D_out.xyz");
+E,Es,Fs = fit.getEs( bOmp=False, bDOFtoTypes=False, bEs=True, bFs=False);
 fit.plotEWs( Erefs=Erefs, Emodel=Es, weights=fit.weights, Emin=EminPlot );   plt.title( "AFTER OPTIMIZATION" )
 
 # Eplot     = reformat_and_pad_data(Es   , lens)  # Reformat and pad data
@@ -201,10 +201,9 @@ fit.plotEWs( Erefs=Erefs, Emodel=Es, weights=fit.weights, Emin=EminPlot );   plt
 
 Eplots_ref = fit.slice_and_reshape(Erefs, marks, angle_data)
 Eplots_mod = fit.slice_and_reshape(Es,    marks, angle_data)
+
 fig = fit.plot_Epanels_diff(Eplots_mod, Eplots_ref, ref_dirs, Emin=EminRef*fit.ev2kcal, bColorbar=True, bKcal=True )
-
 plt.show(); # exit()
-
 
 
 #test_getEs_openmp()

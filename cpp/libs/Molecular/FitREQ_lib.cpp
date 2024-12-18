@@ -166,6 +166,7 @@ double getEs( double* Es, double* Fs, bool bOmp, bool bDOFtoTypes, char* xyz_nam
     else      { E = W.evalSamples_noOmp( Es ); }
     //for(int i=0; i<W.samples.size(); i++){ printf( "getEs() sample[%i] E: %20.10f \n", i, Es[i] ); }
     if( Fs ){ for(int i=0; i<W.nDOFs; i++){ Fs[i] = W.fDOFs[i]; } }
+    W.bSaveSampleToXYZ=false; 
     return E;
 }
 

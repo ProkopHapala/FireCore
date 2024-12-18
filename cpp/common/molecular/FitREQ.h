@@ -1032,7 +1032,7 @@ double evalSampleError( int isamp, double& E ){
     if( bSaveSampleToXYZ ){
         char comment[256];
         sprintf(comment, "# %4i Eref: %16.6e Emodel: %16.6e wi: %16.6e", isamp, atoms->Energy, E, wi );
-        //printf( "evalSampleError() saving %s comment: %s \n", xyz_out, comment );
+        printf( "evalSampleError() saving %s comment: %s \n", xyz_out, comment );
         saveDebugXYZ( 0, atoms->natoms, atoms->atypes, atoms->apos, xyz_out, comment );
     }
     double Eref    = atoms->Energy;
@@ -1678,7 +1678,7 @@ double evalExampleDerivs_MorseQH2( int i0, int ni, int j0, int nj, int* __restri
             if( bWJ ){ dEdREQs[j].add( Quat4d{
                         dE_dR0,                    // dEtot/dR0_j
                         -dE_dE0 * 0.5 * REQi.y,    // dEtot/dE0_j
-                        dE_dQ   * Qi,              // dEtot/dQ_j
+                        -dE_dQ   * Qi,              // dEtot/dQ_j
                         dE_dH   * REQi.w * sH,     // dEtot/dH2j
             }); }
             //printf( "debug i= %i j= %i fsi.x= %g fsi.y= %g fsi.z= %g fsi.w= %g fsj.x= %g fsj.y= %g fsj.z= %g fsj.w= %g\n", i, j, fsi.x, fsi.y, fsi.z, fsi.w, fsj.x, fsj.y, fsj.z, fsj.w );
@@ -1773,6 +1773,7 @@ double evalFitError(int itr, bool bOMP=true, bool bEvalSamples=true){
 
 __attribute__((hot)) 
 double run( int ialg, int nstep, double Fmax, double dt, double max_step, double damping, bool bClamp, bool bOMP ){
+    bSaveSampleToXYZ=false; 
     if( verbosity>1){ printf( "FitREQ::run() imodel %i ialg %i nstep %i Fmax %g dt %g max_step %g \n", imodel, ialg, nstep, Fmax, dt, max_step ); }
     if(weights){updateWeightsSum();}
     double Err=0;
@@ -1800,6 +1801,7 @@ double run( int ialg, int nstep, double Fmax, double dt, double max_step, double
 
 __attribute__((hot)) 
 double run_omp( int ialg, int nstep, double Fmax, double dt, double max_step, double damping, bool bClamp ){
+    bSaveSampleToXYZ=false; 
     double Err=0;
     if( verbosity>1){ printf( "FitREQ::run() nstep %i Fmax %g dt %g isamp %i \n", nstep, Fmax, dt ); }
     if(weights){updateWeightsSum();}
