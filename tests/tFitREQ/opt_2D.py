@@ -36,8 +36,8 @@ bAddEpairs  = bEpairs
 bOutXYZ     = False
 verbosity   = 2    # Added to enable debug printing
 
-bMorse = False   # Lenard-Jones
-#bMorse = True   # Morse
+#bMorse = False   # Lenard-Jones
+bMorse = True   # Morse
 
 # ============== Setup
 
@@ -61,13 +61,13 @@ donors    = [
 acceptors = [
 'H2O-A1', 
 'NH3-A1',
-# 'CH2O-A1', 
-# 'CH2NH-A1', 
-# 'HCOOH-A1', 
-# 'HCOOH-A2', 
-# 'HCONH2-A1', 
-# 'C4H3NO2-A1', 
-# 'C5H5N-A1', 
+'CH2O-A1', 
+#'CH2NH-A1', 
+#'HCOOH-A1', 
+#'HCOOH-A2', 
+#'HCONH2-A1', 
+#'C4H3NO2-A1', 
+#'C5H5N-A1', 
 ]
 
 ref_dirs = fit.combine_fragments( donors, acceptors )  ;print( "ref_dirs:\n", ref_dirs )
@@ -102,18 +102,33 @@ fit.loadTypes( )     # load atom types
 if bMorse:
     #fit.loadDOFSelection( fname="dofSelection_Morse.dat" )
     #fit.loadDOFSelection( fname="dofSelection_H2O_Morse.dat" )
+    fit.loadDOFSelection( fname="dofSelection_MorseSR.dat" )
+    #fit.comment_non_matching_lines( fname_in="dofSelection_Morse.dat"); fit.loadDOFSelection()
     #fit.loadDOFSelection( fname="dofSelection_HCOOH_Morse.dat" )
-    fit.comment_non_matching_lines( type_names, fname_in="dofSelection_Morse.dat"); fit.loadDOFSelection()
+    #fit.loadDOFSelection( fname="dofSelection_HCOOH_Morse.dat" )
 else:
     #fit.loadDOFSelection( fname="dofSelection_LJ.dat" )   
+    #fit.loadDOFSelection( fname="dofSelection_H2O_LJ.dat" )  
+    #fit.loadDOFSelection( fname="dofSelection_H2O_LJ.dat" )  
+    #fit.loadDOFSelection( fname="dofSelection_H2O_LJr8.dat" ) 
+    #fit.loadDOFSelection( fname="dofSelection_H2O_LJSR.dat" )   
+    fit.loadDOFSelection( fname="dofSelection_LJSR2.dat" )   
+    #fit.loadDOFSelection( fname="dofSelection_CH2NH_LJ.dat" )   
     #fit.loadDOFSelection( fname="dofSelection_HCOOH_LJ.dat" ) 
     #fit.loadDOFSelection( fname="dofSelection_HCOOH_LJ.dat" ) 
-    fit.comment_non_matching_lines( type_names, fname_in="dofSelection_LJ.dat"); fit.loadDOFSelection()
 
 #fname = "input_2CH2NH.xyz"
 #fit.loadDOFSelection( fname="dofSelection_N2.dat" )          
 
 nbatch = fit.loadXYZ( fname, bAddEpairs, bOutXYZ )     # load reference geometry
+#nbatch = fit.loadXYZ( "input_small.xyz", bAddEpairs, bOutXYZ )     # load reference geometry
+#nbatch = fit.loadXYZ( "input_single.xyz", bAddEpairs, bOutXYZ )     # load reference geometry
+#exit(0)
+
+#fname = "input_2CH2NH.xyz"
+#fit.loadDOFSelection( fname="dofSelection_N2.dat" )          
+
+#nbatch = fit.loadXYZ( fname, bAddEpairs, bOutXYZ )     # load reference geometry
 #nbatch = fit.loadXYZ( "input_small.xyz", bAddEpairs, bOutXYZ )     # load reference geometry
 #nbatch = fit.loadXYZ( "input_single.xyz", bAddEpairs, bOutXYZ )     # load reference geometry
 
@@ -125,10 +140,10 @@ EminPlot = np.min(Erefs)*fit.ev2kcal
 
 weights0 = np.ones( len(Erefs) )*0.5
 
-
 fit.setGlobalParams( kMorse=1.8, Lepairs=1.0 )
 if bMorse:
-    fit.setup( imodel=2, EvalJ=1, WriteJ=1, Regularize=1 )
+    #fit.setup( imodel=2, EvalJ=1, WriteJ=1, Regularize=1 )
+    fit.setup( imodel=5, EvalJ=1, WriteJ=1, Regularize=1 )
     weights0, lens = fit.split_and_weight_curves( Erefs, x0s, n_before_min=100, weight_func=lambda E: fit.exp_weight_func(E,a=1.0, alpha=4.0) )
 else:
     fit.setup( imodel=1, EvalJ=1, WriteJ=1, Regularize=1 )
@@ -163,7 +178,7 @@ if bMorse:
     Err = fit.run( iparallel=0, ialg=1, nstep=100, Fmax=1e-8, dt=0.5, damping=0.1,   max_step=-1,  bClamp=True )
 else:
     #Err = fit.run( iparallel=0, ialg=0, nstep=1000, Fmax=1e-4, dt=0.01, max_step=-1,  bClamp=True )
-    Err = fit.run( iparallel=0, ialg=1, nstep=100, Fmax=1e-4, dt=0.1, damping=0.1,   max_step=-1,  bClamp=True )
+    Err = fit.run( iparallel=0, ialg=1, nstep=100, Fmax=1e-8, dt=0.1, damping=0.05,   max_step=-1,  bClamp=True )
 
 # ----- Combined hybrid optimization ( start with gradient descent, continue with dynamical descent) )
 #Err = fit.run( iparallel=0, ialg=0, nstep=20,  Fmax=1e-2, dt=0.005, max_step=-1,  bClamp=False )

@@ -17,11 +17,11 @@ def getMorse( r, R0=3.0, E0=1.0, k=1.6 ):
 
 def getSR( r,  E0=1.0, k=1.0 ):
     u = R0/r
-    return E0*np.exp(-k*r)
+    return E0*np.exp(-k*u)
 
 def getSR2( r,  E0=1.0, w=1.0 ):
     u = r/w
-    return E0*np.exp(-r*r)
+    return E0*np.exp(-u*u)
 
 def makeCircle( R=3.0 ):
     angs = np.linspace(0.0,2.0*np.pi,100)
@@ -82,12 +82,15 @@ else:
     EHb = 10.0
     E_uncorr = getLJ(Rs, R0, E0)
 Rse    = np.sqrt((Xs-Le)**2 + Ys**2)
-E_corr = E_uncorr + getSR2(Rse, -EHb, w=0.1 )
+E_corr = E_uncorr + getSR2(Rse, -EHb*2.0, w=0.9 )
 
 
 plot3( E_uncorr, E_corr, E0, EHb*0.2, Rcirc=R0 )
 
 
 plt.grid()
+
+
+plt.savefig( "Directional_Barrier_bMorse%i.png" %bMorse, bbox_inches='tight' )
 
 plt.show()

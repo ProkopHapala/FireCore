@@ -941,6 +941,14 @@ double evalSample( int isamp, const Atoms* atoms, double wi, Quat4d* fREQs ) con
             E =   evalExampleDerivs_LJQr8H2   ( i0, ni, j0, nj, atoms->atypes, apos, typeREQs, Qs, fREQs );     // variational derivatives on molecule 1
             if(bJ)evalExampleDerivs_LJQr8H2   ( i0, ni, j0, nj, atoms->atypes, apos, typeREQs, Qs, fREQs );     // variational derivatives on molecule 2
         }break;
+        case 5:{ 
+            E =   evalExampleDerivs_MorseQ_SR ( i0, ni, j0, nj, atoms->atypes, apos, typeREQs, Qs, adata->host, fREQs );    // variational derivatives on molecule 1
+            if(bJ)evalExampleDerivs_MorseQ_SR ( j0, nj, i0, ni, atoms->atypes, apos, typeREQs, Qs, adata->host, fREQs );    // variational derivatives on molecule 2
+        }break;
+        case 6:{ 
+            E =   evalExampleDerivs_LJr8QH2_SR ( i0, ni, j0, nj, atoms->atypes, apos, typeREQs, Qs, adata->host, fREQs );    // variational derivatives on molecule 1
+            if(bJ)evalExampleDerivs_LJr8QH2_SR ( j0, nj, i0, ni, atoms->atypes, apos, typeREQs, Qs, adata->host, fREQs );    // variational derivatives on molecule 2
+        }break;
         //case 4:{ 
         //    E =   evalExampleDerivs_MorseQH2_SR( i0, ni, j0, nj, atoms->atypes, apos, typeREQs, Qs, fREQs );    // variational derivatives on molecule 1
         //    if(bJ)evalExampleDerivs_MorseQH2_SR( j0, nj, i0, ni, atoms->atypes, apos, typeREQs, Qs, fREQs );    // variational derivatives on molecule 2
@@ -1552,6 +1560,175 @@ double evalExampleDerivs_LJQH2_SR( int i0, int ni, int j0, int nj, int*  types, 
                 dE_dR0           = 12.0 * (E0/R0) * u6 * ( u6p - 1.0 );
                 dE_dH            = -E0 * u6 * u6;
                 Eij              += E0 * dE_dE0;
+            }
+
+            if( bWJ ){ dEdREQs[j].add( Quat4d{
+                        -dE_dR0,                    // dEtot/dR0_j
+                        -dE_dE0  * 0.5 * REQi.y,    // dEtot/dE0_j
+                        -dE_dQ   * Qi,              // dEtot/dQ_j
+                         dE_dH   * REQi.w * sH,     // dEtot/dH2j
+            }); }
+
+            //if(bCheckRepulsion)[[unlikely]]{ checkSampleRepulsion( ELJ, i,j, ti,tj, r, true, true ); }
+            // --- Energy and forces
+            Etot    +=  Eij;
+            fREQi.x += -dE_dR0;                    // dEtot/dR0_i
+            fREQi.y += -dE_dE0  * 0.5 * REQj.y;    // dEtot/dE0_i
+            fREQi.z += -dE_dQ   * Qj;              // dEtot/dQ_i
+            fREQi.w +=  dE_dH   * REQj.w * sH;     // dEtot/dH2i
+        }
+        if(dEdREQs)dEdREQs[i].add(fREQi);
+    }
+    // printAtomParamDerivs( ni+nj, dEdREQs, isamp_debug );
+    //printf( "debug Etot= %g\n", Etot );exit(0);    
+    return Etot;
+}
+
+__attribute__((hot)) 
+double evalExampleDerivs_LJr8QH2_SR( int i0, int ni, int j0, int nj, int*  types, Vec3d* ps, Quat4d* typeREQs, double* Qs, int* host, Quat4d* dEdREQs )const{
+    //printf("evalExampleDerivs_LJQH2_SR() i0: %i ni: %i j0: %i nj: %i \n", i0, ni, j0, nj );
+    // this differes form evalExampleDerivs_LJQH2() in that it uses short range corrections for electron pairs
+    double Etot = 0.0;
+    const bool bWJ = bWriteJ&&dEdREQs;
+    for(int ii=0; ii<ni; ii++){ // loop over all atoms[i] in system
+        const int      i    = i0+ii;
+        const int     ih    = host[i];
+        const bool    bEpi  = ih>=0;
+        const Vec3d&  pi    = ps      [i ]; 
+        const double  Qi    = Qs      [i ]; 
+        const int     ti    = types   [i ];
+        const Quat4d& REQi  = typeREQs[ti];
+        Quat4d        fREQi = Quat4dZero;
+
+        //if( bEpi ){ Vec3d dr = ps[ih]-pi; printf( "i ih |dij|=%g \n", i, ih, dr.norm() );  }
+        for(int jj=0; jj<nj; jj++){ 
+            const int   j        = j0+jj;
+            const int   jh       = host[j];
+            const double     Qj  = Qs[j];
+            const Vec3d      dij = ps[j] - pi;
+            const int        tj  = types[j];
+            const Quat4d& REQj   = typeREQs[tj];
+            const double R0      = REQi.x + REQj.x;
+            const double E0      = REQi.y * REQj.y; 
+            const double Q       = Qi     * Qj    ;
+            double       H       = REQi.w * REQj.w;     // expected H2<0
+            const double sH      = (H<0.0) ? 1.0 : 0.0; // sH=1.0 if H2<0
+            H *= sH;
+            // --- Electrostatic
+            const double r       = dij.norm();
+            const double ir      = 1/r;
+            const double dE_dQ   = ir * COULOMB_CONST;
+            const double Eel     = Q * dE_dQ;
+
+            double Eij    = Eel;
+            double dE_dR0 = 0.0;
+            double dE_dE0 = 0.0;
+            double dE_dH  = 0.0;
+            double dE_dw  = 0.0;
+            const bool bEpj = jh>=0;            
+            if( bEpi ){  
+                Eij += getSR2( r, H, REQi.x, dE_dH, dE_dw );
+                dE_dH*=-1.0;
+                dEdREQs[i].x += -dE_dw;
+            }else if( bEpj ){
+                Eij += getSR2( r, H, REQj.x, dE_dH, dE_dw );
+                dE_dH*=-1.0;
+                if( bWJ )dEdREQs[j].x += -dE_dw;
+            }else{
+                const double u   = R0*ir;
+                const double u2  = u  * u;
+                const double u4  = u2 * u2;
+                const double u6  = u4 * u2;
+                const double u2p = ( 1.0 + H ) * u2;                     
+                dE_dE0  = u6 * ( 3.0 * u2p - 4.0 );
+                dE_dR0  = 24.0 * E0 / R0 * u6 * ( u2p - 1.0 );
+                dE_dH   = -3.0 * E0 * u6 * u2;
+                Eij              += E0 * dE_dE0;
+            }
+
+            if( bWJ ){ dEdREQs[j].add( Quat4d{
+                        -dE_dR0,                    // dEtot/dR0_j
+                        -dE_dE0  * 0.5 * REQi.y,    // dEtot/dE0_j
+                        -dE_dQ   * Qi,              // dEtot/dQ_j
+                         dE_dH   * REQi.w * sH,     // dEtot/dH2j
+            }); }
+
+            //if(bCheckRepulsion)[[unlikely]]{ checkSampleRepulsion( ELJ, i,j, ti,tj, r, true, true ); }
+            // --- Energy and forces
+            Etot    +=  Eij;
+            fREQi.x += -dE_dR0;                    // dEtot/dR0_i
+            fREQi.y += -dE_dE0  * 0.5 * REQj.y;    // dEtot/dE0_i
+            fREQi.z += -dE_dQ   * Qj;              // dEtot/dQ_i
+            fREQi.w +=  dE_dH   * REQj.w * sH;     // dEtot/dH2i
+        }
+        if(dEdREQs)dEdREQs[i].add(fREQi);
+    }
+    // printAtomParamDerivs( ni+nj, dEdREQs, isamp_debug );
+    //printf( "debug Etot= %g\n", Etot );exit(0);    
+    return Etot;
+}
+
+__attribute__((hot)) 
+double evalExampleDerivs_MorseQ_SR( int i0, int ni, int j0, int nj, int*  types, Vec3d* ps, Quat4d* typeREQs, double* Qs, int* host, Quat4d* dEdREQs )const{
+    //printf("evalExampleDerivs_MorseQ_SR() i0: %i ni: %i j0: %i nj: %i \n", i0, ni, j0, nj );
+    // this differes form evalExampleDerivs_LJQH2() in that it uses short range corrections for electron pairs
+    double Etot = 0.0;
+    const double alpha   = kMorse;
+    const bool bWJ = bWriteJ&&dEdREQs;
+    for(int ii=0; ii<ni; ii++){ // loop over all atoms[i] in system
+        const int      i    = i0+ii;
+        const int     ih    = host[i];
+        const bool    bEpi  = ih>=0;
+        const Vec3d&  pi    = ps      [i ]; 
+        const double  Qi    = Qs      [i ]; 
+        const int     ti    = types   [i ];
+        const Quat4d& REQi  = typeREQs[ti];
+        Quat4d        fREQi = Quat4dZero;
+
+        //if( bEpi ){ Vec3d dr = ps[ih]-pi; printf( "i ih |dij|=%g \n", i, ih, dr.norm() );  }
+        for(int jj=0; jj<nj; jj++){ 
+            const int   j        = j0+jj;
+            const int   jh       = host[j];
+            const double     Qj  = Qs[j];
+            const Vec3d      dij = ps[j] - pi;
+            const int        tj  = types[j];
+            const Quat4d& REQj   = typeREQs[tj];
+            const double R0      = REQi.x + REQj.x;
+            const double E0      = REQi.y * REQj.y; 
+            const double Q       = Qi     * Qj    ;
+            double       H       = REQi.w * REQj.w;     // expected H2<0
+            const double sH      = (H<0.0) ? 1.0 : 0.0; // sH=1.0 if H2<0
+            H *= sH;
+            // --- Electrostatic
+            const double r       = dij.norm();
+            const double ir      = 1/r;
+            const double dE_dQ   = ir * COULOMB_CONST;
+            const double Eel     = Q * dE_dQ;
+
+            double Eij    = Eel;
+            double dE_dR0 = 0.0;
+            double dE_dE0 = 0.0;
+            double dE_dH  = 0.0;
+            double dE_dw  = 0.0;
+            const bool bEpj = jh>=0;
+            
+            if( bEpi ){  
+                Eij += getSR2( r, H, REQi.x, dE_dH, dE_dw );
+                dE_dH*=-1.0;
+                dEdREQs[i].x += -dE_dw;
+            }else if( bEpj ){
+                Eij += getSR2( r, H, REQj.x, dE_dH, dE_dw );
+                dE_dH*=-1.0;
+                if( bWJ )dEdREQs[j].x += -dE_dw;
+            }else{
+                const double e       = exp( -alpha * ( r - R0 ) );
+                const double e2      = e * e;
+                const double e2p     = ( 1.0 + H ) * e2;
+                const double dE_dE0  = e2p - 2.0 * e;
+                const double dE_dR0  = 2.0 * alpha * E0 * ( e2p - e );
+                const double dE_dH   = - E0 * e2;
+                const double ELJ     =   E0 * dE_dE0;
+                Eij += ELJ;
             }
 
             if( bWJ ){ dEdREQs[j].add( Quat4d{

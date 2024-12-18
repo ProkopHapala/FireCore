@@ -36,8 +36,8 @@ bAddEpairs  = bEpairs
 bOutXYZ     = False
 verbosity   = 2    # Added to enable debug printing
 
-bMorse = False   # Lenard-Jones
-#bMorse = True   # Morse
+#bMorse = False   # Lenard-Jones
+bMorse = True   # Morse
 
 # ============== Setup
 
@@ -104,7 +104,8 @@ fit.loadTypes( )     # load atom types
 
 if bMorse:
     #fit.loadDOFSelection( fname="dofSelection_Morse.dat" )
-    fit.loadDOFSelection( fname="dofSelection_H2O_Morse.dat" )
+    #fit.loadDOFSelection( fname="dofSelection_H2O_Morse.dat" )
+    fit.loadDOFSelection( fname="dofSelection_H2O_MorseSR.dat" )
     #fit.comment_non_matching_lines( fname_in="dofSelection_Morse.dat"); fit.loadDOFSelection()
     #fit.loadDOFSelection( fname="dofSelection_HCOOH_Morse.dat" )
     #fit.loadDOFSelection( fname="dofSelection_HCOOH_Morse.dat" )
@@ -139,7 +140,8 @@ weights0 = np.ones( len(Erefs) )*0.5
 
 fit.setGlobalParams( kMorse=1.8, Lepairs=0.7 )
 if bMorse:
-    fit.setup( imodel=2, EvalJ=1, WriteJ=1, Regularize=1 )
+    #fit.setup( imodel=2, EvalJ=1, WriteJ=1, Regularize=1 )
+    fit.setup( imodel=5, EvalJ=1, WriteJ=1, Regularize=1 )
     weights0, lens = fit.split_and_weight_curves( Erefs, x0s, n_before_min=100, weight_func=lambda E: fit.exp_weight_func(E,a=1.0, alpha=4.0) )
 else:
     fit.setup( imodel=1, EvalJ=1, WriteJ=1, Regularize=1 )
@@ -174,9 +176,7 @@ fit.plotEWs( Erefs=Erefs, Emodel=Es, weights=fit.weights, weights0=weights0,  Em
 # Eplots_ref = fit.slice_and_reshape(Erefs, marks, angle_data)
 # Eplots_mod = fit.slice_and_reshape(Es,    marks, angle_data)
 # fig = fit.plot_Epanels_diff(Eplots_mod, Eplots_ref, ref_dirs, Emin=EminRef*fit.ev2kcal, bColorbar=True, bKcal=True )
-# plt.savefig( "opt_2D.png" )
-
-#plt.show(); exit()
+# plt.show(); exit()
 
 
 if bMorse:
