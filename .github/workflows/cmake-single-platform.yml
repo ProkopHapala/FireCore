@@ -25,13 +25,13 @@ jobs:
     - name: CMake
       run: cmake ${{github.workspace}}/cpp
 
-    # - name: Build
-    #   # Build your program with the given configuration
-    #   run: cmake --build ${{github.workspace}}/cpp/Build
-      
-    - name: Make
+    - name: Build
       # Build your program with the given configuration
-      run: make ${{github.workspace}}/cpp/Build -j19
+      run: cmake --build ${{github.workspace}}/cpp/Build
+      
+    # - name: Make
+    #   # Build your program with the given configuration
+    #   run: make ${{github.workspace}}/cpp/Build -j19
 
       
       # Execute tests defined by the CMake configuration.
