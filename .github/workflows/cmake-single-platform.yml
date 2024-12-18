@@ -35,7 +35,8 @@ jobs:
       # Build your program with the given configuration
       run: |
         cd ${{github.workspace}}/cpp/Build
-        make ${{github.workspace}}/cpp/Build -j19
+        make
+        pwd
 
     - name: Test
       run: |
