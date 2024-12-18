@@ -1,3 +1,5 @@
+## This starter workflow is for a CMake project running on a single platform. There is a different starter workflow if you need cross-platform coverage.
+# See: https://github.com/actions/starter-workflows/blob/main/ci/cmake-multi-platform.yml
 name: CMake on a single platform
 
 on:
@@ -15,12 +17,21 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Build and Test
-        run: |
-          mkdir ${{ github.workspace }}/cpp/Build
-          
-          cmake ${{ github.workspace }}/cpp
-          
-          make ${{ github.workspace }}/cpp/Build -- -j19
-          
-          ctest ${{github.workspace}}/cpp/Build -V --test-dir ${{github.workspace}}/cpp/Build/tests
+    - uses: actions/checkout@v4
+
+    - name: Create Build repository
+      run: mkdir ${{github.workspace}}/cpp/Build
+      
+    - name: CMake
+      run: cmake ${{github.workspace}}/cpp
+
+    # - name: Build
+    #   # Build your program with the given configuration
+    #   run: cmake --build ${{github.workspace}}/cpp/Build
+      
+    - name: Make
+      # Build your program with the given configuration
+      run: |
+        make ${{github.workspace}}/cpp/Build -j19
+        ctest ${{github.workspace}}/cpp/Build -V --test-dir ${{github.workspace}}/cpp/Build/tests
+
