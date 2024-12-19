@@ -14,6 +14,10 @@
 
 #include "IO_utils.h"
 
+
+#define IF_DEBUG 1 
+
+
 //#include "OptRandomWalk.h"
 
 /**
@@ -898,6 +902,9 @@ void fillTempArrays( const Atoms* atoms, Vec3d* apos, double* Qs  )const{
             if(bUpdateHostCharge){
                 Qs[iX]    -= Qep;
             }
+#if IF_DEBUG
+    if(  (fabs(Qs[iX])>1e+10) || (fabs(Qs[iE])>1e+10) ){ printf( "fillTempArrays() j=%i Qs[iX]=%12.3e Qs[iE]=%12.3e Qep=%12.3e \n", j, Qs[iX], Qs[iE], Qep ); exit(0); }
+#endif
             double lep = Lepairs;
             if( bEpairDistByType ){ typeREQs[atoms->atypes[iE]].w; }
             apos[iE] = apos[iX] + ad->dirs[j] * lep;  // We move the electron pair to proper distance from the atom
@@ -954,6 +961,14 @@ double evalSample( int isamp, const Atoms* atoms, double wi, Quat4d* fREQs ) con
         //    if(bJ)evalExampleDerivs_MorseQH2_SR( j0, nj, i0, ni, atoms->atypes, apos, typeREQs, Qs, fREQs );    // variational derivatives on molecule 2
         //}break;
     }
+#if IF_DEBUG
+    for(int i=0; i<atoms->natoms; i++){
+        int ityp = atoms->atypes[i];
+        printf( "evalSample() atom %3i  t: %3i %-8s   pos: %12.3e %12.3e %12.3e  Q:  %12.3e \n", i, ityp, params->atypes[ityp].name,  apos[i].x,apos[i].y,apos[i].z,Qs[i] );
+    }
+
+    if(fabs(E)>1e+10){ printf( "evalSample() E=%12.3e imodel=%i samp=%i \n", E, imodel, isamp ); exit(0); }
+#endif
     return E;
 }
 
@@ -1645,7 +1660,6 @@ double evalExampleDerivs_LJr8QH2_SR( int i0, int ni, int j0, int nj, int*  types
                 dE_dH   = -3.0 * E0 * u6 * u2;
                 Eij              += E0 * dE_dE0;
             }
-
             if( bWJ ){ dEdREQs[j].add( Quat4d{
                         -dE_dR0,                    // dEtot/dR0_j
                         -dE_dE0  * 0.5 * REQi.y,    // dEtot/dE0_j
@@ -1731,6 +1745,20 @@ double evalExampleDerivs_MorseQ_SR( int i0, int ni, int j0, int nj, int*  types,
                 Eij += ELJ;
             }
 
+#if IF_DEBUG
+    if(fabs(Eij)>1e+10){
+        // for(int i=0; i<ni+nj; i++){
+        //         const Vec3d&  pi    = ps      [i ]; 
+        //         const double  Qi    = Qs      [i ]; 
+        //         const int     ti    = types   [i ];
+        //         const Quat4d& REQi  = typeREQs[ti];
+        //         printf( "evalExampleDerivs_LJQH2() i: %3i REQH( %10.3e %10.3e %10.3e %10.3e) Q: %10.3e pos( %10.3f %10.3f %10.3f )\n", i,  REQi.x,REQi.y,REQi.z,REQi.w, Qi, pi.x,pi.y,pi.z );
+        // }
+        printf( "evalExampleDerivs_MorseQ_SR() i %3i j %3i Eij=%12.3e Eel=%12.3e r=%12.3e R0=%12.3e E0=%12.3e Q=%12.3e H=%12.3e \n", i, j, Eij, Eel, r, R0, E0, Q, H  ); 
+        //exit(0); 
+    }
+#endif            
+
             if( bWJ ){ dEdREQs[j].add( Quat4d{
                         -dE_dR0,                    // dEtot/dR0_j
                         -dE_dE0  * 0.5 * REQi.y,    // dEtot/dE0_j
@@ -1748,6 +1776,10 @@ double evalExampleDerivs_MorseQ_SR( int i0, int ni, int j0, int nj, int*  types,
         }
         if(dEdREQs)dEdREQs[i].add(fREQi);
     }
+
+#if IF_DEBUG
+    if(fabs(Etot)>1e+10){ printf( "evalExampleDerivs_MorseQ_SR() Etot=%12.3e \n", Etot ); exit(0); }
+#endif
     // printAtomParamDerivs( ni+nj, dEdREQs, isamp_debug );
     //printf( "debug Etot= %g\n", Etot );exit(0);    
     return Etot;

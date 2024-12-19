@@ -4,6 +4,7 @@ from   ctypes import c_int, c_double, c_bool, c_float, c_char_p, c_bool, c_void_
 import ctypes
 import os
 import sys
+#import glob
 
 #sys.path.append('../')
 #from pyMeta import cpp_utils 
@@ -324,11 +325,10 @@ def extract_fragment_names( directories=None, base_path='./'):
     sorted_second = sorted(list(second_molecules))
     return sorted_first, sorted_second
 
-def combine_fragments( frags1, frags2, path=None):
+def combine_fragments( frags1, frags2, path=None, ext=""):
     dirs = [ f"{f1}_{f2}" for f1 in frags1 for f2 in frags2 ]
     if path is not None:
-        # check if ech path made by combine_fragments exists
-        dirs_ = [ d for d in dirs if os.path.exists( os.path.join(path,d) ) ]
+        dirs_ = [ d for d in dirs if os.path.exists( os.path.join(path,d+ext) ) ]
         return dirs_
     else:
         return dirs
@@ -365,6 +365,45 @@ def concatenate_xyz_files(directories=None, base_path='./', fname="all.xyz", out
                         outfile.write(line)
                 i1 = i
             marks.append( (i0,i1) )
+    return marks
+
+def concatenate_xyz_files_flat(names=None, base_path='./', output_file="all.xyz", mode='w'):
+    """
+    Concatenates xyz files from a flat directory structure, where xyz files are directly in the path.
+    Adds the filename (without extension) to the comment lines.
+
+    Args:
+        names (list): A list of names to process. If None, will find all xyz files in base_path.
+        base_path (str): The path containing the xyz files.
+        output_file (str): The path to the output file.
+        mode (str): Write mode for the output file ('w' for write, 'a' for append).
+    """
+    if names is None:
+        # Find all xyz files in the directory
+        names = []
+        for f in os.listdir(base_path):
+            if f.endswith('.xyz') and f != output_file:
+                names.append(os.path.splitext(f)[0])
+    
+    marks = []
+    with open(output_file, mode) as outfile:
+        i = 0
+        for name in names:
+            file_path = os.path.join(base_path, f"{name}.xyz")
+            if not os.path.exists(file_path):
+                print(f"Warning in concatenate_xyz_files_flat(): file {name}.xyz not found in {base_path}. Skipping it...")
+                continue
+            with open(file_path, 'r') as infile:
+                i0 = i
+                for line in infile:
+                    if line.startswith("#"):
+                        new_line = f"{line.strip()} {name}\n"
+                        outfile.write(new_line)
+                        i += 1
+                    else:
+                        outfile.write(line)
+                i1 = i
+            marks.append((i0, i1))
     return marks
 
 def read_file_comments(fname, comment_sign='#'):

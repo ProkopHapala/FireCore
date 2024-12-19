@@ -7,7 +7,8 @@ import matplotlib.pyplot as plt
 import time
 
 #sys.path.append("/home/niko/work/FIRECORE/FireCore/")
-sys.path.append("/home/prokop/git/FireCore-fitREQH")
+sys.path.clear()
+sys.path.append("/home/prokophapala/git/FireCore-fitREQH")
 from pyBall import FitREQ as fit
 from pyBall import atomicUtils as au
 
@@ -15,7 +16,8 @@ fit.plt = plt
 
 np.set_printoptions(linewidth=300)
 
-ref_path = "/home/prokop/Desktop/CARBSIS/PEOPLE/Paolo/FitREQ/DFT_2D/"
+#ref_path = "/home/prokop/Desktop/CARBSIS/PEOPLE/Paolo/FitREQ/DFT_2D/"
+ref_path = "/home/prokophapala/Desktop/CARBSIS/DFT_ref_2D/"
 #name = "H2O-D1_H2O-A1"
 #name = "H2O-D1_H2O-A1"
 name = "HCOOH-D1_HCOOH-A1"
@@ -70,9 +72,12 @@ acceptors = [
 #'C5H5N-A1', 
 ]
 
-ref_dirs = fit.combine_fragments( donors, acceptors, path=ref_path )  ;print( "ref_dirs:\n", ref_dirs )
+ref_dirs = fit.combine_fragments( donors, acceptors, path=ref_path, ext=".xyz" )  ;print( "ref_dirs:\n", ref_dirs )
 
-marks    = fit.concatenate_xyz_files( directories=ref_dirs, base_path=ref_path, fname='all.xyz', output_file='all.xyz' )
+#marks    = fit.concatenate_xyz_files( directories=ref_dirs, base_path=ref_path, fname='all.xyz', output_file='all.xyz' )
+marks    = fit.concatenate_xyz_files_flat( names=ref_dirs, base_path=ref_path, output_file='all.xyz' )
+
+print( "marks:\n", marks )
 
 #fname = "input_single.xyz"
 #fname = ref_path +"/"+ name + "/all.xyz"
