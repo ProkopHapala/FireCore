@@ -3,12 +3,43 @@
 import sys
 import numpy as np
 import os
+import matplotlib
 import matplotlib.pyplot as plt
+import tkinter
 import time
 
-#sys.path.append("/home/niko/work/FIRECORE/FireCore/")
+
+# import sys
+# import site
+# print(f"Python version: {sys.version}")
+# print(f"Python executable: {sys.executable}")
+# print(f"Python path: {sys.path}")
+# print(f"Site packages: {site.getsitepackages()}")
+# import tkinter
+# print(f"Tkinter version: {tkinter.TkVersion}")
+# print(f"Tkinter library path: {tkinter.__file__}")
+# import matplotlib
+# print(f"Matplotlib version: {matplotlib.__version__}")
+# print(f"Matplotlib config directory: {matplotlib.get_configdir()}")
+# print(f"Matplotlib cache directory: {matplotlib.get_cachedir()}")
+# print(f"Matplotlib default backend: {matplotlib.get_backend()}")
+# exit()
+
+# import sys
+# print("Python version:", sys.version)
+# print("Matplotlib version:", matplotlib.__version__)
+# try:
+#     import tkinter
+#     print("Tkinter version:", tkinter.TkVersion)
+# except:
+#     print("Tkinter not available")
+
+
+
 sys.path.clear()
-sys.path.append("/home/prokophapala/git/FireCore-fitREQH")
+#sys.path.append("/home/niko/work/FIRECORE/FireCore/")
+sys.path.append("/home/prokop/git/FireCore-fitREQH")
+#sys.path.append("/home/prokophapala/git/FireCore-fitREQH")
 from pyBall import FitREQ as fit
 from pyBall import atomicUtils as au
 
@@ -16,8 +47,8 @@ fit.plt = plt
 
 np.set_printoptions(linewidth=300)
 
-#ref_path = "/home/prokop/Desktop/CARBSIS/PEOPLE/Paolo/FitREQ/DFT_2D/"
-ref_path = "/home/prokophapala/Desktop/CARBSIS/DFT_ref_2D/"
+ref_path = "/home/prokop/Desktop/CARBSIS/PEOPLE/Paolo/FitREQ/DFT_2D/"
+#ref_path = "/home/prokophapala/Desktop/CARBSIS/DFT_ref_2D/"
 #name = "H2O-D1_H2O-A1"
 #name = "H2O-D1_H2O-A1"
 name = "HCOOH-D1_HCOOH-A1"
@@ -72,10 +103,12 @@ acceptors = [
 #'C5H5N-A1', 
 ]
 
-ref_dirs = fit.combine_fragments( donors, acceptors, path=ref_path, ext=".xyz" )  ;print( "ref_dirs:\n", ref_dirs )
+#ref_dirs = fit.combine_fragments( donors, acceptors, path=ref_path, ext=".xyz" )  ;print( "ref_dirs:\n", ref_dirs )
+ref_dirs = fit.combine_fragments( donors, acceptors, path=ref_path )               ;print( "ref_dirs:\n", ref_dirs )
 
-#marks    = fit.concatenate_xyz_files( directories=ref_dirs, base_path=ref_path, fname='all.xyz', output_file='all.xyz' )
-marks    = fit.concatenate_xyz_files_flat( names=ref_dirs, base_path=ref_path, output_file='all.xyz' )
+
+marks    = fit.concatenate_xyz_files( directories=ref_dirs, base_path=ref_path, fname='all.xyz', output_file='all.xyz' )
+#marks    = fit.concatenate_xyz_files_flat( names=ref_dirs, base_path=ref_path, output_file='all.xyz' )
 
 print( "marks:\n", marks )
 
@@ -180,10 +213,10 @@ E,Es,Fs = fit.getEs( bOmp=False, bDOFtoTypes=False, bEs=True, bFs=False )
 
 if bMorse:
     #Err = fit.run( iparallel=0, ialg=0, nstep=1000, Fmax=1e-4, dt=0.1, max_step=-1,  bClamp=True )
-    Err = fit.run( iparallel=0, ialg=1, nstep=1000, Fmax=1e-8, dt=0.5, damping=0.1,   max_step=-1,  bClamp=True )
+    Err = fit.run( iparallel=0, ialg=1, nstep=10, Fmax=1e-8, dt=0.5, damping=0.1,   max_step=-1,  bClamp=True )
 else:
     #Err = fit.run( iparallel=0, ialg=0, nstep=1000, Fmax=1e-4, dt=0.01, max_step=-1,  bClamp=True )
-    Err = fit.run( iparallel=0, ialg=1, nstep=1000, Fmax=1e-8, dt=0.1, damping=0.05,   max_step=-1,  bClamp=True )
+    Err = fit.run( iparallel=0, ialg=1, nstep=10, Fmax=1e-8, dt=0.1, damping=0.05,   max_step=-1,  bClamp=True )
 
 # ----- Combined hybrid optimization ( start with gradient descent, continue with dynamical descent) )
 #Err = fit.run( iparallel=0, ialg=0, nstep=20,  Fmax=1e-2, dt=0.005, max_step=-1,  bClamp=False )

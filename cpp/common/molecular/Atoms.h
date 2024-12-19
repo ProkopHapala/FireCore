@@ -159,6 +159,18 @@ class Atoms{ public:
         *(lvec) = lvec_new;
     }
 
+    int checkTypeInRange( int it_max=1000, int it_min=1, bool bPrint=true ){
+        int nbad = 0;
+        for(int i=0; i<natoms; i++){
+            int it = atypes[i];
+            if( (it<it_min)||(it>it_max) ){ 
+                nbad++;
+                if(bPrint){   printf("Atoms::checkTypeInRange() atype[%3i]=%3i is out of range ( it_min: %3i , it_max: %3i ) \n", i, atypes[i], it_min, it_max ); }
+            }
+        }
+        return nbad;
+    }
+
     inline double measureBondLegth(int ia, int ib){
         Vec3d b = apos[ib]-apos[ia];
         return b.norm2();

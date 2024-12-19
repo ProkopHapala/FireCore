@@ -403,6 +403,7 @@ class Builder{  public:
 
     int itypHcap  =-1;
     int itypEpair =-1;
+    int itype_min = 1; // type 0 is * (not valid type)
 
     Atom capAtom      = Atom{ (int)NeighType::H,     -1,-1, {0,0,0}, Atom::HcapREQ };
     Atom capAtomEpair = Atom{ (int)NeighType::epair, -1,-1, {0,0,0}, {0,0,0} };
@@ -850,6 +851,9 @@ class Builder{  public:
         if(params){ 
             int ityp = atoms[ia].type;
             capAtom.type = params->atypes[ityp].ePairType; 
+            if( capAtom.type<itype_min ){ 
+                printf("ERROR: in MM::Builder::addEpair(ia=%i) type %i %8-s : capAtom.type(%i) < itype_min(%i) \n", ia, ityp, params->atypes[ityp].name, capAtom.type, itype_min );
+            }
             if(l<0)l=params->atypes[capAtom.type].Ruff;  // NOTE: we use Ruff as default length for epair, this is questionable, but this parameter has no other use for epair
         }else{ l=-l; }
         //printf( "addEpair[%i] type %i |h|=%g l=%g\n", ja, capAtom.type,   hdir.norm(), l );
@@ -1665,6 +1669,7 @@ class Builder{  public:
         int ic=atoms[ia].iconf;
         if(ic<0)return false;
         int ityp=atoms[ia].type;
+        if( params->atypes[ityp].ePairType<itype_min )return false;
         //printf( "addEpairsByPi[%i] l=%g t: %i %-8s \n", ia, l, ityp, params->atypes[ityp].name  );
         AtomConf& conf = confs[ic];
         int ne = conf.ne;
@@ -1720,6 +1725,7 @@ class Builder{  public:
         int ic=atoms[ia].iconf;
         if(ic<0)return false;             // check if it is node atom
         int ityp=atoms[ia].type;
+        if( params->atypes[ityp].ePairType<itype_min )return false;
         //printf( "addSigmaHole[%i] l=%g t: %i %-8s \n", ia, l, ityp, params->atypes[ityp].name  );
         AtomConf& conf = confs[ic];
         if(conf.nbond!=1) return false;  // check if there is jsut 1 neighbor
