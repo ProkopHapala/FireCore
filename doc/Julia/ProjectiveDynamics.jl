@@ -52,7 +52,12 @@ p_c                                  :  is the projection of q into the energy-f
 
 # ======= Bulding system as dense matrix  
 
+"""
+    make_PD_Matrix(neighBs, bonds, masses, dt, ks)
 
+CURRENT IMPLEMENTATION - This is the correct and current version of the matrix construction for projective dynamics.
+Constructs the system matrix A = M/dt^2 + L where L is the Laplacian matrix of the spring network.
+"""
 function make_PD_Matrix( neighBs::Array{Vector{Int},1}, bonds::Array{Tuple{Int,Int},1}, masses::Array{Float64,1}, dt::Float64, ks::Array{Float64,1} )
     # see:  1.3.3 A Simple Example,                 in https://doi.org/10.1145/3277644.3277779 Parallel iterative solvers for real-time elastic deformations.
     #       resp. eq.14 in the same paper, or eq.14 in https://doi.org/10.1145/2508363.2508406 Fast Simulation of Mass-Spring Systems
@@ -89,6 +94,12 @@ function make_PD_Matrix( neighBs::Array{Vector{Int},1}, bonds::Array{Tuple{Int,I
     return A, Mt
 end 
 
+"""
+    make_PD_Matrix_bak(neighBs, bonds, masses, dt, ks)
+
+DEPRECATED - Old version of matrix construction, kept for reference only.
+Do not use this function for new code.
+"""
 function make_PD_Matrix_bak( neighBs::Array{Vector{Int},1}, bonds::Array{Tuple{Int,Int},1}, masses::Array{Float64,1}, dt::Float64, ks::Array{Float64,1} )
     # see:  1.3.3 A Simple Example,                 in https://doi.org/10.1145/3277644.3277779 Parallel iterative solvers for real-time elastic deformations.
     #       resp. eq.14 in the same paper, or eq.14 in https://doi.org/10.1145/2508363.2508406 Fast Simulation of Mass-Spring Systems
@@ -119,36 +130,13 @@ function make_PD_Matrix_bak( neighBs::Array{Vector{Int},1}, bonds::Array{Tuple{I
     return A
 end 
 
-function make_PD_rhs_decomp( neighBs::Array{Vector{Int},1}, bonds::Array{Tuple{Int,Int},1}, masses::Array{Float64,1}, dt::Float64, ks::Array{Float64,1}, points::Matrix{Float64}, l0s::Array{Float64,1}, pnew::Matrix{Float64} )
-    # see:  1.3.3 A Simple Example,                 in https://doi.org/10.1145/3277644.3277779 Parallel iterative solvers for real-time elastic deformations.
-    #       resp. eq.14 in the same paper, or eq.14 in https://doi.org/10.1145/2508363.2508406 Fast Simulation of Mass-Spring Systems
-    np = length(masses)
-    bK = zeros( np, 3)
-    bM = zeros( np, 3)
-    #print( "b : "); display(b)
-    idt2 = 1. /dt^2
-    for i = 1:np
-        for ib in neighBs[i]
-            (i_,j_) = bonds[ib]
-            if i_ == i
-                j = j_
-            else
-                j = i_
-            end
-            k = ks[ib]
-            d = points[i,:] - points[j,:]
-            d *= k * l0s[ib] / norm(d)
-            bK[i,:] += d        
-        end
-    end
-    for i = 1:np
-        bM[i,:] =  pnew[i,:] * (masses[i] * idt2)
-    end
-    #print( "b : "); display(b)
-    return bK, bM
-end
+"""
+    make_PD_rhs(neighBs, bonds, masses, dt, ks, points, l0s, pnew)
 
-
+CURRENT IMPLEMENTATION - This is the correct and current version of the RHS construction.
+Constructs the right-hand side vector b = M/dt^2 * pnew + spring_forces, where pnew is the predicted position
+and spring_forces are computed using the current configuration.
+"""
 function make_PD_rhs( neighBs::Array{Vector{Int},1}, bonds::Array{Tuple{Int,Int},1}, masses::Array{Float64,1}, dt::Float64, ks::Array{Float64,1}, points::Matrix{Float64}, l0s::Array{Float64,1}, pnew::Matrix{Float64} )
     # see:  1.3.3 A Simple Example,                 in https://doi.org/10.1145/3277644.3277779 Parallel iterative solvers for real-time elastic deformations.
     #       resp. eq.14 in the same paper, or eq.14 in https://doi.org/10.1145/2508363.2508406 Fast Simulation of Mass-Spring Systems
@@ -180,6 +168,42 @@ function make_PD_rhs( neighBs::Array{Vector{Int},1}, bonds::Array{Tuple{Int,Int}
     #print( "b : "); display(b)
     return b
 end
+
+"""
+    make_PD_rhs_decomp(neighBs, bonds, masses, dt, ks, points, l0s, pnew)
+
+DEPRECATED - Old version that decomposes RHS into mass and spring terms separately.
+Kept for reference and debugging purposes only.
+"""
+function make_PD_rhs_decomp( neighBs::Array{Vector{Int},1}, bonds::Array{Tuple{Int,Int},1}, masses::Array{Float64,1}, dt::Float64, ks::Array{Float64,1}, points::Matrix{Float64}, l0s::Array{Float64,1}, pnew::Matrix{Float64} )
+    # see:  1.3.3 A Simple Example,                 in https://doi.org/10.1145/3277644.3277779 Parallel iterative solvers for real-time elastic deformations.
+    #       resp. eq.14 in the same paper, or eq.14 in https://doi.org/10.1145/2508363.2508406 Fast Simulation of Mass-Spring Systems
+    np = length(masses)
+    bK = zeros( np, 3)
+    bM = zeros( np, 3)
+    #print( "b : "); display(b)
+    idt2 = 1. /dt^2
+    for i = 1:np
+        for ib in neighBs[i]
+            (i_,j_) = bonds[ib]
+            if i_ == i
+                j = j_
+            else
+                j = i_
+            end
+            k = ks[ib]
+            d = points[i,:] - points[j,:]
+            d *= k * l0s[ib] / norm(d)
+            bK[i,:] += d        
+        end
+    end
+    for i = 1:np
+        bM[i,:] =  pnew[i,:] * (masses[i] * idt2)
+    end
+    #print( "b : "); display(b)
+    return bK, bM
+end
+
 
 function make_PD_rhs_f( neighBs::Array{Vector{Int},1}, bonds::Array{Tuple{Int,Int},1}, masses::Array{Float32,1}, dt::Float32, ks::Array{Float32,1}, points::Matrix{Float32}, l0s::Array{Float32,1}, pnew::Matrix{Float32} )
     # see:  1.3.3 A Simple Example,                 in https://doi.org/10.1145/3277644.3277779 Parallel iterative solvers for real-time elastic deformations.
@@ -338,6 +362,83 @@ function update_velocity( ps_cor::Matrix{Float64}, ps0::Matrix{Float64}, vel0::M
     return vel
 end
 
+
+#====== To improve numerical stability in Float32 use LDL^T ( root-free Cholesky decomposition) 
+
+https://en.wikipedia.org/wiki/Cholesky_decomposition#LDL_decomposition
+
+Alternative approach using two forward substitutions:
+You're correct that there's a method to replace backward substitution with another forward substitution. This approach is sometimes called the "LDL^T factorization" or "root-free Cholesky decomposition". Here's how it works:
+a. Instead of decomposing A into LL^T, decompose it into LDL^T, where L is lower triangular with 1's on the diagonal, and D is diagonal.
+b. Solve the system in three steps:
+
+Solve Lz = b (forward substitution)
+Solve Dy = z (simple division)
+Solve L^Tx = y (can be rewritten as a forward substitution)
+
+===#
+
+"""
+    run_solver(truss, sol, velocity, eval_forces; dt=0.1, niter=100, A_check, bRes=true)
+
+CURRENT IMPLEMENTATION - This is the correct and current version of the solver.
+Main solver function that implements projective dynamics with:
+- Proper velocity updates
+- Fixed point handling
+- Optional residual checking
+- LDLT decomposition for system solving
+"""
+function run_solver( truss::Truss, sol::LDLTsolution, velocity::Matrix{Float64}, eval_forces::Function; dt::Float64=0.1, niter::Int=100, A_check::Matrix{Float64}, bRes::Bool=:true )
+    n = size(truss.points,1)
+    points  = copy( truss.points )
+    ps_cor  = copy( points )
+    ps_pred = copy( points )
+    b       = copy( points )
+    for iter=1:niter
+        force                    = eval_forces( points, velocity )
+        ps_pred[:,:]             = points .+ velocity*dt #.+ force*(dt^2)
+        ps_pred[truss.fixed,:]  .= truss.points[truss.fixed,:]
+        b[:,:]                   = make_PD_rhs( truss.neighBs, truss.bonds, truss.masses, dt, truss.ks, points, truss.l0s, ps_pred )  # ;print( "b : "); display(b)
+        
+        #for i=1:n
+        #    #printf( "ps_pred[%i](%10.6f,%10.6f,%10.6f) v(%10.6f,%10.6f,%10.6f) p(%10.6f,%10.6f,%10.6f) dt=%g \n", ps_pred[i,1],ps_pred[i,2],ps_pred[i,3], velocity[i,1],velocity[i,2],velocity[i,3], points[i,1],points[i,2],points[i,3], dt );
+        #    println( "ps_pred[",i,"]",ps_pred[i,:]," v", velocity[i,:],"  p", points[i,:]," dt= ", dt );
+        #end
+
+        #println( "run_solver().b=", b )
+
+        ps_cor[:,1] = solve_LDLT( sol.L, sol.D, b[:,1], bPrint=true )
+        ps_cor[:,2] = solve_LDLT( sol.L, sol.D, b[:,2] )
+        ps_cor[:,3] = solve_LDLT( sol.L, sol.D, b[:,3] )
+        #ps_cor[:,1] = solve_LDLT_sparse( sol.L, sol.D, sol.neighs, b[:,1] )
+        #ps_cor[:,2] = solve_LDLT_sparse( sol.L, sol.D, sol.neighs, b[:,2] )
+        #ps_cor[:,3] = solve_LDLT_sparse( sol.L, sol.D, sol.neighs, b[:,3] )
+        # ---- residual
+        if bRes
+            #err = ps_cor - points
+            #err = ps_cor - ps_pred
+            #err = A_check*ps_cor - b     # check matrix solution
+            err = process_bonds(truss.bonds,ps_cor)[2] - truss.l0s  # check bond lenghs 
+            res = maximum( abs.(err) )
+            println("residual[$iter] : ", res );
+        end
+        # ---- update        
+        #velocity .+= update_velocity( ps_pred, ps_cor, dt )
+        velocity = update_velocity( ps_cor, points, velocity, dt )
+        points[:,:] .= ps_cor[:,:]
+    end
+
+    tmps = (ps_pred,ps_cor,b)
+    return points, tmps
+end
+
+"""
+    run_solver_bak(truss, sol, velocity, eval_forces; dt=0.1, niter=100)
+
+DEPRECATED - Old version of the solver.
+Contains outdated implementation that may not converge properly.
+Do not use this function for new code.
+"""
 function run_solver_bak( truss::Truss, sol::LDLTsolution, velocity::Matrix{Float64}, eval_forces::Function; dt::Float64=0.1, niter::Int=100 ) 
     points = copy( truss.points )
     ps_cor = copy(points)
@@ -395,80 +496,21 @@ function run_solver_bak( truss::Truss, sol::LDLTsolution, velocity::Matrix{Float
         # ---- residual
         res    = maximum( abs.(ps_cor-points) )   ;println("residual[$i] : ", res );
         # ---- update        
-        velocity = update_velocity( ps_cor, points, velocity, dt )
+        #velocity .+= update_velocity( ps_pred, ps_cor, dt )
+        #velocity = update_velocity( ps_pred, points, velocity, dt )
         points[:,:] .= ps_cor[:,:]
-        
-        #   ToDo:   We need to update velocity and forces based on position update
-
-        #points = points .+ x
-        #plot!( plt, [points0[i,1],points[i,1]], [points0[i,2],points[i,2]], color=:blue, lw=0.5 )
-
-        #plot_truss( plt, bonds, points, lw=1.0, c=:blue )
-        #plot_truss( plt, bonds, points0, lw=1.0, c=:blue )
     end
     return points
 end
 
 
-#====== To improve numerical stability in Float32 use LDL^T ( root-free Cholesky decomposition) 
+"""
+    run_solver_f(truss, sol, velocity, eval_forces; dt=0.1, niter=100)
 
-https://en.wikipedia.org/wiki/Cholesky_decomposition#LDL_decomposition
-
-Alternative approach using two forward substitutions:
-You're correct that there's a method to replace backward substitution with another forward substitution. This approach is sometimes called the "LDL^T factorization" or "root-free Cholesky decomposition". Here's how it works:
-a. Instead of decomposing A into LL^T, decompose it into LDL^T, where L is lower triangular with 1's on the diagonal, and D is diagonal.
-b. Solve the system in three steps:
-
-Solve Lz = b (forward substitution)
-Solve Dy = z (simple division)
-Solve L^Tx = y (can be rewritten as a forward substitution)
-
-===#
-
-function run_solver( truss::Truss, sol::LDLTsolution, velocity::Matrix{Float64}, eval_forces::Function; dt::Float64=0.1, niter::Int=100, A_check::Matrix{Float64}, bRes::Bool=:true ) 
-    n = size(truss.points,1)
-    points  = copy( truss.points )
-    ps_cor  = copy( points )
-    ps_pred = copy( points )
-    b       = copy( points )
-    for iter=1:niter
-        force                    = eval_forces( points, velocity )
-        ps_pred[:,:]             = points .+ velocity*dt #.+ force*(dt^2)
-        ps_pred[truss.fixed,:]  .= truss.points[truss.fixed,:]
-        b[:,:]                   = make_PD_rhs( truss.neighBs, truss.bonds, truss.masses, dt, truss.ks, points, truss.l0s, ps_pred )  # ;print( "b : "); display(b)
-        
-        #for i=1:n
-        #    #printf( "ps_pred[%i](%10.6f,%10.6f,%10.6f) v(%10.6f,%10.6f,%10.6f) p(%10.6f,%10.6f,%10.6f) dt=%g \n", ps_pred[i,1],ps_pred[i,2],ps_pred[i,3], velocity[i,1],velocity[i,2],velocity[i,3], points[i,1],points[i,2],points[i,3], dt );
-        #    println( "ps_pred[",i,"]",ps_pred[i,:]," v", velocity[i,:],"  p", points[i,:]," dt= ", dt );
-        #end
-
-        #println( "run_solver().b=", b )
-
-        ps_cor[:,1] = solve_LDLT( sol.L, sol.D, b[:,1], bPrint=true )
-        ps_cor[:,2] = solve_LDLT( sol.L, sol.D, b[:,2] )
-        ps_cor[:,3] = solve_LDLT( sol.L, sol.D, b[:,3] )
-        #ps_cor[:,1] = solve_LDLT_sparse( sol.L, sol.D, sol.neighs, b[:,1] )
-        #ps_cor[:,2] = solve_LDLT_sparse( sol.L, sol.D, sol.neighs, b[:,2] )
-        #ps_cor[:,3] = solve_LDLT_sparse( sol.L, sol.D, sol.neighs, b[:,3] )
-        # ---- residual
-        if bRes
-            #err = ps_cor - points
-            #err = ps_cor - ps_pred
-            #err = A_check*ps_cor - b     # check matrix solution
-            err = process_bonds(truss.bonds,ps_cor)[2] - truss.l0s  # check bond lenghs 
-            res = maximum( abs.(err) )
-            println("residual[$iter] : ", res );
-        end
-        # ---- update        
-        #velocity .+= update_velocity( ps_pred, ps_cor, dt )
-        velocity = update_velocity( ps_cor, points, velocity, dt )
-        points[:,:] .= ps_cor[:,:]
-    end
-
-    tmps = (ps_pred,ps_cor,b)
-    return points, tmps
-end
-
+EXPERIMENTAL - Float32 version of the solver.
+This is a work in progress for potential performance optimization.
+Use the standard run_solver for production code.
+"""
 function run_solver_f( truss::Truss_f, sol::LDLTsolution_f, velocity::Matrix{Float32}, eval_forces::Function; dt::Float32=0.1f0, niter::Int=100 ) 
     points = copy( truss.points )
     ps_cor = copy( points )
