@@ -3,8 +3,8 @@ import numpy as np
 def build_grid_2d(nx, ny, m=1.0, m_end=1000.0, l=1.0, k=1.0, k_diag=-1.0):
     """Build a 2D grid of points connected by springs"""
     np_total = (nx + 1) * (ny + 1)
-    masses = np.ones(np_total) * m
-    masses[0] = m_end
+    masses     = np.ones(np_total) * m
+    masses[0]  = m_end
     masses[nx] = m_end
     
     # Create points
@@ -72,21 +72,24 @@ def build_neighbor_list(bonds, n_points):
         neighbs[j_].append(i)
     return neighbs
 
-def solve_pd(points, velocity, bonds, masses, ks, dt=0.1, n_iter=100, gravity=np.array([0, -9.81, 0]), fixed_points=None):
+def solve_pd(points, velocity, bonds, masses, ks, dt=0.1, n_iter=100, gravity=np.array([0, -9.81, 0]), fixed_points=None, call_back=None):  
     """Solve the system using projective dynamics"""
     n_points = len(points)
-    neighbs = build_neighbor_list(bonds, n_points)
-    A, Mt = make_pd_matrix(neighbs, bonds, masses, dt, ks)
+    neighbs  = build_neighbor_list(bonds, n_points)
+    A, Mt    = make_pd_matrix(neighbs, bonds, masses, dt, ks)
     
-    # Initialize
     pos = points.copy()
+
     pos_prev = points - velocity * dt
     
+    t = 0
     # Main simulation loop
-    for _ in range(n_iter):
+    for itr in range(n_iter):
         # Predict step
-        pos_pred = 2 * pos - pos_prev
+        #pos_pred = 2 * pos - pos_prev
         
+        pos_pred = pos + velocity * dt
+
         # Add external forces (gravity)
         f_ext = np.zeros_like(points)
         f_ext[:, 1] = gravity[1]  # Apply gravity in y direction
@@ -94,7 +97,7 @@ def solve_pd(points, velocity, bonds, masses, ks, dt=0.1, n_iter=100, gravity=np
         # Solve system (solve for each coordinate separately)
         pos_new = np.zeros_like(points)
         for i in range(3):  # For each coordinate (x, y, z)
-            b = Mt * pos_pred[:, i] + dt * dt * f_ext[:, i]
+            b             = Mt * pos_pred[:, i] +  f_ext[:, i]*dt*dt
             pos_new[:, i] = np.linalg.solve(A, b)
         
         # Update fixed points
@@ -103,10 +106,16 @@ def solve_pd(points, velocity, bonds, masses, ks, dt=0.1, n_iter=100, gravity=np
         
         # Update positions
         pos_prev = pos.copy()
-        pos = pos_new.copy()
-    
-    # Update velocity
-    velocity = (pos - pos_prev) / dt
+        pos      = pos_new.copy()
+
+        # Update velocity
+        velocity = (pos - pos_prev) / dt
+
+        if call_back is not None:
+            call_back(pos)
+
+        print( f"iter:{itr} d={t} |v|={np.linalg.norm(velocity)}")
+
     return pos, velocity
 
 # Example usage
