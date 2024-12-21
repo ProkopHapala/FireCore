@@ -24,6 +24,6 @@ velocity = np.zeros_like(points)
 # Visualize results
 plt.figure(figsize=(10, 10))
 plot_truss(points,     bonds, c='b', label='Initial Points' )
-new_points, new_velocity = solve_pd(points, velocity, bonds, masses, ks, dt=0.001, n_iter=50, fixed_points=fixed, call_back=lambda x: plot_truss(x,bonds, c='k', alpha=0.1 ) )
+new_points, new_velocity = solve_pd(points, velocity, bonds, masses, ks, dt=0.02, n_iter=100, fixed_points=fixed, call_back=lambda x: plot_truss(x,bonds, c='k', alpha=0.1 ) )
 plot_truss(new_points, bonds, c='r', label='Final Points'   )
 plt.show()
