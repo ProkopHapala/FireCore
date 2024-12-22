@@ -10,7 +10,38 @@ This document provides a complete implementation guide for the Chebyshev-acceler
 
 From Section 2.1, the definitive Chebyshev acceleration formula is:
 
-$y(k+1)=ω_{k+1}​(x_{new}​−x_k​)+x_k​$
+
+
+lets express this in terms of displacement vectors $d_k$ by which the positions $q_k$ are changed in each iteration:
+
+$ q_{k+1} = ω_{k+1} ( γ {\hat d}_{k+1} + d_k ) + q_{k−1} $
+
+$\hat d_{k+1} = q̂_{k+1}- q_k$
+$d_{k+1} = q_{k+1}- q_k$
+$d_k     = q_k- q_{k-1}$
+
+
+Elimineate $q_{k-1}$ by using 
+$ q_{k-1} = q_k - d_k $
+
+$ q_{k+1} = ω ( γ ( q̂_{k+1} - q_k ) + q_k - q_k - d_k ) + q_k - d_k $
+
+
+$ q_{k+1} = ω  γ  q̂_{k+1} - ω  γ q_k  + ω q_k - ω q_k - ω d_k  + q_k - d_k $
+
+$ q_{k+1} = ω  γ  q̂_{k+1} + ( 1 - ω  γ ) q_k         - (1+ω) d_k $
+
+
+
+
+
+$ q_{k+1} = ω_{k+1} ( γ ( q̂_{k+1} - q_k ) + q_k - q_{k−1} ) + q_{k−1} $
+$ q_{k+1} = ω_{k+1}  γ ( q̂_{k+1} - q_k ) + ω_{k+1} q_k - ω_{k+1} q_{k−1} + q_{k−1} $
+$ q_{k+1} = ω_{k+1}    q̂_{k+1} -  ω_{k+1} ( 1  - γ ) q_k + (1 - ω_{k+1}) q_{k−1} $
+
+$ q_{k+1} = ω ( γ ( q̂_{k+1} - q_k ) + q_k - q_{k−1} ) + q_{k−1} $
+$ q_{k+1} = ω   γ ( q̂_{k+1} - q_k ) + ω q_k - ω q_{k−1} + q_{k−1} $
+$ q_{k+1} = ω   q̂_{k+1}     -  ω ( 1  - γ ) q_k + (1 - ω) q_{k−1} $
 
 where:
  - $x_{new}$​ is the result of one Jacobi iteration

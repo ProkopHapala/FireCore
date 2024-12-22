@@ -1,47 +1,5 @@
 import numpy as np
 
-def build_grid_2d(nx, ny, m=1.0, m_end=1000.0, l=1.0, k=1.0, k_diag=-1.0,  l_rnd=0.0, k_rnd=0.0, m_rnd=0.0 ):
-    """Build a 2D grid of points connected by springs"""
-    np_total = (nx + 1) * (ny + 1)
-    masses = np.ones(np_total) * m
-    masses[0] = m_end
-    masses[nx] = m_end
-    
-    # Create points
-    points = np.zeros((np_total, 3))
-    for iy in range(ny + 1):
-        for ix in range(nx + 1):
-            i = iy * (nx + 1) + ix
-            points[i, 0] = ix * l
-            points[i, 1] = -iy * l
-    
-    # Create bonds
-    bonds = []
-    ks    = []
-    fixed = [0, nx]  # Fixed points (0-based indexing)
-    
-    for iy in range(ny + 1):
-        for ix in range(nx + 1):
-            i = iy * (nx + 1) + ix
-            # Horizontal bonds
-            if ix < nx:
-                bonds.append((i, i + 1))
-                ks.append(k)
-            # Vertical bonds
-            if iy < ny:
-                bonds.append((i, i + nx + 1))
-                ks.append(k)
-            # Diagonal bonds
-            if k_diag > 0:
-                if ix < nx and iy < ny:
-                    bonds.append((i, i + nx + 2))
-                    ks.append(k_diag)
-                if ix > 0 and iy < ny:
-                    bonds.append((i, i + nx))
-                    ks.append(k_diag)
-    
-    return np.array(bonds), points, masses, np.array(ks), fixed
-
 def build_neighbor_list(bonds, n_points):
     """Build list of neighboring bonds for each point"""
     neighbs = [[] for _ in range(n_points)]
@@ -163,10 +121,35 @@ def solve_pd(points, velocity, bonds, masses, ks, dt=0.1, n_iter=100, gravity=np
 
 # Example usage
 if __name__ == "__main__":
-    # Create a simple 5x5 grid
-    nx, ny = 5, 5
-    bonds, points, masses, ks, fixed = build_grid_2d(nx, ny)
+
+    #import numpy as np
+    import matplotlib.pyplot as plt
+    from projective_dynamics import solve_pd
+    from truss import Truss
+    import plot_utils as pu 
+
+    bWheel = False
+
+    # Create a truss system
+    truss = Truss()
+    if bWheel:
+        p0 = np.array([0., 0., 0.])
+        p1 = np.array([1., 0., 0.])
+        ax = np.array([0., 0., 1.])
+        k_dict = [10000.0, 5000.0, 2000.0, 2000.0]  # [long, perp, zigIn, zigOut]
+        truss.wheel(p0, p1, ax, width=0.2, n=8, k_scale=1.0, k_dict=k_dict)
+    else:
+        truss.build_grid_2d(nx=5, ny=5, m=1.0, m_end=1000.0, l=1.0, k=10000.0, k_diag=1000.0)
+
+    # Get quantities needed for projective dynamics
+    bonds, points, masses, ks, fixed, l0s, neighbs = truss.get_pd_quantities()
     velocity = np.zeros_like(points)
-    
-    # Run simulation
-    new_points, new_velocity = solve_pd(points, velocity, bonds, masses, ks, fixed_points=fixed)
+
+    # Visualize results
+    ax = pu.plot_truss(points, truss.bonds, edge_color='b', label='Initial Points')
+
+    # Solve using projective dynamics
+    new_points, new_velocity = solve_pd( points, velocity, bonds, masses, ks,  dt=0.02, n_iter=100,  fixed_points=fixed,  call_back=lambda x: pu.plot_truss(x, truss.bonds, ax=ax, edge_color='k', edge_alpha=0.1) )
+
+    pu.plot_truss(points, truss.bonds, ax=ax, edge_color='b', label='Final Points')
+    plt.show()
