@@ -44,6 +44,12 @@ def test_convergence():
     nx, ny = 10, 10
     bonds, points, masses, ks, fixed = build_grid_2d(nx, ny)
     dt = 0.1
+
+    # Get RHS for one coordinate (x-coordinate)
+    l0s = np.array([np.linalg.norm(points[j] - points[i]) for i, j in bonds])
+    l0s += l0s*np.random.randn(len(bonds))*0.3
+    ks  += ks*np.random.randn(len(bonds))*5.0
+
     
     # Build system matrix and RHS
     neighbs = [[] for _ in range(len(points))]
@@ -57,8 +63,8 @@ def test_convergence():
     velocity = np.random.randn(len(points), 3) * 0.1
     points_pred = points + velocity * dt
     
-    # Get RHS for one coordinate (x-coordinate)
-    l0s = np.array([np.linalg.norm(points[j] - points[i]) for i, j in bonds])
+
+
     b   = make_pd_rhs(neighbs, bonds, masses, dt, ks, points, l0s, points_pred)
     
     # Test both methods for x-coordinate
@@ -72,7 +78,7 @@ def test_convergence():
     # Solve using both methods
     _, errors_jacobi = solve_iterative(A, b[:, 0], x0, n_iter, bChebyshev=False)
     #_, errors_cheby  = solve_iterative(A, b[:, 0], x0, n_iter, bChebyshev=True)
-    _, errors_cheby  = solve_iterative(A, b[:, 0], x0, n_iter, bInertial=True, beta=.9991 )
+    _, errors_cheby  = solve_iterative(A, b[:, 0], x0, n_iter, bInertial=True, beta=0.98 )
 
     
     # Plot results
