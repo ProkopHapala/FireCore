@@ -1,33 +1,20 @@
 import numpy as np
 from projective_dynamics import build_neighbor_list, make_pd_matrix, make_pd_rhs, update_velocity
 
-def jacobi_iteration(A, b, x, fixed_points=None):
-    """Perform one Jacobi iteration"""
-    n = len(x)
-    x_new = x.copy()
-    for i in range(n):
-        if fixed_points is not None and i in fixed_points:
-            continue
-        sum_ax = 0
-        for j in range(n):
-            if i != j:
-                sum_ax += A[i,j] * x[j]
-        x_new[i] = (b[i] - sum_ax) / A[i,i]
-    return x_new
+def jacobi_iteration(A, b, x):
+    Aii = np.diag(A)
+    Ax = A @ x
+    return (b - (Ax - Aii*x) ) / Aii
 
 def estimate_spectral_radius(A, x0, n_iter=10):
     """Estimate spectral radius using power iteration"""
-    x = x0.copy()
-    x_prev = x0.copy()
-    
+    x      = x0.copy()
     for _ in range(n_iter):
-        # Apply matrix twice
-        x = A @ x
+        x      = A @ x
         x_next = A @ x
-        
-        # Estimate using Rayleigh quotient
-        rho = np.sqrt(abs(np.dot(x_next, x) / np.dot(x, x)))
-    
+        eK1    = np.dot(x_next, x)
+        eK2    = np.dot(x, x)
+        rho    = np.sqrt( abs( eK1 / eK2 ) )
     return min(rho, 0.9992)  # Cap at 0.9992 as suggested in paper
 
 def calculate_omega(k, rho, prev_omega, delay_start=10):
