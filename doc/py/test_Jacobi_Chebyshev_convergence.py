@@ -64,7 +64,6 @@ def test_convergence():
     points_pred = points + velocity * dt
     
 
-
     b   = make_pd_rhs(neighbs, bonds, masses, dt, ks, points, l0s, points_pred)
     
     # Test both methods for x-coordinate
@@ -78,7 +77,7 @@ def test_convergence():
     # Solve using both methods
     _, errors_jacobi = solve_iterative(A, b[:, 0], x0, n_iter, bChebyshev=False)
     #_, errors_cheby  = solve_iterative(A, b[:, 0], x0, n_iter, bChebyshev=True)
-    _, errors_cheby  = solve_iterative(A, b[:, 0], x0, n_iter, bInertial=True, beta=0.98 )
+    _, errors_cheby  = solve_iterative(A, b[:, 0], x0, n_iter, bInertial=True, beta=0.985 )
 
     
     # Plot results
