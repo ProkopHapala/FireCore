@@ -1,6 +1,6 @@
 import numpy as np
 
-def build_grid_2d(nx, ny, m=1.0, m_end=1000.0, l=1.0, k=1.0, k_diag=-1.0):
+def build_grid_2d(nx, ny, m=1.0, m_end=1000.0, l=1.0, k=1.0, k_diag=-1.0,  l_rnd=0.0, k_rnd=0.0, m_rnd=0.0 ):
     """Build a 2D grid of points connected by springs"""
     np_total = (nx + 1) * (ny + 1)
     masses = np.ones(np_total) * m
@@ -17,7 +17,7 @@ def build_grid_2d(nx, ny, m=1.0, m_end=1000.0, l=1.0, k=1.0, k_diag=-1.0):
     
     # Create bonds
     bonds = []
-    ks = []
+    ks    = []
     fixed = [0, nx]  # Fixed points (0-based indexing)
     
     for iy in range(ny + 1):
