@@ -3,56 +3,45 @@ import matplotlib.pyplot as plt
 from projective_dynamics import solve_pd, build_grid_2d, make_pd_matrix, make_pd_rhs
 from projective_dynamics_iterative import jacobi_iteration, calculate_omega, estimate_spectral_radius
 
-def solve_direct(A, b):
-    """Solve system directly using numpy"""
-    return np.linalg.solve(A, b)
-
-def solve_jacobi(A, b, x0, n_iter, fixed_points=None):
-    """Solve system using Jacobi iteration"""
-    x = x0.copy()
-    errors = []
-    x_direct = solve_direct(A, b)
-    
-    for _ in range(n_iter):
-        x = jacobi_iteration(A, b, x, fixed_points)
-        error = np.linalg.norm(x - x_direct) / np.linalg.norm(x_direct)
-        errors.append(error)
-    
-    return x, errors
-
-def solve_chebyshev(A, b, x0, n_iter, fixed_points=None):
+def solve_iterative(A, b, x0, n_iter, bChebyshev=False, bInertial=False, beta=0.5  ):
     """Solve system using Chebyshev-accelerated Jacobi iteration"""
-    x = x0.copy()
-    x_prev = x0.copy()
+    
     errors = []
-    x_direct = solve_direct(A, b)
+    x_direct = np.linalg.solve(A, b)
     
-    # Estimate spectral radius
-    rho = estimate_spectral_radius(A, np.random.rand(len(x0)))
-    omega = 1.0
+    if bChebyshev:
+        rho = estimate_spectral_radius(A, np.random.rand(len(x0)))
+    omega_old = 1.0
     
-    for k in range(n_iter):
-        # Perform Jacobi iteration
-        x_new = jacobi_iteration(A, b, x, fixed_points)
+    x_old  = x0.copy()
+    x      = x0.copy()
+    v_old  = x*0.0 
+    for itr in range(n_iter):
+        x_pred  = jacobi_iteration(A, b, x)
         
-        # Apply Chebyshev acceleration
-        omega_next = calculate_omega(k, rho, omega)
-        x_accel = omega_next * (x_new - x) + x
+        if bChebyshev:
+            omega   = calculate_omega(itr, rho, omega_old )
+            x_new = omega * (x_pred - x) + x_old
+            x_old = x
+            x     = x_new
+            omega_old = omega
+        elif bInertial:
+            v_new = x_pred - x
+            v = beta*v_new + (1-beta)*v_old
+            x += v
+            v_old = v  
+        else:
+            x = x_pred
         
-        # Update for next iteration
-        x_prev = x.copy()
-        x = x_accel
-        omega = omega_next
-        
-        # Calculate error
         error = np.linalg.norm(x - x_direct) / np.linalg.norm(x_direct)
         errors.append(error)
+        print(  f" {itr} omega: {omega_old} error: {error} " )
     
     return x, errors
 
 def test_convergence():
     # Create test problem
-    nx, ny = 5, 5
+    nx, ny = 10, 10
     bonds, points, masses, ks, fixed = build_grid_2d(nx, ny)
     dt = 0.1
     
@@ -70,15 +59,21 @@ def test_convergence():
     
     # Get RHS for one coordinate (x-coordinate)
     l0s = np.array([np.linalg.norm(points[j] - points[i]) for i, j in bonds])
-    b = make_pd_rhs(neighbs, bonds, masses, dt, ks, points, l0s, points_pred)
+    b   = make_pd_rhs(neighbs, bonds, masses, dt, ks, points, l0s, points_pred)
     
     # Test both methods for x-coordinate
-    n_iter = 100
+    n_iter = 20
     x0 = points_pred[:, 0].copy()  # Initial guess
+
+    # add some random 
+    x0*=1.1
+    x0 += np.random.randn(len(x0))*5
     
     # Solve using both methods
-    _, errors_jacobi = solve_jacobi(A, b[:, 0], x0, n_iter, fixed)
-    _, errors_cheby = solve_chebyshev(A, b[:, 0], x0, n_iter, fixed)
+    _, errors_jacobi = solve_iterative(A, b[:, 0], x0, n_iter, bChebyshev=False)
+    #_, errors_cheby  = solve_iterative(A, b[:, 0], x0, n_iter, bChebyshev=True)
+    _, errors_cheby  = solve_iterative(A, b[:, 0], x0, n_iter, bInertial=True, beta=.9991 )
+
     
     # Plot results
     plt.figure(figsize=(10, 6))
@@ -89,8 +84,9 @@ def test_convergence():
     plt.ylabel('Relative Error')
     plt.title('Convergence Comparison: Jacobi vs Chebyshev-accelerated Jacobi')
     plt.legend()
-    plt.savefig('convergence_comparison.png')
-    plt.close()
+    plt.show()
+    #plt.savefig('convergence_comparison.png')
+    #plt.close()
 
 if __name__ == "__main__":
     test_convergence()
