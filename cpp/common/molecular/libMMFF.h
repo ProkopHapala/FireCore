@@ -431,7 +431,7 @@ void sample_evalBond( double k, double l0, int n, double* xs, double* Es, double
         double dx;
         h0.set(p0-p1);
         h0.normalize();
-        Es[i] = evalBond( h0, 1.0-(p0-p1).norm(), k, f0);
+        Es[i] = evalBond( h0, (p0-p1).norm()-1.0, k, f0);
         Fs[i] = f0.x;
     }
 }
@@ -444,14 +444,12 @@ void sample_evalAtom( double k, double r0, int n, double* rs, double* Es, double
         fe.e = W.ffl.eval_atom(ia); fe.f=(Vec3f)W.ffl.fapos[ia];
         Es[i] = fe.e;
         Fs[i] = fe.f.z;
-        printf( "i %i r %g E %g f %g \n", i, W.ffl.apos[ia].z, Es[i], Fs[i] );
     }
 }
 
 void sample_getLJQH( int n, double* xs, double* Es, double* Fs, double* REQ){
     Vec3d p0={0,0,0};
     Vec3d f0, h0;
-    printf( "REQH_ %g %g %g %g \n", REQ[0], REQ[1], REQ[2], REQ[3] );
     Quat4d REQH_ = *(Quat4d*)REQ;
     for(int i=0; i<n; i++ ){
         double x = xs[i];
@@ -561,13 +559,13 @@ void sample_springbound( int n, double* rs, double* Es, double* fs, double x_min
 }
 
 void sample_applyConstr( int n, double* rs, double* Es, double* fs){
+    int constr_index =  W.constrs.bonds[0].ias.a;
     for(int i=0; i<n; i++){
         Quat4f fe = Quat4fZero;
-        W.ffl.fapos[1] = Vec3dZero; 
-        W.ffl.apos[1].z = rs[i];
+        W.ffl.fapos[constr_index] = Vec3dZero; 
+        W.ffl.apos[constr_index].z = rs[i];
         double E = W.constrs.apply(W.ffl.apos, W.ffl.fapos, &W.ffl.lvec);
-        printf( "i %i r %g E %g f %g \n", i, W.ffl.apos[1].z, E, W.ffl.fapos[1].z );
-        fs[i]=W.ffl.fapos[1].z;
+        fs[i]=W.ffl.fapos[constr_index].z;
         Es[i]=E;
     }
 }

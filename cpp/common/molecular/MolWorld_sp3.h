@@ -281,6 +281,7 @@ class MolWorld_sp3 : public SolverInterface { public:
     bool bRelax=false;
 
     MolecularDatabase* database = 0;
+    bool bFreeEnergyCalc = false;
 
 
     // ========== from python interface
@@ -966,7 +967,17 @@ void printPBCshifts(){
         char wd0[1024]; getcwd(wd0,1024); printf( "MolWorld_sp3::initGridFF() 1 wd0=`%s`\n", wd0 );
         const char* last_slash = strrchr(name, '/');
         const char* result = (last_slash) ? last_slash + 1 : name;
-        char wd[128]; sprintf( wd, "data/%s", result); printf( "MolWorld_sp3::initGridFF() 1 wd=`%s`\n", wd );
+        char wd[128];
+        if(strstr(name, "data/") != NULL) {
+            size_t pos = strstr(name, "data/") - name;
+            strncpy(wd, name, pos);
+            wd[pos] = '\0';
+            strcat(wd, "data/");
+            strcat(wd, result);
+        } else {
+            sprintf(wd, "data/%s", result);
+        }
+        printf("MolWorld_sp3::initGridFF() 1 wd=`%s`\n", wd);
         tryMakeDir  ( wd );
         tryChangeDir( wd );
         gridFF.bUseEwald = bUseEwald;
@@ -2301,17 +2312,12 @@ double eval_no_omp(){
 int counter=0;
     __attribute__((hot))  
     int run_omp( int niter_max, double dt, double Fconv=1e-6, double Flim=1000, double timeLimit=0.02, double* outE=0, double* outF=0, double* outV=0, double* outVF=0 ){
-        ffl.doAngles=false;
-        bNonBonded=false;
         nloop++;
         if(dt>0){ opt.setTimeSteps(dt); }else{ dt=opt.dt; }
-
         //int ncpu = omp_get_num_threads(); printf("MolWorld_sp3::run_omp() ncpu=%i \n", ncpu );
-
         //printf( "run_omp() niter_max %i dt %g Fconv %g Flim %g timeLimit %g outE %li outF %li \n", niter_max, dt, Fconv, Flim, timeLimit, (long)outE, (long)outF );
         long T0 = getCPUticks();
         double E=0,F2=0,F2conv=Fconv*Fconv;
-        Econstr=0;
         double ff=0,vv=0,vf=0;
         int itr=0,niter=niter_max;
         bConverged = false;
@@ -2332,13 +2338,9 @@ int counter=0;
         //     move( ffl.natoms, ffl.apos, cog*-1.0 ); 
         // }
         if(bCheckStuck){ checkStuck( RStuck ); }
-
-/*
-/////////////// full version of run_omp()
-        #pragma omp parallel shared(E,F2,ff,vv,vf,ffl) private(itr)
+        //#pragma omp parallel shared(E,F2,ff,vv,vf,ffl) private(itr)
         #pragma omp parallel shared(niter,itr,E,F2,ff,vv,vf,ffl,T0,bConstrains,bConverged)
         while(itr<niter){
-            
             if(itr<niter){
             //#pragma omp barrier
             #pragma omp single
@@ -2349,7 +2351,7 @@ int counter=0;
             //------ eval forces
             //#pragma omp barrier
             #pragma omp for reduction(+:E)
-            for(int ia=0; ia<ffl.natoms; ia++){ counter++;
+            for(int ia=0; ia<ffl.natoms; ia++){ 
                 {                 ffl.fapos[ia           ] = Vec3dZero; } // atom pos force
                 if(ia<ffl.nnode){ ffl.fapos[ia+ffl.natoms] = Vec3dZero; } // atom pi  force
                 //if(verbosity>3)
@@ -2366,7 +2368,6 @@ int counter=0;
                         if(bPBC)[[likely]]{ E+=ffl.evalLJQs_PBC_atom_omp( ia, F2max ); }
                         else              { E+=ffl.evalLJQs_atom_omp    ( ia, F2max ); } 
                     }
-
                 }
 
                 if(bSurfAtoms)[[likely]]{ 
@@ -2381,7 +2382,7 @@ int counter=0;
 
                 //if     (bGridFF){ E+= gridFF.addMorseQH_PBC_omp( ffl.apos[ia], ffl.REQs[ia], ffl.fapos[ia] ); }  // NBFF
                 if(bConstrZ){
-                    Econstr += springbound( ffl.apos[ia].z-ConstrZ_xmin, ConstrZ_l, ConstrZ_k, ffl.fapos[ia].z );
+                    springbound( ffl.apos[ia].z-ConstrZ_xmin, ConstrZ_l, ConstrZ_k, ffl.fapos[ia].z );
                 }
                 if(ipicked==ia)[[unlikely]]{ 
                     const Vec3d f = getForceSpringRay( ffl.apos[ia], pick_hray, pick_ray0,  Kpick ); 
@@ -2394,43 +2395,11 @@ int counter=0;
             //         E+=ffl.eval_torsion(it); 
             //     }
             // }
-
-
-#pragma omp single
+            #pragma omp single
             {
-            if (bConstrains)
-                {
-                    Econstr += constrs.apply(ffl.apos, ffl.fapos, &ffl.lvec);
-                    E += Econstr;
-                }
-                if (go.bExploring)
-                {
-                    //E+=go.constrs.apply(ffl.apos, ffl.fapos, &ffl.lvec);
-                }
-
-                if (bFreeEnergyCalc && outF)
-                {
-                    Vec3d direction = ffl.apos[colVar.bonds[0].ias.b] - ffl.apos[colVar.bonds[0].ias.a];
-                    direction.normalize();
-                    double value0, value1;
-                    value0 = ffl.fapos[colVar.bonds[0].ias.b].dot(direction);
-                    value1 = ffl.fapos[colVar.bonds[0].ias.a].dot(direction);
-                    outF[itr] = (value0 - value1)*0.5; // 0.5 is because of model where the collective variable is abs(x1-x0) and x1 = (x+lamba/2, y, z) and x0 = (x-lamba/2, y, z)
-
-                    // aware array outV is connected with array positions in calculate_Free_energy() function
-                    if (outV)
-                    {
-                        //outV[itr] = ffl.vapos[2].norm2();
-                        outV[itr] = ffl.evalKineticEnergy();
-                    }
-                    if (outE)
-                    {
-                        outE[itr] = E;
-                    }
-                }
-
-            }                
-
+                if(bConstrains  ){ E+=constrs.apply( ffl.apos, ffl.fapos, &ffl.lvec ); }
+                if(go.bExploring){ go.constrs.apply( ffl.apos, ffl.fapos, &ffl.lvec ); }
+            }
             // ---- assemble (we need to wait when all atoms are evaluated)
             //#pragma omp barrier
             #pragma omp for
@@ -2461,14 +2430,18 @@ int counter=0;
                 for(int i=0; i<ffl.nvecs; i++){
                     if( go.bExploring ){
                         ffl.move_atom_Langevin( i, dt, 10000.0, go.gamma_damp, go.T_target ); 
-                    }else{
+                    }else if(true){ // TODO: do not move
+                        break;
+                    }
+                    else{
                         //ffl.move_atom_MD( i, opt.dt, Flim, 0.9 );
                         //ffl.move_atom_MD( i, 0.05, Flim, 0.9 );
                         //ffl.move_atom_MD( i, 0.05, 1000.0, 0.9 );
                         ffl.move_atom_FIRE( i, opt.dt, 10000.0, opt.cv, opt.renorm_vf*opt.cf );
                         //ffl.move_atom_FIRE( i, dt, 10000.0, 0.9, 0 ); // Equivalent to MDdamp
                     }
-            }
+                } 
+            
             //#pragma omp barrier
             #pragma omp single
             { 
@@ -2510,20 +2483,16 @@ int counter=0;
             }
             } // if(itr<niter)
         } // while(itr<niter)
-           //printf( "run_omp() counter %i \n", counter );
-           //printf( "contrs[0].norm() %g \n", constrs.bonds[0].ls.x );
+        if(niter == 1 && outE){
+            *outE = Etot;
+        }
+
+           
         {
         double t = (getCPUticks() - T0)*tick2second;
         if( (itr>=niter_max)&&(verbosity>1)) [[unlikely]] {printf( "MolWorld_sp3::run_omp() NOT CONVERGED in %i/%i dt=%g E=%g |F|=%g time= %g [ms]( %g [us/%i iter]) \n", itr,niter_max, opt.dt, E,  sqrt(F2), t*1e+3, t*1e+6/itr, itr ); }
         }
-        // if(outE)outE[0]=Etot;
-        // if(outV)outV[0]=sqrt(vv);
-        // double f_ = 0;
-        // for(int i=0; i<opt.n; i++){ f_ += opt.force[i]; }
-        // for(int i=0; i<ffl.natoms; i++){ f_ += ffl.fapos[i].x; f_ +=ffl.fapos[i].y; }//printf("ffl.fapos[%i](%g %g %g))\n", i, ffl.fapos[i].x, ffl.fapos[i].y, ffl.fapos[i].z ); }
-        // for(int i=0; i<ffl.nnode; i++){ f_ += ffl.fpipos[i].x; f_ +=ffl.fpipos[i].y; }//printf("ffl.fapos[%i](%g %g %g))\n", i, ffl.fapos[i].x, ffl.fapos[i].y, ffl.fapos[i].z ); }
-        // if(outF)outF[0]=F2;
-*/
+        return itr;
 
 
 
@@ -2544,6 +2513,7 @@ int counter=0;
 
 
 
+/*
 /////////////// full version of run_omp()
 #pragma omp parallel shared(E, F2, ff, vv, vf, ffl) private(itr)
 #pragma omp parallel shared(niter, itr, E, F2, ff, vv, vf, ffl, T0, bConstrains, bConverged)
@@ -2631,7 +2601,7 @@ int counter=0;
 
             itr++;
         }
-
+*/
         /*
         ////////////////////// only the used part of run_omp() when calculating three particles (two still, one moving)
         // three atom problem
@@ -3878,7 +3848,7 @@ ffl.apos[1].x += d_lamda*0.5; \
     file.close();
 
     printf("deltaF=%f\n", deltaF);*/
-    return deltaF;
+    return 0;
 }
 };
 
