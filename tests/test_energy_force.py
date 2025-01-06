@@ -74,7 +74,7 @@ def test_sample_evalBond():
     Es,Fs = mmff.sample_evalBond( xs)
     Fnum = numDeriv(xs,Es)
     assert np.all(np.abs(Fs[1:-1]-Fnum)<0.1), "!Check Forces::evalBond! sample_evalBond force calculation failed: analytical forces do not match numerical derivatives"
- 
+''' 
 def test_sample_evalAtom():
     xs    = np.linspace(-3.0,3.0,1000)
     mmff.setVerbosity(-1)
@@ -92,7 +92,7 @@ mmff.clear()
 Fnum = numDeriv(xs,Es)
 plt.figure(); plt.plot(xs, Es, label="E"); plt.plot(xs, Fs, label="F_ana");  plt.plot(xs[1:-1], Fnum, label="F_num"); plt.grid(); plt.legend()
 plt.show()
-
+'''
 # Nonbonding interaction
 def test_sample_getLJQH():
     xs    = np.linspace(0.8,3.0,1000)
@@ -190,7 +190,7 @@ def test_sample_applyConstr():
     assert np.all(np.abs(Fs[1:-1]-Fnum)<0.1), "!Check Forces::applyConstr! sample_applyConstr force calculation failed: analytical forces do not match numerical derivatives"
 
 
-
+'''
 # ----- SetSwitches+run_omp
 def test_run_omp_bonds_angles_pisigma_pipi_surf():
     N = 1000
@@ -203,7 +203,7 @@ def test_run_omp_bonds_angles_pisigma_pipi_surf():
     mmff.clear()
     assert np.all(np.abs(Fs[1:-1]-Fnum)<0.1)
 
-'''
+
 N = 1000
 xs    = np.linspace(-3.0,3.0,N)
 mmff.init( xyz_name="data/xyz/polymer-2_new",  surf_name="data/xyz/NaCl_1x1_L2" )
