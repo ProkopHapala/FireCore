@@ -20,6 +20,21 @@ jobs:
 
     steps:
     - uses: actions/checkout@v4
+
+    - name: Create Build repository
+      run: mkdir ${{github.workspace}}/cpp/Build
+      
+    - name: CMake
+      run: |
+        sudo apt-get install cmake g++ gfortran intel-mkl libmkl-intel-lp64 libmkl-core libmkl-intel-thread libsdl2-dev libsdl2-image-dev nvidia-opencl-dev libclfft-dev libfftw3-dev
+        cd ${{github.workspace}}/cpp/Build
+        cmake .. -DWITH_SDL=ON -DWITH_FFTW=ON
+
+    - name: Make
+      # Build your program with the given configuration
+      run: |
+        cd ${{github.workspace}}/cpp/Build
+        make
     - name: Set up Python ${{ matrix.python-version }}
       uses: actions/setup-python@v3
       with:
