@@ -163,7 +163,7 @@ inline double spring( double l, Vec2d ls, Vec2d ks, double flim, double& f ){
     f       =0;
     if  (l>ls.x){
         double dl=l-ls.x;
-        f=dl*ks.x;
+        f=-dl*ks.x;
         //printf( "l(%g)>ls.x(%g) \n", l, ls.x, f  );
         if(f>flim){
             f=flim;
@@ -174,7 +174,7 @@ inline double spring( double l, Vec2d ls, Vec2d ks, double flim, double& f ){
         }
     }else if(l<ls.y){
         double dl=l-ls.y;
-        f=dl*ks.y;
+        f=-dl*ks.y;
         //printf( "l(%g)<ls.x(%g) \n", l, ls.y, f  );
         if(f<-flim){
             f=-flim;

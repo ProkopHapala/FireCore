@@ -297,22 +297,15 @@ def test_run_omp_complete():
     Fnum = numDeriv(xs,Es)
     mmff.clear()
     assert np.all(np.abs(Fs[1:-1]-Fnum)<0.1), "!Check Forces::run_omp_complete! run_omp force calculation failed: analytical forces do not match numerical derivatives"
+
+
+
 '''
-N = 1000
-xs    = np.linspace(2.3,3.0,N)
-mmff.init( xyz_name=data_dir+"xyz/dicarboxylic_acid", constr_name=data_dir+"dicarboxylic_acid.cons",  surf_name=data_dir+"xyz/NaCl_1x1_L2", sElementTypes=data_dir+"ElementTypes.dat", sAtomTypes=data_dir+"AtomTypes.dat", sBondTypes=data_dir+"BondTypes.dat", sAngleTypes=data_dir+"AngleTypes.dat", sDihedralTypes=data_dir+"DihedralTypes.dat")
-mmff.setSwitches(CheckInvariants=-1, PBC_nonBond=1, PBC_evalAtom=1, NonBonded=1, MMFF=1, doBonds=1, Angles=1, PiSigma=1, PiPiI=1, bNonBondNeighs=1, bSurfAtoms=1, bGridFF=-1, bTricubic=1, bConstrZ=-1, bConstrains=1, bMoving=-1)
-Es,Fs = mmff.sample_movementOfAtom(xs, ia=0)
-Fnum = numDeriv(xs,Es)     #ratios = Fs[1:-1]/Fnum    ;print("ratios", ratios)
-plt.figure(); plt.plot(xs, Es, label="E"); plt.plot(xs, Fs, label="F_ana");  plt.plot(xs[1:-1], Fnum, label="F_num"); plt.grid(); plt.legend()
-plt.show()
-
-
 # ----- lvecs
-N = 10
+N = 100
 xs    = np.linspace(1.0,3.0,N)
-mmff.init( xyz_name="common_resources/xyz/polymer-2_new",  surf_name="common_resources/xyz/NaCl_1x1_L2" )
-mmff.setSwitches(CheckInvariants=-1, PBC_nonBond=1, PBC_evalAtom=1, NonBonded=1, MMFF=1, doBonds=1, Angles=1, PiSigma=1, PiPiI=1, bNonBondNeighs=1, bSurfAtoms=-1, bGridFF=-1, bTricubic=-1, bConstrZ=-1, bConstrains=-1)
+mmff.init( xyz_name=data_dir+"xyz/polymer-2_new",  surf_name=data_dir+"xyz/NaCl_1x1_L2", sElementTypes=data_dir+"ElementTypes.dat", sAtomTypes=data_dir+"AtomTypes.dat", sBondTypes=data_dir+"BondTypes.dat", sAngleTypes=data_dir+"AngleTypes.dat", sDihedralTypes=data_dir+"DihedralTypes.dat")
+mmff.setSwitches(CheckInvariants=-1, PBC_nonBond=1, PBC_evalAtom=1, NonBonded=1, MMFF=1, doBonds=1, Angles=1, PiSigma=1, PiPiI=1, bNonBondNeighs=1, bSurfAtoms=-1, bGridFF=-1, bTricubic=-1, bConstrZ=-1, bConstrains=-1, bMoving=-1)
 Es, Fs = mmff.sample_lvecs( xs )
 Fnum = numDeriv(xs,Es)     #ratios = Fs[1:-1]/Fnum    ;print("ratios", ratios)
 plt.figure(); plt.plot(xs, Es, label="E"); plt.plot(xs, Fs, label="F_ana");  plt.plot(xs[1:-1], Fnum, label="F_num"); plt.grid(); plt.legend()
@@ -320,31 +313,29 @@ plt.figure(); plt.plot(xs, Es, label="E"); plt.plot(xs, Fs, label="F_ana");  plt
 plt.show()
 '''
 
-'''constr_name="hexan-dicarboxylic.cons",
-# ----- DistConstr
-#mmff.sample_DistConstr( xs, lmin=1, lmax=1, kmin=1, kmax=1, flim=1e+300, Es=None, Fs=None)
-xs    = np.linspace(0.0,3.0,100)
-Es,Fs = mmff.sample_DistConstr( xs, lmin=0.9, lmax=1.2, flim=0.5 )  # ;print("Fs",Fs)
-plt.figure(); plt.plot(xs, Es,'.-', label="E"); plt.plot(xs, Fs, label="F_ana");  plt.plot(xs[1:-1], numDeriv(xs,Es), label="F_num"); plt.grid(); plt.legend()
-'''
+# Constrains
+def test_sample_DistConstr():
+    N = 10
+    xs    = np.linspace(0.0,3.0,N)
+    Es,Fs = mmff.sample_DistConstr( xs, lmin=0.9, lmax=1.2, flim=0.5 )
+    Fnum = numDeriv(xs,Es)
+    assert np.all(np.abs(Fs[1:-1]-Fnum)<0.1), "!Check Constrains::DistConstr! sample_DistConstr force calculation failed: analytical forces do not match numerical derivatives"
+
+def test_sample_SplineConstr():
+    dx    = 1.5
+    x0    = 0.5 
+    Eps   = np.array( [1.0, 0.0,-1.0,-0.5,-0.2,-0.1] )
+    xp    = (np.array(range(len(Eps)))-1)*dx + x0
+    xs    = np.linspace(0.0,6.0,100)
+    Es,Fs = mmff.sample_SplineConstr( xs, Eps, x0=x0, dx=dx )
+    Fnum = numDeriv(xs,Es)
+    assert np.all(np.abs(Fs[1:-1]-Fnum)<0.01), "!Check Constrains::SplineConstr! sample_SplineConstr force calculation failed: analytical forces do not match numerical derivatives"
+
+
+
+
 
 '''
-# ----- SplineConstr
-dx    = 1.5
-x0    = 0.5 
-Eps   = np.array( [1.0, 0.0,-1.0,-0.5,-0.2,-0.1] )
-xp    = (np.array(range(len(Eps)))-1)*dx + x0
-xs    = np.linspace(0.0,6.0,100)
-Es,Fs = mmff.sample_SplineConstr( xs, Eps, x0=x0, dx=dx )  # ;print("Fs",Fs)
-plt.figure(); 
-plt.plot(xp, Eps, 'o-k', lw=0.2, label="Eps"); 
-plt.plot(xs, Es,'.-',    label="E"); 
-plt.plot(xs, Fs,'-',     label="F_ana");  
-plt.plot(xs[1:-1],numDeriv(xs,Es),':', label="F_num"); 
-plt.grid(); plt.legend()
-
-plt.show()
-
 
 # gridFF
 xs    = np.linspace(-3.0,-2.7,1000)

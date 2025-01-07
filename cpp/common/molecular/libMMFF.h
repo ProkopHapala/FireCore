@@ -405,7 +405,7 @@ void sample_SplineConstr( double x0, double dx, int np, double* Eps, int n, doub
         fs[0]=Vec3dZero;
         fs[1]=Vec3dZero;
         Es[i] = C.apply( ps, fs );
-        Fs[i] = fs[0].x;
+        Fs[i] = fs[1].x;
     }
 }
 
@@ -418,7 +418,7 @@ void sample_DistConstr( double lmin, double lmax, double kmin, double kmax, doub
         fs[0]=Vec3dZero;
         fs[1]=Vec3dZero;
         Es[i] = C.apply( ps, fs );
-        Fs[i] = fs[0].x;
+        Fs[i] = fs[1].x;
     }
 }
 

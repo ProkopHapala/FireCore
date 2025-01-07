@@ -99,12 +99,13 @@ struct DistConstr{
         double l  = d.norm(); 
         double f,E;
         E = spring( l, ls, ks, flim, f );
+        printf( "ks=(%g,%g) ls(%g,%g) l %g f %g E %g \n", ks.x,ks.y, ls.x,ls.y, l,f,E );
         //f = ks.x*l; E= 0.5*ks.x*l*l;
         d.mul(f/l);
-        fs[ias.b].sub(d);
-        fs[ias.a].add(d);
-        //fs[ias.b].add(d);
-        //fs[ias.a].sub(d);
+        // fs[ias.b].sub(d);
+        // fs[ias.a].add(d);
+        fs[ias.b].add(d);
+        fs[ias.a].sub(d);
         //printf( "DistConstr:apply(%i,%i) l %g E %g f %g | ls(%g,%g) ks(%g,%g) flim %g lvec %li |sh| %g \n", ias.b, ias.a, l, E,f, ls.x,ls.y, ks.x,ks.y, flim, (long)lvec, sh.norm() );
         return E;
     }

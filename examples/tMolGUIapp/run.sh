@@ -88,7 +88,7 @@ fi
 #./$name -x common_resources/xyz/nHexadecan_dicarboxylic -b nHexadecan_dicarboxylic.cons -perframe 1 -T 10 0.1
 
 #./$name -x common_resources/xyz/nHexadecan_dicarboxylic -T 100 0.01
-#./$name -x common_resources/xyz/nHexadecan_dicarboxylic -b nHexadecan_dicarboxylic.cons -T 100 0.01
+# ./$name -x common_resources/xyz/nHexadecan_dicarboxylic -b nHexadecan_dicarboxylic.cons -T 100 0.01
 #./$name -x common_resources/xyz/nHexadecan_dicarboxylic -b nHexadecan_dicarboxylic.cons     -perframe 1000  -gopt 1000,1000 0.25,1.0
 #./$name -x common_resources/xyz/nHexadecan_dicarboxylic -b nHexadecan_dicarboxylic.cons     -perframe 10000 -gopt 1000,1000 0.25,1.0
 #./$name -x common_resources/xyz/nHexadecan_dicarboxylic -drive nHexadecan_dicarboxylic.cons -perframe 10000 -gopt 1000,1000 0.25,1.0  -T 1000 0.01
@@ -180,7 +180,7 @@ fi
 #./$name -x common_resources/xyz/PTCDA -g common_resources/xyz/NaCl_1x1_L3          -nPBC 0,0,0
 #./$name -x common_resources/xyz/PTCDA -g common_resources/xyz/NaCl_8x8_L3          -nPBC 0,0,0 -perframe 1
 #./$name -x common_resources/xyz/PTCDA -g common_resources/xyz/NaCl_8x8_L3          -nPBC 0,0,0
-./$name -x common_resources/xyz/PTCDA -g common_resources/xyz/NaCl_8x8_L3_NaHole   -nPBC 0,0,0
+#./$name -x common_resources/xyz/PTCDA -g common_resources/xyz/NaCl_8x8_L3_NaHole   -nPBC 0,0,0
 #./$name -x common_resources/xyz/PTCDA -g common_resources/xyz/NaCl_8x8_L3_ClHole   -nPBC 0,0,0
 #./$name -x common_resources/xyz/PTCDA -g common_resources/xyz/NaCl_8x8_L3_NaClHole -nPBC 0,0,0
 
@@ -335,4 +335,5 @@ fi
 
 #valgrind --log-file="valgrind.log" --leak-check=yes ./$name -x common_resources/H2O
 
-
+# Free energy
+./$name -x common_resources/enthropic_spring_10 -b common_resources/enthropic_spring_10.cons -T 100 0.01
