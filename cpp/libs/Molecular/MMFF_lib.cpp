@@ -363,7 +363,7 @@ void sample_evalMorsePBC_sym( int n, double* rs, double* Es, double* fs){
     }
 }
 
-void setSwitches( int CheckInvariants, int PBC_nonBond, int PBC_evalAtom, int NonBonded, int MMFF, int doBonds, int Angles, int PiSigma, int PiPiI, int bNonBondNeighs, int bSurfAtoms, int bGridFF, int bTricubic, int bConstrZ, int bConstrains, int bExploring ){
+void setSwitches( int CheckInvariants, int PBC_nonBond, int PBC_evalAtom, int NonBonded, int MMFF, int doBonds, int Angles, int PiSigma, int PiPiI, int bNonBondNeighs, int bSurfAtoms, int bGridFF, int bTricubic, int bConstrZ, int bConstrains, int bExploring, int bMoving ){
     #define _setbool(b,i) { if(i>0){b=true;}else if(i<0){b=false;} }
     _setbool( W.bCheckInvariants, CheckInvariants  );
     _setbool( W.bPBC         , PBC_nonBond       );
@@ -382,6 +382,7 @@ void setSwitches( int CheckInvariants, int PBC_nonBond, int PBC_evalAtom, int No
     _setbool( W.bConstrZ, bConstrZ       );
     _setbool( W.bConstrains, bConstrains );
     _setbool( W.go.bExploring, bExploring );
+    _setbool( W.bMoving   , bMoving   );
     W.ffl.bSubtractAngleNonBond = W.bNonBonded;
     #undef _setbool
 }

@@ -282,6 +282,7 @@ class MolWorld_sp3 : public SolverInterface { public:
 
     MolecularDatabase* database = 0;
     bool bFreeEnergyCalc = false;
+    bool bMoving = true;            // in run_omp if do not want to move with the molecule automaticaly
 
 
     // ========== from python interface
@@ -357,7 +358,7 @@ class MolWorld_sp3 : public SolverInterface { public:
         // ffl.neighs[0].x = -1;
         // ffl.neighs[1].x = -1;
         // ffl.neighs[2].x = -1;
-        run_omp(10000, 0.05);
+        // run_omp(10000, 0.05);
 
         printf( "#### MolWorld_sp3::init() DONE\n\n");
     }
@@ -968,11 +969,11 @@ void printPBCshifts(){
         const char* last_slash = strrchr(name, '/');
         const char* result = (last_slash) ? last_slash + 1 : name;
         char wd[128];
-        if(strstr(name, "data/") != NULL) {
-            size_t pos = strstr(name, "data/") - name;
+        if(strstr(name, "common_resources/") != NULL) {
+            size_t pos = strstr(name, "common_resources/") - name;
             strncpy(wd, name, pos);
             wd[pos] = '\0';
-            strcat(wd, "data/");
+            strcat(wd, "common_resources/");
             strcat(wd, result);
         } else {
             sprintf(wd, "data/%s", result);
@@ -2362,11 +2363,11 @@ int counter=0;
                 // ----- Error is HERE
                 if(bNonBonded){
                     if(bNonBondNeighs)[[likely]]{
-                        if(bPBC)[[likely]]{ E+=ffl.evalLJQs_ng4_PBC_atom_omp( ia ); }
-                        else              { E+=ffl.evalLJQs_ng4_atom_omp    ( ia ); } 
+                        if(bPBC)[[likely]]{ E+=0.5*ffl.evalLJQs_ng4_PBC_atom_omp( ia ); }
+                        else              { E+=0.5*ffl.evalLJQs_ng4_atom_omp    ( ia ); } 
                     }else{
-                        if(bPBC)[[likely]]{ E+=ffl.evalLJQs_PBC_atom_omp( ia, F2max ); }
-                        else              { E+=ffl.evalLJQs_atom_omp    ( ia, F2max ); } 
+                        if(bPBC)[[likely]]{ E+=0.5*ffl.evalLJQs_PBC_atom_omp( ia, F2max ); }
+                        else              { E+=0.5*ffl.evalLJQs_atom_omp    ( ia, F2max ); } 
                     }
                 }
 
@@ -2430,7 +2431,7 @@ int counter=0;
                 for(int i=0; i<ffl.nvecs; i++){
                     if( go.bExploring ){
                         ffl.move_atom_Langevin( i, dt, 10000.0, go.gamma_damp, go.T_target ); 
-                    }else if(true){ // TODO: do not move
+                    }else if(!bMoving){ // TODO: do not move
                         break;
                     }
                     else{

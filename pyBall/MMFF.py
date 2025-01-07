@@ -1150,8 +1150,8 @@ def buildFF(bNonBonded=True, bOptimizer=True):
 #  void setSwitches( int CheckInvariants, int PBC_nonBond, int PBC_evalAtom, int NonBonded, int MMFF, int Angles, int PiSigma, int PiPiI, int bNonBondNeighs, int bSurfAtoms, int bGridFF, int bTricubic, int bConstrZ, int bConstrains ){
 lib.setSwitches.argtypes  = [c_int, c_int, c_int, c_int, c_int, c_int, c_int , c_int, c_int, c_int, c_int , c_int, c_int, c_int, c_int, c_int]
 lib.setSwitches.restype   =  None
-def setSwitches( CheckInvariants=0, PBC_nonBond=0, PBC_evalAtom=0, NonBonded=0, MMFF=0, doBonds=0, Angles=0, PiSigma=0, PiPiI=0, bNonBondNeighs=0, bSurfAtoms=0, bGridFF=0, bTricubic=0, bConstrZ=0, bConstrains=0, bExploring=0 ):
-    return lib.setSwitches( CheckInvariants, PBC_nonBond, PBC_evalAtom, NonBonded, MMFF, doBonds, Angles, PiSigma, PiPiI, bNonBondNeighs, bSurfAtoms, bGridFF, bTricubic, bConstrZ, bConstrains, bExploring )
+def setSwitches( CheckInvariants=0, PBC_nonBond=0, PBC_evalAtom=0, NonBonded=0, MMFF=0, doBonds=0, Angles=0, PiSigma=0, PiPiI=0, bNonBondNeighs=0, bSurfAtoms=0, bGridFF=0, bTricubic=0, bConstrZ=0, bConstrains=0, bExploring=0, bMoving=0 ):
+    return lib.setSwitches( CheckInvariants, PBC_nonBond, PBC_evalAtom, NonBonded, MMFF, doBonds, Angles, PiSigma, PiPiI, bNonBondNeighs, bSurfAtoms, bGridFF, bTricubic, bConstrZ, bConstrains, bExploring, bMoving )
 
 # void setSwitches2( int CheckInvariants, int PBC, int NonBonded, int NonBondNeighs,  int SurfAtoms, int GridFF, int MMFF, int Angles, int PiSigma, int PiPiI ){
 lib.setSwitches2.argtypes  = [c_int, c_int, c_int, c_int, c_int, c_int, c_int, c_int, c_int, c_int]

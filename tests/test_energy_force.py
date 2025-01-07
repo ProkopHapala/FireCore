@@ -12,9 +12,14 @@ logging.basicConfig(
 
 LOGGER = logging.getLogger(__name__)
 
-current_dir = os.path.dirname(__file__)
-src_path = os.path.join(current_dir, "../")
-sys.path.insert(0, os.path.abspath(src_path))
+# current_dir = os.path.dirname(__file__)
+# src_path = os.path.join(current_dir, "../")
+# sys.path.insert(0, os.path.abspath(src_path))
+
+exec_path = os.getcwd()
+sys.path.insert(0, exec_path)
+
+data_dir = exec_path+"/cpp/common_resources/"
 
 from pyBall import atomicUtils as au
 from pyBall import MMFF as mmff
@@ -74,25 +79,17 @@ def test_sample_evalBond():
     Es,Fs = mmff.sample_evalBond( xs)
     Fnum = numDeriv(xs,Es)
     assert np.all(np.abs(Fs[1:-1]-Fnum)<0.1), "!Check Forces::evalBond! sample_evalBond force calculation failed: analytical forces do not match numerical derivatives"
-''' 
+'''
 def test_sample_evalAtom():
     xs    = np.linspace(-3.0,3.0,1000)
     mmff.setVerbosity(-1)
-    mmff.init( xyz_name=current_dir+"/common_resources/xyz/polymer-2_new", sElementTypes=current_dir+"/common_resources/ElementTypes.dat", sAtomTypes=current_dir+"/common_resources/AtomTypes.dat", sBondTypes=current_dir+"/common_resources/BondTypes.dat", sAngleTypes=current_dir+"/common_resources/AngleTypes.dat", sDihedralTypes=current_dir+"/common_resources/DihedralTypes.dat")
+    mmff.init( xyz_name=data_dir+"xyz/polymer-2_new", sElementTypes=data_dir+"ElementTypes.dat", sAtomTypes=data_dir+"AtomTypes.dat", sBondTypes=data_dir+"BondTypes.dat", sAngleTypes=data_dir+"AngleTypes.dat", sDihedralTypes=data_dir+"DihedralTypes.dat")
     Es,Fs = mmff.sample_evalAtom( xs, ia=1)
     mmff.clear()
     Fnum = numDeriv(xs,Es)
     assert np.all(np.abs(Fs[1:-1]-Fnum)<1.0), "!Check Forces::evalAtom! sample_evalAtom force calculation failed: analytical forces do not match numerical derivatives"
-xs    = np.linspace(-3.0,3.0,1000)
-mmff.setVerbosity(-1)
-mmff.init( xyz_name=current_dir+"/common_resources/xyz/polymer-2_new", sElementTypes=current_dir+"/common_resources/ElementTypes.dat", sAtomTypes=current_dir+"/common_resources/AtomTypes.dat", sBondTypes=current_dir+"/common_resources/BondTypes.dat", sAngleTypes=current_dir+"/common_resources/AngleTypes.dat", sDihedralTypes=current_dir+"/common_resources/DihedralTypes.dat")
-mmff.setSwitches(CheckInvariants=-1, PBC_nonBond=-1, PBC_evalAtom=-1, NonBonded=-1, MMFF=1, doBonds=1, Angles=1, PiSigma=1, PiPiI=1, bNonBondNeighs=1, bSurfAtoms=1, bGridFF=-1, bTricubic=-1, bConstrZ=-1, bConstrains=-1)
-Es,Fs = mmff.sample_evalAtom( xs, ia=0)
-mmff.clear()
-Fnum = numDeriv(xs,Es)
-plt.figure(); plt.plot(xs, Es, label="E"); plt.plot(xs, Fs, label="F_ana");  plt.plot(xs[1:-1], Fnum, label="F_num"); plt.grid(); plt.legend()
-plt.show()
 '''
+
 # Nonbonding interaction
 def test_sample_getLJQH():
     xs    = np.linspace(0.8,3.0,1000)
@@ -104,7 +101,7 @@ def test_sample_getLJQH():
 def test_sample_evalLJQs_ng4_PBC_atom_omp():
     xs    = np.linspace(-3.0,-2.7,1000)
     mmff.setVerbosity(-1)
-    mmff.init( xyz_name=current_dir+"/data/xyz/pyridine", sElementTypes=current_dir+"/common_resources/ElementTypes.dat", sAtomTypes=current_dir+"/common_resources/AtomTypes.dat", sBondTypes=current_dir+"/common_resources/BondTypes.dat", sAngleTypes=current_dir+"/common_resources/AngleTypes.dat", sDihedralTypes=current_dir+"/common_resources/DihedralTypes.dat")
+    mmff.init( xyz_name=data_dir+"xyz/pyridine", sElementTypes=data_dir+"ElementTypes.dat", sAtomTypes=data_dir+"AtomTypes.dat", sBondTypes=data_dir+"BondTypes.dat", sAngleTypes=data_dir+"AngleTypes.dat", sDihedralTypes=data_dir+"DihedralTypes.dat")
     Es,Fs = mmff.sample_evalLJQs_ng4_PBC_atom_omp( xs)
     mmff.clear()
     Fnum = numDeriv(xs,Es)
@@ -113,7 +110,7 @@ def test_sample_evalLJQs_ng4_PBC_atom_omp():
 def test_sample_evalLJQs_ng4_atom_omp():
     xs    = np.linspace(-3.0,-2.7,1000)
     mmff.setVerbosity(-1)
-    mmff.init( xyz_name=current_dir+"/data/xyz/pyridine", sElementTypes=current_dir+"/common_resources/ElementTypes.dat", sAtomTypes=current_dir+"/common_resources/AtomTypes.dat", sBondTypes=current_dir+"/common_resources/BondTypes.dat", sAngleTypes=current_dir+"/common_resources/AngleTypes.dat", sDihedralTypes=current_dir+"/common_resources/DihedralTypes.dat")
+    mmff.init( xyz_name=data_dir+"xyz/pyridine", sElementTypes=data_dir+"ElementTypes.dat", sAtomTypes=data_dir+"AtomTypes.dat", sBondTypes=data_dir+"BondTypes.dat", sAngleTypes=data_dir+"AngleTypes.dat", sDihedralTypes=data_dir+"DihedralTypes.dat")
     Es,Fs = mmff.sample_evalLJQs_ng4_atom_omp      ( xs)
     mmff.clear()
     Fnum = numDeriv(xs,Es)
@@ -122,7 +119,7 @@ def test_sample_evalLJQs_ng4_atom_omp():
 def test_sample_evalLJQs_PBC_atom_omp():
     xs    = np.linspace(-3.0,-2.7,1000)
     mmff.setVerbosity(-1)
-    mmff.init( xyz_name=current_dir+"/data/xyz/pyridine", sElementTypes=current_dir+"/common_resources/ElementTypes.dat", sAtomTypes=current_dir+"/common_resources/AtomTypes.dat", sBondTypes=current_dir+"/common_resources/BondTypes.dat", sAngleTypes=current_dir+"/common_resources/AngleTypes.dat", sDihedralTypes=current_dir+"/common_resources/DihedralTypes.dat")
+    mmff.init( xyz_name=data_dir+"xyz/pyridine", sElementTypes=data_dir+"ElementTypes.dat", sAtomTypes=data_dir+"AtomTypes.dat", sBondTypes=data_dir+"BondTypes.dat", sAngleTypes=data_dir+"AngleTypes.dat", sDihedralTypes=data_dir+"DihedralTypes.dat")
     Es,Fs = mmff.sample_evalLJQs_PBC_atom_omp      ( xs)
     mmff.clear()
     Fnum = numDeriv(xs,Es)
@@ -131,39 +128,33 @@ def test_sample_evalLJQs_PBC_atom_omp():
 def test_sample_evalLJQs_atom_omp():
     xs    = np.linspace(-3.0,-2.7,1000)
     mmff.setVerbosity(-1)
-    mmff.init( xyz_name=current_dir+"/data/xyz/pyridine", sElementTypes=current_dir+"/common_resources/ElementTypes.dat", sAtomTypes=current_dir+"/common_resources/AtomTypes.dat", sBondTypes=current_dir+"/common_resources/BondTypes.dat", sAngleTypes=current_dir+"/common_resources/AngleTypes.dat", sDihedralTypes=current_dir+"/common_resources/DihedralTypes.dat")
+    mmff.init( xyz_name=data_dir+"xyz/pyridine", sElementTypes=data_dir+"ElementTypes.dat", sAtomTypes=data_dir+"AtomTypes.dat", sBondTypes=data_dir+"BondTypes.dat", sAngleTypes=data_dir+"AngleTypes.dat", sDihedralTypes=data_dir+"DihedralTypes.dat")
     Es,Fs = mmff.sample_evalLJQs_atom_omp      ( xs)
     mmff.clear()
     Fnum = numDeriv(xs,Es)
     assert np.all(np.abs(Fs[1:-1]-Fnum)<0.1), "!Check Forces::evalLJQs_atom_omp! sample_evalLJQs_atom_omp force calculation failed: analytical forces do not match numerical derivatives"
 
 
-'''
-# ----- evalLJQs_ng4_PBC_atom_omp, evalLJQs_ng4_atom_omp,...
-xs    = np.linspace(-3.0,-2.7,1000)
-mmff.init( xyz_name="data/xyz/pyridine" )
-mmff.setVerbosity(3)
-Es,Fs  = mmff.sample_addForce_Tricubic         ( xs)
-# Fnum = numDeriv(xs,Es)     #ratios = Fs[1:-1]/Fnum    ;print("ratios", ratios)
-# plt.figure(); plt.plot(xs, Es, label="E"); plt.plot(xs, Fs, label="F_ana");  plt.plot(xs[1:-1], Fnum, label="F_num"); plt.grid(); plt.legend()
-plt.show()
-'''
+
+
 
 # Interaction with surface
 def test_sample_evalMorsePBC_sym():
     xs    = np.linspace(0.0,3.0,100)
-    mmff.setVerbosity(-1)
-    mmff.init( xyz_name=current_dir+"/data/xyz/pyridine", surf_name=current_dir+"/data/xyz/NaCl_1x1_L2", sElementTypes=current_dir+"/common_resources/ElementTypes.dat", sAtomTypes=current_dir+"/common_resources/AtomTypes.dat", sBondTypes=current_dir+"/common_resources/BondTypes.dat", sAngleTypes=current_dir+"/common_resources/AngleTypes.dat", sDihedralTypes=current_dir+"/common_resources/DihedralTypes.dat")
+    #mmff.setVerbosity(-1)
+    mmff.init( xyz_name=data_dir+"xyz/pyridine", surf_name=data_dir+"xyz/NaCl_1x1_L2", sElementTypes=data_dir+"ElementTypes.dat", sAtomTypes=data_dir+"AtomTypes.dat", sBondTypes=data_dir+"BondTypes.dat", sAngleTypes=data_dir+"AngleTypes.dat", sDihedralTypes=data_dir+"DihedralTypes.dat")
     mmff.setSwitches(bGridFF=-1)
     Es,Fs = mmff.sample_evalMorsePBC_sym( xs)
     Fnum = numDeriv(xs,Es)
     mmff.clear()
     assert np.all(np.abs(Fs[1:-1]-Fnum)<0.1), "!Check Forces::evalMorsePBC_sym! sample_evalMorsePBC_sym force calculation failed: analytical forces do not match numerical derivatives"
 
+
+
 def test_sample_springbound():
     xs    = np.linspace(0.0,3.0,100)
     mmff.setVerbosity(-1)
-    mmff.init( xyz_name=current_dir+"/data/xyz/pyridine", surf_name=current_dir+"/data/xyz/NaCl_1x1_L2", sElementTypes=current_dir+"/common_resources/ElementTypes.dat", sAtomTypes=current_dir+"/common_resources/AtomTypes.dat", sBondTypes=current_dir+"/common_resources/BondTypes.dat", sAngleTypes=current_dir+"/common_resources/AngleTypes.dat", sDihedralTypes=current_dir+"/common_resources/DihedralTypes.dat")
+    mmff.init( xyz_name=data_dir+"xyz/pyridine", surf_name=data_dir+"xyz/NaCl_1x1_L2", sElementTypes=data_dir+"ElementTypes.dat", sAtomTypes=data_dir+"AtomTypes.dat", sBondTypes=data_dir+"BondTypes.dat", sAngleTypes=data_dir+"AngleTypes.dat", sDihedralTypes=data_dir+"DihedralTypes.dat")
     Es,Fs = mmff.sample_springbound( xs)
     Fnum = numDeriv(xs,Es)
     mmff.clear()
@@ -183,32 +174,134 @@ plt.show()
 def test_sample_applyConstr():
     xs    = np.linspace(0.0,3.0,100)
     mmff.setVerbosity(-1)
-    mmff.init( xyz_name=current_dir+"/data/xyz/dicarboxylic_acid", constr_name=current_dir+"/data/dicarboxylic_acid.cons", sElementTypes=current_dir+"/common_resources/ElementTypes.dat", sAtomTypes=current_dir+"/common_resources/AtomTypes.dat", sBondTypes=current_dir+"/common_resources/BondTypes.dat", sAngleTypes=current_dir+"/common_resources/AngleTypes.dat", sDihedralTypes=current_dir+"/common_resources/DihedralTypes.dat")
+    mmff.init( xyz_name=data_dir+"xyz/dicarboxylic_acid", constr_name=data_dir+"dicarboxylic_acid.cons", sElementTypes=data_dir+"ElementTypes.dat", sAtomTypes=data_dir+"AtomTypes.dat", sBondTypes=data_dir+"BondTypes.dat", sAngleTypes=data_dir+"AngleTypes.dat", sDihedralTypes=data_dir+"DihedralTypes.dat")
     Es,Fs = mmff.sample_applyConstr( xs )
     Fnum = numDeriv(xs,Es)
     mmff.clear()
     assert np.all(np.abs(Fs[1:-1]-Fnum)<0.1), "!Check Forces::applyConstr! sample_applyConstr force calculation failed: analytical forces do not match numerical derivatives"
 
 
-'''
-# ----- SetSwitches+run_omp
+
+# SetSwitches+run_omp --> bonding
+def test_run_omp_bonds():
+    N = 1000
+    xs    = np.linspace(-3.0,3.0,N)
+    mmff.setVerbosity(-1)
+    mmff.init( xyz_name=data_dir+"xyz/pyridine", sElementTypes=data_dir+"ElementTypes.dat", sAtomTypes=data_dir+"AtomTypes.dat", sBondTypes=data_dir+"BondTypes.dat", sAngleTypes=data_dir+"AngleTypes.dat", sDihedralTypes=data_dir+"DihedralTypes.dat")
+    mmff.setSwitches(CheckInvariants=-1, PBC_nonBond=-1, PBC_evalAtom=-1, NonBonded=-1, MMFF=1, doBonds=1, Angles=-1, PiSigma=1, PiPiI=-1, bNonBondNeighs=1, bSurfAtoms=-1, bGridFF=-1, bTricubic=-1, bConstrZ=-1, bConstrains=-1, bMoving=-1)
+    Es,Fs = mmff.sample_movementOfAtom(xs, ia=0)
+    Fnum = numDeriv(xs,Es)
+    mmff.clear()
+    assert np.all(np.abs(Fs[1:-1]-Fnum)<0.1), "!Check Forces::run_omp_bonds or sample_movementOfAtom! run_omp_bonds force calculation failed: analytical forces do not match numerical derivatives"
+
+def test_run_omp_bonds_angles():
+    N = 1000
+    xs    = np.linspace(-3.0,3.0,N)
+    mmff.setVerbosity(-1)
+    mmff.init( xyz_name=data_dir+"xyz/pyridine", sElementTypes=data_dir+"ElementTypes.dat", sAtomTypes=data_dir+"AtomTypes.dat", sBondTypes=data_dir+"BondTypes.dat", sAngleTypes=data_dir+"AngleTypes.dat", sDihedralTypes=data_dir+"DihedralTypes.dat")
+    mmff.setSwitches(CheckInvariants=-1, PBC_nonBond=-1, PBC_evalAtom=-1, NonBonded=-1, MMFF=1, doBonds=-1, Angles=1, PiSigma=1, PiPiI=-1, bNonBondNeighs=1, bSurfAtoms=-1, bGridFF=-1, bTricubic=-1, bConstrZ=-1, bConstrains=-1, bMoving=-1)
+    Es,Fs = mmff.sample_movementOfAtom(xs, ia=0)
+    Fnum = numDeriv(xs,Es)
+    mmff.clear()
+    assert np.all(np.abs(Fs[1:-1]-Fnum)<0.1), "!Check Forces::run_omp_bonds_angles! run_omp_bonds_angles force calculation failed: analytical forces do not match numerical derivatives"
+
+def test_run_omp_pisigma():
+    N = 1000
+    xs    = np.linspace(-3.0,3.0,N)
+    mmff.setVerbosity(-1)
+    mmff.init( xyz_name=data_dir+"xyz/pyridine", sElementTypes=data_dir+"ElementTypes.dat", sAtomTypes=data_dir+"AtomTypes.dat", sBondTypes=data_dir+"BondTypes.dat", sAngleTypes=data_dir+"AngleTypes.dat", sDihedralTypes=data_dir+"DihedralTypes.dat")
+    mmff.setSwitches(CheckInvariants=-1, PBC_nonBond=-1, PBC_evalAtom=-1, NonBonded=-1, MMFF=1, doBonds=-1, Angles=-1, PiSigma=1, PiPiI=-1, bNonBondNeighs=1, bSurfAtoms=-1, bGridFF=-1, bTricubic=-1, bConstrZ=-1, bConstrains=-1, bMoving=-1)
+    Es,Fs = mmff.sample_movementOfAtom(xs, ia=0)
+    Fnum = numDeriv(xs,Es)
+    mmff.clear()
+    assert np.all(np.abs(Fs[1:-1]-Fnum)<0.01), "!Check Forces::run_omp_pisigma! run_omp_pisigma force calculation failed: analytical forces do not match numerical derivatives"
+
+def test_run_omp_pipi():
+    N = 1000
+    xs    = np.linspace(-3.0,3.0,N)
+    mmff.setVerbosity(-1)
+    mmff.init( xyz_name=data_dir+"xyz/pyridine", sElementTypes=data_dir+"ElementTypes.dat", sAtomTypes=data_dir+"AtomTypes.dat", sBondTypes=data_dir+"BondTypes.dat", sAngleTypes=data_dir+"AngleTypes.dat", sDihedralTypes=data_dir+"DihedralTypes.dat")
+    mmff.setSwitches(CheckInvariants=-1, PBC_nonBond=-1, PBC_evalAtom=-1, NonBonded=-1, MMFF=1, doBonds=-1, Angles=-1, PiSigma=-1, PiPiI=1, bNonBondNeighs=1, bSurfAtoms=-1, bGridFF=-1, bTricubic=-1, bConstrZ=-1, bConstrains=-1, bMoving=-1)
+    Es,Fs = mmff.sample_movementOfAtom(xs, ia=0)
+    Fnum = numDeriv(xs,Es)
+    mmff.clear()
+    assert np.all(np.abs(Fs[1:-1]-Fnum)<0.01), "!Check Forces::run_omp_pipi! run_omp_pipi force calculation failed: analytical forces do not match numerical derivatives"
+
 def test_run_omp_bonds_angles_pisigma_pipi_surf():
     N = 1000
     xs    = np.linspace(-3.0,3.0,N)
     mmff.setVerbosity(-1)
-    mmff.init( xyz_name=current_dir+"/data/xyz/pyridine", surf_name=current_dir+"/data/xyz/NaCl_1x1_L2", sElementTypes=current_dir+"/common_resources/ElementTypes.dat", sAtomTypes=current_dir+"/common_resources/AtomTypes.dat", sBondTypes=current_dir+"/common_resources/BondTypes.dat", sAngleTypes=current_dir+"/common_resources/AngleTypes.dat", sDihedralTypes=current_dir+"/common_resources/DihedralTypes.dat")
-    mmff.setSwitches(CheckInvariants=-1, PBC_nonBond=-1, PBC_evalAtom=-1, NonBonded=-1, MMFF=1, doBonds=1, Angles=1, PiSigma=1, PiPiI=1, bNonBondNeighs=1, bSurfAtoms=1, bGridFF=-1, bTricubic=-1, bConstrZ=-1, bConstrains=-1)
+    mmff.init( xyz_name=data_dir+"xyz/pyridine", sElementTypes=data_dir+"ElementTypes.dat", sAtomTypes=data_dir+"AtomTypes.dat", sBondTypes=data_dir+"BondTypes.dat", sAngleTypes=data_dir+"AngleTypes.dat", sDihedralTypes=data_dir+"DihedralTypes.dat")
+    mmff.setSwitches(CheckInvariants=-1, PBC_nonBond=-1, PBC_evalAtom=-1, NonBonded=-1, MMFF=1, doBonds=1, Angles=1, PiSigma=1, PiPiI=1, bNonBondNeighs=1, bSurfAtoms=1, bGridFF=-1, bTricubic=-1, bConstrZ=-1, bConstrains=-1, bMoving=-1)
     Es,Fs = mmff.sample_movementOfAtom(xs, ia=0)
     Fnum = numDeriv(xs,Es)
     mmff.clear()
-    assert np.all(np.abs(Fs[1:-1]-Fnum)<0.1)
+    assert np.all(np.abs(Fs[1:-1]-Fnum)<0.1), "!Check Forces::run_omp::eval_atom! run_omp force calculation failed: analytical forces do not match numerical derivatives"
 
 
+# SetSwitches+run_omp --> non bonding
+def test_run_omp_nonBond():
+    N=1000
+    xs    = np.linspace(-3.0,-2.1,N)
+    mmff.setVerbosity(-1)
+    mmff.init( xyz_name=data_dir+"xyz/pyridine", sElementTypes=data_dir+"ElementTypes.dat", sAtomTypes=data_dir+"AtomTypes.dat", sBondTypes=data_dir+"BondTypes.dat", sAngleTypes=data_dir+"AngleTypes.dat", sDihedralTypes=data_dir+"DihedralTypes.dat")
+    mmff.setSwitches(CheckInvariants=-1, PBC_nonBond=-1, PBC_evalAtom=-1, NonBonded=1, MMFF=1, doBonds=-1, Angles=-1, PiSigma=-1, PiPiI=-1, bNonBondNeighs=-1, bSurfAtoms=-1, bGridFF=-1, bTricubic=-1, bConstrZ=-1, bConstrains=-1, bMoving=-1)
+    Es,Fs = mmff.sample_movementOfAtom(xs, ia=0)
+    Fnum = numDeriv(xs,Es)
+    mmff.clear()
+    assert np.all(np.abs(Fs[1:-1]-Fnum)<0.1), "!Check Forces::run_nonBond! run_nonBond force calculation failed: analytical forces do not match numerical derivatives"
+
+def test_run_omp_nonBond_NonBondNeighs():
+    N = 1000
+    xs    = np.linspace(-3.0,3.0,N)
+    mmff.setVerbosity(-1)
+    mmff.init( xyz_name=data_dir+"xyz/pyridine", sElementTypes=data_dir+"ElementTypes.dat", sAtomTypes=data_dir+"AtomTypes.dat", sBondTypes=data_dir+"BondTypes.dat", sAngleTypes=data_dir+"AngleTypes.dat", sDihedralTypes=data_dir+"DihedralTypes.dat")
+    mmff.setSwitches(CheckInvariants=-1, PBC_nonBond=-1, PBC_evalAtom=-1, NonBonded=1, MMFF=1, doBonds=-1, Angles=-1, PiSigma=-1, PiPiI=-1, bNonBondNeighs=1, bSurfAtoms=-1, bGridFF=-1, bTricubic=-1, bConstrZ=-1, bConstrains=-1, bMoving=-1)
+    Es,Fs = mmff.sample_movementOfAtom(xs, ia=0)
+    Fnum = numDeriv(xs,Es)
+    mmff.clear()
+    assert np.all(np.abs(Fs[1:-1]-Fnum)<0.1), "!Check Forces::run_omp_nonBond_NonBondNeighs! run_omp force calculation failed: analytical forces do not match numerical derivatives"
+
+def test_run_omp_nonBond_PBC():
+    N = 1000
+    xs    = np.linspace(-3.0,-2.1,N)
+    mmff.setVerbosity(-1)
+    mmff.init( xyz_name=data_dir+"xyz/pyridine", sElementTypes=data_dir+"ElementTypes.dat", sAtomTypes=data_dir+"AtomTypes.dat", sBondTypes=data_dir+"BondTypes.dat", sAngleTypes=data_dir+"AngleTypes.dat", sDihedralTypes=data_dir+"DihedralTypes.dat")
+    mmff.setSwitches(CheckInvariants=-1, PBC_nonBond=1, PBC_evalAtom=-1, NonBonded=1, MMFF=1, doBonds=-1, Angles=-1, PiSigma=-1, PiPiI=-1, bNonBondNeighs=-1, bSurfAtoms=-1, bGridFF=-1, bTricubic=-1, bConstrZ=-1, bConstrains=-1, bMoving=-1)
+    Es,Fs = mmff.sample_movementOfAtom(xs, ia=0)
+    Fnum = numDeriv(xs,Es)
+    mmff.clear()
+    assert np.all(np.abs(Fs[1:-1]-Fnum)<0.1), "!Check Forces::run_omp_nonBond_PBC! run_omp force calculation failed: analytical forces do not match numerical derivatives"
+
+def test_run_omp_nonBond_PBC_NonBondNeighs():
+    N = 1000
+    xs    = np.linspace(-3.0,3.0,N)
+    mmff.setVerbosity(-1)
+    mmff.init( xyz_name=data_dir+"xyz/pyridine", sElementTypes=data_dir+"ElementTypes.dat", sAtomTypes=data_dir+"AtomTypes.dat", sBondTypes=data_dir+"BondTypes.dat", sAngleTypes=data_dir+"AngleTypes.dat", sDihedralTypes=data_dir+"DihedralTypes.dat")
+    mmff.setSwitches(CheckInvariants=-1, PBC_nonBond=1, PBC_evalAtom=-1, NonBonded=1, MMFF=1, doBonds=-1, Angles=-1, PiSigma=-1, PiPiI=-1, bNonBondNeighs=1, bSurfAtoms=-1, bGridFF=-1, bTricubic=-1, bConstrZ=-1, bConstrains=-1, bMoving=-1)
+    Es,Fs = mmff.sample_movementOfAtom(xs, ia=0)
+    Fnum = numDeriv(xs,Es)
+    mmff.clear()
+    assert np.all(np.abs(Fs[1:-1]-Fnum)<0.1), "!Check Forces::run_omp_nonBond_PBC_NonBondNeighs! run_omp force calculation failed: analytical forces do not match numerical derivatives"
+
+
+
+# SetSwitches+run_omp --> complete
+def test_run_omp_complete():
+    N = 1000
+    xs    = np.linspace(2.3,3.0,N)
+    mmff.setVerbosity(-1)
+    mmff.init( xyz_name=data_dir+"xyz/dicarboxylic_acid", constr_name=data_dir+"dicarboxylic_acid.cons",  surf_name=data_dir+"xyz/NaCl_1x1_L2", sElementTypes=data_dir+"ElementTypes.dat", sAtomTypes=data_dir+"AtomTypes.dat", sBondTypes=data_dir+"BondTypes.dat", sAngleTypes=data_dir+"AngleTypes.dat", sDihedralTypes=data_dir+"DihedralTypes.dat")
+    mmff.setSwitches(CheckInvariants=-1, PBC_nonBond=1, PBC_evalAtom=1, NonBonded=1, MMFF=1, doBonds=1, Angles=1, PiSigma=1, PiPiI=1, bNonBondNeighs=1, bSurfAtoms=1, bGridFF=-1, bTricubic=1, bConstrZ=-1, bConstrains=1, bMoving=-1)
+    Es,Fs = mmff.sample_movementOfAtom(xs, ia=0)
+    Fnum = numDeriv(xs,Es)
+    mmff.clear()
+    assert np.all(np.abs(Fs[1:-1]-Fnum)<0.1), "!Check Forces::run_omp_complete! run_omp force calculation failed: analytical forces do not match numerical derivatives"
+'''
 N = 1000
-xs    = np.linspace(-3.0,3.0,N)
-mmff.init( xyz_name="data/xyz/polymer-2_new",  surf_name="data/xyz/NaCl_1x1_L2" )
-#mmff.init( xyz_name="data/O2")# )
-mmff.setSwitches(CheckInvariants=-1, PBC_nonBond=-1, PBC_evalAtom=-1, NonBonded=1, MMFF=1, doBonds=1, Angles=1, PiSigma=1, PiPiI=1, bNonBondNeighs=1, bSurfAtoms=1, bGridFF=-1, bTricubic=-1, bConstrZ=-1, bConstrains=-1)
+xs    = np.linspace(2.3,3.0,N)
+mmff.init( xyz_name=data_dir+"xyz/dicarboxylic_acid", constr_name=data_dir+"dicarboxylic_acid.cons",  surf_name=data_dir+"xyz/NaCl_1x1_L2", sElementTypes=data_dir+"ElementTypes.dat", sAtomTypes=data_dir+"AtomTypes.dat", sBondTypes=data_dir+"BondTypes.dat", sAngleTypes=data_dir+"AngleTypes.dat", sDihedralTypes=data_dir+"DihedralTypes.dat")
+mmff.setSwitches(CheckInvariants=-1, PBC_nonBond=1, PBC_evalAtom=1, NonBonded=1, MMFF=1, doBonds=1, Angles=1, PiSigma=1, PiPiI=1, bNonBondNeighs=1, bSurfAtoms=1, bGridFF=-1, bTricubic=1, bConstrZ=-1, bConstrains=1, bMoving=-1)
 Es,Fs = mmff.sample_movementOfAtom(xs, ia=0)
 Fnum = numDeriv(xs,Es)     #ratios = Fs[1:-1]/Fnum    ;print("ratios", ratios)
 plt.figure(); plt.plot(xs, Es, label="E"); plt.plot(xs, Fs, label="F_ana");  plt.plot(xs[1:-1], Fnum, label="F_num"); plt.grid(); plt.legend()
@@ -250,4 +343,14 @@ plt.plot(xs, Fs,'-',     label="F_ana");
 plt.plot(xs[1:-1],numDeriv(xs,Es),':', label="F_num"); 
 plt.grid(); plt.legend()
 
+plt.show()
+
+
+# gridFF
+xs    = np.linspace(-3.0,-2.7,1000)
+mmff.init( xyz_name=data_dir+"xyz/pyridine", sElementTypes=data_dir+"ElementTypes.dat", sAtomTypes=data_dir+"AtomTypes.dat", sBondTypes=data_dir+"BondTypes.dat", sAngleTypes=data_dir+"AngleTypes.dat", sDihedralTypes=data_dir+"DihedralTypes.dat")
+mmff.setVerbosity(3)
+Es,Fs  = mmff.sample_addForce_Tricubic         ( xs)
+Fnum = numDeriv(xs,Es)     #ratios = Fs[1:-1]/Fnum    ;print("ratios", ratios)
+plt.figure(); plt.plot(xs, Es, label="E"); plt.plot(xs, Fs, label="F_ana");  plt.plot(xs[1:-1], Fnum, label="F_num"); plt.grid(); plt.legend()
 plt.show()'''
