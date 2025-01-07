@@ -23,12 +23,15 @@ verbosity = 0
 dt_glob   = 0.1
 bVel      = False
 
+default_path = "data/xyz/"
+default_path = "data/"
+
 # ===== To generate Interfaces automatically from headers call:
 header_strings = [
 #"void init_buffers(){",
 #"bool load_xyz( const char* fname ){",
 #"void init( int na, int ne ){",
-#"void eval(){",
+#"void eval(){"
 #"void info(){",
 #"double* getEnergyPointer(){",
 #"int*    getDimPointer   (){",
@@ -327,7 +330,7 @@ def getNearestAtoms( apos, bPrint=False ):
     return imins, rmins
     
 def eval_mol(name, fUnits=1., bPrint=True ):
-    load_fgo("data/"+name+".fgo", False, fUnits=fUnits )                               # load molecule in  .fgo format (i.e. floating-gaussian-orbital)
+    load_fgo(default_path+name+".fgo", False, fUnits=fUnits )                               # load molecule in  .fgo format (i.e. floating-gaussian-orbital)
     eval()
     if bPrint:
         getBuffs()
@@ -365,7 +368,7 @@ def check_DerivsPauli( r0=0.5,r1=1.5, s0=0.5,s1=0.5,   sj=1.0, n=10, spin=1 ):
 
 
 def checkNumDerivs(name, d=0.001, bDetail=False, bPrint=True):
-    load_fgo("data/"+name+".fgo" )
+    load_fgo(default_path+name+".fgo" )
     getBuffs()
     eval()
     Fana = fDOFs.copy()
@@ -381,7 +384,7 @@ def checkNumDerivs(name, d=0.001, bDetail=False, bPrint=True):
 
 '''
 def eval_Derivs( name, iderivs=None, d=0.01 ):
-    load_fgo("data/"+name+".fgo" )
+    load_fgo(default_path+name+".fgo" )
     if iderivs is None: iderivs = range(nDOFs)
     n=len(iderivs)
     Fana = np.zeros(n)
@@ -398,7 +401,7 @@ def eval_Derivs( name, iderivs=None, d=0.01 ):
 '''
 
 def check_Derivs_ie( name, ie=0, r0=0.5,r1=1.5, s0=0.5,s1=0.5, n=10 ):
-    load_fgo("data/"+name+".fgo" ) 
+    load_fgo(default_path+name+".fgo" ) 
     getBuffs()
     rs = np.linspace(r0,r1,n,endpoint=False); dr=rs[1]-rs[0]      ; print( "rs \n", rs, r0, r1 );
     ss = np.linspace(s0,s1,n,endpoint=False); ds=ss[1]-ss[0]      ; print( "ss \n", ss, s0, s1 );
@@ -414,7 +417,7 @@ def check_Derivs_ie( name, ie=0, r0=0.5,r1=1.5, s0=0.5,s1=0.5, n=10 ):
 
 def relax_mol(name, dt=0.03,damping=0.1, bTrj=True, bResult=True, perN=1, bPrintLbonds=True, nMaxIter=10000, outE=None, outF=None, fUnits=1., bFixNuclei=False ):
     if outE==True: outE=np.zeros(nMaxIter)
-    load_fgo("data/"+name+".fgo", fUnits=fUnits , bVel_=bFixNuclei)                               # load molecule in  .fgo format (i.e. floating-gaussian-orbital)
+    load_fgo(default_path+name+".fgo", fUnits=fUnits , bVel_=bFixNuclei)                               # load molecule in  .fgo format (i.e. floating-gaussian-orbital)
     initOpt(dt=dt,damping=damping )                              # initialize optimizer/propagator
     if(bTrj): setTrjName(name+"_relax.xyz", savePerNsteps=perN ) # setup output .xyz file to save trajectory of all atoms and electrons at each timespep (comment-out to ommit .xyz and improve performance ) 
     getBuffs()
@@ -435,7 +438,7 @@ def relax_mol(name, dt=0.03,damping=0.1, bTrj=True, bResult=True, perN=1, bPrint
         return nstep
 
 def scan_core_size( name, core_sizes, dt=0.03,damping=0.1, nMaxIter=10000, fUnits=1., ia=0 ):
-    load_fgo("data/"+name+".fgo", fUnits=fUnits )                  # load molecule in  .fgo format (i.e. floating-gaussian-orbital)
+    load_fgo(default_path+name+".fgo", fUnits=fUnits )                  # load molecule in  .fgo format (i.e. floating-gaussian-orbital)
     initOpt(dt=dt,damping=damping )                                # initialize optimizer/propagator
     getBuffs()
     bondLengths = np.zeros(len(core_sizes));  bondLengths[:] = np.NaN
@@ -460,7 +463,7 @@ def check_H2(bRelax=True, name="H2_eFF", bPyeff=True):
     #   !!! But this should be infinite ( two same-spin electrons cannot occupy same orbital !!!
     '''
     print( "#======= check_H2(%s)" %name )
-    load_fgo("data/"+name+".fgo" )  
+    load_fgo(default_path+name+".fgo" )  
     getBuffs()
     if bRelax:
         #relax_mol(name)
