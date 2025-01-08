@@ -1,20 +1,6 @@
 import sys
 import numpy as np
 import os
-import matplotlib.pyplot as plt
-import logging
-
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    force=False  # This ensures our configuration takes precedence
-)
-
-LOGGER = logging.getLogger(__name__)
-
-# current_dir = os.path.dirname(__file__)
-# src_path = os.path.join(current_dir, "../")
-# sys.path.insert(0, os.path.abspath(src_path))
 
 exec_path = os.getcwd()
 sys.path.insert(0, exec_path)
@@ -29,49 +15,9 @@ def numDeriv( xs, Es):
     Fs = (Es[2:]-Es[:-2])/(2*dx)
     return -Fs
 
-def cos_half( a ):
-    E = (1-np.cos(a*0.5))*0.5
-    F = -np.sin(a*0.5)*0.25
-    return E,F
-
-#======== Body
-
-'''
-# ----- Angle
-#mmff.sample_evalAngleCos( xs, lmin=1, lmax=1, kmin=1, kmax=1, flim=1e+300, Es=None, Fs=None)
-xs    = np.linspace(-np.pi,np.pi,100)
-#Es,Fs = mmff.sample_evalAngleCos( xs, ang0=np.pi*0.00 )
-#print("Fs",Fs)
-#Es,Fs = mmff.sample_evalAngleCos( xs, ang0=np.pi*0.25 )
-#Es,Fs = mmff.sample_evalAngleCos( xs, ang0=np.pi*0.50 )
-#Es,Fs = mmff.sample_evalAngleCos( xs, ang0=np.pi*0.75 )
-#Es,Fs = mmff.sample_evalAngleCos( xs, ang0=np.pi*1.00 )
-
-#Es,Fs = mmff.sample_evalAngleCosHalf( xs, ang0=np.pi*0.00 )
-#Es,Fs = mmff.sample_evalAngleCosHalf( xs, ang0=np.pi*0.1 )
-#Es,Fs = mmff.sample_evalAngleCosHalf( xs, ang0=np.pi*0.25 )
-#Es,Fs = mmff.sample_evalAngleCosHalf( xs, ang0=np.pi*0.50 )
-#Es,Fs = mmff.sample_evalAngleCosHalf ( xs, ang0=np.pi*0.75 )
-#Es,Fs = mmff.sample_evalAngleCosHalf( xs, ang0=np.pi*0.9 )
-#Es,Fs = mmff.sample_evalAngleCosHalf( xs, ang0=np.pi*1.00 )
-
-Es,Fs = cos_half( xs)
-Fnum = numDeriv(xs,Es)     #ratios = Fs[1:-1]/Fnum    ;print("ratios", ratios)
-xs/=np.pi
-plt.figure(); plt.plot(xs, Es, label="E"); plt.plot(xs, Fs, label="F_ana");  plt.plot(xs[1:-1], Fnum, label="F_num"); plt.grid(); plt.legend()
-plt.show()
 
 
 
-
-# ----- PiPiAlignment
-xs    = np.linspace(-np.pi,np.pi,1000)
-Es,Fs = mmff.sample_evalPiAling( xs, ang0=np.pi*0.00 )
-Fnum = numDeriv(xs,Es)     #ratios = Fs[1:-1]/Fnum    ;print("ratios", ratios)
-xs/=np.pi
-plt.figure(); plt.plot(xs, Es, label="E"); plt.plot(xs, Fs, label="F_ana");  plt.plot(xs[1:-1], Fnum, label="F_num"); plt.grid(); plt.legend()
-plt.show()
-'''
 
 # Bonding interaction
 def test_sample_evalBond():
@@ -162,16 +108,7 @@ def test_sample_springbound():
     Fnum = numDeriv(xs,Es)
     mmff.clear()
     assert np.all(np.abs(Fs[1:-1]-Fnum)<0.1), "!Check Forces::springbound! sample_springbound force calculation failed: analytical forces do not match numerical derivatives"
-'''
-# ----- Surf
-xs    = np.linspace(0.0,3.0,100)
-mmff.init( xyz_name="data/xyz/pyridine", surf_name="data/xyz/NaCl_1x1_L2" )
-#Es,Fs = mmff.sample_addForce_Tricubic( xs)
-#Es,Fs = mmff.sample_addForce(xs)
-Fnum = numDeriv(xs,Es)     #ratios = Fs[1:-1]/Fnum    ;print("ratios", ratios)
-plt.figure(); plt.plot(xs, Es, label="E"); plt.plot(xs, Fs, label="F_ana");  plt.plot(xs[1:-1], Fnum, label="F_num"); plt.grid(); plt.legend()
-plt.show()
-'''
+
 
 # Constrains
 def test_sample_applyConstr():
@@ -303,18 +240,7 @@ def test_run_omp_complete():
 
 
 
-'''
-# ----- lvecs
-N = 100
-xs    = np.linspace(1.0,3.0,N)
-mmff.init( xyz_name=data_dir+"xyz/polymer-2_new",  surf_name=data_dir+"xyz/NaCl_1x1_L2", sElementTypes=data_dir+"ElementTypes.dat", sAtomTypes=data_dir+"AtomTypes.dat", sBondTypes=data_dir+"BondTypes.dat", sAngleTypes=data_dir+"AngleTypes.dat", sDihedralTypes=data_dir+"DihedralTypes.dat")
-mmff.setSwitches(CheckInvariants=-1, PBC_nonBond=1, PBC_evalAtom=1, NonBonded=1, MMFF=1, doBonds=1, Angles=1, PiSigma=1, PiPiI=1, bNonBondNeighs=1, bSurfAtoms=-1, bGridFF=-1, bTricubic=-1, bConstrZ=-1, bConstrains=-1, bMoving=-1)
-Es, Fs = mmff.sample_lvecs( xs )
-Fnum = numDeriv(xs,Es)     #ratios = Fs[1:-1]/Fnum    ;print("ratios", ratios)
-plt.figure(); plt.plot(xs, Es, label="E"); plt.plot(xs, Fs, label="F_ana");  plt.plot(xs[1:-1], Fnum, label="F_num"); plt.grid(); plt.legend()
-#print(Fs)
-plt.show()
-'''
+
 
 # Constrains
 def test_sample_DistConstr():
@@ -336,7 +262,18 @@ def test_sample_SplineConstr():
 
 
 
-
+'''
+# ----- lvecs
+N = 100
+xs    = np.linspace(1.0,3.0,N)
+mmff.init( xyz_name=data_dir+"xyz/polymer-2_new",  surf_name=data_dir+"xyz/NaCl_1x1_L2", sElementTypes=data_dir+"ElementTypes.dat", sAtomTypes=data_dir+"AtomTypes.dat", sBondTypes=data_dir+"BondTypes.dat", sAngleTypes=data_dir+"AngleTypes.dat", sDihedralTypes=data_dir+"DihedralTypes.dat")
+mmff.setSwitches(CheckInvariants=-1, PBC_nonBond=1, PBC_evalAtom=1, NonBonded=1, MMFF=1, doBonds=1, Angles=1, PiSigma=1, PiPiI=1, bNonBondNeighs=1, bSurfAtoms=-1, bGridFF=-1, bTricubic=-1, bConstrZ=-1, bConstrains=-1, bMoving=-1)
+Es, Fs = mmff.sample_lvecs( xs )
+Fnum = numDeriv(xs,Es)     #ratios = Fs[1:-1]/Fnum    ;print("ratios", ratios)
+plt.figure(); plt.plot(xs, Es, label="E"); plt.plot(xs, Fs, label="F_ana");  plt.plot(xs[1:-1], Fnum, label="F_num"); plt.grid(); plt.legend()
+#print(Fs)
+plt.show()
+'''
 
 '''
 
@@ -347,4 +284,53 @@ mmff.setVerbosity(3)
 Es,Fs  = mmff.sample_addForce_Tricubic         ( xs)
 Fnum = numDeriv(xs,Es)     #ratios = Fs[1:-1]/Fnum    ;print("ratios", ratios)
 plt.figure(); plt.plot(xs, Es, label="E"); plt.plot(xs, Fs, label="F_ana");  plt.plot(xs[1:-1], Fnum, label="F_num"); plt.grid(); plt.legend()
-plt.show()'''
+plt.show()
+'''
+
+'''
+# ----- Surf
+xs    = np.linspace(0.0,3.0,100)
+mmff.init( xyz_name="data/xyz/pyridine", surf_name="data/xyz/NaCl_1x1_L2" )
+#Es,Fs = mmff.sample_addForce_Tricubic( xs)
+#Es,Fs = mmff.sample_addForce(xs)
+Fnum = numDeriv(xs,Es)     #ratios = Fs[1:-1]/Fnum    ;print("ratios", ratios)
+plt.figure(); plt.plot(xs, Es, label="E"); plt.plot(xs, Fs, label="F_ana");  plt.plot(xs[1:-1], Fnum, label="F_num"); plt.grid(); plt.legend()
+plt.show()
+'''
+
+'''
+# ----- Angle
+#mmff.sample_evalAngleCos( xs, lmin=1, lmax=1, kmin=1, kmax=1, flim=1e+300, Es=None, Fs=None)
+xs    = np.linspace(-np.pi,np.pi,100)
+#Es,Fs = mmff.sample_evalAngleCos( xs, ang0=np.pi*0.00 )
+#print("Fs",Fs)
+#Es,Fs = mmff.sample_evalAngleCos( xs, ang0=np.pi*0.25 )
+#Es,Fs = mmff.sample_evalAngleCos( xs, ang0=np.pi*0.50 )
+#Es,Fs = mmff.sample_evalAngleCos( xs, ang0=np.pi*0.75 )
+#Es,Fs = mmff.sample_evalAngleCos( xs, ang0=np.pi*1.00 )
+
+#Es,Fs = mmff.sample_evalAngleCosHalf( xs, ang0=np.pi*0.00 )
+#Es,Fs = mmff.sample_evalAngleCosHalf( xs, ang0=np.pi*0.1 )
+#Es,Fs = mmff.sample_evalAngleCosHalf( xs, ang0=np.pi*0.25 )
+#Es,Fs = mmff.sample_evalAngleCosHalf( xs, ang0=np.pi*0.50 )
+#Es,Fs = mmff.sample_evalAngleCosHalf ( xs, ang0=np.pi*0.75 )
+#Es,Fs = mmff.sample_evalAngleCosHalf( xs, ang0=np.pi*0.9 )
+#Es,Fs = mmff.sample_evalAngleCosHalf( xs, ang0=np.pi*1.00 )
+
+Es,Fs = cos_half( xs)
+Fnum = numDeriv(xs,Es)     #ratios = Fs[1:-1]/Fnum    ;print("ratios", ratios)
+xs/=np.pi
+plt.figure(); plt.plot(xs, Es, label="E"); plt.plot(xs, Fs, label="F_ana");  plt.plot(xs[1:-1], Fnum, label="F_num"); plt.grid(); plt.legend()
+plt.show()
+
+
+
+
+# ----- PiPiAlignment
+xs    = np.linspace(-np.pi,np.pi,1000)
+Es,Fs = mmff.sample_evalPiAling( xs, ang0=np.pi*0.00 )
+Fnum = numDeriv(xs,Es)     #ratios = Fs[1:-1]/Fnum    ;print("ratios", ratios)
+xs/=np.pi
+plt.figure(); plt.plot(xs, Es, label="E"); plt.plot(xs, Fs, label="F_ana");  plt.plot(xs[1:-1], Fnum, label="F_num"); plt.grid(); plt.legend()
+plt.show()
+'''
