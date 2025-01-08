@@ -2487,6 +2487,9 @@ int counter=0;
         if(niter == 1 && outE){
             *outE = Etot;
         }
+        if(niter == 1 && outF){
+            *outF = F2;
+        }
 
            
         {

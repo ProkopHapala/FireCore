@@ -31,7 +31,7 @@ def numDeriv( xs, Es):
 
 def cos_half( a ):
     E = (1-np.cos(a*0.5))*0.5
-    F = np.sin(a*0.5)*0.25
+    F = -np.sin(a*0.5)*0.25
     return E,F
 
 #======== Body
@@ -40,7 +40,7 @@ def cos_half( a ):
 # ----- Angle
 #mmff.sample_evalAngleCos( xs, lmin=1, lmax=1, kmin=1, kmax=1, flim=1e+300, Es=None, Fs=None)
 xs    = np.linspace(-np.pi,np.pi,100)
-Es,Fs = mmff.sample_evalAngleCos( xs, ang0=np.pi*0.00 )
+#Es,Fs = mmff.sample_evalAngleCos( xs, ang0=np.pi*0.00 )
 #print("Fs",Fs)
 #Es,Fs = mmff.sample_evalAngleCos( xs, ang0=np.pi*0.25 )
 #Es,Fs = mmff.sample_evalAngleCos( xs, ang0=np.pi*0.50 )
@@ -54,15 +54,16 @@ Es,Fs = mmff.sample_evalAngleCos( xs, ang0=np.pi*0.00 )
 #Es,Fs = mmff.sample_evalAngleCosHalf ( xs, ang0=np.pi*0.75 )
 #Es,Fs = mmff.sample_evalAngleCosHalf( xs, ang0=np.pi*0.9 )
 #Es,Fs = mmff.sample_evalAngleCosHalf( xs, ang0=np.pi*1.00 )
+
+Es,Fs = cos_half( xs)
 Fnum = numDeriv(xs,Es)     #ratios = Fs[1:-1]/Fnum    ;print("ratios", ratios)
-#Es,Fs = cos_half( xs + np.pi*0.5 )
 xs/=np.pi
 plt.figure(); plt.plot(xs, Es, label="E"); plt.plot(xs, Fs, label="F_ana");  plt.plot(xs[1:-1], Fnum, label="F_num"); plt.grid(); plt.legend()
 plt.show()
-'''
 
 
-'''
+
+
 # ----- PiPiAlignment
 xs    = np.linspace(-np.pi,np.pi,1000)
 Es,Fs = mmff.sample_evalPiAling( xs, ang0=np.pi*0.00 )
@@ -70,7 +71,7 @@ Fnum = numDeriv(xs,Es)     #ratios = Fs[1:-1]/Fnum    ;print("ratios", ratios)
 xs/=np.pi
 plt.figure(); plt.plot(xs, Es, label="E"); plt.plot(xs, Fs, label="F_ana");  plt.plot(xs[1:-1], Fnum, label="F_num"); plt.grid(); plt.legend()
 plt.show()
-'''  
+'''
 
 # Bonding interaction
 def test_sample_evalBond():
@@ -79,16 +80,18 @@ def test_sample_evalBond():
     Es,Fs = mmff.sample_evalBond( xs)
     Fnum = numDeriv(xs,Es)
     assert np.all(np.abs(Fs[1:-1]-Fnum)<0.1), "!Check Forces::evalBond! sample_evalBond force calculation failed: analytical forces do not match numerical derivatives"
-'''
+
 def test_sample_evalAtom():
-    xs    = np.linspace(-3.0,3.0,1000)
+    N = 10
+    xs    = np.linspace(2.1,3.0,N)
     mmff.setVerbosity(-1)
     mmff.init( xyz_name=data_dir+"xyz/polymer-2_new", sElementTypes=data_dir+"ElementTypes.dat", sAtomTypes=data_dir+"AtomTypes.dat", sBondTypes=data_dir+"BondTypes.dat", sAngleTypes=data_dir+"AngleTypes.dat", sDihedralTypes=data_dir+"DihedralTypes.dat")
     Es,Fs = mmff.sample_evalAtom( xs, ia=1)
     mmff.clear()
     Fnum = numDeriv(xs,Es)
     assert np.all(np.abs(Fs[1:-1]-Fnum)<1.0), "!Check Forces::evalAtom! sample_evalAtom force calculation failed: analytical forces do not match numerical derivatives"
-'''
+
+
 
 # Nonbonding interaction
 def test_sample_getLJQH():
@@ -325,11 +328,11 @@ def test_sample_SplineConstr():
     dx    = 1.5
     x0    = 0.5 
     Eps   = np.array( [1.0, 0.0,-1.0,-0.5,-0.2,-0.1] )
-    xp    = (np.array(range(len(Eps)))-1)*dx + x0
     xs    = np.linspace(0.0,6.0,100)
     Es,Fs = mmff.sample_SplineConstr( xs, Eps, x0=x0, dx=dx )
     Fnum = numDeriv(xs,Es)
     assert np.all(np.abs(Fs[1:-1]-Fnum)<0.01), "!Check Constrains::SplineConstr! sample_SplineConstr force calculation failed: analytical forces do not match numerical derivatives"
+
 
 
 
