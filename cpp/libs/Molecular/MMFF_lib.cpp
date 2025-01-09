@@ -75,7 +75,6 @@ void* init( char* xyz_name, char* surf_name, char* smile_name, char* constr_name
     // initialize the main
     //W.init( bGrid, bUFF );
     W.bGridFF=bGrid;
-    W.bUFF   =bUFF;
     W.init();
     init_buffers();
     return &W;
