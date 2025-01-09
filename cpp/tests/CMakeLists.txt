@@ -14,7 +14,7 @@ add_executable(test_add test_add.cpp)
 
 
 add_executable(test_free_energy test_free_energy.cpp)
-target_link_libraries(test_free_energy PRIVATE MMFF_lib)
+target_link_libraries(test_free_energy PRIVATE MMFF_lib gtest gtest_main)
 
 
 # Link against gtest and gtest_main
