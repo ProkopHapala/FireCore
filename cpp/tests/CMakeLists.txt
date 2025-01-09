@@ -12,6 +12,11 @@ set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/tests)
 # Add the executable for the test
 add_executable(test_add test_add.cpp)
 
+
+add_executable(test_free_energy test_free_energy.cpp)
+target_link_libraries(test_free_energy PRIVATE MMFF_lib)
+
+
 # Link against gtest and gtest_main
 target_link_libraries(test_add PRIVATE 
    gtest 
@@ -20,3 +25,4 @@ target_link_libraries(test_add PRIVATE
 
 # Register the test with CTest using the correct path
 add_test(NAME AddTest COMMAND $<TARGET_FILE:test_add>)
+add_test(NAME FreeEnergyTest COMMAND $<TARGET_FILE:test_free_energy>)
