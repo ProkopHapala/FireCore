@@ -1,4 +1,4 @@
-﻿
+
 #ifndef MolWorld_sp3_h
 #define MolWorld_sp3_h
 /// @file MolWorld_sp3.h @brief contains MolWorld_sp3 class, which is a comprehensive class storing the state of a molecular simulation including bonding,non-bodning of molecules and molecules with substrate
@@ -70,6 +70,7 @@ enum class MolWorldVersion{ BASIC=0, QM=1, GPU=2 };
 /// @brief Comprehensive class storing the state of a molecular simulation including bonding,non-bodning of molecules and molecules with substrate
 /// @details It impolements SolverInterface, various methods of initialization and various similation loops (serial or OpenMP parallelized)   
 class MolWorld_sp3 : public SolverInterface { public:
+    ~MolWorld_sp3(){clear();}
     bool isInitialized=false;
     //const char* data_dir     = "common_resources";
     const char* data_dir     = 0;
