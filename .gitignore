@@ -28,3 +28,8 @@ cpp/build
 cpp/build-*
 .aider*
 .env
+
+tests/*/common_resources
+tests/*/data
+cpp/common_resources/common_resources
+tests/tMolGUIapp/MolGUIapp
