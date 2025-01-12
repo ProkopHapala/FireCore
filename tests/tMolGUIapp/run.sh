@@ -1,7 +1,7 @@
 name=MolGUIapp
 dir=../../cpp/Build/apps/MolecularEditor
-ln -s ../../cpp/common_resources data
-ln -s ../../cpp/common_resources common_resources 
+ln -s -f ../../cpp/common_resources data
+ln -s -f ../../cpp/common_resources common_resources 
 
 # ---- Multiprocesing
 ncpu=`nproc`
@@ -19,12 +19,9 @@ if [ "$no_compile" = false ]; then
 # ---- Compilation
 wd=`pwd`
 cd $dir
-pwd
-rm $name
 make -j$ncpu $name   # 2>$wd/compile_err.log
 cd $wd
-rm $name
-ln -s $dir/$name .
+ln -s -f $dir/$name .
 fi
 
 
