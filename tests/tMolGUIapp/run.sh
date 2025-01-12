@@ -1,7 +1,7 @@
 name=MolGUIapp
 dir=../../cpp/Build/apps/MolecularEditor
-ln -s ../../cpp/common_resources data
-ln -s ../../cpp/common_resources common_resources 
+ln -s -f ../../cpp/common_resources data
+ln -s -f ../../cpp/common_resources common_resources 
 
 # ---- Multiprocesing
 ncpu=`nproc`
@@ -19,12 +19,9 @@ if [ "$no_compile" = false ]; then
 # ---- Compilation
 wd=`pwd`
 cd $dir
-pwd
-rm $name
 make -j$ncpu $name   # 2>$wd/compile_err.log
 cd $wd
-rm $name
-ln -s $dir/$name .
+ln -s -f $dir/$name .
 fi
 
 
@@ -177,10 +174,10 @@ fi
 
 
 
-#./$name -x common_resources/xyz/PTCDA -g common_resources/xyz/NaCl_1x1_L3          -nPBC 0,0,0
+./$name -x common_resources/xyz/PTCDA -g common_resources/xyz/NaCl_1x1_L3          -nPBC 0,0,0
 #./$name -x common_resources/xyz/PTCDA -g common_resources/xyz/NaCl_8x8_L3          -nPBC 0,0,0 -perframe 1
 #./$name -x common_resources/xyz/PTCDA -g common_resources/xyz/NaCl_8x8_L3          -nPBC 0,0,0
-./$name -x common_resources/xyz/PTCDA -g common_resources/xyz/NaCl_8x8_L3_NaHole   -nPBC 0,0,0
+#./$name -x common_resources/xyz/PTCDA -g common_resources/xyz/NaCl_8x8_L3_NaHole   -nPBC 0,0,0
 #./$name -x common_resources/xyz/PTCDA -g common_resources/xyz/NaCl_8x8_L3_ClHole   -nPBC 0,0,0
 #./$name -x common_resources/xyz/PTCDA -g common_resources/xyz/NaCl_8x8_L3_NaClHole -nPBC 0,0,0
 

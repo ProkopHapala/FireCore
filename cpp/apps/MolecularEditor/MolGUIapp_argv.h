@@ -109,7 +109,7 @@
     
 
 
-#endif // MolGUIapp_Lua
+#endif // MolGUIapp_argv
 
 
 

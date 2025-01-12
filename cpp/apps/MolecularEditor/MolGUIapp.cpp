@@ -84,19 +84,3 @@ int main(int argc, char *argv[]){
     app->loop( 1000000 );
 	return 0;
 }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
