@@ -88,6 +88,9 @@ class Vec2T {
     inline VEC operator* ( const VEC& vi ) const { VEC vo; vo.x=x*vi.x; vo.y=y*vi.y; return vo; };
     inline VEC operator/ ( const VEC& vi ) const { VEC vo; vo.x=x/vi.x; vo.y=y/vi.y; return vo; };
 
+	inline bool operator== ( const VEC& vi ) const { return (x==vi.x && y==vi.y); };
+	inline bool operator!= ( const VEC& vi ) const { return (x!=vi.x || y!=vi.y); };
+
 	inline T dot      ( const VEC& a ) const { return x*a.x + y*a.y; };
 	inline T dot_perp ( const VEC& a ) const { return y*a.x - x*a.y; };
 	inline T norm2(              ) const { return x*x + y*y;     };
