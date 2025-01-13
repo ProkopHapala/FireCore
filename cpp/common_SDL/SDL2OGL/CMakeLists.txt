@@ -8,7 +8,7 @@ include_directories(
 
 add_library( TiledView      OBJECT TiledView.cpp    )
 
-add_library( SDL2OGL      OBJECT AppSDL2OGL_3D.cpp AppSDL2OGL.cpp PlotScreen2D.cpp ScreenSDL2OGL_3D.cpp ScreenSDL2OGL.cpp  Plot2D.cpp Draw.cpp Draw2D.cpp Draw3D.cpp GUI.cpp Renderer.cpp GLES.cpp Shader.cpp Framebuffer.cpp MeshLibrary.cpp TextRenderer.cpp
+add_library( SDL2OGL      OBJECT AppSDL2OGL_3D.cpp AppSDL2OGL.cpp PlotScreen2D.cpp ScreenSDL2OGL_3D.cpp ScreenSDL2OGL.cpp  Plot2D.cpp Draw.cpp Draw2D.cpp Draw3D.cpp GUI.cpp GUI2.cpp Renderer.cpp GLES.cpp Shader.cpp Framebuffer.cpp MeshLibrary.cpp TextRenderer.cpp
 #$<TARGET_OBJECTS:Mesh> 
 ${COMMON_SRCS}/math/Mesh.cpp
 )

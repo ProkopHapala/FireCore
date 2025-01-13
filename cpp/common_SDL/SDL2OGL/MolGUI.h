@@ -32,6 +32,7 @@
 #include "MolecularDraw.h"
 #include "MarchingCubes.h"
 #include "GUI.h"
+#include "GUI2.h"
 #include "Console.h"
 #include "EditorGizmo.h"
 #include "SimplexRuler.h"
@@ -257,6 +258,8 @@ class MolGUI : public AppSDL2OGL_3D { public:
     DipoleMap dipoleMap;
 
     // ---- GUI
+
+    GUI2 gui2;
 
     Console console;
     GUI gui;
@@ -607,6 +610,17 @@ void MolGUI::initCommands(){
 
 void MolGUI::initWiggets(){
     printf( "MolGUI::initWiggets() \n" );
+
+    gui2.addNode(new GUI2Panel({0.2, 0.2, 0.6, 0.6}, {0, 0}, {0, 0}));
+    gui2.addNode( new GUI2Text({0.2, 0.2, 0.6, 0.6}, {0, 0}, {0, 0}, "top\nleft.", GUI2Text::Align::TOP_LEFT));
+    gui2.addNode( new GUI2Text({0.2, 0.2, 0.6, 0.6}, {0, 0}, {0, 0}, "center.\ntop.", GUI2Text::Align::TOP_CENTER));
+    gui2.addNode( new GUI2Text({0.2, 0.2, 0.6, 0.6}, {0, 0}, {0, 0}, "top\nright.", GUI2Text::Align::TOP_RIGHT));
+    gui2.addNode( new GUI2Text({0.2, 0.2, 0.6, 0.6}, {0, 0}, {0, 0}, "center.\nleft.", GUI2Text::Align::CENTER_LEFT));
+    gui2.addNode( new GUI2Text({0.2, 0.2, 0.6, 0.6}, {0, 0}, {0, 0}, "center.", GUI2Text::Align::CENTER));
+    gui2.addNode( new GUI2Text({0.2, 0.2, 0.6, 0.6}, {0, 0}, {0, 0}, "center.\nright.", GUI2Text::Align::CENTER_RIGHT));
+    gui2.addNode( new GUI2Text({0.2, 0.2, 0.6, 0.6}, {0, 0}, {0, 0}, "bottom\nleft.", GUI2Text::Align::BOTTOM_LEFT));
+    gui2.addNode( new GUI2Text({0.2, 0.2, 0.6, 0.6}, {0, 0}, {0, 0}, "center.\nbottom.", GUI2Text::Align::BOTTOM_CENTER));
+    gui2.addNode( new GUI2Text({0.2, 0.2, 0.6, 0.6}, {0, 0}, {0, 0}, "bottom\nright.", GUI2Text::Align::BOTTOM_RIGHT));
 
     // TODO: adding GUI widgets would be better witth LUA for fast experimentation
     GUI_stepper ylay(1,2 );
@@ -1188,7 +1202,7 @@ MolGUI::MolGUI( int& id, int WIDTH_, int HEIGHT_, MolWorld_sp3* W_ ) : AppSDL2OG
     SDL_Delay( (int)(1000*0.1) );
     tick2second = nseconds/(getCPUticks()-T0);
     printf( "CPU speed calibration: tick=%g [s] ( %g GHz)\n", tick2second, 1.0e-9/tick2second );
-    fontTex   = makeTextureHard( "common_resources/dejvu_sans_mono_RGBA_pix.bmp" ); GUI_fontTex = fontTex;
+    fontTex   = makeTextureHard( "common_resources/dejvu_sans_mono_RGBA_pix.bmp" ); GUI_fontTex = fontTex; GUI2_fontTex = fontTex;
     fontTex3D = makeTexture    ( "common_resources/dejvu_sans_mono_RGBA_inv.bmp" );
     actions.vec.resize( 256 );
     initGUI();
@@ -1717,6 +1731,7 @@ Vec3d MolGUI::showNonBond( char* s, Vec2i b, bool bDraw ){
 
 void MolGUI::drawHUD(){
     gui.draw();
+    gui2.draw(this->window);
 
     opengl1renderer.pushMatrix();
     Vec3f textPos = {0, 0, 0};
