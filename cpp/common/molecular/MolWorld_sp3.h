@@ -3435,7 +3435,21 @@ void runGlobalOptimization(int Findex, std::vector<double>* a, std::vector<doubl
 }
 
 
-void MD_with_mexican_hat(int nbStep, int nbMDSteps, int nbMDStepsThermalize, double* lamda, double d, std::vector<double>* dE_dLamda){ 
+
+
+
+
+
+
+
+
+
+
+
+
+// Free  Energy
+
+void MD_with_mexican_hat(int nbStep, int nbMDSteps, int nbMDStepsThermalize, double* lamda, double d, double T, double gamma, double dt, std::vector<double>* dE_dLamda){ 
     int atom = 0;
     double f, r, inv_c;
 
@@ -3445,10 +3459,9 @@ void MD_with_mexican_hat(int nbStep, int nbMDSteps, int nbMDStepsThermalize, dou
         for(int i = 0; i < nbMDStepsThermalize; i++){
             r = ffl.apos[atom].x;
             inv_c = 1/lamda[L];
-            dE_dLamda[L][i] = - 4.0 * d * inv_c * r * r * inv_c * inv_c * ( r * r * inv_c * inv_c - 1);
             f = - 4.0 * d * inv_c * r * inv_c * ( r * inv_c * r * inv_c - 1);
             ffl.fapos[atom].set(f, 0, 0);
-            ffl.move_atom_Langevin( atom, dt_default, 10000.0, go.gamma_damp, go.T_target ); 
+            ffl.move_atom_Langevin( atom, dt, 10000.0, gamma, T ); 
         }
 
         for(int i = 0; i < nbMDSteps; i++){
@@ -3457,12 +3470,12 @@ void MD_with_mexican_hat(int nbStep, int nbMDSteps, int nbMDStepsThermalize, dou
             dE_dLamda[L][i] = - 4.0 * d * inv_c * r * r * inv_c * inv_c * ( r * r * inv_c * inv_c - 1);
             f = - 4.0 * d * inv_c * r * inv_c * ( r * inv_c * r * inv_c - 1);
             ffl.fapos[atom].set(f, 0, 0);
-            ffl.move_atom_Langevin( atom, dt_default, 10000.0, go.gamma_damp, go.T_target ); 
+            ffl.move_atom_Langevin( atom, dt, 10000.0, gamma, T ); 
         }
     }
 }
 
-void JE_init(int nbInits, int nbMDSteps, int nbMDStepsThermalize, double lamda_init, double d, double* position){
+void JE_init(int nbInits, int nbMDSteps, int nbMDStepsThermalize, double lamda_init, double d, double T, double gamma, double dt, double* position){
     int atom = 0;
     double f, r, inv_c;
     int n = nbMDSteps/nbInits;
@@ -3475,7 +3488,7 @@ void JE_init(int nbInits, int nbMDSteps, int nbMDStepsThermalize, double lamda_i
         inv_c = 1/lamda_init;
         f = - 4.0 * d * inv_c * r * inv_c * ( r * inv_c * r * inv_c - 1);
         ffl.fapos[atom].set(f, 0, 0);
-        ffl.move_atom_Langevin( atom, dt_default, 10000.0, go.gamma_damp, go.T_target );
+        ffl.move_atom_Langevin( atom, dt, 10000.0, gamma, T );
     }
 
     for(int i = 0; i < nbMDSteps; i++){
@@ -3483,7 +3496,7 @@ void JE_init(int nbInits, int nbMDSteps, int nbMDStepsThermalize, double lamda_i
         inv_c = 1/lamda_init;
         f = - 4.0 * d * inv_c * r * inv_c * ( r * inv_c * r * inv_c - 1);
         ffl.fapos[atom].set(f, 0, 0);
-        ffl.move_atom_Langevin( atom, dt_default, 10000.0, go.gamma_damp, go.T_target );
+        ffl.move_atom_Langevin( atom, dt, 10000.0, gamma, T );
         n--;
         if(n == 0){
             position[L] = r;
@@ -3495,7 +3508,7 @@ void JE_init(int nbInits, int nbMDSteps, int nbMDStepsThermalize, double lamda_i
 
 }
 
-void JE_propagation(double initial_position, double* lamda, int nbSteps, double d, double* W, int nbMD = 1000){
+void JE_propagation(double initial_position, double* lamda, int nbSteps, double d, double T, double gamma, double dt, double* W, int nbMD = 1000){
     int atom = 0;
     double r, inv_c;
     int n = 1000;
@@ -3507,15 +3520,13 @@ void JE_propagation(double initial_position, double* lamda, int nbSteps, double 
 
     for(int L = 1; L < nbSteps; L++){
         inv_c = 1/lamda[L];
-        printf("r = %f\n", r);
         for (int t = 0; t < nbMD; t++)
         {
             f = -4.0 * d * inv_c * r * inv_c * (r * inv_c * r * inv_c - 1);
             ffl.fapos[atom].set(f, 0, 0);
-            ffl.move_atom_Langevin(atom, dt_default, 10000.0, go.gamma_damp, go.T_target);
+            ffl.move_atom_Langevin(atom, dt, 10000.0, gamma, T);
             r = ffl.apos[atom].x;
         }
-        
 
         if(L>1)E_prev = E;
         E = d * ( r * r * inv_c * inv_c - 1) * ( r * r * inv_c * inv_c - 1);
@@ -3524,8 +3535,63 @@ void JE_propagation(double initial_position, double* lamda, int nbSteps, double 
     }
 }
 
+void thermodynamic_integration(int nbStep, int nMDSteps, double d_lamda, std::vector<double>* dE_dLamda, double* TI, double* sigmaTI){
+    std::vector<double> Fs(nbStep, 0.0);
+    std::vector<double> sigmaF(nbStep, 0.0);
+    for (int L = 0; L < nbStep; L++)
+    {
+        for (int i = 0; i < nMDSteps; i++)
+        {
+            Fs[L] += dE_dLamda[L][i];
+        }
+        Fs[L] = Fs[L] / nMDSteps;
 
-double compute_Free_energy(double lamda1, double lamda2, int n, int *dc, int nbStep = 100, int nMDSteps = 100000, int nEQsteps = 10000, double tdamp = 100.0, double T = 300, double dt = 0.05){
+        double sigma = 0;
+        for(int i = 0; i < nMDSteps; i++){
+            sigma += (dE_dLamda[L][i] - Fs[L]) * (dE_dLamda[L][i] - Fs[L]);
+        }
+        sigmaF[L] = std::sqrt(sigma / (nMDSteps - 1));
+
+        if (L > 0)
+        {
+            TI[L] = TI[L - 1] + 0.5 * (Fs[L] + Fs[L - 1]) * d_lamda;
+
+            double variance_contribution = 0.25 * d_lamda * d_lamda * (sigmaF[L] * sigmaF[L] + sigmaF[L - 1] * sigmaF[L - 1]);
+            sigmaTI[L] = std::sqrt(sigmaTI[L - 1] * sigmaTI[L - 1] + variance_contribution);
+        }
+        else
+        {
+            TI[L] = 0.0;
+            sigmaTI[L] = 0.0;
+        }
+        printf("TI=%f, sigmaTI=%f\n", TI[L], sigmaTI[L]);
+    }
+
+}
+
+double mexican_hat_TI(double lamda1, double lamda2, int nbStep = 100, int nMDSteps = 100000, int nEQsteps = 10000, double tdamp = 100.0, double T = 300, double dt = 0.5){
+    double gamma = 1/(dt*tdamp);
+    double d = 0.1;
+      
+    std::vector<std::vector<double>> dE_dLamda(nbStep, std::vector<double>(nMDSteps));
+
+    std::vector<double> lamda(nbStep);
+    double d_lamda = (lamda2 - lamda1) / (nbStep - 1);
+    for (int i = 0; i < nbStep; ++i) {
+        lamda[i] = lamda1 + i * d_lamda;
+    }
+
+    MD_with_mexican_hat(nbStep, nMDSteps, nEQsteps, lamda.data(), d, T, gamma, dt, dE_dLamda.data());
+
+    std::vector<double> TI(nbStep, 0.0);
+    std::vector<double> sigmaTI(nbStep, 0.0);
+    thermodynamic_integration(nbStep, nMDSteps, d_lamda, dE_dLamda.data(), TI.data(), sigmaTI.data());
+    
+    double deltaF = TI[nbStep-1];
+    return deltaF;
+}
+
+double compute_Free_energy(double lamda1, double lamda2, int n, int *dc, int nbStep = 100, int nMDSteps = 100000, int nEQsteps = 10000, double tdamp = 100.0, double T = 300, double dt = 0.5){
     // set global parameters
     double gamma = 1/(dt*tdamp); // = go.gamma_damp
     go.gamma_damp = gamma;
@@ -3534,7 +3600,10 @@ double compute_Free_energy(double lamda1, double lamda2, int n, int *dc, int nbS
     go.bExploring = true;
     bConstrains = true;
     bFreeEnergyCalc = true;
-/*
+    //return mexican_hat_TI(lamda1, lamda2, nbStep, nMDSteps, nEQsteps, tdamp, T, dt);
+
+
+#ifdef mexican_hat_JE
 int nbInits = 1000;
     std::vector<std::vector<double>> W(nbInits, std::vector<double>(nMDSteps));
     std::vector<double> initial_positions(nbInits, 0.0);
@@ -3549,12 +3618,12 @@ int nbInits = 1000;
     }
 
 
-    JE_init(nbInits, nMDSteps, nbMDStepsThermalize, lamda1, d, initial_positions.data());
+    JE_init(nbInits, nMDSteps, nbMDStepsThermalize, lamda1, d, T, gamma, dt, initial_positions.data());
     
     std::vector<double> boltzman_factor(nbStep, 0.0);
     std::vector<double> sigma_boltzman_factor(nbStep, 0.0);
     for (int i=0; i<nbInits; i++) {
-        JE_propagation(initial_positions[i], lamda.data(), nbStep, d, W[i].data());
+        JE_propagation(initial_positions[i], lamda.data(), nbStep, d, T, gamma, dt, W[i].data());
     }
     std::vector<double> F_JE(nbStep, 0.0);
     std::vector<double> sigma_JE(nbStep, 0.0);
@@ -3593,37 +3662,10 @@ std::vector<double> Ref(nbStep, 0.0);
         file << lamda[i] << " " << (F_JE[i]) << " " << sigma_JE[i] << " " << Ref[i] << std::endl;
     }
     file.close();
-*/
-    // Mexican hat potential (work)
-/*  double d = 0.1;
-      
-    std::vector<std::vector<double>> dE_dLamda(nbStep, std::vector<double>(nMDSteps))+;
-    int nbMDStepsThermalize = 1000;
-    std::vector<double> lamda(nbStep);
-    double d_lamda = (lamda2 - lamda1) / (nbStep - 1);
-    for (int i = 0; i < nbStep; ++i) {
-        lamda[i] = lamda1 + i * d_lamda;
-    }
-
-    MD_with_mexican_hat(nbStep, nMDSteps, nbMDStepsThermalize, lamda.data(), d, dE_dLamda.data());
+#endif
 
 
-    std::vector<double> Fs(nbStep, 0.0);
-    std::vector<double> TI(nbStep, 0.0);
-    for(int L = 0; L < nbStep; L++){
-        for(int i = 0; i < nMDSteps; i++){
-            Fs[L] += dE_dLamda[L][i];
-        }
-        Fs[L] = Fs[L]/nMDSteps;
-        if(L > 0)
-            TI[L] = TI[L-1] + Fs[L] * d_lamda;
-        else
-            TI[L] = Fs[L] * d_lamda;
-        printf("%f\n", TI[L]);
-    }
-    double deltaF = TI[nbStep-1];
-    return deltaF;
-   */ 
+  /* 
 
 
 
@@ -3769,8 +3811,8 @@ double constant = 3 * const_kB * T / (1.2 * 1.2 * ((double)ffl.natoms-1));
         printf("lamda=%f, lamda_bar=%f, TI=%f, Ref=%f, T_measured=%f\n", lamda[L], lamda_bar, TI[L], Ref[L], T_measured);
     }
         Ref[0] = 0.0;
-
-/*
+*/ 
+#ifdef three_atoms_problem_TI
     //////////////////////////// Three atom problem ////////////////////////////////////
     //std::vector<std::vector<double>> Energy(nbStep, std::vector<double>(nMDSteps));
     std::vector<std::vector<double>> dE_dLamda(nbStep, std::vector<double>(nMDSteps));
@@ -3838,9 +3880,9 @@ ffl.apos[1].x += d_lamda*0.5; \
 
         // printf("ffl.apos[0]=(%f, %f, %f), ffl.apos[1]=(%f, %f, %f), lamda=%f, lamda_bar=%f, TI=%f, T_measured=%f\n", ffl.apos[0].x, ffl.apos[0].y, ffl.apos[0].z, ffl.apos[1].x, ffl.apos[1].y, ffl.apos[1].z, lamda[L], lamda_bar, TI[L], T_measured);
     }
-*/
 
-/*
+
+
     double deltaF = TI[nbStep - 1];
 
     // save lamda and TI into dat file with headers "lamda" and "FreeEnergy"
@@ -3852,7 +3894,8 @@ ffl.apos[1].x += d_lamda*0.5; \
     }
     file.close();
 
-    printf("deltaF=%f\n", deltaF);*/
+    printf("deltaF=%f\n", deltaF);
+#endif
     return 0;
 }
 };

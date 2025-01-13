@@ -29,12 +29,12 @@ def scanPlot( nscan = 1000, span=(0.0,8.0), dir=(0.0,0.0,1.0), p0=(0.0,0.0,0.0),
 nbStep = 100
 nMDsteps = 100000
 nEQsteps = 10000
-t_damp = 20
-T = 10
-dt = 0.05
+t_damp = 100
+T = 100
+dt = 0.5
 
 mmff.setVerbosity(verbosity=3)
-mmff.init( xyz_name="data/enthropic_spring_10", bMMFF=True )
+mmff.init( xyz_name="data/H2", bMMFF=True )
 collectiveVariable = np.array([0], dtype=np.int32)
 E = mmff.compute_Free_energy(0.5, 4.0, collectiveVariable, nbStep=nbStep, nMDsteps=nMDsteps, nEQsteps=nEQsteps, t_damp=t_damp, T=T, dt=dt)
 print("E=", E)

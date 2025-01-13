@@ -99,7 +99,7 @@ struct DistConstr{
         double l  = d.norm(); 
         double f,E;
         E = spring( l, ls, ks, flim, f );
-        printf( "ks=(%g,%g) ls(%g,%g) l %g f %g E %g \n", ks.x,ks.y, ls.x,ls.y, l,f,E );
+
         //f = ks.x*l; E= 0.5*ks.x*l*l;
         d.mul(f/l);
         // fs[ias.b].sub(d);
