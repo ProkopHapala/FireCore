@@ -33,26 +33,51 @@ using GUI2Rect2f = GUI2Rect2T<float>;
 extern int GUI2_fontTex;
 
 class GUI2Node{
-    protected:
-        GUI2Rect2f anchors; // what percentage of the parents rect the node should be
-        Vec2i pos; // constant offset from anchor
-        Vec2i size; // constant extra size from anchor
+    private:
+        // if any of these change, then `this.rect` and `parent.minSize` need to be updated -> parent->udpate_minSize(), update_rect()
+        GUI2Rect2f _anchors;
+        Vec2i _pos;
+        Vec2i _size;
+        Vec2i _minSize;
 
-        GUI2Rect2i rect; // real size of the node (only used internally)
-        GUI2Node* parent = nullptr;
+        // if this changes, then `children[i].rect` needs to be updated -> update_children_rects()
+        GUI2Rect2i _rect;
+
+        // if this changes, then `self.minSize` and `newChild.rect` needs to be updated
         std::vector<GUI2Node*> children;
+        const bool leaf_node = false; // if leaf_node == true, then this node cannot have children
+        GUI2Node* parent = nullptr;
+    protected:
+        void set_rect( GUI2Rect2i rect );
+        void set_minSize( Vec2i minSize );
+        void update_rect(); // call parent->update_child_rect(this)
+        void update_minSize();
 
-        virtual void set_rect(GUI2Rect2i rect);
-        void update_child_rect(GUI2Node* child);
-        void update_children_rects();
-        void update_rect();
-
+        virtual void update_child_rect(GUI2Node* child);
+        virtual void update_children_rects();
+        virtual Vec2i calculate_minSize();
+        virtual void on_rect_updated();
+        
     public:
+        // constructors
         GUI2Node( GUI2Rect2f anchors, Vec2i pos, Vec2i size );
+        GUI2Node( GUI2Rect2f anchors, Vec2i pos, Vec2i size, bool leaf_node );
 
-        void addChild( GUI2Node* node );
+        // getters
+        GUI2Rect2f anchors();
+        Vec2i pos();
+        Vec2i size();
+        Vec2i minSize();
+        GUI2Rect2i rect();
+
+        // setters
+        void set_anchors( GUI2Rect2f anchors );
         void set_pos( Vec2i pos );
         void set_size( Vec2i size );
+
+        // other
+        void addChild( GUI2Node* node );
+        void removeChild( GUI2Node* node );
         virtual void draw();
 };
 
@@ -77,11 +102,15 @@ class GUI2Text : public GUI2Node{
         //bool allowOverflow = true; // TODO
 
         // calculated from the values above
-        Vec2d textPos_;
-        Vec2d textSize_;
+        Vec2i textPos_;
+        Vec2i textSize_;
 
-        virtual void set_rect(GUI2Rect2i rect) override;
-        void recalculateTextPos();
+        void recalculate_textPos();
+        void recalculate_textSize();
+
+    protected:
+        Vec2i calculate_minSize() override;
+        void on_rect_updated() override;
 
     public:
         uint32_t fontColor=0x000000;

@@ -1,7 +1,7 @@
 name=MolGUIapp
 dir=../../cpp/Build-asan/apps/MolecularEditor
-ln -s ../../cpp/common_resources data
-ln -s ../../cpp/common_resources common_resources 
+ln -s -f ../../cpp/common_resources data
+ln -s -f ../../cpp/common_resources common_resources 
 
 # ---- Multiprocesing
 ncpu=`nproc`
@@ -13,14 +13,10 @@ export OMP_NUM_THREADS
 # ---- Compilation
 wd=`pwd`
 cd $dir
-pwd
-rm $name
 make -j$ncpu $name   # 2>$wd/compile_err.log
 cd $wd
 
-rm -f $name
-ln -s $dir/$name .
-
+ln -s -f $dir/$name .
 
 
 # ------- asan (Memory Sanitizer)
