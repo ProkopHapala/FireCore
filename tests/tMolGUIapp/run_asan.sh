@@ -1,7 +1,7 @@
 name=MolGUIapp
 dir=../../cpp/Build-asan/apps/MolecularEditor
-ln -s ../../cpp/common_resources data
-ln -s ../../cpp/common_resources common_resources 
+ln -s -f ../../cpp/common_resources data
+ln -s -f ../../cpp/common_resources common_resources 
 
 # ---- Multiprocesing
 ncpu=`nproc`
@@ -13,12 +13,9 @@ export OMP_NUM_THREADS
 # ---- Compilation
 wd=`pwd`
 cd $dir
-pwd
-rm $name
 make -j$ncpu $name   # 2>$wd/compile_err.log
 cd $wd
-
-ln -s $dir/$name .
+ln -s -f $dir/$name .
 
 
 
@@ -32,6 +29,8 @@ export LD_PRELOAD
 
 #rm *.bin *.xsf
 
+./$name -x common_resources/xyz/PTCDA -g common_resources/xyz/NaCl_1x1_L3  
+
 # ====== Small Molecules
 
 #./$name -x common_resources/H2O
@@ -40,14 +39,14 @@ export LD_PRELOAD
 #./$name -x common_resources/pyridine
 #./$name -x common_resources/propandiol
 
-./$name -uff -x common_resources/C2H4
+#./$name -x common_resources/C2H4
 
 # ====== Polymers
 
 #./$name -x common_resources/polydiacetylene
 #./$name -x common_resources/polydiacetylene     -subs 4,common_resources/-COOH.xyz
 #./$name -x common_resources/polydiacetylene_OH
-3./$name -x common_resources/polymer-2_new
+#./$name -x common_resources/polymer-2_new
 
 # ====== Small Molecules On Substrate
 
