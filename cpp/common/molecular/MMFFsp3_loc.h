@@ -1257,7 +1257,7 @@ inline Vec3d move_atom_Langevin( int i, const float dt, const double Flim,  cons
         r1 = rnd0  * rnd0 + rnd1 * rnd1;
         y2 = rnd0 * sqrt(-2 * log(r1) / r1);
     }
-    Vec3d rnd = {y0,0*y1,0*y2};
+    Vec3d rnd = {y0,y1,y2};
 
     //Vec3d rnd = {randf(-1.0,1.0),0,0};//,randf(-1.0,1.0),randf(-1.0,1.0)};
 
