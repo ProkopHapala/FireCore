@@ -3904,7 +3904,7 @@ double constant = 3 * const_kB * T / (1.2 * 1.2 * ((double)ffl.natoms-1));
 
     //printf("deltaF=%f\n", deltaF);
 
-    return deltaF;
+    return 0;//deltaF;
 }
 };
 
