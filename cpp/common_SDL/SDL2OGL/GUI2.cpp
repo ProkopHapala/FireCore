@@ -2,6 +2,7 @@
 #include "Draw.h"
 #include "Draw2D.h"
 #include "Vec2.h"
+#include <SDL2/SDL_events.h>
 #include <SDL2/SDL_video.h>
 #include <algorithm>
 #include <cstdint>
@@ -14,12 +15,30 @@ int GUI2_fontTex = 0;
 //    class GUI2Node
 // ==============================
 
+// constructors
+GUI2Node::GUI2Node(GUI2Rect2f anchors, Vec2i pos, Vec2i size, bool leaf_node, bool process_input):
+    leaf_node(leaf_node),
+    process_input(process_input),
+    _anchors(anchors),
+    _pos(pos),
+    _size(size)
+    {
+        update_minSize();
+        update_rect();
+    }
+GUI2Node::GUI2Node(GUI2Rect2f anchors, Vec2i pos, Vec2i size, bool leaf_node_):
+    GUI2Node(anchors, pos, size, leaf_node_, false){}
+GUI2Node::GUI2Node(GUI2Rect2f anchors, Vec2i pos, Vec2i size):
+    GUI2Node(anchors, pos, size, false, false){}
+
 // getters
 GUI2Rect2f GUI2Node::anchors(){return _anchors;}
 Vec2i GUI2Node::pos(){return _pos;}
 Vec2i GUI2Node::size(){return _size;}
 Vec2i GUI2Node::minSize(){return _minSize;}
 GUI2Rect2i GUI2Node::rect(){return _rect;}
+bool GUI2Node::is_mouse_over(){return mouse_over;}
+bool GUI2Node::is_mouse_down(){return mouse_down;}
 
 // setters
 void GUI2Node::set_anchors(GUI2Rect2f anchors){
@@ -106,16 +125,6 @@ void GUI2Node::draw(){
     }
 }
 
-// constructors
-GUI2Node::GUI2Node(GUI2Rect2f anchors, Vec2i pos, Vec2i size) : _anchors(anchors), _pos(pos), _size(size){
-    update_minSize();
-    update_rect();
-}
-GUI2Node::GUI2Node(GUI2Rect2f anchors, Vec2i pos, Vec2i size, bool leaf_node_): leaf_node(leaf_node_), _anchors(anchors), _pos(pos), _size(size){
-    update_minSize();
-    update_rect();
-}
-
 
 GUI2Node* GUI2Node::addChild(GUI2Node* node){
     if (leaf_node) {
@@ -146,6 +155,62 @@ void GUI2Node::removeChild(GUI2Node* node){
 
     update_minSize();
 }
+
+bool GUI2Node::onEvent(const SDL_Event& event){
+    for(auto& c:children){
+        if (c->onEvent(event)) return true;
+    }
+
+    if (!process_input) return false;
+
+    switch (event.type){
+        case SDL_MOUSEMOTION:
+            if ( rect().contains((Vec2i){event.motion.x, event.motion.y}) ){
+                if (!mouse_over) on_mouse_enter();
+                mouse_over = true;
+                on_mouse_over();
+            }else{
+                if (mouse_down) { mouse_down = false; on_mouse_up(); }
+                if (mouse_over) on_mouse_exit();
+                mouse_over = false;
+            }
+            break;
+
+        case SDL_MOUSEBUTTONDOWN:
+            switch (event.button.button){
+                case SDL_BUTTON_LEFT:
+                    if ( rect().contains((Vec2i){event.button.x, event.button.y}) ){
+                            on_mouse_down();
+                            mouse_down = true;
+                            consumed_mouse_down = true;
+
+                            return true;
+                        }
+                        break;
+            }break;
+        
+        case SDL_MOUSEBUTTONUP:
+            switch (event.button.button){
+                case SDL_BUTTON_LEFT:
+                    if ( rect().contains((Vec2i){event.button.x, event.button.y}) ){
+                            if (mouse_down) { on_mouse_click(); on_mouse_up(); }
+                            mouse_down = false;
+                        }
+                    if (consumed_mouse_down) { consumed_mouse_down = false; return true; }
+                    break;
+            }break;
+        default: break;
+    }
+
+    return false;
+}
+void GUI2Node::on_mouse_enter(){}
+void GUI2Node::on_mouse_over(){}
+void GUI2Node::on_mouse_exit(){}
+
+void GUI2Node::on_mouse_down(){}
+void GUI2Node::on_mouse_up(){}
+void GUI2Node::on_mouse_click(){}
 
 
 // ==============================
@@ -402,15 +467,29 @@ void GUI2Hlist::update_children_rects(){
     }
 }
 
+// ==============================
+//    class GUI2Button
+// ==============================
+
+GUI2Button::GUI2Button( GUI2Rect2f anchors, Vec2i pos, Vec2i size, const std::function<void()>& command ):
+    GUI2Node(anchors, pos, size, false, true),
+    command(command){}
+
+void GUI2Button::on_mouse_click(){
+    std::invoke(command);
+}
 
 // ==============================
 //    class GUI2
 // ==============================
 
+GUI2::GUI2():
+    root_node(GUI2Node( GUI2Rect2f(0,0,1,1), (Vec2i){0,0}, (Vec2i){0,0} )) {}
+
 GUI2Node* GUI2::addNode(GUI2Node* node){
     return root_node.addChild(node);
 }
-void GUI2::draw(SDL_Window* window){
+void GUI2::draw( SDL_Window* window){
     int width, height;
     SDL_GetWindowSize(window, &width, &height);
 
@@ -421,4 +500,22 @@ void GUI2::draw(SDL_Window* window){
     glDisable   ( GL_DEPTH_TEST  );
     glShadeModel( GL_FLAT        );
     root_node.draw();
+}
+
+bool GUI2::onEvent( SDL_Event event, SDL_Window* window ){
+    int width, height;
+    SDL_GetWindowSize(window, &width, &height);
+
+    switch (event.type){
+        case (SDL_MOUSEMOTION):
+            event.motion.y = height - event.motion.y;
+            event.motion.yrel *= -1;
+            break;
+        case (SDL_MOUSEBUTTONUP):
+        case (SDL_MOUSEBUTTONDOWN):
+            event.button.y = height - event.button.y;
+            break;
+    }
+
+    return root_node.onEvent(event);
 }
