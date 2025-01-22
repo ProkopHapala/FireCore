@@ -611,7 +611,7 @@ void MolGUI::initCommands(){
 void MolGUI::initWiggets(){
     printf( "MolGUI::initWiggets() \n" );
 
-    gui2.addNode(new GUI2Panel({0.2, 0.2, 0.6, 0.6}, {0, 0}, {0, 0}));
+    /*gui2.addNode(new GUI2Panel({0.2, 0.2, 0.6, 0.6}, {0, 0}, {0, 0}));
     gui2.addNode( new GUI2Text({0.2, 0.2, 0.6, 0.6}, {0, 0}, {0, 0}, "top\nleft.", GUI2Text::Align::TOP_LEFT));
     gui2.addNode( new GUI2Text({0.2, 0.2, 0.6, 0.6}, {0, 0}, {0, 0}, "center.\ntop.", GUI2Text::Align::TOP_CENTER));
     gui2.addNode( new GUI2Text({0.2, 0.2, 0.6, 0.6}, {0, 0}, {0, 0}, "top\nright.", GUI2Text::Align::TOP_RIGHT));
@@ -620,7 +620,22 @@ void MolGUI::initWiggets(){
     gui2.addNode( new GUI2Text({0.2, 0.2, 0.6, 0.6}, {0, 0}, {0, 0}, "center.\nright.", GUI2Text::Align::CENTER_RIGHT));
     gui2.addNode( new GUI2Text({0.2, 0.2, 0.6, 0.6}, {0, 0}, {0, 0}, "bottom\nleft.", GUI2Text::Align::BOTTOM_LEFT));
     gui2.addNode( new GUI2Text({0.2, 0.2, 0.6, 0.6}, {0, 0}, {0, 0}, "center.\nbottom.", GUI2Text::Align::BOTTOM_CENTER));
-    gui2.addNode( new GUI2Text({0.2, 0.2, 0.6, 0.6}, {0, 0}, {0, 0}, "bottom\nright.", GUI2Text::Align::BOTTOM_RIGHT));
+    gui2.addNode( new GUI2Text({0.2, 0.2, 0.6, 0.6}, {0, 0}, {0, 0}, "bottom\nright.", GUI2Text::Align::BOTTOM_RIGHT));*/
+
+    //auto panel = gui2.addNode(new GUI2Panel({0.2, 0.2, 0.6, 0.6}, {0, 0}, {0, 0}, 0x00FFFFFF));
+    auto* vlist = new GUI2Vlist({0, 0, 1, 1}, {0, 0}, {0, 0}, 3);
+    //panel->addChild(vlist);
+    gui2.addNode(vlist);
+
+    auto a = vlist->addChild(new GUI2Panel({0, 0, 0, 0}, {0, 0}, {0, 0}, 0x00FF00FF));
+    auto b = vlist->addChild(new GUI2Panel({0, 0, 0, 0}, {0, 0}, {0, 0}, 0x00FFAA00));
+    auto c = vlist->addChild(new GUI2Panel({0, 0, 0, 0}, {0, 0}, {0, 0}, 0x00FF8080));
+    auto d = vlist->addChild(new GUI2Panel({0, 0, 0, 0}, {0, 0}, {0, 0}, 0x00800080));
+
+    a->addChild(new GUI2Text({0, 0, 1, 1}, {0, 0}, {0, 0}, "a", GUI2Text::Align::CENTER));
+    b->addChild(new GUI2Text({0, 0, 1, 1}, {0, 0}, {0, 0}, "b", GUI2Text::Align::CENTER));
+    c->addChild(new GUI2Text({0, 0, 1, 1}, {0, 0}, {0, 0}, "c", GUI2Text::Align::CENTER));
+    d->addChild(new GUI2Text({0, 0, 1, 1}, {0, 0}, {0, 0}, "d", GUI2Text::Align::CENTER));
 
     // TODO: adding GUI widgets would be better witth LUA for fast experimentation
     GUI_stepper ylay(1,2 );
