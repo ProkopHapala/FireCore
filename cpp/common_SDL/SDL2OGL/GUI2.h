@@ -47,18 +47,22 @@ class GUI2Node{
         std::vector<GUI2Node*> children;
         const bool leaf_node = false; // if leaf_node == true, then this node cannot have children
         GUI2Node* parent = nullptr;
-    protected:
-        void set_rect( GUI2Rect2i rect );
+
         void set_minSize( Vec2i minSize );
         void update_rect(); // call parent->update_child_rect(this)
+
+    protected:
         void update_minSize();
 
+        std::vector<GUI2Node*> get_children();
         virtual void update_child_rect(GUI2Node* child);
         virtual void update_children_rects();
         virtual Vec2i calculate_minSize();
         virtual void on_rect_updated();
         
     public:
+        void set_rect( GUI2Rect2i rect ); // this should not be called from the outside
+
         // constructors
         GUI2Node( GUI2Rect2f anchors, Vec2i pos, Vec2i size );
         GUI2Node( GUI2Rect2f anchors, Vec2i pos, Vec2i size, bool leaf_node );
@@ -76,7 +80,7 @@ class GUI2Node{
         void set_size( Vec2i size );
 
         // other
-        void addChild( GUI2Node* node );
+        GUI2Node* addChild( GUI2Node* node );
         void removeChild( GUI2Node* node );
         virtual void draw();
 };
@@ -127,6 +131,60 @@ class GUI2Text : public GUI2Node{
         virtual void draw() override;
 };
 
+class GUI2Vlist : public GUI2Node{
+    public:
+        enum class Align { LEFT, CENTER, RIGHT, STRETCH };
+
+    private:
+        unsigned int sepperation = 5;
+        Align align = Align::STRETCH;
+
+    protected:
+        Vec2i calculate_minSize() override;
+
+        virtual void update_child_rect(GUI2Node* child) override;
+        virtual void update_children_rects() override;
+
+    public:
+        GUI2Vlist( GUI2Rect2f anchors, Vec2i pos, Vec2i size );
+        GUI2Vlist( GUI2Rect2f anchors, Vec2i pos, Vec2i size, unsigned int sepperation );
+        GUI2Vlist( GUI2Rect2f anchors, Vec2i pos, Vec2i size, Align align );
+        GUI2Vlist( GUI2Rect2f anchors, Vec2i pos, Vec2i size, unsigned int sepperation, Align align );
+
+        void set_sepperation( unsigned int sepperation );
+        unsigned int get_sepperation();
+
+        void set_align(Align align);
+        Align get_align();
+};
+
+class GUI2Hlist : public GUI2Node{
+    public:
+        enum class Align { TOP, CENTER, BOTTOM, STRETCH };
+
+    private:
+        unsigned int sepperation = 5;
+        Align align = Align::STRETCH;
+
+    protected:
+        Vec2i calculate_minSize() override;
+
+        virtual void update_child_rect(GUI2Node* child) override;
+        virtual void update_children_rects() override;
+
+    public:
+        GUI2Hlist( GUI2Rect2f anchors, Vec2i pos, Vec2i size );
+        GUI2Hlist( GUI2Rect2f anchors, Vec2i pos, Vec2i size, unsigned int sepperation );
+        GUI2Hlist( GUI2Rect2f anchors, Vec2i pos, Vec2i size, Align align );
+        GUI2Hlist( GUI2Rect2f anchors, Vec2i pos, Vec2i size, unsigned int sepperation, Align align );
+
+        void set_sepperation( unsigned int sepperation );
+        unsigned int get_sepperation();
+
+        void set_align(Align align);
+        Align get_align();
+};
+
 class GUI2 {public:
     private:
         GUI2Node root_node;
@@ -134,6 +192,6 @@ class GUI2 {public:
     public:
         GUI2() : root_node(GUI2Node( GUI2Rect2f(0,0,1,1), (Vec2i){0,0}, (Vec2i){0,0} )) {}
 
-        void addNode(GUI2Node* node);
+        GUI2Node* addNode(GUI2Node* node);
         void draw(SDL_Window* window);
 };

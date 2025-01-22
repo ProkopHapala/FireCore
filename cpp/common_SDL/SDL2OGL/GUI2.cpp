@@ -57,6 +57,9 @@ void GUI2Node::set_rect(GUI2Rect2i rect){
     on_rect_updated();
     update_children_rects();
 }
+std::vector<GUI2Node*> GUI2Node::get_children(){
+    return children;
+}
 
 // update/calculate functions
 Vec2i GUI2Node::calculate_minSize(){
@@ -66,8 +69,8 @@ Vec2i GUI2Node::calculate_minSize(){
         if (c->anchors().size().x != 0){ c_minSize.x = c_minSize.x / c->anchors().size().x; }
         if (c->anchors().size().y != 0){ c_minSize.y = c_minSize.y / c->anchors().size().y; }
 
-        minSize.x = std::min(minSize.x, c_minSize.x);
-        minSize.y = std::min(minSize.y, c_minSize.y);
+        minSize.x = std::max(minSize.x, c_minSize.x);
+        minSize.y = std::max(minSize.y, c_minSize.y);
     }
     return minSize;
 }
@@ -114,19 +117,21 @@ GUI2Node::GUI2Node(GUI2Rect2f anchors, Vec2i pos, Vec2i size, bool leaf_node_): 
 }
 
 
-void GUI2Node::addChild(GUI2Node* node){
+GUI2Node* GUI2Node::addChild(GUI2Node* node){
     if (leaf_node) {
         throw "ERROR: cannot add a child to leaf node";
     }
     if (node->parent != nullptr){
         printf("ERROR: node already has a parent - ignoring this addChild() call\n");
-        return;
+        return nullptr;
     }
 
     children.push_back(node);
     node->parent = this;
     update_minSize();
     update_child_rect(node);
+
+    return node;
 }
 void GUI2Node::removeChild(GUI2Node* node){
     if (leaf_node) {
@@ -147,6 +152,13 @@ void GUI2Node::removeChild(GUI2Node* node){
 //    class GUI2Panel
 // =============================
 
+GUI2Panel::GUI2Panel(GUI2Rect2f anchors_, Vec2i pos_, Vec2i size_):
+    GUI2Node(anchors_, pos_, size_){}
+GUI2Panel::GUI2Panel(GUI2Rect2f anchors_, Vec2i pos_, Vec2i size_, uint32_t bgColor_):
+    GUI2Node(anchors_, pos_, size_),
+    bgColor(bgColor_){}
+
+
 void GUI2Panel::draw(){ // TODO: don't need to redraw every frame ?
     Draw  ::setRGB( bgColor );
     Draw2D::drawRectangle ( rect().xmin, rect().ymin, rect().xmax, rect().ymax, true );
@@ -154,18 +166,33 @@ void GUI2Panel::draw(){ // TODO: don't need to redraw every frame ?
     GUI2Node::draw(); // call super (calls draw() on children)
 }
 
-GUI2Panel::GUI2Panel(GUI2Rect2f anchors_, Vec2i pos_, Vec2i size_): GUI2Node(anchors_, pos_, size_){}
-GUI2Panel::GUI2Panel(GUI2Rect2f anchors_, Vec2i pos_, Vec2i size_, uint32_t bgColor_): GUI2Node(anchors_, pos_, size_), bgColor(bgColor_){}
-
 
 // ==============================
 //    class GUI2Text
 // ==============================
 
-GUI2Text::GUI2Text( GUI2Rect2f anchors, Vec2i pos, Vec2i size, std::string text ): GUI2Node(anchors, pos, size, true), text(text){recalculate_textSize();}
-GUI2Text::GUI2Text( GUI2Rect2f anchors, Vec2i pos, Vec2i size, std::string text, uint32_t fontSize, uint32_t fontColor ): GUI2Node(anchors, pos, size, true), text(text), fontSize(fontSize), fontColor(fontColor){recalculate_textSize();}
-GUI2Text::GUI2Text( GUI2Rect2f anchors, Vec2i pos, Vec2i size, std::string text, uint32_t fontSize, uint32_t fontColor, Align align ): GUI2Node(anchors, pos, size, true), text(text), fontSize(fontSize), fontColor(fontColor), align(align){recalculate_textSize();}
-GUI2Text::GUI2Text( GUI2Rect2f anchors, Vec2i pos, Vec2i size, std::string text, Align align): GUI2Node(anchors, pos, size, true), text(text), align(align){recalculate_textSize();}
+GUI2Text::GUI2Text( GUI2Rect2f anchors, Vec2i pos, Vec2i size, std::string text ):
+    GUI2Node(anchors, pos, size, true),
+    text(text)
+    { update_minSize(); }
+GUI2Text::GUI2Text( GUI2Rect2f anchors, Vec2i pos, Vec2i size, std::string text, uint32_t fontSize, uint32_t fontColor ):
+    GUI2Node(anchors, pos, size, true),
+    text(text),
+    fontSize(fontSize),
+    fontColor(fontColor)
+    { update_minSize(); }
+GUI2Text::GUI2Text( GUI2Rect2f anchors, Vec2i pos, Vec2i size, std::string text, uint32_t fontSize, uint32_t fontColor, Align align ):
+    GUI2Node(anchors, pos, size, true),
+    text(text),
+    fontSize(fontSize),
+    fontColor(fontColor),
+    align(align)
+    { update_minSize(); }
+GUI2Text::GUI2Text( GUI2Rect2f anchors, Vec2i pos, Vec2i size, std::string text, Align align):
+    GUI2Node(anchors, pos, size, true),
+    text(text),
+    align(align)
+    { update_minSize(); }
 
 void GUI2Text::recalculate_textSize(){
     unsigned int lineCount = 1;
@@ -226,14 +253,162 @@ void GUI2Text::draw(){
     GUI2Node::draw(); // call super (calls draw() on children)
 }
 
+// ==============================
+//    class GUI2Vlist
+// ==============================
+
+GUI2Vlist::GUI2Vlist( GUI2Rect2f anchors_, Vec2i pos_, Vec2i size_ ):
+    GUI2Node(anchors_, pos_, size_){}
+GUI2Vlist::GUI2Vlist( GUI2Rect2f anchors_, Vec2i pos_, Vec2i size_, unsigned int sepperation_ ):
+    GUI2Node(anchors_, pos_, size_),
+    sepperation(sepperation_){}
+GUI2Vlist::GUI2Vlist( GUI2Rect2f anchors_, Vec2i pos_, Vec2i size_, Align align_ ):
+    GUI2Node(anchors_, pos_, size_),
+    align(align_){}
+GUI2Vlist::GUI2Vlist( GUI2Rect2f anchors_, Vec2i pos_, Vec2i size_, unsigned int sepperation_, Align align_ ):
+    GUI2Node(anchors_, pos_, size_),
+    sepperation(sepperation_),
+    align(align_){}
+
+void GUI2Vlist::set_sepperation( unsigned int sepperation_ ){
+    sepperation = sepperation_;
+    update_minSize();
+    update_children_rects();
+}
+unsigned int GUI2Vlist::get_sepperation(){
+    return sepperation;
+}
+void GUI2Vlist::set_align( Align align_ ){
+    align = align_;
+    update_children_rects();
+}
+GUI2Vlist::Align GUI2Vlist::get_align(){
+    return align;
+}
+
+Vec2i GUI2Vlist::calculate_minSize(){
+    Vec2i minSize = {0,0};
+    for(auto& child:get_children()){
+        Vec2i childMinSize = child->minSize();
+        minSize.x = std::max(minSize.x, childMinSize.x);
+        minSize.y += childMinSize.y + sepperation;
+    }
+    minSize.y -= sepperation;
+    return minSize;
+}
+
+void GUI2Vlist::update_child_rect(GUI2Node* child){
+    update_children_rects();
+}
+void GUI2Vlist::update_children_rects(){
+    unsigned int ymax = rect().ymax;
+
+    for(auto& child:get_children()){
+        GUI2Rect2i R;
+        R.ymax = ymax;
+        R.ymin = ymax - child->minSize().y;
+
+        switch (align){
+            case Align::STRETCH:  R.xmin = rect().xmin;
+                                  R.xmax = rect().xmax; break;
+
+            case Align::LEFT:     R.xmin = rect().xmin; 
+                                  R.xmax = rect().xmin + child->minSize().x; break;
+
+            case Align::CENTER:   R.xmin = rect().xmin + (rect().size().x-child->minSize().x)/2;
+                                  R.xmax = R.xmin + child->minSize().x; break;
+
+            case Align::RIGHT:    R.xmin = rect().xmax - child->minSize().x;
+                                  R.xmax = rect().xmax; break;
+        }
+
+        child->set_rect(R);
+        ymax -= child->minSize().y + sepperation;
+    }
+}
+
+
+// ==============================
+//    class GUI2Hlist
+// ==============================
+
+GUI2Hlist::GUI2Hlist( GUI2Rect2f anchors_, Vec2i pos_, Vec2i size_ ):
+    GUI2Node(anchors_, pos_, size_){}
+GUI2Hlist::GUI2Hlist( GUI2Rect2f anchors_, Vec2i pos_, Vec2i size_, unsigned int sepperation_ ):
+    GUI2Node(anchors_, pos_, size_),
+    sepperation(sepperation_){}
+GUI2Hlist::GUI2Hlist( GUI2Rect2f anchors_, Vec2i pos_, Vec2i size_, Align align_ ):
+    GUI2Node(anchors_, pos_, size_),
+    align(align_){}
+GUI2Hlist::GUI2Hlist( GUI2Rect2f anchors_, Vec2i pos_, Vec2i size_, unsigned int sepperation_, Align align_ ):
+    GUI2Node(anchors_, pos_, size_),
+    sepperation(sepperation_),
+    align(align_){}
+
+void GUI2Hlist::set_sepperation( unsigned int sepperation_ ){
+    sepperation = sepperation_;
+    update_minSize();
+    update_children_rects();
+}
+unsigned int GUI2Hlist::get_sepperation(){
+    return sepperation;
+}
+void GUI2Hlist::set_align( Align align_ ){
+    align = align_;
+    update_children_rects();
+}
+GUI2Hlist::Align GUI2Hlist::get_align(){
+    return align;
+}
+
+Vec2i GUI2Hlist::calculate_minSize(){
+    Vec2i minSize = {0,0};
+    for(auto& child:get_children()){
+        Vec2i childMinSize = child->minSize();
+        minSize.y = std::max(minSize.y, childMinSize.y);
+        minSize.x += childMinSize.x + sepperation;
+    }
+    minSize.x -= sepperation;
+    return minSize;
+}
+
+void GUI2Hlist::update_child_rect(GUI2Node* child){
+    update_children_rects();
+}
+void GUI2Hlist::update_children_rects(){
+    unsigned int xmin = rect().xmin;
+
+    for(auto& child:get_children()){
+        GUI2Rect2i R;
+        R.xmin = xmin;
+        R.xmax = xmin + child->minSize().x;
+
+        switch (align){
+            case Align::STRETCH:  R.ymin = rect().ymin;
+                                  R.ymax = rect().ymax; break;
+
+            case Align::TOP:      R.ymin = rect().ymax - child->minSize().y; 
+                                  R.ymax = rect().ymax; break;
+
+            case Align::CENTER:   R.ymin = rect().ymin + (rect().size().y-child->minSize().y)/2;
+                                  R.ymax = R.ymin + child->minSize().y; break;
+
+            case Align::BOTTOM:   R.ymin = rect().ymin;
+                                  R.ymax = rect().ymin + child->minSize().y; break;
+        }
+
+        child->set_rect(R);
+        xmin += child->minSize().x + sepperation;
+    }
+}
 
 
 // ==============================
 //    class GUI2
 // ==============================
 
-void GUI2::addNode(GUI2Node* node){
-    root_node.addChild(node);
+GUI2Node* GUI2::addNode(GUI2Node* node){
+    return root_node.addChild(node);
 }
 void GUI2::draw(SDL_Window* window){
     int width, height;
