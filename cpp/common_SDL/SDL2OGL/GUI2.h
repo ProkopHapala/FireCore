@@ -1,6 +1,7 @@
 #include <SDL2/SDL_video.h>
 #include <cmath>
 #include <cstdint>
+#include <functional>
 #include <string>
 #include <vector>
 #include "Draw.h"
@@ -23,6 +24,10 @@ class GUI2Rect2T{ // switch to Rect2d already implemented in geom2D.h ?
     VEC min() { return (VEC){xmin, ymin}; }
     VEC max() { return (VEC){xmax, ymax}; }
 
+    bool contains( VEC pos ){
+        return (pos.x >= xmin && pos.x <= xmax && pos.y >= ymin && pos.y <= ymax);
+    }
+
     bool operator==( const REC& r ){ return (xmin==r.xmin && ymin==r.ymin && xmax==r.xmax && ymax==r.ymax); }
     bool operator!=( const REC& r ){ return (xmin!=r.xmin || ymin!=r.ymin || xmax!=r.xmax || ymax!=r.ymax); }
 };
@@ -34,6 +39,12 @@ extern int GUI2_fontTex;
 
 class GUI2Node{
     private:
+        // Input
+        const bool process_input = false;
+        bool mouse_over = false;
+        bool mouse_down = false;
+        bool consumed_mouse_down = false;
+
         // if any of these change, then `this.rect` and `parent.minSize` need to be updated -> parent->udpate_minSize(), update_rect()
         GUI2Rect2f _anchors;
         Vec2i _pos;
@@ -60,12 +71,25 @@ class GUI2Node{
         virtual Vec2i calculate_minSize();
         virtual void on_rect_updated();
         
+        virtual void on_mouse_enter();
+        virtual void on_mouse_exit();
+        virtual void on_mouse_over();
+
+        virtual void on_mouse_down();
+        virtual void on_mouse_up(); // also called when mouse is leaving rather than when released
+        virtual void on_mouse_click();
+        //virtual void on_mouse_drag( Vec2i delta ); TODO
+
     public:
+        bool is_mouse_over();
+        bool is_mouse_down();
+
         void set_rect( GUI2Rect2i rect ); // this should not be called from the outside
 
         // constructors
         GUI2Node( GUI2Rect2f anchors, Vec2i pos, Vec2i size );
         GUI2Node( GUI2Rect2f anchors, Vec2i pos, Vec2i size, bool leaf_node );
+        GUI2Node( GUI2Rect2f anchors, Vec2i pos, Vec2i size, bool leaf_node, bool process_input );
 
         // getters
         GUI2Rect2f anchors();
@@ -83,6 +107,7 @@ class GUI2Node{
         GUI2Node* addChild( GUI2Node* node );
         void removeChild( GUI2Node* node );
         virtual void draw();
+        bool onEvent( const SDL_Event& event );
 };
 
 class GUI2Panel : public GUI2Node{
@@ -185,13 +210,24 @@ class GUI2Hlist : public GUI2Node{
         Align get_align();
 };
 
+class GUI2Button : public GUI2Node{
+    protected:
+        void on_mouse_click() override;
+
+    public:
+        const std::function<void()> command;
+
+        GUI2Button( GUI2Rect2f anchors, Vec2i pos, Vec2i size, const std::function<void()>& command );
+};
+
 class GUI2 {public:
     private:
         GUI2Node root_node;
 
     public:
-        GUI2() : root_node(GUI2Node( GUI2Rect2f(0,0,1,1), (Vec2i){0,0}, (Vec2i){0,0} )) {}
+        GUI2();
 
-        GUI2Node* addNode(GUI2Node* node);
-        void draw(SDL_Window* window);
+        GUI2Node* addNode( GUI2Node* node );
+        void draw( SDL_Window* window );
+        bool onEvent( SDL_Event event, SDL_Window* window );
 };

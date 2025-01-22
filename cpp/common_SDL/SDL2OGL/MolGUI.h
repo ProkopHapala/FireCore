@@ -635,7 +635,9 @@ void MolGUI::initWiggets(){
     a->addChild(new GUI2Text({0, 0, 1, 1}, {0, 0}, {0, 0}, "a", GUI2Text::Align::CENTER));
     b->addChild(new GUI2Text({0, 0, 1, 1}, {0, 0}, {0, 0}, "b", GUI2Text::Align::CENTER));
     c->addChild(new GUI2Text({0, 0, 1, 1}, {0, 0}, {0, 0}, "c", GUI2Text::Align::CENTER));
-    d->addChild(new GUI2Text({0, 0, 1, 1}, {0, 0}, {0, 0}, "d", GUI2Text::Align::CENTER));
+    d->addChild(new GUI2Text({0, 0, 1, 1}, {0, 0}, {0, 0}, "print text", GUI2Text::Align::CENTER));
+
+    d->addChild(new GUI2Button({0, 0, 1, 1}, {0, 0}, {0, 0}, [&](){ printf(" -- Button Pressed! -- \n"); }  ));
 
     // TODO: adding GUI widgets would be better witth LUA for fast experimentation
     GUI_stepper ylay(1,2 );
@@ -2710,6 +2712,8 @@ void MolGUI::eventMode_default( const SDL_Event& event ){
 }
 
 void MolGUI::eventHandling ( const SDL_Event& event  ){
+    if ( gui2.onEvent(event, window) ) return;
+
     //printf( "NonInert_seats::eventHandling() \n" );
     float xstep = 0.2;
     if( gui.onEvent( mouseX, mouseY, event ) )return;
