@@ -3660,6 +3660,17 @@ int run_omp_three_atoms_problem(int niter_max, double dt, double Fconv = 1e-6, d
 }
 
 double three_atoms_problem_TI(double lamda1, double lamda2, int nbStep = 100, int nMDSteps = 100000, int nEQsteps = 10000, double tdamp = 100.0, double T = 300, double dt = 0.5){
+    ffl.apos[0].set(-1.0,0.0,0.0);
+    ffl.apos[1].set( 1.0,0.0,0.0);
+    ffl.apos[2].set( 1.0,3.0,0.0);
+    for(int i=0; i<ffl.natoms; i++){
+        ffl.REQs[i].x = 1.4430;
+        ffl.REQs[i].y = 0.316228; // this number corresponds to write 0.1 in AtomTypes Hydrogen EvdW
+        ffl.REQs[i].z = 0.000000;
+        ffl.REQs[i].w = 0.000000;
+    }
+
+
     bFreeEnergyCalc = true;
     ffl.bTestThreeAtoms = true;     // turn off atom 0<->1 interaction
     bool calculate_temperature = true;
