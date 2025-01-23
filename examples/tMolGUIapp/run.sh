@@ -180,7 +180,7 @@ fi
 #./$name -x common_resources/xyz/PTCDA -g common_resources/xyz/NaCl_1x1_L3          -nPBC 0,0,0
 #./$name -x common_resources/xyz/PTCDA -g common_resources/xyz/NaCl_8x8_L3          -nPBC 0,0,0 -perframe 1
 #./$name -x common_resources/xyz/PTCDA -g common_resources/xyz/NaCl_8x8_L3          -nPBC 0,0,0
-#./$name -x common_resources/xyz/PTCDA -g common_resources/xyz/NaCl_8x8_L3_NaHole   -nPBC 0,0,0
+./$name -x common_resources/xyz/PTCDA -g common_resources/xyz/NaCl_8x8_L3_NaHole   -nPBC 0,0,0 -e -nPBC 2,2,0
 #./$name -x common_resources/xyz/PTCDA -g common_resources/xyz/NaCl_8x8_L3_ClHole   -nPBC 0,0,0
 #./$name -x common_resources/xyz/PTCDA -g common_resources/xyz/NaCl_8x8_L3_NaClHole -nPBC 0,0,0
 
