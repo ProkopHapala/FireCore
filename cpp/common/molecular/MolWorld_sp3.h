@@ -3400,43 +3400,39 @@ void MD_with_mexican_hat(int nbStep, int nbMDSteps, int nbMDStepsThermalize, dou
     }
 }
 
-void JE_init(int nbInits, int nbMDSteps, int nbMDStepsThermalize, double lamda_init, double d, double T, double gamma, double dt, double* position){
+void mexican_hat_JE_init(int nbInits, int nEQsteps, double lamda_init, double d, double T, double gamma, double dt, double* position, double* velocities){
     int atom = 0;
-    double f, r, inv_c;
-    int n = nbMDSteps/nbInits;
+    double f, r, inv_c, v;
+    int n = nEQsteps/nbInits;
     int L = 0;
 
     ffl.apos[atom].set(0, 0, 0);
 
-    for(int i = 0; i < nbMDStepsThermalize; i++){
+    // first nEQsteps to thermalize, second nEQsteps to generate nbInits of initial positions
+    for(int i = 0; i < 2*nEQsteps; i++){
         r = ffl.apos[atom].x;
+        v = ffl.vapos[atom].x;
         inv_c = 1/lamda_init;
         f = - 4.0 * d * inv_c * r * inv_c * ( r * inv_c * r * inv_c - 1);
         ffl.fapos[atom].set(f, 0, 0);
         ffl.move_atom_Langevin( atom, dt, 10000.0, gamma, T );
-    }
 
-    for(int i = 0; i < nbMDSteps; i++){
-        r = ffl.apos[atom].x;
-        inv_c = 1/lamda_init;
-        f = - 4.0 * d * inv_c * r * inv_c * ( r * inv_c * r * inv_c - 1);
-        ffl.fapos[atom].set(f, 0, 0);
-        ffl.move_atom_Langevin( atom, dt, 10000.0, gamma, T );
+        if(i >= nEQsteps){
         n--;
         if(n == 0){
             position[L] = r;
-            n = nbMDSteps/nbInits;
+                velocities[L]=v;
+                n = nEQsteps/nbInits;
             L++;
         }
-
+        }
     }
 
 }
 
-void JE_propagation(double initial_position, double* lamda, int nbSteps, double d, double T, double gamma, double dt, double* W, int nbMD = 1000){
+void mexican_hat_JE_propagation(double initial_position, double* lamda, int nbSteps, double d, double T, double gamma, double dt, double* W, int nbMD = 1000){
     int atom = 0;
     double r, inv_c;
-    int n = 1000;
     double E, f;
 
     inv_c = 1/lamda[0];
@@ -3456,7 +3452,7 @@ void JE_propagation(double initial_position, double* lamda, int nbSteps, double 
         if(L>1)E_prev = E;
         E = d * ( r * r * inv_c * inv_c - 1) * ( r * r * inv_c * inv_c - 1);
 
-        W[L] += E - E_prev;
+        W[L] = E - E_prev;
     }
 }
 
@@ -3748,9 +3744,8 @@ double compute_Free_energy(double lamda1, double lamda2, int n, int *dc, int nbS
     go.bExploring = true;
     bConstrains = true;
     bFreeEnergyCalc = true;
-
-
-#ifdef mexican_hat_JE
+    double deltaF = three_atoms_problem_TI(lamda1, lamda2, nbStep, nMDSteps, nEQsteps, tdamp, T, dt);
+    return deltaF;
 int nbInits = 1000;
     std::vector<std::vector<double>> W(nbInits, std::vector<double>(nMDSteps));
     std::vector<double> initial_positions(nbInits, 0.0);
