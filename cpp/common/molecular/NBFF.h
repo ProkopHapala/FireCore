@@ -92,7 +92,7 @@ class NBFF: public ForceField{ public:
     //Vec3d  *fapos  =0; // forces on atomic positions
     //Vec3d  *vapos  = 0; // [natom]  velocities of atoms
 
-    Quat4d   *REQs  __attribute__((aligned(64))) =0; // non-bonding interaction paramenters (R: van dew Waals radius, E: van dew Waals energy of minimum, Q: Charge, H: Hydrogen Bond pseudo-charge )
+    Quat4d   *REQs  __attribute__((aligned(64))) =0; // non-bonding interaction paramenters (R: van der Waals radius, E: van dew Waals energy of minimum, Q: Charge, H: Hydrogen Bond pseudo-charge )
     Quat4i   *neighs   =0; // list of neighbors (4 per atom)
     Quat4i   *neighCell=0; // list of neighbors (4 per atom)
 
@@ -126,6 +126,8 @@ class NBFF: public ForceField{ public:
     Quat4d *PLQd  __attribute__((aligned(64))) =0; 
 
     Vec3d  shift0 __attribute__((aligned(64))) =Vec3dZero; 
+
+    bool bTestThreeAtoms=false; // test only three atoms (for debugging purposes)
 
 #ifdef WITH_AVX
     // ========== Try SIMD
@@ -587,7 +589,7 @@ class NBFF: public ForceField{ public:
         //#pragma omp simd reduction(+:E,fx,fy,fz)
         for (int j=0; j<natoms; j++){ 
             if(ia==j)[[unlikely]]{continue;}
-            //if(ia<2 && j<2){continue;}
+            if(ia<2 && j<2 && bTestThreeAtoms){continue;}
             const Quat4d& REQj  = REQs[j];
             const Quat4d  REQij = _mixREQ(REQi,REQj); 
             const Vec3d dp      = apos[j]-pi;

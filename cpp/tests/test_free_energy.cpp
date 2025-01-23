@@ -70,11 +70,27 @@ TEST(MolWorld_sp3, mexican_hat_TI ){
     init(W, path_pyridine);
     double initial = 0.5;
     double final   = 4.0;
-    int N = 1;
-    int colectiveVariable[N] = {0};
+
     double E = W.mexican_hat_TI(initial, final, 100, 100000, 10000, 100, 100, 0.5);
     printf("E = %f\n", E);
     EXPECT_NEAR(E, -0.018800922191230408, 0.001);
+}
+
+TEST(MolWorld_sp3, three_atoms_problem_TI){
+    MolWorld_sp3 W;
+    char path_three_atoms[1024];
+    snprintf(path_three_atoms, sizeof(path_three_atoms), "%s/common_resources/three_atoms", dir_cpp);
+    init(W, path_three_atoms);
+    double initial = 0.0;
+    double final   = 5.0;
+    double eps = 0.1;
+    for(int i=0; i<W.ffl.natoms; i++){
+        W.ffl.REQs[i].y = 0.316228; // this number corresponds to write 0.1 in AtomTypes Hydrogen EvdW
+    }
+
+    double E = W.three_atoms_problem_TI(initial, final, 100, 100000, 10000, 100, 300.0, 0.5);
+    printf("E = %f\n", E);
+    EXPECT_NEAR(E, 0.026256787647647592, 0.001);
 }
 
 int main(int argc, char **argv) {    
