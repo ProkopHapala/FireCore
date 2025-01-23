@@ -13,8 +13,8 @@ gnuplot -e "
     set mxtics 5;
 
     plot 'results/TI_plot.dat' using 1:2:3 with yerrorbars title 'Thermodynamic integration', \
-         'results/TI_plot.dat' using 1:6 with lines title 'Reference';
+         'results/TI_plot.dat' using 1:4 with lines title 'Reference';
 "
 # show the plot
-#display results/TI_plot.png
+display results/TI_plot.png
 

@@ -12,7 +12,7 @@ gnuplot -e "
     set format x '%.1f';
     set mxtics 5;
 
-    plot 'TI_plot.dat' using 1:2:3 with yerrorbars title 'Thermodynamic integration', \
+    plot 'results/TI_plot.dat' using 1:2:3 with yerrorbars title 'Thermodynamic integration', \
          '/home/kocimil1/Documents/testing_space/Free_energy/Three_particle_problem/reference.dat' using 1:2 with lines title 'Reference';
 "
 # show the plot

@@ -25,7 +25,7 @@ def scanPlot( nscan = 1000, span=(0.0,8.0), dir=(0.0,0.0,1.0), p0=(0.0,0.0,0.0),
 #======== Body
 
 ###### Mexican hat potential
-
+'''
 nbStep = 100
 nMDsteps = 100000
 nEQsteps = 10000
@@ -38,11 +38,32 @@ mmff.init( xyz_name="data/H2", bMMFF=True )
 collectiveVariable = np.array([0], dtype=np.int32)
 E = mmff.compute_Free_energy(0.5, 4.0, collectiveVariable, nbStep=nbStep, nMDsteps=nMDsteps, nEQsteps=nEQsteps, t_damp=t_damp, T=T, dt=dt)
 print("E=", E)
-print("Konec Milane")
+'''
+###### Three body problem
+mmff.init( xyz_name="data/xyz/H2O", bMMFF=True, nPBC=(2, 2, 2))#, constr_name="data/three_atom.cons" ) #nPBC=(2, 2, 2)
+colectiveVariable = np.array([0], dtype=np.int32)
+nbStep = 100
+nMDsteps = 100000
+nEQsteps = 10000
+t_damp = 100
+T = 300
+dt = 0.5
+lamda1 = 0.0
+lamda2 = 5.0
+mmff.setVerbosity(verbosity=3)
+mmff.setSwitches(CheckInvariants=-1, PBC_nonBond=-1, PBC_evalAtom=-1, NonBonded=1, MMFF=1, doBonds=-1, Angles=-1, PiSigma=-1, PiPiI=-1, bNonBondNeighs=-1, bSurfAtoms=-1, bGridFF=-1, bTricubic=-1, bConstrZ=-1, bConstrains=-1)
+E = mmff.compute_Free_energy(lamda1, lamda2, colectiveVariable, nbStep=nbStep, nMDsteps=nMDsteps, nEQsteps=nEQsteps, t_damp=t_damp, T=T, dt=dt)
+print("E=", E)
 
 
 
-'''# entropic spring
+
+
+
+
+
+'''
+# entropic spring
 nbStep = 100
 nMDsteps = 100000
 t_damp = 100
@@ -95,7 +116,7 @@ new_line = ' '.join(parts)
 with open(constr_name, "w") as file:
     file.write(new_line)
 
-with open("stiffness.txt", "w") as file:
+with open("stifness.txt", "w") as file:
     file.write(str(MY_K))
 
 
@@ -108,20 +129,6 @@ E = mmff.compute_Free_energy(1.0, 3.0, colectiveVariable, nbStep=MY_nbStep, nMDs
 print("E=", E)
 '''
 
-
-
-'''
-mmff.init( xyz_name="data/three_atoms", bMMFF=True, nPBC=(2, 2, 2))#, constr_name="data/three_atom.cons" ) #nPBC=(2, 2, 2)
-colectiveVariable = np.array([0], dtype=np.int32)
-nbStep = 100
-nMDsteps = 1000000
-t_damp = 20
-T = 300
-dt = 0.05
-E = mmff.compute_Free_energy(0.0, 5.0, colectiveVariable, nbStep=nbStep, nMDsteps=nMDsteps, t_damp=t_damp, T=T, dt=dt)
-mmff.setSwitches(CheckInvariants=-1, PBC_nonBond=-1, PBC_evalAtom=-1, NonBonded=1, MMFF=1, doBonds=-1, Angles=-1, PiSigma=-1, PiPiI=-1, bNonBondNeighs=-1, bSurfAtoms=-1, bGridFF=-1, bTricubic=-1, bConstrZ=-1, bConstrains=-1)
-print("E=", E)
-'''
 
 '''
 natoms = 50
