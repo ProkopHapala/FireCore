@@ -637,7 +637,9 @@ void MolGUI::initWiggets(){
     c->addChild(new GUI2Text({0, 0, 1, 1}, {0, 0}, {0, 0}, "c", GUI2Text::Align::CENTER));
     d->addChild(new GUI2Text({0, 0, 1, 1}, {0, 0}, {0, 0}, "print text", GUI2Text::Align::CENTER));
 
-    d->addChild(new GUI2Button({0, 0, 1, 1}, {0, 0}, {0, 0}, [&](){ printf(" -- Button Pressed! -- \n"); }  ));
+    d->addChild(new GUI2ButtonBase({0, 0, 1, 1}, {0, 0}, {0, 0}, [&](){ printf(" -- Button Pressed! -- \n"); }  ));
+
+    gui2.addNode(new GUI2ToggleButton({0.5, 0.5, 0.5, 0.5}, {0, 0}, {100, 100}, [&](bool active){ printf(" -- Button toggle %i -- \n", active); }  ));
 
     // TODO: adding GUI widgets would be better witth LUA for fast experimentation
     GUI_stepper ylay(1,2 );

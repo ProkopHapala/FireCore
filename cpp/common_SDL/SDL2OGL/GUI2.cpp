@@ -468,16 +468,97 @@ void GUI2Hlist::update_children_rects(){
 }
 
 // ==============================
-//    class GUI2Button
+//    class GUI2ButtonBase
 // ==============================
 
-GUI2Button::GUI2Button( GUI2Rect2f anchors, Vec2i pos, Vec2i size, const std::function<void()>& command ):
+GUI2ButtonBase::GUI2ButtonBase( GUI2Rect2f anchors, Vec2i pos, Vec2i size, const std::function<void()>& command ):
     GUI2Node(anchors, pos, size, false, true),
     command(command){}
 
-void GUI2Button::on_mouse_click(){
+void GUI2ButtonBase::on_mouse_click(){
     std::invoke(command);
 }
+
+// ==============================
+//    class GUI2Button
+// ==============================
+
+GUI2Button::GUI2Button( GUI2Rect2f anchors, Vec2i pos, Vec2i size, const std::function<void()>& command, uint32_t bgColor, uint32_t bgColorHover, uint32_t bgColorPressed ):
+    GUI2ButtonBase(anchors, pos, size, command),
+    bgColor(bgColor),
+    bgColorHover(bgColorHover),
+    bgColorPressed(bgColorPressed)
+    {
+        panel = (GUI2Panel*)addChild(new GUI2Panel({0, 0, 1, 1}, {0, 0}, {0, 0}));
+        panel->bgColor = bgColor;
+    }
+
+GUI2Button::GUI2Button( GUI2Rect2f anchors, Vec2i pos, Vec2i size, const std::function<void()>& command ):
+    GUI2Button(anchors, pos, size, command, 0x808080, 0x787878, 0x606060){}
+
+void GUI2Button::on_mouse_enter(){
+    panel->bgColor = bgColorHover;
+}
+void GUI2Button::on_mouse_exit(){
+    panel->bgColor = bgColor;
+}
+void GUI2Button::on_mouse_down(){
+    panel->bgColor = bgColorPressed;
+}
+void GUI2Button::on_mouse_up(){
+    panel->bgColor = bgColorHover;
+}
+
+// ==============================
+//    class GUI2ToggleButtonBase
+// ==============================
+
+GUI2ToggleButtonBase::GUI2ToggleButtonBase( GUI2Rect2f anchors, Vec2i pos, Vec2i size, const std::function<void(bool)>& command ):
+    GUI2Node(anchors, pos, size, false, true),
+    command(command){}
+
+void GUI2ToggleButtonBase::on_mouse_click(){
+    active = !active;
+    command(active);
+}
+
+bool GUI2ToggleButtonBase::is_active(){
+    return active;
+}
+
+// ==============================
+//    class GUI2ToggleButton
+// ==============================
+
+GUI2ToggleButton::GUI2ToggleButton( GUI2Rect2f anchors, Vec2i pos, Vec2i size, const std::function<void(bool)>& command, uint32_t bgColor, uint32_t bgColorHover, uint32_t bgColorPressed, uint32_t bgColorActive, uint32_t bgColorActiveHover, uint32_t bgColorActivePressed ):
+    GUI2ToggleButtonBase(anchors, pos, size, command),
+    bgColor(bgColor),
+    bgColorHover(bgColorHover),
+    bgColorPressed(bgColorPressed),
+    bgColorActive(bgColorActive),
+    bgColorActiveHover(bgColorActiveHover),
+    bgColorActivePressed(bgColorActivePressed)
+    {
+        panel = (GUI2Panel*)addChild(new GUI2Panel({0, 0, 1, 1}, {0, 0}, {0, 0}));
+        panel->bgColor = bgColor;
+    }
+GUI2ToggleButton::GUI2ToggleButton( GUI2Rect2f anchors, Vec2i pos, Vec2i size, const std::function<void(bool)>& command ):
+    GUI2ToggleButton(anchors, pos, size, command, 0xA0A0A0, 0x989898, 0x808080, 0x00FF00, 0x00E800, 0x00D000){}
+
+void GUI2ToggleButton::on_mouse_enter(){
+    panel->bgColor = is_active() ? bgColorActiveHover : bgColorHover;
+}
+void GUI2ToggleButton::on_mouse_exit(){
+    panel->bgColor = is_active() ? bgColorActive : bgColor;
+}
+void GUI2ToggleButton::on_mouse_down(){
+    panel->bgColor = is_active() ? bgColorActivePressed : bgColorPressed;
+}
+void GUI2ToggleButton::on_mouse_up(){
+    panel->bgColor = is_active() ? bgColorActiveHover : bgColorHover;
+}
+
+
 
 // ==============================
 //    class GUI2
