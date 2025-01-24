@@ -210,14 +210,70 @@ class GUI2Hlist : public GUI2Node{
         Align get_align();
 };
 
-class GUI2Button : public GUI2Node{
+class GUI2ButtonBase : public GUI2Node{
     protected:
         void on_mouse_click() override;
 
     public:
         const std::function<void()> command;
 
+        GUI2ButtonBase( GUI2Rect2f anchors, Vec2i pos, Vec2i size, const std::function<void()>& command );
+};
+
+class GUI2Button : public GUI2ButtonBase{
+    private:
+        GUI2Panel* panel;
+
+    protected:
+        virtual void on_mouse_enter() override;
+        virtual void on_mouse_exit() override;
+        virtual void on_mouse_down() override;
+        virtual void on_mouse_up() override;
+
+    public:
+        uint32_t bgColor;
+        uint32_t bgColorHover;
+        uint32_t bgColorPressed;
+
         GUI2Button( GUI2Rect2f anchors, Vec2i pos, Vec2i size, const std::function<void()>& command );
+        GUI2Button( GUI2Rect2f anchors, Vec2i pos, Vec2i size, const std::function<void()>& command, uint32_t bgColor, uint32_t bgColorHover, uint32_t bgColorPressed );
+};
+
+class GUI2ToggleButtonBase : public GUI2Node {
+    private:
+        const std::function<void(bool)> command;
+        bool active = false;
+
+    protected:
+        virtual void on_mouse_click() override;
+
+    public:
+        bool is_active();
+
+        GUI2ToggleButtonBase( GUI2Rect2f anchors, Vec2i pos, Vec2i size, const std::function<void(bool)>& command );
+};
+
+class GUI2ToggleButton : public GUI2ToggleButtonBase {
+    private:
+        GUI2Panel* panel;
+
+    protected:
+        virtual void on_mouse_enter() override;
+        virtual void on_mouse_exit() override;
+        virtual void on_mouse_down() override;
+        virtual void on_mouse_up() override;
+
+    public:
+        uint32_t bgColor;
+        uint32_t bgColorHover;
+        uint32_t bgColorPressed;
+
+        uint32_t bgColorActive;
+        uint32_t bgColorActiveHover;
+        uint32_t bgColorActivePressed;
+
+        GUI2ToggleButton( GUI2Rect2f anchors, Vec2i pos, Vec2i size, const std::function<void(bool)>& command );
+        GUI2ToggleButton( GUI2Rect2f anchors, Vec2i pos, Vec2i size, const std::function<void(bool)>& command, uint32_t bgColor, uint32_t bgColorHover, uint32_t bgColorPressed, uint32_t bgColorActive, uint32_t bgColorActiveHover, uint32_t bgColorActivePressed );
 };
 
 class GUI2 {public:
