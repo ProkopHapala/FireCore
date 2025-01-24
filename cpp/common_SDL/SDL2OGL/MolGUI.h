@@ -639,7 +639,11 @@ void MolGUI::initWiggets(){
 
     d->addChild(new GUI2ButtonBase({0, 0, 1, 1}, {0, 0}, {0, 0}, [&](){ printf(" -- Button Pressed! -- \n"); }  ));
 
-    gui2.addNode(new GUI2ToggleButton({0.5, 0.5, 0.5, 0.5}, {0, 0}, {100, 100}, [&](bool active){ printf(" -- Button toggle %i -- \n", active); }  ));
+    //gui2.addNode(new GUI2ToggleButton({0.5, 0.5, 0.5, 0.5}, {0, 0}, {100, 100}, [&](bool active){ printf(" -- Button toggle %i -- \n", active); }  ));
+
+    GUI2Node* dragbox = gui2.addNode(new GUI2Dragable({0.5, 0.5, 0.5, 0.5}, {0, 0}, {100, 100} ));
+    dragbox->addChild(new GUI2Panel(FULL_RECT, {0, 0}, {0, 0}, 0xA0A0A0));
+    dragbox->addChild(new GUI2Text({0, 0, 1, 1}, {0, 0}, {0, 0}, "drag me!", GUI2Text::Align::CENTER));
 
     // TODO: adding GUI widgets would be better witth LUA for fast experimentation
     GUI_stepper ylay(1,2 );
