@@ -34,6 +34,8 @@ class GUI2Rect2T{ // switch to Rect2d already implemented in geom2D.h ?
 
 using GUI2Rect2i = GUI2Rect2T<int>;
 using GUI2Rect2f = GUI2Rect2T<float>;
+#define FULL_RECT GUI2Rect2f(0,0,1,1)
+
 
 extern int GUI2_fontTex;
 
@@ -78,7 +80,7 @@ class GUI2Node{
         virtual void on_mouse_down();
         virtual void on_mouse_up(); // also called when mouse is leaving rather than when released
         virtual void on_mouse_click();
-        //virtual void on_mouse_drag( Vec2i delta ); TODO
+        virtual void on_mouse_drag( Vec2i delta );
 
     public:
         bool is_mouse_over();
@@ -274,6 +276,14 @@ class GUI2ToggleButton : public GUI2ToggleButtonBase {
 
         GUI2ToggleButton( GUI2Rect2f anchors, Vec2i pos, Vec2i size, const std::function<void(bool)>& command );
         GUI2ToggleButton( GUI2Rect2f anchors, Vec2i pos, Vec2i size, const std::function<void(bool)>& command, uint32_t bgColor, uint32_t bgColorHover, uint32_t bgColorPressed, uint32_t bgColorActive, uint32_t bgColorActiveHover, uint32_t bgColorActivePressed );
+};
+
+class GUI2Dragable : public GUI2Node {
+    protected:
+        virtual void on_mouse_drag( Vec2i delta ) override;
+    
+    public:
+        GUI2Dragable( GUI2Rect2f anchors, Vec2i pos, Vec2i size );
 };
 
 class GUI2 {public:

@@ -101,7 +101,7 @@ void GUI2Node::update_minSize(){
 }
 void GUI2Node::update_child_rect(GUI2Node* child){
     Vec2i min = _rect.min() + (Vec2i)(child->anchors().min()*(Vec2f)_rect.size()) + child->pos();
-    Vec2i max = _rect.min() + (Vec2i)(child->anchors().max()*(Vec2f)_rect.size()) + child->size();
+    Vec2i max = _rect.min() + (Vec2i)(child->anchors().max()*(Vec2f)_rect.size()) + child->pos() + child->size();
     child->set_rect(GUI2Rect2i(min, max));
 }
 void GUI2Node::update_children_rects(){
@@ -174,6 +174,9 @@ bool GUI2Node::onEvent(const SDL_Event& event){
                 if (mouse_over) on_mouse_exit();
                 mouse_over = false;
             }
+            if (consumed_mouse_down){
+                on_mouse_drag( {event.motion.xrel, event.motion.yrel} );
+            }
             break;
 
         case SDL_MOUSEBUTTONDOWN:
@@ -211,6 +214,7 @@ void GUI2Node::on_mouse_exit(){}
 void GUI2Node::on_mouse_down(){}
 void GUI2Node::on_mouse_up(){}
 void GUI2Node::on_mouse_click(){}
+void GUI2Node::on_mouse_drag(Vec2i delta){}
 
 
 // ==============================
@@ -558,7 +562,16 @@ void GUI2ToggleButton::on_mouse_up(){
     panel->bgColor = is_active() ? bgColorActiveHover : bgColorHover;
 }
 
+// ==============================
+//    class GUI2Dragable
+// ==============================
 
+GUI2Dragable::GUI2Dragable( GUI2Rect2f anchors, Vec2i pos, Vec2i size ):
+    GUI2Node(anchors, pos, size, false, true){}
+
+void GUI2Dragable::on_mouse_drag( Vec2i delta ){
+    set_pos(pos() + delta);
+}
 
 // ==============================
 //    class GUI2
