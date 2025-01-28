@@ -4,7 +4,9 @@
 
 #include "AppSDL2OGL.h" // THE HEADER
 
-void AppSDL2OGL::quit(){ SDL_Quit(); loopEnd=true; /*exit(1);*/ };
+void AppSDL2OGL::quit(){ 
+    SDL_Quit(); loopEnd=true; /*exit(1);*/ 
+};
 
 void AppSDL2OGL::wait(int ms){
     for( int i=0; i<ms; i+=timeSlice ){

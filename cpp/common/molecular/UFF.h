@@ -159,7 +159,8 @@ class UFF : public NBFF { public:
         _realloc0( bonAtoms  , nbonds,    Vec2iZero );
         _realloc0( bonParams , nbonds,    Vec2dNAN  );
         _realloc0( angAtoms  , nangles,   Vec3iZero );
-        _realloc0( angParams , nangles,   (double5){(double)NAN,(double)NAN,(double)NAN,(double)NAN,(double)NAN}  );
+        //_realloc0( angParams , nangles,   (double5){(double)NAN,(double)NAN,(double)NAN,(double)NAN,(double)NAN}  );
+        _realloc0( angParams , nangles,   double5NAN  );
         _realloc0( dihAtoms  , ndihedrals,  Quat4iZero );
         _realloc0( dihParams , ndihedrals,  Vec3dNAN   );
         _realloc0( invAtoms  , ninversions, Quat4iZero );

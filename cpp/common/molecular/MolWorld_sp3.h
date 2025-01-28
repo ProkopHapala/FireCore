@@ -58,6 +58,8 @@ static MMFFparams* params_glob;
 
 #include "EwaldGrid.h"
 
+//#include "debugAllocator.h"
+
 
 
 enum class MolWorldVersion{ BASIC=0, QM=1, GPU=2 };
