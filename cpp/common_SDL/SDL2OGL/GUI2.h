@@ -80,7 +80,7 @@ class GUI2Node{
         virtual void on_mouse_down();
         virtual void on_mouse_up(); // also called when mouse is leaving rather than when released
         virtual void on_mouse_click();
-        virtual void on_mouse_drag( Vec2i delta );
+        virtual void on_mouse_drag( const SDL_Event& event );
 
     public:
         bool is_mouse_over();
@@ -114,10 +114,10 @@ class GUI2Node{
 
 class GUI2Panel : public GUI2Node{
     public:
-        uint32_t bgColor=0xA0A0A0;
+        uint32_t bgColor;
 
-        GUI2Panel ( GUI2Rect2f anchors, Vec2i pos, Vec2i size );
-        GUI2Panel ( GUI2Rect2f anchors, Vec2i pos, Vec2i size, uint32_t bgColor );
+        GUI2Panel ( GUI2Rect2f anchors, Vec2i pos, Vec2i size, uint32_t bgColor = 0xA0A0A0 );
+        GUI2Panel ( uint32_t bgColor = 0xA0A0A0 );
 
         virtual void draw() override;
 };
@@ -150,6 +150,7 @@ class GUI2Text : public GUI2Node{
         GUI2Text( GUI2Rect2f anchors, Vec2i pos, Vec2i size, std::string text, uint32_t fontSize, uint32_t fontColor );
         GUI2Text( GUI2Rect2f anchors, Vec2i pos, Vec2i size, std::string text, uint32_t fontSize, uint32_t fontColor, Align align );
         GUI2Text( GUI2Rect2f anchors, Vec2i pos, Vec2i size, std::string text, Align align);
+        GUI2Text( std::string text, Align align );
 
         void setText( std::string text );
         void setFontSize( uint32_t fontSize );
@@ -163,8 +164,8 @@ class GUI2Vlist : public GUI2Node{
         enum class Align { LEFT, CENTER, RIGHT, STRETCH };
 
     private:
-        unsigned int sepperation = 5;
-        Align align = Align::STRETCH;
+        unsigned int sepperation;
+        Align align;
 
     protected:
         Vec2i calculate_minSize() override;
@@ -173,10 +174,9 @@ class GUI2Vlist : public GUI2Node{
         virtual void update_children_rects() override;
 
     public:
-        GUI2Vlist( GUI2Rect2f anchors, Vec2i pos, Vec2i size );
-        GUI2Vlist( GUI2Rect2f anchors, Vec2i pos, Vec2i size, unsigned int sepperation );
+        GUI2Vlist( GUI2Rect2f anchors, Vec2i pos, Vec2i size, unsigned int sepperation = 5, Align align = Align::STRETCH );
         GUI2Vlist( GUI2Rect2f anchors, Vec2i pos, Vec2i size, Align align );
-        GUI2Vlist( GUI2Rect2f anchors, Vec2i pos, Vec2i size, unsigned int sepperation, Align align );
+        GUI2Vlist( unsigned int sepparation = 5, Align align = Align::STRETCH );
 
         void set_sepperation( unsigned int sepperation );
         unsigned int get_sepperation();
@@ -190,8 +190,8 @@ class GUI2Hlist : public GUI2Node{
         enum class Align { TOP, CENTER, BOTTOM, STRETCH };
 
     private:
-        unsigned int sepperation = 5;
-        Align align = Align::STRETCH;
+        unsigned int sepperation;
+        Align align;
 
     protected:
         Vec2i calculate_minSize() override;
@@ -200,10 +200,9 @@ class GUI2Hlist : public GUI2Node{
         virtual void update_children_rects() override;
 
     public:
-        GUI2Hlist( GUI2Rect2f anchors, Vec2i pos, Vec2i size );
-        GUI2Hlist( GUI2Rect2f anchors, Vec2i pos, Vec2i size, unsigned int sepperation );
+        GUI2Hlist( GUI2Rect2f anchors, Vec2i pos, Vec2i size, unsigned int sepperation = 5, Align align = Align::STRETCH );
         GUI2Hlist( GUI2Rect2f anchors, Vec2i pos, Vec2i size, Align align );
-        GUI2Hlist( GUI2Rect2f anchors, Vec2i pos, Vec2i size, unsigned int sepperation, Align align );
+        GUI2Hlist( unsigned int sepperation = 5, Align align = Align::STRETCH );
 
         void set_sepperation( unsigned int sepperation );
         unsigned int get_sepperation();
@@ -241,29 +240,48 @@ class GUI2Button : public GUI2ButtonBase{
         GUI2Button( GUI2Rect2f anchors, Vec2i pos, Vec2i size, const std::function<void()>& command, uint32_t bgColor, uint32_t bgColorHover, uint32_t bgColorPressed );
 };
 
+class GUI2TextButton : public GUI2Button{
+    private:
+        GUI2Text* text_node;
+        std::string text;
+    
+    public:
+        GUI2TextButton( GUI2Rect2f anchors, Vec2i pos, Vec2i size, std::string text, const std::function<void()>& command );
+        GUI2TextButton( std::string text, const std::function<void()>& command );
+};
+
 class GUI2ToggleButtonBase : public GUI2Node {
     private:
         const std::function<void(bool)> command;
         bool active = false;
+        bool* bound_bool = nullptr;
 
     protected:
         virtual void on_mouse_click() override;
 
     public:
         bool is_active();
+        void bind_bool( bool* bound_bool );
 
         GUI2ToggleButtonBase( GUI2Rect2f anchors, Vec2i pos, Vec2i size, const std::function<void(bool)>& command );
+        GUI2ToggleButtonBase( GUI2Rect2f anchors, Vec2i pos, Vec2i size, const std::function<void(bool)>& command, bool* bound_bool );
+        GUI2ToggleButtonBase( GUI2Rect2f anchors, Vec2i pos, Vec2i size, bool* bound_bool );
 };
 
 class GUI2ToggleButton : public GUI2ToggleButtonBase {
     private:
         GUI2Panel* panel;
 
+        bool hovering = false;
+        bool pressed = false;
+
     protected:
         virtual void on_mouse_enter() override;
         virtual void on_mouse_exit() override;
         virtual void on_mouse_down() override;
         virtual void on_mouse_up() override;
+
+        virtual void draw() override;
 
     public:
         uint32_t bgColor;
@@ -275,16 +293,78 @@ class GUI2ToggleButton : public GUI2ToggleButtonBase {
         uint32_t bgColorActivePressed;
 
         GUI2ToggleButton( GUI2Rect2f anchors, Vec2i pos, Vec2i size, const std::function<void(bool)>& command );
-        GUI2ToggleButton( GUI2Rect2f anchors, Vec2i pos, Vec2i size, const std::function<void(bool)>& command, uint32_t bgColor, uint32_t bgColorHover, uint32_t bgColorPressed, uint32_t bgColorActive, uint32_t bgColorActiveHover, uint32_t bgColorActivePressed );
+        GUI2ToggleButton( GUI2Rect2f anchors, Vec2i pos, Vec2i size, const std::function<void(bool)>& command, bool* bound_bool );
+        GUI2ToggleButton( GUI2Rect2f anchors, Vec2i pos, Vec2i size, const std::function<void(bool)>& command, bool* bound_bool, uint32_t bgColor, uint32_t bgColorHover, uint32_t bgColorPressed, uint32_t bgColorActive, uint32_t bgColorActiveHover, uint32_t bgColorActivePressed );
+
+        GUI2ToggleButton( GUI2Rect2f anchors, Vec2i pos, Vec2i size, bool* bound_bool );
+        GUI2ToggleButton( GUI2Rect2f anchors, Vec2i pos, Vec2i size, bool* bound_bool, uint32_t bgColor, uint32_t bgColorHover, uint32_t bgColorPressed, uint32_t bgColorActive, uint32_t bgColorActiveHover, uint32_t bgColorActivePressed );
+
+};
+
+class GUI2ToggleTextButton : public GUI2ToggleButton {
+    private:
+        GUI2Text* text_node;
+    
+    public:
+        GUI2ToggleTextButton( GUI2Rect2f anchors, Vec2i pos, Vec2i size, bool* bound_bool, std::string text );
+        GUI2ToggleTextButton( bool* bound_bool, std::string text );
 };
 
 class GUI2Dragable : public GUI2Node {
     protected:
-        virtual void on_mouse_drag( Vec2i delta ) override;
+        virtual void on_mouse_drag( const SDL_Event& event ) override;
     
     public:
         GUI2Dragable( GUI2Rect2f anchors, Vec2i pos, Vec2i size );
 };
+
+template <class T>
+class GUI2SliderT : public GUI2Node {
+    private:
+        GUI2Panel* bgPanel;
+        GUI2Panel* fillPanel;
+
+        const bool interactive = false;
+        const bool limit_bound_value = false;
+
+        T min, max;
+        T value;
+        T* bound_value;
+
+        const std::function<void(T)> command;
+
+    protected:
+        virtual void draw() override;
+        virtual void on_mouse_drag( const SDL_Event& event ) override;
+
+    public:
+        void set_min(T min);
+        void set_max(T max);
+        void set_value(T value);
+        void bind_value(T* bound_value);
+
+        GUI2SliderT( GUI2Rect2f anchors, Vec2i pos, Vec2i size, T min, T max, T* bound_value, const std::function<void(T)>& command, bool interactive = true );
+};
+using GUI2Slideri = GUI2SliderT<int>;
+using GUI2Sliderf = GUI2SliderT<float>;
+
+template <class T>
+class GUI2TextSliderT : public GUI2SliderT<T> {
+    private:
+        GUI2Text* text;
+        std::string format; // the string "$value" in format will be replaced with the std::to_string(value)
+                            // for more specific formating, use "$value%.2f" to format the value with "%.2f" (to 2 decimal places)
+
+        const std::function<void(T)> command;
+        void on_value_update(T value);
+
+    public:
+        GUI2TextSliderT( GUI2Rect2f anchors, Vec2i pos, Vec2i size, T min, T max, T* bound_value, std::string format, const std::function<void(T)>& command, bool interactive = true );
+        GUI2TextSliderT( T min, T max, T* bound_value, std::string format, const std::function<void(T)>& command = nullptr, bool interactive = true );
+};
+using GUI2TextSlideri = GUI2TextSliderT<int>;
+using GUI2TextSliderf = GUI2TextSliderT<float>;
+
 
 class GUI2 {public:
     private:
