@@ -4,6 +4,15 @@
 
 #include <vector>
 
+//#undef  DEBUG_ALLOCATOR
+#define DEBUG_ALLOCATOR
+#define _delete(p) delete[] p
+#define _new(T,n)  new T[n]
+#ifdef DEBUG_ALLOCATOR
+    #include "debugAllocator.h"
+#endif 
+
+
 #define SWAP( a, b, TYPE ) { TYPE t = a; a = b; b = t; }
 //#define _max(a,b)      ((a>b)?a:b)
 //#define _min(a,b)      ((a<b)?a:b)
@@ -120,27 +129,53 @@ _inline_T int      signum(T val)      { return (T(0) < val) - (val < T(0)); }
 
 // ======= allocation
 
-_inline_T bool _allocIfNull(T*& arr, int n){ if(arr==0){ arr=new T[n]; return true; } return false; }
-_inline_T void _alloc  (T*& arr, int n){ arr=new T[n]; }
-_inline_T void _realloc(T*& arr, int n){ if(arr){ delete [] arr; } arr=new T[n]; }
-_inline_T void _dealloc(T*& arr       ){ if(arr){ delete [] arr; } arr=0;        }
-_inline_T bool _bindOrRealloc(int n, T* from, T*& arr ){ if(from){ arr=from; return false; }else{ _realloc(arr,n); return true; } }
 
-_inline_T void _realloc0(T*& arr, int n, const T& v0){  _realloc(arr,n); for(int i=0;i<n;i++){ arr[i]=v0; } }
 
-_inline_T T* _allocPointer( T**& pp, int n ){  if(pp){ if((*pp)==0)(*pp)=new T[n]; return *pp; }; return 0; };
+// _inline_T bool _allocIfNull   (T*& arr, int n){ if(arr==0){ arr=_new(T,n); return true; } return false; }
+// _inline_T void _alloc         (T*& arr, int n){ arr=_new(T,n); }
+// _inline_T void __realloc       (T*& arr, int n){ if(arr){ _delete(arr); } arr=_new(T,n); }
+// _inline_T void __realloc0      (T*& arr, int n, const T& v0){  _realloc(arr,n); for(int i=0;i<n;i++){ arr[i]=v0; } }
+// _inline_T void _dealloc       (T*& arr       ){ if(arr){ _delete(arr); } arr=0;        }
+// _inline_T bool _bindOrRealloc (int n, T* from, T*& arr ){ if(from){ arr=from; return false; }else{ _realloc(arr,n); return true; } }
+// _inline_T T*   _allocPointer  (T**& pp, int n ){  if(pp){ if((*pp)==0)(*pp)=_new(T,n); return *pp; }; return 0; };
+// _inline_T T*   _reallocPointer(T**& pp, int n){
+//     if (pp){
+//         if ((*pp))   _delete((*pp));
+//         (*pp) = _new(T,n);
+//         return (*pp);
+//     }
+//     return 0;
+// }
 
-_inline_T T* _reallocPointer(T**& pp, int n)
-{
-    if (pp)
-    {
-        if ((*pp))  
-            delete[] (*pp);
+_inline_T bool _allocIfNull  (T*& arr, int n){ if(arr==0){ arr=new T[n]; return true; } return false; }
+_inline_T void _alloc        (T*& arr, int n){ arr=new T[n]; }
+_inline_T T* __realloc      (T*& arr, int n){ if(arr){ delete [] arr; } arr=new T[n]; return arr;  }
+_inline_T T* __realloc0     (T*& arr, int n, const T& v0){  __realloc(arr,n); for(int i=0;i<n;i++){ arr[i]=v0; } return arr; }
+_inline_T void _dealloc      (T*& arr       ){ if(arr){ delete [] arr; } arr=0;        }
+_inline_T bool _bindOrRealloc(int n, T* from, T*& arr ){ if(from){ arr=from; return false; }else{ __realloc(arr,n); return true; } }
+_inline_T T* _allocPointer   (T**& pp, int n ){  if(pp){ if((*pp)==0)(*pp)=new T[n]; return *pp; }; return 0; };
+_inline_T T* _reallocPointer (T**& pp, int n){
+    if (pp) {
+        if ((*pp)) delete[] (*pp);
         (*pp) = new T[n];
         return (*pp);
     }
     return 0;
 }
+
+#ifdef DEBUG_ALLOCATOR
+#define _realloc(arr,n) debug_alloc_store( __realloc(arr,n), n, _CODE_LOCATION )
+#define _realloc0(arr,n,v0) debug_alloc_store( __realloc0(arr,n,v0), n, _CODE_LOCATION )
+#else
+#define _realloc(arr,n) __realloc(arr,n)
+#define _realloc0(arr,n,v0) __realloc0(arr,n,v0)
+#endif // DEBUG_ALLOCATOR;
+
+
+
+
+
+
 
 _inline_T  bool _clone( int i0, int imax, T* from, T*& arr, int n){
     bool ret = _allocIfNull(arr,n);
