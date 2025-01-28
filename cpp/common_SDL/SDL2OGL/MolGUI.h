@@ -611,40 +611,6 @@ void MolGUI::initCommands(){
 void MolGUI::initWiggets(){
     printf( "MolGUI::initWiggets() \n" );
 
-    /*gui2.addNode(new GUI2Panel({0.2, 0.2, 0.6, 0.6}, {0, 0}, {0, 0}));
-    gui2.addNode( new GUI2Text({0.2, 0.2, 0.6, 0.6}, {0, 0}, {0, 0}, "top\nleft.", GUI2Text::Align::TOP_LEFT));
-    gui2.addNode( new GUI2Text({0.2, 0.2, 0.6, 0.6}, {0, 0}, {0, 0}, "center.\ntop.", GUI2Text::Align::TOP_CENTER));
-    gui2.addNode( new GUI2Text({0.2, 0.2, 0.6, 0.6}, {0, 0}, {0, 0}, "top\nright.", GUI2Text::Align::TOP_RIGHT));
-    gui2.addNode( new GUI2Text({0.2, 0.2, 0.6, 0.6}, {0, 0}, {0, 0}, "center.\nleft.", GUI2Text::Align::CENTER_LEFT));
-    gui2.addNode( new GUI2Text({0.2, 0.2, 0.6, 0.6}, {0, 0}, {0, 0}, "center.", GUI2Text::Align::CENTER));
-    gui2.addNode( new GUI2Text({0.2, 0.2, 0.6, 0.6}, {0, 0}, {0, 0}, "center.\nright.", GUI2Text::Align::CENTER_RIGHT));
-    gui2.addNode( new GUI2Text({0.2, 0.2, 0.6, 0.6}, {0, 0}, {0, 0}, "bottom\nleft.", GUI2Text::Align::BOTTOM_LEFT));
-    gui2.addNode( new GUI2Text({0.2, 0.2, 0.6, 0.6}, {0, 0}, {0, 0}, "center.\nbottom.", GUI2Text::Align::BOTTOM_CENTER));
-    gui2.addNode( new GUI2Text({0.2, 0.2, 0.6, 0.6}, {0, 0}, {0, 0}, "bottom\nright.", GUI2Text::Align::BOTTOM_RIGHT));*/
-
-    //auto panel = gui2.addNode(new GUI2Panel({0.2, 0.2, 0.6, 0.6}, {0, 0}, {0, 0}, 0x00FFFFFF));
-    auto* vlist = new GUI2Vlist({0, 0, 1, 1}, {0, 0}, {0, 0}, 3);
-    //panel->addChild(vlist);
-    gui2.addNode(vlist);
-
-    auto a = vlist->addChild(new GUI2Panel({0, 0, 0, 0}, {0, 0}, {0, 0}, 0x00FF00FF));
-    auto b = vlist->addChild(new GUI2Panel({0, 0, 0, 0}, {0, 0}, {0, 0}, 0x00FFAA00));
-    auto c = vlist->addChild(new GUI2Panel({0, 0, 0, 0}, {0, 0}, {0, 0}, 0x00FF8080));
-    auto d = vlist->addChild(new GUI2Panel({0, 0, 0, 0}, {0, 0}, {0, 0}, 0x00800080));
-
-    a->addChild(new GUI2Text({0, 0, 1, 1}, {0, 0}, {0, 0}, "a", GUI2Text::Align::CENTER));
-    b->addChild(new GUI2Text({0, 0, 1, 1}, {0, 0}, {0, 0}, "b", GUI2Text::Align::CENTER));
-    c->addChild(new GUI2Text({0, 0, 1, 1}, {0, 0}, {0, 0}, "c", GUI2Text::Align::CENTER));
-    d->addChild(new GUI2Text({0, 0, 1, 1}, {0, 0}, {0, 0}, "print text", GUI2Text::Align::CENTER));
-
-    d->addChild(new GUI2ButtonBase({0, 0, 1, 1}, {0, 0}, {0, 0}, [&](){ printf(" -- Button Pressed! -- \n"); }  ));
-
-    //gui2.addNode(new GUI2ToggleButton({0.5, 0.5, 0.5, 0.5}, {0, 0}, {100, 100}, [&](bool active){ printf(" -- Button toggle %i -- \n", active); }  ));
-
-    GUI2Node* dragbox = gui2.addNode(new GUI2Dragable({0.5, 0.5, 0.5, 0.5}, {0, 0}, {100, 100} ));
-    dragbox->addChild(new GUI2Panel(FULL_RECT, {0, 0}, {0, 0}, 0xA0A0A0));
-    dragbox->addChild(new GUI2Text({0, 0, 1, 1}, {0, 0}, {0, 0}, "drag me!", GUI2Text::Align::CENTER));
-
     // TODO: adding GUI widgets would be better witth LUA for fast experimentation
     GUI_stepper ylay(1,2 );
     GUI_stepper gx  (1,16);
@@ -668,12 +634,8 @@ void MolGUI::initWiggets(){
 
     // ------ GUIPanel(   "Zoom: " )
 
-    ylay.step(3); 
-    ((GUIPanel*)gui.addPanel( new GUIPanel( "Zoom: ", 5,ylay.x0,5+100,ylay.x1, true, true ) ) )
-        ->setRange(5.0,50.0)
-        ->setValue(zoom)
-        //->command = [&](GUIAbstractPanel* p){ zoom = ((GUIPanel *)p)->value; return 0; };
-        ->setCommand( [&](GUIAbstractPanel* p){ zoom = ((GUIPanel *)p)->value; return 0; } );
+    ylay.step(3);
+    GUI2Node* slider = gui2.addNode(new GUI2TextSliderf({0, 0, 0, 0}, {5, ylay.x0}, {110, 20}, 1, 100, &zoom, "Zoom: $value%.2f", nullptr));
 
     // ------ DropDownList(   "Pick Mode:"  )
 
@@ -724,38 +686,13 @@ void MolGUI::initWiggets(){
     // ------ MultiPanel(    "Edit"   )
 
     ylay.step( 1 ); ylay.step( 2 );
-    mp= new MultiPanel( "Edit", gx.x0, ylay.x0, gx.x1, 0,-13); gui.addPanel( mp ); panel_Edit=mp;
-    //GUIPanel* addPanel( const std::string& caption, Vec3d vals{min,max,val}, bool isSlider, bool isButton, bool isInt, bool viewVal, bool bCmdOnSlider );
-    // mp->addPanel( "Sel.All", {0.0,1.0, 0.0},  0,1,0,0,0 )->command = [&](GUIAbstractPanel* p){ 
-    //     if(bViewBuilder){ W->builder.selection.clear(); for(int i=0; i<W->builder.atoms.size(); i++)W->builder.selection.insert(i); return 0; }
-    //     else            { W->        selection.clear(); for(int i=0; i<W->nbmol.natoms; i++)W->selection.push_back(i);              return 0; }
-    // };
-    // mp->addPanel( "Sel.Inv", {0.0,1.0, 0.0},  0,1,0,0,0 )->command = [&](GUIAbstractPanel* p){ 
-    //     if(bViewBuilder){ std::unordered_set<int> s(W->builder.selection.begin(),W->builder.selection.end()); W->builder.selection.clear(); for(int i=0; i<W->builder.atoms.size(); i++) if( !s.contains(i) )W->builder.selection.insert(i);  return 0;  }
-    //     else            { std::unordered_set<int> s(W->selection.begin(),        W->selection.end());         W->selection.clear();         for(int i=0; i<W->nbmol.natoms;         i++) if( !s.contains(i) )W->selection.push_back(i);       return 0;  }
-    // };
 
-    mp->addPanel( "print.nonB",  {0.0,1.0, 0.0},  0,1,0,0,0 )->command = [&](GUIAbstractPanel* p){ W->ffl.print_nonbonded();   return 0; };   // 1
-    mp->addPanel( "print.Aconf", {0.0,1.0, 0.0},  0,1,0,0,0 )->command = [&](GUIAbstractPanel* p){ W->builder.printAtomConfs(); return 0; };  // 2
-    mp->addPanel( "Sel.All", {0.0,1.0, 0.0},  0,1,0,0,0 )->command = [&](GUIAbstractPanel* p){ if(bViewBuilder){ W->builder.selectAll();     }else{ W->selectAll();    } return 0; };  // 3
-    mp->addPanel( "Sel.Inv", {0.0,1.0, 0.0},  0,1,0,0,0 )->command = [&](GUIAbstractPanel* p){ if(bViewBuilder){ W->builder.selectInverse(); }else{ W->selectInverse();} return 0; };  // 4
-    mp->addPanel( "Sel.Cap", {0.0,1.0, 0.0},  0,1,0,0,0 )->command = [&](GUIAbstractPanel* p){ W->builder.selectCaping(); for(int ia: W->builder.selection) W->selection.push_back(ia); return 0; }; // 5
-    mp->addPanel( "Add.CapHs",{0.0,1.0, 0.0}, 0,1,0,0,0 )->command = [&](GUIAbstractPanel* p){  // 6
-        //printf("====== AtomConf before Add.CapHs \n"); W->builder.printAtomConfs();
-        bBuilderChanged = W->builder.addAllCapsByPi( W->params.getAtomType("H") ) > 0; 
-        //printf("====== AtomConf After Add.CapHs \n"); 
-        //W->builder.printAtomConfs();
-        return 0; }; 
-    //mp->addPanel( "rot3a"  , {0.0,1.0, 0.0},  0,1,0,0,0 )->command = [&](GUIAbstractPanel* p){ W->rot3a();            return 0; };
-    mp->addPanel( "toCOG"  , {-3.0,3.0,0.0},  0,1,0,0,0 )->command = [&](GUIAbstractPanel* p){ if(bViewBuilder){W->selectionFromBuilder();} W->center(true);         if(bViewBuilder){W->updateBuilderFromFF();} return 0; }; // 7
-    mp->addPanel( "toPCAxy", {-3.0,3.0,0.0},  0,1,0,0,0 )->command = [&](GUIAbstractPanel* p){ if(bViewBuilder){W->selectionFromBuilder();} W->alignToAxis({2,1,0}); if(bViewBuilder){W->updateBuilderFromFF();} return 0; }; // 5
-    p=mp->addPanel( "save.xyz",{-3.0,3.0,0.0},  0,1,0,0,0 );p->command = [&](GUIAbstractPanel* p){ const char* fname = ((GUIPanel*)p)->inputText.c_str(); if(bViewBuilder){ W->builder.save2xyz(fname);}else{W->saveXYZ(fname);} return 0; }; p->inputText="out.xyz";  // 9
-    p=mp->addPanel( "save.mol:",{-3.0,3.0,0.0},  0,1,0,0,0 );p->command = [&](GUIAbstractPanel* p){ const char* fname = ((GUIPanel*)p)->inputText.c_str(); W->updateBuilderFromFF(); W->builder.saveMol(fname); return 0; }; p->inputText="out.mol";  // 10
+    GUI2Dragable* dragbox = (GUI2Dragable*)gui2.addNode(new GUI2Dragable({0, 0, 0, 0}, {gx.x0, ylay.x0}, {110, 0} ));
+    dragbox->addChild(new GUI2Panel(0xC0C0C0));
+    GUI2Node* vlist = dragbox->addChild(new GUI2Vlist(0));
+    vlist->addChild(new GUI2Text("Edit", GUI2Text::Align::CENTER_LEFT));
 
-    //mp->addPanel( "VdwRim", {1.0,3.0,1.5},  0,1,0,0,0 )->command = [&](GUIAbstractPanel* p){  double R=((GUIPanel*)p)->value; dipoleMap.points_along_rim( R, {5.0,0.0,0.0}, Vec2d{0.0,0.1} );  bDipoleMap=true;  return 0; };
-    //mp->addPanel( "VdwRim", {1.0,3.0,1.5},  0,1,0,0,0 )->command = [&](GUIAbstractPanel* p){  double R=((GUIPanel*)p)->value; dipoleMap.prepareRim( 5, {1.0,2.0}, {0.4,0.6}, {0.0,-7.0,0.0}, {1.0,0.0} );  bDipoleMap=true;  return 0; };
-    //mp->addPanel( "VdwRim", {1.0,3.0,1.5},  0,1,0,0,0 )->command = [&](GUIAbstractPanel* p){  double R=((GUIPanel*)p)->value;   double Rs[]{R,R+0.1,R+0.2,R+0.3,R+0.5};  dipoleMap.prepareRim2( 5, Rs, 0.3, {0.0,-7.0,0.0}, {1.0,0.0} );  bDipoleMap=true;  return 0; };
-    mp->addPanel( "VdwRim", {1.0,3.0,1.5},  0,1,0,0,0 )->command = [&](GUIAbstractPanel* p){  // 11
+    vlist->addChild(new GUI2TextButton("VdwRim", [&](){ 
         //double Rs[]{0.5,0.7,0.9,1.1,1.3,1.5,1.7,1.9,2.5,3.0,3.5,4.5,6.0,8.0,10.0};  
         double Rs[20]{0.3, 0.4, 0.5, 0.6, 0.7, 0.9, 1.1, 1.3, 1.5, 1.7, 2.0, 2.5, 3.0, 3.5, 4.5, 6.0, 8.0, 10.0, 14.0, 20.0 };  
         //dipoleMap.prepareRim2( 15, Rs, 0.3, {0.0,-7.0,0.0}, {1.0,0.0} ); 
@@ -763,39 +700,41 @@ void MolGUI::initWiggets(){
         dipoleMap.genAndSample( 20, Rs, 0.3, {0.0,-7.0,0.0}, {1.0,0.0} );
         //dipoleMap.genAndSample( 1, Rs, 0.05, {0.0,-7.0,0.0}, {1.0,0.0} );
         dipoleMap.saveToXyz( "dipoleMap.xyz" );
-        bDipoleMap=true;  return 0;      
-    };
-    //int npan = mp->subs.size();
+        bDipoleMap=true;  return 0;
+    } ));
+    vlist->addChild(new GUI2TextButton("save to: out.mol", [&](){ const char* fname = "out.mol"; W->updateBuilderFromFF(); W->builder.saveMol(fname); } ));
+    vlist->addChild(new GUI2TextButton("save to: out.xyz", [&](){ const char* fname = "out.xyz"; if(bViewBuilder){ W->builder.save2xyz(fname);}else{W->saveXYZ(fname);} } ));
+    vlist->addChild(new GUI2TextButton("toPCAxy",          [&](){ if(bViewBuilder){W->selectionFromBuilder();} W->alignToAxis({2,1,0}); if(bViewBuilder){W->updateBuilderFromFF();} } ));
+    vlist->addChild(new GUI2TextButton("toCOG",            [&](){ if(bViewBuilder){W->selectionFromBuilder();} W->center(true); if(bViewBuilder){W->updateBuilderFromFF();} } ));
+    vlist->addChild(new GUI2TextButton("Add.CapHs",        [&](){
+        //printf("====== AtomConf before Add.CapHs \n"); W->builder.printAtomConfs();
+        bBuilderChanged = W->builder.addAllCapsByPi( W->params.getAtomType("H") ) > 0; 
+        //printf("====== AtomConf After Add.CapHs \n"); 
+        //W->builder.printAtomConfs();
+        } ));
+    vlist->addChild(new GUI2TextButton("Sel.Cap",     [&](){ W->builder.selectCaping(); for(int ia: W->builder.selection) W->selection.push_back(ia); } ));
+    vlist->addChild(new GUI2TextButton("Sel.Inv",     [&](){ if(bViewBuilder){ W->builder.selectInverse(); }else{ W->selectInverse(); } }));
+    vlist->addChild(new GUI2TextButton("Sell.All",    [&](){ if(bViewBuilder){ W->builder.selectAll(); }else{ W->selectAll(); } }));
+    vlist->addChild(new GUI2TextButton("print.Aconf", [&](){ W->builder.printAtomConfs(); } ));
+    vlist->addChild(new GUI2TextButton("print.nonB",  [&](){ W->ffl.print_nonbonded(); } ));
 
-    auto lamb_scanSurf = [&](GUIAbstractPanel* p){ 
-        if(W->ipicked<0)return; 
-        //particle_REQ = 0.0;
-        int npan =6;
-        double sc = pow( 10., panel_Edit->subs[npan+0]->value );
-        int iview = panel_Edit->subs[npan+1]->value;
-        int iscan = panel_Edit->subs[npan+2]->value;
-        printf( "lamb_scanSurf() npan=%i iview=%i iscan=%i sc=%g SurfFF_view.range(%g,%g)\n", npan, iview, iscan, sc,  panel_Edit->subs[npan+1]->vmin, panel_Edit->subs[npan+1]->vmax  );
-        scanSurfFF( 100, apos[W->ipicked]+Vec3d{0.0,0.0,-5.0}, apos[W->ipicked]+Vec3d{0.0,0.0,+5.0}, W->ffl.REQs[W->ipicked], iscan, iview, sc, Vec3dX );
-        //scanSurfFF( 100, apos[W->ipicked]-Vec3d{0.0,0.0,5.0}, apos[W->ipicked]-Vec3d{0.0,0.0,1.0}, particle_REQ, iscan, iview, sc );
-    };
-    mp->addPanel( "scanSurfFF",  {-3.0,3.0,0.0}, 1,1,0,1,1 )->command = lamb_scanSurf;   // 12
-    mp->addPanel( "SurfFF_view", {-0.01,1.01,0}, 1,1,1,1,1 )->command = lamb_scanSurf;   // 13
-    mp->addPanel( "SurfFF_scan", {-0.01,1.01,0}, 1,1,1,1,1 )->command = lamb_scanSurf;   // 14
-    ylay.step( (mp->nsubs+1)*2 ); ylay.step( 2 );
+    ylay.step( 24 ); ylay.step( 2 );
 
-    // mp= new MultiPanel( "Run", gx.x0, ylay.x0, gx.x1, 0,-2); gui.addPanel( mp ); //panel_NonBondPlot=mp;
-    // mp->addPanel( "NonBond"  , {-3.0,3.0,0.0},  0,1,0,0,0 )->command = [&](GUIAbstractPanel* p){ W->bNonBonded=!W->bNonBonded;         return 0; };
-    // mp->addPanel( "NonBondNG", {-3.0,3.0,0.0},  0,1,0,0,0 )->command = [&](GUIAbstractPanel* p){ W->bNonBondNeighs=!W->bNonBondNeighs; return 0; };
-    // mp->addPanel( "Grid",      {-3.0,3.0,0.0},  0,1,0,0,0 )->command = [&](GUIAbstractPanel* p){ W->bGridFF=!W->bGridFF;               return 0; };
-    
     // ------ CheckBoxList( "Run" )
 
-    chk = new CheckBoxList( gx.x0, ylay.x0, gx.x1 );   gui.addPanel( chk );  chk->caption ="Run"; //chk->bgColor = 0xFFE0E0E0;
-    chk->addBox( "NonBond"   , &W->bNonBonded     );
-    chk->addBox( "NonBondNG" , &W->bNonBondNeighs );
-    chk->addBox( "GridFF"    , &W->bGridFF        );
-    chk->addBox( "tricubic"  , &W->bTricubic      );
-    ylay.step( (chk->boxes.size()+1)*2 ); ylay.step( 2 );
+    dragbox = (GUI2Dragable*)gui2.addNode(new GUI2Dragable({0, 0, 0, 0}, {gx.x0, ylay.x0}, {110, 0} ));
+    dragbox->addChild(new GUI2Panel(0xC0C0C0));
+    vlist = dragbox->addChild(new GUI2Vlist(0));
+    vlist->addChild(new GUI2Text("Run", GUI2Text::Align::CENTER_LEFT));
+
+    vlist->addChild(new GUI2ToggleTextButton(&W->bTricubic, "tricubic"));
+    vlist->addChild(new GUI2ToggleTextButton(&W->bGridFF,   "GridFF"));
+    vlist->addChild(new GUI2ToggleTextButton(&W->bNonBondNeighs, "nonBondNG"));
+    vlist->addChild(new GUI2ToggleTextButton(&W->bNonBonded, "nonBond"));
+
+    ylay.step( 10 );
+    ylay.step( 2 );
+
 
     // ------ MultiPanel(   BondLenghs   )
 

@@ -26,8 +26,8 @@ GUI2Node::GUI2Node(GUI2Rect2f anchors, Vec2i pos, Vec2i size, bool leaf_node, bo
         update_minSize();
         update_rect();
     }
-GUI2Node::GUI2Node(GUI2Rect2f anchors, Vec2i pos, Vec2i size, bool leaf_node_):
-    GUI2Node(anchors, pos, size, leaf_node_, false){}
+GUI2Node::GUI2Node(GUI2Rect2f anchors, Vec2i pos, Vec2i size, bool leaf_node):
+    GUI2Node(anchors, pos, size, leaf_node, false){}
 GUI2Node::GUI2Node(GUI2Rect2f anchors, Vec2i pos, Vec2i size):
     GUI2Node(anchors, pos, size, false, false){}
 
@@ -98,10 +98,19 @@ void GUI2Node::update_minSize(){
     if (_minSize == new_minSize) return;
     _minSize = new_minSize;
     if (parent != nullptr) parent->update_minSize();
+    update_rect(); // TODO: does this lead to O(n^2) complexity?
 }
 void GUI2Node::update_child_rect(GUI2Node* child){
     Vec2i min = _rect.min() + (Vec2i)(child->anchors().min()*(Vec2f)_rect.size()) + child->pos();
     Vec2i max = _rect.min() + (Vec2i)(child->anchors().max()*(Vec2f)_rect.size()) + child->pos() + child->size();
+
+    if ((max - min).x < child->minSize().x){
+        max.x = min.x + child->minSize().x;
+    }
+    if ((max - min).y < child->minSize().y){
+        max.y = min.y + child->minSize().y;
+    }
+
     child->set_rect(GUI2Rect2i(min, max));
 }
 void GUI2Node::update_children_rects(){
@@ -175,7 +184,7 @@ bool GUI2Node::onEvent(const SDL_Event& event){
                 mouse_over = false;
             }
             if (consumed_mouse_down){
-                on_mouse_drag( {event.motion.xrel, event.motion.yrel} );
+                on_mouse_drag( event );
             }
             break;
 
@@ -214,19 +223,18 @@ void GUI2Node::on_mouse_exit(){}
 void GUI2Node::on_mouse_down(){}
 void GUI2Node::on_mouse_up(){}
 void GUI2Node::on_mouse_click(){}
-void GUI2Node::on_mouse_drag(Vec2i delta){}
+void GUI2Node::on_mouse_drag( const SDL_Event& event){}
 
 
 // ==============================
 //    class GUI2Panel
 // =============================
 
-GUI2Panel::GUI2Panel(GUI2Rect2f anchors_, Vec2i pos_, Vec2i size_):
-    GUI2Node(anchors_, pos_, size_){}
-GUI2Panel::GUI2Panel(GUI2Rect2f anchors_, Vec2i pos_, Vec2i size_, uint32_t bgColor_):
-    GUI2Node(anchors_, pos_, size_),
-    bgColor(bgColor_){}
-
+GUI2Panel::GUI2Panel(GUI2Rect2f anchors, Vec2i pos, Vec2i size, uint32_t bgColor):
+    GUI2Node(anchors, pos, size),
+    bgColor(bgColor){}
+GUI2Panel::GUI2Panel(uint32_t bgColor):
+    GUI2Panel(FULL_RECT, {0, 0}, {0, 0}, bgColor){}
 
 void GUI2Panel::draw(){ // TODO: don't need to redraw every frame ?
     Draw  ::setRGB( bgColor );
@@ -262,6 +270,9 @@ GUI2Text::GUI2Text( GUI2Rect2f anchors, Vec2i pos, Vec2i size, std::string text,
     text(text),
     align(align)
     { update_minSize(); }
+GUI2Text::GUI2Text( std::string text, Align align ):
+    GUI2Text(FULL_RECT, {0,0}, {0,0}, text, align) {}
+
 
 void GUI2Text::recalculate_textSize(){
     unsigned int lineCount = 1;
@@ -293,25 +304,25 @@ void GUI2Text::recalculate_textPos(){
 }
 
 Vec2i GUI2Text::calculate_minSize(){
-    GUI2Text::recalculate_textSize();
+    recalculate_textSize();
     return textSize_;
 }
 
 void GUI2Text::setText( std::string text_ ){
     text = text_;
-    GUI2Text::recalculate_textSize();
+    update_minSize();
 }
 void GUI2Text::setFontSize( uint32_t fontSize_ ){
     fontSize = fontSize_;
-    GUI2Text::recalculate_textSize();
+    update_minSize();
 }
 void GUI2Text::setAlign( Align align_ ){
     align = align_;
-    GUI2Text::recalculate_textPos();
+    recalculate_textPos();
 }
 
 void GUI2Text::on_rect_updated(){
-    GUI2Text::recalculate_textPos();
+    recalculate_textPos();
 }
 
 
@@ -326,18 +337,15 @@ void GUI2Text::draw(){
 //    class GUI2Vlist
 // ==============================
 
-GUI2Vlist::GUI2Vlist( GUI2Rect2f anchors_, Vec2i pos_, Vec2i size_ ):
-    GUI2Node(anchors_, pos_, size_){}
-GUI2Vlist::GUI2Vlist( GUI2Rect2f anchors_, Vec2i pos_, Vec2i size_, unsigned int sepperation_ ):
-    GUI2Node(anchors_, pos_, size_),
-    sepperation(sepperation_){}
-GUI2Vlist::GUI2Vlist( GUI2Rect2f anchors_, Vec2i pos_, Vec2i size_, Align align_ ):
-    GUI2Node(anchors_, pos_, size_),
-    align(align_){}
-GUI2Vlist::GUI2Vlist( GUI2Rect2f anchors_, Vec2i pos_, Vec2i size_, unsigned int sepperation_, Align align_ ):
-    GUI2Node(anchors_, pos_, size_),
-    sepperation(sepperation_),
-    align(align_){}
+GUI2Vlist::GUI2Vlist( GUI2Rect2f anchors, Vec2i pos, Vec2i size, unsigned int sepperation, Align align ):
+    GUI2Node(anchors, pos, size),
+    sepperation(sepperation),
+    align(align){}
+GUI2Vlist::GUI2Vlist( GUI2Rect2f anchors, Vec2i pos, Vec2i size, Align align ):
+    GUI2Vlist(anchors, pos, size, 5, align){}
+GUI2Vlist::GUI2Vlist( unsigned int sepparation, Align align ):
+    GUI2Vlist(FULL_RECT, {0,0}, {0,0}, sepparation, align){}
+
 
 void GUI2Vlist::set_sepperation( unsigned int sepperation_ ){
     sepperation = sepperation_;
@@ -401,18 +409,14 @@ void GUI2Vlist::update_children_rects(){
 //    class GUI2Hlist
 // ==============================
 
-GUI2Hlist::GUI2Hlist( GUI2Rect2f anchors_, Vec2i pos_, Vec2i size_ ):
-    GUI2Node(anchors_, pos_, size_){}
-GUI2Hlist::GUI2Hlist( GUI2Rect2f anchors_, Vec2i pos_, Vec2i size_, unsigned int sepperation_ ):
-    GUI2Node(anchors_, pos_, size_),
-    sepperation(sepperation_){}
-GUI2Hlist::GUI2Hlist( GUI2Rect2f anchors_, Vec2i pos_, Vec2i size_, Align align_ ):
-    GUI2Node(anchors_, pos_, size_),
-    align(align_){}
-GUI2Hlist::GUI2Hlist( GUI2Rect2f anchors_, Vec2i pos_, Vec2i size_, unsigned int sepperation_, Align align_ ):
-    GUI2Node(anchors_, pos_, size_),
-    sepperation(sepperation_),
-    align(align_){}
+GUI2Hlist::GUI2Hlist( GUI2Rect2f anchors, Vec2i pos, Vec2i size, unsigned int sepperation, Align align ):
+    GUI2Node(anchors, pos, size),
+    sepperation(sepperation),
+    align(align){}
+GUI2Hlist::GUI2Hlist( GUI2Rect2f anchors, Vec2i pos, Vec2i size, Align align ):
+    GUI2Hlist(anchors, pos, size, 5, align){}
+GUI2Hlist::GUI2Hlist( unsigned int sepperation, Align align ):
+    GUI2Hlist(FULL_RECT, {0,0}, {0,0}, sepperation, align){}
 
 void GUI2Hlist::set_sepperation( unsigned int sepperation_ ){
     sepperation = sepperation_;
@@ -480,7 +484,7 @@ GUI2ButtonBase::GUI2ButtonBase( GUI2Rect2f anchors, Vec2i pos, Vec2i size, const
     command(command){}
 
 void GUI2ButtonBase::on_mouse_click(){
-    std::invoke(command);
+    if (command != nullptr) command();
 }
 
 // ==============================
@@ -493,12 +497,12 @@ GUI2Button::GUI2Button( GUI2Rect2f anchors, Vec2i pos, Vec2i size, const std::fu
     bgColorHover(bgColorHover),
     bgColorPressed(bgColorPressed)
     {
-        panel = (GUI2Panel*)addChild(new GUI2Panel({0, 0, 1, 1}, {0, 0}, {0, 0}));
+        panel = (GUI2Panel*)addChild(new GUI2Panel());
         panel->bgColor = bgColor;
     }
 
 GUI2Button::GUI2Button( GUI2Rect2f anchors, Vec2i pos, Vec2i size, const std::function<void()>& command ):
-    GUI2Button(anchors, pos, size, command, 0x808080, 0x787878, 0x606060){}
+    GUI2Button(anchors, pos, size, command, 0xA0A0A0, 0x989898, 0x808080){}
 
 void GUI2Button::on_mouse_enter(){
     panel->bgColor = bgColorHover;
@@ -514,28 +518,53 @@ void GUI2Button::on_mouse_up(){
 }
 
 // ==============================
+//    class GUI2TextButton
+// ==============================
+
+GUI2TextButton::GUI2TextButton( GUI2Rect2f anchors, Vec2i pos, Vec2i size, std::string text, const std::function<void()>& command ):
+    GUI2Button(anchors, pos, size, command),
+    text(text)
+    {
+        text_node = (GUI2Text*)addChild(new GUI2Text(text, GUI2Text::Align::CENTER_LEFT));
+    }
+GUI2TextButton::GUI2TextButton( std::string text, const std::function<void()>& command ):
+    GUI2TextButton(FULL_RECT, {0, 0}, {0, 0}, text, command){}
+
+// ==============================
 //    class GUI2ToggleButtonBase
 // ==============================
 
-GUI2ToggleButtonBase::GUI2ToggleButtonBase( GUI2Rect2f anchors, Vec2i pos, Vec2i size, const std::function<void(bool)>& command ):
+GUI2ToggleButtonBase::GUI2ToggleButtonBase( GUI2Rect2f anchors, Vec2i pos, Vec2i size, const std::function<void(bool)>& command, bool* bound_bool ):
     GUI2Node(anchors, pos, size, false, true),
+    bound_bool(bound_bool),
     command(command){}
+GUI2ToggleButtonBase::GUI2ToggleButtonBase( GUI2Rect2f anchors, Vec2i pos, Vec2i size, const std::function<void(bool)>& command ):
+    GUI2ToggleButtonBase(anchors, pos, size, command, nullptr){}
+GUI2ToggleButtonBase::GUI2ToggleButtonBase( GUI2Rect2f anchors, Vec2i pos, Vec2i size, bool* bound_bool ):
+    GUI2ToggleButtonBase(anchors, pos, size, nullptr, bound_bool){}
 
 void GUI2ToggleButtonBase::on_mouse_click(){
+    if (bound_bool != nullptr) active = *bound_bool;
     active = !active;
-    command(active);
+    if (bound_bool != nullptr) *bound_bool = active;
+    if (command != nullptr) command(active);
 }
 
 bool GUI2ToggleButtonBase::is_active(){
+    if (bound_bool != nullptr) return *bound_bool;
     return active;
+}
+
+void GUI2ToggleButtonBase::bind_bool(bool* bound_bool_){
+    bound_bool = bound_bool_;
 }
 
 // ==============================
 //    class GUI2ToggleButton
 // ==============================
 
-GUI2ToggleButton::GUI2ToggleButton( GUI2Rect2f anchors, Vec2i pos, Vec2i size, const std::function<void(bool)>& command, uint32_t bgColor, uint32_t bgColorHover, uint32_t bgColorPressed, uint32_t bgColorActive, uint32_t bgColorActiveHover, uint32_t bgColorActivePressed ):
-    GUI2ToggleButtonBase(anchors, pos, size, command),
+GUI2ToggleButton::GUI2ToggleButton( GUI2Rect2f anchors, Vec2i pos, Vec2i size, const std::function<void(bool)>& command, bool* bound_bool, uint32_t bgColor, uint32_t bgColorHover, uint32_t bgColorPressed, uint32_t bgColorActive, uint32_t bgColorActiveHover, uint32_t bgColorActivePressed ):
+    GUI2ToggleButtonBase(anchors, pos, size, command, bound_bool),
     bgColor(bgColor),
     bgColorHover(bgColorHover),
     bgColorPressed(bgColorPressed),
@@ -543,24 +572,54 @@ GUI2ToggleButton::GUI2ToggleButton( GUI2Rect2f anchors, Vec2i pos, Vec2i size, c
     bgColorActiveHover(bgColorActiveHover),
     bgColorActivePressed(bgColorActivePressed)
     {
-        panel = (GUI2Panel*)addChild(new GUI2Panel({0, 0, 1, 1}, {0, 0}, {0, 0}));
+        panel = (GUI2Panel*)addChild(new GUI2Panel());
         panel->bgColor = bgColor;
     }
+GUI2ToggleButton::GUI2ToggleButton( GUI2Rect2f anchors, Vec2i pos, Vec2i size, const std::function<void(bool)>& command, bool* bound_bool ):
+    GUI2ToggleButton(anchors, pos, size, command, bound_bool, 0xA0A0A0, 0x989898, 0x808080, 0x00FF00, 0x00E800, 0x00D000){}
 GUI2ToggleButton::GUI2ToggleButton( GUI2Rect2f anchors, Vec2i pos, Vec2i size, const std::function<void(bool)>& command ):
-    GUI2ToggleButton(anchors, pos, size, command, 0xA0A0A0, 0x989898, 0x808080, 0x00FF00, 0x00E800, 0x00D000){}
+    GUI2ToggleButton(anchors, pos, size, command, nullptr){}
+
+GUI2ToggleButton::GUI2ToggleButton( GUI2Rect2f anchors, Vec2i pos, Vec2i size, bool* bound_bool ):
+    GUI2ToggleButton(anchors, pos, size, nullptr, bound_bool){}
+GUI2ToggleButton::GUI2ToggleButton( GUI2Rect2f anchors, Vec2i pos, Vec2i size, bool* bound_bool, uint32_t bgColor, uint32_t bgColorHover, uint32_t bgColorPressed, uint32_t bgColorActive, uint32_t bgColorActiveHover, uint32_t bgColorActivePressed ):
+    GUI2ToggleButton(anchors, pos, size, nullptr, bound_bool, bgColor, bgColorHover, bgColorPressed, bgColorActive, bgColorActiveHover, bgColorActivePressed){}
 
 void GUI2ToggleButton::on_mouse_enter(){
-    panel->bgColor = is_active() ? bgColorActiveHover : bgColorHover;
+    hovering = true;
 }
 void GUI2ToggleButton::on_mouse_exit(){
-    panel->bgColor = is_active() ? bgColorActive : bgColor;
+    hovering = false;
 }
 void GUI2ToggleButton::on_mouse_down(){
-    panel->bgColor = is_active() ? bgColorActivePressed : bgColorPressed;
+    pressed = true;
 }
 void GUI2ToggleButton::on_mouse_up(){
-    panel->bgColor = is_active() ? bgColorActiveHover : bgColorHover;
+    pressed = false;
 }
+
+void GUI2ToggleButton::draw(){
+    if (pressed){
+        panel->bgColor = is_active() ? bgColorActivePressed : bgColorPressed;
+    } else if (hovering){
+        panel->bgColor = is_active() ? bgColorActiveHover : bgColorHover;
+    } else {
+        panel->bgColor = is_active() ? bgColorActive : bgColor;
+    }
+    GUI2Node::draw();
+}
+
+// ==============================
+//    class GUI2TextToggleButton
+// ==============================
+
+GUI2ToggleTextButton::GUI2ToggleTextButton( GUI2Rect2f anchors, Vec2i pos, Vec2i size, bool* bound_bool, std::string text ):
+    GUI2ToggleButton(anchors, pos, size, nullptr, bound_bool)
+    {
+        text_node = (GUI2Text*)addChild(new GUI2Text(text, GUI2Text::Align::CENTER_LEFT));
+    }
+GUI2ToggleTextButton::GUI2ToggleTextButton( bool* bound_bool, std::string text ):
+    GUI2ToggleTextButton(FULL_RECT, {0, 0}, {0, 0}, bound_bool, text){}
 
 // ==============================
 //    class GUI2Dragable
@@ -569,9 +628,132 @@ void GUI2ToggleButton::on_mouse_up(){
 GUI2Dragable::GUI2Dragable( GUI2Rect2f anchors, Vec2i pos, Vec2i size ):
     GUI2Node(anchors, pos, size, false, true){}
 
-void GUI2Dragable::on_mouse_drag( Vec2i delta ){
+void GUI2Dragable::on_mouse_drag( const SDL_Event& event ){
+    Vec2i delta = {event.motion.xrel, event.motion.yrel};
     set_pos(pos() + delta);
 }
+
+// ==============================
+//    class GUI2SliderT
+// ==============================
+
+template <class T>
+GUI2SliderT<T>::GUI2SliderT( GUI2Rect2f anchors, Vec2i pos, Vec2i size, T min, T max, T* bound_value, const std::function<void(T)>& command, bool interactive ):
+    GUI2Node(anchors, pos, size, false, true),
+    min(min),
+    max(max),
+    value(min),
+    bound_value(bound_value),
+    interactive(interactive),
+    command(command)
+    {
+        bgPanel = (GUI2Panel*)addChild(new GUI2Panel());
+        fillPanel = (GUI2Panel*)addChild(new GUI2Panel(0x00FF00));
+    }
+
+template <class T>
+void GUI2SliderT<T>::bind_value( T* bound_value_ ){
+    bound_value = bound_value_;
+    if (value == *bound_value) return;
+    value = *bound_value;
+    if (command != nullptr) command(value);
+}
+
+template <class T>
+void GUI2SliderT<T>::set_min(T min_) {
+    min = min_;
+};
+template <class T>
+void GUI2SliderT<T>::set_max(T max_) {
+    max = max_;
+}
+template <class T>
+void GUI2SliderT<T>::set_value(T value_) {
+    if (bound_value != nullptr) value = *bound_value;
+    if (value == value_) return;
+
+    value = value_;
+    *bound_value = value;
+    if (command != nullptr) command(value);
+}
+
+template <class T>
+void GUI2SliderT<T>::on_mouse_drag(const SDL_Event& event ){
+    float delta_proggress = 0.5 * (float)event.motion.xrel / rect().size().x;
+    T new_value = (delta_proggress * (max - min)) + value;
+    if (new_value < min) new_value = min;
+    if (new_value > max) new_value = max;
+    set_value(new_value);
+}
+
+
+template <class T>
+void GUI2SliderT<T>::draw(){
+    if (bound_value != nullptr && value != *bound_value){
+        value = *bound_value;
+        if (command != nullptr) command(value);
+    }
+
+    float v = value;
+    if (v < min) v = min;
+    if (v > max) v = max;
+
+    float progress = (float)(v - min) / (float)(max - min);
+    fillPanel->set_anchors({0, 0, progress, 1});
+    GUI2Node::draw();
+}
+
+template class GUI2SliderT<int>;
+template class GUI2SliderT<float>;
+
+
+// ==============================
+//    class GUI2TextSliderT
+// ==============================
+
+template <class T>
+GUI2TextSliderT<T>::GUI2TextSliderT( GUI2Rect2f anchors, Vec2i pos, Vec2i size, T min, T max, T* bound_value, std::string format, const std::function<void(T)>& command, bool interactive ):
+    GUI2SliderT<T>(anchors, pos, size, min, max, bound_value, [&](T value){on_value_update(value);}, interactive),
+    command(command),
+    format(format)
+    {
+        text = (GUI2Text*)GUI2Node::addChild(new GUI2Text("NULL", GUI2Text::Align::CENTER_LEFT));
+    }
+template <class T>
+GUI2TextSliderT<T>::GUI2TextSliderT( T min, T max, T* bound_value, std::string format, const std::function<void(T)>& command, bool interactive ):
+    GUI2SliderT<T>(FULL_RECT, {0, 0}, {0, 0}, min, max, bound_value, [&](T value){on_value_update(value);}, interactive){}
+
+template <class T>
+void GUI2TextSliderT<T>::on_value_update( T value ){
+    std::string str = format;
+    std::string replace = std::string("$value");
+
+    size_t start_pos = str.find(replace);
+    if(start_pos != std::string::npos){
+        if (start_pos+replace.length() < format.length() && format[start_pos+replace.length()] == '%'){
+            // fancier formatting
+            size_t end_pos = str.find('%', start_pos+replace.length()+1);
+            std::string format_specifier;
+            if (end_pos != std::string::npos){
+                format_specifier = str.substr(start_pos + replace.length(), end_pos - start_pos - replace.length());
+            }else{
+                format_specifier = format.substr(start_pos + replace.length());
+            }
+            char formated[128];
+            std::snprintf(formated, sizeof(formated), format_specifier.c_str(), value);
+            str.replace(start_pos, end_pos - start_pos, formated);
+        }
+        else{
+            str.replace(start_pos, replace.length(), std::to_string(value));
+        }
+    }
+
+    text->setText(str);
+
+    if (command != nullptr) command(value);
+}
+template class GUI2TextSliderT<int>;
+template class GUI2TextSliderT<float>;
 
 // ==============================
 //    class GUI2
