@@ -22,16 +22,19 @@ class DebugAllocator { public:
     std::vector       <AllocItem>  items;
     std::unordered_map<void*, int> ptr2item;
 
+    
+    bool bPrintAlloc   = true;
+    bool bPrintDealloc = true;
     bool bExitOnError = true;
     bool bLazyDealloc = true;
 
     inline int store( const AllocItem item ){
+        if( bPrintAlloc ) printf( "DEBUG_ALLOCATOR: allocating @ %p n: %i at %s \n", item.ptr, item.n, item.caption.c_str() );
         items.push_back( item );
         int i = items.size()-1;
         ptr2item[item.ptr] = i;
         return i;
     }
-
 
     int add( void* ptr, size_t n, size_t size_of, const std::string& caption ){
         return store( AllocItem( ptr, n, size_of, caption ) );
@@ -41,7 +44,10 @@ class DebugAllocator { public:
         auto it = ptr2item.find( ptr );
         if( it == ptr2item.end() ){
             printf( "DebugAllocator::dealloc( %p ) ERROR : pointer not found \n", ptr );
-            if(bExitOnError) exit(0);
+            if(bExitOnError){ 
+                print_allocated();
+                exit(0);
+            }
             return;
         };
         int i = it->second;
@@ -102,7 +108,7 @@ class DebugAllocator { public:
     inline void print_allocated(){
         printf( "DebugAllocator::print_allocated() \n" );
         for(int i=0; i<items.size(); i++){
-            printf( "[%i] @ %p allocated at %li %li %s \n", i, items[i].ptr, items[i].n, items[i].size_of, items[i].caption.c_str() );
+            printf( "[%i] ptr @ %p n_items: %li item_size: %li allocated_at %s \n", i, items[i].ptr, items[i].n, items[i].size_of, items[i].caption.c_str() );
         }
     }
 
@@ -116,6 +122,7 @@ inline void debugAllocator_init(){
 }
 
 template <typename T> T* debug_alloc_store( T* ptr, size_t n, const std::string& caption ){
+    if( ptr==0) return 0;
     if(debugAllocator){ 
         debugAllocator->add( ptr, n, sizeof(T), caption );
     }else{
@@ -127,6 +134,7 @@ template <typename T> T* debug_alloc_store( T* ptr, size_t n, const std::string&
 
 template <typename T> T* debug_alloc( DebugAllocator* debugAllocator,  size_t n, const std::string& caption ){
     T* ptr = new T[n];
+    if( ptr==0) return 0;
     if(debugAllocator){ 
         debugAllocator->add( ptr, n, sizeof(T), caption );
     }else{
@@ -136,8 +144,10 @@ template <typename T> T* debug_alloc( DebugAllocator* debugAllocator,  size_t n,
     return ptr;
 }
 
-template <typename T> void debug_dealloc( DebugAllocator* debugAllocator, T* ptr ){ 
+template <typename T> void debug_dealloc( DebugAllocator* debugAllocator, T* ptr, const char* caption=0 ){ 
+    if( ptr==0 ) return;
     if(debugAllocator){ 
+        if(caption && debugAllocator->bPrintDealloc ) printf( "DEBUG_ALLOCATOR: deallocating @ %p at %s \n", ptr, caption );
         debugAllocator->remove( ptr );
     }else{
         printf( "ERROR in debug_dealloc() debugAllocator == null \n" );
@@ -164,11 +174,11 @@ inline void debugAllocator_print( ){
 #ifdef DEBUG_ALLOCATOR
 //#define _new(T,n ) debugAllocator->alloc<T>(n,_CODE_LOCATION )
 // #define _delete(p) debugAllocator->dealloc(p)
-#define _new(T,n)  debug_alloc<T>(debugAllocator,n,_CODE_LOCATION ) 
+//#define _new(T,n)  debug_alloc<T>(debugAllocator,n,_CODE_LOCATION ) 
 #define _delete(p) debug_dealloc(debugAllocator,p)
 #else
+//#define _new(T,n)  new T[n]
 #define _delete(p) delete[] p
-#define _new(T,n)  new T[n]
 #endif // DEBUG_ALLOCATOR;
 
 

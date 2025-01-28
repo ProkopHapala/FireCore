@@ -90,6 +90,7 @@ int main(int argc, char *argv[]){
     W->pre_loop();
     app->loop( 1000000 );
 
+    W->clear( true, true );
     debugAllocator_print( );
 	return 0;
 }

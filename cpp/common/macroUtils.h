@@ -147,14 +147,33 @@ _inline_T int      signum(T val)      { return (T(0) < val) - (val < T(0)); }
 //     return 0;
 // }
 
-_inline_T bool _allocIfNull  (T*& arr, int n){ if(arr==0){ arr=new T[n]; return true; } return false; }
-_inline_T void _alloc        (T*& arr, int n){ arr=new T[n]; }
-_inline_T T* __realloc      (T*& arr, int n){ if(arr){ delete [] arr; } arr=new T[n]; return arr;  }
-_inline_T T* __realloc0     (T*& arr, int n, const T& v0){  __realloc(arr,n); for(int i=0;i<n;i++){ arr[i]=v0; } return arr; }
-_inline_T void _dealloc      (T*& arr       ){ if(arr){ delete [] arr; } arr=0;        }
+// _inline_T bool _allocIfNull  (T*& arr, int n){ if(arr==0){ arr=new T[n]; return true; } return false; }
+// _inline_T void _alloc        (T*& arr, int n){ arr=new T[n]; }
+// _inline_T T* __realloc       (T*& arr, int n){ if(arr){ delete [] arr; } arr=new T[n]; return arr;  }
+// _inline_T T* __realloc0      (T*& arr, int n, const T& v0){  __realloc(arr,n); for(int i=0;i<n;i++){ arr[i]=v0; } return arr; }
+// _inline_T bool _dealloc      (T*& arr       ){ if(arr){ delete [] arr; arr=0; return true; } return false;  }
+// _inline_T bool _bindOrRealloc(int n, T* from, T*& arr ){ if(from){ arr=from; return false; }else{ __realloc(arr,n); return true; } }
+// _inline_T T* _allocPointer   (T**& pp, int n ){  if(pp){ if((*pp)==0)(*pp)=new T[n]; return *pp; }; return 0; };
+// _inline_T T* _reallocPointer (T**& pp, int n){
+//     if (pp) {
+//         if ((*pp)) delete[] (*pp);
+//         (*pp) = new T[n];
+//         return (*pp);
+//     }
+//     return 0;
+// }
+
+
+
+
+_inline_T T*   __alloc       (T*& arr, int n){ arr=new T[n]; return arr;  }
+_inline_T T*   __realloc     (T*& arr, int n){ if(arr){ _delete(arr); } arr=new T[n]; return arr;  }
+_inline_T T*   __realloc0    (T*& arr, int n, const T& v0){  __realloc(arr,n); for(int i=0;i<n;i++){ arr[i]=v0; } return arr; }
+_inline_T T*   __allocIfNull (T*& arr, int n){ if(arr==0){ arr=new T[n]; return arr; } return 0; }
+_inline_T bool __dealloc     (T*& arr      ){ if(arr){ _delete(arr); arr=0; return true; } return false;  }
 _inline_T bool _bindOrRealloc(int n, T* from, T*& arr ){ if(from){ arr=from; return false; }else{ __realloc(arr,n); return true; } }
-_inline_T T* _allocPointer   (T**& pp, int n ){  if(pp){ if((*pp)==0)(*pp)=new T[n]; return *pp; }; return 0; };
-_inline_T T* _reallocPointer (T**& pp, int n){
+_inline_T T* __allocPointer   (T**& pp, int n ){  if(pp){ if((*pp)==0)(*pp)=new T[n]; return *pp; }; return 0; };
+_inline_T T* __reallocPointer (T**& pp, int n){
     if (pp) {
         if ((*pp)) delete[] (*pp);
         (*pp) = new T[n];
@@ -164,11 +183,23 @@ _inline_T T* _reallocPointer (T**& pp, int n){
 }
 
 #ifdef DEBUG_ALLOCATOR
-#define _realloc(arr,n) debug_alloc_store( __realloc(arr,n), n, _CODE_LOCATION )
-#define _realloc0(arr,n,v0) debug_alloc_store( __realloc0(arr,n,v0), n, _CODE_LOCATION )
+#define _alloc(arr,n)          debug_alloc_store( __alloc(arr,n), n, _CODE_LOCATION )
+#define _realloc(arr,n)        debug_alloc_store( __realloc(arr,n), n, _CODE_LOCATION )
+#define _realloc0(arr,n,v0)    debug_alloc_store( __realloc0(arr,n,v0), n, _CODE_LOCATION )
+#define _allocIfNull(arr,n)    debug_alloc_store( __allocIfNull(arr,n), n, _CODE_LOCATION )
+#define _allocPointer(arr,n)   debug_alloc_store( __allocPointer(arr,n), n, _CODE_LOCATION )
+#define _reallocPointer(arr,n) debug_alloc_store( __reallocPointer(arr,n), n, _CODE_LOCATION )
+#define _dealloc(arr)          debug_dealloc( debugAllocator,arr, _CODE_LOCATION )
+// fill in the missing
 #else
-#define _realloc(arr,n) __realloc(arr,n)
-#define _realloc0(arr,n,v0) __realloc0(arr,n,v0)
+#define _alloc(arr,n)          __alloc(arr,n)
+#define _realloc(arr,n)        __realloc(arr,n)
+#define _realloc0(arr,n,v0)    __realloc0(arr,n,v0)
+#define _allocIfNull(arr,n)    __allocIfNull(arr,n)
+#define _allocPointer(arr,n)   __allocPointer(arr,n)
+#define _reallocPointer(arr,n) __reallocPointer(arr,n)
+#define _dealloc(arr)          __dealloc(arr)
+// fill in the missing
 #endif // DEBUG_ALLOCATOR;
 
 
