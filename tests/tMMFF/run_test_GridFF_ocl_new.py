@@ -34,7 +34,9 @@ p0 = [-2.0,-2.0,0.0]
 #name="NaCl_8x8_L3"
 #name="NaCl_8x8_L3_NaHole"
 #name="NaCl_8x8_L3_ClHole"
-name="NaCl_8x8_L3_NaClHole"
+#name="NaCl_8x8_L3_NaClHole"
+name="NaCl_8x8_L3_step"
+
 #mol_name="PTCDA.xyz"
 #gff.test_gridFF_ocl( fname="data/xyz/NaCl_1x1_L2.xyz" )
 #gff.test_gridFF_ocl( fname="data/xyz/"+name+".xyz", save_name="double3", bMorse=True, bEwald=False  )
