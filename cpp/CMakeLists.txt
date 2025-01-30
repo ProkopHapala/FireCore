@@ -11,8 +11,9 @@ option(WITH_OMP    "build with OpenMP paralelization for multiple CPUs"         
 option(WITH_AVX    "build with AVX256 SIMD intrinstic ? up to 10x speedup on 1CPU"         OFF)
 option(RELEASE     "build optimized release (-O3/-Ofast) rather than debug? (-g -Og)"      OFF)
 option(WITH_ASAN   "use runtime memory sanitizer (asan) to trace segfaults and mem-leaks?" OFF)
+option(WITH_WASM   "reuquired when compiling to WASM."                                     OFF)
 
-message("OPTIONS: -DWITH_SDL=${WITH_SDL} -DWITH_LUA=${WITH_LUA} -DWITH_FFTW=${WITH_FFTW} -DWITH_OPENCL=${WITH_OPENCL} -DWITH_OMP=${WITH_OMP} -DWITH_AVX=${WITH_AVX} -DRELEASE=${RELEASE} -DWITH_ASAN=${WITH_ASAN}" )
+message("OPTIONS: -DWITH_SDL=${WITH_SDL} -DWITH_LUA=${WITH_LUA} -DWITH_FFTW=${WITH_FFTW} -DWITH_OPENCL=${WITH_OPENCL} -DWITH_OMP=${WITH_OMP} -DWITH_AVX=${WITH_AVX} -DRELEASE=${RELEASE} -DWITH_ASAN=${WITH_ASAN} -DWITH_WASM=${WITH_WASM}" )
 
 # ==============================
 # ==== FLAGS
@@ -62,7 +63,11 @@ if (  CMAKE_BUILD_TYPE MATCHES Debug )
     else()
         #SET( AXULIARY_COMPILE_FLAGS "-Wall -g -Og")
         ### flags for debug
-        SET( AXULIARY_COMPILE_FLAGS "-g -Og -march=native")
+        if ( WITH_WASM )
+            SET( AXULIARY_COMPILE_FLAGS "-g --em-config /home/redsti/firecore/firecore/cpp/wasmlib/custom_cache/config -march=wasm")
+        else()
+        	SET( AXULIARY_COMPILE_FLAGS "-g -0g -march=native")
+        endif()
     endif()
     #set(CMAKE_CXX_CPPCHECK "cppcheck")
     #message("DEBUG BUILD FFLAGS : " )
@@ -137,6 +142,21 @@ function(setup_precompiled_headers target)
     target_precompile_headers(${target} PRIVATE ${all_headers})
 endfunction()
 
+if ( WITH_WASM )
+include_directories(
+        ${COMMON_SRCS}
+        ${COMMON_SRCS}/math
+        ${COMMON_SRCS}/OpenCL
+        ${COMMON_SRCS}/molecular
+        ${COMMON_SRCS}/dataStructures
+        ${COMMON_SDL_SRCS}
+        ${COMMON_SDL_SRCS}/SDL2
+        ${COMMON_SDL_SRCS}/SDL2OGL
+        
+        ${MY_SRC_DIR}/wasmlib/simde
+        ${MY_SRC_DIR}/wasmlib/fftw3/api
+)
+else()
 include_directories(
         ${COMMON_SRCS}
         ${COMMON_SRCS}/math
@@ -147,6 +167,7 @@ include_directories(
         ${COMMON_SDL_SRCS}/SDL2
         ${COMMON_SDL_SRCS}/SDL2OGL
 )
+endif()
 
 set( CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} ${CMAKE_SOURCE_DIR}/cmake_utils )
 

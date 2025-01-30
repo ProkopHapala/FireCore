@@ -2,7 +2,11 @@
 #ifndef  testUtils_h
 #define  testUtils_h
 
+#ifdef __EMSCRIPTEN__
+#include <cmath>
+#else
 #include <math.h>
+#endif
 #include <cstdlib>
 #include <stdio.h>
 
@@ -144,7 +148,7 @@ double checkDeriv3d(Func getEF,const Vec3d p0, double d, Vec3d& fE, Vec3d& f ){
 
 
 inline uint64_t getCPUticks(){
-    uint32_t lo, hi;
+    /*uint32_t lo, hi;
     __asm__ __volatile__ (
       "xorl %%eax, %%eax\n"
       "cpuid\n"
@@ -152,7 +156,8 @@ inline uint64_t getCPUticks(){
       : "=a" (lo), "=d" (hi)
       :
       : "%ebx", "%ecx" );
-    return (uint64_t)hi << 32 | lo;
+    return (uint64_t)hi << 32 | lo;*/
+    return 0; // TODO
 }
 
 class StopWatch{ public:

@@ -725,7 +725,8 @@ if (containsNaN(currentStructure)) {
             if(!a.size()){for(int i=0; i<3; i++){a.push_back(-10);}}
             if(!b.size()){for(int i=0; i<3; i++){b.push_back( 10);}}
             break;
-        case 0 || 1:
+        case 0:
+        case 1:
             DoF=currentAtoms->natoms*3;
             if(!a.size()){for(int i=0; i<DoF; i++){a.push_back(-DoF);}} // natoms*3A (all atoms in one line times 3A=upper bound for bond length)
             if(!b.size()){for(int i=0; i<DoF; i++){b.push_back(DoF);}}
@@ -763,6 +764,7 @@ if (containsNaN(currentStructure)) {
                         xi =std::fmod(b[i]-(*x)[i], 2*range);
                         (*x)[i] = b[i]-std::min(xi, 2*range-xi);
                     }
+                break;
             default://free boundaries
                 break;
             }

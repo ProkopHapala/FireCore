@@ -2,7 +2,11 @@
 #ifndef  drawMath_h
 #define  drawMath_h
 
+#ifdef __EMSCRIPTEN__
+#include <cmath>
+#else
 #include <math.h>
+#endif
 #include <cstdlib>
 #include <stdio.h>
 #include <stdint.h>

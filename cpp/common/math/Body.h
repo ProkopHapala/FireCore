@@ -1,7 +1,11 @@
 #ifndef Body3D_h
 #define Body3D_h
 
+#ifdef __EMSCRIPTEN__
+#include <cmath>
+#else
 #include <math.h>
+#endif
 #include <cstdlib>
 #include <stdio.h>
 

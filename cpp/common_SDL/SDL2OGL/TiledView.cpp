@@ -1,8 +1,16 @@
 
 #include <stdlib.h>
 #include <stdio.h>
+#ifdef __EMSCRIPTEN__
+#include <SDL.h>
+#else
 #include <SDL2/SDL.h>
+#endif
+#ifdef __EMSCRIPTEN__
+#include <SDL_opengl.h>
+#else
 #include <SDL2/SDL_opengl.h>
+#endif
 
 #include "Draw2D.h"
 

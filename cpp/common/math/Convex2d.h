@@ -2,7 +2,11 @@
 #ifndef  Convex2d_h
 #define  Convex2d_h
 
+#ifdef __EMSCRIPTEN__
+#include <cmath>
+#else
 #include <math.h>
+#endif
 #include <cstdlib>
 #include <stdio.h>
 

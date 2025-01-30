@@ -5,7 +5,11 @@
 
 #include "Buckets2D.h"
 #include "Vec2.h"
+#ifdef __EMSCRIPTEN__
 #include <cmath>
+#else
+#include <math.h>
+#endif
 #include <algorithm> // For std::min, std::max
 
 /// @brief Class for performing Radial Basis Function interpolation in 2D

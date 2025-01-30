@@ -9,9 +9,13 @@
 #include <sys/stat.h>
 #include <string.h>
 #include <vector>
+#ifdef __EMSCRIPTEN__
+#include <cmath>
+#else
 #include <math.h>
+#endif
 
-#include <omp.h>
+//#include <omp.h>
 
 #include "IO_utils.h"
 

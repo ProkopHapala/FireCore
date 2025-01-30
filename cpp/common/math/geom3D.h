@@ -6,7 +6,11 @@
 #define  geom3D_h
 
 #include <vector>
+#ifdef __EMSCRIPTEN__
+#include <cmath>
+#else
 #include <math.h>
+#endif
 #include <cstdlib>
 #include <stdio.h>
 

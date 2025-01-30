@@ -4,7 +4,11 @@
 
 #include <cstdio>// DEBUG
 //#include <cstddef>
+#ifdef __EMSCRIPTEN__
+#include <cmath>
+#else
 #include <math.h>
+#endif
 #include "macroUtils.h"
 
 #include <globals.h>

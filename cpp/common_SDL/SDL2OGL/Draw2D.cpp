@@ -1,5 +1,9 @@
 
+#ifdef __EMSCRIPTEN__
+#include <SDL_opengl.h>
+#else
 #include <SDL2/SDL_opengl.h>
+#endif
 
 #include "Draw.h"
 #include "Draw2D.h"  // THE HEADER
@@ -675,11 +679,11 @@ void Draw2D::draw_attached_vec( const Vec2d& pos, const Vec2d& rot, const Vec2d&
 
 void Draw2D::drawTriaglePatchBas( Vec2i i0, Vec2i n, int NX, int* basins, double vmin, double vmax ){
     Vec2f a,b,p;
-    a.set( 1.0d, 0.0d           ); //a.mul(scale);
-    b.set( 0.5d, 0.86602540378d ); //b.mul(scale);
+    a.set( 1.0, 0.0           ); //a.mul(scale);
+    b.set( 0.5, 0.86602540378 ); //b.mul(scale);
     //glDisable(GL_SMOOTH);
     //int ii = 0;
-    double renorm=1.0d/(vmax-vmin);
+    double renorm=1.0/(vmax-vmin);
     for (int iy=0; iy<n.y-1; iy++){
         glBegin( GL_TRIANGLE_STRIP );
         int ii = (i0.y+iy)*NX + i0.x;

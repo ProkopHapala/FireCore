@@ -256,7 +256,7 @@ void GUIPanel::onKeyDown( const SDL_Event&  e, GUI& gui  ){
             case SDLK_KP_ENTER: doIt = true; [[fallthrough]];
             case SDLK_TAB:
                 try{
-                    float f;
+                    float f=0.0;
                     if(isInt){ f=getIntVal(); }else{ std::stof( inputText.c_str() ); }
                     value=f;
                     redraw=true;
@@ -412,9 +412,9 @@ GUIAbstractPanel* MultiPanel::onMouse  ( int x, int y, const SDL_Event& event, G
                 //GUI_mouse_old_pos;
                 gui.dragged = this;
                 //printf("clicked on MultiPanel Title \n");
-                if(event.button.clicks > 1 ){ // double click
-                    toggleOpen();
-                }
+                //if(event.button.clicks > 1 ){ // double click
+                //    toggleOpen();
+                //}
             }
         }
     }
@@ -809,12 +809,12 @@ GUIAbstractPanel* TreeView::onMouse( int x, int y, const SDL_Event& event, GUI& 
                     i=_max(i,0);
                     iSelected = i;
                 }
-                if(event.button.clicks > 1 ){ // double click
-                    if(iSelected<lines.size()){
-                        lines[iSelected]->content.open^=true;
-                        redraw=true;
-                    }
-                }
+                //if(event.button.clicks > 1 ){ // double click
+                //    if(iSelected<lines.size()){
+                //        lines[iSelected]->content.open^=true;
+                //        redraw=true;
+                //    }
+                //}
                 gui.dragged = this;
             }
         }

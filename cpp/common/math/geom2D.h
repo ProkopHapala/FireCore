@@ -5,7 +5,11 @@
 #ifndef  geom2D_h
 #define  geom2D_h
 
+#ifdef __EMSCRIPTEN__
+#include <cmath>
+#else
 #include <math.h>
+#endif
 #include <cstdlib>
 #include <stdio.h>
 

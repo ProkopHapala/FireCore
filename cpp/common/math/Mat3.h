@@ -2,7 +2,11 @@
 #ifndef  Mat3_h
 #define  Mat3_h
 
+#ifdef __EMSCRIPTEN__
+#include <cmath>
+#else
 #include <math.h>
+#endif
 #include <cstdlib>
 #include <stdint.h>
 

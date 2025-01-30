@@ -2,10 +2,16 @@
 #ifndef  Draw3D_Molecular_h
 #define  Draw3D_Molecular_h
 
+#ifdef __EMSCRIPTEN__
+#include <SDL.h>
+#include <SDL_opengl.h>
+#include <cmath>
+#else
 #include <SDL2/SDL.h>
 #include <SDL2/SDL_opengl.h>
-
 #include <math.h>
+#endif
+
 #include <cstdlib>
 #include <stdio.h>
 #include <stdint.h>
@@ -23,7 +29,6 @@
 #include "Forces.h"
 #include "MMFFparams.h"
 
-//#include <SDL2/SDL_opengl.h>
 
 namespace Draw3D{
 

@@ -112,7 +112,7 @@ void setLightingRGB(){
 void ScreenSDL2OGL::update( ){
 	//SDL_RenderPresent(renderer);
 	//glPushMatrix();
-	if( GL_LOCK ){ printf("ScreenSDL2OGL::update GL_LOCK\n"); return; }
+	//if( GL_LOCK ){ printf("ScreenSDL2OGL::update GL_LOCK\n"); return; }
 	GL_LOCK = true;
 	//printf( " window[%i] SDL_GL_MakeCurrent \n", id );
     SDL_GL_MakeCurrent(window, glctx);
@@ -160,7 +160,7 @@ void ScreenSDL2OGL::eventHandling( const SDL_Event& event ){
         case SDL_WINDOWEVENT:
             switch (event.window.event) {
                 case SDL_WINDOWEVENT_CLOSE:{
-                    printf( "window[%i] SDL_WINDOWEVENT_CLOSE \n", id );
+                    //printf( "window[%i] SDL_WINDOWEVENT_CLOSE \n", id );
                     delete this;
 				} break;
             } break;
@@ -225,7 +225,7 @@ void ScreenSDL2OGL::setDefaults(){
 	mouse_begin_y  = 0;
 }
 
-#define DEBUG_ printf( "DEBUG LINE %i %s %s \n", __LINE__, __FUNCTION__, __FILE__ );
+//#define DEBUG_ printf( "DEBUG LINE %i %s %s \n", __LINE__, __FUNCTION__, __FILE__ );
 
 void ScreenSDL2OGL::init( int& id_, int WIDTH_, int HEIGHT_, const char* name ){
 	WIDTH  = WIDTH_;
@@ -236,9 +236,9 @@ void ScreenSDL2OGL::init( int& id_, int WIDTH_, int HEIGHT_, const char* name ){
 	glctx  = SDL_GL_CreateContext(window);
     //SDL_CreateWindowAndRenderer(WIDTH, HEIGHT, SDL_WINDOW_OPENGL, &window, &renderer);
     if(name==0){
-        id = SDL_GetWindowID(window); printf( " win id %i \n", id );
+        id = SDL_GetWindowID(window); //printf( " win id %i \n", id );
         id_=id;
-        char str[40];  sprintf(str, " Window id = %d", id );
+        char str[40];  //sprintf(str, " Window id = %d", id );
         SDL_SetWindowTitle( window, str );
     }else{
         SDL_SetWindowTitle( window, name );

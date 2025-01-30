@@ -5,7 +5,11 @@
 
 #include "Buckets.h"    // Include your existing Buckets class
 #include "Vec2.h"      // 2D vector class
+#ifdef __EMSCRIPTEN__
 #include <cmath>
+#else
+#include <math.h>
+#endif
 #include <cstring>      // For memset
 #include <algorithm>    // For std::min, std::max
 

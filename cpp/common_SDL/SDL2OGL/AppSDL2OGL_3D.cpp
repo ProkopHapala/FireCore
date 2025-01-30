@@ -1,6 +1,14 @@
 
+#ifdef __EMSCRIPTEN__
+#include <SDL.h>
+#else
 #include <SDL2/SDL.h>
+#endif
+#ifdef __EMSCRIPTEN__
+#include <SDL_opengl.h>
+#else
 #include <SDL2/SDL_opengl.h>
+#endif
 
 #include "Draw3D.h"
 
@@ -234,7 +242,7 @@ void AppSDL2OGL_3D::drawMuseSelectionBox(){
 AppSDL2OGL_3D::AppSDL2OGL_3D( int& id, int WIDTH_, int HEIGHT_, const char* name ) : AppSDL2OGL( id, WIDTH_, HEIGHT_, name ) {
 	qCamera.setOne();
 	qCamera.toMatrix_unitary( cam.rot );
-	cam.pos.set(0.0d);
+	cam.pos.set(0.0);
 	GLbyte* s;
 	// http://stackoverflow.com/questions/40444046/c-how-to-detect-graphics-card-model
 	printf( "GL_VENDOR  : %s \n", glGetString(GL_VENDOR)  );

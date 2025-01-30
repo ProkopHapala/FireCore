@@ -2,13 +2,25 @@
 #ifndef  Draw3D_Surf_h
 #define  Draw3D_Surf_h
 
+#ifdef __EMSCRIPTEN__
+#include <SDL.h>
+#else
 #include <SDL2/SDL.h>
+#endif
+#ifdef __EMSCRIPTEN__
+#include <SDL_opengl.h>
+#else
 #include <SDL2/SDL_opengl.h>
+#endif
 
 #include "Vec2.h"
 #include "Draw.h"
 
+#ifdef __EMSCRIPTEN__
+#include <cmath>
+#else
 #include <math.h>
+#endif
 #include <cstdlib>
 #include <stdio.h>
 #include <stdint.h>
@@ -23,7 +35,11 @@
 
 #include "UVfuncs.h"
 
-//#include <SDL2/SDL_opengl.h>
+//#ifdef __EMSCRIPTEN__
+#include <SDL_opengl.h>
+#else
+#include <SDL2/SDL_opengl.h>
+#endif
 
 namespace Draw3D{
 

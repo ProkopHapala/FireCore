@@ -1,7 +1,11 @@
 #ifndef MolecularDatabase_h
 #define MolecularDatabase_h
 
+#ifdef __EMSCRIPTEN__
 #include <cmath>
+#else
+#include <math.h>
+#endif
 #include <chrono>  // for std::chrono
 
 
@@ -653,7 +657,7 @@ public:
             }
             for (int i = 0; i < nBonds; i++)
             {
-                int currentNeighs_a, currentNeighs_b;
+                int currentNeighs_a, currentNeighs_b = 0;
                 for (int j = 0; j < nNeighs; j++)
                 {
                     if (neighs[nNeighs * bonds[i].a + j] == -1)

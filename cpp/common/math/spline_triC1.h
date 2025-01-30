@@ -44,7 +44,11 @@
 #ifndef  spline_triC1_h
 #define  spline_triC1_h
 
-//#include <math.h>
+//#ifdef __EMSCRIPTEN__
+#include <cmath>
+#else
+#include <math.h>
+#endif
 //#include <cstdlib>
 //#include <stdio.h>
 

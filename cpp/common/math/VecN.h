@@ -2,7 +2,11 @@
 #ifndef  VecN_h
 #define  VecN_h
 
+#ifdef __EMSCRIPTEN__
+#include <cmath>
+#else
 #include <math.h>
+#endif
 #include <cstdlib>
 #include <stdio.h>
 

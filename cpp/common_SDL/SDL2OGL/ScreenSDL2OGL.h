@@ -2,8 +2,16 @@
 #ifndef  ScreenSDL2OGL_h
 #define  ScreenSDL2OGL_h
 
+#ifdef __EMSCRIPTEN__
+#include <SDL.h>
+#else
 #include <SDL2/SDL.h>
+#endif
+#ifdef __EMSCRIPTEN__
+#include <SDL_opengl.h>
+#else
 #include <SDL2/SDL_opengl.h>
+#endif
 
 const float	VIEW_ZOOM_STEP     = 1.2f;
 const float	VIEW_ZOOM_DEFAULT  = 10.0f;

@@ -2,7 +2,11 @@
 #ifndef MolecularGraph_h
 #define MolecularGraph_h
 
+#ifdef __EMSCRIPTEN__
+#include <cmath>
+#else
 #include <math.h>
+#endif
 #include "fastmath.h"
 #include "Vec3.h"
 

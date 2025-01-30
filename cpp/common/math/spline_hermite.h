@@ -2,7 +2,11 @@
 #ifndef  spline_hermite_h
 #define  spline_hermite_h
 
+#ifdef __EMSCRIPTEN__
+#include <cmath>
+#else
 #include <math.h>
+#endif
 #include <cstdlib>
 #include <stdio.h>
 

@@ -3,7 +3,11 @@
 
 // Various math routines for piecewise-linear functions (grids, splines) in 2D F(x,y)
 
+#ifdef __EMSCRIPTEN__
+#include <cmath>
+#else
 #include <math.h>
+#endif
 #include <cstdlib>
 #include <stdio.h>
 

@@ -3,7 +3,11 @@
 #define OptRandomWalk_h
 
 //#include <cstddef>
+#ifdef __EMSCRIPTEN__
+#include <cmath>
+#else
 #include <math.h>
+#endif
 #include "macroUtils.h"
 #include "VecN.h"
 

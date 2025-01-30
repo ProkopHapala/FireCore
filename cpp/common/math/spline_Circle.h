@@ -6,7 +6,11 @@
 # Circle Spline is a Line composed of circulr segments with conrners
 */
 
+#ifdef __EMSCRIPTEN__
+#include <cmath>
+#else
 #include <math.h>
+#endif
 #include <cstdlib>
 #include <stdio.h>
 

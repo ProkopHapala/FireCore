@@ -5,7 +5,11 @@
 //#define GL3_PROTOTYPES 1
 //#define GL_GLEXT_PROTOTYPES
 //#include <GL/gl.h>
+#ifdef __EMSCRIPTEN__
+#include <SDL.h>
+#else
 #include <SDL2/SDL.h>
+#endif
 
 #include "fastmath.h"
 #include "Vec2.h"

@@ -119,7 +119,8 @@ static inline Vec3T<T> cog_bbox( int n, const Vec3T<T>* ps, const int* selection
 
 template<class T> 
 void cogTo0( int n, Vec3T<T>* ps, const int* selection=0 ){
-    Vec3T<T>& pmin,pmax;
+    Vec3T<T>& pmin = Vec3T<T>();
+    Vec3T<T>& pmax = Vec3T<T>();
     bbox(pmin,pmax, n, ps, selection, true );
     pmin.add(pmax); pmin.mul(0.5);
     move(n,ps,pmin);

@@ -2,7 +2,11 @@
 #ifndef  Fourier_h
 #define  Fourier_h
 
+#ifdef __EMSCRIPTEN__
+#include <cmath>
+#else
 #include <math.h>
+#endif
 
 //sincos_basis( ){}
 
@@ -104,7 +108,7 @@ int FFT(double * data, int nn, int isign){
 		mmax = istep;
     }
 	if( isign<0 ){
-		double renorm=1.0d/nn;
+		double renorm=1.0/nn;
 		for (int i=0; i<(nn<<1); i+=2) {
 			data[i  ]*=renorm;
 			data[i+1]*=renorm;

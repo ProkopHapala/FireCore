@@ -2,7 +2,11 @@
 #ifndef SimpleForceField_h
 #define SimpleForceField_h
 
+#ifdef __EMSCRIPTEN__
+#include <cmath>
+#else
 #include <math.h>
+#endif
 #include "fastmath.h"
 #include "Vec3.h"
 

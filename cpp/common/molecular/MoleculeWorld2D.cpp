@@ -1,8 +1,16 @@
 
 #include "MoleculeWorld2D.h" // THE HEADER
 
-//#include <SDL2/SDL.h>
-//#include <SDL2/SDL_opengl.h>
+//#ifdef __EMSCRIPTEN__
+#include <SDL.h>
+#else
+#include <SDL2/SDL.h>
+#endif
+//#ifdef __EMSCRIPTEN__
+#include <SDL_opengl.h>
+#else
+#include <SDL2/SDL_opengl.h>
+#endif
 //#include "Draw2D.h"
 
 #define DEBUG_PLOT_INTERACTION( pa, pb, R, G, B ) if(interacts){ \

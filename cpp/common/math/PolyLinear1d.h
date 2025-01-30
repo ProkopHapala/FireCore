@@ -8,7 +8,11 @@
 // routines for calculation of integrals and arguments(limits) of integral of piecewise linear function 
 // used e.g. for Buoyancy
 
+#ifdef __EMSCRIPTEN__
+#include <cmath>
+#else
 #include <math.h>
+#endif
 #include <cstdlib>
 #include <stdio.h>
 

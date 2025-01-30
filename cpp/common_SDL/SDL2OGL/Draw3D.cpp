@@ -1,6 +1,10 @@
 
-//#include <SDL2/SDL.h>
+
+#ifdef __EMSCRIPTEN__
+#include <SDL_opengl.h>
+#else
 #include <SDL2/SDL_opengl.h>
+#endif
 //#include <GLU.h>
 
 #include "Vec2.h"
@@ -796,9 +800,9 @@ int drawSphereOctLines( int n, float R, const Vec3f& pos ){
     float dphi = 2*M_PI/n;
     float dca  = cos( dphi );
     float dsa  = sin( dphi );
-    nvert += drawCircleAxis( n, pos, {0,1,0}, {1.0d,0.0d,0.0d}, R, dca, dsa );
-    nvert += drawCircleAxis( n, pos, {0,0,1}, {0.0d,1.0d,0.0d}, R, dca, dsa );
-    nvert += drawCircleAxis( n, pos, {1,0,0}, {0.0d,0.0d,1.0d}, R, dca, dsa );
+    nvert += drawCircleAxis( n, pos, {0,1,0}, {1.0,0.0,0.0}, R, dca, dsa );
+    nvert += drawCircleAxis( n, pos, {0,0,1}, {0.0,1.0,0.0}, R, dca, dsa );
+    nvert += drawCircleAxis( n, pos, {1,0,0}, {0.0,0.0,1.0}, R, dca, dsa );
 	return nvert;
 }
 */
@@ -1248,7 +1252,7 @@ void drawMeshWireframe(const CMesh& msh){ drawLines( msh.nedge, (int*)msh.edges,
         //const double * colors
         //const Vec2d  * normals
 
-        Vec2d pa; pa.set(0.0d);
+        Vec2d pa; pa.set(0.0);
         if( !cscale ){ cscale=&Draw::colors_rainbow[0]; ncolors=Draw::ncolors; }
         int ii=0;
         glNormal3f(0.0f,1.0f,0.0f);
@@ -1256,7 +1260,7 @@ void drawMeshWireframe(const CMesh& msh){ drawLines( msh.nedge, (int*)msh.edges,
             glBegin( GL_TRIANGLE_STRIP );
             Vec2d p; p.set(pa);
             for (int ib=0; ib<nb; ib++){
-                double h=0.0d;
+                double h=0.0;
                 //printf( " %i %i %i (%3.3f,%3.3f) %f %f \n", ia, ib, ii, p.x, p.y, hs[ii], clrs[ii] );
                 if(clrs) Draw::colorScale( clrs[ii], ncolors, cscale );
                 //if(hs){ simplex_deriv(); glNormal3f(0.0f,1.0f,0.0f); }
@@ -1277,7 +1281,7 @@ void drawMeshWireframe(const CMesh& msh){ drawLines( msh.nedge, (int*)msh.edges,
     }
 
     void drawSimplexGridLines( int na, int nb, const Vec2d& da, const Vec2d& db,  const double * hs ){
-        Vec2d p,pa; pa.set(0.0d);
+        Vec2d p,pa; pa.set(0.0);
         for (int ia=0; ia<(na-1); ia++){
             glBegin( GL_LINE_STRIP );
             p.set(pa);
@@ -1308,7 +1312,7 @@ void drawMeshWireframe(const CMesh& msh){ drawLines( msh.nedge, (int*)msh.edges,
     }
 
     void drawSimplexGridLinesToned( int na, int nb, const Vec2d& da, const Vec2d& db,  const double * hs ){
-        Vec2d p,pa; pa.set(0.0d);
+        Vec2d p,pa; pa.set(0.0);
         float h;
         for (int ia=0; ia<(na-1); ia++){
             glBegin( GL_LINE_STRIP );

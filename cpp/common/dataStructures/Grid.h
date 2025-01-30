@@ -2,7 +2,11 @@
 #ifndef Grid_h
 #define Grid_h
 
+#ifdef __EMSCRIPTEN__
+#include <cmath>
+#else
 #include <math.h>
+#endif
 #include <stdlib.h>
 #include <stdio.h>
 #include <iostream>

@@ -3817,8 +3817,8 @@ void assignAnglesMMFFsp3( MMFFsp3_loc& ff, bool bUFF=false ){
                 int jng  = ngs[j];
                 if(jng<0) break; 
                 int jt = ff.atypes[jng];
-                double ang0;
-                double k;
+                double ang0 = 0;
+                double k = 0;
                 if(bUFF){
                     double ang0    = atyp.Ass*deg2rad;
                     double Kss_uff = params->assignAngleParamUFF( iat, it, jt, bL[i], bL[j] );

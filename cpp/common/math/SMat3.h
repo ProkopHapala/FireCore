@@ -2,7 +2,11 @@
 #ifndef  SMat3_h
 #define  SMat3_h
 
+#ifdef __EMSCRIPTEN__
+#include <cmath>
+#else
 #include <math.h>
+#endif
 #include <cstdlib>
 #include <cstdio>
 #include <stdint.h>

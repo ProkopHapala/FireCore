@@ -188,7 +188,6 @@ These are the same quintic B-spline basis functions, but now expressed with real
 
 
 
-//#include <math.h>
 //#include <cstdlib>
 //#include <stdio.h>
 

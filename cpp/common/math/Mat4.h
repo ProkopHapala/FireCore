@@ -2,7 +2,11 @@
 #ifndef  Mat4_h
 #define  Mat4_h
 
+#ifdef __EMSCRIPTEN__
+#include <cmath>
+#else
 #include <math.h>
+#endif
 #include <cstdlib>
 #include <stdint.h>
 

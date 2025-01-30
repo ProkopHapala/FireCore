@@ -1,5 +1,8 @@
-#include <SDL2/SDL_video.h>
-#include <cmath>
+#ifdef __EMSCRIPTEN__
+    #include <cmath>
+#else
+    #include <math.h>
+#endif
 #include <cstdint>
 #include <functional>
 #include <string>
