@@ -11,7 +11,7 @@
     #define SIMDE_ENABLE_NATIVE_ALIASES
     #include <simde/x86/fma.h>
 #else
-    #include <immintrinsin.h>
+    #include <immintrin.h>
 #endif
 
 inline int fold_cubic( int i, int n ){

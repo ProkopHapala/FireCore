@@ -65,7 +65,7 @@ if (  CMAKE_BUILD_TYPE MATCHES Debug )
         ### flags for debug
         if ( WITH_WASM )
         	set(CMAKE_EXECUTABLE_SUFFIX ".html")
-            SET( AXULIARY_COMPILE_FLAGS "-g --em-config /home/redsti/firecore/firecore/cpp/wasmlib/custom_cache/config -I/home/redsti/firecore/firecore/cpp/wasmlib/gl4es/include -march=wasm")
+            SET( AXULIARY_COMPILE_FLAGS "-g -O3 --em-config /home/redsti/firecore/firecore/cpp/wasmlib/custom_cache/config -I/home/redsti/firecore/firecore/cpp/wasmlib/gl4es/include -march=wasm")
         else()
         	SET( AXULIARY_COMPILE_FLAGS "-g -Og -march=native")
         endif()

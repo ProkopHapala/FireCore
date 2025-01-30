@@ -28,9 +28,19 @@ Mat3d prelat_dlvec;
 #endif // WITH_LUA
 
 int main(int argc, char *argv[]){
-    initialize_gl4es();
+#ifdef __EMSCRIPTEN__
+    argc = 5;
+    char* new_argv[5];
+    argv = new_argv;
+    argv[0] = "./MolGUIapp";
+    argv[1] = "-x";
+    argv[2] = "common_resources/xyz/PTCDA";
+    argv[3] = "-g";
+    argv[4] = "common_resources/xyz/NaCl_1x1_L3";
 
-    //int argc = 
+    initialize_gl4es();
+#endif
+
 
 	SDL_Init(SDL_INIT_VIDEO);
 	//SDL_GL_SetAttribute(SDL_GL_SHARE_WITH_CURRENT_CONTEXT, 1);
