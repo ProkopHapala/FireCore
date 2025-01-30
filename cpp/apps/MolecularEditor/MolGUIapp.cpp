@@ -1,4 +1,8 @@
 
+#ifdef __EMSCRIPTEN__
+    #include <gl4esinit.h>
+#endif
+
 #include <globals.h>
 
 #include "MolGUI.h"
@@ -24,6 +28,10 @@ Mat3d prelat_dlvec;
 #endif // WITH_LUA
 
 int main(int argc, char *argv[]){
+    initialize_gl4es();
+
+    //int argc = 
+
 	SDL_Init(SDL_INIT_VIDEO);
 	//SDL_GL_SetAttribute(SDL_GL_SHARE_WITH_CURRENT_CONTEXT, 1);
     SDL_GL_SetAttribute(SDL_GL_MULTISAMPLESAMPLES, 8);
