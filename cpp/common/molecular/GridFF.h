@@ -998,6 +998,30 @@ inline void addForce( const Vec3d& pos, const Quat4f& PLQ, Quat4f& fe ) const {
         printf( "GridFF::makeGridFF_Bspline_d() DONE\n" );
     }
 
+
+
+#ifdef WITH_FFTW
+
+    void makeCoulombEwald(  int natoms_, Vec3d * apos_, Quat4d * REQs_, double* VCoul=0 ){
+        std::vector<double> qs(natoms_); 
+        for( int i=0; i<natoms_; i++ ){ qs[i] = REQs_[i].z; }
+        ewald->copy( grid );
+        ewald->enlarge( Vec3d{0.0,0.0,20.0} ); // add 20A of Vaccuum to simulated slabe (not periodic in z direction)
+        ewald->potential_of_atoms( grid.n.z, VCoul, natoms_, apos_, qs.data() );
+    }
+
+#else
+
+    void makeCoulombEwald(  int natoms_, Vec3d * apos_, Quat4d * REQs_, double* VCoul=0 ){
+        printf( "GridFF::makeCoulombEwald() ERROR: FFTW is not compiled in this version of GridFF\n" );
+        exit(0);
+    }
+
+#endif 
+
+
+
+
     void tryLoadGridFF_potentials( int natoms_, Vec3d * apos_, Quat4d * REQs_, int ntot, double*& VPaul, double*& VLond, double*& VCoul, bool bSaveNPY=false, bool bSaveXSF=false, bool bForceRecalc=false ){
         printf( "GridFF::tryLoadGridFF_potentials() natoms_=%i bUseEwald=%i bForceRecalc=%i bSaveNPY=%i bSaveXSF=%i \n", natoms_, bUseEwald, bForceRecalc, bSaveNPY, bSaveXSF );
         //bool bPBC  = false;
@@ -1026,12 +1050,13 @@ inline void addForce( const Vec3d& pos, const Quat4f& PLQ, Quat4f& fe ) const {
             _allocIfNull( VCoul, ntot );
             if(bUseEwald){
                 evalBsplineRef( natoms_, apos_, REQs_, VPaul, VLond, 0 );
-                std::vector<double> qs(natoms_); for( int i=0; i<natoms_; i++ ){ qs[i] = REQs_[i].z; }
-                //std::vector<Vec3d>  ps(natoms_); for( int i=0; i<natoms_; i++ ){  Vec3d p=apos_[i];  p.z-=grid.dCell.c.z; ps[i]=p; } // NOTE: For some unknown reason we have to shift atoms by 1 pixel in z-direction (perhaps something about grid alignement)
-                ewald->copy( grid );
-                ewald->enlarge( Vec3d{0.0,0.0,20.0} ); // add 20A of Vaccuum to simulated slabe (not periodic in z direction)
-                //ewald->potential_of_atoms( grid.n.z, VCoul, natoms_, ps.data(), qs.data() );
-                ewald->potential_of_atoms( grid.n.z, VCoul, natoms_, apos_, qs.data() );
+                // std::vector<double> qs(natoms_); for( int i=0; i<natoms_; i++ ){ qs[i] = REQs_[i].z; }
+                // //std::vector<Vec3d>  ps(natoms_); for( int i=0; i<natoms_; i++ ){  Vec3d p=apos_[i];  p.z-=grid.dCell.c.z; ps[i]=p; } // NOTE: For some unknown reason we have to shift atoms by 1 pixel in z-direction (perhaps something about grid alignement)
+                // ewald->copy( grid );
+                // ewald->enlarge( Vec3d{0.0,0.0,20.0} ); // add 20A of Vaccuum to simulated slabe (not periodic in z direction)
+                // //ewald->potential_of_atoms( grid.n.z, VCoul, natoms_, ps.data(), qs.data() );
+                // ewald->potential_of_atoms( grid.n.z, VCoul, natoms_, apos_, qs.data() );
+                makeCoulombEwald( natoms_, apos_, REQs_, VCoul );
             }else{
                 evalBsplineRef( natoms_, apos_, REQs_, VPaul, VLond, VCoul );
             }

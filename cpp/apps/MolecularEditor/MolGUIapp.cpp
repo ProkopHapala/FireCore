@@ -33,10 +33,17 @@ int main(int argc, char *argv[]){
     SDL_DisplayMode DM;
     SDL_GetCurrentDisplayMode(0, &DM);
 
+
+    debugAllocator_init();
+
     // --------- Initialize MolGUI and MolWorld_sp3
 
     W   = new MolWorld_sp3();
     app = new MolGUI( junk, DM.w-100, DM.h-100, W );
+
+    //printf( "WE ARE HERE %s \n", _CODE_LOCATION ); 
+    //printf( "WE ARE HERE %s \n", __FUNCTION__ ); 
+    //exit(0);
 
     #include "MolGUIapp_argv.h"
 
@@ -82,6 +89,9 @@ int main(int argc, char *argv[]){
     if(prelat_nstep>0)W->change_lvec_relax( prelat_nstep, prelat_nItrMax, 1e-3, prelat_dlvec );
     W->pre_loop();
     app->loop( 1000000 );
+
+    W->clear( true, true );
+    debugAllocator_print( );
 	return 0;
 }
 
