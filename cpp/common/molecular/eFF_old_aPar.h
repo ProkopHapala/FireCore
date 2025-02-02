@@ -517,7 +517,7 @@ double* atomsPotAtPoints( int n, Vec3d* ps, double* out=0, double s=0.0, double 
 }
 
 void printEnergies(){
-    printf( "Etot %g | Ek %g Eee,p(%g,%g) Eae,p(%g,%g) Eaa %g \n", Etot, Ek, Eee,EeePaul, Eae,EaePaul, Eaa );
+    printf( "Etot (eFF_old_aPar.h) %g | Ek %g Eee,p(%g,%g) Eae,p(%g,%g) Eaa %g \n", Etot, Ek, Eee,EeePaul, Eae,EaePaul, Eaa );
 }
 
 void info(){
@@ -533,7 +533,7 @@ int Eterms2str(char* str){
     // Ek=0,Eee=0,EeePaul=0,EeeExch=0,Eae=0,EaePaul=0,Eaa=0, Etot=0;
     double Eorbs = 0;
     for(int i=0; i<ne; i++){ Eorbs+=eE[i]; }
-    return sprintf( str, "Etot %3.3f|%3.3f Ek %3.3f Eee,P(%3.3f,%3.3f) Eae,P(%3.3f,%3.3f) Eaa %g )\n", Etot, Eorbs+Eaa, Ek, Eee, EeePaul, Eae, EaePaul, Eaa );
+    return sprintf( str, "Etot (eFF_old_aPar.h 2) %3.3f|%3.3f Ek %3.3f Eee,P(%3.3f,%3.3f) Eae,P(%3.3f,%3.3f) Eaa %g )\n", Etot, Eorbs+Eaa, Ek, Eee, EeePaul, Eae, EaePaul, Eaa );
 }
 
 int orb2str(char* str, int ie){

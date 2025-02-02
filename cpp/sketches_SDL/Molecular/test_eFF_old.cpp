@@ -81,7 +81,7 @@ void printFFInfo(const EFF& ff){
     double Eel   = ff.Eaa + ff.Eae + ff.Eee;
     double EPaul = ff.EeePaul + ff.EaePaul;
     double Etot  = ff.Ek + Eel + EPaul;
-    printf( "Etot %g Ek %g Eel %g(ee %g, ea %g aa %g)  EPaul %g(ee %g, ae %g) \n", Etot, ff.Ek, Eel, ff.Eee,ff.Eae,ff.Eaa,   EPaul, ff.EeePaul, ff.EaePaul );
+    printf( "Etot (test_eFF_old.cpp) %g Ek %g Eel %g(ee %g, ea %g aa %g)  EPaul %g(ee %g, ae %g) \n", Etot, ff.Ek, Eel, ff.Eee,ff.Eae,ff.Eaa,   EPaul, ff.EeePaul, ff.EaePaul );
     for(int i=0; i<ff.na; i++){
         printf( "a[%i] xyzs(%g,%g,%g) fxyzs(%g,%g,%g) \n", i, ff.apos[i].x, ff.apos[i].y, ff.apos[i].z, ff.aforce[i].x, ff.aforce[i].y, ff.aforce[i].z );
     }

@@ -197,6 +197,7 @@ void sample_ee( int n, double* RSs_, double* FEout_, int spin, double* KRSrho_, 
     Vec3d  KRSrho =*(Vec3d*)KRSrho_;
     //using namespace std;
     //auto [x, y, z] = RSs[0];
+    printf("Sample ee eFF_lib.cpp");
     for(int i=0; i<n; i++){
         double ri = RSs[i].x;
         double si = RSs[i].y;

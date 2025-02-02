@@ -2331,7 +2331,7 @@ void printSetup(){
 }
 
 void printEnergies(){
-    printf( "Etot %g | Ek %g Eee,p(%g,%g) Eae,p(%g,%g) Eaa %g \n", Etot, Ek, Eee,EeePaul, Eae,EaePaul, Eaa );
+    printf( "Etot (CLCFGO.h) %g | Ek %g Eee,p(%g,%g) Eae,p(%g,%g) Eaa %g \n", Etot, Ek, Eee,EeePaul, Eae,EaePaul, Eaa );
 }
 
 void printAtoms(){
@@ -2369,7 +2369,7 @@ int bas2str(char* str, int ie){
 
 int Eterms2str(char* str){
     // Ek=0,Eee=0,EeePaul=0,EeeExch=0,Eae=0,EaePaul=0,Eaa=0, Etot=0;
-    return sprintf( str, "Etot %3.3f Ek %3.3f Eee,P(%3.3f,%3.3f) Eae,P(%3.3f,%3.3f) Eaa %g )\n", Etot, Ek, Eee, EeePaul, Eae, EaePaul, Eaa );
+    return sprintf( str, "Etot (CLCFGO.h 2) %3.3f Ek %3.3f Eee,P(%3.3f,%3.3f) Eae,P(%3.3f,%3.3f) Eaa %g )\n", Etot, Ek, Eee, EeePaul, Eae, EaePaul, Eaa );
 }
 
 char* orb2str(char* str0, int io){
