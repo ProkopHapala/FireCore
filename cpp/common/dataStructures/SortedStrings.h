@@ -3,6 +3,7 @@
 #define SortedStrings_h
 
 
+#include <algorithm>
 #include <vector>
 //#include <iostream>
 #include <string>

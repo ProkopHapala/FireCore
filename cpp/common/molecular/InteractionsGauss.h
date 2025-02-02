@@ -649,9 +649,7 @@ inline double addPauliGauss_New( const Vec3d& dR, double si, double sj, Vec3d& f
     //     double invS222m1 = 1/( S22*S22-1 );
     //     //printf( "DEBUG S22*DT %g invS222m1 %g (-rho*S22+rho-2) %g \n", S22*DT, invS222m1, (-rho*S22+rho-2) );
     //     E       =   S22 * DT * ( -rho*S22                     + rho-2 ) *invS222m1;
-    //     dE_dDT  = - S22 *      (  rho*S22                     - rho+2 ) *invS222m1;
-    //     dE_dS22 =      -  DT * (      S22*(S22*(rho-2)-2*rho) + rho-2 ) *invS222m1*invS222m1;
-    // }
+    //     dE_dDT  = - S22 *      (  rho*S22                     - rho+2 ) *invSdR
 
     //fsi       += dE_dS22 * dS22_dsi + dE_dDT * dDT_dsi;
     //fsj       += dE_dS22 * dS22_dsj + dE_dDT * dDT_dsj;

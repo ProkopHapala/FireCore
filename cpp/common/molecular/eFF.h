@@ -713,7 +713,7 @@ double* evalPotAtPoints( int n, Vec3d* ps, double* out=0, double s=0.0, double Q
 }
 
 void printEnergies(){
-    printf( "Etot %g | Ek %g Eee,p(%g,%g) Eae,p(%g,%g) Eaa %g \n", Etot, Ek, Eee,EeePaul, Eae,EaePaul, Eaa );
+    printf( "Etot (eFF.h) %g | Ek %g Eee,p(%g,%g) Eae,p(%g,%g) Eaa %g \n", Etot, Ek, Eee,EeePaul, Eae,EaePaul, Eaa );
 }
 
 void printAtoms(){
@@ -742,7 +742,7 @@ int Eterms2str(char* str){
     // Ek=0,Eee=0,EeePaul=0,EeeExch=0,Eae=0,EaePaul=0,Eaa=0, Etot=0;
     double Eorbs = 0;
     for(int i=0; i<ne; i++){ Eorbs+=eE[i]; }
-    return sprintf( str, "Etot %3.3f|%3.3f Ek %3.3f Eee,P(%3.3f,%3.3f) Eae,P(%3.3f,%3.3f) Eaa %g )\n", Etot, Eorbs+Eaa, Ek, Eee, EeePaul, Eae, EaePaul, Eaa );
+    return sprintf( str, "Etot (eFF.h 2) %3.3f|%3.3f Ek %3.3f Eee,P(%3.3f,%3.3f) Eae,P(%3.3f,%3.3f) Eaa %g )\n", Etot, Eorbs+Eaa, Ek, Eee, EeePaul, Eae, EaePaul, Eaa );
 }
 
 int orb2str(char* str, int ie){
@@ -864,7 +864,8 @@ bool loadFromFile_fgo( char const* filename, bool bVel=false, double fUnits=1. )
     if(bClosedShell) nOrb_*=2;
     realloc( natom_, nOrb_, bVel );
     double Qasum = 0.0;
-    for(int i=0; i<na; i++){
+    for(int i=0; i<na; i++){ 
+        // ionty, respektive jadra
         double x,y,z;
         double vx,vy,vz;
         double Q,sQ,sP,cP;
@@ -872,6 +873,10 @@ bool loadFromFile_fgo( char const* filename, bool bVel=false, double fUnits=1. )
         fgets( buff, nbuff, pFile);
         //                                                                 1   2  3   4    5     6    7        8    9    10
         int nw = sscanf (buff, "%lf %lf %lf %lf %lf %lf %lf %lf %lf %lf", &x, &y, &z, &Q, &sQ, &sP, &cP,      &vx, &vy, &vz );
+        // Q - naboj
+        // sQ - rozšíření náboje
+        // sP - Pauliho repulze, respektive polomer vnitrinch elektronu
+        // cP - pocet korovych elektronu
         Q=-Q;
         apos  [i]=Vec3d{x*fUnits,y*fUnits,z*fUnits};
         aPars[i].set(Q,sQ*fUnits,sP*fUnits,cP);
@@ -891,6 +896,10 @@ bool loadFromFile_fgo( char const* filename, bool bVel=false, double fUnits=1. )
         //                                                               1    2   3    4   5   6        7    8    9   10
         int nw = sscanf (buff, "%lf %lf %lf %lf %lf %i %lf %lf %lf %lf", &x, &y, &z,  &s, &c, &spin,   &vx, &vy, &vz, &vs );
         //int nw = sscanf (buff, "%lf %lf %lf %lf %lf %i", &x, &y, &z,  &s, &c, &spin );
+        // s - radius
+        // c - expansion coefficient - is irrelevant and always 1
+        // spin is spin, but 1 or -1
+
         epos [i]=Vec3d{x*fUnits,y*fUnits,z*fUnits};
         esize[i]=s*fUnits;
         if(bVel){ 

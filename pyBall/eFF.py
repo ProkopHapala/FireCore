@@ -1,4 +1,3 @@
-
 import numpy as np
 from   ctypes import c_int, c_double, c_bool, c_float, c_char_p, c_bool, c_void_p, c_char_p
 import ctypes
@@ -282,9 +281,11 @@ lib.sample_ee.argtypes  = [c_int, array2d, array2d, c_int, array1d, c_bool, c_bo
 lib.sample_ee.restype   =  None
 def sample_ee( RSs, spin, FEout=None, KRSrho=[1.125,0.9,-0.2], bEvalCoulomb=True, bEvalPauli=True, iPauliModel=1 ):
     n = len(RSs)
-    FEout = np.zeros(n)
+    FEout  = np.zeros((n,4)) #TOHLE VYKRESLIT
     KRSrho = np.array(KRSrho)
     lib.sample_ee(n, RSs, FEout, spin, KRSrho, bEvalCoulomb, bEvalPauli, iPauliModel )
+    print(n)
+    print("sample_ee eFF.py")
     return FEout
 
 #void sample_EA( int n, double* RSs_, double* FEout_, double* KRSrho_,  double* aPar_,  bool bEvalAECoulomb, bool bCoreCoul, bool bEvalAEPauli ){
@@ -302,7 +303,7 @@ def sample_EA( RSs, FEout=None, KRSrho=[1.125,0.9,-0.2], aPar=[4.,0.1,0.1,2.0], 
 
 def printEs():
     #print( " Etot %g Ek %g Eee %g EeePaul %g Eae %g EaePaul %g Eaa %g [eV]" %(Es[0],Es[1],Es[2],Es[3],Es[5],Es[6],Es[7]) )  # [0Etot,1Ek,2Eee,3EeePaul,4EeeExch,5Eae,6EaePaul,7Eaa]
-    print( " Etot",Es[0],"Ek",Es[1],"Eee",Es[2],"EeePaul",Es[3],"Eae",Es[5],"EaePaul",Es[6],"Eaa", Es[7], "[eV]" )  # [0Etot,1Ek,2Eee,3EeePaul,4EeeExch,5Eae,6EaePaul,7Eaa]
+    print("Etot (eFF.py)",Es[0],"Ek",Es[1],"Eee",Es[2],"EeePaul",Es[3],"Eae",Es[5],"EaePaul",Es[6],"Eaa", Es[7], "[eV]" )  # [0Etot,1Ek,2Eee,3EeePaul,4EeeExch,5Eae,6EaePaul,7Eaa]
 
 def printAtoms():
     for i in range(na):
@@ -334,7 +335,7 @@ def eval_mol(name, fUnits=1., bPrint=True ):
     eval()
     if bPrint:
         getBuffs()
-        print("\n")
+        print("\n BAF")
         printEs()
 
 def eval_ee( r, si, sj, spin=-1 ):
