@@ -826,6 +826,190 @@ def loadMol(fname=None, fin=None, bReadN=False, nmax=10000 ):
     bonds = np.array( bonds, dtype=np.int32 )
     return xyzs,Zs,enames,qs,bonds
 
+
+def loadMol2(fname, bReadN=True):
+    """
+    Load an AtomicSystem from a .mol2 file.
+    
+    The mol2 file is expected to contain at least the following sections:
+      - @<TRIPOS>MOLECULE
+      - @<TRIPOS>ATOM
+      - @<TRIPOS>BOND   (optional: if bonds exist)
+    
+    In the MOLECULE section, if a comment line starting with '#' is present
+    and contains "lvs", the 9 numbers following "lvs" will be parsed as the
+    lattice vectors (lvec). They are arranged row‐wise in a 3×3 numpy array.
+    
+    The ATOM section is assumed to have lines in the format:
+    
+          atom_id  atom_name  x  y  z  atom_type  substructure_id  residue_name  charge
+    
+    The element symbol is taken as follows:
+      - If the atom_name (the second token) is a valid chemical symbol (i.e.
+        found in elements.ELEMENT_DICT), that is used.
+      - Otherwise, the part before the period in the atom_type token is used.
+    
+    The atomic number is determined via elements.ELEMENT_DICT.
+    
+    The BOND section (if present) is assumed to have lines in the format:
+    
+          bond_id  origin_atom_id  target_atom_id  bond_type
+    
+    and bonds are returned as zero-based index tuples.
+    
+    Parameters:
+      fname (str): The name of the mol2 file.
+      bReadN (bool): (Unused here; provided for compatibility.)
+    
+    Returns:
+      An AtomicSystem instance with fields:
+         - apos: numpy array (N,3) of atomic coordinates.
+         - atypes: numpy array (N,) of atomic numbers.
+         - enames: numpy array (N,) of element symbols (strings).
+         - qs: numpy array (N,) of charges.
+         - bonds: numpy array of shape (nB,2) with bonds (zero-based).
+         - lvec: if a lattice comment is found, a (3,3) numpy array.
+    """
+    apos    = []
+    atypes  = []
+    enames  = []
+    qs      = []
+    bonds   = []
+    lvec    = None
+
+    with open(fname, 'r') as fin:
+        lines = fin.readlines()
+
+    # --- First, search for the MOLECULE section and a lattice comment if present.
+    in_molecule = False
+    in_atom     = False
+    in_bond     = False
+
+    # The counts (number of atoms, bonds, etc.) can be parsed from the MOLECULE section;
+    # however we won’t depend on that for reading.
+    for i, line in enumerate(lines):
+        line = line.strip()
+        if line.upper().startswith("@<TRIPOS>MOLECULE"):
+            in_molecule = True
+            in_atom = False
+            in_bond = False
+            continue
+        if in_molecule:
+            # If the line starts with '#' and contains 'lvs', parse lattice vectors.
+            if line.startswith('#') and 'lvs' in line:
+                # For example: "# lvs   20.0 0.0 0.0   0.0 5.0 0.0    0.0 0.0 20.0"
+                parts = line.split()
+                try:
+                    idx = parts.index('lvs')
+                except ValueError:
+                    idx = -1
+                if idx >= 0 and len(parts) >= idx+10:
+                    # Read next 9 numbers:
+                    nums = [ float(parts[idx + j]) for j in range(1, 10) ]
+                    lvec = np.array(nums).reshape(3,3)
+            # We assume the MOLECULE block ends when we hit the next section header.
+            if line.upper().startswith("@<TRIPOS>ATOM"):
+                in_molecule = False
+                in_atom = True
+                continue
+        # --- Now, process the ATOM section.
+        if line.upper().startswith("@<TRIPOS>ATOM"):
+            in_atom = True
+            in_bond = False
+            continue
+        if line.upper().startswith("@<TRIPOS>BOND"):
+            in_atom = False
+            in_bond = True
+            continue
+
+        if in_atom:
+            if line == "" or line.startswith("@<TRIPOS>"):
+                continue
+            # Split the line.
+            # Expected tokens:
+            # 0: atom_id (integer)
+            # 1: atom_name (string)
+            # 2,3,4: x, y, z coordinates
+            # 5: atom_type (string, e.g., "C.1", "O.3", etc.)
+            # 6: substructure_id (can be ignored)
+            # 7: residue_name (can be ignored)
+            # 8: charge (optional)
+            tokens = line.split()
+            if len(tokens) < 6:
+                continue  # skip malformed lines
+            try:
+                x = float(tokens[2])
+                y = float(tokens[3])
+                z = float(tokens[4])
+            except:
+                continue
+            apos.append( [x, y, z] )
+            
+            # Determine the element symbol.
+            # First try the atom_name (token[1]).
+            cand = tokens[1]
+            # Check if cand (or its first letter) is in the ELEMENT_DICT.
+            if cand in elements.ELEMENT_DICT:
+                elem = cand
+            else:
+                # Otherwise, use the atom_type (token[5]) and take the part before '.'
+                elem = tokens[5].split('.')[0]
+            enames.append( elem )
+            
+            # Determine atomic number.
+            try:
+                # Using the dictionary that maps element symbol to a tuple.
+                # For example: elements.ELEMENT_DICT["C"][0] should be 6.
+                znum = elements.ELEMENT_DICT[elem][0]
+            except KeyError:
+                # If not found, try to convert cand to an integer.
+                try:
+                    znum = int(cand)
+                except:
+                    znum = 0
+            atypes.append( znum )
+            
+            # Charge is the last token if present (some mol2 files provide it).
+            if len(tokens) >= 9:
+                try:
+                    charge = float(tokens[8])
+                except:
+                    charge = 0.0
+            else:
+                charge = 0.0
+            qs.append( charge )
+            
+        if in_bond:
+            if line == "" or line.startswith("@<TRIPOS>"):
+                continue
+            # Expected tokens for bonds:
+            # 0: bond_id
+            # 1: origin_atom_id
+            # 2: target_atom_id
+            # 3: bond_type (ignored here)
+            tokens = line.split()
+            if len(tokens) < 3:
+                continue
+            try:
+                iatom = int(tokens[1]) - 1  # convert to zero-based index
+                jatom = int(tokens[2]) - 1
+                bonds.append( (iatom, jatom) )
+            except:
+                continue
+
+    # Convert lists to numpy arrays:
+    apos_np   = np.array(apos, dtype=float)
+    atypes_np = np.array(atypes, dtype=int)
+    qs_np     = np.array(qs, dtype=float)
+    enames_np = np.array(enames)
+    #bonds_np  = np.array(bonds, dtype=int)
+
+    # Create an AtomicSystem instance.
+    #system = AtomicSystem(apos=apos_np, atypes=atypes_np, enames=enames_np, qs=qs_np, bonds=bonds, lvec=lvec)
+    
+    return apos_np, atypes_np, enames_np, qs_np, bonds
+
+
 def readAtomsXYZ( fin, na ):
     apos=[]
     es  =[] 
@@ -1274,7 +1458,9 @@ class AtomicSystem( ):
             #print( f"AtomicSystem.__init__({fname}) ext=", ext  )
             if( 'mol' == ext ):
                 self.apos,self.atypes,self.enames,self.qs,self.bonds = loadMol(fname=fname, bReadN=bReadN )
-            if( 'xyz' == ext ):
+            elif ( 'mol2' == ext ):
+                self.apos,self.atypes,self.enames,self.qs,self.bonds = loadMol2(fname=fname, bReadN=bReadN )
+            elif ( 'xyz' == ext ):
                 self.apos,self.atypes,self.enames,self.qs, comment = load_xyz(fname=fname, bReadN=bReadN )
                 if comment is not None:
                     if comment[:3] == 'lvs':      
@@ -1539,28 +1725,87 @@ class AtomicSystem( ):
         if( self.enames is not None ): self.enames =  np.delete( self.enames, lst )
         if( self.aux_labels is not None ): self.aux_labels = [ v for i,v in enumerate(self.aux_labels) if i not in st ] 
 
-    def append_atoms(self, B, pre="A" ):
-        if( self.aux_labels is None ) and ( B.aux_labels is not None ):
-            #print( 'self.aux_labels is None', pre ) 
-            self.aux_labels = [ str(i) for  i in range(len(self.apos)) ]
-            self.aux_labels += B.aux_labels
-        
-        #if( B.auxl is None ): B.auxl = [ pre+str(i) for  i in range(len(B.apos)) ]
-        #if( self.aux_labels is not None ):  self.aux_labels += B.aux_labels
 
-        if( self.apos   is not None ): self.apos   =  np.append( self.apos,   B.apos, axis=0 )
-        if( self.atypes is not None ): self.atypes =  np.append( self.atypes, B.atypes )
-        if( self.qs     is not None ): self.qs     =  np.append( self.qs,     B.qs )
-        if( self.Rs     is not None ): self.Rs     =  np.append( self.Rs,     B.Rs )
-        if( self.enames is not None ): self.enames =  np.append( self.enames, B.enames )
-        #print( type(self.enames),   type(B.enames),   )
-        #print( "self.enames ", self.enames, "B.enames ", B.enames )
-        #if( self.enames is not None ): self.enames += B.enames
-       
-        #print(auxl)
-        #self.aux_labels += auxl
-        #print( self.aux_labels )
-        #print( "len( self.aux_labels) ", len( self.aux_labels), "len( self.apos) ", len( self.apos)  )
+    def preinitialize_atomic_properties(self):
+        """
+        Preinitialize per-atom arrays for an AtomicSystem.
+        
+        This function assumes that the system’s atypes (or enames) have been set.
+        It uses the global 'elements.ELEMENTS' (a list of lists) to set default values:
+        - qs: set to the element’s default valence electron count (column index 9)
+        - Rs: set to the element’s van der Waals radius (column index 7)
+        - aux_labels: set to a default label (simply the atom’s index as a string)
+        
+        Parameters:
+        atomicSystem (AtomicSystem): an instance of AtomicSystem.
+        
+        Raises:
+        ValueError: if atomicSystem.atypes is not defined.
+        """
+        natoms = len(self.apos)
+        
+        if self.atypes is None:
+            raise ValueError("The system does not have atypes defined. "
+                            "Please initialize the system’s atypes (or enames) first.")
+        
+        # Initialize qs if not defined.
+        if self.qs is None:
+            # Assume atypes is an array of atomic numbers (e.g. 6 for carbon, etc.)
+            qs = []
+            for z in self.atypes:
+                # our ELEMENTS list is zero-based: for atomic number z, use ELEMENTS[z-1]
+                qs.append(elements.ELEMENTS[z-1][9])
+            self.qs = np.array(qs)
+        
+        # Initialize Rs if not defined.
+        if self.Rs is None:
+            # For each atom, use the vdW radius (column index 7)
+            Rs = []
+            for z in self.atypes:
+                Rs.append(elements.ELEMENTS[z-1][7])
+            self.Rs = np.array(Rs)
+        
+        # Initialize aux_labels if not defined.
+        if self.aux_labels is None:
+            self.aux_labels = [str(i) for i in range(natoms)]
+            
+        # (If you have other arrays you want to preinitialize, do it here.)
+        
+        print(f"Pre-initialized atomic properties for {natoms} atoms.")
+
+        
+    def check_atomic_properties(atomicSystem):
+        """
+        Check that the per-atom arrays (qs, Rs, aux_labels) are defined and
+        have the correct length. If not, raise an error telling the user
+        to run preinitialize_atomic_properties().
+        """
+        natoms = len(atomicSystem.apos)
+        if (atomicSystem.qs is None or len(atomicSystem.qs) != natoms or
+            atomicSystem.Rs is None or len(atomicSystem.Rs) != natoms or
+            atomicSystem.aux_labels is None or len(atomicSystem.aux_labels) != natoms):
+            raise ValueError("Not all per-atom arrays are initialized correctly. "
+                            "Please call preinitialize_atomic_properties() on your system.")
+                            
+                            
+    # Example: modify append_atoms() to check rather than auto-initialize
+    def append_atoms(self, B, pre="A"):
+        # Ensure both systems have been pre-initialized:
+        self.check_atomic_properties()
+        B.check_atomic_properties()
+        
+        # Number of atoms in self and in B
+        nA = len(self.apos)
+        nB = len(B.apos)
+        
+        self.apos   = np.append(self.apos,   B.apos, axis=0)
+        self.atypes = np.append(self.atypes, B.atypes)
+        self.qs     = np.append(self.qs,     B.qs)
+        self.Rs     = np.append(self.Rs,     B.Rs)
+        self.enames = np.append(self.enames, B.enames)
+        
+        # Extend the aux_labels list:
+        self.aux_labels.extend(B.aux_labels)
 
 
     def remap( self, lst ):
@@ -1569,6 +1814,61 @@ class AtomicSystem( ):
 
 
     def attach_group( self, G,  i0, i1, iup,   bond,  up=(0.,0.,1.),  _0=1, pre="A"  ): 
+        """
+        Attach an end–group (G) to the backbone (self) at a specified bond.
+        
+        The attachment is done in two steps:
+        1. **Internal Orientation of the Group:**  
+            The group is reoriented in its own frame by calling:
+                G.orient(i0, (i0, i1), iup, _0=_0)
+            - *i0*: the index (or indices) for the pivot atom in the group. This atom
+                    is moved to the attachment position.
+            - *(i0, i1)*: a tuple defining a bond in the group that determines the
+                        forward (direction) vector. The forward vector is computed as
+                        the difference between the positions of the atom at i1 and i0.
+                        The atom corresponding to i1 is then deleted (replaced) in the group.
+            - *iup*: a tuple (or list) of two indices that defines the up vector in the group.
+                    The up vector is computed (typically as the difference between the
+                    positions of the atoms provided) and is used to fix the rotation about
+                    the forward axis.
+        
+        2. **Alignment to the Backbone:**  
+            The backbone provides the attachment bond (given by `bond`) and a backbone
+            up vector (given by `up`). A rotation matrix is computed with:
+                rot = rotmat_from_points(self.apos, ifw=bond, up=up, _0=_0)
+            This matrix aligns the backbone’s forward vector (computed from the bond) with
+            the group’s forward vector. The group is then rotated by this matrix (via
+                G.orient_mat(rot)
+            ) and translated so that the pivot atom of the group coincides with the backbone’s
+            attachment position.
+        
+        Parameters:
+        G      : AtomicSystem
+                The end–group to attach. It must have its atoms pre‐oriented as per the
+                expected coordinate system.
+        i0     : int or iterable
+                The index (or indices) of the pivot atom in G (1-based indexing if _0=1).
+        i1     : int
+                The index (1-based) of the atom in G used to define the forward vector.
+                This atom will be removed after orientation.
+        iup    : tuple (i_up0, i_up1)
+                A pair of indices (1-based) in G whose difference defines the up vector.
+        bond   : tuple (i_backbone1, i_backbone2)
+                A pair of atom indices (1-based) in the backbone that define the bond where
+                the end–group is attached. The forward vector on the backbone is computed as
+                the vector from i_backbone1 to i_backbone2.
+        up     : 3-tuple or array, optional (default=(0.,0.,1.))
+                The up vector for the backbone. This is used to fix the rotation about the
+                forward axis.
+        _0     : int, optional (default=1)
+                An offset to account for whether the provided indices are 0-based or 1-based.
+        pre    : str, optional (default="A")
+                A prefix for labeling the atoms that come from the group.
+        
+        After executing, the group G is reoriented, rotated, and translated so that its
+        pivot atom is placed at the backbone’s attachment site. The atom used for forward
+        definition (i1) is deleted, and the group’s atoms are appended to the backbone.
+        """
         up  = np.array( up )
         rot = rotmat_from_points( self.apos, ifw=bond, up=up, _0=1 );   
         rot = rot.transpose()
