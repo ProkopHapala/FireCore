@@ -1560,6 +1560,71 @@ class AtomicSystem( ):
         if(not bQs): qs=None
         saveXYZ( self.enames, self.apos, fname, qs=qs, Rs=self.Rs, mode=mode, comment=comment, ignore_es=ignore_es, other_lines=other_lines )
 
+
+    def save_mol2(self, fname, comment=""):
+        """
+        Save the current AtomicSystem in MOL2 format.
+
+        The MOL2 file will have the following sections:
+        - @<TRIPOS>MOLECULE: a header with molecule name and counts.
+        - @<TRIPOS>ATOM: one line per atom including atom id, element name,
+                            coordinates, atom type, substructure id, residue name,
+                            and charge.
+        - @<TRIPOS>BOND: one line per bond including bond id, indices of the two
+                            atoms (1–based indexing) and bond type (default "1").
+        
+        Parameters:
+        fname   : str
+                    The output filename.
+        comment : str, optional
+                    A comment string to include in the MOL2 file header.
+                    
+        Returns:
+        None.
+        """
+        with open(fname, "w") as fout:
+            # Write the MOLECULE section.
+            fout.write("@<TRIPOS>MOLECULE\n")
+            # Use a default molecule name or comment.
+            molecule_name = "Molecule"
+            fout.write(molecule_name + "\n")
+            n_atoms = len(self.apos)
+            n_bonds = len(self.bonds) if self.bonds is not None else 0
+            # MOL2 counts: atoms, bonds, (and 0 0 0 for other fields)
+            fout.write(f"{n_atoms} {n_bonds} 0 0 0\n")
+            if comment:
+                fout.write(comment + "\n")
+            else:
+                fout.write("\n")
+            
+            # Write the ATOM section.
+            fout.write("@<TRIPOS>ATOM\n")
+            for i in range(n_atoms):
+                atom_id = i + 1  # MOL2 uses 1-based indexing.
+                ename = self.enames[i]
+                x, y, z = self.apos[i]
+                # For atom_type we simply reuse the element name; adjust as needed.
+                atom_type = ename
+                substructure = 1  # Default substructure id.
+                residue = "MOL"   # Default residue name.
+                # Use self.qs if available and has the correct length, otherwise 0.0.
+                charge = self.qs[i] if (self.qs is not None and len(self.qs) == n_atoms) else 0.0
+                # Format: atom_id, ename, x, y, z, atom_type, substructure, residue, charge.
+                fout.write("{:>7d} {:<8s} {:>9.4f} {:>9.4f} {:>9.4f} {:<8s} {:>3d} {:<8s} {:>8.4f}\n"
+                        .format(atom_id, ename, x, y, z, atom_type, substructure, residue, charge))
+            
+            # Write the BOND section.
+            fout.write("@<TRIPOS>BOND\n")
+            if self.bonds is not None:
+                for i, bond in enumerate(self.bonds):
+                    bond_id = i + 1
+                    # bond is assumed to be a tuple (i, j) with 0-based indices.
+                    # Convert to 1-based indices.
+                    a1 = bond[0] + 1
+                    a2 = bond[1] + 1
+                    bond_type = "1"  # Default bond type.
+                    fout.write("{:>6d} {:>4d} {:>4d} {:<4s}\n".format(bond_id, a1, a2, bond_type))
+
     def toLines(self):
         #lines = []
         #for i,pos in enumerate(self.apos):
