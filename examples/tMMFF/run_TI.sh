@@ -27,16 +27,16 @@ export OMP_NUM_THREADS
 #rm *.bin
 
 
-
-nMDsteps=1000000
+nbSteps=100000         # JE -> nProdSteps
+nMDsteps=1000     # JE -> nrealization
 nEQsteps=10000
 t_damp=100
 T=300
 dt=0.01
-nSteps=100
-k=1.0
 K=10.0
-Ns=(5 10 20 30)
+Ns=(20)
+lamda1=1.0
+lamda2=3.0
 
 
 for N in "${Ns[@]}"
@@ -46,10 +46,11 @@ do
                    --t_damp $t_damp \
                    --T $T \
                    --dt $dt \
-                   --nSteps $nSteps \
+                   --nbSteps $nbSteps \
                    --N $N \
-                   --k $k \
-                   --K $K
+                   --K $K \
+                   --lamda1 $lamda1 \
+                   --lamda2 $lamda2 
     ./results/TI_plot.sh
-    cp results/TI_plot.png "results/entSpring_N${N}_MDsteps${nMDsteps}_EQsteps${nEQsteps}_tdamp${t_damp}_T${T}_dt${dt}_nSteps${nSteps}_k${k}_K${K}.png"
+    cp results/TI_plot.png "results/JE_entSpring_N${N}_MDsteps${nMDsteps}_EQsteps${nEQsteps}_tdamp${t_damp}_T${T}_dt${dt}_nSteps${nSteps}_k${k}_K${K}.png"
 done

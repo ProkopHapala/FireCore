@@ -240,7 +240,7 @@ class MolecularDatabase : public MetaData
 {
 private:
     Descriptor *descriptors = nullptr;
-    Atoms *atoms = nullptr;
+    ForceField *atoms = nullptr;
     int nMembers = 0;
     int nMaxCell = 0;
     MolecularDatabaseDescriptor *usedDescriptors = nullptr;
@@ -273,13 +273,13 @@ public:
     {
         this->nMembers = 0;
         this->nMaxCell = n;
-        this->atoms = new Atoms[n];
-        this->descriptors = new Descriptor[n];
+        _alloc(atoms, n);
+        _alloc(descriptors, n);
     };
     void realloc(int n)
     {
 
-        Atoms *temp = new Atoms[n];
+        ForceField *temp = new ForceField[n];
         for (int i = 0; i < nMembers; i++)
         {
             temp[i].copyOf(this->atoms[i]);
@@ -314,7 +314,7 @@ public:
 
     // ================= Accessors ================= //
 
-    Atoms *GetAtoms(int i)
+    ForceField *GetAtoms(int i)
     {
         if (i < nMembers && i >= 0)
         {
@@ -360,13 +360,15 @@ public:
 
     // ================= Editing members of database ================= //
 
-    void loadAtoms(int i, Atoms *a)
+    void loadAtoms(int i, ForceField *a)
     {
         if (!atoms || i > nMembers || i < 0)
             return;
         if(atoms[i].natoms != a->natoms)
             a->realloc(atoms[i].natoms);
         a->copyOf(atoms[i]);
+        atoms[i].copyVelocityTo(a->vapos);
+        atoms[i].copyForcesTo(a->fapos);
     };
 
     // User can choose desriptors to use by writing it in the usedDescriptor array (chosen order is important):
@@ -399,7 +401,7 @@ public:
         }
     };
 
-    void addMember(Atoms *a, Descriptor *descriptor = 0, MMFFparams *params = 0)
+    void addMember(ForceField *a, Descriptor *descriptor = 0, MMFFparams *params = 0)
     {
         if (nMembers >= nMaxCell)
         {
@@ -414,6 +416,10 @@ public:
             descriptors[nMembers].copyOf(*descriptor);
 
         atoms[nMembers].copyOf(*a);
+        _realloc(atoms[nMembers].vapos, atoms[nMembers].natoms);
+        a->copyVelocityTo(atoms[nMembers].vapos);
+        _realloc(atoms[nMembers].fapos, atoms[nMembers].natoms);
+        a->copyForcesTo(atoms[nMembers].fapos);
         if (nMembers == 0)
             dimensionOfDescriptorSpace = descriptors[nMembers].dimensionOfDescriptorSpace;
         this->nMembers++;
@@ -421,7 +427,7 @@ public:
     };
 
 
-    int addIfNewDescriptor(Atoms *a, Mat3d* lat_vec = 0, MMFFparams *params = 0)
+    int addIfNewDescriptor(ForceField *a, Mat3d* lat_vec = 0, MMFFparams *params = 0)
     {
         totalEntries++;
         Descriptor d;
@@ -471,12 +477,14 @@ public:
         return 0;
     };
 
-    void replace(Atoms *a, int i, MMFFparams *params = 0)
+    void replace(ForceField *a, int i, MMFFparams *params = 0)
     {
         if (i < nMembers && i >= 0)
         {
             atoms[i].realloc(a->natoms);
             atoms[i].copyOf(*a);
+            a->copyVelocityTo(atoms[i].vapos);
+            a->copyForcesTo(atoms[i].fapos);
 
             descriptors[i].dealloc();
             for (int j = 0; j < nbOfusedDescriptors; j++)
@@ -576,7 +584,7 @@ public:
         return dist;
     }
 
-    Vec3d shift_to_elementary_cell(Atoms *atoms, Mat3d *lat_vec, bool Surf=0)
+    Vec3d shift_to_elementary_cell(ForceField *atoms, Mat3d *lat_vec, bool Surf=0)
     {
         Mat3d A;
         Vec3d shift = Vec3dZero;
@@ -647,7 +655,7 @@ public:
         return computeDistanceOnSurf(&atoms[h], &atoms[i], lat_vec);
     }
 
-    double computeDistanceOnSurf(Atoms *atoms_h, Atoms *atoms_i, Mat3d* lat_vec){
+    double computeDistanceOnSurf(ForceField *atoms_h, ForceField *atoms_i, Mat3d* lat_vec){
         // move both apos[0] into elementary cell
         Mat3d A;
         int n = atoms_h->natoms;
@@ -657,7 +665,7 @@ public:
         // try all symmetries to find the smallest RMSD
         AtomicConfiguration ac, ac2;
         double dist = __DBL_MAX__;
-        Atoms a_h, a_i;
+        ForceField a_h, a_i;
         for(int sym = 0; sym < 8; sym++){
             a_h.copyOf(*atoms_h);
             a_i.copyOf(*atoms_i);

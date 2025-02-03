@@ -2493,94 +2493,6 @@ int counter=0;
         }
         return itr;
 
-
-//////////  Entropic spring
-/*
-        ffl.doAngles = false;
-        #pragma omp parallel shared(niter,itr,E,F2,ff,vv,vf,ffl,T0,bConstrains,bConverged)
-        while(itr<niter){
-            if(itr<niter){
-            //#pragma omp barrier
-            #pragma omp single
-            {E=0;F2=0;ff=0;vv=0;vf=0;
-                go.bExploring = true;
-            }
-            //------ eval forces
-            //#pragma omp barrier
-            #pragma omp for reduction(+:E)
-            for(int ia=0; ia<ffl.natoms; ia++){ 
-                {                 ffl.fapos[ia           ] = Vec3dZero; }
-                if(ia<ffl.nnode){ E+=ffl.eval_atom(ia); }
-            }
-
-#pragma omp single
-            {
-                if (bFreeEnergyCalc && outF)
-                {
-                    Vec3d direction = ffl.apos[colVar.bonds[0].ias.b] - ffl.apos[colVar.bonds[0].ias.a];
-                    direction.normalize();
-                    double value0, value1;
-                    value0 = ffl.fapos[colVar.bonds[0].ias.a].dot(direction);
-                    value1 = ffl.fapos[colVar.bonds[0].ias.b].dot(direction);
-                    outF[itr] = (value0 - value1) * 0.5 / 1; // 0.5 is because of model where the collective variable is abs(x1-x0) and x1 = (x+lamba/2, y, z) and x0 = (x-lamba/2, y, z)
-                    // aware array outV is connected with array positions in calculate_Free_energy() function
-                    if (outV)
-                    {
-                        double chain_length = 0;
-                        for (int i = 0; i < ffl.natoms; i++)
-                        {
-                            int k = 0;
-                            while (ffl.neighs[i].array[k] != -1)
-                            {
-                                chain_length += ffl.apos[ffl.neighs[i].array[k]].dist(ffl.apos[i]);
-                                k++;
-                            }
-                        }
-                        chain_length /= 2;
-                        double segment_length = chain_length / (ffl.natoms - 1);
-
-                        // outV[itr] = ffl.vapos[2].norm2();
-                        // Vec3d direction = ffl.apos[colVar.bonds[0].ias.b] - ffl.apos[colVar.bonds[0].ias.a];
-                        // outV[itr] = direction.norm();
-                        outV[itr] = segment_length;
-                    }
-                    if (outE)
-                    {
-                        outE[itr] = ffl.evalKineticEnergy();
-                    }
-                }
-                if (bConstrains)
-                {
-                    E += constrs.apply(ffl.apos, ffl.fapos, &ffl.lvec);
-                }
-            }
-            // ---- assemble (we need to wait when all atoms are evaluated)
-            //#pragma omp barrier
-            #pragma omp for
-            for(int ia=0; ia<ffl.natoms; ia++){
-                ffl.assemble_atom( ia );
-            }
-                if (bMoving)
-                {
-                    #pragma omp for
-                    for (int i = 0; i < ffl.nvecs; i++)
-                    {
-                        if (go.bExploring)
-                        { ffl.move_atom_Langevin(i, dt, 10000.0, go.gamma_damp, go.T_target); }
-                    }
-                }
-
-            //#pragma omp barrier
-            #pragma omp single
-            { 
-                Etot=E;
-                itr++; 
-
-            }
-            } // if(itr<niter)
-        } // while(itr<niter)
-
-        return itr;*/
     }
 
 void scan_rigid( int nconf, Vec3d* poss, Mat3d* rots, double* Es, Vec3d* aforces, Vec3d* aposs, bool omp ){
@@ -3187,74 +3099,6 @@ bool addSnapshot(bool ifNew = false, char* fname = 0)
         gopt.database = new MolecularDatabase();
         gopt.database->setDescriptors();
     }
-//     loadNBmol("butan");
-//     int nMembers = database->getNMembers();
-
-//     database->addMember(&nbmol);
-
-//     std::string comment = "#" + std::to_string(nMembers);
-//     const char* cstr = comment.c_str();
-//     std::string trjName1 = "trj" + std::to_string(nMembers) + "_1.xyz";        
-//     const char* cstr1 = trjName1.c_str();  
-//     FILE* file1=0;
-//     file1=fopen( cstr1, "w" );
-//     params.writeXYZ(file1, &nbmol, cstr);
-//     fclose(file1);
-// srand(457);
-
-
-//             double move_x = 0;//randf() * 0.5;
-//             double move_y = 0;//randf() * 0.5;
-//             double move_z = 0;//randf() * 0.5;
-//     double angle = 0;
-// if(nMembers==0)angle = 0;//randf() * 360;
-// //printf("angle: %g\n", angle);
-//     //if(nMembers==1)move_x = 0.2;//;
-//         Vec3d axis ={1,1,1};// {randf(), randf(), randf()};
-//         Vec3d p0 = Vec3dZero;//{randf() * 5 - 2.5, randf() * 5 - 2.5, randf() * 5 - 2.5};
-//         for (int i = 0; i < nbmol.natoms; i++)
-//         {            
-            
-
-//             //if(i==0 && nMembers == 0) move_x = 5;//randf() * 0.5;
-//             nbmol.apos[i].add({move_x, move_y, move_z});
-//             nbmol.apos[i].rotate(2 * 3.14159 / 360 * angle, axis, p0);
-//          }
-// //if(nMembers>1)    printf("database->compareAtoms(&nbmol, 0) %g\n", database->compareAtoms(&nbmol, 0));
-// //printf("ff.nbonds %i\n", ff.nbonds);
-// loadNBmol("changed_butan");
-// //buildMolecule_xyz("changed_butan");
-
-// int nbFixed = 2;
-// int* fixed = new int[nbFixed];
-//     while(nMembers < 100){
-//     nMembers = database->getNMembers();
-
-//     database->addMember(&nbmol);
-
-//     std::string comment = "#" + std::to_string(nMembers);
-//     const char* cstr = comment.c_str();
-//     std::string trjName1 = "trj" + std::to_string(nMembers) + "_1.xyz";        
-//     const char* cstr1 = trjName1.c_str();  
-//     FILE* file1=0;
-//     file1=fopen( cstr1, "w" );
-//     params.writeXYZ(file1, &nbmol, cstr);
-//     fclose(file1);
-
-
-        
-//         fixed[0] = -1;
-//         fixed[1] = -1;
-//         database->as_rigid_as_possible(&nbmol, 0, ff.nbonds, ff.bond2atom, nbFixed, fixed);
-        
-//         //printf("nbmol.neighs[0]: %i %i %i %i\n", nbmol.neighs[0].x, nbmol.neighs[0].y, nbmol.neighs[0].z, nbmol.neighs[0].w);
-//     }
-// delete[] fixed;
-
-
-
-//    return true;
-
     if (fname)
     {
         loadNBmol(fname);
@@ -3282,29 +3126,6 @@ bool addSnapshot(bool ifNew = false, char* fname = 0)
 
 void printDatabase(){
     if(database) database->print();
-
-    // if(!database){
-    //     database = new MolecularDatabase();
-    //     database->setDescriptors();
-    // }
-    // Atoms A;
-    // A.copyOf(nbmol);
-    
-    // for(int i = 0; i < nbmol.natoms; i++){
-    //     nbmol.apos[i].rotate(M_PI/2 , Vec3dZ);
-    //     nbmol.apos[i].add(Vec3d{4.5,0,0});
-    // }
-    // nbmol.print();A.print();
-
-    // // Měření času
-    // auto start = std::chrono::high_resolution_clock::now();
-    // double result = database->computeDistanceOnSurf(&nbmol, &A, &gridFF.grid.cell);
-    // auto end = std::chrono::high_resolution_clock::now();
-    // std::chrono::duration<double> elapsed = end - start;
-
-    // // Výpis výsledku a času
-    // printf("database->computeDistanceOnSurf(&nbmol, &nbmol, &surf): %g\n", result);
-    // std::cout << "Elapsed time: " << elapsed.count() << " seconds\n";
 }
 
 double computeDistance(int i, int j){
@@ -3377,61 +3198,6 @@ void MD_with_mexican_hat(int nbStep, int nbMDSteps, int nbMDStepsThermalize, dou
     }
 }
 
-void mexican_hat_JE_init(int nbInits, int nEQsteps, double lamda_init, double d, double T, double gamma, double dt, double* position, double* velocities){
-    int atom = 0;
-    double f, r, inv_c, v;
-    int n = nEQsteps/nbInits;
-    int L = 0;
-
-    ffl.apos[atom].set(0, 0, 0);
-
-    // first nEQsteps to thermalize, second nEQsteps to generate nbInits of initial positions
-    for(int i = 0; i < 2*nEQsteps; i++){
-        r = ffl.apos[atom].x;
-        v = ffl.vapos[atom].x;
-        inv_c = 1/lamda_init;
-        f = - 4.0 * d * inv_c * r * inv_c * ( r * inv_c * r * inv_c - 1);
-        ffl.fapos[atom].set(f, 0, 0);
-        ffl.move_atom_Langevin( atom, dt, 10000.0, gamma, T );
-
-        if(i >= nEQsteps){
-            n--;
-            if(n == 0){
-                position[L] = r;
-                velocities[L]=v;
-                n = nEQsteps/nbInits;
-                L++;
-            }
-        }
-    }
-
-}
-
-void mexican_hat_JE_propagation(double initial_position, double* lamda, int nbSteps, double d, double T, double gamma, double dt, double* W, int nbMD = 1000){
-    int atom = 0;
-    double r, inv_c;
-    double E, f;
-
-    inv_c = 1/lamda[0];
-    r = initial_position;
-    double E_prev = d * ( r * r * inv_c * inv_c - 1) * ( r * r * inv_c * inv_c - 1);
-
-    for(int L = 1; L < nbSteps; L++){
-        inv_c = 1/lamda[L];
-        for (int t = 0; t < nbMD; t++)
-        {
-            f = -4.0 * d * inv_c * r * inv_c * (r * inv_c * r * inv_c - 1);
-            ffl.fapos[atom].set(f, 0, 0);
-            ffl.move_atom_Langevin(atom, dt, 10000.0, gamma, T);
-            r = ffl.apos[atom].x;
-        }
-
-        if(L>1)E_prev = E;
-        E = d * ( r * r * inv_c * inv_c - 1) * ( r * r * inv_c * inv_c - 1);
-
-        W[L] = E - E_prev;
-    }
-}
 
 void thermodynamic_integration(int nbStep, int nMDSteps, double d_lamda, std::vector<double>* dE_dLamda, double* TI, double* sigmaTI){
     std::vector<double> Fs(nbStep, 0.0);
@@ -3473,9 +3239,11 @@ void store_TI(std::string filename, std::vector<double> lamda, std::vector<doubl
         std::cerr << "Error opening file: " << filename << std::endl;
         return;
     }
-    outfile << "lamda TI sigmaTI Reference" << std::endl;
+    outfile << "lambda TI sigmaTI Reference" << std::endl;
     for (int L = 0; L < lamda.size(); L++) {
-        outfile << lamda[L] << " " << TI[L] << " " << sigmaTI[L] << " " << Ref[L] << std::endl;
+        outfile << lamda[L] << " " << TI[L] << " " << sigmaTI[L];
+        if(Ref.size() > 0) outfile << " " << Ref[L];
+        outfile << std::endl;
     }
     outfile.close();
 }
@@ -3502,61 +3270,103 @@ double mexican_hat_TI(double lamda1, double lamda2, int nbStep = 100, int nMDSte
     return deltaF;
 }
 
-void jarzynski_equation(int nbStep, int nbInits, double T, std::vector<double>* W, double* F_JE, double* sigma_JE){
 
-    std::vector<double> boltzman_factor(nbStep, 0.0);
-    std::vector<double> sigma_boltzman_factor(nbStep, 0.0);
-
-    std::vector<double> W_accumulated(nbInits, 0.0);
-
-    for (int L = 0; L < nbStep; L++) {
-        for (int i = 0; i < nbInits; i++) {
-            W_accumulated[i] += W[L][i];
-            boltzman_factor[L] += exp(W_accumulated[i] / const_kB / T);
-        }
-        boltzman_factor[L] /= nbInits;
-        printf("boltzman_factor[%d] = %f\n", L, boltzman_factor[L]);
-        for (int i = 0; i < nbInits; i++) {
-            sigma_boltzman_factor[L] += abs(exp(-W_accumulated[i]/ const_kB / T) - boltzman_factor[L]);
-            //printf("sigma_boltzman_factor[%d] = %f\n", L, sigma_boltzman_factor[L]);
-        }
-        sigma_boltzman_factor[L] /= nbInits;
-        sigma_boltzman_factor[L] = sqrt(sigma_boltzman_factor[L]);
-
-        F_JE[L] = -const_kB * T * log(boltzman_factor[L]);
-        sigma_JE[L] = const_kB * T * sigma_boltzman_factor[L] / boltzman_factor[L];
-
-        printf("F_JE[%d] = %f ± %f\n", L, F_JE[L], sigma_JE[L]);
+void store_JE(std::string filename, std::vector<double> lamda, std::vector<double> JE, std::vector<double> sigmaJE = std::vector<double>(0), std::vector<double> Ref = std::vector<double>(0)){
+    std::ofstream outfile(filename);
+    if (!outfile.is_open()) {
+        std::cerr << "Error opening file: " << filename << std::endl;
+        return;
     }
+    outfile << "lambda JE";
+    if(sigmaJE.size()>0) outfile << " sigmaJE";
+    if(Ref.size() > 0) outfile << " Reference";
+    outfile << std::endl;
+    for (int L = 0; L < lamda.size(); L++) {
+        outfile << lamda[L] << " " << JE[L];
+        if(sigmaJE.size()>0) outfile << " " << sigmaJE[L];
+        if(Ref.size() > 0) outfile << " " << Ref[L];
+        outfile << std::endl;
+    }
+    outfile.close();
 }
 
-double mexican_hat_JE(double lamda1, double lamda2, int nbStep = 100, int nbInits = 1000, int nEQsteps = 10000, double tdamp = 100.0, double T = 300, double dt = 0.5){
+void mexican_hat_MD_JE(double *x, double *v, double lamda, int nbMDsteps, double d, double T, double gamma, double dt, double* E = 0){
+    int atom = 0;
+    double r, inv_c;
+    double f; 
+
+    inv_c = 1/lamda;
+    r = *x;
+    ffl.apos[atom].x = *x;
+    ffl.vapos[atom].x = *v;
+    // double v2 = 0.0;
+
+    if(E) 
+        *E = d * ( r * r * inv_c * inv_c - 1) * ( r * r * inv_c * inv_c - 1);
+
+    for (int i = 0; i < nbMDsteps; i++){
+        r = ffl.apos[atom].x;
+        f = - 4.0 * d * inv_c * r * inv_c * ( r * inv_c * r * inv_c - 1);
+        ffl.fapos[atom].set(f, 0, 0);
+        ffl.move_atom_Langevin( atom, dt, 10000.0, gamma, T ); 
+        // if(i>1000){
+        //     v2 += ffl.vapos[atom].x * ffl.vapos[atom].x;
+        // }
+    }
+    *x = ffl.apos[atom].x;
+    *v = ffl.vapos[atom].x;
+    //v2 /= (nbMDsteps-1000);
+    //printf("temperature = %f\n", v2  / const_kB);
+}
+
+double mexican_hat_JE(double lamda1, double lamda2, int nbProdSteps = 100000, int nrealization = 1000, int nEQsteps = 10000, double tdamp = 100.0, double T = 300, double dt = 0.05){
+
     double gamma = 1/(dt*tdamp);
     double d = 0.1;
 
-    std::vector<std::vector<double>> W(nbInits, std::vector<double>(nbStep));
-    std::vector<double> initial_positions(nbInits, 0.0);
-    std::vector<double> initial_velocities(nbInits, 0.0);
+    int nSampleSteps = nEQsteps;
 
-    std::vector<double> lamda(nbStep);
-    double d_lamda = (lamda2 - lamda1) / (nbStep - 1);
-    for (int i = 0; i < nbStep; ++i) {
+    // the algorithm is not stable for higher x_eq (depends on nb MD steps)
+    std::vector<double> expave(nbProdSteps, 0.0);
+    double x_eq = 0.0;
+    double v_eq = 0.0;
+    double E_new, E_old;
+
+    double d_lamda = abs(lamda2 - lamda1)/double(nbProdSteps);
+
+    //equilibrate
+    mexican_hat_MD_JE(&x_eq, &v_eq, lamda1, nEQsteps, d, T, gamma, dt);
+
+    // loop sampleMD -> prodMD
+    for(int i = 0; i < nrealization; i++){
+
+        mexican_hat_MD_JE(&x_eq, &v_eq, lamda1, nSampleSteps, d, T, gamma, dt);
+        double W = 0;
+        double x = x_eq;
+        double v = v_eq;
+        for(int L = 1; L < nbProdSteps; L++){
+            mexican_hat_MD_JE(&x, &v, lamda1+(L-1)*d_lamda, 0, d, T, gamma, dt, &E_old);       
+            mexican_hat_MD_JE(&x, &v, lamda1+L*d_lamda, 1, d, T, gamma, dt, &E_new);
+            W += E_new - E_old;
+            expave[L] += exp(-W/(const_kB*T));
+        }
+    }
+
+    // jarzynski equation
+    std::vector<double> F_JE(nbProdSteps, 0.0);
+    std::vector<double> sigma_JE(nbProdSteps, 0.0);   
+    for(int L = 1; L < nbProdSteps; L++){
+        expave[L] /= nrealization;
+        F_JE[L] = -const_kB * T * log(expave[L]);
+    }
+
+    std::vector<double> lamda(nbProdSteps);
+    for (int i = 0; i < nbProdSteps; ++i) {
         lamda[i] = lamda1 + i * d_lamda;
     }
+    store_JE("results/JE_plot.dat", lamda, F_JE);
 
-    mexican_hat_JE_init(nbInits, nEQsteps, lamda1, d, T, gamma, dt, initial_positions.data(), initial_velocities.data());
-
-    int MDstep = int(tdamp/dt);
-    for (int i=0; i<nbInits; i++) {
-        mexican_hat_JE_propagation(initial_positions[i], lamda.data(), nbStep, d, T, gamma, dt, W[i].data(), MDstep);
-    }
-
-    std::vector<double> F_JE(nbStep, 0.0);
-    std::vector<double> sigma_JE(nbStep, 0.0);   
-    jarzynski_equation(nbStep, nbInits, T, W.data(), F_JE.data(), sigma_JE.data());
-    
-    double deltaF = F_JE[nbStep-1] - F_JE[0];
-    return deltaF;
+    return F_JE[nbProdSteps-1];
 }
 
 
@@ -3569,7 +3379,7 @@ double mexican_hat_JE(double lamda1, double lamda2, int nbStep = 100, int nbInit
 
 
 
-
+bool first_time = true;
 
 int run_omp_three_atoms_problem(int niter_max, double dt, double Fconv = 1e-6, double Flim = 1000, double timeLimit = 0.02, double *outE = 0, double *outF = 0, double *outV = 0, double *outVF = 0)
 {
@@ -3594,15 +3404,18 @@ int run_omp_three_atoms_problem(int niter_max, double dt, double Fconv = 1e-6, d
         }
 
         // move atoms (atom 0 and 1 have forbiden movement)
-        ffl.move_atom_Langevin(2, dt, 10000.0, go.gamma_damp, go.T_target);
+        if(bMoving)
+            ffl.move_atom_Langevin(2, dt, 10000.0, go.gamma_damp, go.T_target);
 
         // output
-        if (bFreeEnergyCalc && outF)
+        if (bFreeEnergyCalc)
         {
-            double value0, value1;
-            value0 = ffl.fapos[0].x;
-            value1 = ffl.fapos[1].x;
-            outF[itr] = (value0 - value1) * 0.5; // 0.5 is because of model where the collective variable is abs(x1-x0) and x1 = (x+lamba/2, y, z) and x0 = (x-lamba/2, y, z)
+            if(outF){
+                double value0, value1;
+                value0 = ffl.fapos[0].x;
+                value1 = ffl.fapos[1].x;
+                outF[itr] = (value0 - value1) * 0.5; // 0.5 is because of model where the collective variable is abs(x1-x0) and x1 = (x+lamba/2, y, z) and x0 = (x-lamba/2, y, z)
+            }
             if (outV)
             {
                 outV[itr] = ffl.vapos[2].norm2();
@@ -3632,6 +3445,94 @@ int run_omp_three_atoms_problem(int niter_max, double dt, double Fconv = 1e-6, d
     return itr;
 }
 
+double three_atoms_problem_JE(double lamda1, double lamda2, int nbProdSteps = 100000, int nrealization = 1000, int nEQsteps = 10000, double tdamp = 100.0, double T = 300, double dt = 0.05){
+    ffl.apos[0].set(-1.0,0.0,0.0);
+    ffl.apos[1].set( 1.0,0.0,0.0);
+    ffl.apos[2].set( 1.0,3.0,0.0);
+    for(int i=0; i<ffl.natoms; i++){
+        ffl.REQs[i].x = 1.4430;
+        ffl.REQs[i].y = 0.5; // this number corresponds to write 0.1 in AtomTypes Hydrogen EvdW
+        ffl.REQs[i].z = 0.000000;
+        ffl.REQs[i].w = 0.000000;
+    }
+
+    int nSampleSteps = nEQsteps;
+
+    bFreeEnergyCalc = true;
+    ffl.bTestThreeAtoms = true;     // turn off atom 0<->1 interaction
+    double gamma = 1/(dt*tdamp);
+
+    std::vector<double> expave(nbProdSteps, 0.0);
+    double E_new, E_old;
+
+    double d_lamda = abs(lamda2 - lamda1)/double(nbProdSteps);
+    double pos_0 = ffl.apos[0].x;
+    double pos_1 = ffl.apos[1].x;
+
+    // equilibrate
+    bMoving = true;    
+    run_omp_three_atoms_problem(nEQsteps, dt);
+
+    // store equilibrated
+    if(!database){_alloc(database, 1);}
+    database->addMember(&ffl);
+
+    // loop sampleMD -> prodMD
+    for(int i = 0; i < nrealization; i++){
+        database->loadAtoms(0, &ffl);
+
+        bMoving = true;
+        run_omp_three_atoms_problem(nSampleSteps, dt);
+
+        database->replace(&ffl, 0);
+
+        double W = 0;
+
+        // // initialize first E_old
+        // bMoving = false;
+        // run_omp_three_atoms_problem(1, dt, 1e-6,1000,0.02,&E_old);
+
+        // for(int L = 1; L < nbProdSteps; L++){        
+        //     // move with collective variable
+        //     ffl.apos[0].x = pos_0 - (lamda1 + L * d_lamda)*0.5; 
+        //     ffl.apos[1].x = pos_1 + (lamda1 + L * d_lamda)*0.5;
+           
+        //     bMoving = false;       
+        //     run_omp_three_atoms_problem(1, dt, 1e-6,1000,0.02,&E_new);
+
+        //     W += E_new - E_old;
+        //     expave[L] += exp(-(W)/(const_kB*T));
+
+        //     bMoving = true;              
+        //     run_omp_three_atoms_problem(1, dt, 1e-6,1000,0.02,&E_old);
+        // }
+        double F;
+        for (int L = 0; L < nbProdSteps; L++) {
+            run_omp_three_atoms_problem(1, dt, 1e-6,1000,0.02,nullptr,&F);
+            W += F*d_lamda;
+            expave[L] += exp(-(W)/(const_kB*T));
+            ffl.apos[0].x = pos_0 - (lamda1 + L * d_lamda) * 0.5;
+            ffl.apos[1].x = pos_1 + (lamda1 + L * d_lamda) * 0.5;
+        }
+    }
+
+    // jarzynski equation
+    std::vector<double> F_JE(nbProdSteps, 0.0);
+    std::vector<double> sigma_JE(nbProdSteps, 0.0);   
+    for(int L = 1; L < nbProdSteps; L++){
+        expave[L] /= nrealization;
+        F_JE[L] = -const_kB * T * log(expave[L]);
+    }
+
+    std::vector<double> lamda(nbProdSteps);
+    for (int i = 0; i < nbProdSteps; ++i) {
+        lamda[i] = lamda1 + i * d_lamda;
+    }
+    store_JE("results/JE_plot.dat", lamda, F_JE);
+
+    return F_JE[nbProdSteps-1];
+}
+
 double three_atoms_problem_TI(double lamda1, double lamda2, int nbStep = 100, int nMDSteps = 100000, int nEQsteps = 10000, double tdamp = 100.0, double T = 300, double dt = 0.5){ 
     ffl.apos[0].set(-1.0,0.0,0.0);
     ffl.apos[1].set( 1.0,0.0,0.0);
@@ -3647,8 +3548,8 @@ double three_atoms_problem_TI(double lamda1, double lamda2, int nbStep = 100, in
     bFreeEnergyCalc = true;
     ffl.bTestThreeAtoms = true;     // turn off atom 0<->1 interaction
     bool calculate_temperature = true;
+    bMoving = true;
     double gamma = 1/(dt*tdamp);
-    double d = 0.1;
 
     std::vector<std::vector<double>> dE_dLamda(nbStep, std::vector<double>(nMDSteps));
 
@@ -3707,165 +3608,261 @@ double three_atoms_problem_TI(double lamda1, double lamda2, int nbStep = 100, in
             }
         }
     }
-    double deltaF = TI[nbStep - 1];
 
+    double deltaF = TI[nbStep - 1];
     return deltaF;
 }
 
-double compute_Free_energy(double lamda1, double lamda2, int n, int *dc, int nbStep = 100, int nMDSteps = 100000, int nEQsteps = 10000, double tdamp = 100.0, double T = 300, double dt = 0.5){
-    // set global parameters
-    double gamma = 1/(dt*tdamp); // = go.gamma_damp
-    go.gamma_damp = gamma;
-    go.T_target = T;
-    int nbInits = 1000;
+int run_omp_entropic_spring(int niter_max, double dt, double Fconv = 1e-6, double Flim = 1000, double timeLimit = 0.02, double *outE = 0, double *outF = 0, double *outV = 0)
+{
+    double E = 0, F2 = 0, F2conv = Fconv * Fconv;
+    double ff = 0, vv = 0, vf = 0;
+    int itr = 0;
+    int niter = niter_max;
 
-    go.bExploring = true;
-    bConstrains = true;
+    while (itr < niter_max)
+    {
+        if (itr < niter_max)
+        {
+            E = 0;
+            F2 = 0;
+            ff = 0;
+            vv = 0;
+            vf = 0;
+
+            for (int ia = 0; ia < ffl.natoms; ia++)
+            {
+                ffl.fapos[ia] = Vec3dZero;
+                if (ia < ffl.natoms)
+                {
+                    E += ffl.eval_atom(ia);
+                }
+            }
+
+            for (int ia = 0; ia < ffl.natoms; ia++)
+            {
+                ffl.assemble_atom(ia);
+            }
+
+
+            if (bFreeEnergyCalc){
+                if(outF){
+                    Vec3d direction = ffl.apos[colVar.bonds[0].ias.b] - ffl.apos[colVar.bonds[0].ias.a];
+                    direction.normalize();
+                    double value0, value1;
+                    value0 = ffl.fapos[colVar.bonds[0].ias.a].dot(direction);
+                    value1 = ffl.fapos[colVar.bonds[0].ias.b].dot(direction);
+                    outF[itr] = (value0 - value1) * 0.5; // 0.5 is because of model where the collective variable is abs(x1-x0) and x1 = (x+lamba/2, y, z) and x0 = (x-lamba/2, y, z)
+                }
+                if (outV){
+                    double chain_length = 0;
+                    for (int i = 0; i < ffl.natoms; i++)
+                    {
+                        int k = 0;
+                        while (ffl.neighs[i].array[k] != -1)
+                        {
+                            chain_length += ffl.apos[ffl.neighs[i].array[k]].dist(ffl.apos[i]);
+                            k++;
+                        }
+                    }
+                    chain_length /= 2;
+                    double segment_length = chain_length / (ffl.natoms - 1);
+                    outV[itr] = segment_length;
+                }
+                if (outE){
+                    outE[itr] = E;
+                }
+            }
+
+            if (bConstrains){
+                E += constrs.apply(ffl.apos, ffl.fapos, &ffl.lvec);
+            }
+
+            if(bMoving){
+                for (int i = 0; i < ffl.natoms; i++){
+                    ffl.move_atom_Langevin(i, dt, 10000.0, go.gamma_damp, go.T_target);
+                }
+            }
+        }
+        itr++;
+    }
+    return itr;
+}
+
+double entropic_spring_JE(double lamda1, double lamda2, int n, int *dc, int nbProdSteps = 10000, int nrealization = 100, int nEQsteps = 10000, double tdamp = 100.0, double T = 300, double dt = 0.5)
+{
+    ffl.doAngles = false;
+    ffl.doPiPiI = false;
+    ffl.doPiPiT = false;
+    ffl.doPiSigma = false;
+    ffl.bSubtractBondNonBond = true;
+
     bFreeEnergyCalc = true;
+    double gamma = 1 / (dt * tdamp);
 
+    std::vector<double> expave(nbProdSteps, 0.0);
+    double E_new, E_old;
 
+    int nSampleSteps = nEQsteps;
 
-
-    // Entropic spring
-
-    // Read stiffness value from file
-    double stiffness;
-    FILE* file1 = fopen("stifness.txt", "r");
-    if (!file1) {
-        printf("Error: Could not open stiffness.txt\n");
-        return 0.0;  // Return early with error value
-    }
-    fscanf(file1, "%lf", &stiffness);
-    fclose(file1);
-
-    // Apply the stiffness value to all atoms
-    for(int ai=0; ai<ffl.natoms; ai++){
-        ffl.bKs[ai].x = stiffness;
-        ffl.bKs[ai].y = stiffness;
-    }
-
-
-    for(int i = 0; i < n; i++){
-        constrs.bonds[dc[i]].ls.set(lamda1/n);
+    // define colective variable
+    for (int i = 0; i < n; i++){
+        constrs.bonds[dc[i]].ls.set(lamda1 / n);
         colVar.bonds.push_back(constrs.bonds[dc[i]]);
     }
-
-    std::vector<std::vector<double>> Energy(nbStep, std::vector<double>(nMDSteps));
-    std::vector<std::vector<double>> dE_dLamda(nbStep, std::vector<double>(nMDSteps));
-    std::vector<std::vector<double>> positions(nbStep, std::vector<double>(nMDSteps));
-
-    std::vector<double> lamda(nbStep);
-    double d_lamda = (lamda2 - lamda1) / (nbStep - 1);
-    for (int i = 0; i < nbStep; ++i) {
+    std::vector<double> lamda(nbProdSteps);
+    double d_lamda = abs(lamda2 - lamda1) / (nbProdSteps - 1);
+    for (int i = 0; i < nbProdSteps; ++i){
         lamda[i] = lamda1 + i * d_lamda;
     }
 
-// equilibrate the system and other rutines
-double l  = __DBL_MAX__;
-int averageNb = 8;
-std::vector<double> delta_l1(averageNb, 1.0);
-int count = __INT_MAX__; 
-Vec3d d = Vec3dZero;
-int eq_limit = 10000;
-#define EQUILIBRATE(lamda0)                                                                       \
-{                                                                                           \
-    count = 0;                                                                              \
-    for (double &i : delta_l1)                                                              \
-    {                                                                                       \
-        i = randf(0.0, 999.9);                                                              \
-    }                                                                                       \
-    while (true)                                                                            \
-    {                                                                                       \
-        run_omp(1, 0.05, 1e-20, 1000, 0.02, 0, 0);                                          \
-        d = Vec3dZero;                                                                      \
-        for (int i = 0; i < n; i++)                                                         \
-        {                                                                                   \
-        }                                                                                   \
-        l = d.norm();                                                                       \
-        delta_l1[count % averageNb] = l - lamda0;                       \
-        count++;                                                                            \
-        if (abs(std::accumulate(delta_l1.begin(), delta_l1.end(), 0.0) / averageNb) < 1e-4) \
-            {break;}                                                                          \
-        if (count > eq_limit)                                                                  \
-            break;                                                                          \
-    }                                                                                       \
-}
+    // equilibrate
+    bMoving = true;
+    run_omp_entropic_spring(nEQsteps, dt);
 
+    // store equilibrated
+    if (!database){_alloc(database, 1);}
+    database->addMember(&ffl);
 
-#define MOVE()                                    \
-{                                                 \
-    for (int i = 0; i < n; i++)                   \
-    {                                             \
-        constrs.bonds[dc[i]].ls.add(d_lamda / n); \
-        colVar.bonds[i].ls.add(d_lamda / n);      \
-    }                                             \
-}
+    // loop sampleMD -> prodMD
+    for (int i = 0; i < nrealization; i++){
+        database->loadAtoms(0, &ffl);
 
-    double T_measured = 0;
+        bMoving = true;
+        run_omp_entropic_spring(nSampleSteps, dt);
 
-    std::vector<double> Fs(nbStep, 0.0);
-    std::vector<double> sigmaF(nbStep, 0.0);
-    std::vector<double> TI(nbStep, 0.0);
-    std::vector<double> sigmaTI(nbStep, 0.0);
-    std::vector<double> Ref(nbStep, 0.0);
+        database->replace(&ffl, 0);
 
-    #pragma omp parallel for
-    for (int L = 0; L < nbStep; L++)
-    {
-        //EQUILIBRATE(lamda[L]);
-        run_omp(nEQsteps, dt);
-        run_omp(nMDSteps, dt, 1e-20, 1000, 0.02, Energy[L].data(), dE_dLamda[L].data(), positions[L].data()); // run MD simulation
-        MOVE();
+        double W = 0;
+        // for (int L = 1; L < nbProdSteps; L++){
+        //     bMoving = false;
+        //     run_omp_entropic_spring(1, dt, 1e-6, 1000, 0.02, &E_old);            
+            
+        //     // move with collective variable
+        //     for (int i = 0; i < n; i++){
+        //         constrs.bonds[dc[i]].ls.set((lamda1+L*d_lamda)/n);
+        //         colVar.bonds[i].ls.set((lamda1+L*d_lamda)/n);
+        //     }
+
+        //     bMoving = true;
+        //     run_omp_entropic_spring(1, dt, 1e-6, 1000, 0.02, &E_new);
+
+        //     W += E_new - E_old;
+        //     expave[L] += exp(-(W) / (const_kB * T));
+        // }
+        double F;
+        for(int L = 0; L < nbProdSteps; L++){
+            run_omp_entropic_spring(1, dt, 1e-6, 1000, 0.02, nullptr, &F);            
+            W += F*d_lamda;
+            expave[L] += exp(-(W) / (const_kB * T));
+            // move with collective variable
+            for (int i = 0; i < n; i++){
+                constrs.bonds[dc[i]].ls.set((lamda1+L*d_lamda)/n);
+                colVar.bonds[i].ls.set((lamda1+L*d_lamda)/n);
+            }
+
+        }
     }
 
-    thermodynamic_integration(nbStep, nMDSteps, d_lamda, dE_dLamda.data(), TI.data(), sigmaTI.data());
+    // jarzynski equation
+    std::vector<double> F_JE(nbProdSteps, 0.0);
+    std::vector<double> sigma_JE(nbProdSteps, 0.0);   
+    for(int L = 1; L < nbProdSteps; L++){
+        expave[L] /= nrealization;
+        F_JE[L] = -const_kB * T * log(expave[L]);
+    }
 
-    int reference = 1; // both references gives same result (one is integral of the other), but I made them independentaly
-    for (int L = 0; L < nbStep; L++)
+    std::vector<double> Ref(nbProdSteps, 0.0);
+    for (int L = 1; L < nbProdSteps; L++)
     {
-        double lamda_bar = std::accumulate(positions[L].begin(), positions[L].end(), 0.0) / nMDSteps;
+        double lamda_bar = 1.198;
+        double constant = 3 * const_kB * T / (lamda_bar * lamda_bar * ((double)ffl.natoms - 1));
+        Ref[L] = Ref[L - 1] + 0.5 * constant * (lamda[L] + lamda[L - 1]) * d_lamda;
+    }
+    store_JE("results/TI_plot.dat", lamda, F_JE, sigma_JE, Ref);
 
-        if (L > 0)
+    return F_JE[nbProdSteps-1];
+}
+
+    double entropic_spring_TI(double lamda1, double lamda2, int n, int *dc, int nbStep = 100, int nMDsteps = 100000, int nEQsteps = 10000, double tdamp = 100.0, double T = 300, double dt = 0.5)
+    {
+        if(verbosity > 2)printf("MolWorld_sp3::entropic_spring_TI(%f, %f, %d, %d, %d, %d, %d, %f, %f, %f)\n", lamda1, lamda2, n, dc[0], nbStep, nMDsteps, nEQsteps, tdamp, T, dt);
+        ffl.doAngles = false;
+        ffl.doPiPiI  = false;
+        ffl.doPiPiT  = false;
+        ffl.doPiSigma= false;
+        ffl.bSubtractBondNonBond = true;
+
+        bFreeEnergyCalc = true;
+        double gamma = 1 / (dt * tdamp);
+
+        // define colective variable
+        for (int i = 0; i < n; i++)
         {
-            if (reference == 1)
+            constrs.bonds[dc[i]].ls.set(lamda1 / n);
+            colVar.bonds.push_back(constrs.bonds[dc[i]]);
+        }
+        std::vector<double> lamda(nbStep);
+        double d_lamda = (lamda2 - lamda1) / (nbStep - 1);
+        for (int i = 0; i < nbStep; ++i)
+        {
+            lamda[i] = lamda1 + i * d_lamda;
+        }
+
+        // MD simulation to gain data for TI
+        std::vector<std::vector<double>> Energy(nbStep, std::vector<double>(nMDsteps));
+        std::vector<std::vector<double>> dE_dLamda(nbStep, std::vector<double>(nMDsteps));
+        std::vector<std::vector<double>> v2(nbStep, std::vector<double>(nMDsteps));
+//#pragma omp parallel for
+        for (int L = 0; L < nbStep; L++)
+        {
+            run_omp_entropic_spring(nEQsteps, dt);
+            run_omp_entropic_spring(nMDsteps, dt, 1e-20, 1000, 0.02, Energy[L].data(), dE_dLamda[L].data(), v2[L].data()); // run MD simulation
+
+            for (int i = 0; i < n; i++)
             {
-                Ref[L] = 1.5 * const_kB * T * lamda[L] * lamda[L] / (((double)ffl.natoms - 1) * lamda_bar * lamda_bar) - Ref[0];
-            }
-            if (reference == 2)
-            {
-                double constant = 3 * const_kB * T / (lamda_bar * lamda_bar * ((double)ffl.natoms - 1));
-                Ref[L] = Ref[L - 1] + 0.5 * constant * (lamda[L] + lamda[L - 1]) * d_lamda;
+                constrs.bonds[dc[i]].ls.set((lamda1+L*d_lamda)/n);
+                colVar.bonds[i].ls.set((lamda1+L*d_lamda)/n);
             }
         }
-        else
+
+        // thermodynamic integration + reference calculation
+        std::vector<double> TI(nbStep, 0.0);
+        std::vector<double> sigmaTI(nbStep, 0.0);
+        std::vector<double> Ref(nbStep, 0.0);
+        thermodynamic_integration(nbStep, nMDsteps, d_lamda, dE_dLamda.data(), TI.data(), sigmaTI.data());
+        for (int L = 1; L < nbStep; L++)
         {
-            if (reference == 1)
-            {
-                Ref[0] = 1.5 * const_kB * T * lamda[L] * lamda[L] / (((double)ffl.natoms - 1) * lamda_bar * lamda_bar);
-            }
-            if (reference == 2)
-            {
-                Ref[0] = 0.0;
-            }
+            double lamda_bar = std::accumulate(v2[L].begin(), v2[L].end(), 0.0) / nMDsteps;
+            double constant = 3 * const_kB * T / (lamda_bar * lamda_bar * ((double)ffl.natoms - 1));
+            Ref[L] = Ref[L - 1] + 0.5 * constant * (lamda[L] + lamda[L - 1]) * d_lamda;
         }
 
-        double Ek = std::accumulate(Energy[L].begin(), Energy[L].end(), 0.0) / nMDSteps;
-        T_measured = 2 * Ek / (3 * const_kB * ffl.natoms);
+        store_TI("results/TI_plot.dat", lamda, TI, sigmaTI, Ref);
 
-        printf("lamda=%f, lamda_bar=%f, TI=%f, Ref=%f, T_measured=%f\n", lamda[L], lamda_bar, TI[L], Ref[L], T_measured);
+        return TI[nbStep - 1];
     }
-    Ref[0] = 0.0;
-    for (int L = 1; L < lamda.size(); L++)
+
+    double compute_Free_energy(double lamda1, double lamda2, int n, int *dc, int nbStep = 100, int nMDsteps = 100000, int nEQsteps = 10000, double tdamp = 100.0, double T = 300, double dt = 0.5)
     {
-        printf("%f\n", Ref[L]);
+        if(verbosity>1){
+            printf("MolWorld_sp3::compute_Free_energy\n");
+        }
+        // set global parameters
+        double gamma = 1 / (dt * tdamp); // = go.gamma_damp
+        go.gamma_damp = gamma;
+        go.T_target = T;
+        int nbInits = 1000;
+
+        go.bExploring = true;
+        bConstrains = true;
+        bFreeEnergyCalc = true;
+         return entropic_spring_JE(lamda1, lamda2, n, dc, nbStep, nMDsteps, nEQsteps, tdamp, T, dt);
+        // return three_atoms_problem_TI(lamda1, lamda2, nbStep, nMDsteps, nEQsteps, tdamp, T, dt);
+        // return three_atoms_problem_JE(lamda1, lamda2, nbStep, nMDsteps, nEQsteps, tdamp, T, dt);
+        // return mexican_hat_JE(lamda1, lamda2, nbStep, nMDsteps, nEQsteps, tdamp, T, dt);
+        // return entropic_spring_TI(lamda1, lamda2, n, dc, nbStep, nMDsteps, nEQsteps, tdamp, T, dt);
     }
-
-    //store_TI((std::string("results/TI_plot_enthropic_spring_") + std::to_string(ffl.natoms) + ".dat").c_str(), lamda, TI, sigmaTI, Ref);
-    store_TI("results/TI_plot.dat", lamda, TI, sigmaTI, Ref); 
-
-
-    return 0;//deltaF;
-}
 };
 
 #endif

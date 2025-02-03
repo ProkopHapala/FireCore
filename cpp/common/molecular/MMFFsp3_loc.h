@@ -1217,8 +1217,20 @@ inline double move_atom_GD(int i, float dt, double Flim){
     //fapos[i] = Vec3dZero;
     return fr2;
 }
+Vec3d* F_prev = 0;
+__attribute__((hot))  
+inline void move_velocity_Verlet(int i, const float dt, Vec3d F_new){
+    const bool bPi = i>=natoms;
+    if(!F_prev){ _alloc( F_prev , natoms); for(int j=0; j<natoms; j++)F_prev[j]=Vec3dZero;}
+    vapos[i].add_mul( F_prev[i], 0.5*dt );
+    vapos[i].add_mul( F_new, 0.5*dt );
+    if(bPi)vapos[i].add_mul( apos[i], -apos[i].dot(vapos[i]) );  
+    apos[i].add_mul( vapos[i], dt );
+    apos[i].add_mul( F_new, 0.5*dt*dt );
+    if(bPi)apos[i].normalize();
+    F_prev[i].set( F_new );
+}
 
-Vec3d F_prev;
 // update atom positions using molecular dynamics (damped leap-frog)
 __attribute__((hot))  
 inline Vec3d move_atom_Langevin( int i, const float dt, const double Flim,  const double gamma_damp=0.1, double T=300 ){
@@ -1267,25 +1279,17 @@ inline Vec3d move_atom_Langevin( int i, const float dt, const double Flim,  cons
     f.add_mul( rnd, sqrt( 2*const_kB*T*gamma_damp/dt ) );
 
 
-    // --- update velocity and position by leap-frog
+    /*// --- update velocity and position by leap-frog
     v.add_mul( f, dt );      
     if(bPi)v.add_mul( p, -p.dot(v) );                     
     p.add_mul( v, dt );
     if(bPi)p.normalize();
 
+    apos[i] = p;
+    vapos[i] = v;*/
 
+    move_velocity_Verlet(i, dt, f);
 
-    // if (i == 2)
-    // {
-        // //velocity verlet
-        // p.add_mul( v, dt);
-        // p.add_mul( F_prev, dt*dt/2 );
-        // v.add_mul( f, 0.5*dt );
-        // v.add_mul( F_prev, 0.5*dt );
-        apos[i] = p;
-        vapos[i] = v;
-        F_prev=f;
-    // }
     return cvf;
 }
 Vec3d move_Langevin( const float dt, const double Flim,  const double gamma_damp=0.1, double T=300 ){

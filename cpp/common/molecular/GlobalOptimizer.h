@@ -927,8 +927,8 @@ bool containsNaN(const std::vector<double>& vec) {
             database = new MolecularDatabase();
             database->setDescriptors();
         }
-        Atoms* atoms = new Atoms(DoF/3); 
-        atoms->Energy=solver->getGeom( atoms->apos,  atoms->lvec );
+        ForceField* atoms = new ForceField(DoF/3); 
+        atoms->Energy=solver->getGeom( atoms->apos,  &atoms->lvec );
         if (fname)
         {
             //loadNBmol(fname);

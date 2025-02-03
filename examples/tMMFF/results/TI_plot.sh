@@ -8,9 +8,10 @@ gnuplot -e "
     set title 'TI plot';
     set xlabel 'lamda';
     set ylabel 'Energy [eV]';
-    set xtics 0.2;
     set format x '%.1f';
     set mxtics 5;
+    set xtics auto;
+    set ytics auto;
 
     plot 'results/TI_plot.dat' using 1:2:3 with yerrorbars title 'Thermodynamic integration', \
          'results/TI_plot.dat' using 1:4 with lines title 'Reference';
