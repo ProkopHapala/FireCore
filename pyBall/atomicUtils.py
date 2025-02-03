@@ -4,6 +4,8 @@ from random import random
 import numpy as np
 from . import elements
 #import elements
+#import numpy as np
+import copy
 
 neg_types_set = { "O", "N" }
 
@@ -604,6 +606,99 @@ def saveAtoms( atoms, fname, xyz=True ):
         else:
             fout.write("%i %f %f %f\n"  %( atom[0], atom[1], atom[2], atom[3] ) )
     fout.close() 
+
+
+
+def get_element(ename):
+    """
+    Extract the pure element symbol from an ename string.
+    For example, converts "34=Se" to "Se".
+    """
+    if '=' in ename:
+        return ename.split('=')[1].strip()
+    return ename.strip()
+
+def build_target_frame(O, marker, forward_default):
+    """
+    Build the target frame (3×3 rotation matrix) for the backbone.
+    
+    Parameters:
+      O               : array-like (3,)
+                        Position of marker X (attachment point).
+      marker          : array-like (3,)
+                        Position of marker Y (defines up–direction).
+      forward_default : array-like (3,)
+                        The default forward vector.
+                        For the backbone, the target forward is the negative of this.
+    
+    Returns:
+      A 3×3 numpy array whose columns are:
+         F_target = -normalize(forward_default),
+         U         = normalized(marker - O),
+         L         = normalized(cross(U, F_target)).
+    """
+    O = np.array(O)
+    marker = np.array(marker)
+    U = marker - O
+    U = U / np.linalg.norm(U)
+    F = -np.array(forward_default)
+    F = F / np.linalg.norm(F)
+    L = np.cross(U, F)
+    if np.linalg.norm(L) < 1e-8:
+        raise ValueError("Backbone up and forward vectors are colinear.")
+    L = L / np.linalg.norm(L)
+    F = np.cross(L, U)
+    F = F / np.linalg.norm(F)
+    return np.column_stack((F, U, L))
+
+def build_group_frame(O, marker, forward_default):
+    """
+    Build the local frame (3×3 rotation matrix) for the end–group.
+    
+    Parameters:
+      O               : array-like (3,)
+                        Position of marker X (attachment point).
+      marker          : array-like (3,)
+                        Position of marker Y (defines up–direction).
+      forward_default : array-like (3,)
+                        The default forward vector for the group.
+    
+    Returns:
+      A 3×3 numpy array whose columns are:
+         F = normalize(forward_default),
+         U = normalized(marker - O),
+         L = normalized(cross(U, F)).
+    """
+    O = np.array(O)
+    marker = np.array(marker)
+    U = marker - O
+    U = U / np.linalg.norm(U)
+    F = np.array(forward_default)
+    F = F / np.linalg.norm(F)
+    L = np.cross(U, F)
+    if np.linalg.norm(L) < 1e-8:
+        raise ValueError("Group up and forward vectors are colinear.")
+    L = L / np.linalg.norm(L)
+    F = np.cross(L, U)
+    F = F / np.linalg.norm(F)
+    return np.column_stack((F, U, L))
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 def psi4frags2string( enames, apos, frags=None ):
@@ -1883,5 +1978,137 @@ class AtomicSystem( ):
 
         self.append_atoms( G, pre=pre )
 
-    #def orient_vs( p0, fw, up, apos, trans=None, bool bCopy ):
-    #def orient( i0, ip1, ip2, apos, _0=1, trans=None, bCopy=True ):
+
+
+
+    def extract_marker_pairs(self, markerX, markerY, remove=True):
+        """
+        Find marker pairs in this system based on element types.
+        
+        For every atom with cleaned element equal to markerX and every atom with
+        cleaned element equal to markerY, pair them (after sorting the indices)
+        and return the list of pairs (iX, iY) (0-based indices).
+        
+        If remove is True, all marker atoms are removed from the system.
+        
+        Parameters:
+          markerX : str
+                    The special element type used as marker X.
+          markerY : str
+                    The special element type used as marker Y.
+          remove  : bool, optional (default: True)
+                    Whether to remove the marker atoms from the system.
+        
+        Returns:
+          pairs   : list of tuples (iX, iY)
+        """
+        indices_X = [i for i, ename in enumerate(self.enames) if get_element(ename) == markerX]
+        indices_Y = [i for i, ename in enumerate(self.enames) if get_element(ename) == markerY]
+        if not indices_X or not indices_Y:
+            pairs = []
+        else:
+            indices_X.sort()
+            indices_Y.sort()
+            pairs = list(zip(indices_X, indices_Y))
+        if remove and pairs:
+            # Remove marker atoms from the system in descending order.
+            indices_to_remove = sorted(set(indices_X + indices_Y), reverse=True)
+            self.delete_atoms(indices_to_remove)
+        return pairs
+
+    def attach_group_by_marker(self, G, markerX="Xe", markerY="He",  
+                                 forward_default=np.array([1.0, 0.0, 0.0]), _0=1, pre="X"):
+        """
+        Attach an end–group (G) to this backbone system by matching marker atoms.
+        
+        The backbone (self) is expected to contain one or more marker pairs (with elements
+        markerX and markerY). The end–group G must contain exactly one marker pair.
+        These marker atoms define a local coordinate frame.
+        
+        Procedure:
+          1. For the backbone:
+             - Call extract_marker_pairs(markerX, markerY, remove=False) to obtain the
+               marker pairs.
+             - Store the corresponding positions (O_B and markerB_pos) from self.apos.
+             - Then remove the marker atoms from the backbone.
+          2. For the end–group:
+             - Call extract_marker_pairs(markerX, markerY, remove=False) and verify that exactly
+               one pair is found.
+             - Compute its local frame from the marker positions.
+          3. For each backbone marker pair:
+             - Compute the target frame from the stored positions.
+             - Compute the rotation matrix R = M_target · inv(M_group).
+             - Make a deep copy of G, transform it (shift, rotate, translate), remove its markers,
+               and append it to the backbone.
+        
+        Parameters:
+          G              : AtomicSystem
+                           The end–group to attach.
+          markerX        : str, optional (default: "Xe")
+                           The element used as marker X (attachment point).
+          markerY        : str, optional (default: "He")
+                           The element used as marker Y (defines up–direction).
+          forward_default: array-like, optional (default: [1,0,0])
+                           The default forward vector assumed for both fragments.
+          _0             : int, optional (default: 1)
+                           Offset for converting 1–based to 0–based indices.
+          pre            : str, optional (default: "X")
+                           Prefix used for labeling atoms from the group.
+        
+        Returns:
+          None. The transformed copies of the end–group are appended to this system.
+        """
+        # --- Backbone: extract marker pairs WITHOUT removal first.
+        backbone_pairs = self.extract_marker_pairs(markerX, markerY, remove=False)
+        if not backbone_pairs:
+            raise ValueError("No backbone marker pair found for markers {} and {}.".format(markerX, markerY))
+        # Save the positions from the backbone.
+        # Each pair is (iX, iY). Store the corresponding positions.
+        backbone_marker_positions = []
+        for pair in backbone_pairs:
+            O_B = self.apos[pair[0]]
+            markerB_pos = self.apos[pair[1]]
+            backbone_marker_positions.append((O_B, markerB_pos))
+        # Now remove the marker atoms from the backbone.
+        remove_indices = sorted(set([i for pair in backbone_pairs for i in pair]), reverse=True)
+        self.delete_atoms(remove_indices)
+        
+        # --- End–group: extract marker pair WITHOUT removal.
+        group_pairs = G.extract_marker_pairs(markerX, markerY, remove=False)
+        if len(group_pairs) != 1:
+            raise ValueError("End–group must contain exactly one marker pair (found {}).".format(len(group_pairs)))
+        # Get the marker positions from the end–group.
+        indices_X = [i for i, ename in enumerate(G.enames) if get_element(ename) == markerX]
+        indices_Y = [i for i, ename in enumerate(G.enames) if get_element(ename) == markerY]
+        if len(indices_X) != 1 or len(indices_Y) != 1:
+            raise ValueError("End–group must contain exactly one marker pair; found {} and {}.".format(len(indices_X), len(indices_Y)))
+        O_G = G.apos[indices_X[0]]
+        markerG_pos = G.apos[indices_Y[0]]
+        M_group = build_group_frame(O_G, markerG_pos, forward_default)
+        # Optionally, remove the markers from G later after copying.
+        
+        # --- For each stored backbone marker pair, attach a copy of G.
+        for (O_B, markerB_pos) in backbone_marker_positions:
+            M_target = build_target_frame(O_B, markerB_pos, forward_default)
+            R = M_target @ np.linalg.inv(M_group)
+            
+            # Make a deep copy of G.
+            G_copy = copy.deepcopy(G)
+            # In G_copy, get marker indices (markers still present).
+            indices_X_G = [i for i, ename in enumerate(G_copy.enames) if get_element(ename) == markerX]
+            indices_Y_G = [i for i, ename in enumerate(G_copy.enames) if get_element(ename) == markerY]
+            if len(indices_X_G) != 1 or len(indices_Y_G) != 1:
+                raise ValueError("End–group must contain exactly one marker pair; found {} and {}.".format(len(indices_X_G), len(indices_Y_G)))
+            O_G_copy = G_copy.apos[indices_X_G[0]]
+            # Transform G_copy: shift so its marker X is at the origin, then rotate and translate.
+            G_shifted = G_copy.apos - O_G_copy
+            G_rotated = (R @ G_shifted.T).T
+            G_transformed = G_rotated + O_B
+            G_copy.apos = G_transformed
+            
+            # Remove marker atoms from G_copy.
+            remove_indices_G = sorted(set(indices_X_G + indices_Y_G), reverse=True)
+            G_copy.delete_atoms(remove_indices_G)
+            
+            # Append the transformed copy to this backbone.
+            self.append_atoms(G_copy, pre=pre)
