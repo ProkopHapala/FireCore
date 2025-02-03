@@ -45,7 +45,9 @@ endgroup.print()
 # Attach endgroup copies to the backbone using marker elements.
 # Here, the backbone is expected to contain marker atoms with element "Se" (attachment)
 # and "F" (up direction), and the endgroup must contain exactly one such pair.
-backbone.attach_group_by_marker(endgroup, markerX="Se", markerY="F", forward_default=np.array([1.0, 0.0, 0.0]), _0=1, pre="X")
+#backbone.attach_group_by_marker(endgroup, markerX="Se", markerY="F", forward_default=np.array([1.0, 0.0, 0.0]), _0=1, pre="X")
+
+backbone.attach_group_by_marker(endgroup, markerX="Se", markerY="F", _0=1, pre="X")
 
 # Save the modified backbone.
 #backbone.save_mol2('backbone_with_endgroup.mol2')
