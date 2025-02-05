@@ -2802,6 +2802,70 @@ void assignTorsions( bool bNonPi=false, bool bNO=true ){
     ///         atom_id atom_name x y z atom_type ... [charge]
     ///   - Optionally an @<TRIPOS>BOND section with lines formatted as:
     ///         bond_id origin_atom_id target_atom_id bond_type
+    bool save_mol2(const char* fname, int ifrag=-1) {
+        if(verbosity>0)printf( "MM::Builder.save_mol2(%s)\n", fname );
+        FILE* fp = fopen(fname, "w");
+        if(fp == NULL){
+            printf("ERROR in MM::Builder::save_mol2(): Cannot open %s\n", fname);
+            return false;
+        }
+
+        // Get atom range for the fragment
+        int ia0=0,ia1=atoms.size();
+        int ib0=0,ib1=bonds.size();
+        if(ifrag>=0){
+            ia0=frags[ifrag].atomRange.a;
+            ia1=frags[ifrag].atomRange.b;
+            ib0=frags[ifrag].bondRange.a;
+            ib1=frags[ifrag].bondRange.b;
+        }
+        int na = ia1-ia0;
+        int nb = ib1-ib0;
+
+        // Write MOLECULE section
+        fprintf(fp, "@<TRIPOS>MOLECULE\n");
+        fprintf(fp, "*****\n");
+        fprintf(fp, " %d %d 0 0 0\n", na, nb);
+        fprintf(fp, "SMALL\n");
+        fprintf(fp, "GASTEIGER\n\n");
+
+        // Write ATOM section
+        fprintf(fp, "@<TRIPOS>ATOM\n");
+        for(int i=ia0; i<ia1; i++){
+            const Atom& atom = atoms[i];
+            const char* elem = params->atypes[atom.type].name;
+            // Format: atom_id atom_name x y z atom_type subst_id subst_name charge
+            fprintf(fp, "%6d %-4s %10.4f %10.4f %10.4f %-4s.3 %5d HOH%1d %10.4f\n",
+                i+1-ia0,           // atom_id (1-based)
+                elem,             // atom_name
+                atom.pos.x,       // x
+                atom.pos.y,       // y
+                atom.pos.z,       // z
+                elem,             // atom_type
+                1,                // subst_id
+                0,                // subst_name number
+                atom.REQ.z        // charge
+            );
+        }
+
+        // Write BOND section
+        fprintf(fp, "@<TRIPOS>BOND\n");
+        for(int i=ib0; i<ib1; i++){
+            const Bond& bond = bonds[i];
+            // Format: bond_id origin_atom_id target_atom_id bond_type
+            fprintf(fp, "%6d %6d %6d %1d\n",
+                i+1-ib0,                    // bond_id (1-based)
+                bond.atoms.i+1-ia0,        // origin_atom_id (1-based)
+                bond.atoms.j+1-ia0,        // target_atom_id (1-based)
+                bond.type                   // bond_type
+            );
+        }
+
+        fclose(fp);
+        if(verbosity>0)printf("Builder::save_mol2() wrote %d atoms and %d bonds to %s\n", na, nb, fname);
+        return true;
+    }
+
     int load_mol2(const char* fname, const Vec3d& pos0=Vec3dZero, const Mat3d& rot=Mat3dIdentity ) {
         if(verbosity>0)printf( "MM::Builder.load_mol2(%s)\n", fname );
         FILE* fp = fopen(fname, "r");
