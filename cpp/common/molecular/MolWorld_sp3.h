@@ -220,6 +220,7 @@ class MolWorld_sp3 : public SolverInterface { public:
     bool bNonBondNeighs    = false; // 21
     bool bWhichAtomNotConv = false; // 22
     bool bCheckInit        = false; // 23
+    bool bBondInitialized  = false; // 24
 
     Vec3d anim_vec;
     float anim_speed;
@@ -1029,19 +1030,24 @@ void printPBCshifts(){
         return true;
     }
 
-    int insertMolecule( const char* fname, const char* name=0, Vec3d pos={0,0,0}, Mat3d rot=Mat3dIdentity ){
+    int insertMolecule( const char* fname, Vec3d pos={0,0,0}, Mat3d rot=Mat3dIdentity ){
         // ToDo: we should be able to insert molecule without actually creating molecule-type
         //sprintf(tmpstr, "%s.xyz", name );
         int iret=-1;
-        // {   // Previous version using Molecule class
-        //     if(name==0){ name=fname; }
-        //     int imol  = builder.loadMolType( fname, name );
-        //     if (imol<0){ printf("ERROR MolWorld_sp3::builder.loadMolType(%s) imol=%i \n", name, imol ); exit(0); }
-        //     iret  = builder.insertFlexibleMolecule( imol, pos, Mat3dIdentity, -1 );
-        //     if (iret<0){ printf("ERROR MolWorld_sp3::insertMolecule(%s) iret=%i \n", name, iret ); exit(0); }
-        // }
         {   // New version using Atoms class
-            iret = builder.loadXYZ_Atoms( fname, &params, -1, false, pos, rot );
+            // check if last 4 characters are the name of the molecule = '.xyz' or '.mol' or '.mol2'
+            const char* ext = strrchr(fname, '.');
+            if (ext){
+                printf("MolWorld_sp3::insertMolecule() fname=%s ext=%s \n", fname, ext );
+                if     ( strcmp(ext, ".xyz")  == 0 ){ iret = builder.loadXYZ_Atoms( fname, &params, -1, false, pos, rot ); }
+                else if( strcmp(ext, ".mol")  == 0 ){ iret = builder.load_mol     ( fname, pos, rot ); bBondInitialized=true; } 
+                else if( strcmp(ext, ".mol2") == 0 ){ iret = builder.load_mol2    ( fname, pos, rot ); bBondInitialized=true; }
+                /// TODO: if we add just a fragment, we initialize bond for this fragment, not for the whole system
+            } else {
+                char tmpstr[256];
+                sprintf(tmpstr, "%s.xyz", fname );
+                iret = builder.loadXYZ_Atoms( tmpstr, &params, -1, false, pos, rot );
+            }
         }
         //int ifrag = builder.frags.size()-1;
         //return ifrag;
@@ -1084,31 +1090,39 @@ void printPBCshifts(){
     int loadGeom( const char* name ){ // TODO : overlaps with buildFF()
         if(verbosity>0)printf("MolWorld_sp3::loadGeom(%s)\n", name );
         // ------ Load geometry
-        sprintf(tmpstr, "%s.xyz", name );
+        //sprintf(tmpstr, "%s.xyz", name );
         /*
         int imol  = builder.loadMolType( tmpstr, name );
         int iret  = builder.insertFlexibleMolecule( imol, {0,0,0}, Mat3dIdentity, -1 );
         int ifrag = builder.frags.size()-1;
         */
-        int ifrag = insertMolecule( tmpstr, name, pivotPoint, pivotRot );
+        int ifrag = insertMolecule( name, pivotPoint, pivotRot );
+        DEBUG
         //builder.printAtomConfs(false, true );
         builder.addCappingTypesByIz(1);   // Find all hydrogen cappings
         builder.tryAddConfsToAtoms( 0, -1 );
         //builder.printAtomConfs(false, true );
         builder.cleanPis();
+        DEBUG
         if(verbosity>2)builder.printAtomConfs(false);
         // ------- Load lattice vectros
-        sprintf(tmpstr, "%s.lvs", name );
-        if( file_exist(tmpstr) ){
-            if ( builder.bPBC ) printf("WARNING: Lattice vectors were already read from XYZ. Now they will be overwritten by the content of the file %s.\n", tmpstr);
-            builder.bPBC=true;
-            readMatrix( tmpstr, 3, 3, (double*)&builder.lvec );
-        }
+        // sprintf(tmpstr, "%s.lvs", name );
+        // if( file_exist(tmpstr) ){
+        //     if ( builder.bPBC ) printf("WARNING: Lattice vectors were already read from XYZ. Now they will be overwritten by the content of the file %s.\n", tmpstr);
+        //     builder.bPBC=true;
+        //     readMatrix( tmpstr, 3, 3, (double*)&builder.lvec );
+        // }
+        DEBUG
         bPBC=builder.bPBC;  //printf( "builder.bPBC %i \n", builder.bPBC );
-        if( bPBC ){ builder.autoBondsPBC(); }
-        else      { builder.autoBonds();    }
+        if( !bBondInitialized){
+            if( bPBC ){ builder.autoBondsPBC(); }
+            else      { builder.autoBonds();    }
+            bBondInitialized=true;
+        }
+        DEBUG
         if(bCheckInit)builder.checkNumberOfBonds( true, true );
         if(verbosity>2)builder.printBonds ();
+        DEBUG
         return ifrag;
     }
 
@@ -1260,21 +1274,36 @@ void printPBCshifts(){
     int buildMolecule_xyz( const char* xyz_name ){
         int ifrag = loadGeom( xyz_name );
         printf( "MolWorld_sp3::buildMolecule_xyz(%s) ifrag=%i \n", xyz_name, ifrag );
+        DEBUG
         int ia0=builder.frags[ifrag].atomRange.a;
         int ic0=builder.frags[ifrag].confRange.a;
+        DEBUG
         // TBD not sure that I got how charges are assigned in here...
         if( fAutoCharges>0 )builder.chargeByNeighbors( true, fAutoCharges, 10, 0.5 );
+        DEBUG
         if(substitute_name) substituteMolecule( substitute_name, isubs, Vec3dZ );
+        DEBUG
         if( builder.checkNeighsRepeat( true ) ){ printf( "ERROR: some atoms has repating neighbors => exit() \n"); exit(0); };
+        DEBUG
         builder.autoAllConfEPi  ( ia0 );
+        DEBUG
         builder.setPiLoop       ( ic0, -1, 10 );
+        DEBUG
         if(bEpairs)builder.addAllEpairsByPi( ia0=0 ); 
+        DEBUG
         //builder.printAtomConfs(false, false );
         //builder.printAtomConfs(false, true );
         // TBD here FF params are assigned already, but types are not yet found out...
+        DEBUG
         builder.assignAllBondParams();    //if(verbosity>1)
+        DEBUG
         builder.finishFragment(ifrag);    
-        //builder.printAtoms();
+        DEBUG
+
+        builder.printAtoms();
+        builder.printBonds();
+        builder.printAtomConfs();
+        //
         //printf( "buildMolecule_xyz: nMulPBC(%i,%i,%i) \n",nMulPBC.x,nMulPBC.y,nMulPBC.z  );
         //if( nMulPBC    .totprod()>1 ){ PBC_multiply    ( nMulPBC, ifrag ); };
         //if( bCellBySurf             ){ changeCellBySurf( bySurf_lat[0], bySurf_lat[1], bySurf_ia0, bySurf_c0 ); };

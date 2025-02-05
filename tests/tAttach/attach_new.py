@@ -50,5 +50,9 @@ endgroup.print()
 backbone.attach_group_by_marker(endgroup, markerX="Se", markerY="F", _0=1, pre="X")
 
 # Save the modified backbone.
-#backbone.save_mol2('backbone_with_endgroup.mol2')
+
 backbone.saveXYZ( fname="backbone_with_endgroup.xyz" )
+
+backbone.findBonds()
+#backbone.save_mol2('backbone_with_endgroup.mol2')
+backbone.save_mol('backbone_with_endgroup.mol')

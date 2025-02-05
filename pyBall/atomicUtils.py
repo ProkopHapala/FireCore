@@ -1560,6 +1560,90 @@ class AtomicSystem( ):
         if(not bQs): qs=None
         saveXYZ( self.enames, self.apos, fname, qs=qs, Rs=self.Rs, mode=mode, comment=comment, ignore_es=ignore_es, other_lines=other_lines )
 
+    def save_mol(self, fname, title="Avogadro"):
+        """
+        Save the current AtomicSystem in MDL MOL V2000 format (i.e. a ".mol" file).
+
+        The MOL file format has the following structure:
+        1. A title line (up to 80 characters) – here prefixed by two spaces.
+        2. A blank line.
+        3. A counts line, for example:
+                "  3  2  0  0  0  0  0  0  0 0999 V2000"
+            where the first number is the number of atoms (right justified in 3 columns),
+            the second number is the number of bonds (3 columns), followed by seven fields (each "  0"),
+            then a field " 0999" and the literal " V2000".
+        4. An ATOM block: one line per atom in fixed‐width format.
+            In MOL V2000 the typical atom line (columns) is as follows:
+            - Columns 1–3: Atom number (3-digit integer, right justified)
+            - Columns 4–12: x coordinate (10.4f)
+            - Columns 13–22: y coordinate (10.4f)
+            - Columns 23–32: z coordinate (10.4f)
+            - Columns 34–36: Atom symbol (3-character string, left justified)
+            - Then 12 fields of 3 characters each (usually zeros)
+        5. A BOND block: one line per bond.
+            Each bond line contains:
+            - Columns 1–3: Bond number (3-digit integer, right justified)
+            - Columns 4–6: First atom number (3-digit integer)
+            - Columns 7–9: Second atom number (3-digit integer)
+            - Columns 10–12: Bond type (3-digit integer)
+            - Columns 13–15: 0 (3-digit integer)
+            - Columns 16–18: 0 (3-digit integer)
+            - Columns 19–21: 0 (3-digit integer)
+            - Columns 22–24: 0 (3-digit integer)
+        6. A termination line: "M  END"
+
+        Parameters:
+        fname : str
+                The output filename.
+        title : str, optional
+                The title for the molecule (default "Avogadro").
+
+        Returns:
+        None.
+        """
+        with open(fname, "w") as fout:
+            # --- Title line (with two leading spaces) ---
+            fout.write("  " + title + "\n")
+            # --- Blank line ---
+            fout.write("\n")
+            n_atoms = len(self.apos)
+            n_bonds = len(self.bonds) if self.bonds is not None else 0
+            # --- Counts line ---
+            # The counts line: atom count (3d), bond count (3d),
+            # then 7 fields of "  0", then " 0999 V2000"
+            counts_line = f"  {n_atoms:>3d}{n_bonds:>3d}  0  0  0  0  0  0  0 0999 V2000"
+            fout.write(counts_line + "\n")
+            
+            # --- Atom block ---
+            fout.write("\n")
+            for i in range(n_atoms):
+                atom_id = i + 1  # MOL format uses 1-based indexing
+                x, y, z = self.apos[i]
+                # Use the element name as the atom symbol.
+                symbol = self.enames[i]
+                # Build the atom line using fixed-width formatting.
+                # Here, we format:
+                #   Atom number: 3d right justified
+                #   x, y, z: each 10.4f (total width 10, with 4 decimal places)
+                #   Atom symbol: left aligned in 3 characters
+                #   Then 12 fields of 3 characters each set to 0.
+                atom_line = f"{atom_id:>3d} {x:10.4f}{y:10.4f}{z:10.4f} {symbol:<3s}" + "  0"*12
+                fout.write(atom_line + "\n")
+            
+            # --- Bond block ---
+            fout.write("\n")
+            for i, bond in enumerate(self.bonds):
+                bond_id = i + 1
+                # Assume bond is a tuple (i, j) with 0-based indices; convert to 1-based.
+                a1 = bond[0] + 1
+                a2 = bond[1] + 1
+                # Bond type is set to 1; then 4 fields of 0.
+                bond_line = f"{bond_id:>3d}{a1:>4d}{a2:>4d}{1:>4d}" + "  0"*4
+                fout.write(bond_line + "\n")
+            
+            # --- Termination line ---
+            fout.write("M  END\n")
+
 
     def save_mol2(self, fname, comment=""):
         """
