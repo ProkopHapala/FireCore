@@ -179,13 +179,14 @@ class MMFFparams{ public:
 
 
     double default_bond_length      = 2.0;
-    double default_bond_stiffness   = 1.0;
+    double default_bond_stiffness   = 10.0;
     //Quat4d  default_REQ           = {1.487, 0.0006808, 0.0, 0.};  // Hydrogen (RvdW, EvdW, Q, Hb)
     Quat4d  default_REQ             = {1.500, 0.0005000, 0.0, 0.};  // Hydrogen (RvdW, EvdW, Q, Hb)
 
     bool echoTry        =true;
     bool reportIfMissing=true;
-    bool exitIfMissing  =true;
+    //bool exitIfMissing  =true;
+    bool exitIfMissing  =false;
 
     // ==================================================================================
     //    LOAD TABLES WITH ELEMENT, ATOM, BOND, ANGLE AND DIHEDRAL TYPE SPECIFICATIONS 
@@ -687,7 +688,7 @@ class MMFFparams{ public:
     bool getBondParams( int ityp, int jtyp, int order,  double& l0, double& k, bool bParrents=true, bool bElem=true )const{
         //printf( "MMFFBuilder::getBondParams() types(%i,%i) order=%i bParrents=%i bElem=%i \n",  ityp, jtyp, order, bParrents, bElem );
         BondType* bp = getBondType( ityp, jtyp, order, bParrents, bElem );
-        if( bp==0 ){ l0=bp->length; k=bp->stiffness; return false; }else{ l0=bp->length; k=bp->stiffness; return true; }
+        if( bp==0 ){ l0=default_bond_length; k=default_bond_stiffness; return false; }else{ l0=bp->length; k=bp->stiffness; return true; }
     }
 
     void fillBondParams( int nbonds, Vec2i * bond2atom, int * bondOrder, int * atomType, double * bond_0, double * bond_k ){
@@ -842,9 +843,9 @@ class MMFFparams{ public:
         //printf( "MMFFparams::writeXYZ() n=%i REQs=%li just_Element=%i\n", n, (long)REQs, just_Element );
         int npbc = nPBC.totprod();
         if(bHead){
-        fprintf(pfile, "%i\n", (n+npi)*npbc );
-        // TBD print lattice vectors
-        fprintf(pfile, "%s \n", comment );
+            fprintf(pfile, "%i\n", (n+npi)*npbc );
+            // TBD print lattice vectors
+            fprintf(pfile, "%s \n", comment );
         }
         //printf( "MM::Params::writeXYZ() nPBC={%i,%i,%i}\n", nPBC.x,nPBC.y,nPBC.z );
         for(int ic=0;ic<nPBC.z;ic++){ for(int ib=0;ib<nPBC.y;ib++){ for(int ia=0;ia<nPBC.x;ia++){
