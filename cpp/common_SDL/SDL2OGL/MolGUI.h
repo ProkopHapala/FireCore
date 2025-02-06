@@ -245,7 +245,7 @@ class MolGUI : public AppSDL2OGL_3D { public:
     bool   bViewBuilder      = false;
     //bool   bViewBuilder      = true;
     bool   bViewAxis         = false;
-    bool   bViewCell         = false;
+    bool   bViewCell         = true;
 
     bool   mm_bAtoms         = true;
     bool   bViewMolCharges   = false;
@@ -1336,6 +1336,10 @@ void MolGUI::draw(){
     }
 
     //printf( "bViewSubstrate %i ogl_isosurf %i W->bGridFF %i \n", bViewSubstrate, ogl_isosurf, W->bGridFF );
+
+    if(bViewCell){ 
+        Draw3D::drawTriclinicBox( W->builder.lvec, Vec3d{0.0,0.0,0.0}, Vec3d{1.0,1.0,1.0} ); 
+    }
 
     if( bViewSubstrate ){
         if( ( W->bGridFF )&&( ((int)(W->gridFF.mode))!=0) ){

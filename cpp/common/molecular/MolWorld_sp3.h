@@ -309,10 +309,10 @@ class MolWorld_sp3 : public SolverInterface { public:
         params_glob = &params;
         if(verbosity>0){
             printf("\n#### MolWorld_sp3::init()\n");
-            if(smile_name   )printf("smile_name  (%s)\n", smile_name );
-            if(data_dir     )printf("data_dir    (%s)\n", data_dir );
-            if(xyz_name     )printf("xyz_name    (%s)\n", xyz_name );
-            if(surf_name    )printf("surf_name   (%s)\n", surf_name );
+            if(smile_name     )printf("smile_name  (%s)\n", smile_name );
+            if(data_dir       )printf("data_dir    (%s)\n", data_dir );
+            if(xyz_name       )printf("xyz_name    (%s)\n", xyz_name );
+            if(surf_name      )printf("surf_name   (%s)\n", surf_name );
             if(substitute_name)printf("substitute_name  (%s)\n", substitute_name );
             // TBD we should also print if we use UFF or not...
             printf( "MolWorld_sp3::init() bMMFF %i bUFF %i bRigid %i\n", bMMFF, bUFF, bRigid );
@@ -349,8 +349,16 @@ class MolWorld_sp3 : public SolverInterface { public:
         //builder.printAtoms();
         //printf( "MolWorld_sp3::init() ffl.neighs=%li ffl.neighCell-%li \n", ffl.neighs, ffl.neighCell );
         //ffl.printNeighs();
+        
+        printf( "MolWorld_sp3::init() builder.lvec \n" ); printMat(builder.lvec);
+        printf( "MolWorld_sp3::init() ffl.lvec     \n" ); printMat(ffl.lvec);
+        
+        
         if(verbosity>0) 
         printf( "#### MolWorld_sp3::init() DONE\n\n");
+
+
+
     }
 
     virtual void pre_loop(){
