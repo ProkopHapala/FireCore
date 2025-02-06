@@ -167,6 +167,9 @@ add_subdirectory( ${MY_SRC_DIR}/libs    )
 # set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_SOURCE_DIR}/tests)
 add_subdirectory( tests )
 
+# ====== Results
+add_subdirectory( results )
+
 # ====== OpenCL
 
 if ( WITH_OPENCL )

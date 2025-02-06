@@ -3233,24 +3233,27 @@ void thermodynamic_integration(int nbStep, int nMDSteps, double d_lamda, std::ve
 
 }
 
-void store_TI(std::string filename, std::vector<double> lamda, std::vector<double> TI, std::vector<double> sigmaTI, std::vector<double> Ref = std::vector<double>(0)){
+void store_TI(std::string filename, std::vector<double> lamda, std::vector<double> TI, std::vector<double> sigmaTI = std::vector<double>(0), std::vector<double> Ref = std::vector<double>(0)){
     std::ofstream outfile(filename);
     if (!outfile.is_open()) {
         std::cerr << "Error opening file: " << filename << std::endl;
         return;
     }
-    outfile << "lambda TI sigmaTI Reference" << std::endl;
+    outfile << "lambda TI";
+    if(sigmaTI.size()>0) outfile << " sigmaTI";
+    if(Ref.size()>0) outfile << "Reference";
+    outfile << std::endl;
     for (int L = 0; L < lamda.size(); L++) {
-        outfile << lamda[L] << " " << TI[L] << " " << sigmaTI[L];
+        outfile << lamda[L] << " " << TI[L];
+        if(sigmaTI.size()>0) outfile << " " << sigmaTI[L];
         if(Ref.size() > 0) outfile << " " << Ref[L];
         outfile << std::endl;
     }
     outfile.close();
 }
 
-double mexican_hat_TI(double lamda1, double lamda2, int nbStep = 100, int nMDSteps = 100000, int nEQsteps = 10000, double tdamp = 100.0, double T = 300, double dt = 0.5){
+double mexican_hat_TI(double lamda1, double lamda2, int nbStep = 100, int nMDSteps = 100000, int nEQsteps = 10000, double tdamp = 100.0, double T = 300, double dt = 0.5, double d = 0.1){
     double gamma = 1/(dt*tdamp);
-    double d = 0.1;
       
     std::vector<std::vector<double>> dE_dLamda(nbStep, std::vector<double>(nMDSteps));
 
@@ -3265,6 +3268,8 @@ double mexican_hat_TI(double lamda1, double lamda2, int nbStep = 100, int nMDSte
     std::vector<double> TI(nbStep, 0.0);
     std::vector<double> sigmaTI(nbStep, 0.0);
     thermodynamic_integration(nbStep, nMDSteps, d_lamda, dE_dLamda.data(), TI.data(), sigmaTI.data());
+
+    store_TI("results/TI_plot.dat", lamda, TI);
     
     double deltaF = TI[nbStep-1];
     return deltaF;
@@ -3319,12 +3324,13 @@ void mexican_hat_MD_JE(double *x, double *v, double lamda, int nbMDsteps, double
     //printf("temperature = %f\n", v2  / const_kB);
 }
 
-double mexican_hat_JE(double lamda1, double lamda2, int nbProdSteps = 100000, int nrealization = 1000, int nEQsteps = 10000, double tdamp = 100.0, double T = 300, double dt = 0.05){
+double mexican_hat_JE(double lamda1, double lamda2, int nbProdSteps = 100000, int nrealization = 1000, int nEQsteps = 10000, double tdamp = 100.0, double T = 300, double dt = 0.05, int nSampleSteps = 0, double d = 0.1){
 
     double gamma = 1/(dt*tdamp);
-    double d = 0.1;
 
-    int nSampleSteps = nEQsteps;
+    if(!nSampleSteps){
+        nSampleSteps = nEQsteps;
+    }
 
     // the algorithm is not stable for higher x_eq (depends on nb MD steps)
     std::vector<double> expave(nbProdSteps, 0.0);
@@ -3445,22 +3451,27 @@ int run_omp_three_atoms_problem(int niter_max, double dt, double Fconv = 1e-6, d
     return itr;
 }
 
-double three_atoms_problem_JE(double lamda1, double lamda2, int nbProdSteps = 100000, int nrealization = 1000, int nEQsteps = 10000, double tdamp = 100.0, double T = 300, double dt = 0.05){
+double three_atoms_problem_JE(double lamda1, double lamda2, int nbProdSteps = 100000, int nrealization = 1000, int nEQsteps = 10000, double tdamp = 100.0, double T = 300, double dt = 0.05, int nSampleSteps = 0){
     ffl.apos[0].set(-1.0,0.0,0.0);
     ffl.apos[1].set( 1.0,0.0,0.0);
     ffl.apos[2].set( 1.0,3.0,0.0);
     for(int i=0; i<ffl.natoms; i++){
         ffl.REQs[i].x = 1.4430;
-        ffl.REQs[i].y = 0.5; // this number corresponds to write 0.1 in AtomTypes Hydrogen EvdW
+        ffl.REQs[i].y = 0.316228; // this number corresponds to write 0.1 in AtomTypes Hydrogen EvdW
         ffl.REQs[i].z = 0.000000;
         ffl.REQs[i].w = 0.000000;
     }
 
-    int nSampleSteps = nEQsteps;
+
+    if(!nSampleSteps){
+        nSampleSteps = nEQsteps;
+    }
 
     bFreeEnergyCalc = true;
     ffl.bTestThreeAtoms = true;     // turn off atom 0<->1 interaction
     double gamma = 1/(dt*tdamp);
+    go.gamma_damp = gamma;
+    go.T_target = T;
 
     std::vector<double> expave(nbProdSteps, 0.0);
     double E_new, E_old;
@@ -3528,7 +3539,7 @@ double three_atoms_problem_JE(double lamda1, double lamda2, int nbProdSteps = 10
     for (int i = 0; i < nbProdSteps; ++i) {
         lamda[i] = lamda1 + i * d_lamda;
     }
-    store_JE("results/JE_plot.dat", lamda, F_JE);
+    store_JE("results/JE_plot_3AP.dat", lamda, F_JE);
 
     return F_JE[nbProdSteps-1];
 }
@@ -3550,6 +3561,8 @@ double three_atoms_problem_TI(double lamda1, double lamda2, int nbStep = 100, in
     bool calculate_temperature = true;
     bMoving = true;
     double gamma = 1/(dt*tdamp);
+    go.gamma_damp = gamma;
+    go.T_target = T;
 
     std::vector<std::vector<double>> dE_dLamda(nbStep, std::vector<double>(nMDSteps));
 
@@ -3587,7 +3600,7 @@ double three_atoms_problem_TI(double lamda1, double lamda2, int nbStep = 100, in
     std::vector<double> sigmaTI(nbStep, 0.0);
     thermodynamic_integration(nbStep, nMDSteps, d_lamda, dE_dLamda.data(), TI.data(), sigmaTI.data());
 
-    //store_TI("results/TI_plot.dat", lamda, TI, sigmaTI);
+    store_TI("results/TI_plot_3AP.dat", lamda, TI, sigmaTI);
 
     if (verbosity>3){                
         if (calculate_temperature)
@@ -3689,22 +3702,27 @@ int run_omp_entropic_spring(int niter_max, double dt, double Fconv = 1e-6, doubl
     return itr;
 }
 
-double entropic_spring_JE(double lamda1, double lamda2, int n, int *dc, int nbProdSteps = 10000, int nrealization = 100, int nEQsteps = 10000, double tdamp = 100.0, double T = 300, double dt = 0.5)
+double entropic_spring_JE(double lamda1, double lamda2, int n, int *dc, int nbProdSteps = 10000, int nrealization = 100, int nEQsteps = 10000, double tdamp = 100.0, double T = 300, double dt = 0.5, int nSampleSteps = 0)
 {
     ffl.doAngles = false;
     ffl.doPiPiI = false;
     ffl.doPiPiT = false;
     ffl.doPiSigma = false;
+    ffl.doBonds = true;
     ffl.bSubtractBondNonBond = true;
+    bConstrains = true;
 
     bFreeEnergyCalc = true;
     double gamma = 1 / (dt * tdamp);
+    go.gamma_damp = gamma;
+    go.T_target = T;
 
     std::vector<double> expave(nbProdSteps, 0.0);
     double E_new, E_old;
 
-    int nSampleSteps = nEQsteps;
-
+    if(!nSampleSteps){
+        nSampleSteps = nEQsteps;
+    }
     // define colective variable
     for (int i = 0; i < n; i++){
         constrs.bonds[dc[i]].ls.set(lamda1 / n);
@@ -3779,22 +3797,25 @@ double entropic_spring_JE(double lamda1, double lamda2, int n, int *dc, int nbPr
         double constant = 3 * const_kB * T / (lamda_bar * lamda_bar * ((double)ffl.natoms - 1));
         Ref[L] = Ref[L - 1] + 0.5 * constant * (lamda[L] + lamda[L - 1]) * d_lamda;
     }
-    store_JE("results/TI_plot.dat", lamda, F_JE, sigma_JE, Ref);
+    store_JE("results/JE_plot_ES.dat", lamda, F_JE, sigma_JE, Ref);
 
     return F_JE[nbProdSteps-1];
 }
 
     double entropic_spring_TI(double lamda1, double lamda2, int n, int *dc, int nbStep = 100, int nMDsteps = 100000, int nEQsteps = 10000, double tdamp = 100.0, double T = 300, double dt = 0.5)
     {
-        if(verbosity > 2)printf("MolWorld_sp3::entropic_spring_TI(%f, %f, %d, %d, %d, %d, %d, %f, %f, %f)\n", lamda1, lamda2, n, dc[0], nbStep, nMDsteps, nEQsteps, tdamp, T, dt);
         ffl.doAngles = false;
         ffl.doPiPiI  = false;
         ffl.doPiPiT  = false;
         ffl.doPiSigma= false;
+        ffl.doBonds = true;
         ffl.bSubtractBondNonBond = true;
+        bConstrains = true;
 
         bFreeEnergyCalc = true;
         double gamma = 1 / (dt * tdamp);
+        go.gamma_damp = gamma;
+        go.T_target = T;
 
         // define colective variable
         for (int i = 0; i < n; i++)
@@ -3838,7 +3859,7 @@ double entropic_spring_JE(double lamda1, double lamda2, int n, int *dc, int nbPr
             Ref[L] = Ref[L - 1] + 0.5 * constant * (lamda[L] + lamda[L - 1]) * d_lamda;
         }
 
-        store_TI("results/TI_plot.dat", lamda, TI, sigmaTI, Ref);
+        store_TI("results/TI_plot_ES.dat", lamda, TI, sigmaTI, Ref);
 
         return TI[nbStep - 1];
     }
@@ -3852,7 +3873,6 @@ double entropic_spring_JE(double lamda1, double lamda2, int n, int *dc, int nbPr
         double gamma = 1 / (dt * tdamp); // = go.gamma_damp
         go.gamma_damp = gamma;
         go.T_target = T;
-        int nbInits = 1000;
 
         go.bExploring = true;
         bConstrains = true;
