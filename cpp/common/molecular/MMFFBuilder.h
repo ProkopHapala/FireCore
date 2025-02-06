@@ -865,6 +865,7 @@ class Builder{  public:
         //printf( "MMFFBuilder::assignBondParams(ib=%i|ia=%i,ja=%i) order=%g \n", ib, b.atoms.i, b.atoms.j, b.order );
         const Atom& ai = atoms[b.atoms.i];
         const Atom& aj = atoms[b.atoms.j];
+        printf( "MMFFBuilder::assignBondParams(ib=%i|ia=%i,ja=%i) types: %i=%s %i=%s \n", ib, b.atoms.i, b.atoms.j,  ai.type, params->atypes[ai.type].name, aj.type, params->atypes[aj.type].name );
         int order=1;
         if( (ai.iconf>=0)&&(aj.iconf>=0) ){ 
             const AtomConf& ci = confs[ai.iconf];
@@ -2155,6 +2156,29 @@ void assignTorsions( bool bNonPi=false, bool bNO=true ){
         return nbond;
     }
 
+
+    Vec3i shortesPBCbond( int ib, Vec3i npbc=Vec3iOne ){
+        Bond& b = bonds[ib];
+        Vec3d dij = atoms[b.atoms.j].pos - atoms[b.atoms.i].pos;
+        Vec3i ipbc_min = {0, 0, 0};
+        double r2min = 1e300;
+        for (int ix = -npbc.x; ix <= npbc.x; ix++) {
+            for (int iy = -npbc.y; iy <= npbc.y; iy++) {
+                for (int iz = -npbc.z; iz <= npbc.z; iz++) {
+                    Vec3d p = dij + lvec.lincomb(ix, iy, iz);
+                    double r2 = p.norm2();
+                    if (r2 < r2min) {
+                        r2min = r2;
+                        ipbc_min = {ix, iy, iz};
+                    }
+                }
+            }
+        }
+        b.ipbc = Vec3i8{(int8_t)ipbc_min.x, (int8_t)ipbc_min.y, (int8_t)ipbc_min.z};
+        return ipbc_min;
+    }
+
+
     bool checkAllAtomsBonded( bool bPrint=true, bool bExit=true, int nbmax=N_NEIGH_MAX, int nbmin=1 ){
         std::vector<int> nbonds(atoms.size(),0);
         for(int ib=0; ib<bonds.size(); ib++){
@@ -2885,23 +2909,27 @@ void assignTorsions( bool bNonPi=false, bool bNO=true ){
         ifrag   = frags.size()-1;  // frags.size()-1
         int iline=0;
         while(fgets(buff, nbuf, fp)) {
-            
-            // Check section headers
-            if (strncmp(buff, "@<TRIPOS>MOLECULE", 17) == 0) {
-                inMolecule = true;
-                inAtom = false;
-                inBond = false;
-                continue;
-            }else             
-            if (strncmp(buff, "@<TRIPOS>ATOM", 13) == 0) {
-                inMolecule = false;
-                inAtom = true;
-                inBond = false;
-                continue;
-            }else 
-            if (strncmp(buff, "@<TRIPOS>BOND", 13) == 0) {
-                inAtom = false;
-                inBond = true;
+
+            if( buff[0]=='@' ){
+                // Check section headers
+                if (strncmp(buff, "@<TRIPOS>MOLECULE", 17) == 0) {
+                    inMolecule = true;
+                    inAtom = false;
+                    inBond = false;
+                }else             
+                if (strncmp(buff, "@<TRIPOS>ATOM", 13) == 0) {
+                    inMolecule = false;
+                    inAtom = true;
+                    inBond = false;
+                }else 
+                if (strncmp(buff, "@<TRIPOS>BOND", 13) == 0) {
+                    inAtom = false;
+                    inBond = true;
+                }else 
+                if (strncmp(buff, "@lvs", 4) == 0) {    // expected line like this:    @lvs 20.0 0.0 0.0    0.0 0.5 0.0   20.0 0.0 0.0
+                    sscanf( buff+4, "%lf %lf %lf %lf %lf %lf %lf %lf %lf", &lvec.xx, &lvec.xy, &lvec.xz, &lvec.yx, &lvec.yy, &lvec.yz, &lvec.zx, &lvec.zy, &lvec.zz );
+                    bPBC = true;
+                }
                 continue;
             }
             printf( "---Builder::load_mol2() [%i] a%i b%i %s", iline, inAtom, inBond, buff);
@@ -2921,27 +2949,37 @@ void assignTorsions( bool bNonPi=false, bool bNO=true ){
                 sscanf(buff, "%*d %*s %*lf %*lf %*lf %*s %*s %*s %lf", &charge);
                 printf( "Builder::load_mol2() [%i] atom_id=%d atom_name=%s pos=(%lf %lf %lf) atom_type=%s charge=%lf\n", iline, atom_id, atom_name, pos.x, pos.y, pos.z, atom_type, charge );
                 
-                // Get element from atom_type (before the dot)
-                char element[16] = {0};
-                char* dot = strchr(atom_type, '.');
-                if(dot) {
-                    size_t len = dot - atom_type;
-                    if(len > sizeof(element)-1) len = sizeof(element)-1;
-                    strncpy(element, atom_type, len);
-                    element[len] = '\0';
-                } else {
-                    strncpy(element, atom_type, sizeof(element)-1);
-                }
-                
+                // // Get element from atom_type (before the dot)
+                // char element[16] = {0};
+                // char* dot = strchr(atom_type, '.');
+                // if(dot) {
+                //     size_t len = dot - atom_type;
+                //     if(len > sizeof(element)-1) len = sizeof(element)-1;
+                //     strncpy(element, atom_type, len);
+                //     element[len] = '\0';
+                // } else {
+                //     strncpy(element, atom_type, sizeof(element)-1);
+                // }
+
+                // substitute character '.' with '_' in atom_type
+                char* dot = strchr(atom_type, '.'); if(dot) { *dot = '_'; }
+
                 Quat4d REQ = defaultREQ;
                 REQ.z = charge;  // Set charge from mol2 file
                 //int npi = -1;
                 //int ne = 0;
                 
-                auto it = atomTypeDict->find(element);
+                auto it = atomTypeDict->find(atom_type);
+
+                if(it == atomTypeDict->end() ){ // if we cannot fined specific type we try to find just the element  like 'S_3' we try to fine 'S'
+                    printf( "Builder::load_mol2() [%i] cannot find type `%s` find element `%s` instead \n", atom_type, atom_name );
+                    *dot = '\0';
+                    it = atomTypeDict->find(atom_type);
+                }
+
                 if(it != atomTypeDict->end()){
                     int ityp = it->second;
-                    if(verbosity>2)printf( " %s -> %i \n", element, ityp );
+                    if(verbosity>2)printf( " %s -> %i \n", atom_type, ityp );
                     if(params){
                         params->assignRE(ityp, REQ);
                         //ne = params->atypes[ityp].nepair;
@@ -2949,6 +2987,9 @@ void assignTorsions( bool bNonPi=false, bool bNO=true ){
                     Vec3d p; rot.dot_to(pos,p); p.add( pos0 ); //p.sub(cog);
                     int ia = insertAtom(ityp, p, &REQ, -1, 0 );
                     tryAddConfToAtom( ia );
+                }else{
+                    printf( "ERROR in MM::Builder::load_mol2(): unknown atom type `%s` for atom(%i) line(%i): %s \n", atom_type, atom_id, iline, buff );
+                    exit(1);
                 }
             }
             
@@ -2965,7 +3006,8 @@ void assignTorsions( bool bNonPi=false, bool bNO=true ){
                 bond.atoms.j = a2 - 1;
                 bond.type = bond_type;
                 //bonds.push_back(bond);
-                insertBond( bond );
+                int ib = insertBond( bond );
+                if( bPBC ){ shortesPBCbond( ib ); }
             }
             iline++;
         } // while( fgets() )

@@ -46,6 +46,8 @@ fi
 #./$name -x tAttach/H2O.mol2
 #./$name -x tAttach/backbones/porphirin.mol2
 #./$name -x tAttach/backbones/napht_pyrol_4x--.mol2
+./$name -x tAttach/backbones/PNA_sat-poly.mol2
+
 
 
 
@@ -61,7 +63,7 @@ fi
 
 #./$name -x common_resources/xyz/H2O            -iParalel 0  -verb 0   -perframe 1 -dt 0.001
 #./$name -x common_resources/xyz/H2O            -iParalel 0  -verb 0   -perframe 1 -dt 0.05
-./$name -x common_resources/xyz/H2O        -e  -iParalel 0  -verb 0
+#./$name -x common_resources/xyz/H2O        -e  -iParalel 0  -verb 0
 
 #./$name -x common_resources/xyz/HCOOH         -iParalel 0
 #./$name -x common_resources/xyz/HCOOH     -e  -iParalel 0

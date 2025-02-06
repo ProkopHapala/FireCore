@@ -543,20 +543,20 @@ class MMFFparams{ public:
         auto it       = bonds_.find(id);
         if( it != bonds_.end() ){ return it->second; } 
         if(bParrents==0){
-            if(reportIfMissing){ printf("WARNING getBondParams(ityp=%i,jtyp=%i,order=%i) missing, trying find by parents(%i,%i) \n", ityp, jtyp, order,   atypes[ityp].parrent, atypes[jtyp].parrent ); };
+            if(reportIfMissing){ printf("WARNING getBondType(ityp=%i=%s,jtyp=%i=%s,order=%i) missing, trying find by parents(%i,%i) \n", ityp, atypes[ityp].name, jtyp,  atypes[jtyp].name, order,   atypes[ityp].parrent, atypes[jtyp].parrent ); };
             id  = BondType::getId( atypes[ityp].parrent,        jtyp,          order ); it = bonds_.find(id); if(it!=bonds_.end()){ return it->second; } 
             id  = BondType::getId(        ityp,          atypes[jtyp].parrent, order ); it = bonds_.find(id); if(it!=bonds_.end()){ return it->second; } 
             id  = BondType::getId( atypes[ityp].parrent, atypes[jtyp].parrent, order ); it = bonds_.find(id); if(it!=bonds_.end()){ return it->second; } 
         }
         if(bElem){
-            if(reportIfMissing){ printf("WARNING getBondParams(ityp=%i,jtyp=%i,order=%i) missing, trying find by elements(%i,%i) \n", ityp, jtyp, order, atypes[ityp].iZ, atypes[jtyp].iZ  ); };
+            if(reportIfMissing){ printf("WARNING getBondType(ityp=%i=%s,jtyp=%i=%s,order=%i) missing, trying find by elements(%i,%i) \n", ityp, atypes[ityp].name, jtyp,  atypes[jtyp].name, order, atypes[ityp].iZ, atypes[jtyp].iZ  ); };
             int i0 = atomTypeDict.find( elementOfAtomType(ityp)->name )->second;
             int j0 = atomTypeDict.find( elementOfAtomType(jtyp)->name )->second; 
             id  = BondType::getId( i0, j0, order ); 
             it = bonds_.find(id); 
             if( it!=bonds_.end()){ return it->second; }
         }
-        if(reportIfMissing){ printf("WARNING getBondParams(ityp=%i,jtyp=%i,order=%i) missing => defaults: l0 %g k %g \n", ityp, jtyp, order, default_bond_length, default_bond_stiffness ); };
+        if(reportIfMissing){ printf("WARNING getBondType(ityp=%i=%s,jtyp=%i=%s,order=%i) missing => defaults: l0 %g k %g \n", ityp, atypes[ityp].name, jtyp,  atypes[jtyp].name, order, default_bond_length, default_bond_stiffness ); };
         if(exitIfMissing){ printf("=> exit(0)\n");exit(0); };  
         return 0;
     }
