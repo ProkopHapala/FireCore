@@ -3,8 +3,6 @@
 
 #include "MolWorld_sp3.h"
 
-
-
 char dir_cpp[1024];
 void init(MolWorld_sp3& W, const char* xyz_name, const char* constr_name=nullptr){
 	W.smile_name = nullptr;
@@ -77,7 +75,6 @@ void entropic_spring(double lamda1, double lamda2, int n, int *dc, int nbStep, i
             printf("%d\n", dc[i]);
         }
     }
-
     
     char xyz_path [1024];
     snprintf(xyz_path, sizeof(xyz_path), "%s/common_resources/entropic_spring_%d", dir_cpp, natoms);
@@ -107,10 +104,23 @@ int main(int argc, char **argv)
     snprintf(dir_cpp, sizeof(dir_cpp), "%s", current_dir);
     free(current_dir);
 
+    std::cout << "Bash skript volající tento program: " << argv[1] << std::endl;
 
+    if (argc > 1 && strcmp(argv[1], "./run_mexican_hat.sh") == 0)
+        mexican_hat(std::stod(argv[2]), std::stod(argv[3]), std::stoi(argv[4]), std::stoi(argv[5]), std::stoi(argv[6]), 
+                std::stod(argv[7]), std::stod(argv[8]), std::stod(argv[9]), 
+                std::stoi(argv[10]), std::stoi(argv[11]), std::stoi(argv[12]));
 
-    //mexican_hat(std::stod(argv[1]), std::stod(argv[2]), std::stoi(argv[3]), std::stoi(argv[4]), std::stoi(argv[5]), std::stod(argv[6]), std::stod(argv[7]), std::stod(argv[8]), std::stoi(argv[9]), std::stoi(argv[10]), std::stoi(argv[11]));
-    //three_atoms_problem(std::stod(argv[1]), std::stod(argv[2]), std::stoi(argv[3]), std::stoi(argv[4]), std::stoi(argv[5]), std::stod(argv[6]), std::stod(argv[7]), std::stod(argv[8]), std::stoi(argv[9]), std::stoi(argv[10]), std::stoi(argv[11]));
-    entropic_spring(std::stod(argv[1]), std::stod(argv[2]), 1, nullptr, std::stoi(argv[3]), std::stoi(argv[4]), std::stoi(argv[5]), std::stod(argv[6]), std::stod(argv[7]), std::stod(argv[8]), std::stoi(argv[9]), std::stoi(argv[10]), std::stoi(argv[11]), std::stoi(argv[12]));
+    if (argc > 1 && strcmp(argv[1], "./run_three_atom_problem.sh") == 0)
+        three_atoms_problem(std::stod(argv[2]), std::stod(argv[3]), std::stoi(argv[4]), std::stoi(argv[5]), std::stoi(argv[6]), 
+                        std::stod(argv[7]), std::stod(argv[8]), std::stod(argv[9]), 
+                        std::stoi(argv[10]), std::stoi(argv[11]), std::stoi(argv[12]));
+
+    if (argc > 1 && strcmp(argv[1], "./run_entropic_spring.sh") == 0)
+        entropic_spring(std::stod(argv[2]), std::stod(argv[3]), 1, nullptr, 
+                        std::stoi(argv[4]), std::stoi(argv[5]), std::stoi(argv[6]), 
+                        std::stod(argv[7]), std::stod(argv[8]), std::stod(argv[9]), 
+                        std::stoi(argv[10]), std::stoi(argv[11]), std::stoi(argv[12]), 
+                        std::stoi(argv[13]));    
     return 0;
 }

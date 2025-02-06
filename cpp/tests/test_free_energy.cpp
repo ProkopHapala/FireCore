@@ -101,32 +101,32 @@ TEST(MolWorld_sp3, three_atoms_problem_TI){
     EXPECT_NEAR(E, 0.024184648474702555, 0.001);
 }
 
-// TEST(MolWorld_sp3, entropic_spring_TI){ // does NOT work (same code as called from python run_TI.sh->run.py..., but do not work...) 
-//     MolWorld_sp3 W;
-//     char path_entropic_spring[1024];
-//     snprintf(path_entropic_spring, sizeof(path_entropic_spring), "%s/common_resources/entropic_spring_20", dir_cpp);
-//     char path_entropic_spring_cons[1024];
-//     snprintf(path_entropic_spring_cons, sizeof(path_entropic_spring_cons), "%s/common_resources/entropic_spring_20.cons", dir_cpp);
-//     init(W, path_entropic_spring, path_entropic_spring_cons);
+TEST(MolWorld_sp3, entropic_spring_TI){ // does NOT work (same code as called from python run_TI.sh->run.py..., but do not work...) 
+    MolWorld_sp3 W;
+    char path_entropic_spring[1024];
+    snprintf(path_entropic_spring, sizeof(path_entropic_spring), "%s/common_resources/entropic_spring_20", dir_cpp);
+    char path_entropic_spring_cons[1024];
+    snprintf(path_entropic_spring_cons, sizeof(path_entropic_spring_cons), "%s/common_resources/entropic_spring_20.cons", dir_cpp);
+    init(W, path_entropic_spring, path_entropic_spring_cons);
 
-//     double initial = 1.0;
-//     double final   = 3.0;
-//     int colective_variable = 0;
-//     int nbSteps=100;
-//     int nMDsteps=100000;
-//     int nEQsteps=1000;
-//     double t_damp=100.0;
-//     double T=300.0;
-//     double dt=0.01;
+    double initial = 1.0;
+    double final   = 3.0;
+    int colective_variable = 0;
+    int nbSteps=100;
+    int nMDsteps=100000;
+    int nEQsteps=1000;
+    double t_damp=100.0;
+    double T=300.0;
+    double dt=0.01;
     
-//     idebug = 1;
-//     verbosity = 5;
+    idebug = 1;
+    verbosity = 5;
 
-//     printf("Calling entropic_spring_TI(lamda1=%f, lamda2=%f, n=%d, dc=%d, nbSteps=%d, nMDsteps=%d, nEQsteps=%d, tdamp=%f, T=%f, dt=%f)\n", initial, final, 1, &colective_variable, nbSteps, nMDsteps, nEQsteps, t_damp, T, dt);
-//     double E = W.entropic_spring_TI(initial, final, 1, &colective_variable, nbSteps, nMDsteps, nEQsteps, t_damp, T, dt);
-//     printf("E = %f\n", E);
-//     EXPECT_NEAR(E, 0.018717769036960055, 0.001);
-// }
+    printf("Calling entropic_spring_TI(lamda1=%f, lamda2=%f, n=%d, dc=%d, nbSteps=%d, nMDsteps=%d, nEQsteps=%d, tdamp=%f, T=%f, dt=%f)\n", initial, final, 1, &colective_variable, nbSteps, nMDsteps, nEQsteps, t_damp, T, dt);
+    double E = W.entropic_spring_TI(initial, final, 1, &colective_variable, nbSteps, nMDsteps, nEQsteps, t_damp, T, dt);
+    printf("E = %f\n", E);
+    EXPECT_NEAR(E, 0.018717769036960055, 0.001);
+}
 
 int main(int argc, char **argv) {    
     ::testing::InitGoogleTest(&argc, argv);
