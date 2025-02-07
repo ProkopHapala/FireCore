@@ -15,6 +15,8 @@ This document provides a concise overview of the `atomicUtils.py` module.
 *   `disolveAtom(base, ia)`: Dissolves (removes) an atom from a base system, redistributing its bonds.
 *   `removeGroup(base, remove)`: Removes a group of atoms from a base system.
 *   `selectBondedCluster(s, bonds)`: Selects a bonded cluster of atoms starting from a seed set.
+*   `reindex_bonds( bonds, old_to_new, to_remove=None )`: Reindexes a list of bonds to reflect changes in atom indices, such as after atom removal, updating bond references accordingly. This ensure the consistency and proper connecrivity of the system
+*   `make_reindex( n, mask, bInverted = False )`: Creates a mapping between old and new atom indices based on a mask, used to update bonds after atom removal or reordering. It constructs lookup table of atom position after edition.
 
 ### Finding and Identifying Atoms/Bonds
 
@@ -81,7 +83,7 @@ This document provides a concise overview of the `atomicUtils.py` module.
 *   `loadElementTypes(fname='ElementTypes.dat', bDict=False)`: Loads element type parameters from a file.
 *   `getVdWparams(iZs, etypes=None, fname='ElementTypes.dat')`: Gets Van der Waals parameters from a list of atomic numbers.
 *   `iz2enames(iZs)`: Converts a list of atomic numbers to a list of element names.
-*    `histR(ps, dbin=None, Rmax=None, weights=None)`: Calculates a radial distribution histogram of a set of points, optionally weighting each point.
+*   `histR(ps, dbin=None, Rmax=None, weights=None)`: Calculates a radial distribution histogram of a set of points, optionally weighting each point.
 *   `build_frame(forward, up)`: Build an orthonormal frame (a 3×3 rotation matrix) from two non–colinear vectors.
 *   `find_attachment_neighbor(system, marker_index, markerX, markerY)`: Find the non-marker attachment neighbor of a marker atom.
 *   `compute_attachment_frame_from_indices(ps, iX, iY, system, bFlipFw=False, _0=1)`: Compute the attachment frame for a system from given indices.
@@ -126,6 +128,10 @@ This document provides a concise overview of the `atomicUtils.py` module.
 *   `find_groups(self)`: find connected groups.
 *   `delete_atoms(self, lst)`: Delete selected atoms. It simply deletes selected atoms.
 *   `append_atoms(self, B, pre="A")`: Appends the atoms from another `AtomicSystem` to the current one. This can be used to append group of atoms to another. The groups can also be re-labeled.  It combines two atomic systems into one system
+*   `merge_geometries(self, other, group_mk, backbone_mk )`: Combines to objects together based on the marker positions.
+*   `filter_system(self, mask, bInverted=False)`: Creates a new AtomicSystem containing only selected atoms based on a mask (or excluding the listed atoms), reindexing atom and bond references. It allows to discard or focus on only selected groups of atoms
+*   `merge_arrays(self, other_arrays, other_bonds, offset)`: Merges arrays of properties from another system, offsetting indices appropriately. This is particularly useful when appending fragments or merging systems. It adds the atomic properties of 2 system into one.
+
 
 ### Property and Type Assignment
 
