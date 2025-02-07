@@ -42,7 +42,10 @@ backbone.preinitialize_atomic_properties()
 endgroup1.preinitialize_atomic_properties()
 endgroup2.preinitialize_atomic_properties()
 
-print("Backbone:"); backbone.print()
+
+print("\nBackbone:"     ); backbone.print()
+#print("Backbone bonds:" ); backbone.printBonds()
+#print("Backbone neighs:"); backbone.printNeighs()
 #print("Endgroup:"); endgroup.print()
 
 # Attach endgroup copies to the backbone using marker elements.
@@ -50,13 +53,20 @@ print("Backbone:"); backbone.print()
 # and "F" (up direction), and the endgroup must contain exactly one such pair.
 #backbone.attach_group_by_marker(endgroup, markerX="Se", markerY="F", forward_default=np.array([1.0, 0.0, 0.0]), _0=1, pre="X")
 
-backbone.attach_group_by_marker(endgroup1, markerX="S", markerY="F",  _0=1, pre="X")
-backbone.attach_group_by_marker(endgroup2, markerX="Se" , markerY="Cl", _0=1, pre="X")
+backbone.save_mol2('backbone.mol2')
+endgroup1.save_mol2('endgroup1.mol2')
 
-# Save the modified backbone.
+backbone.attach_group_by_marker(endgroup1, markerX="S_3", markerY="F",  _0=1)
 
-backbone.saveXYZ( fname="backbone_with_endgroup.xyz" )
+backbone.save_mol2('backbone_subs_1.mol2')
+backbone.saveXYZ('backbone_subs_1.xyz')
 
-backbone.findBonds()
-backbone.save_mol2('backbone_with_endgroup.mol2')
+print("Backbone neighs:"); backbone.printNeighs()
+
+backbone.attach_group_by_marker(endgroup2, markerX="Se" , markerY="Cl", _0=1)
+
+backbone.save_mol2('backbone_subs_2.mol2')
+backbone.saveXYZ('backbone_subs_2.xyz')
+
+
 #backbone.save_mol('backbone_with_endgroup.mol')

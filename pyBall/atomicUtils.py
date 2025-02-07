@@ -681,13 +681,6 @@ def compute_attachment_frame_from_indices(ps, iX, iY, system, bFlipFw=False, _0=
     M = build_frame(f, u)
     return X, A, M
 
-
-
-
-
-
-
-
 def psi4frags2string( enames, apos, frags=None ):
     n = len(enames)
     s = []
@@ -1501,6 +1494,31 @@ def atoms_symmetrized( atypes, apos, lvec, qs=None, REQs=None, d=0.1):
 
     return new_atypes, new_apos, new_qs, new_REQs, new_ws
 
+def reindex_bonds( bonds, old_to_new, to_remove=None ):
+    #print( "--reindex_bonds() bonds \n", bonds )
+    #print( "--reindex_bonds() old_to_new \n", old_to_new )
+    if to_remove is not None: 
+        bonds = [ b for b in bonds if b[0] not in to_remove and b[1] not in to_remove ]
+    #print( "reindex_bonds() bonds \n", bonds )
+    #bonds = [ (old_to_new[b[0]], old_to_new[b[1]]) for b in bonds if b[0] in old_to_new and b[1] in old_to_new ]
+    bonds = [ (old_to_new[b[0]], old_to_new[b[1]]) for b in bonds  ]
+    return np.array(bonds)
+
+def make_reindex( n, mask, bInverted = False ):
+    #print( "make_reindex().1 mask ", mask )
+    if bInverted: mask = set(range(n)).difference(mask)
+    #print( "make_reindex().2 mask", mask )
+    # Create index mapping
+    old_to_new = {}
+    new_idx = 0
+    for old_idx in range(n):
+        #print( "old_idx, new_idx ", old_idx, new_idx, old_idx in mask )
+        if old_idx not in mask: continue
+        old_to_new[old_idx] = new_idx
+        new_idx += 1
+    #print( "make_reindex() old_to_new ", old_to_new )
+    return old_to_new
+
 # ========================== Class Geom
 
 class AtomicSystem( ):
@@ -1662,12 +1680,11 @@ class AtomicSystem( ):
             # Write the ATOM section.
             fout.write("@<TRIPOS>ATOM\n")
             for i in range(n_atoms):
-                atom_id = i + 1  # MOL2 uses 1-based indexing.
-                ename = self.enames[i]
-                x, y, z = self.apos[i]
-                # Set proper atom type with hybridization state (e.g. C.3 for sp3 carbon)
-                #atom_type = f"{ename}.3" if ename in {'C', 'N'} else ename
-                atom_type    = ename
+                atom_id   = i + 1  # MOL2 uses 1-based indexing.
+                atom_type = self.enames[i]
+                ename     = atom_type.replace('.','_')
+                ename     = ename.split('_')[0]
+                x, y, z   = self.apos[i]
                 substructure = 1  # Default substructure id.
                 residue = "UNL1"   # Standard residue name for unknown ligand.
                 # Use self.qs if available and has the correct length, otherwise 0.0.
@@ -1710,8 +1727,23 @@ class AtomicSystem( ):
         self.qs[:] = self.qs[:]*f0 + self.getValenceElectrons()*f       
 
     def printBonds(self):
-        for i in range(len(self.bonds)):
-            print( "[%i] (%i,%i) (%s,%s)" %( i, self.bonds[i,0],self.bonds[i,1],  self.enames[self.bonds[i,0]], self.enames[self.bonds[i,1]] ) )
+        print("AtomicSystem.printBonds():")
+        if self.bonds is None:
+            print("No bonds defined")
+            return
+        for i, (a, b) in enumerate(self.bonds):
+            print(f"[{i}] ({a},{b}) ({self.enames[a]},{self.enames[b]})")
+
+    def printNeighs(self):
+        print("AtomicSystem.printNeighs():")
+        if self.neighs is None:
+            print("No neighs defined")
+            return
+        for i, ngi in enumerate(self.ngs):
+            print(f"ngs[{i}]: ", end="")
+            for j,ia in enumerate(ngi):
+                print(ia, end=" ")
+            print("")
 
     def findBonds(self, Rcut=3.0, RvdwCut=1.5, RvdWs=None, byRvdW=True ):
         if self.atypes is None:
@@ -1755,10 +1787,6 @@ class AtomicSystem( ):
 
     def select_by_neighType( self, neighs, typ='N', neighTyps={'H':(1,2)} ):
         return findTypeNeigh_( self.enames, neighs, typ=typ, neighTyps=neighTyps )
-
-    # def findTypeNeigh( atoms, neighs=None, typ, neighTyps=[(1,2,2)] ):
-    #     if 
-    #     def findTypeNeigh( atoms, neighs, typ, neighTyps=[(1,2,2)] ):
 
     def findAngles(self, select=None, ngs=None, ):
         if ngs is None:
@@ -1964,6 +1992,7 @@ class AtomicSystem( ):
             self.Rs = np.array(Rs)
         # Initialize aux_labels if not defined.
         if self.aux_labels is None: self.aux_labels = [str(i) for i in range(natoms)]
+        self.neighs()
         # (If you have other arrays you want to preinitialize, do it here.)
         #print(f"Pre-initialized atomic properties for {natoms} atoms.")
 
@@ -2074,111 +2103,230 @@ class AtomicSystem( ):
         G.apos[:,:]+=p0[None,:]
         G.delete_atoms( [i1-_0] )
 
-        self.append_atoms( G, pre=pre )
+        self.append_atoms( G )
+
+    def reindex_bonds(self, old_to_new_map, to_remove=None ):
+        #print ("self.reindex_bonds: old_to_new_map \n", old_to_new_map)
+        #print ("self.reindex_bonds: to_remove      \n", to_remove)
+        self.bonds = reindex_bonds( self.bonds, old_to_new_map, to_remove )
+        self.ngs   = None
 
     def extract_marker_pairs(self, markerX, markerY, remove=True):
-        """
-        Find marker pairs in this system based on element types.
-        For each occurrence of an atom with cleaned element equal to markerX
-        and an atom with cleaned element equal to markerY, pair them (after sorting)
-        and return a list of pairs (iX, iY) (0-based indices).
-        If remove is True, then remove all marker atoms from the system.
-        """
-        indices_X = [i for i, ename in enumerate(self.enames) if ename == markerX]
-        indices_Y = [i for i, ename in enumerate(self.enames) if ename == markerY]
-        if not indices_X or not indices_Y:
-            pairs = []
-        else:
-            indices_X.sort()
-            indices_Y.sort()
-            pairs = list(zip(indices_X, indices_Y))
-        if remove and pairs:
-            rem = sorted(set(indices_X + indices_Y), reverse=True)
-            self.delete_atoms(rem)
+        """Legacy method that combines finding marker pairs without removal."""
+        pairs = self.find_marker_pairs(markerX, markerY)
         return pairs
 
-    def attach_group_by_marker(self, G, markerX="Xe", markerY="He", _0=1, pre="X"):
+
+    def find_marker_pairs(self, markerX, markerY):
         """
-        Attach an end–group G to this backbone using marker atoms and connectivity.
+        Find marker pairs in this system based on element types and bonding information.
+        For each atom with element equal to markerX, look for a bonded neighbor with element equal to markerY.
+        Returns a list of tuples (iX, iY) where iX is the index of a markerX atom and iY is the index of its bonded markerY neighbor.
+        """
+        if self.ngs is None:
+            self.neighs(bBond=True)
+        mks = []
+        for i, ename in enumerate(self.enames):
+            if ename == markerX:    # pivot atom marker-X
+                ngi = self.ngs[i]    
+                for j in ngi:
+                    if self.enames[j] == markerY:
+                        i2=j   # index of a markerY-typed bonded to the pivot atom
+                    else:
+                        i3=j   # atom to which pivot atom is bonded, but is not a marker (i.e. Anchor-atom)  
+                mks.append( (i, i2, i3))                
+        return mks
+
+    def ensure_numpy_arrays(self):
+        """Ensure position arrays are numpy arrays."""
+        if not isinstance(self.apos, np.ndarray):
+            self.apos = np.array(self.apos)
         
-        The backbone (self) may contain several marker pairs (found by extract_marker_pairs).
-        For each marker pair (iX, iY) in the backbone:
-          - Let X_b = self.apos[iX] and markerY_b = self.apos[iY].
-          - Find the attachment neighbor A₁ for the marker (using bonds).
-          - Compute the backbone frame using:
-                (X_b, A₁, M_target) = compute_attachment_frame_from_indices(self.apos, iX, iY, self, bFlipFw=False, _0=_0)
+    def filter_system(self, mask, bInverted=False):
+        """Create a new filtered system without marker atoms.
+        Parameters:
+            mask : set Set of atom indices to keep ( or remove if inverted)
+            bInverted : bool Invert the mask
+        Returns:
+            tuple : (filtered arrays, old_to_new index_map)
+        """
+        n = len(self.apos)
+        #if bInverted: mask = set(range(len(self.apos))).difference(mask)
+        if bInverted: mask = [i for i in range(n) if i not in mask]
+        print ("filter_system: mask ", mask)
+        #keep_mask = np.array([i not in to_remove for i in range(len(self.apos))])
+        filtered = {
+            'apos':   self.apos  [mask],
+            'atypes': self.atypes[mask],
+            'enames': self.enames[mask],
+            'qs':     self.qs    [mask] if self.qs is not None else None,
+            'Rs':     self.Rs    [mask] if self.Rs is not None else None,
+            'aux_labels': [label for i, label in enumerate(self.aux_labels) if i not in mask] if self.aux_labels is not None else None
+        }
+        old_to_new = make_reindex( n, mask, bInverted=False)       
+        return filtered, old_to_new
         
-        For the end–group G, it must contain exactly one marker pair. Let
-          - X_g = G.apos[iX_g] and markerY_g = G.apos[iY_g] (from the unique pair),
-          - Find the attachment neighbor A₂ for marker X in G,
-          - Compute the group frame using:
-                (X_g, A₂, M_group) = compute_attachment_frame_from_indices(G.apos, iX_g, iY_g, G, bFlipFw=True, _0=_0)
-          (Notice bFlipFw=True to reverse the forward vector.)
-        
-        Then for each backbone attachment site, compute the rotation matrix:
-              R = M_target @ (M_group)ᵀ
-        and transform a deep copy of G by:
-              new_coords = R @ (old_coords - A₂) + (X_b + (A₁ - X_b))
-        In our approach we translate so that the group’s attachment neighbor (A₂)
-        is mapped to the backbone’s attachment neighbor A₁.
-        
-        Finally, remove the marker atoms from the transformed group copy and append it
-        to the backbone.
+    def merge_arrays(self, other_arrays, other_bonds, offset):
+        """Merge arrays from other system into self.
         
         Parameters:
-          G       : AtomicSystem
-                    The end–group to attach.
-          markerX : str, optional (default: "Xe")
-                    The element marking the attachment point.
-          markerY : str, optional (default: "He")
-                    The element marking the up–direction.
-          _0      : int, optional (default: 1)
-                    Offset for index conversion (if needed).
-          pre     : str, optional (default: "X")
-                    Prefix for labeling atoms from the group.
-        
-        Returns:
-          None.
+            other_arrays : dict
+                Filtered arrays from other system
+            other_bonds : ndarray
+                Reindexed bonds from other system
+            offset : int
+                Offset for bond indices
         """
-        # --- Backbone: extract marker pairs WITHOUT removal.
-        backbone_pairs = self.extract_marker_pairs(markerX, markerY, remove=False)
-        if not backbone_pairs:
-            raise ValueError("No backbone marker pair found for markers {} and {}.".format(markerX, markerY))
+        # Merge main arrays
+        self.apos   = np.concatenate([self.apos,   other_arrays['apos'  ]], axis=0)
+        self.atypes = np.concatenate([self.atypes, other_arrays['atypes']])
+        self.enames = np.concatenate([self.enames, other_arrays['enames']])
         
-        backbone_data = []
-        for (iX, iY) in backbone_pairs:
-            X_b, A1, M_target = compute_attachment_frame_from_indices(self.apos, iX, iY, self, bFlipFw=False, _0=_0)
-            backbone_data.append((X_b, A1, M_target))
-        
-        # Now remove the backbone marker atoms.
-        rem_indices = sorted(set([i for pair in backbone_pairs for i in pair]), reverse=True)
-        self.delete_atoms(rem_indices)
-        
-        # --- End–group: extract marker pair WITHOUT removal.
-        group_pairs = G.extract_marker_pairs(markerX, markerY, remove=False)
-        if len(group_pairs) != 1:
-            raise ValueError("End–group must contain exactly one marker pair (found {}).".format(len(group_pairs)))
-        indices_X_G = [i for i, ename in enumerate(G.enames) if ename == markerX]
-        indices_Y_G = [i for i, ename in enumerate(G.enames) if ename == markerY]
-        if len(indices_X_G) != 1 or len(indices_Y_G) != 1:
-            raise ValueError("End–group must contain exactly one marker pair; found {} and {}.".format(len(indices_X_G), len(indices_Y_G)))
+        # Merge optional arrays if they exist
+        if self.qs         is not None and other_arrays['qs']         is not None: self.qs         = np.concatenate([self.qs, other_arrays['qs']])
+        if self.Rs         is not None and other_arrays['Rs']         is not None: self.Rs         = np.concatenate([self.Rs, other_arrays['Rs']])
+        if self.aux_labels is not None and other_arrays['aux_labels'] is not None: 
+            self.aux_labels = np.concatenate([self.aux_labels, other_arrays['aux_labels']])
+        else:
+            self.aux_labels = None
+            
+        # Merge bonds
+        if other_bonds is not None:
+            adjusted_bonds = other_bonds + offset
+            if self.bonds is not None:
+                self.bonds = np.array(self.bonds)
+                self.bonds = np.concatenate([self.bonds, adjusted_bonds], axis=0)
+            else:
+                self.bonds = adjusted_bonds
 
-        X_g, A2, M_group = compute_attachment_frame_from_indices(G.apos, indices_X_G[0], indices_Y_G[0], G, bFlipFw=True, _0=_0)
+    def add_bond(self, b):
+        #print ("add_bond", b)
+        #print( "bonds.shape", self.bonds.shape )
+        self.bonds = np.concatenate((self.bonds, np.array([b])), axis=0)
+
+    def merge_geometries(self, other, group_mk, backbone_mk ):
+        """Merge another AtomicSystem into this one using the provided group marker pair for alignment.
         
-        # --- For each backbone attachment site, attach a transformed copy of G.
-        for (X_b, A1, M_target) in backbone_data:
-            # Compute rotation matrix R = M_target @ (M_group)ᵀ.
-            R = M_target @ M_group.T
-            # Make a deep copy of G.
-            G_copy = copy.deepcopy(G)
-            # Transform the group: We want to shift G so that its attachment neighbor A2 is at the origin,
-            # then rotate by R, and then translate so that A2 maps to A1.
-            #G_copy.apos = (R @ (G_copy.apos - A2).T).T + A1
-            G_copy.apos = (R @ (G_copy.apos - A2).T).T + X_b
-            # Remove marker atoms from G_copy.
-            indices_X_G_copy = [i for i, ename in enumerate(G_copy.enames) if ename == markerX]
-            indices_Y_G_copy = [i for i, ename in enumerate(G_copy.enames) if ename == markerY]
-            rem_indices_G = sorted(set(indices_X_G_copy + indices_Y_G_copy), reverse=True)
-            G_copy.delete_atoms(rem_indices_G)
-            # Append the transformed copy.
-            self.append_atoms(G_copy, pre=pre)
+        This implementation appends the atoms and bonds from 'other' into self, adjusting indices appropriately.
+        The process follows these steps:
+        1. Find neighbors of marker atoms in both systems
+        2. Remove marker atoms from the group system
+        3. Merge the remaining atoms and bonds
+        4. Create new bonds between fragments based on marker neighbors
+        
+        Parameters:
+            other : AtomicSystem
+                   The system to merge into this one
+            group_marker_pair : tuple
+                   (iX, iY) marker pair from the group system used for alignment
+        """
+        # Ensure numpy arrays
+        self.ensure_numpy_arrays()
+        other.ensure_numpy_arrays()
+        
+        removed = set(group_mk[:2])
+        other_filtered, old_to_new = other.filter_system( removed, bInverted=True            )     # Filter group system without markers 
+        #other_bonds                = other.reindex_removed_bonds(other.bonds, removed, old_to_new)   # Reindex group bonds
+        other_bonds = reindex_bonds( other.bonds, old_to_new, to_remove=removed )
+        
+        # Merge arrays with offset
+        offset = len(self.apos)
+        self.merge_arrays(other_filtered, other_bonds, offset)
+        
+        # # Create new bonds between fragments
+        # self.create_fragment_bonds(backbone_neighbors, group_neighbors, old_to_new, offset)
+
+        #self.create_bond_reindexed( (group_mk[2],backbone_mk[2]), old_to_new, offset )
+        #print( "old_to_new", old_to_new )
+        i2 = old_to_new[group_mk[2]]
+
+        #print( "-----BEFORE self.bonds", self.bonds )
+        self.add_bond( (backbone_mk[2], i2 + offset) )
+        #print( "-----AFTER self.bonds", self.bonds )
+
+        # Clear neighbor list since it needs to be rebuilt
+        self.ngs = None
+
+    def compute_group_orientation(self, G, backbone_pair, group_pair, _0=1):
+        """Compute the orientation transformation for attaching a group to the backbone.
+        
+        Parameters:
+            G : AtomicSystem
+                The group to orient
+            backbone_pair : tuple
+                (iX, iY) indices of marker atoms in backbone
+            group_pair : tuple
+                (iX, iY) indices of marker atoms in group
+            _0 : int
+                Offset for index conversion
+                
+        Returns:
+            tuple: (R, X_b, A2)
+                R - rotation matrix
+                X_b - translation point (backbone marker position)
+                A2 - attachment point in group (for translation)
+        """
+        iX_b, iY_b,_  = backbone_pair
+        iX_g, iY_g,_ = group_pair
+        
+        # Compute frames for backbone and group
+        X_b, A1, M_target = compute_attachment_frame_from_indices(self.apos, iX_b, iY_b, self, bFlipFw=False, _0=_0)
+        X_g, A2, M_group = compute_attachment_frame_from_indices(G.apos, iX_g, iY_g, G, bFlipFw=True, _0=_0)
+        
+        # Compute rotation matrix R = M_target @ (M_group)ᵀ
+        R = M_target @ M_group.T
+        
+        return R, X_b, A2
+
+    def attach_group_by_marker(self, G, markerX="Xe", markerY="He", _0=1):
+        """Attach an end–group G to this backbone using marker atoms and connectivity.
+        Steps:
+          1. Find marker pairs in both the backbone and the group.
+          2. Ensure the group has exactly one marker pair.
+          3. Orient and transform the group.
+          4. Merge the transformed group.
+          5. Remove marker atoms from the backbone.
+          6. Update the neighbor list.
+        """
+        # 1. Find marker pairs
+        backbone_inds = self.find_marker_pairs(markerX, markerY)
+        group_inds    = G.find_marker_pairs(markerX, markerY)
+        #print( "backbone_inds ", backbone_inds )
+        #print( "group_inds    ", group_inds )
+        if not backbone_inds:    raise ValueError(f"No marker pair ({markerX}, {markerY}) found in backbone")
+        if len(group_inds) != 1: raise ValueError(f"Group must have exactly one marker pair, found {len(group_inds)}")
+            
+        # 2. Get orientation transformation
+        R, X_b, A2 = self.compute_group_orientation(G, backbone_inds[0], group_inds[0], _0)
+        
+        # 3. Make a deep copy of G and transform it
+        G_copy = copy.deepcopy(G)
+        G_copy.apos = (R @ (G_copy.apos - A2).T).T + X_b
+        
+        # 4. Merge the transformed geometries
+        self.merge_geometries(G_copy, group_inds[0], backbone_inds[0] )
+        
+        # 5. Remove marker atoms from the backbone
+        if backbone_inds:
+            to_remove = set([ix for ix,_,_ in backbone_inds] + [iy for _,iy,_ in backbone_inds])
+            old_to_new = {}
+            new_idx = 0
+            for old_idx in range(len(self.apos)):
+                if old_idx not in to_remove:
+                    old_to_new[old_idx] = new_idx
+                    new_idx += 1
+            self.reindex_bonds(old_to_new, to_remove)
+            rem = sorted(to_remove, reverse=True)
+            for idx in rem:
+                self.apos = np.delete(self.apos, idx, axis=0)
+                self.atypes = np.delete(self.atypes, idx)
+                self.enames = np.delete(self.enames, idx)
+                if self.qs is not None:
+                    self.qs = np.delete(self.qs, idx)
+                if self.Rs is not None:
+                    self.Rs = np.delete(self.Rs, idx)
+                if self.aux_labels is not None:
+                    self.aux_labels = np.delete(self.aux_labels, idx)
+
+        # 6. Update neighbor list
+        self.neighs(bBond=True)
