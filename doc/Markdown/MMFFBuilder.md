@@ -133,7 +133,7 @@ Represents an improper dihedral angle.  Improper dihedrals are defined by four a
     *   `color`: Color used for visualization (e.g. in GUIs)
     *   `finish`: helper method for setting the end values for ranges
 
-## ree Functions
+## Free Functions
 
 ### `splitGraphs()`
 

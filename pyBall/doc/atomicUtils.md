@@ -1,436 +1,174 @@
-# AtomicSystem Class Documentation
+# `atomicUtils.py` Documentation
 
-The `AtomicSystem` class provides a framework for representing and manipulating molecular systems. It stores atomic positions, types, element names, charges, bonds, lattice vectors, and auxiliary labels. The class also offers a suite of functions for geometry manipulation, bond finding, rotation, cloning with periodic boundaries, and attachment of end–groups.
+This document provides a concise overview of the `atomicUtils.py` module.
 
-> **Note:** Most functions assume that per–atom properties (such as `qs`, `Rs`, and `aux_labels`) are pre‐initialized. See the separate pre–initialization documentation for details.
+## Free Functions
 
----
+### Topology Operations
 
-## Contents
+*   `findAllBonds(atoms, Rcut=3.0, RvdwCut=0.7)`: Determines all bonds based on distance and Van der Waals radii.
+*   `filterBonds(bonds, enames, ignore)`: Filters a list of bonds, excluding those that involve atoms with element names in the `ignore` set.
+*   `neigh_bonds(natoms, bonds)`: Creates a dictionary-based neighbor list where neighbors are related to atom by bond index.
+*   `neigh_atoms(natoms, bonds)`: Creates a simple set-based neighbor list of atom indexes, where neighbors are defined as atoms that are within chemical bond distance
+*   `addGroup(base, group, links)`: Adds a group of atoms and bonds to an existing system, connecting them based on a specified list of links.
+*   `addBond(base, link, bNew=True)`: Adds a bond to a base system.
+*   `disolveAtom(base, ia)`: Dissolves (removes) an atom from a base system, redistributing its bonds.
+*   `removeGroup(base, remove)`: Removes a group of atoms from a base system.
+*   `selectBondedCluster(s, bonds)`: Selects a bonded cluster of atoms starting from a seed set.
 
-- [Initialization and I/O](#initialization-and-io)
-- [Geometry and Orientation Methods](#geometry-and-orientation-methods)
-- [Bond and Neighborhood Functions](#bond-and-neighborhood-functions)
-- [System Manipulation and Cloning](#system-manipulation-and-cloning)
-- [Attachment of End–Groups](#attachment-of-end-groups)
-- [Additional Utility Methods](#additional-utility-methods)
-- [Examples](#examples)
+### Finding and Identifying Atoms/Bonds
 
----
+*   `findBondsNP(apos, atypes=None, Rcut=3.0, RvdwCut=1.5, RvdWs=None, byRvdW=True)`: Efficiently determines bonds based on interatomic distances, optionally considering Van der Waals radii for more accurate bond identification.
+*   `findHBondsNP(apos, atypes=None, Rb=1.5, Rh=2.5, angMax=60.0, typs1={"H"}, typs2=neg_types_set, bPrint=False, bHbase=False)`: Identifies hydrogen bonds based on distance and angular criteria involving donor, hydrogen, and acceptor atoms.
+*   `findNeighOfType(ia, atypes, neighs, typ='N')`: Given an atom index, return indexes of neighbors with given type.
+*   `findNeighsOfType(selection, atypes, neighs, typ='N')`: Find specific type neighbors for many atoms in a given selection
+*   `findTypeNeigh(atoms, neighs, typ, neighTyps=[(1, 2, 2)])`: Identifies atoms of one type close to neighbors with set of different types (uses simple array as neigh list)
+*   `findTypeNeigh_(types, neighs, typ='N', neighTyps={'H': (1, 2)})`: Identifies atoms of one type close to neighbors with set of different types (uses dictionary to store atom neighbors)
+*   `getAllNeighsOfSelected(selected, neighs, atoms, typs={1})`: Gets the neighbors of a selected atom that have the requested type.
+*   `findPairs(select1, select2, atoms, Rcut=2.0)`: Returns indexes of pairs of atoms between selected sets that are in the given distance
+*   `findPairs_one(select1, atoms, Rcut=2.0)`: Find pairs of atoms in one set that are within the given distance.
+*   `countTypeBonds(atoms, ofAtoms, rcut)`: Counts the number of atoms of given type in neighborhood.
+*   `findBondsTo(atoms, typ, ofAtoms, rcut)`: Finds Bonds To atoms Of selected Type typ. Returns list of atom indexes and vectors.
+*   `findNearest(p, ps, rcut=1e+9)`: Given point p and radius rcut searches nearest neighbor.
+*   `pairsNotShareNeigh(pairs, neighs)`: Selects pairs that do not share neighbors, useful to look at distant correlation (or lack of it).
 
-## Initialization and I/O
+### Geometry Manipulation
 
-### `__init__(fname=None, apos=None, atypes=None, enames=None, lvec=None, qs=None, Rs=None, bonds=None, ngs=None, bReadN=True)`
-- **Description:**  
-  Initializes an `AtomicSystem` instance. The system can be built from a file (for example, an `.xyz` or `.mol` file) or directly from provided arrays.
-- **Parameters:**
-  - `fname` (str): Filename to load (determines file format by extension).
-  - `apos` (ndarray): Array of atomic positions (N×3).
-  - `atypes` (array): Array of atomic numbers.
-  - `enames` (list/array): List of element symbols.
-  - `lvec` (ndarray): Lattice vectors (3×3 array).
-  - `qs` (array): Atomic charges.
-  - `Rs` (array): Atomic radii.
-  - `bonds` (array): Bonds (each bond is a tuple of two indices).
-  - `ngs` (any): Neighbors data (if available).
-  - `bReadN` (bool): Whether to use the first line as number-of-atoms.
-- **Example:**
-  ```python
-  from pyBall.atomicUtils import AtomicSystem
-  system = AtomicSystem(fname='molecule.xyz')
-  system.print()
-  ```
+*   `rotMatPCA(ps, bUnBorm=False)`: Calculates a rotation matrix based on principal component analysis (PCA) of a set of points.
+*   `makeRotMatAng(ang, ax=(0, 1))`: Generates a rotation matrix to perform rotations by given angle along selected axis.
+*   `makeRotMat(fw, up)`: Returns rotation matrix that maps selected vectors fw, up to the axis system.
+*   `makeRotMatAng2(fw, up, ang)`: Generates rotated forward and up vectors. Returns rotation matrix to the axis system.
+*   `rotmat_from_points(ps, ifw=None, iup=None, fw=None, up=None, _0=1)`: Creates rotation matrix from points in system.
+*   `mulpos(ps, rot)`: Transforms positions by rotation.
+*   `orient_vs(p0, fw, up, apos, trans=None)`: Orients the system so that fw and up point along system axis.
+*   `orient(i0, ip1, ip2, apos, _0=1, trans=None, bCopy=True)`: Orients the molecule by giving 3 indexes.
+*   `orientPCA(ps, perm=None)`: aligns system to it's principal axis.
+*   `groupToPair(p1, p2, group, up, up_by_cog=False)`: Group given atoms so it looks along selected positions
+*   `projectAlongBondDir(apos, i0, i1)`: Projects a set of positions along the direction of a specified bond.
 
-### `saveXYZ(fname, mode="w", blvec=True, comment="", ignore_es=None, bQs=True, other_lines=None)`
-- **Description:**  
-  Saves the current system in XYZ format. If lattice vectors (`lvec`) exist and `blvec` is True, they are prepended to the comment line.
-- **Parameters:**  
-  See signature.
-- **Example:**
-  ```python
-  system.saveXYZ("output.xyz", comment="My molecule")
-  ```
+### System Assembly
 
-### `toLines()`
-- **Description:**  
-  Returns the system as a list of strings (one per atom) in a human–readable format.
-- **Example:**
-  ```python
-  lines = system.toLines()
-  for line in lines:
-      print(line)
-  ```
+*   `replacePairs(pairs, atoms, group, up_vec=(np.array((0.0, 0.0, 0.0)), 1))`: replace atoms with a given group. Orient the groups properly
+*   `replace(atoms, found, to=17, bond_length=2.0, radial=0.0, prob=0.75)`: replace type of atoms which has the bond. This is typically use to replace groups of atoms with predefined bond lengths.
+*   `extract_marker_pairs(self, markerX, markerY, remove=True)`: Extracts pairs of atoms in this system based on element types.. This is usefull to attach more molecules to the system. It finds a pair of markers, based on this pair it defines new bond which will be built.
+*   `attach_group(self, G, i0, i1, iup, bond, up=(0., 0., 1.), _0=1, pre="A")`: Attaches an end-group (G) to the backbone (self) at a specified bond.
+*   `attach_group_by_marker(self, G, markerX="Xe", markerY="He", _0=1, pre="X")`: Attaches an end-group G to this backbone using marker atoms and connectivity.
 
-### `toXYZ(fout, comment="#comment", ignore_es=None, other_lines=None, bHeader=False)`
-- **Description:**  
-  Writes the system to an open file-like object in XYZ format.
-- **Example:**
-  ```python
-  with open("output.xyz", "w") as f:
-      system.toXYZ(f, comment="XYZ output")
-  ```
+### File I/O
 
----
+*   `saveAtoms(atoms, fname, xyz=True)`: Saves a list of atoms to a file.
+*   `writeToXYZ(fout, es, xyzs, qs=None, Rs=None, comment="#comment", bHeader=True, ignore_es=None, other_lines=None)`: Writes atomic data to an XYZ file format.
+*   `saveXYZ(es, xyzs, fname, qs=None, Rs=None, mode="w", comment="#comment", ignore_es=None, other_lines=None)`: Saves atomic data to an XYZ file.
+*   `makeMovie(fname, n, es, func)`: Creates a movie file by writing a series of XYZ frames.
+*   `loadAtomsNP(fname=None, fin=None, bReadN=False, nmax=10000, comments=None)`: Loads atomic data from a file.
+*   `load_xyz(fname=None, fin=None, bReadN=False, bReadComment=True, nmax=10000)`: Loads atomic data from an XYZ file.
+*   `loadMol(fname=None, fin=None, bReadN=False, nmax=10000)`: Loads atomic data and bond information from a MOL file.
+*   `loadMol2(fname, bReadN=True, bExitError=True)`: Loads atomic data and bond information from a MOL2 file.
+*   `readAtomsXYZ(fin, na)`: Reads atomic data (coordinates and element symbols) from an already opened XYZ file.
+*   `read_lammps_lvec(fin)`: Reads lattice vectors from LAMMPS trajectory.
+*   `readLammpsTrj(fname=None, fin=None, bReadN=False, nmax=100, selection=None)`: Reads LAMMPS trajectory file.
+*   `loadAtoms(name)`: Loads atomic data from file.
+*   `load_xyz_movie(fname)`: Loads a series of frames from an XYZ movie file.
+*   `psi4frags2string(enames, apos, frags=None)`: Converts atomic data and fragment information into a string format suitable for Psi4.
+*   `geomLines(apos, enames)`: Converts atomic data into a list of lines suitable for writing to a geometry file.
+*   `scan_xyz(fxyzin, callback=None, kwargs=None)`: Scans an XYZ file, applying a callback function to each frame.
 
-## Geometry and Orientation Methods
+### Auxiliary / Support
 
-### `print()`
-- **Description:**  
-  Prints a summary of the system to the console including index, atom type, element, and position. If `aux_labels` are available, they are also printed.
-- **Example:**
-  ```python
-  system.print()
-  ```
+*   `string_to_matrix(s, nx=3, ny=3, bExactSize=False)`: Converts string of numbers to matrix.
+*   `tryAverage(ip, apos, _0=1)`: Tries to average a set of positions, handling both single atom and multi-atom references.
+*   `makeVectros(apos, ip0, b1, b2, _0=1)`: Makes forward and upward vectors.
+*   `loadElementTypes(fname='ElementTypes.dat', bDict=False)`: Loads element type parameters from a file.
+*   `getVdWparams(iZs, etypes=None, fname='ElementTypes.dat')`: Gets Van der Waals parameters from a list of atomic numbers.
+*   `iz2enames(iZs)`: Converts a list of atomic numbers to a list of element names.
+*    `histR(ps, dbin=None, Rmax=None, weights=None)`: Calculates a radial distribution histogram of a set of points, optionally weighting each point.
+*   `build_frame(forward, up)`: Build an orthonormal frame (a 3×3 rotation matrix) from two non–colinear vectors.
+*   `find_attachment_neighbor(system, marker_index, markerX, markerY)`: Find the non-marker attachment neighbor of a marker atom.
+*   `compute_attachment_frame_from_indices(ps, iX, iY, system, bFlipFw=False, _0=1)`: Compute the attachment frame for a system from given indices.
+*   `loadCoefs(characters=['s'])`: Loads coefficients from files (specific to certain quantum chemistry outputs).
+*   `findCOG(ps, byBox=False)`: Calculates the center of geometry (COG) of a set of points.
+*   `convert_to_adjacency_list(graph)`: Converts an adjacency matrix graph representation to an adjacency list.
+*   `preprocess_graph(graph)`: Simplifies a graph by iteratively removing leaf nodes.
+*   `find_cycles(graph, max_length=7)`: Locates all cycles within a graph up to a specified length.
+*   `atoms_symmetrized(atypes, apos, lvec, qs=None, REQs=None, d=0.1)`: Symmetrizes atoms in a unit cell by replicating atoms near the cell boundaries.
 
-### `getValenceElectrons()`
-- **Description:**  
-  Returns an array with the number of valence electrons for each atom. This is determined by looking up the element in the elements dictionary.
-- **Example:**
-  ```python
-  valence = system.getValenceElectrons()
-  print(valence)
-  ```
+## Class `AtomicSystem`
 
-### `subtractValenceE(f0=-1.0, f=+1.0)`
-- **Description:**  
-  Adjusts the system’s atomic charges (`qs`) by subtracting a fraction of the valence electrons. This function multiplies the current charges by `f0` and then adds `f` times the valence electron count.
-- **Example:**
-  ```python
-  system.subtractValenceE(f0=-1.0, f=+1.0)
-  ```
+### Data Members
 
-### `findBonds(Rcut=3.0, RvdwCut=1.5, RvdWs=None, byRvdW=True)`
-- **Description:**  
-  Finds bonds in the system using inter–atomic distances and the sum of van der Waals radii (if available).
-- **Returns:**  
-  A tuple `(bonds, rs)` where `bonds` is a list of atom index pairs and `rs` contains bond lengths.
-- **Example:**
-  ```python
-  bonds, rs = system.findBonds()
-  system.printBonds()
-  ```
+*   `apos`: NumPy array of shape `(N, 3)` representing atom positions.
+*   `atypes`: NumPy array of shape `(N,)` representing atomic numbers.
+*   `enames`: List of element names corresponding to each atom.
+*   `qs`: NumPy array of shape `(N,)` representing atomic charges.
+*   `Rs`: NumPy array of shape `(N,)` representing atomic radii.
+*   `bonds`: NumPy array of shape `(M, 2)` representing bond indices.
+*   `ngs`: Neighbor list (as created by `neigh_bonds` or `neigh_atoms`).
+*   `lvec`: NumPy array of shape `(3, 3)` representing lattice vectors.
+*   `aux_labels`: List of auxiliary labels for each atom.
 
-### `findHBonds(Rb=1.5, Rh=2.5, angMax=60.0, typs1={"H"}, typs2={"O","N"}, bPrint=False, bHbase=False)`
-- **Description:**  
-  Finds hydrogen bonds in the system based on distance and angle criteria.
-- **Example:**
-  ```python
-  hbonds, hb_rs = system.findHBonds()
-  print("Found hydrogen bonds:", hbonds)
-  ```
+### Methods
 
-### `neighs(bBond=True)`
-- **Description:**  
-  Computes the neighbor list for each atom based on the bonds.
-- **Returns:**  
-  A list (or dictionary) of neighbor information.
-- **Example:**
-  ```python
-  neighbors = system.neighs()
-  print(neighbors)
-  ```
+### Construction & File I/O
 
-### `find_groups()`
-- **Description:**  
-  Identifies groups (clusters) of atoms that are bonded together. Typically used to identify functional groups.
-- **Example:**
-  ```python
-  groups = system.find_groups()
-  print(groups)
-  ```
+*   `__init__(self, fname=None, apos=None, atypes=None, enames=None, lvec=None, qs=None, Rs=None, bonds=None, ngs=None, bReadN=True)`: Initializes an `AtomicSystem` object, populating the object with data from a file or provided arrays. The init determines file type by the extention and automatically reads the data.
+*   `saveXYZ(self, fname, mode="w", blvec=True, comment="", ignore_es=None, bQs=True, other_lines=None)`: Saves the current atomic structure to an XYZ file, optionally including lattice vectors, comments, charges, and radii. The versatility is controled by arguments.
+*   `save_mol(self, fname, title="Avogadro")`: Saves atomic structure to MDL MOL V2000 format.
+*   `save_mol2(self, fname, comment="")`: Saves atomic structure to MOL2 format.
+*   `toLines(self)`: returns structure as lines of text.
+*   `toXYZ(self, fout, comment="#comment", ignore_es=None, other_lines=None, bHeader=False)`: Writes XYZ file to an opened file.
 
-### `select_by_ename(elist)`
-- **Description:**  
-  Returns a list of indices for atoms whose element name is in `elist`.
-- **Example:**
-  ```python
-  carbons = system.select_by_ename(["C"])
-  print("Carbon indices:", carbons)
-  ```
+### Topology Operations
 
-### `getNeighsOfType(selection, typ='N')`
-- **Description:**  
-  For each atom in `selection`, returns the neighbors of a specific element type (default: nitrogen).
-- **Example:**
-  ```python
-  n_neigh = system.getNeighsOfType([0,1,2], typ='N')
-  print(n_neigh)
-  ```
+*   `findBonds(self, Rcut=3.0, RvdwCut=1.5, RvdWs=None, byRvdW=True)`: Finds bonds based on distance criteria and stores them in the `bonds` attribute. The identified bonds are essential for various topology related analyzes such as ring finding or neighbor finding..
+*   `findHBonds(self, Rb=1.5, Rh=2.5, angMax=60.0, typs1={"H"}, typs2=neg_types_set, bPrint=False, bHbase=False)`: Finds hydro bonds based on distance and angle criteria and stores them in the `bonds` attribute. It returns hydroen bonding patters in the system.
+*   `findBondsOfAtom(self, ia, bAtom=False)`: Finds Bonds of given Atom
+*   `neighs(self, bBond=True)`: Creates a neighbor list based on bonds.
+*   `find_groups(self)`: find connected groups.
+*   `delete_atoms(self, lst)`: Delete selected atoms. It simply deletes selected atoms.
+*   `append_atoms(self, B, pre="A")`: Appends the atoms from another `AtomicSystem` to the current one. This can be used to append group of atoms to another. The groups can also be re-labeled.  It combines two atomic systems into one system
 
-### `select_by_neighType(neighs, typ='N', neighTyps={'H':(1,2)})`
-- **Description:**  
-  Selects atoms based on the type and number of neighboring atoms.
-- **Example:**
-  ```python
-  selected = system.select_by_neighType(system.neighs(), typ='N', neighTyps={'H': (1,2)})
-  print(selected)
-  ```
+### Property and Type Assignment
 
-### `findAngles(select=None, ngs=None)`
-- **Description:**  
-  Computes all bond angles (in radians) for atoms (optionally, a subset given by `select`) using neighbor information.
-- **Example:**
-  ```python
-  angles, angle_indices = system.findAngles()
-  print("Angles (radians):", angles)
-  ```
+*   `getValenceElectrons(self)`: gets vector of valence electrons.
+*   `subtractValenceE(self, f0=-1.0, f=+1.0 )`: adjusts atomic charges by subtrating valence electrons to given atoms.
+*   `preinitialize_atomic_properties(self)`: Preinitializes per-atom arrays (qs, Rs, aux_labels). It initializes the auxilary properies for the atoms. This function initializes default values and labels, ensuring required fields are properly filled in the class for downstream calculations.
+*   `check_atomic_properties(atomicSystem)`: Check atomic Properties in system. Ensures that all atoms have all properties assigned to them
 
-### `findDihedral(select=None, ngs=None, neighTyp={'H'})`
-- **Description:**  
-  Computes dihedral angles in the system.
-- **Example:**
-  ```python
-  dihedrals, indices = system.findDihedral()
-  print("Dihedral angles:", dihedrals)
-  ```
+### Selection
 
-### `findCOG(apos, byBox=False)`
-- **Description:**  
-  Returns the center-of-geometry (COG) for the provided positions. If `byBox` is True, it computes the COG based on the bounding box.
-- **Example:**
-  ```python
-  center = system.findCOG(system.apos)
-  print("Center of geometry:", center)
-  ```
+*   `select_by_ename(self, elist)`: selects atoms of given ename.
+*   `getNeighsOfType(self, selection, typ='N')`: select neighbors by type.
+*   `select_by_neighType(self, neighs, typ='N', neighTyps={'H': (1, 2)})`: select by neighbor type.
+*   `selectSubset(self, inds)`: create subset of system by indexes.
+*   `selectBondedCluster(self, s)`: Selects bonded atoms from system by giving seed set s
 
-### `projectAlongBondDir(i0, i1)`
-- **Description:**  
-  Projects all atom positions along the bond direction defined by atoms `i0` and `i1`.
-- **Example:**
-  ```python
-  projections = system.projectAlongBondDir(1, 2)
-  print(projections)
-  ```
+### Geometry
 
----
+*   `findAngles(self, select=None, ngs=None)`: Finds angle for system.
+*   `findDihedral(self, select=None, ngs=None, neighTyp={'H'})`: Finds dihedrals for system.
+*   `findCOG(self, apos, byBox=False)`: Calculates the center of geometry (COG)
+*   `projectAlongBondDir(self, i0, i1)`: Projects a set of positions along the direction of a specified bond.
+*   `makeRotMat(self, ip1, ip2, _0=1)`: Makes rotation matrix based on selected points for the system.
+*   `orient_mat(self, rot, p0=None, bCopy=False)`: Orient system to specific matrix and origin point p0.
+*   `orient_vs(self, fw, up, p0=None, trans=None, bCopy=False)`: Orients the `AtomicSystem` to a specified forward and up direction, relative to point p0.
+*   `orient(self, i0, b1, b2, _0=1, trans=None, bCopy=False)`: Orients the `AtomicSystem`, b1, b2 specify to Bonds.
+*   `orientPCA(self, perm=None)`: Orients the system by principal component analysis (PCA)
+*   `shift(self, vec, sel=None)`: shifts position.
+*   `rotate_ax(self, ang, ax=(0, 1), p0=None)`: rotates coordinates to given point
 
-## System Manipulation and Cloning
+### System Assembly
 
-### `store_bond_lengths()`
-- **Description:**  
-  Computes and stores the lengths of all bonds in the system. The results are stored in a dictionary (`bond_lengths`) as keys with a tuple of atom indices.
-- **Example:**
-  ```python
-  bond_lengths = system.store_bond_lengths()
-  print("Bond lengths:", bond_lengths)
-  ```
+*   `store_bond_lengths(self)`: Stores the bond lengths of all bonds in the system.
+*   `restore_bond_length(self, ij, L=None)`: Restores the bond length of a bond.
+*   `attach_group(self, G, i0, i1, iup, bond, up=(0., 0., 1.), _0=1, pre="A")`: Attaches an end-group (G) to the backbone (self) at a specified bond.
+*   `extract_marker_pairs(self, markerX, markerY, remove=True)`: Extracts pairs of atoms in this system based on element types..
+*   `attach_group_by_marker(self, G, markerX="Xe", markerY="He", _0=1, pre="X")`: Attaches an end-group G to this backbone using marker atoms and connectivity. The function enables joining the given fragment to selected marker, by marker are meant specifically designed types of atoms which are specified with markerX and markerY, which defines anchor point and direction of connection.
 
-### `restore_bond_length(ij, L=None)`
-- **Description:**  
-  Adjusts the position of atoms in a given bond (specified by tuple `ij`) so that the bond length is restored to a given value or to its original length.
-- **Example:**
-  ```python
-  system.restore_bond_length((0, 1))
-  ```
+### Periodic Boundary Conditions
 
-### `clonePBC(nPBC=(1,1,1))`
-- **Description:**  
-  Creates a periodic boundary condition (PBC) clone of the system. The system is replicated according to `nPBC` (number of copies in x, y, and z directions).
-- **Returns:**  
-  A new `AtomicSystem` instance with replicated positions and updated lattice vectors.
-- **Example:**
-  ```python
-  system_clone = system.clonePBC(nPBC=(2,2,1))
-  system_clone.print()
-  ```
+*   `clonePBC(self, nPBC=(1, 1, 1))`: Clones the `AtomicSystem` to create a periodic supercell.
+*   `symmetrized(self, d=0.1)`: Symmetrizes atoms in a unit cell by replicating atoms near the cell boundaries.
 
-### `symmetrized(d=0.1)`
-- **Description:**  
-  Returns a symmetrized version of the system by replicating atoms near the cell boundaries. Also returns weighting factors.
-- **Example:**
-  ```python
-  sym_sys, ws = system.symmetrized(d=0.1)
-  sym_sys.print()
-  ```
+### Other
 
-### `selectSubset(inds)`
-- **Description:**  
-  Returns a new `AtomicSystem` that is a subset of the current system containing only the atoms whose indices are in `inds`.
-- **Example:**
-  ```python
-  subset = system.selectSubset([0, 2, 4, 6])
-  subset.print()
-  ```
-
-### `selectBondedCluster(s)`
-- **Description:**  
-  Given a starting set `s` (as a set of atom indices), returns two lists: one of indices in the cluster and one of the remaining indices.
-- **Example:**
-  ```python
-  ins, outs = system.selectBondedCluster({0})
-  print("Cluster:", ins, "Outside:", outs)
-  ```
-
----
-
-## Attachment of End–Groups
-
-### `makeRotMat(ip1, ip2, _0=1)`
-- **Description:**  
-  Computes a rotation matrix from the forward vector (from atoms in `ip1`) and the up vector (from atoms in `ip2`).
-- **Example:**
-  ```python
-  rotmat = system.makeRotMat((1,2), (3,4))
-  print("Rotation matrix:\n", rotmat)
-  ```
-
-### `orient_mat(rot, p0=None, bCopy=False)`
-- **Description:**  
-  Applies a rotation matrix (`rot`) to the atomic positions. Optionally subtracts `p0` before rotation.
-- **Example:**
-  ```python
-  new_positions = system.orient_mat(rotmat, p0=system.apos[0], bCopy=True)
-  print(new_positions)
-  ```
-
-### `orient_vs(fw, up, p0=None, trans=None, bCopy=False)`
-- **Description:**  
-  Computes a rotation matrix from the forward (`fw`) and up (`up`) vectors, and applies it to the positions.
-- **Example:**
-  ```python
-  new_positions = system.orient_vs(fw=[1,0,0], up=[0,0,1], p0=system.apos[0])
-  print(new_positions)
-  ```
-
-### `orient(i0, b1, b2, _0=1, trans=None, bCopy=False)`
-- **Description:**  
-  A convenience function that computes the pivot position (`i0`), the forward vector (from indices in `b1`), and the up vector (from indices in `b2`) and then orients the system accordingly.
-- **Example:**
-  ```python
-  oriented_positions = system.orient(1, (1,2), (3,4), _0=1)
-  print(oriented_positions)
-  ```
-
-### `orientPCA(perm=None)`
-- **Description:**  
-  Reorients the system using Principal Component Analysis (PCA). An optional permutation `perm` can be provided.
-- **Example:**
-  ```python
-  system.orientPCA()
-  system.print()
-  ```
-
-### `shift(vec, sel=None)`
-- **Description:**  
-  Translates the system by the vector `vec`. If `sel` is provided, only those atoms are shifted.
-- **Example:**
-  ```python
-  system.shift([1.0, 0.0, 0.0])
-  ```
-
-### `rotate_ax(ang, ax=(0,1), p0=None)`
-- **Description:**  
-  Rotates the system by angle `ang` (in radians) about the specified axis. If `p0` is provided, rotation is performed about that point.
-- **Example:**
-  ```python
-  system.rotate_ax(np.pi/4, ax=(0,1))
-  ```
-
-### `delete_atoms(lst)`
-- **Description:**  
-  Deletes atoms specified by indices in `lst` from all per–atom arrays (positions, types, charges, etc.).
-- **Example:**
-  ```python
-  system.delete_atoms([0, 1])
-  system.print()
-  ```
-
-### `append_atoms(B, pre="A")`
-- **Description:**  
-  Appends the atoms from another `AtomicSystem` (B) to the current system. It also concatenates auxiliary labels using a given prefix.
-- **Example:**
-  ```python
-  # Assuming B is another AtomicSystem (e.g., an end–group)
-  system.append_atoms(B, pre="X")
-  system.print()
-  ```
-
-### `remap(lst)`
-- **Description:**  
-  Remaps a list of auxiliary labels to their new indices after operations such as attachment.
-- **Example:**
-  ```python
-  new_indices = system.remap(["X0", "X1", "X2"])
-  print("Remapped indices:", new_indices)
-  ```
-
-### `attach_group(G, i0, i1, iup, bond, up=(0.,0.,1.), _0=1, pre="A")`
-- **Description:**  
-  Attaches an end–group (`G`) to the backbone (self) at a specified bond. The procedure:
-  1. Orients the group in its own reference frame using:
-     - **Pivot (i0):** The atom that will be placed at the attachment site.
-     - **Forward (i1):** The atom used (together with the pivot) to define the forward vector. (This atom is then removed.)
-     - **Up (iup):** A pair of indices defining the up vector.
-  2. Computes a rotation matrix from the backbone bond (`bond`) and a provided backbone up vector (`up`).
-  3. Applies the rotation and translates the group so that its pivot coincides with the backbone’s attachment site.
-  4. Appends the group’s atoms to the backbone.
-- **Example:**
-  ```python
-  # For example, attach group G using:
-  #   Pivot: atom 1 in G,
-  #   Forward: bond from atom 1 to atom 12 (atom 12 is removed),
-  #   Up: defined by atoms (10, 11),
-  #   Backbone bond: (18,8),
-  #   and backbone up vector (0,0,1).
-  backbone.attach_group(G, i0=1, i1=12, iup=(10,11), bond=(18,8), up=(0,0,1), _0=1, pre="X")
-  backbone.print()
-  ```
-
----
-
-## Additional Utility Methods
-
-### `store_bond_lengths()` and `restore_bond_length(ij, L=None)`
-- **Description:**  
-  These functions compute and then restore (or adjust) bond lengths. They are useful when bond lengths have been perturbed by a transformation.
-- **Example:**
-  ```python
-  bond_lengths = system.store_bond_lengths()
-  system.restore_bond_length((0,1))
-  ```
-
----
-
-## Examples
-
-### 1. Loading a Molecule and Printing Its Data
-
-```python
-from pyBall.atomicUtils import AtomicSystem
-system = AtomicSystem(fname='molecule.xyz')
-system.print()
-```
-
-### 2. Cloning a System Under Periodic Boundary Conditions
-
-```python
-clone = system.clonePBC(nPBC=(2,2,1))
-clone.print()
-```
-
-### 3. Attaching an End–Group
-
-```python
-# Load backbone and end–group systems.
-backbone = AtomicSystem(fname='backbone.xyz')
-group = AtomicSystem(fname='endgroups/adenine.xyz')
-
-# (Assume per–atom properties are pre-initialized for both systems.)
-# Attach the group using the defined indices:
-# - Pivot atom in group: 1
-# - Forward defined by bond (1, 12) in group (atom 12 will be deleted)
-# - Up defined by atoms (10, 11) in group.
-# - Backbone bond used for attachment: (18,8)
-backbone.attach_group(group, i0=1, i1=12, iup=(10,11), bond=(18,8), up=(0,0,1), _0=1, pre="X")
-backbone.print()
-```
-
-### 4. Finding Bonds and Angles
-
-```python
-bonds, distances = system.findBonds(Rcut=3.0, RvdwCut=1.5)
-print("Bonds:", bonds)
-angles, angle_indices = system.findAngles()
-print("Angles (radians):", angles)
-```
-
+*   `remap(self, lst)`: remap atom's label to its index
