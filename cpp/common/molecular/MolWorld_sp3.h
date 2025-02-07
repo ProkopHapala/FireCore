@@ -1105,13 +1105,11 @@ void printPBCshifts(){
         int ifrag = builder.frags.size()-1;
         */
         int ifrag = insertMolecule( name, pivotPoint, pivotRot );
-        DEBUG
         //builder.printAtomConfs(false, true );
         builder.addCappingTypesByIz(1);   // Find all hydrogen cappings
         builder.tryAddConfsToAtoms( 0, -1 );
         //builder.printAtomConfs(false, true );
         builder.cleanPis();
-        DEBUG
         if(verbosity>2)builder.printAtomConfs(false);
         // ------- Load lattice vectros
         // sprintf(tmpstr, "%s.lvs", name );
@@ -1120,17 +1118,14 @@ void printPBCshifts(){
         //     builder.bPBC=true;
         //     readMatrix( tmpstr, 3, 3, (double*)&builder.lvec );
         // }
-        DEBUG
         bPBC=builder.bPBC;  //printf( "builder.bPBC %i \n", builder.bPBC );
         if( !bBondInitialized){
             if( bPBC ){ builder.autoBondsPBC(); }
             else      { builder.autoBonds();    }
             bBondInitialized=true;
         }
-        DEBUG
         if(bCheckInit)builder.checkNumberOfBonds( true, true );
         if(verbosity>2)builder.printBonds ();
-        DEBUG
         return ifrag;
     }
 
@@ -1282,31 +1277,20 @@ void printPBCshifts(){
     int buildMolecule_xyz( const char* xyz_name ){
         int ifrag = loadGeom( xyz_name );
         printf( "MolWorld_sp3::buildMolecule_xyz(%s) ifrag=%i \n", xyz_name, ifrag );
-        DEBUG
         int ia0=builder.frags[ifrag].atomRange.a;
         int ic0=builder.frags[ifrag].confRange.a;
-        DEBUG
         // TBD not sure that I got how charges are assigned in here...
         if( fAutoCharges>0 )builder.chargeByNeighbors( true, fAutoCharges, 10, 0.5 );
-        DEBUG
         if(substitute_name) substituteMolecule( substitute_name, isubs, Vec3dZ );
-        DEBUG
         if( builder.checkNeighsRepeat( true ) ){ printf( "ERROR: some atoms has repating neighbors => exit() \n"); exit(0); };
-        DEBUG
         builder.autoAllConfEPi  ( ia0 );
-        DEBUG
         builder.setPiLoop       ( ic0, -1, 10 );
-        DEBUG
         if(bEpairs)builder.addAllEpairsByPi( ia0=0 ); 
-        DEBUG
         //builder.printAtomConfs(false, false );
         //builder.printAtomConfs(false, true );
         // TBD here FF params are assigned already, but types are not yet found out...
-        DEBUG
         builder.assignAllBondParams();    //if(verbosity>1)
-        DEBUG
         builder.finishFragment(ifrag);    
-        DEBUG
 
         builder.printAtoms();
         builder.printBonds();

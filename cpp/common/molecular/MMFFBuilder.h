@@ -2928,6 +2928,7 @@ void assignTorsions( bool bNonPi=false, bool bNO=true ){
                 }else 
                 if (strncmp(buff, "@lvs", 4) == 0) {    // expected line like this:    @lvs 20.0 0.0 0.0    0.0 0.5 0.0   20.0 0.0 0.0
                     sscanf( buff+4, "%lf %lf %lf %lf %lf %lf %lf %lf %lf", &lvec.xx, &lvec.xy, &lvec.xz, &lvec.yx, &lvec.yy, &lvec.yz, &lvec.zx, &lvec.zy, &lvec.zz );
+                    //sscanf( buff+4, "%lf %lf %lf %lf %lf %lf %lf %lf %lf", &lvec.xx, &lvec.xy, &lvec.xz, &lvec.yx, &lvec.yy, &lvec.yz, &lvec.zx, &lvec.zy, &lvec.zz );
                     bPBC = true;
                 }
                 continue;

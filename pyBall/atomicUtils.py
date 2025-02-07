@@ -909,7 +909,7 @@ def loadMol(fname=None, fin=None, bReadN=False, nmax=10000 ):
     return xyzs,Zs,enames,qs,bonds
 
 
-def loadMol2(fname, bReadN=True):
+def loadMol2(fname, bReadN=True, bExitError=True):
     """
     Load an AtomicSystem from a .mol2 file.
     
@@ -971,42 +971,35 @@ def loadMol2(fname, bReadN=True):
     # however we won’t depend on that for reading.
     for i, line in enumerate(lines):
         line = line.strip()
-        if line.upper().startswith("@<TRIPOS>MOLECULE"):
-            in_molecule = True
-            in_atom = False
-            in_bond = False
-            continue
-        if in_molecule:
-            # If the line starts with '#' and contains 'lvs', parse lattice vectors.
-            if line.startswith('#') and 'lvs' in line:
+        if   len(line) == 0: continue
+        elif line[0] == '@':
+            lu = line.upper()
+            if lu.startswith("@<TRIPOS>MOLECULE"):
+                in_molecule = True
+                in_atom = False
+                in_bond = False
+            elif lu.startswith("@LVS"):
                 # For example: "# lvs   20.0 0.0 0.0   0.0 5.0 0.0    0.0 0.0 20.0"
-                parts = line.split()
-                try:
-                    idx = parts.index('lvs')
-                except ValueError:
-                    idx = -1
+                parts = lu[4:].split()
                 if idx >= 0 and len(parts) >= idx+10:
                     # Read next 9 numbers:
                     nums = [ float(parts[idx + j]) for j in range(1, 10) ]
                     lvec = np.array(nums).reshape(3,3)
-            # We assume the MOLECULE block ends when we hit the next section header.
-            if line.upper().startswith("@<TRIPOS>ATOM"):
+            elif lu.startswith("@<TRIPOS>ATOM"):
                 in_molecule = False
-                in_atom = True
-                continue
-        # --- Now, process the ATOM section.
-        if line.upper().startswith("@<TRIPOS>ATOM"):
-            in_atom = True
-            in_bond = False
-            continue
-        if line.upper().startswith("@<TRIPOS>BOND"):
-            in_atom = False
-            in_bond = True
+                in_atom     = True
+                in_bond     = False
+            elif lu.startswith("@<TRIPOS>ATOM"):
+                in_molecule = False
+                in_atom     = True
+                in_bond     = False
+            elif lu.startswith("@<TRIPOS>BOND"):
+                in_molecule = False
+                in_atom     = False
+                in_bond     = True
             continue
 
         if in_atom:
-            if line == "" or line.startswith("@<TRIPOS>"):
-                continue
             # Split the line.
             # Expected tokens:
             # 0: atom_id (integer)
@@ -1018,6 +1011,8 @@ def loadMol2(fname, bReadN=True):
             # 8: charge (optional)
             tokens = line.split()
             if len(tokens) < 6:
+                print(f"loadMol2({fname}) malformed atom-line({i}): ", line)
+                if bExitError: exit()
                 continue  # skip malformed lines
             try:
                 x = float(tokens[2])
@@ -1026,30 +1021,15 @@ def loadMol2(fname, bReadN=True):
             except:
                 continue
             apos.append( [x, y, z] )
-            
-            # Determine the element symbol.
-            # First try the atom_name (token[1]).
-            cand = tokens[1]
-            # Check if cand (or its first letter) is in the ELEMENT_DICT.
-            if cand in elements.ELEMENT_DICT:
-                elem = cand
-            else:
-                # Otherwise, use the atom_type (token[5]) and take the part before '.'
-                elem = tokens[5].split('.')[0]
-            enames.append( elem )
-            
-            # Determine atomic number.
-            try:
-                # Using the dictionary that maps element symbol to a tuple.
-                # For example: elements.ELEMENT_DICT["C"][0] should be 6.
-                znum = elements.ELEMENT_DICT[elem][0]
-            except KeyError:
-                # If not found, try to convert cand to an integer.
-                try:
-                    znum = int(cand)
-                except:
-                    znum = 0
+                        
+            ename  = tokens[1]
+            atype  = tokens[5].replace('.', '_')
+            ename2 = atype.split('_')[0]
+            znum = elements.ELEMENT_DICT[ename2][0]
+            enames.append( atype )
             atypes.append( znum )
+
+            print( "atom: ", i, atype, znum, ename2 )
             
             # Charge is the last token if present (some mol2 files provide it).
             if len(tokens) >= 9:
@@ -1062,8 +1042,6 @@ def loadMol2(fname, bReadN=True):
             qs.append( charge )
             
         if in_bond:
-            if line == "" or line.startswith("@<TRIPOS>"):
-                continue
             # Expected tokens for bonds:
             # 0: bond_id
             # 1: origin_atom_id
@@ -1071,6 +1049,8 @@ def loadMol2(fname, bReadN=True):
             # 3: bond_type (ignored here)
             tokens = line.split()
             if len(tokens) < 3:
+                print(f"loadMol2({fname}) malformed bond-line({i}): ", line)
+                if bExitError: exit()
                 continue
             try:
                 iatom = int(tokens[1]) - 1  # convert to zero-based index
@@ -1080,16 +1060,16 @@ def loadMol2(fname, bReadN=True):
                 continue
 
     # Convert lists to numpy arrays:
-    apos_np   = np.array(apos, dtype=float)
+    apos_np   = np.array(apos,   dtype=float)
     atypes_np = np.array(atypes, dtype=int)
-    qs_np     = np.array(qs, dtype=float)
+    qs_np     = np.array(qs,     dtype=float)
     enames_np = np.array(enames)
     #bonds_np  = np.array(bonds, dtype=int)
 
     # Create an AtomicSystem instance.
     #system = AtomicSystem(apos=apos_np, atypes=atypes_np, enames=enames_np, qs=qs_np, bonds=bonds, lvec=lvec)
     
-    return apos_np, atypes_np, enames_np, qs_np, bonds
+    return apos_np, atypes_np, enames_np, qs_np, bonds, lvec
 
 
 def readAtomsXYZ( fin, na ):
@@ -1541,7 +1521,7 @@ class AtomicSystem( ):
             if( 'mol' == ext ):
                 self.apos,self.atypes,self.enames,self.qs,self.bonds = loadMol(fname=fname, bReadN=bReadN )
             elif ( 'mol2' == ext ):
-                self.apos,self.atypes,self.enames,self.qs,self.bonds = loadMol2(fname=fname, bReadN=bReadN )
+                self.apos,self.atypes,self.enames,self.qs,self.bonds, self.lvec = loadMol2(fname=fname, bReadN=bReadN )
             elif ( 'xyz' == ext ):
                 self.apos,self.atypes,self.enames,self.qs, comment = load_xyz(fname=fname, bReadN=bReadN )
                 if comment is not None:
@@ -1675,11 +1655,9 @@ class AtomicSystem( ):
             n_atoms = len(self.apos)
             n_bonds = len(self.bonds) if self.bonds is not None else 0
             # MOL2 counts: atoms, bonds, (and 0 0 0 for other fields)
-            fout.write(f"{n_atoms} {n_bonds} 0 0 0\n")
-            if comment:
-                fout.write(comment + "\n")
-            else:
-                fout.write("\n")
+            fout.write(f"{n_atoms:>3d}{n_bonds:>3d} 0 0 0\n")
+            # Add required SMALL and GASTEIGER lines
+            fout.write("SMALL\nGASTEIGER\n\n")
             
             # Write the ATOM section.
             fout.write("@<TRIPOS>ATOM\n")
@@ -1687,15 +1665,15 @@ class AtomicSystem( ):
                 atom_id = i + 1  # MOL2 uses 1-based indexing.
                 ename = self.enames[i]
                 x, y, z = self.apos[i]
-                # For atom_type we simply reuse the element name; adjust as needed.
-                atom_type = ename
+                # Set proper atom type with hybridization state (e.g. C.3 for sp3 carbon)
+                #atom_type = f"{ename}.3" if ename in {'C', 'N'} else ename
+                atom_type    = ename
                 substructure = 1  # Default substructure id.
-                residue = "MOL"   # Default residue name.
+                residue = "UNL1"   # Standard residue name for unknown ligand.
                 # Use self.qs if available and has the correct length, otherwise 0.0.
                 charge = self.qs[i] if (self.qs is not None and len(self.qs) == n_atoms) else 0.0
                 # Format: atom_id, ename, x, y, z, atom_type, substructure, residue, charge.
-                fout.write("{:>7d} {:<8s} {:>9.4f} {:>9.4f} {:>9.4f} {:<8s} {:>3d} {:<8s} {:>8.4f}\n"
-                        .format(atom_id, ename, x, y, z, atom_type, substructure, residue, charge))
+                fout.write("{:>7d} {:<8s} {:>9.4f} {:>9.4f} {:>9.4f} {:<5s} {:>3d}  {:<7s} {:>10.4f}\n".format(atom_id, ename, x, y, z, atom_type, substructure, residue, charge))
             
             # Write the BOND section.
             fout.write("@<TRIPOS>BOND\n")
@@ -1706,8 +1684,8 @@ class AtomicSystem( ):
                     # Convert to 1-based indices.
                     a1 = bond[0] + 1
                     a2 = bond[1] + 1
-                    bond_type = "1"  # Default bond type.
-                    fout.write("{:>6d} {:>4d} {:>4d} {:<4s}\n".format(bond_id, a1, a2, bond_type))
+                    bond_type = 1
+                    fout.write("{:>6d} {:>5d} {:>5d} {:>4d}\n".format(bond_id, a1, a2, bond_type ))
 
     def toLines(self):
         #lines = []
@@ -1974,35 +1952,20 @@ class AtomicSystem( ):
         ValueError: if atomicSystem.atypes is not defined.
         """
         natoms = len(self.apos)
-        
-        if self.atypes is None:
-            raise ValueError("The system does not have atypes defined. "
-                            "Please initialize the system’s atypes (or enames) first.")
-        
-        # Initialize qs if not defined.
-        if self.qs is None:
-            # Assume atypes is an array of atomic numbers (e.g. 6 for carbon, etc.)
+        if self.atypes is None:   raise ValueError("The system does not have atypes defined. Please initialize the system’s atypes (or enames) first.")
+        if self.qs is None:   # Assume atypes is an array of atomic numbers (e.g. 6 for carbon, etc.)
             qs = []
-            for z in self.atypes:
-                # our ELEMENTS list is zero-based: for atomic number z, use ELEMENTS[z-1]
+            for z in self.atypes:   # our ELEMENTS list is zero-based: for atomic number z, use ELEMENTS[z-1]
                 qs.append(elements.ELEMENTS[z-1][9])
             self.qs = np.array(qs)
-        
-        # Initialize Rs if not defined.
-        if self.Rs is None:
-            # For each atom, use the vdW radius (column index 7)
+        if self.Rs is None:  # For each atom, use the vdW radius (column index 7)
             Rs = []
-            for z in self.atypes:
-                Rs.append(elements.ELEMENTS[z-1][7])
+            for z in self.atypes: Rs.append(elements.ELEMENTS[z-1][7])
             self.Rs = np.array(Rs)
-        
         # Initialize aux_labels if not defined.
-        if self.aux_labels is None:
-            self.aux_labels = [str(i) for i in range(natoms)]
-            
+        if self.aux_labels is None: self.aux_labels = [str(i) for i in range(natoms)]
         # (If you have other arrays you want to preinitialize, do it here.)
-        
-        print(f"Pre-initialized atomic properties for {natoms} atoms.")
+        #print(f"Pre-initialized atomic properties for {natoms} atoms.")
 
         
     def check_atomic_properties(atomicSystem):
@@ -2015,8 +1978,7 @@ class AtomicSystem( ):
         if (atomicSystem.qs is None or len(atomicSystem.qs) != natoms or
             atomicSystem.Rs is None or len(atomicSystem.Rs) != natoms or
             atomicSystem.aux_labels is None or len(atomicSystem.aux_labels) != natoms):
-            raise ValueError("Not all per-atom arrays are initialized correctly. "
-                            "Please call preinitialize_atomic_properties() on your system.")
+            raise ValueError("Not all per-atom arrays are initialized correctly. Please call preinitialize_atomic_properties() on your system.")
                             
                             
     # Example: modify append_atoms() to check rather than auto-initialize

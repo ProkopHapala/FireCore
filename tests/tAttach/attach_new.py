@@ -31,28 +31,32 @@ from pyBall.atomicUtils import AtomicSystem
 # (Make sure the free functions are imported as well.)
 
 # Load systems from mol2 files.
-backbone = AtomicSystem(fname='B2.mol2')
-endgroup = AtomicSystem(fname='G1.mol2')
+#backbone = AtomicSystem(fname='B2.mol2')
+#endgroup = AtomicSystem(fname='G1.mol2')
+
+backbone  = AtomicSystem(fname='./backbones/PNA_sat-cis-.mol2')
+endgroup1 = AtomicSystem(fname='./endgroups/guanine-.mol2')
+endgroup2 = AtomicSystem(fname='./endgroups/cytosine-.mol2')
 
 backbone.preinitialize_atomic_properties()
-endgroup.preinitialize_atomic_properties()
+endgroup1.preinitialize_atomic_properties()
+endgroup2.preinitialize_atomic_properties()
 
-print("Backbone:")
-backbone.print()
-print("Endgroup:")
-endgroup.print()
+print("Backbone:"); backbone.print()
+#print("Endgroup:"); endgroup.print()
 
 # Attach endgroup copies to the backbone using marker elements.
 # Here, the backbone is expected to contain marker atoms with element "Se" (attachment)
 # and "F" (up direction), and the endgroup must contain exactly one such pair.
 #backbone.attach_group_by_marker(endgroup, markerX="Se", markerY="F", forward_default=np.array([1.0, 0.0, 0.0]), _0=1, pre="X")
 
-backbone.attach_group_by_marker(endgroup, markerX="Se", markerY="F", _0=1, pre="X")
+backbone.attach_group_by_marker(endgroup1, markerX="S", markerY="F",  _0=1, pre="X")
+backbone.attach_group_by_marker(endgroup2, markerX="Se" , markerY="Cl", _0=1, pre="X")
 
 # Save the modified backbone.
 
 backbone.saveXYZ( fname="backbone_with_endgroup.xyz" )
 
 backbone.findBonds()
-#backbone.save_mol2('backbone_with_endgroup.mol2')
-backbone.save_mol('backbone_with_endgroup.mol')
+backbone.save_mol2('backbone_with_endgroup.mol2')
+#backbone.save_mol('backbone_with_endgroup.mol')

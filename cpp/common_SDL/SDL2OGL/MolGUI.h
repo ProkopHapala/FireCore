@@ -1338,7 +1338,8 @@ void MolGUI::draw(){
     //printf( "bViewSubstrate %i ogl_isosurf %i W->bGridFF %i \n", bViewSubstrate, ogl_isosurf, W->bGridFF );
 
     if(bViewCell){ 
-        Draw3D::drawTriclinicBox( W->builder.lvec, Vec3d{0.0,0.0,0.0}, Vec3d{1.0,1.0,1.0} ); 
+        //Draw3D::drawTriclinicBox( W->builder.lvec, Vec3d{0.0,0.0,0.0}, Vec3d{1.0,1.0,1.0} ); 
+        Draw3D::drawTriclinicBoxT( W->builder.lvec, Vec3d{0.0,0.0,0.0}, Vec3d{1.0,1.0,1.0} ); 
     }
 
     if( bViewSubstrate ){
