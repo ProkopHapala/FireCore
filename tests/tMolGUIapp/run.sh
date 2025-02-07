@@ -48,6 +48,7 @@ fi
 #./$name -x tAttach/backbones/napht_pyrol_4x--.mol2
 #./$name -x tAttach/backbones/PNA_sat-poly.mol2
 #./$name -x tAttach/PNA_CG_poly-.mol2
+./$name -x tAttach/TNA_CG_poly.mol2
 
 
 
@@ -299,7 +300,7 @@ fi
 #./$name  -x BB.HNH-h.NHO-hh -b BB.HNH-h.NHO-hh.hbonds -prelat 5,10000 -0.5,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0 -latscan 10,20 0.0,0.5,0.0,0.0,0.0,0.0,0.0,0.0,0.0
 
 
-./$name -x tAttach/PNA_CG_poly-.mol2 -g common_resources/xyz/NaCl_8x8_L3
+#./$name -x tAttach/PNA_CG_poly-.mol2 -g common_resources/xyz/NaCl_8x8_L3
 
 
 
