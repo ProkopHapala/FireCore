@@ -723,7 +723,7 @@ class Builder{  public:
     int insertAtom(Atom& atom ){ int ia=atoms.size(); atom.id=ia; atoms.push_back(atom); return ia; }
 
     int insertAtom( int ityp, const Vec3d& pos, const Quat4d* REQ=0, int npi=-1, int ne=0 ){
-        printf( "insertAtom ityp %i pos( %g %g %g ) npi=%i ne=%i \n", ityp, pos.x, pos.y, pos.z, npi, ne );
+        //printf( "insertAtom ityp %i pos( %g %g %g ) npi=%i ne=%i \n", ityp, pos.x, pos.y, pos.z, npi, ne );
         Quat4d REQloc;
         if(REQ==0)
             if(params){ 
@@ -735,7 +735,7 @@ class Builder{  public:
             }else{ REQ=&defaultREQ; }
         int iconf=-1;
         if(npi>=0){ if( !capping_types.contains(ityp)){ 
-            printf( "insertAtom npi>0 => make Conf \n" );
+            //printf( "insertAtom npi>0 => make Conf \n" );
             iconf=confs.size();
             confs.push_back( AtomConf(atoms.size(), npi, ne ) );
         }}
@@ -766,7 +766,7 @@ class Builder{  public:
 
     bool tryAddBondToAtomConf( int ib, int ia, bool bCheck ){
         int ic = atoms[ia].iconf;
-        printf( "MM::Builder.addBondToAtomConf ia %i ib %i ic %i \n", ia, ib, ic );
+        //printf( "MM::Builder.addBondToAtomConf ia %i ib %i ic %i \n", ia, ib, ic );
         if(ic>=0){
             if(bCheck){
                 int ing = confs[ic].findNeigh(ib);
@@ -776,11 +776,12 @@ class Builder{  public:
                     return true; // neighbor already present in conf
                 }
             }
-            printf( "MM::Builder.addBondToAtomConf ia %i ib %i ic %i \n", ia, ib, ic );
+            //printf( "MM::Builder.addBondToAtomConf ia %i ib %i ic %i \n", ia, ib, ic );
             bool success = confs[ic].addBond(ib);
-            printf( "MM::Builder.addBondToAtomConf ia %i ib %i success \n", ia, ib, success );
+            //printf( "MM::Builder.addBondToAtomConf ia %i ib %i success %i \n", ia, ib, success );
             if(!success){
-                printf("ERROR: in confs[%i].addBond(%i) => exit \n", ic, ib); 
+                printf( "MM::Builder.addBondToAtomConf ia %i ib %i success %i \n", ia, ib, success );
+                //printf("ERROR: in confs[%i].addBond(%i) => exit \n", ic, ib); 
                 confs[ic].print();
                 int it1 = atoms[bonds[ib].atoms.a].type;
                 int it2 = atoms[bonds[ib].atoms.b].type;
@@ -2933,7 +2934,7 @@ void assignTorsions( bool bNonPi=false, bool bNO=true ){
                 }
                 continue;
             }
-            printf( "---Builder::load_mol2() [%i] a%i b%i %s", iline, inAtom, inBond, buff);
+            //printf( "---Builder::load_mol2() [%i] a%i b%i %s", iline, inAtom, inBond, buff);
             
             // Process atom lines
             if (inAtom) {
@@ -2973,9 +2974,13 @@ void assignTorsions( bool bNonPi=false, bool bNO=true ){
                 auto it = atomTypeDict->find(atom_type);
 
                 if(it == atomTypeDict->end() ){ // if we cannot fined specific type we try to find just the element  like 'S_3' we try to fine 'S'
-                    printf( "Builder::load_mol2() [%i] cannot find type `%s` find element `%s` instead \n", atom_type, atom_name );
-                    *dot = '\0';
+                    printf( "Builder::load_mol2() [%i] cannot find type `%s` find element `%s` instead \n", iline, atom_type, atom_name );
+                    if(dot) { *dot = '\0'; }else{
+                        char* dot = strchr(atom_type, '_');
+                        if(dot) { *dot = '\0'; }
+                    }
                     it = atomTypeDict->find(atom_type);
+                    printf( "Builder::load_mol2() [%i] atom_type `%s` atom_name: `%s` \n", iline, atom_type, atom_name );
                 }
 
                 if(it != atomTypeDict->end()){
