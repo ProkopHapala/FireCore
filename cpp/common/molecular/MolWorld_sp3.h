@@ -2664,7 +2664,10 @@ int saveXYZ(const char* fname, const char* comment="#comment", bool bNodeOnly=fa
  * @param selection An array of indices representing the atoms in the selection.
  * @param d The displacement vector to shift the atoms by.
  */
-void shift_atoms ( int n, int* selection, Vec3d d                          ){ move  ( n, selection, ff.apos, d           ); };
+void shift_atoms ( int n, int* selection, Vec3d d ){ move  ( n, selection, ffl.apos, d ); updateBuilderFromFF(true, false); };
+void shift_atoms (                        Vec3d d ){ printf("shift_atoms() d=(%g,%g,%g) \n", d.x, d.y, d.z); move  ( ffl.natoms, ffl.apos, d );   updateBuilderFromFF(true, false); };
+
+
 /**
  * Rotates the atoms specified by the given selection around the specified axis ax by the specified angle phi.
  *
@@ -2674,7 +2677,7 @@ void shift_atoms ( int n, int* selection, Vec3d d                          ){ mo
  * @param ax The axis of rotation.
  * @param phi The angle of rotation in radians.
  */
-void rotate_atoms( int n, int* selection, Vec3d p0, Vec3d ax, double phi   ){ rotate( n, selection, ff.apos, p0, ax, phi ); };
+void rotate_atoms( int n, int* selection, Vec3d p0, Vec3d ax, double phi   ){ rotate( n, selection, ffl.apos, p0, ax, phi ); updateBuilderFromFF(true, false); };
 /**
  * Shifts the atoms in the given selection by a specified distance l along the line connecting the atoms with indices ia0 and ia1.
  *
@@ -2684,7 +2687,7 @@ void rotate_atoms( int n, int* selection, Vec3d p0, Vec3d ax, double phi   ){ ro
  * @param ia1       The index of the second atom
  * @param l         The distance to shift the atoms by.
  */
-void shift_atoms ( int n, int* selection, int ia0, int ia1, double l              ){ Vec3d d=(ff.apos[ia1]-ff.apos[ia0]).normalized()*l; move( n, selection, ff.apos, d); };
+void shift_atoms ( int n, int* selection, int ia0, int ia1, double l              ){ Vec3d d=(ffl.apos[ia1]-ffl.apos[ia0]).normalized()*l; move( n, selection, ff.apos, d); updateBuilderFromFF(true, false); };
 /**
  * Rotates the specified atoms in the selection around an axis defined by the atoms with indices iax0 and iax1 by the specified angle phi.
  *
@@ -2695,7 +2698,7 @@ void shift_atoms ( int n, int* selection, int ia0, int ia1, double l            
  * @param iax1 The index of the ending atom of the rotation axis.
  * @param phi The angle of rotation in radians.
  */
-void rotate_atoms( int n, int* selection, int ia0, int iax0, int iax1, double phi ){ rotate( n, selection, ff.apos, ff.apos[ia0], (ff.apos[iax1]-ff.apos[iax0]).normalized(), phi ); };
+void rotate_atoms( int n, int* selection, int ia0, int iax0, int iax1, double phi ){ rotate( n, selection, ffl.apos, ffl.apos[ia0], (ffl.apos[iax1]-ffl.apos[iax0]).normalized(), phi ); updateBuilderFromFF(true, false); };
 
 /**
  * Splits the selection at a specified bond index.
