@@ -166,8 +166,7 @@ struct AtomConf{
     inline void init0(){ for(int i=0; i<N_NEIGH_MAX; i++)neighs[i]=-1; nbond=0; clearNonBond(); }
 
     //void print()const{ printf( " AtomConf{ ia %i, n %i nb %i np %i ne %i nH %i (%i,%i,%i,%i) }", iatom, n, nbond, npi, ne, nH , neighs[0],neighs[1],neighs[2],neighs[3] ); }
-    void print()const{ printf( " AtomConf{ia %i, n,nb,np,ne,nH(%i,%i,%i,%i,%i) [%i,%i,%i,%i]}", iatom, n,nbond,npi,ne,nH, neighs[0],neighs[1],neighs[2],neighs[3] ); }
-
+    inline void print()const{ printf( " AtomConf{ia %i, n,nb,np,ne,nH(%i,%i,%i,%i,%i) [%i,%i,%i,%i]}", iatom, n,nbond,npi,ne,nH, neighs[0],neighs[1],neighs[2],neighs[3] ); }
 
     inline bool checkNeighsRepeat()const{
         for(int i=0; i<N_NEIGH_MAX; i++){
@@ -780,12 +779,14 @@ class Builder{  public:
             bool success = confs[ic].addBond(ib);
             //printf( "MM::Builder.addBondToAtomConf ia %i ib %i success %i \n", ia, ib, success );
             if(!success){
-                printf( "MM::Builder.addBondToAtomConf ia %i ib %i success %i \n", ia, ib, success );
+                printf( "MM::Builder.addBondToAtomConf ia %i confs[%i].addBond(%i) success=%i (failed) \n", ia, ic, ib, success );
                 //printf("ERROR: in confs[%i].addBond(%i) => exit \n", ic, ib); 
-                confs[ic].print();
+                printf("confs[%i]: ", ic ); confs[ic].print(); printf("\n");
+                printBondsOfAtom( ia );
                 int it1 = atoms[bonds[ib].atoms.a].type;
                 int it2 = atoms[bonds[ib].atoms.b].type;
-                printf( "\nbond(%i-%i) %s-%s \n", bonds[ib].atoms.a, bonds[ib].atoms.b, params->atypes[it1].name, params->atypes[it2].name );
+                printf( "bond(%i-%i) %s-%s \n", bonds[ib].atoms.a, bonds[ib].atoms.b, params->atypes[it1].name, params->atypes[it2].name );
+                printBonds();
                 exit(0); 
             }
             //int order = bonds[ib].type;
@@ -1491,9 +1492,13 @@ class Builder{  public:
     }
 
     void loadNeighbors(int ia, int nb, const int* neighs, Vec3d* hs ){
+        if( nb>N_NEIGH_MAX   ){ printf("ERROR: loadNeighbors: nb %i > N_NEIGH_MAX %i \n", nb, N_NEIGH_MAX ); exit(0); }
+        //if( ia>=atoms.size() ){ printf("ERROR: loadNeighbors: ia %i >= atoms.size() %i \n", ia, atoms.size() ); exit(0); }
         for(int i=0;i<nb;i++){
             int ib = neighs[i];
+            if(ib<0 || ib>=bonds.size()){ printf("ERROR: loadNeighbors: ib %i >= nbonds.size() %i \n", ib, bonds.size() ); exit(0); }
             int ja = bonds[ib].getNeighborAtom(ia);
+            if(ja<0 || ja>=atoms.size()){ printf("ERROR: loadNeighbors: ja %i >= atoms.size() %i \n", ja, atoms.size() ); exit(0); }
             hs[i]  = atoms[ja].pos - atoms[ia].pos;
             hs[i].normalize();
         }
@@ -2230,7 +2235,42 @@ void assignTorsions( bool bNonPi=false, bool bNO=true ){
 
     // =============== Configurations
 
-    int checkBond2Conf(bool bPrint)const{
+    bool checkConfValid( int ia, bool bPrint=true )const{
+        int natoms = atoms.size();
+        int nbonds = bonds.size();
+        int ic     = atoms[ia].iconf;
+        if( ic<0 ) return true;
+        if( ic>=confs.size() ){  if( bPrint ){ printf( "checkConfValid(ia=%i) ic(%i) >= confs.size(%li)\n", ia, ic, confs.size() ); } return false; }
+        const AtomConf& conf = confs[ic];
+        int nbond = conf.nbond;
+        if( nbond>N_NEIGH_MAX ){  if( bPrint ){ printf( "checkConfValid(ia=%i|ic=%i) nbond(%i) > N_NEIGH_MAX(%i)\n", ia, ic, nbond, N_NEIGH_MAX ); } return false; }
+        for( int i=0; i<nbond; i++){
+            int ib = conf.neighs[i];
+            if( (ib<0) || (ib>=nbonds) ){  if( bPrint ){ printf( "checkConfValid(ia=%i|ic=%i) bond[%i] ib(%i) >= bonds.size(%i)\n", ia, ic, i, ib, nbonds ); } return false; }
+            Vec2i b = bonds[ib].atoms;
+            if( (b.i>=natoms) || (b.j>=natoms) ){  if( bPrint ){ printf( "checkConfValid(ia=%i|ic=%i) bond[%i] atoms(%i,%i) >= atoms.size(%i)\n", ia, ic, i, ib, b.i, b.j, natoms ); } return false; }
+            if( (b.i!=ia) && (b.j!=ia) ){  if( bPrint ){ printf( "checkConfValid(ia=%i|ic=%i) bond[%i] ib(%i)  none of atoms b(i=%i,j=%i) != ia(%i)\n", ia, ic, i, ib, b.i, b.j, ia ); } return false; }
+        }
+        return true;
+    }
+
+    int checkConfsValid( bool bExit=true, bool bPrint=true, bool bPrintArraysExit=true )const{
+        int nbad = 0;
+        for(int ia=0;ia<atoms.size(); ia++){ if( !checkConfValid( ia, bPrint ) ) nbad++; }
+        if( nbad>0) {
+            if( bPrint ){ printf( "checkConfsValid() failed: nbad(%i)\n", nbad ); }
+            if( bExit  ){ 
+                if( bPrintArraysExit ){
+                    printAtomConfs();
+                    printBonds();
+                }
+                exit(0); 
+            }
+        }
+        return nbad;
+    }
+
+    int checkBond2Conf(bool bPrint=true)const{
         for(int i=0;i<bonds.size(); i++){
             //printf("checkBond2Conf b[%i]\n", i );
             const Bond& b = bonds[i];
@@ -2587,6 +2627,19 @@ void assignTorsions( bool bNonPi=false, bool bNO=true ){
         }
     }
 
+    inline void printBondsOfAtom( int ia ){
+        int ic = atoms[ia].iconf;
+        if(ic<0){printf("printBondsOfAtom(%i): atom has no conf (capping) \n", ia); return; };
+        const AtomConf& c = confs[ic];
+        printf("printBondsOfAtom(%i): ", ia);
+        for(int i=0; i<c.nbond; i++){
+            int ib = c.neighs[i];
+            Vec2i b = bonds[ib].atoms;
+            printf( "(%i|%i,%i) ", ib, b.i, b.j );
+        }
+        printf("\n");
+    }
+
     void printAtomConfs( bool bOmmitCap=true, bool bNeighs=false )const{
         printf(" # MM::Builder.printAtomConfs(na=%i,nc=%i) \n", atoms.size(), confs.size() );
         for(int i=0; i<atoms.size(); i++){ if( bOmmitCap && (atoms[i].iconf==-1) )continue;  if(bNeighs){printAtomNeighs(i);}else{printAtomConf(i);} puts(""); }
@@ -2930,6 +2983,7 @@ void assignTorsions( bool bNonPi=false, bool bNO=true ){
                 if (strncmp(buff, "@lvs", 4) == 0) {    // expected line like this:    @lvs 20.0 0.0 0.0    0.0 0.5 0.0   20.0 0.0 0.0
                     sscanf( buff+4, "%lf %lf %lf %lf %lf %lf %lf %lf %lf", &lvec.xx, &lvec.xy, &lvec.xz, &lvec.yx, &lvec.yy, &lvec.yz, &lvec.zx, &lvec.zy, &lvec.zz );
                     //sscanf( buff+4, "%lf %lf %lf %lf %lf %lf %lf %lf %lf", &lvec.xx, &lvec.xy, &lvec.xz, &lvec.yx, &lvec.yy, &lvec.yz, &lvec.zx, &lvec.zy, &lvec.zz );
+                    printf("Builder::load_mol2() lvec loaded\n"); printMat(lvec);
                     bPBC = true;
                 }
                 continue;
@@ -2951,18 +3005,6 @@ void assignTorsions( bool bNonPi=false, bool bNO=true ){
                 sscanf(buff, "%*d %*s %*lf %*lf %*lf %*s %*s %*s %lf", &charge);
                 printf( "Builder::load_mol2() [%i] atom_id=%d atom_name=%s pos=(%lf %lf %lf) atom_type=%s charge=%lf\n", iline, atom_id, atom_name, pos.x, pos.y, pos.z, atom_type, charge );
                 
-                // // Get element from atom_type (before the dot)
-                // char element[16] = {0};
-                // char* dot = strchr(atom_type, '.');
-                // if(dot) {
-                //     size_t len = dot - atom_type;
-                //     if(len > sizeof(element)-1) len = sizeof(element)-1;
-                //     strncpy(element, atom_type, len);
-                //     element[len] = '\0';
-                // } else {
-                //     strncpy(element, atom_type, sizeof(element)-1);
-                // }
-
                 // substitute character '.' with '_' in atom_type
                 char* dot = strchr(atom_type, '.'); if(dot) { *dot = '_'; }
 
@@ -3012,7 +3054,7 @@ void assignTorsions( bool bNonPi=false, bool bNO=true ){
                 bond.atoms.j = a2 - 1;
                 bond.type = bond_type;
                 //bonds.push_back(bond);
-                int ib = insertBond( bond );
+                int ib = insertBond( bond, true );
                 if( bPBC ){ shortesPBCbond( ib ); }
             }
             iline++;

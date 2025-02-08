@@ -219,7 +219,7 @@ class MolWorld_sp3 : public SolverInterface { public:
     bool bAnimManipulation = false; // 20
     bool bNonBondNeighs    = false; // 21
     bool bWhichAtomNotConv = false; // 22
-    bool bCheckInit        = false; // 23
+    bool bCheckInit        = true; // 23
     bool bBondInitialized  = false; // 24
 
     Vec3d anim_vec;
@@ -1124,6 +1124,7 @@ void printPBCshifts(){
             else      { builder.autoBonds();    }
             bBondInitialized=true;
         }
+        builder.checkConfsValid( );
         if(bCheckInit)builder.checkNumberOfBonds( true, true );
         if(verbosity>2)builder.printBonds ();
         return ifrag;
@@ -1286,6 +1287,8 @@ void printPBCshifts(){
         builder.autoAllConfEPi  ( ia0 );
         builder.setPiLoop       ( ic0, -1, 10 );
         if(bEpairs)builder.addAllEpairsByPi( ia0=0 ); 
+
+        builder.checkConfsValid( );
         //builder.printAtomConfs(false, false );
         //builder.printAtomConfs(false, true );
         // TBD here FF params are assigned already, but types are not yet found out...

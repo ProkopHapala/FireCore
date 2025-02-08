@@ -67,7 +67,7 @@
     funcs["-nogridff"]={0,[&](const char** ss){ W->bGridFF=false; }}; // AutoCharge
     funcs["-group"]={3,[&](const char** ss){  }};
 
-    funcs["-nPBC"]={1,[&](const char** ss){ sscanf( ss[0],"%lf,%lf,%lf", &(W->nPBC.x),&(W->nPBC.y),&(W->nPBC.z) ); }};
+    funcs["-nPBC"]={1,[&](const char** ss){ sscanf( ss[0],"%i,%i,%i", &(W->nPBC.x),&(W->nPBC.y),&(W->nPBC.z) ); }};
     
 
     // ==== funcs2 are executed after initialization MolWorld_sp3 ( therefore may have no effect on initialization process )
