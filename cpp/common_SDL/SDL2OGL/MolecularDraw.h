@@ -5,7 +5,8 @@
 #include "molecular_utils.h"
 
 void colorRB( float f ){ glColor3f( 0.5+f, 0.5, 0.5-f ); }
-void colorRBH( float f, float h ){ glColor3f( 0.5+f, 0.5+h, 0.5-f ); }
+//void colorRBH( float f, float h ){ glColor3f( 0.5+f, 0.5+h, 0.5-f ); }
+void colorRBH( float f, float h ){ glColor3f( 0.5+f+h, 0.5+h, 0.5-f+h ); }
 //void colorRB( float f ){ glColor3f( 0.5+f, 0.5+f, 0.5+f ); }
 void colorBW( float f ){ glColor3f( 0.5-f, 0.5-f, 0.5-f ); }
 
@@ -285,8 +286,6 @@ int renderSubstrate_new( const GridFF& gff, Vec2d zrange, double isoval, Quat4d 
 
             //colorRB( el1*sclr ); glNormal3f(f1.x,f1.y,f1.z); glVertex3f(p1.x,p1.y,p1.z); nvert++;
             //colorRB( el2*sclr ); glNormal3f(f2.x,f2.y,f2.z); glVertex3f(p2.x,p2.y,p2.z); nvert++;
-
-
 
             colorRBH( el1*sclr, sin(p1.z*1.0)*0.1 ); glNormal3f(f1.x,f1.y,f1.z); glVertex3f(p1.x,p1.y,p1.z); nvert++;
             colorRBH( el2*sclr, sin(p2.z*1.0)*0.1 ); glNormal3f(f2.x,f2.y,f2.z); glVertex3f(p2.x,p2.y,p2.z); nvert++;

@@ -2304,11 +2304,27 @@ class AtomicSystem( ):
         G_copy.apos = (R @ (G_copy.apos - A2).T).T + X_b
         
         # 4. Merge the transformed geometries
-        self.merge_geometries(G_copy, group_inds[0], backbone_inds[0] )
+        #self.merge_geometries(G_copy, group_inds[0], backbone_inds[0] )
         
         # 5. Remove marker atoms from the backbone
-        if backbone_inds:
-            to_remove = set([ix for ix,_,_ in backbone_inds] + [iy for _,iy,_ in backbone_inds])
+
+        gind = group_inds[0]
+        bind = backbone_inds[0]
+
+        for ii, bind in enumerate(backbone_inds):
+
+            bind = self.find_marker_pairs(markerX, markerY)[0]
+
+            # 2. Get orientation transformation
+            R, X_b, A2 = self.compute_group_orientation(G, bind, gind, _0)
+            
+            # 3. Make a deep copy of G and transform it
+            G_copy = copy.deepcopy(G)
+            G_copy.apos = (R @ (G_copy.apos - A2).T).T + X_b
+
+            self.merge_geometries(G_copy, gind, bind )
+            to_remove = set( [bind[0], bind[1]] )
+
             old_to_new = {}
             new_idx = 0
             for old_idx in range(len(self.apos)):
