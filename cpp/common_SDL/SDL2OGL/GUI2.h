@@ -40,6 +40,8 @@ using GUI2Rect2f = GUI2Rect2T<float>;
 extern int GUI2_fontTex;
 
 class GUI2Node{
+    public:
+        enum ExpandMode {UP_RIGHT, DOWN_LEFT, DOWN_RIGHT, UP_LEFT};
     private:
         // Input
         const bool process_input = false;
@@ -52,14 +54,16 @@ class GUI2Node{
         Vec2i _pos;
         Vec2i _size;
         Vec2i _minSize;
+        ExpandMode _expandMode = UP_RIGHT;
 
         // if this changes, then `children[i].rect` needs to be updated -> update_children_rects()
         GUI2Rect2i _rect;
 
         // if this changes, then `self.minSize` and `newChild.rect` needs to be updated
         std::vector<GUI2Node*> children;
-        const bool leaf_node = false; // if leaf_node == true, then this node cannot have children
-        GUI2Node* parent = nullptr;
+        GUI2Node* _parent = nullptr;
+
+        bool _active = true;
 
         void set_minSize( Vec2i minSize );
         void update_rect(); // call parent->update_child_rect(this)
@@ -82,6 +86,8 @@ class GUI2Node{
         virtual void on_mouse_click();
         virtual void on_mouse_drag( const SDL_Event& event );
 
+        virtual void draw_self();
+
     public:
         bool is_mouse_over();
         bool is_mouse_down();
@@ -90,8 +96,7 @@ class GUI2Node{
 
         // constructors
         GUI2Node( GUI2Rect2f anchors, Vec2i pos, Vec2i size );
-        GUI2Node( GUI2Rect2f anchors, Vec2i pos, Vec2i size, bool leaf_node );
-        GUI2Node( GUI2Rect2f anchors, Vec2i pos, Vec2i size, bool leaf_node, bool process_input );
+        GUI2Node( GUI2Rect2f anchors, Vec2i pos, Vec2i size, bool process_input );
 
         // getters
         GUI2Rect2f anchors();
@@ -99,27 +104,33 @@ class GUI2Node{
         Vec2i size();
         Vec2i minSize();
         GUI2Rect2i rect();
+        GUI2Node* parent();
+        bool active();
+        ExpandMode expandMode();
 
         // setters
         void set_anchors( GUI2Rect2f anchors );
         void set_pos( Vec2i pos );
         void set_size( Vec2i size );
+        void set_active( bool active );
+        void set_expandMode( ExpandMode expandMode );
 
         // other
         GUI2Node* addChild( GUI2Node* node );
         void removeChild( GUI2Node* node );
-        virtual void draw();
-        bool onEvent( const SDL_Event& event );
+        void draw();
+        virtual bool onEvent( const SDL_Event& event );
 };
 
 class GUI2Panel : public GUI2Node{
+    protected:
+        virtual void draw_self() override;
+
     public:
         uint32_t bgColor;
 
         GUI2Panel ( GUI2Rect2f anchors, Vec2i pos, Vec2i size, uint32_t bgColor = 0xA0A0A0 );
         GUI2Panel ( uint32_t bgColor = 0xA0A0A0 );
-
-        virtual void draw() override;
 };
 
 class GUI2Text : public GUI2Node{
@@ -127,6 +138,8 @@ class GUI2Text : public GUI2Node{
         enum class Align { TOP_LEFT, TOP_CENTER, TOP_RIGHT, CENTER_LEFT, CENTER, CENTER_RIGHT, BOTTOM_LEFT, BOTTOM_CENTER, BOTTOM_RIGHT };
 
     private:
+        using GUI2Node::addChild;
+
         std::string text;
         Align align = Align::TOP_LEFT;
         uint32_t fontSize = fontSizeDef;
@@ -142,9 +155,10 @@ class GUI2Text : public GUI2Node{
     protected:
         Vec2i calculate_minSize() override;
         void on_rect_updated() override;
+        void draw_self() override;
 
     public:
-        uint32_t fontColor=0x000000;
+        uint32_t fontColor=0x000000; // TODO: fix - currently does nothing
         
         GUI2Text( GUI2Rect2f anchors, Vec2i pos, Vec2i size, std::string text );
         GUI2Text( GUI2Rect2f anchors, Vec2i pos, Vec2i size, std::string text, uint32_t fontSize, uint32_t fontColor );
@@ -155,8 +169,6 @@ class GUI2Text : public GUI2Node{
         void setText( std::string text );
         void setFontSize( uint32_t fontSize );
         void setAlign( Align align );
-
-        virtual void draw() override;
 };
 
 class GUI2Vlist : public GUI2Node{
@@ -164,21 +176,21 @@ class GUI2Vlist : public GUI2Node{
         enum class Align { LEFT, CENTER, RIGHT, STRETCH };
 
     private:
-        unsigned int sepperation;
+        unsigned int min_sepperation;
         Align align;
 
     protected:
         Vec2i calculate_minSize() override;
 
-        virtual void update_child_rect(GUI2Node* child) override;
-        virtual void update_children_rects() override;
+        void update_child_rect(GUI2Node* child) override;
+        void update_children_rects() override;
 
     public:
-        GUI2Vlist( GUI2Rect2f anchors, Vec2i pos, Vec2i size, unsigned int sepperation = 5, Align align = Align::STRETCH );
+        GUI2Vlist( GUI2Rect2f anchors, Vec2i pos, Vec2i size, unsigned int min_sepperation = 5, Align align = Align::STRETCH );
         GUI2Vlist( GUI2Rect2f anchors, Vec2i pos, Vec2i size, Align align );
         GUI2Vlist( unsigned int sepparation = 5, Align align = Align::STRETCH );
 
-        void set_sepperation( unsigned int sepperation );
+        void set_sepperation( unsigned int min_sepperation );
         unsigned int get_sepperation();
 
         void set_align(Align align);
@@ -190,21 +202,21 @@ class GUI2Hlist : public GUI2Node{
         enum class Align { TOP, CENTER, BOTTOM, STRETCH };
 
     private:
-        unsigned int sepperation;
+        unsigned int min_sepperation;
         Align align;
 
     protected:
         Vec2i calculate_minSize() override;
 
-        virtual void update_child_rect(GUI2Node* child) override;
-        virtual void update_children_rects() override;
+        void update_child_rect(GUI2Node* child) override;
+        void update_children_rects() override;
 
     public:
-        GUI2Hlist( GUI2Rect2f anchors, Vec2i pos, Vec2i size, unsigned int sepperation = 5, Align align = Align::STRETCH );
+        GUI2Hlist( GUI2Rect2f anchors, Vec2i pos, Vec2i size, unsigned int min_sepperation = 5, Align align = Align::STRETCH );
         GUI2Hlist( GUI2Rect2f anchors, Vec2i pos, Vec2i size, Align align );
-        GUI2Hlist( unsigned int sepperation = 5, Align align = Align::STRETCH );
+        GUI2Hlist( unsigned int min_sepperation = 5, Align align = Align::STRETCH );
 
-        void set_sepperation( unsigned int sepperation );
+        void set_sepperation( unsigned int min_sepperation );
         unsigned int get_sepperation();
 
         void set_align(Align align);
@@ -219,6 +231,7 @@ class GUI2ButtonBase : public GUI2Node{
         const std::function<void()> command;
 
         GUI2ButtonBase( GUI2Rect2f anchors, Vec2i pos, Vec2i size, const std::function<void()>& command );
+        GUI2ButtonBase( const std::function<void()>& command );
 };
 
 class GUI2Button : public GUI2ButtonBase{
@@ -238,21 +251,26 @@ class GUI2Button : public GUI2ButtonBase{
 
         GUI2Button( GUI2Rect2f anchors, Vec2i pos, Vec2i size, const std::function<void()>& command );
         GUI2Button( GUI2Rect2f anchors, Vec2i pos, Vec2i size, const std::function<void()>& command, uint32_t bgColor, uint32_t bgColorHover, uint32_t bgColorPressed );
+        GUI2Button( const std::function<void()>& command );
 };
 
 class GUI2TextButton : public GUI2Button{
     private:
         GUI2Text* text_node;
         std::string text;
+        int _text_padding = 0;
     
     public:
+        int text_padding();
+        void set_text_padding(int text_padding);
+
         GUI2TextButton( GUI2Rect2f anchors, Vec2i pos, Vec2i size, std::string text, const std::function<void()>& command );
         GUI2TextButton( std::string text, const std::function<void()>& command );
 };
 
 class GUI2ToggleButtonBase : public GUI2Node {
     private:
-        const std::function<void(bool)> command;
+        std::function<void(bool)> command;
         bool active = false;
         bool* bound_bool = nullptr;
 
@@ -261,7 +279,9 @@ class GUI2ToggleButtonBase : public GUI2Node {
 
     public:
         bool is_active();
+        void set(bool active);
         void bind_bool( bool* bound_bool );
+        void set_command( const std::function<void(bool)>& command );
 
         GUI2ToggleButtonBase( GUI2Rect2f anchors, Vec2i pos, Vec2i size, const std::function<void(bool)>& command );
         GUI2ToggleButtonBase( GUI2Rect2f anchors, Vec2i pos, Vec2i size, const std::function<void(bool)>& command, bool* bound_bool );
@@ -281,7 +301,7 @@ class GUI2ToggleButton : public GUI2ToggleButtonBase {
         virtual void on_mouse_down() override;
         virtual void on_mouse_up() override;
 
-        virtual void draw() override;
+        virtual void draw_self() override;
 
     public:
         uint32_t bgColor;
@@ -299,20 +319,26 @@ class GUI2ToggleButton : public GUI2ToggleButtonBase {
         GUI2ToggleButton( GUI2Rect2f anchors, Vec2i pos, Vec2i size, bool* bound_bool );
         GUI2ToggleButton( GUI2Rect2f anchors, Vec2i pos, Vec2i size, bool* bound_bool, uint32_t bgColor, uint32_t bgColorHover, uint32_t bgColorPressed, uint32_t bgColorActive, uint32_t bgColorActiveHover, uint32_t bgColorActivePressed );
 
+        GUI2ToggleButton( const std::function<void(bool)>& command );
 };
 
 class GUI2ToggleTextButton : public GUI2ToggleButton {
     private:
         GUI2Text* text_node;
-    
+        int _text_padding = 0;
+
     public:
-        GUI2ToggleTextButton( GUI2Rect2f anchors, Vec2i pos, Vec2i size, bool* bound_bool, std::string text );
+        int text_padding();
+        void set_text_padding(int text_padding);
+
+        GUI2ToggleTextButton( GUI2Rect2f anchors, Vec2i pos, Vec2i size, bool* bound_bool, std::string text, std::function<void(bool)> command );
         GUI2ToggleTextButton( bool* bound_bool, std::string text );
+        GUI2ToggleTextButton( std::string text, std::function<void(bool)> command );
 };
 
 class GUI2Dragable : public GUI2Node {
     protected:
-        virtual void on_mouse_drag( const SDL_Event& event ) override;
+        void on_mouse_drag( const SDL_Event& event ) override;
     
     public:
         GUI2Dragable( GUI2Rect2f anchors, Vec2i pos, Vec2i size );
@@ -334,8 +360,8 @@ class GUI2SliderT : public GUI2Node {
         const std::function<void(T)> command;
 
     protected:
-        virtual void draw() override;
-        virtual void on_mouse_drag( const SDL_Event& event ) override;
+        void draw_self() override;
+        void on_mouse_drag( const SDL_Event& event ) override;
 
     public:
         void set_min(T min);
@@ -365,6 +391,103 @@ class GUI2TextSliderT : public GUI2SliderT<T> {
 using GUI2TextSlideri = GUI2TextSliderT<int>;
 using GUI2TextSliderf = GUI2TextSliderT<float>;
 
+class GUI2FloatingMenu : public GUI2Node {
+    private:
+        using GUI2Node::addChild;
+        using GUI2Node::removeChild;
+
+        class MenuButton : public GUI2Button {
+            private:
+                using GUI2Node::addChild;
+                using GUI2Node::removeChild;
+
+                int submenu_idx = -1;
+                GUI2FloatingMenu* menu = nullptr;
+
+            public:
+                MenuButton( std::string text, std::string keybind_text, const std::function<void()> command );
+                MenuButton( std::string text, std::string keybind_text, int submenu_idx, GUI2FloatingMenu* menu );
+        };
+
+        class SubmenuButton : public GUI2ToggleButton {
+            private:
+                using GUI2Node::addChild;
+                using GUI2Node::removeChild;
+
+                int submenu_idx;
+                GUI2FloatingMenu* menu;
+
+                void on_mouse_enter() override;
+
+            public:
+                SubmenuButton( std::string text, int submenu_idx, GUI2FloatingMenu* menu );
+        };
+
+        GUI2Vlist* vlist = nullptr;
+        GUI2Panel* bgPanel = nullptr;
+
+        std::vector<GUI2FloatingMenu*> submenus;
+        std::vector<SubmenuButton*> submenuButtons;
+        int current_submenu = -1;
+
+        void update_child_rect(GUI2Node* node) override;
+        void update_children_rects() override;
+        
+    protected:
+        bool onEvent(const SDL_Event& event) override;
+    
+    public:
+        void open_submenu(int idx);
+        void close_submenu();
+
+        bool collapse_self;
+    
+        GUI2FloatingMenu( GUI2Rect2f anchors, Vec2i pos, Vec2i size, bool collapse_self = true );
+        GUI2FloatingMenu( bool collapse_self = true );
+
+        GUI2FloatingMenu* add_submenu(std::string name);
+        GUI2Node* add_item(GUI2Node* item);
+        GUI2Button* add_button(std::string text, std::string keybind_text, const std::function<void()> command);
+};
+
+class GUI2Toolbar : public GUI2Node {
+    private:
+        using GUI2Node::addChild;
+        using GUI2Node::removeChild;
+
+        class CustomTextButton : public GUI2ToggleTextButton{
+            private:
+                int tabIdx;
+                GUI2Toolbar* toolbar;
+
+            protected:
+                void on_mouse_enter() override;
+
+            public:
+                CustomTextButton( std::string text, const std::function<void(bool)> command, int tabIdx, GUI2Toolbar* toolbar );
+        };
+
+        GUI2Panel* bgPanel;
+        GUI2Hlist* buttonsHlist;
+        
+        std::vector<CustomTextButton*> buttons;
+        std::vector<GUI2FloatingMenu*> tabs;
+
+        int openTabIdx = -1;
+
+    protected:
+        void update_child_rect(GUI2Node* node) override;
+        void update_children_rects() override;
+
+    public:
+        void open_tab(int idx);
+        void close_tab(int idx);
+
+        GUI2Toolbar( );
+        GUI2FloatingMenu* addTab( std::string name );
+
+        bool onEvent( const SDL_Event& event ) override;
+};
 
 class GUI2 {public:
     private:
