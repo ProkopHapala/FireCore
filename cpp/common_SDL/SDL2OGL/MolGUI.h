@@ -611,6 +611,17 @@ void MolGUI::initCommands(){
 void MolGUI::initWiggets(){
     printf( "MolGUI::initWiggets() \n" );
 
+    GUI2Toolbar* tb = (GUI2Toolbar*)gui2.addNode(new GUI2Toolbar());
+    GUI2FloatingMenu* fileTab = tb->addTab("File");
+        fileTab->add_button("save to: out.mol", "", [&](){ const char* fname = "out.mol"; W->updateBuilderFromFF(); W->builder.saveMol(fname); });
+        fileTab->add_button("save to: out.xyz", "", [&](){ const char* fname = "out.xyz"; if(bViewBuilder){ W->builder.save2xyz(fname);}else{W->saveXYZ(fname);} } );
+    GUI2FloatingMenu* viewTab = tb->addTab("View");
+        viewTab->add_button("toggle atom labels",  "[L]", [&](){ bViewAtomLabels ^= 1; }); // TODO: these would be better as ToggleButtons
+        viewTab->add_button("toggle atom spheres", "[A]", [&](){ bViewAtomSpheres ^= 1; });
+        viewTab->add_button("toggle atom types",   "[T]", [&](){ bViewAtomTypes ^= 1; });
+        viewTab->add_button("toggle bond labels",  "[B]", [&](){ bViewBondLabels ^= 1; });
+
+
     // TODO: adding GUI widgets would be better witth LUA for fast experimentation
     GUI_stepper ylay(1,2 );
     GUI_stepper gx  (1,16);
@@ -1693,13 +1704,12 @@ Vec3d MolGUI::showNonBond( char* s, Vec2i b, bool bDraw ){
 
 void MolGUI::drawHUD(){
     gui.draw();
-    gui2.draw(this->window);
 
     opengl1renderer.pushMatrix();
     Vec3f textPos = {0, 0, 0};
     if(W->bCheckInvariants){
-        opengl1renderer.translatef( 10.0,HEIGHT-20.0,0.0 );
-        textPos += {10.0,HEIGHT-20.0,0.0};
+        opengl1renderer.translatef( 10.0,HEIGHT-50.0,0.0 );
+        textPos += {10.0,HEIGHT-50.0,0.0};
         opengl1renderer.color3f(0.5,0.0,0.3);
         //char* s=tmpstr;
         //printf( "(%i|%i,%i,%i) cog(%g,%g,%g) vcog(%g,%g,%g) fcog(%g,%g,%g) torq (%g,%g,%g)\n", ff.nevalAngles>0, ff.nevalPiSigma>0, ff.nevalPiPiT>0, ff.nevalPiPiI>0,  cog.x,cog.y,cog.z, vcog.x,vcog.y,vcog.z, fcog.x,fcog.y,fcog.z, tq.x,tq.y,tq.z );
@@ -1766,6 +1776,8 @@ void MolGUI::drawHUD(){
         bondsToShow_shifts[i] =  MolGUI::showNonBond( str, bondsToShow[i] );
     }
     */
+
+    gui2.draw(this->window);
 
     mouse_pix = ((Vec2f){ 2*mouseX/float(HEIGHT) - ASPECT_RATIO,
                           2*mouseY/float(HEIGHT) - 1      });// *(1/zoom);
@@ -2657,6 +2669,8 @@ void MolGUI::eventMode_default( const SDL_Event& event ){
 }
 
 void MolGUI::eventHandling ( const SDL_Event& event  ){
+    if (event.type == SDL_WINDOWEVENT && event.window.event == SDL_WINDOWEVENT_CLOSE) {quit(); return;}
+
     if ( gui2.onEvent(event, window) ) return;
 
     //printf( "NonInert_seats::eventHandling() \n" );
