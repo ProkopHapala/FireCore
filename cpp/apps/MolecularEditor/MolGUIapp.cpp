@@ -33,8 +33,9 @@ int main(int argc, char *argv[]){
     SDL_DisplayMode DM;
     SDL_GetCurrentDisplayMode(0, &DM);
 
-
+#ifdef DEBUG_ALLOCATOR
     debugAllocator_init();
+#endif
 
     // --------- Initialize MolGUI and MolWorld_sp3
 
@@ -91,7 +92,9 @@ int main(int argc, char *argv[]){
     app->loop( 1000000 );
 
     W->clear( true, true );
+#ifdef DEBUG_ALLOCATOR
     debugAllocator_print( );
+#endif    
 	return 0;
 }
 
