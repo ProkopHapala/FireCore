@@ -219,7 +219,8 @@ class MolWorld_sp3 : public SolverInterface { public:
     bool bAnimManipulation = false; // 20
     bool bNonBondNeighs    = false; // 21
     bool bWhichAtomNotConv = false; // 22
-    bool bCheckInit        = false; // 23
+    bool bCheckInit        = true; // 23
+    bool bBondInitialized  = false; // 24
 
     Vec3d anim_vec;
     float anim_speed;
@@ -308,10 +309,10 @@ class MolWorld_sp3 : public SolverInterface { public:
         params_glob = &params;
         if(verbosity>0){
             printf("\n#### MolWorld_sp3::init()\n");
-            if(smile_name   )printf("smile_name  (%s)\n", smile_name );
-            if(data_dir     )printf("data_dir    (%s)\n", data_dir );
-            if(xyz_name     )printf("xyz_name    (%s)\n", xyz_name );
-            if(surf_name    )printf("surf_name   (%s)\n", surf_name );
+            if(smile_name     )printf("smile_name  (%s)\n", smile_name );
+            if(data_dir       )printf("data_dir    (%s)\n", data_dir );
+            if(xyz_name       )printf("xyz_name    (%s)\n", xyz_name );
+            if(surf_name      )printf("surf_name   (%s)\n", surf_name );
             if(substitute_name)printf("substitute_name  (%s)\n", substitute_name );
             // TBD we should also print if we use UFF or not...
             printf( "MolWorld_sp3::init() bMMFF %i bUFF %i bRigid %i\n", bMMFF, bUFF, bRigid );
@@ -348,8 +349,16 @@ class MolWorld_sp3 : public SolverInterface { public:
         //builder.printAtoms();
         //printf( "MolWorld_sp3::init() ffl.neighs=%li ffl.neighCell-%li \n", ffl.neighs, ffl.neighCell );
         //ffl.printNeighs();
+        
+        printf( "MolWorld_sp3::init() builder.lvec \n" ); printMat(builder.lvec);
+        printf( "MolWorld_sp3::init() ffl.lvec     \n" ); printMat(ffl.lvec);
+        
+        
         if(verbosity>0) 
         printf( "#### MolWorld_sp3::init() DONE\n\n");
+
+
+
     }
 
     virtual void pre_loop(){
@@ -1029,19 +1038,24 @@ void printPBCshifts(){
         return true;
     }
 
-    int insertMolecule( const char* fname, const char* name=0, Vec3d pos={0,0,0}, Mat3d rot=Mat3dIdentity ){
+    int insertMolecule( const char* fname, Vec3d pos={0,0,0}, Mat3d rot=Mat3dIdentity ){
         // ToDo: we should be able to insert molecule without actually creating molecule-type
         //sprintf(tmpstr, "%s.xyz", name );
         int iret=-1;
-        // {   // Previous version using Molecule class
-        //     if(name==0){ name=fname; }
-        //     int imol  = builder.loadMolType( fname, name );
-        //     if (imol<0){ printf("ERROR MolWorld_sp3::builder.loadMolType(%s) imol=%i \n", name, imol ); exit(0); }
-        //     iret  = builder.insertFlexibleMolecule( imol, pos, Mat3dIdentity, -1 );
-        //     if (iret<0){ printf("ERROR MolWorld_sp3::insertMolecule(%s) iret=%i \n", name, iret ); exit(0); }
-        // }
         {   // New version using Atoms class
-            iret = builder.loadXYZ_Atoms( fname, &params, -1, false, pos, rot );
+            // check if last 4 characters are the name of the molecule = '.xyz' or '.mol' or '.mol2'
+            const char* ext = strrchr(fname, '.');
+            if (ext){
+                printf("MolWorld_sp3::insertMolecule() fname=%s ext=%s \n", fname, ext );
+                if     ( strcmp(ext, ".xyz")  == 0 ){ iret = builder.loadXYZ_Atoms( fname, &params, -1, false, pos, rot ); }
+                else if( strcmp(ext, ".mol")  == 0 ){ iret = builder.load_mol     ( fname, pos, rot ); bBondInitialized=true; } 
+                else if( strcmp(ext, ".mol2") == 0 ){ iret = builder.load_mol2    ( fname, pos, rot ); bBondInitialized=true; }
+                /// TODO: if we add just a fragment, we initialize bond for this fragment, not for the whole system
+            } else {
+                char tmpstr[256];
+                sprintf(tmpstr, "%s.xyz", fname );
+                iret = builder.loadXYZ_Atoms( tmpstr, &params, -1, false, pos, rot );
+            }
         }
         //int ifrag = builder.frags.size()-1;
         //return ifrag;
@@ -1084,13 +1098,13 @@ void printPBCshifts(){
     int loadGeom( const char* name ){ // TODO : overlaps with buildFF()
         if(verbosity>0)printf("MolWorld_sp3::loadGeom(%s)\n", name );
         // ------ Load geometry
-        sprintf(tmpstr, "%s.xyz", name );
+        //sprintf(tmpstr, "%s.xyz", name );
         /*
         int imol  = builder.loadMolType( tmpstr, name );
         int iret  = builder.insertFlexibleMolecule( imol, {0,0,0}, Mat3dIdentity, -1 );
         int ifrag = builder.frags.size()-1;
         */
-        int ifrag = insertMolecule( tmpstr, name, pivotPoint, pivotRot );
+        int ifrag = insertMolecule( name, pivotPoint, pivotRot );
         //builder.printAtomConfs(false, true );
         builder.addCappingTypesByIz(1);   // Find all hydrogen cappings
         builder.tryAddConfsToAtoms( 0, -1 );
@@ -1098,15 +1112,19 @@ void printPBCshifts(){
         builder.cleanPis();
         if(verbosity>2)builder.printAtomConfs(false);
         // ------- Load lattice vectros
-        sprintf(tmpstr, "%s.lvs", name );
-        if( file_exist(tmpstr) ){
-            if ( builder.bPBC ) printf("WARNING: Lattice vectors were already read from XYZ. Now they will be overwritten by the content of the file %s.\n", tmpstr);
-            builder.bPBC=true;
-            readMatrix( tmpstr, 3, 3, (double*)&builder.lvec );
-        }
+        // sprintf(tmpstr, "%s.lvs", name );
+        // if( file_exist(tmpstr) ){
+        //     if ( builder.bPBC ) printf("WARNING: Lattice vectors were already read from XYZ. Now they will be overwritten by the content of the file %s.\n", tmpstr);
+        //     builder.bPBC=true;
+        //     readMatrix( tmpstr, 3, 3, (double*)&builder.lvec );
+        // }
         bPBC=builder.bPBC;  //printf( "builder.bPBC %i \n", builder.bPBC );
-        if( bPBC ){ builder.autoBondsPBC(); }
-        else      { builder.autoBonds();    }
+        if( !bBondInitialized){
+            if( bPBC ){ builder.autoBondsPBC(); }
+            else      { builder.autoBonds();    }
+            bBondInitialized=true;
+        }
+        builder.checkConfsValid( );
         if(bCheckInit)builder.checkNumberOfBonds( true, true );
         if(verbosity>2)builder.printBonds ();
         return ifrag;
@@ -1269,12 +1287,18 @@ void printPBCshifts(){
         builder.autoAllConfEPi  ( ia0 );
         builder.setPiLoop       ( ic0, -1, 10 );
         if(bEpairs)builder.addAllEpairsByPi( ia0=0 ); 
+
+        builder.checkConfsValid( );
         //builder.printAtomConfs(false, false );
         //builder.printAtomConfs(false, true );
         // TBD here FF params are assigned already, but types are not yet found out...
         builder.assignAllBondParams();    //if(verbosity>1)
         builder.finishFragment(ifrag);    
-        //builder.printAtoms();
+
+        builder.printAtoms();
+        builder.printBonds();
+        builder.printAtomConfs();
+        //
         //printf( "buildMolecule_xyz: nMulPBC(%i,%i,%i) \n",nMulPBC.x,nMulPBC.y,nMulPBC.z  );
         //if( nMulPBC    .totprod()>1 ){ PBC_multiply    ( nMulPBC, ifrag ); };
         //if( bCellBySurf             ){ changeCellBySurf( bySurf_lat[0], bySurf_lat[1], bySurf_ia0, bySurf_c0 ); };
@@ -2640,7 +2664,10 @@ int saveXYZ(const char* fname, const char* comment="#comment", bool bNodeOnly=fa
  * @param selection An array of indices representing the atoms in the selection.
  * @param d The displacement vector to shift the atoms by.
  */
-void shift_atoms ( int n, int* selection, Vec3d d                          ){ move  ( n, selection, ff.apos, d           ); };
+void shift_atoms ( int n, int* selection, Vec3d d ){ move  ( n, selection, ffl.apos, d ); updateBuilderFromFF(true, false); };
+void shift_atoms (                        Vec3d d ){ printf("shift_atoms() d=(%g,%g,%g) \n", d.x, d.y, d.z); move  ( ffl.natoms, ffl.apos, d );   updateBuilderFromFF(true, false); };
+
+
 /**
  * Rotates the atoms specified by the given selection around the specified axis ax by the specified angle phi.
  *
@@ -2650,7 +2677,7 @@ void shift_atoms ( int n, int* selection, Vec3d d                          ){ mo
  * @param ax The axis of rotation.
  * @param phi The angle of rotation in radians.
  */
-void rotate_atoms( int n, int* selection, Vec3d p0, Vec3d ax, double phi   ){ rotate( n, selection, ff.apos, p0, ax, phi ); };
+void rotate_atoms( int n, int* selection, Vec3d p0, Vec3d ax, double phi   ){ rotate( n, selection, ffl.apos, p0, ax, phi ); updateBuilderFromFF(true, false); };
 /**
  * Shifts the atoms in the given selection by a specified distance l along the line connecting the atoms with indices ia0 and ia1.
  *
@@ -2660,7 +2687,7 @@ void rotate_atoms( int n, int* selection, Vec3d p0, Vec3d ax, double phi   ){ ro
  * @param ia1       The index of the second atom
  * @param l         The distance to shift the atoms by.
  */
-void shift_atoms ( int n, int* selection, int ia0, int ia1, double l              ){ Vec3d d=(ff.apos[ia1]-ff.apos[ia0]).normalized()*l; move( n, selection, ff.apos, d); };
+void shift_atoms ( int n, int* selection, int ia0, int ia1, double l              ){ Vec3d d=(ffl.apos[ia1]-ffl.apos[ia0]).normalized()*l; move( n, selection, ff.apos, d); updateBuilderFromFF(true, false); };
 /**
  * Rotates the specified atoms in the selection around an axis defined by the atoms with indices iax0 and iax1 by the specified angle phi.
  *
@@ -2671,7 +2698,7 @@ void shift_atoms ( int n, int* selection, int ia0, int ia1, double l            
  * @param iax1 The index of the ending atom of the rotation axis.
  * @param phi The angle of rotation in radians.
  */
-void rotate_atoms( int n, int* selection, int ia0, int iax0, int iax1, double phi ){ rotate( n, selection, ff.apos, ff.apos[ia0], (ff.apos[iax1]-ff.apos[iax0]).normalized(), phi ); };
+void rotate_atoms( int n, int* selection, int ia0, int iax0, int iax1, double phi ){ rotate( n, selection, ffl.apos, ffl.apos[ia0], (ffl.apos[iax1]-ffl.apos[iax0]).normalized(), phi ); updateBuilderFromFF(true, false); };
 
 /**
  * Splits the selection at a specified bond index.
