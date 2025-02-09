@@ -40,6 +40,22 @@ fi
 
 # ====== Small Molecules
 
+
+
+
+#./$name -x tAttach/H2O.mol2
+#./$name -x tAttach/backbones/porphirin.mol2
+#./$name -x tAttach/backbones/napht_pyrol_4x--.mol2
+#./$name -x tAttach/backbones/PNA_sat-poly.mol2
+#./$name -x tAttach/PNA_CG_poly-.mol2
+./$name -x tAttach/PNA_CG_poly-.mol2 -nPBC 1,3,0  -g common_resources/xyz/NaCl_8x8_L3 -shift 0.0,0.0,2.0
+#./$name -x tAttach/TNA_CG_poly-.mol2 -nPBC 1,3,0  -g common_resources/xyz/NaCl_8x8_L3 -shift 0.0,0.0,2.0
+
+
+
+
+
+
 #./$name -x common_resources/xyz/C2H4          -iParalel 0
 
 #./$name -x common_resources/xyz/H2O       -uff  -iParalel 0  -verb 2   -perframe 1 -dt 0.0001
@@ -169,7 +185,7 @@ fi
 #./$name -x common_resources/xyz/guanine -g common_resources/xyz/NaCl_1x1_L3 -iParalel 0
 #./$name -x common_resources/xyz/uracil -g common_resources/xyz/NaCl_1x1_L3 -iParalel 0
 
-./$name -x common_resources/xyz/uracil -g common_resources/xyz/NaCl_8x8_L3_step -e
+#./$name -x common_resources/xyz/uracil -g common_resources/xyz/NaCl_8x8_L3_step -e
 
 #./$name -x common_resources/xyz/guanine-cytosine -g common_resources/xyz/NaCl_1x1_L3 -iParalel 0
 #./$name -x common_resources/xyz/guanine-cytosine -g common_resources/xyz/NaCl_1x1_L3 -iParalel 0 -e
@@ -184,7 +200,7 @@ fi
 
 
 #./$name -x common_resources/xyz/PTCDA -g common_resources/xyz/NaCl_1x1_L3          -nPBC 0,0,0
-#./$name -x common_resources/xyz/PTCDA -g common_resources/xyz/NaCl_8x8_L3          -nPBC 0,0,0 -perframe 1
+#./$name -x common_resources/xyz/PTCDA -g common_resources/xyz/NaCl_8x8_L3          -nPBC 0,0,0 
 #./$name -x common_resources/xyz/PTCDA -g common_resources/xyz/NaCl_8x8_L3          -nPBC 0,0,0
 #./$name -x common_resources/xyz/PTCDA -g common_resources/xyz/NaCl_8x8_L3_NaHole   -nPBC 0,0,0 -e -nPBC 2,2,0
 #./$name -x common_resources/xyz/PTCDA -g common_resources/xyz/NaCl_8x8_L3_ClHole   -nPBC 0,0,0
@@ -283,6 +299,11 @@ fi
 #./$name -x BB.HNH-h.NHO-hh -b BB.HNH-h.NHO-hh.hbonds -dlvec -0.5,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0
 #./$name  -x BB.HNH-h.NHO-hh -b BB.HNH-h.NHO-hh.hbonds -dlvec -0.5,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0 -latscan 10,20 0.0,0.5,0.0,0.0,0.0,0.0,0.0,0.0,0.0
 #./$name  -x BB.HNH-h.NHO-hh -b BB.HNH-h.NHO-hh.hbonds -prelat 5,10000 -0.5,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0 -latscan 10,20 0.0,0.5,0.0,0.0,0.0,0.0,0.0,0.0,0.0
+
+
+#./$name -x tAttach/PNA_CG_poly-.mol2 -g common_resources/xyz/NaCl_8x8_L3
+
+
 
 
 # ===== test Collision Damping

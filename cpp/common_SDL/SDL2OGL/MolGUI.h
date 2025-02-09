@@ -245,7 +245,7 @@ class MolGUI : public AppSDL2OGL_3D { public:
     bool   bViewBuilder      = false;
     //bool   bViewBuilder      = true;
     bool   bViewAxis         = false;
-    bool   bViewCell         = false;
+    bool   bViewCell         = true;
 
     bool   mm_bAtoms         = true;
     bool   bViewMolCharges   = false;
@@ -365,7 +365,7 @@ class MolGUI : public AppSDL2OGL_3D { public:
     void tryLoadGridFF();
     //void makeGridFF   (bool recalcFF=false, bool bRenderGridFF=true);
     //void renderGridFF( double isoVal=0.001, int isoSurfRenderType=0, double colorScale = 50. );
-    int  renderSurfAtoms( Vec3i nPBC, bool bPointCross=false, float qsc=1, float Rsc=1, float Rsub=0 );
+    int  renderSurfAtoms( Vec3i nPBC, bool bPointCross=false, float qsc=0.5, float Rsc=1, float Rsub=0 );
     void renderGridFF    ( double isoVal=0.1, int isoSurfRenderType=0, double colorScale = 50. );
     void renderGridFF_new( double isoVal=0.1, int isoSurfRenderType=0, double colorScale = 0.25, Quat4d REQ=Quat4d{ 1.487, sqrt(0.0006808), 0., 0.} );
     void renderESP( Quat4d REQ=Quat4d{ 1.487, 0.02609214441, 1., 0.} );
@@ -1337,6 +1337,11 @@ void MolGUI::draw(){
 
     //printf( "bViewSubstrate %i ogl_isosurf %i W->bGridFF %i \n", bViewSubstrate, ogl_isosurf, W->bGridFF );
 
+    if(bViewCell){ 
+        //Draw3D::drawTriclinicBox( W->builder.lvec, Vec3d{0.0,0.0,0.0}, Vec3d{1.0,1.0,1.0} ); 
+        Draw3D::drawTriclinicBoxT( W->builder.lvec, Vec3d{0.0,0.0,0.0}, Vec3d{1.0,1.0,1.0} ); 
+    }
+
     if( bViewSubstrate ){
         if( ( W->bGridFF )&&( ((int)(W->gridFF.mode))!=0) ){
             //Draw3D::atomsREQ( W->surf.natoms, W->surf.apos, W->surf.REQs, ogl_sph, 1., 0.1, 0., true, W->gridFF.shift0 );
@@ -1347,7 +1352,10 @@ void MolGUI::draw(){
             //viewSubstrate( {-5,10}, {-5,10}, ogl_isosurf, W->gridFF.grid.cell.a, W->gridFF.grid.cell.b, W->gridFF.shift0 + W->gridFF.grid.pos0 );
             viewSubstrate( {-5,10}, {-5,10}, ogl_isosurf, W->gridFF.grid.cell.a, W->gridFF.grid.cell.b );
         }else{
-            if( ogl_surfatoms==0 ){ogl_surfatoms = renderSurfAtoms(  W->gridFF.nPBC, false );  }
+            if( ogl_surfatoms==0 ){
+                //ogl_surfatoms = renderSurfAtoms(  W->gridFF.nPBC, false );  
+                ogl_surfatoms = renderSurfAtoms(  Vec3i{1,1,0}, false );  
+            }
             glCallList( ogl_surfatoms );
         }
     }
@@ -1838,7 +1846,7 @@ void MolGUI::renderGridFF_new( double isoVal, int isoSurfRenderType, double colo
 }
 
 int MolGUI::renderSurfAtoms( Vec3i nPBC, bool bPointCross, float qsc, float Rsc, float Rsub ){
-    if(verbosity>0) printf( "MolGUI::renderSurfAtoms()\n" );
+    if(verbosity>0) printf( "MolGUI::renderSurfAtoms() nPBC(%i,%i,%i) qsc=%g Rsc=%g Rsub=%g W->gridFF.apos_.size()=%li bPointCross=%i\n", nPBC.x, nPBC.y, nPBC.z, qsc, Rsc, Rsub, W->gridFF.apos_.size(), bPointCross );
     int ogl = glGenLists(1);
     glNewList(ogl, GL_COMPILE);
     glShadeModel( GL_SMOOTH );
@@ -1846,13 +1854,18 @@ int MolGUI::renderSurfAtoms( Vec3i nPBC, bool bPointCross, float qsc, float Rsc,
     glEnable(GL_DEPTH_TEST);
     glPushMatrix();
     Mat3d& lvec =  W->gridFF.grid.cell;
+    int icell=0;
     for(int ix=-nPBC.x; ix<=nPBC.x; ix++){
         for(int iy=-nPBC.y; iy<=nPBC.y; iy++){
             for(int iz=-nPBC.z; iz<=nPBC.z; iz++){
                 Vec3d shift = lvec.a*ix + lvec.b*iy + lvec.c*iz;
+                //shift.z += (float)icell;
                 glTranslatef( shift.x,shift.y,shift.z);
-                Draw3D::atomsREQ( W->gridFF.apos_.size(), &W->gridFF.apos_[0], &W->gridFF.REQs_[0], ogl_sph, qsc, Rsc, Rsub, bPointCross, W->gridFF.shift0 );
+                Draw3D::atomsREQ( W->gridFF.natoms, W->gridFF.apos, W->gridFF.REQs, ogl_sph, qsc, Rsc, Rsub, bPointCross, W->gridFF.shift0 );
+                //Draw3D::atomsREQ( W->gridFF.apos_.size(), &W->gridFF.apos_[0], &W->gridFF.REQs_[0], ogl_sph, qsc, Rsc, Rsub, bPointCross, W->gridFF.shift0 );
+                //Draw3D::atomsREQ( 1, &W->gridFF.apos_[0], &W->gridFF.REQs_[0], ogl_sph, qsc, Rsc, Rsub, bPointCross, W->gridFF.shift0 );
                 glTranslatef( -shift.x,-shift.y,-shift.z);
+                icell++;
             }
         } 
     }

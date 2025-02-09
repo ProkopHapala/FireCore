@@ -423,7 +423,7 @@ inline void addForce( const Vec3d& pos, const Quat4f& PLQ, Quat4f& fe ) const {
 
     __attribute__((hot))  
     inline void addForce_surf( Vec3d pos, const Quat4f PLQ, Quat4f& f ) const {
-        pos.add( shift0 );
+        //pos.add( shift0 );
         if     ( pos.z > grid.cell.c.z ){ pos.z = grid.dCell.c.z*-0.1 + grid.cell.c.z; }
         else if( pos.z < 0             ){ pos.z = grid.dCell.c.z* 0.1;                 }
         return addForce( pos, PLQ, f );
