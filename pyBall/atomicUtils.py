@@ -1022,7 +1022,7 @@ def loadMol2(fname, bReadN=True, bExitError=True):
             enames.append( atype )
             atypes.append( znum )
 
-            print( "atom: ", i, atype, znum, ename2 )
+            #print( "atom: ", i, atype, znum, ename2 )
             
             # Charge is the last token if present (some mol2 files provide it).
             if len(tokens) >= 9:
