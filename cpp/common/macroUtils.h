@@ -5,7 +5,7 @@
 #include <vector>
 
 //#undef  DEBUG_ALLOCATOR
-#define DEBUG_ALLOCATOR
+//#define DEBUG_ALLOCATOR
 #define _delete(p) delete[] p
 #define _new(T,n)  new T[n]
 #ifdef DEBUG_ALLOCATOR

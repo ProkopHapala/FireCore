@@ -13,7 +13,6 @@ def make_pd_matrix(neighbs, bonds, masses, dt, ks):
     np_total = len(masses)
     A = np.zeros((np_total, np_total))
     idt2 = 1.0 / (dt * dt)
-    
     for i in range(np_total):
         Aii = masses[i] * idt2
         for ib in neighbs[i]:
@@ -28,8 +27,8 @@ def make_pd_matrix(neighbs, bonds, masses, dt, ks):
                 A[i_, i] = -k
         A[i, i] = Aii
     
-    Mt = masses * idt2
-    return A, Mt
+    #Mt = masses * idt2
+    return A #, Mt
 
 def make_pd_rhs(neighbs, bonds, masses, dt, ks, points, l0s, pnew):
     """Build the right-hand side of the system following the Julia implementation"""
@@ -66,11 +65,11 @@ def solve_pd(points, velocity, bonds, masses, ks, dt=0.1, n_iter=100, gravity=np
     """Solve the system using projective dynamics following the Julia implementation"""
     n_points = len(points)
     neighbs = build_neighbor_list(bonds, n_points)
-    A, Mt = make_pd_matrix(neighbs, bonds, masses, dt, ks)
+    A = make_pd_matrix(neighbs, bonds, masses, dt, ks)
     
     # Initialize
-    pos = points.copy()
-    pos_cor = points.copy()
+    pos      = points.copy()
+    pos_cor  = points.copy()
     pos_pred = points.copy()
     l0s = np.array([np.linalg.norm(points[j] - points[i]) for i, j in bonds])
     
@@ -98,13 +97,13 @@ def solve_pd(points, velocity, bonds, masses, ks, dt=0.1, n_iter=100, gravity=np
         
         # Update velocity and position
         velocity = update_velocity(pos_cor, pos, velocity, dt)
-        pos[:] = pos_cor[:]
+        pos[:]   = pos_cor[:]
         
         if call_back is not None:
             call_back(pos)
         
         # Print debug info
-        v_norm = np.linalg.norm(velocity)
+        v_norm   = np.linalg.norm(velocity)
         pos_diff = np.linalg.norm(pos - pos_pred)
         print(f"iter:{itr} dt={dt:.3e} |v|={v_norm:.3e} dp={pos_diff:.3e}")
         
@@ -149,7 +148,8 @@ if __name__ == "__main__":
     ax = pu.plot_truss(points, truss.bonds, edge_color='b', label='Initial Points')
 
     # Solve using projective dynamics
-    new_points, new_velocity = solve_pd( points, velocity, bonds, masses, ks,  dt=0.02, n_iter=100,  fixed_points=fixed,  call_back=lambda x: pu.plot_truss(x, truss.bonds, ax=ax, edge_color='k', edge_alpha=0.1) )
+    new_points, new_velocity = solve_pd( points, velocity, bonds, masses, ks,  dt=0.02, n_iter=20,  fixed_points=fixed,  
+                                         call_back=lambda x: pu.plot_truss(x, truss.bonds, ax=ax, edge_color='k', edge_alpha=0.1) )
 
-    pu.plot_truss(points, truss.bonds, ax=ax, edge_color='b', label='Final Points')
+    pu.plot_truss(new_points, truss.bonds, ax=ax, edge_color='r', label='Final Points')
     plt.show()
