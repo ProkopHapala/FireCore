@@ -125,3 +125,22 @@ def elementDict( ELEMENTS ):
 
 ELEMENT_DICT = elementDict( ELEMENTS )
 
+def hex_to_float_rgb(hex_color):
+    # Remove the '#' from the beginning of the string
+    hex_color = hex_color.lstrip('#')
+    # Convert the hexadecimal string to integers for R, G, B
+    r = int(hex_color[0:2], 16)  # First two characters for red
+    g = int(hex_color[2:4], 16)  # Next two characters for green
+    b = int(hex_color[4:6], 16)  # Last two characters for blue
+    # Normalize to [0.0, 1.0] by dividing by 255
+    r_float = r / 255.0
+    g_float = g / 255.0
+    b_float = b / 255.0
+    return r_float, g_float, b_float
+
+def getColor( elem , bFloat=True):
+    ret = ELEMENT_DICT[elem][8]
+    if bFloat:
+        return hex_to_float_rgb( ret )
+    else:
+        return ret
