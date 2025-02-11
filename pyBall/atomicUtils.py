@@ -1004,8 +1004,10 @@ def loadMol2(fname, bReadN=True, bExitError=True):
             # 8: charge (optional)
             tokens = line.split()
             if len(tokens) < 6:
-                print(f"loadMol2({fname}) malformed atom-line({i}): ", line)
-                if bExitError: exit()
+                message = f"loadMol2({fname}) malformed atom-line({i}): "
+                print(message, line)
+                if bExitError: 
+                    raise Exception(message)
                 continue  # skip malformed lines
             try:
                 x = float(tokens[2])
@@ -1042,8 +1044,11 @@ def loadMol2(fname, bReadN=True, bExitError=True):
             # 3: bond_type (ignored here)
             tokens = line.split()
             if len(tokens) < 3:
-                print(f"loadMol2({fname}) malformed bond-line({i}): ", line)
-                if bExitError: exit()
+                message = f"loadMol2({fname}) malformed bond-line({i}): "
+                print(message, line)
+                if bExitError: 
+                    #exit()
+                    raise Exception(message)
                 continue
             try:
                 iatom = int(tokens[1]) - 1  # convert to zero-based index
@@ -2116,7 +2121,6 @@ class AtomicSystem( ):
         pairs = self.find_marker_pairs(markerX, markerY)
         return pairs
 
-
     def find_marker_pairs(self, markerX, markerY):
         """
         Find marker pairs in this system based on element types and bonding information.
@@ -2153,20 +2157,42 @@ class AtomicSystem( ):
         n = len(self.apos)
         #if bInverted: mask = set(range(len(self.apos))).difference(mask)
         if bInverted: mask = [i for i in range(n) if i not in mask]
-        print ("filter_system: mask ", mask)
+        #print ("filter_system: mask ", mask)
         #keep_mask = np.array([i not in to_remove for i in range(len(self.apos))])
-        filtered = {
-            'apos':   self.apos  [mask],
-            'atypes': self.atypes[mask],
-            'enames': self.enames[mask],
-            'qs':     self.qs    [mask] if self.qs is not None else None,
-            'Rs':     self.Rs    [mask] if self.Rs is not None else None,
-            'aux_labels': [label for i, label in enumerate(self.aux_labels) if i not in mask] if self.aux_labels is not None else None
-        }
-        old_to_new = make_reindex( n, mask, bInverted=False)       
+        # filtered = {
+        #     'apos':   self.apos  [mask],
+        #     'atypes': self.atypes[mask],
+        #     'enames': self.enames[mask],
+        #     'qs':     self.qs    [mask] if self.qs is not None else None,
+        #     'Rs':     self.Rs    [mask] if self.Rs is not None else None,
+        #     'aux_labels': [label for i, label in enumerate(self.aux_labels) if i not in mask] if self.aux_labels is not None else None
+        # }
+
+        old_to_new = make_reindex( n, mask, bInverted=False)    
+
+        if self.bonds is not  None:
+            bonds = [ b for b in self.bonds if (b[0] in mask) and (b[1] in mask) ]
+            #print( "reindex_bonds() bonds \n", bonds )
+            #bonds = [ (old_to_new[b[0]], old_to_new[b[1]]) for b in bonds if b[0] in old_to_new and b[1] in old_to_new ]
+            bonds = [ (old_to_new[b[0]], old_to_new[b[1]]) for b in bonds  ]
+        else:
+            bonds = None
+
+        filtered = AtomicSystem(
+            apos  =self.apos  [mask], 
+            atypes=self.atypes[mask],
+            enames=self.enames[mask],
+            lvec  =self.lvec,
+            qs    =self.qs[mask] if self.qs is not None else None,
+            Rs    =self.Rs[mask] if self.Rs is not None else None,
+            #ngs   =self.ngs[mask] if self.ngs is not None else None,
+            bonds = bonds
+        )
+          
         return filtered, old_to_new
         
-    def merge_arrays(self, other_arrays, other_bonds, offset):
+    #def merge_arrays(self, other, other_bonds, offset):
+    def merge_arrays(self, other, offset=None):
         """Merge arrays from other system into self.
         
         Parameters:
@@ -2178,21 +2204,40 @@ class AtomicSystem( ):
                 Offset for bond indices
         """
         # Merge main arrays
-        self.apos   = np.concatenate([self.apos,   other_arrays['apos'  ]], axis=0)
-        self.atypes = np.concatenate([self.atypes, other_arrays['atypes']])
-        self.enames = np.concatenate([self.enames, other_arrays['enames']])
-        
-        # Merge optional arrays if they exist
-        if self.qs         is not None and other_arrays['qs']         is not None: self.qs         = np.concatenate([self.qs, other_arrays['qs']])
-        if self.Rs         is not None and other_arrays['Rs']         is not None: self.Rs         = np.concatenate([self.Rs, other_arrays['Rs']])
-        if self.aux_labels is not None and other_arrays['aux_labels'] is not None: 
-            self.aux_labels = np.concatenate([self.aux_labels, other_arrays['aux_labels']])
+        # self.apos   = np.concatenate([self.apos,   other_arrays['apos'  ]], axis=0)
+        # self.atypes = np.concatenate([self.atypes, other_arrays['atypes']])
+        # self.enames = np.concatenate([self.enames, other_arrays['enames']])
+        # if self.qs         is not None and other_arrays['qs']         is not None: self.qs         = np.concatenate([self.qs, other_arrays['qs']])
+        # if self.Rs         is not None and other_arrays['Rs']         is not None: self.Rs         = np.concatenate([self.Rs, other_arrays['Rs']])
+        # if self.aux_labels is not None and other_arrays['aux_labels'] is not None: 
+        #     self.aux_labels = np.concatenate([self.aux_labels, other_arrays['aux_labels']])
+        # else:
+        #     self.aux_labels = None
+            
+        # # Merge bonds
+        # if other_bonds is not None:
+        #     adjusted_bonds = other_bonds + offset
+        #     if self.bonds is not None:
+        #         self.bonds = np.array(self.bonds)
+        #         self.bonds = np.concatenate([self.bonds, adjusted_bonds], axis=0)
+        #     else:
+        #         self.bonds = adjusted_bonds
+
+        if offset is None: offset = len(self.apos)
+
+        self.apos   = np.concatenate([self.apos,   other.apos], axis=0)
+        self.atypes = np.concatenate([self.atypes, other.atypes])
+        self.enames = np.concatenate([self.enames, other.enames])
+        if self.qs         is not None and other.qs         is not None: self.qs         = np.concatenate([self.qs, other.qs])
+        if self.Rs         is not None and other.Rs         is not None: self.Rs         = np.concatenate([self.Rs, other.Rs])
+        if self.aux_labels is not None and other.aux_labels is not None: 
+            self.aux_labels = np.concatenate([self.aux_labels, other.aux_labels])
         else:
             self.aux_labels = None
             
         # Merge bonds
-        if other_bonds is not None:
-            adjusted_bonds = other_bonds + offset
+        if other.bonds is not None:
+            adjusted_bonds = np.array(other.bonds) + offset
             if self.bonds is not None:
                 self.bonds = np.array(self.bonds)
                 self.bonds = np.concatenate([self.bonds, adjusted_bonds], axis=0)
@@ -2227,12 +2272,13 @@ class AtomicSystem( ):
         removed = set(group_mk[:2])
         other_filtered, old_to_new = other.filter_system( removed, bInverted=True            )     # Filter group system without markers 
         #other_bonds                = other.reindex_removed_bonds(other.bonds, removed, old_to_new)   # Reindex group bonds
-        other_bonds = reindex_bonds( other.bonds, old_to_new, to_remove=removed )
+        #other_bonds = reindex_bonds( other.bonds, old_to_new, to_remove=removed )
         
         # Merge arrays with offset
         offset = len(self.apos)
-        self.merge_arrays(other_filtered, other_bonds, offset)
-        
+        #self.merge_arrays(other_filtered, other_bonds, offset)
+        self.merge_arrays(other_filtered, offset)
+
         # # Create new bonds between fragments
         # self.create_fragment_bonds(backbone_neighbors, group_neighbors, old_to_new, offset)
 
@@ -2277,6 +2323,19 @@ class AtomicSystem( ):
         R = M_target @ M_group.T
         
         return R, X_b, A2
+
+    def delete_atoms(self, to_remove):
+            rem = sorted(to_remove, reverse=True)
+            for idx in rem:
+                self.apos   = np.delete(self.apos,   idx, axis=0)
+                self.atypes = np.delete(self.atypes, idx)
+                self.enames = np.delete(self.enames, idx)
+                if self.qs is not None:
+                    self.qs = np.delete(self.qs, idx)
+                if self.Rs is not None:
+                    self.Rs = np.delete(self.Rs, idx)
+                if self.aux_labels is not None:
+                    self.aux_labels = np.delete(self.aux_labels, idx)
 
     def attach_group_by_marker(self, G, markerX="Xe", markerY="He", _0=1):
         """Attach an end–group G to this backbone using marker atoms and connectivity.
@@ -2332,17 +2391,19 @@ class AtomicSystem( ):
                     old_to_new[old_idx] = new_idx
                     new_idx += 1
             self.reindex_bonds(old_to_new, to_remove)
-            rem = sorted(to_remove, reverse=True)
-            for idx in rem:
-                self.apos = np.delete(self.apos, idx, axis=0)
-                self.atypes = np.delete(self.atypes, idx)
-                self.enames = np.delete(self.enames, idx)
-                if self.qs is not None:
-                    self.qs = np.delete(self.qs, idx)
-                if self.Rs is not None:
-                    self.Rs = np.delete(self.Rs, idx)
-                if self.aux_labels is not None:
-                    self.aux_labels = np.delete(self.aux_labels, idx)
+
+            self.delete_atoms( to_remove )
+            #rem = sorted(to_remove, reverse=True)
+            # for idx in rem:
+            #     self.apos   = np.delete(self.apos,   idx, axis=0)
+            #     self.atypes = np.delete(self.atypes, idx)
+            #     self.enames = np.delete(self.enames, idx)
+            #     if self.qs is not None:
+            #         self.qs = np.delete(self.qs, idx)
+            #     if self.Rs is not None:
+            #         self.Rs = np.delete(self.Rs, idx)
+            #     if self.aux_labels is not None:
+            #         self.aux_labels = np.delete(self.aux_labels, idx)
 
         # 6. Update neighbor list
         self.neighs(bBond=True)

@@ -55,8 +55,7 @@ def render_molecule_files(directory, extension='.mol2', output_dir=None, cam_fw=
         directory += '/'
         
     # Set up output directory
-    if output_dir is None:
-        output_dir = directory
+    if output_dir is None: output_dir = directory
     os.makedirs(output_dir, exist_ok=True)
     
     # Find all files with given extension
@@ -84,7 +83,7 @@ def render_molecule_files(directory, extension='.mol2', output_dir=None, cam_fw=
     for mol_file in mol_files:
         basename = os.path.basename(mol_file)
         name = os.path.splitext(basename)[0]
-        print(f"\render_molecule_files() {basename}...")
+        print(f"\render_molecule_files() {basename}")
         
         # Load molecule
         try:
