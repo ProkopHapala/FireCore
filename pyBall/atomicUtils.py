@@ -1302,6 +1302,7 @@ def loadMol2(fname, bReadN=True, bExitError=True):
         line = line.strip()
         if   len(line) == 0: continue
         elif line[0] == '@':
+            #print( f"{fname} line: {i}: {line}" )
             lu = line.upper()
             if lu.startswith("@<TRIPOS>MOLECULE"):
                 in_molecule = True
@@ -1310,14 +1311,9 @@ def loadMol2(fname, bReadN=True, bExitError=True):
             elif lu.startswith("@LVS"):
                 # For example: "# lvs   20.0 0.0 0.0   0.0 5.0 0.0    0.0 0.0 20.0"
                 parts = lu[4:].split()
-                if idx >= 0 and len(parts) >= idx+10:
-                    # Read next 9 numbers:
-                    nums = [ float(parts[idx + j]) for j in range(1, 10) ]
-                    lvec = np.array(nums).reshape(3,3)
-            elif lu.startswith("@<TRIPOS>ATOM"):
-                in_molecule = False
-                in_atom     = True
-                in_bond     = False
+                nums = [ float(w) for w in parts ]
+                lvec = np.array(nums).reshape(3,3)
+                #print( "lvec: ", lvec )
             elif lu.startswith("@<TRIPOS>ATOM"):
                 in_molecule = False
                 in_atom     = True
@@ -1644,7 +1640,7 @@ def save_mol2( fname, enames, apos, bonds, qs=None, comment=""):
         n_atoms = len(apos)
         n_bonds = len(bonds) if bonds is not None else 0
         # MOL2 counts: atoms, bonds, (and 0 0 0 for other fields)
-        fout.write(f"{n_atoms:>3d}{n_bonds:>3d} 0 0 0\n")
+        fout.write(f"{n_atoms:>3d} {n_bonds:>3d} 0 0 0\n")
         # Add required SMALL and GASTEIGER lines
         fout.write("SMALL\nGASTEIGER\n\n")
         
