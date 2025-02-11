@@ -596,18 +596,6 @@ def replace( atoms, found, to=17, bond_length=2.0, radial=0.0, prob=0.75 ):
             atoms[iatom,1:] += bvec  
     return atoms
 
-def saveAtoms( atoms, fname, xyz=True ):
-    fout = open(fname,'w')
-    fout.write("%i\n"  %len(atoms) )
-    if xyz==True : fout.write("\n") 
-    for i,atom in enumerate( atoms ):
-        if isinstance( atom[0], str ):
-            fout.write("%s %f %f %f\n"  %( atom[0], atom[1], atom[2], atom[3] ) )
-        else:
-            fout.write("%i %f %f %f\n"  %( atom[0], atom[1], atom[2], atom[3] ) )
-    fout.close() 
-
-
 def build_frame(forward, up):
     """
     Build an orthonormal frame (a 3×3 rotation matrix) from two non–colinear vectors.
@@ -694,6 +682,343 @@ def psi4frags2string( enames, apos, frags=None ):
     #print("s = ", s)
     return "\n".join(s)
 
+def findCOG( ps, byBox=False ):
+    if(byBox):
+        xmin=ps[:,0].min(); xmax=ps[:,0].max();
+        ymin=ps[:,1].min(); ymax=ps[:,1].max();
+        zmin=ps[:,2].min(); zmax=ps[:,2].max();
+        return np.array( (xmin+xmax, ymin+ymax, zmin+zmax) ) * 0.5
+    else:
+        cog = np.sum( ps, axis=0 )
+        cog *=(1.0/len(ps))
+        return cog
+
+def projectAlongBondDir( apos, i0, i1 ):
+    dir = (apos[i1]-apos[i0])
+    dir*=(1/np.sqrt(np.dot(dir,dir)))   # normalize
+    prjs = np.dot( apos, dir[:,None] )  #;print(prjs)
+    return prjs
+
+def histR( ps, dbin=None, Rmax=None, weights=None ):
+    rs = np.sqrt(np.sum((ps*ps),axis=1))
+    bins=100
+    if dbin is not None:
+        if Rmax is None:
+            Rmax = rs.max()+0.5
+        bins = np.linspace( 0,Rmax, int(Rmax/(dbin))+1 )
+    return np.histogram(rs, bins, weights=weights)
+
+# ================= Topology Builder
+
+def addGroup( base, group, links ):
+    A0s,B0s = base
+    A1s,B1s = group
+    n0 = len(A0s)
+    n1 = len(A1s)
+    As = A0s + A1s
+    Bs = B0s + []
+    for b in links:
+        b_ = (  b[0], b[1]+n0 )
+        Bs.append(b_)
+        As[b_[0]] += 1
+        As[b_[1]] += 1
+    for b in B1s:
+        b_ = (  b[0]+n0, b[1]+n0 )
+        Bs.append(b_)
+
+def addBond( base, link, bNew=True ):
+    As,Bs = base
+    if bNew:
+        As=As+[]
+        Bs=Bs+[]
+    As[link[0]] += 1
+    As[link[1]] += 1
+    Bs.append( link )
+    return (As,Bs)
+
+def disolveAtom( base, ia ):
+    A0s,B0s = base
+    Bs     = []
+    neighs = []
+    for b in B0s:
+        i=b[0]
+        j=b[1]
+        if(i>ia):
+            i-=1
+        if(j>ia):
+            j-=1
+        
+        if b[0]==ia:
+            neighs.append(j)
+            continue
+        if b[1]==ia:
+            neighs.append(i)
+            continue
+        print( "add B ", (i,j), b )
+        Bs.append( (i,j) )
+    As = list(A0s) + []
+    nng = len(neighs)
+    
+    if( nng ==2 ):
+        Bs.append( (neighs[0],neighs[1]) )
+    else:
+        print("ERROR: disolveAtoms applicable only for atom with 2 neighbors ( not %i )" %nng )
+        print( neighs )
+        exit()
+    
+    #for i in neighs:
+    #    As[i]-=1
+    old_i = list( range(len(As)) )
+    old_i.pop(ia)
+    As.pop(ia)
+    len( As )
+    print("old_i", old_i)
+    print( len(As), len(old_i) )
+    return (As,Bs), old_i
+
+def removeGroup( base, remove ):
+    remove = set(remove)
+    A0s,B0s = base
+    #left = []
+    As = []
+    new_i = [-1]*len(A0s)
+    old_i = []
+    j = 0
+    for i,a in enumerate(A0s):
+        if not (i in remove):
+            As   .append( a )
+            old_i.append( i )
+            new_i[i] = j
+            j+=1
+    Bs = []
+    for b in B0s:
+        ia=b[0]
+        ja=b[1]
+        bi=( ia in remove )
+        bj=( ja in remove )
+        ia_ = new_i[ia]
+        ja_ = new_i[ja]
+        if not( bi or bj ):
+            Bs.append( (ia_,ja_) )
+        elif bi != bj:
+            if bi:  # ja is in, ia not
+                As[ ja_ ] -=1
+            else :  # ia is in, ja not
+                As[ ia_ ] -=1
+    return (As,Bs), old_i
+
+def selectBondedCluster( s, bonds ):
+    #s = { i0 }
+    for i in range( len(bonds) ):
+        n = len(s)
+        for b in bonds:
+            if   b[0] in s: s.add( b[1] )
+            elif b[1] in s: s.add( b[0] )
+        if( len(s) <= n ): break
+    return s
+
+def scan_xyz( fxyzin, callback=None, kwargs=None ):
+    fin =open(fxyzin,'r')
+    i=0
+    results = []
+    while True:
+        apos,Zs,es,qs,comment = load_xyz( fin=fin, bReadN=True )
+        if(len(es)==0): break
+        if callback is not None: 
+            if( kwargs is not None ): 
+                res = callback( (apos,es), id=i, **kwargs, comment=comment )
+            else:
+                res = callback( (apos,es), id=i, comment=comment )
+            results.append( res )
+        i+=1
+    return results
+
+def geomLines( apos, enames ):
+    lines = []
+    for i,pos in enumerate(apos):
+        lines.append(  "%s %3.5f %3.5f %3.5f\n" %(enames[i], pos[0],pos[1],pos[2]) )
+    return lines
+
+def tryAverage( ip, apos, _0=1 ):
+    if hasattr(ip, '__iter__'):
+        ip = np.array(ip) - _0
+        p0  = apos[ip].mean(axis=0)
+    else:
+        p0 = apos[ip-_0]
+    return p0
+
+def makeVectros( apos, ip0, b1, b2, _0=1 ):
+    p0 = tryAverage( ip0, apos, _0=_0 )
+    if ( b1==None ):
+        return p0, None, None
+    fw = tryAverage( b1[1], apos, _0=_0 ) - tryAverage( b1[0], apos, _0=_0 )
+    if ( ( b2==None ) or (len(apos)<3) ):
+        up = np.cross( fw, np.random.rand(3) )
+        up = up/np.linalg.norm(up)
+    else:
+        up = tryAverage( b2[1], apos, _0=_0 ) - tryAverage( b2[0], apos, _0=_0 )
+    return p0, fw, up
+
+def getVdWparams( iZs, etypes=None, fname='ElementTypes.dat' ):
+    if etypes is None: etypes = loadElementTypes( fname=fname, bDict=False )
+    return np.array( [( etypes[i][6],etypes[i][7] ) for i in iZs  ] )
+
+def iz2enames( iZs ):
+    return [ elements.ELEMENTS[iz-1][1] for iz in iZs ]
+
+def atoms_symmetrized( atypes, apos, lvec, qs=None, REQs=None, d=0.1):
+    """
+    Symmetrize atoms in a unit cell by replicating atoms near the cell boundaries.
+
+    Parameters:
+    - n (int): Number of atoms.
+    - atypes (np.ndarray): Array of atom types with shape (n,).
+    - apos (np.ndarray): Array of atom positions with shape (n, 3).
+    - REQs (np.ndarray): Array of quaternions with shape (n, 4).
+    - grid_cell (np.ndarray): 3x3 matrix representing the unit cell vectors as columns.
+    - d (float): Threshold distance from the cell boundaries (default is 0.1).
+
+    Returns:
+    - new_atypes (np.ndarray): Array of symmetrized atom types.
+    - new_apos (np.ndarray): Array of symmetrized atom positions.
+    - new_REQs (np.ndarray): Array of symmetrized quaternions.
+    """
+    n = len(atypes)
+    # Compute inverse transformation matrix M
+    M = np.linalg.inv(lvec)
+
+    # Define boundary thresholds
+    cmax = -0.5 + d
+    cmin =  0.5 - d
+
+    # Extract lattice vectors a and b from grid_cell
+    a = lvec[:, 0]  # First column
+    b = lvec[:, 1]  # Second column
+
+    # Transform atom positions using the inverse matrix M
+    p_transformed = apos @ M.T  # Shape: (n, 3)
+    p_a = p_transformed[:, 0]
+    p_b = p_transformed[:, 1]
+
+    # Determine if atoms are near the boundaries in a and b directions
+    alo = p_a < cmax
+    ahi = p_a > cmin
+    blo = p_b < cmax
+    bhi = p_b > cmin
+
+    aa = alo | ahi  # Atoms near the a-direction boundaries
+    bb = blo | bhi  # Atoms near the b-direction boundaries
+
+    # Calculate weighting factor based on replica count
+    ws = 1.0 / ((1 + aa.astype(float)) * (1 + bb.astype(float)))
+
+    bREQs = REQs is not None
+    bQs   = qs   is not None
+
+    new_REQs = None
+    if bREQs:
+        REQs_adj = REQs.copy()
+        REQs_adj[:, 2] *= ws  # Adjust Q
+        REQs_adj[:, 1] *= ws  # Adjust E0
+        new_REQs = list(REQs_adj)
+
+    new_qs = None
+    if bQs:
+        qs_adj = qs.copy()
+        qs_adj *= ws
+        new_qs = list(qs_adj)
+
+    # Initialize lists with original atoms
+    new_atypes = list(atypes)
+    new_apos   = list(apos)
+    new_ws     = list(ws)
+    
+    # Determine shifts based on boundary conditions
+    shift_a = np.where(alo[:, np.newaxis], a, -a)  # Shape: (n, 3)
+    shift_b = np.where(blo[:, np.newaxis], b, -b)  # Shape: (n, 3)
+
+    # Replicate atoms shifted by a
+    if np.any(aa):
+        indices_a = np.where(aa)[0]
+        new_atypes.extend(atypes[indices_a])
+        new_apos.extend(apos[indices_a] + shift_a[indices_a])
+        new_ws.extend( ws[indices_a] )
+        if bREQs: new_REQs.extend(REQs_adj[indices_a])
+        if bQs:   new_qs  .extend(qs_adj[indices_a])
+
+    # Replicate atoms shifted by b
+    if np.any(bb):
+        indices_b = np.where(bb)[0]
+        new_atypes.extend(atypes[indices_b])
+        new_apos  .extend(apos[indices_b] + shift_b[indices_b])
+        new_ws    .extend( ws[indices_b] )
+        if bREQs: new_REQs.extend(REQs_adj[indices_b])
+        if bQs:   new_qs.  extend(qs_adj[indices_b])
+
+        # Replicate atoms shifted by both a and b
+        indices_ab = np.where(aa & bb)[0]
+        if len(indices_ab) > 0:
+            new_atypes.extend(atypes[indices_ab])
+            new_apos  .extend(apos[indices_ab] + shift_a[indices_ab] + shift_b[indices_ab])
+            new_ws    .extend( ws[indices_ab] )
+            if bREQs:  new_REQs.extend(REQs_adj[indices_ab])
+            if bQs:    new_qs.extend(qs_adj[indices_ab])
+
+    # Convert lists back to NumPy arrays
+    new_atypes = np.array(new_atypes, dtype=atypes.dtype )
+    new_apos   = np.array(new_apos,   dtype=apos.dtype   )
+    new_ws     = np.array(new_ws,     dtype=ws.dtype   )
+    if bREQs: new_REQs   = np.array(new_REQs, dtype=REQs.dtype   )
+    if bQs:   new_qs     = np.array(new_qs,   dtype=qs.dtype     )
+
+    return new_atypes, new_apos, new_qs, new_REQs, new_ws
+
+def reindex_bonds( bonds, old_to_new, to_remove=None ):
+    #print( "--reindex_bonds() bonds \n", bonds )
+    #print( "--reindex_bonds() old_to_new \n", old_to_new )
+    if to_remove is not None: 
+        bonds = [ b for b in bonds if b[0] not in to_remove and b[1] not in to_remove ]
+    #print( "reindex_bonds() bonds \n", bonds )
+    #bonds = [ (old_to_new[b[0]], old_to_new[b[1]]) for b in bonds if b[0] in old_to_new and b[1] in old_to_new ]
+    bonds = [ (old_to_new[b[0]], old_to_new[b[1]]) for b in bonds  ]
+    return np.array(bonds)
+
+def make_reindex( n, mask, bInverted = False ):
+    #print( "make_reindex().1 mask ", mask )
+    if bInverted: mask = set(range(n)).difference(mask)
+    #print( "make_reindex().2 mask", mask )
+    # Create index mapping
+    old_to_new = {}
+    new_idx = 0
+    for old_idx in range(n):
+        #print( "old_idx, new_idx ", old_idx, new_idx, old_idx in mask )
+        if old_idx not in mask: continue
+        old_to_new[old_idx] = new_idx
+        new_idx += 1
+    #print( "make_reindex() old_to_new ", old_to_new )
+    return old_to_new
+
+
+
+
+# ============================================
+# ================= File I/O =================
+# ============================================
+
+def loadElementTypes( fname='ElementTypes.dat', bDict=False ):
+    lst = []
+    with open(fname,'r') as fin:
+        lines = fin.readlines()
+        for line in lines:
+            if( line[0]=='#' ): continue
+            wds = line.split()
+            # He        2   2   0   0   0xFFC0CB  0.849     1.1810    0.00242838984   0.098   0.00000000000   0.00000000000
+            name = wds[0]
+            rec = [ name ] + [ int(w) for w in wds[1:4] ] + [ wds[5] ] + [ float(w) for w in wds[6:12] ]
+            lst.append( rec )
+    if bDict: return { rec[0]:rec for rec in lst }
+    return lst
+
 def writeToXYZ( fout, es, xyzs, qs=None, Rs=None, comment="#comment", bHeader=True, ignore_es=None, other_lines=None ):
     na=len(xyzs)
     if(bHeader):
@@ -726,6 +1051,17 @@ def writeToXYZ( fout, es, xyzs, qs=None, Rs=None, comment="#comment", bHeader=Tr
 def saveXYZ( es, xyzs, fname, qs=None, Rs=None, mode="w", comment="#comment", ignore_es=None, other_lines=None ):
     fout = open(fname, mode )
     writeToXYZ( fout, es, xyzs, qs, Rs=Rs, comment=comment, ignore_es=ignore_es, other_lines=other_lines )
+    fout.close() 
+
+def saveAtoms( atoms, fname, xyz=True ):
+    fout = open(fname,'w')
+    fout.write("%i\n"  %len(atoms) )
+    if xyz==True : fout.write("\n") 
+    for i,atom in enumerate( atoms ):
+        if isinstance( atom[0], str ):
+            fout.write("%s %f %f %f\n"  %( atom[0], atom[1], atom[2], atom[3] ) )
+        else:
+            fout.write("%i %f %f %f\n"  %( atom[0], atom[1], atom[2], atom[3] ) )
     fout.close() 
 
 '''
@@ -1193,333 +1529,148 @@ def loadCoefs( characters=['s'] ):
             dens += d
     return dens, coefs, Es
 
-def findCOG( ps, byBox=False ):
-    if(byBox):
-        xmin=ps[:,0].min(); xmax=ps[:,0].max();
-        ymin=ps[:,1].min(); ymax=ps[:,1].max();
-        zmin=ps[:,2].min(); zmax=ps[:,2].max();
-        return np.array( (xmin+xmax, ymin+ymax, zmin+zmax) ) * 0.5
-    else:
-        cog = np.sum( ps, axis=0 )
-        cog *=(1.0/len(ps))
-        return cog
-
-def projectAlongBondDir( apos, i0, i1 ):
-    dir = (apos[i1]-apos[i0])
-    dir*=(1/np.sqrt(np.dot(dir,dir)))   # normalize
-    prjs = np.dot( apos, dir[:,None] )  #;print(prjs)
-    return prjs
-
-def histR( ps, dbin=None, Rmax=None, weights=None ):
-    rs = np.sqrt(np.sum((ps*ps),axis=1))
-    bins=100
-    if dbin is not None:
-        if Rmax is None:
-            Rmax = rs.max()+0.5
-        bins = np.linspace( 0,Rmax, int(Rmax/(dbin))+1 )
-    return np.histogram(rs, bins, weights=weights)
-
-# ================= Topology Builder
-
-def addGroup( base, group, links ):
-    A0s,B0s = base
-    A1s,B1s = group
-    n0 = len(A0s)
-    n1 = len(A1s)
-    As = A0s + A1s
-    Bs = B0s + []
-    for b in links:
-        b_ = (  b[0], b[1]+n0 )
-        Bs.append(b_)
-        As[b_[0]] += 1
-        As[b_[1]] += 1
-    for b in B1s:
-        b_ = (  b[0]+n0, b[1]+n0 )
-        Bs.append(b_)
-
-def addBond( base, link, bNew=True ):
-    As,Bs = base
-    if bNew:
-        As=As+[]
-        Bs=Bs+[]
-    As[link[0]] += 1
-    As[link[1]] += 1
-    Bs.append( link )
-    return (As,Bs)
-
-
-def disolveAtom( base, ia ):
-    A0s,B0s = base
-    Bs     = []
-    neighs = []
-    for b in B0s:
-        i=b[0]
-        j=b[1]
-        if(i>ia):
-            i-=1
-        if(j>ia):
-            j-=1
-        
-        if b[0]==ia:
-            neighs.append(j)
-            continue
-        if b[1]==ia:
-            neighs.append(i)
-            continue
-        print( "add B ", (i,j), b )
-        Bs.append( (i,j) )
-    As = list(A0s) + []
-    nng = len(neighs)
-    
-    if( nng ==2 ):
-        Bs.append( (neighs[0],neighs[1]) )
-    else:
-        print("ERROR: disolveAtoms applicable only for atom with 2 neighbors ( not %i )" %nng )
-        print( neighs )
-        exit()
-    
-    #for i in neighs:
-    #    As[i]-=1
-    old_i = list( range(len(As)) )
-    old_i.pop(ia)
-    As.pop(ia)
-    len( As )
-    print("old_i", old_i)
-    print( len(As), len(old_i) )
-    return (As,Bs), old_i
-
-def removeGroup( base, remove ):
-    remove = set(remove)
-    A0s,B0s = base
-    #left = []
-    As = []
-    new_i = [-1]*len(A0s)
-    old_i = []
-    j = 0
-    for i,a in enumerate(A0s):
-        if not (i in remove):
-            As   .append( a )
-            old_i.append( i )
-            new_i[i] = j
-            j+=1
-    Bs = []
-    for b in B0s:
-        ia=b[0]
-        ja=b[1]
-        bi=( ia in remove )
-        bj=( ja in remove )
-        ia_ = new_i[ia]
-        ja_ = new_i[ja]
-        if not( bi or bj ):
-            Bs.append( (ia_,ja_) )
-        elif bi != bj:
-            if bi:  # ja is in, ia not
-                As[ ja_ ] -=1
-            else :  # ia is in, ja not
-                As[ ia_ ] -=1
-    return (As,Bs), old_i
-
-def selectBondedCluster( s, bonds ):
-    #s = { i0 }
-    for i in range( len(bonds) ):
-        n = len(s)
-        for b in bonds:
-            if   b[0] in s: s.add( b[1] )
-            elif b[1] in s: s.add( b[0] )
-        if( len(s) <= n ): break
-    return s
-
-def scan_xyz( fxyzin, callback=None, kwargs=None ):
-    fin =open(fxyzin,'r')
-    i=0
-    results = []
-    while True:
-        apos,Zs,es,qs,comment = load_xyz( fin=fin, bReadN=True )
-        if(len(es)==0): break
-        if callback is not None: 
-            if( kwargs is not None ): 
-                res = callback( (apos,es), id=i, **kwargs, comment=comment )
-            else:
-                res = callback( (apos,es), id=i, comment=comment )
-            results.append( res )
-        i+=1
-    return results
-
-def geomLines( apos, enames ):
-    lines = []
-    for i,pos in enumerate(apos):
-        lines.append(  "%s %3.5f %3.5f %3.5f\n" %(enames[i], pos[0],pos[1],pos[2]) )
-    return lines
-
-def tryAverage( ip, apos, _0=1 ):
-    if hasattr(ip, '__iter__'):
-        ip = np.array(ip) - _0
-        p0  = apos[ip].mean(axis=0)
-    else:
-        p0 = apos[ip-_0]
-    return p0
-
-def makeVectros( apos, ip0, b1, b2, _0=1 ):
-    p0 = tryAverage( ip0, apos, _0=_0 )
-    if ( b1==None ):
-        return p0, None, None
-    fw = tryAverage( b1[1], apos, _0=_0 ) - tryAverage( b1[0], apos, _0=_0 )
-    if ( ( b2==None ) or (len(apos)<3) ):
-        up = np.cross( fw, np.random.rand(3) )
-        up = up/np.linalg.norm(up)
-    else:
-        up = tryAverage( b2[1], apos, _0=_0 ) - tryAverage( b2[0], apos, _0=_0 )
-    return p0, fw, up
-
-def loadElementTypes( fname='ElementTypes.dat', bDict=False ):
-    lst = []
-    with open(fname,'r') as fin:
-        lines = fin.readlines()
-        for line in lines:
-            if( line[0]=='#' ): continue
-            wds = line.split()
-            # He        2   2   0   0   0xFFC0CB  0.849     1.1810    0.00242838984   0.098   0.00000000000   0.00000000000
-            name = wds[0]
-            rec = [ name ] + [ int(w) for w in wds[1:4] ] + [ wds[5] ] + [ float(w) for w in wds[6:12] ]
-            lst.append( rec )
-    if bDict: return { rec[0]:rec for rec in lst }
-    return lst
-
-def getVdWparams( iZs, etypes=None, fname='ElementTypes.dat' ):
-    if etypes is None: etypes = loadElementTypes( fname=fname, bDict=False )
-    return np.array( [( etypes[i][6],etypes[i][7] ) for i in iZs  ] )
-
-def iz2enames( iZs ):
-    return [ elements.ELEMENTS[iz-1][1] for iz in iZs ]
-
-def atoms_symmetrized( atypes, apos, lvec, qs=None, REQs=None, d=0.1):
+def save_mol(fname, enames, apos, bonds, title="Avogadro"):
     """
-    Symmetrize atoms in a unit cell by replicating atoms near the cell boundaries.
+    Save the current AtomicSystem in MDL MOL V2000 format (i.e. a ".mol" file).
+
+    The MOL file format has the following structure:
+    1. A title line (up to 80 characters) – here prefixed by two spaces.
+    2. A blank line.
+    3. A counts line, for example:
+            "  3  2  0  0  0  0  0  0  0 0999 V2000"
+        where the first number is the number of atoms (right justified in 3 columns),
+        the second number is the number of bonds (3 columns), followed by seven fields (each "  0"),
+        then a field " 0999" and the literal " V2000".
+    4. An ATOM block: one line per atom in fixed‐width format.
+        In MOL V2000 the typical atom line (columns) is as follows:
+        - Columns 1–3: Atom number (3-digit integer, right justified)
+        - Columns 4–12: x coordinate (10.4f)
+        - Columns 13–22: y coordinate (10.4f)
+        - Columns 23–32: z coordinate (10.4f)
+        - Columns 34–36: Atom symbol (3-character string, left justified)
+        - Then 12 fields of 3 characters each (usually zeros)
+    5. A BOND block: one line per bond.
+        Each bond line contains:
+        - Columns 1–3: Bond number (3-digit integer, right justified)
+        - Columns 4–6: First atom number (3-digit integer)
+        - Columns 7–9: Second atom number (3-digit integer)
+        - Columns 10–12: Bond type (3-digit integer)
+        - Columns 13–15: 0 (3-digit integer)
+        - Columns 16–18: 0 (3-digit integer)
+        - Columns 19–21: 0 (3-digit integer)
+        - Columns 22–24: 0 (3-digit integer)
+    6. A termination line: "M  END"
 
     Parameters:
-    - n (int): Number of atoms.
-    - atypes (np.ndarray): Array of atom types with shape (n,).
-    - apos (np.ndarray): Array of atom positions with shape (n, 3).
-    - REQs (np.ndarray): Array of quaternions with shape (n, 4).
-    - grid_cell (np.ndarray): 3x3 matrix representing the unit cell vectors as columns.
-    - d (float): Threshold distance from the cell boundaries (default is 0.1).
+    fname : str
+            The output filename.
+    title : str, optional
+            The title for the molecule (default "Avogadro").
 
     Returns:
-    - new_atypes (np.ndarray): Array of symmetrized atom types.
-    - new_apos (np.ndarray): Array of symmetrized atom positions.
-    - new_REQs (np.ndarray): Array of symmetrized quaternions.
+    None.
     """
-    n = len(atypes)
-    # Compute inverse transformation matrix M
-    M = np.linalg.inv(lvec)
+    with open(fname, "w") as fout:
+        # --- Title line (with two leading spaces) ---
+        fout.write("  " + title + "\n")
+        # --- Blank line ---
+        fout.write("\n")
+        n_atoms = len(apos)
+        n_bonds = len(bonds) if bonds is not None else 0
+        # --- Counts line ---
+        # The counts line: atom count (3d), bond count (3d),
+        # then 7 fields of "  0", then " 0999 V2000"
+        counts_line = f"  {n_atoms:>3d}{n_bonds:>3d}  0  0  0  0  0  0  0 0999 V2000"
+        fout.write(counts_line + "\n")
+        
+        # --- Atom block ---
+        fout.write("\n")
+        for i in range(n_atoms):
+            atom_id = i + 1  # MOL format uses 1-based indexing
+            x, y, z = apos[i]
+            # Use the element name as the atom symbol.
+            symbol = enames[i]
+            # Build the atom line using fixed-width formatting.
+            # Here, we format:
+            #   Atom number: 3d right justified
+            #   x, y, z: each 10.4f (total width 10, with 4 decimal places)
+            #   Atom symbol: left aligned in 3 characters
+            #   Then 12 fields of 3 characters each set to 0.
+            atom_line = f"{atom_id:>3d} {x:10.4f}{y:10.4f}{z:10.4f} {symbol:<3s}" + "  0"*12
+            fout.write(atom_line + "\n")
+        
+        # --- Bond block ---
+        fout.write("\n")
+        for i, bond in enumerate(bonds):
+            bond_id = i + 1
+            # Assume bond is a tuple (i, j) with 0-based indices; convert to 1-based.
+            a1 = bond[0] + 1
+            a2 = bond[1] + 1
+            # Bond type is set to 1; then 4 fields of 0.
+            bond_line = f"{bond_id:>3d}{a1:>4d}{a2:>4d}{1:>4d}" + "  0"*4
+            fout.write(bond_line + "\n")
+        
+        # --- Termination line ---
+        fout.write("M  END\n")
 
-    # Define boundary thresholds
-    cmax = -0.5 + d
-    cmin =  0.5 - d
 
-    # Extract lattice vectors a and b from grid_cell
-    a = lvec[:, 0]  # First column
-    b = lvec[:, 1]  # Second column
+def save_mol2( fname, enames, apos, bonds, qs=None, comment=""):
+    """
+    Save the current AtomicSystem in MOL2 format.
 
-    # Transform atom positions using the inverse matrix M
-    p_transformed = apos @ M.T  # Shape: (n, 3)
-    p_a = p_transformed[:, 0]
-    p_b = p_transformed[:, 1]
-
-    # Determine if atoms are near the boundaries in a and b directions
-    alo = p_a < cmax
-    ahi = p_a > cmin
-    blo = p_b < cmax
-    bhi = p_b > cmin
-
-    aa = alo | ahi  # Atoms near the a-direction boundaries
-    bb = blo | bhi  # Atoms near the b-direction boundaries
-
-    # Calculate weighting factor based on replica count
-    ws = 1.0 / ((1 + aa.astype(float)) * (1 + bb.astype(float)))
-
-    bREQs = REQs is not None
-    bQs   = qs   is not None
-
-    new_REQs = None
-    if bREQs:
-        REQs_adj = REQs.copy()
-        REQs_adj[:, 2] *= ws  # Adjust Q
-        REQs_adj[:, 1] *= ws  # Adjust E0
-        new_REQs = list(REQs_adj)
-
-    new_qs = None
-    if bQs:
-        qs_adj = qs.copy()
-        qs_adj *= ws
-        new_qs = list(qs_adj)
-
-    # Initialize lists with original atoms
-    new_atypes = list(atypes)
-    new_apos   = list(apos)
-    new_ws     = list(ws)
+    The MOL2 file will have the following sections:
+    - @<TRIPOS>MOLECULE: a header with molecule name and counts.
+    - @<TRIPOS>ATOM: one line per atom including atom id, element name,
+                        coordinates, atom type, substructure id, residue name,
+                        and charge.
+    - @<TRIPOS>BOND: one line per bond including bond id, indices of the two
+                        atoms (1–based indexing) and bond type (default "1").
     
-    # Determine shifts based on boundary conditions
-    shift_a = np.where(alo[:, np.newaxis], a, -a)  # Shape: (n, 3)
-    shift_b = np.where(blo[:, np.newaxis], b, -b)  # Shape: (n, 3)
-
-    # Replicate atoms shifted by a
-    if np.any(aa):
-        indices_a = np.where(aa)[0]
-        new_atypes.extend(atypes[indices_a])
-        new_apos.extend(apos[indices_a] + shift_a[indices_a])
-        new_ws.extend( ws[indices_a] )
-        if bREQs: new_REQs.extend(REQs_adj[indices_a])
-        if bQs:   new_qs  .extend(qs_adj[indices_a])
-
-    # Replicate atoms shifted by b
-    if np.any(bb):
-        indices_b = np.where(bb)[0]
-        new_atypes.extend(atypes[indices_b])
-        new_apos  .extend(apos[indices_b] + shift_b[indices_b])
-        new_ws    .extend( ws[indices_b] )
-        if bREQs: new_REQs.extend(REQs_adj[indices_b])
-        if bQs:   new_qs.  extend(qs_adj[indices_b])
-
-        # Replicate atoms shifted by both a and b
-        indices_ab = np.where(aa & bb)[0]
-        if len(indices_ab) > 0:
-            new_atypes.extend(atypes[indices_ab])
-            new_apos  .extend(apos[indices_ab] + shift_a[indices_ab] + shift_b[indices_ab])
-            new_ws    .extend( ws[indices_ab] )
-            if bREQs:  new_REQs.extend(REQs_adj[indices_ab])
-            if bQs:    new_qs.extend(qs_adj[indices_ab])
-
-    # Convert lists back to NumPy arrays
-    new_atypes = np.array(new_atypes, dtype=atypes.dtype )
-    new_apos   = np.array(new_apos,   dtype=apos.dtype   )
-    new_ws     = np.array(new_ws,     dtype=ws.dtype   )
-    if bREQs: new_REQs   = np.array(new_REQs, dtype=REQs.dtype   )
-    if bQs:   new_qs     = np.array(new_qs,   dtype=qs.dtype     )
-
-    return new_atypes, new_apos, new_qs, new_REQs, new_ws
-
-def reindex_bonds( bonds, old_to_new, to_remove=None ):
-    #print( "--reindex_bonds() bonds \n", bonds )
-    #print( "--reindex_bonds() old_to_new \n", old_to_new )
-    if to_remove is not None: 
-        bonds = [ b for b in bonds if b[0] not in to_remove and b[1] not in to_remove ]
-    #print( "reindex_bonds() bonds \n", bonds )
-    #bonds = [ (old_to_new[b[0]], old_to_new[b[1]]) for b in bonds if b[0] in old_to_new and b[1] in old_to_new ]
-    bonds = [ (old_to_new[b[0]], old_to_new[b[1]]) for b in bonds  ]
-    return np.array(bonds)
-
-def make_reindex( n, mask, bInverted = False ):
-    #print( "make_reindex().1 mask ", mask )
-    if bInverted: mask = set(range(n)).difference(mask)
-    #print( "make_reindex().2 mask", mask )
-    # Create index mapping
-    old_to_new = {}
-    new_idx = 0
-    for old_idx in range(n):
-        #print( "old_idx, new_idx ", old_idx, new_idx, old_idx in mask )
-        if old_idx not in mask: continue
-        old_to_new[old_idx] = new_idx
-        new_idx += 1
-    #print( "make_reindex() old_to_new ", old_to_new )
-    return old_to_new
+    Parameters:
+    fname   : str
+                The output filename.
+    comment : str, optional
+                A comment string to include in the MOL2 file header.
+                
+    Returns:
+    None.
+    """
+    with open(fname, "w") as fout:
+        # Write the MOLECULE section.
+        fout.write("@<TRIPOS>MOLECULE\n")
+        # Use a default molecule name or comment.
+        molecule_name = "Molecule"
+        fout.write(molecule_name + "\n")
+        n_atoms = len(apos)
+        n_bonds = len(bonds) if bonds is not None else 0
+        # MOL2 counts: atoms, bonds, (and 0 0 0 for other fields)
+        fout.write(f"{n_atoms:>3d}{n_bonds:>3d} 0 0 0\n")
+        # Add required SMALL and GASTEIGER lines
+        fout.write("SMALL\nGASTEIGER\n\n")
+        
+        # Write the ATOM section.
+        fout.write("@<TRIPOS>ATOM\n")
+        for i in range(n_atoms):
+            atom_id   = i + 1  # MOL2 uses 1-based indexing.
+            atom_type = enames[i]
+            ename     = atom_type.replace('.','_')
+            ename     = ename.split('_')[0]
+            x, y, z   = apos[i]
+            substructure = 1  # Default substructure id.
+            residue = "UNL1"   # Standard residue name for unknown ligand.
+            # Use qs if available and has the correct length, otherwise 0.0.
+            charge = qs[i] if (qs is not None and len(qs) == n_atoms) else 0.0
+            # Format: atom_id, ename, x, y, z, atom_type, substructure, residue, charge.
+            fout.write("{:>7d} {:<8s} {:>9.4f} {:>9.4f} {:>9.4f} {:<5s} {:>3d}  {:<7s} {:>10.4f}\n".format(atom_id, ename, x, y, z, atom_type, substructure, residue, charge))
+        
+        # Write the BOND section.
+        fout.write("@<TRIPOS>BOND\n")
+        if bonds is not None:
+            for i, bond in enumerate(bonds):
+                bond_id = i + 1
+                # bond is assumed to be a tuple (i, j) with 0-based indices.
+                # Convert to 1-based indices.
+                a1 = bond[0] + 1
+                a2 = bond[1] + 1
+                bond_type = 1
+                fout.write("{:>6d} {:>5d} {:>5d} {:>4d}\n".format(bond_id, a1, a2, bond_type ))

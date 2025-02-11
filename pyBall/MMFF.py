@@ -796,6 +796,19 @@ def getBBuff(name,sh):
     ptr = lib.getBBuff(name)
     return np.ctypeslib.as_array( ptr, shape=sh)
 
+#void get_gridFF_info( int* int_data, double* float_data ){
+lib.get_gridFF_info.argtypes = [c_int_p, c_double_p]
+lib.get_gridFF_info.restype  = None
+def get_gridFF_info( int_data, float_data ):
+    global gff_shift0, gff_pos0, gff_natoms, gff_natoms_ 
+    int_data   = np.zeros(2, dtype=np.int32  )
+    float_data = np.zeros(6, dtype=np.float64)
+    lib.get_gridFF_info( int_data, float_data )
+    gff_shift0 = float_data[0:3]
+    gff_pos0   = float_data[3:6]
+    gff_natoms = int_data[0]
+    gff_natoms_= int_data[1]
+    
 #def getBuffs( nnode, npi, ncap, nbond, NEIGH_MAX=4 ):
 def getBuffs( NEIGH_MAX=4 ):
     #init_buffers()
@@ -813,6 +826,9 @@ def getBuffs( NEIGH_MAX=4 ):
     Es    = getBuff ( "Es",    (6,) )  # [ Etot,Eb,Ea, Eps,EppT,EppI; ]
     global DOFs,fDOFs,vDOFs,apos,fapos,REQs,PLQs,pipos,fpipos,bond_l0,bond_k, bond2atom,neighs,selection
     #Ebuf     = getEnergyTerms( )
+    gridff_apos   = getBuff ( "gridff_apos",      (gff_natoms,3) )
+    gridff_apos_  = getBuff ( "gridff_apos_",     (gff_natoms_,3) )
+    
     apos      = getBuff ( "apos",     (natoms,3) )
     fapos     = getBuff ( "fapos",    (natoms,3) )
     REQs      = getBuff ( "REQs",     (natoms,4) )
