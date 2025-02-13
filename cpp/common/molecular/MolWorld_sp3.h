@@ -3745,7 +3745,10 @@ double entropic_spring_JE(double lamda1, double lamda2, int n, int *dc, int nbPr
     // loop sampleMD -> prodMD
     for (int i = 0; i < nrealization; i++){
         database->loadAtoms(0, &ffl);
-
+        for (int i = 0; i < n; i++){
+            constrs.bonds[dc[i]].ls.set((lamda1)/n);
+            colVar.bonds[i].ls.set((lamda1)/n);
+        }
         bMoving = true;
         run_omp_entropic_spring(nSampleSteps, dt);
 

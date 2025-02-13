@@ -336,4 +336,4 @@ fi
 #valgrind --log-file="valgrind.log" --leak-check=yes ./$name -x common_resources/H2O
 
 # Free energy
-./$name -x common_resources/enthropic_spring_10 -b common_resources/enthropic_spring_10.cons -T 100 0.01
+./$name -x common_resources/entropic_spring_20 -b common_resources/entropic_spring_20.cons -T 100 0.01
