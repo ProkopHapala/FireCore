@@ -19,7 +19,10 @@ export LD_PRELOAD
 echo "#=========== RUN"
 
 #python3 plot_EA.py 2> ERR | tee OUT
-python3 plot_EE.py 2> ERR | tee OUT
+#python3 plot_EE.py 2> ERR | tee OUT
+
+#python3 plot_EA.py 
+python3 plot_EE.py 
 
 #python3 run_tests.py 2> ERR
 #python3 run_dynamics.py 
