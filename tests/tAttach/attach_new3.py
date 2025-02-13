@@ -2,7 +2,7 @@
 import sys
 import numpy as np
 sys.path.append('../../')
-from pyBall.atomicUtils import AtomicSystem
+from pyBall.AtomicSystem import AtomicSystem
 # (Make sure the free functions are imported as well.)
 
 
@@ -14,10 +14,10 @@ backbones=[
 ]
 
 endgroups=[
-("C",'./endgroups/cytosine-.mol2'),
+#("C",'./endgroups/cytosine-.mol2'),
 #("T",'./endgroups/thymine-.mol2'),
 #("A",'./endgroups/adenine-.mol2'),
-#("G",'./endgroups/guanine-.mol2'),
+("G",'./endgroups/guanine-SeCl.mol2'),
 ]
 
 

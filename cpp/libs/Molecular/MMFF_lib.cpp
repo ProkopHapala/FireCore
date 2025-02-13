@@ -21,20 +21,8 @@ double* grid_data=0;
 
 extern "C"{
 
-void get_gridFF_info( int* int_data, double* float_data ){
-    int_data[0]=W.gridFF.natoms;
-    int_data[1]=W.gridFF.atoms_.size();
-    *((Vec3d*)(float_data  ))=W.gridFF.shift0;
-    *((Vec3d*)(float_data+3))=W.gridFF.grid.pos0;
-}
-
 void init_buffers(){
     //printf( "init_buffers() \n" );
-
-
-    buffers .insert( { "gridff_apos",   (double*)W.gridFF.apos    } );
-    buffers .insert( { "gridff_apos_",   (double*)W.gridFF.apos_  } );
-
 
     buffers .insert( { "apos",   (double*)W.nbmol.apos  } );
     buffers .insert( { "fapos",  (double*)W.nbmol.fapos } );

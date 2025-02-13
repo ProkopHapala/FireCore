@@ -15,7 +15,10 @@ monomers ={
 }
 
 #sequence = "TPTTDD"
-sequence = "PPPP"
+
+sequence = "PPPPPPP"
+
+#sequence = "PPPPPPPPPPPP"
 #sequence = "DDDD"
 #sequence = "TTTT"
 
