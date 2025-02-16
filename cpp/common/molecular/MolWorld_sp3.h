@@ -58,6 +58,8 @@ static MMFFparams* params_glob;
 
 #include "EwaldGrid.h"
 
+#include "ProjectiveDynamics_d.h"
+
 //#include "debugAllocator.h"
 
 
@@ -122,7 +124,8 @@ class MolWorld_sp3 : public SolverInterface { public:
     MMFFsp3_loc  ffl;
     //MMFFf4     ff4;
     UFF          ffu;
-	Constrains   constrs;
+	ProjectiveDynamics_d pd;
+    Constrains   constrs;
 	//NBFF_old   nff;
     NBFF         surf, nbmol;
 	GridFF       gridFF;
