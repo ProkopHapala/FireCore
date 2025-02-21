@@ -386,6 +386,8 @@ class Builder{  public:
 
     std::unordered_set<int> selection;
     std::vector<int>        atom_permut;
+    std::vector<int>        atom2group;
+
 
     //static int iDebug = 0;
     std::vector<Atom>       atoms;
@@ -2693,6 +2695,57 @@ void assignTorsions( bool bNonPi=false, bool bNO=true ){
         for(int ia=0; ia<atoms.size(); ia++){ printf("atom[%i] Q=%g \n", ia, atoms[ia].REQ.z ); }; //exit(0);
     }
 
+    void str2groups(const char* buff, int maxSteps=1024){
+        // this function reads groups from a string and stores them in atom2group 
+        // groups are separated by semicolon ";" and atoms in one group are separated by comma ","
+        // there can be any number of groups and each group can have any number of atoms 
+        // example: "1,3,5; 2,4,7; 8,9,12"
+        // maxSteps: maximum number of parsing steps to prevent infinite loops
+        
+        const char* p = buff;
+        int group = 0;
+        int atom;
+        int steps = 0;
+        atom2group.resize(atoms.size(),-1); // -1 means not assigned
+        
+        while (*p && steps < maxSteps) {
+            // Try to read a number
+            if (sscanf(p, "%d", &atom) == 1) {
+                // Store valid atom indices
+                if (atom >= 0 && atom < atoms.size()) {
+                    atom2group[atom] = group;
+                }
+                // Skip the number we just read
+                while (*p && *p >= '0' && *p <= '9') p++;
+            } else {
+                // Process separators or skip other characters
+                if (*p == ',') {
+                    // Just skip the comma
+                    p++;
+                } else if (*p == ';') {
+                    group++;
+                    p++;
+                } else {
+                    // Skip any other character
+                    p++;
+                }
+            }
+            steps++;
+        }
+        
+        if (steps >= maxSteps) {
+            printf("Warning: str2groups reached maximum steps (%d). Parsing terminated.\n", maxSteps);
+        }
+        printf("Parsed %d groups\n", group + 1);
+    }
+        
+    void printAtom2Groups()const{
+        printf("printAtom2Groups() n=%i na=%i \n", atom2group.size(), atoms.size() );
+        for(int i=0; i<atom2group.size(); i++){
+            printf("atom[%i] group[%i] \n", i, atom2group[i] );
+        }
+    }
+
     int write2xyz( FILE* pfile, const char* comment="#comment" )const{
         //write2xyz( pfile, atoms.size(), int* atypes, Vec3d* pos, const std::unordered_map<std::string,int>& atomTypeDict, const char* comment="#comment" ){
         fprintf(pfile, "%i\n",  atoms.size() );
@@ -2985,6 +3038,10 @@ void assignTorsions( bool bNonPi=false, bool bNO=true ){
                     //sscanf( buff+4, "%lf %lf %lf %lf %lf %lf %lf %lf %lf", &lvec.xx, &lvec.xy, &lvec.xz, &lvec.yx, &lvec.yy, &lvec.yz, &lvec.zx, &lvec.zy, &lvec.zz );
                     printf("Builder::load_mol2() lvec loaded\n"); printMat(lvec);
                     bPBC = true;
+                }else
+                if( strncmp(buff, "@groups", 4) == 0 ){
+                    str2groups(buff, nbuf );
+                    printAtom2Groups();
                 }
                 continue;
             }

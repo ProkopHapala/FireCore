@@ -50,7 +50,10 @@ fi
 #./$name -x tAttach/PNA_CG_poly-.mol2
 #./$name -x tAttach/PNA_CG_poly-.mol2 -nPBC 1,3,0  -g common_resources/xyz/NaCl_8x8_L3 -shift 0.0,0.0,2.0
 #./$name -x tAttach/DANA_CG_poly.mol2 -nPBC 1,3,0  -g common_resources/xyz/NaCl_8x8_L3 -shift 0.0,0.0,2.0
-./$name -x tAttach/DANA_CG_poly-.mol2 -nPBC 1,3,0  -g common_resources/xyz/NaCl_8x8_L3 -shift 0.0,0.0,2.0
+./$name -x tAttach/DANA_CG_poly-.mol2 -nPBC 1,3,0 
+#./$name -x tAttach/DANA_CG_poly-.mol2 -nPBC 1,3,0  -g common_resources/xyz/NaCl_8x8_L3 -shift 0.0,0.0,2.0
+
+
 #./$name -x tAttach/TNA_CG_poly-.mol2 -nPBC 1,3,0  -g common_resources/xyz/NaCl_8x8_L3 -shift 0.0,0.0,2.0
 
 

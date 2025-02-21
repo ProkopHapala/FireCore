@@ -976,7 +976,7 @@ void printPBCshifts(){
         //ffgrid = gridFF.HHermite_d;
         tryChangeDir( wd0 );
         //getcwd(tmpstr, 1024 ); printf( "initGridFF() 3 WD=`%s`\n", tmpstr );
-        gridFF.shift0 = Vec3d{0.,0.,-2.0};
+        gridFF.shift0 = Vec3d{0.,0.,-2.0};    
         //gridFF.shift0 = Vec3d{0.,0.,0.0};
         //if(bCheckEval)gridFF.evalCheck();    // WARRNING:  CHECK FOR gridFF TURNED OFF !!!!!!!!!!!!!!!!!!!!!!!!!
         //return ffgrid;
