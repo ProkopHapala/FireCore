@@ -66,3 +66,4 @@ python3 run.py
 #python3 run_opt_poly.py BB.HNH-hh.NHO-hp
 #python3 run_opt_poly.py BB.HNH-hp.OHO-h_1,BB.HNH-hh.NHO-hp
 
+#python3 run_free_energy.py

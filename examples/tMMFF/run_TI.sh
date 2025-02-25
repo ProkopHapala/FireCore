@@ -27,9 +27,9 @@ export OMP_NUM_THREADS
 #rm *.bin
 
 
-nbSteps=100000         # JE -> nProdSteps
-nMDsteps=1000     # JE -> nrealization
-nEQsteps=10000
+nbSteps=100         # JE -> nProdSteps
+nMDsteps=100000     # JE -> nrealization
+nEQsteps=1000
 t_damp=100
 T=300
 dt=0.01

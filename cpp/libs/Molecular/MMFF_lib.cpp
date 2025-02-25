@@ -382,7 +382,7 @@ void setSwitches( int CheckInvariants, int PBC_nonBond, int PBC_evalAtom, int No
     _setbool( W.bConstrains, bConstrains );
     _setbool( W.go.bExploring, bExploring );
     _setbool( W.bMoving   , bMoving   );
-    W.ffl.bSubtractAngleNonBond = W.bNonBonded;
+    W.ffl.setNonBondStrategy( bNonBondNeighs*2-1 );
     #undef _setbool
 }
 

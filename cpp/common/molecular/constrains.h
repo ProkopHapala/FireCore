@@ -407,7 +407,7 @@ class Constrains{ public:
     }
 
     int loadBonds( const char* fname, int* atom_permut=0, int _0=1 ){
-        printf("!!!!!!!!!!!! Constrains::loadBonds(%s) atom_permut=%li _0=%i\n", fname, (long)atom_permut, _0 );
+        printf("Constrains::loadBonds(%s) atom_permut=%li _0=%i\n", fname, (long)atom_permut, _0 );
         FILE* pFile = fopen( fname, "r" );
         if(pFile==0){ printf("ERROR in Constrains::loadBonds(%s) - No Such File \n", fname ); return -1; }
         else{
