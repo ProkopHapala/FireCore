@@ -21,6 +21,10 @@ void fitAABB( Vec6d& bb, int n, int* c2o, Vec3d* ps ){
     for(int i=0; i<n; i++){ 
         //printf( "fitAABB() i %i \n", i );
         int ip = c2o[i];
+        if(ip < 0){
+            printf( "ERROR in fitAABB() i: %i ip %i \n", i, ip );
+            exit(0);
+        };
         //printf( "fitAABB() i=%i ip=%i \n", i, ip );
         Vec3d p = ps[ip];
         bb.lo.setIfLower  ( p );
@@ -190,21 +194,48 @@ class NBFF: public ForceField{ public:
         evalPLQd(K);
     }
 
+    void initBBsFromGroups(int natom_, const int* atom2group, bool bUpdateBB=true){
+        printf( "NBFF::initBBsFromGroups() natom_=%i \n", natom_ );
+        // count number of unique groups
+        std::unordered_set<int> uniqueGroups;
+        for(int i=0; i<natom_; i++){ int ig=atom2group[i]; if(ig>=0) uniqueGroups.insert(ig); }
+        nBBs = uniqueGroups.size();
+        printf( "NBFF::initBBsFromGroups() nBBs=%i \n", nBBs );
+        _realloc(BBs, nBBs);
+        pointBBs.realloc(nBBs, natom_, true);  // Allocate space for nBBs buckets and natom_ objects, with obj2cell array
+        for(int i=0; i<natom_; i++){  
+            int ig=atom2group[i];
+            //if(ig>=0){  printf( "NBFF::initBBsFromGroups() i=%i atom2group[i]=%i \n", i, atom2group[i] ); }
+            printf( "NBFF::initBBsFromGroups() i=%i atom2group[i]=%i \n", i, atom2group[i] );
+            pointBBs.obj2cell[i] = ig;
+        }
+        DEBUG
+        pointBBs.updateCells(natom_);               DEBUG
+        pointBBs.printObjCellMaping();              DEBUG
+        pointBBs.printCells();                      DEBUG
+        pointBBs.checkObj2Cell(true);               DEBUG
+        pointBBs.checkCell2Obj(natom_, true);       DEBUG
+        DEBUG
+        if(bUpdateBB){ updatePointBBs(true); }
+        printf( "NBFF::initBBsFromGroups() EDN \n", natom_ );
+        exit(0);
+    }
+
     __attribute__((hot))  
     inline void updatePointBBs( bool bInit=true){
         const Buckets& buckets = pointBBs;
-        //printf( "updatePointBBs() START \n" );
+        printf( "updatePointBBs() START \n" );
         for(int ib=0; ib<buckets.ncell; ib++){
-            //printf( "updatePointBBs() ib %i \n", ib );
+            printf( "updatePointBBs() ib %i \n", ib );
             if(bInit){ BBs[ib].lo = Vec3dmax; BBs[ib].hi = Vec3dmin; }
             int n = buckets.cellNs[ib];
             if(n>0){
                 int i0 = buckets.cellI0s[ib];
-                //printf( "updatePointBBs() ib %i n %i i0 %i \n", ib, n, i0 );
-                fitAABB( BBs[ib], n, buckets.cell2obj+i0, vapos );
+                printf( "updatePointBBs() ib %i n %i i0 %i \n", ib, n, i0 );
+                fitAABB( BBs[ib], n, buckets.cell2obj+i0, apos );  // Use apos (position) instead of vapos (velocity)
             }
         }
-        //printf( "updatePointBBs() DONE \n" );
+        printf( "updatePointBBs() DONE \n" );
     }
 
     __attribute__((hot))  
@@ -595,15 +626,8 @@ class NBFF: public ForceField{ public:
             fx+=fij.x;
             fy+=fij.y;
             fz+=fij.z;
-            //fi+=fij;
-            // {
-            //     glLineWidth(3.0);
-            //     glColor3d(0.0,0.0,1.0);  Draw3D::drawVecInPos( dp,  apos[ia] );
-            //     glColor3d(1.0,0.0,0.0);  Draw3D::drawVecInPos( fij, apos[ia] );
-            // } 
-            //printf( "evalLJQs_atom_omp(%i) E %g f(%g,%g,%g) \n", ia, E, fx, fy, fz );
+            //fi+=fij; 
         }
-        //printf( "evalLJQs_atom_omp(%i) E %g f(%g,%g,%g) \n", ia, E, fx, fy, fz );
         fapos[ia].add( Vec3d{fx,fy,fz} );
         return E;
     }
@@ -783,7 +807,10 @@ class NBFF: public ForceField{ public:
                             ||((j==ng.y)&&(ipbc==ngC.y))
                             ||((j==ng.z)&&(ipbc==ngC.z))
                             ||((j==ng.w)&&(ipbc==ngC.w))
-                        ){ continue;}
+                        ){
+                            //printf("skip[%i,%i]ipbc=%i\n", i, j, ipbc );
+                            continue; // skipp pbc0
+                        }
                     }
                     const Vec3d dpc = dp + shifts[ipbc];    //   dp = pj - pi + pbc_shift = (pj + pbc_shift) - pi 
                     double eij = getLJQH( dpc, fij, REQij, R2damp );
@@ -1131,6 +1158,8 @@ class NBFF: public ForceField{ public:
         _bindOrRealloc(natoms, fapos_ , fapos  );
         _bindOrRealloc(natoms, REQs_  , REQs   );
         _bindOrRealloc(natoms, atypes_, atypes );
+        Quat4i qminus{-1,-1,-1,-1};
+        _realloc0(neighs, natoms, qminus );
     }
 
     void dealloc(){
@@ -1145,4 +1174,3 @@ class NBFF: public ForceField{ public:
 };
 
 #endif
-

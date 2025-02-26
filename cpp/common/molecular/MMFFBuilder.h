@@ -387,6 +387,7 @@ class Builder{  public:
     std::unordered_set<int> selection;
     std::vector<int>        atom_permut;
     std::vector<int>        atom2group;
+    int ngroups = 0;
 
 
     //static int iDebug = 0;
@@ -2700,43 +2701,45 @@ void assignTorsions( bool bNonPi=false, bool bNO=true ){
         // groups are separated by semicolon ";" and atoms in one group are separated by comma ","
         // there can be any number of groups and each group can have any number of atoms 
         // example: "1,3,5; 2,4,7; 8,9,12"
-        // maxSteps: maximum number of parsing steps to prevent infinite loops
         
         const char* p = buff;
         int group = 0;
         int atom;
-        int steps = 0;
         atom2group.resize(atoms.size(),-1); // -1 means not assigned
         
-        while (*p && steps < maxSteps) {
-            // Try to read a number
-            if (sscanf(p, "%d", &atom) == 1) {
-                // Store valid atom indices
+        printf(" # MM::Builder.str2groups(%s) \n", buff );
+        
+        char* endptr;
+        while (*p && group < maxSteps) { // safety limit on groups
+            // Skip any whitespace or non-numeric characters until we find a digit or end
+            while (*p && !(*p >= '0' && *p <= '9')) {
+                if (*p == ';') {
+                    group++;
+                    printf("str2groups() moving to group: %i\n", group);
+                }
+                p++;
+            }
+            
+            // If we hit the end, break
+            if (!*p) break;
+            
+            // Try to convert the number
+            atom = strtol(p, &endptr, 10);
+            if (p != endptr) { // if conversion successful
+                printf("str2groups() group: %i atom: %i\n", group, atom);
                 if (atom >= 0 && atom < atoms.size()) {
                     atom2group[atom] = group;
                 }
-                // Skip the number we just read
-                while (*p && *p >= '0' && *p <= '9') p++;
+                p = endptr; // advance past the number
             } else {
-                // Process separators or skip other characters
-                if (*p == ',') {
-                    // Just skip the comma
-                    p++;
-                } else if (*p == ';') {
-                    group++;
-                    p++;
-                } else {
-                    // Skip any other character
-                    p++;
-                }
+                p++; // shouldn't happen, but just in case
             }
-            steps++;
         }
         
-        if (steps >= maxSteps) {
-            printf("Warning: str2groups reached maximum steps (%d). Parsing terminated.\n", maxSteps);
+        if (group >= maxSteps) {
+            printf("Warning: str2groups reached maximum groups (%d). Parsing terminated.\n", maxSteps);
         }
-        printf("Parsed %d groups\n", group + 1);
+        printf("Finished parsing. Found %d groups\n", group + 1);
     }
         
     void printAtom2Groups()const{
@@ -3006,6 +3009,10 @@ void assignTorsions( bool bNonPi=false, bool bNO=true ){
         }
         const int nbuf = 1024;
         char buff[nbuf];
+
+        bool bLoadGroups = false;
+        char group_str[nbuf];
+
         bool inMolecule = false;
         bool inAtom = false;
         bool inBond = false;
@@ -3039,9 +3046,11 @@ void assignTorsions( bool bNonPi=false, bool bNO=true ){
                     printf("Builder::load_mol2() lvec loaded\n"); printMat(lvec);
                     bPBC = true;
                 }else
-                if( strncmp(buff, "@groups", 4) == 0 ){
-                    str2groups(buff, nbuf );
-                    printAtom2Groups();
+                if( strncmp(buff, "@groups", 7) == 0 ){
+                    //str2groups(buff+7, nbuf-7 );
+                    strcpy(group_str, buff+7);
+                    bLoadGroups=true;
+                    //exit(0);
                 }
                 continue;
             }
@@ -3116,6 +3125,12 @@ void assignTorsions( bool bNonPi=false, bool bNO=true ){
             }
             iline++;
         } // while( fgets() )
+
+        if( bLoadGroups ){ 
+            str2groups(group_str, 100 );
+            printAtom2Groups();
+        }
+
         fclose(fp);
         if(verbosity>0)printf("Builder::load_mol2() END read natoms[%d] nbonds[%d] from %s\n", (int)(atoms.size()-n0), (int)(bonds.size()-n0), fname);
         return ifrag;

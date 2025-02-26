@@ -1,4 +1,4 @@
-﻿
+
 #ifndef MolWorld_sp3_h
 #define MolWorld_sp3_h
 /// @file MolWorld_sp3.h @brief contains MolWorld_sp3 class, which is a comprehensive class storing the state of a molecular simulation including bonding,non-bodning of molecules and molecules with substrate
@@ -1392,6 +1392,11 @@ void printPBCshifts(){
     virtual void makeFFs(){
         print("MolWorld_sp3::makeFFs()\n" );
         makeMMFFs();
+
+        // Initialize bounding boxes from atom groups if available
+        if(builder.atom2group.size() > 0){
+            nbmol.initBBsFromGroups(builder.atom2group.size(), builder.atom2group.data());
+        }
         if ( bUFF ){
             initNBmol( &ffu );
             setNonBond( bNonBonded );
