@@ -12,9 +12,9 @@ make -j4 $name
 cd $wd
 
 # ------- asan (Memory Sanitizer)
-#LD_PRELOAD=$(g++ -print-file-name=libasan.so)
-#echo   $LD_PRELOAD
-#export LD_PRELOAD
+LD_PRELOAD=$(g++ -print-file-name=libasan.so)
+echo   $LD_PRELOAD
+export LD_PRELOAD
 
 #> FitREQ_debug.xyz
 #python3 run.py
