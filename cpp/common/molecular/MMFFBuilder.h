@@ -2402,7 +2402,16 @@ void assignTorsions( bool bNonPi=false, bool bNO=true ){
         return true;
     }
 
-    void permutAtoms(int* permut, bool doBonds=false ){
+    void permutAtoms(int* permut, bool doBonds=false, bool bGroups=true ){
+        std::vector<int> atom2group_;
+        if(bGroups){
+            if (atom2group.size()!=atoms.size()){
+                printf("ERROR permutAtoms bGroups && atom2group.size(%i)!=atoms.size(%i)\n", atom2group.size(), atoms.size());
+                exit(1);
+            }
+            atom2group_ = atom2group;
+        }
+
         for(Bond&     b: bonds){ b.atoms.a=permut[b.atoms.a];  b.atoms.b=permut[b.atoms.b]; }
         // Confs are not re-shuffled because they point to bonds, not atoms
         //for(AtomConf& c: confs){ 
@@ -2418,6 +2427,9 @@ void assignTorsions( bool bNonPi=false, bool bNO=true ){
             A       = atoms_[ia];
             if( A.iconf>=0 ){
                 confs[A.iconf].iatom = ja;
+            }
+            if(bGroups){
+                atom2group[ja] = atom2group_[ia];
             }
         }
         if(doBonds){
@@ -2696,7 +2708,7 @@ void assignTorsions( bool bNonPi=false, bool bNO=true ){
         for(int ia=0; ia<atoms.size(); ia++){ printf("atom[%i] Q=%g \n", ia, atoms[ia].REQ.z ); }; //exit(0);
     }
 
-    void str2groups(const char* buff, int maxSteps=1024){
+    void str2groups(const char* buff, int maxSteps=1024, int _0 = 0){
         // this function reads groups from a string and stores them in atom2group 
         // groups are separated by semicolon ";" and atoms in one group are separated by comma ","
         // there can be any number of groups and each group can have any number of atoms 
@@ -2719,12 +2731,11 @@ void assignTorsions( bool bNonPi=false, bool bNO=true ){
                 }
                 p++;
             }
-            
             // If we hit the end, break
             if (!*p) break;
-            
             // Try to convert the number
             atom = strtol(p, &endptr, 10);
+            atom -= _0;
             if (p != endptr) { // if conversion successful
                 printf("str2groups() group: %i atom: %i\n", group, atom);
                 if (atom >= 0 && atom < atoms.size()) {
@@ -3127,7 +3138,7 @@ void assignTorsions( bool bNonPi=false, bool bNO=true ){
         } // while( fgets() )
 
         if( bLoadGroups ){ 
-            str2groups(group_str, 100 );
+            str2groups(group_str, 100, 1 );
             printAtom2Groups();
         }
 
