@@ -244,18 +244,36 @@ class NBFF: public ForceField{ public:
         int  n   = 0;
         for(int i=0; i<npi; i++){
             int ia = ips[i];
-            const Vec3d& p = vapos[ ia ];
+            const Vec3d& p = apos[ ia ];
             if( (p.x>bb.lo.x)&&(p.x<bb.hi.x)&&
                 (p.y>bb.lo.y)&&(p.y<bb.hi.y)&&
                 (p.z>bb.lo.z)&&(p.z<bb.hi.z) 
             ){
-                ps[i]    = p;
-                paras[i] = REQs[ ips[i] ];
-                inds[i]  = ia;
+                //printf( "selectInBox() [%i] ia %i p(%16.8f,%16.8f,%16.8f) \n", n, ia, p.x, p.y, p.z  );
+                ps   [n] = p;
+                paras[n] = REQs[ ips[i] ];
+                inds [n] = ia;
                 n++;
             }
         }
         return n;
+    }
+
+    __attribute__((hot))  
+    inline int selectFromOtherBucketsInBox( const int ib, double Rcut, Vec3d* ps, Quat4d* paras, int* inds ){
+        Vec6d bb = BBs[ib]; 
+        bb.lo.add(-Rcut); 
+        bb.hi.add(Rcut); 
+        //printf( "selectFromOtherBucketsInBox() ib %i pmin(%16.8f,%16.8f,%16.8f) pmax(%16.8f,%16.8f,%16.8f)\n", ib, bb.lo.x, bb.lo.y, bb.lo.z, bb.hi.x, bb.hi.y, bb.hi.z );
+        int total = 0;
+        for(int jb=0; jb<nBBs; jb++){
+            if(jb == ib) continue;
+            int n = selectInBox( bb, jb, ps+total, paras+total, inds+total );
+            total += n;
+        }
+        //printf( "selectFromOtherBucketsInBox() total %i \n", total );
+        //exit(0);
+        return total;
     }
 
     __attribute__((hot))  
