@@ -1416,6 +1416,21 @@ void MolGUI::draw(){
             //printf( "MolGUI::draw(). BB %i  pmin(%16.8f,%16.8f,%16.8f) pmax(%16.8f,%16.8f,%16.8f) \n", i, bb.lo.x, bb.lo.y, bb.lo.z, bb.hi.x, bb.hi.y, bb.hi.z  );
             Draw3D::drawBBox( bb.lo, bb.hi );
         }
+
+        
+        int ib=0; // pivot Box (Group of atoms)
+        int    inds [natoms];
+        Vec3d  ps   [natoms];
+        Quat4d paras[natoms];
+        int n = W->ffl.selectFromOtherBucketsInBox( ib ,6.0, ps,paras,inds );
+        printf( "MolGUI::draw(). n %i \n", n );
+        glColor3f(0.0,1.0,1.0);
+        for(int ia=0; ia<n; ia++){
+            //Draw::color_of_hash(ia*76461+1459);
+            Draw3D::drawSphereOctLines(8,1.0,ps[ia]);
+        }
+
+
     }
 
     //if( bViewSubstrate && W->bSurfAtoms ) Draw3D::atomsREQ( W->surf.natoms, W->surf.apos, W->surf.REQs, ogl_sph, 1., 1., 0. );
