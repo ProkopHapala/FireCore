@@ -260,6 +260,7 @@ class MolGUI : public AppSDL2OGL_3D { public:
     bool   bViewBonds        = true;
     bool   bViewPis          = false;
     bool   bViewSubstrate    = true;
+    bool   bViewGroupBoxes   = true;
     bool   isoSurfRenderType = 1;
     bool   bDebug_scanSurfFF = false;
     Quat4d testREQ;
@@ -1401,6 +1402,16 @@ void MolGUI::draw(){
                 glColor3f(0.0,1.0,0.0); Draw3D::drawVecInPos( gup[ig].f*5., gpos[ig].f );
                 glColor3f(0.0,0.0,1.0); Draw3D::drawVecInPos( cross(gfw[ig].f,gup[ig].f), gpos[ig].f );
             }
+        }
+    }
+
+    if( bViewGroupBoxes ){
+        Vec6d* BBs; 
+        Buckets* pointBBs;
+        int nBBs = W->getGroupBoxes( BBs, pointBBs );
+        for(int i=0; i<nBBs; i++){
+            Draw::color_of_hash(i*76461+1459);
+            Draw3D::drawBBox( W->bbox.a, W->bbox.b );
         }
     }
 

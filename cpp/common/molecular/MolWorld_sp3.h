@@ -288,6 +288,8 @@ class MolWorld_sp3 : public SolverInterface { public:
     virtual int getMolWorldVersion() const { return (int)MolWorldVersion::BASIC; };
 
     virtual int getGroupPose( Quat4f*& gpos, Quat4f*& gfw, Quat4f*& gup ){ gpos=0; gfw=0; gup=0; return 0; };
+    virtual int getGroupBoxes( Vec6d*& BBs, Buckets*& pointBBs ){ BBs = ffl.BBs;  pointBBs = &ffl.pointBBs; return ffl.nBBs; }
+    
     virtual void stopExploring (){ go.bExploring=false; };
     virtual void startExploring(){ go.startExploring(); };
     virtual int getMultiConf( float* Fconvs , bool* bExplors ){ return 0; };
@@ -1394,9 +1396,7 @@ void printPBCshifts(){
         makeMMFFs();
 
         // Initialize bounding boxes from atom groups if available
-        if(builder.atom2group.size() > 0){
-            nbmol.initBBsFromGroups(builder.atom2group.size(), builder.atom2group.data());
-        }
+
         if ( bUFF ){
             initNBmol( &ffu );
             setNonBond( bNonBonded );
@@ -1431,6 +1431,7 @@ void printPBCshifts(){
             }                         
         }else{
             initNBmol( &ffl );
+            if(builder.atom2group.size() > 0){ ffl.initBBsFromGroups(builder.atom2group.size(), builder.atom2group.data()); }
             //ffl.printAtomParams();
             setNonBond( bNonBonded );
             //ffl.print_nonbonded();
