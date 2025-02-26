@@ -1409,9 +1409,12 @@ void MolGUI::draw(){
         Vec6d* BBs; 
         Buckets* pointBBs;
         int nBBs = W->getGroupBoxes( BBs, pointBBs );
+        //printf( "MolGUI::draw(). nBBs %i \n", nBBs );
         for(int i=0; i<nBBs; i++){
+            Vec6d& bb = BBs[i];
             Draw::color_of_hash(i*76461+1459);
-            Draw3D::drawBBox( W->bbox.a, W->bbox.b );
+            //printf( "MolGUI::draw(). BB %i  pmin(%16.8f,%16.8f,%16.8f) pmax(%16.8f,%16.8f,%16.8f) \n", i, bb.lo.x, bb.lo.y, bb.lo.z, bb.hi.x, bb.hi.y, bb.hi.z  );
+            Draw3D::drawBBox( bb.lo, bb.hi );
         }
     }
 
