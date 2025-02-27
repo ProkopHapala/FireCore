@@ -17,7 +17,9 @@ cd $wd
 #export LD_PRELOAD
 
 echo "#=========== RUN"
-python3 run_tests.py 2> ERR
+# python3 run_tests.py 2> ERR
+
+python3 plotSample.py 2> ERR
 #python3 run_dynamics.py 
 
 #echo "#=========== compare_components.py"
