@@ -15,6 +15,9 @@
 
 #include "simd.h"
 
+#include <unordered_set> // Do we really need it here ? used only in initBBsFromGroups(){  std::unordered_set<int> uniqueGroups; }
+
+
 void fitAABB( Vec6d& bb, int n, int* c2o, Vec3d* ps ){
     //Quat8d bb;
     //bb.lo = bb.lo = ps[c2o[0]];
