@@ -85,8 +85,8 @@ class CircleSpline{ public:
             int im=(i>0)?(i-1):(n-1);
             Vec2d op;
             rays[im].getEnd(op);
-            //glColor3f(1.0,0.0,0.0); Draw2D::drawPointCross_d( op, 0.1 ); Draw2D::drawLine_d( op, rays[im].p0 );
-            //glColor3f(0.0,0.0,1.0); Draw2D::drawPointCross_d( rays[i].p0, 0.1 );
+            //opengl1renderer.color3f(1.0,0.0,0.0); Draw2D::drawPointCross_d( op, 0.1 ); Draw2D::drawLine_d( op, rays[im].p0 );
+            //opengl1renderer.color3f(0.0,0.0,1.0); Draw2D::drawPointCross_d( rays[i].p0, 0.1 );
             arc.fromCenter2points( CPs[i].p0, op, rays[i].p0 );
         }
     }

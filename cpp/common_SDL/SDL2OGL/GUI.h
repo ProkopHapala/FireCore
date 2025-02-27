@@ -3,7 +3,7 @@
 #define  GUI_h
 
 #include <SDL2/SDL.h>
-#include <SDL2/SDL_opengl.h>
+
 
 #include "Draw.h"
 #include "Draw2D.h"
@@ -522,7 +522,7 @@ class TableView : public GUIAbstractPanel { public:
     }
 
     inline void view ( ){
-        glCallList( gllist );
+        opengl1renderer.callList( gllist );
         if(input)input->viewHUD( {xmin+xs[j+1]-xs[j0],xmax+((i0-i)*2*fontSizeDef)}, fontSizeDef, true );
     }
 

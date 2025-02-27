@@ -25,7 +25,7 @@ commit 94a94e956acad8e3d23a54acbd0f715fe0d1f827    2021-May-05    CLCFGO : teste
 
 
 #include <SDL2/SDL.h>
-#include <SDL2/SDL_opengl.h>
+
 
 #include "testUtils.h"
 #include "Draw.h"
@@ -112,7 +112,7 @@ void draw2Dfunc( const EFF& ff, Vec2i ns, Vec2d spanx, Vec2d spany, double z_cut
     for(int iy=0; iy<=ns.y; iy++){
         Vec3d p = p0;
         p.array[axes.y] = p0.y + iy*dy;
-        glBegin(GL_LINE_STRIP);
+        opengl1renderer.begin(GL_LINE_STRIP);
         for(int ix=0; ix<=ns.x; ix++){
             p.array[axes.x] = p0.x + ix*dx;
             p.array[axes.z] = z_cut;
@@ -120,17 +120,17 @@ void draw2Dfunc( const EFF& ff, Vec2i ns, Vec2d spanx, Vec2d spany, double z_cut
             if(bAtom    ){ E += ff.atomsPotAtPoint   ( p, s,      Q            ); }
             if(bElectron){ E += ff.electronPotAtPoint( p, s,-sign_Q, spin )*absQ; }
             p.array[axes.z] = E;
-            glVertex3f( p.x, p.y, p.z );
+            opengl1renderer.vertex3f( p.x, p.y, p.z );
         }
-        glEnd();
+        opengl1renderer.end();
     }
-    glBegin(GL_LINE_LOOP);
+    opengl1renderer.begin(GL_LINE_LOOP);
     //p0.array[axes.z]=0;
-    p0.array[axes.y]=spany.x; p0.array[axes.x]=spanx.x; glVertex3f( p0.x, p0.y, p0.z );
-    p0.array[axes.y]=spany.x; p0.array[axes.x]=spanx.y; glVertex3f( p0.x, p0.y, p0.z );
-    p0.array[axes.y]=spany.y; p0.array[axes.x]=spanx.y; glVertex3f( p0.x, p0.y, p0.z );
-    p0.array[axes.y]=spany.y; p0.array[axes.x]=spanx.x; glVertex3f( p0.x, p0.y, p0.z );
-    glEnd();
+    p0.array[axes.y]=spany.x; p0.array[axes.x]=spanx.x; opengl1renderer.vertex3f( p0.x, p0.y, p0.z );
+    p0.array[axes.y]=spany.x; p0.array[axes.x]=spanx.y; opengl1renderer.vertex3f( p0.x, p0.y, p0.z );
+    p0.array[axes.y]=spany.y; p0.array[axes.x]=spanx.y; opengl1renderer.vertex3f( p0.x, p0.y, p0.z );
+    p0.array[axes.y]=spany.y; p0.array[axes.x]=spanx.x; opengl1renderer.vertex3f( p0.x, p0.y, p0.z );
+    opengl1renderer.end();
 }
 
 // ======= THE CLASS
@@ -336,7 +336,7 @@ TestAppRARFF::TestAppRARFF( int& id, int WIDTH_, int HEIGHT_ ) : AppSDL2OGL_3D( 
     oglSph=Draw::list(oglSph);
     //Draw3D::drawSphere_oct(3,1.0d,(Vec3d){0.,0.,0.});
     Draw3D::drawSphere_oct(5,1.0,(Vec3d){0.,0.,0.});
-    glEndList();
+    opengl1renderer.endList();
 
     plot1.init();
     plot1.fontTex = fontTex;
@@ -369,10 +369,10 @@ TestAppRARFF::TestAppRARFF( int& id, int WIDTH_, int HEIGHT_ ) : AppSDL2OGL_3D( 
 
 void TestAppRARFF::draw(){
     //printf( " ==== frame %i \n", frameCount );
-    glClearColor( 1.0f, 1.0f, 1.0f, 1.0f );
-    glClear( GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT );
-    glEnable(GL_DEPTH_TEST);
-    glDisable(GL_LIGHTING);
+    opengl1renderer.clearColor( 1.0f, 1.0f, 1.0f, 1.0f );
+    opengl1renderer.clear( GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT );
+    opengl1renderer.enable(GL_DEPTH_TEST);
+    opengl1renderer.disable(GL_LIGHTING);
 
     //return;
 
@@ -443,11 +443,11 @@ void TestAppRARFF::draw(){
         }
     }
 
-    glColor3f(0.0,0.5,0.0);
+    opengl1renderer.color3f(0.0,0.5,0.0);
     Draw3D::drawPointCross( ray0, 0.1 );
     //if(ipicked>=0) Draw3D::drawLine( ff.apos[ipicked], ray0);
     if(ipicked>=0){                                // Drag atoms by Mouse
-        //glColor3f(0.0,0.5,0.0);
+        //opengl1renderer.color3f(0.0,0.5,0.0);
         if     (PickMode==ATOM    ){
             printf( "ipicked %i pi(%g,%g,%g) ray0(%g,%g,%g) \n", ipicked, ff.apos[ipicked].x, ff.apos[ipicked].y, ff.apos[ipicked].z, ray0.x, ray0.y, ray0.z );
             Draw3D::drawLine( ff.apos[ipicked], ray0); 
@@ -457,8 +457,8 @@ void TestAppRARFF::draw(){
 
     drawEFF( ff, oglSph, 1.0*bViewForce, 0.1, 0.1, 1.5 );
     if(bDrawPointLabels){
-        glColor3f(1.0,0.0,0.0); Draw3D::pointLabels( ff.na, ff.apos, fontTex, 0.05 );
-        //glColor3f(0.0,0.5,0.5); Draw3D::pointLabels( ff.ne, ff.epos, fontTex, 0.05 );
+        opengl1renderer.color3f(1.0,0.0,0.0); Draw3D::pointLabels( ff.na, ff.apos, fontTex, 0.05 );
+        //opengl1renderer.color3f(0.0,0.5,0.5); Draw3D::pointLabels( ff.ne, ff.epos, fontTex, 0.05 );
     }
 
     if(bDrawPlots){
@@ -489,7 +489,7 @@ void TestAppRARFF::draw(){
 
     //Vec3d d = ff.apos[0]-ff.apos[1];
 
-    glCallList(ogl_fs);
+    opengl1renderer.callList(ogl_fs);
     //Draw3D::drawColorScale( 20, {0.0,0.0,0.0}, Vec3dY, Vec3dX, Draw::colors_rainbow, Draw::ncolors );
     //printf( "apos (%g,%g,%g) \n", ff.apos[0].x, ff.apos[0].y, ff.apos[0].z );
 
@@ -508,7 +508,7 @@ void TestAppRARFF::draw(){
     //ff.aforce[1].set(0.);
     //if(bRun) ff.move_GD( 0.01 );
 
-    //glDisable(GL_DEPTH_TEST);
+    //opengl1renderer.disable(GL_DEPTH_TEST);
     //plot1.view();
 
 };
@@ -517,9 +517,9 @@ void TestAppRARFF::draw(){
 void TestAppRARFF::drawHUD(){
     gui.draw();
 
-    glPushMatrix();
-    glTranslatef( 10.0,HEIGHT-20.0,0.0 );
-	glColor3f(0.5,0.0,0.3);
+    opengl1renderer.pushMatrix();
+    opengl1renderer.translatef( 10.0,HEIGHT-20.0,0.0 );
+	opengl1renderer.color3f(0.5,0.0,0.3);
     //Draw::drawText( "AHOJ ", fontTex, fontSizeDef, {100,20} );
     //int nstr=2048;
 	//char str[nstr];
@@ -527,7 +527,7 @@ void TestAppRARFF::drawHUD(){
 	s+=ff.Eterms2str(s);
 	ff.orbs2str(s);
     Draw::drawText( tmpstr, fontTex, fontSizeDef, {100,20} );
-    glPopMatrix();
+    opengl1renderer.popMatrix();
 
     if(bConsole) console.draw();
 

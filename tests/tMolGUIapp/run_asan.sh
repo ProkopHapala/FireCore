@@ -18,6 +18,7 @@ rm $name
 make -j$ncpu $name   # 2>$wd/compile_err.log
 cd $wd
 
+rm -f $name
 ln -s $dir/$name .
 
 
@@ -40,14 +41,14 @@ export LD_PRELOAD
 #./$name -x common_resources/pyridine
 #./$name -x common_resources/propandiol
 
-./$name -uff -x common_resources/C2H4
+#./$name -uff -x common_resources/C2H4
 
 # ====== Polymers
 
 #./$name -x common_resources/polydiacetylene
 #./$name -x common_resources/polydiacetylene     -subs 4,common_resources/-COOH.xyz
 #./$name -x common_resources/polydiacetylene_OH
-3./$name -x common_resources/polymer-2_new
+#./$name -x common_resources/polymer-2_new
 
 # ====== Small Molecules On Substrate
 
@@ -71,6 +72,8 @@ export LD_PRELOAD
 
 #./$name -x common_resources/polymer-2          -n 221 -g common_resources/NaCl_sym-center
 
+
+./$name -x common_resources/xyz/PTCDA -g common_resources/xyz/NaCl_1x1_L3
 
 #valgrind --log-file="valgrind.log" --leak-check=yes ./$name -x common_resources/H2O
 

@@ -6,7 +6,7 @@
 #include <math.h>
 
 #include <SDL2/SDL.h>
-#include <SDL2/SDL_opengl.h>
+
 #include "Draw.h"
 #include "Draw3D.h"
 #include "Solids.h"
@@ -188,10 +188,10 @@ void TestAppRARFF::simulation(){
 
 void TestAppRARFF::draw(){
     //printf( " ==== frame %i \n", frameCount );
-    glClearColor( 1.0f, 1.0f, 1.0f, 1.0f );
-    glClear( GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT );
-    glEnable(GL_DEPTH_TEST);
-    glDisable( GL_LIGHTING );
+    opengl1renderer.clearColor( 1.0f, 1.0f, 1.0f, 1.0f );
+    opengl1renderer.clear( GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT );
+    opengl1renderer.enable(GL_DEPTH_TEST);
+    opengl1renderer.disable( GL_LIGHTING );
     //printf("frame %i \n", frameCount);
     //if( ff.tryResize( 5, 100, 10) );
     //return;
@@ -222,8 +222,8 @@ void TestAppRARFF::draw(){
 };
 
 void TestAppRARFF::drawHUD(){
-	glTranslatef( 400.0,400.0,0.0 );
-	glScalef    ( 40.0,40.0,1.0  );
+	opengl1renderer.translatef( 400.0,400.0,0.0 );
+	opengl1renderer.scalef    ( 40.0,40.0,1.0  );
 	plot1.view();
 }
 
@@ -355,23 +355,23 @@ void TestAppRARFF::visualize_cells(){
 
 void TestAppRARFF::visualize_atoms(){
     // ---------- Draw
-    glColor3f(0.0,0.0,0.0);
+    opengl1renderer.color3f(0.0,0.0,0.0);
     double fsc = 0.1;
     double tsc = 0.1;
     //printf( "ff.natom %i \n", ff.natom );
     for(int ia=0; ia<ff.natom; ia++){
         if(ff.ignoreAtoms[ia])continue;
-        glColor3f(0.3,0.3,0.3);
+        opengl1renderer.color3f(0.3,0.3,0.3);
         Draw3D::drawShape( ogl_sph, ff.apos[ia], Mat3dIdentity );
         for(int j=0; j<ff.types[ia]->nbond; j++){
             int i=ia*N_BOND_MAX+j;
             Vec3d pb = ff.bondPos( i );
             //printf( "bondCaps[%i] %i\n", i, ff.bondCaps[i] );
-            if( ff.bondCaps[i]>=0 ){ glColor3f(1.0,0.0,0.0); } else{ glColor3f(0.0,0.0,0.0); }
+            if( ff.bondCaps[i]>=0 ){ opengl1renderer.color3f(1.0,0.0,0.0); } else{ opengl1renderer.color3f(0.0,0.0,0.0); }
             Draw3D::drawLine( ff.apos[ia] , pb );
-            glColor3f(0.0,1.0,0.0); Draw3D::drawVecInPos( ff.fbonds[i]*fsc, pb );
-            //glColor3f(0.0,0.0,0.0); Draw3D::drawVecInPos( ff.hbonds[i], ff.apos[i] );
-            //glColor3f(0.0,1.0,0.0); Draw3D::drawVecInPos( ff.fbonds[io]*fsc, ff.apos[i]+ff.hbonds[io] );
+            opengl1renderer.color3f(0.0,1.0,0.0); Draw3D::drawVecInPos( ff.fbonds[i]*fsc, pb );
+            //opengl1renderer.color3f(0.0,0.0,0.0); Draw3D::drawVecInPos( ff.hbonds[i], ff.apos[i] );
+            //opengl1renderer.color3f(0.0,1.0,0.0); Draw3D::drawVecInPos( ff.fbonds[io]*fsc, ff.apos[i]+ff.hbonds[io] );
         }
     };
 }

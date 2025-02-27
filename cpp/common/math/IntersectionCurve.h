@@ -46,7 +46,7 @@ class IntersectionCurve{ public:
         double F2err;
         //glColor3b(1.0,0.0,0.0); Draw3D::drawLine( p, op ); //DEBUG
         //glColor3b(0.5,0.5,0.5);  //DEBUG
-        //glBegin(GL_LINE_STRIP); //DEBUG
+        //opengl1renderer.begin(GL_LINE_STRIP); //DEBUG
         for(int i=0; i<maxRelaxStep; i++){
             // -- constrain distance from previous point
             if(bConstrain){
@@ -70,7 +70,7 @@ class IntersectionCurve{ public:
             // --- termination
             F2err = f.norm();
             //printf( "relax[%i] p(%g,%g,%g) f(%g,%g,%g) E %g F2err %g \n", i, p.x,p.y,p.z,   f.x,f.y,f.z, E, F2err );
-            //glVertex3f( p.x,p.y,p.z );
+            //opengl1renderer.vertex3f( p.x,p.y,p.z );
             if( (F2err<F2conv)&&(E<Econv) ){ break; }
             // --- constrain force and velocity
             if(bConstrain){
@@ -80,7 +80,7 @@ class IntersectionCurve{ public:
             // --- move
             opt.move( f, p, v );
         }
-        //glEnd(); //DEBUG
+        //opengl1renderer.end(); //DEBUG
         return E;
     }
 

@@ -14,7 +14,6 @@
 #include "IO_utils.h"
 
 #include <SDL2/SDL.h>
-#include <SDL2/SDL_opengl.h>
 #include "Draw3D.h"
 #include "SDL_utils.h"
 #include "Solids.h"
@@ -53,48 +52,48 @@
 
 
 void RenderToTexture( GLuint tx ){
-    glViewport(0,0,128,128);                    // Set Our Viewport (Match Texture Size)
-    glClearColor(0.0f, 0.0f, 0.5f, 0.5);                // Set The Clear Color To Medium Blue
-    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);     // Clear The Screen And Depth Buffer
+    opengl1renderer.viewport(0,0,128,128);                    // Set Our Viewport (Match Texture Size)
+    opengl1renderer.clearColor(0.0f, 0.0f, 0.5f, 0.5);                // Set The Clear Color To Medium Blue
+    opengl1renderer.clear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);     // Clear The Screen And Depth Buffer
     // RENDER 
-    glBindTexture(GL_TEXTURE_2D, tx );           // Bind To The Blur Texture
-    glCopyTexImage2D(GL_TEXTURE_2D, 0, GL_LUMINANCE, 0, 0, 128, 128, 0);  // Copy Our ViewPort To The Blur Texture (From 0,0 To 128,128... No Border)
-    //glClearColor(0.0f, 0.0f, 0.5f, 0.5);                // Set The Clear Color To Medium Blue
-    //glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);     // Clear The Screen And Depth Buffer 
-    //glViewport(0 , 0,640 ,480);                 // Set Viewport (0,0 to 640x480)
+    opengl1renderer.bindTexture(GL_TEXTURE_2D, tx );           // Bind To The Blur Texture
+    opengl1renderer.copyTexImage2D(GL_TEXTURE_2D, 0, GL_LUMINANCE, 0, 0, 128, 128, 0);  // Copy Our ViewPort To The Blur Texture (From 0,0 To 128,128... No Border)
+    //opengl1renderer.clearColor(0.0f, 0.0f, 0.5f, 0.5);                // Set The Clear Color To Medium Blue
+    //opengl1renderer.clear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);     // Clear The Screen And Depth Buffer 
+    //opengl1renderer.viewport(0 , 0,640 ,480);                 // Set Viewport (0,0 to 640x480)
 }
 
 void makeTexture( GLuint& tx, int sz ){
-    glGenTextures(1, &tx);                       // Create 1 Texture
-    glBindTexture(GL_TEXTURE_2D, tx);            // Bind The Texture
-    glTexImage2D(GL_TEXTURE_2D, 0, 4, sz, sz, 0, GL_RGBA, GL_UNSIGNED_BYTE, 0 );           // Build Texture Using Information In data
-    glTexParameteri(GL_TEXTURE_2D,GL_TEXTURE_MIN_FILTER,GL_LINEAR);
-    glTexParameteri(GL_TEXTURE_2D,GL_TEXTURE_MAG_FILTER,GL_LINEAR);
+    opengl1renderer.genTextures(1, &tx);                       // Create 1 Texture
+    opengl1renderer.bindTexture(GL_TEXTURE_2D, tx);            // Bind The Texture
+    opengl1renderer.texImage2D(GL_TEXTURE_2D, 0, 4, sz, sz, 0, GL_RGBA, GL_UNSIGNED_BYTE, 0 );           // Build Texture Using Information In data
+    opengl1renderer.texParameteri(GL_TEXTURE_2D,GL_TEXTURE_MIN_FILTER,GL_LINEAR);
+    opengl1renderer.texParameteri(GL_TEXTURE_2D,GL_TEXTURE_MAG_FILTER,GL_LINEAR);
 }
 
 void renderMolecule(int na, int nb, const Vec3d* atoms, const Vec2i* b2a ){
-    glBegin(GL_LINES);
+    opengl1renderer.begin(GL_LINES);
     for(int i=0; i<nb; i++){
         const Vec2i& b = b2a[i];
         Draw3D::vertex( atoms[b.a] );
         Draw3D::vertex( atoms[b.b] );
     }
-    glEnd();
+    opengl1renderer.end();
 }
 
 void drawThumbnail( int itex, Vec2d p0, Vec2d p1, float sz ){
-    glEnable     ( GL_TEXTURE_2D );
-    glBindTexture( GL_TEXTURE_2D, itex );
-    glEnable(GL_BLEND);
-    glEnable(GL_ALPHA_TEST);
-    glBlendFunc(GL_SRC_ALPHA,GL_ONE_MINUS_SRC_ALPHA);
-    glBegin(GL_QUADS);
-    glTexCoord2f( 0, 0 ); glVertex3f( p0.x, p1.y, 0.0f );
-    glTexCoord2f( 1, 0 ); glVertex3f( p1.x, p1.y, 0.0f );
-    glTexCoord2f( 1, 1 ); glVertex3f( p1.x, p0.y, 0.0f );
-    glTexCoord2f( 0, 1 ); glVertex3f( p0.x, p0.y, 0.0f );
-    glEnd();
-    glDisable  ( GL_TEXTURE_2D );
+    opengl1renderer.enable     ( GL_TEXTURE_2D );
+    opengl1renderer.bindTexture( GL_TEXTURE_2D, itex );
+    opengl1renderer.enable(GL_BLEND);
+    opengl1renderer.enable(GL_ALPHA_TEST);
+    opengl1renderer.blendFunc(GL_SRC_ALPHA,GL_ONE_MINUS_SRC_ALPHA);
+    opengl1renderer.begin(GL_QUADS);
+    opengl1renderer.texCoord2f( 0, 0 ); opengl1renderer.vertex3f( p0.x, p1.y, 0.0f );
+    opengl1renderer.texCoord2f( 1, 0 ); opengl1renderer.vertex3f( p1.x, p1.y, 0.0f );
+    opengl1renderer.texCoord2f( 1, 1 ); opengl1renderer.vertex3f( p1.x, p0.y, 0.0f );
+    opengl1renderer.texCoord2f( 0, 1 ); opengl1renderer.vertex3f( p0.x, p0.y, 0.0f );
+    opengl1renderer.end();
+    opengl1renderer.disable  ( GL_TEXTURE_2D );
 };
 
 // ===========================================
@@ -209,8 +208,8 @@ void TestAppMolecularBrowser::readMoleculess( bool bOrientFlat ){
 
 void TestAppMolecularBrowser::renderThumbnails( int i0, int n, float zoom_, bool bNew){
     GLuint tx;
-    //glViewport(0,0,WIDTH,HEIGHT);                    // Set Our Viewport (Match Texture Size)
-    glViewport(0,0,texture_size,texture_size);
+    //opengl1renderer.viewport(0,0,WIDTH,HEIGHT);                    // Set Our Viewport (Match Texture Size)
+    opengl1renderer.viewport(0,0,texture_size,texture_size);
     _swap(zoom_,zoom);
     float ASPECT_RATIO_=ASPECT_RATIO; ASPECT_RATIO = 1;
     camera();
@@ -219,29 +218,29 @@ void TestAppMolecularBrowser::renderThumbnails( int i0, int n, float zoom_, bool
             makeTexture( tx, texture_size );
             thumbnails.push_back(tx);
         }
-        glClearColor(0.9f, 0.9f, 0.9f, 0.0f);                // Set The Clear Color To Medium Blue
-        glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);     // Clear The Screen And Depth Buffer
+        opengl1renderer.clearColor(0.9f, 0.9f, 0.9f, 0.0f);                // Set The Clear Color To Medium Blue
+        opengl1renderer.clear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);     // Clear The Screen And Depth Buffer
 
         Molecule& mol =  *molecules[i0+i];
         //renderMolecule( mol.natoms, mol.nbonds, mol.pos, mol.bond2atom );
         //Draw3D::atomsREQ( mol.natoms, mol.pos, mol.REQs, ogl_sph, qsc=1, );
         Draw3D::atoms( mol.natoms, mol.pos, mol.atomType, params, ogl_sph, 1.0, 0.5, 1.0 );
-        glColor3f(0.0f,0.0f,0.0f);
+        opengl1renderer.color3f(0.0f,0.0f,0.0f);
         Draw3D::bonds( mol.nbonds, mol.bond2atom, mol.pos);
         Draw3D::drawText( fileNames[i0+i].c_str(), Vec3d{-9.0,+9.0,5.0}, fontTex, 0.07, 0);
 
 
-        glColor3f(1.0f,1.0f,1.0f);
-        glBindTexture(GL_TEXTURE_2D, tx );           // Bind To The Blur Texture
-        //glCopyTexImage2D(GL_TEXTURE_2D, 0, GL_LUMINANCE, 0, 0, texture_size, texture_size, 0);  // Copy Our ViewPort To The Blur Texture (From 0,0 To 128,128... No Border)
-        glCopyTexImage2D  (GL_TEXTURE_2D, 0, GL_RGBA,      0, 0, texture_size, texture_size, 0);
+        opengl1renderer.color3f(1.0f,1.0f,1.0f);
+        opengl1renderer.bindTexture(GL_TEXTURE_2D, tx );           // Bind To The Blur Texture
+        //opengl1renderer.copyTexImage2D(GL_TEXTURE_2D, 0, GL_LUMINANCE, 0, 0, texture_size, texture_size, 0);  // Copy Our ViewPort To The Blur Texture (From 0,0 To 128,128... No Border)
+        opengl1renderer.copyTexImage2D  (GL_TEXTURE_2D, 0, GL_RGBA,      0, 0, texture_size, texture_size, 0);
 
     }
     _swap(zoom_,zoom);
     _swap(ASPECT_RATIO_,ASPECT_RATIO);
-    glClearColor(0.5f, 0.5f, 0.5f, 0.5);                // Set The Clear Color To Medium Blue
-    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);     // Clear The Screen And Depth Buffer 
-    glViewport(0 , 0, WIDTH, HEIGHT );                 // Set Viewport (0,0 to 640x480)
+    opengl1renderer.clearColor(0.5f, 0.5f, 0.5f, 0.5);                // Set The Clear Color To Medium Blue
+    opengl1renderer.clear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);     // Clear The Screen And Depth Buffer 
+    opengl1renderer.viewport(0 , 0, WIDTH, HEIGHT );                 // Set Viewport (0,0 to 640x480)
 }
 
 TestAppMolecularBrowser::TestAppMolecularBrowser( int& id, int WIDTH_, int HEIGHT_ ) : AppSDL2OGL_3D( id, WIDTH_, HEIGHT_ ),Browser::Browser( "./common_resources" ) {
@@ -280,9 +279,9 @@ TestAppMolecularBrowser::TestAppMolecularBrowser( int& id, int WIDTH_, int HEIGH
     Draw3D::makeSphereOgl( ogl_sph, 5, 1.0 );
     //float l_diffuse  []{ 0.9f, 0.85f, 0.8f,  1.0f };
 	float l_specular []{ 0.0f, 0.0f,  0.0f,  1.0f };
-    //glLightfv    ( GL_LIGHT0, GL_AMBIENT,   l_ambient  );
-	//glLightfv    ( GL_LIGHT0, GL_DIFFUSE,   l_diffuse  );
-	glLightfv    ( GL_LIGHT0, GL_SPECULAR,  l_specular );
+    //opengl1renderer.lightfv    ( GL_LIGHT0, GL_AMBIENT,   l_ambient  );
+	//opengl1renderer.lightfv    ( GL_LIGHT0, GL_DIFFUSE,   l_diffuse  );
+	opengl1renderer.lightfv    ( GL_LIGHT0, GL_SPECULAR,  l_specular );
 
     initGUI();
 
@@ -293,14 +292,14 @@ TestAppMolecularBrowser::TestAppMolecularBrowser( int& id, int WIDTH_, int HEIGH
 //=================================================
 
 void TestAppMolecularBrowser::draw(){
-    //glClearColor( 0.5f, 0.5f, 0.5f, 1.0f );
-    glClearColor( 1.0f, 1.0f, 1.0f, 1.0f );
-	glClear( GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT );
+    //opengl1renderer.clearColor( 0.5f, 0.5f, 0.5f, 1.0f );
+    opengl1renderer.clearColor( 1.0f, 1.0f, 1.0f, 1.0f );
+	opengl1renderer.clear( GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT );
     // Smooth lines : https://vitaliburkov.wordpress.com/2016/09/17/simple-and-fast-high-quality-antialiased-lines-with-opengl/
-    //glEnable(GL_LINE_SMOOTH);
-    glEnable(GL_BLEND);
-    glEnable(GL_LIGHTING );
-    glEnable(GL_DEPTH_TEST);
+    //opengl1renderer.enable(GL_LINE_SMOOTH);
+    opengl1renderer.enable(GL_BLEND);
+    opengl1renderer.enable(GL_LIGHTING );
+    opengl1renderer.enable(GL_DEPTH_TEST);
 
     if(frameCount==1){ 
         qCamera.pitch( M_PI );  qCamera0=qCamera; 
@@ -312,7 +311,7 @@ void TestAppMolecularBrowser::draw(){
 };
 
 void TestAppMolecularBrowser::drawHUD(){
-    glDisable ( GL_LIGHTING );
+    opengl1renderer.disable ( GL_LIGHTING );
     //gui.draw();
 
     float dx=(thumb_size+1);
@@ -330,10 +329,10 @@ void TestAppMolecularBrowser::saveScreenshot( int i, const char* fname ){
     sprintf( str, fname, i );               // DEBUG
     printf( "save to %s \n", str );
     unsigned int *screenPixels = new unsigned int[WIDTH*HEIGHT*4];  //DEBUG
-    glFlush();                                                      //DEBUG
-    glFinish();                                                     //DEBUG
-    //glReadPixels(0, 0, WIDTH, HEIGHT, GL_RGB, GL_UNSIGNED_INT, screenPixels);
-    glReadPixels(0, 0, WIDTH, HEIGHT, GL_RGBA, GL_UNSIGNED_BYTE, screenPixels);   //DEBUG
+    opengl1renderer.flush();                                                      //DEBUG
+    opengl1renderer.finish();                                                     //DEBUG
+    //opengl1renderer.readPixels(0, 0, WIDTH, HEIGHT, GL_RGB, GL_UNSIGNED_INT, screenPixels);
+    opengl1renderer.readPixels(0, 0, WIDTH, HEIGHT, GL_RGBA, GL_UNSIGNED_BYTE, screenPixels);   //DEBUG
     //SDL_Surface *bitmap = SDL_CreateRGBSurfaceFrom(screenPixels, WIDTH, HEIGHT, 32, WIDTH*4, 0xff000000, 0x00ff0000, 0x0000ff00, 0x000000ff );   //DEBUG
     SDL_Surface *bitmap = SDL_CreateRGBSurfaceFrom(screenPixels, WIDTH, HEIGHT, 32, WIDTH*4, 0x000000ff, 0x0000ff00, 0x00ff0000, 0xff000000 );   //DEBUG
     SDL_SaveBMP(bitmap, str);    //DEBUG

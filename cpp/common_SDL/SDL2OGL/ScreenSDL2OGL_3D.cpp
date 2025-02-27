@@ -1,6 +1,6 @@
 
 #include <SDL2/SDL.h>
-#include <SDL2/SDL_opengl.h>
+
 
 #include "ScreenSDL2OGL_3D.h"
 
@@ -17,18 +17,18 @@ void ScreenSDL2OGL_3D::camera(){
 }
 
 void ScreenSDL2OGL_3D::draw   (){
-    glClearColor( 0.5f, 0.5f, 0.5f, 1.0f );
-	glClear( GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT );
+    opengl1renderer.clearColor( 0.5f, 0.5f, 0.5f, 1.0f );
+	opengl1renderer.clear( GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT );
 
-	glEnable    ( GL_LIGHTING );
-	glShadeModel( GL_FLAT     );
+	opengl1renderer.enable    ( GL_LIGHTING );
+	opengl1renderer.shadeModel( GL_FLAT     );
 
 	Draw3D::drawBox       ( -1.0f, 1.0f, -1.0f, 1.0f, -1.0f, 1.0f, 0.8f, 0.8f, 0.8f );
 
-	glShadeModel( GL_SMOOTH     );
+	opengl1renderer.shadeModel( GL_SMOOTH     );
 	Draw3D::drawSphere_oct( 5, 1.0f, Vec3f{3.0,3.0,3.0} );
 
-	glDisable ( GL_LIGHTING );
+	opengl1renderer.disable ( GL_LIGHTING );
 	Draw3D::drawAxis ( 3.0f );
 
 };

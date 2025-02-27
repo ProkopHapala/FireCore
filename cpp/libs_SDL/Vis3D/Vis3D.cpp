@@ -15,7 +15,7 @@
 #include "raytrace.h"
 
 #include <SDL2/SDL.h>
-#include <SDL2/SDL_opengl.h>
+
 
 #include "Draw.h"
 #include "Draw3D.h"
@@ -50,8 +50,8 @@ class Vis3DApp : public AppSDL2OGL_3D {
 Vis3DApp::Vis3DApp( int& id, int WIDTH_, int HEIGHT_ ) : AppSDL2OGL_3D( id, WIDTH_, HEIGHT_ ) {};
 
 void Vis3DApp::draw(  ) {
-    glClearColor( 0.5f, 0.5f, 0.5f, 0.0f );
-    glClear( GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT );
+    opengl1renderer.clearColor( 0.5f, 0.5f, 0.5f, 0.0f );
+    opengl1renderer.clear( GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT );
 
     //printf("displayLists.size() %i \n", displayLists.size() );
     for(int i=0; i<displayLists.size(); i++){
@@ -59,7 +59,7 @@ void Vis3DApp::draw(  ) {
         int ilist = displayLists[i];
         if(ilist>0){
             //printf(" %i %i \n", i, ilist );
-            glCallList( ilist );
+            opengl1renderer.callList( ilist );
         }
     }
     //printf( "glob var = %f\n", glob_var );
@@ -96,22 +96,22 @@ extern "C"{
     int erase( int iobj ){
         if( !thisApp->wait_LOCK(10,5) ) return -1;  thisApp->GL_LOCK = true;
         printf( "erase iobj %i ilist %i \n", iobj, thisApp->displayLists[iobj]  );
-        glDeleteLists( thisApp->displayLists[iobj], 1 );
+        opengl1renderer.deleteLists( thisApp->displayLists[iobj], 1 );
         thisApp->displayLists[iobj] = 0;
         thisApp->GL_LOCK = false;
         return 0;
     }
 
     int defaultSphere( int n ){
-        //thisApp->GL_LOCK = true; glFinish();
+        //thisApp->GL_LOCK = true; opengl1renderer.finish();
         //if( !thisApp->wait_LOCK(10,5) ) return -1;  thisApp->GL_LOCK = true;
-        if(default_sphere) glDeleteLists(default_sphere,1);
-        default_sphere = glGenLists(1);
-        glNewList( default_sphere, GL_COMPILE);
+        if(default_sphere) opengl1renderer.deleteLists(default_sphere,1);
+        default_sphere = opengl1renderer.genLists(1);
+        opengl1renderer.newList( default_sphere, GL_COMPILE);
             Draw3D::drawSphere_oct( n, 1.0, {0.0,0.0,0.0} );
-        glEndList();
+        opengl1renderer.endList();
         //thisApp->GL_LOCK = false;
-        //glFinish();  thisApp->GL_LOCK = false;
+        //opengl1renderer.finish();  thisApp->GL_LOCK = false;
         return 0;
     }
 
@@ -120,22 +120,22 @@ extern "C"{
         Vec3d * poss   = (Vec3d*)poss_;
         Vec3d * colors = (Vec3d*)colors_;
         if( !default_sphere ) defaultSphere( 4 );
-        int ilist = glGenLists(1);
-        glNewList(ilist, GL_COMPILE);
-        glEnable (GL_LIGHTING);
+        int ilist = opengl1renderer.genLists(1);
+        opengl1renderer.newList(ilist, GL_COMPILE);
+        opengl1renderer.enable (GL_LIGHTING);
         for( int i=0; i<n; i++ ){
             Vec3f clr; convert(colors[i],clr);
             Vec3f pos; convert(poss[i],pos);
-            glColor3f   (clr.x,clr.y,clr.z);
-            glPushMatrix();
-            glTranslatef(pos.x,pos.y,pos.z);
+            opengl1renderer.color3f   (clr.x,clr.y,clr.z);
+            opengl1renderer.pushMatrix();
+            opengl1renderer.translatef(pos.x,pos.y,pos.z);
             float r = radius[i];
-            glScalef(r,r,r);
-            glCallList(default_sphere);
-            glPopMatrix();
+            opengl1renderer.scalef(r,r,r);
+            opengl1renderer.callList(default_sphere);
+            opengl1renderer.popMatrix();
             //printf( " %i (%3.3f,%3.3f,%3.3f) \n", i, pos.x, pos.y, pos.z );
         }
-        glEndList();
+        opengl1renderer.endList();
         thisApp->displayLists.push_back( ilist );
         thisApp->GL_LOCK = false;
         return thisApp->displayLists.size()-1;
@@ -143,12 +143,12 @@ extern "C"{
 
     int polyline( int n, double * points_, int closed, uint32_t icolor ){
         if( !thisApp->wait_LOCK(10,5) ) return -1; thisApp->GL_LOCK = true;
-        int ilist = glGenLists(1);
-        glNewList(ilist, GL_COMPILE);
-            glDisable (GL_LIGHTING);
+        int ilist = opengl1renderer.genLists(1);
+        opengl1renderer.newList(ilist, GL_COMPILE);
+            opengl1renderer.disable (GL_LIGHTING);
             Draw::setRGBA(icolor);
             Draw3D::drawPolyLine( n, (Vec3d*)points_, closed );
-        glEndList();
+        opengl1renderer.endList();
         thisApp->displayLists.push_back( ilist );
         thisApp->GL_LOCK = false;
         return thisApp->displayLists.size()-1;
@@ -156,12 +156,12 @@ extern "C"{
 
     int lines( int nedges, int * edges, double * points_, uint32_t icolor ){
         if( !thisApp->wait_LOCK(10,5) ) return -1; thisApp->GL_LOCK = true;
-        int ilist = glGenLists(1);
-        glNewList(ilist, GL_COMPILE);
-            glDisable (GL_LIGHTING);
+        int ilist = opengl1renderer.genLists(1);
+        opengl1renderer.newList(ilist, GL_COMPILE);
+            opengl1renderer.disable (GL_LIGHTING);
             Draw::setRGBA(icolor);
             Draw3D::drawLines( nedges, edges, (Vec3d *)points_ );
-        glEndList();
+        opengl1renderer.endList();
         thisApp->displayLists.push_back( ilist );
         thisApp->GL_LOCK = false;
         return thisApp->displayLists.size()-1;
@@ -169,18 +169,18 @@ extern "C"{
     
     int vectors( int n, double * vecs, double * poss, uint32_t icolor ){
         if( !thisApp->wait_LOCK(10,5) ) return -1; thisApp->GL_LOCK = true;
-        int ilist = glGenLists(1);
-        glNewList(ilist, GL_COMPILE);
-            glDisable (GL_LIGHTING);
+        int ilist = opengl1renderer.genLists(1);
+        opengl1renderer.newList(ilist, GL_COMPILE);
+            opengl1renderer.disable (GL_LIGHTING);
             Draw::setRGBA(icolor);
             for(int i=0; i<n; i++){
                 int i3 = i*3;
-                glBegin(GL_LINES);
-                glVertex3f((float) poss[i3],           (float) poss[i3+1],             (float) poss[i3+2]             );
-                glVertex3f((float)(poss[i3]+vecs[i3]),(float)(poss[i3+1]+vecs[i3+1]),(float)(poss[i3+2]+vecs[i3+2]));
-                glEnd();
+                opengl1renderer.begin(GL_LINES);
+                opengl1renderer.vertex3f((float) poss[i3],           (float) poss[i3+1],             (float) poss[i3+2]             );
+                opengl1renderer.vertex3f((float)(poss[i3]+vecs[i3]),(float)(poss[i3+1]+vecs[i3+1]),(float)(poss[i3+2]+vecs[i3+2]));
+                opengl1renderer.end();
            };
-        glEndList();
+        opengl1renderer.endList();
         thisApp->displayLists.push_back( ilist );
         thisApp->GL_LOCK = false;
         return thisApp->displayLists.size()-1;
@@ -188,12 +188,12 @@ extern "C"{
 
     int triangles( int ntris, int * tris, double * points_, uint32_t icolor ){
         if( !thisApp->wait_LOCK(10,5) ) return -1; thisApp->GL_LOCK = true;
-        int ilist = glGenLists(1);
-        glNewList(ilist, GL_COMPILE);
-            glEnable (GL_LIGHTING);
+        int ilist = opengl1renderer.genLists(1);
+        opengl1renderer.newList(ilist, GL_COMPILE);
+            opengl1renderer.enable (GL_LIGHTING);
             Draw::setRGBA(icolor);
             Draw3D::drawTriangles( ntris, tris, (Vec3d *)points_ );
-        glEndList();
+        opengl1renderer.endList();
         thisApp->displayLists.push_back( ilist );
         thisApp->GL_LOCK = false;
         return thisApp->displayLists.size()-1;

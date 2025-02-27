@@ -4,11 +4,11 @@
 #include "AtomicConfiguration.h"
 #include "molecular_utils.h"
 
-void colorRB( float f ){ glColor3f( 0.5+f, 0.5, 0.5-f ); }
-//void colorRBH( float f, float h ){ glColor3f( 0.5+f, 0.5+h, 0.5-f ); }
-void colorRBH( float f, float h ){ glColor3f( 0.5+f+h, 0.5+h, 0.5-f+h ); }
-//void colorRB( float f ){ glColor3f( 0.5+f, 0.5+f, 0.5+f ); }
-void colorBW( float f ){ glColor3f( 0.5-f, 0.5-f, 0.5-f ); }
+void colorRB( float f ){ opengl1renderer.color3f( 0.5+f, 0.5, 0.5-f ); }
+//void colorRBH( float f, float h ){ opengl1renderer.color3f( 0.5+f, 0.5+h, 0.5-f ); }
+void colorRBH( float f, float h ){ opengl1renderer.color3f( 0.5+f+h, 0.5+h, 0.5-f+h ); }
+//void colorRB( float f ){ opengl1renderer.color3f( 0.5+f, 0.5+f, 0.5+f ); }
+void colorBW( float f ){ opengl1renderer.color3f( 0.5-f, 0.5-f, 0.5-f ); }
 
 void printPoses( int n, double * poses ){
     for( int i=0; i<n; i++ ){
@@ -74,7 +74,7 @@ void drawNeighs( const FastAtomicMetric& D, Vec3d pos ){
 
 void drawPPRelaxTrj( int n, double dt, double damp, GridFF& gff, Vec3d pos, Quat4f PRQ ){
     Vec3d vel = Vec3dZero;
-    glBegin(GL_LINE_STRIP);
+    opengl1renderer.begin(GL_LINE_STRIP);
     for(int i=0; i<n; i++){
         //Vec3d f = Vec3dZero;
         Quat4f fe = Quat4fZero;
@@ -82,10 +82,10 @@ void drawPPRelaxTrj( int n, double dt, double damp, GridFF& gff, Vec3d pos, Quat
         vel.mul(damp);
         vel.add_mul( (Vec3d)fe.f, dt);
         pos.add_mul( vel        , dt );
-        glVertex3f(pos.x,pos.y,pos.z);
+        opengl1renderer.vertex3f(pos.x,pos.y,pos.z);
         //printf( " %i (%g,%g,%g) (%g,%g,%g) \n", i, pos.x,pos.y,pos.z,  f.x,f.y,f.z );
     }
-    glEnd();
+    opengl1renderer.end();
     //exit(0);
 }
 
@@ -107,9 +107,9 @@ void plotSurfPlane( Vec3d normal, double c0, Vec2d d, Vec2i n ){
     normal.getSomeOrtho( da,db );
     da.mul( d.a/da.norm() );
     db.mul( d.b/db.norm() );
-    //glColor3f(1.0f,0.0f,0.0f); Draw3D::drawVecInPos(normal, {0.0,0.0,0.0} );
-    //glColor3f(0.0f,1.0f,0.0f); Draw3D::drawVecInPos(da*10, {0.0,0.0,0.0} );
-    //glColor3f(0.0f,0.0f,1.0f); Draw3D::drawVecInPos(db*10, {0.0,0.0,0.0} );
+    //opengl1renderer.color3f(1.0f,0.0f,0.0f); Draw3D::drawVecInPos(normal, {0.0,0.0,0.0} );
+    //opengl1renderer.color3f(0.0f,1.0f,0.0f); Draw3D::drawVecInPos(da*10, {0.0,0.0,0.0} );
+    //opengl1renderer.color3f(0.0f,0.0f,1.0f); Draw3D::drawVecInPos(db*10, {0.0,0.0,0.0} );
     Draw3D::drawRectGridLines( n*2, (da*-n.a)+(db*-n.b) + normal*c0, da, db );
 }
 
@@ -117,9 +117,9 @@ void plotSurfPlane( Vec3d normal, double c0, Vec2d d, Vec2i n ){
 void renderSubstrate( int n, Vec3d * points, GLenum mode ){
     //printf( "iso_points.size() %i \n", iso_points.size() );
     if( mode == GL_POINTS ){
-        glBegin(GL_POINTS);
-        for(int i=0; i<iso_points.size(); i++){ glVertex3f( iso_points[i].x, iso_points[i].y, iso_points[i].z      ); }
-        glEnd();
+        opengl1renderer.begin(GL_POINTS);
+        for(int i=0; i<iso_points.size(); i++){ opengl1renderer.vertex3f( iso_points[i].x, iso_points[i].y, iso_points[i].z      ); }
+        opengl1renderer.end();
     }
 }
 */
@@ -136,20 +136,20 @@ void renderSubstrate_( const GridShape& grid, Vec3d * FF, double isoval, bool si
     //DEBUG
     getIsoSurfZ( grid, isoval, sign, FF, pos, normals );
     //printf( " -- DEBUG 2 \n" );
-    //glEnable(GL_LIGHTING);
+    //opengl1renderer.enable(GL_LIGHTING);
     //DEBUG
     for ( int ib=1; ib<grid.n.y; ib++ ){
-        glBegin(GL_TRIANGLE_STRIP);
+        opengl1renderer.begin(GL_TRIANGLE_STRIP);
         for ( int ia=0; ia<grid.n.x; ia++ ){
             int ip1 = (ib-1)*grid.n.x + ia;
             int ip2 = (ib  )*grid.n.x + ia;
             //printf( "iba (%i,%i) pos (%g,%g,%g)\n", ib,ia, pos[ip1].x,pos[ip1].y,pos[ip1].z );
-            //glColor3f(pos[ip1].z*5-2,1.0f,1.0f); glNormal3f(normals[ip1].x,normals[ip1].y,normals[ip1].z); glVertex3f(pos[ip1].x,pos[ip1].y,pos[ip1].z);
-            //glColor3f(pos[ip2].z*5-2,1.0f,1.0f); glNormal3f(normals[ip2].x,normals[ip2].y,normals[ip2].z); glVertex3f(pos[ip2].x,pos[ip2].y,pos[ip2].z);
-            glColor3f(0.7f,0.7f,0.7f); glNormal3f(normals[ip1].x,normals[ip1].y,normals[ip1].z); glVertex3f(pos[ip1].x,pos[ip1].y,pos[ip1].z);
-            glColor3f(0.8f,0.7f,0.7f); glNormal3f(normals[ip2].x,normals[ip2].y,normals[ip2].z); glVertex3f(pos[ip2].x,pos[ip2].y,pos[ip2].z);
+            //opengl1renderer.color3f(pos[ip1].z*5-2,1.0f,1.0f); opengl1renderer.normal3f(normals[ip1].x,normals[ip1].y,normals[ip1].z); opengl1renderer.vertex3f(pos[ip1].x,pos[ip1].y,pos[ip1].z);
+            //opengl1renderer.color3f(pos[ip2].z*5-2,1.0f,1.0f); opengl1renderer.normal3f(normals[ip2].x,normals[ip2].y,normals[ip2].z); opengl1renderer.vertex3f(pos[ip2].x,pos[ip2].y,pos[ip2].z);
+            opengl1renderer.color3f(0.7f,0.7f,0.7f); opengl1renderer.normal3f(normals[ip1].x,normals[ip1].y,normals[ip1].z); opengl1renderer.vertex3f(pos[ip1].x,pos[ip1].y,pos[ip1].z);
+            opengl1renderer.color3f(0.8f,0.7f,0.7f); opengl1renderer.normal3f(normals[ip2].x,normals[ip2].y,normals[ip2].z); opengl1renderer.vertex3f(pos[ip2].x,pos[ip2].y,pos[ip2].z);
         }
-        glEnd();
+        opengl1renderer.end();
     }
     DEBUG
     //printf( " -- DEBUG 3 \n" );
@@ -168,18 +168,18 @@ int renderSubstrate_( const GridShape& grid, Quat4f * FF, Quat4f * FFel, double 
     //printf( " -- DEBUG 1 \n" );
     //getIsoSurfZ( grid, isoval, sign, FF, pos, normals );
     getIsoSurfZ( grid, isoval, sign, FF, Zs );
-    //glEnable(GL_LIGHTING);
+    //opengl1renderer.enable(GL_LIGHTING);
     int nvert = 0;
-    //glDisable(GL_LIGHTING);
+    //opengl1renderer.disable(GL_LIGHTING);
     for ( int ib=1; ib<=grid.n.y; ib++ ){
-        glBegin(GL_TRIANGLE_STRIP);
-        //glBegin(GL_LINES);
+        opengl1renderer.begin(GL_TRIANGLE_STRIP);
+        //opengl1renderer.begin(GL_LINES);
         for ( int ia=0; ia<=grid.n.x; ia++ ){
             int ip1 = ((ib-1)%grid.n.y)*grid.n.x + (ia%grid.n.x);
             int ip2 = ((ib  )%grid.n.y)*grid.n.x + (ia%grid.n.x);
             //printf( "iba (%i,%i) pos (%g,%g,%g)\n", ib,ia, pos[ip1].x,pos[ip1].y,pos[ip1].z );
-            //glColor3f(pos[ip1].z*5-2,1.0f,1.0f); glNormal3f(normals[ip1].x,normals[ip1].y,normals[ip1].z); glVertex3f(pos[ip1].x,pos[ip1].y,pos[ip1].z);
-            //glColor3f(pos[ip2].z*5-2,1.0f,1.0f); glNormal3f(normals[ip2].x,normals[ip2].y,normals[ip2].z); glVertex3f(pos[ip2].x,pos[ip2].y,pos[ip2].z);
+            //opengl1renderer.color3f(pos[ip1].z*5-2,1.0f,1.0f); opengl1renderer.normal3f(normals[ip1].x,normals[ip1].y,normals[ip1].z); opengl1renderer.vertex3f(pos[ip1].x,pos[ip1].y,pos[ip1].z);
+            //opengl1renderer.color3f(pos[ip2].z*5-2,1.0f,1.0f); opengl1renderer.normal3f(normals[ip2].x,normals[ip2].y,normals[ip2].z); opengl1renderer.vertex3f(pos[ip2].x,pos[ip2].y,pos[ip2].z);
             Vec3f gpos; Quat4f fel1,fel2,  f1,f2;
 
             Vec3d p1 = grid.dCell.a*ia + grid.dCell.b*(ib-1);
@@ -193,32 +193,32 @@ int renderSubstrate_( const GridShape& grid, Quat4f * FF, Quat4f * FFel, double 
             Vec3d nr1,nr2; double invr;
             grid.cartesian2grid( p1, gpos); gpos.z-=3.5; f1 = interpolate3DvecWrap( FF, grid.n, gpos );  f1.z*=0.1; f1.normalize(); f1.mul(-1);
             grid.cartesian2grid( p2, gpos); gpos.z-=3.5; f2 = interpolate3DvecWrap( FF, grid.n, gpos );  f2.z*=0.1; f2.normalize(); f2.mul(-1);
-            //glColor3f(0.7f,0.7f,0.7f); glNormal3f(normals[ip1].x,normals[ip1].y,normals[ip1].z); glVertex3f(pos[ip1].x,pos[ip1].y,pos[ip1].z);
-            //glColor3f(0.8f,0.7f,0.7f); glNormal3f(normals[ip2].x,normals[ip2].y,normals[ip2].z); glVertex3f(pos[ip2].x,pos[ip2].y,pos[ip2].z);
-            //glColor3f( fel1.x, fel1.y, fel1.z ); glNormal3f(normals[ip1].x,normals[ip1].y,normals[ip1].z); glVertex3f(pos[ip1].x,pos[ip1].y,pos[ip1].z);
-            //glColor3f( fel2.x, fel2.y, fel2.z ); glNormal3f(normals[ip2].x,normals[ip2].y,normals[ip2].z); glVertex3f(pos[ip2].x,pos[ip2].y,pos[ip2].z);
+            //opengl1renderer.color3f(0.7f,0.7f,0.7f); opengl1renderer.normal3f(normals[ip1].x,normals[ip1].y,normals[ip1].z); opengl1renderer.vertex3f(pos[ip1].x,pos[ip1].y,pos[ip1].z);
+            //opengl1renderer.color3f(0.8f,0.7f,0.7f); opengl1renderer.normal3f(normals[ip2].x,normals[ip2].y,normals[ip2].z); opengl1renderer.vertex3f(pos[ip2].x,pos[ip2].y,pos[ip2].z);
+            //opengl1renderer.color3f( fel1.x, fel1.y, fel1.z ); opengl1renderer.normal3f(normals[ip1].x,normals[ip1].y,normals[ip1].z); opengl1renderer.vertex3f(pos[ip1].x,pos[ip1].y,pos[ip1].z);
+            //opengl1renderer.color3f( fel2.x, fel2.y, fel2.z ); opengl1renderer.normal3f(normals[ip2].x,normals[ip2].y,normals[ip2].z); opengl1renderer.vertex3f(pos[ip2].x,pos[ip2].y,pos[ip2].z);
             //printf( "[%i,%i]fel1.z %g sclr %g \n", ib,ia, fel1.z, sclr );
             //if( ckeckNaN_d(1, 3, (double*)(pos+ip1), "p2" ) || ckeckNaN_d(1, 3, (double*)(pos+ip2), "p1" ) ){ printf("ERROR in renderSubstrate()[%i,%i]: ip(%i,%i) NaNs Found !!! => Exit() \n",ia,ib, ip1,ip2  );  exit(0); };
             //printf( "renderSubstrate[%i,%i] p1(%g,%g,%g) p2(%g,%g,%g) \n", ia,ib, pos[ip1].x,pos[ip1].y,pos[ip1].z, pos[ip2].x,pos[ip2].y,pos[ip2].z );
             
             
-            //colorRB( fel1.z*-sclr ); glNormal3f(normals[ip1].x,normals[ip1].y,normals[ip1].z); glVertex3f(pos[ip1].x,pos[ip1].y,pos[ip1].z); nvert++;
-            //colorRB( fel2.z*-sclr ); glNormal3f(normals[ip2].x,normals[ip2].y,normals[ip2].z); glVertex3f(pos[ip2].x,pos[ip2].y,pos[ip2].z); nvert++;
+            //colorRB( fel1.z*-sclr ); opengl1renderer.normal3f(normals[ip1].x,normals[ip1].y,normals[ip1].z); opengl1renderer.vertex3f(pos[ip1].x,pos[ip1].y,pos[ip1].z); nvert++;
+            //colorRB( fel2.z*-sclr ); opengl1renderer.normal3f(normals[ip2].x,normals[ip2].y,normals[ip2].z); opengl1renderer.vertex3f(pos[ip2].x,pos[ip2].y,pos[ip2].z); nvert++;
 
-            //colorRB( fel1.z*-sclr ); glNormal3f(f1.x,f1.y,f1.z); glVertex3f(p1.x,p1.y,p1.z); nvert++;
-            //colorRB( fel2.z*-sclr ); glNormal3f(f2.x,f2.y,f2.z); glVertex3f(p2.x,p2.y,p2.z); nvert++;
+            //colorRB( fel1.z*-sclr ); opengl1renderer.normal3f(f1.x,f1.y,f1.z); opengl1renderer.vertex3f(p1.x,p1.y,p1.z); nvert++;
+            //colorRB( fel2.z*-sclr ); opengl1renderer.normal3f(f2.x,f2.y,f2.z); opengl1renderer.vertex3f(p2.x,p2.y,p2.z); nvert++;
 
-            colorRB( fel1.z*sclr ); glNormal3f(f1.x,f1.y,f1.z); glVertex3f(p1.x,p1.y,p1.z); nvert++;
-            colorRB( fel2.z*sclr ); glNormal3f(f2.x,f2.y,f2.z); glVertex3f(p2.x,p2.y,p2.z); nvert++;
+            colorRB( fel1.z*sclr ); opengl1renderer.normal3f(f1.x,f1.y,f1.z); opengl1renderer.vertex3f(p1.x,p1.y,p1.z); nvert++;
+            colorRB( fel2.z*sclr ); opengl1renderer.normal3f(f2.x,f2.y,f2.z); opengl1renderer.vertex3f(p2.x,p2.y,p2.z); nvert++;
 
             //colorRB( fel1.z*-sclr ); 
-            //glVertex3f(pos[ip1].x,pos[ip1].y,pos[ip1].z); glVertex3f(pos[ip1].x+normals[ip1].x*0.1, pos[ip1].y+normals[ip1].y*0.1, pos[ip1].z+normals[ip1].z*0.1); nvert++;
+            //opengl1renderer.vertex3f(pos[ip1].x,pos[ip1].y,pos[ip1].z); opengl1renderer.vertex3f(pos[ip1].x+normals[ip1].x*0.1, pos[ip1].y+normals[ip1].y*0.1, pos[ip1].z+normals[ip1].z*0.1); nvert++;
             
             //printf( "[%i,%i]fel1.e %g sclr %g \n", ib,ia, fel1.e, sclr );
-            //colorRB( fel1.e*-sclr ); glNormal3f(normals[ip1].x,normals[ip1].y,normals[ip1].z); glVertex3f(pos[ip1].x,pos[ip1].y,pos[ip1].z); nvert++;
-            //colorRB( fel2.e*-sclr ); glNormal3f(normals[ip2].x,normals[ip2].y,normals[ip2].z); glVertex3f(pos[ip2].x,pos[ip2].y,pos[ip2].z); nvert++;
+            //colorRB( fel1.e*-sclr ); opengl1renderer.normal3f(normals[ip1].x,normals[ip1].y,normals[ip1].z); opengl1renderer.vertex3f(pos[ip1].x,pos[ip1].y,pos[ip1].z); nvert++;
+            //colorRB( fel2.e*-sclr ); opengl1renderer.normal3f(normals[ip2].x,normals[ip2].y,normals[ip2].z); opengl1renderer.vertex3f(pos[ip2].x,pos[ip2].y,pos[ip2].z); nvert++;
         }
-        glEnd();
+        opengl1renderer.end();
     }
     //printf( " -- DEBUG 3 \n" );
     delete [] Zs;
@@ -236,9 +236,9 @@ int renderSubstrate_new( const GridFF& gff, Vec2d zrange, double isoval, Quat4d 
     Mat3d dCell = gff.grid.dCell;
     int nvert = 0;
     //printf( "\n", renderSubstrate_new );
-    //glNormal3f(0.0,0.0,1.0);
+    //opengl1renderer.normal3f(0.0,0.0,1.0);
     for ( int ib=1; ib<=gn.y; ib++ ){
-        glBegin(GL_TRIANGLE_STRIP);
+        opengl1renderer.begin(GL_TRIANGLE_STRIP);
         for ( int ia=0; ia<=gn.x; ia++ ){
 
             Vec3d p1a = dCell.a*ia + dCell.b*(ib-1); p1a.z=zrange.x;
@@ -281,49 +281,49 @@ int renderSubstrate_new( const GridFF& gff, Vec2d zrange, double isoval, Quat4d 
 
             //printf( "renderSubstrate_new()[%i,%i] el1,el2 %10.5e,%10.5e  (el1,el2)*sclr %10.5e,%10.5e  sclr=%10.5e \n", ia,ib, el1,el2, el1*sclr, el2*sclr, sclr  );
             
-            //colorRB( el1*sclr ); glVertex3f(p1.x,p1.y,p1.z); nvert++;
-            //colorRB( el2*sclr ); glVertex3f(p2.x,p2.y,p2.z); nvert++;
+            //colorRB( el1*sclr ); opengl1renderer.vertex3f(p1.x,p1.y,p1.z); nvert++;
+            //colorRB( el2*sclr ); opengl1renderer.vertex3f(p2.x,p2.y,p2.z); nvert++;
 
-            //colorRB( el1*sclr ); glNormal3f(f1.x,f1.y,f1.z); glVertex3f(p1.x,p1.y,p1.z); nvert++;
-            //colorRB( el2*sclr ); glNormal3f(f2.x,f2.y,f2.z); glVertex3f(p2.x,p2.y,p2.z); nvert++;
+            //colorRB( el1*sclr ); opengl1renderer.normal3f(f1.x,f1.y,f1.z); opengl1renderer.vertex3f(p1.x,p1.y,p1.z); nvert++;
+            //colorRB( el2*sclr ); opengl1renderer.normal3f(f2.x,f2.y,f2.z); opengl1renderer.vertex3f(p2.x,p2.y,p2.z); nvert++;
 
-            colorRBH( el1*sclr, sin(p1.z*1.0)*0.1 ); glNormal3f(f1.x,f1.y,f1.z); glVertex3f(p1.x,p1.y,p1.z); nvert++;
-            colorRBH( el2*sclr, sin(p2.z*1.0)*0.1 ); glNormal3f(f2.x,f2.y,f2.z); glVertex3f(p2.x,p2.y,p2.z); nvert++;
+            colorRBH( el1*sclr, sin(p1.z*1.0)*0.1 ); opengl1renderer.normal3f(f1.x,f1.y,f1.z); opengl1renderer.vertex3f(p1.x,p1.y,p1.z); nvert++;
+            colorRBH( el2*sclr, sin(p2.z*1.0)*0.1 ); opengl1renderer.normal3f(f2.x,f2.y,f2.z); opengl1renderer.vertex3f(p2.x,p2.y,p2.z); nvert++;
 
-            //colorRB( el1*sclr ); glNormal3f(f1.x,f1.y,f1.z); glVertex3f(p1.x,p1.y,p1.z); nvert++;
-            //colorRB( el2*sclr ); glNormal3f(f2.x,f2.y,f2.z); glVertex3f(p2.x,p2.y,p2.z); nvert++;
+            //colorRB( el1*sclr ); opengl1renderer.normal3f(f1.x,f1.y,f1.z); opengl1renderer.vertex3f(p1.x,p1.y,p1.z); nvert++;
+            //colorRB( el2*sclr ); opengl1renderer.normal3f(f2.x,f2.y,f2.z); opengl1renderer.vertex3f(p2.x,p2.y,p2.z); nvert++;
 
         }
-        glEnd();
+        opengl1renderer.end();
     }
     return nvert;
 }
 
 
 void viewSubstrate( int nx, int ny, int isoOgl, Vec3d a, Vec3d b, Vec3d pos0=Vec3dZero ){
-    glPushMatrix();
+    opengl1renderer.pushMatrix();
     for( int ix = -nx; ix<=nx; ix++ ){
         for( int iy = -ny; iy<=ny; iy++ ){
             Vec3d pos = a*ix + b*iy + pos0;
-            glTranslatef(pos.x, pos.y, pos.z);
-            glCallList(isoOgl);
-            glTranslatef(-pos.x, -pos.y, -pos.z);
+            opengl1renderer.translatef(pos.x, pos.y, pos.z);
+            opengl1renderer.callList(isoOgl);
+            opengl1renderer.translatef(-pos.x, -pos.y, -pos.z);
         }
     }
-    glPopMatrix();
+    opengl1renderer.popMatrix();
 }
 
 void viewSubstrate( Vec2i nxs, Vec2i nys, int isoOgl, Vec3d a, Vec3d b, Vec3d pos0=Vec3dZero ){
-    glPushMatrix();
+    opengl1renderer.pushMatrix();
     for( int ix = nxs.x; ix<=nxs.y; ix++ ){
         for( int iy = nys.x; iy<=nys.y; iy++ ){
             Vec3d pos = a*ix + b*iy + pos0;
-            glTranslatef(pos.x, pos.y, pos.z);
-            glCallList(isoOgl);
-            glTranslatef(-pos.x, -pos.y, -pos.z);
+            opengl1renderer.translatef(pos.x, pos.y, pos.z);
+            opengl1renderer.callList(isoOgl);
+            opengl1renderer.translatef(-pos.x, -pos.y, -pos.z);
         }
     }
-    glPopMatrix();
+    opengl1renderer.popMatrix();
 }
 
 #endif

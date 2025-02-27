@@ -6,7 +6,6 @@
 #include <math.h>
 
 #include <SDL2/SDL.h>
-#include <SDL2/SDL_opengl.h>
 #include "Draw.h"
 #include "Draw3D.h"
 #include "Solids.h"
@@ -354,10 +353,10 @@ void TestAppRARFF::simulation(){
 
 void TestAppRARFF::draw(){
     //printf( " ==== frame %i \n", frameCount );
-    glClearColor( 1.0f, 1.0f, 1.0f, 1.0f );
-    glClear( GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT );
-    glEnable(GL_DEPTH_TEST);
-    glDisable( GL_LIGHTING );
+    opengl1renderer.clearColor( 1.0f, 1.0f, 1.0f, 1.0f );
+    opengl1renderer.clear( GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT );
+    opengl1renderer.enable(GL_DEPTH_TEST);
+    opengl1renderer.disable( GL_LIGHTING );
     //printf("frame %i \n", frameCount);
     //if( ff.tryResize( 5, 100, 10) );
     //return;
@@ -383,7 +382,7 @@ void TestAppRARFF::draw(){
     //ff.checkAtomsCollapsed( 0.2, true );
     ff.checkAtomsOut( 100.0, true );
     if(bViewBox && (ff.AccelType==1) ){
-        glColor3f(0.7f,0.7f,0.7f); Draw3D::drawBBox( (Vec3f)ff.map.pos0, (Vec3f)ff.map.pmax );
+        opengl1renderer.color3f(0.7f,0.7f,0.7f); Draw3D::drawBBox( (Vec3f)ff.map.pos0, (Vec3f)ff.map.pmax );
     }
     if(bViewGrid && (ff.AccelType==1) ){
         //if(ff.AccelType==1)
@@ -394,19 +393,19 @@ void TestAppRARFF::draw(){
     Draw3D::drawAxis( 1.0);
 
     // switch(renderMode){
-    //     case 0: glDisable(GL_LIGHTING); break;
-    //     case 1: glEnable (GL_LIGHTING); break;
+    //     case 0: opengl1renderer.disable(GL_LIGHTING); break;
+    //     case 1: opengl1renderer.enable (GL_LIGHTING); break;
     // }
-    glEnable (GL_LIGHTING);
+    opengl1renderer.enable (GL_LIGHTING);
     visualize_atoms();
 };
 
 void TestAppRARFF::drawHUD(){
-    glPushMatrix();
-	glTranslatef( 400.0,400.0,0.0 );
-	glScalef    ( 40.0,40.0,1.0  );
+    opengl1renderer.pushMatrix();
+	opengl1renderer.translatef( 400.0,400.0,0.0 );
+	opengl1renderer.scalef    ( 40.0,40.0,1.0  );
 	plot1.view();
-    glPopMatrix();
+    opengl1renderer.popMatrix();
 
     if(bConsole) console.draw();
 }
@@ -552,8 +551,8 @@ void TestAppRARFF::visualize_cells( bool bDrawPoints ){
 void TestAppRARFF::visualize_atoms(){
     int na = 0;
     // ---------- Draw
-    glLineWidth(3.0f); 
-    glColor3f(0.0,0.0,0.0);
+    opengl1renderer.lineWidth(3.0f); 
+    opengl1renderer.color3f(0.0,0.0,0.0);
     double fsc = 0.1;
     double tsc = 0.1;
     //printf( "ff.natom %i \n", ff.natom );
@@ -561,23 +560,23 @@ void TestAppRARFF::visualize_atoms(){
     for(int ia=0; ia<ff.natom; ia++){
         if(ff.ignoreAtoms[ia])continue;
         na++;
-        //glColor3f(0.3,0.3,0.3);
-        glColor3f(0.5,0.5,0.5);
+        //opengl1renderer.color3f(0.3,0.3,0.3);
+        opengl1renderer.color3f(0.5,0.5,0.5);
         Draw3D::drawShape( ogl_sph, ff.apos[ia], Mat3dIdentity*0.7 );
         for(int j=0; j<ff.types[ia]->nbond; j++){
             int i=ia*N_BOND_MAX+j;
             Vec3d pb = ff.bondPos( i );
             //printf( "bondCaps[%i] %i\n", i, ff.bondCaps[i] );
-            if( ff.bondCaps[i]>=0 ){ glColor3f(1.0,0.0,0.0); } else{ glColor3f(0.0,0.0,0.0); }
+            if( ff.bondCaps[i]>=0 ){ opengl1renderer.color3f(1.0,0.0,0.0); } else{ opengl1renderer.color3f(0.0,0.0,0.0); }
             //Draw::setRGB( clrs[j] );
-            glColor3f(0.5,0.5,0.5);;
+            opengl1renderer.color3f(0.5,0.5,0.5);;
             Draw3D::drawLine( ff.apos[ia] , pb );
-            glColor3f(0.0,1.0,0.0); Draw3D::drawVecInPos( ff.fbonds[i]*fsc, pb );
-            //glColor3f(0.0,0.0,0.0); Draw3D::drawVecInPos( ff.hbonds[i], ff.apos[i] );
-            //glColor3f(0.0,1.0,0.0); Draw3D::drawVecInPos( ff.fbonds[io]*fsc, ff.apos[i]+ff.hbonds[io] );
+            opengl1renderer.color3f(0.0,1.0,0.0); Draw3D::drawVecInPos( ff.fbonds[i]*fsc, pb );
+            //opengl1renderer.color3f(0.0,0.0,0.0); Draw3D::drawVecInPos( ff.hbonds[i], ff.apos[i] );
+            //opengl1renderer.color3f(0.0,1.0,0.0); Draw3D::drawVecInPos( ff.fbonds[io]*fsc, ff.apos[i]+ff.hbonds[io] );
         }
     };
-    glLineWidth(1.0f); 
+    opengl1renderer.lineWidth(1.0f); 
     //if(na<nAtomCount){ printf( "TestAppRARFF::visualize_atoms() number of atoms decreased( na=%i nAtomCount=%i )\n", na, nAtomCount ); nAtomCount=na; }
     //printf( "TestAppRARFF::visualize_atoms() na=%i \n", na );
     //int nig = ff.countIgnoreAtoms(true);

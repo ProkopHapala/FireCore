@@ -2,7 +2,8 @@
 #ifndef  GLUtils_h
 #define  GLUtils_h
 
-#include <GL/gl.h>
+//#include <GL/gl.h>
+#include "Renderer.h"
 #include "Vec3.h"
 
 inline float * toFloat(int n, double * arr_){

@@ -136,16 +136,16 @@ virtual int projectOrbital(int iMO, double*& ewfaux ) override{
     return ntot;
 
     /*
-    ogl_MO  = glGenLists(1);
+    ogl_MO  = opengl1renderer.genLists(1);
     Vec3d p=Vec3d{0.4,2.5,0.0};
-    glNewList(ogl_MO, GL_COMPILE);
-    glTranslatef( p.x, p.y, p.z );
+    opengl1renderer.newList(ogl_MO, GL_COMPILE);
+    opengl1renderer.translatef( p.x, p.y, p.z );
     int ntris=0;  
-    glColor3f(0.0,0.0,1.0); ntris += Draw3D::MarchingCubesCross( MOgrid,  iso, ewfaux, isoSurfRenderType);
-    glColor3f(1.0,0.0,0.0); ntris += Draw3D::MarchingCubesCross( MOgrid, -iso, ewfaux, isoSurfRenderType);
-    glColor3f(0.0f,0.0f,0.0f); Draw3D::drawTriclinicBox(builder.lvec.transposed(), Vec3dZero, Vec3dOne );
-    glTranslatef( -p.x, -p.y, -p.z );
-    glEndList();
+    opengl1renderer.color3f(0.0,0.0,1.0); ntris += Draw3D::MarchingCubesCross( MOgrid,  iso, ewfaux, isoSurfRenderType);
+    opengl1renderer.color3f(1.0,0.0,0.0); ntris += Draw3D::MarchingCubesCross( MOgrid, -iso, ewfaux, isoSurfRenderType);
+    opengl1renderer.color3f(0.0f,0.0f,0.0f); Draw3D::drawTriclinicBox(builder.lvec.transposed(), Vec3dZero, Vec3dOne );
+    opengl1renderer.translatef( -p.x, -p.y, -p.z );
+    opengl1renderer.endList();
     delete [] ewfaux;
     */
 }
@@ -159,11 +159,11 @@ virtual  int projectDensity( double*& ewfaux )override{
     return ntot;
 
     /*
-    ogl_MO  = glGenLists(1);
-    glNewList(ogl_MO, GL_COMPILE);
+    ogl_MO  = opengl1renderer.genLists(1);
+    opengl1renderer.newList(ogl_MO, GL_COMPILE);
     int ntris = Draw3D::MarchingCubesCross( MOgrid, iso, ewfaux, isoSurfRenderType  );
     //printf( "renderOrbital() ntris %i \n", ntris );
-    glEndList();
+    opengl1renderer.endList();
     delete [] ewfaux;
     */
 }

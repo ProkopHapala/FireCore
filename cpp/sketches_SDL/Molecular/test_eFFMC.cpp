@@ -10,7 +10,7 @@
 #include <math.h>
 
 #include <SDL2/SDL.h>
-#include <SDL2/SDL_opengl.h>
+
 #include "Draw.h"
 #include "Draw2D.h"
 #include "Draw3D.h"
@@ -98,42 +98,42 @@ int orbColor(int io){
 
 
 void drawff_atoms(const CLCFGO& ff, float fsc=1.0, float asc=0.5 ){
-    glEnable(GL_DEPTH_TEST);
-    glColor3f(0.,0.,0.);
-    //glDisable(GL_DEPTH_TEST);
-    //glEnable(GL_BLEND);
-    //glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+    opengl1renderer.enable(GL_DEPTH_TEST);
+    opengl1renderer.color3f(0.,0.,0.);
+    //opengl1renderer.disable(GL_DEPTH_TEST);
+    //opengl1renderer.enable(GL_BLEND);
+    //opengl1renderer.blendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
     for(int i=0; i<ff.natom; i++){
         Vec3d p = ff.apos[i];
         //Draw3D::drawPointCross( p, ff.aPsize[i]*asc );
-        glColor3f(0.,0.,0.);
+        opengl1renderer.color3f(0.,0.,0.);
         Draw3D::drawPointCross( p, ff.aPars[i].z*asc );
-        glColor3f( 1.0f,0.0f,0.0f );
+        opengl1renderer.color3f( 1.0f,0.0f,0.0f );
         Draw3D::drawVecInPos( ff.aforce[i]*fsc, p );
     }
 }
 
 void drawff_wfs(const CLCFGO& ff, int oglSph, float fsc=1.0, float asc=0.5, int alpha=0x15000000 ){
-    glDisable(GL_DEPTH_TEST);
-    glEnable(GL_BLEND);
-    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+    opengl1renderer.disable(GL_DEPTH_TEST);
+    opengl1renderer.enable(GL_BLEND);
+    opengl1renderer.blendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
     char str[256];
     for(int io=0; io<ff.nOrb; io++){
         //Vec3f clr;
         //Draw::color_of_hash(io*15446+7545,clr);
-        //glColor4f(clr.x,clr.y,clr.z,0.1);
+        //opengl1renderer.color4f(clr.x,clr.y,clr.z,0.1);
         for(int j=0; j<ff.perOrb; j++){
             int i = io*ff.perOrb+j;
             Vec3d p = ff.epos[i];
             //float alpha=0.1;
-            //if(ff.espin[i]>0){ glColor4f(0.0,0.0,1.0, alpha); }else{ glColor4f(1.0,0.0,0.0, alpha); };
+            //if(ff.espin[i]>0){ opengl1renderer.color4f(0.0,0.0,1.0, alpha); }else{ opengl1renderer.color4f(1.0,0.0,0.0, alpha); };
             //int alphaMax=200;
             //int alpha = alphaMax*fabs(ff.rhoQ[i]); if(alpha>alphaMax)alpha=alphaMax; alpha<<=24;
             int c = orbColor(io);
             Draw  ::setRGBA( (c&0x00FFFFFF)|alpha  ); Draw3D::drawShape( oglSph, ff.epos[i], Mat3dIdentity*ff.esize[i],  false );
             //Draw  ::setRGBA(  c                    ); Draw3D::drawSphereOctLines(16, ff.esize[i], p, Mat3dIdentity, false );
             Draw  ::setRGBA(  c                    ); Draw3D::drawPointCross( p, 0.01 );
-            glColor3f( 1.0f,0.0f,0.0f );  Draw3D::drawVecInPos( ff.efpos[i]*fsc, p );
+            opengl1renderer.color3f( 1.0f,0.0f,0.0f );  Draw3D::drawVecInPos( ff.efpos[i]*fsc, p );
 
             //Draw  ::setRGBA( orbColor(io) );
             //sprintf(str, "%02i_%02i", io, j  );
@@ -144,9 +144,9 @@ void drawff_wfs(const CLCFGO& ff, int oglSph, float fsc=1.0, float asc=0.5, int 
 }
 
 void drawff_rho(const CLCFGO& ff, int oglSph, float fsc=1.0, int alpha=0x15000000 ){
-    glDisable(GL_DEPTH_TEST);
-    glEnable(GL_BLEND);
-    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+    opengl1renderer.disable(GL_DEPTH_TEST);
+    opengl1renderer.enable(GL_BLEND);
+    opengl1renderer.blendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
     char str[256];
     for(int io=0; io<ff.nOrb; io++){
         int i0 = ff.getRhoOffset(io);
@@ -161,7 +161,7 @@ void drawff_rho(const CLCFGO& ff, int oglSph, float fsc=1.0, int alpha=0x1500000
             //Draw  ::setRGBA(  c                    ); Draw3D::drawSphereOctLines(16, ff.rhoS[i], p, Mat3dIdentity, false );
             Draw  ::setRGBA(  c                    ); Draw3D::drawPointCross( p, 0.01 );
 
-            glColor3f( 1.0f,0.0f,0.0f );
+            opengl1renderer.color3f( 1.0f,0.0f,0.0f );
             Draw3D::drawVecInPos( ff.rhofP[i]*fsc, p );
 
             /*
@@ -383,7 +383,7 @@ TestAppCLCFSF::TestAppCLCFSF( int& id, int WIDTH_, int HEIGHT_ ) : AppSDL2OGL_3D
 
     oglSph=Draw::list(oglSph);
     Draw3D::drawSphere_oct(4,1.0d,Vec3d{0.,0.,0.});
-    glEndList();
+    opengl1renderer.endList();
 
     bRun = false;
 
@@ -402,8 +402,8 @@ TestAppCLCFSF::TestAppCLCFSF( int& id, int WIDTH_, int HEIGHT_ ) : AppSDL2OGL_3D
     //opt.bindOrAlloc( ff.nBas*5, ff.dofs+ff.natom*3,  0, ff.fdofs+ff.natom*3, 0 );
     opt.initOpt( 0.01, 0.1 );
 
-    glClearColor( 1.0f, 1.0f, 1.0f, 1.0f );
-    glClear ( GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT );
+    opengl1renderer.clearColor( 1.0f, 1.0f, 1.0f, 1.0f );
+    opengl1renderer.clear ( GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT );
 
     //ff.printElectrons();
 
@@ -411,11 +411,11 @@ TestAppCLCFSF::TestAppCLCFSF( int& id, int WIDTH_, int HEIGHT_ ) : AppSDL2OGL_3D
 }
 
 void TestAppCLCFSF::draw(){
-    glClearColor( 1.0f, 1.0f, 1.0f, 1.0f );
+    opengl1renderer.clearColor( 1.0f, 1.0f, 1.0f, 1.0f );
     //printf( " ==== frame %i \n", frameCount );
     /*
-    glClear ( GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT );
-    glEnable( GL_DEPTH_TEST );
+    opengl1renderer.clear ( GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT );
+    opengl1renderer.enable( GL_DEPTH_TEST );
     */
 
     //printf( " -1 epos (%g,%g,%g) efpos (%g,%g,%g) \n", ff.epos[0].x,ff.epos[0].y,ff.epos[0].z, ff.efpos[0].x,ff.efpos[0].y,ff.efpos[0].z );
@@ -469,9 +469,9 @@ void TestAppCLCFSF::draw(){
 
 
     // ------- View CLCFGO
-    glClearColor( 1.0f, 1.0f, 1.0f, 1.0f );
-    glClear ( GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT );
-    glEnable( GL_DEPTH_TEST );
+    opengl1renderer.clearColor( 1.0f, 1.0f, 1.0f, 1.0f );
+    opengl1renderer.clear ( GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT );
+    opengl1renderer.enable( GL_DEPTH_TEST );
     if(bDrawObjects){
         float fsc=0.01;
         if(bDrawAtoms) drawff_atoms( ff,         fsc, 0.2 );
@@ -488,16 +488,16 @@ void TestAppCLCFSF::draw(){
 
 
 void TestAppCLCFSF::drawHUD(){
-    glDisable(GL_LIGHTING);
-    glDisable(GL_DEPTH_TEST);
-	//glTranslatef( 100.0,100.0,0.0 );
-	//glScalef    ( 20.0,300.00,1.0  );
+    opengl1renderer.disable(GL_LIGHTING);
+    opengl1renderer.disable(GL_DEPTH_TEST);
+	//opengl1renderer.translatef( 100.0,100.0,0.0 );
+	//opengl1renderer.scalef    ( 20.0,300.00,1.0  );
 	//plot1.view();
 
 	//gui.draw();
 
-    glTranslatef( 10.0,HEIGHT-20.0,0.0 );
-	glColor3f(0.5,0.0,0.3);
+    opengl1renderer.translatef( 10.0,HEIGHT-20.0,0.0 );
+	opengl1renderer.color3f(0.5,0.0,0.3);
 
 	ff.eval();
 	int nstr=2048;
@@ -510,8 +510,8 @@ void TestAppCLCFSF::drawHUD(){
 
     /*
     // --- Cross Overlap
-    glColor3f(1.0,0.0,0.0);
-    glTranslatef( 300.0,-20.0,0.0 );
+    opengl1renderer.color3f(1.0,0.0,0.0);
+    opengl1renderer.translatef( 300.0,-20.0,0.0 );
     s=str;
     int iPauliModel = ff.iPauliModel;  ff.iPauliModel=4; // cross-overlap
     for(int i=0; i<ff.nOrb; i++){
@@ -548,8 +548,8 @@ void TestAppCLCFSF::viewPlots(){
         plot1.bTicks=false;
         plot1.update();
         plot1.render();
-        //glCallList( ogl );
-        //glDisable(GL_DEPTH_TEST);
+        //opengl1renderer.callList( ogl );
+        //opengl1renderer.disable(GL_DEPTH_TEST);
         plot1.view();
 }
 

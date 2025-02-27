@@ -3,7 +3,7 @@
 #define  Draw3D_Surf_h
 
 #include <SDL2/SDL.h>
-#include <SDL2/SDL_opengl.h>
+
 
 #include "Vec2.h"
 #include "Draw.h"
@@ -23,7 +23,7 @@
 
 #include "UVfuncs.h"
 
-//#include <SDL2/SDL_opengl.h>
+//
 
 namespace Draw3D{
 
@@ -32,19 +32,19 @@ void drawTriaglePatch( Vec2i i0, Vec2i n, int NX, double * height, double vmin, 
     Vec2f a,b,p;
     a.set( 1.0d, 0.0d           ); //a.mul(scale);
     b.set( 0.5d, 0.86602540378d ); //b.mul(scale);
-    //glDisable(GL_SMOOTH);
+    //opengl1renderer.disable(GL_SMOOTH);
     //int ii = 0;
     double renorm=1.0d/(vmax-vmin);
     for (int iy=0; iy<n.y-1; iy++){
-        glBegin( GL_TRIANGLE_STRIP );
+        opengl1renderer.begin( GL_TRIANGLE_STRIP );
         int ii = (i0.y+iy)*NX + i0.x;
         for (int ix=0; ix<n.x; ix++){
             p.set( ix*a.x+iy*b.x, ix*a.y+iy*b.y );
-            colorFunc( (height[ii     ]-vmin)*renorm ); glVertex3f( p.x    , p.y    , 0 );
-            colorFunc( (height[ii + NX]-vmin)*renorm ); glVertex3f( p.x+b.x, p.y+b.y, 0 );
+            colorFunc( (height[ii     ]-vmin)*renorm ); opengl1renderer.vertex3f( p.x    , p.y    , 0 );
+            colorFunc( (height[ii + NX]-vmin)*renorm ); opengl1renderer.vertex3f( p.x+b.x, p.y+b.y, 0 );
             ii++;
         }
-        glEnd();
+        opengl1renderer.end();
     }
 }
 
@@ -57,7 +57,7 @@ void drawSmoothUVFunc( Vec2i n, Vec2f UVmin, Vec2f UVmax, float voff, UVfunc fun
     //printf( "n (%i,%i) duv (%f,%f) \n", n.a, n.b, duv.a, duv.b  );
     Vec2f uv;
     for(int ia=0;ia<=n.a;ia++){
-        glBegin(GL_TRIANGLE_STRIP);
+        opengl1renderer.begin(GL_TRIANGLE_STRIP);
         for(int ib=0;ib<=n.b;ib++){
             //int i=mesh.vpos.size();
             uv.a = UVmin.a+duv.a*ia;
@@ -67,19 +67,19 @@ void drawSmoothUVFunc( Vec2i n, Vec2f UVmin, Vec2f UVmax, float voff, UVfunc fun
             //printf( " %i %i: uv (%f,%f) p (%f,%f,%f)\n", ia,ib, uv.a, uv.b,  p.x,p.y,p.z  );
             p  = func(uv);
             nr = getUVFuncNormal(uv,eps,func);
-            glNormal3f(nr.x,nr.y,nr.z);
-            glVertex3f(p.x,p.y,p.z);
+            opengl1renderer.normal3f(nr.x,nr.y,nr.z);
+            opengl1renderer.vertex3f(p.x,p.y,p.z);
 
             uv.a += duv.a;
             uv.b += voff*duv.b;
 
             p  = func(uv);
             nr = getUVFuncNormal(uv,eps,func);
-            glNormal3f(nr.x,nr.y,nr.z);
-            glVertex3f(p.x,p.y,p.z);
+            opengl1renderer.normal3f(nr.x,nr.y,nr.z);
+            opengl1renderer.vertex3f(p.x,p.y,p.z);
 
         }
-        glEnd();
+        opengl1renderer.end();
     }
 
 }
@@ -93,36 +93,36 @@ void drawWireUVFunc( Vec2i n, Vec2f UVmin, Vec2f UVmax, float voff, UVfunc func 
     Vec2f uv;
     for(int ia=0;ia<=n.a;ia++){
         // strips
-        glBegin(GL_LINE_LOOP);
+        opengl1renderer.begin(GL_LINE_LOOP);
         for(int ib=0;ib<=n.b;ib++){
             uv.a = UVmin.a+duv.a*ia;
             uv.b = UVmin.b+duv.b*ib +  voff*duv.b*ia;
             Vec3f p;
             p  = func(uv);
-            glVertex3f(p.x,p.y,p.z);
+            opengl1renderer.vertex3f(p.x,p.y,p.z);
 
         }
-        glEnd();
+        opengl1renderer.end();
 
         //
         if(ia<n.a){
-            glBegin(GL_LINE_LOOP);
+            opengl1renderer.begin(GL_LINE_LOOP);
             for(int ib=0;ib<=n.b;ib++){
                 uv.a = UVmin.a+duv.a*ia;
                 uv.b = UVmin.b+duv.b*ib + voff*duv.b*ia;
                 Vec3f p;
 
                 p  = func(uv);
-                glVertex3f(p.x,p.y,p.z);
+                opengl1renderer.vertex3f(p.x,p.y,p.z);
 
                 uv.a += duv.a;
                 uv.b += voff*duv.b;
 
                 p  = func(uv);
-                glVertex3f(p.x,p.y,p.z);
+                opengl1renderer.vertex3f(p.x,p.y,p.z);
 
             }
-            glEnd();
+            opengl1renderer.end();
         }
     }
 }
@@ -138,21 +138,21 @@ void drawExtrudedWireUVFunc( Vec2i n, float thick, Vec2f UVmin, Vec2f UVmax, flo
     Vec3f p,nr,nrl;
     for(int ia=0;ia<=n.a;ia++){
         // strips
-        glBegin(GL_TRIANGLE_STRIP);
+        opengl1renderer.begin(GL_TRIANGLE_STRIP);
         for(int ib=0;ib<=n.b;ib++){
             uv.a = UVmin.a+duv.a*ia;
             uv.b = UVmin.b+duv.b*ib + voff*duv.b*ia;
             p  = func(uv);
             nr = getUVFuncNormal(uv,eps,func);
             nrl.set_cross(func(uv+(Vec2f){0.0,duv.b*0.5})-p, nr); nrl.normalize();
-            glNormal3f(nrl.x,nrl.y,nrl.z);
-            glVertex3f(p.x,p.y,p.z);
+            opengl1renderer.normal3f(nrl.x,nrl.y,nrl.z);
+            opengl1renderer.vertex3f(p.x,p.y,p.z);
             p.add_mul(nr,thick);
-            glVertex3f(p.x,p.y,p.z);
+            opengl1renderer.vertex3f(p.x,p.y,p.z);
         }
-        glEnd();
+        opengl1renderer.end();
         if(ia<n.a){
-            glBegin(GL_TRIANGLE_STRIP);
+            opengl1renderer.begin(GL_TRIANGLE_STRIP);
             for(int ib=0;ib<=n.b;ib++){
                 uv.a = UVmin.a+duv.a*ia;
                 uv.b = UVmin.b+duv.b*ib + voff*duv.b*ia;
@@ -160,10 +160,10 @@ void drawExtrudedWireUVFunc( Vec2i n, float thick, Vec2f UVmin, Vec2f UVmax, flo
                 p  = func(uv);
                 nr = getUVFuncNormal(uv,eps,func);
                 nrl.set_cross(func(uv+(Vec2f){0.0,duv.b*0.5})-p, nr); nrl.normalize();
-                glNormal3f(nrl.x,nrl.y,nrl.z);
-                glVertex3f(p.x,p.y,p.z);
+                opengl1renderer.normal3f(nrl.x,nrl.y,nrl.z);
+                opengl1renderer.vertex3f(p.x,p.y,p.z);
                 p.add_mul(nr,thick);
-                glVertex3f(p.x,p.y,p.z);
+                opengl1renderer.vertex3f(p.x,p.y,p.z);
 
                 uv.a += duv.a;
                 uv.b += voff*duv.b;
@@ -171,13 +171,13 @@ void drawExtrudedWireUVFunc( Vec2i n, float thick, Vec2f UVmin, Vec2f UVmax, flo
                 p  = func(uv);
                 nr = getUVFuncNormal(uv,eps,func);
                 nrl.set_cross(func(uv+(Vec2f){0.0,duv.b*0.5})-p, nr); nrl.normalize();
-                glNormal3f(nrl.x,nrl.y,nrl.z);
-                glVertex3f(p.x,p.y,p.z);
+                opengl1renderer.normal3f(nrl.x,nrl.y,nrl.z);
+                opengl1renderer.vertex3f(p.x,p.y,p.z);
                 p.add_mul(nr,thick);
-                glVertex3f(p.x,p.y,p.z);
+                opengl1renderer.vertex3f(p.x,p.y,p.z);
 
             }
-            glEnd();
+            opengl1renderer.end();
         }
     }
 }

@@ -6,7 +6,7 @@
 #include  <functional>
 
 #include <SDL2/SDL.h>
-#include <SDL2/SDL_opengl.h>
+
 #include "Draw.h"
 #include "Draw3D.h"
 #include "Solids.h"
@@ -67,22 +67,22 @@ TestAppLatticeMatch2D::TestAppLatticeMatch2D( int& id, int WIDTH_, int HEIGHT_ )
     //LM.lat1[1].set(  0.3,  0.5 );
 */  
 
-    ogl1 = glGenLists (1);
+    ogl1 = opengl1renderer.genLists (1);
 
     double Rmax = 10.0;
     double dmax = 0.1;
     double dang = 0.1;
 
-    glNewList (ogl1, GL_COMPILE);
+    opengl1renderer.newList (ogl1, GL_COMPILE);
     Vec2d p;
-    // p=LM.lat0[0]*5; glColor3f(1.0,0.0,0.0); Draw3D::drawLine(  Vec3dZero,  {p.x,p.y,0.0}  );
-    // p=LM.lat0[1]*5; glColor3f(0.0,0.0,1.0); Draw3D::drawLine(  Vec3dZero,  {p.x,p.y,0.0}  );
-    p=LM.lat1[0]*5; glColor3f(0.0,0.5,0.0); Draw3D::drawLine(  Vec3dZero,  {p.x,p.y,0.0}  );
-    p=LM.lat1[1]*5; glColor3f(0.0,0.5,1.0); Draw3D::drawLine(  Vec3dZero,  {p.x,p.y,0.0}  );
-    glColor3f(0.0,0.0,0.0); Draw3D::drawCircleAxis(100,Vec3dZero, Vec3dX, Vec3dZ, Rmax  );
+    // p=LM.lat0[0]*5; opengl1renderer.color3f(1.0,0.0,0.0); Draw3D::drawLine(  Vec3dZero,  {p.x,p.y,0.0}  );
+    // p=LM.lat0[1]*5; opengl1renderer.color3f(0.0,0.0,1.0); Draw3D::drawLine(  Vec3dZero,  {p.x,p.y,0.0}  );
+    p=LM.lat1[0]*5; opengl1renderer.color3f(0.0,0.5,0.0); Draw3D::drawLine(  Vec3dZero,  {p.x,p.y,0.0}  );
+    p=LM.lat1[1]*5; opengl1renderer.color3f(0.0,0.5,1.0); Draw3D::drawLine(  Vec3dZero,  {p.x,p.y,0.0}  );
+    opengl1renderer.color3f(0.0,0.0,0.0); Draw3D::drawCircleAxis(100,Vec3dZero, Vec3dX, Vec3dZ, Rmax  );
     //LM.walk2D( Rmax, 0.05 );
     LM.walk2D( Rmax, dmax );
-    glEndList();
+    opengl1renderer.endList();
 
     LM.angleToRange();
     LM.sort();
@@ -102,36 +102,36 @@ TestAppLatticeMatch2D::TestAppLatticeMatch2D( int& id, int WIDTH_, int HEIGHT_ )
 }
 
 void TestAppLatticeMatch2D::draw(){
-    glClearColor( 1.0f, 1.0f, 1.0f, 1.0f );
-    glClear( GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT );
-    glEnable(GL_DEPTH_TEST);
-    glDisable(GL_LIGHTING);
+    opengl1renderer.clearColor( 1.0f, 1.0f, 1.0f, 1.0f );
+    opengl1renderer.clear( GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT );
+    opengl1renderer.enable(GL_DEPTH_TEST);
+    opengl1renderer.disable(GL_LIGHTING);
 
-    glCallList(ogl1);
+    opengl1renderer.callList(ogl1);
 
     if(ipick>=0){
         
         Vec2d u,v;
         
         LM.makeMatch( LM.matches[ipick],u,v,true );
-        glColor3f(1.0,0.0,0.0);  Draw3D::drawLine( Vec3dZero,  {u.x,u.y,0.0} );
-        glColor3f(0.0,0.0,1.0);  Draw3D::drawLine( Vec3dZero,  {v.x,v.y,0.0} );
+        opengl1renderer.color3f(1.0,0.0,0.0);  Draw3D::drawLine( Vec3dZero,  {u.x,u.y,0.0} );
+        opengl1renderer.color3f(0.0,0.0,1.0);  Draw3D::drawLine( Vec3dZero,  {v.x,v.y,0.0} );
 
         LM.makeMatch( LM.matches[ipick],u,v,false );
-        glColor3f(1.0,0.7,0.0);  Draw3D::drawLine( Vec3dZero,  {u.x,u.y,0.0} );
-        glColor3f(0.0,0.7,1.0);  Draw3D::drawLine( Vec3dZero,  {v.x,v.y,0.0} );
+        opengl1renderer.color3f(1.0,0.7,0.0);  Draw3D::drawLine( Vec3dZero,  {u.x,u.y,0.0} );
+        opengl1renderer.color3f(0.0,0.7,1.0);  Draw3D::drawLine( Vec3dZero,  {v.x,v.y,0.0} );
         
-        //v = LM.reproduce_grid( LM.match_u[ipick]                      );   glColor3f(0.0,0.0,1.0);  Draw3D::drawLine( Vec3dZero,  {v.x,v.y,0.0} );
-        //v = LM.reproduce_vec ( LM.match_u[ipick], LM.lat1[0], LM.angU );   glColor3f(1.0,0.7,0.0);  Draw3D::drawLine( Vec3dZero,  {v.x,v.y,0.0} );
-        //v = LM.reproduce_grid( LM.match_v[ipick]                      );   glColor3f(0.0,0.0,1.0);  Draw3D::drawLine( Vec3dZero,  {v.x,v.y,0.0} );
-        //v = LM.reproduce_vec ( LM.match_v[ipick], LM.lat1[1], LM.angV+LM.angUV );   glColor3f(1.0,0.7,0.0);  Draw3D::drawLine( Vec3dZero,  {v.x,v.y,0.0} );
+        //v = LM.reproduce_grid( LM.match_u[ipick]                      );   opengl1renderer.color3f(0.0,0.0,1.0);  Draw3D::drawLine( Vec3dZero,  {v.x,v.y,0.0} );
+        //v = LM.reproduce_vec ( LM.match_u[ipick], LM.lat1[0], LM.angU );   opengl1renderer.color3f(1.0,0.7,0.0);  Draw3D::drawLine( Vec3dZero,  {v.x,v.y,0.0} );
+        //v = LM.reproduce_grid( LM.match_v[ipick]                      );   opengl1renderer.color3f(0.0,0.0,1.0);  Draw3D::drawLine( Vec3dZero,  {v.x,v.y,0.0} );
+        //v = LM.reproduce_vec ( LM.match_v[ipick], LM.lat1[1], LM.angV+LM.angUV );   opengl1renderer.color3f(1.0,0.7,0.0);  Draw3D::drawLine( Vec3dZero,  {v.x,v.y,0.0} );
     }
 };
 
 /*
 void TestAppLatticeMatch2D::drawHUD(){
-	//glTranslatef( 100.0, 250.0, 0.0 );
-	//glScalef    ( 100.0, 100.0, 1.0 );
+	//opengl1renderer.translatef( 100.0, 250.0, 0.0 );
+	//opengl1renderer.scalef    ( 100.0, 100.0, 1.0 );
 	//plot1.view();
 }
 */

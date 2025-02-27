@@ -14,34 +14,34 @@
 namespace Cam{
 
 inline void ortho( const Camera& cam, bool zsym ){
-    glMatrixMode( GL_PROJECTION );
-    glLoadIdentity();
+    opengl1renderer.matrixMode( GL_PROJECTION );
+    opengl1renderer.loadIdentity();
     float zmin = cam.zmin; if(zsym) zmin=-cam.zmax;
-	glOrtho( -cam.zoom*cam.aspect, cam.zoom*cam.aspect, -cam.zoom, cam.zoom, zmin, cam.zmax );
+	opengl1renderer.ortho( -cam.zoom*cam.aspect, cam.zoom*cam.aspect, -cam.zoom, cam.zoom, zmin, cam.zmax );
 	float glMat[16];
 	Draw3D::toGLMatCam( { 0.0f, 0.0f, 0.0f}, cam.rot, glMat );
-	glMultMatrixf( glMat );
+	opengl1renderer.multMatrixf( glMat );
 
-	glMatrixMode ( GL_MODELVIEW );
-	glLoadIdentity();
-	glTranslatef(-cam.pos.x,-cam.pos.y,-cam.pos.z);
+	opengl1renderer.matrixMode ( GL_MODELVIEW );
+	opengl1renderer.loadIdentity();
+	opengl1renderer.translatef(-cam.pos.x,-cam.pos.y,-cam.pos.z);
 }
 
 inline void perspective( const Camera& cam ){
-    glMatrixMode( GL_PROJECTION );
-    glLoadIdentity();
-    //glFrustum( -ASPECT_RATIO, ASPECT_RATIO, -1, 1, camDist/zoom, VIEW_DEPTH );
-    glFrustum( -cam.aspect*cam.zoom, cam.aspect*cam.zoom, -cam.zoom, cam.zoom, cam.zmin, cam.zmax );
-    //glFrustum( -cam.zoom*cam.aspect, cam.zoom*cam.aspect, -cam.zoom, cam.zoom, cam.zmin, cam.zmax );
+    opengl1renderer.matrixMode( GL_PROJECTION );
+    opengl1renderer.loadIdentity();
+    //opengl1renderer.frustum( -ASPECT_RATIO, ASPECT_RATIO, -1, 1, camDist/zoom, VIEW_DEPTH );
+    opengl1renderer.frustum( -cam.aspect*cam.zoom, cam.aspect*cam.zoom, -cam.zoom, cam.zoom, cam.zmin, cam.zmax );
+    //opengl1renderer.frustum( -cam.zoom*cam.aspect, cam.zoom*cam.aspect, -cam.zoom, cam.zoom, cam.zmin, cam.zmax );
 	float glMat[16];
 	Draw3D::toGLMatCam( { 0.0f, 0.0f, 0.0f}, cam.rot, glMat );
-	glMultMatrixf( glMat );
+	opengl1renderer.multMatrixf( glMat );
 
-	glMatrixMode ( GL_MODELVIEW );
-	glLoadIdentity();
-	glTranslatef(-cam.pos.x,-cam.pos.y,-cam.pos.z);
-    //glTranslatef ( -camPos.x+camMat.cx*camDist, -camPos.y+camMat.cy*camDist, -camPos.z+camMat.cz*camDist );
-    //glTranslatef ( -cam.pos.x+camMat.cx*camDist, -camPos.y+camMat.cy*camDist, -camPos.z+camMat.cz*camDist );
+	opengl1renderer.matrixMode ( GL_MODELVIEW );
+	opengl1renderer.loadIdentity();
+	opengl1renderer.translatef(-cam.pos.x,-cam.pos.y,-cam.pos.z);
+    //opengl1renderer.translatef ( -camPos.x+camMat.cx*camDist, -camPos.y+camMat.cy*camDist, -camPos.z+camMat.cz*camDist );
+    //opengl1renderer.translatef ( -cam.pos.x+camMat.cx*camDist, -camPos.y+camMat.cy*camDist, -camPos.z+camMat.cz*camDist );
 }
 
 } // namespace Cam

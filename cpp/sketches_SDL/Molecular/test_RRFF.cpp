@@ -6,7 +6,7 @@
 #include <math.h>
 
 #include <SDL2/SDL.h>
-#include <SDL2/SDL_opengl.h>
+
 #include "Draw.h"
 #include "Draw3D.h"
 #include "Solids.h"
@@ -58,8 +58,8 @@ TestAppRRFF::TestAppRRFF( int& id, int WIDTH_, int HEIGHT_ ) : AppSDL2OGL_3D( id
 
 void TestAppRRFF::draw(){
     printf( " ==== frame %i \n", frameCount );
-    glClearColor( 0.5f, 0.5f, 0.5f, 1.0f );
-	glClear( GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT );
+    opengl1renderer.clearColor( 0.5f, 0.5f, 0.5f, 1.0f );
+	opengl1renderer.clear( GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT );
 
 
 
@@ -82,7 +82,7 @@ void TestAppRRFF::eventHandling ( const SDL_Event& event  ){
 }
 
 void TestAppRRFF::drawHUD(){
-    glDisable ( GL_LIGHTING );
+    opengl1renderer.disable ( GL_LIGHTING );
 }
 
 // ===================== MAIN

@@ -6,7 +6,7 @@
 #include <math.h>
 
 #include <SDL2/SDL.h>
-#include <SDL2/SDL_opengl.h>
+
 #include "Draw.h"
 #include "Draw3D.h"
 #include "Solids.h"
@@ -134,8 +134,8 @@ TestAppRARFF::TestAppRARFF( int& id, int WIDTH_, int HEIGHT_ ) : AppSDL2OGL_3D( 
 
 void TestAppRARFF::draw(){
 
-    glClearColor( 0.5f, 0.5f, 0.5f, 1.0f );
-	glClear( GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT );
+    opengl1renderer.clearColor( 0.5f, 0.5f, 0.5f, 1.0f );
+	opengl1renderer.clear( GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT );
 
 	/*
 	Vec3d cog  = Vec3dZero; for(int i=0;i<ff.natom;i++){ cog .add(ff.apos  [i]); }; cog.mul(1./ff.natom);
@@ -176,8 +176,8 @@ void TestAppRARFF::draw(){
             ff.checkForceTorque(cog,fsum,tqsum);
             //printf( "===== frame %i \n", frameCount );
             printf("fsum %g tqsum %g | cog(%g,%g,%g)\n", fsum.norm(), tqsum.norm(), cog.x,cog.y,cog.z );
-            glColor3f(1,1,1); Draw3D::drawPointCross(cog,0.05);
-            glColor3f(1,1,1); Draw3D::drawVecInPos(fsum,cog);
+            opengl1renderer.color3f(1,1,1); Draw3D::drawPointCross(cog,0.05);
+            opengl1renderer.color3f(1,1,1); Draw3D::drawVecInPos(fsum,cog);
 
             double f2err=0;
             for(int i=0; i<ff.nDOF; i++){ f2err=fmax(f2err,ff.fdofs[i].norm2()); }
@@ -202,15 +202,15 @@ void TestAppRARFF::draw(){
 
     }
 
-    glColor3f(1.,1.,1.);
+    opengl1renderer.color3f(1.,1.,1.);
     for(int ia=0; ia<nff.natoms; ia++){
         Draw3D::drawPointCross( nff.apos[ia], 0.1 );
     }
-    glColor3f(0.,0.,0.);
+    opengl1renderer.color3f(0.,0.,0.);
     for(int ib=0; ib<nff.nmask; ib++){
         //Draw3D::drawLine( nff.apos[nff.pairMask[ib].a], nff.apos[nff.pairMask[ib].b] );
     }
-    glColor3f(1.,0.,0.);
+    opengl1renderer.color3f(1.,0.,0.);
     for(int ia=0; ia<nff.natoms; ia++){
         //Draw3D::drawVecInPos( nff.fs[ia], nff.apos[ia] );
     }
@@ -222,13 +222,13 @@ void TestAppRARFF::draw(){
     // ================ view froces
 
     // atom forces
-    glColor3f(1.,0.,0.);
+    opengl1renderer.color3f(1.,0.,0.);
     for(int ia=0; ia<ff.natom; ia++){
         Draw3D::drawVecInPos( ff.aforce[ia]*fsc, ff.apos[ia] );
     }
 
     // sigma force (bond,epair,hydrogen)
-    glColor3f(1.,1.,0.);
+    opengl1renderer.color3f(1.,1.,0.);
     for(int ia=0; ia<ff.natom; ia++){
         for(int io=0; io<ff.aconf[ia].b; io++ ){
             Draw3D::drawVecInPos( ff.hforce[ia*N_BOND_MAX+io]*fsc, ff.hdir[ia*N_BOND_MAX+io] );
@@ -238,19 +238,19 @@ void TestAppRARFF::draw(){
     // ================ view positions
 
     // atom centers
-    glColor3f(0.,0.,0.);
+    opengl1renderer.color3f(0.,0.,0.);
     for(int i=0; i<ff.natom; i++){
         //Draw3D::drawPointCross( ff.apos[i], 0.1 );
     }
 
     // bonds
-    glColor3f(0.,0.,0.);
+    opengl1renderer.color3f(0.,0.,0.);
     for(int i=0; i<ff.nbond; i++){
         //Draw3D::drawLine( ff.apos[ ff.bondIs[i].a>>2 ], ff.apos[ ff.bondIs[i].b>>2 ] );
     }
 
     // bond electrons
-    glColor3f(0.5,0.,0.5);
+    opengl1renderer.color3f(0.5,0.,0.5);
     for(int ia=0; ia<ff.natom; ia++){
         for(int io=0; io<ff.aconf[ia].c; io++ ){
             Draw3D::drawLine( ff.hdir[ia*N_BOND_MAX+io], ff.apos[ia] );
@@ -260,7 +260,7 @@ void TestAppRARFF::draw(){
     //return;
 
     // cap hydrogens
-    glColor3f(0.,0.,0.);
+    opengl1renderer.color3f(0.,0.,0.);
     for(int ia=0; ia<ff.natom; ia++){
         for(int io=ff.aconf[ia].c; io<ff.aconf[ia].a; io++ ){
             Draw3D::drawLine( ff.hdir[ia*N_BOND_MAX+io],  ff.apos[ia] );
@@ -268,7 +268,7 @@ void TestAppRARFF::draw(){
     }
 
     // e-pair
-    glColor3f(0.,0.7,1.);
+    opengl1renderer.color3f(0.,0.7,1.);
     for(int ia=0; ia<ff.natom; ia++){
         for(int io=ff.aconf[ia].a; io<ff.aconf[ia].b; io++ ){
             Draw3D::drawLine(  ff.hdir[ia*N_BOND_MAX+io], ff.apos[ia] );
@@ -276,7 +276,7 @@ void TestAppRARFF::draw(){
     }
 
     // pi-bond
-    glColor3f(0.4,.8,0.);
+    opengl1renderer.color3f(0.4,.8,0.);
     for(int ia=0; ia<ff.natom; ia++){
         for(int io=ff.aconf[ia].b; io<N_BOND_MAX; io++ ){
             Draw3D::drawVecInPos( ff.hdir[ia*N_BOND_MAX+io]*0.5, ff.apos[ia] );
@@ -290,19 +290,19 @@ void TestAppRARFF::draw(){
 
 void TestAppRARFF::drawHUD(){
 /*
-    glColor3f(1.0,1.0,1.0);
+    opengl1renderer.color3f(1.0,1.0,1.0);
     txt.viewHUD( {100,220}, fontTex );
 
 	gui.draw();
 
-	glTranslatef( 10.0,300.0,0.0 );
-	glColor3f(0.5,0.0,0.3);
+	opengl1renderer.translatef( 10.0,300.0,0.0 );
+	opengl1renderer.color3f(0.5,0.0,0.3);
     Draw::drawText( "abcdefghijklmnopqrstuvwxyz \n0123456789 \nABCDEFGHIJKLMNOPQRTSTUVWXYZ \nxvfgfgdfgdfgdfgdfgdfg", fontTex, fontSizeDef, {10,5} );
 */
 
 /*
-	glTranslatef( 100.0,100.0,0.0 );
-	glScalef    ( 10.0,10.00,1.0  );
+	opengl1renderer.translatef( 100.0,100.0,0.0 );
+	opengl1renderer.scalef    ( 10.0,10.00,1.0  );
 	plot1.view();
 	*/
 

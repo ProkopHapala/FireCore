@@ -274,7 +274,7 @@ class BrowserSDL{
             //SDL_SetWindowSize( screen->window, thisImage->w, thisImage->h ); 
             //screen->force_update();
             //surface = SDL_GetWindowSurface( window );
-            //glViewport(0, 0, windowWidth, windowHeight );
+            //opengl1renderer.viewport(0, 0, windowWidth, windowHeight );
 
 			printf( "loaded: %.100s \n", fname.c_str() );
 			SDL_FillRect( screen->surface, NULL, clrBg );

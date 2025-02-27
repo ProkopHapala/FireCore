@@ -25,7 +25,7 @@ commit 94a94e956acad8e3d23a54acbd0f715fe0d1f827    2021-May-05    CLCFGO : teste
 #include  <functional>
 
 #include <SDL2/SDL.h>
-#include <SDL2/SDL_opengl.h>
+
 #include "Draw.h"
 #include "Draw3D.h"
 #include "Solids.h"
@@ -237,7 +237,7 @@ TestAppRARFF::TestAppRARFF( int& id, int WIDTH_, int HEIGHT_ ) : AppSDL2OGL_3D( 
 
     oglSph=Draw::list(oglSph);
     Draw3D::drawSphere_oct(3,1.0d,Vec3d{0.,0.,0.});
-    glEndList();
+    opengl1renderer.endList();
 
     plot1.init();
     plot1.fontTex = fontTex;
@@ -250,10 +250,10 @@ TestAppRARFF::TestAppRARFF( int& id, int WIDTH_, int HEIGHT_ ) : AppSDL2OGL_3D( 
 
 void TestAppRARFF::draw(){
     //printf( " ==== frame %i \n", frameCount );
-    glClearColor( 1.0f, 1.0f, 1.0f, 1.0f );
-    glClear( GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT );
-    glEnable(GL_DEPTH_TEST);
-    glDisable(GL_LIGHTING);
+    opengl1renderer.clearColor( 1.0f, 1.0f, 1.0f, 1.0f );
+    opengl1renderer.clear( GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT );
+    opengl1renderer.enable(GL_DEPTH_TEST);
+    opengl1renderer.disable(GL_LIGHTING);
 
     //return;
 
@@ -344,7 +344,7 @@ void TestAppRARFF::draw(){
 
     //Vec3d d = ff.apos[0]-ff.apos[1];
 
-    glCallList(ogl_fs);
+    opengl1renderer.callList(ogl_fs);
     //Draw3D::drawColorScale( 20, {0.0,0.0,0.0}, Vec3dY, Vec3dX, Draw::colors_rainbow, Draw::ncolors );
     //printf( "apos (%g,%g,%g) \n", ff.apos[0].x, ff.apos[0].y, ff.apos[0].z );
 
@@ -363,20 +363,20 @@ void TestAppRARFF::draw(){
     //ff.aforce[1].set(0.);
     //if(bRun) ff.move_GD( 0.01 );
 
-    //glDisable(GL_DEPTH_TEST);
+    //opengl1renderer.disable(GL_DEPTH_TEST);
     //plot1.view();
 
 };
 
 
 void TestAppRARFF::drawHUD(){
-	//glTranslatef( 100.0, 250.0, 0.0 );
-	//glScalef    ( 100.0, 100.0, 1.0 );
+	//opengl1renderer.translatef( 100.0, 250.0, 0.0 );
+	//opengl1renderer.scalef    ( 100.0, 100.0, 1.0 );
 	//plot1.view();
 
 
-    glTranslatef( 10.0,HEIGHT-20.0,0.0 );
-	glColor3f(0.5,0.0,0.3);
+    opengl1renderer.translatef( 10.0,HEIGHT-20.0,0.0 );
+	opengl1renderer.color3f(0.5,0.0,0.3);
 
     //Draw::drawText( "AHOJ ", fontTex, fontSizeDef, {100,20} );
 

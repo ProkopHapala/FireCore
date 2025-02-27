@@ -2,7 +2,9 @@
 #ifndef  Draw3D_h
 #define  Draw3D_h
 
-#include <SDL2/SDL_opengl.h>
+#include <Renderer.h>
+
+
 
 #include <math.h>
 #include <cstdlib>
@@ -34,12 +36,12 @@ namespace Draw3D{
 //void normal(const Vec3f& v );
 //void normal(const Vec3d& v );
 
-inline void vertex(const Vec3f& v ){ glVertex3f(v.x,v.y,v.z); }
-inline void vertex(const Vec3d& v ){ glVertex3f(v.x,v.y,v.z); }
-inline void color (const Vec3f& v ){ glColor3f (v.x,v.y,v.z); }
-inline void color (const Vec3d& v ){ glColor3f (v.x,v.y,v.z); }
-inline void normal(const Vec3f& v ){ glNormal3f(v.x,v.y,v.z); }
-inline void normal(const Vec3d& v ){ glNormal3f(v.x,v.y,v.z); }
+inline void vertex(const Vec3f& v ){ opengl1renderer.vertex(v); }
+inline void vertex(const Vec3d& v ){ opengl1renderer.vertex(v); }
+inline void color (const Vec3f& v ){ opengl1renderer.color(v); }
+inline void color (const Vec3d& v ){ opengl1renderer.color(v); }
+inline void normal(const Vec3f& v ){ opengl1renderer.normal(v); }
+inline void normal(const Vec3d& v ){ opengl1renderer.normal(v); }
 
 void drawPoint     ( const Vec3f& vec                   );
 void drawPointCross_bare( const Vec3f& vec, float sz    );
@@ -269,7 +271,7 @@ inline void rigidTransform( const Vec3f& pos, Mat3f rot, const Vec3f& sc, bool t
         rot.mul(sc);
         toGLMat(pos,rot, glMat);
     };
-    glMultMatrixf( glMat );
+    opengl1renderer.multMatrixf( glMat );
 }
 inline void rigidTransform( const Vec3f& pos, const Quat4f& qrot, const Vec3f& sc, bool trasposed = false ){ rigidTransform( pos, qrot.toMat(), sc, trasposed ); };
 
@@ -302,11 +304,11 @@ inline void drawPBC( const Vec3i& npbc, const Mat3d& lvec, Func func ){
             for(int ix=-npbc.x; ix<=npbc.x; ix++){
                 //builder.pbcShift(ix,iy,iz);
                 Vec3d shift = lvec.lincomb( ix, iy, iz );
-                glPushMatrix();
-                glTranslatef(  shift.x,  shift.y,  shift.z );
+                opengl1renderer.pushMatrix();
+                opengl1renderer.translatef(  shift.x,  shift.y,  shift.z );
                 func( {ix,iy,iz} );
-                //glTranslatef( -shift.x, -shift.y, -shift.z );
-                glPopMatrix();
+                //opengl1renderer.translatef( -shift.x, -shift.y, -shift.z );
+                opengl1renderer.popMatrix();
             }
         }
     }
@@ -318,13 +320,13 @@ inline void drawShifts( int n, Vec3d* shifts, int i0, Func func ){
     for(int i=0; i<n; i++){
         const Vec3d shift = shifts[i];
         //printf( "shifts[%i] (%7.3g,%7.3g,%7.3g) \n", i, shift.x,shift.y,shift.z );
-        glPushMatrix();
-        glTranslatef(  shift.x,  shift.y,  shift.z );
+        opengl1renderer.pushMatrix();
+        opengl1renderer.translatef(  shift.x,  shift.y,  shift.z );
         Vec3i ixyz{i,1,1};
         if(i==i0)ixyz=Vec3iZero;
         func( ixyz  );
-        //glTranslatef( -shift.x, -shift.y, -shift.z );
-        glPopMatrix();
+        //opengl1renderer.translatef( -shift.x, -shift.y, -shift.z );
+        opengl1renderer.popMatrix();
     }
 }
 

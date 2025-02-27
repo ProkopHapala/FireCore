@@ -85,15 +85,15 @@ int MoleculeType::drawBond( int i, int j, int nstick, float bondwidth  ){
 }
 
 int MoleculeType::makeViewCPK ( int nsphere, int nstick, float atomscale, float bondwidth ){
-    if( viewlist > 0 ) {	glDeleteLists( viewlist, 1 );	}
+    if( viewlist > 0 ) {	opengl1renderer.deleteLists( viewlist, 1 );	}
     int nvert = 0;
-    viewlist = glGenLists(1);
-    glNewList( viewlist , GL_COMPILE );
-        glShadeModel ( GL_SMOOTH );
+    viewlist = opengl1renderer.genLists(1);
+    opengl1renderer.newList( viewlist , GL_COMPILE );
+        opengl1renderer.shadeModel ( GL_SMOOTH );
         for( int i=0; i<natoms; i++ ){	nvert+= drawAtom( i, nsphere, atomscale, typeList->colors[ atypes[i] ] );	}
-        glColor3f( 0.2f, 0.2f, 0.2f );
+        opengl1renderer.color3f( 0.2f, 0.2f, 0.2f );
         for( int ib=0; ib<nbonds; ib+=2 ){	nvert+= drawBond( bonds[ib], bonds[ib+1], nstick, bondwidth );	}
-    glEndList();
+    opengl1renderer.endList();
     printf( " nvert %i \n", nvert );
     return viewlist;
 }

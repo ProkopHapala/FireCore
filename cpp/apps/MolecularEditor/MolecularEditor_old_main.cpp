@@ -6,7 +6,6 @@
 #include <math.h>
 
 #include <SDL2/SDL.h>
-#include <SDL2/SDL_opengl.h>
 #include <SDL2/SDL_image.h>
 //#include <SDL2/SDL_ttf.h>
 //#include "Texture.h"
@@ -51,11 +50,11 @@ int drawBond( MoleculeType * mol, int i, int j, int nstick, float bondwidth  ){
 */
 
 int renderMoleculeCPK ( MoleculeType * mol, int nsphere, int nstick, float atomscale, float bondwidth ){
-    if( mol->viewlist > 0 ) {	glDeleteLists( mol->viewlist, 1 );	}
+    if( mol->viewlist > 0 ) {	opengl1renderer.deleteLists( mol->viewlist, 1 );	}
     int nvert = 0;
-    mol->viewlist = glGenLists(1);
-    glNewList( mol->viewlist , GL_COMPILE );
-        glShadeModel ( GL_SMOOTH );
+    mol->viewlist = opengl1renderer.genLists(1);
+    opengl1renderer.newList( mol->viewlist , GL_COMPILE );
+        opengl1renderer.shadeModel ( GL_SMOOTH );
         for( int i=0; i<mol->natoms; i++     ){
             //printf("render atom %i \n", i);
             //nvert+= drawAtom( mol, i, nsphere, atomscale, mol->typeList->colors[ mol->atypes[i] ] );
@@ -66,7 +65,7 @@ int renderMoleculeCPK ( MoleculeType * mol, int nsphere, int nstick, float atoms
             nvert += Draw3D::drawSphere_oct( nsphere, atomscale*mol->typeList->vdwRs[mol->atypes[i]], mol->xyzs[i] );
         }
         if( mol->bonds != NULL ){
-            glColor3f( 0.2f, 0.2f, 0.2f );
+            opengl1renderer.color3f( 0.2f, 0.2f, 0.2f );
             for( int ib=0; ib<mol->nbonds; ib+=2 ){
                 //nvert+= drawBond( mol, , mol->bonds[ib+1], nstick, bondwidth );
                 Vec3f ai,aj;
@@ -75,7 +74,7 @@ int renderMoleculeCPK ( MoleculeType * mol, int nsphere, int nstick, float atoms
                 nvert += Draw3D::drawCylinderStrip( nstick, bondwidth, bondwidth, ai, aj );
             }
         }
-    glEndList();
+    opengl1renderer.endList();
     //printf( " nvert %i \n", nvert );
     return mol->viewlist;
 }
@@ -157,9 +156,9 @@ MolecularEditorApp::MolecularEditorApp( int& id, int WIDTH_, int HEIGHT_ ) : App
 }
 
 void MolecularEditorApp::draw(){
-    glClearColor( 0.5f, 0.5f, 0.5f, 0.0f );
-	glClear( GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT );
-	//glDisable( GL_DEPTH_TEST );
+    opengl1renderer.clearColor( 0.5f, 0.5f, 0.5f, 0.0f );
+	opengl1renderer.clear( GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT );
+	//opengl1renderer.disable( GL_DEPTH_TEST );
 
     //converged = true;
     //delay = 100; world.optimizer->dt_max = 0.00001; world.optimizer->dt_max = 0.00001; perFrame=1;
@@ -200,15 +199,15 @@ void MolecularEditorApp::draw(){
 
     //world.nonBondingFroces_buf(); return;
 
-	glMatrixMode(GL_MODELVIEW);
-	//glMatrixMode(GL_PROJECTION);
-	glEnable(GL_LIGHTING);
+	opengl1renderer.matrixMode(GL_MODELVIEW);
+	//opengl1renderer.matrixMode(GL_PROJECTION);
+	opengl1renderer.enable(GL_LIGHTING);
     for (int i=0; i<world.nmols; i++){
         if( world.instances[i]->viewlist > 0 ){
 
             /*
 
-            glPushMatrix();
+            opengl1renderer.pushMatrix();
             Mat3d rotmat;
             float glMat[16];
 
@@ -216,16 +215,16 @@ void MolecularEditorApp::draw(){
             //rot[i].toMatrix_unitary( rotmat );
             //printf( "%i   (%3.3f,%3.3f,%3.3f) (%3.3f,%3.3f,%3.3f,%3.3f)\n", i,  world.pos[i].x,world.pos[i].y,world.pos[i].z,   world.rot[i].x,world.rot[i].y,world.rot[i].z,world.rot[i].w  );
             world.rot[i].toMatrix( rotmat );
-            glColor3f(0.0f,0.0f,0.0f); Draw3D::drawPointCross(world.pos[i],1.0);
+            opengl1renderer.color3f(0.0f,0.0f,0.0f); Draw3D::drawPointCross(world.pos[i],1.0);
             Draw3D::toGLMat( world.pos[i], rotmat, glMat ); // somehow not working
             //Draw3D::toGLMat( {0.0,0.0,0.0}, rotmat, glMat );
-            glMultMatrixf( glMat );
-            //glTranslatef( world.pos[i].x,world.pos[i].y,world.pos[i].z );
+            opengl1renderer.multMatrixf( glMat );
+            //opengl1renderer.translatef( world.pos[i].x,world.pos[i].y,world.pos[i].z );
             //glMultTransposeMatrixf( glMat );
-            //glLoadMatrixf( glMat );
+            //opengl1renderer.loadMatrixf( glMat );
 
             glCallList   ( world.instances[i]->viewlist );
-            glPopMatrix();
+            opengl1renderer.popMatrix();
 
             */
 
@@ -236,8 +235,8 @@ void MolecularEditorApp::draw(){
     };
 
     //printf(" nLinkers %i &linkers %i \n" , world.nLinkers,  world.linkers );
-    glDisable(GL_LIGHTING);
-    glColor3f(0.0f,1.0f,0.0f);
+    opengl1renderer.disable(GL_LIGHTING);
+    opengl1renderer.color3f(0.0f,1.0f,0.0f);
     if( world.linkers ){
         for (int il=0; il<world.nLinkers; il++){
             Mat3d T;

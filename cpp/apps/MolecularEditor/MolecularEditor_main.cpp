@@ -9,7 +9,6 @@
 #include <math.h>
 
 #include <SDL2/SDL.h>
-#include <SDL2/SDL_opengl.h>
 
 #include "testUtils.h"
 
@@ -206,13 +205,13 @@ AppMolecularEditor2::AppMolecularEditor2( int& id, int WIDTH_, int HEIGHT_ ) : A
 
     printf( "DEBUG 4 \n" );
 
-    ogl_sph = glGenLists(1);
-    glNewList( ogl_sph, GL_COMPILE );
-        //glEnable( GL_LIGHTING );
-        //glColor3f( 0.8f, 0.8f, 0.8f );
+    ogl_sph = opengl1renderer.genLists(1);
+    opengl1renderer.newList( ogl_sph, GL_COMPILE );
+        //opengl1renderer.enable( GL_LIGHTING );
+        //opengl1renderer.color3f( 0.8f, 0.8f, 0.8f );
         //Draw3D::drawSphere_oct(3, 0.5, {0.0,0.0,0.0} );
         Draw3D::drawSphere_oct( 3, 1.0, {0.0,0.0,0.0} );
-    glEndList();
+    opengl1renderer.endList();
 
     //printf( "bond 8 %g \n", world.bond_0[8] );
     //printf( "bond 9 %g \n", world.bond_0[9] );
@@ -294,8 +293,8 @@ AppMolecularEditor2::AppMolecularEditor2( int& id, int WIDTH_, int HEIGHT_ ) : A
     //saveXSF( "FFtot_z.xsf",             world.gridFF.grid, FFtot, 2, world.gridFF.natoms, world.gridFF.apos, world.gridFF.atypes );
     world.gridFF.grid.saveXSF<float>( "FFtot_z.xsf", (float*)FFtot, 4,3, world.gridFF.natoms, world.gridFF.atypes, world.gridFF.apos );
 
-    isoOgl = glGenLists(1);
-    glNewList(isoOgl, GL_COMPILE);
+    isoOgl = opengl1renderer.genLists(1);
+    opengl1renderer.newList(isoOgl, GL_COMPILE);
     //getIsovalPoints_a( world.gridFF.grid, 0.1, FFtot, iso_points );
     //renderSubstrate( iso_points.size(), &iso_points[0], GL_POINTS );
     //renderSubstrate_( world.gridFF.grid, FFtot, 0.1, true );
@@ -303,22 +302,22 @@ AppMolecularEditor2::AppMolecularEditor2( int& id, int WIDTH_, int HEIGHT_ ) : A
     //renderSubstrate_( world.gridFF.grid, FFtot, 0.01, true );
     renderSubstrate_( world.gridFF.grid, FFtot, world.gridFF.FFelec, 0.01, true, 0.1);
     Draw3D::drawAxis(1.0);
-    glEndList();
+    opengl1renderer.endList();
 
 }
 
 void AppMolecularEditor2::draw(){
-    glClearColor( 0.5f, 0.5f, 0.5f, 1.0f );
-	glClear( GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT );
+    opengl1renderer.clearColor( 0.5f, 0.5f, 0.5f, 1.0f );
+	opengl1renderer.clear( GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT );
 
-	glColor3f( 0.0f,0.0f,0.0f );
+	opengl1renderer.color3f( 0.0f,0.0f,0.0f );
 	//if(isoOgl)
 
 	Draw3D::drawAxis(10);
 
 
-	glEnable(GL_LIGHTING);
-	glEnable(GL_DEPTH_TEST);
+	opengl1renderer.enable(GL_LIGHTING);
+	opengl1renderer.enable(GL_DEPTH_TEST);
 	viewSubstrate( 2, 2, isoOgl, world.gridFF.grid.cell.a, world.gridFF.grid.cell.b );
 
 	//perFrame = 10;
@@ -328,7 +327,7 @@ void AppMolecularEditor2::draw(){
 	//drawGridForceAlongLine( 100, world.gridFF, {3.3,0.0,2.0}, {0.0,0.1,0.0}, testPLQ, 50.0 );
 	//exit(0);
 
-	//glColor3f( 1.0f,0.0f,0.0f );
+	//opengl1renderer.color3f( 1.0f,0.0f,0.0f );
 	//drawPPRelaxTrj( 5000, 0.3, 0.95, world.gridFF, PPpos0, testPLQ );
 
     //return;
@@ -385,7 +384,7 @@ void AppMolecularEditor2::draw(){
 
     }
 
-    glColor3f(0.6f,0.6f,0.6f); plotSurfPlane( Vec3d{0.0,0.0,1.0}, -3.0, {3.0,3.0}, {20,20} );
+    opengl1renderer.color3f(0.6f,0.6f,0.6f); plotSurfPlane( Vec3d{0.0,0.0,1.0}, -3.0, {3.0,3.0}, {20,20} );
     //Draw3D::drawVecInPos( Vec3d{0.0,0.0,1.0},  Vec3d{0.0,0.0,0.0} );
 
     //printf( "==== frameCount %i  |F| %g \n", frameCount, sqrt(F2) );
@@ -393,8 +392,8 @@ void AppMolecularEditor2::draw(){
 
     for(int i=0; i<world.nbonds; i++){
         Vec2i ib = world.bond2atom[i];
-        glColor3f(0.0f,0.0f,0.0f);
-        if(i==ibpicked) glColor3f(1.0f,0.0f,0.0f); ;
+        opengl1renderer.color3f(0.0f,0.0f,0.0f);
+        if(i==ibpicked) opengl1renderer.color3f(1.0f,0.0f,0.0f); ;
         Draw3D::drawLine(world.apos[ib.x],world.apos[ib.y]);
         /*
         // --- bond llabels
@@ -403,26 +402,26 @@ void AppMolecularEditor2::draw(){
         */
     }
 
-    glEnable(GL_LIGHTING);
-    glEnable(GL_DEPTH_TEST);
-    glShadeModel(GL_SMOOTH);
+    opengl1renderer.enable(GL_LIGHTING);
+    opengl1renderer.enable(GL_DEPTH_TEST);
+    opengl1renderer.shadeModel(GL_SMOOTH);
     for(int i=0; i<world.natoms; i++){
-        //glColor3f(0.0f,0.0f,0.0f); Draw3D::drawPointCross(world.apos[i],0.2);
-        glColor3f(1.0f,0.0f,0.0f); Draw3D::drawVecInPos(world.aforce[i]*30.0,world.apos[i]);
+        //opengl1renderer.color3f(0.0f,0.0f,0.0f); Draw3D::drawPointCross(world.apos[i],0.2);
+        opengl1renderer.color3f(1.0f,0.0f,0.0f); Draw3D::drawVecInPos(world.aforce[i]*30.0,world.apos[i]);
 
-        //glCallList( ogl_sph );
-        glEnable(GL_LIGHTING);
+        //opengl1renderer.callList( ogl_sph );
+        opengl1renderer.enable(GL_LIGHTING);
         Mat3d mat;
         mat.setOne();
         mat.mul( atomSize * ( params.atypes[ world.atypes[i]].RvdW  - 1.0 ) );
         //mat.mul( 2.0 );
-        //glColor3f(0.8f,0.8f,0.8f);
+        //opengl1renderer.color3f(0.8f,0.8f,0.8f);
         Draw::setRGB( params.atypes[world.atypes[i]].color );
         Draw3D::drawShape(ogl_sph, world.apos[i],mat);
-        glDisable(GL_LIGHTING);
+        opengl1renderer.disable(GL_LIGHTING);
     }
-    glDisable(GL_LIGHTING);
-    glDisable(GL_DEPTH_TEST);
+    opengl1renderer.disable(GL_LIGHTING);
+    opengl1renderer.disable(GL_DEPTH_TEST);
 
     /*
     printf("==========\n");
@@ -494,7 +493,7 @@ void AppMolecularEditor2::eventHandling ( const SDL_Event& event  ){
 }
 
 void AppMolecularEditor2::drawHUD(){
-    glDisable ( GL_LIGHTING );
+    opengl1renderer.disable ( GL_LIGHTING );
 
 }
 

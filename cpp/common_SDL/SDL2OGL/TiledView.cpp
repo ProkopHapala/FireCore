@@ -2,9 +2,10 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <SDL2/SDL.h>
-#include <SDL2/SDL_opengl.h>
+
 
 #include "Draw2D.h"
+#include "Renderer.h"
 
 #include "TiledView.h" // THE HEADER
 
@@ -22,7 +23,7 @@ void TiledView::draw( float xmin, float ymin, float xmax, float ymax ){
     checkRender( xmin, ymin, xmax, ymax );
     draw_raw   ( xmin, ymin, xmax, ymax );
     //printf( "TiledView::draw %3.3f %3.3f %3.3f %3.3f  \n", xmin, ymin, xmax, ymax );
-    //glColor3f( 0.2f, 0.9f, 0.2f ); Draw2D::drawRectangle( xmin, ymin, xmax, ymax, false );
+    //opengl1renderer.color3f( 0.2f, 0.9f, 0.2f ); Draw2D::drawRectangle( xmin, ymin, xmax, ymax, false );
 };
 
 
@@ -65,7 +66,7 @@ void TiledView::shiftRender( int dix, int diy ){
             // delete tiles outside the box
             int ix__ = ix - dix;
             if ( toDelete || ( ix__ < 0 ) || ( ix__ >= nx ) ){
-                glDeleteLists( tiles_[i], 1 ); ndeleted++;
+                opengl1renderer.deleteLists( tiles_[i], 1 ); ndeleted++;
             }
             // fill in proper tiles
             int ix_ = ix + dix;
@@ -126,12 +127,12 @@ void TiledView::draw_raw( float xmin, float ymin, float xmax, float ymax ){
             for( int ix=ix0; ix<=ix1; ix++ ){
                 if( ( ix >= 0 ) && ( ix<nx ) ){
                     int i = getIndexI( ix, iy );
-                    if( tiles[i]!=0 ) glCallList( tiles[i] );
+                    if( tiles[i]!=0 ) opengl1renderer.callList( tiles[i] );
                 }
             }
         }
     }
     //printf( "TiledView::draw %3.3f %3.3f %3.3f %3.3f  \n", xmin, ymin, xmax, ymax );
-    glColor3f( 0.2f, 0.9f, 0.2f ); Draw2D::drawRectangle( xmin, ymin, xmax, ymax, false );
+    opengl1renderer.color3f( 0.2f, 0.9f, 0.2f ); Draw2D::drawRectangle( xmin, ymin, xmax, ymax, false );
 };
 

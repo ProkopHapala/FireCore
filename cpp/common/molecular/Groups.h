@@ -92,10 +92,10 @@ class Groups{ public:
             Mat3d M  = g.rotMat();
             M.dot_to_T( torq, tq );
             // {
-            //     glColor3f( 1.0f,0.0f,0.0f ); Draw3D::drawVecInPos( M.a, g.cog );
-            //     glColor3f( 0.0f,1.0f,0.0f ); Draw3D::drawVecInPos( M.b, g.cog );
-            //     glColor3f( 0.0f,0.0f,1.0f ); Draw3D::drawVecInPos( M.c, g.cog );
-            //     glColor3f( 1.0f,1.0f,1.0f ); Draw3D::drawVecInPos( tq*10.0, g.cog );
+            //     opengl1renderer.color3f( 1.0f,0.0f,0.0f ); Draw3D::drawVecInPos( M.a, g.cog );
+            //     opengl1renderer.color3f( 0.0f,1.0f,0.0f ); Draw3D::drawVecInPos( M.b, g.cog );
+            //     opengl1renderer.color3f( 0.0f,0.0f,1.0f ); Draw3D::drawVecInPos( M.c, g.cog );
+            //     opengl1renderer.color3f( 1.0f,1.0f,1.0f ); Draw3D::drawVecInPos( tq*10.0, g.cog );
             // }
         }else{
             tq=torq;
@@ -112,7 +112,7 @@ class Groups{ public:
             fcog.add(ft);
             fapos[ia].add( ft );
             // {
-            //     glColor3f( 1.0f,0.0f,0.0f );
+            //     opengl1renderer.color3f( 1.0f,0.0f,0.0f );
             //     Draw3D::drawVecInPos( ft*10.0, apos[ia] );
             // }
         }
@@ -121,7 +121,7 @@ class Groups{ public:
             int ia  = g2a[i + g.i0n.x];
             fapos[ia].add_mul( fcog, fweights[ia].y );
             // {
-            //     glColor3f( 1.0f,0.0f,0.0f );
+            //     opengl1renderer.color3f( 1.0f,0.0f,0.0f );
             //     Draw3D::drawVecInPos( fapos[ia]*10.0, apos[ia] );
             // }
         }
@@ -145,7 +145,7 @@ class Groups{ public:
             const Vec3d ft  = cross( tq, dp );
             //fapos[ia].add( ft + g.force );
             // {
-            //     glColor3f( 1.0f,0.0f,0.0f );
+            //     opengl1renderer.color3f( 1.0f,0.0f,0.0f );
             //     Draw3D::drawVecInPos( ft, apos[ia] );
             // }
         }

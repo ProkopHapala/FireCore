@@ -11,7 +11,7 @@
 #include "testUtils.h"
 
 #include <SDL2/SDL.h>
-#include <SDL2/SDL_opengl.h>
+
 #include "Draw3D.h"
 #include "SDL_utils.h"
 #include "Solids.h"
@@ -251,9 +251,9 @@ TestAppDirectionStiffness::TestAppDirectionStiffness( int& id, int WIDTH_, int H
 
     //float l_diffuse  []{ 0.9f, 0.85f, 0.8f,  1.0f };
 	float l_specular []{ 0.0f, 0.0f,  0.0f,  1.0f };
-    //glLightfv    ( GL_LIGHT0, GL_AMBIENT,   l_ambient  );
-	//glLightfv    ( GL_LIGHT0, GL_DIFFUSE,   l_diffuse  );
-	glLightfv    ( GL_LIGHT0, GL_SPECULAR,  l_specular );
+    //opengl1renderer.lightfv    ( GL_LIGHT0, GL_AMBIENT,   l_ambient  );
+	//opengl1renderer.lightfv    ( GL_LIGHT0, GL_DIFFUSE,   l_diffuse  );
+	opengl1renderer.lightfv    ( GL_LIGHT0, GL_SPECULAR,  l_specular );
 
     //selection.insert( selection.end(), {12, 16, 14, 6, 2, 3,   20,18,31,25,26} );
     //selection.insert( selection.end(), {13,29,30} );
@@ -320,10 +320,10 @@ void TestAppDirectionStiffness::MDloop(  ){
 
 
 void TestAppDirectionStiffness::draw(){
-    //glClearColor( 0.5f, 0.5f, 0.5f, 1.0f );
-    glClearColor( 1.0f, 1.0f, 1.0f, 1.0f );
-	glClear( GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT );
-	glEnable(GL_DEPTH_TEST);
+    //opengl1renderer.clearColor( 0.5f, 0.5f, 0.5f, 1.0f );
+    opengl1renderer.clearColor( 1.0f, 1.0f, 1.0f, 1.0f );
+	opengl1renderer.clear( GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT );
+	opengl1renderer.enable(GL_DEPTH_TEST);
 
     if(frameCount==1){
 
@@ -338,7 +338,7 @@ void TestAppDirectionStiffness::draw(){
     }
 
 	if( ogl_mol ){
-        glCallList( ogl_mol );
+        opengl1renderer.callList( ogl_mol );
         return;
         //exit(0);
     }
@@ -357,10 +357,10 @@ void TestAppDirectionStiffness::draw(){
 
 
     drawSystem();
-    glColor3f(0.,1.,0.); for(int i=0; i<deformer.npick; i++){  int ia=deformer.picks[i]; Draw3D::drawVecInPos(deformer.aforce[ia]*15.0,deformer.apos[ia]); }
+    opengl1renderer.color3f(0.,1.,0.); for(int i=0; i<deformer.npick; i++){  int ia=deformer.picks[i]; Draw3D::drawVecInPos(deformer.aforce[ia]*15.0,deformer.apos[ia]); }
 
-    glDisable(GL_DEPTH_TEST);
-    glColor3f(0.,1.,1.);
+    opengl1renderer.disable(GL_DEPTH_TEST);
+    opengl1renderer.color3f(0.,1.,1.);
     for(const Vec2i& b : graph2->found ){
         Draw3D::drawLine( ff.apos[b.a], ff.apos[b.b] );
     }
@@ -368,15 +368,15 @@ void TestAppDirectionStiffness::draw(){
 };
 
 void TestAppDirectionStiffness::drawSystem( ){
-    glColor3f(1.0f,0.0f,0.0f); Draw3D::vecsInPos( ff.natoms, ff.aforce,  ff.apos, 10.0 );
-    //glColor3f(0.0f,0.0f,0.0f); Draw3D::drawLines ( ff.nbonds, (int*)ff.bond2atom, ff.apos );
-    //glColor3f(0.0f,0.0f,0.0f); Draw3D::bondsPBC ( ff.nbonds, ff.bond2atom, ff.apos, &builder.bondPBC[0], builder.lvec ); // DEBUG
-    glColor3f(0.0f,0.0f,0.0f); Draw3D::bondsPBC ( ff.nbonds, ff.bond2atom, ff.apos, ff.pbcShifts  ); // DEBUG
-    //glColor3f(0.5f,0.0f,0.0f); Draw3D::atomLabels( ff.natoms, ff.apos, fontTex                     );                     //DEBUG
-    //glColor3f(0.0f,0.0f,1.0f); Draw3D::bondLabels( ff.nbonds, ff.bond2atom, ff.apos, fontTex, 0.02 );                     //DEBUG
-    //glColor3f(0.0f,0.0f,1.0f); Draw3D::atomPropertyLabel( ff.natoms, (double*)nff.REQs, ff.apos, 3,2, fontTex, 0.02, "%4.2f\0" );
+    opengl1renderer.color3f(1.0f,0.0f,0.0f); Draw3D::vecsInPos( ff.natoms, ff.aforce,  ff.apos, 10.0 );
+    //opengl1renderer.color3f(0.0f,0.0f,0.0f); Draw3D::drawLines ( ff.nbonds, (int*)ff.bond2atom, ff.apos );
+    //opengl1renderer.color3f(0.0f,0.0f,0.0f); Draw3D::bondsPBC ( ff.nbonds, ff.bond2atom, ff.apos, &builder.bondPBC[0], builder.lvec ); // DEBUG
+    opengl1renderer.color3f(0.0f,0.0f,0.0f); Draw3D::bondsPBC ( ff.nbonds, ff.bond2atom, ff.apos, ff.pbcShifts  ); // DEBUG
+    //opengl1renderer.color3f(0.5f,0.0f,0.0f); Draw3D::atomLabels( ff.natoms, ff.apos, fontTex                     );                     //DEBUG
+    //opengl1renderer.color3f(0.0f,0.0f,1.0f); Draw3D::bondLabels( ff.nbonds, ff.bond2atom, ff.apos, fontTex, 0.02 );                     //DEBUG
+    //opengl1renderer.color3f(0.0f,0.0f,1.0f); Draw3D::atomPropertyLabel( ff.natoms, (double*)nff.REQs, ff.apos, 3,2, fontTex, 0.02, "%4.2f\0" );
 
-    //glColor3f(1.0f,0.0f,0.0f); Draw3D::vecsInPoss( ff.natoms, ff.aforce, ff.apos, 300.0              );
+    //opengl1renderer.color3f(1.0f,0.0f,0.0f); Draw3D::vecsInPoss( ff.natoms, ff.aforce, ff.apos, 300.0              );
     //Draw3D::atomsREQ  ( ff.natoms, ff.apos,   nff.REQs, ogl_sph, 1.0, 0.25, 1.0 );
     //Draw3D::atoms( ff.natoms, ff.apos, atypes, params, ogl_sph, 1.0, 1.0, 1.0 );       //DEBUG
     //Draw3D::atoms( ff.natoms, ff.apos, atypes, params, ogl_sph, 1.0, 0.5, 1.0 );       //DEBUG
@@ -480,10 +480,10 @@ int TestAppDirectionStiffness::loadMoleculeMol( const char* fname, bool bAutoH, 
     //Draw3D::shapeInPoss( ogl_sph, ff.natoms, ff.apos, 0 );
 
     /*
-    ogl_mol = glGenLists(1);
-    glNewList( ogl_mol, GL_COMPILE );
+    ogl_mol = opengl1renderer.genLists(1);
+    opengl1renderer.newList( ogl_mol, GL_COMPILE );
         Draw3D::drawLines( mol.nbonds, (int*)mol.bond2atom, mol.pos );
-    glEndList();
+    opengl1renderer.endList();
     */
 
     return nheavy;
@@ -616,10 +616,10 @@ void TestAppDirectionStiffness::saveScreenshot( int i, const char* fname ){
         sprintf( str, fname, i );               // DEBUG
         printf( "save to %s \n", str );
         unsigned int *screenPixels = new unsigned int[WIDTH*HEIGHT*4];  //DEBUG
-        glFlush();                                                      //DEBUG
-        glFinish();                                                     //DEBUG
-        //glReadPixels(0, 0, WIDTH, HEIGHT, GL_RGB, GL_UNSIGNED_INT, screenPixels);
-        glReadPixels(0, 0, WIDTH, HEIGHT, GL_RGBA, GL_UNSIGNED_BYTE, screenPixels);   //DEBUG
+        opengl1renderer.flush();                                                      //DEBUG
+        opengl1renderer.finish();                                                     //DEBUG
+        //opengl1renderer.readPixels(0, 0, WIDTH, HEIGHT, GL_RGB, GL_UNSIGNED_INT, screenPixels);
+        opengl1renderer.readPixels(0, 0, WIDTH, HEIGHT, GL_RGBA, GL_UNSIGNED_BYTE, screenPixels);   //DEBUG
         //SDL_Surface *bitmap = SDL_CreateRGBSurfaceFrom(screenPixels, WIDTH, HEIGHT, 32, WIDTH*4, 0xff000000, 0x00ff0000, 0x0000ff00, 0x000000ff );   //DEBUG
         SDL_Surface *bitmap = SDL_CreateRGBSurfaceFrom(screenPixels, WIDTH, HEIGHT, 32, WIDTH*4, 0x000000ff, 0x0000ff00, 0x00ff0000, 0xff000000 );   //DEBUG
         SDL_SaveBMP(bitmap, str);    //DEBUG
@@ -733,7 +733,7 @@ void TestAppDirectionStiffness::eventHandling ( const SDL_Event& event  ){
 }
 
 void TestAppDirectionStiffness::drawHUD(){
-    glDisable ( GL_LIGHTING );
+    opengl1renderer.disable ( GL_LIGHTING );
 
 }
 

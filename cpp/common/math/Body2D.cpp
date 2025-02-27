@@ -1,6 +1,6 @@
 
 //#include <SDL2/SDL.h>
-//#include <SDL2/SDL_opengl.h>
+//
 //#include "Draw2D.h"
 
 #include "Body2D.h" // THE HEADER
@@ -45,17 +45,17 @@ void RigidBody2D::draw(           ){
 };
 
 void RigidBody2D::draw_shape( ){
-	glPushMatrix();
-	//glTranslatef( pos.x, pos.y , 0 );
-	//glRotatef( phi*(180/M_PI), 0, 0, 1 );
+	opengl1renderer.pushMatrix();
+	//opengl1renderer.translatef( pos.x, pos.y , 0 );
+	//opengl1renderer.rotatef( phi*(180/M_PI), 0, 0, 1 );
 	float mat[16];
 	mat[0 ] = +rot.x; mat[1 ] = +rot.y; mat[2 ] = 0;  mat[3 ] = 0;
 	mat[4 ] = -rot.y; mat[5 ] = +rot.x; mat[6 ] = 0;  mat[7 ] = 0;
 	mat[8 ] = 0;      mat[9 ] = 0;      mat[10] = 1;  mat[11] = 0;
 	mat[12] = pos.x;  mat[13] = pos.y;  mat[14] = 0;  mat[15] = 1;
-	glMultMatrixf( mat );
-	glCallList( shape );
-	glPopMatrix();
+	opengl1renderer.multMatrixf( mat );
+	opengl1renderer.callList( shape );
+	opengl1renderer.popMatrix();
 };
 */
 

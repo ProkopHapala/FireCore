@@ -7,7 +7,7 @@
 #include "Forces.h"
 
 #include <SDL2/SDL.h>
-#include <SDL2/SDL_opengl.h>
+
 #include "Draw3D.h"
 
 double torsion_Paolo( Vec3d p1, Vec3d p2, Vec3d p3, Vec3d p4, Vec3d par ){
@@ -82,8 +82,8 @@ double torsion_Paolo( Vec3d p1, Vec3d p2, Vec3d p3, Vec3d p4, Vec3d par ){
     {  // CHECK
         //printf(  "|f1|/|f1_| %g  |f3|/|f3_| %g cos(f1,f1_) %g cos(f3,f3_) %g |cs| %g \n", f1.norm()/f1_.norm(), f3.norm2()/f3_.norm2(),  f1.dot(f1_)/sqrt(f1.norm2()*f1_.norm2()),  f3.dot(f3_)/sqrt(f3.norm2()*f3_.norm2()),  c*c+s*s );
 
-        glLineWidth(2.0);
-        glColor3f(1.0,0.0,0.0); 
+        opengl1renderer.lineWidth(2.0);
+        opengl1renderer.color3f(1.0,0.0,0.0); 
         Draw3D::drawVecInPos( fp1, p1 );
         Draw3D::drawVecInPos( fp2, p2 );
         Draw3D::drawVecInPos( fp3, p3 );
@@ -101,7 +101,7 @@ double torsion_Paolo( Vec3d p1, Vec3d p2, Vec3d p3, Vec3d p4, Vec3d par ){
         Vec3d fp3_; fp3_.set_lincomb( ax.dot(p1-p2)/-l32, fp1, ax.dot(p4-p2)/-l32, fp4 );
         Vec3d fp2_ = (fp3_ + fp1 + fp4)*-1.0; 
 
-        glColor3f(1.0,0.0,1.0); 
+        opengl1renderer.color3f(1.0,0.0,1.0); 
         Draw3D::drawVecInPos( fp3_, p3 );
         Draw3D::drawVecInPos( fp2_, p2 );
 
@@ -220,8 +220,8 @@ double torsion_Prokop( Vec3d p1, Vec3d p2, Vec3d p3, Vec3d p4, Vec3d par ){
         printf( "Paolo |ftot|=%g |torq_p2|=%g |torq_p3|=%g \n", ftot.norm(), tq_p2.norm(), tq_p3.norm() );     
 
         // plot Paolo's forces
-        glLineWidth(1.0);
-        glColor3f(1.0,0.0,0.0); 
+        opengl1renderer.lineWidth(1.0);
+        opengl1renderer.color3f(1.0,0.0,0.0); 
         // Draw3D::drawVecInPos( fp1, p1 );
         // Draw3D::drawVecInPos( fp2, p2 );
         // Draw3D::drawVecInPos( fp3, p3 );
@@ -232,13 +232,13 @@ double torsion_Prokop( Vec3d p1, Vec3d p2, Vec3d p3, Vec3d p4, Vec3d par ){
         Draw3D::drawArrow( p4, p4+fp4_, 0.1 );
 
         // plot Prokop's forces
-        glLineWidth(2.0);
-        glColor3f(1.0,0.0,1.0); 
+        opengl1renderer.lineWidth(2.0);
+        opengl1renderer.color3f(1.0,0.0,1.0); 
         Draw3D::drawVecInPos( fp1, p1 );
         Draw3D::drawVecInPos( fp2, p2 );
         Draw3D::drawVecInPos( fp3, p3 );
         Draw3D::drawVecInPos( fp4, p4 );
-        glLineWidth(1.0);
+        opengl1renderer.lineWidth(1.0);
 
         ftot = fp1_ + fp2_ + fp3_ + fp4_;
         tq_p2=Vec3dZero;

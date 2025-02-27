@@ -3,7 +3,7 @@
 #define  Draw3D_Molecular_h
 
 #include <SDL2/SDL.h>
-#include <SDL2/SDL_opengl.h>
+
 
 #include <math.h>
 #include <cstdlib>
@@ -23,7 +23,7 @@
 #include "Forces.h"
 #include "MMFFparams.h"
 
-//#include <SDL2/SDL_opengl.h>
+//
 
 namespace Draw3D{
 
@@ -32,9 +32,9 @@ void plotSurfPlane( Vec3d normal, double c0, Vec2d d, Vec2i n ){
     normal.getSomeOrtho( da,db );
     da.mul( d.a/da.norm() );
     db.mul( d.b/db.norm() );
-    //glColor3f(1.0f,0.0f,0.0f); Draw3D::drawVecInPos(normal, {0.0,0.0,0.0} );
-    //glColor3f(0.0f,1.0f,0.0f); Draw3D::drawVecInPos(da*10, {0.0,0.0,0.0} );
-    //glColor3f(0.0f,0.0f,1.0f); Draw3D::drawVecInPos(db*10, {0.0,0.0,0.0} );
+    //opengl1renderer.color3f(1.0f,0.0f,0.0f); Draw3D::drawVecInPos(normal, {0.0,0.0,0.0} );
+    //opengl1renderer.color3f(0.0f,1.0f,0.0f); Draw3D::drawVecInPos(da*10, {0.0,0.0,0.0} );
+    //opengl1renderer.color3f(0.0f,0.0f,1.0f); Draw3D::drawVecInPos(db*10, {0.0,0.0,0.0} );
     Draw3D::drawRectGridLines( n*2, (da*-n.a)+(db*-n.b) + normal*c0, da, db );
 }
 
@@ -51,21 +51,21 @@ void torsion( Quat4i t, const Vec3d* apos ){
 
 void makeSphereOgl( int& ogl, int nsub, float sz ){
     ogl = Draw::list(ogl);
-    //glNewList( ogl, GL_COMPILE );
-        //glEnable( GL_LIGHTING );
-        //glColor3f( 0.8f, 0.8f, 0.8f );
+    //opengl1renderer.newList( ogl, GL_COMPILE );
+        //opengl1renderer.enable( GL_LIGHTING );
+        //opengl1renderer.color3f( 0.8f, 0.8f, 0.8f );
         //Draw3D::drawSphere_oct(3, 0.5, {0.0,0.0,0.0} );
         Draw3D::drawSphere_oct( nsub, sz, {0.0,0.0,0.0} );
-    glEndList();
+    opengl1renderer.endList();
 }
 
 void atomsREQ( int n, Vec3d* ps, Quat4d* REQs, int ogl_sph, float qsc=1, float Rsc=1, float Rsub=0, bool bPointCross=false, Vec3d pos0=Vec3dZero ){
-    glEnable(GL_LIGHTING);
-    glEnable(GL_DEPTH_TEST);
-    glShadeModel(GL_SMOOTH);
+    opengl1renderer.enable(GL_LIGHTING);
+    opengl1renderer.enable(GL_DEPTH_TEST);
+    opengl1renderer.shadeModel(GL_SMOOTH);
     for(int i=0; i<n; i++){
         float q = (float)REQs[i].z*qsc;
-        glColor3f(1-fmax(0,-q),1-fmax(q,-q),1-fmax(0,+q));
+        opengl1renderer.color3f(1-fmax(0,-q),1-fmax(q,-q),1-fmax(0,+q));
         //printf( "Draw3D atomsREQ() %i Q=%g R=%g pos(%16.8f %16.8f %16.8f)  \n", i, q, REQs[i].x, ps[i].x, ps[i].y, ps[i].z );
         if(bPointCross){
             Draw3D::drawPointCross( ps[i]+pos0, (REQs[i].x-Rsub)*Rsc );
@@ -97,12 +97,12 @@ void atomTypes( int n, const Vec3d* apos, const int* itypes, const AtomType* typ
 }
 
 void vecsInPos( int n, const Vec3d* vecs, const Vec3d* pos, double sz=1.0 ){
-    glBegin(GL_LINES);
+    opengl1renderer.begin(GL_LINES);
     for(int i=0; i<n; i++){
-        Vec3d p=pos[i];         glVertex3f(p.x,p.y,p.z);
-        p.add_mul(vecs[i], sz); glVertex3f(p.x,p.y,p.z);
+        Vec3d p=pos[i];         opengl1renderer.vertex3f(p.x,p.y,p.z);
+        p.add_mul(vecs[i], sz); opengl1renderer.vertex3f(p.x,p.y,p.z);
     }
-    glEnd();
+    opengl1renderer.end();
 }
 
 void atomPropertyLabel( int n, double* data, Vec3d* ps, int pitch, int offset, int fontTex, float sz=0.02, const char* format="%4.2f\0" ){
@@ -122,18 +122,18 @@ void bondPropertyLabel( int n, double* data, const Vec2i* b2a,  Vec3d* ps, int p
 }
 
 void bonds( int n, const Vec2i* b2a, const Vec3d* apos){
-    glBegin(GL_LINES);
+    opengl1renderer.begin(GL_LINES);
     for(int i=0; i<n; i++){
         Vec2i b = b2a[i];
         //Draw3D::drawLine( apos[b.b], apos[b.a] );
         Draw3D::vertex( apos[b.b] );
         Draw3D::vertex( apos[b.a] );
     }
-    glEnd();
+    opengl1renderer.end();
 }
 
 void bondLengthColorMap( int n, const Vec2i* b2a, const Vec3d* apos, double* bL0s, double dLmax ){
-    glBegin(GL_LINES);
+    opengl1renderer.begin(GL_LINES);
     for(int i=0; i<n; i++){
         Vec2i b = b2a[i];
         //Draw3D::drawLine( apos[b.b], apos[b.a] );
@@ -142,17 +142,17 @@ void bondLengthColorMap( int n, const Vec2i* b2a, const Vec3d* apos, double* bL0
         double l  = (pi-pj).norm();
         double dl = l - bL0s[i];
         double s  = dl/dLmax; 
-        if( s>0 ){ glColor3f(s,0.f,0.f); }else{ glColor3f(0.f,0.f,-s); };
+        if( s>0 ){ opengl1renderer.color3f(s,0.f,0.f); }else{ opengl1renderer.color3f(0.f,0.f,-s); };
         Draw3D::vertex( pi );
         Draw3D::vertex( pj );
     }
-    glEnd();
+    opengl1renderer.end();
 }
 
 void bondLengthColorMap( int n, const Vec2i* b2a, const Vec3d* apos, Vec2d lrange ){
     double L0 = (lrange.x + lrange.y)*0.5;
     double dLmax = lrange.y-L0;
-    glBegin(GL_LINES);
+    opengl1renderer.begin(GL_LINES);
     for(int i=0; i<n; i++){
         Vec2i b = b2a[i];
         //Draw3D::drawLine( apos[b.b], apos[b.a] );
@@ -161,30 +161,30 @@ void bondLengthColorMap( int n, const Vec2i* b2a, const Vec3d* apos, Vec2d lrang
         double l  = (pi-pj).norm();
         double dl = l - L0;
         double s  = dl/dLmax; 
-        if( s>0 ){ glColor3f(s,0.f,0.f); }else{ glColor3f(0.f,0.f,-s); };
+        if( s>0 ){ opengl1renderer.color3f(s,0.f,0.f); }else{ opengl1renderer.color3f(0.f,0.f,-s); };
         Draw3D::vertex( pi );
         Draw3D::vertex( pj );
     }
-    glEnd();
+    opengl1renderer.end();
 }
 
 void bondLengthColorMap( int n, const Vec2i* b2a, const Vec3d* apos, double* clr ){
     //printf( "bondLengthColorMap()\n" );
-    glBegin(GL_LINES);
+    opengl1renderer.begin(GL_LINES);
     for(int i=0; i<n; i++){
         Vec2i b = b2a[i];
         double s = clr[i]; 
         if( (s>-1.0)&&(s<1.0) ){
-            if( s>0 ){ glColor3f(s,0.f,0.f); }else{ glColor3f(0.f,0.f,-s); };
+            if( s>0 ){ opengl1renderer.color3f(s,0.f,0.f); }else{ opengl1renderer.color3f(0.f,0.f,-s); };
             Draw3D::vertex( apos[b.a] );
             Draw3D::vertex( apos[b.b] );
         }
     }
-    glEnd();
+    opengl1renderer.end();
 }
 
 void bondsLengths( int n, const Vec2i* b2a, const Vec3d* apos, int fontTex, float sz=0.01, const char* format="%4.2f\0" ){
-    glBegin(GL_LINES);
+    opengl1renderer.begin(GL_LINES);
     for(int i=0; i<n; i++){
         Vec2i b = b2a[i];
         const Vec3d& pi=apos[b.i];
@@ -192,7 +192,7 @@ void bondsLengths( int n, const Vec2i* b2a, const Vec3d* apos, int fontTex, floa
         double r = (pi-pj).norm();
         drawDouble( (pi+pj)*0.5, r, fontTex, sz, format );
     }
-    glEnd();
+    opengl1renderer.end();
 }
 
 
@@ -235,7 +235,7 @@ void atomNeighs(  int ia, int perAtom, int* neighs, int* neighCell, Vec3d* apos,
     int* ngC = neighCell+ia*perAtom;
     Vec3d pi = apos[ia];
     //printf( "Draw3D::atomNeighs[%i] ng(%i,%i,%i,%i) p(%g,%g,%g)\n", ia, ngs[0],ngs[1],ngs[2],ngs[3], pi.x,pi.y,pi.z );
-    glBegin( GL_LINES );
+    opengl1renderer.begin( GL_LINES );
     for(int i=0; i<perAtom; i++){
         int ja = ngs[i];
         if(ja<0) continue;
@@ -244,7 +244,7 @@ void atomNeighs(  int ia, int perAtom, int* neighs, int* neighCell, Vec3d* apos,
         if(shifts) pj.add(shifts[ngC[i]]);
         Draw3D::vertex( pj );
     }
-    glEnd();
+    opengl1renderer.end();
 }
 
 void atomNeighs(  int ia, int perAtom, int* neighs, int* neighCell, Quat4f* apos, Vec3d* shifts=0 ){
@@ -254,7 +254,7 @@ void atomNeighs(  int ia, int perAtom, int* neighs, int* neighCell, Quat4f* apos
     Quat4f pi = apos[ia];
     //print( "\n", neighs_[0],neighs_[1],neighs_[2],neighs_[3],  neighCell_[0],neighCell_[1],neighCell_[2],neighCell_[3],  apos.x,apos.x,apos.x,apos.x );
     //printf( "Draw3D::atomNeighs[%i] ng(%i,%i,%i,%i) ngC(%i,%i,%i,%i) p(%g,%g,%g)\n", ia, ngs[0],ngs[1],ngs[2],ngs[3],   ngC[0],ngC[1],ngC[2],ngC[3],    pi.x,pi.y,pi.z );
-    glBegin( GL_LINES );
+    opengl1renderer.begin( GL_LINES );
     for(int i=0; i<perAtom; i++){
         int ja = ngs[i];
         if(ja<0) continue;
@@ -263,7 +263,7 @@ void atomNeighs(  int ia, int perAtom, int* neighs, int* neighCell, Quat4f* apos
         if(shifts) pj.add( (Vec3f)shifts[ngC[i]]);
         Draw3D::vertex( pj );
     }
-    glEnd();
+    opengl1renderer.end();
 }
 
 void neighs( int na, int perAtom, int* neighs, int* neighCell, Vec3d* apos, Vec3d* shifts=0 ){
@@ -316,9 +316,9 @@ int drawESP( int na, Vec3d* apos, Quat4d* REQs, Quat4d REQ ){
     //printf("na %i npsh =%i \n", na, nsph );  
     for(int ia=0; ia<na; ia++){   
         //printf("ia=%i\n", ia );   
-        glPointSize(10.0);
-        glBegin(GL_POINTS);  
-        //glBegin(GL_LINE_STRIP); 
+        opengl1renderer.pointSize(10.0);
+        opengl1renderer.begin(GL_POINTS);  
+        //opengl1renderer.begin(GL_LINE_STRIP); 
         
 
         double Rsph = REQs[ia].x + REQ.x;
@@ -357,12 +357,12 @@ int drawESP( int na, Vec3d* apos, Quat4d* REQs, Quat4d REQ ){
                 e += addAtomicForceLJQ( dp, f, REQij );
             }
             if(bValid){
-                glColor3f(1-fmax(0,-e),1-fmax(e,-e),1-fmax(0,+e));
-                glVertex3f(p.x,p.y,p.z);
+                opengl1renderer.color3f(1-fmax(0,-e),1-fmax(e,-e),1-fmax(0,+e));
+                opengl1renderer.vertex3f(p.x,p.y,p.z);
                 np++;
             }
         }
-        glEnd();
+        opengl1renderer.end();
     }
     //printf("drawESP np=%i \n", np); //exit(0);
     return np;
@@ -375,9 +375,9 @@ int drawESP( int na, Vec3d* apos, Quat4d* REQs, Quat4d REQ ){
 
 #ifdef MMFFparams_h
 void atoms( int n, Vec3d* ps, int* atypes, const MMFFparams& params, int ogl_sph, float qsc=1, float Rsc=1, float Rsub=0 ){
-    glEnable(GL_LIGHTING);
-    glEnable(GL_DEPTH_TEST);
-    glShadeModel(GL_SMOOTH);
+    opengl1renderer.enable(GL_LIGHTING);
+    opengl1renderer.enable(GL_DEPTH_TEST);
+    opengl1renderer.shadeModel(GL_SMOOTH);
     for(int i=0; i<n; i++){
         const AtomType& atyp = params.atypes[atypes[i]];
         Draw::setRGB( atyp.color );
@@ -389,7 +389,7 @@ void atoms( int n, Vec3d* ps, int* atypes, const MMFFparams& params, int ogl_sph
 #ifdef MMFFBuilder_h
 void drawBonds( const MM::Builder& builder ){
     //drawSystem( false, true, false );
-    glBegin( GL_LINES );
+    opengl1renderer.begin( GL_LINES );
     for(int ib=0; ib<builder.bonds.size(); ib++ ){
         const MM::Bond& b = builder.bonds[ib]; 
         //printf( "bond[%i] (%i,%i) \n)", ib, b.atoms.a, b.atoms.b );
@@ -397,12 +397,12 @@ void drawBonds( const MM::Builder& builder ){
         Draw3D::vertex(builder.atoms[b.atoms.a].pos);
         Draw3D::vertex(builder.atoms[b.atoms.b].pos);
     }
-    glEnd();
+    opengl1renderer.end();
 }
 #endif
 #ifdef MMFFBuilder_h
 void drawNeighs( const MM::Builder& builder ){
-    glBegin( GL_LINES );
+    opengl1renderer.begin( GL_LINES );
     //printf( "DEBUG drawNeighs() \n" );
     for(int ia=0; ia<builder.atoms.size(); ia++ ){
         const MM::Atom& a = builder.atoms[ia];
@@ -421,20 +421,20 @@ void drawNeighs( const MM::Builder& builder ){
             }
         }
     }
-    glEnd();
+    opengl1renderer.end();
 }
 #endif
 
 #ifdef MMFFsp3_h
 void drawBonds( const MMFFsp3& ff, double Fsc=0.0 ){
     //drawSystem( false, true, false );
-    glBegin( GL_LINES );
+    opengl1renderer.begin( GL_LINES );
     for(int ib=0; ib<ff.nbonds; ib++ ){
         const Vec2i& b = ff.bond2atom[ib]; 
         Draw3D::vertex(ff.apos[b.i]);
         Draw3D::vertex(ff.apos[b.j]);
     }
-    glEnd();
+    opengl1renderer.end();
 }
 #endif
 #ifdef MMFFsp3_h
@@ -446,12 +446,12 @@ void drawNeighs( const MMFFsp3& ff, double Fsc=0.0 ){
         for(int j=0; j<ff.nneigh_max; j++ ){
             //printf( "atom[%i]neigh[%i]=%i \n", ia, j, ngs[j] );
             if(ngs[j]>=0){
-                glColor3f(0.,0.,0.); Draw3D::drawLine( ff.apos[ia], ff.apos[ngs[j]] );
-                if(Fsc>0.0){ glColor3f(1.,0.,0.); Draw3D::drawVecInPos( ff.fapos[ia]*Fsc, ff.apos[ia] ); }
+                opengl1renderer.color3f(0.,0.,0.); Draw3D::drawLine( ff.apos[ia], ff.apos[ngs[j]] );
+                if(Fsc>0.0){ opengl1renderer.color3f(1.,0.,0.); Draw3D::drawVecInPos( ff.fapos[ia]*Fsc, ff.apos[ia] ); }
             }else{
                 int ipi = -ngs[j]-1;
-                glColor3f(0.,0.5,0.); Draw3D::drawVecInPos( ff.pipos[ipi], ff.apos[ia] );
-                if(Fsc>0.0){ glColor3f(1.,0.5,0.); Draw3D::drawVecInPos( ff.fpipos[ipi]*Fsc, ff.apos[ia]+ff.pipos[ipi] ); }
+                opengl1renderer.color3f(0.,0.5,0.); Draw3D::drawVecInPos( ff.pipos[ipi], ff.apos[ia] );
+                if(Fsc>0.0){ opengl1renderer.color3f(1.,0.5,0.); Draw3D::drawVecInPos( ff.fpipos[ipi]*Fsc, ff.apos[ia]+ff.pipos[ipi] ); }
             }
         }
     }

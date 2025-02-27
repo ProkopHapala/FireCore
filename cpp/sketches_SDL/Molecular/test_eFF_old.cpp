@@ -11,7 +11,7 @@
 #include  <functional>
 
 #include <SDL2/SDL.h>
-#include <SDL2/SDL_opengl.h>
+
 #include "Draw.h"
 #include "Draw3D.h"
 #include "Solids.h"
@@ -99,11 +99,11 @@ void printDistFormAtom( int n, Vec3d* pos, int i0 ){
 int genFieldMap( int ogl, Vec2i ns, const Vec3d* ps, const double* Es, double vmin, double vmax ){
     //printf( "val_range: %g %g %g \n", val_range.x, val_range.y, Es[0] );
     //float clSz = 3.0;
-    if(ogl) glDeleteLists(ogl,1);
-    ogl = glGenLists(1);
-    glNewList(ogl, GL_COMPILE);
-    //glColor3f(1.0,0.0,0.0);
-    //glPointSize(2.0);
+    if(ogl) opengl1renderer.deleteLists(ogl,1);
+    ogl = opengl1renderer.genLists(1);
+    opengl1renderer.newList(ogl, GL_COMPILE);
+    //opengl1renderer.color3f(1.0,0.0,0.0);
+    //opengl1renderer.pointSize(2.0);
     //Draw3D::drawPoints(nptot, ps, -1.0 );
     //Draw3D::drawVectorArray( nptot, ps, fs, 0.5, 0.5 );
     //Draw3D::drawScalarArray( nptot, ps, Es, 0.0, 1.0, Draw::colors_rainbow, Draw::ncolors );
@@ -114,7 +114,7 @@ int genFieldMap( int ogl, Vec2i ns, const Vec3d* ps, const double* Es, double vm
     Draw3D::drawScalarField( ns, ps, Es, vmin, vmax, Draw::colors_RWB, Draw::ncolors );
     Draw3D::drawColorScale( 20, {5.0,-5.0,0.0}, Vec3dY*10, Vec3dX*0.5, Draw::colors_RWB, Draw::ncolors );
     //exit(0);
-    glEndList();
+    opengl1renderer.endList();
     return ogl;
 }
 
@@ -608,7 +608,7 @@ TestAppRARFF::TestAppRARFF( int& id, int WIDTH_, int HEIGHT_ ) : AppSDL2OGL_3D( 
 
     oglSph=Draw::list(oglSph);
     Draw3D::drawSphere_oct(3,1.0d, Vec3d{0.,0.,0.});
-    glEndList();
+    opengl1renderer.endList();
 
     DEBUG
 }
@@ -681,10 +681,10 @@ bool checkFinite(const EFF& ff, double vmin, double vmax ){
 
 void TestAppRARFF::draw(){
     //printf( " ==== frame %i \n", frameCount );
-    glClearColor( 1.0f, 1.0f, 1.0f, 1.0f );
-    glClear( GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT );
-    glEnable(GL_DEPTH_TEST);
-    glDisable(GL_LIGHTING);
+    opengl1renderer.clearColor( 1.0f, 1.0f, 1.0f, 1.0f );
+    opengl1renderer.clear( GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT );
+    opengl1renderer.enable(GL_DEPTH_TEST);
+    opengl1renderer.disable(GL_LIGHTING);
 
     //return;
 
@@ -760,7 +760,7 @@ void TestAppRARFF::draw(){
     //                                      (ff.apos[0]-ff.epos[0]).norm(),
     //                                      (ff.apos[1]-ff.epos[0]).norm() );
 
-    glCallList(ogl_fs);
+    opengl1renderer.callList(ogl_fs);
     //Draw3D::drawColorScale( 20, {0.0,0.0,0.0}, Vec3dY, Vec3dX, Draw::colors_rainbow, Draw::ncolors );
 
     //printf( "apos (%g,%g,%g) \n", ff.apos[0].x, ff.apos[0].y, ff.apos[0].z );
@@ -769,7 +769,7 @@ void TestAppRARFF::draw(){
     char strtmp[256];
     double Qsz = 0.05;
     double fsc = 1.0;
-    glColor3f(0.0,0.0,0.0);
+    opengl1renderer.color3f(0.0,0.0,0.0);
     for(int i=0; i<ff.na; i++){
         //printf( "apos[%i] (%g,%g,%g)\n", i, ff.apos[i].x, ff.apos[i].y, ff.apos[i].z );
         Draw3D::drawPointCross( ff.apos  [i]    , ff.aQ  [i]*Qsz );
@@ -779,27 +779,27 @@ void TestAppRARFF::draw(){
         //sprintf(strtmp,"%i",i);
         //Draw3D::drawText(strtmp, ff.apos[i], fontTex, 0.02, 0);
 
-        //glColor3f(0.,0.,0.); Draw3D::drawVecInPos( ff.aforce[i],   ff.apos[i] );
-        //glColor3f(0.,1.,0.); Draw3D::drawVecInPos( DEBUG_fa_ae[i], ff.apos[i] );
-        //glColor3f(1.,0.,0.); Draw3D::drawVecInPos( DEBUG_fa_aa[i], ff.apos[i] );
+        //opengl1renderer.color3f(0.,0.,0.); Draw3D::drawVecInPos( ff.aforce[i],   ff.apos[i] );
+        //opengl1renderer.color3f(0.,1.,0.); Draw3D::drawVecInPos( DEBUG_fa_ae[i], ff.apos[i] );
+        //opengl1renderer.color3f(1.,0.,0.); Draw3D::drawVecInPos( DEBUG_fa_aa[i], ff.apos[i] );
 
     }
 
-    //glColor3f(1.0,1.0,1.0);
-    glDisable(GL_DEPTH_TEST);
-    glEnable(GL_BLEND);
-    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-    //glBlendFunc(GL_DST_COLOR, GL_SRC_ALPHA);
+    //opengl1renderer.color3f(1.0,1.0,1.0);
+    opengl1renderer.disable(GL_DEPTH_TEST);
+    opengl1renderer.enable(GL_BLEND);
+    opengl1renderer.blendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+    //opengl1renderer.blendFunc(GL_DST_COLOR, GL_SRC_ALPHA);
     for(int i=0; i<ff.ne; i++){
         //printf( "epos[%i] (%g,%g,%g)\n", i, ff.epos[i].x, ff.epos[i].y, ff.epos[i].z );
-        //if(ff.espin[i]>0){ glColor3f(0.0,0.5,1.0); }else{ glColor3f(1.0,0.5,0.0); };
+        //if(ff.espin[i]>0){ opengl1renderer.color3f(0.0,0.5,1.0); }else{ opengl1renderer.color3f(1.0,0.5,0.0); };
         float alpha=0.1;
-        if(ff.espin[i]>0){ glColor4f(0.0,0.0,1.0, alpha); }else{ glColor4f(1.0,0.0,0.0, alpha); };
+        if(ff.espin[i]>0){ opengl1renderer.color4f(0.0,0.0,1.0, alpha); }else{ opengl1renderer.color4f(1.0,0.0,0.0, alpha); };
         Draw3D::drawShape( oglSph, ff.epos[i], Mat3dIdentity*ff.esize[i],  false );
         //Draw3D::drawSphere_oct(3,ff.esize[i],ff.epos[i]);
 
-        //glColor3f(1.,1.,1.); Draw3D::drawVecInPos( ff.eforce  [i], ff.epos[i] );
-        //glColor3f(1.,0.,1.); Draw3D::drawVecInPos( DEBUG_fe_ae[i], ff.epos[i] );
+        //opengl1renderer.color3f(1.,1.,1.); Draw3D::drawVecInPos( ff.eforce  [i], ff.epos[i] );
+        //opengl1renderer.color3f(1.,0.,1.); Draw3D::drawVecInPos( DEBUG_fe_ae[i], ff.epos[i] );
 
         //Draw3D::drawPointCross( ff.epos  [i], ff.esize[i] );
         //Draw3D::drawVecInPos(   ff.eforce[i]*fsc, ff.epos[i] );
@@ -820,19 +820,19 @@ void TestAppRARFF::draw(){
     //ff.aforce[1].set(0.);
     //if(bRun) ff.move_GD( 0.01 );
 
-    //glDisable(GL_DEPTH_TEST);
+    //opengl1renderer.disable(GL_DEPTH_TEST);
     //plot1.view();
 
 };
 
 
 void TestAppRARFF::drawHUD(){
-	//glTranslatef( 100.0, 250.0, 0.0 );
-	//glScalef    ( 100.0, 100.0, 1.0 );
+	//opengl1renderer.translatef( 100.0, 250.0, 0.0 );
+	//opengl1renderer.scalef    ( 100.0, 100.0, 1.0 );
 	//plot1.view();
 
-    glTranslatef( 10.0,HEIGHT-20.0,0.0 );
-	glColor3f(0.5,0.0,0.3);
+    opengl1renderer.translatef( 10.0,HEIGHT-20.0,0.0 );
+	opengl1renderer.color3f(0.5,0.0,0.3);
 
     //Draw::drawText( "AHOJ ", fontTex, fontSizeDef, {100,20} );
 

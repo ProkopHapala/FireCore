@@ -481,7 +481,7 @@ double evalEE(){
             //Eee += addPairEF_expQ( epos[j]-pi, f, w2ee, +1, 0, 0 );
             eforce[j].sub(f);
             eforce[i].add(f);
-            //glColor3f(1.0,0.0,0.0);
+            //opengl1renderer.color3f(1.0,0.0,0.0);
             //Draw3D::drawVecInPos( f*-1, epos[j] );
             //Draw3D::drawVecInPos( f   , pi      );
         }
@@ -505,7 +505,7 @@ double evalAE(){
             //printf(  "a[%i]e[%i] r %g\n", i, j, (epos[j]-pi).norm() );
             eforce[j].sub(f);
             aforce[i].add(f);
-            //glColor3f(1.0,0.0,1.0);
+            //opengl1renderer.color3f(1.0,0.0,1.0);
             //Draw3D::drawVecInPos( f*-1, epos[j] );
             //Draw3D::drawVecInPos( f   , pi      );
         }
@@ -530,7 +530,7 @@ double evalAA(){
             Eaa += addPairEF_expQ( apos[j]-pi, f, abw.z, qi*aQ[j], abw.y, abw.x );
             aforce[j].sub(f);
             aforce[i].add(f);
-            //glColor3f(1.0,0.0,0.0);
+            //opengl1renderer.color3f(1.0,0.0,0.0);
             //Draw3D::drawVecInPos( f*-1, apos[j] );
             //Draw3D::drawVecInPos( f   , pi      );
         }

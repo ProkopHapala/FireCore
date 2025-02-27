@@ -712,7 +712,7 @@ class UFF : public NBFF { public:
         fang[i3+2]=fpk;
         // TBD exclude non-bonded interactions between 1-3 neighbors
         // { // Debug Draw
-        //     glColor3f(1.0,0.0,1.0);
+        //     opengl1renderer.color3f(1.0,0.0,1.0);
         //     const Vec3i ijk = angAtoms[id];
         //     const Vec3d pi = apos[ijk.x]; 
         //     const Vec3d pj = apos[ijk.y];
@@ -720,8 +720,8 @@ class UFF : public NBFF { public:
         //     Draw3D::drawArrow( pi, pi+fpi, 0.03 );
         //     Draw3D::drawArrow( pj, pj+fpj, 0.03 );
         //     Draw3D::drawArrow( pk, pk+fpk, 0.03 );
-        //     //glColor3f(0.0,0.0,1.0); Draw3D::drawArrow( pj, pj+qij.f*(1/qij.w), 0.03 );
-        //     //glColor3f(1.0,0.0,0.0); Draw3D::drawArrow( pj, pj+qkj.f*(1/qkj.w), 0.03 );
+        //     //opengl1renderer.color3f(0.0,0.0,1.0); Draw3D::drawArrow( pj, pj+qij.f*(1/qij.w), 0.03 );
+        //     //opengl1renderer.color3f(1.0,0.0,0.0); Draw3D::drawArrow( pj, pj+qkj.f*(1/qkj.w), 0.03 );
         //     //Draw3D::drawArrow( pk, pk+fpk, 0.03 );
         // }
 
@@ -780,7 +780,7 @@ class UFF : public NBFF { public:
         fang[ia*3+2]=fpk;
         fang[ia*3+1]=fpj;
         // { // Debug Draw
-        //     glColor3f(0.0,1.0,0.0);
+        //     opengl1renderer.color3f(0.0,1.0,0.0);
         //     const Vec3i ijk = angAtoms[id];
         //     const Vec3d pi = apos[ijk.x]; 
         //     const Vec3d pj = apos[ijk.y];
@@ -858,7 +858,7 @@ class UFF : public NBFF { public:
         fdih[i4+3]=fp4;
 
         // { // Debug Draw
-        //     glColor3f(1.0,0.0,0.0);
+        //     opengl1renderer.color3f(1.0,0.0,0.0);
         //     const Quat4i ijkl = dihAtoms[id];
         //     const Vec3d p1 = apos[ijkl.x]; 
         //     const Vec3d p2 = apos[ijkl.y];
@@ -932,7 +932,7 @@ class UFF : public NBFF { public:
         fdih[i4+3]=fp4;
 
         // { // Debug Draw
-        //     glColor3f(1.0,0.0,1.0);
+        //     opengl1renderer.color3f(1.0,0.0,1.0);
         //     const Quat4i ijkl = dihAtoms[id];
         //     const Vec3d p1 = apos[ijkl.x]; 
         //     const Vec3d p2 = apos[ijkl.y];
@@ -1043,7 +1043,7 @@ class UFF : public NBFF { public:
         // fdih[id*4+1].set_mul(fdih[id*4+1],-1.0);
         // fdih[id*4+2].set_sub(f_32,fdih[id*4+3]);
         // { // Debug Draw
-        //     glColor3f(0.0,0.8,0.0);
+        //     opengl1renderer.color3f(0.0,0.8,0.0);
         //     const Quat4i ijkl = dihAtoms[id];
         //     const Vec3d p1 = apos[ijkl.x]; 
         //     const Vec3d p2 = apos[ijkl.y];
@@ -1054,9 +1054,9 @@ class UFF : public NBFF { public:
         //     Draw3D::drawArrow( p3, p3+fp3, 0.02 );
         //     Draw3D::drawArrow( p4, p4+fp4, 0.02 );
 
-        //     // glColor3f(1.0f,0.0f,0.0f); Draw3D::drawVecInPos( r12abs, p2 );
-        //     // glColor3f(0.0f,1.0f,0.0f); Draw3D::drawVecInPos( r32abs, p2 );
-        //     // glColor3f(0.0f,0.0f,1.0f); Draw3D::drawVecInPos( r43abs, p3 );
+        //     // opengl1renderer.color3f(1.0f,0.0f,0.0f); Draw3D::drawVecInPos( r12abs, p2 );
+        //     // opengl1renderer.color3f(0.0f,1.0f,0.0f); Draw3D::drawVecInPos( r32abs, p2 );
+        //     // opengl1renderer.color3f(0.0f,0.0f,1.0f); Draw3D::drawVecInPos( r43abs, p3 );
         //     //Draw3D::drawVecInPos( r12abs, p2 )
         // }
         return E;
@@ -1107,7 +1107,7 @@ class UFF : public NBFF { public:
 
         // { // Debug Draw
         //     double fsc = 20.0;
-        //     glColor3f(1.0,0.0,1.0);
+        //     opengl1renderer.color3f(1.0,0.0,1.0);
         //     const Quat4i ijkl = invAtoms[id];
         //     const Vec3d p1 = apos[ijkl.x]; 
         //     const Vec3d p2 = apos[ijkl.y];
@@ -1123,14 +1123,14 @@ class UFF : public NBFF { public:
         //     // Draw3D::drawArrow( p3, p3+f_31, 0.02 );
         //     //Draw3D::drawArrow( p1, p1+tmp_41, 0.01 );
         //     //Draw3D::drawArrow( p4, p4+tmp_123, 0.01 );
-        //     //glColor3f(0.0f,0.0f,0.0f); Draw3D::drawArrow( p1, p1+n123*il123, 0.02 );
-        //     //glColor3f(0.0f,0.0f,0.0f); Draw3D::drawArrow( p1, p1+q41.f     , 0.02 );
+        //     //opengl1renderer.color3f(0.0f,0.0f,0.0f); Draw3D::drawArrow( p1, p1+n123*il123, 0.02 );
+        //     //opengl1renderer.color3f(0.0f,0.0f,0.0f); Draw3D::drawArrow( p1, p1+q41.f     , 0.02 );
         //     Vec3d r21abs =  q21.f *( 1/q21.w);
         //     Vec3d r31abs =  q31.f *( 1/q31.w);
         //     Vec3d r41abs =  q41.f *( 1/q41.w);
-        //     glColor3f(1.0f,0.0f,0.0f); Draw3D::drawVecInPos( r21abs, p1 );
-        //     glColor3f(0.0f,1.0f,0.0f); Draw3D::drawVecInPos( r31abs, p1 );
-        //     glColor3f(0.0f,0.0f,1.0f); Draw3D::drawVecInPos( r41abs, p1 );
+        //     opengl1renderer.color3f(1.0f,0.0f,0.0f); Draw3D::drawVecInPos( r21abs, p1 );
+        //     opengl1renderer.color3f(0.0f,1.0f,0.0f); Draw3D::drawVecInPos( r31abs, p1 );
+        //     opengl1renderer.color3f(0.0f,0.0f,1.0f); Draw3D::drawVecInPos( r41abs, p1 );
         //     //Draw3D::drawVecInPos( r12abs, p2 )
         // }
         return E;
@@ -1200,7 +1200,7 @@ class UFF : public NBFF { public:
 
         // { // Debug Draw
         //     double fsc = 20.0;
-        //     glColor3f(0.0,0.8,0.0);
+        //     opengl1renderer.color3f(0.0,0.8,0.0);
         //     const Quat4i ijkl = invAtoms[id];
         //     const Vec3d p1 = apos[ijkl.x]; 
         //     const Vec3d p2 = apos[ijkl.y];
@@ -1215,18 +1215,18 @@ class UFF : public NBFF { public:
         //     //Draw3D::drawArrow( p3, p3+f_31, 0.03 );
 
         //     //Draw3D::drawArrow( p1, p1+tmp_41, 0.05 );
-        //     //glColor3f(0.0,0.0,0.0);
+        //     //opengl1renderer.color3f(0.0,0.0,0.0);
         //     //Draw3D::drawArrow( p1, p1+tmp_41_, 0.03 );
 
         //     // Draw3D::drawArrow( p4, p4+tmp_123, 0.03 );
         //     // Draw3D::drawArrow( p4, p4+tmp_123_, 0.05 );
-        //     // glColor3f(0.5f,0.5f,0.5f); Draw3D::drawArrow( p1, p1+n123, 0.03 );
-        //     // glColor3f(0.5f,0.5f,0.5f); Draw3D::drawArrow( p1, p1+r41 , 0.03 );
+        //     // opengl1renderer.color3f(0.5f,0.5f,0.5f); Draw3D::drawArrow( p1, p1+n123, 0.03 );
+        //     // opengl1renderer.color3f(0.5f,0.5f,0.5f); Draw3D::drawArrow( p1, p1+r41 , 0.03 );
 
         //     // Vec3d r41abs = q41.f * l41;
-        //     // glColor3f(1.0f,0.0f,0.0f); Draw3D::drawVecInPos( r21abs, p1 );
-        //     // glColor3f(0.0f,1.0f,0.0f); Draw3D::drawVecInPos( r31abs, p1 );
-        //     // glColor3f(0.0f,0.0f,1.0f); Draw3D::drawVecInPos( r41abs, p1 );
+        //     // opengl1renderer.color3f(1.0f,0.0f,0.0f); Draw3D::drawVecInPos( r21abs, p1 );
+        //     // opengl1renderer.color3f(0.0f,1.0f,0.0f); Draw3D::drawVecInPos( r31abs, p1 );
+        //     // opengl1renderer.color3f(0.0f,0.0f,1.0f); Draw3D::drawVecInPos( r41abs, p1 );
         //     //Draw3D::drawVecInPos( r12abs, p2 )
         // }
 

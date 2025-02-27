@@ -6,7 +6,7 @@
 #include <math.h>
 
 #include <SDL2/SDL.h>
-#include <SDL2/SDL_opengl.h>
+
 #include "Draw.h"
 #include "Draw3D.h"
 #include "Solids.h"
@@ -164,12 +164,12 @@ TestAppSp3Space::TestAppSp3Space( int& id, int WIDTH_, int HEIGHT_ ) : AppSDL2OG
 
 void TestAppSp3Space::draw(){
     //printf( " ==== frame %i \n", frameCount );
-    glClearColor( 0.5f, 0.5f, 0.5f, 1.0f );
-    glClear( GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT );
-    glEnable(GL_DEPTH_TEST);
+    opengl1renderer.clearColor( 0.5f, 0.5f, 0.5f, 1.0f );
+    opengl1renderer.clear( GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT );
+    opengl1renderer.enable(GL_DEPTH_TEST);
 
 
-    glColor3f(0.0,0.0,0.0);
+    opengl1renderer.color3f(0.0,0.0,0.0);
 
 
 
@@ -207,14 +207,14 @@ void TestAppSp3Space::draw(){
         //printf( "%i : sc %g %g \n", i, s, c );
         double l1 =  c*(1+s);   // s+p
         double l2 = -c*(1-s);   // s-p
-        glColor3f(1.0,1.0,1.0);
+        opengl1renderer.color3f(1.0,1.0,1.0);
         Draw3D::drawArrow( orbs.vecs[i].p*l2, orbs.vecs[i].p*l1, 0.1 );
-        glColor3f(1.0,0.0,0.0);
+        opengl1renderer.color3f(1.0,0.0,0.0);
         Draw3D::drawVecInPos( f.vecs[i].p, orbs.vecs[i].p*l1 );
 
     }
 
-    glColor3f(0.0,0.0,0.0);
+    opengl1renderer.color3f(0.0,0.0,0.0);
     Draw3D::drawPoints(ps.size(),&ps[0],0.1);
 
     //Draw3D::drawAxis(1.5);
@@ -226,8 +226,8 @@ void TestAppSp3Space::draw(){
 void TestAppSp3Space::drawHUD(){
 
 
-	glTranslatef( 100.0,100.0,0.0 );
-	glScalef    ( 10.0,10.00,1.0  );
+	opengl1renderer.translatef( 100.0,100.0,0.0 );
+	opengl1renderer.scalef    ( 10.0,10.00,1.0  );
 	//plot1.view();
 
 }

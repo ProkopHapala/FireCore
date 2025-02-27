@@ -6,7 +6,7 @@
 #include <math.h>
 
 #include <SDL2/SDL.h>
-#include <SDL2/SDL_opengl.h>
+
 
 #include "fastmath.h"
 #include "Vec2.h"
@@ -83,26 +83,26 @@ class TestConfDynamics : public AppSDL2OGL_3D {
 
 TestConfDynamics::TestConfDynamics( int& id, int WIDTH_, int HEIGHT_ ) : AppSDL2OGL_3D( id, WIDTH_, HEIGHT_ ) {
 
-	vobConf=glGenLists(1);
-	glNewList( vobConf, GL_COMPILE );
-        glDisable ( GL_LIGHTING );
+	vobConf=opengl1renderer.genLists(1);
+	opengl1renderer.newList( vobConf, GL_COMPILE );
+        opengl1renderer.disable ( GL_LIGHTING );
         Draw3D::drawAxis(0.2);
-	glEndList();
+	opengl1renderer.endList();
 
-    vobSubstrate=glGenLists(1);
-	glNewList( vobSubstrate, GL_COMPILE );
-        glEnable( GL_LIGHTING );
+    vobSubstrate=opengl1renderer.genLists(1);
+	opengl1renderer.newList( vobSubstrate, GL_COMPILE );
+        opengl1renderer.enable( GL_LIGHTING );
         for(int i=0; i<nsubstrate;i++){
             Draw3D::drawSphere_oct(2,0.5, substrate[i]);
         }
-	glEndList();
+	opengl1renderer.endList();
 
-    vobFF=glGenLists(1);
-	glNewList( vobFF, GL_COMPILE );
-        glDisable ( GL_LIGHTING );
-        glColor3f(0.7f,0.7f,0.7f);
+    vobFF=opengl1renderer.genLists(1);
+	opengl1renderer.newList( vobFF, GL_COMPILE );
+        opengl1renderer.disable ( GL_LIGHTING );
+        opengl1renderer.color3f(0.7f,0.7f,0.7f);
         plotFFplan( 40, 40, {0.0,0.1,0.0}, {0.1,0.0,0.0}, {-2.0,-2.0,0.0}, 0.05 );
-	glEndList();
+	opengl1renderer.endList();
 
 	confWorld.init( 200 );
 	confWorld.pos->set(2.0,2.0,0.0);
@@ -118,8 +118,8 @@ TestConfDynamics::TestConfDynamics( int& id, int WIDTH_, int HEIGHT_ ) : AppSDL2
 }
 
 void TestConfDynamics::draw   (){
-    glClearColor( 0.5f, 0.5f, 0.5f, 1.0f );
-	glClear( GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT );
+    opengl1renderer.clearColor( 0.5f, 0.5f, 0.5f, 1.0f );
+	opengl1renderer.clear( GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT );
 
 	Draw3D::drawShape( vobConf, *confWorld.pos, *confWorld.rot );
 
@@ -141,11 +141,11 @@ void TestConfDynamics::draw   (){
 
 
     //Draw3D::drawShape( {0.0,0.0,0.0},  {0.0,0.0,0.0,1.0}, vobSubstrate );
-    glCallList(vobSubstrate);
-    glCallList(vobFF);
+    opengl1renderer.callList(vobSubstrate);
+    opengl1renderer.callList(vobFF);
 
-	//glDisable ( GL_LIGHTING );
-	//glCallList( point_cloud );
+	//opengl1renderer.disable ( GL_LIGHTING );
+	//opengl1renderer.callList( point_cloud );
 	//Draw3D::drawAxis ( 3.0f );
 
 };

@@ -6,7 +6,7 @@
 #include <math.h>
 
 #include <SDL2/SDL.h>
-#include <SDL2/SDL_opengl.h>
+
 #include "Draw.h"
 #include "Draw3D.h"
 #include "Solids.h"
@@ -40,25 +40,25 @@
 
 /*
 void drawVectorArray(int n, Vec3d* ps, Vec3d* vs, double sc ){
-    glBegin(GL_LINES);
+    opengl1renderer.begin(GL_LINES);
     for(int i=0; i<n; i++){
-        Vec3d p=ps[i];        glVertex3f(p.x,p.y,p.z);
-        p.add_mul( vs[i], sc); glVertex3f(p.x,p.y,p.z);
+        Vec3d p=ps[i];        opengl1renderer.vertex3f(p.x,p.y,p.z);
+        p.add_mul( vs[i], sc); opengl1renderer.vertex3f(p.x,p.y,p.z);
     }
-    glEnd();
+    opengl1renderer.end();
 }
 
 void drawScalarArray(int n, Vec3d* ps, double* vs, double vmin, double vmax ){
-    glBegin(GL_POINTS);
+    opengl1renderer.begin(GL_POINTS);
     double sc = 1/(vmax-vmin);
     for(int i=0; i<n; i++){
         Vec3d p=ps[i];
         double c = (vs[i]-vmin)*sc;
-        glColor3f(c,c,c);
-        glVertex3f(p.x,p.y,p.z);
+        opengl1renderer.color3f(c,c,c);
+        opengl1renderer.vertex3f(p.x,p.y,p.z);
         //printf( "i %i p(%g,%g,%g) v: %g c: %g\n", i, p.x,p.y,p.z, vs[i], c );
     }
-    glEnd();
+    opengl1renderer.end();
 }
 */
 
@@ -311,19 +311,19 @@ TestAppRARFF::TestAppRARFF( int& id, int WIDTH_, int HEIGHT_ ) : AppSDL2OGL_3D( 
 
     ff.atoms[1].pos = Vec3d{1.0,1.0,1.0};
 
-    oglSph = glGenLists(1);
-    glNewList(oglSph, GL_COMPILE);
+    oglSph = opengl1renderer.genLists(1);
+    opengl1renderer.newList(oglSph, GL_COMPILE);
         //Draw3D::drawSphere_oct( 3, 1.0, Vec3d{0.0,0.0,0.0} );
         Draw3D::drawSphere_oct( 3, 0.2, Vec3d{0.0,0.0,0.0} );
-    glEndList();
+    opengl1renderer.endList();
 
 }
 
 void TestAppRARFF::draw(){
     printf( " ==== frame %i \n", frameCount );
-    glClearColor( 0.5f, 0.5f, 0.5f, 1.0f );
-    glClear( GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT );
-    glEnable(GL_DEPTH_TEST);
+    opengl1renderer.clearColor( 0.5f, 0.5f, 0.5f, 1.0f );
+    opengl1renderer.clear( GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT );
+    opengl1renderer.enable(GL_DEPTH_TEST);
 
     //bRun = false;
     if(bRun){
@@ -342,35 +342,35 @@ void TestAppRARFF::draw(){
         //exit(0);
     }
 
-    glColor3f(1.0,1.0,1.0);
+    opengl1renderer.color3f(1.0,1.0,1.0);
     //drawRigidAtom( atom1 );
 
     double fsc = 0.1;
     double tsc = 0.1;
     for(int i=0; i<ff.natom; i++){
-        //glColor3f(1.0,1.0,1.0); drawRigidAtom(ff.atoms[i]);
+        //opengl1renderer.color3f(1.0,1.0,1.0); drawRigidAtom(ff.atoms[i]);
 
-        glColor3f(0.3,0.3,0.3);
+        opengl1renderer.color3f(0.3,0.3,0.3);
         Draw3D::drawShape( oglSph, ff.atoms[i].pos , Mat3dIdentity );
 
         for(int ib=0; ib<ff.atoms[i].type->nbond; ib++){
             int io=4*i+ib;
-            glColor3f(1.0,1.0,1.0); Draw3D::drawVecInPos( ff.hbonds[io], ff.atoms[i].pos );
-            glColor3f(0.0,1.0,0.0); Draw3D::drawVecInPos( ff.fbonds[io]*fsc, ff.atoms[i].pos+ff.hbonds[io] );
+            opengl1renderer.color3f(1.0,1.0,1.0); Draw3D::drawVecInPos( ff.hbonds[io], ff.atoms[i].pos );
+            opengl1renderer.color3f(0.0,1.0,0.0); Draw3D::drawVecInPos( ff.fbonds[io]*fsc, ff.atoms[i].pos+ff.hbonds[io] );
         }
 
-        //glColor3f(1.0,0.0,0.0); Draw3D::drawVecInPos( ff.atoms[i].force*fsc, ff.atoms[i].pos  );
-        //glColor3f(0.0,0.0,1.0); Draw3D::drawVecInPos( ff.atoms[i].torq*tsc,  ff.atoms[i].pos  );
+        //opengl1renderer.color3f(1.0,0.0,0.0); Draw3D::drawVecInPos( ff.atoms[i].force*fsc, ff.atoms[i].pos  );
+        //opengl1renderer.color3f(0.0,0.0,1.0); Draw3D::drawVecInPos( ff.atoms[i].torq*tsc,  ff.atoms[i].pos  );
     };
 
 /*
     printf("npoints %i Emin %g Emax %g \n",npoints, Emin, Emax);
-    glPointSize(5);
+    opengl1renderer.pointSize(5);
     Draw3D::drawScalarArray( npoints, points, Energies, Emin, Emax );
 */
 
 /*
-    glColor3f(0.0,1.0,0.0);
+    opengl1renderer.color3f(0.0,1.0,0.0);
     Draw3D::drawVectorArray( npoints, points, Forces, 0.02 );
 */
 
@@ -382,18 +382,18 @@ void TestAppRARFF::draw(){
 
 void TestAppRARFF::drawHUD(){
 /*
-    glColor3f(1.0,1.0,1.0);
+    opengl1renderer.color3f(1.0,1.0,1.0);
     txt.viewHUD( {100,220}, fontTex );
 
 	gui.draw();
 
-	glTranslatef( 10.0,300.0,0.0 );
-	glColor3f(0.5,0.0,0.3);
+	opengl1renderer.translatef( 10.0,300.0,0.0 );
+	opengl1renderer.color3f(0.5,0.0,0.3);
     Draw::drawText( "abcdefghijklmnopqrstuvwxyz \n0123456789 \nABCDEFGHIJKLMNOPQRTSTUVWXYZ \nxvfgfgdfgdfgdfgdfgdfg", fontTex, fontSizeDef, {10,5} );
 */
 
-	glTranslatef( 100.0,100.0,0.0 );
-	glScalef    ( 10.0,10.00,1.0  );
+	opengl1renderer.translatef( 100.0,100.0,0.0 );
+	opengl1renderer.scalef    ( 10.0,10.00,1.0  );
 	plot1.view();
 
 }

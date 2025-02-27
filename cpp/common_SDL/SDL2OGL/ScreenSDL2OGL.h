@@ -3,7 +3,7 @@
 #define  ScreenSDL2OGL_h
 
 #include <SDL2/SDL.h>
-#include <SDL2/SDL_opengl.h>
+
 
 const float	VIEW_ZOOM_STEP     = 1.2f;
 const float	VIEW_ZOOM_DEFAULT  = 10.0f;

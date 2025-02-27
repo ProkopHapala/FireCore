@@ -28,7 +28,7 @@
 
 
 #include <SDL2/SDL.h>
-#include <SDL2/SDL_opengl.h>
+
 
 #include "Draw.h"
 #include "Draw2D.h"
@@ -405,33 +405,33 @@ class EditorGizmo{ public:
 
     void draw(){
 
-        //glColor3f(1.0,0.0,0.0); Draw3D::drawPointCross( ro   ,     0.5 );
-        //glColor3f(0.0,0.0,1.0); Draw3D::drawPointCross( ro+rd*0.0, 0.5 );
+        //opengl1renderer.color3f(1.0,0.0,0.0); Draw3D::drawPointCross( ro   ,     0.5 );
+        //opengl1renderer.color3f(0.0,0.0,1.0); Draw3D::drawPointCross( ro+rd*0.0, 0.5 );
 
         if(dragged){
             Vec3d shift = axPos - axStart;
             filterByAxis(shift);
-            glColor3f(1.0,1.0,1.0); Draw3D::drawPointCross( axStart, 0.1   );
-            //glColor3f(1.0,1.0,1.0); Draw3D::drawPointCross( axStart, 0.1   );
-            //glColor3f(0.0,0.0,1.0); Draw3D::drawLine    ( axStart, axEnd );
-            glColor3f(1.0,1.0,1.0); Draw3D::drawVecInPos  ( shift, axStart );
+            opengl1renderer.color3f(1.0,1.0,1.0); Draw3D::drawPointCross( axStart, 0.1   );
+            //opengl1renderer.color3f(1.0,1.0,1.0); Draw3D::drawPointCross( axStart, 0.1   );
+            //opengl1renderer.color3f(0.0,0.0,1.0); Draw3D::drawLine    ( axStart, axEnd );
+            opengl1renderer.color3f(1.0,1.0,1.0); Draw3D::drawVecInPos  ( shift, axStart );
         }
 
 
         Draw3D::drawMatInPos( pose.rot, pose.pos );
 
-        //glCallList( oglSphere );
+        //opengl1renderer.callList( oglSphere );
         //Draw3D::drawShape( pose.pos, pose.rot, shape );
         switch(mTrans){
             case 'm':
-                glColor3f(1,0,0); Draw3D::drawConeFan( 4, Rhandle, pose.pos + pose.rot.a*Rgizmo, pose.pos+pose.rot.a*(Rgizmo+Rhandle) );
-                glColor3f(0,1,0); Draw3D::drawConeFan( 4, Rhandle, pose.pos + pose.rot.b*Rgizmo, pose.pos+pose.rot.b*(Rgizmo+Rhandle) );
-                glColor3f(0,0,1); Draw3D::drawConeFan( 4, Rhandle, pose.pos + pose.rot.c*Rgizmo, pose.pos+pose.rot.c*(Rgizmo+Rhandle) );
+                opengl1renderer.color3f(1,0,0); Draw3D::drawConeFan( 4, Rhandle, pose.pos + pose.rot.a*Rgizmo, pose.pos+pose.rot.a*(Rgizmo+Rhandle) );
+                opengl1renderer.color3f(0,1,0); Draw3D::drawConeFan( 4, Rhandle, pose.pos + pose.rot.b*Rgizmo, pose.pos+pose.rot.b*(Rgizmo+Rhandle) );
+                opengl1renderer.color3f(0,0,1); Draw3D::drawConeFan( 4, Rhandle, pose.pos + pose.rot.c*Rgizmo, pose.pos+pose.rot.c*(Rgizmo+Rhandle) );
                 break;
             case 's': ;
-                glColor3f(1,0,0); Draw3D::drawConeFan( 4, Rhandle, pose.pos + pose.rot.a*Rgizmo, pose.pos+pose.rot.a*(Rgizmo-Rhandle) );
-                glColor3f(0,1,0); Draw3D::drawConeFan( 4, Rhandle, pose.pos + pose.rot.b*Rgizmo, pose.pos+pose.rot.b*(Rgizmo-Rhandle) );
-                glColor3f(0,0,1); Draw3D::drawConeFan( 4, Rhandle, pose.pos + pose.rot.c*Rgizmo, pose.pos+pose.rot.c*(Rgizmo-Rhandle) );
+                opengl1renderer.color3f(1,0,0); Draw3D::drawConeFan( 4, Rhandle, pose.pos + pose.rot.a*Rgizmo, pose.pos+pose.rot.a*(Rgizmo-Rhandle) );
+                opengl1renderer.color3f(0,1,0); Draw3D::drawConeFan( 4, Rhandle, pose.pos + pose.rot.b*Rgizmo, pose.pos+pose.rot.b*(Rgizmo-Rhandle) );
+                opengl1renderer.color3f(0,0,1); Draw3D::drawConeFan( 4, Rhandle, pose.pos + pose.rot.c*Rgizmo, pose.pos+pose.rot.c*(Rgizmo-Rhandle) );
                 break;
             case 'r': Draw3D::drawSphereOctLines ( 32, Rgizmo, pose.pos, pose.rot, true ); break;
         }

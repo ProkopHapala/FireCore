@@ -7,9 +7,9 @@ int loadObjToList( bool loadNormals, int maxn, char* filename ){
 	Vec3f* vs  = new  Vec3f[maxn];
 	Vec3f* vns;
 	if( loadNormals ) vns = new Vec3f[4*maxn]; 
-	int ilist = glGenLists(1);
-	glNewList( ilist, GL_COMPILE );
-	glColor3f( 0.9f, 0.9f, 0.9f );	
+	int ilist = opengl1renderer.genLists(1);
+	opengl1renderer.newList( ilist, GL_COMPILE );
+	opengl1renderer.color3f( 0.9f, 0.9f, 0.9f );	
 	//drawBox( -1, 1, -1, 1, -1, 1, 0.5, 0.5, 0.5 );
 	int  x0 = -1,x1 = +1,y0 = -1,y1 = +1,z0 = -1,z1 = +1;
 	ifstream myfile (filename);
@@ -74,25 +74,25 @@ int loadObjToList( bool loadNormals, int maxn, char* filename ){
 				//cout << line << "\n";
 				if (loadNormals){
 				//if (false){
-					glEnable (GL_LIGHTING);
-					if      ( nv == 3 ){ glBegin(GL_TRIANGLES); }
-					else if ( nv == 4 ){ glBegin(GL_QUADS);     };
+					opengl1renderer.enable (GL_LIGHTING);
+					if      ( nv == 3 ){ opengl1renderer.begin(GL_TRIANGLES); }
+					else if ( nv == 4 ){ opengl1renderer.begin(GL_QUADS);     };
 					for ( int j=0; j<nv; j++ ){ 
 						int i  = fciv[j]-1;
 						int in = fcin[j]-1;
-						glNormal3f(vns[in].x,vns[in].y,vns[in].z); 
-						glVertex3f( vs[i ].x, vs[i ].y, vs[i ].z );   
+						opengl1renderer.normal3f(vns[in].x,vns[in].y,vns[in].z); 
+						opengl1renderer.vertex3f( vs[i ].x, vs[i ].y, vs[i ].z );   
 					}
-					glEnd();
+					opengl1renderer.end();
 /*
-					glDisable (GL_LIGHTING);
+					opengl1renderer.disable (GL_LIGHTING);
 					for ( int j=0; j<nv; j++ ){ 
 						int i  = fciv[j]-1;
 						int in = fcin[j]-1;
-						glBegin(GL_LINES);
-							glVertex3f( vs[i ].x, vs[i ].y, vs[i ].z );  
-							glVertex3f( vs[i ].x + vns[in].x, vs[i ].y + vns[in].y, vs[i ].z + vns[in].z );
-						glEnd();
+						opengl1renderer.begin(GL_LINES);
+							opengl1renderer.vertex3f( vs[i ].x, vs[i ].y, vs[i ].z );  
+							opengl1renderer.vertex3f( vs[i ].x + vns[in].x, vs[i ].y + vns[in].y, vs[i ].z + vns[in].z );
+						opengl1renderer.end();
 					}
 */
 				}else{ // compute normals
@@ -102,23 +102,23 @@ int loadObjToList( bool loadNormals, int maxn, char* filename ){
 					Vec3f b       = vs[i2]-vs[i1];
 					Vec3f normal  = a.cross( b );
 					normal       *= -1/sqrt(normal.mag2()); 
-					glEnable (GL_LIGHTING);
-					if      ( nv == 3 ){ glBegin(GL_TRIANGLES); }
-					else if ( nv == 4 ){ glBegin(GL_QUADS); };
+					opengl1renderer.enable (GL_LIGHTING);
+					if      ( nv == 3 ){ opengl1renderer.begin(GL_TRIANGLES); }
+					else if ( nv == 4 ){ opengl1renderer.begin(GL_QUADS); };
 					for ( int j=0; j<nv; j++ ){ 
 						int i = fciv[j]-1; 
-						glNormal3f(normal.x,normal.y,normal.z); 
-						glVertex3f( vs[i].x, vs[i].y, vs[i].z );   
+						opengl1renderer.normal3f(normal.x,normal.y,normal.z); 
+						opengl1renderer.vertex3f( vs[i].x, vs[i].y, vs[i].z );   
 					}
-					glEnd();
+					opengl1renderer.end();
 /*
 					int i = fciv[1]-1;
-					glDisable (GL_LIGHTING);
-					glBegin(GL_LINES);
+					opengl1renderer.disable (GL_LIGHTING);
+					opengl1renderer.begin(GL_LINES);
 						Vec3f center = vs[i1] + (a + b)*0.5f;
-						glVertex3f( center.x           , center.y           , center.z            );
-						glVertex3f( center.x + normal.x, center.y + normal.y, center.z + normal.z );
-					glEnd();
+						opengl1renderer.vertex3f( center.x           , center.y           , center.z            );
+						opengl1renderer.vertex3f( center.x + normal.x, center.y + normal.y, center.z + normal.z );
+					opengl1renderer.end();
 */
 				}
 				//printf( " %i %f %f %f %f \n", i, nx,ny,nz, nx*nx+ny*ny+nz*nz );
@@ -131,7 +131,7 @@ int loadObjToList( bool loadNormals, int maxn, char* filename ){
 	delete [] vs;
 	if( loadNormals ) delete [] vns; 
 	//delete [] fcs;
-	glEndList();
+	opengl1renderer.endList();
 	return ilist;
 }
 

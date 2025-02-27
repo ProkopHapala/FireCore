@@ -11,7 +11,7 @@
 #include  <functional>
 
 #include <SDL2/SDL.h>
-#include <SDL2/SDL_opengl.h>
+
 #include "Draw.h"
 #include "Draw3D.h"
 #include "Solids.h"
@@ -127,7 +127,7 @@ TestAppRARFF::TestAppRARFF( int& id, int WIDTH_, int HEIGHT_ ) : AppSDL2OGL_3D( 
 
     oglSph=Draw::list(oglSph);
     Draw3D::drawSphere_oct(3,1.0d,Vec3d{0.,0.,0.});
-    glEndList();
+    opengl1renderer.endList();
 
 }
 
@@ -154,10 +154,10 @@ double TestAppRARFF::step_Relax( int nMax=100, double Fconv=1e-4 ){
 
 void TestAppRARFF::draw(){
     //printf( " ==== frame %i \n", frameCount );
-    glClearColor( 1.0f, 1.0f, 1.0f, 1.0f );
-    glClear( GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT );
-    glEnable(GL_DEPTH_TEST);
-    glDisable(GL_LIGHTING);
+    opengl1renderer.clearColor( 1.0f, 1.0f, 1.0f, 1.0f );
+    opengl1renderer.clear( GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT );
+    opengl1renderer.enable(GL_DEPTH_TEST);
+    opengl1renderer.disable(GL_LIGHTING);
 
     //return;
     double vminOK = 1e-6;
@@ -194,7 +194,7 @@ void TestAppRARFF::draw(){
 
     drawEFF( ff, oglSph, 1.0, 0.1, 0.1, 1.5 );
 
-    glCallList(ogl_fs);
+    opengl1renderer.callList(ogl_fs);
 
     char strtmp[256];
     double Qsz = 0.05;
@@ -203,11 +203,11 @@ void TestAppRARFF::draw(){
 
 
 void TestAppRARFF::drawHUD(){
-	//glTranslatef( 100.0, 250.0, 0.0 );
-	//glScalef    ( 100.0, 100.0, 1.0 );
+	//opengl1renderer.translatef( 100.0, 250.0, 0.0 );
+	//opengl1renderer.scalef    ( 100.0, 100.0, 1.0 );
 	//plot1.view();
-    glTranslatef( 10.0,HEIGHT-20.0,0.0 );
-	glColor3f(0.5,0.0,0.3);
+    opengl1renderer.translatef( 10.0,HEIGHT-20.0,0.0 );
+	opengl1renderer.color3f(0.5,0.0,0.3);
     //Draw::drawText( "AHOJ ", fontTex, fontSizeDef, {100,20} );
     int nstr=2048;
 	char str[nstr];

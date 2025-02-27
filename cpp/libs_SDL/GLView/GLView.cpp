@@ -13,7 +13,7 @@
 #include "Draw3D.h"
 
 //#include <SDL2/SDL.h>
-//#include <SDL2/SDL_opengl.h>
+//
 
 //#include "GLView.h"  // THE HEADER
 #include "GLView.hpp"  // THE HEADER
@@ -21,34 +21,34 @@
 namespace Cam{
 
 inline void ortho( const Camera& cam, bool zsym ){
-    glMatrixMode( GL_PROJECTION );
-    glLoadIdentity();
+    opengl1renderer.matrixMode( GL_PROJECTION );
+    opengl1renderer.loadIdentity();
     float zmin = cam.zmin; if(zsym) zmin=-cam.zmax;
-	glOrtho( -cam.zoom*cam.aspect, cam.zoom*cam.aspect, -cam.zoom, cam.zoom, zmin, cam.zmax );
+	opengl1renderer.ortho( -cam.zoom*cam.aspect, cam.zoom*cam.aspect, -cam.zoom, cam.zoom, zmin, cam.zmax );
 	float glMat[16];
 	Draw3D::toGLMatCam( { 0.0f, 0.0f, 0.0f}, cam.rot, glMat );
-	glMultMatrixf( glMat );
+	opengl1renderer.multMatrixf( glMat );
 
-	glMatrixMode ( GL_MODELVIEW );
-	glLoadIdentity();
-	glTranslatef(-cam.pos.x,-cam.pos.y,-cam.pos.z);
+	opengl1renderer.matrixMode ( GL_MODELVIEW );
+	opengl1renderer.loadIdentity();
+	opengl1renderer.translatef(-cam.pos.x,-cam.pos.y,-cam.pos.z);
 }
 
 inline void perspective( const Camera& cam ){
-    glMatrixMode( GL_PROJECTION );
-    glLoadIdentity();
-    //glFrustum( -ASPECT_RATIO, ASPECT_RATIO, -1, 1, camDist/zoom, VIEW_DEPTH );
-    glFrustum( -cam.aspect*cam.zoom, cam.aspect*cam.zoom, -cam.zoom, cam.zoom, cam.zmin, cam.zmax );
-    //glFrustum( -cam.zoom*cam.aspect, cam.zoom*cam.aspect, -cam.zoom, cam.zoom, cam.zmin, cam.zmax );
+    opengl1renderer.matrixMode( GL_PROJECTION );
+    opengl1renderer.loadIdentity();
+    //opengl1renderer.frustum( -ASPECT_RATIO, ASPECT_RATIO, -1, 1, camDist/zoom, VIEW_DEPTH );
+    opengl1renderer.frustum( -cam.aspect*cam.zoom, cam.aspect*cam.zoom, -cam.zoom, cam.zoom, cam.zmin, cam.zmax );
+    //opengl1renderer.frustum( -cam.zoom*cam.aspect, cam.zoom*cam.aspect, -cam.zoom, cam.zoom, cam.zmin, cam.zmax );
 	float glMat[16];
 	Draw3D::toGLMatCam( { 0.0f, 0.0f, 0.0f}, cam.rot, glMat );
-	glMultMatrixf( glMat );
+	opengl1renderer.multMatrixf( glMat );
 
-	glMatrixMode ( GL_MODELVIEW );
-	glLoadIdentity();
-	glTranslatef(-cam.pos.x,-cam.pos.y,-cam.pos.z);
-    //glTranslatef ( -camPos.x+camMat.cx*camDist, -camPos.y+camMat.cy*camDist, -camPos.z+camMat.cz*camDist );
-    //glTranslatef ( -cam.pos.x+camMat.cx*camDist, -camPos.y+camMat.cy*camDist, -camPos.z+camMat.cz*camDist );
+	opengl1renderer.matrixMode ( GL_MODELVIEW );
+	opengl1renderer.loadIdentity();
+	opengl1renderer.translatef(-cam.pos.x,-cam.pos.y,-cam.pos.z);
+    //opengl1renderer.translatef ( -camPos.x+camMat.cx*camDist, -camPos.y+camMat.cy*camDist, -camPos.z+camMat.cz*camDist );
+    //opengl1renderer.translatef ( -cam.pos.x+camMat.cx*camDist, -camPos.y+camMat.cy*camDist, -camPos.z+camMat.cz*camDist );
 }
 
 }; // namespace Cam
@@ -57,18 +57,18 @@ inline void perspective( const Camera& cam ){
 
 void default_draw(){
     //printf( "default_draw \n" );
-    glClearColor( 0.5f, 0.5f, 0.5f, 1.0f );
-    glClear( GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT );
+    opengl1renderer.clearColor( 0.5f, 0.5f, 0.5f, 1.0f );
+    opengl1renderer.clear( GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT );
 
-    glEnable    ( GL_LIGHTING );
-    glShadeModel( GL_FLAT     );
+    opengl1renderer.enable    ( GL_LIGHTING );
+    opengl1renderer.shadeModel( GL_FLAT     );
 
     Draw3D::drawBox       ( -1.0f, 1.0f, -1.0f, 1.0f, -1.0f, 1.0f, 0.8f, 0.8f, 0.8f );
 
-    glShadeModel( GL_SMOOTH     );
+    opengl1renderer.shadeModel( GL_SMOOTH     );
     Draw3D::drawSphere_oct( 5, 1.0f, Vec3f{3.0,3.0,3.0} );
 
-    glDisable ( GL_LIGHTING );
+    opengl1renderer.disable ( GL_LIGHTING );
     Draw3D::drawAxis ( 3.0f );
 }
 
@@ -207,27 +207,27 @@ void GLView::setupRenderer(){
     float shininess[] = { 80.0f                    };
     float lightPos [] = { 1.0f, -1.0f, 1.0f, 0.0f  };
 
-    //glMaterialfv ( GL_FRONT_AND_BACK, GL_AMBIENT,   ambient);
-    //glMaterialfv ( GL_FRONT_AND_BACK, GL_DIFFUSE,   diffuse);
-    glMaterialfv ( GL_FRONT_AND_BACK, GL_SPECULAR,  specular);
-    glMaterialfv ( GL_FRONT_AND_BACK, GL_SHININESS, shininess);
+    //opengl1renderer.materialfv ( GL_FRONT_AND_BACK, GL_AMBIENT,   ambient);
+    //opengl1renderer.materialfv ( GL_FRONT_AND_BACK, GL_DIFFUSE,   diffuse);
+    opengl1renderer.materialfv ( GL_FRONT_AND_BACK, GL_SPECULAR,  specular);
+    opengl1renderer.materialfv ( GL_FRONT_AND_BACK, GL_SHININESS, shininess);
 
-    glEnable     ( GL_COLOR_MATERIAL    );
-    glLightfv    ( GL_LIGHT0, GL_POSITION,  lightPos );
-    glLightfv    ( GL_LIGHT0, GL_DIFFUSE,   diffuse  );
-    glLightfv    ( GL_LIGHT0, GL_AMBIENT,   ambient  );
-    glLightfv    ( GL_LIGHT0, GL_SPECULAR,  specular );
-    //glLightfv    ( GL_LIGHT0, GL_AMBIENT,  ambient  );
-    glEnable     ( GL_LIGHTING         );
-    glEnable     ( GL_LIGHT0           );
-    glEnable     ( GL_NORMALIZE        );
+    opengl1renderer.enable     ( GL_COLOR_MATERIAL    );
+    opengl1renderer.lightfv    ( GL_LIGHT0, GL_POSITION,  lightPos );
+    opengl1renderer.lightfv    ( GL_LIGHT0, GL_DIFFUSE,   diffuse  );
+    opengl1renderer.lightfv    ( GL_LIGHT0, GL_AMBIENT,   ambient  );
+    opengl1renderer.lightfv    ( GL_LIGHT0, GL_SPECULAR,  specular );
+    //opengl1renderer.lightfv    ( GL_LIGHT0, GL_AMBIENT,  ambient  );
+    opengl1renderer.enable     ( GL_LIGHTING         );
+    opengl1renderer.enable     ( GL_LIGHT0           );
+    opengl1renderer.enable     ( GL_NORMALIZE        );
 
-    //glLightModeli( GL_LIGHT_MODEL_TWO_SIDE, 1 );
+    //opengl1renderer.lightModeli( GL_LIGHT_MODEL_TWO_SIDE, 1 );
 
-    glEnable     ( GL_DEPTH_TEST       );
-    glHint       ( GL_LINE_SMOOTH_HINT, GL_NICEST );
-    glShadeModel ( GL_SMOOTH           );
-    glPolygonMode( GL_FRONT_AND_BACK, GL_FILL );
+    opengl1renderer.enable     ( GL_DEPTH_TEST       );
+    opengl1renderer.hint       ( GL_LINE_SMOOTH_HINT, GL_NICEST );
+    opengl1renderer.shadeModel ( GL_SMOOTH           );
+    opengl1renderer.polygonMode( GL_FRONT_AND_BACK, GL_FILL );
 }
 
 void GLView::setDefaults(){
@@ -260,8 +260,8 @@ GLView::GLView( int& id, int WIDTH_, int HEIGHT_ ){
     cam.pos.set(0.0);
     GLbyte* s;
     // http://stackoverflow.com/questions/40444046/c-how-to-detect-graphics-card-model
-    printf( "GL_VENDOR  : %s \n", glGetString(GL_VENDOR)  );
-    printf( "GL_VERSION : %s \n", glGetString(GL_VERSION) );
+    printf( "GL_VENDOR  : %s \n", opengl1renderer.getString(GL_VENDOR)  );
+    printf( "GL_VERSION : %s \n", opengl1renderer.getString(GL_VERSION) );
 }
 
 // ===================== UPDATE & DRAW
@@ -269,15 +269,15 @@ GLView::GLView( int& id, int WIDTH_, int HEIGHT_ ){
 /*
 bool GLView::update( ){
     //SDL_RenderPresent(renderer);
-    //glPushMatrix();
+    //opengl1renderer.pushMatrix();
     if( GL_LOCK ){ printf("ScreenSDL2OGL::update GL_LOCK\n"); return; }
     GL_LOCK = true;
     camera();
     draw();
     cameraHUD();
     drawHUD();
-    //glPopMatrix();
-    //glFlush();
+    //opengl1renderer.popMatrix();
+    //opengl1renderer.flush();
     SDL_RenderPresent(renderer);
     GL_LOCK = false;
 }
@@ -301,11 +301,11 @@ bool GLView::pre_draw(){
     GL_LOCK = true;
     camera();
 
-    glClearColor( 0.5f, 0.5f, 0.5f, 1.0f );
-	glClear( GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT );
+    opengl1renderer.clearColor( 0.5f, 0.5f, 0.5f, 1.0f );
+	opengl1renderer.clear( GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT );
 
-	glEnable    ( GL_LIGHTING );
-	glShadeModel( GL_FLAT     );
+	opengl1renderer.enable    ( GL_LIGHTING );
+	opengl1renderer.shadeModel( GL_FLAT     );
 
     //printf( "DEBUG pre_draw[fame=%i] \n", frameCount );
     return GL_LOCK;
@@ -320,11 +320,11 @@ bool GLView::post_draw(){
 }
 
 // void GLView::camera(){
-//     glMatrixMode( GL_PROJECTION );
-//     glLoadIdentity();
-//     glOrtho ( -zoom*ASPECT_RATIO, zoom*ASPECT_RATIO, -zoom, zoom, -VIEW_DEPTH, +VIEW_DEPTH );
-//     glTranslatef( -camX0, -camY0, 0.0f );
-//     glMatrixMode (GL_MODELVIEW);
+//     opengl1renderer.matrixMode( GL_PROJECTION );
+//     opengl1renderer.loadIdentity();
+//     opengl1renderer.ortho ( -zoom*ASPECT_RATIO, zoom*ASPECT_RATIO, -zoom, zoom, -VIEW_DEPTH, +VIEW_DEPTH );
+//     opengl1renderer.translatef( -camX0, -camY0, 0.0f );
+//     opengl1renderer.matrixMode (GL_MODELVIEW);
 // }
 
 void GLView::camera(){
@@ -336,11 +336,11 @@ void GLView::camera(){
 }
 
 void GLView::cameraHUD(){
-    glMatrixMode( GL_PROJECTION );
-    glLoadIdentity();
-    glOrtho ( 0, WIDTH, 0, HEIGHT, -VIEW_DEPTH, +VIEW_DEPTH );
-    glMatrixMode (GL_MODELVIEW);
-    glLoadIdentity();
+    opengl1renderer.matrixMode( GL_PROJECTION );
+    opengl1renderer.loadIdentity();
+    opengl1renderer.ortho ( 0, WIDTH, 0, HEIGHT, -VIEW_DEPTH, +VIEW_DEPTH );
+    opengl1renderer.matrixMode (GL_MODELVIEW);
+    opengl1renderer.loadIdentity();
 }
 
 void GLView::updateMousePos ( int x, int y ){
@@ -349,8 +349,8 @@ void GLView::updateMousePos ( int x, int y ){
 }
 
 //void GLView::draw   (){
-//    glClearColor( 0.5f, 0.5f, 0.5f, 0.0f );
-//    glClear( GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT );
+//    opengl1renderer.clearColor( 0.5f, 0.5f, 0.5f, 0.0f );
+//    opengl1renderer.clear( GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT );
 //}
 
 void GLView::drawHUD(){
@@ -455,12 +455,12 @@ void GLView::mouseHandling( ){
 }
 
 void GLView::drawCrosshair( float sz ){
-    glBegin( GL_LINES );
+    opengl1renderer.begin( GL_LINES );
     float whalf = WIDTH *0.5;
     float hhalf = HEIGHT*0.5;
-    glVertex3f( whalf-10,hhalf, 0 ); glVertex3f( whalf+10,hhalf, 0 );
-    glVertex3f( whalf,hhalf-10, 0 ); glVertex3f( whalf,hhalf+10, 0 );
-    glEnd();
+    opengl1renderer.vertex3f( whalf-10,hhalf, 0 ); opengl1renderer.vertex3f( whalf+10,hhalf, 0 );
+    opengl1renderer.vertex3f( whalf,hhalf-10, 0 ); opengl1renderer.vertex3f( whalf,hhalf+10, 0 );
+    opengl1renderer.end();
 }
 
 

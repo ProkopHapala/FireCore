@@ -293,7 +293,7 @@ class SimplexRuler{
         double z0 = og + h0;
         for(int i=0; i<maxRayIter; i++){
             rayStep();
-            glColor3f(1.0f,0.0f,0.0f); Draw2D::drawPointCross_d( ray0 + hray*ray_t, 2.0 );
+            opengl1renderer.color3f(1.0f,0.0f,0.0f); Draw2D::drawPointCross_d( ray0 + hray*ray_t, 2.0 );
             Vec2d  p = ray0 + hray*ray_t;
             double z = z0   + dh  *ray_t;
             double g = getValue( p, hs );
@@ -340,7 +340,7 @@ class SimplexRuler{
                 double g = getValue( p, hs );
                 double h = z-g;
                 if(oh<0){ printf("error oh=%g \n", oh ); }
-                glColor3f(0.0f,1.0f,0.0f); Draw2D::drawLine_d( p, p+((Vec2d){-hray.y,hray.x})*h );
+                opengl1renderer.color3f(0.0f,1.0f,0.0f); Draw2D::drawLine_d( p, p+((Vec2d){-hray.y,hray.x})*h );
                 if( h<0 ){
                     double  f = oh/(oh-h);
                     ray_t     = ot + f*(ray_t-ot);
@@ -361,7 +361,7 @@ class SimplexRuler{
                 oh = h;
                 ot = ray_t;
             }
-            glColor3f(1.0f,0.0f,0.0f); Draw2D::drawPointCross_d( ray0 + hray*ray_t, 10.0 );
+            opengl1renderer.color3f(1.0f,0.0f,0.0f); Draw2D::drawPointCross_d( ray0 + hray*ray_t, 10.0 );
             Ttgs[itg] = ray_t;
         }
         return ntg;

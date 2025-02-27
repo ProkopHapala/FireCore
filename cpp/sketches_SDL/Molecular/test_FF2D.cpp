@@ -25,7 +25,7 @@ commit 94a94e956acad8e3d23a54acbd0f715fe0d1f827    2021-May-05    CLCFGO : teste
 #include  <functional>
 
 #include <SDL2/SDL.h>
-#include <SDL2/SDL_opengl.h>
+
 #include "Draw.h"
 #include "Draw2D.h"
 //#include "Draw3D.h"
@@ -105,10 +105,10 @@ TestAppFF2D::TestAppFF2D( int& id, int WIDTH_, int HEIGHT_ ) : AppSDL2OGL_3D( id
 
 void TestAppFF2D::draw(){
     //printf( " ==== frame %i \n", frameCount );
-    glClearColor( 1.0f, 1.0f, 1.0f, 1.0f );
-    glClear( GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT );
-    glEnable(GL_DEPTH_TEST);
-    glDisable(GL_LIGHTING);
+    opengl1renderer.clearColor( 1.0f, 1.0f, 1.0f, 1.0f );
+    opengl1renderer.clear( GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT );
+    opengl1renderer.enable(GL_DEPTH_TEST);
+    opengl1renderer.disable(GL_LIGHTING);
 
     perFrame = 1;
     if(bRun){
@@ -135,11 +135,11 @@ void TestAppFF2D::draw(){
 };
 
 void TestAppFF2D::drawHUD(){
-	//glTranslatef( 100.0, 250.0, 0.0 );
-	//glScalef    ( 100.0, 100.0, 1.0 );
+	//opengl1renderer.translatef( 100.0, 250.0, 0.0 );
+	//opengl1renderer.scalef    ( 100.0, 100.0, 1.0 );
 	//plot1.view();
-    glTranslatef( 10.0,HEIGHT-20.0,0.0 );
-	glColor3f(0.5,0.0,0.3);
+    opengl1renderer.translatef( 10.0,HEIGHT-20.0,0.0 );
+	opengl1renderer.color3f(0.5,0.0,0.3);
 }
 
 void TestAppFF2D::eventHandling ( const SDL_Event& event  ){

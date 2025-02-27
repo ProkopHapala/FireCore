@@ -1,5 +1,6 @@
 
 #include "ScreenSDL2OGL.h" // THE HEADER
+#include "Renderer.h"
 
 //#include "testUtils.h"
 
@@ -13,39 +14,39 @@ void setLightingNormal(){
 	float shininess[]{ 128, 1.0f }; // exponent for specular
 	float emission []{ 0.0f, 0.0f, 0.0f, 1.0f }; // as light source
 
-	glEnable     ( GL_COLOR_MATERIAL    );
-    glMaterialfv( GL_FRONT_AND_BACK, GL_AMBIENT,   ambient   );
-	glMaterialfv( GL_FRONT_AND_BACK, GL_DIFFUSE,   diffuse   );
-	glMaterialfv( GL_FRONT_AND_BACK, GL_SPECULAR,  specular  );
-	glMaterialfv( GL_FRONT_AND_BACK, GL_SHININESS, shininess );
-	glMaterialfv( GL_FRONT_AND_BACK, GL_EMISSION,  emission  );
+	opengl1renderer.enable     ( GL_COLOR_MATERIAL    );
+    opengl1renderer.materialfv( GL_FRONT_AND_BACK, GL_AMBIENT,   ambient   );
+	opengl1renderer.materialfv( GL_FRONT_AND_BACK, GL_DIFFUSE,   diffuse   );
+	opengl1renderer.materialfv( GL_FRONT_AND_BACK, GL_SPECULAR,  specular  );
+	opengl1renderer.materialfv( GL_FRONT_AND_BACK, GL_SHININESS, shininess );
+	opengl1renderer.materialfv( GL_FRONT_AND_BACK, GL_EMISSION,  emission  );
 
     float lightPos   []{ 1.0f, -1.0f, 1.0f, 0.0f  };
-    glLightfv    ( GL_LIGHT0, GL_POSITION,  lightPos );
+    opengl1renderer.lightfv    ( GL_LIGHT0, GL_POSITION,  lightPos );
     //float l_ambient  []{ 0.1f*0, 0.15f*0, 0.2f*0,  1.0f };
     float l_ambient  []{ 0.15f, 0.20f, 0.25f,  1.0f };
     //float l_ambient  []{ 0.2f, 0.2f, 0.2f,  1.0f };
 	float l_diffuse  []{ 0.9f, 0.85f, 0.8f,  1.0f };
 	float l_specular []{ 1.0f, 1.0f,  1.0f,  1.0f };
-    glLightfv    ( GL_LIGHT0, GL_AMBIENT,   l_ambient  );
-	glLightfv    ( GL_LIGHT0, GL_DIFFUSE,   l_diffuse  );
-	glLightfv    ( GL_LIGHT0, GL_SPECULAR,  l_specular );
+    opengl1renderer.lightfv    ( GL_LIGHT0, GL_AMBIENT,   l_ambient  );
+	opengl1renderer.lightfv    ( GL_LIGHT0, GL_DIFFUSE,   l_diffuse  );
+	opengl1renderer.lightfv    ( GL_LIGHT0, GL_SPECULAR,  l_specular );
 
-	glLightModeli( GL_LIGHT_MODEL_LOCAL_VIEWER, 1 );
+	opengl1renderer.lightModeli( GL_LIGHT_MODEL_LOCAL_VIEWER, 1 );
 
 	//float ambient_lm  []{ 0.15f, 0.2f, 0.25f, 1.0f };
 	float ambient_lm  []{ 0.2f, 0.2f, 0.2f, 1.0f };
-	glLightModelfv( GL_LIGHT_MODEL_AMBIENT, ambient_lm );
+	opengl1renderer.lightModelfv( GL_LIGHT_MODEL_AMBIENT, ambient_lm );
 
-	glEnable     ( GL_LIGHTING         );
-	glEnable     ( GL_LIGHT0           );
-	glEnable     ( GL_NORMALIZE        );
+	opengl1renderer.enable     ( GL_LIGHTING         );
+	opengl1renderer.enable     ( GL_LIGHT0           );
+	opengl1renderer.enable     ( GL_NORMALIZE        );
 
-	glEnable     ( GL_DEPTH_TEST       );
-	glHint       ( GL_LINE_SMOOTH_HINT, GL_NICEST );
-	glShadeModel ( GL_SMOOTH           );
-	glPolygonMode( GL_FRONT_AND_BACK, GL_FILL );
-    //glLightModeli( GL_LIGHT_MODEL_TWO_SIDE, 1 );
+	opengl1renderer.enable     ( GL_DEPTH_TEST       );
+	opengl1renderer.hint       ( GL_LINE_SMOOTH_HINT, GL_NICEST );
+	opengl1renderer.shadeModel ( GL_SMOOTH           );
+	opengl1renderer.polygonMode( GL_FRONT_AND_BACK, GL_FILL );
+    //opengl1renderer.lightModeli( GL_LIGHT_MODEL_TWO_SIDE, 1 );
 }
 
 void setLightingRGB(){
@@ -56,27 +57,27 @@ void setLightingRGB(){
 	float shininess[]{ 128, 1.0f }; // exponent for specular
 	float emission []{ 0.0f, 0.0f, 0.0f, 1.0f }; // as light source
 
-	glEnable     ( GL_COLOR_MATERIAL    );
-    glMaterialfv( GL_FRONT_AND_BACK, GL_AMBIENT,   ambient   );
-	glMaterialfv( GL_FRONT_AND_BACK, GL_DIFFUSE,   diffuse   );
-	glMaterialfv( GL_FRONT_AND_BACK, GL_SPECULAR,  specular  );
-	glMaterialfv( GL_FRONT_AND_BACK, GL_SHININESS, shininess );
-	glMaterialfv( GL_FRONT_AND_BACK, GL_EMISSION,  emission  );
+	opengl1renderer.enable     ( GL_COLOR_MATERIAL    );
+    opengl1renderer.materialfv( GL_FRONT_AND_BACK, GL_AMBIENT,   ambient   );
+	opengl1renderer.materialfv( GL_FRONT_AND_BACK, GL_DIFFUSE,   diffuse   );
+	opengl1renderer.materialfv( GL_FRONT_AND_BACK, GL_SPECULAR,  specular  );
+	opengl1renderer.materialfv( GL_FRONT_AND_BACK, GL_SHININESS, shininess );
+	opengl1renderer.materialfv( GL_FRONT_AND_BACK, GL_EMISSION,  emission  );
 
     float lightPos_r   []{ -1.0f,  0.0f,  0.0f, 0.0f  };
     float lightPos_g   []{  0.0f, -1.0f,  0.0f, 0.0f  };
     float lightPos_b   []{  0.0f,  0.0f, -1.0f, 0.0f  };
 
-	glEnable     ( GL_LIGHTING         );
+	opengl1renderer.enable     ( GL_LIGHTING         );
 
-	glEnable     ( GL_NORMALIZE        );
-	glEnable     ( GL_LIGHT0           );
-    glEnable     ( GL_LIGHT1           );
-    glEnable     ( GL_LIGHT2           );
+	opengl1renderer.enable     ( GL_NORMALIZE        );
+	opengl1renderer.enable     ( GL_LIGHT0           );
+    opengl1renderer.enable     ( GL_LIGHT1           );
+    opengl1renderer.enable     ( GL_LIGHT2           );
 
-    glLightfv    ( GL_LIGHT0, GL_POSITION,  lightPos_r );
-    glLightfv    ( GL_LIGHT1, GL_POSITION,  lightPos_g );
-    glLightfv    ( GL_LIGHT2, GL_POSITION,  lightPos_b );
+    opengl1renderer.lightfv    ( GL_LIGHT0, GL_POSITION,  lightPos_r );
+    opengl1renderer.lightfv    ( GL_LIGHT1, GL_POSITION,  lightPos_g );
+    opengl1renderer.lightfv    ( GL_LIGHT2, GL_POSITION,  lightPos_b );
 
     float l_ambient  []{ 0.1f, 0.1f, 0.1f,  1.0f };
 	float l_specular []{ 1.0f, 1.0f,  1.0f,  1.0f };
@@ -84,34 +85,34 @@ void setLightingRGB(){
 	float r_diffuse  []{ 0.8f, 0.2f, 0.2f,  1.0f };
 	float g_diffuse  []{ 0.2f, 0.8f, 0.2f,  1.0f };
 	float b_diffuse  []{ 0.2f, 0.2f, 0.8f,  1.0f };
-    glLightfv    ( GL_LIGHT0, GL_AMBIENT,   l_ambient  );
-	glLightfv    ( GL_LIGHT0, GL_DIFFUSE,   r_diffuse  );
-	glLightfv    ( GL_LIGHT0, GL_SPECULAR,  l_specular );
+    opengl1renderer.lightfv    ( GL_LIGHT0, GL_AMBIENT,   l_ambient  );
+	opengl1renderer.lightfv    ( GL_LIGHT0, GL_DIFFUSE,   r_diffuse  );
+	opengl1renderer.lightfv    ( GL_LIGHT0, GL_SPECULAR,  l_specular );
 
-    glLightfv    ( GL_LIGHT1, GL_AMBIENT,   l_ambient  );
-	glLightfv    ( GL_LIGHT1, GL_DIFFUSE,   g_diffuse );
-	glLightfv    ( GL_LIGHT1, GL_SPECULAR,  l_specular );
+    opengl1renderer.lightfv    ( GL_LIGHT1, GL_AMBIENT,   l_ambient  );
+	opengl1renderer.lightfv    ( GL_LIGHT1, GL_DIFFUSE,   g_diffuse );
+	opengl1renderer.lightfv    ( GL_LIGHT1, GL_SPECULAR,  l_specular );
 
-    glLightfv    ( GL_LIGHT2, GL_AMBIENT,   l_ambient  );
-	glLightfv    ( GL_LIGHT2, GL_DIFFUSE,   b_diffuse  );
-	glLightfv    ( GL_LIGHT2, GL_SPECULAR,  l_specular );
+    opengl1renderer.lightfv    ( GL_LIGHT2, GL_AMBIENT,   l_ambient  );
+	opengl1renderer.lightfv    ( GL_LIGHT2, GL_DIFFUSE,   b_diffuse  );
+	opengl1renderer.lightfv    ( GL_LIGHT2, GL_SPECULAR,  l_specular );
 
-	glLightModeli( GL_LIGHT_MODEL_LOCAL_VIEWER, 1 );
+	opengl1renderer.lightModeli( GL_LIGHT_MODEL_LOCAL_VIEWER, 1 );
 
 	//float ambient_lm  []{ 0.15f, 0.2f, 0.25f, 1.0f };
 	float ambient_lm  []{ 0.2f, 0.2f, 0.2f, 1.0f };
-	glLightModelfv( GL_LIGHT_MODEL_AMBIENT, ambient_lm );
+	opengl1renderer.lightModelfv( GL_LIGHT_MODEL_AMBIENT, ambient_lm );
 
-	glEnable     ( GL_DEPTH_TEST       );
-	glHint       ( GL_LINE_SMOOTH_HINT, GL_NICEST );
-	glShadeModel ( GL_SMOOTH           );
-	glPolygonMode( GL_FRONT_AND_BACK, GL_FILL );
-    //glLightModeli( GL_LIGHT_MODEL_TWO_SIDE, 1 );
+	opengl1renderer.enable     ( GL_DEPTH_TEST       );
+	opengl1renderer.hint       ( GL_LINE_SMOOTH_HINT, GL_NICEST );
+	opengl1renderer.shadeModel ( GL_SMOOTH           );
+	opengl1renderer.polygonMode( GL_FRONT_AND_BACK, GL_FILL );
+    //opengl1renderer.lightModeli( GL_LIGHT_MODEL_TWO_SIDE, 1 );
 }
 
 void ScreenSDL2OGL::update( ){
 	//SDL_RenderPresent(renderer);
-	//glPushMatrix();
+	//opengl1renderer.pushMatrix();
 	if( GL_LOCK ){ printf("ScreenSDL2OGL::update GL_LOCK\n"); return; }
 	GL_LOCK = true;
 	//printf( " window[%i] SDL_GL_MakeCurrent \n", id );
@@ -120,8 +121,8 @@ void ScreenSDL2OGL::update( ){
 	draw();
 	cameraHUD();
 	drawHUD();
-	//glPopMatrix();
-	//glFlush();
+	//opengl1renderer.popMatrix();
+	//opengl1renderer.flush();
 	//SDL_RenderPresent(renderer);
 	frameCount++;
     SDL_GL_SwapWindow(window);
@@ -130,8 +131,8 @@ void ScreenSDL2OGL::update( ){
 };
 
 void ScreenSDL2OGL::draw   (){
-    glClearColor( 0.5f, 0.5f, 0.5f, 0.0f );
-	glClear( GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT );
+    opengl1renderer.clearColor( 0.5f, 0.5f, 0.5f, 0.0f );
+	opengl1renderer.clear( GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT );
 };
 
 void ScreenSDL2OGL::drawHUD(){ };
@@ -183,19 +184,19 @@ void ScreenSDL2OGL::mouseHandling( ){
 
 
 void ScreenSDL2OGL::camera(){
-    glMatrixMode( GL_PROJECTION );
-    glLoadIdentity();
-	glOrtho ( -zoom*ASPECT_RATIO, zoom*ASPECT_RATIO, -zoom, zoom, -VIEW_DEPTH, +VIEW_DEPTH );
-	glTranslatef( -camX0, -camY0, 0.0f );
-	glMatrixMode (GL_MODELVIEW);
+    opengl1renderer.matrixMode( GL_PROJECTION );
+    opengl1renderer.loadIdentity();
+	opengl1renderer.ortho ( -zoom*ASPECT_RATIO, zoom*ASPECT_RATIO, -zoom, zoom, -VIEW_DEPTH, +VIEW_DEPTH );
+	opengl1renderer.translatef( -camX0, -camY0, 0.0f );
+	opengl1renderer.matrixMode (GL_MODELVIEW);
 }
 
 void ScreenSDL2OGL::cameraHUD(){
-    glMatrixMode( GL_PROJECTION );
-    glLoadIdentity();
-	glOrtho ( 0, WIDTH, 0, HEIGHT, -VIEW_DEPTH, +VIEW_DEPTH );
-	glMatrixMode (GL_MODELVIEW);
-	glLoadIdentity();
+    opengl1renderer.matrixMode( GL_PROJECTION );
+    opengl1renderer.loadIdentity();
+	opengl1renderer.ortho ( 0, WIDTH, 0, HEIGHT, -VIEW_DEPTH, +VIEW_DEPTH );
+	opengl1renderer.matrixMode (GL_MODELVIEW);
+	opengl1renderer.loadIdentity();
 }
 
 //void ScreenSDL2OGL::updateMousePos ( int x, int y ){

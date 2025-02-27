@@ -1,42 +1,42 @@
 
 //#include <SDL2/SDL.h>
-#include <SDL2/SDL_opengl.h>
+
 
 #include "drawMath.h" // THE HEADER
 
 void drawPoint( const Vec3d& vec ){
-	glDisable (GL_LIGHTING);
-	glBegin   (GL_POINTS);	          	     
-		glVertex3d( vec.x, vec.y, vec.z );
-	glEnd();
+	opengl1renderer.disable (GL_LIGHTING);
+	opengl1renderer.begin   (GL_POINTS);	          	     
+		opengl1renderer.vertex3d( vec.x, vec.y, vec.z );
+	opengl1renderer.end();
 };
 
 void drawVec( const Vec3d& vec ){
-	glDisable (GL_LIGHTING);
-	glBegin   (GL_LINES);	          	     
-		glVertex3d( 0, 0, 0 ); glVertex3d( vec.x, vec.y, vec.z );
-	glEnd();
+	opengl1renderer.disable (GL_LIGHTING);
+	opengl1renderer.begin   (GL_LINES);	          	     
+		opengl1renderer.vertex3d( 0, 0, 0 ); opengl1renderer.vertex3d( vec.x, vec.y, vec.z );
+	opengl1renderer.end();
 };
 
 void drawVecInPos( const Vec3d& v, const Vec3d& pos ){
-	glDisable (GL_LIGHTING);
-	glBegin   (GL_LINES);	          	     
-		glVertex3d( pos.x, pos.y, pos.z ); glVertex3d( pos.x+v.x, pos.y+v.y, pos.z+v.z );
-	glEnd();
+	opengl1renderer.disable (GL_LIGHTING);
+	opengl1renderer.begin   (GL_LINES);	          	     
+		opengl1renderer.vertex3d( pos.x, pos.y, pos.z ); opengl1renderer.vertex3d( pos.x+v.x, pos.y+v.y, pos.z+v.z );
+	opengl1renderer.end();
 };
 
 void drawLine( const Vec3d& p1, const Vec3d& p2 ){
-	glDisable (GL_LIGHTING);
-	glBegin   (GL_LINES);	          	     
-		glVertex3d( p1.x, p1.y, p1.z ); glVertex3d( p2.x, p2.y, p2.z );
-	glEnd();
+	opengl1renderer.disable (GL_LIGHTING);
+	opengl1renderer.begin   (GL_LINES);	          	     
+		opengl1renderer.vertex3d( p1.x, p1.y, p1.z ); opengl1renderer.vertex3d( p2.x, p2.y, p2.z );
+	opengl1renderer.end();
 };
 
 void drawVecInPos( const Vec3f& v, const Vec3f& pos ){
-	glDisable (GL_LIGHTING);
-	glBegin   (GL_LINES);	          	     
-		glVertex3f( pos.x, pos.y, pos.z ); glVertex3d( pos.x+v.x, pos.y+v.y, pos.z+v.z );
-	glEnd();
+	opengl1renderer.disable (GL_LIGHTING);
+	opengl1renderer.begin   (GL_LINES);	          	     
+		opengl1renderer.vertex3f( pos.x, pos.y, pos.z ); opengl1renderer.vertex3d( pos.x+v.x, pos.y+v.y, pos.z+v.z );
+	opengl1renderer.end();
 };
 
 void drawTriangle( const Vec3d& p1, const Vec3d& p2, const Vec3d& p3 ){
@@ -45,30 +45,30 @@ void drawTriangle( const Vec3d& p1, const Vec3d& p2, const Vec3d& p3 ){
 	d2.set( p3 - p1 );
 	normal.set_cross(d1,d2);
 	normal.normalize();
-	glBegin   (GL_TRIANGLES);
-		glNormal3d( normal.x, normal.y, normal.z );	          	     
-		glVertex3d( p1.x, p1.y, p1.z ); 
-		glVertex3d( p2.x, p2.y, p2.z );
-		glVertex3d( p2.x, p2.y, p2.z );
-	glEnd();
+	opengl1renderer.begin   (GL_TRIANGLES);
+		opengl1renderer.normal3d( normal.x, normal.y, normal.z );	          	     
+		opengl1renderer.vertex3d( p1.x, p1.y, p1.z ); 
+		opengl1renderer.vertex3d( p2.x, p2.y, p2.z );
+		opengl1renderer.vertex3d( p2.x, p2.y, p2.z );
+	opengl1renderer.end();
 };
 
 void drawMatInPos( const Mat3d& mat, const Vec3d& pos ){
-	glDisable (GL_LIGHTING);
-	glBegin   (GL_LINES);	          	     
-		glColor3f( 1, 0, 0 ); glVertex3d( pos.x, pos.y, pos.z ); glVertex3d( pos.x+mat.xx, pos.y+mat.xy, pos.z+mat.xz );
-		glColor3f( 0, 1, 0 ); glVertex3d( pos.x, pos.y, pos.z ); glVertex3d( pos.x+mat.yx, pos.y+mat.yy, pos.z+mat.yz );
-		glColor3f( 0, 0, 1 ); glVertex3d( pos.x, pos.y, pos.z ); glVertex3d( pos.x+mat.zx, pos.y+mat.zy, pos.z+mat.zz );
-	glEnd();
+	opengl1renderer.disable (GL_LIGHTING);
+	opengl1renderer.begin   (GL_LINES);	          	     
+		opengl1renderer.color3f( 1, 0, 0 ); opengl1renderer.vertex3d( pos.x, pos.y, pos.z ); opengl1renderer.vertex3d( pos.x+mat.xx, pos.y+mat.xy, pos.z+mat.xz );
+		opengl1renderer.color3f( 0, 1, 0 ); opengl1renderer.vertex3d( pos.x, pos.y, pos.z ); opengl1renderer.vertex3d( pos.x+mat.yx, pos.y+mat.yy, pos.z+mat.yz );
+		opengl1renderer.color3f( 0, 0, 1 ); opengl1renderer.vertex3d( pos.x, pos.y, pos.z ); opengl1renderer.vertex3d( pos.x+mat.zx, pos.y+mat.zy, pos.z+mat.zz );
+	opengl1renderer.end();
 };
 
 void drawShape( const Vec3d& pos, const Mat3d& rot, int shape ){ 
-	glPushMatrix();
+	opengl1renderer.pushMatrix();
 	float glMat[16];
 	toGLMat( pos, rot, glMat );
-	glMultMatrixf( glMat );
-	glCallList( shape ); 
-	glPopMatrix();
+	opengl1renderer.multMatrixf( glMat );
+	opengl1renderer.callList( shape ); 
+	opengl1renderer.popMatrix();
 };
 
 int drawConeFan( int n, float r, const Vec3f& base, const Vec3f& tip ){
@@ -86,14 +86,14 @@ int drawConeFan( int n, float r, const Vec3f& base, const Vec3f& tip ){
 	printf( "c_hat %f %f %f |c_hat| %f \n", c_hat.x, c_hat.y, c_hat.z, c_hat.norm() );
 	printf( "a.b %f a.c %f b.c %f \n", a.dot(b), a.dot(c), b.dot(c) );
 
-	glColor3f(1,0,0); drawVecInPos( a,     base );
-	glColor3f(0,1,0); drawVecInPos( b,     base );
-	glColor3f(0,0,1); drawVecInPos( c_hat, base );
-	glColor3f(1,0,0); drawVecInPos( a,     tip );
-	glColor3f(0,1,0); drawVecInPos( b,     tip );
-	glColor3f(0,0,1); drawVecInPos( c_hat, tip );
-	glEnable (GL_LIGHTING);
-	glColor3f( 0.8f, 0.8f, 0.8f );
+	opengl1renderer.color3f(1,0,0); drawVecInPos( a,     base );
+	opengl1renderer.color3f(0,1,0); drawVecInPos( b,     base );
+	opengl1renderer.color3f(0,0,1); drawVecInPos( c_hat, base );
+	opengl1renderer.color3f(1,0,0); drawVecInPos( a,     tip );
+	opengl1renderer.color3f(0,1,0); drawVecInPos( b,     tip );
+	opengl1renderer.color3f(0,0,1); drawVecInPos( c_hat, tip );
+	opengl1renderer.enable (GL_LIGHTING);
+	opengl1renderer.color3f( 0.8f, 0.8f, 0.8f );
 */
 	float ca, sa;
 	float pa=1, pb=0;
@@ -106,13 +106,13 @@ int drawConeFan( int n, float r, const Vec3f& base, const Vec3f& tip ){
 	float pnab =  c_hat.dot( q )/q.norm();
 	float pnc  =  sqrt( 1 - pnab*pnab );
 
-	glBegin   ( GL_TRIANGLE_FAN );
-	//glBegin   ( GL_LINES );
-	//glBegin   ( GL_LINE_STRIP );
+	opengl1renderer.begin   ( GL_TRIANGLE_FAN );
+	//opengl1renderer.begin   ( GL_LINES );
+	//opengl1renderer.begin   ( GL_LINE_STRIP );
 
-	glNormal3f( c_hat.x, c_hat.z, c_hat.z );
+	opengl1renderer.normal3f( c_hat.x, c_hat.z, c_hat.z );
 	//printf( "pn0 %f %f %f \n", c_hat.x, c_hat.z, c_hat.z );
-	glVertex3f( tip.x, tip.y, tip.z ); nvert++;
+	opengl1renderer.vertex3f( tip.x, tip.y, tip.z ); nvert++;
 	for(int i=0; i<=n; i++ ){
 		float pa_ = ca*pa - sa*pb;
 		      pb  = sa*pa + ca*pb;     
@@ -123,16 +123,16 @@ int drawConeFan( int n, float r, const Vec3f& base, const Vec3f& tip ){
 		//pn.set( pnab*p.x - pnc*c_hat.x, pnab*p.y - pnc*c_hat.y, pnab*p.z - pnc*c_hat.z  );
 		//printf( "p %f %f %f   pn %f %f %f |pn| %f \n", p.x, p.y, p.z,   pn.x, pn.y, pn.z, pn.norm() );
 		//printf( " |a| %f |b| %f |p| %f |pn| %f |a+b| %f |ab+c| %f \n", a.norm(), b.norm(),  p.norm(), pn.norm(), sqrt(pa*pa+pb*pb), sqrt(pnc*pnc + pnab*pnab ) );
-		glNormal3f( pn.x, pn.y, pn.z );
-		glVertex3f( base.x + r*p.x, base.y + r*p.y, base.z + r*p.z ); nvert++;
+		opengl1renderer.normal3f( pn.x, pn.y, pn.z );
+		opengl1renderer.vertex3f( base.x + r*p.x, base.y + r*p.y, base.z + r*p.z ); nvert++;
 /*
-		glVertex3f( tip.x, tip.y, tip.z );
-		glVertex3f( base.x + r*p.x, base.y + r*p.y, base.z + r*p.z );
-		glVertex3f( base.x + r*p.x, base.y + r*p.y, base.z + r*p.z );
-		glVertex3f( base.x + r*p.x+pn.x, base.y + r*p.y+pn.y, base.z + r*p.z+pn.z );
+		opengl1renderer.vertex3f( tip.x, tip.y, tip.z );
+		opengl1renderer.vertex3f( base.x + r*p.x, base.y + r*p.y, base.z + r*p.z );
+		opengl1renderer.vertex3f( base.x + r*p.x, base.y + r*p.y, base.z + r*p.z );
+		opengl1renderer.vertex3f( base.x + r*p.x+pn.x, base.y + r*p.y+pn.y, base.z + r*p.z+pn.z );
 */
 	}
-	glEnd();
+	opengl1renderer.end();
 	return nvert;
 };
 
@@ -158,8 +158,8 @@ int drawCylinderStrip( int n, float r1, float r2, const Vec3f& base, const Vec3f
 	float pnab =  c_hat.dot( q )/q.norm();
 	float pnc  =  sqrt( 1 - pnab*pnab );
 
-	glBegin   ( GL_TRIANGLE_STRIP );
-	//glBegin   ( GL_LINES );
+	opengl1renderer.begin   ( GL_TRIANGLE_STRIP );
+	//opengl1renderer.begin   ( GL_LINES );
 	for(int i=0; i<=n; i++ ){
 		float pa_ = ca*pa - sa*pb;
 		      pb  = sa*pa + ca*pb;     
@@ -168,19 +168,19 @@ int drawCylinderStrip( int n, float r1, float r2, const Vec3f& base, const Vec3f
 		p .set(   pa*a.x +  pb*b.x,   pa*a.y +  pb*b.y,   pa*a.z +  pb*b.z );
 		pn.set( pnab*p.x - pnc*c_hat.x, pnab*p.y - pnc*c_hat.y, pnab*p.z - pnc*c_hat.z  );
 		//printf( "p %f %f %f   pn %f %f %f |pn| %f \n", p.x, p.y, p.z,   pn.x, pn.y, pn.z, pn.norm() );
-		glNormal3f( pn.x, pn.y, pn.z );
-		glVertex3f( base.x + r1*p.x, base.y + r1*p.y, base.z + r1*p.z ); nvert++;
-		glVertex3f( tip .x + r2*p.x, tip .y + r2*p.y, tip .z + r2*p.z ); nvert++;
+		opengl1renderer.normal3f( pn.x, pn.y, pn.z );
+		opengl1renderer.vertex3f( base.x + r1*p.x, base.y + r1*p.y, base.z + r1*p.z ); nvert++;
+		opengl1renderer.vertex3f( tip .x + r2*p.x, tip .y + r2*p.y, tip .z + r2*p.z ); nvert++;
 /*
-		glVertex3f( base.x + r1*p.x,      base.y + r1*p.y,      base.z + r1*p.z      );
-		glVertex3f( tip .x + r2*p.x,      tip .y + r2*p.y,      tip .z + r2*p.z      );
-		glVertex3f( base.x + r1*p.x,      base.y + r1*p.y,      base.z + r1*p.z      );
-		glVertex3f( base.x + r1*p.x+pn.x, base.y + r1*p.y+pn.y, base.z + r1*p.z+pn.z );
-		glVertex3f( tip .x + r2*p.x,      tip .y + r2*p.y,      tip .z + r2*p.z      );
-		glVertex3f( tip .x + r2*p.x+pn.x, tip .y + r2*p.y+pn.y, tip .z + r2*p.z+pn.z );
+		opengl1renderer.vertex3f( base.x + r1*p.x,      base.y + r1*p.y,      base.z + r1*p.z      );
+		opengl1renderer.vertex3f( tip .x + r2*p.x,      tip .y + r2*p.y,      tip .z + r2*p.z      );
+		opengl1renderer.vertex3f( base.x + r1*p.x,      base.y + r1*p.y,      base.z + r1*p.z      );
+		opengl1renderer.vertex3f( base.x + r1*p.x+pn.x, base.y + r1*p.y+pn.y, base.z + r1*p.z+pn.z );
+		opengl1renderer.vertex3f( tip .x + r2*p.x,      tip .y + r2*p.y,      tip .z + r2*p.z      );
+		opengl1renderer.vertex3f( tip .x + r2*p.x+pn.x, tip .y + r2*p.y+pn.y, tip .z + r2*p.z+pn.z );
 */
 	}
-	glEnd();
+	opengl1renderer.end();
 	return nvert;	
 };
 
@@ -195,30 +195,30 @@ int drawSphereTriangle( int n, float r, const Vec3f& pos, const Vec3f& a, const 
 		Vec3f p0,p; p0.set( c );
 		p0.add_mul( da, ia );
 		p.set_mul( p0, 1.0f/p0.norm() );
-		glBegin   (GL_TRIANGLE_STRIP);
-		//glBegin   (GL_LINES);
-		//glColor3f( d*ia, 0, 0 );
-		glNormal3f( p.x, p.y, p.z );
-		glVertex3f( r*p.x+pos.x, r*p.y+pos.y, r*p.z+pos.z );   nvert++;
-		//glVertex3f( r*p.x+pos.x+p.x, r*p.y+pos.y+p.y, r*p.z+pos.z+p.z );
+		opengl1renderer.begin   (GL_TRIANGLE_STRIP);
+		//opengl1renderer.begin   (GL_LINES);
+		//opengl1renderer.color3f( d*ia, 0, 0 );
+		opengl1renderer.normal3f( p.x, p.y, p.z );
+		opengl1renderer.vertex3f( r*p.x+pos.x, r*p.y+pos.y, r*p.z+pos.z );   nvert++;
+		//opengl1renderer.vertex3f( r*p.x+pos.x+p.x, r*p.y+pos.y+p.y, r*p.z+pos.z+p.z );
 		for( int ib=0; ib<(n-ia); ib++ ){
 			Vec3f p; 
 			p.set_add( p0, da );
 			p.normalize();
-			//glColor3f( 0, 1, 0 );
-			glNormal3f( p.x, p.y, p.z );
-			glVertex3f( r*p.x+pos.x, r*p.y+pos.y, r*p.z+pos.z );   nvert++;
-			//glVertex3f( r*p.x+pos.x+p.x, r*p.y+pos.y+p.y, r*p.z+pos.z+p.z );
+			//opengl1renderer.color3f( 0, 1, 0 );
+			opengl1renderer.normal3f( p.x, p.y, p.z );
+			opengl1renderer.vertex3f( r*p.x+pos.x, r*p.y+pos.y, r*p.z+pos.z );   nvert++;
+			//opengl1renderer.vertex3f( r*p.x+pos.x+p.x, r*p.y+pos.y+p.y, r*p.z+pos.z+p.z );
 			p.set_add( p0, db );
 			p.normalize();
-			//glColor3f( 0, 0, 1 );
-			glNormal3f( p.x, p.y, p.z );
-			glVertex3f( r*p.x+pos.x, r*p.y+pos.y, r*p.z+pos.z );   nvert++;
-			//glVertex3f( r*p.x+pos.x+p.x, r*p.y+pos.y+p.y, r*p.z+pos.z+p.z );
+			//opengl1renderer.color3f( 0, 0, 1 );
+			opengl1renderer.normal3f( p.x, p.y, p.z );
+			opengl1renderer.vertex3f( r*p.x+pos.x, r*p.y+pos.y, r*p.z+pos.z );   nvert++;
+			//opengl1renderer.vertex3f( r*p.x+pos.x+p.x, r*p.y+pos.y+p.y, r*p.z+pos.z+p.z );
 			p0.add( db );
 			//printf(" %f %f %f %f \n", p.x, p.y, p.z, p.norm() );
 		}
-		glEnd();
+		opengl1renderer.end();
 	}
 	return nvert;	
 };
@@ -255,33 +255,33 @@ void drawLines( int nlinks, int * links, Vec3d * points ){
 
 
 void drawBox( float x0, float x1, float y0, float y1, float z0, float z1, float r, float g, float b ){
-	glBegin(GL_QUADS);
-		glColor3f( r, g, b );		          	     
-		glNormal3f(0,0,-1); glVertex3f( x0, y0, z0 ); glVertex3f( x1, y0, z0 ); glVertex3f( x1, y1, z0 ); glVertex3f( x0, y1, z0 ); 
-		glNormal3f(0,-1,0); glVertex3f( x0, y0, z0 ); glVertex3f( x1, y0, z0 ); glVertex3f( x1, y0, z1 ); glVertex3f( x0, y0, z1 ); 
-		glNormal3f(-1,0,0); glVertex3f( x0, y0, z0 ); glVertex3f( x0, y1, z0 ); glVertex3f( x0, y1, z1 ); glVertex3f( x0, y0, z1 );	
-		glNormal3f(0,0,+1); glVertex3f( x1, y1, z1 ); glVertex3f( x0, y1, z1 ); glVertex3f( x0, y0, z1 ); glVertex3f( x1, y0, z1 ); 
-		glNormal3f(0,+1,1); glVertex3f( x1, y1, z1 ); glVertex3f( x0, y1, z1 ); glVertex3f( x0, y1, z0 ); glVertex3f( x1, y1, z0 ); 
-		glNormal3f(+1,0,0); glVertex3f( x1, y1, z1 ); glVertex3f( x1, y0, z1 ); glVertex3f( x1, y0, z0 ); glVertex3f( x1, y1, z0 );		
-	glEnd();
+	opengl1renderer.begin(GL_QUADS);
+		opengl1renderer.color3f( r, g, b );		          	     
+		opengl1renderer.normal3f(0,0,-1); opengl1renderer.vertex3f( x0, y0, z0 ); opengl1renderer.vertex3f( x1, y0, z0 ); opengl1renderer.vertex3f( x1, y1, z0 ); opengl1renderer.vertex3f( x0, y1, z0 ); 
+		opengl1renderer.normal3f(0,-1,0); opengl1renderer.vertex3f( x0, y0, z0 ); opengl1renderer.vertex3f( x1, y0, z0 ); opengl1renderer.vertex3f( x1, y0, z1 ); opengl1renderer.vertex3f( x0, y0, z1 ); 
+		opengl1renderer.normal3f(-1,0,0); opengl1renderer.vertex3f( x0, y0, z0 ); opengl1renderer.vertex3f( x0, y1, z0 ); opengl1renderer.vertex3f( x0, y1, z1 ); opengl1renderer.vertex3f( x0, y0, z1 );	
+		opengl1renderer.normal3f(0,0,+1); opengl1renderer.vertex3f( x1, y1, z1 ); opengl1renderer.vertex3f( x0, y1, z1 ); opengl1renderer.vertex3f( x0, y0, z1 ); opengl1renderer.vertex3f( x1, y0, z1 ); 
+		opengl1renderer.normal3f(0,+1,1); opengl1renderer.vertex3f( x1, y1, z1 ); opengl1renderer.vertex3f( x0, y1, z1 ); opengl1renderer.vertex3f( x0, y1, z0 ); opengl1renderer.vertex3f( x1, y1, z0 ); 
+		opengl1renderer.normal3f(+1,0,0); opengl1renderer.vertex3f( x1, y1, z1 ); opengl1renderer.vertex3f( x1, y0, z1 ); opengl1renderer.vertex3f( x1, y0, z0 ); opengl1renderer.vertex3f( x1, y1, z0 );		
+	opengl1renderer.end();
 };
 
 int makeBoxList( float x0, float x1, float y0, float y1, float z0, float z1, float r, float g, float b  ){
-	int ilist=glGenLists(1);
-	glNewList( ilist, GL_COMPILE );
+	int ilist=opengl1renderer.genLists(1);
+	opengl1renderer.newList( ilist, GL_COMPILE );
 		drawBox( x0, x1, y0, y1, z0, z1, r, g, b );
-	glEndList();
+	opengl1renderer.endList();
 	return( ilist );
-	// don't forget use glDeleteLists( ilist ,1); later 
+	// don't forget use opengl1renderer.deleteLists( ilist ,1); later 
 }
 
 void drawAxis( float sc ){
-	glDisable (GL_LIGHTING);
-	glBegin   (GL_LINES);	          	     
-		glColor3f( 1, 0, 0 ); glVertex3f( 0, 0, 0 ); glVertex3f( 1*sc, 0, 0 );
-		glColor3f( 0, 1, 0 ); glVertex3f( 0, 0, 0 ); glVertex3f( 0, 1*sc, 0 );
-		glColor3f( 0, 0, 1 ); glVertex3f( 0, 0, 0 ); glVertex3f( 0, 0, 1*sc );	
-	glEnd();
+	opengl1renderer.disable (GL_LIGHTING);
+	opengl1renderer.begin   (GL_LINES);	          	     
+		opengl1renderer.color3f( 1, 0, 0 ); opengl1renderer.vertex3f( 0, 0, 0 ); opengl1renderer.vertex3f( 1*sc, 0, 0 );
+		opengl1renderer.color3f( 0, 1, 0 ); opengl1renderer.vertex3f( 0, 0, 0 ); opengl1renderer.vertex3f( 0, 1*sc, 0 );
+		opengl1renderer.color3f( 0, 0, 1 ); opengl1renderer.vertex3f( 0, 0, 0 ); opengl1renderer.vertex3f( 0, 0, 1*sc );	
+	opengl1renderer.end();
 };
 
 

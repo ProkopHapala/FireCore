@@ -9,7 +9,6 @@
 #include "testUtils.h"
 
 #include <SDL2/SDL.h>
-#include <SDL2/SDL_opengl.h>
 #include "Draw.h"
 #include "Draw3D.h"
 #include "SDL_utils.h"
@@ -85,8 +84,8 @@ Vec3f testPLQ;
 
 void drawFreeAtoms( int n, Quat4f * poss, Quat4f * forces, float sc, float fsc ){
     for(int i=0; i<n; i++){
-        glColor3f(0.0,0.0,0.0); Draw3D::drawPointCross( poss[i].f, sc            );
-        glColor3f(1.0,0.0,0.0); Draw3D::drawVecInPos( forces[i].f*fsc, poss[i].f );
+        opengl1renderer.color3f(0.0,0.0,0.0); Draw3D::drawPointCross( poss[i].f, sc            );
+        opengl1renderer.color3f(1.0,0.0,0.0); Draw3D::drawVecInPos( forces[i].f*fsc, poss[i].f );
         //sprintf( str, "HEAY %i", i);
         //Draw3D::drawText( str, poss[i].f, fontTex, 60, 8 );
     }
@@ -97,7 +96,7 @@ void drawAtomsF8( int n, float8 * atoms, float sc, int oglSphere ){
         float* atomi = ((float*)(atoms+i));
         float r = atomi[4]*sc;
         float q = atomi[6];
-        glColor3f( 0.5+q, 0.5, 0.5-q );
+        opengl1renderer.color3f( 0.5+q, 0.5, 0.5-q );
         Draw3D::drawShape( *(Vec3f*)atomi, {0.0,0.0,0.0,1.0}, Vec3f{r,r,r}, oglSphere );
     }
 }
@@ -171,8 +170,8 @@ void drawRigidMolSystemForceTorq(const RigidMolecularWorldOCL& clworld, int isys
     Quat4f* fsi      = (Quat4f*)(clworld.fposes+isoff);
     for(int imol=0; imol<clworld.nMols; imol++){
         //Draw3D::drawPointCross( posi[0].f, rsc   );
-        glColor3f(1.0,0.0,0.0); Draw3D::drawVecInPos( fsi[0].f*fsc, posi[0].f );  // force
-        glColor3f(0.0,0.0,1.0); Draw3D::drawVecInPos( fsi[1].f*tsc, posi[0].f );  // torq
+        opengl1renderer.color3f(1.0,0.0,0.0); Draw3D::drawVecInPos( fsi[0].f*fsc, posi[0].f );  // force
+        opengl1renderer.color3f(0.0,0.0,1.0); Draw3D::drawVecInPos( fsi[1].f*tsc, posi[0].f );  // torq
         posi+=2;
         fsi +=2;
     }
@@ -271,14 +270,14 @@ void AppMolecularEditorOCL::initRigidSubstrate(){
     Vec3d * FFtot = new Vec3d[world.gridFF.grid.getNtot()];
     world.gridFF.evalCombindGridFF( testREQ, FFtot );
 
-    isoOgl = glGenLists(1);
-    glNewList(isoOgl, GL_COMPILE);
+    isoOgl = opengl1renderer.genLists(1);
+    opengl1renderer.newList(isoOgl, GL_COMPILE);
         //getIsovalPoints_a( world.gridFF.grid, 0.1, FFtot, iso_points );
         //renderSubstrate( iso_points.size(), &iso_points[0], GL_POINTS );
         renderSubstrate_( world.gridFF.grid, FFtot, world.gridFF.FFelec, 0.1, true );
         //renderSubstrate_( world.gridFF.grid, world.gridFF.FFPaul, world.gridFF.FFelec, 0.01, true );
         Draw3D::drawAxis(1.0);
-    glEndList();
+    opengl1renderer.endList();
 
     cam.pos.z = +5.0;
 
@@ -293,11 +292,11 @@ AppMolecularEditorOCL::AppMolecularEditorOCL( int& id, int WIDTH_, int HEIGHT_ )
 
     fontTex = makeTexture( "common_resources/dejvu_sans_mono_RGBA_inv.bmp" );
 
-    ogl_sph = glGenLists(1);
-    glNewList( ogl_sph, GL_COMPILE );
+    ogl_sph = opengl1renderer.genLists(1);
+    opengl1renderer.newList( ogl_sph, GL_COMPILE );
         Draw3D::drawSphere_oct( 3, 1.0, {0.0,0.0,0.0} );
         //Draw3D::drawSphere_oct( 3, 0.25, {0.0,0.0,0.0} );
-    glEndList();
+    opengl1renderer.endList();
 
     //qCamera.set( 0.0,0.0,0.0,1.0 );  // bottom view
     //qCamera.set( 0.0,0.0,1.0,0.0 );  // bottom view
@@ -551,16 +550,16 @@ AppMolecularEditorOCL::AppMolecularEditorOCL( int& id, int WIDTH_, int HEIGHT_ )
 }
 
 void AppMolecularEditorOCL::draw(){
-    glClearColor( 0.5f, 0.5f, 0.5f, 1.0f );
-	glClear( GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT );
+    opengl1renderer.clearColor( 0.5f, 0.5f, 0.5f, 1.0f );
+	opengl1renderer.clear( GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT );
 
-	//glTranslatef( 0.0, 0.0, -5.0 );
-	glColor3f( 0.0f,0.0f,0.0f );
+	//opengl1renderer.translatef( 0.0, 0.0, -5.0 );
+	opengl1renderer.color3f( 0.0f,0.0f,0.0f );
 
     ray0 = (Vec3d)(cam.pos + cam.rot.a*mouse_begin_x + cam.rot.b*mouse_begin_y);
 
-	glEnable(GL_LIGHTING);
-	glEnable(GL_DEPTH_TEST);
+	opengl1renderer.enable(GL_LIGHTING);
+	opengl1renderer.enable(GL_DEPTH_TEST);
 	viewSubstrate( 2, 2, isoOgl, world.gridFF.grid.cell.a, world.gridFF.grid.cell.b );
 
     Draw3D::drawPointCross( ray0, 0.1 );
@@ -578,9 +577,9 @@ void AppMolecularEditorOCL::draw(){
 
 	clworld.system2atoms( isystem, atoms_tmp );
 
-	glColor3f(0.0,0.0,0.0); drawRigidMolSystem( clworld, isystem );
+	opengl1renderer.color3f(0.0,0.0,0.0); drawRigidMolSystem( clworld, isystem );
 	drawRigidMolSystemForceTorq(  clworld, isystem, 100.0, 1000.0 );
-	glColor3f(1.0,0.0,1.0); drawAtomsForces( atom_count, atoms_tmp, fatoms_tmp, 0.0, 100.0 );
+	opengl1renderer.color3f(1.0,0.0,1.0); drawAtomsForces( atom_count, atoms_tmp, fatoms_tmp, 0.0, 100.0 );
 
 	//return;
 
@@ -626,20 +625,20 @@ void AppMolecularEditorOCL::drawCPU(){
        stepCPU( F2, false );
     }
 
-    glEnable(GL_LIGHTING);
-    glEnable(GL_DEPTH_TEST);
-    glShadeModel(GL_SMOOTH);
+    opengl1renderer.enable(GL_LIGHTING);
+    opengl1renderer.enable(GL_DEPTH_TEST);
+    opengl1renderer.shadeModel(GL_SMOOTH);
     for(int i=0; i<world.natoms; i++){
-        glEnable(GL_LIGHTING);
+        opengl1renderer.enable(GL_LIGHTING);
         Mat3d mat;
         mat.setOne();
         mat.mul( atomSize*params.atypes[world.atypes[i]].RvdW );
         Draw::setRGB( params.atypes[world.atypes[i]].color );
         Draw3D::drawShape(world.apos[i],mat,ogl_sph);
-        glDisable(GL_LIGHTING);
+        opengl1renderer.disable(GL_LIGHTING);
     }
-    glDisable(GL_LIGHTING);
-    glDisable(GL_DEPTH_TEST);
+    opengl1renderer.disable(GL_LIGHTING);
+    opengl1renderer.disable(GL_DEPTH_TEST);
 
 }
 
@@ -718,7 +717,7 @@ void AppMolecularEditorOCL::eventHandling ( const SDL_Event& event  ){
 }
 
 void AppMolecularEditorOCL::drawHUD(){
-    glDisable ( GL_LIGHTING );
+    opengl1renderer.disable ( GL_LIGHTING );
 
 }
 

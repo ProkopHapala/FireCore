@@ -50,7 +50,7 @@ fi
 #./$name -x tAttach/PNA_CG_poly-.mol2
 #./$name -x tAttach/PNA_CG_poly-.mol2 -nPBC 1,3,0  -g common_resources/xyz/NaCl_8x8_L3 -shift 0.0,0.0,2.0
 #./$name -x tAttach/DANA_CG_poly.mol2 -nPBC 1,3,0  -g common_resources/xyz/NaCl_8x8_L3 -shift 0.0,0.0,2.0
-./$name -x tAttach/DANA_CG_poly-.mol2 -nPBC 1,3,0 
+#./$name -x tAttach/DANA_CG_poly-.mol2 -nPBC 1,3,0 
 #./$name -x tAttach/DANA_CG_poly-.mol2 -nPBC 1,3,0  -g common_resources/xyz/NaCl_8x8_L3 -shift 0.0,0.0,2.0
 
 
@@ -181,7 +181,7 @@ fi
 #./$name -x common_resources/xyz/N_2edge_assay_1  -g common_resources/NaCl_1x1_L2 -e
 
 
-#./$name -x common_resources/xyz/PTCDA -g common_resources/xyz/NaCl_1x1_L3
+./$name -x common_resources/xyz/PTCDA -g common_resources/xyz/NaCl_1x1_L3
 #./$name -x common_resources/xyz/PTCDA -g common_resources/xyz/NaCl_1x1_L3 -uff -iParalel 0
 
 #./$name -x common_resources/xyz/guanine -g common_resources/xyz/NaCl_1x1_L3 -uff -iParalel 0

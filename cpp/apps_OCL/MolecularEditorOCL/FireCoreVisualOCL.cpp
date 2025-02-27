@@ -12,7 +12,6 @@
 #include "IO_utils.h"
 
 #include <SDL2/SDL.h>
-#include <SDL2/SDL_opengl.h>
 #include "Draw3D.h"
 #include "SDL_utils.h"
 #include "Solids.h"
@@ -302,9 +301,9 @@ TestAppFireCoreVisual::TestAppFireCoreVisual( int& id, int WIDTH_, int HEIGHT_ )
     Draw3D::makeSphereOgl( ogl_sph, 5, 1.0 );
     //float l_diffuse  []{ 0.9f, 0.85f, 0.8f,  1.0f };
 	float l_specular []{ 0.0f, 0.0f,  0.0f,  1.0f };
-    //glLightfv    ( GL_LIGHT0, GL_AMBIENT,   l_ambient  );
-	//glLightfv    ( GL_LIGHT0, GL_DIFFUSE,   l_diffuse  );
-	glLightfv    ( GL_LIGHT0, GL_SPECULAR,  l_specular );
+    //opengl1renderer.lightfv    ( GL_LIGHT0, GL_AMBIENT,   l_ambient  );
+	//opengl1renderer.lightfv    ( GL_LIGHT0, GL_DIFFUSE,   l_diffuse  );
+	opengl1renderer.lightfv    ( GL_LIGHT0, GL_SPECULAR,  l_specular );
 
     // ========== Gizmo
     cam.persp = false;
@@ -321,35 +320,35 @@ TestAppFireCoreVisual::TestAppFireCoreVisual( int& id, int WIDTH_, int HEIGHT_ )
 }
 
 void TestAppFireCoreVisual::renderOrbital(int iMO, double iso ){
-    if(ogl_MO){ glDeleteLists(ogl_MO,1); }
+    if(ogl_MO){ opengl1renderer.deleteLists(ogl_MO,1); }
     qmmm.evalQM( ff.apos, ff.aforce );
     int ntot = MOgrid.n.x*MOgrid.n.y*MOgrid.n.z;
     double* ewfaux = new double[ ntot ];
     fireCore.getGridMO( iMO, ewfaux );
-    ogl_MO  = glGenLists(1);
+    ogl_MO  = opengl1renderer.genLists(1);
     Vec3d p=Vec3d{0.4,2.5,0.0};
-    glNewList(ogl_MO, GL_COMPILE);
-    glTranslatef( p.x, p.y, p.z );
+    opengl1renderer.newList(ogl_MO, GL_COMPILE);
+    opengl1renderer.translatef( p.x, p.y, p.z );
     int ntris=0;  
-    glColor3f(0.0,0.0,1.0); ntris += Draw3D::MarchingCubesCross( MOgrid,  iso, ewfaux, isoSurfRenderType  );
-    glColor3f(1.0,0.0,0.0); ntris += Draw3D::MarchingCubesCross( MOgrid, -iso, ewfaux, isoSurfRenderType  );
-    glColor3f(0.0f,0.0f,0.0f); Draw3D::drawTriclinicBox(builder.lvec.transposed(), Vec3dZero, Vec3dOne );
-    glTranslatef( -p.x, -p.y, -p.z );
-    glEndList();
+    opengl1renderer.color3f(0.0,0.0,1.0); ntris += Draw3D::MarchingCubesCross( MOgrid,  iso, ewfaux, isoSurfRenderType  );
+    opengl1renderer.color3f(1.0,0.0,0.0); ntris += Draw3D::MarchingCubesCross( MOgrid, -iso, ewfaux, isoSurfRenderType  );
+    opengl1renderer.color3f(0.0f,0.0f,0.0f); Draw3D::drawTriclinicBox(builder.lvec.transposed(), Vec3dZero, Vec3dOne );
+    opengl1renderer.translatef( -p.x, -p.y, -p.z );
+    opengl1renderer.endList();
     delete [] ewfaux;
 }
 
 void TestAppFireCoreVisual::renderDensity(double iso){
-    if(ogl_MO){ glDeleteLists(ogl_MO,1); }
+    if(ogl_MO){ opengl1renderer.deleteLists(ogl_MO,1); }
     qmmm.evalQM( ff.apos, ff.aforce );
     int ntot = MOgrid.n.x*MOgrid.n.y*MOgrid.n.z;
     double* ewfaux = new double[ ntot ];
     fireCore.getGridDens( 0, 0, ewfaux );
-    ogl_MO  = glGenLists(1);
-    glNewList(ogl_MO, GL_COMPILE);
+    ogl_MO  = opengl1renderer.genLists(1);
+    opengl1renderer.newList(ogl_MO, GL_COMPILE);
     int ntris = Draw3D::MarchingCubesCross( MOgrid, iso, ewfaux, isoSurfRenderType  );
     //printf( "renderOrbital() ntris %i \n", ntris );
-    glEndList();
+    opengl1renderer.endList();
     delete [] ewfaux;
 }
 
@@ -397,14 +396,14 @@ void TestAppFireCoreVisual::MDloop(){
 //=================================================
 
 void TestAppFireCoreVisual::draw(){
-    //glClearColor( 0.5f, 0.5f, 0.5f, 1.0f );
-    glClearColor( 1.0f, 1.0f, 1.0f, 1.0f );
-	glClear( GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT );
+    //opengl1renderer.clearColor( 0.5f, 0.5f, 0.5f, 1.0f );
+    opengl1renderer.clearColor( 1.0f, 1.0f, 1.0f, 1.0f );
+	opengl1renderer.clear( GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT );
     // Smooth lines : https://vitaliburkov.wordpress.com/2016/09/17/simple-and-fast-high-quality-antialiased-lines-with-opengl/
-    //glEnable(GL_LINE_SMOOTH);
-    glEnable(GL_BLEND);
-    glEnable(GL_LIGHTING );
-    glEnable(GL_DEPTH_TEST);
+    //opengl1renderer.enable(GL_LINE_SMOOTH);
+    opengl1renderer.enable(GL_BLEND);
+    opengl1renderer.enable(GL_LIGHTING );
+    opengl1renderer.enable(GL_DEPTH_TEST);
 
     if(frameCount==1){ qCamera.pitch( M_PI );  qCamera0=qCamera; }
     if(bRunRelax){ MDloop(); }
@@ -418,20 +417,20 @@ void TestAppFireCoreVisual::draw(){
     if(bDragging)Draw3D::drawTriclinicBoxT(cam.rot, (Vec3f)ray0_start_, (Vec3f)ray0_ );   // Mouse Selection Box
 
     if(ogl_MO){ 
-        glPushMatrix();
+        opengl1renderer.pushMatrix();
         Vec3d c = builder.lvec.a*-0.5 + builder.lvec.b*-0.5 + builder.lvec.c*-0.5;
-        glTranslatef( c.x, c.y, c.z );
-            glColor3f(1.0,1.0,1.0); 
-            glCallList(ogl_MO); 
-        glPopMatrix();
+        opengl1renderer.translatef( c.x, c.y, c.z );
+            opengl1renderer.color3f(1.0,1.0,1.0); 
+            opengl1renderer.callList(ogl_MO); 
+        opengl1renderer.popMatrix();
     }
     if(ogl_isosurf)viewSubstrate( 2, 2, ogl_isosurf, gridFF.grid.cell.a, gridFF.grid.cell.b, gridFF.shift0 );
     if(bDoQM)drawSystemQMMM();
     if(bDoMM)if(builder.bPBC){ Draw3D::drawPBC( (Vec3i){2,2,0}, builder.lvec, [&](Vec3d ixyz){drawSystem(ixyz);} ); } else { drawSystem({0,0,0}); }
     for(int i=0; i<selection.size(); i++){ int ia = selection[i];
-        glColor3f( 0.f,1.f,0.f ); Draw3D::drawSphereOctLines( 8, 0.3, ff.apos[ia] );     }
+        opengl1renderer.color3f( 0.f,1.f,0.f ); Draw3D::drawSphereOctLines( 8, 0.3, ff.apos[ia] );     }
     if(iangPicked>=0){
-        glColor3f(0.,1.,0.);      Draw3D::angle( ff.ang2atom[iangPicked], ff.ang_cs0[iangPicked], ff.apos, fontTex3D );
+        opengl1renderer.color3f(0.,1.,0.);      Draw3D::angle( ff.ang2atom[iangPicked], ff.ang_cs0[iangPicked], ff.apos, fontTex3D );
     }
 
     if(useGizmo){
@@ -441,7 +440,7 @@ void TestAppFireCoreVisual::draw(){
 };
 
 void TestAppFireCoreVisual::drawHUD(){
-    glDisable ( GL_LIGHTING );
+    opengl1renderer.disable ( GL_LIGHTING );
     gui.draw();
 }
 
@@ -451,13 +450,13 @@ void TestAppFireCoreVisual::drawingHex(double z0){
     Vec2d p{p3.x,p3.y};
     double off=1000.0;
     bool s = ruler.simplexIndex( p+(Vec2d){off,off}, ip, dp );
-    //ruler.nodePoint( ip, p );    glColor3f(1.,1.,1.); Draw3D::drawPointCross(  {p.x,p.y, 5.0}, 0.5 );
-    if(s){glColor3f(1.,0.2,1.);}else{glColor3f(0.2,1.0,1.);}
+    //ruler.nodePoint( ip, p );    opengl1renderer.color3f(1.,1.,1.); Draw3D::drawPointCross(  {p.x,p.y, 5.0}, 0.5 );
+    if(s){opengl1renderer.color3f(1.,0.2,1.);}else{opengl1renderer.color3f(0.2,1.0,1.);}
     ruler.tilePoint( ip, s, p ); Draw3D::drawPointCross(  {p.x-off,p.y-off, z0}, 0.2 );
     
     bool bLine=true;
     if(bDrawHexGrid){
-        if(bLine){glBegin(GL_LINES);}else{glBegin(GL_POINTS);}
+        if(bLine){opengl1renderer.begin(GL_LINES);}else{opengl1renderer.begin(GL_POINTS);}
         ruler.simplexIndex( (Vec2d){off,off}, ip, dp );
         double sc = ruler.step/sqrt(3.0);
         for(int ix=0;ix<10;ix++ ){
@@ -466,18 +465,18 @@ void TestAppFireCoreVisual::drawingHex(double z0){
                 ruler.tilePoint( ip_, true,  p ); 
                 p.sub(off,off);
                 if(bLine){
-                    glColor3f(1.0,0.2,1.0); 
+                    opengl1renderer.color3f(1.0,0.2,1.0); 
                     Vec2d p2;
                     Draw3D::vertex(Vec3f{p.x,p.y,z0}); p2=p+ruler.lvecs[0]*sc; Draw3D::vertex(Vec3f{p2.x,p2.y,z0});
                     Draw3D::vertex(Vec3f{p.x,p.y,z0}); p2=p+ruler.lvecs[1]*sc; Draw3D::vertex(Vec3f{p2.x,p2.y,z0});
                     Draw3D::vertex(Vec3f{p.x,p.y,z0}); p2=p+ruler.lvecs[2]*sc; Draw3D::vertex(Vec3f{p2.x,p2.y,z0});
                 }else{
-                    glColor3f(1.0,0.2,1.0); Draw3D::vertex(Vec3f{p.x,p.y,z0}); ruler.tilePoint( ip_, false, p );  p.add(off,off);
-                    glColor3f(0.2,1.0,1.0); Draw3D::vertex(Vec3f{p.x,p.y,z0});
+                    opengl1renderer.color3f(1.0,0.2,1.0); Draw3D::vertex(Vec3f{p.x,p.y,z0}); ruler.tilePoint( ip_, false, p );  p.add(off,off);
+                    opengl1renderer.color3f(0.2,1.0,1.0); Draw3D::vertex(Vec3f{p.x,p.y,z0});
                 }
             }
         }
-        glEnd();
+        opengl1renderer.end();
     }
 }
 
@@ -532,30 +531,30 @@ void TestAppFireCoreVisual::makeGridFF( bool recalcFF, bool bRenderGridFF ) {
         gridFF.evalCombindGridFF            ( testREQ, FFtot );
         //if(idebug>1) saveXSF( "FFtot_z.xsf",  gridFF.grid, FFtot, 2, gridFF.natoms, gridFF.apos, gridFF.atypes );
         if(idebug>1)  gridFF.grid.saveXSF( "FFtot_E.xsf", (float*)FFtot, 4,3, gridFF.natoms, gridFF.atypes, gridFF.apos );
-        ogl_isosurf = glGenLists(1);
-        glNewList(ogl_isosurf, GL_COMPILE);
-        glShadeModel( GL_SMOOTH );
-        glEnable(GL_LIGHTING);
-        glEnable(GL_DEPTH_TEST);
+        ogl_isosurf = opengl1renderer.genLists(1);
+        opengl1renderer.newList(ogl_isosurf, GL_COMPILE);
+        opengl1renderer.shadeModel( GL_SMOOTH );
+        opengl1renderer.enable(GL_LIGHTING);
+        opengl1renderer.enable(GL_DEPTH_TEST);
         renderSubstrate_( gridFF.grid, FFtot, gridFF.FFelec, 0.01, true, 0.1);
         Draw3D::drawAxis(1.0);
-        glEndList();
+        opengl1renderer.endList();
         delete [] FFtot;
     }
 }
 
 void TestAppFireCoreVisual::drawSystem( Vec3d ixyz ){
     bool bOrig = (ixyz.x==0)&&(ixyz.y==0)&&(ixyz.z==0);
-    //glColor3f(0.0f,0.0f,0.0f); Draw3D::bondsPBC  ( ff.nbonds, ff.bond2atom, ff.apos, &builder.bondPBC[0], builder.lvec ); 
-    glColor3f(0.0f,0.0f,0.0f); Draw3D::bondsPBC  ( ff.nbonds, ff.bond2atom, ff.apos, ff.pbcShifts ); 
-    if(bOrig&&mm_bAtoms){ glColor3f(0.0f,0.0f,0.0f); Draw3D::atomLabels( ff.natoms, ff.apos, fontTex3D                     ); }                    
+    //opengl1renderer.color3f(0.0f,0.0f,0.0f); Draw3D::bondsPBC  ( ff.nbonds, ff.bond2atom, ff.apos, &builder.bondPBC[0], builder.lvec ); 
+    opengl1renderer.color3f(0.0f,0.0f,0.0f); Draw3D::bondsPBC  ( ff.nbonds, ff.bond2atom, ff.apos, ff.pbcShifts ); 
+    if(bOrig&&mm_bAtoms){ opengl1renderer.color3f(0.0f,0.0f,0.0f); Draw3D::atomLabels( ff.natoms, ff.apos, fontTex3D                     ); }                    
     Draw3D::atoms( ff.natoms, ff.apos, atypes, params, ogl_sph, 1.0, mm_Rsc, mm_Rsub );       
 }
 
 void TestAppFireCoreVisual::drawSystemQMMM(){
-    glEnable(GL_LIGHTING);
-    glEnable(GL_DEPTH_TEST);
-    glShadeModel(GL_SMOOTH);
+    opengl1renderer.enable(GL_LIGHTING);
+    opengl1renderer.enable(GL_DEPTH_TEST);
+    opengl1renderer.shadeModel(GL_SMOOTH);
     double Rsub = 1.0; 
     double Rsc  = 0.5;
     for(int i=0; i<qmmm.nqm; i++){
@@ -565,7 +564,7 @@ void TestAppFireCoreVisual::drawSystemQMMM(){
         Draw::setRGB( atyp.color );
         Draw3D::drawShape( ogl_sph, ff.apos[im], Mat3dIdentity*((atyp.RvdW-Rsub)*Rsc) );
     }
-    glColor3f(0.5f,0.0f,0.0f); 
+    opengl1renderer.color3f(0.5f,0.0f,0.0f); 
     Draw3D::atomPropertyLabel( qmmm.nqm, qmmm.charges, qmmm.apos, 1,0, fontTex3D );
 
 }
@@ -575,10 +574,10 @@ void TestAppFireCoreVisual::saveScreenshot( int i, const char* fname ){
     sprintf( str, fname, i );               
     printf( "save to %s \n", str );
     unsigned int *screenPixels = new unsigned int[WIDTH*HEIGHT*4];  
-    glFlush();                                                      
-    glFinish();                                                     
-    //glReadPixels(0, 0, WIDTH, HEIGHT, GL_RGB, GL_UNSIGNED_INT, screenPixels);
-    glReadPixels(0, 0, WIDTH, HEIGHT, GL_RGBA, GL_UNSIGNED_BYTE, screenPixels);   
+    opengl1renderer.flush();                                                      
+    opengl1renderer.finish();                                                     
+    //opengl1renderer.readPixels(0, 0, WIDTH, HEIGHT, GL_RGB, GL_UNSIGNED_INT, screenPixels);
+    opengl1renderer.readPixels(0, 0, WIDTH, HEIGHT, GL_RGBA, GL_UNSIGNED_BYTE, screenPixels);   
     //SDL_Surface *bitmap = SDL_CreateRGBSurfaceFrom(screenPixels, WIDTH, HEIGHT, 32, WIDTH*4, 0xff000000, 0x00ff0000, 0x0000ff00, 0x000000ff );   
     SDL_Surface *bitmap = SDL_CreateRGBSurfaceFrom(screenPixels, WIDTH, HEIGHT, 32, WIDTH*4, 0x000000ff, 0x0000ff00, 0x00ff0000, 0xff000000 );   
     SDL_SaveBMP(bitmap, str);    

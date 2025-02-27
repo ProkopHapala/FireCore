@@ -42,8 +42,8 @@ void drawIso( Func func, Vec3i n, Vec3d pmin, Mat3d dcell, double iso ){
         0,3, 7,9,
         0,3, 9,4
     };
-    //glBegin(GL_LINES);
-    glBegin(GL_TRIANGLES);
+    //opengl1renderer.begin(GL_LINES);
+    opengl1renderer.begin(GL_TRIANGLES);
     for(int ix=0; ix<n.x; ix++){
         for(int iy=0; iy<n.y; iy++){
             for(int iz=0; iz<n.z; iz++){
@@ -64,7 +64,7 @@ void drawIso( Func func, Vec3i n, Vec3d pmin, Mat3d dcell, double iso ){
             }
         }
     }
-    glEnd();
+    opengl1renderer.end();
 }
 
 template< typename Func >

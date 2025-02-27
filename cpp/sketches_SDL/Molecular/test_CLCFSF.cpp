@@ -6,7 +6,7 @@
 #include <math.h>
 
 #include <SDL2/SDL.h>
-#include <SDL2/SDL_opengl.h>
+
 #include "Draw.h"
 #include "Draw3D.h"
 #include "DrawIso.h"
@@ -369,10 +369,10 @@ TestAppCLCFSF::TestAppCLCFSF( int& id, int WIDTH_, int HEIGHT_ ) : AppSDL2OGL_3D
     */
 
     /*
-    ogl = glGenLists(1);
-    glNewList(ogl,GL_COMPILE);
+    ogl = opengl1renderer.genLists(1);
+    opengl1renderer.newList(ogl,GL_COMPILE);
     solver.prepareIntegralTables();
-    glEndList();
+    opengl1renderer.endList();
 
     DataLine2D* line_wf      = new DataLine2D(solver.nsampMem , -solver.dsamp, solver.dsamp, 0xFFFFFF00, "Wf"     ,solver.Wfs      ); plot1.add(line_wf    );
     DataLine2D* line_overlap = new DataLine2D(solver.nsampIMem, -solver.dsamp, solver.dsamp, 0xFF00FFFF, "Overlap",solver.IOverlap ); plot1.add(line_overlap);
@@ -462,23 +462,23 @@ TestAppCLCFSF::TestAppCLCFSF( int& id, int WIDTH_, int HEIGHT_ ) : AppSDL2OGL_3D
 
 void TestAppCLCFSF::draw(){
     //printf( " ==== frame %i \n", frameCount );
-    glClearColor( 0.5f, 0.5f, 0.5f, 1.0f );
-    glClear( GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT );
-    glEnable(GL_DEPTH_TEST);
+    opengl1renderer.clearColor( 0.5f, 0.5f, 0.5f, 1.0f );
+    opengl1renderer.clear( GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT );
+    opengl1renderer.enable(GL_DEPTH_TEST);
 
-    glCallList( ogl );
+    opengl1renderer.callList( ogl );
 
-    glDisable(GL_DEPTH_TEST);
+    opengl1renderer.disable(GL_DEPTH_TEST);
 
     plot1.view();
 };
 
 
 void TestAppCLCFSF::drawHUD(){
-    glDisable(GL_LIGHTING);
-    glDisable(GL_DEPTH_TEST);
-	//glTranslatef( 100.0,100.0,0.0 );
-	//glScalef    ( 20.0,300.00,1.0  );
+    opengl1renderer.disable(GL_LIGHTING);
+    opengl1renderer.disable(GL_DEPTH_TEST);
+	//opengl1renderer.translatef( 100.0,100.0,0.0 );
+	//opengl1renderer.scalef    ( 20.0,300.00,1.0  );
 	//plot1.view();
 
 }

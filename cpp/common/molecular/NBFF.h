@@ -13,6 +13,8 @@
 #include "Forces.h"
 #include "ForceField.h"
 
+#include <unordered_set>
+
 #include "simd.h"
 
 void fitAABB( Vec6d& bb, int n, int* c2o, Vec3d* ps ){
@@ -1104,9 +1106,9 @@ class NBFF: public ForceField{ public:
                 double ei = addAtomicForceMorseQ( dp, fij, REQij.x, REQij.y, REQij.z, K, R2Q );    E+=ei;
                 //double ei = addAtomicForceQ_R2( dp, fij, REQij.z, K, R2Q );    E+=ei;
                 //E += addAtomicForceLJQ   ( apos[j]-pi, fij, REQij );
-                //glColor3f(1.0f,0.0f,0.0f); Draw3D::drawVecInPos( fij      , pi );
-                //glColor3f(1.0f,0.0f,0.0f); Draw3D::drawVecInPos( fij*-1.0f, apos[j] );
-                //glColor3f(1.0f,0.0f,1.0f); Draw3D::drawLine( pi, apos[j] );
+                //opengl1renderer.color3f(1.0f,0.0f,0.0f); Draw3D::drawVecInPos( fij      , pi );
+                //opengl1renderer.color3f(1.0f,0.0f,0.0f); Draw3D::drawVecInPos( fij*-1.0f, apos[j] );
+                //opengl1renderer.color3f(1.0f,0.0f,1.0f); Draw3D::drawLine( pi, apos[j] );
                 //if(i==6){ printf("CPU[%i,%i] dp(%g,%g,%g) fe(%g,%g,%g|%g)\n", i,j,  dp.x,dp.y,dp.z,   fij.x,fij.y,fij.z,ei ); }
                 fapos[j].sub(fij);
                 fi     .add(fij);

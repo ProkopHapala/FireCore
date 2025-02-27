@@ -13,7 +13,6 @@
 #include "IO_utils.h"
 
 #include <SDL2/SDL.h>
-#include <SDL2/SDL_opengl.h>
 #include "Draw3D.h"
 #include "SDL_utils.h"
 #include "Solids.h"
@@ -250,9 +249,9 @@ TestAppMMFFmini::TestAppMMFFmini( int& id, int WIDTH_, int HEIGHT_ ) : AppSDL2OG
 
     //float l_diffuse  []{ 0.9f, 0.85f, 0.8f,  1.0f };
 	float l_specular []{ 0.0f, 0.0f,  0.0f,  1.0f };
-    //glLightfv    ( GL_LIGHT0, GL_AMBIENT,   l_ambient  );
-	//glLightfv    ( GL_LIGHT0, GL_DIFFUSE,   l_diffuse  );
-	glLightfv    ( GL_LIGHT0, GL_SPECULAR,  l_specular );
+    //opengl1renderer.lightfv    ( GL_LIGHT0, GL_AMBIENT,   l_ambient  );
+	//opengl1renderer.lightfv    ( GL_LIGHT0, GL_DIFFUSE,   l_diffuse  );
+	opengl1renderer.lightfv    ( GL_LIGHT0, GL_SPECULAR,  l_specular );
 
     std::unordered_set<int> innodes;
     //innodes.insert(12);
@@ -268,7 +267,7 @@ TestAppMMFFmini::TestAppMMFFmini( int& id, int WIDTH_, int HEIGHT_ ) : AppSDL2OG
 
 
 void TestAppMMFFmini::renderOrbital(int iMO, double iso ){
-    if(ogl_MO){ glDeleteLists(ogl_MO,1); }
+    if(ogl_MO){ opengl1renderer.deleteLists(ogl_MO,1); }
     qmmm.evalQM( ff.apos, ff.aforce );
     int ntot = MOgrid.n.x*MOgrid.n.y*MOgrid.n.z;
     double* ewfaux = new double[ ntot ];
@@ -277,32 +276,32 @@ void TestAppMMFFmini::renderOrbital(int iMO, double iso ){
     //ewfaux[ntot/2 + MOgrid.n.x*(MOgrid.n.y/2) + MOgrid.n.x/2 ] = 1.0;
     //MOgrid.pos0 = MOgrid.dCell.a*(-MOgrid.n.a/3) + MOgrid.dCell.b*(-MOgrid.n.b/2) + MOgrid.dCell.c*(-MOgrid.n.c/2);
     //MOgrid.pos0 = Vec3dZero; ewfaux[10*MOgrid.n.x*MOgrid.n.y + MOgrid.n.x*10 + 10 ] = 1.0;
-    ogl_MO  = glGenLists(1);
+    ogl_MO  = opengl1renderer.genLists(1);
     Vec3d p=Vec3d{0.4,2.5,0.0};
-    glNewList(ogl_MO, GL_COMPILE);
-    glTranslatef( p.x, p.y, p.z );
+    opengl1renderer.newList(ogl_MO, GL_COMPILE);
+    opengl1renderer.translatef( p.x, p.y, p.z );
     int ntris=0;  
-    glColor3f(0.0,0.0,1.0); ntris += Draw3D::MarchingCubesCross( MOgrid,  iso, ewfaux, renderType  );
-    glColor3f(1.0,0.0,0.0); ntris += Draw3D::MarchingCubesCross( MOgrid, -iso, ewfaux, renderType  );
+    opengl1renderer.color3f(0.0,0.0,1.0); ntris += Draw3D::MarchingCubesCross( MOgrid,  iso, ewfaux, renderType  );
+    opengl1renderer.color3f(1.0,0.0,0.0); ntris += Draw3D::MarchingCubesCross( MOgrid, -iso, ewfaux, renderType  );
     //printf( "renderOrbital() ntris %i \n", ntris );
     //int ntris = Draw3D::Grid2Points( MOgrid, 0.1, ewfaux );
-    glColor3f(0.0f,0.0f,0.0f); Draw3D::drawTriclinicBox(builder.lvec.transposed(), Vec3dZero, Vec3dOne );
-    glTranslatef( -p.x, -p.y, -p.z );
-    glEndList();
+    opengl1renderer.color3f(0.0f,0.0f,0.0f); Draw3D::drawTriclinicBox(builder.lvec.transposed(), Vec3dZero, Vec3dOne );
+    opengl1renderer.translatef( -p.x, -p.y, -p.z );
+    opengl1renderer.endList();
     delete [] ewfaux;
 }
 
 void TestAppMMFFmini::renderDensity(double iso){
-    if(ogl_MO){ glDeleteLists(ogl_MO,1); }
+    if(ogl_MO){ opengl1renderer.deleteLists(ogl_MO,1); }
     qmmm.evalQM( ff.apos, ff.aforce );
     int ntot = MOgrid.n.x*MOgrid.n.y*MOgrid.n.z;
     double* ewfaux = new double[ ntot ];
     fireCore.getGridDens( 0, 0, ewfaux );
-    ogl_MO  = glGenLists(1);
-    glNewList(ogl_MO, GL_COMPILE);
+    ogl_MO  = opengl1renderer.genLists(1);
+    opengl1renderer.newList(ogl_MO, GL_COMPILE);
     int ntris = Draw3D::MarchingCubesCross( MOgrid, iso, ewfaux, renderType  );
     //printf( "renderOrbital() ntris %i \n", ntris );
-    glEndList();
+    opengl1renderer.endList();
     delete [] ewfaux;
 }
 
@@ -370,22 +369,22 @@ void TestAppMMFFmini::MDloop(){
 //=================================================
 
 void TestAppMMFFmini::draw(){
-    glClearColor( 0.5f, 0.5f, 0.5f, 1.0f );
-    //glClearColor( 1.0f, 1.0f, 1.0f, 1.0f );
-	glClear( GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT );
+    opengl1renderer.clearColor( 0.5f, 0.5f, 0.5f, 1.0f );
+    //opengl1renderer.clearColor( 1.0f, 1.0f, 1.0f, 1.0f );
+	opengl1renderer.clear( GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT );
     // Smooth lines : https://vitaliburkov.wordpress.com/2016/09/17/simple-and-fast-high-quality-antialiased-lines-with-opengl/
-    glEnable(GL_LINE_SMOOTH);
-    glEnable(GL_BLEND);
-    glEnable(GL_LIGHTING );
-    glEnable(GL_DEPTH_TEST);
+    opengl1renderer.enable(GL_LINE_SMOOTH);
+    opengl1renderer.enable(GL_BLEND);
+    opengl1renderer.enable(GL_LIGHTING );
+    opengl1renderer.enable(GL_DEPTH_TEST);
     //glDepthMask(false);
-    //glLineWidth(lw);
+    //opengl1renderer.lineWidth(lw);
     //glDrawArrays(GL_LINE_STRIP, offset, count);
 
     //printf( "====== Frame # %i \n", frameCount );
     //cam.qrot.rotate(M_PI*0.01,Vec3fX);
     //Draw3D::drawAxis(  10. );
-    //if( ogl_mol ){ glCallList( ogl_mol ); return; }
+    //if( ogl_mol ){ opengl1renderer.callList( ogl_mol ); return; }
     //printf( "builder.lvec: " ); builder.lvec.print();
 
     if(frameCount==1){
@@ -415,26 +414,26 @@ void TestAppMMFFmini::draw(){
     // ---  Isosurface Rendering ( Molecular Orbital, Density ) 
     //Draw3D::drawTriclinicBox(builder.lvec, Vec3dZero, Vec3dOne );
     if(ogl_MO){ 
-        glPushMatrix();
+        opengl1renderer.pushMatrix();
         Vec3d c = builder.lvec.a*-0.5 + builder.lvec.b*-0.5 + builder.lvec.c*-0.5;
-        glTranslatef( c.x, c.y, c.z );
+        opengl1renderer.translatef( c.x, c.y, c.z );
           // Molecular Orbital ?
-            glColor3f(1.0,1.0,1.0); 
-            glCallList(ogl_MO); 
+            opengl1renderer.color3f(1.0,1.0,1.0); 
+            opengl1renderer.callList(ogl_MO); 
             //return; 
-        glPopMatrix();
+        opengl1renderer.popMatrix();
     }
-    //glColor3f(0.6f,0.6f,0.6f); Draw3D::plotSurfPlane( Vec3d{0.0,0.0,1.0}, -3.0, {3.0,3.0}, {20,20} );
-    //glColor3f(0.95f,0.95f,0.95f); Draw3D::plotSurfPlane( Vec3d{0.0,0.0,1.0}, -3.0, {3.0,3.0}, {20,20} );
+    //opengl1renderer.color3f(0.6f,0.6f,0.6f); Draw3D::plotSurfPlane( Vec3d{0.0,0.0,1.0}, -3.0, {3.0,3.0}, {20,20} );
+    //opengl1renderer.color3f(0.95f,0.95f,0.95f); Draw3D::plotSurfPlane( Vec3d{0.0,0.0,1.0}, -3.0, {3.0,3.0}, {20,20} );
     if(ogl_isosurf)viewSubstrate( 2, 2, ogl_isosurf, gridFF.grid.cell.a, gridFF.grid.cell.b, gridFF.shift0 );
 
     //printf( "bDoQM %i bDoMM %i \n", bDoQM, bDoMM );
     if(bDoQM)drawSystemQMMM();
     if(bDoMM)if(builder.bPBC){ Draw3D::drawPBC( (Vec3i){2,2,0}, builder.lvec, [&](Vec3d ixyz){drawSystem(ixyz);} ); } else { drawSystem({0,0,0}); }
     for(int i=0; i<selection.size(); i++){ int ia = selection[i];
-        glColor3f( 0.f,1.f,0.f ); Draw3D::drawSphereOctLines( 8, 0.3, ff.apos[ia] );     }
+        opengl1renderer.color3f( 0.f,1.f,0.f ); Draw3D::drawSphereOctLines( 8, 0.3, ff.apos[ia] );     }
     if(iangPicked>=0){
-        glColor3f(0.,1.,0.);      Draw3D::angle( ff.ang2atom[iangPicked], ff.ang_cs0[iangPicked], ff.apos, fontTex );
+        opengl1renderer.color3f(0.,1.,0.);      Draw3D::angle( ff.ang2atom[iangPicked], ff.ang_cs0[iangPicked], ff.apos, fontTex );
     }
     //if(makeScreenshot){ saveScreenshot( icell ); icell++; }
 };
@@ -501,18 +500,18 @@ void TestAppMMFFmini::makeGridFF( bool recalcFF, bool bRenderGridFF ) {
         //saveXSF( "FFtot_z_CheckInterp.xsf", world.gridFF.grid, FFtot, 2, world.gridFF.natoms, world.gridFF.apos, world.gridFF.atypes );
         gridFF.evalCombindGridFF            ( testREQ, FFtot );
         if(idebug>1) gridFF.grid.saveXSF<float>( "FFtot_z.xsf", (float*)FFtot, 4, 3, gridFF.natoms, gridFF.atypes, gridFF.apos );
-        ogl_isosurf = glGenLists(1);
-        glNewList(ogl_isosurf, GL_COMPILE);
-        glShadeModel( GL_SMOOTH );
-        glEnable(GL_LIGHTING);
-        glEnable(GL_DEPTH_TEST);
+        ogl_isosurf = opengl1renderer.genLists(1);
+        opengl1renderer.newList(ogl_isosurf, GL_COMPILE);
+        opengl1renderer.shadeModel( GL_SMOOTH );
+        opengl1renderer.enable(GL_LIGHTING);
+        opengl1renderer.enable(GL_DEPTH_TEST);
         //getIsovalPoints_a( world.gridFF.grid, 0.1, FFtot, iso_points );
         //renderSubstrate( iso_points.size(), &iso_points[0], GL_POINTS );
         //renderSubstrate_( world.gridFF.grid, FFtot, 0.1, true );
         //renderSubstrate_( world.gridFF.grid, FFtot, 0.01, true );
         renderSubstrate_( gridFF.grid, FFtot, gridFF.FFelec, 0.01, true, 0.1);
         Draw3D::drawAxis(1.0);
-        glEndList();
+        opengl1renderer.endList();
         delete [] FFtot;
     }
 }
@@ -614,10 +613,10 @@ int TestAppMMFFmini::loadMoleculeMol( const char* fname, bool bAutoH, bool bLoad
     //Draw3D::shapeInPoss( ogl_sph, ff.natoms, ff.apos, 0 );
 
     /*
-    ogl_mol = glGenLists(1);
-    glNewList( ogl_mol, GL_COMPILE );
+    ogl_mol = opengl1renderer.genLists(1);
+    opengl1renderer.newList( ogl_mol, GL_COMPILE );
         Draw3D::drawLines( mol.nbonds, (int*)mol.bond2atom, mol.pos );
-    glEndList();
+    opengl1renderer.endList();
     */
 
     return nheavy;
@@ -625,13 +624,13 @@ int TestAppMMFFmini::loadMoleculeMol( const char* fname, bool bAutoH, bool bLoad
 
 void TestAppMMFFmini::drawSystem( Vec3d ixyz ){
     bool bOrig = (ixyz.x==0)&&(ixyz.y==0)&&(ixyz.z==0);
-    //glColor3f(0.0f,0.0f,0.0f); Draw3D::drawLines ( ff.nbonds, (int*)ff.bond2atom, ff.apos );
-    //glColor3f(0.0f,0.0f,0.0f); Draw3D::bondsPBC  ( ff.nbonds, ff.bond2atom, ff.apos, &builder.bondPBC[0], builder.lvec ); // DEBUG
-    glColor3f(0.0f,0.0f,0.0f); Draw3D::bondsPBC  ( ff.nbonds, ff.bond2atom, ff.apos, ff.pbcShifts ); // DEBUG
-    if(bOrig&&mm_bAtoms){ glColor3f(0.0f,0.0f,0.0f); Draw3D::atomLabels( ff.natoms, ff.apos, fontTex                     ); }                     //DEBUG
-    //glColor3f(0.0f,0.0f,1.0f); Draw3D::bondLabels( ff.nbonds, ff.bond2atom, ff.apos, fontTex, 0.02 );                     //DEBUG
-    //glColor3f(0.0f,0.0f,1.0f); Draw3D::atomPropertyLabel( ff.natoms, (double*)nff.REQs, ff.apos, 3,2, fontTex, 0.02, "%4.2f\0" );
-    //glColor3f(1.0f,0.0f,0.0f); Draw3D::vecsInPoss( ff.natoms, ff.aforce, ff.apos, 300.0              );
+    //opengl1renderer.color3f(0.0f,0.0f,0.0f); Draw3D::drawLines ( ff.nbonds, (int*)ff.bond2atom, ff.apos );
+    //opengl1renderer.color3f(0.0f,0.0f,0.0f); Draw3D::bondsPBC  ( ff.nbonds, ff.bond2atom, ff.apos, &builder.bondPBC[0], builder.lvec ); // DEBUG
+    opengl1renderer.color3f(0.0f,0.0f,0.0f); Draw3D::bondsPBC  ( ff.nbonds, ff.bond2atom, ff.apos, ff.pbcShifts ); // DEBUG
+    if(bOrig&&mm_bAtoms){ opengl1renderer.color3f(0.0f,0.0f,0.0f); Draw3D::atomLabels( ff.natoms, ff.apos, fontTex                     ); }                     //DEBUG
+    //opengl1renderer.color3f(0.0f,0.0f,1.0f); Draw3D::bondLabels( ff.nbonds, ff.bond2atom, ff.apos, fontTex, 0.02 );                     //DEBUG
+    //opengl1renderer.color3f(0.0f,0.0f,1.0f); Draw3D::atomPropertyLabel( ff.natoms, (double*)nff.REQs, ff.apos, 3,2, fontTex, 0.02, "%4.2f\0" );
+    //opengl1renderer.color3f(1.0f,0.0f,0.0f); Draw3D::vecsInPoss( ff.natoms, ff.aforce, ff.apos, 300.0              );
     //Draw3D::atomsREQ  ( ff.natoms, ff.apos,   nff.REQs, ogl_sph, 1.0, 0.25, 1.0 );
     //Draw3D::atoms( ff.natoms, ff.apos, atypes, params, ogl_sph, 1.0, 1.0, 1.0 );       //DEBUG
     //Draw3D::atoms( ff.natoms, ff.apos, atypes, params, ogl_sph, 1.0, 0.5, 1.0 );       //DEBUG
@@ -639,9 +638,9 @@ void TestAppMMFFmini::drawSystem( Vec3d ixyz ){
 }
 
 void TestAppMMFFmini::drawSystemQMMM(){
-    glEnable(GL_LIGHTING);
-    glEnable(GL_DEPTH_TEST);
-    glShadeModel(GL_SMOOTH);
+    opengl1renderer.enable(GL_LIGHTING);
+    opengl1renderer.enable(GL_DEPTH_TEST);
+    opengl1renderer.shadeModel(GL_SMOOTH);
     double Rsub = 1.0; 
     double Rsc  = 0.5;
     for(int i=0; i<qmmm.nqm; i++){
@@ -652,7 +651,7 @@ void TestAppMMFFmini::drawSystemQMMM(){
         Draw::setRGB( atyp.color );
         Draw3D::drawShape( ogl_sph, ff.apos[im], Mat3dIdentity*((atyp.RvdW-Rsub)*Rsc) );
     }
-    glColor3f(0.5f,0.0f,0.0f); 
+    opengl1renderer.color3f(0.5f,0.0f,0.0f); 
     Draw3D::atomPropertyLabel( qmmm.nqm, qmmm.charges, qmmm.apos, 1,0, fontTex );
 
 }
@@ -663,10 +662,10 @@ void TestAppMMFFmini::saveScreenshot( int i, const char* fname ){
         sprintf( tmpstr, fname, i );              
         printf( "save to %s \n", tmpstr );
         unsigned int *screenPixels = new unsigned int[WIDTH*HEIGHT*4]; 
-        glFlush();                                                     
-        glFinish();                                                  
-        //glReadPixels(0, 0, WIDTH, HEIGHT, GL_RGB, GL_UNSIGNED_INT, screenPixels);
-        glReadPixels(0, 0, WIDTH, HEIGHT, GL_RGBA, GL_UNSIGNED_BYTE, screenPixels); 
+        opengl1renderer.flush();                                                     
+        opengl1renderer.finish();                                                  
+        //opengl1renderer.readPixels(0, 0, WIDTH, HEIGHT, GL_RGB, GL_UNSIGNED_INT, screenPixels);
+        opengl1renderer.readPixels(0, 0, WIDTH, HEIGHT, GL_RGBA, GL_UNSIGNED_BYTE, screenPixels); 
         //SDL_Surface *bitmap = SDL_CreateRGBSurfaceFrom(screenPixels, WIDTH, HEIGHT, 32, WIDTH*4, 0xff000000, 0x00ff0000, 0x0000ff00, 0x000000ff );  
         SDL_Surface *bitmap = SDL_CreateRGBSurfaceFrom(screenPixels, WIDTH, HEIGHT, 32, WIDTH*4, 0x000000ff, 0x0000ff00, 0x00ff0000, 0xff000000 ); 
         SDL_SaveBMP(bitmap, tmpstr);    
@@ -792,7 +791,7 @@ void TestAppMMFFmini::eventHandling ( const SDL_Event& event  ){
 }
 
 void TestAppMMFFmini::drawHUD(){
-    glDisable ( GL_LIGHTING );
+    opengl1renderer.disable ( GL_LIGHTING );
 
 }
 

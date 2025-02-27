@@ -6,7 +6,7 @@
 #include <math.h>
 
 #include <SDL2/SDL.h>
-#include <SDL2/SDL_opengl.h>
+
 #include "Draw.h"
 #include "Draw3D.h"
 #include "DrawIso.h"
@@ -347,26 +347,26 @@ TestAppSp3Space::TestAppSp3Space( int& id, int WIDTH_, int HEIGHT_ ) : AppSDL2OG
 
     p2.z=2.0;
     ogl=Draw::list(ogl);
-        glEnable(GL_DEPTH_TEST);
-        glEnable(GL_LIGHTING);
-        glShadeModel(GL_SMOOTH);
-        glColor3f(0.0,0.4,0.8); Draw3D::drawIso( wf, 0.5, pmin, pmax,  0.01 );
-        glColor3f(0.8,0.4,0.0); Draw3D::drawIso( wf, 0.5, pmin, pmax, -0.01 );
-        glColor3f(0,0,0);
+        opengl1renderer.enable(GL_DEPTH_TEST);
+        opengl1renderer.enable(GL_LIGHTING);
+        opengl1renderer.shadeModel(GL_SMOOTH);
+        opengl1renderer.color3f(0.0,0.4,0.8); Draw3D::drawIso( wf, 0.5, pmin, pmax,  0.01 );
+        opengl1renderer.color3f(0.8,0.4,0.0); Draw3D::drawIso( wf, 0.5, pmin, pmax, -0.01 );
+        opengl1renderer.color3f(0,0,0);
         Draw3D::drawBBox( pmin, pmax );
 
-        //glEnd();
-    glEndList();
+        //opengl1renderer.end();
+    opengl1renderer.endList();
 
 }
 
 void TestAppSp3Space::draw(){
     //printf( " ==== frame %i \n", frameCount );
-    glClearColor( 0.5f, 0.5f, 0.5f, 1.0f );
-    glClear( GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT );
-    glEnable(GL_DEPTH_TEST);
+    opengl1renderer.clearColor( 0.5f, 0.5f, 0.5f, 1.0f );
+    opengl1renderer.clear( GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT );
+    opengl1renderer.enable(GL_DEPTH_TEST);
 
-    glCallList(ogl);
+    opengl1renderer.callList(ogl);
 
     Vec3d  h = p1-p2;
     double r = h.normalize();
@@ -376,16 +376,16 @@ void TestAppSp3Space::draw(){
     rot.dot_to( psi1.p, c1 );
     rot.dot_to( psi2.p, c2 );
 
-    glColor3f(0.0,0.0,0.0);
+    opengl1renderer.color3f(0.0,0.0,0.0);
 
-    glColor3f(0.0,0.0,0.0);
+    opengl1renderer.color3f(0.0,0.0,0.0);
     Draw3D::drawPointCross(p1,0.1);
     Draw3D::drawPointCross(p2,0.1);
     //Draw3D::drawLine(p1,p2);
 
     //Draw3D::drawMatInPos( Mat3dIdentity, p1, psi1.p );
     //Draw3D::drawMatInPos( Mat3dIdentity, p2, psi2.p );
-    glColor3f(1.0,1.0,1.0);
+    opengl1renderer.color3f(1.0,1.0,1.0);
     Draw3D::drawVecInPos( psi1.p, p1 );
     Draw3D::drawVecInPos( psi2.p, p2 );
 
@@ -403,11 +403,11 @@ void TestAppSp3Space::draw(){
 
 
 void TestAppSp3Space::drawHUD(){
-    glDisable(GL_LIGHTING);
-    glDisable(GL_DEPTH_TEST);
+    opengl1renderer.disable(GL_LIGHTING);
+    opengl1renderer.disable(GL_DEPTH_TEST);
 
-	//glTranslatef( 100.0,100.0,0.0 );
-	//glScalef    ( 20.0,300.00,1.0  );
+	//opengl1renderer.translatef( 100.0,100.0,0.0 );
+	//opengl1renderer.scalef    ( 20.0,300.00,1.0  );
 	//plot1.view();
 
 }

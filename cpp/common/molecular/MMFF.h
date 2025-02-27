@@ -292,7 +292,7 @@ int pickBond( const Vec3d& ray0, const Vec3d& hRay, double R ){
         Vec2i iat = bond2atom[ib];
         double t1,t2;
         double dist = rayLine( ray0, hRay, apos[iat.x], hbond[ib], t1, t2 );
-        //glColor3f(0.0f,0.0f,0.0f); Draw3D::drawLine( ray0+(hRay*t1), apos[iat.x]+(hbond[ib]*t2) );
+        //opengl1renderer.color3f(0.0f,0.0f,0.0f); Draw3D::drawLine( ray0+(hRay*t1), apos[iat.x]+(hbond[ib]*t2) );
         //printf( "%i %g %g %g \n", ib, t1, t2, dist );
         if( (dist<dist_min) && (t2>0) && (t2<lbond[ib]) ){
             imin=ib; dist_min=dist;
@@ -555,11 +555,11 @@ void eval_angcos(){
         //printf("ia (%i,%i,%i)\n", ia.x, ia.y, ia.z );
 
         /*
-        glColor3f(0.0f,1.0f,0.0f);
+        opengl1renderer.color3f(0.0f,1.0f,0.0f);
         Draw3D::drawVecInPos( h1*0.25, apos[ia.z] );
         Draw3D::drawVecInPos( h2*0.25, apos[ia.z] );
 
-        glColor3f(1.0f,0.0f,0.0f);
+        opengl1renderer.color3f(1.0f,0.0f,0.0f);
         Draw3D::drawVecInPos( hf1, apos[ia.x] );
         Draw3D::drawVecInPos( hf2, apos[ia.y] );
         */

@@ -4003,7 +4003,7 @@ void updatePBC( Vec3d* pbcShifts, Mat3d* M=0 ){
 
                 //if( (conf.nbond==2) && (conf.npi==1) ){ printf( "atom[%i](nb=%i,npi=%i,ne=%i) angles(%g,%g,%g)\n", ia, conf.nbond,conf.npi,conf.ne, hs[3].getAngle(hs[0])/M_PI, hs[3].getAngle(hs[1])/M_PI, hs[3].getAngle(hs[2])/M_PI ); }
                 //for(int k=0; k<N_NEIGH_MAX; k++){
-                //    if((N_NEIGH_MAX-k)<=conf.npi){ glColor3f(1.,0.,0.); }else{ glColor3f(1.,0.,0.); }
+                //    if((N_NEIGH_MAX-k)<=conf.npi){ opengl1renderer.color3f(1.,0.,0.); }else{ opengl1renderer.color3f(1.,0.,0.); }
                 //    Draw3D::drawVecInPos( hs[k], atoms[ia].pos );
                 //}
                 // pi-bonds

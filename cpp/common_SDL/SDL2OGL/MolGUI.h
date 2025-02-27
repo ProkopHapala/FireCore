@@ -14,7 +14,7 @@
 #include "IO_utils.h"
 
 #include <SDL2/SDL.h>
-#include <SDL2/SDL_opengl.h>
+
 #include "Draw3D.h"
 #include "SDL_utils.h"
 //#include "Solids.h"
@@ -49,8 +49,8 @@ void plotNonBondLine( const NBFF& ff, Quat4d REQi, double Rdamp, Vec3d p1, Vec3d
     Vec3d d = (p2-p1)*(1.0/n);
     Vec3d p = p1;
     double fsc = up.norm();
-    //glBegin(GL_LINE_STRIP);
-    glBegin(GL_TRIANGLE_STRIP);
+    //opengl1renderer.begin(GL_LINE_STRIP);
+    opengl1renderer.begin(GL_TRIANGLE_STRIP);
     for(int i=0; i<=n; i++){
         Quat4d fe = ff.evalLJQs( p, REQi, Rdamp );
         //Draw3D::drawVecInPos( p, f*0.1, 0.1 );
@@ -58,11 +58,11 @@ void plotNonBondLine( const NBFF& ff, Quat4d REQi, double Rdamp, Vec3d p1, Vec3d
         if(bForce){ pf = p + fe.f*fsc; } // Force 
         else      { pf = p + up*fe.e;  } // Energy
         //printf( "plotNonBondLine[%i] p(%g,%g,%g) E=%g pf(%g,%g,%g) \n", i, p.x,p.y,p.z, fe.w, pf.x,pf.y,pf.z );
-        glVertex3f( pf.x, pf.y, pf.z );
-        glVertex3f( p.x, p.y, p.z );
+        opengl1renderer.vertex3f( pf.x, pf.y, pf.z );
+        opengl1renderer.vertex3f( p.x, p.y, p.z );
         p.add(d);
     }
-    glEnd();
+    opengl1renderer.end();
 }
 
 Vec2d evalNonBondGrid2D( const NBFF& ff, Quat4d REQi, double Rdamp, Vec2i ns, double*& Egrid, Vec3d p0, Vec3d a, Vec3d b, Vec3d up=Vec3dZ, bool bForce=false ){
@@ -96,26 +96,26 @@ void drawDipoleMapGrid( DipoleMap& dipoleMap, Vec2d sc=Vec2d{1.,1.}, bool radial
     int nr   = dipoleMap.particles.size()/nphi;
     if(radial)
     for(int ip=0; ip<nphi; ip++ ){
-        glBegin(GL_LINE_STRIP);
+        opengl1renderer.begin(GL_LINE_STRIP);
         for(int ir=0; ir<nr; ir++ ){
             int i = ip + ir*nphi;
             //printf( "drawDipoleMap()[%i|ip=%i,ir=%i]\n", i, ip, ir );
             Vec3d p = dipoleMap.particles[i];
             p.z    +=  dipoleMap.FE[i].e*sc.x + dipoleMap.FE2[i].e*sc.y;
-            glVertex3f( p.x, p.y, p.z );
+            opengl1renderer.vertex3f( p.x, p.y, p.z );
         }
-        glEnd();
+        opengl1renderer.end();
     }
     if(azimuthal)
     for(int ir=0; ir<nr; ir++ ){
-       glBegin(GL_LINE_STRIP);
+       opengl1renderer.begin(GL_LINE_STRIP);
         for(int ip=0; ip<nphi; ip++ ){
             int i = ip + ir*nphi;
             Vec3d p = dipoleMap.particles[i];
             p.z    +=  dipoleMap.FE[i].e*sc.x + dipoleMap.FE2[i].e*sc.y;
-            glVertex3f( p.x, p.y, p.z );
+            opengl1renderer.vertex3f( p.x, p.y, p.z );
         }
-        glEnd();
+        opengl1renderer.end();
     }
 }
 
@@ -450,7 +450,7 @@ class MolGUI : public AppSDL2OGL_3D { public:
             Vec3d pj; 
 
             if( gp.fixed ){ 
-                glColor3f( 1.0, 0.0, 0.0 );
+                opengl1renderer.color3f( 1.0, 0.0, 0.0 );
                 //Draw3D::drawPointCross( gp.pos, 0.1 );
                 pj = atomsInGrid.get_gpos({ipos.x,   ipos.y,   ipos.z-1}); Draw3D::drawLine( gp.pos, pj );
                 pj = atomsInGrid.get_gpos({ipos.x,   ipos.y,   ipos.z+1}); Draw3D::drawLine( gp.pos, pj );
@@ -459,7 +459,7 @@ class MolGUI : public AppSDL2OGL_3D { public:
                 pj = atomsInGrid.get_gpos({ipos.x-1, ipos.y,   ipos.z  }); Draw3D::drawLine( gp.pos, pj );
                 pj = atomsInGrid.get_gpos({ipos.x+1, ipos.y,   ipos.z  }); Draw3D::drawLine( gp.pos, pj );
             } else { 
-                glColor3f( 0.0, 0.0, 1.0 ); 
+                opengl1renderer.color3f( 0.0, 0.0, 1.0 ); 
                 //Draw3D::drawPointCross( gp.pos, 0.1 );
                 Vec3d pj;
                 bool bfix; 
@@ -887,11 +887,11 @@ void MolGUI::plotNonBondGrid(){
 
     //printf( "Erange(%g,%g) vlim(%g,%g)\n", Erange.x, Erange.y, -vmax, vmax );
     //Draw3D::drawScalarGrid( ns, p0,b*(1./ns.b),a*(1./ns.a), Egrid, -vmax, vmax, Draw::colors_RWB ); //  const uint32_t * colors, int ncol );
-    glLineWidth(0.25);
+    opengl1renderer.lineWidth(0.25);
     Draw3D::drawScalarGridLines( ns, p0, b*(1./ns.b), a*(1./ns.a), Vec3dZ, Egrid, lvmax/vmax, Vec2d{-vmax,vmax} );
-    glLineWidth(1.0);
+    opengl1renderer.lineWidth(1.0);
     // saddly text drawing in drawAxis3D is not working when baked in display list, so we have to draw it on the fly
-    //glColor3f( 0.0, 0.0, 0.0 );
+    //opengl1renderer.color3f( 0.0, 0.0, 0.0 );
     //int nEtick =10;
     //Draw3D::drawAxis3D( {ns.x,ns.y,nEtick}, p0+(Vec3dZero*(-lvmax/nEtick)), {sz/ns.a,sz/ns.b,}, {sz*-0.5/ns.a,sz*-0.5/ns.b,nEtick*-0.5*vmax}, {sz/ns.a,sz/ns.b,nEtick*vmax}, fontTex, textSize, "%6.6f" );
     
@@ -923,13 +923,13 @@ void MolGUI::tryPlotNonBond(){
     //printf( " MolGUI::plotNonBond() bChanged=%i  ogl_nonBond=%i \n", bChanged, ogl_nonBond );
     bool ogl0     = (ogl_nonBond<=0);
     if( !( bChanged || ogl0 ) ){ return; };
-    if( !ogl0 ){ glDeleteLists(ogl_nonBond,1); }
+    if( !ogl0 ){ opengl1renderer.deleteLists(ogl_nonBond,1); }
     //printf( " MolGUI::plotNonBond() bChanged=%i  ogl_nonBond=%i \n", bChanged, ogl_nonBond );
-    ogl_nonBond = glGenLists(1);
-    glNewList(ogl_nonBond, GL_COMPILE);
+    ogl_nonBond = opengl1renderer.genLists(1);
+    opengl1renderer.newList(ogl_nonBond, GL_COMPILE);
     if( bDrawNonBondLines ){ plotNonBondLines(); };
     if( bDrawNonBondGrid  ){ plotNonBondGrid();  };
-    glEndList();
+    opengl1renderer.endList();
 }
 
 void MolGUI::relaxNonBondParticles( double dt, double Fconv, int niter){
@@ -969,18 +969,18 @@ void MolGUI::relaxNonBondParticles( double dt, double Fconv, int niter){
     bool bTrj = true;
     //int ogl_trj = 0;
     if(bTrj){
-        if(ogl_trj>0) glDeleteLists(ogl_trj,1);
-        ogl_trj = glGenLists(1);
-        glNewList(ogl_trj, GL_COMPILE);
+        if(ogl_trj>0) opengl1renderer.deleteLists(ogl_trj,1);
+        ogl_trj = opengl1renderer.genLists(1);
+        opengl1renderer.newList(ogl_trj, GL_COMPILE);
     }
     for( int i=0; i<particles.size(); i++ ){
         Vec3d p    = particles[i].f;
         //Vec3d v    = vpos[i];
         Vec3d v    = Vec3dZero;
         Quat4d fe;
-        if(bTrj){ Draw3D::drawPointCross( p, 0.2 ); glBegin(GL_LINE_STRIP); }
+        if(bTrj){ Draw3D::drawPointCross( p, 0.2 ); opengl1renderer.begin(GL_LINE_STRIP); }
         for(int iter=0; iter<niter; iter++){
-            if(bTrj){ glVertex3f(p.x,p.y,p.z); }
+            if(bTrj){ opengl1renderer.vertex3f(p.x,p.y,p.z); }
             fe = W->nbmol.evalLJQs( p, REQtest, W->ffl.Rdamp );
             fe.f.mul( -1.0 );
             if( fe.norm2() < F2conv ) break;
@@ -990,12 +990,12 @@ void MolGUI::relaxNonBondParticles( double dt, double Fconv, int niter){
             v += fe.f * dt;
             p += v    * dt;
         }
-        if(bTrj){ glEnd(); }
+        if(bTrj){ opengl1renderer.end(); }
         //vpos[i]        = v;
         particles[i].f = p;
         particles[i].e = fe.e;
     }
-    if(bTrj){ glEndList(); }
+    if(bTrj){ opengl1renderer.endList(); }
     if(hideEp){ W->unHideEPairs(); }
 }
 
@@ -1005,30 +1005,30 @@ void MolGUI::drawParticles(){
     // AtomType& atyp = W->params.atypes[ityp];
     // double r = ((atyp.RvdW-mm_Rsub)*mm_Rsc);
     Mat3d m  = Mat3dIdentity*0.2;
-    glEnable(GL_LIGHTING);
-    glShadeModel(GL_SMOOTH);
-    glColor3f( 0.0, 1.0, 0.0 );
+    opengl1renderer.enable(GL_LIGHTING);
+    opengl1renderer.shadeModel(GL_SMOOTH);
+    opengl1renderer.color3f( 0.0, 1.0, 0.0 );
     for( int i=0; i<particles.size(); i++ ){
         Quat4d& p = particles[i];    Draw3D::drawShape( ogl_sph, p.f, m, 0.1 );
     }
-    glColor3f( 0.0, 0.0, 0.0 );
-    glBegin(GL_TRIANGLES);
+    opengl1renderer.color3f( 0.0, 0.0, 0.0 );
+    opengl1renderer.begin(GL_TRIANGLES);
     double to_meV = 1000.0;
     for( int i=0; i<particles.size(); i++ ){
         Quat4d& p = particles[i];    Draw3D::drawDouble( p.f, p.e*to_meV, fontTex3D, textSize, "%.3fmeV" );
         
     }
     // ---- Pivots
-    glColor3f( 0.0, 1.0, 0.0 );
-    glBegin(GL_LINES);
+    opengl1renderer.color3f( 0.0, 1.0, 0.0 );
+    opengl1renderer.begin(GL_LINES);
     for( int i=0; i<particles.size(); i++ ){
         Vec3d& p = particles[i].f;
         int    j = particlePivots[i];
         Vec3d& a = W->nbmol.apos [j];
         Draw3D::drawLine( p, a );
     }
-    glEnd();
-    glColor3f( 0.0, 0.0, 0.0 );
+    opengl1renderer.end();
+    opengl1renderer.color3f( 0.0, 0.0, 0.0 );
     for( int i=0; i<particles.size(); i++ ){
         Vec3d& p = particles[i].f;  
         int    j = particlePivots[i];
@@ -1057,8 +1057,8 @@ void MolGUI::drawDipoleMap(){
     Draw3D::drawPointCross({5.0,0.0,0.0}, 0.2 );
     Draw3D::drawPointCross( dipoleMap.particles[0], 0.1 );
     for(int i=0; i<dipoleMap.particles.size(); i++ ){
-        glColor3f( 0.0, 0.0, 0.0 ); Draw3D::drawPointCross( dipoleMap.particles[i], 0.05 );
-        glColor3f( 0.0, 0.0, 1.0 ); Draw3D::drawLine      ( dipoleMap.particles[i], dipoleMap.particles2[i] );
+        opengl1renderer.color3f( 0.0, 0.0, 0.0 ); Draw3D::drawPointCross( dipoleMap.particles[i], 0.05 );
+        opengl1renderer.color3f( 0.0, 0.0, 1.0 ); Draw3D::drawLine      ( dipoleMap.particles[i], dipoleMap.particles2[i] );
     }
     
     //int nphi = dipoleMap.nphi;
@@ -1066,33 +1066,33 @@ void MolGUI::drawDipoleMap(){
     //printf( "drawDipoleMap() nphi=%i nr=%i FE.size(%i) particles.size(%i) \n", nphi, nr, dipoleMap.FE.size(), dipoleMap.particles.size(), nr*nphi );
 
     // for(int ip=0; ip<nphi; ip++ ){
-    //     glBegin(GL_LINE_STRIP);
+    //     opengl1renderer.begin(GL_LINE_STRIP);
     //     for(int ir=0; ir<nr; ir++ ){
     //         int i = ip + ir*nphi;
     //         //printf( "drawDipoleMap()[%i|ip=%i,ir=%i]\n", i, ip, ir );
     //         Vec3d p = dipoleMap.particles[i];
     //         p.z    += dipoleMap.FE[i].e/Ezoom;
-    //         glVertex3f( p.x, p.y, p.z );
+    //         opengl1renderer.vertex3f( p.x, p.y, p.z );
     //     }
-    //     glEnd();
+    //     opengl1renderer.end();
     // }    
     // for(int ir=0; ir<nr; ir++ ){
-    //    glBegin(GL_LINE_STRIP);
+    //    opengl1renderer.begin(GL_LINE_STRIP);
     //     for(int ip=0; ip<nphi; ip++ ){
     //         int i = ip + ir*nphi;
     //         Vec3d p = dipoleMap.particles[i];
     //         p.z    += dipoleMap.FE[i].e/Ezoom;
-    //         glVertex3f( p.x, p.y, p.z );
+    //         opengl1renderer.vertex3f( p.x, p.y, p.z );
     //     }
-    //     glEnd();
+    //     opengl1renderer.end();
     // }
 
-    glLineWidth(1.0);
-    glColor3f( 0.0, 0.7, 0.0 ); drawDipoleMapGrid( dipoleMap, Vec2d{1.0,1.0}*Ezoom, true, true );
-    glLineWidth(0.25);
-    glColor3f( 1.0, 0.5, 0.0 ); drawDipoleMapGrid( dipoleMap, Vec2d{1.0,0.0}*Ezoom, true, true );
-    glColor3f( 0.0, 0.7, 1.0 ); drawDipoleMapGrid( dipoleMap, Vec2d{0.0,1.0}*Ezoom, true, true );
-    glLineWidth(1.0);
+    opengl1renderer.lineWidth(1.0);
+    opengl1renderer.color3f( 0.0, 0.7, 0.0 ); drawDipoleMapGrid( dipoleMap, Vec2d{1.0,1.0}*Ezoom, true, true );
+    opengl1renderer.lineWidth(0.25);
+    opengl1renderer.color3f( 1.0, 0.5, 0.0 ); drawDipoleMapGrid( dipoleMap, Vec2d{1.0,0.0}*Ezoom, true, true );
+    opengl1renderer.color3f( 0.0, 0.7, 1.0 ); drawDipoleMapGrid( dipoleMap, Vec2d{0.0,1.0}*Ezoom, true, true );
+    opengl1renderer.lineWidth(1.0);
 }
 
 MolGUI::MolGUI( int& id, int WIDTH_, int HEIGHT_, MolWorld_sp3* W_ ) : AppSDL2OGL_3D( id, WIDTH_, HEIGHT_ ) {
@@ -1124,9 +1124,9 @@ void MolGUI::initGUI(){
     Draw3D::makeSphereOgl( ogl_sph, 5, 1.0 );
     //float l_diffuse  []{ 0.9f, 0.85f, 0.8f,  1.0f };
 	float l_specular []{ 0.0f, 0.0f,  0.0f,  1.0f };
-    //glLightfv    ( GL_LIGHT0, GL_AMBIENT,   l_ambient  );
-	//glLightfv    ( GL_LIGHT0, GL_DIFFUSE,   l_diffuse  );
-	glLightfv    ( GL_LIGHT0, GL_SPECULAR,  l_specular );
+    //opengl1renderer.lightfv    ( GL_LIGHT0, GL_AMBIENT,   l_ambient  );
+	//opengl1renderer.lightfv    ( GL_LIGHT0, GL_DIFFUSE,   l_diffuse  );
+	opengl1renderer.lightfv    ( GL_LIGHT0, GL_SPECULAR,  l_specular );
     // ---- Gizmo
     cam.persp = false;
     gizmo.cam = &cam;
@@ -1271,14 +1271,14 @@ void MolGUI::bindMolWorld( MolWorld_sp3* W_ ){
 
 void MolGUI::draw(){
     //printf( "MolGUI::draw() 1 \n" );
-    //glClearColor( 0.5f, 0.5f, 0.5f, 1.0f );
-    glClearColor( 1.0f, 1.0f, 1.0f, 1.0f );
-	glClear( GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT );
+    //opengl1renderer.clearColor( 0.5f, 0.5f, 0.5f, 1.0f );
+    opengl1renderer.clearColor( 1.0f, 1.0f, 1.0f, 1.0f );
+	opengl1renderer.clear( GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT );
     // Smooth lines : https://vitaliburkov.wordpress.com/2016/09/17/simple-and-fast-high-quality-antialiased-lines-with-opengl/
-    //glEnable(GL_LINE_SMOOTH);
-    glEnable(GL_BLEND);
-    glEnable(GL_LIGHTING );
-    glEnable(GL_DEPTH_TEST);
+    //opengl1renderer.enable(GL_LINE_SMOOTH);
+    opengl1renderer.enable(GL_BLEND);
+    opengl1renderer.enable(GL_LIGHTING );
+    opengl1renderer.enable(GL_DEPTH_TEST);
 
     //printf( "MolGUI::draw()[frameCount=%i] \n", frameCount );
     if(W->bLatScan){ lattice_scan( W->latscan_n.x, W->latscan_n.y, *W->latscan_dlvec ); quit(); }
@@ -1325,13 +1325,13 @@ void MolGUI::draw(){
         //Vec3d ray0_start_=ray0_start;  ray0_start_.y=-ray0_start_.y;
         if(bDragging){
             drawMuseSelectionBox();
-            // //glLineWidth(3.0);
-            // //glColor3f(1.0,0.5,0.0); Draw3D::drawPointCross( ray0_start, 0.1 );    
-            // //glLineWidth(1.0);
+            // //opengl1renderer.lineWidth(3.0);
+            // //opengl1renderer.color3f(1.0,0.5,0.0); Draw3D::drawPointCross( ray0_start, 0.1 );    
+            // //opengl1renderer.lineWidth(1.0);
             // Vec3f ray0_;        cam.rot.dot_to( (Vec3f)ray0, ray0_);
             // Vec3f ray0_start_;  cam.rot.dot_to( (Vec3f)ray0_start, ray0_start_);
-            // glColor3f(1.0,0.5,0.0); Draw3D::drawTriclinicBoxT(cam.rot, (Vec3f)ray0_start_, (Vec3f)ray0_ );   // Mouse Selection Box
-            // //glColor3f(0.0,0.5,1.0); Draw3D::drawTriclinicBox (cam.rot, (Vec3f)ray0_start_, (Vec3f)ray0_ ); // Mouse Selection Box
+            // opengl1renderer.color3f(1.0,0.5,0.0); Draw3D::drawTriclinicBoxT(cam.rot, (Vec3f)ray0_start_, (Vec3f)ray0_ );   // Mouse Selection Box
+            // //opengl1renderer.color3f(0.0,0.5,1.0); Draw3D::drawTriclinicBox (cam.rot, (Vec3f)ray0_start_, (Vec3f)ray0_ ); // Mouse Selection Box
         }
     }
 
@@ -1356,7 +1356,7 @@ void MolGUI::draw(){
                 //ogl_surfatoms = renderSurfAtoms(  W->gridFF.nPBC, false );  
                 ogl_surfatoms = renderSurfAtoms(  Vec3i{1,1,0}, false );  
             }
-            glCallList( ogl_surfatoms );
+            opengl1renderer.callList( ogl_surfatoms );
         }
     }
 
@@ -1378,7 +1378,7 @@ void MolGUI::draw(){
         //         int ia = W->groups.g2a[i+g.i0n.x];
         //         Vec3d p = W->groups.apos[ia];
         //         double wi = ws[ia].y;
-        //         if( wi>0 ){ glColor3f(0.0,0.0,1.0); }else{ glColor3f(1.0,0.0,0.0); };
+        //         if( wi>0 ){ opengl1renderer.color3f(0.0,0.0,1.0); }else{ opengl1renderer.color3f(1.0,0.0,0.0); };
         //         Draw3D::drawSphereOctLines(8,fabs(wi)*0.2,apos[ia]);
         //         //Draw3D::drawSphereOctLines(8,.5,apos[ia]);
         //     }
@@ -1397,25 +1397,25 @@ void MolGUI::draw(){
         if(gpos){
             for(int ig=0; ig<ng; ig++){
                 //Draw::color_of_hash(ig*15467+545); Draw3D::drawPointCross( gpos[ig].f, 2.0);
-                glColor3f(1.0,0.0,0.0); Draw3D::drawVecInPos( gfw[ig].f*5., gpos[ig].f );
-                glColor3f(0.0,1.0,0.0); Draw3D::drawVecInPos( gup[ig].f*5., gpos[ig].f );
-                glColor3f(0.0,0.0,1.0); Draw3D::drawVecInPos( cross(gfw[ig].f,gup[ig].f), gpos[ig].f );
+                opengl1renderer.color3f(1.0,0.0,0.0); Draw3D::drawVecInPos( gfw[ig].f*5., gpos[ig].f );
+                opengl1renderer.color3f(0.0,1.0,0.0); Draw3D::drawVecInPos( gup[ig].f*5., gpos[ig].f );
+                opengl1renderer.color3f(0.0,0.0,1.0); Draw3D::drawVecInPos( cross(gfw[ig].f,gup[ig].f), gpos[ig].f );
             }
         }
     }
 
     //if( bViewSubstrate && W->bSurfAtoms ) Draw3D::atomsREQ( W->surf.natoms, W->surf.apos, W->surf.REQs, ogl_sph, 1., 1., 0. );
-    //if( bViewSubstrate                  ){ glColor3f(0.,0.,1.); Draw3D::drawTriclinicBoxT( W->gridFF.grid.cell, Vec3d{0.0, 0.0, 0.0}, Vec3d{1.0, 1.0, 1.0} ); }
-    //if( bViewSubstrate                  ){ glColor3f(0.,0.,1.); Draw3D::drawTriclinicBoxT( W->gridFF.grid.cell, Vec3d{-0.5, -0.5, 0.0}, Vec3d{0.5, 0.5, 1.0} ); }
+    //if( bViewSubstrate                  ){ opengl1renderer.color3f(0.,0.,1.); Draw3D::drawTriclinicBoxT( W->gridFF.grid.cell, Vec3d{0.0, 0.0, 0.0}, Vec3d{1.0, 1.0, 1.0} ); }
+    //if( bViewSubstrate                  ){ opengl1renderer.color3f(0.,0.,1.); Draw3D::drawTriclinicBoxT( W->gridFF.grid.cell, Vec3d{-0.5, -0.5, 0.0}, Vec3d{0.5, 0.5, 1.0} ); }
     //if( bViewSubstrate && ogl_isosurf   ) viewSubstrate( 10, 10, ogl_isosurf, W->gridFF.grid.cell.a, W->gridFF.grid.cell.b, W->gridFF.shift0 + W->gridFF.grid.pos0 );
     //if( bViewSubstrate && ogl_isosurf   ) viewSubstrate( {-5,10}, {-5,10}, ogl_isosurf, W->gridFF.grid.cell.a, W->gridFF.grid.cell.b, W->gridFF.shift0 + W->gridFF.grid.pos0 );
 
-    if( ogl_esp     ){ glCallList(ogl_esp);      }
-    if( ogl_afm_trj ){ glCallList(ogl_afm_trj);  }
-    if( ogl_afm     ){ glCallList(ogl_afm);      }
+    if( ogl_esp     ){ opengl1renderer.callList(ogl_esp);      }
+    if( ogl_afm_trj ){ opengl1renderer.callList(ogl_afm_trj);  }
+    if( ogl_afm     ){ opengl1renderer.callList(ogl_afm);      }
 
-    if(bDrawNonBondGrid || bDrawNonBondLines){  tryPlotNonBond();  if( ogl_nonBond){ glLineWidth(0.25); glCallList(ogl_nonBond); glLineWidth(1.00); glColor3f(.0f,.0f,.0f); plotNonBondGridAxis(); } }
-    if(bDrawParticles){ relaxNonBondParticles();  glColor3f(.0f,1.0f,.5f); if(ogl_trj){ glCallList(ogl_trj); } drawParticles(); }; 
+    if(bDrawNonBondGrid || bDrawNonBondLines){  tryPlotNonBond();  if( ogl_nonBond){ opengl1renderer.lineWidth(0.25); opengl1renderer.callList(ogl_nonBond); opengl1renderer.lineWidth(1.00); opengl1renderer.color3f(.0f,.0f,.0f); plotNonBondGridAxis(); } }
+    if(bDrawParticles){ relaxNonBondParticles();  opengl1renderer.color3f(.0f,1.0f,.5f); if(ogl_trj){ opengl1renderer.callList(ogl_trj); } drawParticles(); }; 
 
     //Draw3D::drawMatInPos( W->debug_rot, W->ff.apos[0] ); // Debug
 
@@ -1427,7 +1427,7 @@ void MolGUI::draw(){
 
     //if( ogl_MO && W->bConverged ){ 
     if( ogl_MO && (!bRunRelax) ){ 
-        glPushMatrix();
+        opengl1renderer.pushMatrix();
         //Vec3d c = W->builder.lvec.a*-0.5 + W->builder.lvec.b*-0.5 + W->builder.lvec.c*-0.5;
         //Vec3d c = Vec3dZero;
         //Vec3d c = W->gridFF.shift0;
@@ -1435,10 +1435,10 @@ void MolGUI::draw(){
         Vec3d pmin,pmax; bbox( pmin, pmax, W->ffl.natoms, W->ffl.apos, 0 ); W->cog=(pmin+pmax)*0.5;
         Vec3d c = W->cog + W->builder.lvec.a*-0.5 + W->builder.lvec.b*-0.5 + W->builder.lvec.c*-0.5;
         //printf( "ogl_MO c (%g,%g,%g) cog (%g,%g,%g) \n", c.x, c.y, c.z, W->cog.x, W->cog.y, W->cog.z );
-        glTranslatef( c.x, c.y, c.z );
-            glColor3f(1.0,1.0,1.0); 
-            glCallList(ogl_MO); 
-        glPopMatrix();
+        opengl1renderer.translatef( c.x, c.y, c.z );
+            opengl1renderer.color3f(1.0,1.0,1.0); 
+            opengl1renderer.callList(ogl_MO); 
+        opengl1renderer.popMatrix();
     }
 
     // Draw the actual system ( molecules : atoms, bonds etc. )
@@ -1454,13 +1454,13 @@ void MolGUI::draw(){
     if( W->Hbonds.size() > 0 ){
         //int nfound = W->Hbonds.size();
         //printf( "findHb() Rc=%g nfound=%i \n", Rc, nfound );
-        //if(ogl_Hbonds>0){ glDeleteLists(ogl_Hbonds,0); ogl_Hbonds=0; }
+        //if(ogl_Hbonds>0){ opengl1renderer.deleteLists(ogl_Hbonds,0); ogl_Hbonds=0; }
         //if( nfound>0 ){
-        // glNewList( ogl_Hbonds, GL_COMPILE )
-        glLineWidth(5.0);
+        // opengl1renderer.newList( ogl_Hbonds, GL_COMPILE )
+        opengl1renderer.lineWidth(5.0);
         //printf( "W->Hbonds.size(%i)\n", W->Hbonds.size() ); 
-        glBegin(GL_LINES);
-        glColor3f( 0.0,1.0,0.0 );
+        opengl1renderer.begin(GL_LINES);
+        opengl1renderer.color3f( 0.0,1.0,0.0 );
         for( Vec3i b: W->Hbonds ){
             //printf( "Hbonds(%i,%i,%i)\n", b.x,b.y,b.z ); 
             Draw3D::vertex( W->ffl.apos[b.a]                      );
@@ -1469,16 +1469,16 @@ void MolGUI::draw(){
             Draw3D::vertex( W->ffl.apos[b.b]  );
             //Draw3D::vertex( W->ffl.apos[b.b] + Vec3d{5.0,5.0,5.0}  );
         }
-        glEnd();
-        glLineWidth(1.0);
-        // glEndList();
+        opengl1renderer.end();
+        opengl1renderer.lineWidth(1.0);
+        // opengl1renderer.endList();
         //}
     }
 
     // Draw constraints (if any)
     if(constrs){
         // bond constrains
-        glColor3f(0.0f,0.7f,0.0f);
+        opengl1renderer.color3f(0.0f,0.7f,0.0f);
         //for( DistConstr con : constrs->bonds ){ Draw3D::drawLine( apos[con.ias.a], apos[con.ias.b] ); }
         for( DistConstr con : constrs->bonds ){ 
             Vec3d sh; W->builder.lvec.dot_to_T( con.shift, sh );
@@ -1486,22 +1486,22 @@ void MolGUI::draw(){
             Draw3D::drawLine( apos[con.ias.a]-sh, apos[con.ias.b]      ); 
         }
         // angle constrains
-        glColor3f(0.0f,0.8f,0.8f);
+        opengl1renderer.color3f(0.0f,0.8f,0.8f);
         for( AngleConstr con : constrs->angles ){ 
             const Mat3d& lvec = W->builder.lvec;
             Vec3d ash = lvec.a*con.acell.a + lvec.b*con.acell.b + lvec.c*con.acell.c;
             Vec3d bsh = lvec.a*con.bcell.a + lvec.b*con.bcell.b + lvec.c*con.bcell.c;
             //Draw3D::drawTriangle( apos[con.ias.b] + ash,   apos[con.ias.a],   apos[con.ias.c] + bsh );
             //Draw3D::drawTriangle( apos[con.ias.b],   apos[con.ias.a],   apos[con.ias.c] );
-            glBegin(GL_TRIANGLES);
-            glColor3f(0.0f,1.0f,0.5f); Draw3D::vertex(apos[con.ias.b] + ash);
-            glColor3f(0.0f,0.7f,0.7f); Draw3D::vertex(apos[con.ias.a]      );
-            glColor3f(0.0f,0.5f,1.0f); Draw3D::vertex(apos[con.ias.c] + bsh);
-            glEnd();
+            opengl1renderer.begin(GL_TRIANGLES);
+            opengl1renderer.color3f(0.0f,1.0f,0.5f); Draw3D::vertex(apos[con.ias.b] + ash);
+            opengl1renderer.color3f(0.0f,0.7f,0.7f); Draw3D::vertex(apos[con.ias.a]      );
+            opengl1renderer.color3f(0.0f,0.5f,1.0f); Draw3D::vertex(apos[con.ias.c] + bsh);
+            opengl1renderer.end();
         }
     }
 
-    glColor3f(0.0f,0.5f,0.0f); showBonds();
+    opengl1renderer.color3f(0.0f,0.5f,0.0f); showBonds();
 
     //visual_FF_test();
 
@@ -1514,10 +1514,10 @@ void MolGUI::draw(){
             p = W->ffl.apos[W->ipicked];
             f = getForceSpringRay( W->ffl.apos[W->ipicked], W->pick_hray, W->pick_ray0, W->Kpick ); 
         }
-        glColor3d(1.f,0.f,0.f); Draw3D::drawVecInPos( f*-ForceViewScale, p );
+        opengl1renderer.color3d(1.f,0.f,0.f); Draw3D::drawVecInPos( f*-ForceViewScale, p );
     }
 
-    if( ogl_surf_scan>0 ){ glCallList(ogl_surf_scan); }
+    if( ogl_surf_scan>0 ){ opengl1renderer.callList(ogl_surf_scan); }
 
     if(bDebug_scanSurfFF){ // --- GridFF debug_scanSurfFF()
         // ------ Deprecated ?
@@ -1536,8 +1536,8 @@ void MolGUI::draw(){
         debug_scanSurfFF( ny, p0-b+a*0.5, p0+b*2.+a*0.5 );
     }
 
-    if(bViewBuilder){ glColor3f( 0.f,1.f,0.f ); for(int ia : W->builder.selection ){ Draw3D::drawSphereOctLines( 8, 0.5, W->builder.atoms[ia].pos ); } }
-    else            { glColor3f( 0.f,1.f,0.f ); for(int ia : W->selection         ){ Draw3D::drawSphereOctLines( 8, 0.5, W->nbmol.apos[ia]        ); } }
+    if(bViewBuilder){ opengl1renderer.color3f( 0.f,1.f,0.f ); for(int ia : W->builder.selection ){ Draw3D::drawSphereOctLines( 8, 0.5, W->builder.atoms[ia].pos ); } }
+    else            { opengl1renderer.color3f( 0.f,1.f,0.f ); for(int ia : W->selection         ){ Draw3D::drawSphereOctLines( 8, 0.5, W->nbmol.apos[ia]        ); } }
 
     // --- Drawing Population of geometies overlay
     if(frameCount>=1){ 
@@ -1553,18 +1553,18 @@ void MolGUI::draw(){
             float r = cos(dt*isys           )*0.5 + 0.5;
             float g = cos(dt*isys + shift   )*0.5 + 0.5;
             float b = cos(dt*isys + shift*2 )*0.5 + 0.5;
-            glColor3f( r, g, b );
+            opengl1renderer.color3f( r, g, b );
             //printf( "#=========== isys= %i \n", isys );
             Draw3D::neighs_multi(natoms,4,M_neighs,M_neighCell,M_apos, W->pbc_shifts, isys, nvec ); 
         } } 
     }
 
     //if(iangPicked>=0){
-    //    glColor3f(0.,1.,0.);      Draw3D::angle( W->ff.ang2atom[iangPicked], W->ff.ang_cs0[iangPicked], W->ff.apos, fontTex3D );
+    //    opengl1renderer.color3f(0.,1.,0.);      Draw3D::angle( W->ff.ang2atom[iangPicked], W->ff.ang_cs0[iangPicked], W->ff.apos, fontTex3D );
     //}
     if(useGizmo){ gizmo.draw(); }
     if(bHexDrawing)drawingHex(5.0);
-    if(bViewAxis){ glLineWidth(3);  Draw3D::drawAxis(1.0); glLineWidth(1); }
+    if(bViewAxis){ opengl1renderer.lineWidth(3);  Draw3D::drawAxis(1.0); opengl1renderer.lineWidth(1); }
 
 };
 
@@ -1586,7 +1586,7 @@ void MolGUI::printMSystem( int isys, int perAtom, int na, int nvec, bool bNg, bo
 
 void MolGUI::showBonds(  ){
     Vec3d* ps = W->ffl.apos;
-    glBegin(GL_LINES);
+    opengl1renderer.begin(GL_LINES);
     for(int i=0; i<bondsToShow.size(); i++ ){
         Vec2i b  = bondsToShow       [i];
         Vec3d d  = bondsToShow_shifts[i];
@@ -1596,7 +1596,7 @@ void MolGUI::showBonds(  ){
         Draw3D::vertex(pi-d);  Draw3D::vertex(pj  );
         Draw3D::vertex(pi  );  Draw3D::vertex(pj+d);
     }
-    glEnd();
+    opengl1renderer.end();
 }
 
 void MolGUI::showAtomGrid( char* s, int ia, bool bDraw ){
@@ -1613,9 +1613,9 @@ void MolGUI::showAtomGrid( char* s, int ia, bool bDraw ){
 
     s += sprintf(s, "GridFF(ia=%i) Etot %15.10f Epaul %15.10f; EvdW %15.10f Eel %15.10f p(%7.3f,%7.3f,%7.3f) \n", ia,   fe.e, fp.e, fl.e, fq.e,  pi.x,pi.y,pi.z  );
     //if( fabs(fe.e-fe_ref.e)>1e-8 ){ s += sprintf(s, "ERROR: getLJQH(%15.10f) Differs !!! \n", fe_ref.e ); }
-    if( fe.e>0 ){ glColor3f(0.7f,0.f,0.f); }else{ glColor3f(0.f,0.f,1.f); }
+    if( fe.e>0 ){ opengl1renderer.color3f(0.7f,0.f,0.f); }else{ opengl1renderer.color3f(0.f,0.f,1.f); }
     Draw::drawText( tmpstr, fontTex, fontSizeDef, {150,20} );
-    glTranslatef( 0.0,fontSizeDef*2,0.0 );
+    opengl1renderer.translatef( 0.0,fontSizeDef*2,0.0 );
     
 }
 
@@ -1659,21 +1659,21 @@ Vec3d MolGUI::showNonBond( char* s, Vec2i b, bool bDraw ){
     // --- print Energy components to string
     s += sprintf(s, "PLQH[%i,%i] r=%6.3f Etot %15.10f Epaul %15.10f; EvdW %15.10f EH %15.10f Eel %15.10f\n", b.i,b.j, sqrt(r2), Etot, Epaul, EvdW, EH, Eel );
     if( fabs(Etot-Eref)>1e-8 ){ s += sprintf(s, "ERROR: getLJQH(%15.10f) Differs !!! \n", Eref ); }
-    if( Etot>0 ){ glColor3f(0.7f,0.f,0.f); }else{ glColor3f(0.f,0.f,1.f); }
+    if( Etot>0 ){ opengl1renderer.color3f(0.7f,0.f,0.f); }else{ opengl1renderer.color3f(0.f,0.f,1.f); }
     // --- draw to screen
     Draw::drawText( tmpstr, fontTex, fontSizeDef, {150,20} );
-    glTranslatef( 0.0,fontSizeDef*2,0.0 );
+    opengl1renderer.translatef( 0.0,fontSizeDef*2,0.0 );
     return shift;
 }
 
 void MolGUI::drawHUD(){
-    glDisable ( GL_LIGHTING );
+    opengl1renderer.disable ( GL_LIGHTING );
     gui.draw();
 
-    glPushMatrix();
+    opengl1renderer.pushMatrix();
     if(W->bCheckInvariants){
-        glTranslatef( 10.0,HEIGHT-20.0,0.0 );
-        glColor3f(0.5,0.0,0.3);
+        opengl1renderer.translatef( 10.0,HEIGHT-20.0,0.0 );
+        opengl1renderer.color3f(0.5,0.0,0.3);
         //char* s=tmpstr;
         //printf( "(%i|%i,%i,%i) cog(%g,%g,%g) vcog(%g,%g,%g) fcog(%g,%g,%g) torq (%g,%g,%g)\n", ff.nevalAngles>0, ff.nevalPiSigma>0, ff.nevalPiPiT>0, ff.nevalPiPiI>0,  cog.x,cog.y,cog.z, vcog.x,vcog.y,vcog.z, fcog.x,fcog.y,fcog.z, tq.x,tq.y,tq.z );
         //printf( "neval Ang %i nevalPiSigma %i PiPiT %i PiPiI %i v_av %g \n", ff.nevalAngles, ff.nevalPiSigma, ff.nevalPiPiT, ff.nevalPiPiI, v_av );
@@ -1688,8 +1688,8 @@ void MolGUI::drawHUD(){
     }
     if(bWriteOptimizerState){
         double T = W->evalEkTemp();   //printf( "T_kinetic=%g[K] \n", T );
-        glTranslatef( 0.0,fontSizeDef*-5*2,0.0 );
-        glColor3f(0.0,0.5,0.0);
+        opengl1renderer.translatef( 0.0,fontSizeDef*-5*2,0.0 );
+        opengl1renderer.color3f(0.0,0.5,0.0);
         char* s=tmpstr;
         //dt 0.132482 damp 3.12175e-17 n+ 164 | cfv 0.501563 |f| 3.58409e-10 |v| 6.23391e-09
         double v=sqrt(W->opt.vv);
@@ -1697,29 +1697,29 @@ void MolGUI::drawHUD(){
         //s += sprintf(s,"time/iter=%6.2f[us] bGopt=%i bExploring=%i go.istep=%i T= %7.5f[K] dt=%7.5f damp=%7.5f n+ %4i | cfv=%7.5f |f|=%12.5e |v|=%12.5e \n", time_per_iter, W->bGopt, W->go.bExploring, W->go.istep, T, W->opt.dt, W->opt.damping, W->opt.lastNeg, W->opt.vf/(v*f), f, v );
         s += sprintf(s,"time/iter=%6.2f[us] T= %7.5f[K] dt=%7.5f damp=%7.5f n+ %4i | cfv=%7.5f |f|=%12.5e |v|=%12.5e \n", W->time_per_iter, T, W->opt.dt, W->opt.damping, W->opt.lastNeg, W->opt.vf/(v*f), f, v );
         Draw::drawText( tmpstr, fontTex, fontSizeDef, {200,20} );
-        glTranslatef( 0.0,fontSizeDef*-5*2,0.0 );
+        opengl1renderer.translatef( 0.0,fontSizeDef*-5*2,0.0 );
         Draw::drawText( W->info_str(tmpstr), fontTex, fontSizeDef, {100,20} );
     }
-    glPopMatrix();
+    opengl1renderer.popMatrix();
 
 
     if( W->getMolWorldVersion() == (int)MolWorldVersion::GPU ){
-        glPushMatrix();
+        opengl1renderer.pushMatrix();
         bool  bExplors[W->nSystems];
         float Fconvs  [W->nSystems];
         W->getMultiConf( Fconvs , bExplors );
-        glTranslatef( 0.0,fontSizeDef*2*30,0.0 );
-        glColor3f(0.5,0.,1.);
+        opengl1renderer.translatef( 0.0,fontSizeDef*2*30,0.0 );
+        opengl1renderer.color3f(0.5,0.,1.);
         for( int i=0; i<W->nSystems; i++ ){  
             sprintf( tmpstr, "SYS[%3i][%i]|F|=%g \n", i, bExplors[i], Fconvs[i] );
             Draw::drawText( tmpstr, fontTex, fontSizeDef, {200,20} ); 
-            glTranslatef( 0.0,fontSizeDef*2,0.0 );
+            opengl1renderer.translatef( 0.0,fontSizeDef*2,0.0 );
         };
-        glPopMatrix();
+        opengl1renderer.popMatrix();
     }
 
     /*
-    glTranslatef( 0.0,fontSizeDef*-2*2,0.0 );
+    opengl1renderer.translatef( 0.0,fontSizeDef*-2*2,0.0 );
     if( !bondsToShow_shifts ){
         bondsToShow.push_back( {18,36} );
         bondsToShow.push_back( {35,7}  );
@@ -1748,13 +1748,13 @@ void MolGUI::drawingHex(double z0){
     Vec2d p{p3.x,p3.y};
     double off=1000.0;
     bool s = ruler.simplexIndex( p+(Vec2d){off,off}, ip, dp );
-    //ruler.nodePoint( ip, p );    glColor3f(1.,1.,1.); Draw3D::drawPointCross(  {p.x,p.y, 5.0}, 0.5 );
-    if(s){glColor3f(1.,0.2,1.);}else{glColor3f(0.2,1.0,1.);}
+    //ruler.nodePoint( ip, p );    opengl1renderer.color3f(1.,1.,1.); Draw3D::drawPointCross(  {p.x,p.y, 5.0}, 0.5 );
+    if(s){opengl1renderer.color3f(1.,0.2,1.);}else{opengl1renderer.color3f(0.2,1.0,1.);}
     ruler.tilePoint( ip, s, p ); Draw3D::drawPointCross(  {p.x-off,p.y-off, z0}, 0.2 );
     
     bool bLine=true;
     if(bDrawHexGrid){
-        if(bLine){glBegin(GL_LINES);}else{glBegin(GL_POINTS);}
+        if(bLine){opengl1renderer.begin(GL_LINES);}else{opengl1renderer.begin(GL_POINTS);}
         ruler.simplexIndex( (Vec2d){off,off}, ip, dp );
         double sc = ruler.step/sqrt(3.0);
         for(int ix=0;ix<10;ix++ ){
@@ -1763,18 +1763,18 @@ void MolGUI::drawingHex(double z0){
                 ruler.tilePoint( ip_, true,  p ); 
                 p.sub(off,off);
                 if(bLine){
-                    glColor3f(1.0,0.2,1.0); 
+                    opengl1renderer.color3f(1.0,0.2,1.0); 
                     Vec2d p2;
                     Draw3D::vertex(Vec3f{p.x,p.y,z0}); p2=p+ruler.lvecs[0]*sc; Draw3D::vertex(Vec3f{p2.x,p2.y,z0});
                     Draw3D::vertex(Vec3f{p.x,p.y,z0}); p2=p+ruler.lvecs[1]*sc; Draw3D::vertex(Vec3f{p2.x,p2.y,z0});
                     Draw3D::vertex(Vec3f{p.x,p.y,z0}); p2=p+ruler.lvecs[2]*sc; Draw3D::vertex(Vec3f{p2.x,p2.y,z0});
                 }else{
-                    glColor3f(1.0,0.2,1.0); Draw3D::vertex(Vec3f{p.x,p.y,z0}); ruler.tilePoint( ip_, false, p );  p.add(off,off);
-                    glColor3f(0.2,1.0,1.0); Draw3D::vertex(Vec3f{p.x,p.y,z0});
+                    opengl1renderer.color3f(1.0,0.2,1.0); Draw3D::vertex(Vec3f{p.x,p.y,z0}); ruler.tilePoint( ip_, false, p );  p.add(off,off);
+                    opengl1renderer.color3f(0.2,1.0,1.0); Draw3D::vertex(Vec3f{p.x,p.y,z0});
                 }
             }
         }
-        glEnd();
+        opengl1renderer.end();
     }
 }
 
@@ -1806,21 +1806,21 @@ void MolGUI::renderGridFF( double isoVal, int isoSurfRenderType, double colorScl
     W->gridFF.evalCombindGridFF ( testREQ, FFtot );
     //W->gridFF.grid.saveXSF( "E_renderGridFF.xsf",  (float*)FFtot, 4, 3, W->gridFF.natoms, W->gridFF.atypes, W->gridFF.apos );
     //if(idebug>0) W->gridFF.grid.saveXSF( "FFtot_z.xsf",  (float*)FFtot, 4, 2, W->gridFF.natoms, W->gridFF.atypes, W->gridFF.apos );
-    ogl_isosurf = glGenLists(1);
-    glNewList(ogl_isosurf, GL_COMPILE);
-    glShadeModel( GL_SMOOTH );
-    glEnable(GL_LIGHTING);
-    glEnable(GL_DEPTH_TEST);
+    ogl_isosurf = opengl1renderer.genLists(1);
+    opengl1renderer.newList(ogl_isosurf, GL_COMPILE);
+    opengl1renderer.shadeModel( GL_SMOOTH );
+    opengl1renderer.enable(GL_LIGHTING);
+    opengl1renderer.enable(GL_DEPTH_TEST);
     //bool sign=false;
     bool sign=true;
     int nvert = renderSubstrate_( W->gridFF.grid, FFtot, W->gridFF.FFelec, +isoVal, sign, colorSclae );   //printf("Debug: renderGridFF() renderSubstrate() -> nvert= %i ", nvert );
     // ---- This seems still not work properly
     //int ntris=0;
-    //glColor3f(0.0,0.0,1.0); ntris += Draw3D::MarchingCubesCross( W->gridFF.grid,  isoVal, (double*)FFtot, isoSurfRenderType,  3,2 );
-    //glColor3f(1.0,0.0,0.0); ntris += Draw3D::MarchingCubesCross( W->gridFF.grid, -isoVal, (double*)FFtot, isoSurfRenderType,  3,2 );
-    //glColor3f(0.,0.,1.); Draw3D::drawTriclinicBox( W->gridFF.grid.cell, Vec3d{0.0, 0.0, 0.0}, Vec3d{1.0, 1.0, 1.0} );
+    //opengl1renderer.color3f(0.0,0.0,1.0); ntris += Draw3D::MarchingCubesCross( W->gridFF.grid,  isoVal, (double*)FFtot, isoSurfRenderType,  3,2 );
+    //opengl1renderer.color3f(1.0,0.0,0.0); ntris += Draw3D::MarchingCubesCross( W->gridFF.grid, -isoVal, (double*)FFtot, isoSurfRenderType,  3,2 );
+    //opengl1renderer.color3f(0.,0.,1.); Draw3D::drawTriclinicBox( W->gridFF.grid.cell, Vec3d{0.0, 0.0, 0.0}, Vec3d{1.0, 1.0, 1.0} );
     //Draw3D::drawAxis(1.0);
-    glEndList();
+    opengl1renderer.endList();
     delete [] FFtot;
     if(verbosity>0) printf( "... MolGUI::renderGridFF() DONE\n" );
 }
@@ -1830,29 +1830,29 @@ void MolGUI::renderGridFF_new( double isoVal, int isoSurfRenderType, double colo
     //if(verbosity>0) 
     Quat4d PLQ = REQ2PLQ_d( REQ, W->gridFF.alphaMorse );
     printf( "MolGUI::renderGridFF_new() isoVal=%g REQ{%g,%g,%g,%g} PLQ{%g,%g,%g,%g}\n", isoVal, REQ.x, REQ.y, REQ.z,  REQ.z, PLQ.x, PLQ.y, PLQ.z, PLQ.w );
-    ogl_isosurf = glGenLists(1);
-    glNewList(ogl_isosurf, GL_COMPILE);
-    glShadeModel( GL_SMOOTH );
-    glEnable(GL_LIGHTING);
-    glEnable(GL_DEPTH_TEST);
-    //glDisable(GL_LIGHTING);
+    ogl_isosurf = opengl1renderer.genLists(1);
+    opengl1renderer.newList(ogl_isosurf, GL_COMPILE);
+    opengl1renderer.shadeModel( GL_SMOOTH );
+    opengl1renderer.enable(GL_LIGHTING);
+    opengl1renderer.enable(GL_DEPTH_TEST);
+    //opengl1renderer.disable(GL_LIGHTING);
     Vec2d zrange{-5.0,5.0};
     //{  W->gridFF.getEFprofileToFile( "gridFF_EFprofile_render.log", 200, Vec3d{0.0,0.0,zrange.x}, Vec3d{0.0,0.0,zrange.y}, Quat4d{REQ.x,REQ.y,0.0,0.0} );  }  // Debug: save gridFF z-profile to file of atom[0] to "gridFF_EFprofile_render.log"
     //int nvert = renderSubstrate_( W->gridFF.grid, FFtot, W->gridFF.FFelec, +isoVal, sign, colorSclae ); 
     //W->gridFF.findIso( isoVal, Vec3d{0.0,0.0,zrange.x}, Vec3d{0.0,0.0,zrange.y}, Quat4d{PLQ.x,PLQ.y,0.0,0.0}, 0.02 );
     int nvert = renderSubstrate_new( W->gridFF, Vec2d{zrange.x,zrange.y}, isoVal, PLQ, colorScale );  //printf("Debug: renderGridFF() renderSubstrate() -> nvert= %i ", nvert );
-    glEndList();
+    opengl1renderer.endList();
     if(verbosity>0) printf( "... MolGUI::renderGridFF_new() DONE\n" );
 }
 
 int MolGUI::renderSurfAtoms( Vec3i nPBC, bool bPointCross, float qsc, float Rsc, float Rsub ){
     if(verbosity>0) printf( "MolGUI::renderSurfAtoms() nPBC(%i,%i,%i) qsc=%g Rsc=%g Rsub=%g W->gridFF.apos_.size()=%li bPointCross=%i\n", nPBC.x, nPBC.y, nPBC.z, qsc, Rsc, Rsub, W->gridFF.apos_.size(), bPointCross );
-    int ogl = glGenLists(1);
-    glNewList(ogl, GL_COMPILE);
-    glShadeModel( GL_SMOOTH );
-    glEnable(GL_LIGHTING);
-    glEnable(GL_DEPTH_TEST);
-    glPushMatrix();
+    int ogl = opengl1renderer.genLists(1);
+    opengl1renderer.newList(ogl, GL_COMPILE);
+    opengl1renderer.shadeModel( GL_SMOOTH );
+    opengl1renderer.enable(GL_LIGHTING);
+    opengl1renderer.enable(GL_DEPTH_TEST);
+    opengl1renderer.pushMatrix();
     Mat3d& lvec =  W->gridFF.grid.cell;
     int icell=0;
     for(int ix=-nPBC.x; ix<=nPBC.x; ix++){
@@ -1860,17 +1860,17 @@ int MolGUI::renderSurfAtoms( Vec3i nPBC, bool bPointCross, float qsc, float Rsc,
             for(int iz=-nPBC.z; iz<=nPBC.z; iz++){
                 Vec3d shift = lvec.a*ix + lvec.b*iy + lvec.c*iz;
                 //shift.z += (float)icell;
-                glTranslatef( shift.x,shift.y,shift.z);
+                opengl1renderer.translatef( shift.x,shift.y,shift.z);
                 Draw3D::atomsREQ( W->gridFF.natoms, W->gridFF.apos, W->gridFF.REQs, ogl_sph, qsc, Rsc, Rsub, bPointCross, W->gridFF.shift0 );
                 //Draw3D::atomsREQ( W->gridFF.apos_.size(), &W->gridFF.apos_[0], &W->gridFF.REQs_[0], ogl_sph, qsc, Rsc, Rsub, bPointCross, W->gridFF.shift0 );
                 //Draw3D::atomsREQ( 1, &W->gridFF.apos_[0], &W->gridFF.REQs_[0], ogl_sph, qsc, Rsc, Rsub, bPointCross, W->gridFF.shift0 );
-                glTranslatef( -shift.x,-shift.y,-shift.z);
+                opengl1renderer.translatef( -shift.x,-shift.y,-shift.z);
                 icell++;
             }
         } 
     }
-    glPopMatrix();
-    glEndList();
+    opengl1renderer.popMatrix();
+    opengl1renderer.endList();
     if(verbosity>0) printf( "... MolGUI::renderSurfAtoms() DONE\n" );
     //exit(0);
     return ogl;
@@ -1878,14 +1878,14 @@ int MolGUI::renderSurfAtoms( Vec3i nPBC, bool bPointCross, float qsc, float Rsc,
 
 void MolGUI::renderESP( Quat4d REQ){
     printf( "MolGUI::renderESP() %li \n", ogl_esp ); //exit(0);
-    ogl_esp = glGenLists(1);
-    glNewList(ogl_esp, GL_COMPILE);
-    glShadeModel( GL_SMOOTH );
-    glEnable(GL_LIGHTING);
-    glEnable(GL_DEPTH_TEST);
+    ogl_esp = opengl1renderer.genLists(1);
+    opengl1renderer.newList(ogl_esp, GL_COMPILE);
+    opengl1renderer.shadeModel( GL_SMOOTH );
+    opengl1renderer.enable(GL_LIGHTING);
+    opengl1renderer.enable(GL_DEPTH_TEST);
     const NBFF& nbmol = W->nbmol;
     int nvert = Draw3D::drawESP( nbmol.natoms, nbmol.apos, nbmol.REQs, REQ );
-    glEndList();
+    opengl1renderer.endList();
 };
 
 void MolGUI::renderOrbital(int iMO, double iso ){
@@ -1893,14 +1893,14 @@ void MolGUI::renderOrbital(int iMO, double iso ){
     double * ewfaux=0;
     W->projectOrbital( iMO, ewfaux );
     if(ewfaux==0)return;
-    if(ogl_MO){ glDeleteLists(ogl_MO,1); }
-    ogl_MO  = glGenLists(1);
-    glNewList(ogl_MO, GL_COMPILE);
+    if(ogl_MO){ opengl1renderer.deleteLists(ogl_MO,1); }
+    ogl_MO  = opengl1renderer.genLists(1);
+    opengl1renderer.newList(ogl_MO, GL_COMPILE);
     int ntris=0;  
-    glColor3f(0.0,0.0,1.0); ntris += Draw3D::MarchingCubesCross( W->MOgrid,  iso, ewfaux, isoSurfRenderType);
-    glColor3f(1.0,0.0,0.0); ntris += Draw3D::MarchingCubesCross( W->MOgrid, -iso, ewfaux, isoSurfRenderType);
-    glColor3f(0.0f,0.0f,0.0f); Draw3D::drawTriclinicBox(W->MOgrid.cell.transposed(), Vec3dZero, Vec3dOne );
-    glEndList();
+    opengl1renderer.color3f(0.0,0.0,1.0); ntris += Draw3D::MarchingCubesCross( W->MOgrid,  iso, ewfaux, isoSurfRenderType);
+    opengl1renderer.color3f(1.0,0.0,0.0); ntris += Draw3D::MarchingCubesCross( W->MOgrid, -iso, ewfaux, isoSurfRenderType);
+    opengl1renderer.color3f(0.0f,0.0f,0.0f); Draw3D::drawTriclinicBox(W->MOgrid.cell.transposed(), Vec3dZero, Vec3dOne );
+    opengl1renderer.endList();
     W->bConverged=true;
     bRunRelax=false;
     delete [] ewfaux;
@@ -1911,12 +1911,12 @@ void MolGUI::renderDensity(double iso){
     double * ewfaux=0;
     W->projectDensity( ewfaux );
     if(ewfaux==0)return;
-    if(ogl_MO){ glDeleteLists(ogl_MO,1); }
-    ogl_MO  = glGenLists(1);
-    glNewList(ogl_MO, GL_COMPILE);
+    if(ogl_MO){ opengl1renderer.deleteLists(ogl_MO,1); }
+    ogl_MO  = opengl1renderer.genLists(1);
+    opengl1renderer.newList(ogl_MO, GL_COMPILE);
     int ntris = Draw3D::MarchingCubesCross( W->MOgrid, iso, ewfaux, isoSurfRenderType  );
     //printf( "renderOrbital() ntris %i \n", ntris );
-    glEndList();
+    opengl1renderer.endList();
     W->bConverged=true;
     bRunRelax=false;
     delete [] ewfaux;
@@ -1977,56 +1977,56 @@ void MolGUI::renderAFM( int iz, int offset ){
         Fz2df( nxy, iz, iz+afm_nconv, afm_Fout, data_iz );
     }
     printf( "MolGUI::renderAFM() ogl_afm=%i \n", ogl_afm ); //exit(0);
-    if(ogl_afm>0)glDeleteLists(ogl_afm,1);
-    ogl_afm = glGenLists(1);
-    glNewList(ogl_afm, GL_COMPILE);
-    glShadeModel( GL_SMOOTH );
-    //glEnable(GL_LIGHTING);
-    glDisable(GL_LIGHTING);
-    glEnable(GL_DEPTH_TEST);
+    if(ogl_afm>0)opengl1renderer.deleteLists(ogl_afm,1);
+    ogl_afm = opengl1renderer.genLists(1);
+    opengl1renderer.newList(ogl_afm, GL_COMPILE);
+    opengl1renderer.shadeModel( GL_SMOOTH );
+    //opengl1renderer.enable(GL_LIGHTING);
+    opengl1renderer.disable(GL_LIGHTING);
+    opengl1renderer.enable(GL_DEPTH_TEST);
     double vmin=+1e+300;
     double vmax=-1e+300;
     for(int i=0; i<nxy; i++){ float f=data_iz[i*pitch+offset]; vmin=fmin(f,vmin); vmax=fmax(f,vmax);  }
     //_realloc(afm_ps, nxy);
     //for(int i=0; i<nxy; i++){ afm_ps[i]=(Vec3d)afm_ps0[i].f; }
 
-    glPushMatrix();
-    glTranslatef( 0.0,0.0,-5.0 - iz * afm_scan_grid.dCell.c.z );
+    opengl1renderer.pushMatrix();
+    opengl1renderer.translatef( 0.0,0.0,-5.0 - iz * afm_scan_grid.dCell.c.z );
     printf( "MolGUI::renderAFM() vmin=%g vmax=%g @data_iz=%li @colors_afmhot=%li\n", vmin, vmax, (long)data_iz, (long)Draw::colors_afmhot );
     Draw3D::drawScalarField( {afm_scan_grid.n.x,afm_scan_grid.n.y}, afm_ps0,                                  data_iz, pitch,offset, vmin,vmax, Draw::colors_afmhot );
 
     //Draw3D::drawColorScale( 10, Vec3dZero, Vec3dY, Vec3dX, Draw::colors_afmhot );
     //Draw3D::drawScalarGrid ( {afm_scan_grid.n.x,afm_scan_grid.n.y}, afm_scan_grid.pos0, afm_scan_grid.dCell.a, afm_scan_grid.dCell.a, data_iz, pitch,offset, vmin, vmax );
-    glPopMatrix();
-    glEndList();
+    opengl1renderer.popMatrix();
+    opengl1renderer.endList();
     if(dfdata){ delete [] dfdata; }
 };
 
 void MolGUI::renderAFM_trjs( int di ){
     if(afm_Fout==0){ printf("WARRNING: MolGUI::renderAFM_trjs() but afm_PPpos not allocated \n"); return; };
     printf( "MolGUI::renderAFM_trjs(di=%i) afm_PPpos=%li \n", di, afm_PPpos ); //exit(0);
-    if(ogl_afm_trj>0)glDeleteLists(ogl_afm_trj,1);
-    ogl_afm_trj = glGenLists(1);
-    glNewList(ogl_afm_trj, GL_COMPILE);
-    glShadeModel( GL_SMOOTH );
-    //glEnable(GL_LIGHTING);
-    glDisable(GL_LIGHTING);
-    glEnable(GL_DEPTH_TEST);
+    if(ogl_afm_trj>0)opengl1renderer.deleteLists(ogl_afm_trj,1);
+    ogl_afm_trj = opengl1renderer.genLists(1);
+    opengl1renderer.newList(ogl_afm_trj, GL_COMPILE);
+    opengl1renderer.shadeModel( GL_SMOOTH );
+    //opengl1renderer.enable(GL_LIGHTING);
+    opengl1renderer.disable(GL_LIGHTING);
+    opengl1renderer.enable(GL_DEPTH_TEST);
     Vec3i ns = afm_scan_grid.n;
     int nxy=ns.x*ns.y;
     for(int iy=0; iy<ns.y; iy+=di ){
         for(int ix=0; ix<ns.x; ix+=di ){
             //afm_ps0
-            glBegin(GL_LINE_STRIP);
+            opengl1renderer.begin(GL_LINE_STRIP);
             for(int iz=0; iz<ns.z; iz++ ){
                 int i = afm_scan_grid.n.y;
                 Vec3f p = afm_PPpos[ iz*nxy + iy*ns.x + ix ].f;
-                glVertex3f( p.x,p.y,p.z ); 
+                opengl1renderer.vertex3f( p.x,p.y,p.z ); 
             }
-            glEnd();
+            opengl1renderer.end();
         }
     }
-    glEndList();
+    opengl1renderer.endList();
 };
 
 
@@ -2045,20 +2045,20 @@ void MolGUI::makeAFM( int iz ){
 
 void MolGUI::drawPi0s( float sc=1.0 ){
     const MMFFsp3& ff = W->ff;
-    glBegin(GL_LINES);
+    opengl1renderer.begin(GL_LINES);
     for(int ia=0; ia<ff.nnode; ia++){
         int* ngs = ff.neighs + ia*ff.nneigh_max;
         for(int j=0; j<ff.nneigh_max; j++){
             int ing = ngs[j]; 
             if(ing<0){
                 int ipi = -ing-2;
-                Vec3f p=(Vec3f)ff.apos[ia];      glVertex3f(p.x,p.y,p.z);
-                p.add_mul( ff.pi0s[ipi].f, sc);  glVertex3f(p.x,p.y,p.z);
+                Vec3f p=(Vec3f)ff.apos[ia];      opengl1renderer.vertex3f(p.x,p.y,p.z);
+                p.add_mul( ff.pi0s[ipi].f, sc);  opengl1renderer.vertex3f(p.x,p.y,p.z);
                 //printf("drawPi0s[%i,%i|%i] (%g,%g,%g)\n", ia, j, ipi, ff.pi0s[ipi].f.z, ff.pi0s[ipi].f.y, ff.pi0s[ipi].f.z );
             }
         }
     }
-    glEnd();
+    opengl1renderer.end();
 }
 
 /*
@@ -2139,12 +2139,12 @@ void MolGUI::drawBuilder( Vec3i ixyz ){
     //printf( "MolGUI::drawBuilder() ixyz(%i,%i,%i)\n", ixyz.x,ixyz.y,ixyz.z );
     //float textSize=0.015;
     //if(bViewColorFrag){ printf( " B.frags.size(%i) \n", B.frags.size() ); }
-    glEnable(GL_DEPTH_TEST);
+    opengl1renderer.enable(GL_DEPTH_TEST);
     MM::Builder& B = W->builder;
     bool bOrig = (ixyz.x==0)&&(ixyz.y==0)&&(ixyz.z==0);
     if(bViewAtomSpheres&&mm_bAtoms ){       
-        glEnable(GL_LIGHTING);
-        glShadeModel(GL_SMOOTH);                     
+        opengl1renderer.enable(GL_LIGHTING);
+        opengl1renderer.shadeModel(GL_SMOOTH);                     
         //Draw3D::ato( natoms, apos, atypes, W->params, ogl_sph, 1.0, mm_Rsc, mm_Rsub ); 
         for(int ia=0; ia<B.atoms.size(); ia++){
             const MM::Atom& a = B.atoms[ia];
@@ -2159,7 +2159,7 @@ void MolGUI::drawBuilder( Vec3i ixyz ){
         }    
     }
     if(mm_bAtoms&&bViewAtomLabels ){ 
-        glColor3f(0.0f,0.0f,0.0f); 
+        opengl1renderer.color3f(0.0f,0.0f,0.0f); 
         if(bViewMolCharges){
             //void atomPropertyLabel( int n, double* data, Vec3d* ps, int pitch, int offset, int fontTex, float sz=0.02, const char* format="%4.2f\0" ){
             for(int i=0; i<B.atoms.size(); i++){
@@ -2174,17 +2174,17 @@ void MolGUI::drawBuilder( Vec3i ixyz ){
         } 
     }
     if( bViewBonds ){
-        glDisable(GL_LIGHTING);
-        glColor3f(0.0f,0.0f,0.0f);
-        glLineWidth(3.0f);
-        glBegin(GL_LINES);
+        opengl1renderer.disable(GL_LIGHTING);
+        opengl1renderer.color3f(0.0f,0.0f,0.0f);
+        opengl1renderer.lineWidth(3.0f);
+        opengl1renderer.begin(GL_LINES);
         for(int ib=0; ib<B.bonds.size(); ib++){
             Vec2i b  = B.bonds[ib].atoms;
             Draw3D::vertex(B.atoms[b.a].pos); 
             Draw3D::vertex(B.atoms[b.b].pos);
         }
-        glEnd();
-        glLineWidth(1.0);
+        opengl1renderer.end();
+        opengl1renderer.lineWidth(1.0);
     }
 }
 
@@ -2195,7 +2195,7 @@ void MolGUI::drawSystem( Vec3i ixyz ){
     //float textSize=0.007;
     //float textSize=1.0;
     //float textSize=0.015;
-    glEnable(GL_DEPTH_TEST);
+    opengl1renderer.enable(GL_DEPTH_TEST);
     bool bOrig = (ixyz.x==0)&&(ixyz.y==0)&&(ixyz.z==0);
 
     bool bViewBL = bViewBondLenghts &&  (bL0s!=0);
@@ -2203,7 +2203,7 @@ void MolGUI::drawSystem( Vec3i ixyz ){
     //printf( "bOrig %i ixyz(%i,%i,%i)\n", bOrig, ixyz.x,ixyz.y,ixyz.z );
     //printf( "MolGUI::drawSystem() bViewMolCharges %i W->nbmol.REQs %li\n", bViewMolCharges, W->nbmol.REQs );
     //printf("MolGUI::drawSystem()  bOrig %i W->bMMFF %i mm_bAtoms %i bViewAtomSpheres %i bViewAtomForces %i bViewMolCharges %i \n", bOrig, W->bMMFF, mm_bAtoms, bViewAtomSpheres, bViewAtomForces, bViewMolCharges  );
-    if( neighs && (!bViewBL) ){  glColor3f(0.0f,0.0f,0.0f);  glLineWidth(1.0); Draw3D::neighs(  natoms, 4, (int*)neighs, (int*)neighCell, apos, W->pbc_shifts ); glLineWidth(1.0);  }
+    if( neighs && (!bViewBL) ){  opengl1renderer.color3f(0.0f,0.0f,0.0f);  opengl1renderer.lineWidth(1.0); Draw3D::neighs(  natoms, 4, (int*)neighs, (int*)neighCell, apos, W->pbc_shifts ); opengl1renderer.lineWidth(1.0);  }
 
 
 
@@ -2211,60 +2211,60 @@ void MolGUI::drawSystem( Vec3i ixyz ){
     if(bViewAtomSpheres&&mm_bAtoms&&(!bViewBondLenghts)                  ){                            Draw3D::atoms            ( natoms, apos, atypes, W->params, ogl_sph, 1.0, mm_Rsc, mm_Rsub ); }
     if(bOrig){
         //printf( "MolGUI::drawSystem() bOrig(%i)  mm_bAtoms(%i) bViewAtomLabels(%i) bViewMolCharges(%i) \n", bOrig, mm_bAtoms, bViewAtomLabels, bViewMolCharges );
-        //if(bViewAtomP0s     &&  fapos           ){ glColor3f(0.0f,1.0f,1.0f); Draw3D::drawVectorArray  ( natoms, apos, fapos, ForceViewScale, 10000.0 );  }
+        //if(bViewAtomP0s     &&  fapos           ){ opengl1renderer.color3f(0.0f,1.0f,1.0f); Draw3D::drawVectorArray  ( natoms, apos, fapos, ForceViewScale, 10000.0 );  }
         //for(int i=0; i<natoms; i++){ printf( "MolGUI::drawSystem() fapos[%i] (%g,%g,%g)\n", i, fapos[i].x, fapos[i].y, fapos[i].z ); }
-        if(bViewAtomForces    &&  fapos           ){ glColor3f(1.0f,0.0f,0.0f); Draw3D::drawVectorArray  ( natoms, apos, fapos, ForceViewScale, 10000.0 );   }
-        if(mm_bAtoms&&bViewAtomLabels&&(!bViewBL) ){ glColor3f(0.0f,0.0f,0.0f); Draw3D::atomLabels       ( natoms, apos,                                    fontTex3D, textSize );  }
-        if(mm_bAtoms&&bViewAtomTypes              ){ glColor3f(0.0f,0.0f,0.0f); Draw3D::atomTypes        ( natoms, apos, atypes, &(params_glob->atypes[0]), fontTex3D, textSize );  }
-        if(bViewMolCharges && (W->nbmol.REQs!=0)  ){ glColor3f(0.0,0.0,0.0);    Draw3D::atomPropertyLabel( natoms,  (double*)REQs,  apos, 4, 2,             fontTex3D, textSize ); }
-        if(bViewHBondCharges && (W->nbmol.REQs!=0)){ glColor3f(0.0,0.0,0.0);    Draw3D::atomPropertyLabel( natoms,  (double*)REQs,  apos, 4, 3,             fontTex3D, textSize ); }
-        glEnable( GL_DEPTH_TEST );
+        if(bViewAtomForces    &&  fapos           ){ opengl1renderer.color3f(1.0f,0.0f,0.0f); Draw3D::drawVectorArray  ( natoms, apos, fapos, ForceViewScale, 10000.0 );   }
+        if(mm_bAtoms&&bViewAtomLabels&&(!bViewBL) ){ opengl1renderer.color3f(0.0f,0.0f,0.0f); Draw3D::atomLabels       ( natoms, apos,                                    fontTex3D, textSize );  }
+        if(mm_bAtoms&&bViewAtomTypes              ){ opengl1renderer.color3f(0.0f,0.0f,0.0f); Draw3D::atomTypes        ( natoms, apos, atypes, &(params_glob->atypes[0]), fontTex3D, textSize );  }
+        if(bViewMolCharges && (W->nbmol.REQs!=0)  ){ opengl1renderer.color3f(0.0,0.0,0.0);    Draw3D::atomPropertyLabel( natoms,  (double*)REQs,  apos, 4, 2,             fontTex3D, textSize ); }
+        if(bViewHBondCharges && (W->nbmol.REQs!=0)){ opengl1renderer.color3f(0.0,0.0,0.0);    Draw3D::atomPropertyLabel( natoms,  (double*)REQs,  apos, 4, 3,             fontTex3D, textSize ); }
+        opengl1renderer.enable( GL_DEPTH_TEST );
 
-        //if(W->ff.pi0s                           ){ glColor3f(0.0f,1.0f,1.0f); drawPi0s(1.0); }
+        //if(W->ff.pi0s                           ){ opengl1renderer.color3f(0.0f,1.0f,1.0f); drawPi0s(1.0); }
     
         {// Graph
 
             // --- draw whole molecule skeleton stored in W->graph
-            //glColor3f(1.0,0.0,1.0);
+            //opengl1renderer.color3f(1.0,0.0,1.0);
             //for(int i=0; i<W->graph.n; i++){ 
             //    for(int j=0; j<W->graph.nneighs[i]; j++ ) Draw3D::drawLine( apos[i], apos[W->graph.neighs[i][j]] ); 
             //};
 
             // --- draw only the bridge bonds stored in W->graph.found
-            glColor3f(1.0,0.0,1.0);
+            opengl1renderer.color3f(1.0,0.0,1.0);
             for(int i=0; i<W->graph.found.size(); i++){ Vec2i b = W->graph.found[i]; Draw3D::drawLine( apos[b.i], apos[b.j] );  };
         }
     
     }
     if( bond2atom ){
-        //if(W->builder.bPBC){ glColor3f(0.0f,0.0f,0.0f); Draw3D::bondsPBC    ( nbonds, bond2atom, apos, &W->builder.bondPBC[0], W->builder.lvec ); } 
-        //glColor3f(0.0f,0.0f,0.0f); Draw3D::bonds       ( nbonds,bond2atom,apos );  // Debug
+        //if(W->builder.bPBC){ opengl1renderer.color3f(0.0f,0.0f,0.0f); Draw3D::bondsPBC    ( nbonds, bond2atom, apos, &W->builder.bondPBC[0], W->builder.lvec ); } 
+        //opengl1renderer.color3f(0.0f,0.0f,0.0f); Draw3D::bonds       ( nbonds,bond2atom,apos );  // Debug
         /*
-        if(W->builder.bPBC){ glColor3f(0.0f,0.0f,0.0f); if(pbcShifts)Draw3D::bondsPBC          ( nbonds, bond2atom, apos,  pbcShifts                          );  
-                             glColor3f(0.0f,0.0f,1.0f); if(pbcShifts)Draw3D::pbcBondNeighLabels( nbonds, bond2atom, apos,  pbcShifts, fontTex3D,        textSize );
-        }else              { glColor3f(0.0f,0.0f,0.0f); Draw3D::bonds             ( nbonds, bond2atom, apos                                            );                                          
-                             glColor3f(0.0f,0.0f,0.0f); Draw3D::bondsLengths      ( nbonds, bond2atom, apos, fontTex3D );                                
+        if(W->builder.bPBC){ opengl1renderer.color3f(0.0f,0.0f,0.0f); if(pbcShifts)Draw3D::bondsPBC          ( nbonds, bond2atom, apos,  pbcShifts                          );  
+                             opengl1renderer.color3f(0.0f,0.0f,1.0f); if(pbcShifts)Draw3D::pbcBondNeighLabels( nbonds, bond2atom, apos,  pbcShifts, fontTex3D,        textSize );
+        }else              { opengl1renderer.color3f(0.0f,0.0f,0.0f); Draw3D::bonds             ( nbonds, bond2atom, apos                                            );                                          
+                             opengl1renderer.color3f(0.0f,0.0f,0.0f); Draw3D::bondsLengths      ( nbonds, bond2atom, apos, fontTex3D );                                
         }
         */
         if(bOrig){
-            if(bViewPis &&  fpipos ){ glColor3f(0.0f,1.0f,1.0f); Draw3D::drawVectorArray( nnode, apos, pipos, 1.0, 100.0 );          }
-            //if(mm_bAtoms         ){ glColor3f(0.0f,0.0f,0.0f); Draw3D::atomLabels       ( natoms, apos, fontTex3D               ); }                    
-            if( bViewBondLabels    ){ glColor3f(0.0f,0.0f,0.0f); Draw3D::bondLabels( nbonds, bond2atom, apos, fontTex3D,  textSize  ); }
+            if(bViewPis &&  fpipos ){ opengl1renderer.color3f(0.0f,1.0f,1.0f); Draw3D::drawVectorArray( nnode, apos, pipos, 1.0, 100.0 );          }
+            //if(mm_bAtoms         ){ opengl1renderer.color3f(0.0f,0.0f,0.0f); Draw3D::atomLabels       ( natoms, apos, fontTex3D               ); }                    
+            if( bViewBondLabels    ){ opengl1renderer.color3f(0.0f,0.0f,0.0f); Draw3D::bondLabels( nbonds, bond2atom, apos, fontTex3D,  textSize  ); }
             //void bondLabels( int n, const Vec2i* b2a, const Vec3d* apos, int fontTex3D, float sz=0.02 );
-            glEnable( GL_DEPTH_TEST );
+            opengl1renderer.enable( GL_DEPTH_TEST );
             //Draw3D::atoms          ( natoms, apos, atypes, W->params, ogl_sph, 1.0, mm_Rsc, mm_Rsub );
             //Draw3D::drawVectorArray( natoms, apos, fapos, 100.0, 10000.0 );   
         }
         if(bViewBondLenghts &&  bOrig ){ 
-            if(bViewAtomLabels ){ glColor3f(0.0f,0.0f,0.0f); Draw3D::bondsLengths( nbonds, bond2atom, apos, fontTex3D, textSize ); }
-            glEnable( GL_DEPTH_TEST );
+            if(bViewAtomLabels ){ opengl1renderer.color3f(0.0f,0.0f,0.0f); Draw3D::bondsLengths( nbonds, bond2atom, apos, fontTex3D, textSize ); }
+            opengl1renderer.enable( GL_DEPTH_TEST );
             //if(bL0s==0){ makeBondLengths0(); }
-            glLineWidth( 10.0 );
+            opengl1renderer.lineWidth( 10.0 );
             //Draw3D::bondLengthColorMap( nbonds, bond2atom, apos, bL0s, 0.01 );
             //Draw3D::bondLengthColorMap(nbonds, bond2atom, apos, Vec2d{2.33,2.35} );
             //printf( "@bL0s=%li\n", (long)bL0s );
             if(bL0s) Draw3D::bondLengthColorMap(nbonds, bond2atom, apos, bL0s );
-            glLineWidth( 1.0 );
+            opengl1renderer.lineWidth( 1.0 );
         }
     }
 
@@ -2275,10 +2275,10 @@ void MolGUI::saveScreenshot( int i, const char* fname ){
     sprintf( tmpstr, fname, i );               
     printf( "save to %s \n", tmpstr );
     unsigned int *screenPixels = new unsigned int[WIDTH*HEIGHT*4];  
-    glFlush();                                                      
-    glFinish();                                                     
-    //glReadPixels(0, 0, WIDTH, HEIGHT, GL_RGB, GL_UNSIGNED_INT, screenPixels);
-    glReadPixels(0, 0, WIDTH, HEIGHT, GL_RGBA, GL_UNSIGNED_BYTE, screenPixels);  
+    opengl1renderer.flush();                                                      
+    opengl1renderer.finish();                                                     
+    //opengl1renderer.readPixels(0, 0, WIDTH, HEIGHT, GL_RGB, GL_UNSIGNED_INT, screenPixels);
+    opengl1renderer.readPixels(0, 0, WIDTH, HEIGHT, GL_RGBA, GL_UNSIGNED_BYTE, screenPixels);  
     //SDL_Surface *bitmap = SDL_CreateRGBSurfaceFrom(screenPixels, WIDTH, HEIGHT, 32, WIDTH*4, 0xff000000, 0x00ff0000, 0x0000ff00, 0x000000ff );   
     SDL_Surface *bitmap = SDL_CreateRGBSurfaceFrom(screenPixels, WIDTH, HEIGHT, 32, WIDTH*4, 0x000000ff, 0x0000ff00, 0x00ff0000, 0xff000000 );  
     SDL_SaveBMP(bitmap, tmpstr);   
@@ -2288,11 +2288,11 @@ void MolGUI::saveScreenshot( int i, const char* fname ){
 
 void MolGUI::scanSurfFF( int n, Vec3d p0, Vec3d p1, Quat4d REQ, int evalMode, int viewMode, double sc, Vec3d hat ){
     printf( " MolGUI::scanSurfFF() evalMode=%i viewMode=%i n=%i p0(%g,%g,%g) p1(%g,%g,%g) REQ(%g,%g,%g,%g) ogl_surf_scan=%i sc=%g hat(%g,%g,%g)\n", evalMode,viewMode,  n, p0.x,p0.y,p0.z,  p1.x,p1.y,p1.z,    REQ.x,REQ.y,REQ.z,REQ.w,    ogl_surf_scan, sc, hat.x,hat.y,hat.z );
-    if( !ogl_surf_scan ){ glDeleteLists(ogl_surf_scan,1); }
-    ogl_surf_scan = glGenLists(1);
+    if( !ogl_surf_scan ){ opengl1renderer.deleteLists(ogl_surf_scan,1); }
+    ogl_surf_scan = opengl1renderer.genLists(1);
     Vec3d dp=p1-p0; dp.mul(1./n);
-    glNewList(ogl_surf_scan, GL_COMPILE );
-    glBegin(GL_LINES);
+    opengl1renderer.newList(ogl_surf_scan, GL_COMPILE );
+    opengl1renderer.begin(GL_LINES);
     Quat4d PLQ = REQ2PLQ_d( REQ, W->gridFF.alphaMorse );
     Vec3d op2;
     for(int i=0; i<n; i++){
@@ -2311,8 +2311,8 @@ void MolGUI::scanSurfFF( int n, Vec3d p0, Vec3d p1, Quat4d REQ, int evalMode, in
         }
         op2=p2;
     }
-    glEnd();
-    glEndList();
+    opengl1renderer.end();
+    opengl1renderer.endList();
 }
 
 void MolGUI::debug_scanSurfFF( int n, Vec3d p0, Vec3d p1, Quat4d REQ, double sc ){
@@ -2333,7 +2333,7 @@ void MolGUI::debug_scanSurfFF( int n, Vec3d p0, Vec3d p1, Quat4d REQ, double sc 
         debug_ps  [i].f=(Vec3f )(p0+dp*i);
     }
     W->scanSurfFF( n, &debug_ps[0], &debug_REQs[0], &debug_fs[0] );
-    glBegin(GL_LINES);
+    opengl1renderer.begin(GL_LINES);
     for(int i=0; i<n; i++){
         //Vec3d  p  = p0 + dp*i;
         //Quat4f fe = Quat4fZero; W->gridFF.addForce_surf( p, PLQ, fe );
@@ -2353,7 +2353,7 @@ void MolGUI::debug_scanSurfFF( int n, Vec3d p0, Vec3d p1, Quat4d REQ, double sc 
         //Draw3D::vertex( W->nbmol.apos[0] ); Draw3D::vertex( W->nbmol.apos[0]+(Vec3d{0.0,0.0,E})*sc  );  // Energy -> z
         //Draw3D::vertex( W->nbmol.apos[0] ); Draw3D::vertex( W->nbmol.apos[0]+(Vec3d{0.0,E,0.0})*sc  );  // Energy -> x
     }
-    glEnd();
+    opengl1renderer.end();
 }
 
 void MolGUI::lattice_scan( int n1, int n2, const Mat3d& dlvec ){

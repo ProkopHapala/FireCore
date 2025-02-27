@@ -5,13 +5,13 @@
 #include "SphereSampling.h"
 
 void heightColor(double h){
-    //glColor3f( h, h*0.3, 0.5+h*0.1 );
-    //glColor3f( h*0.25, 0.5,1-h*0.25 );
+    //opengl1renderer.color3f( h, h*0.3, 0.5+h*0.1 );
+    //opengl1renderer.color3f( h*0.25, 0.5,1-h*0.25 );
     //double sh = sqrt(h);
-    //if(h>0){ glColor3f( 0.0, 0.0, sqrt(h)*0.25 ); }else{   glColor3f( sqrt(-h)*0.25, 0.0, 0.0 ); };
+    //if(h>0){ opengl1renderer.color3f( 0.0, 0.0, sqrt(h)*0.25 ); }else{   opengl1renderer.color3f( sqrt(-h)*0.25, 0.0, 0.0 ); };
     float c = h*0.05+0.5;
-    if(h>0){ float f =sqrt(h)*0.25;  glColor3f( c, c, c+f); }else{ float f=sqrt(-h)*0.25;  glColor3f( c+f, c, c ); };
-    //if(h>0){ glColor3f( 0.0, sin(h*15)*0.5+0.5, sqrt(h)*0.25 ); }else{   glColor3f( sqrt(-h)*0.25, sin(h*15)*0.5+0.5, 0.0 ); };
+    if(h>0){ float f =sqrt(h)*0.25;  opengl1renderer.color3f( c, c, c+f); }else{ float f=sqrt(-h)*0.25;  opengl1renderer.color3f( c+f, c, c ); };
+    //if(h>0){ opengl1renderer.color3f( 0.0, sin(h*15)*0.5+0.5, sqrt(h)*0.25 ); }else{   opengl1renderer.color3f( sqrt(-h)*0.25, sin(h*15)*0.5+0.5, 0.0 ); };
 };
 
 namespace SphereSampling{
@@ -23,21 +23,21 @@ void drawDiTri( Vec2i n, const Vec3f& a, const Vec3f& b, const Vec3f& c, const V
     float da = 1.0/n.a;
     float db = 1.0/n.b;
     /*
-    glBegin(GL_TRIANGLES);
-    //glVertex3f(a.x,a.y,a.z);  glVertex3f(b.x,b.y,b.z);  glVertex3f(c.x,c.y,c.z);
-    //glVertex3f(a.x,a.y,a.z);  glVertex3f(b.x,b.y,b.z);  glVertex3f(d.x,d.y,d.z);
-    glColor3f(1.0,0.0,0.0); glVertex3f(a.x,a.y,a.z);
-    glColor3f(0.0,0.0,1.0); glVertex3f(b.x,b.y,b.z);
-    glColor3f(0.0,1.0,0.0); glVertex3f(c.x,c.y,c.z);
-    glColor3f(1.0,0.0,0.0); glVertex3f(a.x,a.y,a.z);
-    glColor3f(0.0,0.0,1.0); glVertex3f(b.x,b.y,b.z);
-    glColor3f(0.0,0.0,0.0); glVertex3f(d.x,d.y,d.z);
-    glEnd();
+    opengl1renderer.begin(GL_TRIANGLES);
+    //opengl1renderer.vertex3f(a.x,a.y,a.z);  opengl1renderer.vertex3f(b.x,b.y,b.z);  opengl1renderer.vertex3f(c.x,c.y,c.z);
+    //opengl1renderer.vertex3f(a.x,a.y,a.z);  opengl1renderer.vertex3f(b.x,b.y,b.z);  opengl1renderer.vertex3f(d.x,d.y,d.z);
+    opengl1renderer.color3f(1.0,0.0,0.0); opengl1renderer.vertex3f(a.x,a.y,a.z);
+    opengl1renderer.color3f(0.0,0.0,1.0); opengl1renderer.vertex3f(b.x,b.y,b.z);
+    opengl1renderer.color3f(0.0,1.0,0.0); opengl1renderer.vertex3f(c.x,c.y,c.z);
+    opengl1renderer.color3f(1.0,0.0,0.0); opengl1renderer.vertex3f(a.x,a.y,a.z);
+    opengl1renderer.color3f(0.0,0.0,1.0); opengl1renderer.vertex3f(b.x,b.y,b.z);
+    opengl1renderer.color3f(0.0,0.0,0.0); opengl1renderer.vertex3f(d.x,d.y,d.z);
+    opengl1renderer.end();
     return;
     */
 
-    //glPointSize(2);
-    //glPointSize(1);
+    //opengl1renderer.pointSize(2);
+    //opengl1renderer.pointSize(1);
 
     //int ioff = (hs-heights);
     //printf("ioff %i %i \n",ioff,ioff/(n.a*n.b));
@@ -46,8 +46,8 @@ void drawDiTri( Vec2i n, const Vec3f& a, const Vec3f& b, const Vec3f& c, const V
     for( int ia = 0; ia<n.a-1; ia++ ){
         float fa  =da*(ia);
         float fa_ =da*(ia+1);
-        glBegin(GL_TRIANGLE_STRIP);
-        //glBegin(GL_POINTS);
+        opengl1renderer.begin(GL_TRIANGLE_STRIP);
+        //opengl1renderer.begin(GL_POINTS);
         for( int ib = 0; ib<n.b; ib++ ){
             Vec3f p;
             float h, fd;
@@ -60,12 +60,12 @@ void drawDiTri( Vec2i n, const Vec3f& a, const Vec3f& b, const Vec3f& c, const V
 
             i = (ia+1)*n.b+ib; //if(i>(n.a*n.b)) printf("i = %i", i);
             h = hs[i];
-            //glColor3f(h,h,h);
+            //opengl1renderer.color3f(h,h,h);
             heightColor(h);
-            //glColor3f(fa_,h,fb);
+            //opengl1renderer.color3f(fa_,h,fb);
             if(bNormalize) p.normalize();
             if(bRelief)    p.mul(1+hscale*(h-0.5));
-            glVertex3f( p.x,  p.y,  p.z  );
+            opengl1renderer.vertex3f( p.x,  p.y,  p.z  );
             //sps[i] = p;
             //fd = (fa+fb)*0.5;
             //if( fa_>fb ){ float f=(fa-fb); p = d*(fd-0.5*f) + c*(1-fd-0.5*f)   + a*f; }
@@ -74,19 +74,19 @@ void drawDiTri( Vec2i n, const Vec3f& a, const Vec3f& b, const Vec3f& c, const V
 
             i = ia*n.b+ib;
             h = hs[i];
-            //glColor3f(h,h,h);
+            //opengl1renderer.color3f(h,h,h);
             heightColor(h);
-            //glColor3f(fa,h,fb);
+            //opengl1renderer.color3f(fa,h,fb);
             if(bNormalize) p.normalize();
             if(bRelief)    p.mul(1+hscale*(h-0.5));
-            glVertex3f( p.x,  p.y,  p.z  );
+            opengl1renderer.vertex3f( p.x,  p.y,  p.z  );
             //sps[i] = p;
             //sprintf( str,"%i,%i|%i", ia,ib,i );
             //Draw3D::drawText( str, (Vec3d)p, fontTex, 0.02, 0 );
-            //glVertex3f( p_.x, p_.y, p_.z );
+            //opengl1renderer.vertex3f( p_.x, p_.y, p_.z );
             //printf( "%i: %i %i %i | (%f,%f,%f) \n", i, ia, ib, iface, p.x, p.y, p.z );
         }
-        glEnd();
+        opengl1renderer.end();
     }
 }
 
@@ -97,10 +97,10 @@ void drawDiTriWire( Vec2i n, const Vec3f& a, const Vec3f& b, const Vec3f& c, con
         float fa  =da*(ia);
         float fa_ =da*(ia+1);
 
-        //glBegin(GL_POINTS);
+        //opengl1renderer.begin(GL_POINTS);
 
-        //glColor3f(1.0,0.0,0.0);
-        glBegin(GL_LINE_STRIP);
+        //opengl1renderer.color3f(1.0,0.0,0.0);
+        opengl1renderer.begin(GL_LINE_STRIP);
         for( int ib = 0; ib<n.b; ib++ ){
             Vec3f p;
             float h, fd;
@@ -111,13 +111,13 @@ void drawDiTriWire( Vec2i n, const Vec3f& a, const Vec3f& b, const Vec3f& c, con
             h = hs[i];
             if(bNormalize) p.normalize();
             if(bRelief)    p.mul(1+hscale*(h-0.5));
-            glVertex3f( p.x,  p.y,  p.z  );
+            opengl1renderer.vertex3f( p.x,  p.y,  p.z  );
         }
-        glEnd();
+        opengl1renderer.end();
 
         if(ia>=(n.a-1)) continue;
-        glBegin(GL_LINE_STRIP);
-        //glColor3f(0.0,0.0,1.0);
+        opengl1renderer.begin(GL_LINE_STRIP);
+        //opengl1renderer.color3f(0.0,0.0,1.0);
         for( int ib = 0; ib<n.b; ib++ ){
             Vec3f p;
             float h, fd;
@@ -128,15 +128,15 @@ void drawDiTriWire( Vec2i n, const Vec3f& a, const Vec3f& b, const Vec3f& c, con
             h = hs[i];
             if(bNormalize) p.normalize();
             if(bRelief)    p.mul(1+hscale*(h-0.5));
-            glVertex3f( p.x,  p.y,  p.z  );
+            opengl1renderer.vertex3f( p.x,  p.y,  p.z  );
             diTri2cartes<float>( fa, fb, a,b,c,d, p);
             i = ia*n.b+ib;
             h = hs[i];
             if(bNormalize) p.normalize();
             if(bRelief)    p.mul(1+hscale*(h-0.5));
-            glVertex3f( p.x,  p.y,  p.z  );
+            opengl1renderer.vertex3f( p.x,  p.y,  p.z  );
         }
-        glEnd();
+        opengl1renderer.end();
 
     }
 }
@@ -157,9 +157,9 @@ void drawDiTri_seam( int n, int n2, const Vec3f& a, const Vec3f& b, const Vec3f&
     Vec3f db = (b-a)*(1.0/(n ));
     Vec3f dc = (c-a)*(1.0/(n2));
     Vec3f p=a;
-    glBegin(GL_TRIANGLE_STRIP);
-    //glBegin(GL_LINES);
-    //glBegin(GL_POINTS);
+    opengl1renderer.begin(GL_TRIANGLE_STRIP);
+    //opengl1renderer.begin(GL_LINES);
+    //opengl1renderer.begin(GL_POINTS);
     for( int i = 0; i<(n+1); i++ ){
         float h;
         int ii;
@@ -167,15 +167,15 @@ void drawDiTri_seam( int n, int n2, const Vec3f& a, const Vec3f& b, const Vec3f&
         ii = index(n-i-1, view2);
         if(i==n){ h=hn; }else{ h=hs2 [ii]; };
 
-        //glColor3f(h,h,h);
+        //opengl1renderer.color3f(h,h,h);
         heightColor(h);
-        //glColor3f(1.0,0.0,0.0);
+        //opengl1renderer.color3f(1.0,0.0,0.0);
         p_=p;
         //p_=sps2[ii];
         if(bNormalize) p_.normalize();
         if(bRelief)    p_.mul(1+hscale*(h-0.5));
-        glVertex3f( p_.x,  p_.y,  p_.z  );
-        //glColor3f(1.0,1.0,0.0); glVertex3f( pp.x,  pp.y,  pp.z  );
+        opengl1renderer.vertex3f( p_.x,  p_.y,  p_.z  );
+        //opengl1renderer.color3f(1.0,1.0,0.0); opengl1renderer.vertex3f( pp.x,  pp.y,  pp.z  );
         //printf( "(%f,%f,%f)  (%f,%f,%f) \n", p.x, p.y, p.z,  pp.x, pp.y, pp.z );
 
         if(i<n){
@@ -185,17 +185,17 @@ void drawDiTri_seam( int n, int n2, const Vec3f& a, const Vec3f& b, const Vec3f&
             h=hs [ii]; //p_=sps[ii];
             //p=sps[ii];
             //printf( "sps  %i %i %f %f %f \n", i, ii, sps[ii].x,  sps[ii].y,  sps[ii].z );
-            //glColor3f(fa,h,fb);
-            //glColor3f(h,h,h);
+            //opengl1renderer.color3f(fa,h,fb);
+            //opengl1renderer.color3f(h,h,h);
             heightColor(h);
-            //glColor3f(0.0,0.0,1.0);
+            //opengl1renderer.color3f(0.0,0.0,1.0);
             p_ = p + dc;
             //p_=sps[ii];
             if(bNormalize) p_.normalize();
             if(bRelief)    p_.mul(1+hscale*(h-0.5));
-            glVertex3f( p_.x,  p_.y,  p_.z  );
-            //glColor3f(1.0,1.0,0.0); glVertex3f( pp.x,  pp.y,  pp.z  );
-            //glVertex3f( p.x,  p.y,  p.z  );
+            opengl1renderer.vertex3f( p_.x,  p_.y,  p_.z  );
+            //opengl1renderer.color3f(1.0,1.0,0.0); opengl1renderer.vertex3f( pp.x,  pp.y,  pp.z  );
+            //opengl1renderer.vertex3f( p.x,  p.y,  p.z  );
             //Draw3D::drawPointCross(p,0.05);
         }
         //if(bT1){ h = hs2[i*n]; }else{ h = hs2[i]; };
@@ -204,7 +204,7 @@ void drawDiTri_seam( int n, int n2, const Vec3f& a, const Vec3f& b, const Vec3f&
         //printf( "sps2 %i %i %f %f %f \n", i, ii, sps2[ii].x,  sps2[ii].y,  sps2[ii].z );
         p.add(db);
     }
-    glEnd();
+    opengl1renderer.end();
     //#undef index
 
 }
@@ -215,7 +215,7 @@ void drawDiTriWire_seam( int n, int n2, const Vec3f& a, const Vec3f& b, const Ve
     Vec3f db = (b-a)*(1.0/(n ));
     Vec3f dc = (c-a)*(1.0/(n2));
     Vec3f p=a;
-    glBegin(GL_LINE_STRIP);
+    opengl1renderer.begin(GL_LINE_STRIP);
     for( int i = 0; i<(n+1); i++ ){
         float h;
         int ii;
@@ -225,18 +225,18 @@ void drawDiTriWire_seam( int n, int n2, const Vec3f& a, const Vec3f& b, const Ve
         p_=p;
         if(bNormalize) p_.normalize();
         if(bRelief)    p_.mul(1+hscale*(h-0.5));
-        glVertex3f( p_.x,  p_.y,  p_.z  );
+        opengl1renderer.vertex3f( p_.x,  p_.y,  p_.z  );
         if(i<n){
             ii = index(n-i-1, view);
             h=hs [ii]; //p_=sps[ii];
             p_ = p + dc;
             if(bNormalize) p_.normalize();
             if(bRelief)    p_.mul(1+hscale*(h-0.5));
-            glVertex3f( p_.x,  p_.y,  p_.z  );
+            opengl1renderer.vertex3f( p_.x,  p_.y,  p_.z  );
         }
         p.add(db);
     }
-    glEnd();
+    opengl1renderer.end();
 
 }
 
@@ -250,7 +250,7 @@ void drawDiTri_Inner( Vec2i n, const Vec3f& a, const Vec3f& b, const Vec3f& c, c
     for( int ia = 1; ia<n.a; ia++ ){
         float fa  =da*(ia-0.5);
         float fa_ =da*(ia+0.5);
-        glBegin(GL_TRIANGLE_STRIP);
+        opengl1renderer.begin(GL_TRIANGLE_STRIP);
         for( int ib = 0; ib<n.b; ib++ ){
             float h;
             float fb  =(db*(ib+0.5));
@@ -260,20 +260,20 @@ void drawDiTri_Inner( Vec2i n, const Vec3f& a, const Vec3f& b, const Vec3f& c, c
             else           { p = a*(1-fb)  + b*(1-fa) + d*(fa+fb-1); }
             h = height[ia*n.b+ib];
             heightColor(h);
-            //glColor3f(fa,0.0,fb);
+            //opengl1renderer.color3f(fa,0.0,fb);
             //p.normalize(); p.mul(1+0.1*(h-0.5));
-            glVertex3f( p.x,  p.y,  p.z  );
+            opengl1renderer.vertex3f( p.x,  p.y,  p.z  );
 
             if( (fa_+fb)<1 ){ p = a*fa_    + b*fb     + c*(1-fa_-fb); }
             else            { p = a*(1-fb) + b*(1-fa_) + d*(fa_+fb-1); }
             h = height[(ia+1)*n.b+ib];
-            //glColor3f(h,h,h);
+            //opengl1renderer.color3f(h,h,h);
             heightColor(h);
-            //glColor3f(fa_,0.0,fb);
+            //opengl1renderer.color3f(fa_,0.0,fb);
             //p.normalize(); p.mul(1+0.1*(h-0.5));
-            glVertex3f( p.x,  p.y,  p.z  );
+            opengl1renderer.vertex3f( p.x,  p.y,  p.z  );
         }
-        glEnd();
+        opengl1renderer.end();
     }
 }
 */
@@ -282,7 +282,7 @@ void drawDiTri_Inner( Vec2i n, const Vec3f& a, const Vec3f& b, const Vec3f& c, c
 void drawDiTri_edge( Vec2i n, const Vec3f& a, const Vec3f& b, const Vec3f& c, const Vec3f& d, bool bT1, bool bT2, float* hs2, float* hs1 ){
     float da = 1.0/(n.a);
     float db = 1.0/(n.b);
-    glBegin(GL_TRIANGLE_STRIP);
+    opengl1renderer.begin(GL_TRIANGLE_STRIP);
     for( int ib = 0; ib<n.b; ib++ ){
         float fb  =(db*(ib+0.5));
         float h;
@@ -290,17 +290,17 @@ void drawDiTri_edge( Vec2i n, const Vec3f& a, const Vec3f& b, const Vec3f& c, co
 
         p = a*(1-fb) + b*fb + c*(da*0.5);
         if(bT1){ h = height[ib*n.a]; }else{ h = height[ib]; }; // beginnings
-        glColor3f(h,h,h);
+        opengl1renderer.color3f(h,h,h);
         //p.normalize(); p.mul(1+0.1*(h-0.5));
-        glVertex3f( p.x,  p.y,  p.z  );
+        opengl1renderer.vertex3f( p.x,  p.y,  p.z  );
 
         p = a*(1-fb) + b*fb + d*(da*0.5);
         if(bT2){ h = height[ib*n.a+1]; }else{ h = height[(n.a-1)+ib]; }; // ends
-        glColor3f(h,h,h);
+        opengl1renderer.color3f(h,h,h);
         //p.normalize(); p.mul(1+0.1*(h-0.5));
-        glVertex3f( p.x,  p.y,  p.z  );
+        opengl1renderer.vertex3f( p.x,  p.y,  p.z  );
     }
-    glEnd();
+    opengl1renderer.end();
 }
 */
 

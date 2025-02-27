@@ -170,7 +170,7 @@ inline double evalSigmaSigma_dist( int ia, int ing, int jng, double K ){
     Vec3d fiI = hi* hi.dot(fi);   
     Vec3d fjI = hj* hj.dot(fj);   
     //printf(  "ang[%i|%i,%i] c1 %g c2 %g \n", ia, ing, jng, hi.dot(fi), hj.dot(fj)  );
-    //glColor3f(1.,0.,0.);
+    //opengl1renderer.color3f(1.,0.,0.);
     //Draw3D::drawVecInPos(  fi, apos[ing] );
     //Draw3D::drawVecInPos(  fj, apos[jng] );
     //Draw3D::drawVecInPos(  fjT+fiT, apos[ia] );
@@ -209,7 +209,7 @@ inline double evalSigmaSigma_cos(  int ia, int ing, int jng, double K, double c0
     //     //printf( "evalAngle_cos [%i|%i,%i,%i] c(%g,%g) \n", iDEBUG_pick, ia, ing, jng, hf1.dot(h1), hf1.dot(h1)  );
     //     //printf( "evalAngle_cos [%i|%i,%i,%i] c %g c_ %g fang_ %g E %g \n", iDEBUG_pick, ia, ing, jng, c, c_, fang, E );
     //     //printf( "evalAngle_cos bDEBUG_plot [%i|%i,%i] iDEBUG_pick %i \n", ia, ing, jng, iDEBUG_pick );
-    //     glColor3f(1.,0.,0.);
+    //     opengl1renderer.color3f(1.,0.,0.);
     //     Draw3D::drawVecInPos(  hf1, apos[ing] );
     //     Draw3D::drawVecInPos(  hf2, apos[jng] );
     //     Draw3D::drawVecInPos(  (hf1+hf2)*-1.0, apos[ia] );
@@ -329,7 +329,7 @@ double eval_bond(int ib){
     double fr = dl*k*2;
     f.mul( fr );
     //if( isnan( f ) ){ printf("ERROR : eval_bond(%i); f(%g,%g,%g) is NaN fr %g k %g l0 %g \n", ib, f.x,f.y,f.z, fr, k, bond_l0[ib] ); }
-    //glColor3f(1.,0.,0.);
+    //opengl1renderer.color3f(1.,0.,0.);
     //Draw3D::drawVecInPos(  f, apos[iat.x] );
     //Draw3D::drawVecInPos(  f, apos[iat.y] );
     fapos[at.x].add( f );
@@ -522,7 +522,7 @@ double eval_neighs_new(int ia){
             
             if(bPBCbyLvec){  
                 wrapBondVec( h );
-                //glColor3f(1.,0.,1.); Draw3D::drawVecInPos( h, pa );
+                //opengl1renderer.color3f(1.,0.,1.); Draw3D::drawVecInPos( h, pa );
             }else if(pbcShifts){
                 if( bond2atom[ib].a!=ia ){ c=-1; }; // bond should be inverted
                 h.add_mul( pbcShifts[ib], c );
