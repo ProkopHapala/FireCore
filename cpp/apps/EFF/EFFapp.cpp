@@ -43,6 +43,7 @@ commit 94a94e956acad8e3d23a54acbd0f715fe0d1f827    2021-May-05    CLCFGO : teste
 #include "Plot2D.h"
 #include "Console.h"
 
+
 //#include "MMFF.h"
 
 #define R2SAFE  1.0e-8f
@@ -371,7 +372,7 @@ TestAppRARFF::TestAppRARFF( int& id, int WIDTH_, int HEIGHT_ ) : AppSDL2OGL_3D( 
 }
 
 void TestAppRARFF::draw(){
-    printf( " ==== frame %i \n", frameCount );
+    // printf( " ==== frame %i \n", frameCount );
     // TADY SE VYKRESULJI JEDNOTLIVY FRAMES
 
     glClearColor( 1.0f, 1.0f, 1.0f, 1.0f );
