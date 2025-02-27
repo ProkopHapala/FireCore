@@ -1423,7 +1423,7 @@ void MolGUI::draw(){
         Vec3d  ps   [natoms];
         Quat4d paras[natoms];
         int n = W->ffl.selectFromOtherBucketsInBox( ib ,6.0, ps,paras,inds );
-        printf( "MolGUI::draw(). n %i \n", n );
+        //printf( "MolGUI::draw(). n %i \n", n );
         glColor3f(0.0,1.0,1.0);
         for(int ia=0; ia<n; ia++){
             //Draw::color_of_hash(ia*76461+1459);
