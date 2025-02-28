@@ -3939,7 +3939,7 @@ double entropic_spring_JE(double lamda1, double lamda2, int n, int *dc, int nbPr
         // return three_atoms_problem_TI(lamda1, lamda2, nbStep, nMDsteps, nEQsteps, tdamp, T, dt);
         // return three_atoms_problem_JE(lamda1, lamda2, nbStep, nMDsteps, nEQsteps, tdamp, T, dt);
         // return mexican_hat_JE(lamda1, lamda2, nbStep, nMDsteps, nEQsteps, tdamp, T, dt);
-        return entropic_spring_TI(lamda1, lamda2, n, dc, nbStep, nMDsteps, nEQsteps, tdamp, T, dt);
+        // return entropic_spring_TI(lamda1, lamda2, n, dc, nbStep, nMDsteps, nEQsteps, tdamp, T, dt);
 
 
         bConstrains = true;
@@ -3950,9 +3950,9 @@ double entropic_spring_JE(double lamda1, double lamda2, int n, int *dc, int nbPr
         go.T_target = T;
         go.bExploring = true;
         // define colective variable
-        for (int i = 1; i < n; i++)
+        for (int i = 0; i < n; i++)
         {
-            constrs.bonds[dc[i]].ls.set(lamda1 / n);
+            constrs.bonds[dc[i]].ls.set(lamda1);
             colVar.bonds.push_back(constrs.bonds[dc[i]]);
         }
         std::vector<double> lamda(nbStep);
@@ -3963,16 +3963,19 @@ double entropic_spring_JE(double lamda1, double lamda2, int n, int *dc, int nbPr
             printf("lamda[%d]=%f\n", i, lamda[i]);
         }
 
-/*        // MD simulation to gain data for TI
-        std::vector<std::vector<double>> Energy(nbStep, std::vector<double>(nMDsteps));
+        // MD simulation to gain data for TI
+        std::vector<std::vector<double>> Energies(nbStep, std::vector<double>(nMDsteps));
         std::vector<std::vector<double>> dE_dLamda(nbStep, std::vector<double>(nMDsteps));
         std::vector<std::vector<double>> v2(nbStep, std::vector<double>(nMDsteps));
 
         printf("before MD\n");
-        ffl.print();
+//        ffl.print();
         for(int i = 0; i < n; i++){
-            printf("ffl.apos[colVar.bonds[%i].ias.b] - ffl.apos[colVar.bonds[%i].ias.a] = %f %f %f\n", i,i,ffl.apos[colVar.bonds[i].ias.b].x - ffl.apos[colVar.bonds[i].ias.a].x, ffl.apos[colVar.bonds[i].ias.b].y - ffl.apos[colVar.bonds[i].ias.a].y, ffl.apos[colVar.bonds[i].ias.b].z - ffl.apos[colVar.bonds[i].ias.a].z);
-            printf("ffl.apos[colVar.bonds[%i].ias.b] - ffl.apos[colVar.bonds[%i].ias.a] = %f\n", i,i,(ffl.apos[colVar.bonds[i].ias.b] - ffl.apos[colVar.bonds[i].ias.a]).norm());
+            printf("for loop\n");
+            Vec3d direction;
+            direction.set_sub(ffl.apos[colVar.bonds[i].ias.b], ffl.apos[colVar.bonds[i].ias.a]);
+            printf("ffl.apos[%i] - ffl.apos[%i] = %f %f %f\n", colVar.bonds[i].ias.b,colVar.bonds[i].ias.a,direction.x,direction.y,direction.z);
+            printf("ffl.apos[%i] - ffl.apos[%i] = %f\n", colVar.bonds[i].ias.b,colVar.bonds[i].ias.a,(ffl.apos[colVar.bonds[i].ias.b] - ffl.apos[colVar.bonds[i].ias.a]).norm());
  
         }
 
@@ -3980,23 +3983,18 @@ double entropic_spring_JE(double lamda1, double lamda2, int n, int *dc, int nbPr
         for (int L = 0; L < nbStep; L++)
         {
             run_omp(nEQsteps, dt);
-            run_omp(nMDsteps, dt, 1e-20, 1000, 0.02, Energy[L].data(), dE_dLamda[L].data(), v2[L].data()); // run MD simulation
+            run_omp(nMDsteps, dt, 1e-20, 1000, 0.02, Energies[L].data(), dE_dLamda[L].data(), v2[L].data()); // run MD simulation
 
             for (int i = 0; i < n; i++)
             {
-                if(i == 0){
-                    constrs.bonds[dc[i]].ls.add((d_lamda)/n);
-                    colVar.bonds[i].ls.add((d_lamda)/n);
-                    continue;
-                }
-                constrs.bonds[dc[i]].ls.set((lamda1+L*d_lamda)/n);
-                colVar.bonds[i].ls.set((lamda1+L*d_lamda)/n);
+                constrs.bonds[dc[i]].ls.set((lamda1+L*d_lamda));
+                colVar.bonds[i].ls.set((lamda1+L*d_lamda));
             }
+            printf("%i\n", L);
             printf("ffl.apos[constrs.bonds[0].ias.b] - ffl.apos[constrs.bonds[0].ias.a] = %f\n", (ffl.apos[constrs.bonds[0].ias.b] - ffl.apos[constrs.bonds[0].ias.a]).norm());
             printf("ffl.apos[constrs.bonds[1].ias.b] - ffl.apos[constrs.bonds[1].ias.a] = %f\n", (ffl.apos[constrs.bonds[1].ias.b] - ffl.apos[constrs.bonds[1].ias.a]).norm());
             printf("ffl.apos[constrs.bonds[2].ias.b] - ffl.apos[constrs.bonds[2].ias.a] = %f\n\n", (ffl.apos[constrs.bonds[2].ias.b] - ffl.apos[constrs.bonds[2].ias.a]).norm());
         }
-
 
         // thermodynamic integration + reference calculation
         std::vector<double> TI(nbStep, 0.0);
@@ -4006,8 +4004,7 @@ double entropic_spring_JE(double lamda1, double lamda2, int n, int *dc, int nbPr
            printf("TI = %12.6f\n", x);
         store_TI("results/TI_plot.dat", lamda, TI, sigmaTI);
 
-        return TI[nbStep - 1];   */   
-        return 0;   
+        return TI[nbStep - 1];     
     }
 };
 

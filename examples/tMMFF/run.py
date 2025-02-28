@@ -88,14 +88,19 @@ MY_dt = args.dt
 MY_lamda1 = args.lamda1
 MY_lamda2 = args.lamda2
 
-xyz_name = "data/entropic_spring_"+str(MY_N)
-constr_name = "data/entropic_spring_"+str(MY_N)+".cons"
+# xyz_name = "data/entropic_spring_"+str(MY_N)
+# constr_name = "data/entropic_spring_"+str(MY_N)+".cons"
+#colectiveVariable = np.array([0], dtype=np.int32)
 
-mmff.setVerbosity( verbosity=1, idebug=1 )
+xyz_name = "data/nucleobasis_AT"
+constr_name = "data/nucleobasis_AT.cons"
+colectiveVariable = np.array([1,2], dtype=np.int32)
+
+mmff.setVerbosity( verbosity=3, idebug=1 )
 
 mmff.init( xyz_name=xyz_name, constr_name=constr_name ,bMMFF=True)
 mmff.setSwitches(CheckInvariants=-1, PBC_nonBond=-1, PBC_evalAtom=-1, NonBonded=-1, MMFF=1, doBonds=1, Angles=-1, PiSigma=-1, PiPiI=-1, bNonBondNeighs=-1, bSurfAtoms=-1, bGridFF=-1, bTricubic=-1, bConstrZ=-1, bConstrains=-1)
-colectiveVariable = np.array([0], dtype=np.int32)
+
 E = mmff.compute_Free_energy(MY_lamda1, MY_lamda2, colectiveVariable, nbStep=MY_nbStep, nMDsteps=MY_nMDsteps, nEQsteps=MY_nEQsteps, t_damp=MY_t_damp, T=MY_T, dt=MY_dt)
 print("E=", E)
 exit()
