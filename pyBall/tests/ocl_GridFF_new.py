@@ -195,6 +195,7 @@ def coulomb_brute_1D( atoms, kind='z', p0=[0.0,0.0,2.0], bPlot=False, nPBC=(60,6
 
 def make_atoms_arrays( atoms=None, fname=None, bSymetrize=False, Element_Types_name="./data/ElementTypes.dat", bSqrtEvdw=True ): 
     #print( os.getcwd() )
+    print("bSymetrize ", bSymetrize )
     if atoms is None:
         atoms = au.AtomicSystem( fname=fname )
     if bSymetrize:
@@ -239,14 +240,25 @@ def plotTrjs( trjs, names ):
     plt.show()
 
 
-def test_gridFF_ocl( fname="./data/xyz/NaCl_1x1_L1.xyz", Element_Types_name="./data/ElementTypes.dat", job="PLQ", b2D=False, bSymetrize=False, bFit=True, save_name=None, z0=np.nan ):
-    print( "py======= test_gridFF_ocl() START" );
+def test_gridFF_ocl( fname="./data/xyz/NaCl_1x1_L1.xyz", Element_Types_name="./data/ElementTypes.dat", job="PLQ", b2D=False, bSymetrize=False, bFit=True, save_name=None, z0=np.nan, 
+                    shift0=(0.0,0.0,0.0) ):
+    print( "py======= test_gridFF_ocl() START" )
 
     T00 = time.perf_counter()
 
     #Element_Types_name="/home/prokop/git/FireCore/tests/tMMFF/data/ElementTypes.dat"
 
     xyzq, REQs, atoms = make_atoms_arrays( fname=fname, bSymetrize=bSymetrize, Element_Types_name=Element_Types_name )
+    # xyzq, REQs, atoms = make_atoms_arrays( fname=fname, bSymetrize=False, Element_Types_name=Element_Types_name )
+    print("Atoms:",atoms.apos)
+
+    print("Debug :: REQs =", REQs )
+
+    shift0 = np.array(shift0)
+    xyzq[:,:3] += shift0[None,:]
+    atoms.apos = xyzq[:,:3].copy()
+    print("New_Atoms:",atoms.apos)
+
 
     if np.isnan(z0): z0 = xyzq[0,2].max()
     print( "test_gridFF_ocl() z0= ", z0 )
@@ -305,18 +317,58 @@ def test_gridFF_ocl( fname="./data/xyz/NaCl_1x1_L1.xyz", Element_Types_name="./d
     
     elif job=="PLQ":
         
-        # --- Morse
+        
+        # --- Coulomb-----#
+        print("Starting Coulomb potential calculation...")
+        Vcoul = clgff.makeCoulombEwald_slab(xyzq, niter=2)
+        #VcoulB,trj_coul = clgff.fit3D( clgff.V_Coul_buff, nPerStep=10, nmaxiter=500, damp=0.05, bConvTrj=True );
+        VcoulB,trj_coul = clgff.fit3D( clgff.V1_buff, nPerStep=10, nmaxiter=500, damp=0.05, bConvTrj=True );
+
+
+
+
+        # --- Morse------#
+        print("Starting Morse potential calculation...")
         g0 = ( -grid.Ls[0]*0.5, -grid.Ls[1]*0.5, z0 )
         nPBC_mors = autoPBC(atoms.lvec,Rcut=20.0); print("autoPBC(nPBC_mors): ", nPBC_mors )
         clgff.make_MorseFF( xyzq, REQs, nPBC=nPBC_mors, lvec=atoms.lvec, g0=g0, GFFParams=(0.1,1.5,0.0,0.0), bReturn=False )
         V_Paul,trj_paul = clgff.fit3D( clgff.V_Paul_buff, nPerStep=50, nmaxiter=500, damp=0.15, bConvTrj=True ); #T_fit_P = time.perf_counter()
         V_Lond,trj_lond = clgff.fit3D( clgff.V_Lond_buff, nPerStep=50, nmaxiter=500, damp=0.15, bConvTrj=True ); #T_fit_ = time.perf_counter()
+        # print("Morse_Atoms:",atoms.apos)
 
-        # --- Coulomb
-        Vcoul = clgff.makeCoulombEwald_slab( xyzq, niter=2, bSaveQgrid=True, bCheckVin=True, bCheckPoisson=True )
+   
+        
+        # # Vcoul = clgff.makeCoulombEwald_slab( xyzq, niter=2, bSaveQgrid=True, bCheckVin=True, bCheckPoisson=True )
+        
+        # # print( "@@DEBUGCoul  min,max = ", Vcoul.min(),  Vcoul.max()  ) 
+        # import pyopencl as cl
 
-        #VcoulB,trj_coul = clgff.fit3D( clgff.V1_buff, nPerStep=100, nmaxiter=3000, damp=0.05, bConvTrj=True ); #T_fit_ = time.perf_counter()
-        VcoulB,trj_coul = clgff.fit3D( clgff.V_Coul_buff, nPerStep=50, nmaxiter=500, damp=0.15, bConvTrj=True ); #T_fit_ = time.perf_counter()
+        # # # After calling makeCoulombEwald_slab
+        # # Vcoul = clgff.makeCoulombEwald_slab(xyzq, niter=2)#, bSaveQgrid=True, bCheckVin=True, bCheckPoisson=True)
+        # # print( "@@DEBUGCoul  min,max = ", Vcoul.min(),  Vcoul.max()  )
+
+        # temp = np.empty(clgff.gsh.ns[::-1], dtype=np.float32)
+        # cl.enqueue_copy(clgff.queue, temp, clgff.V1_buff)
+        # print("V_Coul_buff before fit3D:", temp.min(), temp.max())
+
+        # VcoulB, trj_coul = clgff.fit3D(clgff.V_Coul_buff, nPerStep=10, nmaxiter=5000, damp=0.05, bConvTrj=True)
+        # clgff.prg.setMul(clgff.queue, (nG,), (nL,), nxyz, clgff.V1_buff, clgff.V_Coul_buff, np.float32(1.0))
+        # clgff.queue.finish()  # Ensure the operation completes
+
+        # Now fit using V_Coul_buff which should contain the Coulomb potential
+        # VcoulB,trj_coul = clgff.fit3D( clgff.V_Coul_buff, nPerStep=10, nmaxiter=5000, damp=0.05, bConvTrj=True )
+        # cl.enqueue_copy(clgff.queue, clgff.V_Coul_buff, Vcoul)
+        # print( "@@DEBUG V_Coul  min,max = ", V_Coul.min(),  V_Coul.max()  )
+       
+
+
+
+        # VcoulB,trj_coul = clgff.fit3D( clgff.V1_buff, nPerStep=10, nmaxiter=500, damp=0.05, bConvTrj=True ); #T_fit_ = time.perf_counter()
+        # VcoulB,trj_coul = clgff.fit3D( clgff.V_Coul_buff, nPerStep=10, nmaxiter=500, damp=0.05, bConvTrj=True ); #T_fit_ = time.perf_counter()
+        # VcoulB,trj_coul = clgff.fit3D( clgff.V_Coul_buff, nPerStep=50, nmaxiter=5000, damp=0.05, bConvTrj=True ); #T_fit_ = time.perf_counter()
+        
+        #V_Coul_buff 
+        Vcoul = VcoulB
 
         plotTrjs( [trj_paul,trj_lond,trj_coul], ["Paul", "Lond", "Coul"] )
 
@@ -339,6 +391,7 @@ def test_gridFF_ocl( fname="./data/xyz/NaCl_1x1_L1.xyz", Element_Types_name="./d
         plt.plot( maxLond, label="V_Lond.max" )
         plt.plot( minCoul, label="V_Coul.min" )
         plt.plot( maxCoul, label="V_Coul.max" )
+        plt.legend()
         plt.show()
 
 
@@ -362,6 +415,7 @@ def test_gridFF_ocl( fname="./data/xyz/NaCl_1x1_L1.xyz", Element_Types_name="./d
             PLQ[:,:,:,0] = V_Paul
             PLQ[:,:,:,1] = V_Lond
             PLQ[:,:,:,2] = V_Coul
+            print("Final PLQ Coulomb layer stats:", np.min(PLQ[:,:,:,2]), np.max(PLQ[:,:,:,2]), np.mean(PLQ[:,:,:,2]))
             full_name = path+"/Bspline_PLQd.npy"; 
             print("test_gridFF_ocl() - save Morse to: ", full_name)
             np.save( full_name, PLQ )
@@ -431,12 +485,12 @@ def test_gridFF_ocl( fname="./data/xyz/NaCl_1x1_L1.xyz", Element_Types_name="./d
         #clgff.set_grid( grid )
         #Vcoul = clgff.makeCoulombEwald( xyzq )
 
-        xyzq[:,2] += 0.1*4  # NOTE / TODO : This is strange, not sure why we need to shift the z-coordinate by 4 dg  
+        # xyzq[:,2] += 0.1*4  # NOTE / TODO : This is strange, not sure why we need to shift the z-coordinate by 4 dg  
 
         Vcoul = clgff.makeCoulombEwald_slab( xyzq, niter=2 )
 
         if save_name is not None:
-            VcoulB,trj = clgff.fit3D( clgff.V1_buff, nPerStep=10, nmaxiter=5000, damp=0.05, bConvTrj=True ); #T_fit_ = time.perf_counter()
+            VcoulB,trj = clgff.fit3D( clgff.V1_buff, nPerStep=10, nmaxiter=500, damp=0.05, bConvTrj=True ); #T_fit_ = time.perf_counter()
 
             # NOTE: TODO: We need to cut Potential from oposite side of the cell ( we probably need to make CPU kernel for this )
 
@@ -510,7 +564,7 @@ def test_gridFF_ocl( fname="./data/xyz/NaCl_1x1_L1.xyz", Element_Types_name="./d
 
         # plt.subplot(1,6,6); plt.imshow( Vbrute, cmap='bwr' ); plt.colorbar(); plt.title( "Vbrute[200:300,:,0]" );
 
-        xyzq_sym, _, _ = make_atoms_arrays( atoms=atoms, bSymetrize=True, Element_Types_name=Element_Types_name )
+        xyzq_sym, _, _ = make_atoms_arrays( atoms=atoms, bSymetrize=False, Element_Types_name=Element_Types_name )
         Vbrute         = coulomb_brute_1D( xyzq_sym, kind='z', p0=[0.0,0.0,0.0], bPlot=False )
 
         plt.figure( figsize=(7,5) )
@@ -522,6 +576,10 @@ def test_gridFF_ocl( fname="./data/xyz/NaCl_1x1_L1.xyz", Element_Types_name="./d
         plt.legend()
         plt.grid()
         plt.show()
+
+
+
+
 
     elif job=="Morse":
     
