@@ -128,11 +128,11 @@ class Mat4T{
         }}
 	};
 
-	void mmulL( const MAT& A ){ MAT& M=*this; set_mmul( M, A); }
-	void mmulR( const MAT& A ){ MAT& M=*this; set_mmul( A, M); }
+	void mmulL( const MAT& A ){ MAT M=*this; set_mmul( M, A); }
+	void mmulR( const MAT& A ){ MAT M=*this; set_mmul( A, M); }
 
-    void mmulLT( const MAT& A ){ MAT& M=*this; set_mmul_NT( M, A); }
-	void mmulRT( const MAT& A ){ MAT& M=*this; set_mmul_TN( A, M); }
+    void mmulLT( const MAT& A ){ MAT M=*this; set_mmul_NT( M, A); }
+	void mmulRT( const MAT& A ){ MAT M=*this; set_mmul_TN( A, M); }
 
 	//   http://www.songho.ca/opengl/gl_projectionmatrix.html
     void setPerspective( T xmin, T xmax, T ymin, T ymax, T zmin, T zmax ){

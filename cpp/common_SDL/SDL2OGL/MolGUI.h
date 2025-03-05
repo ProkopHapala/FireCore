@@ -1,6 +1,8 @@
 #ifndef MolGUI_h
 #define MolGUI_h
 
+#include "Camera.h"
+#include "GLMesh.h"
 #include "globals.h"
 
 #include "macroUtils.h"
@@ -10,6 +12,7 @@
 #include <vector>
 #include <math.h>
 
+#include "quaternion.h"
 #include "testUtils.h"
 #include "IO_utils.h"
 
@@ -140,7 +143,6 @@ class MolGUI : public AppSDL2OGL_3D { public:
     //Vec3d* picked_lvec = 0;
     //int perFrame =  1;
     int perFrame =  100;
-    Quat4f qCamera0;
 
     bool bDoMM=true;//,bDoQM=true;
     bool bConverged = false;
@@ -300,7 +302,7 @@ class MolGUI : public AppSDL2OGL_3D { public:
     int  ogl_afm       = 0;
     int  ogl_afm_trj   = 0;
     int  ogl_esp       = 0;
-    int  ogl_sph       = 0;
+    GLMesh ogl_sph = GLMesh(GL_TRIANGLES);
     int  ogl_mol       = 0;
     int  ogl_isosurf   = 0;
     int  ogl_surfatoms = 0;
@@ -344,7 +346,7 @@ class MolGUI : public AppSDL2OGL_3D { public:
         // ToDo:       cannot convert ‘void (MolGUI::*)()’ to ‘const std::function<void(GUIAbstractPanel*)>&’
     };
 
-	virtual void draw   () override;
+	virtual void draw   (Renderer* renderer) override;
 	virtual void drawHUD() override;
 	//virtual void mouseHandling( ) override;
 	virtual void eventHandling   ( const SDL_Event& event  ) override;
@@ -574,19 +576,18 @@ void MolGUI::initWiggets(){
         ->addItem("Right")
         ->setCommand( [&](GUIAbstractPanel* me_){ 
             DropDownList& me = *(DropDownList*)me_;
-            printf( "old qCamera(%g,%g,%g,%g) -> %s \n", qCamera.x,qCamera.y,qCamera.z,qCamera.w, me.labels[me.iSelected].c_str()  );
+            printf( "old cam.qrot(%g,%g,%g,%g) -> %s \n", cam.qrot.x,cam.qrot.y,cam.qrot.z,cam.qrot.w, me.labels[me.iSelected].c_str()  );
             switch(me.iSelected){
-                case 0: qCamera=qTop;    break;
-                case 1: qCamera=qBottom; break;
-                case 2: qCamera=qFront;  break;
-                case 3: qCamera=qBack;   break;
-                case 4: qCamera=qLeft;   break;
-                case 5: qCamera=qRight;  break;
+                case 0: cam.qrot=qTop;    break;
+                case 1: cam.qrot=qBottom; break;
+                case 2: cam.qrot=qFront;  break;
+                case 3: cam.qrot=qBack;   break;
+                case 4: cam.qrot=qLeft;   break;
+                case 5: cam.qrot=qRight;  break;
             }
-            printf( "->new qCamera(%g,%g,%g,%g) \n", qCamera.x,qCamera.y,qCamera.z,qCamera.w );
-            qCamera.toMatrix(cam.rot);
+            printf( "->new cam.qrot(%g,%g,%g,%g) \n", cam.qrot.x,cam.qrot.y,cam.qrot.z,cam.qrot.w );
             printf( "cam: aspect %g zoom %g \n", cam.aspect, cam.zoom);
-            printMat((Mat3d)cam.rot);
+            printMat((Mat3d)cam.rotMat());
             }
         );
 
@@ -1009,7 +1010,8 @@ void MolGUI::drawParticles(){
     opengl1renderer.shadeModel(GL_SMOOTH);
     opengl1renderer.color3f( 0.0, 1.0, 0.0 );
     for( int i=0; i<particles.size(); i++ ){
-        Quat4d& p = particles[i];    Draw3D::drawShape( ogl_sph, p.f, m, 0.1 );
+        Quat4d& p = particles[i];    //Draw3D::drawShape( ogl_sph, p.f, m, 0.1 );
+        renderer->drawMesh(&ogl_sph, (Vec3f)p.f);
     }
     opengl1renderer.color3f( 0.0, 0.0, 0.0 );
     opengl1renderer.begin(GL_TRIANGLES);
@@ -1121,7 +1123,7 @@ void MolGUI::initGUI(){
     console.callback = [&](const char* s){ printf( "console.callback(%s)\n", s ); return 0; };
     console.fontTex = fontTex;
 
-    Draw3D::makeSphereOgl( ogl_sph, 5, 1.0 );
+    ogl_sph = Draw3D::makeSphereOgl( 1, 1.0 );
     //float l_diffuse  []{ 0.9f, 0.85f, 0.8f,  1.0f };
 	float l_specular []{ 0.0f, 0.0f,  0.0f,  1.0f };
     //opengl1renderer.lightfv    ( GL_LIGHT0, GL_AMBIENT,   l_ambient  );
@@ -1269,8 +1271,11 @@ void MolGUI::bindMolWorld( MolWorld_sp3* W_ ){
 //     Draw3D::atomsREQ( W->gridFF.apos_.size(), &W->gridFF.apos_[0], &W->gridFF.REQs_[0], ogl_sph, 1., 0.1, 0., false, W->gridFF.shift0 );
 // }
 
-void MolGUI::draw(){
-    //printf( "MolGUI::draw() 1 \n" );
+void MolGUI::draw(Renderer* r){
+    r->active_camera = &cam;
+
+    r->draw_cube();
+    //printf( "MolGUI::draw() \n" );
     //opengl1renderer.clearColor( 0.5f, 0.5f, 0.5f, 1.0f );
     opengl1renderer.clearColor( 1.0f, 1.0f, 1.0f, 1.0f );
 	opengl1renderer.clear( GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT );
@@ -1286,7 +1291,7 @@ void MolGUI::draw(){
     //if( (ogl_isosurf==0) && W->bGridFF ){ renderGridFF( subs_iso ); }
     //if( ogl_esp==0 ){ renderESP(); }
 
-    if(frameCount==0){ qCamera.pitch( M_PI );  qCamera0=qCamera; }
+    //if(frameCount==0){ cam.qrot.pitch( M_PI );  qCamera0=cam.qrot; }
 
     //debug_scanSurfFF( 100, {0.,0.,z0_scan}, {0.0,3.0,z0_scan}, 10.0 );
 
@@ -1294,7 +1299,7 @@ void MolGUI::draw(){
 	//ray0 = (Vec3d)(  cam.rot.a*mouse_begin_x  +  cam.rot.b*mouse_begin_y  +  cam.pos );
     ray0 = mouseRay0();
 
-    W->pick_hray = (Vec3d)cam.rot.c;
+    W->pick_hray = (Vec3d)cam.rotMat().c;
     W->pick_ray0 = (Vec3d)ray0;
 
     // if( (frameCount==0) && (W->bGridFF) ){ char fname[128]; 
@@ -1346,7 +1351,7 @@ void MolGUI::draw(){
         if( ( W->bGridFF )&&( ((int)(W->gridFF.mode))!=0) ){
             //Draw3D::atomsREQ( W->surf.natoms, W->surf.apos, W->surf.REQs, ogl_sph, 1., 0.1, 0., true, W->gridFF.shift0 );
             //Draw3D::atomsREQ( W->gridFF.apos_.size(), &W->gridFF.apos_[0], &W->gridFF.REQs_[0], ogl_sph, 1., 0.1, 0., true, W->gridFF.shift0 );
-            Draw3D::atomsREQ( W->surf.natoms, W->surf.apos, W->surf.REQs, ogl_sph, 1., 0.1, 0., true, W->gridFF.shift0 );
+            Draw3D::atomsREQ( r, W->surf.natoms, W->surf.apos, W->surf.REQs, &ogl_sph, 1., 0.1, 0., true, W->gridFF.shift0 );
             //if( (ogl_isosurf==0) && W->bGridFF ){ renderGridFF( subs_iso ); }
             if( (ogl_isosurf==0) ){ renderGridFF_new( subs_iso ); }
             //viewSubstrate( {-5,10}, {-5,10}, ogl_isosurf, W->gridFF.grid.cell.a, W->gridFF.grid.cell.b, W->gridFF.shift0 + W->gridFF.grid.pos0 );
@@ -1744,7 +1749,7 @@ void MolGUI::drawHUD(){
 
 void MolGUI::drawingHex(double z0){
     Vec2i ip; Vec2d dp;
-    Vec3d p3 = rayPlane_hit( (Vec3d)ray0, (Vec3d)cam.rot.c, {0.0,0.0,1.0}, {0.0,0.0,z0} );
+    Vec3d p3 = rayPlane_hit( (Vec3d)ray0, (Vec3d)cam.rotMat().c, {0.0,0.0,1.0}, {0.0,0.0,z0} );
     Vec2d p{p3.x,p3.y};
     double off=1000.0;
     bool s = ruler.simplexIndex( p+(Vec2d){off,off}, ip, dp );
@@ -1780,13 +1785,13 @@ void MolGUI::drawingHex(double z0){
 
 void MolGUI::selectRect( const Vec3d& p0, const Vec3d& p1 ){ 
     if(bViewBuilder){
-        W->builder.selectRect( p0, p1, (Mat3d)cam.rot ); 
+        W->builder.selectRect( p0, p1, (Mat3d)cam.rotMat() ); 
         W->selection.clear();
         for( int i : W->builder.selection){ W->selection.push_back(i); }
         { // Debug
            printf("selection: "); for( int i : W->selection){ printf("%i ", i); } printf("\n");
         }
-    }else{ W->selectRect( p0, p1, (Mat3d)cam.rot ); }
+    }else{ W->selectRect( p0, p1, (Mat3d)cam.rotMat() ); }
     
 }
 
@@ -1861,7 +1866,7 @@ int MolGUI::renderSurfAtoms( Vec3i nPBC, bool bPointCross, float qsc, float Rsc,
                 Vec3d shift = lvec.a*ix + lvec.b*iy + lvec.c*iz;
                 //shift.z += (float)icell;
                 opengl1renderer.translatef( shift.x,shift.y,shift.z);
-                Draw3D::atomsREQ( W->gridFF.natoms, W->gridFF.apos, W->gridFF.REQs, ogl_sph, qsc, Rsc, Rsub, bPointCross, W->gridFF.shift0 );
+                Draw3D::atomsREQ( renderer, W->gridFF.natoms, W->gridFF.apos, W->gridFF.REQs, &ogl_sph, qsc, Rsc, Rsub, bPointCross, W->gridFF.shift0 );
                 //Draw3D::atomsREQ( W->gridFF.apos_.size(), &W->gridFF.apos_[0], &W->gridFF.REQs_[0], ogl_sph, qsc, Rsc, Rsub, bPointCross, W->gridFF.shift0 );
                 //Draw3D::atomsREQ( 1, &W->gridFF.apos_[0], &W->gridFF.REQs_[0], ogl_sph, qsc, Rsc, Rsub, bPointCross, W->gridFF.shift0 );
                 opengl1renderer.translatef( -shift.x,-shift.y,-shift.z);
@@ -2155,7 +2160,8 @@ void MolGUI::drawBuilder( Vec3i ixyz ){
                 if( (a.frag<0)||(a.frag>=B.frags.size()) ){ printf( "ERROR MolGUI::drawBuilder() a.frag(%i) out of range 0 .. B.frags.size(%i) \n", a.frag, B.frags.size() ); exit(0); }
                 Draw::setRGB( B.frags[a.frag].color ); 
             }else{ Draw::setRGB( W->params.atypes[a.type].color ); }
-            Draw3D::drawShape( ogl_sph, a.pos, Mat3dIdentity*((atyp.RvdW-mm_Rsub)*mm_Rsc) );
+            //Draw3D::drawShape( ogl_sph, a.pos, Mat3dIdentity*((atyp.RvdW-mm_Rsub)*mm_Rsc) );
+            renderer->drawMesh(&ogl_sph, (Vec3f)a.pos);
         }    
     }
     if(mm_bAtoms&&bViewAtomLabels ){ 
@@ -2208,7 +2214,9 @@ void MolGUI::drawSystem( Vec3i ixyz ){
 
 
     //W->nbmol.print();
-    if(bViewAtomSpheres&&mm_bAtoms&&(!bViewBondLenghts)                  ){                            Draw3D::atoms            ( natoms, apos, atypes, W->params, ogl_sph, 1.0, mm_Rsc, mm_Rsub ); }
+    if(bViewAtomSpheres && mm_bAtoms && (!bViewBondLenghts)){
+        Draw3D::atoms( renderer, natoms, apos, atypes, W->params, &ogl_sph, 1.0, mm_Rsc, mm_Rsub );
+    }
     if(bOrig){
         //printf( "MolGUI::drawSystem() bOrig(%i)  mm_bAtoms(%i) bViewAtomLabels(%i) bViewMolCharges(%i) \n", bOrig, mm_bAtoms, bViewAtomLabels, bViewMolCharges );
         //if(bViewAtomP0s     &&  fapos           ){ opengl1renderer.color3f(0.0f,1.0f,1.0f); Draw3D::drawVectorArray  ( natoms, apos, fapos, ForceViewScale, 10000.0 );  }
@@ -2380,7 +2388,7 @@ void MolGUI::mouse_default( const SDL_Event& event ){
             switch( event.button.button ){
                 case SDL_BUTTON_LEFT:
                     if( ray0.dist2(ray0_start)<0.1 ){ // too small for selection box 
-                        int ipick = pickParticle( (Vec3d)ray0, (Vec3d)cam.rot.c, 0.5, W->nbmol.natoms, W->nbmol.apos );
+                        int ipick = pickParticle( (Vec3d)ray0, (Vec3d)cam.rotMat().c, 0.5, W->nbmol.natoms, W->nbmol.apos );
                         if( ipick>=0 ){ 
                             printf( "MolGUI::mouse_default() ipick=%i \n", ipick ); 
                             W->selection.clear();  
@@ -2431,7 +2439,7 @@ void MolGUI::eventMode_edit( const SDL_Event& event  ){
                 }break;
                 case SDLK_i:
                     //selectShorterSegment( (Vec3d)(cam.rot.a*mouse_begin_x + cam.rot.b*mouse_begin_y + cam.rot.c*-1000.0), (Vec3d)cam.rot.c );
-                    selectShorterSegment( (Vec3d)ray0, (Vec3d)cam.rot.c );
+                    selectShorterSegment( (Vec3d)ray0, (Vec3d)cam.rotMat().c );
                     //selection.erase();
                     //for(int i:builder.selection){ selection.insert(i); };
                     break;
@@ -2497,7 +2505,7 @@ void MolGUI::eventMode_default( const SDL_Event& event ){
                 if (bConsole){ bConsole=console.keyDown( event.key.keysym.sym ); }
                 else 
                 if(gui.bKeyEvents) switch( event.key.keysym.sym ){
-                case SDLK_KP_0: qCamera = qCamera0; break;
+                case SDLK_KP_0: cam.qrot = Quat4fIdentity; break;
 
                 //case SDLK_COMMA:  which_MO--; printf("which_MO %i \n", which_MO ); break;
                 //case SDLK_PERIOD: which_MO++; printf("which_MO %i \n", which_MO ); break;
@@ -2724,10 +2732,10 @@ void MolGUI::keyStateHandling( const Uint8 *keys ){
             if( keys[ SDL_SCANCODE_KP_2 ] ){ W->nbmol.shift( {0.,-0.1,0.} ); }
             if( keys[ SDL_SCANCODE_KP_7 ] ){ W->nbmol.shift( {0.,0.,+0.1} ); }
             if( keys[ SDL_SCANCODE_KP_9 ] ){ W->nbmol.shift( {0.,0.,-0.1} ); }
-            if( keys[ SDL_SCANCODE_LEFT  ] ){ cam.pos.add_mul( cam.rot.a, -cameraMoveSpeed ); }
-            if( keys[ SDL_SCANCODE_RIGHT ] ){ cam.pos.add_mul( cam.rot.a,  cameraMoveSpeed ); }
-            if( keys[ SDL_SCANCODE_UP    ] ){ cam.pos.add_mul( cam.rot.b,  cameraMoveSpeed ); }
-            if( keys[ SDL_SCANCODE_DOWN  ] ){ cam.pos.add_mul( cam.rot.b, -cameraMoveSpeed ); }
+            if( keys[ SDL_SCANCODE_LEFT  ] ){ cam.pos.add_mul( cam.rotMat().a, -cameraMoveSpeed ); }
+            if( keys[ SDL_SCANCODE_RIGHT ] ){ cam.pos.add_mul( cam.rotMat().a,  cameraMoveSpeed ); }
+            if( keys[ SDL_SCANCODE_UP    ] ){ cam.pos.add_mul( cam.rotMat().b,  cameraMoveSpeed ); }
+            if( keys[ SDL_SCANCODE_DOWN  ] ){ cam.pos.add_mul( cam.rotMat().b, -cameraMoveSpeed ); }
             //AppSDL2OGL_3D::keyStateHandling( keys );
         } break;   
     }

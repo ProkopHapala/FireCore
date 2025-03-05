@@ -135,6 +135,7 @@ class Vec3T{
 
     inline VEC operator+ ( const VEC& vi ) const { return VEC{ x+vi.x, y+vi.y, z+vi.z }; };
     inline VEC operator- ( const VEC& vi ) const { return VEC{ x-vi.x, y-vi.y, z-vi.z }; };
+    inline VEC operator- (               ) const { return VEC{     -x,     -y,     -z }; };
     inline VEC operator* ( const VEC& vi ) const { return VEC{ x*vi.x, y*vi.y, z*vi.z }; };
     inline VEC operator/ ( const VEC& vi ) const { return VEC{ x/vi.x, y/vi.y, z/vi.z }; };
 

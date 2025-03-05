@@ -2,6 +2,7 @@
 #ifndef  ScreenSDL2OGL_h
 #define  ScreenSDL2OGL_h
 
+#include "Renderer.h"
 #include <SDL2/SDL.h>
 
 
@@ -48,13 +49,13 @@ class ScreenSDL2OGL{ public:
 	Uint32         wflags;
 	SDL_Window*    window;
 	SDL_GLContext  glctx;
-	//SDL_Renderer*    renderer;
+	Renderer*      renderer;
 
 // ============ function declarations
 
 	virtual void camera      ();
 	virtual void cameraHUD   ();
-	virtual void draw        ();
+	virtual void draw        ( Renderer* renderer );
     virtual void drawHUD     ();
 	//virtual void inputHanding();
 	virtual void eventHandling   ( const SDL_Event& event               );

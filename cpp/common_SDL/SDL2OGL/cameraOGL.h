@@ -19,7 +19,7 @@ inline void ortho( const Camera& cam, bool zsym ){
     float zmin = cam.zmin; if(zsym) zmin=-cam.zmax;
 	opengl1renderer.ortho( -cam.zoom*cam.aspect, cam.zoom*cam.aspect, -cam.zoom, cam.zoom, zmin, cam.zmax );
 	float glMat[16];
-	Draw3D::toGLMatCam( { 0.0f, 0.0f, 0.0f}, cam.rot, glMat );
+	Draw3D::toGLMatCam( { 0.0f, 0.0f, 0.0f}, cam.rotMat(), glMat );
 	opengl1renderer.multMatrixf( glMat );
 
 	opengl1renderer.matrixMode ( GL_MODELVIEW );
@@ -34,7 +34,7 @@ inline void perspective( const Camera& cam ){
     opengl1renderer.frustum( -cam.aspect*cam.zoom, cam.aspect*cam.zoom, -cam.zoom, cam.zoom, cam.zmin, cam.zmax );
     //opengl1renderer.frustum( -cam.zoom*cam.aspect, cam.zoom*cam.aspect, -cam.zoom, cam.zoom, cam.zmin, cam.zmax );
 	float glMat[16];
-	Draw3D::toGLMatCam( { 0.0f, 0.0f, 0.0f}, cam.rot, glMat );
+	Draw3D::toGLMatCam( { 0.0f, 0.0f, 0.0f}, cam.rotMat(), glMat );
 	opengl1renderer.multMatrixf( glMat );
 
 	opengl1renderer.matrixMode ( GL_MODELVIEW );

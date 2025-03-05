@@ -1,6 +1,7 @@
 
 #include "ScreenSDL2OGL.h" // THE HEADER
 #include "Renderer.h"
+#include <SDL2/SDL_video.h>
 
 //#include "testUtils.h"
 
@@ -111,16 +112,19 @@ void setLightingRGB(){
 }
 
 void ScreenSDL2OGL::update( ){
-	//SDL_RenderPresent(renderer);
-	//opengl1renderer.pushMatrix();
 	if( GL_LOCK ){ printf("ScreenSDL2OGL::update GL_LOCK\n"); return; }
 	GL_LOCK = true;
 	//printf( " window[%i] SDL_GL_MakeCurrent \n", id );
     SDL_GL_MakeCurrent(window, glctx);
 	camera();
-	draw();
-	cameraHUD();
-	drawHUD();
+
+	glClearColor(0.2f, 0.5f, 0.8f, 1.0f); // TODO: replace with renderer->clearColor
+	glClear( GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT );
+
+	draw(renderer);
+
+	//cameraHUD();
+	//drawHUD();
 	//opengl1renderer.popMatrix();
 	//opengl1renderer.flush();
 	//SDL_RenderPresent(renderer);
@@ -130,10 +134,7 @@ void ScreenSDL2OGL::update( ){
     GL_LOCK = false;
 };
 
-void ScreenSDL2OGL::draw   (){
-    opengl1renderer.clearColor( 0.5f, 0.5f, 0.5f, 0.0f );
-	opengl1renderer.clear( GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT );
-};
+void ScreenSDL2OGL::draw   (Renderer* renderer){}; // virtual function, meant to be overriden
 
 void ScreenSDL2OGL::drawHUD(){ };
 
@@ -235,6 +236,14 @@ void ScreenSDL2OGL::init( int& id_, int WIDTH_, int HEIGHT_, const char* name ){
 	// modified according to : http://forums.libsdl.org/viewtopic.php?p=40286
 	window = SDL_CreateWindow( "Some_Window", SDL_WINDOWPOS_UNDEFINED, SDL_WINDOWPOS_UNDEFINED, WIDTH, HEIGHT, SDL_WINDOW_OPENGL);
 	glctx  = SDL_GL_CreateContext(window);
+
+	if (glctx == NULL) {
+        printf("Failed to create GL context: %s\n", SDL_GetError());
+
+        exit(-1);
+    }
+
+	
     //SDL_CreateWindowAndRenderer(WIDTH, HEIGHT, SDL_WINDOW_OPENGL, &window, &renderer);
     if(name==0){
         id = SDL_GetWindowID(window); printf( " win id %i \n", id );
@@ -244,6 +253,13 @@ void ScreenSDL2OGL::init( int& id_, int WIDTH_, int HEIGHT_, const char* name ){
     }else{
         SDL_SetWindowTitle( window, name );
     }
+
+
+
+
+	renderer = new Renderer();
+	opengl1renderer.bind_renderer(renderer);
+
 	//setupRenderer();
 	//setupOpenGLglobals();
 	setLightingNormal();

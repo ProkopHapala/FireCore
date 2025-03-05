@@ -3,6 +3,7 @@
 
 
 #include "Draw3D.h"
+#include "quaternion.h"
 
 #include "AppSDL2OGL_3D.h" // THE HEADER
 
@@ -16,7 +17,7 @@
 
 
 
-void AppSDL2OGL_3D::camera_FPS( const Vec3d& pos, const Mat3d& rotMat ){
+void AppSDL2OGL_3D::camera_FPS( const Vec3d& pos, const Mat3d& rotMat ){ // NOTE: unused function
     //opengl1renderer.matrixMode( GL_PROJECTION );
     opengl1renderer.loadIdentity();
     opengl1renderer.frustum( -ASPECT_RATIO, ASPECT_RATIO, -1, 1, camDist/zoom, VIEW_DEPTH );
@@ -24,23 +25,24 @@ void AppSDL2OGL_3D::camera_FPS( const Vec3d& pos, const Mat3d& rotMat ){
     Vec3f camPos;
     convert( pos, cam.pos );
     //cam.rot.setT( (Mat3f)rotMat );
-    cam.rot.set( (Mat3f)rotMat );
+    //cam.rot.set( (Mat3f)rotMat );
+    cam.qrot = Quat4fIdentity;
 	float glMat[16];
-	Draw3D::toGLMatCam( { 0.0f, 0.0f, 0.0f}, cam.rot, glMat );
+	Draw3D::toGLMatCam( { 0.0f, 0.0f, 0.0f}, cam.rotMat(), glMat );
 	opengl1renderer.multMatrixf( glMat );
     //opengl1renderer.translatef ( -camPos.x+camMat.cx*camDist, -camPos.y+camMat.cy*camDist, -camPos.z+camMat.cz*camDist );
-    opengl1renderer.translatef ( -cam.pos.x+cam.rot.cx*camDist, -cam.pos.y+cam.rot.cy*camDist, -cam.pos.z+cam.rot.cz*camDist );
+    opengl1renderer.translatef ( -cam.pos.x+cam.rotMat().cx*camDist, -cam.pos.y+cam.rotMat().cy*camDist, -cam.pos.z+cam.rotMat().cz*camDist );
 };
 
 // camera( pos, dir, Up )
-void AppSDL2OGL_3D::camera_FwUp( const Vec3d& pos, const Vec3d& fw, const Vec3d& up, bool upDominant ){
+void AppSDL2OGL_3D::camera_FwUp( const Vec3d& pos, const Vec3d& fw, const Vec3d& up, bool upDominant ){ // NOTE: unused function
     //opengl1renderer.matrixMode( GL_PROJECTION );
     opengl1renderer.loadIdentity();
     opengl1renderer.frustum( -ASPECT_RATIO, ASPECT_RATIO, -1, 1, camDist/zoom, VIEW_DEPTH );
     //Mat3d camMat;
     //Vec3f camPos;
     convert( pos, cam.pos );
-    cam.rot.b = (Vec3f)up;
+    /*cam.rot.b = (Vec3f)up;
     cam.rot.c = (Vec3f)fw;
     if( upDominant ){
         cam.rot.b.normalize();
@@ -51,28 +53,29 @@ void AppSDL2OGL_3D::camera_FwUp( const Vec3d& pos, const Vec3d& fw, const Vec3d&
         cam.rot.b.makeOrtho( cam.rot.c );
         cam.rot.b.normalize();
     }
-    cam.rot.a.set_cross(cam.rot.b,cam.rot.c);
+    cam.rot.a.set_cross(cam.rot.b,cam.rot.c);*/
+    cam.qrot = Quat4fIdentity;
 	float glMat[16];
-	Draw3D::toGLMatCam( { 0.0f, 0.0f, 0.0f}, cam.rot, glMat );
+	Draw3D::toGLMatCam( { 0.0f, 0.0f, 0.0f}, cam.rotMat(), glMat );
 	opengl1renderer.multMatrixf( glMat );
     //opengl1renderer.translatef ( -camPos.x+camMat.cx*camDist, -camPos.y+camMat.cy*camDist, -camPos.z+camMat.cz*camDist );
-    opengl1renderer.translatef ( -cam.pos.x+cam.rot.cx*camDist, -cam.pos.y+cam.rot.cy*camDist, -cam.pos.z+cam.rot.cz*camDist );
+    opengl1renderer.translatef ( -cam.pos.x+cam.rotMat().cx*camDist, -cam.pos.y+cam.rotMat().cy*camDist, -cam.pos.z+cam.rotMat().cz*camDist );
 };
 
-void AppSDL2OGL_3D::camera_FreeLook( const Vec3d& pos ){
+void AppSDL2OGL_3D::camera_FreeLook( const Vec3d& pos ){ // NOTE: unused function
     //opengl1renderer.matrixMode( GL_PROJECTION );
     opengl1renderer.loadIdentity();
     opengl1renderer.frustum( -ASPECT_RATIO, ASPECT_RATIO, -1, 1, camDist/zoom, VIEW_DEPTH );
     //Mat3d camMat;
     //Vec3f camPos;
     convert( pos, cam.pos );
-    qCamera.toMatrix( cam.rot );
-    cam.rot.makeT();
+    cam.qrot = Quat4fIdentity;
+    //cam.rot.makeT();
 	float glMat[16];
-	Draw3D::toGLMatCam( { 0.0f, 0.0f, 0.0f}, cam.rot, glMat );
+	Draw3D::toGLMatCam( { 0.0f, 0.0f, 0.0f}, cam.rotMat(), glMat );
 	opengl1renderer.multMatrixf( glMat );
     //opengl1renderer.translatef ( -camPos.x+camMat.cx*camDist, -camPos.y+camMat.cy*camDist, -camPos.z+camMat.cz*camDist );
-    opengl1renderer.translatef ( -cam.pos.x+cam.rot.cx*camDist, -cam.pos.y+cam.rot.cy*camDist, -cam.pos.z+cam.rot.cz*camDist );
+    opengl1renderer.translatef ( -cam.pos.x+cam.rotMat().cx*camDist, -cam.pos.y+cam.rotMat().cy*camDist, -cam.pos.z+cam.rotMat().cz*camDist );
 };
 
 void AppSDL2OGL_3D::camera_OrthoInset( const Vec2d& p1, const Vec2d& p2, const Vec2d& zrange, const Vec3d& fw, const Vec3d& up, bool upDominant ){
@@ -83,7 +86,7 @@ void AppSDL2OGL_3D::camera_OrthoInset( const Vec2d& p1, const Vec2d& p2, const V
     //printf( "    %f %f  %f %f  %f %f \n", ASPECT_RATIO*p1.x, ASPECT_RATIO*p2.x, p1.y, p2.y,   zrange.a, zrange.b );
     opengl1renderer.ortho( ASPECT_RATIO*p1.x, ASPECT_RATIO*p2.x, p1.y, p2.y, zrange.a, zrange.b );
     //Mat3d camMat;
-    cam.rot.b = (Vec3f)up;
+    /*cam.rot.b = (Vec3f)up;
     cam.rot.c = (Vec3f)fw;
     if( upDominant ){
         cam.rot.b.normalize();
@@ -94,16 +97,17 @@ void AppSDL2OGL_3D::camera_OrthoInset( const Vec2d& p1, const Vec2d& p2, const V
         cam.rot.b.makeOrtho( cam.rot.c );
         cam.rot.b.normalize();
     }
-    cam.rot.a.set_cross(cam.rot.b,cam.rot.c);
+    cam.rot.a.set_cross(cam.rot.b,cam.rot.c);*/
+    cam.qrot = Quat4fIdentity;
     float glMat[16];
-    Draw3D::toGLMatCam( {0.0f,0.0f,0.0f}, cam.rot, glMat );
+    Draw3D::toGLMatCam( {0.0f,0.0f,0.0f}, cam.rotMat(), glMat );
     //Draw3D::toGLMat( { 0.0f, 0.0f, 0.0f}, camMat, glMat );
     opengl1renderer.multMatrixf( glMat );
     //opengl1renderer.matrixMode (GL_MODELVIEW);
 }
 
 void AppSDL2OGL_3D::camera(){
-    ((Quat4f)qCamera).toMatrix(cam.rot);
+    //cam.qrot   = Quat4fIdentity;
     cam.zoom   = zoom;
     cam.aspect = ASPECT_RATIO;
     //Cam::ortho( cam, true );
@@ -113,7 +117,7 @@ void AppSDL2OGL_3D::camera(){
 
 }
 
-void AppSDL2OGL_3D::draw   (){
+void AppSDL2OGL_3D::draw   (Renderer* renderer){
     opengl1renderer.clearColor( 0.5f, 0.5f, 0.5f, 1.0f );
 	opengl1renderer.clear( GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT );
 
@@ -164,17 +168,17 @@ void AppSDL2OGL_3D::eventHandling ( const SDL_Event& event  ){
 
 void AppSDL2OGL_3D::keyStateHandling( const Uint8 *keys ){
 
-    if( keys[ SDL_SCANCODE_LEFT  ] ){ qCamera.dyaw  (  keyRotSpeed ); }
-	if( keys[ SDL_SCANCODE_RIGHT ] ){ qCamera.dyaw  ( -keyRotSpeed ); }
-	if( keys[ SDL_SCANCODE_UP    ] ){ qCamera.dpitch(  keyRotSpeed ); }
-	if( keys[ SDL_SCANCODE_DOWN  ] ){ qCamera.dpitch( -keyRotSpeed ); }
+    if( keys[ SDL_SCANCODE_LEFT  ] ){ cam.qrot.dyaw  (  keyRotSpeed ); }
+	if( keys[ SDL_SCANCODE_RIGHT ] ){ cam.qrot.dyaw  ( -keyRotSpeed ); }
+	if( keys[ SDL_SCANCODE_UP    ] ){ cam.qrot.dpitch(  keyRotSpeed ); }
+	if( keys[ SDL_SCANCODE_DOWN  ] ){ cam.qrot.dpitch( -keyRotSpeed ); }
 
-	if( keys[ SDL_SCANCODE_A ] ){ cam.pos.add_mul( cam.rot.a, -cameraMoveSpeed ); }
-	if( keys[ SDL_SCANCODE_D ] ){ cam.pos.add_mul( cam.rot.a,  cameraMoveSpeed ); }
-    if( keys[ SDL_SCANCODE_W ] ){ cam.pos.add_mul( cam.rot.b,  cameraMoveSpeed ); }
-	if( keys[ SDL_SCANCODE_S ] ){ cam.pos.add_mul( cam.rot.b, -cameraMoveSpeed ); }
-    if( keys[ SDL_SCANCODE_Q ] ){ cam.pos.add_mul( cam.rot.c, -cameraMoveSpeed ); }
-	if( keys[ SDL_SCANCODE_E ] ){ cam.pos.add_mul( cam.rot.c,  cameraMoveSpeed ); }
+	if( keys[ SDL_SCANCODE_A ] ){ cam.pos.add_mul( cam.rotMat().a, -cameraMoveSpeed ); }
+	if( keys[ SDL_SCANCODE_D ] ){ cam.pos.add_mul( cam.rotMat().a,  cameraMoveSpeed ); }
+    if( keys[ SDL_SCANCODE_W ] ){ cam.pos.add_mul( cam.rotMat().b,  cameraMoveSpeed ); }
+	if( keys[ SDL_SCANCODE_S ] ){ cam.pos.add_mul( cam.rotMat().b, -cameraMoveSpeed ); }
+    if( keys[ SDL_SCANCODE_Q ] ){ cam.pos.add_mul( cam.rotMat().c, -cameraMoveSpeed ); }
+	if( keys[ SDL_SCANCODE_E ] ){ cam.pos.add_mul( cam.rotMat().c,  cameraMoveSpeed ); }
 
 /*
     if( keys[ SDL_SCANCODE_LEFT  ] ){ qCamera.yaw  (  keyRotSpeed ); qCamera.normalize(); }
@@ -207,7 +211,7 @@ void AppSDL2OGL_3D::mouseHandling( ){
     //printf( " %i %i \n", mx,my );
     if ( buttons & SDL_BUTTON(SDL_BUTTON_RIGHT)) {
         Quat4f q; q.fromTrackball( 0, 0, -mx*mouseRotSpeed, my*mouseRotSpeed );
-        qCamera.qmul_T( q );
+        cam.qrot.qmul_T( q );
     }
     //qCamera.qmul( q );
 }
@@ -225,16 +229,15 @@ void AppSDL2OGL_3D::drawMuseSelectionBox(){
     //opengl1renderer.lineWidth(3.0);
     //opengl1renderer.color3f(1.0,0.5,0.0); Draw3D::drawPointCross( ray0_start, 0.1 );    
     //opengl1renderer.lineWidth(1.0);
-    Vec3f ray0_;        cam.rot.dot_to( (Vec3f)ray0, ray0_);
-    Vec3f ray0_start_;  cam.rot.dot_to( (Vec3f)ray0_start, ray0_start_);
-    opengl1renderer.color3f(1.0,0.5,0.0); Draw3D::drawTriclinicBoxT(cam.rot, (Vec3f)ray0_start_, (Vec3f)ray0_ );   // Mouse Selection Box
+    Vec3f ray0_;        cam.rotMat().dot_to( (Vec3f)ray0, ray0_);
+    Vec3f ray0_start_;  cam.rotMat().dot_to( (Vec3f)ray0_start, ray0_start_);
+    opengl1renderer.color3f(1.0,0.5,0.0); Draw3D::drawTriclinicBoxT(cam.rotMat(), (Vec3f)ray0_start_, (Vec3f)ray0_ );   // Mouse Selection Box
     //opengl1renderer.color3f(0.0,0.5,1.0); Draw3D::drawTriclinicBox (cam.rot, (Vec3f)ray0_start_, (Vec3f)ray0_ ); // Mouse Selection Box
 }
 
 AppSDL2OGL_3D::AppSDL2OGL_3D( int& id, int WIDTH_, int HEIGHT_, const char* name ) : AppSDL2OGL( id, WIDTH_, HEIGHT_, name ) {
-	qCamera.setOne();
-	qCamera.toMatrix_unitary( cam.rot );
-	cam.pos.set(0.0d);
+	cam.qrot = Quat4fIdentity;
+	cam.pos.set(0.0);
 	GLbyte* s;
 	// http://stackoverflow.com/questions/40444046/c-how-to-detect-graphics-card-model
 	printf( "GL_VENDOR  : %s \n", opengl1renderer.getString(GL_VENDOR)  );

@@ -20,6 +20,7 @@
 #include "Mesh.h"
 
 #include "Draw.h"
+#include "geom3D.h"
 
 namespace Draw3D{
 
@@ -36,12 +37,12 @@ namespace Draw3D{
 //void normal(const Vec3f& v );
 //void normal(const Vec3d& v );
 
-inline void vertex(const Vec3f& v ){ opengl1renderer.vertex(v); }
-inline void vertex(const Vec3d& v ){ opengl1renderer.vertex(v); }
-inline void color (const Vec3f& v ){ opengl1renderer.color(v); }
-inline void color (const Vec3d& v ){ opengl1renderer.color(v); }
-inline void normal(const Vec3f& v ){ opengl1renderer.normal(v); }
-inline void normal(const Vec3d& v ){ opengl1renderer.normal(v); }
+inline void vertex(const Vec3f& v ){ opengl1renderer.vertex3f(v.x, v.y, v.z); }
+inline void vertex(const Vec3d& v ){ opengl1renderer.vertex3d(v.x, v.y, v.z); }
+inline void color (const Vec3f& v ){ opengl1renderer.color3f (v.x, v.y, v.z); }
+inline void color (const Vec3d& v ){ opengl1renderer.color3f (v.x, v.y, v.z); }
+inline void normal(const Vec3f& v ){ opengl1renderer.normal3f(v.x, v.y, v.z); }
+inline void normal(const Vec3d& v ){ opengl1renderer.normal3d(v.x, v.y, v.z); }
 
 void drawPoint     ( const Vec3f& vec                   );
 void drawPointCross_bare( const Vec3f& vec, float sz    );
