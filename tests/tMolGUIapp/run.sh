@@ -159,9 +159,7 @@ export LD_PRELOAD
 #./$name -x common_resources/xyz/H2O       -g common_resources/xyz/NaCl_1x1_L3 -perframe 1 -dt 0.05 -nogridff
 
 
-./$name -x common_resources/xyz/H2O       -g common_resources/xyz/NaCl_8x8_L3_step
-
-
+#./$name -x common_resources/xyz/H2O       -g common_resources/xyz/NaCl_8x8_L3_step
 
 
 #./$name -x common_resources/xyz/H2O       -g common_resources/xyz/NaCl_1x1_L2 -tricubic
@@ -191,6 +189,11 @@ export LD_PRELOAD
 #./$name -x common_resources/xyz/uracil -g common_resources/xyz/NaCl_1x1_L3 -iParalel 0
 
 #./$name -x common_resources/xyz/uracil -g common_resources/xyz/NaCl_8x8_L3_step -e
+#./$name -x common_resources/xyz/uracil -g common_resources/xyz/NaCl_8x8_L3_step -e -perframe 100
+#./$name -x common_resources/xyz/uracil -g common_resources/xyz/NaCl_8x8_L3_step -e -perframe 500 -iParalel 0
+./$name -x common_resources/xyz/CG -g common_resources/xyz/NaCl_8x8_L3_step -e -perframe 500 -iParalel 0
+
+
 
 #./$name -x common_resources/xyz/guanine-cytosine -g common_resources/xyz/NaCl_1x1_L3 -iParalel 0
 #./$name -x common_resources/xyz/guanine-cytosine -g common_resources/xyz/NaCl_1x1_L3 -iParalel 0 -e
