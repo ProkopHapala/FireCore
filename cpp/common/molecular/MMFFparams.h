@@ -725,13 +725,14 @@ class MMFFparams{ public:
         //if(bHB) REQ.w = atypes[ityp].Hb; // Hbond Correction
     }
 
-    void assignREs( int n, int * itypes, Quat4d * REQs, bool bSqrtE=true, bool bQ0=false )const{
+    void assignREs( int n, int * itypes, Quat4d * REQs, bool bSqrtE=true, bool bQ0=false, bool bHB0=true )const{
         printf( "MMFFparams::assignREs(%i) @itypes=%li \n", n, (long)itypes );
         for(int i=0; i<n; i++){
             const int ityp = itypes[i];
             //printf( " assignREs[%i] %i RE(%g,%g) name=%s\n", i, ityp, atypes[ityp].RvdW, atypes[ityp].EvdW, atypes[ityp].name );
             assignRE( ityp, REQs[i], bSqrtE );
-            if(bQ0) REQs[i].z=0;
+            if(bQ0 ) REQs[i].z=0;
+            if(bHB0) REQs[i].w=0;
         }
     }
 
