@@ -191,7 +191,8 @@ export LD_PRELOAD
 #./$name -x common_resources/xyz/uracil -g common_resources/xyz/NaCl_8x8_L3_step -e
 #./$name -x common_resources/xyz/uracil -g common_resources/xyz/NaCl_8x8_L3_step -e -perframe 100
 #./$name -x common_resources/xyz/uracil -g common_resources/xyz/NaCl_8x8_L3_step -e -perframe 500 -iParalel 0
-./$name -x common_resources/xyz/CG -g common_resources/xyz/NaCl_8x8_L3_step -e -perframe 500 -iParalel 0
+#./$name -x common_resources/xyz/CG -g common_resources/xyz/NaCl_8x8_L3_step -e -perframe 500 -iParalel 0
+./$name -x common_resources/xyz/CG -g common_resources/xyz/NaCl_8x8_L3_step -perframe 500 -iParalel 0
 
 
 
