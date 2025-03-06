@@ -3,6 +3,8 @@
 /// @file NBFF.h  @brief Non-Bonded Force-Field, implements n-body interactions between particles using non-covalent poentials such as Lenard-Jones / Morse and Coulomb potential
 /// @ingroup Classical_Molecular_Mechanics
 
+#include <unordered_set>
+
 #include "fastmath.h"
 //#include "Vec2.h"
 #include "Vec3.h"
