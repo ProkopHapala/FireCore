@@ -3,7 +3,6 @@
 
 //#include <SDL2/SDL.h>
 
-//#include <SDL2/SDL_opengl.h>
 #include <SDL2/SDL_opengles2.h>
 
 
@@ -20,9 +19,8 @@
 
 #include <functional>
 
-//#define __SKIP_DEFS__
 #ifndef __SKIP_DEFS__
-#include "SDL_opengl_defs.h"
+#include "SDL_opengl_defs.h" // type and constants for old OpenGL
 #endif
 
 class Renderer {
@@ -30,21 +28,29 @@ class Renderer {
         bool initialised = false;
 
         const char* vertexShaderSource = R"(
-            attribute vec3 vNormal;
-            attribute vec4 vPosition;
-            attribute vec3 vColor;
             uniform mat4 uMVPMatrix;
-            varying vec3 vColor_out;
+
+            attribute vec4 vPosition;
+            attribute vec3 vNormal;
+            attribute vec3 vColor;
+            
+            varying vec3 fColor;
+            varying vec3 fNormal;
+
             void main() {
                 gl_Position = uMVPMatrix * vPosition;
+                fNormal = vNormal;
+                fColor = vColor;
             }
         )";
         
         // Fragment shader
         const char* fragmentShaderSource = R"(
-            varying vec3 vColor_out;
+            varying vec3 fColor;
+            varying vec3 fNormal;
+
             void main() {
-                gl_FragColor = vec4(vColor_out, 1.0);
+                gl_FragColor = vec4(fNormal, 1.0);
             }
         )";
 
@@ -66,7 +72,7 @@ class Renderer {
                 if (infoLen > 1) {
                     char* infoLog = (char*)malloc(sizeof(char) * infoLen);
                     glGetShaderInfoLog(shader, infoLen, nullptr, infoLog);
-                    printf("Error creating shader:\n %s\n", infoLog);
+                    printf("Error compiling shader:\n %s\n", infoLog);
                     free(infoLog);
                     exit(-1);
                 }
@@ -89,8 +95,6 @@ class Renderer {
             glBindAttribLocation(program, 0, "vPosition");
             glBindAttribLocation(program, 1, "vNormal");
             glBindAttribLocation(program, 2, "vColor");
-
-            glBindAttribLocation(program, 3, "vNonExistent");
 
             glLinkProgram(program);
         
@@ -267,53 +271,10 @@ class Renderer {
             
             glUniformMatrix4fv(mvpMatrixLocation, 1, GL_FALSE, mvp.array);
             
-            glDrawArrays(mesh->drawMode, 0, mesh->vertices.size());
+            glDrawArrays(mesh->drawMode, 0, mesh->vertexCount());
         }
 
-        void drawMesh(GLMesh* mesh, Vec3f position, Quat4f rotation=Quat4fIdentity, Vec3f scale={1, 1, 1}){
-            if (active_camera == nullptr){
-                printf("Warning: No active camera - skipping rendering.\n");
-                return;
-            }
-            
-            // Calculate model matrix
-            Mat4f modelMatrix;
-            modelMatrix.setOne();
-            modelMatrix.setPos(position);
-            Mat3f modelRotMatrix;
-            rotation.toMatrix(modelRotMatrix);
-            modelMatrix.setRot(modelRotMatrix);
-            
-            //printf("Model Matrix:\n");
-            //modelMatrix.print();
-            
-            // View Matrix
-            Mat4f viewMatrix;
-            viewMatrix.setOne();
-            viewMatrix.setPos(-active_camera->pos);
-            viewMatrix.setRot(active_camera->rotMat());
-            
-            //printf("View Matrix:\n");
-            //viewMatrix.print();
-
-            // Projection Matrix
-            float l = -2, r = 2, t = 2, b = -2, f = 100, n = 0.001;
-            Mat4f projectionMatrix = {
-                2/(r-l), 0, 0, -(r+l)/(r-l),
-                0, 2/(t-b), 0, -(t+b)/(t-b),
-                0, 0, 2/(f-n), -(f+n)/(f-n),
-                0, 0, 0, 1
-            };
-
-            Mat4f mvpMatrix = modelMatrix;
-            mvpMatrix.mmulL(viewMatrix);
-            //mvpMatrix.mmulL(projectionMatrix);
-
-            //Mat4f mvpMatrix = opengl1renderer.mvMatStack.back();
-            //mvpMatrix.mmulL(opengl1renderer.projMatStack.back());
-
-            //drawMeshMVP(mesh, mvpMatrix);
-        }
+        void drawMesh(GLMesh* mesh, Vec3f position, Quat4f rotation=Quat4fIdentity, Vec3f scale={1, 1, 1});
 };
 
 class OpenGL1Renderer {

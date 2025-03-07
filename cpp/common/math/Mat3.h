@@ -107,7 +107,7 @@ class Mat3T{
 		zx=M.xz; zy=M.yz; zz=M.zz;
 	};
 
-	inline MAT transposed(){ MAT t; t.setT(*this); return t; }
+	inline MAT transposed() const { MAT t; t.setT(*this); return t; }
 
 	inline void setT  ( const VEC& va, const VEC& vb, const VEC& vc ){
 		a.set( va.x, vb.x, vc.x );

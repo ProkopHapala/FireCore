@@ -39,12 +39,12 @@ class AppSDL2OGL_3D : public AppSDL2OGL{ public:
 	//virtual void quit(       );
 	//virtual void loop( int n );
 	//virtual void inputHanding();
-	virtual void keyStateHandling( const Uint8 *keys       );
-	virtual void eventHandling   ( const SDL_Event& event  );
-	virtual void mouseHandling   (                         );
+	virtual void keyStateHandling( const Uint8 *keys       ) override;
+	virtual void eventHandling   ( const SDL_Event& event  ) override;
+	virtual void mouseHandling   (                         ) override;
 
 	virtual void draw     () override;
-	virtual void camera   ();
+	virtual void camera   () override;
 
 
 	inline Vec3f mouseRay0(){ return cam.rotMat().a*mouse_begin_x + cam.rotMat().b*mouse_begin_y + cam.pos; }

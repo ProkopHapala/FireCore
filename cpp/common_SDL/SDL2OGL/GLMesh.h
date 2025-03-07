@@ -14,19 +14,21 @@ public:
         Vec3f color;
     };
 
+private:
     std::vector<vertex> vertices;
 
-    //std::vector<unsigned int> indices;
-    int drawMode = GL_TRIANGLES;
-
-    Vec3f color = {1.0f, 1.0f, 1.0f};
-    
     GLuint vbo = 0;
     bool vbo_sync = true;
 
     //GLuint ibo = 0;
 
-    GLMesh(int drawMode): drawMode(drawMode) {
+public:
+    //std::vector<unsigned int> indices;
+    GLenum drawMode = GL_TRIANGLES;
+    Vec3f color = {1.0f, 1.0f, 1.0f};
+
+    
+    GLMesh(GLenum drawMode): drawMode(drawMode) {
         glGenBuffers(1, &vbo);
     };
 
@@ -39,6 +41,8 @@ public:
 
         vbo_sync = false;
     }
+
+    inline int vertexCount() const { return vertices.size(); }
 
     void bind_sync_vbo(){
         glBindBuffer(GL_ARRAY_BUFFER, vbo);

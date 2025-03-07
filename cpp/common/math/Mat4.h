@@ -134,20 +134,17 @@ class Mat4T{
     void mmulLT( const MAT& A ){ MAT M=*this; set_mmul_NT( M, A); }
 	void mmulRT( const MAT& A ){ MAT M=*this; set_mmul_TN( A, M); }
 
-	//   http://www.songho.ca/opengl/gl_projectionmatrix.html
-    void setPerspective( T xmin, T xmax, T ymin, T ymax, T zmin, T zmax ){
-        //T invdx = xmax-xmin; T invdy = ymax-ymin; T invdz = zmax-zmin; // WARRNING : THIS IS WRONG
-        T invdx = 1/(xmax-xmin); T invdy = 1/(ymax-ymin); T invdz = 1/(zmax-zmin);
-        array[0 ]  = 2*zmin*invdx; array[1 ] = 0;            array[2 ] =  (xmax+xmin)*invdx;  array[3 ] = 0;
-        array[4 ]  = 0;            array[5 ] = 2*zmin*invdy; array[6 ] =  (ymax+ymin)*invdy;  array[7 ] = 0;
-        array[8 ]  = 0;            array[9 ] = 0;            array[10] = -(zmax+zmin)*invdz;  array[11] = -2*zmax*zmin*invdz;
-        array[12]  = 0;            array[13] = 0;            array[14] = -1;                  array[15] = 0;
-        /*
-        array[0 ]  = 2*zmin*invdx; array[1 ] = 0;            array[2 ] =  (xmax+xmin)*invdx;  array[3 ] = 0;
-        array[4 ]  = 0;            array[5 ] = 2*zmin*invdy; array[6 ] =  (ymax+ymin)*invdy;  array[7 ] = 0;
-        array[8 ]  = 0;            array[9 ] = 0;            array[10] = -(zmax+zmin)*invdz;  array[11] = zmax*zmin*invdz;
-        array[12]  = 0;            array[13] = 0;            array[14] = -1;                  array[15] = 0;
-        */
+	//   https://registry.khronos.org/OpenGL-Refpages/gl2.1/xhtml/glFrustum.xml
+    void setPerspective( T left, T right, T bottom, T top, T zmin, T zmax ){
+        setOne();
+        xx = 2*zmin/(right-left);
+        yy = 2*zmin/(top-bottom);
+        zz = -(zmax+zmin)/(zmax-zmin);
+        zx = (right+left)/(right-left);
+        zy = (top+bottom)/(top-bottom);
+        zw = -1;
+        wz = -2*(zmax*zmin)/(zmax-zmin);
+        ww = 0;
     }
 
     //   https://www.khronos.org/registry/OpenGL-Refpages/gl2.1/xhtml/gluPerspective.xml
@@ -160,19 +157,15 @@ class Mat4T{
         // WARNING - Should be probably transposed !!!!!!
     }
 
-    // http://www.songho.ca/opengl/gl_projectionmatrix.html
-    void setOrthographic( T W, T H, T zmin, T zmax ){
-        T invdz = 1/(zmax-zmin);
-        /*
-        array[0 ]  = 1/W; array[1 ] = 0;   array[2 ] =  0;       array[3 ] = 0;
-        array[4 ]  = 0;   array[5 ] = 1/H; array[6 ] =  0;       array[7 ] = 0;
-        array[8 ]  = 0;   array[9 ] = 0;   array[10] = 2*invdz;  array[11] = (zmax+zmin)*invdz;
-        array[12]  = 0;   array[13] = 0;   array[14] =  0;       array[15] = 1;
-        */
-        array[0 ]  = 1/W; array[1 ] = 0;   array[2 ] =  0;                  array[3 ] = 0;
-        array[4 ]  = 0;   array[5 ] = 1/H; array[6 ] =  0;                  array[7 ] = 0;
-        array[8 ]  = 0;   array[9 ] = 0;   array[10] = 2*invdz;             array[11] = 0;
-        array[12]  = 0;   array[13] = 0;   array[14] =  (zmax+zmin)*invdz;  array[15] = 1;
+    // https://registry.khronos.org/OpenGL-Refpages/gl2.1/xhtml/glOrtho.xml
+    void setOrthographic( T left, T right, T bottom, T top, T zmin, T zmax ){
+        setOne();
+        xx = 2/(right-left);
+        yy = 2/(top-bottom);
+        zz = -2/(zmax-zmin);
+        wx = -(right+left)/(right-left);
+        wy = -(top+bottom)/(top-bottom);
+        wz = -(zmax+zmin)/(zmax-zmin);
     }
 
     void setRot( Mat3T<T> M ){

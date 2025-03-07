@@ -3,8 +3,10 @@
 //#include <GLES2/GLES2.h>
 
 #include "Renderer.h"
+#include "Camera.h"
 #include "GLMesh.h"
 #include "Mat4.h"
+#include <GLES2/gl2.h>
 #include <functional>
 #include <vector>
 
@@ -50,11 +52,6 @@ void OpenGL1Renderer::end(){
         return;
     }
     begun = false;
-
-    //printf("mvMatStack size: %i\n", mvMatStack.size());
-    //printf("projMatStack size: %i\n", projMatStack.size());
-    //printf("textureMatStack size: %i\n", textureMatStack.size());
-    //printf("colorMatStack size: %i\n", colorMatStack.size());
 
     Mat4f mvpMatrix = mvMatStack.back();
     mvpMatrix.mmulL(projMatStack.back());
@@ -197,17 +194,17 @@ void OpenGL1Renderer::pushMatrix(){
 
     switch (MatrixMode){
         case GL_MODELVIEW:
-        mvMatStack.push_back(mvMatStack.back());
-        break;
+            mvMatStack.push_back(mvMatStack.back());
+            break;
         case GL_PROJECTION:
-        projMatStack.push_back(projMatStack.back());
-        break;
+            projMatStack.push_back(projMatStack.back());
+            break;
         case GL_TEXTURE:
-        textureMatStack.push_back(textureMatStack.back());
-        break;
+            textureMatStack.push_back(textureMatStack.back());
+            break;
         case GL_COLOR:
-        colorMatStack.push_back(colorMatStack.back());
-        break;
+            colorMatStack.push_back(colorMatStack.back());
+            break;
         default:
         printf("Error: OpenGL1Renderer::pushMatrix() called with invalid MatrixMode.\n");
     }
@@ -217,18 +214,18 @@ void OpenGL1Renderer::popMatrix(){
 
     switch (MatrixMode) {
         case GL_MODELVIEW:
-        mvMatStack.pop_back();
-        break;
+            mvMatStack.pop_back();
+            break;
         case GL_PROJECTION:
-        projMatStack.pop_back();
-        break;
+            projMatStack.pop_back();
+            break;
         case GL_TEXTURE:
             textureMatStack.pop_back();
             break;
-            case GL_COLOR:
+        case GL_COLOR:
             colorMatStack.pop_back();
             break;
-            default:
+        default:
             printf("Error: OpenGL1Renderer::popMatrix() called with invalid MatrixMode.\n");
     }
 }
@@ -238,18 +235,18 @@ void OpenGL1Renderer::loadMatrixf(const GLfloat *mat){
     Mat4f m; for (int i=0; i<16; i++) m.array[i] = mat[i];
     switch (MatrixMode) {
         case GL_MODELVIEW:
-        mvMatStack.back() = m;
-        break;
+            mvMatStack.back() = m;
+            break;
         case GL_PROJECTION:
-        projMatStack.back() = m;
-        break;
+            projMatStack.back() = m;
+            break;
         case GL_TEXTURE:
             textureMatStack.back() = m;
             break;
-            case GL_COLOR:
+        case GL_COLOR:
             colorMatStack.back() = m;
             break;
-            default:
+        default:
             printf("Error: OpenGL1Renderer::loadMatrixf() called with invalid MatrixMode.\n");
         }
     }
@@ -404,38 +401,6 @@ void OpenGL1Renderer::copyTexImage2D(GLenum target, GLint level,
     GLint border){ /*glCopyTexImage2D(target, level, internalformat, x, y, width, height, border);*/ }
 
 
-void OpenGL1Renderer::TEST(){
-    matrixMode(GL_PROJECTION);
-    pushMatrix();
-
-    loadIdentity();
-    //printf("After loadIdentity:\n");
-    //for (int i=0; i<16; i++){
-    //    printf("\t%i: %f\n", i, projMatStack.back().array[i]);
-    //}
-    //printf("\n\n");
-
-    ortho(-18.5714, 18.5714, -10, 10, -10000, 10000);
-    printf("After ortho:\n");
-    for (int i=0; i<16; i++){
-        printf("\t%i: %f\n", i, projMatStack.back().array[i]);
-    }
-    printf("\n\n");
-
-    //float afterOrtho[16] = {0.053846f, 0, 0, 0, 0, 0.1f, 0, 0, 0, 0, -9.9e-05f, 0, 0, 0, 0, 1};
-    //loadMatrixf(afterOrtho);
-
-    float m[16] = {0.957895f, 0.0579036f, 0.281219f, 0, -0.0260291f, -0.957907f, 0.285897f, 0, -0.285936f, 0.281179f, 0.916067f, 0, 0, 0, 0, 1};
-    multMatrixf(m);
-    printf("After multMatrixf:\n");
-    for (int i=0; i<16; i++){
-        printf("\t%i: %f\n", i, projMatStack.back().array[i]);
-    }
-    printf("\n\n");
-
-    popMatrix();
-}
-
 
 
 void Renderer::draw_cube(){
@@ -447,3 +412,32 @@ void Renderer::draw_cube(){
 
 
 
+
+void Renderer::drawMesh(GLMesh* mesh, Vec3f position, Quat4f rotation, Vec3f scale){
+    if (active_camera == nullptr){
+        printf("Warning: No active camera - skipping rendering.\n");
+        return;
+    }
+
+    // Calculate model matrix
+    Mat4f modelMatrix;
+    modelMatrix.setOne();
+    //modelMatrix.mul({scale.x, scale.y, scale.z, 1.0});
+    modelMatrix.setPos(position);
+
+    // model rotation
+    Mat3f modelRotMatrix3;
+    rotation.toMatrix(modelRotMatrix3);
+    Mat4f modelRotMatrix4;
+    modelRotMatrix4.setOne();
+    modelRotMatrix4.setRot(modelRotMatrix3);
+    modelMatrix.mmulR(modelRotMatrix4);
+
+    modelMatrix.mul({scale.x, scale.y, scale.z, 1.0});
+
+    Mat4f mvpMatrix = modelMatrix;
+    mvpMatrix.mmulL(active_camera->viewMatrix());
+    mvpMatrix.mmulL(active_camera->projectionMatrix());
+
+    drawMeshMVP(mesh, mvpMatrix);
+}

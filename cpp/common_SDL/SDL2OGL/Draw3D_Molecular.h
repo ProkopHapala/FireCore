@@ -70,13 +70,18 @@ GLMesh makeSphereOgl( int nsub, float sz=1 ){
                 Vec3f p3 = (sideDir1*x1 + sideDir2*(x2+1))*(1.0f/nsub) - sideDir1*0.5f - sideDir2*0.5f + sideNormal*0.5f; // 0, 1
                 Vec3f p4 = (sideDir1*(x1+1) + sideDir2*x2)*(1.0f/nsub) - sideDir1*0.5f - sideDir2*0.5f + sideNormal*0.5f; // 1, 0
 
-                sphere.addVertex(p1.normalized() * sz);
-                sphere.addVertex(p3.normalized() * sz);
-                sphere.addVertex(p2.normalized() * sz);
+                p1 = p1.normalized();
+                p2 = p2.normalized();
+                p3 = p3.normalized();
+                p4 = p4.normalized();
 
-                sphere.addVertex(p1.normalized() * sz);
-                sphere.addVertex(p4.normalized() * sz);
-                sphere.addVertex(p2.normalized() * sz);
+                sphere.addVertex(p1 * sz, p1);
+                sphere.addVertex(p3 * sz, p3);
+                sphere.addVertex(p2 * sz, p2);
+
+                sphere.addVertex(p1 * sz, p1);
+                sphere.addVertex(p4 * sz, p4);
+                sphere.addVertex(p2 * sz, p2);
             }
         }
     }
@@ -90,13 +95,14 @@ void atomsREQ( Renderer* r, int n, Vec3d* ps, Quat4d* REQs, GLMesh* ogl_sph, flo
     opengl1renderer.shadeModel(GL_SMOOTH);
     for(int i=0; i<n; i++){
         float q = (float)REQs[i].z*qsc;
-        opengl1renderer.color3f(1-fmax(0,-q),1-fmax(q,-q),1-fmax(0,+q));
+        ogl_sph->color = {1-fmax(0,-q),1-fmax(q,-q),1-fmax(0,+q)};
         //printf( "Draw3D atomsREQ() %i Q=%g R=%g pos(%16.8f %16.8f %16.8f)  \n", i, q, REQs[i].x, ps[i].x, ps[i].y, ps[i].z );
         if(bPointCross){
             Draw3D::drawPointCross( ps[i]+pos0, (REQs[i].x-Rsub)*Rsc );
         }else{
             //Draw3D::drawShape( ogl_sph, ps[i]+pos0, Mat3dIdentity*((REQs[i].x-Rsub)*Rsc) );
-            r->drawMesh(ogl_sph, (Vec3f)(ps[i]+pos0));
+            float sz = (REQs[i].x-Rsub)*Rsc;
+            r->drawMesh(ogl_sph, (Vec3f)(ps[i]+pos0), Quat4fIdentity, {sz, sz, sz});
         }
     }
 }
@@ -407,7 +413,8 @@ void atoms( Renderer* r, int n, Vec3d* ps, int* atypes, const MMFFparams& params
         const AtomType& atyp = params.atypes[atypes[i]];
         Draw::setRGB( atyp.color );
         //Draw3D::drawShape( ogl_sph, ps[i], Mat3dIdentity*((atyp.RvdW-Rsub)*Rsc) );
-        r->drawMesh(ogl_sph, (Vec3f)ps[i]);
+        float sz = (atyp.RvdW-Rsub)*Rsc;
+        r->drawMesh(ogl_sph, (Vec3f)ps[i], Quat4fIdentity, {sz, sz, sz});
     }
 }
 #endif

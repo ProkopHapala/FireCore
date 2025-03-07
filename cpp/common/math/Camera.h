@@ -9,6 +9,7 @@
 #include "fastmath.h"
 #include "Vec3.h"
 #include "Mat3.h"
+#include "Mat4.h"
 #include "quaternion.h"
 
 template<typename T>
@@ -17,15 +18,12 @@ class CameraT{ public:
     Quat4T<T> qrot   = (Quat4T<T>)Quat4dIdentity;
     T  zoom   = 10.0;
     T  aspect = 1.0;
-    T  zmin   = 10.0;
-    T  zmax   = 10000.0;
+    const T  zmin   = -10000.0;
+    const T  zmax   = 10000.0;
     bool   persp  = true;
 
-    inline Mat3T<T> rotMat() const {
-        Mat3T<T> m;
-        qrot.toMatrix(m);
-        return m;
-    }
+    inline const Mat3T<T> rotMat() const { Mat3T<T>m; qrot.toMatrix(m); return m; }
+    
     inline void lookAt( Vec3T<T> p, T R ){ pos = p + rotMat().c*-R; }
     //inline void lookAt( Vec3T<T> p, T R ){ Vec3T<T> p_; convert(p,p_); lookAt(p_,R); }
 
@@ -113,6 +111,34 @@ class CameraT{ public:
         T  my = c.z*zmin/zoom;
         T  mx = my/aspect + R;  my+=R;
         return (c.x>-mx)&&(c.x<mx) && (c.y>-my)&&(c.y<my) && ((c.z+R)>zmin)&&((c.z-R)<zmax);
+    }
+
+    Mat4T<T> projectionMatrix() const {
+        Mat4T<T> m;
+        m.setOne();
+        if(persp){
+            m.setPerspective( -zoom*aspect, zoom*aspect, -zoom, zoom, zmin, zmax );
+        }else{
+            m.setOrthographic( -zoom*aspect, zoom*aspect, -zoom, zoom, zmin, zmax );
+        }
+        return m;
+    }
+
+    Mat4T<T> viewMatrix() const {
+        Mat4T<T> m;
+        m.setOne();
+        Mat3T<T> mrot;
+        qrot.toMatrix_T(mrot);
+        m.setRot( mrot );
+        m.setPos( -pos );
+        
+        return m;
+    }
+
+    Mat4T<T> viewProjectionMatrix() const {
+        Mat4T<T> v = viewMatrix();
+        Mat4T<T> vp = v.mmulR(projectionMatrix());
+        return vp;
     }
 
 };

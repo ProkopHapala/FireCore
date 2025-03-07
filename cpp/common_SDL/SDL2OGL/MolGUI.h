@@ -1123,7 +1123,7 @@ void MolGUI::initGUI(){
     console.callback = [&](const char* s){ printf( "console.callback(%s)\n", s ); return 0; };
     console.fontTex = fontTex;
 
-    ogl_sph = Draw3D::makeSphereOgl( 1, 1.0 );
+    ogl_sph = Draw3D::makeSphereOgl( 5, 1.0 );
     //float l_diffuse  []{ 0.9f, 0.85f, 0.8f,  1.0f };
 	float l_specular []{ 0.0f, 0.0f,  0.0f,  1.0f };
     //opengl1renderer.lightfv    ( GL_LIGHT0, GL_AMBIENT,   l_ambient  );
@@ -2161,7 +2161,8 @@ void MolGUI::drawBuilder( Vec3i ixyz ){
                 Draw::setRGB( B.frags[a.frag].color ); 
             }else{ Draw::setRGB( W->params.atypes[a.type].color ); }
             //Draw3D::drawShape( ogl_sph, a.pos, Mat3dIdentity*((atyp.RvdW-mm_Rsub)*mm_Rsc) );
-            renderer->drawMesh(&ogl_sph, (Vec3f)a.pos);
+            float sz = (atyp.RvdW-mm_Rsub)*mm_Rsc;
+            renderer->drawMesh(&ogl_sph, (Vec3f)a.pos, Quat4fIdentity, {sz, sz, sz});
         }    
     }
     if(mm_bAtoms&&bViewAtomLabels ){ 
