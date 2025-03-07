@@ -121,7 +121,7 @@ class TestAppDirectionStiffness : public AppSDL2OGL_3D { public:
     bool bRunRelax  = false;
 
     int     fontTex;
-    int     ogl_sph=0;
+    GLMesh ogl_sph = Draw3D::makeSphereOgl( 5, 1.0 );
     int     ogl_mol=0;
 
     char str[256];
@@ -246,8 +246,6 @@ TestAppDirectionStiffness::TestAppDirectionStiffness( int& id, int WIDTH_, int H
     printf("TestAppDirectionStiffness.init() DONE \n");
     //exit(0);
 
-    //Draw3D::makeSphereOgl( ogl_sph, 3, 1.0 );
-    Draw3D::makeSphereOgl( ogl_sph, 5, 1.0 );
 
     //float l_diffuse  []{ 0.9f, 0.85f, 0.8f,  1.0f };
 	float l_specular []{ 0.0f, 0.0f,  0.0f,  1.0f };
@@ -294,7 +292,7 @@ void TestAppDirectionStiffness::MDloop(  ){
                 E += nff.evalLJQ_pbc( builder.lvec, {1,1,1} );
             }
             if(ipicked>=0){
-                Vec3d f = getForceSpringRay( ff.apos[ipicked], (Vec3d)cam.rot.c, ray0, -1.0 );
+                Vec3d f = getForceSpringRay( ff.apos[ipicked], (Vec3d)cam.rotMat().c, ray0, -1.0 );
                 //printf( "f (%g,%g,%g)\n", f.x, f.y, f.z );
                 ff.aforce[ipicked].add( f );
             };
@@ -327,7 +325,7 @@ void TestAppDirectionStiffness::draw(){
 
     if(frameCount==1){
 
-        qCamera.pitch( M_PI );
+        cam.qrot.pitch( M_PI );
         ff.printAtomPos();
         ff.printBondParams();
         ff.printAngleParams();
@@ -343,7 +341,7 @@ void TestAppDirectionStiffness::draw(){
         //exit(0);
     }
 
-    ray0 = (Vec3d)(cam.rot.a*mouse_begin_x + cam.rot.b*mouse_begin_y);
+    ray0 = (Vec3d)(cam.rotMat().a*mouse_begin_x + cam.rotMat().b*mouse_begin_y);
     Draw3D::drawPointCross( ray0, 0.1 );
     //Draw3D::drawVecInPos( camMat.c, ray0 );
     if(ipicked>=0) Draw3D::drawLine( ff.apos[ipicked], ray0);
@@ -380,7 +378,7 @@ void TestAppDirectionStiffness::drawSystem( ){
     //Draw3D::atomsREQ  ( ff.natoms, ff.apos,   nff.REQs, ogl_sph, 1.0, 0.25, 1.0 );
     //Draw3D::atoms( ff.natoms, ff.apos, atypes, params, ogl_sph, 1.0, 1.0, 1.0 );       //DEBUG
     //Draw3D::atoms( ff.natoms, ff.apos, atypes, params, ogl_sph, 1.0, 0.5, 1.0 );       //DEBUG
-    Draw3D::atoms( ff.natoms, ff.apos, atypes, params, ogl_sph, 1.0, 0.25, 1.0 );       //DEBUG
+    Draw3D::atoms( renderer, ff.natoms, ff.apos, atypes, params, &ogl_sph, 1.0, 0.25, 1.0 );       //DEBUG
 }
 
 int TestAppDirectionStiffness::loadMoleculeXYZ( const char* fname, const char* fnameLvs, bool bAutoH ){
@@ -449,7 +447,7 @@ int TestAppDirectionStiffness::loadMoleculeMol( const char* fname, bool bAutoH, 
         params.assignREs( mol.natoms, mol.atomType, mol.REQs );
         mol.autoAngles(true);
         Vec3d cog = mol.getCOG_av();
-        mol.addToPos( cog*-1.0d );
+        mol.addToPos( cog*-1.0 );
         builder.insertMolecule(&mol, Vec3dZero, Mat3dIdentity, false );
         builder.toMMFFmini( ff, &params );
     }
@@ -667,8 +665,8 @@ void TestAppDirectionStiffness::eventHandling ( const SDL_Event& event  ){
                 case SDLK_RETURN:{ ndeform=deform_Nsteps; deformer.genKs(1); }break;
 
                 case SDLK_f:
-                    //selectShorterSegment( (Vec3d)(cam.rot.a*mouse_begin_x + cam.rot.b*mouse_begin_y + cam.rot.c*-1000.0), (Vec3d)cam.rot.c );
-                    //selectShorterSegment( ray0, (Vec3d)cam.rot.c );
+                    //selectShorterSegment( (Vec3d)(cam.rotMat().a*mouse_begin_x + cam.rotMat().b*mouse_begin_y + cam.rotMat().c*-1000.0), (Vec3d)cam.rotMat().c );
+                    //selectShorterSegment( ray0, (Vec3d)cam.rotMat().c );
                     //selection.erase();
                     //for(int i:builder.selection){ selection.insert(i); };
                     break;
@@ -693,7 +691,7 @@ void TestAppDirectionStiffness::eventHandling ( const SDL_Event& event  ){
             switch( event.button.button ){
                 case SDL_BUTTON_LEFT:
                     /*
-                    ipicked = pickParticle( ray0, (Vec3d)cam.rot.c, 0.5, ff.natoms, ff.apos );
+                    ipicked = pickParticle( ray0, (Vec3d)cam.rotMat().c, 0.5, ff.natoms, ff.apos );
                     selection.clear();
                     if(ipicked>=0){ selection.push_back(ipicked); };
                     printf( "picked atom %i \n", ipicked );
@@ -702,7 +700,7 @@ void TestAppDirectionStiffness::eventHandling ( const SDL_Event& event  ){
                     bDragging = true;
                     break;
                 case SDL_BUTTON_RIGHT:
-                    //ibpicked = ff.pickBond( ray0, (Vec3d)cam.rot.c , 0.5 );
+                    //ibpicked = ff.pickBond( ray0, (Vec3d)cam.rotMat().c , 0.5 );
                     //printf("ibpicked %i \n", ibpicked);
                     break;
             }
@@ -713,7 +711,7 @@ void TestAppDirectionStiffness::eventHandling ( const SDL_Event& event  ){
                     //ipicked = -1;
                     //ray0_start
                     if( ray0.dist2(ray0_start)<0.1 ){
-                        ipicked = pickParticle( ray0, (Vec3d)cam.rot.c, 0.5, ff.natoms, ff.apos );
+                        ipicked = pickParticle( ray0, (Vec3d)cam.rotMat().c, 0.5, ff.natoms, ff.apos );
                         selection.clear();
                         if(ipicked>=0){ selection.push_back(ipicked); };
                         printf( "picked atom %i \n", ipicked );

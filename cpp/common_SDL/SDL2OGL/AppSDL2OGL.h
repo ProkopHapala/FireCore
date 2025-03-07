@@ -4,7 +4,7 @@
 
 #include <vector>
 #include "ScreenSDL2OGL.h"
-#include "Renderer.h"
+
 
 
 class AppSDL2OGL : public ScreenSDL2OGL{ public:

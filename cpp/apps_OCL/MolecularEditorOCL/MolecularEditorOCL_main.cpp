@@ -616,7 +616,7 @@ void AppMolecularEditorOCL::draw(){
 	//if(isoOgl)
 	//Draw3D::drawAxis(10);
 
-    ray0 = (Vec3d)(cam.pos + cam.rot.a*mouse_begin_x + cam.rot.b*mouse_begin_y);
+    ray0 = (Vec3d)(cam.pos + cam.rotMat().a*mouse_begin_x + cam.rotMat().b*mouse_begin_y);
 
     /*
     Vec3f p;
@@ -630,13 +630,13 @@ void AppMolecularEditorOCL::draw(){
     //qrot.transformVec( p0, p );
     qrot.untransformVec( p0, p );
 
-    force = (Vec3f)getForceSpringRay( (Vec3d)p, (Vec3d)cam.rot.c, ray0, -1.0 );
+    force = (Vec3f)getForceSpringRay( (Vec3d)p, (Vec3d)cam.rotMat().c, ray0, -1.0 );
 
     Vec3f torq; torq.set_cross( p, force );
     //Vec3f torq; torq.set_cross( force, p );
     qrot.dRot_exact( 0.01, torq );
 
-    //printf( " c.f %g t.f %g t.c %g \n", cam.rot.c.dot(force),   torq.dot(force),   torq.dot(cam.rot.c)/sqrt( torq.norm2()* cam.rot.c.norm2()  )   );
+    //printf( " c.f %g t.f %g t.c %g \n", cam.rotMat().c.dot(force),   torq.dot(force),   torq.dot(cam.rotMat().c)/sqrt( torq.norm2()* cam.rotMat().c.norm2()  )   );
 
     opengl1renderer.color3f(0.0,0.0,0.0); Draw3D::drawVec       ( p );
     opengl1renderer.color3f(0.0,0.0,0.0); Draw3D::drawPointCross( p, 0.05 );
@@ -755,7 +755,7 @@ void AppMolecularEditorOCL::stepCPU( double& F2, bool randomConf ){
     world.eval_MorseQ_On2_fragAware();
 
     if(ipicked>=0){
-        Vec3d f = getForceSpringRay( world.apos[ipicked], Vec3dcam.rot.c, ray0, -1.0 );
+        Vec3d f = getForceSpringRay( world.apos[ipicked], Vec3dcam.rotMat().c, ray0, -1.0 );
         world.aforce[ipicked].add( f );
     }
 
@@ -819,12 +819,12 @@ void  AppMolecularEditorOCL::keyStateHandling( const Uint8 *keys ){
 	if( keys[ SDL_SCANCODE_UP    ] ){ qCamera.dpitch(  keyRotSpeed ); }
 	if( keys[ SDL_SCANCODE_DOWN  ] ){ qCamera.dpitch( -keyRotSpeed ); }
 
-    if( keys[ SDL_SCANCODE_A ] ){ cam.pos.add_mul( cam.rot.a, -cameraMoveSpeed ); }
-	if( keys[ SDL_SCANCODE_D ] ){ cam.pos.add_mul( cam.rot.a,  cameraMoveSpeed ); }
-    if( keys[ SDL_SCANCODE_W ] ){ cam.pos.add_mul( cam.rot.b,  cameraMoveSpeed ); }
-	if( keys[ SDL_SCANCODE_S ] ){ cam.pos.add_mul( cam.rot.b, -cameraMoveSpeed ); }
-    if( keys[ SDL_SCANCODE_Q ] ){ cam.pos.add_mul( cam.rot.c, -cameraMoveSpeed ); }
-	if( keys[ SDL_SCANCODE_E ] ){ cam.pos.add_mul( cam.rot.c,  cameraMoveSpeed ); }
+    if( keys[ SDL_SCANCODE_A ] ){ cam.pos.add_mul( cam.rotMat().a, -cameraMoveSpeed ); }
+	if( keys[ SDL_SCANCODE_D ] ){ cam.pos.add_mul( cam.rotMat().a,  cameraMoveSpeed ); }
+    if( keys[ SDL_SCANCODE_W ] ){ cam.pos.add_mul( cam.rotMat().b,  cameraMoveSpeed ); }
+	if( keys[ SDL_SCANCODE_S ] ){ cam.pos.add_mul( cam.rotMat().b, -cameraMoveSpeed ); }
+    if( keys[ SDL_SCANCODE_Q ] ){ cam.pos.add_mul( cam.rotMat().c, -cameraMoveSpeed ); }
+	if( keys[ SDL_SCANCODE_E ] ){ cam.pos.add_mul( cam.rotMat().c,  cameraMoveSpeed ); }
 
     //AppSDL2OGL_3D::keyStateHandling( keys );
 };
@@ -872,11 +872,11 @@ void AppMolecularEditorOCL::eventHandling ( const SDL_Event& event  ){
         case SDL_MOUSEBUTTONDOWN:
             switch( event.button.button ){
                 case SDL_BUTTON_LEFT:
-                    ipicked = pickParticle( world.natoms, world.apos, ray0, (Vec3d)cam.rot.c , 0.5 );
+                    ipicked = pickParticle( world.natoms, world.apos, ray0, (Vec3d)cam.rotMat().c , 0.5 );
                     printf("ipicked %i \n", ipicked);
                     break;
                 case SDL_BUTTON_RIGHT:
-                    ibpicked = world.pickBond( ray0, (Vec3d)cam.rot.c , 0.5 );
+                    ibpicked = world.pickBond( ray0, (Vec3d)cam.rotMat().c , 0.5 );
                     printf("ibpicked %i \n", ibpicked);
                     break;
             }

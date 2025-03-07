@@ -105,7 +105,7 @@ AppMolecularEditor2::AppMolecularEditor2( int& id, int WIDTH_, int HEIGHT_ ) : A
     //qCamera.set( 0.0,0.0,0.0,1.0 );  // bottom view
     //qCamera.set( 0.0,0.0,1.0,0.0 );  // bottom view
     //qCamera.set( 0.0,1.0,0.0,0.0 );  // top view  x=-x, y=y,
-    qCamera.set( 1.0,0.0,0.0,0.0 );    // top view  x=x, y=-y,
+    cam.qrot.set( 1.0,0.0,0.0,0.0 );    // top view  x=x, y=-y,
     //qCamera.set( 0.70710678118,0.0,0.0,0.70710678118 ); // side down
     //qCamera.set( -0.70710678118,0.0,0.0,0.70710678118 ); // x=x, z=y,  y=-y,
     //qCamera.set( 0.0, -0.70710678118,0.0,0.70710678118 ); // z=-x, y=y
@@ -334,7 +334,7 @@ void AppMolecularEditor2::draw(){
 
 	//ibpicked = world.pickBond( ray0, camMat.c , 0.5 );
 
-    ray0 = (Vec3d)(cam.rot.a*mouse_begin_x + cam.rot.b*mouse_begin_y);
+    ray0 = (Vec3d)(cam.rotMat().a*mouse_begin_x + cam.rotMat().b*mouse_begin_y);
     Draw3D::drawPointCross( ray0, 0.1 );
     //Draw3D::drawVecInPos( camMat.c, ray0 );
     if(ipicked>=0) Draw3D::drawLine( world.apos[ipicked], ray0);
@@ -358,7 +358,7 @@ void AppMolecularEditor2::draw(){
 
         //exit(0);
         if(ipicked>=0){
-            Vec3d f = getForceSpringRay( world.apos[ipicked], (Vec3d)cam.rot.c, ray0, -1.0 );
+            Vec3d f = getForceSpringRay( world.apos[ipicked], (Vec3d)cam.rotMat().c, ray0, -1.0 );
             //printf( "f (%g,%g,%g)\n", f.x, f.y, f.z );
             world.aforce[ipicked].add( f );
         };
@@ -470,10 +470,10 @@ void AppMolecularEditor2::eventHandling ( const SDL_Event& event  ){
         case SDL_MOUSEBUTTONDOWN:
             switch( event.button.button ){
                 case SDL_BUTTON_LEFT:
-                    ipicked = pickParticle( ray0, (Vec3d)cam.rot.c , 0.5, world.natoms, world.apos );
+                    ipicked = pickParticle( ray0, (Vec3d)cam.rotMat().c , 0.5, world.natoms, world.apos );
                     break;
                 case SDL_BUTTON_RIGHT:
-                    ibpicked = world.pickBond( ray0, (Vec3d)cam.rot.c , 0.5 );
+                    ibpicked = world.pickBond( ray0, (Vec3d)cam.rotMat().c , 0.5 );
                     printf("ibpicked %i \n", ibpicked);
                     break;
             }

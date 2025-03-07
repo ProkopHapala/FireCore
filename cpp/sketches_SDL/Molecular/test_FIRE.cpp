@@ -77,7 +77,7 @@ class TestAppFIRE : public AppSDL2OGL_3D {
     DynamicOpt  opt;
 
     int     fontTex=0,fontTexPix=0;
-    int     ogl_sph=0;
+    GLMesh ogl_sph = Draw3D::makeSphereOgl( 5, 1.0 );
 
     char str[256];
 
@@ -129,7 +129,7 @@ TestAppFIRE::TestAppFIRE( int& id, int WIDTH_, int HEIGHT_ ) : AppSDL2OGL_3D( id
     params.assignREs( mol.natoms, mol.atomType, mol.REQs );
 
     Vec3d cog = mol.getCOG_av();
-    mol.addToPos( cog*-1.0d );
+    mol.addToPos( cog*-1.0 );
 
     builder.insertMolecule(&mol, {0.0,0.0,0.0}, Mat3dIdentity, false );
     builder.insertMolecule(&mol, {5.0,0.0,0.0}, Mat3dIdentity, false );
@@ -162,9 +162,6 @@ TestAppFIRE::TestAppFIRE( int& id, int WIDTH_, int HEIGHT_ ) : AppSDL2OGL_3D( id
 
     apos_bak = new Vec3d[world.natoms];
     for(int i=0; i<world.natoms; i++){ apos_bak[i] = world.apos[i]; }
-
-    //Draw3D::makeSphereOgl( ogl_sph, 2, 0.25 );
-    Draw3D::makeSphereOgl( ogl_sph, 2, 1.0 );
 
 
     commands.root.func=[]{};
@@ -208,7 +205,7 @@ void TestAppFIRE::draw(){
         world.eval_angcos();
         world.eval_LJq_On2();
         if(ipicked>=0){
-            Vec3d f = getForceSpringRay( world.apos[ipicked], (Vec3d)cam.rot.c, ray0, -1.0 );
+            Vec3d f = getForceSpringRay( world.apos[ipicked], (Vec3d)cam.rotMat().c, ray0, -1.0 );
             world.aforce[ipicked].add( f );
         };
         for(int i=0; i<world.natoms; i++){
@@ -251,7 +248,7 @@ void TestAppFIRE::draw(){
     Draw3D::bondLabels( world.nbonds,       world.bond2atom, world.apos, fontTex, 0.02 );
     opengl1renderer.color3f(1.0f,0.0f,0.0f);
     Draw3D::vecsInPoss( world.natoms, world.aforce, world.apos, 300.0              );
-    Draw3D::atomsREQ  ( world.natoms, world.apos,   world.REQ, ogl_sph, 1.0, 0.25 );
+    Draw3D::atomsREQ  ( renderer, world.natoms, world.apos,   world.REQ, &ogl_sph, 1.0, 0.25 );
 
     //printf("==========\n");
     //for(int i=0; i<world.natoms; i++){
@@ -299,10 +296,10 @@ void TestAppFIRE::eventHandling ( const SDL_Event& event  ){
         case SDL_MOUSEBUTTONDOWN:
             switch( event.button.button ){
                 case SDL_BUTTON_LEFT:
-                    ipicked = pickParticle( ray0, (Vec3d)cam.rot.c , 0.5, world.natoms, world.apos );
+                    ipicked = pickParticle( ray0, (Vec3d)cam.rotMat().c , 0.5, world.natoms, world.apos );
                     break;
                 case SDL_BUTTON_RIGHT:
-                    ibpicked = world.pickBond( ray0, (Vec3d)cam.rot.c , 0.5 );
+                    ibpicked = world.pickBond( ray0, (Vec3d)cam.rotMat().c , 0.5 );
                     printf("ibpicked %i \n", ibpicked);
                     break;
             }

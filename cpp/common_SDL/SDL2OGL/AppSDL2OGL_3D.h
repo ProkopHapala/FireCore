@@ -43,21 +43,13 @@ class AppSDL2OGL_3D : public AppSDL2OGL{ public:
 	virtual void eventHandling   ( const SDL_Event& event  );
 	virtual void mouseHandling   (                         );
 
-	virtual void draw     ( Renderer* renderer ) override;
+	virtual void draw     () override;
 	virtual void camera   ();
-
-	void camera_FPS       ( const Vec3d& pos, const Mat3d& rotMat );
-	void camera_FwUp      ( const Vec3d& pos, const Vec3d& fw, const Vec3d& up, bool upDominant );
-	void camera_FreeLook  ( const Vec3d& pos );
-	void camera_OrthoInset( const Vec2d& p1, const Vec2d& p2, const Vec2d& zrange, const Vec3d& fw, const Vec3d& up, bool upDominant );
-
-	//void orthoCamera      ( );
-	//void perspectiveCamera( );
 
 
 	inline Vec3f mouseRay0(){ return cam.rotMat().a*mouse_begin_x + cam.rotMat().b*mouse_begin_y + cam.pos; }
     inline Vec3f updateRay0(){ ray0 = mouseRay0(); return ray0; }
-    //ray0 = (Vec3d)(  cam.rot.a*mouse_begin_x  +  cam.rot.b*mouse_begin_y  +  cam.pos );
+    //ray0 = (Vec3d)(  cam.rotMat().a*mouse_begin_x  +  cam.rotMat().b*mouse_begin_y  +  cam.pos );
     inline void mouseStartSelectionBox(){ ray0_start = ray0;  bDragging = true; }
 
 	void drawCrosshair( float sz );

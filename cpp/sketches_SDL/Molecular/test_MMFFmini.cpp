@@ -171,7 +171,7 @@ inline double evalTorq(Vec3d& ha,Vec3d& hb,Vec3d& hab,   Vec3d& fa, Vec3d& fb, V
 
     if(bPrint){
 
-        double d=0.001d;
+        double d=0.001;
         double dcaE  =( cos_func(ca+d,cb  ,cab  ) - cos_func(ca-d,cb  ,cab  ) )/(2*d);
         double dcbE  =( cos_func(ca  ,cb+d,cab  ) - cos_func(ca  ,cb-d,cab  ) )/(2*d);
         double dcabE =( cos_func(ca  ,cb  ,cab+d) - cos_func(ca  ,cb  ,cab-d) )/(2*d);
@@ -229,9 +229,9 @@ void doChecks(){
     auto getEF_ab = [&](Vec3d p,Vec3d& f)->double{ return evalTorq( ha,hb,p,   fa,fb,f  ); };
 
     Vec3d f,fE;
-    printf("ha  "); checkDeriv3d(getEF_a , ha, 0.001d,  fE, f );
-    printf("hb  "); checkDeriv3d(getEF_b , hb, 0.001d,  fE, f );
-    printf("hab "); checkDeriv3d(getEF_ab, hab,0.001d,  fE, f );
+    printf("ha  "); checkDeriv3d(getEF_a , ha, 0.001,  fE, f );
+    printf("hb  "); checkDeriv3d(getEF_b , hb, 0.001,  fE, f );
+    printf("hab "); checkDeriv3d(getEF_ab, hab,0.001,  fE, f );
 
     //exit(0);
     /*
@@ -296,7 +296,7 @@ class TestAppMMFFmini : public AppSDL2OGL_3D { public:
     bool bRunRelax  = false;
 
     int     fontTex;
-    int     ogl_sph=0;
+    GLMesh  ogl_sph = Draw3D::makeSphereOgl( 5, 1.0 );
     int     ogl_mol=0;
 
     char str[256];
@@ -347,7 +347,7 @@ int pickBond( const MMFFmini& ff, const Vec3d& ro, const Vec3d& rd, double R ){
 
 void TestAppMMFFmini::selectRect( const Vec3d& p0, const Vec3d& p1 ){
     Vec3d Tp0,Tp1,Tp;
-    Mat3d rot = (Mat3d)cam.rot;
+    Mat3d rot = (Mat3d)cam.rotMat();
     rot.dot_to(p0,Tp0);
     rot.dot_to(p1,Tp1);
     _order(Tp0.x,Tp1.x);
@@ -446,7 +446,7 @@ int TestAppMMFFmini::loadMoleculeMol( const char* fname, bool bAutoH, bool bLoad
         params.assignREs( mol.natoms, mol.atomType, mol.REQs );
         mol.autoAngles(true);
         Vec3d cog = mol.getCOG_av();
-        mol.addToPos( cog*-1.0d );
+        mol.addToPos( cog*-1.0 );
         builder.insertMolecule(&mol, Vec3dZero, Mat3dIdentity, false );
         builder.toMMFFmini( ff, &params );
     }
@@ -718,9 +718,6 @@ TestAppMMFFmini::TestAppMMFFmini( int& id, int WIDTH_, int HEIGHT_ ) : AppSDL2OG
     printf("TestAppMMFFmini.init() DONE \n");
     //exit(0);
 
-    //Draw3D::makeSphereOgl( ogl_sph, 3, 1.0 );
-    Draw3D::makeSphereOgl( ogl_sph, 5, 1.0 );
-
     //float l_diffuse  []{ 0.9f, 0.85f, 0.8f,  1.0f };
 	float l_specular []{ 0.0f, 0.0f,  0.0f,  1.0f };
     //opengl1renderer.lightfv    ( GL_LIGHT0, GL_AMBIENT,   l_ambient  );
@@ -750,7 +747,7 @@ void TestAppMMFFmini::drawSystem( Vec3i ixyz ){
     //Draw3D::atomsREQ  ( ff.natoms, ff.apos,   nff.REQs, ogl_sph, 1.0, 0.25, 1.0 );
     //Draw3D::atoms( ff.natoms, ff.apos, atypes, params, ogl_sph, 1.0, 1.0, 1.0 );       
     //Draw3D::atoms( ff.natoms, ff.apos, atypes, params, ogl_sph, 1.0, 0.5, 1.0 );    
-    Draw3D::atoms( ff.natoms, ff.apos, atypes, params, ogl_sph, 1.0, 0.25, 1.0 );     
+    Draw3D::atoms( renderer, ff.natoms, ff.apos, atypes, params, &ogl_sph, 1.0, 0.25, 1.0 );     
 }
 
 
@@ -792,7 +789,7 @@ void TestAppMMFFmini::draw(){
     //cam.qrot.rotate(M_PI*0.01,Vec3fX);
     
     if(frameCount==1){
-        qCamera.pitch( M_PI );
+        cam.qrot.pitch( M_PI );
         ff.printAtomPos();
         ff.printBondParams();
         ff.printAngleParams();
@@ -810,7 +807,7 @@ void TestAppMMFFmini::draw(){
     }
 
 	//ibpicked = world.pickBond( ray0, camMat.c , 0.5 );
-    ray0 = (Vec3d)(cam.rot.a*mouse_begin_x + cam.rot.b*mouse_begin_y);
+    ray0 = (Vec3d)(cam.rotMat().a*mouse_begin_x + cam.rotMat().b*mouse_begin_y);
     Draw3D::drawPointCross( ray0, 0.1 );
     //Draw3D::drawVecInPos( camMat.c, ray0 );
     if(ipicked>=0) Draw3D::drawLine( ff.apos[ipicked], ray0);
@@ -883,7 +880,7 @@ void TestAppMMFFmini::draw(){
             
             //exit(0);
             if(ipicked>=0){
-                Vec3d f = getForceSpringRay( ff.apos[ipicked], (Vec3d)cam.rot.c, ray0, -1.0 );
+                Vec3d f = getForceSpringRay( ff.apos[ipicked], (Vec3d)cam.rotMat().c, ray0, -1.0 );
                 //printf( "f (%g,%g,%g)\n", f.x, f.y, f.z );
                 ff.aforce[ipicked].add( f );
             };
@@ -936,7 +933,7 @@ void TestAppMMFFmini::draw(){
         }
     }
     
-    if(bDragging)Draw3D::drawTriclinicBox(cam.rot.transposed(), (Vec3f)ray0_start, (Vec3f)ray0 );
+    if(bDragging)Draw3D::drawTriclinicBox(cam.rotMat().transposed(), (Vec3f)ray0_start, (Vec3f)ray0 );
     //Draw3D::drawTriclinicBox(builder.lvec, Vec3dZero, Vec3dOne );
     opengl1renderer.color3f(0.0f,0.0f,0.0f); Draw3D::drawTriclinicBox(builder.lvec.transposed(), Vec3dZero, Vec3dOne );
     //opengl1renderer.color3f(0.6f,0.6f,0.6f); Draw3D::plotSurfPlane( Vec3d{0.0,0.0,1.0}, -3.0, {3.0,3.0}, {20,20} );
@@ -1017,8 +1014,8 @@ void TestAppMMFFmini::eventHandling ( const SDL_Event& event  ){
                 case SDLK_KP_6: builder.lvec.a.z-=xstep; break;
 
                 case SDLK_f:
-                    //selectShorterSegment( (Vec3d)(cam.rot.a*mouse_begin_x + cam.rot.b*mouse_begin_y + cam.rot.c*-1000.0), (Vec3d)cam.rot.c );
-                    selectShorterSegment( ray0, (Vec3d)cam.rot.c );
+                    //selectShorterSegment( (Vec3d)(cam.rotMat().a*mouse_begin_x + cam.rotMat().b*mouse_begin_y + cam.rotMat().c*-1000.0), (Vec3d)cam.rotMat().c );
+                    selectShorterSegment( ray0, (Vec3d)cam.rotMat().c );
                     //selection.erase();
                     //for(int i:builder.selection){ selection.insert(i); };
                     break;
@@ -1043,7 +1040,7 @@ void TestAppMMFFmini::eventHandling ( const SDL_Event& event  ){
             switch( event.button.button ){
                 case SDL_BUTTON_LEFT:
                     /*
-                    ipicked = pickParticle( ray0, (Vec3d)cam.rot.c, 0.5, ff.natoms, ff.apos );
+                    ipicked = pickParticle( ray0, (Vec3d)cam.rotMat().c, 0.5, ff.natoms, ff.apos );
                     selection.clear();
                     if(ipicked>=0){ selection.push_back(ipicked); };
                     printf( "picked atom %i \n", ipicked );
@@ -1052,7 +1049,7 @@ void TestAppMMFFmini::eventHandling ( const SDL_Event& event  ){
                     bDragging = true;
                     break;
                 case SDL_BUTTON_RIGHT:
-                    //ibpicked = ff.pickBond( ray0, (Vec3d)cam.rot.c , 0.5 );
+                    //ibpicked = ff.pickBond( ray0, (Vec3d)cam.rotMat().c , 0.5 );
                     //printf("ibpicked %i \n", ibpicked);
                     break;
             }
@@ -1063,7 +1060,7 @@ void TestAppMMFFmini::eventHandling ( const SDL_Event& event  ){
                     //ipicked = -1;
                     //ray0_start
                     if( ray0.dist2(ray0_start)<0.1 ){
-                        ipicked = pickParticle( ray0, (Vec3d)cam.rot.c, 0.5, ff.natoms, ff.apos );
+                        ipicked = pickParticle( ray0, (Vec3d)cam.rotMat().c, 0.5, ff.natoms, ff.apos );
                         selection.clear();
                         if(ipicked>=0){ selection.push_back(ipicked); };
                         printf( "picked atom %i \n", ipicked );

@@ -3,10 +3,8 @@
 
 
 #include "ScreenSDL2OGL_3D.h"
-#include "quaternion.h"
 
 void ScreenSDL2OGL_3D::camera(){
-    cam.qrot = Quat4fIdentity;
     cam.zoom   = zoom;
     cam.aspect = ASPECT_RATIO;
     //Cam::ortho( cam, true );
@@ -110,12 +108,11 @@ void ScreenSDL2OGL_3D::mouseHandling( ){
     if ( buttons & SDL_BUTTON(SDL_BUTTON_RIGHT)) {
         Quat4f q; q.fromTrackball( 0, 0, -mx*mouseRotSpeed, my*mouseRotSpeed );
         cam.qrot.qmul_T( q );
-        printf("creenSDL2OGL_3D::mouseHandling( )\n");
     }
     //qCamera.qmul( q );
 }
 
 ScreenSDL2OGL_3D::ScreenSDL2OGL_3D( int& id, int WIDTH_, int HEIGHT_ ) : ScreenSDL2OGL( id, WIDTH_, HEIGHT_ ) {
-	cam.qrot = Quat4fIdentity;
+	cam.qrot.setOne();
 	cam.pos.set(0.0);
 }

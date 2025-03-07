@@ -133,7 +133,7 @@ class TestAppMolecularBrowser : public AppSDL2OGL_3D, public Browser { public:
 
     // ---- Graphics objects
     int  fontTex,fontTex3D;
-    int  ogl_sph=0;
+    GLMesh ogl_sph = Draw3D::makeSphereOgl( 5, 1.0 );
     int  ogl_mol=0;
 
     char str[256];
@@ -224,7 +224,7 @@ void TestAppMolecularBrowser::renderThumbnails( int i0, int n, float zoom_, bool
         Molecule& mol =  *molecules[i0+i];
         //renderMolecule( mol.natoms, mol.nbonds, mol.pos, mol.bond2atom );
         //Draw3D::atomsREQ( mol.natoms, mol.pos, mol.REQs, ogl_sph, qsc=1, );
-        Draw3D::atoms( mol.natoms, mol.pos, mol.atomType, params, ogl_sph, 1.0, 0.5, 1.0 );
+        Draw3D::atoms( renderer, mol.natoms, mol.pos, mol.atomType, params, &ogl_sph, 1.0, 0.5, 1.0 );
         opengl1renderer.color3f(0.0f,0.0f,0.0f);
         Draw3D::bonds( mol.nbonds, mol.bond2atom, mol.pos);
         Draw3D::drawText( fileNames[i0+i].c_str(), Vec3d{-9.0,+9.0,5.0}, fontTex, 0.07, 0);
@@ -276,7 +276,6 @@ TestAppMolecularBrowser::TestAppMolecularBrowser( int& id, int WIDTH_, int HEIGH
     picked_lvec = &builder.lvec.a;
 
     // ---- Graphics setup
-    Draw3D::makeSphereOgl( ogl_sph, 5, 1.0 );
     //float l_diffuse  []{ 0.9f, 0.85f, 0.8f,  1.0f };
 	float l_specular []{ 0.0f, 0.0f,  0.0f,  1.0f };
     //opengl1renderer.lightfv    ( GL_LIGHT0, GL_AMBIENT,   l_ambient  );
@@ -302,7 +301,7 @@ void TestAppMolecularBrowser::draw(){
     opengl1renderer.enable(GL_DEPTH_TEST);
 
     if(frameCount==1){ 
-        qCamera.pitch( M_PI );  qCamera0=qCamera; 
+        cam.qrot.pitch( M_PI );  qCamera0=cam.qrot; 
     }
     if(frameCount==2){
         renderThumbnails( 0, molecules.size(), 10.0, true );
@@ -387,16 +386,16 @@ void  TestAppMolecularBrowser::keyStateHandling( const Uint8 *keys ){
 	//if( keys[ SDL_SCANCODE_RIGHT ] ){ qCamera.dyaw  ( -keyRotSpeed ); }
 	//if( keys[ SDL_SCANCODE_UP    ] ){ qCamera.dpitch(  keyRotSpeed ); }
 	//if( keys[ SDL_SCANCODE_DOWN  ] ){ qCamera.dpitch( -keyRotSpeed ); }
-    //if( keys[ SDL_SCANCODE_A ] ){ cam.pos.add_mul( cam.rot.a, -cameraMoveSpeed ); }
-	//if( keys[ SDL_SCANCODE_D ] ){ cam.pos.add_mul( cam.rot.a,  cameraMoveSpeed ); }
-    //if( keys[ SDL_SCANCODE_W ] ){ cam.pos.add_mul( cam.rot.b,  cameraMoveSpeed ); }
-	//if( keys[ SDL_SCANCODE_S ] ){ cam.pos.add_mul( cam.rot.b, -cameraMoveSpeed ); }
-    //if( keys[ SDL_SCANCODE_Q ] ){ cam.pos.add_mul( cam.rot.c, -cameraMoveSpeed ); }
-	//if( keys[ SDL_SCANCODE_E ] ){ cam.pos.add_mul( cam.rot.c,  cameraMoveSpeed ); }
-    if( keys[ SDL_SCANCODE_LEFT  ] ){ cam.pos.add_mul( cam.rot.a, -cameraMoveSpeed ); }
-	if( keys[ SDL_SCANCODE_RIGHT ] ){ cam.pos.add_mul( cam.rot.a,  cameraMoveSpeed ); }
-    if( keys[ SDL_SCANCODE_UP    ] ){ cam.pos.add_mul( cam.rot.b,  cameraMoveSpeed ); }
-	if( keys[ SDL_SCANCODE_DOWN  ] ){ cam.pos.add_mul( cam.rot.b, -cameraMoveSpeed ); }
+    //if( keys[ SDL_SCANCODE_A ] ){ cam.pos.add_mul( cam.rotMat().a, -cameraMoveSpeed ); }
+	//if( keys[ SDL_SCANCODE_D ] ){ cam.pos.add_mul( cam.rotMat().a,  cameraMoveSpeed ); }
+    //if( keys[ SDL_SCANCODE_W ] ){ cam.pos.add_mul( cam.rotMat().b,  cameraMoveSpeed ); }
+	//if( keys[ SDL_SCANCODE_S ] ){ cam.pos.add_mul( cam.rotMat().b, -cameraMoveSpeed ); }
+    //if( keys[ SDL_SCANCODE_Q ] ){ cam.pos.add_mul( cam.rotMat().c, -cameraMoveSpeed ); }
+	//if( keys[ SDL_SCANCODE_E ] ){ cam.pos.add_mul( cam.rotMat().c,  cameraMoveSpeed ); }
+    if( keys[ SDL_SCANCODE_LEFT  ] ){ cam.pos.add_mul( cam.rotMat().a, -cameraMoveSpeed ); }
+	if( keys[ SDL_SCANCODE_RIGHT ] ){ cam.pos.add_mul( cam.rotMat().a,  cameraMoveSpeed ); }
+    if( keys[ SDL_SCANCODE_UP    ] ){ cam.pos.add_mul( cam.rotMat().b,  cameraMoveSpeed ); }
+	if( keys[ SDL_SCANCODE_DOWN  ] ){ cam.pos.add_mul( cam.rotMat().b, -cameraMoveSpeed ); }
     //AppSDL2OGL_3D::keyStateHandling( keys );
 };
 

@@ -727,14 +727,14 @@ void TestAppCLCFSF::eventHandling ( const SDL_Event& event  ){
         case SDL_MOUSEBUTTONDOWN:
             switch( event.button.button ){
                 case SDL_BUTTON_LEFT:
-                    //ipicked = pickParticle( ff.natoms, ff.apos, ray0, (Vec3d)cam.rot.c , 0.5 );
+                    //ipicked = pickParticle( ff.natoms, ff.apos, ray0, (Vec3d)cam.rotMat().c , 0.5 );
                 break;
             }
             break;
         case SDL_MOUSEBUTTONUP:
             switch( event.button.button ){
                 case SDL_BUTTON_LEFT:
-                    //ibpicked = pickParticle( ff.natoms, ff.apos, ray0, (Vec3d)cam.rot.c , 0.5 );
+                    //ibpicked = pickParticle( ff.natoms, ff.apos, ray0, (Vec3d)cam.rotMat().c , 0.5 );
                     //printf( "dist %i %i = ", ipicked, ibpicked );
                     break;
             }

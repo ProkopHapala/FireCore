@@ -26,7 +26,7 @@ inline void ortho( const Camera& cam, bool zsym ){
     float zmin = cam.zmin; if(zsym) zmin=-cam.zmax;
 	opengl1renderer.ortho( -cam.zoom*cam.aspect, cam.zoom*cam.aspect, -cam.zoom, cam.zoom, zmin, cam.zmax );
 	float glMat[16];
-	Draw3D::toGLMatCam( { 0.0f, 0.0f, 0.0f}, cam.rot, glMat );
+	Draw3D::toGLMatCam( { 0.0f, 0.0f, 0.0f}, cam.rotMat(), glMat );
 	opengl1renderer.multMatrixf( glMat );
 
 	opengl1renderer.matrixMode ( GL_MODELVIEW );
@@ -41,7 +41,7 @@ inline void perspective( const Camera& cam ){
     opengl1renderer.frustum( -cam.aspect*cam.zoom, cam.aspect*cam.zoom, -cam.zoom, cam.zoom, cam.zmin, cam.zmax );
     //opengl1renderer.frustum( -cam.zoom*cam.aspect, cam.zoom*cam.aspect, -cam.zoom, cam.zoom, cam.zmin, cam.zmax );
 	float glMat[16];
-	Draw3D::toGLMatCam( { 0.0f, 0.0f, 0.0f}, cam.rot, glMat );
+	Draw3D::toGLMatCam( { 0.0f, 0.0f, 0.0f}, cam.rotMat(), glMat );
 	opengl1renderer.multMatrixf( glMat );
 
 	opengl1renderer.matrixMode ( GL_MODELVIEW );
@@ -169,7 +169,7 @@ class GLView{ public:
     void  startSpining ( float x, float y              ){ mouse_spinning = true; mouse_begin_x  = x; mouse_begin_y  = y;	}
     void  endSpining   (                               ){ mouse_spinning = false;	                                    }
     //void  projectMouse ( float mX, float mY, Vec3d& mp ){ mp.set_lincomb( mouseRight(mX), camRight,  mouseUp(mY), camUp ); };
-    void  projectMouse ( float mX, float mY, Vec3f& mp ){ mp.set_lincomb( mouseRight(mX), cam.rot.a,  mouseUp(mY), cam.rot.b ); };
+    void  projectMouse ( float mX, float mY, Vec3f& mp ){ mp.set_lincomb( mouseRight(mX), cam.rotMat().a,  mouseUp(mY), cam.rotMat().b ); };
     void drawCrosshair( float sz );
 
     // ---- Camera
@@ -255,8 +255,7 @@ void GLView::init( int& id, int WIDTH_, int HEIGHT_ ){
 
 GLView::GLView( int& id, int WIDTH_, int HEIGHT_ ){
     init(id,WIDTH_,HEIGHT_);
-    qCamera.setOne();
-    qCamera.toMatrix_unitary( cam.rot );
+    cam.qrot.setOne();
     cam.pos.set(0.0);
     GLbyte* s;
     // http://stackoverflow.com/questions/40444046/c-how-to-detect-graphics-card-model
@@ -328,7 +327,6 @@ bool GLView::post_draw(){
 // }
 
 void GLView::camera(){
-    ((Quat4f)qCamera).toMatrix(cam.rot);
     cam.zoom   = zoom;
     cam.aspect = ASPECT_RATIO;
     if (perspective){ Cam::perspective( cam ); }
@@ -427,16 +425,17 @@ void GLView::eventHandling ( const SDL_Event& event  ){
 }
 
 void GLView::keyStateHandling( const Uint8 *keys ){
-    if( keys[ SDL_SCANCODE_LEFT  ] ){ qCamera.dyaw  (  keyRotSpeed ); }
-    if( keys[ SDL_SCANCODE_RIGHT ] ){ qCamera.dyaw  ( -keyRotSpeed ); }
-    if( keys[ SDL_SCANCODE_UP    ] ){ qCamera.dpitch(  keyRotSpeed ); }
-    if( keys[ SDL_SCANCODE_DOWN  ] ){ qCamera.dpitch( -keyRotSpeed ); }
-    if( keys[ SDL_SCANCODE_A ] ){ cam.pos.add_mul( cam.rot.a, -cameraMoveSpeed ); }
-    if( keys[ SDL_SCANCODE_D ] ){ cam.pos.add_mul( cam.rot.a,  cameraMoveSpeed ); }
-    if( keys[ SDL_SCANCODE_W ] ){ cam.pos.add_mul( cam.rot.b,  cameraMoveSpeed ); }
-    if( keys[ SDL_SCANCODE_S ] ){ cam.pos.add_mul( cam.rot.b, -cameraMoveSpeed ); }
-    if( keys[ SDL_SCANCODE_Q ] ){ cam.pos.add_mul( cam.rot.c, -cameraMoveSpeed ); }
-    if( keys[ SDL_SCANCODE_E ] ){ cam.pos.add_mul( cam.rot.c,  cameraMoveSpeed ); }
+    if( keys[ SDL_SCANCODE_LEFT  ] ){ cam.qrot.dyaw  (  keyRotSpeed ); }
+    if( keys[ SDL_SCANCODE_RIGHT ] ){ cam.qrot.dyaw  ( -keyRotSpeed ); }
+    if( keys[ SDL_SCANCODE_UP    ] ){ cam.qrot.dpitch(  keyRotSpeed ); }
+    if( keys[ SDL_SCANCODE_DOWN  ] ){ cam.qrot.dpitch( -keyRotSpeed ); }
+
+    if( keys[ SDL_SCANCODE_A ] ){ cam.pos.add_mul( cam.rotMat().a, -cameraMoveSpeed ); }
+    if( keys[ SDL_SCANCODE_D ] ){ cam.pos.add_mul( cam.rotMat().a,  cameraMoveSpeed ); }
+    if( keys[ SDL_SCANCODE_W ] ){ cam.pos.add_mul( cam.rotMat().b,  cameraMoveSpeed ); }
+    if( keys[ SDL_SCANCODE_S ] ){ cam.pos.add_mul( cam.rotMat().b, -cameraMoveSpeed ); }
+    if( keys[ SDL_SCANCODE_Q ] ){ cam.pos.add_mul( cam.rotMat().c, -cameraMoveSpeed ); }
+    if( keys[ SDL_SCANCODE_E ] ){ cam.pos.add_mul( cam.rotMat().c,  cameraMoveSpeed ); }
     //printf( "frame %i keyStateHandling cam.pos (%g,%g,%g) \n", frameCount, cam.pos.x, cam.pos.y, cam.pos.z );
 }
 
@@ -449,7 +448,7 @@ void GLView::mouseHandling( ){
     //printf( " %i %i \n", mx,my );
     if ( buttons & SDL_BUTTON(SDL_BUTTON_RIGHT)) {
         Quat4f q; q.fromTrackball( 0, 0, -mx*mouseRotSpeed, my*mouseRotSpeed );
-        qCamera.qmul_T( q );
+        cam.qrot.qmul_T( q );
     }
     //qCamera.qmul( q );
 }

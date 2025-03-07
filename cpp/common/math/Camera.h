@@ -15,15 +15,17 @@ template<typename T>
 class CameraT{ public:
     Vec3T<T>  pos    = (Vec3T<T>){0.0f,0.0f,-50.0f};
     Quat4T<T> qrot   = (Quat4T<T>)Quat4dIdentity;
-    //Mat3T<T>  rot    = (Mat3T<T>)Mat3dIdentity;
     T  zoom   = 10.0;
     T  aspect = 1.0;
     T  zmin   = 10.0;
     T  zmax   = 10000.0;
     bool   persp  = true;
 
-    inline Mat3T<T> rotMat() const { return qrot.toMat(); }
-    
+    inline Mat3T<T> rotMat() const {
+        Mat3T<T> m;
+        qrot.toMatrix(m);
+        return m;
+    }
     inline void lookAt( Vec3T<T> p, T R ){ pos = p + rotMat().c*-R; }
     //inline void lookAt( Vec3T<T> p, T R ){ Vec3T<T> p_; convert(p,p_); lookAt(p_,R); }
 

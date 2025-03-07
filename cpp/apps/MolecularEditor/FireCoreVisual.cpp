@@ -9,6 +9,7 @@
 #include <vector>
 #include <math.h>
 
+#include "quaternion.h"
 #include "testUtils.h"
 #include "IO_utils.h"
 
@@ -135,7 +136,7 @@ class TestAppFireCoreVisual : public AppSDL2OGL_3D { public:
 
     // ---- Graphics objects
     int  fontTex,fontTex3D;
-    int  ogl_sph=0;
+    GLMesh ogl_sph = Draw3D::makeSphereOgl( 5, 1.0 );
     int  ogl_mol=0;
     int  ogl_isosurf=0;
     int  ogl_MO = 0;
@@ -270,19 +271,18 @@ void TestAppFireCoreVisual::initGUI(){
         ->addItem("Right")
         ->setCommand( [&](GUIAbstractPanel* me_){ 
             DropDownList& me = *(DropDownList*)me_;
-            printf( "old qCamera(%g,%g,%g,%g) -> %s \n", qCamera.x,qCamera.y,qCamera.z,qCamera.w, me.labels[me.iSelected].c_str()  );
+            printf( "old cam.qrot(%g,%g,%g,%g) -> %s \n", cam.qrot.x,cam.qrot.y,cam.qrot.z,cam.qrot.w, me.labels[me.iSelected].c_str()  );
             switch(me.iSelected){
-                case 0: qCamera=qTop;    break;
-                case 1: qCamera=qBottom; break;
-                case 2: qCamera=qFront;  break;
-                case 3: qCamera=qBack;   break;
-                case 4: qCamera=qLeft;   break;
-                case 5: qCamera=qRight;  break;
+                case 0: cam.qrot=qTop;    break;
+                case 1: cam.qrot=qBottom; break;
+                case 2: cam.qrot=qFront;  break;
+                case 3: cam.qrot=qBack;   break;
+                case 4: cam.qrot=qLeft;   break;
+                case 5: cam.qrot=qRight;  break;
             }
-            printf( "->new qCamera(%g,%g,%g,%g) \n", qCamera.x,qCamera.y,qCamera.z,qCamera.w );
-            qCamera.toMatrix(cam.rot);
+            printf( "->new cam.qrot(%g,%g,%g,%g) \n", cam.qrot.x,cam.qrot.y,cam.qrot.z,cam.qrot.w );
             printf( "cam: aspect %g zoom %g \n", cam.aspect, cam.zoom);
-            printMat((Mat3d)cam.rot);
+            printMat((Mat3d)cam.rotMat());
             }
         );
 }
@@ -335,7 +335,6 @@ TestAppFireCoreVisual::TestAppFireCoreVisual( int& id, int WIDTH_, int HEIGHT_ )
     picked_lvec = &builder.lvec.a;
 
     // ---- Graphics setup
-    Draw3D::makeSphereOgl( ogl_sph, 5, 1.0 );
     //float l_diffuse  []{ 0.9f, 0.85f, 0.8f,  1.0f };
 	float l_specular []{ 0.0f, 0.0f,  0.0f,  1.0f };
     //opengl1renderer.lightfv    ( GL_LIGHT0, GL_AMBIENT,   l_ambient  );
@@ -416,7 +415,7 @@ void TestAppFireCoreVisual::MDloop(){
         }
         if(ipicked>=0){
             float K = -2.0;
-            Vec3d f = getForceSpringRay( ff.apos[ipicked], (Vec3d)cam.rot.c, ray0, K );
+            Vec3d f = getForceSpringRay( ff.apos[ipicked], (Vec3d)cam.rotMat().c, ray0, K );
             ff.aforce[ipicked].add( f );
         };
         ff.aforce[  10 ].set(0.0); // This is Hack to stop molecule from moving
@@ -445,16 +444,16 @@ void TestAppFireCoreVisual::draw(){
     opengl1renderer.enable(GL_LIGHTING );
     opengl1renderer.enable(GL_DEPTH_TEST);
 
-    if(frameCount==1){ qCamera.pitch( M_PI );  qCamera0=qCamera; }
+    if(frameCount==1){ cam.qrot.pitch( M_PI );  qCamera0=cam.qrot; }
     if(bRunRelax){ MDloop(); }
 
     // --- Mouse Interaction / Visualization
-	ray0 = (Vec3d)(cam.rot.a*mouse_begin_x + cam.rot.b*mouse_begin_y );
+	ray0 = (Vec3d)(cam.rotMat().a*mouse_begin_x + cam.rotMat().b*mouse_begin_y );
     Draw3D::drawPointCross( ray0, 0.1 );        // Mouse Cursor 
     if(ipicked>=0) Draw3D::drawLine( ff.apos[ipicked], ray0); // Mouse Dragging Visualization
     Vec3d ray0_ = ray0;            ray0_.y=-ray0_.y;
     Vec3d ray0_start_=ray0_start;  ray0_start_.y=-ray0_start_.y;
-    if(bDragging)Draw3D::drawTriclinicBoxT(cam.rot, (Vec3f)ray0_start_, (Vec3f)ray0_ );   // Mouse Selection Box
+    if(bDragging)Draw3D::drawTriclinicBoxT(cam.rotMat(), (Vec3f)ray0_start_, (Vec3f)ray0_ );   // Mouse Selection Box
 
     if(ogl_MO){ 
         opengl1renderer.pushMatrix();
@@ -486,7 +485,7 @@ void TestAppFireCoreVisual::drawHUD(){
 
 void TestAppFireCoreVisual::drawingHex(double z0){
     Vec2i ip; Vec2d dp;
-    Vec3d p3 = rayPlane_hit( ray0, (Vec3d)cam.rot.c, {0.0,0.0,1.0}, {0.0,0.0,z0} );
+    Vec3d p3 = rayPlane_hit( ray0, (Vec3d)cam.rotMat().c, {0.0,0.0,1.0}, {0.0,0.0,z0} );
     Vec2d p{p3.x,p3.y};
     double off=1000.0;
     bool s = ruler.simplexIndex( p+(Vec2d){off,off}, ip, dp );
@@ -522,7 +521,7 @@ void TestAppFireCoreVisual::drawingHex(double z0){
 
 void TestAppFireCoreVisual::selectRect( const Vec3d& p0, const Vec3d& p1 ){
     Vec3d Tp0,Tp1,Tp;
-    Mat3d rot = (Mat3d)cam.rot;
+    Mat3d rot = (Mat3d)cam.rotMat();
     rot.dot_to(p0,Tp0);
     rot.dot_to(p1,Tp1);
     _order(Tp0.x,Tp1.x);
@@ -589,7 +588,7 @@ void TestAppFireCoreVisual::drawSystem( Vec3d ixyz ){
     //opengl1renderer.color3f(0.0f,0.0f,0.0f); Draw3D::bondsPBC  ( ff.nbonds, ff.bond2atom, ff.apos, &builder.bondPBC[0], builder.lvec ); // DEBUG
     opengl1renderer.color3f(0.0f,0.0f,0.0f); Draw3D::bondsPBC  ( ff.nbonds, ff.bond2atom, ff.apos, ff.pbcShifts ); // DEBUG
     if(bOrig&&mm_bAtoms){ opengl1renderer.color3f(0.0f,0.0f,0.0f); Draw3D::atomLabels( ff.natoms, ff.apos, fontTex3D                     ); }                     //DEBUG
-    Draw3D::atoms( ff.natoms, ff.apos, atypes, params, ogl_sph, 1.0, mm_Rsc, mm_Rsub );       //DEBUG
+    Draw3D::atoms( renderer, ff.natoms, ff.apos, atypes, params, &ogl_sph, 1.0, mm_Rsc, mm_Rsub );       //DEBUG
 }
 
 void TestAppFireCoreVisual::drawSystemQMMM(){
@@ -603,7 +602,8 @@ void TestAppFireCoreVisual::drawSystemQMMM(){
         int ityp = qmmm.isCap[i]? 0 : 1;
         const AtomType& atyp = params.atypes[ ityp ];
         Draw::setRGB( atyp.color );
-        Draw3D::drawShape( ogl_sph, ff.apos[im], Mat3dIdentity*((atyp.RvdW-Rsub)*Rsc) );
+        float sz = (atyp.RvdW-Rsub)*Rsc;
+        renderer->drawMesh( &ogl_sph, (Vec3f)ff.apos[im], Quat4fIdentity, {sz, sz, sz} );
     }
     opengl1renderer.color3f(0.5f,0.0f,0.0f); 
     Draw3D::atomPropertyLabel( qmmm.nqm, qmmm.charges, qmmm.apos, 1,0, fontTex3D );
@@ -672,7 +672,7 @@ void TestAppFireCoreVisual::eventHandling ( const SDL_Event& event  ){
                 case SDLK_KP_9: picked_lvec->z+=xstep; break;
                 case SDLK_KP_6: picked_lvec->z-=xstep; break;
 
-                case SDLK_KP_0: qCamera = qCamera0; break;
+                case SDLK_KP_0: cam.qrot = qCamera0; break;
 
                 case SDLK_COMMA:  which_MO--; printf("which_MO %i \n", which_MO ); break;
                 case SDLK_PERIOD: which_MO++; printf("which_MO %i \n", which_MO ); break;
@@ -685,8 +685,8 @@ void TestAppFireCoreVisual::eventHandling ( const SDL_Event& event  ){
 
                 case SDLK_g: useGizmo=!useGizmo; break;
                 case SDLK_f:
-                    //selectShorterSegment( (Vec3d)(cam.rot.a*mouse_begin_x + cam.rot.b*mouse_begin_y + cam.rot.c*-1000.0), (Vec3d)cam.rot.c );
-                    selectShorterSegment( ray0, (Vec3d)cam.rot.c );
+                    //selectShorterSegment( (Vec3d)(cam.rotMat().a*mouse_begin_x + cam.rotMat().b*mouse_begin_y + cam.rotMat().c*-1000.0), (Vec3d)cam.rotMat().c );
+                    selectShorterSegment( ray0, (Vec3d)cam.rotMat().c );
                     //selection.erase();
                     //for(int i:builder.selection){ selection.insert(i); };
                     break;
@@ -702,10 +702,9 @@ void TestAppFireCoreVisual::eventHandling ( const SDL_Event& event  ){
 
                 case SDLK_d: {
                     printf( "DEBUG Camera Matrix\n");
-                    printf( "DEBUG qCamera(%g,%g,%g,%g) \n", qCamera.x,qCamera.y,qCamera.z,qCamera.w );
-                    qCamera.toMatrix(cam.rot);
+                    printf( "DEBUG cam.qrot(%g,%g,%g,%g) \n", cam.qrot.x,cam.qrot.y,cam.qrot.z,cam.qrot.w );
                     printf( "DEBUG cam aspect %g zoom %g \n", cam.aspect, cam.zoom);
-                    printMat((Mat3d)cam.rot);
+                    printMat((Mat3d)cam.rotMat());
                 } break;
 
                 //case SDLK_g: iangPicked=(iangPicked+1)%ff.nang;
@@ -719,7 +718,7 @@ void TestAppFireCoreVisual::eventHandling ( const SDL_Event& event  ){
             switch( event.button.button ){
                 case SDL_BUTTON_LEFT:
                     
-                    ipicked = pickParticle( ray0, (Vec3d)cam.rot.c, 0.5, ff.natoms, ff.apos );
+                    ipicked = pickParticle( ray0, (Vec3d)cam.rotMat().c, 0.5, ff.natoms, ff.apos );
                     selection.clear();
                     if(ipicked>=0){ selection.push_back(ipicked); };
                     printf( "picked atom %i \n", ipicked );
@@ -728,7 +727,7 @@ void TestAppFireCoreVisual::eventHandling ( const SDL_Event& event  ){
                     bDragging = true;
                     break;
                 case SDL_BUTTON_RIGHT:
-                    //ibpicked = ff.pickBond( ray0, (Vec3d)cam.rot.c , 0.5 );
+                    //ibpicked = ff.pickBond( ray0, (Vec3d)cam.rotMat().c , 0.5 );
                     //printf("ibpicked %i \n", ibpicked);
                     break;
             }
@@ -739,7 +738,7 @@ void TestAppFireCoreVisual::eventHandling ( const SDL_Event& event  ){
                     //ipicked = -1;
                     //ray0_start
                     if( ray0.dist2(ray0_start)<0.1 ){
-                        ipicked = pickParticle( ray0, (Vec3d)cam.rot.c, 0.5, ff.natoms, ff.apos );
+                        ipicked = pickParticle( ray0, (Vec3d)cam.rotMat().c, 0.5, ff.natoms, ff.apos );
                         selection.clear();
                         if(ipicked>=0){ selection.push_back(ipicked); };
                         printf( "picked atom %i \n", ipicked );
@@ -770,16 +769,16 @@ void  TestAppFireCoreVisual::keyStateHandling( const Uint8 *keys ){
 	//if( keys[ SDL_SCANCODE_RIGHT ] ){ qCamera.dyaw  ( -keyRotSpeed ); }
 	//if( keys[ SDL_SCANCODE_UP    ] ){ qCamera.dpitch(  keyRotSpeed ); }
 	//if( keys[ SDL_SCANCODE_DOWN  ] ){ qCamera.dpitch( -keyRotSpeed ); }
-    //if( keys[ SDL_SCANCODE_A ] ){ cam.pos.add_mul( cam.rot.a, -cameraMoveSpeed ); }
-	//if( keys[ SDL_SCANCODE_D ] ){ cam.pos.add_mul( cam.rot.a,  cameraMoveSpeed ); }
-    //if( keys[ SDL_SCANCODE_W ] ){ cam.pos.add_mul( cam.rot.b,  cameraMoveSpeed ); }
-	//if( keys[ SDL_SCANCODE_S ] ){ cam.pos.add_mul( cam.rot.b, -cameraMoveSpeed ); }
-    //if( keys[ SDL_SCANCODE_Q ] ){ cam.pos.add_mul( cam.rot.c, -cameraMoveSpeed ); }
-	//if( keys[ SDL_SCANCODE_E ] ){ cam.pos.add_mul( cam.rot.c,  cameraMoveSpeed ); }
-    if( keys[ SDL_SCANCODE_LEFT  ] ){ cam.pos.add_mul( cam.rot.a, -cameraMoveSpeed ); }
-	if( keys[ SDL_SCANCODE_RIGHT ] ){ cam.pos.add_mul( cam.rot.a,  cameraMoveSpeed ); }
-    if( keys[ SDL_SCANCODE_UP    ] ){ cam.pos.add_mul( cam.rot.b,  cameraMoveSpeed ); }
-	if( keys[ SDL_SCANCODE_DOWN  ] ){ cam.pos.add_mul( cam.rot.b, -cameraMoveSpeed ); }
+    //if( keys[ SDL_SCANCODE_A ] ){ cam.pos.add_mul( cam.rotMat().a, -cameraMoveSpeed ); }
+	//if( keys[ SDL_SCANCODE_D ] ){ cam.pos.add_mul( cam.rotMat().a,  cameraMoveSpeed ); }
+    //if( keys[ SDL_SCANCODE_W ] ){ cam.pos.add_mul( cam.rotMat().b,  cameraMoveSpeed ); }
+	//if( keys[ SDL_SCANCODE_S ] ){ cam.pos.add_mul( cam.rotMat().b, -cameraMoveSpeed ); }
+    //if( keys[ SDL_SCANCODE_Q ] ){ cam.pos.add_mul( cam.rotMat().c, -cameraMoveSpeed ); }
+	//if( keys[ SDL_SCANCODE_E ] ){ cam.pos.add_mul( cam.rotMat().c,  cameraMoveSpeed ); }
+    if( keys[ SDL_SCANCODE_LEFT  ] ){ cam.pos.add_mul( cam.rotMat().a, -cameraMoveSpeed ); }
+	if( keys[ SDL_SCANCODE_RIGHT ] ){ cam.pos.add_mul( cam.rotMat().a,  cameraMoveSpeed ); }
+    if( keys[ SDL_SCANCODE_UP    ] ){ cam.pos.add_mul( cam.rotMat().b,  cameraMoveSpeed ); }
+	if( keys[ SDL_SCANCODE_DOWN  ] ){ cam.pos.add_mul( cam.rotMat().b, -cameraMoveSpeed ); }
     //AppSDL2OGL_3D::keyStateHandling( keys );
 };
 

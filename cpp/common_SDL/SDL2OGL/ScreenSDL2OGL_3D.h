@@ -14,13 +14,9 @@
 class ScreenSDL2OGL_3D : public ScreenSDL2OGL{ public:
 
 	bool mouseSpinning = false;
-	//Quat4f qCamera;
-	//Mat3f  camMat;
 	float  mouseRotSpeed   = 0.001;
 	float  keyRotSpeed     = 0.01;
     float  cameraMoveSpeed = 0.2f;
-	//Mat3d  camMat;
-	//Vec3d  camPos;
 	Camera cam;
 
 	float camDist = 50.0;

@@ -55,7 +55,7 @@ class ScreenSDL2OGL{ public:
 
 	virtual void camera      ();
 	virtual void cameraHUD   ();
-	virtual void draw        ( Renderer* renderer );
+	virtual void draw        ();
     virtual void drawHUD     ();
 	//virtual void inputHanding();
 	virtual void eventHandling   ( const SDL_Event& event               );

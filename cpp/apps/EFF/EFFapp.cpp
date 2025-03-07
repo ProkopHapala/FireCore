@@ -376,7 +376,7 @@ void TestAppRARFF::draw(){
 
     //return;
 
-    ray0 = (Vec3d)(cam.rot.a*mouse_begin_x + cam.rot.b*mouse_begin_y);
+    ray0 = (Vec3d)(cam.rotMat().a*mouse_begin_x + cam.rotMat().b*mouse_begin_y);
     double vminOK = 1e-6;
     double vmaxOK = 1e+3;
 
@@ -408,8 +408,8 @@ void TestAppRARFF::draw(){
             //printf( "fa1(%g,%g,%g) fe1(%g,%g,%g)\n", fa1.x,fa1.x,fa1.x,   fe1.x,fe1.x,fe1.x );
 
             if(ipicked>=0){                                // Drag atoms by Mouse
-                if     (PickMode==ATOM    ){ Vec3d f = getForceSpringRay( ff.apos[ipicked], (Vec3d)cam.rot.c, ray0, -1.0 ); ff.aforce[ipicked].add( f ); }
-                else if(PickMode==ELECTRON){ Vec3d f = getForceSpringRay( ff.epos[ipicked], (Vec3d)cam.rot.c, ray0, -1.0 ); ff.eforce[ipicked].add( f ); }
+                if     (PickMode==ATOM    ){ Vec3d f = getForceSpringRay( ff.apos[ipicked], (Vec3d)cam.rotMat().c, ray0, -1.0 ); ff.aforce[ipicked].add( f ); }
+                else if(PickMode==ELECTRON){ Vec3d f = getForceSpringRay( ff.epos[ipicked], (Vec3d)cam.rotMat().c, ray0, -1.0 ); ff.eforce[ipicked].add( f ); }
             }
 
             //VecN::set( ff.na*3, 0.0, (double*)ff.aforce );  // FIX ATOMS
@@ -593,12 +593,12 @@ void TestAppRARFF::eventHandling ( const SDL_Event& event  ){
         case SDL_MOUSEBUTTONDOWN:{
             switch( event.button.button ){
                 case SDL_BUTTON_LEFT:{
-                    if     ( PickMode==PICK_MODE::ATOM     ){ ipicked = pickParticle( ray0, (Vec3d)cam.rot.c, 0.5, ff.na, ff.apos, 0 ); if(ipicked>=0)printf("picked atom %i\n", ipicked); }
-                    else if( PickMode==PICK_MODE::ELECTRON ){ ipicked = pickParticle( ray0, (Vec3d)cam.rot.c, 0.5, ff.ne, ff.epos, 0 ); if(ipicked>=0)printf("picked elec %i\n", ipicked); }
+                    if     ( PickMode==PICK_MODE::ATOM     ){ ipicked = pickParticle( ray0, (Vec3d)cam.rotMat().c, 0.5, ff.na, ff.apos, 0 ); if(ipicked>=0)printf("picked atom %i\n", ipicked); }
+                    else if( PickMode==PICK_MODE::ELECTRON ){ ipicked = pickParticle( ray0, (Vec3d)cam.rotMat().c, 0.5, ff.ne, ff.epos, 0 ); if(ipicked>=0)printf("picked elec %i\n", ipicked); }
                     }break;
                 case SDL_BUTTON_RIGHT:{
                     /*
-                    ipicked = pickParticle( ray0, (Vec3d)cam.rot.c, 0.5, ff.natom, ff.apos, ff.ignoreAtoms );
+                    ipicked = pickParticle( ray0, (Vec3d)cam.rotMat().c, 0.5, ff.natom, ff.apos, ff.ignoreAtoms );
                     printf( "remove atom %i \n", ipicked );
                     ff.ignoreAtoms[ ipicked ] = true;
                     */
@@ -608,7 +608,7 @@ void TestAppRARFF::eventHandling ( const SDL_Event& event  ){
         case SDL_MOUSEBUTTONUP:
             switch( event.button.button ){
                 case SDL_BUTTON_LEFT:
-                    //ibpicked = pickParticle( ff.natoms, ff.apos, ray0, (Vec3d)cam.rot.c , 0.5 );
+                    //ibpicked = pickParticle( ff.natoms, ff.apos, ray0, (Vec3d)cam.rotMat().c , 0.5 );
                     //printf( "dist %i %i = ", ipicked, ibpicked );
                     break;
             } break;

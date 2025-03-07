@@ -346,7 +346,7 @@ class MolGUI : public AppSDL2OGL_3D { public:
         // ToDo:       cannot convert ‘void (MolGUI::*)()’ to ‘const std::function<void(GUIAbstractPanel*)>&’
     };
 
-	virtual void draw   (Renderer* renderer) override;
+	virtual void draw() override;
 	virtual void drawHUD() override;
 	//virtual void mouseHandling( ) override;
 	virtual void eventHandling   ( const SDL_Event& event  ) override;
@@ -1271,10 +1271,10 @@ void MolGUI::bindMolWorld( MolWorld_sp3* W_ ){
 //     Draw3D::atomsREQ( W->gridFF.apos_.size(), &W->gridFF.apos_[0], &W->gridFF.REQs_[0], ogl_sph, 1., 0.1, 0., false, W->gridFF.shift0 );
 // }
 
-void MolGUI::draw(Renderer* r){
-    r->active_camera = &cam;
+void MolGUI::draw(){
+    renderer->active_camera = &cam;
 
-    r->draw_cube();
+    renderer->draw_cube();
     //printf( "MolGUI::draw() \n" );
     //opengl1renderer.clearColor( 0.5f, 0.5f, 0.5f, 1.0f );
     opengl1renderer.clearColor( 1.0f, 1.0f, 1.0f, 1.0f );
@@ -1291,12 +1291,12 @@ void MolGUI::draw(Renderer* r){
     //if( (ogl_isosurf==0) && W->bGridFF ){ renderGridFF( subs_iso ); }
     //if( ogl_esp==0 ){ renderESP(); }
 
-    //if(frameCount==0){ cam.qrot.pitch( M_PI );  qCamera0=cam.qrot; }
+    if(frameCount==0){ cam.qrot.pitch( M_PI ); }
 
     //debug_scanSurfFF( 100, {0.,0.,z0_scan}, {0.0,3.0,z0_scan}, 10.0 );
 
     // --- Mouse Interaction / Visualization
-	//ray0 = (Vec3d)(  cam.rot.a*mouse_begin_x  +  cam.rot.b*mouse_begin_y  +  cam.pos );
+	//ray0 = (Vec3d)(  cam.rotMat().a*mouse_begin_x  +  cam.rotMat().b*mouse_begin_y  +  cam.pos );
     ray0 = mouseRay0();
 
     W->pick_hray = (Vec3d)cam.rotMat().c;
@@ -1333,10 +1333,10 @@ void MolGUI::draw(Renderer* r){
             // //opengl1renderer.lineWidth(3.0);
             // //opengl1renderer.color3f(1.0,0.5,0.0); Draw3D::drawPointCross( ray0_start, 0.1 );    
             // //opengl1renderer.lineWidth(1.0);
-            // Vec3f ray0_;        cam.rot.dot_to( (Vec3f)ray0, ray0_);
-            // Vec3f ray0_start_;  cam.rot.dot_to( (Vec3f)ray0_start, ray0_start_);
-            // opengl1renderer.color3f(1.0,0.5,0.0); Draw3D::drawTriclinicBoxT(cam.rot, (Vec3f)ray0_start_, (Vec3f)ray0_ );   // Mouse Selection Box
-            // //opengl1renderer.color3f(0.0,0.5,1.0); Draw3D::drawTriclinicBox (cam.rot, (Vec3f)ray0_start_, (Vec3f)ray0_ ); // Mouse Selection Box
+            // Vec3f ray0_;        cam.rotMat().dot_to( (Vec3f)ray0, ray0_);
+            // Vec3f ray0_start_;  cam.rotMat().dot_to( (Vec3f)ray0_start, ray0_start_);
+            // opengl1renderer.color3f(1.0,0.5,0.0); Draw3D::drawTriclinicBoxT(cam.rotMat(), (Vec3f)ray0_start_, (Vec3f)ray0_ );   // Mouse Selection Box
+            // //opengl1renderer.color3f(0.0,0.5,1.0); Draw3D::drawTriclinicBox (cam.rotMat(), (Vec3f)ray0_start_, (Vec3f)ray0_ ); // Mouse Selection Box
         }
     }
 
@@ -1351,7 +1351,7 @@ void MolGUI::draw(Renderer* r){
         if( ( W->bGridFF )&&( ((int)(W->gridFF.mode))!=0) ){
             //Draw3D::atomsREQ( W->surf.natoms, W->surf.apos, W->surf.REQs, ogl_sph, 1., 0.1, 0., true, W->gridFF.shift0 );
             //Draw3D::atomsREQ( W->gridFF.apos_.size(), &W->gridFF.apos_[0], &W->gridFF.REQs_[0], ogl_sph, 1., 0.1, 0., true, W->gridFF.shift0 );
-            Draw3D::atomsREQ( r, W->surf.natoms, W->surf.apos, W->surf.REQs, &ogl_sph, 1., 0.1, 0., true, W->gridFF.shift0 );
+            Draw3D::atomsREQ( renderer, W->surf.natoms, W->surf.apos, W->surf.REQs, &ogl_sph, 1., 0.1, 0., true, W->gridFF.shift0 );
             //if( (ogl_isosurf==0) && W->bGridFF ){ renderGridFF( subs_iso ); }
             if( (ogl_isosurf==0) ){ renderGridFF_new( subs_iso ); }
             //viewSubstrate( {-5,10}, {-5,10}, ogl_isosurf, W->gridFF.grid.cell.a, W->gridFF.grid.cell.b, W->gridFF.shift0 + W->gridFF.grid.pos0 );
@@ -2417,7 +2417,7 @@ void MolGUI::mouse_default( const SDL_Event& event ){
                     bDragging=false;
                     break;
                 case SDL_BUTTON_RIGHT:{ 
-                    // int ib = W->builder.pickBond( (Vec3d)ray0, (Vec3d)cam.rot.c, 0.3 );
+                    // int ib = W->builder.pickBond( (Vec3d)ray0, (Vec3d)cam.rotMat().c, 0.3 );
                     // //printf( "MolGUI::pickBond: %i \n", ib  );
                     // if(ib>=0){ printf( "MolGUI::delete bond: %i \n", ib  );  W->builder.deleteBond(ib); bBuilderChanged=true; }
                     W->ipicked=-1; 
@@ -2438,7 +2438,7 @@ void MolGUI::eventMode_edit( const SDL_Event& event  ){
                     _swap( W->builder.lvec, W->new_lvec );
                 }break;
                 case SDLK_i:
-                    //selectShorterSegment( (Vec3d)(cam.rot.a*mouse_begin_x + cam.rot.b*mouse_begin_y + cam.rot.c*-1000.0), (Vec3d)cam.rot.c );
+                    //selectShorterSegment( (Vec3d)(cam.rotMat().a*mouse_begin_x + cam.rotMat().b*mouse_begin_y + cam.rotMat().c*-1000.0), (Vec3d)cam.rotMat().c );
                     selectShorterSegment( (Vec3d)ray0, (Vec3d)cam.rotMat().c );
                     //selection.erase();
                     //for(int i:builder.selection){ selection.insert(i); };
@@ -2664,17 +2664,7 @@ void MolGUI::eventMode_default( const SDL_Event& event ){
                     //if(bRunRelax)W->setConstrains();                  
                     if(!bRunRelax){ if(ogl_MO>0){ int iHOMO = W->getHOMO(); renderOrbital( iHOMO + which_MO );  } }
                     break;
-                // case SDLK_d: {
-                //     printf( "Camera Matrix\n");
-                //     printf( "qCamera(%g,%g,%g,%g) \n", qCamera.x,qCamera.y,qCamera.z,qCamera.w );
-                //     qCamera.toMatrix(cam.rot);
-                //     printf( "cam aspect %g zoom %g \n", cam.aspect, cam.zoom);
-                //     printMat((Mat3d)cam.rot);
-                // } break;
-                //case SDLK_g: iangPicked=(iangPicked+1)%ff.nang;
-                //    printf( "ang[%i] cs(%g,%g) k %g (%i,%i,%i)\n", iangPicked, ff.ang_cs0[iangPicked].x, ff.ang_cs0[iangPicked].y, ff.ang_k[iangPicked],
-                //        ff.ang2atom[iangPicked].a,ff.ang2atom[iangPicked].b,ff.ang2atom[iangPicked].c );
-                //    break;
+
                 default:{
                     uint8_t k = event.key.keysym.sym & 0xFF;
                     if( k != event.key.keysym.sym ){ k+=128; } 
@@ -2720,12 +2710,12 @@ void MolGUI::keyStateHandling( const Uint8 *keys ){
             //if( keys[ SDL_SCANCODE_RIGHT ] ){ qCamera.dyaw  ( -keyRotSpeed ); }
             //if( keys[ SDL_SCANCODE_UP    ] ){ qCamera.dpitch(  keyRotSpeed ); }
             //if( keys[ SDL_SCANCODE_DOWN  ] ){ qCamera.dpitch( -keyRotSpeed ); }
-            //if( keys[ SDL_SCANCODE_A ] ){ cam.pos.add_mul( cam.rot.a, -cameraMoveSpeed ); }
-            //if( keys[ SDL_SCANCODE_D ] ){ cam.pos.add_mul( cam.rot.a,  cameraMoveSpeed ); }
-            //if( keys[ SDL_SCANCODE_W ] ){ cam.pos.add_mul( cam.rot.b,  cameraMoveSpeed ); }
-            //if( keys[ SDL_SCANCODE_S ] ){ cam.pos.add_mul( cam.rot.b, -cameraMoveSpeed ); }
-            //if( keys[ SDL_SCANCODE_Q ] ){ cam.pos.add_mul( cam.rot.c, -cameraMoveSpeed ); }
-            //if( keys[ SDL_SCANCODE_E ] ){ cam.pos.add_mul( cam.rot.c,  cameraMoveSpeed ); }
+            //if( keys[ SDL_SCANCODE_A ] ){ cam.pos.add_mul( cam.rotMat().a, -cameraMoveSpeed ); }
+            //if( keys[ SDL_SCANCODE_D ] ){ cam.pos.add_mul( cam.rotMat().a,  cameraMoveSpeed ); }
+            //if( keys[ SDL_SCANCODE_W ] ){ cam.pos.add_mul( cam.rotMat().b,  cameraMoveSpeed ); }
+            //if( keys[ SDL_SCANCODE_S ] ){ cam.pos.add_mul( cam.rotMat().b, -cameraMoveSpeed ); }
+            //if( keys[ SDL_SCANCODE_Q ] ){ cam.pos.add_mul( cam.rotMat().c, -cameraMoveSpeed ); }
+            //if( keys[ SDL_SCANCODE_E ] ){ cam.pos.add_mul( cam.rotMat().c,  cameraMoveSpeed ); }
             if( keys[ SDL_SCANCODE_KP_4 ] ){ W->nbmol.shift( {-0.1,0.,0.} ); }
             if( keys[ SDL_SCANCODE_KP_6 ] ){ W->nbmol.shift( {+0.1,0.,0.} ); }
             if( keys[ SDL_SCANCODE_KP_8 ] ){ W->nbmol.shift( {0.,+0.1,0.} ); }

@@ -2743,7 +2743,7 @@ int selectByType( int itype, bool bByElement=false ){
 int selectRect( const Vec3d& p0, const Vec3d& p1, const Mat3d& rot ){
     printf( "MolWorld_sp3::selectRect() p0(%g,%g,%g) p1(%g,%g,%g) \n", p0.x,p0.y,p0.z, p1.x,p1.y,p1.z );
     Vec3d Tp0,Tp1,Tp;
-    //Mat3d rot = (Mat3d)cam.rot;
+    //Mat3d rot = (Mat3d)cam.rotMat();
     rot.dot_to(p0,Tp0);
     rot.dot_to(p1,Tp1);
     _order(Tp0.x,Tp1.x);

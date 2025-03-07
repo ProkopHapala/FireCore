@@ -735,7 +735,7 @@ int splitAtBond( int ib, int* selection ){
 
 void selectRect( const Vec3d& p0, const Vec3d& p1, const Mat3d& rot ){
     Vec3d Tp0,Tp1,Tp;
-    //Mat3d rot = (Mat3d)cam.rot;
+    //Mat3d rot = (Mat3d)cam.rotMat();
     rot.dot_to(p0,Tp0);
     rot.dot_to(p1,Tp1);
     _order(Tp0.x,Tp1.x);

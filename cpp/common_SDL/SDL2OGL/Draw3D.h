@@ -20,7 +20,6 @@
 #include "Mesh.h"
 
 #include "Draw.h"
-#include "geom3D.h"
 
 namespace Draw3D{
 

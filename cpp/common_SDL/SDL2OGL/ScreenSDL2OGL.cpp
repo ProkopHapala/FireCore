@@ -121,7 +121,7 @@ void ScreenSDL2OGL::update( ){
 	glClearColor(0.2f, 0.5f, 0.8f, 1.0f); // TODO: replace with renderer->clearColor
 	glClear( GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT );
 
-	draw(renderer);
+	draw();
 
 	//cameraHUD();
 	//drawHUD();
@@ -134,7 +134,7 @@ void ScreenSDL2OGL::update( ){
     GL_LOCK = false;
 };
 
-void ScreenSDL2OGL::draw   (Renderer* renderer){}; // virtual function, meant to be overriden
+void ScreenSDL2OGL::draw(){}; // virtual function, meant to be overriden
 
 void ScreenSDL2OGL::drawHUD(){ };
 

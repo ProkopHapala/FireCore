@@ -23,6 +23,7 @@
 */
 
 #include "AppSDL2OGL_3D.h"
+#include "quaternion.h"
 #include "testUtils.h"
 #include "SDL_utils.h"
 #include "Plot2D.h"
@@ -243,7 +244,7 @@ class TestAppRARFF: public AppSDL2OGL_3D { public:
     Vec3d ray0;
     Vec3d mouse_p0;
 
-    int ogl_sph=0;
+    GLMesh ogl_sph = Draw3D::makeSphereOgl( 3, 0.25 );
 
     const char* workFileName="data/work.rff";
 
@@ -308,7 +309,6 @@ TestAppRARFF::TestAppRARFF( int& id, int WIDTH_, int HEIGHT_ ) : AppSDL2OGL_3D( 
     //ff.qrots[0]=Quat4dBack;
     ff.projectBonds();
     //makePotentialPlot();
-    Draw3D::makeSphereOgl( ogl_sph, 3, 0.25 );
 
     ff.map.pointsToCells( ff.natomActive, ff.apos, ff.ignoreAtoms );
 
@@ -342,7 +342,7 @@ void TestAppRARFF::simulation(){
         ff.eval();
         //ff.applyForceHarmonic1D( Vec3dZ, 0.0, -1.0); // Press atoms together in z-diraction (like on substrate) 
         if(ipicked>=0){                                // Drag atoms by Mouse
-            Vec3d f = getForceSpringRay( ff.apos[ipicked], (Vec3d)cam.rot.c, ray0, -1.0 );
+            Vec3d f = getForceSpringRay( ff.apos[ipicked], (Vec3d)cam.rotMat().c, ray0, -1.0 );
             ff.aforce[ipicked].add( f );
         }
         //ff.moveMDdamp(0.05, 0.9);
@@ -364,7 +364,7 @@ void TestAppRARFF::draw(){
     //bRun = false;
     //perFrame = 10;
     //ff.bGridAccel=false;
-    ray0 = (Vec3d)( cam.pos + cam.rot.a*mouse_begin_x + cam.rot.b*mouse_begin_y);
+    ray0 = (Vec3d)( cam.pos + cam.rotMat().a*mouse_begin_x + cam.rotMat().b*mouse_begin_y);
     if(bRun){
         long T=getCPUticks();
         simulation();
@@ -375,7 +375,7 @@ void TestAppRARFF::draw(){
     }else{
         if(ipicked>=0){
             Vec3d dpos = ray0 - ff.apos[ipicked];
-            dpos.makeOrthoU( (Vec3d)cam.rot.c );
+            dpos.makeOrthoU( (Vec3d)cam.rotMat().c );
             ff.apos[ipicked].add(dpos);
         }
     }
@@ -415,7 +415,7 @@ void TestAppRARFF::keyStateHandling( const Uint8 *keys ){
     if( keys[ SDL_SCANCODE_R ] ){
         if(ipicked>=0){
             //Mat3d rot;
-            Quat4d qrot;  qrot.f=(Vec3d)cam.rot.c*0.01; qrot.normalizeW();
+            Quat4d qrot;  qrot.f=(Vec3d)cam.rotMat().c*0.01; qrot.normalizeW();
             ff.qrots[ipicked].qmul(qrot);
             ff.projectAtomBons(ipicked);
         }
@@ -459,18 +459,18 @@ void TestAppRARFF::eventHandling ( const SDL_Event& event  ){
         case SDL_MOUSEBUTTONDOWN:
             switch( event.button.button ){
                 case SDL_BUTTON_LEFT:{
-                    int ip = pickParticle( ray0, (Vec3d)cam.rot.c, 0.5, ff.natom, ff.apos, ff.ignoreAtoms );
+                    int ip = pickParticle( ray0, (Vec3d)cam.rotMat().c, 0.5, ff.natom, ff.apos, ff.ignoreAtoms );
                     bBlockAddAtom=false;
                     if( ip>=0){
                         if(ipicked==ip){ ipicked=-1; bBlockAddAtom=true; printf("inv\n"); }
                         else           { ipicked=ip;                     printf("set\n"); }
                     }else{ ipicked=-1; }
-                    mouse_p0 = (Vec3d)( cam.rot.a*mouse_begin_x + cam.rot.b*mouse_begin_y );
+                    mouse_p0 = (Vec3d)( cam.rotMat().a*mouse_begin_x + cam.rotMat().b*mouse_begin_y );
                     //printf( "LMB DOWN picked %i/%i bblock %i \n", ipicked,ip, bBlockAddAtom );
                     }break;
                 case SDL_BUTTON_RIGHT:{
                     /*
-                    ipicked = pickParticle( ray0, (Vec3d)cam.rot.c, 0.5, ff.natom, ff.apos, ff.ignoreAtoms );
+                    ipicked = pickParticle( ray0, (Vec3d)cam.rotMat().c, 0.5, ff.natom, ff.apos, ff.ignoreAtoms );
                     printf( "remove atom %i \n", ipicked );
                     ff.ignoreAtoms[ ipicked ] = true;
                     */
@@ -482,15 +482,15 @@ void TestAppRARFF::eventHandling ( const SDL_Event& event  ){
                 case SDL_BUTTON_LEFT:
                     //printf( "LMB UP picked %i bblock %i \n", ipicked, bBlockAddAtom );
                     if( (ipicked==-1)&&(!bBlockAddAtom) ){
-                        Vec3d mouse_p = (Vec3d)( cam.rot.a*mouse_begin_x + cam.rot.b*mouse_begin_y );
+                        Vec3d mouse_p = (Vec3d)( cam.rotMat().a*mouse_begin_x + cam.rotMat().b*mouse_begin_y );
                         Vec3d dir = mouse_p-mouse_p0;
-                        if(dir.norm2()<1e-6){ dir=(Vec3d)cam.rot.b; };
-                        int ib = pickBond( ff, mouse_p0, (Vec3d)cam.rot.c, 0.5 );
+                        if(dir.norm2()<1e-6){ dir=(Vec3d)cam.rotMat().b; };
+                        int ib = pickBond( ff, mouse_p0, (Vec3d)cam.rotMat().c, 0.5 );
                         if(ib>=0){
                             printf( "add atom to bond %i of atom %i \n", ib%N_BOND_MAX, ib/N_BOND_MAX );
                             Vec3d p0 = ff.bondPos(ib, 2.0 );
-                            //ff.inserAtom( {nbBrush,4,4}, mouse_p0, dir, (Vec3d)cam.rot.b );
-                            //ff.inserAtom( &type1, (const int[]){0,0,0,0}, p0, dir, (Vec3d)cam.rot.b  );
+                            //ff.inserAtom( {nbBrush,4,4}, mouse_p0, dir, (Vec3d)cam.rotMat().b );
+                            //ff.inserAtom( &type1, (const int[]){0,0,0,0}, p0, dir, (Vec3d)cam.rotMat().b  );
                             int ia = ff.inserAtom( curType, (int*)&capsBrush, p0, ff.hbonds[ib]*-1, dir  );
                             ff.projectAtomBons(ia);
                             bRun = 0;
@@ -562,7 +562,7 @@ void TestAppRARFF::visualize_atoms(){
         na++;
         //opengl1renderer.color3f(0.3,0.3,0.3);
         opengl1renderer.color3f(0.5,0.5,0.5);
-        Draw3D::drawShape( ogl_sph, ff.apos[ia], Mat3dIdentity*0.7 );
+        renderer->drawMesh( &ogl_sph, (Vec3f)ff.apos[ia], Quat4fIdentity, {0.7, 0.7, 0.7});
         for(int j=0; j<ff.types[ia]->nbond; j++){
             int i=ia*N_BOND_MAX+j;
             Vec3d pb = ff.bondPos( i );
