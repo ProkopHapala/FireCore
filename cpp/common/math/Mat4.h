@@ -158,14 +158,12 @@ class Mat4T{
     }
 
     // https://registry.khronos.org/OpenGL-Refpages/gl2.1/xhtml/glOrtho.xml
+    // with a slight change: array[11] is inverted. No idea why it needs to be there, but it doesn't work otherwise.
     void setOrthographic( T left, T right, T bottom, T top, T zmin, T zmax ){
-        setOne();
-        xx = 2/(right-left);
-        yy = 2/(top-bottom);
-        zz = -2/(zmax-zmin);
-        wx = -(right+left)/(right-left);
-        wy = -(top+bottom)/(top-bottom);
-        wz = -(zmax+zmin)/(zmax-zmin);
+        array[ 0] = 2/(right-left);  array[ 4] = 0;               array[ 8] = 0;              array[12] = -(right+left)/(right-left);
+        array[ 1] = 0;               array[ 5] = 2/(top-bottom);  array[ 9] = 0;              array[13] = -(top+bottom)/(top-bottom);
+        array[ 2] = 0;               array[ 6] = 0;               array[10] = 2/(zmax-zmin);  array[14] = -(zmax+zmin) /(zmax-zmin) ;
+        array[ 3] = 0;               array[ 7] = 0;               array[11] = 0;              array[15] = 1;
     }
 
     void setRot( Mat3T<T> M ){
@@ -246,6 +244,9 @@ class Mat4T{
 using Mat4i = Mat4T< int   >;
 using Mat4f = Mat4T< float >;
 using Mat4d = Mat4T< double>;
+
+#define Mat4fIdentity ((Mat4f){ 1,0,0,0, 0,1,0,0, 0,0,1,0, 0,0,0,1 })
+#define Mat4dIdentity ((Mat4d){ 1,0,0,0, 0,1,0,0, 0,0,1,0, 0,0,0,1 })
 
 //inline void convert( const Mat3f& from, Mat3d& to ){ convert( from.a, to.a ); convert( from.b, to.b ); convert( from.c, to.c ); };
 //inline void convert( const Mat3d& from, Mat3f& to ){ convert( from.a, to.a ); convert( from.b, to.b ); convert( from.c, to.c ); };

@@ -23,10 +23,12 @@
 #include "SDL_opengl_defs.h" // type and constants for old OpenGL
 #endif
 
+#define SHADER_ATTRIB_POSITION 0
+#define SHADER_ATTRIB_NORMAL 1
+#define SHADER_ATTRIB_COLOR 2
+
 class Renderer {
     private:
-        bool initialised = false;
-
         const char* vertexShaderSource = R"(
             uniform mat4 uMVPMatrix;
 
@@ -50,7 +52,7 @@ class Renderer {
             varying vec3 fNormal;
 
             void main() {
-                gl_FragColor = vec4(fNormal, 1.0);
+                gl_FragColor = vec4(fColor, 1.0);
             }
         )";
 
@@ -92,9 +94,9 @@ class Renderer {
             glAttachShader(program, vertexShader);
             glAttachShader(program, fragmentShader);
 
-            glBindAttribLocation(program, 0, "vPosition");
-            glBindAttribLocation(program, 1, "vNormal");
-            glBindAttribLocation(program, 2, "vColor");
+            glBindAttribLocation(program, SHADER_ATTRIB_POSITION, "vPosition");
+            glBindAttribLocation(program, SHADER_ATTRIB_NORMAL  , "vNormal");
+            glBindAttribLocation(program, SHADER_ATTRIB_COLOR   , "vColor");
 
             glLinkProgram(program);
         
@@ -116,80 +118,13 @@ class Renderer {
             return program;
         }
 
-        float angle = 0;
-        float projectionMatrix[16];
-        GLint mvpMatrixLocation;
-
-        GLfloat vertices[108] = {
-            // Front face
-            -0.5f, -0.5f,  0.5f,
-             0.5f, -0.5f,  0.5f,
-             0.5f,  0.5f,  0.5f,
-    
-            -0.5f, -0.5f,  0.5f,
-             0.5f,  0.5f,  0.5f,
-            -0.5f,  0.5f,  0.5f,
-    
-            // Back face
-            -0.5f, -0.5f, -0.5f,
-             0.5f, -0.5f, -0.5f,
-             0.5f,  0.5f, -0.5f,
-    
-            -0.5f, -0.5f, -0.5f,
-             0.5f,  0.5f, -0.5f,
-            -0.5f,  0.5f, -0.5f,
-    
-    
-            // Right face
-             0.5f, -0.5f,  0.5f,
-             0.5f, -0.5f, -0.5f,
-             0.5f,  0.5f, -0.5f,
-    
-             0.5f, -0.5f,  0.5f,
-             0.5f,  0.5f, -0.5f,
-             0.5f,  0.5f,  0.5f,
-    
-    
-            // Left face
-            -0.5f, -0.5f,  0.5f,
-            -0.5f, -0.5f, -0.5f,
-            -0.5f,  0.5f, -0.5f,
-    
-            -0.5f, -0.5f,  0.5f,
-            -0.5f,  0.5f, -0.5f,
-            -0.5f,  0.5f,  0.5f,
-    
-    
-            // Top face
-            -0.5f,  0.5f,  0.5f,
-             0.5f,  0.5f,  0.5f,
-             0.5f,  0.5f, -0.5f,
-    
-            -0.5f,  0.5f,  0.5f,
-             0.5f,  0.5f, -0.5f,
-            -0.5f,  0.5f, -0.5f,
-    
-    
-            // Bottom face
-            -0.5f, -0.5f,  0.5f,
-             0.5f, -0.5f,  0.5f,
-             0.5f, -0.5f, -0.5f,
-    
-            -0.5f, -0.5f,  0.5f,
-             0.5f, -0.5f, -0.5f,
-            -0.5f, -0.5f, -0.5f
-    
-        };
-
         GLuint program;
-        GLuint vbo;
-
-        GLMesh* cube_mesh;
+        GLint mvpMatrixLocation;
 
     public:
         Camera* active_camera = nullptr;
 
-        void init(){
+        Renderer(){
             // Compile shaders
             GLuint vertexShader = compileShader(GL_VERTEX_SHADER, vertexShaderSource);
             GLuint fragmentShader = compileShader(GL_FRAGMENT_SHADER, fragmentShaderSource);
@@ -205,49 +140,18 @@ class Renderer {
                 return;
             }
             glUseProgram(program);
-          
-            vbo;
-            glGenBuffers(1, &vbo);
-            glBindBuffer(GL_ARRAY_BUFFER, vbo);
-            glBufferData(GL_ARRAY_BUFFER, sizeof(vertices), vertices, GL_STATIC_DRAW);
 
-            GLuint normalAttrib = 1;
-            glEnableVertexAttribArray(normalAttrib);
-            glVertexAttribPointer(normalAttrib, 3, GL_FLOAT, GL_FALSE, 9*sizeof(float), (const void*)(3*sizeof(float)));
+            glEnableVertexAttribArray(SHADER_ATTRIB_POSITION);
+            glVertexAttribPointer(SHADER_ATTRIB_POSITION, 3, GL_FLOAT, GL_FALSE, sizeof(GLMesh::vertex), 0);
 
-            GLuint positionAttrib = 0;
-            glEnableVertexAttribArray(positionAttrib);
-            glVertexAttribPointer(positionAttrib, 3, GL_FLOAT, GL_FALSE, 0, 0);
-          
-            //Projection Matrix  (Perspective)
-            float aspect = 800.0f / 600.0f;
-            float fov = 45.0f;
-            float zNear = 0.1f;
-            float zFar = 100.0f;
-            float f = 1.0f / tanf(fov * M_PI / 360.0f);
+            glEnableVertexAttribArray(SHADER_ATTRIB_NORMAL);
+            glVertexAttribPointer(SHADER_ATTRIB_NORMAL, 3, GL_FLOAT, GL_FALSE, sizeof(GLMesh::vertex), (const void*)(3*sizeof(float)));
 
-            float rot[] = {
-                f / aspect, 0, 0, 0,
-                0, f, 0, 0,
-                0, 0, (zFar + zNear) / (zNear - zFar), -1,
-                0, 0, 2 * zFar * zNear / (zNear - zFar), 0
-            };    
-            for(int i = 0; i < 16; i++) projectionMatrix[i] = rot[i];
+            glEnableVertexAttribArray(SHADER_ATTRIB_COLOR);
+            glVertexAttribPointer(SHADER_ATTRIB_COLOR, 3, GL_FLOAT, GL_FALSE, sizeof(GLMesh::vertex), (const void*)(6*sizeof(float)));
           
             mvpMatrixLocation = glGetUniformLocation(program, "uMVPMatrix");
-
-
-
-            cube_mesh = new GLMesh(GL_TRIANGLES);
-            for (int i = 0; i*3 < 108; i += 3){
-                cube_mesh->addVertex({vertices[i], vertices[i+1], vertices[i+2]});
-            }
-
-
-            initialised = true;
         }
-
-        void draw_cube();
 
         void drawMeshMVP(GLMesh* mesh, Mat4f mvp){
             mesh->bind_sync_vbo();

@@ -1274,7 +1274,6 @@ void MolGUI::bindMolWorld( MolWorld_sp3* W_ ){
 void MolGUI::draw(){
     renderer->active_camera = &cam;
 
-    renderer->draw_cube();
     //printf( "MolGUI::draw() \n" );
     //opengl1renderer.clearColor( 0.5f, 0.5f, 0.5f, 1.0f );
     opengl1renderer.clearColor( 1.0f, 1.0f, 1.0f, 1.0f );

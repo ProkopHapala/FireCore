@@ -287,16 +287,15 @@ void OpenGL1Renderer::frustum(GLdouble left, GLdouble right, GLdouble bottom, GL
     
     multMatrixf(m.array);
 }
-void OpenGL1Renderer::ortho(GLdouble left, GLdouble right, GLdouble bottom, GLdouble top, GLdouble zNear, GLdouble zFar){
+void OpenGL1Renderer::ortho(GLdouble left, GLdouble right, GLdouble bottom, GLdouble top, GLdouble zmin, GLdouble zmax){
     if (current_callList != 0){printf("Error: Unsuported operation while compiling CallList.");return;}
 
-    Mat4f m; m.setOne();
-    m.xx = 2/(right-left);
-    m.yy = 2/(top-bottom);
-    m.zz = -2/(zFar-zNear);
-    m.wx = -(right+left)/(right-left);
-    m.wy = -(top+bottom)/(top-bottom);
-    m.wz = -(zFar+zNear)/(zFar-zNear);
+    Mat4f m;
+
+    m.array[ 0] = 2/(right-left);  m.array[ 4] = 0;               m.array[ 8] = 0;               m.array[12] = -(right+left)/(right-left);
+    m.array[ 1] = 0;               m.array[ 5] = 2/(top-bottom);  m.array[ 9] = 0;               m.array[13] = -(top+bottom)/(top-bottom);
+    m.array[ 2] = 0;               m.array[ 6] = 0;               m.array[10] = -2/(zmax-zmin);  m.array[14] = -(zmax+zmin) /(zmax-zmin) ;
+    m.array[ 3] = 0;               m.array[ 7] = 0;               m.array[11] = 0;               m.array[15] = 1;
     
     multMatrixf(m.array);
 }
@@ -403,38 +402,33 @@ void OpenGL1Renderer::copyTexImage2D(GLenum target, GLint level,
 
 
 
-void Renderer::draw_cube(){
-    if (!initialised) init();
-    
-    //printf("TESTING MATRIX MATH\n");
-    //opengl1renderer.TEST();
-}
-
-
-
-
 void Renderer::drawMesh(GLMesh* mesh, Vec3f position, Quat4f rotation, Vec3f scale){
     if (active_camera == nullptr){
         printf("Warning: No active camera - skipping rendering.\n");
         return;
     }
 
-    // Calculate model matrix
-    Mat4f modelMatrix;
-    modelMatrix.setOne();
-    //modelMatrix.mul({scale.x, scale.y, scale.z, 1.0});
-    modelMatrix.setPos(position);
-
-    // model rotation
+    // scale
+    Mat4f modelScaleMatrix = Mat4fIdentity;
+    modelScaleMatrix.mul({scale.x, scale.y, scale.z, 1.0});
+    
+    // rotation
     Mat3f modelRotMatrix3;
     rotation.toMatrix(modelRotMatrix3);
-    Mat4f modelRotMatrix4;
-    modelRotMatrix4.setOne();
+    Mat4f modelRotMatrix4 = Mat4fIdentity;
     modelRotMatrix4.setRot(modelRotMatrix3);
-    modelMatrix.mmulR(modelRotMatrix4);
 
-    modelMatrix.mul({scale.x, scale.y, scale.z, 1.0});
+    // translation
+    Mat4f modelTranslationMatrix = Mat4fIdentity;
+    modelTranslationMatrix.setPos(position);
 
+    // model matrix
+    Mat4f modelMatrix = Mat4fIdentity;
+    modelMatrix.mmulL(modelScaleMatrix);
+    modelMatrix.mmulL(modelRotMatrix4);
+    modelMatrix.mmulL(modelTranslationMatrix);
+
+    // MVP matrix
     Mat4f mvpMatrix = modelMatrix;
     mvpMatrix.mmulL(active_camera->viewMatrix());
     mvpMatrix.mmulL(active_camera->projectionMatrix());
