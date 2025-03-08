@@ -1,12 +1,15 @@
 #ifndef MolecularDraw_h
 #define MolecularDraw_h
 
+#include "Draw3D.h"
 #include "AtomicConfiguration.h"
+#include "GridFF.h"
+#include "Renderer.h"
 #include "molecular_utils.h"
 
 void colorRB( float f ){ opengl1renderer.color3f( 0.5+f, 0.5, 0.5-f ); }
 //void colorRBH( float f, float h ){ opengl1renderer.color3f( 0.5+f, 0.5+h, 0.5-f ); }
-void colorRBH( float f, float h ){ opengl1renderer.color3f( 0.5+f+h, 0.5+h, 0.5-f+h ); }
+Vec3f colorRBH( float f, float h ){ return {0.5+f+h, 0.5+h, 0.5-f+h}; }
 //void colorRB( float f ){ opengl1renderer.color3f( 0.5+f, 0.5+f, 0.5+f ); }
 void colorBW( float f ){ opengl1renderer.color3f( 0.5-f, 0.5-f, 0.5-f ); }
 
@@ -228,17 +231,16 @@ int renderSubstrate_( const GridShape& grid, Quat4f * FF, Quat4f * FFel, double 
     return nvert;
 }
 
-int renderSubstrate_new( const GridFF& gff, Vec2d zrange, double isoval, Quat4d PLQ, double sclr, bool bErrNan=false ){
+void renderSubstrate_new( GLMesh* outMesh, const GridFF& gff, Vec2d zrange, double isoval, Quat4d PLQ, double sclr, bool bErrNan=false ){
     printf( "renderSubstrate_new() gff.mode=%i @gff.Bspline_PLQ=%li \n", gff.mode, (long)gff.Bspline_PLQ );
     Quat4d PL{PLQ.x,PLQ.y,0.0,0.0};
     Quat4d Q {0.0,0.0,PLQ.y,0.0};
     Vec3i gn = gff.grid.n;
     Mat3d dCell = gff.grid.dCell;
     int nvert = 0;
-    //printf( "\n", renderSubstrate_new );
-    //opengl1renderer.normal3f(0.0,0.0,1.0);
+
     for ( int ib=1; ib<=gn.y; ib++ ){
-        opengl1renderer.begin(GL_TRIANGLE_STRIP);
+        outMesh->drawMode = GL_TRIANGLE_STRIP;
         for ( int ia=0; ia<=gn.x; ia++ ){
 
             Vec3d p1a = dCell.a*ia + dCell.b*(ib-1); p1a.z=zrange.x;
@@ -249,11 +251,7 @@ int renderSubstrate_new( const GridFF& gff, Vec2d zrange, double isoval, Quat4d 
             Vec3d p1 = gff.findIso( isoval, p1a, p1b, PL, 0.02, bErrNan );
             Vec3d p2 = gff.findIso( isoval, p2a, p2b, PL, 0.02, bErrNan );
 
-            //printf( "renderSubstrate_new[%i,%i] xy(%g,%g) z(%g|%g,%g) \n", ia,ib, p1.x,p1.y, p1.z, zrange.x, zrange.y, isoval );
-
             if( isnan(p1.z) ){
-                //std::vector<100> vals;
-                //double f0 = addAtom(p0, PLQ, fout)-isoval;
                 if(bErrNan){
                     printf( "renderSubstrate_new() failed to find isovalue %g at p(%g,%g) zrange(%g,%g) => z-scan: \n", isoval, p1a.x,p1a.y, zrange.x, zrange.y );
                     Vec3d fout;
@@ -265,7 +263,6 @@ int renderSubstrate_new( const GridFF& gff, Vec2d zrange, double isoval, Quat4d 
                         printf( "%8.4f %g\n", p.z, e );
                     }
                     exit(0);
-                    return -1;
                 }else{
                     p1.z = zrange.y;
                 }
@@ -279,24 +276,18 @@ int renderSubstrate_new( const GridFF& gff, Vec2d zrange, double isoval, Quat4d 
             gff.addAtom( p1, PL, f1 );
             gff.addAtom( p2, PL, f2 );
 
-            //printf( "renderSubstrate_new()[%i,%i] el1,el2 %10.5e,%10.5e  (el1,el2)*sclr %10.5e,%10.5e  sclr=%10.5e \n", ia,ib, el1,el2, el1*sclr, el2*sclr, sclr  );
             
-            //colorRB( el1*sclr ); opengl1renderer.vertex3f(p1.x,p1.y,p1.z); nvert++;
-            //colorRB( el2*sclr ); opengl1renderer.vertex3f(p2.x,p2.y,p2.z); nvert++;
+            Vec3f color = colorRBH( el1*sclr, sin(p1.z*1.0)*0.1 );
+            Vec3f normal = {f1.x,f1.y,f1.z};
+            Vec3f pos = {p1.x, p1.y, p1.z};
+            outMesh->addVertex(pos, normal, color);
 
-            //colorRB( el1*sclr ); opengl1renderer.normal3f(f1.x,f1.y,f1.z); opengl1renderer.vertex3f(p1.x,p1.y,p1.z); nvert++;
-            //colorRB( el2*sclr ); opengl1renderer.normal3f(f2.x,f2.y,f2.z); opengl1renderer.vertex3f(p2.x,p2.y,p2.z); nvert++;
-
-            colorRBH( el1*sclr, sin(p1.z*1.0)*0.1 ); opengl1renderer.normal3f(f1.x,f1.y,f1.z); opengl1renderer.vertex3f(p1.x,p1.y,p1.z); nvert++;
-            colorRBH( el2*sclr, sin(p2.z*1.0)*0.1 ); opengl1renderer.normal3f(f2.x,f2.y,f2.z); opengl1renderer.vertex3f(p2.x,p2.y,p2.z); nvert++;
-
-            //colorRB( el1*sclr ); opengl1renderer.normal3f(f1.x,f1.y,f1.z); opengl1renderer.vertex3f(p1.x,p1.y,p1.z); nvert++;
-            //colorRB( el2*sclr ); opengl1renderer.normal3f(f2.x,f2.y,f2.z); opengl1renderer.vertex3f(p2.x,p2.y,p2.z); nvert++;
-
+            color = colorRBH( el2*sclr, sin(p2.z*1.0)*0.1 );
+            normal = {f2.x,f2.y,f2.z};
+            pos = {p2.x, p2.y, p2.z};
+            outMesh->addVertex(pos, normal, color);
         }
-        opengl1renderer.end();
     }
-    return nvert;
 }
 
 
@@ -313,17 +304,13 @@ void viewSubstrate( int nx, int ny, int isoOgl, Vec3d a, Vec3d b, Vec3d pos0=Vec
     opengl1renderer.popMatrix();
 }
 
-void viewSubstrate( Vec2i nxs, Vec2i nys, int isoOgl, Vec3d a, Vec3d b, Vec3d pos0=Vec3dZero ){
-    opengl1renderer.pushMatrix();
+void viewSubstrate( Renderer* r, Vec2i nxs, Vec2i nys, GLMesh* isoOgl, Vec3d a, Vec3d b, Vec3d pos0=Vec3dZero ){
     for( int ix = nxs.x; ix<=nxs.y; ix++ ){
         for( int iy = nys.x; iy<=nys.y; iy++ ){
             Vec3d pos = a*ix + b*iy + pos0;
-            opengl1renderer.translatef(pos.x, pos.y, pos.z);
-            opengl1renderer.callList(isoOgl);
-            opengl1renderer.translatef(-pos.x, -pos.y, -pos.z);
+            r->drawMesh(isoOgl, (Vec3f)pos);
         }
     }
-    opengl1renderer.popMatrix();
 }
 
 #endif

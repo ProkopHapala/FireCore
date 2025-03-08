@@ -302,10 +302,9 @@ class MolGUI : public AppSDL2OGL_3D { public:
     int  ogl_afm       = 0;
     int  ogl_afm_trj   = 0;
     int  ogl_esp       = 0;
-    GLMesh ogl_sph = GLMesh(GL_TRIANGLES);
+    GLMesh ogl_sph     = GLMesh(GL_TRIANGLES);
     int  ogl_mol       = 0;
-    int  ogl_isosurf   = 0;
-    int  ogl_surfatoms = 0;
+    GLMesh ogl_isosurf = GLMesh(GL_TRIANGLES);
     int  ogl_MO        = 0;
     int  ogl_nonBond   = 0;
     int  ogl_Hbonds    = 0;
@@ -367,8 +366,8 @@ class MolGUI : public AppSDL2OGL_3D { public:
     void tryLoadGridFF();
     //void makeGridFF   (bool recalcFF=false, bool bRenderGridFF=true);
     //void renderGridFF( double isoVal=0.001, int isoSurfRenderType=0, double colorScale = 50. );
-    int  renderSurfAtoms( Vec3i nPBC, bool bPointCross=false, float qsc=0.5, float Rsc=1, float Rsub=0 );
-    void renderGridFF    ( double isoVal=0.1, int isoSurfRenderType=0, double colorScale = 50. );
+    void renderSurfAtoms( Vec3i nPBC, bool bPointCross=false, float qsc=0.5, float Rsc=1, float Rsub=0 );
+    //void renderGridFF    ( double isoVal=0.1, int isoSurfRenderType=0, double colorScale = 50. );
     void renderGridFF_new( double isoVal=0.1, int isoSurfRenderType=0, double colorScale = 0.25, Quat4d REQ=Quat4d{ 1.487, sqrt(0.0006808), 0., 0.} );
     void renderESP( Quat4d REQ=Quat4d{ 1.487, 0.02609214441, 1., 0.} );
     void renderAFM( int iz, int offset );
@@ -1348,19 +1347,11 @@ void MolGUI::draw(){
 
     if( bViewSubstrate ){
         if( ( W->bGridFF )&&( ((int)(W->gridFF.mode))!=0) ){
-            //Draw3D::atomsREQ( W->surf.natoms, W->surf.apos, W->surf.REQs, ogl_sph, 1., 0.1, 0., true, W->gridFF.shift0 );
-            //Draw3D::atomsREQ( W->gridFF.apos_.size(), &W->gridFF.apos_[0], &W->gridFF.REQs_[0], ogl_sph, 1., 0.1, 0., true, W->gridFF.shift0 );
             Draw3D::atomsREQ( renderer, W->surf.natoms, W->surf.apos, W->surf.REQs, &ogl_sph, 1., 0.1, 0., true, W->gridFF.shift0 );
-            //if( (ogl_isosurf==0) && W->bGridFF ){ renderGridFF( subs_iso ); }
-            if( (ogl_isosurf==0) ){ renderGridFF_new( subs_iso ); }
-            //viewSubstrate( {-5,10}, {-5,10}, ogl_isosurf, W->gridFF.grid.cell.a, W->gridFF.grid.cell.b, W->gridFF.shift0 + W->gridFF.grid.pos0 );
-            viewSubstrate( {-5,10}, {-5,10}, ogl_isosurf, W->gridFF.grid.cell.a, W->gridFF.grid.cell.b );
+            if( (ogl_isosurf.vertexCount()==0) ){ renderGridFF_new( subs_iso ); }
+            viewSubstrate( renderer, {-5,10}, {-5,10}, &ogl_isosurf, W->gridFF.grid.cell.a, W->gridFF.grid.cell.b );
         }else{
-            if( ogl_surfatoms==0 ){
-                //ogl_surfatoms = renderSurfAtoms(  W->gridFF.nPBC, false );  
-                ogl_surfatoms = renderSurfAtoms(  Vec3i{1,1,0}, false );  
-            }
-            opengl1renderer.callList( ogl_surfatoms );
+            renderSurfAtoms(  Vec3i{1,1,0}, false );  
         }
     }
 
@@ -1801,7 +1792,7 @@ void  MolGUI::selectShorterSegment( const Vec3d& ro, const Vec3d& rd ){
     W->splitAtBond( ib, &(W->selection[0]) );
 }
 
-void MolGUI::renderGridFF( double isoVal, int isoSurfRenderType, double colorSclae ){
+/*void MolGUI::renderGridFF( double isoVal, int isoSurfRenderType, double colorSclae ){
     if(verbosity>0) printf( "MolGUI::renderGridFF()\n" );
     //int iatom = 11;
     testREQ = Quat4d{ 1.487, sqrt(0.0006808), 0., 0.}; // H
@@ -1827,61 +1818,45 @@ void MolGUI::renderGridFF( double isoVal, int isoSurfRenderType, double colorScl
     opengl1renderer.endList();
     delete [] FFtot;
     if(verbosity>0) printf( "... MolGUI::renderGridFF() DONE\n" );
-}
+}*/
 
 //void MolGUI::renderGridFF_new( double isoVal, int isoSurfRenderType, double colorScale, Quat4d REQ = Quat4d{ 1.487, sqrt(0.0006808), 0., 0.} ){
 void MolGUI::renderGridFF_new( double isoVal, int isoSurfRenderType, double colorScale, Quat4d REQ ){
-    //if(verbosity>0) 
     Quat4d PLQ = REQ2PLQ_d( REQ, W->gridFF.alphaMorse );
     printf( "MolGUI::renderGridFF_new() isoVal=%g REQ{%g,%g,%g,%g} PLQ{%g,%g,%g,%g}\n", isoVal, REQ.x, REQ.y, REQ.z,  REQ.z, PLQ.x, PLQ.y, PLQ.z, PLQ.w );
-    ogl_isosurf = opengl1renderer.genLists(1);
-    opengl1renderer.newList(ogl_isosurf, GL_COMPILE);
+
     opengl1renderer.shadeModel( GL_SMOOTH );
     opengl1renderer.enable(GL_LIGHTING);
     opengl1renderer.enable(GL_DEPTH_TEST);
-    //opengl1renderer.disable(GL_LIGHTING);
+
     Vec2d zrange{-5.0,5.0};
-    //{  W->gridFF.getEFprofileToFile( "gridFF_EFprofile_render.log", 200, Vec3d{0.0,0.0,zrange.x}, Vec3d{0.0,0.0,zrange.y}, Quat4d{REQ.x,REQ.y,0.0,0.0} );  }  // Debug: save gridFF z-profile to file of atom[0] to "gridFF_EFprofile_render.log"
-    //int nvert = renderSubstrate_( W->gridFF.grid, FFtot, W->gridFF.FFelec, +isoVal, sign, colorSclae ); 
-    //W->gridFF.findIso( isoVal, Vec3d{0.0,0.0,zrange.x}, Vec3d{0.0,0.0,zrange.y}, Quat4d{PLQ.x,PLQ.y,0.0,0.0}, 0.02 );
-    int nvert = renderSubstrate_new( W->gridFF, Vec2d{zrange.x,zrange.y}, isoVal, PLQ, colorScale );  //printf("Debug: renderGridFF() renderSubstrate() -> nvert= %i ", nvert );
-    opengl1renderer.endList();
+    renderSubstrate_new( &ogl_isosurf, W->gridFF, Vec2d{zrange.x,zrange.y}, isoVal, PLQ, colorScale );
     if(verbosity>0) printf( "... MolGUI::renderGridFF_new() DONE\n" );
 }
 
-int MolGUI::renderSurfAtoms( Vec3i nPBC, bool bPointCross, float qsc, float Rsc, float Rsub ){
-    if(verbosity>0) printf( "MolGUI::renderSurfAtoms() nPBC(%i,%i,%i) qsc=%g Rsc=%g Rsub=%g W->gridFF.apos_.size()=%li bPointCross=%i\n", nPBC.x, nPBC.y, nPBC.z, qsc, Rsc, Rsub, W->gridFF.apos_.size(), bPointCross );
-    int ogl = opengl1renderer.genLists(1);
-    opengl1renderer.newList(ogl, GL_COMPILE);
+void MolGUI::renderSurfAtoms( Vec3i nPBC, bool bPointCross, float qsc, float Rsc, float Rsub ){
+    //if(verbosity>0) printf( "MolGUI::renderSurfAtoms() nPBC(%i,%i,%i) qsc=%g Rsc=%g Rsub=%g W->gridFF.apos_.size()=%li bPointCross=%i\n", nPBC.x, nPBC.y, nPBC.z, qsc, Rsc, Rsub, W->gridFF.apos_.size(), bPointCross );
+    
     opengl1renderer.shadeModel( GL_SMOOTH );
     opengl1renderer.enable(GL_LIGHTING);
     opengl1renderer.enable(GL_DEPTH_TEST);
-    opengl1renderer.pushMatrix();
+
     Mat3d& lvec =  W->gridFF.grid.cell;
     int icell=0;
     for(int ix=-nPBC.x; ix<=nPBC.x; ix++){
         for(int iy=-nPBC.y; iy<=nPBC.y; iy++){
             for(int iz=-nPBC.z; iz<=nPBC.z; iz++){
                 Vec3d shift = lvec.a*ix + lvec.b*iy + lvec.c*iz;
-                //shift.z += (float)icell;
-                opengl1renderer.translatef( shift.x,shift.y,shift.z);
-                Draw3D::atomsREQ( renderer, W->gridFF.natoms, W->gridFF.apos, W->gridFF.REQs, &ogl_sph, qsc, Rsc, Rsub, bPointCross, W->gridFF.shift0 );
-                //Draw3D::atomsREQ( W->gridFF.apos_.size(), &W->gridFF.apos_[0], &W->gridFF.REQs_[0], ogl_sph, qsc, Rsc, Rsub, bPointCross, W->gridFF.shift0 );
-                //Draw3D::atomsREQ( 1, &W->gridFF.apos_[0], &W->gridFF.REQs_[0], ogl_sph, qsc, Rsc, Rsub, bPointCross, W->gridFF.shift0 );
-                opengl1renderer.translatef( -shift.x,-shift.y,-shift.z);
+                Draw3D::atomsREQ( renderer, W->gridFF.natoms, W->gridFF.apos, W->gridFF.REQs, &ogl_sph, qsc, Rsc, Rsub, bPointCross, W->gridFF.shift0 + shift );
                 icell++;
             }
         } 
     }
-    opengl1renderer.popMatrix();
-    opengl1renderer.endList();
-    if(verbosity>0) printf( "... MolGUI::renderSurfAtoms() DONE\n" );
-    //exit(0);
-    return ogl;
+    //if(verbosity>0) printf( "... MolGUI::renderSurfAtoms() DONE\n" );
 }
 
-void MolGUI::renderESP( Quat4d REQ){
-    printf( "MolGUI::renderESP() %li \n", ogl_esp ); //exit(0);
+void MolGUI::renderESP( Quat4d REQ ){
+    printf( "MolGUI::renderESP() %li \n", ogl_esp );
     ogl_esp = opengl1renderer.genLists(1);
     opengl1renderer.newList(ogl_esp, GL_COMPILE);
     opengl1renderer.shadeModel( GL_SMOOTH );

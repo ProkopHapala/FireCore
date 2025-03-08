@@ -8,6 +8,7 @@
 
 #include <math.h>
 #include <cstdlib>
+#include <cstddef>
 #include <stdint.h>
 #include <vector>
 
@@ -52,7 +53,11 @@ class Renderer {
             varying vec3 fNormal;
 
             void main() {
-                gl_FragColor = vec4(fColor, 1.0);
+                if (fColor == vec3(1.0, 1.0, 1.0)){
+                    gl_FragColor = vec4(fNormal, 1.0);
+                }else{
+                    gl_FragColor = vec4(fColor, 1.0);
+                }
             }
         )";
 
@@ -142,13 +147,11 @@ class Renderer {
             glUseProgram(program);
 
             glEnableVertexAttribArray(SHADER_ATTRIB_POSITION);
-            glVertexAttribPointer(SHADER_ATTRIB_POSITION, 3, GL_FLOAT, GL_FALSE, sizeof(GLMesh::vertex), 0);
-
+            glVertexAttribPointer(SHADER_ATTRIB_POSITION, 3, GL_FLOAT, GL_FALSE, sizeof(GLMesh::vertex), (void*)offsetof(GLMesh::vertex, position));
             glEnableVertexAttribArray(SHADER_ATTRIB_NORMAL);
-            glVertexAttribPointer(SHADER_ATTRIB_NORMAL, 3, GL_FLOAT, GL_FALSE, sizeof(GLMesh::vertex), (const void*)(3*sizeof(float)));
-
+            glVertexAttribPointer(SHADER_ATTRIB_NORMAL,   3, GL_FLOAT, GL_FALSE, sizeof(GLMesh::vertex), (void*)offsetof(GLMesh::vertex, normal));
             glEnableVertexAttribArray(SHADER_ATTRIB_COLOR);
-            glVertexAttribPointer(SHADER_ATTRIB_COLOR, 3, GL_FLOAT, GL_FALSE, sizeof(GLMesh::vertex), (const void*)(6*sizeof(float)));
+            glVertexAttribPointer(SHADER_ATTRIB_COLOR,    3, GL_FLOAT, GL_FALSE, sizeof(GLMesh::vertex), (void*)offsetof(GLMesh::vertex, color));
           
             mvpMatrixLocation = glGetUniformLocation(program, "uMVPMatrix");
         }
@@ -156,22 +159,14 @@ class Renderer {
         void drawMeshMVP(GLMesh* mesh, Mat4f mvp){
             mesh->bind_sync_vbo();
 
-            //printf("MVP Matrix:\n");
-            //mvp.print();
-
             glUseProgram(program);
 
-            GLuint positionAttrib = 0;
-            glEnableVertexAttribArray(positionAttrib);
-            glVertexAttribPointer(positionAttrib, 3, GL_FLOAT, GL_FALSE, 9*sizeof(float), 0);
-
-            GLuint normalAttrib = 1;
-            glEnableVertexAttribArray(normalAttrib);
-            glVertexAttribPointer(normalAttrib, 3, GL_FLOAT, GL_FALSE, 9*sizeof(float), (const void*)(3*sizeof(float)));
-
-            GLuint colorAttrib = 2;
-            glEnableVertexAttribArray(colorAttrib);
-            glVertexAttribPointer(colorAttrib, 3, GL_FLOAT, GL_FALSE, 9*sizeof(float), (const void*)(3*sizeof(float)));
+            glEnableVertexAttribArray(SHADER_ATTRIB_POSITION);
+            glVertexAttribPointer(SHADER_ATTRIB_POSITION, 3, GL_FLOAT, GL_FALSE, sizeof(GLMesh::vertex), (void*)offsetof(GLMesh::vertex, position));
+            glEnableVertexAttribArray(SHADER_ATTRIB_NORMAL);
+            glVertexAttribPointer(SHADER_ATTRIB_NORMAL,   3, GL_FLOAT, GL_FALSE, sizeof(GLMesh::vertex), (void*)offsetof(GLMesh::vertex, normal));
+            glEnableVertexAttribArray(SHADER_ATTRIB_COLOR);
+            glVertexAttribPointer(SHADER_ATTRIB_COLOR,    3, GL_FLOAT, GL_FALSE, sizeof(GLMesh::vertex), (void*)offsetof(GLMesh::vertex, color));
             
             glUniformMatrix4fv(mvpMatrixLocation, 1, GL_FALSE, mvp.array);
             

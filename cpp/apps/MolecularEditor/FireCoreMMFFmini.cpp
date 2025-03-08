@@ -379,12 +379,6 @@ void TestAppMMFFmini::draw(){
     //opengl1renderer.lineWidth(lw);
     //glDrawArrays(GL_LINE_STRIP, offset, count);
 
-    //printf( "====== Frame # %i \n", frameCount );
-    //cam.qrot.rotate(M_PI*0.01,Vec3fX);
-    //Draw3D::drawAxis(  10. );
-    //if( ogl_mol ){ opengl1renderer.callList( ogl_mol ); return; }
-    //printf( "builder.lvec: " ); builder.lvec.print();
-
     if(frameCount==1){
         cam.qrot.pitch( M_PI );
         //ff.printAtomPos();

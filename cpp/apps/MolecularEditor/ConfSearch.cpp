@@ -539,7 +539,6 @@ void AppMolecularEditor2::draw(){
         //opengl1renderer.color3f(0.0f,0.0f,0.0f); Draw3D::drawPointCross(world.apos[i],0.2);
         //opengl1renderer.color3f(1.0f,0.0f,0.0f); Draw3D::drawVecInPos(world.aforce[i]*1000.0,world.apos[i]);
 
-        //opengl1renderer.callList( ogl_sph );
         opengl1renderer.enable(GL_LIGHTING);
         Mat3d mat;
         mat.setOne();
