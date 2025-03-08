@@ -3,6 +3,7 @@
 
 #include "Camera.h"
 #include "GLMesh.h"
+#include "Vec3.h"
 #include "globals.h"
 
 #include "macroUtils.h"
@@ -382,7 +383,7 @@ class MolGUI : public AppSDL2OGL_3D { public:
     void bindMolecule(const MolWorld_sp3* W );
     void bindMolWorld( MolWorld_sp3* W );
     void unBindMolecule();
-	void drawSystem ( Vec3i ixyz=Vec3iZero );
+	void drawSystem (  Vec3d offset=Vec3dZero, bool bOrig=true );
     void drawBuilder( Vec3i ixyz=Vec3iZero );
     
     void drawPi0s( float sc );
@@ -1440,7 +1441,7 @@ void MolGUI::draw(){
     if(bDoMM){
         if( bViewBuilder ){ drawBuilder(); }   // Draw Builder 
         else if(W->builder.bPBC){              // Draw System with PBC 
-            Draw3D::drawShifts( W->npbc, W->pbc_shifts, W->ipbc0, [&](Vec3i ixyz){drawSystem(ixyz);} ); 
+            Draw3D::drawShifts( W->npbc, W->pbc_shifts, W->ipbc0, [&](Vec3d offset, bool bOrig){drawSystem(offset, bOrig);} ); 
             Draw3D::drawBBox( W->bbox.a, W->bbox.b );
         }else{ drawSystem(); }                // Draw System without PBC
     }
@@ -2169,28 +2170,23 @@ void MolGUI::drawBuilder( Vec3i ixyz ){
     }
 }
 
-void MolGUI::drawSystem( Vec3i ixyz ){
-    //printf( "MolGUI::drawSystem() natoms=%i\n", natoms );
-    //printf( "MolGUI::drawSystem() bViewBuilder=%i ixyz(%i,%i,%i)\n", bViewBuilder, ixyz.x,ixyz.y,ixyz.z );
-    //printf( "MolGUI::drawSystem(%i,%i,%i) mm_bAtoms(%i) bViewAtomLabels(%i) bViewMolCharges(%i) \n",  ixyz.x,ixyz.y,ixyz.z, mm_bAtoms, bViewAtomLabels, bViewMolCharges );
-    //float textSize=0.007;
-    //float textSize=1.0;
-    //float textSize=0.015;
+void MolGUI::drawSystem( Vec3d offset, bool bOrig ){
     opengl1renderer.enable(GL_DEPTH_TEST);
-    bool bOrig = (ixyz.x==0)&&(ixyz.y==0)&&(ixyz.z==0);
 
     bool bViewBL = bViewBondLenghts &&  (bL0s!=0);
 
-    //printf( "bOrig %i ixyz(%i,%i,%i)\n", bOrig, ixyz.x,ixyz.y,ixyz.z );
-    //printf( "MolGUI::drawSystem() bViewMolCharges %i W->nbmol.REQs %li\n", bViewMolCharges, W->nbmol.REQs );
-    //printf("MolGUI::drawSystem()  bOrig %i W->bMMFF %i mm_bAtoms %i bViewAtomSpheres %i bViewAtomForces %i bViewMolCharges %i \n", bOrig, W->bMMFF, mm_bAtoms, bViewAtomSpheres, bViewAtomForces, bViewMolCharges  );
-    if( neighs && (!bViewBL) ){  opengl1renderer.color3f(0.0f,0.0f,0.0f);  opengl1renderer.lineWidth(1.0); Draw3D::neighs(  natoms, 4, (int*)neighs, (int*)neighCell, apos, W->pbc_shifts ); opengl1renderer.lineWidth(1.0);  }
+    if( neighs && (!bViewBL) ){
+        opengl1renderer.color3f(0.0f,0.0f,0.0f); 
+        opengl1renderer.lineWidth(1.0);
+        Draw3D::neighs(  natoms, 4, (int*)neighs, (int*)neighCell, apos, W->pbc_shifts, offset );
+        opengl1renderer.lineWidth(1.0);
+    }
 
 
 
     //W->nbmol.print();
     if(bViewAtomSpheres && mm_bAtoms && (!bViewBondLenghts)){
-        Draw3D::atoms( renderer, natoms, apos, atypes, W->params, &ogl_sph, 1.0, mm_Rsc, mm_Rsub );
+        Draw3D::atoms( renderer, natoms, apos, atypes, W->params, &ogl_sph, 1.0, mm_Rsc, mm_Rsub, offset );
     }
     if(bOrig){
         //printf( "MolGUI::drawSystem() bOrig(%i)  mm_bAtoms(%i) bViewAtomLabels(%i) bViewMolCharges(%i) \n", bOrig, mm_bAtoms, bViewAtomLabels, bViewMolCharges );

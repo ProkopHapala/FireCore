@@ -261,7 +261,7 @@ void bondsPBC( int n, const Vec2i* b2a, const Vec3d* apos, const Vec3i* pbc, con
     }
 }
 
-void atomNeighs(  int ia, int perAtom, int* neighs, int* neighCell, Vec3d* apos, Vec3d* shifts=0 ){
+void atomNeighs(  int ia, int perAtom, int* neighs, int* neighCell, Vec3d* apos, Vec3d* shifts=0, Vec3d offset=Vec3dZero ){
     int* ngs = neighs   +ia*perAtom;
     int* ngC = neighCell+ia*perAtom;
     Vec3d pi = apos[ia];
@@ -270,15 +270,15 @@ void atomNeighs(  int ia, int perAtom, int* neighs, int* neighCell, Vec3d* apos,
     for(int i=0; i<perAtom; i++){
         int ja = ngs[i];
         if(ja<0) continue;
-        Draw3D::vertex( pi );
+        Draw3D::vertex( pi+offset );
         Vec3d pj = apos[ja];
         if(shifts) pj.add(shifts[ngC[i]]);
-        Draw3D::vertex( pj );
+        Draw3D::vertex( pj+offset );
     }
     opengl1renderer.end();
 }
 
-void atomNeighs(  int ia, int perAtom, int* neighs, int* neighCell, Quat4f* apos, Vec3d* shifts=0 ){
+void atomNeighs(  int ia, int perAtom, int* neighs, int* neighCell, Quat4f* apos, Vec3d* shifts=0, Vec3d offset=Vec3dZero ){
     //printf( "Draw3D::atomNeighs[%i]\n", ia );
     int* ngs  = neighs   +ia*perAtom;
     int* ngC  = neighCell+ia*perAtom;
@@ -289,17 +289,17 @@ void atomNeighs(  int ia, int perAtom, int* neighs, int* neighCell, Quat4f* apos
     for(int i=0; i<perAtom; i++){
         int ja = ngs[i];
         if(ja<0) continue;
-        Draw3D::vertex( pi.f );
+        Draw3D::vertex( (Vec3d)pi.f+offset );
         Vec3f pj = apos[ja].f;
         if(shifts) pj.add( (Vec3f)shifts[ngC[i]]);
-        Draw3D::vertex( pj );
+        Draw3D::vertex( (Vec3d)pj+offset );
     }
     opengl1renderer.end();
 }
 
-void neighs( int na, int perAtom, int* neighs, int* neighCell, Vec3d* apos, Vec3d* shifts=0 ){
+void neighs( int na, int perAtom, int* neighs, int* neighCell, Vec3d* apos, Vec3d* shifts=0, Vec3d offset=Vec3dZero ){
     for(int ia=0; ia<na; ia++){
-        atomNeighs( ia, perAtom, neighs, neighCell, apos, shifts );
+        atomNeighs( ia, perAtom, neighs, neighCell, apos, shifts, offset );
     }
 }
 
@@ -405,16 +405,16 @@ int drawESP( int na, Vec3d* apos, Quat4d* REQs, Quat4d REQ ){
 
 
 #ifdef MMFFparams_h
-void atoms( Renderer* r, int n, Vec3d* ps, int* atypes, const MMFFparams& params, GLMesh* ogl_sph, float qsc=1, float Rsc=1, float Rsub=0 ){
+void atoms( Renderer* r, int n, Vec3d* ps, int* atypes, const MMFFparams& params, GLMesh* ogl_sph, float qsc=1, float Rsc=1, float Rsub=0, Vec3d offset=Vec3dZero ){
     opengl1renderer.enable(GL_LIGHTING);
     opengl1renderer.enable(GL_DEPTH_TEST);
     opengl1renderer.shadeModel(GL_SMOOTH);
     for(int i=0; i<n; i++){
         const AtomType& atyp = params.atypes[atypes[i]];
         Draw::setRGB( atyp.color );
-        //Draw3D::drawShape( ogl_sph, ps[i], Mat3dIdentity*((atyp.RvdW-Rsub)*Rsc) );
+
         float sz = (atyp.RvdW-Rsub)*Rsc;
-        r->drawMesh(ogl_sph, (Vec3f)ps[i], Quat4fIdentity, {sz, sz, sz});
+        r->drawMesh(ogl_sph, (Vec3f)(ps[i]+offset), Quat4fIdentity, {sz, sz, sz});
     }
 }
 #endif
