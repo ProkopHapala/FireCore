@@ -10,6 +10,7 @@
 #include "Vec3.h"
 #include "geom2D.h"
 #include "VecN.h"
+#include "Renderer.h"
 
 const int nXTicks_def = 11;
 const int nYTicks_def = 11;
@@ -165,7 +166,7 @@ class QuePlot2D{ public:
     void next(double t);
     void draw( bool xoff, bool yoff );
     void drawTrj3D( Vec3i which );
-    void drawTrj3DPoints( Vec3i which, double pointSize );
+    void drawTrj3DPoints( Renderer* r, Vec3i which, double pointSize );
 
     inline int wrap_index(int i){ return  i>=n? i%n : i; };
     inline void set_back(int iline, double y ){ data[iline][ip] = y; };

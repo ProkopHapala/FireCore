@@ -9,6 +9,7 @@
 
 #include "Draw.h"
 #include "Draw3D.h"
+#include "Draw3D_Molecular.h"
 #include "Solids.h"
 
 #include "fastmath.h"
@@ -94,7 +95,7 @@ class TestAppRARFF: public AppSDL2OGL_3D { public:
     RigidAtom     atom1;
     RigidAtomType type1,type2;
 
-    int oglSph=0;
+    GLMesh oglSph = GLMesh(GL_TRIANGLES);
 
     bool bRun = true;
 
@@ -311,12 +312,7 @@ TestAppRARFF::TestAppRARFF( int& id, int WIDTH_, int HEIGHT_ ) : AppSDL2OGL_3D( 
 
     ff.atoms[1].pos = Vec3d{1.0,1.0,1.0};
 
-    oglSph = opengl1renderer.genLists(1);
-    opengl1renderer.newList(oglSph, GL_COMPILE);
-        //Draw3D::drawSphere_oct( 3, 1.0, Vec3d{0.0,0.0,0.0} );
-        Draw3D::drawSphere_oct( 3, 0.2, Vec3d{0.0,0.0,0.0} );
-    opengl1renderer.endList();
-
+    oglSph = Draw3D::makeSphereOgl(5, 0.2);
 }
 
 void TestAppRARFF::draw(){
@@ -351,7 +347,7 @@ void TestAppRARFF::draw(){
         //opengl1renderer.color3f(1.0,1.0,1.0); drawRigidAtom(ff.atoms[i]);
 
         opengl1renderer.color3f(0.3,0.3,0.3);
-        Draw3D::drawShape( oglSph, ff.atoms[i].pos , Mat3dIdentity );
+        renderer->drawMesh(&oglSph, (Vec3f)ff.atoms[i].pos);
 
         for(int ib=0; ib<ff.atoms[i].type->nbond; ib++){
             int io=4*i+ib;

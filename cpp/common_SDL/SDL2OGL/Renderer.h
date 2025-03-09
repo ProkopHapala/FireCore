@@ -1,10 +1,7 @@
 #ifndef _Renderer_H_
 #define _Renderer_H_
 
-//#include <SDL2/SDL.h>
-
-#include <SDL2/SDL_opengles2.h>
-
+#include "GLES2.h"
 
 #include <math.h>
 #include <cstdlib>
@@ -13,7 +10,6 @@
 #include <vector>
 
 #include "Vec3.h"
-#include "GLMesh.h"
 #include "Mat4.h"
 #include "quaternion.h"
 #include "Camera.h"
@@ -28,151 +24,28 @@
 #define SHADER_ATTRIB_NORMAL 1
 #define SHADER_ATTRIB_COLOR 2
 
+class GLMesh;
+
 class Renderer {
     private:
-        const char* vertexShaderSource = R"(
-            uniform mat4 uMVPMatrix;
+        GLuint compileShader(GLenum shaderType, const char* source);
+        GLuint linkProgram(GLuint vertexShader, GLuint fragmentShader);
 
-            attribute vec4 vPosition;
-            attribute vec3 vNormal;
-            attribute vec3 vColor;
-            
-            varying vec3 fColor;
-            varying vec3 fNormal;
-
-            void main() {
-                gl_Position = uMVPMatrix * vPosition;
-                fNormal = vNormal;
-                fColor = vColor;
-            }
-        )";
+        GLuint defualtProgram = -1;
+        GLint mvpMatrixLocation = -1;
         
-        // Fragment shader
-        const char* fragmentShaderSource = R"(
-            varying vec3 fColor;
-            varying vec3 fNormal;
-
-            void main() {
-                if (fColor == vec3(1.0, 1.0, 1.0)){
-                    gl_FragColor = vec4(fNormal, 1.0);
-                }else{
-                    gl_FragColor = vec4(fColor, 1.0);
-                }
-            }
-        )";
-
-        GLuint compileShader(GLenum shaderType, const char* source) {
-            GLuint shader = glCreateShader(shaderType);
-            if (shader == 0) {
-                printf("Error creating shader\n");
-                exit(-1);
-                return 0;
-            }
-            glShaderSource(shader, 1, &source, nullptr);
-            glCompileShader(shader);
-        
-            GLint compiled;
-            glGetShaderiv(shader, GL_COMPILE_STATUS, &compiled);
-            if (!compiled) {
-                GLint infoLen = 0;
-                glGetShaderiv(shader, GL_INFO_LOG_LENGTH, &infoLen);
-                if (infoLen > 1) {
-                    char* infoLog = (char*)malloc(sizeof(char) * infoLen);
-                    glGetShaderInfoLog(shader, infoLen, nullptr, infoLog);
-                    printf("Error compiling shader:\n %s\n", infoLog);
-                    free(infoLog);
-                    exit(-1);
-                }
-                glDeleteShader(shader);
-                return 0;
-            }
-            return shader;
-        }
-
-        GLuint linkProgram(GLuint vertexShader, GLuint fragmentShader) {
-            GLuint program = glCreateProgram();
-            if (program == 0) {
-                printf("Error creating program\n");
-                exit(-1);
-                return 0;
-            }
-            glAttachShader(program, vertexShader);
-            glAttachShader(program, fragmentShader);
-
-            glBindAttribLocation(program, SHADER_ATTRIB_POSITION, "vPosition");
-            glBindAttribLocation(program, SHADER_ATTRIB_NORMAL  , "vNormal");
-            glBindAttribLocation(program, SHADER_ATTRIB_COLOR   , "vColor");
-
-            glLinkProgram(program);
-        
-            GLint linked;
-            glGetProgramiv(program, GL_LINK_STATUS, &linked);
-            if (!linked) {
-                GLint infoLen = 0;
-                glGetProgramiv(program, GL_INFO_LOG_LENGTH, &infoLen);
-                if (infoLen > 1) {
-                    char* infoLog = (char*)malloc(sizeof(char) * infoLen);
-                    glGetProgramInfoLog(program, infoLen, nullptr, infoLog);
-                    printf("Error linking program:\n %s\n", infoLog);
-                    exit(-1);
-                    free(infoLog);
-                }
-                glDeleteProgram(program);
-                return 0;
-            }
-            return program;
-        }
-
-        GLuint program;
-        GLint mvpMatrixLocation;
+        GLint current_program = 0;
+        GLuint current_gl_array_buffer = 0;
+        GLuint current_gl_element_array_buffer = 0;
 
     public:
         Camera* active_camera = nullptr;
 
-        Renderer(){
-            // Compile shaders
-            GLuint vertexShader = compileShader(GL_VERTEX_SHADER, vertexShaderSource);
-            GLuint fragmentShader = compileShader(GL_FRAGMENT_SHADER, fragmentShaderSource);
-            if (vertexShader == 0 || fragmentShader == 0){
-                printf("Error compiling shaders\n");
-                exit(-1);
-                return;
-            }
-            program = linkProgram(vertexShader, fragmentShader);
-            if (program == 0){
-                printf("Error linking program\n");
-                exit(-1);
-                return;
-            }
-            glUseProgram(program);
+        Renderer();
 
-            glEnableVertexAttribArray(SHADER_ATTRIB_POSITION);
-            glVertexAttribPointer(SHADER_ATTRIB_POSITION, 3, GL_FLOAT, GL_FALSE, sizeof(GLMesh::vertex), (void*)offsetof(GLMesh::vertex, position));
-            glEnableVertexAttribArray(SHADER_ATTRIB_NORMAL);
-            glVertexAttribPointer(SHADER_ATTRIB_NORMAL,   3, GL_FLOAT, GL_FALSE, sizeof(GLMesh::vertex), (void*)offsetof(GLMesh::vertex, normal));
-            glEnableVertexAttribArray(SHADER_ATTRIB_COLOR);
-            glVertexAttribPointer(SHADER_ATTRIB_COLOR,    3, GL_FLOAT, GL_FALSE, sizeof(GLMesh::vertex), (void*)offsetof(GLMesh::vertex, color));
-          
-            mvpMatrixLocation = glGetUniformLocation(program, "uMVPMatrix");
-        }
-
-        void drawMeshMVP(GLMesh* mesh, Mat4f mvp){
-            mesh->bind_sync_vbo();
-
-            glUseProgram(program);
-
-            glEnableVertexAttribArray(SHADER_ATTRIB_POSITION);
-            glVertexAttribPointer(SHADER_ATTRIB_POSITION, 3, GL_FLOAT, GL_FALSE, sizeof(GLMesh::vertex), (void*)offsetof(GLMesh::vertex, position));
-            glEnableVertexAttribArray(SHADER_ATTRIB_NORMAL);
-            glVertexAttribPointer(SHADER_ATTRIB_NORMAL,   3, GL_FLOAT, GL_FALSE, sizeof(GLMesh::vertex), (void*)offsetof(GLMesh::vertex, normal));
-            glEnableVertexAttribArray(SHADER_ATTRIB_COLOR);
-            glVertexAttribPointer(SHADER_ATTRIB_COLOR,    3, GL_FLOAT, GL_FALSE, sizeof(GLMesh::vertex), (void*)offsetof(GLMesh::vertex, color));
-            
-            glUniformMatrix4fv(mvpMatrixLocation, 1, GL_FALSE, mvp.array);
-            
-            glDrawArrays(mesh->drawMode, 0, mesh->vertexCount());
-        }
-
+        void loadProgram(GLuint program);
+        void bindBuffer(GLenum target, GLuint buffer);
+        void drawMeshMVP(GLMesh* mesh, Mat4f mvp);
         void drawMesh(GLMesh* mesh, Vec3f position, Quat4f rotation=Quat4fIdentity, Vec3f scale={1, 1, 1});
 };
 

@@ -368,18 +368,6 @@ TestAppCLCFSF::TestAppCLCFSF( int& id, int WIDTH_, int HEIGHT_ ) : AppSDL2OGL_3D
     plot1.render();
     */
 
-    /*
-    ogl = opengl1renderer.genLists(1);
-    opengl1renderer.newList(ogl,GL_COMPILE);
-    solver.prepareIntegralTables();
-    opengl1renderer.endList();
-
-    DataLine2D* line_wf      = new DataLine2D(solver.nsampMem , -solver.dsamp, solver.dsamp, 0xFFFFFF00, "Wf"     ,solver.Wfs      ); plot1.add(line_wf    );
-    DataLine2D* line_overlap = new DataLine2D(solver.nsampIMem, -solver.dsamp, solver.dsamp, 0xFF00FFFF, "Overlap",solver.IOverlap ); plot1.add(line_overlap);
-    plot1.update();
-    plot1.render();
-    */
-
     test_Pauli( solver, plot1 );
 
 

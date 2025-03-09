@@ -979,7 +979,7 @@ void MolGUI::relaxNonBondParticles( double dt, double Fconv, int niter){
         //Vec3d v    = vpos[i];
         Vec3d v    = Vec3dZero;
         Quat4d fe;
-        if(bTrj){ Draw3D::drawPointCross( p, 0.2 ); opengl1renderer.begin(GL_LINE_STRIP); }
+        if(bTrj){ Draw3D::drawPointCross( renderer, p, 0.2 ); opengl1renderer.begin(GL_LINE_STRIP); }
         for(int iter=0; iter<niter; iter++){
             if(bTrj){ opengl1renderer.vertex3f(p.x,p.y,p.z); }
             fe = W->nbmol.evalLJQs( p, REQtest, W->ffl.Rdamp );
@@ -1056,10 +1056,10 @@ void MolGUI::drawDipoleMap(){
     //printf( "drawDipoleMap() Ezoom=%g  val=%g \n", Ezoom, mp->subs[1]->value ); 
 
 
-    Draw3D::drawPointCross({5.0,0.0,0.0}, 0.2 );
-    Draw3D::drawPointCross( dipoleMap.particles[0], 0.1 );
+    Draw3D::drawPointCross( renderer, {5.0,0.0,0.0}, 0.2 );
+    Draw3D::drawPointCross( renderer, dipoleMap.particles[0], 0.1 );
     for(int i=0; i<dipoleMap.particles.size(); i++ ){
-        opengl1renderer.color3f( 0.0, 0.0, 0.0 ); Draw3D::drawPointCross( dipoleMap.particles[i], 0.05 );
+        opengl1renderer.color3f( 0.0, 0.0, 0.0 ); Draw3D::drawPointCross( renderer, dipoleMap.particles[i], 0.05 );
         opengl1renderer.color3f( 0.0, 0.0, 1.0 ); Draw3D::drawLine      ( dipoleMap.particles[i], dipoleMap.particles2[i] );
     }
     
@@ -1274,8 +1274,6 @@ void MolGUI::bindMolWorld( MolWorld_sp3* W_ ){
 void MolGUI::draw(){
     renderer->active_camera = &cam;
 
-    //printf( "MolGUI::draw() \n" );
-    //opengl1renderer.clearColor( 0.5f, 0.5f, 0.5f, 1.0f );
     opengl1renderer.clearColor( 1.0f, 1.0f, 1.0f, 1.0f );
 	opengl1renderer.clear( GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT );
     // Smooth lines : https://vitaliburkov.wordpress.com/2016/09/17/simple-and-fast-high-quality-antialiased-lines-with-opengl/
@@ -1320,7 +1318,7 @@ void MolGUI::draw(){
     //if( bViewBuilder ){  W->updateBuilderFromFF(); }
     //if(bRunRelax){ W->relax( perFrame ); }
 
-    Draw3D::drawPointCross( ray0, 0.1 );        // Mouse Cursor 
+    Draw3D::drawPointCross( renderer, ray0, 0.1 );        // Mouse Cursor 
     //if(W->ipicked>=0) Draw3D::drawLine( W->ff.apos[W->ipicked], ray0); // Mouse Dragging Visualization
     if(W->ipicked>=0) Draw3D::drawLine( apos[W->ipicked], (Vec3d)ray0); // Mouse Dragging Visualization
     
@@ -1558,7 +1556,7 @@ void MolGUI::draw(){
     //if(iangPicked>=0){
     //    opengl1renderer.color3f(0.,1.,0.);      Draw3D::angle( W->ff.ang2atom[iangPicked], W->ff.ang_cs0[iangPicked], W->ff.apos, fontTex3D );
     //}
-    if(useGizmo){ gizmo.draw(); }
+    if(useGizmo){ gizmo.draw(renderer); }
     if(bHexDrawing)drawingHex(5.0);
     if(bViewAxis){ opengl1renderer.lineWidth(3);  Draw3D::drawAxis(1.0); opengl1renderer.lineWidth(1); }
 
@@ -1746,7 +1744,7 @@ void MolGUI::drawingHex(double z0){
     bool s = ruler.simplexIndex( p+(Vec2d){off,off}, ip, dp );
     //ruler.nodePoint( ip, p );    opengl1renderer.color3f(1.,1.,1.); Draw3D::drawPointCross(  {p.x,p.y, 5.0}, 0.5 );
     if(s){opengl1renderer.color3f(1.,0.2,1.);}else{opengl1renderer.color3f(0.2,1.0,1.);}
-    ruler.tilePoint( ip, s, p ); Draw3D::drawPointCross(  {p.x-off,p.y-off, z0}, 0.2 );
+    ruler.tilePoint( ip, s, p ); Draw3D::drawPointCross( renderer, {p.x-off,p.y-off, z0}, 0.2 );
     
     bool bLine=true;
     if(bDrawHexGrid){
@@ -2377,7 +2375,6 @@ void MolGUI::mouse_default( const SDL_Event& event ){
                             // Qpanel->value = z;               
                             if( Qpanel ){ 
                                 Qpanel->value = W->nbmol.REQs[W->ipicked].z;
-                                Qpanel->redraw=true;
                             }
                             
                         };

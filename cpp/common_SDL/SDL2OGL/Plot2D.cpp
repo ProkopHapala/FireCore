@@ -342,7 +342,7 @@ void QuePlot2D::drawTrj3D( Vec3i which ){
     opengl1renderer.end();
 }
 
-void QuePlot2D::drawTrj3DPoints( Vec3i which, double pointSize ){
+void QuePlot2D::drawTrj3DPoints( Renderer* r, Vec3i which, double pointSize ){
     int ii0 = nsamp-n+1; if (ii0<0) ii0=0;
     int i0  = wrap_index( ii0 );
 
@@ -352,7 +352,7 @@ void QuePlot2D::drawTrj3DPoints( Vec3i which, double pointSize ){
     if( pointSize > 0 ){
         for(int ii=ii0; ii<nsamp; ii++){
             int i = wrap_index( ii );
-            Draw3D::drawPointCross( {xs[i], ys[i], zs[i]}, pointSize );
+            Draw3D::drawPointCross( r, {xs[i], ys[i], zs[i]}, pointSize );
         }
     }else{
         opengl1renderer.begin(GL_POINTS);

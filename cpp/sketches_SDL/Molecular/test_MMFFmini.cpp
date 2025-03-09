@@ -476,13 +476,6 @@ int TestAppMMFFmini::loadMoleculeMol( const char* fname, bool bAutoH, bool bLoad
 
     //Draw3D::shapeInPoss( ogl_sph, ff.natoms, ff.apos, 0 );
 
-    /*
-    ogl_mol = opengl1renderer.genLists(1);
-    opengl1renderer.newList( ogl_mol, GL_COMPILE );
-        Draw3D::drawLines( mol.nbonds, (int*)mol.bond2atom, mol.pos );
-    opengl1renderer.endList();
-    */
-
     return nheavy;
 }
 

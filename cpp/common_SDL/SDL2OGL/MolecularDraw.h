@@ -21,7 +21,7 @@ void printPoses( int n, double * poses ){
     }
 }
 
-void drawMapedPoints( const FastAtomicMetric& D, int itest ){
+void drawMapedPoints( Renderer* r, const FastAtomicMetric& D, int itest ){
     //atomdist.natoms=1;
     //atomdist.pos[0]=cursor3D;
     //atomdist.toCells(atomdist.ruler.step*0.5-0.01);
@@ -32,7 +32,7 @@ void drawMapedPoints( const FastAtomicMetric& D, int itest ){
         //Draw3D::drawPointCross( atomdist.pos[i], 0.1 );
         bool b = ( i == (itest%D.natoms));
         if(b){ Draw3D::drawSphereOctLines( 16, D.Rcut, D.pos[i] ); }
-        else { Draw3D::drawPointCross( D.pos[i], 0.1 ); }
+        else { Draw3D::drawPointCross( r, D.pos[i], 0.1 ); }
         //printf("%i %i \n", i, D.atomNs[i] );
         for(int jj=0; jj<D.atomNs[i];jj++){
             if(b){
@@ -47,7 +47,7 @@ void drawMapedPoints( const FastAtomicMetric& D, int itest ){
     }
 }
 
-void drawNeighs( const FastAtomicMetric& D, Vec3d pos ){
+void drawNeighs( Renderer* r, const FastAtomicMetric& D, Vec3d pos ){
     Draw3D::drawBBox( D.ruler.pos0, D.ruler.pmax );
     Draw3D::drawSphereOctLines(16,D.Rcut,pos);
     {
@@ -70,7 +70,7 @@ void drawNeighs( const FastAtomicMetric& D, Vec3d pos ){
     }
     for(int i=0; i<D.natoms; i++){
         //Draw3D::drawPointCross( atomdist.pos[i], atomdist.Rcut );
-        Draw3D::drawPointCross( D.pos[i], 0.1 );
+        Draw3D::drawPointCross( r, D.pos[i], 0.1 );
     }
 }
 
@@ -92,7 +92,7 @@ void drawPPRelaxTrj( int n, double dt, double damp, GridFF& gff, Vec3d pos, Quat
     //exit(0);
 }
 
-void drawGridForceAlongLine( int n, GridFF& gff, Vec3d pos0, Vec3d dpos, Quat4f PRQ, double fsc ){
+void drawGridForceAlongLine( Renderer* r, int n, GridFF& gff, Vec3d pos0, Vec3d dpos, Quat4f PRQ, double fsc ){
     Vec3d pos = pos0;
 	for( int i=0; i<n; i++ ){
         //Vec3d f = Vec3dZero;
@@ -100,7 +100,7 @@ void drawGridForceAlongLine( int n, GridFF& gff, Vec3d pos0, Vec3d dpos, Quat4f 
         gff.addForce( pos, PRQ, fe);
         //printf( " %i (%g,%g,%g) (%g,%g,%g) \n", i, pos.x,pos.y,pos.z,  f.x,f.y,f.z );
         Draw3D::drawVecInPos( (Vec3d)fe.f *fsc, pos );
-        Draw3D::drawPointCross( pos, 0.1 );
+        Draw3D::drawPointCross( r, pos, 0.1 );
         pos.add(dpos);
 	}
 }

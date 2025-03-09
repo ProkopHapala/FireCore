@@ -122,9 +122,9 @@ void ScreenSDL2OGL::update( ){
 	glClear( GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT );
 
 	draw();
-
-	//cameraHUD();
-	//drawHUD();
+	cameraHUD();
+	drawHUD();
+	
 	//opengl1renderer.popMatrix();
 	//opengl1renderer.flush();
 	//SDL_RenderPresent(renderer);

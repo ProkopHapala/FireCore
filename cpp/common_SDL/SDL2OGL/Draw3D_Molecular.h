@@ -98,7 +98,7 @@ void atomsREQ( Renderer* r, int n, Vec3d* ps, Quat4d* REQs, GLMesh* ogl_sph, flo
         ogl_sph->color = {1-fmax(0,-q),1-fmax(q,-q),1-fmax(0,+q)};
         //printf( "Draw3D atomsREQ() %i Q=%g R=%g pos(%16.8f %16.8f %16.8f)  \n", i, q, REQs[i].x, ps[i].x, ps[i].y, ps[i].z );
         if(bPointCross){
-            Draw3D::drawPointCross( ps[i]+pos0, (REQs[i].x-Rsub)*Rsc );
+            Draw3D::drawPointCross( r, ps[i]+pos0, (REQs[i].x-Rsub)*Rsc );
         }else{
             //Draw3D::drawShape( ogl_sph, ps[i]+pos0, Mat3dIdentity*((REQs[i].x-Rsub)*Rsc) );
             float sz = (REQs[i].x-Rsub)*Rsc;

@@ -5,18 +5,23 @@
 
 #include "Vec2.h"
 #include "Draw.h"
+#include "quaternion.h"
+#include "GLMesh.h"
 
 #include "Draw3D.h" // THE HEADER
 
 
 namespace Draw3D{
 
-//void vertex(const Vec3f& v ){ opengl1renderer.vertex3f(v.x,v.y,v.z); }
-//void vertex(const Vec3d& v ){ opengl1renderer.vertex3f(v.x,v.y,v.z); }
-//void color (const Vec3f& v ){ opengl1renderer.color3f (v.x,v.y,v.z); }
-//void color (const Vec3d& v ){ opengl1renderer.color3f (v.x,v.y,v.z); }
-//void normal(const Vec3f& v ){ opengl1renderer.normal3f(v.x,v.y,v.z); }
-//void normal(const Vec3d& v ){ opengl1renderer.normal3f(v.x,v.y,v.z); }
+
+static GLMesh makePointCross(){
+    GLMesh m = GLMesh(GL_LINES);
+    m.addVertex({-1, 0, 0}); m.addVertex({1, 0, 0});
+    m.addVertex({0, -1, 0}); m.addVertex({0, 1, 0});
+    m.addVertex({0, 0, -1}); m.addVertex({0, 0, 1});
+    return m;
+};
+static GLMesh pointCross = makePointCross();
 
 void drawPoint( const Vec3f& vec ){
 	//opengl1renderer.disable (GL_LIGHTING);
@@ -25,17 +30,8 @@ void drawPoint( const Vec3f& vec ){
     opengl1renderer.end();
 };
 
-void drawPointCross_bare( const Vec3f& vec, float sz ){
-    opengl1renderer.vertex3f( vec.x-sz, vec.y, vec.z ); opengl1renderer.vertex3f( vec.x+sz, vec.y, vec.z );
-    opengl1renderer.vertex3f( vec.x, vec.y-sz, vec.z ); opengl1renderer.vertex3f( vec.x, vec.y+sz, vec.z );
-    opengl1renderer.vertex3f( vec.x, vec.y, vec.z-sz ); opengl1renderer.vertex3f( vec.x, vec.y, vec.z+sz );
-}
-
-void drawPointCross( const Vec3f& vec, float sz ){
-	//opengl1renderer.disable (GL_LIGHTING);
-	opengl1renderer.begin   (GL_LINES);
-	drawPointCross_bare(vec,sz );
-    opengl1renderer.end();
+void drawPointCross( Renderer* r, const Vec3f& vec, float sz ){
+	r->drawMesh(&pointCross, vec, Quat4fIdentity, {sz, sz, sz});
 };
 
 void drawPointCross( const Vec3f& vec, double sz ){
@@ -1248,7 +1244,7 @@ void drawMeshWireframe(const CMesh& msh){ drawLines( msh.nedge, (int*)msh.edges,
         //const double * colors
         //const Vec2d  * normals
 
-        Vec2d pa; pa.set(0.0d);
+        Vec2d pa; pa.set(0.0);
         if( !cscale ){ cscale=&Draw::colors_rainbow[0]; ncolors=Draw::ncolors; }
         int ii=0;
         opengl1renderer.normal3f(0.0f,1.0f,0.0f);
@@ -1256,7 +1252,7 @@ void drawMeshWireframe(const CMesh& msh){ drawLines( msh.nedge, (int*)msh.edges,
             opengl1renderer.begin( GL_TRIANGLE_STRIP );
             Vec2d p; p.set(pa);
             for (int ib=0; ib<nb; ib++){
-                double h=0.0d;
+                double h=0.0;
                 //printf( " %i %i %i (%3.3f,%3.3f) %f %f \n", ia, ib, ii, p.x, p.y, hs[ii], clrs[ii] );
                 if(clrs) Draw::colorScale( clrs[ii], ncolors, cscale );
                 //if(hs){ simplex_deriv(); opengl1renderer.normal3f(0.0f,1.0f,0.0f); }
@@ -1277,7 +1273,7 @@ void drawMeshWireframe(const CMesh& msh){ drawLines( msh.nedge, (int*)msh.edges,
     }
 
     void drawSimplexGridLines( int na, int nb, const Vec2d& da, const Vec2d& db,  const double * hs ){
-        Vec2d p,pa; pa.set(0.0d);
+        Vec2d p,pa; pa.set(0.0);
         for (int ia=0; ia<(na-1); ia++){
             opengl1renderer.begin( GL_LINE_STRIP );
             p.set(pa);
@@ -1308,7 +1304,7 @@ void drawMeshWireframe(const CMesh& msh){ drawLines( msh.nedge, (int*)msh.edges,
     }
 
     void drawSimplexGridLinesToned( int na, int nb, const Vec2d& da, const Vec2d& db,  const double * hs ){
-        Vec2d p,pa; pa.set(0.0d);
+        Vec2d p,pa; pa.set(0.0);
         float h;
         for (int ia=0; ia<(na-1); ia++){
             opengl1renderer.begin( GL_LINE_STRIP );

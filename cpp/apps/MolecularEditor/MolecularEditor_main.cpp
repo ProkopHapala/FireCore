@@ -10,6 +10,8 @@
 
 #include <SDL2/SDL.h>
 
+#include "Draw3D_Molecular.h"
+#include "quaternion.h"
 #include "testUtils.h"
 
 #include "Draw.h"
@@ -77,7 +79,7 @@ class AppMolecularEditor2 : public AppSDL2OGL_3D {
     DynamicOpt  opt;
 
     int     fontTex;
-    int     ogl_sph;
+    GLMesh ogl_sph;
 
     char str[256];
 
@@ -205,13 +207,7 @@ AppMolecularEditor2::AppMolecularEditor2( int& id, int WIDTH_, int HEIGHT_ ) : A
 
     printf( "DEBUG 4 \n" );
 
-    ogl_sph = opengl1renderer.genLists(1);
-    opengl1renderer.newList( ogl_sph, GL_COMPILE );
-        //opengl1renderer.enable( GL_LIGHTING );
-        //opengl1renderer.color3f( 0.8f, 0.8f, 0.8f );
-        //Draw3D::drawSphere_oct(3, 0.5, {0.0,0.0,0.0} );
-        Draw3D::drawSphere_oct( 3, 1.0, {0.0,0.0,0.0} );
-    opengl1renderer.endList();
+    ogl_sph = Draw3D::makeSphereOgl(5);
 
     //printf( "bond 8 %g \n", world.bond_0[8] );
     //printf( "bond 9 %g \n", world.bond_0[9] );
@@ -342,7 +338,7 @@ void AppMolecularEditor2::draw(){
 	double F2;
 	for(int itr=0; itr<perFrame; itr++){
 
-        for(int i=0; i<world.natoms; i++){ world.aforce[i].set(0.0d); }
+        for(int i=0; i<world.natoms; i++){ world.aforce[i].set(0.0); }
 
         world.eval_FFgrid();
 
@@ -411,13 +407,9 @@ void AppMolecularEditor2::draw(){
 
         //opengl1renderer.callList( ogl_sph );
         opengl1renderer.enable(GL_LIGHTING);
-        Mat3d mat;
-        mat.setOne();
-        mat.mul( atomSize * ( params.atypes[ world.atypes[i]].RvdW  - 1.0 ) );
-        //mat.mul( 2.0 );
-        //opengl1renderer.color3f(0.8f,0.8f,0.8f);
+        float sz = atomSize * ( params.atypes[ world.atypes[i]].RvdW  - 1.0 );
         Draw::setRGB( params.atypes[world.atypes[i]].color );
-        Draw3D::drawShape(ogl_sph, world.apos[i],mat);
+        renderer->drawMesh(&ogl_sph, (Vec3f)world.apos[i], Quat4fIdentity, {sz, sz, sz});
         opengl1renderer.disable(GL_LIGHTING);
     }
     opengl1renderer.disable(GL_LIGHTING);

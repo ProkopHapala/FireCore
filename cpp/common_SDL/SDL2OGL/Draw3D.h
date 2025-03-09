@@ -29,13 +29,6 @@ namespace Draw3D{
 
 // ========== Float Versions
 
-//void vertex(const Vec3f& v );
-//void vertex(const Vec3d& v );
-//void color (const Vec3f& v );
-//void color (const Vec3d& v );
-//void normal(const Vec3f& v );
-//void normal(const Vec3d& v );
-
 inline void vertex(const Vec3f& v ){ opengl1renderer.vertex3f(v.x, v.y, v.z); }
 inline void vertex(const Vec3d& v ){ opengl1renderer.vertex3d(v.x, v.y, v.z); }
 inline void color (const Vec3f& v ){ opengl1renderer.color3f (v.x, v.y, v.z); }
@@ -44,8 +37,7 @@ inline void normal(const Vec3f& v ){ opengl1renderer.normal3f(v.x, v.y, v.z); }
 inline void normal(const Vec3d& v ){ opengl1renderer.normal3d(v.x, v.y, v.z); }
 
 void drawPoint     ( const Vec3f& vec                   );
-void drawPointCross_bare( const Vec3f& vec, float sz    );
-void drawPointCross( const Vec3f& vec, float  sz        );
+void drawPointCross( Renderer* r, const Vec3f& vec, float sz );
 void drawVec       ( const Vec3f& vec                   );
 void drawVecInPos  ( const Vec3f& v,   const Vec3f& pos );
 void drawLine      ( const Vec3f& p1,  const Vec3f& p2  );
@@ -110,7 +102,7 @@ void drawAxis( float sc );
 
 inline void drawPoint     ( const Vec3d& vec                   ){drawPoint((Vec3f)vec); }
 inline void drawVec       ( const Vec3d& vec                   ){drawVec  ((Vec3f)vec); }
-inline void drawPointCross( const Vec3d& vec, double sz        ){drawPointCross((Vec3f)vec,sz); }
+inline void drawPointCross( Renderer* r, const Vec3d& vec, double sz){drawPointCross(r, (Vec3f)vec,sz); }
 inline void drawVecInPos  ( const Vec3d& v,   const Vec3d& pos ){drawVecInPos((Vec3f)v,(Vec3f)pos); }
 inline void drawLine      ( const Vec3d& p1,  const Vec3d& p2  ){drawLine ((Vec3f)p1,(Vec3f)p2); }
 inline void drawArrow     ( const Vec3d& p1,  const Vec3d& p2, float sz=0.1  ){drawArrow((Vec3f)p1,(Vec3f)p2, sz); }

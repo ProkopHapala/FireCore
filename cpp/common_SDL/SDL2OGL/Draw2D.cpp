@@ -8,12 +8,12 @@
 
 float Draw2D::z_layer = 0.0f; // should be initialized like this http://stackoverflow.com/questions/19136059/namespace-global-variable-losing-value-c
 
-void Draw2D::drawPoint( const Vec2f& vec ){
+/*void Draw2D::drawPoint( const Vec2f& vec ){
 	//opengl1renderer.disable (GL_LIGHTING);
 	opengl1renderer.begin   (GL_POINTS);
 		opengl1renderer.vertex3f( vec.x, vec.y, z_layer );
 	opengl1renderer.end();
-};
+};*/
 
 void Draw2D::drawPointCross( const Vec2f& vec, float d ){
 	//opengl1renderer.disable (GL_LIGHTING);
@@ -65,7 +65,6 @@ void Draw2D::drawTriangle( const Vec2f& p1, const Vec2f& p2, const Vec2f& p3 ){
 
 void Draw2D::drawRectangle( float p1x, float p1y, float p2x, float p2y, bool filled ){
 	if( filled){ opengl1renderer.begin(GL_QUADS); }else{ opengl1renderer.begin(GL_LINE_LOOP); };
-	opengl1renderer.begin   (GL_QUADS);
 		opengl1renderer.vertex3f( p1x, p1y, z_layer );
 		opengl1renderer.vertex3f( p1x, p2y, z_layer );
 		opengl1renderer.vertex3f( p2x, p2y, z_layer );
@@ -76,14 +75,14 @@ void Draw2D::drawRectangle( float p1x, float p1y, float p2x, float p2y, bool fil
 void Draw2D::drawRectangle( const Vec2f& p1, const Vec2f& p2, bool filled ){
 	drawRectangle( p1.x, p1.y, p2.x, p2.y, filled );
 };
-
+/*
 void Draw2D::drawPoint_d( const Vec2d& vec ){
 	Vec2f vec_;    convert( vec, vec_ ); drawPoint     ( vec_ );
 };
 
 void Draw2D::drawPointCross_d ( const Vec2d& vec, double d         ){
 	Vec2f vec_;    convert( vec, vec_ ); drawPointCross( vec_, (float)d);
-};
+};*/
 
 void Draw2D::drawVec_d( const Vec2d& vec ){
 	Vec2f vec_;
@@ -155,7 +154,7 @@ void Draw2D::drawArc_d( const Vec2d& center_, float radius, float a0, float a1, 
 };
 
 
-
+/*
 void Draw2D::drawRotRect( Vec2d pos, Vec2d rot, Vec2d sz ){
     Vec2d rotT; rotT.set_perp(rot);
     Vec2d p =  pos + rot*(sz.a*-0.5) + rotT*(sz.b*-0.5);
@@ -280,7 +279,7 @@ void Draw2D::drawPolarFunc( double x0, double y0, double fscale, int n, double p
 			opengl1renderer.vertex3f( (float)( x0 + fscale*x ), (float)(y0 + fscale*y), z_layer );
 		}
 		opengl1renderer.end();
-};
+};*/
 
 
 void Draw2D::plot( int n, float dx, double * ys ){
@@ -347,7 +346,7 @@ void Draw2D::plot_O( int n, double * xs, double * ys, double sz, int ncirc ){
 	}
 	opengl1renderer.end();
 };
-
+/*
 void Draw2D::drawFunc( float xmin, float xmax, int n, Func1d func ){
     opengl1renderer.begin(GL_LINE_STRIP);
     float dx = (xmax-xmin)/n;
@@ -379,7 +378,7 @@ void Draw2D::drawFuncDeriv( float xmin, float xmax, float d, int n, Func1d func 
         opengl1renderer.vertex3f( x, dy, z_layer );
     }
     opengl1renderer.end();
-};
+};*/
 
 void Draw2D::drawGrid( float xmin, float ymin, float xmax, float ymax, float dx, float dy ){
     opengl1renderer.begin(GL_LINES);
@@ -447,7 +446,7 @@ void Draw2D::drawSimplex( float x, float y, bool s, float step ){
     };
     opengl1renderer.end( );
 };
-
+/*
 void Draw2D::drawSimplexGrid( int n, float step ){
     //opengl1renderer.color3f(0.1f,0.1f,0.1f);
     opengl1renderer.begin( GL_LINES );
@@ -480,7 +479,7 @@ void Draw2D::drawSimplexGrid( int n, float step ){
     }
 
     opengl1renderer.end();
-}
+}*/
 
 void Draw2D::drawShape( const Vec2d& pos, const Vec2d& rot, int shape ){
 	opengl1renderer.pushMatrix();
@@ -498,7 +497,7 @@ void Draw2D::drawShape( const Vec2d& pos, const Vec2d& rot, int shape ){
 
 // ===== image and sprite-text
 
-
+/*
 void Draw2D::renderImage( int itex, const Rect2d& rec ){
     opengl1renderer.enable( GL_TEXTURE_2D );
     opengl1renderer.bindTexture( GL_TEXTURE_2D, itex );
@@ -511,7 +510,7 @@ void Draw2D::renderImage( int itex, const Rect2d& rec ){
         opengl1renderer.texCoord2f( 0.0f, 0.0f ); opengl1renderer.vertex3f( rec.a.x, rec.b.y, 3.0f );
     opengl1renderer.end();
     opengl1renderer.bindTexture(GL_TEXTURE_2D, 0); // this is not most efficient but safe
-};
+};*/
 
 /*
 void Draw2D::drawString( const char * str, int imin, int imax, float x, float y, float sz, int itex ){
@@ -607,7 +606,7 @@ void Draw2D::drawText( const char * str, Vec2d pos, Vec2d sz, int fontTex, float
         Draw::drawText ( str, fontTex, textSize, block_size );
     opengl1renderer.popMatrix();
 };
-
+/*
 void Draw2D::drawTextBillboard( const char * str, int nchar, Vec2d pos, int fontTex, float textSize ){
     opengl1renderer.disable    ( GL_LIGHTING   );
     opengl1renderer.disable    ( GL_DEPTH_TEST );
@@ -635,7 +634,7 @@ void Draw2D::drawTextBillboard( const char * str, int nchar, Vec2d pos, int font
     opengl1renderer.popMatrix();
 };
 
-/*
+
 void Draw2D::drawText( const char * str, const Vec2d& pos, float angle, int fontTex, float textSize, int istart, int iend ){
     opengl1renderer.disable    ( GL_LIGHTING   );
     opengl1renderer.disable    ( GL_DEPTH_TEST );
@@ -651,7 +650,7 @@ void Draw2D::drawText( const char * str, const Vec2d& pos, float angle, int font
         Draw::drawText( str, fontTex, textSize, istart, iend );
     opengl1renderer.popMatrix();
 };
-*/
+
 
 void Draw2D::draw_attached_vec( const Vec2d& pos, const Vec2d& rot, const Vec2d& pos0, const Vec2d& rot0, const Vec2d& lengths ){
 	Vec2d gpos, grot;
@@ -692,6 +691,6 @@ void Draw2D::drawTriaglePatchBas( Vec2i i0, Vec2i n, int NX, int* basins, double
         }
         opengl1renderer.end();
     }
-}
+}*/
 
 //}; // namespace Draw2D

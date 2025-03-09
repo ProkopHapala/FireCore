@@ -110,24 +110,13 @@ void GUITextInput::onText( SDL_Event e ){
 //    class GUIAbstractPanel
 // ==============================
 
-void GUIAbstractPanel::view  ( ){
-    // Draw2D::drawPointCross({xmin,ymax},5);
-    opengl1renderer.callList( gllist );
-}
-
 void GUIAbstractPanel::moveBy(int dx, int dy){
     xmin += dx; ymin += dy;
     xmax += dx; ymax += dy;
-    redraw=true; //tryRender();
 }
 
 void GUIAbstractPanel::moveTo(int x, int y){
     moveBy(x-xmin,y-ymin);
-    //xmax = x+(xmax-xmin);
-    //ymax = y+(ymax-ymin);
-    //xmin = x;
-    //ymin = y;
-    //redraw=true; tryRender();
 }
 
 void GUIAbstractPanel::render(){
@@ -139,29 +128,13 @@ void GUIAbstractPanel::render(){
     Draw2D::drawRectangle ( xmin, ymin, xmax, ymax, true );
     if(caption.length()>0) {
         Draw  ::setRGB( textColor );
-        //int nchr = strlen(caption);
-        //Draw2D::drawText( caption, nchr, {xmin, ymax-fontSizeDef*2},  0.0, GUI_fontTex, fontSizeDef );
         Draw2D::drawText( caption.c_str(), caption.length(), {xmin, ymax-fontSizeDef*2},  0.0, GUI_fontTex, fontSizeDef );
     }
-    redraw=false;
-}
-
-void GUIAbstractPanel::tryRender(){
-    if(!redraw) return;
-    if(gllist)opengl1renderer.deleteLists(gllist,1);
-    gllist=opengl1renderer.genLists(1);
-    opengl1renderer.newList( gllist, GL_COMPILE );
-    render();
-    opengl1renderer.endList();
-    redraw=false;
 }
 
 void GUIAbstractPanel::initPanel( const std::string& caption_, int xmin_, int ymin_, int xmax_, int ymax_ ){
-    //printf( "GUIAbstractPanel::initPanel(%s,pmin(%i,%i),pmax(%i,%i)) \n", caption_.c_str(), xmin_, ymin_, xmax_, ymax_ );
     caption=caption_;
     xmin=xmin_,ymin=ymin_,xmax=xmax_,ymax=ymax_;
-    redraw = true;
-    //val_text = new char[nCharMax];
 }
 
 GUIAbstractPanel* GUIAbstractPanel::onMouse( int x, int y, const SDL_Event& event, GUI& gui ){ if( check(x,y) ){return this; }else{ return NULL; } };
@@ -187,17 +160,7 @@ bool GUIPanel::checkValue(bool bExit, bool bWarn){
     return ret;
 }
 
-void GUIPanel::view ( ){
-    //tryRender();
-    //Draw2D::drawPointCross({xmin,ymax},5);
-    opengl1renderer.callList( gllist );
-    int nch0 = caption.length();
-    int xcur = xmin + (nch0+curPos)*fontSizeDef;
-    Draw2D::drawLine   ( {xcur, ymin}, {xcur, ymin+fontSizeDef*2} );
-}
-
 void GUIPanel::render(){
-    //printf( "GUIPanel(%s)::render() this(%li) p0(%i,%i) p2(%i,%i) isSlider(%i) isButton(%i) \n", caption.c_str(), (long)this, ymin, xmax, ymax, isSlider, isButton );
     if(isInt){ value=getIntVal(); }
     opengl1renderer.disable( GL_LIGHTING   );
     opengl1renderer.disable( GL_DEPTH_TEST );
@@ -228,7 +191,9 @@ void GUIPanel::render(){
         Draw  ::setRGB( textColor );
         Draw2D::drawText( inputText.c_str(), nch, {xmin+fontSizeDef*nch0, ymin}, 0.0, GUI_fontTex, fontSizeDef );
     }
-    redraw=false;
+
+    int xcur = xmin + (nch0+curPos)*fontSizeDef;
+    Draw2D::drawLine( {xcur, ymin}, {xcur, ymin+fontSizeDef*2} );
 }
 
 void GUIPanel::onKeyDown( const SDL_Event&  e, GUI& gui  ){
@@ -238,16 +203,16 @@ void GUIPanel::onKeyDown( const SDL_Event&  e, GUI& gui  ){
     if ( SDL_GetModState() & KMOD_CTRL ){
         switch (e.key.keysym.sym ){
             case SDLK_v:
-                inputText = SDL_GetClipboardText(); redraw = true; break;
+                inputText = SDL_GetClipboardText(); break;
             case SDLK_c:
-                SDL_SetClipboardText( inputText.c_str() ); redraw = true; break;
+                SDL_SetClipboardText( inputText.c_str() ); break;
         }
     }else{
         switch (e.key.keysym.sym ){
             case SDLK_BACKSPACE:
-                if ( (inputText.length() > 0) && (curPos>0) ){ inputText.erase(curPos-1,1); curPos--; redraw = true;} break;
+                if ( (inputText.length() > 0) && (curPos>0) ){ inputText.erase(curPos-1,1); curPos--; } break;
             case SDLK_DELETE:
-                if ( (inputText.length() > 0) && (curPos<inputText.length()) ){ inputText.erase(curPos,1); redraw = true;} break;
+                if ( (inputText.length() > 0) && (curPos<inputText.length()) ){ inputText.erase(curPos,1); } break;
             case SDLK_LEFT:
                 if(curPos>0) curPos--; break;
             case SDLK_RIGHT:
@@ -256,10 +221,9 @@ void GUIPanel::onKeyDown( const SDL_Event&  e, GUI& gui  ){
             case SDLK_KP_ENTER: doIt = true; [[fallthrough]];
             case SDLK_TAB:
                 try{
-                    float f;
+                    float f=0.0;
                     if(isInt){ f=getIntVal(); }else{ std::stof( inputText.c_str() ); }
                     value=f;
-                    redraw=true;
                 }catch(std::exception const &exc){  
                     //printf("exception:%s\n", exc.what() ); 
                     printf("GUIPanel(%s)::onKeyDown() problem convert inputText(%s) to value(%g) | exception:%s\n", caption.c_str(), inputText.c_str(), value, exc.what() );
@@ -281,7 +245,6 @@ void GUIPanel::onText( const SDL_Event&  e, GUI& gui ){
     //val_text[curPos] = ch;
     //inputText.push_back(ch);
     inputText.insert(curPos,e.text.text); curPos++;
-    redraw = true;
 }
 
 GUIAbstractPanel* GUIPanel::onMouse( int x, int y, const SDL_Event& event, GUI& gui ){
@@ -301,7 +264,6 @@ GUIAbstractPanel* GUIPanel::onMouse( int x, int y, const SDL_Event& event, GUI& 
                 if(bCmdOnSlider) command(this);
                 //sprintf(val_text, "%3.3f", value );
                 //inputText = std::to_string(value);
-                redraw=true;
             }
             if(isButton && (event.button.button==SDL_BUTTON_LEFT ) ){
                 executed=true;
@@ -340,13 +302,11 @@ void MultiPanel::initMulti( const std::string& caption_, int xmin_, int ymin_, i
         subs[i] = new GUIPanel( buf, xmin,yi,xmax,yi+dy, isSlider, isButton,isInt, viewVal, bCmdOnSlider );
         yi-=dy;
     }
-    redraw = true;
 }
 
 void MultiPanel::moveBy(int dx, int dy){
     xmin+=dx; xmax+=dx;
     ymin+=dy; ymax+=dy;
-    redraw=true; //tryRender();
     for(int i=0;i<nsubs;i++){
         subs[i]->moveBy(dx,dy);
     }
@@ -355,13 +315,11 @@ void MultiPanel::moveBy(int dx, int dy){
 void MultiPanel::open(){
     opened = true;
     ymin = ymax - fontSizeDef*2 - dy*nsubs;
-    redraw=true; //tryRender();
 }
 
 void MultiPanel::close(){
     opened = false;
     ymin = ymax - fontSizeDef*2;
-    redraw=true; //tryRender();
 }
 
 void MultiPanel::toggleOpen(){
@@ -369,22 +327,7 @@ void MultiPanel::toggleOpen(){
     //printf( "opened %i \n", opened );
 }
 
-void MultiPanel::view( ){
-    //printf( "MultiPanel::view() opened %i \n", opened );
-    opengl1renderer.callList( gllist );
-    // --- NOTE: we do not need to call view() for subs, because they are already baked into gllist ( see MultiPanel::render() )
-    if(opened){ for(int i=0; i<nsubs; i++){ redraw |= subs[i]->redraw;} }
-    // if(opened){
-    //     for(int i=0; i<nsubs; i++){
-    //         subs[i]->tryRender();
-    //         //subs[i]->view();
-    //     }
-    // }
-    //printf( "MultiPanel::view() END \n" );
-}
-
 void MultiPanel::render( ){
-    //printf( "MultiPanel::render() opened=%i \n", opened );
     nsubs = subs.size();
     GUIAbstractPanel::render();
     if(opened){
@@ -392,7 +335,6 @@ void MultiPanel::render( ){
             subs[i]->render();
         }
     }
-    //printf( "MultiPanel::render() END\n" );
 }
 
 GUIAbstractPanel* MultiPanel::onMouse  ( int x, int y, const SDL_Event& event, GUI& gui ){
@@ -403,7 +345,6 @@ GUIAbstractPanel* MultiPanel::onMouse  ( int x, int y, const SDL_Event& event, G
             nsubs = subs.size();
             for(int i=0; i<nsubs; i++){
                 active = subs[i]->onMouse ( x, y, event, gui );
-                if(subs[i]->redraw) redraw = true;
                 if(active) return active;
             }
         }
@@ -427,24 +368,6 @@ GUIAbstractPanel* MultiPanel::onMouse  ( int x, int y, const SDL_Event& event, G
 
 void CheckBoxList::initCheckBoxList( int xmin_, int ymin_, int xmax_, int dy_){
     xmin=xmin_,ymin=ymin_,xmax=xmax_, dy=dy_; //fontTex=fontTex_;
-    //ymax=ymin + dy*boxes.s + fontSizeDef*2;
-    //int yi = ymax-dy-fontSizeDef*2;
-    redraw = true;
-}
-
-/*
-void CheckBoxList::moveBy(int dx, int dy){
-    xmin+=dx; xmax+=dx;
-    ymin+=dy; ymax+=dy;
-    redraw=true; //tryRender();
-    for(int i=0;i<nsubs;i++){
-        subs[i]->moveBy(dx,dy);
-    }
-};
-*/
-
-void CheckBoxList::view( ){
-    opengl1renderer.callList( gllist );
 }
 
 void CheckBoxList::update(){
@@ -484,7 +407,6 @@ GUIAbstractPanel* CheckBoxList::onMouse  ( int x, int y, const SDL_Event& event,
                 int ibox = (y-ymin)/dy;
                 if( ibox<boxes.size()){
                     boxes[ibox].flip();
-                    redraw=true;
                     ivalchanged=ibox;
                     return active;
                 }
@@ -502,9 +424,7 @@ GUIAbstractPanel* CheckBoxList::onMouse  ( int x, int y, const SDL_Event& event,
 
 void ScisorBox::initScisor( const std::string& caption_, int xmin_, int ymin_, int xmax_, int ymax_ ){
     caption=caption_;
-    //xmin=xmin_,ymin=ymin_,xmax=xmax_,ymax=ymax_; fontTex=fontTex_;
-    xmin=xmin_,ymin=ymin_,xmax=xmax_, ymax=ymax_; //fontTex=fontTex_;
-    redraw = true;
+    xmin=xmin_,ymin=ymin_,xmax=xmax_, ymax=ymax_;
 }
 
 void ScisorBox::apply( ){
@@ -526,17 +446,6 @@ void ScisorBox::render( ){
     }
 }
 
-/*
-void ScisorBox::tryRender( ){
-    if(!redraw) return;
-    gllist=opengl1renderer.genLists(1);
-    opengl1renderer.newList( gllist, GL_COMPILE );
-    render();
-    opengl1renderer.endList();
-    redraw=false;
-};
-*/
-
 GUIAbstractPanel* ScisorBox::onMouse( int x, int y, const SDL_Event&  event, GUI& gui){
     GUIAbstractPanel* active = NULL;
     if( check( x, y ) ){
@@ -556,11 +465,6 @@ GUIAbstractPanel* ScisorBox::onMouse( int x, int y, const SDL_Event&  event, GUI
 
 void CommandList::initCommandList( int xmin_, int ymin_, int xmax_, int dy_){
     xmin=xmin_,ymin=ymin_,xmax=xmax_, dy=dy_; //fontTex=fontTex_;
-    redraw = true;
-}
-
-void CommandList::view( ){
-    opengl1renderer.callList( gllist );
 }
 
 void CommandList::update(){
@@ -569,7 +473,7 @@ void CommandList::update(){
 
 bool CommandList::getKeyb(int key){
     bool doit = (icmdbind !=-1);
-    if( doit ){ commands->rebind( icmdbind, key ); redraw = true; }
+    if( doit ){ commands->rebind( icmdbind, key ); }
     icmdbind = -1;
     return doit;
 }
@@ -615,7 +519,6 @@ GUIAbstractPanel* CommandList::onMouse  ( int x, int y, const SDL_Event& event, 
                 auto& cmds = commands->commands;
                 if( ibox<cmds.size()){
                     icmdbind = ibox;
-                    redraw = true;
                     // ToDo : modify keys
                     // Proble:  we need to capture next key
                 }
@@ -636,17 +539,12 @@ void DropDownList::initList( const std::string& caption_, int xmin_, int ymin_, 
     caption=caption_;
     nSlots=nSlots_,xmin=xmin_,ymin=ymin_,xmax=xmax_;//ymax=ymin+2*fontSizeDef*(nSlots+1);
     ymax=ymin+2*fontSizeDef;
-    redraw = true;
 }
 
 int DropDownList::selectedToStr(char* str){
     //printf( "DropDownList::selectedToStr  %i '%s' \n", iSelected, labels[iSelected].c_str()  );
     return sprintf(str,"%s", labels[iSelected].c_str() );
 }
-
-//void DropDownList ::view ( ){
-//    opengl1renderer.callList( gllist );
-//}
 
 DropDownList* DropDownList::addItem(const std::string& label){
     labels.push_back(label);
@@ -656,13 +554,11 @@ DropDownList* DropDownList::addItem(const std::string& label){
 void DropDownList::open(){
     bOpened = true;
     ymin = ymax - fontSizeDef*2*(nSlots+1);
-    redraw=true; //tryRender();
 }
 
 void DropDownList::close(){
     bOpened = false;
     ymin = ymax - fontSizeDef*2;
-    redraw=true; //tryRender();
 }
 
 void DropDownList ::render(){
@@ -698,17 +594,6 @@ void DropDownList ::render(){
     }
 }
 
-/*
-void DropDownList ::tryRender( ){
-    if(!redraw) return;
-    gllist=opengl1renderer.genLists(1);
-    opengl1renderer.newList( gllist, GL_COMPILE );
-    render();
-    opengl1renderer.endList();
-    redraw=false;
-};
-*/
-
 GUIAbstractPanel* DropDownList::onMouse ( int x, int y, const SDL_Event& event, GUI& gui ){
     //printf( "DropDownList::onMouse x,y, %i(%i..%i) %i(%i..%i) \n", x,xmin,xmax,  y,ymin,ymax );
     //if( event.type == SDL_MOUSEWHEEL ){ printf( " SDL_MOUSEWHEEL !!! \n" ); };
@@ -733,13 +618,11 @@ GUIAbstractPanel* DropDownList::onMouse ( int x, int y, const SDL_Event& event, 
                 }else{
                     open();
                 }
-                redraw = true;
             }
         }else if( event.type == SDL_MOUSEWHEEL ){
             //printf( " SDL_MOUSEWHEEL \n" );
             if     (event.wheel.y < 0){ iItem0 = _min( iItem0+1, (int)labels.size()-nSlots ); }
             else if(event.wheel.y > 0){ iItem0 = _max( iItem0-1, 0                    ); }
-            redraw = true;
         }
         return this;
     }
@@ -751,17 +634,9 @@ GUIAbstractPanel* DropDownList::onMouse ( int x, int y, const SDL_Event& event, 
 //     class  TreeView
 // ==============================
 
-
-void TreeView::view( ){
-    opengl1renderer.callList( gllist );
-    Draw  ::setRGB( 0x00FF00 );
-    Draw2D::drawRectangle ( xmin+1, ymax-(iSelected+2)*(fontSizeDef*2), xmax-1, ymax-(iSelected+1)*(fontSizeDef*2), false );
-}
-
 void TreeView::initTreeView( const std::string& caption_, int xmin_, int ymin_, int xmax_, int nSlots_ ){
     caption=caption_;
     nSlots=nSlots_,xmin=xmin_,ymin=ymin_,xmax=xmax_,ymax=ymin+2*fontSizeDef*(nSlots+1);
-    redraw = true;
 }
 
 void TreeView::render( ){
@@ -783,6 +658,8 @@ void TreeView::render( ){
         Draw2D::drawText( str.c_str(), str.length(), {xmin+2*fontSizeDef*tr->content.level, yoff}, 0.0, GUI_fontTex, fontSizeDef );
         yoff-=2*fontSizeDef;
     }
+    Draw  ::setRGB( 0x00FF00 );
+    Draw2D::drawRectangle ( xmin+1, ymax-(iSelected+2)*(fontSizeDef*2), xmax-1, ymax-(iSelected+1)*(fontSizeDef*2), false );
 }
 
 void TreeView::updateLines( TreeViewTree& node, int level ){
@@ -812,7 +689,6 @@ GUIAbstractPanel* TreeView::onMouse( int x, int y, const SDL_Event& event, GUI& 
                 if(event.button.clicks > 1 ){ // double click
                     if(iSelected<lines.size()){
                         lines[iSelected]->content.open^=true;
-                        redraw=true;
                     }
                 }
                 gui.dragged = this;
@@ -843,9 +719,6 @@ void TableView::initTableView( Table* table_, const std::string& caption_, int x
     for(int i=0; i<nchs.size(); i++){ nchs[i]=nch; x+=nchpix; xs[i+1]=x; }
     xmax = xmin + nchpix       *(jmax-j0);
     ymax = ymin + fontSizeDef*2*(imax-i0);
-    //printf( " i (%i,%i) j (%i,%i) \n", i0, imax,    j0, jmax   );
-    //printf( " x (%i,%i) y (%i,%i) \n", xmin, xmax,  ymin, ymax );
-    redraw = true;
 }
 
 void TableView::render(){
@@ -913,7 +786,6 @@ GUIAbstractPanel* TableView::onMouse( int x, int y, const SDL_Event& event, GUI&
                 //printf( "TableView mouse select i,j %i %i\n", i, j );
                 gui.bKeyEvents = false;
                 SDL_StartTextInput();
-                redraw = true;
             }
         }else if( event.type == SDL_MOUSEWHEEL ){
             //printf( " SDL_MOUSEWHEEL \n" );
@@ -921,7 +793,6 @@ GUIAbstractPanel* TableView::onMouse( int x, int y, const SDL_Event& event, GUI&
             if     (event.wheel.y < 0){ i0 = _min( i0+1, table->n-ni ); }
             else if(event.wheel.y > 0){ i0 = _max( i0-1, 0           ); }
             imax=i0+ni;
-            redraw = true;
         }
         return this;
     }

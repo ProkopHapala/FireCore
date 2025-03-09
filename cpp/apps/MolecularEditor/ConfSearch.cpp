@@ -10,6 +10,7 @@
 #include <math.h>
 
 
+#include "Draw3D_Molecular.h"
 #include "testUtils.h"
 
 #include <SDL2/SDL.h>
@@ -88,7 +89,7 @@ class AppMolecularEditor2 : public AppSDL2OGL_3D {
     DynamicOpt  opt;
 
     int     fontTex;
-    int     ogl_sph;
+    GLMesh ogl_sph;
 
     char str[256];
 
@@ -204,11 +205,7 @@ AppMolecularEditor2::AppMolecularEditor2( int& id, int WIDTH_, int HEIGHT_ ) : A
 
     fontTex = makeTexture( "common_resources/dejvu_sans_mono_RGBA_inv.bmp" );
 
-    ogl_sph = opengl1renderer.genLists(1);
-    opengl1renderer.newList( ogl_sph, GL_COMPILE );
-        Draw3D::drawSphere_oct( 3, 1.0, {0.0,0.0,0.0} );
-        //Draw3D::drawSphere_oct( 3, 0.25, {0.0,0.0,0.0} );
-    opengl1renderer.endList();
+    ogl_sph = Draw3D::makeSphereOgl(5, 1.0);
 
     //qCamera.set( 0.0,0.0,0.0,1.0 );  // bottom view
     //qCamera.set( 0.0,0.0,1.0,0.0 );  // bottom view
@@ -536,16 +533,10 @@ void AppMolecularEditor2::draw(){
     opengl1renderer.enable(GL_DEPTH_TEST);
     opengl1renderer.shadeModel(GL_SMOOTH);
     for(int i=0; i<world.natoms; i++){
-        //opengl1renderer.color3f(0.0f,0.0f,0.0f); Draw3D::drawPointCross(world.apos[i],0.2);
-        //opengl1renderer.color3f(1.0f,0.0f,0.0f); Draw3D::drawVecInPos(world.aforce[i]*1000.0,world.apos[i]);
-
         opengl1renderer.enable(GL_LIGHTING);
-        Mat3d mat;
-        mat.setOne();
-        mat.mul( atomSize*( params.atypes[world.atypes[i]].RvdW - 1.0 ) );
-        //opengl1renderer.color3f(0.8f,0.8f,0.8f);
+        float sz = atomSize*( params.atypes[world.atypes[i]].RvdW - 1.0 );
         Draw::setRGB( params.atypes[world.atypes[i]].color );
-        Draw3D::drawShape(ogl_sph,world.apos[i],mat);
+        renderer->drawMesh(&ogl_sph, (Vec3f)world.apos[i], Quat4fIdentity, {sz, sz, sz});
         opengl1renderer.disable(GL_LIGHTING);
     }
     opengl1renderer.disable(GL_LIGHTING);

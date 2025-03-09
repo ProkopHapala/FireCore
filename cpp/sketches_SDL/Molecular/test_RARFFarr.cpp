@@ -240,18 +240,6 @@ TestAppRARFF::TestAppRARFF( int& id, int WIDTH_, int HEIGHT_ ) : AppSDL2OGL_3D( 
     ff.qrots[0]=Quat4dIdentity;
     ff.cleanAux();
     ((Quat4i*)ff.bondCaps)[0]=capsBrush;
-
-    //ff.resize(15);
-
-    //ff.tryResize( );
-
-    /*
-    ogl_sph = opengl1renderer.genLists(1);
-    opengl1renderer.newList(ogl_sph, GL_COMPILE);
-        //Draw3D::drawSphere_oct( 3, 1.0, Vec3d{0.0,0.0,0.0} );
-        Draw3D::drawSphere_oct( 3, 0.2, Vec3d{0.0,0.0,0.0} );
-    opengl1renderer.endList();
-    */
 }
 
 void TestAppRARFF::draw(){
