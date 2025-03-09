@@ -174,28 +174,28 @@ void Plot2D::drawAxes(){
     }
 }
 
-int Plot2D::renderFrameworks(){
+int Plot2D::renderFrameworks(Renderer* r){
     if( glObj ) opengl1renderer.deleteLists(glObj,1);
     glObj = opengl1renderer.genLists(1);
     opengl1renderer.newList(glObj, GL_COMPILE);
-    if( (clrBg&0xFF000000) ){ Draw::setRGBA( clrBg ); Draw2D::drawRectangle_d( axBounds.a, axBounds.b, true ); }
+    if( (clrBg&0xFF000000) ){ Draw2D::drawRectangle_d( r, axBounds.a, axBounds.b, COL2VEC(clrBg) ); }
     drawAxes();
     opengl1renderer.endList( );
     redraw=false;
     return glObj;
 }
 
-int Plot2D::render(){
+int Plot2D::render(Renderer* r){
     for( DataLine2D* line : lines ){ line->render(); }
     redraw=false;
-    return renderFrameworks();
+    return renderFrameworks(r);
 }
 
-int Plot2D::tryRender(bool bUpdate){
+int Plot2D::tryRender(Renderer* r, bool bUpdate){
     for( DataLine2D* line : lines ){ line->tryRender(); }
     if(redraw){
         if(bUpdate) update();
-        renderFrameworks();
+        renderFrameworks(r);
         redraw=false;
     }
     return glObj;

@@ -223,38 +223,35 @@ class Console{ public:
         return true;
     }
 
-    void draw(){
+    void draw(Renderer* r){
         int w,h;
         SDL_GetWindowSize(window, &w, &h);
-        //printf( "Console::draw() w %i h %i \n", w, h );
-        opengl1renderer.color3f(0.0f,0.0f,0.0f); Draw2D::drawRectangle( 0,h-fontSizeDef*2, w,h );
-        //opengl1renderer.color3f(0.0f,1.0f,0.0f); Draw2D::drawRectangle( w/2,h/2, w,h );   // just debugging
-        opengl1renderer.color3f(0.0f,1.0f,0.0f);
-        //Draw2D::drawRectangle( w/2,h*2, w,h, false );
+
+        Draw2D::drawRectangle( r, 0,h-fontSizeDef*2, w,h, {0, 0, 0} );
+        
         float xcur = fontSizeDef*ncur;
-        Draw2D::drawRectangle( xcur,h, xcur+fontSizeDef,h-fontSizeDef*2, false );
+        Draw2D::drawRectangle( r, xcur,h, xcur+fontSizeDef,h-fontSizeDef*2, {0, 1, 0} );
         opengl1renderer.color3f(1.0f,1.0f,1.0f);
-        //Draw2D::drawString( line, {0,0}, 0.1, 0 );
-        //Draw2D::drawText( caption.c_str(), caption.length(), {xmin, ymax-fontSizeDef*2}, 0.0, GUI_fontTex, fontSizeDef );
+
         Draw2D::drawText( line           , nend            , {0   , h   -fontSizeDef*2}, 0.0, fontTex, fontSizeDef );
         if(iHistory>=0){
             const char* s = history.get(iHistory);
             int n = strlen(s);
             //printf( "Console::draw() history[%i] history.size(%i) n=%i @%li `%s`\n", iHistory, history.size(), n, (long)s, s );
-            //opengl1renderer.color3f(0.3f,0.3f,0.3f); Draw2D::drawRectangle( 0,h+fontSizeDef*2, n*fontSizeDef,h-fontSizeDef*4, true );
+            //opengl1renderer.color3f(0.3f,0.3f,0.3f); Draw2D::drawRectangle( r, 0,h+fontSizeDef*2, n*fontSizeDef,h-fontSizeDef*4, true );
             //opengl1renderer.color3f(1.0f,1.0f,1.0f); Draw2D::drawText( s, n, {0, h-fontSizeDef*4}, 0.0, fontTex, fontSizeDef );
-            opengl1renderer.color3f(0.0f,0.0f,0.5f); Draw2D::drawRectangle( 0,h, n*fontSizeDef,h-fontSizeDef*2, true );
+            Draw2D::drawRectangle( r, 0,h, n*fontSizeDef,h-fontSizeDef*2, {0, 0, 0.5} );
             opengl1renderer.color3f(1.0f,1.0f,1.0f); Draw2D::drawText( s, n, {0, h-fontSizeDef*2}, 0.0, fontTex, fontSizeDef );
         }else
         if( (imatch>=-1)&&(imatchn>0)){
-            //opengl1renderer.color3f(0.0f,0.0f,1.0f); Draw2D::drawRectangle( 0,h-fontSizeDef*2, n*fontSizeDef,h-(1+imatchn)*fontSizeDef*2, true );
+            //opengl1renderer.color3f(0.0f,0.0f,1.0f); Draw2D::drawRectangle( r, 0,h-fontSizeDef*2, n*fontSizeDef,h-(1+imatchn)*fontSizeDef*2, true );
             //opengl1renderer.color3f(1.0f,1.0f,1.0f);
             for(int i=0; i<imatchn; i++){
                 //printf( "Console::draw(imatch..imatchn) imatch=%i, i=%i, quick_tab.table.size(%i) \n", imatch, i, quick_tab.table.size() );
                 const char* s = quick_tab.table[imatch+i].c_str();
                 int n = strlen(s);
                 //printf( "Console::draw() quick_tab[%i] quick_tab.size(%i) n=%i @%li `%s`\n", imatch, quick_tab.table.size(), n, (long)s, s );
-                opengl1renderer.color3f(0.5f,0.0f,0.5f); Draw2D::drawRectangle( 0,h-(1+i)*fontSizeDef*2, n*fontSizeDef,h-(2+i)*fontSizeDef*2, true );
+                Draw2D::drawRectangle( r, 0,h-(1+i)*fontSizeDef*2, n*fontSizeDef,h-(2+i)*fontSizeDef*2, {0.5, 0, 0.5} );
                 opengl1renderer.color3f(1.0f,1.0f,1.0f); Draw2D::drawText( s, n, {0, h-(2+i)*fontSizeDef*2}, 0.0, fontTex, fontSizeDef );
             }
         }

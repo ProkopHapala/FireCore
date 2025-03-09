@@ -270,7 +270,7 @@ TestAppRARFF::TestAppRARFF( int& id, int WIDTH_, int HEIGHT_ ) : AppSDL2OGL_3D( 
     plot1.lines.push_back( line_Er  );
     plot1.lines.push_back( line_Fr  );
     plot1.lines.push_back( line_Frn );
-    plot1.render();
+    plot1.render(renderer);
 
     Vec3d p0 = Vec3d{0.1, 0.2,0.3};
     Vec3d dp = Vec3d{1.0, 0.0,0.0};   dp.normalize();
@@ -298,7 +298,7 @@ TestAppRARFF::TestAppRARFF( int& id, int WIDTH_, int HEIGHT_ ) : AppSDL2OGL_3D( 
         //printf( "line_Er %i x %g y %g dy %g dyn %g \n", i, line_Er->xs[i], line_Er->ys[i], line_Fr->ys[i], line_Frn->ys[i] );
     }
     //exit(0);
-    plot1.render();
+    plot1.render(renderer);
 
 
     // PLOT FOCRE FIELD 1D

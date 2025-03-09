@@ -547,7 +547,7 @@ void TestAppCLCFSF::viewPlots(){
         //plot1.bAxes=false;
         plot1.bTicks=false;
         plot1.update();
-        plot1.render();
+        plot1.render(renderer);
         //opengl1renderer.callList( ogl );
         //opengl1renderer.disable(GL_DEPTH_TEST);
         plot1.view();

@@ -480,7 +480,7 @@ void TestAppFireCoreVisual::draw(){
 
 void TestAppFireCoreVisual::drawHUD(){
     opengl1renderer.disable ( GL_LIGHTING );
-    gui.draw();
+    gui.draw(renderer);
 }
 
 void TestAppFireCoreVisual::drawingHex(double z0){

@@ -19,11 +19,11 @@ void TiledView::printIndexes( ){
     }
 }
 
-void TiledView::draw( float xmin, float ymin, float xmax, float ymax ){
+void TiledView::draw( Renderer* r, float xmin, float ymin, float xmax, float ymax ){
     checkRender( xmin, ymin, xmax, ymax );
-    draw_raw   ( xmin, ymin, xmax, ymax );
+    draw_raw   ( r, xmin, ymin, xmax, ymax );
     //printf( "TiledView::draw %3.3f %3.3f %3.3f %3.3f  \n", xmin, ymin, xmax, ymax );
-    //opengl1renderer.color3f( 0.2f, 0.9f, 0.2f ); Draw2D::drawRectangle( xmin, ymin, xmax, ymax, false );
+    //opengl1renderer.color3f( 0.2f, 0.9f, 0.2f ); Draw2D::drawRectangle( r, xmin, ymin, xmax, ymax, false );
 };
 
 
@@ -119,7 +119,7 @@ bool TiledView::checkRender( float xmin, float ymin, float xmax, float ymax ){
     return false;
 }
 
-void TiledView::draw_raw( float xmin, float ymin, float xmax, float ymax ){
+void TiledView::draw_raw( Renderer* r, float xmin, float ymin, float xmax, float ymax ){
     int ix0 = getIx( xmin );  int iy0 = getIy( ymin );
     int ix1 = getIx( xmax );  int iy1 = getIy( ymax );
     for( int iy=iy0; iy<=iy1; iy++ ){
@@ -133,6 +133,6 @@ void TiledView::draw_raw( float xmin, float ymin, float xmax, float ymax ){
         }
     }
     //printf( "TiledView::draw %3.3f %3.3f %3.3f %3.3f  \n", xmin, ymin, xmax, ymax );
-    opengl1renderer.color3f( 0.2f, 0.9f, 0.2f ); Draw2D::drawRectangle( xmin, ymin, xmax, ymax, false );
+    Draw2D::drawRectangle( r, xmin, ymin, xmax, ymax, {0.2, 0.9, 0.2} );
 };
 

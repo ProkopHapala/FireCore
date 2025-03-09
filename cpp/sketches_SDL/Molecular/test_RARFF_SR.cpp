@@ -328,7 +328,7 @@ void TestAppRARFF::makePotentialPlot(){
     plot1.lines.push_back( line_Er  );
     plot1.lines.push_back( line_Fr  );
     plot1.lines.push_back( line_Fn  );
-    plot1.render();
+    plot1.render(renderer);
 }
 
 void TestAppRARFF::visualize_cells(){

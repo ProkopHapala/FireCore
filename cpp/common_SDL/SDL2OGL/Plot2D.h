@@ -123,9 +123,9 @@ class Plot2D{ public:
     void update();
     void drawTexts();
     void drawAxes();
-    int  render();
-    int  renderFrameworks();
-    int  tryRender(bool bUpdate=true);
+    int  render(Renderer* r);
+    int  renderFrameworks(Renderer* r);
+    int  tryRender(Renderer* r, bool bUpdate=true);
     void view  (bool bAxes=true);
     void init  ();
     //void xsharingLines(int nl, int np);

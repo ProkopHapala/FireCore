@@ -5,7 +5,6 @@
 
 #include <math.h>
 #include <cstdlib>
-#include <cstddef>
 #include <stdint.h>
 #include <vector>
 
@@ -33,6 +32,7 @@ class Renderer {
 
         GLuint defualtProgram = -1;
         GLint mvpMatrixLocation = -1;
+        GLint uColorLocation = -1;
         
         GLint current_program = 0;
         GLuint current_gl_array_buffer = 0;
@@ -46,7 +46,7 @@ class Renderer {
         void loadProgram(GLuint program);
         void bindBuffer(GLenum target, GLuint buffer);
         void drawMeshMVP(GLMesh* mesh, Mat4f mvp);
-        void drawMesh(GLMesh* mesh, Vec3f position, Quat4f rotation=Quat4fIdentity, Vec3f scale={1, 1, 1});
+        void drawMesh(GLMesh* mesh, Vec3f position=Vec3fZero, Quat4f rotation=Quat4fIdentity, Vec3f scale={1, 1, 1});
 };
 
 class OpenGL1Renderer {

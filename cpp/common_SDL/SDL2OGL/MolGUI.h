@@ -1662,7 +1662,7 @@ Vec3d MolGUI::showNonBond( char* s, Vec2i b, bool bDraw ){
 
 void MolGUI::drawHUD(){
     opengl1renderer.disable ( GL_LIGHTING );
-    gui.draw();
+    gui.draw(renderer);
 
     opengl1renderer.pushMatrix();
     if(W->bCheckInvariants){
@@ -1733,7 +1733,7 @@ void MolGUI::drawHUD(){
     mouse_pix = ((Vec2f){ 2*mouseX/float(HEIGHT) - ASPECT_RATIO,
                           2*mouseY/float(HEIGHT) - 1      });// *(1/zoom);
 
-    if(bConsole) console.draw();
+    if(bConsole) console.draw(renderer);
 }
 
 void MolGUI::drawingHex(double z0){

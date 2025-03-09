@@ -444,7 +444,7 @@ TestAppCLCFSF::TestAppCLCFSF( int& id, int WIDTH_, int HEIGHT_ ) : AppSDL2OGL_3D
     DEBUG
     */
 
-    plot1.render();
+    plot1.render(renderer);
 
 }
 

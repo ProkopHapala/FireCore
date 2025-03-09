@@ -1,7 +1,10 @@
 
-#include "Renderer.h"
+#include "GLMesh.h"
 
 #include "Draw.h"
+#include "Renderer.h"
+#include "Vec3.h"
+#include <GLES2/gl2.h>
 #include "Draw2D.h"  // THE HEADER
 
 //namespace Draw2D{
@@ -62,18 +65,40 @@ void Draw2D::drawTriangle( const Vec2f& p1, const Vec2f& p2, const Vec2f& p3 ){
 	opengl1renderer.end();
 };
 
+static GLMesh makeRectMesh(){
+    GLMesh m;
+    m.addVertex( {0, 0, 0} );
+    m.addVertex( {0, 1, 0} );
+    m.addVertex( {1, 1, 0} );
+    m.addVertex( {1, 0, 0} );
+    return m;
+}
+static GLMesh rectMesh = makeRectMesh();
+void Draw2D::drawRectangle( Renderer* r, float p1x, float p1y, float p2x, float p2y, Vec3f color, bool filled){ // TODO: create a list of drawn rects and them draw them at once using instancing
+    rectMesh.drawMode = filled ? GL_QUADS : GL_LINE_LOOP;
+    rectMesh.color = color;
 
-void Draw2D::drawRectangle( float p1x, float p1y, float p2x, float p2y, bool filled ){
-	if( filled){ opengl1renderer.begin(GL_QUADS); }else{ opengl1renderer.begin(GL_LINE_LOOP); };
-		opengl1renderer.vertex3f( p1x, p1y, z_layer );
-		opengl1renderer.vertex3f( p1x, p2y, z_layer );
-		opengl1renderer.vertex3f( p2x, p2y, z_layer );
-		opengl1renderer.vertex3f( p2x, p1y, z_layer );
-	opengl1renderer.end();
+    const float WIDTH = 1820; // TODO: make these not constant
+    const float HEIGHT = 980;
+
+    p1x = 2*p1x/WIDTH - 1;
+    p2x = 2*p2x/WIDTH - 1;
+
+    p1y = 2*p1y/HEIGHT - 1;
+    p2y = 2*p2y/HEIGHT - 1;
+
+    Mat4f mvp;
+    mvp.array[ 0] = p2x-p1x;  mvp.array[ 4] = 0;        mvp.array[ 8] = 0;  mvp.array[12] = p1x;
+    mvp.array[ 1] = 0;        mvp.array[ 5] = p2y-p1y;  mvp.array[ 9] = 0;  mvp.array[13] = p1y;
+    mvp.array[ 2] = 0;        mvp.array[ 6] = 0;        mvp.array[10] = 0;  mvp.array[14] = z_layer;
+    mvp.array[ 3] = 0;        mvp.array[ 7] = 0;        mvp.array[11] = 0;  mvp.array[15] = 1;
+
+    opengl1renderer.disable(GL_DEPTH_TEST);
+    r->drawMeshMVP(&rectMesh, mvp);
 };
 
-void Draw2D::drawRectangle( const Vec2f& p1, const Vec2f& p2, bool filled ){
-	drawRectangle( p1.x, p1.y, p2.x, p2.y, filled );
+void Draw2D::drawRectangle( Renderer* r, const Vec2f& p1, const Vec2f& p2, Vec3f color, bool filled ){
+	drawRectangle( r, p1.x, p1.y, p2.x, p2.y, color, filled );
 };
 /*
 void Draw2D::drawPoint_d( const Vec2d& vec ){
@@ -102,8 +127,8 @@ void Draw2D::drawLine_d( const Vec2d& p1,  const Vec2d& p2  ){
 	Vec2f p1_,p2_; convert( p1, p1_ );   convert( p2, p2_ );   drawLine( p1_, p2_);
 };
 
-void Draw2D::drawRectangle_d( const Vec2d& p1,  const Vec2d& p2, bool filled ){
-	Vec2f p1_,p2_; convert( p1, p1_ );   convert( p2, p2_ );   drawRectangle( p1_, p2_, filled );
+void Draw2D::drawRectangle_d( Renderer* r, const Vec2d& p1,  const Vec2d& p2, Vec3f color, bool filled ){
+	Vec2f p1_,p2_; convert( p1, p1_ );   convert( p2, p2_ );   drawRectangle( r, p1_, p2_, color, filled );
 };
 
 void Draw2D::drawTriangle_d( const Vec2d& p1,  const Vec2d& p2, const Vec2d& p3 ){

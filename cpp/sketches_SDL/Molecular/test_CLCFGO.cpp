@@ -451,7 +451,7 @@ TestAppCLCFSF::TestAppCLCFSF( int& id, int WIDTH_, int HEIGHT_ ) : AppSDL2OGL_3D
 
     plot1.scaling.y=0.05;
     plot1.update();
-    plot1.render();
+    plot1.render(renderer);
 
     oglSph=Draw::list(oglSph);
     Draw3D::drawSphere_oct(4,1.0,Vec3d{0.,0.,0.});
@@ -694,7 +694,7 @@ void TestAppCLCFSF::viewPlots(){
         //plot1.bAxes=false;
         plot1.bTicks=false;
         plot1.update();
-        plot1.render();
+        plot1.render(renderer);
         //opengl1renderer.callList( ogl );
         //opengl1renderer.disable(GL_DEPTH_TEST);
         plot1.view();

@@ -236,14 +236,14 @@ TestAppRARFF::TestAppRARFF( int& id, int WIDTH_, int HEIGHT_ ) : AppSDL2OGL_3D( 
     //printf( " test_eFF exits ... \n" ); exit(0);
 
     oglSph=Draw::list(oglSph);
-    Draw3D::drawSphere_oct(3,1.0d,Vec3d{0.,0.,0.});
+    Draw3D::drawSphere_oct(3,1.0,Vec3d{0.,0.,0.});
     opengl1renderer.endList();
 
     plot1.init();
     plot1.fontTex = fontTex;
     plot1.add( new DataLine2D( 200, -10.0, 0.1, 0xFF0000FF, "Vatom" ) );
     plot1.update();
-    plot1.render();
+    plot1.render(renderer);
     plot1.view();
 
 }
@@ -327,7 +327,7 @@ void TestAppRARFF::draw(){
         plot1.bAxes=false;
         plot1.bTicks=false;
         plot1.update();
-        plot1.render();
+        plot1.render(renderer);
         plot1.view();
     }
 

@@ -17,6 +17,7 @@ public:
 private:
     std::vector<vertex> vertices;
 
+    GLenum usage = GL_STATIC_DRAW;
     GLuint vbo = 0;
     bool vbo_sync = true;
 
@@ -26,10 +27,10 @@ private:
     }
 
 public:
-    GLenum drawMode = GL_TRIANGLES;
+    GLenum drawMode;
     Vec3f color = {1.0f, 1.0f, 1.0f};
 
-    GLMesh(GLenum drawMode=GL_TRIANGLES): drawMode(drawMode) {};
+    GLMesh(GLenum drawMode=GL_TRIANGLES, GLenum usage=GL_STATIC_DRAW): drawMode(drawMode), usage(usage) {};
 
     void addVertex(Vec3f position, Vec3f normal={0, 0, 0}, Vec3f color={1, 1, 1}){
         vertex v;

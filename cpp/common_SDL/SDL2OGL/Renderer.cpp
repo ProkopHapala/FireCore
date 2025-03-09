@@ -3,10 +3,11 @@
 #include "Camera.h"
 #include "GLMesh.h"
 #include "Mat4.h"
-#include <GLES2/gl2.h>
 #include <cstdio>
 #include <functional>
 #include <vector>
+#include <cstddef>
+#include "GLES2.h"
 
 
 // Vertex shader
@@ -32,11 +33,13 @@ static const char* fragmentShaderSource = R"(
     varying vec3 fColor;
     varying vec3 fNormal;
 
+    uniform vec3 uColor;
+
     void main() {
-        if (fColor == vec3(1.0, 1.0, 1.0)){
-            gl_FragColor = vec4(fNormal, 1.0);
+        if (fNormal == vec3(0.0, 0.0, 0.0)){
+            gl_FragColor = vec4(fColor*uColor, 1.0);
         }else{
-            gl_FragColor = vec4(fColor, 1.0);
+            gl_FragColor = vec4(fNormal, 1.0);
         }
     }
 )";
@@ -131,6 +134,7 @@ void Renderer::loadProgram(GLuint program){
     glUseProgram(program);
 
     mvpMatrixLocation = glGetUniformLocation(program, "uMVPMatrix");
+    uColorLocation = glGetUniformLocation(program, "uColor");
     current_program = program;
 }
 
@@ -152,6 +156,7 @@ void Renderer::bindBuffer(GLenum target, GLuint buffer){
     }
 
     glBindBuffer(target, buffer);
+    // TODO: use a vao, move to GLMesh
     glVertexAttribPointer(SHADER_ATTRIB_POSITION, 3, GL_FLOAT, GL_FALSE, sizeof(GLMesh::vertex), (void*)offsetof(GLMesh::vertex, position));
     glVertexAttribPointer(SHADER_ATTRIB_NORMAL,   3, GL_FLOAT, GL_FALSE, sizeof(GLMesh::vertex), (void*)offsetof(GLMesh::vertex, normal));
     glVertexAttribPointer(SHADER_ATTRIB_COLOR,    3, GL_FLOAT, GL_FALSE, sizeof(GLMesh::vertex), (void*)offsetof(GLMesh::vertex, color));
@@ -162,11 +167,10 @@ void Renderer::drawMeshMVP(GLMesh* mesh, Mat4f mvp){
     
     loadProgram(defualtProgram);
     glUniformMatrix4fv(mvpMatrixLocation, 1, GL_FALSE, mvp.array);
+    glUniform3f(uColorLocation, mesh->color.x, mesh->color.y, mesh->color.z);
 
     glDrawArrays(mesh->drawMode, 0, mesh->vertexCount());
 }
-
-
 
 
 

@@ -417,5 +417,10 @@ inline void PrintStackTrace() {
     location; \
 })
 
+#define glUniform3f(location, v0, v1, v2) do { \
+    glUniform3f(location, v0, v1, v2); \
+    GL_CHECK_ERROR(); \
+} while(0)
+
 #endif
 #endif

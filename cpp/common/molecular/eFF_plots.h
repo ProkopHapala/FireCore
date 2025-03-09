@@ -5,6 +5,10 @@
 /// @ingroup Electron_Forcefield
 
 #include "MMFFBuilder.h"
+#include "Plot2D.h"
+#include "Renderer.h"
+#include "Draw3D.h"
+#include "eFF.h"
 
 // ===========================================
 // ============ Checking
@@ -252,7 +256,7 @@ int genFieldMap( int ogl, Vec2i ns, const Vec3d* ps, const double* Es, double vm
 
 
 
-void makePlots( Plot2D& plot, EFF& ff ){
+void makePlots( Renderer* r, Plot2D& plot, EFF& ff ){
 
     int ielem = 1;
     double QQae = -1.0;
@@ -381,7 +385,7 @@ void makePlots( Plot2D& plot, EFF& ff ){
     plot.update();
     plot.autoAxes(0.5,0.5);
     printf( "axBound %g,%g %g,%g \n", plot.axBounds.a.x, plot.axBounds.a.y, plot.axBounds.b.x, plot.axBounds.b.y );
-    plot.render();
+    plot.render(r);
 
 }
 

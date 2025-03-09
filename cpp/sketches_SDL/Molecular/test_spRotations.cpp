@@ -343,7 +343,7 @@ TestAppSp3Space::TestAppSp3Space( int& id, int WIDTH_, int HEIGHT_ ) : AppSDL2OG
     //DEBUG
     exit(0);
 
-    plot1.render();
+    plot1.render(renderer);
 
     p2.z=2.0;
     ogl=Draw::list(ogl);

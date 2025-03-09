@@ -1,5 +1,9 @@
 
 #include "GUI.h" // THE HEADER
+#include "Draw2D.h"
+#include "Draw3D.h"
+#include <cstdint>
+#include <sys/types.h>
 
 //Vec2i GUI_mouse_old_pos = (Vec2i){0,0};
 //GUIAbstractPanel* GUI_mouse_panel = 0;
@@ -38,13 +42,13 @@ void GUITextInput::view3D( const Vec3d& pos, int fontTex, float textSize ){
     opengl1renderer.popMatrix();
 }
 
-void GUITextInput::viewHUD( const Vec2i& pos, int fontTex, bool bBack ){
+void GUITextInput::viewHUD( Renderer* r, const Vec2i& pos, int fontTex, bool bBack ){
     opengl1renderer.pushMatrix();
         opengl1renderer.translatef( pos.x, pos.y, 0.0 );
         //Draw::billboardCam();
         //Draw::drawText( inputText.c_str(), fontTex, textSize, 0, 0 );
         int nl = inputText.size();
-        if(bBack)Draw2D::drawRectangle( (Vec2f){pos.x,pos.y}, (Vec2f){pos.x+nl*fontSizeDef, pos.y+fontSizeDef*2}, true );
+        if(bBack)Draw2D::drawRectangle( r, (Vec2f){pos.x,pos.y}, (Vec2f){pos.x+nl*fontSizeDef, pos.y+fontSizeDef*2}, COL2VEC(0xA0A0A0) );
         Draw::drawText( inputText.c_str(), fontTex, fontSizeDef, 0 );
         Draw3D::drawLine( Vec3f{curPos*fontSizeDef,0.0,0.0}, Vec3f{curPos*fontSizeDef,fontSizeDef*2,0.0} );
     opengl1renderer.popMatrix();
@@ -119,13 +123,12 @@ void GUIAbstractPanel::moveTo(int x, int y){
     moveBy(x-xmin,y-ymin);
 }
 
-void GUIAbstractPanel::render(){
+void GUIAbstractPanel::render(Renderer* r){
     //printf( "GUIAbstractPanel::render() p0(%i,%i) p2(%i,%i) \n", xmin, ymin, xmax, ymax );
     opengl1renderer.disable   ( GL_LIGHTING    );
     opengl1renderer.disable   ( GL_DEPTH_TEST  );
     opengl1renderer.shadeModel( GL_FLAT        );
-    Draw  ::setRGB( bgColor );
-    Draw2D::drawRectangle ( xmin, ymin, xmax, ymax, true );
+    Draw2D::drawRectangle( r, xmin, ymin, xmax, ymax, COL2VEC(bgColor) );
     if(caption.length()>0) {
         Draw  ::setRGB( textColor );
         Draw2D::drawText( caption.c_str(), caption.length(), {xmin, ymax-fontSizeDef*2},  0.0, GUI_fontTex, fontSizeDef );
@@ -160,24 +163,20 @@ bool GUIPanel::checkValue(bool bExit, bool bWarn){
     return ret;
 }
 
-void GUIPanel::render(){
+void GUIPanel::render(Renderer* r){
     if(isInt){ value=getIntVal(); }
     opengl1renderer.disable( GL_LIGHTING   );
     opengl1renderer.disable( GL_DEPTH_TEST );
     opengl1renderer.shadeModel( GL_FLAT    );
-    Draw  ::setRGB( bgColor );
-    Draw2D::drawRectangle ( xmin, ymin, xmax, ymax, true );
+    Draw2D::drawRectangle( r, xmin, ymin, xmax, ymax, COL2VEC(bgColor) );
 
     // Border ?
-    //Draw  ::setRGB( textColor ); Draw2D::drawRectangle ( xmin, ymin, xmax, ymax, false );
+    //Draw  ::setRGB( textColor ); Draw2D::drawRectangle( r, xmin, ymin, xmax, ymax, false );
 
     if(isSlider){
-        Draw::setRGB(barColor);
         float dx = val2x(value);
         if( (dx<0)||(dx>(xmax-xmin)) ){ printf( "GUIPanel()::render() va(%f) out of range(0,%g) \n", caption.c_str(), dx, (xmax-xmin) ); }
-        Draw2D::drawRectangle ( xmin, ymin, xmin+dx, ymax, true );
-        //Draw2D::drawRectangle ( xmin, ymax-2*fontSizeDef, xmin+val2x(value), ymax, true );
-        //Draw2D::drawRectangle ( xmin, ymin, xmin+val2x(value), ymax-2*fontSizeDef, true );
+        Draw2D::drawRectangle( r, xmin, ymin, xmin+dx, ymax, COL2VEC(barColor) );
     }
     Draw  ::setRGB( textColor );
     int nch0 = caption.length();
@@ -187,7 +186,7 @@ void GUIPanel::render(){
     int nch = inputText.length();
     if( nch > 0 ){
         //Draw  ::setRGB( 0xFFFFFFFF );
-        //Draw2D::drawRectangle( xmin+nch0*fontSizeDef, ymax-2*fontSizeDef, xmax, ymax, true );
+        //Draw2D::drawRectangle( r, xmin+nch0*fontSizeDef, ymax-2*fontSizeDef, xmax, ymax, true );
         Draw  ::setRGB( textColor );
         Draw2D::drawText( inputText.c_str(), nch, {xmin+fontSizeDef*nch0, ymin}, 0.0, GUI_fontTex, fontSizeDef );
     }
@@ -327,12 +326,12 @@ void MultiPanel::toggleOpen(){
     //printf( "opened %i \n", opened );
 }
 
-void MultiPanel::render( ){
+void MultiPanel::render(Renderer* r){
     nsubs = subs.size();
-    GUIAbstractPanel::render();
+    GUIAbstractPanel::render(r);
     if(opened){
         for(int i=0; i<nsubs; i++){
-            subs[i]->render();
+            subs[i]->render(r);
         }
     }
 }
@@ -375,23 +374,23 @@ void CheckBoxList::update(){
     syncRead();
 }
 
-void CheckBoxList::render( ){
+void CheckBoxList::render(Renderer* r){
     opengl1renderer.disable( GL_LIGHTING );
     opengl1renderer.disable( GL_DEPTH_TEST);
     opengl1renderer.shadeModel( GL_FLAT );
     update();
 
     int y0 = ymin+boxes.size()*dy;
-    Draw  ::setRGB( bgColor );
-    Draw2D::drawRectangle ( xmin, y0, xmax, y0+dy, true );
+    Draw2D::drawRectangle( r, xmin, y0, xmax, y0+dy, COL2VEC(bgColor) );
     Draw  ::setRGB( textColor );
     Draw2D::drawText( caption.c_str(), caption.length(), {xmin, ymax-fontSizeDef*2}, 0.0,  GUI_fontTex, fontSizeDef );
     //Draw2D::drawText( caption.c_str(), 0, {xmin, y0}, 0.0, GUI_fontTex, fontSizeDef );
     for(int i=0; i<boxes.size(); i++){
         const CheckBox& box = boxes[i];
-        if(box.val){ Draw::setRGB(checkColor); }else{ Draw::setRGB(bgColor); }
+        uint32_t col;
+        if(box.val){ col = checkColor; }else{ col = bgColor; }
         int y=ymin+i*dy;
-        Draw2D::drawRectangle ( xmin, y, xmax, y+dy, true );
+        Draw2D::drawRectangle( r, xmin, y, xmax, y+dy, COL2VEC(col) );
         Draw  ::setRGB( textColor );
         Draw2D::drawText( box.label.c_str(), 0, {xmin, y}, 0.0, GUI_fontTex, fontSizeDef );
     }
@@ -432,12 +431,11 @@ void ScisorBox::apply( ){
     opengl1renderer.scissor(xmin,ymin,xmax-xmin,ymax-ymin);
 }
 
-void ScisorBox::render( ){
+void ScisorBox::render(Renderer* r){
     opengl1renderer.disable   ( GL_LIGHTING    );
     opengl1renderer.disable   ( GL_DEPTH_TEST  );
     opengl1renderer.shadeModel( GL_FLAT        );
-    Draw  ::setRGB( textColor );
-    Draw2D::drawRectangle ( xmin, ymin, xmax, ymax, false );
+    Draw2D::drawRectangle( r, xmin, ymin, xmax, ymax, COL2VEC(textColor) );
     if(caption.length()>0) {
         //Draw  ::setRGB( textColor );
         //int nchr = strlen(caption);
@@ -478,7 +476,7 @@ bool CommandList::getKeyb(int key){
     return doit;
 }
 
-void CommandList::render( ){
+void CommandList::render(Renderer* r){
     opengl1renderer.disable( GL_LIGHTING );
     opengl1renderer.disable( GL_DEPTH_TEST);
     opengl1renderer.shadeModel( GL_FLAT );
@@ -489,8 +487,9 @@ void CommandList::render( ){
         const Command& cmd = cmds[i];
         //if(box.val){ Draw::setRGB(checkColor); }else{ Draw::setRGB(bgColor); }
         int y=ymin+i*dy;
-        if(i==icmdbind){ Draw::setRGB( modColor ); }else{ Draw::setRGB( bgColor ); };
-        Draw2D::drawRectangle ( xmin, y, xmax, y+dy, true );
+        uint32_t col;
+        if(i==icmdbind){ col=modColor; }else{ col=bgColor; };
+        Draw2D::drawRectangle( r, xmin, y, xmax, y+dy, COL2VEC(col) );
         Draw  ::setRGB( textColor );
         if( (cmd.key>=32)&&(cmd.key<128) ){ sprintf( stmp, " '%c' %s" , (char)cmd.key, cmd.name.c_str() ); }
         else                              { sprintf( stmp, "#%03i %s",       cmd.key, cmd.name.c_str() ); }
@@ -561,19 +560,17 @@ void DropDownList::close(){
     ymin = ymax - fontSizeDef*2;
 }
 
-void DropDownList ::render(){
+void DropDownList ::render(Renderer* r){
     opengl1renderer.disable   ( GL_LIGHTING    );
     opengl1renderer.disable   ( GL_DEPTH_TEST  );
     opengl1renderer.shadeModel( GL_FLAT        );
-    Draw  ::setRGB( bgColor );
-    Draw2D::drawRectangle ( xmin, ymin, xmax, ymax, true );
+    Draw2D::drawRectangle( r, xmin, ymin, xmax, ymax, COL2VEC(bgColor) );
     Draw  ::setRGB( textColor );
     //bOpened = false;
     //bOpened = true;
     if(bOpened){
-        Draw  ::setRGB( 0x00FF00 );
         int icur = iSelected-iItem0;
-        if((icur>=0)&&(icur<nSlots)) Draw2D::drawRectangle ( xmin, ymax-(icur+2)*(fontSizeDef*2), xmax, ymax-(icur+1)*(fontSizeDef*2), true );
+        if((icur>=0)&&(icur<nSlots)) Draw2D::drawRectangle( r, xmin, ymax-(icur+2)*(fontSizeDef*2), xmax, ymax-(icur+1)*(fontSizeDef*2), COL2VEC(0x00FF00) );
         Draw  ::setRGB( textColor );
         if(caption.length()>0) {
             Draw2D::drawText( caption.c_str(), caption.length(), {xmin, ymax-fontSizeDef*2},  0.0, GUI_fontTex, fontSizeDef );
@@ -639,14 +636,14 @@ void TreeView::initTreeView( const std::string& caption_, int xmin_, int ymin_, 
     nSlots=nSlots_,xmin=xmin_,ymin=ymin_,xmax=xmax_,ymax=ymin+2*fontSizeDef*(nSlots+1);
 }
 
-void TreeView::render( ){
+void TreeView::render(Renderer* r){
     //if(content.open){
         updateLines();
         ymax=ymin+2*fontSizeDef*(nSlots+1);
     //}else{
     //    ymax=ymin+2*fontSizeDef;
     //}
-    GUIAbstractPanel::render();
+    GUIAbstractPanel::render(r);
     //opengl1renderer.color3f(0.0,0.0,1.0); Draw2D::drawPointCross({xmax,ymax},5);
     //opengl1renderer.color3f(1.0,0.0,0.0); Draw2D::drawPointCross({xmin,ymin},5);
     Draw  ::setRGB( textColor );
@@ -658,8 +655,7 @@ void TreeView::render( ){
         Draw2D::drawText( str.c_str(), str.length(), {xmin+2*fontSizeDef*tr->content.level, yoff}, 0.0, GUI_fontTex, fontSizeDef );
         yoff-=2*fontSizeDef;
     }
-    Draw  ::setRGB( 0x00FF00 );
-    Draw2D::drawRectangle ( xmin+1, ymax-(iSelected+2)*(fontSizeDef*2), xmax-1, ymax-(iSelected+1)*(fontSizeDef*2), false );
+    Draw2D::drawRectangle( r, xmin+1, ymax-(iSelected+2)*(fontSizeDef*2), xmax-1, ymax-(iSelected+1)*(fontSizeDef*2), COL2VEC(0x00FF00) );
 }
 
 void TreeView::updateLines( TreeViewTree& node, int level ){
@@ -721,12 +717,11 @@ void TableView::initTableView( Table* table_, const std::string& caption_, int x
     ymax = ymin + fontSizeDef*2*(imax-i0);
 }
 
-void TableView::render(){
+void TableView::render(Renderer* r){
     opengl1renderer.disable( GL_LIGHTING );
     opengl1renderer.disable( GL_DEPTH_TEST);
     opengl1renderer.shadeModel( GL_FLAT );
-    Draw  ::setRGB( bgColor );
-    Draw2D::drawRectangle( xmin, ymin, xmax, ymax, true );
+    Draw2D::drawRectangle( r, xmin, ymin, xmax, ymax, COL2VEC(bgColor) );
     //int ncol = table->columns.size();
     //int ncol=jmax-j0;
     // ==== lines
@@ -738,11 +733,8 @@ void TableView::render(){
     t=xmin; for(int j=j0; j<jmax;j++){ opengl1renderer.vertex3f(t,ymin,0); opengl1renderer.vertex3f(t,ymax,0); t+=fontSizeDef*nchs[j-j0]; }
     opengl1renderer.end();
     //
-    opengl1renderer.color3f(0,1.0,0);
-    //int x=fontSizeDef*2;
-    //int y=fontSizeDef*2;
     if( (i>=i0)&&(i<imax)&&(j>=j0)&&(j<jmax) ){
-        Draw2D::drawRectangle( xmin+xs[j]-xs[j0], ymax+(i0-i)*2*fontSizeDef, xmin+xs[j+1]-xs[j0], ymax+(i0-i-1)*2*fontSizeDef, false );
+        Draw2D::drawRectangle( r, xmin+xs[j]-xs[j0], ymax+(i0-i)*2*fontSizeDef, xmin+xs[j+1]-xs[j0], ymax+(i0-i-1)*2*fontSizeDef, COL2VEC(0x00FF00) );
     }
     // ==== text
     Draw  ::setRGB( textColor );
@@ -848,20 +840,17 @@ GUIAbstractPanel* GUI::onEvent( int mouseX, int mouseY, const SDL_Event& event )
     return active;
 }
 
-void GUI::draw(){
-    //printf( "GUI::draw() npanels=%i \n", panels.size() );
-    //opengl1renderer.lineWidth(1.0);
-    //opengl1renderer.lineWidth(0.5);
+void GUI::draw(Renderer* r){
     opengl1renderer.disable(GL_LINE_SMOOTH);
     opengl1renderer.disable(GL_LIGHTING);
     opengl1renderer.disable(GL_DEPTH_TEST);
-    for(GUIAbstractPanel* panel: panels){ if(focused!=panel)panel->draw(); }
+    for(GUIAbstractPanel* panel: panels){ if(focused!=panel)panel->draw(r); }
     if(focused){
-        focused->draw();
-        if(bTextEvents){ opengl1renderer.color3f(1.0f,0.0f,0.0f); }else{Draw::setRGB(focused->textColor); }
-        Draw2D::drawRectangle(focused->xmin,focused->ymin,focused->xmax,focused->ymax,false);
+        focused->draw(r);
+        uint32_t col;
+        if(bTextEvents){ col=0xFF0000; }else{col = focused->textColor; }
+        Draw2D::drawRectangle( r,focused->xmin,focused->ymin,focused->xmax,focused->ymax,COL2VEC(col));
     }
-    //printf( "GUI::draw() END \n" );
 }
 
 void GUI::layoutRow( int xmin, int ymin, int xspace ){

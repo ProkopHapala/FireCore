@@ -344,7 +344,7 @@ TestAppRARFF::TestAppRARFF( int& id, int WIDTH_, int HEIGHT_ ) : AppSDL2OGL_3D( 
     plot1.bAxes  = true;
     plot1.bTicks = true;
     plot1.update();
-    plot1.render();
+    plot1.render(renderer);
     plot1.view();
 
     console.init( 256, window );
@@ -468,7 +468,7 @@ void TestAppRARFF::draw(){
         // plot1.bTicks=false;
         //plot1.update();
         //plot1.render();
-        plot1.tryRender();
+        plot1.tryRender(renderer);
         plot1.view();
     }
 
@@ -515,7 +515,7 @@ void TestAppRARFF::draw(){
 
 
 void TestAppRARFF::drawHUD(){
-    gui.draw();
+    gui.draw(renderer);
 
     opengl1renderer.pushMatrix();
     opengl1renderer.translatef( 10.0,HEIGHT-20.0,0.0 );
@@ -529,7 +529,7 @@ void TestAppRARFF::drawHUD(){
     Draw::drawText( tmpstr, fontTex, fontSizeDef, {100,20} );
     opengl1renderer.popMatrix();
 
-    if(bConsole) console.draw();
+    if(bConsole) console.draw(renderer);
 
 }
 

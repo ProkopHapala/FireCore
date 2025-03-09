@@ -174,7 +174,7 @@ void TestAppSp3Space::draw(){
 
 
 
-    Mat4d f; f.set(.0d);
+    Mat4d f; f.set(.0);
 
     double K = 1.1;
 
