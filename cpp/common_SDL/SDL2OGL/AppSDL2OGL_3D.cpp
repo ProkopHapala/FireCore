@@ -127,7 +127,7 @@ void AppSDL2OGL_3D::drawCrosshair( float sz ){
 
 void AppSDL2OGL_3D::drawMuseSelectionBox(){
     //opengl1renderer.lineWidth(3.0);
-    //opengl1renderer.color3f(1.0,0.5,0.0); Draw3D::drawPointCross( ray0_start, 0.1 );    
+    //opengl1renderer.color3f(1.0,0.5,0.0); Draw3D::drawPointCross( renderer, ray0_start, 0.1 );    
     //opengl1renderer.lineWidth(1.0);
     Vec3f ray0_;        cam.rotMat().dot_to( (Vec3f)ray0, ray0_);
     Vec3f ray0_start_;  cam.rotMat().dot_to( (Vec3f)ray0_start, ray0_start_);

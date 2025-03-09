@@ -379,8 +379,8 @@ void TestAppSp3Space::draw(){
     opengl1renderer.color3f(0.0,0.0,0.0);
 
     opengl1renderer.color3f(0.0,0.0,0.0);
-    Draw3D::drawPointCross(p1,0.1);
-    Draw3D::drawPointCross(p2,0.1);
+    Draw3D::drawPointCross( renderer,p1,0.1);
+    Draw3D::drawPointCross( renderer,p2,0.1);
     //Draw3D::drawLine(p1,p2);
 
     //Draw3D::drawMatInPos( Mat3dIdentity, p1, psi1.p );

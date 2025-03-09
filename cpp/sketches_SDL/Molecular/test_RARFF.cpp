@@ -62,13 +62,13 @@ void drawScalarArray(int n, Vec3d* ps, double* vs, double vmin, double vmax ){
 */
 
 //void drawRigidAtom( const Vec3d& pos, Vec3d* bhs ){
-void drawRigidAtom( RigidAtom& atom ){
+void drawRigidAtom( Renderer* r, RigidAtom& atom ){
     Vec3d bhs[N_BOND_MAX];
 
     //rotateVectors<double>(N_BOND_MAX, atom.qrot, atom.type->bh0s, bhs );
     atom.qrot.rotateVectors(N_BOND_MAX, atom.type->bh0s, bhs, false );
 
-    Draw3D::drawPointCross( atom.pos, 0.1 );
+    Draw3D::drawPointCross( r, atom.pos, 0.1 );
     //for(int i=0; i<N_BOND_MAX; i++){
     for(int i=0; i<atom.type->nbond; i++){
         //printf( "%i (%g,%g,%g)\n", i, type1.bh0s[i].x, type1.bh0s[i].y, type1.bh0s[i].z );
@@ -335,7 +335,7 @@ void TestAppRARFF::draw(){
     double fsc = 0.1;
     double tsc = 0.1;
     for(int i=0; i<ff.natom; i++){
-        opengl1renderer.color3f(1.0,1.0,1.0); drawRigidAtom(ff.atoms[i]);
+        opengl1renderer.color3f(1.0,1.0,1.0); drawRigidAtom(renderer, ff.atoms[i]);
         opengl1renderer.color3f(1.0,0.0,0.0); Draw3D::drawVecInPos( ff.atoms[i].force*fsc, ff.atoms[i].pos  );
         opengl1renderer.color3f(0.0,0.0,1.0); Draw3D::drawVecInPos( ff.atoms[i].torq*tsc,  ff.atoms[i].pos  );
     };

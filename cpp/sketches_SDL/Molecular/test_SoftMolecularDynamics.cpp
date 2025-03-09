@@ -189,7 +189,7 @@ void TestAppSoftMolDyn::draw(){
     */
     repl.eval();
 
-    ray0 = (Vec3d)mouseRay0(); Draw3D::drawPointCross( ray0, 0.1 ); //Draw3D::drawVecInPos( camMat.c, ray0 );
+    ray0 = (Vec3d)mouseRay0(); Draw3D::drawPointCross( renderer, ray0, 0.1 ); //Draw3D::drawVecInPos( camMat.c, ray0 );
     if(ipicked>=0) Draw3D::drawLine( world.apos[ipicked], ray0);
 
 	double F2;

@@ -396,7 +396,7 @@ void TestAppMMFFmini::draw(){
     //ibpicked = world.pickBond( ray0, camMat.c , 0.5 );
 	ray0 = (Vec3d)(cam.rotMat().a*mouse_begin_x + cam.rotMat().b*mouse_begin_y );
     //ray0 = (Vec3d)(cam.rotMat().a*mouse_begin_x + cam.rotMat().b*(HEIGHT-mouse_begin_y));
-    Draw3D::drawPointCross( ray0, 0.1 );        // Mouse Cursor 
+    Draw3D::drawPointCross( renderer, ray0, 0.1 );        // Mouse Cursor 
     //Draw3D::drawVecInPos( camMat.c, ray0 );
     if(ipicked>=0) Draw3D::drawLine( ff.apos[ipicked], ray0); // Mouse Dragging Visualization
     Vec3d ray0_ = ray0;            ray0_.y=-ray0_.y;

@@ -176,7 +176,7 @@ void TestAppRARFF::draw(){
             ff.checkForceTorque(cog,fsum,tqsum);
             //printf( "===== frame %i \n", frameCount );
             printf("fsum %g tqsum %g | cog(%g,%g,%g)\n", fsum.norm(), tqsum.norm(), cog.x,cog.y,cog.z );
-            opengl1renderer.color3f(1,1,1); Draw3D::drawPointCross(cog,0.05);
+            opengl1renderer.color3f(1,1,1); Draw3D::drawPointCross( renderer,cog,0.05);
             opengl1renderer.color3f(1,1,1); Draw3D::drawVecInPos(fsum,cog);
 
             double f2err=0;
@@ -204,7 +204,7 @@ void TestAppRARFF::draw(){
 
     opengl1renderer.color3f(1.,1.,1.);
     for(int ia=0; ia<nff.natoms; ia++){
-        Draw3D::drawPointCross( nff.apos[ia], 0.1 );
+        Draw3D::drawPointCross( renderer, nff.apos[ia], 0.1 );
     }
     opengl1renderer.color3f(0.,0.,0.);
     for(int ib=0; ib<nff.nmask; ib++){
@@ -240,7 +240,7 @@ void TestAppRARFF::draw(){
     // atom centers
     opengl1renderer.color3f(0.,0.,0.);
     for(int i=0; i<ff.natom; i++){
-        //Draw3D::drawPointCross( ff.apos[i], 0.1 );
+        //Draw3D::drawPointCross( renderer, ff.apos[i], 0.1 );
     }
 
     // bonds

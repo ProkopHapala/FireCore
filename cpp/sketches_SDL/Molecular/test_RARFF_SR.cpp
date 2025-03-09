@@ -213,7 +213,7 @@ void TestAppRARFF::draw(){
     if(ff.AccelType==1)visualize_cells();
     visualize_atoms();
     ray0 = (Vec3d)(cam.rotMat().a*mouse_begin_x + cam.rotMat().b*mouse_begin_y);
-    Draw3D::drawPointCross( ray0, 0.1 );
+    Draw3D::drawPointCross( renderer, ray0, 0.1 );
     if(ipicked>=0) Draw3D::drawLine( ff.apos[ipicked], ray0);
     Draw3D::drawAxis( 1.0);
 };
@@ -345,7 +345,7 @@ void TestAppRARFF::visualize_cells(){
             Vec3d p = ff.apos[io];
             //printf( "j %i io %i p(%g,%g,%g) \n", j, io, p.x,p.y,p.z );
             //Draw  ::color_of_hash( 464+645*ic );
-            Draw3D::drawPointCross( p, 0.2 );            
+            Draw3D::drawPointCross( renderer, p, 0.2 );            
         }
     }
 }

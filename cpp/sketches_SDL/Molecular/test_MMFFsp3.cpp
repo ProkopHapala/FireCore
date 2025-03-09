@@ -317,7 +317,7 @@ void TestAppMMFFsp3::draw(){
 
 	//ibpicked = world.pickBond( ray0, camMat.c , 0.5 );
     ray0 = (Vec3d)(cam.rotMat().a*mouse_begin_x + cam.rotMat().b*mouse_begin_y);
-    Draw3D::drawPointCross( ray0, 0.1 );
+    Draw3D::drawPointCross( renderer, ray0, 0.1 );
     //Draw3D::drawVecInPos( camMat.c, ray0 );
     if(ipicked>=0) Draw3D::drawLine( ff.apos[ipicked], ray0);
 

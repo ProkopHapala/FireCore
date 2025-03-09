@@ -54,9 +54,9 @@ void drawEFF( EFF& ff, int oglSph, float fsc=1.0, float Qsz=0.05, float alpha=0.
     bool bF=true; if( fabs(fsc)<1e-100) bF=false;
     for(int i=0; i<ff.na; i++){
         //printf( "apos[%i] (%g,%g,%g)\n", i, ff.apos[i].x, ff.apos[i].y, ff.apos[i].z );
-        //opengl1renderer.color3f(0.0,0.0,0.0); Draw3D::drawPointCross( ff.apos  [i]      , ff.aPars[i].x*Qsz );
+        //opengl1renderer.color3f(0.0,0.0,0.0); Draw3D::drawPointCross( renderer, ff.apos  [i]      , ff.aPars[i].x*Qsz );
         opengl1renderer.color4f(0.0,0.0,0.0, 0.5); Draw3D::drawShape( oglSph, ff.apos[i], Mat3dIdentity*ff.aPars[i].x*Qsz*0.5,  false );
-        //opengl1renderer.color3f(0.0,0.0,0.0); Draw3D::drawPointCross( ff.apos  [i]    , Qsz );
+        //opengl1renderer.color3f(0.0,0.0,0.0); Draw3D::drawPointCross( renderer, ff.apos  [i]    , Qsz );
         if(bF)opengl1renderer.color3f(1.0,0.0,0.0); Draw3D::drawVecInPos  ( ff.aforce[i]*fsc, ff.apos[i] );
         //Draw3D::drawVecInPos(   ff.aforce[i]*fsc, ff.apos[i] );
         //printf( " %i %f %f %f %f  \n", i, ff.aQ[i], ff.apos[i].x,ff.apos[i].y,ff.apos[i].z );
@@ -79,11 +79,11 @@ void drawEFF( EFF& ff, int oglSph, float fsc=1.0, float Qsz=0.05, float alpha=0.
         if(ff.espin[i]>0){ opengl1renderer.color4f(0.0,0.0,1.0, alpha); }else{ opengl1renderer.color4f(1.0,0.0,0.0, alpha); };
         Draw3D::drawShape( oglSph, ff.epos[i], Mat3dIdentity*ff.esize[i],  false );
         opengl1renderer.color3f(1.0,0.0,0.0); Draw3D::drawVecInPos(  ff.eforce[i]*fsc ,ff.epos[i] );
-        //opengl1renderer.color3f(1.0,0.0,0.0); Draw3D::drawPointCross( ff.epos[i], 0.1 );
+        //opengl1renderer.color3f(1.0,0.0,0.0); Draw3D::drawPointCross( renderer, ff.epos[i], 0.1 );
         //Draw3D::drawSphere_oct(3,ff.esize[i],ff.epos[i]);
         //opengl1renderer.color3f(1.,1.,1.); Draw3D::drawVecInPos( ff.eforce  [i], ff.epos[i] );
         //opengl1renderer.color3f(1.,0.,1.); Draw3D::drawVecInPos( DEBUG_fe_ae[i], ff.epos[i] );
-        //Draw3D::drawPointCross( ff.epos  [i], ff.esize[i] );
+        //Draw3D::drawPointCross( renderer, ff.epos  [i], ff.esize[i] );
         //Draw3D::drawVecInPos(   ff.eforce[i]*fsc, ff.epos[i] );
         //Draw3D::drawSphereOctLines( 8, ff.esize[i], ff.epos[i] );
         //sprintf(strtmp,"%i",i);

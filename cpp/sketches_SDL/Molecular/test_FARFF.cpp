@@ -208,7 +208,7 @@ void TestAppFARFF::draw(){
     //printf( "qrot (%g,%g,%g,%g)\n", atom1.qrot.x, atom1.qrot.y, atom1.qrot.z, atom1.qrot.w );
 
     ray0 = (Vec3d)(cam.rotMat().a*mouse_begin_x + cam.rotMat().b*mouse_begin_y);
-    Draw3D::drawPointCross( ray0, 0.1 );
+    Draw3D::drawPointCross( renderer, ray0, 0.1 );
     if(ipicked>=0) Draw3D::drawLine( ff.apos[ipicked], ray0);
 
     opengl1renderer.color3f(1.0,1.0,1.0);
@@ -222,7 +222,7 @@ void TestAppFARFF::draw(){
         //printf( "atom[%i] \n", i );
         if(ff.aconf[i].a==4){ opengl1renderer.color3f(0.5,0.5,0.5); }else{ opengl1renderer.color3f(1.0,1.0,1.0); };
         renderer->drawMesh(&ogl_sph, (Vec3f)ff.apos[i]);
-        opengl1renderer.color3f(0.0,0.0,0.0); Draw3D::drawPointCross(ff.apos[i], 0.1 );
+        opengl1renderer.color3f(0.0,0.0,0.0); Draw3D::drawPointCross( renderer,ff.apos[i], 0.1 );
         //opengl1renderer.color3f(1.0,0.0,0.0); Draw3D::drawVecInPos( ff.aforce[i]*fsc, ff.apos[i]  );
         for(int j=0;j<N_BOND_MAX; j++){
             int io = j + i*N_BOND_MAX;

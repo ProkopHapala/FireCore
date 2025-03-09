@@ -453,7 +453,7 @@ class MolGUI : public AppSDL2OGL_3D { public:
 
             if( gp.fixed ){ 
                 opengl1renderer.color3f( 1.0, 0.0, 0.0 );
-                //Draw3D::drawPointCross( gp.pos, 0.1 );
+                //Draw3D::drawPointCross( renderer, gp.pos, 0.1 );
                 pj = atomsInGrid.get_gpos({ipos.x,   ipos.y,   ipos.z-1}); Draw3D::drawLine( gp.pos, pj );
                 pj = atomsInGrid.get_gpos({ipos.x,   ipos.y,   ipos.z+1}); Draw3D::drawLine( gp.pos, pj );
                 pj = atomsInGrid.get_gpos({ipos.x,   ipos.y-1, ipos.z  }); Draw3D::drawLine( gp.pos, pj );
@@ -462,7 +462,7 @@ class MolGUI : public AppSDL2OGL_3D { public:
                 pj = atomsInGrid.get_gpos({ipos.x+1, ipos.y,   ipos.z  }); Draw3D::drawLine( gp.pos, pj );
             } else { 
                 opengl1renderer.color3f( 0.0, 0.0, 1.0 ); 
-                //Draw3D::drawPointCross( gp.pos, 0.1 );
+                //Draw3D::drawPointCross( renderer, gp.pos, 0.1 );
                 Vec3d pj;
                 bool bfix; 
                 bfix = atomsInGrid.get_gpos2( {ipos.x,   ipos.y,   ipos.z-1}, pj ); if(!bfix) Draw3D::drawLine( gp.pos, pj );
@@ -490,7 +490,7 @@ class MolGUI : public AppSDL2OGL_3D { public:
             // pj = atomsInGrid.get_gpos({ipos.x-1, ipos.y,   ipos.z  }); Draw3D::drawLine( gp.pos, pj );
             // pj = atomsInGrid.get_gpos({ipos.x+1, ipos.y,   ipos.z  }); Draw3D::drawLine( gp.pos, pj );
             
-            //Draw3D::drawPointCross( gp.pos, 0.1 );
+            //Draw3D::drawPointCross( renderer, gp.pos, 0.1 );
         }
     }
 
@@ -1328,7 +1328,7 @@ void MolGUI::draw(){
         if(bDragging){
             drawMuseSelectionBox();
             // //opengl1renderer.lineWidth(3.0);
-            // //opengl1renderer.color3f(1.0,0.5,0.0); Draw3D::drawPointCross( ray0_start, 0.1 );    
+            // //opengl1renderer.color3f(1.0,0.5,0.0); Draw3D::drawPointCross( renderer, ray0_start, 0.1 );    
             // //opengl1renderer.lineWidth(1.0);
             // Vec3f ray0_;        cam.rotMat().dot_to( (Vec3f)ray0, ray0_);
             // Vec3f ray0_start_;  cam.rotMat().dot_to( (Vec3f)ray0_start, ray0_start_);
@@ -1390,7 +1390,7 @@ void MolGUI::draw(){
         Quat4f *gpos=0,*gfw=0,*gup=0; int ng=W->getGroupPose( gpos, gfw, gup );
         if(gpos){
             for(int ig=0; ig<ng; ig++){
-                //Draw::color_of_hash(ig*15467+545); Draw3D::drawPointCross( gpos[ig].f, 2.0);
+                //Draw::color_of_hash(ig*15467+545); Draw3D::drawPointCross( renderer, gpos[ig].f, 2.0);
                 opengl1renderer.color3f(1.0,0.0,0.0); Draw3D::drawVecInPos( gfw[ig].f*5., gpos[ig].f );
                 opengl1renderer.color3f(0.0,1.0,0.0); Draw3D::drawVecInPos( gup[ig].f*5., gpos[ig].f );
                 opengl1renderer.color3f(0.0,0.0,1.0); Draw3D::drawVecInPos( cross(gfw[ig].f,gup[ig].f), gpos[ig].f );
@@ -1742,7 +1742,7 @@ void MolGUI::drawingHex(double z0){
     Vec2d p{p3.x,p3.y};
     double off=1000.0;
     bool s = ruler.simplexIndex( p+(Vec2d){off,off}, ip, dp );
-    //ruler.nodePoint( ip, p );    opengl1renderer.color3f(1.,1.,1.); Draw3D::drawPointCross(  {p.x,p.y, 5.0}, 0.5 );
+    //ruler.nodePoint( ip, p );    opengl1renderer.color3f(1.,1.,1.); Draw3D::drawPointCross( renderer,  {p.x,p.y, 5.0}, 0.5 );
     if(s){opengl1renderer.color3f(1.,0.2,1.);}else{opengl1renderer.color3f(0.2,1.0,1.);}
     ruler.tilePoint( ip, s, p ); Draw3D::drawPointCross( renderer, {p.x-off,p.y-off, z0}, 0.2 );
     

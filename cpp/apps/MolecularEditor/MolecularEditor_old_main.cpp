@@ -215,7 +215,7 @@ void MolecularEditorApp::draw(){
             //rot[i].toMatrix_unitary( rotmat );
             //printf( "%i   (%3.3f,%3.3f,%3.3f) (%3.3f,%3.3f,%3.3f,%3.3f)\n", i,  world.pos[i].x,world.pos[i].y,world.pos[i].z,   world.rot[i].x,world.rot[i].y,world.rot[i].z,world.rot[i].w  );
             world.rot[i].toMatrix( rotmat );
-            opengl1renderer.color3f(0.0f,0.0f,0.0f); Draw3D::drawPointCross(world.pos[i],1.0);
+            opengl1renderer.color3f(0.0f,0.0f,0.0f); Draw3D::drawPointCross( renderer,world.pos[i],1.0);
             Draw3D::toGLMat( world.pos[i], rotmat, glMat ); // somehow not working
             //Draw3D::toGLMat( {0.0,0.0,0.0}, rotmat, glMat );
             opengl1renderer.multMatrixf( glMat );
@@ -253,8 +253,8 @@ void MolecularEditorApp::draw(){
             gpj.add( world.pos[j] );
 
             Draw3D::drawLine(  gpi, gpj );
-            Draw3D::drawPointCross(gpi,0.5);
-            Draw3D::drawPointCross(gpj,0.5);
+            Draw3D::drawPointCross( renderer,gpi,0.5);
+            Draw3D::drawPointCross( renderer,gpj,0.5);
 
             //printf( "%i (%i,%i)  (%3.3f,%3.3f,%3.3f)   (%3.3f,%3.3f,%3.3f)\n" , il, i,j,   li.posi.x, li.posi.y, li.posi.z, li.posj.x, li.posj.y, li.posj.z );
             //printf( "%i          (%3.3f,%3.3f,%3.3f)   (%3.3f,%3.3f,%3.3f)\n" , il, gpi.x, gpi.y, gpi.z,   gpj.x,gpj.y,gpj.z);

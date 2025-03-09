@@ -449,7 +449,7 @@ void TestAppFireCoreVisual::draw(){
 
     // --- Mouse Interaction / Visualization
 	ray0 = (Vec3d)(cam.rotMat().a*mouse_begin_x + cam.rotMat().b*mouse_begin_y );
-    Draw3D::drawPointCross( ray0, 0.1 );        // Mouse Cursor 
+    Draw3D::drawPointCross( renderer, ray0, 0.1 );        // Mouse Cursor 
     if(ipicked>=0) Draw3D::drawLine( ff.apos[ipicked], ray0); // Mouse Dragging Visualization
     Vec3d ray0_ = ray0;            ray0_.y=-ray0_.y;
     Vec3d ray0_start_=ray0_start;  ray0_start_.y=-ray0_start_.y;
@@ -473,7 +473,7 @@ void TestAppFireCoreVisual::draw(){
     }
 
     if(useGizmo){
-        gizmo.draw();
+        gizmo.draw(renderer);
     }
     if(bHexDrawing)drawingHex(5.0);
 };
@@ -489,9 +489,9 @@ void TestAppFireCoreVisual::drawingHex(double z0){
     Vec2d p{p3.x,p3.y};
     double off=1000.0;
     bool s = ruler.simplexIndex( p+(Vec2d){off,off}, ip, dp );
-    //ruler.nodePoint( ip, p );    opengl1renderer.color3f(1.,1.,1.); Draw3D::drawPointCross(  {p.x,p.y, 5.0}, 0.5 );
+    //ruler.nodePoint( ip, p );    opengl1renderer.color3f(1.,1.,1.); Draw3D::drawPointCross( renderer,  {p.x,p.y, 5.0}, 0.5 );
     if(s){opengl1renderer.color3f(1.,0.2,1.);}else{opengl1renderer.color3f(0.2,1.0,1.);}
-    ruler.tilePoint( ip, s, p ); Draw3D::drawPointCross(  {p.x-off,p.y-off, z0}, 0.2 );
+    ruler.tilePoint( ip, s, p ); Draw3D::drawPointCross( renderer,  {p.x-off,p.y-off, z0}, 0.2 );
     
     bool bLine=true;
     if(bDrawHexGrid){

@@ -331,7 +331,7 @@ void AppMolecularEditor2::draw(){
 	//ibpicked = world.pickBond( ray0, camMat.c , 0.5 );
 
     ray0 = (Vec3d)(cam.rotMat().a*mouse_begin_x + cam.rotMat().b*mouse_begin_y);
-    Draw3D::drawPointCross( ray0, 0.1 );
+    Draw3D::drawPointCross( renderer, ray0, 0.1 );
     //Draw3D::drawVecInPos( camMat.c, ray0 );
     if(ipicked>=0) Draw3D::drawLine( world.apos[ipicked], ray0);
 
@@ -402,7 +402,7 @@ void AppMolecularEditor2::draw(){
     opengl1renderer.enable(GL_DEPTH_TEST);
     opengl1renderer.shadeModel(GL_SMOOTH);
     for(int i=0; i<world.natoms; i++){
-        //opengl1renderer.color3f(0.0f,0.0f,0.0f); Draw3D::drawPointCross(world.apos[i],0.2);
+        //opengl1renderer.color3f(0.0f,0.0f,0.0f); Draw3D::drawPointCross( renderer,world.apos[i],0.2);
         opengl1renderer.color3f(1.0f,0.0f,0.0f); Draw3D::drawVecInPos(world.aforce[i]*30.0,world.apos[i]);
 
         //opengl1renderer.callList( ogl_sph );

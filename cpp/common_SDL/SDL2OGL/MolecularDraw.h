@@ -28,8 +28,8 @@ void drawMapedPoints( Renderer* r, const FastAtomicMetric& D, int itest ){
     Draw3D::drawBBox( D.ruler.pos0, D.ruler.pmax );
     int j=0;
     for(int i=0; i<D.natoms; i++){
-        //Draw3D::drawPointCross( atomdist.pos[i], atomdist.Rcut );
-        //Draw3D::drawPointCross( atomdist.pos[i], 0.1 );
+        //Draw3D::drawPointCross( renderer, atomdist.pos[i], atomdist.Rcut );
+        //Draw3D::drawPointCross( renderer, atomdist.pos[i], 0.1 );
         bool b = ( i == (itest%D.natoms));
         if(b){ Draw3D::drawSphereOctLines( 16, D.Rcut, D.pos[i] ); }
         else { Draw3D::drawPointCross( r, D.pos[i], 0.1 ); }
@@ -69,7 +69,7 @@ void drawNeighs( Renderer* r, const FastAtomicMetric& D, Vec3d pos ){
         }
     }
     for(int i=0; i<D.natoms; i++){
-        //Draw3D::drawPointCross( atomdist.pos[i], atomdist.Rcut );
+        //Draw3D::drawPointCross( renderer, atomdist.pos[i], atomdist.Rcut );
         Draw3D::drawPointCross( r, D.pos[i], 0.1 );
     }
 }
