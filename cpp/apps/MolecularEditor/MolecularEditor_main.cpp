@@ -333,7 +333,7 @@ void AppMolecularEditor2::draw(){
     ray0 = (Vec3d)(cam.rotMat().a*mouse_begin_x + cam.rotMat().b*mouse_begin_y);
     Draw3D::drawPointCross( renderer, ray0, 0.1 );
     //Draw3D::drawVecInPos( camMat.c, ray0 );
-    if(ipicked>=0) Draw3D::drawLine( world.apos[ipicked], ray0);
+    if(ipicked>=0) Draw3D::drawLine( renderer, world.apos[ipicked], ray0, {0, 0, 0});
 
 	double F2;
 	for(int itr=0; itr<perFrame; itr++){
@@ -388,14 +388,8 @@ void AppMolecularEditor2::draw(){
 
     for(int i=0; i<world.nbonds; i++){
         Vec2i ib = world.bond2atom[i];
-        opengl1renderer.color3f(0.0f,0.0f,0.0f);
-        if(i==ibpicked) opengl1renderer.color3f(1.0f,0.0f,0.0f); ;
-        Draw3D::drawLine(world.apos[ib.x],world.apos[ib.y]);
-        /*
-        // --- bond llabels
-        sprintf(str,"%i\0",i);
-        Draw3D::drawText(str, (world.apos[ib.x]+world.apos[ib.y])*0.5, fontTex, 0.02, 0 );
-        */
+        Vec3f col = i==ibpicked ? Vec3f{1.0f,0.0f,0.0f} : Vec3f{0.0f,0.0f,0.0f};
+        Draw3D::drawLine( renderer, world.apos[ib.x],world.apos[ib.y], col);
     }
 
     opengl1renderer.enable(GL_LIGHTING);
@@ -403,7 +397,7 @@ void AppMolecularEditor2::draw(){
     opengl1renderer.shadeModel(GL_SMOOTH);
     for(int i=0; i<world.natoms; i++){
         //opengl1renderer.color3f(0.0f,0.0f,0.0f); Draw3D::drawPointCross( renderer,world.apos[i],0.2);
-        opengl1renderer.color3f(1.0f,0.0f,0.0f); Draw3D::drawVecInPos(world.aforce[i]*30.0,world.apos[i]);
+        Draw3D::drawVecInPos(renderer, world.aforce[i]*30.0,world.apos[i], {1, 0, 0});
 
         //opengl1renderer.callList( ogl_sph );
         opengl1renderer.enable(GL_LIGHTING);

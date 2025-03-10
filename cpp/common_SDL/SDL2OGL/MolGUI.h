@@ -3,6 +3,7 @@
 
 #include "Camera.h"
 #include "GLMesh.h"
+#include "Renderer.h"
 #include "Vec3.h"
 #include "globals.h"
 
@@ -452,25 +453,23 @@ class MolGUI : public AppSDL2OGL_3D { public:
             Vec3d pj; 
 
             if( gp.fixed ){ 
-                opengl1renderer.color3f( 1.0, 0.0, 0.0 );
-                //Draw3D::drawPointCross( renderer, gp.pos, 0.1 );
-                pj = atomsInGrid.get_gpos({ipos.x,   ipos.y,   ipos.z-1}); Draw3D::drawLine( gp.pos, pj );
-                pj = atomsInGrid.get_gpos({ipos.x,   ipos.y,   ipos.z+1}); Draw3D::drawLine( gp.pos, pj );
-                pj = atomsInGrid.get_gpos({ipos.x,   ipos.y-1, ipos.z  }); Draw3D::drawLine( gp.pos, pj );
-                pj = atomsInGrid.get_gpos({ipos.x,   ipos.y+1, ipos.z  }); Draw3D::drawLine( gp.pos, pj );
-                pj = atomsInGrid.get_gpos({ipos.x-1, ipos.y,   ipos.z  }); Draw3D::drawLine( gp.pos, pj );
-                pj = atomsInGrid.get_gpos({ipos.x+1, ipos.y,   ipos.z  }); Draw3D::drawLine( gp.pos, pj );
+                Vec3f col = {1.0, 0.0, 0.0};
+                pj = atomsInGrid.get_gpos({ipos.x,   ipos.y,   ipos.z-1}); Draw3D::drawLine( renderer, gp.pos, pj, col );
+                pj = atomsInGrid.get_gpos({ipos.x,   ipos.y,   ipos.z+1}); Draw3D::drawLine( renderer, gp.pos, pj, col );
+                pj = atomsInGrid.get_gpos({ipos.x,   ipos.y-1, ipos.z  }); Draw3D::drawLine( renderer, gp.pos, pj, col );
+                pj = atomsInGrid.get_gpos({ipos.x,   ipos.y+1, ipos.z  }); Draw3D::drawLine( renderer, gp.pos, pj, col );
+                pj = atomsInGrid.get_gpos({ipos.x-1, ipos.y,   ipos.z  }); Draw3D::drawLine( renderer, gp.pos, pj, col );
+                pj = atomsInGrid.get_gpos({ipos.x+1, ipos.y,   ipos.z  }); Draw3D::drawLine( renderer, gp.pos, pj, col );
             } else { 
-                opengl1renderer.color3f( 0.0, 0.0, 1.0 ); 
-                //Draw3D::drawPointCross( renderer, gp.pos, 0.1 );
+                Vec3f col = {0, 0, 1};
                 Vec3d pj;
                 bool bfix; 
-                bfix = atomsInGrid.get_gpos2( {ipos.x,   ipos.y,   ipos.z-1}, pj ); if(!bfix) Draw3D::drawLine( gp.pos, pj );
-                bfix = atomsInGrid.get_gpos2( {ipos.x,   ipos.y,   ipos.z+1}, pj ); if(!bfix) Draw3D::drawLine( gp.pos, pj );
-                bfix = atomsInGrid.get_gpos2( {ipos.x,   ipos.y-1, ipos.z  }, pj ); if(!bfix) Draw3D::drawLine( gp.pos, pj );
-                bfix = atomsInGrid.get_gpos2( {ipos.x,   ipos.y+1, ipos.z  }, pj ); if(!bfix) Draw3D::drawLine( gp.pos, pj );
-                bfix = atomsInGrid.get_gpos2( {ipos.x-1, ipos.y,   ipos.z  }, pj ); if(!bfix) Draw3D::drawLine( gp.pos, pj );
-                bfix = atomsInGrid.get_gpos2( {ipos.x+1, ipos.y,   ipos.z  }, pj ); if(!bfix) Draw3D::drawLine( gp.pos, pj );
+                bfix = atomsInGrid.get_gpos2( {ipos.x,   ipos.y,   ipos.z-1}, pj ); if(!bfix) Draw3D::drawLine( renderer, gp.pos, pj, col );
+                bfix = atomsInGrid.get_gpos2( {ipos.x,   ipos.y,   ipos.z+1}, pj ); if(!bfix) Draw3D::drawLine( renderer, gp.pos, pj, col );
+                bfix = atomsInGrid.get_gpos2( {ipos.x,   ipos.y-1, ipos.z  }, pj ); if(!bfix) Draw3D::drawLine( renderer, gp.pos, pj, col );
+                bfix = atomsInGrid.get_gpos2( {ipos.x,   ipos.y+1, ipos.z  }, pj ); if(!bfix) Draw3D::drawLine( renderer, gp.pos, pj, col );
+                bfix = atomsInGrid.get_gpos2( {ipos.x-1, ipos.y,   ipos.z  }, pj ); if(!bfix) Draw3D::drawLine( renderer, gp.pos, pj, col );
+                bfix = atomsInGrid.get_gpos2( {ipos.x+1, ipos.y,   ipos.z  }, pj ); if(!bfix) Draw3D::drawLine( renderer, gp.pos, pj, col );
             }
             
             /*
@@ -1021,15 +1020,12 @@ void MolGUI::drawParticles(){
         
     }
     // ---- Pivots
-    opengl1renderer.color3f( 0.0, 1.0, 0.0 );
-    opengl1renderer.begin(GL_LINES);
     for( int i=0; i<particles.size(); i++ ){
         Vec3d& p = particles[i].f;
         int    j = particlePivots[i];
         Vec3d& a = W->nbmol.apos [j];
-        Draw3D::drawLine( p, a );
+        Draw3D::drawLine( renderer, p, a, {0, 1, 0} );
     }
-    opengl1renderer.end();
     opengl1renderer.color3f( 0.0, 0.0, 0.0 );
     for( int i=0; i<particles.size(); i++ ){
         Vec3d& p = particles[i].f;  
@@ -1059,8 +1055,8 @@ void MolGUI::drawDipoleMap(){
     Draw3D::drawPointCross( renderer, {5.0,0.0,0.0}, 0.2 );
     Draw3D::drawPointCross( renderer, dipoleMap.particles[0], 0.1 );
     for(int i=0; i<dipoleMap.particles.size(); i++ ){
-        opengl1renderer.color3f( 0.0, 0.0, 0.0 ); Draw3D::drawPointCross( renderer, dipoleMap.particles[i], 0.05 );
-        opengl1renderer.color3f( 0.0, 0.0, 1.0 ); Draw3D::drawLine      ( dipoleMap.particles[i], dipoleMap.particles2[i] );
+        Draw3D::drawPointCross( renderer, dipoleMap.particles[i], 0.05, {0, 0, 0} );
+        Draw3D::drawLine      ( renderer, dipoleMap.particles[i], dipoleMap.particles2[i], {0, 0, 1} );
     }
     
     //int nphi = dipoleMap.nphi;
@@ -1320,20 +1316,13 @@ void MolGUI::draw(){
 
     Draw3D::drawPointCross( renderer, ray0, 0.1 );        // Mouse Cursor 
     //if(W->ipicked>=0) Draw3D::drawLine( W->ff.apos[W->ipicked], ray0); // Mouse Dragging Visualization
-    if(W->ipicked>=0) Draw3D::drawLine( apos[W->ipicked], (Vec3d)ray0); // Mouse Dragging Visualization
+    if(W->ipicked>=0) Draw3D::drawLine( renderer, apos[W->ipicked], (Vec3d)ray0, {0, 0, 0}); // Mouse Dragging Visualization
     
     {   // draw mouse selection box;   ToDo:   for some reason the screen is upside-down
         //Vec3d ray0_ = ray0;            ray0_.y=-ray0_.y;
         //Vec3d ray0_start_=ray0_start;  ray0_start_.y=-ray0_start_.y;
         if(bDragging){
             drawMuseSelectionBox();
-            // //opengl1renderer.lineWidth(3.0);
-            // //opengl1renderer.color3f(1.0,0.5,0.0); Draw3D::drawPointCross( renderer, ray0_start, 0.1 );    
-            // //opengl1renderer.lineWidth(1.0);
-            // Vec3f ray0_;        cam.rotMat().dot_to( (Vec3f)ray0, ray0_);
-            // Vec3f ray0_start_;  cam.rotMat().dot_to( (Vec3f)ray0_start, ray0_start_);
-            // opengl1renderer.color3f(1.0,0.5,0.0); Draw3D::drawTriclinicBoxT(cam.rotMat(), (Vec3f)ray0_start_, (Vec3f)ray0_ );   // Mouse Selection Box
-            // //opengl1renderer.color3f(0.0,0.5,1.0); Draw3D::drawTriclinicBox (cam.rotMat(), (Vec3f)ray0_start_, (Vec3f)ray0_ ); // Mouse Selection Box
         }
     }
 
@@ -1355,54 +1344,16 @@ void MolGUI::draw(){
     }
 
     // ----- Visualization of the Groups of Atoms
-    if( W->bGroups ){
-
-        // for(int ig=0; ig<W->groups.groups.size(); ig++){
-        //     Group& g = W->groups.groups[ig];
-        //     Draw::color_of_hash(ig*15467+545);
-        //     Draw3D::drawVecInPos( g.fw, g.cog );
-        //     Draw3D::drawVecInPos( g.up, g.cog );
-        // }
-
-        // for(int ig=0; ig<W->groups.groups.size(); ig++){
-        //     Quat4f* ws = W->groups.weights;
-        //     //Vec2i i0n  = W->groups.groups[ig].i0n;
-        //     Group& g = W->groups.groups[ig];
-        //     for(int i=0; i<g.i0n.y; i++){
-        //         int ia = W->groups.g2a[i+g.i0n.x];
-        //         Vec3d p = W->groups.apos[ia];
-        //         double wi = ws[ia].y;
-        //         if( wi>0 ){ opengl1renderer.color3f(0.0,0.0,1.0); }else{ opengl1renderer.color3f(1.0,0.0,0.0); };
-        //         Draw3D::drawSphereOctLines(8,fabs(wi)*0.2,apos[ia]);
-        //         //Draw3D::drawSphereOctLines(8,.5,apos[ia]);
-        //     }
-        // }
-
-
-        // for(int ia=0; ia<W->atom2group.size(); ia++){
-        //     int ig = W->atom2group[ia];
-        //     if(ig>=0){
-        //         Draw::color_of_hash(ig*15467+545);
-        //         Draw3D::drawSphereOctLines(8,0.5,apos[ia]);
-        //     }
-        // }
-  
+    if( W->bGroups ){  
         Quat4f *gpos=0,*gfw=0,*gup=0; int ng=W->getGroupPose( gpos, gfw, gup );
         if(gpos){
             for(int ig=0; ig<ng; ig++){
-                //Draw::color_of_hash(ig*15467+545); Draw3D::drawPointCross( renderer, gpos[ig].f, 2.0);
-                opengl1renderer.color3f(1.0,0.0,0.0); Draw3D::drawVecInPos( gfw[ig].f*5., gpos[ig].f );
-                opengl1renderer.color3f(0.0,1.0,0.0); Draw3D::drawVecInPos( gup[ig].f*5., gpos[ig].f );
-                opengl1renderer.color3f(0.0,0.0,1.0); Draw3D::drawVecInPos( cross(gfw[ig].f,gup[ig].f), gpos[ig].f );
+                Draw3D::drawVecInPos( renderer, gfw[ig].f*5., gpos[ig].f, {1, 0, 0} );
+                Draw3D::drawVecInPos( renderer, gup[ig].f*5., gpos[ig].f, {0, 1, 0} );
+                Draw3D::drawVecInPos( renderer, cross(gfw[ig].f,gup[ig].f), gpos[ig].f, {0, 0, 1} );
             }
         }
     }
-
-    //if( bViewSubstrate && W->bSurfAtoms ) Draw3D::atomsREQ( W->surf.natoms, W->surf.apos, W->surf.REQs, ogl_sph, 1., 1., 0. );
-    //if( bViewSubstrate                  ){ opengl1renderer.color3f(0.,0.,1.); Draw3D::drawTriclinicBoxT( W->gridFF.grid.cell, Vec3d{0.0, 0.0, 0.0}, Vec3d{1.0, 1.0, 1.0} ); }
-    //if( bViewSubstrate                  ){ opengl1renderer.color3f(0.,0.,1.); Draw3D::drawTriclinicBoxT( W->gridFF.grid.cell, Vec3d{-0.5, -0.5, 0.0}, Vec3d{0.5, 0.5, 1.0} ); }
-    //if( bViewSubstrate && ogl_isosurf   ) viewSubstrate( 10, 10, ogl_isosurf, W->gridFF.grid.cell.a, W->gridFF.grid.cell.b, W->gridFF.shift0 + W->gridFF.grid.pos0 );
-    //if( bViewSubstrate && ogl_isosurf   ) viewSubstrate( {-5,10}, {-5,10}, ogl_isosurf, W->gridFF.grid.cell.a, W->gridFF.grid.cell.b, W->gridFF.shift0 + W->gridFF.grid.pos0 );
 
     if( ogl_esp     ){ opengl1renderer.callList(ogl_esp);      }
     if( ogl_afm_trj ){ opengl1renderer.callList(ogl_afm_trj);  }
@@ -1472,12 +1423,10 @@ void MolGUI::draw(){
     // Draw constraints (if any)
     if(constrs){
         // bond constrains
-        opengl1renderer.color3f(0.0f,0.7f,0.0f);
-        //for( DistConstr con : constrs->bonds ){ Draw3D::drawLine( apos[con.ias.a], apos[con.ias.b] ); }
         for( DistConstr con : constrs->bonds ){ 
             Vec3d sh; W->builder.lvec.dot_to_T( con.shift, sh );
-            Draw3D::drawLine( apos[con.ias.a],    apos[con.ias.b] + sh ); 
-            Draw3D::drawLine( apos[con.ias.a]-sh, apos[con.ias.b]      ); 
+            Draw3D::drawLine( renderer, apos[con.ias.a],    apos[con.ias.b] + sh, {0, 0.7, 0} ); 
+            Draw3D::drawLine( renderer, apos[con.ias.a]-sh, apos[con.ias.b]     , {0, 0.7, 0} ); 
         }
         // angle constrains
         opengl1renderer.color3f(0.0f,0.8f,0.8f);
@@ -1508,7 +1457,7 @@ void MolGUI::draw(){
             p = W->ffl.apos[W->ipicked];
             f = getForceSpringRay( W->ffl.apos[W->ipicked], W->pick_hray, W->pick_ray0, W->Kpick ); 
         }
-        opengl1renderer.color3d(1.f,0.f,0.f); Draw3D::drawVecInPos( f*-ForceViewScale, p );
+        Draw3D::drawVecInPos( renderer, f*-ForceViewScale, p, {1, 0, 0} );
     }
 
     if( ogl_surf_scan>0 ){ opengl1renderer.callList(ogl_surf_scan); }
@@ -1736,6 +1685,7 @@ void MolGUI::drawHUD(){
     if(bConsole) console.draw(renderer);
 }
 
+static GLMesh drawingHexMesh;
 void MolGUI::drawingHex(double z0){
     Vec2i ip; Vec2d dp;
     Vec3d p3 = rayPlane_hit( (Vec3d)ray0, (Vec3d)cam.rotMat().c, {0.0,0.0,1.0}, {0.0,0.0,z0} );
@@ -1743,12 +1693,13 @@ void MolGUI::drawingHex(double z0){
     double off=1000.0;
     bool s = ruler.simplexIndex( p+(Vec2d){off,off}, ip, dp );
     //ruler.nodePoint( ip, p );    opengl1renderer.color3f(1.,1.,1.); Draw3D::drawPointCross( renderer,  {p.x,p.y, 5.0}, 0.5 );
-    if(s){opengl1renderer.color3f(1.,0.2,1.);}else{opengl1renderer.color3f(0.2,1.0,1.);}
-    ruler.tilePoint( ip, s, p ); Draw3D::drawPointCross( renderer, {p.x-off,p.y-off, z0}, 0.2 );
+    Vec3f col = s ? (Vec3f){1, 0.2, 1} : (Vec3f){0.2,1,1};
+    ruler.tilePoint( ip, s, p ); Draw3D::drawPointCross( renderer, {p.x-off,p.y-off, z0}, 0.2, col );
     
     bool bLine=true;
     if(bDrawHexGrid){
-        if(bLine){opengl1renderer.begin(GL_LINES);}else{opengl1renderer.begin(GL_POINTS);}
+        drawingHexMesh.drawMode = bLine ? GL_LINES : GL_POINTS;
+        drawingHexMesh.clear();
         ruler.simplexIndex( (Vec2d){off,off}, ip, dp );
         double sc = ruler.step/sqrt(3.0);
         for(int ix=0;ix<10;ix++ ){
@@ -1757,18 +1708,18 @@ void MolGUI::drawingHex(double z0){
                 ruler.tilePoint( ip_, true,  p ); 
                 p.sub(off,off);
                 if(bLine){
-                    opengl1renderer.color3f(1.0,0.2,1.0); 
+                    col = {1.0,0.2,1.0};
                     Vec2d p2;
-                    Draw3D::vertex(Vec3f{p.x,p.y,z0}); p2=p+ruler.lvecs[0]*sc; Draw3D::vertex(Vec3f{p2.x,p2.y,z0});
-                    Draw3D::vertex(Vec3f{p.x,p.y,z0}); p2=p+ruler.lvecs[1]*sc; Draw3D::vertex(Vec3f{p2.x,p2.y,z0});
-                    Draw3D::vertex(Vec3f{p.x,p.y,z0}); p2=p+ruler.lvecs[2]*sc; Draw3D::vertex(Vec3f{p2.x,p2.y,z0});
+                    drawingHexMesh.addVertex(Vec3f{p.x,p.y,z0}, Vec3fZero, col); p2=p+ruler.lvecs[0]*sc; drawingHexMesh.addVertex(Vec3f{p2.x,p2.y,z0}, Vec3fZero, col);
+                    drawingHexMesh.addVertex(Vec3f{p.x,p.y,z0}, Vec3fZero, col); p2=p+ruler.lvecs[1]*sc; drawingHexMesh.addVertex(Vec3f{p2.x,p2.y,z0}, Vec3fZero, col);
+                    drawingHexMesh.addVertex(Vec3f{p.x,p.y,z0}, Vec3fZero, col); p2=p+ruler.lvecs[2]*sc; drawingHexMesh.addVertex(Vec3f{p2.x,p2.y,z0}, Vec3fZero, col);
                 }else{
-                    opengl1renderer.color3f(1.0,0.2,1.0); Draw3D::vertex(Vec3f{p.x,p.y,z0}); ruler.tilePoint( ip_, false, p );  p.add(off,off);
-                    opengl1renderer.color3f(0.2,1.0,1.0); Draw3D::vertex(Vec3f{p.x,p.y,z0});
+                    drawingHexMesh.addVertex(Vec3f{p.x,p.y,z0}, Vec3fZero, {1.0, 0.2, 1.0}); ruler.tilePoint( ip_, false, p );  p.add(off,off);
+                    drawingHexMesh.addVertex(Vec3f{p.x,p.y,z0}, Vec3fZero, {0.2, 1.0, 1.0});
                 }
             }
         }
-        opengl1renderer.end();
+        renderer->drawMesh(&drawingHexMesh);
     }
 }
 
@@ -2208,8 +2159,7 @@ void MolGUI::drawSystem( Vec3d offset, bool bOrig ){
             //};
 
             // --- draw only the bridge bonds stored in W->graph.found
-            opengl1renderer.color3f(1.0,0.0,1.0);
-            for(int i=0; i<W->graph.found.size(); i++){ Vec2i b = W->graph.found[i]; Draw3D::drawLine( apos[b.i], apos[b.j] );  };
+            for(int i=0; i<W->graph.found.size(); i++){ Vec2i b = W->graph.found[i]; Draw3D::drawLine( renderer, apos[b.i], apos[b.j], {1, 0, 1} );  };
         }
     
     }

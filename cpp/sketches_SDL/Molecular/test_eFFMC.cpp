@@ -106,10 +106,8 @@ void drawff_atoms( Renderer* r, const CLCFGO& ff, float fsc=1.0, float asc=0.5 )
     for(int i=0; i<ff.natom; i++){
         Vec3d p = ff.apos[i];
         //Draw3D::drawPointCross( renderer, p, ff.aPsize[i]*asc );
-        opengl1renderer.color3f(0.,0.,0.);
-        Draw3D::drawPointCross( r, p, ff.aPars[i].z*asc );
-        opengl1renderer.color3f( 1.0f,0.0f,0.0f );
-        Draw3D::drawVecInPos( ff.aforce[i]*fsc, p );
+        Draw3D::drawPointCross( r, p, ff.aPars[i].z*asc, {0, 0, 0} );
+        Draw3D::drawVecInPos( r, ff.aforce[i]*fsc, p, {1, 0, 0} );
     }
 }
 
@@ -132,8 +130,8 @@ void drawff_wfs( Renderer* r, const CLCFGO& ff, int oglSph, float fsc=1.0, float
             int c = orbColor(io);
             Draw  ::setRGBA( (c&0x00FFFFFF)|alpha  ); Draw3D::drawShape( oglSph, ff.epos[i], Mat3dIdentity*ff.esize[i],  false );
             //Draw  ::setRGBA(  c                    ); Draw3D::drawSphereOctLines(16, ff.esize[i], p, Mat3dIdentity, false );
-            Draw  ::setRGBA(  c                    ); Draw3D::drawPointCross( r, p, 0.01 );
-            opengl1renderer.color3f( 1.0f,0.0f,0.0f );  Draw3D::drawVecInPos( ff.efpos[i]*fsc, p );
+            Draw3D::drawPointCross( r, p, 0.01, COL2VEC(c) );
+            Draw3D::drawVecInPos( r, ff.efpos[i]*fsc, p, {1, 0, 0} );
 
             //Draw  ::setRGBA( orbColor(io) );
             //sprintf(str, "%02i_%02i", io, j  );
@@ -159,10 +157,9 @@ void drawff_rho( Renderer* r, const CLCFGO& ff, int oglSph, float fsc=1.0, int a
             int c = orbColor(io);
             Draw  ::setRGBA( (c&0x00FFFFFF)| alpha ); Draw3D::drawShape( oglSph, p, Mat3dIdentity*ff.rhoS[i],  false );
             //Draw  ::setRGBA(  c                    ); Draw3D::drawSphereOctLines(16, ff.rhoS[i], p, Mat3dIdentity, false );
-            Draw  ::setRGBA(  c                    ); Draw3D::drawPointCross( r, p, 0.01 );
+            Draw3D::drawPointCross( r, p, 0.01, COL2VEC(c) );
 
-            opengl1renderer.color3f( 1.0f,0.0f,0.0f );
-            Draw3D::drawVecInPos( ff.rhofP[i]*fsc, p );
+            Draw3D::drawVecInPos( r, ff.rhofP[i]*fsc, p, {1, 0, 0} );
 
             /*
             Draw  ::setRGBA( orbColor(io) );
@@ -479,7 +476,7 @@ void TestAppCLCFSF::draw(){
         if(bDrawRho  ) drawff_rho  ( renderer, ff, oglSph, fsc      );
     }
 
-    drawEFF( eff, oglSph, 1.0, 0.05, 0.1 );
+    drawEFF( renderer, eff, oglSph, 1.0, 0.05, 0.1 );
 
     //printf( " 4 epos (%g,%g,%g) efpos (%g,%g,%g) \n", ff.epos[0].x,ff.epos[0].y,ff.epos[0].z, ff.efpos[0].x,ff.efpos[0].y,ff.efpos[0].z );
 

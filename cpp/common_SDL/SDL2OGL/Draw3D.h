@@ -37,10 +37,10 @@ inline void normal(const Vec3f& v ){ opengl1renderer.normal3f(v.x, v.y, v.z); }
 inline void normal(const Vec3d& v ){ opengl1renderer.normal3d(v.x, v.y, v.z); }
 
 void drawPoint     ( const Vec3f& vec                   );
-void drawPointCross( Renderer* r, const Vec3f& vec, float sz );
-void drawVec       ( const Vec3f& vec                   );
-void drawVecInPos  ( const Vec3f& v,   const Vec3f& pos );
-void drawLine      ( const Vec3f& p1,  const Vec3f& p2  );
+void drawPointCross( Renderer* r, const Vec3f& vec, float sz, Vec3f color=Vec3fZero );
+void drawVec       ( Renderer* r, const Vec3f& vec,           Vec3f color           );
+void drawVecInPos  ( Renderer* r, const Vec3f& v,   const Vec3f& pos, Vec3f color   );
+void drawLine      ( Renderer* r, const Vec3f& p1,  const Vec3f& p2,  Vec3f color   );
 void drawArrow     ( const Vec3f& p1,  const Vec3f& p2, float sz=0.1 );
 
 void drawScale     ( const Vec3f& p1,  const Vec3f& p2, const Vec3f& a, float tick, float sza, float szb );
@@ -53,12 +53,7 @@ void drawQuad     ( const Vec3f& p1,  const Vec3f& p2, const Vec3f& p3, const Ve
 
 void drawMatInPos ( const Mat3f& mat, const Vec3f& pos, const Vec3f& sc=Vec3fOne );
 
-//void drawShape    ( const Vec3f& pos, const Mat3f&  rot,  int shape, bool transposed = false );
-//void drawShape    ( const Vec3f& pos, const Quat4f& qrot, int shape );
-//void drawShape    ( const Vec3f& pos, const Quat4f& qrot, const Vec3f& scale, int shape );
-
 void drawShape    ( int shape, const Vec3f& pos, const Mat3f&  rot=Mat3fIdentity, bool transposed = false );
-//void drawShape    ( int shape, const Vec3f& pos, const Quat4f& qrot  );
 void drawShape    ( int shape, const Vec3f& pos, const Quat4f& qrot, const Vec3f& scale=Vec3fOne );
 
 int  drawCylinderStrip     ( int n, float r1, float r2, const Vec3f& base, const Vec3f& tip );
@@ -101,10 +96,10 @@ void drawAxis( float sc );
 // ========== Double Versions
 
 inline void drawPoint     ( const Vec3d& vec                   ){drawPoint((Vec3f)vec); }
-inline void drawVec       ( const Vec3d& vec                   ){drawVec  ((Vec3f)vec); }
-inline void drawPointCross( Renderer* r, const Vec3d& vec, double sz){drawPointCross(r, (Vec3f)vec,sz); }
-inline void drawVecInPos  ( const Vec3d& v,   const Vec3d& pos ){drawVecInPos((Vec3f)v,(Vec3f)pos); }
-inline void drawLine      ( const Vec3d& p1,  const Vec3d& p2  ){drawLine ((Vec3f)p1,(Vec3f)p2); }
+inline void drawVec       ( Renderer* r, const Vec3d& vec, Vec3f color                ){drawVec(r,(Vec3f)vec,color); }
+inline void drawPointCross( Renderer* r, const Vec3d& vec, double sz, Vec3f color=Vec3fZero){drawPointCross(r, (Vec3f)vec,sz, color); }
+inline void drawVecInPos  ( Renderer* r, const Vec3d& v,   const Vec3d& pos, Vec3f color ){drawVecInPos(r, (Vec3f)v,(Vec3f)pos, color); }
+inline void drawLine      ( Renderer* r, const Vec3d& p1,  const Vec3d& p2, Vec3f color  ){drawLine (r, (Vec3f)p1,(Vec3f)p2, color); }
 inline void drawArrow     ( const Vec3d& p1,  const Vec3d& p2, float sz=0.1  ){drawArrow((Vec3f)p1,(Vec3f)p2, sz); }
 
 inline void drawScale     ( const Vec3d& p1,  const Vec3d& p2, const Vec3d& a, double tick, double sza, double szb ){  drawScale( (Vec3f)p1, (Vec3f)p2, (Vec3f)a, tick,sza,szb); };

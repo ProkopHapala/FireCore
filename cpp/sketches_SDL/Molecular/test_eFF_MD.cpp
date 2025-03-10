@@ -192,7 +192,7 @@ void TestAppRARFF::draw(){
         }
     }
 
-    drawEFF( ff, oglSph, 1.0, 0.1, 0.1, 1.5 );
+    drawEFF( renderer, ff, oglSph, 1.0, 0.1, 0.1, 1.5 );
 
     opengl1renderer.callList(ogl_fs);
 

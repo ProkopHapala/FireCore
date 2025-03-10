@@ -195,7 +195,7 @@ void TestAppFIRE::draw(){
     repl.eval();
 
     ray0 = (Vec3d)mouseRay0(); Draw3D::drawPointCross( renderer, ray0, 0.1 ); //Draw3D::drawVecInPos( camMat.c, ray0 );
-    if(ipicked>=0) Draw3D::drawLine( world.apos[ipicked], ray0);
+    if(ipicked>=0) Draw3D::drawLine( renderer, world.apos[ipicked], ray0, {0, 0, 0});
 
     /*
 	double F2=0;
@@ -221,7 +221,7 @@ void TestAppFIRE::draw(){
         double Etot = 0.0;
         for(int itr=0; itr<perFrame; itr++){
             Etot = 0.0;
-            for(int i=0; i<world.natoms; i++){ world.aforce[i].set(0.0d); }
+            for(int i=0; i<world.natoms; i++){ world.aforce[i].set(0.0); }
             world.eval_bonds(true);
             world.eval_angcos();
             world.eval_LJq_On2();

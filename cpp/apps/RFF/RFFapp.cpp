@@ -8,6 +8,7 @@
 #include <SDL2/SDL.h>
 #include "Draw.h"
 #include "Draw3D.h"
+#include "Renderer.h"
 #include "Solids.h"
 
 #include "fastmath.h"
@@ -276,7 +277,7 @@ class TestAppRARFF: public AppSDL2OGL_3D { public:
     void simulation();
     void makePotentialPlot();
     void visualize_cells(const bool bDrawPoints=false);
-    void visualize_atoms();
+    void visualize_atoms(Renderer* r);
     //void generate_atoms( int natom, double xspan, double step );
 
 };
@@ -389,7 +390,7 @@ void TestAppRARFF::draw(){
         visualize_cells();
     }
     Draw3D::drawPointCross( renderer, ray0, 0.1 );
-    if(ipicked>=0) Draw3D::drawLine( ff.apos[ipicked], ray0);
+    if(ipicked>=0) Draw3D::drawLine( renderer, ff.apos[ipicked], ray0, {0, 0, 0});
     Draw3D::drawAxis( 1.0);
 
     // switch(renderMode){
@@ -397,7 +398,7 @@ void TestAppRARFF::draw(){
     //     case 1: opengl1renderer.enable (GL_LIGHTING); break;
     // }
     opengl1renderer.enable (GL_LIGHTING);
-    visualize_atoms();
+    visualize_atoms(renderer);
 };
 
 void TestAppRARFF::drawHUD(){
@@ -548,7 +549,7 @@ void TestAppRARFF::visualize_cells( bool bDrawPoints ){
     }
 }
 
-void TestAppRARFF::visualize_atoms(){
+void TestAppRARFF::visualize_atoms(Renderer* r){
     int na = 0;
     // ---------- Draw
     opengl1renderer.lineWidth(3.0f); 
@@ -569,11 +570,8 @@ void TestAppRARFF::visualize_atoms(){
             //printf( "bondCaps[%i] %i\n", i, ff.bondCaps[i] );
             if( ff.bondCaps[i]>=0 ){ opengl1renderer.color3f(1.0,0.0,0.0); } else{ opengl1renderer.color3f(0.0,0.0,0.0); }
             //Draw::setRGB( clrs[j] );
-            opengl1renderer.color3f(0.5,0.5,0.5);;
-            Draw3D::drawLine( ff.apos[ia] , pb );
-            opengl1renderer.color3f(0.0,1.0,0.0); Draw3D::drawVecInPos( ff.fbonds[i]*fsc, pb );
-            //opengl1renderer.color3f(0.0,0.0,0.0); Draw3D::drawVecInPos( ff.hbonds[i], ff.apos[i] );
-            //opengl1renderer.color3f(0.0,1.0,0.0); Draw3D::drawVecInPos( ff.fbonds[io]*fsc, ff.apos[i]+ff.hbonds[io] );
+            Draw3D::drawLine( r, ff.apos[ia] , pb, {0.5, 0.5, 0.5} );
+            Draw3D::drawVecInPos( r, ff.fbonds[i]*fsc, pb , {0, 1, 0});
         }
     };
     opengl1renderer.lineWidth(1.0f); 

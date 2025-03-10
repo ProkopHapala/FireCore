@@ -28,7 +28,7 @@ void GUITextInput::applyVal( float f ){
     num_op = 0;
 }
 
-void GUITextInput::view3D( const Vec3d& pos, int fontTex, float textSize ){
+void GUITextInput::view3D( Renderer* r, const Vec3d& pos, int fontTex, float textSize ){
     //Draw3D::drawText( inputText.c_str(), pos, fontTex, textSize, 0, 0 );
     opengl1renderer.disable    ( GL_LIGHTING   );
     opengl1renderer.disable    ( GL_DEPTH_TEST );
@@ -38,7 +38,7 @@ void GUITextInput::view3D( const Vec3d& pos, int fontTex, float textSize ){
         Draw::billboardCam( );
         //Draw::drawText( inputText.c_str(), fontTex, textSize, 0, 0 );
         Draw::drawText( inputText.c_str(), fontTex, textSize, 0 );
-        Draw3D::drawLine( Vec3f{curPos*textSize,0.0,0.0}, Vec3f{curPos*textSize,textSize*2,0.0} );
+        Draw3D::drawLine( r, Vec3f{curPos*textSize,0.0,0.0}, Vec3f{curPos*textSize,textSize*2,0.0}, {0, 0, 0} );
     opengl1renderer.popMatrix();
 }
 
@@ -50,7 +50,7 @@ void GUITextInput::viewHUD( Renderer* r, const Vec2i& pos, int fontTex, bool bBa
         int nl = inputText.size();
         if(bBack)Draw2D::drawRectangle( r, (Vec2f){pos.x,pos.y}, (Vec2f){pos.x+nl*fontSizeDef, pos.y+fontSizeDef*2}, COL2VEC(0xA0A0A0) );
         Draw::drawText( inputText.c_str(), fontTex, fontSizeDef, 0 );
-        Draw3D::drawLine( Vec3f{curPos*fontSizeDef,0.0,0.0}, Vec3f{curPos*fontSizeDef,fontSizeDef*2,0.0} );
+        Draw3D::drawLine( r, Vec3f{curPos*fontSizeDef,0.0,0.0}, Vec3f{curPos*fontSizeDef,fontSizeDef*2,0.0}, {0, 0, 0} );
     opengl1renderer.popMatrix();
 }
 

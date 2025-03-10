@@ -411,10 +411,8 @@ class EditorGizmo{ public:
         if(dragged){
             Vec3d shift = axPos - axStart;
             filterByAxis(shift);
-            opengl1renderer.color3f(1.0,1.0,1.0); Draw3D::drawPointCross( r, axStart, 0.1   );
-            //opengl1renderer.color3f(1.0,1.0,1.0); Draw3D::drawPointCross( renderer, axStart, 0.1   );
-            //opengl1renderer.color3f(0.0,0.0,1.0); Draw3D::drawLine    ( axStart, axEnd );
-            opengl1renderer.color3f(1.0,1.0,1.0); Draw3D::drawVecInPos  ( shift, axStart );
+            Draw3D::drawPointCross( r, axStart, 0.1,  {1, 1, 1} );
+            Draw3D::drawVecInPos  ( r, shift, axStart, {1, 1, 1} );
         }
 
 

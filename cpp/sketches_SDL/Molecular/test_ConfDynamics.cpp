@@ -56,7 +56,7 @@ void plotFFplan( Renderer* r, int na, int nb, const Vec3d& da, const Vec3d& db, 
             Vec3d p = pos0 + (da*ia)+(db*ib);
             Vec3d f; f.set(0.0);
             externalForces( 3, (double*)&p, (double*)&f);
-            Draw3D::drawLine( p, p+f*(fscale) );
+            Draw3D::drawLine( r, p, p+f*(fscale), {0, 0, 0} );
             Draw3D::drawPointCross( r, p, 0.01 );
         }
     }

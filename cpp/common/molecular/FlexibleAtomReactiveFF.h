@@ -22,6 +22,7 @@ Flexible Atom sp-hybridization forcefield
 #include "Vec2.h"
 #include "Vec3.h"
 #include "SMat3.h"
+#include "Draw3D.h"
 //#include "quaternion.h"
 #include "Forces.h"
 
@@ -548,7 +549,7 @@ void normalizeOrbs(){
     }
 }
 
-void transferOrbRecoil(){
+void transferOrbRecoil(Renderer* r){
     // ToDo : is this numerically stable? if normal forces are very hi ?
     for(int i=0; i<norb; i++){
         //aforce[i>>2].sub( oforce[i] );
@@ -558,7 +559,7 @@ void transferOrbRecoil(){
         aforce[ia].add( f );
 
         //opengl1renderer.color3f(1,1,0); Draw3D::drawVecInPos( oforce[i], apos[ia] );
-        if((ia==0)&&(i-(ia<<2)==0) ){ opengl1renderer.color3f(1,1,0); Draw3D::drawVecInPos( f, apos[ia] ); }
+        if((ia==0)&&(i-(ia<<2)==0) ){ Draw3D::drawVecInPos( r, f, apos[ia], {1,1,0} ); }
     }
 }
 

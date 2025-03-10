@@ -285,7 +285,7 @@ void TestAppRARFF::draw(){
 
     ray0 = (Vec3d)(cam.rotMat().a*mouse_begin_x + cam.rotMat().b*mouse_begin_y);
     Draw3D::drawPointCross( renderer, ray0, 0.1 );
-    if(ipicked>=0) Draw3D::drawLine( ff.apos[ipicked], ray0);
+    if(ipicked>=0) Draw3D::drawLine( renderer, ff.apos[ipicked], ray0, {0, 0, 0});
 
     // ---------- Draw
     opengl1renderer.color3f(0.0,0.0,0.0);
@@ -301,9 +301,9 @@ void TestAppRARFF::draw(){
             int i=ia*N_BOND_MAX+j;
             Vec3d pb = ff.bondPos( i );
             //printf( "bondCaps[%i] %i\n", i, ff.bondCaps[i] );
-            if( ff.bondCaps[i]>=0 ){ opengl1renderer.color3f(1.0,0.0,0.0); } else{ opengl1renderer.color3f(0.0,0.0,0.0); }
-            Draw3D::drawLine( ff.apos[ia] , pb );
-            opengl1renderer.color3f(0.0,1.0,0.0); Draw3D::drawVecInPos( ff.fbonds[i]*fsc, pb );
+            Vec3f col = ff.bondCaps[i]>=0 ? (Vec3f){1, 0, 0} : (Vec3f){0, 0, 0};
+            Draw3D::drawLine( renderer, ff.apos[ia] , pb, col );
+            opengl1renderer.color3f(0.0,1.0,0.0); Draw3D::drawVecInPos( renderer, ff.fbonds[i]*fsc, pb, col );
             //opengl1renderer.color3f(0.0,0.0,0.0); Draw3D::drawVecInPos( ff.hbonds[i], ff.apos[i] );
             //opengl1renderer.color3f(0.0,1.0,0.0); Draw3D::drawVecInPos( ff.fbonds[io]*fsc, ff.apos[i]+ff.hbonds[io] );
         }

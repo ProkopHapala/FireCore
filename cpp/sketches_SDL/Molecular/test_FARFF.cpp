@@ -209,7 +209,7 @@ void TestAppFARFF::draw(){
 
     ray0 = (Vec3d)(cam.rotMat().a*mouse_begin_x + cam.rotMat().b*mouse_begin_y);
     Draw3D::drawPointCross( renderer, ray0, 0.1 );
-    if(ipicked>=0) Draw3D::drawLine( ff.apos[ipicked], ray0);
+    if(ipicked>=0) Draw3D::drawLine( renderer, ff.apos[ipicked], ray0, {0, 0, 0});
 
     opengl1renderer.color3f(1.0,1.0,1.0);
     //drawRigidAtom( atom1 );
@@ -227,10 +227,10 @@ void TestAppFARFF::draw(){
         for(int j=0;j<N_BOND_MAX; j++){
             int io = j + i*N_BOND_MAX;
             if( j<ff.aconf[i].a ){
-                opengl1renderer.color3f(0.0,0.0,0.0); Draw3D::drawVecInPos( ff.opos[io],   ff.apos[i] );
+                Draw3D::drawVecInPos( renderer, ff.opos[io],   ff.apos[i], {0.0,0.0,0.0} );
                 //opengl1renderer.color3f(1.0,0.0,0.0); Draw3D::drawVecInPos( ff.oforce[io], ff.apos[i]+ff.opos[io] );
             }else{
-                opengl1renderer.color3f(0.0,0.5,0.0); Draw3D::drawLine    ( ff.apos[i]+ff.opos[io]*0.5, ff.apos[i]-ff.opos[io]*0.5 );
+                Draw3D::drawLine    ( renderer, ff.apos[i]+ff.opos[io]*0.5, ff.apos[i]-ff.opos[io]*0.5, {0.0,0.5,0.0} );
             }
         }
         //}

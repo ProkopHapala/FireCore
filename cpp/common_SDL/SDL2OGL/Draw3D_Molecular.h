@@ -240,24 +240,24 @@ void pbcBondNeighLabels( int n, const Vec2i* b2a, const Vec3d* apos, const Vec3d
 }
 
 
-void bondsPBC( int n, const Vec2i* b2a, const Vec3d* apos, const Vec3d* pbc_shifts ){
+void bondsPBC( Renderer* r, int n, const Vec2i* b2a, const Vec3d* apos, const Vec3d* pbc_shifts, Vec3f color ){
     //printf( "bondsPBC &b2a=%li &apos=%li &pbc_shifts=%li \n", (long)b2a, (long)apos, (long)pbc_shifts );
     for(int i=0; i<n; i++){
         Vec2i b = b2a[i];
         Vec3d shift;
         if(pbc_shifts){ shift=pbc_shifts[i]; }else{ shift=Vec3dZero; }
-        Draw3D::drawLine( apos[b.b], apos[b.a]-shift );
-        Draw3D::drawLine( apos[b.a], apos[b.b]+shift );
+        Draw3D::drawLine( r, apos[b.b], apos[b.a]-shift, color );
+        Draw3D::drawLine( r, apos[b.a], apos[b.b]+shift, color );
     }
 }
 
-void bondsPBC( int n, const Vec2i* b2a, const Vec3d* apos, const Vec3i* pbc, const Mat3d& lvec ){
+void bondsPBC( Renderer* r, int n, const Vec2i* b2a, const Vec3d* apos, const Vec3i* pbc, const Mat3d& lvec, Vec3f color ){
     for(int i=0; i<n; i++){
         Vec2i b = b2a[i];
         Vec3i G = pbc[i];
         if((G.a!=0)||(G.b!=0)||(G.c!=0)){
-        Draw3D::drawLine( apos[b.b], apos[b.a]+ lvec.a*-G.a + lvec.b*-G.b + lvec.c*-G.c );}
-        Draw3D::drawLine( apos[b.a], apos[b.b]+ lvec.a*G.a + lvec.b*G.b + lvec.c*G.c );
+        Draw3D::drawLine( r, apos[b.b], apos[b.a]+ lvec.a*-G.a + lvec.b*-G.b + lvec.c*-G.c, color);}
+        Draw3D::drawLine( r, apos[b.a], apos[b.b]+ lvec.a*G.a + lvec.b*G.b + lvec.c*G.c, color);
     }
 }
 
@@ -471,7 +471,7 @@ void drawBonds( const MMFFsp3& ff, double Fsc=0.0 ){
 }
 #endif
 #ifdef MMFFsp3_h
-void drawNeighs( const MMFFsp3& ff, double Fsc=0.0 ){
+void drawNeighs( Renderer* r, const MMFFsp3& ff, double Fsc=0.0 ){
     //drawSystem( false, true, false );
     for(int ia=0; ia<ff.nnode; ia++ ){
         //printf( "atom[%i]\n", ia );
@@ -479,12 +479,12 @@ void drawNeighs( const MMFFsp3& ff, double Fsc=0.0 ){
         for(int j=0; j<ff.nneigh_max; j++ ){
             //printf( "atom[%i]neigh[%i]=%i \n", ia, j, ngs[j] );
             if(ngs[j]>=0){
-                opengl1renderer.color3f(0.,0.,0.); Draw3D::drawLine( ff.apos[ia], ff.apos[ngs[j]] );
-                if(Fsc>0.0){ opengl1renderer.color3f(1.,0.,0.); Draw3D::drawVecInPos( ff.fapos[ia]*Fsc, ff.apos[ia] ); }
+                Draw3D::drawLine( r, ff.apos[ia], ff.apos[ngs[j]], {0, 0, 0} );
+                if(Fsc>0.0){ Draw3D::drawVecInPos( r, ff.fapos[ia]*Fsc, ff.apos[ia], {1, 0, 0} ); }
             }else{
                 int ipi = -ngs[j]-1;
-                opengl1renderer.color3f(0.,0.5,0.); Draw3D::drawVecInPos( ff.pipos[ipi], ff.apos[ia] );
-                if(Fsc>0.0){ opengl1renderer.color3f(1.,0.5,0.); Draw3D::drawVecInPos( ff.fpipos[ipi]*Fsc, ff.apos[ia]+ff.pipos[ipi] ); }
+                Draw3D::drawVecInPos( r, ff.pipos[ipi], ff.apos[ia], {0, 0.5, 0} );
+                if(Fsc>0.0){ Draw3D::drawVecInPos( r, ff.fpipos[ipi]*Fsc, ff.apos[ia]+ff.pipos[ipi], {1, 0.5, 0} ); }
             }
         }
     }

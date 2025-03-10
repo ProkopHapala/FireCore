@@ -385,9 +385,8 @@ void TestAppSp3Space::draw(){
 
     //Draw3D::drawMatInPos( Mat3dIdentity, p1, psi1.p );
     //Draw3D::drawMatInPos( Mat3dIdentity, p2, psi2.p );
-    opengl1renderer.color3f(1.0,1.0,1.0);
-    Draw3D::drawVecInPos( psi1.p, p1 );
-    Draw3D::drawVecInPos( psi2.p, p2 );
+    Draw3D::drawVecInPos( renderer, psi1.p, p1, {1, 1, 1} );
+    Draw3D::drawVecInPos( renderer, psi2.p, p2, {1, 1, 1} );
 
     Draw3D::drawMatInPos( rot, p1, c1 );
     Draw3D::drawMatInPos( rot, p2, c2 );

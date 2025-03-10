@@ -82,16 +82,14 @@ Vec3f testPLQ;
 // AppMolecularEditorOCL
 // ==========================75
 
-void drawFreeAtoms( int n, Quat4f * poss, Quat4f * forces, float sc, float fsc ){
+void drawFreeAtoms( Renderer* r, int n, Quat4f * poss, Quat4f * forces, float sc, float fsc ){
     for(int i=0; i<n; i++){
-        opengl1renderer.color3f(0.0,0.0,0.0); Draw3D::drawPointCross( renderer, poss[i].f, sc            );
-        opengl1renderer.color3f(1.0,0.0,0.0); Draw3D::drawVecInPos( forces[i].f*fsc, poss[i].f );
-        //sprintf( str, "HEAY %i", i);
-        //Draw3D::drawText( str, poss[i].f, fontTex, 60, 8 );
+        Draw3D::drawPointCross( r, poss[i].f, sc, {0, 0, 0});
+        Draw3D::drawVecInPos( r, forces[i].f*fsc, poss[i].f, {1, 0, 0} );
     }
 }
 
-void drawAtomsF8( int n, float8 * atoms, float sc, int oglSphere ){
+void drawAtomsF8( Renderer* r, int n, float8 * atoms, float sc, int oglSphere ){
     for(int i=0; i<n; i++){
         float* atomi = ((float*)(atoms+i));
         float r = atomi[4]*sc;
@@ -101,12 +99,12 @@ void drawAtomsF8( int n, float8 * atoms, float sc, int oglSphere ){
     }
 }
 
-void drawAtomsForces( int n, float8 * atoms, Vec3f * fatoms, float rsc, float fsc ){
+void drawAtomsForces( Renderer* r, int n, float8 * atoms, Vec3f * fatoms, float rsc, float fsc ){
     Quat4f* ps = (Quat4f*) atoms;
     for(int i=0; i<n; i++){
         const Vec3f& p = ps[i*2].f;
         //printf( "atoms[%i] f(%g,%g,%g) \n", i, fatoms[i].x, fatoms[i].y, fatoms[i].z );
-        Draw3D::drawPointCross( renderer, p, rsc           );
+        Draw3D::drawPointCross( r, p, rsc           );
         Draw3D::drawVecInPos  ( fatoms[i]*fsc, p );
     }
 }

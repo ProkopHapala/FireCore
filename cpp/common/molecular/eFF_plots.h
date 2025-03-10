@@ -51,7 +51,7 @@ bool checkScalar(const char* s, double v, double vmin, double vmax){
     return b;
 }
 
-void drawEFF( EFF& ff, int oglSph, float fsc=1.0, float Qsz=0.05, float alpha=0.1, double rBond=-1 ){
+void drawEFF( Renderer* R, EFF& ff, int oglSph, float fsc=1.0, float Qsz=0.05, float alpha=0.1, double rBond=-1 ){
     opengl1renderer.disable(GL_DEPTH_TEST);
     opengl1renderer.enable(GL_BLEND);
     opengl1renderer.blendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
@@ -61,7 +61,7 @@ void drawEFF( EFF& ff, int oglSph, float fsc=1.0, float Qsz=0.05, float alpha=0.
         //opengl1renderer.color3f(0.0,0.0,0.0); Draw3D::drawPointCross( renderer, ff.apos  [i]      , ff.aPars[i].x*Qsz );
         opengl1renderer.color4f(0.0,0.0,0.0, 0.5); Draw3D::drawShape( oglSph, ff.apos[i], Mat3dIdentity*ff.aPars[i].x*Qsz*0.5,  false );
         //opengl1renderer.color3f(0.0,0.0,0.0); Draw3D::drawPointCross( renderer, ff.apos  [i]    , Qsz );
-        if(bF)opengl1renderer.color3f(1.0,0.0,0.0); Draw3D::drawVecInPos  ( ff.aforce[i]*fsc, ff.apos[i] );
+        if(bF) Draw3D::drawVecInPos( R, ff.aforce[i]*fsc, ff.apos[i], {1, 0, 0} );
         //Draw3D::drawVecInPos(   ff.aforce[i]*fsc, ff.apos[i] );
         //printf( " %i %f %f %f %f  \n", i, ff.aQ[i], ff.apos[i].x,ff.apos[i].y,ff.apos[i].z );
         //printf( " %i %f %f %f %f  \n", i, ff.aQ[i], ff.aforce[i].x, ff.aforce[i].y, ff.aforce[i].z );
@@ -82,7 +82,7 @@ void drawEFF( EFF& ff, int oglSph, float fsc=1.0, float Qsz=0.05, float alpha=0.
         //float alpha=0.1;
         if(ff.espin[i]>0){ opengl1renderer.color4f(0.0,0.0,1.0, alpha); }else{ opengl1renderer.color4f(1.0,0.0,0.0, alpha); };
         Draw3D::drawShape( oglSph, ff.epos[i], Mat3dIdentity*ff.esize[i],  false );
-        opengl1renderer.color3f(1.0,0.0,0.0); Draw3D::drawVecInPos(  ff.eforce[i]*fsc ,ff.epos[i] );
+        Draw3D::drawVecInPos( R, ff.eforce[i]*fsc ,ff.epos[i], {1, 0, 0} );
         //opengl1renderer.color3f(1.0,0.0,0.0); Draw3D::drawPointCross( renderer, ff.epos[i], 0.1 );
         //Draw3D::drawSphere_oct(3,ff.esize[i],ff.epos[i]);
         //opengl1renderer.color3f(1.,1.,1.); Draw3D::drawVecInPos( ff.eforce  [i], ff.epos[i] );
@@ -94,13 +94,12 @@ void drawEFF( EFF& ff, int oglSph, float fsc=1.0, float Qsz=0.05, float alpha=0.
         //Draw3D::drawText(strtmp, ff.epos[i], fontTex, 0.02, 0);
     }
     if(rBond>0){
-    opengl1renderer.color3f(0.0,0.0,0.0);
     for(int i=0; i<ff.na; i++){
         for(int j=0; j<i; j++){
             Vec3d d  = ff.apos[i]-ff.apos[j];
             double r = d.norm();
             if(r<rBond){
-                Draw3D::drawLine( ff.apos[i], ff.apos[j] );
+                Draw3D::drawLine( R, ff.apos[i], ff.apos[j], {0, 0, 0} );
             }
         }
     }}

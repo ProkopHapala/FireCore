@@ -5,6 +5,7 @@
 #include "AtomicConfiguration.h"
 #include "GridFF.h"
 #include "Renderer.h"
+#include "GLMesh.h"
 #include "molecular_utils.h"
 
 void colorRB( float f ){ opengl1renderer.color3f( 0.5+f, 0.5, 0.5-f ); }
@@ -65,7 +66,7 @@ void drawNeighs( Renderer* r, const FastAtomicMetric& D, Vec3d pos ){
         //printf( "DEBUG 3 \n" );
         //printf( "nfound %i \n", nfound );
         for(int i=0; i<nfound; i++){
-            Draw3D::drawLine( pos, D.pos[tmpIs[i]] );
+            Draw3D::drawLine( r, pos, D.pos[tmpIs[i]], {0, 0, 0} );
         }
     }
     for(int i=0; i<D.natoms; i++){
@@ -99,7 +100,7 @@ void drawGridForceAlongLine( Renderer* r, int n, GridFF& gff, Vec3d pos0, Vec3d 
         Quat4f fe = Quat4fZero;
         gff.addForce( pos, PRQ, fe);
         //printf( " %i (%g,%g,%g) (%g,%g,%g) \n", i, pos.x,pos.y,pos.z,  f.x,f.y,f.z );
-        Draw3D::drawVecInPos( (Vec3d)fe.f *fsc, pos );
+        Draw3D::drawVecInPos( r, (Vec3d)fe.f *fsc, pos, {0, 0, 0} );
         Draw3D::drawPointCross( r, pos, 0.1 );
         pos.add(dpos);
 	}

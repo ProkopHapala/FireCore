@@ -99,7 +99,7 @@ class GUITextInput{ public:
 
 	void         applyVal( float f );
 
-    virtual void view3D ( const Vec3d& pos, int fontTex, float textSize );
+    virtual void view3D ( Renderer* r, const Vec3d& pos, int fontTex, float textSize );
     virtual void viewHUD( Renderer* r, const Vec2i& pos, int fontTex, bool bBack=true );
     virtual void onKeyDown( SDL_Event e );
 	virtual void onText   ( SDL_Event e );

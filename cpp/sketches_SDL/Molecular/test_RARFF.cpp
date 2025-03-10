@@ -73,7 +73,7 @@ void drawRigidAtom( Renderer* r, RigidAtom& atom ){
     for(int i=0; i<atom.type->nbond; i++){
         //printf( "%i (%g,%g,%g)\n", i, type1.bh0s[i].x, type1.bh0s[i].y, type1.bh0s[i].z );
         //printf( "%i (%g,%g,%g)\n", i, bhs[i].x, bhs[i].y, bhs[i].z );
-        Draw3D::drawVecInPos( bhs[i], atom.pos );
+        Draw3D::drawVecInPos( r, bhs[i], atom.pos, {0, 0, 0} );
     }
 }
 
@@ -336,8 +336,8 @@ void TestAppRARFF::draw(){
     double tsc = 0.1;
     for(int i=0; i<ff.natom; i++){
         opengl1renderer.color3f(1.0,1.0,1.0); drawRigidAtom(renderer, ff.atoms[i]);
-        opengl1renderer.color3f(1.0,0.0,0.0); Draw3D::drawVecInPos( ff.atoms[i].force*fsc, ff.atoms[i].pos  );
-        opengl1renderer.color3f(0.0,0.0,1.0); Draw3D::drawVecInPos( ff.atoms[i].torq*tsc,  ff.atoms[i].pos  );
+        Draw3D::drawVecInPos( renderer, ff.atoms[i].force*fsc, ff.atoms[i].pos, {1.0,0.0,0.0} );
+        Draw3D::drawVecInPos( renderer, ff.atoms[i].torq*tsc,  ff.atoms[i].pos, {0.0,0.0,1.0} );
     };
 
 

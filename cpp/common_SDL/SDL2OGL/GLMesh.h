@@ -32,6 +32,11 @@ public:
 
     GLMesh(GLenum drawMode=GL_TRIANGLES, GLenum usage=GL_STATIC_DRAW): drawMode(drawMode), usage(usage) {};
 
+    void clear(){
+        vertices.clear();
+        vbo_sync = false;
+    }
+
     void addVertex(Vec3f position, Vec3f normal={0, 0, 0}, Vec3f color={1, 1, 1}){
         vertex v;
         v.position = position;

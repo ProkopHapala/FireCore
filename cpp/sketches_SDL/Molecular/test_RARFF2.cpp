@@ -72,7 +72,7 @@ void drawRigidAtom( Renderer* r, RigidAtom& atom ){
     for(int i=0; i<atom.type->nbond; i++){
         //printf( "%i (%g,%g,%g)\n", i, type1.bh0s[i].x, type1.bh0s[i].y, type1.bh0s[i].z );
         //printf( "%i (%g,%g,%g)\n", i, bhs[i].x, bhs[i].y, bhs[i].z );
-        Draw3D::drawVecInPos( bhs[i], atom.pos );
+        Draw3D::drawVecInPos( r, bhs[i], atom.pos, {0, 0, 0} );
     }
 }
 
@@ -351,8 +351,8 @@ void TestAppRARFF::draw(){
 
         for(int ib=0; ib<ff.atoms[i].type->nbond; ib++){
             int io=4*i+ib;
-            opengl1renderer.color3f(1.0,1.0,1.0); Draw3D::drawVecInPos( ff.hbonds[io], ff.atoms[i].pos );
-            opengl1renderer.color3f(0.0,1.0,0.0); Draw3D::drawVecInPos( ff.fbonds[io]*fsc, ff.atoms[i].pos+ff.hbonds[io] );
+            Draw3D::drawVecInPos( renderer, ff.hbonds[io], ff.atoms[i].pos, {1.0,1.0,1.0} );
+            Draw3D::drawVecInPos( renderer, ff.fbonds[io]*fsc, ff.atoms[i].pos+ff.hbonds[io], {0.0,1.0,0.0} );
         }
 
         //opengl1renderer.color3f(1.0,0.0,0.0); Draw3D::drawVecInPos( ff.atoms[i].force*fsc, ff.atoms[i].pos  );

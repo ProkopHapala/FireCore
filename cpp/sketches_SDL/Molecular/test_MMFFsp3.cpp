@@ -319,7 +319,7 @@ void TestAppMMFFsp3::draw(){
     ray0 = (Vec3d)(cam.rotMat().a*mouse_begin_x + cam.rotMat().b*mouse_begin_y);
     Draw3D::drawPointCross( renderer, ray0, 0.1 );
     //Draw3D::drawVecInPos( camMat.c, ray0 );
-    if(ipicked>=0) Draw3D::drawLine( ff.apos[ipicked], ray0);
+    if(ipicked>=0) Draw3D::drawLine( renderer, ff.apos[ipicked], ray0, {0, 0, 0});
 
     //perFrame = 1;
     //perFrame = 100;
@@ -368,7 +368,7 @@ void TestAppMMFFsp3::draw(){
     //drawSystem();
     //opengl1renderer.color3f(0.,0.,0.); drawBonds( ff );
     drawSystem(true,true,false);
-    Draw3D::drawNeighs( ff, 0.0 );
+    Draw3D::drawNeighs( renderer, ff, 0.0 );
 
     //opengl1renderer.color3f(0.,0.,0.); drawBonds( builder );
     //opengl1renderer.color3f(0.,0.,0.); drawNeighs( builder );
