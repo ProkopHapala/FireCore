@@ -280,6 +280,7 @@ class MolWorld_sp3 : public SolverInterface { public:
     int nSystems    = 1;
     int iSystemCur  = 0;    // currently selected system replica
 
+    MolecularDatabase* database = 0;
     bool bRelax=false;
 
 
@@ -354,7 +355,11 @@ class MolWorld_sp3 : public SolverInterface { public:
         //builder.printAtoms();
         //printf( "MolWorld_sp3::init() ffl.neighs=%li ffl.neighCell-%li \n", ffl.neighs, ffl.neighCell );
         //ffl.printNeighs();
-        
+        if (bGopt){
+            database = new MolecularDatabase();
+            database->setDescriptors();
+        }
+
         printf( "MolWorld_sp3::init() builder.lvec \n" ); printMat(builder.lvec);
         printf( "MolWorld_sp3::init() ffl.lvec     \n" ); printMat(ffl.lvec);
         

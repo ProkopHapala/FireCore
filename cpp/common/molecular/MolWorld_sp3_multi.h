@@ -191,10 +191,9 @@ class MolWorld_sp3_multi : public MolWorld_sp3, public MultiSolverInterface { pu
 
     const char* uploadPopName=0;
 
-    bool bMILAN = false;
+    bool bMILAN = true;
     bool bSaveToDatabase=false;
 
-    MolecularDatabase* database = 0;
     long nStepConvSum = 0;
     long nStepNonConvSum = 0;
     long nStepExplorSum = 0;
@@ -274,7 +273,8 @@ void initMultiCPU(int nSys){
         //gopts[isys].print();
         //gopts[isys].constrs.printSizes();  // Debug
         //gopts[isys].constrs.printDrives( );
-        gopts[isys].nExplore = 1000/nPerVFs;
+        gopts[isys].nExplore = go.nExplore;
+        gopts[isys].nRelax   = go.nRelax;
     }
 }
 
@@ -334,11 +334,7 @@ virtual void init() override {
     //iParalel=3;
     //iParalel=iParalelMax;
 
-    if(database)
-    if(!database){
-        database = new MolecularDatabase();
-        database->setDescriptors();
-    }
+    if(database)bSaveToDatabase=true;
     
     printf( "uploadPopName @ %li", uploadPopName );
     if( uploadPopName ){   printf( "!!!!!!!!!!!!\n UPLOADING POPULATION FROM FILE (%s)\n", uploadPopName );  upload_pop( uploadPopName ); }
@@ -736,7 +732,6 @@ bool updateMultiExploring( double Fconv=1e-6, float fsc = 0.02, float tsc = 0.3 
     bool bGroupUpdate=false;
     bool bExploring = false;
 
-    int nMaxSteps = 10000/nPerVFs;
 
     for(int isys=0; isys<nSystems; isys++){
         int i0v = isys * ocl.nvecs;
@@ -744,7 +739,7 @@ bool updateMultiExploring( double Fconv=1e-6, float fsc = 0.02, float tsc = 0.3 
         // -------- Global Optimization
         if( ( f2 < F2conv ) && (!gopts[isys].bExploring) ){            // Start Exploring
             nbConverged++;
-            nStepConvSum+=gopts[isys].istep*nPerVFs;  
+            nStepConvSum+=gopts[isys].istep;  
             gopts[isys].startExploring();
             if(bGroups){
                 bGroupUpdate=true;
@@ -758,11 +753,11 @@ bool updateMultiExploring( double Fconv=1e-6, float fsc = 0.02, float tsc = 0.3 
                 }   // Shift driver
             }
         }
-        else if( ( gopts[isys].istep > nMaxSteps ) && (!gopts[isys].bExploring)){
+        else if( ( gopts[isys].istep > gopts[isys].nRelax ) && (!gopts[isys].bExploring)){
             printf("(1) Entering non-converged branch for isys=%d, istep=%d\n", isys, gopts[isys].istep);
 
             nbNonConverged++;
-            nStepNonConvSum+=gopts[isys].istep*nPerVFs;            
+            nStepNonConvSum+=gopts[isys].istep;            
             gopts[isys].startExploring();
             if(bGroups){ bGroupUpdate=true; }
             if(database)database->convergedStructure.push_back(false);
@@ -780,7 +775,7 @@ bool updateMultiExploring( double Fconv=1e-6, float fsc = 0.02, float tsc = 0.3 
         if( gopts[isys].update() ){ // Stop Exploring
             if(bGroups)bGroupUpdate=true;
             nExploring++;
-            nStepExplorSum+=gopts[isys].nExplore*nPerVFs;
+            nStepExplorSum+=gopts[isys].nExplore;
             //printf("MolWorld_sp3_multi::evalVFs() isys=%3i Stop Exploring \n", isys );
             if(bGroups)for(int ig=0; ig<ocl.nGroup; ig++){ setGroupDrive(isys, ig, Vec3fZero, Vec3fZero ); }
         };
@@ -2113,6 +2108,7 @@ virtual char* getStatusString( char* s, int nmax ) override {
     s += sprintf(s, "eval_MMFFf4_ocl |F|max=%g |F|min=%g \n", sqrt(F2max), sqrt(F2min) );
     return s;
 }
+bool written_in_this_frame=false;
 bool first=true;
 uint64_t zeroT=0;
 virtual void MDloop( int nIter, double Ftol = -1 ) override {
@@ -2190,9 +2186,11 @@ virtual void MDloop( int nIter, double Ftol = -1 ) override {
     icurIter+=nitrdione;
     bChargeUpdated=false;
 
+
     if( bMILAN && bSaveToDatabase  ){ // Milan
         std::ofstream file("minima.dat", std::ios::app); 
-        if(icurIter%1000 < 200){
+        if((icurIter%1000==0 || icurIter%1000 < 200) && !written_in_this_frame){
+            written_in_this_frame=true;
             if(icurIter<1000) {
                 printf("%15s %20s %20s %20s %20s %20s %20s %20s %20s %20s\n", "Nb Iteration", "Totally", "Unique converged", "Time", "nbConverged", "nbEvaluation", "nStepConvAvg", "nStepNonConvAvg", "nStepExploringAvg", "total evaluation");
                 file << "Iterations" << " " << "Totally" << " " << "Unique" << " " << "Time"  << "\n";
@@ -2200,6 +2198,9 @@ virtual void MDloop( int nIter, double Ftol = -1 ) override {
             // /((double)(nbConverged+nbNonConverged))"nStepSaveAvg",
             printf("%15d %20d %20d %20g %20d %20d %20g %20g %20g %20d \n", icurIter, database->totalEntries, database->getNMembers(), (getCPUticks()-zeroT)*tick2second, nbConverged, nbEvaluation*nPerVFs, (nStepNonConvSum+nStepConvSum)/(double)(nbConverged+nbNonConverged), nStepNonConvSum/((double)nbNonConverged), nStepExplorSum/((double)nExploring), (nStepConvSum+nStepNonConvSum+nStepExplorSum) );
             file << icurIter << " " << database->totalEntries << " " << database->getNMembers() << " " <<  (getCPUticks()-zeroT)*tick2second << "\n";
+        }
+        else{
+            written_in_this_frame=false;
         }
         file.close();  // zavření souboru
     }
