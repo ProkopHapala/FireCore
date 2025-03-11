@@ -396,13 +396,24 @@ def evalGridFFAtPoints( ps, FFout=None, PLQH=[0.0,0.0,1.0,0.0], bSplit=True, nPB
     return FFout
 
 # void sample_func( int n, double* xs, double* ys, int kind ){
-lib.sample_func.argtypes  = [c_int, c_double_p, c_double_p, c_int]
+lib.sample_func.argtypes  = [c_int, c_double_p, c_double_p, c_int, c_double_p]
 lib.sample_func.restype   =  None
-def sample_func( xs, ys=None, kind=0 ):
+def sample_func( xs, ys=None, kind=0, params=[0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0] ):
     n = len(xs)
+    params = np.array( params )
     if ys is None: ys=np.zeros(n)
-    lib.sample_func( n, _np_as(xs,c_double_p), _np_as(ys,c_double_p), kind )
+    lib.sample_func( n, _np_as(xs,c_double_p), _np_as(ys,c_double_p), kind, _np_as(params,c_double_p) )
     return ys
+
+# void sample_func( int n, double* xs, double* ys, int kind ){
+lib.sample_func.argtypes  = [c_int, c_double_p, c_double_p, c_int, c_double_p]
+lib.sample_func.restype   =  None
+def sample_funcEF( xs, EFs=None, kind=0, params=[0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0] ):
+    n = len(xs)
+    params = np.array( params )
+    if EFs is None: EFs=np.zeros((n,2))
+    lib.sample_funcEF( n, _np_as(xs,c_double_p), _np_as(EFs,c_double_p), kind, _np_as(params,c_double_p) )
+    return EFs
 
 # void sample_Bspline( double g0, double dg, int ng, double* Gs, int n, double* xs, double* fes , int order, bool bPBC ){
 lib.sample_Bspline.argtypes  = [c_double, c_double, c_int, c_double_p, c_int, c_double_p, c_double_p, c_int, c_bool ]

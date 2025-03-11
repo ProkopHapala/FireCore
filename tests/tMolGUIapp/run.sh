@@ -29,9 +29,9 @@ fi
 
 
 # ------- asan (Memory Sanitizer)
-#LD_PRELOAD=$(g++ -print-file-name=libasan.so)
-#echo   $LD_PRELOAD
-#export LD_PRELOAD
+LD_PRELOAD=$(g++ -print-file-name=libasan.so)
+echo   $LD_PRELOAD
+export LD_PRELOAD
 
 
 # ---- Run
@@ -50,7 +50,7 @@ fi
 #./$name -x tAttach/PNA_CG_poly-.mol2
 #./$name -x tAttach/PNA_CG_poly-.mol2 -nPBC 1,3,0  -g common_resources/xyz/NaCl_8x8_L3 -shift 0.0,0.0,2.0
 #./$name -x tAttach/DANA_CG_poly.mol2 -nPBC 1,3,0  -g common_resources/xyz/NaCl_8x8_L3 -shift 0.0,0.0,2.0
-./$name -x tAttach/DANA_CG_poly-.mol2 -nPBC 1,3,0 
+#./$name -x tAttach/DANA_CG_poly-.mol2 -nPBC 1,3,0 
 #./$name -x tAttach/DANA_CG_poly-.mol2 -nPBC 1,3,0  -g common_resources/xyz/NaCl_8x8_L3 -shift 0.0,0.0,2.0
 
 
@@ -162,8 +162,6 @@ fi
 #./$name -x common_resources/xyz/H2O       -g common_resources/xyz/NaCl_8x8_L3_step
 
 
-
-
 #./$name -x common_resources/xyz/H2O       -g common_resources/xyz/NaCl_1x1_L2 -tricubic
 
 #./$name -x common_resources/xyz/H2O       -g common_resources/xyz/NaCl_1x1_L2  -lua makeGUI.lua
@@ -191,6 +189,12 @@ fi
 #./$name -x common_resources/xyz/uracil -g common_resources/xyz/NaCl_1x1_L3 -iParalel 0
 
 #./$name -x common_resources/xyz/uracil -g common_resources/xyz/NaCl_8x8_L3_step -e
+#./$name -x common_resources/xyz/uracil -g common_resources/xyz/NaCl_8x8_L3_step -e -perframe 100
+#./$name -x common_resources/xyz/uracil -g common_resources/xyz/NaCl_8x8_L3_step -e -perframe 500 -iParalel 0
+#./$name -x common_resources/xyz/CG -g common_resources/xyz/NaCl_8x8_L3_step -e -perframe 500 -iParalel 0
+./$name -x common_resources/xyz/CG -g common_resources/xyz/NaCl_8x8_L3_step -perframe 500 -iParalel 0
+
+
 
 #./$name -x common_resources/xyz/guanine-cytosine -g common_resources/xyz/NaCl_1x1_L3 -iParalel 0
 #./$name -x common_resources/xyz/guanine-cytosine -g common_resources/xyz/NaCl_1x1_L3 -iParalel 0 -e
