@@ -260,7 +260,7 @@ class MolGUI : public AppSDL2OGL_3D { public:
     bool   bViewBonds        = true;
     bool   bViewPis          = false;
     bool   bViewSubstrate    = true;
-    bool   bViewGroupBoxes   = true;
+    bool   bViewGroupBoxes   = false;
     bool   isoSurfRenderType = 1;
     bool   bDebug_scanSurfFF = false;
     Quat4d testREQ;
@@ -1415,15 +1415,13 @@ void MolGUI::draw(){
             Draw::color_of_hash(i*76461+1459);
             //printf( "MolGUI::draw(). BB %i  pmin(%16.8f,%16.8f,%16.8f) pmax(%16.8f,%16.8f,%16.8f) \n", i, bb.lo.x, bb.lo.y, bb.lo.z, bb.hi.x, bb.hi.y, bb.hi.z  );
             Draw3D::drawBBox( bb.lo, bb.hi );
-        }
-
-        
+        }        
         int ib=0; // pivot Box (Group of atoms)
         int    inds [natoms];
         Vec3d  ps   [natoms];
         Quat4d paras[natoms];
         int n = W->ffl.selectFromOtherBucketsInBox( ib ,6.0, ps,paras,inds );
-        printf( "MolGUI::draw(). n %i \n", n );
+        //printf( "MolGUI::draw(). n %i \n", n );
         glColor3f(0.0,1.0,1.0);
         for(int ia=0; ia<n; ia++){
             //Draw::color_of_hash(ia*76461+1459);

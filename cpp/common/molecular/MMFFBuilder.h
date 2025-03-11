@@ -2402,14 +2402,19 @@ void assignTorsions( bool bNonPi=false, bool bNO=true ){
         return true;
     }
 
-    void permutAtoms(int* permut, bool doBonds=false, bool bGroups=false ){
+
+    void permutAtoms(int* permut, bool doBonds=false, bool bGroups=true ){
+        bGroups &= (atom2group.size()>0);
+
         std::vector<int> atom2group_;
         if(bGroups){
+            if(atom2group.size()>0){
             if (atom2group.size()!=atoms.size()){
                 printf("ERROR permutAtoms bGroups && atom2group.size(%i)!=atoms.size(%i)\n", atom2group.size(), atoms.size());
                 exit(1);
             }
             atom2group_ = atom2group;
+            }
         }
 
         for(Bond&     b: bonds){ b.atoms.a=permut[b.atoms.a];  b.atoms.b=permut[b.atoms.b]; }
