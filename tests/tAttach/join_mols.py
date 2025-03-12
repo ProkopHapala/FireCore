@@ -10,13 +10,15 @@ import matplotlib.pyplot as plt
 #B = AtomicSystem(fname='backbone_subs_1.mol2')
 #A.addSystems(B, pos=(0,5.0,0), added_bonds=[(1,4)], _0=1 )
 
-A = AtomicSystem(fname='sequence_PPPPPPP.mol2')
+#A = AtomicSystem(fname='sequence_PPPPPPP.mol2')
+A = AtomicSystem(fname='sequence_DDDD_DDDD.mol2')
 #B = AtomicSystem(fname='porph_Cytosine/porph2s_C.mol2')
 #A.addSystems(B, pos=(25.0,10.0,0), rot=[(-1,0,0),(0,-1,0),(0,0,1)] )
 
-B = AtomicSystem(fname='porphs_Guanine/porph2s_G.mol2')
-A.addSystems(B, pos=(-23.0,9.0,0) )
-A.addSystems(B, pos=(-23.0,20.0,0) )
+#B = AtomicSystem(fname='porphs_Guanine/porph2s_G.mol2')
+B = AtomicSystem(fname='PorhQuad_G_30deg.mol2')
+A.addSystems(B, pos=(-19.0,9.0,0) )
+A.addSystems(B, pos=(-19.0,29.0,0) )
 
 plu.plotSystem( A, bLabels=False )
 plt.savefig('join_mols.png')
