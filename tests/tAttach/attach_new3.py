@@ -7,10 +7,12 @@ from pyBall.AtomicSystem import AtomicSystem
 
 
 backbones=[
-    ("porph2s_",'./porphironoids/porphirin_subs2.mol2'),
-    ("porph3s_",'./porphironoids/porphirin_3sites_subs.mol2'),
-    ("diphenatroline_CO_3s",'./porphironoids/diphenatroline_CO_subs.mol2'),
-    ("hex3s_",'./porphironoids/tisite_subs.mol2')
+    #("porph2s_",'./porphironoids/porphirin_subs2.mol2'),
+    #("porph3s_",'./porphironoids/porphirin_3sites_subs.mol2'),
+    #("diphenatroline_CO_3s",'./porphironoids/diphenatroline_CO_subs.mol2'),
+    #("hex3s_",'./porphironoids/tisite_subs.mol2')
+    #("PorhQuad_","./porphironoids/PorhQuad_4SeCl.mol2")
+    ("PorhQuad_","./porphironoids/PorhQuad_4SeCl_30deg.mol2")
 ]
 
 endgroups=[
