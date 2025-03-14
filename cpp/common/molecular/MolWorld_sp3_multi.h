@@ -272,8 +272,9 @@ void initMultiCPU(int nSys){
         opts[isys].initOpt( dtopt );
         opts[isys].cleanVel();
         gopts[isys].copy( go );
+        if(bGopt)   gopts[isys].bExploring = true;
+        else        gopts[isys].bExploring = false;
         //gopts[isys].startExploring();
-        gopts[isys].bExploring = false;
         //gopts[isys].print();
         //gopts[isys].constrs.printSizes();  // Debug
         //gopts[isys].constrs.printDrives( );
@@ -764,7 +765,6 @@ bool updateMultiExploring( double Fconv=1e-6, float fsc = 0.02, float tsc = 0.3 
             nStepNonConvSum+=gopts[isys].istep;            
             gopts[isys].startExploring();
             if(bGroups){ bGroupUpdate=true; }
-            if(database)database->convergedStructure.push_back(false);
 
             int i0v = isys * ocl.nvecs;
             unpack( ffls[isys].nvecs,  ffls[isys].apos, atoms+i0v);
@@ -776,7 +776,7 @@ bool updateMultiExploring( double Fconv=1e-6, float fsc = 0.02, float tsc = 0.3 
             
             if(bGroups)for(int ig=0; ig<ocl.nGroup; ig++){ setGroupDrive(isys, ig, {fsc,fsc,0.0}, {tsc,0.0,0.0} ); }   // Shift driver
         }
-        if( gopts[isys].update() ){ // Stop Exploring
+        if( gopts[isys].update(nPerVFs) ){ // Stop Exploring
             if(bGroups)bGroupUpdate=true;
             nExploring++;
             nStepExplorSum+=gopts[isys].nExplore;
@@ -811,7 +811,7 @@ double evalVFs( double Fconv=1e-6 ){
     iSysFMax=-1;
     bool bGroupUpdate=false;
     for(int isys=0; isys<nSystems; isys++){
-        nbEvaluation++;
+        nbEvaluation+=nPerVFs;
         int i0v = isys * ocl.nvecs;
         //evalVF( ocl.nvecs, aforces+i0v, avel   +i0v, fire[isys], MDpars[isys] );
         evalVF_new( ocl.nvecs, cvfs+i0v, fire[isys], MDpars[isys], gopts[isys].bExploring );
@@ -2192,21 +2192,47 @@ virtual void MDloop( int nIter, double Ftol = -1 ) override {
 
 
     if( bMILAN && bSaveToDatabase  ){ // Milan
-        std::ofstream file("minima.dat", std::ios::app); 
+        FILE* file = fopen("minima.dat", "a"); 
         if((icurIter%1000==0 || icurIter%1000 < 200) && !written_in_this_frame){
             written_in_this_frame=true;
             if(icurIter<1000) {
-                printf("%15s %20s %20s %20s %20s %20s %20s %20s %20s %20s\n", "Nb Iteration", "Totally", "Unique converged", "Time", "nbConverged", "nbEvaluation", "nStepConvAvg", "nStepNonConvAvg", "nStepExploringAvg", "total evaluation");
-                file << "Iterations" << " " << "Totally" << " " << "Unique" << " " << "Time"  << "\n";
+                // Print headers to both console and file
+                const char* header_fmt = "%15s %20s %20s %20s %20s %20s %20s %20s %20s %20s\n";
+                printf(header_fmt, 
+                    "[1]Nb Iteration", "[2]Totally (conv+nonconv)", "[3]Unique conv", "[4]Time",
+                    "[5]Totally (conv)", "[6]nbEvaluation", "[7]nStepConvAvg", "[8]nStepNonConvAvg",
+                    "[9]nStepExploringAvg", "[10]total evaluation");
+                fprintf(file, header_fmt,
+                    "[1]Nb Iteration", "[2]Totally (conv+nonconv)", "[3]Unique conv", "[4]Time",
+                    "[5]Totally (conv)", "[6]nbEvaluation", "[7]nStepConvAvg", "[8]nStepNonConvAvg",
+                    "[9]nStepExploringAvg", "[10]total evaluation");
             }
-            // /((double)(nbConverged+nbNonConverged))"nStepSaveAvg",
-            printf("%15d %20d %20d %20g %20d %20d %20g %20g %20g %20d \n", icurIter, database->totalEntries, database->getNMembers(), (getCPUticks()-zeroT)*tick2second, nbConverged, nbEvaluation*nPerVFs, (nStepNonConvSum+nStepConvSum)/(double)(nbConverged+nbNonConverged), nStepNonConvSum/((double)nbNonConverged), nStepExplorSum/((double)nExploring), (nStepConvSum+nStepNonConvSum+nStepExplorSum) );
-            file << icurIter << " " << database->totalEntries << " " << database->getNMembers() << " " <<  (getCPUticks()-zeroT)*tick2second << "\n";
+            
+            // Print data to both console and file
+            const char* data_fmt = "%15d %20d %20d %20g %20d %20d %20g %20g %20g %20d\n";
+            printf(data_fmt, 
+                icurIter, database->totalEntries,
+                std::accumulate(database->convergedStructure.begin(), database->convergedStructure.end(), 0),
+                (getCPUticks()-zeroT)*tick2second,
+                nbConverged, nbEvaluation,
+                (nStepNonConvSum+nStepConvSum)/(double)(nbConverged+nbNonConverged),
+                nStepNonConvSum/((double)nbNonConverged),
+                nStepExplorSum/((double)nExploring),
+                (nStepConvSum+nStepNonConvSum+nStepExplorSum));
+            fprintf(file, data_fmt,
+                icurIter, database->totalEntries,
+                std::accumulate(database->convergedStructure.begin(), database->convergedStructure.end(), 0),
+                (getCPUticks()-zeroT)*tick2second,
+                nbConverged, nbEvaluation,
+                (nStepNonConvSum+nStepConvSum)/(double)(nbConverged+nbNonConverged),
+                nStepNonConvSum/((double)nbNonConverged),
+                nStepExplorSum/((double)nExploring),
+                (nStepConvSum+nStepNonConvSum+nStepExplorSum));
         }
         else{
             written_in_this_frame=false;
         }
-        file.close();  // zavření souboru
+        fclose(file);
     }
 }
 
