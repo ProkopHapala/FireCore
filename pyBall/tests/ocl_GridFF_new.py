@@ -6,6 +6,8 @@ import time
 #exit()
 #from . import utils as ut
 from .. import atomicUtils as au
+from ..AtomicSystem import AtomicSystem
+
 #from .. import FunctionSampling as fu
 #exit()
 from ..OCL.GridFF import GridFF_cl, GridShape
@@ -196,7 +198,7 @@ def coulomb_brute_1D( atoms, kind='z', p0=[0.0,0.0,2.0], bPlot=False, nPBC=(60,6
 def make_atoms_arrays( atoms=None, fname=None, bSymetrize=False, Element_Types_name="./data/ElementTypes.dat", bSqrtEvdw=True ): 
     #print( os.getcwd() )
     if atoms is None:
-        atoms = au.AtomicSystem( fname=fname )
+        atoms = AtomicSystem( fname=fname )
     if bSymetrize:
         na_before = len(atoms.atypes)
         atoms, ws = atoms.symmetrized()
