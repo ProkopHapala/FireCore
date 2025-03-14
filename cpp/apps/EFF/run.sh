@@ -1,7 +1,7 @@
 name=EFFapp.x
-dir=../../cpp/Build/apps/EFF
-ln -s ../../cpp/common_resources data
-ln -s ../../cpp/common_resources common_resources 
+dir=../../Build/apps/EFF
+ln -s ../../common_resources data
+ln -s ../../common_resources common_resources 
 
 # ---- Multiprocesing
 ncpu=`nproc`
