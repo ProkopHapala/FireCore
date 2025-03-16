@@ -272,7 +272,7 @@ void TestAppMMFFsp3::drawSystem( bool bAtoms, bool bBonds, bool bForces, float t
         //opengl1renderer.color3f(0.0f,0.0f,1.0f); Draw3D::bondLabels( ff.nbonds, ff.bond2atom, ff.apos, fontTex, 0.02 );                     
         if(bondLenghts) opengl1renderer.color3f(0.0f,0.0f,1.0f); Draw3D::bondPropertyLabel( ff.nbonds, bondLenghts, ff.bond2atom, ff.apos, 1,0, fontTex, texSize, "%4.2f\0" );
     }
-    if(bForces){ opengl1renderer.color3f(1.0f,0.0f,0.0f); Draw3D::vecsInPoss( ff.natoms, ff.fapos, ff.apos, 300.0              ); }
+    if(bForces){ Draw3D::vecsInPoss( renderer, ff.natoms, ff.fapos, ff.apos, 300.0, {1, 0, 0}); }
     if(bAtoms){
         //opengl1renderer.color3f(0.0f,0.0f,1.0f); Draw3D::atomPropertyLabel( ff.natoms, (double*)nff.REQs, ff.apos, 3,2, fontTex, 0.02, "%4.2f\0" );
         opengl1renderer.color3f(0.5f,0.0f,0.0f); Draw3D::atomLabels( ff.natoms, ff.apos, fontTex, texSize                     );                     
