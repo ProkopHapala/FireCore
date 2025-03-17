@@ -9,6 +9,10 @@ import copy
 
 neg_types_set = { "O", "N" }
 
+def normalize(v):
+    n = np.linalg.norm(v)
+    return v / n if n > 1e-8 else v
+
 def findAllBonds( atoms, Rcut=3.0, RvdwCut=0.7 ):
     bonds     = []
     bondsVecs = []
