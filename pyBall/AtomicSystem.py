@@ -8,12 +8,6 @@ from . import elements
 import copy
 from . import atomicUtils as au
 
-
-def normalize(v):
-    n = np.linalg.norm(v)
-    return v / n if n > 1e-8 else v
-
-
 VALENCE_DICT={
 #        nBond  nEpair
 'O':   ( 2,     2  ),
@@ -783,11 +777,11 @@ class AtomicSystem( ):
         #if self.bonds is None or i not in self.ngs or len(self.ngs[i]) < 2:
         #    return np.array([0.0, 0.0, 1.0])  # Default direction if not enough neighbors
         neighbors = self.ngs[i]  # Take up to 3 neighbors
-        vectors = [ normalize(self.apos[j] - self.apos[i]) for j in neighbors if j != -1]
+        vectors = [ au.normalize(self.apos[j] - self.apos[i]) for j in neighbors if j != -1]
         dir = np.zeros(3)
         for a, b in zip(vectors, vectors[1:] + [vectors[0]]):
-            dir += normalize(np.cross(a, b))
-        return normalize(dir)
+            dir += au.normalize(np.cross(a, b))
+        return au.normalize(dir)
 
     def make_epair_geom(self, i, npi, nb ):
         """
@@ -796,38 +790,38 @@ class AtomicSystem( ):
         pos = self.apos[i]
         # Get neighbor positions as list of numpy arrays
         neighbors = [self.apos[j] for j in self.ngs[i]]
-        if nb > 0: v1 = normalize( neighbors[0] - pos )
-        if nb > 1: v2 = normalize( neighbors[1] - pos )
-        if nb > 2: v3 = normalize( neighbors[2] - pos )
+        if nb > 0: v1 = au.normalize( neighbors[0] - pos )
+        if nb > 1: v2 = au.normalize( neighbors[1] - pos )
+        if nb > 2: v3 = au.normalize( neighbors[2] - pos )
         #print( f"make_epair_geom() ia: {i} npi: {npi} nb: {nb}" )
         if npi == 0:
             if nb == 3:   # like NH3
                 #print( f"make_epair_geom() like NH3 {self.enames[i]}    ia: {i} npi: {npi} nb: {nb}" )
                 base = np.cross(v2 - v1, v3 - v1)
-                base = normalize(base)
+                base = au.normalize(base)
                 if np.dot(base, (v1 + v2 + v3)) > 0:  base = -base
                 self.place_electron_pair(i, base)
             elif nb == 2: # like H2O
                 #print( f"make_epair_geom() like H2O {self.enames[i]}    ia: {i} npi: {npi} nb: {nb}" )
-                m_c = normalize(v1 + v2)  # Average (bisector) direction
+                m_c = au.normalize(v1 + v2)  # Average (bisector) direction
                 m_b = np.cross( v1, v2 )
-                m_b = normalize(m_b)
+                m_b = au.normalize(m_b)
                 cc = 0.57735026919  # sqrt(1/3)
                 cb = 0.81649658092  # sqrt(2/3)
-                ep1 = normalize(m_c * -cc + m_b * cb)
-                ep2 = normalize(m_c * -cc - m_b * cb)
+                ep1 = au.normalize(m_c * -cc + m_b * cb)
+                ep2 = au.normalize(m_c * -cc - m_b * cb)
                 self.place_electron_pair(i, ep1)
                 self.place_electron_pair(i, ep2)
         elif npi == 1:
             #print( "make_epair_geom() PI=1 ia: %i npi: %i nb: %i" % (i, npi, nb ) )
             if nb == 2: # like =N-
                 #print( f"make_epair_geom() like =N- {self.enames[i]}    ia: {i} npi: {npi} nb: {nb}" )
-                m_c = normalize(v1 + v2)  # Bisector
+                m_c = au.normalize(v1 + v2)  # Bisector
                 self.place_electron_pair(i, m_c*-1.)
             elif nb == 1:  # like =O 
                 #print( f"make_epair_geom() like =O {self.enames[i]}    ia: {i} npi: {npi} nb: {nb}" )
                 m_b = self.get_atomi_pi_direction( self.ngs[i][0] )
-                m_c = np.cross( v1, m_b )
+                m_c = au.normalize(np.cross( v1, m_b ))
                 self.place_electron_pair(i, v1*-0.5 + m_c*0.86602540378)
                 self.place_electron_pair(i, v1*-0.5 - m_c*0.86602540378)
         # elif npi == 2:
