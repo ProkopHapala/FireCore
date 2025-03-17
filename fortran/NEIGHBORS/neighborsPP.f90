@@ -185,12 +185,8 @@
            range2 = (rcutoff_i + rcutoff_j - 0.01d0)**2
 
            if (distance2 .le. range2) then
-            if (distance2 .lt. 0.7d0 .and. distance .gt. 1.0d-4 .and.        &
-     &          iatom .ne. jatom) then
-             write (*,*) ' WARNING - atoms dangerously close! '
-             write (*,*) ' WARNING - atoms dangerously close! '
-             write (*,*) ' WARNING - atoms dangerously close! '
-             write (*,*) ' iatom, jatom, distance = ', iatom, jatom, distance
+            if ( (distance2 .lt. 0.25d0) .and. (distance .gt. 1.0d-4) .and.  (iatom .ne. jatom)) then
+             write (*,*) ' WARNING - atoms dangerously close!   iatom, jatom, distance = ', iatom, jatom, distance, distance2
             end if 
             num_neigh = num_neigh + 1
  
@@ -248,12 +244,8 @@
            range2 = (rcutoff_i + rcutoff_j - 0.01d0)**2
 
            if (distance2 .le. range2) then
-            if (distance2 .lt. 0.7d0 .and. distance .gt. 1.0d-4 .and.        &
-     &          iatom .ne. jatom) then
-             write (*,*) ' WARNING - atoms dangerously close! '
-             write (*,*) ' WARNING - atoms dangerously close! '
-             write (*,*) ' WARNING - atoms dangerously close! '
-             write (*,*) ' iatom, jatom, distance = ', iatom, jatom, distance
+            if ( (distance2 .lt. 0.25d0) .and. (distance .gt. 1.0d-4) .and. (iatom .ne. jatom) ) then
+              write (*,*) ' WARNING - atoms dangerously close!   iatom, jatom, distance = ', iatom, jatom, distance, distance2
             end if 
 
             num_neigh = num_neigh + 1

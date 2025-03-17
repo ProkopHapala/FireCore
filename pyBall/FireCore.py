@@ -118,7 +118,7 @@ def evalForce( pos, forces=None, nmax_scf=100, Es=None, ixyz=-1 ):
     if Es     is None: Es     = np.zeros(8)
     if forces is None: forces = np.zeros( pos.shape )
     lib.firecore_evalForce( nmax_scf, pos, forces, Es, ixyz )
-    return forces
+    return forces, Es
 
 # "void firecore_relax( nmax_scf, positions_, forces_, fixPos, energies )",
 #lib.firecore_relax.argtypes  = [c_int, c_int, array2d, array2d, array2i, array1d ] 
