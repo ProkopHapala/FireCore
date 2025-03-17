@@ -765,7 +765,7 @@ class AtomicSystem( ):
             nep    = VALENCE_DICT[ename][1]
             nsigma = len(self.ngs[i])
             npi    = nb - nsigma
-            print( "Atom %i: %s, npi = %i, nsigma = %i, nep = %i" % (i, ename, npi, nsigma, nep) )
+            #print( "Atom %i: %s, npi = %i, nsigma = %i, nep = %i" % (i, ename, npi, nsigma, nep) )
             if nep > 0:
                 self.make_epair_geom(i, npi, nsigma)
 
