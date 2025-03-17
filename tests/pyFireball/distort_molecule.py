@@ -61,7 +61,7 @@ def scan_angle( mol, angs, ia=0, j=1, jbs=[2] ):
             mol.apos[j,:] = mol.apos[ia,:] + ax*(r*ca) + vs[jj]*(r*sa)
         mol.saveXYZ( fname, comment=f"ang {a}", mode='a' )
 
-def scan_angle_dist( mol, angs, dists, ia=0, j=1, jbs=[2] ):
+def scan_angle_dist( mol, angs, dists, ia=0, j=1, jbs=[2], bEpairs=False ):
     fname = path+"angdistscan_"+name
     #r1 = mol.apos[j1] - mol.apos[i]
     #r2 = mol.apos[j2] - mol.apos[i]
@@ -74,13 +74,22 @@ def scan_angle_dist( mol, angs, dists, ia=0, j=1, jbs=[2] ):
         vs.append(v/r)
         #rs.append(r)
     mol.saveXYZ( fname, mode='w' )
+    if bEpairs:
+        mol.findBonds()
     for a in angs:
         ca = np.cos(a)
         sa = np.sin(a)
         for r in dists:
             for jj,j in enumerate(jbs):
                 mol.apos[j,:] = mol.apos[ia,:] + ax*(r*ca) + vs[jj]*(r*sa)
-            mol.saveXYZ( fname, comment=f"ang {a} dist {r}", mode='a' )
+            if bEpairs:
+                mol_ = mol.clonePBC()
+                mol_.bonds = mol.bonds
+                mol_.neighs()
+                mol_.add_electron_pairs()
+                mol_.saveXYZ( fname, comment=f"ang {a} dist {r}", mode='a' )
+            else:    
+                mol.saveXYZ( fname, comment=f"ang {a} dist {r}", mode='a' )
 
 
 
@@ -106,4 +115,5 @@ for name in molecules:
     angs = np.linspace(np.pi/4, np.pi*7./8., 10)
     dists = np.linspace(0.5,1.5,10)
     #scan_angle( mol, angs, ia=0, j=1, jbs=[2] )
-    scan_angle_dist( mol, angs, dists, ia=0, j=1, jbs=[2] )
+    #scan_angle_dist( mol, angs, dists, ia=0, j=1, jbs=[2] )
+    scan_angle_dist( mol, angs, dists, ia=0, j=1, jbs=[2], bEpairs=True )
