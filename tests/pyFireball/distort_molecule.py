@@ -226,7 +226,7 @@ for name in molecules:
     # if len(groups)<2: continue
     # scan_group_distance( mol, groups, l0=-0.4, dl=0.1 )
 
-
+    '''
     scales = np.linspace(0.7,2.0,20)
     angs = np.linspace(-np.pi/3, np.pi/3, 20);   print( "angs", angs )
     #scan_rot(mol, [1,2], angs, [0.0,0.0,1.0], i0=0 )
@@ -234,9 +234,9 @@ for name in molecules:
     #scan_rot_scale(mol, [1,2], angs, scales, [1.0,0.0,0.0], p0=None, i0=0, bEpairs=False, bFireball=False)
     Emap = scan_rot_scale(mol, [1,2], angs, scales, [1.0,0.0,0.0], p0=None, i0=0, bEpairs=False, bFireball=True)
     extent = [scales[0]*100,scales[-1]*100,angs[0]*rad2deg,angs[-1]*rad2deg]
-    
-    
     '''
+    
+    
     # scan angle
     angs = np.linspace(np.pi/4, np.pi*7./8., 20)
     dists = np.linspace(0.7,2.5,20)
@@ -245,15 +245,15 @@ for name in molecules:
     #scan_angle_dist( mol, angs, dists, ia=0, j=1, jbs=[2], bEpairs=True )
     Emap = scan_angle_dist( mol, angs, dists, ia=0, j=1, jbs=[2], bFireball=True )
     extent = [dists[0]*100,dists[-1]*100,angs[0]*rad2deg,angs[-1]*rad2deg]
-    '''
+    
 
     import matplotlib.pyplot as plt
     Emin = Emap.min()
     Emax = Emin+5.0
     plt.imshow( Emap, origin='lower', extent=extent, vmin=Emin, vmax=Emax )
     plt.colorbar()
-    #plt.xlabel( "Distance [pm]" )
-    plt.xlabel( "scale [%]" )
+    plt.xlabel( "Distance [pm]" )
+    #plt.xlabel( "scale [%]" )
     plt.ylabel( "Angle [deg.]" )
     plt.title( name )
     plt.savefig( name + ".png" )
