@@ -1,6 +1,7 @@
 import sys
 import os
 import numpy as np
+import matplotlib.pyplot as plt
 np.set_printoptions(linewidth=1000)
 
 sys.path.append("../../")
@@ -111,6 +112,60 @@ def scan_angle_dist( mol, angs, dists, ia=0, j=1, jbs=[2], bEpairs=False, bFireb
     if bFireball:
         return Emap
 
+def scan_dist(mol, dists, i0=0, i1=1, bEpairs=False, bFireball=False):
+    '''
+    Scan distance between two atoms.
+    
+    mol : AtomicSystem
+    dists : distances to scan
+    i0, i1 : indices of atoms to adjust distance between
+    bEpairs : whether to add electron pairs
+    bFireball : whether to use FireBall for energy calculation
+    '''
+    fname = path + "distscan_" + name
+    
+    # Get original vector and distance between atoms
+    vec_orig = mol.apos[i1] - mol.apos[i0]
+    dist_orig = np.linalg.norm(vec_orig)
+    dir_vec = vec_orig / dist_orig
+    
+    if bFireball:
+        fc.initialize(atomType=mol.atypes, atomPos=mol.apos, verbosity=3)
+        fc.evalForce(mol.apos, nmax_scf=100)
+        Es = np.zeros(len(dists))
+    
+    mol.saveXYZ(fname, mode='w')
+    if bEpairs:
+        mol.findBonds()
+    
+    # Store original position to restore later if needed
+    pos_orig = mol.apos[i1].copy()
+    
+    for i, d in enumerate(dists):
+        # Set new position based on direction and desired distance
+        mol.apos[i1] = mol.apos[i0] + dir_vec * d
+        
+        label = f"# dist {d:.3f}"
+        
+        if bFireball:
+            forces, energies = fc.evalForce(mol.apos, nmax_scf=100)
+            Es[i] = energies[0]
+            label += f" Etot {energies[0]:.3f}"
+            print("FireBall " + label)
+        
+        if bEpairs:
+            mol_ = mol.clonePBC()
+            mol_.bonds = mol.bonds
+            mol_.neighs()
+            mol_.add_electron_pairs()
+            mol_.saveXYZ(fname, comment=label, mode='a')
+        else:
+            mol.saveXYZ(fname, comment=label, mode='a')
+    
+    if bFireball:
+        return Es
+
+
 def scan_rot(mol, sel, angs, ax, p0=None, i0=0 ):
     '''
     mol : AtomicSystem
@@ -200,6 +255,29 @@ def scan_rot_scale(mol, sel, angs, scales, ax, p0=None, i0=0, bEpairs=False, bFi
     return mol
 
 
+def plot_2d( name, Emap, extent, xlabel="Distance [pm]", ylabel="Angle [deg.]" ):
+    Emin = Emap.min()
+    Emax = Emin+5.0
+    plt.imshow( Emap, origin='lower', extent=extent, vmin=Emin, vmax=Emax )
+    plt.colorbar()
+    plt.xlabel( xlabel )
+    plt.ylabel( ylabel )
+    plt.title( name )
+    plt.savefig( name + ".png" )
+    plt.show()
+
+def plot_1d( name, xs, ys, xlabel="Distance [pm]", ylabel="Energy [eV]" ):
+    # Plot the 1D scan results
+    plt.figure()
+    plt.plot( xs, ys, '.-')
+    plt.xlabel( xlabel )
+    plt.ylabel( ylabel )
+    plt.title( name )
+    plt.grid()
+    plt.savefig( name + ".png" )
+    plt.show()
+
+
 # find all molecules in path
 #molecules = [f for f in os.listdir(path) if os.path.isfile(os.path.join(path, f))]
 #print(molecules)
@@ -207,6 +285,8 @@ rad2deg = 180./np.pi
 
 #molecules = ["H2O.xyz"]
 molecules = ["CH4.xyz"]
+
+#molecules = ["H2.xyz"]
 
 # mol    = AtomicSystem( path+"CH4.xyz" )
 # #mol.orient(0, (1,2), (3,4) )
@@ -225,36 +305,33 @@ for name in molecules:
     # print(  name + ".groups ", groups )
     # if len(groups)<2: continue
     # scan_group_distance( mol, groups, l0=-0.4, dl=0.1 )
-
-    '''
-    scales = np.linspace(0.7,2.0,20)
-    angs = np.linspace(-np.pi/3, np.pi/3, 20);   print( "angs", angs )
-    #scan_rot(mol, [1,2], angs, [0.0,0.0,1.0], i0=0 )
-    #scan_rot(mol, [1,2], angs, [1.0,0.0,0.0], i0=0 )
-    #scan_rot_scale(mol, [1,2], angs, scales, [1.0,0.0,0.0], p0=None, i0=0, bEpairs=False, bFireball=False)
-    Emap = scan_rot_scale(mol, [1,2], angs, scales, [1.0,0.0,0.0], p0=None, i0=0, bEpairs=False, bFireball=True)
-    extent = [scales[0]*100,scales[-1]*100,angs[0]*rad2deg,angs[-1]*rad2deg]
-    '''
     
+    # scales = np.linspace(0.7,2.0,20)
+    # angs = np.linspace(-np.pi/3, np.pi/3, 20);   print( "angs", angs )
+    # #scan_rot(mol, [1,2], angs, [0.0,0.0,1.0], i0=0 )
+    # #scan_rot(mol, [1,2], angs, [1.0,0.0,0.0], i0=0 )
+    # #scan_rot_scale(mol, [1,2], angs, scales, [1.0,0.0,0.0], p0=None, i0=0, bEpairs=False, bFireball=False)
+    # Emap = scan_rot_scale(mol, [1,2], angs, scales, [1.0,0.0,0.0], p0=None, i0=0, bEpairs=False, bFireball=True)
+    # extent = [scales[0]*100,scales[-1]*100,angs[0]*rad2deg,angs[-1]*rad2deg]
+    # plot_2d( "rotscalescan_"+name, Emap, extent, xlabel="Scale [%]", ylabel="Angle [deg.]" )
     
-    # scan angle
-    angs = np.linspace(np.pi/4, np.pi*7./8., 20)
-    dists = np.linspace(0.7,2.5,20)
-    #scan_angle( mol, angs, ia=0, j=1, jbs=[2] )
-    #scan_angle_dist( mol, angs, dists, ia=0, j=1, jbs=[2] )
-    #scan_angle_dist( mol, angs, dists, ia=0, j=1, jbs=[2], bEpairs=True )
-    Emap = scan_angle_dist( mol, angs, dists, ia=0, j=1, jbs=[2], bFireball=True )
-    extent = [dists[0]*100,dists[-1]*100,angs[0]*rad2deg,angs[-1]*rad2deg]
+    # angs = np.linspace(np.pi/4, np.pi*7./8., 20)
+    # dists = np.linspace(0.7,2.5,20)
+    # #scan_angle( mol, angs, ia=0, j=1, jbs=[2] )
+    # #scan_angle_dist( mol, angs, dists, ia=0, j=1, jbs=[2] )
+    # #scan_angle_dist( mol, angs, dists, ia=0, j=1, jbs=[2], bEpairs=True )
+    # Emap = scan_angle_dist( mol, angs, dists, ia=0, j=1, jbs=[2], bFireball=True )
+    # extent = [dists[0]*100,dists[-1]*100,angs[0]*rad2deg,angs[-1]*rad2deg]
+    # plot_2d( "angdistscan_"+name, Emap, extent, xlabel="Distance [pm]", ylabel="Angle [deg.]" )
     
 
-    import matplotlib.pyplot as plt
-    Emin = Emap.min()
-    Emax = Emin+5.0
-    plt.imshow( Emap, origin='lower', extent=extent, vmin=Emin, vmax=Emax )
-    plt.colorbar()
-    plt.xlabel( "Distance [pm]" )
-    #plt.xlabel( "scale [%]" )
-    plt.ylabel( "Angle [deg.]" )
-    plt.title( name )
-    plt.savefig( name + ".png" )
-    plt.show()
+    # Example 1D scan for H2 molecule
+    # Example 1D scan for H2O molecule
+    dists = np.linspace(0.6, 3.5, 50)
+    Es = scan_dist(mol, dists, i0=0, i1=1, bFireball=True)
+    plot_1d( "distscan_"+name, dists, Es, xlabel="Distance [pm]", ylabel="Energy [eV]" )
+
+
+
+    
+
