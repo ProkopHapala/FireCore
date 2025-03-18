@@ -461,6 +461,49 @@ def makeRotMatAng( ang, ax=(0,1) ):
     rot[ax1,ax2]=-sa; rot[ax2,ax1]=sa
     return rot 
 
+# def rotation_matrix( axis, angle ):
+#     axis = axis/np.linalg.norm(axis)
+#     ca = np.cos(angle)
+#     sa = np.sin(angle)
+#     rot = np.eye(3)
+#     kx, ky, kz = axis
+#     v = 1 - ca
+#     rot[0, 0] = kx * kx * v + ca
+#     rot[0, 1] = kx * ky * v - kz * sa
+#     rot[0, 2] = kx * kz * v + ky * sa
+#     rot[1, 0] = kx * ky * v + kz * sa
+#     rot[1, 1] = ky * ky * v + ca
+#     rot[1, 2] = ky * kz * v - kx * sa
+#     rot[2, 0] = kx * kz * v - ky * sa
+#     rot[2, 1] = ky * kz * v + kx * sa
+#     rot[2, 2] = kz * kz * v + ca
+#     return rot
+
+def rotation_matrix(axis, angle):
+    '''
+    create rotation matrix from arbitrary axis and angle using 'Rodrigues' rotation formula
+    '''
+    axis = axis / np.linalg.norm(axis)
+    ca = np.cos(angle)
+    sa = np.sin(angle)
+    kx, ky, kz = axis
+    v = 1 - ca
+    rot = np.array([
+        [ kx*kx*v + ca,     kx*ky*v - kz*sa,  kx*kz*v + ky*sa ],
+        [ kx*ky*v + kz*sa,  ky*ky*v + ca,     ky*kz*v - kx*sa ],
+        [ kx*kz*v - ky*sa,  ky*kz*v + kx*sa,  kz*kz*v + ca    ]
+    ])
+    return rot
+
+# def rotation_matrix(axis, angle):
+#     axis = axis / np.linalg.norm(axis)
+#     ca, sa = np.cos(angle), np.sin(angle)
+#     K = np.array(
+#         [[ 0      , -axis[2],  axis[1]],
+#          [ axis[2],  0      , -axis[0]],
+#          [-axis[1],  axis[0],  0     ]])
+#     return ca * np.eye(3) + (1 - ca) * np.outer(axis, axis) + sa * K    
+
 def makeRotMat( fw, up ):    
     fw   = fw/np.linalg.norm(fw)
     up   = up - fw*np.dot(up,fw)

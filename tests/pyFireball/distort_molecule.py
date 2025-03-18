@@ -111,11 +111,108 @@ def scan_angle_dist( mol, angs, dists, ia=0, j=1, jbs=[2], bEpairs=False, bFireb
     if bFireball:
         return Emap
 
+def scan_rot(mol, sel, angs, ax, p0=None, i0=0 ):
+    '''
+    mol : AtomicSystem
+    p0  : center of rotation
+    ax  : axis of rotation
+    angs : angles to scan
+    sel : selected atoms to rotate
+    implementation: 
+      - we also create rotation matrix initial angle
+      - then we run in loop creating rotation matrix for difference between successive angles and multiply the selected atom positions by it (substracting and addind the center of rotation) 
+    '''
+    if p0 is None: p0 = mol.apos[i0]
+    fname = path + "rotscan_" + name
+    ax = au.normalize(ax)
+    oa = angs[0]
+    R0 = au.rotation_matrix(ax, oa)
+    for i in sel: mol.apos[i,:] = np.dot(mol.apos[i,:]-p0, R0.T) + p0
+    mol.saveXYZ(fname, comment=f"ang {oa}", mode='w')
+    for a in angs[1:]:
+        dR = au.rotation_matrix(ax, a-oa )
+        print( f"{a:.3f}  dR", dR )
+        for i in sel: mol.apos[i,:] = np.dot(mol.apos[i,:]-p0, dR.T) + p0
+        mol.saveXYZ(fname, comment=f"ang {a}", mode='a')
+        oa = a
+    return mol
+
+def scan_rot_scale(mol, sel, angs, scales, ax, p0=None, i0=0, bEpairs=False, bFireball=False):
+    '''
+    Scan rotation and scaling of selected atoms.
+    
+    mol : AtomicSystem
+    p0  : center of rotation
+    ax  : axis of rotation
+    angs : angles to scan
+    scales : scaling factors to scan
+    sel : selected atoms to rotate and scale
+    bEpairs : whether to add electron pairs
+    bFireball : whether to use FireBall for energy calculation
+    '''
+    if p0 is None: p0 = mol.apos[i0]
+    fname = path + "rotscalescan_" + name
+    ax = au.normalize(ax)
+    oa = angs[0]
+    R0 = au.rotation_matrix(ax, oa)
+    
+    if bFireball:
+        fc.initialize(atomType=mol.atypes, atomPos=mol.apos, verbosity=3)
+        fc.evalForce(mol.apos, nmax_scf=100)
+        Emap = np.zeros((len(angs), len(scales)))
+    
+    mol.saveXYZ(fname, mode='w')
+    if bEpairs:
+        mol.findBonds()
+
+    rs = [ np.linalg.norm(mol.apos[i] - p0) for i in sel ]
+        
+    for iang, a in enumerate(angs):
+        dR = au.rotation_matrix(ax, a-oa) if iang > 0 else R0
+        for i in sel:
+            mol.apos[i,:] = np.dot(mol.apos[i,:]-p0, dR.T) + p0
+
+        for iscale, s in enumerate(scales):
+            for ii, i in enumerate(sel):
+                vec = mol.apos[i,:] - p0
+                vec = au.normalize(vec) * (rs[ii]*s)
+                mol.apos[i,:] = p0 + vec
+                
+            label = f"# ang {a:.3f} scale {s:.3f}"
+            
+            if bFireball:
+                forces, Es = fc.evalForce(mol.apos, nmax_scf=100)
+                Emap[iang, iscale] = Es[0]
+                label += f" Etot {Es[0]:.3f}"
+                print("FireBall " + label)
+            if bEpairs:
+                mol_ = mol.clonePBC()
+                mol_.bonds = mol.bonds
+                mol_.neighs()
+                mol_.add_electron_pairs()
+                mol_.saveXYZ(fname, comment=label, mode='a')
+            else:
+                mol.saveXYZ(fname, comment=label, mode='a')
+        oa = a
+    
+    if bFireball:
+        return Emap
+    return mol
+
+
 # find all molecules in path
 #molecules = [f for f in os.listdir(path) if os.path.isfile(os.path.join(path, f))]
 #print(molecules)
+rad2deg = 180./np.pi
 
-molecules = ["H2O.xyz"]
+#molecules = ["H2O.xyz"]
+molecules = ["CH4.xyz"]
+
+# mol    = AtomicSystem( path+"CH4.xyz" )
+# #mol.orient(0, (1,2), (3,4) )
+# mol.orient(1, (2,3), (4,5) )
+# mol.saveXYZ( path+"CH4_oriented.xyz" )
+# exit()
 
 #mol = AtomicSystem( path+molecules[0] )
 for name in molecules:
@@ -129,6 +226,17 @@ for name in molecules:
     # if len(groups)<2: continue
     # scan_group_distance( mol, groups, l0=-0.4, dl=0.1 )
 
+
+    scales = np.linspace(0.7,2.0,20)
+    angs = np.linspace(-np.pi/3, np.pi/3, 20);   print( "angs", angs )
+    #scan_rot(mol, [1,2], angs, [0.0,0.0,1.0], i0=0 )
+    #scan_rot(mol, [1,2], angs, [1.0,0.0,0.0], i0=0 )
+    #scan_rot_scale(mol, [1,2], angs, scales, [1.0,0.0,0.0], p0=None, i0=0, bEpairs=False, bFireball=False)
+    Emap = scan_rot_scale(mol, [1,2], angs, scales, [1.0,0.0,0.0], p0=None, i0=0, bEpairs=False, bFireball=True)
+    extent = [scales[0]*100,scales[-1]*100,angs[0]*rad2deg,angs[-1]*rad2deg]
+    
+    
+    '''
     # scan angle
     angs = np.linspace(np.pi/4, np.pi*7./8., 20)
     dists = np.linspace(0.7,2.5,20)
@@ -136,14 +244,17 @@ for name in molecules:
     #scan_angle_dist( mol, angs, dists, ia=0, j=1, jbs=[2] )
     #scan_angle_dist( mol, angs, dists, ia=0, j=1, jbs=[2], bEpairs=True )
     Emap = scan_angle_dist( mol, angs, dists, ia=0, j=1, jbs=[2], bFireball=True )
+    extent = [dists[0]*100,dists[-1]*100,angs[0]*rad2deg,angs[-1]*rad2deg]
+    '''
 
     import matplotlib.pyplot as plt
-    rad2deg = 180./np.pi
     Emin = Emap.min()
     Emax = Emin+5.0
-    plt.imshow( Emap, origin='lower', extent=[dists[0]*100,dists[-1]*100,angs[0]*rad2deg,angs[-1]*rad2deg], vmin=Emin, vmax=Emax )
+    plt.imshow( Emap, origin='lower', extent=extent, vmin=Emin, vmax=Emax )
     plt.colorbar()
-    plt.xlabel( "Distance [pm]" )
+    #plt.xlabel( "Distance [pm]" )
+    plt.xlabel( "scale [%]" )
     plt.ylabel( "Angle [deg.]" )
     plt.title( name )
+    plt.savefig( name + ".png" )
     plt.show()
