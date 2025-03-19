@@ -99,8 +99,8 @@ class GUITextInput{ public:
 
 	void         applyVal( float f );
 
-    virtual void view3D ( Renderer* r, const Vec3d& pos, int fontTex, float textSize );
-    virtual void viewHUD( Renderer* r, const Vec2i& pos, int fontTex, bool bBack=true );
+    virtual void view3D ( const Vec3d& pos, int fontTex, float textSize );
+    virtual void viewHUD( const Vec2i& pos, int fontTex, bool bBack=true );
     virtual void onKeyDown( SDL_Event e );
 	virtual void onText   ( SDL_Event e );
 
@@ -146,12 +146,12 @@ class GUIAbstractPanel{ public:
 	virtual GUIAbstractPanel* onMouse( int x, int y, const SDL_Event& e, GUI& gui );
     virtual void              onText(                const SDL_Event& e, GUI& gui );
 
-    virtual void render(Renderer* r);
+    virtual void render();
 
     // inline fnctions
 
-    inline void draw(Renderer* r){ 
-        render(r);
+    inline void draw(){ 
+        render();
     };
     inline bool check     ( int  x, int  y ){
         //printf( "check x %i <%i...%i>   y %i <%i...%i>\n", x, xmin, xmax,   y, ymin, ymax );
@@ -187,7 +187,7 @@ class GUIPanel : public GUIAbstractPanel { public:
         command=0;
     };
 
-	void render(Renderer* r) override;
+	void render() override;
     virtual void              onKeyDown( const SDL_Event&  e, GUI& gui )                  override;
     virtual void              onText   ( const SDL_Event&  e, GUI& gui )                  override;
     virtual GUIAbstractPanel* onMouse  ( int x, int y, const SDL_Event& event, GUI& gui ) override;
@@ -253,7 +253,7 @@ class MultiPanel : public GUIAbstractPanel { public:
     virtual void close()override;
     virtual void moveBy(int dx, int dy) override;
     //virtual void tryRender( );
-    virtual void render(Renderer* r)override;
+    virtual void render()override;
     virtual GUIAbstractPanel* onMouse( int x, int y, const SDL_Event& event, GUI& gui )override;
 
     void toggleOpen();
@@ -309,7 +309,7 @@ class CheckBoxList : public GUIAbstractPanel { public:
     void update();
 
     //virtual int  toggleChanged(){ int i=ivalchanged; ivalchanged=-1; return i; };  // moved to GUIAbstractPanel
-    virtual void render(Renderer* r) override;
+    virtual void render() override;
     virtual GUIAbstractPanel* onMouse( int x, int y, const SDL_Event& event, GUI& gui )  override;
 
     inline void syncRead (){ for(CheckBox& b: boxes){ b.read (); } }
@@ -332,7 +332,7 @@ class ScisorBox : public GUIAbstractPanel { public:
 
     //virtual void draw     ( );
     //virtual void tryRender( );
-    virtual void render(Renderer* r)                                                                override;
+    virtual void render()                                                                override;
     virtual GUIAbstractPanel* onMouse ( int x, int y, const SDL_Event&  event, GUI& gui ) override;
 
     //virtual void onKeyDown( SDL_Event e ){};
@@ -364,7 +364,7 @@ class CommandList : public GUIAbstractPanel { public:
 
     bool     getKeyb(int key);
     void         update( );
-    virtual void render(Renderer* r) override;
+    virtual void render() override;
     virtual GUIAbstractPanel* onMouse( int x, int y, const SDL_Event& event, GUI& gui ) override;
 
 };
@@ -423,7 +423,7 @@ class DropDownList : public GUIAbstractPanel { public:
 
     //virtual void view ( );
     //virtual void tryRender( );
-    virtual void render(Renderer* r) override;
+    virtual void render() override;
     virtual GUIAbstractPanel* onMouse  ( int x, int y, const SDL_Event& event, GUI& gui ) override;
 
     //virtual void onKeyDown( SDL_Event e )override{};
@@ -460,7 +460,7 @@ class TreeView : public GUIAbstractPanel { public:
     TreeViewTree root;
     std::vector<TreeViewTree*> lines;
 
-    virtual void render(Renderer* r) override;
+    virtual void render() override;
     virtual GUIAbstractPanel* onMouse  ( int x, int y, const SDL_Event& event, GUI& gui ) override;
 
     void updateLines( TreeViewTree& node, int level );
@@ -493,7 +493,7 @@ class TableView : public GUIAbstractPanel { public:
     GUITextInput* input=0;
 
     void initTableView( Table* table_, const std::string& caption_, int xmin_, int ymin_, int i0_, int j0_, int imax_, int jmax_ );
-    virtual void render(Renderer* r) override;
+    virtual void render() override;
     virtual void onKeyDown( const SDL_Event& e, GUI& gui )                              override;
     virtual void onText   ( const SDL_Event& e, GUI& gui )                              override;
     virtual GUIAbstractPanel* onMouse( int x, int y, const SDL_Event& event, GUI& gui ) override;
@@ -503,8 +503,8 @@ class TableView : public GUIAbstractPanel { public:
         initTableView( table_, caption_, xmin_, ymin_, i0_, j0_, imax_, jmax_ );
     }
 
-    inline void view (Renderer* r){
-        if(input)input->viewHUD( r, {xmin+xs[j+1]-xs[j0],xmax+((i0-i)*2*fontSizeDef)}, fontSizeDef, true );
+    inline void view (){
+        if(input)input->viewHUD( {xmin+xs[j+1]-xs[j0],xmax+((i0-i)*2*fontSizeDef)}, fontSizeDef, true );
     }
 
 };
@@ -545,7 +545,7 @@ class BoundGUI:public MultiPanel,public BindLoader{ public:
     BoundGUI(const std::string& caption, int xmin, int ymin, int xmax, int dy,int nsub):MultiPanel(caption,xmin,ymin,xmax,dy,nsub){
         opened=false;
     }
-    virtual void render(Renderer* r) override {if(opened)MultiPanel::render(r);}
+    virtual void render() override {if(opened)MultiPanel::render();}
     //virtual int bindLoad(void* o)=0;
     void unbind(){
         binded=false;
@@ -574,7 +574,7 @@ class GUI{ public:
 
     GUIAbstractPanel* addPanel( GUIAbstractPanel* panel );
     GUIAbstractPanel* onEvent( int mouseX, int mouseY, const SDL_Event& event );
-    void draw(Renderer* r);
+    void draw();
 
     //void layoutRow( int xmin, int xmax );
     void layoutRow( int xmin, int ymin, int xspace=0 );

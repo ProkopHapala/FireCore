@@ -49,7 +49,6 @@ class ScreenSDL2OGL{ public:
 	Uint32         wflags;
 	SDL_Window*    window;
 	SDL_GLContext  glctx;
-	Renderer*      renderer;
 
 // ============ function declarations
 

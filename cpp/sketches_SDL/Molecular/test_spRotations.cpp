@@ -343,7 +343,7 @@ TestAppSp3Space::TestAppSp3Space( int& id, int WIDTH_, int HEIGHT_ ) : AppSDL2OG
     //DEBUG
     exit(0);
 
-    plot1.render(renderer);
+    plot1.render( );
 
     p2.z=2.0;
     ogl=Draw::list(ogl);
@@ -379,14 +379,14 @@ void TestAppSp3Space::draw(){
     opengl1renderer.color3f(0.0,0.0,0.0);
 
     opengl1renderer.color3f(0.0,0.0,0.0);
-    Draw3D::drawPointCross( renderer,p1,0.1);
-    Draw3D::drawPointCross( renderer,p2,0.1);
+    Draw3D::drawPointCross( p1,0.1);
+    Draw3D::drawPointCross( p2,0.1);
     //Draw3D::drawLine(p1,p2);
 
     //Draw3D::drawMatInPos( Mat3dIdentity, p1, psi1.p );
     //Draw3D::drawMatInPos( Mat3dIdentity, p2, psi2.p );
-    Draw3D::drawVecInPos( renderer, psi1.p, p1, {1, 1, 1} );
-    Draw3D::drawVecInPos( renderer, psi2.p, p2, {1, 1, 1} );
+    Draw3D::drawVecInPos( psi1.p, p1, {1, 1, 1} );
+    Draw3D::drawVecInPos( psi2.p, p2, {1, 1, 1} );
 
     Draw3D::drawMatInPos( rot, p1, c1 );
     Draw3D::drawMatInPos( rot, p2, c2 );

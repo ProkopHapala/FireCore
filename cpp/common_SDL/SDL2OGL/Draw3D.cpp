@@ -1,4 +1,5 @@
 
+#include "Renderer.h"
 #include "Vec2.h"
 #include "Draw.h"
 #include "Vec3.h"
@@ -17,15 +18,21 @@ static GLMesh makePointCross(){
 };
 static GLMesh pointCross = makePointCross();
 
+static GLMesh makePoint(){
+    GLMesh m = GLMesh(GL_POINTS);
+    m.addVertex({0, 0, 0});
+    return m;
+}
+static GLMesh point = makePoint();
+
 void Draw3D::drawPoint( const Vec3f& vec ){
-	opengl1renderer.begin(GL_POINTS);
-		vertex( vec );
-    opengl1renderer.end();
+	point.color = {1, 1, 1};
+	point.draw(vec);
 };
 
-void Draw3D::drawPointCross( Renderer* r, const Vec3f& vec, float sz, Vec3f color ){
+void Draw3D::drawPointCross( const Vec3f& vec, float sz, Vec3f color ){
     pointCross.color = color;
-	r->drawMesh(&pointCross, vec, Quat4fIdentity, {sz, sz, sz});
+	pointCross.draw(vec, Quat4fIdentity, {sz, sz, sz});
 };
 
 static GLMesh makeLineMesh(){
@@ -36,17 +43,17 @@ static GLMesh makeLineMesh(){
 }
 static GLMesh lineMesh = makeLineMesh();
 
-void Draw3D::drawVecInPos( Renderer* r, const Vec3f& v, const Vec3f& pos, Vec3f color ){
-    drawLine(r, pos, pos+v, color);
+void Draw3D::drawVecInPos( const Vec3f& v, const Vec3f& pos, Vec3f color ){
+    drawLine(pos, pos+v, color);
 };
 
-void Draw3D::drawLine( Renderer* r, const Vec3f& p1, const Vec3f& p2, Vec3f color ){
+void Draw3D::drawLine( const Vec3f& p1, const Vec3f& p2, Vec3f color ){
     lineMesh.color = color;
-    r->drawMesh(&lineMesh, p1, Quat4fIdentity, p2-p1);
+    lineMesh.draw(p1, Quat4fIdentity, p2-p1);
 };
 
-void Draw3D::drawVec( Renderer* r, const Vec3f& vec, Vec3f color ){
-	drawVecInPos( r, vec, Vec3fZero, color);
+void Draw3D::drawVec( const Vec3f& vec, Vec3f color ){
+	drawVecInPos( vec, Vec3fZero, color);
 };
 
 void Draw3D::drawArrow( const Vec3f& p1, const Vec3f& p2, float sz ){
@@ -63,9 +70,9 @@ void Draw3D::drawArrow( const Vec3f& p1, const Vec3f& p2, float sz ){
 	opengl1renderer.end();
 };
 
-void Draw3D::vecsInPoss( Renderer* r, int n, const Vec3d* vs, const Vec3d* ps, float sc, Vec3f color ){
+void Draw3D::vecsInPoss( int n, const Vec3d* vs, const Vec3d* ps, float sc, Vec3f color ){
     for(int i=0; i<n; i++){
-        drawVecInPos(r, vs[i]*sc, ps[i], color);
+        drawVecInPos(vs[i]*sc, ps[i], color);
     };
 };
 

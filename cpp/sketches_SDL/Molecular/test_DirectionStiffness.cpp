@@ -342,9 +342,9 @@ void TestAppDirectionStiffness::draw(){
     }
 
     ray0 = (Vec3d)(cam.rotMat().a*mouse_begin_x + cam.rotMat().b*mouse_begin_y);
-    Draw3D::drawPointCross( renderer, ray0, 0.1 );
+    Draw3D::drawPointCross( ray0, 0.1 );
     //Draw3D::drawVecInPos( camMat.c, ray0 );
-    if(ipicked>=0) Draw3D::drawLine( renderer, ff.apos[ipicked], ray0, {0, 0, 0});
+    if(ipicked>=0) Draw3D::drawLine( ff.apos[ipicked], ray0, {0, 0, 0});
 
 
 
@@ -355,11 +355,11 @@ void TestAppDirectionStiffness::draw(){
 
 
     drawSystem();
-    for(int i=0; i<deformer.npick; i++){  int ia=deformer.picks[i]; Draw3D::drawVecInPos( renderer, deformer.aforce[ia]*15.0,deformer.apos[ia], {0, 1, 0}); }
+    for(int i=0; i<deformer.npick; i++){  int ia=deformer.picks[i]; Draw3D::drawVecInPos( deformer.aforce[ia]*15.0,deformer.apos[ia], {0, 1, 0}); }
 
     opengl1renderer.disable(GL_DEPTH_TEST);
     for(const Vec2i& b : graph2->found ){
-        Draw3D::drawLine( renderer, ff.apos[b.a], ff.apos[b.b], {0, 1, 1} );
+        Draw3D::drawLine( ff.apos[b.a], ff.apos[b.b], {0, 1, 1} );
     }
 
 };
@@ -368,7 +368,7 @@ void TestAppDirectionStiffness::drawSystem( ){
     opengl1renderer.color3f(1.0f,0.0f,0.0f); Draw3D::vecsInPos( ff.natoms, ff.aforce,  ff.apos, 10.0 );
     //opengl1renderer.color3f(0.0f,0.0f,0.0f); Draw3D::drawLines ( ff.nbonds, (int*)ff.bond2atom, ff.apos );
     //opengl1renderer.color3f(0.0f,0.0f,0.0f); Draw3D::bondsPBC ( ff.nbonds, ff.bond2atom, ff.apos, &builder.bondPBC[0], builder.lvec ); // DEBUG
-    Draw3D::bondsPBC ( renderer, ff.nbonds, ff.bond2atom, ff.apos, ff.pbcShifts, {0, 0, 0} ); // DEBUG
+    Draw3D::bondsPBC ( ff.nbonds, ff.bond2atom, ff.apos, ff.pbcShifts, {0, 0, 0} ); // DEBUG
     //opengl1renderer.color3f(0.5f,0.0f,0.0f); Draw3D::atomLabels( ff.natoms, ff.apos, fontTex                     );                     //DEBUG
     //opengl1renderer.color3f(0.0f,0.0f,1.0f); Draw3D::bondLabels( ff.nbonds, ff.bond2atom, ff.apos, fontTex, 0.02 );                     //DEBUG
     //opengl1renderer.color3f(0.0f,0.0f,1.0f); Draw3D::atomPropertyLabel( ff.natoms, (double*)nff.REQs, ff.apos, 3,2, fontTex, 0.02, "%4.2f\0" );
@@ -377,7 +377,7 @@ void TestAppDirectionStiffness::drawSystem( ){
     //Draw3D::atomsREQ  ( ff.natoms, ff.apos,   nff.REQs, ogl_sph, 1.0, 0.25, 1.0 );
     //Draw3D::atoms( ff.natoms, ff.apos, atypes, params, ogl_sph, 1.0, 1.0, 1.0 );       //DEBUG
     //Draw3D::atoms( ff.natoms, ff.apos, atypes, params, ogl_sph, 1.0, 0.5, 1.0 );       //DEBUG
-    Draw3D::atoms( renderer, ff.natoms, ff.apos, atypes, params, &ogl_sph, 1.0, 0.25, 1.0 );       //DEBUG
+    Draw3D::atoms( ff.natoms, ff.apos, atypes, params, &ogl_sph, 1.0, 0.25, 1.0 );       //DEBUG
 }
 
 int TestAppDirectionStiffness::loadMoleculeXYZ( const char* fname, const char* fnameLvs, bool bAutoH ){

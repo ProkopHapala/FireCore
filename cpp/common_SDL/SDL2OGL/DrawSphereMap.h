@@ -196,7 +196,7 @@ void drawDiTri_seam( int n, int n2, const Vec3f& a, const Vec3f& b, const Vec3f&
             opengl1renderer.vertex3f( p_.x,  p_.y,  p_.z  );
             //opengl1renderer.color3f(1.0,1.0,0.0); opengl1renderer.vertex3f( pp.x,  pp.y,  pp.z  );
             //opengl1renderer.vertex3f( p.x,  p.y,  p.z  );
-            //Draw3D::drawPointCross( renderer,p,0.05);
+            //Draw3D::drawPointCross( p,0.05);
         }
         //if(bT1){ h = hs2[i*n]; }else{ h = hs2[i]; };
 

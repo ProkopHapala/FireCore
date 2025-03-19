@@ -1,10 +1,22 @@
 
-#define DEBUG_GLES2
+//#define DEBUG_GLES2
 
 #ifndef _GLES2_H_
 #define _GLES2_H_
 
 #include <SDL2/SDL_opengles2.h>
+#include "Camera.h"
+
+namespace GLES2{
+    extern Camera* active_camera;
+}
+
+
+
+
+
+
+
 
 #ifdef DEBUG_GLES2
 #include <cstdlib>

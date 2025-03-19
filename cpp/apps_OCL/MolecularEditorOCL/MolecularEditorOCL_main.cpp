@@ -82,14 +82,14 @@ Vec3f testPLQ;
 // AppMolecularEditorOCL
 // ==========================75
 
-void drawFreeAtoms( Renderer* r, int n, Quat4f * poss, Quat4f * forces, float sc, float fsc ){
+void drawFreeAtoms( int n, Quat4f * poss, Quat4f * forces, float sc, float fsc ){
     for(int i=0; i<n; i++){
-        Draw3D::drawPointCross( r, poss[i].f, sc, {0, 0, 0});
-        Draw3D::drawVecInPos( r, forces[i].f*fsc, poss[i].f, {1, 0, 0} );
+        Draw3D::drawPointCross( poss[i].f, sc, {0, 0, 0});
+        Draw3D::drawVecInPos( forces[i].f*fsc, poss[i].f, {1, 0, 0} );
     }
 }
 
-void drawAtomsF8( Renderer* r, int n, float8 * atoms, float sc, int oglSphere ){
+void drawAtomsF8( int n, float8 * atoms, float sc, int oglSphere ){
     for(int i=0; i<n; i++){
         float* atomi = ((float*)(atoms+i));
         float r = atomi[4]*sc;
@@ -99,12 +99,12 @@ void drawAtomsF8( Renderer* r, int n, float8 * atoms, float sc, int oglSphere ){
     }
 }
 
-void drawAtomsForces( Renderer* r, int n, float8 * atoms, Vec3f * fatoms, float rsc, float fsc ){
+void drawAtomsForces( int n, float8 * atoms, Vec3f * fatoms, float rsc, float fsc ){
     Quat4f* ps = (Quat4f*) atoms;
     for(int i=0; i<n; i++){
         const Vec3f& p = ps[i*2].f;
         //printf( "atoms[%i] f(%g,%g,%g) \n", i, fatoms[i].x, fatoms[i].y, fatoms[i].z );
-        Draw3D::drawPointCross( r, p, rsc           );
+        Draw3D::drawPointCross( p, rsc           );
         Draw3D::drawVecInPos  ( fatoms[i]*fsc, p );
     }
 }
@@ -123,7 +123,7 @@ void drawRigidMolAtomForce( const Vec3f& pos, const Quat4f& qrot, const Vec3f& f
         f.add(fpos);
 
         //Draw3D::drawShape( pi, {0.0,0.0,0.0,1.0}, Vec3f{r,r,r}, oglSphere );
-        Draw3D::drawPointCross( renderer, Mp, rsc   );
+        Draw3D::drawPointCross( Mp, rsc   );
         Draw3D::drawVecInPos  ( f*fsc, Mp );
     }
 }
@@ -136,7 +136,7 @@ void drawRigidMolAtomCOG( const Vec3f& pos, const Quat4f& qrot, int n, const flo
         mrot.dot_to( *((Vec3f*)(atom0s+i)), Mp );
         Mp.add( pos );
         //Draw3D::drawShape( pi, {0.0,0.0,0.0,1.0}, Vec3f{r,r,r}, oglSphere );
-        Draw3D::drawPointCross( renderer, Mp, rsc   );
+        Draw3D::drawPointCross( Mp, rsc   );
         Draw3D::drawLine      ( Mp, pos   );
     }
 }
@@ -170,7 +170,7 @@ void drawRigidMolSystemForceTorq(const RigidMolecularWorldOCL& clworld, int isys
     Quat4f* posi     = (Quat4f*)(clworld. poses+isoff);
     Quat4f* fsi      = (Quat4f*)(clworld.fposes+isoff);
     for(int imol=0; imol<clworld.nMols; imol++){
-        //Draw3D::drawPointCross( renderer, posi[0].f, rsc   );
+        //Draw3D::drawPointCross( posi[0].f, rsc   );
         opengl1renderer.color3f(1.0,0.0,0.0); Draw3D::drawVecInPos( fsi[0].f*fsc, posi[0].f );  // force
         opengl1renderer.color3f(0.0,0.0,1.0); Draw3D::drawVecInPos( fsi[1].f*tsc, posi[0].f );  // torq
         posi+=2;
@@ -637,7 +637,7 @@ void AppMolecularEditorOCL::draw(){
     //printf( " c.f %g t.f %g t.c %g \n", cam.rotMat().c.dot(force),   torq.dot(force),   torq.dot(cam.rotMat().c)/sqrt( torq.norm2()* cam.rotMat().c.norm2()  )   );
 
     opengl1renderer.color3f(0.0,0.0,0.0); Draw3D::drawVec       ( p );
-    opengl1renderer.color3f(0.0,0.0,0.0); Draw3D::drawPointCross( renderer, p, 0.05 );
+    opengl1renderer.color3f(0.0,0.0,0.0); Draw3D::drawPointCross( p, 0.05 );
     opengl1renderer.color3f(0.0,1.0,0.0); Draw3D::drawVec       ( torq );
     opengl1renderer.color3f(1.0,0.0,0.0); Draw3D::drawVecInPos  ( force, p );
 
@@ -649,7 +649,7 @@ void AppMolecularEditorOCL::draw(){
 	opengl1renderer.enable(GL_DEPTH_TEST);
 	viewSubstrate( 2, 2, isoOgl, world.gridFF.grid.cell.a, world.gridFF.grid.cell.b );
 
-    Draw3D::drawPointCross( renderer, ray0, 0.1 );
+    Draw3D::drawPointCross( ray0, 0.1 );
     //Draw3D::drawVecInPos( camMat.c, ray0 );
     if(ipicked>=0) Draw3D::drawLine( world.apos[ipicked], ray0);
 

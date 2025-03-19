@@ -50,14 +50,14 @@ double externalForces(int n, double* pose, double* force){
 }
 
 
-void plotFFplan( Renderer* r, int na, int nb, const Vec3d& da, const Vec3d& db, Vec3d pos0, double fscale ){
+void plotFFplan( int na, int nb, const Vec3d& da, const Vec3d& db, Vec3d pos0, double fscale ){
     for(int ia=0; ia<na; ia++){
         for(int ib=0; ib<nb; ib++){
             Vec3d p = pos0 + (da*ia)+(db*ib);
             Vec3d f; f.set(0.0);
             externalForces( 3, (double*)&p, (double*)&f);
-            Draw3D::drawLine( r, p, p+f*(fscale), {0, 0, 0} );
-            Draw3D::drawPointCross( r, p, 0.01 );
+            Draw3D::drawLine( p, p+f*(fscale), {0, 0, 0} );
+            Draw3D::drawPointCross( p, 0.01 );
         }
     }
 }
@@ -101,7 +101,7 @@ TestConfDynamics::TestConfDynamics( int& id, int WIDTH_, int HEIGHT_ ) : AppSDL2
 	opengl1renderer.newList( vobFF, GL_COMPILE );
         opengl1renderer.disable ( GL_LIGHTING );
         opengl1renderer.color3f(0.7f,0.7f,0.7f);
-        plotFFplan( renderer, 40, 40, {0.0,0.1,0.0}, {0.1,0.0,0.0}, {-2.0,-2.0,0.0}, 0.05 );
+        plotFFplan( 40, 40, {0.0,0.1,0.0}, {0.1,0.0,0.0}, {-2.0,-2.0,0.0}, 0.05 );
 	opengl1renderer.endList();
 
 	confWorld.init( 200 );

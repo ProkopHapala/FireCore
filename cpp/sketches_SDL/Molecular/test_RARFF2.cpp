@@ -64,15 +64,15 @@ void drawScalarArray(int n, Vec3d* ps, double* vs, double vmin, double vmax ){
 */
 
 //void drawRigidAtom( const Vec3d& pos, Vec3d* bhs ){
-void drawRigidAtom( Renderer* r, RigidAtom& atom ){
+void drawRigidAtom( RigidAtom& atom ){
     Vec3d bhs[N_BOND_MAX];
     atom.qrot.rotateVectors(N_BOND_MAX, atom.type->bh0s, bhs, false );
-    Draw3D::drawPointCross( r, atom.pos, 0.1 );
+    Draw3D::drawPointCross( atom.pos, 0.1 );
     //for(int i=0; i<N_BOND_MAX; i++){
     for(int i=0; i<atom.type->nbond; i++){
         //printf( "%i (%g,%g,%g)\n", i, type1.bh0s[i].x, type1.bh0s[i].y, type1.bh0s[i].z );
         //printf( "%i (%g,%g,%g)\n", i, bhs[i].x, bhs[i].y, bhs[i].z );
-        Draw3D::drawVecInPos( r, bhs[i], atom.pos, {0, 0, 0} );
+        Draw3D::drawVecInPos( bhs[i], atom.pos, {0, 0, 0} );
     }
 }
 
@@ -270,7 +270,7 @@ TestAppRARFF::TestAppRARFF( int& id, int WIDTH_, int HEIGHT_ ) : AppSDL2OGL_3D( 
     plot1.lines.push_back( line_Er  );
     plot1.lines.push_back( line_Fr  );
     plot1.lines.push_back( line_Frn );
-    plot1.render(renderer);
+    plot1.render( );
 
     Vec3d p0 = Vec3d{0.1, 0.2,0.3};
     Vec3d dp = Vec3d{1.0, 0.0,0.0};   dp.normalize();
@@ -298,7 +298,7 @@ TestAppRARFF::TestAppRARFF( int& id, int WIDTH_, int HEIGHT_ ) : AppSDL2OGL_3D( 
         //printf( "line_Er %i x %g y %g dy %g dyn %g \n", i, line_Er->xs[i], line_Er->ys[i], line_Fr->ys[i], line_Frn->ys[i] );
     }
     //exit(0);
-    plot1.render(renderer);
+    plot1.render( );
 
 
     // PLOT FOCRE FIELD 1D
@@ -347,12 +347,12 @@ void TestAppRARFF::draw(){
         //opengl1renderer.color3f(1.0,1.0,1.0); drawRigidAtom(ff.atoms[i]);
 
         opengl1renderer.color3f(0.3,0.3,0.3);
-        renderer->drawMesh(&oglSph, (Vec3f)ff.atoms[i].pos);
+        oglSph.draw((Vec3f)ff.atoms[i].pos);
 
         for(int ib=0; ib<ff.atoms[i].type->nbond; ib++){
             int io=4*i+ib;
-            Draw3D::drawVecInPos( renderer, ff.hbonds[io], ff.atoms[i].pos, {1.0,1.0,1.0} );
-            Draw3D::drawVecInPos( renderer, ff.fbonds[io]*fsc, ff.atoms[i].pos+ff.hbonds[io], {0.0,1.0,0.0} );
+            Draw3D::drawVecInPos( ff.hbonds[io], ff.atoms[i].pos, {1.0,1.0,1.0} );
+            Draw3D::drawVecInPos( ff.fbonds[io]*fsc, ff.atoms[i].pos+ff.hbonds[io], {0.0,1.0,0.0} );
         }
 
         //opengl1renderer.color3f(1.0,0.0,0.0); Draw3D::drawVecInPos( ff.atoms[i].force*fsc, ff.atoms[i].pos  );

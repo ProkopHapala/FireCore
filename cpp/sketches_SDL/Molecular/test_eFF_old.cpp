@@ -194,7 +194,7 @@ void checkDerivs2(){
 
 }
 
-void makePlots( Renderer* r, Plot2D& plot, EFF& ff ){
+void makePlots( Plot2D& plot, EFF& ff ){
 
     int    ielem = 1;
     double QQae  = -1.0;
@@ -323,11 +323,11 @@ void makePlots( Renderer* r, Plot2D& plot, EFF& ff ){
     plot.update();
     plot.autoAxes(0.5,0.5);
     printf( "axBound %g,%g %g,%g \n", plot.axBounds.a.x, plot.axBounds.a.y, plot.axBounds.b.x, plot.axBounds.b.y );
-    plot.render(r);
+    plot.render();
 
 }
 
-void makePlots2( Renderer* r, Plot2D& plot ){
+void makePlots2( Plot2D& plot ){
 
     EFF ff;
     ff.realloc(1,1);
@@ -373,7 +373,7 @@ void makePlots2( Renderer* r, Plot2D& plot ){
     plot.update();
     plot.autoAxes(0.5,0.5);
     printf( "axBound %g,%g %g,%g \n", plot.axBounds.a.x, plot.axBounds.a.y, plot.axBounds.b.x, plot.axBounds.b.y );
-    plot.render(r);
+    plot.render();
 
     ff.dealloc();
 
@@ -772,7 +772,7 @@ void TestAppRARFF::draw(){
     opengl1renderer.color3f(0.0,0.0,0.0);
     for(int i=0; i<ff.na; i++){
         //printf( "apos[%i] (%g,%g,%g)\n", i, ff.apos[i].x, ff.apos[i].y, ff.apos[i].z );
-        Draw3D::drawPointCross( renderer, ff.apos  [i]    , ff.aQ  [i]*Qsz );
+        Draw3D::drawPointCross( ff.apos  [i]    , ff.aQ  [i]*Qsz );
         //Draw3D::drawVecInPos(   ff.aforce[i]*fsc, ff.apos[i] );
         //printf( " %i %f %f %f %f  \n", i, ff.aQ[i], ff.apos[i].x,ff.apos[i].y,ff.apos[i].z );
         //printf( " %i %f %f %f %f  \n", i, ff.aQ[i], ff.aforce[i].x, ff.aforce[i].y, ff.aforce[i].z );
@@ -801,7 +801,7 @@ void TestAppRARFF::draw(){
         //opengl1renderer.color3f(1.,1.,1.); Draw3D::drawVecInPos( ff.eforce  [i], ff.epos[i] );
         //opengl1renderer.color3f(1.,0.,1.); Draw3D::drawVecInPos( DEBUG_fe_ae[i], ff.epos[i] );
 
-        //Draw3D::drawPointCross( renderer, ff.epos  [i], ff.esize[i] );
+        //Draw3D::drawPointCross( ff.epos  [i], ff.esize[i] );
         //Draw3D::drawVecInPos(   ff.eforce[i]*fsc, ff.epos[i] );
         //Draw3D::drawSphereOctLines( 8, ff.esize[i], ff.epos[i] );
         //sprintf(strtmp,"%i",i);

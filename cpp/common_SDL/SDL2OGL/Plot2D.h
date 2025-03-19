@@ -123,9 +123,9 @@ class Plot2D{ public:
     void update();
     void drawTexts();
     void drawAxes();
-    int  render(Renderer* r);
-    int  renderFrameworks(Renderer* r);
-    int  tryRender(Renderer* r, bool bUpdate=true);
+    int  render();
+    int  renderFrameworks();
+    int  tryRender( bool bUpdate=true);
     void view  (bool bAxes=true);
     void init  ();
     //void xsharingLines(int nl, int np);
@@ -166,7 +166,7 @@ class QuePlot2D{ public:
     void next(double t);
     void draw( bool xoff, bool yoff );
     void drawTrj3D( Vec3i which );
-    void drawTrj3DPoints( Renderer* r, Vec3i which, double pointSize );
+    void drawTrj3DPoints( Vec3i which, double pointSize );
 
     inline int wrap_index(int i){ return  i>=n? i%n : i; };
     inline void set_back(int iline, double y ){ data[iline][ip] = y; };

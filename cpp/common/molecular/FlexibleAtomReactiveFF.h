@@ -549,7 +549,7 @@ void normalizeOrbs(){
     }
 }
 
-void transferOrbRecoil(Renderer* r){
+void transferOrbRecoil(){
     // ToDo : is this numerically stable? if normal forces are very hi ?
     for(int i=0; i<norb; i++){
         //aforce[i>>2].sub( oforce[i] );
@@ -559,7 +559,7 @@ void transferOrbRecoil(Renderer* r){
         aforce[ia].add( f );
 
         //opengl1renderer.color3f(1,1,0); Draw3D::drawVecInPos( oforce[i], apos[ia] );
-        if((ia==0)&&(i-(ia<<2)==0) ){ Draw3D::drawVecInPos( r, f, apos[ia], {1,1,0} ); }
+        if((ia==0)&&(i-(ia<<2)==0) ){ Draw3D::drawVecInPos( f, apos[ia], {1,1,0} ); }
     }
 }
 

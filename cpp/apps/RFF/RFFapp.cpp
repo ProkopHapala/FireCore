@@ -277,7 +277,7 @@ class TestAppRARFF: public AppSDL2OGL_3D { public:
     void simulation();
     void makePotentialPlot();
     void visualize_cells(const bool bDrawPoints=false);
-    void visualize_atoms(Renderer* r);
+    void visualize_atoms();
     //void generate_atoms( int natom, double xspan, double step );
 
 };
@@ -389,8 +389,8 @@ void TestAppRARFF::draw(){
         //if(ff.AccelType==1)
         visualize_cells();
     }
-    Draw3D::drawPointCross( renderer, ray0, 0.1 );
-    if(ipicked>=0) Draw3D::drawLine( renderer, ff.apos[ipicked], ray0, {0, 0, 0});
+    Draw3D::drawPointCross( ray0, 0.1 );
+    if(ipicked>=0) Draw3D::drawLine( ff.apos[ipicked], ray0, {0, 0, 0});
     Draw3D::drawAxis( 1.0);
 
     // switch(renderMode){
@@ -398,7 +398,7 @@ void TestAppRARFF::draw(){
     //     case 1: opengl1renderer.enable (GL_LIGHTING); break;
     // }
     opengl1renderer.enable (GL_LIGHTING);
-    visualize_atoms(renderer);
+    visualize_atoms( );
 };
 
 void TestAppRARFF::drawHUD(){
@@ -408,7 +408,7 @@ void TestAppRARFF::drawHUD(){
 	plot1.view();
     opengl1renderer.popMatrix();
 
-    if(bConsole) console.draw(renderer);
+    if(bConsole) console.draw( );
 }
 
 void TestAppRARFF::keyStateHandling( const Uint8 *keys ){
@@ -522,7 +522,7 @@ void TestAppRARFF::makePotentialPlot(){
     plot1.lines.push_back( line_Er  );
     plot1.lines.push_back( line_Fr  );
     plot1.lines.push_back( line_Fn  );
-    plot1.render(renderer);
+    plot1.render( );
 }
 
 void TestAppRARFF::visualize_cells( bool bDrawPoints ){
@@ -543,13 +543,13 @@ void TestAppRARFF::visualize_cells( bool bDrawPoints ){
                 Vec3d p = ff.apos[io];
                 //printf( "j %i io %i p(%g,%g,%g) \n", j, io, p.x,p.y,p.z );
                 //Draw  ::color_of_hash( 464+645*ic );
-                Draw3D::drawPointCross( renderer, p, 0.2 );            
+                Draw3D::drawPointCross( p, 0.2 );            
             }
         }
     }
 }
 
-void TestAppRARFF::visualize_atoms(Renderer* r){
+void TestAppRARFF::visualize_atoms(){
     int na = 0;
     // ---------- Draw
     opengl1renderer.lineWidth(3.0f); 
@@ -563,15 +563,15 @@ void TestAppRARFF::visualize_atoms(Renderer* r){
         na++;
         //opengl1renderer.color3f(0.3,0.3,0.3);
         opengl1renderer.color3f(0.5,0.5,0.5);
-        renderer->drawMesh( &ogl_sph, (Vec3f)ff.apos[ia], Quat4fIdentity, {0.7, 0.7, 0.7});
+        ogl_sph.draw((Vec3f)ff.apos[ia], Quat4fIdentity, {0.7, 0.7, 0.7});
         for(int j=0; j<ff.types[ia]->nbond; j++){
             int i=ia*N_BOND_MAX+j;
             Vec3d pb = ff.bondPos( i );
             //printf( "bondCaps[%i] %i\n", i, ff.bondCaps[i] );
             if( ff.bondCaps[i]>=0 ){ opengl1renderer.color3f(1.0,0.0,0.0); } else{ opengl1renderer.color3f(0.0,0.0,0.0); }
             //Draw::setRGB( clrs[j] );
-            Draw3D::drawLine( r, ff.apos[ia] , pb, {0.5, 0.5, 0.5} );
-            Draw3D::drawVecInPos( r, ff.fbonds[i]*fsc, pb , {0, 1, 0});
+            Draw3D::drawLine( ff.apos[ia] , pb, {0.5, 0.5, 0.5} );
+            Draw3D::drawVecInPos( ff.fbonds[i]*fsc, pb , {0, 1, 0});
         }
     };
     opengl1renderer.lineWidth(1.0f); 

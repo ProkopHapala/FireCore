@@ -77,8 +77,8 @@ TestAppLatticeMatch2D::TestAppLatticeMatch2D( int& id, int WIDTH_, int HEIGHT_ )
     Vec2d p;
     // p=LM.lat0[0]*5; opengl1renderer.color3f(1.0,0.0,0.0); Draw3D::drawLine(  Vec3dZero,  {p.x,p.y,0.0}  );
     // p=LM.lat0[1]*5; opengl1renderer.color3f(0.0,0.0,1.0); Draw3D::drawLine(  Vec3dZero,  {p.x,p.y,0.0}  );
-    p=LM.lat1[0]*5; Draw3D::drawLine( renderer, Vec3dZero,  {p.x,p.y,0.0}, {0, 0.5, 0} );
-    p=LM.lat1[1]*5; Draw3D::drawLine( renderer, Vec3dZero,  {p.x,p.y,0.0}, {0, 0.5, 1} );
+    p=LM.lat1[0]*5; Draw3D::drawLine( Vec3dZero,  {p.x,p.y,0.0}, {0, 0.5, 0} );
+    p=LM.lat1[1]*5; Draw3D::drawLine( Vec3dZero,  {p.x,p.y,0.0}, {0, 0.5, 1} );
     opengl1renderer.color3f(0.0,0.0,0.0); Draw3D::drawCircleAxis(100,Vec3dZero, Vec3dX, Vec3dZ, Rmax  );
     //LM.walk2D( Rmax, 0.05 );
     LM.walk2D( Rmax, dmax );
@@ -114,12 +114,12 @@ void TestAppLatticeMatch2D::draw(){
         Vec2d u,v;
         
         LM.makeMatch( LM.matches[ipick],u,v,true );
-        Draw3D::drawLine( renderer, Vec3dZero,  {u.x,u.y,0.0}, {1.0,0.0,0.0} );
-        Draw3D::drawLine( renderer, Vec3dZero,  {v.x,v.y,0.0}, {0.0,0.0,1.0} );
+        Draw3D::drawLine( Vec3dZero,  {u.x,u.y,0.0}, {1.0,0.0,0.0} );
+        Draw3D::drawLine( Vec3dZero,  {v.x,v.y,0.0}, {0.0,0.0,1.0} );
 
         LM.makeMatch( LM.matches[ipick],u,v,false );
-        Draw3D::drawLine( renderer, Vec3dZero,  {u.x,u.y,0.0}, {1.0,0.7,0.0} );
-        Draw3D::drawLine( renderer, Vec3dZero,  {v.x,v.y,0.0}, {0.0,0.7,1.0} );
+        Draw3D::drawLine( Vec3dZero,  {u.x,u.y,0.0}, {1.0,0.7,0.0} );
+        Draw3D::drawLine( Vec3dZero,  {v.x,v.y,0.0}, {0.0,0.7,1.0} );
         
         //v = LM.reproduce_grid( LM.match_u[ipick]                      );   opengl1renderer.color3f(0.0,0.0,1.0);  Draw3D::drawLine( Vec3dZero,  {v.x,v.y,0.0} );
         //v = LM.reproduce_vec ( LM.match_u[ipick], LM.lat1[0], LM.angU );   opengl1renderer.color3f(1.0,0.7,0.0);  Draw3D::drawLine( Vec3dZero,  {v.x,v.y,0.0} );

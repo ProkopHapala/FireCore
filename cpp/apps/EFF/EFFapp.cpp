@@ -344,7 +344,7 @@ TestAppRARFF::TestAppRARFF( int& id, int WIDTH_, int HEIGHT_ ) : AppSDL2OGL_3D( 
     plot1.bAxes  = true;
     plot1.bTicks = true;
     plot1.update();
-    plot1.render(renderer);
+    plot1.render();
     plot1.view();
 
     console.init( 256, window );
@@ -443,18 +443,18 @@ void TestAppRARFF::draw(){
         }
     }
 
-    Draw3D::drawPointCross( renderer, ray0, 0.1, {0, 0.5, 0} );
+    Draw3D::drawPointCross( ray0, 0.1, {0, 0.5, 0} );
     //if(ipicked>=0) Draw3D::drawLine( ff.apos[ipicked], ray0);
     if(ipicked>=0){                                // Drag atoms by Mouse
         //opengl1renderer.color3f(0.0,0.5,0.0);
         if     (PickMode==ATOM    ){
             printf( "ipicked %i pi(%g,%g,%g) ray0(%g,%g,%g) \n", ipicked, ff.apos[ipicked].x, ff.apos[ipicked].y, ff.apos[ipicked].z, ray0.x, ray0.y, ray0.z );
-            Draw3D::drawLine( renderer, ff.apos[ipicked], ray0, {0, 0.5, 0}); 
+            Draw3D::drawLine( ff.apos[ipicked], ray0, {0, 0.5, 0}); 
             }
-        else if(PickMode==ELECTRON){ Draw3D::drawLine( renderer, ff.epos[ipicked], ray0, {0, 0.5, 0}); }
+        else if(PickMode==ELECTRON){ Draw3D::drawLine( ff.epos[ipicked], ray0, {0, 0.5, 0}); }
     }
 
-    drawEFF( renderer, ff, oglSph, 1.0*bViewForce, 0.1, 0.1, 1.5 );
+    drawEFF( ff, oglSph, 1.0*bViewForce, 0.1, 0.1, 1.5 );
     if(bDrawPointLabels){
         opengl1renderer.color3f(1.0,0.0,0.0); Draw3D::pointLabels( ff.na, ff.apos, fontTex, 0.05 );
         //opengl1renderer.color3f(0.0,0.5,0.5); Draw3D::pointLabels( ff.ne, ff.epos, fontTex, 0.05 );
@@ -467,7 +467,7 @@ void TestAppRARFF::draw(){
         // plot1.bTicks=false;
         //plot1.update();
         //plot1.render();
-        plot1.tryRender(renderer);
+        plot1.tryRender();
         plot1.view();
     }
 
@@ -514,7 +514,7 @@ void TestAppRARFF::draw(){
 
 
 void TestAppRARFF::drawHUD(){
-    gui.draw(renderer);
+    gui.draw();
 
     opengl1renderer.pushMatrix();
     opengl1renderer.translatef( 10.0,HEIGHT-20.0,0.0 );
@@ -528,7 +528,7 @@ void TestAppRARFF::drawHUD(){
     Draw::drawText( tmpstr, fontTex, fontSizeDef, {100,20} );
     opengl1renderer.popMatrix();
 
-    if(bConsole) console.draw(renderer);
+    if(bConsole) console.draw();
 
 }
 

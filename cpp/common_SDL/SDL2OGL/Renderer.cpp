@@ -1,179 +1,10 @@
 
 #include "Renderer.h"
-#include "Camera.h"
 #include "GLMesh.h"
 #include "Mat4.h"
 #include <cstdio>
 #include <functional>
 #include <vector>
-#include <cstddef>
-#include "GLES2.h"
-
-
-// Vertex shader
-static const char* vertexShaderSource = R"(
-    uniform mat4 uMVPMatrix;
-
-    attribute vec4 vPosition;
-    attribute vec3 vNormal;
-    attribute vec3 vColor;
-    
-    varying vec3 fColor;
-    varying vec3 fNormal;
-
-    void main() {
-        gl_Position = uMVPMatrix * vPosition;
-        fNormal = vNormal;
-        fColor = vColor;
-    }
-)";
-
-// Fragment shader
-static const char* fragmentShaderSource = R"(
-    varying vec3 fColor;
-    varying vec3 fNormal;
-
-    uniform vec3 uColor;
-
-    void main() {
-        if (fNormal == vec3(0.0, 0.0, 0.0)){
-            gl_FragColor = vec4(fColor*uColor, 1.0);
-        }else{
-            gl_FragColor = vec4(fNormal, 1.0);
-        }
-    }
-)";
-
-GLuint Renderer::compileShader(GLenum shaderType, const char* source) {
-    GLuint shader = glCreateShader(shaderType);
-    if (shader == 0) {
-        printf("Error creating shader\n");
-        exit(-1);
-        return 0;
-    }
-    glShaderSource(shader, 1, &source, nullptr);
-    glCompileShader(shader);
-
-    GLint compiled;
-    glGetShaderiv(shader, GL_COMPILE_STATUS, &compiled);
-    if (!compiled) {
-        GLint infoLen = 0;
-        glGetShaderiv(shader, GL_INFO_LOG_LENGTH, &infoLen);
-        if (infoLen > 1) {
-            char* infoLog = (char*)malloc(sizeof(char) * infoLen);
-            glGetShaderInfoLog(shader, infoLen, nullptr, infoLog);
-            printf("Error compiling shader:\n %s\n", infoLog);
-            free(infoLog);
-            exit(-1);
-        }
-        glDeleteShader(shader);
-        return 0;
-    }
-    return shader;
-}
-
-GLuint Renderer::linkProgram(GLuint vertexShader, GLuint fragmentShader) {
-    GLuint program = glCreateProgram();
-    if (program == 0) {
-        printf("Error creating program\n");
-        exit(-1);
-        return 0;
-    }
-    glAttachShader(program, vertexShader);
-    glAttachShader(program, fragmentShader);
-
-    glBindAttribLocation(program, SHADER_ATTRIB_POSITION, "vPosition");
-    glBindAttribLocation(program, SHADER_ATTRIB_NORMAL  , "vNormal");
-    glBindAttribLocation(program, SHADER_ATTRIB_COLOR   , "vColor");
-
-    glLinkProgram(program);
-
-    GLint linked;
-    glGetProgramiv(program, GL_LINK_STATUS, &linked);
-    if (!linked) {
-        GLint infoLen = 0;
-        glGetProgramiv(program, GL_INFO_LOG_LENGTH, &infoLen);
-        if (infoLen > 1) {
-            char* infoLog = (char*)malloc(sizeof(char) * infoLen);
-            glGetProgramInfoLog(program, infoLen, nullptr, infoLog);
-            printf("Error linking program:\n %s\n", infoLog);
-            exit(-1);
-            free(infoLog);
-        }
-        glDeleteProgram(program);
-        return 0;
-    }
-    return program;
-}
-
-Renderer::Renderer(){
-    // Compile shaders
-    GLuint vertexShader = compileShader(GL_VERTEX_SHADER, vertexShaderSource);
-    GLuint fragmentShader = compileShader(GL_FRAGMENT_SHADER, fragmentShaderSource);
-    if (vertexShader == 0 || fragmentShader == 0){
-        printf("Error compiling shaders\n");
-        exit(-1);
-        return;
-    }
-    defualtProgram = linkProgram(vertexShader, fragmentShader);
-    if (defualtProgram == 0){
-        printf("Error linking program\n");
-        exit(-1);
-        return;
-    }
-
-    glEnableVertexAttribArray(SHADER_ATTRIB_POSITION);
-    glEnableVertexAttribArray(SHADER_ATTRIB_NORMAL);
-    glEnableVertexAttribArray(SHADER_ATTRIB_COLOR);
-
-    loadProgram(defualtProgram);
-}
-
-void Renderer::loadProgram(GLuint program){
-    if (program == current_program) return;
-    glUseProgram(program);
-
-    mvpMatrixLocation = glGetUniformLocation(program, "uMVPMatrix");
-    uColorLocation = glGetUniformLocation(program, "uColor");
-    current_program = program;
-}
-
-void Renderer::bindBuffer(GLenum target, GLuint buffer){
-    if (target != GL_ARRAY_BUFFER && target != GL_ELEMENT_ARRAY_BUFFER){
-        printf("ERROR: bindBuffer(): invalid target\n");
-        exit(-1);
-        return;
-    }
-    switch (target){
-        case GL_ARRAY_BUFFER:
-            if (buffer == current_gl_array_buffer) return;
-            current_gl_array_buffer = buffer;
-            break;
-        case GL_ELEMENT_ARRAY_BUFFER:
-            if (buffer == current_gl_element_array_buffer) return;
-            current_gl_element_array_buffer = buffer;
-            break;
-    }
-
-    glBindBuffer(target, buffer);
-    // TODO: use a vao, move to GLMesh
-    glVertexAttribPointer(SHADER_ATTRIB_POSITION, 3, GL_FLOAT, GL_FALSE, sizeof(GLMesh::vertex), (void*)offsetof(GLMesh::vertex, position));
-    glVertexAttribPointer(SHADER_ATTRIB_NORMAL,   3, GL_FLOAT, GL_FALSE, sizeof(GLMesh::vertex), (void*)offsetof(GLMesh::vertex, normal));
-    glVertexAttribPointer(SHADER_ATTRIB_COLOR,    3, GL_FLOAT, GL_FALSE, sizeof(GLMesh::vertex), (void*)offsetof(GLMesh::vertex, color));
-}
-
-void Renderer::drawMeshMVP(GLMesh* mesh, Mat4f mvp){
-    mesh->bind_sync_vbo(this);
-    
-    loadProgram(defualtProgram);
-    glUniformMatrix4fv(mvpMatrixLocation, 1, GL_FALSE, mvp.array);
-    glUniform3f(uColorLocation, mesh->color.x, mesh->color.y, mesh->color.z);
-
-    glDrawArrays(mesh->drawMode, 0, mesh->vertexCount());
-}
-
-
-
 
 
 // the global variable for the renderer
@@ -222,7 +53,7 @@ void OpenGL1Renderer::end(){
     Mat4f mvpMatrix = mvMatStack.back();
     mvpMatrix.mmulL(projMatStack.back());
 
-    renderer->drawMeshMVP(current_mesh, mvpMatrix);
+    current_mesh->drawMVP(mvpMatrix);
 }
 
 void OpenGL1Renderer::normal3f(float x, float y, float z){
@@ -576,39 +407,3 @@ void OpenGL1Renderer::copyTexImage2D(GLenum target, GLint level,
     GLsizei width, GLsizei height,
     GLint border){ /*glCopyTexImage2D(target, level, internalformat, x, y, width, height, border);*/ }
 
-
-
-
-void Renderer::drawMesh(GLMesh* mesh, Vec3f position, Quat4f rotation, Vec3f scale){
-    if (active_camera == nullptr){
-        printf("Warning: No active camera - skipping rendering.\n");
-        return;
-    }
-
-    // scale
-    Mat4f modelScaleMatrix = Mat4fIdentity;
-    modelScaleMatrix.mul({scale.x, scale.y, scale.z, 1.0});
-    
-    // rotation
-    Mat3f modelRotMatrix3;
-    rotation.toMatrix(modelRotMatrix3);
-    Mat4f modelRotMatrix4 = Mat4fIdentity;
-    modelRotMatrix4.setRot(modelRotMatrix3);
-
-    // translation
-    Mat4f modelTranslationMatrix = Mat4fIdentity;
-    modelTranslationMatrix.setPos(position);
-
-    // model matrix
-    Mat4f modelMatrix = Mat4fIdentity;
-    modelMatrix.mmulL(modelScaleMatrix);
-    modelMatrix.mmulL(modelRotMatrix4);
-    modelMatrix.mmulL(modelTranslationMatrix);
-
-    // MVP matrix
-    Mat4f mvpMatrix = modelMatrix;
-    mvpMatrix.mmulL(active_camera->viewMatrix());
-    mvpMatrix.mmulL(active_camera->projectionMatrix());
-
-    drawMeshMVP(mesh, mvpMatrix);
-}

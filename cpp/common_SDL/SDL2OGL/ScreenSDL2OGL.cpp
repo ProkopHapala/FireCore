@@ -127,7 +127,7 @@ void ScreenSDL2OGL::update( ){
 	
 	//opengl1renderer.popMatrix();
 	//opengl1renderer.flush();
-	//SDL_RenderPresent(renderer);
+	//SDL_RenderPresent( );
 	frameCount++;
     SDL_GL_SwapWindow(window);
     //printf( " window[%i] SDL_GL_SwapWindow \n", id );
@@ -253,12 +253,6 @@ void ScreenSDL2OGL::init( int& id_, int WIDTH_, int HEIGHT_, const char* name ){
     }else{
         SDL_SetWindowTitle( window, name );
     }
-
-
-
-
-	renderer = new Renderer();
-	opengl1renderer.bind_renderer(renderer);
 
 	//setupRenderer();
 	//setupOpenGLglobals();

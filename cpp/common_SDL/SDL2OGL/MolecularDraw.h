@@ -22,18 +22,18 @@ void printPoses( int n, double * poses ){
     }
 }
 
-void drawMapedPoints( Renderer* r, const FastAtomicMetric& D, int itest ){
+void drawMapedPoints( const FastAtomicMetric& D, int itest ){
     //atomdist.natoms=1;
     //atomdist.pos[0]=cursor3D;
     //atomdist.toCells(atomdist.ruler.step*0.5-0.01);
     Draw3D::drawBBox( D.ruler.pos0, D.ruler.pmax );
     int j=0;
     for(int i=0; i<D.natoms; i++){
-        //Draw3D::drawPointCross( renderer, atomdist.pos[i], atomdist.Rcut );
-        //Draw3D::drawPointCross( renderer, atomdist.pos[i], 0.1 );
+        //Draw3D::drawPointCross( atomdist.pos[i], atomdist.Rcut );
+        //Draw3D::drawPointCross( atomdist.pos[i], 0.1 );
         bool b = ( i == (itest%D.natoms));
         if(b){ Draw3D::drawSphereOctLines( 16, D.Rcut, D.pos[i] ); }
-        else { Draw3D::drawPointCross( r, D.pos[i], 0.1 ); }
+        else { Draw3D::drawPointCross( D.pos[i], 0.1 ); }
         //printf("%i %i \n", i, D.atomNs[i] );
         for(int jj=0; jj<D.atomNs[i];jj++){
             if(b){
@@ -48,7 +48,7 @@ void drawMapedPoints( Renderer* r, const FastAtomicMetric& D, int itest ){
     }
 }
 
-void drawNeighs( Renderer* r, const FastAtomicMetric& D, Vec3d pos ){
+void drawNeighs( const FastAtomicMetric& D, Vec3d pos ){
     Draw3D::drawBBox( D.ruler.pos0, D.ruler.pmax );
     Draw3D::drawSphereOctLines(16,D.Rcut,pos);
     {
@@ -66,12 +66,12 @@ void drawNeighs( Renderer* r, const FastAtomicMetric& D, Vec3d pos ){
         //printf( "DEBUG 3 \n" );
         //printf( "nfound %i \n", nfound );
         for(int i=0; i<nfound; i++){
-            Draw3D::drawLine( r, pos, D.pos[tmpIs[i]], {0, 0, 0} );
+            Draw3D::drawLine( pos, D.pos[tmpIs[i]], {0, 0, 0} );
         }
     }
     for(int i=0; i<D.natoms; i++){
-        //Draw3D::drawPointCross( renderer, atomdist.pos[i], atomdist.Rcut );
-        Draw3D::drawPointCross( r, D.pos[i], 0.1 );
+        //Draw3D::drawPointCross( atomdist.pos[i], atomdist.Rcut );
+        Draw3D::drawPointCross( D.pos[i], 0.1 );
     }
 }
 
@@ -93,15 +93,15 @@ void drawPPRelaxTrj( int n, double dt, double damp, GridFF& gff, Vec3d pos, Quat
     //exit(0);
 }
 
-void drawGridForceAlongLine( Renderer* r, int n, GridFF& gff, Vec3d pos0, Vec3d dpos, Quat4f PRQ, double fsc ){
+void drawGridForceAlongLine( int n, GridFF& gff, Vec3d pos0, Vec3d dpos, Quat4f PRQ, double fsc ){
     Vec3d pos = pos0;
 	for( int i=0; i<n; i++ ){
         //Vec3d f = Vec3dZero;
         Quat4f fe = Quat4fZero;
         gff.addForce( pos, PRQ, fe);
         //printf( " %i (%g,%g,%g) (%g,%g,%g) \n", i, pos.x,pos.y,pos.z,  f.x,f.y,f.z );
-        Draw3D::drawVecInPos( r, (Vec3d)fe.f *fsc, pos, {0, 0, 0} );
-        Draw3D::drawPointCross( r, pos, 0.1 );
+        Draw3D::drawVecInPos( (Vec3d)fe.f *fsc, pos, {0, 0, 0} );
+        Draw3D::drawPointCross( pos, 0.1 );
         pos.add(dpos);
 	}
 }
@@ -305,11 +305,11 @@ void viewSubstrate( int nx, int ny, int isoOgl, Vec3d a, Vec3d b, Vec3d pos0=Vec
     opengl1renderer.popMatrix();
 }
 
-void viewSubstrate( Renderer* r, Vec2i nxs, Vec2i nys, GLMesh* isoOgl, Vec3d a, Vec3d b, Vec3d pos0=Vec3dZero ){
+void viewSubstrate( Vec2i nxs, Vec2i nys, GLMesh* isoOgl, Vec3d a, Vec3d b, Vec3d pos0=Vec3dZero ){
     for( int ix = nxs.x; ix<=nxs.y; ix++ ){
         for( int iy = nys.x; iy<=nys.y; iy++ ){
             Vec3d pos = a*ix + b*iy + pos0;
-            r->drawMesh(isoOgl, (Vec3f)pos);
+            isoOgl->draw((Vec3f)pos);
         }
     }
 }

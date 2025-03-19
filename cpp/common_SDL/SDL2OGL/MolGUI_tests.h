@@ -10,7 +10,7 @@
 
 #include "Draw3D.h"
 
-double torsion_Paolo( Renderer* r, Vec3d p1, Vec3d p2, Vec3d p3, Vec3d p4, Vec3d par ){
+double torsion_Paolo( Vec3d p1, Vec3d p2, Vec3d p3, Vec3d p4, Vec3d par ){
 
     // Vec3d  r12, r32;
     // double l12, l32;
@@ -83,10 +83,10 @@ double torsion_Paolo( Renderer* r, Vec3d p1, Vec3d p2, Vec3d p3, Vec3d p4, Vec3d
         //printf(  "|f1|/|f1_| %g  |f3|/|f3_| %g cos(f1,f1_) %g cos(f3,f3_) %g |cs| %g \n", f1.norm()/f1_.norm(), f3.norm2()/f3_.norm2(),  f1.dot(f1_)/sqrt(f1.norm2()*f1_.norm2()),  f3.dot(f3_)/sqrt(f3.norm2()*f3_.norm2()),  c*c+s*s );
 
         opengl1renderer.lineWidth(2.0);
-        Draw3D::drawVecInPos( r, fp1, p1, {1, 0, 0} );
-        Draw3D::drawVecInPos( r, fp2, p2, {1, 0, 0} );
-        Draw3D::drawVecInPos( r, fp3, p3, {1, 0, 0} );
-        Draw3D::drawVecInPos( r, fp4, p4, {1, 0, 0} );
+        Draw3D::drawVecInPos( fp1, p1, {1, 0, 0} );
+        Draw3D::drawVecInPos( fp2, p2, {1, 0, 0} );
+        Draw3D::drawVecInPos( fp3, p3, {1, 0, 0} );
+        Draw3D::drawVecInPos( fp4, p4, {1, 0, 0} );
         Vec3d ax = r32; ax.normalize();
         Vec3d ftot=Vec3dZero;
         Vec3d torq=Vec3dZero;
@@ -100,8 +100,8 @@ double torsion_Paolo( Renderer* r, Vec3d p1, Vec3d p2, Vec3d p3, Vec3d p4, Vec3d
         Vec3d fp3_; fp3_.set_lincomb( ax.dot(p1-p2)/-l32, fp1, ax.dot(p4-p2)/-l32, fp4 );
         Vec3d fp2_ = (fp3_ + fp1 + fp4)*-1.0; 
 
-        Draw3D::drawVecInPos( r, fp3_, p3, {1, 0, 1} );
-        Draw3D::drawVecInPos( r, fp2_, p2, {1, 0, 1} );
+        Draw3D::drawVecInPos( fp3_, p3, {1, 0, 1} );
+        Draw3D::drawVecInPos( fp2_, p2, {1, 0, 1} );
 
         Vec3d ftot2=Vec3dZero;
         Vec3d torq2=Vec3dZero;
@@ -132,7 +132,7 @@ Vec3d zeroTorqCondition( const Vec3d& d32, double invL2, const Vec3d& d12, const
 }
 
 
-double torsion_Prokop( Renderer* r, Vec3d p1, Vec3d p2, Vec3d p3, Vec3d p4, Vec3d par ){
+double torsion_Prokop( Vec3d p1, Vec3d p2, Vec3d p3, Vec3d p4, Vec3d par ){
 
     Vec2d cs,csn;
     int   n = (int)par.z;
@@ -231,10 +231,10 @@ double torsion_Prokop( Renderer* r, Vec3d p1, Vec3d p2, Vec3d p3, Vec3d p4, Vec3
 
         // plot Prokop's forces
         opengl1renderer.lineWidth(2.0);
-        Draw3D::drawVecInPos( r, fp1, p1, {1, 0, 1} );
-        Draw3D::drawVecInPos( r, fp2, p2, {1, 0, 1} );
-        Draw3D::drawVecInPos( r, fp3, p3, {1, 0, 1} );
-        Draw3D::drawVecInPos( r, fp4, p4, {1, 0, 1} );
+        Draw3D::drawVecInPos( fp1, p1, {1, 0, 1} );
+        Draw3D::drawVecInPos( fp2, p2, {1, 0, 1} );
+        Draw3D::drawVecInPos( fp3, p3, {1, 0, 1} );
+        Draw3D::drawVecInPos( fp4, p4, {1, 0, 1} );
         opengl1renderer.lineWidth(1.0);
 
         ftot = fp1_ + fp2_ + fp3_ + fp4_;

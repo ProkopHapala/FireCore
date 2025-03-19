@@ -172,7 +172,7 @@ int orbColor(int io){
 }
 
 
-void drawff_atoms( Renderer* r, const CLCFGO& ff, float fsc=1.0, float asc=0.5 ){
+void drawff_atoms( const CLCFGO& ff, float fsc=1.0, float asc=0.5 ){
     opengl1renderer.enable(GL_DEPTH_TEST);
     opengl1renderer.color3f(0.,0.,0.);
     //opengl1renderer.disable(GL_DEPTH_TEST);
@@ -180,12 +180,12 @@ void drawff_atoms( Renderer* r, const CLCFGO& ff, float fsc=1.0, float asc=0.5 )
     //opengl1renderer.blendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
     for(int i=0; i<ff.natom; i++){
         Vec3d p = ff.apos[i];
-        Draw3D::drawPointCross( r, p, ff.aPars[i].z*asc, {0,0,0} );
-        Draw3D::drawVecInPos( r, ff.aforce[i]*fsc, p, {1, 0, 0} );
+        Draw3D::drawPointCross( p, ff.aPars[i].z*asc, {0,0,0} );
+        Draw3D::drawVecInPos( ff.aforce[i]*fsc, p, {1, 0, 0} );
     }
 }
 
-void drawff_wfs( Renderer* r, const CLCFGO& ff, int oglSph, float fsc=1.0, float asc=0.5, int alpha=0x15000000 ){
+void drawff_wfs( const CLCFGO& ff, int oglSph, float fsc=1.0, float asc=0.5, int alpha=0x15000000 ){
     opengl1renderer.disable(GL_DEPTH_TEST);
     opengl1renderer.enable(GL_BLEND);
     opengl1renderer.blendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
@@ -204,8 +204,8 @@ void drawff_wfs( Renderer* r, const CLCFGO& ff, int oglSph, float fsc=1.0, float
             int c = orbColor(io);
             Draw  ::setRGBA( (c&0x00FFFFFF)|alpha  ); Draw3D::drawShape( oglSph, ff.epos[i], Mat3dIdentity*ff.esize[i],  false );
             //Draw  ::setRGBA(  c                    ); Draw3D::drawSphereOctLines(16, ff.esize[i], p, Mat3dIdentity, false );
-            Draw3D::drawPointCross( r, p, 0.01, COL2VEC(c) );
-            Draw3D::drawVecInPos( r, ff.efpos[i]*fsc, p, {1, 0, 0} );
+            Draw3D::drawPointCross( p, 0.01, COL2VEC(c) );
+            Draw3D::drawVecInPos( ff.efpos[i]*fsc, p, {1, 0, 0} );
 
             //Draw  ::setRGBA( orbColor(io) );
             //sprintf(str, "%02i_%02i", io, j  );
@@ -215,7 +215,7 @@ void drawff_wfs( Renderer* r, const CLCFGO& ff, int oglSph, float fsc=1.0, float
     }
 }
 
-void drawff_rho( Renderer* r, const CLCFGO& ff, int oglSph, float fsc=1.0, int alpha=0x15000000 ){
+void drawff_rho( const CLCFGO& ff, int oglSph, float fsc=1.0, int alpha=0x15000000 ){
     opengl1renderer.disable(GL_DEPTH_TEST);
     opengl1renderer.enable(GL_BLEND);
     opengl1renderer.blendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
@@ -231,9 +231,9 @@ void drawff_rho( Renderer* r, const CLCFGO& ff, int oglSph, float fsc=1.0, int a
             int c = orbColor(io);
             Draw  ::setRGBA( (c&0x00FFFFFF)| alpha ); Draw3D::drawShape( oglSph, p, Mat3dIdentity*ff.rhoS[i],  false );
             //Draw  ::setRGBA(  c                    ); Draw3D::drawSphereOctLines(16, ff.rhoS[i], p, Mat3dIdentity, false );
-            Draw3D::drawPointCross( r, p, 0.01, COL2VEC(c) );
+            Draw3D::drawPointCross( p, 0.01, COL2VEC(c) );
 
-            Draw3D::drawVecInPos( r, ff.rhofP[i]*fsc, p, {1, 0, 0} );
+            Draw3D::drawVecInPos( ff.rhofP[i]*fsc, p, {1, 0, 0} );
 
             /*
             Draw  ::setRGBA( orbColor(io) );
@@ -447,7 +447,7 @@ TestAppCLCFSF::TestAppCLCFSF( int& id, int WIDTH_, int HEIGHT_ ) : AppSDL2OGL_3D
 
     plot1.scaling.y=0.05;
     plot1.update();
-    plot1.render(renderer);
+    plot1.render( );
 
     oglSph=Draw::list(oglSph);
     Draw3D::drawSphere_oct(4,1.0,Vec3d{0.,0.,0.});
@@ -618,9 +618,9 @@ void TestAppCLCFSF::draw(){
     opengl1renderer.enable( GL_DEPTH_TEST );
     if(bDrawObjects){
         float fsc=0.01;
-        if(bDrawAtoms) drawff_atoms( renderer, ff,         fsc, 0.2 );
-        if(bDrawWfs  ) drawff_wfs  ( renderer, ff, oglSph, fsc      );
-        if(bDrawRho  ) drawff_rho  ( renderer, ff, oglSph, fsc      );
+        if(bDrawAtoms) drawff_atoms( ff,         fsc, 0.2 );
+        if(bDrawWfs  ) drawff_wfs  ( ff, oglSph, fsc      );
+        if(bDrawRho  ) drawff_rho  ( ff, oglSph, fsc      );
     }
     if(bDrawPlots){ viewPlots(); }
 
@@ -690,7 +690,7 @@ void TestAppCLCFSF::viewPlots(){
         //plot1.bAxes=false;
         plot1.bTicks=false;
         plot1.update();
-        plot1.render(renderer);
+        plot1.render( );
         //opengl1renderer.callList( ogl );
         //opengl1renderer.disable(GL_DEPTH_TEST);
         plot1.view();

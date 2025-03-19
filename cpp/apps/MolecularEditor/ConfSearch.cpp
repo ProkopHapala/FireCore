@@ -390,7 +390,7 @@ void AppMolecularEditor2::draw(){
             int j = atomdist.cell2atoms[icell][jj];
             Draw::color_of_hash( j + 25545 );
 
-            Draw3D::drawPointCross( renderer, atomdist.pos[j],atomdist.Rcut);
+            Draw3D::drawPointCross( atomdist.pos[j],atomdist.Rcut);
             Draw3D::drawSphereOctLines(16,atomdist.Rcut,atomdist.pos[0]);
         }
 
@@ -435,9 +435,9 @@ void AppMolecularEditor2::draw(){
 	//ibpicked = world.pickBond( ray0, camMat.c , 0.5 );
 
     ray0 = (Vec3d)(cam.pos + cam.rotMat().a*mouse_begin_x + cam.rotMat().b*mouse_begin_y);
-    Draw3D::drawPointCross( renderer, ray0, 0.1 );
+    Draw3D::drawPointCross( ray0, 0.1 );
     //Draw3D::drawVecInPos( camMat.c, ray0 );
-    if(ipicked>=0) Draw3D::drawLine( renderer, world.apos[ipicked], ray0, {0, 0, 0});
+    if(ipicked>=0) Draw3D::drawLine( world.apos[ipicked], ray0, {0, 0, 0});
 
 	double F2;
 	perFrame = 1;
@@ -497,7 +497,7 @@ void AppMolecularEditor2::draw(){
         //opt.move_MDquench();
 
         for(int i=0; i<world.natoms; i++ ){
-            Draw3D::drawVecInPos( renderer, world.aforce[i]*10.0, world.apos[i], {0, 0, 0} );
+            Draw3D::drawVecInPos( world.aforce[i]*10.0, world.apos[i], {0, 0, 0} );
         };
 
         world.toDym(true);
@@ -523,7 +523,7 @@ void AppMolecularEditor2::draw(){
     for(int i=0; i<world.nbonds; i++){
         Vec2i ib = world.bond2atom[i];
         Vec3f col = i==ibpicked ? Vec3f{1.0f,0.0f,0.0f} : Vec3f{0.0f,0.0f,0.0f};
-        Draw3D::drawLine(renderer, world.apos[ib.x],world.apos[ib.y], col);
+        Draw3D::drawLine( world.apos[ib.x],world.apos[ib.y], col);
         sprintf(str,"%i\0",i);
         Draw3D::drawText(str, (world.apos[ib.x]+world.apos[ib.y])*0.5, fontTex, 0.02, 0);
     }
@@ -535,7 +535,7 @@ void AppMolecularEditor2::draw(){
         opengl1renderer.enable(GL_LIGHTING);
         float sz = atomSize*( params.atypes[world.atypes[i]].RvdW - 1.0 );
         Draw::setRGB( params.atypes[world.atypes[i]].color );
-        renderer->drawMesh(&ogl_sph, (Vec3f)world.apos[i], Quat4fIdentity, {sz, sz, sz});
+        ogl_sph.draw((Vec3f)world.apos[i], Quat4fIdentity, {sz, sz, sz});
         opengl1renderer.disable(GL_LIGHTING);
     }
     opengl1renderer.disable(GL_LIGHTING);

@@ -409,8 +409,8 @@ void TestAppFireCoreVisual::draw(){
 
     // --- Mouse Interaction / Visualization
 	ray0 = (Vec3d)(cam.rotMat().a*mouse_begin_x + cam.rotMat().b*mouse_begin_y );
-    Draw3D::drawPointCross( renderer, ray0, 0.1 );        // Mouse Cursor 
-    if(ipicked>=0) Draw3D::drawLine( renderer, ff.apos[ipicked], ray0, {0, 0, 0}); // Mouse Dragging Visualization
+    Draw3D::drawPointCross( ray0, 0.1 );        // Mouse Cursor 
+    if(ipicked>=0) Draw3D::drawLine( ff.apos[ipicked], ray0, {0, 0, 0}); // Mouse Dragging Visualization
     Vec3d ray0_ = ray0;            ray0_.y=-ray0_.y;
     Vec3d ray0_start_=ray0_start;  ray0_start_.y=-ray0_start_.y;
     if(bDragging)Draw3D::drawTriclinicBoxT(cam.rotMat(), (Vec3f)ray0_start_, (Vec3f)ray0_ );   // Mouse Selection Box
@@ -433,14 +433,14 @@ void TestAppFireCoreVisual::draw(){
     }
 
     if(useGizmo){
-        gizmo.draw(renderer);
+        gizmo.draw( );
     }
     if(bHexDrawing)drawingHex(5.0);
 };
 
 void TestAppFireCoreVisual::drawHUD(){
     opengl1renderer.disable ( GL_LIGHTING );
-    gui.draw(renderer);
+    gui.draw( );
 }
 
 void TestAppFireCoreVisual::drawingHex(double z0){
@@ -449,9 +449,9 @@ void TestAppFireCoreVisual::drawingHex(double z0){
     Vec2d p{p3.x,p3.y};
     double off=1000.0;
     bool s = ruler.simplexIndex( p+(Vec2d){off,off}, ip, dp );
-    //ruler.nodePoint( ip, p );    opengl1renderer.color3f(1.,1.,1.); Draw3D::drawPointCross( renderer,  {p.x,p.y, 5.0}, 0.5 );
+    //ruler.nodePoint( ip, p );    opengl1renderer.color3f(1.,1.,1.); Draw3D::drawPointCross( {p.x,p.y, 5.0}, 0.5 );
     if(s){opengl1renderer.color3f(1.,0.2,1.);}else{opengl1renderer.color3f(0.2,1.0,1.);}
-    ruler.tilePoint( ip, s, p ); Draw3D::drawPointCross( renderer,  {p.x-off,p.y-off, z0}, 0.2 );
+    ruler.tilePoint( ip, s, p ); Draw3D::drawPointCross( {p.x-off,p.y-off, z0}, 0.2 );
     
     bool bLine=true;
     if(bDrawHexGrid){
@@ -545,9 +545,9 @@ void TestAppFireCoreVisual::makeGridFF( bool recalcFF, bool bRenderGridFF ) {
 void TestAppFireCoreVisual::drawSystem( Vec3d ixyz ){
     bool bOrig = (ixyz.x==0)&&(ixyz.y==0)&&(ixyz.z==0);
     //opengl1renderer.color3f(0.0f,0.0f,0.0f); Draw3D::bondsPBC  ( ff.nbonds, ff.bond2atom, ff.apos, &builder.bondPBC[0], builder.lvec ); 
-    Draw3D::bondsPBC  ( renderer, ff.nbonds, ff.bond2atom, ff.apos, ff.pbcShifts, {0, 0, 0} ); 
+    Draw3D::bondsPBC  ( ff.nbonds, ff.bond2atom, ff.apos, ff.pbcShifts, {0, 0, 0} ); 
     if(bOrig&&mm_bAtoms){ opengl1renderer.color3f(0.0f,0.0f,0.0f); Draw3D::atomLabels( ff.natoms, ff.apos, fontTex3D                     ); }                    
-    Draw3D::atoms( renderer, ff.natoms, ff.apos, atypes, params, &ogl_sph, 1.0, mm_Rsc, mm_Rsub );       
+    Draw3D::atoms( ff.natoms, ff.apos, atypes, params, &ogl_sph, 1.0, mm_Rsc, mm_Rsub );       
 }
 
 void TestAppFireCoreVisual::drawSystemQMMM(){
@@ -562,7 +562,7 @@ void TestAppFireCoreVisual::drawSystemQMMM(){
         const AtomType& atyp = params.atypes[ ityp ];
         Draw::setRGB( atyp.color );
         float sz = (atyp.RvdW-Rsub)*Rsc;
-        renderer->drawMesh( &ogl_sph, (Vec3f)ff.apos[im], Quat4fIdentity, {sz, sz, sz});
+        ogl_sph.draw((Vec3f)ff.apos[im], Quat4fIdentity, {sz, sz, sz});
     }
     opengl1renderer.color3f(0.5f,0.0f,0.0f); 
     Draw3D::atomPropertyLabel( qmmm.nqm, qmmm.charges, qmmm.apos, 1,0, fontTex3D );

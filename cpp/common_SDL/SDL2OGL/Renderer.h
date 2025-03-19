@@ -2,7 +2,6 @@
 #define _Renderer_H_
 
 #include "GLES2.h"
-
 #include <math.h>
 #include <cstdlib>
 #include <stdint.h>
@@ -10,8 +9,6 @@
 
 #include "Vec3.h"
 #include "Mat4.h"
-#include "quaternion.h"
-#include "Camera.h"
 
 #include <functional>
 
@@ -19,40 +16,10 @@
 #include "SDL_opengl_defs.h" // type and constants for old OpenGL
 #endif
 
-#define SHADER_ATTRIB_POSITION 0
-#define SHADER_ATTRIB_NORMAL 1
-#define SHADER_ATTRIB_COLOR 2
 
 class GLMesh;
-
-class Renderer {
-    private:
-        GLuint compileShader(GLenum shaderType, const char* source);
-        GLuint linkProgram(GLuint vertexShader, GLuint fragmentShader);
-
-        GLuint defualtProgram = -1;
-        GLint mvpMatrixLocation = -1;
-        GLint uColorLocation = -1;
-        
-        GLint current_program = 0;
-        GLuint current_gl_array_buffer = 0;
-        GLuint current_gl_element_array_buffer = 0;
-
-    public:
-        Camera* active_camera = nullptr;
-
-        Renderer();
-
-        void loadProgram(GLuint program);
-        void bindBuffer(GLenum target, GLuint buffer);
-        void drawMeshMVP(GLMesh* mesh, Mat4f mvp);
-        void drawMesh(GLMesh* mesh, Vec3f position=Vec3fZero, Quat4f rotation=Quat4fIdentity, Vec3f scale={1, 1, 1});
-};
-
 class OpenGL1Renderer {
     public:
-        Renderer* renderer;
-
         Vec3f color = {1, 1, 1};
         float color_alpha = 1;
 
@@ -79,10 +46,6 @@ class OpenGL1Renderer {
 
     public:
         OpenGL1Renderer();
-
-        void bind_renderer(Renderer* r){
-            this->renderer = r;
-        }
 
         // ===== OpenGL 1.x functions =====
         void begin(GLenum mode);

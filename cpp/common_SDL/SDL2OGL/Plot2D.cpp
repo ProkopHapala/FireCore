@@ -174,28 +174,28 @@ void Plot2D::drawAxes(){
     }
 }
 
-int Plot2D::renderFrameworks(Renderer* r){
+int Plot2D::renderFrameworks(){
     if( glObj ) opengl1renderer.deleteLists(glObj,1);
     glObj = opengl1renderer.genLists(1);
     opengl1renderer.newList(glObj, GL_COMPILE);
-    if( (clrBg&0xFF000000) ){ Draw2D::drawRectangle_d( r, axBounds.a, axBounds.b, COL2VEC(clrBg) ); }
+    if( (clrBg&0xFF000000) ){ Draw2D::drawRectangle_d( axBounds.a, axBounds.b, COL2VEC(clrBg) ); }
     drawAxes();
     opengl1renderer.endList( );
     redraw=false;
     return glObj;
 }
 
-int Plot2D::render(Renderer* r){
+int Plot2D::render(){
     for( DataLine2D* line : lines ){ line->render(); }
     redraw=false;
-    return renderFrameworks(r);
+    return renderFrameworks();
 }
 
-int Plot2D::tryRender(Renderer* r, bool bUpdate){
+int Plot2D::tryRender( bool bUpdate){
     for( DataLine2D* line : lines ){ line->tryRender(); }
     if(redraw){
         if(bUpdate) update();
-        renderFrameworks(r);
+        renderFrameworks();
         redraw=false;
     }
     return glObj;
@@ -342,7 +342,7 @@ void QuePlot2D::drawTrj3D( Vec3i which ){
     opengl1renderer.end();
 }
 
-void QuePlot2D::drawTrj3DPoints( Renderer* r, Vec3i which, double pointSize ){
+void QuePlot2D::drawTrj3DPoints( Vec3i which, double pointSize ){
     int ii0 = nsamp-n+1; if (ii0<0) ii0=0;
     int i0  = wrap_index( ii0 );
 
@@ -352,7 +352,7 @@ void QuePlot2D::drawTrj3DPoints( Renderer* r, Vec3i which, double pointSize ){
     if( pointSize > 0 ){
         for(int ii=ii0; ii<nsamp; ii++){
             int i = wrap_index( ii );
-            Draw3D::drawPointCross( r, {xs[i], ys[i], zs[i]}, pointSize );
+            Draw3D::drawPointCross( {xs[i], ys[i], zs[i]}, pointSize );
         }
     }else{
         opengl1renderer.begin(GL_POINTS);

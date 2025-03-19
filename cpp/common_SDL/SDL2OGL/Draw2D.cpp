@@ -74,7 +74,7 @@ static GLMesh makeRectMesh(){
     return m;
 }
 static GLMesh rectMesh = makeRectMesh();
-void Draw2D::drawRectangle( Renderer* r, float p1x, float p1y, float p2x, float p2y, Vec3f color, bool filled){ // TODO: create a list of drawn rects and them draw them at once using instancing
+void Draw2D::drawRectangle( float p1x, float p1y, float p2x, float p2y, Vec3f color, bool filled){ // TODO: create a list of drawn rects and them draw them at once using instancing
     rectMesh.drawMode = filled ? GL_QUADS : GL_LINE_LOOP;
     rectMesh.color = color;
 
@@ -94,11 +94,11 @@ void Draw2D::drawRectangle( Renderer* r, float p1x, float p1y, float p2x, float 
     mvp.array[ 3] = 0;        mvp.array[ 7] = 0;        mvp.array[11] = 0;  mvp.array[15] = 1;
 
     opengl1renderer.disable(GL_DEPTH_TEST);
-    r->drawMeshMVP(&rectMesh, mvp);
+    rectMesh.drawMVP(mvp);
 };
 
-void Draw2D::drawRectangle( Renderer* r, const Vec2f& p1, const Vec2f& p2, Vec3f color, bool filled ){
-	drawRectangle( r, p1.x, p1.y, p2.x, p2.y, color, filled );
+void Draw2D::drawRectangle( const Vec2f& p1, const Vec2f& p2, Vec3f color, bool filled ){
+	drawRectangle( p1.x, p1.y, p2.x, p2.y, color, filled );
 };
 /*
 void Draw2D::drawPoint_d( const Vec2d& vec ){
@@ -127,8 +127,8 @@ void Draw2D::drawLine_d( const Vec2d& p1,  const Vec2d& p2  ){
 	Vec2f p1_,p2_; convert( p1, p1_ );   convert( p2, p2_ );   drawLine( p1_, p2_);
 };
 
-void Draw2D::drawRectangle_d( Renderer* r, const Vec2d& p1,  const Vec2d& p2, Vec3f color, bool filled ){
-	Vec2f p1_,p2_; convert( p1, p1_ );   convert( p2, p2_ );   drawRectangle( r, p1_, p2_, color, filled );
+void Draw2D::drawRectangle_d( const Vec2d& p1,  const Vec2d& p2, Vec3f color, bool filled ){
+	Vec2f p1_,p2_; convert( p1, p1_ );   convert( p2, p2_ );   drawRectangle( p1_, p2_, color, filled );
 };
 
 void Draw2D::drawTriangle_d( const Vec2d& p1,  const Vec2d& p2, const Vec2d& p3 ){

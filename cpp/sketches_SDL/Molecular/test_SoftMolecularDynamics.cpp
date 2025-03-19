@@ -189,8 +189,8 @@ void TestAppSoftMolDyn::draw(){
     */
     repl.eval();
 
-    ray0 = (Vec3d)mouseRay0(); Draw3D::drawPointCross( renderer, ray0, 0.1 ); //Draw3D::drawVecInPos( camMat.c, ray0 );
-    if(ipicked>=0) Draw3D::drawLine( renderer, world.apos[ipicked], ray0, {0, 0, 0});
+    ray0 = (Vec3d)mouseRay0(); Draw3D::drawPointCross( ray0, 0.1 ); //Draw3D::drawVecInPos( camMat.c, ray0 );
+    if(ipicked>=0) Draw3D::drawLine( world.apos[ipicked], ray0, {0, 0, 0});
 
 	double F2;
 	for(int itr=0; itr<perFrame; itr++){
@@ -235,8 +235,8 @@ void TestAppSoftMolDyn::draw(){
     opengl1renderer.color3f(0.0f,0.0f,0.0f);
     Draw3D::drawLines ( world.nbonds, (int*)world.bond2atom, world.apos );
     Draw3D::bondLabels( world.nbonds,       world.bond2atom, world.apos, fontTex, 0.02 );
-    Draw3D::vecsInPoss( renderer, world.natoms, world.aforce, world.apos, 300.0, {1, 0, 0});
-    Draw3D::atomsREQ  ( renderer, world.natoms, world.apos,   world.REQ, &ogl_sph, 1.0, 0.25 );
+    Draw3D::vecsInPoss( world.natoms, world.aforce, world.apos, 300.0, {1, 0, 0});
+    Draw3D::atomsREQ  ( world.natoms, world.apos,   world.REQ, &ogl_sph, 1.0, 0.25 );
 
     //printf("==========\n");
     //for(int i=0; i<world.natoms; i++){

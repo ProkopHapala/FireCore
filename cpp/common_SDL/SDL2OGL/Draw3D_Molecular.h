@@ -89,7 +89,7 @@ GLMesh makeSphereOgl( int nsub, float sz=1 ){
     return sphere;
 }
 
-void atomsREQ( Renderer* r, int n, Vec3d* ps, Quat4d* REQs, GLMesh* ogl_sph, float qsc=1, float Rsc=1, float Rsub=0, bool bPointCross=false, Vec3d pos0=Vec3dZero ){
+void atomsREQ( int n, Vec3d* ps, Quat4d* REQs, GLMesh* ogl_sph, float qsc=1, float Rsc=1, float Rsub=0, bool bPointCross=false, Vec3d pos0=Vec3dZero ){
     opengl1renderer.enable(GL_LIGHTING);
     opengl1renderer.enable(GL_DEPTH_TEST);
     opengl1renderer.shadeModel(GL_SMOOTH);
@@ -98,11 +98,11 @@ void atomsREQ( Renderer* r, int n, Vec3d* ps, Quat4d* REQs, GLMesh* ogl_sph, flo
         ogl_sph->color = {1-fmax(0,-q),1-fmax(q,-q),1-fmax(0,+q)};
         //printf( "Draw3D atomsREQ() %i Q=%g R=%g pos(%16.8f %16.8f %16.8f)  \n", i, q, REQs[i].x, ps[i].x, ps[i].y, ps[i].z );
         if(bPointCross){
-            Draw3D::drawPointCross( r, ps[i]+pos0, (REQs[i].x-Rsub)*Rsc );
+            Draw3D::drawPointCross( ps[i]+pos0, (REQs[i].x-Rsub)*Rsc );
         }else{
             //Draw3D::drawShape( ogl_sph, ps[i]+pos0, Mat3dIdentity*((REQs[i].x-Rsub)*Rsc) );
             float sz = (REQs[i].x-Rsub)*Rsc;
-            r->drawMesh(ogl_sph, (Vec3f)(ps[i]+pos0), Quat4fIdentity, {sz, sz, sz});
+            ogl_sph->draw((Vec3f)(ps[i]+pos0), Quat4fIdentity, {sz, sz, sz});
         }
     }
 }
@@ -240,24 +240,24 @@ void pbcBondNeighLabels( int n, const Vec2i* b2a, const Vec3d* apos, const Vec3d
 }
 
 
-void bondsPBC( Renderer* r, int n, const Vec2i* b2a, const Vec3d* apos, const Vec3d* pbc_shifts, Vec3f color ){
+void bondsPBC( int n, const Vec2i* b2a, const Vec3d* apos, const Vec3d* pbc_shifts, Vec3f color ){
     //printf( "bondsPBC &b2a=%li &apos=%li &pbc_shifts=%li \n", (long)b2a, (long)apos, (long)pbc_shifts );
     for(int i=0; i<n; i++){
         Vec2i b = b2a[i];
         Vec3d shift;
         if(pbc_shifts){ shift=pbc_shifts[i]; }else{ shift=Vec3dZero; }
-        Draw3D::drawLine( r, apos[b.b], apos[b.a]-shift, color );
-        Draw3D::drawLine( r, apos[b.a], apos[b.b]+shift, color );
+        Draw3D::drawLine( apos[b.b], apos[b.a]-shift, color );
+        Draw3D::drawLine( apos[b.a], apos[b.b]+shift, color );
     }
 }
 
-void bondsPBC( Renderer* r, int n, const Vec2i* b2a, const Vec3d* apos, const Vec3i* pbc, const Mat3d& lvec, Vec3f color ){
+void bondsPBC( int n, const Vec2i* b2a, const Vec3d* apos, const Vec3i* pbc, const Mat3d& lvec, Vec3f color ){
     for(int i=0; i<n; i++){
         Vec2i b = b2a[i];
         Vec3i G = pbc[i];
         if((G.a!=0)||(G.b!=0)||(G.c!=0)){
-        Draw3D::drawLine( r, apos[b.b], apos[b.a]+ lvec.a*-G.a + lvec.b*-G.b + lvec.c*-G.c, color);}
-        Draw3D::drawLine( r, apos[b.a], apos[b.b]+ lvec.a*G.a + lvec.b*G.b + lvec.c*G.c, color);
+        Draw3D::drawLine( apos[b.b], apos[b.a]+ lvec.a*-G.a + lvec.b*-G.b + lvec.c*-G.c, color);}
+        Draw3D::drawLine( apos[b.a], apos[b.b]+ lvec.a*G.a + lvec.b*G.b + lvec.c*G.c, color);
     }
 }
 
@@ -405,7 +405,7 @@ int drawESP( int na, Vec3d* apos, Quat4d* REQs, Quat4d REQ ){
 
 
 #ifdef MMFFparams_h
-void atoms( Renderer* r, int n, Vec3d* ps, int* atypes, const MMFFparams& params, GLMesh* ogl_sph, float qsc=1, float Rsc=1, float Rsub=0, Vec3d offset=Vec3dZero ){
+void atoms( int n, Vec3d* ps, int* atypes, const MMFFparams& params, GLMesh* ogl_sph, float qsc=1, float Rsc=1, float Rsub=0, Vec3d offset=Vec3dZero ){
     opengl1renderer.enable(GL_LIGHTING);
     opengl1renderer.enable(GL_DEPTH_TEST);
     opengl1renderer.shadeModel(GL_SMOOTH);
@@ -414,7 +414,7 @@ void atoms( Renderer* r, int n, Vec3d* ps, int* atypes, const MMFFparams& params
         Draw::setRGB( atyp.color );
 
         float sz = (atyp.RvdW-Rsub)*Rsc;
-        r->drawMesh(ogl_sph, (Vec3f)(ps[i]+offset), Quat4fIdentity, {sz, sz, sz});
+        ogl_sph->draw((Vec3f)(ps[i]+offset), Quat4fIdentity, {sz, sz, sz});
     }
 }
 #endif
@@ -471,7 +471,7 @@ void drawBonds( const MMFFsp3& ff, double Fsc=0.0 ){
 }
 #endif
 #ifdef MMFFsp3_h
-void drawNeighs( Renderer* r, const MMFFsp3& ff, double Fsc=0.0 ){
+void drawNeighs( const MMFFsp3& ff, double Fsc=0.0 ){
     //drawSystem( false, true, false );
     for(int ia=0; ia<ff.nnode; ia++ ){
         //printf( "atom[%i]\n", ia );
@@ -479,12 +479,12 @@ void drawNeighs( Renderer* r, const MMFFsp3& ff, double Fsc=0.0 ){
         for(int j=0; j<ff.nneigh_max; j++ ){
             //printf( "atom[%i]neigh[%i]=%i \n", ia, j, ngs[j] );
             if(ngs[j]>=0){
-                Draw3D::drawLine( r, ff.apos[ia], ff.apos[ngs[j]], {0, 0, 0} );
-                if(Fsc>0.0){ Draw3D::drawVecInPos( r, ff.fapos[ia]*Fsc, ff.apos[ia], {1, 0, 0} ); }
+                Draw3D::drawLine( ff.apos[ia], ff.apos[ngs[j]], {0, 0, 0} );
+                if(Fsc>0.0){ Draw3D::drawVecInPos( ff.fapos[ia]*Fsc, ff.apos[ia], {1, 0, 0} ); }
             }else{
                 int ipi = -ngs[j]-1;
-                Draw3D::drawVecInPos( r, ff.pipos[ipi], ff.apos[ia], {0, 0.5, 0} );
-                if(Fsc>0.0){ Draw3D::drawVecInPos( r, ff.fpipos[ipi]*Fsc, ff.apos[ia]+ff.pipos[ipi], {1, 0.5, 0} ); }
+                Draw3D::drawVecInPos( ff.pipos[ipi], ff.apos[ia], {0, 0.5, 0} );
+                if(Fsc>0.0){ Draw3D::drawVecInPos( ff.fpipos[ipi]*Fsc, ff.apos[ia]+ff.pipos[ipi], {1, 0.5, 0} ); }
             }
         }
     }

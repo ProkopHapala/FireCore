@@ -124,7 +124,7 @@ void TestAppMultipoles::draw(){
 	for(int i=0; i<nbodies; i++){
         Draw::color_of_hash( 1545464+grid.atom2cell[i]*15464 );
         Draw3D::drawPoint( pos[i] );
-        //Draw3D::drawPointCross( renderer, pos[i], 0.2 );
+        //Draw3D::drawPointCross( pos[i], 0.2 );
 
         Vec3i ip;
         grid.ruler.i2ixyz( grid.atom2cell[i], ip );
@@ -150,13 +150,13 @@ void TestAppMultipoles::draw(){
 
 	opengl1renderer.color3f(1.0,1.0,1.0);
 	for(int i=0; i<system1.natoms; i++){
-        Draw3D::drawPointCross( renderer, system1.pos[i] ,0.1);
+        Draw3D::drawPointCross( system1.pos[i] ,0.1);
 	}
 
 	/*
 	opengl1renderer.color3f(0.0,0.0,0.0);
     for(int i=0; i<system1.nAtomPBC; i++){
-        Draw3D::drawPointCross( renderer, system1.pbc_pos[i], 0.1 );
+        Draw3D::drawPointCross( system1.pbc_pos[i], 0.1 );
 	};
 	*/
 
@@ -180,7 +180,7 @@ void TestAppMultipoles::draw(){
         int n  = system1.cellNs   [icell];
         int i0 = system1.cell2atom[icell];
         for(int i=0; i<n; i++){
-            Draw3D::drawPointCross( renderer, system1.pbc_pos[i+i0] ,0.3);
+            Draw3D::drawPointCross( system1.pbc_pos[i+i0] ,0.3);
         }
 
         Vec3i ip; system1.ruler.i2ixyz( icell, ip );

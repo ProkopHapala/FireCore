@@ -176,8 +176,8 @@ void TestAppRARFF::draw(){
             ff.checkForceTorque(cog,fsum,tqsum);
             //printf( "===== frame %i \n", frameCount );
             printf("fsum %g tqsum %g | cog(%g,%g,%g)\n", fsum.norm(), tqsum.norm(), cog.x,cog.y,cog.z );
-            opengl1renderer.color3f(1,1,1); Draw3D::drawPointCross( renderer,cog,0.05);
-            Draw3D::drawVecInPos(renderer, fsum,cog, {1, 1, 1});
+            opengl1renderer.color3f(1,1,1); Draw3D::drawPointCross( cog,0.05);
+            Draw3D::drawVecInPos( fsum,cog, {1, 1, 1});
 
             double f2err=0;
             for(int i=0; i<ff.nDOF; i++){ f2err=fmax(f2err,ff.fdofs[i].norm2()); }
@@ -204,7 +204,7 @@ void TestAppRARFF::draw(){
 
     opengl1renderer.color3f(1.,1.,1.);
     for(int ia=0; ia<nff.natoms; ia++){
-        Draw3D::drawPointCross( renderer, nff.apos[ia], 0.1 );
+        Draw3D::drawPointCross( nff.apos[ia], 0.1 );
     }
     opengl1renderer.color3f(0.,0.,0.);
     for(int ib=0; ib<nff.nmask; ib++){
@@ -224,13 +224,13 @@ void TestAppRARFF::draw(){
     // atom forces
     opengl1renderer.color3f(1.,0.,0.);
     for(int ia=0; ia<ff.natom; ia++){
-        Draw3D::drawVecInPos( renderer, ff.aforce[ia]*fsc, ff.apos[ia], {1, 0, 0} );
+        Draw3D::drawVecInPos( ff.aforce[ia]*fsc, ff.apos[ia], {1, 0, 0} );
     }
 
     // sigma force (bond,epair,hydrogen)
     for(int ia=0; ia<ff.natom; ia++){
         for(int io=0; io<ff.aconf[ia].b; io++ ){
-            Draw3D::drawVecInPos( renderer, ff.hforce[ia*N_BOND_MAX+io]*fsc, ff.hdir[ia*N_BOND_MAX+io], {1, 1, 0} );
+            Draw3D::drawVecInPos( ff.hforce[ia*N_BOND_MAX+io]*fsc, ff.hdir[ia*N_BOND_MAX+io], {1, 1, 0} );
         }
     }
 
@@ -239,7 +239,7 @@ void TestAppRARFF::draw(){
     // atom centers
     opengl1renderer.color3f(0.,0.,0.);
     for(int i=0; i<ff.natom; i++){
-        //Draw3D::drawPointCross( renderer, ff.apos[i], 0.1 );
+        //Draw3D::drawPointCross( ff.apos[i], 0.1 );
     }
 
     // bonds
@@ -251,7 +251,7 @@ void TestAppRARFF::draw(){
     // bond electrons
     for(int ia=0; ia<ff.natom; ia++){
         for(int io=0; io<ff.aconf[ia].c; io++ ){
-            Draw3D::drawLine( renderer, ff.hdir[ia*N_BOND_MAX+io], ff.apos[ia], {0.5, 0, 0.5} );
+            Draw3D::drawLine( ff.hdir[ia*N_BOND_MAX+io], ff.apos[ia], {0.5, 0, 0.5} );
         }
     }
 
@@ -260,21 +260,21 @@ void TestAppRARFF::draw(){
     // cap hydrogens
     for(int ia=0; ia<ff.natom; ia++){
         for(int io=ff.aconf[ia].c; io<ff.aconf[ia].a; io++ ){
-            Draw3D::drawLine( renderer, ff.hdir[ia*N_BOND_MAX+io],  ff.apos[ia], {0, 0, 0} );
+            Draw3D::drawLine( ff.hdir[ia*N_BOND_MAX+io],  ff.apos[ia], {0, 0, 0} );
         }
     }
 
     // e-pair
     for(int ia=0; ia<ff.natom; ia++){
         for(int io=ff.aconf[ia].a; io<ff.aconf[ia].b; io++ ){
-            Draw3D::drawLine( renderer, ff.hdir[ia*N_BOND_MAX+io], ff.apos[ia], {0, 0.7, 1} );
+            Draw3D::drawLine( ff.hdir[ia*N_BOND_MAX+io], ff.apos[ia], {0, 0.7, 1} );
         }
     }
 
     // pi-bond
     for(int ia=0; ia<ff.natom; ia++){
         for(int io=ff.aconf[ia].b; io<N_BOND_MAX; io++ ){
-            Draw3D::drawVecInPos( renderer, ff.hdir[ia*N_BOND_MAX+io]*0.5, ff.apos[ia], {0.4, 0.8, 0} );
+            Draw3D::drawVecInPos( ff.hdir[ia*N_BOND_MAX+io]*0.5, ff.apos[ia], {0.4, 0.8, 0} );
         }
     }
 

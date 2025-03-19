@@ -22,8 +22,8 @@ void drawVecInPos   ( const Vec2f& v,   const Vec2f& pos );
 void drawBody2d     ( const Vec2f& rot, const Vec2f& pos, float l1, float l2 );
 void drawLine       ( const Vec2f& p1, const Vec2f& p2   );
 void drawTriangle   ( const Vec2f& p1, const Vec2f& p2, const Vec2f& p3 );
-void drawRectangle  ( Renderer* r, float p1x, float p1y, float p2x, float p2y, Vec3f color, bool filled = true);
-void drawRectangle  ( Renderer* r, const Vec2f& p1, const Vec2f& p2, Vec3f color, bool filled=true);
+void drawRectangle  ( float p1x, float p1y, float p2x, float p2y, Vec3f color, bool filled = true);
+void drawRectangle  ( const Vec2f& p1, const Vec2f& p2, Vec3f color, bool filled=true);
 void drawCircle     ( const Vec2f& center, float radius, int n, bool filled );
 void drawArc        ( const Vec2f& center, float radius, float phi0, float phi, float dphi, bool filled );
 
@@ -38,7 +38,7 @@ void drawVecInPos_d    ( const Vec2d& v,   const Vec2d& pos );
 void drawBody2d_d      ( const Vec2d& rot, const Vec2d& pos, float l1, float l2 );
 void drawLine_d        ( const Vec2d& p1,  const Vec2d& p2  );
 void drawTriangle_d    ( const Vec2d& p1,  const Vec2d& p2, const Vec2d& p3 );
-void drawRectangle_d   ( Renderer* r, const Vec2d& p1,  const Vec2d& p2, Vec3f color, bool filled=true);
+void drawRectangle_d   ( const Vec2d& p1,  const Vec2d& p2, Vec3f color, bool filled=true);
 void drawCircle_d      ( const Vec2d& center, float radius, int n, bool filled );
 void drawArc_d         ( const Vec2d& center, float radius, float phi0, float phi, float dphi, bool filled );
 

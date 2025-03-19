@@ -35,10 +35,10 @@ inline void normal(const Vec3f& v ){ opengl1renderer.normal3f(v.x, v.y, v.z); }
 inline void normal(const Vec3d& v ){ opengl1renderer.normal3d(v.x, v.y, v.z); }
 
 void drawPoint     ( const Vec3f& vec                   );
-void drawPointCross( Renderer* r, const Vec3f& vec, float sz, Vec3f color=Vec3fZero );
-void drawVec       ( Renderer* r, const Vec3f& vec,           Vec3f color           );
-void drawVecInPos  ( Renderer* r, const Vec3f& v,   const Vec3f& pos, Vec3f color   );
-void drawLine      ( Renderer* r, const Vec3f& p1,  const Vec3f& p2,  Vec3f color   );
+void drawPointCross( const Vec3f& vec, float sz, Vec3f color=Vec3fZero );
+void drawVec       ( const Vec3f& vec,           Vec3f color           );
+void drawVecInPos  ( const Vec3f& v,   const Vec3f& pos, Vec3f color   );
+void drawLine      ( const Vec3f& p1,  const Vec3f& p2,  Vec3f color   );
 void drawArrow     ( const Vec3f& p1,  const Vec3f& p2, float sz=0.1 );
 void drawTriangle ( const Vec3f& p1,  const Vec3f& p2, const Vec3f& p3 );
 void drawTriangle ( const Vec3f& p1,  const Vec3f& p2, const Vec3f& p3, bool filled );
@@ -88,13 +88,13 @@ void drawAxis( float sc );
 // ========== Double Versions
 
 inline void drawPoint     ( const Vec3d& vec                   ){drawPoint((Vec3f)vec); }
-inline void drawVec       ( Renderer* r, const Vec3d& vec, Vec3f color                ){drawVec(r,(Vec3f)vec,color); }
-inline void drawPointCross( Renderer* r, const Vec3d& vec, double sz, Vec3f color=Vec3fZero){drawPointCross(r, (Vec3f)vec,sz, color); }
-inline void drawVecInPos  ( Renderer* r, const Vec3d& v,   const Vec3d& pos, Vec3f color ){drawVecInPos(r, (Vec3f)v,(Vec3f)pos, color); }
-inline void drawLine      ( Renderer* r, const Vec3d& p1,  const Vec3d& p2, Vec3f color  ){drawLine (r, (Vec3f)p1,(Vec3f)p2, color); }
+inline void drawVec       ( const Vec3d& vec, Vec3f color                ){drawVec((Vec3f)vec,color); }
+inline void drawPointCross( const Vec3d& vec, double sz, Vec3f color=Vec3fZero){drawPointCross((Vec3f)vec,sz, color); }
+inline void drawVecInPos  ( const Vec3d& v,   const Vec3d& pos, Vec3f color ){drawVecInPos((Vec3f)v,(Vec3f)pos, color); }
+inline void drawLine      ( const Vec3d& p1,  const Vec3d& p2, Vec3f color  ){drawLine ((Vec3f)p1,(Vec3f)p2, color); }
 inline void drawArrow     ( const Vec3d& p1,  const Vec3d& p2, float sz=0.1  ){drawArrow((Vec3f)p1,(Vec3f)p2, sz); }
 
-void vecsInPoss( Renderer* r, int n, const Vec3d* vs, const Vec3d* ps, float sc, Vec3f color={1, 0, 0} );
+void vecsInPoss( int n, const Vec3d* vs, const Vec3d* ps, float sc, Vec3f color={1, 0, 0} );
 
 inline void drawTriangle ( const Vec3d& p1,  const Vec3d& p2, const Vec3d& p3 ){ drawTriangle( (Vec3f)p1, (Vec3f)p2, (Vec3f)p3 ); };
 inline void drawTriangle ( const Vec3d& p1,  const Vec3d& p2, const Vec3d& p3, bool filled ){ drawTriangle( (Vec3f)p1, (Vec3f)p2, (Vec3f)p3, filled ); };

@@ -131,23 +131,23 @@ void TestAppRARFF::draw(){
     double fsc = 1.0;
     for(int i=0; i<mol.natoms; i++){
         //printf( "apos[%i] (%g,%g,%g)\n", i, ff.apos[i].x, ff.apos[i].y, ff.apos[i].z );
-        Draw3D::drawPointCross( renderer, mol.pos  [i] , 0.2 );
+        Draw3D::drawPointCross( mol.pos  [i] , 0.2 );
         //Draw3D::drawVecInPos(   ff.aforce[i]*fsc, ff.apos[i] );
         //printf( " %i %f %f %f %f  \n", i, ff.aQ[i], ff.apos[i].x,ff.apos[i].y,ff.apos[i].z );
         //printf( " %i %f %f %f %f  \n", i, ff.aQ[i], ff.aforce[i].x, ff.aforce[i].y, ff.aforce[i].z );
     }
 
     for(int i=0; i<mol.nbonds; i++){
-        Draw3D::drawLine( renderer, mol.pos[mol.bond2atom[i].i], mol.pos[mol.bond2atom[i].j], {0, 0, 0} );
+        Draw3D::drawLine( mol.pos[mol.bond2atom[i].i], mol.pos[mol.bond2atom[i].j], {0, 0, 0} );
     }
 
 
     for( MeshEdge& edge: agrid.mesh.edges ){
         Vec3d& a =  agrid.mesh.points[ edge.verts.a ];
         Vec3d& b =  agrid.mesh.points[ edge.verts.b ];
-        //Draw3D::drawPointCross( renderer, l12.p0, 0.1 ); Draw3D::drawVecInPos( l12.hdir, l12.p0 );
+        //Draw3D::drawPointCross( l12.p0, 0.1 ); Draw3D::drawVecInPos( l12.hdir, l12.p0 );
         //printf( "edge %i(%g,%g,%g) %i(%g,%g,%g) \n", edge.verts.a, a.x,a.y,a.z,   edge.verts.b, b.x,b.y,b.z );
-        Draw3D::drawLine( renderer, a, b, {0, 0, 0} );
+        Draw3D::drawLine( a, b, {0, 0, 0} );
     }
 
     opengl1renderer.color3f(0.0,1.0,0.0);
@@ -158,7 +158,7 @@ void TestAppRARFF::draw(){
 
     for( Vec3d& p: agrid.mesh.points ){
         opengl1renderer.enable(GL_DEPTH_TEST);
-        Draw3D::drawPointCross( renderer, p, 0.1 );
+        Draw3D::drawPointCross( p, 0.1 );
     }
 
     /*

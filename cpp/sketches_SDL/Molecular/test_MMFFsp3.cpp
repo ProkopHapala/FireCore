@@ -272,12 +272,12 @@ void TestAppMMFFsp3::drawSystem( bool bAtoms, bool bBonds, bool bForces, float t
         //opengl1renderer.color3f(0.0f,0.0f,1.0f); Draw3D::bondLabels( ff.nbonds, ff.bond2atom, ff.apos, fontTex, 0.02 );                     
         if(bondLenghts) opengl1renderer.color3f(0.0f,0.0f,1.0f); Draw3D::bondPropertyLabel( ff.nbonds, bondLenghts, ff.bond2atom, ff.apos, 1,0, fontTex, texSize, "%4.2f\0" );
     }
-    if(bForces){ Draw3D::vecsInPoss( renderer, ff.natoms, ff.fapos, ff.apos, 300.0, {1, 0, 0}); }
+    if(bForces){ Draw3D::vecsInPoss( ff.natoms, ff.fapos, ff.apos, 300.0, {1, 0, 0}); }
     if(bAtoms){
         //opengl1renderer.color3f(0.0f,0.0f,1.0f); Draw3D::atomPropertyLabel( ff.natoms, (double*)nff.REQs, ff.apos, 3,2, fontTex, 0.02, "%4.2f\0" );
         opengl1renderer.color3f(0.5f,0.0f,0.0f); Draw3D::atomLabels( ff.natoms, ff.apos, fontTex, texSize                     );                     
         //if(bSpheres)Draw3D::atomsREQ  ( ff.natoms, ff.apos,   nff.REQs, ogl_sph, 1.0, 0.25, 1.0 );
-        if(bAtomsSpheres)Draw3D::atoms( renderer, ff.natoms, ff.apos, atypes, params, &ogl_sph, 1.0, mm_Rsc, mm_Rsub );  
+        if(bAtomsSpheres)Draw3D::atoms( ff.natoms, ff.apos, atypes, params, &ogl_sph, 1.0, mm_Rsc, mm_Rsub );  
         //Draw3D::atoms( ff.natoms, ff.apos, atypes, params, ogl_sph, 1.0, 1.0, 1.0 );      
         //Draw3D::atoms( ff.natoms, ff.apos, atypes, params, ogl_sph, 1.0, 0.5, 1.0 );       
         //Draw3D::atoms( ff.natoms, ff.apos, atypes, params, ogl_sph, 1.0, 0.25, 1.0 );       
@@ -317,9 +317,9 @@ void TestAppMMFFsp3::draw(){
 
 	//ibpicked = world.pickBond( ray0, camMat.c , 0.5 );
     ray0 = (Vec3d)(cam.rotMat().a*mouse_begin_x + cam.rotMat().b*mouse_begin_y);
-    Draw3D::drawPointCross( renderer, ray0, 0.1 );
+    Draw3D::drawPointCross( ray0, 0.1 );
     //Draw3D::drawVecInPos( camMat.c, ray0 );
-    if(ipicked>=0) Draw3D::drawLine( renderer, ff.apos[ipicked], ray0, {0, 0, 0});
+    if(ipicked>=0) Draw3D::drawLine( ff.apos[ipicked], ray0, {0, 0, 0});
 
     //perFrame = 1;
     //perFrame = 100;
@@ -368,7 +368,7 @@ void TestAppMMFFsp3::draw(){
     //drawSystem();
     //opengl1renderer.color3f(0.,0.,0.); drawBonds( ff );
     drawSystem(true,true,false);
-    Draw3D::drawNeighs( renderer, ff, 0.0 );
+    Draw3D::drawNeighs( ff, 0.0 );
 
     //opengl1renderer.color3f(0.,0.,0.); drawBonds( builder );
     //opengl1renderer.color3f(0.,0.,0.); drawNeighs( builder );

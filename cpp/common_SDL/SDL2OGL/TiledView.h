@@ -3,7 +3,6 @@
 #define  TiledView_h
 
 #include "Map2D.h"
-#include "Renderer.h"
 
 // ==============================================
 // ========== CLASS STUB : GridMap2D_stub
@@ -17,8 +16,8 @@ class TiledView : public Map2D {
      // ==== functions
     void renderAll   ( float xmin, float ymin, float xmax, float ymax );
     bool checkRender ( float xmin, float ymin, float xmax, float ymax );
-    void draw_raw    ( Renderer* r, float xmin, float ymin, float xmax, float ymax );
-    void draw        ( Renderer* r, float xmin, float ymin, float xmax, float ymax );
+    void draw_raw    ( float xmin, float ymin, float xmax, float ymax );
+    void draw        ( float xmin, float ymin, float xmax, float ymax );
     void shiftRender ( int dix, int diy );
     void printIndexes( );
 

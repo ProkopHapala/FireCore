@@ -243,7 +243,7 @@ TestAppRARFF::TestAppRARFF( int& id, int WIDTH_, int HEIGHT_ ) : AppSDL2OGL_3D( 
     plot1.fontTex = fontTex;
     plot1.add( new DataLine2D( 200, -10.0, 0.1, 0xFF0000FF, "Vatom" ) );
     plot1.update();
-    plot1.render(renderer);
+    plot1.render( );
     plot1.view();
 
 }
@@ -319,7 +319,7 @@ void TestAppRARFF::draw(){
         }
     }
 
-    drawEFF( renderer, ff, oglSph, 1.0, 0.1, 0.1, 1.5 );
+    drawEFF( ff, oglSph, 1.0, 0.1, 0.1, 1.5 );
 
     if(bDrawPlots){
         plotAtomsPot( ff, plot1.lines[0], Vec3d{0.0,0.0,0.0}, Vec3d{1.0,0.0,0.0}, -0.2, 0.1 );
@@ -327,7 +327,7 @@ void TestAppRARFF::draw(){
         plot1.bAxes=false;
         plot1.bTicks=false;
         plot1.update();
-        plot1.render(renderer);
+        plot1.render( );
         plot1.view();
     }
 
