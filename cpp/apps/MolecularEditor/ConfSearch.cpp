@@ -437,7 +437,7 @@ void AppMolecularEditor2::draw(){
     ray0 = (Vec3d)(cam.pos + cam.rotMat().a*mouse_begin_x + cam.rotMat().b*mouse_begin_y);
     Draw3D::drawPointCross( ray0, 0.1 );
     //Draw3D::drawVecInPos( camMat.c, ray0 );
-    if(ipicked>=0) Draw3D::drawLine( world.apos[ipicked], ray0, {0, 0, 0});
+    if(ipicked>=0) Draw3D::drawLine( world.apos[ipicked], ray0, COLOR_BLACK);
 
 	double F2;
 	perFrame = 1;
@@ -497,7 +497,7 @@ void AppMolecularEditor2::draw(){
         //opt.move_MDquench();
 
         for(int i=0; i<world.natoms; i++ ){
-            Draw3D::drawVecInPos( world.aforce[i]*10.0, world.apos[i], {0, 0, 0} );
+            Draw3D::drawVecInPos( world.aforce[i]*10.0, world.apos[i], COLOR_BLACK );
         };
 
         world.toDym(true);

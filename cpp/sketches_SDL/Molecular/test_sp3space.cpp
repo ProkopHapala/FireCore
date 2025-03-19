@@ -209,7 +209,7 @@ void TestAppSp3Space::draw(){
         double l2 = -c*(1-s);   // s-p
         opengl1renderer.color3f(1.0,1.0,1.0);
         Draw3D::drawArrow( orbs.vecs[i].p*l2, orbs.vecs[i].p*l1, 0.1 );
-        Draw3D::drawVecInPos( f.vecs[i].p, orbs.vecs[i].p*l1, {1, 0, 0} );
+        Draw3D::drawVecInPos( f.vecs[i].p, orbs.vecs[i].p*l1, COLOR_RED );
     }
 
     opengl1renderer.color3f(0.0,0.0,0.0);

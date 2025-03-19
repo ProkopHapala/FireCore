@@ -83,10 +83,10 @@ double torsion_Paolo( Vec3d p1, Vec3d p2, Vec3d p3, Vec3d p4, Vec3d par ){
         //printf(  "|f1|/|f1_| %g  |f3|/|f3_| %g cos(f1,f1_) %g cos(f3,f3_) %g |cs| %g \n", f1.norm()/f1_.norm(), f3.norm2()/f3_.norm2(),  f1.dot(f1_)/sqrt(f1.norm2()*f1_.norm2()),  f3.dot(f3_)/sqrt(f3.norm2()*f3_.norm2()),  c*c+s*s );
 
         opengl1renderer.lineWidth(2.0);
-        Draw3D::drawVecInPos( fp1, p1, {1, 0, 0} );
-        Draw3D::drawVecInPos( fp2, p2, {1, 0, 0} );
-        Draw3D::drawVecInPos( fp3, p3, {1, 0, 0} );
-        Draw3D::drawVecInPos( fp4, p4, {1, 0, 0} );
+        Draw3D::drawVecInPos( fp1, p1, COLOR_RED );
+        Draw3D::drawVecInPos( fp2, p2, COLOR_RED );
+        Draw3D::drawVecInPos( fp3, p3, COLOR_RED );
+        Draw3D::drawVecInPos( fp4, p4, COLOR_RED );
         Vec3d ax = r32; ax.normalize();
         Vec3d ftot=Vec3dZero;
         Vec3d torq=Vec3dZero;

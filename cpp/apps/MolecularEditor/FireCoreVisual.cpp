@@ -450,7 +450,7 @@ void TestAppFireCoreVisual::draw(){
     // --- Mouse Interaction / Visualization
 	ray0 = (Vec3d)(cam.rotMat().a*mouse_begin_x + cam.rotMat().b*mouse_begin_y );
     Draw3D::drawPointCross( ray0, 0.1 );        // Mouse Cursor 
-    if(ipicked>=0) Draw3D::drawLine( ff.apos[ipicked], ray0, {0, 0, 0}); // Mouse Dragging Visualization
+    if(ipicked>=0) Draw3D::drawLine( ff.apos[ipicked], ray0, COLOR_BLACK); // Mouse Dragging Visualization
     Vec3d ray0_ = ray0;            ray0_.y=-ray0_.y;
     Vec3d ray0_start_=ray0_start;  ray0_start_.y=-ray0_start_.y;
     if(bDragging)Draw3D::drawTriclinicBoxT(cam.rotMat(), (Vec3f)ray0_start_, (Vec3f)ray0_ );   // Mouse Selection Box
@@ -586,7 +586,7 @@ void TestAppFireCoreVisual::makeGridFF( bool recalcFF, bool bRenderGridFF ) {
 void TestAppFireCoreVisual::drawSystem( Vec3d ixyz ){
     bool bOrig = (ixyz.x==0)&&(ixyz.y==0)&&(ixyz.z==0);
     //opengl1renderer.color3f(0.0f,0.0f,0.0f); Draw3D::bondsPBC  ( ff.nbonds, ff.bond2atom, ff.apos, &builder.bondPBC[0], builder.lvec ); // DEBUG
-    Draw3D::bondsPBC  ( ff.nbonds, ff.bond2atom, ff.apos, ff.pbcShifts, {0, 0, 0} ); // DEBUG
+    Draw3D::bondsPBC  ( ff.nbonds, ff.bond2atom, ff.apos, ff.pbcShifts, COLOR_BLACK ); // DEBUG
     if(bOrig&&mm_bAtoms){ opengl1renderer.color3f(0.0f,0.0f,0.0f); Draw3D::atomLabels( ff.natoms, ff.apos, fontTex3D                     ); }                     //DEBUG
     Draw3D::atoms( ff.natoms, ff.apos, atypes, params, &ogl_sph, 1.0, mm_Rsc, mm_Rsub );       //DEBUG
 }

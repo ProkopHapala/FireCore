@@ -453,7 +453,7 @@ class MolGUI : public AppSDL2OGL_3D { public:
             Vec3d pj; 
 
             if( gp.fixed ){ 
-                Vec3f col = {1.0, 0.0, 0.0};
+                Vec3f col = COLOR_RED;
                 pj = atomsInGrid.get_gpos({ipos.x,   ipos.y,   ipos.z-1}); Draw3D::drawLine( gp.pos, pj, col );
                 pj = atomsInGrid.get_gpos({ipos.x,   ipos.y,   ipos.z+1}); Draw3D::drawLine( gp.pos, pj, col );
                 pj = atomsInGrid.get_gpos({ipos.x,   ipos.y-1, ipos.z  }); Draw3D::drawLine( gp.pos, pj, col );
@@ -461,7 +461,7 @@ class MolGUI : public AppSDL2OGL_3D { public:
                 pj = atomsInGrid.get_gpos({ipos.x-1, ipos.y,   ipos.z  }); Draw3D::drawLine( gp.pos, pj, col );
                 pj = atomsInGrid.get_gpos({ipos.x+1, ipos.y,   ipos.z  }); Draw3D::drawLine( gp.pos, pj, col );
             } else { 
-                Vec3f col = {0, 0, 1};
+                Vec3f col = COLOR_BLUE;
                 Vec3d pj;
                 bool bfix; 
                 bfix = atomsInGrid.get_gpos2( {ipos.x,   ipos.y,   ipos.z-1}, pj ); if(!bfix) Draw3D::drawLine( gp.pos, pj, col );
@@ -1024,7 +1024,7 @@ void MolGUI::drawParticles(){
         Vec3d& p = particles[i].f;
         int    j = particlePivots[i];
         Vec3d& a = W->nbmol.apos [j];
-        Draw3D::drawLine( p, a, {0, 1, 0} );
+        Draw3D::drawLine( p, a, COLOR_GREEN );
     }
     opengl1renderer.color3f( 0.0, 0.0, 0.0 );
     for( int i=0; i<particles.size(); i++ ){
@@ -1055,8 +1055,8 @@ void MolGUI::drawDipoleMap(){
     Draw3D::drawPointCross( {5.0,0.0,0.0}, 0.2 );
     Draw3D::drawPointCross( dipoleMap.particles[0], 0.1 );
     for(int i=0; i<dipoleMap.particles.size(); i++ ){
-        Draw3D::drawPointCross( dipoleMap.particles[i], 0.05, {0, 0, 0} );
-        Draw3D::drawLine      ( dipoleMap.particles[i], dipoleMap.particles2[i], {0, 0, 1} );
+        Draw3D::drawPointCross( dipoleMap.particles[i], 0.05, COLOR_BLACK );
+        Draw3D::drawLine      ( dipoleMap.particles[i], dipoleMap.particles2[i], COLOR_BLUE );
     }
     
     //int nphi = dipoleMap.nphi;
@@ -1316,7 +1316,7 @@ void MolGUI::draw(){
 
     Draw3D::drawPointCross( ray0, 0.1 );        // Mouse Cursor 
     //if(W->ipicked>=0) Draw3D::drawLine( W->ff.apos[W->ipicked], ray0); // Mouse Dragging Visualization
-    if(W->ipicked>=0) Draw3D::drawLine( apos[W->ipicked], (Vec3d)ray0, {0, 0, 0}); // Mouse Dragging Visualization
+    if(W->ipicked>=0) Draw3D::drawLine( apos[W->ipicked], (Vec3d)ray0, COLOR_BLACK); // Mouse Dragging Visualization
     
     {   // draw mouse selection box;   ToDo:   for some reason the screen is upside-down
         //Vec3d ray0_ = ray0;            ray0_.y=-ray0_.y;
@@ -1348,9 +1348,9 @@ void MolGUI::draw(){
         Quat4f *gpos=0,*gfw=0,*gup=0; int ng=W->getGroupPose( gpos, gfw, gup );
         if(gpos){
             for(int ig=0; ig<ng; ig++){
-                Draw3D::drawVecInPos( gfw[ig].f*5., gpos[ig].f, {1, 0, 0} );
-                Draw3D::drawVecInPos( gup[ig].f*5., gpos[ig].f, {0, 1, 0} );
-                Draw3D::drawVecInPos( cross(gfw[ig].f,gup[ig].f), gpos[ig].f, {0, 0, 1} );
+                Draw3D::drawVecInPos( gfw[ig].f*5., gpos[ig].f, COLOR_RED );
+                Draw3D::drawVecInPos( gup[ig].f*5., gpos[ig].f, COLOR_GREEN );
+                Draw3D::drawVecInPos( cross(gfw[ig].f,gup[ig].f), gpos[ig].f, COLOR_BLUE );
             }
         }
     }
@@ -1457,7 +1457,7 @@ void MolGUI::draw(){
             p = W->ffl.apos[W->ipicked];
             f = getForceSpringRay( W->ffl.apos[W->ipicked], W->pick_hray, W->pick_ray0, W->Kpick ); 
         }
-        Draw3D::drawVecInPos( f*-ForceViewScale, p, {1, 0, 0} );
+        Draw3D::drawVecInPos( f*-ForceViewScale, p, COLOR_RED );
     }
 
     if( ogl_surf_scan>0 ){ opengl1renderer.callList(ogl_surf_scan); }

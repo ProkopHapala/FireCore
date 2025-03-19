@@ -94,7 +94,7 @@ inline void drawVecInPos  ( const Vec3d& v,   const Vec3d& pos, Vec3f color ){dr
 inline void drawLine      ( const Vec3d& p1,  const Vec3d& p2, Vec3f color  ){drawLine ((Vec3f)p1,(Vec3f)p2, color); }
 inline void drawArrow     ( const Vec3d& p1,  const Vec3d& p2, float sz=0.1  ){drawArrow((Vec3f)p1,(Vec3f)p2, sz); }
 
-void vecsInPoss( int n, const Vec3d* vs, const Vec3d* ps, float sc, Vec3f color={1, 0, 0} );
+void vecsInPoss( int n, const Vec3d* vs, const Vec3d* ps, float sc, Vec3f color=COLOR_RED );
 
 inline void drawTriangle ( const Vec3d& p1,  const Vec3d& p2, const Vec3d& p3 ){ drawTriangle( (Vec3f)p1, (Vec3f)p2, (Vec3f)p3 ); };
 inline void drawTriangle ( const Vec3d& p1,  const Vec3d& p2, const Vec3d& p3, bool filled ){ drawTriangle( (Vec3f)p1, (Vec3f)p2, (Vec3f)p3, filled ); };

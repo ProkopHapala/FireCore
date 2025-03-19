@@ -272,7 +272,7 @@ void TestAppMMFFsp3::drawSystem( bool bAtoms, bool bBonds, bool bForces, float t
         //opengl1renderer.color3f(0.0f,0.0f,1.0f); Draw3D::bondLabels( ff.nbonds, ff.bond2atom, ff.apos, fontTex, 0.02 );                     
         if(bondLenghts) opengl1renderer.color3f(0.0f,0.0f,1.0f); Draw3D::bondPropertyLabel( ff.nbonds, bondLenghts, ff.bond2atom, ff.apos, 1,0, fontTex, texSize, "%4.2f\0" );
     }
-    if(bForces){ Draw3D::vecsInPoss( ff.natoms, ff.fapos, ff.apos, 300.0, {1, 0, 0}); }
+    if(bForces){ Draw3D::vecsInPoss( ff.natoms, ff.fapos, ff.apos, 300.0, COLOR_RED); }
     if(bAtoms){
         //opengl1renderer.color3f(0.0f,0.0f,1.0f); Draw3D::atomPropertyLabel( ff.natoms, (double*)nff.REQs, ff.apos, 3,2, fontTex, 0.02, "%4.2f\0" );
         opengl1renderer.color3f(0.5f,0.0f,0.0f); Draw3D::atomLabels( ff.natoms, ff.apos, fontTex, texSize                     );                     
@@ -319,7 +319,7 @@ void TestAppMMFFsp3::draw(){
     ray0 = (Vec3d)(cam.rotMat().a*mouse_begin_x + cam.rotMat().b*mouse_begin_y);
     Draw3D::drawPointCross( ray0, 0.1 );
     //Draw3D::drawVecInPos( camMat.c, ray0 );
-    if(ipicked>=0) Draw3D::drawLine( ff.apos[ipicked], ray0, {0, 0, 0});
+    if(ipicked>=0) Draw3D::drawLine( ff.apos[ipicked], ray0, COLOR_BLACK);
 
     //perFrame = 1;
     //perFrame = 100;

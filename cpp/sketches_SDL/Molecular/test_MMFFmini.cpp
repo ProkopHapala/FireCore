@@ -732,7 +732,7 @@ void TestAppMMFFmini::drawSystem( Vec3i ixyz ){
     //opengl1renderer.color3f(0.0f,0.0f,0.0f); Draw3D::drawLines ( ff.nbonds, (int*)ff.bond2atom, ff.apos );
     //opengl1renderer.color3f(0.0f,0.0f,0.0f); Draw3D::bondsPBC  ( ff.nbonds, ff.bond2atom, ff.apos, &builder.bondPBC[0], builder.lvec ); 
     //printf( "TestAppMMFFmini::drawSystem ff.bond2atom=%li ff.apos=%li ff.pbcShifts=%li \n", ff.bond2atom, ff.apos, ff.pbcShifts );
-    Draw3D::bondsPBC  ( ff.nbonds, ff.bond2atom, ff.apos, ff.pbcShifts, {0, 0, 0} ); 
+    Draw3D::bondsPBC  ( ff.nbonds, ff.bond2atom, ff.apos, ff.pbcShifts, COLOR_BLACK ); 
     //opengl1renderer.color3f(0.5f,0.0f,0.0f); Draw3D::atomLabels( ff.natoms, ff.apos, fontTex                     );
     //opengl1renderer.color3f(0.0f,0.0f,1.0f); Draw3D::bondLabels( ff.nbonds, ff.bond2atom, ff.apos, fontTex, 0.02 );          
     //opengl1renderer.color3f(0.0f,0.0f,1.0f); Draw3D::atomPropertyLabel( ff.natoms, (double*)nff.REQs, ff.apos, 3,2, fontTex, 0.02, "%4.2f\0" );
@@ -803,7 +803,7 @@ void TestAppMMFFmini::draw(){
     ray0 = (Vec3d)(cam.rotMat().a*mouse_begin_x + cam.rotMat().b*mouse_begin_y);
     Draw3D::drawPointCross( ray0, 0.1 );
     //Draw3D::drawVecInPos( camMat.c, ray0 );
-    if(ipicked>=0) Draw3D::drawLine( ff.apos[ipicked], ray0, {0, 0, 0});
+    if(ipicked>=0) Draw3D::drawLine( ff.apos[ipicked], ray0, COLOR_BLACK);
 
     double Ftol = 1e-6;
     //double Ftol = 1e-2;

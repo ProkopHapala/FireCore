@@ -66,7 +66,7 @@ void drawNeighs( const FastAtomicMetric& D, Vec3d pos ){
         //printf( "DEBUG 3 \n" );
         //printf( "nfound %i \n", nfound );
         for(int i=0; i<nfound; i++){
-            Draw3D::drawLine( pos, D.pos[tmpIs[i]], {0, 0, 0} );
+            Draw3D::drawLine( pos, D.pos[tmpIs[i]], COLOR_BLACK );
         }
     }
     for(int i=0; i<D.natoms; i++){
@@ -100,7 +100,7 @@ void drawGridForceAlongLine( int n, GridFF& gff, Vec3d pos0, Vec3d dpos, Quat4f 
         Quat4f fe = Quat4fZero;
         gff.addForce( pos, PRQ, fe);
         //printf( " %i (%g,%g,%g) (%g,%g,%g) \n", i, pos.x,pos.y,pos.z,  f.x,f.y,f.z );
-        Draw3D::drawVecInPos( (Vec3d)fe.f *fsc, pos, {0, 0, 0} );
+        Draw3D::drawVecInPos( (Vec3d)fe.f *fsc, pos, COLOR_BLACK );
         Draw3D::drawPointCross( pos, 0.1 );
         pos.add(dpos);
 	}

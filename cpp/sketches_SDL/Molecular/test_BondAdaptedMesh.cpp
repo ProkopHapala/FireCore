@@ -138,7 +138,7 @@ void TestAppRARFF::draw(){
     }
 
     for(int i=0; i<mol.nbonds; i++){
-        Draw3D::drawLine( mol.pos[mol.bond2atom[i].i], mol.pos[mol.bond2atom[i].j], {0, 0, 0} );
+        Draw3D::drawLine( mol.pos[mol.bond2atom[i].i], mol.pos[mol.bond2atom[i].j], COLOR_BLACK );
     }
 
 
@@ -147,7 +147,7 @@ void TestAppRARFF::draw(){
         Vec3d& b =  agrid.mesh.points[ edge.verts.b ];
         //Draw3D::drawPointCross( l12.p0, 0.1 ); Draw3D::drawVecInPos( l12.hdir, l12.p0 );
         //printf( "edge %i(%g,%g,%g) %i(%g,%g,%g) \n", edge.verts.a, a.x,a.y,a.z,   edge.verts.b, b.x,b.y,b.z );
-        Draw3D::drawLine( a, b, {0, 0, 0} );
+        Draw3D::drawLine( a, b, COLOR_BLACK );
     }
 
     opengl1renderer.color3f(0.0,1.0,0.0);

@@ -224,7 +224,7 @@ void TestAppRARFF::draw(){
     // atom forces
     opengl1renderer.color3f(1.,0.,0.);
     for(int ia=0; ia<ff.natom; ia++){
-        Draw3D::drawVecInPos( ff.aforce[ia]*fsc, ff.apos[ia], {1, 0, 0} );
+        Draw3D::drawVecInPos( ff.aforce[ia]*fsc, ff.apos[ia], COLOR_RED );
     }
 
     // sigma force (bond,epair,hydrogen)
@@ -260,7 +260,7 @@ void TestAppRARFF::draw(){
     // cap hydrogens
     for(int ia=0; ia<ff.natom; ia++){
         for(int io=ff.aconf[ia].c; io<ff.aconf[ia].a; io++ ){
-            Draw3D::drawLine( ff.hdir[ia*N_BOND_MAX+io],  ff.apos[ia], {0, 0, 0} );
+            Draw3D::drawLine( ff.hdir[ia*N_BOND_MAX+io],  ff.apos[ia], COLOR_BLACK );
         }
     }
 

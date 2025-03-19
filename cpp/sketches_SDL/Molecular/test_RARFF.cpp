@@ -73,7 +73,7 @@ void drawRigidAtom( RigidAtom& atom ){
     for(int i=0; i<atom.type->nbond; i++){
         //printf( "%i (%g,%g,%g)\n", i, type1.bh0s[i].x, type1.bh0s[i].y, type1.bh0s[i].z );
         //printf( "%i (%g,%g,%g)\n", i, bhs[i].x, bhs[i].y, bhs[i].z );
-        Draw3D::drawVecInPos( bhs[i], atom.pos, {0, 0, 0} );
+        Draw3D::drawVecInPos( bhs[i], atom.pos, COLOR_BLACK );
     }
 }
 

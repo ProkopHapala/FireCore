@@ -479,8 +479,8 @@ void drawNeighs( const MMFFsp3& ff, double Fsc=0.0 ){
         for(int j=0; j<ff.nneigh_max; j++ ){
             //printf( "atom[%i]neigh[%i]=%i \n", ia, j, ngs[j] );
             if(ngs[j]>=0){
-                Draw3D::drawLine( ff.apos[ia], ff.apos[ngs[j]], {0, 0, 0} );
-                if(Fsc>0.0){ Draw3D::drawVecInPos( ff.fapos[ia]*Fsc, ff.apos[ia], {1, 0, 0} ); }
+                Draw3D::drawLine( ff.apos[ia], ff.apos[ngs[j]], COLOR_BLACK );
+                if(Fsc>0.0){ Draw3D::drawVecInPos( ff.fapos[ia]*Fsc, ff.apos[ia], COLOR_RED ); }
             }else{
                 int ipi = -ngs[j]-1;
                 Draw3D::drawVecInPos( ff.pipos[ipi], ff.apos[ia], {0, 0.5, 0} );

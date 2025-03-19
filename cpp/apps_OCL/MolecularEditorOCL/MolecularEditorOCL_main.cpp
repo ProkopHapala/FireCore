@@ -84,8 +84,8 @@ Vec3f testPLQ;
 
 void drawFreeAtoms( int n, Quat4f * poss, Quat4f * forces, float sc, float fsc ){
     for(int i=0; i<n; i++){
-        Draw3D::drawPointCross( poss[i].f, sc, {0, 0, 0});
-        Draw3D::drawVecInPos( forces[i].f*fsc, poss[i].f, {1, 0, 0} );
+        Draw3D::drawPointCross( poss[i].f, sc, COLOR_BLACK);
+        Draw3D::drawVecInPos( forces[i].f*fsc, poss[i].f, COLOR_RED );
     }
 }
 

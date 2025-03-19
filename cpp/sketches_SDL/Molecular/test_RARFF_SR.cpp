@@ -214,7 +214,7 @@ void TestAppRARFF::draw(){
     visualize_atoms();
     ray0 = (Vec3d)(cam.rotMat().a*mouse_begin_x + cam.rotMat().b*mouse_begin_y);
     Draw3D::drawPointCross( ray0, 0.1 );
-    if(ipicked>=0) Draw3D::drawLine( ff.apos[ipicked], ray0, {0, 0, 0});
+    if(ipicked>=0) Draw3D::drawLine( ff.apos[ipicked], ray0, COLOR_BLACK);
     Draw3D::drawAxis( 1.0);
 };
 
@@ -364,9 +364,9 @@ void TestAppRARFF::visualize_atoms(){
             int i=ia*N_BOND_MAX+j;
             Vec3d pb = ff.bondPos( i );
             //printf( "bondCaps[%i] %i\n", i, ff.bondCaps[i] );
-            Vec3f col = ff.bondCaps[i]>=0 ? (Vec3f){1, 0, 0} : (Vec3f){0, 0, 0};
+            Vec3f col = ff.bondCaps[i]>=0 ? COLOR_RED : COLOR_BLACK;
             Draw3D::drawLine( ff.apos[ia] , pb, col );
-            Draw3D::drawVecInPos( ff.fbonds[i]*fsc, pb, {0, 1, 0} );
+            Draw3D::drawVecInPos( ff.fbonds[i]*fsc, pb, COLOR_GREEN );
             //opengl1renderer.color3f(0.0,0.0,0.0); Draw3D::drawVecInPos( ff.hbonds[i], ff.apos[i] );
             //opengl1renderer.color3f(0.0,1.0,0.0); Draw3D::drawVecInPos( ff.fbonds[io]*fsc, ff.apos[i]+ff.hbonds[io] );
         }

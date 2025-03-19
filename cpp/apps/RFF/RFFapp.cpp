@@ -390,7 +390,7 @@ void TestAppRARFF::draw(){
         visualize_cells();
     }
     Draw3D::drawPointCross( ray0, 0.1 );
-    if(ipicked>=0) Draw3D::drawLine( ff.apos[ipicked], ray0, {0, 0, 0});
+    if(ipicked>=0) Draw3D::drawLine( ff.apos[ipicked], ray0, COLOR_BLACK);
     Draw3D::drawAxis( 1.0);
 
     // switch(renderMode){
@@ -571,7 +571,7 @@ void TestAppRARFF::visualize_atoms(){
             if( ff.bondCaps[i]>=0 ){ opengl1renderer.color3f(1.0,0.0,0.0); } else{ opengl1renderer.color3f(0.0,0.0,0.0); }
             //Draw::setRGB( clrs[j] );
             Draw3D::drawLine( ff.apos[ia] , pb, {0.5, 0.5, 0.5} );
-            Draw3D::drawVecInPos( ff.fbonds[i]*fsc, pb , {0, 1, 0});
+            Draw3D::drawVecInPos( ff.fbonds[i]*fsc, pb , COLOR_GREEN);
         }
     };
     opengl1renderer.lineWidth(1.0f); 

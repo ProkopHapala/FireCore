@@ -106,8 +106,8 @@ void drawff_atoms( const CLCFGO& ff, float fsc=1.0, float asc=0.5 ){
     for(int i=0; i<ff.natom; i++){
         Vec3d p = ff.apos[i];
         //Draw3D::drawPointCross( p, ff.aPsize[i]*asc );
-        Draw3D::drawPointCross( p, ff.aPars[i].z*asc, {0, 0, 0} );
-        Draw3D::drawVecInPos( ff.aforce[i]*fsc, p, {1, 0, 0} );
+        Draw3D::drawPointCross( p, ff.aPars[i].z*asc, COLOR_BLACK );
+        Draw3D::drawVecInPos( ff.aforce[i]*fsc, p, COLOR_RED );
     }
 }
 
@@ -131,7 +131,7 @@ void drawff_wfs( const CLCFGO& ff, int oglSph, float fsc=1.0, float asc=0.5, int
             Draw  ::setRGBA( (c&0x00FFFFFF)|alpha  ); Draw3D::drawShape( oglSph, ff.epos[i], Mat3dIdentity*ff.esize[i],  false );
             //Draw  ::setRGBA(  c                    ); Draw3D::drawSphereOctLines(16, ff.esize[i], p, Mat3dIdentity, false );
             Draw3D::drawPointCross( p, 0.01, COL2VEC(c) );
-            Draw3D::drawVecInPos( ff.efpos[i]*fsc, p, {1, 0, 0} );
+            Draw3D::drawVecInPos( ff.efpos[i]*fsc, p, COLOR_RED );
 
             //Draw  ::setRGBA( orbColor(io) );
             //sprintf(str, "%02i_%02i", io, j  );
@@ -159,7 +159,7 @@ void drawff_rho( const CLCFGO& ff, int oglSph, float fsc=1.0, int alpha=0x150000
             //Draw  ::setRGBA(  c                    ); Draw3D::drawSphereOctLines(16, ff.rhoS[i], p, Mat3dIdentity, false );
             Draw3D::drawPointCross( p, 0.01, COL2VEC(c) );
 
-            Draw3D::drawVecInPos( ff.rhofP[i]*fsc, p, {1, 0, 0} );
+            Draw3D::drawVecInPos( ff.rhofP[i]*fsc, p, COLOR_RED );
 
             /*
             Draw  ::setRGBA( orbColor(io) );

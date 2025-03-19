@@ -61,7 +61,7 @@ void drawEFF( EFF& ff, int oglSph, float fsc=1.0, float Qsz=0.05, float alpha=0.
         //opengl1renderer.color3f(0.0,0.0,0.0); Draw3D::drawPointCross( ff.apos  [i]      , ff.aPars[i].x*Qsz );
         opengl1renderer.color4f(0.0,0.0,0.0, 0.5); Draw3D::drawShape( oglSph, ff.apos[i], Mat3dIdentity*ff.aPars[i].x*Qsz*0.5,  false );
         //opengl1renderer.color3f(0.0,0.0,0.0); Draw3D::drawPointCross( ff.apos  [i]    , Qsz );
-        if(bF) Draw3D::drawVecInPos( ff.aforce[i]*fsc, ff.apos[i], {1, 0, 0} );
+        if(bF) Draw3D::drawVecInPos( ff.aforce[i]*fsc, ff.apos[i], COLOR_RED );
         //Draw3D::drawVecInPos(   ff.aforce[i]*fsc, ff.apos[i] );
         //printf( " %i %f %f %f %f  \n", i, ff.aQ[i], ff.apos[i].x,ff.apos[i].y,ff.apos[i].z );
         //printf( " %i %f %f %f %f  \n", i, ff.aQ[i], ff.aforce[i].x, ff.aforce[i].y, ff.aforce[i].z );
@@ -82,7 +82,7 @@ void drawEFF( EFF& ff, int oglSph, float fsc=1.0, float Qsz=0.05, float alpha=0.
         //float alpha=0.1;
         if(ff.espin[i]>0){ opengl1renderer.color4f(0.0,0.0,1.0, alpha); }else{ opengl1renderer.color4f(1.0,0.0,0.0, alpha); };
         Draw3D::drawShape( oglSph, ff.epos[i], Mat3dIdentity*ff.esize[i],  false );
-        Draw3D::drawVecInPos( ff.eforce[i]*fsc ,ff.epos[i], {1, 0, 0} );
+        Draw3D::drawVecInPos( ff.eforce[i]*fsc ,ff.epos[i], COLOR_RED );
         //opengl1renderer.color3f(1.0,0.0,0.0); Draw3D::drawPointCross( ff.epos[i], 0.1 );
         //Draw3D::drawSphere_oct(3,ff.esize[i],ff.epos[i]);
         //opengl1renderer.color3f(1.,1.,1.); Draw3D::drawVecInPos( ff.eforce  [i], ff.epos[i] );
@@ -99,7 +99,7 @@ void drawEFF( EFF& ff, int oglSph, float fsc=1.0, float Qsz=0.05, float alpha=0.
             Vec3d d  = ff.apos[i]-ff.apos[j];
             double r = d.norm();
             if(r<rBond){
-                Draw3D::drawLine( ff.apos[i], ff.apos[j], {0, 0, 0} );
+                Draw3D::drawLine( ff.apos[i], ff.apos[j], COLOR_BLACK );
             }
         }
     }}

@@ -227,10 +227,10 @@ class Console{ public:
         int w,h;
         SDL_GetWindowSize(window, &w, &h);
 
-        Draw2D::drawRectangle( 0,h-fontSizeDef*2, w,h, {0, 0, 0} );
+        Draw2D::drawRectangle( 0,h-fontSizeDef*2, w,h, COLOR_BLACK );
         
         float xcur = fontSizeDef*ncur;
-        Draw2D::drawRectangle( xcur,h, xcur+fontSizeDef,h-fontSizeDef*2, {0, 1, 0} );
+        Draw2D::drawRectangle( xcur,h, xcur+fontSizeDef,h-fontSizeDef*2, COLOR_GREEN );
         opengl1renderer.color3f(1.0f,1.0f,1.0f);
 
         Draw2D::drawText( line           , nend            , {0   , h   -fontSizeDef*2}, 0.0, fontTex, fontSizeDef );

@@ -209,7 +209,7 @@ void TestAppFARFF::draw(){
 
     ray0 = (Vec3d)(cam.rotMat().a*mouse_begin_x + cam.rotMat().b*mouse_begin_y);
     Draw3D::drawPointCross( ray0, 0.1 );
-    if(ipicked>=0) Draw3D::drawLine( ff.apos[ipicked], ray0, {0, 0, 0});
+    if(ipicked>=0) Draw3D::drawLine( ff.apos[ipicked], ray0, COLOR_BLACK);
 
     opengl1renderer.color3f(1.0,1.0,1.0);
     //drawRigidAtom( atom1 );
