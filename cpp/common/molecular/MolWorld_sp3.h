@@ -951,8 +951,9 @@ void printPBCshifts(){
  * @param cel0 The initial cell position.
  * @param bAutoNPBC Flag indicating whether to automatically set non-periodic boundary conditions.
  */
-    virtual void initGridFF( const char * name, double z0=NAN, Vec3d cel0={-0.5,-0.5,0.0}, bool bSymetrize=true, bool bAutoNPBC=true, bool bCheckEval=true, bool bUseEwald=true, bool bFit=true, bool bRefine=true ){
+    virtual void initGridFF( const char * name, double z0=NAN, Vec3d cel0={-0.5,-0.5,0.0}, bool bSymetrize=false, bool bAutoNPBC=true, bool bCheckEval=true, bool bUseEwald=true, bool bFit=true, bool bRefine=true ){
         //if(verbosity>0)
+        // bSymetrize=0;
         printf("MolWorld_sp3::initGridFF(%s,bSymetrize=%i,bAutoNPBC=%i bCheckEval=%i bUseEwald=%i bFit=%i bRefine=%i bGridDouble=%i gridStep=%g,z0=%g,cel0={%g,%g,%g} )\n",  name, bSymetrize, bAutoNPBC,bCheckEval,bUseEwald,bFit,bRefine, bGridDouble, gridStep, z0, cel0.x,cel0.y,cel0.z  );
         sprintf(tmpstr, "%s.lvs", name );
         if( file_exist(tmpstr) ){  gridFF.grid.loadCell( tmpstr, gridStep );  gridFF.bCellSet=true; }
@@ -978,8 +979,11 @@ void printPBCshifts(){
         //ffgrid = gridFF.HHermite_d;
         tryChangeDir( wd0 );
         //getcwd(tmpstr, 1024 ); printf( "initGridFF() 3 WD=`%s`\n", tmpstr );
-        gridFF.shift0 = Vec3d{0.,0.,-2.0};    
-        //gridFF.shift0 = Vec3d{0.,0.,0.0};
+
+        gridFF.shift0 = Vec3d{0.,0.,0.0};
+        printf( "grid_shift0(%g,%g,%g)\n",    gridFF.shift0.x,gridFF.shift0.y,gridFF.shift0.z  );
+        // gridFF.shift0 = Vec3d{0.,0.,0.0};
+
         //if(bCheckEval)gridFF.evalCheck();    // WARRNING:  CHECK FOR gridFF TURNED OFF !!!!!!!!!!!!!!!!!!!!!!!!!
         //return ffgrid;
     }
@@ -1296,7 +1300,7 @@ void printPBCshifts(){
         // TBD not sure that I got how charges are assigned in here...
         if( fAutoCharges>0 )builder.chargeByNeighbors( true, fAutoCharges, 10, 0.5 );
         if(substitute_name) substituteMolecule( substitute_name, isubs, Vec3dZ );
-        if( builder.checkNeighsRepeat( true ) ){ printf( "ERROR: some atoms has repating neighbors => exit() \n"); exit(0); };
+        if( builder.checkNeighsRepeat( true ) ){ printf( "ERROR: some atoms has repating neighbors => exit() \n"); return -1; };
         builder.autoAllConfEPi  ( ia0 );
         builder.setPiLoop       ( ic0, -1, 10 );
         if(bEpairs)builder.addAllEpairsByPi( ia0=0 ); 
@@ -2090,6 +2094,8 @@ double eval_no_omp(){
     ffl.bNonBonded=bNonBonded; ffl.setNonBondStrategy( bNonBondNeighs*2-1 );
     for(int i=0; i<ffl.natoms; i++){ ffl.fapos[i]=Vec3dZero; }
     for(int ia=0; ia<ffl.natoms; ia++){ 
+        // if (ia == 1) {
+        //     printf("@@@DEBUG: Atom %d position: z=%.3f\n", ia, ffl.apos[ia].z);}
         {                 ffl.fapos[ia           ] = Vec3dZero; } // atom pos force
         if(ia<ffl.nnode){ ffl.fapos[ia+ffl.natoms] = Vec3dZero; } // atom pi  force
         if(bMMFF)[[likely]]{
@@ -2526,8 +2532,15 @@ double eval_no_omp(){
 void scan_rigid( int nconf, Vec3d* poss, Mat3d* rots, double* Es, Vec3d* aforces, Vec3d* aposs, bool omp ){
     printf("MolWorld_sp3::scan_rigid(nconf=%i,omp=%i) @poss=%li @rots=%li @Es=%li @aforces=%li @aposs=%li \n", nconf, omp, (long)poss, (long)rots, (long)Es, (long)aforces, (long)aposs);
     printf("MolWorld_sp3::scan_rigid() bNonBonded=%i bNonBondNeighs=%i bPBC=%i bSurfAtoms=%i bGridFF=%i gridFF.mode=%i \n", bNonBonded, bNonBondNeighs, bPBC, bSurfAtoms, bGridFF, gridFF.mode );
+    
+    // Add grid dimensions print
+    // printf("DEBUG: GridFF dimensions | pos0=(%.3f,%.3f,%.3f) cell=(%.3f,%.3f,%.3f)\n", 
+    //     gridFF.grid.pos0.x, gridFF.grid.pos0.y, gridFF.grid.pos0.z,
+    //     gridFF.grid.cell.a.x, gridFF.grid.cell.b.y, gridFF.grid.cell.c.z);
 
-    for(int ia=0; ia<ffl.natoms; ia++){  printf( "MolWorld_sp3::scan_rigid()[ia=%i] pos(%8.4f,%8.4f,%8.4f) REQ(%8.4f,%16.8f,%8.4f,%8.4f) PLQd(%16.8f,%16.8f,%16.8f,%16.8f) \n", ia, ffl.apos[ia].x, ffl.apos[ia].y, ffl.apos[ia].z, ffl.REQs[ia].x, ffl.REQs[ia].y, ffl.REQs[ia].z, ffl.REQs[ia].w, ffl.PLQd[ia].x, ffl.PLQd[ia].y, ffl.PLQd[ia].z, ffl.PLQd[ia].w );  }
+    for(int ia=0; ia<ffl.natoms; ia++){ 
+         printf( "MolWorld_sp3::scan_rigid()[ia=%i] pos(%8.4f,%8.4f,%8.4f) REQ(%8.4f,%16.8f,%8.4f,%8.4f) PLQd(%16.8f,%16.8f,%16.8f,%16.8f) \n", 
+         ia, ffl.apos[ia].x, ffl.apos[ia].y, ffl.apos[ia].z, ffl.REQs[ia].x, ffl.REQs[ia].y, ffl.REQs[ia].z, ffl.REQs[ia].w, ffl.PLQd[ia].x, ffl.PLQd[ia].y, ffl.PLQd[ia].z, ffl.PLQd[ia].w );  }
 
     Atoms atoms;
     atoms.copyOf( ffl );
@@ -2536,6 +2549,17 @@ void scan_rigid( int nconf, Vec3d* poss, Mat3d* rots, double* Es, Vec3d* aforces
         Vec3d pos; if(poss){ pos=poss[i]; }else{ pos=Vec3dZero; }
         Mat3d rot; if(rots){ rot=rots[i]; }else{ rot=Mat3dIdentity; }
         ffl.setFromRef( atoms.apos, pipos.data(), pos, rot );
+        // Print molecular position after transformation
+        // printf("DEBUG: Molecule %d | base_pos=(%.3f,%.3f,%.3f) grid_shift0=(%.3f,%.3f,%.3f)\n",
+        //     i, pos.x, pos.y, pos.z,
+        //     gridFF.shift0.x, gridFF.shift0.y, gridFF.shift0.z);
+            
+        // Print first atom position in global coordinates
+        // if(ffl.natoms > 0) {
+        //     printf("DEBUG: Atom[0] global | xyz=(%.3f,%.3f,%.3f)\n",
+        //         ffl.apos[0].x, ffl.apos[0].y, ffl.apos[0].z);
+        // }
+        
         double E = eval_no_omp();
         //printf( "scan_rigid[%i] E=%g \n", i, E );
         if(Es){ Es[i]=E; }
