@@ -445,13 +445,24 @@ def evalGridFFAtPoints( ps, FFout=None, PLQH=[0.0,0.0,1.0,0.0], bSplit=True, nPB
     return FFout
 
 # void sample_func( int n, double* xs, double* ys, int kind ){
-lib.sample_func.argtypes  = [c_int, c_double_p, c_double_p, c_int]
+lib.sample_func.argtypes  = [c_int, c_double_p, c_double_p, c_int, c_double_p]
 lib.sample_func.restype   =  None
-def sample_func( xs, ys=None, kind=0 ):
+def sample_func( xs, ys=None, kind=0, params=[0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0] ):
     n = len(xs)
+    params = np.array( params )
     if ys is None: ys=np.zeros(n)
-    lib.sample_func( n, _np_as(xs,c_double_p), _np_as(ys,c_double_p), kind )
+    lib.sample_func( n, _np_as(xs,c_double_p), _np_as(ys,c_double_p), kind, _np_as(params,c_double_p) )
     return ys
+
+# void sample_func( int n, double* xs, double* ys, int kind ){
+lib.sample_func.argtypes  = [c_int, c_double_p, c_double_p, c_int, c_double_p]
+lib.sample_func.restype   =  None
+def sample_funcEF( xs, EFs=None, kind=0, params=[0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0] ):
+    n = len(xs)
+    params = np.array( params )
+    if EFs is None: EFs=np.zeros((n,2))
+    lib.sample_funcEF( n, _np_as(xs,c_double_p), _np_as(EFs,c_double_p), kind, _np_as(params,c_double_p) )
+    return EFs
 
 # void sample_Bspline( double g0, double dg, int ng, double* Gs, int n, double* xs, double* fes , int order, bool bPBC ){
 lib.sample_Bspline.argtypes  = [c_double, c_double, c_int, c_double_p, c_int, c_double_p, c_double_p, c_int, c_bool ]
@@ -845,39 +856,6 @@ def getBBuff(name,sh):
     ptr = lib.getBBuff(name)
     return np.ctypeslib.as_array( ptr, shape=sh)
 
-# def get_gridFF_info( ):
-#     global gff_shift0, gff_pos0, gff_natoms, gff_natoms_ 
-#     int_data   = np.zeros(2, dtype=np.int32  )
-#     float_data = np.zeros(6, dtype=np.float64)
-#     lib.get_gridFF_info( int_data, float_data )
-#     gff_shift0 = float_data[0:3]
-#     gff_pos0   = float_data[3:6]
-#     gff_natoms = int_data[0]
-#     gff_natoms_= int_data[1]
-#     gff_atoms_count = int_data[1]
-#     print("GridFF info -> shift0:", gff_shift0, " pos0:", gff_pos0,
-#           " substrate natoms:", gff_natoms, " atoms_.size:", gff_atoms_count)
-#     return gff_shift0, gff_pos0, gff_natoms, gff_atoms_count
-
-# # Add the new function definitions
-# lib.get_atom_positions.argtypes = [c_double_p, c_double_p]
-# lib.get_atom_positions.restype = None
-
-# def get_atom_positions():
-#     """
-#     Retrieves the atom positions of the substrate and molecule.
-
-#     Returns:
-#         tuple: A tuple containing two NumPy arrays:
-#             - substrate_apos (numpy.ndarray): Substrate atom positions (natoms_substrate, 3).
-#             - molecule_apos (numpy.ndarray): Molecule atom positions (natoms_molecule, 3).
-#     """
-#     substrate_apos = np.zeros((gff_natoms, 3), dtype=np.float64)  # Use gff_natoms
-#     molecule_apos = np.zeros((W.nbmol.natoms, 3), dtype=np.float64) # Use W.nbmol.natoms
-#     lib.get_atom_positions(substrate_apos.ctypes.data_as(c_double_p),
-#                             molecule_apos.ctypes.data_as(c_double_p))
-#     return substrate_apos, molecule_apos
-
 # Add the new function definition for get_molecule_natoms
 lib.get_molecule_natoms.argtypes = []
 lib.get_molecule_natoms.restype = c_int
@@ -940,8 +918,6 @@ def get_atom_positions():
                             molecule_apos.ctypes.data_as(c_double_p))
     return substrate_apos, molecule_apos
 
-
-
 #def getBuffs( nnode, npi, ncap, nbond, NEIGH_MAX=4 ):
 def getBuffs( NEIGH_MAX=4 ):
     #init_buffers()
@@ -959,6 +935,7 @@ def getBuffs( NEIGH_MAX=4 ):
     Es    = getBuff ( "Es",    (6,) )  # [ Etot,Eb,Ea, Eps,EppT,EppI; ]
     global DOFs,fDOFs,vDOFs,apos,fapos,REQs,PLQs,pipos,fpipos,bond_l0,bond_k, bond2atom,neighs,selection
     #Ebuf     = getEnergyTerms( )
+    
     apos      = getBuff ( "apos",     (natoms,3) )
     fapos     = getBuff ( "fapos",    (natoms,3) )
     REQs      = getBuff ( "REQs",     (natoms,4) )
