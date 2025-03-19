@@ -34,12 +34,12 @@ qs = [ +1.,-1. ]
 
 
 # ----- testing slab dipole correction
-ew.test_vs_direct( apos, qs,  ns=[100,100,100], dg=[0.10,0.10,0.10], order=3, bSlab=True,  nPBC=[100,100,0] )
-ew.test_vs_direct( apos, qs,  ns=[100,100,150], dg=[0.10,0.10,0.10], order=3, bSlab=True,  nPBC=[100,100,0] )
-ew.test_vs_direct( apos, qs,  ns=[100,100,200], dg=[0.10,0.10,0.10], order=3, bSlab=True,  nPBC=[100,100,0] )
-ew.test_vs_direct( apos, qs,  ns=[100,100,300], dg=[0.10,0.10,0.10], order=3, bSlab=True,  nPBC=[100,100,0] )
-ew.test_vs_direct( apos, qs,  ns=[100,100,400], dg=[0.10,0.10,0.10], order=3, bSlab=True,  nPBC=[100,100,0] )
-#ew.test_vs_direct( apos, qs,  ns=[100,100,100], dg=[0.10,0.10,0.10], order=3, bSlab=False, nPBC=[200,200,0] )
+ew.test_vs_direct( apos, qs,  ns=[100,100,1000], dg=[0.10,0.10,0.10], order=3, bSlab=True,  nPBC=[200,200,0] )
+# ew.test_vs_direct( apos, qs,  ns=[100,100,150], dg=[0.10,0.10,0.10], order=3, bSlab=True,  nPBC=[100,100,0] )
+# ew.test_vs_direct( apos, qs,  ns=[100,100,200], dg=[0.10,0.10,0.10], order=3, bSlab=True,  nPBC=[100,100,0] )
+# ew.test_vs_direct( apos, qs,  ns=[100,100,300], dg=[0.10,0.10,0.10], order=3, bSlab=True,  nPBC=[100,100,0] )
+# ew.test_vs_direct( apos, qs,  ns=[100,100,400], dg=[0.10,0.10,0.10], order=3, bSlab=True,  nPBC=[100,100,0] )
+# ew.test_vs_direct( apos, qs,  ns=[100,100,100], dg=[0.10,0.10,0.10], order=3, bSlab=False, nPBC=[200,200,0] )
 
 #ew.test_vs_direct( apos, qs,  ns=[100,100,100], dg=[0.10,0.10,0.10], order=3, bSlab=True,  nPBC=[100,100,0] )
 #ew.test_vs_direct( apos, qs,  ns=[100,100,100], dg=[0.10,0.10,0.10], order=3, bSlab=False, nPBC=[100,100,0] )

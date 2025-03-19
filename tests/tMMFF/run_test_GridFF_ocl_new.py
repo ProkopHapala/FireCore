@@ -20,32 +20,48 @@ from pyBall.tests import ocl_GridFF_new as gff
 
 # =============  Functions
 
-R0 = 3.5
-E0 = 0.1
-a  = 1.8
+# R0 = 3.5
+# E0 = 0.1
+# a  = 1.8
 
-Q = 0.4
-p0 = [-2.0,-2.0,0.0]
+# Q = 0.4
+# p0 = [-2.0,-2.0,0.0]
 
 
-#name="NaCl_1x1_L2"
+# name="NaCl_8x8_L3_PTCDA"
+# name="NaCl_1x1_L2"
+# name="NaCl_13x8_L3_step"
+# name="NaCl_1x1_L1_13x8x5-6-3"
 
-#name="NaCl_1x1_L3"
-#name="NaCl_8x8_L3"
-#name="NaCl_8x8_L3_NaHole"
+# name="NaCl_cubic"
+# 
+# name="NaCl_1x1_L3"
+# name="NaCl_8x8_L3_copy"
+# name="NaCl_8x8_L3_Coulumb"
+# name="NaCl_coulomb.iz0"
+
+name ="NaCl.ptcda"
+# name="2_atom_NaCl"
+# name="NaCl.iz0"
+# name="C.iz0"
+# name="Na.iz0"
+# name="Cl.iz0"
+# name="NaCl_8x8_L3_NaHole"
 #name="NaCl_8x8_L3_ClHole"
+
+# name="NaCl_8x8_L3_NaClHole"
+
 #name="NaCl_8x8_L3_NaClHole"
 #name="NaCl_8x8_L3_step"
-name="NaCl_15x8_L3_step"
-
-
+#name="NaCl_15x8_L3_step"
 
 #mol_name="PTCDA.xyz"
 #gff.test_gridFF_ocl( fname="data/xyz/NaCl_1x1_L2.xyz" )
 #gff.test_gridFF_ocl( fname="data/xyz/"+name+".xyz", save_name="double3", bMorse=True, bEwald=False  )
 #gff.test_gridFF_ocl( fname="/home/prokop/git/FireCore/tests/pyutils/NaCl_8x8_L3.xyz" )
 
-gff.test_gridFF_ocl( fname="data/xyz/"+name+".xyz", save_name="double3", job="PLQ" )
+# gff.test_gridFF_ocl( fname="data/xyz/"+name+".xyz",Element_Types_name="./data/ElementTypes.dat", save_name="double3", job="Ewald" )
+gff.test_gridFF_ocl( fname="data/xyz/"+name+".xyz",Element_Types_name="./data/ElementTypes.dat", save_name="double3", job="PLQ" )
 
 
 
@@ -69,14 +85,14 @@ gff.test_gridFF_ocl( fname="data/xyz/"+name+".xyz", save_name="double3", job="PL
 
 # ======== Ewald
 
-d=0.6
-apos=np.array([
-    [-d,.0,0.],
-    [+d,.0,0.],
-    [0.,-d,0.],
-    [0.,+d,0.],
-])
-qs = [ +1.,+1.,-1.,-1. ]
+# d=0.6
+# apos=np.array([
+#     [-d,.0,0.],
+#     [+d,.0,0.],
+#     [0.,-d,0.],
+#     [0.,+d,0.],
+# ])
+# qs = [ +1.,+1.,-1.,-1. ]
 
 # d=0.6
 # apos=np.array([
@@ -85,7 +101,7 @@ qs = [ +1.,+1.,-1.,-1. ]
 # ])
 # qs = [ +1.,-1. ]
 
-#gff.test_Ewald( apos, qs,  ns=(100,100,100), dg=(0.10,0.10,0.10), order=3, bSlab=True,  nPBC=(100,100,0), bOld=True )
+# gff.test_Ewald( apos, qs,  ns=(100,100,100), dg=(0.10,0.10,0.10), order=3, bSlab=True,  nPBC=(100,100,0), bOld=True )
 #gff.test_Ewald( apos, qs,  ns=(100,100,100), dg=(0.10,0.10,0.10), order=3, bSlab=True,  nPBC=(100,100,0) )
 # gff.test_Ewald( apos, qs,  ns=[100,100,150], dg=[0.10,0.10,0.10], order=3, bSlab=True,  nPBC=[100,100,0] )
 # gff.test_Ewald( apos, qs,  ns=[100,100,200], dg=[0.10,0.10,0.10], order=3, bSlab=True,  nPBC=[100,100,0] )
