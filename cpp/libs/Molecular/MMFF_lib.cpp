@@ -231,6 +231,12 @@ void  scan( int nconf, double* poss, double* rots, double* Es, double* aforces, 
     }
 }
 
+// void scan_relaxed_constr( int nconf, int ncontr, int *icontrs, Quat4d* contrs, double* Es, Vec3d* aforces, Vec3d* aposs, bool bHardConstr, bool omp, int niter_max, double dt, double Fconv=1e-6, double Flim=1000 ){
+
+void  scan_constr( int nconf, int ncontr, int *icontrs, double* contrs, double* Es, double* aforces, double* aposs, bool bHardConstr, bool bOmp, int niter_max, double dt, double Fconv, double Flim ){
+    W.scan_constr( nconf, ncontr, icontrs, (Quat4d*)contrs, Es, (Vec3d*)aforces, (Vec3d*)aposs, bHardConstr, bOmp, niter_max, dt, Fconv, Flim);
+}
+
 
 void setSwitches2( int CheckInvariants, int PBC, int NonBonded, int NonBondNeighs,  int SurfAtoms, int GridFF, int MMFF, int Angles, int PiSigma, int PiPiI ){
     #define _setbool(b,i) { if(i>0){b=true;}else if(i<0){b=false;} }

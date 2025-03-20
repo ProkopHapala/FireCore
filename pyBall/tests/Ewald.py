@@ -23,7 +23,7 @@ def test_vs_direct( apos, qs, ns=[100,100,100], dg=[0.1,0.1,0.1], nPBC=[30,30,30
     # set voxel through which we cut the 3D grid Vg in debug plots
     ix0=ns[0]//2
     iy0=ns[1]//2
-    iz0=ns[2]//2
+    iz0=ns[2]//2 + 10
     i0 = (ix0,iy0,iz0)
 
     if bPython:
@@ -61,9 +61,9 @@ def test_vs_direct( apos, qs, ns=[100,100,100], dg=[0.1,0.1,0.1], nPBC=[30,30,30
     # ---- 1D debug plots
     if bPlot1D:
         plt.figure(figsize=(15,5))
-        plt.subplot(1,3,1); ut.plot1Dcut( apos, qs, Vg, i0=i0, dg=dg, Ls=Ls, iax=0, nPBC=nPBC, scErr=scErr, mmff=mmff )
-        plt.subplot(1,3,2); ut.plot1Dcut( apos, qs, Vg, i0=i0, dg=dg, Ls=Ls, iax=1, nPBC=nPBC, scErr=scErr, mmff=mmff )
-        plt.subplot(1,3,3); ut.plot1Dcut( apos, qs, Vg, i0=i0, dg=dg, Ls=Ls, iax=2, nPBC=nPBC, scErr=scErr, mmff=mmff )
+        plt.subplot(1,3,1); ut.plot1Dcut( apos, qs, Vg, i0=i0, dg=dg, Ls=Ls, pos0=pos0,iax=0, nPBC=nPBC, scErr=scErr, mmff=mmff )
+        plt.subplot(1,3,2); ut.plot1Dcut( apos, qs, Vg, i0=i0, dg=dg, Ls=Ls, pos0=pos0, iax=1, nPBC=nPBC, scErr=scErr, mmff=mmff )
+        plt.subplot(1,3,3); ut.plot1Dcut( apos, qs, Vg, i0=i0, dg=dg, Ls=Ls, pos0=pos0,iax=2, nPBC=nPBC, scErr=scErr, mmff=mmff )
         #plt.subplot(1,3,3); plot1Dcut( Vg, i0=i0, dg=dg, lvec=lvec, iax=2, nPBC=nPBC, scErr=scErr )
         if yrange is not None:
             plt.subplot(1,3,1); plt.ylim(yrange)

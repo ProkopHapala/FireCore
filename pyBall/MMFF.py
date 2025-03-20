@@ -933,6 +933,8 @@ def get_atom_positions():
             - molecule_apos (numpy.ndarray): Molecule atom positions (natoms_molecule, 3).
     """
     global gff_natoms
+    if 'gff_natoms' not in globals():
+        get_gridFF_info()
     natoms_molecule = get_molecule_natoms()
     substrate_apos = np.zeros((gff_natoms, 3), dtype=np.float64)  # Use gff_natoms
     molecule_apos = np.zeros((natoms_molecule, 3), dtype=np.float64)  # Use natoms_molecule
@@ -1212,6 +1214,18 @@ def scan(poss, rots=None, Es=None, aforces=None, aposs=None,  bF=False,bP=False,
     #lib.scan(nconf, poss, rots, Es, aforces, aposs, omp, bRelax, niter_max, dt, Fconv, Flim )
     lib.scan( nconf, _np_as(poss,c_double_p), _np_as(rots,c_double_p), _np_as(Es,c_double_p), _np_as(aforces,c_double_p), _np_as(aposs,c_double_p), omp, bRelax, niter_max, dt, Fconv, Flim )
     return Es, aforces, aposs 
+
+# void  scan_relaxed_constr( int nconf, int ncontr, int *icontrs, double* contrs, double* Es, double* aforces, double* aposs, bool bHardConstr, bool omp, int niter_max, double dt, double Fconv, double Flim ){
+lib.scan_constr.argtypes  = [c_int, c_int, c_int_p, c_double_p, c_double_p, c_double_p, c_double_p, c_bool, c_bool, c_int, c_double, c_double, c_double ] 
+lib.scan_constr.restype   =  None
+def scan_constr( icontrs, contrs, Es=None, aforces=None, aposs=None, bHardConstr=False, bF=False,bP=False, omp=False, niter_max=10000, dt=0.05, Fconv=1e-5, Flim=100.0 ):
+    nconf=len(contrs)
+    ncontr=len(icontrs)
+    if Es is None: Es=np.zeros(nconf)
+    if (aforces is None) and bF: aforces=np.zeros( (nconf,natoms,3) )
+    if (aposs is None) and bP:   aposs=np.zeros(   (nconf,natoms,3) )
+    lib.scan_constr( nconf, ncontr, _np_as(icontrs,c_int_p), _np_as(contrs,c_double_p), _np_as(Es,c_double_p), _np_as(aforces,c_double_p), _np_as(aposs,c_double_p), bHardConstr, omp, niter_max, dt, Fconv, Flim ) 
+    return Es, aforces, aposs
 
 # ========= Lattice Optimization
 

@@ -751,6 +751,15 @@ __kernel void make_MorseFF(
     //}
     //if( (ia==0)&&(ib==0) ){  printf(  "GPU ic %i nGrid(%i,%i,%i)\n", ic, nGrid.x,nGrid.y,nGrid.z );}
 
+    // if( (ia==0)&&(ib==0)&&(ic==0) ){
+    //     if(iG < 10) {
+    //     // Note: this requires OpenCL 1.2 or later and device support
+    //     printf("@@@@@@@@###########Hey Atom[%d]: (%f, %f, %f)\\n", iG, atoms[iG].x, atoms[iG].y, atoms[iG].z);
+    // }
+    // }
+
+    
+
     const int nMax = nab*nGrid.z;
     if(iG>=nMax) return;
 
@@ -1361,6 +1370,17 @@ __kernel void poissonW(
     const float kx = ((ix <= nx2) ? ix : ix - nx) * freq_x;
     const float ky = ((iy <= ny2) ? iy : iy - ny) * freq_y;
     const float kz = ((iz <= nz2) ? iz : iz - nz) * freq_z;
+
+    // Print two consecutive points
+    if (iz == nz2 && ix == nx2) {
+        if (iy == 100) {
+            printf("GPU poissonW() freq(%d,%g,%g) \n", iG, ky, kz);
+            // printf("k-point at iz=%d: kx=%f, ky=%f, kz=%f\n", iz, kx, ky, kz);
+        }
+        // if (iy == 101) {
+        //     printf("k-point at iz=%d: kx=%f, ky=%f, kz=%f\n", iz, kx, ky, kz);
+        // }
+    }
 
     const float k2 = kx * kx + ky * ky + kz * kz;
 

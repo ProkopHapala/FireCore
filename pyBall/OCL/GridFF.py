@@ -790,7 +790,7 @@ class GridFF_cl:
             cl.enqueue_copy(self.queue, V_Coul, self.V_Coul_buff)
             return V_Coul
 
-    def laplace_real_loop_inert(self, niter=4, cSOR=0.0, cV=0.8, bReturn=False, sh=None ):
+    def laplace_real_loop_inert(self, niter=16, cSOR=0.0, cV=0.6, bReturn=False, sh=None ):
         print( "GridFF_cl::laplace_real_loop_inert() " )
 
         if sh is None: sh=self.gsh.ns[::-1]

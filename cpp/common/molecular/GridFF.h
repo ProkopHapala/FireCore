@@ -368,7 +368,7 @@ inline Quat4d getForce_Bspline( Vec3d p, const Quat4d& PLQH, bool bSurf=true ) c
     grid.diCell.dot_to( p, t );
     Vec3d inv_dg2{ -grid.diCell.xx, -grid.diCell.yy, -grid.diCell.zz };
 
-    printf("DEBUG: Bspline | Grid pos0=%.3f,%.3f,%.3f | Atom pos=%.3f,%.3f,%.3f \n", grid.pos0.x,grid.pos0.y,grid.pos0.z, p.x,p.y,p.z);
+    // printf("DEBUG: Bspline | Grid pos0=%.3f,%.3f,%.3f | Atom pos=%.3f,%.3f,%.3f \n", grid.pos0.x,grid.pos0.y,grid.pos0.z, p.x,p.y,p.z);
     //Quat4d fe = Quat4dZero;
     
     Quat4d fe = Bspline::fe3d_pbc_comb3( t, grid.n, Bspline_PLQ, PLQH.f, cubic_xqis, cubic_yqis ); 

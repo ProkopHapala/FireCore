@@ -322,7 +322,7 @@ def test_gridFF_ocl( fname="./data/xyz/NaCl_1x1_L1.xyz", Element_Types_name="./d
         print("Starting Coulomb potential calculation...")
         Vcoul = clgff.makeCoulombEwald_slab(xyzq, niter=2)
         #VcoulB,trj_coul = clgff.fit3D( clgff.V_Coul_buff, nPerStep=10, nmaxiter=500, damp=0.05, bConvTrj=True );
-        VcoulB,trj_coul = clgff.fit3D( clgff.V1_buff, nPerStep=10, nmaxiter=500, damp=0.05, bConvTrj=True );
+        VcoulB,trj_coul = clgff.fit3D( clgff.V1_buff, nPerStep=10, nmaxiter=5000, damp=0.05, bConvTrj=True );
 
 
 
@@ -332,8 +332,8 @@ def test_gridFF_ocl( fname="./data/xyz/NaCl_1x1_L1.xyz", Element_Types_name="./d
         g0 = ( -grid.Ls[0]*0.5, -grid.Ls[1]*0.5, z0 )
         nPBC_mors = autoPBC(atoms.lvec,Rcut=20.0); print("autoPBC(nPBC_mors): ", nPBC_mors )
         clgff.make_MorseFF( xyzq, REQs, nPBC=nPBC_mors, lvec=atoms.lvec, g0=g0, GFFParams=(0.1,1.5,0.0,0.0), bReturn=False )
-        V_Paul,trj_paul = clgff.fit3D( clgff.V_Paul_buff, nPerStep=50, nmaxiter=500, damp=0.15, bConvTrj=True ); #T_fit_P = time.perf_counter()
-        V_Lond,trj_lond = clgff.fit3D( clgff.V_Lond_buff, nPerStep=50, nmaxiter=500, damp=0.15, bConvTrj=True ); #T_fit_ = time.perf_counter()
+        V_Paul,trj_paul = clgff.fit3D( clgff.V_Paul_buff, nPerStep=50, nmaxiter=5000, damp=0.05, bConvTrj=True ); #T_fit_P = time.perf_counter()
+        V_Lond,trj_lond = clgff.fit3D( clgff.V_Lond_buff, nPerStep=50, nmaxiter=5000, damp=0.05, bConvTrj=True ); #T_fit_ = time.perf_counter()
         # print("Morse_Atoms:",atoms.apos)
 
    
