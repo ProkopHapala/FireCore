@@ -1888,14 +1888,9 @@ int MolGUI::renderSurfAtoms( Vec3i nPBC, bool bPointCross, float qsc, float Rsc,
                 Vec3d shift = lvec.a*ix + lvec.b*iy + lvec.c*iz;
                 //shift.z += (float)icell;
                 glTranslatef( shift.x,shift.y,shift.z);
-<<<<<<< HEAD
-                Draw3D::atomsREQ( W->gridFF.natoms, W->gridFF.apos, W->gridFF.REQs, ogl_sph, qsc, Rsc, Rsub, bPointCross, W->gridFF.shift0 );  // Non-symterized atoms are (just bare pointer)
-                // Draw3D::atomsREQ( W->gridFF.apos_.size(), &W->gridFF.apos_[0], &W->gridFF.REQs_[0], ogl_sph, qsc, Rsc, Rsub, bPointCross, W->gridFF.shift0 ); // Symetrized atoms are (std::vector)
-=======
                 Draw3D::atomsREQ( W->gridFF.natoms, W->gridFF.apos, W->gridFF.REQs, ogl_sph, qsc, Rsc, Rsub, bPointCross, W->gridFF.shift0 );
                 //Draw3D::atomsREQ( W->gridFF.apos_.size(), &W->gridFF.apos_[0], &W->gridFF.REQs_[0], ogl_sph, qsc, Rsc, Rsub, bPointCross, W->gridFF.shift0 );
                 //Draw3D::atomsREQ( 1, &W->gridFF.apos_[0], &W->gridFF.REQs_[0], ogl_sph, qsc, Rsc, Rsub, bPointCross, W->gridFF.shift0 );
->>>>>>> 05c5a1286957b0e418442d99345a3686e3e55953
                 glTranslatef( -shift.x,-shift.y,-shift.z);
                 icell++;
             }

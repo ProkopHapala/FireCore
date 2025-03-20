@@ -221,13 +221,10 @@ class MolWorld_sp3 : public SolverInterface { public:
     bool bAnimManipulation = false; // 20
     bool bNonBondNeighs    = false; // 21
     bool bWhichAtomNotConv = false; // 22
-<<<<<<< HEAD
     bool bCheckInit        = false; // 23
-    bool bHardConstrs      = false; // 24
-=======
-    bool bCheckInit        = true; // 23
     bool bBondInitialized  = false; // 24
->>>>>>> 05c5a1286957b0e418442d99345a3686e3e55953
+    bool bHardConstrs      = false; // 25
+
 
     Vec3d anim_vec;
     float anim_speed;
