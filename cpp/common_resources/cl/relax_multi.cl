@@ -1179,6 +1179,14 @@ __kernel void getNonBond(
     ve.xyz *= MDpars.z;             // friction, velocity damping
     ve.xyz += fe.xyz*MDpars.x;      // acceleration
     pe.xyz += ve.xyz*MDpars.x;      // move
+    // if(iG<natoms){                  // only atoms have constraints, not pi-orbitals
+    //     // ------- constrains
+    //     float4 cons = constr[ iaa ]; // constraints (x,y,z,K)
+    //     if( cons.w>0.f ){            // if stiffness is positive, we have constraint
+    //         pe.xyz = cons.xyz;
+    //         //if(iS==0){printf( "GPU::constr[ia=%i|iS=%i] (%g,%g,%g|K=%g) fc(%g,%g,%g) cK(%g,%g,%g)\n", iG, iS, cons.x,cons.y,cons.z,cons.w, fc.x,fc.y,fc.z , cK.x, cK.y, cK.z ); }
+    //     }
+    // }
     //ve     *= 0.99f;              // friction, velocity damping
     //ve.xyz += fe.xyz*0.1f;        // acceleration
     //pe.xyz += ve.xyz*0.1f;        // move
