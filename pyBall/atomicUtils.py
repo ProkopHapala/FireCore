@@ -1166,94 +1166,99 @@ def atoms_symmetrized( atypes, apos, lvec, qs=None, REQs=None, d=0.1):
     - new_REQs (np.ndarray): Array of symmetrized quaternions.
     """
     n = len(atypes)
-    # Compute inverse transformation matrix M
-    M = np.linalg.inv(lvec)
+    # # Compute inverse transformation matrix M
+    # M = np.linalg.inv(lvec)
 
-    # Define boundary thresholds
-    cmax = -0.5 + d
-    cmin =  0.5 - d
+    # # Define boundary thresholds
+    # cmax = -0.5 + d
+    # cmin =  0.5 - d
 
-    # Extract lattice vectors a and b from grid_cell
-    a = lvec[:, 0]  # First column
-    b = lvec[:, 1]  # Second column
+    # # Extract lattice vectors a and b from grid_cell
+    # a = lvec[:, 0]  # First column
+    # b = lvec[:, 1]  # Second column
 
-    # Transform atom positions using the inverse matrix M
-    p_transformed = apos @ M.T  # Shape: (n, 3)
-    p_a = p_transformed[:, 0]
-    p_b = p_transformed[:, 1]
+    # # Transform atom positions using the inverse matrix M
+    # p_transformed = apos @ M.T  # Shape: (n, 3)
+    # p_a = p_transformed[:, 0]
+    # p_b = p_transformed[:, 1]
 
-    # Determine if atoms are near the boundaries in a and b directions
-    alo = p_a < cmax
-    ahi = p_a > cmin
-    blo = p_b < cmax
-    bhi = p_b > cmin
+    # # Determine if atoms are near the boundaries in a and b directions
+    # alo = p_a < cmax
+    # ahi = p_a > cmin
+    # blo = p_b < cmax
+    # bhi = p_b > cmin
 
-    aa = alo | ahi  # Atoms near the a-direction boundaries
-    bb = blo | bhi  # Atoms near the b-direction boundaries
+    # aa = alo | ahi  # Atoms near the a-direction boundaries
+    # bb = blo | bhi  # Atoms near the b-direction boundaries
 
-    # Calculate weighting factor based on replica count
-    ws = 1.0 / ((1 + aa.astype(float)) * (1 + bb.astype(float)))
+    # # Calculate weighting factor based on replica count
+    # ws = 1.0 / ((1 + aa.astype(float)) * (1 + bb.astype(float)))
 
-    bREQs = REQs is not None
-    bQs   = qs   is not None
+    # bREQs = REQs is not None
+    # bQs   = qs   is not None
 
-    new_REQs = None
-    if bREQs:
-        REQs_adj = REQs.copy()
-        REQs_adj[:, 2] *= ws  # Adjust Q
-        REQs_adj[:, 1] *= ws  # Adjust E0
-        new_REQs = list(REQs_adj)
+    # new_REQs = None
+    # if bREQs:
+    #     REQs_adj = REQs.copy()
+    #     REQs_adj[:, 2] *= ws  # Adjust Q
+    #     REQs_adj[:, 1] *= ws  # Adjust E0
+    #     new_REQs = list(REQs_adj)
 
-    new_qs = None
-    if bQs:
-        qs_adj = qs.copy()
-        qs_adj *= ws
-        new_qs = list(qs_adj)
+    # new_qs = None
+    # if bQs:
+    #     qs_adj = qs.copy()
+    #     qs_adj *= ws
+    #     new_qs = list(qs_adj)
 
-    # Initialize lists with original atoms
-    new_atypes = list(atypes)
-    new_apos   = list(apos)
-    new_ws     = list(ws)
+    # # Initialize lists with original atoms
+    # new_atypes = list(atypes)
+    # new_apos   = list(apos)
+    # new_ws     = list(ws)
     
-    # Determine shifts based on boundary conditions
-    shift_a = np.where(alo[:, np.newaxis], a, -a)  # Shape: (n, 3)
-    shift_b = np.where(blo[:, np.newaxis], b, -b)  # Shape: (n, 3)
+    # # Determine shifts based on boundary conditions
+    # shift_a = np.where(alo[:, np.newaxis], a, -a)  # Shape: (n, 3)
+    # shift_b = np.where(blo[:, np.newaxis], b, -b)  # Shape: (n, 3)
 
-    # Replicate atoms shifted by a
-    if np.any(aa):
-        indices_a = np.where(aa)[0]
-        new_atypes.extend(atypes[indices_a])
-        new_apos.extend(apos[indices_a] + shift_a[indices_a])
-        new_ws.extend( ws[indices_a] )
-        if bREQs: new_REQs.extend(REQs_adj[indices_a])
-        if bQs:   new_qs  .extend(qs_adj[indices_a])
+    # # Replicate atoms shifted by a
+    # if np.any(aa):
+    #     indices_a = np.where(aa)[0]
+    #     new_atypes.extend(atypes[indices_a])
+    #     new_apos.extend(apos[indices_a] + shift_a[indices_a])
+    #     new_ws.extend( ws[indices_a] )
+    #     if bREQs: new_REQs.extend(REQs_adj[indices_a])
+    #     if bQs:   new_qs  .extend(qs_adj[indices_a])
 
-    # Replicate atoms shifted by b
-    if np.any(bb):
-        indices_b = np.where(bb)[0]
-        new_atypes.extend(atypes[indices_b])
-        new_apos  .extend(apos[indices_b] + shift_b[indices_b])
-        new_ws    .extend( ws[indices_b] )
-        if bREQs: new_REQs.extend(REQs_adj[indices_b])
-        if bQs:   new_qs.  extend(qs_adj[indices_b])
+    # # Replicate atoms shifted by b
+    # if np.any(bb):
+    #     indices_b = np.where(bb)[0]
+    #     new_atypes.extend(atypes[indices_b])
+    #     new_apos  .extend(apos[indices_b] + shift_b[indices_b])
+    #     new_ws    .extend( ws[indices_b] )
+    #     if bREQs: new_REQs.extend(REQs_adj[indices_b])
+    #     if bQs:   new_qs.  extend(qs_adj[indices_b])
 
-        # Replicate atoms shifted by both a and b
-        indices_ab = np.where(aa & bb)[0]
-        if len(indices_ab) > 0:
-            new_atypes.extend(atypes[indices_ab])
-            new_apos  .extend(apos[indices_ab] + shift_a[indices_ab] + shift_b[indices_ab])
-            new_ws    .extend( ws[indices_ab] )
-            if bREQs:  new_REQs.extend(REQs_adj[indices_ab])
-            if bQs:    new_qs.extend(qs_adj[indices_ab])
+    #     # Replicate atoms shifted by both a and b
+    #     indices_ab = np.where(aa & bb)[0]
+    #     if len(indices_ab) > 0:
+    #         new_atypes.extend(atypes[indices_ab])
+    #         new_apos  .extend(apos[indices_ab] + shift_a[indices_ab] + shift_b[indices_ab])
+    #         new_ws    .extend( ws[indices_ab] )
+    #         if bREQs:  new_REQs.extend(REQs_adj[indices_ab])
+    #         if bQs:    new_qs.extend(qs_adj[indices_ab])
 
-    # Convert lists back to NumPy arrays
-    new_atypes = np.array(new_atypes, dtype=atypes.dtype )
-    new_apos   = np.array(new_apos,   dtype=apos.dtype   )
-    new_ws     = np.array(new_ws,     dtype=ws.dtype   )
-    if bREQs: new_REQs   = np.array(new_REQs, dtype=REQs.dtype   )
-    if bQs:   new_qs     = np.array(new_qs,   dtype=qs.dtype     )
+    # # Convert lists back to NumPy arrays
+    # new_atypes = np.array(new_atypes, dtype=atypes.dtype )
+    # new_apos   = np.array(new_apos,   dtype=apos.dtype   )
+    # new_ws     = np.array(new_ws,     dtype=ws.dtype   )
+    # if bREQs: new_REQs   = np.array(new_REQs, dtype=REQs.dtype   )
+    # if bQs:   new_qs     = np.array(new_qs,   dtype=qs.dtype     )
 
-    return new_atypes, new_apos, new_qs, new_REQs, new_ws
+    # return new_atypes, new_apos, new_qs, new_REQs, new_ws
+    
+    n = len(atypes)
+    ws = np.ones(n) # create dummy weights
+
+    return atypes, apos, qs, REQs, ws
 
 # ========================== Class Geom
 

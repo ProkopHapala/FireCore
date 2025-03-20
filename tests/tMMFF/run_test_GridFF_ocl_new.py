@@ -7,7 +7,7 @@ sys.path.append("../../")
 
 from pyBall.tests import ocl_GridFF_new as gff
 
-
+import pyopencl as cl
 # ==== Just plot basis
 # t = np.linspace(0.0, 1.0, 10)
 # ws = gff.Bspline_basis5(t)
@@ -40,7 +40,9 @@ from pyBall.tests import ocl_GridFF_new as gff
 # name="NaCl_8x8_L3_Coulumb"
 # name="NaCl_coulomb.iz0"
 
-name ="NaCl.ptcda"
+name="Na_0.9_Cl_-0.9"
+# name ="NaCl_paolo"
+# name ="NaCl.ptcda"
 # name="2_atom_NaCl"
 # name="NaCl.iz0"
 # name="C.iz0"
