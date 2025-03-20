@@ -1208,26 +1208,34 @@ virtual void optimizeLattice_1d( int n1, int n2, Mat3d dlvec ){
     gopt.lattice_scan_2d_multi( n1, dlvec, initMode, "lattice_scan_2d_multi.xyz" );
     
 }
-/////////////////////////////// Nejde stahovat data z GPU
+
 virtual void scan_relaxed( int nconf, Vec3d* poss, Mat3d* rots, Vec3d* dirs, double* Es, Vec3d* aforces, Vec3d* aposs, bool omp, int niter_max, double dt, double Fconv=1e-6, double Flim=1000, int ipicked=0 ){
     printf("MolWorld_sp3::scan_relaxed(nconf=%i,omp=%i) @poss=%li @rots=%li @Es=%li @aforces=%li @aposs=%li \n", nconf, omp, (long)poss, (long)rots, (long)Es, (long)aforces, (long)aposs);
     bOnlyRelax=true;
+    Atoms original_atoms;
+    original_atoms.copyOf( ffl );
     for(int i=0; i<nconf; ){
         Vec3d pos; if(poss){ pos=poss[i]; }else{ pos=Vec3dZero; }
         Mat3d rot; if(rots){ rot=rots[i]; }else{ rot=Mat3dIdentity; }
         for (int iSys=0; iSys<nSystems; iSys++){
             if( bConverged[iSys] && i < nconf ){
-                ocl.download( ocl.ibuff_cvf    , cvfs  );
+                int i0v = iSys * ocl.nvecs;                
+                int err = ocl.download(ocl.ibuff_atoms, atoms, ocl.nvecs, i0v);
                 ocl.finishRaw();
-                int i0v = iSys * ocl.nvecs;
-                unpack( ffls[iSys].nvecs,  ffls[iSys].apos, atoms+i0v);
+                
+                unpack( ffls[iSys].nvecs, ffls[iSys].apos, atoms+i0v);
+
                 ffl.copyOf( ffls[iSys] );
-                ffl.print();
-                double E = eval_no_omp();
-                if(Es){ Es[i]=E; }
+
+                ffls[iSys].copyOf(original_atoms);
                 ffls[iSys].setFromRef( ffls[iSys].apos, ffls[iSys].pipos, poss[i], rot );
-                ffls[iSys].print();
-                ocl.upload( ocl.ibuff_cvf   , cvfs   );
+                
+                double E = eval_no_omp();
+                if(Es){ 
+                    Es[i]=E; 
+                }
+
+                ocl.upload( ocl.ibuff_cvf, cvfs );
                 iSystemCur = iSys;
                 int i0a = ocl.nAtoms*iSystemCur;
                 constr [i0a + ipicked].f.set((Vec3f)poss[i]);
@@ -1236,9 +1244,7 @@ virtual void scan_relaxed( int nconf, Vec3d* poss, Mat3d* rots, Vec3d* dirs, dou
                 i++;
                 ocl.upload( ocl.ibuff_constr,  constr  );
                 ocl.upload( ocl.ibuff_constrK, constrK );
-
             }                
-            printf( "iSys %i bConverged %i poss[%i] (%g,%g,%g) \n", iSys, bConverged[iSys], i, poss[i].x,poss[i].y,poss[i].z );
         }
         int niterdone = run_ocl_opt( niter_max, Fconv);
     }

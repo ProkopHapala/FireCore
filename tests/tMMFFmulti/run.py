@@ -18,7 +18,7 @@ def scanPlot( nscan = 1000, span=(0.0,8.0), dir=(0.0,0.0,1.0), p0=(0.0,0.0,0.0),
 
     Es,Fs,Ps = mmff.scan( poss, bF=True, bP=True, Fconv=1e-5, niter_max=100000 )
     #print( "Es.shape ", Es.shape )
-    plt.plot( ts, Es, '-', lw=0.5, label=label  )
+    plt.plot( ts[1:-1], Es[1:-1], '-', lw=0.5, label=label  )
 
 
 #======== Body
@@ -28,7 +28,7 @@ mmff.setVerbosity( verbosity=1, idebug=1 )
 #mmff.init( xyz_name="data/xyz/pyridine", surf_name="data/NaCl_1x1_L2" )    
 #mmff.init( xyz_name="data/xyz/nHexadecan_dicarboxylic", bMMFF=True  )     
 #mmff.init( xyz_name="data/xyz/O", surf_name="data/xyz/NaCl_1x1_L3" )  
-mmff.init( xyz_name="data/xyz/H2O", surf_name="data/xyz/NaCl_1x1_L3", nSys_=10 )    
+mmff.init( xyz_name="data/xyz/H2O", surf_name="data/xyz/NaCl_1x1_L3", nSys_=100 )    
 #mmff.init( xyz_name="data/xyz/PTCDA", surf_name="data/xyz/NaCl_1x1_L3" )    
 mmff.getBuffs()
 print("natoms=", mmff.natoms )
@@ -38,7 +38,7 @@ print("natoms=", mmff.natoms )
 
 #mmff.PLQs[:,2 ] = 0.0 # delete Coulomb (charges)
 #mmff.PLQs[:,:2] = 0.0 # delete Morse (EvdW)
-scanPlot( nscan=10, span=(0.0,8.0), dir=(1.0,0.0,0.0), p0=(1.0,0.0,0.0),  label="E_x" )
+scanPlot( nscan=1000, span=(0.0,8.0), dir=(1.0,0.0,0.0), p0=(1.0,0.0,0.0),  label="E_x" )
 # scanPlot( nscan=1000, span=(0.0,8.0), dir=(0.0,1.0,0.0), p0=(0.0,0.0,0.0),  label="E_y" )
 # #scanPlot( nscan=1000, span=(-5.0,5.0), dir=(0.0,0.0,1.0), p0=(0.0,0.0,0.0), label="E_z" )
 
