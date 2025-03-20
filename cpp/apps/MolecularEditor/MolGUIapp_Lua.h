@@ -138,7 +138,7 @@ int l_addMoleculeFile(lua_State *L){
     //app->W->buildMolecule_xyz( xyz_name );
     app->bRunRelax = false;
     MolWorld_sp3* W = app->W;
-    int ifrag = W->insertMolecule( fname, 0, pos );
+    int ifrag = W->insertMolecule( fname,pos );
     // W->makeMoleculeTopology();
     // W->assingMoleculeTopoTypes();
     // W->makeFFs();

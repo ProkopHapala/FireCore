@@ -61,4 +61,6 @@ struct double5 {
 	};
 };
 
+static constexpr double5 double5NAN = (double5){(double)NAN,(double)NAN,(double)NAN,(double)NAN,(double)NAN}  ;
+
 #endif

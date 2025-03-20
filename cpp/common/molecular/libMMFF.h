@@ -384,13 +384,27 @@ inline double periodic_x2(double x, int nmax=100){
 }
 
 
-void sample_func( int n, double* xs, double* ys, int kind ){
+void sample_func( int n, double* xs, double* ys, int kind, double* params ){
     for(int i=0; i<n; i++ ){
+        Vec3d f;
         double x = xs[i];
         switch (kind){
             case 0:  { ys[i]= sin(x);         } break;
             case 1:  { ys[i]= periodic_x2(x); } break;
+            case 2:  { ys[i]= getSR_x2_smooth( Vec3d{0,0,x}, f, params[0], params[1], params[2], params[3] );  } break;
             default: { ys[i]= NAN;            } break;
+        }
+    }
+}
+
+void sample_funcEF( int n, double* xs, double* EFs_, int kind, double* params ){
+    Vec2d* EFs = (Vec2d*)EFs_;
+    for(int i=0; i<n; i++ ){
+        Vec3d f;
+        double x = xs[i];
+        switch (kind){
+            case 2:  { EFs[i].x= getSR_x2_smooth( Vec3d{x,0,0}, f, params[0], params[1], params[2], params[3] ); EFs[i].y=f.x; } break;
+            default: { EFs[i]= Vec2d{NAN,NAN}; } break;
         }
     }
 }

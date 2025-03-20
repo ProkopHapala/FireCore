@@ -41,7 +41,7 @@ python3 run.py
 #python3 run_propandiol.py
 #python3 run_sample.py
 #python3 run_Hbonds.py
-#python3 run_sample_func.py
+python3 run_sample_func.py
 #python3 run_sample_Bsplines.py
 #python3 run_sample_Hermite.py
 #python3 run_test_ewald.py

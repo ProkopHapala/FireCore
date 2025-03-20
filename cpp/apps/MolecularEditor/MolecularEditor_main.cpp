@@ -153,7 +153,7 @@ AppMolecularEditor2::AppMolecularEditor2( int& id, int WIDTH_, int HEIGHT_ ) : A
     mol.autoAngles();
 
     Vec3d cog = mol.getCOG_av();
-    mol.addToPos( cog*-1.0d );
+    mol.addToPos( cog*-1.0 );
 
     /*
     world.apos      = mol.pos;

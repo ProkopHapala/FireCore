@@ -222,7 +222,8 @@ void realloc( int nSystems_ ){
     _realloc0( cvfs,      ocl.nvecs*nSystems  , Quat4fZero );
     _realloc0( constr,    ocl.nAtoms*nSystems , Quat4fOnes*-1. );
     _realloc0( constrK,   ocl.nAtoms*nSystems , Quat4fOnes*-1. );
-    _realloc0( bboxes,   nSystems, cl_Mat3{cl_float4{-1e+8,-1e+8,-1e+8,-1e+8,},cl_float4{+1e+8,+1e+8,+1e+8,+1e+8,}, cl_float4{-1.,-1.,-1.,-1.} }   );
+    cl_Mat3 _m0{cl_float4{-1e+8,-1e+8,-1e+8,-1e+8,},cl_float4{+1e+8,+1e+8,+1e+8,+1e+8,}, cl_float4{-1.,-1.,-1.,-1.} } ; 
+    _realloc0( bboxes,   nSystems, _m0 );
     // --- params
     _realloc( neighs,    ocl.nAtoms*nSystems );
     _realloc( neighCell, ocl.nAtoms*nSystems );
@@ -238,7 +239,8 @@ void realloc( int nSystems_ ){
     _realloc( lvecs,     nSystems  );
     _realloc( ilvecs,    nSystems  );
     _realloc( MDpars,    nSystems  );
-    _realloc0( TDrive,   nSystems, Quat4f{0.0,-1.0,0.0,0.0} );
+
+    Quat4f _q0{0.0,-1.0,0.0,0.0}; _realloc0( TDrive,   nSystems, _q0 );
 
 
     _realloc( pbcshifts, ocl.npbc*nSystems );

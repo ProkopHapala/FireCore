@@ -60,12 +60,11 @@ int get_molecule_natoms() {
 
 void init_buffers(){
     //printf( "init_buffers() \n" );
+
     // buffers .insert( { "gridff_apos",   (double*)W.gridFF.apos    } );
     // // buffers .insert( { "gridff_apos_",   (double*)W.gridFF.apos_  } );
     //  buffers.insert(std::make_pair(std::string("gridff_apos_"), (double*)W.gridFF.apos_.data()));
     // buffers .insert( { "gridff_Bspline_PLQ",   (double*)W.gridFF.Bspline_PLQ  } );
-
-
 
 
     buffers .insert( { "apos",   (double*)W.nbmol.apos  } );

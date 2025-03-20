@@ -1,4 +1,3 @@
-
 #ifndef  Buckets_h
 #define  Buckets_h
 /// @file Buckets.h @brief contains Buckets class, which is a class for storing indices of objects in buckets (groups) used typically to accelarate neighbourhood search
@@ -26,6 +25,7 @@ class Buckets{ public:
     // =========== Functions
 
     inline int addToCell( int icell, int iobj ){
+        if(icell < 0) return -1;  // Don't add objects to negative cells
         int j = cellI0s[icell] + cellNs[icell];
         cell2obj[j] = iobj;
         cellNs[icell]++;
@@ -48,8 +48,7 @@ class Buckets{ public:
             int ic = obj2cell[i]; 
             //if( (ic<0)||(ic>=ncell) ){ printf( "Buckets::count() ERROR i %i ic %i ncell %i \n", i, ic, ncell ); }
             //printf( "obj[%i ]-> cell %i \n", i, ic );
-            if(ic>0)
-            cellNs[ ic ]++;  
+            if(ic>=0) cellNs[ ic ]++;  
         } 
     }
 
@@ -77,14 +76,77 @@ class Buckets{ public:
             //printf( "[%i] ", i );
             int  ic =  obj2cell[i];
             if(ic<0) continue;
+            if(ic>=ncell) {
+                printf("ERROR: objectsToCells() ic=%i >= ncell=%i\n", ic, ncell);
+                continue;
+            }
             int& ni = cellNs[ic];
             int j   =  cellI0s[ic] + ni;
+            if(j >= nobjSize) {
+                printf("ERROR: objectsToCells() j=%i >= nobjSize=%i\n", j, nobjSize);
+                continue;
+            }
             //printf( " k %i j %i | nobj %i \n", k, j, nobj );
             cell2obj[j] = i;
             ni++;
         }
     }
 
+    /// @brief Checks if every object from obj2cell can be found in cell2obj .
+    int  checkObj2Cell( bool bPrint=false, bool bExit=true){
+        int nbad=0;
+        for(int i=0; i<nobj; i++){
+            int ic = obj2cell[i];
+            if(ic < 0) continue;  // Skip negative indices
+            // Make sure this object appears in the corresponding cell
+            bool found = false;
+            int i0 = cellI0s[ic];
+            int n  = cellNs [ic];
+            for(int j=0; j<n; j++){
+                if(cell2obj[i0+j] == i){
+                    found = true;
+                    break;
+                }
+            }
+            if(!found){
+                if(bPrint)printf("ERRORin Buckets::checkObj2Cell() object %i is assigned to cell %i but not found in cell list\n", i, ic);
+                if(bExit) exit(1);
+                nbad++;
+            }
+        }
+        return nbad;
+    }
+
+    /// @brief Checks if all items stored in cells (cell2obj) can be found in obj2cell with the same cell index
+    int  checkCell2Obj( int nobj_=-1, bool bPrint=false, bool bExit=true){
+        if(nobj_<0) nobj_ = nobj;
+        int nbad=0;
+        for(int i=0; i<ncell; i++){
+            int ni= cellNs[i];
+            int i0= cellI0s[i];
+            if(ni<=0) continue;
+            
+            for(int j=0; j<ni; j++){
+                int iobj = cell2obj[i0+j];
+                // Check if the object index is valid
+                if( (iobj < 0) || (iobj >= nobj_) ){
+                    if(bPrint)printf("ERRORin Buckets::checkCell2Obj() cell[%i|%i] has object index %i out of bounds [0..%i]\n", i, j, iobj, nobj_);
+                    if(bExit) exit(1);
+                    nbad++;
+                    continue; // Skip to next object in cell
+                }
+                
+                // Check if the object's assigned cell matches the current cell
+                if(obj2cell[iobj] != i){
+                    if(bPrint)printf("ERRORin Buckets::checkCell2Obj() cell[%i|%i] contains object %i but obj2cell[%i]=%i\n", 
+                                     i, j, iobj, iobj, obj2cell[iobj]);
+                    if(bExit) exit(1);
+                    nbad++;
+                }
+            }
+        }
+        return nbad;
+    }
 
     /**
      * @brief Updates the cells based on the given object-to-cell mapping.
@@ -100,6 +162,12 @@ class Buckets{ public:
     inline void updateCells( int nobj_=-1, int* obj2cell_=0 ){
         if( obj2cell_==0 ) obj2cell_=obj2cell;
         if( nobj_<0      ) nobj_    =nobj;
+        
+        // Initialize cell2obj with -1 to ensure we don't have garbage values
+        for(int i=0; i<nobjSize; i++){
+            cell2obj[i] = -1;
+        }
+        
         clean         ();                      //printf("updateCells.clean() \n"  );
         count         ( nobj_, obj2cell_ );    //printf("updateCells.count() \n"  );
         updateOffsets ();                      //printf("updateCells.updateOffsets() \n"  );
@@ -113,8 +181,9 @@ class Buckets{ public:
         if(b){       // if need to resize
             //printf( "Buckets::resizeObjs() nobjSize(%i) -> nobj_(%i) \n", nobjSize, nobj_ );
             nobjSize =nobj_; 
-            _realloc(cell2obj,nobjSize); 
-            if(bO2C)_realloc(obj2cell,nobj_);
+            // Initialize cell2obj with -1 to mark as unassigned
+            _realloc0(cell2obj,nobjSize,-1); 
+            if(bO2C)_realloc0(obj2cell,nobj_,-1);
         };
         //printf( "Buckets::resizeObjs() nobjSize(%i) nobj_(%i) \n", nobjSize, nobj_ ); 
         return b; 
@@ -127,6 +196,7 @@ class Buckets{ public:
     }
 
     inline int getInCell( int icell, int* out ){    
+        if(icell < 0) return 0;  // Return 0 objects for negative cells
         // why we copy? we can just return pointer to cell2obj[ cellI0s[icell] ]
         const int i0 = cellI0s[icell];
         const int n  = cellNs [icell];
@@ -144,14 +214,48 @@ class Buckets{ public:
         if(i0<0)i0=0; 
         if(i1<0)i1=nobj;
         printf( "Buckets::printObjCellMaping() ncell %i nobj %i \n", ncell, nobj );
-        int ib=0;
         for(int i=i0; i<i1; i++){
-            if( bBoundary & (i==cellI0s[ib])){ printf( "---- start cell[%i] \n", i, ib ); ib++; }
-            printf( "[%i] o2c %i c2o %i \n", i, obj2cell[i], cell2obj[i] );
+            int ic = obj2cell[i];
+            if(ic < 0) {
+                // Skip negative cell indices, but optionally print them with a note
+                // printf( "[%i] o2c %i (skipped - negative cell index)\n", i, ic );
+                continue;
+            }
+            
+            // Check if ic is within valid range
+            if(ic >= ncell) {
+                printf( "[%i] o2c %i (ERROR - cell index out of range)\n", i, ic );
+                continue;
+            }
+            
+            // Now find where this object is stored in the cell2obj array
+            bool found = false;
+            int location = -1;
+            int i0_cell = cellI0s[ic];
+            int n_cell = cellNs[ic];
+            
+            // Print basic information
+            printf( "[%i] o2c %i (cell offset: %i, cell size: %i)\n", i, ic, i0_cell, n_cell );
+            
+            // Optionally debug the cell's content
+            /*
+            for(int j=0; j<n_cell; j++) {
+                int obj_idx = cell2obj[i0_cell + j];
+                if(obj_idx == i) {
+                    found = true;
+                    location = i0_cell + j;
+                    printf( "  - Found at position %i in cell2obj\n", location );
+                }
+            }
+            
+            if(!found) {
+                printf( "  - ERROR: Object not found in its assigned cell\n" );
+            }
+            */
         }
     }
 
-    inline void printCells(int verb=0){
+    inline void printCells(int verb=1){
         printf( "Buckets::printCells() ncell %i nobj %i \n", ncell, nobj );
         for(int i=0; i<ncell; i++){
             printf( "cell[%i] n %i i0 %i \n", i, cellNs[i], cellI0s[i] );
@@ -159,7 +263,14 @@ class Buckets{ public:
                 int i0=cellI0s[i];
                 int ni=cellNs [i];
                 int i1=i0+ni;
-                for(int j=0; j<ni; j++){ printf( "cell2obj[%i|%i,%i] = %i \n", i0+j, i,j, cell2obj[i0+j] ); }
+                for(int j=0; j<ni; j++){
+                    int obj_idx = cell2obj[i0+j];
+                    if(obj2cell[obj_idx] < 0){
+                        printf( "ERROR in printCells() i: %i obj_idx %i \n", i, obj_idx );
+                        exit(0);
+                    };
+                    printf( "cell2obj[%i|%i,%i] = %i \n", i0+j, i,j, obj_idx );
+                }
             }
         }
     }

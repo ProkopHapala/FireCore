@@ -208,7 +208,7 @@ inline bool checkAllFilesExist( int n, const char** fnames, bool bPrint=true, bo
     return bExist;
 }
 
-bool tryMakeDir( const char* dirname, bool bExit=true, bool bPrint=true ){
+inline bool tryMakeDir( const char* dirname, bool bExit=true, bool bPrint=true ){
     struct stat statbuf;
     bool bDirReady=false;
     if (stat(dirname, &statbuf) != 0) {   // Check if directory exists
@@ -217,14 +217,14 @@ bool tryMakeDir( const char* dirname, bool bExit=true, bool bPrint=true ){
     return bDirReady;
 }
 
-bool tryChangeDir( const char* dirname, bool bExit=true, bool bPrint=true, char* msg="tryChangeDir()" ){
+inline bool tryChangeDir( const char* dirname, bool bExit=true, bool bPrint=true, char* msg="tryChangeDir()" ){
     if (chdir(dirname) == -1) { if(bPrint)printf("ERROR in %s chdir(%s) => exit()\n", msg, dirname ); if(bExit)exit(0); return true; }
     return false;
 }
 
 //#include "Tree.h"
 
-bool printDir( char* dirName ){
+inline bool printDir( char* dirName ){
     // from : https://stackoverflow.com/questions/612097/how-can-i-get-the-list-of-files-in-a-directory-using-c-or-c
     DIR *dir;
     struct dirent *ent;

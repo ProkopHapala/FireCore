@@ -4,6 +4,11 @@ from   matplotlib import collections  as mc
 from . import elements
 #from . import utils as ut
 
+def plotEF( xs, EFs, label='' ):
+    plt.subplot(2,1,1); plt.plot( xs, EFs[:,0], label="E "+label ); plt.legend();plt.grid()
+    plt.subplot(2,1,2); plt.plot( xs, EFs[:,1], label="F "+label ); plt.legend();plt.grid()
+    
+
 def read_gnuplot_2d(fname):
     f = open(fname,'r')
     xs=[]
@@ -145,7 +150,6 @@ def plotSystem( sys , bBonds=True, colors=None, sizes=None, extent=None, sz=50.,
         plt.xlim(extent[0],extent[1])
         plt.ylim(extent[2],extent[3]) 
 
-
 def plotTrj( trj, bBonds=True, sz=50., numbers=None, axes=(0,1), extent=None, prefix="mol_", RvdwCut=0.5, figsize=(5,5) ):
     if numbers is None: numbers=range(len(trj))
     for i,sys in enumerate(trj):
@@ -167,3 +171,165 @@ def plotTrj( trj, bBonds=True, sz=50., numbers=None, axes=(0,1), extent=None, pr
         
         plt.savefig( prefix+("%03i.png" %numbers[i]), bbox_inches='tight' )
         plt.close(fig)
+
+def render_POVray(
+    sys, filename, 
+    # Atom and bond parameters
+    atom_scale=1.0, bond_width=0.2,
+    # Camera parameters
+    look_at=(0.0, 0.0, 0.0),
+    camera_pos  =( 0.0, 0.0, 100.0 ),
+    camera_up   =( 0.0, 1.0,   0.0 ),
+    camera_right=( 1.0, 0.0,   0.0 ),
+    sky=(0.0, 0.0, 1.0),
+    zoom=30.0,
+    orthographic=True,
+    # Image parameters
+    width=400, height=400,
+    # Lighting parameters
+    light_pos       =(10.0, 20.0, 30.0),
+    light_color     =(2.5, 2.5, 2.5),
+    ambient_light   =(1.0, 1.0, 1.0),
+    background_color=(1.0, 1.0, 1.0),
+    # Material parameters
+    ambient=0.5, diffuse=0.6, specular=0.4, roughness=0.01, metallic=-1.0,  phong=10.0, phong_size=120,
+    # Rendering options
+    shadows=False,
+    bond_clr=(0.5,0.5,0.5),
+    z_color_shift=False,
+    viewAxis=False,
+    ):
+    """Export system to POV-Ray file with customizable rendering settings
+    
+    Args:
+        sys: System object with atoms/bonds
+        filename: Output .pov file
+        
+        # Atom and bond parameters
+        bond_scale: Bond length relative to sum of atomic radii
+        atom_scale: Scale factor for atomic radii
+        bond_width: Visual width of bonds
+        
+        # Camera parameters
+        camera_pos: Camera position (x,y,z)
+        look_at: Point camera looks at (x,y,z)
+        sky: Up vector for camera orientation
+        zoom: Camera zoom factor
+        orthographic: Use orthographic projection if True, perspective if False
+        
+        # Image parameters
+        width, height: Output image dimensions
+        
+        # Lighting parameters
+        light_pos: Position of main light source
+        light_color: RGB color of main light
+        ambient_light: RGB color of ambient light
+        background_color: RGB color of background
+        
+        # Material parameters
+        ambient: Ambient light reflection
+        diffuse: Diffuse light reflection
+        specular: Specular highlights intensity
+        roughness: Surface roughness
+        metallic: Metallic finish if True
+        phong, phong_size: Phong shading parameters
+        
+        # Rendering options
+        shadows: Enable shadows if True
+        z_color_shift: Enable z-dependent color shifting if True
+    """
+
+    def makeFinishString( ambient, diffuse, specular, roughness, phong, phong_size, metallic ):
+        return f"""
+  finish {{
+    ambient    {ambient}
+    diffuse    {diffuse}
+    specular   {specular}
+    roughness  {roughness}
+    phong      {phong}
+    phong_size {phong_size}
+    { f"metallic {metallic}" if metallic>0 else ""}
+  }}
+  """
+
+    with open(filename, 'w') as pov:
+        # Write POV header with customizable parameters
+        pov.write(
+f'''// ***********************************************
+// Camera & other global settings
+// ***********************************************
+
+#declare Zoom = {zoom};
+#declare Width = {width};
+#declare Height = {height};
+
+camera{{
+  {"orthographic" if orthographic else ""}
+  look_at  <{look_at[0]  }    , {look_at[1]  }    , {look_at[2]} >
+  location <{camera_pos[0]}   , {camera_pos[1]}   , {camera_pos[2]}>
+  up       <{camera_up[0]*zoom}    , {camera_up[1]*zoom}    , {camera_up[2]*zoom} >
+  right    <{camera_right[0]*zoom} , {camera_right[1]*zoom} , {camera_right[2]*zoom}>
+  //sky      <{sky[0]}       , {sky[1]}        , {sky[2]} >
+  sky      <{camera_up[0]}       , {camera_up[1]}        , {camera_up[2]} >
+}}
+
+background      {{ color rgb <{background_color[0]}, {background_color[1]}, {background_color[2]}> }}
+light_source    {{ < {light_pos[0]}, {light_pos[1]}, {light_pos[2]}>  rgb <{light_color[0]}, {light_color[1]}, {light_color[2]}> }}
+global_settings {{ ambient_light rgb< {ambient_light[0]}, {ambient_light[1]}, {ambient_light[2]}> }}
+
+// ===== macros for common shapes
+
+#macro myFinish()
+{makeFinishString( ambient, diffuse, specular, roughness, phong, phong_size, metallic )}
+#end
+
+#macro a(X,Y,Z,RADIUS,R,G,B,T)
+ sphere{{<X,Y,Z>,RADIUS
+  pigment{{rgbt<R,G,B,T>}}
+  myFinish()
+  {"no_shadow" if not shadows else ""}
+ }}
+#end
+
+#macro b(X1,Y1,Z1,RADIUS1,X2,Y2,Z2,RADIUS2,R,G,B,T)
+ cone{{<X1,Y1,Z1>,RADIUS1,<X2,Y2,Z2>,RADIUS2
+  pigment{{rgbt<R,G,B,T>}}
+  myFinish()
+  {"no_shadow" if not shadows else ""}
+ }}
+#end
+
+{
+f"""
+ b(    0.0,    0.0,   0.0,    {bond_width*1.5},   1.0,0.0,0.0,    {bond_width},    1.0,0.0,0.0, 0.0 )  // x-axis
+ b(    0.0,    0.0,   0.0,    {bond_width*1.5},   0.0,1.0,0.0,    {bond_width},    0.0,1.0,0.0, 0.0 )  // y-axis
+ b(    0.0,    0.0,   0.0,    {bond_width*1.5},   0.0,0.0,1.0,    {bond_width},    0.0,0.0,1.0, 0.0 )  // z-axis
+ """ if viewAxis else ""
+}
+
+''')
+
+        #return
+        # Write atoms
+        pov.write('// ------ Atoms\n')
+        for i in range(len(sys.apos)):
+            e = sys.enames[i]  # Elements are 1-based
+            e = e.split('_')[0]
+            x, y, z = sys.apos[i]
+            rad = elements.ELEMENT_DICT[e][6] * atom_scale
+            clr = elements.getColor( e , bFloat=True)            
+            pov.write('a( {:10.5f}, {:10.5f}, {:10.5f}, {:10.5f}, {:10.5f}, {:10.5f}, {:10.5f}, 0.0 )\n'.format( x, y, z, rad, clr[0], clr[1], clr[2] ))
+
+        # Write bonds
+        if sys.bonds is not None:
+            pov.write('\n// ------ Bonds\n')
+            for bond in sys.bonds:
+                i, j = bond[:2]
+                # Get positions
+                pos1 = sys.apos[i]
+                pos2 = sys.apos[j]                
+                pov.write('b( {:10.5f}, {:10.5f}, {:10.5f}, {:10.5f}, {:10.5f}, {:10.5f}, {:10.5f}, {:10.5f}, {:10.5f}, {:10.5f}, {:10.5f}, 0.0 )\n'.format( 
+                              pos1[0], pos1[1], pos1[2], bond_width, 
+                              pos2[0], pos2[1], pos2[2], bond_width, 
+                              bond_clr[0],  bond_clr[1], bond_clr[2]  ))
+

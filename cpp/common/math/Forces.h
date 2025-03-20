@@ -372,6 +372,85 @@ inline double getMorseQH( const Vec3d& dp, Vec3d& f, const Quat4d& REQH, const d
     return E;
 }
 
+
+inline double getSR_r2(const Vec3d& dp, Vec3d& f, double R_min, double R_cut) {
+    double r2 = dp.norm2();
+    double r  = sqrt(r2); // Only one sqrt calculation
+    if (r >= R_cut) return 0.0; //No interaction beyond R_cut
+    double x = r - R_min;
+    double E = x * x - (R_cut - R_min) * (R_cut - R_min);
+    double F = -2 * x;
+    f.set_mul(dp, F / r); //Avoid division by zero if r is very close to zero
+    return E;
+}
+
+inline double getSR_x2_smooth(const Vec3d& dp, Vec3d& f, double E_min, double R_min, double R_cut, double R_cut2) {
+    // Precompute k1 and k2 based on E_min and d1, d2.
+    // Note: E_min is the potential value at the minimum (r = R_min) and is negative.
+    // k1 is positive (convex), and k2 is negative (concave).
+    // From energy matching: k1 = -2*E_min/(d1*(d1+d2)) and from force matching: k2 = - k1*(d1/d2)
+    // E_min is only used in the harmonic region.
+    double r2 = dp.norm2();
+    //printf( "getSR_r2_smooth() r %g E_min %g R_min %g R_cut2 %g \n", sqrt(r2), E_min, R_min, R_cut2 );
+    if( r2 > (R_cut2*R_cut2) ){
+        f = Vec3dZero;
+        return 0.0;
+    }
+    double r  = sqrt(r2);
+    /// TODO: we should precompute these constants  k1,k2
+    double d1 = R_cut  - R_min;  // harmonic region: [R_min, R_cut]
+    double d2 = R_cut2 - R_cut;  // smoothing region: [R_cut, R_cut2]  
+    double k1 = -2.0 * E_min / ( d1 * (d1 + d2) );
+    double k2 = - k1 * (d1 / d2);
+    //printf( "getSR_r2_smooth() r %g E_min %g R_min %g R_cut2 %g  k1 %g k2 %g \n", sqrt(r2), E_min, R_min, R_cut2, k1,k2 );
+    double E, F;                 // potential and scalar force
+    if (r < R_cut) {
+        double x = r - R_min;
+        E = 0.5 * k1 * x * x + E_min;
+        F =     - k1 * x;
+    } else {
+        double x  = r - R_cut2;
+        E = 0.5 * k2 * x * x;
+        F =     - k2 * x;
+    }
+    //printf( "getSR_r2_smooth() r %g E_min %g R_min %g R_cut2 %g  k1 %g k2 %g E %g F %g \n", sqrt(r2), E_min, R_min, R_cut2, k1,k2, E, F  );
+    f.set_mul(dp, F/r );
+    // Set the force vector along dp (which has length r).
+    //if (r > 1e-12){   f.set_mul(dp, F_scalar / r); }
+    //else          { f.set_mul(dp, 0.0); }
+    return E;
+}
+
+// Given master parameters:
+//   k1     : stiffness of the harmonic part (must be > 0),
+//   E_min  : potential minimum (at R_min, typically negative),
+//   R_min  : position of the potential minimum,
+//   R_cut2 : outer cutoff (potential and force vanish for r >= R_cut2),
+// this function computes the inner cutoff R_cut and smoothing stiffness k2
+// such that energy and force match at R_cut.
+Vec2d computeMatchingParams(double k1, double E_min, double R_min, double R_cut2 ) {
+    // Consistency requires R_min < R_cut2.
+    //assert(R_cut2 > R_min);
+    // Compute the total distance between R_min and R_cut2.
+    double L = R_cut2 - R_min;
+    // From matching energy and force we obtain:
+    //   k1 * d1 * L = -2 * E_min,   where d1 = R_cut - R_min.
+    // Solve for d1:
+    double d1 = -2.0 * E_min / (k1 * L);
+    // Then the inner cutoff is:
+    double R_cut = R_min + d1;
+    // The smoothing interval length is:
+    double d2 = R_cut2 - R_cut;
+    // Force matching gives k2 = -k1 * d1/d2.
+    double k2 = -k1 * d1 / d2;
+    Vec2d params;
+    params.x = R_cut;
+    params.x = k2;
+    return params;
+}
+
+
+
 // evaluate energy and force using Lennard-Jones and Coulomb potential and Hydrogen bond pseudo-charges, with cutoffs
 inline double getLJQH_cut( const Vec3d& dp, Vec3d& f, const Quat4d& REQH, const double R2damp, const double Cr2_cut, const double LJr2_cut ){
     // E_cut = e_max * (R/r_cut)^6

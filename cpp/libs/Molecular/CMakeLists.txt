@@ -7,7 +7,7 @@ add_library(ReactiveFF  SHARED ReactiveFF.cpp )
 
 add_library(CLCFGO_lib   SHARED CLCFGO_lib.cpp )
 add_library(eFF_lib      SHARED eFF_lib.cpp      $<TARGET_OBJECTS:DynamicOpt> )
-add_library(MMFF_lib     SHARED MMFF_lib.cpp     $<TARGET_OBJECTS:DynamicOpt> )
+add_library(MMFF_lib     SHARED MMFF_lib.cpp     $<TARGET_OBJECTS:DynamicOpt> $<TARGET_OBJECTS:ProjectiveDynamics_d> )
 target_link_libraries(MMFF_lib ${FFTW_LIBRARIES})
 
 #add_library(MMFF_lib     SHARED MMFF_lib.cpp     $<TARGET_OBJECTS:DynamicOpt> )

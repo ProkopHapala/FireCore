@@ -43,6 +43,16 @@ inline void printVecs( int n, const Vec3d * vs ){ 	for(int i=0; i<n;i++)printf( 
 inline void printVecs( int n, const Vec3f * vs ){ 	for(int i=0; i<n;i++)printf( "[%i] (%g,%g,%g)\n",   i, vs[i].x, vs[i].y, vs[i].z ); }
 inline void printVecs( int n, const Quat4f* vs ){ 	for(int i=0; i<n;i++)printf( "[%i] (%g,%g,%g,%g)\n",i, vs[i].x, vs[i].y, vs[i].z, vs[i].w ); }
 
+// inline void printMat( const Mat3d& mat  ){
+// 	printf( " %f %f %f \n", mat.ax, mat.ay, mat.az );
+// 	printf( " %f %f %f \n", mat.bx, mat.by, mat.bz );
+// 	printf( " %f %f %f \n", mat.cx, mat.cy, mat.cz );
+// }
+
+template<typename T> inline void fprintVec(FILE* fout,int n      ,T* vec, const char* fmt="%20.10f "){ for(int i=0;i<n;i++){ fprintf( fout,fmt, vec[i] ); }; fprintf(fout,"\n"); }
+template<typename T> inline void fprintMat(FILE* fout,int n,int m,T* mat, const char* fmt="%20.10f "){ for(int i=0;i<n;i++){ fprintVec(fout,m,mat+i*m, fmt); } }
+template<typename T> inline void mat2file(const char* fname,int n, int m, T* vec, const char* fmt="%20.10f ", const char* mode="w" ){ FILE* fout=fopen(fname,mode); fprintMat(fout,n,m,vec,fmt); fclose(fout); }
+
 
 inline bool compareVecs( int n, const Vec3d* vs, const Quat4f* qs, double Rmax, int verbosity=1 ){
     bool ret=false;

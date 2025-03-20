@@ -4,11 +4,7 @@ set( NAME "EFF" )
 #include_directories( ${COMMON_SRCS}/dynamics/Molecular )
 include_directories( ${COMMON_SRCS}/molecular )
 
-add_executable( EFFapp.x
-    EFFapp.cpp 
-	$<TARGET_OBJECTS:DynamicOpt>
-	$<TARGET_OBJECTS:SDL2OGL>  
-)
+add_executable( EFFapp.x EFFapp.cpp $<TARGET_OBJECTS:DynamicOpt> $<TARGET_OBJECTS:SDL2OGL> )
 target_link_libraries( EFFapp.x ${OPENGL_LIBRARIES} ${SDL2_LIBRARIES} ${LUA_LIBRARIES} )
 
 #add_executable       ( test_eFF test_eFF.cpp $<TARGET_OBJECTS:SDL2OGL> $<TARGET_OBJECTS:DynamicOpt>  )

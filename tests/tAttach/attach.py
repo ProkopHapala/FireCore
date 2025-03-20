@@ -75,7 +75,10 @@ group_dict = dict(groups)
 
 
 # ------- Group attachent
-B = AtomicSystem(fname='backbone.xyz' )
+#B = AtomicSystem(fname='backbone.xyz' )
+B = AtomicSystem(fname='backbone.mol2' )
+
+
 B.lvec = np.array( [[25.,0.,0.],[0.,5.,0.],[0.,0.,20.0]  ] )
 for pair in pairs:
     print(pair)
@@ -83,6 +86,11 @@ for pair in pairs:
     name1,name2 = pair
     G1 = AtomicSystem(fname="endgroups/"+name1+".xyz"  )
     G2 = AtomicSystem(fname="endgroups/"+name2+".xyz"  )
+    
+    BB.preinitialize_atomic_properties()
+    G1.preinitialize_atomic_properties()
+    G2.preinitialize_atomic_properties()
+    
     inds1, Hs1 = group_dict[name1]
     inds2, Hs2 = group_dict[name2]
     #BB.attach_group( G1, inds1[0], inds1[1], inds1[2], (1 ,2), up=(0.,0.,1.), _0=1  )
