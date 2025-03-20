@@ -191,7 +191,7 @@ class MolWorld_sp3_multi : public MolWorld_sp3, public MultiSolverInterface { pu
 
     const char* uploadPopName=0;
 
-    bool bMILAN = true;
+    bool bMILAN = false;
     bool bSaveToDatabase=false;
 
     long nStepConvSum = 0;
@@ -201,6 +201,9 @@ class MolWorld_sp3_multi : public MolWorld_sp3, public MultiSolverInterface { pu
     int  nbNonConverged=0;
     int  nbEvaluation=0;
     int  nExploring=0;
+
+    bool bOnlyRelax = false;
+    bool* bConverged=0;
 
 virtual int getMolWorldVersion() const override { return (int)MolWorldVersion::GPU; };
 
@@ -257,6 +260,7 @@ void initMultiCPU(int nSys){
     _realloc( opts, nSys );
     _realloc( ffls, nSys );
     _realloc( gopts,nSys );
+    _realloc( bConverged, nSys );
 
     double dtopt=ff.optimalTimeStep();
     for(int isys=0; isys<nSys; isys++){
@@ -280,6 +284,7 @@ void initMultiCPU(int nSys){
         //gopts[isys].constrs.printDrives( );
         gopts[isys].nExplore = go.nExplore;
         gopts[isys].nRelax   = go.nRelax;
+        bConverged[isys] = false;
     }
 }
 
@@ -759,7 +764,7 @@ bool updateMultiExploring( double Fconv=1e-6, float fsc = 0.02, float tsc = 0.3 
             }
         }
         else if( ( gopts[isys].istep > gopts[isys].nRelax ) && (!gopts[isys].bExploring)){
-            printf("(1) Entering non-converged branch for isys=%d, istep=%d\n", isys, gopts[isys].istep);
+            //printf("(1) Entering non-converged branch for isys=%d, istep=%d\n", isys, gopts[isys].istep);
 
             nbNonConverged++;
             nStepNonConvSum+=gopts[isys].istep;            
@@ -811,6 +816,7 @@ double evalVFs( double Fconv=1e-6 ){
     iSysFMax=-1;
     bool bGroupUpdate=false;
     for(int isys=0; isys<nSystems; isys++){
+        bConverged[isys]=false;
         nbEvaluation+=nPerVFs;
         int i0v = isys * ocl.nvecs;
         //evalVF( ocl.nvecs, aforces+i0v, avel   +i0v, fire[isys], MDpars[isys] );
@@ -818,10 +824,12 @@ double evalVFs( double Fconv=1e-6 ){
         double f2 = fire[isys].ff;
         if(f2>F2max){ F2max=f2; iSysFMax=isys; }
         // -------- Global Optimization
-        if( ( f2 < F2conv ) && (!gopts[isys].bExploring) ){            // Start Exploring
+        if( ( f2 < F2conv ) && (!gopts[isys].bExploring) ){
             int i0v = isys * ocl.nvecs;
             unpack( ffls[isys].nvecs,  ffls[isys].apos, atoms+i0v);
-            
+            bConverged[isys]=true;
+
+
             if(bMILAN){
                 int sameMember = database->addIfNewDescriptor(&ffls[isys]);
                 if(sameMember==-1){
@@ -852,7 +860,7 @@ double evalVFs( double Fconv=1e-6 ){
         //     //printf("MolWorld_sp3_multi::evalVFs() isys=%3i Stop Exploring \n", isys );
         //     for(int ig=0; ig<ocl.nGroup; ig++){ setGroupDrive(isys, ig, Vec3fZero, Vec3fZero ); }
         // };
-        if( gopts[isys].bExploring ){
+        if( gopts[isys].bExploring && !bOnlyRelax ){
             TDrive[isys].x = go.T_target;  // Temperature [K]
             TDrive[isys].y = go.gamma_damp;  // gamma_damp
             TDrive[isys].z = 0;    // ?
@@ -1199,6 +1207,48 @@ virtual void optimizeLattice_1d( int n1, int n2, Mat3d dlvec ){
     ///Mat3d dlvec =  Mat3d{   0.2,0.0,0.0,    0.0,0.0,0.0,    0.0,0.0,0.0  };
     gopt.lattice_scan_2d_multi( n1, dlvec, initMode, "lattice_scan_2d_multi.xyz" );
     
+}
+/////////////////////////////// Nejde stahovat data z GPU
+virtual void scan_relaxed( int nconf, Vec3d* poss, Mat3d* rots, Vec3d* dirs, double* Es, Vec3d* aforces, Vec3d* aposs, bool omp, int niter_max, double dt, double Fconv=1e-6, double Flim=1000, int ipicked=0 ){
+    printf("MolWorld_sp3::scan_relaxed(nconf=%i,omp=%i) @poss=%li @rots=%li @Es=%li @aforces=%li @aposs=%li \n", nconf, omp, (long)poss, (long)rots, (long)Es, (long)aforces, (long)aposs);
+    bOnlyRelax=true;
+    for(int i=0; i<nconf; ){
+        Vec3d pos; if(poss){ pos=poss[i]; }else{ pos=Vec3dZero; }
+        Mat3d rot; if(rots){ rot=rots[i]; }else{ rot=Mat3dIdentity; }
+        for (int iSys=0; iSys<nSystems; iSys++){
+            if( bConverged[iSys] && i < nconf ){
+                ocl.download( ocl.ibuff_cvf    , cvfs  );
+                ocl.finishRaw();
+                int i0v = iSys * ocl.nvecs;
+                unpack( ffls[iSys].nvecs,  ffls[iSys].apos, atoms+i0v);
+                ffl.copyOf( ffls[iSys] );
+                ffl.print();
+                double E = eval_no_omp();
+                if(Es){ Es[i]=E; }
+                ffls[iSys].setFromRef( ffls[iSys].apos, ffls[iSys].pipos, poss[i], rot );
+                ffls[iSys].print();
+                ocl.upload( ocl.ibuff_cvf   , cvfs   );
+                iSystemCur = iSys;
+                int i0a = ocl.nAtoms*iSystemCur;
+                constr [i0a + ipicked].f.set((Vec3f)poss[i]);
+                constr [i0a + ipicked].w = 1.0;
+                constrK[i0a + ipicked] = Quat4fOnes;
+                i++;
+                ocl.upload( ocl.ibuff_constr,  constr  );
+                ocl.upload( ocl.ibuff_constrK, constrK );
+
+            }                
+            printf( "iSys %i bConverged %i poss[%i] (%g,%g,%g) \n", iSys, bConverged[iSys], i, poss[i].x,poss[i].y,poss[i].z );
+        }
+        int niterdone = run_ocl_opt( niter_max, Fconv);
+    }
+
+    // for(int iSys=0; iSys<nSystems; iSys++){
+    //     if(aforces){ ffl.copyForcesTo( aforces + i*ffl.natoms ); }
+    //     if(aposs  ){ ffl.copyPosTo   ( aposs   + i*ffl.natoms ); }
+    // }
+    ffl.print();
+    printf("MolWorld_sp3::scan_relaxed() done \n");
 }
 
 int saveSysXYZ( int isys, const char* fname, const char* comment="#comment", bool bNodeOnly=false, const char* mode="w", Vec3i nPBC=Vec3i{1,1,1} ){ 
@@ -1596,14 +1646,15 @@ int debug_eval(){
     }
     exit(0);
 }
-
+double x_max=0;
+bool converged_lastloop=false;
 int run_ocl_opt( int niter, double Fconv=1e-6 ){ 
     //printf("MolWorld_sp3_multi::run_ocl_opt() niter=%i bGroups=%i ocl.nGroupTot=%i \n", niter, bGroups, ocl.nGroupTot );
     //for(int i=0;i<npbc;i++){ printf( "CPU ipbc %i shift(%7.3g,%7.3g,%7.3g)\n", i, pbc_shifts[i].x,pbc_shifts[i].y,pbc_shifts[i].z ); }
     //debug_eval(); return 0;
 
     double F2conv = Fconv*Fconv;
-    picked2GPU( ipicked,  1.0 );
+//    picked2GPU( ipicked,  1.0 );
 
     int err=0;
     if( task_MMFF==0)setup_MMFFf4_ocl();
@@ -1617,6 +1668,28 @@ int run_ocl_opt( int niter, double Fconv=1e-6 ){
     int niterdone=0;
     double F2=0;
 
+
+    // if(true){
+    //     pick_hray = (Vec3d){0.0,0.0,0.0};
+    //     for(int iSys=0; iSys<nSystems; iSys++){
+    //         if(gopts[iSys].bExploring && gopts[iSys].istep==nPerVFs){
+    //             x_max += 0.1;
+    //             iSystemCur = iSys;
+    //             pick_ray0 = Vec3dZero;
+    //             pick_ray0.set({x_max,0.0,0.0});
+    //             int i0a = ocl.nAtoms*iSystemCur;
+    //             constr [i0a + 0].f.set({x_max,0.0,0.0});
+    //             constr [i0a + 0].w = 1.0;
+    //             constrK[i0a + 0] = Quat4fOnes;
+    //             ocl.upload( ocl.ibuff_constr,  constr  );   // ToDo: instead of updating the whole buffer we may update just relevant part?
+    //             ocl.upload( ocl.ibuff_constrK, constrK );
+    //             printf( "iSys %i bExploring %i istep %i x_max %g \n", iSys, gopts[iSys].bExploring, gopts[iSys].istep, x_max );
+    //         }
+    //     }
+        
+    // }
+
+    bool bGroupDrive = false;
     bool dovdW=true;
     //bool dovdW=false;
     ocl.bSubtractVdW=dovdW;
@@ -1632,15 +1705,18 @@ int run_ocl_opt( int niter, double Fconv=1e-6 ){
             ocl.upload( ocl.ibuff_gforces, gforces );
         }
 
-        bExplore = false;
-        for(int isys=0; isys<nSystems; isys++){ 
-            if(gopts[isys].bExploring) bExplore = true; 
+        if (bGopt){
+            printf("MolWorld_sp3_multi::run_ocl_opt() bGopt=%i bGroups=%i \n", bGopt, bGroups );
+            bExplore = false;
+            for (int isys = 0; isys < nSystems; isys++){
+                if (gopts[isys].bExploring)
+                    bExplore = true;
+            }
+            bExplore = updateMultiExploring(Fconv);
+            bGroupDrive = bGroups && bExplore;
         }
 
         if(bAnimManipulation){ animate(); }
-
-        bExplore = updateMultiExploring( Fconv );
-        bool bGroupDrive = bGroups && bExplore;
         //bGroupDrive = false;
         
         //printf( "CPU::bbox(%g,%g,%g)(%g,%g,%g)(%g,%g,%g)\n", bbox.a.x,bbox.a.y,bbox.a.z,   bbox.b.x,bbox.b.y,bbox.b.z,   bbox.c.x,bbox.c.y,bbox.c.z );
