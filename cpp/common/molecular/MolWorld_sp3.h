@@ -2549,7 +2549,7 @@ void scan_rigid( int nconf, Vec3d* poss, Mat3d* rots, double* Es, Vec3d* aforces
     }
 }
 
-void scan_relaxed( int nconf, Vec3d* poss, Mat3d* rots, double* Es, Vec3d* aforces, Vec3d* aposs, bool omp, int niter_max, double dt, double Fconv=1e-6, double Flim=1000 ){
+virtual void scan_relaxed( int nconf, Vec3d* poss, Mat3d* rots, double* Es, Vec3d* aforces, Vec3d* aposs, bool omp, int niter_max, double dt, double Fconv=1e-6, double Flim=1000 ){
     printf("MolWorld_sp3::scan_relaxed(nconf=%i,omp=%i) @poss=%li @rots=%li @Es=%li @aforces=%li @aposs=%li \n", nconf, omp, (long)poss, (long)rots, (long)Es, (long)aforces, (long)aposs);
     Atoms atoms;
     atoms.copyOf( ffl );
@@ -2558,13 +2558,14 @@ void scan_relaxed( int nconf, Vec3d* poss, Mat3d* rots, double* Es, Vec3d* aforc
         Vec3d pos; if(poss){ pos=poss[i]; }else{ pos=Vec3dZero; }
         Mat3d rot; if(rots){ rot=rots[i]; }else{ rot=Mat3dIdentity; }
         ffl.setFromRef( atoms.apos, pipos.data(), pos, rot );
+        int niterdone = run_no_omp( niter_max, dt, Fconv);
         double E = eval_no_omp();
-        int niterdone = run_no_omp( niter_max, dt, Fconv, Flim, 1000.0);
         if(Es){ Es[i]=E; }
         if(aforces){ ffl.copyForcesTo( aforces + i*ffl.natoms ); }
         if(aposs  ){ ffl.copyPosTo   ( aposs   + i*ffl.natoms ); }
     }
 }
+
 
 // void makeGridFF( bool bSaveDebugXSFs=false, Vec3i nPBC={1,1,0} ) {
 //     gridFF.bindSystem(surf.natoms, 0, surf.apos, surf.REQs );

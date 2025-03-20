@@ -553,7 +553,18 @@ def scanBondRotation( ib, phi, nstep, Es=None, bWriteTrj=False, bPrintSel=False)
     return scanRotation( ias[0], ias[0], ias[1], phi, nstep, sel=None, Es=Es, bWriteTrj=bWriteTrj)
 
 
-
+#lib.scan.argtypes  = [c_int, array2d, array2d, array1d, array2d, array2d, c_bool, c_bool, c_int, c_double, c_double, c_double]
+# int  scan( int nconf, double* poss, double* rots, double* Es, double* aforces, double* aposs, bool omp, bool bRelax, int niter_max, double dt, double Fconv, double Flim ){
+lib.scan.argtypes = [ c_int, c_double_p, c_double_p, c_double_p, c_double_p, c_double_p, c_double_p, c_bool, c_bool, c_int, c_double, c_double, c_double ]
+lib.scan.restype   =  None
+def scan(poss, rots=None, dirs=None,  Es=None, aforces=None, aposs=None,  bF=False,bP=False, omp=False, bRelax=False, niter_max=10000, dt=0.05, Fconv=1e-5, Flim=100.0 ):
+    nconf=len(poss)
+    if Es is None: Es=np.zeros(nconf)
+    if (aforces is None) and bF: aforces=np.zeros( (nconf,natoms,3) )
+    if (aposs is None) and bP:   aposs=np.zeros(   (nconf,natoms,3) )
+    #lib.scan(nconf, poss, rots, Es, aforces, aposs, omp, bRelax, niter_max, dt, Fconv, Flim )
+    lib.scan( nconf, _np_as(poss,c_double_p), _np_as(rots,c_double_p), _np_as(dirs,c_double_p), _np_as(Es,c_double_p), _np_as(aforces,c_double_p), _np_as(aposs,c_double_p), omp, bRelax, niter_max, dt, Fconv, Flim )
+    return Es, aforces, aposs 
 
 
 # ====================================
