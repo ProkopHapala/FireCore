@@ -1,8 +1,4 @@
-<<<<<<< HEAD
-=======
-
->>>>>>> 05c5a1286957b0e418442d99345a3686e3e55953
-#ifndef MolWorld_sp3_h
+﻿﻿#ifndef MolWorld_sp3_h
 #define MolWorld_sp3_h
 /// @file MolWorld_sp3.h @brief contains MolWorld_sp3 class, which is a comprehensive class storing the state of a molecular simulation including bonding,non-bodning of molecules and molecules with substrate
 /// @ingroup Classical_Molecular_Mechanics
@@ -2669,7 +2665,7 @@ void scan_constr( int nconf, int nconstr, int *icontrs, Quat4d* contrs_, double*
             printf("scan_constr()[i=%i] constr %i ia %i (%16.8f,%16.8f,%16.8f,%16.8f)\n", i, ic, ia, ffl.constr[ia].x, ffl.constr[ia].y, ffl.constr[ia].z, ffl.constr[ia].w );
             if(bHardConstrs) if( ffl.constr[i].w>1e-9 ){ ffl.apos[ia] = ffl.constr[i].f; ffl.vapos[i]=Vec3dZero; };
         }
-        int niterdone = run_no_omp( niter_max, dt, Fconv, Flim, 1000.0,0,0,0,0,ipicked);
+        int niterdone = run_no_omp( niter_max, dt, Fconv, Flim, 1000.0,);
         double E = eval_no_omp();
         if(Es){ Es[i]=E; }
         if(aforces){ ffl.copyForcesTo( aforces + i*ffl.natoms ); }

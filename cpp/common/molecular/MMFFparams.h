@@ -544,12 +544,7 @@ class MMFFparams{ public:
         auto it       = bonds_.find(id);
         if( it != bonds_.end() ){ return it->second; } 
         if(bParrents==0){
-<<<<<<< HEAD
-            if(reportIfMissing){ printf("WARNING getBondParams(ityp=%i,jtyp=%i,order=%i) missing, trying find by parents(%i,%i) \n", ityp, jtyp, order,   
-            atypes[ityp].parrent, atypes[jtyp].parrent ); };
-=======
             if(reportIfMissing){ printf("WARNING getBondType(ityp=%i=%s,jtyp=%i=%s,order=%i) missing, trying find by parents(%i,%i) \n", ityp, atypes[ityp].name, jtyp,  atypes[jtyp].name, order,   atypes[ityp].parrent, atypes[jtyp].parrent ); };
->>>>>>> 05c5a1286957b0e418442d99345a3686e3e55953
             id  = BondType::getId( atypes[ityp].parrent,        jtyp,          order ); it = bonds_.find(id); if(it!=bonds_.end()){ return it->second; } 
             id  = BondType::getId(        ityp,          atypes[jtyp].parrent, order ); it = bonds_.find(id); if(it!=bonds_.end()){ return it->second; } 
             id  = BondType::getId( atypes[ityp].parrent, atypes[jtyp].parrent, order ); it = bonds_.find(id); if(it!=bonds_.end()){ return it->second; } 
