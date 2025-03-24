@@ -31,7 +31,7 @@ export OMP_NUM_THREADS
 LD_PRELOAD=$(g++ -print-file-name=libasan.so)
 LD_PRELOAD=$LD_PRELOAD  $(g++ -print-file-name=libfftw3.so)
 echo   $LD_PRELOAD
-#export LD_PRELOAD
+export LD_PRELOAD
 # --- ignore memory leaks in ASAM
 #export LSAN_OPTIONS=detect_leaks=0
 
@@ -41,7 +41,7 @@ python3 run.py
 #python3 run_propandiol.py
 #python3 run_sample.py
 #python3 run_Hbonds.py
-python3 run_sample_func.py
+#python3 run_sample_func.py
 #python3 run_sample_Bsplines.py
 #python3 run_sample_Hermite.py
 #python3 run_test_ewald.py

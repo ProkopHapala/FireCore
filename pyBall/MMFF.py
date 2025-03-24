@@ -932,8 +932,11 @@ def getBuffs( NEIGH_MAX=4 ):
     ndims = getIBuff( "ndims", (9,) )  # [nDOFs,natoms,nnode,ncap,npi,nbonds]
     global nDOFs,natoms,nnode,ncap,npi,nvecs,nbonds,ne,ie0
     # MFF_lib.cpp::init_buffers() ndims{nDOFs=9,natoms=3,nnode=1,ncap=2,npi=0,nbonds=2,nvecs=3,ne=0,ie0=3}
-    nDOFs=ndims[0]; natoms=ndims[1];  nnode=ndims[2]; ncap=ndims[3]; npi=ndims[4]; nbonds=ndims[5]; nvecs=ndims[6]; ne=ndims[7]; ie0=ndims[8]
-    print( "getBuffs(): nDOFs=%i nvecs=%i  natoms=%i nnode=%i ncap=%i npi=%i nbonds=%i nvecs=%i ne=%i ie0=%i " %(nDOFs,nvecs,natoms,nnode,ncap,npi,nbonds,nvecs,ne,ie0) )
+    if glob_bUFF:
+        natoms=ndims[0];
+    else:
+        nDOFs=ndims[0]; natoms=ndims[1];  nnode=ndims[2]; ncap=ndims[3]; npi=ndims[4]; nbonds=ndims[5]; nvecs=ndims[6]; ne=ndims[7]; ie0=ndims[8]
+        print( "getBuffs(): nDOFs=%i nvecs=%i  natoms=%i nnode=%i ncap=%i npi=%i nbonds=%i nvecs=%i ne=%i ie0=%i " %(nDOFs,nvecs,natoms,nnode,ncap,npi,nbonds,nvecs,ne,ie0) )
     Es    = getBuff ( "Es",    (6,) )  # [ Etot,Eb,Ea, Eps,EppT,EppI; ]
     global DOFs,fDOFs,vDOFs,apos,fapos,REQs,PLQs,pipos,fpipos,bond_l0,bond_k, bond2atom,neighs,selection
     #Ebuf     = getEnergyTerms( )
@@ -942,7 +945,7 @@ def getBuffs( NEIGH_MAX=4 ):
     fapos     = getBuff ( "fapos",    (natoms,3) )
     REQs      = getBuff ( "REQs",     (natoms,4) )
     PLQs      = getBuff ( "PLQs",     (natoms,4) )
-    if glob_bMMFF:
+    if glob_bMMFF and not glob_bUFF:
         DOFs      = getBuff ( "DOFs",     (nvecs,3)  )
         fDOFs     = getBuff ( "fDOFs",    (nvecs,3)  ) 
         vDOFs     = getBuff ( "vDOFs",    (nvecs,3)  ) 
@@ -1036,8 +1039,9 @@ def init(
         bConj=True,
         bCumulene=True
     ):
-    global glob_bMMFF
+    global glob_bMMFF, glob_bUFF
     glob_bMMFF = bMMFF
+    glob_bUFF  = bUFF
     nPBC=np.array(nPBC,dtype=np.int32)
     return lib.init( cstr(xyz_name), cstr(surf_name), cstr(smile_name), bMMFF, bEpairs, bUFF, b141, bSimple, bConj, bCumulene, nPBC, gridStep, cstr(sElementTypes), cstr(sAtomTypes), cstr(sBondTypes), cstr(sAngleTypes), cstr(sDihedralTypes) )
 
@@ -1201,6 +1205,7 @@ def scan_constr( icontrs, contrs, Es=None, aforces=None, aposs=None, bHardConstr
     if Es is None: Es=np.zeros(nconf)
     if (aforces is None) and bF: aforces=np.zeros( (nconf,natoms,3) )
     if (aposs is None) and bP:   aposs=np.zeros(   (nconf,natoms,3) )
+    print( "!!!!!!!!!! scan_constr", nconf, natoms, aforces.shape, aposs.shape )
     lib.scan_constr( nconf, ncontr, _np_as(icontrs,c_int_p), _np_as(contrs,c_double_p), _np_as(Es,c_double_p), _np_as(aforces,c_double_p), _np_as(aposs,c_double_p), bHardConstr, omp, niter_max, dt, Fconv, Flim ) 
     return Es, aforces, aposs
 

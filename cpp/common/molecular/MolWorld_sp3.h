@@ -1422,6 +1422,7 @@ void printPBCshifts(){
             setNonBond( bNonBonded );
             ffu.go = &go;
             nbmol.evalPLQs(gridFF.alphaMorse);
+            DEBUG
             ffu.atomForceFunc = [&](int ia,const Vec3d p,Vec3d& f)->double{    
                 //printf( "ffu.atomForceFunc() ia=%i \n", ia  );
                 double E=0;
@@ -1443,12 +1444,13 @@ void printPBCshifts(){
                 
                 return E;
             };
-
+            DEBUG
             if(bOptimizer){ 
                 //setOptimizer( ffu.nDOFs, ffu.DOFs, ffu.fDOFs );
                 setOptimizer( ffu.natoms*3, (double*)ffu.apos, (double*)ffu.fapos );
                 ffu.vapos = (Vec3d*)opt.vel;
-            }                         
+            }    
+            DEBUG                     
         }else{
             DEBUG
             //ffl.realloc( builder.atoms.size() );
@@ -1487,6 +1489,7 @@ void printPBCshifts(){
             printf("makeFFs(): ffl  .print_nonbonded() \n"); ffl  .print_nonbonded(); 
             printf("makeFFs(): nbmol.print_nonbonded() \n"); nbmol.print_nonbonded(); 
             //exit(0);
+            DEBUG
             if(bOptimizer){ 
                 //setOptimizer(); 
                 //setOptimizer( ff.nDOFs, ff .DOFs,  ff.fDOFs );
@@ -2053,6 +2056,8 @@ void pullAtom( int ia, Vec3d* apos, Vec3d* fapos, float K=-2.0 ){
         long T0 = getCPUticks();
         int nitr=0;
         if(bUFF){
+            //ffu.printSizes();
+            //ffu.printPointers();
             switch(iParalel){
                 case  0: nitr=ffu.run    ( nIter, dt_default, Ftol, 1000.0 ); break;
                 case  1: nitr=ffu.run_omp( nIter, dt_default, Ftol, 1000.0 ); break;
@@ -2645,7 +2650,7 @@ void scan_relaxed( int nconf, Vec3d* poss, Mat3d* rots, double* Es, Vec3d* aforc
     }
 }
 
-
+// Without taing the previous position
 // void scan_constr( int nconf, int nconstr, int *icontrs, Quat4d* contrs_, double* Es, Vec3d* aforces, Vec3d* aposs, bool bHardConstr_, bool omp, int niter_max, double dt, double Fconv=1e-6, double Flim=1000 ){
 //     printf("MolWorld_sp3::scan_relaxed_constr(nconf=%i,nconstr=%i,omp=%i)  dt=%g Fconv=%g Flim=%g @icontrs=%p @contrs=%p @Es=%p @aforces=%p @aposs=%p \n", nconf, nconstr, omp,  dt, Fconv, Flim, icontrs, contrs_,  Es, aforces, aposs );
 //     Atoms atoms;
@@ -2676,44 +2681,135 @@ void scan_relaxed( int nconf, Vec3d* poss, Mat3d* rots, double* Es, Vec3d* aforc
 //     }
 // }
 
+
+// Working fine 
+// void scan_constr( int nconf, int nconstr, int *icontrs, Quat4d* contrs_, double* Es, Vec3d* aforces, Vec3d* aposs, bool bHardConstr_, bool omp, int niter_max, double dt, double Fconv=1e-6, double Flim=1000 ){
+//     printf("MolWorld_sp3::scan_relaxed_constr(nconf=%i,nconstr=%i,omp=%i)  dt=%g Fconv=%g Flim=%g @icontrs=%p @contrs=%p @Es=%p @aforces=%p @aposs=%p \n", nconf, nconstr, omp,  dt, Fconv, Flim, icontrs, contrs_,  Es, aforces, aposs );
+//     Atoms atoms;
+//     atoms.copyOf( ffl );
+//     std::vector<Vec3d> pipos(ffl.nnode); for(int i=0; i<ffl.nnode; i++){ pipos[i]=ffl.pipos[i]; }
+//     bHardConstrs = bHardConstr_;
+//     std::vector<Vec3d> initial_Pos(ffl.natoms);
+//     for(int i=0; i<ffl.natoms; i++) {
+//         initial_Pos[i] = ffl.apos[i];
+//     }
+//     for(int i=0; i<nconf; i++){        
+//         for(int ia=0; ia<ffl.natoms; ia++){ 
+//             ffl.constr[ia]=Quat4dZero; 
+//             ffl.vapos[i]=Vec3dZero;
+//         }
+        
+//         for(int ic=0; ic<nconstr; ic++){ 
+//             int ia = icontrs[ic];
+//             ffl.constr[ia]=contrs_[i*nconstr+ic];
+//             ffl.constr[ia].f.x = initial_Pos[ia].x + ffl.constr[ia].x;
+//             ffl.constr[ia].f.y = initial_Pos[ia].y + ffl.constr[ia].y;
+//             ffl.constr[ia].f.z = initial_Pos[ia].z + ffl.constr[ia].z;
+
+
+//             printf("scan_constr()[i=%i] constr %i ia %i contr (%16.8f,%16.8f,%16.8f,%16.8f) initial (%16.8f,%16.8f,%16.8f) apos (%16.8f,%16.8f,%16.8f)\n", i, ic, ia, ffl.constr[ia].x, ffl.constr[ia].y, ffl.constr[ia].z, ffl.constr[ia].w,initial_Pos[ia].x,initial_Pos[ia].y,initial_Pos[ia].z,ffl.apos[ia].x,ffl.apos[ia].y,ffl.apos[ia].z );
+            
+//             if(bHardConstrs) if( ffl.constr[ia].w>1e-9 ){ ffl.apos[ia] = ffl.constr[ia].f; ffl.vapos[i]=Vec3dZero; };
+
+//             printf("scan_constr()[i=%i] constr %i ia %i contr (%16.8f,%16.8f,%16.8f,%16.8f) initial (%16.8f,%16.8f,%16.8f) apos (%16.8f,%16.8f,%16.8f)\n", i, ic, ia, ffl.constr[ia].x, ffl.constr[ia].y, ffl.constr[ia].z, ffl.constr[ia].w ,initial_Pos[ia].x,initial_Pos[ia].y,initial_Pos[ia].z,ffl.apos[ia].x,ffl.apos[ia].y,ffl.apos[ia].z );
+//         }
+        // int niterdone = run_no_omp( niter_max, dt, Fconv, Flim, 1000.0);
+//         double E = eval_no_omp();
+//         if(Es){ Es[i]=E; }
+//         if(aforces){ ffl.copyForcesTo( aforces + i*ffl.natoms ); }
+//         if(aposs  ){ ffl.copyPosTo   ( aposs   + i*ffl.natoms ); }
+//         saveXYZ( "scan_constr.xyz", "#", 1, "a" );
+//     }
+// }
+
+
+// scan_constr_uff 
 void scan_constr( int nconf, int nconstr, int *icontrs, Quat4d* contrs_, double* Es, Vec3d* aforces, Vec3d* aposs, bool bHardConstr_, bool omp, int niter_max, double dt, double Fconv=1e-6, double Flim=1000 ){
-    printf("MolWorld_sp3::scan_relaxed_constr(nconf=%i,nconstr=%i,omp=%i)  dt=%g Fconv=%g Flim=%g @icontrs=%p @contrs=%p @Es=%p @aforces=%p @aposs=%p \n", nconf, nconstr, omp,  dt, Fconv, Flim, icontrs, contrs_,  Es, aforces, aposs );
+    printf("MolWorld_sp3::scan_relaxed_constr_uff(nconf=%i,nconstr=%i,omp=%i)  dt=%g Fconv=%g Flim=%g @icontrs=%p @contrs=%p @Es=%p @aforces=%p @aposs=%p \n", nconf, nconstr, omp,  dt, Fconv, Flim, icontrs, contrs_,  Es, aforces, aposs );
+    
+    ffu.printSizes();
+    ffu.printPointers();
+    
+    // Store original bUFF value to restore later
+    //bool original_bUFF = bUFF;
+    // Enable UFF force field
+    //bUFF = true;
+    //makeFFs();
+    
     Atoms atoms;
-    atoms.copyOf( ffl );
-    std::vector<Vec3d> pipos(ffl.nnode); for(int i=0; i<ffl.nnode; i++){ pipos[i]=ffl.pipos[i]; }
+    atoms.copyOf( ffu );
+    //std::vector<Vec3d> pipos(ffu.nnode); for(int i=0; i<ffu.nnode; i++){ pipos[i]=ffu.pipos[i]; }
     bHardConstrs = bHardConstr_;
-    std::vector<Vec3d> initial_Pos(ffl.natoms);
-    for(int i=0; i<ffl.natoms; i++) {
-        initial_Pos[i] = ffl.apos[i];
+    std::vector<Vec3d> initial_Pos(ffu.natoms);
+    for(int i=0; i<ffu.natoms; i++) {
+        initial_Pos[i] = ffu.apos[i];
     }
+
     for(int i=0; i<nconf; i++){        
-        for(int ia=0; ia<ffl.natoms; ia++){ 
-            ffl.constr[ia]=Quat4dZero; 
-            ffl.vapos[i]=Vec3dZero;
+        for(int ia=0; ia<ffu.natoms; ia++){ 
+            ffu.constr[ia]=Quat4dZero; 
+            ffu.vapos[i]=Vec3dZero;
         }
         
         for(int ic=0; ic<nconstr; ic++){ 
             int ia = icontrs[ic];
-            ffl.constr[ia]=contrs_[i*nconstr+ic];
-            ffl.constr[ia].f.x = initial_Pos[ia].x + ffl.constr[ia].x;
-            ffl.constr[ia].f.y = initial_Pos[ia].y + ffl.constr[ia].y;
-            ffl.constr[ia].f.z = initial_Pos[ia].z + ffl.constr[ia].z;
+            if(ia < 0 || ia >= ffu.natoms) {
+                printf("ERROR: Invalid atom index %d in constraint %d\n", ia, ic);
+                continue;
+            }
+            ffu.constr[ia]=contrs_[i*nconstr+ic];
+            ffu.constr[ia].f.x = initial_Pos[ia].x + ffu.constr[ia].x;
+            ffu.constr[ia].f.y = initial_Pos[ia].y + ffu.constr[ia].y;
+            ffu.constr[ia].f.z = initial_Pos[ia].z + ffu.constr[ia].z;
 
 
-            printf("scan_constr()[i=%i] constr %i ia %i contr (%16.8f,%16.8f,%16.8f,%16.8f) initial (%16.8f,%16.8f,%16.8f) apos (%16.8f,%16.8f,%16.8f)\n", i, ic, ia, ffl.constr[ia].x, ffl.constr[ia].y, ffl.constr[ia].z, ffl.constr[ia].w,initial_Pos[ia].x,initial_Pos[ia].y,initial_Pos[ia].z,ffl.apos[ia].x,ffl.apos[ia].y,ffl.apos[ia].z );
+            printf("scan_constr()[i=%i] constr %i ia %i contr (%16.8f,%16.8f,%16.8f,%16.8f) initial (%16.8f,%16.8f,%16.8f) apos (%16.8f,%16.8f,%16.8f)\n", i, ic, ia, 
+                ffu.constr[ia].x, ffu.constr[ia].y, ffu.constr[ia].z, ffu.constr[ia].w,initial_Pos[ia].x,initial_Pos[ia].y,initial_Pos[ia].z,ffu.apos[ia].x,ffu.apos[ia].y,ffu.apos[ia].z );
             
-            if(bHardConstrs) if( ffl.constr[ia].w>1e-9 ){ ffl.apos[ia] = ffl.constr[ia].f; ffl.vapos[i]=Vec3dZero; };
+            if(bHardConstrs) if( ffu.constr[ia].w>1e-9 ){ ffu.apos[ia] = ffu.constr[ia].f; ffu.vapos[i]=Vec3dZero; };
 
-            printf("scan_constr()[i=%i] constr %i ia %i contr (%16.8f,%16.8f,%16.8f,%16.8f) initial (%16.8f,%16.8f,%16.8f) apos (%16.8f,%16.8f,%16.8f)\n", i, ic, ia, ffl.constr[ia].x, ffl.constr[ia].y, ffl.constr[ia].z, ffl.constr[ia].w ,initial_Pos[ia].x,initial_Pos[ia].y,initial_Pos[ia].z,ffl.apos[ia].x,ffl.apos[ia].y,ffl.apos[ia].z );
+            printf("scan_constr()[i=%i] constr %i ia %i contr (%16.8f,%16.8f,%16.8f,%16.8f) initial (%16.8f,%16.8f,%16.8f) apos (%16.8f,%16.8f,%16.8f)\n", i, ic, ia, 
+                ffu.constr[ia].x, ffu.constr[ia].y, ffu.constr[ia].z, ffu.constr[ia].w ,initial_Pos[ia].x,initial_Pos[ia].y,initial_Pos[ia].z,ffu.apos[ia].x,ffu.apos[ia].y,ffu.apos[ia].z );
         }
-        int niterdone = run_no_omp( niter_max, dt, Fconv, Flim, 1000.0);
-        double E = eval_no_omp();
-        if(Es){ Es[i]=E; }
-        if(aforces){ ffl.copyForcesTo( aforces + i*ffl.natoms ); }
-        if(aposs  ){ ffl.copyPosTo   ( aposs   + i*ffl.natoms ); }
-        saveXYZ( "scan_constr.xyz", "#", 1, "a" );
+        
+        // Run relaxation using UFF
+        int niterdone;
+        // if (omp) {
+        //     niterdone = ffu.run_omp(niter_max, dt, Fconv, Flim);
+        // } else {
+        //     niterdone = ffu.run(niter_max, dt, Fconv, Flim);
+        // }
+        
+        niterdone = ffu.run_omp(niter_max, dt, Fconv, Flim);
+
+        // Evaluate energy using UFF
+        double E = ffu.eval();
+        
+        if(Es) { Es[i] = E; }
+        
+        // Copy forces and positions if requested
+        if(aforces) {
+            for(int ja=0; ja<ffu.natoms; ja++) {
+                printf("scan_constr()[i=%i] ja %i fapos(%16.8f,%16.8f,%16.8f)\n", i, ja, ffu.fapos[ja].x, ffu.fapos[ja].y, ffu.fapos[ja].z );
+                aforces[i*ffu.natoms + ja] = ffu.fapos[ja];
+            }
+        }
+        
+        if(aposs) {
+            for(int ja=0; ja<ffu.natoms; ja++) {
+                printf("scan_constr()[i=%i] ja %i apos(%16.8f,%16.8f,%16.8f)\n", i, ja, ffu.apos[ja].x, ffu.apos[ja].y, ffu.apos[ja].z );
+                aposs[i*ffu.natoms + ja] = ffu.apos[ja];
+            }
+        }
+        
+        // Save trajectory if needed
+        saveXYZ("scan_constr_uff.xyz", "#", 1, "a");
     }
+    
+    // Restore original bUFF value
+    //bUFF = original_bUFF;
 }
+
 
 
 
