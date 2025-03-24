@@ -97,6 +97,9 @@ class UFF : public NBFF { public:
     Vec3i * dihNgs __attribute__((aligned(64))) = 0; // [ndihedrals]  dihedrals neighbor index
     Vec3i * invNgs __attribute__((aligned(64))) = 0; // [ninversions] inversions neighbor index
 
+    Quat4d* constr  __attribute__((aligned(64))) = 0; // [natom]  constraints
+    Quat4d* constrK __attribute__((aligned(64))) = 0; // [natom]  constraints
+
     /*
     // TBD this can be done on interactions e.g. f from bonds, f from angles...
     Vec3d * fneigh  =0;  // [nnode*4]     temporary store of forces on atoms form neighbors (before assembling step)
@@ -136,6 +139,7 @@ class UFF : public NBFF { public:
         _realloc0( apos    , natoms, Vec3dNAN );
         _realloc0( fapos   , natoms, Vec3dNAN );
         _realloc0( vapos   , natoms, Vec3dNAN );  
+        _realloc0( REQs      , natoms, Quat4dZero      );
 
         _realloc0( neighs    , natoms,   Quat4iMinusOnes );  // neighbor indices for each atom
         _realloc0( neighBs   , natoms,   Quat4iMinusOnes );  // bond indices for each neighbor
@@ -170,6 +174,9 @@ class UFF : public NBFF { public:
         _realloc0( invNgs    , ninversions, Vec3iZero  );
         _realloc0( dihNgs    , ndihedrals,  Vec3iZero  );
 
+        _realloc0( constr  , natoms, Quat4dNAN );
+        _realloc0( constrK , natoms, Quat4dNAN );
+
     }
 
     // deallocate UFF
@@ -203,6 +210,9 @@ class UFF : public NBFF { public:
         _dealloc(angNgs);
         _dealloc(dihNgs);
         _dealloc(invNgs);
+
+        _dealloc(constr);
+        _dealloc(constrK);
 
     }
 
@@ -1244,13 +1254,13 @@ class UFF : public NBFF { public:
 
 
     // constrain atom to fixed position
-    /*
+    
     void constrainAtom( int ia, double Kfix=1.0 ){
         printf( "constrainAtom(i=%i,K=%g)\n", ia, Kfix );
         constr[ia].f=apos[ia];
         constr[ia].w=Kfix;
     };
-    */
+    
 
 
     // Full evaluation of UFF intramolecular force-field
@@ -1346,6 +1356,11 @@ class UFF : public NBFF { public:
 
 
    // ============== Move atoms in order to minimize energy
+    //std::vector<Quat4d> constr;    // Constraints
+    //std::vector<Vec3d> vapos;      // Velocities
+    bool bHardConstrs = false;     // Flag for hard constraints
+
+
     __attribute__((hot))  
     int run( int niter, double dt, double Fconv, double Flim, double damping=0.1 ){
         //printSizes();
@@ -1427,6 +1442,12 @@ class UFF : public NBFF { public:
                 }
                 //move_atom_MD( i, 0.05, 1000.0, 0.9 );
                 //F2 += move_atom_kvaziFIRE( i, dt, Flim );
+                if(bHardConstrs) if( constr[i].w>1e-9 )[[unlikely]]{ 
+                    apos[i] = constr[i].f; 
+                    vapos[i]=Vec3dZero; 
+                };
+
+
             }
             if(  (!bExploring) && (cvf.z<F2conv)  ){
                 break;
@@ -1568,6 +1589,15 @@ class UFF : public NBFF { public:
                 else    { Enb+=evalLJQs_ng4_atom_omp    ( ia ); } 
                 if( atomForceFunc ) atomForceFunc( ia, apos[ia], fapos[ia] );
                 const Vec3d cvf_ = move_atom_MD( ia, dt, Flim, cdamp );
+
+                if(bHardConstrs) if( constr[ia].w>1e-9 )[[unlikely]]{ 
+                    apos[ia] = constr[ia].f; 
+                    vapos[ia]=Vec3dZero; 
+                    
+                }
+
+
+
                 ff += cvf_.x; vv += cvf_.y; vf += cvf_.z;
             }
             #pragma omp single
@@ -1598,7 +1628,153 @@ class UFF : public NBFF { public:
 
     // ================== Print functions  
     
-    void printSizes     (      ){ printf( "MMFFf4::printSizes(): natoms(%i) nbonds(%i) nangles(%i) ndihedrals(%i) ninversions(%i) npbc(%i)\n", natoms,nbonds,nangles,ndihedrals,ninversions,npbc); }
+    void printSizes     (      ){ printf( "UFF::printSizes(): natoms(%i) nbonds(%i) nangles(%i) ndihedrals(%i) ninversions(%i) npbc(%i)\n", natoms,nbonds,nangles,ndihedrals,ninversions,npbc); }
+    void printPointers(){
+
+        // Vec3d * fint __attribute__((aligned(64))) = 0;  // [ndihedrals+nimpropers+nangles*3+nbonds]  temporary store of forces on atoms from bonds (before the assembling step)
+        // Vec3d * fbon = 0;  // [nbonds      ] store forces from bonds     (before the assembling step) - Note: Maybe we should not use this for bonds, instead we do per-atom loop as in MMFFsp3_loc  
+        // Vec3d * fang = 0;  // [nangles*3   ] store forces from angles    (before the assembling step) - Note: Maybe we should not use this for angles, instead we do per-atom loop as in MMFFsp3_loc
+        // Vec3d * fdih = 0;  // [ndihedrals*4] store forces from dihedrals (before the assembling step)
+        // Vec3d * finv = 0;  // [nimpropers*4] store forces from imporper  (before the assembling step)
+    
+        // // Params
+        // Quat4i *  neighBs   __attribute__((aligned(64))) = 0; // [natoms]      bond indices for each neighbor
+        // Vec2i  *  bonAtoms  __attribute__((aligned(64))) = 0; // [nbonds]      bonds atoms
+        // Vec2d  *  bonParams __attribute__((aligned(64))) = 0; // [nbonds]      bonds parameters
+        // Vec3i  *  angAtoms  __attribute__((aligned(64))) = 0; // [nangles]     angles atoms
+        // double5*  angParams __attribute__((aligned(64))) = 0; // [nangles]     angles parameters
+        // Quat4i *  dihAtoms  __attribute__((aligned(64))) = 0; // [ndihedrals]  dihedrals atoms
+        // Vec3d  *  dihParams __attribute__((aligned(64))) = 0; // [ndihedrals]  dihedrals parameters
+        // Quat4i *  invAtoms  __attribute__((aligned(64))) = 0; // [ninversions] inversions atoms
+        // Quat4d *  invParams __attribute__((aligned(64))) = 0; // [ninversions] inversions parameters
+    
+        // Vec2i * angNgs __attribute__((aligned(64))) = 0; // [nangles]     angles neighbor index
+        // Vec3i * dihNgs __attribute__((aligned(64))) = 0; // [ndihedrals]  dihedrals neighbor index
+        // Vec3i * invNgs __attribute__((aligned(64))) = 0; // [ninversions] inversions neighbor index
+    
+        // Quat4d* constr  __attribute__((aligned(64))) = 0; // [natom]  constraints
+        // Quat4d* constrK __attribute__((aligned(64))) = 0; // [natom]  constraints
+    
+        // /*
+        // // TBD this can be done on interactions e.g. f from bonds, f from angles...
+        // Vec3d * fneigh  =0;  // [nnode*4]     temporary store of forces on atoms form neighbors (before assembling step)
+        // Vec3d * fneighpi=0;  // [nnode*4]     temporary store of forces on pi    form neighbors (before assembling step)
+        // */
+    
+        // Buckets a2f; // mapping from atoms to force pieces (bonds, angles, dihedrals, inversions) for fast force assembling 
+
+        printf("UFF::printPointers(): apos=%p, vapos=%p, fapos=%p, constr=%p\n", apos, vapos, fapos, constr);
+        printf("UFF::printPointers(): neighs=%p, neighBs=%p, neighCell=%p\n", neighs, neighBs, neighCell);
+        printf("UFF::printPointers(): atypes=%p, REQs=%p \n", atypes, REQs );
+        printf("UFF::printPointers(): bonAtoms=%p, bonParams=%p, angAtoms=%p, angParams=%p\n", bonAtoms, bonParams, angAtoms, angParams);
+        printf("UFF::printPointers(): dihAtoms=%p, dihParams=%p, invAtoms=%p, invParams=%p\n", dihAtoms, dihParams, invAtoms, invParams);
+        printf("UFF::printPointers(): angNgs=%p, dihNgs=%p, invNgs=%p\n", angNgs, dihNgs, invNgs);
+        printf("UFF::printPointers(): constr=%p, constrK=%p\n", constr, constrK);
+        //printf("UFF::printPointers(): fneigh=%p, fneighpi=%p\n", fneigh, fneighpi);
+
+
+    }
+    
+    // Debug print functions for UFF
+    void printAtomParams(int ia){ 
+        printf("atom[%i] type=%i REQ(%g,%g,%g) neigh{%3i,%3i,%3i,%3i} neighBs{%3i,%3i,%3i,%3i}\n", 
+            ia, atypes[ia], 
+            REQs[ia].x, REQs[ia].y, REQs[ia].z,
+            neighs[ia].x, neighs[ia].y, neighs[ia].z, neighs[ia].w,
+            neighBs[ia].x, neighBs[ia].y, neighBs[ia].z, neighBs[ia].w
+        ); 
+    }
+    
+    void printNeighs(int ia){ 
+        printf("atom[%i] neigh{%3i,%3i,%3i,%3i} neighCell{%3i,%3i,%3i,%3i}\n", 
+            ia, 
+            neighs[ia].x, neighs[ia].y, neighs[ia].z, neighs[ia].w,
+            neighCell[ia].x, neighCell[ia].y, neighCell[ia].z, neighCell[ia].w
+        ); 
+    }
+    
+    void printHneigh(int ia){
+        printf("atom[%i] hneigh vectors:\n", ia);
+        for(int j=0; j<4; j++){
+            int idx = ia*4+j;
+            if(neighs[ia].array[j] < 0) continue;
+            printf("  neigh[%i]: vec(%g,%g,%g) invLen=%g\n", 
+                j, hneigh[idx].f.x, hneigh[idx].f.y, hneigh[idx].f.z, hneigh[idx].e);
+        }
+    }
+    
+    void printBond(int ib){
+        printf("bond[%i] atoms{%i,%i} params(k=%g,r0=%g)\n", 
+            ib, bonAtoms[ib].x, bonAtoms[ib].y, bonParams[ib].x, bonParams[ib].y);
+    }
+    
+    void printAngle(int ia){
+        printf("angle[%i] atoms{%i,%i,%i} params(k=%g,c0=%g,c1=%g,c2=%g,c3=%g) neighs{%i,%i}\n", 
+            ia, angAtoms[ia].x, angAtoms[ia].y, angAtoms[ia].z, 
+            angParams[ia].k, angParams[ia].c0, angParams[ia].c1, angParams[ia].c2, angParams[ia].c3,
+            angNgs[ia].x, angNgs[ia].y);
+    }
+    
+    void printDihedral(int id){
+        printf("dihedral[%i] atoms{%i,%i,%i,%i} params(V=%g,n=%g,gamma=%g) neighs{%i,%i,%i}\n", 
+            id, dihAtoms[id].x, dihAtoms[id].y, dihAtoms[id].z, dihAtoms[id].w, 
+            dihParams[id].x, dihParams[id].y, dihParams[id].z,
+            dihNgs[id].x, dihNgs[id].y, dihNgs[id].z);
+    }
+    
+    void printInversion(int ii){
+        printf("inversion[%i] atoms{%i,%i,%i,%i} params(K=%g,C0=%g,C1=%g,C2=%g) neighs{%i,%i,%i}\n", 
+            ii, invAtoms[ii].x, invAtoms[ii].y, invAtoms[ii].z, invAtoms[ii].w, 
+            invParams[ii].x, invParams[ii].y, invParams[ii].z, invParams[ii].w,
+            invNgs[ii].x, invNgs[ii].y, invNgs[ii].z);
+    }
+    
+    void printForces(int ia){
+        printf("atom[%i] force(%g,%g,%g) magnitude=%g\n", 
+            ia, fapos[ia].x, fapos[ia].y, fapos[ia].z, fapos[ia].norm());
+    }
+    
+    void printEnergies(){
+        printf("UFF::Energies: Total=%g Bond=%g Angle=%g Dihedral=%g Inversion=%g\n", 
+            Etot, Eb, Ea, Ed, Ei);
+    }
+    
+    void printConstraints(int ia){
+        printf("constraint[%i] pos(%g,%g,%g) K=%g\n", 
+            ia, constr[ia].f.x, constr[ia].f.y, constr[ia].f.z, constr[ia].w);
+    }
+    
+    // Print all functions
+    void printAllAtomParams(){ printf("UFF::printAllAtomParams()\n"); for(int i=0; i<natoms; i++){ printAtomParams(i); } }
+    void printAllNeighs(){ printf("UFF::printAllNeighs()\n"); for(int i=0; i<natoms; i++){ printNeighs(i); } }
+    void printAllHneigh(){ printf("UFF::printAllHneigh()\n"); for(int i=0; i<natoms; i++){ printHneigh(i); } }
+    void printAllBonds(){ printf("UFF::printAllBonds()\n"); for(int i=0; i<nbonds; i++){ printBond(i); } }
+    void printAllAngles(){ printf("UFF::printAllAngles()\n"); for(int i=0; i<nangles; i++){ printAngle(i); } }
+    void printAllDihedrals(){ printf("UFF::printAllDihedrals()\n"); for(int i=0; i<ndihedrals; i++){ printDihedral(i); } }
+    void printAllInversions(){ printf("UFF::printAllInversions()\n"); for(int i=0; i<ninversions; i++){ printInversion(i); } }
+    void printAllForces(){ printf("UFF::printAllForces()\n"); for(int i=0; i<natoms; i++){ printForces(i); } }
+    void printAllConstraints(){ printf("UFF::printAllConstraints()\n"); for(int i=0; i<natoms; i++){ if(constr[i].w > 0) printConstraints(i); } }
+    
+    void printAtomPositions(){
+        printf("UFF::printAtomPositions()\n");
+        for(int i=0; i<natoms; i++){
+            printf("atom[%i] pos(%g,%g,%g)\n", i, apos[i].x, apos[i].y, apos[i].z);
+        }
+    }
+    
+    void printSystemState(){
+        printf("\n=== UFF System State ===\n");
+        printSizes();
+        printEnergies();
+        printf("--- Atom Positions and Forces ---\n");
+        for(int i=0; i<natoms; i++){
+            printf("atom[%i] pos(%g,%g,%g) force(%g,%g,%g)\n", 
+                i, apos[i].x, apos[i].y, apos[i].z, 
+                fapos[i].x, fapos[i].y, fapos[i].z);
+        }
+        printf("============================\n\n");
+    }
+    
     /*
     void printAtomParams(int ia){ printf("atom[%i] t%i ngs{%3i,%3i,%3i,%3i} par(%5.3f,%5.3f,%5.3f,%5.3f)  bL(%5.3f,%5.3f,%5.3f,%5.3f) bK(%6.3f,%6.3f,%6.3f,%6.3f)  Ksp(%5.3f,%5.3f,%5.3f,%5.3f) Kpp(%5.3f,%5.3f,%5.3f,%5.3f) \n", ia, atypes[ia], neighs[ia].x,neighs[ia].y,neighs[ia].z,neighs[ia].w,    apars[ia].x,apars[ia].y,apars[ia].z,apars[ia].w,    bLs[ia].x,bLs[ia].y,bLs[ia].z,bLs[ia].w,   bKs[ia].x,bKs[ia].y,bKs[ia].z,bKs[ia].w,     Ksp[ia].x,Ksp[ia].y,Ksp[ia].z,Ksp[ia].w,   Kpp[ia].x,Kpp[ia].y,Kpp[ia].z,Kpp[ia].w  ); };
     void printNeighs    (int ia){ printf("atom[%i] neigh{%3i,%3i,%3i,%3i} neighCell{%3i,%3i,%3i,%3i} \n", ia, neighs[ia].x,neighs[ia].y,neighs[ia].z,neighs[ia].w,   neighCell[ia].x,neighCell[ia].y,neighCell[ia].z,neighCell[ia].w ); }
@@ -1681,4 +1857,3 @@ class UFF : public NBFF { public:
 };
 
 #endif
-

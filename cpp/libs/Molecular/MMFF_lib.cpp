@@ -70,7 +70,23 @@ void init_buffers(){
     buffers .insert( { "apos",   (double*)W.nbmol.apos  } );
     buffers .insert( { "fapos",  (double*)W.nbmol.fapos } );
     buffers .insert( { "REQs",   (double*)W.nbmol.REQs  } );
-    if(W.bMMFF){
+    if (W.bUFF){
+        buffers .insert( { "DOFs",   (double*)   W.ffu.apos  } );
+        buffers .insert( { "fDOFs",  (double*)   W.ffu.fapos } );
+        buffers .insert( { "vDOFs",  (double*)   W.ffu.vapos   } );
+        //buffers .insert( { "REQs",   (double*)W.ffl.REQs  } );
+        buffers .insert( { "PLQs",   (double*)W.nbmol.PLQd  } );
+        //buffers .insert( { "pipos",  (double*)W.ffl.pipos   } );
+        //buffers .insert( { "fpipos", (double*)W.ffl.fpipos } );
+        //ibuffers.insert( { "neighs",      (int*)W.ffl.neighs  } );
+
+        ibuffers.insert( { "ndims",    &W.ffu.natoms } );
+        buffers .insert( { "Es",       &W.ffu.Etot   } );
+
+    }else if(W.bMMFF){
+        ibuffers.insert( { "ndims",    &W.ffl.nDOFs } );
+        buffers .insert( { "Es",       &W.ffl.Etot  } );
+
         buffers .insert( { "DOFs",      W.ffl.DOFs  } );
         buffers .insert( { "fDOFs",     W.ffl.fDOFs } );
         buffers .insert( { "vDOFs",     W.opt.vel  } );
@@ -78,15 +94,14 @@ void init_buffers(){
         buffers .insert( { "PLQs",   (double*)W.ffl.PLQd  } );
         if(!W.bUFF){
             buffers .insert( { "pipos",  (double*)W.ffl.pipos   } );
-            buffers .insert( { "fpipos", (double*)W.ffl.fpipos } );
-            ibuffers.insert( { "neighs",      (int*)W.ffl.neighs  } );
+            buffers .insert( { "fpipos", (double*)W.ffl.fpipos }  );
+            ibuffers.insert( { "neighs", (int*)W.ffl.neighs  }    );
         }
-    }else{
+    } else{
         W.ff.natoms=W.nbmol.natoms;
     }
     printf( "MMFF_lib.cpp::init_buffers() ndims{nDOFs=%i,natoms=%i,nnode=%i,ncap=%i,npi=%i,nbonds=%i,nvecs=%i,ne=%i,ie0=%i}\n", W.ff.nDOFs, W.ff.natoms, W.ff.nnode, W.ff.ncap, W.ff.npi, W.ff.nbonds, W.ff.nvecs, W.ff.ne, W.ff.ie0 );
-    ibuffers.insert( { "ndims",    &W.ff.nDOFs } );
-    buffers .insert( { "Es",       &W.ff.Etot  } );
+
     ibuffers.insert( { "selection", W.manipulation_sel  } );
     bbuffers.insert( { "ffflags", &W.doBonded  } );
     //printBuffNames();
