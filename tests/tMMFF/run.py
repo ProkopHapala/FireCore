@@ -181,6 +181,7 @@ def relax_scanPlot1D(nscan=1000, span=(0.0,4.0),
     poss[:, 1] = p0[1] + t*dir[1]
     poss[:, 2] = p0[2] + t*dir[2]
     
+    print(f"poss: {poss.shape}", poss )
     # Call the scan function using the computed positions
     # if bRelax:
     #     Es, Fs, Ps = mmff.scan(poss, bF=True, bP=True, bRelax=True, niter_max=niter_max, dt=dt, Fconv=Fconv)
@@ -189,7 +190,7 @@ def relax_scanPlot1D(nscan=1000, span=(0.0,4.0),
 
     # scan_constr(nconf, ncontr, icontrs, contrs, Es=None, aforces=None, aposs=None, bHardConstr=False, omp=False, niter_max=10000, dt=0.05, Fconv=1e-5, Flim=100.0 ):
     iconstr = np.array( [29], np.int32)
-    nconf = 10
+    # nconf = 10
     contrs = np.zeros( (nscan,len(iconstr),4), np.float64)
     contrs[:,0,0] = poss[:,0] # x
     contrs[:,0,1] = poss[:,1] # y
@@ -198,6 +199,8 @@ def relax_scanPlot1D(nscan=1000, span=(0.0,4.0),
     print(f"contrs: {contrs.shape}", contrs )
     print(f"iconstr: {iconstr.shape}", iconstr )
     with open( "scan_constr.xyz","w") as f: f.write("") # delete the file content to  old data
+
+ 
     Es, Fs, Ps = mmff.scan_constr( iconstr, contrs, bHardConstr=True, bF=True, bP=True, niter_max=niter_max, dt=dt, Fconv=Fconv)
     
     print(f"Shape of returned arrays: Es={Es.shape}, Ps={Ps.shape}")
@@ -276,9 +279,34 @@ def relax_scanPlot1D(nscan=1000, span=(0.0,4.0),
         
          # Get atom type information for molecule
         atom_types = []
+
         for j in range(Ps.shape[1]):
-            atom_types.append("C")  # Default to carbon if no specific type info
+            if j < 24:
+                atom_types.append("C")  # Default to carbon if no specific type info
+            elif j >= 24 and j < 30:
+                atom_types.append("O")  # Default to hydrogen if no specific type info
+            else:
+                atom_types.append("H")  # Default to oxygen if no specific type info
+                
+            # atom_types.append(mmff.geteElements())
+
+        # atom_types = mmff.getAtomTypes()
+        # # Check what was returned and convert to element symbols
+        # atom_symbols = []
         
+        # if isinstance(atom_types, tuple) and len(atom_types) == 2:
+        #     # If it returned a tuple (types, count), use the first element
+        #     atom_types = atom_types[0]
+        
+        # for i in range(Ps.shape[1]):
+
+        #     atom_symbols.append(atom_types[i])
+
+        
+
+        
+
+
         # Get substrate atom positions and types
         substrate_pos, _ = mmff.get_atom_positions()
         n_sub = substrate_pos.shape[0]
@@ -304,13 +332,15 @@ def relax_scanPlot1D(nscan=1000, span=(0.0,4.0),
                     f.write(f"{total_atoms}\n")
                     f.write(f"t = {t[i]:.3f}, E = {Es[i]:.6f} eV\n")
                     
-                    # First write substrate atoms (fixed positions)
+                    # First write molecule atoms (which move during relaxation)
+                    for j in range(n_mol_atoms):
+                        f.write(f"{atom_types[j]} {Ps[i,j,0]:12.6f} {Ps[i,j,1]:12.6f} {Ps[i,j,2]:12.6f}\n")
+
+                    # Then write substrate atoms (fixed positions)
                     for j in range(n_sub):
                         f.write(f"{substrate_types[j]} {substrate_pos[j,0]:12.6f} {substrate_pos[j,1]:12.6f} {substrate_pos[j,2]:12.6f}\n")
                     
-                    # Then write molecule atoms (which move during relaxation)
-                    for j in range(n_mol_atoms):
-                        f.write(f"{atom_types[j]} {Ps[i,j,0]:12.6f} {Ps[i,j,1]:12.6f} {Ps[i,j,2]:12.6f}\n")
+                    
     
     plt.show()
     
@@ -542,7 +572,7 @@ def visualize_relaxed_structures(t, Ps, n_structures=None, bond_length_threshold
         ax.scatter(positions[:, 0], 
                   positions[:, 1], 
                   positions[:, 2],
-                  color=c, s=50, label=f"z = {t[scan_idx]:.2f} Å")
+                  color=c, s=1, label=f"z = {t[scan_idx]:.2f} Å")
         
         # Connect atoms to all their first nearest neighbors
         for i in range(positions.shape[0]):
@@ -662,7 +692,7 @@ def scanPlot2D(nscan1=1000, nscan2=1000, span1=(0.0,4.0), span2=(0.0,4.0),
     plt.show()
 #======== Body ###########
 
-mmff.setVerbosity( verbosity=1, idebug=1 )
+mmff.setVerbosity( verbosity=2, idebug=1 )
 
 
 ################################### Molecule and Substrate Selection##############################################
@@ -706,7 +736,7 @@ mmff.setVerbosity( verbosity=1, idebug=1 )
 
 
 ############### PTCDA On NaCl +0.9 -0.9 ##############
-mmff.init( xyz_name="data/xyz/PTCDA_charge_on_Na_2", surf_name="data/xyz/Na_0.9_Cl_-0.9" )
+mmff.init( xyz_name="data/xyz/PTCDA_charge_on_Na", surf_name="data/xyz/Na_0.9_Cl_-0.9" )
 # mmff.init( xyz_name="data/xyz/PTCDA_charge_on_Cl", surf_name="data/xyz/Na_0.9_Cl_-0.9" )
 # mmff.init( xyz_name="data/xyz/PTCDA_charge_on_hollow", surf_name="data/xyz/Na_0.9_Cl_-0.9" )
 # mmff.init( xyz_name="data/xyz/PTCDA_charge_xy", surf_name="data/xyz/Na_0.9_Cl_-0.9" )
@@ -793,20 +823,26 @@ mmff.setSwitches( NonBonded=-1, MMFF=1, SurfAtoms=0, GridFF=1 )   ### For Relaxe
 
 
 
-
+import gc
+gc.disable()
 
 ###########********************* Relax 1D
 # t,Es,Ps=relax_scanPlot1D(bRelax=True, nscan=125, span=(2.6,15.1), dir=(0.0,0.0,1.0), p0=(0.0,0.0,(0+2.6)), label="PTCDA on Na", saveFig=None, saveData=None,niter_max=100 )   
-t,Es,Ps=relax_scanPlot1D(bRelax=True, nscan=25, span=(0.0,12.0), dir=(0.0,0.0,1.0), p0=(0.0,0.0,8.6), label="PTCDA on Na", saveFig=None, saveData="trial_relax_scan_ptcda",
-                        niter_max=1500,Fconv=1e-5,dt=0.1 )  ### z scan
+t,Es,Ps=relax_scanPlot1D(bRelax=True, nscan=125, span=(0,12.5), dir=(0.0,0.0,1.0), p0=(0.0,0.0,(0+2.6)), label="PTCDA on Na", saveFig=None, saveData="trial_relax_scan_ptcda_test",
+                        niter_max=300000,Fconv=1e-6,dt=0.1 )  ### z scan
 
-# t,Es,Ps=relax_scanPlot1D(bRelax=True, nscan=321, span=(0,32.1), dir=(0.866,0.5,0.0), p0=(0.0,0.0,(0+2.6)), label="PTCDA on Na", saveFig=None, saveData="trial_relax_scan_ptcda.dat",
-#                         niter_max=500000,Fconv=1e-5,dt=0.5 )  # x y scan  and diagonal #dir=(0.866,0.5,0.0) for 30 degree 
-
+# t,Es,Ps=relax_scanPlot1D(bRelax=True, nscan=120, span=(0,12), dir=(0.866,0.5,0.0), p0=(0.0,0.0,(0+3.1)), label="PTCDA on Na", saveFig=None, saveData="trial_relax_scan_ptcda_line_test",
+#                         niter_max=50000,Fconv=1e-6,dt=0.1 )  # x y scan  and diagonal #dir=(0.866,0.5,0.0) for 30 degree  nscan=351, span=(0,35.1)
 
 # # Visualize trajectory
 # visualize_molecular_trajectory(t, Ps)
-# visualize_relaxed_structures(t, Ps,n_structures=5)
+# visualize_relaxed_structures(t, Ps,n_structures=25)
+
+
+# Add these lines at the end of your script
+plt.close('all')  # Close all matplotlib figures
+gc.enable()
+gc.collect()      # Force garbage collection
 
 """
 The time i FireCore is            1.0180506e-14 s   
@@ -816,6 +852,12 @@ In lammps using 0.001 pico second 1e-15 second
 
 
 sed -i 's/\xEF\xBB\xBF//g' /home/indranil/git/FireCore/cpp/common/molecular/MolWorld_sp3.h
+
+real	77m33.584s
+user	76m30.038s
+sys	0m5.760s
+
+9.467951 -5.65
 
 """
 
