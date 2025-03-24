@@ -1,4 +1,5 @@
-﻿﻿#ifndef MolWorld_sp3_h
+﻿#ifndef MolWorld_sp3_h  
+#define MolWorld_sp3_h  
 #define MolWorld_sp3_h
 /// @file MolWorld_sp3.h @brief contains MolWorld_sp3 class, which is a comprehensive class storing the state of a molecular simulation including bonding,non-bodning of molecules and molecules with substrate
 /// @ingroup Classical_Molecular_Mechanics
@@ -2111,7 +2112,7 @@ double eval_no_omp(){
             }else{
                 if(bPBC)[[likely]]{ E+=ffl.evalLJQs_PBC_atom_omp( ia, F2max ); }
                 else              { E+=ffl.evalLJQs_atom_omp    ( ia, F2max ); } 
-            }
+            } 
         }
         //printf( "debug.2 E[%i]=%g\n", ia, E );
         if(bSurfAtoms)[[likely]]{ 
@@ -2623,7 +2624,7 @@ void scan_rigid( int nconf, Vec3d* poss, Mat3d* rots, double* Es, Vec3d* aforces
     }
 }
 
-void scan_relaxed( int nconf, Vec3d* poss, Mat3d* rots, double* Es, Vec3d* aforces, Vec3d* aposs, bool omp, int niter_max, double dt, double Fconv=1e-6, double Flim=1000,int ipicked=29 ){
+void scan_relaxed( int nconf, Vec3d* poss, Mat3d* rots, double* Es, Vec3d* aforces, Vec3d* aposs, bool omp, int niter_max, double dt, double Fconv=1e-6, double Flim=1000,int ipicked=29,int iselected=29 ){
     printf("MolWorld_sp3::scan_relaxed(nconf=%i,omp=%i) @poss=%p @rots=%p @Es=%p @aforces=%p @aposs=%p \n", nconf, omp, poss, rots, Es, aforces, aposs);
     Atoms atoms;
     atoms.copyOf( ffl );
@@ -2633,7 +2634,7 @@ void scan_relaxed( int nconf, Vec3d* poss, Mat3d* rots, double* Es, Vec3d* aforc
         Mat3d rot; if(rots){ rot=rots[i]; }else{ rot=Mat3dIdentity; }
         for(int ia=0; ia<ffl.natoms; ia<ia++){ ffl.vapos[i]=Vec3dZero;  }
         ffl.setFromRef( atoms.apos, pipos.data(), pos, rot );
-        int niterdone = run_no_omp( niter_max, dt, Fconv, Flim, 1000.0,0,0,0,0,ipicked);
+        int niterdone = run_no_omp( niter_max, dt, Fconv, Flim, 1000.0,0,0,0,0,iselected);
         double E = eval_no_omp();
         // printf("Debug After Relax %f\n", atoms.apos);
         if(Es){ Es[i]=E; }
@@ -2645,24 +2646,67 @@ void scan_relaxed( int nconf, Vec3d* poss, Mat3d* rots, double* Es, Vec3d* aforc
 }
 
 
+// void scan_constr( int nconf, int nconstr, int *icontrs, Quat4d* contrs_, double* Es, Vec3d* aforces, Vec3d* aposs, bool bHardConstr_, bool omp, int niter_max, double dt, double Fconv=1e-6, double Flim=1000 ){
+//     printf("MolWorld_sp3::scan_relaxed_constr(nconf=%i,nconstr=%i,omp=%i)  dt=%g Fconv=%g Flim=%g @icontrs=%p @contrs=%p @Es=%p @aforces=%p @aposs=%p \n", nconf, nconstr, omp,  dt, Fconv, Flim, icontrs, contrs_,  Es, aforces, aposs );
+//     Atoms atoms;
+//     atoms.copyOf( ffl );
+//     std::vector<Vec3d> pipos(ffl.nnode); for(int i=0; i<ffl.nnode; i++){ pipos[i]=ffl.pipos[i]; }
+//     bHardConstrs = bHardConstr_;
+//     for(int i=0; i<nconf; i++){        
+//         for(int ia=0; ia<ffl.natoms; ia++){ 
+//             ffl.constr[ia]=Quat4dZero; 
+//             ffl.vapos[i]=Vec3dZero;
+//         }
+//         // Vec3d pos; //if(contrs){ pos=contrs[i]; }else{ pos=Vec3dZero; }
+//         // Mat3d rot; //if(rots){ rot=rots[i]; }else{ rot=Mat3dIdentity; }
+//         // if(i==0){ffl.setFromRef( atoms.apos, pipos.data(), pos, rot )};
+
+//         for(int ic=0; ic<nconstr; ic++){ 
+//             int ia = icontrs[ic];
+//             ffl.constr[ia]=contrs_[i*nconstr+ic];
+//             printf("scan_constr()[i=%i] constr %i ia %i (%16.8f,%16.8f,%16.8f,%16.8f)\n", i, ic, ia, ffl.constr[ia].x, ffl.constr[ia].y, ffl.constr[ia].z, ffl.constr[ia].w );
+//             if(bHardConstrs) if( ffl.constr[i].w>1e-9 ){ ffl.apos[ia] = ffl.constr[i].f; ffl.vapos[i]=Vec3dZero; };
+//         }
+//         int niterdone = run_no_omp( niter_max, dt, Fconv, Flim, 1000.0);
+//         double E = eval_no_omp();
+//         if(Es){ Es[i]=E; }
+//         if(aforces){ ffl.copyForcesTo( aforces + i*ffl.natoms ); }
+//         if(aposs  ){ ffl.copyPosTo   ( aposs   + i*ffl.natoms ); }
+//         saveXYZ( "scan_constr.xyz", "#", 1, "a" );
+//     }
+// }
+
 void scan_constr( int nconf, int nconstr, int *icontrs, Quat4d* contrs_, double* Es, Vec3d* aforces, Vec3d* aposs, bool bHardConstr_, bool omp, int niter_max, double dt, double Fconv=1e-6, double Flim=1000 ){
     printf("MolWorld_sp3::scan_relaxed_constr(nconf=%i,nconstr=%i,omp=%i)  dt=%g Fconv=%g Flim=%g @icontrs=%p @contrs=%p @Es=%p @aforces=%p @aposs=%p \n", nconf, nconstr, omp,  dt, Fconv, Flim, icontrs, contrs_,  Es, aforces, aposs );
     Atoms atoms;
     atoms.copyOf( ffl );
     std::vector<Vec3d> pipos(ffl.nnode); for(int i=0; i<ffl.nnode; i++){ pipos[i]=ffl.pipos[i]; }
     bHardConstrs = bHardConstr_;
+    std::vector<Vec3d> initial_Pos(ffl.natoms);
+    for(int i=0; i<ffl.natoms; i++) {
+        initial_Pos[i] = ffl.apos[i];
+    }
     for(int i=0; i<nconf; i++){        
-        for(int ia=0; ia<ffl.natoms; ia<ia++){ 
+        for(int ia=0; ia<ffl.natoms; ia++){ 
             ffl.constr[ia]=Quat4dZero; 
             ffl.vapos[i]=Vec3dZero;
         }
+        
         for(int ic=0; ic<nconstr; ic++){ 
             int ia = icontrs[ic];
             ffl.constr[ia]=contrs_[i*nconstr+ic];
-            printf("scan_constr()[i=%i] constr %i ia %i (%16.8f,%16.8f,%16.8f,%16.8f)\n", i, ic, ia, ffl.constr[ia].x, ffl.constr[ia].y, ffl.constr[ia].z, ffl.constr[ia].w );
-            if(bHardConstrs) if( ffl.constr[i].w>1e-9 ){ ffl.apos[ia] = ffl.constr[i].f; ffl.vapos[i]=Vec3dZero; };
+            ffl.constr[ia].f.x = initial_Pos[ia].x + ffl.constr[ia].x;
+            ffl.constr[ia].f.y = initial_Pos[ia].y + ffl.constr[ia].y;
+            ffl.constr[ia].f.z = initial_Pos[ia].z + ffl.constr[ia].z;
+
+
+            printf("scan_constr()[i=%i] constr %i ia %i contr (%16.8f,%16.8f,%16.8f,%16.8f) initial (%16.8f,%16.8f,%16.8f) apos (%16.8f,%16.8f,%16.8f)\n", i, ic, ia, ffl.constr[ia].x, ffl.constr[ia].y, ffl.constr[ia].z, ffl.constr[ia].w,initial_Pos[ia].x,initial_Pos[ia].y,initial_Pos[ia].z,ffl.apos[ia].x,ffl.apos[ia].y,ffl.apos[ia].z );
+            
+            if(bHardConstrs) if( ffl.constr[ia].w>1e-9 ){ ffl.apos[ia] = ffl.constr[ia].f; ffl.vapos[i]=Vec3dZero; };
+
+            printf("scan_constr()[i=%i] constr %i ia %i contr (%16.8f,%16.8f,%16.8f,%16.8f) initial (%16.8f,%16.8f,%16.8f) apos (%16.8f,%16.8f,%16.8f)\n", i, ic, ia, ffl.constr[ia].x, ffl.constr[ia].y, ffl.constr[ia].z, ffl.constr[ia].w ,initial_Pos[ia].x,initial_Pos[ia].y,initial_Pos[ia].z,ffl.apos[ia].x,ffl.apos[ia].y,ffl.apos[ia].z );
         }
-        int niterdone = run_no_omp( niter_max, dt, Fconv, Flim, 1000.0,);
+        int niterdone = run_no_omp( niter_max, dt, Fconv, Flim, 1000.0);
         double E = eval_no_omp();
         if(Es){ Es[i]=E; }
         if(aforces){ ffl.copyForcesTo( aforces + i*ffl.natoms ); }
