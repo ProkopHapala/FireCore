@@ -751,7 +751,7 @@ mmff.getBuffs()
 
 #print( "ffflags ", mmff.ffflags )
 
-mmff.setSwitches( NonBonded=-1, MMFF=1, SurfAtoms=0, GridFF=1 )   ### For Relaxed Scan MMFF has to be 1 
+mmff.setSwitches( NonBonded=-1, MMFF=1, SurfAtoms=1, GridFF=1 )   ### For Relaxed Scan MMFF has to be 1 
 # mmff.setSwitches( NonBonded=-1, MMFF=-1, SurfAtoms=0, GridFF=1 )   #### For Rigid Scan 
 
 

@@ -999,14 +999,17 @@ void printPBCshifts(){
         //builder.export_atypes( nbmol.atypes );     
         //builder.export_REQs( nbmol.REQs   );       ff->REQs=nbmol.REQs;
         //printf("DEBUG initNBmol 1 nbmol.print_nonbonded(); \n"); nbmol.print_nonbonded();
-        DEBUG
-        nbmol  .makePLQs   ( gridFF.alphaMorse );  ff->PLQs=nbmol.PLQs; 
-        DEBUG
-        nbmol  .makePLQd   ( gridFF.alphaMorse );  ff->PLQd=nbmol.PLQd; 
+
         DEBUG
         //nbmol.print_nonbonded();
         if(bCleanCharge)for(int i=builder.atoms.size(); i<ff->natoms; i++){ nbmol.REQs[i].z=0; }  // Make sure that atoms not present in Builder has well-defined chanrge        
         params.assignREs( nbmol.natoms, nbmol.atypes, nbmol.REQs, true, false  );
+        DEBUG
+        nbmol  .makePLQs   ( gridFF.alphaMorse );  ff->PLQs=nbmol.PLQs; 
+        DEBUG
+        nbmol  .makePLQd   ( gridFF.alphaMorse );  ff->PLQd=nbmol.PLQd; 
+        nbmol.print_nonbonded();
+        
         DEBUG
         //printf("DEBUG initNBmol 1 nbmol.print_nonbonded(); \n"); nbmol.print_nonbonded();
         //nbmol.print_nonbonded();
@@ -1422,17 +1425,22 @@ void printPBCshifts(){
             setNonBond( bNonBonded );
             ffu.go = &go;
             nbmol.evalPLQs(gridFF.alphaMorse);
+            nbmol.evalPLQd(gridFF.alphaMorse);
             DEBUG
             ffu.atomForceFunc = [&](int ia,const Vec3d p,Vec3d& f)->double{    
                 //printf( "ffu.atomForceFunc() ia=%i \n", ia  );
                 double E=0;
                 if   (bGridFF){ 
+                    Vec3d fi=Vec3dZero;
                     E += gridFF.addAtom( p, nbmol.PLQd[ia], f );
-                    //Vec3d fi=Vec3dZero;
+
+                    //gridFF.addAtom( ffl.apos[ia], ffl.PLQd[ia], ffl.fapos[ia] );
+
                     //E+= gridFF.addForce( p, nbmol.PLQs[ia], fi, true  ); 
                     //E += gridFF.addAtom( p, nbmol.PLQd[ia], fi );
                     //printf("MolWorld_sp3::ffu.atomForceFunc(ia=%i,gridFF.mode=%i) p(%g,%g,%g) fi(%g,%g,%g) PLQ(%g,%g,%g) @gridFF.Bspline_PLQ=%li \n", ia, (int)gridFF.mode, p.x, p.y, p.z, fi.x,fi.y,fi.z, nbmol.PLQs[ia].x, nbmol.PLQs[ia].y, nbmol.PLQs[ia].z, (long)gridFF.Bspline_PLQ );
-                    //f.add( fi );
+                    //printf("MolWorld_sp3::ffu.atomForceFunc(ia=%i,gridFF.mode=%i) p(%g,%g,%g) fi(%g,%g,%g) PLQ(%g,%g,%g) @gridFF.Bspline_PLQ=%li \n", ia, (int)gridFF.mode, p.x, p.y, p.z, fi.x,fi.y,fi.z, nbmol.PLQd[ia].x, nbmol.PLQd[ia].y, nbmol.PLQd[ia].z, (long)gridFF.Bspline_PLQ );
+                    f.add( fi );
                 }  // GridFF
                 if(bConstrZ){
                     springbound( p.z-ConstrZ_xmin, ConstrZ_l, ConstrZ_k, f.z );
@@ -2763,13 +2771,13 @@ void scan_constr( int nconf, int nconstr, int *icontrs, Quat4d* contrs_, double*
             ffu.constr[ia].f.z = initial_Pos[ia].z + ffu.constr[ia].z;
 
 
-            printf("scan_constr()[i=%i] constr %i ia %i contr (%16.8f,%16.8f,%16.8f,%16.8f) initial (%16.8f,%16.8f,%16.8f) apos (%16.8f,%16.8f,%16.8f)\n", i, ic, ia, 
-                ffu.constr[ia].x, ffu.constr[ia].y, ffu.constr[ia].z, ffu.constr[ia].w,initial_Pos[ia].x,initial_Pos[ia].y,initial_Pos[ia].z,ffu.apos[ia].x,ffu.apos[ia].y,ffu.apos[ia].z );
+            //printf("scan_constr()[i=%i] constr %i ia %i contr (%16.8f,%16.8f,%16.8f,%16.8f) initial (%16.8f,%16.8f,%16.8f) apos (%16.8f,%16.8f,%16.8f)\n", i, ic, ia, 
+            //    ffu.constr[ia].x, ffu.constr[ia].y, ffu.constr[ia].z, ffu.constr[ia].w,initial_Pos[ia].x,initial_Pos[ia].y,initial_Pos[ia].z,ffu.apos[ia].x,ffu.apos[ia].y,ffu.apos[ia].z );
             
             if(bHardConstrs) if( ffu.constr[ia].w>1e-9 ){ ffu.apos[ia] = ffu.constr[ia].f; ffu.vapos[i]=Vec3dZero; };
 
-            printf("scan_constr()[i=%i] constr %i ia %i contr (%16.8f,%16.8f,%16.8f,%16.8f) initial (%16.8f,%16.8f,%16.8f) apos (%16.8f,%16.8f,%16.8f)\n", i, ic, ia, 
-                ffu.constr[ia].x, ffu.constr[ia].y, ffu.constr[ia].z, ffu.constr[ia].w ,initial_Pos[ia].x,initial_Pos[ia].y,initial_Pos[ia].z,ffu.apos[ia].x,ffu.apos[ia].y,ffu.apos[ia].z );
+            //printf("scan_constr()[i=%i] constr %i ia %i contr (%16.8f,%16.8f,%16.8f,%16.8f) initial (%16.8f,%16.8f,%16.8f) apos (%16.8f,%16.8f,%16.8f)\n", i, ic, ia, 
+            //    ffu.constr[ia].x, ffu.constr[ia].y, ffu.constr[ia].z, ffu.constr[ia].w ,initial_Pos[ia].x,initial_Pos[ia].y,initial_Pos[ia].z,ffu.apos[ia].x,ffu.apos[ia].y,ffu.apos[ia].z );
         }
         
         // Run relaxation using UFF
@@ -2780,7 +2788,8 @@ void scan_constr( int nconf, int nconstr, int *icontrs, Quat4d* contrs_, double*
         //     niterdone = ffu.run(niter_max, dt, Fconv, Flim);
         // }
         
-        niterdone = ffu.run_omp(niter_max, dt, Fconv, Flim);
+        niterdone = ffu.run(niter_max, dt, Fconv, Flim);
+        //niterdone = ffu.run_omp(niter_max, dt, Fconv, Flim);
 
         // Evaluate energy using UFF
         double E = ffu.eval();
@@ -2790,14 +2799,14 @@ void scan_constr( int nconf, int nconstr, int *icontrs, Quat4d* contrs_, double*
         // Copy forces and positions if requested
         if(aforces) {
             for(int ja=0; ja<ffu.natoms; ja++) {
-                printf("scan_constr()[i=%i] ja %i fapos(%16.8f,%16.8f,%16.8f)\n", i, ja, ffu.fapos[ja].x, ffu.fapos[ja].y, ffu.fapos[ja].z );
+                //printf("scan_constr()[i=%i] ja %i fapos(%16.8f,%16.8f,%16.8f)\n", i, ja, ffu.fapos[ja].x, ffu.fapos[ja].y, ffu.fapos[ja].z );
                 aforces[i*ffu.natoms + ja] = ffu.fapos[ja];
             }
         }
         
         if(aposs) {
             for(int ja=0; ja<ffu.natoms; ja++) {
-                printf("scan_constr()[i=%i] ja %i apos(%16.8f,%16.8f,%16.8f)\n", i, ja, ffu.apos[ja].x, ffu.apos[ja].y, ffu.apos[ja].z );
+                //printf("scan_constr()[i=%i] ja %i apos(%16.8f,%16.8f,%16.8f)\n", i, ja, ffu.apos[ja].x, ffu.apos[ja].y, ffu.apos[ja].z );
                 aposs[i*ffu.natoms + ja] = ffu.apos[ja];
             }
         }

@@ -1449,6 +1449,7 @@ class UFF : public NBFF { public:
 
 
             }
+            printf( "UFF::run() itr=%i Etot=%g |F|=%g \n", itr, E, sqrt(cvf.z) );
             if(  (!bExploring) && (cvf.z<F2conv)  ){
                 break;
             }
