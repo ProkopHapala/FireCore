@@ -24,7 +24,7 @@ mmff.setVerbosity( verbosity=1, idebug=0 )
 fname = "hydropentacene_cross"
 
 #mmff.init( xyz_name="data/nHexadecan" ); mmff.setTrjName( "opt_nHexadecan.xyz" );
-mmff.init( xyz_name="data/"+fname ); mmff.setTrjName( "opt_"+fname+".xyz", savePerNsteps=10 );
+mmff.init( xyz_name="data/xyz/"+fname ); mmff.setTrjName( "opt_"+fname+".xyz", savePerNsteps=10 );
 
 
 nds  =  1

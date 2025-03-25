@@ -16,7 +16,7 @@ def make_scan(  dct, key, vals, bPrint=True ):
         dct[key] = val
         if(bPrint): print("\n\n#============= run %i %s=%g =============\n\n" %(i,key,val) )
         if i==2: mmff.setVerbosity( verbosity=0, idebug=1 )
-        mmff.init( xyz_name="data/"+fname );
+        mmff.init( xyz_name="data/xyz/"+fname );
         mmff.setup_accel( nstep_acc_min=dct['nmin'], cos_vf_acc=dct['cos'] )
         mmff.setupCollisionDamping( nstep=1, medium=dct['cmd'], cB=dct['cdB'], cA=dct['cdA'], cNB=dct['cdNB'] )
         nitr = mmff.run(nstepMax=nstepMax, dt=dct['dt'], Fconv=dct['fconv'] )
