@@ -17,16 +17,21 @@ COULOMB_CONST  =    14.3996448915
 
 bytePerFloat = 4
 
+
 def prepare_grid3d(g0, dg, ng):
     g0 = np.array(g0+(0,), dtype=np.float32)
     dg = np.array(dg+(0,), dtype=np.float32)
     ng = np.array(ng+(0,), dtype=np.int32)
     return (g0, dg, ng)
 
+
 class GridFF_cl:
 
-    def __init__(self, nloc=32 ):
+    def __init__(self, nloc=32 ): #, desired_voxel=0.15, allowed_factors={2, 3, 5}):  # <--- Add parameters here
         self.nloc  = nloc
+        # self.desired_voxel = desired_voxel       # <--- Store the parameter
+        # self.allowed_factors = allowed_factors   # <--- Store the parame
+
         #self.ctx   = cl.create_some_context()
         #self.queue = cl.CommandQueue(self.ctx)
         self.grid  = None   # instance of GridShape, if initialized
@@ -118,6 +123,26 @@ class GridFF_cl:
     #     ng = np.array(ng+(0,), dtype=np.int32)
     #     #self.grid3D_shape = (g0, dg, ng)
     #     #self.E3D_buf      = cl_array.to_device(self.queue, Eg.astype(np.float32) )
+
+    # def set_grid(self, gsh: GridShape):
+    #     # Here we assume that gsh.lvec contains the lattice vectors (each a 3d array).
+    #     # We calculate the physical length in each direction.norms.
+    #     Ls = [np.linalg.norm(v) for v in gsh.lvec]
+    #     ns = []
+    #     dgs = []
+    #     desired_voxel = 0.15  # Or pass this as a parameter if you wish
+    #     for L in Ls:
+    #         N, new_voxel = adjust_grid_size(L, desired_voxel)
+    #         ns.append(N)
+    #         dgs.append(new_voxel)
+    #         print(f"For L = {L:.4f}, chosen grid points: {N} with voxel size: {new_voxel:.4f}")
+    #     # Update the grid shape values with the FFT-friendly dimensions.
+    #     gsh.ns = ns
+    #     gsh.dg = dgs
+    #     self.gsh = gsh
+    #     self.gcl = GridCL(gsh)
+
+
 
     def sample3D_comb(self, ps, C):
         """
@@ -321,7 +346,7 @@ class GridFF_cl:
         buff_names={'Gs','dGs','fGs','vGs'}
         self.try_make_buffs( buff_names, 0, nxyz )
 
-        ns_cl = np.array( ns+(0,), dtype=np.int32 )
+        ns_cl = np.array( ns+[0], dtype=np.int32 )
         #ns = np.array( ns, dtype=np.int32 )
         cs_Err   = np.array( [-1.0,1.0], dtype=np.float32 )
         cs_F     = np.array( [ 1.0,0.0], dtype=np.float32 )
@@ -424,6 +449,11 @@ class GridFF_cl:
 
         grid = GridShape( ns=ng, dg=dg, lvec=lvec, g0=g0 )
         self.set_grid( grid )
+        
+        # atoms.apos = xyzq[:,:3]
+        # print("New_Atoms:",atoms.shape)
+        # print("xyzq[:,:3] =", atoms[:,:3])
+
 
         na   = len(atoms)
         nxyz = self.gcl.nxyz
@@ -523,6 +553,9 @@ class GridFF_cl:
         # Buffer creation: atoms, ps, and FE_Coul buffers
         buff_names = {'atoms', 'ps', 'FEps'}
         self.try_make_buffs(buff_names, na, nps )
+
+        # nxyz = self.gcl.nxyz
+        # self.V_Coul_buff = cl.Buffer(self.ctx, cl.mem_flags.WRITE_ONLY, size=nxyz*bytePerFloat )
 
         # Convert input data to NumPy arrays and enqueue them to the device buffers
         atoms_np = np.asarray(atoms, dtype=np.float32 )
@@ -626,8 +659,9 @@ class GridFF_cl:
     def prepare_poisson(self, sh=None):
         if sh is None: sh=self.gsh.ns[::-1] 
         print("GridFF_cl::prepare_poisson() sh=", sh )
-        self.Qgrid_cla = cl_array.Array(self.queue, shape=sh, dtype=np.complex64, data=self.Qgrid_buff )
-        self.Vgrid_cla = cl_array.Array(self.queue, shape=sh, dtype=np.complex64, data=self.Vgrid_buff )
+        self.Qgrid_cla = cl_array.Array(self.queue, shape=tuple(sh), dtype=np.complex64, data=self.Qgrid_buff )
+        print("FFT is about to be created with grid shape:", self.Qgrid_cla.shape)
+        self.Vgrid_cla = cl_array.Array(self.queue, shape=tuple(sh), dtype=np.complex64, data=self.Vgrid_buff )
         self.transform         = clu.FFT(self.ctx, self.queue, self.Qgrid_cla, axes=(0, 1, 2))
         self.inverse_transform = clu.FFT(self.ctx, self.queue, self.Vgrid_cla, axes=(0, 1, 2))
 
@@ -734,8 +768,13 @@ class GridFF_cl:
         Vcor0 = -dVcor * Lz_slab/2;
         buff_names = {'V_Coul'}
         self.try_make_buffs(buff_names, 0, self.gcl.nxyz )
-        ns_cl  = np.array( self.gsh.ns+(nz_slab,),  dtype=np.int32   )
-        print( "GridFF_cl::slabPotential() ns_cl ", ns_cl )
+
+        raw_nz = self.gsh.ns[2] + nz_slab
+        raw_nz_int = int(np.ceil(raw_nz))
+        adj_nz = clu.next_nice(raw_nz_int, allowed_factors={2, 3, 5})
+      
+        ns_cl = np.array([self.gsh.ns[0], self.gsh.ns[1], adj_nz, 0], dtype=np.int32)
+
         params = np.array( [dz, Vol, dVcor, Vcor0], dtype=np.float32 )
         sz_loc  = (4,4,4,)
         sz_glob = clu.roundup_global_size_3d( self.gsh.ns, sz_loc)
@@ -842,7 +881,12 @@ class GridFF_cl:
             exit()
 
         nz_slab   = Lz_slab/self.gsh.dg[2]; print("nz_slab", nz_slab, " ns[2] ", self.gcl.ns[2] )
-        ns_cl     = np.array( (self.gcl.ns[0],self.gcl.ns[1],self.gcl.ns[2]+nz_slab,0), dtype=np.int32 ); print("ns_cl", ns_cl)
+                
+        raw_nz = self.gsh.ns[2] + nz_slab
+        raw_nz_int = int(np.ceil(raw_nz))
+        adj_nz = clu.next_nice(raw_nz_int, allowed_factors={2, 3, 5})
+        ns_cl = np.array([self.gsh.ns[0], self.gsh.ns[1], adj_nz, 0], dtype=np.int32); print("ns_cl", ns_cl)
+
         nxyz_slab = ns_cl[0]*ns_cl[1]*ns_cl[2]
 
         #if sh is None: sh=self.gsh.ns[::-1] 
@@ -858,11 +902,11 @@ class GridFF_cl:
         atoms_np = np.array(atoms, dtype=np.float32)
 
         # NOTE / TODO : This is strange, not sure why we need to shift the coordinates
-        atoms_np[:,0] += self.gcl.dg[0] * 1 
-        atoms_np[:,1] += self.gcl.dg[1] * 1
-        #atoms_np[:,2] += self.gcl.dg[2] * (-1 + 4 - 0.075)   # NOTE / TODO : shift -1 is because we do the same shift on CPU (in GridFF::tryLoadGridFF_potentials() ), this make sure that Qgrid_gpu and Qgrid_cpu are the same.   But align V_Coul with CPU we need to shift by 4 (see below)
+        # atoms_np[:,0] += self.gcl.dg[0] * 1 
+        # atoms_np[:,1] += self.gcl.dg[1] * 1
+        # #atoms_np[:,2] += self.gcl.dg[2] * (-1 + 4 - 0.075)   # NOTE / TODO : shift -1 is because we do the same shift on CPU (in GridFF::tryLoadGridFF_potentials() ), this make sure that Qgrid_gpu and Qgrid_cpu are the same.   But align V_Coul with CPU we need to shift by 4 (see below)
 
-        atoms_np[:,2] += self.gcl.dg[2] * 1      # NOTE / TODO : This works with new normalization (tested by compare_npy_z.py with respect to C++ EwaldGrid.h for NaCl_1x1_L3 ) ( see GridFF_cl::poisson()  vs GridFF_cl::poisson_old() )
+        # atoms_np[:,2] += self.gcl.dg[2] * 1      # NOTE / TODO : This works with new normalization (tested by compare_npy_z.py with respect to C++ EwaldGrid.h for NaCl_1x1_L3 ) ( see GridFF_cl::poisson()  vs GridFF_cl::poisson_old() )
         #atoms_np[:,2] += self.gcl.dg[2] * (-1 )
         #atoms_np[:,2] += self.gcl.dg[2] * 1
 
