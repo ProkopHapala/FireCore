@@ -203,7 +203,7 @@ class MolWorld_sp3_multi : public MolWorld_sp3, public MultiSolverInterface { pu
     int  nExploring=0;
 
     bool bOnlyRelax = false;
-    bool* bConverged=0;
+    bool* isSystemRelaxed=0;
 
 virtual int getMolWorldVersion() const override { return (int)MolWorldVersion::GPU; };
 
@@ -260,7 +260,7 @@ void initMultiCPU(int nSys){
     _realloc( opts, nSys );
     _realloc( ffls, nSys );
     _realloc( gopts,nSys );
-    _realloc( bConverged, nSys );
+    _realloc( isSystemRelaxed, nSys );
 
     double dtopt=ff.optimalTimeStep();
     for(int isys=0; isys<nSys; isys++){
@@ -284,7 +284,7 @@ void initMultiCPU(int nSys){
         //gopts[isys].constrs.printDrives( );
         gopts[isys].nExplore = go.nExplore;
         gopts[isys].nRelax   = go.nRelax;
-        bConverged[isys] = false;
+        isSystemRelaxed[isys] = false;
     }
 }
 
@@ -816,7 +816,6 @@ double evalVFs( double Fconv=1e-6 ){
     iSysFMax=-1;
     bool bGroupUpdate=false;
     for(int isys=0; isys<nSystems; isys++){
-        bConverged[isys]=false;
         nbEvaluation+=nPerVFs;
         int i0v = isys * ocl.nvecs;
         //evalVF( ocl.nvecs, aforces+i0v, avel   +i0v, fire[isys], MDpars[isys] );
@@ -827,7 +826,7 @@ double evalVFs( double Fconv=1e-6 ){
         if( ( f2 < F2conv ) && (!gopts[isys].bExploring) ){
             int i0v = isys * ocl.nvecs;
             unpack( ffls[isys].nvecs,  ffls[isys].apos, atoms+i0v);
-            bConverged[isys]=true;
+            isSystemRelaxed[isys]=true;
 
 
             if(bMILAN){
@@ -1210,51 +1209,59 @@ virtual void optimizeLattice_1d( int n1, int n2, Mat3d dlvec ){
 }
 
 virtual void scan_relaxed( int nconf, Vec3d* poss, Mat3d* rots, Vec3d* dirs, double* Es, Vec3d* aforces, Vec3d* aposs, bool omp, int niter_max, double dt, double Fconv=1e-6, double Flim=1000, int ipicked=0 ){
-    printf("MolWorld_sp3::scan_relaxed(nconf=%i,omp=%i) @poss=%li @rots=%li @Es=%li @aforces=%li @aposs=%li \n", nconf, omp, (long)poss, (long)rots, (long)Es, (long)aforces, (long)aposs);
+    if(verbosity>1)printf("MolWorld_sp3_multi::scan_relaxed(nconf=%i,omp=%i) @poss=%li @rots=%li @Es=%li @aforces=%li @aposs=%li \n", nconf, omp, (long)poss, (long)rots, (long)Es, (long)aforces, (long)aposs);
     bOnlyRelax=true;
     Atoms original_atoms;
     original_atoms.copyOf( ffl );
-    for(int i=0; i<nconf; ){
-        Vec3d pos; if(poss){ pos=poss[i]; }else{ pos=Vec3dZero; }
-        Mat3d rot; if(rots){ rot=rots[i]; }else{ rot=Mat3dIdentity; }
-        for (int iSys=0; iSys<nSystems; iSys++){
-            if( bConverged[iSys] && i < nconf ){
-                int i0v = iSys * ocl.nvecs;                
-                int err = ocl.download(ocl.ibuff_atoms, atoms, ocl.nvecs, i0v);
-                ocl.finishRaw();
-                
-                unpack( ffls[iSys].nvecs, ffls[iSys].apos, atoms+i0v);
+    int* conf2sys = 0;
+    _realloc( conf2sys, nconf*sizeof(int) );
+    for(int i=0; i<nconf+nSystems; ){
+        Vec3d pos = poss ? poss[i] : Vec3dZero;
+        Mat3d rot = rots ? rots[i] : Mat3dIdentity;
 
-                ffl.copyOf( ffls[iSys] );
+        int err=0;
+        ocl.download( ocl.ibuff_atoms, atoms );
+        err |= ocl.finishRaw();  OCL_checkError(err, "scan_relaxed().1");
 
-                ffls[iSys].copyOf(original_atoms);
-                ffls[iSys].setFromRef( ffls[iSys].apos, ffls[iSys].pipos, poss[i], rot );
-                
+        for (int isys=0; isys<nSystems; isys++){
+            //store energy
+            if(isSystemRelaxed[isys] && i>=nSystems){
+                int i0v = isys * ocl.nvecs;
+                unpack( ffls[isys].nvecs, ffls[isys].apos, atoms+i0v);
+
+                ffl.copyOf( ffls[isys] );
                 double E = eval_no_omp();
                 if(Es){ 
-                    Es[i]=E; 
+                    Es[conf2sys[isys]]=E; 
                 }
+                if(aforces){ ffl.copyForcesTo( aforces + conf2sys[isys]*ffl.natoms ); }
+                if(aposs  ){ ffl.copyPosTo   ( aposs   + conf2sys[isys]*ffl.natoms ); }
+            }
+            //move with system
+            if(isSystemRelaxed[isys]){
+                if(i<nconf){
+                    ffls[isys].copyOf(original_atoms);
+                    ffls[isys].setFromRef( ffls[isys].apos, ffls[isys].pipos, poss[i], rot );
+                    iSystemCur = isys;
+                    int i0a = ocl.nAtoms*iSystemCur;
+                    constr [i0a + ipicked].f.set((Vec3f)poss[i]);
+                    constr [i0a + ipicked].w = 1.0;
+                    constrK[i0a + ipicked] = Quat4fOnes;
 
-                ocl.upload( ocl.ibuff_cvf, cvfs );
-                iSystemCur = iSys;
-                int i0a = ocl.nAtoms*iSystemCur;
-                constr [i0a + ipicked].f.set((Vec3f)poss[i]);
-                constr [i0a + ipicked].w = 1.0;
-                constrK[i0a + ipicked] = Quat4fOnes;
-                i++;
-                ocl.upload( ocl.ibuff_constr,  constr  );
-                ocl.upload( ocl.ibuff_constrK, constrK );
-            }                
+                    conf2sys[isys] = i;
+                }
+                isSystemRelaxed[isys] = false;
+
+                i++; 
+            }            
         }
+
+        ocl.upload( ocl.ibuff_atoms, atoms );
+        ocl.upload( ocl.ibuff_constr,  constr  );
+        ocl.upload( ocl.ibuff_constrK, constrK );
         int niterdone = run_ocl_opt( niter_max, Fconv);
     }
-
-    // for(int iSys=0; iSys<nSystems; iSys++){
-    //     if(aforces){ ffl.copyForcesTo( aforces + i*ffl.natoms ); }
-    //     if(aposs  ){ ffl.copyPosTo   ( aposs   + i*ffl.natoms ); }
-    // }
-    ffl.print();
-    printf("MolWorld_sp3::scan_relaxed() done \n");
+    if(verbosity>1)printf("MolWorld_sp3_multi::scan_relaxed() done \n");
 }
 
 int saveSysXYZ( int isys, const char* fname, const char* comment="#comment", bool bNodeOnly=false, const char* mode="w", Vec3i nPBC=Vec3i{1,1,1} ){ 
