@@ -1451,7 +1451,7 @@ void printPBCshifts(){
                 }
                 
                 return E;
-            };
+            }; // end of ffu.atomForceFunc = [&]{} 
             DEBUG
             if(bOptimizer){ 
                 //setOptimizer( ffu.nDOFs, ffu.DOFs, ffu.fDOFs );
@@ -2771,14 +2771,17 @@ void scan_constr( int nconf, int nconstr, int *icontrs, Quat4d* contrs_, double*
             ffu.constr[ia].f.z = initial_Pos[ia].z + ffu.constr[ia].z;
 
 
-            //printf("scan_constr()[i=%i] constr %i ia %i contr (%16.8f,%16.8f,%16.8f,%16.8f) initial (%16.8f,%16.8f,%16.8f) apos (%16.8f,%16.8f,%16.8f)\n", i, ic, ia, 
+            // printf("scan_constr()[i=%i] constr %i ia %i contr (%16.8f,%16.8f,%16.8f,%16.8f) initial (%16.8f,%16.8f,%16.8f) apos (%16.8f,%16.8f,%16.8f)\n", i, ic, ia, 
             //    ffu.constr[ia].x, ffu.constr[ia].y, ffu.constr[ia].z, ffu.constr[ia].w,initial_Pos[ia].x,initial_Pos[ia].y,initial_Pos[ia].z,ffu.apos[ia].x,ffu.apos[ia].y,ffu.apos[ia].z );
+
+            printf("bHardConstrs %d\n", bHardConstrs);
             
             if(bHardConstrs) if( ffu.constr[ia].w>1e-9 ){ ffu.apos[ia] = ffu.constr[ia].f; ffu.vapos[i]=Vec3dZero; };
 
-            //printf("scan_constr()[i=%i] constr %i ia %i contr (%16.8f,%16.8f,%16.8f,%16.8f) initial (%16.8f,%16.8f,%16.8f) apos (%16.8f,%16.8f,%16.8f)\n", i, ic, ia, 
+            // printf("scan_constr()[i=%i] constr %i ia %i contr (%16.8f,%16.8f,%16.8f,%16.8f) initial (%16.8f,%16.8f,%16.8f) apos (%16.8f,%16.8f,%16.8f)\n", i, ic, ia, 
             //    ffu.constr[ia].x, ffu.constr[ia].y, ffu.constr[ia].z, ffu.constr[ia].w ,initial_Pos[ia].x,initial_Pos[ia].y,initial_Pos[ia].z,ffu.apos[ia].x,ffu.apos[ia].y,ffu.apos[ia].z );
         }
+        
         
         // Run relaxation using UFF
         int niterdone;
@@ -2789,29 +2792,76 @@ void scan_constr( int nconf, int nconstr, int *icontrs, Quat4d* contrs_, double*
         // }
         
         niterdone = ffu.run(niter_max, dt, Fconv, Flim);
-        //niterdone = ffu.run_omp(niter_max, dt, Fconv, Flim);
+        // omp=true;
+        // niterdone = ffu.run_omp(niter_max, dt, Fconv, Flim);
+        
+        // Print forces for verification
+        // for(int ja=0; ja<ffu.natoms; ja++) {
+        //     printf("DEBUG: before eval fapos[%d] = (%g,%g,%g)\n", 
+        //         ja, ffu.fapos[ja].x, ffu.fapos[ja].y, ffu.fapos[ja].z);
+        // }
 
         // Evaluate energy using UFF
-        double E = ffu.eval();
+        double E_eval = ffu.eval();
+        // double E_eval_omp=ffu.eval_omp();
+        double E_run = ffu.Etot;
         
-        if(Es) { Es[i] = E; }
+        printf("scan_constr()[i=%i] E_from_run=%g \n", i, E_run );
+        printf("scan_constr()[i=%i] E_from_eval=%g \n", i, E_eval );
+        // printf("scan_constr()[i=%i] E_from_eval_omp=%g \n", i, E_eval_omp );
+        if(Es) { Es[i] = E_run; }
+        
+        // for(int ja=0; ja<ffu.natoms; ja++) {
+        //     printf("DEBUG: after eval fapos[%d] = (%g,%g,%g)\n", 
+        //         ja, ffu.fapos[ja].x, ffu.fapos[ja].y, ffu.fapos[ja].z);
+        // }
         
         // Copy forces and positions if requested
         if(aforces) {
             for(int ja=0; ja<ffu.natoms; ja++) {
-                //printf("scan_constr()[i=%i] ja %i fapos(%16.8f,%16.8f,%16.8f)\n", i, ja, ffu.fapos[ja].x, ffu.fapos[ja].y, ffu.fapos[ja].z );
+                printf("scan_constr()[i=%i] ja %i fapos(%16.8f,%16.8f,%16.8f)\n", i, ja, ffu.fapos[ja].x, ffu.fapos[ja].y, ffu.fapos[ja].z );
                 aforces[i*ffu.natoms + ja] = ffu.fapos[ja];
             }
         }
+        // if(aforces) {
+        //     // First verify that ffu.fapos contains valid data
+        //     printf("DEBUG: Verifying ffu.fapos before copy:\n");
+        //     for(int ja=0; ja<ffu.natoms; ja++) {
+        //         printf("Pre-copy ffu.fapos[%d] = (%g,%g,%g)\n", 
+        //             ja, ffu.fapos[ja].x, ffu.fapos[ja].y, ffu.fapos[ja].z);
+        //     }
         
+        //     // Direct manual copy with bounds checking
+        //     for(int ja=0; ja<ffu.natoms; ja++) {
+        //         if (i*ffu.natoms + ja >= nconf*ffu.natoms) {
+        //             printf("ERROR: Array bounds exceeded at i=%d, ja=%d\n", i, ja);
+        //             break;
+        //         }
+        //         aforces[i*ffu.natoms + ja].x = ffu.fapos[ja].x;
+        //         aforces[i*ffu.natoms + ja].y = ffu.fapos[ja].y;
+        //         aforces[i*ffu.natoms + ja].z = ffu.fapos[ja].z;
+                
+        //         // Verify the copy was successful
+        //         printf("Post-copy aforces[%d] = (%g,%g,%g)\n", 
+        //             i*ffu.natoms + ja, 
+        //             aforces[i*ffu.natoms + ja].x,
+        //             aforces[i*ffu.natoms + ja].y,
+        //             aforces[i*ffu.natoms + ja].z);
+        //     }
+        // }
+
         if(aposs) {
             for(int ja=0; ja<ffu.natoms; ja++) {
-                //printf("scan_constr()[i=%i] ja %i apos(%16.8f,%16.8f,%16.8f)\n", i, ja, ffu.apos[ja].x, ffu.apos[ja].y, ffu.apos[ja].z );
+                // printf("scan_constr()[i=%i] ja %i apos(%16.8f,%16.8f,%16.8f)\n", i, ja, ffu.apos[ja].x, ffu.apos[ja].y, ffu.apos[ja].z );
                 aposs[i*ffu.natoms + ja] = ffu.apos[ja];
             }
         }
         
-        // Save trajectory if needed
+
+        // if(Es){ Es[i]=E; }
+        // if(aforces){ ffu.copyForcesTo( aforces + i*ffl.natoms ); }
+        // if(aposs  ){ ffu.copyPosTo   ( aposs   + i*ffl.natoms ); }
+        // // Save trajectory if needed
         saveXYZ("scan_constr_uff.xyz", "#", 1, "a");
     }
     
