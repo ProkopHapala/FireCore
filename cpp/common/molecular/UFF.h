@@ -490,9 +490,20 @@ class UFF : public NBFF { public:
         for(int i=0; i<nbonds; i++){
             //int ia1 = bonAtoms[i].x;
             int ia2 = bonAtoms[i].y;
-            //printf("assembleForces() bonds %i = %i \n", i, i+i0bon );
+
+            // Check if bond force contains NaN
+            // if(std::isnan(fbon[i].x) || std::isnan(fbon[i].y) || std::isnan(fbon[i].z)) {
+            //     printf("WARNING: NaN detected in bond force %d: (%g,%g,%g)\n", 
+            //         i, fbon[i].x, fbon[i].y, fbon[i].z);
+            //     // Either skip this force or set it to zero
+            //     fbon[i] = Vec3d{0.0, 0.0, 0.0}; }
+
+
+            printf("assembleForces() bonds %i = %i \n", i, i+i0bon );
             //fapos[ia1].add( fbon[i*2] );  // this is already done in evalAtomBonds()
+            printf(" before addition fapos[%i] = %f %f %f fbon[%i] = %f %f %f\n", ia2, fapos[ia2].x, fapos[ia2].y, fapos[ia2].z, i, fbon[i].x, fbon[i].y, fbon[i].z );
             fapos[ia2].add( fbon[i] );
+            printf(" After addition fapos[%i] = %f %f %f fbon[%i] = %f %f %f\n", ia2, fapos[ia2].x, fapos[ia2].y, fapos[ia2].z, i, fbon[i].x, fbon[i].y, fbon[i].z );
         }
         // angles
         //printf("assembleForces() angles %i \n" , nangles );
@@ -1268,14 +1279,36 @@ class UFF : public NBFF { public:
     double eval( bool bClean=true ){
         //printf("UFF::eval() \n");
         Eb=0; Ea=0; Ed=0; Ei=0;
-        if(bClean)cleanForce();  
+        // if(bClean)cleanForce();
+        if(bClean) {
+        cleanForce();
+        // Check after clean
+        for(int i=0; i<natoms; i++) {
+            if(!std::isfinite(fapos[i].x)) {
+                printf("NaN after cleanForce at atom %d\n", i);
+                break;
+            }
+        }
+        }  
         Eb = evalBonds();  
         Ea = evalAngles(); 
         Ed = evalDihedrals();
         Ei = evalInversions(); 
         Etot = Eb + Ea + Ed + Ei;
-        //printForcePieces();
-        assembleForces();
+        // printForcePieces();
+        printf("Before assemble fapos Eb=%g Ea=%g Ed=%g Ei=%g Etot=%g\n" ,fapos[0].x, Eb, Ea, Ed, Ei, Etot);
+        // assembleForces();
+        assembleAtomsForces();
+        // assembleForcesDebug(true,true,true,true);
+        printf("After assemble fapos Eb=%g Ea=%g Ed=%g Ei=%g Etot=%g\n" ,fapos[0].x, Eb, Ea, Ed, Ei, Etot);
+
+
+        // for(int jk=0; jk<natoms; jk++) {
+        //     if(!std::isfinite(fapos[jk].x)) {
+        //         printf("After Assemble NaN after eval at atom %d\n", jk);
+        //         break;
+        //     }
+        // }
         // //Etot = Eb; 
         // //assembleForcesDebug(true,false,false,false);
         // //Etot = Ea; 
@@ -1351,6 +1384,7 @@ class UFF : public NBFF { public:
             }
         }
         Etot = Eb + Ea + Ed + Ei;
+        printf("UFF::eval_omp() Etot=%g\n", Etot);
         return Etot;
     }
 
@@ -1398,7 +1432,7 @@ class UFF : public NBFF { public:
         //printf( "UFF::run() cdamp=%g \n", cdamp );
 
         ForceField::setNonBondStrategy( bNonBondNeighs*2-1 );
-        //printf( "UFF::run_no_omp() bNonBonded=%i bNonBondNeighs=%i bSubtractBondNonBond=%i bSubtractAngleNonBond=%i bClampNonBonded=%i\n", bNonBonded, bNonBondNeighs, bSubtractBondNonBond, bSubtractAngleNonBond, bClampNonBonded );
+        printf( "UFF::run_no_omp() bNonBonded=%i bNonBondNeighs=%i bSubtractBondNonBond=%i bSubtractAngleNonBond=%i bClampNonBonded=%i\n", bNonBonded, bNonBondNeighs, bSubtractBondNonBond, bSubtractAngleNonBond, bClampNonBonded );
 
         const bool bExploring = go->bExploring;
 
@@ -1428,10 +1462,13 @@ class UFF : public NBFF { public:
                         else    { Eb+=evalLJQs_atom_omp    ( ia, Fmax2 ); } 
                     }
                 }
-                if( atomForceFunc ) atomForceFunc( ia, apos[ia], fapos[ia] );
+                if( atomForceFunc ) E+=atomForceFunc( ia, apos[ia], fapos[ia] );
             }
             // ------ move
             cvf = Vec3dZero;
+            E=Eb+Ea+Ed+Ei;
+            Etot=E;
+            // printf( "UFF::run() itr=%i E=%g Eb=%g Ea=%g Ed=%g Ei=%g\n", itr, E, Eb, Ea, Ed, Ei );
             for(int i=0; i<natoms; i++){
                 //F2 += move_atom_GD( i, dt, Flim );
                 //bErr|=ckeckNaN( 1,3, (double*)(fapos+i), [&]{ printf("move[%i]",i); } );
@@ -1442,14 +1479,22 @@ class UFF : public NBFF { public:
                 }
                 //move_atom_MD( i, 0.05, 1000.0, 0.9 );
                 //F2 += move_atom_kvaziFIRE( i, dt, Flim );
-                if(bHardConstrs) if( constr[i].w>1e-9 )[[unlikely]]{ 
-                    apos[i] = constr[i].f; 
-                    vapos[i]=Vec3dZero; 
+                
+                // printf("bHardConstrs=%i  %i  Before constr[%i](%g,%g,%g,%g) apos(%g,%g,%g), vapos(%g,%g,%g)\n",  bHardConstrs, i, constr[i].x,constr[i].y,constr[i].z,constr[i].w , apos[i].x,apos[i].y,apos[i].z, vapos[i].x,vapos[i].y,vapos[i].z );
+                //printf( "UFF::run() fapos[%i] (%g,%g,%g)\n", i, fapos[i].x, fapos[i].y, fapos[i].z );
+
+                bHardConstrs=1;
+
+                if(bHardConstrs) if( constr[i].w>1e-9 )[[unlikely]]{ apos[i] = constr[i].f; vapos[i]=Vec3dZero;
+                //printf("After constr[%i](%g,%g,%g,%g) apos(%g,%g,%g), vapos(%g,%g,%g)\n", i, constr[i].x,constr[i].y,constr[i].z,constr[i].w , apos[i].x,apos[i].y,apos[i].z, vapos[i].x,vapos[i].y,vapos[i].z );
+                
                 };
+
 
 
             }
             printf( "UFF::run() itr=%i Etot=%g |F|=%g \n", itr, E, sqrt(cvf.z) );
+            //printPointers();
             if(  (!bExploring) && (cvf.z<F2conv)  ){
                 break;
             }
@@ -1551,6 +1596,7 @@ class UFF : public NBFF { public:
         const double R2damp    = Rdamp*Rdamp;
         const double Fmax2     = FmaxNonBonded*FmaxNonBonded;
         const bool bSubNonBond = SubNBTorstionFactor>0;
+        //bHardConstrs=1;
         int    itr=0;
         #pragma omp parallel shared( Enb, Eb, Ea, Ed, Ei, ff,vv,vf ) private(itr)
         for(itr=0; itr<niter; itr++){
@@ -1591,13 +1637,8 @@ class UFF : public NBFF { public:
                 if( atomForceFunc ) atomForceFunc( ia, apos[ia], fapos[ia] );
                 const Vec3d cvf_ = move_atom_MD( ia, dt, Flim, cdamp );
 
-                if(bHardConstrs) if( constr[ia].w>1e-9 )[[unlikely]]{ 
-                    apos[ia] = constr[ia].f; 
-                    vapos[ia]=Vec3dZero; 
-                    
-                }
-
-
+                if(bHardConstrs) if( constr[ia].w>1e-9 )[[unlikely]]{  apos[ia] = constr[ia].f; vapos[ia]=Vec3dZero; }
+                //printf("After constr[%i](%g,%g,%g,%g) apos(%g,%g,%g), vapos(%g,%g,%g)\n", ia, constr[ia].x,constr[ia].y,constr[ia].z,constr[ia].w , apos[ia].x,apos[ia].y,apos[ia].z, vapos[ia].x,vapos[ia].y,vapos[i].z );
 
                 ff += cvf_.x; vv += cvf_.y; vf += cvf_.z;
             }
@@ -1609,6 +1650,7 @@ class UFF : public NBFF { public:
                 //if(cvf.z<F2conv)break;
                 //if(verbosity>2){printf( "step[%i] E %g |F| %g ncpu[%i] \n", itr, Etot, sqrt(ff), omp_get_num_threads() );}
             }
+            printf("UFF::run_omp() Etot=%g\n", Etot);
         }
         return itr;
     }
