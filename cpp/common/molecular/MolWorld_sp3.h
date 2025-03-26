@@ -2774,7 +2774,7 @@ void scan_constr( int nconf, int nconstr, int *icontrs, Quat4d* contrs_, double*
             // printf("scan_constr()[i=%i] constr %i ia %i contr (%16.8f,%16.8f,%16.8f,%16.8f) initial (%16.8f,%16.8f,%16.8f) apos (%16.8f,%16.8f,%16.8f)\n", i, ic, ia, 
             //    ffu.constr[ia].x, ffu.constr[ia].y, ffu.constr[ia].z, ffu.constr[ia].w,initial_Pos[ia].x,initial_Pos[ia].y,initial_Pos[ia].z,ffu.apos[ia].x,ffu.apos[ia].y,ffu.apos[ia].z );
 
-            printf("bHardConstrs %d\n", bHardConstrs);
+            // printf("bHardConstrs %d\n", bHardConstrs);
             
             if(bHardConstrs) if( ffu.constr[ia].w>1e-9 ){ ffu.apos[ia] = ffu.constr[ia].f; ffu.vapos[i]=Vec3dZero; };
 
@@ -2802,12 +2802,12 @@ void scan_constr( int nconf, int nconstr, int *icontrs, Quat4d* contrs_, double*
         // }
 
         // Evaluate energy using UFF
-        double E_eval = ffu.eval();
-        // double E_eval_omp=ffu.eval_omp();
+        //double E_eval = ffu.eval();
+        //double E_eval_omp=ffu.eval_omp();
         double E_run = ffu.Etot;
         
-        printf("scan_constr()[i=%i] E_from_run=%g \n", i, E_run );
-        printf("scan_constr()[i=%i] E_from_eval=%g \n", i, E_eval );
+        // printf("scan_constr()[i=%i] E_from_run=%g \n", i, E_run );
+        //printf("scan_constr()[i=%i] E_from_eval=%g \n", i, E_eval );
         // printf("scan_constr()[i=%i] E_from_eval_omp=%g \n", i, E_eval_omp );
         if(Es) { Es[i] = E_run; }
         
@@ -2819,7 +2819,7 @@ void scan_constr( int nconf, int nconstr, int *icontrs, Quat4d* contrs_, double*
         // Copy forces and positions if requested
         if(aforces) {
             for(int ja=0; ja<ffu.natoms; ja++) {
-                printf("scan_constr()[i=%i] ja %i fapos(%16.8f,%16.8f,%16.8f)\n", i, ja, ffu.fapos[ja].x, ffu.fapos[ja].y, ffu.fapos[ja].z );
+                // printf("scan_constr()[i=%i] ja %i fapos(%16.8f,%16.8f,%16.8f)\n", i, ja, ffu.fapos[ja].x, ffu.fapos[ja].y, ffu.fapos[ja].z );
                 aforces[i*ffu.natoms + ja] = ffu.fapos[ja];
             }
         }
