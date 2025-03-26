@@ -59,7 +59,7 @@ class UFF : public NBFF { public:
     //Quat4i*  neighCell=0;  // [natoms] // from NBFF
 
     // dimensions of the system
-    double Etot, Eb, Ea, Ed, Ei;                          // total, bond, angle, dihedral, inversion energies
+    double Etot, Eb, Ea, Ed, Ei, Enb, Esurf;                          // total, bond, angle, dihedral, inversion energies
     int    nbonds, nangles, ndihedrals, ninversions, nf; // number of bonds, angles, dihedrals, inversions, number of force pieces
     int i0dih,i0inv,i0ang,i0bon;                         
     //Vec3d * vapos __attribute__((aligned(64))) = 0;      // [natoms] velocities of atoms
@@ -1280,27 +1280,42 @@ class UFF : public NBFF { public:
         //printf("UFF::eval() \n");
         Eb=0; Ea=0; Ed=0; Ei=0;
         // if(bClean)cleanForce();
+        const double Fmax2     = FmaxNonBonded*FmaxNonBonded;
         if(bClean) {
-        cleanForce();
-        // Check after clean
-        for(int i=0; i<natoms; i++) {
-            if(!std::isfinite(fapos[i].x)) {
-                printf("NaN after cleanForce at atom %d\n", i);
-                break;
+            cleanForce();
+            // Check after clean
+            for(int i=0; i<natoms; i++) {
+                if(!std::isfinite(fapos[i].x)) {
+                    printf("NaN after cleanForce at atom %d\n", i);
+                    break;
+                }
             }
-        }
         }  
         Eb = evalBonds();  
         Ea = evalAngles(); 
         Ed = evalDihedrals();
         Ei = evalInversions(); 
-        Etot = Eb + Ea + Ed + Ei;
+        Enb = 0;
+        for(int ia=0; ia<natoms; ia++) {
+            if(bNonBonded){
+                if(bNonBondNeighs){
+                    if(bPBC){ Enb+=evalLJQs_ng4_PBC_atom_omp( ia ); }
+                    else    { Enb+=evalLJQs_ng4_atom_omp    ( ia ); } 
+                }else{
+                    if(bPBC){ Enb+=evalLJQs_PBC_atom_omp( ia, Fmax2 ); }
+                    else    { Enb+=evalLJQs_atom_omp    ( ia, Fmax2 ); } 
+                }
+            }
+            if( atomForceFunc ) Esurf=atomForceFunc( ia, apos[ia], fapos[ia] );
+        }
+        Etot = Eb + Ea + Ed + Ei + Enb + Esurf;
         // printForcePieces();
-        printf("Before assemble fapos Eb=%g Ea=%g Ed=%g Ei=%g Etot=%g\n" ,fapos[0].x, Eb, Ea, Ed, Ei, Etot);
+        //printf("Before assemble fapos Eb=%g Ea=%g Ed=%g Ei=%g Etot=%g\n" ,fapos[0].x, Eb, Ea, Ed, Ei, Etot);
         // assembleForces();
         assembleAtomsForces();
         // assembleForcesDebug(true,true,true,true);
-        printf("After assemble fapos Eb=%g Ea=%g Ed=%g Ei=%g Etot=%g\n" ,fapos[0].x, Eb, Ea, Ed, Ei, Etot);
+        //printf( "UFF::run() itr=%i Eb=%g Ea=%g Ed=%g Ei=%g Enb=%g Esurf=%g Etot=%g |F|=%g \n", itr, Eb, Ea, Ed, Ei, Enb, Esurf, E, sqrt(cvf.z) );
+        // printf("UFF::eval() Eb=%g Ea=%g Ed=%g Ei=%g Enb=%g Esurf=%g Etot=%g\n", Eb, Ea, Ed, Ei, Enb, Esurf, Etot );
 
 
         // for(int jk=0; jk<natoms; jk++) {
@@ -1348,7 +1363,6 @@ class UFF : public NBFF { public:
         const double R2damp    = Rdamp*Rdamp;
         const double Fmax2     = FmaxNonBonded*FmaxNonBonded;
         const bool bSubNonBond = SubNBTorstionFactor>0;
-        double Enb=0;
         #pragma omp parallel shared(Enb,Eb,Ea,Ed,Ei)
         {
             #pragma omp single
@@ -1396,7 +1410,7 @@ class UFF : public NBFF { public:
 
 
     __attribute__((hot))  
-    int run( int niter, double dt, double Fconv, double Flim, double damping=0.1 ){
+    int run( int niter, double dt, double Fconv, double Flim,double damping=0.1  ){
         //printSizes();
         double F2conv = Fconv*Fconv;
         double E=0,ff=0,vv=0,vf=0;
@@ -1432,7 +1446,7 @@ class UFF : public NBFF { public:
         //printf( "UFF::run() cdamp=%g \n", cdamp );
 
         ForceField::setNonBondStrategy( bNonBondNeighs*2-1 );
-        printf( "UFF::run_no_omp() bNonBonded=%i bNonBondNeighs=%i bSubtractBondNonBond=%i bSubtractAngleNonBond=%i bClampNonBonded=%i\n", bNonBonded, bNonBondNeighs, bSubtractBondNonBond, bSubtractAngleNonBond, bClampNonBonded );
+        // printf( "UFF::run_no_omp() bNonBonded=%i bNonBondNeighs=%i bSubtractBondNonBond=%i bSubtractAngleNonBond=%i bClampNonBonded=%i\n", bNonBonded, bNonBondNeighs, bSubtractBondNonBond, bSubtractAngleNonBond, bClampNonBonded );
 
         const bool bExploring = go->bExploring;
 
@@ -1449,24 +1463,25 @@ class UFF : public NBFF { public:
             Ea = evalAngles();
             Ed = evalDihedrals();
             Ei = evalInversions();
+            Enb = 0;
             // ---- assemble (we need to wait when all atoms are evaluated)
             for(int ia=0; ia<natoms; ia++){
                 assembleAtomForce(ia); 
                 //printf( "UFF::run() fapos[%i] (%g,%g,%g)\n", ia, fapos[ia].x, fapos[ia].y, fapos[ia].z );
                 if(bNonBonded){
                     if(bNonBondNeighs){
-                        if(bPBC){ Eb+=evalLJQs_ng4_PBC_atom_omp( ia ); }
-                        else    { Eb+=evalLJQs_ng4_atom_omp    ( ia ); } 
+                        if(bPBC){ Enb+=evalLJQs_ng4_PBC_atom_omp( ia ); }
+                        else    { Enb+=evalLJQs_ng4_atom_omp    ( ia ); } 
                     }else{
-                        if(bPBC){ Eb+=evalLJQs_PBC_atom_omp( ia, Fmax2 ); }
-                        else    { Eb+=evalLJQs_atom_omp    ( ia, Fmax2 ); } 
+                        if(bPBC){ Enb+=evalLJQs_PBC_atom_omp( ia, Fmax2 ); }
+                        else    { Enb+=evalLJQs_atom_omp    ( ia, Fmax2 ); } 
                     }
                 }
-                if( atomForceFunc ) E+=atomForceFunc( ia, apos[ia], fapos[ia] );
+                if( atomForceFunc ) Esurf=atomForceFunc( ia, apos[ia], fapos[ia] );
             }
             // ------ move
             cvf = Vec3dZero;
-            E=Eb+Ea+Ed+Ei;
+            E=Eb+Ea+Ed+Ei+Enb+Esurf;
             Etot=E;
             // printf( "UFF::run() itr=%i E=%g Eb=%g Ea=%g Ed=%g Ei=%g\n", itr, E, Eb, Ea, Ed, Ei );
             for(int i=0; i<natoms; i++){
@@ -1485,6 +1500,8 @@ class UFF : public NBFF { public:
 
                 bHardConstrs=1;
 
+                // printf("bHardConstrs=%i\n", bHardConstrs);
+
                 if(bHardConstrs) if( constr[i].w>1e-9 )[[unlikely]]{ apos[i] = constr[i].f; vapos[i]=Vec3dZero;
                 //printf("After constr[%i](%g,%g,%g,%g) apos(%g,%g,%g), vapos(%g,%g,%g)\n", i, constr[i].x,constr[i].y,constr[i].z,constr[i].w , apos[i].x,apos[i].y,apos[i].z, vapos[i].x,vapos[i].y,vapos[i].z );
                 
@@ -1493,7 +1510,8 @@ class UFF : public NBFF { public:
 
 
             }
-            printf( "UFF::run() itr=%i Etot=%g |F|=%g \n", itr, E, sqrt(cvf.z) );
+            //printf("Before assemble fapos Eb=%g Ea=%g Ed=%g Ei=%g Etot=%g\n" ,fapos[0].x, Eb, Ea, Ed, Ei, Etot);
+            // printf( "UFF::run() itr=%i Eb=%g Ea=%g Ed=%g Ei=%g Enb=%g Esurf=%g Etot=%g |F|=%g \n", itr, Eb, Ea, Ed, Ei, Enb, Esurf, E, sqrt(cvf.z) );
             //printPointers();
             if(  (!bExploring) && (cvf.z<F2conv)  ){
                 break;

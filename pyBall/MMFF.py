@@ -1205,7 +1205,7 @@ def scan_constr( icontrs, contrs, Es=None, aforces=None, aposs=None, bHardConstr
     if Es is None: Es=np.zeros(nconf)
     if (aforces is None) and bF: aforces=np.zeros( (nconf,natoms,3) )
     if (aposs is None) and bP:   aposs=np.zeros(   (nconf,natoms,3) )
-    print( "!!!!!!!!!! scan_constr", nconf, natoms, aforces.shape, aposs.shape )
+    # print( "!!!!!!!!!! scan_constr", nconf, natoms, aforces.shape, aposs.shape )
     lib.scan_constr( nconf, ncontr, _np_as(icontrs,c_int_p), _np_as(contrs,c_double_p), _np_as(Es,c_double_p), _np_as(aforces,c_double_p), _np_as(aposs,c_double_p), bHardConstr, omp, niter_max, dt, Fconv, Flim ) 
     return Es, aforces, aposs
 
