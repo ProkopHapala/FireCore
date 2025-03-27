@@ -829,8 +829,8 @@ gc.disable()
 
 ###########********************* Relax 1D
 # t,Es,Ps=relax_scanPlot1D(bRelax=True, nscan=125, span=(2.6,15.1), dir=(0.0,0.0,1.0), p0=(0.0,0.0,(0+2.6)), label="PTCDA on Na", saveFig=None, saveData=None,niter_max=100 )   
-t,Es,Ps=relax_scanPlot1D(bRelax=True, nscan=125, span=(1.6,15.1),  dir=(0.0,0.0,1.0), p0=(0.0,0.0,(0+0)), label="PTCDA on Na", saveFig=None, saveData="new_trial_relax_scan_ptcda_test",
-                        niter_max=5000,Fconv=1e-6,dt=0.05 )  ### z scan
+t,Es,Ps=relax_scanPlot1D(bRelax=True, nscan=125, span=(2.6,15.1),  dir=(0.0,0.0,1.0), p0=(0.0,0.0,(0+0)), label="PTCDA on Na", saveFig=None, saveData="new_trial_relax_scan_ptcda_test",
+                        niter_max=5000,Fconv=1e-6,dt=0.05 )  ### z scan dt 0.05 is giving energy in the order of less than 100 but for more smaller step it is giving absolute energy in the order of 1e7 and greater value of like 0.1 is giving random values 0.1 is to match with LAMMPs 0.001femto
 
 # t,Es,Ps=relax_scanPlot1D(bRelax=True, nscan=120, span=(0,12), dir=(0.866,0.5,0.0), p0=(0.0,0.0,(0+3.1)), label="PTCDA on Na", saveFig=None, saveData="trial_relax_scan_ptcda_line_test",
 #                         niter_max=50000,Fconv=1e-6,dt=0.1 )  # x y scan  and diagonal #dir=(0.866,0.5,0.0) for 30 degree  nscan=351, span=(0,35.1)
@@ -848,7 +848,7 @@ gc.collect()      # Force garbage collection
 """
 The time i FireCore is            1.0180506e-14 s   
 
-In lammps using 0.001 pico second 1e-15 second 
+In lammps using 0.001 pico second == 1e-15 second 
 
 
 
