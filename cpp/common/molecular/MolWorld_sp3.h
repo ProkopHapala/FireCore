@@ -2756,7 +2756,7 @@ void scan_constr( int nconf, int nconstr, int *icontrs, Quat4d* contrs_, double*
     for(int i=0; i<nconf; i++){        
         for(int ia=0; ia<ffu.natoms; ia++){ 
             ffu.constr[ia]=Quat4dZero; 
-            ffu.vapos[i]=Vec3dZero;
+            ffu.vapos[ia]=Vec3dZero;
         }
         
         for(int ic=0; ic<nconstr; ic++){ 
@@ -2765,18 +2765,21 @@ void scan_constr( int nconf, int nconstr, int *icontrs, Quat4d* contrs_, double*
                 printf("ERROR: Invalid atom index %d in constraint %d\n", ia, ic);
                 continue;
             }
-            ffu.constr[ia]=contrs_[i*nconstr+ic];
+            // Correctly index into the contrs_ array
+            int idx = i*nconstr + ic;
+            ffu.constr[ia] = contrs_[idx];
+            
+            // Update the constraint position with the initial position
             ffu.constr[ia].f.x = initial_Pos[ia].x + ffu.constr[ia].x;
             ffu.constr[ia].f.y = initial_Pos[ia].y + ffu.constr[ia].y;
             ffu.constr[ia].f.z = initial_Pos[ia].z + ffu.constr[ia].z;
-
 
             // printf("scan_constr()[i=%i] constr %i ia %i contr (%16.8f,%16.8f,%16.8f,%16.8f) initial (%16.8f,%16.8f,%16.8f) apos (%16.8f,%16.8f,%16.8f)\n", i, ic, ia, 
             //    ffu.constr[ia].x, ffu.constr[ia].y, ffu.constr[ia].z, ffu.constr[ia].w,initial_Pos[ia].x,initial_Pos[ia].y,initial_Pos[ia].z,ffu.apos[ia].x,ffu.apos[ia].y,ffu.apos[ia].z );
 
             // printf("bHardConstrs %d\n", bHardConstrs);
             
-            if(bHardConstrs) if( ffu.constr[ia].w>1e-9 ){ ffu.apos[ia] = ffu.constr[ia].f; ffu.vapos[i]=Vec3dZero; };
+            if(bHardConstrs) if( ffu.constr[ia].w>1e-9 ){ ffu.apos[ia] = ffu.constr[ia].f; ffu.vapos[ia]=Vec3dZero; };
 
             // printf("scan_constr()[i=%i] constr %i ia %i contr (%16.8f,%16.8f,%16.8f,%16.8f) initial (%16.8f,%16.8f,%16.8f) apos (%16.8f,%16.8f,%16.8f)\n", i, ic, ia, 
             //    ffu.constr[ia].x, ffu.constr[ia].y, ffu.constr[ia].z, ffu.constr[ia].w ,initial_Pos[ia].x,initial_Pos[ia].y,initial_Pos[ia].z,ffu.apos[ia].x,ffu.apos[ia].y,ffu.apos[ia].z );
@@ -2863,6 +2866,8 @@ void scan_constr( int nconf, int nconstr, int *icontrs, Quat4d* contrs_, double*
         // if(aposs  ){ ffu.copyPosTo   ( aposs   + i*ffl.natoms ); }
         // // Save trajectory if needed
         saveXYZ("scan_constr_uff.xyz", "#", 1, "a");
+        // printf("Configuration %i: Energy = %g, Iterations = %i\n", i, E, niterdone);
+        printf("Configuration %i: Energy = %g, Iterations = %i\n", i, E_run, niterdone);
     }
     
     // Restore original bUFF value

@@ -157,13 +157,13 @@ def relax_scanPlot1D(nscan=1000, span=(0.0,4.0),
     """
     Debug version with extensive logging
     """
-    print(f"===== DEBUGGING INFO =====")
-    print(f"Input parameters:")
-    print(f"  nscan: {nscan}")
-    print(f"  span: {span}")
-    print(f"  p0: {p0}")
-    print(f"  dir: {dir}")
-    print(f"  bRelax: {bRelax}")
+    # print(f"===== DEBUGGING INFO =====")
+    # print(f"Input parameters:")
+    # print(f"  nscan: {nscan}")
+    # print(f"  span: {span}")
+    # print(f"  p0: {p0}")
+    # print(f"  dir: {dir}")
+    # print(f"  bRelax: {bRelax}")
     
     # Create linspace array for scan direction
     t = np.linspace(span[0], span[1], nscan, endpoint=False)
@@ -181,7 +181,7 @@ def relax_scanPlot1D(nscan=1000, span=(0.0,4.0),
     poss[:, 1] = p0[1] + t*dir[1]
     poss[:, 2] = p0[2] + t*dir[2]
     
-    print(f"poss: {poss.shape}", poss )
+    # print(f"poss: {poss.shape}", poss )
     # Call the scan function using the computed positions
     # if bRelax:
     #     Es, Fs, Ps = mmff.scan(poss, bF=True, bP=True, bRelax=True, niter_max=niter_max, dt=dt, Fconv=Fconv)
@@ -196,8 +196,8 @@ def relax_scanPlot1D(nscan=1000, span=(0.0,4.0),
     contrs[:,0,1] = poss[:,1] # y
     contrs[:,0,2] = poss[:,2] # z
     contrs[:,:,3] = 1.0 # stiffness
-    # print(f"contrs: {contrs.shape}", contrs )
-    # print(f"iconstr: {iconstr.shape}", iconstr )
+    print(f"contrs: {contrs.shape}", contrs )
+    print(f"iconstr: {iconstr.shape}", iconstr )
     with open( "scan_constr.xyz","w") as f: f.write("") # delete the file content to  old data
 
  
@@ -751,7 +751,7 @@ mmff.getBuffs()
 
 #print( "ffflags ", mmff.ffflags )
 
-mmff.setSwitches( NonBonded=-1, MMFF=1, SurfAtoms=1, GridFF=1,PBC=-1 )   ### For Relaxed Scan MMFF has to be 1 
+mmff.setSwitches( NonBonded=-1, MMFF=1, SurfAtoms=0, GridFF=1,PBC=-1 )   ### For Relaxed Scan MMFF has to be 1 
 # mmff.setSwitches( NonBonded=-1, MMFF=1, SurfAtoms=0, GridFF=1 )   ### For Relaxed Scan MMFF has to be 1 
 # mmff.setSwitches( NonBonded=-1, MMFF=-1, SurfAtoms=0, GridFF=1 )   #### For Rigid Scan 
 
@@ -829,7 +829,7 @@ gc.disable()
 
 ###########********************* Relax 1D
 # t,Es,Ps=relax_scanPlot1D(bRelax=True, nscan=125, span=(2.6,15.1), dir=(0.0,0.0,1.0), p0=(0.0,0.0,(0+2.6)), label="PTCDA on Na", saveFig=None, saveData=None,niter_max=100 )   
-t,Es,Ps=relax_scanPlot1D(bRelax=True, nscan=25, span=(0,12.5), dir=(0.0,0.0,1.0), p0=(0.0,0.0,(0+2.6)), label="PTCDA on Na", saveFig=None, saveData="new_trial_relax_scan_ptcda_test",
+t,Es,Ps=relax_scanPlot1D(bRelax=True, nscan=125, span=(1.6,15.1),  dir=(0.0,0.0,1.0), p0=(0.0,0.0,(0+0)), label="PTCDA on Na", saveFig=None, saveData="new_trial_relax_scan_ptcda_test",
                         niter_max=5000,Fconv=1e-6,dt=0.05 )  ### z scan
 
 # t,Es,Ps=relax_scanPlot1D(bRelax=True, nscan=120, span=(0,12), dir=(0.866,0.5,0.0), p0=(0.0,0.0,(0+3.1)), label="PTCDA on Na", saveFig=None, saveData="trial_relax_scan_ptcda_line_test",
