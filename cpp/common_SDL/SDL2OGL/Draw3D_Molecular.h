@@ -384,6 +384,22 @@ void atoms( int n, Vec3d* ps, int* atypes, const MMFFparams& params, int ogl_sph
         Draw3D::drawShape( ogl_sph, ps[i], Mat3dIdentity*((atyp.RvdW-Rsub)*Rsc) );
     }
 }
+
+void atoms( int n, Quat4f* ps, int* atypes, const MMFFparams& params, int ogl_sph, float qsc=1, float Rsc=1, float Rsub=0 ){
+    glEnable(GL_LIGHTING);
+    glEnable(GL_DEPTH_TEST);
+    glEnable(GL_BLEND);
+    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+    glShadeModel(GL_SMOOTH);
+    for(int i=0; i<n; i++){
+        const AtomType& atyp = params.atypes[atypes[i]];
+        float r = ((atyp.color >> 16) & 0xFF) / 255.0f;
+        float g = ((atyp.color >> 8) & 0xFF) / 255.0f;
+        float b = (atyp.color & 0xFF) / 255.0f;
+        glColor4f(r, g, b, qsc);
+        Draw3D::drawShape( ogl_sph, (Vec3d)(ps[i].f), Mat3dIdentity*((atyp.RvdW-Rsub)*Rsc) );
+    }
+}
 #endif
 
 #ifdef MMFFBuilder_h

@@ -449,6 +449,38 @@ int init_groups(){
     return err;
 }
 
+void spread_replicas_grid(int x_nb, int y_nb, double x_grig, double y_grid){
+    printf("MolWorld_sp3_multi::spread_replicas(%i,%i,%g,%g)\n", x_nb, y_nb, x_grig, y_grid );
+    for(int x=0; x<x_nb; x++){
+        for(int y=0; y<y_nb; y++){
+            int isys = y + x*x_nb;
+            printf( "spread_replicas() isys=%i nSystems=%i x*x_grig=%g y*y_grid=%g\n", isys, nSystems, x*x_grig, y*y_grid );
+            if(isys>=nSystems)return;
+            for(int ia=0; ia<ffls[isys].natoms; ia++){
+                ffls[isys].apos[ia].add(x*x_grig, y*y_grid, 0);
+            }
+            pack_system(isys, ffls[isys], true, false, false, true);
+            ffls[isys].print();
+            
+        }
+    }
+    upload();
+}
+void spread_replicas_random(double x_grig, double y_grid){
+    for(int isys=0; isys<nSystems; isys++){
+            if(isys>=nSystems)return;
+            Vec3d shift = Vec3d{ randf(-x_grig,x_grig),randf(-y_grid,y_grid),0.0 };
+            for(int ia=0; ia<ffls[isys].natoms; ia++){
+                ffls[isys].apos[ia] += shift;
+            }
+            pack_system(isys, ffls[isys], true, false, false, true);
+            ffls[isys].print();
+    }
+    upload();
+}
+
+
+
 virtual void pre_loop() override {
     printf("MolWorld_sp3_multi::pre_loop()\n" );
     init_groups();
@@ -463,7 +495,8 @@ virtual void pre_loop() override {
             //if(isys==0){    printf( "pre_loop() ffl[ia=%i] constr(%g,%g,%g|%g) constrK(%g,%g,%g) \n", isys, ia, ffl.constr[ia].x,ffl.constr[ia].y,ffl.constr[ia].z,ffl.constr[ia].w, ffl.constrK[ia].x,ffl.constrK[ia].y,ffl.constrK[ia].z ); }
         }
     }
-
+    //spread_replicas_grid(10,10, 5, 5 );
+    //spread_replicas_random(5, 5 );
     //printConstrains();
     // for(int ic : constrain_list ){
     //     for(int isys=0; isys<nSystems; isys++){
@@ -775,7 +808,7 @@ bool updateMultiExploring( double Fconv=1e-6, float fsc = 0.02, float tsc = 0.3 
             unpack( ffls[isys].nvecs,  ffls[isys].apos, atoms+i0v);
             if(database && database->addIfNewDescriptor(&ffls[isys])==-1){
                 sprintf(tmpstr,"# %i E %g |F| %g istep=%i", database->getNMembers(), ffls[isys].Etot, sqrt(ffl.cvf.z), gopts[isys].istep );
-                saveXYZ( "gopt.xyz", tmpstr, false, "a", nPBC_save );
+                //saveXYZ( "gopt.xyz", tmpstr, false, "a", nPBC_save );
                 database->convergedStructure.push_back(false);
             }
             
@@ -1659,15 +1692,14 @@ int debug_eval(){
     }
     exit(0);
 }
-double x_max=0;
-bool converged_lastloop=false;
+
 int run_ocl_opt( int niter, double Fconv=1e-6 ){ 
     //printf("MolWorld_sp3_multi::run_ocl_opt() niter=%i bGroups=%i ocl.nGroupTot=%i \n", niter, bGroups, ocl.nGroupTot );
     //for(int i=0;i<npbc;i++){ printf( "CPU ipbc %i shift(%7.3g,%7.3g,%7.3g)\n", i, pbc_shifts[i].x,pbc_shifts[i].y,pbc_shifts[i].z ); }
     //debug_eval(); return 0;
 
     double F2conv = Fconv*Fconv;
-//    picked2GPU( ipicked,  1.0 );
+    picked2GPU( ipicked,  1.0 );
 
     int err=0;
     if( task_MMFF==0)setup_MMFFf4_ocl();
@@ -1719,7 +1751,7 @@ int run_ocl_opt( int niter, double Fconv=1e-6 ){
         }
 
         if (bGopt){
-            printf("MolWorld_sp3_multi::run_ocl_opt() bGopt=%i bGroups=%i \n", bGopt, bGroups );
+            //printf("MolWorld_sp3_multi::run_ocl_opt() bGopt=%i bGroups=%i \n", bGopt, bGroups );
             bExplore = false;
             for (int isys = 0; isys < nSystems; isys++){
                 if (gopts[isys].bExploring)
@@ -1729,9 +1761,7 @@ int run_ocl_opt( int niter, double Fconv=1e-6 ){
             bGroupDrive = bGroups && bExplore;
         }
 
-        if(bAnimManipulation){ animate(); }
-        //bGroupDrive = false;
-        
+        if(bAnimManipulation){ animate(); }                
         //printf( "CPU::bbox(%g,%g,%g)(%g,%g,%g)(%g,%g,%g)\n", bbox.a.x,bbox.a.y,bbox.a.z,   bbox.b.x,bbox.b.y,bbox.b.z,   bbox.c.x,bbox.c.y,bbox.c.z );
         //for(int ia=0; ia<ffl.natoms; ia++){      if( ffl.constr[ia].w > 0 ) printf( "CPU:atom[%i] constr(%g,%g,%g|%g) constrK(%g,%g,%g|%g)\n", ia, ffl.constr[ia].x,ffl.constr[ia].y,ffl.constr[ia].z,ffl.constr[ia].w,   ffl.constrK[ia].x,ffl.constrK[ia].y,ffl.constrK[ia].z,ffl.constrK[ia].w  ); }
         //bGroupDrive = true;
@@ -1833,6 +1863,7 @@ int run_ocl_opt( int niter, double Fconv=1e-6 ){
     //if(database->getNMembers()>0)    printf("%i  converged: %s\n", database->getNMembers(), database->convergedStructure.back() ? "true" : "false");
     //err |= ocl.finishRaw(); 
     //printf("eval_MMFFf4_ocl() time=%7.3f[ms] niter=%i \n", ( getCPUticks()-T0 )*tick2second*1000 , niterdone );
+
 
     return niterdone;
 }
