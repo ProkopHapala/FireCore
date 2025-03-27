@@ -1501,6 +1501,7 @@ class UFF : public NBFF { public:
                 bHardConstrs=1;
 
                 // printf("bHardConstrs=%i\n", bHardConstrs);
+                // printf("UFF::run() constr[%i](%g,%g,%g,%g) \n", i, constr[i].x,constr[i].y,constr[i].z,constr[i].w );
 
                 if(bHardConstrs) if( constr[i].w>1e-9 )[[unlikely]]{ apos[i] = constr[i].f; vapos[i]=Vec3dZero;
                 //printf("After constr[%i](%g,%g,%g,%g) apos(%g,%g,%g), vapos(%g,%g,%g)\n", i, constr[i].x,constr[i].y,constr[i].z,constr[i].w , apos[i].x,apos[i].y,apos[i].z, vapos[i].x,vapos[i].y,vapos[i].z );
@@ -1525,7 +1526,7 @@ class UFF : public NBFF { public:
         //     time_per_iter = time_per_iter*(1-c_smooth) + ( t*1e+6/itr )*c_smooth;
         //     printf( "UFF::run() NOT CONVERGED (bPBC=%i,bNonBonded=%ibNonBondNeighs=%i,|Fmax|=%g,dt=%g,niter=%i) time=%g[ms/%i](%g[us/iter])\n", bPBC,bNonBonded,bNonBondNeighs,sqrt(cvf.z),dt,niter, t*1e+3,itr, time_per_iter );
         // }
-        //printf( "UFF::run() itr=%i niter=%i \n", itr, niter );
+        // printf( "UFF::run() itr=%i niter=%i \n", itr, niter );
         return itr;
     }
 
