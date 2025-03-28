@@ -82,7 +82,6 @@ class TestAppMMFFsp3 : public AppSDL2OGL_3D { public:
     bool bRunRelax  = false;
 
     int     fontTex;
-    GLMesh<GLMESH_FLAG_NORMAL> ogl_sph = Draw3D::makeSphereOgl( 5, 1.0 );;
     int     ogl_mol=0;
 
     char str[256];
@@ -277,7 +276,7 @@ void TestAppMMFFsp3::drawSystem( bool bAtoms, bool bBonds, bool bForces, float t
         //opengl1renderer.color3f(0.0f,0.0f,1.0f); Draw3D::atomPropertyLabel( ff.natoms, (double*)nff.REQs, ff.apos, 3,2, fontTex, 0.02, "%4.2f\0" );
         opengl1renderer.color3f(0.5f,0.0f,0.0f); Draw3D::atomLabels( ff.natoms, ff.apos, fontTex, texSize                     );                     
         //if(bSpheres)Draw3D::atomsREQ  ( ff.natoms, ff.apos,   nff.REQs, ogl_sph, 1.0, 0.25, 1.0 );
-        if(bAtomsSpheres)Draw3D::atoms( ff.natoms, ff.apos, atypes, params, &ogl_sph, 1.0, mm_Rsc, mm_Rsub );  
+        if(bAtomsSpheres)Draw3D::atoms( ff.natoms, ff.apos, atypes, params, 1.0, mm_Rsc, mm_Rsub );  
         //Draw3D::atoms( ff.natoms, ff.apos, atypes, params, ogl_sph, 1.0, 1.0, 1.0 );      
         //Draw3D::atoms( ff.natoms, ff.apos, atypes, params, ogl_sph, 1.0, 0.5, 1.0 );       
         //Draw3D::atoms( ff.natoms, ff.apos, atypes, params, ogl_sph, 1.0, 0.25, 1.0 );       
@@ -494,7 +493,7 @@ void TestAppMMFFsp3::drawHUD(){
     s += sprintf(s, "vcog(%15.5e,%15.5e,%15.5e)\n", vcog.x,vcog.y,vcog.z);
     s += sprintf(s, "fcog(%15.5e,%15.5e,%15.5e)\n", fcog.x,fcog.y,fcog.z);
     s += sprintf(s, "torq(%15.5e,%15.5e,%15.5e)\n", tq  .x,tq  .y,tq  .z);
-    Draw::drawText( str, fontTex, fontSizeDef, {100,20} );
+    Draw::drawText( str, {10 ,HEIGHT-20}, fontSizeDef, {100,20} );
 
 }
 

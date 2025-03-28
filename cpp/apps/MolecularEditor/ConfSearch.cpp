@@ -89,7 +89,6 @@ class AppMolecularEditor2 : public AppSDL2OGL_3D {
     DynamicOpt  opt;
 
     int     fontTex;
-    GLMesh<GLMESH_FLAG_NORMAL> ogl_sph;
 
     char str[256];
 
@@ -204,8 +203,6 @@ void AppMolecularEditor2::initRigidSubstrate(){
 AppMolecularEditor2::AppMolecularEditor2( int& id, int WIDTH_, int HEIGHT_ ) : AppSDL2OGL_3D( id, WIDTH_, HEIGHT_ ) {
 
     fontTex = makeTexture( "common_resources/dejvu_sans_mono_RGBA_inv.bmp" );
-
-    ogl_sph = Draw3D::makeSphereOgl(5, 1.0);
 
     //qCamera.set( 0.0,0.0,0.0,1.0 );  // bottom view
     //qCamera.set( 0.0,0.0,1.0,0.0 );  // bottom view
@@ -535,7 +532,7 @@ void AppMolecularEditor2::draw(){
         opengl1renderer.enable(GL_LIGHTING);
         float sz = atomSize*( params.atypes[world.atypes[i]].RvdW - 1.0 );
         Draw::setRGB( params.atypes[world.atypes[i]].color );
-        ogl_sph.draw((Vec3f)world.apos[i], Quat4fIdentity, {sz, sz, sz});
+        Draw3D::drawSphere((Vec3f)world.apos[i], sz);
         opengl1renderer.disable(GL_LIGHTING);
     }
     opengl1renderer.disable(GL_LIGHTING);

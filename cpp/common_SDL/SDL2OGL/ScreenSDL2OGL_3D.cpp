@@ -24,7 +24,7 @@ void ScreenSDL2OGL_3D::draw   (){
 	Draw3D::drawBox       ( -1.0f, 1.0f, -1.0f, 1.0f, -1.0f, 1.0f, 0.8f, 0.8f, 0.8f );
 
 	opengl1renderer.shadeModel( GL_SMOOTH     );
-	Draw3D::drawSphere_oct( 5, 1.0f, Vec3f{3.0,3.0,3.0} );
+	Draw3D::drawSphere( Vec3f{3.0,3.0,3.0}, 1 );
 
 	opengl1renderer.disable ( GL_LIGHTING );
 	Draw3D::drawAxis ( 3.0f );

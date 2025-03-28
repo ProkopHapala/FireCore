@@ -199,7 +199,7 @@ class TestAppCLCFSF: public AppSDL2OGL_3D { public:
     bool bDrawRho     = false;
     bool bPlotDens    = false;
 
-    int  ogl=0,oglSph=0;
+    int  ogl=0;
 
     virtual void draw   ();
     virtual void drawHUD();
@@ -378,10 +378,6 @@ TestAppCLCFSF::TestAppCLCFSF( int& id, int WIDTH_, int HEIGHT_ ) : AppSDL2OGL_3D
     exit(0);
     */
 
-    oglSph=Draw::list(oglSph);
-    Draw3D::drawSphere_oct(4,1.0,Vec3d{0.,0.,0.});
-    opengl1renderer.endList();
-
     bRun = false;
 
     /*
@@ -472,11 +468,11 @@ void TestAppCLCFSF::draw(){
     if(bDrawObjects){
         float fsc=0.01;
         if(bDrawAtoms) drawff_atoms( ff,         fsc, 0.2 );
-        if(bDrawWfs  ) drawff_wfs  ( ff, oglSph, fsc      );
-        if(bDrawRho  ) drawff_rho  ( ff, oglSph, fsc      );
+        if(bDrawWfs  ) drawff_wfs  ( ff, fsc      );
+        if(bDrawRho  ) drawff_rho  ( ff, fsc      );
     }
 
-    drawEFF( eff, oglSph, 1.0, 0.05, 0.1 );
+    drawEFF( eff, 1.0, 0.05, 0.1 );
 
     //printf( " 4 epos (%g,%g,%g) efpos (%g,%g,%g) \n", ff.epos[0].x,ff.epos[0].y,ff.epos[0].z, ff.efpos[0].x,ff.efpos[0].y,ff.efpos[0].z );
 
@@ -502,7 +498,7 @@ void TestAppCLCFSF::drawHUD(){
 	char* s=str;
 	s+=ff.Eterms2str(s);
 	ff.orbs2str(s);
-    Draw::drawText( str, fontTex, fontSizeDef, {100,20} );
+    Draw::drawText( str, {10 ,HEIGHT-20}, fontSizeDef, {100,20} );
     //ff.printElectrons();
 
     /*

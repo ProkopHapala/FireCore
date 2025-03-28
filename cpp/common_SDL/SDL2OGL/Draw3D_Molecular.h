@@ -52,59 +52,17 @@ void torsion( Quat4i t, const Vec3d* apos ){
     //if(b.j&SIGN_MASK){   };
 }
 
-GLMesh<GLMESH_FLAG_NORMAL> makeSphereOgl( int nsub, float sz=1 ){
-    if (nsub<1) nsub=1;
-
-    GLMesh<GLMESH_FLAG_NORMAL> sphere = GLMesh<GLMESH_FLAG_NORMAL>(GL_TRIANGLES);
-
-    // generate a simple cube sphere
-    const Vec3f normals[6] = {{1, 0, 0}, {-1, 0, 0}, {0, 1, 0}, {0, -1, 0}, {0, 0, 1}, {0, 0, -1}};
-    for (int k=0; k<6; k++){
-        Vec3f sideNormal = normals[k];
-        Vec3f sideDir1 = normals[(k+2) % 6];
-        Vec3f sideDir2 = normals[(k+4) % 6];
-
-        for (int x1=0; x1<nsub; x1++){
-            for (int x2=0; x2<nsub; x2++){
-                Vec3f p1 = (sideDir1*x1 + sideDir2*x2)*(1.0f/nsub) - sideDir1*0.5f - sideDir2*0.5f + sideNormal*0.5f; // 0, 0
-                Vec3f p2 = (sideDir1*(x1+1) + sideDir2*(x2+1))*(1.0f/nsub) - sideDir1*0.5f - sideDir2*0.5f + sideNormal*0.5f; // 1, 1
-                Vec3f p3 = (sideDir1*x1 + sideDir2*(x2+1))*(1.0f/nsub) - sideDir1*0.5f - sideDir2*0.5f + sideNormal*0.5f; // 0, 1
-                Vec3f p4 = (sideDir1*(x1+1) + sideDir2*x2)*(1.0f/nsub) - sideDir1*0.5f - sideDir2*0.5f + sideNormal*0.5f; // 1, 0
-
-                p1 = p1.normalized();
-                p2 = p2.normalized();
-                p3 = p3.normalized();
-                p4 = p4.normalized();
-
-                sphere.addVertex(p1 * sz, p1);
-                sphere.addVertex(p3 * sz, p3);
-                sphere.addVertex(p2 * sz, p2);
-
-                sphere.addVertex(p1 * sz, p1);
-                sphere.addVertex(p4 * sz, p4);
-                sphere.addVertex(p2 * sz, p2);
-            }
-        }
-    }
-    
-    return sphere;
-}
-
-template<unsigned int FLAG>
-void atomsREQ( int n, Vec3d* ps, Quat4d* REQs, GLMesh<FLAG>* ogl_sph, float qsc=1, float Rsc=1, float Rsub=0, bool bPointCross=false, Vec3d pos0=Vec3dZero ){
+void atomsREQ( int n, Vec3d* ps, Quat4d* REQs, float qsc=1, float Rsc=1, float Rsub=0, bool bPointCross=false, Vec3d pos0=Vec3dZero ){
     opengl1renderer.enable(GL_LIGHTING);
     opengl1renderer.enable(GL_DEPTH_TEST);
     opengl1renderer.shadeModel(GL_SMOOTH);
     for(int i=0; i<n; i++){
         float q = (float)REQs[i].z*qsc;
-        ogl_sph->color = {1-fmax(0,-q),1-fmax(q,-q),1-fmax(0,+q)};
-        //printf( "Draw3D atomsREQ() %i Q=%g R=%g pos(%16.8f %16.8f %16.8f)  \n", i, q, REQs[i].x, ps[i].x, ps[i].y, ps[i].z );
         if(bPointCross){
             Draw3D::drawPointCross( ps[i]+pos0, (REQs[i].x-Rsub)*Rsc );
         }else{
-            //Draw3D::drawShape( ogl_sph, ps[i]+pos0, Mat3dIdentity*((REQs[i].x-Rsub)*Rsc) );
             float sz = (REQs[i].x-Rsub)*Rsc;
-            ogl_sph->draw((Vec3f)(ps[i]+pos0), Quat4fIdentity, {sz, sz, sz});
+            Draw3D::drawSphere((Vec3f)(ps[i]+pos0), sz, {1-fmax(0,-q),1-fmax(q,-q),1-fmax(0,+q)});
         }
     }
 }
@@ -407,18 +365,14 @@ int drawESP( int na, Vec3d* apos, Quat4d* REQs, Quat4d REQ ){
 
 
 #ifdef MMFFparams_h
-template<unsigned int FLAG>
-void atoms( int n, Vec3d* ps, int* atypes, const MMFFparams& params, GLMesh<FLAG>* ogl_sph, float qsc=1, float Rsc=1, float Rsub=0, Vec3d offset=Vec3dZero ){
+void atoms( int n, Vec3d* ps, int* atypes, const MMFFparams& params, float qsc=1, float Rsc=1, float Rsub=0, Vec3d offset=Vec3dZero ){
     opengl1renderer.enable(GL_LIGHTING);
     opengl1renderer.enable(GL_DEPTH_TEST);
     opengl1renderer.shadeModel(GL_SMOOTH);
     for(int i=0; i<n; i++){
         const AtomType& atyp = params.atypes[atypes[i]];
-        Draw::setRGB( atyp.color );
-        ogl_sph->color = COL2VEC(atyp.color);
-
         float sz = (atyp.RvdW-Rsub)*Rsc;
-        ogl_sph->draw((Vec3f)(ps[i]+offset), Quat4fIdentity, {sz, sz, sz});
+        Draw3D::drawSphere((Vec3f)(ps[i]+offset), sz, COL2VEC(atyp.color));
     }
 }
 #endif

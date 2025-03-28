@@ -79,8 +79,6 @@ class AppMolecularEditor2 : public AppSDL2OGL_3D {
     DynamicOpt  opt;
 
     int     fontTex;
-    GLMesh<GLMESH_FLAG_NORMAL> ogl_sph;
-
     char str[256];
 
     Vec3d ray0;
@@ -206,8 +204,6 @@ AppMolecularEditor2::AppMolecularEditor2( int& id, int WIDTH_, int HEIGHT_ ) : A
     }
 
     printf( "DEBUG 4 \n" );
-
-    ogl_sph = Draw3D::makeSphereOgl(5);
 
     //printf( "bond 8 %g \n", world.bond_0[8] );
     //printf( "bond 9 %g \n", world.bond_0[9] );
@@ -403,7 +399,7 @@ void AppMolecularEditor2::draw(){
         opengl1renderer.enable(GL_LIGHTING);
         float sz = atomSize * ( params.atypes[ world.atypes[i]].RvdW  - 1.0 );
         Draw::setRGB( params.atypes[world.atypes[i]].color );
-        ogl_sph.draw((Vec3f)world.apos[i], Quat4fIdentity, {sz, sz, sz});
+        Draw3D::drawSphere((Vec3f)world.apos[i], sz);
         opengl1renderer.disable(GL_LIGHTING);
     }
     opengl1renderer.disable(GL_LIGHTING);

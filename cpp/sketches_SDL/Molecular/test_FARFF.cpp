@@ -46,7 +46,6 @@ class TestAppFARFF: public AppSDL2OGL_3D { public:
 
     Plot2D plot1;
 
-    GLMesh<GLMESH_FLAG_NORMAL> ogl_sph = Draw3D::makeSphereOgl( 5, 0.25 );
     int ipicked = -1;
     Vec3d ray0;
     Vec3d mouse_p0;
@@ -221,7 +220,7 @@ void TestAppFARFF::draw(){
         //if(!ff.ignoreAtoms[i]) {
         //printf( "atom[%i] \n", i );
         if(ff.aconf[i].a==4){ opengl1renderer.color3f(0.5,0.5,0.5); }else{ opengl1renderer.color3f(1.0,1.0,1.0); };
-        ogl_sph.draw((Vec3f)ff.apos[i]);
+        Draw3D::drawSphere( (Vec3f)ff.apos[i], 1 );
         opengl1renderer.color3f(0.0,0.0,0.0); Draw3D::drawPointCross( ff.apos[i], 0.1 );
         //opengl1renderer.color3f(1.0,0.0,0.0); Draw3D::drawVecInPos( ff.aforce[i]*fsc, ff.apos[i]  );
         for(int j=0;j<N_BOND_MAX; j++){

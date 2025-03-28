@@ -102,7 +102,6 @@ class TestAppMMFFmini : public AppSDL2OGL_3D { public:
     bool renderType = 1;
 
     int  fontTex;
-    GLMesh<GLMESH_FLAG_NORMAL> ogl_sph = Draw3D::makeSphereOgl( 5, 1.0 );
     int  ogl_mol=0;
     int  ogl_isosurf=0;
     int  ogl_MO = 0;
@@ -626,7 +625,7 @@ void TestAppMMFFmini::drawSystem( Vec3d ixyz ){
     //Draw3D::atomsREQ  ( ff.natoms, ff.apos,   nff.REQs, ogl_sph, 1.0, 0.25, 1.0 );
     //Draw3D::atoms( ff.natoms, ff.apos, atypes, params, ogl_sph, 1.0, 1.0, 1.0 );       //DEBUG
     //Draw3D::atoms( ff.natoms, ff.apos, atypes, params, ogl_sph, 1.0, 0.5, 1.0 );       //DEBUG
-    Draw3D::atoms( ff.natoms, ff.apos, atypes, params, &ogl_sph, 1.0, mm_Rsc, mm_Rsub );       //DEBUG
+    Draw3D::atoms( ff.natoms, ff.apos, atypes, params, 1.0, mm_Rsc, mm_Rsub );       //DEBUG
 }
 
 void TestAppMMFFmini::drawSystemQMMM(){
@@ -642,7 +641,7 @@ void TestAppMMFFmini::drawSystemQMMM(){
         const AtomType& atyp = params.atypes[ ityp ];
         Draw::setRGB( atyp.color );
         float sz = (atyp.RvdW-Rsub)*Rsc;
-        ogl_sph.draw((Vec3f)ff.apos[im], Quat4fIdentity, {sz, sz, sz});
+        Draw3D::drawSphere( (Vec3f)ff.apos[im], sz );
     }
     opengl1renderer.color3f(0.5f,0.0f,0.0f); 
     Draw3D::atomPropertyLabel( qmmm.nqm, qmmm.charges, qmmm.apos, 1,0, fontTex );

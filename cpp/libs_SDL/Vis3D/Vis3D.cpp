@@ -102,24 +102,12 @@ extern "C"{
         return 0;
     }
 
-    int defaultSphere( int n ){
-        //thisApp->GL_LOCK = true; opengl1renderer.finish();
-        //if( !thisApp->wait_LOCK(10,5) ) return -1;  thisApp->GL_LOCK = true;
-        if(default_sphere) opengl1renderer.deleteLists(default_sphere,1);
-        default_sphere = opengl1renderer.genLists(1);
-        opengl1renderer.newList( default_sphere, GL_COMPILE);
-            Draw3D::drawSphere_oct( n, 1.0, {0.0,0.0,0.0} );
-        opengl1renderer.endList();
-        //thisApp->GL_LOCK = false;
-        //opengl1renderer.finish();  thisApp->GL_LOCK = false;
-        return 0;
-    }
 
     int spheres( int n, double * poss_, double * colors_, double * radius ){
         if( !thisApp->wait_LOCK(10,5) ) return -1; thisApp->GL_LOCK = true;
         Vec3d * poss   = (Vec3d*)poss_;
         Vec3d * colors = (Vec3d*)colors_;
-        if( !default_sphere ) defaultSphere( 4 );
+
         int ilist = opengl1renderer.genLists(1);
         opengl1renderer.newList(ilist, GL_COMPILE);
         opengl1renderer.enable (GL_LIGHTING);

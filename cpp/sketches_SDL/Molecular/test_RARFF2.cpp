@@ -95,8 +95,6 @@ class TestAppRARFF: public AppSDL2OGL_3D { public:
     RigidAtom     atom1;
     RigidAtomType type1,type2;
 
-    GLMesh<GLMESH_FLAG_NORMAL> oglSph = Draw3D::makeSphereOgl(5, 0.2);
-
     bool bRun = true;
 
     RARFF2 ff;
@@ -342,10 +340,7 @@ void TestAppRARFF::draw(){
     double fsc = 0.1;
     double tsc = 0.1;
     for(int i=0; i<ff.natom; i++){
-        //opengl1renderer.color3f(1.0,1.0,1.0); drawRigidAtom(ff.atoms[i]);
-
-        opengl1renderer.color3f(0.3,0.3,0.3);
-        oglSph.draw((Vec3f)ff.atoms[i].pos);
+        Draw3D::drawSphere((Vec3f)ff.atoms[i].pos, 1, {0.3, 0.3, 0.3});
 
         for(int ib=0; ib<ff.atoms[i].type->nbond; ib++){
             int io=4*i+ib;

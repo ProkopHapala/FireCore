@@ -120,7 +120,6 @@ class TestAppFireCoreVisual : public AppSDL2OGL_3D { public:
 
     // ---- Graphics objects
     int  fontTex,fontTex3D;
-    GLMesh<GLMESH_FLAG_NORMAL> ogl_sph = Draw3D::makeSphereOgl( 5, 1.0 );
     int  ogl_mol=0;
     int  ogl_isosurf=0;
     int  ogl_MO = 0;
@@ -547,7 +546,7 @@ void TestAppFireCoreVisual::drawSystem( Vec3d ixyz ){
     //opengl1renderer.color3f(0.0f,0.0f,0.0f); Draw3D::bondsPBC  ( ff.nbonds, ff.bond2atom, ff.apos, &builder.bondPBC[0], builder.lvec ); 
     Draw3D::bondsPBC  ( ff.nbonds, ff.bond2atom, ff.apos, ff.pbcShifts, COLOR_BLACK ); 
     if(bOrig&&mm_bAtoms){ opengl1renderer.color3f(0.0f,0.0f,0.0f); Draw3D::atomLabels( ff.natoms, ff.apos, fontTex3D                     ); }                    
-    Draw3D::atoms( ff.natoms, ff.apos, atypes, params, &ogl_sph, 1.0, mm_Rsc, mm_Rsub );       
+    Draw3D::atoms( ff.natoms, ff.apos, atypes, params, 1.0, mm_Rsc, mm_Rsub );       
 }
 
 void TestAppFireCoreVisual::drawSystemQMMM(){
@@ -562,7 +561,7 @@ void TestAppFireCoreVisual::drawSystemQMMM(){
         const AtomType& atyp = params.atypes[ ityp ];
         Draw::setRGB( atyp.color );
         float sz = (atyp.RvdW-Rsub)*Rsc;
-        ogl_sph.draw((Vec3f)ff.apos[im], Quat4fIdentity, {sz, sz, sz});
+        Draw3D::drawSphere((Vec3f)ff.apos[im], sz);
     }
     opengl1renderer.color3f(0.5f,0.0f,0.0f); 
     Draw3D::atomPropertyLabel( qmmm.nqm, qmmm.charges, qmmm.apos, 1,0, fontTex3D );

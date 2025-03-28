@@ -305,7 +305,6 @@ class MolGUI : public AppSDL2OGL_3D { public:
     int  ogl_afm       = 0;
     int  ogl_afm_trj   = 0;
     int  ogl_esp       = 0;
-    GLMesh_Normal ogl_sph = GLMesh_Normal(GL_TRIANGLES);
     int  ogl_mol       = 0;
     GLMesh_NC ogl_isosurf = GLMesh_NC(GL_TRIANGLES);
     int  ogl_MO        = 0;
@@ -1008,10 +1007,9 @@ void MolGUI::drawParticles(){
     Mat3d m  = Mat3dIdentity*0.2;
     opengl1renderer.enable(GL_LIGHTING);
     opengl1renderer.shadeModel(GL_SMOOTH);
-    opengl1renderer.color3f( 0.0, 1.0, 0.0 );
     for( int i=0; i<particles.size(); i++ ){
-        Quat4d& p = particles[i];    //Draw3D::drawShape( ogl_sph, p.f, m, 0.1 );
-        ogl_sph.draw((Vec3f)p.f);
+        Quat4d& p = particles[i];
+        Draw3D::drawSphere((Vec3f)p.f, 1, COLOR_GREEN);
     }
     opengl1renderer.color3f( 0.0, 0.0, 0.0 );
     opengl1renderer.begin(GL_TRIANGLES);
@@ -1120,7 +1118,6 @@ void MolGUI::initGUI(){
     console.callback = [&](const char* s){ printf( "console.callback(%s)\n", s ); return 0; };
     console.fontTex = fontTex;
 
-    ogl_sph = Draw3D::makeSphereOgl( 5, 1.0 );
     //float l_diffuse  []{ 0.9f, 0.85f, 0.8f,  1.0f };
 	float l_specular []{ 0.0f, 0.0f,  0.0f,  1.0f };
     //opengl1renderer.lightfv    ( GL_LIGHT0, GL_AMBIENT,   l_ambient  );
@@ -1264,10 +1261,6 @@ void MolGUI::bindMolWorld( MolWorld_sp3* W_ ){
 //                   DRAW()
 //=================================================
 
-// void MolGUI::preRender(){
-//     Draw3D::atomsREQ( W->gridFF.apos_.size(), &W->gridFF.apos_[0], &W->gridFF.REQs_[0], ogl_sph, 1., 0.1, 0., false, W->gridFF.shift0 );
-// }
-
 void MolGUI::draw(){
     GLES2::active_camera = &cam;
 
@@ -1336,7 +1329,6 @@ void MolGUI::draw(){
 
     if( bViewSubstrate ){
         if( ( W->bGridFF )&&( ((int)(W->gridFF.mode))!=0) ){
-            //Draw3D::atomsREQ( W->surf.natoms, W->surf.apos, W->surf.REQs, &ogl_sph, 1., 0.1, 0., true, W->gridFF.shift0 );
             if( (ogl_isosurf.vertexCount()==0) ){ renderGridFF_new( subs_iso ); }
             viewSubstrate( {-5,10}, {-5,10}, &ogl_isosurf, W->gridFF.grid.cell.a, W->gridFF.grid.cell.b );
         }else{
@@ -1803,7 +1795,7 @@ void MolGUI::renderSurfAtoms( Vec3i nPBC, bool bPointCross, float qsc, float Rsc
         for(int iy=-nPBC.y; iy<=nPBC.y; iy++){
             for(int iz=-nPBC.z; iz<=nPBC.z; iz++){
                 Vec3d shift = lvec.a*ix + lvec.b*iy + lvec.c*iz;
-                Draw3D::atomsREQ( W->gridFF.natoms, W->gridFF.apos, W->gridFF.REQs, &ogl_sph, qsc, Rsc, Rsub, bPointCross, W->gridFF.shift0 + shift );
+                Draw3D::atomsREQ( W->gridFF.natoms, W->gridFF.apos, W->gridFF.REQs, qsc, Rsc, Rsub, bPointCross, W->gridFF.shift0 + shift );
                 icell++;
             }
         } 
@@ -2080,7 +2072,6 @@ void MolGUI::drawBuilder( Vec3i ixyz ){
     if(bViewAtomSpheres&&mm_bAtoms ){       
         opengl1renderer.enable(GL_LIGHTING);
         opengl1renderer.shadeModel(GL_SMOOTH);                     
-        //Draw3D::ato( natoms, apos, atypes, W->params, ogl_sph, 1.0, mm_Rsc, mm_Rsub ); 
         for(int ia=0; ia<B.atoms.size(); ia++){
             const MM::Atom& a = B.atoms[ia];
             //const MM::AtomType& atyp = W->params.atypes[a.type];
@@ -2092,10 +2083,8 @@ void MolGUI::drawBuilder( Vec3i ixyz ){
                 Draw::setRGB( B.frags[a.frag].color );
                 atomColor = COL2VEC(B.frags[a.frag].color);
             }else{ Draw::setRGB( W->params.atypes[a.type].color ); atomColor = COL2VEC(W->params.atypes[a.type].color); }
-            //Draw3D::drawShape( ogl_sph, a.pos, Mat3dIdentity*((atyp.RvdW-mm_Rsub)*mm_Rsc) );
             float sz = (atyp.RvdW-mm_Rsub)*mm_Rsc;
-            ogl_sph.color = atomColor;
-            ogl_sph.draw((Vec3f)a.pos, Quat4fIdentity, {sz, sz, sz});
+            Draw3D::drawSphere((Vec3f)a.pos, sz, atomColor);
         }    
     }
     if(mm_bAtoms&&bViewAtomLabels ){ 
@@ -2144,7 +2133,7 @@ void MolGUI::drawSystem( Vec3d offset, bool bOrig ){
 
     //W->nbmol.print();
     if(bViewAtomSpheres && mm_bAtoms && (!bViewBondLenghts)){
-        Draw3D::atoms( natoms, apos, atypes, W->params, &ogl_sph, 1.0, mm_Rsc, mm_Rsub, offset );
+        Draw3D::atoms( natoms, apos, atypes, W->params, 1.0, mm_Rsc, mm_Rsub, offset );
     }
     if(bOrig){
         //printf( "MolGUI::drawSystem() bOrig(%i)  mm_bAtoms(%i) bViewAtomLabels(%i) bViewMolCharges(%i) \n", bOrig, mm_bAtoms, bViewAtomLabels, bViewMolCharges );
@@ -2184,12 +2173,8 @@ void MolGUI::drawSystem( Vec3d offset, bool bOrig ){
         */
         if(bOrig){
             if(bViewPis &&  fpipos ){ opengl1renderer.color3f(0.0f,1.0f,1.0f); Draw3D::drawVectorArray( nnode, apos, pipos, 1.0, 100.0 );          }
-            //if(mm_bAtoms         ){ opengl1renderer.color3f(0.0f,0.0f,0.0f); Draw3D::atomLabels       ( natoms, apos, fontTex3D               ); }                    
             if( bViewBondLabels    ){ opengl1renderer.color3f(0.0f,0.0f,0.0f); Draw3D::bondLabels( nbonds, bond2atom, apos, fontTex3D,  textSize  ); }
-            //void bondLabels( int n, const Vec2i* b2a, const Vec3d* apos, int fontTex3D, float sz=0.02 );
-            opengl1renderer.enable( GL_DEPTH_TEST );
-            //Draw3D::atoms          ( natoms, apos, atypes, W->params, ogl_sph, 1.0, mm_Rsc, mm_Rsub );
-            //Draw3D::drawVectorArray( natoms, apos, fapos, 100.0, 10000.0 );   
+            opengl1renderer.enable( GL_DEPTH_TEST ); 
         }
         if(bViewBondLenghts &&  bOrig ){ 
             if(bViewAtomLabels ){ opengl1renderer.color3f(0.0f,0.0f,0.0f); Draw3D::bondsLengths( nbonds, bond2atom, apos, fontTex3D, textSize ); }

@@ -32,23 +32,6 @@
 //  http://www.willusher.io/sdl2%20tutorials/2013/12/18/lesson-6-true-type-fonts-with-sdl_ttf
 //  http://stackoverflow.com/questions/28880562/rendering-text-with-sdl2-and-opengl
 
-
-/*
-int drawAtom( MoleculeType * mol, int i, int nsphere, float atomscale, uint32_t color ){
-    Draw::setRGB( color );
-    int nvert = Draw3D::drawSphere_oct( nsphere, atomscale*mol->typeList->vdwRs[mol->atypes[i]], mol->xyzs[i] );
-    return nvert;
-}
-
-int drawBond( MoleculeType * mol, int i, int j, int nstick, float bondwidth  ){
-    Vec3f ai,aj;
-    convert( mol->xyzs[i], ai );
-    convert( mol->xyzs[j], aj );
-    int nvert = Draw3D::drawCylinderStrip( nstick, bondwidth, bondwidth, ai, aj );
-    return nvert;
-}
-*/
-
 int renderMoleculeCPK ( MoleculeType * mol, int nsphere, int nstick, float atomscale, float bondwidth ){
     if( mol->viewlist > 0 ) {	opengl1renderer.deleteLists( mol->viewlist, 1 );	}
     int nvert = 0;

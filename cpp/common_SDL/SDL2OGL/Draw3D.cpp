@@ -250,154 +250,6 @@ int Draw3D::drawConeFan( int n, float r, const Vec3f& base, const Vec3f& tip ){
 	return nvert;
 };
 
-int drawCylinderStrip( int n, float r1, float r2, const Vec3f& base, const Vec3f& tip ){
-	int nvert=0;
-
-	Vec3f a,b,c,c_hat;
-	c.set_sub( tip, base );
-	c_hat.set_mul( c, 1/c.norm() );
-	c_hat.getSomeOrtho( a, b );
-	a.normalize();
-	b.normalize();
-
-    float alfa = 2*M_PI/n;
-    Vec2f rot,drot;
-    rot .set(1.0f,0.0f);
-    drot.set( cos( alfa ), sin( alfa ) );
-
-	Vec3f q; q.set(c); q.add_mul( a, -(r1-r2) );
-	float pnab =  c_hat.dot( q )/q.norm();
-	float pnc  =  sqrt( 1 - pnab*pnab );
-
-	opengl1renderer.begin   ( GL_TRIANGLE_STRIP );
-	//opengl1renderer.begin   ( GL_LINES );
-	for(int i=0; i<=n; i++ ){
-		Vec3f p,pn;
-		p .set( rot.x*a.x +  rot.y*b.x, rot.x*a.y + rot.y*b.y, rot.x*a.z + rot.y*b.z    );
-		pn.set( pnab*p.x + pnc*c_hat.x, pnab*p.y + pnc*c_hat.y, pnab*p.z + pnc*c_hat.z  );
-		//printf( "p %f %f %f   pn %f %f %f |pn| %f \n", p.x, p.y, p.z,   pn.x, pn.y, pn.z, pn.norm() );
-		opengl1renderer.normal3f( pn.x, pn.y, pn.z );
-		opengl1renderer.vertex3f( base.x + r1*p.x, base.y + r1*p.y, base.z + r1*p.z ); nvert++;
-		opengl1renderer.vertex3f( tip .x + r2*p.x, tip .y + r2*p.y, tip .z + r2*p.z ); nvert++;
-        rot.mul_cmplx( drot );
-	}
-	opengl1renderer.end();
-	return nvert;
-};
-
-int drawCylinderStrip_wire( int n, float r1, float r2, const Vec3f& base, const Vec3f& tip ){
-	int nvert=0;
-
-	Vec3f a,b,c,c_hat;
-	c.set_sub( tip, base );
-	c_hat.set_mul( c, 1/c.norm() );
-	c_hat.getSomeOrtho( a, b );
-	a.normalize();
-	b.normalize();
-
-    float alfa = 2*M_PI/n;
-    Vec2f rot,drot;
-    rot .set(1.0f,0.0f);
-    drot.set( cos( alfa ), sin( alfa ) );
-
-	Vec3f q; q.set(c); q.add_mul( a, -(r1-r2) );
-	float pnab =  c_hat.dot( q )/q.norm();
-	float pnc  =  sqrt( 1 - pnab*pnab );
-
-	opengl1renderer.begin   ( GL_LINE_LOOP );
-	for(int i=0; i<n; i++ ){
-		Vec3f p;
-		p .set( rot.x*a.x +  rot.y*b.x, rot.x*a.y + rot.y*b.y, rot.x*a.z + rot.y*b.z    );
-		opengl1renderer.vertex3f( base.x + r1*p.x, base.y + r1*p.y, base.z + r1*p.z ); nvert++;
-		opengl1renderer.vertex3f( tip .x + r2*p.x, tip .y + r2*p.y, tip .z + r2*p.z ); nvert++;
-        rot.mul_cmplx( drot );
-	}
-    for(int i=0; i<n; i++ ){
-		Vec3f p;
-		p .set( rot.x*a.x +  rot.y*b.x, rot.x*a.y + rot.y*b.y, rot.x*a.z + rot.y*b.z    );
-		opengl1renderer.vertex3f( base.x + r1*p.x, base.y + r1*p.y, base.z + r1*p.z ); nvert++;
-        rot.mul_cmplx( drot );
-	}
-    for(int i=0; i<n; i++ ){
-		Vec3f p;
-		p .set( rot.x*a.x +  rot.y*b.x, rot.x*a.y + rot.y*b.y, rot.x*a.z + rot.y*b.z    );
-		opengl1renderer.vertex3f( tip .x + r2*p.x, tip .y + r2*p.y, tip .z + r2*p.z ); nvert++;
-        rot.mul_cmplx( drot );
-	}
-	opengl1renderer.end();
-	return nvert;
-};
-
-int drawCone( int n, float phi0, float phi1, float r1, float r2, const Vec3f& base, const Vec3f& tip, bool smooth ){
-	int nvert=0;
-
-	Vec3f a,b,c,c_hat;
-	c.set_sub( tip, base );
-	c_hat.set_mul( c, 1/c.norm() );
-	c_hat.getSomeOrtho( a, b );
-	a.normalize();
-	b.normalize();
-
-    //float alfa = 2*M_PI/n;
-    float alfa = (phi1-phi0)/n;
-    Vec2f rot,drot;
-    //rot .set(1.0f,0.0f);
-    rot.set( cos( phi0 ), sin( phi0 ) );
-    drot.set( cos( alfa ), sin( alfa ) );
-
-	Vec3f q; q.set(c); q.add_mul( a, -(r1-r2) );
-	float pnab =  c_hat.dot( q )/q.norm();
-	float pnc  =  sqrt( 1 - pnab*pnab );
-
-	opengl1renderer.begin   ( GL_QUADS );
-	Vec3f p,pn,op,opn;
-    op .set( rot.x*a.x +  rot.y*b.x, rot.x*a.y + rot.y*b.y, rot.x*a.z + rot.y*b.z    );
-	opn.set( pnab*op.x + pnc*c_hat.x, pnab*op.y + pnc*c_hat.y, pnab*op.z + pnc*c_hat.z  );
-	if( smooth ){
-        for(int i=0; i<n; i++ ){
-
-            opengl1renderer.normal3f( opn.x, opn.y, opn.z );		opengl1renderer.vertex3f( base.x + r1*op.x, base.y + r1*op.y, base.z + r1*op.z ); nvert++;
-            opengl1renderer.normal3f( opn.x, opn.y, opn.z );		opengl1renderer.vertex3f( tip .x + r2*op.x, tip .y + r2*op.y, tip .z + r2*op.z ); nvert++;
-
-            rot.mul_cmplx( drot );
-            p .set( rot.x*a.x +  rot.y*b.x, rot.x*a.y + rot.y*b.y, rot.x*a.z + rot.y*b.z    );
-            pn.set( pnab*p.x + pnc*c_hat.x, pnab*p.y + pnc*c_hat.y, pnab*p.z + pnc*c_hat.z  );
-            pn.normalize();
-
-            opengl1renderer.normal3f( pn.x, pn.y, pn.z );
-            opengl1renderer.vertex3f( tip .x + r2*p.x, tip .y + r2*p.y, tip .z + r2*p.z ); nvert++;
-            opengl1renderer.vertex3f( base.x + r1*p.x, base.y + r1*p.y, base.z + r1*p.z ); nvert++;
-
-            op.set(p);
-            opn.set(pn);
-
-        }
-	}else{
-        for(int i=0; i<n; i++ ){
-
-            rot.mul_cmplx( drot );
-
-            p .set( rot.x*a.x +  rot.y*b.x, rot.x*a.y + rot.y*b.y, rot.x*a.z + rot.y*b.z    );
-            pn.set( pnab*p.x + pnc*c_hat.x, pnab*p.y + pnc*c_hat.y, pnab*p.z + pnc*c_hat.z  );
-
-            Vec3f normal; normal.set_add( opn, pn ); normal.normalize();
-
-            opengl1renderer.normal3f( normal.x, normal.y, normal.z );
-            opengl1renderer.vertex3f( base.x + r1*op.x, base.y + r1*op.y, base.z + r1*op.z ); nvert++;
-            opengl1renderer.vertex3f( tip .x + r2*op.x, tip .y + r2*op.y, tip .z + r2*op.z ); nvert++;
-
-            opengl1renderer.vertex3f( tip .x + r2*p.x, tip .y + r2*p.y, tip .z + r2*p.z ); nvert++;
-            opengl1renderer.vertex3f( base.x + r1*p.x, base.y + r1*p.y, base.z + r1*p.z ); nvert++;
-
-            op.set(p);
-            opn.set(pn);
-
-        }
-	}
-	opengl1renderer.end();
-	return nvert;
-};
-
 int Draw3D::drawSphereTriangle( int n, float r, const Vec3f& pos, const Vec3f& a, const Vec3f& b, const Vec3f& c ){
 	int nvert=0;
 	float d = 1.0f/n;
@@ -468,7 +320,51 @@ int Draw3D::drawSphereTriangle_wire( int n, float r, const Vec3f& pos, const Vec
 	return nvert;
 };
 
-int Draw3D::drawSphere_oct( int n, float r, const Vec3f& pos, bool wire ){
+static GLMesh_Normal makeSphere( int nsub, float sz=1 ){
+    if (nsub<1) nsub=1;
+
+    GLMesh_Normal sphere = GLMesh_Normal(GL_TRIANGLES);
+
+    // generate a simple cube sphere
+    const Vec3f normals[6] = {{1, 0, 0}, {-1, 0, 0}, {0, 1, 0}, {0, -1, 0}, {0, 0, 1}, {0, 0, -1}};
+    for (int k=0; k<6; k++){
+        Vec3f sideNormal = normals[k];
+        Vec3f sideDir1 = normals[(k+2) % 6];
+        Vec3f sideDir2 = normals[(k+4) % 6];
+
+        for (int x1=0; x1<nsub; x1++){
+            for (int x2=0; x2<nsub; x2++){
+                Vec3f p1 = (sideDir1*x1 + sideDir2*x2)*(1.0f/nsub) - sideDir1*0.5f - sideDir2*0.5f + sideNormal*0.5f; // 0, 0
+                Vec3f p2 = (sideDir1*(x1+1) + sideDir2*(x2+1))*(1.0f/nsub) - sideDir1*0.5f - sideDir2*0.5f + sideNormal*0.5f; // 1, 1
+                Vec3f p3 = (sideDir1*x1 + sideDir2*(x2+1))*(1.0f/nsub) - sideDir1*0.5f - sideDir2*0.5f + sideNormal*0.5f; // 0, 1
+                Vec3f p4 = (sideDir1*(x1+1) + sideDir2*x2)*(1.0f/nsub) - sideDir1*0.5f - sideDir2*0.5f + sideNormal*0.5f; // 1, 0
+
+                p1 = p1.normalized();
+                p2 = p2.normalized();
+                p3 = p3.normalized();
+                p4 = p4.normalized();
+
+                sphere.addVertex(p1 * sz, p1);
+                sphere.addVertex(p3 * sz, p3);
+                sphere.addVertex(p2 * sz, p2);
+
+                sphere.addVertex(p1 * sz, p1);
+                sphere.addVertex(p4 * sz, p4);
+                sphere.addVertex(p2 * sz, p2);
+            }
+        }
+    }
+    
+    return sphere;
+}
+static GLMesh_Normal sphere = makeSphere(5, 1);
+
+void Draw3D::drawSphere(Vec3f pos, float r, Vec3f color){
+    sphere.color = color;
+    sphere.draw(pos, Quat4fIdentity, {r,r,r});
+}
+/*
+void Draw3D::drawSphere_oct( int n, float r, const Vec3f& pos, bool wire ){
 	int nvert=0;
 	Vec3f px,mx,py,my,pz,mz;
 	px.set( 1,0,0); py.set(0, 1,0); pz.set(0,0, 1);
@@ -483,17 +379,9 @@ int Draw3D::drawSphere_oct( int n, float r, const Vec3f& pos, bool wire ){
         nvert += drawSphereTriangle_wire( n, r, pos, pz, px, py );
         nvert += drawSphereTriangle_wire( n, r, pos, pz, py, mx );
 	}else{
-        nvert += drawSphereTriangle( n, r, pos, mz, mx, my );
-        nvert += drawSphereTriangle( n, r, pos, mz, my, px );
-        nvert += drawSphereTriangle( n, r, pos, mz, px, py );
-        nvert += drawSphereTriangle( n, r, pos, mz, py, mx );
-        nvert += drawSphereTriangle( n, r, pos, pz, mx, my );
-        nvert += drawSphereTriangle( n, r, pos, pz, my, px );
-        nvert += drawSphereTriangle( n, r, pos, pz, px, py );
-        nvert += drawSphereTriangle( n, r, pos, pz, py, mx );
+        drawSphere(pos, r);
 	}
-	return nvert;
-};
+};*/
 
 int Draw3D::drawCircleAxis( int n, const Vec3f& pos, const Vec3f& v0, const Vec3f& uaxis, float R, float dca, float dsa ){
     int nvert=0;

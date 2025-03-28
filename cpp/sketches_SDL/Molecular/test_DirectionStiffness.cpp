@@ -121,7 +121,6 @@ class TestAppDirectionStiffness : public AppSDL2OGL_3D { public:
     bool bRunRelax  = false;
 
     int     fontTex;
-    GLMesh<GLMESH_FLAG_NORMAL> ogl_sph = Draw3D::makeSphereOgl( 5, 1.0 );
     int     ogl_mol=0;
 
     char str[256];
@@ -377,7 +376,7 @@ void TestAppDirectionStiffness::drawSystem( ){
     //Draw3D::atomsREQ  ( ff.natoms, ff.apos,   nff.REQs, ogl_sph, 1.0, 0.25, 1.0 );
     //Draw3D::atoms( ff.natoms, ff.apos, atypes, params, ogl_sph, 1.0, 1.0, 1.0 );       //DEBUG
     //Draw3D::atoms( ff.natoms, ff.apos, atypes, params, ogl_sph, 1.0, 0.5, 1.0 );       //DEBUG
-    Draw3D::atoms( ff.natoms, ff.apos, atypes, params, &ogl_sph, 1.0, 0.25, 1.0 );       //DEBUG
+    Draw3D::atoms( ff.natoms, ff.apos, atypes, params, 1.0, 0.25, 1.0 );       //DEBUG
 }
 
 int TestAppDirectionStiffness::loadMoleculeXYZ( const char* fname, const char* fnameLvs, bool bAutoH ){

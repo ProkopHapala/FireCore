@@ -60,9 +60,9 @@ int  drawCircleAxis     ( int n, const Vec3f& pos, const Vec3f& v0, const Vec3f&
 int  drawConeFan        ( int n, float r,                const Vec3f& base, const Vec3f& tip );
 int  drawCone           ( int n, float phi1, float phi2, float r1, float r2, const Vec3f& base, const Vec3f& tip, bool smooth );
 
-//int  drawSphereOctLines ( int n, float R, const Vec3f& pos );
 int  drawSphereOctLines ( int n, float R, const Vec3f& pos, const Mat3f& rot=Mat3fIdentity, bool bRGB=false );
-int  drawSphere_oct     ( int n, float R, const Vec3f& pos, bool wire=false );
+//void drawSphere_oct     ( int n, float R, const Vec3f& pos, bool wire=false );
+void drawSphere ( Vec3f pos, float r, Vec3f color=opengl1renderer.color );
 
 void drawKite           ( const Vec3f& pos, const Mat3f& rot, float sz );
 void drawPanel          ( const Vec3f& pos, const Mat3f& rot, const Vec2f& sz );
@@ -110,7 +110,7 @@ inline int  drawCone           ( int n, float phi1, float phi2, float r1, float 
 
 inline int  drawCircleAxis     ( int n, const Vec3d& pos, const Vec3d& v0, const Vec3d& uaxis, double R ){ return drawCircleAxis( n, (Vec3f)pos, (Vec3f)v0, (Vec3f)uaxis, R ); };
 inline int  drawSphereOctLines ( int n, double R, const Vec3d& pos, const Mat3d& rot=Mat3dIdentity, bool bRGB=false ){ return drawSphereOctLines ( n, R, (Vec3f)pos, (Mat3f)rot, bRGB ); };
-inline int  drawSphere_oct     ( int n, double R, const Vec3d& pos ){ return drawSphere_oct( n, R, (Vec3f)pos ); };
+//inline void drawSphere_oct     ( int n, double R, const Vec3d& pos ){ drawSphere_oct( n, R, (Vec3f)pos ); };
 
 inline void drawText     ( const char * str, const Vec3d& pos, int fontTex, float textSize, int iend ){ drawText(str, (Vec3f)pos, fontTex, textSize,iend); };
 

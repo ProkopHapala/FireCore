@@ -116,8 +116,6 @@ class TestAppRARFF: public AppSDL2OGL_3D { public:
     Vec3d ray0;
     Vec3d mouse_p0;
 
-    GLMesh<GLMESH_FLAG_NORMAL> ogl_sph = Draw3D::makeSphereOgl( 3, 0.25 );
-
     const char* workFileName="data/work.rff";
 
     Plot2D plot1;
@@ -359,7 +357,7 @@ void TestAppRARFF::visualize_atoms(){
     for(int ia=0; ia<ff.natom; ia++){
         if(ff.ignoreAtoms[ia])continue;
         opengl1renderer.color3f(0.3,0.3,0.3);
-        ogl_sph.draw((Vec3f)ff.apos[ia] );
+        Draw3D::drawSphere((Vec3f)ff.apos[ia], 0.25);
         for(int j=0; j<ff.types[ia]->nbond; j++){
             int i=ia*N_BOND_MAX+j;
             Vec3d pb = ff.bondPos( i );

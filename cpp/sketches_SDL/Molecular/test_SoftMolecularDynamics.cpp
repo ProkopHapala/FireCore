@@ -69,7 +69,6 @@ class TestAppSoftMolDyn : public AppSDL2OGL_3D {
     DynamicOpt  opt;
 
     int     fontTex=0,fontTexPix=0;
-    GLMesh<GLMESH_FLAG_NORMAL> ogl_sph = Draw3D::makeSphereOgl( 5, 1.0 );
 
     char str[256];
 
@@ -236,7 +235,7 @@ void TestAppSoftMolDyn::draw(){
     Draw3D::drawLines ( world.nbonds, (int*)world.bond2atom, world.apos );
     Draw3D::bondLabels( world.nbonds,       world.bond2atom, world.apos, fontTex, 0.02 );
     Draw3D::vecsInPoss( world.natoms, world.aforce, world.apos, 300.0, COLOR_RED);
-    Draw3D::atomsREQ  ( world.natoms, world.apos,   world.REQ, &ogl_sph, 1.0, 0.25 );
+    Draw3D::atomsREQ  ( world.natoms, world.apos,   world.REQ, 1.0, 0.25 );
 
     //printf("==========\n");
     //for(int i=0; i<world.natoms; i++){
@@ -308,8 +307,7 @@ void TestAppSoftMolDyn::drawHUD(){
     //sprintf( str, );
     //Draw3D::drawText( str, Vec3f{10.,10.,0.0}, fontTexPix, 20, 0 );
     opengl1renderer.translatef( 10 ,HEIGHT-20 ,0 );
-    Draw::drawText( str, fontTexPix, 7, {100,50} );
-
+    Draw::drawText( str, {10 ,HEIGHT-20}, 7, {100,50} );
 }
 
 // ===================== MAIN

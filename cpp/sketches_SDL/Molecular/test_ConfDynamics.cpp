@@ -93,7 +93,7 @@ TestConfDynamics::TestConfDynamics( int& id, int WIDTH_, int HEIGHT_ ) : AppSDL2
 	opengl1renderer.newList( vobSubstrate, GL_COMPILE );
         opengl1renderer.enable( GL_LIGHTING );
         for(int i=0; i<nsubstrate;i++){
-            Draw3D::drawSphere_oct(2,0.5, substrate[i]);
+            Draw3D::drawSphere((Vec3f)substrate[i], 0.5);
         }
 	opengl1renderer.endList();
 

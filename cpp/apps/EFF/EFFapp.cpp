@@ -333,11 +333,6 @@ TestAppRARFF::TestAppRARFF( int& id, int WIDTH_, int HEIGHT_ ) : AppSDL2OGL_3D( 
     //ff.bEvalKinetic   = 0;
     //ff.bEvalAA        = 0;
 
-    oglSph=Draw::list(oglSph);
-    //Draw3D::drawSphere_oct(3,1.0d,(Vec3d){0.,0.,0.});
-    Draw3D::drawSphere_oct(5,1.0,(Vec3d){0.,0.,0.});
-    opengl1renderer.endList();
-
     plot1.init();
     plot1.fontTex = fontTex;
     plot1.add( new DataLine2D( 200, -10.0, 0.1, 0xFF0000FF, "Vatom" ) );
@@ -525,7 +520,7 @@ void TestAppRARFF::drawHUD(){
 	char* s=tmpstr;
 	s+=ff.Eterms2str(s);
 	ff.orbs2str(s);
-    Draw::drawText( tmpstr, fontTex, fontSizeDef, {100,20} );
+    Draw::drawText( tmpstr, {10.0,HEIGHT-20.0}, fontSizeDef, {100,20} );
     opengl1renderer.popMatrix();
 
     if(bConsole) console.draw();

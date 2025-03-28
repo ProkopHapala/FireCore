@@ -133,7 +133,6 @@ class TestAppMolecularBrowser : public AppSDL2OGL_3D, public Browser { public:
 
     // ---- Graphics objects
     int  fontTex,fontTex3D;
-    GLMesh<GLMESH_FLAG_NORMAL> ogl_sph = Draw3D::makeSphereOgl( 5, 1.0 );
     int  ogl_mol=0;
 
     char str[256];
@@ -224,7 +223,7 @@ void TestAppMolecularBrowser::renderThumbnails( int i0, int n, float zoom_, bool
         Molecule& mol =  *molecules[i0+i];
         //renderMolecule( mol.natoms, mol.nbonds, mol.pos, mol.bond2atom );
         //Draw3D::atomsREQ( mol.natoms, mol.pos, mol.REQs, ogl_sph, qsc=1, );
-        Draw3D::atoms( mol.natoms, mol.pos, mol.atomType, params, &ogl_sph, 1.0, 0.5, 1.0 );
+        Draw3D::atoms( mol.natoms, mol.pos, mol.atomType, params, 1.0, 0.5, 1.0 );
         opengl1renderer.color3f(0.0f,0.0f,0.0f);
         Draw3D::bonds( mol.nbonds, mol.bond2atom, mol.pos);
         Draw3D::drawText( fileNames[i0+i].c_str(), Vec3d{-9.0,+9.0,5.0}, fontTex, 0.07, 0);

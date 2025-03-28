@@ -126,7 +126,7 @@ TestAppRARFF::TestAppRARFF( int& id, int WIDTH_, int HEIGHT_ ) : AppSDL2OGL_3D( 
      ff.printEnergies();
 
     oglSph=Draw::list(oglSph);
-    Draw3D::drawSphere_oct(3,1.0,Vec3d{0.,0.,0.});
+    Draw3D::drawSphere(Vec3f{0.,0.,0.}, 1);
     opengl1renderer.endList();
 
 }
@@ -214,7 +214,7 @@ void TestAppRARFF::drawHUD(){
 	char* s=str;
 	s+=ff.Eterms2str(s);
 	ff.orbs2str(s);
-    Draw::drawText( str, fontTex, fontSizeDef, {120,20} );
+    Draw::drawText( str, {10 ,HEIGHT-20}, fontSizeDef, {120,20} );
 }
 
 /*
