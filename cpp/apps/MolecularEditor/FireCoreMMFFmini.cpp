@@ -102,7 +102,7 @@ class TestAppMMFFmini : public AppSDL2OGL_3D { public:
     bool renderType = 1;
 
     int  fontTex;
-    GLMesh ogl_sph = Draw3D::makeSphereOgl( 5, 1.0 );
+    GLMesh<GLMESH_FLAG_NORMAL> ogl_sph = Draw3D::makeSphereOgl( 5, 1.0 );
     int  ogl_mol=0;
     int  ogl_isosurf=0;
     int  ogl_MO = 0;

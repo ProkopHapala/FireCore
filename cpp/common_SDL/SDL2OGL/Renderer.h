@@ -11,13 +11,13 @@
 #include "Mat4.h"
 
 #include <functional>
+#include "GLMesh.h"
 
 #ifndef __SKIP_DEFS__
 #include "SDL_opengl_defs.h" // type and constants for old OpenGL
 #endif
 
 
-class GLMesh;
 class OpenGL1Renderer {
     public:
         Vec3f color = {1, 1, 1};
@@ -28,7 +28,7 @@ class OpenGL1Renderer {
         bool begun = false;
         GLenum mode = -1;
 
-        GLMesh* current_mesh;
+        GLMesh<GLMESH_FLAG_ALL>* current_mesh;
 
         GLenum MatrixMode = GL_MODELVIEW;
 

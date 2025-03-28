@@ -304,9 +304,9 @@ class MolGUI : public AppSDL2OGL_3D { public:
     int  ogl_afm       = 0;
     int  ogl_afm_trj   = 0;
     int  ogl_esp       = 0;
-    GLMesh ogl_sph     = GLMesh(GL_TRIANGLES);
+    GLMesh<GLMESH_FLAG_NORMAL> ogl_sph     = GLMesh<GLMESH_FLAG_NORMAL>(GL_TRIANGLES);
     int  ogl_mol       = 0;
-    GLMesh ogl_isosurf = GLMesh(GL_TRIANGLES);
+    GLMesh<GLMESH_FLAG_NORMAL> ogl_isosurf = GLMesh<GLMESH_FLAG_NORMAL>(GL_TRIANGLES);
     int  ogl_MO        = 0;
     int  ogl_nonBond   = 0;
     int  ogl_Hbonds    = 0;

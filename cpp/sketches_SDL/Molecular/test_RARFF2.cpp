@@ -95,7 +95,7 @@ class TestAppRARFF: public AppSDL2OGL_3D { public:
     RigidAtom     atom1;
     RigidAtomType type1,type2;
 
-    GLMesh oglSph = GLMesh(GL_TRIANGLES);
+    GLMesh<GLMESH_FLAG_NORMAL> oglSph = Draw3D::makeSphereOgl(5, 0.2);
 
     bool bRun = true;
 
@@ -311,8 +311,6 @@ TestAppRARFF::TestAppRARFF( int& id, int WIDTH_, int HEIGHT_ ) : AppSDL2OGL_3D( 
 
 
     ff.atoms[1].pos = Vec3d{1.0,1.0,1.0};
-
-    oglSph = Draw3D::makeSphereOgl(5, 0.2);
 }
 
 void TestAppRARFF::draw(){

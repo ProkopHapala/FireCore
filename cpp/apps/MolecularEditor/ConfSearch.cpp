@@ -89,7 +89,7 @@ class AppMolecularEditor2 : public AppSDL2OGL_3D {
     DynamicOpt  opt;
 
     int     fontTex;
-    GLMesh ogl_sph;
+    GLMesh<GLMESH_FLAG_NORMAL> ogl_sph;
 
     char str[256];
 

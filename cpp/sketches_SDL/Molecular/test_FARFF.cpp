@@ -46,7 +46,7 @@ class TestAppFARFF: public AppSDL2OGL_3D { public:
 
     Plot2D plot1;
 
-    GLMesh ogl_sph = Draw3D::makeSphereOgl( 5, 0.25 );
+    GLMesh<GLMESH_FLAG_NORMAL> ogl_sph = Draw3D::makeSphereOgl( 5, 0.25 );
     int ipicked = -1;
     Vec3d ray0;
     Vec3d mouse_p0;

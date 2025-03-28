@@ -136,7 +136,7 @@ class TestAppFireCoreVisual : public AppSDL2OGL_3D { public:
 
     // ---- Graphics objects
     int  fontTex,fontTex3D;
-    GLMesh ogl_sph = Draw3D::makeSphereOgl( 5, 1.0 );
+    GLMesh<GLMESH_FLAG_NORMAL> ogl_sph = Draw3D::makeSphereOgl( 5, 1.0 );
     int  ogl_mol=0;
     int  ogl_isosurf=0;
     int  ogl_MO = 0;

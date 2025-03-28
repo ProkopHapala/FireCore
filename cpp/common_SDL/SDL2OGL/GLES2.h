@@ -7,6 +7,13 @@
 #include <SDL2/SDL_opengles2.h>
 #include "Camera.h"
 
+#define GLMESH_FLAG_NONE   0
+#define GLMESH_FLAG_NORMAL 1
+#define GLMESH_FLAG_COLOR  2
+#define GLMESH_FLAG_UV     4
+#define GLMESH_FLAG_TEX    8
+#define GLMESH_FLAG_ALL    15
+
 namespace GLES2{
     extern Camera* active_camera;
 }

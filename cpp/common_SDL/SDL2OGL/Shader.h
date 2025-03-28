@@ -6,12 +6,14 @@
 #include "Vec2.h"
 #include "Vec3.h"
 #include "Mat4.h"
+#include <string>
 
 #define SHADER_ATTRIB_POSITION 0
 #define SHADER_ATTRIB_NORMAL 1
 #define SHADER_ATTRIB_COLOR 2
-//#define SHADER_ATTRIB_UV 3
+#define SHADER_ATTRIB_UV 3
 
+template<unsigned int attrib_flags>
 class Shader {
 private:
     GLuint programId        = 0;
@@ -54,6 +56,65 @@ private:
     GLuint linkProgram(GLuint vertexShader, GLuint fragmentShader);
 };
 
-Shader* getDefaultShader();
+
+
+
+
+
+
+// default shaders
+constexpr const std::string buildDefaultVertexShaderSource(unsigned int attrib_flags){
+    std::string source = std::string("");
+    //source += "#version 110\n";
+
+    // uniforms
+    source += "uniform mat4 uMVPMatrix;\n";
+
+    // attributes
+    source += "attribute vec4 vPosition;\n";
+    if (attrib_flags & GLMESH_FLAG_NORMAL) source += "attribute vec3 vNormal;\n";
+    if (attrib_flags & GLMESH_FLAG_COLOR ) source += "attribute vec3 vColor ;\n";
+    if (attrib_flags & GLMESH_FLAG_UV    ) source += "attribute vec3 vUV    ;\n";
+
+    // varyings
+    if (attrib_flags & GLMESH_FLAG_NORMAL) source += "varying vec3 fNormal;\n";
+    if (attrib_flags & GLMESH_FLAG_COLOR ) source += "varying vec3 fColor ;\n";
+    if (attrib_flags & GLMESH_FLAG_UV    ) source += "varying vec3 fUV    ;\n";
+
+    // void main()
+    source += "void main() {\n";
+    source += "gl_Position = uMVPMatrix * vPosition;\n";
+    if (attrib_flags & GLMESH_FLAG_NORMAL) source += "fNormal = vNormal;\n";
+    if (attrib_flags & GLMESH_FLAG_COLOR ) source += "fColor = vColor;\n";
+    if (attrib_flags & GLMESH_FLAG_UV    ) source += "fUV    = vUV;\n";
+    source += "}\n";
+
+    return source;
+}
+
+constexpr const std::string buildDefaultFragmentShaderSource(unsigned int attrib_flags){
+    std::string source = std::string("");
+    //source += "#version 110\n";
+
+    // uniforms
+    source += "uniform vec3 uColor;\n";
+
+    // varyings
+    if (attrib_flags & GLMESH_FLAG_NORMAL) source += "varying vec3 fNormal;\n";
+    if (attrib_flags & GLMESH_FLAG_COLOR ) source += "varying vec3 fColor ;\n";
+    if (attrib_flags & GLMESH_FLAG_UV    ) source += "varying vec3 fUV    ;\n";
+
+    // void main()
+    source += "void main() {\n";
+    if      (attrib_flags & GLMESH_FLAG_NORMAL) source += "gl_FragColor = vec4(fNormal*uColor, 1.0);\n";
+    else if (attrib_flags & GLMESH_FLAG_COLOR ) source += "gl_FragColor = vec4(fColor*uColor, 1.0);\n";
+    else                                        source += "gl_FragColor = vec4(uColor, 1.0);\n";
+    source += "}\n";
+
+    return source;
+}
+
+template <unsigned int attrib_flags>
+Shader<attrib_flags>* defaultShader = new Shader<attrib_flags>(buildDefaultVertexShaderSource(attrib_flags).c_str(), buildDefaultFragmentShaderSource(attrib_flags).c_str());
 
 #endif // SHADER_H

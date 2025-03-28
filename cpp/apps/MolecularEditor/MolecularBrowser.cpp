@@ -133,7 +133,7 @@ class TestAppMolecularBrowser : public AppSDL2OGL_3D, public Browser { public:
 
     // ---- Graphics objects
     int  fontTex,fontTex3D;
-    GLMesh ogl_sph = Draw3D::makeSphereOgl( 5, 1.0 );
+    GLMesh<GLMESH_FLAG_NORMAL> ogl_sph = Draw3D::makeSphereOgl( 5, 1.0 );
     int  ogl_mol=0;
 
     char str[256];

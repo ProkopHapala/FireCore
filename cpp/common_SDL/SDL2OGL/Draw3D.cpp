@@ -9,8 +9,8 @@
 #include "Draw3D.h" // THE HEADER
 
 
-static GLMesh makePointCross(){
-    GLMesh m = GLMesh(GL_LINES);
+static GLMesh<GLMESH_FLAG_NONE> makePointCross(){
+    GLMesh<GLMESH_FLAG_NONE> m = GLMesh<GLMESH_FLAG_NONE>(GL_LINES);
     m.addVertex({-1, 0, 0}); m.addVertex({1, 0, 0});
     m.addVertex({0, -1, 0}); m.addVertex({0, 1, 0});
     m.addVertex({0, 0, -1}); m.addVertex({0, 0, 1});
@@ -18,8 +18,8 @@ static GLMesh makePointCross(){
 };
 static GLMesh pointCross = makePointCross();
 
-static GLMesh makePoint(){
-    GLMesh m = GLMesh(GL_POINTS);
+static GLMesh<GLMESH_FLAG_NONE> makePoint(){
+    GLMesh<GLMESH_FLAG_NONE> m = GLMesh<GLMESH_FLAG_NONE>(GL_POINTS);
     m.addVertex({0, 0, 0});
     return m;
 }
@@ -35,8 +35,8 @@ void Draw3D::drawPointCross( const Vec3f& vec, float sz, Vec3f color ){
 	pointCross.draw(vec, Quat4fIdentity, {sz, sz, sz});
 };
 
-static GLMesh makeLineMesh(){
-    GLMesh m = GLMesh(GL_LINES);
+static GLMesh<GLMESH_FLAG_NONE> makeLineMesh(){
+    GLMesh<GLMESH_FLAG_NONE> m = GLMesh<GLMESH_FLAG_NONE>(GL_LINES);
     m.addVertex({0, 0, 0});
     m.addVertex({1, 1, 1});
     return m;

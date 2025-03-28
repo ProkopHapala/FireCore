@@ -1,18 +1,22 @@
-#ifndef _MESH_H_
-#define _MESH_H_
+#ifndef _GLMESH_H_
+#define _GLMESH_H_
 
 #include "GLES2.h"
 #include "Vec3.h"
 #include "Shader.h"
+#include <variant>
 #include <vector>
 #include <cstddef>
+#include <type_traits>
 
-class GLMesh {
+template<unsigned int attrib_flags=GLMESH_FLAG_ALL>
+class GLMesh{
 public:
     struct vertex{
         Vec3f position;
-        Vec3f normal;
-        Vec3f color;
+        std::conditional_t<attrib_flags&GLMESH_FLAG_NORMAL, Vec3f, std::monostate> normal;
+        std::conditional_t<attrib_flags&GLMESH_FLAG_COLOR , Vec3f, std::monostate> color;
+        std::conditional_t<attrib_flags&GLMESH_FLAG_UV    , Vec2f, std::monostate> uv;
     };
 
 private:
@@ -30,30 +34,32 @@ private:
 public:
     GLenum drawMode;
     Vec3f color = {1.0f, 1.0f, 1.0f};
-    Shader* shader;
+    Shader<attrib_flags>* shader;
 
-    GLMesh(GLenum drawMode=GL_TRIANGLES, GLenum usage=GL_STATIC_DRAW, Shader* shader=getDefaultShader()): drawMode(drawMode), usage(usage), shader(shader) {};
+    GLMesh(GLenum drawMode=GL_TRIANGLES, GLenum usage=GL_STATIC_DRAW, Shader<attrib_flags>* shader=defaultShader<attrib_flags>): drawMode(drawMode), usage(usage), shader(shader) {};
 
     void clear(){
         vertices.clear();
         vbo_sync = false;
     }
 
-    void addVertex(Vec3f position, Vec3f normal={0, 0, 0}, Vec3f color={1, 1, 1}){
+    void addVertex(Vec3f pos, Vec3f normal=Vec3fZero, Vec3f color=COLOR_WHITE, Vec2f uv=Vec2fZero){
         vertex v;
-        v.position = position;
-        v.normal = normal;
-        v.color = color;
+        v.position = pos;
+        if constexpr (attrib_flags&GLMESH_FLAG_NORMAL) v.normal = normal;
+        if constexpr (attrib_flags&GLMESH_FLAG_COLOR ) v.color  = color;
+        if constexpr (attrib_flags&GLMESH_FLAG_UV    ) v.uv     = uv;
         vertices.push_back(v);
 
         vbo_sync = false;
     }
 
-    void updateVertex(int i, Vec3f position, Vec3f normal={0, 0, 0}, Vec3f color={1, 1, 1}){
+    void updateVertex(int i, Vec3f pos, Vec3f normal=Vec3fZero, Vec3f color=COLOR_WHITE, Vec2f uv=Vec2fZero){
         vertex v;
-        v.position = position;
-        v.normal = normal;
-        v.color = color;
+        v.position = pos;
+        if constexpr (attrib_flags&GLMESH_FLAG_NORMAL) v.normal = normal;
+        if constexpr (attrib_flags&GLMESH_FLAG_COLOR ) v.color  = color;
+        if constexpr (attrib_flags&GLMESH_FLAG_UV    ) v.uv     = uv;
         vertices[i] = v;
 
         vbo_sync = false;
@@ -65,8 +71,9 @@ public:
         init_vbo();
         glBindBuffer(GL_ARRAY_BUFFER, vbo);
         glVertexAttribPointer(SHADER_ATTRIB_POSITION, 3, GL_FLOAT, GL_FALSE, sizeof(vertex), (void*)offsetof(vertex, position));
-        glVertexAttribPointer(SHADER_ATTRIB_NORMAL,   3, GL_FLOAT, GL_FALSE, sizeof(vertex), (void*)offsetof(vertex, normal));
-        glVertexAttribPointer(SHADER_ATTRIB_COLOR,    3, GL_FLOAT, GL_FALSE, sizeof(vertex), (void*)offsetof(vertex, color));
+        if constexpr (attrib_flags&GLMESH_FLAG_NORMAL) glVertexAttribPointer(SHADER_ATTRIB_NORMAL, 3, GL_FLOAT, GL_FALSE, sizeof(vertex), (void*)offsetof(vertex, normal));
+        if constexpr (attrib_flags&GLMESH_FLAG_COLOR ) glVertexAttribPointer(SHADER_ATTRIB_COLOR , 3, GL_FLOAT, GL_FALSE, sizeof(vertex), (void*)offsetof(vertex, color ));
+        if constexpr (attrib_flags&GLMESH_FLAG_UV    ) glVertexAttribPointer(SHADER_ATTRIB_UV    , 2, GL_FLOAT, GL_FALSE, sizeof(vertex), (void*)offsetof(vertex, uv    ));
         if (vbo_sync) return;
 
         glBufferData(GL_ARRAY_BUFFER, vertices.size() * sizeof(vertex), vertices.data(), GL_STATIC_DRAW);
@@ -122,4 +129,4 @@ public:
     }
 };
 
-#endif // _MESH_H_
+#endif // _GLMESH_H_

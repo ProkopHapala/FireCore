@@ -51,10 +51,10 @@ void torsion( Quat4i t, const Vec3d* apos ){
     //if(b.j&SIGN_MASK){   };
 }
 
-GLMesh makeSphereOgl( int nsub, float sz=1 ){
+GLMesh<GLMESH_FLAG_NORMAL> makeSphereOgl( int nsub, float sz=1 ){
     if (nsub<1) nsub=1;
 
-    GLMesh sphere = GLMesh(GL_TRIANGLES);
+    GLMesh<GLMESH_FLAG_NORMAL> sphere = GLMesh<GLMESH_FLAG_NORMAL>(GL_TRIANGLES);
 
     // generate a simple cube sphere
     const Vec3f normals[6] = {{1, 0, 0}, {-1, 0, 0}, {0, 1, 0}, {0, -1, 0}, {0, 0, 1}, {0, 0, -1}};
@@ -89,7 +89,8 @@ GLMesh makeSphereOgl( int nsub, float sz=1 ){
     return sphere;
 }
 
-void atomsREQ( int n, Vec3d* ps, Quat4d* REQs, GLMesh* ogl_sph, float qsc=1, float Rsc=1, float Rsub=0, bool bPointCross=false, Vec3d pos0=Vec3dZero ){
+template<unsigned int FLAG>
+void atomsREQ( int n, Vec3d* ps, Quat4d* REQs, GLMesh<FLAG>* ogl_sph, float qsc=1, float Rsc=1, float Rsub=0, bool bPointCross=false, Vec3d pos0=Vec3dZero ){
     opengl1renderer.enable(GL_LIGHTING);
     opengl1renderer.enable(GL_DEPTH_TEST);
     opengl1renderer.shadeModel(GL_SMOOTH);
@@ -405,7 +406,8 @@ int drawESP( int na, Vec3d* apos, Quat4d* REQs, Quat4d REQ ){
 
 
 #ifdef MMFFparams_h
-void atoms( int n, Vec3d* ps, int* atypes, const MMFFparams& params, GLMesh* ogl_sph, float qsc=1, float Rsc=1, float Rsub=0, Vec3d offset=Vec3dZero ){
+template<unsigned int FLAG>
+void atoms( int n, Vec3d* ps, int* atypes, const MMFFparams& params, GLMesh<FLAG>* ogl_sph, float qsc=1, float Rsc=1, float Rsub=0, Vec3d offset=Vec3dZero ){
     opengl1renderer.enable(GL_LIGHTING);
     opengl1renderer.enable(GL_DEPTH_TEST);
     opengl1renderer.shadeModel(GL_SMOOTH);

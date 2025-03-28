@@ -65,8 +65,8 @@ void Draw2D::drawTriangle( const Vec2f& p1, const Vec2f& p2, const Vec2f& p3 ){
 	opengl1renderer.end();
 };
 
-static GLMesh makeRectMesh(){
-    GLMesh m;
+static GLMesh<GLMESH_FLAG_NONE> makeRectMesh(){
+    GLMesh<GLMESH_FLAG_NONE> m;
     m.addVertex( {0, 0, 0} );
     m.addVertex( {0, 1, 0} );
     m.addVertex( {1, 1, 0} );

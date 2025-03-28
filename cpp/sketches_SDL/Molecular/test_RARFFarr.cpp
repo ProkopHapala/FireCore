@@ -120,7 +120,7 @@ class TestAppRARFF: public AppSDL2OGL_3D { public:
     Vec3d ray0;
     Vec3d mouse_p0;
 
-    GLMesh ogl_sph = Draw3D::makeSphereOgl( 3, 0.25 );
+    GLMesh<GLMESH_FLAG_NORMAL> ogl_sph = Draw3D::makeSphereOgl( 3, 0.25 );
 
     const char* workFileName="data/work.rff";
 

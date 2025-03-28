@@ -77,7 +77,7 @@ class TestAppFIRE : public AppSDL2OGL_3D {
     DynamicOpt  opt;
 
     int     fontTex=0,fontTexPix=0;
-    GLMesh ogl_sph = Draw3D::makeSphereOgl( 5, 1.0 );
+    GLMesh<GLMESH_FLAG_NORMAL> ogl_sph = Draw3D::makeSphereOgl( 5, 1.0 );
 
     char str[256];
 

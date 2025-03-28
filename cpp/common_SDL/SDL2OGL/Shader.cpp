@@ -3,7 +3,8 @@
 #include "GLES2.h"
 #include <cstring>
 
-GLuint Shader::compileShader(GLenum shaderType, const char* source) {
+template<unsigned int attrib_flags>
+GLuint Shader<attrib_flags>::compileShader(GLenum shaderType, const char* source) {
     GLuint shader = glCreateShader(shaderType);
     if (shader == 0) {
         printf("Error creating shader\n");
@@ -31,7 +32,8 @@ GLuint Shader::compileShader(GLenum shaderType, const char* source) {
     return shader;
 }
 
-GLuint Shader::linkProgram(GLuint vertexShader, GLuint fragmentShader) {
+template<unsigned int attrib_flags>
+GLuint Shader<attrib_flags>::linkProgram(GLuint vertexShader, GLuint fragmentShader) {
     GLuint program = glCreateProgram();
     if (program == 0) {
         printf("Error creating program\n");
@@ -42,8 +44,9 @@ GLuint Shader::linkProgram(GLuint vertexShader, GLuint fragmentShader) {
     glAttachShader(program, fragmentShader);
 
     glBindAttribLocation(program, SHADER_ATTRIB_POSITION, "vPosition");
-    glBindAttribLocation(program, SHADER_ATTRIB_NORMAL  , "vNormal");
-    glBindAttribLocation(program, SHADER_ATTRIB_COLOR   , "vColor");
+    if constexpr (attrib_flags & GLMESH_FLAG_NORMAL) glBindAttribLocation(program, SHADER_ATTRIB_NORMAL  , "vNormal");
+    if constexpr (attrib_flags & GLMESH_FLAG_COLOR ) glBindAttribLocation(program, SHADER_ATTRIB_COLOR   , "vColor" );
+    if constexpr (attrib_flags & GLMESH_FLAG_UV    ) glBindAttribLocation(program, SHADER_ATTRIB_UV      , "vUV"    );
 
     glLinkProgram(program);
 
@@ -65,7 +68,8 @@ GLuint Shader::linkProgram(GLuint vertexShader, GLuint fragmentShader) {
     return program;
 }
 
-void Shader::use(){
+template<unsigned int attrib_flags>
+void Shader<attrib_flags>::use(){
     if (!programId) {
         vertexShaderId   = compileShader(GL_VERTEX_SHADER,   __vertexShaderSource  );
         fragmentShaderId = compileShader(GL_FRAGMENT_SHADER, __fragmentShaderSource);
@@ -80,64 +84,40 @@ void Shader::use(){
         glEnableVertexAttribArray(SHADER_ATTRIB_COLOR);
     }
 
+    // TODO: do we need to use Enable/DisableVertexAttribArray here?
+
     glUseProgram(programId);
 }
 
-Shader::Shader(const char* vertexShaderSource, const char* fragmentShaderSource){
+template<unsigned int attrib_flags>
+Shader<attrib_flags>::Shader(const char* vertexShaderSource, const char* fragmentShaderSource){
     __vertexShaderSource = (char*)malloc(strlen(vertexShaderSource) + 1);
     __fragmentShaderSource = (char*)malloc(strlen(fragmentShaderSource) + 1);
     strcpy(__vertexShaderSource, vertexShaderSource);
     strcpy(__fragmentShaderSource, fragmentShaderSource);
 }
 
-Shader::~Shader(){
+template<unsigned int attrib_flags>
+Shader<attrib_flags>::~Shader(){
     if (programId)glDeleteProgram(programId);
     if (vertexShaderId)glDeleteShader(vertexShaderId);
     if (fragmentShaderId)glDeleteShader(fragmentShaderId);
 }
 
-
-
-
-// Vertex shader
-static const char* defaultVertexShaderSource = R"(
-    uniform mat4 uMVPMatrix;
-
-    attribute vec4 vPosition;
-    attribute vec3 vNormal;
-    attribute vec3 vColor;
-    
-    varying vec3 fColor;
-    varying vec3 fNormal;
-
-    void main() {
-        gl_Position = uMVPMatrix * vPosition;
-        fNormal = vNormal;
-        fColor = vColor;
-    }
-)";
-
-// Fragment shader
-static const char* defaultFragmentShaderSource = R"(
-    varying vec3 fColor;
-    varying vec3 fNormal;
-
-    uniform vec3 uColor;
-
-    void main() {
-        if (fNormal == vec3(0.0, 0.0, 0.0)){
-            gl_FragColor = vec4(fColor*uColor, 1.0);
-        }else{
-            gl_FragColor = vec4(fNormal, 1.0);
-        }
-    }
-)";
-
-static Shader* defaultShader = nullptr;
-Shader* getDefaultShader(){
-    if (defaultShader != nullptr) return defaultShader;
-    defaultShader = new Shader(defaultVertexShaderSource, defaultFragmentShaderSource);
-    return defaultShader;
-}
-
-
+// TODO: is there a cleaner way to do this?
+template class Shader< 0>;
+template class Shader< 1>;
+template class Shader< 2>;
+template class Shader< 3>;
+template class Shader< 4>;
+template class Shader< 5>;
+template class Shader< 6>;
+template class Shader< 7>;
+template class Shader< 8>;
+template class Shader< 9>;
+template class Shader<10>;
+template class Shader<11>;
+template class Shader<12>;
+template class Shader<13>;
+template class Shader<14>;
+template class Shader<15>;
