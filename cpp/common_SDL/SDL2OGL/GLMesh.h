@@ -142,4 +142,9 @@ public:
     }
 };
 
+using GLMesh_Texture = GLMesh<GLMESH_FLAG_UV | GLMESH_FLAG_TEX>;
+using GLMesh_Normal = GLMesh<GLMESH_FLAG_NORMAL>;
+using GLMesh_Color = GLMesh<GLMESH_FLAG_COLOR>;
+using GLMesh_NC = GLMesh<GLMESH_FLAG_NORMAL | GLMESH_FLAG_COLOR>;
+
 #endif // _GLMESH_H_

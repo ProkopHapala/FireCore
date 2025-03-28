@@ -113,7 +113,12 @@ constexpr const std::string buildDefaultFragmentShaderSource(unsigned int attrib
     source += "gl_FragColor = vec4(uColor, 1.0);\n";
     if (attrib_flags & GLMESH_FLAG_TEX && attrib_flags & GLMESH_FLAG_UV) source += "gl_FragColor = gl_FragColor*texture2D(uTexture, fUV);\n";
     if (attrib_flags & GLMESH_FLAG_COLOR ) source += "gl_FragColor = gl_FragColor*vec4(fColor, 1.0);\n";
-    if (attrib_flags & GLMESH_FLAG_NORMAL) source += "gl_FragColor = gl_FragColor*vec4(fNormal, 1.0);\n"; // TODO: remove or implement lighting
+    if (attrib_flags & GLMESH_FLAG_NORMAL){
+        source += "float light = dot(fNormal, vec3(1.0, -1.0, 1.0));\n";
+        source += "light = (light+1.0)/2.0;\n"; // normalised to range (0; 1)
+        source += "light = 0.3 + light*0.8;\n"; // to range (0.3, 1.1)
+        source += "gl_FragColor = gl_FragColor*vec4(light, light, light, 1.0);\n"; // TODO: remove or implement lighting
+    }
     source += "}";
 
     return source;
