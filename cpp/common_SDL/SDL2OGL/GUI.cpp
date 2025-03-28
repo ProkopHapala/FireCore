@@ -570,7 +570,7 @@ void DropDownList ::render(){
     //bOpened = true;
     if(bOpened){
         int icur = iSelected-iItem0;
-        if((icur>=0)&&(icur<nSlots)) Draw2D::drawRectangle( xmin, ymax-(icur+2)*(fontSizeDef*2), xmax, ymax-(icur+1)*(fontSizeDef*2), COL2VEC(0x00FF00) );
+        if((icur>=0)&&(icur<nSlots)) Draw2D::drawRectangle( xmin, ymax-(icur+2)*(fontSizeDef*2), xmax, ymax-(icur+1)*(fontSizeDef*2), COLOR_GREEN );
         Draw  ::setRGB( textColor );
         if(caption.length()>0) {
             Draw2D::drawText( caption.c_str(), caption.length(), {xmin, ymax-fontSizeDef*2},  0.0, GUI_fontTex, fontSizeDef );
@@ -655,7 +655,7 @@ void TreeView::render(){
         Draw2D::drawText( str.c_str(), str.length(), {xmin+2*fontSizeDef*tr->content.level, yoff}, 0.0, GUI_fontTex, fontSizeDef );
         yoff-=2*fontSizeDef;
     }
-    Draw2D::drawRectangle( xmin+1, ymax-(iSelected+2)*(fontSizeDef*2), xmax-1, ymax-(iSelected+1)*(fontSizeDef*2), COL2VEC(0x00FF00) );
+    Draw2D::drawRectangle( xmin+1, ymax-(iSelected+2)*(fontSizeDef*2), xmax-1, ymax-(iSelected+1)*(fontSizeDef*2), COLOR_GREEN );
 }
 
 void TreeView::updateLines( TreeViewTree& node, int level ){
@@ -734,7 +734,7 @@ void TableView::render(){
     opengl1renderer.end();
     //
     if( (i>=i0)&&(i<imax)&&(j>=j0)&&(j<jmax) ){
-        Draw2D::drawRectangle( xmin+xs[j]-xs[j0], ymax+(i0-i)*2*fontSizeDef, xmin+xs[j+1]-xs[j0], ymax+(i0-i-1)*2*fontSizeDef, COL2VEC(0x00FF00) );
+        Draw2D::drawRectangle( xmin+xs[j]-xs[j0], ymax+(i0-i)*2*fontSizeDef, xmin+xs[j+1]-xs[j0], ymax+(i0-i-1)*2*fontSizeDef, COLOR_GREEN );
     }
     // ==== text
     Draw  ::setRGB( textColor );
@@ -847,9 +847,9 @@ void GUI::draw(){
     for(GUIAbstractPanel* panel: panels){ if(focused!=panel)panel->draw(); }
     if(focused){
         focused->draw();
-        uint32_t col;
-        if(bTextEvents){ col=0xFF0000; }else{col = focused->textColor; }
-        Draw2D::drawRectangle( focused->xmin,focused->ymin,focused->xmax,focused->ymax,COL2VEC(col));
+        Vec3f col;
+        if(bTextEvents){ col=COLOR_RED; }else{col = COL2VEC(focused->textColor); }
+        Draw2D::drawRectangle( focused->xmin,focused->ymin,focused->xmax,focused->ymax,col, false);
     }
 }
 
