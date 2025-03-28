@@ -250,76 +250,6 @@ int Draw3D::drawConeFan( int n, float r, const Vec3f& base, const Vec3f& tip ){
 	return nvert;
 };
 
-int Draw3D::drawSphereTriangle( int n, float r, const Vec3f& pos, const Vec3f& a, const Vec3f& b, const Vec3f& c ){
-	int nvert=0;
-	float d = 1.0f/n;
-	Vec3f da,db;
-	da.set_sub( a, c ); da.mul( d );
-	db.set_sub( b, c ); db.mul( d );
-	for( int ia=0; ia<n; ia++ ){
-		Vec3f p0,p; p0.set( c );
-		p0.add_mul( da, ia );
-		p.set_mul( p0, 1.0f/p0.norm() );
-		opengl1renderer.begin   (GL_TRIANGLE_STRIP);
-		//opengl1renderer.begin   (GL_LINES);
-		//opengl1renderer.color3f( d*ia, 0, 0 );
-		opengl1renderer.normal3f( p.x, p.y, p.z );
-		opengl1renderer.vertex3f( r*p.x+pos.x, r*p.y+pos.y, r*p.z+pos.z );   nvert++;
-		//opengl1renderer.vertex3f( r*p.x+pos.x+p.x, r*p.y+pos.y+p.y, r*p.z+pos.z+p.z );
-		for( int ib=0; ib<(n-ia); ib++ ){
-			Vec3f p;
-			p.set_add( p0, da );
-			p.normalize();
-			//opengl1renderer.color3f( 0, 1, 0 );
-			opengl1renderer.normal3f( p.x, p.y, p.z );
-			opengl1renderer.vertex3f( r*p.x+pos.x, r*p.y+pos.y, r*p.z+pos.z );   nvert++;
-			//opengl1renderer.vertex3f( r*p.x+pos.x+p.x, r*p.y+pos.y+p.y, r*p.z+pos.z+p.z );
-			p.set_add( p0, db );
-			p.normalize();
-			//opengl1renderer.color3f( 0, 0, 1 );
-			opengl1renderer.normal3f( p.x, p.y, p.z );
-			opengl1renderer.vertex3f( r*p.x+pos.x, r*p.y+pos.y, r*p.z+pos.z );   nvert++;
-			//opengl1renderer.vertex3f( r*p.x+pos.x+p.x, r*p.y+pos.y+p.y, r*p.z+pos.z+p.z );
-			p0.add( db );
-			//printf(" %f %f %f %f \n", p.x, p.y, p.z, p.norm() );
-		}
-		opengl1renderer.end();
-	}
-	return nvert;
-};
-
-int Draw3D::drawSphereTriangle_wire( int n, float r, const Vec3f& pos, const Vec3f& a, const Vec3f& b, const Vec3f& c ){
-	int nvert=0;
-	float d = 1.0f/n;
-	Vec3f da,db;
-	da.set_sub( a, c ); da.mul( d );
-	db.set_sub( b, c ); db.mul( d );
-	for( int ia=0; ia<n; ia++ ){
-		Vec3f p0,p; p0.set( c );
-		p0.add_mul( da, ia );
-        opengl1renderer.begin   (GL_LINE_STRIP); //opengl1renderer.color3f(0.0,0.0,1.0);
-        p.set(p0); p.normalize();
-        opengl1renderer.vertex3f( r*p.x+pos.x, r*p.y+pos.y, r*p.z+pos.z );   nvert++;
-		for( int ib=0; ib<(n-ia); ib++ ){
-			p.set_add( p0, da ); p.normalize();
-			opengl1renderer.vertex3f( r*p.x+pos.x, r*p.y+pos.y, r*p.z+pos.z );   nvert++;
-			p.set_add( p0, db ); p.normalize();
-			opengl1renderer.vertex3f( r*p.x+pos.x, r*p.y+pos.y, r*p.z+pos.z );   nvert++;
-			p0.add( db );
-		}
-        opengl1renderer.end();
-		opengl1renderer.begin   (GL_LINE_STRIP);         //opengl1renderer.color3f(1.0,0.0,0.0);
-        for( int ib=0; ib<=(n-ia); ib++ ){
-			//p.set_add( p0, da );
-			p.set(p0); p.normalize();
-			opengl1renderer.vertex3f( r*p.x+pos.x, r*p.y+pos.y, r*p.z+pos.z );   nvert++;
-			p0.sub( db );
-		}
-		opengl1renderer.end();
-	}
-	return nvert;
-};
-
 static GLMesh_Normal makeSphere( int nsub, float sz=1 ){
     if (nsub<1) nsub=1;
 
@@ -363,25 +293,6 @@ void Draw3D::drawSphere(Vec3f pos, float r, Vec3f color){
     sphere.color = color;
     sphere.draw(pos, Quat4fIdentity, {r,r,r});
 }
-/*
-void Draw3D::drawSphere_oct( int n, float r, const Vec3f& pos, bool wire ){
-	int nvert=0;
-	Vec3f px,mx,py,my,pz,mz;
-	px.set( 1,0,0); py.set(0, 1,0); pz.set(0,0, 1);
-	mx.set(-1,0,0); my.set(0,-1,0); mz.set(0,0,-1);
-	if(wire){
-        nvert += drawSphereTriangle_wire( n, r, pos, mz, mx, my );
-        nvert += drawSphereTriangle_wire( n, r, pos, mz, my, px );
-        nvert += drawSphereTriangle_wire( n, r, pos, mz, px, py );
-        nvert += drawSphereTriangle_wire( n, r, pos, mz, py, mx );
-        nvert += drawSphereTriangle_wire( n, r, pos, pz, mx, my );
-        nvert += drawSphereTriangle_wire( n, r, pos, pz, my, px );
-        nvert += drawSphereTriangle_wire( n, r, pos, pz, px, py );
-        nvert += drawSphereTriangle_wire( n, r, pos, pz, py, mx );
-	}else{
-        drawSphere(pos, r);
-	}
-};*/
 
 int Draw3D::drawCircleAxis( int n, const Vec3f& pos, const Vec3f& v0, const Vec3f& uaxis, float R, float dca, float dsa ){
     int nvert=0;

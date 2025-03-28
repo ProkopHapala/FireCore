@@ -50,9 +50,6 @@ void drawShape    ( int shape, const Vec3f& pos, const Mat3f&  rot=Mat3fIdentity
 void drawShape    ( int shape, const Vec3f& pos, const Quat4f& qrot, const Vec3f& scale=Vec3fOne );
 
 int  drawCylinderStrip     ( int n, float r1, float r2, const Vec3f& base, const Vec3f& tip );
-int  drawCylinderStrip_wire( int n, float r1, float r2, const Vec3f& base, const Vec3f& tip );
-int  drawSphereTriangle    ( int n, float r, const Vec3f& pos, const Vec3f& a, const Vec3f& b, const Vec3f& c );
-int  drawSphereTriangle_wire( int n, float r, const Vec3f& pos, const Vec3f& a, const Vec3f& b, const Vec3f& c );
 
 int  drawCircleAxis     ( int n, const Vec3f& pos, const Vec3f& v0, const Vec3f& uaxis, float R, float dca, float dsa );
 int  drawCircleAxis     ( int n, const Vec3f& pos, const Vec3f& v0, const Vec3f& uaxis, float R );
@@ -110,7 +107,6 @@ inline int  drawCone           ( int n, float phi1, float phi2, float r1, float 
 
 inline int  drawCircleAxis     ( int n, const Vec3d& pos, const Vec3d& v0, const Vec3d& uaxis, double R ){ return drawCircleAxis( n, (Vec3f)pos, (Vec3f)v0, (Vec3f)uaxis, R ); };
 inline int  drawSphereOctLines ( int n, double R, const Vec3d& pos, const Mat3d& rot=Mat3dIdentity, bool bRGB=false ){ return drawSphereOctLines ( n, R, (Vec3f)pos, (Mat3f)rot, bRGB ); };
-//inline void drawSphere_oct     ( int n, double R, const Vec3d& pos ){ drawSphere_oct( n, R, (Vec3f)pos ); };
 
 inline void drawText     ( const char * str, const Vec3d& pos, int fontTex, float textSize, int iend ){ drawText(str, (Vec3f)pos, fontTex, textSize,iend); };
 
