@@ -1336,7 +1336,7 @@ void MolGUI::draw(){
 
     if( bViewSubstrate ){
         if( ( W->bGridFF )&&( ((int)(W->gridFF.mode))!=0) ){
-            Draw3D::atomsREQ( W->surf.natoms, W->surf.apos, W->surf.REQs, &ogl_sph, 1., 0.1, 0., true, W->gridFF.shift0 );
+            //Draw3D::atomsREQ( W->surf.natoms, W->surf.apos, W->surf.REQs, &ogl_sph, 1., 0.1, 0., true, W->gridFF.shift0 );
             if( (ogl_isosurf.vertexCount()==0) ){ renderGridFF_new( subs_iso ); }
             viewSubstrate( {-5,10}, {-5,10}, &ogl_isosurf, W->gridFF.grid.cell.a, W->gridFF.grid.cell.b );
         }else{
@@ -2085,13 +2085,16 @@ void MolGUI::drawBuilder( Vec3i ixyz ){
             const MM::Atom& a = B.atoms[ia];
             //const MM::AtomType& atyp = W->params.atypes[a.type];
             const AtomType& atyp = W->params.atypes[a.type];
+            Vec3f atomColor;
             if(bViewColorFrag){ 
                 if(a.frag<0) continue;
                 if( (a.frag<0)||(a.frag>=B.frags.size()) ){ printf( "ERROR MolGUI::drawBuilder() a.frag(%i) out of range 0 .. B.frags.size(%i) \n", a.frag, B.frags.size() ); exit(0); }
-                Draw::setRGB( B.frags[a.frag].color ); 
-            }else{ Draw::setRGB( W->params.atypes[a.type].color ); }
+                Draw::setRGB( B.frags[a.frag].color );
+                atomColor = COL2VEC(B.frags[a.frag].color);
+            }else{ Draw::setRGB( W->params.atypes[a.type].color ); atomColor = COL2VEC(W->params.atypes[a.type].color); }
             //Draw3D::drawShape( ogl_sph, a.pos, Mat3dIdentity*((atyp.RvdW-mm_Rsub)*mm_Rsc) );
             float sz = (atyp.RvdW-mm_Rsub)*mm_Rsc;
+            ogl_sph.color = atomColor;
             ogl_sph.draw((Vec3f)a.pos, Quat4fIdentity, {sz, sz, sz});
         }    
     }

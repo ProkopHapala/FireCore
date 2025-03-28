@@ -10,6 +10,7 @@
 #include <stdio.h>
 #include <stdint.h>
 
+#include "Draw2D.h"
 #include "GLMesh.h"
 #include "Renderer.h"
 #include "fastmath.h"
@@ -414,6 +415,7 @@ void atoms( int n, Vec3d* ps, int* atypes, const MMFFparams& params, GLMesh<FLAG
     for(int i=0; i<n; i++){
         const AtomType& atyp = params.atypes[atypes[i]];
         Draw::setRGB( atyp.color );
+        ogl_sph->color = COL2VEC(atyp.color);
 
         float sz = (atyp.RvdW-Rsub)*Rsc;
         ogl_sph->draw((Vec3f)(ps[i]+offset), Quat4fIdentity, {sz, sz, sz});

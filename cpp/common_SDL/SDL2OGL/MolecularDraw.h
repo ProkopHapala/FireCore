@@ -6,6 +6,7 @@
 #include "GridFF.h"
 #include "Renderer.h"
 #include "GLMesh.h"
+#include "Vec3.h"
 #include "molecular_utils.h"
 
 void colorRB( float f ){ opengl1renderer.color3f( 0.5+f, 0.5, 0.5-f ); }
@@ -241,8 +242,10 @@ void renderSubstrate_new( GLMesh<FLAG>* outMesh, const GridFF& gff, Vec2d zrange
     Mat3d dCell = gff.grid.dCell;
     int nvert = 0;
 
+    outMesh->clear();
+    outMesh->drawMode = GL_TRIANGLES;
     for ( int ib=1; ib<=gn.y; ib++ ){
-        outMesh->drawMode = GL_TRIANGLE_STRIP;
+        int strip_vert_count = 0;
         for ( int ia=0; ia<=gn.x; ia++ ){
 
             Vec3d p1a = dCell.a*ia + dCell.b*(ib-1); p1a.z=zrange.x;
@@ -280,14 +283,16 @@ void renderSubstrate_new( GLMesh<FLAG>* outMesh, const GridFF& gff, Vec2d zrange
 
             
             Vec3f color = colorRBH( el1*sclr, sin(p1.z*1.0)*0.1 );
-            Vec3f normal = {f1.x,f1.y,f1.z};
-            Vec3f pos = {p1.x, p1.y, p1.z};
-            outMesh->addVertex(pos, normal, color);
+            Vec3f normal = (Vec3f)f1;
+            Vec3f pos = (Vec3f)p1;
+            if (strip_vert_count >= 3) outMesh->addVertex_strip(pos, normal, color); else outMesh->addVertex(pos, normal, color);
+            strip_vert_count++;
 
             color = colorRBH( el2*sclr, sin(p2.z*1.0)*0.1 );
-            normal = {f2.x,f2.y,f2.z};
-            pos = {p2.x, p2.y, p2.z};
-            outMesh->addVertex(pos, normal, color);
+            normal = (Vec3f)f2;
+            pos = (Vec3f)p2;
+            if (strip_vert_count >= 3) outMesh->addVertex_strip(pos, normal, color); else outMesh->addVertex(pos, normal, color);
+            strip_vert_count++;
         }
     }
 }

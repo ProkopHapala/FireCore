@@ -61,6 +61,25 @@ public:
         vbo_sync = false;
     }
 
+    void addVertex_strip(Vec3f pos, Vec3f normal=Vec3fZero, Vec3f color=COLOR_WHITE, Vec2f uv=Vec2fZero){
+        vertex v;
+        v.position = pos;
+        if constexpr (attrib_flags&GLMESH_FLAG_NORMAL) v.normal = normal;
+        if constexpr (attrib_flags&GLMESH_FLAG_COLOR ) v.color  = color;
+        if constexpr (attrib_flags&GLMESH_FLAG_UV    ) v.uv     = uv;
+
+        if (vertexCount() >= 3){
+            vertex v1 = vertices[vertices.size()-1];
+            vertex v2 = vertices[vertices.size()-2];
+
+            vertices.push_back(v2);
+            vertices.push_back(v1);
+        }
+
+        vertices.push_back(v);
+        vbo_sync = false;
+    }
+
     void updateVertex(int i, Vec3f pos, Vec3f normal=Vec3fZero, Vec3f color=COLOR_WHITE, Vec2f uv=Vec2fZero){
         vertex v;
         v.position = pos;
