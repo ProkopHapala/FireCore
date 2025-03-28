@@ -36,7 +36,7 @@ void OpenGL1Renderer::begin(GLenum m){
     mode = m; 
     begun = true;
 
-    current_mesh = new GLMesh(mode);
+    current_mesh = new GLMesh<GLMESH_FLAG_ALL-GLMESH_FLAG_TEX>(mode);
 }
 void OpenGL1Renderer::end(){
     if (current_callList != 0){

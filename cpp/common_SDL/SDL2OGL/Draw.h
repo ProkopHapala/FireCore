@@ -76,8 +76,10 @@ namespace Draw{
 
     void billboardCam( );
     void billboardCamProj( float scale=200.0 );
-    void drawText ( const char * str, int itex, float sz, int iend=0       );
-    void drawText ( const char * str, int itex, float sz, Vec2i block_size );
+    void drawText ( const char * str, Vec3f pos, float sz, int iend=0      );
+    void drawText ( const char * str, Vec3f pos, float sz, Vec2i block_size);
+    //void drawText ( const char * str, int itex, float sz, int iend=0       );
+    //void drawText ( const char * str, int itex, float sz, Vec2i block_size );
 
     //GLuint makeTexture( char * fname );
     //GLuint makeTexture( int nx, int ny, float * data );

@@ -2,6 +2,8 @@
 #define _GLMESH_H_
 
 #include "GLES2.h"
+#include "GLTexture.h"
+#include "Vec2.h"
 #include "Vec3.h"
 #include "Shader.h"
 #include <variant>
@@ -9,7 +11,7 @@
 #include <cstddef>
 #include <type_traits>
 
-template<unsigned int attrib_flags=GLMESH_FLAG_ALL>
+template<unsigned int attrib_flags>
 class GLMesh{
 public:
     struct vertex{
@@ -35,8 +37,13 @@ public:
     GLenum drawMode;
     Vec3f color = {1.0f, 1.0f, 1.0f};
     Shader<attrib_flags>* shader;
+    GLTexture* texture = nullptr;
 
-    GLMesh(GLenum drawMode=GL_TRIANGLES, GLenum usage=GL_STATIC_DRAW, Shader<attrib_flags>* shader=defaultShader<attrib_flags>): drawMode(drawMode), usage(usage), shader(shader) {};
+    GLMesh(GLenum drawMode=GL_TRIANGLES, GLenum usage=GL_STATIC_DRAW, Shader<attrib_flags>* shader=defaultShader<attrib_flags>, GLTexture* texture=nullptr): drawMode(drawMode), usage(usage), shader(shader), texture(texture)
+    {
+        if (attrib_flags&GLMESH_FLAG_TEX && !texture) printf("Warning: GLMesh created with GLMESH_FLAG_TEX but no texture provided!\n");
+        if (attrib_flags&GLMESH_FLAG_TEX && !attrib_flags&GLMESH_FLAG_UV) printf("Warning: GLMesh created with GLMESH_FLAG_TEX but not GLMESH_FLAG_UV!\n");
+    };
 
     void clear(){
         vertices.clear();
@@ -86,6 +93,12 @@ public:
         shader->use();
         shader->setUniformMat4f("uMVPMatrix", mvp);
         shader->setUniform3f("uColor", color);
+        if constexpr (attrib_flags&GLMESH_FLAG_TEX) {
+            glActiveTexture(GL_TEXTURE0);
+            shader->setUniform1i("uTexture", 0);
+            if (texture) texture->bind();
+            else printf("Warning: texture = nullptr!\n");
+        }
     
         glDrawArrays(drawMode, 0, vertexCount());
     }

@@ -951,17 +951,17 @@ void Draw3D::drawRectGridLines( Vec2i n, const Vec3d& p0, const Vec3d& da, const
     opengl1renderer.end();
 }
 
-void Draw3D::drawText( const char * str, const Vec3f& pos, int fontTex, float textSize, int iend ){
+void Draw3D::drawText( const char * str, const Vec3f& pos, int fontTex, float textSize, int iend ){ // TODO: implement and use Draw::drawBillboardText()
     opengl1renderer.disable    ( GL_LIGHTING   );
     opengl1renderer.disable    ( GL_DEPTH_TEST );
     opengl1renderer.shadeModel ( GL_FLAT       );
     opengl1renderer.pushMatrix();
         opengl1renderer.translatef( pos.x, pos.y, pos.z );
         Draw::billboardCamProj( );
-        Draw::drawText( str, fontTex, textSize, iend );
+        Draw::drawText( str, pos, textSize, iend );
     opengl1renderer.popMatrix();
 }
-void Draw3D::drawText3D( const char * str, const Vec3f& pos, const Vec3f& fw, const Vec3f& up, int fontTex, float textSize, int iend){
+void Draw3D::drawText3D( const char * str, const Vec3f& pos, const Vec3f& fw, const Vec3f& up, int fontTex, float textSize, int iend){ // TODO: implement and use Draw::drawBillboardText()
     // ToDo: These functions are the same !!!!
     opengl1renderer.disable    ( GL_LIGHTING   );
     opengl1renderer.disable    ( GL_DEPTH_TEST );
@@ -969,7 +969,7 @@ void Draw3D::drawText3D( const char * str, const Vec3f& pos, const Vec3f& fw, co
     opengl1renderer.pushMatrix();
         opengl1renderer.translatef( pos.x, pos.y, pos.z );
         Draw::billboardCamProj();
-        Draw::drawText( str, fontTex, textSize, iend );
+        Draw::drawText( str, pos, textSize, iend );
     opengl1renderer.popMatrix();
 }
 

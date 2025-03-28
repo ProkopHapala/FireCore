@@ -3,6 +3,7 @@
 
 #include "Draw.h"
 #include "Renderer.h"
+#include "Vec2.h"
 #include "Vec3.h"
 #include <GLES2/gl2.h>
 #include "Draw2D.h"  // THE HEADER
@@ -613,11 +614,8 @@ void Draw2D::drawText( const char * str, int nchar, Vec2d pos, float angle, int 
     opengl1renderer.disable    ( GL_LIGHTING   );
     opengl1renderer.disable    ( GL_DEPTH_TEST );
     opengl1renderer.shadeModel ( GL_FLAT       );
-    opengl1renderer.pushMatrix();
-        opengl1renderer.translatef( pos.x, pos.y, z_layer );
-        opengl1renderer.rotatef( angle, 0,0,1 );
-        Draw::drawText( str, fontTex, textSize, nchar );
-    opengl1renderer.popMatrix();
+
+    Draw::drawText( str, {pos.x, pos.y, z_layer}, textSize, nchar );
 };
 
 void Draw2D::drawText( const char * str, Vec2d pos, Vec2d sz, int fontTex, float textSize ){
@@ -625,11 +623,8 @@ void Draw2D::drawText( const char * str, Vec2d pos, Vec2d sz, int fontTex, float
     opengl1renderer.disable    ( GL_LIGHTING   );
     opengl1renderer.disable    ( GL_DEPTH_TEST );
     opengl1renderer.shadeModel ( GL_FLAT       );
-    opengl1renderer.pushMatrix();
-        opengl1renderer.translatef( pos.x, pos.y, z_layer );
-        //Draw::drawText( str, fontTex, textSize, 0, nchar );
-        Draw::drawText ( str, fontTex, textSize, block_size );
-    opengl1renderer.popMatrix();
+
+    Draw::drawText(str, {pos.x, pos.y, z_layer}, textSize, block_size );
 };
 /*
 void Draw2D::drawTextBillboard( const char * str, int nchar, Vec2d pos, int fontTex, float textSize ){

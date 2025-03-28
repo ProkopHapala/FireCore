@@ -12,6 +12,7 @@
 #define GLMESH_FLAG_COLOR  2
 #define GLMESH_FLAG_UV     4
 #define GLMESH_FLAG_TEX    8
+#define GLMESH_FLAG_UVTEX  (GLMESH_FLAG_UV | GLMESH_FLAG_TEX)
 #define GLMESH_FLAG_ALL    15
 
 namespace GLES2{

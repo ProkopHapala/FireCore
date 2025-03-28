@@ -36,12 +36,15 @@ public:
         GLint loc = glGetUniformLocation(programId, name);
         if (loc == -1) {
             printf("Uniform '%s' not found\n", name);
+            return -1;
             exit(-1);
         }
         return loc;
     }
 
-    void setUniform1f(const char* name, float value)                        { glUniform1f(getUniformLocation(name), value); } // TODO: don't use glGetUniformLocation
+    // TODO: don't use glGetUniformLocation all the time (once at initialisation and store in unordered map? don't use strings somehow?)
+    void setUniform1i(const char* name, int value)                          { glUniform1i(getUniformLocation(name), value); }
+    void setUniform1f(const char* name, float value)                        { glUniform1f(getUniformLocation(name), value); }
     void setUniform2f(const char* name, float x, float y)                   { glUniform2f(getUniformLocation(name), x, y); }
     void setUniform3f(const char* name, float x, float y, float z)          { glUniform3f(getUniformLocation(name), x, y, z); }
     void setUniform4f(const char* name, float x, float y, float z, float w) { glUniform4f(getUniformLocation(name), x, y, z, w); }
@@ -74,20 +77,20 @@ constexpr const std::string buildDefaultVertexShaderSource(unsigned int attrib_f
     source += "attribute vec4 vPosition;\n";
     if (attrib_flags & GLMESH_FLAG_NORMAL) source += "attribute vec3 vNormal;\n";
     if (attrib_flags & GLMESH_FLAG_COLOR ) source += "attribute vec3 vColor ;\n";
-    if (attrib_flags & GLMESH_FLAG_UV    ) source += "attribute vec3 vUV    ;\n";
+    if (attrib_flags & GLMESH_FLAG_UV    ) source += "attribute vec2 vUV    ;\n";
 
     // varyings
     if (attrib_flags & GLMESH_FLAG_NORMAL) source += "varying vec3 fNormal;\n";
     if (attrib_flags & GLMESH_FLAG_COLOR ) source += "varying vec3 fColor ;\n";
-    if (attrib_flags & GLMESH_FLAG_UV    ) source += "varying vec3 fUV    ;\n";
+    if (attrib_flags & GLMESH_FLAG_UV    ) source += "varying vec2 fUV    ;\n";
 
     // void main()
     source += "void main() {\n";
     source += "gl_Position = uMVPMatrix * vPosition;\n";
     if (attrib_flags & GLMESH_FLAG_NORMAL) source += "fNormal = vNormal;\n";
-    if (attrib_flags & GLMESH_FLAG_COLOR ) source += "fColor = vColor;\n";
-    if (attrib_flags & GLMESH_FLAG_UV    ) source += "fUV    = vUV;\n";
-    source += "}\n";
+    if (attrib_flags & GLMESH_FLAG_COLOR ) source += "fColor  = vColor ;\n";
+    if (attrib_flags & GLMESH_FLAG_UV    ) source += "fUV     = vUV    ;\n";
+    source += "}";
 
     return source;
 }
@@ -98,18 +101,20 @@ constexpr const std::string buildDefaultFragmentShaderSource(unsigned int attrib
 
     // uniforms
     source += "uniform vec3 uColor;\n";
+    if (attrib_flags & GLMESH_FLAG_TEX) source += "uniform sampler2D uTexture;\n";
 
     // varyings
     if (attrib_flags & GLMESH_FLAG_NORMAL) source += "varying vec3 fNormal;\n";
     if (attrib_flags & GLMESH_FLAG_COLOR ) source += "varying vec3 fColor ;\n";
-    if (attrib_flags & GLMESH_FLAG_UV    ) source += "varying vec3 fUV    ;\n";
+    if (attrib_flags & GLMESH_FLAG_UV    ) source += "varying vec2 fUV    ;\n";
 
     // void main()
     source += "void main() {\n";
-    if      (attrib_flags & GLMESH_FLAG_NORMAL) source += "gl_FragColor = vec4(fNormal*uColor, 1.0);\n";
-    else if (attrib_flags & GLMESH_FLAG_COLOR ) source += "gl_FragColor = vec4(fColor*uColor, 1.0);\n";
-    else                                        source += "gl_FragColor = vec4(uColor, 1.0);\n";
-    source += "}\n";
+    source += "gl_FragColor = vec4(uColor, 1.0);\n";
+    if (attrib_flags & GLMESH_FLAG_TEX && attrib_flags & GLMESH_FLAG_UV) source += "gl_FragColor = gl_FragColor*texture2D(uTexture, fUV);\n";
+    if (attrib_flags & GLMESH_FLAG_COLOR ) source += "gl_FragColor = gl_FragColor*vec4(fColor, 1.0);\n";
+    if (attrib_flags & GLMESH_FLAG_NORMAL) source += "gl_FragColor = gl_FragColor*vec4(fNormal, 1.0);\n"; // TODO: remove or implement lighting
+    source += "}";
 
     return source;
 }

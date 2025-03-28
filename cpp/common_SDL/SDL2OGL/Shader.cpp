@@ -14,21 +14,22 @@ GLuint Shader<attrib_flags>::compileShader(GLenum shaderType, const char* source
     glShaderSource(shader, 1, &source, nullptr);
     glCompileShader(shader);
 
+    GLint infoLen = 0;
+    glGetShaderiv(shader, GL_INFO_LOG_LENGTH, &infoLen);
+    if (infoLen > 1) {
+        char* infoLog = (char*)malloc(sizeof(char) * infoLen);
+        glGetShaderInfoLog(shader, infoLen, nullptr, infoLog);
+        printf("Error/Warning compiling shader:\n %s\n", infoLog);
+        free(infoLog);
+    }
+    
     GLint compiled;
     glGetShaderiv(shader, GL_COMPILE_STATUS, &compiled);
     if (!compiled) {
-        GLint infoLen = 0;
-        glGetShaderiv(shader, GL_INFO_LOG_LENGTH, &infoLen);
-        if (infoLen > 1) {
-            char* infoLog = (char*)malloc(sizeof(char) * infoLen);
-            glGetShaderInfoLog(shader, infoLen, nullptr, infoLog);
-            printf("Error compiling shader:\n %s\n", infoLog);
-            free(infoLog);
-            exit(-1);
-        }
         glDeleteShader(shader);
-        return 0;
+        exit(-1);
     }
+
     return shader;
 }
 
@@ -49,22 +50,23 @@ GLuint Shader<attrib_flags>::linkProgram(GLuint vertexShader, GLuint fragmentSha
     if constexpr (attrib_flags & GLMESH_FLAG_UV    ) glBindAttribLocation(program, SHADER_ATTRIB_UV      , "vUV"    );
 
     glLinkProgram(program);
-
+    
+    GLint infoLen = 0;
+    glGetProgramiv(program, GL_INFO_LOG_LENGTH, &infoLen);
+    if (infoLen > 1) {
+        char* infoLog = (char*)malloc(sizeof(char) * infoLen);
+        glGetProgramInfoLog(program, infoLen, nullptr, infoLog);
+        printf("Error/Warning linking program:\n %s\n", infoLog);
+        free(infoLog);
+    }
+    
     GLint linked;
     glGetProgramiv(program, GL_LINK_STATUS, &linked);
     if (!linked) {
-        GLint infoLen = 0;
-        glGetProgramiv(program, GL_INFO_LOG_LENGTH, &infoLen);
-        if (infoLen > 1) {
-            char* infoLog = (char*)malloc(sizeof(char) * infoLen);
-            glGetProgramInfoLog(program, infoLen, nullptr, infoLog);
-            printf("Error linking program:\n %s\n", infoLog);
-            exit(-1);
-            free(infoLog);
-        }
         glDeleteProgram(program);
-        return 0;
+        exit(-1);
     }
+
     return program;
 }
 
@@ -82,6 +84,7 @@ void Shader<attrib_flags>::use(){
         glEnableVertexAttribArray(SHADER_ATTRIB_POSITION);
         glEnableVertexAttribArray(SHADER_ATTRIB_NORMAL);
         glEnableVertexAttribArray(SHADER_ATTRIB_COLOR);
+        glEnableVertexAttribArray(SHADER_ATTRIB_UV);
     }
 
     // TODO: do we need to use Enable/DisableVertexAttribArray here?

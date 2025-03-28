@@ -2,6 +2,7 @@
 #define MolGUI_h
 
 #include "Camera.h"
+#include "Draw.h"
 #include "GLMesh.h"
 #include "Renderer.h"
 #include "Vec3.h"
@@ -1557,9 +1558,8 @@ void MolGUI::showAtomGrid( char* s, int ia, bool bDraw ){
     s += sprintf(s, "GridFF(ia=%i) Etot %15.10f Epaul %15.10f; EvdW %15.10f Eel %15.10f p(%7.3f,%7.3f,%7.3f) \n", ia,   fe.e, fp.e, fl.e, fq.e,  pi.x,pi.y,pi.z  );
     //if( fabs(fe.e-fe_ref.e)>1e-8 ){ s += sprintf(s, "ERROR: getLJQH(%15.10f) Differs !!! \n", fe_ref.e ); }
     if( fe.e>0 ){ opengl1renderer.color3f(0.7f,0.f,0.f); }else{ opengl1renderer.color3f(0.f,0.f,1.f); }
-    Draw::drawText( tmpstr, fontTex, fontSizeDef, {150,20} );
+    Draw::drawText( tmpstr, {0, 0}, fontSizeDef, {150,20} );
     opengl1renderer.translatef( 0.0,fontSizeDef*2,0.0 );
-    
 }
 
 Vec3d MolGUI::showNonBond( char* s, Vec2i b, bool bDraw ){
@@ -1604,7 +1604,7 @@ Vec3d MolGUI::showNonBond( char* s, Vec2i b, bool bDraw ){
     if( fabs(Etot-Eref)>1e-8 ){ s += sprintf(s, "ERROR: getLJQH(%15.10f) Differs !!! \n", Eref ); }
     if( Etot>0 ){ opengl1renderer.color3f(0.7f,0.f,0.f); }else{ opengl1renderer.color3f(0.f,0.f,1.f); }
     // --- draw to screen
-    Draw::drawText( tmpstr, fontTex, fontSizeDef, {150,20} );
+    Draw::drawText( tmpstr, {0, 0}, fontSizeDef, {150,20} );
     opengl1renderer.translatef( 0.0,fontSizeDef*2,0.0 );
     return shift;
 }
@@ -1614,8 +1614,10 @@ void MolGUI::drawHUD(){
     gui.draw();
 
     opengl1renderer.pushMatrix();
+    Vec3f textPos = {0, 0, 0};
     if(W->bCheckInvariants){
         opengl1renderer.translatef( 10.0,HEIGHT-20.0,0.0 );
+        textPos += {10.0,HEIGHT-20.0,0.0};
         opengl1renderer.color3f(0.5,0.0,0.3);
         //char* s=tmpstr;
         //printf( "(%i|%i,%i,%i) cog(%g,%g,%g) vcog(%g,%g,%g) fcog(%g,%g,%g) torq (%g,%g,%g)\n", ff.nevalAngles>0, ff.nevalPiSigma>0, ff.nevalPiPiT>0, ff.nevalPiPiI>0,  cog.x,cog.y,cog.z, vcog.x,vcog.y,vcog.z, fcog.x,fcog.y,fcog.z, tq.x,tq.y,tq.z );
@@ -1627,11 +1629,12 @@ void MolGUI::drawHUD(){
         // s += sprintf(s, "fcog(%15.5e,%15.5e,%15.5e)\n", W->fcog.x,W->fcog.y,W->fcog.z);
         // s += sprintf(s, "torq(%15.5e,%15.5e,%15.5e)\n", W->tqcog.x,W->tqcog.y,W->tqcog.z);
         W->getStatusString( tmpstr, ntmpstr );
-        Draw::drawText( tmpstr, fontTex, fontSizeDef, {100,20} );
+        Draw::drawText( tmpstr, textPos, fontSizeDef, {100,20} );
     }
     if(bWriteOptimizerState){
         double T = W->evalEkTemp();   //printf( "T_kinetic=%g[K] \n", T );
         opengl1renderer.translatef( 0.0,fontSizeDef*-5*2,0.0 );
+        textPos += {0.0,fontSizeDef*-5*2,0.0};
         opengl1renderer.color3f(0.0,0.5,0.0);
         char* s=tmpstr;
         //dt 0.132482 damp 3.12175e-17 n+ 164 | cfv 0.501563 |f| 3.58409e-10 |v| 6.23391e-09
@@ -1639,12 +1642,13 @@ void MolGUI::drawHUD(){
         double f=sqrt(W->opt.ff);
         //s += sprintf(s,"time/iter=%6.2f[us] bGopt=%i bExploring=%i go.istep=%i T= %7.5f[K] dt=%7.5f damp=%7.5f n+ %4i | cfv=%7.5f |f|=%12.5e |v|=%12.5e \n", time_per_iter, W->bGopt, W->go.bExploring, W->go.istep, T, W->opt.dt, W->opt.damping, W->opt.lastNeg, W->opt.vf/(v*f), f, v );
         s += sprintf(s,"time/iter=%6.2f[us] T= %7.5f[K] dt=%7.5f damp=%7.5f n+ %4i | cfv=%7.5f |f|=%12.5e |v|=%12.5e \n", W->time_per_iter, T, W->opt.dt, W->opt.damping, W->opt.lastNeg, W->opt.vf/(v*f), f, v );
-        Draw::drawText( tmpstr, fontTex, fontSizeDef, {200,20} );
+        Draw::drawText( tmpstr, textPos, fontSizeDef, {200,20} );
         opengl1renderer.translatef( 0.0,fontSizeDef*-5*2,0.0 );
-        Draw::drawText( W->info_str(tmpstr), fontTex, fontSizeDef, {100,20} );
+        textPos += {0, fontSizeDef*-5*2, 0};
+        Draw::drawText( W->info_str(tmpstr), textPos, fontSizeDef, {100,20} );
     }
     opengl1renderer.popMatrix();
-
+    textPos = {0, 0, 0};
 
     if( W->getMolWorldVersion() == (int)MolWorldVersion::GPU ){
         opengl1renderer.pushMatrix();
@@ -1652,11 +1656,13 @@ void MolGUI::drawHUD(){
         float Fconvs  [W->nSystems];
         W->getMultiConf( Fconvs , bExplors );
         opengl1renderer.translatef( 0.0,fontSizeDef*2*30,0.0 );
+        textPos += {0.0,fontSizeDef*2*30,0.0};
         opengl1renderer.color3f(0.5,0.,1.);
         for( int i=0; i<W->nSystems; i++ ){  
             sprintf( tmpstr, "SYS[%3i][%i]|F|=%g \n", i, bExplors[i], Fconvs[i] );
-            Draw::drawText( tmpstr, fontTex, fontSizeDef, {200,20} ); 
+            Draw::drawText( tmpstr, textPos, fontSizeDef, {200,20} ); 
             opengl1renderer.translatef( 0.0,fontSizeDef*2,0.0 );
+            textPos += {0.0,fontSizeDef*2,0.0};
         };
         opengl1renderer.popMatrix();
     }
@@ -1685,7 +1691,7 @@ void MolGUI::drawHUD(){
     if(bConsole) console.draw();
 }
 
-static GLMesh drawingHexMesh;
+static GLMesh<GLMESH_FLAG_COLOR> drawingHexMesh;
 void MolGUI::drawingHex(double z0){
     Vec2i ip; Vec2d dp;
     Vec3d p3 = rayPlane_hit( (Vec3d)ray0, (Vec3d)cam.rotMat().c, {0.0,0.0,1.0}, {0.0,0.0,z0} );

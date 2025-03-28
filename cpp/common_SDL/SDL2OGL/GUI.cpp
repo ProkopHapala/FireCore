@@ -28,7 +28,7 @@ void GUITextInput::applyVal( float f ){
     num_op = 0;
 }
 
-void GUITextInput::view3D( const Vec3d& pos, int fontTex, float textSize ){
+void GUITextInput::view3D( const Vec3d& pos, int fontTex, float textSize ){ // TODO: implement and use Draw::drawBillboardText()
     //Draw3D::drawText( inputText.c_str(), pos, fontTex, textSize, 0, 0 );
     opengl1renderer.disable    ( GL_LIGHTING   );
     opengl1renderer.disable    ( GL_DEPTH_TEST );
@@ -37,19 +37,19 @@ void GUITextInput::view3D( const Vec3d& pos, int fontTex, float textSize ){
         opengl1renderer.translatef( pos.x, pos.y, pos.z );
         Draw::billboardCam( );
         //Draw::drawText( inputText.c_str(), fontTex, textSize, 0, 0 );
-        Draw::drawText( inputText.c_str(), fontTex, textSize, 0 );
+        Draw::drawText( inputText.c_str(), (Vec3f)pos, textSize, 0 );
         Draw3D::drawLine( Vec3f{curPos*textSize,0.0,0.0}, Vec3f{curPos*textSize,textSize*2,0.0}, COLOR_BLACK );
     opengl1renderer.popMatrix();
 }
 
-void GUITextInput::viewHUD( const Vec2i& pos, int fontTex, bool bBack ){
+void GUITextInput::viewHUD( const Vec2i& pos, int fontTex, bool bBack ){ // TODO: implement and use Draw::drawBillboardText()
     opengl1renderer.pushMatrix();
         opengl1renderer.translatef( pos.x, pos.y, 0.0 );
         //Draw::billboardCam();
         //Draw::drawText( inputText.c_str(), fontTex, textSize, 0, 0 );
         int nl = inputText.size();
         if(bBack)Draw2D::drawRectangle( (Vec2f){pos.x,pos.y}, (Vec2f){pos.x+nl*fontSizeDef, pos.y+fontSizeDef*2}, COL2VEC(0xA0A0A0) );
-        Draw::drawText( inputText.c_str(), fontTex, fontSizeDef, 0 );
+        Draw::drawText( inputText.c_str(), (Vec3f){pos.x, pos.y, 0}, fontSizeDef, 0 );
         Draw3D::drawLine( Vec3f{curPos*fontSizeDef,0.0,0.0}, Vec3f{curPos*fontSizeDef,fontSizeDef*2,0.0}, COLOR_BLACK );
     opengl1renderer.popMatrix();
 }

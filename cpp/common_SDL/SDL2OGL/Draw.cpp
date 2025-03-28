@@ -1,5 +1,9 @@
 
 #include "Renderer.h"
+#include "GLMesh.h"
+#include "Shader.h"
+#include "Vec2.h"
+#include "Vec3.h"
 
 #include "Draw.h"  // THE HEADER
 
@@ -112,15 +116,58 @@ void Draw::billboardCamProj( ){
 };
 */
 
-void Draw::drawText( const char * str, int itex, float sz, int iend ){
+static GLTexture font = GLTexture("common_resources/dejvu_sans_mono_RGBA_pix-UpDown.bmp");
+static GLMesh<GLMESH_FLAG_UVTEX> makeFontMesh(){
+    GLMesh m = GLMesh(GL_QUADS, GL_DYNAMIC_DRAW, defaultShader<GLMESH_FLAG_UVTEX>, &font);
+    m.addVertex(Vec3fZero);
+    m.addVertex(Vec3fZero);
+    m.addVertex(Vec3fZero);
+    m.addVertex(Vec3fZero);
+    return m;
+}
+static GLMesh fontMesh = makeFontMesh();
+
+static void drawChar( char c, Vec3f pos, Vec2f size ){ // TODO: optimise this - probably custom fragment shader for text rendering, rather than 1 quad per char
+    font.setMagFilter(GL_NEAREST);
+    font.setMinFilter(GL_NEAREST);
+
+    const int nchars = 95;//('~'-'!')+1;
+    const float persprite = 1.0f/nchars;
+
+    int chari = c - 33;
+    float UVstart = chari*persprite + (persprite*0.57);
+    float UVend   = UVstart + persprite;
+    fontMesh.updateVertex(0, {0, 0, 0}, Vec3fZero, COLOR_WHITE, {UVstart, 0});
+    fontMesh.updateVertex(1, {1, 0, 0}, Vec3fZero, COLOR_WHITE, {UVend  , 0});
+    fontMesh.updateVertex(2, {1, 1, 0}, Vec3fZero, COLOR_WHITE, {UVend  , 1});
+    fontMesh.updateVertex(3, {0, 1, 0}, Vec3fZero, COLOR_WHITE, {UVstart, 1});
+    fontMesh.color = opengl1renderer.color;
+    //fontMesh.color = COLOR_WHITE;
+
+    const float WIDTH = 1820; // TODO: make these not constant
+    const float HEIGHT = 980;
+
+    pos.x = pos.x*2 / WIDTH - 1;
+    pos.y = pos.y*2 / HEIGHT - 1;
+
+    size = size*2 / (Vec2f){WIDTH, HEIGHT};
+
+    Mat4f mvp;
+    mvp.array[0] = size.x; mvp.array[4] = 0;      mvp.array[ 8] = 0; mvp.array[12] = pos.x;
+    mvp.array[1] = 0;      mvp.array[5] = size.y; mvp.array[ 9] = 0; mvp.array[13] = pos.y;
+    mvp.array[2] = 0;      mvp.array[6] = 0;      mvp.array[10] = 0; mvp.array[14] = pos.z;
+    mvp.array[3] = 0;      mvp.array[7] = 0;      mvp.array[11] = 0; mvp.array[15] = 1;
+
+    fontMesh.drawMVP(mvp);
+}
+
+void Draw::drawText( const char * str, Vec3f pos, float sz, int iend ){
     const int nchars = 95;
     float persprite = 1.0f/nchars;
-    opengl1renderer.enable     ( GL_TEXTURE_2D );
-    opengl1renderer.bindTexture( GL_TEXTURE_2D, itex );
-    opengl1renderer.enable(GL_BLEND);
+
     opengl1renderer.enable(GL_ALPHA_TEST);
     opengl1renderer.blendFunc(GL_SRC_ALPHA,GL_ONE_MINUS_SRC_ALPHA);
-    opengl1renderer.begin(GL_QUADS);
+
     int terminator = 0xFFFF;
     if(iend<=0) { terminator=-iend; iend=256; };
     for(int i=0; i<iend; i++){
@@ -128,18 +175,39 @@ void Draw::drawText( const char * str, int itex, float sz, int iend ){
         int isprite = str[i] - 33;
         float offset  = isprite*persprite+(persprite*0.57);
         float xi = i*sz;
-        opengl1renderer.texCoord2f( offset          , 1.0f ); opengl1renderer.vertex3f( xi   ,    0, 0.0f );
-        opengl1renderer.texCoord2f( offset+persprite, 1.0f ); opengl1renderer.vertex3f( xi+sz,    0, 0.0f );
-        opengl1renderer.texCoord2f( offset+persprite, 0.0f ); opengl1renderer.vertex3f( xi+sz, sz*2, 0.0f );
-        opengl1renderer.texCoord2f( offset          , 0.0f ); opengl1renderer.vertex3f( xi   , sz*2, 0.0f );
-    }
-    opengl1renderer.end();
-    //opengl1renderer.disable  ( GL_BLEND );
-    //opengl1renderer.disable  ( GL_ALPHA_TEST );
-    opengl1renderer.disable  ( GL_TEXTURE_2D );
-    //opengl1renderer.blendFunc( GL_ONE, GL_ZERO );
-};
 
+        drawChar(str[i], pos+(Vec3f){xi, 0, 0}, {sz, sz*2});
+    }
+
+    opengl1renderer.disable(GL_ALPHA_TEST);
+}
+
+void Draw::drawText( const char * str, Vec3f pos, float sz, Vec2i block_size ){
+    const int nchars = 95;
+    float persprite = 1.0f/nchars;
+
+    opengl1renderer.enable(GL_ALPHA_TEST);
+    opengl1renderer.blendFunc(GL_SRC_ALPHA,GL_ONE_MINUS_SRC_ALPHA);
+
+    char terminator = '\0';
+    int iline=0,ix=0;
+    for(int i=0; i<65536; i++){
+        char ch = str[i];
+        if       (ch==terminator){ break; }
+        else if ((ch=='\n')||(ix>block_size.x)){ iline++; ix=0; if(iline>block_size.y) break; continue; }
+        int isprite = ch - 33;
+        float offset  = isprite*persprite+(persprite*0.57);
+        float x = ix   *sz;
+        float y = -iline*sz*2;
+
+        drawChar(str[i], pos+(Vec3f){x, y, 0}, {sz, sz*2});
+
+        ix++;
+    }
+
+    opengl1renderer.disable(GL_ALPHA_TEST);
+};
+/*
 void Draw::drawText( const char * str, int itex, float sz, Vec2i block_size ){
     const int nchars = 95;
     float persprite = 1.0f/nchars;
@@ -173,7 +241,7 @@ void Draw::drawText( const char * str, int itex, float sz, Vec2i block_size ){
     opengl1renderer.disable  ( GL_ALPHA_TEST );
     opengl1renderer.disable  ( GL_TEXTURE_2D );
     opengl1renderer.blendFunc( GL_ONE, GL_ZERO );
-};
+};*/
 
 
 
