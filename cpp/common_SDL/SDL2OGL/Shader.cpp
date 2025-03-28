@@ -85,9 +85,11 @@ void Shader<attrib_flags>::use(){
         glEnableVertexAttribArray(SHADER_ATTRIB_NORMAL);
         glEnableVertexAttribArray(SHADER_ATTRIB_COLOR);
         glEnableVertexAttribArray(SHADER_ATTRIB_UV);
-    }
 
-    // TODO: do we need to use Enable/DisableVertexAttribArray here?
+        uMVPloc     = glGetUniformLocation(programId, "uMVPMatrix");
+        uColorloc   = glGetUniformLocation(programId, "uColor"    );
+        uTextureloc = glGetUniformLocation(programId, "uTexture"  );
+    }
 
     glUseProgram(programId);
 }

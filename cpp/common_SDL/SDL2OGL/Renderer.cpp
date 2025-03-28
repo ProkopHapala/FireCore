@@ -36,7 +36,8 @@ void OpenGL1Renderer::begin(GLenum m){
     mode = m; 
     begun = true;
 
-    current_mesh = new GLMesh<GLMESH_FLAG_ALL-GLMESH_FLAG_TEX>(mode);
+    current_mesh.clear();
+    current_mesh.drawMode = mode;
 }
 void OpenGL1Renderer::end(){
     if (current_callList != 0){
@@ -53,7 +54,7 @@ void OpenGL1Renderer::end(){
     Mat4f mvpMatrix = mvMatStack.back();
     mvpMatrix.mmulL(projMatStack.back());
 
-    current_mesh->drawMVP(mvpMatrix);
+    current_mesh.drawMVP(mvpMatrix);
 }
 
 void OpenGL1Renderer::normal3f(float x, float y, float z){
@@ -98,20 +99,20 @@ void OpenGL1Renderer::vertex2d(double x, double y){
         current_call_list_builder.push_back([this, x, y](){vertex2d(x, y);});
         return;
     }
-    current_mesh->addVertex({x, y, 0}, normal, color);
+    current_mesh.addVertex({x, y, 0}, normal, color);
 }
 void OpenGL1Renderer::vertex3f(float x, float y, float z)       {
     if (current_callList != 0){
         current_call_list_builder.push_back([this, x, y, z](){vertex3f(x, y, z);});
         return;
     }
-    current_mesh->addVertex({x, y, z}, normal, color); }
+    current_mesh.addVertex({x, y, z}, normal, color); }
 void OpenGL1Renderer::vertex3d(double x, double y, double z)    {
     if (current_callList != 0){
         current_call_list_builder.push_back([this, x, y, z](){vertex3d(x, y, z);});
         return;
     }
-    current_mesh->addVertex({x, y, z}, normal, color); }
+    current_mesh.addVertex({x, y, z}, normal, color); }
 
 
 void OpenGL1Renderer::flush()           { glFlush(); }

@@ -28,7 +28,7 @@ class OpenGL1Renderer {
         bool begun = false;
         GLenum mode = -1;
 
-        GLMesh<GLMESH_FLAG_ALL-GLMESH_FLAG_TEX>* current_mesh;
+        GLMesh_NC current_mesh = GLMesh_NC(GL_TRIANGLES, GL_STREAM_DRAW);
 
         GLenum MatrixMode = GL_MODELVIEW;
 

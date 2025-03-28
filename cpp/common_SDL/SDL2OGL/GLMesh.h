@@ -33,6 +33,18 @@ private:
         glGenBuffers(1, &vbo);
     }
 
+    inline void bind_vbo(){
+        init_vbo();
+
+        if (GLES2::currentGL_ARRAY_BUFFER == vbo) return;
+
+        glBindBuffer(GL_ARRAY_BUFFER, vbo);
+        glVertexAttribPointer(SHADER_ATTRIB_POSITION, 3, GL_FLOAT, GL_FALSE, sizeof(vertex), (void*)offsetof(vertex, position));
+        if constexpr (attrib_flags&GLMESH_FLAG_NORMAL) glVertexAttribPointer(SHADER_ATTRIB_NORMAL, 3, GL_FLOAT, GL_FALSE, sizeof(vertex), (void*)offsetof(vertex, normal));
+        if constexpr (attrib_flags&GLMESH_FLAG_COLOR ) glVertexAttribPointer(SHADER_ATTRIB_COLOR , 3, GL_FLOAT, GL_FALSE, sizeof(vertex), (void*)offsetof(vertex, color ));
+        if constexpr (attrib_flags&GLMESH_FLAG_UV    ) glVertexAttribPointer(SHADER_ATTRIB_UV    , 2, GL_FLOAT, GL_FALSE, sizeof(vertex), (void*)offsetof(vertex, uv    ));
+    }
+
 public:
     GLenum drawMode;
     Vec3f color = {1.0f, 1.0f, 1.0f};
@@ -43,6 +55,8 @@ public:
     {
         if (attrib_flags&GLMESH_FLAG_TEX && !texture) printf("Warning: GLMesh created with GLMESH_FLAG_TEX but no texture provided!\n");
         if (attrib_flags&GLMESH_FLAG_TEX && !attrib_flags&GLMESH_FLAG_UV) printf("Warning: GLMesh created with GLMESH_FLAG_TEX but not GLMESH_FLAG_UV!\n");
+
+        printf("%i, %i\n", attrib_flags, sizeof(vertex));
     };
 
     void clear(){
@@ -93,16 +107,12 @@ public:
 
     inline int vertexCount() const { return vertices.size(); }
 
-    void bind_sync_vbo(){
-        init_vbo();
-        glBindBuffer(GL_ARRAY_BUFFER, vbo);
-        glVertexAttribPointer(SHADER_ATTRIB_POSITION, 3, GL_FLOAT, GL_FALSE, sizeof(vertex), (void*)offsetof(vertex, position));
-        if constexpr (attrib_flags&GLMESH_FLAG_NORMAL) glVertexAttribPointer(SHADER_ATTRIB_NORMAL, 3, GL_FLOAT, GL_FALSE, sizeof(vertex), (void*)offsetof(vertex, normal));
-        if constexpr (attrib_flags&GLMESH_FLAG_COLOR ) glVertexAttribPointer(SHADER_ATTRIB_COLOR , 3, GL_FLOAT, GL_FALSE, sizeof(vertex), (void*)offsetof(vertex, color ));
-        if constexpr (attrib_flags&GLMESH_FLAG_UV    ) glVertexAttribPointer(SHADER_ATTRIB_UV    , 2, GL_FLOAT, GL_FALSE, sizeof(vertex), (void*)offsetof(vertex, uv    ));
+    inline void bind_sync_vbo(){
+        bind_vbo();
+
         if (vbo_sync) return;
 
-        glBufferData(GL_ARRAY_BUFFER, vertices.size() * sizeof(vertex), vertices.data(), GL_STATIC_DRAW);
+        glBufferData(GL_ARRAY_BUFFER, vertices.size() * sizeof(vertex), vertices.data(), usage);
         vbo_sync = true;
     }
 
@@ -110,11 +120,11 @@ public:
         bind_sync_vbo();
     
         shader->use();
-        shader->setUniformMat4f("uMVPMatrix", mvp);
-        shader->setUniform3f("uColor", color);
+        shader->setuMVPMatrix(mvp);
+        shader->setuColor(color);
         if constexpr (attrib_flags&GLMESH_FLAG_TEX) {
             glActiveTexture(GL_TEXTURE0);
-            shader->setUniform1i("uTexture", 0);
+            shader->setuTexture(0);
             if (texture) texture->bind();
             else printf("Warning: texture = nullptr!\n");
         }

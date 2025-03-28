@@ -139,6 +139,9 @@ class Vec3T{
     inline VEC operator* ( const VEC& vi ) const { return VEC{ x*vi.x, y*vi.y, z*vi.z }; };
     inline VEC operator/ ( const VEC& vi ) const { return VEC{ x/vi.x, y/vi.y, z/vi.z }; };
 
+    inline bool operator==( const VEC& v ) const { return x==v.x && y==v.y && z==v.z; }
+    inline bool operator!=( const VEC& v ) const { return x!=v.x || y!=v.y || z!=v.z; };
+
     inline T bidot  ( const VEC& a, const VEC& b ) const { return x*a.x*b.x + y*a.y*b.y + z*a.z*b.z;  };
     inline T antidot( const VEC& a, const VEC& b ) const { return x*a.y*b.z + y*a.z*b.x + z*a.x*b.y;  };
 

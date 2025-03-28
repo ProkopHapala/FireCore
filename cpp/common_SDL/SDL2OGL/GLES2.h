@@ -17,11 +17,13 @@
 
 namespace GLES2{
     extern Camera* active_camera;
+    extern GLuint currentGL_ARRAY_BUFFER;
 }
 
-
-
-
+#define glBindBuffer(target, buffer) do { \
+    glBindBuffer(target, buffer); \
+    if (target == GL_ARRAY_BUFFER) GLES2::currentGL_ARRAY_BUFFER = buffer; \
+} while (0)
 
 
 
@@ -73,11 +75,6 @@ inline void PrintStackTrace() {
 
 #define glBindAttribLocation(program, index, name) do { \
     glBindAttribLocation(program, index, name); \
-    GL_CHECK_ERROR(); \
-} while(0)
-
-#define glBindBuffer(target, buffer) do { \
-    glBindBuffer(target, buffer); \
     GL_CHECK_ERROR(); \
 } while(0)
 

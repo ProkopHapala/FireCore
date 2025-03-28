@@ -2,6 +2,8 @@
 #include "ScreenSDL2OGL.h" // THE HEADER
 #include "Renderer.h"
 #include <SDL2/SDL_video.h>
+#include <iostream>
+#include <chrono>
 
 //#include "testUtils.h"
 
@@ -111,7 +113,12 @@ void setLightingRGB(){
     //opengl1renderer.lightModeli( GL_LIGHT_MODEL_TWO_SIDE, 1 );
 }
 
+std::chrono::duration<long, std::ratio<1, 1000>> durationTotal;
+int durationCount = 0;
+
 void ScreenSDL2OGL::update( ){
+	auto start = std::chrono::high_resolution_clock::now();
+
 	if( GL_LOCK ){ printf("ScreenSDL2OGL::update GL_LOCK\n"); return; }
 	GL_LOCK = true;
 	//printf( " window[%i] SDL_GL_MakeCurrent \n", id );
@@ -132,6 +139,18 @@ void ScreenSDL2OGL::update( ){
     SDL_GL_SwapWindow(window);
     //printf( " window[%i] SDL_GL_SwapWindow \n", id );
     GL_LOCK = false;
+
+	auto stop = std::chrono::high_resolution_clock::now();
+    auto duration = duration_cast<std::chrono::milliseconds>(stop - start);
+
+	durationTotal += duration;
+	durationCount++;
+
+	if (durationCount == 400){
+		std::cout << "update() took " << durationTotal.count()/(float)durationCount << " milliseconds (last "<<durationCount<<" avg)\n";
+		durationCount = 0;
+		durationTotal = std::chrono::duration<long, std::ratio<1, 1000>>::zero();
+	}
 };
 
 void ScreenSDL2OGL::draw(){}; // virtual function, meant to be overriden

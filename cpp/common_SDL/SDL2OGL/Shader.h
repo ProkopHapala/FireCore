@@ -20,6 +20,10 @@ private:
     GLuint vertexShaderId   = 0;
     GLuint fragmentShaderId = 0;
 
+    GLuint uMVPloc = -1;
+    GLuint uColorloc = -1;
+    GLuint uTextureloc = -1;
+
     char* __vertexShaderSource   = nullptr;
     char* __fragmentShaderSource = nullptr;
 
@@ -42,13 +46,16 @@ public:
         return loc;
     }
 
-    // TODO: don't use glGetUniformLocation all the time (once at initialisation and store in unordered map? don't use strings somehow?)
-    void setUniform1i(const char* name, int value)                          { glUniform1i(getUniformLocation(name), value); }
-    void setUniform1f(const char* name, float value)                        { glUniform1f(getUniformLocation(name), value); }
-    void setUniform2f(const char* name, float x, float y)                   { glUniform2f(getUniformLocation(name), x, y); }
-    void setUniform3f(const char* name, float x, float y, float z)          { glUniform3f(getUniformLocation(name), x, y, z); }
-    void setUniform4f(const char* name, float x, float y, float z, float w) { glUniform4f(getUniformLocation(name), x, y, z, w); }
-    void setUniformMat4f(const char* name, const float* matrix)      { glUniformMatrix4fv(getUniformLocation(name), 1, GL_FALSE, matrix); }
+    inline void setuMVPMatrix(Mat4f mat){ glUniformMatrix4fv(uMVPloc, 1, GL_FALSE, mat.array); }
+    inline void setuColor(Vec3f color){ glUniform3f(uColorloc, color.x, color.y, color.z); }
+    inline void setuTexture(GLuint texture){ glUniform1i(uTextureloc, texture); }
+
+    inline void setUniform1i(const char* name, int value)                          { glUniform1i(getUniformLocation(name), value); }
+    inline void setUniform1f(const char* name, float value)                        { glUniform1f(getUniformLocation(name), value); }
+    inline void setUniform2f(const char* name, float x, float y)                   { glUniform2f(getUniformLocation(name), x, y); }
+    inline void setUniform3f(const char* name, float x, float y, float z)          { glUniform3f(getUniformLocation(name), x, y, z); }
+    inline void setUniform4f(const char* name, float x, float y, float z, float w) { glUniform4f(getUniformLocation(name), x, y, z, w); }
+    inline void setUniformMat4f(const char* name, const float* matrix)      { glUniformMatrix4fv(getUniformLocation(name), 1, GL_FALSE, matrix); }
 
     inline void setUniform2f(const char* name, Vec2f x) {setUniform2f(name, x.x, x.y);}
     inline void setUniform3f(const char* name, Vec3f x) {setUniform3f(name, x.x, x.y, x.z);}
