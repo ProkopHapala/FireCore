@@ -1,5 +1,6 @@
 using System;
 using System.Diagnostics;
+using System.Linq;
 using System.Runtime.InteropServices;
 using UnityEngine;
 using UnityEngine.InputSystem.iOS;
@@ -11,7 +12,9 @@ public class CppConnector : MonoBehaviour
 
     public GameObject atomPrefab;
     public GameObject electronPrefab;
-
+    public GameObject infoBoxPrefab_e;
+    public GameObject infoBoxPrefab_a;
+    public GameObject infoBoxAnchor;
     public GameObject[] particles;
 
     public const string PATH_TO_EFF_APP = "/home/perry/FireCore/cpp/Build/apps/EFF/libEFFapp_console.so";
@@ -27,6 +30,8 @@ public class CppConnector : MonoBehaviour
 
     public bool isRunning = false;
 
+    public Vector3[] positions { get; private set; }
+    public float[] sizes { get; private set; }
 
     private (Vector3[] positions, float[] sizes) GetPositionsFromNative()
     {
@@ -83,10 +88,22 @@ public class CppConnector : MonoBehaviour
 
         for (int i = 0; i < electronCount; i++) {
             particles[i] = Instantiate(electronPrefab, new Vector3(0, 0, 0), Quaternion.identity);
+
+            var info = Instantiate(infoBoxPrefab_e, infoBoxAnchor.transform);
+            info.GetComponent<InfoBox>().SetConnector(this, i, i, ObjectType.ELECTRON);
+            info.GetComponent<RectTransform>().anchoredPosition = new Vector2(0, -63 * i);
         }
         for (int i = 0; i < atomCount; i++) {
             particles[electronCount + i] = Instantiate(atomPrefab, new Vector3(0, 0, 0), Quaternion.identity);
+
+            var info = Instantiate(infoBoxPrefab_a, infoBoxAnchor.transform);
+            info.GetComponent<InfoBox>().SetConnector(this, i, electronCount + i, ObjectType.ATOM);
+            info.GetComponent<RectTransform>().anchoredPosition = new Vector2(0, (-63 * electronCount) + (-50 * i));
         }
+
+        
+        DoSimUpdateCycle();
+        Array.ForEach(infoBoxAnchor.GetComponentsInChildren<InfoBox>(), x => x.ForceUpdate());
     }
 
     // Update is called once per frame
@@ -102,19 +119,23 @@ public class CppConnector : MonoBehaviour
     void Update()
     {
         if(isRunning){
-            var data = GetPositionsFromNative();
-            Vector3[] positions = data.positions;
-            float[] sizes = data.sizes;
-
-            for (int i = 0; i < particles.Length; i++) {
-                particles[i].transform.position = positions[i];
-                if(i < electronCount){
-                    particles[i].transform.localScale = new Vector3(sizes[i], sizes[i], sizes[i]);
-                    //UnityEngine.Debug.Log(sizes[i]);
-                }
-                UnityEngine.Debug.Log(positions[i].x + " " + positions[i].y + " " + positions[i].z);
-
-            }
+            DoSimUpdateCycle();
         }
     }
+
+    private void DoSimUpdateCycle() {
+        var data = GetPositionsFromNative();
+        positions = data.positions;
+        sizes = data.sizes;
+
+        for (int i = 0; i < particles.Length; i++) {
+            particles[i].transform.position = positions[i];
+            if(i < electronCount){
+                particles[i].transform.localScale = new Vector3(sizes[i], sizes[i], sizes[i]);
+                //UnityEngine.Debug.Log(sizes[i]);
+            }
+            UnityEngine.Debug.Log(positions[i].x + " " + positions[i].y + " " + positions[i].z);
+
+        }
+    } 
 }
