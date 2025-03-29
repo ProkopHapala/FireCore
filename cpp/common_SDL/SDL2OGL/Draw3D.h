@@ -88,7 +88,7 @@ inline void drawPoint     ( const Vec3d& vec                   ){drawPoint((Vec3
 inline void drawVec       ( const Vec3d& vec, Vec3f color                ){drawVec((Vec3f)vec,color); }
 inline void drawPointCross( const Vec3d& vec, double sz, Vec3f color=Vec3fZero){drawPointCross((Vec3f)vec,sz, color); }
 inline void drawVecInPos  ( const Vec3d& v,   const Vec3d& pos, Vec3f color ){drawVecInPos((Vec3f)v,(Vec3f)pos, color); }
-inline void drawLine      ( const Vec3d& p1,  const Vec3d& p2, Vec3f color  ){drawLine ((Vec3f)p1,(Vec3f)p2, color); }
+inline void drawLine      ( const Vec3d& p1,  const Vec3d& p2, Vec3f color=opengl1renderer.color  ){drawLine ((Vec3f)p1,(Vec3f)p2, color); }
 inline void drawArrow     ( const Vec3d& p1,  const Vec3d& p2, float sz=0.1  ){drawArrow((Vec3f)p1,(Vec3f)p2, sz); }
 
 void vecsInPoss( int n, const Vec3d* vs, const Vec3d* ps, float sc, Vec3f color=COLOR_RED );

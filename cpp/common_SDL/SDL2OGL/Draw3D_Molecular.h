@@ -221,46 +221,60 @@ void bondsPBC( int n, const Vec2i* b2a, const Vec3d* apos, const Vec3i* pbc, con
     }
 }
 
-void atomNeighs(  int ia, int perAtom, int* neighs, int* neighCell, Vec3d* apos, Vec3d* shifts=0, Vec3d offset=Vec3dZero ){
+template<unsigned int flags>
+void addAtomNeighsToMesh( GLMesh<flags>& mesh, int ia, int perAtom, int* neighs, int* neighCell, Vec3d* apos, Vec3d* shifts=0, Vec3d offset=Vec3dZero ){
     int* ngs = neighs   +ia*perAtom;
     int* ngC = neighCell+ia*perAtom;
     Vec3d pi = apos[ia];
-    //printf( "Draw3D::atomNeighs[%i] ng(%i,%i,%i,%i) p(%g,%g,%g)\n", ia, ngs[0],ngs[1],ngs[2],ngs[3], pi.x,pi.y,pi.z );
-    opengl1renderer.begin( GL_LINES );
+    
     for(int i=0; i<perAtom; i++){
         int ja = ngs[i];
         if(ja<0) continue;
-        Draw3D::vertex( pi+offset );
         Vec3d pj = apos[ja];
         if(shifts) pj.add(shifts[ngC[i]]);
-        Draw3D::vertex( pj+offset );
-    }
-    opengl1renderer.end();
-}
 
-void atomNeighs(  int ia, int perAtom, int* neighs, int* neighCell, Quat4f* apos, Vec3d* shifts=0, Vec3d offset=Vec3dZero ){
-    //printf( "Draw3D::atomNeighs[%i]\n", ia );
+        mesh.addVertex( (Vec3f)(pi+offset) );
+        mesh.addVertex( (Vec3f)(pj+offset) );
+    }
+}
+template<unsigned int flags>
+void addAtomNeighsToMesh( GLMesh<flags>& mesh, int ia, int perAtom, int* neighs, int* neighCell, Quat4f* apos, Vec3d* shifts=0, Vec3d offset=Vec3dZero ){
     int* ngs  = neighs   +ia*perAtom;
     int* ngC  = neighCell+ia*perAtom;
     Quat4f pi = apos[ia];
-    //print( "\n", neighs_[0],neighs_[1],neighs_[2],neighs_[3],  neighCell_[0],neighCell_[1],neighCell_[2],neighCell_[3],  apos.x,apos.x,apos.x,apos.x );
-    //printf( "Draw3D::atomNeighs[%i] ng(%i,%i,%i,%i) ngC(%i,%i,%i,%i) p(%g,%g,%g)\n", ia, ngs[0],ngs[1],ngs[2],ngs[3],   ngC[0],ngC[1],ngC[2],ngC[3],    pi.x,pi.y,pi.z );
-    opengl1renderer.begin( GL_LINES );
+    
     for(int i=0; i<perAtom; i++){
         int ja = ngs[i];
         if(ja<0) continue;
-        Draw3D::vertex( (Vec3d)pi.f+offset );
         Vec3f pj = apos[ja].f;
         if(shifts) pj.add( (Vec3f)shifts[ngC[i]]);
-        Draw3D::vertex( (Vec3d)pj+offset );
+
+        mesh.addVertex( pi.f+(Vec3f)offset );
+        mesh.addVertex( pj  +(Vec3f)offset );
     }
-    opengl1renderer.end();
 }
 
-void neighs( int na, int perAtom, int* neighs, int* neighCell, Vec3d* apos, Vec3d* shifts=0, Vec3d offset=Vec3dZero ){
+GLMesh<0> atomNeighsMesh = GLMesh<0>(GL_LINES, GL_STREAM_DRAW);
+void atomNeighs( int ia, int perAtom, int* neighs, int* neighCell, Vec3d* apos, Vec3d* shifts=0, Vec3d offset=Vec3dZero ){
+    atomNeighsMesh.clear();
+    addAtomNeighsToMesh( atomNeighsMesh, ia, perAtom, neighs, neighCell, apos, shifts, offset );
+    atomNeighsMesh.color = opengl1renderer.color;
+    atomNeighsMesh.draw();
+}
+void atomNeighs( int ia, int perAtom, int* neighs, int* neighCell, Quat4f* apos, Vec3d* shifts=0, Vec3d offset=Vec3dZero ){
+    atomNeighsMesh.clear();
+    addAtomNeighsToMesh( atomNeighsMesh, ia, perAtom, neighs, neighCell, apos, shifts, offset );
+    atomNeighsMesh.color = opengl1renderer.color;
+    atomNeighsMesh.draw();
+}
+
+GLMesh<0>* makeNeighsMesh( int na, int perAtom, int* neighs, int* neighCell, Vec3d* apos, Vec3d* shifts=0 ){
+    atomNeighsMesh.clear();
     for(int ia=0; ia<na; ia++){
-        atomNeighs( ia, perAtom, neighs, neighCell, apos, shifts, offset );
+        addAtomNeighsToMesh( atomNeighsMesh, ia, perAtom, neighs, neighCell, apos, shifts, Vec3dZero );
     }
+    atomNeighsMesh.color = opengl1renderer.color;
+    return &atomNeighsMesh;
 }
 
 void neighs_multi( int na, int perAtom, int* neighs_, int* neighCell_,  Quat4f* apos_, Vec3d* shifts=0, int isys=0, int nvec=-1 ){

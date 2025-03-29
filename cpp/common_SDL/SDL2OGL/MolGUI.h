@@ -384,7 +384,8 @@ class MolGUI : public AppSDL2OGL_3D { public:
     void bindMolecule(const MolWorld_sp3* W );
     void bindMolWorld( MolWorld_sp3* W );
     void unBindMolecule();
-	void drawSystem (  Vec3d offset=Vec3dZero, bool bOrig=true );
+    void drawSystemShifts( int n, const Vec3d* shifts, int i0 );
+    inline void drawSystemSingle() { drawSystemShifts(1, &Vec3dZero, 0); }
     void drawBuilder( Vec3i ixyz=Vec3iZero );
     
     void drawPi0s( float sc );
@@ -1383,9 +1384,9 @@ void MolGUI::draw(){
     if(bDoMM){
         if( bViewBuilder ){ drawBuilder(); }   // Draw Builder 
         else if(W->builder.bPBC){              // Draw System with PBC 
-            Draw3D::drawShifts( W->npbc, W->pbc_shifts, W->ipbc0, [&](Vec3d offset, bool bOrig){drawSystem(offset, bOrig);} ); 
+            drawSystemShifts( W->npbc, W->pbc_shifts, W->ipbc0 );
             Draw3D::drawBBox( W->bbox.a, W->bbox.b );
-        }else{ drawSystem(); }                // Draw System without PBC
+        }else{ drawSystemSingle(); } // Draw System without PBC
     }
 
     // Draw hydorgen bonds (if any)
@@ -2117,66 +2118,50 @@ void MolGUI::drawBuilder( Vec3i ixyz ){
     }
 }
 
-void MolGUI::drawSystem( Vec3d offset, bool bOrig ){
+void MolGUI::drawSystemShifts( int n, const Vec3d* shifts, int i0 ){
     opengl1renderer.enable(GL_DEPTH_TEST);
 
     bool bViewBL = bViewBondLenghts &&  (bL0s!=0);
 
+    // bonds
     if( neighs && (!bViewBL) ){
         opengl1renderer.color3f(0.0f,0.0f,0.0f); 
         opengl1renderer.lineWidth(1.0);
-        Draw3D::neighs(  natoms, 4, (int*)neighs, (int*)neighCell, apos, W->pbc_shifts, offset );
-        opengl1renderer.lineWidth(1.0);
+        GLMesh<0>* neighMesh = Draw3D::makeNeighsMesh(  natoms, 4, (int*)neighs, (int*)neighCell, apos, W->pbc_shifts );
+
+        for (int i=0; i<n; i++) neighMesh->draw( (Vec3f)shifts[i] );
     }
 
-
-
-    //W->nbmol.print();
-    if(bViewAtomSpheres && mm_bAtoms && (!bViewBondLenghts)){
-        Draw3D::atoms( natoms, apos, atypes, W->params, 1.0, mm_Rsc, mm_Rsub, offset );
+    // atom spheres
+    if(bViewAtomSpheres && mm_bAtoms && (!bViewBondLenghts)){ // TODO
+        for (int i=0; i<n; i++) Draw3D::atoms( natoms, apos, atypes, W->params, 1.0, mm_Rsc, mm_Rsub, shifts[i] );
     }
-    if(bOrig){
-        //printf( "MolGUI::drawSystem() bOrig(%i)  mm_bAtoms(%i) bViewAtomLabels(%i) bViewMolCharges(%i) \n", bOrig, mm_bAtoms, bViewAtomLabels, bViewMolCharges );
-        //if(bViewAtomP0s     &&  fapos           ){ opengl1renderer.color3f(0.0f,1.0f,1.0f); Draw3D::drawVectorArray  ( natoms, apos, fapos, ForceViewScale, 10000.0 );  }
-        //for(int i=0; i<natoms; i++){ printf( "MolGUI::drawSystem() fapos[%i] (%g,%g,%g)\n", i, fapos[i].x, fapos[i].y, fapos[i].z ); }
-        if(bViewAtomForces    &&  fapos           ){ opengl1renderer.color3f(1.0f,0.0f,0.0f); Draw3D::drawVectorArray  ( natoms, apos, fapos, ForceViewScale, 10000.0 );   }
-        if(mm_bAtoms&&bViewAtomLabels&&(!bViewBL) ){ opengl1renderer.color3f(0.0f,0.0f,0.0f); Draw3D::atomLabels       ( natoms, apos,                                    fontTex3D, textSize );  }
-        if(mm_bAtoms&&bViewAtomTypes              ){ opengl1renderer.color3f(0.0f,0.0f,0.0f); Draw3D::atomTypes        ( natoms, apos, atypes, &(params_glob->atypes[0]), fontTex3D, textSize );  }
-        if(bViewMolCharges && (W->nbmol.REQs!=0)  ){ opengl1renderer.color3f(0.0,0.0,0.0);    Draw3D::atomPropertyLabel( natoms,  (double*)REQs,  apos, 4, 2,             fontTex3D, textSize ); }
-        if(bViewHBondCharges && (W->nbmol.REQs!=0)){ opengl1renderer.color3f(0.0,0.0,0.0);    Draw3D::atomPropertyLabel( natoms,  (double*)REQs,  apos, 4, 3,             fontTex3D, textSize ); }
-        opengl1renderer.enable( GL_DEPTH_TEST );
 
-        //if(W->ff.pi0s                           ){ opengl1renderer.color3f(0.0f,1.0f,1.0f); drawPi0s(1.0); }
+    // == i0 system gets special rendering ==
+    if(bViewAtomForces    &&  fapos           ){ opengl1renderer.color3f(1.0f,0.0f,0.0f); Draw3D::drawVectorArray  ( natoms, apos, fapos, ForceViewScale, 10000.0 );   }
+    if(mm_bAtoms&&bViewAtomLabels&&(!bViewBL) ){ opengl1renderer.color3f(0.0f,0.0f,0.0f); Draw3D::atomLabels       ( natoms, apos,                                    fontTex3D, textSize );  }
+    if(mm_bAtoms&&bViewAtomTypes              ){ opengl1renderer.color3f(0.0f,0.0f,0.0f); Draw3D::atomTypes        ( natoms, apos, atypes, &(params_glob->atypes[0]), fontTex3D, textSize );  }
+    if(bViewMolCharges && (W->nbmol.REQs!=0)  ){ opengl1renderer.color3f(0.0,0.0,0.0);    Draw3D::atomPropertyLabel( natoms,  (double*)REQs,  apos, 4, 2,             fontTex3D, textSize ); }
+    if(bViewHBondCharges && (W->nbmol.REQs!=0)){ opengl1renderer.color3f(0.0,0.0,0.0);    Draw3D::atomPropertyLabel( natoms,  (double*)REQs,  apos, 4, 3,             fontTex3D, textSize ); }
+    opengl1renderer.enable( GL_DEPTH_TEST );
     
-        {// Graph
+    {// Graph
 
-            // --- draw whole molecule skeleton stored in W->graph
-            //opengl1renderer.color3f(1.0,0.0,1.0);
-            //for(int i=0; i<W->graph.n; i++){ 
-            //    for(int j=0; j<W->graph.nneighs[i]; j++ ) Draw3D::drawLine( apos[i], apos[W->graph.neighs[i][j]] ); 
-            //};
+        // --- draw whole molecule skeleton stored in W->graph
+        //opengl1renderer.color3f(1.0,0.0,1.0);
+        //for(int i=0; i<W->graph.n; i++){ 
+        //    for(int j=0; j<W->graph.nneighs[i]; j++ ) Draw3D::drawLine( apos[i], apos[W->graph.neighs[i][j]] ); 
+        //};
 
-            // --- draw only the bridge bonds stored in W->graph.found
-            for(int i=0; i<W->graph.found.size(); i++){ Vec2i b = W->graph.found[i]; Draw3D::drawLine( apos[b.i], apos[b.j], {1, 0, 1} );  };
-        }
-    
+        // --- draw only the bridge bonds stored in W->graph.found
+        for(int i=0; i<W->graph.found.size(); i++){ Vec2i b = W->graph.found[i]; Draw3D::drawLine( apos[b.i], apos[b.j], {1, 0, 1} );  };
     }
     if( bond2atom ){
-        //if(W->builder.bPBC){ opengl1renderer.color3f(0.0f,0.0f,0.0f); Draw3D::bondsPBC    ( nbonds, bond2atom, apos, &W->builder.bondPBC[0], W->builder.lvec ); } 
-        //opengl1renderer.color3f(0.0f,0.0f,0.0f); Draw3D::bonds       ( nbonds,bond2atom,apos );  // Debug
-        /*
-        if(W->builder.bPBC){ opengl1renderer.color3f(0.0f,0.0f,0.0f); if(pbcShifts)Draw3D::bondsPBC          ( nbonds, bond2atom, apos,  pbcShifts                          );  
-                             opengl1renderer.color3f(0.0f,0.0f,1.0f); if(pbcShifts)Draw3D::pbcBondNeighLabels( nbonds, bond2atom, apos,  pbcShifts, fontTex3D,        textSize );
-        }else              { opengl1renderer.color3f(0.0f,0.0f,0.0f); Draw3D::bonds             ( nbonds, bond2atom, apos                                            );                                          
-                             opengl1renderer.color3f(0.0f,0.0f,0.0f); Draw3D::bondsLengths      ( nbonds, bond2atom, apos, fontTex3D );                                
-        }
-        */
-        if(bOrig){
-            if(bViewPis &&  fpipos ){ opengl1renderer.color3f(0.0f,1.0f,1.0f); Draw3D::drawVectorArray( nnode, apos, pipos, 1.0, 100.0 );          }
-            if( bViewBondLabels    ){ opengl1renderer.color3f(0.0f,0.0f,0.0f); Draw3D::bondLabels( nbonds, bond2atom, apos, fontTex3D,  textSize  ); }
-            opengl1renderer.enable( GL_DEPTH_TEST ); 
-        }
-        if(bViewBondLenghts &&  bOrig ){ 
+        if(bViewPis &&  fpipos ){ opengl1renderer.color3f(0.0f,1.0f,1.0f); Draw3D::drawVectorArray( nnode, apos, pipos, 1.0, 100.0 );          }
+        if( bViewBondLabels    ){ opengl1renderer.color3f(0.0f,0.0f,0.0f); Draw3D::bondLabels( nbonds, bond2atom, apos, fontTex3D,  textSize  ); }
+        opengl1renderer.enable( GL_DEPTH_TEST ); 
+        
+        if(bViewBondLenghts){ 
             if(bViewAtomLabels ){ opengl1renderer.color3f(0.0f,0.0f,0.0f); Draw3D::bondsLengths( nbonds, bond2atom, apos, fontTex3D, textSize ); }
             opengl1renderer.enable( GL_DEPTH_TEST );
             //if(bL0s==0){ makeBondLengths0(); }
@@ -2188,7 +2173,6 @@ void MolGUI::drawSystem( Vec3d offset, bool bOrig ){
             opengl1renderer.lineWidth( 1.0 );
         }
     }
-
 }
 
 void MolGUI::saveScreenshot( int i, const char* fname ){
