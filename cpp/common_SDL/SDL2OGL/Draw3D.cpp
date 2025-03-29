@@ -423,26 +423,26 @@ void Draw3D::drawTriangles( int nlinks, const int * links, const Vec3d * points,
     opengl1renderer.end();
 }
 
-void Draw3D::drawVectorArray(int n,const  Vec3d* ps,const  Vec3d* vs, double sc, double lmax ){
-    opengl1renderer.begin(GL_LINES);
+void Draw3D::drawVectorArray(int n,const  Vec3d* ps,const  Vec3d* vs, double sc, double lmax ){ // TODO: optimise
     double l2max=sq(lmax/sc);
     for(int i=0; i<n; i++){
         if(lmax>0){ if(vs[i].norm2()>l2max ) continue; }
-        Vec3d p=ps[i];        opengl1renderer.vertex3f(p.x,p.y,p.z);
-        p.add_mul( vs[i], sc); opengl1renderer.vertex3f(p.x,p.y,p.z);
+        Vec3d p1=ps[i];
+        Vec3d p2=ps[i];
+        p2.add_mul( vs[i], sc);
+        Draw3D::drawLine(p1, p2);
     }
-    opengl1renderer.end();
 }
 
 void Draw3D::drawVectorArray(int n,const  Vec3d* ps,const  Quat4f* qs, double sc, double lmax ){
-    opengl1renderer.begin(GL_LINES);
     double l2max=sq(lmax/sc);
     for(int i=0; i<n; i++){
         if(lmax>0){ if(qs[i].f.norm2()>l2max ) continue; }
-        Vec3f p=(Vec3f)ps[i];    opengl1renderer.vertex3f(p.x,p.y,p.z);
-        p.add_mul( qs[i].f, sc); opengl1renderer.vertex3f(p.x,p.y,p.z);
+        Vec3d p1=ps[i];
+        Vec3d p2=ps[i];
+        p2.add_mul( (Vec3d)qs[i].f, sc);
+        Draw3D::drawLine(p1, p2);
     }
-    opengl1renderer.end();
 }
 
 
@@ -849,33 +849,76 @@ void Draw3D::drawColorScale( int n, Vec3d pos, Vec3d dir, Vec3d up, void (_color
 // from drawUtils.h
 // =================
 
+static GLMesh_Normal makeCube(){
+    GLMesh_Normal m = GLMesh_Normal(GL_QUADS);
+    // positive x face
+    m.addVertex({1, 0, 0}, {1, 0, 0});
+    m.addVertex({1, 1, 0}, {1, 0, 0});
+    m.addVertex({1, 1, 1}, {1, 0, 0});
+    m.addVertex({1, 0, 1}, {1, 0, 0});
+
+    // negative x face
+    m.addVertex({0, 0, 0}, {-1, 0, 0});
+    m.addVertex({0, 1, 0}, {-1, 0, 0});
+    m.addVertex({0, 1, 1}, {-1, 0, 0});
+    m.addVertex({0, 0, 1}, {-1, 0, 0});
+
+    // positive y face
+    m.addVertex({0, 1, 0}, {0, 1, 0});
+    m.addVertex({1, 1, 0}, {0, 1, 0});
+    m.addVertex({1, 1, 1}, {0, 1, 0});
+    m.addVertex({0, 1, 1}, {0, 1, 0});
+
+    // negative y face
+    m.addVertex({0, 0, 0}, {0, -1, 0});
+    m.addVertex({1, 0, 0}, {0, -1, 0});
+    m.addVertex({1, 0, 1}, {0, -1, 0});
+    m.addVertex({0, 0, 1}, {0, -1, 0});
+
+    // positive z face
+    m.addVertex({0, 0, 1}, {0, 0, 1});
+    m.addVertex({1, 0, 1}, {0, 0, 1});
+    m.addVertex({1, 1, 1}, {0, 0, 1});
+    m.addVertex({0, 1, 1}, {0, 0, 1});
+
+    // negative z face
+    m.addVertex({0, 0, 0}, {0, 0, -1});
+    m.addVertex({1, 0, 0}, {0, 0, -1});
+    m.addVertex({1, 1, 0}, {0, 0, -1});
+    m.addVertex({0, 1, 0}, {0, 0, -1});
+
+    return m;
+}
+static GLMesh_Normal cube = makeCube();
+
+static GLMesh<0> makeWireCube(){
+    GLMesh<0> m = GLMesh<0>(GL_LINES);
+
+    m.addVertex({0, 0, 0}); m.addVertex({1, 0, 0});
+    m.addVertex({0, 0, 0}); m.addVertex({0, 1, 0});
+    m.addVertex({0, 0, 0}); m.addVertex({0, 0, 1});
+    m.addVertex({1, 0, 0}); m.addVertex({1, 1, 0});
+    m.addVertex({1, 0, 0}); m.addVertex({1, 0, 1});
+    m.addVertex({0, 1, 0}); m.addVertex({1, 1, 0});
+    m.addVertex({0, 1, 0}); m.addVertex({0, 1, 1});
+    m.addVertex({0, 0, 1}); m.addVertex({1, 0, 1});
+    m.addVertex({0, 0, 1}); m.addVertex({0, 1, 1});
+    m.addVertex({0, 1, 1}); m.addVertex({1, 1, 1});
+    m.addVertex({1, 0, 1}); m.addVertex({1, 1, 1});
+    m.addVertex({1, 1, 0}); m.addVertex({1, 1, 1});
+
+    return m;
+}
+static GLMesh<0> wireCube = makeWireCube();
+
 void Draw3D::drawBox( float x0, float x1, float y0, float y1, float z0, float z1, float r, float g, float b ){
-	opengl1renderer.begin(GL_QUADS);
-		opengl1renderer.color3f( r, g, b );
-		opengl1renderer.normal3f(0,0,-1); opengl1renderer.vertex3f( x0, y0, z0 ); opengl1renderer.vertex3f( x1, y0, z0 ); opengl1renderer.vertex3f( x1, y1, z0 ); opengl1renderer.vertex3f( x0, y1, z0 );
-		opengl1renderer.normal3f(0,-1,0); opengl1renderer.vertex3f( x0, y0, z0 ); opengl1renderer.vertex3f( x1, y0, z0 ); opengl1renderer.vertex3f( x1, y0, z1 ); opengl1renderer.vertex3f( x0, y0, z1 );
-		opengl1renderer.normal3f(-1,0,0); opengl1renderer.vertex3f( x0, y0, z0 ); opengl1renderer.vertex3f( x0, y1, z0 ); opengl1renderer.vertex3f( x0, y1, z1 ); opengl1renderer.vertex3f( x0, y0, z1 );
-		opengl1renderer.normal3f(0,0,+1); opengl1renderer.vertex3f( x1, y1, z1 ); opengl1renderer.vertex3f( x0, y1, z1 ); opengl1renderer.vertex3f( x0, y0, z1 ); opengl1renderer.vertex3f( x1, y0, z1 );
-		opengl1renderer.normal3f(0,+1,1); opengl1renderer.vertex3f( x1, y1, z1 ); opengl1renderer.vertex3f( x0, y1, z1 ); opengl1renderer.vertex3f( x0, y1, z0 ); opengl1renderer.vertex3f( x1, y1, z0 );
-		opengl1renderer.normal3f(+1,0,0); opengl1renderer.vertex3f( x1, y1, z1 ); opengl1renderer.vertex3f( x1, y0, z1 ); opengl1renderer.vertex3f( x1, y0, z0 ); opengl1renderer.vertex3f( x1, y1, z0 );
-	opengl1renderer.end();
+	cube.color = {r, g, b};
+    cube.draw((Vec3f){x0, y0, z0}, (Vec3f){x1-x0, y1-y0, z1-z0});
 }
 
 void Draw3D::drawBBox( const Vec3f& p0, const Vec3f& p1 ){
-	opengl1renderer.begin(GL_LINES);
-		opengl1renderer.vertex3f( p0.x, p0.y, p0.z ); opengl1renderer.vertex3f( p1.x, p0.y, p0.z );
-		opengl1renderer.vertex3f( p0.x, p0.y, p0.z ); opengl1renderer.vertex3f( p0.x, p1.y, p0.z );
-		opengl1renderer.vertex3f( p0.x, p0.y, p0.z ); opengl1renderer.vertex3f( p0.x, p0.y, p1.z );
-        opengl1renderer.vertex3f( p1.x, p1.y, p1.z ); opengl1renderer.vertex3f( p0.x, p1.y, p1.z );
-		opengl1renderer.vertex3f( p1.x, p1.y, p1.z ); opengl1renderer.vertex3f( p1.x, p0.y, p1.z );
-		opengl1renderer.vertex3f( p1.x, p1.y, p1.z ); opengl1renderer.vertex3f( p1.x, p1.y, p0.z );
-		opengl1renderer.vertex3f( p1.x, p0.y, p0.z ); opengl1renderer.vertex3f( p1.x, p1.y, p0.z );
-		opengl1renderer.vertex3f( p1.x, p0.y, p0.z ); opengl1renderer.vertex3f( p1.x, p0.y, p1.z );
-		opengl1renderer.vertex3f( p0.x, p1.y, p0.z ); opengl1renderer.vertex3f( p1.x, p1.y, p0.z );
-		opengl1renderer.vertex3f( p0.x, p1.y, p0.z ); opengl1renderer.vertex3f( p0.x, p1.y, p1.z );
-		opengl1renderer.vertex3f( p0.x, p0.y, p1.z ); opengl1renderer.vertex3f( p1.x, p0.y, p1.z );
-		opengl1renderer.vertex3f( p0.x, p0.y, p1.z ); opengl1renderer.vertex3f(p0.x, p1.y, p1.z );
-	opengl1renderer.end();
+	wireCube.color = opengl1renderer.color;
+    wireCube.draw(p0, p1-p0);
 }
 
 void Draw3D::drawBBox( const Vec3f& p, float r ){ drawBBox( Vec3f{p.x-r,p.y-r,p.z-r}, Vec3f{p.x+r,p.y+r,p.z+r} ); };

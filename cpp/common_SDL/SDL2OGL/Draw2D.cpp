@@ -50,11 +50,17 @@ void Draw2D::drawBody2d( const Vec2f& rot, const Vec2f& pos, float l1, float l2 
 	opengl1renderer.end();
 };
 
+static GLMesh<0> makeLineMesh(){
+    GLMesh<0> m = GLMesh<0>(GL_LINES);
+    m.addVertex({0, 0, 0});
+    m.addVertex({1, 1, 0});
+    return m;
+}
+static GLMesh<0> lineMesh = makeLineMesh();
+
 void Draw2D::drawLine( const Vec2f& p1, const Vec2f& p2 ){
-	//opengl1renderer.disable (GL_LIGHTING);
-	opengl1renderer.begin   (GL_LINES);
-		opengl1renderer.vertex3f( p1.x, p1.y, z_layer ); opengl1renderer.vertex3f( p2.x, p2.y, z_layer );
-	opengl1renderer.end();
+    lineMesh.color = opengl1renderer.color;
+    lineMesh.draw2D( {p1.x, p1.y, z_layer}, p2-p1);
 };
 
 void Draw2D::drawTriangle( const Vec2f& p1, const Vec2f& p2, const Vec2f& p3 ){
