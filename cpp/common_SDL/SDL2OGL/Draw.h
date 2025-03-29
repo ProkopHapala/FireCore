@@ -76,13 +76,8 @@ namespace Draw{
 
     void billboardCam( );
     void billboardCamProj( float scale=200.0 );
-    void drawText ( const char * str, Vec3f pos, float sz, int iend=0      );
-    void drawText ( const char * str, Vec3f pos, float sz, Vec2i block_size);
-    //void drawText ( const char * str, int itex, float sz, int iend=0       );
-    //void drawText ( const char * str, int itex, float sz, Vec2i block_size );
-
-    //GLuint makeTexture( char * fname );
-    //GLuint makeTexture( int nx, int ny, float * data );
+    void drawText ( const char * str, Vec3f pos, float sz, int iend=0      , Vec3f color=opengl1renderer.color);
+    void drawText ( const char * str, Vec3f pos, float sz, Vec2i block_size, Vec3f color=opengl1renderer.color);
 
     inline int list(int ogl=0){ if(ogl)opengl1renderer.deleteLists(ogl,1); ogl=opengl1renderer.genLists(1); opengl1renderer.newList(ogl,GL_COMPILE); return ogl; };
 

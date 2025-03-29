@@ -127,67 +127,43 @@ static GLMesh<GLMESH_FLAG_UVTEX> makeFontMesh(){
 }
 static GLMesh fontMesh = makeFontMesh();
 
-static void drawChar( char c, Vec3f pos, Vec2f size ){ // TODO: optimise this - probably custom fragment shader for text rendering, rather than 1 quad per char
-    font.setMagFilter(GL_NEAREST);
-    font.setMinFilter(GL_NEAREST);
-
-    const int nchars = 95;//('~'-'!')+1;
+template<unsigned int FLAG>
+static void addCharToMesh( GLMesh<FLAG>& mesh, char c, Vec2f pos, Vec2f size){
+    const int nchars = 95;
     const float persprite = 1.0f/nchars;
 
     int chari = c - 33;
     float UVstart = chari*persprite + (persprite*0.57);
     float UVend   = UVstart + persprite;
-    fontMesh.updateVertex(0, {0, 0, 0}, Vec3fZero, COLOR_WHITE, {UVstart, 0});
-    fontMesh.updateVertex(1, {1, 0, 0}, Vec3fZero, COLOR_WHITE, {UVend  , 0});
-    fontMesh.updateVertex(2, {1, 1, 0}, Vec3fZero, COLOR_WHITE, {UVend  , 1});
-    fontMesh.updateVertex(3, {0, 1, 0}, Vec3fZero, COLOR_WHITE, {UVstart, 1});
-    fontMesh.color = opengl1renderer.color;
-    //fontMesh.color = COLOR_WHITE;
 
-    const float WIDTH = 1820; // TODO: make these not constant
-    const float HEIGHT = 980;
-
-    pos.x = pos.x*2 / WIDTH - 1;
-    pos.y = pos.y*2 / HEIGHT - 1;
-
-    size = size*2 / (Vec2f){WIDTH, HEIGHT};
-
-    Mat4f mvp;
-    mvp.array[0] = size.x; mvp.array[4] = 0;      mvp.array[ 8] = 0; mvp.array[12] = pos.x;
-    mvp.array[1] = 0;      mvp.array[5] = size.y; mvp.array[ 9] = 0; mvp.array[13] = pos.y;
-    mvp.array[2] = 0;      mvp.array[6] = 0;      mvp.array[10] = 0; mvp.array[14] = pos.z;
-    mvp.array[3] = 0;      mvp.array[7] = 0;      mvp.array[11] = 0; mvp.array[15] = 1;
-
-    fontMesh.drawMVP(mvp);
+    fontMesh.addVertex({pos.x         , pos.y         , 0}, Vec3fZero, COLOR_WHITE, {UVstart, 0});
+    fontMesh.addVertex({pos.x + size.x, pos.y         , 0}, Vec3fZero, COLOR_WHITE, {UVend  , 0});
+    fontMesh.addVertex({pos.x + size.x, pos.y + size.y, 0}, Vec3fZero, COLOR_WHITE, {UVend  , 1});
+    fontMesh.addVertex({pos.x         , pos.y + size.y, 0}, Vec3fZero, COLOR_WHITE, {UVstart, 1});
 }
 
-void Draw::drawText( const char * str, Vec3f pos, float sz, int iend ){
+template<unsigned int FLAG>
+static void makeTextMesh( GLMesh<FLAG>& mesh, const char* str, int iend ){
     const int nchars = 95;
     float persprite = 1.0f/nchars;
 
-    opengl1renderer.enable(GL_ALPHA_TEST);
-    opengl1renderer.blendFunc(GL_SRC_ALPHA,GL_ONE_MINUS_SRC_ALPHA);
+    mesh.clear();
 
     int terminator = 0xFFFF;
     if(iend<=0) { terminator=-iend; iend=256; };
     for(int i=0; i<iend; i++){
         if  (str[i]==terminator) break;
-        int isprite = str[i] - 33;
-        float offset  = isprite*persprite+(persprite*0.57);
-        float xi = i*sz;
 
-        drawChar(str[i], pos+(Vec3f){xi, 0, 0}, {sz, sz*2});
+        addCharToMesh(mesh, str[i], {i, 0}, {1, 2});
     }
-
-    opengl1renderer.disable(GL_ALPHA_TEST);
 }
 
-void Draw::drawText( const char * str, Vec3f pos, float sz, Vec2i block_size ){
+template<unsigned int FLAG>
+static void makeTextMesh( GLMesh<FLAG>& mesh, const char * str, Vec2i block_size ){
     const int nchars = 95;
     float persprite = 1.0f/nchars;
 
-    opengl1renderer.enable(GL_ALPHA_TEST);
-    opengl1renderer.blendFunc(GL_SRC_ALPHA,GL_ONE_MINUS_SRC_ALPHA);
+    mesh.clear();
 
     char terminator = '\0';
     int iline=0,ix=0;
@@ -195,129 +171,45 @@ void Draw::drawText( const char * str, Vec3f pos, float sz, Vec2i block_size ){
         char ch = str[i];
         if       (ch==terminator){ break; }
         else if ((ch=='\n')||(ix>block_size.x)){ iline++; ix=0; if(iline>block_size.y) break; continue; }
-        int isprite = ch - 33;
-        float offset  = isprite*persprite+(persprite*0.57);
-        float x = ix   *sz;
-        float y = -iline*sz*2;
 
-        drawChar(str[i], pos+(Vec3f){x, y, 0}, {sz, sz*2});
+        addCharToMesh( mesh, str[i], {ix, -iline*2}, {1, 2});
 
         ix++;
     }
 
     opengl1renderer.disable(GL_ALPHA_TEST);
-};
-/*
-void Draw::drawText( const char * str, int itex, float sz, Vec2i block_size ){
+}
+
+void Draw::drawText( const char * str, Vec3f pos, float sz, int iend, Vec3f color ){
+    font.setMagFilter(GL_NEAREST);
+    font.setMinFilter(GL_NEAREST);
+
     const int nchars = 95;
     float persprite = 1.0f/nchars;
-    opengl1renderer.enable     ( GL_TEXTURE_2D );
-    opengl1renderer.bindTexture( GL_TEXTURE_2D, itex );
-    opengl1renderer.enable(GL_BLEND);
+
     opengl1renderer.enable(GL_ALPHA_TEST);
     opengl1renderer.blendFunc(GL_SRC_ALPHA,GL_ONE_MINUS_SRC_ALPHA);
-    opengl1renderer.begin(GL_QUADS);
-    //int terminator = 0xFFFF;
-    //if(iend<=0) { terminator=-iend; iend=256; };
-    char terminator = '\0';
-    int iline=0,ix=0;
-    //printf("\n"); printf("-------\n");
-    for(int i=0; i<65536; i++){
-        char ch = str[i]; // printf("%c", ch);
-        if       (ch==terminator){ break; }
-        else if ((ch=='\n')||(ix>block_size.x)){ iline++; ix=0; if(iline>block_size.y) break; continue; }
-        int isprite = ch - 33;
-        float offset  = isprite*persprite+(persprite*0.57);
-        float x = ix   *sz;
-        float y = -iline*sz*2;
-        opengl1renderer.texCoord2f( offset          , 1.0f ); opengl1renderer.vertex3f( x   , y+   0, 0.0f );
-        opengl1renderer.texCoord2f( offset+persprite, 1.0f ); opengl1renderer.vertex3f( x+sz, y+   0, 0.0f );
-        opengl1renderer.texCoord2f( offset+persprite, 0.0f ); opengl1renderer.vertex3f( x+sz, y+sz*2, 0.0f );
-        opengl1renderer.texCoord2f( offset          , 0.0f ); opengl1renderer.vertex3f( x   , y+sz*2, 0.0f );
-        ix++;
-    }
-    opengl1renderer.end();
-    opengl1renderer.disable  ( GL_BLEND );
-    opengl1renderer.disable  ( GL_ALPHA_TEST );
-    opengl1renderer.disable  ( GL_TEXTURE_2D );
-    opengl1renderer.blendFunc( GL_ONE, GL_ZERO );
-};*/
 
+    makeTextMesh(fontMesh, str, iend);
+    fontMesh.color = color;
+    fontMesh.draw2D(pos, {sz, sz});
 
+    opengl1renderer.disable(GL_ALPHA_TEST);
+}
 
-/*
-GLuint Draw::makeTexture( char * fname ){
+void Draw::drawText( const char * str, Vec3f pos, float sz, Vec2i block_size, Vec3f color ){
+    font.setMagFilter(GL_NEAREST);
+    font.setMinFilter(GL_NEAREST);
 
-    //SDL_Surface * surf = IMG_Load( fname );
-    SDL_Surface * surf = SDL_LoadBMP( fname );
-    if ( surf ){
-        GLuint itex=0;
-        opengl1renderer.genTextures  ( 1, &itex );
-        opengl1renderer.bindTexture  ( GL_TEXTURE_2D, itex );
-        //if      (surf->format->BytesPerPixel == 1) { opengl1renderer.texImage2D( GL_TEXTURE_2D, 0, 1,  surf->w,  surf->h, 0, GL_LUMINANCE, GL_UNSIGNED_BYTE, surf->pixels ); }
-        //if      (surf->format->BytesPerPixel == 1) { opengl1renderer.texImage2D( GL_TEXTURE_2D, 0, 1,   surf->w,  surf->h, 0, GL_INTENSITY, GL_UNSIGNED_BYTE, surf->pixels ); }
-        //if      (surf->format->BytesPerPixel == 1) { opengl1renderer.texImage2D( GL_TEXTURE_2D, 0, 1,       surf->w,  surf->h, 0, GL_ALPHA,     GL_UNSIGNED_BYTE, surf->pixels ); }
-        if      (surf->format->BytesPerPixel == 1) {
-            opengl1renderer.pixelStorei(GL_UNPACK_ALIGNMENT, 1);
-            opengl1renderer.texParameteri( GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR );
-            opengl1renderer.texParameteri( GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR );
-            opengl1renderer.texImage2D( GL_TEXTURE_2D, 0, 1,       surf->w,  surf->h, 0, GL_RED,       GL_UNSIGNED_BYTE, surf->pixels );
-        }
-        else if (surf->format->BytesPerPixel == 3) { opengl1renderer.texImage2D( GL_TEXTURE_2D, 0, GL_RGB,  surf->w,  surf->h, 0, GL_BGR,       GL_UNSIGNED_BYTE, surf->pixels ); }
-        else if (surf->format->BytesPerPixel == 4) { opengl1renderer.texImage2D( GL_TEXTURE_2D, 0, GL_RGBA, surf->w,  surf->h, 0, 0x8000,       GL_UNSIGNED_BYTE, surf->pixels ); }
-        else return 0;
-        //printf( "surface->format->Rmask : %i itex %i \n", surf->format->BytesPerPixel, itex  ) ;// surface->format->Rmask/ == 0x000000ff;
+    const int nchars = 95;
+    float persprite = 1.0f/nchars;
 
-        //opengl1renderer.texImage2D   ( GL_TEXTURE_2D, 0, 3, surf->w,  surf->h, 0, GL_BGR, GL_UNSIGNED_BYTE, surf->pixels );
-        //opengl1renderer.texImage2D   ( GL_TEXTURE_2D, 0, 3, surf->w,  surf->h, 0, GL_BGRA, GL_UNSIGNED_BYTE, surf->pixels );
-        //opengl1renderer.texImage2D(GL_TEXTURE_2D, 0, GL_RGBA, surf->w,  surf->h, 0, GL_RGBA, GL_UNSIGNED_BYTE, surf->pixels );
-        //opengl1renderer.texImage2D(GL_TEXTURE_2D, 0, GL_BGRA, surf->w,  surf->h, 0, GL_BGRA, GL_UNSIGNED_BYTE, surf->pixels );
-        //opengl1renderer.texImage2D(GL_TEXTURE_2D, 0,  GL_RGBA, surf->w,  surf->h, 0, GL_RGBA, GL_UNSIGNED_BYTE, surf->pixels );
-        opengl1renderer.texParameteri( GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR );
-        opengl1renderer.texParameteri( GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR );
-        SDL_FreeSurface( surf );
-        return itex;
-    }else{
-        printf( "cannot load %s\n", fname  );
-    }
-    return 0;
+    opengl1renderer.enable(GL_ALPHA_TEST);
+    opengl1renderer.blendFunc(GL_SRC_ALPHA,GL_ONE_MINUS_SRC_ALPHA);
+
+    makeTextMesh( fontMesh, str, block_size);
+    fontMesh.color = color;
+    fontMesh.draw2D(pos, {sz, sz});
+
+    opengl1renderer.disable(GL_ALPHA_TEST);
 };
-*/
-
-/*
-GLuint Draw::makeTexture( int nx, int ny, float * data ){
-
-    GLuint itex=0;
-    opengl1renderer.pixelStorei(GL_UNPACK_ALIGNMENT, 1);
-    opengl1renderer.genTextures  ( 1, &itex );
-    opengl1renderer.bindTexture  ( GL_TEXTURE_2D, itex );
-
-    //opengl1renderer.texImage2D(GL_TEXTURE_2D, 0, GL_R32F, nx, ny, 0, GL_RED, GL_FLOAT, data);
-    //opengl1renderer.texParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-
-    int ntot = nx*ny;
-    uint32_t * data_ = new uint32_t[ntot];
-    for(int i=0;i<ntot;i++){
-        //data_[i] = (int)(255*data[i]);
-        //data_[i] = (int)(255*data[i]);
-        //data_[i] = (int)(255*data[i]);
-        //data_[i] = (int)(255*data[i]);
-        uint8_t R = 0xFF; uint8_t G = 0xFF; uint8_t B = 0xFF; uint8_t A = 0xFF;
-        data_[i] = (A<<24)|(B<<16)|(G<<8)|R;
-    }
-
-
-    //opengl1renderer.texImage2D( GL_TEXTURE_2D, 0, GL_RGB,  surf->w,  surf->h, 0, GL_BGR,       GL_UNSIGNED_BYTE, surf->pixels );
-    //opengl1renderer.texImage2D( GL_TEXTURE_2D, 0, GL_RGBA, nx, ny, 0, 0x8000,  GL_UNSIGNED_BYTE, data );
-    opengl1renderer.texImage2D( GL_TEXTURE_2D, 0, GL_RGBA, nx,  ny, 0, GL_RGBA,  GL_UNSIGNED_BYTE, data_ );
-
-    opengl1renderer.texParameteri( GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR );
-    opengl1renderer.texParameteri( GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR );
-
-    delete[] data_;
-    return itex;
-};
-*/
-
-
-

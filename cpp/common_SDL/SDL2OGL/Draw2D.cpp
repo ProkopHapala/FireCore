@@ -75,27 +75,12 @@ static GLMesh<GLMESH_FLAG_NONE> makeRectMesh(){
     return m;
 }
 static GLMesh rectMesh = makeRectMesh();
-void Draw2D::drawRectangle( float p1x, float p1y, float p2x, float p2y, Vec3f color, bool filled){ // TODO: create a list of drawn rects and them draw them at once using instancing
+void Draw2D::drawRectangle( float p1x, float p1y, float p2x, float p2y, Vec3f color, bool filled){ // TODO: create a list of drawn rects and them draw them at once using instancing?
     rectMesh.drawMode = filled ? GL_QUADS : GL_LINE_LOOP;
     rectMesh.color = color;
 
-    const float WIDTH = 1820; // TODO: make these not constant
-    const float HEIGHT = 980;
-
-    p1x = 2*p1x/WIDTH - 1;
-    p2x = 2*p2x/WIDTH - 1;
-
-    p1y = 2*p1y/HEIGHT - 1;
-    p2y = 2*p2y/HEIGHT - 1;
-
-    Mat4f mvp;
-    mvp.array[ 0] = p2x-p1x;  mvp.array[ 4] = 0;        mvp.array[ 8] = 0;  mvp.array[12] = p1x;
-    mvp.array[ 1] = 0;        mvp.array[ 5] = p2y-p1y;  mvp.array[ 9] = 0;  mvp.array[13] = p1y;
-    mvp.array[ 2] = 0;        mvp.array[ 6] = 0;        mvp.array[10] = 0;  mvp.array[14] = z_layer;
-    mvp.array[ 3] = 0;        mvp.array[ 7] = 0;        mvp.array[11] = 0;  mvp.array[15] = 1;
-
     opengl1renderer.disable(GL_DEPTH_TEST);
-    rectMesh.drawMVP(mvp);
+    rectMesh.draw2D({p1x, p1y, z_layer}, {p2x-p1x, p2y-p1y});
 };
 
 void Draw2D::drawRectangle( const Vec2f& p1, const Vec2f& p2, Vec3f color, bool filled ){

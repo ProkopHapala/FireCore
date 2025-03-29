@@ -55,8 +55,6 @@ public:
     {
         if (attrib_flags&GLMESH_FLAG_TEX && !texture) printf("Warning: GLMesh created with GLMESH_FLAG_TEX but no texture provided!\n");
         if (attrib_flags&GLMESH_FLAG_TEX && !attrib_flags&GLMESH_FLAG_UV) printf("Warning: GLMesh created with GLMESH_FLAG_TEX but not GLMESH_FLAG_UV!\n");
-
-        printf("%i, %i\n", attrib_flags, sizeof(vertex));
     };
 
     void clear(){
@@ -164,6 +162,28 @@ public:
         mvpMatrix.mmulL(GLES2::active_camera->projectionMatrix());
     
         drawMVP(mvpMatrix);
+    }
+
+    void draw2D(Vec3f pos=Vec3fZero, Vec2f scale={1, 1}){
+        // convert from screen space ((0, 0)  to (WIDHT, HEIGHT)) to NDC ((-1, -1) to (1, 1))
+
+        const int WIDTH = 1820; // TODO: make these not constant
+        const int HEIGHT = 980;
+
+        pos.x = pos.x*2/WIDTH - 1;
+        pos.y = pos.y*2/HEIGHT - 1;
+    
+        scale.x = scale.x*2/WIDTH;
+        scale.y = scale.y*2/HEIGHT;
+
+        Mat4f mvp;
+        mvp.array[ 0] = scale.x; mvp.array[ 4] = 0;       mvp.array[ 8] = 0; mvp.array[12] = pos.x;
+        mvp.array[ 1] = 0;       mvp.array[ 5] = scale.y; mvp.array[ 9] = 0; mvp.array[13] = pos.y;
+        mvp.array[ 2] = 0;       mvp.array[ 6] = 0;       mvp.array[10] = 1; mvp.array[14] = pos.z;
+        mvp.array[ 3] = 0;       mvp.array[ 7] = 0;       mvp.array[11] = 0; mvp.array[15] = 1;
+
+        //glDisable(GL_DEPTH_TEST);
+        drawMVP(mvp);
     }
 
     ~GLMesh(){
