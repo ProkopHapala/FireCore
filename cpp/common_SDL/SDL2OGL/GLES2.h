@@ -5,7 +5,7 @@
 #define _GLES2_H_
 
 #include <SDL2/SDL_opengles2.h>
-#include "Camera.h"
+#include "Vec2.h"
 
 #define GLMESH_FLAG_NONE   0
 #define GLMESH_FLAG_NORMAL 1
@@ -15,9 +15,12 @@
 #define GLMESH_FLAG_UVTEX  (GLMESH_FLAG_UV | GLMESH_FLAG_TEX)
 #define GLMESH_FLAG_ALL    15
 
+template<typename T> class CameraT;
+
 namespace GLES2{
-    extern Camera* active_camera;
+    extern CameraT<float>* active_camera;
     extern GLuint currentGL_ARRAY_BUFFER;
+    extern Vec2i screen_size;
 }
 
 #define glBindBuffer(target, buffer) do { \

@@ -827,6 +827,8 @@ constexpr inline Quat4T<T2> cast(const Quat4T<T1>& i){ return Quat4T<T2>{ (T2)i.
 using Quat4i = Quat4T< int>;
 using Quat4f = Quat4T< float>;
 using Quat4d = Quat4T< double >;
+template<typename T>
+using Vec4T = Quat4T<T>;
 
 static constexpr Quat4i Quat4iZero      {0,0,0,0};
 static constexpr Quat4i Quat4iOnes      {1,1,1,1};

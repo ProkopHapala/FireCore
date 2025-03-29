@@ -28,7 +28,7 @@ void GUITextInput::applyVal( float f ){
     num_op = 0;
 }
 
-void GUITextInput::view3D( const Vec3d& pos, int fontTex, float textSize ){ // TODO: implement and use Draw::drawBillboardText()
+void GUITextInput::view3D( const Vec3d& pos, int fontTex, float textSize ){ // TODO: use Draw3D::drawTextBillboard() ??
     //Draw3D::drawText( inputText.c_str(), pos, fontTex, textSize, 0, 0 );
     opengl1renderer.disable    ( GL_LIGHTING   );
     opengl1renderer.disable    ( GL_DEPTH_TEST );
@@ -42,7 +42,7 @@ void GUITextInput::view3D( const Vec3d& pos, int fontTex, float textSize ){ // T
     opengl1renderer.popMatrix();
 }
 
-void GUITextInput::viewHUD( const Vec2i& pos, int fontTex, bool bBack ){ // TODO: implement and use Draw::drawBillboardText()
+void GUITextInput::viewHUD( const Vec2i& pos, int fontTex, bool bBack ){ // TODO: use Draw3D::drawTextBillboard() ??
     opengl1renderer.pushMatrix();
         opengl1renderer.translatef( pos.x, pos.y, 0.0 );
         //Draw::billboardCam();

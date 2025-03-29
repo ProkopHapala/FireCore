@@ -1,4 +1,6 @@
 
+#include "Draw2D.h"
+#include "GLES2.h"
 #include "Renderer.h"
 #include "Vec2.h"
 #include "Draw.h"
@@ -750,26 +752,13 @@ void Draw3D::drawRectGridLines( Vec2i n, const Vec3d& p0, const Vec3d& da, const
     opengl1renderer.end();
 }
 
-void Draw3D::drawText( const char * str, const Vec3f& pos, int fontTex, float textSize, int iend ){ // TODO: implement and use Draw::drawBillboardText()
+void Draw3D::drawTextBillboard( const char* str, Vec3f pos, float sz, int iend ){ // TODO: sz is unused
+    Vec2f screen_pos = GLES2::active_camera->world2Screen(pos);
+
     opengl1renderer.disable    ( GL_LIGHTING   );
-    opengl1renderer.disable    ( GL_DEPTH_TEST );
     opengl1renderer.shadeModel ( GL_FLAT       );
-    opengl1renderer.pushMatrix();
-        opengl1renderer.translatef( pos.x, pos.y, pos.z );
-        Draw::billboardCamProj( );
-        Draw::drawText( str, pos, textSize, iend );
-    opengl1renderer.popMatrix();
-}
-void Draw3D::drawText3D( const char * str, const Vec3f& pos, const Vec3f& fw, const Vec3f& up, int fontTex, float textSize, int iend){ // TODO: implement and use Draw::drawBillboardText()
-    // ToDo: These functions are the same !!!!
-    opengl1renderer.disable    ( GL_LIGHTING   );
-    opengl1renderer.disable    ( GL_DEPTH_TEST );
-    opengl1renderer.shadeModel ( GL_FLAT       );
-    opengl1renderer.pushMatrix();
-        opengl1renderer.translatef( pos.x, pos.y, pos.z );
-        Draw::billboardCamProj();
-        Draw::drawText( str, pos, textSize, iend );
-    opengl1renderer.popMatrix();
+
+    Draw::drawText(str, {screen_pos.x, screen_pos.y, 0}, fontSizeDef, iend);
 }
 
 void Draw3D::drawInt( const Vec3d& pos, int i, int fontTex, float sz, const char* format ){

@@ -6,6 +6,7 @@
 #include "Vec2.h"
 #include "Vec3.h"
 #include "Shader.h"
+#include "Camera.h"
 #include <variant>
 #include <vector>
 #include <cstddef>
@@ -182,8 +183,8 @@ public:
     void draw2D(Vec3f pos=Vec3fZero, Vec2f scale={1, 1}){
         // convert from screen space ((0, 0)  to (WIDHT, HEIGHT)) to NDC ((-1, -1) to (1, 1))
 
-        const int WIDTH = 1820; // TODO: make these not constant
-        const int HEIGHT = 980;
+        const int WIDTH = GLES2::screen_size.x;
+        const int HEIGHT = GLES2::screen_size.y;
 
         pos.x = pos.x*2/WIDTH - 1;
         pos.y = pos.y*2/HEIGHT - 1;

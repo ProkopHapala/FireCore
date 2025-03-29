@@ -6,6 +6,7 @@
 #include <cstdlib>
 #include <stdint.h>
 
+#include "GLES2.h"
 #include "fastmath.h"
 #include "Vec3.h"
 #include "Mat3.h"
@@ -57,46 +58,6 @@ public:
     inline T getTgX()const{ return 1.0/(_zoom*_aspect); }
     inline T getTgY()const{ return 1.0/(_zoom);            }
 
-    inline void word2screenOrtho( const Vec3T<T>& pWord, Vec3T<T>& pScreen ) const {
-        Vec3T<T> p; p.set_sub(pWord,_pos);
-        rotMat().dot_to( p, p );
-        pScreen.x = p.x/(2*_zoom*_aspect);
-        pScreen.y = p.y/(2*_zoom);
-        pScreen.z = (p.z-zmin)/(zmax-zmin);
-    }
-
-    inline Vec2T<T> word2pixOrtho( const Vec3T<T>& pWord, const Vec2f& resolution ) const {
-        Vec3T<T> p; p.set_sub(pWord,_pos);
-        rotMat().dot_to( p, p );
-        return Vec2f{ resolution.x*(0.5+p.x/(2*_zoom*_aspect)),
-                      resolution.y*(0.5+p.y/(2*_zoom)) };
-    }
-
-    inline void word2screenPersp( const Vec3T<T>& pWord, Vec3T<T>& pScreen ) const {
-        Vec3T<T> p; p.set_sub(pWord,_pos);
-        rotMat().dot_to( p, p );
-        T  resc = zmin/(2*p.z*_zoom);
-        pScreen.x = p.x*resc/_aspect;
-        pScreen.y = p.y*resc;
-        //pScreen.z = p.z/zmin;        // cz
-        //(2*zmin)/w      0       0              0            0
-        //0          (2*zmin)/h   0              0            0
-        //0               0       (zmax+zmin)/(zmax-zmin)    (2*zmin*zmax)/(zmax-zmin)
-        //0               0       0               0           -1
-        //------
-        //x_  =  ((2*zmin)/w)  * x
-        //y_  =  ((2*zmin)/h ) * y
-    }
-
-    inline Vec2T<T> word2pixPersp( const Vec3T<T>& pWord, const Vec2f& resolution ) const {
-        Vec3T<T> p; p.set_sub(pWord,_pos);
-        rotMat().dot_to( p, p );
-        T  resc = zmin/(2*p.z*_zoom);
-        return (Vec2f){
-            resolution.x*( 0.5 + p.x*resc/_aspect ),
-            resolution.y*( 0.5 + p.y*resc        ) };
-    }
-
     inline void pix2rayOrtho( const Vec2f& pix, Vec3T<T>& ro ) const {
         //T  resc = 1/zoom;
         T  resc = _zoom;
@@ -140,7 +101,20 @@ public:
         return (c.x>-mx)&&(c.x<mx) && (c.y>-my)&&(c.y<my) && ((c.z+R)>zmin)&&((c.z-R)<zmax);
     }
 
+    Vec2T<T> world2Screen( Vec3T<T> pos ){
+        recalculate_vpMat();
+
+        Vec2T<T> screen_pos = _viewProjMatrix.dotT({pos.x, pos.y, pos.z, 0}).xy();
+        screen_pos += {1, 1};
+        screen_pos *= 0.5;
+        screen_pos *= GLES2::screen_size;
+
+        return screen_pos;
+    }
+
     void recalculate_vpMat() {
+        if (!update_vp_mat) return;
+        
         // view matrix
         _viewMatrix.setOne();
         Mat3T<T> mrot; _qrot.toMatrix_T(mrot);
@@ -163,17 +137,17 @@ public:
     }
 
     Mat4T<T> projectionMatrix() {
-        if (update_vp_mat) recalculate_vpMat();
+        recalculate_vpMat();
         return _projMat;
     }
 
     Mat4T<T> viewMatrix() {
-        if (update_vp_mat) recalculate_vpMat();
+        recalculate_vpMat();
         return _viewMatrix;
     }
 
     Mat4T<T> viewProjectionMatrix() {
-        if (update_vp_mat) recalculate_vpMat();
+        recalculate_vpMat();
         return _viewProjMatrix;
     }
 

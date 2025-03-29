@@ -88,6 +88,14 @@ class Vec2T {
     inline VEC operator* ( const VEC& vi ) const { VEC vo; vo.x=x*vi.x; vo.y=y*vi.y; return vo; };
     inline VEC operator/ ( const VEC& vi ) const { VEC vo; vo.x=x/vi.x; vo.y=y/vi.y; return vo; };
 
+	inline VEC operator*=( T f ) { x*=f; y*=f; return *this; }
+	inline VEC operator/=( T f ) { x/=f; y/=f; return *this; }
+
+	template<typename S=T> inline VEC operator+=( const Vec2T<S> vi ) { x+=vi.x; y+=vi.y; return *this; };
+	template<typename S=T> inline VEC operator-=( const Vec2T<S> vi ) { x-=vi.x; y-=vi.y; return *this; };
+	template<typename S=T> inline VEC operator*=( const Vec2T<S> vi ) { x*=vi.x; y*=vi.y; return *this; };
+	template<typename S=T> inline VEC operator/=( const Vec2T<S> vi ) { x/=vi.x; y/=vi.y; return *this; };
+
 	inline T dot      ( const VEC& a ) const { return x*a.x + y*a.y; };
 	inline T dot_perp ( const VEC& a ) const { return y*a.x - x*a.y; };
 	inline T norm2(              ) const { return x*x + y*y;     };
