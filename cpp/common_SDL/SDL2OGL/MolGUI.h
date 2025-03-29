@@ -576,17 +576,17 @@ void MolGUI::initWiggets(){
         ->addItem("Right")
         ->setCommand( [&](GUIAbstractPanel* me_){ 
             DropDownList& me = *(DropDownList*)me_;
-            printf( "old cam.qrot(%g,%g,%g,%g) -> %s \n", cam.qrot.x,cam.qrot.y,cam.qrot.z,cam.qrot.w, me.labels[me.iSelected].c_str()  );
+            printf( "old cam.qrot(%g,%g,%g,%g) -> %s \n", cam.qrot().x,cam.qrot().y,cam.qrot().z,cam.qrot().w, me.labels[me.iSelected].c_str()  );
             switch(me.iSelected){
-                case 0: cam.qrot=qTop;    break;
-                case 1: cam.qrot=qBottom; break;
-                case 2: cam.qrot=qFront;  break;
-                case 3: cam.qrot=qBack;   break;
-                case 4: cam.qrot=qLeft;   break;
-                case 5: cam.qrot=qRight;  break;
+                case 0: cam.setQrot(qTop);    break;
+                case 1: cam.setQrot(qBottom); break;
+                case 2: cam.setQrot(qFront);  break;
+                case 3: cam.setQrot(qBack);   break;
+                case 4: cam.setQrot(qLeft);   break;
+                case 5: cam.setQrot(qRight);  break;
             }
-            printf( "->new cam.qrot(%g,%g,%g,%g) \n", cam.qrot.x,cam.qrot.y,cam.qrot.z,cam.qrot.w );
-            printf( "cam: aspect %g zoom %g \n", cam.aspect, cam.zoom);
+            printf( "->new cam.qrot(%g,%g,%g,%g) \n", cam.qrot().x,cam.qrot().y,cam.qrot().z,cam.qrot().w );
+            printf( "cam: aspect %g zoom %g \n", cam.aspect(), cam.zoom());
             printMat((Mat3d)cam.rotMat());
             }
         );
@@ -1125,7 +1125,7 @@ void MolGUI::initGUI(){
 	//opengl1renderer.lightfv    ( GL_LIGHT0, GL_DIFFUSE,   l_diffuse  );
 	opengl1renderer.lightfv    ( GL_LIGHT0, GL_SPECULAR,  l_specular );
     // ---- Gizmo
-    cam.persp = false;
+    cam.setPersp(false);
     gizmo.cam = &cam;
     //gizmo.bindPoints(W->ff.natoms, W->ff.apos      );
     //gizmo.bindEdges (W->ff.nbonds, W->ff.bond2atom );
@@ -1279,7 +1279,7 @@ void MolGUI::draw(){
     //if( (ogl_isosurf==0) && W->bGridFF ){ renderGridFF( subs_iso ); }
     //if( ogl_esp==0 ){ renderESP(); }
 
-    if(frameCount==0){ cam.qrot.pitch( M_PI ); }
+    if(frameCount==0){ cam.dpitch( M_PI ); }
 
     //debug_scanSurfFF( 100, {0.,0.,z0_scan}, {0.0,3.0,z0_scan}, 10.0 );
 
@@ -2401,7 +2401,7 @@ void MolGUI::eventMode_default( const SDL_Event& event ){
                 if (bConsole){ bConsole=console.keyDown( event.key.keysym.sym ); }
                 else 
                 if(gui.bKeyEvents) switch( event.key.keysym.sym ){
-                case SDLK_KP_0: cam.qrot = Quat4fIdentity; break;
+                case SDLK_KP_0: cam.setQrot(Quat4fIdentity); break;
 
                 //case SDLK_COMMA:  which_MO--; printf("which_MO %i \n", which_MO ); break;
                 //case SDLK_PERIOD: which_MO++; printf("which_MO %i \n", which_MO ); break;
@@ -2618,10 +2618,10 @@ void MolGUI::keyStateHandling( const Uint8 *keys ){
             if( keys[ SDL_SCANCODE_KP_2 ] ){ W->nbmol.shift( {0.,-0.1,0.} ); }
             if( keys[ SDL_SCANCODE_KP_7 ] ){ W->nbmol.shift( {0.,0.,+0.1} ); }
             if( keys[ SDL_SCANCODE_KP_9 ] ){ W->nbmol.shift( {0.,0.,-0.1} ); }
-            if( keys[ SDL_SCANCODE_LEFT  ] ){ cam.pos.add_mul( cam.rotMat().a, -cameraMoveSpeed ); }
-            if( keys[ SDL_SCANCODE_RIGHT ] ){ cam.pos.add_mul( cam.rotMat().a,  cameraMoveSpeed ); }
-            if( keys[ SDL_SCANCODE_UP    ] ){ cam.pos.add_mul( cam.rotMat().b,  cameraMoveSpeed ); }
-            if( keys[ SDL_SCANCODE_DOWN  ] ){ cam.pos.add_mul( cam.rotMat().b, -cameraMoveSpeed ); }
+            if( keys[ SDL_SCANCODE_LEFT  ] ){ cam.shift( cam.rotMat().a* -cameraMoveSpeed ); }
+            if( keys[ SDL_SCANCODE_RIGHT ] ){ cam.shift( cam.rotMat().a*  cameraMoveSpeed ); }
+            if( keys[ SDL_SCANCODE_UP    ] ){ cam.shift( cam.rotMat().b*  cameraMoveSpeed ); }
+            if( keys[ SDL_SCANCODE_DOWN  ] ){ cam.shift( cam.rotMat().b* -cameraMoveSpeed ); }
             //AppSDL2OGL_3D::keyStateHandling( keys );
         } break;   
     }

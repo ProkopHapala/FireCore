@@ -3,10 +3,11 @@
 
 
 #include "ScreenSDL2OGL_3D.h"
+#include "quaternion.h"
 
 void ScreenSDL2OGL_3D::camera(){
-    cam.zoom   = zoom;
-    cam.aspect = ASPECT_RATIO;
+    cam.setZoom(zoom);
+    cam.setAspect(ASPECT_RATIO);
     //Cam::ortho( cam, true );
     //Cam::perspective( cam );
     if (perspective){ Cam::perspective( cam ); }
@@ -65,17 +66,17 @@ void ScreenSDL2OGL_3D::eventHandling ( const SDL_Event& event  ){
 
 void ScreenSDL2OGL_3D::keyStateHandling( const Uint8 *keys ){
 
-    if( keys[ SDL_SCANCODE_LEFT  ] ){ cam.qrot.dyaw  (  keyRotSpeed ); }
-	if( keys[ SDL_SCANCODE_RIGHT ] ){ cam.qrot.dyaw  ( -keyRotSpeed ); }
-	if( keys[ SDL_SCANCODE_UP    ] ){ cam.qrot.dpitch(  keyRotSpeed ); }
-	if( keys[ SDL_SCANCODE_DOWN  ] ){ cam.qrot.dpitch( -keyRotSpeed ); }
+    if( keys[ SDL_SCANCODE_LEFT  ] ){ cam.dyaw  (  keyRotSpeed ); }
+	if( keys[ SDL_SCANCODE_RIGHT ] ){ cam.dyaw  ( -keyRotSpeed ); }
+	if( keys[ SDL_SCANCODE_UP    ] ){ cam.dpitch(  keyRotSpeed ); }
+	if( keys[ SDL_SCANCODE_DOWN  ] ){ cam.dpitch( -keyRotSpeed ); }
 
-	if( keys[ SDL_SCANCODE_A ] ){ cam.pos.add_mul( cam.rotMat().a, -cameraMoveSpeed ); }
-	if( keys[ SDL_SCANCODE_D ] ){ cam.pos.add_mul( cam.rotMat().a,  cameraMoveSpeed ); }
-    if( keys[ SDL_SCANCODE_W ] ){ cam.pos.add_mul( cam.rotMat().b,  cameraMoveSpeed ); }
-	if( keys[ SDL_SCANCODE_S ] ){ cam.pos.add_mul( cam.rotMat().b, -cameraMoveSpeed ); }
-    if( keys[ SDL_SCANCODE_Q ] ){ cam.pos.add_mul( cam.rotMat().c, -cameraMoveSpeed ); }
-	if( keys[ SDL_SCANCODE_E ] ){ cam.pos.add_mul( cam.rotMat().c,  cameraMoveSpeed ); }
+	if( keys[ SDL_SCANCODE_A ] ){ cam.shift( cam.rotMat().a* -cameraMoveSpeed ); }
+	if( keys[ SDL_SCANCODE_D ] ){ cam.shift( cam.rotMat().a*  cameraMoveSpeed ); }
+    if( keys[ SDL_SCANCODE_W ] ){ cam.shift( cam.rotMat().b*  cameraMoveSpeed ); }
+	if( keys[ SDL_SCANCODE_S ] ){ cam.shift( cam.rotMat().b* -cameraMoveSpeed ); }
+    if( keys[ SDL_SCANCODE_Q ] ){ cam.shift( cam.rotMat().c* -cameraMoveSpeed ); }
+	if( keys[ SDL_SCANCODE_E ] ){ cam.shift( cam.rotMat().c*  cameraMoveSpeed ); }
 
 /*
     if( keys[ SDL_SCANCODE_LEFT  ] ){ qCamera.yaw  (  keyRotSpeed ); qCamera.normalize(); }
@@ -107,12 +108,12 @@ void ScreenSDL2OGL_3D::mouseHandling( ){
     //printf( " %i %i \n", mx,my );
     if ( buttons & SDL_BUTTON(SDL_BUTTON_RIGHT)) {
         Quat4f q; q.fromTrackball( 0, 0, -mx*mouseRotSpeed, my*mouseRotSpeed );
-        cam.qrot.qmul_T( q );
+        cam.qrotQmul_T( q );
     }
     //qCamera.qmul( q );
 }
 
 ScreenSDL2OGL_3D::ScreenSDL2OGL_3D( int& id, int WIDTH_, int HEIGHT_ ) : ScreenSDL2OGL( id, WIDTH_, HEIGHT_ ) {
-	cam.qrot.setOne();
-	cam.pos.set(0.0);
+	cam.setQrot(Quat4fIdentity);
+	cam.setPos(Vec3fZero);
 }

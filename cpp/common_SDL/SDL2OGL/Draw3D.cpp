@@ -32,7 +32,7 @@ void Draw3D::drawPoint( const Vec3f& vec ){
 
 void Draw3D::drawPointCross( const Vec3f& vec, float sz, Vec3f color ){
     pointCross.color = color;
-	pointCross.draw(vec, Quat4fIdentity, {sz, sz, sz});
+	pointCross.draw(vec, (Vec3f){sz, sz, sz});
 };
 
 static GLMesh<GLMESH_FLAG_NONE> makeLineMesh(){
@@ -49,7 +49,7 @@ void Draw3D::drawVecInPos( const Vec3f& v, const Vec3f& pos, Vec3f color ){
 
 void Draw3D::drawLine( const Vec3f& p1, const Vec3f& p2, Vec3f color ){
     lineMesh.color = color;
-    lineMesh.draw(p1, Quat4fIdentity, p2-p1);
+    lineMesh.draw(p1, p2-p1);
 };
 
 void Draw3D::drawVec( const Vec3f& vec, Vec3f color ){
@@ -291,7 +291,7 @@ static GLMesh_Normal sphere = makeSphere(5, 1);
 
 void Draw3D::drawSphere(Vec3f pos, float r, Vec3f color){
     sphere.color = color;
-    sphere.draw(pos, Quat4fIdentity, {r,r,r});
+    sphere.draw(pos, r);
 }
 
 int Draw3D::drawCircleAxis( int n, const Vec3f& pos, const Vec3f& v0, const Vec3f& uaxis, float R, float dca, float dsa ){

@@ -146,7 +146,7 @@ void ScreenSDL2OGL::update( ){
 	durationTotal += duration;
 	durationCount++;
 
-	if (durationCount == 400){
+	if (durationCount == 100){
 		std::cout << "update() took " << durationTotal.count()/(float)durationCount << " milliseconds (last "<<durationCount<<" avg)\n";
 		durationCount = 0;
 		durationTotal = std::chrono::duration<long, std::ratio<1, 1000>>::zero();

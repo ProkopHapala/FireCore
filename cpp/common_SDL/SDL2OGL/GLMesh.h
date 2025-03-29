@@ -130,15 +130,36 @@ public:
         glDrawArrays(drawMode, 0, vertexCount());
     }
 
-    void draw(Vec3f position=Vec3fZero, Quat4f rotation=Quat4fIdentity, Vec3f scale={1, 1, 1}){
+    inline void draw(Vec3f position, float scale){draw(position, (Vec3f){scale, scale, scale});}
+    void draw(Vec3f position=Vec3fZero, Vec3f scale={1, 1, 1}){
         if (GLES2::active_camera == nullptr){
             printf("Warning: No active camera - skipping rendering.\n");
             return;
         }
     
-        // scale
-        Mat4f modelScaleMatrix = Mat4fIdentity;
-        modelScaleMatrix.mul({scale.x, scale.y, scale.z, 1.0});
+        // scale + translation
+        Mat4f mvpMatrix;
+        mvpMatrix.setDiag(scale.x, scale.y, scale.z, 1);
+        mvpMatrix.setPos(position);
+
+        // view + projection
+        mvpMatrix.mmulL(GLES2::active_camera->viewProjectionMatrix());
+    
+        drawMVP(mvpMatrix);
+    }
+
+    void draw(Vec3f position, Quat4f rotation, Vec3f scale={1, 1, 1}){
+        if (GLES2::active_camera == nullptr){
+            printf("Warning: No active camera - skipping rendering.\n");
+            return;
+        }
+
+        // TODO: optimize this
+    
+        // scale + translation
+        Mat4f ScaleTranslationMatrix;
+        ScaleTranslationMatrix.setDiag(scale.x, scale.y, scale.z, 1);
+        ScaleTranslationMatrix.setPos(position);
         
         // rotation
         Mat3f modelRotMatrix3;
@@ -146,16 +167,10 @@ public:
         Mat4f modelRotMatrix4 = Mat4fIdentity;
         modelRotMatrix4.setRot(modelRotMatrix3);
     
-        // translation
-        Mat4f modelTranslationMatrix = Mat4fIdentity;
-        modelTranslationMatrix.setPos(position);
-    
         // model matrix
-        Mat4f modelMatrix = Mat4fIdentity;
-        modelMatrix.mmulL(modelScaleMatrix);
-        modelMatrix.mmulL(modelRotMatrix4);
-        modelMatrix.mmulL(modelTranslationMatrix);
-    
+        Mat4f modelMatrix = modelRotMatrix4;
+        modelMatrix.mmulL(ScaleTranslationMatrix);
+
         // MVP matrix
         Mat4f mvpMatrix = modelMatrix;
         mvpMatrix.mmulL(GLES2::active_camera->viewMatrix());

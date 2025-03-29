@@ -1,7 +1,6 @@
 
 #include "GLES2.h"
 #include "Vec3.h"
-#include <GLES2/gl2.h>
 #include <SDL2/SDL_surface.h>
 #include <cstring>
 

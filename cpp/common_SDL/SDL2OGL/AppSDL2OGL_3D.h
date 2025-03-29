@@ -47,7 +47,7 @@ class AppSDL2OGL_3D : public AppSDL2OGL{ public:
 	virtual void camera   () override;
 
 
-	inline Vec3f mouseRay0(){ return cam.rotMat().a*mouse_begin_x + cam.rotMat().b*mouse_begin_y + cam.pos; }
+	inline Vec3f mouseRay0(){ return cam.rotMat().a*mouse_begin_x + cam.rotMat().b*mouse_begin_y + cam.pos(); }
     inline Vec3f updateRay0(){ ray0 = mouseRay0(); return ray0; }
     //ray0 = (Vec3d)(  cam.rotMat().a*mouse_begin_x  +  cam.rotMat().b*mouse_begin_y  +  cam.pos );
     inline void mouseStartSelectionBox(){ ray0_start = ray0;  bDragging = true; }

@@ -42,6 +42,7 @@ class Mat4T{
 
 	inline void setOne(     ){ xx=yy=zz=ww=1; xy=xz=xw=yx=yz=yw=zx=zy=zw=wx=wy=wz=0; };
 	inline void set   ( T f ){ xx=yy=zz=ww=f; xy=xz=xw=yx=yz=yw=zx=zy=zw=wx=wy=wz=0; };
+    inline void setDiag( T x, T y, T z, T w ){ xx=x; yy=y; zz=z; ww=w; xy=xz=xw=yx=yz=yw=zx=zy=zw=wx=wy=wz=0; };
 
 	inline void set_outer  ( const VEC& a, const VEC& b ){
 		xx=a.x*b.x; xy=a.x*b.y; xz=a.x*b.z; xw=a.x*b.w;
@@ -105,34 +106,35 @@ class Mat4T{
 
 // ====== matrix multiplication
 
-	inline void set_mmul( const MAT& A, const MAT& B ){ for(int i=0; i<4; i++){ for(int j=0; j<4; j++){
+	inline void set_mmul( const MAT A, const MAT B ){
+        for(int i=0; i<4; i++){ for(int j=0; j<4; j++){
             arr2d[i][j] = A.arr2d[i][0]*B.arr2d[0][j] + A.arr2d[i][1]*B.arr2d[1][j] + A.arr2d[i][2]*B.arr2d[2][j] + A.arr2d[i][3]*B.arr2d[3][j];
         }}
 	};
 
-    inline void set_mmul_NT( const MAT& A, const MAT& B ){
+    inline void set_mmul_NT( const MAT A, const MAT B ){
         for(int i=0; i<4; i++){ for(int j=0; j<4; j++){
             arr2d[i][j] = A.arr2d[i][0]*B.arr2d[j][0] + A.arr2d[i][1]*B.arr2d[j][1] + A.arr2d[i][2]*B.arr2d[j][2] + A.arr2d[i][3]*B.arr2d[j][3];
         }}
 	};
 
-    inline void set_mmul_TN( const MAT& A, const MAT& B ){
+    inline void set_mmul_TN( const MAT A, const MAT B ){
         for(int i=0; i<4; i++){ for(int j=0; j<4; j++){
             arr2d[i][j] = A.arr2d[0][i]*B.arr2d[0][j] + A.arr2d[1][i]*B.arr2d[1][j] + A.arr2d[2][i]*B.arr2d[2][j] + A.arr2d[3][i]*B.arr2d[3][j];
         }}
 	};
 
-    inline void set_mmul_TT( const MAT& A, const MAT& B ){
+    inline void set_mmul_TT( const MAT A, const MAT B ){
         for(int i=0; i<4; i++){ for(int j=0; j<4; j++){
             arr2d[i][j] = A.arr2d[0][i]*B.arr2d[j][0] + A.arr2d[1][i]*B.arr2d[j][1] + A.arr2d[2][i]*B.arr2d[j][2] + A.arr2d[3][i]*B.arr2d[j][3];
         }}
 	};
 
-	void mmulL( const MAT& A ){ MAT M=*this; set_mmul( M, A); }
-	void mmulR( const MAT& A ){ MAT M=*this; set_mmul( A, M); }
+	void mmulL( const MAT& A ){ set_mmul( *this, A); }
+	void mmulR( const MAT& A ){ set_mmul( A, *this); }
 
-    void mmulLT( const MAT& A ){ MAT M=*this; set_mmul_NT( M, A); }
-	void mmulRT( const MAT& A ){ MAT M=*this; set_mmul_TN( A, M); }
+    void mmulLT( const MAT& A ){ set_mmul_NT( *this, A); }
+	void mmulRT( const MAT& A ){ set_mmul_TN( A, *this); }
 
 	//   https://registry.khronos.org/OpenGL-Refpages/gl2.1/xhtml/glFrustum.xml
     void setPerspective( T left, T right, T bottom, T top, T zmin, T zmax ){
