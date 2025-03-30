@@ -21,7 +21,13 @@ namespace GLES2{
     extern CameraT<float>* active_camera;
     extern GLuint currentGL_ARRAY_BUFFER;
     extern Vec2i screen_size;
+
+    void checkError(const char* file, int line);
+    void pushFramebuffer(GLuint handle);
+    void popFramebuffer(GLuint handle);
 }
+
+#define GL_CHECK_ERROR() GLES2::checkError(__FILE__, __LINE__)
 
 #define glBindBuffer(target, buffer) do { \
     glBindBuffer(target, buffer); \
@@ -35,36 +41,6 @@ namespace GLES2{
 #include <cstdlib>
 #include <execinfo.h>
 #include <cstdio>
-
-inline const char* GLErrorString(GLenum error) {
-    switch (error) {
-        case GL_NO_ERROR: return "GL_NO_ERROR";
-        case GL_INVALID_ENUM: return "GL_INVALID_ENUM";
-        case GL_INVALID_VALUE: return "GL_INVALID_VALUE";
-        case GL_INVALID_OPERATION: return "GL_INVALID_OPERATION";
-        case GL_INVALID_FRAMEBUFFER_OPERATION: return "GL_INVALID_FRAMEBUFFER_OPERATION";
-        case GL_OUT_OF_MEMORY: return "GL_OUT_OF_MEMORY";
-        default: return "UNKNOWN_GL_ERROR";
-    }
-}
-
-inline void PrintStackTrace() {
-    void* callstack[128];
-    int frames = backtrace(callstack, 128);
-    char** strs = backtrace_symbols(callstack, frames);
-    for (int i = 0; i < frames; ++i) {
-        printf("%s\n", strs[i]);
-    }
-    free(strs);
-}
-
-#define GL_CHECK_ERROR() { \
-    GLenum err = glGetError(); \
-    if (err != GL_NO_ERROR) { \
-        printf("\033[1m\033[31m GL error %s at %s:%d  \033[0m\n", GLErrorString(err), __FILE__, __LINE__); \
-        PrintStackTrace(); \
-    } \
-}
 
 #define glActiveTexture(texture) do { \
     glActiveTexture(texture); \

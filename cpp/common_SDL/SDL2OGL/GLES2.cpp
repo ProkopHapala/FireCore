@@ -1,5 +1,59 @@
 #include "GLES2.h"
+#include <cstdlib>
+#include <execinfo.h>
+#include <cstdio>
 
 CameraT<float>* GLES2::active_camera = nullptr;
 GLuint GLES2::currentGL_ARRAY_BUFFER = 0;
 Vec2i GLES2::screen_size = {1820, 980};
+
+
+
+static const char* GLErrorString(GLenum error) {
+    switch (error) {
+        case GL_NO_ERROR: return "GL_NO_ERROR";
+        case GL_INVALID_ENUM: return "GL_INVALID_ENUM";
+        case GL_INVALID_VALUE: return "GL_INVALID_VALUE";
+        case GL_INVALID_OPERATION: return "GL_INVALID_OPERATION";
+        case GL_INVALID_FRAMEBUFFER_OPERATION: return "GL_INVALID_FRAMEBUFFER_OPERATION";
+        case GL_OUT_OF_MEMORY: return "GL_OUT_OF_MEMORY";
+        default: return "UNKNOWN_GL_ERROR";
+    }
+}
+
+static void PrintStackTrace() {
+    void* callstack[128];
+    int frames = backtrace(callstack, 128);
+    char** strs = backtrace_symbols(callstack, frames);
+    for (int i = 0; i < frames; ++i) {
+        printf("%s\n", strs[i]);
+    }
+    free(strs);
+}
+
+void GLES2::checkError(const char* file, int line){
+    GLenum err = glGetError();
+    if (err == GL_NO_ERROR) return;
+    
+    printf("\033[1m\033[31m GL error: %s at %s:%i\033[0m\n", GLErrorString(err), file, line);
+    //PrintStackTrace();
+    //exit(1);
+}
+
+static std::vector<GLuint> framebufferStack;
+void GLES2::pushFramebuffer(GLuint handle){
+    framebufferStack.push_back(handle);
+    glBindFramebuffer(GL_FRAMEBUFFER, handle);
+}
+void GLES2::popFramebuffer(GLuint handle){
+    if (framebufferStack.empty() || framebufferStack.back() != handle) {
+        printf("\033[1m\033[31m GL error: popFramebuffer called with wrong handle\033[0m\n");
+        exit(1);
+    }
+    framebufferStack.pop_back();
+    if (framebufferStack.empty()) {
+        glBindFramebuffer(GL_FRAMEBUFFER, 0);
+    } else {
+        glBindFramebuffer(GL_FRAMEBUFFER, framebufferStack.back());
+    }
+}

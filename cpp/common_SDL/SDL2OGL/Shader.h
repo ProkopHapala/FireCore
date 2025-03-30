@@ -75,7 +75,7 @@ private:
 // default shaders
 constexpr const std::string buildDefaultVertexShaderSource(unsigned int attrib_flags){
     std::string source = std::string("");
-    //source += "#version 110\n";
+    source += "#version 100\n";
 
     // uniforms
     source += "uniform mat4 uMVPMatrix;\n";
@@ -104,7 +104,7 @@ constexpr const std::string buildDefaultVertexShaderSource(unsigned int attrib_f
 
 constexpr const std::string buildDefaultFragmentShaderSource(unsigned int attrib_flags){
     std::string source = std::string("");
-    //source += "#version 110\n";
+    source += "#version 100\n";
 
     // uniforms
     source += "uniform mediump vec3 uColor;\n";

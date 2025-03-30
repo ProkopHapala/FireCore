@@ -43,6 +43,8 @@
 
 #include "MolGUI_tests.h"
 
+#include "FullscreenShader.h"
+
 #include "MethodDict.h"
 
 
@@ -130,6 +132,18 @@ void drawDipoleMapGrid( DipoleMap& dipoleMap, Vec2d sc=Vec2d{1.,1.}, bool radial
 // ===========================================
 
 //void command_example(double x, void* caller);
+
+static const char* testFragmentShader = R"(
+#version 100
+
+uniform sampler2D uTexture;
+varying mediump vec2 fUV;
+
+void main(){
+    gl_FragColor = texture2D(uTexture, fUV);
+}
+
+)";
 
 class MolGUI : public AppSDL2OGL_3D { public:
 
@@ -312,6 +326,8 @@ class MolGUI : public AppSDL2OGL_3D { public:
     int  ogl_Hbonds    = 0;
     int  ogl_trj       = 0;
     int  ogl_surf_scan = 0;
+
+    FullscreenShader TESTfullscreenShader = FullscreenShader(testFragmentShader);
 
     std::vector<Quat4f> debug_ps;
     std::vector<Quat4f> debug_fs;
@@ -1328,6 +1344,8 @@ void MolGUI::draw(){
         Draw3D::drawTriclinicBoxT( W->builder.lvec, Vec3d{0.0,0.0,0.0}, Vec3d{1.0,1.0,1.0} ); 
     }
 
+    TESTfullscreenShader.begin();
+
     if( bViewSubstrate ){
         if( ( W->bGridFF )&&( ((int)(W->gridFF.mode))!=0) ){
             if( (ogl_isosurf.vertexCount()==0) ){ renderGridFF_new( subs_iso ); }
@@ -1360,10 +1378,6 @@ void MolGUI::draw(){
 
     //if(bDoQM)drawSystemQMMM();
 
-    plotNonuniformGrid();
-
-    if( bDipoleMap )drawDipoleMap();
-
     //if( ogl_MO && W->bConverged ){ 
     if( ogl_MO && (!bRunRelax) ){ 
         opengl1renderer.pushMatrix();
@@ -1388,6 +1402,12 @@ void MolGUI::draw(){
             Draw3D::drawBBox( W->bbox.a, W->bbox.b );
         }else{ drawSystemSingle(); } // Draw System without PBC
     }
+
+    TESTfullscreenShader.end();
+
+    plotNonuniformGrid();
+
+    if( bDipoleMap )drawDipoleMap();
 
     // Draw hydorgen bonds (if any)
     if( W->Hbonds.size() > 0 ){
@@ -1502,7 +1522,6 @@ void MolGUI::draw(){
     if(useGizmo){ gizmo.draw(); }
     if(bHexDrawing)drawingHex(5.0);
     if(bViewAxis){ opengl1renderer.lineWidth(3);  Draw3D::drawAxis(1.0); opengl1renderer.lineWidth(1); }
-
 };
 
 void MolGUI::printMSystem( int isys, int perAtom, int na, int nvec, bool bNg, bool bNgC, bool bPos ){
