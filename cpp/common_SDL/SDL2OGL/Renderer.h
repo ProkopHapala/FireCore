@@ -1,7 +1,7 @@
 #ifndef _Renderer_H_
 #define _Renderer_H_
 
-#include "GLES2.h"
+#include "GLES.h"
 #include <math.h>
 #include <cstdlib>
 #include <stdint.h>

@@ -2,7 +2,7 @@
 #ifndef SHADER_H
 #define SHADER_H
 
-#include "GLES2.h"
+#include "GLES.h"
 #include "Vec2.h"
 #include "Vec3.h"
 #include "Mat4.h"

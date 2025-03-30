@@ -5,7 +5,6 @@
 #include "Renderer.h"
 #include "Vec2.h"
 #include "Vec3.h"
-#include <GLES2/gl2.h>
 #include "Draw2D.h"  // THE HEADER
 
 //namespace Draw2D{

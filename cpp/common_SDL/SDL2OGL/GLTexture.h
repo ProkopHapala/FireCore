@@ -1,9 +1,8 @@
 #ifndef _GL_TEXTURE_H_
 #define _GL_TEXTURE_H_
 
-#include "GLES2.h"
+#include "GLES.h"
 #include "Vec3.h"
-#include <GLES2/gl2.h>
 #include <SDL2/SDL_surface.h>
 #include <cstring>
 

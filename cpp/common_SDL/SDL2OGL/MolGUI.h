@@ -1279,7 +1279,7 @@ void MolGUI::bindMolWorld( MolWorld_sp3* W_ ){
 //=================================================
 
 void MolGUI::draw(){
-    GLES2::active_camera = &cam;
+    GLES::active_camera = &cam;
 
     opengl1renderer.clearColor( 1.0f, 1.0f, 1.0f, 1.0f );
 	opengl1renderer.clear( GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT );

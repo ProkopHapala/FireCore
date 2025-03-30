@@ -1,11 +1,11 @@
-#include "GLES2.h"
+#include "GLES.h"
 #include <cstdlib>
 #include <execinfo.h>
 #include <cstdio>
 
-CameraT<float>* GLES2::active_camera = nullptr;
-GLuint GLES2::currentGL_ARRAY_BUFFER = 0;
-Vec2i GLES2::screen_size = {1820, 980};
+CameraT<float>* GLES::active_camera = nullptr;
+GLuint GLES::currentGL_ARRAY_BUFFER = 0;
+Vec2i GLES::screen_size = {1820, 980};
 
 
 
@@ -31,7 +31,7 @@ static void PrintStackTrace() {
     free(strs);
 }
 
-void GLES2::checkError(const char* file, int line){
+void GLES::checkError(const char* file, int line){
     GLenum err = glGetError();
     if (err == GL_NO_ERROR) return;
     
@@ -41,11 +41,11 @@ void GLES2::checkError(const char* file, int line){
 }
 
 static std::vector<GLuint> framebufferStack;
-void GLES2::pushFramebuffer(GLuint handle){
+void GLES::pushFramebuffer(GLuint handle){
     framebufferStack.push_back(handle);
     glBindFramebuffer(GL_FRAMEBUFFER, handle);
 }
-void GLES2::popFramebuffer(GLuint handle){
+void GLES::popFramebuffer(GLuint handle){
     if (framebufferStack.empty() || framebufferStack.back() != handle) {
         printf("\033[1m\033[31m GL error: popFramebuffer called with wrong handle\033[0m\n");
         exit(1);

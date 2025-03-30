@@ -1,6 +1,6 @@
 
 #include "Shader.h"
-#include "GLES2.h"
+#include "GLES.h"
 #include <cstring>
 
 template<unsigned int attrib_flags>

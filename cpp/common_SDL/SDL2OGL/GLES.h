@@ -1,10 +1,10 @@
 
-//#define DEBUG_GLES2
+//#define DEBUG_GLES
 
-#ifndef _GLES2_H_
-#define _GLES2_H_
+#ifndef _GLES_H_
+#define _GLES_H_
 
-#include <SDL2/SDL_opengles2.h>
+#include <GLES3/gl3.h>
 #include "Vec2.h"
 
 #define GLMESH_FLAG_NONE   0
@@ -17,7 +17,7 @@
 
 template<typename T> class CameraT;
 
-namespace GLES2{
+namespace GLES{
     extern CameraT<float>* active_camera;
     extern GLuint currentGL_ARRAY_BUFFER;
     extern Vec2i screen_size;
@@ -27,17 +27,17 @@ namespace GLES2{
     void popFramebuffer(GLuint handle);
 }
 
-#define GL_CHECK_ERROR() GLES2::checkError(__FILE__, __LINE__)
+#define GL_CHECK_ERROR() GLES::checkError(__FILE__, __LINE__)
 
 #define glBindBuffer(target, buffer) do { \
     glBindBuffer(target, buffer); \
-    if (target == GL_ARRAY_BUFFER) GLES2::currentGL_ARRAY_BUFFER = buffer; \
+    if (target == GL_ARRAY_BUFFER) GLES::currentGL_ARRAY_BUFFER = buffer; \
 } while (0)
 
 
 
 
-#ifdef DEBUG_GLES2
+#ifdef DEBUG_GLES
 #include <cstdlib>
 #include <execinfo.h>
 #include <cstdio>

@@ -1,11 +1,11 @@
 
-#include "GLES2.h"
+#include "GLES.h"
 #include "GLTexture.h"
 #include <cstdlib>
 
 class GLFramebuffer{
 public:
-    GLTexture colorBuffer = GLTexture(GLES2::screen_size, GL_RGBA);
+    GLTexture colorBuffer = GLTexture(GLES::screen_size, GL_RGBA);
 
 private:
     GLuint handle = 0;
@@ -28,8 +28,7 @@ private:
 
         glGenRenderbuffers(1, &depthBufferHandle);
         glBindRenderbuffer(GL_RENDERBUFFER, depthBufferHandle);
-        // TODO: GL_DEPTH_COMPONENT16 is more portable, but requires a smaller zmin/zmax in Camera.h
-        glRenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH_COMPONENT24_OES, GLES2::screen_size.x, GLES2::screen_size.y);
+        glRenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH_COMPONENT24, GLES::screen_size.x, GLES::screen_size.y);
         glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_RENDERBUFFER, depthBufferHandle);
 
         glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, colorBuffer.getHandle(), 0); GL_CHECK_ERROR();
@@ -62,8 +61,8 @@ public:
         }
 
         ensure_handle();
-        GLES2::pushFramebuffer(handle);
-        glViewport(0, 0, GLES2::screen_size.x, GLES2::screen_size.y);
+        GLES::pushFramebuffer(handle);
+        glViewport(0, 0, GLES::screen_size.x, GLES::screen_size.y);
         glClearColor(0, 0, 0, 0);
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
         active = true;
@@ -78,7 +77,7 @@ public:
             printf("ERROR: framebuffer is not active\n");
             exit(1);
         }
-        GLES2::popFramebuffer(handle);
+        GLES::popFramebuffer(handle);
         active = false;
     }
 
@@ -91,7 +90,7 @@ public:
             printf("ERROR: framebuffer is already paused\n");
             exit(1);
         }
-        GLES2::popFramebuffer(handle);
+        GLES::popFramebuffer(handle);
         paused = true;
     }
 
@@ -104,7 +103,7 @@ public:
             printf("ERROR: framebuffer is not paused\n");
             exit(1);
         }
-        GLES2::pushFramebuffer(handle);
+        GLES::pushFramebuffer(handle);
         paused = false;
     }
 };

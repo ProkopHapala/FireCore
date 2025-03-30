@@ -1,7 +1,7 @@
 #ifndef _GLMESH_H_
 #define _GLMESH_H_
 
-#include "GLES2.h"
+#include "GLES.h"
 #include "GLTexture.h"
 #include "Vec2.h"
 #include "Vec3.h"
@@ -37,7 +37,7 @@ private:
     inline void bind_vbo(){
         init_vbo();
 
-        if (GLES2::currentGL_ARRAY_BUFFER == vbo) return;
+        if (GLES::currentGL_ARRAY_BUFFER == vbo) return;
 
         glBindBuffer(GL_ARRAY_BUFFER, vbo);
         glVertexAttribPointer(SHADER_ATTRIB_POSITION, 3, GL_FLOAT, GL_FALSE, sizeof(vertex), (void*)offsetof(vertex, position));
@@ -133,7 +133,7 @@ public:
 
     inline void draw(Vec3f position, float scale){draw(position, (Vec3f){scale, scale, scale});}
     void draw(Vec3f position=Vec3fZero, Vec3f scale={1, 1, 1}){
-        if (GLES2::active_camera == nullptr){
+        if (GLES::active_camera == nullptr){
             printf("Warning: No active camera - skipping rendering.\n");
             return;
         }
@@ -144,13 +144,13 @@ public:
         mvpMatrix.setPos(position);
 
         // view + projection
-        mvpMatrix.mmulL(GLES2::active_camera->viewProjectionMatrix());
+        mvpMatrix.mmulL(GLES::active_camera->viewProjectionMatrix());
     
         drawMVP(mvpMatrix);
     }
 
     void draw(Vec3f position, Quat4f rotation, Vec3f scale={1, 1, 1}){
-        if (GLES2::active_camera == nullptr){
+        if (GLES::active_camera == nullptr){
             printf("Warning: No active camera - skipping rendering.\n");
             return;
         }
@@ -174,8 +174,8 @@ public:
 
         // MVP matrix
         Mat4f mvpMatrix = modelMatrix;
-        mvpMatrix.mmulL(GLES2::active_camera->viewMatrix());
-        mvpMatrix.mmulL(GLES2::active_camera->projectionMatrix());
+        mvpMatrix.mmulL(GLES::active_camera->viewMatrix());
+        mvpMatrix.mmulL(GLES::active_camera->projectionMatrix());
     
         drawMVP(mvpMatrix);
     }
@@ -183,8 +183,8 @@ public:
     void draw2D(Vec3f pos=Vec3fZero, Vec2f scale={1, 1}){
         // convert from screen space ((0, 0)  to (WIDHT, HEIGHT)) to NDC ((-1, -1) to (1, 1))
 
-        const int WIDTH = GLES2::screen_size.x;
-        const int HEIGHT = GLES2::screen_size.y;
+        const int WIDTH = GLES::screen_size.x;
+        const int HEIGHT = GLES::screen_size.y;
 
         pos.x = pos.x*2/WIDTH - 1;
         pos.y = pos.y*2/HEIGHT - 1;

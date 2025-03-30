@@ -1,5 +1,5 @@
 
-#include "GLES2.h"
+#include "GLES.h"
 #include "Renderer.h"
 #include "Vec2.h"
 #include "Draw.h"
@@ -752,7 +752,7 @@ void Draw3D::drawRectGridLines( Vec2i n, const Vec3d& p0, const Vec3d& da, const
 }
 
 void Draw3D::drawTextBillboard( const char* str, Vec3f pos, float sz, int iend ){ // TODO: sz is unused
-    Vec2f screen_pos = GLES2::active_camera->world2Screen(pos);
+    Vec2f screen_pos = GLES::active_camera->world2Screen(pos);
 
     opengl1renderer.disable    ( GL_LIGHTING   );
     opengl1renderer.shadeModel ( GL_FLAT       );

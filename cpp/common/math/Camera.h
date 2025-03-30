@@ -6,7 +6,7 @@
 #include <cstdlib>
 #include <stdint.h>
 
-#include "GLES2.h"
+#include "GLES.h"
 #include "Vec3.h"
 #include "Mat3.h"
 #include "Mat4.h"
@@ -106,7 +106,7 @@ public:
         Vec2T<T> screen_pos = _viewProjMatrix.dotT({pos.x, pos.y, pos.z, 0}).xy();
         screen_pos += {1, 1};
         screen_pos *= 0.5;
-        screen_pos *= GLES2::screen_size;
+        screen_pos *= GLES::screen_size;
 
         return screen_pos;
     }

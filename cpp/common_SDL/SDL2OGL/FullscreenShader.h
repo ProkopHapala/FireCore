@@ -1,9 +1,7 @@
-#include "GLES2.h"
+#include "GLES.h"
 #include "Shader.h"
 #include "GLMesh.h"
 #include "GLTexture.h"
-#include <GLES2/gl2.h>
-#include <GLES2/gl2ext.h>
 #include "Framebuffer.h"
 
 const static char* vertexShaderSource = R"(
