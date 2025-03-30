@@ -14,6 +14,7 @@ public class CameraControl : MonoBehaviour
     void Awake() {
         camera = GetComponent<Camera>();
         pivotPoint = Vector3.zero;
+        //transform.Rotate(new Vector3(1.95f, 0, 0), Space.Self);
     }
     void Update()
     {
@@ -62,6 +63,8 @@ public class CameraControl : MonoBehaviour
         else if(Input.GetKey(KeyCode.Period)) {
             camera.fieldOfView -= zoomSpeed * Time.deltaTime;
         }
+
+        
     }
 
     public void SetPivot(Vector3 newPivot) {
