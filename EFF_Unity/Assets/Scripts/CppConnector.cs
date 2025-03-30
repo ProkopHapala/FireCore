@@ -134,7 +134,7 @@ public class CppConnector : MonoBehaviour
                 particles[i].transform.localScale = new Vector3(sizes[i], sizes[i], sizes[i]);
                 //UnityEngine.Debug.Log(sizes[i]);
             }
-            UnityEngine.Debug.Log(positions[i].x + " " + positions[i].y + " " + positions[i].z);
+            //UnityEngine.Debug.Log(positions[i].x + " " + positions[i].y + " " + positions[i].z);
 
         }
     } 

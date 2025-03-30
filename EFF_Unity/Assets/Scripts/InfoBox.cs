@@ -2,6 +2,7 @@ using System;
 using System.Security;
 using TMPro;
 using UnityEngine;
+using UnityEngine.EventSystems;
 using UnityEngine.UI;
 
 public class InfoBox : MonoBehaviour
@@ -12,12 +13,33 @@ public class InfoBox : MonoBehaviour
     public TextMeshProUGUI sizeText;
 
     private CppConnector connector;
+    private int posId;
+    private GameObject particle;
+    private Outline particleOutline;
+    private CameraControl camera;
     private delegate void del();
     private del SetStats;
     
     // Start is called once before the first execution of Update after the MonoBehaviour is created
     void Awake() {
         button.GetComponent<Button>().onClick.AddListener(OnButtonClick);
+        camera = Camera.main.GetComponent<CameraControl>();
+
+        EventTrigger trigger = button.GetComponent<EventTrigger>();
+        EventTrigger.Entry entry = new EventTrigger.Entry
+        {
+            eventID = EventTriggerType.PointerEnter
+        };
+        entry.callback.AddListener( eventData => OnPointerEnter((PointerEventData)eventData) );
+        trigger.triggers.Add(entry);
+
+        entry = new EventTrigger.Entry
+        {
+            eventID = EventTriggerType.PointerExit
+        };
+        entry.callback.AddListener( eventData => OnPointerExit((PointerEventData)eventData) );
+        trigger.triggers.Add(entry);
+
     }
 
     // Update is called once per frame
@@ -44,6 +66,9 @@ public class InfoBox : MonoBehaviour
     public void SetConnector(CppConnector connector, int id, int posId, ObjectType type) {
         objText.SetText($"{(type == ObjectType.ATOM ? "ATOM" : "ELECTRON")} {id}");
         this.connector = connector;
+        this.posId = posId;
+        particle = connector.particles[posId];
+        particleOutline = particle.GetComponent<Outline>();
 
         if(type == ObjectType.ELECTRON){
             SetStats = () => {
@@ -66,6 +91,17 @@ public class InfoBox : MonoBehaviour
     }
 
     public void OnButtonClick() {
+        camera.SetPivot(particle.transform.position);
         
+    }
+
+    public void OnPointerEnter(PointerEventData eventData)
+    {
+        particleOutline.OutlineMode = Outline.Mode.OutlineAndSilhouette;
+    }
+
+    public void OnPointerExit(PointerEventData eventData)
+    {
+        particleOutline.OutlineMode = Outline.Mode.OutlineHidden;
     }
 }
