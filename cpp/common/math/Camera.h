@@ -7,7 +7,6 @@
 #include <stdint.h>
 
 #include "GLES2.h"
-#include "fastmath.h"
 #include "Vec3.h"
 #include "Mat3.h"
 #include "Mat4.h"

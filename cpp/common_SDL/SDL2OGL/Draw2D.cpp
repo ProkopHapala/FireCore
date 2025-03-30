@@ -82,7 +82,7 @@ static GLMesh<GLMESH_FLAG_NONE> makeRectMesh(){
 }
 static GLMesh rectMesh = makeRectMesh();
 void Draw2D::drawRectangle( float p1x, float p1y, float p2x, float p2y, Vec3f color, bool filled){ // TODO: create a list of drawn rects and them draw them at once using instancing?
-    rectMesh.drawMode = filled ? GL_QUADS : GL_LINE_LOOP;
+    rectMesh.drawMode = filled ? GL_TRIANGLE_FAN : GL_LINE_LOOP;
     rectMesh.color = color;
 
     opengl1renderer.disable(GL_DEPTH_TEST);

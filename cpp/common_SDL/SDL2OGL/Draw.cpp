@@ -117,15 +117,7 @@ void Draw::billboardCamProj( ){
 */
 
 static GLTexture font = GLTexture("common_resources/dejvu_sans_mono_RGBA_pix-UpDown.bmp");
-static GLMesh<GLMESH_FLAG_UVTEX> makeFontMesh(){
-    GLMesh m = GLMesh(GL_QUADS, GL_DYNAMIC_DRAW, defaultShader<GLMESH_FLAG_UVTEX>, &font);
-    m.addVertex(Vec3fZero);
-    m.addVertex(Vec3fZero);
-    m.addVertex(Vec3fZero);
-    m.addVertex(Vec3fZero);
-    return m;
-}
-static GLMesh fontMesh = makeFontMesh();
+static GLMesh fontMesh = GLMesh(GL_TRIANGLES, GL_DYNAMIC_DRAW, defaultShader<GLMESH_FLAG_UVTEX>, &font);
 
 template<unsigned int FLAG>
 static void addCharToMesh( GLMesh<FLAG>& mesh, char c, Vec2f pos, Vec2f size){
@@ -138,6 +130,8 @@ static void addCharToMesh( GLMesh<FLAG>& mesh, char c, Vec2f pos, Vec2f size){
 
     fontMesh.addVertex({pos.x         , pos.y         , 0}, Vec3fZero, COLOR_WHITE, {UVstart, 0});
     fontMesh.addVertex({pos.x + size.x, pos.y         , 0}, Vec3fZero, COLOR_WHITE, {UVend  , 0});
+    fontMesh.addVertex({pos.x + size.x, pos.y + size.y, 0}, Vec3fZero, COLOR_WHITE, {UVend  , 1});
+    fontMesh.addVertex({pos.x         , pos.y         , 0}, Vec3fZero, COLOR_WHITE, {UVstart, 0});
     fontMesh.addVertex({pos.x + size.x, pos.y + size.y, 0}, Vec3fZero, COLOR_WHITE, {UVend  , 1});
     fontMesh.addVertex({pos.x         , pos.y + size.y, 0}, Vec3fZero, COLOR_WHITE, {UVstart, 1});
 }

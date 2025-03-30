@@ -8,7 +8,6 @@
 
 #include <math.h>
 #include <cstdlib>
-#include <stdio.h>
 #include <stdint.h>
 
 #include "fastmath.h"
@@ -16,7 +15,6 @@
 #include "Mat3.h"
 #include "quaternion.h"
 
-#include "CMesh.h"
 #include "Mesh.h"
 
 #include "Draw.h"

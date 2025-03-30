@@ -21,6 +21,8 @@ GLuint Shader<attrib_flags>::compileShader(GLenum shaderType, const char* source
         glGetShaderInfoLog(shader, infoLen, nullptr, infoLog);
         printf("Error/Warning compiling shader:\n %s\n", infoLog);
         free(infoLog);
+
+        printf("Shader source:\n%s\n", source);
     }
     
     GLint compiled;

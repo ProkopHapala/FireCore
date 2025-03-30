@@ -1,5 +1,4 @@
 
-#include "Draw2D.h"
 #include "GLES2.h"
 #include "Renderer.h"
 #include "Vec2.h"
@@ -838,11 +837,14 @@ void Draw3D::drawColorScale( int n, Vec3d pos, Vec3d dir, Vec3d up, void (_color
 // from drawUtils.h
 // =================
 
-static GLMesh_Normal makeCube(){
-    GLMesh_Normal m = GLMesh_Normal(GL_QUADS);
+static GLMesh_Normal makeCube(){ // TODO: test this
+    GLMesh_Normal m = GLMesh_Normal(GL_TRIANGLES); // TODO: use a triangle strip?
+
     // positive x face
     m.addVertex({1, 0, 0}, {1, 0, 0});
     m.addVertex({1, 1, 0}, {1, 0, 0});
+    m.addVertex({1, 1, 1}, {1, 0, 0});
+    m.addVertex({1, 0, 0}, {1, 0, 0});
     m.addVertex({1, 1, 1}, {1, 0, 0});
     m.addVertex({1, 0, 1}, {1, 0, 0});
 
@@ -850,11 +852,15 @@ static GLMesh_Normal makeCube(){
     m.addVertex({0, 0, 0}, {-1, 0, 0});
     m.addVertex({0, 1, 0}, {-1, 0, 0});
     m.addVertex({0, 1, 1}, {-1, 0, 0});
+    m.addVertex({0, 0, 0}, {-1, 0, 0});
+    m.addVertex({0, 1, 1}, {-1, 0, 0});
     m.addVertex({0, 0, 1}, {-1, 0, 0});
 
     // positive y face
     m.addVertex({0, 1, 0}, {0, 1, 0});
     m.addVertex({1, 1, 0}, {0, 1, 0});
+    m.addVertex({1, 1, 1}, {0, 1, 0});
+    m.addVertex({0, 1, 0}, {0, 1, 0});
     m.addVertex({1, 1, 1}, {0, 1, 0});
     m.addVertex({0, 1, 1}, {0, 1, 0});
 
@@ -862,17 +868,23 @@ static GLMesh_Normal makeCube(){
     m.addVertex({0, 0, 0}, {0, -1, 0});
     m.addVertex({1, 0, 0}, {0, -1, 0});
     m.addVertex({1, 0, 1}, {0, -1, 0});
+    m.addVertex({0, 0, 0}, {0, -1, 0});
+    m.addVertex({1, 0, 1}, {0, -1, 0});
     m.addVertex({0, 0, 1}, {0, -1, 0});
 
     // positive z face
     m.addVertex({0, 0, 1}, {0, 0, 1});
     m.addVertex({1, 0, 1}, {0, 0, 1});
     m.addVertex({1, 1, 1}, {0, 0, 1});
+    m.addVertex({0, 0, 1}, {0, 0, 1});
+    m.addVertex({1, 1, 1}, {0, 0, 1});
     m.addVertex({0, 1, 1}, {0, 0, 1});
 
     // negative z face
     m.addVertex({0, 0, 0}, {0, 0, -1});
     m.addVertex({1, 0, 0}, {0, 0, -1});
+    m.addVertex({1, 1, 0}, {0, 0, -1});
+    m.addVertex({0, 0, 0}, {0, 0, -1});
     m.addVertex({1, 1, 0}, {0, 0, -1});
     m.addVertex({0, 1, 0}, {0, 0, -1});
 
