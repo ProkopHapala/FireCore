@@ -635,7 +635,7 @@ virtual int run( int nstepMax, double dt=-1, double Fconv=1e-6, int ialg=2, doub
         if(outF){ outF[itr]=F2;   }
         if(verbosity>0){ printf("[%i] Etot %g[eV] |F| %g [eV/A] \n", itr, Etot, sqrt(F2) ); };
         if(F2<F2conv){
-            if(verbosity>0){ printf("Converged in %i iteration Etot %g[eV] |F| %g[eV/A] <(Fconv=%g) \n", itr, Etot, sqrt(F2), Fconv ); };
+            if(verbosity>0){ printf("MolWorld_sp3_simple::run() Converged in %i iteration Etot %g[eV] |F| %g[eV/A] <(Fconv=%g) \n", itr, Etot, sqrt(F2), Fconv ); };
             /// @param maxVcog Maximum allowed velocity center of gravity.
             /// @param maxFcog Maximum allowed force center of gravity.
             /// @param maxTg Maximum allowed torque.

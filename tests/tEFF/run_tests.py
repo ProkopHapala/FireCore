@@ -93,7 +93,8 @@ eff.setVerbosity(1)
 #outE=eff.relax_mol("H2O_noe2_", dt=0.03, outE=True,  bFixNuclei=True)   ;exit()
 
 #outE=eff.relax_mol("H2O_noe1", dt=0.03, outE=True)   ;exit()
-outE=eff.relax_mol("H2O_noe2_", dt=0.03, outE=True)  ;exit()
+outE=eff.relax_mol("H2O_noe2_", dt=0.03, outE=True)  #;exit()
+# print(outE)
 
 #plt.plot(outE-outE[-1]); plt.yscale('log'); plt.grid(); plt.show(); exit()
 
@@ -105,5 +106,12 @@ name="H2O_fixcore"
 #core_sizes = [0.5,0.4,0.3,0.2,0.1]
 #core_sizes = np.arange(0.05,0.50,0.01) #[::-1]
 core_sizes  = np.arange(0.1,0.40,0.01) #[::-1]
-bondLengths = eff.scan_core_size( name, core_sizes, dt=0.01,nMaxIter=100000, fUnits=1. ); 
+print("core_sizes", core_sizes )
+bondLengths = eff.scan_core_size( name, core_sizes, dt=0.01,nMaxIter=100000, fUnits=1. ); #Cannot run this, beacuase theres no H2O_fixcore.fgo in the data folder
+# plt.plot(core_sizes,bondLengths, '.-' )
+# plt.show()
+# print("SHoudl be showing something")
+# input()
+# print("SHoudl be showing something")
+
 plt.plot(core_sizes,bondLengths, '.-' ); plt.xlabel("core_size(X)[A]"); plt.ylabel("L(X-H) [A]"); plt.grid(); plt.savefig(name+"_CoreSizeScan.png", bbox_inches='tight');  plt.show(); exit()

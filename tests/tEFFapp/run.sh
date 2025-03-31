@@ -1,6 +1,6 @@
 name=EFFapp.x
 dir=../../cpp/Build/apps/EFF
-#ln -s ../../cpp/common_resources data
+ln -s ../../cpp/common_resources data
 ln -s ../../cpp/common_resources common_resources 
 ln -s ../../cpp/sketches_SDL/Molecular/data data
 ln -s ../../cpp/sketches_SDL/Molecular/data inputs
