@@ -19,8 +19,10 @@ cd $wd
 echo "#=========== RUN"
 # python3 run_tests.py 2> ERR
 
-python3 plotSample.py 2> ERR
-#python3 run_dynamics.py 
+# python3 plotSample.py 2> ERR
+python3 run_energyToBondlength.py 2> ERR
+# python3 run_tests.py 2> ERR
+# python3 run_dynamics.py 
 
 #echo "#=========== compare_components.py"
 #python3  run_evalPieces.py | tee output.txt

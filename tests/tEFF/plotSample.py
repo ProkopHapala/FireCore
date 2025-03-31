@@ -7,83 +7,47 @@ import time
 sys.path.append("../../")
 from pyBall import eFF as eff
 from pyBall import eFF_terms as pyeff
-# const_bohr = 0.5291772105638411
 
-spin1 = 1.0
-spin2 = -1.0
+size11 = 1.0
+size12 = 2.0
+size21 = size11*2
+size22 = size12*2
 
-# Define a vector function (example: E, fx, fy, fz)
 def example_vector_function(points):
-    Fout = eff.sample_ee(points, 1, bEvalCoulomb=True, bEvalPauli=True)
+    Fout = eff.sample_ee(points, 1, bEvalCoulomb=True, bEvalPauli=False)
     return Fout
 
 nx = 100
-X = np.linspace(-5, 5, nx)
-RSs = np.array([[x, spin1, spin2] for x in X])
+r = 10
+X = np.linspace(-r, r, nx)
 
-points = np.zeros( (len(X), 3) )
-points[:,0] = np.linspace(-5, 5, 100)
-points[:,1] = spin1
-points[:,2] = spin2
+points1 = np.zeros((len(X), 3))
+points1[:,0] = X
+points1[:,1] = size11
+points1[:,2] = size12
 
-FEout = example_vector_function( points)
-print(FEout)
+FEout1 = example_vector_function(points1)
 
-plt.plot(X, FEout[:,0], label="E")
-plt.plot(X, FEout[:,1], label="fx")
-plt.plot(X, FEout[:,2], label="fy")
-plt.plot(X, FEout[:,3], label="fz")
+points2 = np.zeros((len(X), 3))
+points2[:,0] = X
+points2[:,1] = size21
+points2[:,2] = size22
+
+FEout2 = example_vector_function(points2)
+
+plt.plot(X, FEout1[:,0], label="fx1")
+plt.plot(X, FEout1[:,1], label="fs11")
+plt.plot(X, FEout1[:,2], label="fs21")
+plt.plot(X, FEout1[:,3], label="E1")
+
+fx = FEout1[:,3]
+df_dx = (fx[2:] - fx[:-2])/(X[2] - X[0])
+
+plt.plot(X, FEout2[:,0], label="fx2")
+plt.plot(X, FEout2[:,1], label="fs12")
+plt.plot(X, FEout2[:,2], label="fs22")
+plt.plot(X, FEout2[:,3], label="E2")
 
 plt.legend()
 plt.title("Sample ee")
 plt.show()
-# # Deserialize the results back into 2D grids
-# fx_grid = FEout[:,0]
-# fy_grid = FEout[:,1]
-# fz_grid = FEout[:,2]
-# E_grid  = FEout[:,3]
-
-# # ========== Plotting ==========
-
-# # Plot the components using imshow
-# fig, axes = plt.subplots(2, 2, figsize=(10, 10))
-
-# # Plot E
-# ax = axes[0, 0]
-# im = ax.imshow(E_grid, extent=(-5, 5, -5, 5), origin='lower', cmap='viridis')
-# ax.set_title('E')
-# fig.colorbar(im, ax=ax)
-
-# # Plot fx
-# ax = axes[0, 1]
-# im = ax.imshow(fx_grid, extent=(-5, 5, -5, 5), origin='lower', cmap='plasma')
-# ax.set_title('fx')
-# fig.colorbar(im, ax=ax)
-
-# # Plot fy
-# ax = axes[1, 0]
-# im = ax.imshow(fy_grid, extent=(-5, 5, -5, 5), origin='lower', cmap='plasma')
-# ax.set_title('fy')
-# fig.colorbar(im, ax=ax)
-
-# # Plot fz
-# ax = axes[1, 1]
-# im = ax.imshow(fz_grid, extent=(-5, 5, -5, 5), origin='lower', cmap='plasma')
-# ax.set_title('fz')
-# fig.colorbar(im, ax=ax)
-
-# plt.tight_layout()
-# plt.show()
-
-# distance = np.linspace(0, 10, 1000)
-
-# force = Fout[:, 1]  # Extract y values
-# force2 = Fout[:, 2]
-# force3 = Fout[:, 3]
-# print(Fout)
-
-# plt.plot(distance, force)
-# plt.plot(distance, force2)
-# plt.plot(distance, force3)
-
-# plt.show()

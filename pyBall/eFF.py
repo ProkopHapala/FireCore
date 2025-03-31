@@ -303,7 +303,7 @@ def sample_EA( RSs, FEout=None, KRSrho=[1.125,0.9,-0.2], aPar=[4.,0.1,0.1,2.0], 
 
 def printEs():
     #print( " Etot %g Ek %g Eee %g EeePaul %g Eae %g EaePaul %g Eaa %g [eV]" %(Es[0],Es[1],Es[2],Es[3],Es[5],Es[6],Es[7]) )  # [0Etot,1Ek,2Eee,3EeePaul,4EeeExch,5Eae,6EaePaul,7Eaa]
-    print("Etot (eFF.py)",Es[0],"Ek",Es[1],"Eee",Es[2],"EeePaul",Es[3],"Eae",Es[5],"EaePaul",Es[6],"Eaa", Es[7], "[eV]" )  # [0Etot,1Ek,2Eee,3EeePaul,4EeeExch,5Eae,6EaePaul,7Eaa]
+    print("eFF.py::printEs() Etot ",Es[0],"Ek",Es[1],"Eee",Es[2],"EeePaul",Es[3],"Eae",Es[5],"EaePaul",Es[6],"Eaa", Es[7], "[eV]" )  # [0Etot,1Ek,2Eee,3EeePaul,4EeeExch,5Eae,6EaePaul,7Eaa]
 
 def printAtoms():
     for i in range(na):
@@ -331,7 +331,7 @@ def getNearestAtoms( apos, bPrint=False ):
     return imins, rmins
     
 def eval_mol(name, fUnits=1., bPrint=True ):
-    load_fgo(default_path+name+".fgo", False, fUnits=fUnits )                               # load molecule in  .fgo format (i.e. floating-gaussian-orbital)
+    load_fgo(default_path+name+".fgo", False, fUnits=fUnits ) # load molecule in  .fgo format (i.e. floating-gaussian-orbital)
     eval()
     if bPrint:
         getBuffs()
@@ -425,8 +425,8 @@ def relax_mol(name, dt=0.03,damping=0.1, bTrj=True, bResult=True, perN=1, bPrint
     #print("invMasses", invMasses )
     if(bFixNuclei): invAmass[:]=0 
     #print("invMasses", invMasses )
-    nstep=run( nMaxIter, Fconv=1e-3, ialg=2, outE=outE, outF=outF )                             # run simuation for maximum 1000 time steps intil it converge to |F|<1e-3, ialg=2 is FIRE http://users.jyu.fi/~pekkosk/resources/pdf/FIRE.pdf   https://www.sciencedirect.com/science/article/pii/S0927025620300756
-    printEs()
+    nstep=run( nMaxIter, Fconv=1e-3, ialg=2, outE=outE, outF=outF ) # run simuation for maximum 1000 time steps until it converge to |F|<1e-3, ialg=2 is FIRE http://users.jyu.fi/~pekkosk/resources/pdf/FIRE.pdf   https://www.sciencedirect.com/science/article/pii/S0927025620300756
+    if(verbosity>0):printEs()
     if bPrintLbonds:
         getNearestAtoms( apos, bPrint=True )
     if(bResult): 
