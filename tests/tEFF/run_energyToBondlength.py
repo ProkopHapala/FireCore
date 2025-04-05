@@ -3,6 +3,7 @@ import numpy as np
 import os
 import matplotlib.pyplot as plt
 import time
+from tqdm import tqdm
 
 sys.path.append("../../")
 from pyBall import eFF as eff
@@ -75,19 +76,36 @@ def createH2(r): # r is half the distance between the two H atoms
 
     save_fgo('H2.fgo', h2_atoms, h2_electrons)
 
+# def createCH4(r): # r is half the distance between the two H atoms
+#     # Define H2 molecule
+#     h2_atoms = [
+#         {'pos': [r, 0.0, 0.0], 'Z': 1, 'sQ': 0.2, 'sP': 1.0, 'cP': 0.0},
+#         {'pos': [-r, 0.0, 0.0], 'Z': 1, 'sQ': 0.2, 'sP': 1.0, 'cP': 0.0}
+#     ]
+
+#     h2_electrons = [
+#         {'pos': [1.1, -0.5, 0.0], 'size': 0.5, 'coef': 1.0, 'spin': -1},
+#         {'pos': [1.0, 0.5, 0.0], 'size': 0.5, 'coef': 1.0, 'spin': 1},
+#         {'pos': [-1.1, -0.5, 0.0], 'size': 0.5, 'coef': 1.0, 'spin': -1},
+#         {'pos': [-1.0, 0.5, 0.0], 'size': 0.5, 'coef': 1.0, 'spin': 1}
+#     ]
+
+
 outE=eff.relax_mol("H2", dt=0.03, outE=True)  
 
 radiusMin = 0.1
-radiusMax = 10.0
+radiusMax = 3.5
 radiusSteps = 100
 radiusSpace = np.linspace(radiusMin, radiusMax, radiusSteps)
 outESpace = []
 
-for radius in radiusSpace:
+i = 0
+for radius in tqdm(radiusSpace, desc="Computing Progress of energy to radius function"):
     createH2(radius)
     outE=eff.relax_mol("H2", dt=0.03, outE=True)  
-    print("Radius: ", radius, "Energy: ", outE[-1]) 
     outESpace.append(outE)
+    i += 1
+    print(f"Progress: {i}/{radiusSteps}")
 
 Etot_value = [arr[0] for arr in outESpace]
 Ek_value = [arr[1] for arr in outESpace]
@@ -98,16 +116,17 @@ EaePaul_value = [arr[5] for arr in outESpace]
 Eaa_value = [arr[6] for arr in outESpace]
 eV_value = [arr[7] for arr in outESpace]
 
-plt.plot(radiusSpace, Etot_value, label='Etot', color='blue')
-plt.plot(radiusSpace, Ek_value, label='Ek', color='red')
-plt.plot(radiusSpace, Eee_value, label='Eee', color='green')
-plt.plot(radiusSpace, EeePaul_value, label='EeePaul', color='orange')
-plt.plot(radiusSpace, Eae_value, label='Eae', color='purple')
-plt.plot(radiusSpace, EaePaul_value, label='EaePaul', color='brown')
-plt.plot(radiusSpace, Eaa_value, label='Eaa', color='pink')
-plt.plot(radiusSpace, eV_value, label='eV', color='gray')
+plt.plot(radiusSpace, Etot_value,"o--", label='Etot', color='blue')
+# plt.plot(radiusSpace, Ek_value, label='Ek', color='red')
+# plt.plot(radiusSpace, Eee_value, label='Eee', color='green')
+# plt.plot(radiusSpace, EeePaul_value, label='EeePaul', color='orange')
+# plt.plot(radiusSpace, Eae_value, label='Eae', color='purple')
+# plt.plot(radiusSpace, EaePaul_value, label='EaePaul', color='brown')
+# plt.plot(radiusSpace, Eaa_value, label='Eaa', color='pink')
+# plt.plot(radiusSpace, eV_value, label='eV', color='gray')
 
 plt.xlabel('Radius [A]')
 plt.ylabel('Energy [eV]')
 plt.legend()
+plt.grid()
 plt.show()

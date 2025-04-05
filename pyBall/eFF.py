@@ -428,7 +428,7 @@ def relax_mol(name, dt=0.03,damping=0.1, bTrj=True, bResult=True, perN=1, bPrint
     nstep=run( nMaxIter, Fconv=1e-3, ialg=2, outE=outE, outF=outF ) # run simuation for maximum 1000 time steps until it converge to |F|<1e-3, ialg=2 is FIRE http://users.jyu.fi/~pekkosk/resources/pdf/FIRE.pdf   https://www.sciencedirect.com/science/article/pii/S0927025620300756
     if(verbosity>0):printEs()
     if bPrintLbonds:
-        getNearestAtoms( apos, bPrint=True )
+        getNearestAtoms( apos, bPrint=False ) # bPrint defines, whether to print bond lengths
     if(bResult): 
         result_name=name+"_relaxed.fgo"
         if(verbosity>0): print("Optimized molecule saved to ", result_name)
