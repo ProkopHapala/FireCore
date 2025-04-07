@@ -1545,9 +1545,9 @@ __kernel void slabPotential_zyx(
     // const int j = (ng[0]-ix-1) + ng.x*( (ng[1]-iy-1) + ng.y*(nz_-mirror_iz-1) );
 
     // const int j = (ng[2]-iz-1) + ng.z*(ng[1]-iy-1) + ng.z*ng.y*(ng[0]-ix-1);    
-    const int i = iz + ng.z*(iy + ng.y*ix);
+    // const int i = iz + ng.z*(iy + ng.y*ix);
     // const int j = ix + ng.x*(iy + ng.y*iz);
-    // const int i = ix + ng.x*(iy + ng.y*iz);
+    const int i = ix + ng.x*(iy + ng.y*iz);
 
 
 

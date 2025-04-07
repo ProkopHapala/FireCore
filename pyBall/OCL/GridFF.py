@@ -334,6 +334,67 @@ class GridFF_cl:
         
         return p_buf.get(), v_buf.get()
     
+    def fit3D_with_buffer(self, buffer, nPerStep=10, nmaxiter=300, dt=0.5, Ftol=1e-16, damp=0.15, bConvTrj=False, bReturn=True, bPrint=False, bTime=True, bDebug=True):
+        """
+        A wrapper around fit3D that handles buffer size mismatches
+        """
+        # Get the actual size of the input buffer in bytes
+        buffer_size_bytes = buffer.size
+        
+        # Calculate how many float32 elements that corresponds to
+        num_elements = buffer_size_bytes // 4  # 4 bytes per float32
+        
+        # Check if this matches our expected grid size
+        expected_elements = self.gcl.nxyz
+        
+        if num_elements != expected_elements:
+            print(f"Warning: Buffer size ({num_elements}) doesn't match expected grid size ({expected_elements})")
+            print(f"Creating a temporary buffer of the correct size...")
+            
+            # Create a temporary buffer of the correct size
+            temp_buff = cl.Buffer(self.ctx, cl.mem_flags.READ_WRITE, size=expected_elements * 4)
+            
+            # Determine how many elements we can safely copy
+            copy_elements = min(num_elements, expected_elements)
+            
+            # Use a kernel to copy the data (up to the smaller size)
+            nL = self.nloc
+            nG = clu.roundup_global_size(copy_elements, nL)
+            
+            # Create a simple copy kernel if needed
+            if not hasattr(self.prg, 'copyPartialBuffer'):
+                copy_kernel = """
+                __kernel void copyPartialBuffer(
+                    const int n,
+                    __global const float* src,
+                    __global float* dst
+                ) {
+                    int i = get_global_id(0);
+                    if (i < n) {
+                        dst[i] = src[i];
+                    }
+                }
+                """
+                self.prg = cl.Program(self.ctx, self.prg.get_info(cl.program_info.SOURCE) + copy_kernel).build()
+            
+            # Copy the data
+            self.prg.copyPartialBuffer(self.queue, (nG,), (nL,), np.int32(copy_elements), buffer, temp_buff)
+            self.queue.finish()
+            
+            # Use the temporary buffer for fitting
+            result, trj = self.fit3D(temp_buff, nPerStep=nPerStep, nmaxiter=nmaxiter, dt=dt, 
+                                    Ftol=Ftol, damp=damp, bConvTrj=bConvTrj, 
+                                    bReturn=bReturn, bPrint=bPrint, bTime=bTime, bDebug=bDebug)
+            
+            return result, trj
+        else:
+            # If sizes match, just call the original fit3D
+            return self.fit3D(buffer, nPerStep=nPerStep, nmaxiter=nmaxiter, dt=dt, 
+                            Ftol=Ftol, damp=damp, bConvTrj=bConvTrj, 
+                            bReturn=bReturn, bPrint=bPrint, bTime=bTime, bDebug=bDebug)
+
+
+
     def fit3D(self, Ref_buff, nmaxiter=300, dt=0.5, Ftol=1e-16, damp=0.15, nPerStep=50, bConvTrj=False, bReturn=True, bPrint=False, bTime=True, bDebug=True ):
         # NOTE / TODO : It is a bit strange than GridFF.h::makeGridFF_Bspline_d() the fit is fastes with damp=0.0 but here damp=0.15 performs better
         #print(f"GridFF_cl::fit3D().1 Queue: {self.queue}, Context: {self.ctx}")
@@ -809,6 +870,11 @@ class GridFF_cl:
         else:
             event=self.prg.slabPotential( self.queue, sz_glob, sz_loc, ns_cl, Vin_buff, self.V_Coul_buff, params )
         event.wait()
+        self.queue.finish()
+        # Debug check buffer state
+        debug_check = np.empty(self.gsh.ns[::-1], dtype=np.float32)
+        cl.enqueue_copy(self.queue, debug_check, self.V_Coul_buff)
+        print(f"V_Coul_buff state in slabPotential: range [{debug_check.min():.3f}, {debug_check.max():.3f}]")
         if bDownload:
             if bTranspose:
                 V_Coul = np.empty( self.gsh.ns, dtype=np.float32  )
@@ -818,25 +884,29 @@ class GridFF_cl:
             # Debug before copy
             debug_before = np.empty_like(V_Coul)
             cl.enqueue_copy(self.queue, debug_before, self.V_Coul_buff)
+            self.queue.finish()
             print("\nDebug V_Coul_buff before final copy:")
             print(f"Shape: {debug_before.shape}")
             print(f"Range: {debug_before.min():.3f} to {debug_before.max():.3f}")
 
             cl.enqueue_copy(self.queue, V_Coul, self.V_Coul_buff)
-            cl.enqueue_copy(self.queue, self.V_Coul_buff, V_Coul)
+            # cl.enqueue_copy(self.queue, self.V_Coul_buff, V_Coul)
             self.queue.finish()
 
             # Debug after copy
             debug_after = np.empty_like(V_Coul)
             cl.enqueue_copy(self.queue, debug_after, self.V_Coul_buff)
+            self.queue.finish()
             print("\nDebug V_Coul_buff after final copy:")
             print(f"Shape: {debug_after.shape}")
             print(f"Range: {debug_after.min():.3f} to {debug_after.max():.3f}")
             
             return V_Coul
-        #     out_shape = self.gsh.ns[::-1] if bTranspose else self.gsh.ns
-        #     result = np.empty(out_shape, dtype=np.float32)
-        #     cl.enqueue_copy(self.queue, result, self.V_Coul_buff)
+        
+        # if bDownload:
+        #     result = np.empty(self.gsh.ns[::-1] if bTranspose else self.gsh.ns, dtype=np.float32)
+        #     evt = cl.enqueue_copy(self.queue, result, self.V_Coul_buff)
+        #     evt.wait()
         #     return result
         # return None
 
@@ -1055,8 +1125,29 @@ class GridFF_cl:
         V_after_slab = self.slabPotential( Vin_buff, nz_slab, dipol=dipol, bDownload=bReturn, bTranspose=bTranspose )
         # V_after_slab = np.empty(sh[::-1], dtype=np.float32)  # Note: sh includes extended z-dimension
         # cl.enqueue_copy(self.queue, V_after_slab, V_Coul_test)
-        verify_vcoul = np.empty(self.gsh.ns[::-1], dtype=np.float32)
+        # verify_vcoul = np.empty(self.gsh.ns[::-1], dtype=np.float32)
+        # cl.enqueue_copy(self.queue, verify_vcoul, self.V_Coul_buff)
+        # self.queue.finish()
+
+        # Get the size of the buffer in bytes
+        buffer_size_bytes = self.V_Coul_buff.size
+
+        # Calculate the shape based on the known dimensions
+        # For example, if you know the first two dimensions:
+        shape_xy = self.gsh.ns[0:2][::-1]  # First two dimensions in reverse order
+        elements_xy = shape_xy[0] * shape_xy[1]
+        shape_z = buffer_size_bytes // (4 * elements_xy)  # 4 bytes per float32
+
+        # Create an array with the correct shape
+        verify_shape = (*shape_xy, shape_z)
+        verify_vcoul = np.empty(verify_shape, dtype=np.float32)
+
+        # Now copy should work
         cl.enqueue_copy(self.queue, verify_vcoul, self.V_Coul_buff)
+        self.queue.finish()
+
+        print(f"Verification buffer shape: {verify_vcoul.shape}")
+        print(f"Verification buffer range: [{verify_vcoul.min():.3f}, {verify_vcoul.max():.3f}]")
 
         ####### Plot three slices through the middle
         plt.figure(figsize=(15, 5))
@@ -1066,22 +1157,22 @@ class GridFF_cl:
         
         # XY plane
         plt.subplot(131)
-        plt.imshow(V_after_slab[:, :, mid_z], origin='lower')
-        # plt.imshow(verify_vcoul[:, :, mid_z], origin='lower')
+        # plt.imshow(V_after_slab[:, :, mid_z], origin='lower')
+        plt.imshow(verify_vcoul[:, :, mid_z], origin='lower')
         plt.colorbar(label='Potential')
         plt.title(f'XY plane (z={mid_z})')
 
         # XZ plane
         plt.subplot(132)
-        plt.imshow(V_after_slab[:, mid_y, :], origin='lower')
-        # plt.imshow(verify_vcoul[:, mid_y, :], origin='lower')
+        # plt.imshow(V_after_slab[:, mid_y, :], origin='lower')
+        plt.imshow(verify_vcoul[:, mid_y, :], origin='lower')
         plt.colorbar(label='Potential')
         plt.title(f'XZ plane (y={mid_y})')
 
         # YZ plane
         plt.subplot(133)
-        plt.imshow(V_after_slab[ mid_x, :,:], origin='lower')
-        # plt.imshow(verify_vcoul[ mid_x, :,:], origin='lower')
+        # plt.imshow(V_after_slab[ mid_x, :,:], origin='lower')
+        plt.imshow(verify_vcoul[ mid_x, :,:], origin='lower')
         plt.colorbar(label='Potential')
         plt.title(f'YZ plane (x={mid_x})')
         plt.suptitle('Potential After Slab')

@@ -326,22 +326,48 @@ def test_gridFF_ocl( fname="./data/xyz/NaCl_1x1_L1.xyz", Element_Types_name="./d
         clgff.set_grid(grid)
         # g0=(0.0,0.0,0.0)
 
+        def check_vcoul_buffer(clgff):
+            """
+            Quick check of the V_Coul_buff contents
+            """
+            # Get the size of the buffer in bytes
+            buffer_size_bytes = clgff.V_Coul_buff.size
+            
+            # Use the known grid dimensions
+            shape_xy = clgff.gsh.ns[0:2][::-1]
+            elements_xy = shape_xy[0] * shape_xy[1]
+            shape_z = buffer_size_bytes // (4 * elements_xy)
+            
+            # Create the array and copy the data
+            verify_shape = (*shape_xy, shape_z)
+            vcoul_array = np.empty(verify_shape, dtype=np.float32)
+            cl.enqueue_copy(clgff.queue, vcoul_array, clgff.V_Coul_buff)
+            clgff.queue.finish()
+            
+            print(f"V_Coul_buff: shape={vcoul_array.shape}, range=[{vcoul_array.min():.3f}, {vcoul_array.max():.3f}]")
+            
+            return vcoul_array
 
         # --- Coulomb-----#
         print("!!!! Starting Coulomb potential calculation...")
         # print("Grid origin for Coulomb:", g0)
         Vcoul = clgff.makeCoulombEwald_slab(xyzq, niter=2,bSaveQgrid=True,bCheckVin=True, bTranspose=True)
-        temp_before = np.empty(clgff.gsh.ns[::-1], dtype=np.float32)
-        cl.enqueue_copy(clgff.queue, temp_before, clgff.V_Coul_buff)
+        # temp_before = np.empty(clgff.gsh.ns[::-1], dtype=np.float32)
+        # cl.enqueue_copy(clgff.queue, temp_before, clgff.V_Coul_buff)
+        
+        temp_before = check_vcoul_buffer(clgff)
 
 
         VcoulB,trj_coul = clgff.fit3D( clgff.V_Coul_buff, nPerStep=10, nmaxiter=50, damp=0.05, bConvTrj=True );
+        # VcoulB, trj_coul = clgff.fit3D_with_buffer(clgff.V_Coul_buff, nPerStep=10, nmaxiter=50, damp=0.05, bConvTrj=True)
+
         # VcoulB,trj_coul = clgff.fit3D( clgff.V1_buff, nPerStep=10, nmaxiter=50, damp=0.05, bConvTrj=True );
         # VcoulB,trj_coul = clgff.fit3D( Vcoul, nPerStep=10, nmaxiter=50, damp=0.05, bConvTrj=True );
 
-        temp_coulomb = np.empty(clgff.gsh.ns[::-1], dtype=np.float32)
-        # cl.enqueue_copy(clgff.queue, temp_coulomb, clgff.V1_buff)
-        cl.enqueue_copy(clgff.queue, temp_coulomb, clgff.V_Coul_buff)
+        # temp_coulomb = np.empty(clgff.gsh.ns[::-1], dtype=np.float32)
+        # # cl.enqueue_copy(clgff.queue, temp_coulomb, clgff.V1_buff)
+        # cl.enqueue_copy(clgff.queue, temp_coulomb, clgff.V_Coul_buff)
+        
         
         # nz_slab = Lz_slab/clgff.gsh.dg[2]
         # raw_nz = clgff.gsh.ns[2] + nz_slab
@@ -350,9 +376,7 @@ def test_gridFF_ocl( fname="./data/xyz/NaCl_1x1_L1.xyz", Element_Types_name="./d
         # temp_v1 = np.empty(extended_shape[::-1], dtype=np.float32)
         # cl.enqueue_copy(clgff.queue, temp_v1, clgff.V1_buff)
         
-
-
-
+        
 
 
 
