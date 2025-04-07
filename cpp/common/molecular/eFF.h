@@ -242,6 +242,10 @@ constexpr static const double aMasses[9] = {  1.0, 4.0, 7.0, 9.0,  11.0,  12.0, 
     double* vDOFs =0;  ///< buffer of velocities on degrees of freedom
     double* invMasses=0; ///< buffer of inverse masses [nDOFs] (both electrons and nuclei)
 
+    int nfix=0;
+    Quat4d* fixed_poss=0; // [nfix], {x,y,z,w} position of fixed particles
+    Vec2i*  fixed_inds=0; // [nfix]  {ia/-ie, bitmask{x|y|z|w}}, ia/-ie is index of atom/ or negative index of electron, bitmax indicate which component is fixed
+
     double Etot=0,Ek=0, Eee=0,EeePaul=0,EeeExch=0,  Eae=0,EaePaul=0,  Eaa=0; ///< different kinds of energy
 
 void realloc(int na_, int ne_, bool bVel=false){
@@ -253,6 +257,8 @@ void realloc(int na_, int ne_, bool bVel=false){
     _realloc( aPars, na);
     _realloc( espin, ne);
     _realloc( eE, ne );
+
+
 
     apos   = (Vec3d*)pDOFs;
     aforce = (Vec3d*)fDOFs;
@@ -272,6 +278,30 @@ void realloc(int na_, int ne_, bool bVel=false){
         for(int i=0; i<nDOFs; i++){ invMasses[i]=1; }
     }
 
+}
+
+void realloc_fixed(int nfix_){
+    nfix=nfix_;
+    _realloc0( fixed_poss, nfix, Quat4dNAN );
+    _realloc0( fixed_inds, nfix, Vec2iZero );
+}
+
+void apply_fixed(){
+    for(int i=0; i<nfix; i++){
+        int ia = fixed_inds[i].x;
+        int bit = fixed_inds[i].y;
+        if(ia<0){
+            int ie = -ia-1;
+            if(bit&1){ epos[ie].x = fixed_poss[i].x; eforce[ie].x = 0; evel[ie].x = 0; }
+            if(bit&2){ epos[ie].y = fixed_poss[i].y; eforce[ie].y = 0; evel[ie].y = 0; }
+            if(bit&4){ epos[ie].z = fixed_poss[i].z; eforce[ie].z = 0; evel[ie].z = 0; }
+            if(bit&8){ esize[ie]  = fixed_poss[i].w; fsize[ie]    = 0;  vsize[ie] = 0; }
+        }else{
+            if(bit&1){ apos[ia].x = fixed_poss[i].x; aforce[ia].x = 0; avel[ia].x = 0; }
+            if(bit&2){ apos[ia].y = fixed_poss[i].y; aforce[ia].y = 0; avel[ia].y = 0; }
+            if(bit&4){ apos[ia].z = fixed_poss[i].z; aforce[ia].z = 0; avel[ia].z = 0; }
+        }
+    }
 }
 
 void makeMasses(double*& invMasses, double m_const=-1){
