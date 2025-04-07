@@ -6,14 +6,7 @@ import time
 
 sys.path.append("../../")
 from pyBall import eFF as eff
-
-from pyBall import eFF_terms as pyeff
-const_bohr = 0.5291772105638411
-#eff.setVerbosity(1) # If 1: it will  write more stuff to console; If 0: it will wirte less stuff to console
-#eff.setVerbosity(2)
-#eff.setVerbosity(3)
-
-#nconf = 27
+#from pyBall import eFF_terms as pyeff
 
 # ----- Fucntions
 
@@ -64,7 +57,9 @@ def plot_energy_and_force(energies, forces, steps=None,  lable1='Energ [eV]', la
 
 # ------ Body
 
-nconf = 27
+#eff.setVerbosity(1) # If 1: it will  write more stuff to console; If 0: it will wirte less stuff to console
+#eff.setVerbosity(2)
+#eff.setVerbosity(3)
 
 #eff.load_fgo("data/H2_eFF.fgo" )  
 eff.load_fgo("data/H2_far.fgo", bVel_=True )   
@@ -87,23 +82,22 @@ fixed_inds = np.array([
 # plt.show()
 #exit()
 
-
+nconf = 27
 # --- setup positions of fixed atoms (1st atoms at (0,0,0), 2nd at (x,0,0) )
 xs = np.linspace( 3.0, 0.3, nconf,endpoint=False);    
 #xs = np.linspace( 0.3, 3.0, nconf,endpoint=False);    
 
 fixed_poss = np.zeros((nconf, eff.na, 4 ))
 fixed_poss[:,1,0] = xs   # set x coordinate of 2nd atom
-
 print( "xs ", xs )
 
 #exit()
 
+with open("scan.xyz", "w") as f: f.write( "" )  # clear file, since we are appending it inside eff.relaxed_scan()
 
-
-eff.initOpt(0.1,0.001,1000.0)
+eff.initOpt( dt=0.02, damping=0.001, f_limit=1000.0)
 #apos, epos, Es = 1eff.relaxed_scan( fixed_poss, fixed_inds, nstepMax=100, dt=1e-2, Fconv=1e-6, ialg=0 )
-apos, epos, Es = eff.relaxed_scan( fixed_poss, fixed_inds, nstepMax=10000, dt=0.02, Fconv=1e-6, ialg=2 )
+apos, epos, Es = eff.relaxed_scan( fixed_poss, fixed_inds, nstepMax=10000, dt=0.02, Fconv=1e-6, ialg=2, scan_trj_name="scan.xyz" )
 
 
 plt.figure(figsize=(5,15))

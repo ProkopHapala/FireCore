@@ -52,6 +52,8 @@ extern "C"{
 // ========= Grid initialization
 
 void setVerbosity( int verbosity_, int idebug_ ){
+    //setbuf(stdout, NULL);  // Disable buffering completely
+    setvbuf(stdout, NULL, _IOLBF, 0);  // Line buffering (flushed on newline)
     verbosity = verbosity_;
     idebug    = idebug_;
 }
@@ -216,8 +218,6 @@ void relaxed_scan( int nconf, int nfix, double* fixed_poss, int* fixed_inds_, do
     Vec2i* fixed_inds = (Vec2i*)fixed_inds_;
     //for(int i=0; i<nfix; i++){ printf( "fixed[%3i] %3i %3i \n", i, fixed_inds[i].x, fixed_inds[i].y ); }
     //exit(0);   
-
-
     ff.realloc_fixed(nfix);
     for(int iconf=0; iconf<nconf; iconf++){
         if(verbosity>0)printf( "relaxed_scan() iconf %3i ", iconf );
@@ -241,6 +241,7 @@ void relaxed_scan( int nconf, int nfix, double* fixed_poss, int* fixed_inds_, do
         for(int j=0; j<ff.na; j++){ apos[j]   = ff.apos[j]; }
         for(int j=0; j<ff.ne; j++){ epos[j].f = ff.epos[j]; epos[j].w = ff.esize[j]; }
         if( scan_trj_name )  ff.save_xyz( scan_trj_name, "a" );
+        fflush(stdout); 
     }
 }
 
