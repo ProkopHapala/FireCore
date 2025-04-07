@@ -197,10 +197,13 @@ export LD_PRELOAD
 #./$name -x common_resources/xyz/PTCDA -g common_resources/xyz/NaCl_8x8_L3 -perframe 100 -iParalel 0
 #./$name -x common_resources/xyz/PTCDA -g common_resources/xyz/Na_0.9_Cl_-0.9 -perframe 100 -iParalel 0 -uff
 # ./$name -x common_resources/xyz/PTCDA -g common_resources/xyz/NaCl_1x1_L3 -perframe 100 -iParalel 0 -uff
-#./$name -x common_resources/xyz/PTCDA_charge_on_Na -g common_resources/xyz/Na_0.9_Cl_-0.9 -perframe 100 -iParalel 0 -uff            ## UFF testing 
+# ./$name -x common_resources/xyz/PTCDA_charge_on_Na -g common_resources/xyz/Na_0.9_Cl_-0.9 -perframe 100 -iParalel 0 -uff            ## UFF testing Indranil for NaCl ptcda
 #./$name -x common_resources/xyz/H2O -g common_resources/xyz/NaCl_8x8_L3 -perframe 100 -iParalel 0 -uff
 
-./$name -x common_resources/xyz/PTCDA -g common_resources/xyz/NaCl_8x8_L3_ClHole -perframe 100 
+# ./$name -x common_resources/xyz/H2O -g common_resources/xyz/NaCl_8x8_L3_ClHole -perframe 100 
+# ./$name -x common_resources/xyz/PTCDA -g common_resources/xyz/Na_0.9_Cl_-0.9_Cl_hole -perframe 100 
+
+./$name -x common_resources/xyz/PTCDA -g common_resources/xyz/Na_0.9_Cl_-0.9_Cl_hole_3 -perframe 100   
 
 #./$name -x common_resources/xyz/guanine-cytosine -g common_resources/xyz/NaCl_1x1_L3 -iParalel 0
 #./$name -x common_resources/xyz/guanine-cytosine -g common_resources/xyz/NaCl_1x1_L3 -iParalel 0 -e

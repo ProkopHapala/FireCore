@@ -997,7 +997,7 @@ void printPBCshifts(){
         nbmol.bindOrRealloc( ff->natoms, ff->apos, ff->fapos, ff->REQs, ff->atypes );    
         //nbmol.bindOrRealloc( na, apos, fapos, 0, 0 );   
         //builder.export_atypes( nbmol.atypes );     
-        //builder.export_REQs( nbmol.REQs   );       ff->REQs=nbmol.REQs;
+        builder.export_REQs( nbmol.REQs   );       ff->REQs=nbmol.REQs;
         //printf("DEBUG initNBmol 1 nbmol.print_nonbonded(); \n"); nbmol.print_nonbonded();
 
         DEBUG
@@ -1131,6 +1131,8 @@ void printPBCshifts(){
         builder.addCappingTypesByIz(1);   // Find all hydrogen cappings
         builder.tryAddConfsToAtoms( 0, -1 );
         //builder.printAtomConfs(false, true );
+
+        builder.printAtoms();
         builder.cleanPis();
         if(verbosity>2)builder.printAtomConfs(false);
         // ------- Load lattice vectros
