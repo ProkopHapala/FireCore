@@ -169,6 +169,7 @@ int run( int nstepMax, double dt, double Fconv, int ialg, double* outE, double* 
     if(ialg>0){ opt.cleanVel( ); }
     for(itr=0; itr<nstepMax; itr++ ){
         ff.clearForce();
+        if(ff.nfix>0){ ff.apply_fixed(); }
         Etot = ff.eval();
         if( ff.bNegativeSizes & (verbosity>0) ){ printf( "negative electron sizes in step #%i => perhaps decrease relaxation time step dt=%g[fs]? \n", itr, opt.dt ); }
         switch(ialg){
@@ -188,6 +189,45 @@ int run( int nstepMax, double dt, double Fconv, int ialg, double* outE, double* 
     }
     //printShortestBondLengths();
     return itr;
+}
+
+void set_constrains( int nfix, Quat4d* fixed_poss, Vec2i* fixed_inds, bool bRealloc=true  ){
+    // Set following variables of eFF object
+    // int nfix=0;
+    // Quat4d* fixed_poss=0; // [nfix], {x,y,z,w} position of fixed particles
+    // Vec2i*  fixed_inds=0; // [nfix]  {ia/-ie, bitmask{x|y|z|w}}, ia/-ie is index of atom/ or negative index of electron, bitmax indicate which component is fixed
+    if(bRealloc) ff.realloc_fixed(nfix);
+    for(int i=0; i<nfix; i++){
+        ff.fixed_poss[i] = fixed_poss[i];
+        ff.fixed_inds[i] = fixed_inds[i];
+    }
+}
+
+void relaxed_scan( int nconf, int nfix, double* fixed_poss, int* fixed_inds, double* outEs, double* apos_, double* epos_, int nstepMax, double dt, double Fconv, int ialg ){
+    printf( "relaxed_scan() nconf %i nfix %i @fixed_poss=%p @fixed_inds=%p @outEs=%p @apos_=%p @epos_=%p @nstepMax %i @dt %g @Fconv %g @ialg %i \n", nconf, nfix, fixed_poss, fixed_inds, outEs, apos_, epos_, nstepMax, dt, Fconv, ialg );
+    ff.realloc_fixed(nfix);
+    for(int iconf=0; iconf<nconf; iconf++){
+        printf( "relaxed_scan() iconf %i \n", iconf );
+        set_constrains( nfix, ((Quat4d*)fixed_poss)+iconf*nfix, ((Vec2i*)fixed_inds), false );
+        run( nstepMax, dt, Fconv, ialg, 0, 0 );
+        outEs[iconf] = ff.Etot;
+        // double Etot=0,Ek=0, Eee=0,EeePaul=0,EeeExch=0,  Eae=0,EaePaul=0,  Eaa=0; 
+        {
+            double* Eis = outEs + iconf*8;
+            Eis[0] = ff.Etot;
+            Eis[1] = ff.Ek;
+            Eis[2] = ff.Eee;
+            Eis[3] = ff.EeePaul;
+            Eis[4] = ff.EeeExch;
+            Eis[5] = ff.Eae;
+            Eis[6] = ff.EaePaul;
+            Eis[7] = ff.Eaa;
+        }
+        Vec3d*  apos = ((Vec3d* )apos_)+iconf*ff.na;
+        Quat4d* epos = ((Quat4d*)epos_)+iconf*ff.ne;
+        for(int j=0; j<ff.na; j++){ apos[j]   = ff.apos[j]; }
+        for(int j=0; j<ff.ne; j++){ epos[j].f = ff.epos[j]; epos[j].w = ff.esize[j]; }
+    }
 }
 
 
