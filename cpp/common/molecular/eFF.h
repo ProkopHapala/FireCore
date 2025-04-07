@@ -286,20 +286,77 @@ void realloc_fixed(int nfix_){
     _realloc0( fixed_inds, nfix, Vec2iZero );
 }
 
-void apply_fixed(){
+void apply_hard_fix(){
+    //printf( "fFF:apply_fixed() nfix %i \n", nfix );
     for(int i=0; i<nfix; i++){
-        int ia = fixed_inds[i].x;
-        int bit = fixed_inds[i].y;
+        const int     ia   = fixed_inds[i].x;
+        const int     mask = fixed_inds[i].y;
+        const Quat4d& p0   = fixed_poss[i];
+        // print bit mask as binary
+        //printf( "fFF:apply_fixed() i %3i ia %3i bit %08b pos0 %16.8f %16.8f %16.8f %16.8f \n", i, ia, mask, p0.x, p0.y, p0.z, p0.w );
         if(ia<0){
             int ie = -ia-1;
-            if(bit&1){ epos[ie].x = fixed_poss[i].x; eforce[ie].x = 0; evel[ie].x = 0; }
-            if(bit&2){ epos[ie].y = fixed_poss[i].y; eforce[ie].y = 0; evel[ie].y = 0; }
-            if(bit&4){ epos[ie].z = fixed_poss[i].z; eforce[ie].z = 0; evel[ie].z = 0; }
-            if(bit&8){ esize[ie]  = fixed_poss[i].w; fsize[ie]    = 0;  vsize[ie] = 0; }
+            // if(mask&1){ epos[ie].x = p0.x; eforce[ie].x = 0; evel[ie].x = 0; }
+            // if(mask&2){ epos[ie].y = p0.y; eforce[ie].y = 0; evel[ie].y = 0; }
+            // if(mask&4){ epos[ie].z = p0.z; eforce[ie].z = 0; evel[ie].z = 0; }
+            // if(mask&8){ esize[ie]  = p0.w; fsize[ie]    = 0; vsize[ie]  = 0; }
+
+            if(mask&1){ epos[ie].x = p0.x; }
+            if(mask&2){ epos[ie].y = p0.y; }
+            if(mask&4){ epos[ie].z = p0.z; }
+            if(mask&8){ esize[ie]  = p0.w; }
         }else{
-            if(bit&1){ apos[ia].x = fixed_poss[i].x; aforce[ia].x = 0; avel[ia].x = 0; }
-            if(bit&2){ apos[ia].y = fixed_poss[i].y; aforce[ia].y = 0; avel[ia].y = 0; }
-            if(bit&4){ apos[ia].z = fixed_poss[i].z; aforce[ia].z = 0; avel[ia].z = 0; }
+            //if(mask&1){ apos[ia].x = p0.x; aforce[ia].x = 0; avel[ia].x = 0; }
+            //if(mask&2){ apos[ia].y = p0.y; aforce[ia].y = 0; avel[ia].y = 0; }
+            //if(mask&4){ apos[ia].z = p0.z; aforce[ia].z = 0; avel[ia].z = 0; }
+
+            if(mask&1){ apos[ia].x = p0.x;  }
+            if(mask&2){ apos[ia].y = p0.y; }
+            if(mask&4){ apos[ia].z = p0.z;  }
+        }
+    }
+}
+
+void clear_fixed_force(){
+    //printf( "fFF:apply_fixed() nfix %i \n", nfix );
+    for(int i=0; i<nfix; i++){
+        const int     ia   = fixed_inds[i].x;
+        const int     mask = fixed_inds[i].y;
+        const Quat4d& p0   = fixed_poss[i];
+        // print bit mask as binary
+        //printf( "fFF:apply_fixed() i %3i ia %3i bit %08b pos0 %16.8f %16.8f %16.8f %16.8f \n", i, ia, mask, p0.x, p0.y, p0.z, p0.w );
+        if(ia<0){
+            int ie = -ia-1;
+            if(mask&1){ eforce[ie].x = 0; }
+            if(mask&2){ eforce[ie].y = 0; }
+            if(mask&4){ eforce[ie].z = 0; }
+            if(mask&8){ fsize[ie]    = 0; }
+        }else{
+            if(mask&1){ aforce[ia].x = 0; }
+            if(mask&2){ aforce[ia].y = 0; }
+            if(mask&4){ aforce[ia].z = 0; }
+        }
+    }
+}
+
+void clear_fixed_dynamics(){
+    //printf( "fFF:apply_fixed() nfix %i \n", nfix );
+    for(int i=0; i<nfix; i++){
+        const int     ia   = fixed_inds[i].x;
+        const int     mask = fixed_inds[i].y;
+        const Quat4d& p0   = fixed_poss[i];
+        // print bit mask as binary
+        //printf( "fFF:apply_fixed() i %3i ia %3i bit %08b pos0 %16.8f %16.8f %16.8f %16.8f \n", i, ia, mask, p0.x, p0.y, p0.z, p0.w );
+        if(ia<0){
+            int ie = -ia-1;
+            if(mask&1){ eforce[ie].x = 0; evel[ie].x = 0; }
+            if(mask&2){ eforce[ie].y = 0; evel[ie].y = 0; }
+            if(mask&4){ eforce[ie].z = 0; evel[ie].z = 0; }
+            if(mask&8){ fsize[ie]    = 0; vsize[ie]  = 0; }
+        }else{
+            if(mask&1){ aforce[ia].x = 0; avel[ia].x = 0; }
+            if(mask&2){ aforce[ia].y = 0; avel[ia].y = 0; }
+            if(mask&4){ aforce[ia].z = 0; avel[ia].z = 0; }
         }
     }
 }

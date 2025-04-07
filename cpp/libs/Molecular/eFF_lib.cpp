@@ -135,7 +135,7 @@ bool load_fgo( const char* fname, bool bVel, double fUnits ){
 }
 
 void init( int na, int ne ){
-    ff.realloc ( na, ne );
+    ff.realloc ( na, ne, true );
     //ff.autoAbWs( default_aAbWs, default_eAbWs );
     init_buffers();
 }
@@ -167,26 +167,32 @@ int run( int nstepMax, double dt, double Fconv, int ialg, double* outE, double* 
     //printf( "verbosity %i nstepMax %i Fconv %g dt %g \n", verbosity, nstepMax, Fconv, dt );
     //printf( "trj_fname %s \n", trj_fname );
     if(ialg>0){ opt.cleanVel( ); }
+    bool bConv=false;
+    if(ff.nfix>0){ ff.apply_hard_fix(); }
     for(itr=0; itr<nstepMax; itr++ ){
         ff.clearForce();
-        if(ff.nfix>0){ ff.apply_fixed(); }
         Etot = ff.eval();
         if( ff.bNegativeSizes & (verbosity>0) ){ printf( "negative electron sizes in step #%i => perhaps decrease relaxation time step dt=%g[fs]? \n", itr, opt.dt ); }
+
+        if(ff.nfix>0){ if(ialg>0){ ff.clear_fixed_dynamics(); }else{ ff.clear_fixed_force(); } }
         switch(ialg){
-            case  0: ff .move_GD      (dt);      break;
-            case -1: opt.move_LeapFrog(dt);      break;
+            case  0: F2 = ff .move_GD      (dt);      break;
+            case -1: F2 = opt.move_LeapFrog(dt);      break;
             case  1: F2 = opt.move_MD (dt,opt.damping); break;
             case  2: F2 = opt.move_FIRE();       break;
         }
-        if(outE){ outE[itr]=Etot; }
-        if(outF){ outF[itr]=F2;   }
-        if(verbosity>0){ printf("[%i] Etot %g[eV] |F| %g [eV/A] \n", itr, Etot, sqrt(F2) ); };
+        if(ff.nfix>0){ ff.apply_hard_fix(); }
+        if(outE){ outE[itr]=Etot;     }
+        if(outF){ outF[itr]=sqrt(F2); }
+        if(verbosity>1){ printf("itr: %6i Etot[eV] %16.8f |F|[eV/A] %16.8f \n", itr, Etot, sqrt(F2) ); };
         if(F2<F2conv){
-            if(verbosity>0){ printf("eFF_lib.cpp::run() Converged in %i iteration Etot %g[eV] |F| %g[eV/A] <(Fconv=%g) \n", itr, Etot, sqrt(F2), Fconv ); };
+            if(verbosity>0){ printf("Converged in %i iteration Etot %g[eV] |F| %g[eV/A] <(Fconv=%g) \n", itr, Etot, sqrt(F2), Fconv ); };
+            bConv=true;
             break;
         }
         if( (trj_fname) && (itr%savePerNsteps==0) )  ff.save_xyz( trj_fname, "a" );
     }
+    if(verbosity>0){ printf("%s in %6i iterations Etot[eV] %16.8f |F|[eV/A] %16.8f (Fconv=%g) \n", bConv ? "    CONVERGED" : "NOT-CONVERGED", itr, Etot, sqrt(F2), Fconv ); };
     //printShortestBondLengths();
     return itr;
 }
@@ -203,12 +209,18 @@ void set_constrains( int nfix, Quat4d* fixed_poss, Vec2i* fixed_inds, bool bReal
     }
 }
 
-void relaxed_scan( int nconf, int nfix, double* fixed_poss, int* fixed_inds, double* outEs, double* apos_, double* epos_, int nstepMax, double dt, double Fconv, int ialg ){
-    printf( "relaxed_scan() nconf %i nfix %i @fixed_poss=%p @fixed_inds=%p @outEs=%p @apos_=%p @epos_=%p @nstepMax %i @dt %g @Fconv %g @ialg %i \n", nconf, nfix, fixed_poss, fixed_inds, outEs, apos_, epos_, nstepMax, dt, Fconv, ialg );
+void relaxed_scan( int nconf, int nfix, double* fixed_poss, int* fixed_inds_, double* outEs, double* apos_, double* epos_, int nstepMax, double dt, double Fconv, int ialg, char* scan_trj_name ){
+    //printf( "relaxed_scan() nconf %i nfix %i @fixed_poss=%p @fixed_inds=%p @outEs=%p @apos_=%p @epos_=%p @nstepMax %i @dt %g @Fconv %g @ialg %i \n", nconf, nfix, fixed_poss, fixed_inds_, outEs, apos_, epos_, nstepMax, dt, Fconv, ialg );
+    //printf( "relaxed_scan() ialg: %i @vsize=%p @evel=%p @avel=%p \n", ialg, ff.vsize, ff.evel, ff.avel );
+    Vec2i* fixed_inds = (Vec2i*)fixed_inds_;
+    //for(int i=0; i<nfix; i++){ printf( "fixed[%3i] %3i %3i \n", i, fixed_inds[i].x, fixed_inds[i].y ); }
+    //exit(0);   
+
+
     ff.realloc_fixed(nfix);
     for(int iconf=0; iconf<nconf; iconf++){
-        printf( "relaxed_scan() iconf %i \n", iconf );
-        set_constrains( nfix, ((Quat4d*)fixed_poss)+iconf*nfix, ((Vec2i*)fixed_inds), false );
+        if(verbosity>0)printf( "relaxed_scan() iconf %3i ", iconf );
+        set_constrains( nfix, ((Quat4d*)fixed_poss)+iconf*nfix, fixed_inds, false );
         run( nstepMax, dt, Fconv, ialg, 0, 0 );
         outEs[iconf] = ff.Etot;
         // double Etot=0,Ek=0, Eee=0,EeePaul=0,EeeExch=0,  Eae=0,EaePaul=0,  Eaa=0; 
@@ -227,6 +239,7 @@ void relaxed_scan( int nconf, int nfix, double* fixed_poss, int* fixed_inds, dou
         Quat4d* epos = ((Quat4d*)epos_)+iconf*ff.ne;
         for(int j=0; j<ff.na; j++){ apos[j]   = ff.apos[j]; }
         for(int j=0; j<ff.ne; j++){ epos[j].f = ff.epos[j]; epos[j].w = ff.esize[j]; }
+        if( scan_trj_name )  ff.save_xyz( scan_trj_name, "a" );
     }
 }
 

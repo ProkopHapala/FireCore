@@ -107,9 +107,9 @@ class DynamicOpt{ public:
 
     // ==== function declarations
 
-    void   move_LeapFrog( double dt_loc );
+    double move_LeapFrog( double dt_loc );
     //void   move_LeapFrog_vlimit();
-    void   move_GD      ( double dt_loc );
+    double move_GD      ( double dt_loc );
     //double move_GD_safe ( double dt_loc );
     double move_MD( double dt_loc, double damp);
     double move_VSpread(double dt_loc,double damp, double beta );

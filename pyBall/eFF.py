@@ -262,26 +262,29 @@ def initOpt(dt=0.1, damping=0.1, f_limit=1000.0, bMass=False ):
 #  int  run( int nstepMax, double dt, double Fconv=1e-6, int ialg=0 ){
 lib. run.argtypes  = [c_int, c_double, c_double, c_int, c_double_p, c_double_p] 
 lib. run.restype   =  c_int
-def  run(nstepMax=1000, dt=None, Fconv=1e-6, ialg=0, outE=None, outF=None):
+def  run(nstepMax=1000, dt=None, Fconv=1e-6, ialg=0, outE=None, outF=None, bOutE=True, bOutF=True):
     if dt is None: dt=dt_glob
-    return lib.run(nstepMax, dt, Fconv, ialg, _np_as(outE,c_double_p), _np_as(outF,c_double_p) )
+    if (outE is None) and bOutE: outE=np.full(nstepMax, np.nan)
+    if (outF is None) and bOutF: outF=np.full(nstepMax, np.nan)
+    lib.run(nstepMax, dt, Fconv, ialg, _np_as(outE,c_double_p), _np_as(outF,c_double_p) )
+    return  outE, outF
 
 
 # void set_constrains( int nfix, Quat4d* fixed_poss, Vec2i* fixed_inds, bool bRealloc=true  ){
-lib.set_constrains.argtypes  = [c_int, array1ui, array1i, c_bool ]
+lib.set_constrains.argtypes  = [c_int, c_double_p, c_int_p, c_bool ]
 lib.set_constrains.restype   =  None
 def set_constrains( nfix, fixed_poss, fixed_inds, bRealloc=True ):
     return lib.set_constrains( nfix, _np_as(fixed_poss, c_double_p), _np_as(fixed_inds, c_int_p), bRealloc )
 
-#void relaxed_scan( int nconf, int nfix, double* fixed_poss, int* fixed_inds, double* outEs, double* apos_, double* epos_, int nstepMax, double dt, double Fconv, int ialg ){
-lib.relaxed_scan.argtypes  = [c_int, c_int, c_double_p, c_int_p, c_double_p, c_double_p, c_double_p, c_int, c_double, c_double, c_int ]
+#void relaxed_scan( int nconf, int nfix, double* fixed_poss, int* fixed_inds_, double* outEs, double* apos_, double* epos_, int nstepMax, double dt, double Fconv, int ialg, char* scan_trj_name ){
+lib.relaxed_scan.argtypes  = [c_int, c_int, c_double_p, c_int_p, c_double_p, c_double_p, c_double_p, c_int, c_double, c_double, c_int, c_char_p ]
 lib.relaxed_scan.restype   =  None
-def relaxed_scan( fixed_poss, fixed_inds, outEs=None, apos=None, epos=None, nstepMax=1000, dt=1e-2, Fconv=1e-6, ialg=0 ):
+def relaxed_scan( fixed_poss, fixed_inds, outEs=None, apos=None, epos=None, nstepMax=1000, dt=1e-2, Fconv=1e-6, ialg=0, scan_trj_name="scan.xyz" ):
     nconf, nfix, _ = fixed_poss.shape
     if apos is None: apos = np.zeros( (nconf, na, 3) )
     if epos is None: epos = np.zeros( (nconf, ne, 4) )
     if outEs is None: outEs = np.zeros( (nconf,8) )
-    lib.relaxed_scan( nconf, nfix, _np_as(fixed_poss, c_double_p), _np_as(fixed_inds, c_int_p), _np_as(outEs, c_double_p), _np_as(apos, c_double_p), _np_as(epos, c_double_p), nstepMax, dt, Fconv, ialg )
+    lib.relaxed_scan( nconf, nfix, _np_as(fixed_poss, c_double_p), _np_as(fixed_inds, c_int_p), _np_as(outEs, c_double_p), _np_as(apos, c_double_p), _np_as(epos, c_double_p), nstepMax, dt, Fconv, ialg, cstr(scan_trj_name) )
     return apos, epos, outEs
 
 # void evalNumDerivs( double* Fnum, double d ){
