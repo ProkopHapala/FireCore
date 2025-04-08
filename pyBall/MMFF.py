@@ -1408,6 +1408,17 @@ def plot_selection(sel=None,ax1=0,ax2=1,ps=None, s=100):
 # ========= Test Functions
 # ====================================
 
+# void setSwitches_testUFF( int bBonds, int bAngles, int bDihedrals, int bInversions, int bNonBonded, int bNonBondNeighs, int bSubtractBondNonBond, int bSubtractAngleNonBond, int bClampNonBonded ){
+#lib.setSwitches_testUFF.argtypes  = [c_int, c_int, c_int, c_int, c_int, c_int, c_int, c_int, c_int]
+#lib.setSwitches_testUFF.restype   =  None
+#def setSwitches_testUFF( bBonds=0, bAngles=0, bDihedrals=0, bInversions=0, bNonBonded=0, bNonBondNeighs=0, bSubtractBondNonBond=0, bSubtractAngleNonBond=0, bClampNonBonded=0 ):
+#    return lib.setSwitches_testUFF( bBonds, bAngles, bDihedrals, bInversions, bNonBonded, bNonBondNeighs, bSubtractBondNonBond, bSubtractAngleNonBond, bClampNonBonded )
+
+# void test_UFF( int test ){
+lib.test_UFF.argtypes  = [c_int]
+lib.test_UFF.restype   =  None
+def test_UFF( test ):
+    return lib.test_UFF( test )
 
 # ====================================
 # ========= Python Functions

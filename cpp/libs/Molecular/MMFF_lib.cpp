@@ -252,6 +252,101 @@ void  scan_constr( int nconf, int ncontr, int *icontrs, double* contrs, double* 
 }
 
 
+/*void setSwitches_testUFF( int bBonds, int bAngles, int bDihedrals, int bInversions, int bNonBonded, int bNonBondNeighs, int bSubtractBondNonBond, int bSubtractAngleNonBond, int bClampNonBonded ){
+    #define _setbool(b,i) { if(i>0){b=true;}else if(i<0){b=false;} }
+    _setbool( W.ffu.bBonds                , bBonds                );
+    _setbool( W.ffu.bAngles               , bAngles               );
+    _setbool( W.ffu.bDihedrals            , bDihedrals            );
+    _setbool( W.ffu.bInversions           , bInversions           );
+    _setbool( W.ffu.bNonBonded            , bNonBonded            );
+    _setbool( W.ffu.bNonBondNeighs        , bNonBondNeighs        );
+    _setbool( W.ffu.bSubtractBondNonBond  , bSubtractBondNonBond  );
+    _setbool( W.ffu.bSubtractAngleNonBond , bSubtractAngleNonBond );
+    _setbool( W.ffu.bClampNonBonded       , bClampNonBonded       );
+    printf( "setSwitches_testUFF() bBonds=%i bAngles=%i bDihedrals=%i bInversions=%i | bNonBonded=%i bNonBondNeighs=%i bSubtractBondNonBond=%i bSubtractAngleNonBond=%i bClampNonBonded=%i \n", W.ffu.bBonds, W.ffu.bAngles, W.ffu.bDihedrals, W.ffu.bInversions, W.ffu.bNonBonded, W.ffu.bNonBondNeighs, W.ffu.bSubtractBondNonBond, W.ffu.bSubtractAngleNonBond, W.ffu.bClampNonBonded );
+    #undef _setbool
+}*/
+
+void test_UFF( int test ){
+    W.ffu.bBonds                = 0;
+    W.ffu.bAngles               = 0;
+    W.ffu.bDihedrals            = 0;
+    W.ffu.bInversions           = 0;
+    W.ffu.bNonBonded            = 0;
+    W.ffu.bNonBondNeighs        = 0;
+    W.ffu.bSubtractBondNonBond  = 0;
+    W.ffu.bSubtractAngleNonBond = 0;
+    W.ffu.bClampNonBonded       = 0;
+    if     (test== 1){ printf("MMFF_lib.cpp::test_UFF(1): bonds\n");      
+        W.ffu.bBonds = 1; }
+    else if(test== 2){ printf("MMFF_lib.cpp::test_UFF(2): angles\n");     
+        W.ffu.bAngles = 1; }
+    else if(test== 3){ printf("MMFF_lib.cpp::test_UFF(3): dihedrals\n");  
+        W.ffu.bDihedrals = 1; }
+    else if(test== 4){ printf("MMFF_lib.cpp::test_UFF(4): inversions\n"); 
+        W.ffu.bInversions = 1; }
+    else if(test== 5){ printf("MMFF_lib.cpp::test_UFF(5): nb\n"); 
+        W.ffu.bNonBonded = 1; }
+    else if(test== 6){ printf("MMFF_lib.cpp::test_UFF(6): nb_excluding_bonds_subtract_noclamp\n"); 
+        W.ffu.bBonds = 1; 
+        W.ffu.bNonBonded = 1; 
+        W.ffu.bSubtractBondNonBond = 1; }
+    else if(test== 7){ printf("MMFF_lib.cpp::test_UFF(7): nb_excluding_bonds_subtract_clamp\n"); 
+        W.ffu.bBonds = 1; 
+        W.ffu.bNonBonded = 1; 
+        W.ffu.bSubtractBondNonBond = 1; 
+        W.ffu.bClampNonBonded = 1; }
+    else if(test== 8){ printf("MMFF_lib.cpp::test_UFF(8): nb_excluding_bonds_ng4\n"); 
+        W.ffu.bBonds = 1; 
+        W.ffu.bNonBonded = 1;
+        W.ffu.bNonBondNeighs = 1; }
+    else if(test== 9){ printf("MMFF_lib.cpp::test_UFF(9): nb_excluding_angles_subtract_noclamp\n"); 
+        W.ffu.bAngles = 1;
+        W.ffu.bNonBonded = 1;
+        W.ffu.bSubtractAngleNonBond = 1; }
+    else if(test==10){ printf("MMFF_lib.cpp::test_UFF(10): nb_excluding_angles_subtract_clamp\n"); 
+        W.ffu.bAngles = 1;
+        W.ffu.bNonBonded = 1;
+        W.ffu.bSubtractAngleNonBond = 1;
+        W.ffu.bClampNonBonded = 1; }
+    else if(test==11){ printf("MMFF_lib.cpp::test_UFF(11): all_subtract_noclamp\n"); 
+        W.ffu.bBonds = 1;
+        W.ffu.bAngles = 1;
+        W.ffu.bDihedrals = 1;
+        W.ffu.bInversions = 1;
+        W.ffu.bNonBonded = 1;
+        W.ffu.bSubtractBondNonBond = 1;
+        W.ffu.bSubtractAngleNonBond = 1; }
+    else if(test==12){ printf("MMFF_lib.cpp::test_UFF(12): all_subtract_clamp\n"); 
+        W.ffu.bBonds = 1;
+        W.ffu.bAngles = 1;
+        W.ffu.bDihedrals = 1;
+        W.ffu.bInversions = 1;
+        W.ffu.bNonBonded = 1;
+        W.ffu.bSubtractBondNonBond = 1;
+        W.ffu.bSubtractAngleNonBond = 1;
+        W.ffu.bClampNonBonded = 1; }
+    else if(test==13){ printf("MMFF_lib.cpp::test_UFF(13): all_ng4_noclamp\n"); 
+        W.ffu.bBonds = 1;
+        W.ffu.bAngles = 1;
+        W.ffu.bDihedrals = 1;
+        W.ffu.bInversions = 1;
+        W.ffu.bNonBonded = 1;
+        W.ffu.bNonBondNeighs = 1; 
+        W.ffu.bSubtractAngleNonBond = 1; }
+    else if(test==14){ printf("MMFF_lib.cpp::test_UFF(14): all_ng4_clamp\n"); 
+        W.ffu.bBonds = 1;
+        W.ffu.bAngles = 1;
+        W.ffu.bDihedrals = 1;
+        W.ffu.bInversions = 1;
+        W.ffu.bNonBonded = 1;
+        W.ffu.bNonBondNeighs = 1; 
+        W.ffu.bSubtractAngleNonBond = 1;
+        W.ffu.bClampNonBonded = 1; }
+    W.ffu.test_UFF();
+}
+
+
 void setSwitches2( int CheckInvariants, int PBC, int NonBonded, int NonBondNeighs,  int SurfAtoms, int GridFF, int MMFF, int Angles, int PiSigma, int PiPiI ){
     #define _setbool(b,i) { if(i>0){b=true;}else if(i<0){b=false;} }
     _setbool( W.bCheckInvariants, CheckInvariants  );
@@ -273,7 +368,6 @@ void setSwitches2( int CheckInvariants, int PBC, int NonBonded, int NonBondNeigh
     //W.ffl.bSubtractAngleNonBond = W.bNonBonded;
     #undef _setbool
 }
-
 
 
 

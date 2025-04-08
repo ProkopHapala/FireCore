@@ -319,11 +319,15 @@ inline float getLJQ( const Vec3f& dp, Vec3f& f, const Vec3f& REQ, const float R2
 inline double getLJQ( const Vec3d& dp, Vec3d& f, const Quat4d& REQ, const double R2damp ){
     const double   r2   = dp.norm2();
     // ---- Coulomb
-    const double  ir2_ = 1/( r2 + R2damp  );
-    double E = COULOMB_CONST*REQ.z*sqrt( ir2_ );
-    double F = E*ir2_ ;
-    // --- LJ 
+    // Note: damped electrostatics does not reproduce UFF results with PTCDA
+    //const double  ir2_ = 1/( r2 + R2damp  );
+    //double E = COULOMB_CONST*REQ.z*sqrt( ir2_ );
+    //double F = E*ir2_ ;
     const double  ir2 = 1/r2;
+    double E = COULOMB_CONST*REQ.z*sqrt( ir2 );
+    double F = E*ir2 ;
+    // --- LJ 
+    //const double  ir2 = 1/r2;
     const double  u2  = REQ.x*REQ.x*ir2;
     const double  u6  = u2*u2*u2;
     const double vdW  = u6*REQ.y;
@@ -338,11 +342,15 @@ inline double getLJQH( const Vec3d& dp, Vec3d& f, const Quat4d& REQH, const doub
     const double  r2  = dp.norm2();
     double E,F;
     // ---- Electrostatic
-    const double ir2_ = 1/( r2 + R2damp  );
-    E =  COULOMB_CONST*REQH.z*sqrt( ir2_ );
-    F =  E*ir2_ ;
+    // Note: damped electrostatics does not reproduce UFF results with PTCDA
+    //const double ir2_ = 1/( r2 + R2damp  );
+    //E =  COULOMB_CONST*REQH.z*sqrt( ir2_ );
+    //F =  E*ir2_ ;
+    const double ir2 = 1/r2;
+    E =  COULOMB_CONST*REQH.z*sqrt( ir2 );
+    F =  E*ir2 ;
     // --- LJ 
-    const double  ir2 = 1/r2;
+    //const double  ir2 = 1/r2;
     const double  u2  = REQH.x*REQH.x*ir2;
     const double  u6  = u2*u2*u2;
     const double vdW  = u6*REQH.y;
@@ -358,9 +366,13 @@ inline double getMorseQH( const Vec3d& dp, Vec3d& f, const Quat4d& REQH, const d
     const double r2    = dp.norm2();
     double E,F;
     // --- Coulomb
-    const double ir2_  = 1/( r2 + R2damp );
-    E = COULOMB_CONST*REQH.z*sqrt( ir2_ );
-    F = E*-ir2_ ;
+    // Note: damped electrostatics does not reproduce UFF results with PTCDA
+    //const double ir2_  = 1/( r2 + R2damp );
+    //E = COULOMB_CONST*REQH.z*sqrt( ir2_ );
+    //F = E*-ir2_ ;
+    const double ir2  = 1/r2;
+    E = COULOMB_CONST*REQH.z*sqrt( ir2 );
+    F = E*-ir2 ;
     // --- Morse
     const double  r  = sqrt( r2   );
     const double  e  = exp( -K*(r-REQH.x) );

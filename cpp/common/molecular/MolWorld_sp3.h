@@ -208,6 +208,7 @@ class MolWorld_sp3 : public SolverInterface { public:
 	bool bPlaneSurfForce   = false; // 7
     bool bMMFF             = true;  // 8
     bool bUFF              = false; // 9
+    // TBD b141, bSimple, bConj and bCumulene are relevant only when you build up the force field, not sure they sould be defined here globally...
     bool b141              = true;  // 10 // seems not to be used in assignUFFtypes()
     bool bSimple           = false; // 11 // use assignUFFtypes_simplerule() or assignUFFtypes_findrings() in assignUFFtypes()
     //bool bSimple           = true;   // use assignUFFtypes_simplerule() or assignUFFtypes_findrings() in assignUFFtypes()
@@ -996,8 +997,8 @@ void printPBCshifts(){
         DEBUG
         nbmol.bindOrRealloc( ff->natoms, ff->apos, ff->fapos, ff->REQs, ff->atypes );    
         //nbmol.bindOrRealloc( na, apos, fapos, 0, 0 );   
-        //builder.export_atypes( nbmol.atypes );     
-        //builder.export_REQs( nbmol.REQs   );       ff->REQs=nbmol.REQs;
+        //builder.export_atypes( nbmol.atypes );
+        builder.export_REQs( nbmol.REQs   );       ff->REQs=nbmol.REQs;
         //printf("DEBUG initNBmol 1 nbmol.print_nonbonded(); \n"); nbmol.print_nonbonded();
 
         DEBUG

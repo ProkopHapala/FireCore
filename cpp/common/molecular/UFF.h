@@ -59,13 +59,18 @@ class UFF : public NBFF { public:
     //Quat4i*  neighCell=0;  // [natoms] // from NBFF
 
     // dimensions of the system
-    double Etot, Eb, Ea, Ed, Ei, Enb, Esurf;                          // total, bond, angle, dihedral, inversion energies
+    double Etot=0.0, Eb=0.0, Ea=0.0, Ed=0.0, Ei=0.0, Enb=0.0, Esurf=0.0;                          // total, bond, angle, dihedral, inversion energies
     int    nbonds, nangles, ndihedrals, ninversions, nf; // number of bonds, angles, dihedrals, inversions, number of force pieces
     int i0dih,i0inv,i0ang,i0bon;                         
     //Vec3d * vapos __attribute__((aligned(64))) = 0;      // [natoms] velocities of atoms
 
     Mat3d   invLvec;    // inverse lattice vectors
     double  SubNBTorstionFactor   = 0.5;    // if >0 we subtract torsion energy from non-bonded energy
+    
+    bool bBonds = false;       // used for test_UFF
+    bool bAngles = false;      // used for test_UFF
+    bool bDihedrals = false;   // used for test_UFF
+    bool bInversions = false;  // used for test_UFF
 
     // Auxiliary Variables
     
@@ -668,7 +673,7 @@ class UFF : public NBFF { public:
             //f.mul(-1.0); fbon[ib]=f; // should we do this ?   if we commented out if(ing<ia) continue; we don't need this
             // TBD exclude non-bonded interactions between 1-2 neighbors
         }
-        return E;
+        return E*0.5;
     }
     __attribute__((hot))  
     double evalBonds(){
@@ -859,7 +864,8 @@ class UFF : public NBFF { public:
         Vec3d fp3; fp3.set_lincomb( -c123,   fp1, -c432-1., fp4 );   // from condition torq_p2=0  ( conservation of angular momentum )
         Vec3d fp2; fp2.set_lincomb( +c123-1, fp1, +c432   , fp4 );   // from condition torq_p3=0  ( conservation of angular momentum )
         
-        if(bSubNonBond){
+        // Note: in UFF 1-4 are not accounted for, therefore this part of the code is never used
+        /*if(bSubNonBond){
             const Quat4i ijkl  = dihAtoms[id];
             const Quat4d REQij = _mixREQ( REQs[ijkl.x], REQs[ijkl.w]); 
             Vec3d fnb; 
@@ -870,8 +876,8 @@ class UFF : public NBFF { public:
             fnb.mul( SubNBTorstionFactor );
             fp1.add( fnb );
             fp4.sub( fnb );
-        }
-        
+        }*/
+
         const int i4=id*4;
         fdih[i4  ]=fp1;
         fdih[i4+1]=fp2;
@@ -932,8 +938,9 @@ class UFF : public NBFF { public:
         Vec3d fp2; fp2.set_lincomb( -c123-1, fp1, -c432   , fp4 );   // from condition torq_p3=0  ( conservation of angular momentum )
         //Vec3d fp2_ = (fp1_ + fp4_ + fp3_ )*-1.0;                   // from condition ftot=0     ( conservation of linear  momentum )
         //Vec3d fp3_ = (fp1_ + fp4_ + fp2_ )*-1.0;                   // from condition ftot=0     ( conservation of linear  momentum )
-        
-        if(bSubNonBond){
+
+        // Note: in UFF 1-4 are not accounted for, therefore this part of the code is never used        
+        /*if(bSubNonBond){
             const Quat4i ijkl  = dihAtoms[id];
             const Quat4d REQij = _mixREQ( REQs[ijkl.x], REQs[ijkl.w]); 
             Vec3d fnb; 
@@ -944,7 +951,7 @@ class UFF : public NBFF { public:
             fnb.mul( SubNBTorstionFactor );
             fp1.add( fnb );
             fp4.sub( fnb );
-        }
+        }*/
 
         const int i4=id*4;
         fdih[i4  ]=fp1;
@@ -1041,7 +1048,8 @@ class UFF : public NBFF { public:
         Vec3d fp3 = ( f_32 - fp4 );
         const int i4=id*4;
 
-        if(bSubNonBond){
+        // Note: in UFF 1-4 are not accounted for, therefore this part of the code is never used
+        /*if(bSubNonBond){
             const Quat4i ijkl  = dihAtoms[id];
             const Quat4d REQij = _mixREQ( REQs[ijkl.x], REQs[ijkl.w]); 
             Vec3d fnb; 
@@ -1052,7 +1060,7 @@ class UFF : public NBFF { public:
             fnb.mul( SubNBTorstionFactor );
             fp1.add( fnb );
             fp4.sub( fnb );
-        }
+        }*/
 
         fdih[i4  ]=fp1;
         fdih[i4+1]=fp2;
@@ -1089,8 +1097,11 @@ class UFF : public NBFF { public:
         const double Fmax2     = FmaxNonBonded*FmaxNonBonded;
         const bool bSubNonBond = SubNBTorstionFactor>0;
         for( int id=0; id<ndihedrals; id++){  
+// PN
             E+= evalDihedral_Prokop(id, bSubNonBond, R2damp, Fmax2 );
+            //E+= evalDihedral_Prokop_Old(id, bSubNonBond, R2damp, Fmax2 );
             //E+= evalDihedral_Paolo(id, bSubNonBond, R2damp, Fmax2 );
+// PN - end
         }
         return E;
     }
@@ -1915,6 +1926,43 @@ class UFF : public NBFF { public:
     }
     */
 
+    // function to automatically test UFF implementation versus LAMMPS calculations 
+    // reference data are for 20 randomly distorted PTCDA configurations
+    void test_UFF(){
+        const double Fmax2 = FmaxNonBonded*FmaxNonBonded;
+        Ea  = 0.0;
+        Ed  = 0.0;
+        Ei  = 0.0;
+        Enb = 0.0;
+        cleanForce();
+        Eb = evalBonds(); 
+        if(!bBonds)     { Eb = 0.0; cleanForce(); }
+        if(bAngles)     { Ea = evalAngles(); }
+        if(bDihedrals)  { Ed = evalDihedrals(); }
+        if(bInversions) { Ei = evalInversions(); }
+        // ---- assemble (we need to wait when all atoms are evaluated)
+        for(int ia=0; ia<natoms; ia++){
+            assembleAtomForce(ia); 
+            if(bNonBonded){ 
+                if(bNonBondNeighs){
+                    if(bPBC){ Enb+=evalLJQs_ng4_PBC_atom_omp( ia ); }
+                    else    { Enb+=evalLJQs_ng4_atom_omp    ( ia ); } 
+                }else{
+                    if(bPBC){ Enb+=evalLJQs_PBC_atom_omp( ia, Fmax2 ); }
+                    else    { Enb+=evalLJQs_atom_omp    ( ia, Fmax2 ); } 
+                }
+            }
+        }
+        FILE *file = fopen("f_firecore.txt","w");
+        for(int ja=0; ja<natoms; ja++) {
+            fprintf(file, "%i %23.15g %23.15g %23.15g %23.15g %23.15g %23.15g\n", ja+1, apos[ja].x,apos[ja].y,apos[ja].z, fapos[ja].x,fapos[ja].y,fapos[ja].z);
+        }
+        fclose(file);
+        double E=Eb+Ea+Ed+Ei+Enb;
+        FILE *file2 = fopen("e_firecore.txt","w");
+        fprintf(file2, "%23.15g\n", E);
+        fclose(file2);
+    }
 
 };
 
