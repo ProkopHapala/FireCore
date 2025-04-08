@@ -3,6 +3,7 @@ import os
 import numpy as np
 import ctypes
 import pyopencl as cl
+import pyopencl.tools
 import pyopencl.array as cl_array
 import pyopencl.cltypes as cltypes
 import matplotlib.pyplot as plt
@@ -333,6 +334,67 @@ class GridFF_cl:
         
         return p_buf.get(), v_buf.get()
     
+    def fit3D_with_buffer(self, buffer, nPerStep=10, nmaxiter=300, dt=0.5, Ftol=1e-16, damp=0.15, bConvTrj=False, bReturn=True, bPrint=False, bTime=True, bDebug=True):
+        """
+        A wrapper around fit3D that handles buffer size mismatches
+        """
+        # Get the actual size of the input buffer in bytes
+        buffer_size_bytes = buffer.size
+        
+        # Calculate how many float32 elements that corresponds to
+        num_elements = buffer_size_bytes // 4  # 4 bytes per float32
+        
+        # Check if this matches our expected grid size
+        expected_elements = self.gcl.nxyz
+        
+        if num_elements != expected_elements:
+            print(f"Warning: Buffer size ({num_elements}) doesn't match expected grid size ({expected_elements})")
+            print(f"Creating a temporary buffer of the correct size...")
+            
+            # Create a temporary buffer of the correct size
+            temp_buff = cl.Buffer(self.ctx, cl.mem_flags.READ_WRITE, size=expected_elements * 4)
+            
+            # Determine how many elements we can safely copy
+            copy_elements = min(num_elements, expected_elements)
+            
+            # Use a kernel to copy the data (up to the smaller size)
+            nL = self.nloc
+            nG = clu.roundup_global_size(copy_elements, nL)
+            
+            # Create a simple copy kernel if needed
+            if not hasattr(self.prg, 'copyPartialBuffer'):
+                copy_kernel = """
+                __kernel void copyPartialBuffer(
+                    const int n,
+                    __global const float* src,
+                    __global float* dst
+                ) {
+                    int i = get_global_id(0);
+                    if (i < n) {
+                        dst[i] = src[i];
+                    }
+                }
+                """
+                self.prg = cl.Program(self.ctx, self.prg.get_info(cl.program_info.SOURCE) + copy_kernel).build()
+            
+            # Copy the data
+            self.prg.copyPartialBuffer(self.queue, (nG,), (nL,), np.int32(copy_elements), buffer, temp_buff)
+            self.queue.finish()
+            
+            # Use the temporary buffer for fitting
+            result, trj = self.fit3D(temp_buff, nPerStep=nPerStep, nmaxiter=nmaxiter, dt=dt, 
+                                    Ftol=Ftol, damp=damp, bConvTrj=bConvTrj, 
+                                    bReturn=bReturn, bPrint=bPrint, bTime=bTime, bDebug=bDebug)
+            
+            return result, trj
+        else:
+            # If sizes match, just call the original fit3D
+            return self.fit3D(buffer, nPerStep=nPerStep, nmaxiter=nmaxiter, dt=dt, 
+                            Ftol=Ftol, damp=damp, bConvTrj=bConvTrj, 
+                            bReturn=bReturn, bPrint=bPrint, bTime=bTime, bDebug=bDebug)
+
+
+
     def fit3D(self, Ref_buff, nmaxiter=300, dt=0.5, Ftol=1e-16, damp=0.15, nPerStep=50, bConvTrj=False, bReturn=True, bPrint=False, bTime=True, bDebug=True ):
         # NOTE / TODO : It is a bit strange than GridFF.h::makeGridFF_Bspline_d() the fit is fastes with damp=0.0 but here damp=0.15 performs better
         #print(f"GridFF_cl::fit3D().1 Queue: {self.queue}, Context: {self.ctx}")
@@ -441,7 +503,15 @@ class GridFF_cl:
         # -- used_by: project_atoms_on_grid, 
         self.Qgrid_buff = cl.Buffer(self.ctx, cl.mem_flags.WRITE_ONLY, size=nxyz*bytePerFloat )
         # -- used_by: project_atoms_on_grid, poisson
+        # self.V_Coul_buff = cl.Buffer(self.ctx, cl.mem_flags.WRITE_ONLY, size=nxyz*bytePerFloat )
+    
+    def prepare_Coulomb_buffers(self, na, nxyz, bytePerFloat=4 ):
+        #print( "GridFF_cl::prepare_Coulomb_buffers() " )
+        self.atoms_buff  = cl.Buffer(self.ctx, cl.mem_flags.READ_ONLY,  size=na*4*bytePerFloat)
+        self.REQs_buff   = cl.Buffer(self.ctx, cl.mem_flags.READ_ONLY,  size=na*4*bytePerFloat)
+        self.Qgrid_buff = cl.Buffer(self.ctx, cl.mem_flags.WRITE_ONLY, size=nxyz*bytePerFloat )
         self.V_Coul_buff = cl.Buffer(self.ctx, cl.mem_flags.WRITE_ONLY, size=nxyz*bytePerFloat )
+
 
     def make_MorseFF(self, atoms, REQs, nPBC=(4, 4, 0), dg=(0.1, 0.1, 0.1), ng=None,            lvec=[[20.0, 0.0, 0.0], [0.0, 20.0, 0.0], [0.0, 0.0, 20.0]],                     g0=(0.0, 0.0, 0.0), GFFParams=(0.1, 1.5, 0.0, 0.0), bTime=True, bReturn=True ):
 
@@ -608,6 +678,7 @@ class GridFF_cl:
             const float4 dg                 // 6 Grid dimensions
         ) {
         """
+        print("Debug Project Atoms on Grid Quintic PBC [%f, %f, %f, %f]" % (self.gcl.g0[0], self.gcl.g0[1], self.gcl.g0[2], self.gcl.g0[3]))
         nxyz2 = np.int32( ns[0]*ns[1]*ns[2] * 2 )
         self.prg.set( self.queue, sz_glob, sz_loc, nxyz2, self.Qgrid_buff, np.float32(0.0) )
         self.prg.project_atoms_on_grid_quintic_pbc( self.queue, sz_glob, sz_loc,
@@ -617,8 +688,12 @@ class GridFF_cl:
 
     def project_atoms_on_grid_quintic_pbc(self, atoms, ng=None,   dg=(0.1, 0.1, 0.1),    lvec=[[20.0, 0.0, 0.0], [0.0, 20.0, 0.0], [0.0, 0.0, 20.0]], g0=(0.0, 0.0, 0.0), bReturn=True ):
 
+        g0=self.gcl.g0
         grid = GridShape( ns=ng, dg=dg, lvec=lvec, g0=g0 )
         self.set_grid( grid )
+
+        print("Debug Project Atoms on Grid Quintic PBC %f %f %f" % g0 )
+
 
         na = len(atoms)
         buff_names={'atoms','Qgrid'}
@@ -766,29 +841,74 @@ class GridFF_cl:
         Vol = self.gsh.V * Lz_slab/Lz
         dVcor  = 4.0 * np.pi * COULOMB_CONST * dipol/Vol;
         Vcor0 = -dVcor * Lz_slab/2;
+        print( "dz, Lz, dL_slab, Lz_slab, Vol, dVcor, Vcor0 ,g0 ,g0", dz, Lz, dL_slab, Lz_slab, Vol, dVcor, Vcor0, self.gcl.g0,self.gsh.g0 )
         buff_names = {'V_Coul'}
         self.try_make_buffs(buff_names, 0, self.gcl.nxyz )
+        # self.V_Coul_buff = cl.Buffer(self.ctx, cl.mem_flags.WRITE_ONLY, size=self.gcl.nxyz*bytePerFloat )
 
+        
         raw_nz = self.gsh.ns[2] + nz_slab
         raw_nz_int = int(np.ceil(raw_nz))
         adj_nz = clu.next_nice(raw_nz_int, allowed_factors={2, 3, 5})
+       
       
-        ns_cl = np.array([self.gsh.ns[0], self.gsh.ns[1], adj_nz, 0], dtype=np.int32)
+        #ns_cl = np.array([self.gsh.ns[0], self.gsh.ns[1], adj_nz, 0], dtype=np.int32)
+        ns_cl = np.array([self.gsh.ns[0], self.gsh.ns[1], adj_nz-nz_slab, (nz_slab) ], dtype=np.int32)
+        # ns_cl = np.array((self.gsh.ns[0], self.gsh.ns[1], self.gsh.ns[2], nz_slab), dtype=np.int32)
+        # ns_cl  = np.array( self.gsh.ns+(nz_slab,),  dtype=np.int32   )
+        # Debug dimensions
+        print(f"Buffer dimensions: {self.gsh.ns}")
+        print(f"Kernel parameters: ns_cl={ns_cl}")
 
         params = np.array( [dz, Vol, dVcor, Vcor0], dtype=np.float32 )
         sz_loc  = (4,4,4,)
         sz_glob = clu.roundup_global_size_3d( self.gsh.ns, sz_loc)
+        print("!!!!!! slabPotential()  bTranspose  ", bTranspose )
         if bTranspose:
-            self.prg.slabPotential_zyx( self.queue, sz_glob, sz_loc, ns_cl, Vin_buff, self.V_Coul_buff, params )
+            print( "GridFF_cl::slabPotential() Transpose => slabPotential_zyx" )
+            event=self.prg.slabPotential_zyx( self.queue, sz_glob, sz_loc, ns_cl, Vin_buff, self.V_Coul_buff, params )
         else:
-            self.prg.slabPotential( self.queue, sz_glob, sz_loc, ns_cl, Vin_buff, self.V_Coul_buff, params )
+            event=self.prg.slabPotential( self.queue, sz_glob, sz_loc, ns_cl, Vin_buff, self.V_Coul_buff, params )
+        event.wait()
+        self.queue.finish()
+        # Debug check buffer state
+        debug_check = np.empty(self.gsh.ns[::-1], dtype=np.float32)
+        cl.enqueue_copy(self.queue, debug_check, self.V_Coul_buff)
+        print(f"V_Coul_buff state in slabPotential: range [{debug_check.min():.3f}, {debug_check.max():.3f}]")
         if bDownload:
             if bTranspose:
                 V_Coul = np.empty( self.gsh.ns, dtype=np.float32  )
             else:
                 V_Coul = np.empty( self.gsh.ns[::-1], dtype=np.float32  )
+
+            # Debug before copy
+            debug_before = np.empty_like(V_Coul)
+            cl.enqueue_copy(self.queue, debug_before, self.V_Coul_buff)
+            self.queue.finish()
+            print("\nDebug V_Coul_buff before final copy:")
+            print(f"Shape: {debug_before.shape}")
+            print(f"Range: {debug_before.min():.3f} to {debug_before.max():.3f}")
+
             cl.enqueue_copy(self.queue, V_Coul, self.V_Coul_buff)
+            # cl.enqueue_copy(self.queue, self.V_Coul_buff, V_Coul)
+            self.queue.finish()
+
+            # Debug after copy
+            debug_after = np.empty_like(V_Coul)
+            cl.enqueue_copy(self.queue, debug_after, self.V_Coul_buff)
+            self.queue.finish()
+            print("\nDebug V_Coul_buff after final copy:")
+            print(f"Shape: {debug_after.shape}")
+            print(f"Range: {debug_after.min():.3f} to {debug_after.max():.3f}")
+            
             return V_Coul
+        
+        # if bDownload:
+        #     result = np.empty(self.gsh.ns[::-1] if bTranspose else self.gsh.ns, dtype=np.float32)
+        #     evt = cl.enqueue_copy(self.queue, result, self.V_Coul_buff)
+        #     evt.wait()
+        #     return result
+        # return None
 
     def laplace_real_loop_inert(self, niter=16, cSOR=0.0, cV=0.6, bReturn=False, sh=None ):
         print( "GridFF_cl::laplace_real_loop_inert() " )
@@ -874,7 +994,8 @@ class GridFF_cl:
 
 
     def makeCoulombEwald_slab(self, atoms, Lz_slab=20.0, dipol=0.0, niter=4, bDipoleCoorection=False, bReturn=True, bTranspose=False, bSaveQgrid=False, bCheckVin=False, bCheckPoisson=False ):
-        print( "GridFF_cl::makeCoulombEwald_slab() " )
+        print( f"GridFF_cl::makeCoulombEwald_slab()  Lz_slab {Lz_slab}, dipol {dipol} niter {niter} bDipoleCoorectio {bDipoleCoorection} bReturn {bReturn} bTranspose {bTranspose} bSaveQgrid {bSaveQgrid} bCheckVin{bCheckVin} bCheckPoisson {bCheckPoisson} " )
+
         clu.try_load_clFFT()
         if self.gcl is None: 
             print("ERROR in GridFF_cl::makeCoulombEwald() gcl is None, => please call set_grid() first " )
@@ -901,6 +1022,11 @@ class GridFF_cl:
         self.try_make_buffs(buff_names, na, nxyz_slab )
         atoms_np = np.array(atoms, dtype=np.float32)
 
+        # nxyz = self.gcl.nxyz
+        # na = len(atoms)
+        # self.prepare_Coulomb_buffers(na, nxyz)
+        # self.try_make_buffs('V_Coul', na, nxyz_slab )
+
         # NOTE / TODO : This is strange, not sure why we need to shift the coordinates
         # atoms_np[:,0] += self.gcl.dg[0] * 1 
         # atoms_np[:,1] += self.gcl.dg[1] * 1
@@ -913,7 +1039,7 @@ class GridFF_cl:
         cl.enqueue_copy(self.queue, self.atoms_buff, atoms_np)
 
         print("GridFF_cl::makeCoulombEwald_slab()._project_atoms_on_grid_quintic_pbc")
-        self._project_atoms_on_grid_quintic_pbc( sz_glob, sz_loc, np.int32(na), ns_cl  )   
+        self._project_atoms_on_grid_quintic_pbc(sz_glob, sz_loc, np.int32(na), ns_cl)
 
         if bSaveQgrid: 
             #sh    = self.gsh.ns[::-1]
@@ -921,9 +1047,140 @@ class GridFF_cl:
             cl.enqueue_copy(self.queue, Qgrid, self.Qgrid_buff )
             print("Qgrid min,max ", Qgrid[:,:,:,0].min(), Qgrid[:,:,:,0].max() )
             np.save( "./data/NaCl_1x1_L3/Qgrid_ocl.npy", Qgrid[:,:,:,0] )
+            ####### Plot three slices through the middle
+            plt.figure(figsize=(15, 5))
+            mid_x= 0
+            mid_y= 40
+            mid_z= 2
+            
+            # XY plane
+            plt.subplot(131)
+            plt.imshow(Qgrid[mid_z, :, :, 0], origin='lower')
+            plt.colorbar(label='Charge density')
+            plt.title(f'XY plane (z={mid_z})')
+            
+            # XZ plane
+            plt.subplot(132)
+            plt.imshow(Qgrid[:, mid_y, :, 0], origin='lower')
+            plt.colorbar(label='Charge density')
+            plt.title(f'XZ plane (y={mid_y})')
+            
+            # YZ plane
+            plt.subplot(133)
+            plt.imshow(Qgrid[:, :, mid_x, 0], origin='lower')
+            plt.colorbar(label='Charge density')
+            plt.title(f'YZ plane (x={mid_x})')
+            
+            plt.suptitle('Atom Projection on Grid (Charge Density)')
+            plt.tight_layout()
+            # plt.show()
+            
         
         self.poisson( bReturn=bCheckPoisson, sh=sh )
         Vin_buff = self.laplace_real_loop_inert( bReturn=False, niter=niter, sh=sh )
+
+        # Visualize V1_buff (extended grid with nz_slab)
+        V_after_poisson_laplace = np.empty(sh[::-1], dtype=np.float32)  # Note: sh includes extended z-dimension
+        cl.enqueue_copy(self.queue, V_after_poisson_laplace, Vin_buff)
+        
+        ####### Plot three slices through the middle
+        plt.figure(figsize=(15, 5))
+        mid_x= 0
+        mid_y= 40
+        mid_z= 7
+        
+        
+        # XY plane
+        plt.subplot(131)
+        plt.imshow(V_after_poisson_laplace[:, :, mid_z], origin='lower')
+        plt.colorbar(label='Potential')
+        plt.title(f'XY plane (z={mid_z})')
+        
+        # XZ plane
+        plt.subplot(132)
+        plt.imshow(V_after_poisson_laplace[:, mid_y, :], origin='lower')
+        plt.colorbar(label='Potential')
+        plt.title(f'XZ plane (y={mid_y})')
+        
+        # YZ plane
+        plt.subplot(133)
+        plt.imshow(V_after_poisson_laplace[ mid_x, :,:], origin='lower')
+        plt.colorbar(label='Potential')
+        plt.title(f'YZ plane (x={mid_x})')
+        
+        plt.suptitle('Potential After Poisson and Laplace')
+        plt.tight_layout()
+        # plt.show()
+            
+        # Before calling slabPotential
+        print("\nDebug before slabPotential:")
+        if hasattr(self, 'V_Coul_buff'):
+            debug_before = np.empty(self.gsh.ns[::-1], dtype=np.float32)
+            cl.enqueue_copy(self.queue, debug_before, self.V_Coul_buff)
+            print(f"V_Coul_buff exists with shape: {debug_before.shape}")
+            print(f"Range: {debug_before.min():.3f} to {debug_before.max():.3f}")
+        else:
+            print("V_Coul_buff does not exist yet")
+
+        V_after_slab = self.slabPotential( Vin_buff, nz_slab, dipol=dipol, bDownload=bReturn, bTranspose=bTranspose )
+        # V_after_slab = np.empty(sh[::-1], dtype=np.float32)  # Note: sh includes extended z-dimension
+        # cl.enqueue_copy(self.queue, V_after_slab, V_Coul_test)
+        # verify_vcoul = np.empty(self.gsh.ns[::-1], dtype=np.float32)
+        # cl.enqueue_copy(self.queue, verify_vcoul, self.V_Coul_buff)
+        # self.queue.finish()
+
+        # Get the size of the buffer in bytes
+        buffer_size_bytes = self.V_Coul_buff.size
+
+        # Calculate the shape based on the known dimensions
+        # For example, if you know the first two dimensions:
+        shape_xy = self.gsh.ns[0:2][::-1]  # First two dimensions in reverse order
+        elements_xy = shape_xy[0] * shape_xy[1]
+        shape_z = buffer_size_bytes // (4 * elements_xy)  # 4 bytes per float32
+
+        # Create an array with the correct shape
+        verify_shape = (*shape_xy, shape_z)
+        verify_vcoul = np.empty(verify_shape, dtype=np.float32)
+
+        # Now copy should work
+        cl.enqueue_copy(self.queue, verify_vcoul, self.V_Coul_buff)
+        self.queue.finish()
+
+        print(f"Verification buffer shape: {verify_vcoul.shape}")
+        print(f"Verification buffer range: [{verify_vcoul.min():.3f}, {verify_vcoul.max():.3f}]")
+
+        ####### Plot three slices through the middle
+        plt.figure(figsize=(15, 5))
+        mid_x= 0
+        mid_y= 40
+        mid_z= 7
+        
+        # XY plane
+        plt.subplot(131)
+        # plt.imshow(V_after_slab[:, :, mid_z], origin='lower')
+        plt.imshow(verify_vcoul[:, :, mid_z], origin='lower')
+        plt.colorbar(label='Potential')
+        plt.title(f'XY plane (z={mid_z})')
+
+        # XZ plane
+        plt.subplot(132)
+        # plt.imshow(V_after_slab[:, mid_y, :], origin='lower')
+        plt.imshow(verify_vcoul[:, mid_y, :], origin='lower')
+        plt.colorbar(label='Potential')
+        plt.title(f'XZ plane (y={mid_y})')
+
+        # YZ plane
+        plt.subplot(133)
+        # plt.imshow(V_after_slab[ mid_x, :,:], origin='lower')
+        plt.imshow(verify_vcoul[ mid_x, :,:], origin='lower')
+        plt.colorbar(label='Potential')
+        plt.title(f'YZ plane (x={mid_x})')
+        plt.suptitle('Potential After Slab')
+        plt.tight_layout()
+        plt.show()
+            
+
+
 
         if bCheckVin:
             sh=self.gsh.ns[::-1]
@@ -931,6 +1188,7 @@ class GridFF_cl:
             cl.enqueue_copy(self.queue, Vin, Vin_buff)
             print("Vin min,max ", Vin.min(), Vin.max() )
 
-        return self.slabPotential( Vin_buff, nz_slab, dipol=dipol, bDownload=bReturn, bTranspose=bTranspose )
+        # return self.slabPotential( Vin_buff, nz_slab, dipol=dipol, bDownload=bReturn, bTranspose=bTranspose )
+        return V_after_slab
 
 

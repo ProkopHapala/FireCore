@@ -2,6 +2,7 @@ import os
 import numpy as np
 import matplotlib.pyplot as plt
 import time
+import pyopencl as cl
 
 #exit()
 #from . import utils as ut
@@ -316,25 +317,112 @@ def test_gridFF_ocl( fname="./data/xyz/NaCl_1x1_L1.xyz", Element_Types_name="./d
         
     
     elif job=="PLQ":
-        
-        
+        x_points = [160, 160, 160, 200]
+        y_points = [200, 240, 280, 200]
+
+
+        g0 = (-grid.Ls[0]*0.5, -grid.Ls[1]*0.5, z0)
+        grid.g0 = g0
+        clgff.set_grid(grid)
+        # g0=(0.0,0.0,0.0)
+
+        def check_vcoul_buffer(clgff):
+            """
+            Quick check of the V_Coul_buff contents
+            """
+            # Get the size of the buffer in bytes
+            buffer_size_bytes = clgff.V_Coul_buff.size
+            
+            # Use the known grid dimensions
+            shape_xy = clgff.gsh.ns[0:2][::-1]
+            elements_xy = shape_xy[0] * shape_xy[1]
+            shape_z = buffer_size_bytes // (4 * elements_xy)
+            
+            # Create the array and copy the data
+            verify_shape = (*shape_xy, shape_z)
+            vcoul_array = np.empty(verify_shape, dtype=np.float32)
+            cl.enqueue_copy(clgff.queue, vcoul_array, clgff.V_Coul_buff)
+            clgff.queue.finish()
+            
+            print(f"V_Coul_buff: shape={vcoul_array.shape}, range=[{vcoul_array.min():.3f}, {vcoul_array.max():.3f}]")
+            
+            return vcoul_array
+
         # --- Coulomb-----#
-        print("Starting Coulomb potential calculation...")
-        Vcoul = clgff.makeCoulombEwald_slab(xyzq, niter=2)
-        #VcoulB,trj_coul = clgff.fit3D( clgff.V_Coul_buff, nPerStep=10, nmaxiter=500, damp=0.05, bConvTrj=True );
-        VcoulB,trj_coul = clgff.fit3D( clgff.V1_buff, nPerStep=10, nmaxiter=5000, damp=0.05, bConvTrj=True );
+        print("!!!! Starting Coulomb potential calculation...")
+        # print("Grid origin for Coulomb:", g0)
+        Vcoul = clgff.makeCoulombEwald_slab(xyzq, niter=2,bSaveQgrid=True,bCheckVin=True, bTranspose=True)
+        # temp_before = np.empty(clgff.gsh.ns[::-1], dtype=np.float32)
+        # cl.enqueue_copy(clgff.queue, temp_before, clgff.V_Coul_buff)
+        
+        temp_before = check_vcoul_buffer(clgff)
+
+
+        VcoulB,trj_coul = clgff.fit3D( clgff.V_Coul_buff, nPerStep=10, nmaxiter=50, damp=0.05, bConvTrj=True );
+        # VcoulB, trj_coul = clgff.fit3D_with_buffer(clgff.V_Coul_buff, nPerStep=10, nmaxiter=50, damp=0.05, bConvTrj=True)
+
+        # VcoulB,trj_coul = clgff.fit3D( clgff.V1_buff, nPerStep=10, nmaxiter=50, damp=0.05, bConvTrj=True );
+        # VcoulB,trj_coul = clgff.fit3D( Vcoul, nPerStep=10, nmaxiter=50, damp=0.05, bConvTrj=True );
+
+        # temp_coulomb = np.empty(clgff.gsh.ns[::-1], dtype=np.float32)
+        # # cl.enqueue_copy(clgff.queue, temp_coulomb, clgff.V1_buff)
+        # cl.enqueue_copy(clgff.queue, temp_coulomb, clgff.V_Coul_buff)
+        
+        
+        # nz_slab = Lz_slab/clgff.gsh.dg[2]
+        # raw_nz = clgff.gsh.ns[2] + nz_slab
+        # adj_nz = clu.next_nice(int(np.ceil(raw_nz)), allowed_factors={2, 3, 5})
+        # extended_shape = (clgff.gsh.ns[0], clgff.gsh.ns[1], adj_nz)
+        # temp_v1 = np.empty(extended_shape[::-1], dtype=np.float32)
+        # cl.enqueue_copy(clgff.queue, temp_v1, clgff.V1_buff)
+        
+        
 
 
 
 
         # --- Morse------#
         print("Starting Morse potential calculation...")
-        g0 = ( -grid.Ls[0]*0.5, -grid.Ls[1]*0.5, z0 )
+        # g0 = ( -grid.Ls[0]*0.5, -grid.Ls[1]*0.5, z0 )
+        # print("Grid origin for Morse:", g0)
         nPBC_mors = autoPBC(atoms.lvec,Rcut=20.0); print("autoPBC(nPBC_mors): ", nPBC_mors )
         clgff.make_MorseFF( xyzq, REQs, nPBC=nPBC_mors, lvec=atoms.lvec, g0=g0, GFFParams=(0.1,1.5,0.0,0.0), bReturn=False )
-        V_Paul,trj_paul = clgff.fit3D( clgff.V_Paul_buff, nPerStep=50, nmaxiter=5000, damp=0.05, bConvTrj=True ); #T_fit_P = time.perf_counter()
-        V_Lond,trj_lond = clgff.fit3D( clgff.V_Lond_buff, nPerStep=50, nmaxiter=5000, damp=0.05, bConvTrj=True ); #T_fit_ = time.perf_counter()
+        V_Paul,trj_paul = clgff.fit3D( clgff.V_Paul_buff, nPerStep=50, nmaxiter=50, damp=0.05, bConvTrj=True ); #T_fit_P = time.perf_counter()
+        V_Lond,trj_lond = clgff.fit3D( clgff.V_Lond_buff, nPerStep=50, nmaxiter=50, damp=0.05, bConvTrj=True ); #T_fit_ = time.perf_counter()
         # print("Morse_Atoms:",atoms.apos)
+        temp_paul = np.empty(clgff.gsh.ns[::-1], dtype=np.float32)
+        temp_lond = np.empty(clgff.gsh.ns[::-1], dtype=np.float32)
+        cl.enqueue_copy(clgff.queue, temp_paul, clgff.V_Paul_buff)
+        cl.enqueue_copy(clgff.queue, temp_lond, clgff.V_Lond_buff)
+
+        plt.figure( figsize=(16,8) )
+        plt.suptitle("Potentials Before Fitting")
+        plt.subplot(1,3,1); plt.imshow( temp_paul[70,:,:] , origin='lower'); plt.colorbar(); plt.title( "V_Paul[70,:,:] XY Slice" );plt.scatter(x_points, y_points, marker='o', color='red')
+        plt.subplot(1,3,2); plt.imshow( temp_lond[70,:,:] , origin='lower'); plt.colorbar(); plt.title( "V_Lond[70,:,:] XY Slice" );plt.scatter(x_points, y_points, marker='o', color='red')
+        plt.subplot(1,3,3); plt.imshow( temp_before[70,:,:], origin='lower' ); plt.colorbar(); plt.title( "V_Coul[70,:,:] XY Slice" );plt.scatter(x_points, y_points, marker='o', color='red')  #transpose(1, 0, 2)
+
+        plt.figure( figsize=(16,8) )
+        plt.subplot(1,3,1); plt.imshow(temp_paul[:,280,:], origin='lower'); plt.colorbar(); plt.title("V_Paul[:,70,:] YZ Slice");plt.scatter(x_points, y_points, marker='o', color='red')
+        plt.subplot(1,3,2); plt.imshow(temp_lond[:,280,:], origin='lower'); plt.colorbar(); plt.title("V_Lond[:,70,:] YZ Slice");plt.scatter(x_points, y_points, marker='o', color='red')
+        plt.subplot(1,3,3); plt.imshow(temp_before[:,280,:], origin='lower'); plt.colorbar(); plt.title("V_Coul[:,70,:] YZ Slice");plt.scatter(x_points, y_points, marker='o', color='red')
+
+        plt.figure( figsize=(16,8) )
+        plt.subplot(1,3,1); plt.imshow(temp_paul[:,:,00], origin='lower'); plt.colorbar(); plt.title("V_Paul[:,:,70] XZ Slice");plt.scatter(x_points, y_points, marker='o', color='red')
+        plt.subplot(1,3,2); plt.imshow(temp_lond[:,:,00], origin='lower'); plt.colorbar(); plt.title("V_Lond[:,:,70] XZ Slice");plt.scatter(x_points, y_points, marker='o', color='red')
+        plt.subplot(1,3,3); plt.imshow(temp_before[:,:,00], origin='lower'); plt.colorbar(); plt.title("V_Coul[:,:,70] XZ Slice");plt.scatter(x_points, y_points, marker='o', color='red')
+
+
+        # plt.figure( figsize=(16,8) )
+        # plt.suptitle("Potentials After Fitting")
+        # plt.subplot(1,3,1); plt.imshow( V_Paul[70,:,:].transpose() ); plt.colorbar(); plt.title( "V_Paul[0,:,:]" );plt.scatter(x_points, y_points, marker='o', color='red')
+        # plt.subplot(1,3,2); plt.imshow( V_Lond[70,:,:].transpose() ); plt.colorbar(); plt.title( "V_Lond[0,:,:]" );plt.scatter(x_points, y_points, marker='o', color='red')
+        # plt.subplot(1,3,3); plt.imshow( VcoulB[70,:,:].transpose().transpose(1,0,2) ); plt.colorbar(); plt.title( "V_Coul[0,:,:]" );plt.scatter(x_points, y_points, marker='o', color='red')
+
+
+
+
+
+
 
    
         
@@ -423,13 +511,15 @@ def test_gridFF_ocl( fname="./data/xyz/NaCl_1x1_L1.xyz", Element_Types_name="./d
         #cmap='plasma'
         #cmap='inferno'
         #cmap='magma'
+        
         plt.figure( figsize=(16,8) )
+        plt.suptitle("Potentials with Transpose")
         # plt.subplot(1,3,1); plt.imshow( V_Paul[:,:,0] ); plt.colorbar(); plt.title( "V_Paul[:,:,0]" );
         # plt.subplot(1,3,2); plt.imshow( V_Lond[:,:,0] ); plt.colorbar(); plt.title( "V_Lond[:,:,0]" );
         # plt.subplot(1,3,3); plt.imshow( V_Coul[:,:,0] ); plt.colorbar(); plt.title( "V_Coul[:,:,0]" );
-        plt.subplot(1,3,1); plt.imshow( V_Paul[0,:,:].transpose() ); plt.colorbar(); plt.title( "V_Paul[0,:,:]" );
-        plt.subplot(1,3,2); plt.imshow( V_Lond[0,:,:].transpose() ); plt.colorbar(); plt.title( "V_Lond[0,:,:]" );
-        plt.subplot(1,3,3); plt.imshow( V_Coul[0,:,:].transpose() ); plt.colorbar(); plt.title( "V_Coul[0,:,:]" );
+        plt.subplot(1,3,1); plt.imshow( V_Paul[:,:,70].transpose() , origin='lower'); plt.colorbar(); plt.title( "V_Paul[0,:,:]" );plt.scatter(x_points, y_points, marker='o', color='red')
+        plt.subplot(1,3,2); plt.imshow( V_Lond[:,:,70].transpose() , origin='lower'); plt.colorbar(); plt.title( "V_Lond[0,:,:]" );plt.scatter(x_points, y_points, marker='o', color='red')
+        plt.subplot(1,3,3); plt.imshow( V_Coul[:,:,70].transpose() , origin='lower'); plt.colorbar(); plt.title( "V_Coul[0,:,:]" );plt.scatter(x_points, y_points, marker='o', color='red')
         # #plt.subplot(1,2,1); plt.imshow( V_Paul[0,:,:], cmap='bwr' ); plt.colorbar(); plt.title( "V_Paul[0,:,:]" );
         # #plt.subplot(1,2,2); plt.imshow( Vcoul [0,:,:], cmap='bwr' ); plt.colorbar(); plt.title( "Vcoul [0,:,:]" );
         # #plt.subplot(1,2,1); plt.imshow( V_Paul[:,:,0], cmap='bwr' ); plt.colorbar(); plt.title( "V_Paul[0,:,:]" );
@@ -437,6 +527,12 @@ def test_gridFF_ocl( fname="./data/xyz/NaCl_1x1_L1.xyz", Element_Types_name="./d
         # #plt.subplot(1,2,2); plt.imshow( Vcoul [:,:,0], cmap='bwr' ); plt.colorbar(); plt.title( "Vcoul [0,:,:]" );
         # plt.subplot(1,2,1); plt.imshow( Vcoul [5,:,:] ); plt.colorbar(); plt.title( "V_Lond[0,:,:]" );
         # plt.subplot(1,2,2); plt.imshow( Vcoul [:,:,0] ); plt.colorbar(); plt.title( "Vcoul [0,:,:]" );
+
+        plt.figure( figsize=(16,8) )
+        plt.subplot(1,3,1); plt.imshow( V_Paul[:,:,70] , origin='lower'); plt.colorbar(); plt.title( "V_Paul[:,:,0]" );plt.scatter(x_points, y_points, marker='o', color='red')
+        plt.subplot(1,3,2); plt.imshow( V_Lond[:,:,70] , origin='lower'); plt.colorbar(); plt.title( "V_Lond[:,:,0]" );plt.scatter(x_points, y_points, marker='o', color='red')
+        plt.subplot(1,3,3); plt.imshow( V_Coul[:,:,70] , origin='lower'); plt.colorbar(); plt.title( "V_Coul[:,:,0]" );plt.scatter(x_points, y_points, marker='o', color='red')
+        plt.suptitle( "Without transpose" );
 
 
 
@@ -452,6 +548,70 @@ def test_gridFF_ocl( fname="./data/xyz/NaCl_1x1_L1.xyz", Element_Types_name="./d
 
         plt.show()
         #exit(0)
+        # Set up a common grid for both calculations
+        # g0 = (-grid.Ls[0]*0.5, -grid.Ls[1]*0.5, z0)
+        # grid = GridShape(dg=(0.1,0.1,0.1), lvec=atoms.lvec, g0=g0)
+        # clgff.set_grid(grid)
+
+        # # Print grid info for verification
+        # print("Grid dimensions:", grid.ns)
+        # print("Grid spacing:", grid.dg)
+        # print("Grid origin:", grid.g0)
+
+        # # Calculate Coulomb potential
+        # print("Starting Coulomb potential calculation...")
+        # Vcoul = clgff.makeCoulombEwald_slab(xyzq, niter=2)
+        # VcoulB, trj_coul = clgff.fit3D(clgff.V1_buff, nPerStep=10, nmaxiter=5000, damp=0.05, bConvTrj=True)
+
+        # # Calculate Morse potential
+        # print("Starting Morse potential calculation...")
+        # nPBC_mors = autoPBC(atoms.lvec,Rcut=20.0); print("autoPBC(nPBC_mors): ", nPBC_mors )
+        # clgff.make_MorseFF(xyzq, REQs, nPBC=nPBC_mors, lvec=atoms.lvec, GFFParams=(0.1,1.5,0.0,0.0), bReturn=False)
+        # V_Paul, trj_paul = clgff.fit3D(clgff.V_Paul_buff, nPerStep=50, nmaxiter=5000, damp=0.05, bConvTrj=True)
+        # V_Lond, trj_lond = clgff.fit3D(clgff.V_Lond_buff, nPerStep=50, nmaxiter=5000, damp=0.05, bConvTrj=True)
+
+        # if save_name=='double3':
+        #     path = os.path.basename( fname )
+        #     path = "./data/" + os.path.splitext( path )[0]
+        #     print( "test_gridFF_ocl() path = ", path )
+        #     if not os.path.exists( path ): os.makedirs( path )
+        #     V_Paul = V_Paul.transpose( (2,1,0) )
+        #     V_Lond = V_Lond.transpose( (2,1,0) )
+        #     V_Coul = VcoulB.transpose( (2,1,0) )
+        #     PLQ = np.zeros( V_Paul.shape + (3,) )
+        #     PLQ[:,:,:,0] = V_Paul
+        #     PLQ[:,:,:,1] = V_Lond
+        #     PLQ[:,:,:,2] = V_Coul
+        #     print("Final PLQ Coulomb layer stats:", np.min(PLQ[:,:,:,2]), np.max(PLQ[:,:,:,2]), np.mean(PLQ[:,:,:,2]))
+        #     full_name = path+"/Bspline_PLQd.npy"; 
+        #     print("test_gridFF_ocl() - save Morse to: ", full_name)
+        #     np.save( full_name, PLQ )
+
+        # # Check shapes before any processing
+        # print("Raw shapes:")
+        # print("V_Paul shape:", V_Paul.shape)
+        # print("V_Lond shape:", V_Lond.shape)
+        # print("VcoulB shape:", VcoulB.shape)
+
+        # # Visualize slices without transposition
+        # plt.figure(figsize=(15, 5))
+        # mid_z = V_Paul.shape[0] // 2
+        # plt.subplot(1, 3, 1)
+        # plt.imshow(V_Paul[mid_z,:,:])
+        # plt.colorbar()
+        # plt.title(f"V_Paul[{mid_z},:,:]")
+
+        # plt.subplot(1, 3, 2)
+        # plt.imshow(V_Lond[mid_z,:,:])
+        # plt.colorbar()
+        # plt.title(f"V_Lond[{mid_z},:,:]")
+
+        # plt.subplot(1, 3, 3)
+        # plt.imshow(VcoulB[mid_z,:,:])
+        # plt.colorbar()
+        # plt.title(f"VcoulB[{mid_z},:,:]")
+        # plt.show()
+
 
 
 

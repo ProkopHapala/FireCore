@@ -833,7 +833,7 @@ class MMFFparams{ public:
                 if(atype_)atype[i] = -1;
                 if(REQs_)REQs[i]  = default_REQ;
             }
-            //printf( "MMFFparams::loadXYZ() atom[%3i] atyp(%3i) xyz(%12.6f,%12.6f,%12.6f) REQs(%12.6f,%12.6f,%12.6f,%12.6f) \n", i, atype[i], apos[i].x, apos[i].y, apos[i].z, REQs[i].x,REQs[i].y,REQs[i].z, REQs[i].w  );
+            printf( "MMFFparams::loadXYZ() atom[%3i] atyp(%3i) xyz(%12.6f,%12.6f,%12.6f) REQs(%12.6f,%12.6f,%12.6f,%12.6f) \n", i, atype[i], apos[i].x, apos[i].y, apos[i].z, REQs[i].x,REQs[i].y,REQs[i].z, REQs[i].w  );
         }
         fclose(pFile);
         printf( "MMFFparams::loadXYZ() DONE \n" );

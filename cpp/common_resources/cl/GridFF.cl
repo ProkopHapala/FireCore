@@ -1456,6 +1456,9 @@ __kernel void slabPotential(
     const int iy = get_global_id(1);
     const int iz = get_global_id(2);
     if( (ix>=ng.x) || (iy>=ng.y) || (iz>=ng.w) ) return;
+    if(  (iz==0) && (iy==0) && (ix==0) ){
+        printf( "GPU slabPotential() ng(%i,%i,%i,%i) ixyz(%i,%i,%i|%i)) dz=%g dVcor=%g Vcor0=%g  \n ",  (int)ng.x, (int)ng.y, (int)ng.z, (int)ng.w, ix,iy,iz, ((ix>=ng.x) || (iy>=ng.y) || (iz>=ng.w)) ,  params.x, params.z, params.w );
+    }
 
     const float dz    = params.x;
     const float dVcor = params.z;
@@ -1463,12 +1466,20 @@ __kernel void slabPotential(
     const float Vcor_z = Vcor0 + dVcor * (iz*dz);
 
     const int nz_ = ng[2] + ng[3];
-    //const int j = ix + ng.x*(iy + ng.y*(nz_-iz) );   // We found that the potential is inverted in z-direction ( maybe also x,y ? )
-    const int j = (ng[0]-ix-1) + ng.x*( (ng[1]-iy-1) + ng.y*(nz_-iz-1) );  // maybe is is inverted also x,y ?
-
-    const int i = ix + ng.x*(iy + ng.y*iz);
+    // const int j = ix + ng.x*(iy + ng.y*(nz_-iz) );   // We found that the potential is inverted in z-direction ( maybe also x,y ? )
+    // const int j = (ng[0]-ix-1) + ng.x*( (ng[1]-iy-1) + ng.y*(nz_-iz-1) );  // maybe is is inverted also x,y ?
+    // const int z_offset = (int)(5.656854 / dz);  // Convert physical offset to grid points
+    // // Apply z_offset to the mirroring calculation
+    // int mirror_iz = iz + z_offset;
+    // if(mirror_iz >= nz_) mirror_iz = nz_ - 1;  // Clamp to prevent out-of-bounds
+    
+    // const int j = (ng[0]-ix-1) + ng.x*( (ng[1]-iy-1) + ng.y*(nz_-mirror_iz-1) );
+    const int j = ix + ng.x*(iy + ng.y*iz);
+    const int i = j;
+    // const int i = ix + ng.x*(iy + ng.y*iz);
 
     Vout[i] = Vin[j] + Vcor_z;
+    // Vout[i] = Vin[j] ;
     //Vout[i] = Vin[i] + Vcor_z;
 }
 
@@ -1483,20 +1494,102 @@ __kernel void slabPotential_zyx(
     const int ix = get_global_id(0);
     const int iy = get_global_id(1);
     const int iz = get_global_id(2);
-    if( (ix>=ng.x) || (iy>=ng.y) || (iz>=ng.w) ) return;
+    const int nz_ = ng[2] + ng[3];
+    if(  (iz==51) && (iy==0) && (ix==0) ){
+        printf( "GPU slabPotential_zyx() ng(%i,%i,%i,%i) ixyz(%i,%i,%i|%i)) dz=%g dVcor=%g Vcor0=%g  \n ",  (int)ng.x, (int)ng.y, (int)ng.z, (int)ng.w, ix,iy,iz, ((ix>=ng.x) || (iy>=ng.y) || (iz>=50)) ,  params.x, params.z, params.w );
+    }
+    if( (ix >= ng.x) || (iy >= ng.y) || (iz >= ng.z) ) return;
+    
+
+    if(  (iz==51) && (iy==0) && (ix==0) ){
+        printf( "After GPU slabPotential_zyx() ng(%i,%i,%i) dz=%g dVcor=%g Vcor0=%g  \n ",  (int)ng.x, (int)ng.y, (int)ng.z, params.x, params.z, params.w );
+    }
 
     const float dz    = params.x;
     const float dVcor = params.z;
     const float Vcor0 = params.w;
     const float Vcor_z = Vcor0 + dVcor * (iz*dz);
 
-    const int nz_ = ng[2] + ng[3];
-    //const int j = ix + ng.x*(iy + ng.y*(nz_-iz) );   // We found that the potential is inverted in z-direction ( maybe also x,y ? )
-    const int j = (ng[0]-ix-1) + ng.x*( (ng[1]-iy-1) + ng.y*(nz_-iz-1) );  // maybe is is inverted also x,y ?
+    // Print dimensions at the start of execution
+    if(ix==0 && iy==0 && iz==0){
+        // Calculate max values for i and j
+        int max_j = (ng[0]-0-1) + ng.x*( (ng[1]-0-1) + ng.y*(nz_-0-1) );
+        int max_i = (nz_-1) + ng.z*((ng.y-1) + ng.y*(ng.x-1));
+        
+        printf("DEBUG Dimensions:\n");
+        printf("  Grid: ng=(%d,%d,%d,%d), nz_=%d\n", ng.x, ng.y, ng.z, ng.w, nz_);
+        printf("  Index j range: 0 to %d\n", max_j);
+        printf("  Index i range: 0 to %d\n", max_i);
+        printf("  j calculation: (ng[0]-ix-1) + ng.x*(ng[1]-iy-1) + ng.x*ng.y*(nz_-iz-1)\n");
+        printf("  i calculation: iz + ng.z*(iy + ng.y*ix)\n");
+    }
 
-    //const int i = ix + ng.x*(iy + ng.y*iz);
-    const int i = iz + ng.z*(iy + ng.y*ix);
+    if(ix==0 && iy==0 && iz==0){
+    int total_size = ng.x * ng.y * ng.z;
+    printf("Kernel dimensions: ng=(%d,%d,%d,%d)\n", ng.x, ng.y, ng.z, ng.w);
+    printf("Total buffer size: %d\n", total_size);
+    printf("Index ranges:\n");
+    printf("  ix: 0 to %d\n", ng.x-1);
+    printf("  iy: 0 to %d\n", ng.y-1);
+    printf("  iz: 0 to %d\n", ng.z-1);
+    }
+
+    // const int nz_ = ng[2] + ng[3];
+    // const int j = ix + ng.x*(iy + ng.y*(nz_-iz) );   // We found that the potential is inverted in z-direction ( maybe also x,y ? )
+    const int j = (ng[0]-ix-1) + ng.x*( (ng[1]-iy-1) + ng.y*(nz_-iz-1) );  // maybe is is inverted also x,y ?
+    // const int z_offset = (int)(5.656854 / dz);  // Convert physical offset to grid points
+    // // Apply z_offset to the mirroring calculation
+    // int mirror_iz = iz - z_offset;
+    // if(mirror_iz >= nz_) mirror_iz = nz_ - 1;  // Clamp to prevent out-of-bounds
+    
+    // const int j = (ng[0]-ix-1) + ng.x*( (ng[1]-iy-1) + ng.y*(nz_-mirror_iz-1) );
+
+    // const int j = (ng[2]-iz-1) + ng.z*(ng[1]-iy-1) + ng.z*ng.y*(ng[0]-ix-1);    
+    // const int i = iz + ng.z*(iy + ng.y*ix);
+    // const int j = ix + ng.x*(iy + ng.y*iz);
+    const int i = ix + ng.x*(iy + ng.y*iz);
+
+
+
+    // const int i = iz + ng.z*(iy + ng.y*ix);
 
     Vout[i] = Vin[j] + Vcor_z;
-    //Vout[i] = Vin[i] + Vcor_z;
+    // Vout[i] = Vin[j] ;
+    // Vout[i] = Vin[i] + Vcor_z;
 }
+
+
+
+// __kernel void slabPotential_zyx( 
+//     int4 ng,                     // original grid dimensions; here ng.z is used for Vin
+//     __global const float* Vin,   // input potential computed on the full grid
+//     __global float* Vout,        // output potential buffer (to contain only nz_out slices)
+//     float4 params,               // parameters: (dz, Vol, dVcor, Vcor0)
+//     const int nz_out=ng.w            // new parameter: number of z-slices for Vout (e.g., 400)
+// ){
+//     // Get the current thread indices
+//     const int ix = get_global_id(0);
+//     const int iy = get_global_id(1);
+//     const int iz = get_global_id(2);
+    
+//     // Only write into output if we are within the desired z extent.
+//     if ((ix >= ng.x) || (iy >= ng.y) || (iz >= nz_out))
+//         return;
+    
+//     const float dz    = params.x;
+//     const float dVcor = params.z;
+//     const float Vcor0 = params.w;
+    
+//     // Compute the z-dependent correction for this output slice.
+//     const float Vcor_z = Vcor0 + dVcor * (iz * dz);
+    
+//     // Depending on your Vout layout, compute a linear output index using nz_out as the z-dimension.
+//     // For example, if you expect Vout to be of size [ng.x, ng.y, nz_out]:
+//     const int i_out = iz + nz_out * (iy + ng.y * ix);
+    
+//     // If Vin is computed on the full grid (or you wish to select the first nz_out slices) use:
+//     const int i_in = ix + ng.x * (iy + ng.y * iz);
+    
+//     // Write the corrected potential into the output.
+//     Vout[i_out] = Vin[i_in] + Vcor_z;
+// }

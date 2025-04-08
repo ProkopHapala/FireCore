@@ -40,7 +40,7 @@ import pyopencl as cl
 # name="NaCl_8x8_L3_Coulumb"
 # name="NaCl_coulomb.iz0"
 
-name="Na_0.9_Cl_-0.9"
+# name="Na_0.9_Cl_-0.9"
 # name ="NaCl_paolo"
 # name ="NaCl.ptcda"
 # name="2_atom_NaCl"
@@ -49,7 +49,9 @@ name="Na_0.9_Cl_-0.9"
 # name="Na.iz0"
 # name="Cl.iz0"
 # name="NaCl_8x8_L3_NaHole"
-name="NaCl_8x8_L3_ClHole"
+# name="NaCl_8x8_L3_ClHole"
+# name="Na_0.9_Cl_-0.9_Cl_hole"
+name="Na_0.9_Cl_-0.9_Cl_hole_3"
 
 # name="NaCl_8x8_L3_NaClHole"
 
@@ -62,8 +64,11 @@ name="NaCl_8x8_L3_ClHole"
 #gff.test_gridFF_ocl( fname="data/xyz/"+name+".xyz", save_name="double3", bMorse=True, bEwald=False  )
 #gff.test_gridFF_ocl( fname="/home/prokop/git/FireCore/tests/pyutils/NaCl_8x8_L3.xyz" )
 
+# gff.test_gridFF_ocl( fname="data/xyz/"+name+".xyz",Element_Types_name="./data/ElementTypes.dat", save_name="double3", job="Morse" )
 # gff.test_gridFF_ocl( fname="data/xyz/"+name+".xyz",Element_Types_name="./data/ElementTypes.dat", save_name="double3", job="Ewald" )
-gff.test_gridFF_ocl( fname="data/xyz/"+name+".xyz",Element_Types_name="./data/ElementTypes.dat", save_name="double3", job="PLQ" )
+gff.test_gridFF_ocl( fname="data/xyz/"+name+".xyz",Element_Types_name="./data/ElementTypes.dat", save_name="double3", job="PLQ")
+
+
 
 
 

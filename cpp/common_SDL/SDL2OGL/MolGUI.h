@@ -1863,7 +1863,7 @@ void MolGUI::renderGridFF_new( double isoVal, int isoSurfRenderType, double colo
     glEnable(GL_LIGHTING);
     glEnable(GL_DEPTH_TEST);
     //glDisable(GL_LIGHTING);
-    Vec2d zrange{-5.0,5.0};
+    Vec2d zrange{-5.0,15.0};
     //{  W->gridFF.getEFprofileToFile( "gridFF_EFprofile_render.log", 200, Vec3d{0.0,0.0,zrange.x}, Vec3d{0.0,0.0,zrange.y}, Quat4d{REQ.x,REQ.y,0.0,0.0} );  }  // Debug: save gridFF z-profile to file of atom[0] to "gridFF_EFprofile_render.log"
     //int nvert = renderSubstrate_( W->gridFF.grid, FFtot, W->gridFF.FFelec, +isoVal, sign, colorSclae ); 
     //W->gridFF.findIso( isoVal, Vec3d{0.0,0.0,zrange.x}, Vec3d{0.0,0.0,zrange.y}, Quat4d{PLQ.x,PLQ.y,0.0,0.0}, 0.02 );
