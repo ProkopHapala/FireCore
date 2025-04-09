@@ -582,7 +582,63 @@ graph TD
 ```
 
 
+### This sequence diagram illustrates the interactions in PLQ mode:
 
+```mermaid
+sequenceDiagram
+    participant TestScript as TestScript<br>(ocl_GridFF_new.py)
+    participant GridFF_cl as GridFF_cl<br>(OCL/GridFF.py)
+    participant OCL Kernels as OpenCL Kernels<br>(GridFF.cl)
+
+    TestScript->>GridFF_cl: make_atoms_arrays()
+    TestScript->>GridFF_cl: set_grid(grid)
+
+    par Coulomb Calculation and Fit
+        TestScript->>GridFF_cl: makeCoulombEwald_slab(xyzq)
+        Note over GridFF_cl: Allocate Buffers (atoms, Qgrid, Vgrid, V1, V2, vV, V_Coul)
+        GridFF_cl->>OCL Kernels: project_atoms_on_grid_quintic_pbc(atoms_buff -> Qgrid_buff)
+        GridFF_cl->>GridFF_cl: poisson()
+        Note over GridFF_cl: Setup FFT, Run FFT(Qgrid_buff)
+        GridFF_cl->>OCL Kernels: poissonW(Qgrid_buff -> Vgrid_buff)
+        Note over GridFF_cl: Run iFFT(Vgrid_buff)
+        GridFF_cl->>GridFF_cl: laplace_real_loop_inert()
+        loop Relaxation Iterations
+            GridFF_cl->>OCL Kernels: laplace_real_pbc(V1/V2_buff -> V2/V1_buff)
+        end
+        Note over GridFF_cl: Result in V1_buff (or V2_buff)
+        GridFF_cl->>GridFF_cl: slabPotential()
+        GridFF_cl->>OCL Kernels: slabPotential(V1_buff -> V_Coul_buff)
+        GridFF_cl-->>TestScript: Return (implicitly uses V1_buff for fitting later)
+
+        TestScript->>GridFF_cl: fit3D(V1_buff)
+        Note over GridFF_cl: Allocate Fitting Buffers (Gs, dGs, fGs, vGs)
+        Note over GridFF_cl: Initialize Gs_buff = V1_buff, vGs_buff = 0
+        loop Fitting Iterations
+            GridFF_cl->>OCL Kernels: BsplineConv3D(Gs_buff, V1_buff -> dGs_buff)
+            GridFF_cl->>OCL Kernels: BsplineConv3D(dGs_buff -> fGs_buff)
+            GridFF_cl->>OCL Kernels: move(Gs_buff, vGs_buff, fGs_buff -> Gs_buff, vGs_buff)
+        end
+        GridFF_cl-->>TestScript: Return fitted VcoulB (from Gs_buff)
+    and Morse Calculation and Fit
+        TestScript->>GridFF_cl: make_MorseFF(xyzq, REQs)
+        Note over GridFF_cl: Allocate Buffers (atoms, REQs, V_Paul, V_Lond)
+        GridFF_cl->>OCL Kernels: make_MorseFF(atoms_buff, REQs_buff -> V_Paul_buff, V_Lond_buff)
+        GridFF_cl-->>TestScript: Return (implicitly V_Paul_buff, V_Lond_buff)
+
+        TestScript->>GridFF_cl: fit3D(V_Paul_buff)
+        Note over GridFF_cl: Fit loop similar to Coulomb...
+        GridFF_cl-->>TestScript: Return fitted V_Paul
+
+        TestScript->>GridFF_cl: fit3D(V_Lond_buff)
+        Note over GridFF_cl: Fit loop similar to Coulomb...
+        GridFF_cl-->>TestScript: Return fitted V_Lond
+    end
+
+    TestScript->>TestScript: Combine V_Paul, V_Lond, VcoulB into PLQ
+    TestScript->>TestScript: Save PLQ array (optional)
+    TestScript->>TestScript: Plot results
+
+```
 
 
 
