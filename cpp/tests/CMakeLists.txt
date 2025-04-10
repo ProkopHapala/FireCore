@@ -23,8 +23,11 @@ target_link_libraries(test_free_energy PRIVATE MMFF_lib gtest gtest_main)
 add_executable(test_MMFFsp3_loc test_MMFFsp3_loc.cpp)
 target_link_libraries(test_MMFFsp3_loc PRIVATE MMFF_lib gtest gtest_main)
 
+add_executable(test_molecular_database test_molecular_database.cpp)
+target_link_libraries(test_molecular_database PRIVATE MMFF_lib gtest)
 
 # Register the test with CTest using the correct path
 add_test(NAME AddTest COMMAND $<TARGET_FILE:test_add>)
 add_test(NAME FreeEnergyTest COMMAND $<TARGET_FILE:test_free_energy>)
 add_test(NAME MMFFsp3_locTest COMMAND $<TARGET_FILE:test_MMFFsp3_loc>)
+add_test(NAME MolecularDatabaseTest COMMAND $<TARGET_FILE:test_molecular_database>)

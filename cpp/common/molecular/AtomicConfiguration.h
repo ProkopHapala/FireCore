@@ -1,4 +1,4 @@
-﻿
+
 #ifndef AtomicConfiguration_h
 #define AtomicConfiguration_h
 
@@ -105,14 +105,10 @@ class FastAtomicMetric : public AtomicConfiguration { public:
         //Rcut=Rcut_;
         //int* atom2cells = new int[natoms*8];
         //int* atomNs     = new int[natoms  ];
-        DEBUG
-        DBG( "toCells natoms, atom2cells, atomNs %i %i %i \n", natoms, atom2cells, atomNs );
-        //printf( "toCells natoms, atom2cells, atomNs %i %i %i \n", natoms, atom2cells, atomNs );
         _realloc(atom2cells,natoms*8);
         _realloc(atomNs    ,natoms  );
         int* atom2cells_=atom2cells;
         nprj=0;
-        DEBUG
         //printf("--- toCells 1 \n");
         for(int i=0; i<ruler.ntot; i++){ cellNs[i]=0;             };
         for(int i=0; i<natoms; i++){
@@ -126,7 +122,6 @@ class FastAtomicMetric : public AtomicConfiguration { public:
             //printf( "|atom %i N %i %i \n", i, atomNs[i], nprj );
             atom2cells_+=nc;
         }
-        DEBUG
         //printf( "nprj %i \n", nprj );
         _realloc( cell2atomBuff, nprj);
           // printf("toCells 2 \n");
@@ -137,9 +132,7 @@ class FastAtomicMetric : public AtomicConfiguration { public:
         for(int i=0; i<ruler.ntot; i++){ cell2atoms[i]=cell2atomBuff+i0; i0+=cellNs[i]; cellNs[i]=0; // this can be much simplified if we allocate uper bound for cell2atomBuff
             //printf( "%i %i %i \n", i, cell2atoms[i]-cell2atomBuff, cellNs[i] );
         };
-        DEBUG
-        //printf("toCells 4 \n");
-        //for(int i=0; i<ruler.ntot; i++){ cellNs[i]=0; };                                   printf("toCells 5 \n");
+        // Reset cell counts
         int ia=-1,nprj_=0;
         for(int i=0; i<nprj; i++){
             if(i>=nprj_){ ia++; nprj_+=atomNs[ia]; };
@@ -149,8 +142,7 @@ class FastAtomicMetric : public AtomicConfiguration { public:
             cellNs[ic]++;
             //printf( " %i [%i][%i] ia %i N %i \n", i, ic, j, ia, cellNs[ic] );
         };
-        DEBUG
-        for(int i=0; i<nprj; i++){ };
+
         //printf("toCells 6 \n");
         //delete [] atom2cells;
         //delete [] atomNs;
