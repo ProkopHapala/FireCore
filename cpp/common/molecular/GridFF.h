@@ -1508,29 +1508,141 @@ void checkSum( bool bDouble ){
 } 
 
 void initGridFF( const char * name, double z0=NAN, bool bAutoNPBC=true, bool bSymetrize=false, double rAutoPBC=20.0 ){
-    printf( "GridFF::initGridFF(%s) bSymetrize=%i bAutoNPBC=%i z0=%g \n", name, bSymetrize, bAutoNPBC, z0 );
-    if( isnan(z0) ){  
-        z0=findTop();   
-        //if(verbosity>0) 
+    // Check for null pointer in name parameter
+    if (name == nullptr) {
+        printf("Error: Null pointer for name in GridFF::initGridFF\n");
+        return;
+    }
+    
+    printf("GridFF::initGridFF(%s) bSymetrize=%i bAutoNPBC=%i z0=%g \n", name, bSymetrize, bAutoNPBC, z0);
+    
+    // Handle NaN z0 value
+    if (isnan(z0)) {  
+        z0 = findTop();   
         printf("GridFF::findTop() z0=%g \n", z0);  
     }
-    grid.pos0.z=z0;
-    if(verbosity>1)grid.printCell();
-    bool bGridDouble = (mode == GridFFmod::LinearDouble) || (mode == GridFFmod::HermiteDouble) || (mode == GridFFmod::BsplineDouble); 
-    allocateFFs( bGridDouble );
-    //gridFF.tryLoad( "FFelec.bin", "FFPaul.bin", "FFLond.bin", false, {1,1,0}, bSaveDebugXSFs );
-    nPBC=Vec3i{1,1,0};
-    if(bAutoNPBC){ autoNPBC( grid.cell, nPBC, 20.0 ); }   //printf( "GridFF::initGridFF() nPBC(%i,%i,%i)\n", nPBC.x, nPBC.y, nPBC.z );
+    
+    grid.pos0.z = z0;
+    
+    if (verbosity > 1) {
+        grid.printCell();
+    }
+    
+    // Determine if grid is double precision
+    bool bGridDouble = (mode == GridFFmod::LinearDouble) || 
+                      (mode == GridFFmod::HermiteDouble) || 
+                      (mode == GridFFmod::BsplineDouble); 
+    
+    // Allocate force fields with proper error handling
+    try {
+        allocateFFs(bGridDouble);
+    } catch (const std::exception& e) {
+        printf("Exception in allocateFFs: %s\n", e.what());
+        return;
+    } catch (...) {
+        printf("Unknown exception in allocateFFs\n");
+        return;
+    }
+    
+    // Initialize PBC vectors
+    nPBC = Vec3i{1, 1, 0};
+    
+    // Auto-determine non-periodic boundary conditions if requested
+    if (bAutoNPBC) { 
+        autoNPBC(grid.cell, nPBC, rAutoPBC);
+    }
+    
+    // Set lattice vectors and make PBC shifts
     lvec = grid.cell;     // ToDo: We should unify this
-    makePBCshifts( nPBC, lvec );
-    if(bSymetrize)setAtomsSymetrized( natoms, atypes, apos, REQs, 0.1 );
+    
+    try {
+        makePBCshifts(nPBC, lvec);
+    } catch (const std::exception& e) {
+        printf("Exception in makePBCshifts: %s\n", e.what());
+        return;
+    } catch (...) {
+        printf("Unknown exception in makePBCshifts\n");
+        return;
+    }
+    
+    // Symmetrize atoms if requested
+    if (bSymetrize && natoms > 0 && atypes != nullptr && apos != nullptr && REQs != nullptr) {
+        try {
+            setAtomsSymetrized(natoms, atypes, apos, REQs, 0.1);
+        } catch (const std::exception& e) {
+            printf("Exception in setAtomsSymetrized: %s\n", e.what());
+            // Continue execution despite this error
+        } catch (...) {
+            printf("Unknown exception in setAtomsSymetrized\n");
+            // Continue execution despite this error
+        }
+    }
     //apos_.size(), &apos_[0], &REQs_[0];
-    std::vector<double> qs( apos_.size() ); for(int i=0; i<apos_.size(); i++){ qs[i]=REQs_[i].z; }
-    Vec3d qcog;
-    Multiplole::project( &qcog, apos_.size(), apos_.data(), qs.data(), 2, Mpol, true );
-    printf( "GridFF::initGridFF() nPBC(%i,%i,%i|%i) Mpol qcog(%g,%g,%g) Q=%g dipol(%g,%g,%g) quadrupol:xx,yy,zz(%g,%g,%g)yz,xz,xy(%g,%g,%g)\n", nPBC.x,nPBC.x,nPBC.x,npbc, qcog.x,qcog.y,qcog.z, Mpol[0], Mpol[1],Mpol[2],Mpol[3],  Mpol[4],Mpol[5],Mpol[6], Mpol[7],Mpol[8],Mpol[9] );
-    //bSaveDebugXSFs=true;
-    gridN=grid.n; gridN.x+=3; gridN.y+=3;
+    // Initialize Mpol array to zero to avoid uninitialized memory access
+    for (int i = 0; i < 10; i++) {
+        Mpol[i] = 0.0;
+    }
+    
+    // Initialize qcog to zero
+    Vec3d qcog = Vec3dZero;
+    
+    // Only calculate multipoles if we have atoms and valid data
+    if (!apos_.empty() && !REQs_.empty()) {
+        try {
+            // Use a safer approach with limited vector size
+            const size_t maxSize = 10000; // Reasonable limit to prevent excessive memory allocation
+            size_t actualSize = apos_.size();
+            
+            if (actualSize > maxSize) {
+                printf("Warning: Limiting multipole calculation to %zu atoms instead of %zu\n", maxSize, actualSize);
+                actualSize = maxSize;
+            }
+            
+            // Allocate vector with controlled size
+            std::vector<double> qs;
+            qs.reserve(actualSize); // Pre-allocate memory to avoid reallocations
+            
+            // Fill charges vector safely
+            for (size_t i = 0; i < actualSize; i++) {
+                qs.push_back(REQs_[i].z);
+            }
+            
+            // Calculate multipole moments with safety checks
+            if (!qs.empty() && qs.size() == actualSize) {
+                Multiplole::project(&qcog, actualSize, apos_.data(), qs.data(), 2, Mpol, true);
+            }
+        } catch (const std::bad_alloc& e) {
+            printf("Memory allocation error in multipole calculation: %s\n", e.what());
+            // Continue with zero multipoles
+        } catch (const std::exception& e) {
+            printf("Exception in multipole calculation: %s\n", e.what());
+            // Continue with zero multipoles
+        } catch (...) {
+            printf("Unknown exception in multipole calculation\n");
+            // Continue with zero multipoles
+        }
+    }
+    
+    // Print with safe values (moved to a separate try-catch block)
+    try {
+        printf("GridFF::initGridFF() nPBC(%i,%i,%i|%i) Mpol qcog(%g,%g,%g) Q=%g dipol(%g,%g,%g) quadrupol:xx,yy,zz(%g,%g,%g)yz,xz,xy(%g,%g,%g)\n",
+               nPBC.x, nPBC.y, nPBC.z, npbc,
+               qcog.x, qcog.y, qcog.z,
+               Mpol[0], Mpol[1], Mpol[2], Mpol[3],
+               Mpol[4], Mpol[5], Mpol[6],
+               Mpol[7], Mpol[8], Mpol[9]);
+    } catch (...) {
+        printf("Error printing GridFF information\n");
+    }
+    
+    // Set grid dimensions safely
+    try {
+        gridN = grid.n;
+        gridN.x += 3;
+        gridN.y += 3;
+    } catch (...) {
+        printf("Error setting grid dimensions\n");
+    }
 }
 
 

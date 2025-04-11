@@ -360,9 +360,8 @@ def test_gridFF_ocl( fname="./data/xyz/NaCl_1x1_L1.xyz", Element_Types_name="./d
 
         VcoulB,trj_coul = clgff.fit3D( clgff.V_Coul_buff, nPerStep=10, nmaxiter=50, damp=0.05, bConvTrj=True );
         # VcoulB, trj_coul = clgff.fit3D_with_buffer(clgff.V_Coul_buff, nPerStep=10, nmaxiter=50, damp=0.05, bConvTrj=True)
-
         # VcoulB,trj_coul = clgff.fit3D( clgff.V1_buff, nPerStep=10, nmaxiter=50, damp=0.05, bConvTrj=True );
-        # VcoulB,trj_coul = clgff.fit3D( Vcoul, nPerStep=10, nmaxiter=50, damp=0.05, bConvTrj=True );
+        
 
         # temp_coulomb = np.empty(clgff.gsh.ns[::-1], dtype=np.float32)
         # # cl.enqueue_copy(clgff.queue, temp_coulomb, clgff.V1_buff)

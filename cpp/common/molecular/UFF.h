@@ -1426,10 +1426,11 @@ class UFF : public NBFF { public:
         double F2conv = Fconv*Fconv;
         double E=0,ff=0,vv=0,vf=0;
         //double cdamp = 1-damping; if(cdamp<0)cdamp=0;
-        double cdamp = colDamp.update( dt );
+        //double cdamp = colDamp.update( dt );
+        double cdamp = 1 - 0.005;
         const double Fmax2     = FmaxNonBonded*FmaxNonBonded;
-        //printf( "MMFFsp3_loc::run(bCollisionDamping=%i) niter %i dt %g Fconv %g Flim %g damping %g collisionDamping %g \n", bCollisionDamping, niter, dt, Fconv, Flim, damping, collisionDamping );
-        //printf( "MMFFsp3_loc::run(niter=%i,bCol(B=%i,A=%i,NB=%i)) dt %g damp(cM=%g,cB=%g,cA=%g,cNB=%g)\n", niter, colDamp.bBond, colDamp.bAng, colDamp.bNonB, dt, 1-cdamp, colDamp.cdampB*dt, colDamp.cdampAng*dt, colDamp.cdampNB*dt );
+        //printf( "UFF::run(bCollisionDamping=%i) niter %i dt %g Fconv %g Flim %g damping %g collisionDamping %g \n", bCollisionDamping, niter, dt, Fconv, Flim, damping, collisionDamping );
+        printf( "UFF::run(niter=%i,bCol(B=%i,A=%i,NB=%i)) dt %g damp(cM=%g,cB=%g,cA=%g,cNB=%g)\n", niter, colDamp.bBond, colDamp.bAng, colDamp.bNonB, dt, 1-cdamp, colDamp.cdampB*dt, colDamp.cdampAng*dt, colDamp.cdampNB*dt );
         //setNonBondStrategy();
 
         // --- Non-Bonded using ng4-strategy (i.e. check for neighbors in NBFF) 
@@ -1459,7 +1460,9 @@ class UFF : public NBFF { public:
         ForceField::setNonBondStrategy( bNonBondNeighs*2-1 );
         // printf( "UFF::run_no_omp() bNonBonded=%i bNonBondNeighs=%i bSubtractBondNonBond=%i bSubtractAngleNonBond=%i bClampNonBonded=%i\n", bNonBonded, bNonBondNeighs, bSubtractBondNonBond, bSubtractAngleNonBond, bClampNonBonded );
 
-        const bool bExploring = go->bExploring;
+        //const bool bExploring = go->bExploring;
+        const bool bExploring = false;
+        bHardConstrs=1;
 
         int    itr=0;
         //if(itr_DBG==0)print_pipos();
@@ -1498,29 +1501,29 @@ class UFF : public NBFF { public:
             for(int i=0; i<natoms; i++){
                 //F2 += move_atom_GD( i, dt, Flim );
                 //bErr|=ckeckNaN( 1,3, (double*)(fapos+i), [&]{ printf("move[%i]",i); } );
+                if(bHardConstrs) if( constr[i].w>1e-9 )[[unlikely]]{ vapos[i]=Vec3dZero; fapos[i]=Vec3dZero; }
+
                 if( bExploring ){
                     move_atom_Langevin( i, dt, 10000.0, go->gamma_damp, go->T_target );
                 }else{
                     cvf.add( move_atom_MD( i, dt, Flim, cdamp ) );
+                    
                 }
+                if(bHardConstrs) if( constr[i].w>1e-9 )[[unlikely]]{ apos[i] = constr[i].f; }
                 //move_atom_MD( i, 0.05, 1000.0, 0.9 );
                 //F2 += move_atom_kvaziFIRE( i, dt, Flim );
                 
                 // printf("bHardConstrs=%i  %i  Before constr[%i](%g,%g,%g,%g) apos(%g,%g,%g), vapos(%g,%g,%g)\n",  bHardConstrs, i, constr[i].x,constr[i].y,constr[i].z,constr[i].w , apos[i].x,apos[i].y,apos[i].z, vapos[i].x,vapos[i].y,vapos[i].z );
                 //printf( "UFF::run() fapos[%i] (%g,%g,%g)\n", i, fapos[i].x, fapos[i].y, fapos[i].z );
 
-                bHardConstrs=1;
+                
 
                 // printf("bHardConstrs=%i\n", bHardConstrs);
                 // printf("UFF::run() constr[%i](%g,%g,%g,%g) \n", i, constr[i].x,constr[i].y,constr[i].z,constr[i].w );
 
-                if(bHardConstrs) if( constr[i].w>1e-9 )[[unlikely]]{ apos[i] = constr[i].f; vapos[i]=Vec3dZero;
+                //if(bHardConstrs) if( constr[i].w>1e-9 )[[unlikely]]{ apos[i] = constr[i].f; vapos[i]=Vec3dZero; fapos[i]=Vec3dZero; 
                 //printf("After constr[%i](%g,%g,%g,%g) apos(%g,%g,%g), vapos(%g,%g,%g)\n", i, constr[i].x,constr[i].y,constr[i].z,constr[i].w , apos[i].x,apos[i].y,apos[i].z, vapos[i].x,vapos[i].y,vapos[i].z );
-                
-                };
-
-
-
+                //};
             }
             //printf("Before assemble fapos Eb=%g Ea=%g Ed=%g Ei=%g Etot=%g\n" ,fapos[0].x, Eb, Ea, Ed, Ei, Etot);
             // printf( "UFF::run() itr=%i Eb=%g Ea=%g Ed=%g Ei=%g Enb=%g Esurf=%g Etot=%g |F|=%g \n", itr, Eb, Ea, Ed, Ei, Enb, Esurf, E, sqrt(cvf.z) );
@@ -1528,7 +1531,12 @@ class UFF : public NBFF { public:
             if(  (!bExploring) && (cvf.z<F2conv)  ){
                 break;
             }
-            if(cvf.x<0){ cleanVelocity(); };
+            //printf("UFF::run() step %i <F|v>(%16.8f)<0 => cleanVelocity(), |v|: %16.8f |F|: %16.8f Fconv: %16.8f \n", itr, cvf.x, sqrt(cvf.y), sqrt(cvf.z), sqrt(F2conv) );
+            if(cvf.x<0){ 
+                //printf("UFF::run() step %i <F|v>(%16.8f)<0 => cleanVelocity(), |F|: %16.8f |v|: %16.8f \n", itr, cvf.x, sqrt(cvf.y), sqrt(cvf.z), sqrt(F2conv) );
+                cleanVelocity();
+
+            };
             //itr_DBG++;
         }
         // if( (itr>=(niter-1)) && (verbosity>1) ) [[unlikely]] { 

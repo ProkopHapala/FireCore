@@ -736,24 +736,28 @@ mmff.setVerbosity( verbosity=2, idebug=1 )
 
 
 ############### PTCDA On NaCl +0.9 -0.9 ##############
-mmff.init( xyz_name="data/xyz/PTCDA_charge_on_Na", surf_name="data/xyz/Na_0.9_Cl_-0.9" , bUFF=True )
+# mmff.init( xyz_name="data/xyz/new_PTCDA_charge_on_Na", surf_name="data/xyz/Na_0.9_Cl_-0.9" , bUFF=True, bSimple=True )   ### For uff relaxed scan the bUFF has to be true
+
+
+mmff.init( xyz_name="data/xyz/PTCDA_charge_on_Na", surf_name="data/xyz/Na_0.9_Cl_-0.9" )   
 # mmff.init( xyz_name="data/xyz/PTCDA_charge_on_Cl", surf_name="data/xyz/Na_0.9_Cl_-0.9" )
 # mmff.init( xyz_name="data/xyz/PTCDA_charge_on_hollow", surf_name="data/xyz/Na_0.9_Cl_-0.9" )
 # mmff.init( xyz_name="data/xyz/PTCDA_charge_xy", surf_name="data/xyz/Na_0.9_Cl_-0.9" )
-
+print("After init: ", mmff.ndims if hasattr(mmff, 'ndims') else "ndims not set yet")
 
 
 ####################################################################################################################################
 
 mmff.getBuffs()
-
+print("After getBuffs: ndims=", mmff.ndims)
+print("natoms=", mmff.natoms, "nnode=", mmff.nnode, "ncap=", mmff.ncap)
 # mmff.ipicked = 30
 
 #print( "ffflags ", mmff.ffflags )
 
-mmff.setSwitches( NonBonded=-1, MMFF=1, SurfAtoms=0, GridFF=1,PBC=-1 )   ### For Relaxed Scan MMFF has to be 1 
+# mmff.setSwitches( NonBonded=-1, MMFF=1, SurfAtoms=0, GridFF=1,PBC=-1 )   ### For Relaxed Scan MMFF has to be 1 
 # mmff.setSwitches( NonBonded=-1, MMFF=1, SurfAtoms=0, GridFF=1 )   ### For Relaxed Scan MMFF has to be 1 
-# mmff.setSwitches( NonBonded=-1, MMFF=-1, SurfAtoms=0, GridFF=1 )   #### For Rigid Scan 
+mmff.setSwitches( NonBonded=-1, MMFF=1, SurfAtoms=0, GridFF=1 )   #### For Rigid Scan 
 
 
 
@@ -810,7 +814,7 @@ mmff.setSwitches( NonBonded=-1, MMFF=1, SurfAtoms=0, GridFF=1,PBC=-1 )   ### For
 
 
 ################*******************PTCDA
-# scanPlot( nscan=125, span=(2.6,15.1), dir=(0.0,0.0,1.0), p0=(0.0,0.0,0), label="PTCDA on Na", saveFig="E_z_scan_on_Na_PTCDA_Morse.png", saveData="E_z_scan_on_Na_PTCDA_Morse.dat" )
+scanPlot( nscan=125, span=(2.6,15.1), dir=(0.0,0.0,1.0), p0=(0.0,0.0,0), label="PTCDA on Na", saveFig="new_E_z_scan_on_Na_PTCDA_Morse.png", saveData="new_E_z_scan_on_Na_PTCDA_Morse.dat" )
 # scanPlot( nscan=125, span=(2.6,15.1), dir=(0.0,0.0,1.0), p0=(0.0,0.0,0), label="PTCDA on Na", saveFig="E_z_scan_on_Na_PTCDA_Coulomb.png", saveData="E_z_scan_on_Na_PTCDA_Coulomb.dat" )
 # scanPlot( nscan=125, span=(2.6,15.1), dir=(0.0,0.0,1.0), p0=(0.0,0.0,0), label="PTCDA on Na", saveFig="E_z_scan_on_Na_PTCDA_Morse_Coulomb.png", saveData="E_z_scan_on_Na_PTCDA_Morse_Coulomb.dat" )
 
@@ -829,8 +833,8 @@ gc.disable()
 
 ###########********************* Relax 1D
 # t,Es,Ps=relax_scanPlot1D(bRelax=True, nscan=125, span=(2.6,15.1), dir=(0.0,0.0,1.0), p0=(0.0,0.0,(0+2.6)), label="PTCDA on Na", saveFig=None, saveData=None,niter_max=100 )   
-t,Es,Ps=relax_scanPlot1D(bRelax=True, nscan=125, span=(2.6,15.1),  dir=(0.0,0.0,1.0), p0=(0.0,0.0,(0+0)), label="PTCDA on Na", saveFig=None, saveData="new_trial_relax_scan_ptcda_test",
-                        niter_max=5000,Fconv=1e-6,dt=0.05 )  ### z scan dt 0.05 is giving energy in the order of less than 100 but for more smaller step it is giving absolute energy in the order of 1e7 and greater value of like 0.1 is giving random values 0.1 is to match with LAMMPs 0.001femto
+# t,Es,Ps=relax_scanPlot1D(bRelax=True, nscan=125, span=(2.6,15.1),  dir=(0.0,0.0,1.0), p0=(0.0,0.0,(0+0)), label="PTCDA on Na", saveFig=None, saveData="new_trial_relax_scan_ptcda_test",
+#                         niter_max=100000,Fconv=1e-3,dt=0.02 )  ### z scan dt 0.05 is giving energy in the order of less than 100 but for more smaller step it is giving absolute energy in the order of 1e7 and greater value of like 0.1 is giving random values 0.1 is to match with LAMMPs 0.001femto
 
 # t,Es,Ps=relax_scanPlot1D(bRelax=True, nscan=120, span=(0,12), dir=(0.866,0.5,0.0), p0=(0.0,0.0,(0+3.1)), label="PTCDA on Na", saveFig=None, saveData="trial_relax_scan_ptcda_line_test",
 #                         niter_max=50000,Fconv=1e-6,dt=0.1 )  # x y scan  and diagonal #dir=(0.866,0.5,0.0) for 30 degree  nscan=351, span=(0,35.1)
@@ -840,7 +844,7 @@ t,Es,Ps=relax_scanPlot1D(bRelax=True, nscan=125, span=(2.6,15.1),  dir=(0.0,0.0,
 # visualize_relaxed_structures(t, Ps,n_structures=25)
 
 
-# Add these lines at the end of your script
+######Add these lines at the end of your script
 plt.close('all')  # Close all matplotlib figures
 gc.enable()
 gc.collect()      # Force garbage collection
@@ -849,7 +853,7 @@ gc.collect()      # Force garbage collection
 The time i FireCore is            1.0180506e-14 s   
 
 In lammps using 0.001 pico second == 1e-15 second 
-
+In lammps they are using fire algorithm which can gradually decrease the time step if it detects instability in the system dynamics.
 
 
 sed -i 's/\xEF\xBB\xBF//g' /home/indranil/git/FireCore/cpp/common/molecular/MolWorld_sp3.h

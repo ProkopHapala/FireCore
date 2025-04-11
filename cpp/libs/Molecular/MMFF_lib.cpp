@@ -80,12 +80,12 @@ void init_buffers(){
         //buffers .insert( { "fpipos", (double*)W.ffl.fpipos } );
         //ibuffers.insert( { "neighs",      (int*)W.ffl.neighs  } );
 
-        ibuffers.insert( { "ndims",    &W.ffu.natoms } );
-        buffers .insert( { "Es",       &W.ffu.Etot   } );
+        // ibuffers.insert( { "ndims",    &W.ffu.natoms } );
+        // buffers .insert( { "Es",       &W.ffu.Etot   } );
 
     }else if(W.bMMFF){
-        ibuffers.insert( { "ndims",    &W.ffl.nDOFs } );
-        buffers .insert( { "Es",       &W.ffl.Etot  } );
+        // ibuffers.insert( { "ndims",    &W.ffl.nDOFs } );
+        // buffers .insert( { "Es",       &W.ffl.Etot  } );
 
         buffers .insert( { "DOFs",      W.ffl.DOFs  } );
         buffers .insert( { "fDOFs",     W.ffl.fDOFs } );
@@ -100,8 +100,11 @@ void init_buffers(){
     } else{
         W.ff.natoms=W.nbmol.natoms;
     }
+    printf( "before_MMFF_lib.cpp::init_buffers() ndims{nDOFs=%i,natoms=%i,nnode=%i,ncap=%i}\n", W.ffl.nDOFs, W.ffl.natoms, W.ffl.nnode, W.ffl.ncap );
     printf( "MMFF_lib.cpp::init_buffers() ndims{nDOFs=%i,natoms=%i,nnode=%i,ncap=%i,npi=%i,nbonds=%i,nvecs=%i,ne=%i,ie0=%i}\n", W.ff.nDOFs, W.ff.natoms, W.ff.nnode, W.ff.ncap, W.ff.npi, W.ff.nbonds, W.ff.nvecs, W.ff.ne, W.ff.ie0 );
 
+    ibuffers.insert( { "ndims",    &W.ff.nDOFs } );
+    buffers .insert( { "Es",       &W.ff.Etot  } );
     ibuffers.insert( { "selection", W.manipulation_sel  } );
     bbuffers.insert( { "ffflags", &W.doBonded  } );
     //printBuffNames();

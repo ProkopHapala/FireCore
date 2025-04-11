@@ -1157,22 +1157,22 @@ class GridFF_cl:
         
         # XY plane
         plt.subplot(131)
-        # plt.imshow(V_after_slab[:, :, mid_z], origin='lower')
-        plt.imshow(verify_vcoul[:, :, mid_z], origin='lower')
+        plt.imshow(V_after_slab[:, :, mid_z], origin='lower')
+        # plt.imshow(verify_vcoul[:, :, mid_z], origin='lower')
         plt.colorbar(label='Potential')
         plt.title(f'XY plane (z={mid_z})')
 
         # XZ plane
         plt.subplot(132)
-        # plt.imshow(V_after_slab[:, mid_y, :], origin='lower')
-        plt.imshow(verify_vcoul[:, mid_y, :], origin='lower')
+        plt.imshow(V_after_slab[:, mid_y, :], origin='lower')
+        # plt.imshow(verify_vcoul[:, mid_y, :], origin='lower')
         plt.colorbar(label='Potential')
         plt.title(f'XZ plane (y={mid_y})')
 
         # YZ plane
         plt.subplot(133)
-        # plt.imshow(V_after_slab[ mid_x, :,:], origin='lower')
-        plt.imshow(verify_vcoul[ mid_x, :,:], origin='lower')
+        plt.imshow(V_after_slab[ mid_x, :,:], origin='lower')
+        # plt.imshow(verify_vcoul[ mid_x, :,:], origin='lower')
         plt.colorbar(label='Potential')
         plt.title(f'YZ plane (x={mid_x})')
         plt.suptitle('Potential After Slab')

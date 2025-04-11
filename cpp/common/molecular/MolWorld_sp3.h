@@ -2158,7 +2158,7 @@ double eval_no_omp(){
     if( go.bExploring){
         E += go.constrs.apply( ffl.apos, ffl.fapos, &(ffl.lvec) );
     }
-    //printf( "debug.6 E=%g\n", E );
+    // printf( "debug.6 E=%g\n", E );
     if(bGroups){ groups.applyAllForces(0.0, 0.2*sin(nloop*0.02) ); }
     return E;
 }
@@ -2603,6 +2603,21 @@ double eval_no_omp(){
     }
 
 void scan_rigid( int nconf, Vec3d* poss, Mat3d* rots, double* Es, Vec3d* aforces, Vec3d* aposs, bool omp ){
+    // --- DEBUG PRINT STATEMENTS ---
+        size_t vec3d_size = sizeof(Vec3d);
+        size_t expected_total_bytes = (size_t)nconf * ffl.natoms * vec3d_size;
+        printf("--- MolWorld_sp3::scan_rigid DEBUG ---\n");
+        printf("  nconf         : %d\n", nconf);
+        printf("  ffl.natoms    : %d\n", ffl.natoms);
+        printf("  sizeof(Vec3d) : %zu bytes\n", vec3d_size);
+        printf("  Expected total size for aforces: %d * %d * %zu = %zu bytes (%zu elements)\n",
+               nconf, ffl.natoms, vec3d_size, expected_total_bytes, expected_total_bytes / vec3d_size);
+        printf("  aforces buffer address : %p\n", (void*)aforces);
+        printf("  (ASan reported allocated size: 90000 bytes = 3750 elements)\n");
+        printf("-------------------------------------\n");
+        //
+    
+    
     printf("MolWorld_sp3::scan_rigid(nconf=%i,omp=%i) @poss=%li @rots=%li @Es=%li @aforces=%li @aposs=%li \n", nconf, omp, (long)poss, (long)rots, (long)Es, (long)aforces, (long)aposs);
     printf("MolWorld_sp3::scan_rigid() bNonBonded=%i bNonBondNeighs=%i bPBC=%i bSurfAtoms=%i bGridFF=%i gridFF.mode=%i \n", bNonBonded, bNonBondNeighs, bPBC, bSurfAtoms, bGridFF, gridFF.mode );
     
@@ -2611,9 +2626,9 @@ void scan_rigid( int nconf, Vec3d* poss, Mat3d* rots, double* Es, Vec3d* aforces
     //     gridFF.grid.pos0.x, gridFF.grid.pos0.y, gridFF.grid.pos0.z,
     //     gridFF.grid.cell.a.x, gridFF.grid.cell.b.y, gridFF.grid.cell.c.z);
 
-    for(int ia=0; ia<ffl.natoms; ia++){ 
-         printf( "MolWorld_sp3::scan_rigid()[ia=%i] pos(%8.4f,%8.4f,%8.4f) REQ(%8.4f,%16.8f,%8.4f,%8.4f) PLQd(%16.8f,%16.8f,%16.8f,%16.8f) \n", 
-         ia, ffl.apos[ia].x, ffl.apos[ia].y, ffl.apos[ia].z, ffl.REQs[ia].x, ffl.REQs[ia].y, ffl.REQs[ia].z, ffl.REQs[ia].w, ffl.PLQd[ia].x, ffl.PLQd[ia].y, ffl.PLQd[ia].z, ffl.PLQd[ia].w );  }
+    // for(int ia=0; ia<ffl.natoms; ia++){ 
+    //      printf( "MolWorld_sp3::scan_rigid()[ia=%i] pos(%8.4f,%8.4f,%8.4f) REQ(%8.4f,%16.8f,%8.4f,%8.4f) PLQd(%16.8f,%16.8f,%16.8f,%16.8f) \n", 
+    //      ia, ffl.apos[ia].x, ffl.apos[ia].y, ffl.apos[ia].z, ffl.REQs[ia].x, ffl.REQs[ia].y, ffl.REQs[ia].z, ffl.REQs[ia].w, ffl.PLQd[ia].x, ffl.PLQd[ia].y, ffl.PLQd[ia].z, ffl.PLQd[ia].w );  }
 
     Atoms atoms;
     atoms.copyOf( ffl );
@@ -2634,9 +2649,15 @@ void scan_rigid( int nconf, Vec3d* poss, Mat3d* rots, double* Es, Vec3d* aforces
         // }
         
         double E = eval_no_omp();
-        //printf( "scan_rigid[%i] E=%g \n", i, E );
+        printf( "scan_rigid[%i] E=%g \n", i, E );
         if(Es){ Es[i]=E; }
-        if(aforces){ ffl.copyForcesTo( aforces + i*ffl.natoms ); }
+        if(aforces){ 
+            // --- DEBUG PRINT INSIDE LOOP ---
+                Vec3d* current_aforces_ptr = aforces + (size_t)i * ffl.natoms;
+                printf("  scan_rigid loop[%d]: Writing %d forces (starting at index %zu) to address %p\n",
+                       i, ffl.natoms, (size_t)i * ffl.natoms, (void*)current_aforces_ptr);
+                // --- END DEBUG ---
+            ffl.copyForcesTo( aforces + i*ffl.natoms ); }
         if(aposs  ){ ffl.copyPosTo   ( aposs   + i*ffl.natoms ); }
     }
 }
@@ -2662,7 +2683,7 @@ void scan_relaxed( int nconf, Vec3d* poss, Mat3d* rots, double* Es, Vec3d* aforc
     }
 }
 
-// Without taing the previous position
+// //Without taking the previous position
 // void scan_constr( int nconf, int nconstr, int *icontrs, Quat4d* contrs_, double* Es, Vec3d* aforces, Vec3d* aposs, bool bHardConstr_, bool omp, int niter_max, double dt, double Fconv=1e-6, double Flim=1000 ){
 //     printf("MolWorld_sp3::scan_relaxed_constr(nconf=%i,nconstr=%i,omp=%i)  dt=%g Fconv=%g Flim=%g @icontrs=%p @contrs=%p @Es=%p @aforces=%p @aposs=%p \n", nconf, nconstr, omp,  dt, Fconv, Flim, icontrs, contrs_,  Es, aforces, aposs );
 //     Atoms atoms;
@@ -2694,7 +2715,7 @@ void scan_relaxed( int nconf, Vec3d* poss, Mat3d* rots, double* Es, Vec3d* aforc
 // }
 
 
-// Working fine 
+// //Working fine with MMFF scan relax  
 // void scan_constr( int nconf, int nconstr, int *icontrs, Quat4d* contrs_, double* Es, Vec3d* aforces, Vec3d* aposs, bool bHardConstr_, bool omp, int niter_max, double dt, double Fconv=1e-6, double Flim=1000 ){
 //     printf("MolWorld_sp3::scan_relaxed_constr(nconf=%i,nconstr=%i,omp=%i)  dt=%g Fconv=%g Flim=%g @icontrs=%p @contrs=%p @Es=%p @aforces=%p @aposs=%p \n", nconf, nconstr, omp,  dt, Fconv, Flim, icontrs, contrs_,  Es, aforces, aposs );
 //     Atoms atoms;
@@ -2735,7 +2756,7 @@ void scan_relaxed( int nconf, Vec3d* poss, Mat3d* rots, double* Es, Vec3d* aforc
 // }
 
 
-// scan_constr_uff 
+//// it  should be renamed by scan_constr_uff and need to modify the corresponding lib file changes accordingly 
 void scan_constr( int nconf, int nconstr, int *icontrs, Quat4d* contrs_, double* Es, Vec3d* aforces, Vec3d* aposs, bool bHardConstr_, bool omp, int niter_max, double dt, double Fconv=1e-6, double Flim=1000 ){
     printf("MolWorld_sp3::scan_relaxed_constr_uff(nconf=%i,nconstr=%i,omp=%i)  dt=%g Fconv=%g Flim=%g @icontrs=%p @contrs=%p @Es=%p @aforces=%p @aposs=%p \n", nconf, nconstr, omp,  dt, Fconv, Flim, icontrs, contrs_,  Es, aforces, aposs );
     

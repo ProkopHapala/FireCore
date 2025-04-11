@@ -922,14 +922,25 @@ def get_atom_positions():
 
 #def getBuffs( nnode, npi, ncap, nbond, NEIGH_MAX=4 ):
 def getBuffs( NEIGH_MAX=4 ):
-    #init_buffers()
+    print("Debug: Library path:", lib._name)  # Add this line to see which library is loaded
+    print("Debug: Library path:", lib._name)
+    
+    # Get the ndims buffer
+    ndims_ptr = lib.getIBuff("ndims".encode('utf-8'))
+    print("Debug: ndims pointer address:", hex(ctypes.cast(ndims_ptr, ctypes.c_void_p).value))
+    
+    global ndims
+    ndims = np.ctypeslib.as_array(ndims_ptr, shape=(9,))
+    print("Debug: ndims array after conversion:", ndims)
+    # init_buffers()
     #natom=nnode+ncap
     #nvecs=natom+npi
     #nDOFs=nvecs*3
     global ffflags
     ffflags = getBBuff( "ffflags" , (14,) )
-    global ndims,Es
-    ndims = getIBuff( "ndims", (9,) )  # [nDOFs,natoms,nnode,ncap,npi,nbonds]
+    global Es
+    # ndims = getIBuff( "ndims", (9,) )  # [nDOFs,natoms,nnode,ncap,npi,nbonds]
+    print("Debug: Raw ndims array from C++:", ndims)
     global nDOFs,natoms,nnode,ncap,npi,nvecs,nbonds,ne,ie0
     # MFF_lib.cpp::init_buffers() ndims{nDOFs=9,natoms=3,nnode=1,ncap=2,npi=0,nbonds=2,nvecs=3,ne=0,ie0=3}
     if glob_bUFF:
@@ -957,6 +968,7 @@ def getBuffs( NEIGH_MAX=4 ):
         #bond2atom = getIBuff( "bond2atom",(nbonds,2) )
         neighs   = getIBuff( "neighs",  (nnode,NEIGH_MAX) )
         selection = getIBuff( "selection",  (natoms) )
+        print( "getBuffs(): natoms=%i nnode=%i ncap=%i npi=%i nbonds=%i nvecs=%i ne=%i ie0=%i " %(natoms,nnode,ncap,npi,nbonds,nvecs,ne,ie0) )
     print( "getBuffs DONE" )
 
 #  void init_buffers()
