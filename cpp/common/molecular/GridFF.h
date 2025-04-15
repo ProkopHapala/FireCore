@@ -1227,7 +1227,7 @@ inline void addForce( const Vec3d& pos, const Quat4f& PLQ, Quat4f& fe ) const {
         double       E = 0;
         Vec3d f = Vec3dZero;
         //printf("GridFF::evalMorsePBC() npbc=%i natoms=%i bSymetrized=%i \n", npbc, natoms, bSymetrized );
-        if(!bSymetrized){ printf("ERROR  GridFF::evalMorsePBC() not symmetrized, call  GridFF::setAtomsSymetrized() first => exit()\n"); exit(0); }
+        //if(!bSymetrized){ printf("ERROR  GridFF::evalMorsePBC() not symmetrized, call  GridFF::setAtomsSymetrized() first => exit()\n"); exit(0); }
         if( (shifts==0) || (npbc==0) ){ printf("ERROR in GridFF::evalMorsePBC() pbc_shift not intitalized !\n"); };     
         for(int j=0; j<natoms; j ++ ){    // atom-atom
             Vec3d fij = Vec3dZero;
@@ -1238,7 +1238,13 @@ inline void addForce( const Vec3d& pos, const Quat4f& PLQ, Quat4f& fe ) const {
                 //printf( "GridFF::evalMorsePBC() j %i/%i ipbc %i/%i \n", j,natoms, ipbc,npbc );
                 const Vec3d  dp = dp0 + shifts[ipbc];
                 Vec3d fij=Vec3dZero;
-                E += addAtomicForceMorseQ( dp, fij, REQij.x, REQij.y, REQij.z, K, R2damp );
+                //DEBUG
+                double Eij;
+                Eij = addAtomicForceMorseQ( dp, fij, REQij.x, REQij.y, REQij.z, K, R2damp );
+                E+=Eij;
+                printf ("j=%i ipbc=%i shifts=(%g,%g,%g) E=%g f(%g,%g,%g)\n", j, ipbc, shifts[ipbc].x,shifts[ipbc].y,shifts[ipbc].z, Eij, fij.x,fij.y,fij.z );
+                //E += addAtomicForceMorseQ( dp, fij, REQij.x, REQij.y, REQij.z, K, R2damp );
+                //DEBUG
                 //E  += exp(-dp.norm2()/0.16 );
                 f.sub( fij );
             }

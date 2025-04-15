@@ -124,8 +124,10 @@ class NBFF: public ForceField{ public:
     double  Rdamp     = 1.0; // damping radius for Coulomb potential r_=sqrt(d.norm(2)+Rdamp^2)
     //double  Rdamp     = 1.0e-32; // damping radius for Coulomb potential r_=sqrt(d.norm(2)+Rdamp^2)
     Mat3d   lvec __attribute__((aligned(64)));  // lattice vectors
-    Vec3i   nPBC{0,0,0};  // number of periodic images in each direction 
-    bool    bPBC=false; // periodic boundary conditions ?
+//    Vec3i   nPBC{0,0,0};  // number of periodic images in each direction 
+//    bool    bPBC=false; // periodic boundary conditions ?
+    Vec3i   nPBC{1,1,0};  // number of periodic images in each direction 
+    bool    bPBC=true; // periodic boundary conditions ?
 
     int    npbc   =0;  // total number of periodic images
     Vec3d* shifts __attribute__((aligned(64))) =0;  // array of bond vectors shifts in periodic boundary conditions

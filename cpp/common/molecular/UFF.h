@@ -1960,6 +1960,10 @@ class UFF : public NBFF { public:
                     else    { Enb+=evalLJQs_atom_omp    ( ia, Fmax2 ); } 
                 }
             }
+            printf("test_UFF atom=%i\n",ia);
+            DEBUG
+            if( atomForceFunc ) Enb+=atomForceFunc( ia, apos[ia], fapos[ia] );
+            // bSurfAtoms
         }
         FILE *file = fopen("f_firecore.txt","w");
         for(int ja=0; ja<natoms; ja++) {

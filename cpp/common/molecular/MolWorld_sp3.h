@@ -326,7 +326,8 @@ class MolWorld_sp3 : public SolverInterface { public:
             printf( "MolWorld_sp3::init() bMMFF %i bUFF %i bRigid %i\n", bMMFF, bUFF, bRigid );
         }
         if(surf_name ){
-            bGridFF = true;
+// PN - hard-coded change            
+//            bGridFF = true;
             //double z0 = 0.0;   // This is how we have it in python API i.e. MMFF.py
             double z0 = NAN;   // This makes inconsistency with python API i.e. MMFF.py
             loadSurf( surf_name, bGridFF, idebug>0, z0 );
@@ -941,7 +942,7 @@ void printPBCshifts(){
     }
                                              
                                             
-    // =================== Initialization of different parts of the system ( different force-fields )
+    // =================== Initialization of different parts of the system ( different force-fields )initGridFF
 
 
 /**
@@ -1058,6 +1059,11 @@ void printPBCshifts(){
         if(bGrid){
             bool bSymmetrize=true;
             initGridFF( name,z0,cel0, bSymmetrize );
+        }else{
+            gridFF.bindSystem(surf.natoms, surf.atypes, surf.apos, surf.REQs );
+            gridFF.lvec = gridFF.grid.cell; 
+            gridFF.makePBCshifts(gridFF.nPBC, gridFF.lvec);
+
         }
         return true;
     }
@@ -1353,8 +1359,11 @@ void printPBCshifts(){
         DEBUG
         // make assignement of atom types and force field parameters
         if( bUFF ){  // according to UFF
+            DEBUG
             builder.assignUFFtypes( 0, bCumulene, true, b141, bSimple, bConj); 
+            DEBUG
             builder.assignUFFparams( 0, true );
+            DEBUG
         }else{      // according to MMFF
             builder.assignTypes();
         }
@@ -1434,18 +1443,40 @@ void printPBCshifts(){
             ffu.atomForceFunc = [&](int ia,const Vec3d p,Vec3d& f)->double{    
                 //printf( "ffu.atomForceFunc() ia=%i \n", ia  );
                 double E=0;
-                if   (bGridFF){ 
-                    Vec3d fi=Vec3dZero;
-                    E += gridFF.addAtom( p, nbmol.PLQd[ia], f );
+                // if   (bGridFF){ 
+                //     Vec3d fi=Vec3dZero;
+                //     E += gridFF.addAtom( p, nbmol.PLQd[ia], f );
 
-                    //gridFF.addAtom( ffl.apos[ia], ffl.PLQd[ia], ffl.fapos[ia] );
+                //     //gridFF.addAtom( ffl.apos[ia], ffl.PLQd[ia], ffl.fapos[ia] );
 
-                    //E+= gridFF.addForce( p, nbmol.PLQs[ia], fi, true  ); 
-                    //E += gridFF.addAtom( p, nbmol.PLQd[ia], fi );
-                    //printf("MolWorld_sp3::ffu.atomForceFunc(ia=%i,gridFF.mode=%i) p(%g,%g,%g) fi(%g,%g,%g) PLQ(%g,%g,%g) @gridFF.Bspline_PLQ=%li \n", ia, (int)gridFF.mode, p.x, p.y, p.z, fi.x,fi.y,fi.z, nbmol.PLQs[ia].x, nbmol.PLQs[ia].y, nbmol.PLQs[ia].z, (long)gridFF.Bspline_PLQ );
-                    //printf("MolWorld_sp3::ffu.atomForceFunc(ia=%i,gridFF.mode=%i) p(%g,%g,%g) fi(%g,%g,%g) PLQ(%g,%g,%g) @gridFF.Bspline_PLQ=%li \n", ia, (int)gridFF.mode, p.x, p.y, p.z, fi.x,fi.y,fi.z, nbmol.PLQd[ia].x, nbmol.PLQd[ia].y, nbmol.PLQd[ia].z, (long)gridFF.Bspline_PLQ );
-                    f.add( fi );
-                }  // GridFF
+                //     //E+= gridFF.addForce( p, nbmol.PLQs[ia], fi, true  ); 
+                //     //E += gridFF.addAtom( p, nbmol.PLQd[ia], fi );
+                //     //printf("MolWorld_sp3::ffu.atomForceFunc(ia=%i,gridFF.mode=%i) p(%g,%g,%g) fi(%g,%g,%g) PLQ(%g,%g,%g) @gridFF.Bspline_PLQ=%li \n", ia, (int)gridFF.mode, p.x, p.y, p.z, fi.x,fi.y,fi.z, nbmol.PLQs[ia].x, nbmol.PLQs[ia].y, nbmol.PLQs[ia].z, (long)gridFF.Bspline_PLQ );
+                //     //printf("MolWorld_sp3::ffu.atomForceFunc(ia=%i,gridFF.mode=%i) p(%g,%g,%g) fi(%g,%g,%g) PLQ(%g,%g,%g) @gridFF.Bspline_PLQ=%li \n", ia, (int)gridFF.mode, p.x, p.y, p.z, fi.x,fi.y,fi.z, nbmol.PLQd[ia].x, nbmol.PLQd[ia].y, nbmol.PLQd[ia].z, (long)gridFF.Bspline_PLQ );
+                //     f.add( fi );
+                // }  // GridFF
+
+
+                if(bSurfAtoms)[[likely]]{ 
+                    if(bGridFF)[[likely]]{  // with gridFF
+                        printf( "makeFFs()::ffu.atomForceFunc() ia=%i PLQd(%g,%g,%g,%g) \n", ia,ffu.PLQd[ia].x,ffu.PLQd[ia].y,ffu.PLQd[ia].z,ffu.PLQd[ia].w  );
+                        gridFF.addAtom( ffu.apos[ia], ffu.PLQd[ia], f );
+                    }else{ // Without gridFF (Direct pairwise atoms)
+                        //{ E+= nbmol .evalMorse   ( surf, false,                  gridFF.alphaMorse, gridFF.Rdamp );  }
+                        //{ E+= nbmol .evalMorsePBC    ( surf, gridFF.grid.cell, nPBC, gridFF.alphaMorse, gridFF.Rdamp );  }
+                        DEBUG
+                        { 
+                           // E+= gridFF.evalMorsePBC_sym( ffu.apos[ia], ffu.REQs[ia],  f);   
+
+                            Vec3d fi=Vec3dZero;
+                            double Ei = gridFF.evalMorsePBC_sym( ffu.apos[ia], ffu.REQs[ia],  fi);   
+                            printf( "atomForceFunc.evalMorsePBC_sym Ei %g fi(%g,%g,%g) gridFF.natoms=%i gridFF.npbc=%i \n", Ei, fi.x,fi.y,fi.z, gridFF.natoms, gridFF.npbc );
+                            E+=Ei;
+                            f.add(fi);
+                        }
+                        DEBUG
+                    }
+                }
                 if(bConstrZ){
                     springbound( p.z-ConstrZ_xmin, ConstrZ_l, ConstrZ_k, f.z );
                 }

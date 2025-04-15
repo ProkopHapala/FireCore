@@ -1046,7 +1046,7 @@ class GridFF_cl:
             Qgrid = np.zeros( (*sh,2,), dtype=np.float32 )
             cl.enqueue_copy(self.queue, Qgrid, self.Qgrid_buff )
             print("Qgrid min,max ", Qgrid[:,:,:,0].min(), Qgrid[:,:,:,0].max() )
-            np.save( "./data/NaCl_1x1_L3/Qgrid_ocl.npy", Qgrid[:,:,:,0] )
+            #np.save( "./data/NaCl_1x1_L3/Qgrid_ocl.npy", Qgrid[:,:,:,0] )
             ####### Plot three slices through the middle
             plt.figure(figsize=(15, 5))
             mid_x= 0
