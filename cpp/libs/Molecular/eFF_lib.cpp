@@ -37,6 +37,17 @@ const char* prefix = "#Epiece";
 #include "DynamicOpt.h"
 #include "Vec3Utils.h"
 
+
+#define WITH_BUILDER 1
+#if WITH_BUILDER
+#include "MMFFparams.h"
+#include "MMFFBuilder.h"
+#include "Atoms.h"
+MMFFparams* params=0;
+std::vector<Atoms*> samples;
+MM::Builder builder;
+#endif
+
 // ============ Global Variables
 
 EFF         ff;
@@ -330,5 +341,131 @@ void setSwitches( int bEvalKinetic, int bEvalCoulomb, int  bEvalPauli, int bEval
     _setbool( ff.bEvalAEPauli   , bEvalAEPauli   );
 #undef _setbool
 }
+
+
+// #define WITH_BUILDER 1
+#if WITH_BUILDER
+
+
+void builder2EFF(EFF& ff, const MM::Builder& builder, bool bRealloc=true ){
+    int ne=0;
+    int na=0;
+    int epairtyp = params->getAtomType("E");
+    // --- loop over atoms and electron pairs
+    for(int i=0; i<builder.atoms.size(); i++){
+        int it = builder.atoms[i].type;
+        if( it!=epairtyp ){
+            int iZ = params->atypes[it].iZ;
+            if(!bRealloc){
+                ff.aPars [na] = EFF::default_AtomParams[iZ];
+                ff.apos  [na] = builder.atoms[i].pos;
+            }
+            na++;
+        }
+    }
+    Vec3d* epos  = (bRealloc) ? 0 : ff.epos;
+    int*   espin = (bRealloc) ? 0 : ff.espin;
+    ne = builder.exportElectronPairs( epos, espin, true, true );
+    if(bRealloc){
+        ff.realloc( na, ne, true );
+    }
+}
+
+// void from_Atoms(EFF& ff, Atoms* atoms, bool bRealloc=true ){
+//     int ne=0;
+//     int na=0;
+//     int epairtyp = params->getAtomType("E");
+//     // --- loop over atoms and electron pairs
+//     for(int i=0; i<atoms->natoms; i++){
+//         int it = atoms->atypes[i];
+//         if( it==epairtyp ){
+//             ff.epos[ne] = atoms->apos[i];
+//             ff.esize[ne] = 0.5;
+//             ff.espin[ne] = 1;
+//             ne++;
+//             ff.epos[ne] = atoms->apos[i];
+//             ff.esize[ne] = 0.5;
+//             ff.espin[ne] = 1;
+//             ne++;
+//         }else{
+//             int iZ = params->atypes[it].iZ;
+//             ff.aPars [na] = EFF::default_AtomParams[iZ];
+//             ff.apos  [na] = atoms->apos[i];
+//             na++;
+//         }
+//     }
+// }
+
+int loadXYZ( const char* fname, bool bAddEpairs=false, bool bOutXYZ=false ){
+    printf( "FitREQ::loadXYZ(%s) bAddEpairs=%i bOutXYZ=%i\n", fname, bAddEpairs, bOutXYZ );
+    FILE* fin = fopen( fname, "r" );
+    if(fin==0){ printf("cannot open '%s' \n", fname ); exit(0);}
+    const int nline=1024;
+    char line[1024];
+    char at_name[8];
+    // --- Open output file
+    FILE* fout=0;
+    if(bAddEpairs && bOutXYZ){
+        sprintf(line,"%s_Epairs.xyz", fname );
+        fout = fopen(line,"w");
+    }
+    int il   = 0;
+    Atoms* atoms=0;
+    while( fgets(line, nline, fin) ){
+        if      ( il==0 ){               // --- Read number of atoms
+            int na=-1;
+            sscanf( line, "%i", &na );
+            if( (na>0)&&(na<10000) ){
+                atoms = new Atoms(na);
+            }else{ printf( "ERROR in FitREQ::loadXYZ() Suspicious number of atoms (%i) while reading `%s`  => Exit() \n", na, fname ); exit(0); }
+        }else if( il==1 ){               // --- Read comment line ( read reference energy )
+            sscanf( line, "%*s %*s %i %*s %lf ", &(atoms->n0), &(atoms->Energy) );
+        }else if( il<atoms->natoms+2 ){  // --- Road atom line (type, position, charge)
+            double x,y,z,q;
+            int nret = sscanf( line, "%s %lf %lf %lf %lf", at_name, &x, &y, &z, &q );
+            //printf( ".xyz[%i] %s %lf %lf %lf %lf\n", il, at_name, x, y, z, q );
+            if(nret<5){q=0;}
+            int i=il-2;
+            atoms->apos[i].set(x,y,z);
+            atoms->atypes[i]=params->getAtomType(at_name);
+            //atoms->charge[i]=q;
+        }
+        il++;
+        if( bAddEpairs){    // ---- store sample atoms to batch
+            builder.params = params;
+            //atoms = builder.buildBondsAndEpairs(atoms);
+            builder2EFF( ff, builder );
+
+            //builder.exportAtoms( Vec3d* apos, int* atypes, int i0=0, int n=-1 );
+            //builder.exportElectronPairs( ff.epos, ff.espin, true, true );
+
+            // int nbad = atoms->checkTypeInRange( params->atypes.size()-1, 1, true );
+            // if( nbad>0 ){ 
+            //     printf("ERROR in FitREQ::loadXYZ() samples[%5i]->checkTypeInRange() return nbad=%i => exit()\n", nbatch, nbad ); 
+            //     params->printTypesOfAtoms(atoms->natoms, atoms->atypes);
+            //     exit(0); 
+            // }
+            //samples.push_back( atoms );
+            //if(bEvalOnlyCorrections){ printFittedAdata( samples.size()-1 ); }
+            il=0;
+        }
+    }
+    if(fout)fclose(fout);
+    fclose(fin);
+    return samples.size();
+}
+
+
+
+
+// void eval_xyz_movie(){
+//     Atoms::atomsFromXYZ();
+// }
+
+
+#endif // WITH_BUILDER
+
+
+
 
 } // extern "C"
