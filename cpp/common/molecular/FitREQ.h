@@ -487,34 +487,35 @@ int loadDOFSelection( const char* fname ){
     return nDOFs;
 }
 
-Atoms* addEpairs( Atoms* mol ){
-    builder.params = params;
-    builder.clear();
-    if(mol->lvec){ builder.lvec = *(mol->lvec); builder.bPBC=true; }
-    builder.insertAtoms(*mol);
-    //builder.printCappingTypes();
-    //builder.printAtomConfs(false, true );
-    builder.tryAddConfsToAtoms( 0, -1 );
-    builder.cleanPis();
-    if( builder.bPBC ){ 
-        builder.autoBondsPBC( -.5,  0      , mol->n0     ); // we should not add bonds between rigid and flexible parts
-        builder.autoBondsPBC( -.5,  mol->n0, mol->natoms ); 
-    }else{ 
-        builder.autoBonds( -.5,  0      , mol->n0     ); // we should not add bonds between rigid and flexible parts
-        builder.autoBonds( -.5,  mol->n0, mol->natoms ); 
-    }
-    //builder.printAtomConfs(false, true );
-    builder.checkNumberOfBonds( true, true );
-    builder.bDummyEpair = true;
-    builder.autoAllConfEPi( ); 
-    //builder.printAtomConfs(false, true );
-    builder.setPiLoop       ( 0, -1, 10 );
-    builder.addAllEpairsByPi( 0, -1 );  
-    builder.addSigmaHoles();     
-    //builder.printAtomConfs(false, true );
-    //exit(0);
-    return builder.exportAtoms(); 
-}
+// Deprecated, moved to MMFFBuilder::buildBondsAndEpairs()
+// Atoms* addEpairs( Atoms* mol ){
+//     builder.params = params;
+//     builder.clear();
+//     if(mol->lvec){ builder.lvec = *(mol->lvec); builder.bPBC=true; }
+//     builder.insertAtoms(*mol);
+//     //builder.printCappingTypes();
+//     //builder.printAtomConfs(false, true );
+//     builder.tryAddConfsToAtoms( 0, -1 );
+//     builder.cleanPis();
+//     if( builder.bPBC ){ 
+//         builder.autoBondsPBC( -.5,  0      , mol->n0     ); // we should not add bonds between rigid and flexible parts
+//         builder.autoBondsPBC( -.5,  mol->n0, mol->natoms ); 
+//     }else{ 
+//         builder.autoBonds( -.5,  0      , mol->n0     ); // we should not add bonds between rigid and flexible parts
+//         builder.autoBonds( -.5,  mol->n0, mol->natoms ); 
+//     }
+//     //builder.printAtomConfs(false, true );
+//     builder.checkNumberOfBonds( true, true );
+//     builder.bDummyEpair = true;
+//     builder.autoAllConfEPi( ); 
+//     //builder.printAtomConfs(false, true );
+//     builder.setPiLoop       ( 0, -1, 10 );
+//     builder.addAllEpairsByPi( 0, -1 );  
+//     builder.addSigmaHoles();     
+//     //builder.printAtomConfs(false, true );
+//     //exit(0);
+//     return builder.exportAtoms(); 
+// }
 
 int initFittedAdata( Atoms* atoms, AddedData* adata, bool byType=true ) {
     //printf("initFittedAdata() isamp=%3i: ntypes=%3i natoms=%3i \n", samples.size(), fittedTypes.size(), atoms->natoms );
@@ -619,7 +620,10 @@ void addAndReorderEpairs(Atoms*& atoms, FILE* fout=nullptr) {
     int n1bak  = natbak - n0bak; // Number of atoms in second molecule
 
     // Add electron pairs to the system
-    atoms = addEpairs(atoms);      // This modifies the builder's state
+    //atoms = addEpairs(atoms);      // This modifies the builder's state
+    builder.params = params;
+    atoms = builder.buildBondsAndEpairs(atoms);
+
     atoms->n0 = bak->n0;
     atoms->Energy = bak->Energy;
     for(int i=0; i<natbak; i++){ atoms->charge[i] = bak->charge[i]; }

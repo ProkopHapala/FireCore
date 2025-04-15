@@ -1518,6 +1518,34 @@ class Builder{  public:
         //printf("-> "); println(conf);
     }
 
+    Atoms* buildBondsAndEpairs( Atoms* mol, double Rfac=-0.5 ){
+        clear();
+        if(mol->lvec){ lvec = *(mol->lvec); bPBC=true; }
+        insertAtoms(*mol);
+        //printCappingTypes();
+        //printAtomConfs(false, true );
+        tryAddConfsToAtoms( 0, -1 );
+        cleanPis();
+        if( bPBC ){
+            autoBondsPBC( Rfac,  0      , mol->n0     ); // we should not add bonds between rigid and flexible parts
+            autoBondsPBC( Rfac,  mol->n0, mol->natoms ); 
+        }else{ 
+            autoBonds( Rfac,  0      , mol->n0     ); // we should not add bonds between rigid and flexible parts
+            autoBonds( Rfac,  mol->n0, mol->natoms ); 
+        }
+        //builder.printAtomConfs(false, true );
+        checkNumberOfBonds( true, true );
+        bDummyEpair = true;
+        autoAllConfEPi( ); 
+        //builder.printAtomConfs(false, true );
+        setPiLoop       ( 0, -1, 10 );
+        addAllEpairsByPi( 0, -1 );  
+        addSigmaHoles();     
+        //builder.printAtomConfs(false, true );
+        //exit(0);
+        return exportAtoms(); 
+    }
+
 /*
     int addEpairsToAtoms(int ia, double l=0.5 ){
         int ic=atoms[ia].iconf;
