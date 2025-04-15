@@ -916,8 +916,8 @@ class Builder{  public:
     }
 
     //void addCap(int ia,Vec3d& hdir, Atom* atomj, int btype){
-    void addEpair(int ia, const Vec3d& hdir, double l=-0.5 ){
-        //printf( "addEpairsByPi[%i, typ=%i] add epair[%i] type %i h(%g,%g,%g)\n", ia, ityp, i, ecap.type,   hs[ib].x,hs[ib].y,hs[ib].z );
+    Vec3d addEpair(int ia, const Vec3d& hdir, double l=-0.5, bool bInsertBond=true, bool bInsertAtoms=true ){
+        //printf( "addEpairsByPi[%i] h(%g,%g,%g) bInsertBond=%i bInsertAtoms=%i\n", ia, hdir.x,hdir.y,hdir.z, bInsertBond, bInsertAtoms );
         int ja=atoms.size();
         capAtom.type = itypEpair;
         if(params){ 
@@ -927,9 +927,12 @@ class Builder{  public:
         }else{ l=-l; }
         //printf( "addEpair[%i] type %i |h|=%g l=%g\n", ja, capAtom.type,   hdir.norm(), l );
         capAtom.pos = atoms[ia].pos + hdir*l;
-        insertAtom(capAtom);
-        capBond.atoms.set(ia,ja);
-        insertBond( capBond );
+        if(bInsertAtoms)insertAtom(capAtom);
+        if(bInsertBond){
+            capBond.atoms.set(ia,ja);
+            insertBond( capBond );
+        }
+        return capAtom.pos;
     }
 
     //void addCap(int ia,Vec3d& hdir, Atom* atomj, int btype){
@@ -1542,7 +1545,7 @@ class Builder{  public:
         //printf("-> "); println(conf);
     }
 
-    Atoms* buildBondsAndEpairs( Atoms* mol, double Rfac=-0.5 ){
+    Atoms* buildBondsAndEpairs( Atoms* mol, bool bPBC, double Rfac=-0.5, bool bDummyEpair=true, bool bAddPi=true, bool bAddECaps=true ){
         clear();
         if(mol->lvec){ lvec = *(mol->lvec); bPBC=true; }
         insertAtoms(*mol);
@@ -1559,8 +1562,10 @@ class Builder{  public:
         }
         //builder.printAtomConfs(false, true );
         checkNumberOfBonds( true, true );
-        bDummyEpair = true;
-        autoAllConfEPi( ); 
+        if(bDummyEpair){
+            bDummyEpair = true;
+            autoAllConfEPi( ); 
+        }
         //builder.printAtomConfs(false, true );
         setPiLoop       ( 0, -1, 10 );
         addAllEpairsByPi( 0, -1 );  
@@ -1723,20 +1728,22 @@ class Builder{  public:
         return n;
     }
 
-    bool addEpairsByPi(int ia, double l=-0.5 ){
+    int addEpairsByPi(int ia, double l=-0.5, Vec3d* epos=0, bool byPi=true ){
         //printf( "addEpairsByPi[%i] \n", ia  );
         int ic=atoms[ia].iconf;
-        if(ic<0)return false;
+        if(ic<0)return 0;
         //int ityp=atoms[ia].type;
         AtomConf& conf = confs[ic];
         int ne = conf.ne;
-        if( (ne<1)||(conf.nbond>1)||(conf.npi<1) )return false;
-        conf.ne=0;
+        //if( (ne<1)||(conf.nbond<2)||(conf.npi>2) )return 0;
+        if( (ne<1) )return 0;
+        //printf( "addEpairsByPi[%i] ne=%i nb=%i npi=%i epos=%p\n", ia, ne, conf.nbond, conf.npi, epos );
         conf.n-=ne;
         int nb = conf.nbond;
         Vec3d hs[4];
         loadNeighbors ( ia, nb,       conf.neighs, hs );
-        makeConfGeomPi( nb, conf.npi, conf.pi_dir, hs );
+        if(byPi){ makeConfGeomPi( nb, conf.npi, conf.pi_dir, hs ); }
+        else    { makeConfGeom( nb, conf.npi, hs ); }
         //if(byPi){ makeConfGeomPi( nb, conf.npi, conf.pi_dir, hs ); } // NOTE: we need to asign pi_dir before calling makeConfGeomPi(), this is however necessary for atoms like =O which do not have other bonds direction of e-pair is not defined if pi-plane is not defined
         //else    { makeConfGeom  ( nb, conf.npi,              hs ); }  
         //printf( "addEpairsByPi[%i, typ=%i=%s] npi=%i hs[0](%6.3f,%6.3f,%6.3f) hs[1](%6.3f,%6.3f,%6.3f) hs[2](%6.3f,%6.3f,%6.3f) hs[3](%6.3f,%6.3f,%6.3f) \n", ia, ityp, params->atypes[ityp].name,  hs[0].x,hs[0].y,hs[0].z,   hs[1].x,hs[1].y,hs[1].z,   hs[2].x,hs[2].y,hs[2].z, hs[3].x,hs[3].y,hs[3].z );
@@ -1753,12 +1760,19 @@ class Builder{  public:
         //     fclose(fout);
         // }
 
+        bool bIns = (epos==nullptr);
+
         for( int i=0; i<ne; i++ ){
             int ib=nb+i;
             //printf( "addEpairsToAtoms[%i] i=%i ib=%i |h|=%g |hb|=%g |hpi|=%g  l=%g \n", ia, i, ib, hs[ib].norm(), hs[0].norm(), conf.pi_dir.norm(), l );
-            addEpair(ia,hs[ib],l);
+            if(bIns){
+                conf.ne=0;
+                addEpair(ia,hs[ib], l, bIns, bIns );
+            }else{
+                epos[i] = addEpair(ia,hs[ib], l, bIns, bIns );
+            }
         }
-        return true;
+        return ne;
     }
     int addAllEpairsByPi( int ia0=0, int imax=-1, bool byPi=true ){
         int n=0;
@@ -3380,6 +3394,19 @@ void assignTorsions( bool bNonPi=false, bool bNO=true ){
 
     int insertAtoms( const Atoms& mol, const Vec3d& pos=Vec3dZero, const Mat3d& rot=Mat3dIdentity, const Vec3d& pos0=Vec3dZero ){
         return insertAtoms( mol.natoms, mol.atypes, mol.apos, 0, 0, 0, pos, rot, pos0 );
+    }
+
+    void load_atom_pos( Vec3d* apos, int* atypes, int i0=0, int n=-1 ){
+        natom_def(n,i0);
+        //printf( "load_atom_pos i0 %i n %i @apos=%p \n", i0, n, apos );
+        for(int i=0; i<n; i++){
+            MM::Atom& a = atoms[i0+i];
+            if(apos   ){ 
+                //printf( "load_atom_pos[%i] pos(%g,%g,%g)\n", i, apos[i].x, apos[i].y, apos[i].z );
+                a.pos  = apos[i]; 
+            }
+            if(atypes ){ a.type = atypes[i]; }
+        }
     }
 
     int exportAtoms( Vec3d* apos, int* atypes, int i0=0, int n=-1 )const{
