@@ -443,6 +443,7 @@ class Builder{  public:
 
     int itypHcap  =-1;
     int itypEpair =-1;
+    int itype_min = 1; // type 0 is * (not valid type)
 
     Atom capAtom      = Atom{ (int)NeighType::H,     -1,-1, {0,0,0}, Atom::HcapREQ };
     Atom capAtomEpair = Atom{ (int)NeighType::epair, -1,-1, {0,0,0}, {0,0,0} };
@@ -1541,6 +1542,40 @@ class Builder{  public:
         //printf("-> "); println(conf);
     }
 
+    Atoms* buildBondsAndEpairs( Atoms* mol, double Rfac=-0.5 ){
+        clear();
+        if(mol->lvec){ lvec = *(mol->lvec); bPBC=true; }
+        insertAtoms(*mol);
+        //printCappingTypes();
+        //printAtomConfs(false, true );
+        tryAddConfsToAtoms( 0, -1 );
+        cleanPis();
+        if( bPBC ){
+            autoBondsPBC( Rfac,  0      , mol->n0     ); // we should not add bonds between rigid and flexible parts
+            autoBondsPBC( Rfac,  mol->n0, mol->natoms ); 
+        }else{ 
+            autoBonds( Rfac,  0      , mol->n0     ); // we should not add bonds between rigid and flexible parts
+            autoBonds( Rfac,  mol->n0, mol->natoms ); 
+        }
+        //builder.printAtomConfs(false, true );
+        checkNumberOfBonds( true, true );
+        bDummyEpair = true;
+        autoAllConfEPi( ); 
+        //builder.printAtomConfs(false, true );
+        setPiLoop       ( 0, -1, 10 );
+        addAllEpairsByPi( 0, -1 );  
+        addSigmaHoles();     
+        //builder.printAtomConfs(false, true );
+        //exit(0);
+        return exportAtoms(); 
+    }
+
+    void exportElectrons(){
+
+    }
+
+
+
 /*
     int addEpairsToAtoms(int ia, double l=0.5 ){
         int ic=atoms[ia].iconf;
@@ -1765,6 +1800,72 @@ class Builder{  public:
             if( addCapByPi(ia,cap_typ) ){n++;}
         }
         return n;
+    }
+
+    bool addSigmaHole(int ia, double l=-0.5 ){
+        //printf( "addSigmaHole[%i] l=%g \n", ia, l  );
+        /// Add sigma hole (positively charge dummy atom) to all node atoms with just 1 neighbor
+        int ic=atoms[ia].iconf;
+        if(ic<0)return false;             // check if it is node atom
+        int ityp=atoms[ia].type;
+        if( params->atypes[ityp].ePairType<itype_min )return false;
+        //printf( "addSigmaHole[%i] l=%g t: %i %-8s \n", ia, l, ityp, params->atypes[ityp].name  );
+        AtomConf& conf = confs[ic];
+        if(conf.nbond!=1) return false;  // check if there is jsut 1 neighbor
+        int ib  = conf.neighs[0];
+        int iab = bonds[ib].getNeighborAtom(ia);
+        Vec3d h = atoms[ia].pos - atoms[iab].pos;
+        h.normalize();
+        addEpair(ia,h,l);
+        return true;
+    }
+    int addSigmaHoles( int ia0=0, int imax=-1, bool bUseParams=true, double Lep=-0.5  ){
+        int n=0;
+        if(imax<0){ imax=atoms.size(); }
+        for(int ia=ia0;ia<imax;ia++){
+            double l = Lep;
+            if(bUseParams){
+                int ityp=atoms[ia].type;
+                l = params->atypes[ityp].Hb;
+            }
+            if( addSigmaHole(ia ) ){n++;}
+        }
+        return n;
+    }
+
+    int listEpairBonds( Vec2i*& bs, Vec3d*& dirs ){
+        std::vector<Vec2i> _bs;
+        std::vector<Vec3d> _dirs;
+        int nfound=0;
+        for( int ia=0; ia<atoms.size(); ia++ ){
+            // NOTE: we must loop over host atoms because e-pairs are capping atoms, so they don't have neighbor-list (conf)
+            int ic = atoms[ia].iconf;
+            if(ic<0)continue;
+            AtomConf& conf = confs[ic];
+            for(int i=0; i<N_NEIGH_MAX; i++){
+                int ib = conf.neighs[i];
+                if(ib<0)continue;
+                if(ib>=bonds.size()){ printf("ERROR listEpairBonds[%i](ia=%i) ib(%i)>bonds.size(%i) \n", nfound, ia, ib, bonds.size() ); exit(0); }
+                int ja = bonds[ib].getNeighborAtom(ia);
+                if( atoms[ja].iconf == -1 ){
+                    int it = atoms[ja].type;
+                    if( params->atypes[it].name[0]=='E' ){
+                        //printf("listEpairBonds[%i](%i,%i) types(%s,%s) \n", nfound, ia, ja, params->atypes[atoms[ia].type].name, params->atypes[it].name  );
+                        _bs  .push_back( (Vec2i){ia,ja} );   //   ia = Host_atom_index ja= Electron_Pair_Index
+                        _dirs.push_back( atoms[ja].pos - atoms[ia].pos );
+                        //printf("listEpairBonds[%i](%i,%i) types(%s,%s) dir(%g,%g,%g)\n", nfound, ia, ja, params->atypes[atoms[ia].type].name, params->atypes[it].name, _dirs.back().x,_dirs.back().y,_dirs.back().z  );
+                        nfound++;   
+                    };
+                }
+            }
+        }
+        bs   = new Vec2i[nfound];
+        dirs = new Vec3d[nfound];
+        for(int i=0; i<nfound; i++){
+            bs  [i] = _bs  [i];
+            dirs[i] = _dirs[i];
+        }
+        return nfound;
     }
 
     bool tryMakeSPConf(int ia, bool bAutoEPi=false){
@@ -3281,16 +3382,60 @@ void assignTorsions( bool bNonPi=false, bool bNO=true ){
         return insertAtoms( mol.natoms, mol.atypes, mol.apos, 0, 0, 0, pos, rot, pos0 );
     }
 
-    Atoms* exportAtoms( int i0=0, int n=-1 ){
+    int exportAtoms( Vec3d* apos, int* atypes, int i0=0, int n=-1 )const{
+        natom_def(n,i0);
+        for(int i=0; i<n; i++){
+            const Atom& a = atoms[i0+i];
+            if(atypes)atypes[i] = a.type;
+            if(apos)  apos  [i] = a.pos;
+        }
+        return n;
+    }
+
+    Atoms* exportAtoms( int i0=0, int n=-1 )const{
         natom_def(n,i0);
         Atoms* out = new Atoms( n, bPBC, true );
         if(bPBC){ *(out->lvec)=lvec; };
-        for(int i=0; i<n; i++){
-            const Atom& a = atoms[i0+i];
-            out->atypes[i] = a.type;
-            out->apos  [i] = a.pos;
-        }
+        exportAtoms( out->apos, out->atypes, i0, n );
         return out;
+    }
+
+    int exportElectronPairs( Vec3d* epos, int* espin, bool bBonds=true, bool bEPairs=true )const{
+        int epairtype=params->getAtomType("E");
+        int ie=0;
+        if(bBonds){
+            for(int i=0; i<bonds.size(); i++){
+                const Bond& b = bonds[i];
+                Vec3d p1=atoms[b.atoms.i].pos;
+                Vec3d p2=atoms[b.atoms.j].pos;
+                if(b.order==1){
+                    Vec3d p = (p1+p2)*0.5;
+                    epos [ie] = p;
+                    espin[ie] = 1;
+                    ie++;
+                    epos [ie] = p;
+                    espin[ie] = -1;
+                    ie++;
+                }else{
+                    printf("exportElectronPairs() bond order %i not supported\n", b.order);
+                    exit(0);
+                }
+                // ToDo: add more electron pairs for double and triple bonds
+            }
+        }
+        if(bEPairs){
+            for(int i=0; i<atoms.size(); i++){
+                if( atoms[i].type==epairtype ){
+                    epos [ie] = atoms[i].pos;
+                    espin[ie] = 1;
+                    ie++;
+                    epos [ie] = atoms[i].pos;
+                    espin[ie] = -1;
+                    ie++;
+                }
+            }
+        }
+        return ie;
     }
 
     void insertBonds( int nb, Vec2i* b2as, int* btypes ){
