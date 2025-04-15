@@ -322,6 +322,11 @@ def sample_EA( RSs, FEout=None, KRSrho=[1.125,0.9,-0.2], aPar=[4.,0.1,0.1,2.0], 
     lib.sample_EA(n, RSs, FEout, KRSrho, aPar, bEvalAECoulomb, bCoreCoul, bEvalAEPauli)
     return FEout
 
+#int processXYZ( const char* fname, double Rfac=-0.5, bool bAddEpairs=false, bool bOutXYZ=false ){
+lib.processXYZ.argtypes  = [c_char_p, c_double, c_bool, c_bool ]
+lib.processXYZ.restype   =  c_int
+def processXYZ( fname, Rfac=-1.35, bAddEpairs=False, bOutXYZ=False ):
+    return lib.processXYZ( cstr(fname), Rfac, bAddEpairs, bOutXYZ )
 
 # =========  Tests
 

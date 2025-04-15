@@ -422,6 +422,13 @@ void fixElectron(int ie, double* vs=0){
     };
 }
 
+void set_electron(int ie, const Vec3d& pos, double size, int spin){
+    epos [ie] = pos;
+    esize[ie] = size;
+    espin[ie] = spin;
+}
+
+
 /// evaluate kinetic energy of each electron
 double evalKinetic(){
     Ek=0;
