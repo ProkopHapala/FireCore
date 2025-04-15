@@ -80,12 +80,12 @@ void init_buffers(){
         //buffers .insert( { "fpipos", (double*)W.ffl.fpipos } );
         //ibuffers.insert( { "neighs",      (int*)W.ffl.neighs  } );
 
-        // ibuffers.insert( { "ndims",    &W.ffu.natoms } );
-        // buffers .insert( { "Es",       &W.ffu.Etot   } );
+        ibuffers.insert( { "ndims",    &W.ffu.natoms } );
+        buffers .insert( { "Es",       &W.ffu.Etot   } );
 
     }else if(W.bMMFF){
-        // ibuffers.insert( { "ndims",    &W.ffl.nDOFs } );
-        // buffers .insert( { "Es",       &W.ffl.Etot  } );
+        ibuffers.insert( { "ndims",    &W.ff.nDOFs } );
+        buffers .insert( { "Es",       &W.ff.Etot  } );
 
         buffers .insert( { "DOFs",      W.ffl.DOFs  } );
         buffers .insert( { "fDOFs",     W.ffl.fDOFs } );
@@ -103,8 +103,6 @@ void init_buffers(){
     printf( "before_MMFF_lib.cpp::init_buffers() ndims{nDOFs=%i,natoms=%i,nnode=%i,ncap=%i}\n", W.ffl.nDOFs, W.ffl.natoms, W.ffl.nnode, W.ffl.ncap );
     printf( "MMFF_lib.cpp::init_buffers() ndims{nDOFs=%i,natoms=%i,nnode=%i,ncap=%i,npi=%i,nbonds=%i,nvecs=%i,ne=%i,ie0=%i}\n", W.ff.nDOFs, W.ff.natoms, W.ff.nnode, W.ff.ncap, W.ff.npi, W.ff.nbonds, W.ff.nvecs, W.ff.ne, W.ff.ie0 );
 
-    ibuffers.insert( { "ndims",    &W.ff.nDOFs } );
-    buffers .insert( { "Es",       &W.ff.Etot  } );
     ibuffers.insert( { "selection", W.manipulation_sel  } );
     bbuffers.insert( { "ffflags", &W.doBonded  } );
     //printBuffNames();
@@ -239,6 +237,10 @@ int    run( int nstepMax, double dt, double Fconv, int ialg, double damping, dou
 void  scan( int nconf, double* poss, double* rots, double* Es, double* aforces, double* aposs, bool omp, bool bRelax, int niter_max, double dt, double Fconv, double Flim ){
     // Add debug print here
     // printf("DEBUG: scan() function using shift0 = (%g, %g, %g)\n", W.gridFF.shift0.x, W.gridFF.shift0.y, W.gridFF.shift0.z);
+    // --- DEBUG PRINT (Added previously) ---
+    printf("DEBUG>> MMFF_lib: AFTER setSwitches2: W.ffl.PLQd[0].z = %.6f\n", W.ffl.PLQd[0].z); 
+    // --- END DEBUG ---
+
     if(bRelax){
         if(omp){ printf("ERROR: scan_relaxed() not implemented witht OMP\n"); exit(0); } 
         else   { W.scan_relaxed( nconf, (Vec3d*)poss, (Mat3d*)rots, Es, (Vec3d*)aforces, (Vec3d*)aposs, omp, niter_max, dt, Fconv, Flim );  }
@@ -367,7 +369,9 @@ void setSwitches2( int CheckInvariants, int PBC, int NonBonded, int NonBondNeigh
     _setbool( W.ffl.doPiPiI  , PiPiI     );
 
     printf( "setSwitches2() W.bCheckInvariants==%i bPBC=%i | bNonBonded=%i bNonBondNeighs=%i | bSurfAtoms=%i bGridFF=%i | bMMFF=%i doAngles=%i doPiSigma=%i doPiPiI=%i \n", W.bCheckInvariants, W.bPBC,  W.bNonBonded, W.bNonBondNeighs, W.bSurfAtoms, W.bGridFF, W.bMMFF, W.ffl.doAngles, W.ffl.doPiSigma, W.ffl.doPiPiI );
-
+    // --- DEBUG PRINT ---
+    printf("DEBUG>> MMFF_lib: AFTER setSwitches2: W.ffl.PLQd[0].z = %.6f\n", W.ffl.PLQd[0].z);
+    // --- END DEBUG ---
     //W.ffl.bSubtractAngleNonBond = W.bNonBonded;
     #undef _setbool
 }

@@ -21,9 +21,10 @@ def scanPlot(nscan=1000, span=(0.0,8.0), dir=(0.0,0.0,1.0), p0=(0.0,0.0,0.0), la
    
     Es, Fs, Ps = mmff.scan(poss, bF=True, bP=True)
     
+    Es_end = Es[-1]
 
     if saveData is not None:
-        np.savetxt(saveData, np.column_stack((ts, Es)), header="ts\tEnergy", comments="# ")
+        np.savetxt(saveData, np.column_stack((ts, Es-Es_end)), header="ts\tEnergy", comments="# ")
 
     plt.title(label)
     plt.plot(ts, Es, '-', lw=0.5, label=label)
@@ -739,29 +740,30 @@ mmff.setVerbosity( verbosity=2, idebug=1 )
 # mmff.init( xyz_name="data/xyz/new_PTCDA_charge_on_Na", surf_name="data/xyz/Na_0.9_Cl_-0.9" , bUFF=True, bSimple=True )   ### For uff relaxed scan the bUFF has to be true
 
 
+#mmff.init( xyz_name="data/xyz/PTCDA_charge_on_Na", surf_name="data/xyz/Na_0.9_Cl_-0.9", bUFF=True, bSimple=True )   
 mmff.init( xyz_name="data/xyz/PTCDA_charge_on_Na", surf_name="data/xyz/Na_0.9_Cl_-0.9" )   
 # mmff.init( xyz_name="data/xyz/PTCDA_charge_on_Cl", surf_name="data/xyz/Na_0.9_Cl_-0.9" )
 # mmff.init( xyz_name="data/xyz/PTCDA_charge_on_hollow", surf_name="data/xyz/Na_0.9_Cl_-0.9" )
 # mmff.init( xyz_name="data/xyz/PTCDA_charge_xy", surf_name="data/xyz/Na_0.9_Cl_-0.9" )
-print("After init: ", mmff.ndims if hasattr(mmff, 'ndims') else "ndims not set yet")
+# print("After init: ", mmff.ndims if hasattr(mmff, 'ndims') else "ndims not set yet")
 
 
 ####################################################################################################################################
 
 mmff.getBuffs()
-print("After getBuffs: ndims=", mmff.ndims)
-print("natoms=", mmff.natoms, "nnode=", mmff.nnode, "ncap=", mmff.ncap)
+# print("After getBuffs: ndims=", mmff.ndims)
+# print("natoms=", mmff.natoms, "nnode=", mmff.nnode, "ncap=", mmff.ncap)
 # mmff.ipicked = 30
 
 #print( "ffflags ", mmff.ffflags )
 
 # mmff.setSwitches( NonBonded=-1, MMFF=1, SurfAtoms=0, GridFF=1,PBC=-1 )   ### For Relaxed Scan MMFF has to be 1 
 # mmff.setSwitches( NonBonded=-1, MMFF=1, SurfAtoms=0, GridFF=1 )   ### For Relaxed Scan MMFF has to be 1 
-mmff.setSwitches( NonBonded=-1, MMFF=1, SurfAtoms=0, GridFF=1 )   #### For Rigid Scan 
+mmff.setSwitches( NonBonded=-1, MMFF=1, SurfAtoms=1, GridFF=1 )   #### For Rigid Scan to make ay of the flag noneffective eed to set -1 0 will not work 
 
 
 
-#################################################################################################### Mode Decision ################################
+################# Mode Decision Morse Coulomb #######################################################################################################################
 # mmff.PLQs[:,0] = 0.0  # delete Pauli
 # mmff.PLQs[:,1] = 0.0  # delete London
 
@@ -814,7 +816,7 @@ mmff.setSwitches( NonBonded=-1, MMFF=1, SurfAtoms=0, GridFF=1 )   #### For Rigid
 
 
 ################*******************PTCDA
-scanPlot( nscan=125, span=(2.6,15.1), dir=(0.0,0.0,1.0), p0=(0.0,0.0,0), label="PTCDA on Na", saveFig="new_E_z_scan_on_Na_PTCDA_Morse.png", saveData="new_E_z_scan_on_Na_PTCDA_Morse.dat" )
+scanPlot( nscan=125, span=(2.6,15.1), dir=(0.0,0.0,1.0), p0=(0.0,0.0,0), label="PTCDA on Na", saveFig="E_z_scan_on_Na_PTCDA_Morse.png", saveData="E_z_scan_on_Na_PTCDA_Morse.dat" )
 # scanPlot( nscan=125, span=(2.6,15.1), dir=(0.0,0.0,1.0), p0=(0.0,0.0,0), label="PTCDA on Na", saveFig="E_z_scan_on_Na_PTCDA_Coulomb.png", saveData="E_z_scan_on_Na_PTCDA_Coulomb.dat" )
 # scanPlot( nscan=125, span=(2.6,15.1), dir=(0.0,0.0,1.0), p0=(0.0,0.0,0), label="PTCDA on Na", saveFig="E_z_scan_on_Na_PTCDA_Morse_Coulomb.png", saveData="E_z_scan_on_Na_PTCDA_Morse_Coulomb.dat" )
 

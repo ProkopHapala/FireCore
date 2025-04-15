@@ -136,7 +136,7 @@ void realloc( int nnode_, int ncap_, int ntors_=0 ){
     natoms= nnode + ncap; 
     nvecs = natoms+nnode;  // each atom as also pi-orientiation (like up-vector)
     nDOFs = nvecs*3;
-    //printf( "MMFFsp3::realloc() natom(%i,nnode=%i,ncap=%i), npi=%i, nbond=%i \n", natoms, nnode, ncap, npi, nbonds );
+    // printf( "MMFFsp3::realloc() natom(%i,nnode=%i,ncap=%i), npi=%i, nbond=%i \n", natoms, nnode, ncap, npi, nbonds );
     int ipi0=natoms;
     
     _realloc0(  DOFs    , nDOFs , (double)NAN );

@@ -1468,6 +1468,12 @@ void printPBCshifts(){
             //ffl.realloc( builder.atoms.size() );
             initNBmol( &ffl );
             DEBUG
+            // --- DEBUG PRINT: Check REQs after initNBmol ---
+            if(ffl.natoms > 0){
+                printf("DEBUG>> makeFFs (after initNBmol): nbmol.REQs[0](RvdW=%g, sqrtEvdW=%g, Q=%g, Hb?=%g)\n",
+                       nbmol.REQs[0].x, nbmol.REQs[0].y, nbmol.REQs[0].z, nbmol.REQs[0].w);
+            }
+            // -----------------------------------------------
             if(builder.atom2group.size() > 0){ ffl.initBBsFromGroups(builder.atom2group.size(), builder.atom2group.data()); }
             //ffl.printAtomParams();
             setNonBond( bNonBonded );
@@ -1484,9 +1490,23 @@ void printPBCshifts(){
                 DEBUG
             }
             DEBUG
+            // --- DEBUG PRINT: Check alphaMorse before evalPLQd ---
+            printf("DEBUG>> makeFFs (before evalPLQd): gridFF.alphaMorse = %g\n", gridFF.alphaMorse);
+            // --- DEBUG PRINT: Check ffl.REQs before evalPLQd ---
+            if(ffl.natoms > 0){
+                printf("DEBUG>> makeFFs (before evalPLQd): ffl.REQs[0](RvdW=%g, sqrtEvdW=%g, Q=%g, Hb?=%g)\n",
+                       ffl.REQs[0].x, ffl.REQs[0].y, ffl.REQs[0].z, ffl.REQs[0].w);
+            }
+            // ---------------------------------------------------
             ffl.evalPLQs(gridFF.alphaMorse);
             ffl.evalPLQd(gridFF.alphaMorse);
             DEBUG
+            // --- DEBUG PRINT: Check PLQd after calculation ---
+            if(ffl.natoms > 0){
+                printf("DEBUG>> makeFFs (after evalPLQd): ffl.PLQd[0](Pauli=%g, Lond=%g, Coul=%g, alpha*RvdW?=%g)\n",
+                       ffl.PLQd[0].x, ffl.PLQd[0].y, ffl.PLQd[0].z, ffl.PLQd[0].w);
+            }
+            // -------------------------------------------------
             if(bCheckInit){
                 idebug=1;
                 ffl.checkREQlimits();
@@ -2108,6 +2128,9 @@ void pullAtom( int ia, Vec3d* apos, Vec3d* fapos, float K=-2.0 ){
     }
 
 double eval_no_omp(){
+    // printf("DEBUG: Entering eval_no_omp()\n");
+    // printf( "DEBUG: MolWorld_sp3::eval_no_omp()  bPBC=%i | bNonBonded=%i bNonBondNeighs=%i | bSurfAtoms=%i bGridFF=%i | bMMFF=%i doAngles=%i doPiSigma=%i doPiPiI=%i \n", bPBC,  bNonBonded, bNonBondNeighs, bSurfAtoms, bGridFF, bMMFF, ffl.doAngles, ffl.doPiSigma, ffl.doPiPiI );
+    
     double E=0;
     double F2max = ffl.FmaxNonBonded*ffl.FmaxNonBonded;
     ffl.bNonBonded=bNonBonded; ffl.setNonBondStrategy( bNonBondNeighs*2-1 );
@@ -2120,7 +2143,7 @@ double eval_no_omp(){
         if(bMMFF)[[likely]]{
             if(ia<ffl.nnode){ E+=ffl.eval_atom(ia); }
         }
-        //printf( "debug.1 E[%i]=%g\n", ia, E );
+        // printf( "debug.1 E[%i]=%g\n", ia, E );
         // ----- Error is HERE
         if(bNonBonded){
             if(bNonBondNeighs)[[likely]]{
@@ -2131,21 +2154,42 @@ double eval_no_omp(){
                 else              { E+=ffl.evalLJQs_atom_omp    ( ia, F2max ); } 
             } 
         }
-        //printf( "debug.2 E[%i]=%g\n", ia, E );
+        // printf( "debug.2 E[%i]=%g\n", ia, E );
         if(bSurfAtoms)[[likely]]{ 
             if(bGridFF)[[likely]]{  // with gridFF
-                E += gridFF.addAtom( ffl.apos[ia], ffl.PLQd[ia], ffl.fapos[ia] );
+                // --- DEBUG PRINT: Before gridFF.addAtom ---
+                    if(ia == 0){ // Print only for the first atom to reduce output
+                        // printf("DEBUG>> eval_no_omp[ia=0]: gridFF.alphaMorse=%g\n", gridFF.alphaMorse );
+                        printf("DEBUG>> eval_no_omp[ia=0]: pos(%g,%g,%g) PLQd(Pauli=%g, Lond=%g, Coul=%g, aR?=%g)\n",
+                               ffl.apos[ia].x, ffl.apos[ia].y, ffl.apos[ia].z,
+                               ffl.PLQd[ia].x, ffl.PLQd[ia].y, ffl.PLQd[ia].z, ffl.PLQd[ia].w);
+                    }
+                    // -----------------------------------------
+                // E += gridFF.addAtom( ffl.apos[ia], ffl.PLQd[ia], ffl.fapos[ia] );
+                double E_grid = gridFF.addAtom( ffl.apos[ia], ffl.PLQd[ia], ffl.fapos[ia] );
+                    // --- DEBUG PRINT: After gridFF.addAtom ---
+                    if(ia == 0){
+                         printf("DEBUG<< eval_no_omp[ia=0]: E_grid=%g, f_accum(%g,%g,%g)\n",
+                                E_grid, ffl.fapos[ia].x, ffl.fapos[ia].y, ffl.fapos[ia].z);
+                    }
+                    // ----------------------------------------
+                E += E_grid;
             }else{ // Without gridFF (Direct pairwise atoms)
                 //{ E+= nbmol .evalMorse   ( surf, false,                  gridFF.alphaMorse, gridFF.Rdamp );  }
                 //{ E+= nbmol .evalMorsePBC    ( surf, gridFF.grid.cell, nPBC, gridFF.alphaMorse, gridFF.Rdamp );  }
                 { E+= gridFF.evalMorsePBC_sym( ffl.apos[ia], ffl.REQs[ia],  ffl.fapos[ia] );   }
+                if(ia == 0){ // Print only for the first atom to reduce output
+                    printf("No_Grid_DEBUG<< eval_no_omp[ia=0]: E_no_grid=%g, f_accum(%g,%g,%g)\n",
+                           E, ffl.fapos[ia].x, ffl.fapos[ia].y, ffl.fapos[ia].z);
+                }
+                
             }
         }
-        //printf( "debug.3 E[%i]=%g\n", ia, E );
+        // printf( "debug.3 E[%i]=%g\n", ia, E );
         if(bConstrZ){
             E+=springbound( ffl.apos[ia].z-ConstrZ_xmin, ConstrZ_l, ConstrZ_k, ffl.fapos[ia].z );
         }
-        //printf( "debug.4 E[%i]=%g\n", ia, E );
+        // printf( "debug.4 E[%i]=%g\n", ia, E );
     }
     // ---- assembling
     for(int ia=0; ia<ffl.natoms; ia++){
@@ -2154,13 +2198,14 @@ double eval_no_omp(){
     if(bConstrains){
         E += constrs.apply( ffl.apos, ffl.fapos, &ffl.lvec );
     }
-    //printf( "debug.5 E=%g\n", E );
+    // printf( "debug.5 E=%g\n", E );
     if( go.bExploring){
         E += go.constrs.apply( ffl.apos, ffl.fapos, &(ffl.lvec) );
     }
     // printf( "debug.6 E=%g\n", E );
     if(bGroups){ groups.applyAllForces(0.0, 0.2*sin(nloop*0.02) ); }
     return E;
+    
 }
 
 
@@ -2603,23 +2648,27 @@ double eval_no_omp(){
     }
 
 void scan_rigid( int nconf, Vec3d* poss, Mat3d* rots, double* Es, Vec3d* aforces, Vec3d* aposs, bool omp ){
-    // --- DEBUG PRINT STATEMENTS ---
-        size_t vec3d_size = sizeof(Vec3d);
-        size_t expected_total_bytes = (size_t)nconf * ffl.natoms * vec3d_size;
-        printf("--- MolWorld_sp3::scan_rigid DEBUG ---\n");
-        printf("  nconf         : %d\n", nconf);
-        printf("  ffl.natoms    : %d\n", ffl.natoms);
-        printf("  sizeof(Vec3d) : %zu bytes\n", vec3d_size);
-        printf("  Expected total size for aforces: %d * %d * %zu = %zu bytes (%zu elements)\n",
-               nconf, ffl.natoms, vec3d_size, expected_total_bytes, expected_total_bytes / vec3d_size);
-        printf("  aforces buffer address : %p\n", (void*)aforces);
-        printf("  (ASan reported allocated size: 90000 bytes = 3750 elements)\n");
-        printf("-------------------------------------\n");
-        //
+    // // --- DEBUG PRINT STATEMENTS ---
+    //     size_t vec3d_size = sizeof(Vec3d);
+    //     size_t expected_total_bytes = (size_t)nconf * ffl.natoms * vec3d_size;
+    //     printf("--- MolWorld_sp3::scan_rigid DEBUG ---\n");
+    //     printf("  nconf         : %d\n", nconf);
+    //     printf("  ffl.natoms    : %d\n", ffl.natoms);
+    //     printf("  sizeof(Vec3d) : %zu bytes\n", vec3d_size);
+    //     printf("  Expected total size for aforces: %d * %d * %zu = %zu bytes (%zu elements)\n",
+    //            nconf, ffl.natoms, vec3d_size, expected_total_bytes, expected_total_bytes / vec3d_size);
+    //     printf("  aforces buffer address : %p\n", (void*)aforces);
+    //     printf("  (ASan reported allocated size: 90000 bytes = 3750 elements)\n");
+    //     printf("-------------------------------------\n");
+    //     //
     
+    // --- DEBUG PRINT ---
+    printf("DEBUG>> scan_rigid: START: ffl.PLQd[0].z = %.6f\n", ffl.PLQd[0].z);
+    // --- END DEBUG ---
+    printf("MolWorld_sp3::scan_rigid(nconf=%i,omp=%i) ...\n", nconf, omp );
     
-    printf("MolWorld_sp3::scan_rigid(nconf=%i,omp=%i) @poss=%li @rots=%li @Es=%li @aforces=%li @aposs=%li \n", nconf, omp, (long)poss, (long)rots, (long)Es, (long)aforces, (long)aposs);
-    printf("MolWorld_sp3::scan_rigid() bNonBonded=%i bNonBondNeighs=%i bPBC=%i bSurfAtoms=%i bGridFF=%i gridFF.mode=%i \n", bNonBonded, bNonBondNeighs, bPBC, bSurfAtoms, bGridFF, gridFF.mode );
+    // printf("MolWorld_sp3::scan_rigid(nconf=%i,omp=%i) @poss=%li @rots=%li @Es=%li @aforces=%li @aposs=%li \n", nconf, omp, (long)poss, (long)rots, (long)Es, (long)aforces, (long)aposs);
+    // printf("MolWorld_sp3::scan_rigid() bNonBonded=%i bNonBondNeighs=%i bPBC=%i bSurfAtoms=%i bGridFF=%i gridFF.mode=%i \n", bNonBonded, bNonBondNeighs, bPBC, bSurfAtoms, bGridFF, gridFF.mode );
     
     // Add grid dimensions print
     // printf("DEBUG: GridFF dimensions | pos0=(%.3f,%.3f,%.3f) cell=(%.3f,%.3f,%.3f)\n", 
@@ -2649,13 +2698,13 @@ void scan_rigid( int nconf, Vec3d* poss, Mat3d* rots, double* Es, Vec3d* aforces
         // }
         
         double E = eval_no_omp();
-        printf( "scan_rigid[%i] E=%g \n", i, E );
+        // printf( "scan_rigid[%i] E=%g \n", i, E );
         if(Es){ Es[i]=E; }
         if(aforces){ 
             // --- DEBUG PRINT INSIDE LOOP ---
                 Vec3d* current_aforces_ptr = aforces + (size_t)i * ffl.natoms;
-                printf("  scan_rigid loop[%d]: Writing %d forces (starting at index %zu) to address %p\n",
-                       i, ffl.natoms, (size_t)i * ffl.natoms, (void*)current_aforces_ptr);
+                // printf("  scan_rigid loop[%d]: Writing %d forces (starting at index %zu) to address %p\n",
+                    //    i, ffl.natoms, (size_t)i * ffl.natoms, (void*)current_aforces_ptr);
                 // --- END DEBUG ---
             ffl.copyForcesTo( aforces + i*ffl.natoms ); }
         if(aposs  ){ ffl.copyPosTo   ( aposs   + i*ffl.natoms ); }
