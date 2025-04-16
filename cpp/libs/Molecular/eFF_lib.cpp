@@ -370,38 +370,46 @@ void builder2EFF(EFF& ff, const MM::Builder& builder, bool bRealloc=true ){
     }
 }
 
-int builder2EFFstatic( EFF* ff, MM::Builder& builder, double esize0=0.5, double le=-0.5 ){
+int builder2EFFstatic( EFF* ff, MM::Builder& builder, bool bCoreElectrons=true, double esize0=0.5, double le=-0.5 ){
     //printf( "builder2EFFstatic() builder.atoms.size() %i builder.bonds.size() %i ff=%p \n", builder.atoms.size(), builder.bonds.size(), ff );
     //if(ff){ printf( "builder2EFFstatic() ff.na %i ff.ne %i \n", ff->na, ff->ne ); }
     int ie=0;
     int ia=0;
     Vec3d epos[4];
     for(int ib=0; ib<builder.bonds.size(); ib++){
-        const MM::Bond& b = builder.bonds[ib];
-        Vec3d pa = builder.atoms[b.atoms.i].pos;
-        Vec3d pb = builder.atoms[b.atoms.j].pos;
-        Vec3d p = (pa+pb)*0.5;
-        if( ff ) ff->set_electron( ie, p, esize0, 1 );
-        ie++;
-        if( ff ) ff->set_electron( ie, p, esize0, -1 );
-        ie++;
+        if( ff ){ 
+            const MM::Bond& b = builder.bonds[ib];
+            Vec3d pa = builder.atoms[b.atoms.i].pos;
+            Vec3d pb = builder.atoms[b.atoms.j].pos;
+            Vec3d p = (pa+pb)*0.5;
+            ff->set_electron( ie, p, esize0,  1 );  ie++;
+            ff->set_electron( ie, p, esize0, -1 );  ie++;
+        }else{ ie+=2; }
     }
     for(int ia=0; ia<builder.atoms.size(); ia++){
         //printf( "builder2EFFstatic() ia=%i na=%i \n", ia, builder.atoms.size() );
         Vec3d pa = builder.atoms[ia].pos;
-        int it   = builder.atoms[ia].type;
+        int   it = builder.atoms[ia].type;
+        int   iZ = params.atypes[it].iZ;
+        bool bCore = bCoreElectrons && (iZ>1);
         if( ff ){
             if( ia>=ff->na ){ printf( "builder2EFFstatic() ia(%i) >= ff->na(%i) => exit \n", ia, ff->na ); exit(0); }
-            ff->aPars[ia] = EFF::default_AtomParams[params.atypes[it].iZ];
             ff->apos [ia] = pa;
-        }
+            if(bCore){
+                ff->aPars[ia] = (Quat4d){ (double)iZ, 0.0, 0.0, 0.0 };
+                ff->set_electron( ie, pa, 0.1,  1 ); ie++;
+                ff->set_electron( ie, pa, 0.1, -1 ); ie++;
+            }else{
+                ff->aPars[ia] = EFF::default_AtomParams[iZ];
+            }
+        }else if(bCore){ ie+=2; }
         int nei = builder.addEpairsByPi(ia, le, epos, false );
         //printf( "builder2EFFstatic() ia=%i nei=%i \n", ia, nei );
         for(int i=0; i<nei; i++){
-            if( ff ) ff->set_electron( ie, epos[i], esize0, 1 );
-            ie++;
-            if( ff ) ff->set_electron( ie, epos[i], esize0, -1 );
-            ie++;
+            if( ff ){
+                ff->set_electron( ie, epos[i], esize0,  1 ); ie++;
+                ff->set_electron( ie, epos[i], esize0, -1 ); ie++;
+            }else{ ie+=2; }
         }
     }
     return ie;
@@ -433,7 +441,7 @@ int builder2EFFstatic( EFF* ff, MM::Builder& builder, double esize0=0.5, double 
 //     }
 // }
 
-int processXYZ( const char* fname, double Rfac=-0.5, double* outEs=0, bool bAddEpairs=false, bool bOutXYZ=false ){
+int processXYZ( const char* fname, double Rfac=-0.5, double* outEs=0, int nstepMax=1000, double dt=0.001, double Fconv=1e-3, int ialg=2, bool bAddEpairs=false, bool bCoreElectrons=true, bool bOutXYZ=false ){
     setvbuf(stdout, NULL, _IONBF, 0);
     printf( "processXYZ(%s) bAddEpairs=%i bOutXYZ=%i Rfac %g\n", fname, bAddEpairs, bOutXYZ, Rfac );
 
@@ -486,13 +494,13 @@ int processXYZ( const char* fname, double Rfac=-0.5, double* outEs=0, bool bAddE
                 builder.tryAddConfsToAtoms( 0, -1 );
                 builder.printAtomConfs();
                 builder.autoBonds( Rfac ); 
-                int ne = builder2EFFstatic( 0, builder );
+                int ne = builder2EFFstatic( 0, builder, bCoreElectrons );
                 printf("processXYZ() iconf=%i natoms=%i builder.atoms.size()=%i builder.bonds.size()=%i\n", iconf, atoms->natoms, builder.atoms.size(), builder.bonds.size() );
                 ff.realloc( atoms->natoms, ne, true );
                 opt.bindOrAlloc( ff.nDOFs, ff.pDOFs, ff.vDOFs, ff.fDOFs, ff.invMasses );
             }
             builder.load_atom_pos( atoms->apos, 0 );
-            builder2EFFstatic( &ff, builder );
+            builder2EFFstatic( &ff, builder, bCoreElectrons );
             { // constrain
                 int nfix=ff.na;
                 if(iconf==0)ff.realloc_fixed(nfix);
@@ -506,7 +514,7 @@ int processXYZ( const char* fname, double Rfac=-0.5, double* outEs=0, bool bAddE
             //printf("processXYZ() iconf=%i natoms=%i na=%i ne=%i \n", iconf, atoms->natoms, ff.na, ff.ne );
             //builder2EFF( ff, builder );
             //run( int nstepMax, double dt, double Fconv, int ialg, double* outE, double* outF );
-            run( 10000, 0.05, 1e-3, 2, 0, 0 );
+            run( nstepMax, dt, Fconv, ialg, 0, 0 );
             ff.eval();
             printf("processXYZ() iconf=%i natoms=%i na=%i ne=%i | Etot(%g)=T(%g)+ee(%g)+ea(%g)+aa(%g) \n", iconf, atoms->natoms, ff.na, ff.ne, ff.Etot, ff.Ek, ff.Eee, ff.Eae, ff.Eaa );
             if(bOutXYZ)ff.save_xyz( "processXYZ.xyz", "a" );
