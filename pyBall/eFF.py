@@ -322,12 +322,12 @@ def sample_EA( RSs, FEout=None, KRSrho=[1.125,0.9,-0.2], aPar=[4.,0.1,0.1,2.0], 
     lib.sample_EA(n, RSs, FEout, KRSrho, aPar, bEvalAECoulomb, bCoreCoul, bEvalAEPauli)
     return FEout
 
-#int processXYZ( const char* fname, double Rfac=-0.5, double* outEs=0, bool bAddEpairs=false, bool bOutXYZ=false ){
-lib.processXYZ.argtypes  = [c_char_p, c_double, c_double_p, c_bool, c_bool ]
+#int processXYZ( const char* fname, double Rfac=-0.5, double* outEs=0, int nstepMax, double dt, double Fconv, int ialg, bool bAddEpairs=false, bool bCoreElectrons=true, bool bOutXYZ=false ){
+lib.processXYZ.argtypes  = [c_char_p, c_double, c_double_p, c_int, c_double, c_double, c_int, c_bool, c_bool, c_bool ]
 lib.processXYZ.restype   =  c_int
-def processXYZ( fname, Rfac=-1.35, outEs=None, bAddEpairs=False, bOutXYZ=False ):
+def processXYZ( fname, Rfac=-1.35, outEs=None, nstepMax=1000, dt=0.5e-2, Fconv=1e-3, ialg=2, bAddEpairs=False, bCoreElectrons=False, bOutXYZ=False ):
     #if outEs is None: outEs = np.zeros(8, dtype=np.float64)
-    lib.processXYZ( cstr(fname), Rfac, _np_as(outEs, c_double_p), bAddEpairs, bOutXYZ )
+    lib.processXYZ( cstr(fname), Rfac, _np_as(outEs, c_double_p), nstepMax, dt, Fconv, ialg, bAddEpairs, bCoreElectrons, bOutXYZ )
     return outEs
 
 # =========  Tests

@@ -59,8 +59,6 @@ def plot_energy_landscape( Xs, Ys, Es, Espan=None):
     plt.ylabel('Angle (rad)')
     #plt.title('Potential Energy Surface')
     
-
-
 #plot_energy_landscape("export/scan_data/angdistscan_H2O.xyz")
 
 params, nrec = extract_blocks("export/scan_data/angdistscan_H2O.xyz")
@@ -68,12 +66,13 @@ plot_energy_landscape( params['ang'], params['dist'], params['Etot'], Espan=5.0 
 
 outEs = np.zeros((nrec,5))
 
-#with open("processXYZ.xyz", "w") as f: f.write("")
+with open("processXYZ.xyz", "w") as f: f.write("")
 #eff.processXYZ( "export/scan_data/distscan_H2O.xyz", bOutXYZ=True, outEs );
 
 
-eff.initOpt( dt=0.02, damping=0.001, f_limit=1000.0)
-eff.processXYZ( "export/scan_data/angdistscan_H2O.xyz", bOutXYZ=True, outEs=outEs );
+eff.initOpt( dt=0.005, damping=0.005, f_limit=1000.0)
+#eff.processXYZ( "export/scan_data/angdistscan_H2O.xyz", bOutXYZ=True, outEs=outEs, bCoreElectrons=False );
+eff.processXYZ( "export/scan_data/angdistscan_H2O.xyz", bOutXYZ=True, outEs=outEs, bCoreElectrons=True, nstepMax=1000, dt=0.001, Fconv=1e-3, ialg=2 );
 #print(outEs)
 
 plot_energy_landscape( params['ang'], params['dist'], outEs[:,0] )
