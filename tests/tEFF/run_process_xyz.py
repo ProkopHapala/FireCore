@@ -54,10 +54,10 @@ def plot_energy_landscape( Xs, Ys, Es, Espan=None):
         vmin = None
         vmax = None
     plt.imshow(energy_grid, extent=[ys.min(), ys.max(), xs.max(), xs.min()], aspect='auto', cmap='inferno', vmin=vmin, vmax=vmax)
-    plt.colorbar(label='Total Energy (Ha)')
+    plt.colorbar(label='Total Energy ')
     plt.xlabel('Distance (Å)')
     plt.ylabel('Angle (rad)')
-    plt.title('Potential Energy Surface')
+    #plt.title('Potential Energy Surface')
     
 
 
