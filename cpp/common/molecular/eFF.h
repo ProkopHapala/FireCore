@@ -575,6 +575,7 @@ double evalAE(){
                 //printf("%s a%i-e%i Coul %5.20f \n",prefix,i,j,dEae); 
                 //printf("%s a%i-e%i Paul %5.20f \n",prefix,i,j,dEaePaul); 
             }
+            //printf( "evalAE[%i,%i] f(%g,%g,%g) r %g s %g E %g EPaul %g Eee %g \n", i,j, f.x,f.y,f.z, dR.norm(), aPar.y, sj, dEae,dEaePaul,dEee );
             Eae    +=dEae;
             EaePaul+=dEaePaul;
             Eee_   +=dEee;
