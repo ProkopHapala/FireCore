@@ -434,7 +434,7 @@ int builder2EFFstatic( EFF* ff, MM::Builder& builder){
 //     }
 // }
 
-int processXYZ( const char* fname, double Rfac=-0.5, bool bAddEpairs=false, bool bOutXYZ=false ){
+int processXYZ( const char* fname, double Rfac=-0.5, double* outEs=0, bool bAddEpairs=false, bool bOutXYZ=false ){
     setvbuf(stdout, NULL, _IONBF, 0);
     printf( "processXYZ(%s) bAddEpairs=%i bOutXYZ=%i Rfac %g\n", fname, bAddEpairs, bOutXYZ, Rfac );
 
@@ -459,6 +459,7 @@ int processXYZ( const char* fname, double Rfac=-0.5, bool bAddEpairs=false, bool
     builder.params = &params;
     bool bOnlyFirst = true;
     int iconf = 0; 
+
     while( fgets(line, nline, fin) ){
         if ( il==0 ){               // --- Read number of atoms
             int na=-1;
@@ -489,13 +490,37 @@ int processXYZ( const char* fname, double Rfac=-0.5, bool bAddEpairs=false, bool
                 int ne = builder2EFFstatic( 0, builder );
                 printf("processXYZ() iconf=%i natoms=%i builder.atoms.size()=%i builder.bonds.size()=%i\n", iconf, atoms->natoms, builder.atoms.size(), builder.bonds.size() );
                 ff.realloc( atoms->natoms, ne, true );
+
             }
             builder.load_atom_pos( atoms->apos, 0 );
             builder2EFFstatic( &ff, builder );
-            printf("processXYZ() iconf=%i natoms=%i na=%i ne=%i\n", iconf, atoms->natoms, ff.na, ff.ne );
+            { // constrain
+                int nfix=ff.na;
+                if(iconf==0)ff.realloc_fixed(nfix);
+                for(int i=0; i<nfix; i++){
+                    ff.fixed_poss[i].f = ff.apos[i];
+                    //ff.fixed_poss[i].w = 1;
+                    ff.fixed_inds[i] = Vec2i{i,7};
+                }
+                //set_constrains( ff.na, fix, fixed_inds, true  );
+            }
+            //printf("processXYZ() iconf=%i natoms=%i na=%i ne=%i \n", iconf, atoms->natoms, ff.na, ff.ne );
             //builder2EFF( ff, builder );
+            //run( int nstepMax, double dt, double Fconv, int ialg, double* outE, double* outF );
+            run( 1000, 0.05, 1000.0, 2, 0, 0 );
             ff.eval();
+            printf("processXYZ() iconf=%i natoms=%i na=%i ne=%i | Etot(%g)=T(%g)+ee(%g)+ea(%g)+aa(%g) \n", iconf, atoms->natoms, ff.na, ff.ne, ff.Etot, ff.Ek, ff.Eee, ff.Eae, ff.Eaa );
             if(bOutXYZ)ff.save_xyz( "processXYZ.xyz", "a" );
+            if(outEs){
+                int nEperConf=5;
+                // fprintf( pFile, "na,ne %i %i Etot(%g)=T(%g)+ee(%g)+ea(%g)+aa(%g) \n", na,ne, Etot, Ek, Eee, Eae, Eaa );
+                double* outEi = outEs+iconf*nEperConf;
+                outEi[0] = ff.Etot;
+                outEi[1] = ff.Ek;
+                outEi[2] = ff.Eee;
+                outEi[3] = ff.Eae;
+                outEi[4] = ff.Eaa;
+            }
             il=0;
             iconf++;
         }
