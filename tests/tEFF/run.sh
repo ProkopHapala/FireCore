@@ -3,6 +3,7 @@
 wd=`pwd`
 
 ln -s ../../cpp/sketches_SDL/Molecular/data
+ln -s ../../cpp/common_resources
 
 echo "#=========== Compile C++"
 cd ../../cpp/Build/libs/Molecular/
