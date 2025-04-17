@@ -173,8 +173,8 @@ class MolWorld_sp3 : public SolverInterface { public:
     double gridStep = 0.1; 
     //double gridStep = 0.05; 
     //double gridStep = 0.2; 
-    //Vec3i nPBC{0,0,0};   // just debug
-    Vec3i nPBC{1,1,0};
+    Vec3i nPBC{0,0,0};   // just debug
+    //Vec3i nPBC{1,1,0};
     //Vec3i nPBC{1,3,0};
     int    npbc       = 0;
     Vec3d* pbc_shifts = 0;
