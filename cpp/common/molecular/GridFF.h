@@ -1242,7 +1242,7 @@ inline void addForce( const Vec3d& pos, const Quat4f& PLQ, Quat4f& fe ) const {
                 double Eij;
                 Eij = addAtomicForceMorseQ( dp, fij, REQij.x, REQij.y, REQij.z, K, R2damp );
                 E+=Eij;
-                printf ("j=%i ipbc=%i shifts=(%g,%g,%g) E=%g f(%g,%g,%g)\n", j, ipbc, shifts[ipbc].x,shifts[ipbc].y,shifts[ipbc].z, Eij, fij.x,fij.y,fij.z );
+                //printf ("j=%i ipbc=%i shifts=(%g,%g,%g) E=%g f(%g,%g,%g)\n", j, ipbc, shifts[ipbc].x,shifts[ipbc].y,shifts[ipbc].z, Eij, fij.x,fij.y,fij.z );
                 //E += addAtomicForceMorseQ( dp, fij, REQij.x, REQij.y, REQij.z, K, R2damp );
                 //DEBUG
                 //E  += exp(-dp.norm2()/0.16 );

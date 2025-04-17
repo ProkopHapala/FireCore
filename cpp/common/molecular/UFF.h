@@ -71,6 +71,7 @@ class UFF : public NBFF { public:
     bool bAngles = false;      // used for test_UFF
     bool bDihedrals = false;   // used for test_UFF
     bool bInversions = false;  // used for test_UFF
+    bool bSubstrate = false;   // used for test_UFF
 
     // Auxiliary Variables
     
@@ -1960,9 +1961,9 @@ class UFF : public NBFF { public:
                     else    { Enb+=evalLJQs_atom_omp    ( ia, Fmax2 ); } 
                 }
             }
-            printf("test_UFF atom=%i\n",ia);
-            DEBUG
-            if( atomForceFunc ) Enb+=atomForceFunc( ia, apos[ia], fapos[ia] );
+            //printf("test_UFF atom=%i\n",ia);
+            //DEBUG
+            if(bSubstrate) { if( atomForceFunc ) Enb+=atomForceFunc( ia, apos[ia], fapos[ia] ); }
             // bSurfAtoms
         }
         FILE *file = fopen("f_firecore.txt","w");

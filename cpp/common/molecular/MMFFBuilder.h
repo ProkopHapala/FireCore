@@ -5531,6 +5531,14 @@ void toMMFFf4( MMFFf4& ff,  bool bRealloc=true, bool bEPairs=true ){
         // exception for amide groups
         assignUFFtypes_amide( neighs, &BOs[0] );
 
+//DEBUG
+for(int ia=0; ia<atoms.size(); ia++){
+    Atom& A = atoms[ia];
+    printf("MMFFBuilder::assignUFFtypes(%i) %s\n", ia, params->atypes[A.type].name );
+}
+//DEBUG
+//exit(0);
+
         // store bond orders
         for(int ib=0; ib<bonds.size(); ib++){
             Bond& B = bonds[ib];

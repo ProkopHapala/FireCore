@@ -1464,17 +1464,17 @@ void printPBCshifts(){
                     }else{ // Without gridFF (Direct pairwise atoms)
                         //{ E+= nbmol .evalMorse   ( surf, false,                  gridFF.alphaMorse, gridFF.Rdamp );  }
                         //{ E+= nbmol .evalMorsePBC    ( surf, gridFF.grid.cell, nPBC, gridFF.alphaMorse, gridFF.Rdamp );  }
-                        DEBUG
+                        //DEBUG
                         { 
                            // E+= gridFF.evalMorsePBC_sym( ffu.apos[ia], ffu.REQs[ia],  f);   
 
                             Vec3d fi=Vec3dZero;
                             double Ei = gridFF.evalMorsePBC_sym( ffu.apos[ia], ffu.REQs[ia],  fi);   
-                            printf( "atomForceFunc.evalMorsePBC_sym Ei %g fi(%g,%g,%g) gridFF.natoms=%i gridFF.npbc=%i \n", Ei, fi.x,fi.y,fi.z, gridFF.natoms, gridFF.npbc );
+                            //printf( "atomForceFunc.evalMorsePBC_sym Ei %g fi(%g,%g,%g) gridFF.natoms=%i gridFF.npbc=%i \n", Ei, fi.x,fi.y,fi.z, gridFF.natoms, gridFF.npbc );
                             E+=Ei;
                             f.add(fi);
                         }
-                        DEBUG
+                        //DEBUG
                     }
                 }
                 if(bConstrZ){

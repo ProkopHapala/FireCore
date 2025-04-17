@@ -282,6 +282,7 @@ void test_UFF( int test ){
     W.ffu.bSubtractBondNonBond  = 0;
     W.ffu.bSubtractAngleNonBond = 0;
     W.ffu.bClampNonBonded       = 0;
+    W.ffu.bSubstrate            = 0;
     if     (test== 1){ printf("MMFF_lib.cpp::test_UFF(1): bonds\n");      
         W.ffu.bBonds = 1; }
     else if(test== 2){ printf("MMFF_lib.cpp::test_UFF(2): angles\n");     
@@ -348,6 +349,26 @@ void test_UFF( int test ){
         W.ffu.bNonBondNeighs = 1; 
         W.ffu.bSubtractAngleNonBond = 1;
         W.ffu.bClampNonBonded = 1; }
+    else if(test==20){ printf("MMFF_lib.cpp::test_UFF(20): sub\n"); 
+        W.ffu.bSubstrate = 1; }
+    else if(test==21){ printf("MMFF_lib.cpp::test_UFF(21): all_ng4_noclamp+sub\n"); 
+        W.ffu.bBonds = 1;
+        W.ffu.bAngles = 1;
+        W.ffu.bDihedrals = 1;
+        W.ffu.bInversions = 1;
+        W.ffu.bNonBonded = 1;
+        W.ffu.bNonBondNeighs = 1; 
+        W.ffu.bSubtractAngleNonBond = 1; 
+        W.ffu.bSubstrate = 1; }
+    else if(test==22){ printf("MMFF_lib.cpp::test_UFF(22): all_subtract_noclamp+sub\n"); 
+        W.ffu.bBonds = 1;
+        W.ffu.bAngles = 1;
+        W.ffu.bDihedrals = 1;
+        W.ffu.bInversions = 1;
+        W.ffu.bNonBonded = 1;
+        W.ffu.bSubtractBondNonBond = 1;
+        W.ffu.bSubtractAngleNonBond = 1;
+        W.ffu.bSubstrate = 1; }
     W.ffu.test_UFF();
 }
 
