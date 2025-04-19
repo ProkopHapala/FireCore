@@ -35,13 +35,16 @@ def build_constraints(xs, fixed_inds=None, fixed_poss=None, vidx=-1 ):
 
 
 jobs=[
-    ['full','data/Oe_full.fgo',"-"],
-    ['ecp', 'data/Oe_ecp.fgo',"--"]
+    ['full'  ,'data/Oe_full.fgo',"-"          , 0.5,-1 ],
+    ['ecp_q8', 'data/Oe_ecp_coreCoul.fgo' ,":" , 2.0, 1 ],    # (1) cQ=-8.0e =>  coreCoul=True
+    ['ecp_q6', 'data/Oe_ecp.fgo' ,"--"         , 1.5,-1 ],    # (2) cQ=-6.0e =>  coreCoul=False
 ]
 
 # Turn off stdout buffering for immediate output
 sys.stdout = os.fdopen(sys.stdout.fileno(), 'w', buffering=1)
-eff.setVerbosity(1,0)
+eff.setVerbosity(0,0)
+
+#eff.setSwitches(coreCoul=-1)   # (1) for Oe_ecp_coreCoul.fgo se to 1   (2) or Oe_ecp.fgo set to 0
 
 columns=[
     (0,"Etot","k"),
@@ -67,13 +70,19 @@ iEaa=7
 
 
 # ------ Body
-nconf = 50
-xs = np.linspace(5.0, 0.0, nconf)
+#xs = np.linspace(5.0, 0.0, nconf)
+xs = np.array([0.0,0.05,0.1,0.15,0.2,0.25,0.3,0.35,0.4,0.45,0.5,
+               0.6,0.7,0.8,0.9,1.0,
+               1.2,1.4,1.6,1.8,2.0,
+               2.5,3.0,4.5,5.0,6.0
+               ])
 energies = {}
 plt.figure()
-for label, fgo, ls in jobs:
+for label, fgo, ls, lw, coreCoul in jobs:
     print( " ======= ", label )
     eff.load_fgo(fgo, bVel_=True)
+    eff.setSwitches(coreCoul=coreCoul)
+    eff.info()
     fixed_inds, fixed_poss = build_constraints(xs)
     #print("fixed_poss ", fixed_poss)
     #print("fixed_inds ", fixed_inds)
@@ -83,8 +92,10 @@ for label, fgo, ls in jobs:
     #plt.plot(xs, Es[:,0], '.-', label=label)
     #plt.plot(xs, Es[:,1], '.-', label=label)
     for icol, name, clr in columns:
-        plt.plot(xs, Es[:,icol], ls=ls, c=clr, label=label+"_"+name)
-    plt.plot(xs, Es[:,iEee]+Es[:,iEae], ls=ls, c='#FF00FF', label=label+"_Ecoul")
+        plt.plot(xs, Es[:,icol]-Es[-1,icol], ls=ls, c=clr, lw=lw, label=label+"_"+name)
+    #plt.plot(xs, Es[:,iEee]+Es[:,iEae], ls=ls, c='#FF00FF', label=label+"_Ecoul")
+    plt.plot(xs, Es[:,iEeePaul]+Es[:,iEaePaul], ls=ls, c='#FF00FF', lw=lw, label=label+"_Ecoul")
+    plt.plot(xs, Es[:,iEee    ]+Es[:,iEae    ] - Es[-1,iEee    ]-Es[-1,iEae    ], ls=ls, c='#00FFFF', lw=lw, label=label+"_Ecoul")
     #print("energies (python)\n", Es)
 
 plt.xlabel('Distance [A]')

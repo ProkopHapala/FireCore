@@ -174,6 +174,7 @@ void init( int na, int ne ){
 }
 
 void info(){ ff.info(); }
+void printSwitches(){ ff.printSwitches(); }
 
 double* getEnergyPointer(){ return &ff.Ek; }
 int*    getDimPointer   (){ return &ff.ne; }
@@ -250,7 +251,7 @@ void relaxed_scan( int nconf, int nfix, double* fixed_poss, int* fixed_inds_, do
     ff.realloc_fixed(nfix);
     for(int iconf=0; iconf<nconf; iconf++){
         //if((verbosity>0)&&(nstepMax>0))printf( "relaxed_scan() iconf %3i \n", iconf );
-        if(verbosity>0)printf( "--- relaxed_scan() iconf %3i ", iconf );
+        if(verbosity>0)printf( "--- relaxed_scan() iconf %3i \n", iconf );
         if( nfix>0 ){ set_constrains( nfix, ((Quat4d*)fixed_poss)+iconf*nfix, fixed_inds, false ); }
         if( nstepMax > 0 ){
             run( nstepMax, dt, Fconv, ialg, 0, 0 );
@@ -362,7 +363,7 @@ void setKPauli( double KPauli ){
     else                  { ff.KPauliKin=KPauli;     }
 }
 
-void setSwitches( int bEvalKinetic, int bEvalCoulomb, int  bEvalPauli, int bEvalAA, int bEvalAE, int bEvalAECoulomb, int bEvalAEPauli ){
+void setSwitches( int bEvalKinetic, int bEvalCoulomb, int  bEvalPauli, int bEvalAA, int bEvalAE, int bEvalAECoulomb, int bEvalAEPauli, int bCoreCoul, int bEvalCoreCorect ){
     //printf( "\n\n\n\n#### setSwitches_ bEvalAEPauli %i \n", bEvalAEPauli );
 #define _setbool(b,i) { if(i>0){b=true;}else if(i<0){b=false;} }
     //_setbool( ff.bNormalize     , bNormalize     );
@@ -375,6 +376,8 @@ void setSwitches( int bEvalKinetic, int bEvalCoulomb, int  bEvalPauli, int bEval
     _setbool( ff.bEvalAE        , bEvalAE        );
     _setbool( ff.bEvalAECoulomb , bEvalAECoulomb );
     _setbool( ff.bEvalAEPauli   , bEvalAEPauli   );
+    _setbool( ff.bCoreCoul      , bCoreCoul      );
+    _setbool( ff.bEvalCoreCorect, bEvalCoreCorect);
 #undef _setbool
 }
 

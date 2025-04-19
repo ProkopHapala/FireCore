@@ -177,6 +177,12 @@ def evalFuncDerivs( r, s, Es=None, Fs=None, Fr=None, ie=0 ):
     return Es,Fr,Fs
 
 #  void info(){
+
+lib.printSwitches.argtypes  = [] 
+lib.printSwitches.restype   =  None
+def printSwitches():
+    return lib.printSwitches() 
+
 lib.info.argtypes  = [] 
 lib.info.restype   =  None
 def info():
@@ -245,11 +251,11 @@ lib.setKPauli.restype   =  None
 def setKPauli(KPauli):
     return lib.setKPauli(KPauli) 
 
-#void setSwitches_(int bNormalize, int bNormForce, int bEvalKinetic, int bEvalCoulomb, int  bEvalExchange, int  bEvalPauli, int bEvalAA, int bEvalAE, int bEvalAECoulomb, int bEvalAEPauli ){
-lib.setSwitches.argtypes = [ c_int, c_int, c_int, c_int, c_int, c_int, c_int ]
+#void setSwitches( int bEvalKinetic, int bEvalCoulomb, int  bEvalPauli, int bEvalAA, int bEvalAE, int bEvalAECoulomb, int bEvalAEPauli, int bCoreCoul, int bEvalCoreCorect ){
+lib.setSwitches.argtypes = [ c_int, c_int, c_int, c_int, c_int, c_int, c_int, c_int, c_int ]
 lib.setSwitches.restype  = None
-def setSwitches( kinetic=0, coulomb=0, pauli=0, AA=0, AE=0, AECoulomb=0, AEPauli=0 ):
-    lib.setSwitches( kinetic, coulomb, pauli, AA, AE, AECoulomb, AEPauli )
+def setSwitches( kinetic=0, coulomb=0, pauli=0, AA=0, AE=0, AECoulomb=0, AEPauli=0, coreCoul=0, coreCorect=0 ):
+    lib.setSwitches( kinetic, coulomb, pauli, AA, AE, AECoulomb, AEPauli, coreCoul, coreCorect )
 
 
 #  void initOpt( double dt, double damping, double f_limit ){
