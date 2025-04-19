@@ -94,7 +94,7 @@ for label, fgo, ls, lw, coreCoul in jobs:
     for icol, name, clr in columns:
         plt.plot(xs, Es[:,icol]-Es[-1,icol], ls=ls, c=clr, lw=lw, label=label+"_"+name)
     #plt.plot(xs, Es[:,iEee]+Es[:,iEae], ls=ls, c='#FF00FF', label=label+"_Ecoul")
-    plt.plot(xs, Es[:,iEeePaul]+Es[:,iEaePaul], ls=ls, c='#FF00FF', lw=lw, label=label+"_Ecoul")
+    plt.plot(xs, Es[:,iEeePaul]+Es[:,iEaePaul], ls=ls, c='#FF00FF', lw=lw, label=label+"_EPauli")
     plt.plot(xs, Es[:,iEee    ]+Es[:,iEae    ] - Es[-1,iEee    ]-Es[-1,iEae    ], ls=ls, c='#00FFFF', lw=lw, label=label+"_Ecoul")
     #print("energies (python)\n", Es)
 

@@ -1,3 +1,4 @@
+from ctypes import wstring_at
 import sys
 import numpy as np
 import os
@@ -6,6 +7,13 @@ import time
 
 sys.path.append("../../")
 from pyBall import eFF as eff
+
+def extract_nae( xyz_file ):
+    with open(xyz_file) as f:
+        ws = f.readline().strip().split()
+        na= int(ws[0])
+        ne= int(ws[1])
+        return na, ne
 
 def extract_blocks(xyz_file):
     """Extract parameters from XYZ file comments (lines starting with #)
@@ -61,23 +69,78 @@ def plot_energy_landscape( Xs, Ys, Es, Espan=None):
     
 #plot_energy_landscape("export/scan_data/angdistscan_H2O.xyz")
 
-params, nrec = extract_blocks("export/scan_data/angdistscan_H2O.xyz")
-plot_energy_landscape( params['ang'], params['dist'], params['Etot'], Espan=5.0 )
-plt.savefig("map2D_referece.png")
 
-outEs = np.zeros((nrec,5))
+if __name__ == "__main__":
+    print("#=========== RUN /home/prokophapala/git/FireCore/tests/tEFF/run_process_xyz.py")
 
-with open("processXYZ.xyz", "w") as f: f.write("")
-#eff.processXYZ( "export/scan_data/distscan_H2O.xyz", bOutXYZ=True, outEs );
+    eff.setVerbosity(1,0)
+
+    atomParams = np.array([
+    #  Q   sQ   sP   cP
+    [ 0.,  1.0, 1.00, 0.0 ], # 0
+    [ 1.,  0.0, 0.00, 0.0 ], # 1 H
+    [ 0.,  1.0, 1.00, 1.0 ], # 2 He
+    [ 1.,  0.0, 0.10, 1.0 ], # 3 Li
+    [ 2.,  0.0, 0.10, 1.0 ], # 4 Be
+    [ 3.,  0.0, 0.10, 1.0 ], # 5 B
+    [ 4.,  0.0, 0.10, 1.0 ], # 6 C
+    [ 5.,  0.0, 0.10, 1.0 ], # 7 N
+    [ 6.,  0.0, 0.2, 1.0 ], # 8 O
+    [ 7.,  0.0, 0.10, 1.0 ], # 9 F
+    ], dtype=np.float64)
+    eff.setAtomParams( atomParams )
+
+    params, nrec = extract_blocks("export/scan_data/angdistscan_H2O.xyz")
+    plot_energy_landscape( params['ang'], params['dist'], params['Etot'], Espan=5.0 )
+    plt.savefig("map2D_referece.png")
+
+    outEs = np.zeros((nrec,5))
+    # apos = np.zeros((nrec,,3))
+    # epos = np.zeros((nrec,4))
+
+    with open("processXYZ.xyz", "w") as f: f.write("")
+    #eff.processXYZ( "export/scan_data/distscan_H2O.xyz", bOutXYZ=True, outEs );
+
+    eff.initOpt( dt=0.005, damping=0.005, f_limit=1000.0)
+
+    ## ---- Previous scan
+
+    bCoreElectrons = False
+    eff.setSwitches( coreCoul=1 )
+    #eff.setSwitches( coreCoul=0 )
+    eff.preAllocateXYZ("export/scan_data/angdistscan_H2O.xyz", Rfac=-1.35, bCoreElectrons=bCoreElectrons )
+    eff.getBuffs()
+    eff.info()
+    #eff.aPars[0,2]=1
+    eff.esize[:]=0.7
+
+    #eff.processXYZ( "export/scan_data/angdistscan_H2O.xyz", bOutXYZ=True, outEs=outEs, bCoreElectrons=False );
+    #eff.processXYZ( "export/scan_data/angdistscan_H2O.xyz", bOutXYZ=True, outEs=outEs, bCoreElectrons=True, nstepMax=1000, dt=0.001, Fconv=1e-3, ialg=2 );
+    #eff.processXYZ( "export/scan_data/angdistscan_H2O.xyz", bOutXYZ=True, outEs=outEs, bCoreElectrons=bCoreElectrons, bChangeCore=False, bChangeEsize=False, nstepMax=0 );
+    eff.processXYZ( "export/scan_data/angdistscan_H2O.xyz", bOutXYZ=True, outEs=outEs, bCoreElectrons=bCoreElectrons, bChangeCore=False, bChangeEsize=True, nstepMax=10000, dt=0.005, Fconv=1e-3, ialg=2 );
+    #print(outEs)
+    plot_energy_landscape( params['ang'], params['dist'], outEs[:,0] )
+    plt.savefig("map2d_eFF.png")
+
+    print("#=========== DONE /home/prokophapala/git/FireCore/tests/tEFF/run_process_xyz.py")
+    plt.show()
 
 
-eff.initOpt( dt=0.005, damping=0.005, f_limit=1000.0)
-#eff.processXYZ( "export/scan_data/angdistscan_H2O.xyz", bOutXYZ=True, outEs=outEs, bCoreElectrons=False );
-eff.processXYZ( "export/scan_data/angdistscan_H2O.xyz", bOutXYZ=True, outEs=outEs, bCoreElectrons=True, nstepMax=1000, dt=0.001, Fconv=1e-3, ialg=2 );
-#eff.processXYZ( "export/scan_data/angdistscan_H2O.xyz", bOutXYZ=True, outEs=outEs, bCoreElectrons=True, nstepMax=0 );
-#print(outEs)
+    '''
+    ## ---- New scan over different voltages
+    eff.preAllocateXYZ("export/scan_data/angdistscan_H2O.xyz", Rfac=-1.35, bCoreElectrons=True)
+    eff.getBuffs()
+    radii = np.linspace(0.07,0.10,0.15,0.20,0.25)  # example radii range
+    energy_map = np.zeros((nrec, len(radii)))
+    for j, rcore in enumerate(radii):
+        eff.aPars[0,2] = rcore  # set core radius
+        outEs = np.zeros((nrec,5))
+        eff.processXYZ("export/scan_data/angdistscan_H2O.xyz", Rfac=-1.35, outEs=outEs, bCoreElectrons=True, bChangeCore=True, nstepMax=0)
+        energy_map[:,j] = outEs[:,0]
+    np.save("energy_map_radii.npy", energy_map)
+    emap = energy_map[:,0]
+    plot_energy_landscape(params['ang'], params['dist'], emap)
+    plt.savefig("map2D_radius0.png")
+    plt.show()
+    '''
 
-plot_energy_landscape( params['ang'], params['dist'], outEs[:,0] )
-plt.savefig("map2d_eFF.png")
-
-plt.show()

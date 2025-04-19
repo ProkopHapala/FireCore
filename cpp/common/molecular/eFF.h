@@ -173,19 +173,21 @@ inline double interp_gx4(double r2, double y1, double y2 ){
 /// EFF solver
 class EFF{ public:
 
+int nAtomParams = 10;
 constexpr static const Quat4d default_AtomParams[] = {
 //  Q   sQ   sP   cP
 { 0.,  1.0, 1.0, 0.0 }, // 0
-{ 1.,  0.1, 0.1, 0.0 }, // 1 H
-{ 0.,  1.0, 1.0, 2.0 }, // 2 He
-{ 1.,  0.1, 0.1, 2.0 }, // 3 Li
-{ 2.,  0.1, 0.1, 2.0 }, // 4 Be
-{ 3.,  0.1, 0.1, 2.0 }, // 5 B
-{ 4.,  0.1, 0.1, 2.0 }, // 6 C
-{ 5.,  0.1, 0.1, 2.0 }, // 7 N
-{ 6.,  0.1, 0.1, 2.0 }, // 8 O
-{ 7.,  0.1, 0.1, 2.0 }, // 9 F
+{ 1.,  0.0, 0.0, 0.0 }, // 1 H
+{ 0.,  1.0, 1.0, 1.0 }, // 2 He
+{ 1.,  0.0, 0.1, 1.0 }, // 3 Li
+{ 2.,  0.0, 0.1, 1.0 }, // 4 Be
+{ 3.,  0.0, 0.1, 1.0 }, // 5 B
+{ 4.,  0.0, 0.1, 1.0 }, // 6 C
+{ 5.,  0.0, 0.1, 1.0 }, // 7 N
+{ 6.,  0.0, 0.1, 1.0 }, // 8 O
+{ 7.,  0.0, 0.1, 1.0 }, // 9 F
 };
+const Quat4d* atom_params = default_AtomParams;
 
 //                                              H   He  Li    Be      B      C     N     O      F
 constexpr static const double aMasses[9] = {  1.0, 4.0, 7.0, 9.0,  11.0,  12.0,  14.0, 16.0,  19.0 };
@@ -805,21 +807,21 @@ double* evalPotAtPoints( int n, Vec3d* ps, double* out=0, double s=0.0, double Q
 }
 
 void printEnergies(){
-    printf( "Etot %g | Ek %g Eee,p(%g,%g) Eae,p(%g,%g) Eaa %g \n", Etot, Ek, Eee,EeePaul, Eae,EaePaul, Eaa );
+    printf( "Etot %16.8f | Ek %16.8f Eee,p(%16.8f,%16.8f) Eae,p(%16.8f,%16.8f) Eaa %g \n", Etot, Ek, Eee,EeePaul, Eae,EaePaul, Eaa );
 }
 
 void printAtoms(){
     //printf( "Etot %g Ek %g Eel %g(ee %g, ea %g aa %g)  EPaul %g(ee %g, ae %g) \n", Etot, Ek, Eel, Eee,Eae,Eaa,   EPaul, EeePaul, EaePaul );
     for(int i=0; i<na; i++){
         //printf( "a[%i] p(%g,%g,%g) q %g eAbW(%g,%g,%g) aAbW(%g,%g,%g) \n", i, apos[i].x, apos[i].y, apos[i].z, aQ[i], eAbWs[i].z,eAbWs[i].z,eAbWs[i].z, aAbWs[i].z,aAbWs[i].z,aAbWs[i].z );
-        printf( "a[%i] p(%g,%g,%g) Par(Q,sQ,sP,P)(%g,%g,%g,%g)  \n", i, apos[i].x, apos[i].y, apos[i].z, aPars[i].x,aPars[i].y,aPars[i].z,aPars[i].w );
+        printf( "a[%3i ] p(%16.8f ,%16.8f ,%16.8f ) Par(Q,sQ,sP,P)(%g,%g,%g,%g)  \n", i, apos[i].x, apos[i].y, apos[i].z, aPars[i].x,aPars[i].y,aPars[i].z,aPars[i].w );
         //printf( "a[%i] xyzs(%g,%g,%g) fxyzs(%g,%g,%g) \n", i, apos[i].x, apos[i].y, apos[i].z, aforce[i].x, aforce[i].y, aforce[i].z );
     }
 }
 
 void printElectrons(){
     for(int i=0; i<ne; i++){
-        printf( "e[%i] p(%g,%g,%g) sz %g s %i \n", i, epos[i].x, epos[i].y, epos[i].z, esize[i], espin[i] );
+        printf( "e[%3i ] p(%16.8f ,%16.8f ,%16.8f ) sz %16.8f s %i \n", i, epos[i].x, epos[i].y, epos[i].z, esize[i], espin[i] );
         //printf( "e[%i] xyzs(%g,%g,%g,%g) fxyzs(%g,%g,%g,%g) \n", i, ff.epos[i].x, ff.epos[i].y, ff.epos[i].z, ff.esize[i], ff.eforce[i].x, ff.eforce[i].y, ff.eforce[i].z, ff.fsize[i] );
     }
 }
