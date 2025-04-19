@@ -537,21 +537,23 @@ int processXYZ( const char* fname, double Rfac=-0.5, double* outEs=0, int nstepM
                 opt.bindOrAlloc( ff.nDOFs, ff.pDOFs, ff.vDOFs, ff.fDOFs, ff.invMasses );
             }
             builder.load_atom_pos( atoms->apos, 0 );
-            builder2EFFstatic( &ff, builder, bCoreElectrons );
-            { // constrain
-                int nfix=ff.na;
-                if(iconf==0)ff.realloc_fixed(nfix);
-                for(int i=0; i<nfix; i++){
-                    ff.fixed_poss[i].f = ff.apos[i];
-                    //ff.fixed_poss[i].w = 1;
-                    ff.fixed_inds[i] = Vec2i{i,7};
+            builder2EFFstatic( &ff, builder, bCoreElectrons );    
+            if( nstepMax>0 ){
+                { // constrain
+                    int nfix=ff.na;
+                    if(iconf==0)ff.realloc_fixed(nfix);
+                    for(int i=0; i<nfix; i++){
+                        ff.fixed_poss[i].f = ff.apos[i];
+                        //ff.fixed_poss[i].w = 1;
+                        ff.fixed_inds[i] = Vec2i{i,7};
+                    }
+                    //set_constrains( ff.na, fix, fixed_inds, true  );
                 }
-                //set_constrains( ff.na, fix, fixed_inds, true  );
+                //printf("processXYZ() iconf=%i natoms=%i na=%i ne=%i \n", iconf, atoms->natoms, ff.na, ff.ne );
+                //builder2EFF( ff, builder );
+                //run( int nstepMax, double dt, double Fconv, int ialg, double* outE, double* outF );
+                run( nstepMax, dt, Fconv, ialg, 0, 0 );
             }
-            //printf("processXYZ() iconf=%i natoms=%i na=%i ne=%i \n", iconf, atoms->natoms, ff.na, ff.ne );
-            //builder2EFF( ff, builder );
-            //run( int nstepMax, double dt, double Fconv, int ialg, double* outE, double* outF );
-            run( nstepMax, dt, Fconv, ialg, 0, 0 );
             ff.eval();
             printf("processXYZ() iconf=%i natoms=%i na=%i ne=%i | Etot(%g)=T(%g)+ee(%g)+ea(%g)+aa(%g) \n", iconf, atoms->natoms, ff.na, ff.ne, ff.Etot, ff.Ek, ff.Eee, ff.Eae, ff.Eaa );
             if(bOutXYZ)ff.save_xyz( "processXYZ.xyz", "a" );
