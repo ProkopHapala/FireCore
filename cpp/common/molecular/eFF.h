@@ -561,11 +561,8 @@ double evalAE(){
                 //if(qqi<-1.00001) EaePaul += addDensOverlapGauss_S( dR,sj, abwi.z, abwi.a, f, fsj, fs_junk );     // correct
                 //double dEaePaul = addPauliGauss      ( dR, sj, abwi.z, f, fsj, fs_junk, false, KRSrho );     // correct
                 //double dEaePaul = addDensOverlapGauss_S( dR, sj, aPar.z, aPar.w, f, fsj, fs_junk );     // correct
-                
-                dEaePaul   = addPauliGauss_New( dR, sj, aPar.z, f, fsj, fs_junk, 0, KRSrho, aPar.w       );    
-                if(bCoreCoul){
-                    dEee       = addCoulombGauss  ( dR, sj, aPar.z, f, fsj, fs_junk,            aPar.w*2.0  );
-                }
+                dEaePaul   = addPauliGauss_New( dR, sj, aPar.z, f, fsj, fs_junk, 0, KRSrho, aPar.w       ); // spin=0 means both -1 and +1  
+                if(bCoreCoul){ dEee       = addCoulombGauss  ( dR, sj, aPar.z, f, fsj, fs_junk,            aPar.w*2.0  ); }
                 //printf( "EaePaul[%i,%i] E %g r %g s %g abw(%g,%g) \n", i, j, dEaePaul, dR.norm(), sj, abwi.z, abwi.a );
             }
             //if( i_DEBUG>0 ) printf( "evalAE[%i,%i] dR(%g,%g,%g) s %g q %g  ->   f(%g,%g,%g) fs %g \n", i,j, dR.x,dR.y,dR.z, sj, qqi,   f.x,f.y,f.z, fsj );
@@ -827,8 +824,14 @@ void printElectrons(){
     }
 }
 
+void printSwitches(){
+    printf( "iPauliModel %i KPauliOverlap %g bCoreCoul %i \n", iPauliModel, KPauliOverlap, bCoreCoul );
+    printf( "bEvalKinetic %i bEvalEE %i bEvalCoulomb %i bEvalPauli %i bEvalAE %i bEvalAECoulomb %i bEvalAEPauli %i bEvalAA %i bEvalCoreCorect %i  \n", bEvalKinetic, bEvalEE, bEvalCoulomb, bEvalPauli, bEvalAE, bEvalAECoulomb, bEvalAEPauli, bEvalAA, bEvalCoreCorect  );
+    printf( "KRSrho %g %g %g \n", KRSrho.x, KRSrho.y, KRSrho.z );
+}
+
 void info(){
-    printf( "iPauliModel %i KPauliOverlap %g \n", iPauliModel, KPauliOverlap );
+    printSwitches();
     printAtoms();
     printElectrons();
 }
