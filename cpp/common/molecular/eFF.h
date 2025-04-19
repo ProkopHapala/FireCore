@@ -1,4 +1,3 @@
-
 #ifndef EFF_h
 #define EFF_h
 /// @file EFF.h @brief Implements electron force-field solver based on Floating Gaussian Orbitals
@@ -7,7 +6,7 @@
 /// @{
 
 #include "fastmath.h"
-//#include "Vec2.h"
+#include "Vec2.h"
 #include "Vec3.h"
 #include "quaternion.h"
 #include "Forces.h"
@@ -681,6 +680,7 @@ double eval(){
     if(bEvalAE         ) Etot+= evalAE();
     if(bEvalAA         ) Etot+= evalAA();
     if(bEvalCoreCorect ) Etot+=evalCoreCorrection();
+    //printf( "eval() Etot %g epos[0](%g,%g,%g) \n", Etot, epos[0].x, epos[0].y, epos[0].z );
     return Etot;
 }
 
@@ -877,8 +877,9 @@ void to_xyz( FILE* pFile ){
 
 void save_xyz( const char* filename, const char* mode="w" ){
     //printf( "EFF::save_xyz(%s)\n", filename );
-    FILE * pFile;
+    FILE * pFile; 
     pFile = fopen (filename,mode);
+    if(pFile==0){ printf("ERROR file >>%s<< not found \n", filename ); return; }
     to_xyz( pFile );
     fclose(pFile);
 }
@@ -1030,6 +1031,37 @@ void writeTo_fgo( char const* filename, bool bVel=false, const char* fmode="w" )
     fclose (pFile);
 }
 
+inline double analyse_distance(int ia,int ib)const{
+    Vec3d pi=(ia<0)?epos[-ia-1]:apos[ia];
+    Vec3d pj=(ib<0)?epos[-ib-1]:apos[ib];
+    Vec3d d=pj-pi;
+    return sqrt(d.norm2());
+}
+
+inline double analyse_angle(int i,int j,int k)const{
+    Vec3d pi=(i<0)?epos[-i-1]:apos[i];
+    Vec3d pj=(j<0)?epos[-j-1]:apos[j];
+    Vec3d pk=(k<0)?epos[-k-1]:apos[k];
+    Vec3d u=pi-pj;
+    Vec3d v=pk-pj;
+    double nu=sqrt(u.norm2());
+    double nv=sqrt(v.norm2());
+    double ca=(nu>0&&nv>0)?(u.dot(v)/(nu*nv)):1.;
+    if(ca>1)ca=1;
+    if(ca<-1)ca=-1;
+    return acos(ca);
+}
+
+inline void analyse_distances(const Vec2i* pairs,int nPairs,double* out){
+    for(int i=0;i<nPairs;i++)out[i]=analyse_distance(pairs[i].x,pairs[i].y);
+}
+
+inline void analyse_angles(const Vec3i* triples,int nTriples,double* out){
+    for(int i=0;i<nTriples;i++)out[i]=analyse_angle(triples[i].x,triples[i].y,triples[i].z);
+}
+
+
 };
+
 /// @}
 #endif
