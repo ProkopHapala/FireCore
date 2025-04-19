@@ -122,7 +122,7 @@ def getBuffs( ):
 #  void load_xyz( const char* fname ){
 lib.load_fgo.argtypes  = [c_char_p, c_bool, c_double] 
 lib.load_fgo.restype   =  c_bool
-def load_fgo(fname, bVel_=False, fUnits=1.):
+def load_fgo(fname, bVel_=True, fUnits=1.):
     global bVel
     bVel=bVel_
     return lib.load_fgo( cstr(fname), bVel, fUnits)

@@ -341,7 +341,7 @@ void clear_fixed_force(){
 }
 
 void clear_fixed_dynamics(){
-    //printf( "fFF:apply_fixed() nfix %i \n", nfix );
+    //printf( "fFF:apply_fixed() nfix %i avel=%p evel=%p vsize=%p \n", nfix, avel, evel, vsize );
     for(int i=0; i<nfix; i++){
         const int     ia   = fixed_inds[i].x;
         const int     mask = fixed_inds[i].y;
@@ -944,24 +944,16 @@ bool loadFromFile_xyz( const char* filename ){
 }
 
 
-bool loadFromFile_fgo( char const* filename, bool bVel=false, double fUnits=1. ){
-    //printf(" filename: >>%s<< \n", filename );
-    FILE * pFile;
-    pFile = fopen (filename,"r");
-    if( pFile == NULL ){
-        printf("ERROR in eFF::loadFromFile_fgo(%s) : No such file !!! \n", filename );
-        return -1;
-    }
+int readSingleFGO(FILE* pFile, bool bVel=true, double fUnits=1.){
     int ntot;
     const int nbuff = 1024;
     char buff[nbuff]; char* line;
     //fscanf (pFile, " %i \n", &ntot );
     int natom_=0, nOrb_=0, perOrb_=0; bool bClosedShell=0;
-    line=fgets(buff,nbuff,pFile);
+    int iline=0;
+    line=fgets(buff,nbuff,pFile); iline++;
     sscanf (line, "%i %i %i\n", &natom_, &nOrb_, &perOrb_, &bClosedShell );
-    //printf("na %i ne %i perORb %i \n", natom, nOrb, perOrb_);
-    //printf("na %i ne %i perORb %i \n", natom_, nOrb_, perOrb_ );
-    if(perOrb_!=1){ printf("ERROR in eFF::loadFromFile_fgo(%s) : perOrb must be =1 ( found %i instead) !!! \n", filename, perOrb_ );};
+    if(perOrb_!=1){ printf("ERROR in eFF::readSingleFGO : perOrb must =1 ( found %i instead) !!! \n", perOrb_ ); return -1;};
     if(bClosedShell) nOrb_*=2;
     realloc( natom_, nOrb_, bVel );
     double Qasum = 0.0;
@@ -970,13 +962,12 @@ bool loadFromFile_fgo( char const* filename, bool bVel=false, double fUnits=1. )
         double vx,vy,vz;
         double Q,sQ,sP,cP;
         //int bfix;
-        fgets( buff, nbuff, pFile);
-        //                                                                 1   2  3   4    5     6    7        8    9    10
-        int nw = sscanf (buff, "%lf %lf %lf %lf %lf %lf %lf %lf %lf %lf", &x, &y, &z, &Q, &sQ, &sP, &cP,      &vx, &vy, &vz );
+        fgets( buff, nbuff, pFile); iline++;
+        int nw = sscanf (buff, "%lf %lf %lf %lf %lf %lf %lf %lf %lf %lf", &x, &y, &z, &Q, &sQ, &sP, &cP, &vx, &vy, &vz );
         Q=-Q;
         apos  [i]=Vec3d{x*fUnits,y*fUnits,z*fUnits};
         aPars[i].set(Q,sQ*fUnits,sP*fUnits,cP);
-        if( (bVel)&&(nw>=10) ){ 
+        if( (bVel)&&(nw>=10) ){
             avel[i] = Vec3d{vx*fUnits,vy*fUnits,vz*fUnits};
         }
         Qasum += Q;
@@ -988,36 +979,37 @@ bool loadFromFile_fgo( char const* filename, bool bVel=false, double fUnits=1. )
         double vx,vy,vz,vs,vc;
         double s,c;
         int spin=0;
-        fgets( buff, nbuff, pFile);  //printf( "fgets: >%s<\n", buff );
-        //                                                               1    2   3    4   5   6        7    8    9   10
-        int nw = sscanf (buff, "%lf %lf %lf %lf %lf %i %lf %lf %lf %lf", &x, &y, &z,  &s, &c, &spin,   &vx, &vy, &vz, &vs );
-        //int nw = sscanf (buff, "%lf %lf %lf %lf %lf %i", &x, &y, &z,  &s, &c, &spin );
+        fgets( buff, nbuff, pFile); iline++;
+        int nw = sscanf (buff, "%lf %lf %lf %lf %lf %i %lf %lf %lf %lf", &x, &y, &z, &s, &c, &spin, &vx, &vy, &vz, &vs );
         epos [i]=Vec3d{x*fUnits,y*fUnits,z*fUnits};
         esize[i]=s*fUnits;
         if(bVel){ 
-            //if(verbosity>0)printf( "electron[%i] p(%g,%g,%g|%g) spin %i v(%g,%g,%g|%g) \n", i, x,y,z,s, spin,  vx,vy,vz,vs );
             if(nw>=9 )evel [i] = Vec3d{vx*fUnits,vy*fUnits,vz*fUnits};
             if(nw>=10)vsize[i] = vs*fUnits;
         }
-        //ecoef[i]=c;
-        //int io=i/perOrb;
         if( !bClosedShell ){ if(nw>5)espin[i]=spin; }else{ espin[i]=1; };
-        //printf( "ebasis[%i,%i|%i] p(%g,%g,%g) s %g c %g spin %i | nw %i io %i \n", i/perOrb, i%perOrb,i, x, y, z,  s, c, spin,  nw, io  );
     }
     if( bClosedShell ){
         for(int i=0; i<nBasRead; i++){
             int j = i+nBasRead;
             epos [j]=epos[i];
             esize[j]=esize[i];
-            //ecoef[j]=ecoef[i];
             espin[j]=-1;
         }
     }
-    //printf( "Qtot = %g (%g - 2*%i) \n",  Qasum - nOrb, Qasum, nOrb );
-    fclose (pFile);
-    return 0;
+    return iline;
 }
 
+bool loadFromFile_fgo( char const* filename, bool bVel=true, double fUnits=1. ){
+    FILE * pFile = fopen(filename,"r");
+    if( pFile == NULL ){
+        printf("ERROR in eFF::loadFromFile_fgo(%s) : No such file !!! \n", filename );
+        return -1;
+    }
+    int iline = readSingleFGO(pFile, bVel, fUnits);
+    fclose(pFile);
+    return iline < 2;
+}
 
 void writeTo_fgo( char const* filename, bool bVel=false, const char* fmode="w" ){
     //printf(" writeTo_fgo(%s, %s) \n", filename, fmode);
