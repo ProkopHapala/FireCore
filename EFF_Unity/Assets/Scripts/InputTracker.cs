@@ -6,7 +6,7 @@ using UnityEngine.UIElements;
 public class InputTracker : MonoBehaviour
 {
 
-    public CppConnector connector;
+    //public GameController connector;
     public TextMeshProUGUI statusText;
 
     private const string RUNNING_MSG = "RUNNING";
@@ -23,9 +23,11 @@ public class InputTracker : MonoBehaviour
     void Update()
     {
         if(Input.GetKeyDown(KeyCode.Space)) {
-            connector.isRunning = !connector.isRunning;
-            statusText.SetText(connector.isRunning ? RUNNING_MSG : PAUSED_MSG);
+            // GameController.main.isRunning = !GameController.main.isRunning;
+            // statusText.SetText(GameController.main.isRunning ? RUNNING_MSG : PAUSED_MSG);
+            GameController.main.ToggleRunning();
         }
+
     }
 
     // void OnKeyDown(KeyDownEvent ev) {

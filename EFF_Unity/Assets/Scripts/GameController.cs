@@ -2,11 +2,14 @@ using System;
 using System.Diagnostics;
 using System.Linq;
 using System.Runtime.InteropServices;
+using TMPro;
 using UnityEngine;
 using UnityEngine.InputSystem.iOS;
 
-public class CppConnector : MonoBehaviour
+public class GameController : MonoBehaviour
 {
+    public static GameController main; // static self reference object
+
     private int atomCount;
     private int electronCount;
 
@@ -16,17 +19,26 @@ public class CppConnector : MonoBehaviour
     public GameObject infoBoxPrefab_a;
     public GameObject infoBoxAnchor;
     public GameObject[] particles;
+    public TextMeshProUGUI runningStatusText;
+
+    public InputFieldManager inputFields;
 
     public const string PATH_TO_EFF_APP = "/home/perry/FireCore/cpp/Build/apps/EFF/libEFFapp_console.so";
     
-    [DllImport(PATH_TO_EFF_APP)]
-    public static extern IntPtr unityInit(string fileName);
+[DllImport(PATH_TO_EFF_APP, CallingConvention = CallingConvention.Cdecl, CharSet = CharSet.Ansi)]
+public static extern IntPtr unityInit(string fileName);
+
+[DllImport(PATH_TO_EFF_APP, CallingConvention = CallingConvention.Cdecl, CharSet = CharSet.Ansi)]
+public static extern IntPtr unityNextFrame(out int size);
+
+[DllImport(PATH_TO_EFF_APP, CallingConvention = CallingConvention.Cdecl, CharSet = CharSet.Ansi)]
+public static extern void cleanupPositions(IntPtr positions);
+
+    [DllImport(PATH_TO_EFF_APP, CallingConvention = CallingConvention.Cdecl, CharSet = CharSet.Ansi)]
+    public static extern void unitySetElectronPosition(int electronIndex, float x, float y, float z, float size);
     
-    [DllImport(PATH_TO_EFF_APP)]
-    public static extern IntPtr unityNextFrame(out int size);
-    
-    [DllImport(PATH_TO_EFF_APP)]
-    public static extern void cleanupPositions(IntPtr positions);
+    [DllImport(PATH_TO_EFF_APP, CallingConvention = CallingConvention.Cdecl, CharSet = CharSet.Ansi)]
+    public static extern void unitySetAtomPosition(int atomIndex, float x, float y, float z);
 
     public bool isRunning = false;
 
@@ -70,6 +82,7 @@ public class CppConnector : MonoBehaviour
 
 
     void Awake() {
+        main = this;
         enabled = false;
 
         // unityInit(@"../cpp/sketches_SDL/Molecular/data/H2.fgo");
@@ -90,14 +103,14 @@ public class CppConnector : MonoBehaviour
             particles[i] = Instantiate(electronPrefab, new Vector3(0, 0, 0), Quaternion.identity);
 
             var info = Instantiate(infoBoxPrefab_e, infoBoxAnchor.transform);
-            info.GetComponent<InfoBox>().SetConnector(this, i, i, ObjectType.ELECTRON);
+            info.GetComponent<InfoBox>().SetConnector(i, i, ObjectType.ELECTRON);
             info.GetComponent<RectTransform>().anchoredPosition = new Vector2(0, -63 * i);
         }
         for (int i = 0; i < atomCount; i++) {
             particles[electronCount + i] = Instantiate(atomPrefab, new Vector3(0, 0, 0), Quaternion.identity);
 
             var info = Instantiate(infoBoxPrefab_a, infoBoxAnchor.transform);
-            info.GetComponent<InfoBox>().SetConnector(this, i, electronCount + i, ObjectType.ATOM);
+            info.GetComponent<InfoBox>().SetConnector(i, electronCount + i, ObjectType.ATOM);
             info.GetComponent<RectTransform>().anchoredPosition = new Vector2(0, (-63 * electronCount) + (-50 * i));
         }
 
@@ -137,5 +150,41 @@ public class CppConnector : MonoBehaviour
             //UnityEngine.Debug.Log(positions[i].x + " " + positions[i].y + " " + positions[i].z);
 
         }
-    } 
+    }
+
+    public void Continue() {
+        isRunning = true;
+        runningStatusText.SetText("RUNNING");
+    }
+
+    public void Stop() {
+        isRunning = false;
+        runningStatusText.SetText("PAUSED");
+    }
+    public void ToggleRunning() {
+        if(isRunning) {
+            Stop();
+        }
+        else {
+            Continue();
+        }
+    }
+
+    public Vector3 GetPosition(ObjectType type, int displayId) {
+        return positions[type == ObjectType.ELECTRON ? displayId : displayId + electronCount];
+    }
+
+    public void SetParticlePosition(ObjectType type, int id, Vector3 pos, float size) {
+        try {
+            if(type == ObjectType.ELECTRON) {
+                unitySetElectronPosition(id, pos.x, pos.y, pos.z, size);
+                particles[id].transform.position = pos;
+            } else {
+                unitySetAtomPosition(id, pos.x, pos.y, pos.z);
+                particles[id + electronCount].transform.localScale = new Vector3(size, size, size);
+            }
+        } catch (Exception e) {
+            UnityEngine.Debug.LogError($"Exception in SetParticlePosition: {e.GetType()} : {e.Message}\n{e.StackTrace}");
+        }
+    }
 }

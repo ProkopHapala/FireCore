@@ -31,7 +31,7 @@ public class FgoPicker : MonoBehaviour
     }
 
     public void ProcessButtonPress(string name) {
-        GetComponent<CppConnector>().StartSimulation(name);
+        GetComponent<GameController>().StartSimulation(name);
         scrollBoxContent.transform.parent.parent.gameObject.SetActive(false);
     }
 

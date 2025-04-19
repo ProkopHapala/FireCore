@@ -13,6 +13,7 @@
 #include "InteractionsGauss.h"
 #include "eFF.h"
 #include "argparse.h"
+#include "Forces.h"
 
 #define R2SAFE 1.0e-8f
 //#define ExportFunc __declspec(dllexport)
@@ -20,7 +21,7 @@
 #ifdef _WIN32
 #define EXPORT_API __declspec(dllexport)
 #else
-#define EXPORT_API
+#define EXPORT_API __attribute__((visibility("default")))
 #endif
 
 
@@ -78,6 +79,37 @@ public:
                 i, ff.epos[i].x, ff.epos[i].y, ff.epos[i].z, ff.esize[i]);
         }
     }
+    
+    // Set position of a single atom
+    bool setAtomPosition(int atomIndex, float x, float y, float z) {
+        if (atomIndex < 0 || atomIndex >= ff.na) {
+            printf("Error: Atom index %d out of range (0-%d)\n", atomIndex, ff.na-1);
+            return false;
+        }
+        
+        ff.apos[atomIndex].x = x;
+        ff.apos[atomIndex].y = y;
+        ff.apos[atomIndex].z = z;
+        
+        // No need to update DOFs as apos directly points to the DOFs array
+        return true;
+    }
+    
+    // Set position and size of a single electron
+    bool setElectronPosition(int electronIndex, float x, float y, float z, float size) {
+        if (electronIndex < 0 || electronIndex >= ff.ne) {
+            printf("Error: Electron index %d out of range (0-%d)\n", electronIndex, ff.ne-1);
+            return false;
+        }
+        
+        ff.epos[electronIndex].x = x;
+        ff.epos[electronIndex].y = y;
+        ff.epos[electronIndex].z = z;
+        ff.esize[electronIndex] = size;
+        
+        // No need to update DOFs as epos and esize directly point to the DOFs array
+        return true;
+    }
 };
 
 ConsoleEFF eff;
@@ -134,4 +166,14 @@ extern "C" EXPORT_API float* unityNextFrame(int* size) {
 // Add cleanup function to prevent memory leaks
 extern "C" EXPORT_API void cleanupPositions(float* positions) {
     delete[] positions;
+}
+
+// Export function to set a single atom position
+extern "C" EXPORT_API void unitySetAtomPosition(int atomIndex, float x, float y, float z) {
+    eff.setAtomPosition(atomIndex, x, y, z);
+}
+
+// Export function to set a single electron position and size
+extern "C" EXPORT_API void unitySetElectronPosition(int electronIndex, float x, float y, float z, float size) {
+    eff.setElectronPosition(electronIndex, x, y, z, size);
 }
