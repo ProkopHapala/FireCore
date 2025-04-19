@@ -6,7 +6,7 @@ import time
 
 sys.path.append("../../")
 from pyBall import eFF as eff
-from run_process_xyz import extract_blocks, extract_nae
+from run_process_xyz import extract_blocks, extract_nae, count_mask_lines
 
 
 print("#=========== RUN /home/prokophapala/git/FireCore/tests/tEFF/run_process_xyz_1d.py ")
@@ -15,7 +15,7 @@ fname = "export/scan_data/distscan_H2O.xyz"
 
 params, nrec = extract_blocks(fname)
 
-eff.setVerbosity(1,0)
+eff.setVerbosity(2,0)
 eff.initOpt( dt=0.005, damping=0.005, f_limit=1000.0)
 
 bCoreElectrons = False
@@ -36,18 +36,39 @@ atomParams = np.array([
 ], dtype=np.float64)
 eff.setAtomParams( atomParams )
 
-
+# ---- .xyz based simulation
+'''
 with open("processXYZ.xyz", "w") as f: f.write("")
 eff.preAllocateXYZ(fname, Rfac=-1.35, bCoreElectrons=bCoreElectrons)
 eff.getBuffs()
-
 #na,ne = extract_nae(fname)
 outEs = np.zeros((nrec,5))
 out_apos = np.zeros((nrec,eff.na,3))  ;print( "out_apos.shape ", out_apos.shape )
 out_epos = np.zeros((nrec,eff.ne,4))  ;print( "out_epos.shape ", out_epos.shape )
-
 #eff.processXYZ("export/scan_data/distscan_H2O.xyz", bOutXYZ=False, outEs=outEs, bCoreElectrons=True, bChangeCore=True, nstepMax=0)
-eff.processXYZ( fname, bOutXYZ=True, outEs=outEs, apos=out_apos, epos=out_epos, bCoreElectrons=bCoreElectrons, bChangeCore=False, bChangeEsize=True, nstepMax=100000, dt=0.005, Fconv=1e-4, ialg=2 );
+eff.processXYZ( fname, bOutXYZ=True, bOutFGO=True, outEs=outEs, apos=out_apos, epos=out_epos, bCoreElectrons=bCoreElectrons, bChangeCore=False, bChangeEsize=True, nstepMax=100000, dt=0.005, Fconv=1e-4, ialg=2 );
+'''
+
+
+
+
+#exit()
+
+# ---- .fgo based simulation
+fgo_fname = "distscan_H2O.fgo"
+nconf, line = count_mask_lines(fgo_fname, mask='#iconf')
+na,ne = ( int(i) for i in line.split()[:2] )
+print( "nconf ", nconf, "na ", na, "ne ", ne )
+with open("processXYZ.fgo", "w") as f: f.write("")
+eff.preAllocateFGO(fgo_fname)
+eff.getBuffs()
+outEs = np.zeros((nconf,5))
+out_apos = np.zeros((nconf,na,3))  ;print( "out_apos.shape ", out_apos.shape )
+out_epos = np.zeros((nconf,ne,4))  ;print( "out_epos.shape ", out_epos.shape )
+eff.processFGO( fgo_fname, bOutXYZ=True, bOutFGO=True, outEs=outEs, apos=out_apos, epos=out_epos, nstepMax=0, dt=0.005, Fconv=1e-4, ialg=2 );
+#eff.processFGO( fgo_fname, bOutXYZ=True, bOutFGO=True, outEs=outEs, apos=out_apos, epos=out_epos, nstepMax=100000, dt=0.005, Fconv=1e-4, ialg=2 );
+#eff.processFGO( "distscan_H2O.fgo", bOutXYZ=True, bOutFGO=True, outEs=outEs, apos=out_apos, epos=out_epos, nstepMax=100000, dt=0.005, Fconv=1e-4, ialg=2 );
+
 
 bSubstractLast=True
 #bSubstractLast=False

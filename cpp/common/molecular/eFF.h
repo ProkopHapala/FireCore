@@ -944,7 +944,8 @@ bool loadFromFile_xyz( const char* filename ){
 }
 
 
-int readSingleFGO(FILE* pFile, bool bVel=true, double fUnits=1.){
+int readSingleFGO(FILE* pFile, bool bVel=true, double fUnits=1., bool bRealloc=true){
+    //printf("readSingleFGO() bVel %i fUnits %g bRealloc %i pFile %p\n",bVel, fUnits, bRealloc, pFile);
     int ntot;
     const int nbuff = 1024;
     char buff[nbuff]; char* line;
@@ -952,10 +953,13 @@ int readSingleFGO(FILE* pFile, bool bVel=true, double fUnits=1.){
     int natom_=0, nOrb_=0, perOrb_=0; bool bClosedShell=0;
     int iline=0;
     line=fgets(buff,nbuff,pFile); iline++;
+    if(line==0){ printf("ERROR in eFF::readSingleFGO : No line found \n"); return -1;}
     sscanf (line, "%i %i %i\n", &natom_, &nOrb_, &perOrb_, &bClosedShell );
+    //printf("readSingleFGO() natom_ %i nOrb_ %i perOrb_ %i bClosedShell %i\n", natom_, nOrb_, perOrb_, bClosedShell );
     if(perOrb_!=1){ printf("ERROR in eFF::readSingleFGO : perOrb must =1 ( found %i instead) !!! \n", perOrb_ ); return -1;};
     if(bClosedShell) nOrb_*=2;
-    realloc( natom_, nOrb_, bVel );
+    if(bRealloc)realloc( natom_, nOrb_, bVel );
+    //printf("readSingleFGO() natom_ %i nOrb_ %i na %i ne %i\n", natom_, nOrb_, na, ne );
     double Qasum = 0.0;
     for(int i=0; i<na; i++){
         double x,y,z;
@@ -1011,10 +1015,14 @@ bool loadFromFile_fgo( char const* filename, bool bVel=true, double fUnits=1. ){
     return iline < 2;
 }
 
-void writeTo_fgo( char const* filename, bool bVel=false, const char* fmode="w" ){
+void writeTo_fgo( char const* filename, bool bVel=false, const char* fmode="w", int iconf=-1 ){
     //printf(" writeTo_fgo(%s, %s) \n", filename, fmode);
     FILE * pFile = fopen (filename, fmode );
-    fprintf( pFile, "%i %i %i %i\n", na, ne, 1, 0 );
+    if(iconf>=0){
+        fprintf( pFile, "%i %i %i #iconf %i\n", na, ne, 1, iconf );
+    }else{
+        fprintf( pFile, "%i %i %i\n", na, ne, 1 );
+    }
     for(int i=0; i<na; i++){               
                 fprintf(pFile, "%f %f %f   %f %f %f %f ", apos[i].x, apos[i].y, apos[i].z,   -aPars[i].x, aPars[i].y, aPars[i].z, aPars[i].w );
         if(bVel)fprintf(pFile, "%f %f %f", avel[i].x, avel[i].y, avel[i].z  );
