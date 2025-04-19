@@ -1,5 +1,4 @@
-﻿
-#include <stdlib.h>
+﻿#include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
 #include <vector>
@@ -58,13 +57,34 @@ bool opt_initialized=false;
 char* trj_fname = 0;
 int   savePerNsteps = 1;
 
+int measure_i0=0;
+int measure_n=0;
+int nDist = 0;
+int nAng  = 0;
+Vec2i* dist_inds   = 0;
+Vec3i* ang_inds    = 0;
+double* dists_vals = 0;
+double* ang_vals   = 0;
+
+// initialize measurement parameters: start index, count, and pointers
+void setup_measurements(int i0_, int n_, int nd, Vec2i* d_inds, int na_, Vec3i* a_inds, double* d_vals, double* a_vals){
+    measure_i0 = i0_;
+    measure_n  = n_;
+    nDist      = nd;
+    dist_inds  = d_inds;
+    nAng       = na_;
+    ang_inds   = a_inds;
+    dists_vals = d_vals;
+    ang_vals   = a_vals;
+}
 
 extern "C"{
 // ========= Grid initialization
 
 void setVerbosity( int verbosity_, int idebug_ ){
-    //setbuf(stdout, NULL);  // Disable buffering completely
-    setvbuf(stdout, NULL, _IOLBF, 0);  // Line buffering (flushed on newline)
+    // Disable buffering completely on stdout and stderr
+    setvbuf(stdout, NULL, _IONBF, 0);
+    setvbuf(stderr, NULL, _IONBF, 0);
     verbosity = verbosity_;
     idebug    = idebug_;
 }
@@ -229,12 +249,18 @@ void relaxed_scan( int nconf, int nfix, double* fixed_poss, int* fixed_inds_, do
     //exit(0);   
     ff.realloc_fixed(nfix);
     for(int iconf=0; iconf<nconf; iconf++){
-        if(verbosity>0)printf( "relaxed_scan() iconf %3i ", iconf );
-        set_constrains( nfix, ((Quat4d*)fixed_poss)+iconf*nfix, fixed_inds, false );
-        run( nstepMax, dt, Fconv, ialg, 0, 0 );
-        outEs[iconf] = ff.Etot;
-        // double Etot=0,Ek=0, Eee=0,EeePaul=0,EeeExch=0,  Eae=0,EaePaul=0,  Eaa=0; 
-        {
+        //if((verbosity>0)&&(nstepMax>0))printf( "relaxed_scan() iconf %3i \n", iconf );
+        if(verbosity>0)printf( "--- relaxed_scan() iconf %3i ", iconf );
+        if( nfix>0 ){ set_constrains( nfix, ((Quat4d*)fixed_poss)+iconf*nfix, fixed_inds, false ); }
+        if( nstepMax > 0 ){
+            run( nstepMax, dt, Fconv, ialg, 0, 0 );
+        }else{
+            ff.apply_hard_fix();
+            ff.eval();
+        }
+        if(outEs){        
+            // double Etot=0,Ek=0, Eee=0,EeePaul=0,EeeExch=0,  Eae=0,EaePaul=0,  Eaa=0; 
+            //printf( "Etot %g Ek %g Eee %g EeePaul %g EeeExch %g Eae %g EaePaul %g Eaa %g \n", ff.Etot, ff.Ek, ff.Eee, ff.EeePaul, ff.EeeExch, ff.Eae, ff.EaePaul, ff.Eaa );
             double* Eis = outEs + iconf*8;
             Eis[0] = ff.Etot;
             Eis[1] = ff.Ek;
@@ -245,10 +271,21 @@ void relaxed_scan( int nconf, int nfix, double* fixed_poss, int* fixed_inds_, do
             Eis[6] = ff.EaePaul;
             Eis[7] = ff.Eaa;
         }
-        Vec3d*  apos = ((Vec3d* )apos_)+iconf*ff.na;
-        Quat4d* epos = ((Quat4d*)epos_)+iconf*ff.ne;
-        for(int j=0; j<ff.na; j++){ apos[j]   = ff.apos[j]; }
-        for(int j=0; j<ff.ne; j++){ epos[j].f = ff.epos[j]; epos[j].w = ff.esize[j]; }
+        if( apos_ ){
+            Vec3d*  apos = ((Vec3d* )apos_)+iconf*ff.na;
+            for(int j=0; j<ff.na; j++){ apos[j]   = ff.apos[j]; }
+        }
+        if( epos_ ){
+            Quat4d* epos = ((Quat4d*)epos_)+iconf*ff.ne;
+            for(int j=0; j<ff.ne; j++){ epos[j].f = ff.epos[j]; epos[j].w = ff.esize[j]; }
+        }
+        // record distances and angles in specified interval
+        if(dist_inds){ int ic=iconf-measure_i0; if(ic>=0 && ic<measure_n){
+            ff.analyse_distances( dist_inds, nDist,  dists_vals + ic*nDist);
+        }}
+        if(ang_inds){ int ic=iconf-measure_i0; if(ic>=0 && ic<measure_n){
+            ff.analyse_angles( ang_inds, nAng, ang_vals + ic*nAng);
+        }}
         if( scan_trj_name )  ff.save_xyz( scan_trj_name, "a" );
         fflush(stdout); 
     }
