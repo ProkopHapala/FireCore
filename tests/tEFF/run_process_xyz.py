@@ -8,6 +8,17 @@ import time
 sys.path.append("../../")
 from pyBall import eFF as eff
 
+def count_mask_lines( fgo_file, mask='#iconf' ):
+    line = None
+    nline = 0
+    with open(fgo_file) as f:
+        for l in f:
+            if mask in l:
+                line = l
+                nline += 1
+    return nline, line
+                
+
 def extract_nae( xyz_file ):
     with open(xyz_file) as f:
         ws = f.readline().strip().split()

@@ -170,7 +170,6 @@ bool load_fgo( const char* fname, bool bVel, double fUnits ){
     return b; 
 }
 
-
 void init( int na, int ne ){
     ff.realloc ( na, ne, true );
     //ff.autoAbWs( default_aAbWs, default_eAbWs );
@@ -185,6 +184,7 @@ int*    getDimPointer   (){ return &ff.ne; }
 
 void initOpt( double dt, double damping, double f_limit, bool bMass ){
     if(ff.vDOFs){ if(bMass){ff.makeMasses(ff.invMasses);}else{ff.makeMasses(ff.invMasses,1.0);} }
+    printf("initOpt()  ff.nDOFs %i, ff.pDOFs %p, ff.vDOFs %p, ff.fDOFs %p, ff.invMasses %p\n", ff.nDOFs, ff.pDOFs, ff.vDOFs, ff.fDOFs, ff.invMasses ); 
     opt.bindOrAlloc( ff.nDOFs, ff.pDOFs, ff.vDOFs, ff.fDOFs, ff.invMasses );
     //opt.cleanVel( ); // this is already inside initOpt
     //opt.initOpt( dt, damping );
@@ -204,7 +204,10 @@ int run( int nstepMax, double dt, double Fconv, int ialg, double* outE, double* 
     opt.setTimeSteps(dt);
     //printf( "verbosity %i nstepMax %i Fconv %g dt %g \n", verbosity, nstepMax, Fconv, dt );
     //printf( "trj_fname %s \n", trj_fname );
-    if(ialg>0){ opt.cleanVel( ); }
+    if(ialg>0){
+        printf("run() opt.vel %p\n", opt.vel); 
+        opt.cleanVel( ); 
+    }
     bool bConv=false;
     if(ff.nfix>0){ ff.apply_hard_fix(); }
     for(itr=0; itr<nstepMax; itr++ ){
@@ -396,6 +399,41 @@ void setAtomParams( int n, const double* params_, bool bCopy=true ){
     }
 }
 
+
+int preAllocateFGO(const char* fname, double fUnits=1.){
+    if(!ff.loadFromFile_fgo(fname,true,fUnits)) return -1;
+    //init_buffers();
+    printf("preAllocateFGO()  ff.nDOFs %i, ff.pDOFs %p, ff.vDOFs %p, ff.fDOFs %p, ff.invMasses %p\n", ff.nDOFs, ff.pDOFs, ff.vDOFs, ff.fDOFs, ff.invMasses ); 
+    opt.bindOrAlloc(ff.nDOFs, ff.pDOFs, ff.vDOFs, ff.fDOFs, ff.invMasses);
+    isPreAllocated=true;
+    return 0;
+}
+
+int processFGO(const char* fname, double fUnits=1., double* outEs=0, double* apos_=0, Quat4d* epos_=0, int nstepMax=1000, double dt=0.001, double Fconv=1e-3, int ialg=2, bool bOutXYZ=false, bool bOutFGO=false){
+    FILE* f = fopen(fname,"r"); if(!f) return 0;
+    //init_buffers();
+    int iconf=0;
+    while(true){
+        if( ff.readSingleFGO(f,true,fUnits, !isPreAllocated) < 2 ) break;
+        if(!isPreAllocated){ 
+            printf("processFGO()  ff.nDOFs %i, ff.pDOFs %p, ff.vDOFs %p, ff.fDOFs %p, ff.invMasses %p\n", ff.nDOFs, ff.pDOFs, ff.vDOFs, ff.fDOFs, ff.invMasses ); 
+            opt.bindOrAlloc(ff.nDOFs, ff.pDOFs, ff.vDOFs, ff.fDOFs, ff.invMasses); isPreAllocated=true; 
+        }
+        run(nstepMax,dt,Fconv,ialg,0,0);
+        ff.eval();
+        if(verbosity>0){ printf( "processFGO() iconf %i Etot %g Ek %g Eee %g Eae %g Eaa %g \n", iconf, ff.Etot, ff.Ek, ff.Eee, ff.Eae, ff.Eaa ); }
+        if(verbosity>1){ ff.info(); }
+        if(bOutXYZ) ff.save_xyz("processFGO.xyz","a");
+        if(bOutFGO) ff.writeTo_fgo("processFGO.fgo", false, "a", iconf);
+        if(apos_){ Vec3d*  ap=((Vec3d* )apos_)+iconf*ff.na; for(int i=0;i<ff.na;i++){ ap[i]=ff.apos[i];                        }     }
+        if(epos_){ Quat4d* ep=((Quat4d*)epos_)+iconf*ff.ne; for(int i=0;i<ff.ne;i++){ ep[i].f=ff.epos[i]; ep[i].w=ff.esize[i]; }     }
+        if(outEs){ double* outEi=outEs+iconf*5; outEi[0]=ff.Etot; outEi[1]=ff.Ek; outEi[2]=ff.Eee; outEi[3]=ff.Eae; outEi[4]=ff.Eaa; }
+        iconf++;
+    }
+    fclose(f);
+    return iconf;
+}
+
 // #define WITH_BUILDER 1
 #if WITH_BUILDER
 
@@ -501,7 +539,6 @@ int preAllocateXYZ(const char* fname, double Rfac=-0.5, bool bCoreElectrons=true
     int il=0; 
     Atoms atoms; 
     builder.params=&params;
-    DEBUG
     while(fgets(line,nline,fin)){
         if(il==0){ 
             int na=-1; 
@@ -536,7 +573,7 @@ int preAllocateXYZ(const char* fname, double Rfac=-0.5, bool bCoreElectrons=true
     return 1;
 }
 
-int processXYZ( const char* fname, double Rfac=-0.5, double* outEs=0, double* apos_=0, double* epos_=0, int nstepMax=1000, double dt=0.001, double Fconv=1e-3, int ialg=2, bool bAddEpairs=false, bool bCoreElectrons=true, bool bChangeCore=true, bool bChangeEsize=true, bool bOutXYZ=false ){
+int processXYZ( const char* fname, double Rfac=-0.5, double* outEs=0, double* apos_=0, double* epos_=0, int nstepMax=1000, double dt=0.001, double Fconv=1e-3, int ialg=2, bool bAddEpairs=false, bool bCoreElectrons=true, bool bChangeCore=true, bool bChangeEsize=true, bool bOutXYZ=false, bool bOutFGO=false ){
     setvbuf(stdout, NULL, _IONBF, 0);
     printf( "processXYZ(%s) bAddEpairs=%i bOutXYZ=%i Rfac %g\n", fname, bAddEpairs, bOutXYZ, Rfac );
 
@@ -617,6 +654,7 @@ int processXYZ( const char* fname, double Rfac=-0.5, double* outEs=0, double* ap
             ff.eval();
             if(verbosity>0)printf("processXYZ() iconf=%i natoms=%i na=%i ne=%i | Etot(%g)=T(%g)+ee(%g)+ea(%g)+aa(%g) \n", iconf, atoms->natoms, ff.na, ff.ne, ff.Etot, ff.Ek, ff.Eee, ff.Eae, ff.Eaa );
             if(bOutXYZ)ff.save_xyz( "processXYZ.xyz", "a" );
+            if(bOutFGO)ff.writeTo_fgo( "processXYZ.fgo", false, "a", iconf );
             if(apos_){
                 Vec3d*  apos = ((Vec3d* )apos_)+iconf*ff.na;
                 for(int j=0; j<ff.na; j++){ apos[j]   = ff.apos[j]; }

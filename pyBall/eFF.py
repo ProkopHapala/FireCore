@@ -335,12 +335,12 @@ def sample_EA( RSs, FEout=None, KRSrho=[1.125,0.9,-0.2], aPar=[4.,0.1,0.1,2.0], 
     lib.sample_EA(n, RSs, FEout, KRSrho, aPar, bEvalAECoulomb, bCoreCoul, bEvalAEPauli)
     return FEout
 
-#int processXYZ( const char* fname, double Rfac=-0.5, double* outEs=0, double* apos_, double* epos_, int nstepMax=1000, double dt=0.001, double Fconv=1e-3, int ialg=2, bool bAddEpairs=false, bool bCoreElectrons=true, bool bChangeCore=true, bool bChangeEsize=true, bool bOutXYZ=false ){
-lib.processXYZ.argtypes  = [c_char_p, c_double, c_double_p, c_double_p, c_double_p, c_int, c_double, c_double, c_int, c_bool, c_bool, c_bool, c_bool, c_bool ]
+#int processXYZ( const char* fname, double Rfac=-0.5, double* outEs=0, double* apos_, double* epos_, int nstepMax=1000, double dt=0.001, double Fconv=1e-3, int ialg=2, bool bAddEpairs=false, bool bCoreElectrons=true, bool bChangeCore=true, bool bChangeEsize=true, bool bOutXYZ=false, bool bOutFGO=false ){
+lib.processXYZ.argtypes  = [c_char_p, c_double, c_double_p, c_double_p, c_double_p, c_int, c_double, c_double, c_int, c_bool, c_bool, c_bool, c_bool, c_bool, c_bool ]
 lib.processXYZ.restype   =  c_int
-def processXYZ( fname, Rfac=-1.35, outEs=None, apos=None, epos=None, nstepMax=1000, dt=0.5e-2, Fconv=1e-3, ialg=2, bAddEpairs=False, bCoreElectrons=False, bChangeCore=True, bChangeEsize=True, bOutXYZ=False ):
+def processXYZ( fname, Rfac=-1.35, outEs=None, apos=None, epos=None, nstepMax=1000, dt=0.5e-2, Fconv=1e-3, ialg=2, bAddEpairs=False, bCoreElectrons=False, bChangeCore=True, bChangeEsize=True, bOutXYZ=False, bOutFGO=False ):
     #if outEs is None: outEs = np.zeros(8, dtype=np.float64)
-    lib.processXYZ( cstr(fname), Rfac, _np_as(outEs, c_double_p), _np_as(apos, c_double_p), _np_as(epos, c_double_p), nstepMax, dt, Fconv, ialg, bAddEpairs, bCoreElectrons, bChangeCore, bChangeEsize, bOutXYZ )
+    lib.processXYZ( cstr(fname), Rfac, _np_as(outEs, c_double_p), _np_as(apos, c_double_p), _np_as(epos, c_double_p), nstepMax, dt, Fconv, ialg, bAddEpairs, bCoreElectrons, bChangeCore, bChangeEsize, bOutXYZ, bOutFGO )
     return outEs
 
 #int preAllocateXYZ(const char* fname, double Rfac=-0.5, bool bCoreElectrons=true )
@@ -349,6 +349,20 @@ lib.preAllocateXYZ.restype  = c_int
 def preAllocateXYZ(fname, Rfac=-0.5, bCoreElectrons=True):
     """Pre-initialize eFF from a single-config XYZ without dynamics"""
     return lib.preAllocateXYZ(cstr(fname), Rfac, bCoreElectrons)
+
+#int preAllocateFGO(const char* fname, bool bVel, double fUnits)
+lib.preAllocateFGO.argtypes = [c_char_p, c_bool, c_double]
+lib.preAllocateFGO.restype  = c_int
+def preAllocateFGO(fname, bVel_=True, fUnits=1.):
+    global bVel
+    bVel = bVel_
+    return lib.preAllocateFGO(cstr(fname), bVel, fUnits)
+
+#int processFGO(const char* fname, bool bVel, double fUnits, double* outEs, double* apos, Quat4d* epos, int nstepMax, double dt, double Fconv, int ialg, bool bOutXYZ, bool bOutFGO)
+lib.processFGO.argtypes = [c_char_p, c_double, c_double_p, c_double_p, c_double_p, c_int, c_double, c_double, c_int, c_bool, c_bool]
+lib.processFGO.restype  = c_int
+def processFGO(fname, fUnits=1., outEs=None, apos=None, epos=None, nstepMax=1000, dt=0.001, Fconv=1e-3, ialg=2, bOutXYZ=False, bOutFGO=False):
+    return lib.processFGO(cstr(fname), fUnits, _np_as(outEs, c_double_p), _np_as(apos, c_double_p), _np_as(epos, c_double_p), nstepMax, dt, Fconv, ialg, bOutXYZ, bOutFGO)
 
 # =========  Tests
 
