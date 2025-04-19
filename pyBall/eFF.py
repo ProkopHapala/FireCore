@@ -1,4 +1,3 @@
-
 import numpy as np
 from   ctypes import c_int, c_double, c_bool, c_float, c_char_p, c_bool, c_void_p, c_char_p
 import ctypes
@@ -251,6 +250,14 @@ lib.setKPauli.restype   =  None
 def setKPauli(KPauli):
     return lib.setKPauli(KPauli) 
 
+# void setAtomParams( int n, const double* params_, bool bCopy=true ){ 
+lib.setAtomParams.argtypes = [ c_int, c_double_p, c_bool ]
+lib.setAtomParams.restype  = None
+def setAtomParams( params, bCopy=True ):
+    n = len(params)
+    if bCopy: params = np.array(params, dtype=np.double)
+    return lib.setAtomParams( n, _np_as(params,c_double_p), bCopy )
+
 #void setSwitches( int bEvalKinetic, int bEvalCoulomb, int  bEvalPauli, int bEvalAA, int bEvalAE, int bEvalAECoulomb, int bEvalAEPauli, int bCoreCoul, int bEvalCoreCorect ){
 lib.setSwitches.argtypes = [ c_int, c_int, c_int, c_int, c_int, c_int, c_int, c_int, c_int ]
 lib.setSwitches.restype  = None
@@ -328,13 +335,20 @@ def sample_EA( RSs, FEout=None, KRSrho=[1.125,0.9,-0.2], aPar=[4.,0.1,0.1,2.0], 
     lib.sample_EA(n, RSs, FEout, KRSrho, aPar, bEvalAECoulomb, bCoreCoul, bEvalAEPauli)
     return FEout
 
-#int processXYZ( const char* fname, double Rfac=-0.5, double* outEs=0, int nstepMax, double dt, double Fconv, int ialg, bool bAddEpairs=false, bool bCoreElectrons=true, bool bOutXYZ=false ){
-lib.processXYZ.argtypes  = [c_char_p, c_double, c_double_p, c_int, c_double, c_double, c_int, c_bool, c_bool, c_bool ]
+#int processXYZ( const char* fname, double Rfac=-0.5, double* outEs=0, double* apos_, double* epos_, int nstepMax=1000, double dt=0.001, double Fconv=1e-3, int ialg=2, bool bAddEpairs=false, bool bCoreElectrons=true, bool bChangeCore=true, bool bChangeEsize=true, bool bOutXYZ=false ){
+lib.processXYZ.argtypes  = [c_char_p, c_double, c_double_p, c_double_p, c_double_p, c_int, c_double, c_double, c_int, c_bool, c_bool, c_bool, c_bool, c_bool ]
 lib.processXYZ.restype   =  c_int
-def processXYZ( fname, Rfac=-1.35, outEs=None, nstepMax=1000, dt=0.5e-2, Fconv=1e-3, ialg=2, bAddEpairs=False, bCoreElectrons=False, bOutXYZ=False ):
+def processXYZ( fname, Rfac=-1.35, outEs=None, apos=None, epos=None, nstepMax=1000, dt=0.5e-2, Fconv=1e-3, ialg=2, bAddEpairs=False, bCoreElectrons=False, bChangeCore=True, bChangeEsize=True, bOutXYZ=False ):
     #if outEs is None: outEs = np.zeros(8, dtype=np.float64)
-    lib.processXYZ( cstr(fname), Rfac, _np_as(outEs, c_double_p), nstepMax, dt, Fconv, ialg, bAddEpairs, bCoreElectrons, bOutXYZ )
+    lib.processXYZ( cstr(fname), Rfac, _np_as(outEs, c_double_p), _np_as(apos, c_double_p), _np_as(epos, c_double_p), nstepMax, dt, Fconv, ialg, bAddEpairs, bCoreElectrons, bChangeCore, bChangeEsize, bOutXYZ )
     return outEs
+
+#int preAllocateXYZ(const char* fname, double Rfac=-0.5, bool bCoreElectrons=true )
+lib.preAllocateXYZ.argtypes = [c_char_p, c_double, c_bool]
+lib.preAllocateXYZ.restype  = c_int
+def preAllocateXYZ(fname, Rfac=-0.5, bCoreElectrons=True):
+    """Pre-initialize eFF from a single-config XYZ without dynamics"""
+    return lib.preAllocateXYZ(cstr(fname), Rfac, bCoreElectrons)
 
 # =========  Tests
 
@@ -512,8 +526,8 @@ def check_H2(bRelax=True, name="H2_eFF", bPyeff=True):
         print( "check_H2 E %g [eV] lbond %g [A]" %(Etot, bond_length) )
     else:
         if bPyeff:
-            from pyBall import eFF_terms as pyeff
-            print(  "effpy.run_H2_molecule.__doc__:\n", pyeff.run_H2_molecule.__doc__ )
+            from pyBall import eFF_terms as effpy
+            print(  "effpy.run_H2_molecule.__doc__:\n", effpy.run_H2_molecule.__doc__ )
             r = np.sqrt(((epos[0]-epos[1])**2).sum())
             pyeff.pyeff_E_up_up( 1.125*np.sqrt(r**2+1e-8)/0.5291772105638411, 0.9*esize[0]/0.5291772105638411, 0.9*esize[1]/0.5291772105638411, rho=-0.2)
             Euu,Eud,DT,S = pyeff.pyeff_EPaul( r, esize[0], esize[1], rho=-0.2 );           # print( "!!!!! pyeff_EPaul():   Euu",Euu, "Eud",Eud, "DT",DT, "S",S )

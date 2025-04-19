@@ -57,6 +57,9 @@ bool opt_initialized=false;
 char* trj_fname = 0;
 int   savePerNsteps = 1;
 
+bool isPreAllocated=false;
+//bool bChangeCore=true;
+
 int measure_i0=0;
 int measure_n=0;
 int nDist = 0;
@@ -166,6 +169,7 @@ bool load_fgo( const char* fname, bool bVel, double fUnits ){
     init_buffers();
     return b; 
 }
+
 
 void init( int na, int ne ){
     ff.realloc ( na, ne, true );
@@ -381,6 +385,16 @@ void setSwitches( int bEvalKinetic, int bEvalCoulomb, int  bEvalPauli, int bEval
 #undef _setbool
 }
 
+void setAtomParams( int n, const double* params_, bool bCopy=true ){ 
+    Quat4d* params = (Quat4d*)params_;
+    if(bCopy){ // if we worry that the source pointer may be deleted
+        Quat4d* atom_params = new Quat4d[n];
+        for(int i=0; i<n; i++){ atom_params[i] = params[i]; }
+        ff.atom_params = atom_params;
+    }else{
+        ff.atom_params = (Quat4d*)params; 
+    }
+}
 
 // #define WITH_BUILDER 1
 #if WITH_BUILDER
@@ -396,7 +410,8 @@ void builder2EFF(EFF& ff, const MM::Builder& builder, bool bRealloc=true ){
         if( it!=epairtyp ){
             int iZ = params.atypes[it].iZ;
             if(!bRealloc){
-                ff.aPars [na] = EFF::default_AtomParams[iZ];
+                //ff.aPars [na] = EFF::default_AtomParams[iZ];
+                ff.aPars [na] = ff.atom_params[iZ];
                 ff.apos  [na] = builder.atoms[i].pos;
             }
             na++;
@@ -410,7 +425,7 @@ void builder2EFF(EFF& ff, const MM::Builder& builder, bool bRealloc=true ){
     }
 }
 
-int builder2EFFstatic( EFF* ff, MM::Builder& builder, bool bCoreElectrons=true, double esize0=0.5, double le=-0.5 ){
+int builder2EFFstatic( EFF* ff, MM::Builder& builder, bool bCoreElectrons=true, bool bChangeCore=true, bool bChangeEsize=true, double esize0=0.5, double le=-0.5 ){
     //printf( "builder2EFFstatic() builder.atoms.size() %i builder.bonds.size() %i ff=%p \n", builder.atoms.size(), builder.bonds.size(), ff );
     //if(ff){ printf( "builder2EFFstatic() ff.na %i ff.ne %i \n", ff->na, ff->ne ); }
     int ie=0;
@@ -421,9 +436,14 @@ int builder2EFFstatic( EFF* ff, MM::Builder& builder, bool bCoreElectrons=true, 
             const MM::Bond& b = builder.bonds[ib];
             Vec3d pa = builder.atoms[b.atoms.i].pos;
             Vec3d pb = builder.atoms[b.atoms.j].pos;
-            Vec3d p = (pa+pb)*0.5;
-            ff->set_electron( ie, p, esize0,  1 );  ie++;
-            ff->set_electron( ie, p, esize0, -1 );  ie++;
+            double c = 0.6;
+            Vec3d p1 = pb*(1-c) + pa*c;
+            Vec3d p2 = pa*(1-c) + pb*c;
+
+            ff->epos[ie]=p1; ff->espin[ie]= 1; if(bChangeEsize){ff->esize[ie]=esize0;}; ie++;
+            ff->epos[ie]=p2; ff->espin[ie]=-1; if(bChangeEsize){ff->esize[ie]=esize0;}; ie++;
+            //ff->set_electron( ie, p, esize0,  1 );  ie++;
+            //ff->set_electron( ie, p, esize0, -1 );  ie++;
         }else{ ie+=2; }
     }
     for(int ia=0; ia<builder.atoms.size(); ia++){
@@ -437,51 +457,86 @@ int builder2EFFstatic( EFF* ff, MM::Builder& builder, bool bCoreElectrons=true, 
             ff->apos [ia] = pa;
             if(bCore){
                 ff->aPars[ia] = (Quat4d){ (double)iZ, 0.0, 0.0, 0.0 };
-                ff->set_electron( ie, pa, 0.1,  1 ); ie++;
-                ff->set_electron( ie, pa, 0.1, -1 ); ie++;
-            }else{
-                ff->aPars[ia] = EFF::default_AtomParams[iZ];
+                //double ecsize = EFF::default_AtomParams[iZ].z;
+                double ecsize = ff->atom_params[iZ].z;
+                ff->epos[ie]=pa; ff->espin[ie]= 1; if(bChangeEsize){ff->esize[ie]=ecsize;}; ie++;
+                ff->epos[ie]=pa; ff->espin[ie]=-1; if(bChangeEsize){ff->esize[ie]=ecsize;}; ie++;
+                //ff->set_electron( ie, pa, ecsize,  1 ); ie++;
+                //ff->set_electron( ie, pa, ecsize, -1 ); ie++;
+            }else if (bChangeCore){
+                Quat4d& apar = ff->aPars[ia];
+                //apar = EFF::default_AtomParams[iZ];
+                apar = ff->atom_params[iZ];
+                if   (ff->bCoreCoul){ apar.x = iZ    ; }
+                else                { apar.x = iZ-2.0; }
             }
         }else if(bCore){ ie+=2; }
         int nei = builder.addEpairsByPi(ia, le, epos, false );
         //printf( "builder2EFFstatic() ia=%i nei=%i \n", ia, nei );
         for(int i=0; i<nei; i++){
             if( ff ){
-                ff->set_electron( ie, epos[i], esize0,  1 ); ie++;
-                ff->set_electron( ie, epos[i], esize0, -1 ); ie++;
+                ff->epos[ie]=epos[i]; ff->espin[ie]= 1; if(bChangeEsize){ff->esize[ie]=esize0;}; ie++;
+                ff->epos[ie]=epos[i]; ff->espin[ie]=-1; if(bChangeEsize){ff->esize[ie]=esize0;}; ie++;
+                //ff->set_electron( ie, epos[i], esize0,  1 ); ie++;
+                //ff->set_electron( ie, epos[i], esize0, -1 ); ie++;
             }else{ ie+=2; }
         }
     }
     return ie;
 }
 
+int preAllocateXYZ(const char* fname, double Rfac=-0.5, bool bCoreElectrons=true){
+    printf( "preAllocateXYZ() fname=%s Rfac=%g bCoreElectrons=%i\n", fname, Rfac, bCoreElectrons );
+    if(params.atypes.size()==0){ 
+        const char* sElementTypes ="common_resources/ElementTypes.dat"; 
+        const char* sAtomTypes    ="common_resources/AtomTypes.dat"; 
+        const char* sBondTypes    ="common_resources/BondTypes.dat"; 
+        const char* sAngleTypes   ="common_resources/AngleTypes.dat"; 
+        const char* sDihedralTypes="common_resources/DihedralTypes.dat"; 
+        params.init(sElementTypes,sAtomTypes,sBondTypes,sAngleTypes,sDihedralTypes); 
+    }
+    FILE* fin=fopen(fname,"r"); if(fin==0){ printf("cannot open '%s' \n",fname); exit(0);} 
+    const int nline=1024; 
+    char line[1024], at_name[8]; 
+    int il=0; 
+    Atoms atoms; 
+    builder.params=&params;
+    DEBUG
+    while(fgets(line,nline,fin)){
+        if(il==0){ 
+            int na=-1; 
+            sscanf(line,"%i",&na); 
+            atoms.allocNew(na); 
+            //printf( "preAllocateXYZ() na=%i atoms.apos=%p atoms.atypes=%p \n", na, atoms.apos, atoms.atypes ); 
+        }
+        else if( (il>1) && (il<atoms.natoms+2) ){ 
+            double x,y,z,q; 
+            int nret=sscanf(line,"%s %lf %lf %lf %lf",at_name,&x,&y,&z,&q); 
+            if(nret<5) q=0; 
+            int i=il-2; 
+            //printf( "preAllocateXYZ() i=%i at_name=%s x=%g y=%g z=%g q=%g | %s \n", i, at_name, x, y, z, q, line ); 
+            atoms.apos[i].set(x,y,z); 
+            atoms.atypes[i]=params.getAtomType(at_name); 
+        }
+        if(il==atoms.natoms+2){ 
+            builder.insertAtoms(atoms); 
+            builder.tryAddConfsToAtoms(0,-1); 
+            builder.autoBonds(Rfac); 
+            int ne=builder2EFFstatic(0,builder,bCoreElectrons); 
+            ff.realloc(atoms.natoms,ne,true); 
+            opt.bindOrAlloc(ff.nDOFs,ff.pDOFs,ff.vDOFs,ff.fDOFs,ff.invMasses); 
+            builder.load_atom_pos(atoms.apos,0); 
+            builder2EFFstatic(&ff,builder,bCoreElectrons); 
+            isPreAllocated=true; 
+            break; 
+        }
+        il++;
+    }
+    fclose(fin);
+    return 1;
+}
 
-// void from_Atoms(EFF& ff, Atoms* atoms, bool bRealloc=true ){
-//     int ne=0;
-//     int na=0;
-//     int epairtyp = params->getAtomType("E");
-//     // --- loop over atoms and electron pairs
-//     for(int i=0; i<atoms->natoms; i++){
-//         int it = atoms->atypes[i];
-//         if( it==epairtyp ){
-//             ff.epos[ne] = atoms->apos[i];
-//             ff.esize[ne] = 0.5;
-//             ff.espin[ne] = 1;
-//             ne++;
-//             ff.epos[ne] = atoms->apos[i];
-//             ff.esize[ne] = 0.5;
-//             ff.espin[ne] = 1;
-//             ne++;
-//         }else{
-//             int iZ = params->atypes[it].iZ;
-//             ff.aPars [na] = EFF::default_AtomParams[iZ];
-//             ff.apos  [na] = atoms->apos[i];
-//             na++;
-//         }
-//     }
-// }
-
-int processXYZ( const char* fname, double Rfac=-0.5, double* outEs=0, int nstepMax=1000, double dt=0.001, double Fconv=1e-3, int ialg=2, bool bAddEpairs=false, bool bCoreElectrons=true, bool bOutXYZ=false ){
+int processXYZ( const char* fname, double Rfac=-0.5, double* outEs=0, double* apos_=0, double* epos_=0, int nstepMax=1000, double dt=0.001, double Fconv=1e-3, int ialg=2, bool bAddEpairs=false, bool bCoreElectrons=true, bool bChangeCore=true, bool bChangeEsize=true, bool bOutXYZ=false ){
     setvbuf(stdout, NULL, _IONBF, 0);
     printf( "processXYZ(%s) bAddEpairs=%i bOutXYZ=%i Rfac %g\n", fname, bAddEpairs, bOutXYZ, Rfac );
 
@@ -529,18 +584,20 @@ int processXYZ( const char* fname, double Rfac=-0.5, double* outEs=0, int nstepM
             //atoms->charge[i]=q;
         }
         if( il==atoms->natoms+2 ){
-            if( iconf==0 ){
+            if( (!isPreAllocated) && iconf==0 ){
                 builder.insertAtoms( *atoms );
                 builder.tryAddConfsToAtoms( 0, -1 );
                 builder.printAtomConfs();
                 builder.autoBonds( Rfac ); 
-                int ne = builder2EFFstatic( 0, builder, bCoreElectrons );
-                printf("processXYZ() iconf=%i natoms=%i builder.atoms.size()=%i builder.bonds.size()=%i\n", iconf, atoms->natoms, builder.atoms.size(), builder.bonds.size() );
+                int ne = builder2EFFstatic( 0, builder, bCoreElectrons, bChangeCore, bChangeEsize );
+                if(verbosity>0)printf("processXYZ() iconf=%i natoms=%i builder.atoms.size()=%i builder.bonds.size()=%i\n", iconf, atoms->natoms, builder.atoms.size(), builder.bonds.size() );
                 ff.realloc( atoms->natoms, ne, true );
                 opt.bindOrAlloc( ff.nDOFs, ff.pDOFs, ff.vDOFs, ff.fDOFs, ff.invMasses );
             }
             builder.load_atom_pos( atoms->apos, 0 );
-            builder2EFFstatic( &ff, builder, bCoreElectrons );    
+            builder2EFFstatic( &ff, builder, bCoreElectrons, bChangeCore, bChangeEsize );    
+
+            if(verbosity>1)ff.info();
             if( nstepMax>0 ){
                 { // constrain
                     int nfix=ff.na;
@@ -558,8 +615,16 @@ int processXYZ( const char* fname, double Rfac=-0.5, double* outEs=0, int nstepM
                 run( nstepMax, dt, Fconv, ialg, 0, 0 );
             }
             ff.eval();
-            printf("processXYZ() iconf=%i natoms=%i na=%i ne=%i | Etot(%g)=T(%g)+ee(%g)+ea(%g)+aa(%g) \n", iconf, atoms->natoms, ff.na, ff.ne, ff.Etot, ff.Ek, ff.Eee, ff.Eae, ff.Eaa );
+            if(verbosity>0)printf("processXYZ() iconf=%i natoms=%i na=%i ne=%i | Etot(%g)=T(%g)+ee(%g)+ea(%g)+aa(%g) \n", iconf, atoms->natoms, ff.na, ff.ne, ff.Etot, ff.Ek, ff.Eee, ff.Eae, ff.Eaa );
             if(bOutXYZ)ff.save_xyz( "processXYZ.xyz", "a" );
+            if(apos_){
+                Vec3d*  apos = ((Vec3d* )apos_)+iconf*ff.na;
+                for(int j=0; j<ff.na; j++){ apos[j]   = ff.apos[j]; }
+            }
+            if(epos_){
+                Quat4d* epos = ((Quat4d*)epos_)+iconf*ff.ne;
+                for(int j=0; j<ff.ne; j++){ epos[j].f = ff.epos[j]; epos[j].w = ff.esize[j]; }
+            }
             if(outEs){
                 int nEperConf=5;
                 // fprintf( pFile, "na,ne %i %i Etot(%g)=T(%g)+ee(%g)+ea(%g)+aa(%g) \n", na,ne, Etot, Ek, Eee, Eae, Eaa );
