@@ -27,9 +27,9 @@ public:
     FullscreenShader(const char* fragShaderSource) : shader(Shader<GLMESH_FLAG_TEX>(vertexShaderSource, fragShaderSource))
     {
         mesh = GLMesh<GLMESH_FLAG_TEX>(GL_TRIANGLES, GL_STATIC_DRAW, &shader, &framebuffer.colorBuffer);
-        mesh.addVertex({-1, -1, 0});
-        mesh.addVertex({ 3, -1, 0});
-        mesh.addVertex({-1,  3, 0});
+        mesh.addVertex({-1, -1, -1});
+        mesh.addVertex({ 3, -1, -1});
+        mesh.addVertex({-1,  3, -1});
     }
 
     // shader will get applied to everything rendered between begin() and end()
@@ -42,7 +42,7 @@ public:
 
         glBlendFunc(GL_SRC_ALPHA,GL_ONE_MINUS_SRC_ALPHA);
         glDisable(GL_DEPTH_TEST);
-        mesh.draw();
+        mesh.draw2D_NDC();
         glEnable(GL_DEPTH_TEST);
     }
 

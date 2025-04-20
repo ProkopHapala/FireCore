@@ -6,6 +6,7 @@
 class GLFramebuffer{
 public:
     GLTexture colorBuffer = GLTexture(GLES::screen_size, GL_RGBA);
+    GLTexture depthBuffer = GLTexture(GLES::screen_size, GL_DEPTH_COMPONENT, GL_DEPTH_COMPONENT24, GL_UNSIGNED_INT);
 
 private:
     GLuint handle = 0;
@@ -23,14 +24,16 @@ private:
         colorBuffer.setMagFilter(GL_NEAREST);
         colorBuffer.setMinFilter(GL_NEAREST);
 
+        depthBuffer.setMagFilter(GL_NEAREST);
+        depthBuffer.setMinFilter(GL_NEAREST);
 
         GL_CHECK_ERROR();
 
-        glGenRenderbuffers(1, &depthBufferHandle);
-        glBindRenderbuffer(GL_RENDERBUFFER, depthBufferHandle);
-        glRenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH_COMPONENT24, GLES::screen_size.x, GLES::screen_size.y);
-        glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_RENDERBUFFER, depthBufferHandle);
-
+        //glGenRenderbuffers(1, &depthBufferHandle);
+        //glBindRenderbuffer(GL_RENDERBUFFER, depthBufferHandle);
+        //glRenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH_COMPONENT24, GLES::screen_size.x, GLES::screen_size.y);
+        //glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_RENDERBUFFER, depthBufferHandle);
+        glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT , GL_TEXTURE_2D, depthBuffer.getHandle(), 0); GL_CHECK_ERROR();
         glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, colorBuffer.getHandle(), 0); GL_CHECK_ERROR();
 
         //Check framebuffer status

@@ -192,6 +192,10 @@ public:
         scale.x = scale.x*2/WIDTH;
         scale.y = scale.y*2/HEIGHT;
 
+        draw2D_NDC(pos, scale);
+    }
+
+    void draw2D_NDC(Vec3f pos=Vec3fZero, Vec2f scale={1, 1}){
         Mat4f mvp;
         mvp.array[ 0] = scale.x; mvp.array[ 4] = 0;       mvp.array[ 8] = 0; mvp.array[12] = pos.x;
         mvp.array[ 1] = 0;       mvp.array[ 5] = scale.y; mvp.array[ 9] = 0; mvp.array[13] = pos.y;

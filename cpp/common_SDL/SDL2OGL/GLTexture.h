@@ -12,6 +12,8 @@ class GLTexture{
         char* path = nullptr;
         Vec2i size = {0, 0};
         GLenum format = 0;
+        GLenum internalformat = 0;
+        GLenum type = 0;
 
         GLuint handle = 0;
 
@@ -24,7 +26,7 @@ class GLTexture{
                     path = nullptr;                    
                 }else{
                     glBindTexture(GL_TEXTURE_2D, handle);
-                    glTexImage2D(GL_TEXTURE_2D, 0, format, size.x, size.y, 0, format, GL_UNSIGNED_BYTE, 0);
+                    glTexImage2D(GL_TEXTURE_2D, 0, internalformat, size.x, size.y, 0, format, type, 0);
                 }
             }
         }
@@ -36,7 +38,7 @@ class GLTexture{
             this->path = (char*)malloc(strlen(path)+1);
             strcpy(this->path, path); // lazy initialisation
         }
-        GLTexture(Vec2i size, GLenum format=GL_RGBA) : size(size), format(format){} // lazy initialisation
+        GLTexture(Vec2i size, GLenum format=GL_RGBA, GLenum internalformat=0, GLenum type=GL_UNSIGNED_BYTE) : size(size), format(format), internalformat(internalformat ? internalformat : format), type(type){} // lazy initialisation
         ~GLTexture(){
             if (handle) glDeleteTextures(1, &handle);
         }
@@ -58,6 +60,8 @@ class GLTexture{
             glTexImage2D(GL_TEXTURE_2D, 0, format, width, height, 0, format, type, data);
             size = {width, height};
             this->format = format;
+            this->internalformat = format;
+            this->type = type;
         }
 
         void loadBMP(const char* filename){
