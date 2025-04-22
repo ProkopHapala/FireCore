@@ -91,7 +91,7 @@ def createH2(r): # r is half the distance between the two H atoms
 #     ]
 
 
-outE=eff.relax_mol("H2", dt=0.03, outE=True)  
+# outE=eff.relax_mol("H2", dt=0.03, outE=True)  
 
 radiusMin = 0.1
 radiusMax = 3.5
