@@ -1047,33 +1047,33 @@ class GridFF_cl:
             cl.enqueue_copy(self.queue, Qgrid, self.Qgrid_buff )
             print("Qgrid min,max ", Qgrid[:,:,:,0].min(), Qgrid[:,:,:,0].max() )
             #np.save( "./data/NaCl_1x1_L3/Qgrid_ocl.npy", Qgrid[:,:,:,0] )
-            ####### Plot three slices through the middle
-            plt.figure(figsize=(15, 5))
-            mid_x= 0
-            mid_y= 40
-            mid_z= 2
+            # ####### Plot three slices through the middle
+            # plt.figure(figsize=(15, 5))
+            # mid_x= 0
+            # mid_y= 40
+            # mid_z= 2
             
-            # XY plane
-            plt.subplot(131)
-            plt.imshow(Qgrid[mid_z, :, :, 0], origin='lower')
-            plt.colorbar(label='Charge density')
-            plt.title(f'XY plane (z={mid_z})')
+            # # XY plane
+            # plt.subplot(131)
+            # plt.imshow(Qgrid[mid_z, :, :, 0], origin='lower')
+            # plt.colorbar(label='Charge density')
+            # plt.title(f'XY plane (z={mid_z})')
             
-            # XZ plane
-            plt.subplot(132)
-            plt.imshow(Qgrid[:, mid_y, :, 0], origin='lower')
-            plt.colorbar(label='Charge density')
-            plt.title(f'XZ plane (y={mid_y})')
+            # # XZ plane
+            # plt.subplot(132)
+            # plt.imshow(Qgrid[:, mid_y, :, 0], origin='lower')
+            # plt.colorbar(label='Charge density')
+            # plt.title(f'XZ plane (y={mid_y})')
             
-            # YZ plane
-            plt.subplot(133)
-            plt.imshow(Qgrid[:, :, mid_x, 0], origin='lower')
-            plt.colorbar(label='Charge density')
-            plt.title(f'YZ plane (x={mid_x})')
+            # # YZ plane
+            # plt.subplot(133)
+            # plt.imshow(Qgrid[:, :, mid_x, 0], origin='lower')
+            # plt.colorbar(label='Charge density')
+            # plt.title(f'YZ plane (x={mid_x})')
             
-            plt.suptitle('Atom Projection on Grid (Charge Density)')
-            plt.tight_layout()
-            # plt.show()
+            # plt.suptitle('Atom Projection on Grid (Charge Density)')
+            # plt.tight_layout()
+            # # plt.show()
             
         
         self.poisson( bReturn=bCheckPoisson, sh=sh )
@@ -1083,34 +1083,34 @@ class GridFF_cl:
         V_after_poisson_laplace = np.empty(sh[::-1], dtype=np.float32)  # Note: sh includes extended z-dimension
         cl.enqueue_copy(self.queue, V_after_poisson_laplace, Vin_buff)
         
-        ####### Plot three slices through the middle
-        plt.figure(figsize=(15, 5))
-        mid_x= 0
-        mid_y= 40
-        mid_z= 7
+        # ####### Plot three slices through the middle
+        # plt.figure(figsize=(15, 5))
+        # mid_x= 0
+        # mid_y= 40
+        # mid_z= 7
         
         
-        # XY plane
-        plt.subplot(131)
-        plt.imshow(V_after_poisson_laplace[:, :, mid_z], origin='lower')
-        plt.colorbar(label='Potential')
-        plt.title(f'XY plane (z={mid_z})')
+        # # XY plane
+        # plt.subplot(131)
+        # plt.imshow(V_after_poisson_laplace[:, :, mid_z], origin='lower')
+        # plt.colorbar(label='Potential')
+        # plt.title(f'XY plane (z={mid_z})')
         
-        # XZ plane
-        plt.subplot(132)
-        plt.imshow(V_after_poisson_laplace[:, mid_y, :], origin='lower')
-        plt.colorbar(label='Potential')
-        plt.title(f'XZ plane (y={mid_y})')
+        # # XZ plane
+        # plt.subplot(132)
+        # plt.imshow(V_after_poisson_laplace[:, mid_y, :], origin='lower')
+        # plt.colorbar(label='Potential')
+        # plt.title(f'XZ plane (y={mid_y})')
         
-        # YZ plane
-        plt.subplot(133)
-        plt.imshow(V_after_poisson_laplace[ mid_x, :,:], origin='lower')
-        plt.colorbar(label='Potential')
-        plt.title(f'YZ plane (x={mid_x})')
+        # # YZ plane
+        # plt.subplot(133)
+        # plt.imshow(V_after_poisson_laplace[ mid_x, :,:], origin='lower')
+        # plt.colorbar(label='Potential')
+        # plt.title(f'YZ plane (x={mid_x})')
         
-        plt.suptitle('Potential After Poisson and Laplace')
-        plt.tight_layout()
-        # plt.show()
+        # plt.suptitle('Potential After Poisson and Laplace')
+        # plt.tight_layout()
+        # # plt.show()
             
         # Before calling slabPotential
         print("\nDebug before slabPotential:")
@@ -1149,35 +1149,35 @@ class GridFF_cl:
         print(f"Verification buffer shape: {verify_vcoul.shape}")
         print(f"Verification buffer range: [{verify_vcoul.min():.3f}, {verify_vcoul.max():.3f}]")
 
-        ####### Plot three slices through the middle
-        plt.figure(figsize=(15, 5))
-        mid_x= 0
-        mid_y= 40
-        mid_z= 7
+        # ####### Plot three slices through the middle
+        # plt.figure(figsize=(15, 5))
+        # mid_x= 0
+        # mid_y= 40
+        # mid_z= 7
         
-        # XY plane
-        plt.subplot(131)
-        plt.imshow(V_after_slab[:, :, mid_z], origin='lower')
-        # plt.imshow(verify_vcoul[:, :, mid_z], origin='lower')
-        plt.colorbar(label='Potential')
-        plt.title(f'XY plane (z={mid_z})')
+        # # XY plane
+        # plt.subplot(131)
+        # plt.imshow(V_after_slab[:, :, mid_z], origin='lower')
+        # # plt.imshow(verify_vcoul[:, :, mid_z], origin='lower')
+        # plt.colorbar(label='Potential')
+        # plt.title(f'XY plane (z={mid_z})')
 
-        # XZ plane
-        plt.subplot(132)
-        plt.imshow(V_after_slab[:, mid_y, :], origin='lower')
-        # plt.imshow(verify_vcoul[:, mid_y, :], origin='lower')
-        plt.colorbar(label='Potential')
-        plt.title(f'XZ plane (y={mid_y})')
+        # # XZ plane
+        # plt.subplot(132)
+        # plt.imshow(V_after_slab[:, mid_y, :], origin='lower')
+        # # plt.imshow(verify_vcoul[:, mid_y, :], origin='lower')
+        # plt.colorbar(label='Potential')
+        # plt.title(f'XZ plane (y={mid_y})')
 
-        # YZ plane
-        plt.subplot(133)
-        plt.imshow(V_after_slab[ mid_x, :,:], origin='lower')
-        # plt.imshow(verify_vcoul[ mid_x, :,:], origin='lower')
-        plt.colorbar(label='Potential')
-        plt.title(f'YZ plane (x={mid_x})')
-        plt.suptitle('Potential After Slab')
-        plt.tight_layout()
-        plt.show()
+        # # YZ plane
+        # plt.subplot(133)
+        # plt.imshow(V_after_slab[ mid_x, :,:], origin='lower')
+        # # plt.imshow(verify_vcoul[ mid_x, :,:], origin='lower')
+        # plt.colorbar(label='Potential')
+        # plt.title(f'YZ plane (x={mid_x})')
+        # plt.suptitle('Potential After Slab')
+        # plt.tight_layout()
+        # plt.show()
             
 
 

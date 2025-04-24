@@ -1097,7 +1097,8 @@ inline void addForce( const Vec3d& pos, const Quat4f& PLQ, Quat4f& fe ) const {
         }
     }
 
-    bool makeGridFF_Bspline_d( int natoms_, Vec3d * apos_, Quat4d * REQs_, bool bSaveNPY=false, bool bSaveXSF=false, bool bFit=true, bool bRefine=false ){
+    bool makeGridFF_Bspline_d( int natoms_, Vec3d * apos_, Quat4d * REQs_, bool bSaveNPY=true, bool bSaveXSF=false, bool bFit=true, bool bRefine=false ){
+        bSaveNPY = true;
         printf( "GridFF::makeGridFF_Bspline_d() bUseEwald=%i bSaveNPY=%i bSaveXSF=%i bFit=%i \n", bUseEwald, bSaveNPY, bSaveXSF, bFit );
         //Vec3i ns = gridN;
         Vec3i ns = grid.n;
@@ -1370,7 +1371,7 @@ void setAtomsSymetrized( int n, int* atypes, Vec3d* apos, Quat4d* REQs, double d
 
 void evalGridFFs_symetrized( double d=0.1, Vec3i nPBC_=Vec3i{-1,-1,-1} ){
     if(nPBC_.x>=0) nPBC=nPBC_;
-    setAtomsSymetrized( natoms, atypes, apos, REQs, d );
+    // setAtomsSymetrized( natoms, atypes, apos, REQs, d );
     //printf( "na %i | %i %i %i \n", natoms, apos_.size(), REQs_.size(), atypes_.size() );
     //params_glob->saveXYZ( "symtrized.xyz", apos_.size() , &atypes_[0] , &apos_[0], "#", &REQs_[0] );
     //evalGridFFs( apos_.size(), &apos_[0], &REQs_[0] );

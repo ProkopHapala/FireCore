@@ -51,7 +51,7 @@ python3 run.py
 #python3 run_test_GridFF_ocl_new.py
 #python3 run_test_Multipole.py
 
-#python3 run_sample_surf.py
+# python3 run_sample_surf.py
 
 #python3 run_sample_tricubic.py
 #python3 run_sample_nonBond.py
