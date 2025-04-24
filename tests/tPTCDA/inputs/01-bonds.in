@@ -1,0 +1,57 @@
+
+units           metal
+atom_style      full
+boundary        f f f
+
+pair_style      hybrid/overlay lj/cut/coul/cut 100.0 morse 100.0
+bond_style      harmonic
+angle_style     cosine/periodic
+dihedral_style  harmonic
+improper_style  fourier
+
+read_data       init.data
+
+pair_coeff      * * lj/cut/coul/cut 0.0 2.0
+pair_coeff      1 1 lj/cut/coul/cut 0.00455323095000000	3.43085096355845000 # C_R C_R
+pair_coeff      1 2 lj/cut/coul/cut 0.00344191906828755	3.27449823852482000 # C_R O_R
+pair_coeff      1 3 lj/cut/coul/cut 0.00344191906828755	3.27449823852482000 # C_R O_2
+pair_coeff      1 4 lj/cut/coul/cut 0.00294748340175568	3.00099233205573000 # C_R H_
+pair_coeff      2 2 lj/cut/coul/cut 0.00260184625000000	3.11814551349119000 # O_R O_R
+pair_coeff      2 3 lj/cut/coul/cut 0.00260184625000000	3.11814551349119000 # O_R O_2
+pair_coeff      2 4 lj/cut/coul/cut 0.00222808801823767	2.84463960702210000 # O_R H_
+pair_coeff      3 3 lj/cut/coul/cut 0.00260184625000000	3.11814551349119000 # O_2 O_2
+pair_coeff      3 4 lj/cut/coul/cut 0.00222808801823767	2.84463960702210000 # O_2 H_
+pair_coeff      4 4 lj/cut/coul/cut 0.00190802059000000	2.57113370055302000 # H_ H_
+pair_coeff      * * morse 0.0 2.0 1.5
+pair_coeff      1 5 morse 0.00243380431815848 1.5	3.4170  # C_R Na
+pair_coeff      1 6 morse 0.00669480540414215 1.5	3.8990  # C_R Cl
+pair_coeff      2 5 morse 0.00183978313051532 1.5	3.2415  # O_R Na
+pair_coeff      2 6 morse 0.00506079718600511 1.5	3.7235  # O_R Cl
+pair_coeff      3 5 morse 0.00183978313051532 1.5	3.2415  # O_2 Na
+pair_coeff      3 6 morse 0.00506079718600511 1.5	3.7235  # O_2 Cl
+pair_coeff      4 5 morse 0.00157549614980401 1.5	2.9345  # H_ Na
+pair_coeff      4 6 morse 0.00433380780008386 1.5	3.4165  # H_ Cl
+
+#special_bonds   lj/coul 0.0 0.0 1.0
+#special_bonds   lj/coul 1.0 0.0 1.0
+#special_bonds   lj/coul 0.0 1.0 1.0
+special_bonds   lj/coul 1.0 1.0 1.0
+
+pair_coeff * * lj/cut/coul/cut 0.0 2.0 # switch off lj
+pair_coeff * * morse 0.0 2.0 1.5       # switch off morse
+set type 1*4 charge 0.0                # switch off charge mol
+set type 5*6 charge 0.0                # switch off charge sub
+#bond_coeff * 0.0 2.0                   # switch off bonds
+angle_coeff * 0.0 1 1                  # switch off angles
+dihedral_coeff * 0.0 1 1               # switch off dihedrals
+improper_coeff * 0.0 1.0 1.0 1.0 0     # switch off impropers
+
+thermo          1
+thermo_style    custom etotal
+thermo_modify   format float %23.15g
+
+dump            traj all custom 1 traj.lammpstrj id xu yu zu fx fy fz
+dump_modify     traj sort id
+dump_modify     traj format float %23.15g
+
+run             0
