@@ -166,8 +166,7 @@ struct AtomConf{
     inline void init0(){ for(int i=0; i<N_NEIGH_MAX; i++)neighs[i]=-1; nbond=0; clearNonBond(); }
 
     //void print()const{ printf( " AtomConf{ ia %i, n %i nb %i np %i ne %i nH %i (%i,%i,%i,%i) }", iatom, n, nbond, npi, ne, nH , neighs[0],neighs[1],neighs[2],neighs[3] ); }
-    void print()const{ printf( " AtomConf{ia %i, n,nb,np,ne,nH(%i,%i,%i,%i,%i) [%i,%i,%i,%i]}", iatom, n,nbond,npi,ne,nH, neighs[0],neighs[1],neighs[2],neighs[3] ); }
-
+    inline void print()const{ printf( " AtomConf{ia %i, n,nb,np,ne,nH(%i,%i,%i,%i,%i) [%i,%i,%i,%i]}", iatom, n,nbond,npi,ne,nH, neighs[0],neighs[1],neighs[2],neighs[3] ); }
 
     inline bool checkNeighsRepeat()const{
         for(int i=0; i<N_NEIGH_MAX; i++){
@@ -387,6 +386,9 @@ class Builder{  public:
 
     std::unordered_set<int> selection;
     std::vector<int>        atom_permut;
+    std::vector<int>        atom2group;
+    int ngroups = 0;
+
 
     //static int iDebug = 0;
     std::vector<Atom>       atoms;
@@ -688,17 +690,30 @@ class Builder{  public:
         confs.back().iatom=ia;
         return &confs.back();
     }
+
+    int tryAddConfToAtom( int ia ){
+        int t = atoms[ia].type;
+        //printf( "Builder::tryAddConfsToAtoms()[ia=%i] t %i capping_types.contains(t)=%i \n", ia, t, capping_types.contains(t) );
+        if( capping_types.contains( t ) ) return -1;
+        if( atoms[ia].iconf < 0 ){
+            addConfToAtom( ia, 0 );
+            return confs.size()-1;
+        }
+        return -1;
+    }
+
     int tryAddConfsToAtoms( int i0=0, int imax=-1 ){
         if(imax<0){ imax=atoms.size(); }
         int n=0;
         for(int ia=0; ia<imax; ia++){
-            int t = atoms[ia].type;
-            //printf( "Builder::tryAddConfsToAtoms()[ia=%i] t %i capping_types.contains(t)=%i \n", ia, t, capping_types.contains(t) );
-            if( capping_types.contains( t ) ) continue;
-            if( atoms[ia].iconf < 0 ){
-                addConfToAtom( ia, 0 );
-                n++;
-            }
+            // int t = atoms[ia].type;
+            // //printf( "Builder::tryAddConfsToAtoms()[ia=%i] t %i capping_types.contains(t)=%i \n", ia, t, capping_types.contains(t) );
+            // if( capping_types.contains( t ) ) continue;
+            // if( atoms[ia].iconf < 0 ){
+            //     addConfToAtom( ia, 0 );
+            //     n++;
+            // }
+            tryAddConfToAtom( ia );
         }
         return n;
     }
@@ -710,6 +725,7 @@ class Builder{  public:
     int insertAtom(Atom& atom ){ int ia=atoms.size(); atom.id=ia; atoms.push_back(atom); return ia; }
 
     int insertAtom( int ityp, const Vec3d& pos, const Quat4d* REQ=0, int npi=-1, int ne=0 ){
+        //printf( "insertAtom ityp %i pos( %g %g %g ) npi=%i ne=%i \n", ityp, pos.x, pos.y, pos.z, npi, ne );
         Quat4d REQloc;
         if(REQ==0)
             if(params){ 
@@ -762,14 +778,18 @@ class Builder{  public:
                     return true; // neighbor already present in conf
                 }
             }
-            //printf( "MM::Builder.addBondToAtomConf ia %i ib %i ADDED \n", ia, ib );
+            //printf( "MM::Builder.addBondToAtomConf ia %i ib %i ic %i \n", ia, ib, ic );
             bool success = confs[ic].addBond(ib);
+            //printf( "MM::Builder.addBondToAtomConf ia %i ib %i success %i \n", ia, ib, success );
             if(!success){
-                printf("ERROR: in confs[%i].addBond(%i) => exit \n", ic, ib); 
-                confs[ic].print();
+                printf( "MM::Builder.addBondToAtomConf ia %i confs[%i].addBond(%i) success=%i (failed) \n", ia, ic, ib, success );
+                //printf("ERROR: in confs[%i].addBond(%i) => exit \n", ic, ib); 
+                printf("confs[%i]: ", ic ); confs[ic].print(); printf("\n");
+                printBondsOfAtom( ia );
                 int it1 = atoms[bonds[ib].atoms.a].type;
                 int it2 = atoms[bonds[ib].atoms.b].type;
-                printf( "\nbond(%i-%i) %s-%s \n", bonds[ib].atoms.a, bonds[ib].atoms.b, params->atypes[it1].name, params->atypes[it2].name );
+                printf( "bond(%i-%i) %s-%s \n", bonds[ib].atoms.a, bonds[ib].atoms.b, params->atypes[it1].name, params->atypes[it2].name );
+                printBonds();
                 exit(0); 
             }
             //int order = bonds[ib].type;
@@ -794,23 +814,23 @@ class Builder{  public:
         return ret;  // some neighbor already present ?
     }
 
-    int insertBond(const Bond& bond ){
+    int insertBond(const Bond& bond, bool bCheck=false ){
         int ib = bonds.size();
         bonds.push_back(bond);
         //printf( "insertBond[%i]", bonds.size() ); bonds.back().print(); puts("");
-        tryAddBondToAtomConf( ib, bond.atoms.i, false );
-        tryAddBondToAtomConf( ib, bond.atoms.j, false );
+        tryAddBondToAtomConf( ib, bond.atoms.i, bCheck );
+        tryAddBondToAtomConf( ib, bond.atoms.j, bCheck );
         return ib;
     }
 
-    int insertBond( Vec2i ias, int order ){
+    int insertBond( Vec2i ias, int order, bool bCheck=false ){
         double k=0,l0=1.0;
         if(params){
             int iat=atoms[ias.i].type;
             int jat=atoms[ias.j].type;
             params->getBondParams( iat, jat, order, l0, k );
         }
-        return insertBond( Bond(order, ias, l0, k) );
+        return insertBond( Bond(order, ias, l0, k), bCheck );
     };
 
     Vec2d assignBondParamsUFF( int ib ){
@@ -850,6 +870,7 @@ class Builder{  public:
         //printf( "MMFFBuilder::assignBondParams(ib=%i|ia=%i,ja=%i) order=%g \n", ib, b.atoms.i, b.atoms.j, b.order );
         const Atom& ai = atoms[b.atoms.i];
         const Atom& aj = atoms[b.atoms.j];
+        printf( "MMFFBuilder::assignBondParams(ib=%i|ia=%i,ja=%i) types: %i=%s %i=%s \n", ib, b.atoms.i, b.atoms.j,  ai.type, params->atypes[ai.type].name, aj.type, params->atypes[aj.type].name );
         int order=1;
         if( (ai.iconf>=0)&&(aj.iconf>=0) ){ 
             const AtomConf& ci = confs[ai.iconf];
@@ -1474,9 +1495,13 @@ class Builder{  public:
     }
 
     void loadNeighbors(int ia, int nb, const int* neighs, Vec3d* hs ){
+        if( nb>N_NEIGH_MAX   ){ printf("ERROR: loadNeighbors: nb %i > N_NEIGH_MAX %i \n", nb, N_NEIGH_MAX ); exit(0); }
+        //if( ia>=atoms.size() ){ printf("ERROR: loadNeighbors: ia %i >= atoms.size() %i \n", ia, atoms.size() ); exit(0); }
         for(int i=0;i<nb;i++){
             int ib = neighs[i];
+            if(ib<0 || ib>=bonds.size()){ printf("ERROR: loadNeighbors: ib %i >= nbonds.size() %i \n", ib, bonds.size() ); exit(0); }
             int ja = bonds[ib].getNeighborAtom(ia);
+            if(ja<0 || ja>=atoms.size()){ printf("ERROR: loadNeighbors: ja %i >= atoms.size() %i \n", ja, atoms.size() ); exit(0); }
             hs[i]  = atoms[ja].pos - atoms[ia].pos;
             hs[i].normalize();
         }
@@ -2140,6 +2165,29 @@ void assignTorsions( bool bNonPi=false, bool bNO=true ){
         return nbond;
     }
 
+
+    Vec3i shortesPBCbond( int ib, Vec3i npbc=Vec3iOne ){
+        Bond& b = bonds[ib];
+        Vec3d dij = atoms[b.atoms.j].pos - atoms[b.atoms.i].pos;
+        Vec3i ipbc_min = {0, 0, 0};
+        double r2min = 1e300;
+        for (int ix = -npbc.x; ix <= npbc.x; ix++) {
+            for (int iy = -npbc.y; iy <= npbc.y; iy++) {
+                for (int iz = -npbc.z; iz <= npbc.z; iz++) {
+                    Vec3d p = dij + lvec.lincomb(ix, iy, iz);
+                    double r2 = p.norm2();
+                    if (r2 < r2min) {
+                        r2min = r2;
+                        ipbc_min = {ix, iy, iz};
+                    }
+                }
+            }
+        }
+        b.ipbc = Vec3i8{(int8_t)ipbc_min.x, (int8_t)ipbc_min.y, (int8_t)ipbc_min.z};
+        return ipbc_min;
+    }
+
+
     bool checkAllAtomsBonded( bool bPrint=true, bool bExit=true, int nbmax=N_NEIGH_MAX, int nbmin=1 ){
         std::vector<int> nbonds(atoms.size(),0);
         for(int ib=0; ib<bonds.size(); ib++){
@@ -2190,7 +2238,42 @@ void assignTorsions( bool bNonPi=false, bool bNO=true ){
 
     // =============== Configurations
 
-    int checkBond2Conf(bool bPrint)const{
+    bool checkConfValid( int ia, bool bPrint=true )const{
+        int natoms = atoms.size();
+        int nbonds = bonds.size();
+        int ic     = atoms[ia].iconf;
+        if( ic<0 ) return true;
+        if( ic>=confs.size() ){  if( bPrint ){ printf( "checkConfValid(ia=%i) ic(%i) >= confs.size(%li)\n", ia, ic, confs.size() ); } return false; }
+        const AtomConf& conf = confs[ic];
+        int nbond = conf.nbond;
+        if( nbond>N_NEIGH_MAX ){  if( bPrint ){ printf( "checkConfValid(ia=%i|ic=%i) nbond(%i) > N_NEIGH_MAX(%i)\n", ia, ic, nbond, N_NEIGH_MAX ); } return false; }
+        for( int i=0; i<nbond; i++){
+            int ib = conf.neighs[i];
+            if( (ib<0) || (ib>=nbonds) ){  if( bPrint ){ printf( "checkConfValid(ia=%i|ic=%i) bond[%i] ib(%i) >= bonds.size(%i)\n", ia, ic, i, ib, nbonds ); } return false; }
+            Vec2i b = bonds[ib].atoms;
+            if( (b.i>=natoms) || (b.j>=natoms) ){  if( bPrint ){ printf( "checkConfValid(ia=%i|ic=%i) bond[%i] atoms(%i,%i) >= atoms.size(%i)\n", ia, ic, i, ib, b.i, b.j, natoms ); } return false; }
+            if( (b.i!=ia) && (b.j!=ia) ){  if( bPrint ){ printf( "checkConfValid(ia=%i|ic=%i) bond[%i] ib(%i)  none of atoms b(i=%i,j=%i) != ia(%i)\n", ia, ic, i, ib, b.i, b.j, ia ); } return false; }
+        }
+        return true;
+    }
+
+    int checkConfsValid( bool bExit=true, bool bPrint=true, bool bPrintArraysExit=true )const{
+        int nbad = 0;
+        for(int ia=0;ia<atoms.size(); ia++){ if( !checkConfValid( ia, bPrint ) ) nbad++; }
+        if( nbad>0) {
+            if( bPrint ){ printf( "checkConfsValid() failed: nbad(%i)\n", nbad ); }
+            if( bExit  ){ 
+                if( bPrintArraysExit ){
+                    printAtomConfs();
+                    printBonds();
+                }
+                exit(0); 
+            }
+        }
+        return nbad;
+    }
+
+    int checkBond2Conf(bool bPrint=true)const{
         for(int i=0;i<bonds.size(); i++){
             //printf("checkBond2Conf b[%i]\n", i );
             const Bond& b = bonds[i];
@@ -2319,7 +2402,21 @@ void assignTorsions( bool bNonPi=false, bool bNO=true ){
         return true;
     }
 
-    void permutAtoms(int* permut, bool doBonds=false ){
+
+    void permutAtoms(int* permut, bool doBonds=false, bool bGroups=true ){
+        bGroups &= (atom2group.size()>0);
+
+        std::vector<int> atom2group_;
+        if(bGroups){
+            if(atom2group.size()>0){
+            if (atom2group.size()!=atoms.size()){
+                printf("ERROR permutAtoms bGroups && atom2group.size(%i)!=atoms.size(%i)\n", atom2group.size(), atoms.size());
+                exit(1);
+            }
+            atom2group_ = atom2group;
+            }
+        }
+
         for(Bond&     b: bonds){ b.atoms.a=permut[b.atoms.a];  b.atoms.b=permut[b.atoms.b]; }
         // Confs are not re-shuffled because they point to bonds, not atoms
         //for(AtomConf& c: confs){ 
@@ -2335,6 +2432,9 @@ void assignTorsions( bool bNonPi=false, bool bNO=true ){
             A       = atoms_[ia];
             if( A.iconf>=0 ){
                 confs[A.iconf].iatom = ja;
+            }
+            if(bGroups){
+                atom2group[ja] = atom2group_[ia];
             }
         }
         if(doBonds){
@@ -2547,6 +2647,19 @@ void assignTorsions( bool bNonPi=false, bool bNO=true ){
         }
     }
 
+    inline void printBondsOfAtom( int ia ){
+        int ic = atoms[ia].iconf;
+        if(ic<0){printf("printBondsOfAtom(%i): atom has no conf (capping) \n", ia); return; };
+        const AtomConf& c = confs[ic];
+        printf("printBondsOfAtom(%i): ", ia);
+        for(int i=0; i<c.nbond; i++){
+            int ib = c.neighs[i];
+            Vec2i b = bonds[ib].atoms;
+            printf( "(%i|%i,%i) ", ib, b.i, b.j );
+        }
+        printf("\n");
+    }
+
     void printAtomConfs( bool bOmmitCap=true, bool bNeighs=false )const{
         printf(" # MM::Builder.printAtomConfs(na=%i,nc=%i) \n", atoms.size(), confs.size() );
         for(int i=0; i<atoms.size(); i++){ if( bOmmitCap && (atoms[i].iconf==-1) )continue;  if(bNeighs){printAtomNeighs(i);}else{printAtomConf(i);} puts(""); }
@@ -2598,6 +2711,58 @@ void assignTorsions( bool bNonPi=false, bool bNO=true ){
             }
         }
         for(int ia=0; ia<atoms.size(); ia++){ printf("atom[%i] Q=%g \n", ia, atoms[ia].REQ.z ); }; //exit(0);
+    }
+
+    void str2groups(const char* buff, int maxSteps=1024, int _0 = 0){
+        // this function reads groups from a string and stores them in atom2group 
+        // groups are separated by semicolon ";" and atoms in one group are separated by comma ","
+        // there can be any number of groups and each group can have any number of atoms 
+        // example: "1,3,5; 2,4,7; 8,9,12"
+        
+        const char* p = buff;
+        int group = 0;
+        int atom;
+        atom2group.resize(atoms.size(),-1); // -1 means not assigned
+        
+        printf(" # MM::Builder.str2groups(%s) \n", buff );
+        
+        char* endptr;
+        while (*p && group < maxSteps) { // safety limit on groups
+            // Skip any whitespace or non-numeric characters until we find a digit or end
+            while (*p && !(*p >= '0' && *p <= '9')) {
+                if (*p == ';') {
+                    group++;
+                    printf("str2groups() moving to group: %i\n", group);
+                }
+                p++;
+            }
+            // If we hit the end, break
+            if (!*p) break;
+            // Try to convert the number
+            atom = strtol(p, &endptr, 10);
+            atom -= _0;
+            if (p != endptr) { // if conversion successful
+                printf("str2groups() group: %i atom: %i\n", group, atom);
+                if (atom >= 0 && atom < atoms.size()) {
+                    atom2group[atom] = group;
+                }
+                p = endptr; // advance past the number
+            } else {
+                p++; // shouldn't happen, but just in case
+            }
+        }
+        
+        if (group >= maxSteps) {
+            printf("Warning: str2groups reached maximum groups (%d). Parsing terminated.\n", maxSteps);
+        }
+        printf("Finished parsing. Found %d groups\n", group + 1);
+    }
+        
+    void printAtom2Groups()const{
+        printf("printAtom2Groups() n=%i na=%i \n", atom2group.size(), atoms.size() );
+        for(int i=0; i<atom2group.size(); i++){
+            printf("atom[%i] group[%i] \n", i, atom2group[i] );
+        }
     }
 
     int write2xyz( FILE* pfile, const char* comment="#comment" )const{
@@ -2684,6 +2849,320 @@ void assignTorsions( bool bNonPi=false, bool bNO=true ){
         }
         return atoms.size() - n0;
     }
+
+    /// @brief Load a .mol file (MDL molfile format).
+    ///
+    /// The file is expected to have a header (first 4 lines), followed by a block of
+    /// atom lines and then a block of bond lines. The 5th line (index 4) must contain
+    /// the number of atoms and bonds.
+    /// Load a MDL .mol file.
+    /// The file is assumed to contain:
+    ///   - A header with at least 5 lines.
+    ///   - The 5th line (index 4) provides the number of atoms and bonds.
+    ///   - Next, the atom block (one line per atom) with at least 4 tokens:
+    ///         x y z element
+    ///   - Then the bond block (one line per bond) with at least 3 tokens:
+    ///         bond_id atom1 atom2 ...
+    int load_mol(const char* fname, const Vec3d& pos0=Vec3dZero, const Mat3d& rot=Mat3dIdentity ) {
+        if(verbosity>0)printf( "MM::Builder.load_mol(%s)\n", fname );
+        FILE* fp = fopen(fname, "r");
+        if(fp == NULL){
+            printf("ERROR in MM::Builder::load_mol(): Cannot open %s\n", fname);
+            return -1;
+        }
+        const int nbuf = 1024;
+        char buff[nbuf];
+        int lineIndex = 0;
+        int na = 0, nb = 0;
+        int n0 = atoms.size();
+
+        int ifrag=-1;
+        startFragment();
+        ifrag   = frags.size()-1;  // frags.size()-1
+        
+        while (fgets(buff, nbuf, fp)) {
+            // The 5th line (lineIndex==4) should contain atom and bond counts.
+            if (lineIndex == 4) {
+                if (sscanf(buff, "%d %d", &na, &nb) < 2) {
+                    printf("Error reading atom/bond counts in file %s\n", fname);
+                    fclose(fp);
+                    return -1;
+                }
+            }
+            // Process atom lines
+            else if (lineIndex > 4 && lineIndex <= 4 + na) {
+                Vec3d pos;
+                char elem[16] = {0};
+                int ret = sscanf(buff, "%lf %lf %lf %15s", &pos.x, &pos.y, &pos.z, elem);
+                if(ret < 4){
+                    printf("Error reading atom at line %d in %s\n", lineIndex, fname);
+                    continue;
+                }
+                
+                Quat4d REQ = defaultREQ;
+                int npi = -1;
+                int ne = 0;
+                
+                auto it = atomTypeDict->find(elem);
+                if(it != atomTypeDict->end()){
+                    int ityp = it->second;
+                    if(verbosity>2)printf( " %s -> %i \n", elem, ityp );
+                    if(params){
+                        params->assignRE(ityp, REQ);
+                        ne = params->atypes[ityp].nepair;
+                    }
+                    //if(noH && (elem[0]=='H') && (elem[1]=='\0')) continue;
+
+                    Vec3d p; rot.dot_to(pos,p); p.add( pos0 ); //p.sub(cog);
+
+                    insertAtom(ityp, p, &REQ, npi, ne);
+                }
+            }
+            // Process bond lines
+            else if (lineIndex > 4 + na && lineIndex <= 4 + na + nb) {
+                int bond_id, a1, a2;
+                int ret = sscanf(buff, "%d %d %d", &bond_id, &a1, &a2);
+                if(ret < 3){
+                    printf("Error reading bond at line %d in %s\n", lineIndex, fname);
+                    continue;
+                }
+                // Convert 1-based atom indices to 0-based
+                Bond bond;
+                bond.atoms.i = a1 - 1;
+                bond.atoms.j = a2 - 1;
+                bonds.push_back(bond);
+            }
+            lineIndex++;
+        }
+        fclose(fp);
+        if(verbosity>0)printf("Builder::load_mol() read atoms[%d] from %s\n", (int)(atoms.size()-n0), fname);
+        return ifrag;
+    }
+
+    /// @brief Load a .mol2 file (Tripos mol2 format).
+    ///
+    /// The file must include at least the following sections:
+    ///   - @<TRIPOS>MOLECULE (optional lattice vectors via a comment with "lvs")
+    ///   - @<TRIPOS>ATOM
+    ///   - @<TRIPOS>BOND (if bonds are present)
+    /// Load a Tripos .mol2 file.
+    /// The file must contain at least:
+    ///   - An @<TRIPOS>MOLECULE section (optionally with a lattice comment starting with '#' and containing "lvs")
+    ///   - An @<TRIPOS>ATOM section with lines formatted as:
+    ///         atom_id atom_name x y z atom_type ... [charge]
+    ///   - Optionally an @<TRIPOS>BOND section with lines formatted as:
+    ///         bond_id origin_atom_id target_atom_id bond_type
+    bool save_mol2(const char* fname, int ifrag=-1) {
+        if(verbosity>0)printf( "MM::Builder.save_mol2(%s)\n", fname );
+        FILE* fp = fopen(fname, "w");
+        if(fp == NULL){
+            printf("ERROR in MM::Builder::save_mol2(): Cannot open %s\n", fname);
+            return false;
+        }
+
+        // Get atom range for the fragment
+        int ia0=0,ia1=atoms.size();
+        int ib0=0,ib1=bonds.size();
+        if(ifrag>=0){
+            ia0=frags[ifrag].atomRange.a;
+            ia1=frags[ifrag].atomRange.b;
+            ib0=frags[ifrag].bondRange.a;
+            ib1=frags[ifrag].bondRange.b;
+        }
+        int na = ia1-ia0;
+        int nb = ib1-ib0;
+
+        // Write MOLECULE section
+        fprintf(fp, "@<TRIPOS>MOLECULE\n");
+        fprintf(fp, "*****\n");
+        fprintf(fp, " %d %d 0 0 0\n", na, nb);
+        fprintf(fp, "SMALL\n");
+        fprintf(fp, "GASTEIGER\n\n");
+
+        // Write ATOM section
+        fprintf(fp, "@<TRIPOS>ATOM\n");
+        for(int i=ia0; i<ia1; i++){
+            const Atom& atom = atoms[i];
+            const char* elem = params->atypes[atom.type].name;
+            // Format: atom_id atom_name x y z atom_type subst_id subst_name charge
+            fprintf(fp, "%6d %-4s %10.4f %10.4f %10.4f %-4s.3 %5d HOH%1d %10.4f\n",
+                i+1-ia0,           // atom_id (1-based)
+                elem,             // atom_name
+                atom.pos.x,       // x
+                atom.pos.y,       // y
+                atom.pos.z,       // z
+                elem,             // atom_type
+                1,                // subst_id
+                0,                // subst_name number
+                atom.REQ.z        // charge
+            );
+        }
+
+        // Write BOND section
+        fprintf(fp, "@<TRIPOS>BOND\n");
+        for(int i=ib0; i<ib1; i++){
+            const Bond& bond = bonds[i];
+            // Format: bond_id origin_atom_id target_atom_id bond_type
+            fprintf(fp, "%6d %6d %6d %1d\n",
+                i+1-ib0,                    // bond_id (1-based)
+                bond.atoms.i+1-ia0,        // origin_atom_id (1-based)
+                bond.atoms.j+1-ia0,        // target_atom_id (1-based)
+                bond.type                   // bond_type
+            );
+        }
+
+        fclose(fp);
+        if(verbosity>0)printf("Builder::save_mol2() wrote %d atoms and %d bonds to %s\n", na, nb, fname);
+        return true;
+    }
+
+    int load_mol2(const char* fname, const Vec3d& pos0=Vec3dZero, const Mat3d& rot=Mat3dIdentity ) {
+        if(verbosity>0)printf( "MM::Builder.load_mol2(%s)\n", fname );
+        FILE* fp = fopen(fname, "r");
+        if(fp == NULL){
+            printf("ERROR in MM::Builder::load_mol2(): Cannot open %s\n", fname);
+            return -1;
+        }
+        const int nbuf = 1024;
+        char buff[nbuf];
+
+        bool bLoadGroups = false;
+        char group_str[nbuf];
+
+        bool inMolecule = false;
+        bool inAtom = false;
+        bool inBond = false;
+        int n0 = atoms.size();
+        
+        int ifrag=-1;
+        startFragment();
+        ifrag   = frags.size()-1;  // frags.size()-1
+        int iline=0;
+        while(fgets(buff, nbuf, fp)) {
+
+            if( buff[0]=='@' ){
+                // Check section headers
+                if (strncmp(buff, "@<TRIPOS>MOLECULE", 17) == 0) {
+                    inMolecule = true;
+                    inAtom = false;
+                    inBond = false;
+                }else             
+                if (strncmp(buff, "@<TRIPOS>ATOM", 13) == 0) {
+                    inMolecule = false;
+                    inAtom = true;
+                    inBond = false;
+                }else 
+                if (strncmp(buff, "@<TRIPOS>BOND", 13) == 0) {
+                    inAtom = false;
+                    inBond = true;
+                }else 
+                if (strncmp(buff, "@lvs", 4) == 0) {    // expected line like this:    @lvs 20.0 0.0 0.0    0.0 0.5 0.0   20.0 0.0 0.0
+                    sscanf( buff+4, "%lf %lf %lf %lf %lf %lf %lf %lf %lf", &lvec.xx, &lvec.xy, &lvec.xz, &lvec.yx, &lvec.yy, &lvec.yz, &lvec.zx, &lvec.zy, &lvec.zz );
+                    //sscanf( buff+4, "%lf %lf %lf %lf %lf %lf %lf %lf %lf", &lvec.xx, &lvec.xy, &lvec.xz, &lvec.yx, &lvec.yy, &lvec.yz, &lvec.zx, &lvec.zy, &lvec.zz );
+                    printf("Builder::load_mol2() lvec loaded\n"); printMat(lvec);
+                    bPBC = true;
+                }else
+                if( strncmp(buff, "@groups", 7) == 0 ){
+                    //str2groups(buff+7, nbuf-7 );
+                    strcpy(group_str, buff+7);
+                    bLoadGroups=true;
+                    //exit(0);
+                }
+                continue;
+            }
+            //printf( "---Builder::load_mol2() [%i] a%i b%i %s", iline, inAtom, inBond, buff);
+            
+            // Process atom lines
+            if (inAtom) {
+                int  atom_id;
+                char atom_name[16];
+                char atom_type[32];
+                Vec3d pos;
+                double charge = 0.0;
+                
+                int ret = sscanf(buff, "%d %15s %lf %lf %lf %31s", &atom_id, atom_name, &pos.x, &pos.y, &pos.z, atom_type);
+                if(ret < 6) continue;
+                
+                // Try to read charge if present
+                sscanf(buff, "%*d %*s %*lf %*lf %*lf %*s %*s %*s %lf", &charge);
+                printf( "Builder::load_mol2() [%i] atom_id=%d atom_name=%s pos=(%lf %lf %lf) atom_type=%s charge=%lf\n", iline, atom_id, atom_name, pos.x, pos.y, pos.z, atom_type, charge );
+                
+                // substitute character '.' with '_' in atom_type
+                char* dot = strchr(atom_type, '.'); if(dot) { *dot = '_'; }
+
+                Quat4d REQ = defaultREQ;
+                REQ.z = charge;  // Set charge from mol2 file
+                //int npi = -1;
+                //int ne = 0;
+                
+                auto it = atomTypeDict->find(atom_type);
+
+                if(it == atomTypeDict->end() ){ // if we cannot fined specific type we try to find just the element  like 'S_3' we try to fine 'S'
+                    printf( "Builder::load_mol2() [%i] cannot find type `%s` find element `%s` instead \n", iline, atom_type, atom_name );
+                    if(dot) { *dot = '\0'; }else{
+                        char* dot = strchr(atom_type, '_');
+                        if(dot) { *dot = '\0'; }
+                    }
+                    it = atomTypeDict->find(atom_type);
+                    printf( "Builder::load_mol2() [%i] atom_type `%s` atom_name: `%s` \n", iline, atom_type, atom_name );
+                }
+
+                if(it != atomTypeDict->end()){
+                    int ityp = it->second;
+                    if(verbosity>2)printf( " %s -> %i \n", atom_type, ityp );
+                    if(params){
+                        params->assignRE(ityp, REQ);
+                        //ne = params->atypes[ityp].nepair;
+                    }
+                    Vec3d p; rot.dot_to(pos,p); p.add( pos0 ); //p.sub(cog);
+                    int ia = insertAtom(ityp, p, &REQ, -1, 0 );
+                    tryAddConfToAtom( ia );
+                }else{
+                    printf( "ERROR in MM::Builder::load_mol2(): unknown atom type `%s` for atom(%i) line(%i): %s \n", atom_type, atom_id, iline, buff );
+                    exit(1);
+                }
+            }
+            
+            // Process bond lines
+            if (inBond) {
+                int bond_id, a1, a2, bond_type;
+                //char bond_type[8];
+                int ret = sscanf(buff, "%d %d %d %d", &bond_id, &a1, &a2, &bond_type);
+                printf( "Builder::load_mol2() [%i] bond_id=%d a1=%d a2=%d type=%i\n", iline, bond_id, a1, a2, bond_type );
+                if(ret < 3) continue;
+                // Convert 1-based atom indices to 0-based
+                Bond bond;
+                bond.atoms.i = a1 - 1;
+                bond.atoms.j = a2 - 1;
+                bond.type = bond_type;
+                //bonds.push_back(bond);
+                int ib = insertBond( bond, true );
+                if( bPBC ){ shortesPBCbond( ib ); }
+            }
+            iline++;
+        } // while( fgets() )
+
+        if( bLoadGroups ){ 
+            str2groups(group_str, 100, 1 );
+            printAtom2Groups();
+        }
+
+        fclose(fp);
+        if(verbosity>0)printf("Builder::load_mol2() END read natoms[%d] nbonds[%d] from %s\n", (int)(atoms.size()-n0), (int)(bonds.size()-n0), fname);
+        return ifrag;
+    }
+
+
+
+
+
+
+
+
+
+
+
+
 
     inline void natom_def(int& n,int i0)const{ if(n<0){ n=atoms .size()-i0; }; }
     inline void nconf_def(int& n,int i0)const{ if(n<0){ n=confs .size()-i0; }; }
@@ -3265,7 +3744,7 @@ void assignTorsions( bool bNonPi=false, bool bNO=true ){
                 if( ityp==iH ) continue;
                 int ne=0,npi=0; 
                 Quat4d REQ=REQs[i];
-                if(params){  //printf( "params \n" );
+                if(params_){  //printf( "params \n" );
                     params->assignRE( ityp, REQ, true );
                     // printf( "MM::Builder::loadXYZ_Atoms() assignRE[%i] REQ(%g,%g,%g)\n", i, REQ.x,REQ.y,REQ.z );
                     ne = params->atypes[ityp].nepair;
@@ -3283,6 +3762,9 @@ void assignTorsions( bool bNonPi=false, bool bNO=true ){
         //printf( "MM::Builder::loadXYZ_Atoms(%s) ifrag=%i DONE \n", fname, ifrag );
         return ifrag;
     }
+
+      
+
 
     int registerRigidMolType( int natoms, Vec3d* pos, Quat4d* REQs, int* atomType ){
         Molecule* mol = new Molecule();
