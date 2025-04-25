@@ -281,11 +281,16 @@ lib.sample_ee.argtypes  = [c_int, array2d, array2d, c_int, array1d, c_bool, c_bo
 lib.sample_ee.restype   =  None
 def sample_ee( RSs, spin, FEout=None, KRSrho=[1.125,0.9,-0.2], bEvalCoulomb=True, bEvalPauli=True, iPauliModel=1 ):
     n = len(RSs)
+
     FEout  = np.zeros((n,4)) #TOHLE VYKRESLIT
     KRSrho = np.array(KRSrho)
     lib.sample_ee(n, RSs, FEout, spin, KRSrho, bEvalCoulomb, bEvalPauli, iPauliModel )
     print(n)
     print("sample_ee eFF.py")
+#     if FEout is None: FEout = np.zeros((n, 4), dtype=np.float64, order='C')  # Quat4d: [fx, fy, fz, E]
+#     #print("RSs.shape", RSs.shape)
+#     #print("FEout.shape", FEout.shape)
+#     KRSrho = np.array(KRSrho, dtype=np.float64)
     return FEout
 
 #void sample_EA( int n, double* RSs_, double* FEout_, double* KRSrho_,  double* aPar_,  bool bEvalAECoulomb, bool bCoreCoul, bool bEvalAEPauli ){
@@ -293,10 +298,13 @@ lib.sample_EA.argtypes  = [c_int, array2d, array2d, array1d, array1d, c_bool, c_
 lib.sample_EA.restype   =  None
 def sample_EA( RSs, FEout=None, KRSrho=[1.125,0.9,-0.2], aPar=[4.,0.1,0.1,2.0], bEvalAECoulomb=True, bCoreCoul=True, bEvalAEPauli=True ):
     n = len(RSs)
-    FEout = np.zeros(n)
-    KRSrho = np.array(KRSrho)
-    aPar = np.array(aPar)
-    lib.sample_EA(n, RSs, FEout, KRSrho, aPar, bEvalAECoulomb, bCoreCoul, bEvalAEPauli )
+    if FEout is None: FEout = np.zeros((n, 3), dtype=np.float64, order='C')
+    #print("RSs.shape", RSs.shape)
+    #print("FEout.shape", FEout.shape)
+    KRSrho = np.array(KRSrho, dtype=np.float64)
+    aPar = np.array(aPar, dtype=np.float64)
+    lib.sample_EA(n, RSs, FEout, KRSrho, aPar, bEvalAECoulomb, bCoreCoul, bEvalAEPauli)
+    return FEout
 
 
 # =========  Tests

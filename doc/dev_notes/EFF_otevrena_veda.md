@@ -2,7 +2,7 @@
 
 # Projekt Otevrena Veda
 
-# Úvod / Pozadní
+# Úvod / Pozadí
 
 * Elektronove silove pole ktere nahrazuje kvantove interakce mezi elektrony jednoduchym modelovym potencialem mezi (1) elektronem-a-elektronem a (2) elektronem a jadrem, a to za zjednodušeného předpokladu že vlnová funkce každého elektronu $i$ je gaussovský obláček $\psi_i(r)=\sqrt{C}\exp(-(|r-R_i|/w)^2)$ a jeho hustota pravdepodobnosti vyskytu $\rho_i(r)=C\exp(-2(|r-R_i|/w_i)^2)$ (kde C je normalizacni konstanta tak aby celkova pravdepodnost  byla 1 $\int \rho_i(r)=1$) 
    * Silové pole má oproti kvantovým metodám obroskou výhodu v rychlosti a názornosti.

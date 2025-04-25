@@ -8,6 +8,7 @@ add_library( Mesh     OBJECT Mesh.cpp  )
 add_library( DynamicOpt OBJECT DynamicOpt.cpp )
 add_library( Body       OBJECT Body.cpp       )
 add_library( Body2D     OBJECT Body2D.cpp     )
+add_library( ProjectiveDynamics_d     OBJECT ProjectiveDynamics_d.cpp     )
 
 file(GLOB math_HEADERS_ *.h )
 add_custom_target(math_headers SOURCES ${math_HEADERS_} )
