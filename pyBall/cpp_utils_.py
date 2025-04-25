@@ -64,7 +64,7 @@ def loadLib( cpp_name, recompile=True, mode=ctypes.RTLD_LOCAL ):
     lib_path = BUILD_PATH + "/lib" + cpp_name + lib_ext
     if lib_path in loaded_libs: 
         unload_lib_by_path(lib_path)  # Unload if already loaded
-    lib = ctypes.CDLL(lib_path, mode)
+    lib = ctypes.CDLL(lib_path, mode) #nacita c knihovnu
     loaded_libs[lib_path] = lib  # Store the loaded library
     return lib
 

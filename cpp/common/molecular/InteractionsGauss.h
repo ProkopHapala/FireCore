@@ -575,14 +575,6 @@ inline double addPauliGauss_New( const Vec3d& dR, double si, double sj, Vec3d& f
     constexpr const double Hartree2eV = 27.211386245988;
     constexpr const double A2bohr     = 1/0.5291772105638411;
 
-    /*
-    r2*=(A2bohr*A2bohr);
-    si*=A2bohr;
-    sj*=A2bohr;
-    double KR2=KRSrho.x*KRSrho.x;
-    r2*=KR2;  si*=KRSrho.y; sj*=KRSrho.y;
-    */
-
     double KR2=A2bohr*KRSrho.x; KR2*=KR2;
     const double KS =A2bohr*KRSrho.y;
     si*=KS; sj*=KS; r2*=KR2;
@@ -600,11 +592,6 @@ inline double addPauliGauss_New( const Vec3d& dR, double si, double sj, Vec3d& f
     double invsj2     = invsj*invsj;
     double invsi2     = invsi*invsi; 
 
-    //double r     = sqrt(r2 + 1e-16);
-    //double expr  = exp(-r2*invsi2sj2);
-    //double expr2 = expr*expr;
-    //double expr2  = exp(-2*r2*invsi2sj2);
-
     double r2_4   =  4*r2;
 
     // ------- Kinetic Energy Difference
@@ -618,9 +605,6 @@ inline double addPauliGauss_New( const Vec3d& dR, double si, double sj, Vec3d& f
     double dS22_dsi = S22*( -3*si4sj4 + r2_4*si2 )*invsi2sj22*invsi;                // TESTED with eff.py .check_DerivsPauli()
     double dS22_dsj = S22*( +3*si4sj4 + r2_4*sj2 )*invsi2sj22*invsj;                // TESTED with eff.py .check_DerivsPauli()
     double dS22_dr  = -4*S22*invsi2sj2;   // missing 'r' it is in |dR|              // TESTED with eff.py .check_DerivsPauli()
-
-    //fsi=dDT_dsi;    fsj=dDT_dsj;  f=dR*dDT_dr;   return DT;  
-    //fsi=dS22_dsi;   fsj=dS22_dsj; f=dR*dS22_dr;  return S22;
 
     double rho = KRSrho.z;
 
@@ -638,29 +622,6 @@ inline double addPauliGauss_New( const Vec3d& dR, double si, double sj, Vec3d& f
         dE_dDT  += - S22 *      (  rho*S22                     - rho+2 ) *invS222m1;
         dE_dS22 +=      -  DT * (      S22*(S22*(rho-2)-2*rho) + rho-2 ) *invS222m1*invS222m1;
     }
-
-    // double E, dE_dDT, dE_dS22;
-    // if( anti ){
-    //     double invS22m1 = 1/(S22+1);
-    //     E       = - rho*DT*S22  *invS22m1;
-    //     dE_dDT  = -(rho*   S22 )*invS22m1;
-    //     dE_dS22 = -(rho*DT     )*invS22m1*invS22m1;
-    // }else{
-    //     double invS222m1 = 1/( S22*S22-1 );
-    //     //printf( "DEBUG S22*DT %g invS222m1 %g (-rho*S22+rho-2) %g \n", S22*DT, invS222m1, (-rho*S22+rho-2) );
-    //     E       =   S22 * DT * ( -rho*S22                     + rho-2 ) *invS222m1;
-    //     dE_dDT  = - S22 *      (  rho*S22                     - rho+2 ) *invS222m1;
-    //     dE_dS22 =      -  DT * (      S22*(S22*(rho-2)-2*rho) + rho-2 ) *invS222m1*invS222m1;
-    // }
-
-    //fsi       += dE_dS22 * dS22_dsi + dE_dDT * dDT_dsi;
-    //fsj       += dE_dS22 * dS22_dsj + dE_dDT * dDT_dsj;
-    //double fr  = dE_dS22 * dS22_dr  + dE_dDT * dDT_dr;
-
-    // E         *= Hartree2eV;
-    // fsi       += (dE_dS22 * dS22_dsi + dE_dDT * dDT_dsi)*Hartree2eV*A2bohr*KRSrho.y;
-    // fsj       += (dE_dS22 * dS22_dsj + dE_dDT * dDT_dsj)*Hartree2eV*A2bohr*KRSrho.y;
-    // double fr  = (dE_dS22 * dS22_dr  + dE_dDT * dDT_dr )*Hartree2eV*A2bohr*A2bohr*KR2;
 
     E         *= Hartree2eV*sc;
     fsi       += (dE_dS22 * dS22_dsi + dE_dDT * dDT_dsi)*Hartree2eV*-KS *sc;

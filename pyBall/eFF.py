@@ -1,4 +1,3 @@
-
 import numpy as np
 from   ctypes import c_int, c_double, c_bool, c_float, c_char_p, c_bool, c_void_p, c_char_p
 import ctypes
@@ -282,11 +281,16 @@ lib.sample_ee.argtypes  = [c_int, array2d, array2d, c_int, array1d, c_bool, c_bo
 lib.sample_ee.restype   =  None
 def sample_ee( RSs, spin, FEout=None, KRSrho=[1.125,0.9,-0.2], bEvalCoulomb=True, bEvalPauli=True, iPauliModel=1 ):
     n = len(RSs)
-    if FEout is None: FEout = np.zeros((n, 4), dtype=np.float64, order='C')  # Quat4d: [fx, fy, fz, E]
-    #print("RSs.shape", RSs.shape)
-    #print("FEout.shape", FEout.shape)
-    KRSrho = np.array(KRSrho, dtype=np.float64)
-    lib.sample_ee(n, RSs, FEout, spin, KRSrho, bEvalCoulomb, bEvalPauli, iPauliModel)
+
+    FEout  = np.zeros((n,4)) #TOHLE VYKRESLIT
+    KRSrho = np.array(KRSrho)
+    lib.sample_ee(n, RSs, FEout, spin, KRSrho, bEvalCoulomb, bEvalPauli, iPauliModel )
+    print(n)
+    print("sample_ee eFF.py")
+#     if FEout is None: FEout = np.zeros((n, 4), dtype=np.float64, order='C')  # Quat4d: [fx, fy, fz, E]
+#     #print("RSs.shape", RSs.shape)
+#     #print("FEout.shape", FEout.shape)
+#     KRSrho = np.array(KRSrho, dtype=np.float64)
     return FEout
 
 #void sample_EA( int n, double* RSs_, double* FEout_, double* KRSrho_,  double* aPar_,  bool bEvalAECoulomb, bool bCoreCoul, bool bEvalAEPauli ){
@@ -307,7 +311,7 @@ def sample_EA( RSs, FEout=None, KRSrho=[1.125,0.9,-0.2], aPar=[4.,0.1,0.1,2.0], 
 
 def printEs():
     #print( " Etot %g Ek %g Eee %g EeePaul %g Eae %g EaePaul %g Eaa %g [eV]" %(Es[0],Es[1],Es[2],Es[3],Es[5],Es[6],Es[7]) )  # [0Etot,1Ek,2Eee,3EeePaul,4EeeExch,5Eae,6EaePaul,7Eaa]
-    print( " Etot",Es[0],"Ek",Es[1],"Eee",Es[2],"EeePaul",Es[3],"Eae",Es[5],"EaePaul",Es[6],"Eaa", Es[7], "[eV]" )  # [0Etot,1Ek,2Eee,3EeePaul,4EeeExch,5Eae,6EaePaul,7Eaa]
+    print("eFF.py::printEs() Etot ",Es[0],"Ek",Es[1],"Eee",Es[2],"EeePaul",Es[3],"Eae",Es[5],"EaePaul",Es[6],"Eaa", Es[7], "[eV]" )  # [0Etot,1Ek,2Eee,3EeePaul,4EeeExch,5Eae,6EaePaul,7Eaa]
 
 def printAtoms():
     for i in range(na):
@@ -335,11 +339,11 @@ def getNearestAtoms( apos, bPrint=False ):
     return imins, rmins
     
 def eval_mol(name, fUnits=1., bPrint=True ):
-    load_fgo(default_path+name+".fgo", False, fUnits=fUnits )                               # load molecule in  .fgo format (i.e. floating-gaussian-orbital)
+    load_fgo(default_path+name+".fgo", False, fUnits=fUnits ) # load molecule in  .fgo format (i.e. floating-gaussian-orbital)
     eval()
     if bPrint:
         getBuffs()
-        print("\n")
+        print("\n BAF")
         printEs()
 
 def eval_ee( r, si, sj, spin=-1 ):
@@ -429,10 +433,10 @@ def relax_mol(name, dt=0.03,damping=0.1, bTrj=True, bResult=True, perN=1, bPrint
     #print("invMasses", invMasses )
     if(bFixNuclei): invAmass[:]=0 
     #print("invMasses", invMasses )
-    nstep=run( nMaxIter, Fconv=1e-3, ialg=2, outE=outE, outF=outF )                             # run simuation for maximum 1000 time steps intil it converge to |F|<1e-3, ialg=2 is FIRE http://users.jyu.fi/~pekkosk/resources/pdf/FIRE.pdf   https://www.sciencedirect.com/science/article/pii/S0927025620300756
-    printEs()
+    nstep=run( nMaxIter, Fconv=1e-3, ialg=2, outE=outE, outF=outF ) # run simuation for maximum 1000 time steps until it converge to |F|<1e-3, ialg=2 is FIRE http://users.jyu.fi/~pekkosk/resources/pdf/FIRE.pdf   https://www.sciencedirect.com/science/article/pii/S0927025620300756
+    if(verbosity>0):printEs()
     if bPrintLbonds:
-        getNearestAtoms( apos, bPrint=True )
+        getNearestAtoms( apos, bPrint=False ) # bPrint defines, whether to print bond lengths
     if(bResult): 
         result_name=name+"_relaxed.fgo"
         if(verbosity>0): print("Optimized molecule saved to ", result_name)

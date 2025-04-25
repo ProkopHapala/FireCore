@@ -181,7 +181,7 @@ int run( int nstepMax, double dt, double Fconv, int ialg, double* outE, double* 
         if(outF){ outF[itr]=F2;   }
         if(verbosity>0){ printf("[%i] Etot %g[eV] |F| %g [eV/A] \n", itr, Etot, sqrt(F2) ); };
         if(F2<F2conv){
-            if(verbosity>0){ printf("Converged in %i iteration Etot %g[eV] |F| %g[eV/A] <(Fconv=%g) \n", itr, Etot, sqrt(F2), Fconv ); };
+            if(verbosity>0){ printf("eFF_lib.cpp::run() Converged in %i iteration Etot %g[eV] |F| %g[eV/A] <(Fconv=%g) \n", itr, Etot, sqrt(F2), Fconv ); };
             break;
         }
         if( (trj_fname) && (itr%savePerNsteps==0) )  ff.save_xyz( trj_fname, "a" );
@@ -192,18 +192,20 @@ int run( int nstepMax, double dt, double Fconv, int ialg, double* outE, double* 
 
 
 void sample_ee( int n, double* RSs_, double* FEout_, int spin, double* KRSrho_, bool bEvalCoulomb, bool bEvalPauli, int iPauliModel ){
+    //spin 1 je že jsou stejny spiny, spin -1 že jsou odlišný
     Quat4d* FEout =(Quat4d*)FEout_;
     Vec3d* RSs    =(Vec3d*)RSs_;
     Vec3d  KRSrho =*(Vec3d*)KRSrho_;
     //using namespace std;
     //auto [x, y, z] = RSs[0];
+    printf("Sample ee eFF_lib.cpp \n");
     for(int i=0; i<n; i++){
         double ri = RSs[i].x;
         double si = RSs[i].y;
         double sj = RSs[i].z;
         Vec3d f=Vec3dZero;
         Quat4d EFi=Quat4dZero;
-        Vec3d dR{0.0,0.0,ri};
+        Vec3d dR{ri,0.0,0.0};
         if(bEvalCoulomb){
             EFi.w += addCoulombGauss( dR, si, sj, f, EFi.y, EFi.z, 1.0 );
         }
@@ -212,10 +214,12 @@ void sample_ee( int n, double* RSs_, double* FEout_, int spin, double* KRSrho_, 
             // iPauliModel==0 Pauli repulasion from Valence-Bond theory  // Pauli repulsion only for electrons with same spin
             // iPauliModel==0 Pauli repulasion as overlap between same spin orbitals 
             if     ( iPauliModel == 1 ){              EFi.w += addPauliGauss_New    ( dR, si, sj, f, EFi.y, EFi.z, spin, KRSrho ); }
+            //iPauliModel 1 je ten spravy a je v clankach od SU
             else if( iPauliModel == 2 ){  if(spin>0){ EFi.w += addPauliGaussVB      ( dR, si, sj, f, EFi.y, EFi.z ); } }
             else if( iPauliModel == 0 ){  if(spin>0){ EFi.w += addDensOverlapGauss_S( dR, si*M_SQRT2, sj*M_SQRT2, ff.KPauliOverlap, f,  EFi.y, EFi.z ); } }
        }
        EFi.x=f.x;
+       //EF.f = f;
        FEout[i]=EFi;
     }
 }

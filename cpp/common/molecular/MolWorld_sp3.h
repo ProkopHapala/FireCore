@@ -2023,7 +2023,7 @@ bool relax( int niter, double Ftol = 1e-6, bool bWriteTrj=false ){
             if(verbosity>1)[[unlikely]]{ printf("[%i] Etot %g[eV] |F| %g [eV/A] \n", itr, Etot, sqrt(F2) ); };
             if(F2<F2conv)[[unlikely]]{
                 bConverged=true;
-                if(verbosity>0)[[unlikely]]{ printf("Converged in %i iteration Etot %g[eV] |F| %g[eV/A] <(Fconv=%g) \n", itr, Etot, sqrt(F2), Fconv ); };
+                if(verbosity>0)[[unlikely]]{ printf("MolWorld_sp3::run() Converged in %i iteration Etot %g[eV] |F| %g[eV/A] <(Fconv=%g) \n", itr, Etot, sqrt(F2), Fconv ); };
                 if( trj_fname )[[unlikely]]{
                     sprintf(tmpstr,"# %i E %g |F| %g", itr, Etot, sqrt(F2) );
                     saveXYZ( trj_fname, tmpstr, false, "a", nPBC_save );

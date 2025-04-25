@@ -43,6 +43,7 @@ commit 94a94e956acad8e3d23a54acbd0f715fe0d1f827    2021-May-05    CLCFGO : teste
 #include "Plot2D.h"
 #include "Console.h"
 
+
 //#include "MMFF.h"
 
 #define R2SAFE  1.0e-8f
@@ -308,6 +309,7 @@ void TestAppRARFF::initEFFsystem( const char * fname, bool bTestEval, bool bDebu
         double E = ff.eval();
         //printf( "E %g | Ek %g Eee %g EeePaul %g Eaa %g Eae %g EaePaul %g \n", E, ff.Ek, ff.Eee, ff.EeePaul, ff.Eaa, ff.Eae, ff.EaePaul );
         ff.printEnergies();
+        ff.printEnergies();
         //printf( " test_eFF exits ... \n" ); exit(0);
     }
 
@@ -315,7 +317,7 @@ void TestAppRARFF::initEFFsystem( const char * fname, bool bTestEval, bool bDebu
 };
 
 TestAppRARFF::TestAppRARFF( int& id, int WIDTH_, int HEIGHT_ ) : AppSDL2OGL_3D( id, WIDTH_, HEIGHT_, " test_eFF " ) {
-
+    printf("EFFapp.cpp TestAppRARFF start \n");
     fontTex   = makeTextureHard( "common_resources/dejvu_sans_mono_RGBA_pix.bmp" ); GUI_fontTex = fontTex;
     fontTex3D = makeTexture    ( "common_resources/dejvu_sans_mono_RGBA_inv.bmp" );
 
@@ -350,6 +352,8 @@ TestAppRARFF::TestAppRARFF( int& id, int WIDTH_, int HEIGHT_ ) : AppSDL2OGL_3D( 
     console.init( 256, window );
     console.callback = [&](const char* s){ printf( "console.callback(%s)\n", s ); return 0; };
     console.fontTex = fontTex;
+    printf("EFFapp.cpp TestAppRARFF end \n");
+
 #ifdef WITH_LUA
     console.callback = [&](const char* str)->bool{
        lua_State* L=theLua;
@@ -364,11 +368,13 @@ TestAppRARFF::TestAppRARFF( int& id, int WIDTH_, int HEIGHT_ ) : AppSDL2OGL_3D( 
         return true;
     };
 #endif // WITH_LUA
-
+    
 }
 
 void TestAppRARFF::draw(){
-    //printf( " ==== frame %i \n", frameCount );
+    // printf( " ==== frame %i \n", frameCount );
+    // TADY SE VYKRESULJI JEDNOTLIVY FRAMES
+
     glClearColor( 1.0f, 1.0f, 1.0f, 1.0f );
     glClear( GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT );
     glEnable(GL_DEPTH_TEST);
