@@ -199,6 +199,8 @@ def make_atoms_arrays( atoms=None, fname=None, bSymetrize=False, Element_Types_n
     print("bSymetrize ", bSymetrize )
     if atoms is None:
         atoms = au.AtomicSystem( fname=fname )
+        print("Raw atom types:", atoms.atypes)
+        print("Raw atom charges:", atoms.qs)
     if bSymetrize:
         na_before = len(atoms.atypes)
         atoms, ws = atoms.symmetrized()
@@ -206,7 +208,7 @@ def make_atoms_arrays( atoms=None, fname=None, bSymetrize=False, Element_Types_n
 
     print( "Qtot ", np.sum(atoms.qs)," Qabs ", np.sum(np.abs(atoms.qs)) )
     REvdW = au.getVdWparams( atoms.atypes, fname=Element_Types_name )
-    #print( "REvdW ", REvdW )
+    print("Raw REvdW parameters from ElementTypes.dat:", REvdW)
     if bSymetrize: 
         REvdW[:,1] *= ws
         print( "n_atoms (symetrized): ", len(atoms.atypes)," before symmertization: ", na_before )
@@ -223,6 +225,14 @@ def make_atoms_arrays( atoms=None, fname=None, bSymetrize=False, Element_Types_n
         REQs[:,1]  = REvdW[:,1]
     REQs[:,2]  = atoms.qs
     REQs[:,3]  = 0.0
+    print("\nComponent-wise breakdown:")
+    for i in range(na):
+        print(f"Atom[{i}]:")
+        print(f"  Type: {atoms.atypes[i]}")
+        print(f"  Position: {atoms.apos[i]}")
+        print(f"  Charge: {atoms.qs[i]}")
+        print(f"  REvdW raw: {REvdW[i]}")
+        print(f"  Final REQ: {REQs[i]}")
 
     return xyzq, REQs, atoms
 
@@ -352,13 +362,13 @@ def test_gridFF_ocl( fname="./data/xyz/NaCl_1x1_L1.xyz", Element_Types_name="./d
         print("!!!! Starting Coulomb potential calculation...")
         # print("Grid origin for Coulomb:", g0)
         Vcoul = clgff.makeCoulombEwald_slab(xyzq, niter=2,bSaveQgrid=True,bCheckVin=True, bTranspose=True)
-        # temp_before = np.empty(clgff.gsh.ns[::-1], dtype=np.float32)
-        # cl.enqueue_copy(clgff.queue, temp_before, clgff.V_Coul_buff)
+        temp_before = np.empty(clgff.gsh.ns[::-1], dtype=np.float32)
+        cl.enqueue_copy(clgff.queue, temp_before, clgff.V_Coul_buff)
         
         temp_before = check_vcoul_buffer(clgff)
 
 
-        VcoulB,trj_coul = clgff.fit3D( clgff.V_Coul_buff, nPerStep=10, nmaxiter=1000, damp=0.05, bConvTrj=True );
+        VcoulB,trj_coul = clgff.fit3D( clgff.V_Coul_buff, nPerStep=10, nmaxiter=10000, damp=0.05, bConvTrj=True );
         # VcoulB, trj_coul = clgff.fit3D_with_buffer(clgff.V_Coul_buff, nPerStep=10, nmaxiter=50, damp=0.05, bConvTrj=True)
         # VcoulB,trj_coul = clgff.fit3D( clgff.V1_buff, nPerStep=10, nmaxiter=50, damp=0.05, bConvTrj=True );
         
@@ -384,31 +394,47 @@ def test_gridFF_ocl( fname="./data/xyz/NaCl_1x1_L1.xyz", Element_Types_name="./d
         print("Starting Morse potential calculation...")
         # g0 = ( -grid.Ls[0]*0.5, -grid.Ls[1]*0.5, z0 )
         # print("Grid origin for Morse:", g0)
-        nPBC_mors = autoPBC(atoms.lvec,Rcut=20.0); print("autoPBC(nPBC_mors): ", nPBC_mors )
+        # nPBC_mors = autoPBC(atoms.lvec,Rcut=20.0); print("autoPBC(nPBC_mors): ", nPBC_mors )
+        nPBC_mors = (5,5,0)
         clgff.make_MorseFF( xyzq, REQs, nPBC=nPBC_mors, lvec=atoms.lvec, g0=g0, GFFParams=(0.1,1.5,0.0,0.0), bReturn=False )
-        V_Paul,trj_paul = clgff.fit3D( clgff.V_Paul_buff, nPerStep=50, nmaxiter=1000, damp=0.05, bConvTrj=True ); #T_fit_P = time.perf_counter()
-        V_Lond,trj_lond = clgff.fit3D( clgff.V_Lond_buff, nPerStep=50, nmaxiter=1000, damp=0.05, bConvTrj=True ); #T_fit_ = time.perf_counter()
+        V_Paul,trj_paul = clgff.fit3D( clgff.V_Paul_buff, nPerStep=50, nmaxiter=10000, damp=0.05, bConvTrj=True ); #T_fit_P = time.perf_counter()
+        V_Lond,trj_lond = clgff.fit3D( clgff.V_Lond_buff, nPerStep=50, nmaxiter=10000, damp=0.05, bConvTrj=True ); #T_fit_ = time.perf_counter()
         # print("Morse_Atoms:",atoms.apos)
         temp_paul = np.empty(clgff.gsh.ns[::-1], dtype=np.float32)
         temp_lond = np.empty(clgff.gsh.ns[::-1], dtype=np.float32)
         cl.enqueue_copy(clgff.queue, temp_paul, clgff.V_Paul_buff)
         cl.enqueue_copy(clgff.queue, temp_lond, clgff.V_Lond_buff)
 
-        plt.figure( figsize=(16,8) )
-        plt.suptitle("Potentials Before Fitting")
-        plt.subplot(1,3,1); plt.imshow( temp_paul[70,:,:] , origin='lower'); plt.colorbar(); plt.title( "V_Paul[70,:,:] XY Slice" );plt.scatter(x_points, y_points, marker='o', color='red')
-        plt.subplot(1,3,2); plt.imshow( temp_lond[70,:,:] , origin='lower'); plt.colorbar(); plt.title( "V_Lond[70,:,:] XY Slice" );plt.scatter(x_points, y_points, marker='o', color='red')
-        plt.subplot(1,3,3); plt.imshow( temp_before[70,:,:], origin='lower' ); plt.colorbar(); plt.title( "V_Coul[70,:,:] XY Slice" );plt.scatter(x_points, y_points, marker='o', color='red')  #transpose(1, 0, 2)
+        # Save the potentials
+        path = os.path.basename( fname )
+        path = "./data/" + os.path.splitext( path )[0]
+        print( "test_gridFF_ocl() path = ", path )
+        np.save(path + "/V_Paul_gpu_before.npy", temp_paul)
+        np.save(path + "/V_Lond_gpu_before.npy", temp_lond)
+        np.save(path + "/V_Coul_gpu_before.npy", temp_before)
+        np.save(path + "/V_Paul_gpu_after.npy", V_Paul)
+        np.save(path + "/V_Lond_gpu_after.npy", V_Lond)
+        np.save(path + "/V_Coul_gpu_after.npy", VcoulB)
+    
+        # np.save(path + "trj_paul.npy", trj_paul)
+        # np.save(path + "trj_lond.npy", trj_lond)
+        # np.save(path + "trj_coul.npy", trj_coul)
 
-        plt.figure( figsize=(16,8) )
-        plt.subplot(1,3,1); plt.imshow(temp_paul[:,280,:], origin='lower'); plt.colorbar(); plt.title("V_Paul[:,70,:] YZ Slice");plt.scatter(x_points, y_points, marker='o', color='red')
-        plt.subplot(1,3,2); plt.imshow(temp_lond[:,280,:], origin='lower'); plt.colorbar(); plt.title("V_Lond[:,70,:] YZ Slice");plt.scatter(x_points, y_points, marker='o', color='red')
-        plt.subplot(1,3,3); plt.imshow(temp_before[:,280,:], origin='lower'); plt.colorbar(); plt.title("V_Coul[:,70,:] YZ Slice");plt.scatter(x_points, y_points, marker='o', color='red')
+        # plt.figure( figsize=(16,8) )
+        # plt.suptitle("Potentials Before Fitting")
+        # plt.subplot(1,3,1); plt.imshow( temp_paul[70,:,:] , origin='lower'); plt.colorbar(); plt.title( "V_Paul[70,:,:] XY Slice" );plt.scatter(x_points, y_points, marker='o', color='red')
+        # plt.subplot(1,3,2); plt.imshow( temp_lond[70,:,:] , origin='lower'); plt.colorbar(); plt.title( "V_Lond[70,:,:] XY Slice" );plt.scatter(x_points, y_points, marker='o', color='red')
+        # plt.subplot(1,3,3); plt.imshow( temp_before[70,:,:], origin='lower' ); plt.colorbar(); plt.title( "V_Coul[70,:,:] XY Slice" );plt.scatter(x_points, y_points, marker='o', color='red')  #transpose(1, 0, 2)
 
-        plt.figure( figsize=(16,8) )
-        plt.subplot(1,3,1); plt.imshow(temp_paul[:,:,00], origin='lower'); plt.colorbar(); plt.title("V_Paul[:,:,70] XZ Slice");plt.scatter(x_points, y_points, marker='o', color='red')
-        plt.subplot(1,3,2); plt.imshow(temp_lond[:,:,00], origin='lower'); plt.colorbar(); plt.title("V_Lond[:,:,70] XZ Slice");plt.scatter(x_points, y_points, marker='o', color='red')
-        plt.subplot(1,3,3); plt.imshow(temp_before[:,:,00], origin='lower'); plt.colorbar(); plt.title("V_Coul[:,:,70] XZ Slice");plt.scatter(x_points, y_points, marker='o', color='red')
+        # plt.figure( figsize=(16,8) )
+        # plt.subplot(1,3,1); plt.imshow(temp_paul[:,280,:], origin='lower'); plt.colorbar(); plt.title("V_Paul[:,70,:] YZ Slice");plt.scatter(x_points, y_points, marker='o', color='red')
+        # plt.subplot(1,3,2); plt.imshow(temp_lond[:,280,:], origin='lower'); plt.colorbar(); plt.title("V_Lond[:,70,:] YZ Slice");plt.scatter(x_points, y_points, marker='o', color='red')
+        # plt.subplot(1,3,3); plt.imshow(temp_before[:,280,:], origin='lower'); plt.colorbar(); plt.title("V_Coul[:,70,:] YZ Slice");plt.scatter(x_points, y_points, marker='o', color='red')
+
+        # plt.figure( figsize=(16,8) )
+        # plt.subplot(1,3,1); plt.imshow(temp_paul[:,:,00], origin='lower'); plt.colorbar(); plt.title("V_Paul[:,:,70] XZ Slice");plt.scatter(x_points, y_points, marker='o', color='red')
+        # plt.subplot(1,3,2); plt.imshow(temp_lond[:,:,00], origin='lower'); plt.colorbar(); plt.title("V_Lond[:,:,70] XZ Slice");plt.scatter(x_points, y_points, marker='o', color='red')
+        # plt.subplot(1,3,3); plt.imshow(temp_before[:,:,00], origin='lower'); plt.colorbar(); plt.title("V_Coul[:,:,70] XZ Slice");plt.scatter(x_points, y_points, marker='o', color='red')
 
 
         # plt.figure( figsize=(16,8) )

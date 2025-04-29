@@ -40,7 +40,8 @@ import pyopencl as cl
 # name="NaCl_8x8_L3_Coulumb"
 # name="NaCl_coulomb.iz0"
 
-name="Na_0.9_Cl_-0.9"
+name="NaCl_1x1_L1"
+# name="Na_0.9_Cl_-0.9"
 # name ="NaCl_paolo"
 # name ="NaCl.ptcda"
 # name="2_atom_NaCl"

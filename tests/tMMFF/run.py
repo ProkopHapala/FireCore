@@ -21,7 +21,8 @@ def scanPlot(nscan=1000, span=(0.0,8.0), dir=(0.0,0.0,1.0), p0=(0.0,0.0,0.0), la
    
     Es, Fs, Ps = mmff.scan(poss, bF=True, bP=True)
     
-    Es_end = Es[-1]
+    # Es_end = Es[-1]
+    Es_end = 0
 
     if saveData is not None:
         np.savetxt(saveData, np.column_stack((ts, Es-Es_end)), header="ts\tEnergy", comments="# ")
@@ -741,13 +742,13 @@ mmff.setVerbosity( verbosity=2, idebug=1 )
 
 
 #mmff.init( xyz_name="data/xyz/PTCDA_charge_on_Na", surf_name="data/xyz/Na_0.9_Cl_-0.9", bUFF=True, bSimple=True )   
-mmff.init( xyz_name="data/xyz/PTCDA_charge_on_Na", surf_name="data/xyz/Na_0.9_Cl_-0.9" )   
+# mmff.init( xyz_name="data/xyz/PTCDA_charge_on_Na", surf_name="data/xyz/Na_0.9_Cl_-0.9" )   
 # mmff.init( xyz_name="data/xyz/PTCDA_charge_on_Cl", surf_name="data/xyz/Na_0.9_Cl_-0.9" )
 # mmff.init( xyz_name="data/xyz/PTCDA_charge_on_hollow", surf_name="data/xyz/Na_0.9_Cl_-0.9" )
 # mmff.init( xyz_name="data/xyz/PTCDA_charge_xy", surf_name="data/xyz/Na_0.9_Cl_-0.9" )
 # print("After init: ", mmff.ndims if hasattr(mmff, 'ndims') else "ndims not set yet")
 
-
+mmff.init( xyz_name="data/xyz/noQ_H2O", surf_name="data/xyz/NaCl_1x1_L1" )
 ####################################################################################################################################
 
 mmff.getBuffs()
@@ -767,7 +768,7 @@ mmff.setSwitches( NonBonded=-1, MMFF=1, SurfAtoms=1, GridFF=1 )   #### For Rigid
 # mmff.PLQs[:,0] = 0.0  # delete Pauli
 # mmff.PLQs[:,1] = 0.0  # delete London
 
-# mmff.PLQs[:,2 ] = 0.0 # delete Coulomb (charges)
+mmff.PLQs[:,2 ] = 0.0 # delete Coulomb (charges)
 
 ###################################################################################################################################################
 
@@ -816,7 +817,8 @@ mmff.setSwitches( NonBonded=-1, MMFF=1, SurfAtoms=1, GridFF=1 )   #### For Rigid
 
 
 ################*******************PTCDA
-scanPlot( nscan=125, span=(2.6,15.1), dir=(0.0,0.0,1.0), p0=(0.0,0.0,0), label="PTCDA on Na", saveFig="E_z_scan_on_Na_PTCDA_Morse.png", saveData="E_z_scan_on_Na_PTCDA_Morse.dat" )
+scanPlot( nscan=125, span=(2.0,14.5), dir=(1.0,1.0,0.0), p0=(0.0,0.0,2.7), label="O on Na", saveFig="E_z_scan_on_Na_O_Morse.png", saveData="gpu_xy_E_z_scan_on_Na_O_Morse.dat" )
+# scanPlot( nscan=125, span=(2.6,15.1), dir=(1.0,0.0,0.0), p0=(0.0,0.0,3.3), label="PTCDA on Na", saveFig="E_z_scan_on_Na_PTCDA_Morse.png", saveData="x_E_z_scan_on_Na_PTCDA_Morse.dat" )
 # scanPlot( nscan=125, span=(2.6,15.1), dir=(0.0,0.0,1.0), p0=(0.0,0.0,0), label="PTCDA on Na", saveFig="E_z_scan_on_Na_PTCDA_Coulomb.png", saveData="E_z_scan_on_Na_PTCDA_Coulomb.dat" )
 # scanPlot( nscan=125, span=(2.6,15.1), dir=(0.0,0.0,1.0), p0=(0.0,0.0,0), label="PTCDA on Na", saveFig="E_z_scan_on_Na_PTCDA_Morse_Coulomb.png", saveData="E_z_scan_on_Na_PTCDA_Morse_Coulomb.dat" )
 

@@ -860,8 +860,8 @@ def makeVectros( apos, ip0, b1, b2, _0=1 ):
     return p0, fw, up
 
 def getVdWparams( iZs, etypes=None, fname='ElementTypes.dat' ):
-    if etypes is None: etypes = loadElementTypes( fname=fname, bDict=False )
-    return np.array( [( etypes[i][6],etypes[i][7] ) for i in iZs  ] )
+    if etypes is None: etypes = loadElementTypes( fname=fname, bDict=True )
+    return np.array( [( etypes[i][6],etypes[i][7] ) for i in iZs  ] )      
 
 def iz2enames( iZs ):
     return [ elements.ELEMENTS[iz-1][1] for iz in iZs ]
@@ -1016,7 +1016,7 @@ def loadElementTypes( fname='ElementTypes.dat', bDict=False ):
             name = wds[0]
             rec = [ name ] + [ int(w) for w in wds[1:4] ] + [ wds[5] ] + [ float(w) for w in wds[6:12] ]
             lst.append( rec )
-    if bDict: return { rec[0]:rec for rec in lst }
+    if bDict: return { rec[1]:rec for rec in lst }
     return lst
 
 def writeToXYZ( fout, es, xyzs, qs=None, Rs=None, comment="#comment", bHeader=True, ignore_es=None, other_lines=None ):
