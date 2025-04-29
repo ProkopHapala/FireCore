@@ -61,8 +61,8 @@ def plot_energy_and_force(energies, forces, steps=None,  lable1='Energ [eV]', la
 #eff.setVerbosity(2)
 #eff.setVerbosity(3)
 
-#eff.load_fgo("data/H2_eFF.fgo" )  
-eff.load_fgo("data/H2_far.fgo", bVel_=True )   
+eff.load_fgo("data/H2_eFF.fgo" , bVel_=True )
+# eff.load_fgo("data/H2_far.fgo", bVel_=True )   
 eff.getBuffs()
 
 # --- setup constraints

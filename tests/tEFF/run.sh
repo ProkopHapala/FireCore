@@ -27,7 +27,9 @@ echo "#=========== RUN"
 
 #python3 plot_EA.py 
 #python3 plot_EE.py 
-python3 run_scan_constr.py 2>ERR | tee OUT
+# python3 run_scan_constr.py 2>ERR | tee OUT
+python3 run_scan_Oe_ECP.py 2>ERR | tee OUT
+
 #python3 run_energyToBondlength_Gabriel.py 2>ERR | tee OUT
 
 
