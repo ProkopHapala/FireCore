@@ -159,6 +159,7 @@ class GridFF : public NBFF{ public:
     std::vector<int>    atypes_;
 
     //Vec3i nPBC{1,1,0};
+    Vec3i nPBC{0,0,0};
 
     // dipole approximation
     Vec3d dip_p0;
@@ -1236,7 +1237,7 @@ inline void addForce( const Vec3d& pos, const Quat4f& PLQ, Quat4f& fe ) const {
             Quat4d REQij; combineREQ( REQs[j], REQi, REQij );
             //printf( "GridFF::evalMorsePBC() j %i/%i \n", j,natoms );
             for(int ipbc=0; ipbc<npbc; ipbc++ ){
-                //printf( "GridFF::evalMorsePBC() j %i/%i ipbc %i/%i \n", j,natoms, ipbc,npbc );
+                //printf( "GridFF::evalMorsePBC() j %i/%i ipbc %i/%i shifts[%g %g %g]\n", j,natoms, ipbc,npbc, shifts[ipbc].x,shifts[ipbc].y,shifts[ipbc].z );
                 const Vec3d  dp = dp0 + shifts[ipbc];
                 Vec3d fij=Vec3dZero;
                 //DEBUG

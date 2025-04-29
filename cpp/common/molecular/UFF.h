@@ -1955,6 +1955,7 @@ class UFF : public NBFF { public:
         Ed  = 0.0;
         Ei  = 0.0;
         Enb = 0.0;
+        Esurf = 0.0;
         cleanForce();
         Eb = evalBonds(); 
         if(!bBonds)     { Eb = 0.0; cleanForce(); }
@@ -1975,7 +1976,7 @@ class UFF : public NBFF { public:
             }
             //printf("test_UFF atom=%i\n",ia);
             //DEBUG
-            if(bSubstrate) { if( atomForceFunc ) Enb+=atomForceFunc( ia, apos[ia], fapos[ia] ); }
+            if(bSubstrate) { if( atomForceFunc ) Esurf+=atomForceFunc( ia, apos[ia], fapos[ia] ); }
             // bSurfAtoms
         }
         FILE *file = fopen("f_firecore.txt","w");
@@ -1983,8 +1984,8 @@ class UFF : public NBFF { public:
             fprintf(file, "%i %23.15g %23.15g %23.15g %23.15g %23.15g %23.15g\n", ja+1, apos[ja].x,apos[ja].y,apos[ja].z, fapos[ja].x,fapos[ja].y,fapos[ja].z);
         }
         fclose(file);
-        double E=Eb+Ea+Ed+Ei+Enb;
-        printf( "UFF::test_UFF() E=%g Eb=%g Ea=%g Ed=%g Ei=%g Enb=%g Esurf=%g\n", E, Eb, Ea, Ed, Ei, Enb, Esurf );
+        double E=Eb+Ea+Ed+Ei+Enb+Esurf;
+        printf("test_UFF():: E=%g Eb=%g Ea=%g Ed=%g Ei=%g Enb=%g Esurf=%g\n",E,Eb,Ea,Ed,Ei,Enb,Esurf);
         FILE *file2 = fopen("e_firecore.txt","w");
         fprintf(file2, "%23.15g\n", E);
         fclose(file2);
