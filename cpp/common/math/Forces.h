@@ -539,7 +539,8 @@ inline void addAtomicForceMorse( const Vec3d& dp, Vec3d& f, double r0, double ep
 // evaluate energy and force using Morse and Coulomb potential
 inline double addAtomicForceMorseQ( const Vec3d& dp, Vec3d& f, double r0, double E0, double qq, double K=-1., double R2damp=1. ){
     double r2    = dp.norm2();
-    double ir2_  = 1/(r2+R2damp);
+    //double ir2_  = 1/(r2+R2damp);
+    double ir2_  = 1/r2;
     double r     = sqrt( r2   + 1e-32 );
     double ir_   = sqrt( ir2_ );     // ToDo: we can save some cost if we approximate r^2 = r^2 + R2damp;
     double e     = exp( K*(r-r0));
