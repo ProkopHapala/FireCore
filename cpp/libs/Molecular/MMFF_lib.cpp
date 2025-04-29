@@ -1,4 +1,4 @@
-﻿
+
 #include  "globals.h"
 
 #include "testUtils.h"
@@ -136,6 +136,7 @@ void* init( char* xyz_name, char* surf_name, char* smile_name, bool bMMFF, bool 
     W.bGridFF=bGrid;
     W.bUFF   =bUFF;
     W.init();
+    printf("DEBUG: After W.init(): natoms=%d, nDOFs=%d\n", W.nbmol.natoms, W.ff.nDOFs);
     init_buffers();
     return &W;
 }
@@ -254,6 +255,11 @@ void  scan( int nconf, double* poss, double* rots, double* Es, double* aforces, 
 
 void  scan_constr( int nconf, int ncontr, int *icontrs, double* contrs, double* Es, double* aforces, double* aposs, bool bHardConstr, bool bOmp, int niter_max, double dt, double Fconv, double Flim ){
     W.scan_constr( nconf, ncontr, icontrs, (Quat4d*)contrs, Es, (Vec3d*)aforces, (Vec3d*)aposs, bHardConstr, bOmp, niter_max, dt, Fconv, Flim);
+}
+
+// Function to perform rigid scan with UFF forcefield
+void scan_rigid_uff( int nconf, double* poss, double* rots, double* Es, double* aforces, double* aposs, bool omp ){
+    W.scan_rigid_uff( nconf, (Vec3d*)poss, (Mat3d*)rots, Es, (Vec3d*)aforces, (Vec3d*)aposs, omp );
 }
 
 
@@ -391,7 +397,7 @@ void setSwitches2( int CheckInvariants, int PBC, int NonBonded, int NonBondNeigh
 
     printf( "setSwitches2() W.bCheckInvariants==%i bPBC=%i | bNonBonded=%i bNonBondNeighs=%i | bSurfAtoms=%i bGridFF=%i | bMMFF=%i doAngles=%i doPiSigma=%i doPiPiI=%i \n", W.bCheckInvariants, W.bPBC,  W.bNonBonded, W.bNonBondNeighs, W.bSurfAtoms, W.bGridFF, W.bMMFF, W.ffl.doAngles, W.ffl.doPiSigma, W.ffl.doPiPiI );
     // --- DEBUG PRINT ---
-    printf("DEBUG>> MMFF_lib: AFTER setSwitches2: W.ffl.PLQd[0].z = %.6f\n", W.ffl.PLQd[0].z);
+    //printf("DEBUG>> MMFF_lib: AFTER setSwitches2: W.ffl.PLQd[0].z = %.6f\n", W.ffl.PLQd[0].z);
     // --- END DEBUG ---
     //W.ffl.bSubtractAngleNonBond = W.bNonBonded;
     #undef _setbool

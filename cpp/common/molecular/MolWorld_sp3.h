@@ -1,4 +1,4 @@
-﻿#ifndef MolWorld_sp3_h  
+#ifndef MolWorld_sp3_h  
 #define MolWorld_sp3_h  
 #define MolWorld_sp3_h
 /// @file MolWorld_sp3.h @brief contains MolWorld_sp3 class, which is a comprehensive class storing the state of a molecular simulation including bonding,non-bodning of molecules and molecules with substrate
@@ -1459,8 +1459,12 @@ void printPBCshifts(){
 
                 if(bSurfAtoms)[[likely]]{ 
                     if(bGridFF)[[likely]]{  // with gridFF
-                        printf( "makeFFs()::ffu.atomForceFunc() ia=%i PLQd(%g,%g,%g,%g) \n", ia,ffu.PLQd[ia].x,ffu.PLQd[ia].y,ffu.PLQd[ia].z,ffu.PLQd[ia].w  );
-                        gridFF.addAtom( ffu.apos[ia], ffu.PLQd[ia], f );
+                        //printf( "makeFFs()::ffu.atomForceFunc() ia=%i PLQd(%g,%g,%g,%g) \n", ia,ffu.PLQd[ia].x,ffu.PLQd[ia].y,ffu.PLQd[ia].z,ffu.PLQd[ia].w  );
+                        //gridFF.addAtom( ffu.apos[ia], ffu.PLQd[ia], f );
+                        //double Ei = gridFF.addAtom( ffu.apos[ia], ffu.PLQd[ia], f );  
+                        //E += Ei;
+                        E += gridFF.addAtom( ffu.apos[ia], ffu.PLQd[ia], f );   
+                        //printf("atomForceFunc.gridFF.addAtom Ei %g f(%g,%g,%g) ia=%i\n", Ei, f.x, f.y, f.z, ia);
                     }else{ // Without gridFF (Direct pairwise atoms)
                         //{ E+= nbmol .evalMorse   ( surf, false,                  gridFF.alphaMorse, gridFF.Rdamp );  }
                         //{ E+= nbmol .evalMorsePBC    ( surf, gridFF.grid.cell, nPBC, gridFF.alphaMorse, gridFF.Rdamp );  }
@@ -1470,7 +1474,7 @@ void printPBCshifts(){
 
                             Vec3d fi=Vec3dZero;
                             double Ei = gridFF.evalMorsePBC_sym( ffu.apos[ia], ffu.REQs[ia],  fi);   
-                            //printf( "atomForceFunc.evalMorsePBC_sym Ei %g fi(%g,%g,%g) gridFF.natoms=%i gridFF.npbc=%i \n", Ei, fi.x,fi.y,fi.z, gridFF.natoms, gridFF.npbc );
+                            printf( "atomForceFunc.evalMorsePBC_sym Ei %g fi(%g,%g,%g) gridFF.natoms=%i gridFF.npbc=%i \n", Ei, fi.x,fi.y,fi.z, gridFF.natoms, gridFF.npbc );
                             E+=Ei;
                             f.add(fi);
                         }
@@ -2979,6 +2983,46 @@ void scan_constr( int nconf, int nconstr, int *icontrs, Quat4d* contrs_, double*
     //bUFF = original_bUFF;
 }
 
+// UFF version of scan_rigid function for rigid scanning with UFF forcefield
+void scan_rigid_uff( int nconf, Vec3d* poss, Mat3d* rots, double* Es, Vec3d* aforces, Vec3d* aposs, bool omp ){
+    if(omp){ printf("ERROR: scan_rigid_uff() not implemented with OMP\n"); exit(0); }
+    
+    // Store original positions
+    std::vector<Vec3d> original_positions(ffu.natoms);
+    for(int i=0; i<ffu.natoms; i++){
+        original_positions[i] = ffu.apos[i];
+    }
+    
+    for(int i=0; i<nconf; i++){
+        // Get position and rotation for this configuration
+        Vec3d pos; if(poss){ pos=poss[i]; }else{ pos=Vec3dZero; }
+        Mat3d rot; if(rots){ rot=rots[i]; }else{ rot=Mat3dIdentity; }
+        
+        // Apply position and rotation to atoms
+        for(int ia=0; ia<ffu.natoms; ia++){
+            ffu.apos[ia] = rot.dot(original_positions[ia]) + pos;
+        }
+        
+        // Evaluate energy with UFF
+        double E = ffu.eval();
+        // // Evaluate energy with UFF but WITHOUT GridFF (we'll add it separately)
+        // double E = ffu.eval(true, false);
+        
+        // // Add GridFF interaction manually, similar to MMFF's eval_no_omp
+        // double E_grid_total = 0;
+        // if(bGridFF) { 
+        //     for(int ia=0; ia<ffu.natoms; ia++) { 
+        //         double E_grid = gridFF.addAtom(ffu.apos[ia], ffu.PLQd[ia], ffu.fapos[ia]); 
+        //         E_grid_total += E_grid;             
+        //     }
+        //     E += E_grid_total;
+        // }
+        // Store results
+        if(Es){ Es[i]=E; }
+        if(aforces){ ffu.copyForcesTo( aforces + i*ffu.natoms ); }
+        if(aposs  ){ ffu.copyPosTo   ( aposs   + i*ffu.natoms ); }
+    }
+}
 
 
 

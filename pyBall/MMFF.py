@@ -1054,6 +1054,8 @@ def init(
     global glob_bMMFF, glob_bUFF
     glob_bMMFF = bMMFF
     glob_bUFF  = bUFF
+    # Print debug info before initialization
+    print(f"Initializing with: xyz={xyz_name}, surf={surf_name}, smile={smile_name}")
     nPBC=np.array(nPBC,dtype=np.int32)
     return lib.init( cstr(xyz_name), cstr(surf_name), cstr(smile_name), bMMFF, bEpairs, bUFF, b141, bSimple, bConj, bCumulene, nPBC, gridStep, cstr(sElementTypes), cstr(sAtomTypes), cstr(sBondTypes), cstr(sAngleTypes), cstr(sDihedralTypes) )
 
@@ -1120,7 +1122,7 @@ def setSwitches(doAngles=0, doPiPiT=0, doPiSigma=0, doPiPiI=0, doBonded=0, PBC=0
 # void setSwitches2( int CheckInvariants, int PBC, int NonBonded, int NonBondNeighs,  int SurfAtoms, int GridFF, int MMFF, int Angles, int PiSigma, int PiPiI ){
 lib.setSwitches2.argtypes  = [c_int, c_int, c_int, c_int, c_int, c_int, c_int, c_int, c_int, c_int]
 lib.setSwitches2.restype   =  None
-def setSwitches( CheckInvariants=0, PBC=0, NonBonded=0, NonBondNeighs=0, SurfAtoms=0, GridFF=0, MMFF=0, Angles=0, PiSigma=0, PiPiI=0):
+def setSwitches2( CheckInvariants=0, PBC=0, NonBonded=0, NonBondNeighs=0, SurfAtoms=0, GridFF=0, MMFF=0, Angles=0, PiSigma=0, PiPiI=0):
     return lib.setSwitches2(CheckInvariants, PBC, NonBonded, NonBondNeighs, SurfAtoms, GridFF, MMFF, Angles, PiSigma, PiPiI)
 
 #  bool checkInvariants( double maxVcog, double maxFcog, double maxTg )
@@ -1219,6 +1221,18 @@ def scan_constr( icontrs, contrs, Es=None, aforces=None, aposs=None, bHardConstr
     if (aposs is None) and bP:   aposs=np.zeros(   (nconf,natoms,3) )
     # print( "!!!!!!!!!! scan_constr", nconf, natoms, aforces.shape, aposs.shape )
     lib.scan_constr( nconf, ncontr, _np_as(icontrs,c_int_p), _np_as(contrs,c_double_p), _np_as(Es,c_double_p), _np_as(aforces,c_double_p), _np_as(aposs,c_double_p), bHardConstr, omp, niter_max, dt, Fconv, Flim ) 
+    return Es, aforces, aposs
+
+# Function to perform rigid scan with UFF forcefield
+# void scan_rigid_uff( int nconf, double* poss, double* rots, double* Es, double* aforces, double* aposs, bool omp ){
+lib.scan_rigid_uff.argtypes = [ c_int, c_double_p, c_double_p, c_double_p, c_double_p, c_double_p, c_bool ]
+lib.scan_rigid_uff.restype = None
+def scan_rigid_uff(poss, rots=None, Es=None, aforces=None, aposs=None, bF=False, bP=False, omp=False):
+    nconf=len(poss)
+    if Es is None: Es=np.zeros(nconf)
+    if (aforces is None) and bF: aforces=np.zeros( (nconf,natoms,3) )
+    if (aposs is None) and bP:   aposs=np.zeros(   (nconf,natoms,3) )
+    lib.scan_rigid_uff( nconf, _np_as(poss,c_double_p), _np_as(rots,c_double_p), _np_as(Es,c_double_p), _np_as(aforces,c_double_p), _np_as(aposs,c_double_p), omp )
     return Es, aforces, aposs
 
 # ========= Lattice Optimization

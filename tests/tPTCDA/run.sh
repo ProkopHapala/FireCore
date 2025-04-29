@@ -1,8 +1,8 @@
 #!/bin/bash
 
-root_firecore=/home/niko/work/GRIDFF/FireCore
-lammps_exe=/home/niko/work/src/lammps/lammps-29Aug2024/src/lmp_smiggol
-
+root_firecore=/home/indranil/git/FireCore  
+##lammps_exe=/home/niko/work/src/lammps/lammps-29Aug2024/src/lmp_smiggol
+lammps_exe=/home/indranil/src/lammps-29Aug2024/src/lmp_mpi
 ##########################################################
 
 mol=PTCDA
@@ -115,7 +115,7 @@ if $run_flag ; then
 		ln -sf $root_firecore/cpp/common_resources common_resources 
 		ln -sf ../../../confs/$mol.$run$ic.xyz mol.xyz
 		ln -sf ../../../confs/sub.xyz
-		python3 ../../../firecore.py ${t2:0:2} &> firecore.log
+		python3 ../../../firecore.py ${t2:0:2} | tee firecore.log #&> firecore.log
 		natoms=`head -1 mol.xyz | awk '{print $1}'`
 		echo $natoms | ../../compare.x > DIFF
 		grep FORCE DIFF >> ../${run}_DIFF_FORCES

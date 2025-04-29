@@ -154,7 +154,7 @@ export LD_PRELOAD
 
 # ====== Small Molecules On Substrate
 
-./$name -x common_resources/xyz/noQ_H2O       -g common_resources/xyz/NaCl_1x1_L1 -perframe 100  -bGridFF 1
+# ./$name -x common_resources/xyz/noQ_H2O       -g common_resources/xyz/NaCl_1x1_L1 -perframe 100  -bGridFF 1
 #./$name -x common_resources/xyz/H2O       -g common_resources/xyz/NaCl_1x1_L2
 #./$name -x common_resources/xyz/H2O       -g common_resources/xyz/NaCl_1x1_L3 -perframe 1 -dt 0.05
 #./$name -x common_resources/xyz/H2O       -g common_resources/xyz/NaCl_1x1_L3 -perframe 1 -dt 0.05 -nogridff
@@ -198,7 +198,7 @@ export LD_PRELOAD
 #./$name -x common_resources/xyz/PTCDA -g common_resources/xyz/NaCl_8x8_L3 -perframe 100 -iParalel 0
 #./$name -x common_resources/xyz/PTCDA -g common_resources/xyz/Na_0.9_Cl_-0.9 -perframe 100 -iParalel 0 -uff
 # ./$name -x common_resources/xyz/PTCDA -g common_resources/xyz/NaCl_1x1_L3 -perframe 100 -iParalel 0 -uff
-# ./$name -x common_resources/xyz/PTCDA_charge_on_Na -g common_resources/xyz/Na_0.9_Cl_-0.9 -perframe 100 -iParalel 0 -uff            ## UFF testing Indranil for NaCl ptcda
+./$name -x common_resources/xyz/PTCDA_charge_on_Na -g common_resources/xyz/Na_0.9_Cl_-0.9 -perframe 100 -iParalel 0 -uff  -bGridFF 1        ## UFF testing Indranil for NaCl ptcda
 #./$name -x common_resources/xyz/H2O -g common_resources/xyz/NaCl_8x8_L3 -perframe 100 -iParalel 0 -uff
 
 # ./$name -x common_resources/xyz/H2O -g common_resources/xyz/NaCl_8x8_L3_ClHole -perframe 100 

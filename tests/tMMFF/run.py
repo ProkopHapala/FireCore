@@ -21,8 +21,8 @@ def scanPlot(nscan=1000, span=(0.0,8.0), dir=(0.0,0.0,1.0), p0=(0.0,0.0,0.0), la
    
     Es, Fs, Ps = mmff.scan(poss, bF=True, bP=True)
     
-    # Es_end = Es[-1]
-    Es_end = 0
+    Es_end = Es[-1]
+    # Es_end = 0
 
     if saveData is not None:
         np.savetxt(saveData, np.column_stack((ts, Es-Es_end)), header="ts\tEnergy", comments="# ")
@@ -38,6 +38,34 @@ def scanPlot(nscan=1000, span=(0.0,8.0), dir=(0.0,0.0,1.0), p0=(0.0,0.0,0.0), la
     plt.show()
 
 #/home/indranil/git/FireCore/tests/tMMFF
+
+def scanPlot_uff(nscan=1000, span=(0.0,8.0), dir=(0.0,0.0,1.0), p0=(0.0,0.0,0.0), label="E", saveFig=None, saveData=None):
+    
+    ts = np.linspace(span[0], span[1], nscan, endpoint=False)
+  
+    poss = np.zeros((nscan, 3))
+    poss[:, 0] = p0[0] + ts * dir[0]
+    poss[:, 1] = p0[1] + ts * dir[1]
+    poss[:, 2] = p0[2] + ts * dir[2]
+
+   
+    Es, Fs, Ps = mmff.scan_rigid_uff(poss, bF=True, bP=True)
+    
+    Es_end = Es[-1]
+    # Es_end = 0
+
+    if saveData is not None:
+        np.savetxt(saveData, np.column_stack((ts, Es-Es_end)), header="ts\tEnergy", comments="# ")
+
+    plt.title(label)
+    plt.plot(ts, Es, '-', lw=0.5, label=label)
+    plt.xlabel(f"Scaned along ({dir[0]}_{dir[1]}_{dir[2]}) direction ")
+    plt.ylabel(f"Scaned Energy (eV)")
+    
+    # Optionally, save the figure to a file.
+    if saveFig is not None:
+        plt.savefig(saveFig)
+    plt.show()
 
 def relax_scanPlot1D_0(nscan=1000, span=(0.0,4.0),
                p0=(0.0,0.0,0.0), dir=(1.0,0.0,0.0),
@@ -192,14 +220,16 @@ def relax_scanPlot1D(nscan=1000, span=(0.0,4.0),
 
     # scan_constr(nconf, ncontr, icontrs, contrs, Es=None, aforces=None, aposs=None, bHardConstr=False, omp=False, niter_max=10000, dt=0.05, Fconv=1e-5, Flim=100.0 ):
     iconstr = np.array( [29], np.int32)
+    # iconstr = np.arange(1, 38, 1, dtype=np.int32)
+    # iconstr = np.array( [0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31,32,33,34,35,36,37], np.int32)
     # nconf = 10
     contrs = np.zeros( (nscan,len(iconstr),4), np.float64)
     contrs[:,0,0] = poss[:,0] # x
     contrs[:,0,1] = poss[:,1] # y
     contrs[:,0,2] = poss[:,2] # z
     contrs[:,:,3] = 1.0 # stiffness
-    print(f"contrs: {contrs.shape}", contrs )
-    print(f"iconstr: {iconstr.shape}", iconstr )
+    # print(f"contrs: {contrs.shape}", contrs )
+    # print(f"iconstr: {iconstr.shape}", iconstr )
     with open( "scan_constr.xyz","w") as f: f.write("") # delete the file content to  old data
 
  
@@ -275,7 +305,11 @@ def relax_scanPlot1D(nscan=1000, span=(0.0,4.0),
         
         # Save energy data separately
         energy_file = f"{base_name}_energy.dat"
-        energy_data = np.column_stack((t, Es))
+        
+        Es_end = Es[-1]
+        # Es_end = 0
+        energy_data = np.column_stack((t, Es-Es_end))
+        # energy_data = np.column_stack((t, Es_end-Es))
         energy_header = f"# Scan along dir: {dir}\n# t\tEnergy(eV)"
         np.savetxt(energy_file, energy_data, header=energy_header, comments='')
         
@@ -741,14 +775,14 @@ mmff.setVerbosity( verbosity=2, idebug=1 )
 # mmff.init( xyz_name="data/xyz/new_PTCDA_charge_on_Na", surf_name="data/xyz/Na_0.9_Cl_-0.9" , bUFF=True, bSimple=True )   ### For uff relaxed scan the bUFF has to be true
 
 
-#mmff.init( xyz_name="data/xyz/PTCDA_charge_on_Na", surf_name="data/xyz/Na_0.9_Cl_-0.9", bUFF=True, bSimple=True )   
+mmff.init( xyz_name="data/xyz/PTCDA_charge_on_Na", surf_name="data/xyz/Na_0.9_Cl_-0.9", bUFF=True, bSimple=True )   
 # mmff.init( xyz_name="data/xyz/PTCDA_charge_on_Na", surf_name="data/xyz/Na_0.9_Cl_-0.9" )   
 # mmff.init( xyz_name="data/xyz/PTCDA_charge_on_Cl", surf_name="data/xyz/Na_0.9_Cl_-0.9" )
 # mmff.init( xyz_name="data/xyz/PTCDA_charge_on_hollow", surf_name="data/xyz/Na_0.9_Cl_-0.9" )
 # mmff.init( xyz_name="data/xyz/PTCDA_charge_xy", surf_name="data/xyz/Na_0.9_Cl_-0.9" )
 # print("After init: ", mmff.ndims if hasattr(mmff, 'ndims') else "ndims not set yet")
 
-mmff.init( xyz_name="data/xyz/noQ_H2O", surf_name="data/xyz/NaCl_1x1_L1" )
+# mmff.init( xyz_name="data/xyz/noQ_H2O", surf_name="data/xyz/NaCl_1x1_L1" )
 ####################################################################################################################################
 
 mmff.getBuffs()
@@ -756,19 +790,18 @@ mmff.getBuffs()
 # print("natoms=", mmff.natoms, "nnode=", mmff.nnode, "ncap=", mmff.ncap)
 # mmff.ipicked = 30
 
-#print( "ffflags ", mmff.ffflags )
+print( "ffflags ", mmff.ffflags )
 
-# mmff.setSwitches( NonBonded=-1, MMFF=1, SurfAtoms=0, GridFF=1,PBC=-1 )   ### For Relaxed Scan MMFF has to be 1 
+mmff.setSwitches2( NonBonded=1, MMFF=1, SurfAtoms=1, GridFF=1 )   ### For Relaxed Scan MMFF has to be 1 
 # mmff.setSwitches( NonBonded=-1, MMFF=1, SurfAtoms=0, GridFF=1 )   ### For Relaxed Scan MMFF has to be 1 
-mmff.setSwitches( NonBonded=-1, MMFF=1, SurfAtoms=1, GridFF=1 )   #### For Rigid Scan to make ay of the flag noneffective eed to set -1 0 will not work 
-
+# mmff.setSwitches( NonBonded=-1, MMFF=1, SurfAtoms=1, GridFF=1 )   #### For Rigid Scan to make ay of the flag noneffective eed to set -1 0 will not work 
 
 
 ################# Mode Decision Morse Coulomb #######################################################################################################################
 # mmff.PLQs[:,0] = 0.0  # delete Pauli
 # mmff.PLQs[:,1] = 0.0  # delete London
 
-mmff.PLQs[:,2 ] = 0.0 # delete Coulomb (charges)
+# mmff.PLQs[:,2 ] = 0.0 # delete Coulomb (charges)
 
 ###################################################################################################################################################
 
@@ -817,10 +850,14 @@ mmff.PLQs[:,2 ] = 0.0 # delete Coulomb (charges)
 
 
 ################*******************PTCDA
-scanPlot( nscan=125, span=(2.0,14.5), dir=(1.0,1.0,0.0), p0=(0.0,0.0,2.7), label="O on Na", saveFig="E_z_scan_on_Na_O_Morse.png", saveData="gpu_xy_E_z_scan_on_Na_O_Morse.dat" )
-# scanPlot( nscan=125, span=(2.6,15.1), dir=(1.0,0.0,0.0), p0=(0.0,0.0,3.3), label="PTCDA on Na", saveFig="E_z_scan_on_Na_PTCDA_Morse.png", saveData="x_E_z_scan_on_Na_PTCDA_Morse.dat" )
+# scanPlot( nscan=125, span=(2.0,14.5), dir=(1.0,1.0,0.0), p0=(0.0,0.0,2.7), label="O on Na", saveFig="E_z_scan_on_Na_O_Morse.png", saveData="gpu_xy_E_z_scan_on_Na_O_Morse.dat" )
+# scanPlot( nscan=125, span=(2.6,15.1), dir=(0.0,0.0,1.0), p0=(0.0,0.0,0.0), label="PTCDA on Na", saveFig="E_z_scan_on_Na_PTCDA_Morse.png", saveData="E_z_scan_on_Na_PTCDA_Morse.dat" )
 # scanPlot( nscan=125, span=(2.6,15.1), dir=(0.0,0.0,1.0), p0=(0.0,0.0,0), label="PTCDA on Na", saveFig="E_z_scan_on_Na_PTCDA_Coulomb.png", saveData="E_z_scan_on_Na_PTCDA_Coulomb.dat" )
 # scanPlot( nscan=125, span=(2.6,15.1), dir=(0.0,0.0,1.0), p0=(0.0,0.0,0), label="PTCDA on Na", saveFig="E_z_scan_on_Na_PTCDA_Morse_Coulomb.png", saveData="E_z_scan_on_Na_PTCDA_Morse_Coulomb.dat" )
+
+# scanPlot_uff( nscan=125, span=(2.6,15.1), dir=(0.0,0.0,1.0), p0=(0.0,0.0,0.0), label="PTCDA on Na", saveFig="uff_E_z_scan_on_Na_PTCDA_Morse.png", saveData="uff_E_z_scan_on_Na_PTCDA_Morse.dat" )
+# scanPlot_uff( nscan=125, span=(2.6,15.1), dir=(0.0,0.0,1.0), p0=(0.0,0.0,0), label="PTCDA on Na", saveFig="uff_E_z_scan_on_Na_PTCDA_Coulomb.png", saveData="uff_E_z_scan_on_Na_PTCDA_Coulomb.dat" )
+scanPlot_uff( nscan=125, span=(2.6,15.1), dir=(0.0,0.0,1.0), p0=(0.0,0.0,0), label="PTCDA on Na", saveFig="uff_E_z_scan_on_Na_PTCDA_Morse_Coulomb.png", saveData="uff_E_z_scan_on_Na_PTCDA_Morse_Coulomb.dat" )
 
 # scanPlot( nscan=125, span=(2.6,15.1), dir=(0.0,0.0,1.0), p0=(0.0,0.0,0), label="PTCDA on Cl", saveFig="E_z_scan_on_Cl_PTCDA_Morse.png", saveData="E_z_scan_on_Cl_PTCDA_Morse.dat" )
 # scanPlot( nscan=125, span=(2.6,15.1), dir=(0.0,0.0,1.0), p0=(0.0,0.0,0), label="PTCDA on Cl", saveFig="E_z_scan_on_Cl_PTCDA_Coulomb.png", saveData="E_z_scan_on_Cl_PTCDA_Coulomb.dat" )

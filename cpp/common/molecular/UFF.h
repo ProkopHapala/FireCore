@@ -821,6 +821,8 @@ class UFF : public NBFF { public:
     }
     __attribute__((hot))  
     double evalAngles(){
+        // Debug print removed to fix compilation errors
+        // printf("UFF::evalAngles() - Debugging angle energy calculation\n");
         double E=0.0;
         const double R2damp = Rdamp*Rdamp;
         const double Fmax2  = FmaxNonBonded*FmaxNonBonded;
@@ -1288,7 +1290,8 @@ class UFF : public NBFF { public:
 
     // Full evaluation of UFF intramolecular force-field
     __attribute__((hot))  
-    double eval( bool bClean=true ){
+    // double eval( bool bClean=true ){
+    double eval( bool bClean=true, bool bIncludeGridFF=true ){
         //printf("UFF::eval() \n");
         Eb=0; Ea=0; Ed=0; Ei=0;
         // if(bClean)cleanForce();
@@ -1318,7 +1321,13 @@ class UFF : public NBFF { public:
                     else    { Enb+=evalLJQs_atom_omp    ( ia, Fmax2 ); } 
                 }
             }
-            if( atomForceFunc ) Esurf=atomForceFunc( ia, apos[ia], fapos[ia] );
+            // if( atomForceFunc ) Esurf=atomForceFunc( ia, apos[ia], fapos[ia] );
+            // Only calculate surface energy if bIncludeGridFF is true
+            if(bIncludeGridFF && atomForceFunc) {
+                if(ia==0) {printf("UFF::eval() - Before atomForceFunc for atom %d: pos(%g,%g,%g) PLQd(%g,%g,%g,%g)\n", ia, apos[ia].x, apos[ia].y, apos[ia].z, PLQd[ia].x, PLQd[ia].y, PLQd[ia].z, PLQd[ia].w);}
+                Esurf = atomForceFunc(ia, apos[ia], fapos[ia]);
+                if(ia==0) {printf("UFF::eval() - After atomForceFunc for atom %d: Esurf=%g force(%g,%g,%g)\n", ia, Esurf, fapos[ia].x, fapos[ia].y, fapos[ia].z);}
+            }
         }
         Etot = Eb + Ea + Ed + Ei + Enb + Esurf;
         // printForcePieces();
@@ -1352,7 +1361,8 @@ class UFF : public NBFF { public:
         //     fprintf( file, "%i %g %g %g %g %g %g\n", ia+1, apos[ia].x, apos[ia].y, apos[ia].z, fapos[ia].x*tokcal, fapos[ia].y*tokcal, fapos[ia].z*tokcal );
         // }
         // fclose(file);
-        // //printf("ADES SON ARIVA' FIN QUA -> UFF.h::eval()\n");exit(0);  
+        // //printf("ADES SON ARIVA' FIN QUA -> UFF.h::eval()\n");exit(0); 
+        // printf( "UFF::eval() Eb=%g Ea=%g Ed=%g Ei=%g Enb=%g Esurf=%g Etot=%g\n", Eb, Ea, Ed, Ei, Enb, Esurf, Etot ); 
         return Etot;
     }
     __attribute__((hot))  
@@ -1431,7 +1441,7 @@ class UFF : public NBFF { public:
         double cdamp = 1 - 0.005;
         const double Fmax2     = FmaxNonBonded*FmaxNonBonded;
         //printf( "UFF::run(bCollisionDamping=%i) niter %i dt %g Fconv %g Flim %g damping %g collisionDamping %g \n", bCollisionDamping, niter, dt, Fconv, Flim, damping, collisionDamping );
-        printf( "UFF::run(niter=%i,bCol(B=%i,A=%i,NB=%i)) dt %g damp(cM=%g,cB=%g,cA=%g,cNB=%g)\n", niter, colDamp.bBond, colDamp.bAng, colDamp.bNonB, dt, 1-cdamp, colDamp.cdampB*dt, colDamp.cdampAng*dt, colDamp.cdampNB*dt );
+        // printf( "UFF::run(niter=%i,bCol(B=%i,A=%i,NB=%i)) dt %g damp(cM=%g,cB=%g,cA=%g,cNB=%g)\n", niter, colDamp.bBond, colDamp.bAng, colDamp.bNonB, dt, 1-cdamp, colDamp.cdampB*dt, colDamp.cdampAng*dt, colDamp.cdampNB*dt );
         //setNonBondStrategy();
 
         // --- Non-Bonded using ng4-strategy (i.e. check for neighbors in NBFF) 
@@ -1460,7 +1470,6 @@ class UFF : public NBFF { public:
 
         ForceField::setNonBondStrategy( bNonBondNeighs*2-1 );
         // printf( "UFF::run_no_omp() bNonBonded=%i bNonBondNeighs=%i bSubtractBondNonBond=%i bSubtractAngleNonBond=%i bClampNonBonded=%i\n", bNonBonded, bNonBondNeighs, bSubtractBondNonBond, bSubtractAngleNonBond, bClampNonBonded );
-
         //const bool bExploring = go->bExploring;
         const bool bExploring = false;
         bHardConstrs=1;
@@ -1492,13 +1501,15 @@ class UFF : public NBFF { public:
                         else    { Enb+=evalLJQs_atom_omp    ( ia, Fmax2 ); } 
                     }
                 }
+                // printf( "UFF::run() atomForceFunc[%i] (%g,%g,%g)\n", ia, atomForceFunc[ia].x, atomForceFunc[ia].y, atomForceFunc[ia].z );
                 if( atomForceFunc ) Esurf=atomForceFunc( ia, apos[ia], fapos[ia] );
+                //  if(atomForceFunc) { double Esurf_atom = atomForceFunc(ia, apos[ia], fapos[ia]); Esurf += Esurf_atom; printf("Atom %d surface energy: %g\n", ia, Esurf_atom);}
             }
             // ------ move
             cvf = Vec3dZero;
             E=Eb+Ea+Ed+Ei+Enb+Esurf;
             Etot=E;
-            // printf( "UFF::run() itr=%i E=%g Eb=%g Ea=%g Ed=%g Ei=%g\n", itr, E, Eb, Ea, Ed, Ei );
+            // printf( "UFF::run() itr=%i E=%g Eb=%g Ea=%g Ed=%g Ei=%g Enb=%g Esurf=%g Etot=%g\n", itr, E, Eb, Ea, Ed, Ei, Enb, Esurf, Etot );           
             for(int i=0; i<natoms; i++){
                 //F2 += move_atom_GD( i, dt, Flim );
                 //bErr|=ckeckNaN( 1,3, (double*)(fapos+i), [&]{ printf("move[%i]",i); } );
@@ -1540,6 +1551,7 @@ class UFF : public NBFF { public:
             };
             //itr_DBG++;
         }
+        printf( "UFF::run() itr=%i E=%g Eb=%g Ea=%g Ed=%g Ei=%g Enb=%g Esurf=%g Etot=%g\n", itr, E, Eb, Ea, Ed, Ei, Enb, Esurf, Etot );
         // if( (itr>=(niter-1)) && (verbosity>1) ) [[unlikely]] { 
         //     double ticks = (getCPUticks() - T0);
         //     double c_smooth = 0.1;
@@ -1972,6 +1984,7 @@ class UFF : public NBFF { public:
         }
         fclose(file);
         double E=Eb+Ea+Ed+Ei+Enb;
+        printf( "UFF::test_UFF() E=%g Eb=%g Ea=%g Ed=%g Ei=%g Enb=%g Esurf=%g\n", E, Eb, Ea, Ed, Ei, Enb, Esurf );
         FILE *file2 = fopen("e_firecore.txt","w");
         fprintf(file2, "%23.15g\n", E);
         fclose(file2);
