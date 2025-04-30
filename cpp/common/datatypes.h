@@ -1,7 +1,10 @@
-﻿
-#ifndef datatypes_h
-#define datatypes_h
+#ifndef DATATYPES_H
+#define DATATYPES_H
 
+//#define __CUDACC__
+#ifdef __CUDACC__
+#include <vector_types.h>  // Use CUDA's built-in vector types
+#else
 //======= int
 
 struct int2   { int x,y; };
@@ -17,50 +20,51 @@ struct size_t4 { size_t x,y,z,w; };
 //======= float
 
 struct float2 {
-	union{
-		struct{ float x,y; };
-		float array[2];
-	};
+    union{
+        struct{ float x,y; };
+        float array[2];
+    };
 };
 
 struct float3 {
-	union{
-		struct{ float x,y,z; };
-		float array[3];
-	};
+    union{
+        struct{ float x,y,z; };
+        float array[3];
+    };
 };
 
 struct float4 {
-	union{
-		struct{ float x,y,z,w;     };
-		struct{ float3 f; float e; };
-		float array[4];
-	};
+    union{
+        struct{ float x,y,z,w;     };
+        struct{ float3 f; float e; };
+        float array[4];
+    };
 };
 
 struct float8 {
-	union{
-		struct{ float x,y,z,w,hx,hy,hz,hw; };
-		struct{ float4 lo,hi; };
-		float array[8];
-	};
+    union{
+        struct{ float x,y,z,w,hx,hy,hz,hw; };
+        struct{ float4 lo,hi; };
+        float array[8];
+    };
 };
 
 struct float16 {
-	union{
-		struct{ float x,y,z,w,hx,hy,hz,hw, x2,y2,z2,w2,hx2,hy2,hz2,hw2; };
-		struct{ float8 lo,hi; };
-		float array[16];
-	};
+    union{
+        struct{ float x,y,z,w,hx,hy,hz,hw, x2,y2,z2,w2,hx2,hy2,hz2,hw2; };
+        struct{ float8 lo,hi; };
+        float array[16];
+    };
 };
+#endif  // __CUDACC__
 
 struct double5 {
-	union{
-		struct{ double k,c0,c1,c2,c3; };
-		double array[5];
-	};
+    union{
+        struct{ double k,c0,c1,c2,c3; };
+        double array[5];
+    };
 };
 
-static constexpr double5 double5NAN = (double5){(double)NAN,(double)NAN,(double)NAN,(double)NAN,(double)NAN}  ;
+static constexpr double5 double5NAN = (double5){(double)NAN,(double)NAN,(double)NAN,(double)NAN,(double)NAN};
 
-#endif
+#endif  // DATATYPES_H

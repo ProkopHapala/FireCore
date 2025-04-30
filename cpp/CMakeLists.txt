@@ -7,12 +7,27 @@ option(WITH_SDL    "build with GUI and 3D graphics (SDL+OpenGL)"                
 option(WITH_LUA    "build with Lua 5.2 for scripting inside interactive GUI"               OFF)
 option(WITH_FFTW   "build with FFTW3 for scripting inside interactive GUI"                 OFF)
 option(WITH_OPENCL "build with OpenCL GPU acceleration? up to 100x speedup"                OFF)
+option(WITH_CUDA   "build with CUDA GPU acceleration?"                                     OFF)
 option(WITH_OMP    "build with OpenMP paralelization for multiple CPUs"                    OFF)
 option(WITH_AVX    "build with AVX256 SIMD intrinstic ? up to 10x speedup on 1CPU"         OFF)
 option(RELEASE     "build optimized release (-O3/-Ofast) rather than debug? (-g -Og)"      OFF)
 option(WITH_ASAN   "use runtime memory sanitizer (asan) to trace segfaults and mem-leaks?" OFF)
 
-message("OPTIONS: -DWITH_SDL=${WITH_SDL} -DWITH_LUA=${WITH_LUA} -DWITH_FFTW=${WITH_FFTW} -DWITH_OPENCL=${WITH_OPENCL} -DWITH_OMP=${WITH_OMP} -DWITH_AVX=${WITH_AVX} -DRELEASE=${RELEASE} -DWITH_ASAN=${WITH_ASAN}" )
+message("OPTIONS: -DWITH_SDL=${WITH_SDL} -DWITH_LUA=${WITH_LUA} -DWITH_FFTW=${WITH_FFTW} -DWITH_OPENCL=${WITH_OPENCL}  -DWITH_CUDA=${WITH_CUDA}  -DWITH_OMP=${WITH_OMP} -DWITH_AVX=${WITH_AVX} -DRELEASE=${RELEASE} -DWITH_ASAN=${WITH_ASAN}" )
+
+# Enable CUDA language if selected
+if(WITH_CUDA)
+    # Use a supported GCC for nvcc host compilation to avoid version mismatch
+    set(CMAKE_CUDA_HOST_COMPILER "/usr/bin/gcc-12")
+    # Override nvcc version check for both identification and subsequent compilations
+    set(CMAKE_CUDA_COMPILER_ID_FLAGS_INIT "${CMAKE_CUDA_COMPILER_ID_FLAGS_INIT} -allow-unsupported-compiler")
+    set(CMAKE_CUDA_FLAGS_INIT "${CMAKE_CUDA_FLAGS_INIT} -allow-unsupported-compiler")
+    project(SimpleSimulationEngine LANGUAGES C CXX) # Keep project simple first
+    enable_language(CUDA)                          # Enable CUDA language support
+    message(STATUS "CUDA language enabled.")
+else()
+    project(SimpleSimulationEngine LANGUAGES C CXX)
+endif()
 
 # ==============================
 # ==== FLAGS
@@ -87,6 +102,46 @@ SET( WARRNING_TO_ERROR     "-Werror=return-type -Werror=init-self -Werror=uninit
 SET( CMAKE_CXX_FLAGS  "${CMAKE_CXX_FLAGS} ${AXULIARY_COMPILE_FLAGS} ${IGNORE_WARRNING_FLAGS} ${WARRNING_TO_ERROR}" )
 message("BUILD FFLAGS : " )
 message ( ${CMAKE_CXX_FLAGS} )
+
+
+# <<< CUDA Change Start >>>
+if(WITH_CUDA)
+    message(STATUS "Setting up CUDA flags...")
+    # Set CUDA C++ Standard (must match CMAKE_CXX_STANDARD if device code uses C++ features)
+    set(CMAKE_CUDA_STANDARD 20)
+    set(CMAKE_CUDA_STANDARD_REQUIRED ON)
+    set(CMAKE_CUDA_EXTENSIONS OFF) # Recommended
+
+    # --- TODO CUDA: Set Target GPU Architectures ---
+    # Option 1: Use CMAKE_CUDA_ARCHITECTURES (CMake 3.18+) - semicolon-separated list of compute capabilities (without 'sm_')
+    # set(CMAKE_CUDA_ARCHITECTURES "70;75;86") # Example: Volta, Turing, Ampere (virtual arch only)
+    # set(CMAKE_CUDA_ARCHITECTURES "70-real;75-real;86-real") # Example: Volta, Turing, Ampere (real arch only)
+    # set(CMAKE_CUDA_ARCHITECTURES "75") # Example: Target only Turing
+
+    # Option 2: Add flags directly (more compatible with older CMake)
+    # Common practice: build for a range of architectures
+    # set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} -gencode arch=compute_70,code=sm_70") # Volta
+    # set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} -gencode arch=compute_75,code=sm_75") # Turing
+    # set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} -gencode arch=compute_86,code=sm_86") # Ampere
+    # set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} -gencode arch=compute_90,code=sm_90") # Hopper
+    # Or target a common minimum:
+    # set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} -arch=sm_70")
+
+    # --- End TODO CUDA ---
+
+    # Add other desired nvcc flags
+    # set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} --use_fast_math") # Be careful with precision
+
+    # Set optimisation level for CUDA based on CMAKE_BUILD_TYPE
+    set(CMAKE_CUDA_FLAGS_DEBUG "${CMAKE_CUDA_FLAGS_DEBUG} -G -O0") # Add -G for device debug symbols, -O0 if needed
+    set(CMAKE_CUDA_FLAGS_RELEASE "${CMAKE_CUDA_FLAGS_RELEASE} -O3") # Standard release optimization
+
+    message("BUILD CUDA FFLAGS : " )
+    message ( ${CMAKE_CUDA_FLAGS} ) # Note: This prints the base flags, not config-specific ones
+endif()
+# <<< CUDA Change End >>>
+
+
 
 ### this is for compile_commands.json   (it should help various IDEs and other tool to understand the project)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
@@ -167,6 +222,14 @@ if ( WITH_OPENCL )
     add_subdirectory( ${MY_SRC_DIR}/libs_OCL )
     find_package( OpenCL REQUIRED )
 endif()
+
+if ( WITH_CUDA )
+    add_subdirectory( ${MY_SRC_DIR}/apps_CUDA )
+endif()
+
+
+
+
 
 # ====== SDL@OpenGL
 
