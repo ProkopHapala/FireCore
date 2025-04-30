@@ -61,7 +61,7 @@ The `scan_rigid()` function (exposed as `lib.scan` in Python) is designed to per
     *   `aforces`: `double[:,:,3]` [nconf, natoms, 3] - Output atomic forces for each configuration.
     *   `aposs`: `double[:,:,3]` [nconf, natoms, 3] - Output final atomic positions for each configuration.
 
-## Data Flow Diagram (Simplified Mermaid Graph)
+## Data Flow Diagram (Simplified)
 
 ```mermaid
 graph TD
