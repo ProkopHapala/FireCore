@@ -4,8 +4,8 @@ root_firecore=/home/indranil/git/FireCore
 ##lammps_exe=/home/niko/work/src/lammps/lammps-29Aug2024/src/lmp_smiggol
 lammps_exe=/home/indranil/src/lammps-29Aug2024/src/lmp_mpi
 ##########################################################
-root_firecore=/home/niko/work/GRIDFF/FireCore                          # put here your actual path to main FireCore folder
-lammps_exe=/home/niko/work/src/lammps/lammps-29Aug2024/src/lmp_smiggol # put here your actual path to LAMMPS executable
+#root_firecore=/home/niko/work/GRIDFF/FireCore                          # put here your actual path to main FireCore folder
+#lammps_exe=/home/niko/work/src/lammps/lammps-29Aug2024/src/lmp_smiggol # put here your actual path to LAMMPS executable
 
 mol=PTCDA
 

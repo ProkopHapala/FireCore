@@ -1293,15 +1293,14 @@ class UFF : public NBFF { public:
     // double eval( bool bClean=true ){
     double eval( bool bClean=true, bool bIncludeGridFF=true ){
         //printf("UFF::eval() \n");
-        Eb=0; Ea=0; Ed=0; Ei=0;
+        Eb=0; Ea=0; Ed=0; Ei=0;Enb = 0.0;Esurf = 0.0;
         // if(bClean)cleanForce();
         const double Fmax2     = FmaxNonBonded*FmaxNonBonded;
         if(bClean) {
             cleanForce();
             // Check after clean
             for(int i=0; i<natoms; i++) {
-                if(!std::isfinite(fapos[i].x)) {
-                    printf("NaN after cleanForce at atom %d\n", i);
+                if(!std::isfinite(fapos[i].x)) {printf("NaN after cleanForce at atom %d\n", i);
                     break;
                 }
             }
@@ -1310,7 +1309,7 @@ class UFF : public NBFF { public:
         Ea = evalAngles(); 
         Ed = evalDihedrals();
         Ei = evalInversions(); 
-        Enb = 0;
+        // Enb = evalNonBonded
         for(int ia=0; ia<natoms; ia++) {
             if(bNonBonded){
                 if(bNonBondNeighs){
@@ -1321,13 +1320,13 @@ class UFF : public NBFF { public:
                     else    { Enb+=evalLJQs_atom_omp    ( ia, Fmax2 ); } 
                 }
             }
-            // if( atomForceFunc ) Esurf=atomForceFunc( ia, apos[ia], fapos[ia] );
+            if( atomForceFunc ) Esurf+=atomForceFunc( ia, apos[ia], fapos[ia] );
             // Only calculate surface energy if bIncludeGridFF is true
-            if(bIncludeGridFF && atomForceFunc) {
-                if(ia==0) {printf("UFF::eval() - Before atomForceFunc for atom %d: pos(%g,%g,%g) PLQd(%g,%g,%g,%g)\n", ia, apos[ia].x, apos[ia].y, apos[ia].z, PLQd[ia].x, PLQd[ia].y, PLQd[ia].z, PLQd[ia].w);}
-                Esurf = atomForceFunc(ia, apos[ia], fapos[ia]);
-                if(ia==0) {printf("UFF::eval() - After atomForceFunc for atom %d: Esurf=%g force(%g,%g,%g)\n", ia, Esurf, fapos[ia].x, fapos[ia].y, fapos[ia].z);}
-            }
+        //     if(bIncludeGridFF && atomForceFunc) {
+        //         if(ia==0) {printf("UFF::eval() - Before atomForceFunc for atom %d: pos(%g,%g,%g) PLQd(%g,%g,%g,%g)\n", ia, apos[ia].x, apos[ia].y, apos[ia].z, PLQd[ia].x, PLQd[ia].y, PLQd[ia].z, PLQd[ia].w);}
+        //         Esurf += atomForceFunc(ia, apos[ia], fapos[ia]);
+        //         if(ia==0) {printf("UFF::eval() - After atomForceFunc for atom %d: Esurf=%g force(%g,%g,%g)\n", ia, Esurf, fapos[ia].x, fapos[ia].y, fapos[ia].z);}
+        //     }
         }
         Etot = Eb + Ea + Ed + Ei + Enb + Esurf;
         // printForcePieces();
