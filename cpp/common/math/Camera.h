@@ -31,20 +31,20 @@ public:
     const T  zmax   = 10000.0;
 
     inline Vec3T<T> pos() const {return _pos;};
-    inline void setPos( Vec3T<T> p ){ _pos = p; update_vp_mat = true; }
-    inline void shift( Vec3T<T> p ){ _pos += p; update_vp_mat = true; }
+    inline void setPos( Vec3T<T> p ){ update_vp_mat |= _pos != p; _pos = p; }
+    inline void shift( Vec3T<T> p ) { update_vp_mat |= p != Vec3fZero; _pos += p; }
 
     inline Quat4T<T> qrot() const { return _qrot; }
-    inline void setQrot( Quat4T<T> q ){ _qrot = q; update_vp_mat = true; }
+    inline void setQrot( Quat4T<T> q ){ update_vp_mat |= q != _qrot; _qrot = q; }
     inline void dyaw( T a ){ _qrot.dyaw(a); update_vp_mat = true; }
     inline void dpitch( T a ){ _qrot.dpitch(a); update_vp_mat = true; }
     inline void qrotQmul_T( Quat4T<T> q ){ _qrot.qmul_T(q); update_vp_mat = true; }
 
     inline T zoom() const { return _zoom; }
-    inline void setZoom( T z ){ _zoom = z; update_vp_mat = true; }
+    inline void setZoom( T z ){ update_vp_mat |= z != _zoom; _zoom = z; }
 
     inline T aspect() const { return _aspect; }
-    inline void setAspect( T a ){ _aspect = a; update_vp_mat = true; }
+    inline void setAspect( T a ){ update_vp_mat |= _aspect != a; _aspect = a; }
 
     inline bool persp() const { return _persp; }
     inline void setPersp( bool p ){ _persp = p; update_vp_mat = true; }
@@ -100,13 +100,13 @@ public:
         return (c.x>-mx)&&(c.x<mx) && (c.y>-my)&&(c.y<my) && ((c.z+R)>zmin)&&((c.z-R)<zmax);
     }
 
-    Vec2T<T> world2Screen( Vec3T<T> pos ){
+    Vec3T<T> world2Screen( Vec3T<T> pos ){
         recalculate_vpMat();
 
-        Vec2T<T> screen_pos = _viewProjMatrix.dotT({pos.x, pos.y, pos.z, 0}).xy();
-        screen_pos += {1, 1};
-        screen_pos *= 0.5;
-        screen_pos *= GLES::screen_size;
+        Vec3T<T> screen_pos = _viewProjMatrix.dotT({pos.x, pos.y, pos.z, 1}).xyz();
+        screen_pos += {1, 1, 0};
+        screen_pos *= {0.5, 0.5, 1};
+        screen_pos *= {GLES::screen_size.x, GLES::screen_size.y, 1};
 
         return screen_pos;
     }
@@ -114,11 +114,14 @@ public:
     void recalculate_vpMat() {
         if (!update_vp_mat) return;
         
+        Mat4T<T> translateMat; translateMat.setOne();
+        translateMat.setPos(-_pos);
+
         // view matrix
         _viewMatrix.setOne();
         Mat3T<T> mrot; _qrot.toMatrix_T(mrot);
         _viewMatrix.setRot( mrot );
-        _viewMatrix.setPos( -_pos );
+        _viewMatrix.mmulR(translateMat);
 
         // projection matrix
         _projMat.setOne();

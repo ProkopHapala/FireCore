@@ -326,7 +326,7 @@ class MolGUI : public AppSDL2OGL_3D { public:
 
     // ---- small balls and sticks for debugging
     // double ForceViewScale = 100.0;
-    double mm_Rsc            = 0.8;//0.1;
+    double mm_Rsc            = 0.1;
     double mm_Rsub           = 0.0;
 
     bool bBuilderChanged     = false;
@@ -2220,7 +2220,7 @@ void MolGUI::drawSystemShifts( int n, const Vec3d* shifts, int i0 ){
     bool bViewBL = bViewBondLenghts &&  (bL0s!=0);
 
     // bonds
-    //SSAOshader.pause();
+    SSAOshader.pause();
     if( neighs && (!bViewBL) ){
         opengl1renderer.color3f(0.0f,0.0f,0.0f); 
         opengl1renderer.lineWidth(1.0);
@@ -2228,7 +2228,7 @@ void MolGUI::drawSystemShifts( int n, const Vec3d* shifts, int i0 ){
 
         for (int i=0; i<n; i++) neighMesh->draw( (Vec3f)shifts[i] );
     }
-    //SSAOshader.unpause();
+    SSAOshader.unpause();
 
     // atom spheres
     if(bViewAtomSpheres && mm_bAtoms && (!bViewBondLenghts)){ // TODO
@@ -2236,14 +2236,16 @@ void MolGUI::drawSystemShifts( int n, const Vec3d* shifts, int i0 ){
     }
 
     // == i0 system gets special rendering ==
-    //SSAOshader.pause();
+    SSAOshader.pause();
+
     if(bViewAtomForces    &&  fapos           ){ opengl1renderer.color3f(1.0f,0.0f,0.0f); Draw3D::drawVectorArray  ( natoms, apos, fapos, ForceViewScale, 10000.0 );   }
     if(mm_bAtoms&&bViewAtomLabels&&(!bViewBL) ){ opengl1renderer.color3f(0.0f,0.0f,0.0f); Draw3D::atomLabels       ( natoms, apos,                                    fontTex3D, textSize );  }
     if(mm_bAtoms&&bViewAtomTypes              ){ opengl1renderer.color3f(0.0f,0.0f,0.0f); Draw3D::atomTypes        ( natoms, apos, atypes, &(params_glob->atypes[0]), fontTex3D, textSize );  }
     if(bViewMolCharges && (W->nbmol.REQs!=0)  ){ opengl1renderer.color3f(0.0,0.0,0.0);    Draw3D::atomPropertyLabel( natoms,  (double*)REQs,  apos, 4, 2,             fontTex3D, textSize ); }
     if(bViewHBondCharges && (W->nbmol.REQs!=0)){ opengl1renderer.color3f(0.0,0.0,0.0);    Draw3D::atomPropertyLabel( natoms,  (double*)REQs,  apos, 4, 3,             fontTex3D, textSize ); }
     opengl1renderer.enable( GL_DEPTH_TEST );
-    //SSAOshader.unpause();
+    
+    SSAOshader.unpause();
 
     {// Graph
 

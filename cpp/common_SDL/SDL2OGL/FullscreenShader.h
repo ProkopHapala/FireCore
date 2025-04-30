@@ -48,7 +48,7 @@ public:
         shader.setUniform1i("uTexture", 0);
         shader.setUniform1i("uDepth"  , 1);
         
-        glDisable(GL_DEPTH_TEST);
+        glEnable(GL_DEPTH_TEST);
         mesh.draw2D_NDC();
 
         out_framebuffer.end();

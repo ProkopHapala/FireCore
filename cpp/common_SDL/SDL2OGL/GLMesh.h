@@ -202,7 +202,6 @@ public:
         mvp.array[ 2] = 0;       mvp.array[ 6] = 0;       mvp.array[10] = 1; mvp.array[14] = pos.z;
         mvp.array[ 3] = 0;       mvp.array[ 7] = 0;       mvp.array[11] = 0; mvp.array[15] = 1;
 
-        //glDisable(GL_DEPTH_TEST);
         drawMVP(mvp);
     }
 

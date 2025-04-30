@@ -62,7 +62,7 @@ void drawSphere ( Vec3f pos, float r, Vec3f color=opengl1renderer.color );
 void drawKite           ( const Vec3f& pos, const Mat3f& rot, float sz );
 void drawPanel          ( const Vec3f& pos, const Mat3f& rot, const Vec2f& sz );
 
-void drawTextBillboard( const char* str, Vec3f pos, float sz, int iend=0 );
+void drawTextBillboard( const char* str, Vec3f pos, float sz, bool ontop=true, int iend=0 );
 inline void drawText  ( const char * str, const Vec3f& pos, int fontTex, float textSize, int iend=0 ) { drawTextBillboard(str, pos, textSize); };
 inline void drawText3D( const char * str, const Vec3f& pos, const Vec3f& fw, const Vec3f& up, int fontTex, float textSize, int iend=0 ) { drawTextBillboard(str, pos, textSize); };
 void drawInt   ( const Vec3d& pos, int i   , int fontTex, float sz=0.02, const char* format="%i\0" );

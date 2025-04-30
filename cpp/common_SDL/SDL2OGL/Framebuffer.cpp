@@ -33,11 +33,17 @@ layout(location=0) out mediump vec4 FragColor;
 void main(){
     highp float depth1 = texture(uDepth1, fUV).x;
     highp float depth2 = texture(uDepth2, fUV).x;
+
+    mediump vec4 color1 = texture(uTexture1, fUV);
+    mediump vec4 color2 = texture(uTexture2, fUV);
+
     if (depth1 < depth2){
-        FragColor = texture(uTexture1, fUV);
+        FragColor = vec4((color2.rgb*color2.a).rgb, color2.a);
+        FragColor = vec4((color1.rgb*color1.a + (1.0-color1.a)*FragColor.rgb).rgb, 1.0 - (1.0-color1.a)*(1.0-FragColor.a));
         gl_FragDepth = depth1;
     }else{
-        FragColor = texture(uTexture2, fUV);
+        FragColor = vec4((color1.rgb*color1.a).rgb, color1.a);
+        FragColor = vec4((color2.rgb*color2.a + (1.0-color2.a)*FragColor.rgb).rgb, 1.0 - (1.0-color2.a)*(1.0-FragColor.a));
         gl_FragDepth = depth2;
     }
 }
@@ -67,8 +73,7 @@ void mergeFramebuffers(GLFramebuffer& fb1, GLFramebuffer& fb2){
     shader.setUniform1i("uDepth1"  , 2);
     shader.setUniform1i("uDepth2"  , 3);
     
-    glDepthMask(GL_TRUE);
-    glDisable(GL_DEPTH_TEST);
+    glEnable(GL_DEPTH_TEST);
     mergeMesh.draw2D_NDC();
 }
 

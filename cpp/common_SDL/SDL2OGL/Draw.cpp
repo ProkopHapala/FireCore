@@ -170,8 +170,6 @@ static void makeTextMesh( GLMesh<FLAG>& mesh, const char * str, Vec2i block_size
 
         ix++;
     }
-
-    opengl1renderer.disable(GL_ALPHA_TEST);
 }
 
 void Draw::drawText( const char * str, Vec3f pos, float sz, int iend, Vec3f color ){
@@ -181,7 +179,7 @@ void Draw::drawText( const char * str, Vec3f pos, float sz, int iend, Vec3f colo
     const int nchars = 95;
     float persprite = 1.0f/nchars;
 
-    opengl1renderer.disable(GL_DEPTH_TEST);
+    //opengl1renderer.disable(GL_DEPTH_TEST);
     opengl1renderer.enable(GL_ALPHA_TEST);
     opengl1renderer.blendFunc(GL_SRC_ALPHA,GL_ONE_MINUS_SRC_ALPHA);
 
@@ -190,7 +188,7 @@ void Draw::drawText( const char * str, Vec3f pos, float sz, int iend, Vec3f colo
     fontMesh.draw2D(pos, {sz, sz});
 
     opengl1renderer.disable(GL_ALPHA_TEST);
-    opengl1renderer.enable(GL_DEPTH_TEST);
+    //opengl1renderer.enable(GL_DEPTH_TEST);
 }
 
 void Draw::drawText( const char * str, Vec3f pos, float sz, Vec2i block_size, Vec3f color ){

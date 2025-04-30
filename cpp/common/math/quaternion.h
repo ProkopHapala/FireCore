@@ -99,6 +99,8 @@ class Quat4T {
     inline VEC2 wy() const { return {w,y}; };
     inline VEC2 wz() const { return {w,z}; };
 
+    inline VEC xyz() const { return {x,y,z}; };
+
 
 
 

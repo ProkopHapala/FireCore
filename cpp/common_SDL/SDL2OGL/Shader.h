@@ -191,8 +191,11 @@ constexpr const std::string buildDefaultFragmentShaderSource(unsigned int attrib
         source += "mediump float light = dot(fNormal, vec3(1.0, -1.0, 1.0));\n";
         source += "light = (light+1.0)/2.0;\n"; // normalised to range (0; 1)
         source += "light = 0.3 + light*0.6;\n"; // to range (0.3, 1.1)
-        //source += "gl_FragColor = gl_FragColor*vec4(light, light, light, 1.0);\n"; // TODO: remove or implement lighting
+        source += "gl_FragColor = gl_FragColor*vec4(light, light, light, 1.0);\n"; // TODO: remove or implement lighting
     }
+
+    source += "if (gl_FragColor.a == 0.0) discard;\n";
+
     source += "}";
 
     return source;

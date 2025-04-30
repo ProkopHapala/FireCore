@@ -751,13 +751,9 @@ void Draw3D::drawRectGridLines( Vec2i n, const Vec3d& p0, const Vec3d& da, const
     opengl1renderer.end();
 }
 
-void Draw3D::drawTextBillboard( const char* str, Vec3f pos, float sz, int iend ){ // TODO: sz is unused
-    Vec2f screen_pos = GLES::active_camera->world2Screen(pos);
-
-    opengl1renderer.disable    ( GL_LIGHTING   );
-    opengl1renderer.shadeModel ( GL_FLAT       );
-
-    Draw::drawText(str, {screen_pos.x, screen_pos.y, 0}, fontSizeDef, iend);
+void Draw3D::drawTextBillboard( const char* str, Vec3f pos, float sz, bool ontop, int iend ){ // TODO: sz is unused
+    Vec3f screen_pos = GLES::active_camera->world2Screen(pos);
+    Draw::drawText(str, ontop ? (Vec3f){screen_pos.x, screen_pos.y, -1} : screen_pos, fontSizeDef, iend);
 }
 
 void Draw3D::drawInt( const Vec3d& pos, int i, int fontTex, float sz, const char* format ){
