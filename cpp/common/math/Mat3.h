@@ -35,6 +35,8 @@ class Mat3T{
 	};
 
 
+	inline bool operator==(const MAT& m)const{ return (a==m.a && b==m.b && c==m.c); }
+
 // ====== initialization
 
 	inline explicit operator Mat3T<double>()const{ return Mat3T<double>{ (double)xx,(double)xy,(double)xz, (double)yx,(double)yy,(double)yz, (double)zx,(double)zy,(double)zz }; }

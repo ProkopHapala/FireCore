@@ -230,10 +230,10 @@ namespace GLES{
     GL_CHECK_ERROR(); \
 } while(0)
 
-#define glDisable(cap) do { \
-    glDisable(cap); \
-    GL_CHECK_ERROR(); \
-} while(0)
+//#define glDisable(cap) do { \
+//    glDisable(cap); \
+//    GL_CHECK_ERROR(); \
+//} while(0)
 
 #define glDisableVertexAttribArray(index) do { \
     glDisableVertexAttribArray(index); \
@@ -250,10 +250,10 @@ namespace GLES{
     GL_CHECK_ERROR(); \
 } while(0)
 
-#define glEnable(cap) do { \
-    glEnable(cap); \
-    GL_CHECK_ERROR(); \
-} while(0)
+//#define glEnable(cap) do { \
+//    glEnable(cap); \
+//    GL_CHECK_ERROR(); \
+//} while(0)
 
 #define glEnableVertexAttribArray(index) do { \
     glEnableVertexAttribArray(index); \

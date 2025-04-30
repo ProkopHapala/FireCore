@@ -61,6 +61,8 @@ class Quat4T {
 		T array[4];
 	};
 
+    inline bool operator==(const QUAT& q)const{ return (x==q.x)&&(y==q.y)&&(z==q.z)&&(w==q.w); }
+
     constexpr inline explicit operator Quat4T<double>()const{ return (Quat4T<double>){ (double)x, (double)y, (double)z, (double)w }; }
     constexpr inline explicit operator Quat4T<float> ()const{ return (Quat4T<float>) { (float )x, (float )y, (float )z, (float )w }; }
     constexpr inline explicit operator Quat4T<int>   ()const{ return (Quat4T<int>)   { (int   )x, (int   )y, (int   )z, (int   )w }; }

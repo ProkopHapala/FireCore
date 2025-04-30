@@ -1,6 +1,8 @@
 
 #include "GLES.h"
 #include "GLTexture.h"
+#include <GLES3/gl3.h>
+#include <cstdio>
 #include <cstdlib>
 
 class GLFramebuffer{
@@ -57,6 +59,11 @@ public:
     GLFramebuffer(){};
     ~GLFramebuffer(){ if (handle) glDeleteFramebuffers(1, &handle); }
 
+    GLuint getHandle(){
+        ensure_handle();
+        return handle;
+    }
+
     void begin(){
         if (active) {
             printf("ERROR: framebuffer is already active\n");
@@ -110,3 +117,5 @@ public:
         paused = false;
     }
 };
+
+void mergeFramebuffers(GLFramebuffer& fb1, GLFramebuffer& fb2);

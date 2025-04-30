@@ -38,6 +38,8 @@ class Mat4T{
 		T    arr2d[4][4];
 	};
 
+    inline bool operator==(const MAT& m) const {return (a==m.a) && (b==m.b) && (c==m.c) && (d==m.d); }
+
 // ====== initialization
 
 	inline void setOne(     ){ xx=yy=zz=ww=1; xy=xz=xw=yx=yz=yw=zx=zy=zw=wx=wy=wz=0; };

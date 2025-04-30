@@ -91,6 +91,8 @@ class Vec2T {
 	inline VEC operator*=( T f ) { x*=f; y*=f; return *this; }
 	inline VEC operator/=( T f ) { x/=f; y/=f; return *this; }
 
+	inline bool operator==( const VEC& vi ) const { return (x==vi.x) && (y==vi.y); };
+
 	template<typename S=T> inline VEC operator+=( const Vec2T<S> vi ) { x+=vi.x; y+=vi.y; return *this; };
 	template<typename S=T> inline VEC operator-=( const Vec2T<S> vi ) { x-=vi.x; y-=vi.y; return *this; };
 	template<typename S=T> inline VEC operator*=( const Vec2T<S> vi ) { x*=vi.x; y*=vi.y; return *this; };

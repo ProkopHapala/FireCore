@@ -123,7 +123,7 @@ public:
         shader->setuColor(color);
         if constexpr (attrib_flags&GLMESH_FLAG_TEX) {
             glActiveTexture(GL_TEXTURE0);
-            shader->setuTexture(0);
+            shader->setUniform1i("uTexture", 0);
             if (texture) texture->bind();
             else printf("Warning: texture = nullptr!\n");
         }

@@ -133,14 +133,84 @@ void drawDipoleMapGrid( DipoleMap& dipoleMap, Vec2d sc=Vec2d{1.,1.}, bool radial
 
 //void command_example(double x, void* caller);
 
-static const char* testFragmentShader = R"(
-#version 100
+static const char* ssaoFragmentShader = R"(
+#version 300 es
 
 uniform sampler2D uTexture;
-varying mediump vec2 fUV;
+uniform sampler2D uDepth;
+in mediump vec2 fUV;
+
+mediump vec2 kernel[32] = vec2[32]( // TODO: use a better kernel, currently is a grid of points in a circle
+vec2(-0.9486765961476702, -0.31622553204922343),
+vec2(-0.9486765961476702, 0.0),
+vec2(-0.9486765961476702, 0.31622553204922343),
+vec2(-0.6324510640984469, -0.6324510640984469),
+vec2(-0.6324510640984469, -0.31622553204922343),
+vec2(-0.6324510640984469, 0.0),
+vec2(-0.6324510640984469, 0.31622553204922343),
+vec2(-0.6324510640984469, 0.6324510640984469),
+vec2(-0.31622553204922343, -0.9486765961476702),
+vec2(-0.31622553204922343, -0.6324510640984469),
+vec2(-0.31622553204922343, -0.31622553204922343),
+vec2(-0.31622553204922343, 0.0),
+vec2(-0.31622553204922343, 0.31622553204922343),
+vec2(-0.31622553204922343, 0.6324510640984469),
+vec2(-0.31622553204922343, 0.9486765961476702),
+vec2(0.0, -0.9486765961476702),
+vec2(0.0, -0.6324510640984469),
+vec2(0.0, -0.31622553204922343),
+vec2(0.0, 0.31622553204922343),
+vec2(0.0, 0.6324510640984469),
+vec2(0.0, 0.9486765961476702),
+vec2(0.31622553204922343, -0.9486765961476702),
+vec2(0.31622553204922343, -0.6324510640984469),
+vec2(0.31622553204922343, -0.31622553204922343),
+vec2(0.31622553204922343, 0.0),
+vec2(0.31622553204922343, 0.31622553204922343),
+vec2(0.31622553204922343, 0.6324510640984469),
+vec2(0.31622553204922343, 0.9486765961476702),
+vec2(0.6324510640984469, -0.6324510640984469),
+vec2(0.6324510640984469, -0.31622553204922343),
+vec2(0.6324510640984469, 0.0),
+vec2(0.6324510640984469, 0.31622553204922343)
+);
+
+
+mediump float kernel_size = 0.02;
+highp float kernel_depth = 0.0005;
+
+layout(location=0) out mediump vec4 fragColor;
+
+mediump float smoothstep(float edge0, float edge1, float x){
+    x = clamp((x - edge0) / (edge1 - edge0), 0.0, 1.0);
+    return x * x * (3.0 - 2.0 * x); // 3x^2 + 2x^3
+}
 
 void main(){
-    gl_FragColor = texture2D(uTexture, fUV);
+    highp float depth = texture(uDepth, fUV).x;
+    mediump vec4 color = texture(uTexture, fUV);
+
+    mediump float occlusion = 0.0;
+    for (int i=0; i<32; i++){
+        mediump vec2 samplepos = fUV + kernel[i]*kernel_size; // TODO: the size of the offset should depend on screen size, and on distance, if camera is perspective
+        highp float sampleDepth = texture(uDepth, samplepos).x;
+        highp float relativeDepth = sampleDepth-depth;
+
+        highp float extra_occlusion = 0.0;
+        extra_occlusion = clamp(relativeDepth, -kernel_depth, kernel_depth) / (2.0*kernel_depth);
+        extra_occlusion = smoothstep(-kernel_depth, 0.0, relativeDepth) * extra_occlusion;
+
+        occlusion += extra_occlusion;
+    }
+    occlusion /= 32.0;
+    occlusion += 0.5;
+    occlusion = clamp(occlusion*2.0, 0.0, 1.0);
+    occlusion = pow(occlusion, 2.0);
+
+    fragColor = vec4(color.rgb * occlusion, color.a);
+    //fragColor = vec4(occlusion, occlusion, occlusion, color.a);
+
+    gl_FragDepth = depth;
 }
 
 )";
@@ -256,7 +326,7 @@ class MolGUI : public AppSDL2OGL_3D { public:
 
     // ---- small balls and sticks for debugging
     // double ForceViewScale = 100.0;
-    double mm_Rsc            = 0.1;
+    double mm_Rsc            = 0.8;//0.1;
     double mm_Rsub           = 0.0;
 
     bool bBuilderChanged     = false;
@@ -327,7 +397,8 @@ class MolGUI : public AppSDL2OGL_3D { public:
     int  ogl_trj       = 0;
     int  ogl_surf_scan = 0;
 
-    FullscreenShader TESTfullscreenShader = FullscreenShader(testFragmentShader);
+    GLFramebuffer main_framebuffer;
+    FullscreenShader SSAOshader = FullscreenShader(ssaoFragmentShader);
 
     std::vector<Quat4f> debug_ps;
     std::vector<Quat4f> debug_fs;
@@ -1289,6 +1360,8 @@ void MolGUI::draw(){
     opengl1renderer.enable(GL_LIGHTING );
     opengl1renderer.enable(GL_DEPTH_TEST);
 
+    main_framebuffer.begin();
+
     //printf( "MolGUI::draw()[frameCount=%i] \n", frameCount );
     if(W->bLatScan){ lattice_scan( W->latscan_n.x, W->latscan_n.y, *W->latscan_dlvec ); quit(); }
 
@@ -1344,7 +1417,7 @@ void MolGUI::draw(){
         Draw3D::drawTriclinicBoxT( W->builder.lvec, Vec3d{0.0,0.0,0.0}, Vec3d{1.0,1.0,1.0} ); 
     }
 
-    TESTfullscreenShader.begin();
+    SSAOshader.begin();
 
     if( bViewSubstrate ){
         if( ( W->bGridFF )&&( ((int)(W->gridFF.mode))!=0) ){
@@ -1403,7 +1476,7 @@ void MolGUI::draw(){
         }else{ drawSystemSingle(); } // Draw System without PBC
     }
 
-    TESTfullscreenShader.end();
+    SSAOshader.end();
 
     plotNonuniformGrid();
 
@@ -1522,6 +1595,10 @@ void MolGUI::draw(){
     if(useGizmo){ gizmo.draw(); }
     if(bHexDrawing)drawingHex(5.0);
     if(bViewAxis){ opengl1renderer.lineWidth(3);  Draw3D::drawAxis(1.0); opengl1renderer.lineWidth(1); }
+
+    main_framebuffer.end();
+
+    mergeFramebuffers(main_framebuffer, SSAOshader.out_framebuffer);
 };
 
 void MolGUI::printMSystem( int isys, int perAtom, int na, int nvec, bool bNg, bool bNgC, bool bPos ){
@@ -2143,6 +2220,7 @@ void MolGUI::drawSystemShifts( int n, const Vec3d* shifts, int i0 ){
     bool bViewBL = bViewBondLenghts &&  (bL0s!=0);
 
     // bonds
+    //SSAOshader.pause();
     if( neighs && (!bViewBL) ){
         opengl1renderer.color3f(0.0f,0.0f,0.0f); 
         opengl1renderer.lineWidth(1.0);
@@ -2150,6 +2228,7 @@ void MolGUI::drawSystemShifts( int n, const Vec3d* shifts, int i0 ){
 
         for (int i=0; i<n; i++) neighMesh->draw( (Vec3f)shifts[i] );
     }
+    //SSAOshader.unpause();
 
     // atom spheres
     if(bViewAtomSpheres && mm_bAtoms && (!bViewBondLenghts)){ // TODO
@@ -2157,13 +2236,15 @@ void MolGUI::drawSystemShifts( int n, const Vec3d* shifts, int i0 ){
     }
 
     // == i0 system gets special rendering ==
+    //SSAOshader.pause();
     if(bViewAtomForces    &&  fapos           ){ opengl1renderer.color3f(1.0f,0.0f,0.0f); Draw3D::drawVectorArray  ( natoms, apos, fapos, ForceViewScale, 10000.0 );   }
     if(mm_bAtoms&&bViewAtomLabels&&(!bViewBL) ){ opengl1renderer.color3f(0.0f,0.0f,0.0f); Draw3D::atomLabels       ( natoms, apos,                                    fontTex3D, textSize );  }
     if(mm_bAtoms&&bViewAtomTypes              ){ opengl1renderer.color3f(0.0f,0.0f,0.0f); Draw3D::atomTypes        ( natoms, apos, atypes, &(params_glob->atypes[0]), fontTex3D, textSize );  }
     if(bViewMolCharges && (W->nbmol.REQs!=0)  ){ opengl1renderer.color3f(0.0,0.0,0.0);    Draw3D::atomPropertyLabel( natoms,  (double*)REQs,  apos, 4, 2,             fontTex3D, textSize ); }
     if(bViewHBondCharges && (W->nbmol.REQs!=0)){ opengl1renderer.color3f(0.0,0.0,0.0);    Draw3D::atomPropertyLabel( natoms,  (double*)REQs,  apos, 4, 3,             fontTex3D, textSize ); }
     opengl1renderer.enable( GL_DEPTH_TEST );
-    
+    //SSAOshader.unpause();
+
     {// Graph
 
         // --- draw whole molecule skeleton stored in W->graph
