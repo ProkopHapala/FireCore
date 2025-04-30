@@ -1301,8 +1301,7 @@ class UFF : public NBFF { public:
             // Check after clean
             for(int i=0; i<natoms; i++) {
                 if(!std::isfinite(fapos[i].x)) {printf("NaN after cleanForce at atom %d\n", i);
-                    break;
-                }
+                    break;}
             }
         }  
         Eb = evalBonds();  
@@ -1474,11 +1473,12 @@ class UFF : public NBFF { public:
         bHardConstrs=1;
 
         int    itr=0;
+        
         //if(itr_DBG==0)print_pipos();
         //bool bErr=0;
         //long T0 = getCPUticks();
         for(itr=0; itr<niter; itr++){
-            E=0;
+            Eb=0; Ea=0; Ed=0; Ei=0;Enb = 0.0;Esurf = 0.0;
             // ------ eval UFF
             //if(bClean)
             cleanForce();
@@ -1487,6 +1487,7 @@ class UFF : public NBFF { public:
             Ed = evalDihedrals();
             Ei = evalInversions();
             Enb = 0;
+
             // ---- assemble (we need to wait when all atoms are evaluated)
             for(int ia=0; ia<natoms; ia++){
                 assembleAtomForce(ia); 
@@ -1501,8 +1502,7 @@ class UFF : public NBFF { public:
                     }
                 }
                 // printf( "UFF::run() atomForceFunc[%i] (%g,%g,%g)\n", ia, atomForceFunc[ia].x, atomForceFunc[ia].y, atomForceFunc[ia].z );
-                if( atomForceFunc ) Esurf=atomForceFunc( ia, apos[ia], fapos[ia] );
-                //  if(atomForceFunc) { double Esurf_atom = atomForceFunc(ia, apos[ia], fapos[ia]); Esurf += Esurf_atom; printf("Atom %d surface energy: %g\n", ia, Esurf_atom);}
+                if( atomForceFunc ) Esurf+=atomForceFunc( ia, apos[ia], fapos[ia] );
             }
             // ------ move
             cvf = Vec3dZero;

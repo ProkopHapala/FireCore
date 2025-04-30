@@ -1,4 +1,4 @@
-#ifndef MolWorld_sp3_h  
+﻿#ifndef MolWorld_sp3_h  
 #define MolWorld_sp3_h  
 #define MolWorld_sp3_h
 /// @file MolWorld_sp3.h @brief contains MolWorld_sp3 class, which is a comprehensive class storing the state of a molecular simulation including bonding,non-bodning of molecules and molecules with substrate
@@ -2914,13 +2914,14 @@ void scan_constr( int nconf, int nconstr, int *icontrs, Quat4d* contrs_, double*
         // }
 
         // Evaluate energy using UFF
-        //double E_eval = ffu.eval();
+        // double E_eval = ffu.eval();
         //double E_eval_omp=ffu.eval_omp();
         double E_run = ffu.Etot;
         
         // printf("scan_constr()[i=%i] E_from_run=%g \n", i, E_run );
         //printf("scan_constr()[i=%i] E_from_eval=%g \n", i, E_eval );
         // printf("scan_constr()[i=%i] E_from_eval_omp=%g \n", i, E_eval_omp );
+        // if(Es) { Es[i] = E_eval; }
         if(Es) { Es[i] = E_run; }
         
         // for(int ja=0; ja<ffu.natoms; ja++) {
@@ -2977,6 +2978,7 @@ void scan_constr( int nconf, int nconstr, int *icontrs, Quat4d* contrs_, double*
         saveXYZ("scan_constr_uff.xyz", "#", 1, "a");
         // printf("Configuration %i: Energy = %g, Iterations = %i\n", i, E, niterdone);
         printf("Configuration %i: Energy = %g, Iterations = %i\n", i, E_run, niterdone);
+        // printf("Configuration %i: Energy = %g, Iterations = %i\n", i, E_eval, niterdone);
     }
     
     // Restore original bUFF value
@@ -2992,12 +2994,10 @@ void scan_rigid_uff( int nconf, Vec3d* poss, Mat3d* rots, double* Es, Vec3d* afo
     for(int i=0; i<ffu.natoms; i++){
         original_positions[i] = ffu.apos[i];
     }
-    
     for(int i=0; i<nconf; i++){
         // Get position and rotation for this configuration
         Vec3d pos; if(poss){ pos=poss[i]; }else{ pos=Vec3dZero; }
         Mat3d rot; if(rots){ rot=rots[i]; }else{ rot=Mat3dIdentity; }
-        
         // Apply position and rotation to atoms
         for(int ia=0; ia<ffu.natoms; ia++){
             ffu.apos[ia] = rot.dot(original_positions[ia]) + pos;

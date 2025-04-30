@@ -849,15 +849,17 @@ mmff.setSwitches2( NonBonded=1, MMFF=1, SurfAtoms=1, GridFF=1 )   ### For Relaxe
 # scanPlot( nscan=150, span=(1.5,16.5), dir=(0.0,0.0,1.0), p0=(0.0,0.0,0), label="NaCl_mol on hollow", saveFig="E_z_scan_on_hollow_mol_NaCl_Morse_Coulomb.png", saveData="E_z_scan_on_hollow_mol_NaCl_Morse_Coulomb.dat" )
 
 
-################*******************PTCDA
+################*******************Scan MMFF PTCDA*****************************
 # scanPlot( nscan=125, span=(2.0,14.5), dir=(1.0,1.0,0.0), p0=(0.0,0.0,2.7), label="O on Na", saveFig="E_z_scan_on_Na_O_Morse.png", saveData="gpu_xy_E_z_scan_on_Na_O_Morse.dat" )
 # scanPlot( nscan=125, span=(2.6,15.1), dir=(0.0,0.0,1.0), p0=(0.0,0.0,0.0), label="PTCDA on Na", saveFig="E_z_scan_on_Na_PTCDA_Morse.png", saveData="E_z_scan_on_Na_PTCDA_Morse.dat" )
 # scanPlot( nscan=125, span=(2.6,15.1), dir=(0.0,0.0,1.0), p0=(0.0,0.0,0), label="PTCDA on Na", saveFig="E_z_scan_on_Na_PTCDA_Coulomb.png", saveData="E_z_scan_on_Na_PTCDA_Coulomb.dat" )
 # scanPlot( nscan=125, span=(2.6,15.1), dir=(0.0,0.0,1.0), p0=(0.0,0.0,0), label="PTCDA on Na", saveFig="E_z_scan_on_Na_PTCDA_Morse_Coulomb.png", saveData="E_z_scan_on_Na_PTCDA_Morse_Coulomb.dat" )
 
+
+##***************************** Scan UFF PTCDA 1D****************   
 # scanPlot_uff( nscan=125, span=(2.6,15.1), dir=(0.0,0.0,1.0), p0=(0.0,0.0,0.0), label="PTCDA on Na", saveFig="uff_E_z_scan_on_Na_PTCDA_Morse.png", saveData="uff_E_z_scan_on_Na_PTCDA_Morse.dat" )
 # scanPlot_uff( nscan=125, span=(2.6,15.1), dir=(0.0,0.0,1.0), p0=(0.0,0.0,0), label="PTCDA on Na", saveFig="uff_E_z_scan_on_Na_PTCDA_Coulomb.png", saveData="uff_E_z_scan_on_Na_PTCDA_Coulomb.dat" )
-scanPlot_uff( nscan=125, span=(2.6,15.1), dir=(0.0,0.0,1.0), p0=(0.0,0.0,0), label="PTCDA on Na", saveFig="uff_E_z_scan_on_Na_PTCDA_Morse_Coulomb.png", saveData="uff_E_z_scan_on_Na_PTCDA_Morse_Coulomb.dat" )
+# scanPlot_uff( nscan=125, span=(2.6,15.1), dir=(0.0,0.0,1.0), p0=(0.0,0.0,0), label="PTCDA on Na", saveFig="uff_E_z_scan_on_Na_PTCDA_Morse_Coulomb.png", saveData="uff_E_z_scan_on_Na_PTCDA_Morse_Coulomb.dat" )
 
 # scanPlot( nscan=125, span=(2.6,15.1), dir=(0.0,0.0,1.0), p0=(0.0,0.0,0), label="PTCDA on Cl", saveFig="E_z_scan_on_Cl_PTCDA_Morse.png", saveData="E_z_scan_on_Cl_PTCDA_Morse.dat" )
 # scanPlot( nscan=125, span=(2.6,15.1), dir=(0.0,0.0,1.0), p0=(0.0,0.0,0), label="PTCDA on Cl", saveFig="E_z_scan_on_Cl_PTCDA_Coulomb.png", saveData="E_z_scan_on_Cl_PTCDA_Coulomb.dat" )
@@ -874,8 +876,8 @@ gc.disable()
 
 ###########********************* Relax 1D
 # t,Es,Ps=relax_scanPlot1D(bRelax=True, nscan=125, span=(2.6,15.1), dir=(0.0,0.0,1.0), p0=(0.0,0.0,(0+2.6)), label="PTCDA on Na", saveFig=None, saveData=None,niter_max=100 )   
-# t,Es,Ps=relax_scanPlot1D(bRelax=True, nscan=125, span=(2.6,15.1),  dir=(0.0,0.0,1.0), p0=(0.0,0.0,(0+0)), label="PTCDA on Na", saveFig=None, saveData="new_trial_relax_scan_ptcda_test",
-#                         niter_max=100000,Fconv=1e-3,dt=0.02 )  ### z scan dt 0.05 is giving energy in the order of less than 100 but for more smaller step it is giving absolute energy in the order of 1e7 and greater value of like 0.1 is giving random values 0.1 is to match with LAMMPs 0.001femto
+t,Es,Ps=relax_scanPlot1D(bRelax=True, nscan=125, span=(2.6,15.1),  dir=(0.0,0.0,1.0), p0=(0.0,0.0,(0+0)), label="PTCDA on Na", saveFig=None, saveData="new_trial_relax_scan_ptcda_test",
+                        niter_max=100000,Fconv=1e-3,dt=0.02 )  ### z scan dt 0.05 is giving energy in the order of less than 100 but for more smaller step it is giving absolute energy in the order of 1e7 and greater value of like 0.1 is giving random values 0.1 is to match with LAMMPs 0.001femto
 
 # t,Es,Ps=relax_scanPlot1D(bRelax=True, nscan=120, span=(0,12), dir=(0.866,0.5,0.0), p0=(0.0,0.0,(0+3.1)), label="PTCDA on Na", saveFig=None, saveData="trial_relax_scan_ptcda_line_test",
 #                         niter_max=50000,Fconv=1e-6,dt=0.1 )  # x y scan  and diagonal #dir=(0.866,0.5,0.0) for 30 degree  nscan=351, span=(0,35.1)
