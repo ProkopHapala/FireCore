@@ -76,14 +76,20 @@ private:
     unsigned int update_uniforms = 0;
     std::vector<uniform> uniforms;
 
-    inline void setUniform(const char* name, uniform value){
+    inline void setUniformName(const char* name, uniform value){
         ensure_handle();
         GLuint loc = getUniformLocation(name);
-        if (loc == -1) return;
+        
+        setUniformLoc(loc, value);
+    }
 
+    inline void setUniformLoc(GLuint loc, uniform value){
+        if (loc == -1) return;
         if (loc >= uniforms.size()){ uniforms.resize(loc + 1); }
         
-        update_uniforms |= (1 << loc) * (uniforms[loc] == value); // TODO: check that loc is not > 32
+        // TODO: optimise matrix writes to only update changed rows (if only one row changes)
+        if (uniforms[loc] == value) return;
+        update_uniforms |= (1 << loc); // TODO: check that loc is not > 32
         uniforms[loc] = value;
     }
 
@@ -93,44 +99,77 @@ public:
     
     inline GLuint getProgramId() const { return programId; }
 
-    void ensure_handle();
-    void use();
+    inline void ensure_handle(){
+        if (programId) return;
+        create_handle();
+    }
+
+    inline void use(){
+        ensure_handle();
+        GLES::useProgram(programId);
+    
+        // update uniforms
+        while (update_uniforms){
+            int i = __builtin_ctz(update_uniforms); // count trailing zeros
+            uniform& u = uniforms[i];
+    
+            switch (u.type) {
+                case uniform::f1:   glUniform1f(i, u.data.f1); break;
+                case uniform::f2:   glUniform2f(i, u.data.f2.x, u.data.f2.y); break;
+                case uniform::f3:   glUniform3f(i, u.data.f3.x, u.data.f3.y, u.data.f3.z); break;
+                case uniform::f4:   glUniform4f(i, u.data.f4.x, u.data.f4.y, u.data.f4.z, u.data.f4.w); break;
+                case uniform::i1:   glUniform1i(i, u.data.i1); break;
+                case uniform::i2:   glUniform2i(i, u.data.i2.x, u.data.i2.y); break;
+                case uniform::i3:   glUniform3i(i, u.data.i3.x, u.data.i3.y, u.data.i3.z); break;
+                case uniform::i4:   glUniform4i(i, u.data.i4.x, u.data.i4.y, u.data.i4.z, u.data.i4.w); break;
+                case uniform::ui1:  glUniform1ui(i, u.data.ui1); break;
+                case uniform::ui2:  glUniform2ui(i, u.data.ui2.x, u.data.ui2.y); break;
+                case uniform::ui3:  glUniform3ui(i, u.data.ui3.x, u.data.ui3.y, u.data.ui3.z); break;
+                case uniform::ui4:  glUniform4ui(i, u.data.ui4.x, u.data.ui4.y, u.data.ui4.z, u.data.ui4.w); break;
+                case uniform::m3:   glUniformMatrix3fv(i, 1, GL_FALSE, u.data.m3.array); break;
+                case uniform::m4:   glUniformMatrix4fv(i, 1, GL_FALSE, u.data.m4.array); break;
+            }
+    
+            update_uniforms &= ~(1 << i);
+        }
+    }
     
     // Uniform setters
     GLint getUniformLocation(const char* name) {
         GLint loc = glGetUniformLocation(programId, name);
         if (loc == -1) {
-            printf("Uniform '%s' not found\n", name);
+            //printf("Uniform '%s' not found\n", name);
             return -1;
         }
         return loc;
     }
 
     inline void setuMVPMatrix(Mat4f mat){ ensure_handle(); glUniformMatrix4fv(uMVPloc, 1, GL_FALSE, mat.array); }
-    inline void setuColor(Vec3f color){ ensure_handle(); glUniform3f(uColorloc, color.x, color.y, color.z); }
+    inline void setuColor(Vec3f color){ ensure_handle(); setUniformLoc(uColorloc, (uniform){.type=uniform::f3, .data={.f3=color}}); }
 
 
-    inline void setUniform1f(const char* name, GLfloat value)       { setUniform(name, (uniform){.type=uniform::f1, .data={.f1=value}}); }
-    inline void setUniform2f(const char* name, Vec2T<GLfloat> value){ setUniform(name, (uniform){.type=uniform::f2, .data={.f2=value}}); }
-    inline void setUniform3f(const char* name, Vec3T<GLfloat> value){ setUniform(name, (uniform){.type=uniform::f3, .data={.f3=value}}); }
-    inline void setUniform4f(const char* name, Vec4T<GLfloat> value){ setUniform(name, (uniform){.type=uniform::f4, .data={.f4=value}}); }
+    inline void setUniform1f(const char* name, GLfloat value)       { setUniformName(name, (uniform){.type=uniform::f1, .data={.f1=value}}); }
+    inline void setUniform2f(const char* name, Vec2T<GLfloat> value){ setUniformName(name, (uniform){.type=uniform::f2, .data={.f2=value}}); }
+    inline void setUniform3f(const char* name, Vec3T<GLfloat> value){ setUniformName(name, (uniform){.type=uniform::f3, .data={.f3=value}}); }
+    inline void setUniform4f(const char* name, Vec4T<GLfloat> value){ setUniformName(name, (uniform){.type=uniform::f4, .data={.f4=value}}); }
 
-    inline void setUniform1i(const char* name, GLint value)         { setUniform(name, (uniform){.type=uniform::i1, .data={.i1=value}}); }
-    inline void setUniform2i(const char* name, Vec2T<GLint> value)  { setUniform(name, (uniform){.type=uniform::i2, .data={.i2=value}}); }
-    inline void setUniform3i(const char* name, Vec3T<GLint> value)  { setUniform(name, (uniform){.type=uniform::i3, .data={.i3=value}}); }
-    inline void setUniform4i(const char* name, Vec4T<GLint> value)  { setUniform(name, (uniform){.type=uniform::i4, .data={.i4=value}}); }
+    inline void setUniform1i(const char* name, GLint value)         { setUniformName(name, (uniform){.type=uniform::i1, .data={.i1=value}}); }
+    inline void setUniform2i(const char* name, Vec2T<GLint> value)  { setUniformName(name, (uniform){.type=uniform::i2, .data={.i2=value}}); }
+    inline void setUniform3i(const char* name, Vec3T<GLint> value)  { setUniformName(name, (uniform){.type=uniform::i3, .data={.i3=value}}); }
+    inline void setUniform4i(const char* name, Vec4T<GLint> value)  { setUniformName(name, (uniform){.type=uniform::i4, .data={.i4=value}}); }
 
-    inline void setUniform1ui(const char* name, GLuint value)       { setUniform(name, (uniform){.type=uniform::ui1, .data={.ui1=value}}); }
-    inline void setUniform2ui(const char* name, Vec2T<GLuint> value){ setUniform(name, (uniform){.type=uniform::ui2, .data={.ui2=value}}); }
-    inline void setUniform3ui(const char* name, Vec3T<GLuint> value){ setUniform(name, (uniform){.type=uniform::ui3, .data={.ui3=value}}); }
-    inline void setUniform4ui(const char* name, Vec4T<GLuint> value){ setUniform(name, (uniform){.type=uniform::ui4, .data={.ui4=value}}); }
+    inline void setUniform1ui(const char* name, GLuint value)       { setUniformName(name, (uniform){.type=uniform::ui1, .data={.ui1=value}}); }
+    inline void setUniform2ui(const char* name, Vec2T<GLuint> value){ setUniformName(name, (uniform){.type=uniform::ui2, .data={.ui2=value}}); }
+    inline void setUniform3ui(const char* name, Vec3T<GLuint> value){ setUniformName(name, (uniform){.type=uniform::ui3, .data={.ui3=value}}); }
+    inline void setUniform4ui(const char* name, Vec4T<GLuint> value){ setUniformName(name, (uniform){.type=uniform::ui4, .data={.ui4=value}}); }
 
-    inline void setUniform3m(const char* name, Mat3T<GLfloat> value){ setUniform(name, (uniform){.type=uniform::m3, .data={.m3=value}}); }
-    inline void setUniform4m(const char* name, Mat4T<GLfloat> value){ setUniform(name, (uniform){.type=uniform::m4, .data={.m4=value}}); }
+    inline void setUniform3m(const char* name, Mat3T<GLfloat> value){ setUniformName(name, (uniform){.type=uniform::m3, .data={.m3=value}}); }
+    inline void setUniform4m(const char* name, Mat4T<GLfloat> value){ setUniformName(name, (uniform){.type=uniform::m4, .data={.m4=value}}); }
 
 private:
     GLuint compileShader(GLenum shaderType, const char* source);
     GLuint linkProgram(GLuint vertexShader, GLuint fragmentShader);
+    void create_handle();
 };
 
 

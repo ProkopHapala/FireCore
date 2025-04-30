@@ -118,9 +118,9 @@ public:
     void drawMVP(Mat4f mvp){
         bind_sync_vbo();
     
+        shader->setuColor(color);
         shader->use();
         shader->setuMVPMatrix(mvp);
-        shader->setuColor(color);
         if constexpr (attrib_flags&GLMESH_FLAG_TEX) {
             glActiveTexture(GL_TEXTURE0);
             shader->setUniform1i("uTexture", 0);

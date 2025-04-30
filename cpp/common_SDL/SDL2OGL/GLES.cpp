@@ -6,7 +6,7 @@
 CameraT<float>* GLES::active_camera = nullptr;
 GLuint GLES::currentGL_ARRAY_BUFFER = 0;
 Vec2i GLES::screen_size = {1820, 980};
-
+GLuint GLES::activeProgram = -1;
 
 
 static const char* GLErrorString(GLenum error) {

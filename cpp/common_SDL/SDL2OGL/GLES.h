@@ -21,10 +21,15 @@ namespace GLES{
     extern CameraT<float>* active_camera;
     extern GLuint currentGL_ARRAY_BUFFER;
     extern Vec2i screen_size;
+    extern GLuint activeProgram;
 
     void checkError(const char* file, int line);
     void pushFramebuffer(GLuint handle);
     void popFramebuffer(GLuint handle);
+
+    inline void useProgram(GLuint program){
+        if (program != activeProgram) {glUseProgram(program); activeProgram = program;}
+    }
 }
 
 #define GL_CHECK_ERROR() GLES::checkError(__FILE__, __LINE__)
