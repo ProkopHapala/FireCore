@@ -28,6 +28,9 @@ public class InputTracker : MonoBehaviour
             GameController.main.ToggleRunning();
         }
 
+        if(Input.GetKeyDown(KeyCode.R)) {
+            GameController.main.SpawnGUI();
+        }
     }
 
     // void OnKeyDown(KeyDownEvent ev) {

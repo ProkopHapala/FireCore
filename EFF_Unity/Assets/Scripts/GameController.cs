@@ -102,21 +102,54 @@ public static extern void cleanupPositions(IntPtr positions);
         for (int i = 0; i < electronCount; i++) {
             particles[i] = Instantiate(electronPrefab, new Vector3(0, 0, 0), Quaternion.identity);
 
-            var info = Instantiate(infoBoxPrefab_e, infoBoxAnchor.transform);
-            info.GetComponent<InfoBox>().SetConnector(i, i, ObjectType.ELECTRON);
-            info.GetComponent<RectTransform>().anchoredPosition = new Vector2(0, -63 * i);
+            // var info = Instantiate(infoBoxPrefab_e, infoBoxAnchor.transform);
+            // info.GetComponent<InfoBox>().SetConnector(i, i, ObjectType.ELECTRON);
+            // info.GetComponent<RectTransform>().anchoredPosition = new Vector2(0, -63 * i);
         }
         for (int i = 0; i < atomCount; i++) {
             particles[electronCount + i] = Instantiate(atomPrefab, new Vector3(0, 0, 0), Quaternion.identity);
 
-            var info = Instantiate(infoBoxPrefab_a, infoBoxAnchor.transform);
-            info.GetComponent<InfoBox>().SetConnector(i, electronCount + i, ObjectType.ATOM);
-            info.GetComponent<RectTransform>().anchoredPosition = new Vector2(0, (-63 * electronCount) + (-50 * i));
+            // var info = Instantiate(infoBoxPrefab_a, infoBoxAnchor.transform);
+            // info.GetComponent<InfoBox>().SetConnector(i, electronCount + i, ObjectType.ATOM);
+            // info.GetComponent<RectTransform>().anchoredPosition = new Vector2(0, (-63 * electronCount) + (-50 * i));
         }
-
+        SpawnGUI();
         
         DoSimUpdateCycle();
         Array.ForEach(infoBoxAnchor.GetComponentsInChildren<InfoBox>(), x => x.ForceUpdate());
+    }
+
+    public void SpawnGUI() {
+        Array.ForEach(GameObject.FindGameObjectsWithTag("InfoBox"), Destroy);
+
+        int column = 0;
+        int row = 0;
+        float worldHeight = Camera.main.orthographicSize * 2;
+        for (int i = 0; i < electronCount; i++) {
+            var info = Instantiate(infoBoxPrefab_e, infoBoxAnchor.transform);
+            info.GetComponent<InfoBox>().SetConnector(i, i, ObjectType.ELECTRON);
+            info.GetComponent<RectTransform>().anchoredPosition = new Vector2(340 * column, -63 * row);
+    
+            row++;
+            if(63*(row + 2) > Screen.height) {
+                row = 0;
+                column++;
+            }
+        }
+
+        int offsetRows = row;
+        for (int i = 0; i < atomCount; i++) {
+            var info = Instantiate(infoBoxPrefab_a, infoBoxAnchor.transform);
+            info.GetComponent<InfoBox>().SetConnector(i, electronCount + i, ObjectType.ATOM);
+            info.GetComponent<RectTransform>().anchoredPosition = new Vector2(340 * column, (-50 * (row - offsetRows)) + (-63 * offsetRows));
+            
+            row++;
+            if(63*(row + 2) > Screen.height) {
+                offsetRows = 0;
+                row = 0;
+                column++;
+            }
+        }
     }
 
     // Update is called once per frame

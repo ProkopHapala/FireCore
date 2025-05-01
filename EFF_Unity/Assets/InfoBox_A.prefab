@@ -431,7 +431,7 @@ GameObject:
   - component: {fileID: 7655025545995712279}
   m_Layer: 0
   m_Name: InfoBox_A
-  m_TagString: Untagged
+  m_TagString: InfoBox
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
