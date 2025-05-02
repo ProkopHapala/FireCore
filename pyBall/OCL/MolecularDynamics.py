@@ -49,101 +49,74 @@ def vec3_to_cl(vec3_np):
 
 class MolecularDynamics:
 
-    def __init__(self, nloc=32 ):
-        self.nloc  = nloc
-        self.ctx   = cl.create_some_context(answer=0)
-        self.queue = cl.CommandQueue(self.ctx)
-
-        self.grid  = None   # instance of GridShape, if initialized
-        self.gcl   = None   # instance of GridCL, if initialized
- 
-        clu.get_cl_info( self.ctx.devices[0] )
-
-        local_size = 64
-        #print( " local_memory_per_workgroup() size=", local_size, " __local []  ", clu.local_memory_per_workgroup( self.ctx.devices[0], local_size=32, sp_per_cu=128 ), " Byte " );
-        print( " local_memory_per_workgroup() size=", local_size, " __local []  ", clu.local_memory_float_per_workgroup( self.ctx.devices[0], local_size=32, sp_per_cu=128 ), " float32 " );
-
-        try:
-            with open('../../cpp/common_resources/cl/splines.cl', 'r') as f:
-                self.prg = cl.Program(self.ctx, f.read()).build()
-        except Exception as e:
-            print( "MolecularDynamics() called from path=", os.getcwd() )
-            print(f"Error compiling OpenCL program: {e}")
-            exit(0)
-
-    def __init__(self, nloc=32 ):
-        self.ctx   = cl.create_some_context()
-        self.queue = cl.CommandQueue(self.ctx)
-        clu.get_cl_info( self.ctx.devices[0] )
-
+    def __init__(self, nloc=32):
         # Initialize OpenCL context and queue
-        # platforms = cl.get_platforms()
-        # if not platforms:                 raise RuntimeError("No OpenCL platforms found.")
-        # if platform_id >= len(platforms): raise ValueError("Invalid platform ID.")
-        # platform = platforms[platform_id]
-        # devices = platform.get_devices()
-        # if not devices:                raise RuntimeError("No OpenCL devices found on the selected platform.")
-        # if device_id >= len(devices):  raise ValueError("Invalid device ID.")
-        # device = devices[device_id]
-        # self.context = cl.Context([device])
-        # self.queue = cl.CommandQueue(self.context, device)
-
-        try:
-            with open('../../cpp/common_resources/cl/relax_multi.cl', 'r') as f:
-                self.prg = cl.Program(self.ctx, f.read()).build()
-        except Exception as e:
-            print(f"Error compiling OpenCL program: {e}")
-            print( "MolecularDynamics() called from path=", os.getcwd() )
+        self.nloc = nloc
+        self.ctx = cl.create_some_context(answers=[0])
+        self.queue = cl.CommandQueue(self.ctx)
+        
+        # Print device info
+        clu.get_cl_info(self.ctx.devices[0])
+        
+        # Grid information placeholders
+        self.grid = None  # instance of GridShape, if initialized
+        self.gcl = None   # instance of GridCL, if initialized
+        
+        # Load and compile the OpenCL program - try multiple possible locations
+        # Define potential paths where the kernel file might be located
+        base_path = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+        possible_paths = [
+            '../../cpp/common_resources/cl/relax_multi.cl',  # Relative from working dir
+            os.path.join(base_path, 'cpp/common_resources/cl/relax_multi.cl'),  # From project root
+            os.path.join(os.path.dirname(__file__), '../../cpp/common_resources/cl/relax_multi.cl')  # Relative from module location
+        ]
+        
+        kernel_found = False
+        for kernel_path in possible_paths:
+            try:
+                if os.path.exists(kernel_path):
+                    with open(kernel_path, 'r') as f:
+                        self.prg = cl.Program(self.ctx, f.read()).build()
+                    kernel_found = True
+                    print(f"Successfully loaded kernel from: {kernel_path}")
+                    break
+            except Exception as e:
+                # Continue to the next path option
+                pass
+                
+        if not kernel_found:
+            print(f"Error: Could not find or compile OpenCL program")
+            print(f"MolecularDynamics() called from path: {os.getcwd()}")
+            print(f"Tried the following paths:")
+            for path in possible_paths:
+                print(f"  - {path} (exists: {os.path.exists(path)})")
             exit(0)
-
-        self.nloc  = nloc
-        self.grid  = None   # instance of GridShape, if initialized
-        self.gcl   = None   # instance of GridCL, if initialized
-
-        # Initialize OpenCL program
-        self.program = self.build_program()
-
-        # Initialize other attributes
+        
+        # Initialize other attributes that will be set in realloc
         self.nSystems = 0
         self.mmff_instances = []
         self.buffer_dict = {}
 
 
-    def build_program(self):
-        """
-        Compiles the OpenCL kernels.
-        """
-        # Load OpenCL kernel code from file or string
-        kernel_file = "kernels.cl"  # Replace with your actual kernel file path
-        if not os.path.exists(kernel_file):
-            raise FileNotFoundError(f"OpenCL kernel file '{kernel_file}' not found.")
-
-        with open(kernel_file, 'r') as f:
-            kernel_source = f.read()
-
-        try:
-            program = cl.Program(self.context, kernel_source).build()
-            if verbose: print("OpenCL program built successfully.")
-            return program
-        except Exception as e:
-            if verbose:
-                print("Error building OpenCL program:")
-                print(e)
-            raise e
 
     def realloc(self, nSystems, mmff):
         """
         Reallocate buffers for the given number of systems based on the MMFF template.
         """
+        # Store dimensions explicitly to avoid reference issues
+        print(f"MMFF dimensions received in realloc: natoms={mmff.natoms}, nvecs={mmff.nvecs}, nnode={mmff.nnode}")
+        
         self.nSystems = nSystems
-        self.mmff_instances = [ MMFF() for _ in range(nSystems)]
+        self.mmff_instances = [mmff] * nSystems  # Assuming all systems use the same MMFF parameters
+        
+        # Create a new instance for internal use to avoid reference issues
+        self.mmff_template = mmff
+        
+        # Call buffer allocation with explicit dimensions
+        self.allocate_cl_buffers(self.mmff_template)
 
-        # Example: Assuming mmff_template is an instance of MMFF with predefined parameters
-        for mmff in self.mmff_instances:
-            mmff.realloc(mmff.nnode, mmff.ncap, mmff.ntors)
-
-        # Allocate OpenCL buffers
-        self.allocate_cl_buffers(mmff)
+        # Allocate host buffers
+        self.allocate_host_buffers(self.mmff_template)
         self.allocate_host_buffers(mmff)
 
     def allocate_host_buffers(self, mmff ):
@@ -154,38 +127,68 @@ class MolecularDynamics:
         """
         Allocates OpenCL buffers based on the MMFF template and number of systems.
         """
-        # Determine buffer sizes
-        nvecs  = mmff.nvecs
-        natoms = mmff.natoms
-        nnode  = mmff.nnode
-        ntors  = mmff.ntors
-        nbkng  = nnode * 4 * 2  # As per C++ code
-        npbc = 1  # Adjust based on your requirements
         nSystems = self.nSystems
+        natoms = mmff.natoms
+        nvecs  = mmff.nvecs
+        nnode  = mmff.nnode
+        ncap   = mmff.ncap
+        ntors  = mmff.ntors
+        nbkng  = nvecs
+        self.nDOFs = (natoms,nnode)
 
+        self.natoms = natoms
+        self.nvecs  = nvecs
+        self.nnode  = nnode
+        self.ncap   = ncap
+        self.ntors  = ntors
+        self.nbkng  = nbkng
+        
+        # Print dimensions for debugging
+        print(f"Buffer Allocation Dimensions:\n  nSystems: {nSystems}\n  natoms: {natoms}\n  nvecs: {nvecs}\n  nnode: {nnode}\n  ncap: {ncap}\n  ntors: {ntors}\n  nbkng: {nbkng}")
+        
+        # Validate dimensions
+        if nSystems <= 0 or natoms <= 0 or nvecs <= 0 or nnode <= 0:
+            raise ValueError(f"Invalid dimensions for buffer allocation: nSystems={nSystems}, natoms={natoms}, nvecs={nvecs}, nnode={nnode}")
+        
+        # Calculate buffer sizes and validate
+        float_size = np.float32().itemsize
+        int_size = np.int32().itemsize
+        
+        def get_valid_size(dim1, dim2, dim3, elem_size, name):
+            size = dim1 * dim2 * dim3 * elem_size
+            print(f"  Buffer '{name}' size: {size} bytes ({dim1}*{dim2}*{dim3}*{elem_size})")
+            if size <= 0:
+                raise ValueError(f"Invalid buffer size for {name}: {size}")
+            return size
+        
         # Example buffer allocations
         mf = cl.mem_flags
-        self.buffer_dict['atoms']        = cl.Buffer(self.context, mf.READ_WRITE, size=nSystems * nvecs * 3 * np.float32().itemsize)
-        self.buffer_dict['aforces']      = cl.Buffer(self.context, mf.READ_WRITE, size=nSystems * nvecs * 3 * np.float32().itemsize)
-        self.buffer_dict['REQs']         = cl.Buffer(self.context, mf.READ_ONLY, size=nSystems * natoms * 4 * np.float32().itemsize)
-        self.buffer_dict['neighs']       = cl.Buffer(self.context, mf.READ_ONLY, size=nSystems * natoms * 4 * np.int32().itemsize)
-        self.buffer_dict['neighCell']    = cl.Buffer(self.context, mf.READ_ONLY, size=nSystems * natoms * 4 * np.int32().itemsize)
-        self.buffer_dict['bkNeighs']     = cl.Buffer(self.context, mf.READ_ONLY, size=nSystems * nvecs * 4 * np.int32().itemsize)
-        self.buffer_dict['bkNeighs_new'] = cl.Buffer(self.context, mf.READ_ONLY, size=nSystems * nvecs * 4 * np.int32().itemsize)
-        self.buffer_dict['avel']         = cl.Buffer(self.context, mf.READ_WRITE, size=nSystems * nvecs * 3 * np.float32().itemsize)
-        self.buffer_dict['cvf']          = cl.Buffer(self.context, mf.READ_WRITE, size=nSystems * nvecs * 3 * np.float32().itemsize)
-        self.buffer_dict['fneigh']       = cl.Buffer(self.context, mf.READ_WRITE, size=nSystems * nbkng * 3 * np.float32().itemsize)
-        self.buffer_dict['fneighpi']     = cl.Buffer(self.context, mf.READ_WRITE, size=nSystems * nbkng * 3 * np.float32().itemsize)
-        self.buffer_dict['apars']        = cl.Buffer(self.context, mf.READ_ONLY, size=nSystems * nnode * 4 * np.float32().itemsize)
-        self.buffer_dict['bLs']          = cl.Buffer(self.context, mf.READ_ONLY, size=nSystems * nnode * 4 * np.float32().itemsize)
-        self.buffer_dict['bKs']          = cl.Buffer(self.context, mf.READ_ONLY, size=nSystems * nnode * 4 * np.float32().itemsize)
-        self.buffer_dict['Ksp']          = cl.Buffer(self.context, mf.READ_ONLY, size=nSystems * nnode * 4 * np.float32().itemsize)
-        self.buffer_dict['Kpp']          = cl.Buffer(self.context, mf.READ_ONLY, size=nSystems * nnode * 4 * np.float32().itemsize)
-        #self.buffer_dict['tors2atom']    = cl.Buffer(self.context, mf.READ_ONLY, size=nSystems * ntors * np.int32().itemsize)
-        #self.buffer_dict['torsParams']   = cl.Buffer(self.context, mf.READ_ONLY, size=nSystems * ntors * 4 * np.float32().itemsize)
-        #self.buffer_dict['constr']       = cl.Buffer(self.context, mf.READ_WRITE, size=nSystems * natoms * 4 * np.float32().itemsize)
-        #self.buffer_dict['constrK']      = cl.Buffer(self.context, mf.READ_WRITE, size=nSystems * natoms * 4 * np.float32().itemsize)
-        self.buffer_dict['invLvec']      = cl.Buffer(self.context, mf.READ_ONLY, size=nSystems * 9 * np.float32().itemsize)  # 3x3 matrix
+        self.buffer_dict['atoms']        = cl.Buffer(self.ctx, mf.READ_WRITE, size=nSystems * nvecs * 3 * np.float32().itemsize)
+        self.buffer_dict['aforces']      = cl.Buffer(self.ctx, mf.READ_WRITE, size=nSystems * nvecs * 3 * np.float32().itemsize)
+        self.buffer_dict['REQs']         = cl.Buffer(self.ctx, mf.READ_ONLY, size=nSystems * natoms * 4 * np.float32().itemsize)
+        self.buffer_dict['neighs']       = cl.Buffer(self.ctx, mf.READ_ONLY, size=nSystems * natoms * 4 * np.int32().itemsize)
+        self.buffer_dict['neighCell']    = cl.Buffer(self.ctx, mf.READ_ONLY, size=nSystems * natoms * 4 * np.int32().itemsize)
+        self.buffer_dict['bkNeighs']     = cl.Buffer(self.ctx, mf.READ_ONLY, size=nSystems * nvecs * 4 * np.int32().itemsize)
+        self.buffer_dict['bkNeighs_new'] = cl.Buffer(self.ctx, mf.READ_ONLY, size=nSystems * nvecs * 4 * np.int32().itemsize)
+        self.buffer_dict['avel']         = cl.Buffer(self.ctx, mf.READ_WRITE, size=nSystems * nvecs * 3 * np.float32().itemsize)
+        self.buffer_dict['cvf']          = cl.Buffer(self.ctx, mf.READ_WRITE, size=nSystems * nvecs * 3 * np.float32().itemsize)
+        self.buffer_dict['fneigh']       = cl.Buffer(self.ctx, mf.READ_WRITE, size=nSystems * nbkng * 3 * np.float32().itemsize)
+        self.buffer_dict['fneighpi']     = cl.Buffer(self.ctx, mf.READ_WRITE, size=nSystems * nbkng * 3 * np.float32().itemsize)
+        self.buffer_dict['apars']        = cl.Buffer(self.ctx, mf.READ_ONLY, size=nSystems * nnode * 4 * np.float32().itemsize)
+        self.buffer_dict['bLs']          = cl.Buffer(self.ctx, mf.READ_ONLY, size=nSystems * nnode * 4 * np.float32().itemsize)
+        self.buffer_dict['bKs']          = cl.Buffer(self.ctx, mf.READ_ONLY, size=nSystems * nnode * 4 * np.float32().itemsize)
+        self.buffer_dict['Ksp']          = cl.Buffer(self.ctx, mf.READ_ONLY, size=nSystems * nnode * 4 * np.float32().itemsize)
+        self.buffer_dict['Kpp']          = cl.Buffer(self.ctx, mf.READ_ONLY, size=nSystems * nnode * 4 * np.float32().itemsize)
+        #self.buffer_dict['tors2atom']    = cl.Buffer(self.ctx, mf.READ_ONLY, size=nSystems * ntors * np.int32().itemsize)
+        #self.buffer_dict['torsParams']   = cl.Buffer(self.ctx, mf.READ_ONLY, size=nSystems * ntors * 4 * np.float32().itemsize)
+        self.buffer_dict['constr']       = cl.Buffer(self.ctx, mf.READ_WRITE, size=nSystems * natoms * 4 * np.float32().itemsize)
+        self.buffer_dict['constrK']      = cl.Buffer(self.ctx, mf.READ_WRITE, size=nSystems * natoms * 4 * np.float32().itemsize)
+        self.buffer_dict['invLvec']      = cl.Buffer(self.ctx, mf.READ_ONLY, size=nSystems * 9 * np.float32().itemsize)  # 3x3 matrix
+        self.buffer_dict['MDpars']       = cl.Buffer(self.ctx, mf.READ_ONLY, size=nSystems * 4 * np.float32().itemsize)
+        self.buffer_dict['TDrives']      = cl.Buffer(self.ctx, mf.READ_ONLY, size=nSystems * 4 * np.float32().itemsize)
+        self.buffer_dict['bboxes']       = cl.Buffer(self.ctx, mf.READ_ONLY, size=nSystems * 9 * np.float32().itemsize)
+        self.buffer_dict['sysneighs']    = cl.Buffer(self.ctx, mf.READ_ONLY, size=nSystems * np.int32().itemsize)
+        self.buffer_dict['sysbonds']     = cl.Buffer(self.ctx, mf.READ_ONLY, size=nSystems * 4 * np.float32().itemsize)
 
         # Additional buffers as per your C++ code
         # ...
@@ -234,7 +237,7 @@ class MolecularDynamics:
         Sets up OpenCL kernels with their respective arguments.
         """
         # Example: Setting up getNonBond kernel
-        self.getNonBond_kernel = self.program.getNonBond
+        self.getNonBond_kernel = self.prg.getNonBond
         self.getNonBond_kernel.set_arg(0, self.buffer_dict['atoms'])
         self.getNonBond_kernel.set_arg(1, self.buffer_dict['forces'])
         self.getNonBond_kernel.set_arg(2, self.buffer_dict['REQs'])
@@ -286,23 +289,22 @@ class MolecularDynamics:
         """Uploads data for all systems to the GPU."""
         for sys_idx in range(self.nSystems):
             self.pack_system(sys_idx, self.mmff_instances[sys_idx])
-        if self.verbose:
-            print("All systems uploaded to GPU.")
+        #if self.verbose:
+        print("All systems uploaded to GPU.")
 
     def setup_kernels(self):
-        self.getMMFFf4         = self.program.getMMFFf4
-        self.getNonBond        = self.program.getNonBond
-        self.updateAtomsMMFFf4 = self.program.updateAtomsMMFFf4
-        self.cleanForceMMFFf4  = self.program.cleanForceMMFFf4
-        if self.verbose:
-            print("Kernels set up.")
+        self.getMMFFf4         = self.prg.getMMFFf4
+        self.getNonBond        = self.prg.getNonBond
+        self.updateAtomsMMFFf4 = self.prg.updateAtomsMMFFf4
+        self.cleanForceMMFFf4  = self.prg.cleanForceMMFFf4
+        #if self.verbose:
+        print("Kernels set up.")
 
     def setup_run_ocl_opt(self):
-        mmff = self.mmff_instances[0]  # Assuming all instances are identical
         sz_loc    = (self.nloc, 1 )
-        sz_na   = ( clu.roundup_global_size( self.mmff.natoms, self.nloc), self.nSystems )
-        sz_node = ( clu.roundup_global_size( self.mmff.nnode,  self.nloc), self.nSystems )
-        sz_nvec = ( clu.roundup_global_size( self.mmff.nvecs,  self.nloc), self.nSystems )
+        sz_na   = ( clu.roundup_global_size( self.natoms, self.nloc), self.nSystems )
+        sz_node = ( clu.roundup_global_size( self.nnode,  self.nloc), self.nSystems )
+        sz_nvec = ( clu.roundup_global_size( self.nvecs,  self.nloc), self.nSystems )
 
         """
         // ======================================================================
@@ -333,12 +335,12 @@ class MolecularDynamics:
             const int bSubtractVdW
         ){
         """
-        global_size_mmff = (self.nSystems * mmff.nnode,)
+        global_size_mmff = (self.nSystems * self.nnode,)
         local_size_mmff = None  # Let OpenCL decide
         self.kernel_args_getMMFFf4 = [
             sz_node,
             (1,1), #sz_loc,
-            np.int32(mmff.nDOFs),
+            np.int32(self.nDOFs),
             *self.bufflist([
                 'atoms', 'aforces', 'fneigh', 'neighs', 'neighCell', 'REQs', 'apars',
                 'bLs', 'bKs', 'Ksp', 'Kpp',
@@ -371,12 +373,12 @@ class MolecularDynamics:
             const float4      GFFParams     // 9 // Grid-Force-Field parameters
         );
         """
-        global_size_nonbond = (self.nSystems * mmff.natoms,)
+        global_size_nonbond = (self.nSystems * self.natoms,)
         local_size_nonbond = None
         self.kernel_args_getNonBond = [
             sz_na,
             sz_loc,
-            np.array([mmff.natoms, mmff.nnode, 0, 0], dtype=np.int32),
+            np.array([self.natoms, self.nnode, 0, 0], dtype=np.int32),
             *self.bufflist(['atoms', 'aforces', 'REQs', 'neighs', 'neighCell', 'invLvec'])
         ]
 
@@ -400,7 +402,7 @@ class MolecularDynamics:
             __global float4*  sysbonds      // 14 // // contains parameters of bonds (constrains) with neighbor systems   {Lmin,Lmax,Kpres,Ktens}
         )
         """
-        global_size_update = (self.nSystems * mmff.nvecs,)
+        global_size_update = (self.nSystems * self.nvecs,)
         local_size_update  = self.nloc
         self.kernel_args_updateAtomsMMFFf4 = [
             sz_na,
@@ -419,7 +421,7 @@ class MolecularDynamics:
             __global float4*  fneigh       // 6
         ){
         """
-        global_size_clean = (self.nSystems * mmff.natoms,)
+        global_size_clean = (self.nSystems * self.natoms,)
         local_size_clean = None
         self.kernel_args_cleanForceMMFFf4 = [
             sz_nvec,
@@ -427,8 +429,8 @@ class MolecularDynamics:
             *self.bufflist(['aforces', 'fneigh'])
         ]
 
-        if self.verbose:
-            print("Kernel arguments prepared for optimization.")
+        #if self.verbose:
+        print("Kernel arguments prepared for optimization.")
 
     def run_ocl_opt(self, niter, Fconv=1e-6, nPerVFs=10):
         F2conv = Fconv ** 2
@@ -444,9 +446,11 @@ class MolecularDynamics:
                 #aforces = np.empty(self.nSystems * mmff.nvecs * 4, dtype=np.float32)
                 cl.enqueue_copy(self.queue, self.aforces, self.buffer_dict['aforces'])
                 F2max = np.max(np.sum( self.aforces**2, axis=1))
-                if self.verbose: print(f"Iteration {niterdone}: Max |F|^2 = {F2max}")
+                #if self.verbose: 
+                print(f"Iteration {niterdone}: Max |F|^2 = {F2max}")
                 if F2max < F2conv:
-                    if self.verbose: print(f"Converged after {niterdone} iterations.")
+                    #if self.verbose: 
+                    print(f"Converged after {niterdone} iterations.")
                     break
         if self.verbose and F2max >= F2conv: print(f"Did not converge after {niterdone} iterations. Final |F|^2 = {F2max}")
         return niterdone

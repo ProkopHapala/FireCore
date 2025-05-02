@@ -78,6 +78,20 @@ for ia in range(mmff.natoms):
 #exit()
 #cuMD.init( mol.natoms, mol.natoms, mol.natoms, 0, 0 )
 
+# Print MMFF dimensions to verify they are set correctly
+print(f"\nMMFF Dimensions before MD:\n  natoms: {mmff.natoms}\n  nvecs: {mmff.nvecs}\n  nnode: {mmff.nnode}\n  ncap: {mmff.ncap}\n  ntors: {mmff.ntors}")
+
+# Ensure MMFF dimensions are properly set if they are zero
+if mmff.natoms == 0 or mmff.nvecs == 0 or mmff.nnode == 0:
+    print("Fixing MMFF dimensions...")
+    # Set dimensions based on the molecule structure
+    mmff.natoms = mol.natoms  # Total atoms in the molecule
+    mmff.nvecs = mol.natoms   # Vector elements (typically same as natoms)
+    mmff.nnode = sum(mol.isNode)  # Number of nodes (atoms with configurations)
+    mmff.ncap = mol.natoms - mmff.nnode  # Capping atoms (non-nodes)
+    mmff.ntors = 0  # No torsions in this example
+    print(f"Fixed MMFF dimensions:\n  natoms: {mmff.natoms}\n  nvecs: {mmff.nvecs}\n  nnode: {mmff.nnode}\n  ncap: {mmff.ncap}\n  ntors: {mmff.ntors}")
+
 # Initialize MolecularDynamics with default nloc=32
 md = clMD.MolecularDynamics(nloc=32)
 
