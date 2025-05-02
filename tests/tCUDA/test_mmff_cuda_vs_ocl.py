@@ -7,10 +7,10 @@ from pyBall.AtomicSystem import AtomicSystem
 from pyBall.OCL import MMFF
 from pyBall.OCL.MMFF import AtomType, Bond, Dihedral
 
-from pyBall.OCL import cuMMFF            as cuMD
+#from pyBall.OCL import cuMMFF            as cuMD
 from pyBall.OCL import MolecularDynamics as clMD
 
-mol = AtomicSystem( "common_resources/xyz/CH2NH.xyz" )
+#mol = AtomicSystem( "common_resources/xyz/CH2NH.xyz" )
 
 # Define AtomType instances with npi and ne
 AtomTypeDict = {
@@ -72,7 +72,39 @@ for ia in range(mmff.natoms):
     mmff.printAtomConf(ia, mol)  # Replace 0 with desired atom index
 
 
-exit()
+# =========== Initialization of MMFF system
 
 
-cuMD.init( mol.natoms, mol.natoms, mol.natoms, 0, 0 )
+#exit()
+#cuMD.init( mol.natoms, mol.natoms, mol.natoms, 0, 0 )
+
+# Initialize MolecularDynamics with default nloc=32
+md = clMD.MolecularDynamics(nloc=32)
+
+# Allocate memory for 1 system (nSystems=1) using the MMFF template
+md.realloc(nSystems=1, mmff=mmff)
+
+# Pack the MMFF data into GPU buffers for system index 0
+md.pack_system(iSys=0, mmff=mmff)
+
+# Upload all system data to the GPU
+md.upload_all_systems()
+
+# Set up kernels with their arguments
+md.setup_kernels()
+md.setup_run_ocl_opt()
+
+# Run optimization for 100 iterations with force convergence of 1e-6
+print("\nRunning OpenCL optimization...")
+iter_done = md.run_ocl_opt(niter=100, Fconv=1e-6, nPerVFs=10)
+print(f"OpenCL optimization completed in {iter_done} iterations")
+
+# Download results from GPU
+final_pos, final_forces = md.download_results()
+print("\nFinal positions:")
+print(final_pos[0, :5, :3])  # Print positions of first 5 atoms
+print("\nFinal forces:")
+print(final_forces[0, :5, :3])  # Print forces of first 5 atoms
+
+# Skip CUDA implementation for now
+print("\nSkipping CUDA implementation comparison.")

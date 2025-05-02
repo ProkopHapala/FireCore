@@ -1,7 +1,7 @@
 import sys
 import os
 import numpy as np
-import ctypes
+
 import pyopencl as cl
 import pyopencl.array as cl_array
 import pyopencl.cltypes as cltypes
@@ -51,7 +51,7 @@ class MolecularDynamics:
 
     def __init__(self, nloc=32 ):
         self.nloc  = nloc
-        self.ctx   = cl.create_some_context()
+        self.ctx   = cl.create_some_context(answer=0)
         self.queue = cl.CommandQueue(self.ctx)
 
         self.grid  = None   # instance of GridShape, if initialized
