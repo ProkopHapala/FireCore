@@ -14,11 +14,11 @@ mol = AtomicSystem( "common_resources/xyz/CH2NH.xyz" )
 
 # Define AtomType instances with npi and ne
 AtomTypeDict = {
-    "C": AtomType(name="C", Kss=300.0, Asp=109.5, Ksp=100.0, Kpp=150.0, npi=0, ne=0),
-    "H": AtomType(name="H", Kss=200.0, Asp=109.5, Ksp=50.0, Kpp=75.0, npi=0, ne=0),
-    "O": AtomType(name="O", Kss=350.0, Asp=109.5, Ksp=120.0, Kpp=180.0, npi=0, ne=0),
-    "N": AtomType(name="N", Kss=350.0, Asp=109.5, Ksp=120.0, Kpp=180.0, npi=0, ne=0),
-    "E": AtomType(name="E", Kss=0.0, Asp=0.0, Ksp=0.0, Kpp=0.0, npi=0, ne=1)  # Electron pairs
+    "C": AtomType(name="C", Ruff= 0.757, Quff=1.912, Eaff=-4.528, Kss=300.0, Ass=109.5, Ksp=100.0, Kpp=150.0, npi=0, ne=0),
+    "H": AtomType(name="H", Ruff=0.354 , Quff=0.712, Eaff=-4.528, Kss=200.0, Ass=109.5, Ksp=50.0,  Kpp=75.0,  npi=0, ne=0),
+    "N": AtomType(name="N", Ruff=0.700 , Quff=2.544, Eaff=-6.899, Kss=350.0, Ass=109.5, Ksp=120.0, Kpp=180.0, npi=0, ne=0),
+    "O": AtomType(name="O", Ruff=0.658 , Quff=2.300, Eaff=-8.741, Kss=350.0, Ass=109.5, Ksp=120.0, Kpp=180.0, npi=0, ne=0),
+    "E": AtomType(name="E", Ruff=0.50  , Quff=0.0,   Eaff=0.0,    Kss=0.0,   Ass=0.0,   Ksp=0.0,   Kpp=0.0,   npi=0, ne=1)  # Electron pairs
 }
 
 mol = AtomicSystem(
@@ -46,9 +46,9 @@ print( "mol.ngs ", mol.ngs)
 
 
 # Set pi orbitals and electron pairs attributes after creation
-mol.npi_list = np.array([0, 0, 0, 0,0], dtype=np.int32)
-mol.nep_list = np.array([0, 0, 0, 0,0], dtype=np.int32)
-mol.isNode   = np.array([1, 0, 0, 0,0], dtype=np.int32)
+mol.npi_list = np.array([1, 1, 0, 0,0], dtype=np.int32)
+mol.nep_list = np.array([0, 1, 0, 0,0], dtype=np.int32)
+mol.isNode   = np.array([1, 1, 0, 0,0], dtype=np.int32)
 mol.REQs=np.array(
     [[1.5, 0.0, 0.0, 0.0],
     [1.0, 0.0, 0.0, 0.0],
