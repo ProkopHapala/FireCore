@@ -12,7 +12,6 @@
 // Use standard CUDA vector literals or initializer lists
 #define  float4Zero  make_float4(0.f,0.f,0.f,0.f)
 #define  float3Zero  make_float3(0.f,0.f,0.f)
-// Note: Original OpenCL had float2Zero defined as float3, fixed to float2
 #define  float2Zero  make_float2(0.f,0.f)
 
 #define R2SAFE          1e-4f
@@ -27,85 +26,108 @@
 #define XZ(v) make_float2((v).x,(v).z)
 
 // Dot product
-__device__ inline float dot(float3 a, float3 b) {
-    return a.x * b.x + a.y * b.y + a.z * b.z;
-}
-
-// Length
-__device__ inline float length(float3 v) {
-    return sqrtf(dot(v, v));
-}
-
-__device__ inline float3 normalize(float3 v) {
-    float len = length(v);
-    // Avoid division by zero
-    if (len > 1e-12f) { // Use a small threshold
-        float invLen = 1.0f / len;
-        return make_float3(v.x * invLen, v.y * invLen, v.z * invLen);
-    } else {
-        return make_float3(0.0f, 0.0f, 0.0f); // Or return a default vector
-    }
-}
+__device__ inline float dot(float3 a, float3 b) { return a.x * b.x + a.y * b.y + a.z * b.z; }
+__device__ inline float length(float3 v) { return sqrtf(dot(v, v)); }
+__device__ inline float3 normalize(float3 v) { float invLen = 1/length(v); return make_float3(v.x * invLen, v.y * invLen, v.z * invLen); }
 
 // Scalar multiplication
-__device__ inline float3 operator*(float3 v, float s) {
-    return make_float3(v.x * s, v.y * s, v.z * s);
-}
-__device__ inline float3 operator*(float s, float3 v) {
-    return make_float3(v.x * s, v.y * s, v.z * s);
-}
-__device__ inline float3& operator*=(float3& v, float s) {
-    v.x *= s; v.y *= s; v.z *= s;
-    return v;
-}
-__device__ inline float3 operator/(float3 v, float s) {
-    float invS = 1.0f / s; // Consider checking for s == 0 if necessary
-    return make_float3(v.x * invS, v.y * invS, v.z * invS);
-}
-__device__ inline float3& operator/=(float3& v, float s) {
-    float invS = 1.0f / s; // Consider checking for s == 0 if necessary
-    v.x *= invS; v.y *= invS; v.z *= invS;
-    return v;
-}
+__device__ inline float3  operator* (float3  v, float s  ){ return make_float3(v.x * s, v.y * s, v.z * s); }
+__device__ inline float3  operator* (float   s, float3 v ){ return make_float3(v.x * s, v.y * s, v.z * s); }
+__device__ inline float3& operator*=(float3& v, float s  ){ v.x *= s; v.y *= s; v.z *= s; return v;}
+__device__ inline float3  operator/ (float3  v, float s  ){ float invS = 1.0f/s; return make_float3(v.x * invS, v.y * invS, v.z * invS); }
+__device__ inline float3& operator/=(float3& v, float s  ){ float invS = 1.0f/s; v.x *= invS; v.y *= invS; v.z *= invS; return v; }
 
 // Vector addition/subtraction
-__device__ inline float3 operator+(float3 a, float3 b) {
-    return make_float3(a.x + b.x, a.y + b.y, a.z + b.z);
-}
-__device__ inline float3& operator+=(float3& a, const float3& b) {
-    a.x += b.x; a.y += b.y; a.z += b.z;
-    return a;
-}
-__device__ inline float3 operator-(float3 a, float3 b) {
-    return make_float3(a.x - b.x, a.y - b.y, a.z - b.z);
-}
-__device__ inline float3& operator-=(float3& a, const float3& b) {
-    a.x -= b.x; a.y -= b.y; a.z -= b.z;
-    return a;
-}
-
-// Element-wise multiplication
-__device__ inline float3 operator*(float3 a, float3 b) {
-    return make_float3(a.x * b.x, a.y * b.y, a.z * b.z);
-}
-
-// float4 operators (add only needed ones for now)
-__device__ inline float4& operator+=(float4& a, const float4& b) {
-    a.x += b.x; a.y += b.y; a.z += b.z; a.w += b.w;
-    return a;
-}
+__device__ inline float3  operator+ (float3  a,       float3  b) { return make_float3(a.x + b.x, a.y + b.y, a.z + b.z); }
+__device__ inline float3& operator+=(float3& a, const float3& b) { a.x += b.x; a.y += b.y; a.z += b.z; return a; }
+__device__ inline float3  operator- (float3  a,       float3  b) { return make_float3(a.x - b.x, a.y - b.y, a.z - b.z); }
+__device__ inline float3& operator-=(float3& a, const float3& b) { a.x -= b.x; a.y -= b.y; a.z -= b.z; return a; }
+__device__ inline float3  operator* (float3  a,       float3  b) { return make_float3(a.x * b.x, a.y * b.y, a.z * b.z); }
+__device__ inline float4& operator+=(float4& a, const float4& b) { a.x += b.x; a.y += b.y; a.z += b.z; a.w += b.w; return a; }
 
 // --- End Helper Functions ---
 
 // Use __device__ for functions callable from kernels
-__device__ inline float2 udiv_cmplx( float2 a, float2 b ){ return make_float2(  a.x*b.x + a.y*b.y,  a.y*b.x - a.x*b.y ); }
+__device__ inline float2 udiv_cmplx( float2 a, float2 b ){ return make_float2(a.x*b.x + a.y*b.y, a.y*b.x - a.x*b.y);  }
+__device__ inline float3 rotMat    ( float3 v, float3 a, float3 b, float3 c ){  return make_float3(dot(v,a), dot(v,b), dot(v,c));  }
+__device__ inline float3 rotMatT   ( float3 v, float3 a, float3 b, float3 c ){  return a*v.x + b*v.y + c*v.z;  }
+
+__device__ inline float evalAngCos( float4 hr1, float4 hr2, float K, float c0, float3* f1, float3* f2 ){
+    float  c = dot(make_float3(hr1.x,hr1.y,hr1.z), make_float3(hr2.x,hr2.y,hr2.z));
+    float3 hf1 = make_float3(hr2.x,hr2.y,hr2.z) - make_float3(hr1.x,hr1.y,hr1.z)*c;
+    float3 hf2 = make_float3(hr1.x,hr1.y,hr1.z) - make_float3(hr2.x,hr2.y,hr2.z)*c;
+    float c_   = c-c0;
+    float E    = K*c_*c_;
+    float fang = -K*c_*2;
+    hf1 *= fang*hr1.w;
+    hf2 *= fang*hr2.w;
+    *f1=hf1;
+    *f2=hf2;
+    return E;
+}
+
+__device__ inline float evalAngleCosHalf( float4 hr1, float4 hr2, float2 cs0, float k, float3* f1, float3* f2 ){
+    float3 h  = make_float3(hr1.x,hr1.y,hr1.z) + make_float3(hr2.x,hr2.y,hr2.z);
+    float  c2 = dot(h,h)*0.25f;
+    float  s2 = 1.f-c2 + 1e-7f;
+    float2 cso = make_float2(sqrtf(c2), sqrtf(s2));
+    float2 cs = udiv_cmplx(cs0, cso);
+    float  E  = k*(1 - cs.x);
+    float  fr = -k*cs.y;
+    c2 *= -2.f;
+    fr /= 4.f*cso.x*cso.y;
+    float fr1 = fr*hr1.w;
+    float fr2 = fr*hr2.w;
+    *f1 = h*fr1 + make_float3(hr1.x,hr1.y,hr1.z)*(fr1*c2);
+    *f2 = h*fr2 + make_float3(hr2.x,hr2.y,hr2.z)*(fr2*c2);
+    return E;
+}
+
+__device__ inline float evalPiAling( float3 h1, float3 h2, float K, float3* f1, float3* f2 ){
+    float c = dot(h1,h2);
+    float3 hf1 = h2 - h1*c;
+    float3 hf2 = h1 - h2*c;
+    bool sign = c<0; if(sign) c=-c;
+    float E = -K*c;
+    float fang = K;
+    if(sign) fang=-fang;
+    hf1 *= fang;
+    hf2 *= fang;
+    *f1=hf1;
+    *f2=hf2;
+    return E;
+}
+
+__device__ inline float evalBond( float3 h, float dl, float k, float3* f ){
+    float fr = dl*k;
+    *f = h * fr;
+    return fr*dl*0.5f;
+}
+
+__device__ inline float4 getLJQH( float3 dp, float4 REQ, float R2damp ){
+    float r2 = dot(dp,dp);
+    float ir2_ = 1.f/(r2 + R2damp);
+    float Ec = COULOMB_CONST*REQ.z*sqrtf(ir2_);
+    float ir2 = 1.f/r2;
+    float u2 = REQ.x*REQ.x*ir2;
+    float u6 = u2*u2*u2;
+    float vdW = u6*REQ.y;
+    float E = (u6-2.f)*vdW + Ec;
+    float fr = -12.f*(u6-1.f)*vdW*ir2 - Ec*ir2_;
+    return make_float4(dp.x*fr, dp.y*fr, dp.z*fr, E);
+}
 
 // --- Placeholder definitions for missing functions ---
 // IMPORTANT: Replace these with your actual CUDA implementations!
-__device__ inline float evalPiAling( float3 hpi, float3 hpi_ng, float kpp, float3* f1, float3* f2 ){ *f1=float3Zero; *f2=float3Zero; return 0.0f; }
-__device__ inline float evalAngCos( float4 hr1, float4 hr2, float K, float C0, float3* f1, float3* f2 ){ *f1=float3Zero; *f2=float3Zero; return 0.0f; }
-__device__ inline float evalAngleCosHalf( float4 hr1, float4 hr2, float2 cs0, float K, float3* f1, float3* f2 ){ *f1=float3Zero; *f2=float3Zero; return 0.0f; }
-__device__ inline float4 getLJQH( float3 dp, float4 REQij, float R2damp ){ return float4Zero; }
+// __device__ inline float evalPiAling( float3 hpi, float3 hpi_ng, float kpp, float3* f1, float3* f2 ){ *f1=float3Zero; *f2=float3Zero; return 0.0f; }
+// __device__ inline float evalAngCos( float4 hr1, float4 hr2, float K, float C0, float3* f1, float3* f2 ){ *f1=float3Zero; *f2=float3Zero; return 0.0f; }
+// __device__ inline float evalAngleCosHalf( float4 hr1, float4 hr2, float2 cs0, float K, float3* f1, float3* f2 ){ *f1=float3Zero; *f2=float3Zero; return 0.0f; }
+// __device__ inline float4 getLJQH( float3 dp, float4 REQij, float R2damp ){ return float4Zero; }
+// __device__ inline float evalBond(float3 h_xyz, float l, float bK, float3* f1) {
+//     float3 f1_xyz = h_xyz * bK * (l - 1.0f); // f = h_xyz * bK * (l - 1.0f)
+//     *f1 = f1_xyz;
+//     return 0.5f * bK * (l - 1.0f) * (l - 1.0f); // E = 0.5f * bK * (l - 1.0f) * (l - 1.0f)
+// }
 // --- End Placeholder definitions ---
 // ======================================================================
 // ======================================================================
@@ -145,8 +167,6 @@ __global__ void getMMFFf4(
 
     const int iG = blockIdx.x * blockDim.x + threadIdx.x; // index of atom
     const int iS = blockIdx.y * blockDim.y + threadIdx.y; // index of system
-    const int nG = gridDim.x * blockDim.x; // global size x
-    const int nS = gridDim.y * blockDim.y; // global size y
 
     const int nAtoms = nDOFs.x;  // number of atoms in the system
     const int nnode  = nDOFs.y;  // number of nodes in the system
@@ -184,10 +204,6 @@ __global__ void getMMFFf4(
     const float   ssS0_sq = par.y; // sin(ang0/2)
     const float   ssK     = par.z; // sigma-sigma stiffness
     const float   piC0    = par.w; // pi-sigma cos(ang0)
-
-    // Equilibrium cos(angle) for sigma-sigma is cos(2*ang0/2) = cos(ang0/2)^2 - sin(ang0/2)^2
-    const float ssCosAng0 = ssC0_sq*ssC0_sq - ssS0_sq*ssS0_sq; // Use the stored cos(ang0/2) and sin(ang0/2)
-
 
     for(int i=0; i<NNEIGH; i++){ fbs[i]=float3Zero; fps[i]=float3Zero; }   // clear recoil forces on neighbors
 
@@ -233,6 +249,13 @@ __global__ void getMMFFf4(
             h_xyz   *= h.w;            // normalize bond direction vector
             h.x = h_xyz.x; h.y = h_xyz.y; h.z = h_xyz.z; // Store back into float4
             hs[i]    = h;              // store bond direction vector (xyz) and inverse bond length (w)
+
+            // --- Evaluate bond-length stretching energy and forces
+            if(iG<ing){
+                E += evalBond(h_xyz, l-bL[i], bK[i], &f1);
+                fbs[i] -= f1;
+                fa += f1;
+            }
 
             // pi-pi alignment interaction - only evaluated if both atoms are nodes
             float kpp = Kppi[i];
@@ -343,7 +366,7 @@ __global__ void getMMFFf4(
 
     // ========= Save results - store forces on atoms and recoil on its neighbors
     // fneigh layout: [system][sigma/pi][node][neighbor]
-    // Index for sigma force on neighbor i of node iG in system iS: iS * nnode*8 + iG*8 + i
+    // Index for sigma force on neighbor i of node iG in system iS: iS * nnode*8 + iG*8 + j
     // Base index for sigma forces of node iG in system iS: iS * nnode*8 + iG*8
     const int sigma_fneigh_base_idx = iS * nnode * 8 + iG * 8;
 
@@ -415,7 +438,6 @@ __global__ void updateAtomsMMFFf4(
     if(iG>=nvec) return; // make sure we are not out of bounds of current system's vectors
 
     const int iS = blockIdx.y * blockDim.y + threadIdx.y; // index of system
-    const int nS = gridDim.y * blockDim.y; // number of systems
 
     const int iaa = iG + iS*natoms;  // index of atom in constr, constrK arrays (only first natoms elements per system are relevant)
     const int iav = iG + iS*nvec;    // index of current vector (atom or pi) in apos, avel, aforce, cvf arrays
@@ -493,7 +515,7 @@ __global__ void updateAtomsMMFFf4(
         for(int i=0; i<nMaxSysNeighs; i++){
             const int j_bond_idx = iS*nMaxSysNeighs + i; // index in sysneighs and sysbonds
             const int    jS      = sysneighs[j_bond_idx]; // index of neighbor system
-            if (jS < 0 || jS >= nS) continue; // Safety check
+            if (jS < 0) continue; // Safety check
 
             const float4 bj = sysbonds [j_bond_idx]; // {Lmin,Lmax,Kpres,Ktens}
             const float4 pj = apos[jS*nvec + iG]; // position of corresponding atom in neighbor system
@@ -612,7 +634,7 @@ __global__ void printOnGPU(
     const int isys  = n.z; // System index to print
     const int natoms= n.x;
     const int nnode = n.y;
-    const int nS_total = gridDim.y; // Total number of systems (if launched one block per system)
+    const int nS = gridDim.y; // Total number of systems (if launched one block per system)
 
     // Need total number of systems if fneigh indexing depends on it
     // Based on analysis of getMMFFf4, fneigh indexing might be:
@@ -620,7 +642,7 @@ __global__ void printOnGPU(
     // pi:    iS * nnode*8 + iG*8 + 4 + j
     // This implies total size nS * nnode * 8. Let's assume n.w contains the total number of systems used for fneigh sizing.
     // Or maybe the 'n' parameter is just for the system being printed? Let's assume the latter and the fneigh size/indexing is handled by host.
-    // If fneigh indexing uses total systems `nS_total`, we need that value. Let's add nS_total to n.w for clarity.
+    // If fneigh indexing uses total systems `nS`, we need that value. Let's add nS to n.w for clarity.
     const int nS_for_fneigh = n.w; // Assuming n.w is passed as total systems for fneigh indexing
 
     const int i0a = isys * natoms; // base index for atoms data (constr, REQKs, neighs, etc.)
@@ -631,15 +653,15 @@ __global__ void printOnGPU(
     if(mask.x){ // Print atom forces/positions/constraints
         printf("--- Atoms (%i -- %i) ---\n", i0v, i0v+natoms-1);
         for(int i=0; i<natoms; i++){
-            int ia_constr_idx = i + i0a; // index for constr (indexed by natoms)
-            int ia_vec_idx    = i + i0v; // index for vector data (indexed by nvec)
-            printf( "CUDA[%i|isys=%i] i_vec=%i, i_atom=%i :: ", i, isys, ia_vec_idx, ia_constr_idx );
-            //printf( "bkngs{%2i,%2i,%2i,%2i} ",         bkNeighs[ia_vec_idx].x, bkNeighs[ia_vec_idx].y, bkNeighs[ia_vec_idx].z, bkNeighs[ia_vec_idx].w );
-            printf( "aforce{%6.3f,%6.3f,%6.3f,%6.3f} ", aforce[ia_vec_idx].x, aforce[ia_vec_idx].y, aforce[ia_vec_idx].z, aforce[ia_vec_idx].w );
-            //printf(  "avel{%6.3f,%6.3f,%6.3f,%6.3f} ", avel[ia_vec_idx].x, avel[ia_vec_idx].y, avel[ia_vec_idx].z, avel[ia_vec_idx].w );
-            printf(  "apos{%6.3f,%6.3f,%6.3f,%6.3f} ", apos[ia_vec_idx].x, apos[ia_vec_idx].y, apos[ia_vec_idx].z, apos[ia_vec_idx].w );
+            int ia = i + i0a; // index for constr (indexed by natoms)
+            int iv = i + i0v; // index for vector data (indexed by nvec)
+            printf( "CUDA[%i|isys=%i] i_vec=%i, i_atom=%i :: ", i, isys, iv, ia );
+            //printf( "bkngs{%2i,%2i,%2i,%2i} ",         bkNeighs[iv].x, bkNeighs[iv].y, bkNeighs[iv].z, bkNeighs[iv].w );
+            printf( "aforce{%6.3f,%6.3f,%6.3f,%6.3f} ", aforce[iv].x, aforce[iv].y, aforce[iv].z, aforce[iv].w );
+            //printf(  "avel{%6.3f,%6.3f,%6.3f,%6.3f} ", avel[iv].x, avel[iv].y, avel[iv].z, avel[iv].w );
+            printf(  "apos{%6.3f,%6.3f,%6.3f,%6.3f} ", apos[iv].x, apos[iv].y, apos[iv].z, apos[iv].w );
             if (i < natoms) { // constr is only for atoms
-               printf(  "constr{%6.3f,%6.3f,%6.3f,%6.3f} ", constr[ia_constr_idx].x, constr[ia_constr_idx].y, constr[ia_constr_idx].z, constr[ia_constr_idx].w );
+               printf(  "constr{%6.3f,%6.3f,%6.3f,%6.3f} ", constr[ia].x, constr[ia].y, constr[ia].z, constr[ia].w );
             }
             printf( "\n" );
         }
@@ -647,11 +669,11 @@ __global__ void printOnGPU(
     if(mask.y){ // Print pi forces/positions
         printf("--- Pi Orbitals (%i -- %i) ---\n", i0v+natoms, i0v+(natoms+nnode)-1);
         for(int i=0; i<nnode; i++){ // Pi orbitals are associated with node atoms
-            int i_pi_vec_idx = i + natoms + i0v; // index for pi-orbital vector data
-            printf( "CUDA[%i|isys=%i] i_vec=%i :: ", i, isys, i_pi_vec_idx );
-            printf(  "aforce_pi{%6.3f,%6.3f,%6.3f,%6.3f} ", aforce[i_pi_vec_idx].x, aforce[i_pi_vec_idx].y, aforce[i_pi_vec_idx].z, aforce[i_pi_vec_idx].w );
-            //printf(  "avel_pi{%6.3f,%6.3f,%6.3f,%6.3f} ", avel[i_pi_vec_idx].x, avel[i_pi_vec_idx].y, avel[i_pi_vec_idx].z, avel[i_pi_vec_idx].w );
-            printf(   "apos_pi{%6.3f,%6.3f,%6.3f,%6.3f} ", apos[i_pi_vec_idx].x, apos[i_pi_vec_idx].y, apos[i_pi_vec_idx].z, apos[i_pi_vec_idx].w );
+            int ipi = i + natoms + i0v; // index for pi-orbital vector data
+            printf( "CUDA[%i|isys=%i] i_vec=%i :: ", i, isys, ipi );
+            printf(  "aforce_pi{%6.3f,%6.3f,%6.3f,%6.3f} ", aforce[ipi].x, aforce[ipi].y, aforce[ipi].z, aforce[ipi].w );
+            //printf(  "avel_pi{%6.3f,%6.3f,%6.3f,%6.3f} ", avel[ipi].x, avel[ipi].y, avel[ipi].z, avel[ipi].w );
+            printf(   "apos_pi{%6.3f,%6.3f,%6.3f,%6.3f} ", apos[ipi].x, apos[ipi].y, apos[ipi].z, apos[ipi].w );
             printf( "\n" );
         }
     }
@@ -660,13 +682,13 @@ __global__ void printOnGPU(
         // Based on getMMFFf4 layout: fneigh[ iS * nnode*8 + iG*8 + sigma/pi*4 + neigh_idx ]
         for(int i=0; i<nnode; i++){ // loop over nodes
             // Get base index for this node's recoil forces in this system
-            const int fneigh_node_base_idx = isys * nnode * 8 + i * 8;
+            const int ingf = isys * nnode * 8 + i * 8;
             for(int j=0; j<4; j++){ // loop over neighbors
-                int sigma_idx = fneigh_node_base_idx + j;
-                int pi_idx    = fneigh_node_base_idx + 4 + j;
+                int isigma = ingf + j;
+                int ipi    = ingf + 4 + j;
                 printf( "CUDA[node%i,neigh%i|isys=%i] :: ", i, j, isys );
-                printf( "fneigh_sigma{%6.3f,%6.3f,%6.3f,%6.3f} ", fneigh[sigma_idx].x, fneigh[sigma_idx].y, fneigh[sigma_idx].z, fneigh[sigma_idx].w );
-                printf( "fneigh_pi{%6.3f,%6.3f,%6.3f,%6.3f} ", fneigh[pi_idx].x, fneigh[pi_idx].y, fneigh[pi_idx].z, fneigh[pi_idx].w );
+                printf( "fneigh_sigma{%6.3f,%6.3f,%6.3f,%6.3f} ", fneigh[isigma].x, fneigh[isigma].y, fneigh[isigma].z, fneigh[isigma].w );
+                printf( "fneigh_pi{%6.3f,%6.3f,%6.3f,%6.3f} ", fneigh[ipi].x, fneigh[ipi].y, fneigh[ipi].z, fneigh[ipi].w );
                 printf( "\n" );
             }
         }
@@ -692,7 +714,6 @@ __global__ void cleanForceMMFFf4(
     const int nvec   = natoms+nnode;
     const int iG     = blockIdx.x * blockDim.x + threadIdx.x; // index of vector (atom or pi)
     const int iS     = blockIdx.y * blockDim.y + threadIdx.y; // index of system
-    const int nS     = gridDim.y * blockDim.y; // total systems
 
     const int iav = iG + iS*nvec; // global index in aforce
 
@@ -755,11 +776,7 @@ __global__ void getNonBond(
     extern __shared__ float4 LCLJS[];  // Shared memory for parameters
 
     const int iG = blockIdx.x * blockDim.x + threadIdx.x; // index of atom
-    const int nG = gridDim.x * blockDim.x; // total atoms across all systems (if launch covers all atoms)
     const int iS = blockIdx.y * blockDim.y + threadIdx.y; // index of system
-    const int nS = gridDim.y * blockDim.y; // number of systems
-    const int iL = threadIdx.x; // index of atom within the thread block
-    const int nL = blockDim.x; // size of the thread block
 
     const int natoms=ns.x;  // number of atoms PER SYSTEM
     const int nnode =ns.y;  // number of node atoms PER SYSTEM
@@ -776,7 +793,7 @@ __global__ void getNonBond(
                                        // Let's assume 'atoms' is 'apos' subset for atoms (0..natoms-1 per system)
                                        // and 'forces' is 'aforce' subset for atoms.
                                        // This means indices should be iS*natoms + iG. Let's fix.
-    const int iaa_global = iG + iS*natoms; // index of current atom in GLOBAL arrays (atoms, forces, REQKs, neighs, neighCell)
+    const int iaa = iG + iS*natoms; // index of current atom in GLOBAL arrays (atoms, forces, REQKs, neighs, neighCell)
 
     // Check if this thread corresponds to a valid atom index (0..natoms-1 within its system slice)
     // If launch grid covers more than natoms * nS, many threads will be invalid.
@@ -799,10 +816,10 @@ __global__ void getNonBond(
     float3 posi  = float3Zero;
     float4 posi4 = float4Zero; // Store original float4 for shared memory
     if (iG < natoms) {
-        ng    = neighs   [iaa_global];
-        ngC   = neighCell[iaa_global];
-        REQKi = REQKs    [iaa_global];
-        posi  = XYZ(atoms [iaa_global]); // Use XYZ macro
+        ng    = neighs   [iaa];
+        ngC   = neighCell[iaa];
+        REQKi = REQKs    [iaa];
+        posi  = XYZ(atoms [iaa]); // Use XYZ macro
     }
 
     const Mat3 lvec = lvecs[iS]; // lattice vectors for this system
@@ -822,27 +839,27 @@ __global__ void getNonBond(
 
     // Let's use a standard 3x3 loop over images ix, iy = -1, 0, 1. Total 9 images.
     // ipbc index 0..8 mapped from (ix, iy) pair. e.g., ipbc = (iy+1)*3 + (ix+1)
-    const int ipbc_neighbor_base = 4; // (0,0) image index is (0+1)*3 + (0+1) = 4
+    //const int ipbc_neighbor_base = 4; // (0,0) image index is (0+1)*3 + (0+1) = 4
 
     // ========= Atom-to-Atom interaction in chunks
-    for (int j0=0; j0<natoms; j0+=nL){ // loop over all atoms in the system, by chunks of size of local memory
+    for (int j0=0; j0<natoms; j0+=blockDim.x){ // loop over all atoms in the system, by chunks of size of local memory
         // Read a chunk of atom data into shared memory
-        int src_idx_j = j0 + iL + iS*natoms; // Global index for source atom j
-        if (j0 + iL < natoms) { // Ensure we don't read out of bounds
-             LATOMS[iL] = atoms [src_idx_j]; // atoms is float4*
-             LCLJS [iL] = REQKs [src_idx_j];
+        int src_idx_j = j0 + threadIdx.x + iS*natoms; // Global index for source atom j
+        if (j0 + threadIdx.x < natoms) { // Ensure we don't read out of bounds
+             LATOMS[threadIdx.x] = atoms [src_idx_j]; // atoms is float4*
+             LCLJS [threadIdx.x] = REQKs [src_idx_j];
         } else {
              // Initialize with dummy data if out of bounds, or rely on check inside inner loop
-             LATOMS[iL] = make_float4(1e18f, 1e18f, 1e18f, 0.f); // Large position to ensure large r2
-             LCLJS[iL] = float4Zero;
+             LATOMS[threadIdx.x] = make_float4(1e18f, 1e18f, 1e18f, 0.f); // Large position to ensure large r2
+             LCLJS[threadIdx.x] = float4Zero;
         }
         __syncthreads(); // Wait for all threads in the block to load data
 
         // Compute forces between atom i (this thread) and atoms j in the shared memory chunk
         if (iG < natoms) { // Only compute for valid atom i
-            for (int jl=0; jl<nL; jl++){    // loop over all atoms in local memory (like 32 atoms)
-                const int ja_system_idx = j0+jl; // index of atom j within the current system (0..natoms-1)
-                if (ja_system_idx >= natoms) continue; // Ensure atom j is valid
+            for (int jl=0; jl<blockDim.x; jl++){    // loop over all atoms in local memory (like 32 atoms)
+                const int ja = j0+jl; // index of atom j within the current system (0..natoms-1)
+                if (ja >= natoms) continue; // Ensure atom j is valid
 
                 const float4 aj4 = LATOMS[jl];    // read atom position from local memory
                 const float3 aj = XYZ(aj4); // Use XYZ macro
@@ -868,12 +885,12 @@ __global__ void getNonBond(
 
 
                 // Exclude interaction if bonded or same atom
-                // ja_system_idx is index 0..natoms-1 for atom j in the current system
+                // ja is index 0..natoms-1 for atom j in the current system
                 // iG is index 0..natoms-1 for atom i in the current system
-                // If iG == ja_system_idx, it's the same atom.
-                const bool bSameAtom = (ja_system_idx == iG);
+                // If iG == ja, it's the same atom.
+                const bool bSameAtom = (ja == iG);
                 // Check if atom j is a direct neighbor of atom i
-                const bool bBonded = ((ja_system_idx == ng.x)||(ja_system_idx == ng.y)||(ja_system_idx == ng.z)||(ja_system_idx == ng.w));
+                const bool bBonded = ((ja == ng.x)||(ja == ng.y)||(ja == ng.z)||(ja == ng.w));
 
                 // Loop over PBC images
                 // Standard 3x3 grid in XY (ix, iy = -1, 0, 1)
@@ -889,7 +906,7 @@ __global__ void getNonBond(
                     float3 dp_base = aj - posi; // vector from atom i to atom j in the origin cell
 
                     if(bPBC){ // If PBC is enabled
-                        int ipbc = 0; // image index 0..8 (for 3x3 grid)
+                        //int ipbc = 0; // image index 0..8 (for 3x3 grid)
                         for(int iy=0; iy<3; iy++){ // Loop over Y images (-1, 0, 1) -> Map iy to -1,0,1
                             int shift_iy = iy - 1;
                             for(int ix=0; ix<3; ix++){ // Loop over X images (-1, 0, 1) -> Map ix to -1,0,1
@@ -914,14 +931,14 @@ __global__ void getNonBond(
                                 // Assuming ipbc = iy_opencl*3 + ix_opencl, where ix_opencl, iy_opencl are 0..2.
                                 // And ix = ix_opencl - 1, iy = iy_opencl - 1. So ix_opencl = ix + 1, iy_opencl = iy + 1.
                                 // ipbc_opencl = (iy+1)*3 + (ix+1);
-                                int ipbc_opencl = (shift_iy+1)*3 + (shift_ix+1);
+                                int ipbc_ = (shift_iy+1)*3 + (shift_ix+1);
 
                                 if( !( bBonded &&                     // if atoms are bonded, we do not want to calculate non-covalent interaction between them
                                         (
-                                            ((ja_system_idx==ng.x)&&(ipbc_opencl==ngC.x)) || // check if this image corresponds to a bonded neighbor's cell
-                                            ((ja_system_idx==ng.y)&&(ipbc_opencl==ngC.y)) ||
-                                            ((ja_system_idx==ng.z)&&(ipbc_opencl==ngC.z)) ||
-                                            ((ja_system_idx==ng.w)&&(ipbc_opencl==ngC.w))
+                                            ((ja==ng.x)&&(ipbc_==ngC.x)) || // check if this image corresponds to a bonded neighbor's cell
+                                            ((ja==ng.y)&&(ipbc_==ngC.y)) ||
+                                            ((ja==ng.z)&&(ipbc_==ngC.z)) ||
+                                            ((ja==ng.w)&&(ipbc_==ngC.w))
                                         )
                                     )
                                 ){
@@ -949,10 +966,10 @@ __global__ void getNonBond(
         // Let's trust the cleanForce clears aforce for atoms, so adding is correct here.
         // Need to use atomicAdd for safety if multiple threads could write to the same location,
         // but with 1 atom per thread, it's not needed. Let's add directly.
-        atomicAdd(&forces[iaa_global].x, fe.x); // Use iaa_global for forces indexed by natoms
-        atomicAdd(&forces[iaa_global].y, fe.y);
-        atomicAdd(&forces[iaa_global].z, fe.z);
-        // forces[iaa_global].w = 0.0f; // Don't touch w component if used for energy/charge/mass
+        atomicAdd(&forces[iaa].x, fe.x); // Use iaa for forces indexed by natoms
+        atomicAdd(&forces[iaa].y, fe.y);
+        atomicAdd(&forces[iaa].z, fe.z);
+        // forces[iaa].w = 0.0f; // Don't touch w component if used for energy/charge/mass
     }
 }
 

@@ -1,12 +1,10 @@
 import numpy as np
-
-import numpy as np
 import math
 
 # Constants (Define these based on your simulation requirements)
 Lepair = 1.5    # Example bond length for electron pairs
 Kepair = 100.0  # Example bond stiffness for electron pairs
-deg2rad = math.pi / 180.0
+deg2rad = np.pi / 180.0
 
 class AtomType:
     """
@@ -192,6 +190,63 @@ class MMFF:
                             self.back_neighs[ia, k] = ib
                             break
 
+    # def has_configuration(self, atomic_system, atom_index):
+    #     """
+    #     Determine if an atom has a valid configuration based on bonds, npi_list, and nep_list.
+        
+    #     Parameters:
+    #     - atomic_system (AtomicSystem): The atomic system containing all data.
+    #     - atom_index (int): Index of the atom to check.
+        
+    #     Returns:
+    #     - bool: True if the atom has a configuration, False otherwise.
+    #     """
+    #     # Check if the atom appears in any bonds
+    #     for bond in atomic_system.bonds:
+    #         if bond.i == atom_index or bond.j == atom_index:
+    #             return True
+                
+    #     # Check if atom has pi orbitals or electron pairs
+    #     if hasattr(atomic_system, 'npi_list') and atom_index < len(atomic_system.npi_list):
+    #         if atomic_system.npi_list[atom_index] > 0:
+    #             return True
+                
+    #     if hasattr(atomic_system, 'nep_list') and atom_index < len(atomic_system.nep_list):
+    #         if atomic_system.nep_list[atom_index] > 0:
+    #             return True
+                
+    #     return False
+        
+    # def getAtom_ne(self, atom_index, atomic_system):
+    #     """
+    #     Get the number of electron pairs for an atom.
+        
+    #     Parameters:
+    #     - atom_index (int): Index of the atom.
+    #     - atomic_system (AtomicSystem): The atomic system containing all data.
+        
+    #     Returns:
+    #     - int: Number of electron pairs.
+    #     """
+    #     if hasattr(atomic_system, 'nep_list') and atom_index < len(atomic_system.nep_list):
+    #         return atomic_system.nep_list[atom_index]
+    #     return 0
+        
+    # def getAtom_npi(self, atom_index, atomic_system):
+    #     """
+    #     Get the number of pi orbitals for an atom.
+        
+    #     Parameters:
+    #     - atom_index (int): Index of the atom.
+    #     - atomic_system (AtomicSystem): The atomic system containing all data.
+        
+    #     Returns:
+    #     - int: Number of pi orbitals.
+    #     """
+    #     if hasattr(atomic_system, 'npi_list') and atom_index < len(atomic_system.npi_list):
+    #         return atomic_system.npi_list[atom_index]
+    #     return 0
+        
     def toMMFFsp3_loc(self, atomic_system, AtomTypeDict, bRealloc=True, bEPairs=True, bUFF=False):
         """
         Converts an AtomicSystem to the MMFFsp3_loc representation.
@@ -203,36 +258,59 @@ class MMFF:
         - bEPairs (bool): Flag to include electron pairs.
         - bUFF (bool): Flag to use UFF parameters.
         """
-        ang0s = [109.5 * math.pi / 180.0, 120.0 * math.pi / 180.0, 180.0 * math.pi / 180.0]  # in radians
+        ang0s = [109.5 * np.pi / 180.0, 120.0 * np.pi / 180.0, 180.0 * np.pi / 180.0]  # in radians
 
         nAmax = len(atomic_system.apos)
         nCmax = len(atomic_system.ngs)  # Assuming 'ngs' is a list of neighbor lists per atom
+
+        ngs  = atomic_system.ngs
+        
+        if isinstance(ngs[0], dict):
+            print( "!!!!!!!!!!! CONVERT FROM DICT TO ARRAY !!!!!!!!!!!!" )
+            ngs_ = np.empty((nCmax,4), dtype=np.int32)
+            ngbs = np.empty((nCmax,4), dtype=np.int32)
+            ngs_[:,:]=-1
+            for ia, ng in enumerate(ngs):
+                i = 0
+                for k, v in ng.items():
+                    ngbs[ia,i] = v # neigh bond
+                    ngs_[ia,i] = k # neigh atom
+                    i += 1
+            ngs = ngs_
+
+        
         npi_total, ne_total = self.countPiE(atomic_system)
         if not bEPairs:
             ne_total = 0
-        nconf = nCmax
-        ncap = nAmax - nconf
+        
+        # Treat all atoms as configuration atoms in this test case
+        nconf = nAmax  # All atoms are configuration atoms
+        ncap = 0       # No capping atoms
         nb = len(atomic_system.bonds)
+        
+        if self.verbosity > 0:
+            print(f"Modified nconf to {nconf} (all atoms) and ncap to {ncap}")
 
         if self.verbosity > 0:
             print(f"MM::Builder::toMMFFsp3_loc() nconf {nconf} ncap {ncap} npi {npi_total} ne {ne_total}")
 
-        ntors = len(atomic_system.dihedrals) if self.bTorsion else 0
+        ntors = 0
         if bRealloc:
             self.realloc(nnode=nconf, ncap=ncap + ne_total, ntors=ntors)
 
-        if self.bTorsion:
-            for i in range(self.ntors):
-                dih = atomic_system.dihedrals[i]
-                # Assuming dih.atoms is a tuple/list of four atom indices
-                # Store the first atom index for tors2atom as per C++ code
-                self.tors2atom[i] = dih.atoms[0]
-                self.torsParams[i] = np.array([
-                    math.cos(dih.a0),
-                    math.sin(dih.a0),
-                    dih.k,
-                    float(dih.n)
-                ], dtype=np.float32)
+        # ntors = len(atomic_system.dihedrals) if self.bTorsion else 0
+        # if self.bTorsion:
+        #     for i in range(self.ntors):
+        #         dih = atomic_system.dihedrals[i]
+        #         # Assuming dih.atoms is a tuple/list of four atom indices
+        #         # Store the first atom index for tors2atom as per C++ code
+        #         self.tors2atom[i] = dih.atoms[0]
+        #         self.torsParams[i] = np.array([
+        #             np.cos(dih.a0),
+        #             np.sin(dih.a0),
+        #             dih.k,
+        #             float(dih.n)
+        #         ], dtype=np.float32)
 
         # Assign atom types and positions
         etyp = AtomTypeDict.get("E", None)
@@ -246,6 +324,8 @@ class MMFF:
         self.Ksp[:] = 0.0
         self.Kpp[:] = 0.0
 
+        isNode = atomic_system.isNode
+
         # Assign positions and types
         for ia in range(nAmax):
             A_pos = atomic_system.apos[ia]
@@ -258,13 +338,12 @@ class MMFF:
             self.apos[ia] = A_pos.astype(np.float32)
             self.atypes[ia] = A_type_index
 
-            if atomic_system.iconf[ia] >= 0:
+            if isNode[ia] > 0:
                 # Assign parameters
-                conf_index = atomic_system.iconf[ia]
-                # Assuming 'ngs' is a list of neighbor indices per atom
-                conf_nbond = len(atomic_system.ngs[ia])
+                conf_index = 0  # Default configuration index, no longer using iconf
+                # Try to get neighbors for this atom, if available
                 conf_npi = atom_type.npi
-                conf_ne = atom_type.ne
+                conf_ne  = atom_type.ne
 
                 if conf_npi > 2:
                     print(f"ERROR in MM::Builder::toMMFFsp3_loc(): atom[{ia}].conf.npi({conf_npi}) > 2 => exit()")
@@ -279,17 +358,22 @@ class MMFF:
                 self.apars[ia, 2] = atom_type.Kss * 4.0  # ssK
                 self.apars[ia, 3] = math.sin(atom_type.Asp * deg2rad)  # piC0
 
-                # Setup neighbors
-                ngs = atomic_system.ngs[ia]  # Neighbor list for atom ia
+                ngi = ngs[ia]
+                nbond = len(ngi)
+                if self.verbosity > 0: print( "nbond", nbond )
+                # Setup neighbors - ngs is already populated above
                 hs = np.zeros((4, 3), dtype=np.float32)
-                for k in range(conf_nbond):
-                    if k >= len(ngs):
-                        break
-                    ib = ngs[k]
-                    if ib < 0 or ib >= nAmax:
+                for k in range(nbond):
+                    ja = ngi[k]  # ja is the atom index of the neighbor
+                    print( "ia,ja", ia,ja )
+                    if ja < 0 or ja >= nAmax:
                         continue
-                    bond = atomic_system.bonds[ib]
-                    ja = bond.get_neighbor_atom(ia)
+                        
+                    # Find the bond between atoms ia and ja
+                    bond_index = ngbs[ia][k]
+
+                        
+                    bond = atomic_system.bonds[bond_index]
                     Aj = atomic_system.apos[ja]
                     jtyp_ename = atomic_system.enames[ja]
                     jtyp = AtomTypeDict.get(jtyp_ename, None)
@@ -308,13 +392,13 @@ class MMFF:
                     self.neighs[ia, k] = ja
 
                     # Assign bond parameters
-                    rij, kij = self.assignBondParamsUFF(ib, atomic_system, AtomTypeDict)
+                    rij, kij = self.assignBondParamsUFF(bond_index, ia, ja, atomic_system, AtomTypeDict)
                     self.bLs[ia, k] = rij
                     self.bKs[ia, k] = kij
 
                     if bUFF:
                         # Assign bond parameters using UFF
-                        rij, kij = self.assignBondParamsUFF(ib, atomic_system, AtomTypeDict)
+                        rij, kij = self.assignBondParamsUFF(ibond_index, ia, ja, atomic_system, AtomTypeDict)
                         self.bLs[ia, k] = rij
                         self.bKs[ia, k] = kij
 
@@ -325,34 +409,35 @@ class MMFF:
                         self.Ksp[ia, k] = 0.0
 
                     # Assign Kpp
-                    nej = self.getAtom_ne(ja, atomic_system)
-                    npij = self.getAtom_npi(ja, atomic_system)
+                    nej  = atomic_system.nep_list[ja]
+                    npij = atomic_system.npi_list[ja]
                     if atom_type.Kpp > 0 and jtyp.Kpp > 0:
                         self.Kpp[ia, k] = math.sqrt(atom_type.Kpp * jtyp.Kpp)
                     else:
                         self.Kpp[ia, k] = 0.0
 
                 # Setup configuration geometry based on bonds
-                hs_filled = self.makeConfGeom(nb=conf_nbond, npi=conf_npi)
+                
+                hs_filled = self.makeConfGeom(nb=nbond, npi=conf_npi)
                 # hs_filled is a (4,3) array; assign pi-orbital orientations
-                if conf_nbond < 4:
+                if nbond < 4:
                     # Fill remaining hs with existing directions
-                    for idx in range(conf_nbond, 4):
+                    for idx in range(nbond, 4):
                         hs_filled[idx] = hs[idx]  # Existing bond directions or zeros
                 self.pipos[ia] = hs_filled[3]  # Assign the fourth direction as pi orientation
 
                 if bEPairs:
                     # Generate electron pairs
-                    for k in range(conf_nbond, conf_nbond + conf_ne):
+                    for k in range(nbond, nbond + conf_ne):
                         if k >= 4:
                             print(f"WARNING: Atom {ia} has more than 4 neighbors; additional electron pairs are ignored.")
                             break
-                        ie = nconf + ncap + k - conf_nbond
+                        ie = nconf + ncap + k - nbond
                         if ie >= self.nvecs:
                             print(f"ERROR: Electron pair index {ie} exceeds nvecs {self.nvecs}.")
                             continue
                         self.neighs[ia, k] = ie
-                        self.apos[ie] = self.apos[ia] + hs_filled[k - conf_nbond] * Lepair
+                        self.apos[ie] = self.apos[ia] + hs_filled[k - nbond] * Lepair
                         self.atypes[ie] = AtomTypeDict["E"].name  # Assuming 'E' is the type index for electron pairs
                         self.bKs[ia, k] = Kepair
                         self.bLs[ia, k] = Lepair
@@ -361,7 +446,7 @@ class MMFF:
                         else:
                             self.Ksp[ia, k] = 0.0
    
-    def assignBondParamsUFF(self, ib, atomic_system, AtomTypeDict):
+    def assignBondParamsUFF(self, ib, ai, aj, atomic_system, AtomTypeDict):
         """
         Assigns bond parameters using UFF (Universal Force Field).
 
@@ -374,13 +459,14 @@ class MMFF:
         - (float, float): Tuple of bond length (rij) and bond stiffness (kij).
         """
         bond = atomic_system.bonds[ib]
-        ai = bond.i
-        aj = bond.j
-        if atomic_system.iconf[ai] >= 0:
+        isNode = atomic_system.isNode
+        # ai = bond.i
+        # aj = bond.j
+        if isNode[ai]:
             npi = atomic_system.npi_list[ai]
         else:
             npi = 0
-        if atomic_system.iconf[aj] >= 0:
+        if isNode[aj]:
             npj = atomic_system.npi_list[aj]
         else:
             npj = 0

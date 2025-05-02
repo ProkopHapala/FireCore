@@ -24,6 +24,7 @@ if(WITH_CUDA)
     set(CMAKE_CUDA_FLAGS_INIT "${CMAKE_CUDA_FLAGS_INIT} -allow-unsupported-compiler")
     project(SimpleSimulationEngine LANGUAGES C CXX) # Keep project simple first
     enable_language(CUDA)                          # Enable CUDA language support
+    set(CMAKE_SHARED_LINKER_FLAGS "${CMAKE_SHARED_LINKER_FLAGS} -lstdc++")
     message(STATUS "CUDA language enabled.")
 else()
     project(SimpleSimulationEngine LANGUAGES C CXX)

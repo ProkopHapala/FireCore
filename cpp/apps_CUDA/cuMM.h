@@ -4,11 +4,14 @@
 #include <cuda_runtime.h>
 #include <vector_types.h>
 #include <string>
-#include <vector>
-#include <unordered_map>
-#include <cstdio>
-#include <cstdlib>
-#include <stdexcept>
+// #include <vector>
+// #include <unordered_map>
+// #include <cstdio>
+// #include <cstdlib>
+// #include <stdexcept>
+
+#include "containers.h"
+
 
 // --- Mat3 Definition ---
 // #ifndef MAT3_DEFINED
@@ -30,26 +33,24 @@ static void HandleErrorCUMM(cudaError_t err, const char *file, int line) {
 #define CUDA_CHECK_MM(err) (HandleErrorCUMM(err, __FILE__, __LINE__))
 #endif
 
-// --- CudaBuffer Struct ---
 // Contains pointer and metadata for a single GPU buffer
-struct CudaBuffer {
-    void* ptr = nullptr;        // Raw device pointer
-    size_t nBytes = 0;          // Total allocated size in bytes
-    size_t elemSize = 0;        // Size of a single element
-    size_t count = 0;           // Number of elements allocated
+struct Buffer{
+    void*  ptr      = nullptr;   // Raw device pointer
+    size_t nBytes   = 0;         // Total allocated size in bytes
+    size_t elemSize = 0;         // Size of a single element
+    size_t count    = 0;         // Number of elements allocated
 
-    CudaBuffer() = default;
-    CudaBuffer(void* p, size_t nb, size_t es, size_t c)
-        : ptr(p), nBytes(nb), elemSize(es), count(c) {}
+    Buffer() = default;
+    Buffer(void* p, size_t nb, size_t es, size_t c) : ptr(p), nBytes(nb), elemSize(es), count(c) {}
 
     // Free the CUDA memory associated with this buffer
     void free() {
         if (ptr) {
             cudaFree(ptr);
-            ptr = nullptr;
-            nBytes = 0;
+            ptr      = nullptr;
+            nBytes   = 0;
             elemSize = 0;
-            count = 0;
+            count    = 0;
         }
     }
 
@@ -61,8 +62,7 @@ struct CudaBuffer {
 };
 
 
-class CU_MM {
-private:
+class CU_MM { public:
     // --- Internal State ---
     bool initialized = false;
 
@@ -75,8 +75,10 @@ private:
     int nMaxSysNeighs = 0;
 
     // --- Buffer Management ---
-    // Map buffer name to its CudaBuffer struct
-    std::unordered_map<std::string, CudaBuffer> buffers;
+    // Map buffer name to its Buffer struct
+    // std::unordered_map<std::string, Buffer> buffers;
+
+    Dict<Buffer> buffers;
 
     // --- Cached Pointers for Kernel Launches (Efficiency) ---
     // These are copies of pointers stored in the `buffers` map,
@@ -106,74 +108,66 @@ private:
     int*    d_sysneighs = nullptr;
     float4* d_sysbonds = nullptr;
 
-    /** @brief Internal: Updates the cached d_* members from the buffers map */
-    void cacheDevicePointers() {
-        // Use .at() for map access - throws exception if key not found (signals init error)
-        try {
-            d_apos = buffers.at("apos").get<float4>();
-            d_aforce = buffers.at("aforce").get<float4>();
-            d_avel = buffers.at("avel").get<float4>();
-            d_cvf = buffers.at("cvf").get<float4>();
-            d_fneigh = buffers.at("fneigh").get<float4>();
-            d_bkNeighs = buffers.at("bkNeighs").get<int4>();
-            d_REQs = buffers.at("REQs").get<float4>();
-            d_neighs = buffers.at("neighs").get<int4>();
-            d_neighCell = buffers.at("neighCell").get<int4>();
-            d_constr = buffers.at("constr").get<float4>();
-            d_constrK = buffers.at("constrK").get<float4>();
-            d_MDpars = buffers.at("MDpars").get<float4>();
-            d_TDrive = buffers.at("TDrive").get<float4>();
-            d_lvecs = buffers.at("lvecs").get<Mat3>();
-            d_ilvecs = buffers.at("ilvecs").get<Mat3>();
-            d_bboxes = buffers.at("bboxes").get<Mat3>();
+    bool isInitialized() const { return initialized; }
 
-            // Conditional caching based on dimensions
-            d_MMpars = (nnode > 0) ? buffers.at("MMpars").get<float4>() : nullptr;
-            d_BLs    = (nnode > 0) ? buffers.at("BLs").get<float4>() : nullptr;
-            d_BKs    = (nnode > 0) ? buffers.at("BKs").get<float4>() : nullptr;
-            d_Ksp    = (nnode > 0) ? buffers.at("Ksp").get<float4>() : nullptr;
-            d_Kpp    = (nnode > 0) ? buffers.at("Kpp").get<float4>() : nullptr;
-            d_pbcshifts = (npbc > 0) ? buffers.at("pbcshifts").get<float4>() : nullptr;
-            d_sysneighs = (nMaxSysNeighs > 0) ? buffers.at("sysneighs").get<int>() : nullptr;
-            d_sysbonds = (nMaxSysNeighs > 0) ? buffers.at("sysbonds").get<float4>() : nullptr;
-        } catch (const std::out_of_range& oor) {
-            fprintf(stderr, "CU_MM FATAL ERROR: Failed to cache device pointers - buffer missing from map (%s).\n", oor.what());
-            exit(EXIT_FAILURE);
-        }
-    }
 
-    // --- Internal Allocation Helper ---
-    void allocateBuffer(const std::string& name, size_t count, size_t elem_size) {
+    void* allocateBuffer(const std::string& name, size_t count, size_t elem_size) {
         size_t nBytes = count * elem_size;
-        void* d_ptr = nullptr;
-
-        // Check if exists, free if necessary
-        auto it = buffers.find(name);
-        if (it != buffers.end()) {
-            printf("CU_MM Info: Re-allocating buffer '%s'.\n", name.c_str());
-            it->second.free(); // Use CudaBuffer's free method
+        if(nBytes<=0){ return nullptr; }
+        void* d_ptr   = nullptr;
+        int i = buffers.getId( name );
+        if( i >= 0 ){
+            printf("ERROR in CU_MM::allocateBuffer() buffer '%s' already exists.\n", name.c_str());
+            exit(0);
         }
+        CUDA_CHECK_MM(cudaMalloc(&d_ptr, nBytes));
+        buffers.add( name, Buffer(d_ptr, nBytes, elem_size, count) );
+        return d_ptr;
+    }
 
-        if (nBytes > 0) {
-            CUDA_CHECK_MM(cudaMalloc(&d_ptr, nBytes));
-            buffers[name] = CudaBuffer(d_ptr, nBytes, elem_size, count);
-        } else {
-            buffers[name] = CudaBuffer(nullptr, 0, elem_size, 0);
+    int uploadById(int id, const void* h_data, int nBytes) {
+        CUDA_CHECK_MM(cudaMemcpy(buffers.vec[id].ptr, h_data, nBytes, cudaMemcpyHostToDevice));
+        return 0;
+    }
+
+    int downloadById(int id, void* h_data, int nBytes) {
+        CUDA_CHECK_MM(cudaMemcpy(h_data, buffers.vec[id].ptr, nBytes, cudaMemcpyDeviceToHost));
+        return 0;
+    }
+
+    void* getDevicePtrByName(const std::string& name) {
+        int i = buffers.getId(name);
+        if (i < 0){ printf("CU_MM::getDevicePtrByName() Error: Buffer '%s' not found.\n", name.c_str()); return nullptr; }
+        return buffers.vec[i].ptr;
+    }
+
+    int uploadByName(const std::string& name, const void* h_data) {
+        int i = buffers.getId(name);
+        if (i < 0){ printf("CU_MM::uploadByName() Error: Buffer '%s' not found.\n", name.c_str()); return -1; }
+        Buffer& buf = buffers.vec[i];
+        if (buf.nBytes <= 0 || !buf.ptr || !h_data) { printf("CU_MM::uploadByName() Error: Buffer '%s' not found.\n", name.c_str()); return -1; }
+        CUDA_CHECK_MM(cudaMemcpy(buf.ptr, h_data, buf.nBytes, cudaMemcpyHostToDevice));
+        return 0;
+    }
+    int downloadByName(const std::string& name, void* h_data) {
+        int i = buffers.getId(name);
+        if (i < 0){ printf("CU_MM::downloadByName() Error: Buffer '%s' not found.\n", name.c_str()); return -1; }
+        Buffer& buf = buffers.vec[i];
+        if (buf.nBytes > 0 && buf.ptr && h_data) {
+            CUDA_CHECK_MM(cudaMemcpy(h_data, buf.ptr, buf.nBytes, cudaMemcpyDeviceToHost));
         }
+        return 0;
     }
 
 
-public: // --- Public Interface ---
-
-    CU_MM() { printf("CU_MM object created (CudaBuffer Map version).\n"); }
-    ~CU_MM() { cleanup(); printf("CU_MM object destroyed (CudaBuffer Map version).\n"); }
+    CU_MM() { printf("CU_MM object created (Buffer Map version).\n"); }
+    ~CU_MM() { cleanup(); printf("CU_MM object destroyed (Buffer Map version).\n"); }
 
     // --- Initialization and Cleanup ---
 
     void init(int nSystems_, int nAtoms_, int nnode_, int npbc_, int nMaxSysNeighs_) {
         if (initialized) { cleanup(); }
-         printf("CU_MM::init(nSys=%d, nAtoms=%d, nNode=%d, npbc=%d, nMaxSysN=%d)\n",
-               nSystems_, nAtoms_, nnode_, npbc_, nMaxSysNeighs_);
+        printf("CU_MM::init(nSys=%d, nAtoms=%d, nNode=%d, npbc=%d, nMaxSysN=%d)\n",  nSystems_, nAtoms_, nnode_, npbc_, nMaxSysNeighs_);
 
         nSystems = nSystems_; nAtoms = nAtoms_; nnode = nnode_;
         npbc = (npbc_ > 0) ? npbc_ : 0;
@@ -184,45 +178,43 @@ public: // --- Public Interface ---
         if (nSystems <= 0 || nAtoms <= 0 || nnode < 0 ) { /* Fatal error */ exit(EXIT_FAILURE); }
 
         // Allocate buffers using the map
-        allocateBuffer("apos",      (size_t)nSystems * nvecs, sizeof(float4));
-        allocateBuffer("aforce",    (size_t)nSystems * nvecs, sizeof(float4));
-        allocateBuffer("avel",      (size_t)nSystems * nvecs, sizeof(float4));
-        allocateBuffer("cvf",       (size_t)nSystems * nvecs, sizeof(float4));
-        allocateBuffer("bkNeighs",  (size_t)nSystems * nvecs, sizeof(int4));
-        allocateBuffer("fneigh",    fneigh_count,             sizeof(float4));
-        allocateBuffer("REQs",      (size_t)nSystems * nAtoms, sizeof(float4));
-        allocateBuffer("neighs",    (size_t)nSystems * nAtoms, sizeof(int4));
-        allocateBuffer("neighCell", (size_t)nSystems * nAtoms, sizeof(int4));
-        allocateBuffer("constr",    (size_t)nSystems * nAtoms, sizeof(float4));
-        allocateBuffer("constrK",   (size_t)nSystems * nAtoms, sizeof(float4));
-        allocateBuffer("MMpars",    (nnode > 0) ? (size_t)nSystems * nnode : 0, sizeof(float4));
-        allocateBuffer("BLs",       (nnode > 0) ? (size_t)nSystems * nnode : 0, sizeof(float4));
-        allocateBuffer("BKs",       (nnode > 0) ? (size_t)nSystems * nnode : 0, sizeof(float4));
-        allocateBuffer("Ksp",       (nnode > 0) ? (size_t)nSystems * nnode : 0, sizeof(float4));
-        allocateBuffer("Kpp",       (nnode > 0) ? (size_t)nSystems * nnode : 0, sizeof(float4));
-        allocateBuffer("MDpars",    (size_t)nSystems, sizeof(float4));
-        allocateBuffer("TDrive",    (size_t)nSystems, sizeof(float4));
-        allocateBuffer("lvecs",     (size_t)nSystems, sizeof(Mat3));
-        allocateBuffer("ilvecs",    (size_t)nSystems, sizeof(Mat3));
-        allocateBuffer("bboxes",    (size_t)nSystems, sizeof(Mat3));
-        allocateBuffer("pbcshifts", (npbc > 0) ? (size_t)nSystems * npbc : 0, sizeof(float4));
-        allocateBuffer("sysneighs", (nMaxSysNeighs > 0) ? (size_t)nSystems * nMaxSysNeighs : 0, sizeof(int));
-        allocateBuffer("sysbonds",  (nMaxSysNeighs > 0) ? (size_t)nSystems * nMaxSysNeighs : 0, sizeof(float4));
-
-        // Cache raw pointers for efficient kernel calls
-        cacheDevicePointers();
+        d_apos      = (float4*)allocateBuffer("apos",      (size_t)nSystems * nvecs, sizeof(float4));
+        d_aforce    = (float4*)allocateBuffer("aforce",    (size_t)nSystems * nvecs, sizeof(float4));
+        d_avel      = (float4*)allocateBuffer("avel",      (size_t)nSystems * nvecs, sizeof(float4));
+        d_cvf       = (float4*)allocateBuffer("cvf",       (size_t)nSystems * nvecs, sizeof(float4));
+        d_bkNeighs  = (int4*  )allocateBuffer("bkNeighs",  (size_t)nSystems * nvecs, sizeof(int4));
+        d_fneigh    = (float4*)allocateBuffer("fneigh",    fneigh_count,             sizeof(float4));
+        d_REQs      = (float4*)allocateBuffer("REQs",      (size_t)nSystems * nAtoms, sizeof(float4));
+        d_neighs    = (int4*  )allocateBuffer("neighs",    (size_t)nSystems * nAtoms, sizeof(int4));
+        d_neighCell = (int4*  )allocateBuffer("neighCell", (size_t)nSystems * nAtoms, sizeof(int4));
+        d_constr    = (float4*)allocateBuffer("constr",    (size_t)nSystems * nAtoms, sizeof(float4));
+        d_constrK   = (float4*)allocateBuffer("constrK",   (size_t)nSystems * nAtoms, sizeof(float4));
+        d_MMpars    = (float4*)allocateBuffer("MMpars",    (nnode > 0) ? (size_t)nSystems * nnode : 0, sizeof(float4));
+        d_BLs       = (float4*)allocateBuffer("BLs",       (nnode > 0) ? (size_t)nSystems * nnode : 0, sizeof(float4));
+        d_BKs       = (float4*)allocateBuffer("BKs",       (nnode > 0) ? (size_t)nSystems * nnode : 0, sizeof(float4));
+        d_Ksp       = (float4*)allocateBuffer("Ksp",       (nnode > 0) ? (size_t)nSystems * nnode : 0, sizeof(float4));
+        d_Kpp       = (float4*)allocateBuffer("Kpp",       (nnode > 0) ? (size_t)nSystems * nnode : 0, sizeof(float4));
+        d_MDpars    = (float4*)allocateBuffer("MDpars",    (size_t)nSystems, sizeof(float4));
+        d_TDrive    = (float4*)allocateBuffer("TDrive",    (size_t)nSystems, sizeof(float4));
+        d_lvecs     = (Mat3*  )allocateBuffer("lvecs",     (size_t)nSystems, sizeof(Mat3));
+        d_ilvecs    = (Mat3*  )allocateBuffer("ilvecs",    (size_t)nSystems, sizeof(Mat3));
+        d_bboxes    = (Mat3*  )allocateBuffer("bboxes",    (size_t)nSystems, sizeof(Mat3));
+        d_pbcshifts = (float4*)allocateBuffer("pbcshifts", (npbc > 0) ? (size_t)nSystems * npbc : 0, sizeof(float4));
+        d_sysneighs = (int*   )allocateBuffer("sysneighs", (nMaxSysNeighs > 0) ? (size_t)nSystems * nMaxSysNeighs : 0, sizeof(int));
+        d_sysbonds  = (float4*)allocateBuffer("sysbonds",  (nMaxSysNeighs > 0) ? (size_t)nSystems * nMaxSysNeighs : 0, sizeof(float4));
 
         initialized = true;
-        printf("CU_MM::init() finished successfully (CudaBuffer Map version).\n");
+        printf("CU_MM::init() finished successfully (Buffer Map version).\n");
     }
 
     void cleanup() {
-        if (!initialized && buffers.empty()) return;
-        printf("CU_MM::cleanup() freeing %zu GPU buffers...\n", buffers.size());
-        for (auto& pair : buffers) {
-            pair.second.free();
+        if (!initialized) return;
+        printf("CU_MM::cleanup() freeing %zu GPU buffers...\n", buffers.vec.size());
+        for (auto& buf : buffers.vec) {
+            buf.free();
         }
-        buffers.clear();
+        buffers.vec.clear();
+        buffers.map.clear();
         // Reset dimensions and cached pointers
         nSystems = nAtoms = nnode = nvecs = npbc = nMaxSysNeighs = 0;
         initialized = false;
@@ -237,44 +229,6 @@ public: // --- Public Interface ---
         d_sysneighs = nullptr;
         d_sysbonds = nullptr;
         printf("CU_MM::cleanup() finished.\n");
-    }
-
-    bool isInitialized() const { return initialized; }
-
-    // --- Buffer Info Access ---
-    /** Gets the CudaBuffer struct by name. Returns default CudaBuffer if not found. */
-    CudaBuffer getBufferInfo(const std::string& name) const {
-        auto it = buffers.find(name);
-        if (it != buffers.end()) { return it->second; }
-        return CudaBuffer(); // Return default (nullptr, zero size)
-    }
-
-     // --- Optional: Get typed pointer by name (Convenience) ---
-    template <typename T> T* getDevicePtrByName_T(const std::string& name) {
-         auto it = buffers.find(name);
-         if (it != buffers.end()) { return it->second.get<T>(); }
-         return nullptr;
-    }
-
-    // --- Generic Data Transfer by Name ---
-    // Uses the map, suitable for setup/convenience
-    int uploadByName(const std::string& name, const void* h_data) {
-        auto it = buffers.find(name);
-        if (it == buffers.end()) { printf("CU_MM::uploadByName() Error: Buffer '%s' not found.\n", name.c_str()); return -1; }
-        const CudaBuffer& buf = it->second;
-        if (buf.nBytes > 0 && buf.ptr && h_data) {
-            CUDA_CHECK_MM(cudaMemcpy(buf.ptr, h_data, buf.nBytes, cudaMemcpyHostToDevice));
-        }
-        return 0;
-    }
-    int downloadByName(const std::string& name, void* h_data) {
-        auto it = buffers.find(name);
-        if (it == buffers.end()) { printf("CU_MM::downloadByName() Error: Buffer '%s' not found.\n", name.c_str()); return -1; }
-        const CudaBuffer& buf = it->second;
-        if (buf.nBytes > 0 && buf.ptr && h_data) {
-            CUDA_CHECK_MM(cudaMemcpy(h_data, buf.ptr, buf.nBytes, cudaMemcpyDeviceToHost));
-        }
-        return 0;
     }
 
     // --- Kernel Execution Functions ---

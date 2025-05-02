@@ -16,41 +16,40 @@ extern "C" {
 
     // ... mmcuda_init, mmcuda_cleanup, mmcuda_isInitialized ...
 
-    // --- Generic Upload/Download by Name ---
-    int mmcuda_upload(const char* name, const void* h_data, size_t elem_size, size_t count) {
-        // Use CU_MM's map-based upload for convenience
+    int getBufferIndex(const char* name) { return ff.buffers.getId(name); }
+    int uploadId  (int id, const void* h_data, int nbyte) { return ff.uploadById  (id, h_data, nbyte); }
+    int downloadId(int id, void*       h_data, int nbyte) { return ff.downloadById(id, h_data, nbyte); }
+
+    int upload(const char* name, const void* h_data, int nbyte) {
         return ff.uploadByName(std::string(name), h_data);
-        // We need count/elem_size if uploadByName needs them for size check
-        // Assuming uploadByName calculates size internally based on metadata stored during init
-        // If not, the C interface needs count/elem_size:
-        // CudaBuffer bufInfo = ff.getBufferInfo(std::string(name));
-        // if (bufInfo.elemSize != elem_size || bufInfo.count != count ) { /* size mismatch error */ return 1; }
-        // return ff.uploadByName(std::string(name), h_data);
     }
-    int mmcuda_download(const char* name, void* h_data, size_t elem_size, size_t count) {
-         // Similar logic as upload
+    int download(const char* name, void* h_data, int nbyte ) {
         return ff.downloadByName(std::string(name), h_data);
+    }
+
+    void init(int nSystems_, int nAtoms_, int nnode_, int npbc_, int nMaxSysNeighs_) {
+        ff.init(nSystems_, nAtoms_, nnode_, npbc_, nMaxSysNeighs_);
     }
 
 
     // --- Kernel Execution Functions ---
     // Call the public methods of the CU_MM instance
-    int mmcuda_run_cleanForceMMFFf4() {
+    int run_cleanForceMMFFf4() {
         return ff.run_cleanForceMMFFf4();
     }
-    int mmcuda_run_getNonBond(int4 h_nPBC, float4 h_GFFparams) {
-        return ff.run_getNonBond(h_nPBC, h_GFFparams);
+    int run_getNonBond(int* h_nPBC, float* h_GFFparams) {
+        return ff.run_getNonBond( *(int4*)h_nPBC, *(float4*)h_GFFparams);
     }
-    int mmcuda_run_getMMFFf4(int bSubtractVdW) {
+    int run_getMMFFf4(int bSubtractVdW) {
         return ff.run_getMMFFf4(bSubtractVdW);
     }
-    int mmcuda_run_updateAtomsMMFFf4() {
+    int run_updateAtomsMMFFf4() {
         return ff.run_updateAtomsMMFFf4();
     }
-    int mmcuda_run_printOnGPU(int iSys, int4 mask) {
-        return ff.run_printOnGPU(iSys, mask);
+    int run_printOnGPU(int iSys, int* mask) {
+        return ff.run_printOnGPU(iSys, *(int4*)mask);
     }
-    int mmcuda_synchronize() {
+    int synchronize() {
         return ff.synchronize();
     }
 
