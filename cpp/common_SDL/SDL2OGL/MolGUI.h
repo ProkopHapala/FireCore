@@ -390,7 +390,7 @@ class MolGUI : public AppSDL2OGL_3D { public:
     int  ogl_afm_trj   = 0;
     int  ogl_esp       = 0;
     int  ogl_mol       = 0;
-    GLMesh_NC ogl_isosurf = GLMesh_NC(GL_TRIANGLES);
+    GLMesh<MPOS,MNORMAL,MCOLOR> ogl_isosurf = GLMesh<MPOS,MNORMAL,MCOLOR>(GL_TRIANGLES, GL_STATIC_DRAW, defaultShader<MPOS,MNORMAL,MCOLOR>);
     int  ogl_MO        = 0;
     int  ogl_nonBond   = 0;
     int  ogl_Hbonds    = 0;
@@ -1780,7 +1780,7 @@ void MolGUI::drawHUD(){
     if(bConsole) console.draw();
 }
 
-static GLMesh<GLMESH_FLAG_COLOR> drawingHexMesh;
+static GLMesh<MPOS,MCOLOR> drawingHexMesh;
 void MolGUI::drawingHex(double z0){
     Vec2i ip; Vec2d dp;
     Vec3d p3 = rayPlane_hit( (Vec3d)ray0, (Vec3d)cam.rotMat().c, {0.0,0.0,1.0}, {0.0,0.0,z0} );
@@ -1805,12 +1805,12 @@ void MolGUI::drawingHex(double z0){
                 if(bLine){
                     col = {1.0,0.2,1.0};
                     Vec2d p2;
-                    drawingHexMesh.addVertex(Vec3f{p.x,p.y,z0}, Vec3fZero, col); p2=p+ruler.lvecs[0]*sc; drawingHexMesh.addVertex(Vec3f{p2.x,p2.y,z0}, Vec3fZero, col);
-                    drawingHexMesh.addVertex(Vec3f{p.x,p.y,z0}, Vec3fZero, col); p2=p+ruler.lvecs[1]*sc; drawingHexMesh.addVertex(Vec3f{p2.x,p2.y,z0}, Vec3fZero, col);
-                    drawingHexMesh.addVertex(Vec3f{p.x,p.y,z0}, Vec3fZero, col); p2=p+ruler.lvecs[2]*sc; drawingHexMesh.addVertex(Vec3f{p2.x,p2.y,z0}, Vec3fZero, col);
+                    drawingHexMesh.addVertex(Vec3f{p.x,p.y,z0}, col); p2=p+ruler.lvecs[0]*sc; drawingHexMesh.addVertex(Vec3f{p2.x,p2.y,z0}, col);
+                    drawingHexMesh.addVertex(Vec3f{p.x,p.y,z0}, col); p2=p+ruler.lvecs[1]*sc; drawingHexMesh.addVertex(Vec3f{p2.x,p2.y,z0}, col);
+                    drawingHexMesh.addVertex(Vec3f{p.x,p.y,z0}, col); p2=p+ruler.lvecs[2]*sc; drawingHexMesh.addVertex(Vec3f{p2.x,p2.y,z0}, col);
                 }else{
-                    drawingHexMesh.addVertex(Vec3f{p.x,p.y,z0}, Vec3fZero, {1.0, 0.2, 1.0}); ruler.tilePoint( ip_, false, p );  p.add(off,off);
-                    drawingHexMesh.addVertex(Vec3f{p.x,p.y,z0}, Vec3fZero, {0.2, 1.0, 1.0});
+                    drawingHexMesh.addVertex(Vec3f{p.x,p.y,z0}, {1.0, 0.2, 1.0}); ruler.tilePoint( ip_, false, p );  p.add(off,off);
+                    drawingHexMesh.addVertex(Vec3f{p.x,p.y,z0}, {0.2, 1.0, 1.0});
                 }
             }
         }
@@ -2224,7 +2224,7 @@ void MolGUI::drawSystemShifts( int n, const Vec3d* shifts, int i0 ){
     if( neighs && (!bViewBL) ){
         opengl1renderer.color3f(0.0f,0.0f,0.0f); 
         opengl1renderer.lineWidth(1.0);
-        GLMesh<0>* neighMesh = Draw3D::makeNeighsMesh(  natoms, 4, (int*)neighs, (int*)neighCell, apos, W->pbc_shifts );
+        GLMesh<MPOS>* neighMesh = Draw3D::makeNeighsMesh(  natoms, 4, (int*)neighs, (int*)neighCell, apos, W->pbc_shifts );
 
         for (int i=0; i<n; i++) neighMesh->draw( (Vec3f)shifts[i] );
     }

@@ -1,6 +1,5 @@
 
 #include "Renderer.h"
-#include "GLMesh.h"
 #include "Mat4.h"
 #include <cstdio>
 #include <functional>

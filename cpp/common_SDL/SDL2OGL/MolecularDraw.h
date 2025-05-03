@@ -233,8 +233,7 @@ int renderSubstrate_( const GridShape& grid, Quat4f * FF, Quat4f * FFel, double 
     return nvert;
 }
 
-template<unsigned int FLAG>
-void renderSubstrate_new( GLMesh<FLAG>* outMesh, const GridFF& gff, Vec2d zrange, double isoval, Quat4d PLQ, double sclr, bool bErrNan=false ){
+void renderSubstrate_new( GLMesh<MPOS,MNORMAL,MCOLOR>* outMesh, const GridFF& gff, Vec2d zrange, double isoval, Quat4d PLQ, double sclr, bool bErrNan=false ){
     printf( "renderSubstrate_new() gff.mode=%i @gff.Bspline_PLQ=%li \n", gff.mode, (long)gff.Bspline_PLQ );
     Quat4d PL{PLQ.x,PLQ.y,0.0,0.0};
     Quat4d Q {0.0,0.0,PLQ.y,0.0};
@@ -311,8 +310,7 @@ void viewSubstrate( int nx, int ny, int isoOgl, Vec3d a, Vec3d b, Vec3d pos0=Vec
     opengl1renderer.popMatrix();
 }
 
-template<unsigned int FLAG>
-void viewSubstrate( Vec2i nxs, Vec2i nys, GLMesh<FLAG>* isoOgl, Vec3d a, Vec3d b, Vec3d pos0=Vec3dZero ){
+void viewSubstrate( Vec2i nxs, Vec2i nys, GLMesh<MPOS,MNORMAL,MCOLOR>* isoOgl, Vec3d a, Vec3d b, Vec3d pos0=Vec3dZero ){
     for( int ix = nxs.x; ix<=nxs.y; ix++ ){
         for( int iy = nys.x; iy<=nys.y; iy++ ){
             Vec3d pos = a*ix + b*iy + pos0;

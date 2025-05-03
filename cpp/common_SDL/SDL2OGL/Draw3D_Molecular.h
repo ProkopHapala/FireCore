@@ -221,8 +221,7 @@ void bondsPBC( int n, const Vec2i* b2a, const Vec3d* apos, const Vec3i* pbc, con
     }
 }
 
-template<unsigned int flags>
-void addAtomNeighsToMesh( GLMesh<flags>& mesh, int ia, int perAtom, int* neighs, int* neighCell, Vec3d* apos, Vec3d* shifts=0, Vec3d offset=Vec3dZero ){
+void addAtomNeighsToMesh( GLMesh<MPOS>& mesh, int ia, int perAtom, int* neighs, int* neighCell, Vec3d* apos, Vec3d* shifts=0, Vec3d offset=Vec3dZero ){
     int* ngs = neighs   +ia*perAtom;
     int* ngC = neighCell+ia*perAtom;
     Vec3d pi = apos[ia];
@@ -237,8 +236,8 @@ void addAtomNeighsToMesh( GLMesh<flags>& mesh, int ia, int perAtom, int* neighs,
         mesh.addVertex( (Vec3f)(pj+offset) );
     }
 }
-template<unsigned int flags>
-void addAtomNeighsToMesh( GLMesh<flags>& mesh, int ia, int perAtom, int* neighs, int* neighCell, Quat4f* apos, Vec3d* shifts=0, Vec3d offset=Vec3dZero ){
+
+void addAtomNeighsToMesh( GLMesh<MPOS>& mesh, int ia, int perAtom, int* neighs, int* neighCell, Quat4f* apos, Vec3d* shifts=0, Vec3d offset=Vec3dZero ){
     int* ngs  = neighs   +ia*perAtom;
     int* ngC  = neighCell+ia*perAtom;
     Quat4f pi = apos[ia];
@@ -254,26 +253,26 @@ void addAtomNeighsToMesh( GLMesh<flags>& mesh, int ia, int perAtom, int* neighs,
     }
 }
 
-GLMesh<0> atomNeighsMesh = GLMesh<0>(GL_LINES, GL_STREAM_DRAW);
+static GLMesh<MPOS> atomNeighsMesh = GLMesh<MPOS>(GL_LINES, GL_STREAM_DRAW);
 void atomNeighs( int ia, int perAtom, int* neighs, int* neighCell, Vec3d* apos, Vec3d* shifts=0, Vec3d offset=Vec3dZero ){
     atomNeighsMesh.clear();
     addAtomNeighsToMesh( atomNeighsMesh, ia, perAtom, neighs, neighCell, apos, shifts, offset );
-    atomNeighsMesh.color = opengl1renderer.color;
+    atomNeighsMesh.setUniform3f("uColor", opengl1renderer.color);
     atomNeighsMesh.draw();
 }
 void atomNeighs( int ia, int perAtom, int* neighs, int* neighCell, Quat4f* apos, Vec3d* shifts=0, Vec3d offset=Vec3dZero ){
     atomNeighsMesh.clear();
     addAtomNeighsToMesh( atomNeighsMesh, ia, perAtom, neighs, neighCell, apos, shifts, offset );
-    atomNeighsMesh.color = opengl1renderer.color;
+    atomNeighsMesh.setUniform3f("uColor", opengl1renderer.color);
     atomNeighsMesh.draw();
 }
 
-GLMesh<0>* makeNeighsMesh( int na, int perAtom, int* neighs, int* neighCell, Vec3d* apos, Vec3d* shifts=0 ){
+GLMesh<MPOS>* makeNeighsMesh( int na, int perAtom, int* neighs, int* neighCell, Vec3d* apos, Vec3d* shifts=0 ){
     atomNeighsMesh.clear();
     for(int ia=0; ia<na; ia++){
         addAtomNeighsToMesh( atomNeighsMesh, ia, perAtom, neighs, neighCell, apos, shifts, Vec3dZero );
     }
-    atomNeighsMesh.color = opengl1renderer.color;
+    atomNeighsMesh.setUniform3f("uColor", opengl1renderer.color);
     return &atomNeighsMesh;
 }
 

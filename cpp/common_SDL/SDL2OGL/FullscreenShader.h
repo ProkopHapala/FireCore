@@ -1,5 +1,4 @@
 #include "GLES.h"
-#include "Shader.h"
 #include "GLMesh.h"
 #include "GLTexture.h"
 #include "Framebuffer.h"
@@ -19,20 +18,22 @@ void main(){
 
 class FullscreenShader{
 private:
-    Shader<0> shader;
-    GLMesh<0> mesh;
+    Shader<MPOS> shader;
+    GLMeshBase<MPOS> mesh;
     GLFramebuffer framebuffer_back; // everything rendered between "begin()" and "end()" will be rendered to this framebuffer
     
 public:
     GLFramebuffer out_framebuffer; // after "end()", the result of the shader is stored in this framebuffer
     
-    FullscreenShader(const char* fragShaderSource) : shader(Shader<0>(vertexShaderSource, fragShaderSource))
+    FullscreenShader(const char* fragShaderSource) : shader(Shader<MPOS>(vertexShaderSource, fragShaderSource))
     {
         printf("%s\n", fragShaderSource);
-        mesh = GLMesh<0>(GL_TRIANGLES, GL_STATIC_DRAW, &shader);
+        mesh = GLMeshBase<MPOS>(GL_TRIANGLES, GL_STATIC_DRAW, &shader);
         mesh.addVertex({-1, -1, -1});
         mesh.addVertex({ 3, -1, -1});
         mesh.addVertex({-1,  3, -1});
+        mesh.setUniformTex("uTexture", &framebuffer_back.colorBuffer);
+        mesh.setUniformTex("uDepth"  , &framebuffer_back.depthBuffer);
     }
 
     void begin(){
@@ -42,14 +43,9 @@ public:
     void end(){
         framebuffer_back.end();
         out_framebuffer.begin();
-
-        glActiveTexture(GL_TEXTURE0); glBindTexture(GL_TEXTURE_2D, framebuffer_back.colorBuffer.getHandle());
-        glActiveTexture(GL_TEXTURE1); glBindTexture(GL_TEXTURE_2D, framebuffer_back.depthBuffer.getHandle());
-        shader.setUniform1i("uTexture", 0);
-        shader.setUniform1i("uDepth"  , 1);
         
         glEnable(GL_DEPTH_TEST);
-        mesh.draw2D_NDC();
+        mesh.draw();
 
         out_framebuffer.end();
     }

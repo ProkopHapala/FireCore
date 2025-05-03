@@ -1,7 +1,5 @@
 
 #include "Renderer.h"
-#include "GLMesh.h"
-#include "Shader.h"
 #include "Vec2.h"
 #include "Vec3.h"
 
@@ -117,10 +115,14 @@ void Draw::billboardCamProj( ){
 */
 
 static GLTexture font = GLTexture("common_resources/dejvu_sans_mono_RGBA_pix-UpDown.bmp");
-static GLMesh fontMesh = GLMesh(GL_TRIANGLES, GL_DYNAMIC_DRAW, defaultShader<GLMESH_FLAG_UVTEX>, &font);
+static GLMesh<MPOS,MUV> makeFontMesh(){
+    GLMesh<MPOS,MUV> m = GLMesh<MPOS,MUV>(GL_TRIANGLES, GL_DYNAMIC_DRAW, defaultTexColorShader<MPOS,MUV>);
+    m.setUniformTex("uTexture", &font);
+    return m;
+}
+static GLMesh<MPOS,MUV> fontMesh = makeFontMesh();
 
-template<unsigned int FLAG>
-static void addCharToMesh( GLMesh<FLAG>& mesh, char c, Vec2f pos, Vec2f size){
+static void addCharToMesh( GLMesh<MPOS,MUV>& mesh, char c, Vec2f pos, Vec2f size){
     const int nchars = 95;
     const float persprite = 1.0f/nchars;
 
@@ -128,16 +130,15 @@ static void addCharToMesh( GLMesh<FLAG>& mesh, char c, Vec2f pos, Vec2f size){
     float UVstart = chari*persprite + (persprite*0.57);
     float UVend   = UVstart + persprite;
 
-    fontMesh.addVertex({pos.x         , pos.y         , 0}, Vec3fZero, COLOR_WHITE, {UVstart, 0});
-    fontMesh.addVertex({pos.x + size.x, pos.y         , 0}, Vec3fZero, COLOR_WHITE, {UVend  , 0});
-    fontMesh.addVertex({pos.x + size.x, pos.y + size.y, 0}, Vec3fZero, COLOR_WHITE, {UVend  , 1});
-    fontMesh.addVertex({pos.x         , pos.y         , 0}, Vec3fZero, COLOR_WHITE, {UVstart, 0});
-    fontMesh.addVertex({pos.x + size.x, pos.y + size.y, 0}, Vec3fZero, COLOR_WHITE, {UVend  , 1});
-    fontMesh.addVertex({pos.x         , pos.y + size.y, 0}, Vec3fZero, COLOR_WHITE, {UVstart, 1});
+    fontMesh.addVertex({pos.x         , pos.y         , 0}, {UVstart, 0});
+    fontMesh.addVertex({pos.x + size.x, pos.y         , 0}, {UVend  , 0});
+    fontMesh.addVertex({pos.x + size.x, pos.y + size.y, 0}, {UVend  , 1});
+    fontMesh.addVertex({pos.x         , pos.y         , 0}, {UVstart, 0});
+    fontMesh.addVertex({pos.x + size.x, pos.y + size.y, 0}, {UVend  , 1});
+    fontMesh.addVertex({pos.x         , pos.y + size.y, 0}, {UVstart, 1});
 }
 
-template<unsigned int FLAG>
-static void makeTextMesh( GLMesh<FLAG>& mesh, const char* str, int iend ){
+static void makeTextMesh( GLMesh<MPOS,MUV>& mesh, const char* str, int iend ){
     const int nchars = 95;
     float persprite = 1.0f/nchars;
 
@@ -152,8 +153,7 @@ static void makeTextMesh( GLMesh<FLAG>& mesh, const char* str, int iend ){
     }
 }
 
-template<unsigned int FLAG>
-static void makeTextMesh( GLMesh<FLAG>& mesh, const char * str, Vec2i block_size ){
+static void makeTextMesh( GLMesh<MPOS,MUV>& mesh, const char * str, Vec2i block_size ){
     const int nchars = 95;
     float persprite = 1.0f/nchars;
 
@@ -179,16 +179,14 @@ void Draw::drawText( const char * str, Vec3f pos, float sz, int iend, Vec3f colo
     const int nchars = 95;
     float persprite = 1.0f/nchars;
 
-    //opengl1renderer.disable(GL_DEPTH_TEST);
     opengl1renderer.enable(GL_ALPHA_TEST);
     opengl1renderer.blendFunc(GL_SRC_ALPHA,GL_ONE_MINUS_SRC_ALPHA);
 
     makeTextMesh(fontMesh, str, iend);
-    fontMesh.color = color;
+    fontMesh.setUniform3f("uColor", color);
     fontMesh.draw2D(pos, {sz, sz});
 
     opengl1renderer.disable(GL_ALPHA_TEST);
-    //opengl1renderer.enable(GL_DEPTH_TEST);
 }
 
 void Draw::drawText( const char * str, Vec3f pos, float sz, Vec2i block_size, Vec3f color ){
@@ -202,7 +200,7 @@ void Draw::drawText( const char * str, Vec3f pos, float sz, Vec2i block_size, Ve
     opengl1renderer.blendFunc(GL_SRC_ALPHA,GL_ONE_MINUS_SRC_ALPHA);
 
     makeTextMesh( fontMesh, str, block_size);
-    fontMesh.color = color;
+    fontMesh.setUniform3f("uColor", color);
     fontMesh.draw2D(pos, {sz, sz});
 
     opengl1renderer.disable(GL_ALPHA_TEST);

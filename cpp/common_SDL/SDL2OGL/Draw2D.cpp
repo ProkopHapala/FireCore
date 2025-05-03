@@ -49,16 +49,16 @@ void Draw2D::drawBody2d( const Vec2f& rot, const Vec2f& pos, float l1, float l2 
 	opengl1renderer.end();
 };
 
-static GLMesh<0> makeLineMesh(){
-    GLMesh<0> m = GLMesh<0>(GL_LINES);
+static GLMesh<MPOS> makeLineMesh(){
+    GLMesh<MPOS> m = GLMesh<MPOS>(GL_LINES);
     m.addVertex({0, 0, 0});
     m.addVertex({1, 1, 0});
     return m;
 }
-static GLMesh<0> lineMesh = makeLineMesh();
+static GLMesh<MPOS> lineMesh = makeLineMesh();
 
 void Draw2D::drawLine( const Vec2f& p1, const Vec2f& p2 ){
-    lineMesh.color = opengl1renderer.color;
+    lineMesh.setUniform3f("uColor", opengl1renderer.color);
     lineMesh.draw2D( {p1.x, p1.y, z_layer}, p2-p1);
 };
 
@@ -71,18 +71,18 @@ void Draw2D::drawTriangle( const Vec2f& p1, const Vec2f& p2, const Vec2f& p3 ){
 	opengl1renderer.end();
 };
 
-static GLMesh<GLMESH_FLAG_NONE> makeRectMesh(){
-    GLMesh<GLMESH_FLAG_NONE> m;
+static GLMesh<MPOS> makeRectMesh(){
+    GLMesh<MPOS> m;
     m.addVertex( {0, 0, 0} );
     m.addVertex( {0, 1, 0} );
     m.addVertex( {1, 1, 0} );
     m.addVertex( {1, 0, 0} );
     return m;
 }
-static GLMesh rectMesh = makeRectMesh();
+static GLMesh<MPOS> rectMesh = makeRectMesh();
 void Draw2D::drawRectangle( float p1x, float p1y, float p2x, float p2y, Vec3f color, bool filled){ // TODO: create a list of drawn rects and them draw them at once using instancing?
     rectMesh.drawMode = filled ? GL_TRIANGLE_FAN : GL_LINE_LOOP;
-    rectMesh.color = color;
+    rectMesh.setUniform3f("uColor", color);
 
     opengl1renderer.disable(GL_DEPTH_TEST);
     rectMesh.draw2D({p1x, p1y, z_layer}, {p2x-p1x, p2y-p1y});

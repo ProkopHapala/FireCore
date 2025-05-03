@@ -7,14 +7,6 @@
 #include <GLES3/gl3.h>
 #include "Vec2.h"
 
-#define GLMESH_FLAG_NONE   0
-#define GLMESH_FLAG_NORMAL 1
-#define GLMESH_FLAG_COLOR  2
-#define GLMESH_FLAG_UV     4
-#define GLMESH_FLAG_TEX    8
-#define GLMESH_FLAG_UVTEX  (GLMESH_FLAG_UV | GLMESH_FLAG_TEX)
-#define GLMESH_FLAG_ALL    15
-
 template<typename T> class CameraT;
 
 namespace GLES{

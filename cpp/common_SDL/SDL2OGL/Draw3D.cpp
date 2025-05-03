@@ -10,46 +10,46 @@
 #include "Draw3D.h" // THE HEADER
 
 
-static GLMesh<GLMESH_FLAG_NONE> makePointCross(){
-    GLMesh<GLMESH_FLAG_NONE> m = GLMesh<GLMESH_FLAG_NONE>(GL_LINES);
+static GLMesh<MPOS> makePointCross(){
+    GLMesh<MPOS> m = GLMesh<MPOS>(GL_LINES);
     m.addVertex({-1, 0, 0}); m.addVertex({1, 0, 0});
     m.addVertex({0, -1, 0}); m.addVertex({0, 1, 0});
     m.addVertex({0, 0, -1}); m.addVertex({0, 0, 1});
     return m;
 };
-static GLMesh pointCross = makePointCross();
+static GLMesh<MPOS> pointCross = makePointCross();
 
-static GLMesh<GLMESH_FLAG_NONE> makePoint(){
-    GLMesh<GLMESH_FLAG_NONE> m = GLMesh<GLMESH_FLAG_NONE>(GL_POINTS);
+static GLMesh<MPOS> makePoint(){
+    GLMesh<MPOS> m = GLMesh<MPOS>(GL_POINTS);
     m.addVertex({0, 0, 0});
     return m;
 }
-static GLMesh point = makePoint();
+static GLMesh<MPOS> point = makePoint();
 
 void Draw3D::drawPoint( const Vec3f& vec ){
-	point.color = {1, 1, 1};
+	point.setUniform3f("uColor", {1, 1, 1});
 	point.draw(vec);
 };
 
 void Draw3D::drawPointCross( const Vec3f& vec, float sz, Vec3f color ){
-    pointCross.color = color;
+    point.setUniform3f("uColor", color);
 	pointCross.draw(vec, (Vec3f){sz, sz, sz});
 };
 
-static GLMesh<GLMESH_FLAG_NONE> makeLineMesh(){
-    GLMesh<GLMESH_FLAG_NONE> m = GLMesh<GLMESH_FLAG_NONE>(GL_LINES);
+static GLMesh<MPOS> makeLineMesh(){
+    GLMesh<MPOS> m = GLMesh<MPOS>(GL_LINES);
     m.addVertex({0, 0, 0});
     m.addVertex({1, 1, 1});
     return m;
 }
-static GLMesh lineMesh = makeLineMesh();
+static GLMesh<MPOS> lineMesh = makeLineMesh();
 
 void Draw3D::drawVecInPos( const Vec3f& v, const Vec3f& pos, Vec3f color ){
     drawLine(pos, pos+v, color);
 };
 
 void Draw3D::drawLine( const Vec3f& p1, const Vec3f& p2, Vec3f color ){
-    lineMesh.color = color;
+    lineMesh.setUniform3f("uColor", color);
     lineMesh.draw(p1, p2-p1);
 };
 
@@ -251,10 +251,10 @@ int Draw3D::drawConeFan( int n, float r, const Vec3f& base, const Vec3f& tip ){
 	return nvert;
 };
 
-static GLMesh_Normal makeSphere( int nsub, float sz=1 ){
+static GLMesh<MPOS,MNORMAL> makeSphere( int nsub, float sz=1 ){
     if (nsub<1) nsub=1;
 
-    GLMesh_Normal sphere = GLMesh_Normal(GL_TRIANGLES);
+    GLMesh<MPOS,MNORMAL> sphere = GLMesh<MPOS,MNORMAL>(GL_TRIANGLES);
 
     // generate a simple cube sphere
     const Vec3f normals[6] = {{1, 0, 0}, {-1, 0, 0}, {0, 1, 0}, {0, -1, 0}, {0, 0, 1}, {0, 0, -1}};
@@ -288,10 +288,10 @@ static GLMesh_Normal makeSphere( int nsub, float sz=1 ){
     
     return sphere;
 }
-static GLMesh_Normal sphere = makeSphere(5, 1);
+static GLMesh<MPOS,MNORMAL> sphere = makeSphere(5, 1);
 
 void Draw3D::drawSphere(Vec3f pos, float r, Vec3f color){
-    sphere.color = color;
+    sphere.setUniform3f("uColor", color);
     sphere.draw(pos, r);
 }
 
@@ -833,8 +833,8 @@ void Draw3D::drawColorScale( int n, Vec3d pos, Vec3d dir, Vec3d up, void (_color
 // from drawUtils.h
 // =================
 
-static GLMesh_Normal makeCube(){ // TODO: test this
-    GLMesh_Normal m = GLMesh_Normal(GL_TRIANGLES); // TODO: use a triangle strip?
+static GLMesh<MPOS,MNORMAL> makeCube(){ // TODO: test this
+    GLMesh<MPOS,MNORMAL> m = GLMesh<MPOS,MNORMAL>(GL_TRIANGLES); // TODO: use a triangle strip?
 
     // positive x face
     m.addVertex({1, 0, 0}, {1, 0, 0});
@@ -886,10 +886,10 @@ static GLMesh_Normal makeCube(){ // TODO: test this
 
     return m;
 }
-static GLMesh_Normal cube = makeCube();
+static GLMesh<MPOS,MNORMAL> cube = makeCube();
 
-static GLMesh<0> makeWireCube(){
-    GLMesh<0> m = GLMesh<0>(GL_LINES);
+static GLMesh<MPOS> makeWireCube(){
+    GLMesh<MPOS> m = GLMesh<MPOS>(GL_LINES);
 
     m.addVertex({0, 0, 0}); m.addVertex({1, 0, 0});
     m.addVertex({0, 0, 0}); m.addVertex({0, 1, 0});
@@ -906,15 +906,15 @@ static GLMesh<0> makeWireCube(){
 
     return m;
 }
-static GLMesh<0> wireCube = makeWireCube();
+static GLMesh<MPOS> wireCube = makeWireCube();
 
 void Draw3D::drawBox( float x0, float x1, float y0, float y1, float z0, float z1, float r, float g, float b ){
-	cube.color = {r, g, b};
+	cube.setUniform3f("uColor", {r, g, b});
     cube.draw((Vec3f){x0, y0, z0}, (Vec3f){x1-x0, y1-y0, z1-z0});
 }
 
 void Draw3D::drawBBox( const Vec3f& p0, const Vec3f& p1 ){
-	wireCube.color = opengl1renderer.color;
+	wireCube.setUniform3f("uColor", opengl1renderer.color);
     wireCube.draw(p0, p1-p0);
 }
 

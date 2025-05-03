@@ -1,85 +1,126 @@
-#ifndef _GLMESH_H_
-#define _GLMESH_H_
+#ifndef _GLMesh_H_
+#define _GLMesh_H_
 
+
+#include <cstddef>
+#include <unordered_map>
+#include <utility>
+#include "GLattribs.h"
 #include "GLES.h"
-#include "GLTexture.h"
-#include "Vec2.h"
-#include "Vec3.h"
+#include "GLuniform.h"
 #include "Shader.h"
 #include "Camera.h"
-#include <variant>
-#include <vector>
-#include <cstddef>
-#include <type_traits>
+#include "quaternion.h"
 
-template<unsigned int attrib_flags>
-class GLMesh{
-public:
-    struct vertex{
-        Vec3f position;
-        std::conditional_t<attrib_flags&GLMESH_FLAG_NORMAL, Vec3f, std::monostate> normal;
-        std::conditional_t<attrib_flags&GLMESH_FLAG_COLOR , Vec3f, std::monostate> color;
-        std::conditional_t<attrib_flags&GLMESH_FLAG_UV    , Vec2f, std::monostate> uv;
+template<attrib ... attribs>
+class GLMeshBase{
+private:
+static_assert(GLattrib::check_attribs<attribs...>(), "ERROR: attribute list cannot contain duplicate names.");
+
+    template <typename T, typename ... Ts>
+    struct vert{
+        T first;
+        vert<Ts...> rest;
+
+        vert(T first, Ts... rest) : first(first), rest(rest...) {}
+
+        template<size_t i> auto& get(){
+            if constexpr(i==0) return first;
+            else return rest.template get<i-1>();
+        }
+
+        template<size_t i> static constexpr size_t get_offset() {
+            if constexpr(i==0) return __builtin_offsetof(vert<T, Ts...>, first); // TODO: using just offsetof() throws error for some reason, so we use __builtin_offsetof() instead - but it isn't portable
+            else return __builtin_offsetof(vert<T, Ts...>, rest) + decltype(rest)::template get_offset<i-1>();
+        }
     };
+
+    template<typename T>
+    struct vert<T>{
+        T first;
+
+        template <size_t i> auto& get(){
+            static_assert(i==0, "Error: index out of bounds"); // TODO: is a static assert the correct way to do this?
+            return first;
+        }
+
+        template<size_t i> static constexpr size_t get_offset() {
+            static_assert(i==0, "Error: index out of bounds"); // note: i should be know at compile time (because this is a constexpr), so static assert is ok
+            if constexpr(i==0) return offsetof(vert<T>, first);
+        }
+    };
+
+public:
+    using vertex = vert<typename decltype(attribs)::type ...>;
+    using attrIdxSeq = std::make_index_sequence<sizeof...(attribs)>;
 
 private:
     std::vector<vertex> vertices;
+    std::vector<GLuniform> uniforms;
+
+    std::unordered_map<std::string, GLuniform> lazy_uniforms;
 
     GLenum usage = GL_STATIC_DRAW;
     GLuint vbo = 0;
     bool vbo_sync = true;
 
-    inline void init_vbo(){
+    inline void ensure_vbo(){
         if (vbo) return;
         glGenBuffers(1, &vbo);
+        if constexpr (sizeof...(attribs) > 16){
+            printf("WARNING: mesh has more than 16 vertex attributes, which may not be supported by OpenGL ES 3.0.\n");
+        }
+        GLint max_attribs = -1;
+        glGetIntegerv(GL_MAX_VERTEX_ATTRIBS, &max_attribs);
+        if (sizeof...(attribs) > max_attribs){
+            printf("ERROR: mesh has more than %d vertex attributes, which is more than the maximum supported by OpenGL ES 3.0.\n", max_attribs);
+        }
+
+        for (auto i : lazy_uniforms) {
+            setUniformName(i.first.c_str(), i.second);
+        }
+        lazy_uniforms.clear();
     }
 
-    inline void bind_vbo(){
-        init_vbo();
+    inline void bind_vbo(){ _bind_vbo_impl(attrIdxSeq{}); }
+    template<size_t ... attrIdx>
+    inline void _bind_vbo_impl(std::index_sequence<attrIdx...> seq){
+        ensure_vbo();
 
         if (GLES::currentGL_ARRAY_BUFFER == vbo) return;
 
         glBindBuffer(GL_ARRAY_BUFFER, vbo);
-        glVertexAttribPointer(SHADER_ATTRIB_POSITION, 3, GL_FLOAT, GL_FALSE, sizeof(vertex), (void*)offsetof(vertex, position));
-        if constexpr (attrib_flags&GLMESH_FLAG_NORMAL) glVertexAttribPointer(SHADER_ATTRIB_NORMAL, 3, GL_FLOAT, GL_FALSE, sizeof(vertex), (void*)offsetof(vertex, normal));
-        if constexpr (attrib_flags&GLMESH_FLAG_COLOR ) glVertexAttribPointer(SHADER_ATTRIB_COLOR , 3, GL_FLOAT, GL_FALSE, sizeof(vertex), (void*)offsetof(vertex, color ));
-        if constexpr (attrib_flags&GLMESH_FLAG_UV    ) glVertexAttribPointer(SHADER_ATTRIB_UV    , 2, GL_FLOAT, GL_FALSE, sizeof(vertex), (void*)offsetof(vertex, uv    ));
+        
+        (glVertexAttribPointer(
+            shader->getAttribLoc(attrIdx), // TODO: should we instead use glSetAttribLocation() in shader to set (attr_loc = i) ?
+            GLattrib::type2count <typename decltype(attribs)::type>(),
+            GLattrib::type2GLenum<typename decltype(attribs)::type>(),
+            GL_FALSE,
+            sizeof(vertex),
+            (void*)vertex::template get_offset<attrIdx>())
+        ,...);
     }
 
 public:
     GLenum drawMode;
-    Vec3f color = {1.0f, 1.0f, 1.0f};
-    Shader<attrib_flags>* shader;
-    GLTexture* texture = nullptr;
+    Shader<attribs...>* shader;
+    // TODO: texture? color?
 
-    GLMesh(GLenum drawMode=GL_TRIANGLES, GLenum usage=GL_STATIC_DRAW, Shader<attrib_flags>* shader=defaultShader<attrib_flags>, GLTexture* texture=nullptr): drawMode(drawMode), usage(usage), shader(shader), texture(texture)
-    {
-        if (attrib_flags&GLMESH_FLAG_TEX && !texture) printf("Warning: GLMesh created with GLMESH_FLAG_TEX but no texture provided!\n");
-        if (attrib_flags&GLMESH_FLAG_TEX && !attrib_flags&GLMESH_FLAG_UV) printf("Warning: GLMesh created with GLMESH_FLAG_TEX but not GLMESH_FLAG_UV!\n");
-    };
+    GLMeshBase(GLenum drawMode=GL_TRIANGLES, GLenum usage=GL_STATIC_DRAW, Shader<attribs...>* shader=defaultcolorShader<attribs...>)
+        : drawMode(drawMode), usage(usage), shader(shader) {}
+    ~GLMeshBase(){ if (vbo) glDeleteBuffers(1, &vbo); }
 
     void clear(){
         vertices.clear();
         vbo_sync = false;
     }
 
-    void addVertex(Vec3f pos, Vec3f normal=Vec3fZero, Vec3f color=COLOR_WHITE, Vec2f uv=Vec2fZero){
-        vertex v;
-        v.position = pos;
-        if constexpr (attrib_flags&GLMESH_FLAG_NORMAL) v.normal = normal;
-        if constexpr (attrib_flags&GLMESH_FLAG_COLOR ) v.color  = color;
-        if constexpr (attrib_flags&GLMESH_FLAG_UV    ) v.uv     = uv;
-        vertices.push_back(v);
-
+    void addVertex(typename decltype(attribs)::type ... args){
+        vertices.push_back(vertex(args...));
         vbo_sync = false;
     }
-
-    void addVertex_strip(Vec3f pos, Vec3f normal=Vec3fZero, Vec3f color=COLOR_WHITE, Vec2f uv=Vec2fZero){
-        vertex v;
-        v.position = pos;
-        if constexpr (attrib_flags&GLMESH_FLAG_NORMAL) v.normal = normal;
-        if constexpr (attrib_flags&GLMESH_FLAG_COLOR ) v.color  = color;
-        if constexpr (attrib_flags&GLMESH_FLAG_UV    ) v.uv     = uv;
+    void addVertex_strip(typename decltype(attribs)::type ... args){
+        vertex v = vertex(args...);
 
         if (vertexCount() >= 3){
             vertex v1 = vertices[vertices.size()-1];
@@ -92,43 +133,78 @@ public:
         vertices.push_back(v);
         vbo_sync = false;
     }
+    inline int vertexCount() const { return vertices.size(); }
 
-    void updateVertex(int i, Vec3f pos, Vec3f normal=Vec3fZero, Vec3f color=COLOR_WHITE, Vec2f uv=Vec2fZero){
-        vertex v;
-        v.position = pos;
-        if constexpr (attrib_flags&GLMESH_FLAG_NORMAL) v.normal = normal;
-        if constexpr (attrib_flags&GLMESH_FLAG_COLOR ) v.color  = color;
-        if constexpr (attrib_flags&GLMESH_FLAG_UV    ) v.uv     = uv;
-        vertices[i] = v;
 
-        vbo_sync = false;
+    void setUniformName(const char* name, GLuniform u){
+        if (vbo == 0){
+            lazy_uniforms[std::string(name)] = u;
+            return;
+        }
+        setUniformLoc(shader->getUniformLocation(name), u);
     }
 
-    inline int vertexCount() const { return vertices.size(); }
+    void setUniformLoc(GLuint loc, GLuniform u){
+        if (loc == -1) return;
+        while (uniforms.size() <= loc) uniforms.push_back({.type=GLuniform::NONE});
+        uniforms[loc] = u;
+    }
+
+    void setUniform1f(const char* name, GLfloat v)        {setUniformName(name, {.type=GLuniform::f1, .data={.f1=v}}); }
+    void setUniform2f(const char* name, Vec2T<GLfloat> v) {setUniformName(name, {.type=GLuniform::f2, .data={.f2=v}}); }
+    void setUniform3f(const char* name, Vec3T<GLfloat> v) {setUniformName(name, {.type=GLuniform::f3, .data={.f3=v}}); }
+    void setUniform4f(const char* name, Vec4T<GLfloat> v) {setUniformName(name, {.type=GLuniform::f4, .data={.f4=v}}); }
+    void setUniform1i(const char* name, GLint v)          {setUniformName(name, {.type=GLuniform::i1, .data={.i1=v}}); }
+    void setUniform2i(const char* name, Vec2T<GLint> v)   {setUniformName(name, {.type=GLuniform::i2, .data={.i2=v}}); }
+    void setUniform3i(const char* name, Vec3T<GLint> v)   {setUniformName(name, {.type=GLuniform::i3, .data={.i3=v}}); }
+    void setUniform4i(const char* name, Vec4T<GLint> v)   {setUniformName(name, {.type=GLuniform::i4, .data={.i4=v}}); }
+    void setUniformMatrix3f(const char* name, Mat3T<GLfloat> v) {setUniformName(name, {.type=GLuniform::m3, .data={.m3=v}}); }
+    void setUniformMatrix4f(const char* name, Mat4T<GLfloat> v) {setUniformName(name, {.type=GLuniform::m4, .data={.m4=v}}); }  
+    void setUniformTex(const char* name, GLTexture* tex) {setUniformName(name, {.type=GLuniform::tex, .data={.tex=tex}});} 
 
     inline void bind_sync_vbo(){
         bind_vbo();
-
         if (vbo_sync) return;
 
         glBufferData(GL_ARRAY_BUFFER, vertices.size() * sizeof(vertex), vertices.data(), usage);
         vbo_sync = true;
     }
 
-    void drawMVP(Mat4f mvp){
+    inline void draw(){
         bind_sync_vbo();
-    
-        shader->setuColor(color);
-        shader->use();
-        shader->setuMVPMatrix(mvp);
-        if constexpr (attrib_flags&GLMESH_FLAG_TEX) {
-            glActiveTexture(GL_TEXTURE0);
-            shader->setUniform1i("uTexture", 0);
-            if (texture) texture->bind();
-            else printf("Warning: texture = nullptr!\n");
+
+        int texi = 0;
+        for (int i=0; i<uniforms.size(); i++){
+            if (uniforms[i].type == GLuniform::NONE) continue;
+            if (uniforms[i].type == GLuniform::tex){
+                glActiveTexture(GL_TEXTURE0 + texi);
+                uniforms[i].data.tex->bind();
+                shader->setUniformLoc(i, {.type=GLuniform::i1, .data={.i1=texi}});
+                texi++;
+                continue;
+            }
+            shader->setUniformLoc(i, uniforms[i]);
         }
-    
+        shader->use();
+
         glDrawArrays(drawMode, 0, vertexCount());
+    }
+
+    int x;
+};
+
+
+template<attrib...attribs>
+class GLMesh : public GLMeshBase<attribs...>{
+public:
+    using base = GLMeshBase<attribs...>;
+    GLMesh(GLenum drawMode=GL_TRIANGLES, GLenum usage=GL_STATIC_DRAW, Shader<attribs...>* shader=defaultcolorShader<attribs...>)
+        : base(drawMode, usage, shader) {}
+
+
+    void drawMVP(Mat4f mvp){
+        base::shader->setuMVPMatrix(mvp);
+        base::draw();
     }
 
     inline void draw(Vec3f position, float scale){draw(position, (Vec3f){scale, scale, scale});}
@@ -204,15 +280,8 @@ public:
 
         drawMVP(mvp);
     }
-
-    ~GLMesh(){
-        if (vbo) glDeleteBuffers(1, &vbo);
-    }
 };
 
-using GLMesh_Texture = GLMesh<GLMESH_FLAG_UV | GLMESH_FLAG_TEX>;
-using GLMesh_Normal = GLMesh<GLMESH_FLAG_NORMAL>;
-using GLMesh_Color = GLMesh<GLMESH_FLAG_COLOR>;
-using GLMesh_NC = GLMesh<GLMESH_FLAG_NORMAL | GLMESH_FLAG_COLOR>;
 
-#endif // _GLMESH_H_
+#endif // _GLMesh_H_
+

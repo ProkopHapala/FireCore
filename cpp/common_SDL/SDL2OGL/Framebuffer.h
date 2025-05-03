@@ -1,7 +1,6 @@
 
 #include "GLES.h"
 #include "GLTexture.h"
-#include <GLES3/gl3.h>
 #include <cstdio>
 #include <cstdlib>
 
