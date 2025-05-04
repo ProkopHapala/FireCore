@@ -106,7 +106,6 @@ md.upload_all_systems()
 
 # Set up kernels with their arguments
 md.setup_kernels()
-md.setup_run_ocl_opt()
 
 # Run optimization for 100 iterations with force convergence of 1e-6
 print("\nRunning OpenCL optimization...")

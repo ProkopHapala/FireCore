@@ -124,11 +124,13 @@ class MMFF:
         # self.constrK = None       # [natoms, 4   ] Constraint stiffness
         self.invLvec = None       # [nSystems, 9 ] Inverse lattice vectors
         self.pbc_shifts = None    # [nSystems, 3 ] PBC shifts
+        self.nPBC = None
+        self.npbc = None
 
         # Pi-orbitals and electron pairs
         self.pipos = None         # [natoms, 3] Pi-orbital orientations
 
-    def realloc(self, nnode, ncap, ntors=0):
+    def realloc(self, nnode, ncap, ntors=0, nPBC=(0,0,0) ):
         """
         Reallocates memory for MMFF parameters based on the system size.
 
@@ -137,6 +139,7 @@ class MMFF:
         - ncap (int): Number of capping atoms.
         - ntors (int): Number of torsions.
         """
+        self.npbc = (nPBC[0]*2+1)*(nPBC[1]*2+1)*(nPBC[2]*2+1)
         self.nnode  = nnode
         self.ncap   = ncap
         self.natoms = nnode + ncap
@@ -161,8 +164,8 @@ class MMFF:
         # self.torsParams = np.full((self.ntors, 4),  0.0, dtype=np.float32)
         # self.constr     = np.full((self.natoms, 4), 0.0, dtype=np.float32)
         # self.constrK    = np.full((self.natoms, 4), 0.0, dtype=np.float32)
-        self.invLvec    = np.full((1, 9), 0.0,  dtype=np.float32)  # Assuming single system; modify as needed
-        self.pbc_shifts = np.full((1, 3), 0.0,  dtype=np.float32)
+        self.invLvec    = np.full((3,3), 0.0,  dtype=np.float32)  # Assuming single system; modify as needed
+        self.pbc_shifts = np.full((self.npbc, 3), 0.0,  dtype=np.float32)
         self.pipos = np.zeros((self.natoms, 3), dtype=np.float32)
 
     def countPiE(self, atomic_system):
