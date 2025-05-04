@@ -140,6 +140,7 @@ class MMFF:
         - ntors (int): Number of torsions.
         """
         self.npbc = (nPBC[0]*2+1)*(nPBC[1]*2+1)*(nPBC[2]*2+1)
+        self.nPBC = nPBC
         self.nnode  = nnode
         self.ncap   = ncap
         self.natoms = nnode + ncap

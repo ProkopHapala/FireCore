@@ -443,7 +443,7 @@ float hashf_wang( float val, float xmin, float xmax) {
 // Assemble recoil forces from neighbors and  update atoms positions and velocities 
 //__attribute__((reqd_work_group_size(1,1,1)))
 __kernel void updateAtomsMMFFf4(
-    const int4        n,            // 1 // (natoms,nnode) dimensions of the system
+    const int4        nDOFs,            // 1 // (natoms,nnode) dimensions of the system
     __global float4*  apos,         // 2 // positions of atoms  (including node atoms [0:nnode] and capping atoms [nnode:natoms] and pi-orbitals [natoms:natoms+nnode] )
     __global float4*  avel,         // 3 // velocities of atoms 
     __global float4*  aforce,       // 4 // forces on atoms
@@ -458,9 +458,9 @@ __kernel void updateAtomsMMFFf4(
     __global int*     sysneighs,    // 13 // // for each system contains array int[nMaxSysNeighs] of nearby other systems
     __global float4*  sysbonds      // 14 // // contains parameters of bonds (constrains) with neighbor systems   {Lmin,Lmax,Kpres,Ktens}
 ){
-    const int natoms=n.x;           // number of atoms
-    const int nnode =n.y;           // number of node atoms
-    const int nMaxSysNeighs = n.w;  // max number of inter-system interactions; if <0 shwitch inter system interactions off
+    const int natoms=nDOFs.x;           // number of atoms
+    const int nnode =nDOFs.y;           // number of node atoms
+    const int nMaxSysNeighs = nDOFs.w;  // max number of inter-system interactions; if <0 shwitch inter system interactions off
     const int nvec  = natoms+nnode; // number of vectors (atoms+node atoms)
     const int iG = get_global_id  (0); // index of atom
 
@@ -633,7 +633,7 @@ __kernel void updateAtomsMMFFf4(
 // Print atoms and forces on GPU
 //__attribute__((reqd_work_group_size(1,1,1)))
 __kernel void printOnGPU(
-    const int4        n,            // 1
+    const int4        nDOFs,        // 1
     const int4        mask,         // 2
     __global float4*  apos,         // 3
     __global float4*  avel,         // 4
@@ -642,9 +642,9 @@ __kernel void printOnGPU(
     __global int4*    bkNeighs,     // 7
     __global float4*  constr        // 8
 ){
-    const int natoms=n.x;
-    const int nnode =n.y;
-    const int isys  =n.z; 
+    const int natoms=nDOFs.x;
+    const int nnode =nDOFs.y;
+    const int isys  =nDOFs.z; 
     const int nvec  = natoms+nnode;
     const int iG = get_global_id  (0);
     const int iS = get_global_id  (1);
@@ -699,12 +699,12 @@ __kernel void printOnGPU(
 // Clean forces on atoms and neighbors to prepare for next forcefield evaluation
 //__attribute__((reqd_work_group_size(1,1,1)))
 __kernel void cleanForceMMFFf4(
-    const int4        n,           // 2
+    const int4        nDOFs,       // 1
     __global float4*  aforce,      // 5
     __global float4*  fneigh       // 6
 ){
-    const int natoms=n.x;
-    const int nnode =n.y;
+    const int natoms=nDOFs.x;
+    const int nnode =nDOFs.y;
     const int iG = get_global_id  (0);
     const int iS = get_global_id  (1);
     const int nG = get_global_size(0);
@@ -738,12 +738,12 @@ __kernel void cleanForceMMFFf4(
 // This is the most time consuming part of the forcefield evaluation, especially for large systems when nPBC>1
 __attribute__((reqd_work_group_size(32,1,1)))
 __kernel void getNonBond(
-    const int4 ns,                  // 1 // (natoms,nnode) dimensions of the system
+    const int4        nDOFs,        // 1 // (natoms,nnode) dimensions of the system
     // Dynamical
-    __global float4*  apos,        // 2 // positions of atoms  (including node atoms [0:nnode] and capping atoms [nnode:natoms] and pi-orbitals [natoms:natoms+nnode] )
+    __global float4*  apos,         // 2 // positions of atoms  (including node atoms [0:nnode] and capping atoms [nnode:natoms] and pi-orbitals [natoms:natoms+nnode] )
     __global float4*  aforce,       // 3 // forces on atoms
     // Parameters
-    __global float4*  REQs,        // 4 // non-bonded parameters (RvdW,EvdW,QvdW,Hbond)
+    __global float4*  REQs,         // 4 // non-bonded parameters (RvdW,EvdW,QvdW,Hbond)
     __global int4*    neighs,       // 5 // neighbors indices      ( to ignore interactions between bonded atoms )
     __global int4*    neighCell,    // 6 // neighbors cell indices ( to know which PBC image should be ignored  due to bond )
     __global cl_Mat3* lvecs,        // 7 // lattice vectors for each system
@@ -774,8 +774,8 @@ __kernel void getNonBond(
     const int iL = get_local_id   (0); // index of atom in local memory
     const int nL = get_local_size (0); // number of atoms in local memory
 
-    const int natoms=ns.x;  // number of atoms
-    const int nnode =ns.y;  // number of node atoms
+    const int natoms=nDOFs.x;  // number of atoms
+    const int nnode =nDOFs.y;  // number of node atoms
     //const int nAtomCeil =ns.w;
     const int nvec  =natoms+nnode; // number of vectors (atoms+node atoms)
 

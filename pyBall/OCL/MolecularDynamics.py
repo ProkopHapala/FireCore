@@ -48,7 +48,8 @@ def vec3_to_cl(vec3_np):
 
 class MolecularDynamics:
 
-    kernelheader_getMMFFf4 = """
+    kernelheaders = {
+        "getMMFFf4": """
 __kernel void getMMFFf4(
     const int4 nDOFs,               // 1   (nAtoms,nnode) dimensions of the system
     // Dynamical
@@ -70,11 +71,11 @@ __kernel void getMMFFf4(
     const int npbc,
     const int bSubtractVdW
 ){
-    """
-
-    kernelheader_updateAtomsMMFFf4 = """
+    """,
+    
+    "updateAtomsMMFFf4" :"""
 __kernel void updateAtomsMMFFf4(
-    const int4        n,            // 1 // (natoms,nnode) dimensions of the system
+    const int4        nDOFs,            // 1 // (natoms,nnode) dimensions of the system
     __global float4*  apos,         // 2 // positions of atoms  (including node atoms [0:nnode] and capping atoms [nnode:natoms] and pi-orbitals [natoms:natoms+nnode] )
     __global float4*  avel,         // 3 // velocities of atoms 
     __global float4*  aforce,       // 4 // forces on atoms
@@ -89,11 +90,12 @@ __kernel void updateAtomsMMFFf4(
     __global int*     sysneighs,    // 13 // // for each system contains array int[nMaxSysNeighs] of nearby other systems
     __global float4*  sysbonds      // 14 // // contains parameters of bonds (constrains) with neighbor systems   {Lmin,Lmax,Kpres,Ktens}
 ){
-    """
+    """,
     
-    kernelheader_printOnGPU = """    }
+    
+    "printOnGPU":"""
 __kernel void printOnGPU(
-    const int4        n,            // 1
+    const int4        nDOFs,            // 1
     const int4        mask,         // 2
     __global float4*  apos,         // 3
     __global float4*  avel,         // 4
@@ -102,19 +104,19 @@ __kernel void printOnGPU(
     __global int4*    bkNeighs,     // 7
     __global float4*  constr        // 8
 ){
-    """
-
-    kernelheader_cleanForceMMFFf4 = """
+    """,
+    
+    "cleanForceMMFFf4" : """
 __kernel void cleanForceMMFFf4(
-    const int4        n,           // 2
+    const int4        nDOFs,           // 2
     __global float4*  aforce,      // 5
     __global float4*  fneigh       // 6
 ){
-    """
-
-    kernelheader_getNonBond = """
+    """,
+    
+    "getNonBond" : """
 __kernel void getNonBond(
-    const int4 ns,                 // 1 // (natoms,nnode) dimensions of the system
+    const int4 nDOFs,                 // 1 // (natoms,nnode) dimensions of the system
     // Dynamical
     __global float4*  apos,        // 2 // positions of atoms  (including node atoms [0:nnode] and capping atoms [nnode:natoms] and pi-orbitals [natoms:natoms+nnode] )
     __global float4*  aforce,      // 3 // forces on atoms
@@ -126,7 +128,7 @@ __kernel void getNonBond(
     const int4        nPBC,        // 8 // number of PBC images in each direction (x,y,z)
     const float4      GFFParams    // 9 // Grid-Force-Field parameters
 ){
-    """
+    """}  # END kernelheaders
 
     def __init__(self, nloc=32):
         # Initialize OpenCL context and queue
@@ -158,7 +160,7 @@ __kernel void getNonBond(
             print(f"Kernel file not found at: {kernel_path}")
             exit(1)
 
-        print("prg.dir()", dir(self.prg) )
+        #print("prg.dir()", dir(self.prg) )
         self.getMMFFf4         = self.prg.getMMFFf4
         self.getNonBond        = self.prg.getNonBond
         self.updateAtomsMMFFf4 = self.prg.updateAtomsMMFFf4
@@ -169,31 +171,20 @@ __kernel void getNonBond(
         self.mmff_instances = []
         self.buffer_dict = {}
 
-
-
-    def realloc(self, nSystems, mmff):
+    def realloc(self, mmff, nSystems=1 ):
         """
         Reallocate buffers for the given number of systems based on the MMFF template.
         """
         # Store dimensions explicitly to avoid reference issues
         print(f"MMFF dimensions received in realloc: natoms={mmff.natoms}, nvecs={mmff.nvecs}, nnode={mmff.nnode}")
-        
         self.nSystems = nSystems
         self.mmff_instances = [mmff] * nSystems  # Assuming all systems use the same MMFF parameters
-        
-        # Create a new instance for internal use to avoid reference issues
-        self.mmff_template = mmff
-        
-        # Call buffer allocation with explicit dimensions
-        self.allocate_cl_buffers(self.mmff_template)
+        self.allocate_cl_buffers(mmff)
+        self.allocate_host_buffers()
 
-        # Allocate host buffers
-        self.allocate_host_buffers(self.mmff_template)
-        self.allocate_host_buffers(mmff)
-
-    def allocate_host_buffers(self, mmff ):
-        self.atoms  = np.empty(self.nSystems * mmff.nvecs * 4, dtype=np.float32)
-        self.forces = np.empty(self.nSystems * mmff.nvecs * 4, dtype=np.float32)
+    def allocate_host_buffers(self):
+        self.atoms  = np.zeros((self.nSystems, self.nvecs, 4), dtype=np.float32)
+        self.aforce = np.zeros((self.nSystems, self.nvecs, 4), dtype=np.float32)
 
     def allocate_cl_buffers(self, mmff ):
         """
@@ -240,17 +231,17 @@ __kernel void getNonBond(
         
         # Example buffer allocations
         mf = cl.mem_flags
-        self.buffer_dict['apos']         = cl.Buffer(self.ctx, mf.READ_WRITE, size=nSystems * nvecs * 3 * np.float32().itemsize)
-        self.buffer_dict['aforce']       = cl.Buffer(self.ctx, mf.READ_WRITE, size=nSystems * nvecs * 3 * np.float32().itemsize)
+        self.buffer_dict['apos']         = cl.Buffer(self.ctx, mf.READ_WRITE, size=nSystems * nvecs * 4 * np.float32().itemsize)
+        self.buffer_dict['aforce']       = cl.Buffer(self.ctx, mf.READ_WRITE, size=nSystems * nvecs * 4 * np.float32().itemsize)
         self.buffer_dict['REQs']         = cl.Buffer(self.ctx, mf.READ_ONLY, size=nSystems * natoms * 4 * np.float32().itemsize)
         self.buffer_dict['neighs']       = cl.Buffer(self.ctx, mf.READ_ONLY, size=nSystems * natoms * 4 * np.int32().itemsize)
         self.buffer_dict['neighCell']    = cl.Buffer(self.ctx, mf.READ_ONLY, size=nSystems * natoms * 4 * np.int32().itemsize)
         self.buffer_dict['bkNeighs']     = cl.Buffer(self.ctx, mf.READ_ONLY, size=nSystems * nvecs * 4 * np.int32().itemsize)
         self.buffer_dict['bkNeighs_new'] = cl.Buffer(self.ctx, mf.READ_ONLY, size=nSystems * nvecs * 4 * np.int32().itemsize)
-        self.buffer_dict['avel']         = cl.Buffer(self.ctx, mf.READ_WRITE, size=nSystems * nvecs * 3 * np.float32().itemsize)
-        self.buffer_dict['cvf']          = cl.Buffer(self.ctx, mf.READ_WRITE, size=nSystems * nvecs * 3 * np.float32().itemsize)
-        self.buffer_dict['fneigh']       = cl.Buffer(self.ctx, mf.READ_WRITE, size=nSystems * nbkng * 3 * np.float32().itemsize)
-        self.buffer_dict['fneighpi']     = cl.Buffer(self.ctx, mf.READ_WRITE, size=nSystems * nbkng * 3 * np.float32().itemsize)
+        self.buffer_dict['avel']         = cl.Buffer(self.ctx, mf.READ_WRITE, size=nSystems * nvecs * 4 * np.float32().itemsize)
+        self.buffer_dict['cvf']          = cl.Buffer(self.ctx, mf.READ_WRITE, size=nSystems * nvecs * 4 * np.float32().itemsize)
+        self.buffer_dict['fneigh']       = cl.Buffer(self.ctx, mf.READ_WRITE, size=nSystems * nbkng * 4 * np.float32().itemsize)
+        self.buffer_dict['fneighpi']     = cl.Buffer(self.ctx, mf.READ_WRITE, size=nSystems * nbkng * 4 * np.float32().itemsize)
         self.buffer_dict['apars']        = cl.Buffer(self.ctx, mf.READ_ONLY, size=nSystems * nnode * 4 * np.float32().itemsize)
         self.buffer_dict['bLs']          = cl.Buffer(self.ctx, mf.READ_ONLY, size=nSystems * nnode * 4 * np.float32().itemsize)
         self.buffer_dict['bKs']          = cl.Buffer(self.ctx, mf.READ_ONLY, size=nSystems * nnode * 4 * np.float32().itemsize)
@@ -260,11 +251,11 @@ __kernel void getNonBond(
         #self.buffer_dict['torsParams']   = cl.Buffer(self.ctx, mf.READ_ONLY, size=nSystems * ntors * 4 * np.float32().itemsize)
         self.buffer_dict['constr']       = cl.Buffer(self.ctx, mf.READ_WRITE, size=nSystems * natoms * 4 * np.float32().itemsize)
         self.buffer_dict['constrK']      = cl.Buffer(self.ctx, mf.READ_WRITE, size=nSystems * natoms * 4 * np.float32().itemsize)
-        self.buffer_dict['lvecs']        = cl.Buffer(self.ctx, mf.READ_ONLY, size=nSystems * 9 * np.float32().itemsize)  # 3x3 m
-        self.buffer_dict['ilvecs']       = cl.Buffer(self.ctx, mf.READ_ONLY, size=nSystems * 9 * np.float32().itemsize)  # 3x3 matrix
-        self.buffer_dict['MDparams']   = cl.Buffer(self.ctx, mf.READ_ONLY, size=nSystems * 4 * np.float32().itemsize)
+        self.buffer_dict['lvecs']        = cl.Buffer(self.ctx, mf.READ_ONLY, size=nSystems * 3*4 * np.float32().itemsize)  # 3x3 m
+        self.buffer_dict['ilvecs']       = cl.Buffer(self.ctx, mf.READ_ONLY, size=nSystems * 3*4 * np.float32().itemsize)  # 3x3 matrix
+        self.buffer_dict['MDparams']   = cl.Buffer(self.ctx, mf.READ_ONLY, size=nSystems   * 4 * np.float32().itemsize)
         self.buffer_dict['TDrives']      = cl.Buffer(self.ctx, mf.READ_ONLY, size=nSystems * 4 * np.float32().itemsize)
-        self.buffer_dict['bboxes']       = cl.Buffer(self.ctx, mf.READ_ONLY, size=nSystems * 9 * np.float32().itemsize)
+        self.buffer_dict['bboxes']       = cl.Buffer(self.ctx, mf.READ_ONLY, size=nSystems * 3*4 * np.float32().itemsize)
         self.buffer_dict['sysneighs']    = cl.Buffer(self.ctx, mf.READ_ONLY, size=nSystems * np.int32().itemsize)
         self.buffer_dict['sysbonds']     = cl.Buffer(self.ctx, mf.READ_ONLY, size=nSystems * 4 * np.float32().itemsize)
         self.buffer_dict['pbc_shifts']   = cl.Buffer(self.ctx, mf.READ_ONLY, size=nSystems * npbc *4* np.float32().itemsize)
@@ -281,12 +272,12 @@ __kernel void getNonBond(
 
         # Example: Pack atomic positions
         atoms_flat = mmff.apos.flatten().astype(np.float32)
-        cl.enqueue_copy(self.queue, self.buffer_dict['apos'], atoms_flat, byte_offset=iSys * mmff.nvecs * 3 * 4)
+        cl.enqueue_copy(self.queue, self.buffer_dict['apos'], atoms_flat, byte_offset=iSys * mmff.nvecs * 4 * 4)
 
         # Pack forces if required
         if bForces:
             forces_flat = mmff.fapos.flatten().astype(np.float32)
-            cl.enqueue_copy(self.queue, self.buffer_dict['aforce'], forces_flat, byte_offset=iSys * mmff.nvecs * 3 * 4)
+            cl.enqueue_copy(self.queue, self.buffer_dict['aforce'], forces_flat, byte_offset=iSys * mmff.nvecs * 4 * 4)
 
         # Pack parameters if required
         if bParams:
@@ -321,29 +312,29 @@ __kernel void getNonBond(
 
     def pack_system(self, iSys, mmff):
         """Packs data from an MMFF instance into GPU buffers for a specific system index."""
-        nvecs = mmff.nvecs
-        natoms = mmff.natoms
-        nnode = mmff.nnode
+        nvecs   = mmff.nvecs
+        natoms  = mmff.natoms
+        nnode   = mmff.nnode
         float4_size = 4 * np.float32().itemsize
-        int4_size = 4 * np.int32().itemsize
+        int4_size   = 4 * np.int32().itemsize
 
         offset_atoms = iSys * nvecs * float4_size
-        self.toGPU('apos', mmff.apos.astype(np.float32).flatten(), byte_offset=offset_atoms)
-        self.toGPU('aforce', mmff.fapos.astype(np.float32).flatten(), byte_offset=offset_atoms)
+        self.toGPU('apos',      mmff.apos.astype(np.float32).flatten(), byte_offset=offset_atoms)
+        self.toGPU('aforce',    mmff.fapos.astype(np.float32).flatten(), byte_offset=offset_atoms)
 
         offset_REQs = iSys * natoms * float4_size
-        self.toGPU('REQs', mmff.REQs.astype(np.float32).flatten(), byte_offset=offset_REQs)
+        self.toGPU('REQs',      mmff.REQs.astype(np.float32).flatten(), byte_offset=offset_REQs)
 
         offset_neighs = iSys * natoms * int4_size
-        self.toGPU('neighs', mmff.neighs.astype(np.int32).flatten(), byte_offset=offset_neighs)
+        self.toGPU('neighs',    mmff.neighs.astype(np.int32).flatten(), byte_offset=offset_neighs)
         self.toGPU('neighCell', mmff.neighCell.astype(np.int32).flatten(), byte_offset=offset_neighs)
 
         offset_apars = iSys * nnode * float4_size
-        self.toGPU('apars', mmff.apars.astype(np.float32).flatten(), byte_offset=offset_apars)
-        self.toGPU('bLs', mmff.bLs.astype(np.float32).flatten(), byte_offset=offset_apars)
-        self.toGPU('bKs', mmff.bKs.astype(np.float32).flatten(), byte_offset=offset_apars)
-        self.toGPU('Ksp', mmff.Ksp.astype(np.float32).flatten(), byte_offset=offset_apars)
-        self.toGPU('Kpp', mmff.Kpp.astype(np.float32).flatten(), byte_offset=offset_apars)
+        self.toGPU('apars',     mmff.apars.astype(np.float32).flatten(), byte_offset=offset_apars)
+        self.toGPU('bLs',       mmff.bLs.astype(np.float32).flatten(), byte_offset=offset_apars)
+        self.toGPU('bKs',       mmff.bKs.astype(np.float32).flatten(), byte_offset=offset_apars)
+        self.toGPU('Ksp',       mmff.Ksp.astype(np.float32).flatten(), byte_offset=offset_apars)
+        self.toGPU('Kpp',       mmff.Kpp.astype(np.float32).flatten(), byte_offset=offset_apars)
         # Continue for other buffers as needed...
 
     def upload_all_systems(self):
@@ -352,6 +343,64 @@ __kernel void getNonBond(
             self.pack_system(sys_idx, self.mmff_instances[sys_idx])
         #if self.verbose:
         print("All systems uploaded to GPU.")
+
+    def clean_forces(self):
+        self.cleanForceMMFFf4(*self.kernel_args_cleanForceMMFFf4)
+        #if self.verbose:  print("Forces cleaned using cleanForceMMFFf4 kernel.")
+
+    def roundUpGlobalSize(self, global_size):
+        return (global_size + self.nloc - 1) // self.nloc * self.nloc
+
+    def setup_kernels(self):
+        """
+        Prepares the kernel arguments for all kernels by parsing their headers.
+        Also sets up the work sizes for each kernel.
+        """
+        # Get all work sizes at once
+        work_sizes = self.get_work_sizes()
+        sz_loc    = work_sizes['sz_loc']
+        self.local_size_opt = sz_loc
+        self.init_kernel_params()
+        
+        # Set global work sizes for each kernel
+        self.global_size_mmff    = (self.roundUpGlobalSize(self.nSystems * self.nnode),self.nSystems)
+        self.global_size_nonbond = (self.roundUpGlobalSize(self.nSystems * self.natoms),self.nSystems)
+        self.global_size_update  = (self.roundUpGlobalSize(self.nSystems * self.nvecs),self.nSystems)
+        self.global_size_clean   = (self.roundUpGlobalSize(self.nSystems * self.natoms),self.nSystems)
+        
+        self.kernel_args_getMMFFf4         = self.generate_kernel_args('getMMFFf4')
+        self.kernel_args_getNonBond        = self.generate_kernel_args('getNonBond')
+        self.kernel_args_updateAtomsMMFFf4 = self.generate_kernel_args('updateAtomsMMFFf4')
+        self.kernel_args_cleanForceMMFFf4  = self.generate_kernel_args('cleanForceMMFFf4')
+        
+        print("Kernel arguments prepared for optimization.")
+
+    def run_ocl_opt(self, niter, Fconv=1e-6, nPerVFs=10):
+        #self.print_kernel_args(self.kernel_args_getNonBond, "kernel_args_getNonBond")  # Print args for debugging
+        #print( "!!!! self.global_size_nonbond, self.local_size_opt,  ", self.global_size_nonbond, self.local_size_opt)
+        F2conv = Fconv ** 2
+        niterdone = 0
+        for _ in range(niter):
+            # Call kernels with explicit queue, global and local sizes
+            self.getNonBond       (self.queue, self.global_size_nonbond, self.local_size_opt,  *self.kernel_args_getNonBond)
+            self.getMMFFf4        (self.queue, self.global_size_mmff,    self.local_size_opt,  *self.kernel_args_getMMFFf4)
+            self.updateAtomsMMFFf4(self.queue, self.global_size_update,  self.local_size_opt,  *self.kernel_args_updateAtomsMMFFf4)
+            niterdone += 1
+            if niterdone % nPerVFs == 0:
+                cl.enqueue_copy(self.queue, self.aforce, self.buffer_dict['aforce'])
+                F2max = np.max(np.sum(self.aforce**2))
+                print(f"Iteration {niterdone}: Max |F|^2 = {F2max}")
+                if F2max < F2conv:
+                    print(f"Converged after {niterdone} iterations.")
+                    break
+        return niterdone
+
+    def download_results(self):
+        mmff   = self.mmff_instances[0]
+        cl.enqueue_copy(self.queue, self.atoms,  self.buffer_dict['apos'])
+        cl.enqueue_copy(self.queue, self.aforce, self.buffer_dict['aforce'])
+        self.queue.finish()
+        return self.atoms.reshape(-1, 4), self.aforce.reshape(-1, 4)
 
     def parse_kernel_header(self, header_string):
         """
@@ -422,15 +471,13 @@ __kernel void getNonBond(
         # Create a dictionary to store kernel parameters
         self.kernel_params = {
             # Common dimension parameters
-            'ns': np.array([self.natoms, self.nnode, 0, 0], dtype=np.int32),
-            'n': np.array([self.natoms, self.nnode, 0, 0], dtype=np.int32),
-            'mask': np.array([1, 1, 1, 1], dtype=np.int32),
-            'nPBC': np.array([1, 1, 1, 0], dtype=np.int32),
-            'GFFParams': np.array([0.0, 0.0, 0.0, 0.0], dtype=np.float32),
+            'nDOFs':        np.array([self.natoms, self.nnode, 0, 0], dtype=np.int32),
+            'mask':         np.array([1, 1, 1, 1],         dtype=np.int32),
+            'nPBC':         np.array(self.nPBC+(0,),       dtype=np.int32),
+            'GFFParams':    np.array([0.0, 0.0, 0.0, 0.0], dtype=np.float32),
             # Common scalar parameters
-            'npbc': np.int32(1),
+            'npbc':         np.int32(self.npbc),
             'bSubtractVdW': np.int32(0),
-            'nDOFs': np.int32(self.nDOFs),
         }
         
     def get_work_sizes(self):
@@ -442,19 +489,19 @@ __kernel void getNonBond(
         """
         # Default to the standard work size parameters
         sz_loc = (self.nloc, 1)
-        sz_na = (clu.roundup_global_size(self.natoms, self.nloc), self.nSystems)
+        sz_na   = (clu.roundup_global_size(self.natoms, self.nloc), self.nSystems)
         sz_node = (clu.roundup_global_size(self.nnode, self.nloc), self.nSystems)
         sz_nvec = (clu.roundup_global_size(self.nvecs, self.nloc), self.nSystems)
         
         # Return all sizes, let the caller decide which to use
         return {
-            'sz_na': sz_na,
+            'sz_na':   sz_na,
             'sz_node': sz_node,
             'sz_nvec': sz_nvec,
-            'sz_loc': sz_loc
+            'sz_loc':  sz_loc
         }
     
-    def generate_kernel_args(self, kernel_header):
+    def generate_kernel_args(self,name):
         """
         Generate argument list for a kernel based on its header definition.
         
@@ -467,8 +514,9 @@ __kernel void getNonBond(
         # Initialize the kernel parameters if they don't exist yet
         if not hasattr(self, 'kernel_params'):
             self.init_kernel_params()
+        kernel_header = self.kernelheaders[name]
         args_names = self.parse_kernel_header(kernel_header)
-        print("\n=======================\nkernel_header ", kernel_header ,  "\nargs_names: ", args_names)
+        #print("\n=======================\nkernel_header ", kernel_header ,  "\nargs_names: ", args_names)
         args = []
         for name,typ in args_names:
             if typ == 0:
@@ -477,83 +525,8 @@ __kernel void getNonBond(
                 args.append(self.kernel_params[name])
         return args
 
-    def setup_kernels(self):
-        """
-        Prepares the kernel arguments for all kernels by parsing their headers.
-        Also sets up the work sizes for each kernel.
-        """
-        # Get all work sizes at once
-        work_sizes = self.get_work_sizes()
-        sz_loc     = work_sizes['sz_loc']
-        sz_na      = work_sizes['sz_na']
-        sz_node    = work_sizes['sz_node']
-        sz_nvec    = work_sizes['sz_nvec']
-        
-        # Initialize kernel parameters
-        self.init_kernel_params()
-        
-        # Set global and local work sizes for each kernel
-        self.global_size_mmff = (self.nSystems * self.nnode,)
-        self.global_size_nonbond = (self.nSystems * self.natoms,)
-        self.global_size_update = (self.nSystems * self.nvecs,)
-        self.global_size_clean = (self.nSystems * self.natoms,)
-        
-        # Generate kernel arguments
-        # For getMMFFf4 kernel
-        args_mmff = [sz_node, sz_loc]  # Start with work sizes
-        args_mmff.extend(self.generate_kernel_args(self.kernelheader_getMMFFf4))
-        self.kernel_args_getMMFFf4 = args_mmff
-        
-        # For getNonBond kernel
-        args_nonbond = [sz_na, sz_loc]  # Start with work sizes
-        args_nonbond.extend(self.generate_kernel_args(self.kernelheader_getNonBond))
-        self.kernel_args_getNonBond = args_nonbond
-        
-        # For updateAtomsMMFFf4 kernel
-        args_update = [sz_na, sz_loc]  # Start with work sizes
-        args_update.extend(self.generate_kernel_args(self.kernelheader_updateAtomsMMFFf4))
-        self.kernel_args_updateAtomsMMFFf4 = args_update
-        
-        # For cleanForceMMFFf4 kernel
-        args_clean = [sz_nvec, sz_loc]  # Start with work sizes
-        args_clean.extend(self.generate_kernel_args(self.kernelheader_cleanForceMMFFf4))
-        self.kernel_args_cleanForceMMFFf4 = args_clean
-        
-        print("Kernel arguments prepared for optimization.")
-
-
-    def run_ocl_opt(self, niter, Fconv=1e-6, nPerVFs=10):
-        F2conv = Fconv ** 2
-        niterdone = 0
-        #mmff = self.mmff_instances[0]  # Assuming all instances are identical
-        for _ in range(niter):
-            self.getNonBond       (*self.kernel_args_getNonBond)
-            self.getMMFFf4        (*self.kernel_args_getMMFFf4)
-            self.updateAtomsMMFFf4(*self.kernel_args_updateAtomsMMFFf4)
-            niterdone += 1
-            if niterdone % nPerVFs == 0:
-                # Read back forces to check convergence
-                #aforces = np.empty(self.nSystems * mmff.nvecs * 4, dtype=np.float32)
-                cl.enqueue_copy(self.queue, self.aforces, self.buffer_dict['aforce'])
-                F2max = np.max(np.sum( self.aforces**2, axis=1))
-                #if self.verbose: 
-                print(f"Iteration {niterdone}: Max |F|^2 = {F2max}")
-                if F2max < F2conv:
-                    #if self.verbose: 
-                    print(f"Converged after {niterdone} iterations.")
-                    break
-        if self.verbose and F2max >= F2conv: 
-            print(f"Did not converge after {niterdone} iterations. Final |F|^2 = {F2max}")
-        return niterdone
-
-    def download_results(self):
-        mmff   = self.mmff_instances[0]
-        cl.enqueue_copy(self.queue, self.atoms,  self.buffer_dict['apos'])
-        cl.enqueue_copy(self.queue, self.forces, self.buffer_dict['aforce'])
-        self.queue.finish()
-        #if self.verbose: print("Downloaded results from GPU.")
-        return self.atoms.reshape(self.nSystems, mmff.nvecs, 4), self.forces.reshape(self.nSystems, mmff.nvecs, 4)
-
-    def clean_forces(self):
-        self.cleanForceMMFFf4(*self.kernel_args_cleanForceMMFFf4)
-        #if self.verbose:  print("Forces cleaned using cleanForceMMFFf4 kernel.")
+    def print_kernel_args(self, args, name=None):
+        if name is not None:
+            print(f"{name}: ")
+        for i,arg in enumerate(args):
+            print(f"arg {i}: {arg}")

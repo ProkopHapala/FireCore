@@ -71,9 +71,7 @@ mmff.toMMFFsp3_loc(
 for ia in range(mmff.natoms):
     mmff.printAtomConf(ia, mol)  # Replace 0 with desired atom index
 
-
 # =========== Initialization of MMFF system
-
 
 #exit()
 #cuMD.init( mol.natoms, mol.natoms, mol.natoms, 0, 0 )
@@ -96,7 +94,7 @@ if mmff.natoms == 0 or mmff.nvecs == 0 or mmff.nnode == 0:
 md = clMD.MolecularDynamics(nloc=32)
 
 # Allocate memory for 1 system (nSystems=1) using the MMFF template
-md.realloc(nSystems=1, mmff=mmff)
+md.realloc( mmff=mmff, nSystems=1,)
 
 # Pack the MMFF data into GPU buffers for system index 0
 md.pack_system(iSys=0, mmff=mmff)
@@ -114,10 +112,10 @@ print(f"OpenCL optimization completed in {iter_done} iterations")
 
 # Download results from GPU
 final_pos, final_forces = md.download_results()
-print("\nFinal positions:")
-print(final_pos[0, :5, :3])  # Print positions of first 5 atoms
-print("\nFinal forces:")
-print(final_forces[0, :5, :3])  # Print forces of first 5 atoms
+# print("\nFinal positions:")
+# print(final_pos[0, :5, :3])  # Print positions of first 5 atoms
+# print("\nFinal forces:")
+# print(final_forces[0, :5, :3])  # Print forces of first 5 atoms
 
 # Skip CUDA implementation for now
 print("\nSkipping CUDA implementation comparison.")
