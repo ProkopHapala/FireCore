@@ -5,8 +5,8 @@
 #include <cuda_runtime.h>
 #include <vector_types.h> // For float4, int4 etc.
 
-// Local Mat3 definition for kernels
-typedef struct { float4 a; float4 b; float4 c; } Mat3;
+// Local cu_Mat3 definition for kernels
+typedef struct { float4 a; float4 b; float4 c; } cu_Mat3;
 
 // Declare all CUDA kernels with proper signatures
 __global__ void cleanForceMMFFf4(
@@ -21,7 +21,7 @@ __global__ void getNonBond(
     float4* REQKs,         // non-bond params per atom
     int4* neighs,          // neighbor indices per atom
     int4* neighCell,       // neighbor cell indices per atom
-    Mat3* lvecs,           // lattice vectors per system
+    cu_Mat3* lvecs,           // lattice vectors per system
     const int4 nPBC,       // PBC image counts
     const float4 GFFParams // grid-force-field params
 );
@@ -38,8 +38,8 @@ __global__ void getMMFFf4(
     float4* bKs,           // bond stiffness per neighbor
     float4* Ksp,           // sigma-pi orth stiffness
     float4* Kpp,           // pi-pi planar stf
-    Mat3* lvecs,           // lattice vectors per system
-    Mat3* ilvecs,          // inverse lattice vectors per system
+    cu_Mat3* lvecs,           // lattice vectors per system
+    cu_Mat3* ilvecs,          // inverse lattice vectors per system
     float4* pbc_shifts,    // precomputed PBC shifts
     const int npbc,        // count of PBC shifts
     const int bSubtractVdW // flag to subtract bonded nonbonded
@@ -56,7 +56,7 @@ __global__ void updateAtomsMMFFf4(
     float4* constrK,       // constraint stiffness per atom
     float4* MDparams,      // MD params dt,damp, etc.
     float4* TDrives,       // thermal drive params
-    Mat3* bboxes,          // bounding boxes per system
+    cu_Mat3* bboxes,          // bounding boxes per system
     int* sysneighs,        // sys neighbor lists
     float4* sysbonds       // system-system bond params
 );

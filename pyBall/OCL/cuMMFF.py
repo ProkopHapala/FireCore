@@ -29,58 +29,54 @@ array3d  = np.ctypeslib.ndpointer(dtype=np.double, ndim=3, flags='CONTIGUOUS')
 # upload function
 lib.upload.argtypes = [c_char_p, c_void_p, c_int]
 lib.upload.restype  = c_int
-def upload(name, data, elem_size=None):
+def upload(name, data, elem_size=-1):
     name_    = name.encode('utf-8')
     return lib.upload(name_, data.ctypes.data_as(c_void_p), elem_size)
 
 # download function
 lib.download.argtypes = [c_char_p, c_void_p, c_int]
 lib.download.restype  = c_int
-
-def download(name, data, elem_size=None):
+def download(name, data, elem_size=-1):
     name_    = name.encode('utf-8')
     return lib.download(name_, data.ctypes.data_as(c_void_p), elem_size)
 
-# run_cleanForceMMFFf4 function
-lib.run_cleanForceMMFFf4.argtypes = []
-lib.run_cleanForceMMFFf4.restype  = c_int
-def clean_force():
-    return lib.run_cleanForceMMFFf4()
 
 #void init(int nSystems_, int nAtoms_, int nnode_, int npbc_, int nMaxSysNeighs_) {
 lib.init.argtypes = [c_int, c_int, c_int, c_int, c_int]
 lib.init.restype  = None
-def init(nSystems, nAtoms, nnode, npbc, nMaxSysNeighs):   
+def init( nAtoms, nnode, npbc=1, nMaxSysNeighs=4, nSystems=1):   
     lib.init(nSystems, nAtoms, nnode, npbc, nMaxSysNeighs)
 
 # ======= Kernels
 
+# run_cleanForceMMFFf4 function
+lib.run_cleanForceMMFFf4.argtypes = []
+lib.run_cleanForceMMFFf4.restype  = c_int
+def run_cleanForceMMFFf4():
+    return lib.run_cleanForceMMFFf4()
+
 # run_getNonBond function
-lib.run_getNonBond.argtypes = [c_int_p, c_float_p]
+lib.run_getNonBond.argtypes = []
 lib.run_getNonBond.restype  = c_int
-def get_non_bond(n_pbc, gff_params):
-    # Convert parameters to CUDA types
-    n_pbc_cuda = (c_int * 4)(*n_pbc)
-    gff_params_cuda = (c_float * 4)(*gff_params)
-    return lib.run_getNonBond(n_pbc_cuda, gff_params_cuda)
+def run_getNonBond():
+    return lib.run_getNonBond()
 
 # run_getMMFFf4 function
-lib.run_getMMFFf4.argtypes = [c_int]
+lib.run_getMMFFf4.argtypes = []
 lib.run_getMMFFf4.restype  = c_int
-def get_mmff(subtract_vdw=0):
-    return lib.run_getMMFFf4(subtract_vdw)
+def run_getMMFFf4():
+    return lib.run_getMMFFf4()
 
-def update_atoms():
+def run_updateAtomsMMFFf4():
     return lib.run_updateAtomsMMFFf4()
 # run_updateAtomsMMFFf4 function
 lib.run_updateAtomsMMFFf4.argtypes = []
 lib.run_updateAtomsMMFFf4.restype  = c_int
 
-
 # run_printOnGPU function
 lib.run_printOnGPU.argtypes = [c_int, c_int_p]
 lib.run_printOnGPU.restype  = c_int
-def print_on_gpu(sys_index=0, mask=(1,1,1,1)):
+def run_printOnGPU(sys_index=0, mask=(1,1,1,1)):
     mask_cuda = (c_int * 4)(*mask)
     return lib.run_printOnGPU(sys_index, mask_cuda)
 

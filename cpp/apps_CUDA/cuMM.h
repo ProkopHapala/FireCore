@@ -13,10 +13,10 @@
 #include "containers.h"
 
 
-// --- Mat3 Definition ---
-// #ifndef MAT3_DEFINED
-// #define MAT3_DEFINED
-// typedef struct { float4 a; float4 b; float4 c; } Mat3;
+// --- cu_Mat3 Definition ---
+// #ifndef cu_Mat3_DEFINED
+// #define cu_Mat3_DEFINED
+// typedef struct { float4 a; float4 b; float4 c; } cu_Mat3;
 // #endif
 
 // --- Kernel Forward Declarations ---
@@ -97,16 +97,21 @@ class CU_MM { public:
     float4* d_BKs = nullptr;
     float4* d_Ksp = nullptr;
     float4* d_Kpp = nullptr;
-    Mat3*   d_lvecs = nullptr;
-    Mat3*   d_ilvecs = nullptr;
+    cu_Mat3*   d_lvecs = nullptr;
+    cu_Mat3*   d_ilvecs = nullptr;
     float4* d_pbcshifts = nullptr;
     float4* d_MDpars = nullptr;
     float4* d_TDrive = nullptr;
     float4* d_constr = nullptr;
     float4* d_constrK = nullptr;
-    Mat3*   d_bboxes = nullptr;
+    cu_Mat3*   d_bboxes = nullptr;
     int*    d_sysneighs = nullptr;
     float4* d_sysbonds = nullptr;
+
+    int4 nPBC_val{0, 0, 0, 0};
+    float4 GFFParams_val{0.0f, 0.0f, 0.0f, 0.0f};
+    int bSubtractVdW=0;
+
 
     bool isInitialized() const { return initialized; }
 
@@ -141,20 +146,22 @@ class CU_MM { public:
         return buffers.vec[i].ptr;
     }
 
-    int uploadByName(const std::string& name, const void* h_data) {
+    int uploadByName(const std::string& name, const void* h_data, int nBytes=-1) {
         int i = buffers.getId(name);
         if (i < 0){ printf("CU_MM::uploadByName() Error: Buffer '%s' not found.\n", name.c_str()); return -1; }
         Buffer& buf = buffers.vec[i];
         if (buf.nBytes <= 0 || !buf.ptr || !h_data) { printf("CU_MM::uploadByName() Error: Buffer '%s' not found.\n", name.c_str()); return -1; }
-        CUDA_CHECK_MM(cudaMemcpy(buf.ptr, h_data, buf.nBytes, cudaMemcpyHostToDevice));
+        if(nBytes <= 0){ nBytes = buf.nBytes; }
+        CUDA_CHECK_MM(cudaMemcpy(buf.ptr, h_data, nBytes, cudaMemcpyHostToDevice));
         return 0;
     }
-    int downloadByName(const std::string& name, void* h_data) {
+    int downloadByName(const std::string& name, void* h_data, int nBytes=-1) {
         int i = buffers.getId(name);
         if (i < 0){ printf("CU_MM::downloadByName() Error: Buffer '%s' not found.\n", name.c_str()); return -1; }
         Buffer& buf = buffers.vec[i];
         if (buf.nBytes > 0 && buf.ptr && h_data) {
-            CUDA_CHECK_MM(cudaMemcpy(h_data, buf.ptr, buf.nBytes, cudaMemcpyDeviceToHost));
+            if(nBytes <= 0){ nBytes = buf.nBytes; }
+            CUDA_CHECK_MM(cudaMemcpy(h_data, buf.ptr, nBytes, cudaMemcpyDeviceToHost));
         }
         return 0;
     }
@@ -189,16 +196,16 @@ class CU_MM { public:
         d_neighCell = (int4*  )allocateBuffer("neighCell", (size_t)nSystems * nAtoms, sizeof(int4));
         d_constr    = (float4*)allocateBuffer("constr",    (size_t)nSystems * nAtoms, sizeof(float4));
         d_constrK   = (float4*)allocateBuffer("constrK",   (size_t)nSystems * nAtoms, sizeof(float4));
-        d_MMpars    = (float4*)allocateBuffer("MMpars",    (nnode > 0) ? (size_t)nSystems * nnode : 0, sizeof(float4));
-        d_BLs       = (float4*)allocateBuffer("BLs",       (nnode > 0) ? (size_t)nSystems * nnode : 0, sizeof(float4));
-        d_BKs       = (float4*)allocateBuffer("BKs",       (nnode > 0) ? (size_t)nSystems * nnode : 0, sizeof(float4));
-        d_Ksp       = (float4*)allocateBuffer("Ksp",       (nnode > 0) ? (size_t)nSystems * nnode : 0, sizeof(float4));
-        d_Kpp       = (float4*)allocateBuffer("Kpp",       (nnode > 0) ? (size_t)nSystems * nnode : 0, sizeof(float4));
+        d_MMpars    = (float4*)allocateBuffer("MMpars",    (size_t)nSystems * nnode, sizeof(float4));
+        d_BLs       = (float4*)allocateBuffer("BLs",       (size_t)nSystems * nnode, sizeof(float4));
+        d_BKs       = (float4*)allocateBuffer("BKs",       (size_t)nSystems * nnode, sizeof(float4));
+        d_Ksp       = (float4*)allocateBuffer("Ksp",       (size_t)nSystems * nnode, sizeof(float4));
+        d_Kpp       = (float4*)allocateBuffer("Kpp",       (size_t)nSystems * nnode, sizeof(float4));
         d_MDpars    = (float4*)allocateBuffer("MDpars",    (size_t)nSystems, sizeof(float4));
         d_TDrive    = (float4*)allocateBuffer("TDrive",    (size_t)nSystems, sizeof(float4));
-        d_lvecs     = (Mat3*  )allocateBuffer("lvecs",     (size_t)nSystems, sizeof(Mat3));
-        d_ilvecs    = (Mat3*  )allocateBuffer("ilvecs",    (size_t)nSystems, sizeof(Mat3));
-        d_bboxes    = (Mat3*  )allocateBuffer("bboxes",    (size_t)nSystems, sizeof(Mat3));
+        d_lvecs     = (cu_Mat3*  )allocateBuffer("lvecs",     (size_t)nSystems, sizeof(cu_Mat3));
+        d_ilvecs    = (cu_Mat3*  )allocateBuffer("ilvecs",    (size_t)nSystems, sizeof(cu_Mat3));
+        d_bboxes    = (cu_Mat3*  )allocateBuffer("bboxes",    (size_t)nSystems, sizeof(cu_Mat3));
         d_pbcshifts = (float4*)allocateBuffer("pbcshifts", (npbc > 0) ? (size_t)nSystems * npbc : 0, sizeof(float4));
         d_sysneighs = (int*   )allocateBuffer("sysneighs", (nMaxSysNeighs > 0) ? (size_t)nSystems * nMaxSysNeighs : 0, sizeof(int));
         d_sysbonds  = (float4*)allocateBuffer("sysbonds",  (nMaxSysNeighs > 0) ? (size_t)nSystems * nMaxSysNeighs : 0, sizeof(float4));
@@ -238,34 +245,62 @@ class CU_MM { public:
         dim3 blockDim(32, 1);
         dim3 gridDim((nvecs + blockDim.x - 1) / blockDim.x, nSystems);
         int4 n_dims = {nAtoms, nnode, 0, 0};
+        //printf("run_cleanForceMMFFf4(): nAtoms=%i, nnode=%i, nvecs=%i, nSystems=%i, gridDim=(%i,%i), blockDim=(%i,%i)\n", nAtoms, nnode, nvecs, nSystems, gridDim.x, gridDim.y, blockDim.x, blockDim.y);
         cleanForceMMFFf4<<<gridDim, blockDim>>>(n_dims, d_aforce, d_fneigh);
         CUDA_CHECK_MM(cudaGetLastError());
+        // CUDA FINISH ?
+        CUDA_CHECK_MM(cudaDeviceSynchronize());
         return 0;
     }
 
-    int run_getNonBond(int4 nPBC_val, float4 GFFParams_val) {
+    int run_getNonBond() {
         dim3 blockDim(32, 1);
         dim3 gridDim((nAtoms + blockDim.x - 1) / blockDim.x, nSystems);
         int4 ns_dims = {nAtoms, nnode, 0, (int)blockDim.x};
         size_t shared_mem_size = blockDim.x * (sizeof(float4) + sizeof(float4));
         getNonBond<<<gridDim, blockDim, shared_mem_size>>>(
-            ns_dims, d_apos, d_aforce, d_REQs, d_neighs, d_neighCell,
-            d_lvecs, nPBC_val, GFFParams_val
+            ns_dims, 
+            d_apos, 
+            d_aforce, 
+            d_REQs, 
+            d_neighs, 
+            d_neighCell,
+            d_lvecs, 
+            nPBC_val, 
+            GFFParams_val
         );
         CUDA_CHECK_MM(cudaGetLastError());
+        // CUDA FINISH ?
+        CUDA_CHECK_MM(cudaDeviceSynchronize());
         return 0;
     }
 
-    int run_getMMFFf4(int bSubtractVdW) {
+    int run_getMMFFf4() {
         dim3 blockDim(32, 1);
         dim3 gridDim((nnode + blockDim.x - 1) / blockDim.x, nSystems);
         int4 ndofs_val = {nAtoms, nnode, nSystems, 0};
         getMMFFf4<<<gridDim, blockDim>>>(
-            ndofs_val, d_apos, d_aforce, d_fneigh,
-            d_neighs, d_neighCell, d_REQs, d_MMpars, d_BLs, d_BKs, d_Ksp, d_Kpp,
-            d_lvecs, d_ilvecs, d_pbcshifts, npbc, bSubtractVdW
+            ndofs_val, 
+            d_apos, 
+            d_aforce, 
+            d_fneigh,
+            d_neighs, 
+            d_neighCell, 
+            d_REQs, 
+            d_MMpars, 
+            d_BLs, 
+            d_BKs, 
+            d_Ksp,
+            d_Kpp,
+            d_lvecs,
+            d_ilvecs, 
+            d_pbcshifts, 
+            npbc, 
+            bSubtractVdW
         );
         CUDA_CHECK_MM(cudaGetLastError());
+        // CUDA FINISH ?
+                CUDA_CHECK_MM(cudaDeviceSynchronize());
         return 0;
     }
 
@@ -274,9 +309,20 @@ class CU_MM { public:
         dim3 gridDim((nvecs + blockDim.x - 1) / blockDim.x, nSystems);
         int4 n_dims = {nAtoms, nnode, nSystems, nMaxSysNeighs};
         updateAtomsMMFFf4<<<gridDim, blockDim>>>(
-            n_dims, d_apos, d_avel, d_aforce, d_cvf, d_fneigh,
-            d_bkNeighs, d_constr, d_constrK, d_MDpars, d_TDrive,
-            d_bboxes, d_sysneighs, d_sysbonds
+            n_dims,
+            d_apos, 
+            d_avel, 
+            d_aforce, 
+            d_cvf, 
+            d_fneigh,
+            d_bkNeighs, 
+            d_constr, 
+            d_constrK, 
+            d_MDpars, 
+            d_TDrive,
+            d_bboxes,
+            d_sysneighs, 
+            d_sysbonds
         );
         CUDA_CHECK_MM(cudaGetLastError());
         return 0;
@@ -287,7 +333,14 @@ class CU_MM { public:
         dim3 gridDim(1, 1);
         int4 n_dims = {nAtoms, nnode, iSys, nSystems};
         printOnGPU<<<gridDim, blockDim>>>(
-            n_dims, mask, d_apos, d_avel, d_aforce, d_fneigh, d_bkNeighs, d_constr
+            n_dims, 
+            mask, 
+            d_apos, 
+            d_avel, 
+            d_aforce, 
+            d_fneigh, 
+            d_bkNeighs, 
+            d_constr
         );
         CUDA_CHECK_MM(cudaGetLastError()); // Check launch
         CUDA_CHECK_MM(cudaDeviceSynchronize()); // Sync after print
@@ -295,7 +348,6 @@ class CU_MM { public:
     }
 
     int synchronize() {
-        
         CUDA_CHECK_MM(cudaDeviceSynchronize());
         return 0;
     }

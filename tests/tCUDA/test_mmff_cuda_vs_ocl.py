@@ -7,7 +7,7 @@ from pyBall.AtomicSystem import AtomicSystem
 from pyBall.OCL import MMFF
 from pyBall.OCL.MMFF import AtomType, Bond, Dihedral
 
-#from pyBall.OCL import cuMMFF            as cuMD
+from pyBall.OCL import cuMMFF            as cuMD
 from pyBall.OCL import MolecularDynamics as clMD
 
 #mol = AtomicSystem( "common_resources/xyz/CH2NH.xyz" )
@@ -50,10 +50,12 @@ mol.npi_list = np.array([1, 1, 0, 0,0], dtype=np.int32)
 mol.nep_list = np.array([0, 1, 0, 0,0], dtype=np.int32)
 mol.isNode   = np.array([1, 1, 0, 0,0], dtype=np.int32)
 mol.REQs=np.array(
-    [[1.5, 0.0, 0.0, 0.0],
-    [1.0, 0.0, 0.0, 0.0],
-    [1.0, 0.0, 0.0, 0.0],
-    [1.0, 0.0, 0.0, 0.0]], dtype=np.float32),
+    [[1.5, 0.1,  0.0, 0.0],
+    [ 1.5, 0.9,  0.0, 0.0],
+    [ 1.0, 0.01, 0.0, 0.0],
+    [ 1.0, 0.01, 0.0, 0.0],
+    [ 1.0, 0.01, 0.0, 0.0],
+    [ 1.0, 0.01, 0.0, 0.0] ], dtype=np.float32)
 
 # Initialize MMFF instance
 mmff = MMFF.MMFF(bTorsion=False, verbosity=1)
@@ -79,43 +81,46 @@ for ia in range(mmff.natoms):
 # Print MMFF dimensions to verify they are set correctly
 print(f"\nMMFF Dimensions before MD:\n  natoms: {mmff.natoms}\n  nvecs: {mmff.nvecs}\n  nnode: {mmff.nnode}\n  ncap: {mmff.ncap}\n  ntors: {mmff.ntors}")
 
-# Ensure MMFF dimensions are properly set if they are zero
-if mmff.natoms == 0 or mmff.nvecs == 0 or mmff.nnode == 0:
-    print("Fixing MMFF dimensions...")
-    # Set dimensions based on the molecule structure
-    mmff.natoms = mol.natoms  # Total atoms in the molecule
-    mmff.nvecs = mol.natoms   # Vector elements (typically same as natoms)
-    mmff.nnode = sum(mol.isNode)  # Number of nodes (atoms with configurations)
-    mmff.ncap = mol.natoms - mmff.nnode  # Capping atoms (non-nodes)
-    mmff.ntors = 0  # No torsions in this example
-    print(f"Fixed MMFF dimensions:\n  natoms: {mmff.natoms}\n  nvecs: {mmff.nvecs}\n  nnode: {mmff.nnode}\n  ncap: {mmff.ncap}\n  ntors: {mmff.ntors}")
+print("apos",   mmff.apos )
+print("REQs",   mmff.REQs )
+print("neighs", mmff.neighs )
+print("bLs",    mmff.bLs )
+print("bKs",    mmff.bKs )
+print("apars",  mmff.apars )
+print("Ksp",    mmff.Ksp )
+print("Kpp",    mmff.Kpp )
 
-# Initialize MolecularDynamics with default nloc=32
-md = clMD.MolecularDynamics(nloc=32)
+# ===== RUN CUDA Molecular Dynamics
 
-# Allocate memory for 1 system (nSystems=1) using the MMFF template
-md.realloc( mmff=mmff, nSystems=1,)
+cuMD.init( nAtoms=mmff.natoms, nnode=mmff.nnode, npbc=1, nMaxSysNeighs=4, nSystems=1 )
+cuMD.upload("apos",   mmff.apos)
+cuMD.upload("REQs",   mmff.REQs)
+cuMD.upload("neighs", mmff.neighs)
+cuMD.upload("BLs",    mmff.bLs)
+cuMD.upload("BKs",    mmff.bKs)
+cuMD.upload("MMpars", mmff.apars)
+cuMD.upload("Ksp",    mmff.Ksp)
+cuMD.upload("Kpp",    mmff.Kpp)
+cuMD.synchronize()
+#cuMD.upload("atypes", mmff.atypes)
 
-# Pack the MMFF data into GPU buffers for system index 0
-md.pack_system(iSys=0, mmff=mmff)
 
-# Upload all system data to the GPU
-md.upload_all_systems()
 
-# Set up kernels with their arguments
-md.setup_kernels()
+#cuMD.run_cleanForceMMFFf4()
+cuMD.run_getNonBond()
+cuMD.run_getMMFFf4()
+#cuMD.run_updateAtomsMMFFf4()
 
-# Run optimization for 100 iterations with force convergence of 1e-6
-print("\nRunning OpenCL optimization...")
-iter_done = md.run_ocl_opt(niter=100, Fconv=1e-6, nPerVFs=10)
-print(f"OpenCL optimization completed in {iter_done} iterations")
 
-# Download results from GPU
-final_pos, final_forces = md.download_results()
-# print("\nFinal positions:")
-# print(final_pos[0, :5, :3])  # Print positions of first 5 atoms
-# print("\nFinal forces:")
-# print(final_forces[0, :5, :3])  # Print forces of first 5 atoms
 
-# Skip CUDA implementation for now
-print("\nSkipping CUDA implementation comparison.")
+# ===== RUN OpenCL Molecular Dynamics
+# mdcl = clMD.MolecularDynamics(nloc=32)
+# mdcl.realloc( mmff=mmff, nSystems=1,)   # Allocate memory for 1 system (nSystems=1) using the MMFF template
+# mdcl.pack_system(iSys=0, mmff=mmff)  # Pack the MMFF data into GPU buffers for system index 0
+# mdcl.upload_all_systems()            # Upload all system data to the GPU
+# mdcl.setup_kernels()                 # Set up kernels with their arguments
+# iter_done = mdcl.run_ocl_opt(niter=100, Fconv=1e-6, nPerVFs=10)
+# final_pos, final_forces = mdcl.download_results()
+
+
+

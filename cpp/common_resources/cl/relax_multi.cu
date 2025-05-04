@@ -8,7 +8,7 @@
 #include <stdio.h> // For device-side printf
 #include "relax_multi.cuh"
 
-// Mat3 struct is defined in relax_multi.cuh
+// cu_Mat3 struct is defined in relax_multi.cuh
 // Use standard CUDA vector literals or initializer lists
 #define  float4Zero  make_float4(0.f,0.f,0.f,0.f)
 #define  float3Zero  make_float3(0.f,0.f,0.f)
@@ -158,8 +158,8 @@ __global__ void getMMFFf4(
     float4*  bKs,          // 9  [nnode]  bond stiffness between node and each neighbor
     float4*  Ksp,          // 10 [nnode]  stiffness of pi-alignment for each neighbor     (only node atoms have pi-pi alignemnt interaction)
     float4*  Kpp,          // 11 [nnode]  stiffness of pi-planarization for each neighbor (only node atoms have pi-pi alignemnt interaction)
-    Mat3* lvecs,        // 12 lattice vectors         for each system
-    Mat3* ilvecs,       // 13 inverse lattice vectors for each system // Unused in original kernel
+    cu_Mat3* lvecs,        // 12 lattice vectors         for each system
+    cu_Mat3* ilvecs,       // 13 inverse lattice vectors for each system // Unused in original kernel
     float4*  pbc_shifts,   // 14 PBC shifts precalculated from lvecs and cell indices
     const int npbc,        // 15 number of unique PBC shifts (must match size of pbc_shifts per system)
     const int bSubtractVdW // 16 Flag to enable/disable subtracting bonded non-bonded interactions
@@ -183,6 +183,27 @@ __global__ void getMMFFf4(
     const int iav = iG + i0v;  // index of current vector (in apos, fapos)
 
     #define NNEIGH 4
+
+
+
+
+    if( (iG==0) &&(iS==0) ){
+        printf("CUDA getMMFFf4(): natoms=%i, nnode=%i nvec=%i, npbc=%i\n", nAtoms, nnode, nvec, npbc );
+        for(int i=0; i<nnode; i++){
+            float4 pi = apos[i];
+            int4   ng = neighs[i];
+            int4   ngC = neighCell[i];
+            float4 bL = bLs[i];
+            float4 bK = bKs[i];
+            float4 apar = apars[i];
+            printf("CUDA getMMFFf4(): atom %i: ng=(%i,%i,%i,%i), ngC=(%i,%i,%i,%i), bL=(%10.5f,%10.5f,%10.5f,%10.5f), bK=(%10.5f,%10.5f,%10.5f,%10.5f), apar=(%10.5f,%10.5f,%10.5f|%10.5f), posi=(%10.5f,%10.5f,%10.5f,%10.5f)\n", i, ng.x, ng.y, ng.z, ng.w, ngC.x, ngC.y, ngC.z, ngC.w, bL.x, bL.y, bL.z, bL.w, bK.x, bK.y, bK.z, bK.w, apar.x, apar.y, apar.z, apar.w, pi.x, pi.y, pi.z, pi.w);
+        } 
+        for(int ipbc=0; ipbc<npbc; ipbc++){
+            float4 shift = pbc_shifts[ipbc];
+            printf("CUDA getMMFFf4(): pbc %i: shift=(%10.5f,%10.5f,%10.5f,%10.5f)\n", ipbc, shift.x, shift.y, shift.z, shift.w); 
+        }  
+    }
+
 
     // ---- Dynamical
     float4  hs [NNEIGH];         // direction vectors of bonds (h.xyz) and inverse bond lengths (h.w)
@@ -424,7 +445,7 @@ __global__ void updateAtomsMMFFf4(
     float4*  constrK,      // 9 // constraints stiffness (kx,ky,kz,?) for each atom
     float4*  MDparams,     // 10 // MD parameters (dt,damp,Flimit,seed_inc)
     float4*  TDrives,      // 11 // Thermal driving (T,gamma_damp,seed,?)
-    Mat3* bboxes,       // 12 // bounding box (xmin,ymin,zmin)(xmax,ymax,zmax)(kx,ky,kz) per system
+    cu_Mat3* bboxes,       // 12 // bounding box (xmin,ymin,zmin)(xmax,ymax,zmax)(kx,ky,kz) per system
     int*     sysneighs,    // 13 // for each system contains array int[nMaxSysNeighs] of nearby other systems
     float4*  sysbonds      // 14 // contains parameters of bonds (constrains) with neighbor systems   {Lmin,Lmax,Kpres,Ktens}
 ){
@@ -488,7 +509,7 @@ __global__ void updateAtomsMMFFf4(
     // -------- Fixed Atoms and Bounding Box
     if(!bPi){ // only atoms (iG < natoms) have constraints and bboxes, not pi-orbitals
         // ------- bboxes
-        const Mat3 B = bboxes[iS];
+        const cu_Mat3 B = bboxes[iS];
         // Only apply if stiffness is positive (OpenCL had this check for z, let's apply to all)
         if(B.c.x>0.0f){ if(pe.x<B.a.x){ fe_xyz.x+=(B.a.x-pe.x)*B.c.x; }else if(pe.x>B.b.x){ fe_xyz.x+=(B.b.x-pe.x)*B.c.x; }; }
         if(B.c.y>0.0f){ if(pe.y<B.a.y){ fe_xyz.y+=(B.a.y-pe.y)*B.c.y; }else if(pe.y>B.b.y){ fe_xyz.y+=(B.b.y-pe.y)*B.c.y; }; }
@@ -717,6 +738,11 @@ __global__ void cleanForceMMFFf4(
 
     const int iav = iG + iS*nvec; // global index in aforce
 
+
+    if( (iG==0) &&(iS==0) ){
+        printf("CUDA cleanForceMMFFf4(): natoms=%i, nnode=%i \n", natoms, nnode );
+    }
+
     // Clear force on this vector (atom or pi-orbital)
     // This should be done for ALL vectors (0..nvec-1)
     if(iG < nvec) {
@@ -764,7 +790,7 @@ __global__ void getNonBond(
     float4*  REQKs,        // 4 // non-bonded parameters (RvdW,EvdW,QvdW,Hbond?) per atom
     int4*    neighs,       // 5 // neighbors indices (0..natoms-1) per atom
     int4*    neighCell,    // 6 // neighbors cell indices (0..npbc-1) per atom
-    Mat3* lvecs,        // 7 // lattice vectors for each system
+    cu_Mat3* lvecs,        // 7 // lattice vectors for each system
     const int4        nPBC,         // 8 // number of PBC images in each direction (x,y,z) - Note: not used in loop bounds in original
     const float4      GFFParams     // 9 // Grid-Force-Field parameters (R2damp, Rcut, etc.)
 ){
@@ -822,7 +848,20 @@ __global__ void getNonBond(
         posi  = XYZ(atoms [iaa]); // Use XYZ macro
     }
 
-    const Mat3 lvec = lvecs[iS]; // lattice vectors for this system
+    const cu_Mat3 lvec = lvecs[iS]; // lattice vectors for this system
+
+
+
+    if( (iG==0) &&(iS==0) ){
+        printf("CUDA getNonBond(): natoms=%i, nnode=%i \n", natoms, nnode );
+        for(int i=0; i<natoms; i++){
+            float4 pi = atoms[i];
+            int4   ng = neighs[i];
+            int4   ngC = neighCell[i];
+            float4 REQKi = REQKs[i];
+            printf("CUDA getNonBond(): atom %i: ng=(%i,%i,%i,%i), ngC=(%i,%i,%i,%i), REQKi=(%10.5f,%10.5f,%10.5f|%10.5f), posi=(%10.5f,%10.5f,%10.5f,%10.5f)\n", i, ng.x, ng.y, ng.z, ng.w, ngC.x, ngC.y, ngC.z, ngC.w, REQKi.x, REQKi.y, REQKi.z, REQKi.w, pi.x, pi.y, pi.z, pi.w);
+        }   
+    }
 
     // PBC shifts assuming 3x3 grid in XY, centered at (0,0,0) image
     // The shifts should be precalculated based on lvec.a, lvec.b, lvec.c

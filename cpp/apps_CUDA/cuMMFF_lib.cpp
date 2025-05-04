@@ -20,11 +20,11 @@ extern "C" {
     int uploadId  (int id, const void* h_data, int nbyte) { return ff.uploadById  (id, h_data, nbyte); }
     int downloadId(int id, void*       h_data, int nbyte) { return ff.downloadById(id, h_data, nbyte); }
 
-    int upload(const char* name, const void* h_data, int nbyte) {
-        return ff.uploadByName(std::string(name), h_data);
+    int upload(const char* name, const void* h_data, int nbyte=-1) {
+        return ff.uploadByName(std::string(name), h_data, nbyte);
     }
-    int download(const char* name, void* h_data, int nbyte ) {
-        return ff.downloadByName(std::string(name), h_data);
+    int download(const char* name, void* h_data, int nbyte=-1 ) {
+        return ff.downloadByName(std::string(name), h_data, nbyte);
     }
 
     void init(int nSystems_, int nAtoms_, int nnode_, int npbc_, int nMaxSysNeighs_) {
@@ -34,23 +34,14 @@ extern "C" {
 
     // --- Kernel Execution Functions ---
     // Call the public methods of the CU_MM instance
-    int run_cleanForceMMFFf4() {
-        return ff.run_cleanForceMMFFf4();
-    }
-    int run_getNonBond(int* h_nPBC, float* h_GFFparams) {
-        return ff.run_getNonBond( *(int4*)h_nPBC, *(float4*)h_GFFparams);
-    }
-    int run_getMMFFf4(int bSubtractVdW) {
-        return ff.run_getMMFFf4(bSubtractVdW);
-    }
-    int run_updateAtomsMMFFf4() {
-        return ff.run_updateAtomsMMFFf4();
-    }
-    int run_printOnGPU(int iSys, int* mask) {
-        return ff.run_printOnGPU(iSys, *(int4*)mask);
-    }
-    int synchronize() {
-        return ff.synchronize();
+    int run_cleanForceMMFFf4 ()                                  { return ff.run_cleanForceMMFFf4(); }
+    int run_getNonBond       ()                                  { return ff.run_getNonBond(); }
+    int run_getMMFFf4        ()                                  { return ff.run_getMMFFf4(); }
+    int run_updateAtomsMMFFf4()                                  { return ff.run_updateAtomsMMFFf4(); }
+    int run_printOnGPU       (int iSys, int* mask)               { return ff.run_printOnGPU(iSys, *(int4*)mask); }
+    int synchronize          ()                                  { 
+        printf("ff.synchronize()\n");
+        return ff.synchronize(); 
     }
 
 } // extern "C"

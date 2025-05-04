@@ -260,7 +260,9 @@ class MMFF:
         self.Ksp[:] = 0.0
         self.Kpp[:] = 0.0
 
-        
+        if atomic_system.REQs is not None:
+            print( "atomic_system.REQs", atomic_system.REQs )
+            self.REQs[:,:] = atomic_system.REQs[:,:]
 
         # Assign positions and types
         for ia in range(natom):
