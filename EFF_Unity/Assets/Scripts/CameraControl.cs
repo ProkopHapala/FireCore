@@ -33,10 +33,10 @@ public class CameraControl : MonoBehaviour
                 moveVector += new Vector3(transform.position.x, 0, transform.position.z) * (moveSpeed * Time.deltaTime);
             }
             // * 30 because that is the distance of the camera from origin -> speed will be synced with horizontal movement
-            if(Input.GetKey(KeyCode.Comma)) {
+            if(Input.GetKey(KeyCode.K)) {
                 moveVector += new Vector3(0, -30, 0) * (moveSpeed * Time.deltaTime);
             }
-            else if(Input.GetKey(KeyCode.Period)) {
+            else if(Input.GetKey(KeyCode.L)) {
                 moveVector += new Vector3(0, 30, 0) * (moveSpeed * Time.deltaTime);
             }
 
@@ -57,10 +57,10 @@ public class CameraControl : MonoBehaviour
         else if(Input.GetKey(KeyCode.DownArrow)) {
             transform.RotateAround(pivotPoint, new Vector3(transform.position.z, 0, -transform.position.x), rotationSpeed * Time.deltaTime);
         }
-        if(Input.GetKey(KeyCode.Comma)) {
+        if(Input.GetKey(KeyCode.K)) {
             camera.fieldOfView += zoomSpeed * Time.deltaTime;
         }
-        else if(Input.GetKey(KeyCode.Period)) {
+        else if(Input.GetKey(KeyCode.L)) {
             camera.fieldOfView -= zoomSpeed * Time.deltaTime;
         }
 
