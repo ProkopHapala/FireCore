@@ -138,6 +138,7 @@ __kernel void getNonBond(
         
         # Print device info
         clu.get_cl_info(self.ctx.devices[0])
+        print("------------- MolecularDynamics::init() OpenCL device info printed")
         
         # Grid information placeholders
         self.grid = None  # instance of GridShape, if initialized
@@ -155,9 +156,9 @@ __kernel void getNonBond(
             with open(kernel_path, 'r') as f:
                 self.prg = cl.Program(self.ctx, f.read()).build()
             kernel_found = True
-            print(f"Successfully loaded kernel from: {kernel_path}")
+            print(f"MolecularDynamics::init() Successfully loaded kernel from: {kernel_path}")
         else:
-            print(f"Kernel file not found at: {kernel_path}")
+            print(f"MolecularDynamics::init() ERROR: Kernel file not found at: {kernel_path}")
             exit(1)
 
         #print("prg.dir()", dir(self.prg) )
@@ -176,7 +177,7 @@ __kernel void getNonBond(
         Reallocate buffers for the given number of systems based on the MMFF template.
         """
         # Store dimensions explicitly to avoid reference issues
-        print(f"MMFF dimensions received in realloc: natoms={mmff.natoms}, nvecs={mmff.nvecs}, nnode={mmff.nnode}")
+        print(f"MolecularDynamics::realloc() natoms={mmff.natoms}, nvecs={mmff.nvecs}, nnode={mmff.nnode}")
         self.nSystems = nSystems
         self.mmff_instances = [mmff] * nSystems  # Assuming all systems use the same MMFF parameters
         self.allocate_cl_buffers(mmff)
@@ -212,7 +213,7 @@ __kernel void getNonBond(
         self.npbc   = npbc
         
         # Print dimensions for debugging
-        print(f"Buffer Allocation Dimensions:\n  nSystems: {nSystems}\n  natoms: {natoms}\n  nvecs: {nvecs}\n  nnode: {nnode}\n  ncap: {ncap}\n  ntors: {ntors}\n  nbkng: {nbkng}")
+        print(f"MolecularDynamics::allocate_cl_buffers(): nSystems: {nSystems}  natoms: {natoms}  nvecs: {nvecs} nnode: {nnode} ncap: {ncap}  ntors: {ntors}  nbkng: {nbkng}")
         
         # Validate dimensions
         if nSystems <= 0 or natoms <= 0 or nvecs <= 0 or nnode <= 0:
@@ -342,7 +343,7 @@ __kernel void getNonBond(
         for sys_idx in range(self.nSystems):
             self.pack_system(sys_idx, self.mmff_instances[sys_idx])
         #if self.verbose:
-        print("All systems uploaded to GPU.")
+        print("MolecularDynamics::upload_all_systems() DONE")
 
     def clean_forces(self):
         self.cleanForceMMFFf4(*self.kernel_args_cleanForceMMFFf4)
@@ -373,7 +374,7 @@ __kernel void getNonBond(
         self.kernel_args_updateAtomsMMFFf4 = self.generate_kernel_args('updateAtomsMMFFf4')
         self.kernel_args_cleanForceMMFFf4  = self.generate_kernel_args('cleanForceMMFFf4')
         
-        print("Kernel arguments prepared for optimization.")
+        print("MolecularDynamics::setup_kernels() DONE")
 
     def run_ocl_opt(self, niter, Fconv=1e-6, nPerVFs=10):
         #self.print_kernel_args(self.kernel_args_getNonBond, "kernel_args_getNonBond")  # Print args for debugging
@@ -394,6 +395,25 @@ __kernel void getNonBond(
                     print(f"Converged after {niterdone} iterations.")
                     break
         return niterdone
+
+
+    def run_getNonBond(self):
+        print("MolecularDynamics::run_getNonBond, ", self.global_size_nonbond, self.local_size_opt,  self.kernel_args_getNonBond)
+        self.getNonBond(self.queue, self.global_size_nonbond, self.local_size_opt,  *self.kernel_args_getNonBond)
+        self.queue.finish()
+    
+    def run_getMMFFf4(self):
+        self.getMMFFf4(self.queue, self.global_size_mmff, self.local_size_opt,  *self.kernel_args_getMMFFf4)
+        self.queue.finish()
+    
+    def run_updateAtomsMMFFf4(self):
+        self.updateAtomsMMFFf4(self.queue, self.global_size_update, self.local_size_opt,  *self.kernel_args_updateAtomsMMFFf4)
+        self.queue.finish()
+    
+    def run_cleanForceMMFFf4(self):
+        self.cleanForceMMFFf4(self.queue, self.global_size_clean, self.local_size_opt,  *self.kernel_args_cleanForceMMFFf4)
+        self.queue.finish()
+
 
     def download_results(self):
         mmff   = self.mmff_instances[0]

@@ -106,8 +106,8 @@ class MMFF:
         self.nDOFs  = 0
 
         # Initialize arrays
-        self.apos = None          # [nvecs,  3 ] Positions
-        self.fapos = None         # [nvecs,  3 ] Forces
+        self.apos = None          # [nvecs,  4 ] Positions
+        self.fapos = None         # [nvecs,  4 ] Forces
         self.atypes = None        # [natoms    ]  Atom types 
         self.neighs = None        # [natoms, 4 ]  Neighbor indices 
         self.neighCell = None     # [natoms, 4 ] Neighbor cell indices
@@ -148,12 +148,14 @@ class MMFF:
         self.ntors  = ntors
         self.nDOFs  = self.nvecs * 3
 
+        print(f"MMFF::realloc() natoms {self.natoms} nnode {self.nnode} ncap {self.ncap} nvecs {self.nvecs} ntors {self.ntors} nDOFs {self.nDOFs} nPBC {self.nPBC} npbc {self.npbc}")
+
         # Initialize arrays with default values
-        self.apos       = np.full((self.nvecs, 3), 0.0, dtype=np.float32)
-        self.fapos      = np.full((self.nvecs, 3), 0.0, dtype=np.float32)
+        self.apos       = np.full((self.nvecs, 4), 0.0, dtype=np.float32)
+        self.fapos      = np.full((self.nvecs, 4), 0.0, dtype=np.float32)
         self.atypes     = np.full( self.natoms,    -1,  dtype=np.int32)
         self.neighs     = np.full((self.natoms,4), -1,  dtype=np.int32)
-        self.neighCell  = np.full((self.natoms,4), -1,  dtype=np.int32)
+        self.neighCell  = np.full((self.natoms,4),  0,  dtype=np.int32)
         self.REQs       = np.full((self.natoms,4), 0.0, dtype=np.float32)
         self.apars      = np.full((self.nnode, 4), 0.0, dtype=np.float32)
         self.bLs        = np.full((self.nnode, 4), 0.0, dtype=np.float32)
@@ -169,18 +171,18 @@ class MMFF:
         self.pbc_shifts = np.full((self.npbc, 3), 0.0,  dtype=np.float32)
         self.pipos = np.zeros((self.natoms, 3), dtype=np.float32)
 
-    def countPiE(self, atomic_system):
+    def countPiE(self, mol):
         """
         Counts the total number of pi-orbitals and electron pairs.
 
         Parameters:
-        - atomic_system (AtomicSystem): The atomic system.
+        - mol (AtomicSystem): The atomic system.
 
         Returns:
         - (int, int): Tuple of total pi-orbitals and electron pairs.
         """
-        npi = sum(atomic_system.npi_list) if hasattr(atomic_system, 'npi_list') else 0
-        ne = sum(atomic_system.nep_list) if hasattr(atomic_system, 'nep_list') else 0
+        npi = sum(mol.npi_list) if hasattr(mol, 'npi_list') else 0
+        ne = sum(mol.nep_list) if hasattr(mol, 'nep_list') else 0
         return npi, ne
 
     def make_back_neighs(self):
@@ -197,12 +199,12 @@ class MMFF:
                             self.back_neighs[ia, k] = ib
                             break
 
-    def toMMFFsp3_loc(self, atomic_system, AtomTypeDict, bRealloc=True, bEPairs=True, bUFF=False):
+    def toMMFFsp3_loc(self, mol, AtomTypeDict, bRealloc=True, bEPairs=False, bUFF=False):
         """
         Converts an AtomicSystem to the MMFFsp3_loc representation.
 
         Parameters:
-        - atomic_system (AtomicSystem): The atomic system containing all data.
+        - mol (AtomicSystem): The atomic system containing all data.
         - AtomTypeDict (dict): Dictionary mapping atom names to AtomType instances.
         - bRealloc (bool): Flag to indicate if reallocation is needed.
         - bEPairs (bool): Flag to include electron pairs.
@@ -210,12 +212,11 @@ class MMFF:
         """
         ang0s = [109.5 * np.pi / 180.0, 120.0 * np.pi / 180.0, 180.0 * np.pi / 180.0]  # in radians
 
-        natom = len(atomic_system.apos)
-        nCmax = len(atomic_system.ngs)  # Assuming 'ngs' is a list of neighbor lists per atom
-
-        ngs  = atomic_system.ngs
-        nngs = np.zeros(len(ngs), dtype=np.int32)
-        isNode = atomic_system.isNode
+        natom  = len(mol.apos)
+        nCmax  = len(mol.ngs)  # Assuming 'ngs' is a list of neighbor lists per atom
+        ngs    = mol.ngs
+        nngs   = np.zeros(len(ngs), dtype=np.int32)
+        isNode = mol.isNode
         
         if isinstance(ngs[0], dict):
             print( "!!!!!!!!!!! CONVERT FROM DICT TO ARRAY !!!!!!!!!!!!" )
@@ -232,17 +233,17 @@ class MMFF:
             ngs = ngs_
 
         
-        npi_total, ne_total = self.countPiE(atomic_system)
+        npi_total, ne_total = self.countPiE(mol)
         if not bEPairs:
             ne_total = 0
         
         # count isNode > 0
-        nnode = len(atomic_system.isNode[atomic_system.isNode > 0])
+        nnode = len(mol.isNode[mol.isNode > 0])
         ncap = natom - nnode
-        nb = len(atomic_system.bonds)
+        nb = len(mol.bonds)
         
-        if self.verbosity > 0:
-            print(f"MM::Builder::toMMFFsp3_loc() nnode {nnode} ncap {ncap} npi {npi_total} ne {ne_total}")
+        #if self.verbosity > 0:
+        print(f"MMFF::toMMFFsp3_loc() natom {natom} nnode {nnode} ncap {ncap} nb {nb} npi {npi_total} ne {ne_total}")
 
         ntors = 0
         if bRealloc:
@@ -260,21 +261,21 @@ class MMFF:
         self.Ksp[:] = 0.0
         self.Kpp[:] = 0.0
 
-        if atomic_system.REQs is not None:
-            print( "atomic_system.REQs", atomic_system.REQs )
-            self.REQs[:,:] = atomic_system.REQs[:,:]
+        if mol.REQs is not None:
+            print( "mol.REQs", mol.REQs )
+            self.REQs[:,:] = mol.REQs[:,:]
 
         # Assign positions and types
         for ia in range(natom):
-            A_pos = atomic_system.apos[ia]
-            A_type_index = atomic_system.atypes[ia]
-            A_ename = atomic_system.enames[ia]
-            atom_type = AtomTypeDict.get(A_ename, None)
+            A_pos        = mol.apos[ia]
+            A_type_index = mol.atypes[ia]
+            A_ename      = mol.enames[ia]
+            atom_type    = AtomTypeDict.get(A_ename, None)
             if atom_type is None:
                 raise ValueError(f"Atom type '{A_ename}' not found in AtomTypeDict.")
 
-            self.apos[ia] = A_pos.astype(np.float32)
-            self.atypes[ia] = A_type_index
+            self.apos  [ia,:3] = A_pos.astype(np.float32)
+            self.atypes[ia]    = A_type_index
 
             ngi   = ngs[ia]
             nbond = nngs[ia]
@@ -290,7 +291,7 @@ class MMFF:
 
                 if conf_npi > 2:
                     print(f"ERROR in MM::Builder::toMMFFsp3_loc(): atom[{ia}].conf.npi({conf_npi}) > 2 => exit()")
-                    self.printAtomConf(ia, atomic_system)
+                    self.printAtomConf(ia, mol)
                     exit(0)
 
                 # Angle parameters
@@ -315,9 +316,9 @@ class MMFF:
                     bond_index = ngbs[ia][k]
 
                         
-                    bond = atomic_system.bonds[bond_index]
-                    Aj = atomic_system.apos[ja]
-                    jtyp_ename = atomic_system.enames[ja]
+                    bond = mol.bonds[bond_index]
+                    Aj = mol.apos[ja]
+                    jtyp_ename = mol.enames[ja]
                     jtyp = AtomTypeDict.get(jtyp_ename, None)
                     if jtyp is None:
                         raise ValueError(f"Atom type '{jtyp_ename}' not found in AtomTypeDict.")
@@ -335,11 +336,11 @@ class MMFF:
 
                     if bUFF:
                         # Assign bond parameters using UFF
-                        rij, kij = self.assignBondParamsUFF(ibond_index, ia, ja, atomic_system, AtomTypeDict)
+                        rij, kij = self.assignBondParamsUFF(ibond_index, ia, ja, mol, AtomTypeDict)
                         self.bLs[ia, k] = rij
                         self.bKs[ia, k] = kij
                     else:
-                        rij, kij = self.assignBondParamsSimple(ia, ja, atomic_system, AtomTypeDict)
+                        rij, kij = self.assignBondParamsSimple(ia, ja, mol, AtomTypeDict)
                         self.bLs[ia, k] = rij
                         self.bKs[ia, k] = kij
 
@@ -350,8 +351,8 @@ class MMFF:
                         self.Ksp[ia, k] = 0.0
 
                     # Assign Kpp
-                    nej  = atomic_system.nep_list[ja]
-                    npij = atomic_system.npi_list[ja]
+                    nej  = mol.nep_list[ja]
+                    npij = mol.npi_list[ja]
                     if atom_type.Kpp > 0 and jtyp.Kpp > 0:
                         self.Kpp[ia, k] = np.sqrt(atom_type.Kpp * jtyp.Kpp)
                     else:
@@ -387,41 +388,41 @@ class MMFF:
                         else:
                             self.Ksp[ia, k] = 0.0
    
-    def assignBondParamsSimple(self, ia, ja, atomic_system, AtomTypeDict ):
-        ti = AtomTypeDict[atomic_system.enames[ia]]
-        tj = AtomTypeDict[atomic_system.enames[ja]]
+    def assignBondParamsSimple(self, ia, ja, mol, AtomTypeDict ):
+        ti = AtomTypeDict[mol.enames[ia]]
+        tj = AtomTypeDict[mol.enames[ja]]
         rij = ti.Ruff + tj.Ruff
         kij = np.sqrt( tj.Kss * ti.Kss )
         return rij, kij
         
 
-    def assignBondParamsUFF(self, ib, ai, aj, atomic_system, AtomTypeDict):
+    def assignBondParamsUFF(self, ib, ai, aj, mol, AtomTypeDict):
         """
         Assigns bond parameters using UFF (Universal Force Field).
 
         Parameters:
         - ib (int): Index of the bond in the atomic system's bond list.
-        - atomic_system (AtomicSystem): The atomic system containing all data.
+        - mol (AtomicSystem): The atomic system containing all data.
         - AtomTypeDict (dict): Dictionary mapping atom names to AtomType instances.
 
         Returns:
         - (float, float): Tuple of bond length (rij) and bond stiffness (kij).
         """
-        bond = atomic_system.bonds[ib]
-        isNode = atomic_system.isNode
+        bond = mol.bonds[ib]
+        isNode = mol.isNode
         # ai = bond.i
         # aj = bond.j
         if isNode[ai]:
-            npi = atomic_system.npi_list[ai]
+            npi = mol.npi_list[ai]
         else:
             npi = 0
         if isNode[aj]:
-            npj = atomic_system.npi_list[aj]
+            npj = mol.npi_list[aj]
         else:
             npj = 0
 
-        ti = AtomTypeDict[atomic_system.enames[ai]]
-        tj = AtomTypeDict[atomic_system.enames[aj]]
+        ti = AtomTypeDict[mol.enames[ai]]
+        tj = AtomTypeDict[mol.enames[aj]]
         # Assuming ElementType is not needed; use Eaff directly
         Ei = ti.Eaff   # Replace with actual Eaff if available
         Ej = tj.Eaff   # Replace with actual Eaff if available
@@ -609,13 +610,13 @@ class MMFF:
                 hs[0] = c  # Assuming hs[0] is the original bond direction
         return hs
 
-    def printAtomConf(self, ia, atomic_system):
+    def printAtomConf(self, ia, mol):
         """
         Prints the configuration of a specific atom for debugging.
 
         Parameters:
         - ia (int): Index of the atom.
-        - atomic_system (AtomicSystem): The atomic system containing all data.
+        - mol (AtomicSystem): The atomic system containing all data.
         """
         print(f"Atom {ia} configuration:")
         print(f"Neighbors: {self.neighs[ia]}")
@@ -640,7 +641,7 @@ if __name__ == "__main__":
         "E": AtomType(name="E", Kss=0.0,   Asp=0.0,   Ksp=0.0,   Kpp=0.0,   npi=0, ne=1)  # Electron pairs
     }
 
-    atomic_system = AtomicSystem(
+    mol = AtomicSystem(
         apos=np.array([[0.0, 0.0, 0.0],
                     [1.0, 0.0, 0.0],
                     [0.0, 1.0, 0.0],
@@ -670,7 +671,7 @@ if __name__ == "__main__":
 
     # Convert AtomicSystem to MMFFsp3_loc representation
     mmff.toMMFFsp3_loc(
-        atomic_system=atomic_system,
+        mol=mol,
         AtomTypeDict=AtomTypeDict,
         bRealloc=True,
         bEPairs=True,
@@ -678,4 +679,4 @@ if __name__ == "__main__":
     )
 
     # Optionally, print atom configurations for debugging
-    mmff.printAtomConf(0, atomic_system)  # Replace 0 with desired atom index
+    mmff.printAtomConf(0, mol)  # Replace 0 with desired atom index

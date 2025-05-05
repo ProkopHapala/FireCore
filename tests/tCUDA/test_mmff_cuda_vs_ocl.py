@@ -1,4 +1,4 @@
-
+import os
 import sys
 import numpy as np
 
@@ -6,6 +6,9 @@ sys.path.append("../../")
 from pyBall.AtomicSystem import AtomicSystem
 from pyBall.OCL import MMFF
 from pyBall.OCL.MMFF import AtomType, Bond, Dihedral
+
+os.environ['PYOPENCL_COMPILER_OUTPUT'] = '1'
+os.environ['PYOPENCL_CTX'] = '0:1'  # Enables double precision on device 0
 
 from pyBall.OCL import cuMMFF            as cuMD
 from pyBall.OCL import MolecularDynamics as clMD
@@ -26,8 +29,7 @@ mol = AtomicSystem(
                    [1.5, 0.0, 0.0],
                    [-.5,-1.0, 0.0],
                    [-.5, 1.0, 0.0],
-                   [2.0, 1.0, 1.0]
-                   ], dtype=np.float32),
+                   [2.0, 1.0, 1.0]], dtype=np.float32),
     atypes=np.array([0,1, 2, 2, 2], dtype=np.int32),  # Example type indices
     enames=["C", "N", "H", "H", "H"],
     lvec=np.identity(3, dtype=np.float32),
@@ -54,22 +56,11 @@ mol.REQs=np.array(
     [ 1.5, 0.9,  0.0, 0.0],
     [ 1.0, 0.01, 0.0, 0.0],
     [ 1.0, 0.01, 0.0, 0.0],
-    [ 1.0, 0.01, 0.0, 0.0],
-    [ 1.0, 0.01, 0.0, 0.0] ], dtype=np.float32)
+    [ 1.0, 0.01, 0.0, 0.0], ], dtype=np.float32)
 
-# Initialize MMFF instance
+
 mmff = MMFF.MMFF(bTorsion=False, verbosity=1)
-
-# Convert AtomicSystem to MMFFsp3_loc representation
-mmff.toMMFFsp3_loc(
-    atomic_system=mol,
-    AtomTypeDict=AtomTypeDict,
-    bRealloc=True,
-    bEPairs=True,
-    bUFF=False
-)
-
-# Optionally, print atom configurations for debugging
+mmff.toMMFFsp3_loc( mol=mol, AtomTypeDict=AtomTypeDict)
 for ia in range(mmff.natoms):
     mmff.printAtomConf(ia, mol)  # Replace 0 with desired atom index
 
@@ -79,7 +70,7 @@ for ia in range(mmff.natoms):
 #cuMD.init( mol.natoms, mol.natoms, mol.natoms, 0, 0 )
 
 # Print MMFF dimensions to verify they are set correctly
-print(f"\nMMFF Dimensions before MD:\n  natoms: {mmff.natoms}\n  nvecs: {mmff.nvecs}\n  nnode: {mmff.nnode}\n  ncap: {mmff.ncap}\n  ntors: {mmff.ntors}")
+print(f"\nMMFF Dimensions before MD:  natoms: {mmff.natoms}  nvecs: {mmff.nvecs}  nnode: {mmff.nnode}  ncap: {mmff.ncap}  ntors: {mmff.ntors}")
 
 print("apos",   mmff.apos )
 print("REQs",   mmff.REQs )
@@ -90,8 +81,27 @@ print("apars",  mmff.apars )
 print("Ksp",    mmff.Ksp )
 print("Kpp",    mmff.Kpp )
 
-# ===== RUN CUDA Molecular Dynamics
 
+
+
+# ===== RUN OpenCL Molecular Dynamics
+print("\n\n\n################# RUN OpenCL MMFF #################")
+mdcl = clMD.MolecularDynamics(nloc=32)
+mdcl.realloc( mmff=mmff, nSystems=1,)   # Allocate memory for 1 system (nSystems=1) using the MMFF template
+mdcl.pack_system(iSys=0, mmff=mmff)  # Pack the MMFF data into GPU buffers for system index 0
+mdcl.upload_all_systems()            # Upload all system data to the GPU
+mdcl.setup_kernels()                 # Set up kernels with their arguments
+
+mdcl.run_getNonBond()
+#mdcl.queue.finish()
+#iter_done = mdcl.run_ocl_opt(niter=1, Fconv=1e-6, nPerVFs=1)
+#final_pos, final_forces = mdcl.download_results()
+print("################# END OpenCL MMFF #################")
+
+#exit()
+
+# ===== RUN CUDA Molecular Dynamics
+print("\n\n\n################# RUN CUDA MMFF #################")
 cuMD.init( nAtoms=mmff.natoms, nnode=mmff.nnode, npbc=1, nMaxSysNeighs=4, nSystems=1 )
 cuMD.upload("apos",   mmff.apos)
 cuMD.upload("REQs",   mmff.REQs)
@@ -103,24 +113,11 @@ cuMD.upload("Ksp",    mmff.Ksp)
 cuMD.upload("Kpp",    mmff.Kpp)
 cuMD.synchronize()
 #cuMD.upload("atypes", mmff.atypes)
-
-
-
 #cuMD.run_cleanForceMMFFf4()
 cuMD.run_getNonBond()
-cuMD.run_getMMFFf4()
+#cuMD.run_getMMFFf4()
 #cuMD.run_updateAtomsMMFFf4()
-
-
-
-# ===== RUN OpenCL Molecular Dynamics
-# mdcl = clMD.MolecularDynamics(nloc=32)
-# mdcl.realloc( mmff=mmff, nSystems=1,)   # Allocate memory for 1 system (nSystems=1) using the MMFF template
-# mdcl.pack_system(iSys=0, mmff=mmff)  # Pack the MMFF data into GPU buffers for system index 0
-# mdcl.upload_all_systems()            # Upload all system data to the GPU
-# mdcl.setup_kernels()                 # Set up kernels with their arguments
-# iter_done = mdcl.run_ocl_opt(niter=100, Fconv=1e-6, nPerVFs=10)
-# final_pos, final_forces = mdcl.download_results()
+print("################# END CUDA MMFF #################")
 
 
 

@@ -1,6 +1,10 @@
 #ifndef MMFF_KERNELS_CUH
 #define MMFF_KERNELS_CUH
 
+
+#define iGdbg 0
+#define iSdbg 0
+
 #include <cuda_runtime.h>
 #include <device_launch_parameters.h>
 #include <vector_types.h>
@@ -137,6 +141,65 @@ __device__ inline float4 getLJQH( float3 dp, float4 REQ, float R2damp ){
 
 
 // ======================================================================
+//                     cleanForceMMFFf4()
+// ======================================================================
+// Clean aforce on atoms/pi-orbitals and neighbors to prepare for next forcefield evaluation
+// Based on analysis, the OpenCL version likely had incorrect fneigh indexing for clearing.
+// This CUDA version clears fapos/aforce for ALL vectors (atoms + pi) and fneigh for ALL node recoil aforce (sigma + pi).
+// Assuming launched over grid(nvec, nS)
+
+__global__ void cleanForceMMFFf4(
+    int4        n,           // 2 // (natoms,nnode,?,?)
+    float4*  aforce,      // 5 // aforce on atoms and pi-orbitals
+    float4*  fneigh       // 6 // recoil aforce on neighbors (sigma + pi)
+){
+    const int natoms = n.x;
+    const int nnode  = n.y;
+    const int nvec   = natoms+nnode;
+    const int iG     = blockIdx.x * blockDim.x + threadIdx.x; // index of vector (atom or pi)
+    const int iS     = blockIdx.y * blockDim.y + threadIdx.y; // index of system
+
+    const int iav = iG + iS*nvec; // global index in aforce
+
+
+    if( (iG==0) &&(iS==0) ){
+        printf("CUDA cleanForceMMFFf4(): natoms=%i, nnode=%i \n", natoms, nnode );
+    }
+
+    // Clear force on this vector (atom or pi-orbital)
+    // This should be done for ALL vectors (0..nvec-1)
+    if(iG < nvec) {
+       aforce[iav] = float4Zero;
+       // Optional: aforce[iav] = make_float4(__int_as_float(iG), __int_as_float(iS), __int_as_float(iav), 0.0f); // Debugging
+    }
+
+    // Clear recoil aforce in fneigh.
+    // fneigh stores recoil aforce for node atoms ONLY.
+    // This means only threads with iG < nnode need to clear fneigh entries.
+    // The indices to clear are those written by getMMFFf4.
+    // fneigh layout derived from getMMFFf4: [ iS * nnode*8 + iG*8 + sigma/pi*4 + neigh_idx ]
+    if(iG < nnode){
+        // Base index for sigma aforce of node iG in system iS: iS * nnode*8 + iG*8
+        const int fneigh_node_sigma_base_idx = iS * nnode * 8 + iG * 8;
+        // Base index for pi aforce of node iG in system iS: iS * nnode*8 + iG*8 + 4
+        const int fneigh_node_pi_base_idx    = fneigh_node_sigma_base_idx + 4;
+
+        // Clear sigma recoil aforce for this node's 4 neighbors
+        fneigh[fneigh_node_sigma_base_idx + 0] = float4Zero;
+        fneigh[fneigh_node_sigma_base_idx + 1] = float4Zero;
+        fneigh[fneigh_node_sigma_base_idx + 2] = float4Zero;
+        fneigh[fneigh_node_sigma_base_idx + 3] = float4Zero;
+
+        // Clear pi recoil aforce for this node's 4 neighbors
+        fneigh[fneigh_node_pi_base_idx + 0] = float4Zero;
+        fneigh[fneigh_node_pi_base_idx + 1] = float4Zero;
+        fneigh[fneigh_node_pi_base_idx + 2] = float4Zero;
+        fneigh[fneigh_node_pi_base_idx + 3] = float4Zero;
+    }
+}
+
+
+// ======================================================================
 //                          getMMFFf4()
 // ======================================================================
 
@@ -147,8 +210,8 @@ __global__ void getMMFFf4(
     int4 nDOFs,               // 1   (nAtoms,nnode) dimensions of the system
     // Dynamical
     float4*  apos,         // 2  [natoms]     positions of atoms (including node atoms [0:nnode] and capping atoms [nnode:natoms] and pi-orbitals [natoms:natoms+nnode] )
-    float4*  fapos,        // 3  [natoms]     forces on    atoms (just node atoms are evaluated)
-    float4*  fneigh,       // 4  [nnode*4*2]  recoil forces on neighbors (and pi-orbitals)
+    float4*  fapos,        // 3  [natoms]     aforce on    atoms (just node atoms are evaluated)
+    float4*  fneigh,       // 4  [nnode*4*2]  recoil aforce on neighbors (and pi-orbitals)
     // parameters
     int4*    neighs,       // 5  [nnode]  neighboring atoms
     int4*    neighCell,    // 5  [nnode]  neighboring atom  cell index
@@ -226,9 +289,9 @@ __global__ void getMMFFf4(
     const float   ssK     = par.z; // sigma-sigma stiffness
     const float   piC0    = par.w; // pi-sigma cos(ang0)
 
-    for(int i=0; i<NNEIGH; i++){ fbs[i]=float3Zero; fps[i]=float3Zero; }   // clear recoil forces on neighbors
+    for(int i=0; i<NNEIGH; i++){ fbs[i]=float3Zero; fps[i]=float3Zero; }   // clear recoil aforce on neighbors
 
-    float3 f1,f2;         // working forces
+    float3 f1,f2;         // working aforce
 
     { // ========= BONDS - here we evaluate pairwise interactions of node atoms with its 4 neighbors
 
@@ -271,7 +334,7 @@ __global__ void getMMFFf4(
             h.x = h_xyz.x; h.y = h_xyz.y; h.z = h_xyz.z; // Store back into float4
             hs[i]    = h;              // store bond direction vector (xyz) and inverse bond length (w)
 
-            // --- Evaluate bond-length stretching energy and forces
+            // --- Evaluate bond-length stretching energy and aforce
             if(iG<ing){
                 E += evalBond(h_xyz, l-bL[i], bK[i], &f1);
                 fbs[i] -= f1;
@@ -298,10 +361,10 @@ __global__ void getMMFFf4(
             }
         }
 
-        // --- Store Pi-forces
+        // --- Store Pi-aforce
         // fneigh layout: [system][sigma/pi][node][neighbor]
         // Index for pi force on neighbor i of node iG in system iS: iS * nnode*8 + nnode*4 + iG*4 + i
-        // Base index for pi forces of node iG in system iS: iS * nnode*8 + nnode*4 + iG*4
+        // Base index for pi aforce of node iG in system iS: iS * nnode*8 + nnode*4 + iG*4
         const int pi_fneigh_base_idx = iS * nnode * 8 + nnode * 4 + iG * 4;
 
         for(int i=0; i<NNEIGH; i++){
@@ -340,38 +403,8 @@ __global__ void getMMFFf4(
                     REQij.x  = REQi.x  + REQj.x;
                     REQij.y = REQi.y * REQj.y;
                     REQij.z = REQi.z * REQj.z;
-
-                    // Recover vector between neighbors. d_ij = pos_j - pos_i.
-                    // bond_i = pos_i - pos_a = -hi.xyz / hi.w
-                    // bond_j = pos_j - pos_a = -hj.xyz / hj.w
-                    // pos_i = pos_a - hi.xyz / hi.w
-                    // pos_j = pos_a - hj.xyz / hj.w
-                    // dp = pos_j - pos_i = (pos_a - hj.xyz / hj.w) - (pos_a - hi.xyz / hi.w) = hi.xyz/hi.w - hj.xyz/hj.w
                     float3 hi_xyz = XYZ(hi);
                     float3 hj_xyz = XYZ(hj);
-                    // Note: The OpenCL code used (hj.xyz/hj.w) - (hi.xyz/hi.w), which is vector from j to i.
-                    // The direction of force fij is along dp. getLJQH returns force on dp.
-                    // So getLJQH(dp) is force on j due to i. We subtract it from f1 (force on i).
-                    // If dp = pos_j - pos_i, force on i is -fij, force on j is +fij.
-                    // The original code subtracts from f1 and adds to f2. f1 applies to neighbor i, f2 applies to neighbor j.
-                    // This means f1 is the angular force on neighbor i, f2 is the angular force on neighbor j.
-                    // So we should add -fij to f1 and +fij to f2.
-                    // getLJQH(dp) calculates force *along dp*. So force on j is along dp, force on i is along -dp.
-                    // f_on_j = getLJQH(dp).xyz
-                    // f_on_i = -getLJQH(dp).xyz
-                    // We need to modify the forces *already computed* (angular forces) on neighbors i and j.
-                    // Original angular force on i is f1, on j is f2.
-                    // We are subtracting the non-bonded force.
-                    // So new f1 = f1 - f_on_i = f1 - (-getLJQH(dp).xyz) = f1 + getLJQH(dp).xyz
-                    // So new f2 = f2 - f_on_j = f2 - getLJQH(dp).xyz
-                    // The OpenCL code has f1 -= fij.xyz and f2 += fij.xyz. This implies fij.xyz is force on j due to i.
-                    // Let's trust the OpenCL implementation: dp is j-i, fij is force on j from i.
-                    // Angular forces f1 on i, f2 on j. Subtract non-bonded: f1 -= f_on_i, f2 -= f_on_j.
-                    // f_on_i = -f_on_j = -fij.xyz.
-                    // So: f1 -= (-fij.xyz) = f1 + fij.xyz
-                    //     f2 -= fij.xyz
-                    // OpenCL code is f1 -= fij.xyz; f2 += fij.xyz; This matches if fij is force on i from j.
-                    // Let's assume dp = pos_i - pos_j, and fij is force on i from j.
                     float3 dp = hi_xyz/hi.w - hj_xyz/hj.w; // vector from neighbor j to neighbor i
                     float4 fij = getLJQH( dp, REQij, 1.0f ); // fij is force on i due to j // NOTE: getLJQH must be defined
                     float3 fij_xyz = XYZ(fij);
@@ -385,10 +418,7 @@ __global__ void getMMFFf4(
         }
     }
 
-    // ========= Save results - store forces on atoms and recoil on its neighbors
-    // fneigh layout: [system][sigma/pi][node][neighbor]
-    // Index for sigma force on neighbor i of node iG in system iS: iS * nnode*8 + iG*8 + j
-    // Base index for sigma forces of node iG in system iS: iS * nnode*8 + iG*8
+    // ========= Save results - store aforce on atoms and recoil on its neighbors
     const int sigma_fneigh_base_idx = iS * nnode * 8 + iG * 8;
 
     for(int i=0; i<NNEIGH; i++){
@@ -396,17 +426,152 @@ __global__ void getMMFFf4(
         fneigh[sigma_fneigh_base_idx + i] = make_float4(fbs[i].x, fbs[i].y, fbs[i].z, 0.f);
     }
 
-    // Add force on the center atom
-    // Original OpenCL adds to existing fapos. Let's follow that.
-    // If this is the *first* kernel writing to fapos, clearing fapos beforehand is needed.
-    // If it's not the first, adding is correct. The clean kernel clears fapos.
-    // So adding is correct here.
     atomicAdd(&fapos[iav].x, fa.x);
     atomicAdd(&fapos[iav].y, fa.y);
     atomicAdd(&fapos[iav].z, fa.z);
 
-    // Energy is not stored in fapos in the OpenCL code, keeping that behavior.
-    // Energy is typically accumulated separately if needed.
+}
+
+// ======================================================================
+//                           getNonBond()
+// ======================================================================
+// Calculate non-bonded aforce on atoms (including both node atoms and capping atoms), considering periodic boundary conditions
+// Assuming launched over grid(natoms, nS)
+__global__ void getNonBond(
+    int4 ns,                  // 1 // (natoms,nnode,?,nAtomCeil_for_local_buffer) dimensions of the system and local buffer size info
+    // Dynamical
+    float4*  apos,        // 2 // positions of atoms  (including node atoms [0:nnode] and capping atoms [nnode:natoms]) - Note: pi-orbitals are NOT included in non-bonded.
+    float4*  aforce,       // 3 // aforce on atoms (accumulated)
+    // Parameters
+    float4*  REQKs,        // 4 // non-bonded parameters (RvdW,EvdW,QvdW,Hbond?) per atom
+    int4*    neighs,       // 5 // neighbors indices (0..natoms-1) per atom
+    int4*    neighCell,    // 6 // neighbors cell indices (0..npbc-1) per atom
+    cu_Mat3* lvecs,        // 7 // lattice vectors for each system
+    const int4        nPBC,         // 8 // number of PBC images in each direction (x,y,z) - Note: not used in loop bounds in original
+    const float4      GFFParams     // 9 // Grid-Force-Field parameters (R2damp, Rcut, etc.)
+){
+    __shared__ float4 LATOMS[32];  // Shared memory for positions
+    __shared__ float4 LCLJS [32];  // Shared memory for parameters
+    const int iG = blockIdx.x * blockDim.x + threadIdx.x; // index of atom
+    const int iS = blockIdx.y * blockDim.y + threadIdx.y; // index of system
+    const int natoms=ns.x;               // number of atoms PER SYSTEM
+    const int nnode =ns.y;               // number of node atoms PER SYSTEM
+    const int nvec  =natoms+nnode; // number of vectors (atoms+node atoms)
+
+    const int i0a = iS*natoms;  // index of first atom in atoms array
+    const int i0v = iS*nvec;    // index of first atom in vectors array
+    //const int ian = iG + i0n;
+    const int iaa = iG + i0a; // index of atom in atoms array
+    const int iav = iG + i0v; // index of atom in vectors array
+
+    const bool   bPBC   = (nPBC.x+nPBC.y+nPBC.z)>0;
+    const float  R2damp = GFFParams.x*GFFParams.x; // R2damp = GFFParams.x^2
+
+    float4 fe = float4Zero; // force on atom (accumulated locally)
+
+    // Get data for the current atom if it's valid
+    int4   ng    = { -1, -1, -1, -1 }; // Initialize neighbors to -1
+    int4   ngC   = { -1, -1, -1, -1 }; // Initialize neighbor cells to -1
+    float4 REQKi = float4Zero;
+    float3 posi  = float3Zero;
+    float4 posi4 = float4Zero; // Store original float4 for shared memory
+    if (iG < natoms) {
+        ng    = neighs   [iaa];
+        ngC   = neighCell[iaa];
+        REQKi = REQKs    [iaa];
+        posi  = XYZ(apos [iaa]); // Use XYZ macro
+    }
+
+    const cu_Mat3 lvec = lvecs[iS]; // lattice vectors for this system
+
+    if((iG==iGdbg)&&(iS==iSdbg)){ 
+        printf("CUDA getNonBond(): natoms=%i, nnode=%i nPBC=(%i,%i,%i)\n", natoms, nnode, nPBC.x, nPBC.y, nPBC.z);
+        printf("CUDA getNonBond(): lvec.a=(%g,%g,%g) lvec.b=(%g,%g,%g) lvec.c=(%g,%g,%g)\n", lvec.a.x, lvec.a.y, lvec.a.z, lvec.b.x, lvec.b.y, lvec.b.z, lvec.c.x, lvec.c.y, lvec.c.z);
+        printf("CUDA getNonBond(): GFFParams=(%g,%g,%g,%g) \n", GFFParams.x, GFFParams.y, GFFParams.z, GFFParams.w);
+        for(int i=0; i<natoms; i++){
+            float4 pi = apos[i];
+            int4   ng = neighs[i];
+            int4   ngC = neighCell[i];
+            float4 REQKi = REQKs[i];
+            printf("CUDA getNonBond(): atom %i: ng=(%i,%i,%i,%i), ngC=(%i,%i,%i,%i), REQKi=(%10.5f,%10.5f,%10.5f|%10.5f), posi=(%10.5f,%10.5f,%10.5f,%10.5f)\n", i, ng.x, ng.y, ng.z, ng.w, ngC.x, ngC.y, ngC.z, ngC.w, REQKi.x, REQKi.y, REQKi.z, REQKi.w, pi.x, pi.y, pi.z, pi.w);
+        }   
+    }
+    // ========= Atom-to-Atom interaction in chunks
+    for (int j0=0; j0<natoms; j0+=blockDim.x){ 
+        int i = j0 + threadIdx.x + iS*natoms; 
+        if (j0 + threadIdx.x < natoms) { 
+            LATOMS[threadIdx.x] = apos  [i+i0v];
+            LCLJS [threadIdx.x] = REQKs [i+i0a];
+        }
+        __syncthreads(); // Wait for all threads in the block to load data
+
+        // Compute aforce between atom i (this thread) and atoms j in the shared memory chunk
+        if (iG < natoms) { // Only compute for valid atom i
+            for (int jl=0; jl<blockDim.x; jl++){    // loop over all atoms in local memory (like 32 atoms)
+                const int ja = j0+jl; // index of atom j within the current system (0..natoms-1)
+                if (ja >= natoms) continue; // Ensure atom j is valid
+
+                const float4 aj4 = LATOMS[jl];    // read atom position from local memory
+                const float3 aj  = XYZ(aj4);       // Use XYZ macro
+                float4 REQK      = LCLJS [jl];    // read atom parameters from local memory
+
+                // Mix parameters
+                REQK.x  += REQKi.x;   // mixing rules for vdW Radius (Rij = Ri + Rj)
+                REQK.y *= REQKi.y; // E0_ij = E0_i * E0_j
+                REQK.z *= REQKi.z; // Q_ij = Q_i * Q_j
+
+                const bool bSameAtom = (ja == iG);
+                // Check if atom j is a direct neighbor of atom i
+                const bool bBonded = ((ja == ng.x)||(ja == ng.y)||(ja == ng.z)||(ja == ng.w));
+
+
+                if(!bSameAtom){ // No interaction with itself
+
+                    float3 dp = aj - posi; // vector from atom i to atom j in the origin cell
+
+                    if(bPBC){ // If PBC is enabled
+                        //int ipbc = 0; // image index 0..8 (for 3x3 grid)
+                        for(int iy=0; iy<3; iy++){ // Loop over Y images (-1, 0, 1) -> Map iy to -1,0,1
+                            int shift_iy = iy - 1;
+                            for(int ix=0; ix<3; ix++){ // Loop over X images (-1, 0, 1) -> Map ix to -1,0,1
+                                int shift_ix = ix - 1;
+
+                                float3 lvec_a_xyz = XYZ(lvec.a);
+                                float3 lvec_b_xyz = XYZ(lvec.b);
+                                float3 shift_vec = shift_ix * lvec_a_xyz + shift_iy * lvec_b_xyz; // No Z shift based on original loop
+                                int ipbc_ = (shift_iy+1)*3 + (shift_ix+1);
+                                if( !( bBonded && (                    // if atoms are bonded, we do not want to calculate non-covalent interaction between them
+                                            ((ja==ng.x)&&(ipbc_==ngC.x)) || // check if this image corresponds to a bonded neighbor's cell
+                                            ((ja==ng.y)&&(ipbc_==ngC.y)) ||
+                                            ((ja==ng.z)&&(ipbc_==ngC.z)) ||
+                                            ((ja==ng.w)&&(ipbc_==ngC.w)) ))
+                                ){
+                                    float3 dp_ = dp + shift_vec;
+                                    float4 fij = getLJQH( dp, REQK, R2damp ); // NOTE: getLJQH must be defined
+                                    fe += fij; // Uses defined operator+=
+                                }
+                            }
+                        }
+                    } else { // If PBC is not used
+                        if( !bBonded ){ // if atoms are not bonded, calculate interaction (only in origin image)
+                            float4 fij = getLJQH( dp, REQK, R2damp ); // NOTE: getLJQH must be defined
+                            if((iG==iGdbg)&&(iS==iSdbg)){   printf("CUDA getNonBond(): ia,ja %3i %3i aj(%10.5f,%10.5f,%10.5f) dp( %10.5f | %10.5f,%10.5f,%10.5f)  fij( %10.5f,%10.5f,%10.5f|%10.5f)\n", iG, ja, aj.x,aj.y,aj.z, length(dp), dp.x, dp.y, dp.z, fij.x, fij.y, fij.z, fij.w); }
+                            fe += fij;
+                        }
+                    }
+                }
+            }
+        }
+        __syncthreads(); // Wait for all threads in the block to finish processing the chunk
+    }
+
+    
+    if(iG<natoms){
+        //if(iS==0){ printf( "GPU::getNonBond(iG=%i) fe(%g,%g,%g,%g)\n", iG, fe.x,fe.y,fe.z,fe.w ); }
+        aforce[iav] = fe;           // If we do    run it as first forcefield, we can just store force (non need to clean it before in that case)
+        //aforce[iav] += fe;        // If we don't run it as first forcefield, we need to add force to existing force
+        //aforce[iav] = fe*(-1.f);
+    }
 }
 
 
@@ -431,16 +596,16 @@ __device__ float hashf_wang( float val, float xmin, float xmax) {
 }
 
 
-// Assemble recoil forces from neighbors and  update atoms positions and velocities
+// Assemble recoil aforce from neighbors and  update atoms positions and velocities
 // Assuming 2D launch grid (x=vectors, y=systems)
 __global__ void updateAtomsMMFFf4(
     int4        n,            // 1 // (natoms,nnode,nsys,nMaxSysNeighs) dimensions and counts
     float4*  apos,         // 2 // positions of atoms  (including node atoms [0:nnode] and capping atoms [nnode:natoms] and pi-orbitals [natoms:natoms+nnode] )
     float4*  avel,         // 3 // velocities of atoms
-    float4*  aforce,       // 4 // forces on atoms (cleared before getMMFFf4 and getNonBond)
+    float4*  aforce,       // 4 // aforce on atoms (cleared before getMMFFf4 and getNonBond)
     float4*  cvf,          // 5 // accumulated |f|^2, |v|^2, <f|v> per atom/pi-orbital
-    float4*  fneigh,       // 6 // recoil forces on neighbors (and pi-orbitals)
-    int4*    bkNeighs,     // 7 // back neighbors indices (for recoil forces) - Global indices into fneigh array
+    float4*  fneigh,       // 6 // recoil aforce on neighbors (and pi-orbitals)
+    int4*    bkNeighs,     // 7 // back neighbors indices (for recoil aforce) - Global indices into fneigh array
     float4*  constr,       // 8 // constraints (x,y,z,K) for each atom
     float4*  constrK,      // 9 // constraints stiffness (kx,ky,kz,?) for each atom
     float4*  MDparams,     // 10 // MD parameters (dt,damp,Flimit,seed_inc)
@@ -466,7 +631,7 @@ __global__ void updateAtomsMMFFf4(
     const float4 MDpars  = MDparams[iS]; // (dt,damp,Flimit,seed_inc)
     const float4 TDrive = TDrives[iS]; // (T,gamma_damp,seed_base,?)
 
-    float4 fe      = aforce[iav]; // force on atom or pi-orbital (includes forces calculated by previous kernels)
+    float4 fe      = aforce[iav]; // force on atom or pi-orbital (includes aforce calculated by previous kernels)
     const bool bPi = iG>=natoms;  // is it pi-orbital ?
 
     // ------ Gather Forces from back-neighbors
@@ -476,12 +641,12 @@ __global__ void updateAtomsMMFFf4(
     int4 ngs = bkNeighs[ iav ];
 
     float4 f_neigh_sum = float4Zero;
-    // sum all recoil forces from back neighbors
+    // sum all recoil aforce from back neighbors
     if(ngs.x>=0){ f_neigh_sum += fneigh[ngs.x]; } // Uses defined operator+=
     if(ngs.y>=0){ f_neigh_sum += fneigh[ngs.y]; } // Uses defined operator+=
     if(ngs.z>=0){ f_neigh_sum += fneigh[ngs.z]; } // Uses defined operator+=
     if(ngs.w>=0){ f_neigh_sum += fneigh[ngs.w]; } // Uses defined operator+=
-    fe += f_neigh_sum; // Add accumulated neighbor forces
+    fe += f_neigh_sum; // Add accumulated neighbor aforce
 
     // ---- Limit Forces (optional, can cause drift)
     float Flimit = MDpars.z; // Flimit is stored in MDparams.z
@@ -581,13 +746,6 @@ __global__ void updateAtomsMMFFf4(
         if( bDrive ){
             // Damping force: -gamma * v
             fe_xyz    -= ve_xyz * TDrive.y; // TDrive.y is gamma_damp // Uses defined operators
-
-            // Random force: sqrt(2*kB*T*gamma) * R(t), where R(t) is white noise (mean 0, variance 1)
-            // For discrete time, variance of (dt * R(t)) is dt. So we need sqrt(dt) scaling?
-            // Discrete random force term: sqrt(2*kB*T*gamma/dt) * rand_vec (variance 1)
-            // OpenCL code uses sqrt( 2*const_kB*TDrive.x*TDrive.y/MDpars.x ) = sqrt(2*kB*T*gamma/dt)
-            // Let's use the hash function for pseudo-random numbers in [-1, 1]
-            // The hash uses iG and TDrive.w (seed). TDrive.w should be updated on CPU each step.
             unsigned int seed_int = __float_as_int(TDrive.w); // Seed from TDrive.w
             float r1 = hashf_wang(__int_as_float(hash_wang(iG*136 + seed_int)), -1.0f, 1.0f);
             float r2 = hashf_wang(__int_as_float(hash_wang(iG*778 + seed_int)), -1.0f, 1.0f);
@@ -599,13 +757,8 @@ __global__ void updateAtomsMMFFf4(
         }
     }
 
-    // Apply friction (velocity damping)
     ve_xyz *= damp; // MDparams.y is damp // Uses defined operators
-
-    // Update velocity
     ve_xyz += fe_xyz * dt; // acceleration * dt // Uses defined operators
-
-    // Update position
     pe_xyz += ve_xyz * dt; // velocity * dt // Uses defined operators
 
     if(bPi){ // if pi-orbital, maintain unit length after update
@@ -629,17 +782,10 @@ __global__ void updateAtomsMMFFf4(
 // ======================================================================
 //                     printOnGPU()
 // ======================================================================
-// Print atoms and forces on GPU
-// This kernel seems intended to be launched with a single thread per system
-// (e.g., grid(1, nS), block(1,1)) and uses the loop indices to print data.
-// Or perhaps grid(natoms or nvec, nS) with checks if iG < natoms or iG < nnode.
-// Given the loops, it's likely launched with a single thread per system.
-// Using iS = blockIdx.y and iG = threadIdx.x (assuming blockDim.x=1)
-// and using n.z as the target system index `isys`.
 
 __global__ void printOnGPU(
     int4        n,            // 1 // (natoms,nnode,isys_to_print,?)
-    int4        mask,         // 2 // (print_atom_forces, print_pi_forces, print_fneigh, ?)
+    int4        mask,         // 2 // (print_atom_aforce, print_pi_aforce, print_fneigh, ?)
     float4*  apos,         // 3
     float4*  avel,         // 4
     float4*  aforce,       // 5
@@ -655,23 +801,15 @@ __global__ void printOnGPU(
     const int isys  = n.z; // System index to print
     const int natoms= n.x;
     const int nnode = n.y;
-    const int nS = gridDim.y; // Total number of systems (if launched one block per system)
-
-    // Need total number of systems if fneigh indexing depends on it
-    // Based on analysis of getMMFFf4, fneigh indexing might be:
-    // sigma: iS * nnode*8 + iG*8 + j
-    // pi:    iS * nnode*8 + iG*8 + 4 + j
-    // This implies total size nS * nnode * 8. Let's assume n.w contains the total number of systems used for fneigh sizing.
-    // Or maybe the 'n' parameter is just for the system being printed? Let's assume the latter and the fneigh size/indexing is handled by host.
-    // If fneigh indexing uses total systems `nS`, we need that value. Let's add nS to n.w for clarity.
-    const int nS_for_fneigh = n.w; // Assuming n.w is passed as total systems for fneigh indexing
+    //const int nS = gridDim.y; // Total number of systems (if launched one block per system)
+    const int nS_ = n.w; // Assuming n.w is passed as total systems for fneigh indexing
 
     const int i0a = isys * natoms; // base index for atoms data (constr, REQKs, neighs, etc.)
     const int i0v = isys * (natoms+nnode); // base index for vector data (apos, avel, aforce, cvf)
 
-    printf( "#### CUDA::printOnGPU(isys=%i) natoms=%i nnode=%i nS_fneigh=%i \n", isys,  natoms, nnode, nS_for_fneigh );
+    printf( "#### CUDA::printOnGPU(isys=%i) natoms=%i nnode=%i nS_=%i\n", isys,  natoms, nnode, nS_ );
 
-    if(mask.x){ // Print atom forces/positions/constraints
+    if(mask.x){ // Print atom aforce/positions/constraints
         printf("--- Atoms (%i -- %i) ---\n", i0v, i0v+natoms-1);
         for(int i=0; i<natoms; i++){
             int ia = i + i0a; // index for constr (indexed by natoms)
@@ -687,7 +825,7 @@ __global__ void printOnGPU(
             printf( "\n" );
         }
     }
-    if(mask.y){ // Print pi forces/positions
+    if(mask.y){ // Print pi aforce/positions
         printf("--- Pi Orbitals (%i -- %i) ---\n", i0v+natoms, i0v+(natoms+nnode)-1);
         for(int i=0; i<nnode; i++){ // Pi orbitals are associated with node atoms
             int ipi = i + natoms + i0v; // index for pi-orbital vector data
@@ -698,11 +836,11 @@ __global__ void printOnGPU(
             printf( "\n" );
         }
     }
-    if(mask.z){ // Print fneigh (recoil forces)
+    if(mask.z){ // Print fneigh (recoil aforce)
         printf("--- Recoil Forces (fneigh) for nodes (%i) ---\n", nnode);
         // Based on getMMFFf4 layout: fneigh[ iS * nnode*8 + iG*8 + sigma/pi*4 + neigh_idx ]
         for(int i=0; i<nnode; i++){ // loop over nodes
-            // Get base index for this node's recoil forces in this system
+            // Get base index for this node's recoil aforce in this system
             const int ingf = isys * nnode * 8 + i * 8;
             for(int j=0; j<4; j++){ // loop over neighbors
                 int isigma = ingf + j;
@@ -717,299 +855,5 @@ __global__ void printOnGPU(
 }
 
 
-// ======================================================================
-//                     cleanForceMMFFf4()
-// ======================================================================
-// Clean forces on atoms/pi-orbitals and neighbors to prepare for next forcefield evaluation
-// Based on analysis, the OpenCL version likely had incorrect fneigh indexing for clearing.
-// This CUDA version clears fapos/aforce for ALL vectors (atoms + pi) and fneigh for ALL node recoil forces (sigma + pi).
-// Assuming launched over grid(nvec, nS)
-
-__global__ void cleanForceMMFFf4(
-    int4        n,           // 2 // (natoms,nnode,?,?)
-    float4*  aforce,      // 5 // forces on atoms and pi-orbitals
-    float4*  fneigh       // 6 // recoil forces on neighbors (sigma + pi)
-){
-    const int natoms = n.x;
-    const int nnode  = n.y;
-    const int nvec   = natoms+nnode;
-    const int iG     = blockIdx.x * blockDim.x + threadIdx.x; // index of vector (atom or pi)
-    const int iS     = blockIdx.y * blockDim.y + threadIdx.y; // index of system
-
-    const int iav = iG + iS*nvec; // global index in aforce
-
-
-    if( (iG==0) &&(iS==0) ){
-        printf("CUDA cleanForceMMFFf4(): natoms=%i, nnode=%i \n", natoms, nnode );
-    }
-
-    // Clear force on this vector (atom or pi-orbital)
-    // This should be done for ALL vectors (0..nvec-1)
-    if(iG < nvec) {
-       aforce[iav] = float4Zero;
-       // Optional: aforce[iav] = make_float4(__int_as_float(iG), __int_as_float(iS), __int_as_float(iav), 0.0f); // Debugging
-    }
-
-    // Clear recoil forces in fneigh.
-    // fneigh stores recoil forces for node atoms ONLY.
-    // This means only threads with iG < nnode need to clear fneigh entries.
-    // The indices to clear are those written by getMMFFf4.
-    // fneigh layout derived from getMMFFf4: [ iS * nnode*8 + iG*8 + sigma/pi*4 + neigh_idx ]
-    if(iG < nnode){
-        // Base index for sigma forces of node iG in system iS: iS * nnode*8 + iG*8
-        const int fneigh_node_sigma_base_idx = iS * nnode * 8 + iG * 8;
-        // Base index for pi forces of node iG in system iS: iS * nnode*8 + iG*8 + 4
-        const int fneigh_node_pi_base_idx    = fneigh_node_sigma_base_idx + 4;
-
-        // Clear sigma recoil forces for this node's 4 neighbors
-        fneigh[fneigh_node_sigma_base_idx + 0] = float4Zero;
-        fneigh[fneigh_node_sigma_base_idx + 1] = float4Zero;
-        fneigh[fneigh_node_sigma_base_idx + 2] = float4Zero;
-        fneigh[fneigh_node_sigma_base_idx + 3] = float4Zero;
-
-        // Clear pi recoil forces for this node's 4 neighbors
-        fneigh[fneigh_node_pi_base_idx + 0] = float4Zero;
-        fneigh[fneigh_node_pi_base_idx + 1] = float4Zero;
-        fneigh[fneigh_node_pi_base_idx + 2] = float4Zero;
-        fneigh[fneigh_node_pi_base_idx + 3] = float4Zero;
-    }
-}
-
-
-// ======================================================================
-//                           getNonBond()
-// ======================================================================
-// Calculate non-bonded forces on atoms (including both node atoms and capping atoms), considering periodic boundary conditions
-// Assuming launched over grid(natoms, nS)
-__global__ void getNonBond(
-    int4 ns,                  // 1 // (natoms,nnode,?,nAtomCeil_for_local_buffer) dimensions of the system and local buffer size info
-    // Dynamical
-    float4*  atoms,        // 2 // positions of atoms  (including node atoms [0:nnode] and capping atoms [nnode:natoms]) - Note: pi-orbitals are NOT included in non-bonded.
-    float4*  forces,       // 3 // forces on atoms (accumulated)
-    // Parameters
-    float4*  REQKs,        // 4 // non-bonded parameters (RvdW,EvdW,QvdW,Hbond?) per atom
-    int4*    neighs,       // 5 // neighbors indices (0..natoms-1) per atom
-    int4*    neighCell,    // 6 // neighbors cell indices (0..npbc-1) per atom
-    cu_Mat3* lvecs,        // 7 // lattice vectors for each system
-    const int4        nPBC,         // 8 // number of PBC images in each direction (x,y,z) - Note: not used in loop bounds in original
-    const float4      GFFParams     // 9 // Grid-Force-Field parameters (R2damp, Rcut, etc.)
-){
-
-    // Use __shared__ for local memory
-    // The local buffer size should match blockDim.x
-    // The original code had [32], let's use blockDim.x
-    extern __shared__ float4 LATOMS[]; // Shared memory for positions
-    extern __shared__ float4 LCLJS[];  // Shared memory for parameters
-
-    const int iG = blockIdx.x * blockDim.x + threadIdx.x; // index of atom
-    const int iS = blockIdx.y * blockDim.y + threadIdx.y; // index of system
-
-    const int natoms=ns.x;  // number of atoms PER SYSTEM
-    const int nnode =ns.y;  // number of node atoms PER SYSTEM
-    //const int nAtomCeil_for_local_buffer =ns.w; // Ceiling for atom count, used for buffer size?
-
-    //const int i0a = iS*natoms;  // index of first atom in atoms array for this system
-    //const int i0v = iS*(natoms+nnode); // index of first vector in vector arrays (like apos) for this system
-                                       // Note: atoms array passed to non-bond is just atoms, not pi-orbitals.
-                                       // So it should be indexed by iS*natoms + iG.
-                                       // But apos in other kernels includes pi. Need clarification.
-                                       // Assuming 'atoms' pointer here is just atom positions (size nS*natoms)
-                                       // and 'forces' is just atom forces (size nS*natoms).
-                                       // This is inconsistent with other kernels using 'apos' and 'aforce' of size nS*(natoms+nnode).
-                                       // Let's assume 'atoms' is 'apos' subset for atoms (0..natoms-1 per system)
-                                       // and 'forces' is 'aforce' subset for atoms.
-                                       // This means indices should be iS*natoms + iG. Let's fix.
-    const int iaa = iG + iS*natoms; // index of current atom in GLOBAL arrays (atoms, forces, REQKs, neighs, neighCell)
-
-    // Check if this thread corresponds to a valid atom index (0..natoms-1 within its system slice)
-    // If launch grid covers more than natoms * nS, many threads will be invalid.
-    // Check iG < natoms to ensure we are within system's atom count.
-    if(iG >= natoms) {
-       // If this thread is not assigned to a valid atom, it might still need to participate
-       // in shared memory loading and sync, but it should not compute forces or write outputs.
-       // Its shared memory slot will hold dummy data or be unused.
-    }
-
-    const bool   bPBC  = (nPBC.x+nPBC.y+nPBC.z)>0;
-    const float  R2damp = GFFParams.x*GFFParams.x; // R2damp = GFFParams.x^2
-
-    float4 fe = float4Zero; // force on atom (accumulated locally)
-
-    // Get data for the current atom if it's valid
-    int4   ng    = { -1, -1, -1, -1 }; // Initialize neighbors to -1
-    int4   ngC   = { -1, -1, -1, -1 }; // Initialize neighbor cells to -1
-    float4 REQKi = float4Zero;
-    float3 posi  = float3Zero;
-    float4 posi4 = float4Zero; // Store original float4 for shared memory
-    if (iG < natoms) {
-        ng    = neighs   [iaa];
-        ngC   = neighCell[iaa];
-        REQKi = REQKs    [iaa];
-        posi  = XYZ(atoms [iaa]); // Use XYZ macro
-    }
-
-    const cu_Mat3 lvec = lvecs[iS]; // lattice vectors for this system
-
-
-
-    if( (iG==0) &&(iS==0) ){
-        printf("CUDA getNonBond(): natoms=%i, nnode=%i \n", natoms, nnode );
-        for(int i=0; i<natoms; i++){
-            float4 pi = atoms[i];
-            int4   ng = neighs[i];
-            int4   ngC = neighCell[i];
-            float4 REQKi = REQKs[i];
-            printf("CUDA getNonBond(): atom %i: ng=(%i,%i,%i,%i), ngC=(%i,%i,%i,%i), REQKi=(%10.5f,%10.5f,%10.5f|%10.5f), posi=(%10.5f,%10.5f,%10.5f,%10.5f)\n", i, ng.x, ng.y, ng.z, ng.w, ngC.x, ngC.y, ngC.z, ngC.w, REQKi.x, REQKi.y, REQKi.z, REQKi.w, pi.x, pi.y, pi.z, pi.w);
-        }   
-    }
-
-    // PBC shifts assuming 3x3 grid in XY, centered at (0,0,0) image
-    // The shifts should be precalculated based on lvec.a, lvec.b, lvec.c
-    // OpenCL shifts:
-    // dp += shift0; // shift to PBC image (-nPBC.x, -nPBC.y, -nPBC.z) relative to origin image (0,0,0)? No, it's relative to loop structure.
-    // Let's trust the OpenCL shifts calculation relative to loop structure.
-    // Assuming 3x3 grid (ix, iy) where ix from 0 to 2, iy from 0 to 2.
-    // This covers images (-1,-1,0), (0,-1,0), (1,-1,0), (-1,0,0), (0,0,0), (1,0,0), (-1,1,0), (0,1,0), (1,1,0) if the z-shift is always zero. The shifts `shift0`, `shift_a`, `shift_b` calculations are complex and don't seem to generate these images easily.
-    // Let's simplify and use standard PBC image generation for the 3x3 grid assumed by the loops.
-    // A 3x3 grid of images relative to the origin cell (0,0,0) would iterate shifts ix, iy from -1 to 1.
-    // The original loop is 0..2 for ix, iy. Let's stick to 0..2 and hope the shifts balance out.
-    // The check `if( !( bBonded && (...) ) )` is the critical part for neighbor list exclusion.
-    // Let's abandon the confusing OpenCL shift logic and just generate the 3x3 shifts relative to the origin image (0,0,0), and use the `neighCell` index to exclude the bonded image.
-
-    // Let's use a standard 3x3 loop over images ix, iy = -1, 0, 1. Total 9 images.
-    // ipbc index 0..8 mapped from (ix, iy) pair. e.g., ipbc = (iy+1)*3 + (ix+1)
-    //const int ipbc_neighbor_base = 4; // (0,0) image index is (0+1)*3 + (0+1) = 4
-
-    // ========= Atom-to-Atom interaction in chunks
-    for (int j0=0; j0<natoms; j0+=blockDim.x){ // loop over all atoms in the system, by chunks of size of local memory
-        // Read a chunk of atom data into shared memory
-        int src_idx_j = j0 + threadIdx.x + iS*natoms; // Global index for source atom j
-        if (j0 + threadIdx.x < natoms) { // Ensure we don't read out of bounds
-             LATOMS[threadIdx.x] = atoms [src_idx_j]; // atoms is float4*
-             LCLJS [threadIdx.x] = REQKs [src_idx_j];
-        } else {
-             // Initialize with dummy data if out of bounds, or rely on check inside inner loop
-             LATOMS[threadIdx.x] = make_float4(1e18f, 1e18f, 1e18f, 0.f); // Large position to ensure large r2
-             LCLJS[threadIdx.x] = float4Zero;
-        }
-        __syncthreads(); // Wait for all threads in the block to load data
-
-        // Compute forces between atom i (this thread) and atoms j in the shared memory chunk
-        if (iG < natoms) { // Only compute for valid atom i
-            for (int jl=0; jl<blockDim.x; jl++){    // loop over all atoms in local memory (like 32 atoms)
-                const int ja = j0+jl; // index of atom j within the current system (0..natoms-1)
-                if (ja >= natoms) continue; // Ensure atom j is valid
-
-                const float4 aj4 = LATOMS[jl];    // read atom position from local memory
-                const float3 aj = XYZ(aj4); // Use XYZ macro
-                float4 REQK     = LCLJS [jl];    // read atom parameters from local memory
-
-                // Mix parameters
-                REQK.x  += REQKi.x;   // mixing rules for vdW Radius (Rij = Ri + Rj)
-                // For Epsilon: Eij = sqrt(Ei * Ej) - Original code used *=, this is incorrect for sqrt mixing
-                // Let's stick to the original code's *= behavior unless sqrt is confirmed.
-                // REQK.yz *= REQKi.yz; // This seems to be Q1*Q2 for z, and E0*E0 for y? Very strange.
-                // Standard LJ mixing: R0_ij = (R0_i + R0_j) / 2, E0_ij = sqrt(E0_i * E0_j)
-                // The code uses REQK.x += REQKi.x, which means R0_ij = R0_i + R0_j. Unusual but let's keep.
-                // Let's assume REQK.yz stores {E0, Q} * {E0_i, Q_i}
-                // This implies REQK.y should be sqrt(E0_j) or something pre-processed.
-                // Given the function name getLJQH(dp, REQ, R2damp) takes REQ.x=R0, REQ.y=E0, REQ.z=Q.
-                // And the mixing is REQij.x = REQi.x + REQj.x; REQij.yz = REQi.yz * REQj.yz;
-                // This means R0_ij = R0_i + R0_j
-                // E0_ij = E0_i * E0_j
-                // Q_ij = Q_i * Q_j
-                // This mixing is very unusual. Let's translate it as is.
-                 REQK.y *= REQKi.y; // E0_ij = E0_i * E0_j
-                 REQK.z *= REQKi.z; // Q_ij = Q_i * Q_j
-
-
-                // Exclude interaction if bonded or same atom
-                // ja is index 0..natoms-1 for atom j in the current system
-                // iG is index 0..natoms-1 for atom i in the current system
-                // If iG == ja, it's the same atom.
-                const bool bSameAtom = (ja == iG);
-                // Check if atom j is a direct neighbor of atom i
-                const bool bBonded = ((ja == ng.x)||(ja == ng.y)||(ja == ng.z)||(ja == ng.w));
-
-                // Loop over PBC images
-                // Standard 3x3 grid in XY (ix, iy = -1, 0, 1)
-                // OpenCL loop indices ix, iy are 0, 1, 2. Map this to images -1, 0, 1
-                // OpenCL used ipbc 0..8. Let's match that mapping.
-                // ipbc = iy*3 + ix
-                // (0,0) image is ix=0, iy=0 -> ipbc=0. But original code used ipbc=4 for (0,0)?
-                // Let's use a consistent mapping: ix = 0..2, iy = 0..2. ipbc = iy*3 + ix. (0,0) image is ipbc=0.
-                // Neighbor cell index ngC stores 0..npbc-1. npbc must be >= 9 if 3x3 is used.
-
-                if(!bSameAtom){ // No interaction with itself
-
-                    float3 dp_base = aj - posi; // vector from atom i to atom j in the origin cell
-
-                    if(bPBC){ // If PBC is enabled
-                        //int ipbc = 0; // image index 0..8 (for 3x3 grid)
-                        for(int iy=0; iy<3; iy++){ // Loop over Y images (-1, 0, 1) -> Map iy to -1,0,1
-                            int shift_iy = iy - 1;
-                            for(int ix=0; ix<3; ix++){ // Loop over X images (-1, 0, 1) -> Map ix to -1,0,1
-                                int shift_ix = ix - 1;
-
-                                float3 lvec_a_xyz = XYZ(lvec.a);
-                                float3 lvec_b_xyz = XYZ(lvec.b);
-                                float3 shift_vec = shift_ix * lvec_a_xyz + shift_iy * lvec_b_xyz; // No Z shift based on original loops
-
-                                // Map (shift_ix, shift_iy) back to OpenCL's ipbc index convention if needed for ngC check
-                                // The OpenCL check `((ja==ng.x)&&(ipbc==ngC.x))` suggests ngC stores the ipbc index.
-                                // The OpenCL ipbc goes 0..8 inside the 3x3 loops.
-                                // Let's assume OpenCL's ipbc = iy*3 + ix (with ix, iy from 0 to 2).
-                                // Then the origin image (0,0,0) corresponds to ix=1, iy=1 (center of 0..2 range).
-                                // ipbc = 1*3 + 1 = 4. This matches the idea that ipbc=4 is the origin image.
-                                // Let's map ix, iy (-1, 0, 1) to ipbc used in ngC check.
-                                // ipbc_check = (shift_iy+1)*3 + (shift_ix+1); // This is ipbc in 0..8 range
-                                // This seems unnecessarily complex. Let's assume `ngC` stores an index that correctly identifies the PBC image of the bonded neighbor relative to the central atom.
-                                // A simpler check: if bonded, and the image is the central image (ix=0, iy=0), skip.
-                                // This assumes bonded atoms are always in the central image (0,0,0). If they can cross PBC, the ngC check is needed.
-                                // Let's trust the OpenCL check using ngC and map our (ix,iy) to its ipbc.
-                                // Assuming ipbc = iy_opencl*3 + ix_opencl, where ix_opencl, iy_opencl are 0..2.
-                                // And ix = ix_opencl - 1, iy = iy_opencl - 1. So ix_opencl = ix + 1, iy_opencl = iy + 1.
-                                // ipbc_opencl = (iy+1)*3 + (ix+1);
-                                int ipbc_ = (shift_iy+1)*3 + (shift_ix+1);
-
-                                if( !( bBonded &&                     // if atoms are bonded, we do not want to calculate non-covalent interaction between them
-                                        (
-                                            ((ja==ng.x)&&(ipbc_==ngC.x)) || // check if this image corresponds to a bonded neighbor's cell
-                                            ((ja==ng.y)&&(ipbc_==ngC.y)) ||
-                                            ((ja==ng.z)&&(ipbc_==ngC.z)) ||
-                                            ((ja==ng.w)&&(ipbc_==ngC.w))
-                                        )
-                                    )
-                                ){
-                                    float3 dp_shifted = dp_base + shift_vec;
-                                    float4 fij = getLJQH( dp_shifted, REQK, R2damp ); // NOTE: getLJQH must be defined
-                                    fe += fij; // Uses defined operator+=
-                                }
-                            }
-                        }
-                    } else { // If PBC is not used
-                        if( !bBonded ){ // if atoms are not bonded, calculate interaction (only in origin image)
-                             float4 fij = getLJQH( dp_base, REQK, R2damp ); // NOTE: getLJQH must be defined
-                             fe += fij;
-                        }
-                    }
-                }
-            }
-        }
-        __syncthreads(); // Wait for all threads in the block to finish processing the chunk
-    }
-
-    if(iG < natoms){ // Only write output if this thread processed a valid atom
-        // Original OpenCL added force: forces[iav] += fe;
-        // If cleanForce clears aforce beforehand, then this is the first write.
-        // Let's trust the cleanForce clears aforce for atoms, so adding is correct here.
-        // Need to use atomicAdd for safety if multiple threads could write to the same location,
-        // but with 1 atom per thread, it's not needed. Let's add directly.
-        atomicAdd(&forces[iaa].x, fe.x); // Use iaa for forces indexed by natoms
-        atomicAdd(&forces[iaa].y, fe.y);
-        atomicAdd(&forces[iaa].z, fe.z);
-        // forces[iaa].w = 0.0f; // Don't touch w component if used for energy/charge/mass
-    }
-}
 
 #endif // MMFF_KERNELS_CUH
