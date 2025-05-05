@@ -345,8 +345,6 @@ __kernel void getMMFFf4(
         } 
     }
 
-     
-
     // Temp Arrays
     const int*   ings  = (int*  )&ng; // neighboring atoms, we cast it to int[] to be index it in for loop
 
@@ -397,15 +395,15 @@ __kernel void getMMFFf4(
 
             // --- Evaluate bond-length stretching energy and forces
             if(iG<ing){  
-                float eb = evalBond( h.xyz, l-bL[i], bK[i], &f1 );  fbs[i]-=f1;  fa+=f1; E+=eb;  // harmonic bond stretching, fa is force on center atom, fbs[i] is recoil force on i-th neighbor, 
+                float elb = evalBond( h.xyz, l-bL[i], bK[i], &f1 );  fbs[i]-=f1;  fa+=f1; E+=elb;  // harmonic bond stretching, fa is force on center atom, fbs[i] is recoil force on i-th neighbor, 
                 
-                if((iG==iGdbg)&&(iS==iSdbg)){ printf("OCL getMMFFf4(): evalBond(): iG %3i-%3i: l=%10.5f bL=%10.5f bK=%10.5f eb=%10.5f f1=(%10.5f,%10.5f,%10.5f)\n", iG, ing, l, bL[i], bK[i], eb, f1.x, f1.y, f1.z ); }
+                    if((iG==iGdbg)&&(iS==iSdbg)){ printf("OCL getMMFFf4(): bond-length:    iG %3i ing %3i elb %10.5f f(%10.5f,%10.5f,%10.5f) l %10.5f bL %10.5f bK %10.5f \n", iG, ing, elb, f1.x, f1.y, f1.z, l, bL[i], bK[i] ); }
 
                 // pi-pi alignment interaction            
                 float kpp = Kppi[i];
                 if( (ing<nnode) && (kpp>1.e-6) ){   // Only node atoms have pi-pi alignemnt interaction
                     float epp = evalPiAling( hpi, apos[ingv+nAtoms].xyz, kpp,  &f1, &f2 );   fpi+=f1;  fps[i]+=f2; E+=epp;    //   pi-alignment(konjugation), fpi is force on pi-orbital, fps[i] is recoil force on i-th neighbor's pi-orbital
-                    if((iG==iGdbg)&&(iS==iSdbg)){ printf("OCL getMMFFf4(): evalPiAling(): iG %3i-%3i: cos=%10.5f kpp=%10.5f epp=%10.5f f1=(%10.5f,%10.5f,%10.5f)\n", iG, ing, dot(hpi.xyz,apos[ingv+nAtoms].xyz), kpp, epp, f1.x, f1.y, f1.z ); }
+                    if((iG==iGdbg)&&(iS==iSdbg)){ printf("OCL getMMFFf4(): cos(pi,pi):     iG %3i ing %3i epp %10.5f f(%10.5f,%10.5f,%10.5f) c %10.5f kpp %10.5f \n", iG, ing, epp, f1.x, f1.y, f1.z, dot(hpi.xyz,apos[ingv+nAtoms].xyz), kpp ); }
                 }
             } 
             
@@ -413,7 +411,7 @@ __kernel void getMMFFf4(
             float ksp = Kspi[i];
             if(ksp>1.e-6){  
                 float esp = evalAngCos( (float4){hpi,1.}, h, ksp, par.w, &f1, &f2 );   fpi+=f1; fa-=f2;  fbs[i]+=f2; E+=esp;    //   pi-planarization (orthogonality), fpi is force on pi-orbital, fbs[i] is recoil force on i-th neighbor   
-                if((iG==iGdbg)&&(iS==iSdbg)){ printf("OCL getMMFFf4(): evalAngCos(): iG %3i-%3i: cos=%10.5f ksp=%10.5f esp=%10.5f f1=(%10.5f,%10.5f,%10.5f)\n", iG, ing, dot(hpi.xyz,h.xyz), ksp, esp, f1.x, f1.y, f1.z ); }
+                if((iG==iGdbg)&&(iS==iSdbg)){ printf("OCL getMMFFf4(): cos(pi,sigma):      iG %3i ing %3i esp %10.5f f1(%10.5f,%10.5f,%10.5f) c %10.5f ksp %10.5f par.w %10.5f \n", iG, ing, esp, f1.x, f1.y, f1.z, dot(hpi.xyz,h.xyz), ksp, par.w ); }
             }
         }
 
@@ -444,7 +442,7 @@ __kernel void getMMFFf4(
                 float ea = evalAngleCosHalf( hi, hj, par.xy, par.z, &f1, &f2 );    // evaluate angular force and energy using cos(angle/2) formulation        
                 fa  -= f1+f2;
                 E   += ea;
-                if((iG==iGdbg)&&(iS==iSdbg)){ printf("OCL getMMFFf4(): evalAngleCosHalf(): iG %3i ing %3i jng %3i: cos=%10.5f apar(%10.5f,%10.5f,%10.5) ea=%10.5f f1=(%10.5f,%10.5f,%10.5f) f2=(%10.5f,%10.5f,%10.5f)\n", iG, ing, jng,  dot(hi.xyz,hj.xyz), par.x, par.y, par.z, ea, f1.x, f1.y, f1.z, f2.x, f2.y, f2.z ); }
+                if((iG==iGdbg)&&(iS==iSdbg)){ printf("OCL getMMFFf4(): angle():        iG %3i ing %3i jng %3i ea=%10.5f f1(%10.5f,%10.5f,%10.5f) f2(%10.5f,%10.5f,%10.5f) cos %10.5f apar(%10.5f,%10.5f,%10.5f) \n", iG, ing, jng, ea, f1.x, f1.y, f1.z, f2.x, f2.y, f2.z, dot(hi.xyz,hj.xyz), par.x, par.y, par.z ); }
 
                 //if(bSubtractVdW)
                 { // Remove non-bonded interactions from atoms that are bonded to common neighbor

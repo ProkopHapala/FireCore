@@ -162,15 +162,16 @@ __kernel void getNonBond(
             exit(1)
 
         #print("prg.dir()", dir(self.prg) )
-        self.getMMFFf4         = self.prg.getMMFFf4
-        self.getNonBond        = self.prg.getNonBond
-        self.updateAtomsMMFFf4 = self.prg.updateAtomsMMFFf4
-        self.cleanForceMMFFf4  = self.prg.cleanForceMMFFf4
+        #self.getMMFFf4         = self.prg.getMMFFf4
+        #self.getNonBond        = self.prg.getNonBond
+        #self.updateAtomsMMFFf4 = self.prg.updateAtomsMMFFf4
+        #self.cleanForceMMFFf4  = self.prg.cleanForceMMFFf4
 
         # Initialize other attributes that will be set in realloc
         self.nSystems = 0
         self.mmff_instances = []
         self.buffer_dict = {}
+        self.MD_event_batch = None
 
     def realloc(self, mmff, nSystems=1 ):
         """
@@ -383,9 +384,9 @@ __kernel void getNonBond(
         niterdone = 0
         for _ in range(niter):
             # Call kernels with explicit queue, global and local sizes
-            self.getNonBond       (self.queue, self.global_size_nonbond, self.local_size_opt,  *self.kernel_args_getNonBond)
-            self.getMMFFf4        (self.queue, self.global_size_mmff,    self.local_size_opt,  *self.kernel_args_getMMFFf4)
-            self.updateAtomsMMFFf4(self.queue, self.global_size_update,  self.local_size_opt,  *self.kernel_args_updateAtomsMMFFf4)
+            self.prg.getNonBond       (self.queue, self.global_size_nonbond, self.local_size_opt,  *self.kernel_args_getNonBond        )
+            self.prg.getMMFFf4        (self.queue, self.global_size_mmff,    self.local_size_opt,  *self.kernel_args_getMMFFf4         )
+            self.prg.updateAtomsMMFFf4(self.queue, self.global_size_update,  self.local_size_opt,  *self.kernel_args_updateAtomsMMFFf4 )
             niterdone += 1
             if niterdone % nPerVFs == 0:
                 cl.enqueue_copy(self.queue, self.aforce, self.buffer_dict['aforce'])
@@ -396,24 +397,52 @@ __kernel void getNonBond(
                     break
         return niterdone
 
+    def make_MD_queue_batch(self, perBatch=10):
+        '''
+        Pre-create all kernel calls for a batch of steps.
+        '''
+        events = []
+        wait_for = []
+        for _ in range(perBatch):
+            # Force calculation
+            evt_getNonBond = cl.enqueue_nd_range_kernel (self.queue, self.prg.getNonBond,        self.global_size_nonbond, self.local_size_opt,  *self.kernel_args_getNonBond,         wait_for=wait_for)
+            evt_getMMFFf4  = cl.enqueue_nd_range_kernel (self.queue, self.prg.getMMFFf4 ,        self.global_size_mmff,    self.local_size_opt,  *self.kernel_args_getMMFFf4,          wait_for=[evt_getNonBond])
+            evt_move       = cl.enqueue_nd_range_kernel (self.queue, self.prg.updateAtomsMMFFf4, self.global_size_update,  self.local_size_opt,  *self.kernel_args_updateAtomsMMFFf4,  wait_for=[evt_getMMFFf4])
+            wait_for = [evt_move] 
+            self.batch_events.extend([evt_getNonBond, evt_getMMFFf4, evt_move])
+        self.MD_event_batch = events
+        return events
+
+    def run_MD_batched(self, nsteps=1000, perBatch=10, Fconv=1e-6 ):
+        if self.MD_event_batch is None:
+            self.make_MD_queue_batch( perBatch=perBatch )
+        nBatches = nsteps // perBatch
+        forces_buf = np.empty_like(self.host_forces)  # Pre-allocated buffer
+        for iBatch in range(nBatches):
+            self.queue.wait_for_events(self.MD_event_batch)
+            cl.enqueue_copy(self.queue, forces_buf, self.buffer_dict['aforce'])
+            F2 = np.sum(forces_buf**2)
+            print(f"Batch {iBatch}: Max |F|^2 = {F2}")
+            if F2 < Fconv:
+                print(f"Converged after {iBatch} batches.")
+                break
 
     def run_getNonBond(self):
         print("MolecularDynamics::run_getNonBond, ", self.global_size_nonbond, self.local_size_opt,  self.kernel_args_getNonBond)
-        self.getNonBond(self.queue, self.global_size_nonbond, self.local_size_opt,  *self.kernel_args_getNonBond)
+        self.prg.getNonBond(self.queue, self.global_size_nonbond, self.local_size_opt,  *self.kernel_args_getNonBond)
         self.queue.finish()
     
     def run_getMMFFf4(self):
-        self.getMMFFf4(self.queue, self.global_size_mmff, self.local_size_opt,  *self.kernel_args_getMMFFf4)
+        self.prg.getMMFFf4(self.queue, self.global_size_mmff, self.local_size_opt,  *self.kernel_args_getMMFFf4)
         self.queue.finish()
     
     def run_updateAtomsMMFFf4(self):
-        self.updateAtomsMMFFf4(self.queue, self.global_size_update, self.local_size_opt,  *self.kernel_args_updateAtomsMMFFf4)
+        self.prg.updateAtomsMMFFf4(self.queue, self.global_size_update, self.local_size_opt,  *self.kernel_args_updateAtomsMMFFf4)
         self.queue.finish()
     
     def run_cleanForceMMFFf4(self):
-        self.cleanForceMMFFf4(self.queue, self.global_size_clean, self.local_size_opt,  *self.kernel_args_cleanForceMMFFf4)
+        self.prg.cleanForceMMFFf4(self.queue, self.global_size_clean, self.local_size_opt,  *self.kernel_args_cleanForceMMFFf4)
         self.queue.finish()
-
 
     def download_results(self):
         mmff   = self.mmff_instances[0]

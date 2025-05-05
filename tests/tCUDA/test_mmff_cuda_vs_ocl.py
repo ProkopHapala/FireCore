@@ -91,8 +91,9 @@ mdcl.realloc( mmff=mmff, nSystems=1,)   # Allocate memory for 1 system (nSystems
 mdcl.pack_system(iSys=0, mmff=mmff)  # Pack the MMFF data into GPU buffers for system index 0
 mdcl.upload_all_systems()            # Upload all system data to the GPU
 mdcl.setup_kernels()                 # Set up kernels with their arguments
-
-mdcl.run_getNonBond()
+#mdcl.run_getNonBond()
+mdcl.run_getMMFFf4()
+#mdcl.run_updateAtomsMMFFf4()
 #mdcl.queue.finish()
 #iter_done = mdcl.run_ocl_opt(niter=1, Fconv=1e-6, nPerVFs=1)
 #final_pos, final_forces = mdcl.download_results()
@@ -114,8 +115,8 @@ cuMD.upload("Kpp",    mmff.Kpp)
 cuMD.synchronize()
 #cuMD.upload("atypes", mmff.atypes)
 #cuMD.run_cleanForceMMFFf4()
-cuMD.run_getNonBond()
-#cuMD.run_getMMFFf4()
+#cuMD.run_getNonBond()
+cuMD.run_getMMFFf4()
 #cuMD.run_updateAtomsMMFFf4()
 print("################# END CUDA MMFF #################")
 

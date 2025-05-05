@@ -5,6 +5,8 @@
 #define iGdbg 0
 #define iSdbg 0
 
+#define NNEIGH 4
+
 #include <cuda_runtime.h>
 #include <device_launch_parameters.h>
 #include <vector_types.h>
@@ -43,10 +45,11 @@ __device__ inline float3& operator/=(float3& v, float s  ){ float invS = 1.0f/s;
 
 // Vector addition/subtraction
 __device__ inline float3  operator+ (float3  a,       float3  b) { return make_float3(a.x + b.x, a.y + b.y, a.z + b.z); }
-__device__ inline float3& operator+=(float3& a, const float3& b) { a.x += b.x; a.y += b.y; a.z += b.z; return a; }
 __device__ inline float3  operator- (float3  a,       float3  b) { return make_float3(a.x - b.x, a.y - b.y, a.z - b.z); }
-__device__ inline float3& operator-=(float3& a, const float3& b) { a.x -= b.x; a.y -= b.y; a.z -= b.z; return a; }
 __device__ inline float3  operator* (float3  a,       float3  b) { return make_float3(a.x * b.x, a.y * b.y, a.z * b.z); }
+
+__device__ inline float3& operator+=(float3& a, const float3& b) { a.x += b.x; a.y += b.y; a.z += b.z; return a; }
+__device__ inline float3& operator-=(float3& a, const float3& b) { a.x -= b.x; a.y -= b.y; a.z -= b.z; return a; }
 __device__ inline float4& operator+=(float4& a, const float4& b) { a.x += b.x; a.y += b.y; a.z += b.z; a.w += b.w; return a; }
 
 // --- End Helper Functions ---
@@ -57,9 +60,11 @@ __device__ inline float3 rotMat    ( float3 v, float3 a, float3 b, float3 c ){  
 __device__ inline float3 rotMatT   ( float3 v, float3 a, float3 b, float3 c ){  return a*v.x + b*v.y + c*v.z;  }
 
 __device__ inline float evalAngCos( float4 hr1, float4 hr2, float K, float c0, float3* f1, float3* f2 ){
-    float  c = dot(make_float3(hr1.x,hr1.y,hr1.z), make_float3(hr2.x,hr2.y,hr2.z));
-    float3 hf1 = make_float3(hr2.x,hr2.y,hr2.z) - make_float3(hr1.x,hr1.y,hr1.z)*c;
-    float3 hf2 = make_float3(hr1.x,hr1.y,hr1.z) - make_float3(hr2.x,hr2.y,hr2.z)*c;
+    float3 h1 = make_float3(hr1.x,hr1.y,hr1.z);
+    float3 h2 = make_float3(hr2.x,hr2.y,hr2.z);
+    float  c = dot(h1,h2);
+    float3 hf1 = h2 - h1*c;
+    float3 hf2 = h1 - h2*c;
     float c_   = c-c0;
     float E    = K*c_*c_;
     float fang = -K*c_*2;
@@ -245,21 +250,20 @@ __global__ void getMMFFf4(
     const int ian = iG + i0n;  // index of current node atom (in apars, bLs, bKs, Ksp, Kpp)
     const int iav = iG + i0v;  // index of current vector (in apos, fapos)
 
-    #define NNEIGH 4
-
-
-
-
-    if( (iG==0) &&(iS==0) ){
+    if((iG==iGdbg)&&(iS==iSdbg)){
         printf("CUDA getMMFFf4(): natoms=%i, nnode=%i nvec=%i, npbc=%i\n", nAtoms, nnode, nvec, npbc );
-        for(int i=0; i<nnode; i++){
-            float4 pi = apos[i];
-            int4   ng = neighs[i];
-            int4   ngC = neighCell[i];
-            float4 bL = bLs[i];
-            float4 bK = bKs[i];
-            float4 apar = apars[i];
-            printf("CUDA getMMFFf4(): atom %i: ng=(%i,%i,%i,%i), ngC=(%i,%i,%i,%i), bL=(%10.5f,%10.5f,%10.5f,%10.5f), bK=(%10.5f,%10.5f,%10.5f,%10.5f), apar=(%10.5f,%10.5f,%10.5f|%10.5f), posi=(%10.5f,%10.5f,%10.5f,%10.5f)\n", i, ng.x, ng.y, ng.z, ng.w, ngC.x, ngC.y, ngC.z, ngC.w, bL.x, bL.y, bL.z, bL.w, bK.x, bK.y, bK.z, bK.w, apar.x, apar.y, apar.z, apar.w, pi.x, pi.y, pi.z, pi.w);
+        for(int ia=0; ia<nnode; ia++){
+            int4   ng=neighs[iaa+ia];
+            float4 pi=apos[iav+ia];
+            float4 bk=bLs[ian];
+            float4 bK=bKs[ian];
+            float4 Ks=Ksp[ian];
+            float4 Kp=Kpp[ian];
+            float4 apar=apars[ian];
+            //printf("OCL getMMFFf4(): ia %3i: pos=(%10.5f,%10.5f,%10.5f) ngs=(%3i,%3i,%3i,%3i) bLs=(%10.5f,%10.5f,%10.5f,%10.5f) bKs=(%10.5f,%10.5f,%10.5f,%10.5f) Ks=(%10.5f,%10.5f,%10.5f,%10.5f) Kp=(%10.5f,%10.5f,%10.5f,%10.5f) apar=(%10.5f,%10.5f,%10.5f,%10.5f)\n", 
+            //   ia, pi.x, pi.y, pi.z, ng.x, ng.y, ng.z, ng.w, bk.x, bk.y, bk.z, bk.w, bK.x, bK.y, bK.z, bK.w, Ks.x, Ks.y, Ks.z, Ks.w, Kp.x, Kp.y, Kp.z, Kp.w, apar.x, apar.y, apar.z, apar.w );
+            printf("CUDA getMMFFf4(): ia %3i: pos=(%10.5f,%10.5f,%10.5f) ngs=(%3i,%3i,%3i,%3i) bLs=(%10.5f,%10.5f,%10.5f,%10.5f) bKs=(%10.5f,%10.5f,%10.5f,%10.5f) apar=(%10.5f,%10.5f,%10.5f,%10.5f)\n", 
+                ia, pi.x, pi.y, pi.z, ng.x, ng.y, ng.z, ng.w, bk.x, bk.y, bk.z, bk.w, bK.x, bK.y, bK.z, bK.w, apar.x, apar.y, apar.z, apar.w );
         } 
         for(int ipbc=0; ipbc<npbc; ipbc++){
             float4 shift = pbc_shifts[ipbc];
@@ -269,25 +273,17 @@ __global__ void getMMFFf4(
 
 
     // ---- Dynamical
-    float4  hs [NNEIGH];         // direction vectors of bonds (h.xyz) and inverse bond lengths (h.w)
+    float4  hs [NNEIGH];         // direction vectors of bonds (h) and inverse bond lengths (h.w)
     float3  fbs[NNEIGH];         // force on neighbor sigma    (fbs[i] is sigma recoil force on i-th neighbor)
     float3  fps[NNEIGH];         // force on neighbor pi       (fps[i] is pi    recoil force on i-th neighbor)
     float3  fa  = float3Zero;    // force on center atom positon
 
     float E=0;                   // Total Energy of this atom
     // ---- Params
-    const int4   ng  = neighs[iaa];    // neighboring atoms (indices relative to system start 0..natoms-1)
-    const float3 pa  = XYZ(apos[iav]);  // position of current atom
-    const float4 par = apars[ian];     // (xy=s0_ss,z=ssK,w=piC0 ) forcefield parameters for current atom
-
-
+    const int4   ng    = neighs[iaa];    // neighboring atoms (indices relative to system start 0..natoms-1)
+    const float3 pa    = XYZ(apos[iav]);  // position of current atom
+    const float4  par  = apars[ian];     // (xy=s0_ss,z=ssK,w=piC0 ) forcefield parameters for current atom
     const int*   ings  = (const int*  )&ng; // neighboring atoms, we cast it to int[] to be index it in for loop
-
-
-    const float   ssC0_sq = par.x; // cos(ang0/2)
-    const float   ssS0_sq = par.y; // sin(ang0/2)
-    const float   ssK     = par.z; // sigma-sigma stiffness
-    const float   piC0    = par.w; // pi-sigma cos(ang0)
 
     for(int i=0; i<NNEIGH; i++){ fbs[i]=float3Zero; fps[i]=float3Zero; }   // clear recoil aforce on neighbors
 
@@ -336,27 +332,31 @@ __global__ void getMMFFf4(
 
             // --- Evaluate bond-length stretching energy and aforce
             if(iG<ing){
-                E += evalBond(h_xyz, l-bL[i], bK[i], &f1);
+                float elb = evalBond(h_xyz, l-bL[i], bK[i], &f1);
+                if((iG==iGdbg)&&(iS==iSdbg)){ printf("CUDA getMMFFf4(): bond-length:    iG %3i ing %3i elb %10.5f f(%10.5f,%10.5f,%10.5f) l %10.5f bL %10.5f bK %10.5f \n", iG, ing, elb, f1.x, f1.y, f1.z, l, bL[i], bK[i] ); }
                 fbs[i] -= f1;
-                fa += f1;
-            }
+                fa     += f1;
+                E      +=elb;
 
-            // pi-pi alignment interaction - only evaluated if both atoms are nodes
-            float kpp = Kppi[i];
-            if( (ing<nnode) && (kpp>1.e-6f) ){   // Only node atoms have pi-pi alignemnt interaction (ing < nnode)
-                float E_pi = evalPiAling( hpi, XYZ(apos[ingv+nAtoms]), kpp,  &f1, &f2 ); // apos[ingv+nAtoms] is the pi-orbital of neighbor ing
-                E+=E_pi;
-                fpi+=f1;
-                fps[i]+=f2; // Uses defined operator+=
+                // pi-pi alignment interaction - only evaluated if both atoms are nodes
+                float kpp = Kppi[i];
+                if( (ing<nnode) && (kpp>1.e-6f) ){   // Only node atoms have pi-pi alignemnt interaction (ing < nnode)
+                    float epp = evalPiAling( hpi, XYZ(apos[ingv+nAtoms]), kpp,  &f1, &f2 ); // apos[ingv+nAtoms] is the pi-orbital of neighbor ing
+                    if((iG==iGdbg)&&(iS==iSdbg)){ printf("CUDA getMMFFf4(): cos(pi,pi):     iG %3i ing %3i epp %10.5f f(%10.5f,%10.5f,%10.5f) c %10.5f kpp %10.5f \n", iG, ing, epp, f1.x, f1.y, f1.z, dot(hpi,XYZ(apos[ingv+nAtoms])), kpp ); }
+                    E     +=epp;
+                    fpi   +=f1;
+                    fps[i]+=f2; // Uses defined operator+=
+                }
             }
 
             // pi-sigma orthogonalization interaction
             float ksp = Kspi[i];
             if(ksp>1.e-6f){
-                float E_ps = evalAngCos( make_float4(hpi.x, hpi.y, hpi.z, 1.f), h, ksp, piC0, &f1, &f2 ); // hpi is direction, hr1.w=1.f; h is bond vector, hr2.w=1./l;
-                E+=E_ps; // OpenCL code added epp here, assuming a typo and it should be E_ps
-                fpi+=f1;
-                fa-=f2; // Uses defined operator-=
+                float esp = evalAngCos( make_float4(hpi.x, hpi.y, hpi.z, 1.f), h, ksp, par.w, &f1, &f2 ); // hpi is direction, hr1.w=1.f; h is bond vector, hr2.w=1./l;
+                if((iG==iGdbg)&&(iS==iSdbg)){ printf("CUDA getMMFFf4(): cos(pi,sigma):      iG %3i ing %3i esp %10.5f f1(%10.5f,%10.5f,%10.5f) c %10.5f ksp %10.5f par.w %10.5f \n", iG, ing, esp, f1.x, f1.y, f1.z, dot(hpi,XYZ(h)), ksp, par.w ); }
+                E     +=esp;
+                fpi   +=f1;
+                fa    -=f2; // Uses defined operator-=
                 fbs[i]+=f2; // Uses defined operator+=
             }
         }
@@ -377,6 +377,12 @@ __global__ void getMMFFf4(
 
     { //  ============== Angles   - here we evaluate angular interactions between pair of sigma-bonds of node atoms with its 4 neighbors
 
+        
+        //const float   ssC0 = par.x; // cos(ang0/2)
+        //const float   ssS0 = par.y; // sin(ang0/2)
+        //const float   ssK  = par.z; // sigma-sigma stiffness
+        //const float   piC0 = par.w; // pi-sigma cos(ang0)
+
         for(int i=0; i<NNEIGH; i++){ // loop over first bond
             int ing = ings[i];
             if(ing<0) break; // if there is no i-th neighbor we break the loop
@@ -391,9 +397,12 @@ __global__ void getMMFFf4(
                 const int jnga = jng+i0a; // index for REQKs
                 const float4 hj = hs[j];
 
-                // ssK is already ssK in apars.z
-                E += evalAngleCosHalf( hi, hj, make_float2(ssC0_sq, ssS0_sq), ssK, &f1, &f2 ); // evaluate angular force and energy using cos(angle/2) formulation // NOTE: evalAngleCosHalf must be defined
+                float ea = evalAngleCosHalf( hi, hj, make_float2(par.x, par.y), par.z, &f1, &f2 ); // evaluate angular force and energy using cos(angle/2) formulation // NOTE: evalAngleCosHalf must be defined
                 fa    -= (f1+f2); // Uses defined operator-= // total angular force on center atom is -(f1+f2)
+                E     +=ea;
+
+                if((iG==iGdbg)&&(iS==iSdbg)){ printf("CUDA getMMFFf4(): angle():        iG %3i ing %3i jng %3i ea=%10.5f f1(%10.5f,%10.5f,%10.5f) f2(%10.5f,%10.5f,%10.5f) cos %10.5f apar(%10.5f,%10.5f,%10.5f) \n", iG, ing, jng, ea, f1.x, f1.y, f1.z, f2.x, f2.y, f2.z, dot(XYZ(hi),XYZ(hj)), par.x, par.y, par.z ); }
+
 
                 if(bSubtractVdW){ // Remove non-bonded interactions from atoms that are bonded to common neighbor
                     float4 REQi=REQKs[inga];   // non-bonding parameters of i-th neighbor
