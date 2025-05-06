@@ -6,83 +6,6 @@ Lepair = 1.5    # Example bond length for electron pairs
 Kepair = 100.0  # Example bond stiffness for electron pairs
 deg2rad = np.pi / 180.0
 
-class AtomType:
-    """
-    Represents the parameters for each atom type.
-    """
-    def __init__(self, name, Ruff, Quff, Eaff, Kss, Ass, Ksp, Kpp, npi=0, ne=0):
-        """
-        Initializes the AtomType.
-
-        Parameters:
-        - name (str): Name of the atom type (e.g., 'C', 'H').
-        - Kss (float): Stiffness for sigma-sigma interactions.
-        - Ass (float): Angle parameter in degrees.
-        - Ksp (float): Stiffness for pi-sigma interactions.
-        - Kpp (float): Stiffness for pi-pi interactions.
-        - npi (int): Number of pi-orbitals.
-        - ne (int): Number of electron pairs.
-        """
-        self.name = name
-        self.Kss = Kss
-        self.Ass = Ass
-        self.Ksp = Ksp
-        self.Kpp = Kpp
-        self.npi = npi
-        self.ne = ne
-        self.Ruff = Ruff
-        self.Quff = Quff
-        self.Eaff = Eaff
-
-class Bond:
-    """
-    Represents a bond between two atoms.
-    """
-    def __init__(self, i, j, l0, k):
-        """
-        Initializes the Bond.
-
-        Parameters:
-        - i (int): Index of the first atom.
-        - j (int): Index of the second atom.
-        - l0 (float): Equilibrium bond length.
-        - k (float): Bond stiffness.
-        """
-        self.i = i
-        self.j = j
-        self.l0 = l0
-        self.k = k
-
-    def get_neighbor_atom(self, atom_index):
-        """
-        Given one atom index, returns the index of the other atom in the bond.
-
-        Parameters:
-        - atom_index (int): Index of one atom in the bond.
-
-        Returns:
-        - int: Index of the other atom.
-        """
-        return self.j if atom_index == self.i else self.i
-
-class Dihedral:
-    """
-    Represents a dihedral (torsion) between four atoms.
-    """
-    def __init__(self, atoms, a0, k, n):
-        """
-        Initializes the Dihedral.
-
-        Parameters:
-        - atoms (tuple of int): Tuple of four atom indices defining the dihedral.
-        - a0 (float): Equilibrium dihedral angle in radians.
-        - k (float): Dihedral stiffness.
-        - n (int): Periodicity of the dihedral.
-        """
-        self.atoms = atoms  # Tuple of four atom indices
-        self.a0 = a0        # Equilibrium angle in radians
-        self.k = k          # Stiffness
-        self.n = n          # Periodicity
 
 class MMFF:
     """
@@ -199,13 +122,13 @@ class MMFF:
                             self.back_neighs[ia, k] = ib
                             break
 
-    def toMMFFsp3_loc(self, mol, AtomTypeDict, bRealloc=True, bEPairs=False, bUFF=False):
+    def toMMFFsp3_loc(self, mol, atom_types, bRealloc=True, bEPairs=False, bUFF=False):
         """
         Converts an AtomicSystem to the MMFFsp3_loc representation.
 
         Parameters:
         - mol (AtomicSystem): The atomic system containing all data.
-        - AtomTypeDict (dict): Dictionary mapping atom names to AtomType instances.
+        - atom_types (dict): Dictionary mapping atom names to AtomType instances.
         - bRealloc (bool): Flag to indicate if reallocation is needed.
         - bEPairs (bool): Flag to include electron pairs.
         - bUFF (bool): Flag to use UFF parameters.
@@ -250,9 +173,9 @@ class MMFF:
             self.realloc(nnode=nnode, ncap=ncap + ne_total, ntors=ntors)
 
         # Assign atom types and positions
-        etyp = AtomTypeDict.get("E", None)
+        etyp = atom_types.get("E", None)
         if etyp is None:
-            raise ValueError("AtomTypeDict does not contain key 'E'.")
+            raise ValueError("atom_types does not contain key 'E'.")
 
         # Initialize neighbors
         self.neighs[:] = -1  # Set all neighbors to -1
@@ -270,9 +193,9 @@ class MMFF:
             A_pos        = mol.apos[ia]
             A_type_index = mol.atypes[ia]
             A_ename      = mol.enames[ia]
-            atom_type    = AtomTypeDict.get(A_ename, None)
+            atom_type    = atom_types.get(A_ename, None)
             if atom_type is None:
-                raise ValueError(f"Atom type '{A_ename}' not found in AtomTypeDict.")
+                raise ValueError(f"Atom type '{A_ename}' not found in atom_types.")
 
             self.apos  [ia,:3] = A_pos.astype(np.float32)
             self.atypes[ia]    = A_type_index
@@ -287,7 +210,7 @@ class MMFF:
                 conf_index = 0  # Default configuration index, no longer using iconf
                 # Try to get neighbors for this atom, if available
                 conf_npi = atom_type.npi
-                conf_ne  = atom_type.ne
+                conf_ne  = atom_type.nepair
 
                 if conf_npi > 2:
                     print(f"ERROR in MM::Builder::toMMFFsp3_loc(): atom[{ia}].conf.npi({conf_npi}) > 2 => exit()")
@@ -319,9 +242,9 @@ class MMFF:
                     bond = mol.bonds[bond_index]
                     Aj = mol.apos[ja]
                     jtyp_ename = mol.enames[ja]
-                    jtyp = AtomTypeDict.get(jtyp_ename, None)
+                    jtyp = atom_types.get(jtyp_ename, None)
                     if jtyp is None:
-                        raise ValueError(f"Atom type '{jtyp_ename}' not found in AtomTypeDict.")
+                        raise ValueError(f"Atom type '{jtyp_ename}' not found in atom_types.")
 
                     hs_k = Aj - A_pos
                     norm = np.linalg.norm(hs_k)
@@ -336,11 +259,11 @@ class MMFF:
 
                     if bUFF:
                         # Assign bond parameters using UFF
-                        rij, kij = self.assignBondParamsUFF(ibond_index, ia, ja, mol, AtomTypeDict)
+                        rij, kij = self.assignBondParamsUFF(ibond_index, ia, ja, mol, atom_types)
                         self.bLs[ia, k] = rij
                         self.bKs[ia, k] = kij
                     else:
-                        rij, kij = self.assignBondParamsSimple(ia, ja, mol, AtomTypeDict)
+                        rij, kij = self.assignBondParamsSimple(ia, ja, mol, atom_types)
                         self.bLs[ia, k] = rij
                         self.bKs[ia, k] = kij
 
@@ -380,7 +303,7 @@ class MMFF:
                             continue
                         self.neighs[ia, k] = ie
                         self.apos[ie] = self.apos[ia] + hs_filled[k - nbond] * Lepair
-                        self.atypes[ie] = AtomTypeDict["E"].name  # Assuming 'E' is the type index for electron pairs
+                        self.atypes[ie] = atom_types["E"].name  # Assuming 'E' is the type index for electron pairs
                         self.bKs[ia, k] = Kepair
                         self.bLs[ia, k] = Lepair
                         if conf_npi > 0:
@@ -388,22 +311,22 @@ class MMFF:
                         else:
                             self.Ksp[ia, k] = 0.0
    
-    def assignBondParamsSimple(self, ia, ja, mol, AtomTypeDict ):
-        ti = AtomTypeDict[mol.enames[ia]]
-        tj = AtomTypeDict[mol.enames[ja]]
+    def assignBondParamsSimple(self, ia, ja, mol, atom_types ):
+        ti = atom_types[mol.enames[ia]]
+        tj = atom_types[mol.enames[ja]]
         rij = ti.Ruff + tj.Ruff
         kij = np.sqrt( tj.Kss * ti.Kss )
         return rij, kij
         
 
-    def assignBondParamsUFF(self, ib, ai, aj, mol, AtomTypeDict):
+    def assignBondParamsUFF(self, ib, ai, aj, mol, atom_types):
         """
         Assigns bond parameters using UFF (Universal Force Field).
 
         Parameters:
         - ib (int): Index of the bond in the atomic system's bond list.
         - mol (AtomicSystem): The atomic system containing all data.
-        - AtomTypeDict (dict): Dictionary mapping atom names to AtomType instances.
+        - atom_types (dict): Dictionary mapping atom names to AtomType instances.
 
         Returns:
         - (float, float): Tuple of bond length (rij) and bond stiffness (kij).
@@ -421,8 +344,8 @@ class MMFF:
         else:
             npj = 0
 
-        ti = AtomTypeDict[mol.enames[ai]]
-        tj = AtomTypeDict[mol.enames[aj]]
+        ti = atom_types[mol.enames[ai]]
+        tj = atom_types[mol.enames[aj]]
         # Assuming ElementType is not needed; use Eaff directly
         Ei = ti.Eaff   # Replace with actual Eaff if available
         Ej = tj.Eaff   # Replace with actual Eaff if available
@@ -634,7 +557,7 @@ if __name__ == "__main__":
     from ..atomicUtils import AtomicSystem
 
     # Define AtomType instances with npi and ne
-    AtomTypeDict = {
+    atom_types = {
         "C": AtomType(name="C", Kss=300.0, Asp=109.5, Ksp=100.0, Kpp=150.0, npi=0, ne=0),
         "H": AtomType(name="H", Kss=200.0, Asp=109.5, Ksp=50.0,  Kpp=75.0,  npi=0, ne=0),
         "O": AtomType(name="O", Kss=350.0, Asp=109.5, Ksp=120.0, Kpp=180.0, npi=0, ne=0),
@@ -672,7 +595,7 @@ if __name__ == "__main__":
     # Convert AtomicSystem to MMFFsp3_loc representation
     mmff.toMMFFsp3_loc(
         mol=mol,
-        AtomTypeDict=AtomTypeDict,
+        atom_types=atom_types,
         bRealloc=True,
         bEPairs=True,
         bUFF=False
