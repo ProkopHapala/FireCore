@@ -50,6 +50,12 @@ class MMFF:
         self.nPBC = None
         self.npbc = None
 
+
+
+        self.dt     = 0.01
+        self.damp   = 0.1
+        self.Flimit = 10.0
+
         # Pi-orbitals and electron pairs
         self.pipos = None         # [natoms, 3] Pi-orbital orientations
 

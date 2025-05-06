@@ -330,6 +330,7 @@ __kernel void getMMFFf4(
     const float4 par = apars[ian];     // (xy=s0_ss,z=ssK,w=piC0 ) forcefield parameters for current atom
 
     if((iG==iGdbg)&&(iS==iSdbg)){
+        printf("OCL getMMFFf4(): natoms %3i nnode %3i \n", nAtoms, nnode );
         for(int ia=0; ia<nnode; ia++){
             int4   ng=neighs[iaa+ia];
             float4 pi=apos[iav+ia];
@@ -734,24 +735,20 @@ __kernel void updateAtomsMMFFf4(
     const float4 MDpars  = MDparams[iS]; // (dt,damp,Flimit)
     const float4 TDrive = TDrives[iS];
 
-    // if((iS==0)&&(iG==0)){ 
-    //     //printf("MDpars[%i] (%g,%g,%g,%g) \n", iS, MDpars.x,MDpars.y,MDpars.z,MDpars.w);  
-    //     for(int is=0; is<nS; is++){
-    //         //printf( "GPU::TDrives[%i](%g,%g,%g,%g)\n", i, TDrives[i].x,TDrives[i].y,TDrives[i].z,TDrives[i].w );
-    //         //printf( "GPU::bboxes[%i](%g,%g,%g)(%g,%g,%g)(%g,%g,%g)\n", is, bboxes[is].a.x,bboxes[is].a.y,bboxes[is].a.z,   bboxes[is].b.x,bboxes[is].b.y,bboxes[is].b.z,   bboxes[is].c.x,bboxes[is].c.y,bboxes[is].c.z );
-    //         for(int ia=0; ia<natoms; ia++){
-    //             int ic = ia+is*natoms;
-    //             if(constr[ia+is*natoms].w>0) printf( "GPU:sys[%i]atom[%i] constr(%g,%g,%g|%g) constrK(%g,%g,%g|%g)\n", is, ia, constr[ic].x,constr[ic].y,constr[ic].z,constr[ic].w,   constrK[ic].x,constrK[ic].y,constrK[ic].z,constrK[ic].w  );
-    //         }
-    //     }
-    // }
+    if((iG==iGdbg)&&(iS==iSdbg)){ 
+        printf("OCL updateAtomsMMFFf4() natoms %i nvec %i MDpars(%g,%g,%g,%g) \n", natoms, nvec, MDpars.x,MDpars.y,MDpars.z,MDpars.w);  
+        for(int is=0; is<nS; is++){
+            //printf( "GPU::TDrives[%i](%g,%g,%g,%g)\n", i, TDrives[i].x,TDrives[i].y,TDrives[i].z,TDrives[i].w );
+            //printf( "GPU::bboxes[%i](%g,%g,%g)(%g,%g,%g)(%g,%g,%g)\n", is, bboxes[is].a.x,bboxes[is].a.y,bboxes[is].a.z,   bboxes[is].b.x,bboxes[is].b.y,bboxes[is].b.z,   bboxes[is].c.x,bboxes[is].c.y,bboxes[is].c.z );
+            for(int ia=0; ia<natoms; ia++){
+                int ic = ia+is*natoms;
+                if(constr[ia+is*natoms].w>0) printf( "OCL  sys[%i]atom[%i] constr(%g,%g,%g|%g) constrK(%g,%g,%g|%g)\n", is, ia, constr[ic].x,constr[ic].y,constr[ic].z,constr[ic].w,   constrK[ic].x,constrK[ic].y,constrK[ic].z,constrK[ic].w  );
+            }
+        }
+    }
 
-    const int iS_DBG = 5; // debug system
-    //const int iG_DBG = 0;
-    const int iG_DBG = 1; // debug atom
-
-    //if((iG==iG_DBG)&&(iS==iS_DBG))printf( "updateAtomsMMFFf4() natoms=%i nnode=%i nvec=%i nG %i iS %i/%i  dt=%g damp=%g Flimit=%g \n", natoms,nnode, nvec, iS, nG, nS, MDpars.x, MDpars.y, MDpars.z );
-    // if((iG==iG_DBG)&&(iS==iS_DBG)){
+    //if((iG==iGdbg)&&(iS==iSdbg))printf( "updateAtomsMMFFf4() natoms=%i nnode=%i nvec=%i nG %i iS %i/%i  dt=%g damp=%g Flimit=%g \n", natoms,nnode, nvec, iS, nG, nS, MDpars.x, MDpars.y, MDpars.z );
+    // if((iG==iGdbg)&&(iS==iSdbg)){
     //     int i0a = iS*natoms;
     //     for(int i=0; i<natoms; i++){
     //         printf( "GPU:constr[%i](%7.3f,%7.3f,%7.3f |K= %7.3f) \n", i, constr[i0a+i].x,constr[i0a+i].y,constr[i0a+i].z,  constr[i0a+i].w   );
@@ -784,8 +781,11 @@ __kernel void updateAtomsMMFFf4(
     if( fr2 > (Flimit*Flimit) ){  fe.xyz*=(Flimit/sqrt(fr2)); }  // if force is too big, we scale it down to Flimit
 
     // =============== FORCE DONE
-    aforce[iav] = fe;             // store force before limit
+    //aforce[iav] = fe;           // store force before limit
     //aforce[iav] = float4Zero;   // clean force   : This can be done in the first forcefield run (best is NBFF)
+
+    if((iG==iGdbg)&&(iS==iSdbg)){ printf( "OCL updateAtomsMMFFf4() fe[iS=%3i,iG=%3i](%16.8f,%16.8f,%16.8f|%16.8f) \n", iS,iG, fe.x,fe.y,fe.z,fe.w ); }
+
     
     // =============== DYNAMICS
 

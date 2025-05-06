@@ -85,34 +85,44 @@ mdcl.realloc( mmff=mmff, nSystems=1,)   # Allocate memory for 1 system (nSystems
 mdcl.pack_system(iSys=0, mmff=mmff)  # Pack the MMFF data into GPU buffers for system index 0
 mdcl.upload_all_systems()            # Upload all system data to the GPU
 mdcl.setup_kernels()                 # Set up kernels with their arguments
+
 mdcl.run_getNonBond()
-#mdcl.run_getMMFFf4()
-#mdcl.run_updateAtomsMMFFf4()
-#mdcl.queue.finish()
+mdcl.run_getMMFFf4()
+mdcl.run_updateAtomsMMFFf4()
+mdcl.queue.finish()
+mdcl.run_getNonBond()
+mdcl.run_getMMFFf4()
+mdcl.queue.finish()
+
+#mdcl.make_MD_queue_batch(perBatch=10)
+#mdcl.run_MD_batched( nsteps=1 )
+
+
+
 #iter_done = mdcl.run_ocl_opt(niter=1, Fconv=1e-6, nPerVFs=1)
 #final_pos, final_forces = mdcl.download_results()
 print("################# END OpenCL MMFF #################")
 
 #exit()
 
-# ===== RUN CUDA Molecular Dynamics
-print("\n\n\n################# RUN CUDA MMFF #################")
-cuMD.init( nAtoms=mmff.natoms, nnode=mmff.nnode, npbc=1, nMaxSysNeighs=4, nSystems=1 )
-cuMD.upload("apos",   mmff.apos)
-cuMD.upload("REQs",   mmff.REQs)
-cuMD.upload("neighs", mmff.neighs)
-cuMD.upload("BLs",    mmff.bLs)
-cuMD.upload("BKs",    mmff.bKs)
-cuMD.upload("MMpars", mmff.apars)
-cuMD.upload("Ksp",    mmff.Ksp)
-cuMD.upload("Kpp",    mmff.Kpp)
-cuMD.synchronize()
-#cuMD.upload("atypes", mmff.atypes)
-#cuMD.run_cleanForceMMFFf4()
-cuMD.run_getNonBond()
-#cuMD.run_getMMFFf4()
-#cuMD.run_updateAtomsMMFFf4()
-print("################# END CUDA MMFF #################")
+# # ===== RUN CUDA Molecular Dynamics
+# print("\n\n\n################# RUN CUDA MMFF #################")
+# cuMD.init( nAtoms=mmff.natoms, nnode=mmff.nnode, npbc=1, nMaxSysNeighs=4, nSystems=1 )
+# cuMD.upload("apos",   mmff.apos)
+# cuMD.upload("REQs",   mmff.REQs)
+# cuMD.upload("neighs", mmff.neighs)
+# cuMD.upload("BLs",    mmff.bLs)
+# cuMD.upload("BKs",    mmff.bKs)
+# cuMD.upload("MMpars", mmff.apars)
+# cuMD.upload("Ksp",    mmff.Ksp)
+# cuMD.upload("Kpp",    mmff.Kpp)
+# cuMD.synchronize()
+# #cuMD.upload("atypes", mmff.atypes)
+# #cuMD.run_cleanForceMMFFf4()
+# cuMD.run_getNonBond()
+# #cuMD.run_getMMFFf4()
+# #cuMD.run_updateAtomsMMFFf4()
+# print("################# END CUDA MMFF #################")
 
 
 
