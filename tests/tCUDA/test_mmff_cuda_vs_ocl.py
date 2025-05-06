@@ -86,16 +86,16 @@ mdcl.pack_system(iSys=0, mmff=mmff)  # Pack the MMFF data into GPU buffers for s
 mdcl.upload_all_systems()            # Upload all system data to the GPU
 mdcl.setup_kernels()                 # Set up kernels with their arguments
 
-mdcl.run_getNonBond()
-mdcl.run_getMMFFf4()
-mdcl.run_updateAtomsMMFFf4()
-mdcl.queue.finish()
-mdcl.run_getNonBond()
-mdcl.run_getMMFFf4()
-mdcl.queue.finish()
+# mdcl.run_getNonBond()
+# mdcl.run_getMMFFf4()
+# mdcl.run_updateAtomsMMFFf4()
+# mdcl.queue.finish()
+# mdcl.run_getNonBond()
+# mdcl.run_getMMFFf4()
+# mdcl.queue.finish()
 
-#mdcl.make_MD_queue_batch(perBatch=10)
-#mdcl.run_MD_batched( nsteps=1 )
+mdcl.make_MD_queue_batch(perBatch=5)
+mdcl.run_MD_batched( nsteps=20 )
 
 
 

@@ -397,6 +397,23 @@ __kernel void cleanForceMMFFf4(
                     break
         return niterdone
 
+    # def make_MD_queue_batch(self, perBatch=10):
+    #     '''
+    #     Pre-create all kernel calls for a batch of steps.
+    #     '''
+    #     events = []
+    #     wait_for = []
+    #     for _ in range(perBatch):
+    #         # Force calculation
+    #         evt_getNonBond = cl.enqueue_nd_range_kernel (self.queue, self.prg.getNonBond,        self.global_size_nonbond, self.local_size_opt,  *self.kernel_args_getNonBond,         wait_for=wait_for)
+    #         evt_getMMFFf4  = cl.enqueue_nd_range_kernel (self.queue, self.prg.getMMFFf4 ,        self.global_size_mmff,    self.local_size_opt,  *self.kernel_args_getMMFFf4,          wait_for=[evt_getNonBond])
+    #         evt_move       = cl.enqueue_nd_range_kernel (self.queue, self.prg.updateAtomsMMFFf4, self.global_size_update,  self.local_size_opt,  *self.kernel_args_updateAtomsMMFFf4,  wait_for=[evt_getMMFFf4])
+    #         wait_for = [evt_move] 
+    #         self.batch_events.extend([evt_getNonBond, evt_getMMFFf4, evt_move])
+    #     self.MD_event_batch = events
+    #     return events
+
+
     def make_MD_queue_batch(self, perBatch=10):
         '''
         Pre-create all kernel calls for a batch of steps.
@@ -405,27 +422,33 @@ __kernel void cleanForceMMFFf4(
         wait_for = []
         for _ in range(perBatch):
             # Force calculation
-            evt_getNonBond = cl.enqueue_nd_range_kernel (self.queue, self.prg.getNonBond,        self.global_size_nonbond, self.local_size_opt,  *self.kernel_args_getNonBond,         wait_for=wait_for)
-            evt_getMMFFf4  = cl.enqueue_nd_range_kernel (self.queue, self.prg.getMMFFf4 ,        self.global_size_mmff,    self.local_size_opt,  *self.kernel_args_getMMFFf4,          wait_for=[evt_getNonBond])
-            evt_move       = cl.enqueue_nd_range_kernel (self.queue, self.prg.updateAtomsMMFFf4, self.global_size_update,  self.local_size_opt,  *self.kernel_args_updateAtomsMMFFf4,  wait_for=[evt_getMMFFf4])
+            #evt_getNonBond = cl.enqueue_nd_range_kernel(self.queue, self.prg.getNonBond,        self.global_size_nonbond, self.local_size_opt, None,  wait_for,        False, False, *self.kernel_args_getNonBond        )
+            #evt_getMMFFf4  = cl.enqueue_nd_range_kernel(self.queue, self.prg.getMMFFf4,         self.global_size_mmff,    self.local_size_opt, None, [evt_getNonBond], False, False, *self.kernel_args_getMMFFf4         )
+            #evt_move       = cl.enqueue_nd_range_kernel(self.queue, self.prg.updateAtomsMMFFf4, self.global_size_update,  self.local_size_opt, None, [evt_getMMFFf4],  False, False, *self.kernel_args_updateAtomsMMFFf4 )
+            evt_getMMFFf4  = self.prg.getMMFFf4         (self.queue, self.global_size_mmff,   self.local_size_opt,  *self.kernel_args_getMMFFf4,         wait_for=wait_for)
+            evt_getNonBond = self.prg.getNonBond        (self.queue, self.global_size_nonbond, self.local_size_opt, *self.kernel_args_getNonBond,        wait_for=[evt_getMMFFf4])
+            evt_move       = self.prg.updateAtomsMMFFf4 (self.queue, self.global_size_update, self.local_size_opt,  *self.kernel_args_updateAtomsMMFFf4, wait_for=[evt_getNonBond])
             wait_for = [evt_move] 
-            self.batch_events.extend([evt_getNonBond, evt_getMMFFf4, evt_move])
+            events.extend([evt_getNonBond, evt_getMMFFf4, evt_move])
         self.MD_event_batch = events
         return events
 
     def run_MD_batched(self, nsteps=1000, perBatch=10, Fconv=1e-6 ):
+        print("run_MD_batched() nsteps", nsteps, "perBatch", perBatch)
         if self.MD_event_batch is None:
             self.make_MD_queue_batch( perBatch=perBatch )
         nBatches = nsteps // perBatch
-        forces_buf = np.empty_like(self.host_forces)  # Pre-allocated buffer
+        forces_buf = np.empty_like(self.aforce)  # Pre-allocated buffer
         for iBatch in range(nBatches):
-            self.queue.wait_for_events(self.MD_event_batch)
+            print( "run_MD_batched() iBatch", iBatch)
+            cl.wait_for_events(self.MD_event_batch)
             cl.enqueue_copy(self.queue, forces_buf, self.buffer_dict['aforce'])
             F2 = np.sum(forces_buf**2)
             print(f"Batch {iBatch}: Max |F|^2 = {F2}")
             if F2 < Fconv:
                 print(f"Converged after {iBatch} batches.")
                 break
+        print("run_MD_batched() DONE")
 
     def run_getNonBond(self):
         #print("MolecularDynamics::run_getNonBond, ", self.global_size_nonbond, self.local_size_opt,  self.kernel_args_getNonBond)
