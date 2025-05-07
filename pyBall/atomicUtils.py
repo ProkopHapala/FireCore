@@ -1530,27 +1530,40 @@ def loadAtoms( name ):
     f.close()
     return [ e,x,y,z,q ]
 
-
 def load_xyz_movie( fname ):
     f = open(fname,"r")
     il=0
     imgs=[]
+    comment=None
     while True:
-        line = f.readline()
         if il==0:
+            line = f.readline()
+            if not line: break
+            #print("line(1st)",line)
             n=int(line.split()[0]) 
+            comment=f.readline()
+            #print("line(comment)",comment)
+            il+=1
         else:
-            apos=np.array((n,3))
-            es  =[]
+            es  = [] 
+            apos=np.zeros((n,3))
+            qs  =np.zeros(n)
+            rs  =np.full(n,np.nan)
             for i in range(n):
                 line = f.readline()
+                #print("line(atoms)", i,line,)
                 words=line.split()
                 es.append( words[0] )
                 apos[i,0] = float(words[1])
-                apos[i,1] = float(words[1])
-                apos[i,2] = float(words[1])
+                apos[i,1] = float(words[2])
+                apos[i,2] = float(words[3])
+                if len(words)>4:
+                    qs[i] = float(words[4])
+                if len(words)>5:
+                    rs[i] = float(words[5])
                 il+=1
-            imgs.append( (apos,es) )
+            il=0
+            imgs.append( (es,apos,qs,rs,comment) )
     return imgs
 
 #def loadCoefs( characters=['s','px','py','pz'] ):
