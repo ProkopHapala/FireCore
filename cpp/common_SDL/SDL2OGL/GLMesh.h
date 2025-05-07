@@ -256,6 +256,7 @@ public:
         drawMVP(mvpMatrix);
     }
 
+    inline void draw2D(Vec3f pos, float scale){draw2D(pos, (Vec2f){scale, scale});}
     void draw2D(Vec3f pos=Vec3fZero, Vec2f scale={1, 1}){
         // convert from screen space ((0, 0)  to (WIDHT, HEIGHT)) to NDC ((-1, -1) to (1, 1))
 

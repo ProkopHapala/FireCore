@@ -38,11 +38,11 @@ void DataLine2D::draw(){
     if(lineStyle =='-')Draw2D::plot( n, xs, ys );
     switch(pointStyle){
         case '.': Draw2D::plot_dots ( n, xs, ys ); break;
-        case '+': Draw2D::plot_cross( n, xs, ys, pointSize    ); break;
-        case 'x': Draw2D::plot_X    ( n, xs, ys, pointSize    ); break;
-        case '3': Draw2D::plot_O    ( n, xs, ys, pointSize, 3 ); break;
-        case '4': Draw2D::plot_O    ( n, xs, ys, pointSize, 4 ); break;
-        case 'o': Draw2D::plot_O    ( n, xs, ys, pointSize, 8 ); break;
+        case '+': Draw2D::plot_cross( n, xs, ys, pointSize ); break;
+        case 'x': Draw2D::plot_X    ( n, xs, ys, pointSize ); break;
+        case '3': Draw2D::plot_O    ( n, xs, ys, pointSize ); break;
+        case '4': Draw2D::plot_O    ( n, xs, ys, pointSize ); break;
+        case 'o': Draw2D::plot_O    ( n, xs, ys, pointSize ); break;
     }
 }
 
@@ -178,7 +178,7 @@ int Plot2D::renderFrameworks(){
     if( glObj ) opengl1renderer.deleteLists(glObj,1);
     glObj = opengl1renderer.genLists(1);
     opengl1renderer.newList(glObj, GL_COMPILE);
-    if( (clrBg&0xFF000000) ){ Draw2D::drawRectangle_d( axBounds.a, axBounds.b, COL2VEC(clrBg) ); }
+    if( (clrBg&0xFF000000) ){ Draw2D::drawRectangle( (Vec2f)axBounds.a, (Vec2f)axBounds.b, COL2VEC(clrBg) ); }
     drawAxes();
     opengl1renderer.endList( );
     redraw=false;
@@ -201,8 +201,8 @@ int Plot2D::tryRender( bool bUpdate){
     return glObj;
 }
 
-void Plot2D::drawHline ( double y ){ Draw2D::drawLine_d( {axBounds.x0, y}, {axBounds.x1, y} ); };
-void Plot2D::drawVline ( double x ){ Draw2D::drawLine_d( {x, axBounds.y0}, {x, axBounds.y1} ); };
+void Plot2D::drawHline ( double y ){ Draw2D::drawLine( {axBounds.x0, y}, {axBounds.x1, y} ); };
+void Plot2D::drawVline ( double x ){ Draw2D::drawLine( {x, axBounds.y0}, {x, axBounds.y1} ); };
 //void Plot2D::drawCursor( Vec2d p, double sz ){Draw2D::drawPointCross_d(p); };
 
 void Plot2D::view(bool bAxes){

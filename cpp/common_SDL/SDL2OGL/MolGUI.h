@@ -1352,13 +1352,10 @@ void MolGUI::bindMolWorld( MolWorld_sp3* W_ ){
 void MolGUI::draw(){
     GLES::active_camera = &cam;
 
-    opengl1renderer.clearColor( 1.0f, 1.0f, 1.0f, 1.0f );
-	opengl1renderer.clear( GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT );
-    // Smooth lines : https://vitaliburkov.wordpress.com/2016/09/17/simple-and-fast-high-quality-antialiased-lines-with-opengl/
-    //opengl1renderer.enable(GL_LINE_SMOOTH);
-    opengl1renderer.enable(GL_BLEND);
-    opengl1renderer.enable(GL_LIGHTING );
-    opengl1renderer.enable(GL_DEPTH_TEST);
+    glClearColor( 1.0f, 1.0f, 1.0f, 1.0f );
+	glClear( GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT );
+    glEnable(GL_BLEND);
+    glEnable(GL_DEPTH_TEST);
 
     main_framebuffer.begin();
 
@@ -1619,17 +1616,15 @@ void MolGUI::printMSystem( int isys, int perAtom, int na, int nvec, bool bNg, bo
 
 void MolGUI::showBonds(  ){
     Vec3d* ps = W->ffl.apos;
-    opengl1renderer.begin(GL_LINES);
     for(int i=0; i<bondsToShow.size(); i++ ){
         Vec2i b  = bondsToShow       [i];
         Vec3d d  = bondsToShow_shifts[i];
         Vec3d pi = ps[b.i];
         Vec3d pj = ps[b.j];
         printf( "b[%i,%i] pi(%7.3f,%7.3f,%7.3f) pj(%7.3f,%7.3f,%7.3f) d(%7.3f,%7.3f,%7.3f) \n", pi.x,pi.y,pi.z,    pj.x,pj.y,pj.z,  d.x,d.y,d.z );
-        Draw3D::vertex(pi-d);  Draw3D::vertex(pj  );
-        Draw3D::vertex(pi  );  Draw3D::vertex(pj+d);
+        Draw3D::drawLine( pi-d, pj  );
+        Draw3D::drawLine( pj  , pj+d);
     }
-    opengl1renderer.end();
 }
 
 void MolGUI::showAtomGrid( char* s, int ia, bool bDraw ){

@@ -158,13 +158,6 @@ double getE( int n, double * X ){
     return ff.eval();
 }
 
-void testColorOfHash(){
-    for(int i=0; i<10; i++){
-        Draw::color_of_hash(i);
-        Draw2D::drawSimplex( 0,i*1.0, 1, 1.0);
-    }
-}
-
 int orbColor(int io){
     return hash_Wang( hash_Wang( io*15446+7545 ) );
     //Draw::color_of_hash(io*15446+7545,clr);
