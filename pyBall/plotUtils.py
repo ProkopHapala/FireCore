@@ -4,7 +4,10 @@ from   matplotlib import collections  as mc
 from . import elements
 #from . import utils as ut
 
-
+def plotEF( xs, EFs, label='' ):
+    plt.subplot(2,1,1); plt.plot( xs, EFs[:,0], label="E "+label ); plt.legend();plt.grid()
+    plt.subplot(2,1,2); plt.plot( xs, EFs[:,1], label="F "+label ); plt.legend();plt.grid()
+    
 
 def read_gnuplot_2d(fname):
     f = open(fname,'r')

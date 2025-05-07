@@ -204,8 +204,8 @@ a  = 1.5
 
 # -- above Cl
 gff.test_gridFF    ( mode=6, name="data/xyz/NaCl_1x1_L3", p0=[2.0,2.0,2.0],  Q=0.0, E0=E0, R0=R0, tmin=tmin,tmax=tmax, bRefine=False, nPBC=[5,5,0], Emax=Emax, Fmax=Fmax, title="just Morse" )
-gff.test_gridFF    ( mode=6, name="data/xyz/NaCl_1x1_L3", p0=[2.0,2.0,2.0],  Q=Q,   E0=E0, R0=R0, tmin=tmin,tmax=tmax, bRefine=False, nPBC=[200,200,0], Emax=Emax, Fmax=Fmax, title="Morse+Coulomb" )
-gff.test_gridFF    ( mode=6, name="data/xyz/NaCl_1x1_L3", p0=[2.0,2.0,2.0],  Q=Q,   E0=0.0, R0=R0,tmin=tmin,tmax=tmax, bRefine=False, nPBC=[200,200,0], Emax=Emax, Fmax=Fmax, title="just Coulomb" )
+gff.test_gridFF    ( mode=6, name="data/xyz/NaCl_1x1_L3", p0=[2.0,2.0,2.0],  Q=Q,   E0=E0, R0=R0, tmin=tmin,tmax=tmax, bRefine=False, nPBC=[2000,10000,0], Emax=Emax, Fmax=Fmax, title="Morse+Coulomb" )
+gff.test_gridFF    ( mode=6, name="data/xyz/NaCl_1x1_L3", p0=[2.0,2.0,2.0],  Q=Q,   E0=0.0, R0=R0,tmin=tmin,tmax=tmax, bRefine=False, nPBC=[2000,10000,0], Emax=Emax, Fmax=Fmax, title="just Coulomb" )
 
 # -- above Na
 #gff.test_gridFF    ( mode=6, name="data/xyz/NaCl_1x1_L3", p0=[0.0,0.0,2.0],  Q=0.0, E0=E0, R0=R0, tmin=tmin,tmax=tmax, bRefine=False, nPBC=[5,5,0], Emax=Emax, Fmax=Fmax, title="just Morse" )

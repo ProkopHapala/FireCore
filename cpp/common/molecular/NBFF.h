@@ -3,6 +3,8 @@
 /// @file NBFF.h  @brief Non-Bonded Force-Field, implements n-body interactions between particles using non-covalent poentials such as Lenard-Jones / Morse and Coulomb potential
 /// @ingroup Classical_Molecular_Mechanics
 
+#include <unordered_set>
+
 #include "fastmath.h"
 //#include "Vec2.h"
 #include "Vec3.h"
@@ -17,18 +19,22 @@
 
 #include "simd.h"
 
+#include <unordered_set> // Do we really need it here ? used only in initBBsFromGroups(){  std::unordered_set<int> uniqueGroups; }
+
+
 void fitAABB( Vec6d& bb, int n, int* c2o, Vec3d* ps ){
     //Quat8d bb;
     //bb.lo = bb.lo = ps[c2o[0]];
-    for(int i=0; i<n; i++){ 
-        //printf( "fitAABB() i %i \n", i );
-        int ip = c2o[i];
+    //printf( "fitAABB() n %i @c2o=%p @ps=%p \n", n, c2o, ps );
+    for(int i=0; i<n; i++){  // iterate over all particles in the cell
+        int ip = c2o[i]; // index of particle i
+        //printf( "fitAABB() i %i ip %i \n", i, ip );
         if(ip < 0){
-            printf( "ERROR in fitAABB() i: %i ip %i \n", i, ip );
+            //printf( "ERROR in fitAABB() i: %i ip %i \n", i, ip );
             exit(0);
         };
-        //printf( "fitAABB() i=%i ip=%i \n", i, ip );
-        Vec3d p = ps[ip];
+        Vec3d p = ps[ip]; // position of particle i
+        //printf( "fitAABB() i=%i ip=%i p(%16.8f,%16.8f,%16.8f)\n", i, ip, p.x, p.y, p.z );
         bb.lo.setIfLower  ( p );
         bb.hi.setIfGreater( p );
     }; 
@@ -168,27 +174,28 @@ class NBFF: public ForceField{ public:
 
     // pre-calculates PLQs from REQs (for faster evaluation in factorized form, especially when using grid)
     void evalPLQs(double K){
-        //printf( "NBFF::evalPLQs() \n" );
+        printf( "NBFF::evalPLQs() natoms %i K %g @PLQs=%p \n", natoms, K, PLQs );
         if(PLQs==0){ _realloc(PLQs,natoms);  }
         for(int i=0; i<natoms; i++){
-            //printf( "makePLQs[%i] \n", i );
-            //printf( "makePLQs[%i] REQ(%g,%g,%g) \n", i, REQs[i].x,REQs[i].y,REQs[i].z);
+            //printf( "evalPLQs[%i] \n", i );
+            //printf( "evalPLQs[%i] REQ(%g,%g,%g) \n", i, REQs[i].x,REQs[i].y,REQs[i].z);
             PLQs[i]=REQ2PLQ( REQs[i], K );
-            //printf( "makePLQs[%i] REQ(%g,%g,%g) PLQ(%g,%g,%g)\n", i, REQs[i].x,REQs[i].y,REQs[i].z,  PLQs[i].x,PLQs[i].y,PLQs[i].z );
+            printf( "evalPLQs[%i] REQ(%g,%g,%g) PLQ(%g,%g,%g)\n", i, REQs[i].x,REQs[i].y,REQs[i].z,  PLQs[i].x,PLQs[i].y,PLQs[i].z );
         }
-        //printf("NBFF::makePLQs() DONE => exit(0) \,"); exit(0);
+        //printf("NBFF::evalPLQs() DONE => exit(0) \,"); exit(0);
     }
     void makePLQs(double K){
         _realloc(PLQs,natoms);
         evalPLQs(K);
     }
 
-
     // pre-calculates PLQs from REQs (for faster evaluation in factorized form, especially when using grid)
     void evalPLQd(double K){
+        printf( "NBFF::evalPLQd() natoms %i K %g @PLQd=%p \n", natoms, K, PLQd );
         if(PLQd==0){ _realloc(PLQd,natoms);  }
         for(int i=0; i<natoms; i++){
             PLQd[i]=REQ2PLQ_d( REQs[i], K );
+            printf( "evalPLQd[%i] REQ(%g,%g,%g) PLQ(%g,%g,%g)\n", i, REQs[i].x,REQs[i].y,REQs[i].z,  PLQd[i].x,PLQd[i].y,PLQd[i].z );
         }
     }
     void makePLQd(double K){
@@ -197,47 +204,45 @@ class NBFF: public ForceField{ public:
     }
 
     void initBBsFromGroups(int natom_, const int* atom2group, bool bUpdateBB=true){
-        printf( "NBFF::initBBsFromGroups() natom_=%i \n", natom_ );
+        //printf( "NBFF::initBBsFromGroups() natom_=%i \n", natom_ );
         // count number of unique groups
         std::unordered_set<int> uniqueGroups;
         for(int i=0; i<natom_; i++){ int ig=atom2group[i]; if(ig>=0) uniqueGroups.insert(ig); }
         nBBs = uniqueGroups.size();
-        printf( "NBFF::initBBsFromGroups() nBBs=%i \n", nBBs );
+        //printf( "NBFF::initBBsFromGroups() nBBs=%i \n", nBBs );
         _realloc(BBs, nBBs);
         pointBBs.realloc(nBBs, natom_, true);  // Allocate space for nBBs buckets and natom_ objects, with obj2cell array
         for(int i=0; i<natom_; i++){  
             int ig=atom2group[i];
             //if(ig>=0){  printf( "NBFF::initBBsFromGroups() i=%i atom2group[i]=%i \n", i, atom2group[i] ); }
-            printf( "NBFF::initBBsFromGroups() i=%i atom2group[i]=%i \n", i, atom2group[i] );
+            //printf( "NBFF::initBBsFromGroups() i=%i atom2group[i]=%i \n", i, atom2group[i] );
             pointBBs.obj2cell[i] = ig;
         }
-        DEBUG
-        pointBBs.updateCells(natom_);               DEBUG
-        pointBBs.printObjCellMaping();              DEBUG
-        pointBBs.printCells();                      DEBUG
-        pointBBs.checkObj2Cell(true);               DEBUG
-        pointBBs.checkCell2Obj(natom_, true);       DEBUG
-        DEBUG
+        pointBBs.updateCells(natom_);               
+        //pointBBs.printObjCellMaping();              
+        //pointBBs.printCells();                      
+        pointBBs.checkObj2Cell(true);               
+        pointBBs.checkCell2Obj(natom_, true);       
         if(bUpdateBB){ updatePointBBs(true); }
-        printf( "NBFF::initBBsFromGroups() EDN \n", natom_ );
-        exit(0);
+        //printf( "NBFF::initBBsFromGroups() END \n", natom_ );
+        //exit(0);
     }
 
     __attribute__((hot))  
     inline void updatePointBBs( bool bInit=true){
         const Buckets& buckets = pointBBs;
-        printf( "updatePointBBs() START \n" );
+        //printf( "updatePointBBs() START \n" );
         for(int ib=0; ib<buckets.ncell; ib++){
-            printf( "updatePointBBs() ib %i \n", ib );
+            //printf( "updatePointBBs() ib %i \n", ib );
             if(bInit){ BBs[ib].lo = Vec3dmax; BBs[ib].hi = Vec3dmin; }
             int n = buckets.cellNs[ib];
             if(n>0){
                 int i0 = buckets.cellI0s[ib];
-                printf( "updatePointBBs() ib %i n %i i0 %i \n", ib, n, i0 );
+                //printf( "updatePointBBs() ib %i n %i i0 %i \n", ib, n, i0 );
                 fitAABB( BBs[ib], n, buckets.cell2obj+i0, apos );  // Use apos (position) instead of vapos (velocity)
             }
         }
-        printf( "updatePointBBs() DONE \n" );
+        //printf( "updatePointBBs() DONE \n" );
     }
 
     __attribute__((hot))  
@@ -247,18 +252,36 @@ class NBFF: public ForceField{ public:
         int  n   = 0;
         for(int i=0; i<npi; i++){
             int ia = ips[i];
-            const Vec3d& p = vapos[ ia ];
+            const Vec3d& p = apos[ ia ];
             if( (p.x>bb.lo.x)&&(p.x<bb.hi.x)&&
                 (p.y>bb.lo.y)&&(p.y<bb.hi.y)&&
                 (p.z>bb.lo.z)&&(p.z<bb.hi.z) 
             ){
-                ps[i]    = p;
-                paras[i] = REQs[ ips[i] ];
-                inds[i]  = ia;
+                //printf( "selectInBox() [%i] ia %i p(%16.8f,%16.8f,%16.8f) \n", n, ia, p.x, p.y, p.z  );
+                ps   [n] = p;
+                paras[n] = REQs[ ips[i] ];
+                inds [n] = ia;
                 n++;
             }
         }
         return n;
+    }
+
+    __attribute__((hot))  
+    inline int selectFromOtherBucketsInBox( const int ib, double Rcut, Vec3d* ps, Quat4d* paras, int* inds ){
+        Vec6d bb = BBs[ib]; 
+        bb.lo.add(-Rcut); 
+        bb.hi.add(Rcut); 
+        //printf( "selectFromOtherBucketsInBox() ib %i pmin(%16.8f,%16.8f,%16.8f) pmax(%16.8f,%16.8f,%16.8f)\n", ib, bb.lo.x, bb.lo.y, bb.lo.z, bb.hi.x, bb.hi.y, bb.hi.z );
+        int total = 0;
+        for(int jb=0; jb<nBBs; jb++){
+            if(jb == ib) continue;
+            int n = selectInBox( bb, jb, ps+total, paras+total, inds+total );
+            total += n;
+        }
+        //printf( "selectFromOtherBucketsInBox() total %i \n", total );
+        //exit(0);
+        return total;
     }
 
     __attribute__((hot))  

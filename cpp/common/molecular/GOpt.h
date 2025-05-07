@@ -45,8 +45,8 @@ struct GOpt{
         constrs.update_drives();
     }
 
-    bool update(){
-        istep++;
+    bool update(int perVF = 1){
+        istep += perVF;
         if(bExploring){
             if(istep>=nExplore){ 
                 //printf( "GOpt::update() stop exploring istep(%i)>nExplore(%i) \n" );

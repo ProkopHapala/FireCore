@@ -349,6 +349,7 @@ class MolGUI : public AppSDL2OGL_3D { public:
     bool   bViewBonds        = true;
     bool   bViewPis          = false;
     bool   bViewSubstrate    = true;
+    bool   bViewGroupBoxes   = false;
     bool   isoSurfRenderType = 1;
     bool   bDebug_scanSurfFF = false;
     Quat4d testREQ;
@@ -1437,9 +1438,35 @@ void MolGUI::draw(){
         }
     }
 
-    if( ogl_esp     ){ opengl1renderer.callList(ogl_esp);      }
-    if( ogl_afm_trj ){ opengl1renderer.callList(ogl_afm_trj);  }
-    if( ogl_afm     ){ opengl1renderer.callList(ogl_afm);      }
+    if( bViewGroupBoxes ){
+        Vec6d* BBs; 
+        Buckets* pointBBs;
+        int nBBs = W->getGroupBoxes( BBs, pointBBs );
+        //printf( "MolGUI::draw(). nBBs %i \n", nBBs );
+        for(int i=0; i<nBBs; i++){
+            Vec6d& bb = BBs[i];
+            Draw::color_of_hash(i*76461+1459);
+            //printf( "MolGUI::draw(). BB %i  pmin(%16.8f,%16.8f,%16.8f) pmax(%16.8f,%16.8f,%16.8f) \n", i, bb.lo.x, bb.lo.y, bb.lo.z, bb.hi.x, bb.hi.y, bb.hi.z  );
+            Draw3D::drawBBox( bb.lo, bb.hi );
+        }        
+        int ib=0; // pivot Box (Group of atoms)
+        int    inds [natoms];
+        Vec3d  ps   [natoms];
+        Quat4d paras[natoms];
+        int n = W->ffl.selectFromOtherBucketsInBox( ib ,6.0, ps,paras,inds );
+        //printf( "MolGUI::draw(). n %i \n", n );
+        Draw3D::color((Vec3f){0.0,1.0,1.0});
+        for(int ia=0; ia<n; ia++){
+            //Draw::color_of_hash(ia*76461+1459);
+            Draw3D::drawSphereOctLines(8,1.0,ps[ia]);
+        }
+    }
+
+    //if( bViewSubstrate && W->bSurfAtoms ) Draw3D::atomsREQ( W->surf.natoms, W->surf.apos, W->surf.REQs, ogl_sph, 1., 1., 0. );
+    //if( bViewSubstrate                  ){ glColor3f(0.,0.,1.); Draw3D::drawTriclinicBoxT( W->gridFF.grid.cell, Vec3d{0.0, 0.0, 0.0}, Vec3d{1.0, 1.0, 1.0} ); }
+    //if( bViewSubstrate                  ){ glColor3f(0.,0.,1.); Draw3D::drawTriclinicBoxT( W->gridFF.grid.cell, Vec3d{-0.5, -0.5, 0.0}, Vec3d{0.5, 0.5, 1.0} ); }
+    //if( bViewSubstrate && ogl_isosurf   ) viewSubstrate( 10, 10, ogl_isosurf, W->gridFF.grid.cell.a, W->gridFF.grid.cell.b, W->gridFF.shift0 + W->gridFF.grid.pos0 );
+    //if( bViewSubstrate && ogl_isosurf   ) viewSubstrate( {-5,10}, {-5,10}, ogl_isosurf, W->gridFF.grid.cell.a, W->gridFF.grid.cell.b, W->gridFF.shift0 + W->gridFF.grid.pos0 );
 
     if(bDrawNonBondGrid || bDrawNonBondLines){  tryPlotNonBond();  if( ogl_nonBond){ opengl1renderer.lineWidth(0.25); opengl1renderer.callList(ogl_nonBond); opengl1renderer.lineWidth(1.00); opengl1renderer.color3f(.0f,.0f,.0f); plotNonBondGridAxis(); } }
     if(bDrawParticles){ relaxNonBondParticles();  opengl1renderer.color3f(.0f,1.0f,.5f); if(ogl_trj){ opengl1renderer.callList(ogl_trj); } drawParticles(); }; 

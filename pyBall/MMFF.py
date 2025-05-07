@@ -1,6 +1,6 @@
 
 import numpy as np
-from   ctypes import c_int, c_double, c_bool, c_float, c_char_p, c_bool, c_void_p, c_char_p
+from   ctypes import c_int, c_double, c_bool, c_float, c_char_p, c_bool, c_void_p, c_char_p, POINTER
 import ctypes
 import os
 import sys
@@ -290,6 +290,55 @@ def saveXSF( name, FF, cell=None ):
     if name is not None: name = name.encode('utf8')
     lib.saveXSF( name, _np_as(FF,c_double_p), _np_as(ns,c_int_p), _np_as(cell,c_double_p) )
 
+# # New wrapper for saving grid plus geometry.
+# # We assume that the C++ library now exposes a function called saveXSF_all
+# # with signature similar to:
+# #   int saveXSF_all(const char* fname, const double* FF, int pitch, int offset,
+# #                     int natoms, int* atypes, Vec3d* apos, bool bPrimCoord);
+# # (Vec3d is assumed to be represented as three doubles.)
+
+# # import ctypes
+# # from ctypes import c_int, c_double, c_bool, c_char_p, POINTER
+# lib.saveXSF_all.argtypes = [ c_char_p, 
+#                              ctypes.POINTER(c_double), 
+#                              c_int, c_int, c_int,
+#                              POINTER(c_int), 
+#                              ctypes.POINTER(c_double), 
+#                              c_bool ]
+# lib.saveXSF_all.restype  = c_int
+
+# def saveXSF_geometry(name, FF, pitch=1, offset=0, natoms=0, atypes=None, fapos=None, bPrimCoord=True):
+#     """
+#     Save grid data (FF) along with geometry to an XSF file.
+
+#     Parameters:
+#       name       : filename (str)
+#       FF         : a numpy array with grid data
+#       pitch      : grid pitch (int, default 1)
+#       offset     : offset (int, default 0)
+#       natoms     : number of atoms to write
+#       atypes     : atom types array (list or numpy array of int)
+#       fapos      : atomic positions (numpy array of shape (natoms,3))
+#       bPrimCoord : bool flag; if True, positions are in the primitive coordinate system
+#     """
+#     # Prepare grid dimensions (reorder: [z,y,x]) for saving
+#     ns = FF.shape
+#     ns_arr = np.array((ns[2], ns[1], ns[0]), dtype=np.int32)
+#     # For our function we don’t pass ns_arr explicitly because the C++ code
+#     # likely derives it from the grid dimensions.
+    
+#     if atypes is not None:
+#         atypes = np.array(atypes, dtype=np.int32)
+#     if fapos is not None:
+#         fapos = np.ascontiguousarray(fapos, dtype=np.float64)
+        
+#     return lib.saveXSF_all(name.encode('utf8'),
+#                            _np_as(FF, ctypes.POINTER(c_double)),
+#                            pitch, offset, natoms,
+#                            _np_as(atypes, POINTER(c_int)) if atypes is not None else None,
+#                            _np_as(fapos, ctypes.POINTER(c_double)) if fapos is not None else None,
+#                            bPrimCoord)
+
 
 #void makeGridFF( const char* name, int* ffshape, int mode, double z0, double* cel0, bool bSymmetrize, bool bAutoNPBC, bool bFit, bool bRefine ){
 lib.makeGridFF.argtypes  = [ c_char_p, c_int_p, c_int, c_double, c_double_p, c_bool, c_bool, c_bool, c_bool ]
@@ -396,13 +445,24 @@ def evalGridFFAtPoints( ps, FFout=None, PLQH=[0.0,0.0,1.0,0.0], bSplit=True, nPB
     return FFout
 
 # void sample_func( int n, double* xs, double* ys, int kind ){
-lib.sample_func.argtypes  = [c_int, c_double_p, c_double_p, c_int]
+lib.sample_func.argtypes  = [c_int, c_double_p, c_double_p, c_int, c_double_p]
 lib.sample_func.restype   =  None
-def sample_func( xs, ys=None, kind=0 ):
+def sample_func( xs, ys=None, kind=0, params=[0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0] ):
     n = len(xs)
+    params = np.array( params )
     if ys is None: ys=np.zeros(n)
-    lib.sample_func( n, _np_as(xs,c_double_p), _np_as(ys,c_double_p), kind )
+    lib.sample_func( n, _np_as(xs,c_double_p), _np_as(ys,c_double_p), kind, _np_as(params,c_double_p) )
     return ys
+
+# void sample_func( int n, double* xs, double* ys, int kind ){
+lib.sample_func.argtypes  = [c_int, c_double_p, c_double_p, c_int, c_double_p]
+lib.sample_func.restype   =  None
+def sample_funcEF( xs, EFs=None, kind=0, params=[0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0] ):
+    n = len(xs)
+    params = np.array( params )
+    if EFs is None: EFs=np.zeros((n,2))
+    lib.sample_funcEF( n, _np_as(xs,c_double_p), _np_as(EFs,c_double_p), kind, _np_as(params,c_double_p) )
+    return EFs
 
 # void sample_Bspline( double g0, double dg, int ng, double* Gs, int n, double* xs, double* fes , int order, bool bPBC ){
 lib.sample_Bspline.argtypes  = [c_double, c_double, c_int, c_double_p, c_int, c_double_p, c_double_p, c_int, c_bool ]
@@ -795,7 +855,69 @@ def getBBuff(name,sh):
     name=name.encode('utf8')
     ptr = lib.getBBuff(name)
     return np.ctypeslib.as_array( ptr, shape=sh)
-    
+
+# Add the new function definition for get_molecule_natoms
+lib.get_molecule_natoms.argtypes = []
+lib.get_molecule_natoms.restype = c_int
+
+def get_molecule_natoms():
+    """
+    Retrieves the number of atoms in the molecule.
+
+    Returns:
+        int: The number of atoms in the molecule.
+    """
+    return lib.get_molecule_natoms()
+
+# Add the new function definitions
+lib.get_gridFF_info.argtypes = [c_int_p, c_double_p]
+lib.get_gridFF_info.restype = None
+
+def get_gridFF_info():
+    """
+    Retrieves grid FF information.
+
+    Returns:
+        tuple: A tuple containing shift0, pos0, natoms, and atoms_.size.
+    """
+    global gff_shift0, gff_pos0, gff_cell, gff_dCell, gff_natoms, gff_natoms_
+    int_data = np.zeros(2, dtype=np.int32)
+    float_data = np.zeros(24, dtype=np.float64)
+    lib.get_gridFF_info(int_data.ctypes.data_as(c_int_p),
+                        float_data.ctypes.data_as(c_double_p))
+    gff_shift0 = float_data[0:3]
+    gff_pos0 = float_data[3:6]
+    gff_cell = float_data[6:15].reshape((3, 3))      # Reshape to 3x3 matrix
+    gff_dCell = float_data[15:24].reshape((3, 3))     # Reshape to 3x3 matrix
+    gff_natoms = int_data[0]
+    gff_natoms_ = int_data[1]
+    print("GridFF info -> shift0:", gff_shift0, " pos0:", gff_pos0,
+          " substrate natoms:", gff_natoms, " atoms_.size:", gff_natoms_)
+    return gff_shift0, gff_pos0,gff_cell,gff_dCell, gff_natoms, gff_natoms_
+
+
+# Add the new function definitions
+lib.get_atom_positions.argtypes = [c_double_p, c_double_p]
+lib.get_atom_positions.restype = None
+
+
+def get_atom_positions():
+    """
+    Retrieves the atom positions of the substrate and molecule.
+
+    Returns:
+        tuple: A tuple containing two NumPy arrays:
+            - substrate_apos (numpy.ndarray): Substrate atom positions (natoms_substrate, 3).
+            - molecule_apos (numpy.ndarray): Molecule atom positions (natoms_molecule, 3).
+    """
+    global gff_natoms
+    natoms_molecule = get_molecule_natoms()
+    substrate_apos = np.zeros((gff_natoms, 3), dtype=np.float64)  # Use gff_natoms
+    molecule_apos = np.zeros((natoms_molecule, 3), dtype=np.float64)  # Use natoms_molecule
+    lib.get_atom_positions(substrate_apos.ctypes.data_as(c_double_p),
+                            molecule_apos.ctypes.data_as(c_double_p))
+    return substrate_apos, molecule_apos
+
 #def getBuffs( nnode, npi, ncap, nbond, NEIGH_MAX=4 ):
 def getBuffs( NEIGH_MAX=4 ):
     #init_buffers()
