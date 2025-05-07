@@ -39,6 +39,9 @@ class Mat4T{
 	};
 
     inline bool operator==(const MAT& m) const {return (a==m.a) && (b==m.b) && (c==m.c) && (d==m.d); }
+    inline explicit operator Mat4T<double>()const{ return Mat4T<double>{ (double)xx,(double)xy,(double)xz,(double)xw, (double)yx,(double)yy,(double)yz,(double)yw, (double)zx,(double)zy,(double)zz,(double)zw, (double)wx,(double)wy,(double)wz,(double)ww }; }
+    inline explicit operator Mat4T<float >()const{ return Mat4T<float >{ (float )xx,(float )xy,(float )xz,(float )xw, (float )yx,(float )yy,(float )yz,(float )yw, (float )zx,(float )zy,(float )zz,(float )zw, (float )wx,(float )wy,(float )wz,(float )ww }; }
+    inline explicit operator Mat4T<int   >()const{ return Mat4T<int   >{ (int   )xx,(int   )xy,(int   )xz,(int   )xw, (int   )yx,(int   )yy,(int   )yz,(int   )yw, (int   )zx,(int   )zy,(int   )zz,(int   )zw, (int   )wx,(int   )wy,(int   )wz,(int   )ww }; }
 
 // ====== initialization
 
@@ -66,9 +69,9 @@ class Mat4T{
     inline void  colw_to( VEC& out){ out.x = xw; out.y = yw; out.z = zw; out.w = ww; };
 
 	inline void  setColx( const VEC v ){ xx = v.x; yx = v.y; zx = v.z; wx = v.w; };
-	inline void  setColy( const VEC v ){ xy = v.x; yy = v.y; zy = v.z; wx = v.w; };
-	inline void  setColz( const VEC v ){ xz = v.x; yz = v.y; zz = v.z; wx = v.w; };
-	inline void  setColw( const VEC v ){ xw = v.x; yw = v.y; zw = v.z; wx = v.w; };
+	inline void  setColy( const VEC v ){ xy = v.x; yy = v.y; zy = v.z; wy = v.w; };
+	inline void  setColz( const VEC v ){ xz = v.x; yz = v.y; zz = v.z; wz = v.w; };
+	inline void  setColw( const VEC v ){ xw = v.x; yw = v.y; zw = v.z; ww = v.w; };
 
     inline void setTranspose( MAT& m ){ setColx(m.a); setColy(m.b); setColz(m.c); setColw(m.d); };
     inline MAT   transposed(){ MAT M; M.setColx(a); M.setColy(b); M.setColz(c); M.setColw(d); return M; };
@@ -190,6 +193,54 @@ class Mat4T{
 
     void normalize(){ for(int i=0;i<4;i++)vecs[i].normalize(); };
 
+    MAT inverse() const {
+        MAT adj;
+
+        adj.xx =  ((Mat3T<T>){yy, yz, yw, zy, zz, zw, wy, wz, ww}.determinant());
+        adj.yx = -((Mat3T<T>){yx, yz, yw, zx, zz, zw, wx, wz, ww}.determinant());
+        adj.zx =  ((Mat3T<T>){yx, yy, yw, zx, zy, zw, wx, wy, ww}.determinant());
+        adj.wx = -((Mat3T<T>){yx, yy, yz, zx, zy, zz, wx, wy, wz}.determinant());
+        
+        adj.xy = -((Mat3T<T>){xy, xz, xw, zy, zz, zw, wy, wz, ww}.determinant());
+        adj.yy =  ((Mat3T<T>){xx, xz, xw, zx, zz, zw, wx, wz, ww}.determinant());
+        adj.zy = -((Mat3T<T>){xx, xy, xw, zx, zy, zw, wx, wy, ww}.determinant());
+        adj.wy =  ((Mat3T<T>){xx, xy, xz, zx, zy, zz, wx, wy, wz}.determinant());
+        
+        adj.xz =  ((Mat3T<T>){xy, xz, xw, yy, yz, yw, wy, wz, ww}.determinant());
+        adj.yz = -((Mat3T<T>){xx, xz, xw, yx, yz, yw, wx, wz, ww}.determinant());
+        adj.zz =  ((Mat3T<T>){xx, xy, xw, yx, yy, yw, wx, wy, ww}.determinant());
+        adj.wz = -((Mat3T<T>){xx, xy, xz, yx, yy, yz, wx, wy, wz}.determinant());
+        
+        adj.xw = -((Mat3T<T>){xy, xz, xw, yy, yz, yw, zy, zz, zw}.determinant());
+        adj.yw =  ((Mat3T<T>){xx, xz, xw, yx, yz, yw, zx, zz, zw}.determinant());
+        adj.zw = -((Mat3T<T>){xx, xy, xw, yx, yy, yw, zx, zy, zw}.determinant());
+        adj.ww =  ((Mat3T<T>){xx, xy, xz, yx, yy, yz, zx, zy, zz}.determinant());
+
+        // Calculate the determinant using the first row of the original matrix
+        // and the first column of the adjugate matrix.
+        T det = xx * adj.xx + xy * adj.yx + xz * adj.zx + xw * adj.wx;
+
+        // --- Check for singular matrix ---
+        if (det == T(0)) {
+            printf("ERROR: Failed to invert matrix!\n");
+            return MAT();
+        }
+
+        MAT inv; // The final inverse matrix
+        for (int i = 0; i < 16; ++i) {
+            inv.array[i] = adj.array[i] / det;
+        }
+
+        // test validity of the inverse
+        //MAT test;
+        //test.set_mmul( inv, *this );
+        //printf("Test:\n");
+        //test.printGL();
+        // TODO: test is only almost an identity matrix: up to 1e-7 error for floats and 1e-16 for doubles
+
+        return inv;
+    }
+
     inline T getOrthoForces(MAT& f){
         T c2sum=0;
         for(int i=1;i<4;i++){
@@ -221,10 +272,10 @@ class Mat4T{
             err2=0;
             f.set((T)0);
             //for(int i=0;i<4;i++){ err2+=vecs[i].normalize_taylor3(); }
-            for(int i=0;i<4;i++){ err2+=sq( vecs[i].normalize_hybrid( 0.04d+err2conv ) ); }
+            for(int i=0;i<4;i++){ err2+=sq( vecs[i].normalize_hybrid( 0.04+err2conv ) ); }
             err2+=getOrthoForces(f);
             //for(int i=0;i<4;i++){ vecs[i].add_mul( f.vecs[i], 0.5d ); }
-            add_mul( f, 0.5d );
+            add_mul( f, 0.5 );
             //printf( "orthoRun[%i] %g\n", itr, err2 );
             if(err2<err2conv) break;
         }
@@ -241,6 +292,13 @@ class Mat4T{
         printf( " %f %f %f %f \n", bx, by, bz, bw );
         printf( " %f %f %f %f \n", cx, cy, cz, cw );
         printf( " %f %f %f %f \n", dx, dy, dz, dw );
+    }
+
+    void printGL(){ // print transposed
+        printf( "%g %g %g %g \n", ax, bx, cx, dx );
+        printf( "%g %g %g %g \n", ay, by, cy, dy );
+        printf( "%g %g %g %g \n", az, bz, cz, dz );
+        printf( "%g %g %g %g \n", aw, bw, cw, dw );
     }
 
 };

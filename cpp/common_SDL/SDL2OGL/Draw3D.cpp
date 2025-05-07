@@ -251,48 +251,78 @@ int Draw3D::drawConeFan( int n, float r, const Vec3f& base, const Vec3f& tip ){
 	return nvert;
 };
 
-static GLMesh<MPOS,MNORMAL> makeSphere( int nsub, float sz=1 ){
-    if (nsub<1) nsub=1;
+static const char* vertexSphere = R"(
+#version 300 es
 
-    GLMesh<MPOS,MNORMAL> sphere = GLMesh<MPOS,MNORMAL>(GL_TRIANGLES);
+in highp vec4 vPosition;
 
-    // generate a simple cube sphere
-    const Vec3f normals[6] = {{1, 0, 0}, {-1, 0, 0}, {0, 1, 0}, {0, -1, 0}, {0, 0, 1}, {0, 0, -1}};
-    for (int k=0; k<6; k++){
-        Vec3f sideNormal = normals[k];
-        Vec3f sideDir1 = normals[(k+2) % 6];
-        Vec3f sideDir2 = normals[(k+4) % 6];
+out highp vec3 fPos;
+out highp vec3 fDir;
 
-        for (int x1=0; x1<nsub; x1++){
-            for (int x2=0; x2<nsub; x2++){
-                Vec3f p1 = (sideDir1*x1 + sideDir2*x2)*(1.0f/nsub) - sideDir1*0.5f - sideDir2*0.5f + sideNormal*0.5f; // 0, 0
-                Vec3f p2 = (sideDir1*(x1+1) + sideDir2*(x2+1))*(1.0f/nsub) - sideDir1*0.5f - sideDir2*0.5f + sideNormal*0.5f; // 1, 1
-                Vec3f p3 = (sideDir1*x1 + sideDir2*(x2+1))*(1.0f/nsub) - sideDir1*0.5f - sideDir2*0.5f + sideNormal*0.5f; // 0, 1
-                Vec3f p4 = (sideDir1*(x1+1) + sideDir2*x2)*(1.0f/nsub) - sideDir1*0.5f - sideDir2*0.5f + sideNormal*0.5f; // 1, 0
+uniform highp mat4 uMVPinv;
 
-                p1 = p1.normalized();
-                p2 = p2.normalized();
-                p3 = p3.normalized();
-                p4 = p4.normalized();
+void main(){
+    gl_Position = vPosition;
 
-                sphere.addVertex(p1 * sz, p1);
-                sphere.addVertex(p3 * sz, p3);
-                sphere.addVertex(p2 * sz, p2);
-
-                sphere.addVertex(p1 * sz, p1);
-                sphere.addVertex(p4 * sz, p4);
-                sphere.addVertex(p2 * sz, p2);
-            }
-        }
-    }
-    
-    return sphere;
+    fPos = (uMVPinv * vec4(gl_Position.xy, 0.0, 1.0)).xyz; // note: no need to divide by w, because it should always be 1 (atleast for orthographic projection)
+    fDir = (uMVPinv * vec4(0.0, 0.0, 2.0, 0.0)).xyz;
 }
-static GLMesh<MPOS,MNORMAL> sphere = makeSphere(5, 1);
+)";
+
+static const char* fragSphere = R"(
+#version 300 es
+
+in highp vec3 fPos;
+in highp vec3 fDir;
+
+layout(location=0) out mediump vec4 FragColor;
+
+uniform mediump vec3 uColor;
+
+void main(){
+    FragColor = vec4(0.0, 0.0, 0.0, 1.0);
+
+    highp float DirLen = length(fDir);
+    highp vec3 Dir = fDir / DirLen;
+    highp float Tc = -dot(fPos, Dir);
+    highp float dsqr = dot(fPos, fPos) - Tc*Tc;
+    if (dsqr >= 1.0) discard;
+    highp float T1c = sqrt(1.0 - dsqr);
+
+    highp float T1 = Tc - T1c;
+    // highp float T2 = Tc + T1c; // T2 is always further away, so we don't care
+
+    highp vec3 normal = fPos + T1*Dir;
+
+    FragColor = vec4(uColor, 1.0);
+    gl_FragDepth = clamp((T1 / DirLen) + 0.5, 0.0, 1.0);
+
+    // lighting
+    mediump float light = dot(normal, vec3(1.0, -1.0, 1.0));
+    light = (light+1.0)/2.0;
+    light = 0.3 + light*0.6;
+    FragColor = FragColor*vec4(light, light, light, 1.0);
+}
+)";
+
+static const GLMeshBase<MPOS> makeSphere(){
+    GLMeshBase<MPOS> m = GLMeshBase<MPOS>(GL_TRIANGLES, GL_STATIC_DRAW, new Shader<MPOS>(vertexSphere, fragSphere));
+    m.addVertex({-1, -1, -1});
+    m.addVertex({ 3, -1, -1});
+    m.addVertex({-1,  3, -1});
+    return m;
+}
+static GLMeshBase<MPOS> sphere = makeSphere();
 
 void Draw3D::drawSphere(Vec3f pos, float r, Vec3f color){
+    Mat4f mvpMatrix;
+    mvpMatrix.setDiag(r, r, r, 1);
+    mvpMatrix.setPos(pos);
+    mvpMatrix.mmulL(GLES::active_camera->viewProjectionMatrix());
+
     sphere.setUniform3f("uColor", color);
-    sphere.draw(pos, r);
+    sphere.setUniformMatrix4f("uMVPinv", mvpMatrix.inverse());
+    sphere.draw();
 }
 
 int Draw3D::drawCircleAxis( int n, const Vec3f& pos, const Vec3f& v0, const Vec3f& uaxis, float R, float dca, float dsa ){
