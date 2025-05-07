@@ -259,22 +259,32 @@ in highp vec3 vPosition;
 out highp vec3 fPos;
 out highp vec3 fDir;
 
-uniform highp mat4 uMVPinv;
+uniform mat4 uMVPinv;
 uniform mat4 uMVPMatrix;
+uniform vec3 uPos;
+uniform float uRadius;
+
+vec4 model2clip(vec4 pos){
+    return uMVPMatrix * (pos*uRadius + vec4(uPos, 0.0)*pos.w);
+}
+
+vec4 clip2model(vec4 pos){
+    return ((uMVPinv * pos) - vec4(uPos, 0.0)*pos.w) / uRadius;
+}
 
 void main(){
-    mediump vec3 sphPos = (uMVPMatrix * vec4(0.0, 0.0, 0.0, 1.0)).xyz;
-    mediump vec3 vecRight = normalize((uMVPinv * vec4(1.0, 0.0, 0.0, 0.0)).xyz);
-    mediump vec3 vecUp    = normalize((uMVPinv * vec4(0.0, 1.0, 0.0, 0.0)).xyz);
+    mediump vec3 sphPos = model2clip(vec4(0.0, 0.0, 0.0, 1.0)).xyz;
+    mediump vec3 vecRight = normalize(clip2model(vec4(1.0, 0.0, 0.0, 0.0)).xyz);
+    mediump vec3 vecUp    = normalize(clip2model(vec4(0.0, 1.0, 0.0, 0.0)).xyz);
     
-    vecRight = (uMVPMatrix * vec4(vecRight, 0.0)).xyz;
-    vecUp    = (uMVPMatrix * vec4(vecUp   , 0.0)).xyz;
+    vecRight = model2clip(vec4(vecRight, 0.0)).xyz;
+    vecUp    = model2clip(vec4(vecUp   , 0.0)).xyz;
 
     mediump vec3 newPos = vecRight*vPosition.x + vecUp*vPosition.y;
     gl_Position = vec4(newPos + sphPos, 1.0);
 
-    fPos = (uMVPinv * vec4(gl_Position.xy, 0.0, 1.0)).xyz; // note: no need to divide by w, because it should always be 1 (atleast for orthographic projection)
-    fDir = (uMVPinv * vec4(0.0, 0.0, 2.0, 0.0)).xyz;
+    fPos = clip2model(vec4(gl_Position.xy, 0.0, 1.0)).xyz; // note: no need to divide by w, because it should always be 1 (atleast for orthographic projection)
+    fDir = clip2model(vec4(0.0, 0.0, 2.0, 0.0)).xyz;
 }
 )";
 
@@ -326,14 +336,11 @@ static const GLMeshBase<MPOS> makeSphere(){
 static GLMeshBase<MPOS> sphere = makeSphere();
 
 void Draw3D::drawSphere(Vec3f pos, float r, Vec3f color){
-    Mat4f mvpMatrix;
-    mvpMatrix.setDiag(r, r, r, 1);
-    mvpMatrix.setPos(pos);
-    mvpMatrix.mmulL(GLES::active_camera->viewProjectionMatrix());
-
     sphere.setUniform3f("uColor", color);
-    sphere.setUniformMatrix4f("uMVPMatrix", mvpMatrix);
-    sphere.setUniformMatrix4f("uMVPinv", mvpMatrix.inverse());
+    sphere.setUniformMatrix4f("uMVPMatrix", GLES::active_camera->viewProjectionMatrix());
+    sphere.setUniformMatrix4f("uMVPinv", GLES::active_camera->inverseViewProjectionMatrix());
+    sphere.setUniform3f("uPos", pos);
+    sphere.setUniform1f("uRadius", r);
     sphere.draw();
 }
 

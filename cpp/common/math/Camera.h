@@ -22,9 +22,11 @@ private:
     bool   _persp  = true;
 
     bool update_vp_mat = true;
+    bool update_vp_inv = true;
     Mat4T<T> _viewMatrix;
     Mat4T<T> _projMat;
     Mat4T<T> _viewProjMatrix;
+    Mat4T<T> _viewProjInv;
 
 public:
     const T  zmin   = -10000.0;
@@ -136,6 +138,15 @@ public:
         _viewProjMatrix.mmulL(_projMat);
 
         update_vp_mat = false;
+        update_vp_inv = true;
+    }
+
+    void recalculate_invvpMat() {
+        recalculate_vpMat();
+        if (!update_vp_inv) return;
+        
+        _viewProjInv = _viewProjMatrix.inverse();
+        update_vp_inv = false;
     }
 
     Mat4T<T> projectionMatrix() {
@@ -151,6 +162,11 @@ public:
     Mat4T<T> viewProjectionMatrix() {
         recalculate_vpMat();
         return _viewProjMatrix;
+    }
+
+    Mat4T<T> inverseViewProjectionMatrix() {
+        recalculate_invvpMat();
+        return _viewProjInv;
     }
 
 };

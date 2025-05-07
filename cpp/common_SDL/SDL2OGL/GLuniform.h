@@ -29,7 +29,7 @@ struct GLuniform{
         GLTexture* tex;
     }data;
 
-    bool operator==(const GLuniform& other) const {
+    inline bool operator==(const GLuniform& other) const {
         if (type != other.type) return false;
         switch (type) {
             case NONE: return true;
@@ -45,8 +45,8 @@ struct GLuniform{
             case ui2: return data.ui2 == other.data.ui2;
             case ui3: return data.ui3 == other.data.ui3;
             case ui4: return data.ui4 == other.data.ui4;
-            case m3: return data.m3 == other.data.m3;
-            case m4: return data.m4 == other.data.m4;
+            //case m3: return data.m3 == other.data.m3; // comparing matrices is too slow, and they rarely are the same
+            //case m4: return data.m4 == other.data.m4;
             case tex: return data.tex == other.data.tex;
             default: return false;
         }
