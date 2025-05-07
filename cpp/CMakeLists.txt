@@ -18,10 +18,15 @@ message("OPTIONS: -DWITH_SDL=${WITH_SDL} -DWITH_LUA=${WITH_LUA} -DWITH_FFTW=${WI
 # Enable CUDA language if selected
 if(WITH_CUDA)
     # Use a supported GCC for nvcc host compilation to avoid version mismatch
-    set(CMAKE_CUDA_HOST_COMPILER "/usr/bin/gcc-12")
+    #set(CMAKE_CUDA_HOST_COMPILER "/usr/bin/gcc-12")
     # Override nvcc version check for both identification and subsequent compilations
     set(CMAKE_CUDA_COMPILER_ID_FLAGS_INIT "${CMAKE_CUDA_COMPILER_ID_FLAGS_INIT} -allow-unsupported-compiler")
     set(CMAKE_CUDA_FLAGS_INIT "${CMAKE_CUDA_FLAGS_INIT} -allow-unsupported-compiler")
+    # Set CUDA architectures - adjust based on your GPU
+    set(CMAKE_CUDA_ARCHITECTURES "75")
+    # Set CUDA standard
+    set(CMAKE_CUDA_STANDARD 17)
+    set(CMAKE_CUDA_STANDARD_REQUIRED ON)
     project(SimpleSimulationEngine LANGUAGES C CXX) # Keep project simple first
     enable_language(CUDA)                          # Enable CUDA language support
     set(CMAKE_SHARED_LINKER_FLAGS "${CMAKE_SHARED_LINKER_FLAGS} -lstdc++")
@@ -109,9 +114,9 @@ message ( ${CMAKE_CXX_FLAGS} )
 if(WITH_CUDA)
     message(STATUS "Setting up CUDA flags...")
     # Set CUDA C++ Standard (must match CMAKE_CXX_STANDARD if device code uses C++ features)
-    set(CMAKE_CUDA_STANDARD 20)
-    set(CMAKE_CUDA_STANDARD_REQUIRED ON)
-    set(CMAKE_CUDA_EXTENSIONS OFF) # Recommended
+    #set(CMAKE_CUDA_STANDARD 20)
+    #set(CMAKE_CUDA_STANDARD_REQUIRED ON)
+    #set(CMAKE_CUDA_EXTENSIONS OFF) # Recommended
 
     # --- TODO CUDA: Set Target GPU Architectures ---
     # Option 1: Use CMAKE_CUDA_ARCHITECTURES (CMake 3.18+) - semicolon-separated list of compute capabilities (without 'sm_')
