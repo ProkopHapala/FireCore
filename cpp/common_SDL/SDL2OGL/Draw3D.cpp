@@ -254,15 +254,24 @@ int Draw3D::drawConeFan( int n, float r, const Vec3f& base, const Vec3f& tip ){
 static const char* vertexSphere = R"(
 #version 300 es
 
-in highp vec4 vPosition;
+in highp vec3 vPosition;
 
 out highp vec3 fPos;
 out highp vec3 fDir;
 
 uniform highp mat4 uMVPinv;
+uniform mat4 uMVPMatrix;
 
 void main(){
-    gl_Position = vPosition;
+    mediump vec3 sphPos = (uMVPMatrix * vec4(0.0, 0.0, 0.0, 1.0)).xyz;
+    mediump vec3 vecRight = normalize((uMVPinv * vec4(1.0, 0.0, 0.0, 0.0)).xyz);
+    mediump vec3 vecUp    = normalize((uMVPinv * vec4(0.0, 1.0, 0.0, 0.0)).xyz);
+    
+    vecRight = (uMVPMatrix * vec4(vecRight, 0.0)).xyz;
+    vecUp    = (uMVPMatrix * vec4(vecUp   , 0.0)).xyz;
+
+    mediump vec3 newPos = vecRight*vPosition.x + vecUp*vPosition.y;
+    gl_Position = vec4(newPos + sphPos, 1.0);
 
     fPos = (uMVPinv * vec4(gl_Position.xy, 0.0, 1.0)).xyz; // note: no need to divide by w, because it should always be 1 (atleast for orthographic projection)
     fDir = (uMVPinv * vec4(0.0, 0.0, 2.0, 0.0)).xyz;
@@ -280,7 +289,7 @@ layout(location=0) out mediump vec4 FragColor;
 uniform mediump vec3 uColor;
 
 void main(){
-    FragColor = vec4(0.0, 0.0, 0.0, 1.0);
+    FragColor = vec4(uColor, 1.0);
 
     highp float DirLen = length(fDir);
     highp vec3 Dir = fDir / DirLen;
@@ -293,8 +302,6 @@ void main(){
     // highp float T2 = Tc + T1c; // T2 is always further away, so we don't care
 
     highp vec3 normal = fPos + T1*Dir;
-
-    FragColor = vec4(uColor, 1.0);
     gl_FragDepth = clamp((T1 / DirLen) + 0.5, 0.0, 1.0);
 
     // lighting
@@ -308,8 +315,12 @@ void main(){
 static const GLMeshBase<MPOS> makeSphere(){
     GLMeshBase<MPOS> m = GLMeshBase<MPOS>(GL_TRIANGLES, GL_STATIC_DRAW, new Shader<MPOS>(vertexSphere, fragSphere));
     m.addVertex({-1, -1, -1});
-    m.addVertex({ 3, -1, -1});
-    m.addVertex({-1,  3, -1});
+    m.addVertex({ 1, -1, -1});
+    m.addVertex({-1,  1, -1});
+
+    m.addVertex({-1,  1, -1});
+    m.addVertex({ 1, -1, -1});
+    m.addVertex({ 1,  1, -1});
     return m;
 }
 static GLMeshBase<MPOS> sphere = makeSphere();
@@ -321,6 +332,7 @@ void Draw3D::drawSphere(Vec3f pos, float r, Vec3f color){
     mvpMatrix.mmulL(GLES::active_camera->viewProjectionMatrix());
 
     sphere.setUniform3f("uColor", color);
+    sphere.setUniformMatrix4f("uMVPMatrix", mvpMatrix);
     sphere.setUniformMatrix4f("uMVPinv", mvpMatrix.inverse());
     sphere.draw();
 }
