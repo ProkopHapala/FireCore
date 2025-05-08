@@ -63,7 +63,7 @@ class MolecularDynamics(OpenCLBase):
         # Load the OpenCL program
         base_path = os.path.dirname(os.path.abspath(__file__))
         rel_path = "../../cpp/common_resources/cl/relax_multi_mini.cl"
-        if not self.load_program(rel_path=rel_path, base_path=base_path):
+        if not self.load_program(rel_path=rel_path, base_path=base_path, bPrint=False):
             exit(1)
         
         # Initialize other attributes that will be set in realloc
@@ -190,7 +190,8 @@ class MolecularDynamics(OpenCLBase):
         self.toGPU('Ksp',       mmff.Ksp.astype(np.float32).flatten(), byte_offset=offset_apars)
         self.toGPU('Kpp',       mmff.Kpp.astype(np.float32).flatten(), byte_offset=offset_apars)
 
-        self.toGPU('MDparams',  np.array([mmff.dt, mmff.damp, mmff.Flimit], dtype=np.float32), byte_offset=offset_apars)
+        self.toGPU('MDparams',  np.array([mmff.dt, mmff.damp, mmff.Flimit], dtype=np.float32), byte_offset=iSys*float4_size)
+
 
     def setup_kernels(self):
         """
@@ -215,6 +216,17 @@ class MolecularDynamics(OpenCLBase):
         self.kernel_args_updateAtomsMMFFf4 = self.generate_kernel_args("updateAtomsMMFFf4")
         self.kernel_args_cleanForceMMFFf4  = self.generate_kernel_args("cleanForceMMFFf4")
         self.kernel_args_runMD             = self.generate_kernel_args("runMD")
+
+        # print("MolecularDynamics::setup_kernels() kernel_args_getNonBond:"); 
+        # for arg in self.kernel_args_getNonBond: print("    ", arg)
+        # print("MolecularDynamics::setup_kernels() kernel_args_getMMFFf4:");  
+        # for arg in self.kernel_args_getMMFFf4: print("    ", arg)
+        # print("MolecularDynamics::setup_kernels() kernel_args_updateAtomsMMFFf4:")
+        # for arg in self.kernel_args_updateAtomsMMFFf4: print("    ", arg)
+        # print("MolecularDynamics::setup_kernels() kernel_args_cleanForceMMFFf4:")
+        # for arg in self.kernel_args_cleanForceMMFFf4: print("    ", arg)
+        # print("MolecularDynamics::setup_kernels() kernel_args_runMD:")
+        # for arg in self.kernel_args_runMD: print("    ", arg)
 
     def init_kernel_params(self):
         """
@@ -279,8 +291,22 @@ class MolecularDynamics(OpenCLBase):
     def run_runMD(self):
         self.prg.runMD(self.queue, self.global_size_update, self.local_size_opt, *self.kernel_args_runMD)
         self.queue.finish()
+    
+    def run_MD_py(self, nsteps):
+        #print( "MolecularDynamics::run_MD_py() nsteps=", nsteps)
+        #print( "MolecularDynamics::run_MD_py() kernel_args_getNonBond=", self.kernel_args_getNonBond)
+        #print( "MolecularDynamics::run_MD_py() kernel_args_getMMFFf4=", self.kernel_args_getMMFFf4)
+        #print( "MolecularDynamics::run_MD_py() kernel_args_updateAtomsMMFFf4=", self.kernel_args_updateAtomsMMFFf4)
+        for i in range(nsteps):
+            self.prg.getNonBond       (self.queue, self.global_size_nonbond, self.local_size_opt, *self.kernel_args_getNonBond)
+            self.prg.getMMFFf4        (self.queue, self.global_size_mmff,    self.local_size_opt, *self.kernel_args_getMMFFf4)
+            self.prg.updateAtomsMMFFf4(self.queue, self.global_size_update,  self.local_size_opt, *self.kernel_args_updateAtomsMMFFf4)
+        self.fromGPU('apos',   self.atoms)
+        self.fromGPU('aforce', self.aforce)
+        self.queue.finish()
+        return self.atoms.reshape(-1, 4), self.aforce.reshape(-1, 4)
 
     def download_results(self):
-        self.fromGPU('apos', self.atoms)
+        self.fromGPU('apos',   self.atoms)
         self.fromGPU('aforce', self.aforce)
         return self.atoms.reshape(-1, 4), self.aforce.reshape(-1, 4)

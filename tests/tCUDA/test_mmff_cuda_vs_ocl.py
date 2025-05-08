@@ -1,6 +1,7 @@
 import os
 import sys
 import numpy as np
+import time
 
 sys.path.append("../../")
 from pyBall.AtomicSystem import AtomicSystem
@@ -31,20 +32,24 @@ mmff.toMMFFsp3_loc( mol=mol, atom_types=atom_types)
 
 # ===== RUN OpenCL Molecular Dynamics
 print("\n\n\n################# RUN OpenCL MMFF #################")
-mdcl = clMD.MolecularDynamics(nloc=32, perBatch=2)
-#mdcl.realloc( mmff=mmff, nSystems=5,)   # Allocate memory for 1 system (nSystems=1) using the MMFF template
-mdcl.realloc( mmff=mmff, nSystems=1,)   # Allocate memory for 1 system (nSystems=1) using the MMFF template
+nPerBatch = 10
+mdcl = clMD.MolecularDynamics(nloc=32, perBatch=nPerBatch)
+mdcl.realloc( mmff=mmff, nSystems=200,)   # Allocate memory for 1 system (nSystems=1) using the MMFF template
+#mdcl.realloc( mmff=mmff, nSystems=1,)   # Allocate memory for 1 system (nSystems=1) using the MMFF template
 
 mdcl.setup_kernels()
-mdcl.pack_system(iSys=0, mmff=mmff)  # Pack the MMFF data into GPU buffers for system index 0
+for iSys in range(mdcl.nSystems):
+    mdcl.pack_system(iSys=iSys, mmff=mmff)  # Pack the MMFF data into GPU buffers for system index 0
 mdcl.upload_all_systems()   
 mdcl.init_kernel_params()         # Upload all system data to the GPU
 
-#mdcl.run_getNonBond()
-#mdcl.run_getMMFFf4()
-#mdcl.run_updateAtomsMMFFf4()
-mdcl.run_runMD()
-mdcl.queue.finish()
+# accurate performance time measurement
+t0 = time.perf_counter()
+mdcl.run_MD_py(nsteps=10)
+#mdcl.run_runMD()
+#mdcl.queue.finish()
+
+t1 = time.perf_counter(); print("OpenCL MD time: ", t1-t0)
 
 # mdcl.run_getNonBond()
 # mdcl.run_getMMFFf4()

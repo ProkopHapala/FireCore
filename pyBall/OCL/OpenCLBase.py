@@ -66,7 +66,7 @@ class OpenCLBase:
         self.kernelheaders = {}
         self.prg = None
     
-    def load_program(self, kernel_path=None, rel_path=None, base_path=None):
+    def load_program(self, kernel_path=None, rel_path=None, base_path=None, bPrint=False):
         """
         Load and compile an OpenCL program.
         
@@ -93,12 +93,13 @@ class OpenCLBase:
             # Extract kernel headers automatically
             self.kernelheaders = self.extract_kernel_headers(kernel_source)
 
-            #for kernel_name, kernel_header in self.kernelheaders.items():
-            #    print(f"OpenCLBase::extract_kernel_headers() Kernel name:: {kernel_name} \n {kernel_header}")
+            if bPrint:
+                for kernel_name, kernel_header in self.kernelheaders.items():
+                    print(f"OpenCLBase::extract_kernel_headers() Kernel name:: {kernel_name} \n {kernel_header}")
                 
-            
-        print(f"OpenCLBase::load_program() Successfully loaded kernel from: {kernel_path}")
-        print(f"Extracted headers for kernels: {list(self.kernelheaders.keys())}")
+        if bPrint:
+            print(f"OpenCLBase::load_program() Successfully loaded kernel from: {kernel_path}")
+            print(f"Extracted headers for kernels: {list(self.kernelheaders.keys())}")
         return True
     
     def extract_kernel_headers(self, source_code):
@@ -109,45 +110,50 @@ class OpenCLBase:
             source_code (str): The OpenCL source code as a string
             
         Returns:
-            dict: A dictionary where keys are kernel names and values are
-                  the full header string (from '__kernel' up to the closing parenthesis)
+            dict: A dictionary where keys are kernel names (without parentheses)
+                  and values are the full header string
         """
         headers = {}
-        # Regex to find kernel definitions
-        kernel_pattern = re.compile(r'__kernel\s+void\s+([a-zA-Z_][a-zA-Z0-9_]*)\s*\(')
         
-        current_pos = 0
-        while True:
-            match = kernel_pattern.search(source_code, current_pos)
-            if not match:
-                break
+        # Split into lines and process line by line
+        lines = source_code.split('\n')
+        i = 0
+        
+        while i < len(lines):
+            line = lines[i].strip()
+            
+            # Skip empty lines and commented lines
+            if not line or line.startswith('//'):
+                i += 1
+                continue
                 
-            kernel_name = match.group(1)
-            kernel_start_pos = match.start()
-            open_paren_pos = source_code.find('(', kernel_start_pos)
-            
-            # Find the matching closing parenthesis
-            paren_level = 1
-            close_paren_pos = -1
-            for i in range(open_paren_pos + 1, len(source_code)):
-                char = source_code[i]
-                if char == '(':
-                    paren_level += 1
-                elif char == ')':
-                    paren_level -= 1
-                    if paren_level == 0:
-                        close_paren_pos = i
-                        break
-            
-            if close_paren_pos == -1:
-                print(f"Warning: Could not find matching ')' for kernel '{kernel_name}'. Skipping.")
-                current_pos = open_paren_pos + 1
+            # Check for kernel definition
+            if line.startswith('__kernel'):
+                kernel_start = i
+                # Get clean kernel name (split on whitespace and take third element)
+                kernel_name = line.split()[2].split('(')[0]  # Remove any trailing parenthesis
+                
+                # Find opening parenthesis
+                while '(' not in line and i < len(lines):
+                    i += 1
+                    line = lines[i].strip()
+                    
+                # Find closing parenthesis
+                paren_level = 1
+                i += 1
+                while i < len(lines) and paren_level > 0:
+                    line = lines[i].strip()
+                    if not line.startswith('//'):  # Skip comment lines
+                        paren_level += line.count('(')
+                        paren_level -= line.count(')')
+                    i += 1
+                    
+                # Extract full header
+                header = '\n'.join(lines[kernel_start:i])
+                headers[kernel_name] = header
             else:
-                # Extract the full header string
-                header_signature = source_code[kernel_start_pos:close_paren_pos + 1]
-                headers[kernel_name] = header_signature
-                current_pos = close_paren_pos + 1
-        
+                i += 1
+                
         return headers
     
     def create_buffer(self, name, size, flags=cl.mem_flags.READ_WRITE):
@@ -271,13 +277,18 @@ class OpenCLBase:
         Generate argument list for a kernel based on its header definition.
         
         Args:
-            kname (str): Kernel name
-            
+            kname (str): Kernel name (without parentheses)
+        
         Returns:
             list: List of arguments for the kernel call
         """
         if not hasattr(self, 'kernel_params'):
             raise AttributeError("kernel_params dictionary not initialized")
+            
+        if kname not in self.kernelheaders:
+            print(f"OpenCLBase::generate_kernel_args() Kernel '{kname}' not found in kernel headers")
+            print("Available kernels:", list(self.kernelheaders.keys()))
+            raise KeyError(f"Kernel '{kname}' not found in kernel headers")
             
         kernel_header = self.kernelheaders[kname]
         args_names = self.parse_kernel_header(kernel_header)
