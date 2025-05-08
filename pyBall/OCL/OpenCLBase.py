@@ -84,7 +84,7 @@ class OpenCLBase:
             kernel_path = os.path.abspath(os.path.join(base_path, rel_path))
         
         if not os.path.exists(kernel_path):
-            print(f"{self.__class__.__name__}::load_program() ERROR: Kernel file not found at: {kernel_path}")
+            print(f"OpenCLBase::load_program() ERROR: Kernel file not found at: {kernel_path}")
             return False
             
         with open(kernel_path, 'r') as f:
@@ -93,11 +93,11 @@ class OpenCLBase:
             # Extract kernel headers automatically
             self.kernelheaders = self.extract_kernel_headers(kernel_source)
 
-            for kernel_name, kernel_header in self.kernelheaders.items():
-                print(f"{self.__class__.__name__}::extract_kernel_headers() Kernel name:: {kernel_name} \n {kernel_header}")
+            #for kernel_name, kernel_header in self.kernelheaders.items():
+            #    print(f"OpenCLBase::extract_kernel_headers() Kernel name:: {kernel_name} \n {kernel_header}")
                 
             
-        print(f"{self.__class__.__name__}::load_program() Successfully loaded kernel from: {kernel_path}")
+        print(f"OpenCLBase::load_program() Successfully loaded kernel from: {kernel_path}")
         print(f"Extracted headers for kernels: {list(self.kernelheaders.keys())}")
         return True
     
@@ -265,56 +265,6 @@ class OpenCLBase:
                     args.append((param_name, 1))
         
         return args
-
-    # def parse_kernel_header(self, header):
-    #     """
-    #     Parse a kernel header to extract argument names and types.
-        
-    #     Args:
-    #         header (str): The kernel header string
-            
-    #     Returns:
-    #         list: List of (name, type) tuples where type is 0 for buffer and 1 for scalar
-    #     """
-    #     # Extract the parameter list
-    #     params_start = header.find('(')
-    #     params_end = header.rfind(')')
-    #     if params_start == -1 or params_end == -1:
-    #         return []
-            
-    #     params_str = header[params_start+1:params_end]
-        
-    #     # Split parameters and extract names
-    #     args = []
-    #     for line in params_str.split('\n'):
-    #         line = line.strip()
-    #         if not line or line.startswith('//'):
-    #             continue
-                
-    #         # Remove comments
-    #         line = re.sub(r'//.*$', '', line)
-            
-    #         # Check if this is a buffer parameter
-    #         if '__global' in line:
-    #             # Extract parameter name
-    #             parts = line.split()
-    #             for i, part in enumerate(parts):
-    #                 if part.startswith('*'):
-    #                     name = part[1:].strip(',')
-    #                     args.append((name, 0))  # 0 indicates buffer
-    #                     break
-    #                 elif i > 0 and '*' in part:
-    #                     name = part.split('*')[1].strip(',')
-    #                     args.append((name, 0))  # 0 indicates buffer
-    #                     break
-    #         else:
-    #             # This is a scalar parameter
-    #             parts = line.split()
-    #             if len(parts) >= 2:
-    #                 name = parts[-1].strip(',')
-    #                 args.append((name, 1))  # 1 indicates scalar
-                    
-    #     return args
     
     def generate_kernel_args(self, kname):
         """

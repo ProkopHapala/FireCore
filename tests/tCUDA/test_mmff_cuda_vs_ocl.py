@@ -6,82 +6,35 @@ sys.path.append("../../")
 from pyBall.AtomicSystem import AtomicSystem
 from pyBall.OCL import MMFF
 #from pyBall.OCL.MMFF import 
-
-from pyBall.OCL.MMparams import read_element_types, read_atom_types, generate_REQs_from_atom_types
-
+from pyBall.OCL.MMparams import read_AtomAndElementTypes #read_element_types, read_atom_types, generate_REQs_from_atom_types
 os.environ['PYOPENCL_COMPILER_OUTPUT'] = '1'
 os.environ['PYOPENCL_CTX'] = '0:1'  # Enables double precision on device 0
-
 from pyBall.OCL import cuMMFF            as cuMD
 from pyBall.OCL import MolecularDynamics as clMD
 
+# ========== Body
+
+element_types, atom_types = read_AtomAndElementTypes(path='../../cpp/common_resources/')
+
 #mol = AtomicSystem( "common_resources/xyz/CH2NH.xyz" )
+mol = AtomicSystem    ( "./common_resources/xyz/nHexadecan_fold.xyz" )
+#mol = AtomicSystem( "./common_resources/xyz/hydropentacene_cross.xyz" )
 
-# Load forcefield parameters from data files
-path = '../../cpp/common_resources/'
-element_types_path = path + 'ElementTypes.dat'
-atom_types_path    = path + 'AtomTypes.dat'
-
-# Read element and atom types from data files
-element_types = read_element_types(element_types_path)
-atom_types = read_atom_types(atom_types_path, element_types)
-
-# Create AtomTypeDict needed for MMFF.toMMFFsp3_loc function
-#AtomTypeDict = create_atom_type_dict_for_mmff(atom_types, element_types)
-
-mol = AtomicSystem(
-    apos=np.array([[0.0, 0.0, 0.0],
-                   [1.5, 0.0, 0.0],
-                   [-.5,-1.0, 0.0],
-                   [-.5, 1.0, 0.0],
-                   [2.0, 1.0, 1.0]]),
-    atypes=np.array([0,1, 2, 2, 2], dtype=np.int32),  # Example type indices
-    enames=["C_2", "N_2", "H", "H", "H"],
-    lvec=np.identity(3, dtype=np.float32),
-    qs=np.array([-0.2, -0.3, +0.1, +0.1, +0.3], dtype=np.float32),
-    bonds =[ (0,1), (0,2), (0,3), (1,4) ]
-)
-
-mol.neighs()
-print( "mol.ngs ", mol.ngs)
-
-# Set pi orbitals and electron pairs attributes after creation
-mol.npi_list = np.array([1, 1, 0, 0,0], dtype=np.int32)
-mol.nep_list = np.array([0, 1, 0, 0,0], dtype=np.int32)
-mol.isNode   = np.array([1, 1, 0, 0,0], dtype=np.int32)
-# Generate REQs from atom types
-mol.REQs = generate_REQs_from_atom_types(mol, atom_types)
-
-
-mmff = MMFF.MMFF(bTorsion=False, verbosity=1)
-mmff.toMMFFsp3_loc( mol=mol, atom_types=atom_types)
-for ia in range(mmff.natoms):
-    mmff.printAtomConf(ia, mol)  # Replace 0 with desired atom index
+#; print( "mol.ngs ", mol.ngs)
 
 # =========== Initialization of MMFF system
-
-#exit()
-#cuMD.init( mol.natoms, mol.natoms, mol.natoms, 0, 0 )
-
-# Print MMFF dimensions to verify they are set correctly
-print(f"\nMMFF Dimensions before MD:  natoms: {mmff.natoms}  nvecs: {mmff.nvecs}  nnode: {mmff.nnode}  ncap: {mmff.ncap}  ntors: {mmff.ntors}")
-
-print("apos",   mmff.apos )
-print("REQs",   mmff.REQs )
-print("neighs", mmff.neighs )
-print("bLs",    mmff.bLs )
-print("bKs",    mmff.bKs )
-print("apars",  mmff.apars )
-print("Ksp",    mmff.Ksp )
-print("Kpp",    mmff.Kpp )
-
-
-
+mol.neighs() 
+mmff = MMFF.MMFF(bTorsion=False, verbosity=1)
+mmff.toMMFFsp3_loc( mol=mol, atom_types=atom_types)
+#for ia in range(mmff.natoms):   mmff.printAtomConf(ia, mol)  # Replace 0 with desired atom index
+#mmff.printArrays()
 
 # ===== RUN OpenCL Molecular Dynamics
 print("\n\n\n################# RUN OpenCL MMFF #################")
-mdcl = clMD.MolecularDynamics(nloc=32)
+mdcl = clMD.MolecularDynamics(nloc=32, perBatch=2)
+#mdcl.realloc( mmff=mmff, nSystems=5,)   # Allocate memory for 1 system (nSystems=1) using the MMFF template
 mdcl.realloc( mmff=mmff, nSystems=1,)   # Allocate memory for 1 system (nSystems=1) using the MMFF template
+
 mdcl.setup_kernels()
 mdcl.pack_system(iSys=0, mmff=mmff)  # Pack the MMFF data into GPU buffers for system index 0
 mdcl.upload_all_systems()   
@@ -91,7 +44,6 @@ mdcl.init_kernel_params()         # Upload all system data to the GPU
 #mdcl.run_getMMFFf4()
 #mdcl.run_updateAtomsMMFFf4()
 mdcl.run_runMD()
-
 mdcl.queue.finish()
 
 # mdcl.run_getNonBond()

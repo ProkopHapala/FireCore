@@ -6,7 +6,6 @@ Lepair = 1.5    # Example bond length for electron pairs
 Kepair = 100.0  # Example bond stiffness for electron pairs
 deg2rad = np.pi / 180.0
 
-
 class ElementType:
     """
     Represents the parameters for each element type based on ElementTypes.dat.
@@ -54,26 +53,26 @@ class AtomType:
         Initializes the AtomType with parameters from AtomTypes.dat.
         Optional parameters are set to default values if not provided.
         """
-        self.name = name                # Atom type name
-        self.parent_name = parent_name  # Parent type name
+        self.name = name                 # Atom type name
+        self.parent_name = parent_name   # Parent type name
         self.element_name = element_name # Element type name
-        self.epair_name = epair_name    # Electron pair type name
-        self.valence = valence          # Sum of bond orders of all bonds
-        self.nepair = nepair            # Number of electron pairs
-        self.npi = npi                  # Number of pi orbitals
-        self.sym = sym                  # Symmetry type (tetrahedral, triangle, etc.)
-        self.Ruff = Ruff                # UFF natural bond radius
-        self.RvdW = RvdW                # LJ distance parameter
-        self.EvdW = EvdW                # LJ energy parameter
-        self.Qbase = Qbase              # Atomic charge
-        self.Hb = Hb                    # Hydrogen bond correction
-        self.bMMFF = bMMFF              # Flag for MMFF parameters
-        self.Ass = Ass                  # Equilibrium angle for sigma-sigma
-        self.Asp = Asp                  # Equilibrium angle for sigma-pi
-        self.Kss = Kss                  # Force constant for sigma-sigma
-        self.Ksp = Ksp                  # Force constant for sigma-pi
-        self.Kep = Kep                  # Force constant for pi-lone pair
-        self.Kpp = Kpp                  # Force constant for lone pair-lone pair
+        self.epair_name = epair_name     # Electron pair type name
+        self.valence = valence           # Sum of bond orders of all bonds
+        self.nepair = nepair             # Number of electron pairs
+        self.npi    = npi                # Number of pi orbitals
+        self.sym    = sym                # Symmetry type (tetrahedral, triangle, etc.)
+        self.Ruff   = Ruff               # UFF natural bond radius
+        self.RvdW   = RvdW               # LJ distance parameter
+        self.EvdW   = EvdW               # LJ energy parameter
+        self.Qbase  = Qbase              # Atomic charge
+        self.Hb     = Hb                 # Hydrogen bond correction
+        self.bMMFF  = bMMFF              # Flag for MMFF parameters
+        self.Ass    = Ass                # Equilibrium angle for sigma-sigma
+        self.Asp    = Asp                # Equilibrium angle for sigma-pi
+        self.Kss    = Kss                # Force constant for sigma-sigma
+        self.Ksp    = Ksp                # Force constant for sigma-pi
+        self.Kep    = Kep                # Force constant for pi-lone pair
+        self.Kpp    = Kpp                # Force constant for lone pair-lone pair
         
         # References to other types (to be filled after all types are loaded)
         self.element = element         # Index of corresponding element type
@@ -247,6 +246,11 @@ def read_atom_types(filepath, element_types=None):
     
     return atom_types
 
+def read_AtomAndElementTypes(path, felement_types='ElementTypes.dat', fatom_types='AtomTypes.dat'):
+    element_types = read_element_types(path + felement_types)
+    atom_types    = read_atom_types   (path + fatom_types, element_types)
+    return element_types, atom_types
+
 def generate_REQs_from_atom_types(mol, atom_types):
     """
     Generate REQs array for the molecule based on atom types.
@@ -263,18 +267,23 @@ def generate_REQs_from_atom_types(mol, atom_types):
     
     for ia in range(natom):
         atom_name = mol.enames[ia]
+        if mol.qs is not None:
+            q=mol.qs[ia]
+        else:
+            q=0
         if atom_name in atom_types:
             at = atom_types[atom_name]
-            # Set radius from van der Waals radius
             REQs[ia, 0] = at.RvdW
-            # Set energy from van der Waals energy
             REQs[ia, 1] = at.EvdW
-            # Columns 2 and 3 are left as 0.0 (reserved for future use)
+            REQs[ia, 2] = q
+            REQs[ia, 3] = at.Hb   # H-bond correction
         else:
             print(f"Warning: Atom type {atom_name} not found in atom_types")
             # Set default values
             REQs[ia, 0] = 1.0  # Default radius
             REQs[ia, 1] = 0.01  # Default energy
+            REQs[ia, 2] = q
+            REQs[ia, 3] = 0.0   # H-bond correction
     
     return REQs
 
