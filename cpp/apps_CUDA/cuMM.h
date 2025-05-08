@@ -66,6 +66,8 @@ class CU_MM { public:
     // --- Internal State ---
     bool initialized = false;
 
+    bool bCheckErros = true;
+
     // Dimensions
     int nSystems = 0;
     int nAtoms = 0;
@@ -130,13 +132,16 @@ class CU_MM { public:
         return d_ptr;
     }
 
-    int uploadById(int id, const void* h_data, int nBytes) {
-        CUDA_CHECK_MM(cudaMemcpy(buffers.vec[id].ptr, h_data, nBytes, cudaMemcpyHostToDevice));
+    int uploadById(int id, const void* h_data, int nBytes, int offset=0) {
+        //printf("CU_MM::uploadById(): id=%i, nBytes=%i, offset=%i\n", id, nBytes, offset);
+        char* ptr = static_cast<char*>(buffers.vec[id].ptr) + offset;
+        CUDA_CHECK_MM(cudaMemcpy(ptr, h_data, nBytes, cudaMemcpyHostToDevice));
         return 0;
     }
 
-    int downloadById(int id, void* h_data, int nBytes) {
-        CUDA_CHECK_MM(cudaMemcpy(h_data, buffers.vec[id].ptr, nBytes, cudaMemcpyDeviceToHost));
+    int downloadById(int id, void* h_data, int nBytes, int offset=0) {
+        char* ptr = static_cast<char*>(buffers.vec[id].ptr) + offset;
+        CUDA_CHECK_MM(cudaMemcpy(h_data, ptr, nBytes, cudaMemcpyDeviceToHost));
         return 0;
     }
 
@@ -146,24 +151,24 @@ class CU_MM { public:
         return buffers.vec[i].ptr;
     }
 
-    int uploadByName(const std::string& name, const void* h_data, int nBytes=-1) {
-        int i = buffers.getId(name);
-        if (i < 0){ printf("CU_MM::uploadByName() Error: Buffer '%s' not found.\n", name.c_str()); return -1; }
-        Buffer& buf = buffers.vec[i];
-        if (buf.nBytes <= 0 || !buf.ptr || !h_data) { printf("CU_MM::uploadByName() Error: Buffer '%s' not found.\n", name.c_str()); return -1; }
-        if(nBytes <= 0){ nBytes = buf.nBytes; }
-        CUDA_CHECK_MM(cudaMemcpy(buf.ptr, h_data, nBytes, cudaMemcpyHostToDevice));
-        return 0;
-    }
-    int downloadByName(const std::string& name, void* h_data, int nBytes=-1) {
-        int i = buffers.getId(name);
-        if (i < 0){ printf("CU_MM::downloadByName() Error: Buffer '%s' not found.\n", name.c_str()); return -1; }
-        Buffer& buf = buffers.vec[i];
-        if (buf.nBytes > 0 && buf.ptr && h_data) {
-            if(nBytes <= 0){ nBytes = buf.nBytes; }
-            CUDA_CHECK_MM(cudaMemcpy(h_data, buf.ptr, nBytes, cudaMemcpyDeviceToHost));
+    int uploadByName(const std::string& name, const void* h_data, int nBytes=-1, int offset=0) {
+        //printf("CU_MM::uploadByName(): name=%s, nBytes=%i, offset=%i\n", name.c_str(), nBytes, offset);
+        int id = buffers.getId(name);
+        if (id < 0) {
+            printf("ERROR in CU_MM::uploadByName() buffer '%s' not found.\n", name.c_str());
+            return -1;
         }
-        return 0;
+        // If nBytes is -1, use the size from the buffer allocation
+        if (nBytes < 0) nBytes = buffers.vec[id].nBytes;
+        return uploadById(id, h_data, nBytes, offset);
+    }
+
+    int downloadByName(const std::string& name, void* h_data, int nBytes=-1, int offset=0) {
+        int id = buffers.getId(name);
+        if (id < 0){ printf("CU_MM::downloadByName() Error: Buffer '%s' not found.\n", name.c_str()); return -1; }
+        // If nBytes is -1, use the size from the buffer allocation
+        if (nBytes < 0) nBytes = buffers.vec[id].nBytes;
+        return downloadById(id, h_data, nBytes, offset);
     }
 
 
@@ -182,7 +187,7 @@ class CU_MM { public:
         nvecs = nAtoms + nnode;
         size_t fneigh_count = (nnode > 0) ? (size_t)nSystems * nnode * 8 : 0;
 
-        if (nSystems <= 0 || nAtoms <= 0 || nnode < 0 ) { /* Fatal error */ exit(EXIT_FAILURE); }
+        if (nSystems <= 0 || nAtoms <= 0 || nnode < 0 ) { exit(EXIT_FAILURE); }
 
         // Allocate buffers using the map
         d_apos      = (float4*)allocateBuffer("apos",      (size_t)nSystems * nvecs, sizeof(float4));
@@ -247,9 +252,9 @@ class CU_MM { public:
         int4 n_dims = {nAtoms, nnode, 0, 0};
         //printf("run_cleanForceMMFFf4(): nAtoms=%i, nnode=%i, nvecs=%i, nSystems=%i, gridDim=(%i,%i), blockDim=(%i,%i)\n", nAtoms, nnode, nvecs, nSystems, gridDim.x, gridDim.y, blockDim.x, blockDim.y);
         cleanForceMMFFf4<<<gridDim, blockDim>>>(n_dims, d_aforce, d_fneigh);
-        CUDA_CHECK_MM(cudaGetLastError());
+        if(bCheckErros){ CUDA_CHECK_MM(cudaGetLastError()); }
         // CUDA FINISH ?
-        CUDA_CHECK_MM(cudaDeviceSynchronize());
+        //CUDA_CHECK_MM(cudaDeviceSynchronize());
         return 0;
     }
 
@@ -269,9 +274,9 @@ class CU_MM { public:
             nPBC_val, 
             GFFParams_val
         );
-        CUDA_CHECK_MM(cudaGetLastError());
+        if(bCheckErros){ CUDA_CHECK_MM(cudaGetLastError()); }
         // CUDA FINISH ?
-        CUDA_CHECK_MM(cudaDeviceSynchronize());
+        //CUDA_CHECK_MM(cudaDeviceSynchronize());
         return 0;
     }
 
@@ -298,9 +303,9 @@ class CU_MM { public:
             npbc, 
             bSubtractVdW
         );
-        CUDA_CHECK_MM(cudaGetLastError());
+        if(bCheckErros){ CUDA_CHECK_MM(cudaGetLastError()); }
         // CUDA FINISH ?
-                CUDA_CHECK_MM(cudaDeviceSynchronize());
+        //CUDA_CHECK_MM(cudaDeviceSynchronize());
         return 0;
     }
 
@@ -324,7 +329,9 @@ class CU_MM { public:
             d_sysneighs, 
             d_sysbonds
         );
-        CUDA_CHECK_MM(cudaGetLastError());
+        if(bCheckErros){ CUDA_CHECK_MM(cudaGetLastError()); }
+        // CUDA FINISH ?
+        //CUDA_CHECK_MM(cudaDeviceSynchronize());
         return 0;
     }
 
@@ -348,6 +355,7 @@ class CU_MM { public:
     }
 
     int synchronize() {
+        CUDA_CHECK_MM(cudaGetLastError());
         CUDA_CHECK_MM(cudaDeviceSynchronize());
         return 0;
     }
