@@ -59,6 +59,8 @@ const float4   grid_p0
 #define iGdbg 0
 #define iSdbg 0
 
+#pragma OPENCL EXTENSION cl_khr_fp64 : disable
+//#pragma OPENCL FP_CONTRACT ON
 
 // ======================================================================
 // ======================================================================
@@ -66,7 +68,7 @@ const float4   grid_p0
 // ======================================================================
 // ======================================================================
 
-#pragma OPENCL EXTENSION cl_khr_3d_image_writes : enable
+//#pragma OPENCL EXTENSION cl_khr_3d_image_writes : enable
 
 typedef struct __attribute__ ((packed)){
     float4 a;
@@ -112,7 +114,7 @@ inline float evalAngleCosHalf( const float4 hr1, const float4 hr2, const float2 
     // the main advantage is that it is quasi-harmonic beyond angles > 90 deg
     float3 h  = hr1.xyz + hr2.xyz;  // h = a+b
     float  c2 = dot(h,h)*0.25f;     // cos(a/2) = |ha+hb|  (after normalization)
-    float  s2 = 1.f-c2 + 1e-7;      // sin(a/2) = sqrt(1-cos(a/2)^2) ;  s^2 must be positive (otherwise we get NaNs)
+    float  s2 = 1.f-c2 + 1e-7f;      // sin(a/2) = sqrt(1-cos(a/2)^2) ;  s^2 must be positive (otherwise we get NaNs)
     float2 cso = (float2){ sqrt(c2), sqrt(s2) }; // cso = cos(a/2) + i*sin(a/2)
     float2 cs = udiv_cmplx( cs0, cso );          // rotate back by equilibrium angle
     float  E         =  k*( 1 - cs.x );          // E = k*( 1 - cos(a/2) )  ; Do we need Energy? Just for debugging ?
@@ -147,7 +149,7 @@ inline float evalPiAling( const float3 h1, const float3 h2,  float K, __private 
 inline float evalBond( float3 h, float dl, float k, __private float3* f ){
     float fr = dl*k;   // force magnitude
     *f = h * fr;       // force on atom a
-    return fr*dl*0.5;  // energy
+    return fr*dl*0.5f;  // energy
 }
 
 // evaluate non-covalent interaction force and energy for Lennard-Jones (Q) and Coulomb interactions of charges (Q) and hydrogen bond correction (pseudo-charges H), damping R2damp is used to avoid singularity at r=0
@@ -254,7 +256,7 @@ __kernel void cleanForceMMFFf4(
     aforce[iav]=float4Zero;
     //aforce[iav]=(float4){iG,iS,iav,0.0};
 
-    //if(iav==0){ printf("GPU::cleanForceMMFFf4() iS %i nG %i nS %i \n", iS, nG, nS );}
+    //if(iav==0){ printf("OCL::cleanForceMMFFf4() iS %i nG %i nS %i \n", iS, nG, nS );}
     //if(iG==0){ for(int i=0;i<(natoms+nnode);i++ ){printf("cleanForceMMFFf4[%i](%g,%g,%g)\n",i,aforce[i].x,aforce[i].y,aforce[i].z);} }
     if(iG<nnode){ 
         const int i4 = ian*4;
@@ -263,7 +265,7 @@ __kernel void cleanForceMMFFf4(
         fneigh[i4+2]=float4Zero;
         fneigh[i4+3]=float4Zero;
     }
-    //if(iG==0){ printf( "GPU::updateAtomsMMFFf4() END\n" ); }
+    //if(iG==0){ printf( "OCL::updateAtomsMMFFf4() END\n" ); }
 }
 
 // ======================================================================
@@ -273,6 +275,7 @@ __kernel void cleanForceMMFFf4(
 // 1.  getMMFFf4() - computes bonding interactions between atoms and nodes and its neighbors (max. 4 neighbors allowed), the resulting forces on atoms are stored "aforce" array and recoil forces on neighbors are stored in "fneigh" array
 //                   kernel run over all atoms and all systems in parallel to exploit GPU parallelism
 //__attribute__((reqd_work_group_size(1,1,1)))
+//void func_getMMFFf4(
 __kernel void getMMFFf4(
     const int4 nDOFs,               // 1   (nAtoms,nnode) dimensions of the system
     // Dynamical
@@ -329,6 +332,7 @@ __kernel void getMMFFf4(
     const float3 pa  = apos[iav].xyz;  // position of current atom
     const float4 par = apars[ian];     // (xy=s0_ss,z=ssK,w=piC0 ) forcefield parameters for current atom
 
+    if((iG==iGdbg)&&(iS==iSdbg)){ printf("OCL getMMFFf4(): natoms %3i nnode %3i \n", nAtoms, nnode ); }
     // if((iG==iGdbg)&&(iS==iSdbg)){
     //     printf("OCL getMMFFf4(): natoms %3i nnode %3i \n", nAtoms, nnode );
     //     for(int ia=0; ia<nnode; ia++){
@@ -387,7 +391,7 @@ __kernel void getMMFFf4(
                 h.xyz  += pbc_shifts[ipbc0+ic].xyz; // shift bond to the proper PBC cell
             }
             float  l = length(h.xyz);  // compute bond length
-            h.w      = 1./l;           // store ivnerse bond length
+            h.w      = 1.f/l;           // store ivnerse bond length
             h.xyz   *= h.w;            // normalize bond direction vector
             hs[i]    = h;              // store bond direction vector and inverse bond length
 
@@ -401,7 +405,7 @@ __kernel void getMMFFf4(
 
                 // pi-pi alignment interaction            
                 float kpp = Kppi[i];
-                if( (ing<nnode) && (kpp>1.e-6) ){   // Only node atoms have pi-pi alignemnt interaction
+                if( (ing<nnode) && (kpp>1.e-6f) ){   // Only node atoms have pi-pi alignemnt interaction
                     float epp = evalPiAling( hpi, apos[ingv+nAtoms].xyz, kpp,  &f1, &f2 );   fpi+=f1;  fps[i]+=f2; E+=epp;    //   pi-alignment(konjugation), fpi is force on pi-orbital, fps[i] is recoil force on i-th neighbor's pi-orbital
                     //if((iG==iGdbg)&&(iS==iSdbg)){ printf("OCL getMMFFf4(): cos(pi,pi):     iG %3i ing %3i epp %10.5f f(%10.5f,%10.5f,%10.5f) c %10.5f kpp %10.5f \n", iG, ing, epp, f1.x, f1.y, f1.z, dot(hpi.xyz,apos[ingv+nAtoms].xyz), kpp ); }
                 }
@@ -409,8 +413,8 @@ __kernel void getMMFFf4(
             
             // pi-sigma othogonalization interaction
             float ksp = Kspi[i];
-            if(ksp>1.e-6){  
-                float esp = evalAngCos( (float4){hpi,1.}, h, ksp, par.w, &f1, &f2 );   fpi+=f1; fa-=f2;  fbs[i]+=f2; E+=esp;    //   pi-planarization (orthogonality), fpi is force on pi-orbital, fbs[i] is recoil force on i-th neighbor   
+            if(ksp>1.e-6f){  
+                float esp = evalAngCos( (float4){hpi,1.f}, h, ksp, par.w, &f1, &f2 );   fpi+=f1; fa-=f2;  fbs[i]+=f2; E+=esp;    //   pi-planarization (orthogonality), fpi is force on pi-orbital, fbs[i] is recoil force on i-th neighbor   
                 //if((iG==iGdbg)&&(iS==iSdbg)){ printf("OCL getMMFFf4(): cos(pi,sigma):      iG %3i ing %3i esp %10.5f f1(%10.5f,%10.5f,%10.5f) c %10.5f ksp %10.5f par.w %10.5f \n", iG, ing, esp, f1.x, f1.y, f1.z, dot(hpi.xyz,h.xyz), ksp, par.w ); }
             }
         }
@@ -454,7 +458,7 @@ __kernel void getMMFFf4(
                     REQij.yz = REQi.yz * REQj.yz; 
                     
                     float3 dp = (hj.xyz/hj.w) - (hi.xyz/hi.w);   // recover vector between i-th and j-th neighbors using stored vectos and inverse bond lengths, this should be faster than dp=apos[jngv].xyz-apos[ingv].xyz; from global memory
-                    float4 fij = getLJQH( dp, REQij, 1.0f );     // compute non-bonded interaction between i-th and j-th neighbors using Lennard-Jones and Coulomb interactions and Hydrogen bond correction
+                    float4 fij = getLJQH( dp, REQij, 1.0f );     // compute non-bonded interaction between i-th and j-th neighbors using LJQH potential
                     f1 -=  fij.xyz;
                     f2 +=  fij.xyz;
                 }
@@ -479,14 +483,39 @@ __kernel void getMMFFf4(
     
 }
 
+// __kernel void getMMFFf4(
+//     const int4 nDOFs,               // 1   (nAtoms,nnode) dimensions of the system
+//     // Dynamical
+//     __global float4*  apos,         // 2  [natoms]     positions of atoms (including node atoms [0:nnode] and capping atoms [nnode:natoms] and pi-orbitals [natoms:natoms+nnode] )
+//     __global float4*  aforce,        // 3  [natoms]     forces on    atoms (just node atoms are evaluated)
+//     __global float4*  fneigh,       // 4  [nnode*4*2]  recoil forces on neighbors (and pi-orbitals)
+//     // parameters
+//     __global int4*    neighs,       // 5  [nnode]  neighboring atoms
+//     __global int4*    neighCell,    // 5  [nnode]  neighboring atom  cell index
+//     __global float4*  REQs,        // 6  [natoms] non-boding parametes {R0,E0,Q} i.e. R0: van der Waals radii, E0: well depth and partial charge, Q: partial charge 
+//     __global float4*  apars,        // 7  [nnode]  per atom forcefield parametrs {c0ss,Kss,c0sp}, i.e. c0ss: cos(equlibrium angle/2) for sigma-sigma; Kss: stiffness of sigma-sigma angle; c0sp: is cos(equlibrium angle) for sigma-pi
+//     __global float4*  bLs,          // 8  [nnode]  bond length    between node and each neighbor
+//     __global float4*  bKs,          // 9  [nnode]  bond stiffness between node and each neighbor
+//     __global float4*  Ksp,          // 10 [nnode]  stiffness of pi-alignment for each neighbor     (only node atoms have pi-pi alignemnt interaction)
+//     __global float4*  Kpp,          // 11 [nnode]  stiffness of pi-planarization for each neighbor (only node atoms have pi-pi alignemnt interaction)
+//     __global cl_Mat3* lvecs,        // 12 lattice vectors         for each system
+//     __global cl_Mat3* ilvecs,       // 13 inverse lattice vectors for each system
+//     __global float4*  pbc_shifts,
+//     const int npbc,
+//     const int bSubtractVdW
+// ){
+//     func_getMMFFf4( nDOFs, apos, aforce, fneigh, neighs, neighCell, REQs, apars, bLs, bKs, Ksp, Kpp, lvecs, ilvecs, pbc_shifts, npbc, bSubtractVdW );
+// }
+
 // ======================================================================
 //                           getNonBond()
 // ======================================================================
+
 // Calculate non-bonded forces on atoms (icluding both node atoms and capping atoms), cosidering periodic boundary conditions
 // It calculate Lenard-Jones, Coulomb and Hydrogen-bond forces between all atoms in the system
 // it can be run in parallel for multiple systems, in order to efficiently use number of GPU cores (for small systems with <100 this is essential to get good performance)
 // This is the most time consuming part of the forcefield evaluation, especially for large systems when nPBC>1
-__attribute__((reqd_work_group_size(32,1,1)))
+//void func_getNonBond(
 __kernel void getNonBond(
     const int4        nDOFs,        // 1 // (natoms,nnode) dimensions of the system
     // Dynamical
@@ -498,9 +527,11 @@ __kernel void getNonBond(
     __global int4*    neighCell,    // 6 // neighbors cell indices ( to know which PBC image should be ignored  due to bond )
     __global cl_Mat3* lvecs,        // 7 // lattice vectors for each system
     const int4        nPBC,         // 8 // number of PBC images in each direction (x,y,z)
-    const float4      GFFParams     // 9 // Grid-Force-Field parameters
+    const float4      GFFParams
+    //,     // 9 // Grid-Force-Field parameters
+    //__local float4*   LATOMS,
+    //__local float4*   LCLJS
 ){
-
     // we use local memory to store atomic position and parameters to speed up calculation, the size of local buffers should be equal to local workgroup size
     //__local float4 LATOMS[2];
     //__local float4 LCLJS [2];
@@ -528,7 +559,6 @@ __kernel void getNonBond(
     const int nnode =nDOFs.y;  // number of node atoms
     //const int nAtomCeil =ns.w;
     const int nvec  =natoms+nnode; // number of vectors (atoms+node atoms)
-
     //const int i0n = iS*nnode; 
     const int i0a = iS*natoms;  // index of first atom in atoms array
     const int i0v = iS*nvec;    // index of first atom in vectors array
@@ -538,23 +568,6 @@ __kernel void getNonBond(
     
     //const int iS_DBG = 0;
     //const int iG_DBG = 0;
-
-    //if((iG==iG_DBG)&&(iS==iS_DBG)){  printf( "GPU::getNonBond() natoms,nnode,nvec(%i,%i,%i) nS,nG,nL(%i,%i,%i) \n", natoms,nnode,nvec, nS,nG,nL ); }
-    //if((iG==iG_DBG)&&(iS==iS_DBG)){ 
-    //    printf( "GPU::getNonBond() natoms,nnode,nvec(%i,%i,%i) nS,nG,nL(%i,%i,%i) \n", natoms,nnode,nvec, nS,nG,nL ); 
-    //     for(int i=0; i<nS*nG; i++){
-    //         int ia = i%nS;
-    //         int is = i/nS;
-    //         if(ia==0){ cl_Mat3 lvec = lvecs[is];  printf( "GPU[%i] lvec(%6.3f,%6.3f,%6.3f)(%6.3f,%6.3f,%6.3f)(%6.3f,%6.3f,%6.3f) \n", is, lvec.a.x,lvec.a.y,lvec.a.z,  lvec.b.x,lvec.b.y,lvec.b.z,   lvec.c.x,lvec.c.y,lvec.c.z  ); }
-    //         //printf( "GPU[%i,%i] \n", is,ia,  );        
-    //     }
-    //}
-
-
-
-
-    //if( iL==0 ){ for(int i=0; i<nL; i++){  LATOMS[i]=(float4){ 10000.0, (float)i,(float)iG,(float)iS }; LCLJS[i]=(float4){ 20000.0, (float)i,(float)iG,(float)iS }; } }
-
 
     // NOTE: if(iG>=natoms) we are reading from invalid adress => last few processors produce crap, but that is not a problem
     //       importaint is that we do not write this crap to invalid address, so we put   if(iG<natoms){forces[iav]+=fe;} at the end
@@ -596,10 +609,9 @@ __kernel void getNonBond(
     const float3 shift_a = lvec.b.xyz + lvec.a.xyz*(nPBC.x*-2.f-1.f);                      // shift of PBC image in the inner loop
     const float3 shift_b = lvec.c.xyz + lvec.b.xyz*(nPBC.y*-2.f-1.f);                      // shift of PBC image in the outer loop
     //}
-
     /*
     if((iG==iG_DBG)&&(iS==iS_DBG)){ 
-        printf( "GPU::getNonBond() natoms,nnode,nvec(%i,%i,%i) nS,nG,nL(%i,%i,%i) bPBC=%i nPBC(%i,%i,%i)\n", natoms,nnode,nvec, nS,nG,nL, bPBC, nPBC.x,nPBC.y,nPBC.z ); 
+        printf( "OCL::getNonBond() natoms,nnode,nvec(%i,%i,%i) nS,nG,nL(%i,%i,%i) bPBC=%i nPBC(%i,%i,%i)\n", natoms,nnode,nvec, nS,nG,nL, bPBC, nPBC.x,nPBC.y,nPBC.z ); 
         for(int i=0; i<natoms; i++){
             printf( "GPU a[%i] ", i);
             printf( "p{%6.3f,%6.3f,%6.3f} ", atoms[i0v+i].x,atoms[i0v+i].y,atoms[i0v+i].z  );
@@ -669,37 +681,55 @@ __kernel void getNonBond(
     }
     
     if(iG<natoms){
-        //if(iS==0){ printf( "GPU::getNonBond(iG=%i) fe(%g,%g,%g,%g)\n", iG, fe.x,fe.y,fe.z,fe.w ); }
+        //if(iS==0){ printf( "OCL::getNonBond(iG=%i) fe(%g,%g,%g,%g)\n", iG, fe.x,fe.y,fe.z,fe.w ); }
         aforce[iav] = fe;           // If we do    run it as first forcefield, we can just store force (non need to clean it before in that case)
         //aforce[iav] += fe;        // If we don't run it as first forcefield, we need to add force to existing force
         //aforce[iav] = fe*(-1.f);
     }
 }
 
+// __kernel void getNonBond(
+//     const int4        nDOFs,        // 1 // (natoms,nnode) dimensions of the system
+//     // Dynamical
+//     __global float4*  apos,         // 2 // positions of atoms  (including node atoms [0:nnode] and capping atoms [nnode:natoms] and pi-orbitals [natoms:natoms+nnode] )
+//     __global float4*  aforce,       // 3 // forces on atoms
+//     // Parameters
+//     __global float4*  REQs,         // 4 // non-bonded parameters (RvdW,EvdW,QvdW,Hbond)
+//     __global int4*    neighs,       // 5 // neighbors indices      ( to ignore interactions between bonded atoms )
+//     __global int4*    neighCell,    // 6 // neighbors cell indices ( to know which PBC image should be ignored  due to bond )
+//     __global cl_Mat3* lvecs,        // 7 // lattice vectors for each system
+//     const int4        nPBC,         // 8 // number of PBC images in each direction (x,y,z)
+//     const float4      GFFParams     // 9 // Grid-Force-Field parameters
+// ){
+//     __local float4 LATOMS[32];
+//     __local float4 LCLJS[32];
+//     func_getNonBond( nDOFs, apos, aforce, REQs, neighs, neighCell, lvecs, nPBC, GFFParams, LATOMS, LCLJS );
+// }
 
 
 // ======================================================================
 //                     updateAtomsMMFFf4()
 // ======================================================================
 
-unsigned int hash_wang(unsigned int bits) {
-    //unsigned int bits = __float_as_int(value);
-    bits = (bits ^ 61) ^ (bits >> 16);
-    bits *= 9;
-    bits = bits ^ (bits >> 4);
-    bits *= 0x27d4eb2d;
-    bits = bits ^ (bits >> 15);
-    return bits;
-}
+// unsigned int hash_wang(unsigned int bits) {
+//     //unsigned int bits = __float_as_int(value);
+//     bits = (bits ^ 61) ^ (bits >> 16);
+//     bits *= 9;
+//     bits = bits ^ (bits >> 4);
+//     bits *= 0x27d4eb2d;
+//     bits = bits ^ (bits >> 15);
+//     return bits;
+// }
 
-float hashf_wang( float val, float xmin, float xmax) {
-    //return ( (float)(bits)*(2147483647.0f );
-    return (((float)( hash_wang(  __float_as_int(val) ) )) * 4.6566129e-10 )  *(xmax-xmin)+ xmin;
-}
+// float hashf_wang( float val, float xmin, float xmax) {
+//     //return ( (float)(bits)*(2147483647.0f );
+//     return (((float)( hash_wang(  __float_as_int(val) ) )) * 4.6566129e-10 )  *(xmax-xmin)+ xmin;
+// }
 
 // Assemble recoil forces from neighbors and  update atoms positions and velocities 
 //__attribute__((reqd_work_group_size(1,1,1)))
-__kernel void updateAtomsMMFFf4(
+//  void func_updateAtomsMMFFf4(
+__kernel void updateAtomsMMFFf4(    
     const int4        nDOFs,            // 1 // (natoms,nnode) dimensions of the system
     __global float4*  apos,         // 2 // positions of atoms  (including node atoms [0:nnode] and capping atoms [nnode:natoms] and pi-orbitals [natoms:natoms+nnode] )
     __global float4*  avel,         // 3 // velocities of atoms 
@@ -717,7 +747,7 @@ __kernel void updateAtomsMMFFf4(
 ){
     const int natoms=nDOFs.x;           // number of atoms
     const int nnode =nDOFs.y;           // number of node atoms
-    const int nMaxSysNeighs = nDOFs.w;  // max number of inter-system interactions; if <0 shwitch inter system interactions off
+    const int nMaxSysNeighs = nDOFs.z;  // max number of inter-system interactions; if <0 shwitch inter system interactions off
     const int nvec  = natoms+nnode; // number of vectors (atoms+node atoms)
     const int iG = get_global_id  (0); // index of atom
 
@@ -734,14 +764,16 @@ __kernel void updateAtomsMMFFf4(
     const float4 MDpars  = MDparams[iS]; // (dt,damp,Flimit)
     const float4 TDrive = TDrives[iS];
 
+    if((iG==iGdbg)&&(iS==iSdbg)){ printf("OCL updateAtomsMMFFf4() natoms %i nvec %i MDpars(%g,%g,%g,%g) \n", natoms, nvec, MDpars.x,MDpars.y,MDpars.z,MDpars.w); }
+
     // if((iG==iGdbg)&&(iS==iSdbg)){ 
     //     printf("OCL updateAtomsMMFFf4() natoms %i nvec %i MDpars(%g,%g,%g,%g) \n", natoms, nvec, MDpars.x,MDpars.y,MDpars.z,MDpars.w);  
     //     for(int is=0; is<nS; is++){
-    //         //printf( "GPU::TDrives[%i](%g,%g,%g,%g)\n", i, TDrives[i].x,TDrives[i].y,TDrives[i].z,TDrives[i].w );
-    //         //printf( "GPU::bboxes[%i](%g,%g,%g)(%g,%g,%g)(%g,%g,%g)\n", is, bboxes[is].a.x,bboxes[is].a.y,bboxes[is].a.z,   bboxes[is].b.x,bboxes[is].b.y,bboxes[is].b.z,   bboxes[is].c.x,bboxes[is].c.y,bboxes[is].c.z );
+    //         //printf( "OCL::TDrives[%i](%g,%g,%g,%g)\n", i, TDrives[i].x,TDrives[i].y,TDrives[i].z,TDrives[i].w );
+    //         //printf( "OCL::bboxes[%i](%g,%g,%g)(%g,%g,%g)(%g,%g,%g)\n", is, bboxes[is].a.x,bboxes[is].a.y,bboxes[is].a.z,   bboxes[is].b.x,bboxes[is].b.y,bboxes[is].b.z,   bboxes[is].c.x,bboxes[is].c.y,bboxes[is].c.z );
     //         for(int ia=0; ia<natoms; ia++){
     //             int ic = ia+is*natoms;
-    //             if(constr[ia+is*natoms].w>0) printf( "OCL  sys[%i]atom[%i] constr(%g,%g,%g|%g) constrK(%g,%g,%g|%g)\n", is, ia, constr[ic].x,constr[ic].y,constr[ic].z,constr[ic].w,   constrK[ic].x,constrK[ic].y,constrK[ic].z,constrK[ic].w  );
+    //             if(constr[ia+is*natoms].w>0) printf( "OCL  sys[%i]atom[%i] constr(%g,%g,%g|K=%g) constrK(%g,%g,%g|%g)\n", is, ia, constr[ic].x,constr[ic].y,constr[ic].z,constr[ic].w,   constrK[ic].x,constrK[ic].y,constrK[ic].z,constrK[ic].w  );
     //         }
     //     }
     // }
@@ -775,7 +807,7 @@ __kernel void updateAtomsMMFFf4(
     if(ngs.w>=0){ fe += fneigh[ngs.w]; }
 
     // ---- Limit Forces - WARRNING : Github_Copilot says: this is not the best way to limit forces, because it can lead to drift, better is to limit forces in the first forcefield run (best is NBFF) 
-    float Flimit = 10.0;
+    float Flimit = 10.0f;
     float fr2 = dot(fe.xyz,fe.xyz);  // squared force
     if( fr2 > (Flimit*Flimit) ){  fe.xyz*=(Flimit/sqrt(fr2)); }  // if force is too big, we scale it down to Flimit
 
@@ -805,7 +837,7 @@ __kernel void updateAtomsMMFFf4(
             cK = max( cK, (float4){0.0f,0.0f,0.0f,0.0f} );
             const float3 fc = (cons.xyz - pe.xyz)*cK.xyz;
             fe.xyz += fc; // add constraint force
-            //if(iS==0){printf( "GPU::constr[ia=%i|iS=%i] (%g,%g,%g|K=%g) fc(%g,%g,%g) cK(%g,%g,%g)\n", iG, iS, cons.x,cons.y,cons.z,cons.w, fc.x,fc.y,fc.z , cK.x, cK.y, cK.z ); }
+            //if(iS==0){printf( "OCL::constr[ia=%i|iS=%i] (%g,%g,%g|K=%g) fc(%g,%g,%g) cK(%g,%g,%g)\n", iG, iS, cons.x,cons.y,cons.z,cons.w, fc.x,fc.y,fc.z , cK.x, cK.y, cK.z ); }
         }
     }
 
@@ -837,16 +869,16 @@ __kernel void updateAtomsMMFFf4(
         // Thermal driving  - Langevin thermostat, see C++ MMFFsp3_loc::move_atom_Langevin()
         if( bDrive ){ // if gamma>0
             fe.xyz    += ve.xyz * -TDrive.y ;  // damping,  check the untis  ... cdamp/dt = gamma
-            //const float3 rnd = (float3){ hashf_wang(ve.x+TDrive.w,-1.0,1.0),hashf_wang(ve.y+TDrive.w,-1.0,1.0),hashf_wang(ve.z+TDrive.w,-1.0,1.0)};
+            //const float3 rnd = (float3){ hashf_wang(ve.x+TDrive.w,-1.0f,1.0f),hashf_wang(ve.y+TDrive.w,-1.0f,1.0f),hashf_wang(ve.z+TDrive.w,-1.0f,1.0f)};
             __private float3 ix; 
             // + (float3){TDrive.w,TDrive.w,TDrive.w}
-            //const float4 rnd = fract( (ve*541547.1547987f + TDrive.wwww), &ix )*2.f - (float4){1.0,1.0,1.0,1.0};  // changes every frame
+            //const float4 rnd = fract( (ve*541547.1547987f + TDrive.wwww), &ix )*2.f - (float4){1.0f,1.0f,1.0f,1.0f};  // changes every frame
             const float3 rvec = (float3){  // random vector depending on the index
                 (((iG+136  + (int)(1000.f*TDrive.w) ) * 2654435761 >> 16)&0xFF) * 0.00390625f, 
                 (((iG+778  + (int)(1013.f*TDrive.w) ) * 2654435761 >> 16)&0xFF) * 0.00390625f,
                 (((iG+4578 + (int)( 998.f*TDrive.w) ) * 2654435761 >> 16)&0xFF) * 0.00390625f
             };
-            //const float3 rnd = fract( ( rvec + TDrive.www)*12.4565f, &ix )*2.f - (float3){1.0,1.0,1.0};
+            //const float3 rnd = fract( ( rvec + TDrive.www)*12.4565f, &ix )*2.f - (float3){1.0f,1.0f,1.0f};
             const float3 rnd = sin( ( rvec + TDrive.www )*124.4565f );
             //if(iS==3){  printf( "atom[%i] seed=%g rvec(%g,%g,%g) rnd(%g,%g,%g) \n", iG, TDrive.w, rvec.x,rvec.y,rvec.z, rnd.x,rnd.y,rnd.z ); }
             fe.xyz    += rnd.xyz * sqrt( 2*const_kB*TDrive.x*TDrive.y/MDpars.x );
@@ -879,10 +911,28 @@ __kernel void updateAtomsMMFFf4(
     apos[iav] = pe;
     */
     
-    //if(iG==0){ printf( "GPU::updateAtomsMMFFf4() END\n" ); }
+    //if(iG==0){ printf( "OCL::updateAtomsMMFFf4() END\n" ); }
     
 }
 
+// __kernel void updateAtomsMMFFf4(
+//     const int4        nDOFs,            // 1 // (natoms,nnode) dimensions of the system
+//     __global float4*  apos,         // 2 // positions of atoms  (including node atoms [0:nnode] and capping atoms [nnode:natoms] and pi-orbitals [natoms:natoms+nnode] )
+//     __global float4*  avel,         // 3 // velocities of atoms 
+//     __global float4*  aforce,       // 4 // forces on atoms
+//     __global float4*  cvf,          // 5 // damping coefficients for velocity and force
+//     __global float4*  fneigh,       // 6 // recoil forces on neighbors (and pi-orbitals)
+//     __global int4*    bkNeighs,     // 7 // back neighbors indices (for recoil forces)
+//     __global float4*  constr,       // 8 // constraints (x,y,z,K) for each atom
+//     __global float4*  constrK,      // 9 // constraints stiffness (kx,ky,kz,?) for each atom
+//     __global float4*  MDparams,     // 10 // MD parameters (dt,damp,Flimit)
+//     __global float4*  TDrives,      // 11 // Thermal driving (T,gamma_damp,seed,?)
+//     __global cl_Mat3* bboxes,       // 12 // bounding box (xmin,ymin,zmin)(xmax,ymax,zmax)(kx,ky,kz)
+//     __global int*     sysneighs,    // 13 // // for each system contains array int[nMaxSysNeighs] of nearby other systems
+//     __global float4*  sysbonds      // 14 // // contains parameters of bonds (constrains) with neighbor systems   {Lmin,Lmax,Kpres,Ktens}
+// ){
+//     func_updateAtomsMMFFf4( nDOFs, apos, avel, aforce, cvf, fneigh, bkNeighs, constr, constrK, MDparams, TDrives, bboxes, sysneighs, sysbonds );
+// }
 
 __kernel void runMD(
     const int4 nDOFs,               // 1   (nAtoms,nnode) dimensions of the system
@@ -921,7 +971,15 @@ __kernel void runMD(
     __global float4*  sysbonds      // 14 // // contains parameters of bonds (constrains) with neighbor systems   {Lmin,Lmax,Kpres,Ktens}
 ){
 
+   const int iG = get_global_id(0);
+   const int iS = get_global_id(1);
+   //if((iG==iGdbg)&&(iS==iSdbg)){ printf( "OCL runMD() nDOFs(%i,%i,%i,%i) \n", nDOFs.x,nDOFs.y,nDOFs.z,nDOFs.w ); }
+
+    //__local float4 LATOMS[32];
+    //__local float4 LCLJS[32];
     for(int istep=0; istep<nDOFs.w; istep++){
+        if((iG==iGdbg)&&(iS==iSdbg)){ printf( "OCL runMD() --- iter %i nDOFs(%i,%i,%i,%i) \n", istep, nDOFs.x,nDOFs.y,nDOFs.z,nDOFs.w ); }
+        //func_getMMFFf4(
         getMMFFf4(
             nDOFs,               // 1   (nAtoms,nnode) dimensions of the system
             apos,         // 2  [natoms]     positions of atoms (including node atoms [0:nnode] and capping atoms [nnode:natoms] and pi-orbitals [natoms:natoms+nnode] )
@@ -941,6 +999,8 @@ __kernel void runMD(
             npbc,
             bSubtractVdW
         );
+        barrier(CLK_GLOBAL_MEM_FENCE);
+        //func_getNonBond(
         getNonBond(
             nDOFs,               // 1   (nAtoms,nnode) dimensions of the system
             apos,         // 2  [natoms]     positions of atoms  (including node atoms [0:nnode] and capping atoms [nnode:natoms] and pi-orbitals [natoms:natoms+nnode] )
@@ -950,8 +1010,13 @@ __kernel void runMD(
             neighCell,   // 6 // neighbors cell indices ( to ignore interactions between bonded atoms )
             lvecs,        // 7 // lattice vectors for each system
             nPBC,         // 8 // number of PBC images in each direction (x,y,z)
-            GFFParams     // 9 // Grid-Force-Field parameters
+            GFFParams
+            //,    // 9 // Grid-Force-Field parameters
+            //LATOMS,
+            //LCLJS
         );
+        barrier(CLK_GLOBAL_MEM_FENCE);
+        //func_updateAtomsMMFFf4(
         updateAtomsMMFFf4(
             nDOFs,               // 1   (nAtoms,nnode) dimensions of the system
             apos,         // 2  [natoms]     positions of atoms  (including node atoms [0:nnode] and capping atoms [nnode:natoms] and pi-orbitals [natoms:natoms+nnode] )
@@ -968,6 +1033,7 @@ __kernel void runMD(
             sysneighs,    // 13 // // for each system contains array int[nMaxSysNeighs] of nearby other systems
             sysbonds      // 14 // // contains parameters of bonds (constrains) with neighbor systems   {Lmin,Lmax,Kpres,Ktens}
         );
+        barrier(CLK_GLOBAL_MEM_FENCE);
     }
 }
 
@@ -975,7 +1041,7 @@ __kernel void runMD(
 
 
 
-
+/*
 
 // ======================================================================
 //                     printOnGPU()
@@ -993,7 +1059,7 @@ __kernel void printOnGPU(
     __global float4*  constr        // 8
 ){
     const int natoms=nDOFs.x;
-    const int nnode =nDOFs.y;
+    const int nnode =nDOFs.y; 
     const int isys  =nDOFs.z; 
     const int nvec  = natoms+nnode;
     const int iG = get_global_id  (0);
@@ -1006,7 +1072,7 @@ __kernel void printOnGPU(
     //const int iG_DBG = 0;
     const int iG_DBG = 1;
     
-    printf( "#### GPU::printOnGPU(isys=%i) natoms=%i nnode=%i nG,nS(%i,%i) \n", isys,  natoms,nnode,   nS,nG );
+    printf( "#### OCL::printOnGPU(isys=%i) natoms=%i nnode=%i nG,nS(%i,%i) \n", isys,  natoms,nnode,   nS,nG );
     if(mask.x){
         for(int i=0; i<natoms; i++){
             int ia=i + isys*nvec;
@@ -1042,3 +1108,5 @@ __kernel void printOnGPU(
     }
     
 }
+
+*/

@@ -82,20 +82,24 @@ print("Kpp",    mmff.Kpp )
 print("\n\n\n################# RUN OpenCL MMFF #################")
 mdcl = clMD.MolecularDynamics(nloc=32)
 mdcl.realloc( mmff=mmff, nSystems=1,)   # Allocate memory for 1 system (nSystems=1) using the MMFF template
+mdcl.setup_kernels()
 mdcl.pack_system(iSys=0, mmff=mmff)  # Pack the MMFF data into GPU buffers for system index 0
-mdcl.upload_all_systems()            # Upload all system data to the GPU
-mdcl.setup_kernels()                 # Set up kernels with their arguments
+mdcl.upload_all_systems()   
+mdcl.init_kernel_params()         # Upload all system data to the GPU
+
+#mdcl.run_getNonBond()
+#mdcl.run_getMMFFf4()
+#mdcl.run_updateAtomsMMFFf4()
+mdcl.run_runMD()
+
+mdcl.queue.finish()
 
 # mdcl.run_getNonBond()
 # mdcl.run_getMMFFf4()
-# mdcl.run_updateAtomsMMFFf4()
-# mdcl.queue.finish()
-# mdcl.run_getNonBond()
-# mdcl.run_getMMFFf4()
 # mdcl.queue.finish()
 
-mdcl.make_MD_queue_batch(perBatch=5)
-mdcl.run_MD_batched( nsteps=20 )
+#mdcl.make_MD_queue_batch(perBatch=5)
+#mdcl.run_MD_batched( nsteps=20 )
 
 
 
