@@ -6,6 +6,7 @@
 #include "Vec2.h"
 #include "Vec3.h"
 #include "SMat3.h"
+#include "molecular_utils.h"
 #include "quaternion.h"
 
 //#include "integerOps.h"
@@ -195,7 +196,7 @@ inline void setAngleParam(int i, double a0, double k){
 inline void setBondParam(int i, double l0, double k){ bond_l0[i] = l0; bond_k[i]  = k; };
 inline void setTorsParam(int i, int     n, double k){ tors_n [i] =  n; tors_k[i]  = k; };
 
-inline void readSignedBond(int& i, Vec3d& h){ if(i&SIGN_MASK){ i&=0xFFFF; h = hbond[i]; h.mul(-1.0d); }else{ h = hbond[i]; }; };
+inline void readSignedBond(int& i, Vec3d& h){ if(i&SIGN_MASK){ i&=0xFFFF; h = hbond[i]; h.mul(-1.0); }else{ h = hbond[i]; }; };
 
 void cleanAtomForce(){ for(int i=0; i<natoms; i++){ aforce[i].set(0.0); } }
 

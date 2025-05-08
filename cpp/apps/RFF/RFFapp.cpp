@@ -363,7 +363,7 @@ void TestAppRARFF::draw(){
     //bRun = false;
     //perFrame = 10;
     //ff.bGridAccel=false;
-    ray0 = (Vec3d)( cam.pos + cam.rotMat().a*mouse_begin_x + cam.rotMat().b*mouse_begin_y);
+    ray0 = (Vec3d)( cam.pos() + cam.rotMat().a*mouse_begin_x + cam.rotMat().b*mouse_begin_y);
     if(bRun){
         long T=getCPUticks();
         simulation();

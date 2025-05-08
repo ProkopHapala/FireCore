@@ -300,7 +300,7 @@ void TestAppMolecularBrowser::draw(){
     opengl1renderer.enable(GL_DEPTH_TEST);
 
     if(frameCount==1){ 
-        cam.qrot.pitch( M_PI );  qCamera0=cam.qrot; 
+        qCamera0=cam.qrot();
     }
     if(frameCount==2){
         renderThumbnails( 0, molecules.size(), 10.0, true );
@@ -391,10 +391,10 @@ void  TestAppMolecularBrowser::keyStateHandling( const Uint8 *keys ){
 	//if( keys[ SDL_SCANCODE_S ] ){ cam.pos.add_mul( cam.rotMat().b, -cameraMoveSpeed ); }
     //if( keys[ SDL_SCANCODE_Q ] ){ cam.pos.add_mul( cam.rotMat().c, -cameraMoveSpeed ); }
 	//if( keys[ SDL_SCANCODE_E ] ){ cam.pos.add_mul( cam.rotMat().c,  cameraMoveSpeed ); }
-    if( keys[ SDL_SCANCODE_LEFT  ] ){ cam.pos.add_mul( cam.rotMat().a, -cameraMoveSpeed ); }
-	if( keys[ SDL_SCANCODE_RIGHT ] ){ cam.pos.add_mul( cam.rotMat().a,  cameraMoveSpeed ); }
-    if( keys[ SDL_SCANCODE_UP    ] ){ cam.pos.add_mul( cam.rotMat().b,  cameraMoveSpeed ); }
-	if( keys[ SDL_SCANCODE_DOWN  ] ){ cam.pos.add_mul( cam.rotMat().b, -cameraMoveSpeed ); }
+    if( keys[ SDL_SCANCODE_LEFT  ] ){ cam.shift( cam.rotMat().a * -cameraMoveSpeed ); }
+	if( keys[ SDL_SCANCODE_RIGHT ] ){ cam.shift( cam.rotMat().a *  cameraMoveSpeed ); }
+    if( keys[ SDL_SCANCODE_UP    ] ){ cam.shift( cam.rotMat().b *  cameraMoveSpeed ); }
+	if( keys[ SDL_SCANCODE_DOWN  ] ){ cam.shift( cam.rotMat().b * -cameraMoveSpeed ); }
     //AppSDL2OGL_3D::keyStateHandling( keys );
 };
 

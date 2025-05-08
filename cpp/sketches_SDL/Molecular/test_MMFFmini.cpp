@@ -781,7 +781,6 @@ void TestAppMMFFmini::draw(){
     //cam.qrot.rotate(M_PI*0.01,Vec3fX);
     
     if(frameCount==1){
-        cam.qrot.pitch( M_PI );
         ff.printAtomPos();
         ff.printBondParams();
         ff.printAngleParams();

@@ -23,6 +23,7 @@
 #include "EwaldGrid.h"
 
 #include "IO_utils.h"
+#include "testUtils.h"
 
 static bool bDebug__ = 0;
 

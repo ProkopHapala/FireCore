@@ -297,7 +297,6 @@ void TestAppMMFFsp3::draw(){
     //builder.toMMFFsp3( ff, false );
 
     if(frameCount==1){
-        cam.qrot.pitch( M_PI );
         //ff.printAtomPos();
         //ff.printBondParams();
         //ff.printAngleParams();

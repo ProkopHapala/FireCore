@@ -379,7 +379,6 @@ void TestAppMMFFmini::draw(){
     //glDrawArrays(GL_LINE_STRIP, offset, count);
 
     if(frameCount==1){
-        cam.qrot.pitch( M_PI );
         //ff.printAtomPos();
         //ff.printBondParams();
         //ff.printAngleParams();

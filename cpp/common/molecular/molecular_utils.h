@@ -5,6 +5,8 @@
 #include <string>
 #include <vector>
 #include <unordered_map>
+#include "Vec3.h"
+#include "quaternion.h"
 
 bool isnan(Vec3d&  v){ return (isnan(v.x)||isnan(v.y)||isnan(v.z)); }
 bool isnan(Vec3f&  v){ return (isnan(v.x)||isnan(v.y)||isnan(v.z)); }

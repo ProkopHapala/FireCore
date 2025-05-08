@@ -105,7 +105,7 @@ AppMolecularEditor2::AppMolecularEditor2( int& id, int WIDTH_, int HEIGHT_ ) : A
     //qCamera.set( 0.0,0.0,0.0,1.0 );  // bottom view
     //qCamera.set( 0.0,0.0,1.0,0.0 );  // bottom view
     //qCamera.set( 0.0,1.0,0.0,0.0 );  // top view  x=-x, y=y,
-    cam.qrot.set( 1.0,0.0,0.0,0.0 );    // top view  x=x, y=-y,
+    cam.setQrot( {1.0,0.0,0.0,0.0} );    // top view  x=x, y=-y,
     //qCamera.set( 0.70710678118,0.0,0.0,0.70710678118 ); // side down
     //qCamera.set( -0.70710678118,0.0,0.0,0.70710678118 ); // x=x, z=y,  y=-y,
     //qCamera.set( 0.0, -0.70710678118,0.0,0.70710678118 ); // z=-x, y=y

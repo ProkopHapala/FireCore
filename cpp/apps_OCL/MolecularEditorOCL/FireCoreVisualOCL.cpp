@@ -246,17 +246,17 @@ void TestAppFireCoreVisual::initGUI(){
         ->addItem("Right")
         ->setCommand( [&](GUIAbstractPanel* me_){ 
             DropDownList& me = *(DropDownList*)me_;
-            printf( "old cam.qrot(%g,%g,%g,%g) -> %s \n", cam.qrot.x,cam.qrot.y,cam.qrot.z,cam.qrot.w, me.labels[me.iSelected].c_str()  );
+            printf( "old cam.qrot(%g,%g,%g,%g) -> %s \n", cam.qrot().x,cam.qrot().y,cam.qrot().z,cam.qrot().w, me.labels[me.iSelected].c_str()  );
             switch(me.iSelected){
-                case 0: cam.qrot=Quat4fTop;    break;
-                case 1: cam.qrot=Quat4fBotton; break;
-                case 2: cam.qrot=Quat4fFront;  break;
-                case 3: cam.qrot=Quat4fBack;   break;
-                case 4: cam.qrot=Quat4fLeft;   break;
-                case 5: cam.qrot=Quat4fRight;  break;
+                case 0: cam.setQrot(Quat4fTop);    break;
+                case 1: cam.setQrot(Quat4fBotton); break;
+                case 2: cam.setQrot(Quat4fFront);  break;
+                case 3: cam.setQrot(Quat4fBack);   break;
+                case 4: cam.setQrot(Quat4fLeft);   break;
+                case 5: cam.setQrot(Quat4fRight);  break;
             }
-            printf( "->new cam.qrot(%g,%g,%g,%g) \n", cam.qrot.x,cam.qrot.y,cam.qrot.z,cam.qrot.w );
-            printf( "cam: aspect %g zoom %g \n", cam.aspect, cam.zoom);
+            printf( "->new cam.qrot(%g,%g,%g,%g) \n", cam.qrot().x,cam.qrot().y,cam.qrot().z,cam.qrot().w );
+            printf( "cam: aspect %g zoom %g \n", cam.aspect(), cam.zoom());
             printMat((Mat3d)cam.rotMat());
             }
         );
@@ -304,7 +304,7 @@ TestAppFireCoreVisual::TestAppFireCoreVisual( int& id, int WIDTH_, int HEIGHT_ )
 	opengl1renderer.lightfv    ( GL_LIGHT0, GL_SPECULAR,  l_specular );
 
     // ========== Gizmo
-    cam.persp = false;
+    cam.setPersp(false);
     gizmo.cam = &cam;
     gizmo.bindPoints(ff.natoms, ff.apos      );
     gizmo.bindEdges (ff.nbonds, ff.bond2atom );
@@ -403,7 +403,7 @@ void TestAppFireCoreVisual::draw(){
     opengl1renderer.enable(GL_LIGHTING );
     opengl1renderer.enable(GL_DEPTH_TEST);
 
-    if(frameCount==1){ cam.qrot.pitch( M_PI );  qCamera0=cam.qrot; }
+    if(frameCount==1){ qCamera0=cam.qrot(); }
     if(bRunRelax){ MDloop(); }
 
     // --- Mouse Interaction / Visualization
@@ -630,7 +630,7 @@ void TestAppFireCoreVisual::eventHandling ( const SDL_Event& event  ){
                 case SDLK_KP_9: picked_lvec->z+=xstep; break;
                 case SDLK_KP_6: picked_lvec->z-=xstep; break;
 
-                case SDLK_KP_0: cam.qrot = qCamera0; break;
+                case SDLK_KP_0: cam.setQrot(qCamera0); break;
 
                 case SDLK_COMMA:  which_MO--; printf("which_MO %i \n", which_MO ); break;
                 case SDLK_PERIOD: which_MO++; printf("which_MO %i \n", which_MO ); break;
@@ -660,8 +660,8 @@ void TestAppFireCoreVisual::eventHandling ( const SDL_Event& event  ){
 
                 case SDLK_d: {
                     printf( "DEBUG Camera Matrix\n");
-                    printf( "DEBUG cam.qrot(%g,%g,%g,%g) \n", cam.qrot.x,cam.qrot.y,cam.qrot.z,cam.qrot.w );
-                    printf( "DEBUG cam aspect %g zoom %g \n", cam.aspect, cam.zoom);
+                    printf( "DEBUG cam.qrot(%g,%g,%g,%g) \n", cam.qrot().x,cam.qrot().y,cam.qrot().z,cam.qrot().w );
+                    printf( "DEBUG cam aspect %g zoom %g \n", cam.aspect(), cam.zoom());
                     printMat((Mat3d)cam.rotMat());
                 } break;
 
@@ -733,10 +733,10 @@ void  TestAppFireCoreVisual::keyStateHandling( const Uint8 *keys ){
 	//if( keys[ SDL_SCANCODE_S ] ){ cam.pos.add_mul( cam.rotMat().b, -cameraMoveSpeed ); }
     //if( keys[ SDL_SCANCODE_Q ] ){ cam.pos.add_mul( cam.rotMat().c, -cameraMoveSpeed ); }
 	//if( keys[ SDL_SCANCODE_E ] ){ cam.pos.add_mul( cam.rotMat().c,  cameraMoveSpeed ); }
-    if( keys[ SDL_SCANCODE_LEFT  ] ){ cam.pos.add_mul( cam.rotMat().a, -cameraMoveSpeed ); }
-	if( keys[ SDL_SCANCODE_RIGHT ] ){ cam.pos.add_mul( cam.rotMat().a,  cameraMoveSpeed ); }
-    if( keys[ SDL_SCANCODE_UP    ] ){ cam.pos.add_mul( cam.rotMat().b,  cameraMoveSpeed ); }
-	if( keys[ SDL_SCANCODE_DOWN  ] ){ cam.pos.add_mul( cam.rotMat().b, -cameraMoveSpeed ); }
+    if( keys[ SDL_SCANCODE_LEFT  ] ){ cam.shift( cam.rotMat().a * -cameraMoveSpeed ); }
+	if( keys[ SDL_SCANCODE_RIGHT ] ){ cam.shift( cam.rotMat().a *  cameraMoveSpeed ); }
+    if( keys[ SDL_SCANCODE_UP    ] ){ cam.shift( cam.rotMat().b *  cameraMoveSpeed ); }
+	if( keys[ SDL_SCANCODE_DOWN  ] ){ cam.shift( cam.rotMat().b * -cameraMoveSpeed ); }
     //AppSDL2OGL_3D::keyStateHandling( keys );
 };
 

@@ -24,21 +24,21 @@ inline void ortho( const Camera& cam, bool zsym ){
     opengl1renderer.matrixMode( GL_PROJECTION );
     opengl1renderer.loadIdentity();
     float zmin = cam.zmin; if(zsym) zmin=-cam.zmax;
-	opengl1renderer.ortho( -cam.zoom*cam.aspect, cam.zoom*cam.aspect, -cam.zoom, cam.zoom, zmin, cam.zmax );
+	opengl1renderer.ortho( -cam.zoom()*cam.aspect(), cam.zoom()*cam.aspect(), -cam.zoom(), cam.zoom(), zmin, cam.zmax );
 	float glMat[16];
 	Draw3D::toGLMatCam( { 0.0f, 0.0f, 0.0f}, cam.rotMat(), glMat );
 	opengl1renderer.multMatrixf( glMat );
 
 	opengl1renderer.matrixMode ( GL_MODELVIEW );
 	opengl1renderer.loadIdentity();
-	opengl1renderer.translatef(-cam.pos.x,-cam.pos.y,-cam.pos.z);
+	opengl1renderer.translatef(-cam.pos().x,-cam.pos().y,-cam.pos().z);
 }
 
 inline void perspective( const Camera& cam ){
     opengl1renderer.matrixMode( GL_PROJECTION );
     opengl1renderer.loadIdentity();
     //opengl1renderer.frustum( -ASPECT_RATIO, ASPECT_RATIO, -1, 1, camDist/zoom, VIEW_DEPTH );
-    opengl1renderer.frustum( -cam.aspect*cam.zoom, cam.aspect*cam.zoom, -cam.zoom, cam.zoom, cam.zmin, cam.zmax );
+    opengl1renderer.frustum( -cam.aspect()*cam.zoom(), cam.aspect()*cam.zoom(), -cam.zoom(), cam.zoom(), cam.zmin, cam.zmax );
     //opengl1renderer.frustum( -cam.zoom*cam.aspect, cam.zoom*cam.aspect, -cam.zoom, cam.zoom, cam.zmin, cam.zmax );
 	float glMat[16];
 	Draw3D::toGLMatCam( { 0.0f, 0.0f, 0.0f}, cam.rotMat(), glMat );
@@ -46,7 +46,7 @@ inline void perspective( const Camera& cam ){
 
 	opengl1renderer.matrixMode ( GL_MODELVIEW );
 	opengl1renderer.loadIdentity();
-	opengl1renderer.translatef(-cam.pos.x,-cam.pos.y,-cam.pos.z);
+	opengl1renderer.translatef(-cam.pos().x,-cam.pos().y,-cam.pos().z);
     //opengl1renderer.translatef ( -camPos.x+camMat.cx*camDist, -camPos.y+camMat.cy*camDist, -camPos.z+camMat.cz*camDist );
     //opengl1renderer.translatef ( -cam.pos.x+camMat.cx*camDist, -camPos.y+camMat.cy*camDist, -camPos.z+camMat.cz*camDist );
 }
@@ -255,8 +255,6 @@ void GLView::init( int& id, int WIDTH_, int HEIGHT_ ){
 
 GLView::GLView( int& id, int WIDTH_, int HEIGHT_ ){
     init(id,WIDTH_,HEIGHT_);
-    cam.qrot.setOne();
-    cam.pos.set(0.0);
     GLbyte* s;
     // http://stackoverflow.com/questions/40444046/c-how-to-detect-graphics-card-model
     printf( "GL_VENDOR  : %s \n", opengl1renderer.getString(GL_VENDOR)  );
@@ -327,8 +325,8 @@ bool GLView::post_draw(){
 // }
 
 void GLView::camera(){
-    cam.zoom   = zoom;
-    cam.aspect = ASPECT_RATIO;
+    cam.setZoom(zoom);
+    cam.setAspect(ASPECT_RATIO);
     if (perspective){ Cam::perspective( cam ); }
     else            { Cam::ortho( cam, true ); }
 }
@@ -425,17 +423,17 @@ void GLView::eventHandling ( const SDL_Event& event  ){
 }
 
 void GLView::keyStateHandling( const Uint8 *keys ){
-    if( keys[ SDL_SCANCODE_LEFT  ] ){ cam.qrot.dyaw  (  keyRotSpeed ); }
-    if( keys[ SDL_SCANCODE_RIGHT ] ){ cam.qrot.dyaw  ( -keyRotSpeed ); }
-    if( keys[ SDL_SCANCODE_UP    ] ){ cam.qrot.dpitch(  keyRotSpeed ); }
-    if( keys[ SDL_SCANCODE_DOWN  ] ){ cam.qrot.dpitch( -keyRotSpeed ); }
+    if( keys[ SDL_SCANCODE_LEFT  ] ){ cam.dyaw  (  keyRotSpeed ); }
+    if( keys[ SDL_SCANCODE_RIGHT ] ){ cam.dyaw  ( -keyRotSpeed ); }
+    if( keys[ SDL_SCANCODE_UP    ] ){ cam.dpitch(  keyRotSpeed ); }
+    if( keys[ SDL_SCANCODE_DOWN  ] ){ cam.dpitch( -keyRotSpeed ); }
 
-    if( keys[ SDL_SCANCODE_A ] ){ cam.pos.add_mul( cam.rotMat().a, -cameraMoveSpeed ); }
-    if( keys[ SDL_SCANCODE_D ] ){ cam.pos.add_mul( cam.rotMat().a,  cameraMoveSpeed ); }
-    if( keys[ SDL_SCANCODE_W ] ){ cam.pos.add_mul( cam.rotMat().b,  cameraMoveSpeed ); }
-    if( keys[ SDL_SCANCODE_S ] ){ cam.pos.add_mul( cam.rotMat().b, -cameraMoveSpeed ); }
-    if( keys[ SDL_SCANCODE_Q ] ){ cam.pos.add_mul( cam.rotMat().c, -cameraMoveSpeed ); }
-    if( keys[ SDL_SCANCODE_E ] ){ cam.pos.add_mul( cam.rotMat().c,  cameraMoveSpeed ); }
+    if( keys[ SDL_SCANCODE_A ] ){ cam.shift( cam.rotMat().a * -cameraMoveSpeed ); }
+    if( keys[ SDL_SCANCODE_D ] ){ cam.shift( cam.rotMat().a *  cameraMoveSpeed ); }
+    if( keys[ SDL_SCANCODE_W ] ){ cam.shift( cam.rotMat().b *  cameraMoveSpeed ); }
+    if( keys[ SDL_SCANCODE_S ] ){ cam.shift( cam.rotMat().b * -cameraMoveSpeed ); }
+    if( keys[ SDL_SCANCODE_Q ] ){ cam.shift( cam.rotMat().c * -cameraMoveSpeed ); }
+    if( keys[ SDL_SCANCODE_E ] ){ cam.shift( cam.rotMat().c *  cameraMoveSpeed ); }
     //printf( "frame %i keyStateHandling cam.pos (%g,%g,%g) \n", frameCount, cam.pos.x, cam.pos.y, cam.pos.z );
 }
 
@@ -448,7 +446,7 @@ void GLView::mouseHandling( ){
     //printf( " %i %i \n", mx,my );
     if ( buttons & SDL_BUTTON(SDL_BUTTON_RIGHT)) {
         Quat4f q; q.fromTrackball( 0, 0, -mx*mouseRotSpeed, my*mouseRotSpeed );
-        cam.qrot.qmul_T( q );
+        cam.qrotQmul_T(q);
     }
     //qCamera.qmul( q );
 }

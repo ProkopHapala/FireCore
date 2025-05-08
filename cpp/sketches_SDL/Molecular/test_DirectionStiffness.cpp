@@ -323,8 +323,6 @@ void TestAppDirectionStiffness::draw(){
 	opengl1renderer.enable(GL_DEPTH_TEST);
 
     if(frameCount==1){
-
-        cam.qrot.pitch( M_PI );
         ff.printAtomPos();
         ff.printBondParams();
         ff.printAngleParams();
