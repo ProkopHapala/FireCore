@@ -3,6 +3,12 @@ import os
 import numpy as np
 import ctypes
 import pyopencl as cl
+
+import time
+import json
+import os
+import matplotlib.pyplot as plt
+
 import pyopencl.tools
 import pyopencl.array as cl_array
 import pyopencl.cltypes as cltypes
@@ -11,6 +17,111 @@ import time
 
 from . import clUtils as clu
 from .clUtils import GridShape,GridCL
+
+# Dictionary to store kernel execution times
+kernel_times = {}
+
+def profile_kernel(name, queue, kernel, global_size, local_size, *args, **kwargs):
+    """Profile a kernel execution"""
+    # Record start time
+    start_time = time.time()
+    
+    # Call the kernel
+    event = kernel(queue, global_size, local_size, *args, **kwargs)
+    
+    # Wait for the kernel to complete
+    event.wait()
+    
+    # Record end time
+    end_time = time.time()
+    
+    # Calculate duration
+    duration = (end_time - start_time) * 1000  # Convert to ms
+    
+    # Add to kernel times
+    if name not in kernel_times:
+        kernel_times[name] = []
+    kernel_times[name].append(duration)
+    
+    # Print profiling information
+    print(f"Kernel: {name}, Duration: {duration:.3f} ms")
+    
+    return event
+
+def save_profiling_results(output_dir="firecore_profile_results"):
+    """Save profiling results to a file"""
+    # Create output directory
+    os.makedirs(output_dir, exist_ok=True)
+    
+    # Create results dictionary
+    results = {
+        "kernel_count": len(kernel_times),
+        "kernels": {}
+    }
+    
+    # Add kernel information
+    for kernel_name, durations in kernel_times.items():
+        if len(durations) > 0:
+            results["kernels"][kernel_name] = {
+                "executions": len(durations),
+                "total_duration": sum(durations),
+                "average_duration": sum(durations) / len(durations),
+                "min_duration": min(durations),
+                "max_duration": max(durations),
+                "durations": durations
+            }
+    
+    # Save results to a file
+    results_file = os.path.join(output_dir, "firecore_profiling_results.json")
+    with open(results_file, "w") as f:
+        json.dump(results, f, indent=2)
+    
+    print(f"Profiling results saved to {results_file}")
+    
+    # Create a bar chart of kernel durations if there are any kernels
+    if len(results["kernels"]) > 0:
+        plot_kernel_durations(results, os.path.join(output_dir, "firecore_kernel_durations.png"))
+    else:
+        print("No kernel executions to plot")
+    
+    return results
+
+def plot_kernel_durations(results, filename):
+    """Plot kernel durations as a bar chart"""
+    # Extract kernel names and total durations
+    names = []
+    durations = []
+    
+    for kernel_name, kernel_info in results["kernels"].items():
+        names.append(kernel_name)
+        durations.append(kernel_info["total_duration"])
+    
+    # Sort by duration
+    sorted_data = sorted(zip(names, durations), key=lambda x: x[1], reverse=True)
+    names = [x[0] for x in sorted_data]
+    durations = [x[1] for x in sorted_data]
+    
+    # Create a bar chart
+    plt.figure(figsize=(12, 6))
+    bars = plt.bar(range(len(names)), durations)
+    
+    # Add labels and title
+    plt.xlabel("Kernel")
+    plt.ylabel("Total Duration (ms)")
+    plt.title("OpenCL Kernel Execution Times")
+    plt.xticks(range(len(names)), names, rotation=45, ha="right")
+    
+    # Add duration values on top of bars
+    for bar in bars:
+        height = bar.get_height()
+        plt.text(bar.get_x() + bar.get_width()/2., height + 0.1,
+                f"{height:.2f}", ha="center", va="bottom")
+    
+    plt.tight_layout()
+    plt.savefig(filename)
+    print(f"Kernel duration plot saved to {filename}")
+
+
 
 #from gpyfft.fft import FFT
 
@@ -27,6 +138,10 @@ def prepare_grid3d(g0, dg, ng):
 
 
 class GridFF_cl:
+    def save_profiling_results(self, output_dir="firecore_profile_results"):
+        """Save profiling results to a file"""
+        return save_profiling_results(output_dir)
+
 
     def __init__(self, nloc=32 ): #, desired_voxel=0.15, allowed_factors={2, 3, 5}):  # <--- Add parameters here
         self.nloc  = nloc
@@ -58,7 +173,13 @@ class GridFF_cl:
         print( " local_memory_per_workgroup() size=", local_size, " __local []  ", clu.local_memory_float_per_workgroup( self.ctx.devices[0], local_size=32, sp_per_cu=128 ), " float32 " );
 
         try:
-            with open('../../cpp/common_resources/cl/GridFF.cl', 'r') as f:
+            # Try to find the kernel file using an absolute path
+            script_dir = os.path.dirname(os.path.abspath(__file__))
+            firecore_root = os.path.abspath(os.path.join(script_dir, "../.."))
+            kernel_path = os.path.join(firecore_root, "cpp/common_resources/cl/GridFF.cl")
+            print(f"Looking for kernel at: {kernel_path}")
+            
+            with open(kernel_path, 'r') as f:
                 self.prg = cl.Program(self.ctx, f.read()).build()
         except Exception as e:
             print( "GridFF_cl() called from path=", os.getcwd() )
@@ -443,8 +564,8 @@ class GridFF_cl:
         #     cl.enqueue_copy(self.queue, out, Ref_buff);
         #     print( "GridFF_Cl::fit3D() debug Ref_buff.min,max: ", out.min(), out.max() )
 
-        self.prg.setMul(self.queue, (nG,), (nL,), nxyz,  Ref_buff,  self.Gs_buff,  np.float32(1.0) ) # setup force
-        self.prg.setMul(self.queue, (nG,), (nL,), nxyz,  Ref_buff,  self.vGs_buff, np.float32(0.0) ) # setup velocity
+        profile_kernel("setMul", self.queue, self.prg.setMul, (nG,), (nL,), nxyz,  Ref_buff,  self.Gs_buff,  np.float32(1.0) ) # setup force
+        profile_kernel("setMul", self.queue, self.prg.setMul, (nG,), (nL,), nxyz,  Ref_buff,  self.vGs_buff, np.float32(0.0) ) # setup velocity
         
         # if bDebug:
         #     cl.enqueue_copy(self.queue, self.Gs_buff, Ref_buff);
@@ -871,7 +992,40 @@ class GridFF_cl:
             event=self.prg.slabPotential( self.queue, sz_glob, sz_loc, ns_cl, Vin_buff, self.V_Coul_buff, params )
         event.wait()
         self.queue.finish()
-        # Debug check buffer state
+        slabPotential_zyx = np.empty(self.gsh.ns[::-1], dtype=np.float32)
+        cl.enqueue_copy(self.queue, slabPotential_zyx, self.V_Coul_buff).wait()
+        
+        # # Plot three slices through the middle
+        # plt.figure(figsize=(15, 5))
+        # mid_x = slabPotential_zyx.shape[2]//2
+        # mid_y = slabPotential_zyx.shape[1]//2
+        # mid_z = slabPotential_zyx.shape[0]//2
+        # # mid_x= 0
+        # # mid_y= 40
+        # # mid_z= 2
+        # # XY plane
+        # plt.subplot(131)
+        # plt.imshow(slabPotential_zyx[mid_z, :, :], origin='lower')
+        # plt.colorbar(label='Potential')
+        # plt.title(f'XY plane (z={mid_z})')
+        # # XZ plane
+        # plt.subplot(132)
+        # plt.imshow(slabPotential_zyx[:, mid_y, :], origin='lower')
+        # plt.colorbar(label='Potential')
+        # plt.title(f'XZ plane (y={mid_y})')
+        # # YZ plane
+        # plt.subplot(133)
+        # plt.imshow(slabPotential_zyx[:, :, mid_x], origin='lower')
+        # plt.colorbar(label='Potential')
+        # plt.title(f'YZ plane (x={mid_x})')
+        # plt.suptitle('slabPotential_zyx')
+        # plt.tight_layout()
+        # plt.show()
+        
+     
+
+
+        # ===== DEBUG: Output Buffer Check =====
         debug_check = np.empty(self.gsh.ns[::-1], dtype=np.float32)
         cl.enqueue_copy(self.queue, debug_check, self.V_Coul_buff)
         print(f"V_Coul_buff state in slabPotential: range [{debug_check.min():.3f}, {debug_check.max():.3f}]")
@@ -915,6 +1069,7 @@ class GridFF_cl:
 
         if sh is None: sh=self.gsh.ns[::-1]
         nxyz = np.int32( sh[0]*sh[1]*sh[2] )
+        print(f"Grid shape (ZYX): {sh}, total elements: {nxyz}")
 
         buff_names = {'V1', 'V2', 'vV'}
         self.try_make_buffs(buff_names, 0, nxyz )
@@ -929,6 +1084,7 @@ class GridFF_cl:
 
         szl = (self.nloc,)
         szg = ( clu.roundup_global_size( nxyz, self.nloc), )
+
         self.prg.setCMul( self.queue, szg,  szl, nxyz, self.Vgrid_buff,  self.V1_buff, C_cl ) # copy real part from complex Vgrid to scalar V1
         self.prg.set    ( self.queue, szg,  szl, nxyz, self.vV_buff, np.float32(0.0) )        # initialize velocity to zero
         last_buff=1
@@ -952,6 +1108,13 @@ class GridFF_cl:
                 cl.enqueue_copy(self.queue, V, self.V2_buff)
             elif last_buff == 1:
                 cl.enqueue_copy(self.queue, V, self.V1_buff)
+                
+            # DEBUG: Analyze Laplace output to find max value position
+            max_idx = np.unravel_index(np.argmax(np.abs(V)), V.shape)
+            max_val = V[max_idx]
+            print(f"\n=== DEBUG: Laplace Output Analysis ====")
+            print(f"Laplace output shape: {V.shape} (ZYX order)")
+            print(f"Laplace output max at (z,y,x): {max_idx}, value: {max_val:.6f}")
             return V
         else:
             if last_buff == 2:
@@ -1035,7 +1198,11 @@ class GridFF_cl:
         # atoms_np[:,2] += self.gcl.dg[2] * 1      # NOTE / TODO : This works with new normalization (tested by compare_npy_z.py with respect to C++ EwaldGrid.h for NaCl_1x1_L3 ) ( see GridFF_cl::poisson()  vs GridFF_cl::poisson_old() )
         #atoms_np[:,2] += self.gcl.dg[2] * (-1 )
         #atoms_np[:,2] += self.gcl.dg[2] * 1
-
+        
+        atoms_np[:,0] += self.gcl.dg[0] * 1
+        atoms_np[:,1] += self.gcl.dg[1] * 1
+        atoms_np[:,2] += self.gcl.dg[2] * 1
+        
         cl.enqueue_copy(self.queue, self.atoms_buff, atoms_np)
 
         print("GridFF_cl::makeCoulombEwald_slab()._project_atoms_on_grid_quintic_pbc")
@@ -1045,13 +1212,24 @@ class GridFF_cl:
             #sh    = self.gsh.ns[::-1]
             Qgrid = np.zeros( (*sh,2,), dtype=np.float32 )
             cl.enqueue_copy(self.queue, Qgrid, self.Qgrid_buff )
-            print("Qgrid min,max ", Qgrid[:,:,:,0].min(), Qgrid[:,:,:,0].max() )
-            #np.save( "./data/NaCl_1x1_L3/Qgrid_ocl.npy", Qgrid[:,:,:,0] )
-            # ####### Plot three slices through the middle
+            # print("Qgrid min,max ", Qgrid[:,:,:,0].min(), Qgrid[:,:,:,0].max() )
+            # print("\n--- Specific Z-slices from Full Qgrid (GPU data) ---")
+            # for z_in in [0, 200, 599, 799]:
+            #     print(f"Qgrid[Z_in={z_in}] range: [{Qgrid[z_in,:,:,0].min():.6f}, {Qgrid[z_in,:,:,0].max():.6f}]")
+            # print("------------------------------------------------------")
+            # fname = "NaCl_1x1_L1/"
+            # fname = "Na_0.9_Cl_-0.9/"
+            # path = "./data/" + os.path.splitext( fname )[0] + "Qgrid_gpu.npy"
+            # print(f"Saving Qgrid to {path}")
+            # np.save( path, Qgrid[:,:,:,0] )
+            ####### Plot three slices through the middle
             # plt.figure(figsize=(15, 5))
-            # mid_x= 0
-            # mid_y= 40
-            # mid_z= 2
+            # # mid_x= 0
+            # # mid_y= 40
+            # # mid_z= 2
+            # mid_x = Qgrid.shape[2] // 2
+            # mid_y = Qgrid.shape[1] // 2
+            # mid_z = Qgrid.shape[0] // 2
             
             # # XY plane
             # plt.subplot(131)
@@ -1083,16 +1261,19 @@ class GridFF_cl:
         V_after_poisson_laplace = np.empty(sh[::-1], dtype=np.float32)  # Note: sh includes extended z-dimension
         cl.enqueue_copy(self.queue, V_after_poisson_laplace, Vin_buff)
         
-        # ####### Plot three slices through the middle
+        ####### Plot three slices through the middle
         # plt.figure(figsize=(15, 5))
-        # mid_x= 0
-        # mid_y= 40
-        # mid_z= 7
+        # # mid_x= 0
+        # # mid_y= 40
+        # # mid_z= 7
+        # mid_x = V_after_poisson_laplace.shape[2] // 2
+        # mid_y = V_after_poisson_laplace.shape[1] // 2
+        # mid_z = V_after_poisson_laplace.shape[0] // 2
         
         
         # # XY plane
         # plt.subplot(131)
-        # plt.imshow(V_after_poisson_laplace[:, :, mid_z], origin='lower')
+        # plt.imshow(V_after_poisson_laplace[mid_z, :, :], origin='lower')
         # plt.colorbar(label='Potential')
         # plt.title(f'XY plane (z={mid_z})')
         
@@ -1104,7 +1285,7 @@ class GridFF_cl:
         
         # # YZ plane
         # plt.subplot(133)
-        # plt.imshow(V_after_poisson_laplace[ mid_x, :,:], origin='lower')
+        # plt.imshow(V_after_poisson_laplace[ :, :,mid_x], origin='lower')
         # plt.colorbar(label='Potential')
         # plt.title(f'YZ plane (x={mid_x})')
         
@@ -1149,7 +1330,7 @@ class GridFF_cl:
         print(f"Verification buffer shape: {verify_vcoul.shape}")
         print(f"Verification buffer range: [{verify_vcoul.min():.3f}, {verify_vcoul.max():.3f}]")
 
-        # ####### Plot three slices through the middle
+        ####### Plot three slices through the middle
         # plt.figure(figsize=(15, 5))
         # mid_x= 0
         # mid_y= 40

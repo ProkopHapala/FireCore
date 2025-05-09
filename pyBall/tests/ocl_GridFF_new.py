@@ -441,7 +441,7 @@ def test_gridFF_ocl( fname="./data/xyz/NaCl_1x1_L1.xyz", Element_Types_name="./d
         # plt.suptitle("Potentials After Fitting")
         # plt.subplot(1,3,1); plt.imshow( V_Paul[70,:,:].transpose() ); plt.colorbar(); plt.title( "V_Paul[0,:,:]" );plt.scatter(x_points, y_points, marker='o', color='red')
         # plt.subplot(1,3,2); plt.imshow( V_Lond[70,:,:].transpose() ); plt.colorbar(); plt.title( "V_Lond[0,:,:]" );plt.scatter(x_points, y_points, marker='o', color='red')
-        # plt.subplot(1,3,3); plt.imshow( VcoulB[70,:,:].transpose().transpose(1,0,2) ); plt.colorbar(); plt.title( "V_Coul[0,:,:]" );plt.scatter(x_points, y_points, marker='o', color='red')
+        # plt.subplot(1,3,3); plt.imshow( VcoulB[70,:,:].transpose() ); plt.colorbar(); plt.title( "V_Coul[0,:,:]" );plt.scatter(x_points, y_points, marker='o', color='red')
 
 
 
@@ -538,7 +538,7 @@ def test_gridFF_ocl( fname="./data/xyz/NaCl_1x1_L1.xyz", Element_Types_name="./d
         #cmap='magma'
         
         plt.figure( figsize=(16,8) )
-        plt.suptitle("Potentials with Transpose")
+        plt.suptitle("Potentials with Transpose XY PLANE")
         # plt.subplot(1,3,1); plt.imshow( V_Paul[:,:,0] ); plt.colorbar(); plt.title( "V_Paul[:,:,0]" );
         # plt.subplot(1,3,2); plt.imshow( V_Lond[:,:,0] ); plt.colorbar(); plt.title( "V_Lond[:,:,0]" );
         # plt.subplot(1,3,3); plt.imshow( V_Coul[:,:,0] ); plt.colorbar(); plt.title( "V_Coul[:,:,0]" );
@@ -553,11 +553,27 @@ def test_gridFF_ocl( fname="./data/xyz/NaCl_1x1_L1.xyz", Element_Types_name="./d
         # plt.subplot(1,2,1); plt.imshow( Vcoul [5,:,:] ); plt.colorbar(); plt.title( "V_Lond[0,:,:]" );
         # plt.subplot(1,2,2); plt.imshow( Vcoul [:,:,0] ); plt.colorbar(); plt.title( "Vcoul [0,:,:]" );
 
-        plt.figure( figsize=(16,8) )
-        plt.subplot(1,3,1); plt.imshow( V_Paul[:,:,70] , origin='lower'); plt.colorbar(); plt.title( "V_Paul[:,:,0]" );plt.scatter(x_points, y_points, marker='o', color='red')
-        plt.subplot(1,3,2); plt.imshow( V_Lond[:,:,70] , origin='lower'); plt.colorbar(); plt.title( "V_Lond[:,:,0]" );plt.scatter(x_points, y_points, marker='o', color='red')
-        plt.subplot(1,3,3); plt.imshow( V_Coul[:,:,70] , origin='lower'); plt.colorbar(); plt.title( "V_Coul[:,:,0]" );plt.scatter(x_points, y_points, marker='o', color='red')
-        plt.suptitle( "Without transpose" );
+
+
+        # --- plot the points
+        # plt.figure( figsize=(16,8) )
+        # plt.subplot(1,3,1); plt.imshow( V_Paul[:,:,70] , origin='lower'); plt.colorbar(); plt.title( "V_Paul[:,:,0]" );plt.scatter(x_points, y_points, marker='o', color='red')
+        # plt.subplot(1,3,2); plt.imshow( V_Lond[:,:,70] , origin='lower'); plt.colorbar(); plt.title( "V_Lond[:,:,0]" );plt.scatter(x_points, y_points, marker='o', color='red')
+        # plt.subplot(1,3,3); plt.imshow( V_Coul[:,:,70] , origin='lower'); plt.colorbar(); plt.title( "V_Coul[:,:,0]" );plt.scatter(x_points, y_points, marker='o', color='red')
+        # plt.suptitle( "Without transpose" );
+
+        # plt.figure( figsize=(16,8) )
+        # plt.suptitle("Potentials with Transpose XZ PLANE")
+        # plt.subplot(1,3,1); plt.imshow( V_Paul[:,40,:].transpose() , origin='lower'); plt.colorbar(); plt.title( "V_Paul[:,40,:]" );plt.scatter(x_points, y_points, marker='o', color='red')
+        # plt.subplot(1,3,2); plt.imshow( V_Lond[:,40,:].transpose() , origin='lower'); plt.colorbar(); plt.title( "V_Lond[:,40,:]" );plt.scatter(x_points, y_points, marker='o', color='red')
+        # plt.subplot(1,3,3); plt.imshow( V_Coul[:,40,:].transpose() , origin='lower'); plt.colorbar(); plt.title( "V_Coul[:,40,:]" );plt.scatter(x_points, y_points, marker='o', color='red')
+
+        # plt.figure( figsize=(16,8) )
+        # plt.suptitle("Potentials with Transpose YZ PLANE")
+        # plt.subplot(1,3,1); plt.imshow( V_Paul[0,:,:].transpose() , origin='lower'); plt.colorbar(); plt.title( "V_Paul[0,:,:]" );plt.scatter(x_points, y_points, marker='o', color='red')
+        # plt.subplot(1,3,2); plt.imshow( V_Lond[0,:,:].transpose() , origin='lower'); plt.colorbar(); plt.title( "V_Lond[0,:,:]" );plt.scatter(x_points, y_points, marker='o', color='red')
+        # plt.subplot(1,3,3); plt.imshow( V_Coul[0,:,:].transpose() , origin='lower'); plt.colorbar(); plt.title( "V_Coul[0,:,:]" );plt.scatter(x_points, y_points, marker='o', color='red')
+
 
 
 

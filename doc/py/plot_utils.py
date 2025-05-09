@@ -537,3 +537,226 @@ class MoleculeTrajectoryVisualizer:
         """
         fig.savefig(filename, dpi=dpi, bbox_inches='tight')
         print(f"Visualization saved to {filename}")
+
+
+def compare_qgrids(qgrid_cpu, qgrid_gpu, grid_step_cpu=None, grid_step_gpu=None, title_prefix=""):
+    """
+    Compares CPU and GPU Qgrid arrays (charge density).
+
+    Args:
+        qgrid_cpu (np.ndarray): Charge density grid from CPU (expected ZYX order: nz, ny, nx).
+        qgrid_gpu (np.ndarray): Charge density grid from GPU (expected ZYX order: nz, ny, nx).
+        grid_step_cpu (float, optional): Grid spacing for CPU grid for plot labels.
+        grid_step_gpu (float, optional): Grid spacing for GPU grid for plot labels.
+        title_prefix (str, optional): Prefix for plot titles.
+    """
+    print("--- Qgrid Comparison ---")
+
+    # 1. Shape Check
+    print(f"CPU Qgrid shape: {qgrid_cpu.shape}")
+    print(f"GPU Qgrid shape: {qgrid_gpu.shape}")
+
+    if qgrid_cpu.shape != qgrid_gpu.shape:
+        print("ERROR: Qgrid shapes do not match! Cannot perform detailed comparison.")
+        # Attempt to give some basic stats if dimensions are different but plausible
+        print(f"CPU Qgrid stats: min={qgrid_cpu.min():.4e}, max={qgrid_cpu.max():.4e}, sum_abs={np.sum(np.abs(qgrid_cpu)):.4e}")
+        print(f"GPU Qgrid stats: min={qgrid_gpu.min():.4e}, max={qgrid_gpu.max():.4e}, sum_abs={np.sum(np.abs(qgrid_gpu)):.4e}")
+        return
+
+    nz, ny, nx = qgrid_cpu.shape
+    print(f"Grid dimensions (nz, ny, nx): ({nz}, {ny}, {nx})")
+
+    # 2. Numerical Comparison
+    diff = qgrid_gpu - qgrid_cpu
+    abs_diff_sum = np.sum(np.abs(diff))
+    max_abs_diff = np.max(np.abs(diff))
+    mean_abs_diff = np.mean(np.abs(diff))
+
+    print("\nNumerical Stats:")
+    print(f"  CPU Qgrid: min={qgrid_cpu.min():.4e}, max={qgrid_cpu.max():.4e}, mean={qgrid_cpu.mean():.4e}, std={qgrid_cpu.std():.4e}, sum_abs={np.sum(np.abs(qgrid_cpu)):.4e}")
+    print(f"  GPU Qgrid: min={qgrid_gpu.min():.4e}, max={qgrid_gpu.max():.4e}, mean={qgrid_gpu.mean():.4e}, std={qgrid_gpu.std():.4e}, sum_abs={np.sum(np.abs(qgrid_gpu)):.4e}")
+    print(f"  Difference (GPU - CPU):")
+    print(f"    Min Diff: {diff.min():.4e}")
+    print(f"    Max Diff: {diff.max():.4e}")
+    print(f"    Mean Abs Diff: {mean_abs_diff:.4e}")
+    print(f"    Max Abs Diff: {max_abs_diff:.4e}")
+    print(f"    Sum of Abs Diff: {abs_diff_sum:.4e}")
+
+    if abs_diff_sum < 1e-5: # Adjust tolerance as needed
+        print("Qgrids are numerically very similar.")
+    else:
+        print("Qgrids show notable numerical differences.")
+
+    # 3. Visual Comparison (Slices)
+    mid_z, mid_y, mid_x = nz // 2, ny // 2, nx // 2
+    
+    # Determine common color limits for CPU and GPU plots for better comparison
+    vmin = min(qgrid_cpu.min(), qgrid_gpu.min())
+    vmax = max(qgrid_cpu.max(), qgrid_gpu.max())
+
+    # Determine color limits for difference plot (centered at 0)
+    diff_abs_max = np.max(np.abs(diff))
+    if diff_abs_max < 1e-9: # Avoid issues if diff is all zeros
+        diff_abs_max = 1e-9
+    diff_vmin = -diff_abs_max
+    diff_vmax = diff_abs_max
+
+    plot_slices = [
+        ('XY', mid_z, (slice(None), slice(None), mid_z), (0, 1), ("Y", "X") if grid_step_cpu else ("Y index", "X index")), # GPU Qgrid is (nz,ny,nx), so Q[mid_z,:,:]
+        ('XZ', mid_y, (slice(None), mid_y, slice(None)), (0, 2), ("Z", "X") if grid_step_cpu else ("Z index", "X index")), # Q[:,mid_y,:]
+        ('YZ', mid_x, (mid_x, slice(None), slice(None)), (1, 2), ("Z", "Y") if grid_step_cpu else ("Z index", "Y index"))  # Q[:,:,mid_x] - careful, this is ZY if imshow is used directly
+    ]
+    
+    # Adjusting for imshow behavior with ZYX data
+    # For XY: data[mid_z, :, :] -> imshow(data[mid_z, :, :]) -> Y is rows, X is columns
+    # For XZ: data[:, mid_y, :] -> imshow(data[:, mid_y, :]) -> Z is rows, X is columns
+    # For YZ: data[:, :, mid_x] -> imshow(data[:, :, mid_x]) -> Z is rows, Y is columns
+
+    for plane_name, slice_idx, slice_obj_zyx, (dim1_idx, dim2_idx), (label1, label2) in plot_slices:
+        
+        if plane_name == 'XY':
+            cpu_slice = qgrid_cpu[slice_idx, :, :]
+            gpu_slice = qgrid_gpu[slice_idx, :, :]
+            diff_slice = diff[slice_idx, :, :]
+            aspect_ratio = (ny * (grid_step_cpu if grid_step_cpu else 1)) / (nx * (grid_step_cpu if grid_step_cpu else 1)) if grid_step_cpu else 'auto'
+            extent = [0, nx*(grid_step_cpu if grid_step_cpu else 1), 0, ny*(grid_step_cpu if grid_step_cpu else 1)] if grid_step_cpu else None
+            xlabel, ylabel = label2, label1 # X, Y
+        elif plane_name == 'XZ':
+            cpu_slice = qgrid_cpu[:, slice_idx, :]
+            gpu_slice = qgrid_gpu[:, slice_idx, :]
+            diff_slice = diff[:, slice_idx, :]
+            aspect_ratio = (nz * (grid_step_cpu if grid_step_cpu else 1)) / (nx * (grid_step_cpu if grid_step_cpu else 1)) if grid_step_cpu else 'auto'
+            extent = [0, nx*(grid_step_cpu if grid_step_cpu else 1), 0, nz*(grid_step_cpu if grid_step_cpu else 1)] if grid_step_cpu else None
+            xlabel, ylabel = label2, label1 # X, Z
+        elif plane_name == 'YZ': # Z vs Y
+            cpu_slice = qgrid_cpu[:, :, slice_idx]
+            gpu_slice = qgrid_gpu[:, :, slice_idx]
+            diff_slice = diff[:, :, slice_idx]
+            aspect_ratio = (nz * (grid_step_cpu if grid_step_cpu else 1)) / (ny * (grid_step_cpu if grid_step_cpu else 1)) if grid_step_cpu else 'auto'
+            extent = [0, ny*(grid_step_cpu if grid_step_cpu else 1), 0, nz*(grid_step_cpu if grid_step_cpu else 1)] if grid_step_cpu else None
+            xlabel, ylabel = label2, label1 # Y, Z
+
+
+        fig, axs = plt.subplots(1, 3, figsize=(18, 6))
+        fig.suptitle(f'{title_prefix}Qgrid Comparison - {plane_name} Plane (Slice at {"zyx"[dim1_idx if plane_name != "YZ" else dim2_idx]}={slice_idx})', fontsize=16)
+
+        im_cpu = axs[0].imshow(cpu_slice, origin='lower', cmap='viridis', vmin=vmin, vmax=vmax, extent=extent, aspect=aspect_ratio)
+        axs[0].set_title('CPU Qgrid')
+        axs[0].set_xlabel(xlabel)
+        axs[0].set_ylabel(ylabel)
+        divider = make_axes_locatable(axs[0])
+        cax_cpu = divider.append_axes("right", size="5%", pad=0.05)
+        fig.colorbar(im_cpu, cax=cax_cpu, label='Charge Density')
+
+        im_gpu = axs[1].imshow(gpu_slice, origin='lower', cmap='viridis', vmin=vmin, vmax=vmax, extent=extent, aspect=aspect_ratio)
+        axs[1].set_title('GPU Qgrid')
+        axs[1].set_xlabel(xlabel)
+        axs[1].set_ylabel(ylabel)
+        divider = make_axes_locatable(axs[1])
+        cax_gpu = divider.append_axes("right", size="5%", pad=0.05)
+        fig.colorbar(im_gpu, cax=cax_gpu, label='Charge Density')
+
+        im_diff = axs[2].imshow(diff_slice, origin='lower', cmap='coolwarm', vmin=diff_vmin, vmax=diff_vmax, extent=extent, aspect=aspect_ratio)
+        axs[2].set_title('Difference (GPU - CPU)')
+        axs[2].set_xlabel(xlabel)
+        axs[2].set_ylabel(ylabel)
+        divider = make_axes_locatable(axs[2])
+        cax_diff = divider.append_axes("right", size="5%", pad=0.05)
+        fig.colorbar(im_diff, cax=cax_diff, label='Difference')
+
+        plt.tight_layout(rect=[0, 0, 1, 0.95]) # Adjust for suptitle
+        plt.show()
+
+# --- Example Usage (assuming you have qgrid_cpu and qgrid_gpu loaded) ---
+# # compare_qgrids(qgrid_cpu, qgrid_gpu, grid_step_cpu=dg_val, grid_step_gpu=dg_val, title_prefix="Initial ")
+
+
+def print_qgrid_boundary_slices(qgrid_cpu, qgrid_gpu, num_edge_slices=5, num_line_elements=5, title_prefix=""):
+    """
+    Prints numerical values from the boundary slices of CPU and GPU Qgrids
+    for detailed comparison, focusing on potential 1-pixel shifts.
+
+    Args:
+        qgrid_cpu (np.ndarray): Charge density grid from CPU (expected ZYX order: nz, ny, nx).
+        qgrid_gpu (np.ndarray): Charge density grid from GPU (expected ZYX order: nz, ny, nx).
+        num_edge_slices (int): Number of slices to print from each edge (e.g., Z=0,1,2,... and Z=nz-1,nz-2,...).
+        num_line_elements (int): Number of elements to print along a line for XZ and YZ planes.
+        title_prefix (str): Prefix for print section titles.
+    """
+    if qgrid_cpu.shape != qgrid_gpu.shape:
+        print(f"{title_prefix}ERROR: Qgrid shapes do not match! CPU: {qgrid_cpu.shape}, GPU: {qgrid_gpu.shape}")
+        return
+
+    nz, ny, nx = qgrid_cpu.shape
+    mid_y, mid_x = ny // 2, nx // 2
+    
+    # Ensure num_line_elements is odd for centering, and calculate half-width
+    if num_line_elements % 2 == 0:
+        num_line_elements +=1 
+    half_line = num_line_elements // 2
+
+    print(f"\n--- {title_prefix}Numerical Boundary Slice Comparison (CPU vs GPU) ---")
+    print(f"Grid dimensions (nz, ny, nx): ({nz}, {ny}, {nx})")
+    print(f"Comparing {num_edge_slices} slices from Z-edges.")
+    print(f"For XZ/YZ planes, showing {num_line_elements} elements around center line.")
+    print(f"Values formatted to 6 decimal places (scientific notation if small).\n")
+
+    # --- XZ Plane (fixed mid_y, line along X) ---
+    print(f"--- {title_prefix}XZ Plane (fixed Y={mid_y}, X indices [{mid_x-half_line}:{mid_x+half_line+1}]) ---")
+    x_slice = slice(mid_x - half_line, mid_x + half_line + 1)
+    for i in range(num_edge_slices):
+        z_indices = [i, nz - 1 - i]
+        for z_idx in z_indices:
+            if z_idx < 0 or z_idx >= nz: continue # Should not happen with typical num_edge_slices
+            print(f" Z = {z_idx}:")
+            cpu_vals = qgrid_cpu[z_idx, mid_y, x_slice]
+            gpu_vals = qgrid_gpu[z_idx, mid_y, x_slice]
+            print(f"   CPU: " + " ".join([f"{v:10.6f}" if abs(v) > 1e-4 or v==0 else f"{v:10.3e}" for v in cpu_vals]))
+            print(f"   GPU: " + " ".join([f"{v:10.6f}" if abs(v) > 1e-4 or v==0 else f"{v:10.3e}" for v in gpu_vals]))
+            if i == num_edge_slices -1 and z_idx == nz -1 -i : print("-" * 20) # Separator after last bottom slice
+        if i == num_edge_slices -1 : print("\n")
+
+
+    # --- YZ Plane (fixed mid_x, line along Y) ---
+    print(f"--- {title_prefix}YZ Plane (fixed X={mid_x}, Y indices [{mid_y-half_line}:{mid_y+half_line+1}]) ---")
+    y_slice = slice(mid_y - half_line, mid_y + half_line + 1)
+    for i in range(num_edge_slices):
+        z_indices = [i, nz - 1 - i]
+        for z_idx in z_indices:
+            if z_idx < 0 or z_idx >= nz: continue
+            print(f" Z = {z_idx}:")
+            cpu_vals = qgrid_cpu[z_idx, y_slice, mid_x]
+            gpu_vals = qgrid_gpu[z_idx, y_slice, mid_x]
+            print(f"   CPU: " + " ".join([f"{v:10.6f}" if abs(v) > 1e-4 or v==0 else f"{v:10.3e}" for v in cpu_vals]))
+            print(f"   GPU: " + " ".join([f"{v:10.6f}" if abs(v) > 1e-4 or v==0 else f"{v:10.3e}" for v in gpu_vals]))
+            if i == num_edge_slices -1 and z_idx == nz -1 -i : print("-" * 20)
+        if i == num_edge_slices -1 : print("\n")
+
+    # --- XY Plane (fixed Z, small patch) ---
+    print(f"--- {title_prefix}XY Plane (Z-slices, patch around Y={mid_y}, X={mid_x}) ---")
+    y_patch_slice = slice(mid_y - half_line, mid_y + half_line + 1)
+    x_patch_slice = slice(mid_x - half_line, mid_x + half_line + 1)
+    
+    for i in range(num_edge_slices):
+        z_indices = [i, nz - 1 - i]
+        for z_idx in z_indices:
+            if z_idx < 0 or z_idx >= nz: continue
+            print(f" Z = {z_idx} (Y indices [{mid_y-half_line}:{mid_y+half_line+1}], X indices [{mid_x-half_line}:{mid_x+half_line+1}]):")
+            cpu_patch = qgrid_cpu[z_idx, y_patch_slice, x_patch_slice]
+            gpu_patch = qgrid_gpu[z_idx, y_patch_slice, x_patch_slice]
+            
+            print("  CPU Patch:")
+            for row_idx in range(cpu_patch.shape[0]):
+                print("    " + " ".join([f"{v:10.6f}" if abs(v) > 1e-4 or v==0 else f"{v:10.3e}" for v in cpu_patch[row_idx, :]]))
+            print("  GPU Patch:")
+            for row_idx in range(gpu_patch.shape[0]):
+                print("    " + " ".join([f"{v:10.6f}" if abs(v) > 1e-4 or v==0 else f"{v:10.3e}" for v in gpu_patch[row_idx, :]]))
+            print("-" * 10)
+            if i == num_edge_slices -1 and z_idx == nz -1 -i : print("-" * 20)
+        if i == num_edge_slices -1 : print("\n")
+
+    print(f"--- {title_prefix}End of Numerical Boundary Slice Comparison ---\n")
+
+# --- Example of how to use it in your test script ---
+# print_qgrid_boundary_slices(qgrid_cpu_test, qgrid_gpu_test, num_edge_slices=3, num_line_elements=5, title_prefix="Test ")
+

@@ -197,6 +197,7 @@ def plot1Dcut(apos, qs, Vg, i0, dg, Ls, pos0, iax=0, nPBC=[10,10,10], vmax=5.0, 
     factor = np.average(vd_vg[0:nt//3])
     plt.plot(ts, Vgl, '-k', label="V ewald")
     plt.plot(ts, vd_vg, '-', label="ref/ewald")
+    plt.plot(ts, (Vref-Vgl)*scErr, '-', label="ref/ewald")
     plt.plot(ts, Vref, '--', label="Vref " + str(nPBC))
     plt.title(f"cut1D iax={iax} n={nt} tmax={ts[-1]:.2f}")
     plt.ylim(-vmax, vmax)

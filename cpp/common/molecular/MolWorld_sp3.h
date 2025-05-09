@@ -957,7 +957,7 @@ void printPBCshifts(){
  */
     virtual void initGridFF( const char * name, double z0=NAN, Vec3d cel0={-0.5,-0.5,0.0}, bool bSymetrize=false, bool bAutoNPBC=true, bool bCheckEval=true, bool bUseEwald=true, bool bFit=true, bool bRefine=true ){
         //if(verbosity>0)
-        // bSymetrize=0;
+        bSymetrize=0;
         printf("MolWorld_sp3::initGridFF(%s,bSymetrize=%i,bAutoNPBC=%i bCheckEval=%i bUseEwald=%i bFit=%i bRefine=%i bGridDouble=%i gridStep=%g,z0=%g,cel0={%g,%g,%g} )\n",  name, bSymetrize, bAutoNPBC,bCheckEval,bUseEwald,bFit,bRefine, bGridDouble, gridStep, z0, cel0.x,cel0.y,cel0.z  );
         sprintf(tmpstr, "%s.lvs", name );
         if( file_exist(tmpstr) ){  gridFF.grid.loadCell( tmpstr, gridStep );  gridFF.bCellSet=true; }

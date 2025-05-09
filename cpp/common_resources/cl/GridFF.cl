@@ -731,24 +731,25 @@ __kernel void make_MorseFF(
     const float3 shift_b = lvec_b.xyz + lvec_a.xyz*(nPBC.x*-2.f-1.f);      //  shift in scan(iy)
     const float3 shift_c = lvec_c.xyz + lvec_b.xyz*(nPBC.y*-2.f-1.f);      //  shift in scan(iz) 
     
-    if( (ia==0)&&(ib==0)&&(ic==0) ){  
-        printf(  "GPU nAtoms %i alphaMorse(%g) R2damp(%g) \n", nAtoms, alphaMorse, R2damp );
-          for(int ia=0; ia<nAtoms; ia++){printf(  "GPU atom[%i] pos(%8.4f,%8.4f,%8.4f|%8.4f) REQs (%16.8f,%16.8f,%16.8f,%16.8f) R2damp(%g) \n", ia,    atoms[ia].x, atoms[ia].y, atoms[ia].z, atoms[ia].w,    REQs[ia].x, REQs[ia].y, REQs[ia].z, REQs[ia].w );}
-    //     for (int iz=0; iz<nGrid.z; iz++ ){
-    //         const float3 pos    = grid_p0.xyz  + dGrid_a.xyz*ia      + dGrid_b.xyz*ib      + dGrid_c.xyz*iz;          // +  lvec_a.xyz*-nPBC.x + lvec_b.xyz*-nPBC.y + lvec_c.xyz*-nPBC.z;  // most negative PBC-cell
-    //         int    ia   = 0;
-    //         float4 REQK = REQs[ia];
-    //         float3 dp   = pos - atoms[ia].xyz;
-    //         float  r2  = dot(dp,dp);
-    //         float  r   = sqrt(r2+1e-32 );
-    //         // ---- Morse ( Pauli + Dispersion )
-    //         float    e = exp( -alphaMorse*(r-REQK.x) );
-    //         float   eM = REQK.y*e;
-    //         //fe_Paul += eM * e;
-    //         //fe_Lond += eM * -2.0f;
-    //         printf( "GPU pos(%8.4f,%8.4f,%8.4f) iz=%i dp(%8.4f,%8.4f,%8.4f|r=%8.4f) e=%g EPaul=%g ELond=%g alphaMorse=%g R0=%g E0=%g \n", pos.x,pos.y,pos.z,  iz, dp.x,dp.y,dp.z, r, e, eM*e, eM*-2.0f,  alphaMorse, REQK.x, REQK.y );
-    //     }
-    }
+    //// Very important print to check the morse parameters of substrate ATOMS used for GPU grid 
+    // if( (ia==0)&&(ib==0)&&(ic==0) ){  
+    //     printf(  "GPU nAtoms %i alphaMorse(%g) R2damp(%g) \n", nAtoms, alphaMorse, R2damp );
+    //       for(int ia=0; ia<nAtoms; ia++){printf(  "GPU atom[%i] pos(%8.4f,%8.4f,%8.4f|%8.4f) REQs (%16.8f,%16.8f,%16.8f,%16.8f) R2damp(%g) \n", ia,    atoms[ia].x, atoms[ia].y, atoms[ia].z, atoms[ia].w,    REQs[ia].x, REQs[ia].y, REQs[ia].z, REQs[ia].w );}
+    // //     for (int iz=0; iz<nGrid.z; iz++ ){
+    // //         const float3 pos    = grid_p0.xyz  + dGrid_a.xyz*ia      + dGrid_b.xyz*ib      + dGrid_c.xyz*iz;          // +  lvec_a.xyz*-nPBC.x + lvec_b.xyz*-nPBC.y + lvec_c.xyz*-nPBC.z;  // most negative PBC-cell
+    // //         int    ia   = 0;
+    // //         float4 REQK = REQs[ia];
+    // //         float3 dp   = pos - atoms[ia].xyz;
+    // //         float  r2  = dot(dp,dp);
+    // //         float  r   = sqrt(r2+1e-32 );
+    // //         // ---- Morse ( Pauli + Dispersion )
+    // //         float    e = exp( -alphaMorse*(r-REQK.x) );
+    // //         float   eM = REQK.y*e;
+    // //         //fe_Paul += eM * e;
+    // //         //fe_Lond += eM * -2.0f;
+    // //         printf( "GPU pos(%8.4f,%8.4f,%8.4f) iz=%i dp(%8.4f,%8.4f,%8.4f|r=%8.4f) e=%g EPaul=%g ELond=%g alphaMorse=%g R0=%g E0=%g \n", pos.x,pos.y,pos.z,  iz, dp.x,dp.y,dp.z, r, e, eM*e, eM*-2.0f,  alphaMorse, REQK.x, REQK.y );
+    // //     }
+    // }
 
     //if( (ia==0)&&(ib==0) ){  printf(  "GPU ic %i nGrid(%i,%i,%i)\n", ic, nGrid.x,nGrid.y,nGrid.z );}
 
@@ -1473,7 +1474,6 @@ __kernel void slabPotential(
     // // Apply z_offset to the mirroring calculation
     // int mirror_iz = iz + z_offset;
     // if(mirror_iz >= nz_) mirror_iz = nz_ - 1;  // Clamp to prevent out-of-bounds
-    
     // const int j = (ng[0]-ix-1) + ng.x*( (ng[1]-iy-1) + ng.y*(nz_-mirror_iz-1) );
     const int j = ix + ng.x*(iy + ng.y*iz);
     const int i = j;
@@ -1496,63 +1496,18 @@ __kernel void slabPotential_zyx(
     const int iy = get_global_id(1);
     const int iz = get_global_id(2);
     const int nz_ = ng[2] + ng[3];
-    if(  (iz==51) && (iy==0) && (ix==0) ){
-        printf( "GPU slabPotential_zyx() ng(%i,%i,%i,%i) ixyz(%i,%i,%i|%i)) dz=%g dVcor=%g Vcor0=%g  \n ",  (int)ng.x, (int)ng.y, (int)ng.z, (int)ng.w, ix,iy,iz, ((ix>=ng.x) || (iy>=ng.y) || (iz>=50)) ,  params.x, params.z, params.w );
-    }
+ 
     if( (ix >= ng.x) || (iy >= ng.y) || (iz >= ng.z) ) return;
     
-
-    if(  (iz==51) && (iy==0) && (ix==0) ){
-        printf( "After GPU slabPotential_zyx() ng(%i,%i,%i) dz=%g dVcor=%g Vcor0=%g  \n ",  (int)ng.x, (int)ng.y, (int)ng.z, params.x, params.z, params.w );
-    }
-
     const float dz    = params.x;
     const float dVcor = params.z;
     const float Vcor0 = params.w;
     const float Vcor_z = Vcor0 + dVcor * (iz*dz);
 
-    // Print dimensions at the start of execution
-    if(ix==0 && iy==0 && iz==0){
-        // Calculate max values for i and j
-        int max_j = (ng[0]-0-1) + ng.x*( (ng[1]-0-1) + ng.y*(nz_-0-1) );
-        int max_i = (nz_-1) + ng.z*((ng.y-1) + ng.y*(ng.x-1));
-        
-        printf("DEBUG Dimensions:\n");
-        printf("  Grid: ng=(%d,%d,%d,%d), nz_=%d\n", ng.x, ng.y, ng.z, ng.w, nz_);
-        printf("  Index j range: 0 to %d\n", max_j);
-        printf("  Index i range: 0 to %d\n", max_i);
-        printf("  j calculation: (ng[0]-ix-1) + ng.x*(ng[1]-iy-1) + ng.x*ng.y*(nz_-iz-1)\n");
-        printf("  i calculation: iz + ng.z*(iy + ng.y*ix)\n");
-    }
 
-    if(ix==0 && iy==0 && iz==0){
-    int total_size = ng.x * ng.y * ng.z;
-    printf("Kernel dimensions: ng=(%d,%d,%d,%d)\n", ng.x, ng.y, ng.z, ng.w);
-    printf("Total buffer size: %d\n", total_size);
-    printf("Index ranges:\n");
-    printf("  ix: 0 to %d\n", ng.x-1);
-    printf("  iy: 0 to %d\n", ng.y-1);
-    printf("  iz: 0 to %d\n", ng.z-1);
-    }
-
-    // const int nz_ = ng[2] + ng[3];
-    // const int j = ix + ng.x*(iy + ng.y*(nz_-iz) );   // We found that the potential is inverted in z-direction ( maybe also x,y ? )
     const int j = (ng[0]-ix-1) + ng.x*( (ng[1]-iy-1) + ng.y*(nz_-iz-1) );  // maybe is is inverted also x,y ?
-    // const int z_offset = (int)(5.656854 / dz);  // Convert physical offset to grid points
-    // // Apply z_offset to the mirroring calculation
-    // int mirror_iz = iz - z_offset;
-    // if(mirror_iz >= nz_) mirror_iz = nz_ - 1;  // Clamp to prevent out-of-bounds
-    
-    // const int j = (ng[0]-ix-1) + ng.x*( (ng[1]-iy-1) + ng.y*(nz_-mirror_iz-1) );
 
-    // const int j = (ng[2]-iz-1) + ng.z*(ng[1]-iy-1) + ng.z*ng.y*(ng[0]-ix-1);    
-    // const int i = iz + ng.z*(iy + ng.y*ix);
-    // const int j = ix + ng.x*(iy + ng.y*iz);
     const int i = ix + ng.x*(iy + ng.y*iz);
-
-
-
-    // const int i = iz + ng.z*(iy + ng.y*ix);
 
     Vout[i] = Vin[j] + Vcor_z;
     // Vout[i] = Vin[j] ;

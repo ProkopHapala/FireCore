@@ -149,6 +149,150 @@ plt.tight_layout()
 plt.savefig('potential_comparison_before.png')
 plt.show()
 
+# Add XZ and YZ slices for Coulomb potential before fitting
+# Choose middle slice for y and x axis
+mid_y = cpu_coul_before.shape[1] // 2
+mid_x = cpu_coul_before.shape[2] // 2
+
+plt.figure(figsize=(15, 10))
+
+# XZ slice at mid_y (CPU) - z along y-axis, x along x-axis
+plt.subplot(2, 3, 1)
+plt.imshow(cpu_coul_before[:, mid_y, :], origin='lower', aspect='auto')
+plt.colorbar()
+plt.title(f'CPU Coulomb XZ Slice (y={mid_y})')
+plt.xlabel('X index')
+plt.ylabel('Z index')
+
+# XZ slice at mid_y (GPU) - z along y-axis, x along x-axis
+plt.subplot(2, 3, 2)
+plt.imshow(gpu_coul_before[:, mid_y, :], origin='lower', aspect='auto')
+plt.colorbar()
+plt.title(f'GPU Coulomb XZ Slice (y={mid_y})')
+plt.xlabel('X index')
+plt.ylabel('Z index')
+
+# XZ difference at mid_y - z along y-axis, x along x-axis
+plt.subplot(2, 3, 3)
+plt.imshow(diff_coul_before[:, mid_y, :], origin='lower', aspect='auto', cmap='coolwarm')
+plt.colorbar()
+plt.title(f'Diff Coulomb XZ Slice (y={mid_y})')
+plt.xlabel('X index')
+plt.ylabel('Z index')
+
+# YZ slice at mid_x (CPU) - z along y-axis, y along x-axis
+plt.subplot(2, 3, 4)
+plt.imshow(cpu_coul_before[:, :, mid_x], origin='lower', aspect='auto')
+plt.colorbar()
+plt.title(f'CPU Coulomb YZ Slice (x={mid_x})')
+plt.xlabel('Y index')
+plt.ylabel('Z index')
+
+# YZ slice at mid_x (GPU) - z along y-axis, y along x-axis
+plt.subplot(2, 3, 5)
+plt.imshow(gpu_coul_before[:, :, mid_x], origin='lower', aspect='auto')
+plt.colorbar()
+plt.title(f'GPU Coulomb YZ Slice (x={mid_x})')
+plt.xlabel('Y index')
+plt.ylabel('Z index')
+
+# YZ difference at mid_x - z along y-axis, y along x-axis
+plt.subplot(2, 3, 6)
+plt.imshow(diff_coul_before[:, :, mid_x], origin='lower', aspect='auto', cmap='coolwarm')
+plt.colorbar()
+plt.title(f'Diff Coulomb YZ Slice (x={mid_x})')
+plt.xlabel('Y index')
+plt.ylabel('Z index')
+
+plt.tight_layout()
+plt.savefig('coulomb_xz_yz_slices_before_fitting.png')
+plt.show()
+
+# Additional z-slice plots for Coulomb potential before fitting
+dz = cpu_coul_before.shape[0] // 5  # Divide grid into 5 parts
+z_slices = [dz, 2*dz, 3*dz, 4*dz]  # 4 slices at different z positions
+
+plt.figure(figsize=(20, 15))
+for i, z in enumerate(z_slices):
+    # CPU Coulomb
+    plt.subplot(4, 3, i*3 + 1)
+    plt.imshow(cpu_coul_before[z], origin='lower')
+    plt.colorbar()
+    plt.title(f'CPU Coulomb at z={z}')
+    
+    # GPU Coulomb
+    plt.subplot(4, 3, i*3 + 2)
+    plt.imshow(gpu_coul_before[z], origin='lower')
+    plt.colorbar()
+    plt.title(f'GPU Coulomb at z={z}')
+    
+    # Difference
+    plt.subplot(4, 3, i*3 + 3)
+    plt.imshow(diff_coul_before[z], origin='lower', cmap='coolwarm')
+    plt.colorbar()
+    plt.title(f'Diff Coulomb at z={z}')
+
+plt.tight_layout()
+plt.savefig('coulomb_z_slices_before_fitting.png')
+plt.show()
+
+# Plot along z-axis at maximum difference location
+# Find max difference location
+abs_diff_coul = np.abs(diff_coul_before)
+max_idx = np.unravel_index(np.argmax(abs_diff_coul), abs_diff_coul.shape)
+max_z, max_y, max_x = max_idx
+
+plt.figure(figsize=(15, 10))
+
+# Z-profile at maximum difference point
+plt.subplot(2, 2, 1)
+z_profile_cpu = cpu_coul_before[:, max_y, max_x]
+z_profile_gpu = gpu_coul_before[:, max_y, max_x]
+plt.plot(range(len(z_profile_cpu)), z_profile_cpu, 'b-', label='CPU')
+plt.plot(range(len(z_profile_gpu)), z_profile_gpu, 'r-', label='GPU')
+plt.axvline(x=max_z, color='k', linestyle='--', label=f'Max diff at z={max_z}')
+plt.title(f'Z-profile at (y={max_y}, x={max_x})')
+plt.xlabel('Z index')
+plt.ylabel('Coulomb Potential')
+plt.legend()
+plt.grid(True)
+
+# Z-profile difference
+plt.subplot(2, 2, 2)
+z_profile_diff = z_profile_cpu - z_profile_gpu
+plt.plot(range(len(z_profile_diff)), z_profile_diff)
+plt.axvline(x=max_z, color='k', linestyle='--', label=f'Max diff at z={max_z}')
+plt.title(f'Z-profile difference at (y={max_y}, x={max_x})')
+plt.xlabel('Z index')
+plt.ylabel('CPU - GPU')
+plt.grid(True)
+
+# Z-profiles at additional points
+plt.subplot(2, 2, 3)
+mid_y, mid_x = cpu_coul_before.shape[1]//2, cpu_coul_before.shape[2]//2
+z_profile_cpu_mid = cpu_coul_before[:, mid_y, mid_x]
+z_profile_gpu_mid = gpu_coul_before[:, mid_y, mid_x]
+plt.plot(range(len(z_profile_cpu_mid)), z_profile_cpu_mid, 'b-', label='CPU')
+plt.plot(range(len(z_profile_gpu_mid)), z_profile_gpu_mid, 'r-', label='GPU')
+plt.title(f'Z-profile at center (y={mid_y}, x={mid_x})')
+plt.xlabel('Z index')
+plt.ylabel('Coulomb Potential')
+plt.legend()
+plt.grid(True)
+
+# Z-profile difference at center
+plt.subplot(2, 2, 4)
+z_profile_diff_mid = z_profile_cpu_mid - z_profile_gpu_mid
+plt.plot(range(len(z_profile_diff_mid)), z_profile_diff_mid)
+plt.title(f'Z-profile difference at center')
+plt.xlabel('Z index')
+plt.ylabel('CPU - GPU')
+plt.grid(True)
+
+plt.tight_layout()
+plt.savefig('coulomb_z_profiles_before_fitting.png')
+plt.show()
+
 # Plot after fitting
 plt.figure(figsize=(15, 10))
 
@@ -202,6 +346,65 @@ plt.title('Diff Coulomb (After Fitting)')
 
 plt.tight_layout()
 plt.savefig('potential_comparison_after.png')
+plt.show()
+
+# Add XZ and YZ slices for Coulomb potential after fitting
+# Choose middle slice for y and x axis
+mid_y = cpu_coul_after.shape[1] // 2
+mid_x = cpu_coul_after.shape[2] // 2
+
+plt.figure(figsize=(15, 10))
+
+# XZ slice at mid_y (CPU) - z along y-axis, x along x-axis
+plt.subplot(2, 3, 1)
+plt.imshow(cpu_coul_after[:, mid_y, :], origin='lower', aspect='auto')
+plt.colorbar()
+plt.title(f'CPU Coulomb XZ Slice (y={mid_y}, After)')
+plt.xlabel('X index')
+plt.ylabel('Z index')
+
+# XZ slice at mid_y (GPU) - z along y-axis, x along x-axis
+plt.subplot(2, 3, 2)
+plt.imshow(gpu_coul_after[:, mid_y, :], origin='lower', aspect='auto')
+plt.colorbar()
+plt.title(f'GPU Coulomb XZ Slice (y={mid_y}, After)')
+plt.xlabel('X index')
+plt.ylabel('Z index')
+
+# XZ difference at mid_y - z along y-axis, x along x-axis
+plt.subplot(2, 3, 3)
+plt.imshow(diff_coul_after[:, mid_y, :], origin='lower', aspect='auto', cmap='coolwarm')
+plt.colorbar()
+plt.title(f'Diff Coulomb XZ Slice (y={mid_y}, After)')
+plt.xlabel('X index')
+plt.ylabel('Z index')
+
+# YZ slice at mid_x (CPU) - z along y-axis, y along x-axis
+plt.subplot(2, 3, 4)
+plt.imshow(cpu_coul_after[:, :, mid_x], origin='lower', aspect='auto')
+plt.colorbar()
+plt.title(f'CPU Coulomb YZ Slice (x={mid_x}, After)')
+plt.xlabel('Y index')
+plt.ylabel('Z index')
+
+# YZ slice at mid_x (GPU) - z along y-axis, y along x-axis
+plt.subplot(2, 3, 5)
+plt.imshow(gpu_coul_after[:, :, mid_x], origin='lower', aspect='auto')
+plt.colorbar()
+plt.title(f'GPU Coulomb YZ Slice (x={mid_x}, After)')
+plt.xlabel('Y index')
+plt.ylabel('Z index')
+
+# YZ difference at mid_x - z along y-axis, y along x-axis
+plt.subplot(2, 3, 6)
+plt.imshow(diff_coul_after[:, :, mid_x], origin='lower', aspect='auto', cmap='coolwarm')
+plt.colorbar()
+plt.title(f'Diff Coulomb YZ Slice (x={mid_x}, After)')
+plt.xlabel('Y index')
+plt.ylabel('Z index')
+
+plt.tight_layout()
+plt.savefig('coulomb_xz_yz_slices_after_fitting.png')
 plt.show()
 
 # Plot histograms of the differences before fitting
