@@ -1,5 +1,6 @@
 import numpy as np
 import math
+import os
 from . import MMparams
 
 # Constants (Define these based on your simulation requirements)
@@ -51,6 +52,13 @@ class MMFF:
         self.nvecs  = 0
         self.ntors  = 0
         self.nDOFs  = 0
+
+        # Load element_types and atom_types if needed for UFF calculations
+        if not hasattr(self, 'element_types') or not hasattr(self, 'atom_types'):
+            base_path = os.path.dirname(os.path.abspath(__file__))
+            data_path = os.path.join(base_path, "../../cpp/common_resources/")
+            self.element_types = MMparams.read_element_types(os.path.join(data_path, 'ElementTypes.dat'))
+            self.atom_types = MMparams.read_atom_types(os.path.join(data_path, 'AtomTypes.dat'), self.element_types)
 
         # Initialize arrays
         self.apos = None          # [nvecs,  4 ] Positions
@@ -342,58 +350,92 @@ class MMFF:
 
     def assignBondParamsUFF(self, ib, ai, aj, mol, atom_types):
         """
-        Assigns bond parameters using UFF (Universal Force Field).
+        Calculate bond parameters for a bond in the molecule using UFF.
 
-        Parameters:
-        - ib (int): Index of the bond in the atomic system's bond list.
-        - mol (AtomicSystem): The atomic system containing all data.
-        - atom_types (dict): Dictionary mapping atom names to AtomType instances.
+        Args:
+        - ib (int): Bond index.
+        - ai (int): Index of the first atom in the bond.
+        - aj (int): Index of the second atom in the bond.
+        - mol (AtomicSystem): Molecular system.
+        - atom_types (dict): Dictionary of atom types.
 
         Returns:
         - (float, float): Tuple of bond length (rij) and bond stiffness (kij).
         """
         bond = mol.bonds[ib]
-        isNode = mol.isNode
-        # ai = bond.i
-        # aj = bond.j
+        
+        # Load element types if not already loaded
+        if not hasattr(self, 'element_types'):
+            base_path = os.path.dirname(os.path.abspath(__file__))
+            data_path = os.path.join(base_path, "../../cpp/common_resources/")
+            self.element_types = MMparams.read_element_types(os.path.join(data_path, 'ElementTypes.dat'))
+        
+        # Use getattr to get isNode or create it if not exist
+        capping_atoms = ['H', 'F', 'Cl', 'Br', 'I']
+        isNode = getattr(mol, 'isNode', 
+                         np.array([0 if atom_types[e].element_name in capping_atoms else 1 
+                                  for e in mol.enames]))
+        
+        # Use getattr to get npi_list or create it if not exist
+        npi_list = getattr(mol, 'npi_list', 
+                          np.array([atom_types[e].npi for e in mol.enames]))
+        
+        # Get the number of pi electrons for each atom in the bond
         if isNode[ai]:
-            npi = mol.npi_list[ai]
+            npi = npi_list[ai]
         else:
             npi = 0
         if isNode[aj]:
-            npj = mol.npi_list[aj]
+            npj = npi_list[aj]
         else:
             npj = 0
 
+        # Get atom types for both atoms
         ti = atom_types[mol.enames[ai]]
         tj = atom_types[mol.enames[aj]]
-        # Assuming ElementType is not needed; use Eaff directly
-        Ei = ti.Eaff   # Replace with actual Eaff if available
-        Ej = tj.Eaff   # Replace with actual Eaff if available
-        Qi = ti.Quff   # Replace with actual Quff if available
-        Qj = tj.Quff   # Replace with actual Quff if available
+        
+        # Get element properties
+        element_i = self.element_types[ti.element_name]
+        element_j = self.element_types[tj.element_name]
+        
+        # Get electronegativities from ElementType
+        Ei = element_i.Eaff  # Electronegativity
+        Ej = element_j.Eaff  # Electronegativity
+        
+        # Use Qbase from AtomType for charges
+        Qi = ti.Qbase
+        Qj = tj.Qbase
 
+        # Bond order calculation
         BO = 1 + min(npi, npj)
-        ri = ti.Ruff  # Replace with actual Ruff if available
-        rj = tj.Ruff  # Replace with actual Ruff if available
+        
+        # UFF natural bond radius from AtomType
+        ri = ti.Ruff
+        rj = tj.Ruff
 
-        # Compute rBO and rEN
+        # Compute rBO (bond order correction) and rEN (electronegativity correction)
         if BO > 0:
             rBO = -0.1332 * (ri + rj) * np.log(BO)
         else:
             rBO = 0.0
+            
         denominator = Ei * ri + Ej * rj
-        if denominator != 0:
-            rEN = ri * rj * (np.sqrt(Ei) - np.sqrt(Ej))**2 / denominator
+        if denominator != 0.0 and Ei >= 0 and Ej >= 0:
+            rEN = ri * rj * ((np.sqrt(Ei) - np.sqrt(Ej))**2) / denominator
         else:
+            # Default to zero if we can't calculate properly
             rEN = 0.0
+
+        # Calculate the natural bond length
         rij = ri + rj + rBO - rEN
 
-        # Compute kij
-        kij = 28.79898 * Qi * Qj / (rij**3)  # Adjust constants as needed
+        # Calculate force constant in kcal/(mol*Angstrom^2)
+        Zi = Qi  # Formal charge
+        Zj = Qj  # Formal charge
+        kij = 664.12 * ((Zi * Zj) / (rij**3)) * ri * rj
 
-        if verbosity > 2:
-            print(f"bondUFF[{ti.name},{tj.name},{BO}] kij={kij} rij={rij}({ri},{rj}|{rBO},{rEN}) k={kij}({Qi},{Qj}) E=({Ei},{Ej}) {ti.name} {tj.name} {getattr(ti, 'element', 'N/A')} {getattr(tj, 'element', 'N/A')}")
+        # Debug information (commented out)
+        # print(f"bondUFF[{ti.name},{tj.name},{BO}] kij={kij} rij={rij}({ri},{rj}|{rBO},{rEN}) k={kij}({Qi},{Qj}) E=({Ei},{Ej}) {ti.name} {tj.name}")
 
         return (rij, kij)
 
