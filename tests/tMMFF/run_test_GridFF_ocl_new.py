@@ -40,7 +40,7 @@ from pyBall.tests import ocl_GridFF_new as gff
 # name="NaCl_8x8_L3_Coulumb"
 # name="NaCl_coulomb.iz0"
 
-name ="NaCl.ptcda"
+# name ="NaCl.ptcda"
 # name="2_atom_NaCl"
 # name="NaCl.iz0"
 # name="C.iz0"
@@ -54,6 +54,14 @@ name ="NaCl.ptcda"
 #name="NaCl_8x8_L3_NaClHole"
 #name="NaCl_8x8_L3_step"
 #name="NaCl_15x8_L3_step"
+
+# name="NaCl_1x1_L3"
+# name="NaCl_2x2_L3"
+# name="NaCl_4x4_L3"
+# name="NaCl_6x6_L3"
+# name="NaCl_8x8_L3"
+name="NaCl_9x9_L3"
+
 
 #mol_name="PTCDA.xyz"
 #gff.test_gridFF_ocl( fname="data/xyz/NaCl_1x1_L2.xyz" )

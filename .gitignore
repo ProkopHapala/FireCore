@@ -9,6 +9,8 @@
 *_backup
 *_tmp
 *.bak
+*.idx
+*.dat
 
 *.out
 *.log

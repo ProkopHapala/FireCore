@@ -191,7 +191,7 @@ class MolWorld_sp3_multi : public MolWorld_sp3, public MultiSolverInterface { pu
 
     const char* uploadPopName=0;
 
-    bool bMILAN = false;
+    bool bMILAN = true;
     bool bSaveToDatabase=false;
 
     long nStepConvSum = 0;
@@ -496,7 +496,7 @@ virtual void pre_loop() override {
         }
     }
     //spread_replicas_grid(10,10, 5, 5 );
-    //spread_replicas_random(5, 5 );
+    spread_replicas_random(5, 5 );
     //printConstrains();
     // for(int ic : constrain_list ){
     //     for(int isys=0; isys<nSystems; isys++){
@@ -1714,28 +1714,7 @@ int run_ocl_opt( int niter, double Fconv=1e-6 ){
     double F2=0;
 
 
-    // if(true){
-    //     pick_hray = (Vec3d){0.0,0.0,0.0};
-    //     for(int iSys=0; iSys<nSystems; iSys++){
-    //         if(gopts[iSys].bExploring && gopts[iSys].istep==nPerVFs){
-    //             x_max += 0.1;
-    //             iSystemCur = iSys;
-    //             pick_ray0 = Vec3dZero;
-    //             pick_ray0.set({x_max,0.0,0.0});
-    //             int i0a = ocl.nAtoms*iSystemCur;
-    //             constr [i0a + 0].f.set({x_max,0.0,0.0});
-    //             constr [i0a + 0].w = 1.0;
-    //             constrK[i0a + 0] = Quat4fOnes;
-    //             ocl.upload( ocl.ibuff_constr,  constr  );   // ToDo: instead of updating the whole buffer we may update just relevant part?
-    //             ocl.upload( ocl.ibuff_constrK, constrK );
-    //             printf( "iSys %i bExploring %i istep %i x_max %g \n", iSys, gopts[iSys].bExploring, gopts[iSys].istep, x_max );
-    //         }
-    //     }
-        
-    // }
-
     bool bGroupDrive = false;
-    bool dovdW=true;
     //bool dovdW=false;
     ocl.bSubtractVdW=dovdW;
 
@@ -2311,7 +2290,7 @@ virtual void MDloop( int nIter, double Ftol = -1 ) override {
     bChargeUpdated=false;
 
 
-    if( bMILAN && bSaveToDatabase  ){ // Milan
+    if( bMILAN /*&& bSaveToDatabase  */){ // Milan
         FILE* file = fopen("minima.dat", "a"); 
         if((icurIter%1000==0 || icurIter%1000 < 200) && !written_in_this_frame){
             written_in_this_frame=true;
@@ -2348,6 +2327,9 @@ virtual void MDloop( int nIter, double Ftol = -1 ) override {
                 nStepNonConvSum/((double)nbNonConverged),
                 nStepExplorSum/((double)nExploring),
                 (nStepConvSum+nStepNonConvSum+nStepExplorSum));
+            if((getCPUticks()-zeroT)*tick2second > 9.5){
+                exit(0);
+            }
         }
         else{
             written_in_this_frame=false;

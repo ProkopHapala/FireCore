@@ -224,6 +224,7 @@ class MolWorld_sp3 : public SolverInterface { public:
     bool bWhichAtomNotConv = false; // 22
     bool bCheckInit        = true; // 23
     bool bBondInitialized  = false; // 24
+    bool dovdW=true;
 
     Vec3d anim_vec;
     float anim_speed;
@@ -355,10 +356,9 @@ class MolWorld_sp3 : public SolverInterface { public:
         //builder.printAtoms();
         //printf( "MolWorld_sp3::init() ffl.neighs=%li ffl.neighCell-%li \n", ffl.neighs, ffl.neighCell );
         //ffl.printNeighs();
-        if (bGopt){
-            database = new MolecularDatabase();
-            database->setDescriptors();
-        }
+        
+        database = new MolecularDatabase();
+        database->setDescriptors();
 
         printf( "MolWorld_sp3::init() builder.lvec \n" ); printMat(builder.lvec);
         printf( "MolWorld_sp3::init() ffl.lvec     \n" ); printMat(ffl.lvec);
@@ -3154,74 +3154,6 @@ bool addSnapshot(bool ifNew = false, char* fname = 0)
         gopt.database = new MolecularDatabase();
         gopt.database->setDescriptors();
     }
-//     loadNBmol("butan");
-//     int nMembers = database->getNMembers();
-
-//     database->addMember(&nbmol);
-
-//     std::string comment = "#" + std::to_string(nMembers);
-//     const char* cstr = comment.c_str();
-//     std::string trjName1 = "trj" + std::to_string(nMembers) + "_1.xyz";        
-//     const char* cstr1 = trjName1.c_str();  
-//     FILE* file1=0;
-//     file1=fopen( cstr1, "w" );
-//     params.writeXYZ(file1, &nbmol, cstr);
-//     fclose(file1);
-// srand(457);
-
-
-//             double move_x = 0;//randf() * 0.5;
-//             double move_y = 0;//randf() * 0.5;
-//             double move_z = 0;//randf() * 0.5;
-//     double angle = 0;
-// if(nMembers==0)angle = 0;//randf() * 360;
-// //printf("angle: %g\n", angle);
-//     //if(nMembers==1)move_x = 0.2;//;
-//         Vec3d axis ={1,1,1};// {randf(), randf(), randf()};
-//         Vec3d p0 = Vec3dZero;//{randf() * 5 - 2.5, randf() * 5 - 2.5, randf() * 5 - 2.5};
-//         for (int i = 0; i < nbmol.natoms; i++)
-//         {            
-            
-
-//             //if(i==0 && nMembers == 0) move_x = 5;//randf() * 0.5;
-//             nbmol.apos[i].add({move_x, move_y, move_z});
-//             nbmol.apos[i].rotate(2 * 3.14159 / 360 * angle, axis, p0);
-//          }
-// //if(nMembers>1)    printf("database->compareAtoms(&nbmol, 0) %g\n", database->compareAtoms(&nbmol, 0));
-// //printf("ff.nbonds %i\n", ff.nbonds);
-// loadNBmol("changed_butan");
-// //buildMolecule_xyz("changed_butan");
-
-// int nbFixed = 2;
-// int* fixed = new int[nbFixed];
-//     while(nMembers < 100){
-//     nMembers = database->getNMembers();
-
-//     database->addMember(&nbmol);
-
-//     std::string comment = "#" + std::to_string(nMembers);
-//     const char* cstr = comment.c_str();
-//     std::string trjName1 = "trj" + std::to_string(nMembers) + "_1.xyz";        
-//     const char* cstr1 = trjName1.c_str();  
-//     FILE* file1=0;
-//     file1=fopen( cstr1, "w" );
-//     params.writeXYZ(file1, &nbmol, cstr);
-//     fclose(file1);
-
-
-        
-//         fixed[0] = -1;
-//         fixed[1] = -1;
-//         database->as_rigid_as_possible(&nbmol, 0, ff.nbonds, ff.bond2atom, nbFixed, fixed);
-        
-//         //printf("nbmol.neighs[0]: %i %i %i %i\n", nbmol.neighs[0].x, nbmol.neighs[0].y, nbmol.neighs[0].z, nbmol.neighs[0].w);
-//     }
-// delete[] fixed;
-
-
-
-//    return true;
-
     if (fname)
     {
         loadNBmol(fname);
@@ -3229,7 +3161,11 @@ bool addSnapshot(bool ifNew = false, char* fname = 0)
     }
     if (ifNew)
     {
-        int ID = gopt.database->addIfNewDescriptor(&nbmol);
+        int ID;
+        if(!surf_name)
+            {ID = gopt.database->addIfNewDescriptor(&nbmol);}
+        else 
+            {ID = gopt.database->addIfNewDescriptor(&nbmol, &gridFF.grid.cell);}
         if (ID != -1)
         {
             printf("Same as %d\n", ID);
@@ -3244,52 +3180,36 @@ bool addSnapshot(bool ifNew = false, char* fname = 0)
 }
 
 void printDatabase(){
-    //if(database) database->print();
-
-    int Findex = 0;
-    std::vector<double> a;
-    std::vector<double> b;
-    std::vector<int> boundaryRules;
-    for (int i = 0; i < nbmol.natoms * 3; i++)
-    {
-        a.push_back(-20);
-        b.push_back(20);
-        boundaryRules.push_back(1);
-    }
-    double Fstar = 0;
-    int maxeval = 15000;
-    int nRelax = 500;
-    int nExplore = __INT_MAX__;
-    int bShow = 1;
-    int bSave = 0;
-    int bDatabase = 0;
-    runGlobalOptimization(Findex, &a, &b, &boundaryRules, Fstar, maxeval, nRelax, nExplore, bShow, bSave, bDatabase);
-
+    if(database) database->print();
 }
 
 double computeDistance(int i, int j){
-    if(gopt.database) return gopt.database->computeDistance(i, j);
-    printf("Error, database does not exist"); return -1;
+    if(!gopt.database) {printf("Error, database does not exist"); return -1;}
+    if(!surf_name)return gopt.database->computeDistance(i, j);
+    return gopt.database->computeDistanceOnSurf(i, j, &gridFF.grid.cell);
 }
 
 void runGlobalOptimization(int Findex, std::vector<double>* a, std::vector<double>* b, std::vector<int>* boundaryRules, 
-    double Fstar, int maxeval, int nRelax, int nExploring, int bShow, int bSave, int bDatabase){
+    double Fstar, int maxeval, int nRelax, int nExploring, int index_mut, std::vector<double>* par_mut,  int bShow, int bSave, 
+    int bDatabase, double* RMSD, double* outF, int* outN){
     //gopt.init_heur(nbmol, params, Findex, a, b, boundaryRules, Fstar, maxeval, nRelax, nExploring, bShow, bSave, bDatabase)
-
-
-    std::vector<double> par_mut = {0.01};
-    std::vector<double> par_alg = {1e-5, 100, maxeval, 100};    
+    if(!database){
+        database = new MolecularDatabase();
+        database->setDescriptors();
+    }
+    database->addMember(&nbmol);
     
-    constrs.loadBonds("hexan-dicarboxylic.cons");
-    printf("\nbConstrains: %i\n", bConstrains);
-    bConstrains = true;
-
+    //std::vector<double> par_alg;// = {1, 100, maxeval, 100};    
+    std::vector<double> par_alg = {100};
     
-    gopt.init_heur(&nbmol, &params, Findex, a, b, boundaryRules, 0, maxeval, nRelax, nExploring, bShow, 2, 0);
-    gopt.SPSA(0, &par_mut, &par_alg);
+    gopt.init_heur(&nbmol, &params, Findex, a, b, boundaryRules, Fstar, maxeval, nRelax, nExploring, index_mut, par_mut, bShow, bSave, 0, outF, outN);
+    gopt.SPSA();
+    database->addMember(&nbmol);
+    *RMSD=database->computeDistance(0, database->getNMembers()-1);
+    //gopt.randomDescent(&par_alg);
     //gopt.randomBrutal(&nbmol, &params, 0, 0, 0, &boundaryRules, 0, maxeval, bShow, 3, &par_mut, &par_alg);
     //nbmol.print();
-printf("after optimization\n");
+
 }
 
 

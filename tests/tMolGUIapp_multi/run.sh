@@ -188,11 +188,14 @@ touch minima.dat
 #grep GPU_GFF_z out.log | cut -c 11-  > GPU_makeGridFF.log
 
 # GPU global optimization
-./$name -m 400  -x common_resources/xyz/deoxyglucose          -g common_resources/xyz/NaCl_8x8_L3_step -iParalel 3 -T 300 0.2   -gopt 1000,100000 0.25,1.0 -verb 0 -perframe 100
+#./$name -m 400  -x common_resources/xyz/deoxyglucose          -g common_resources/xyz/NaCl_8x8_L3_step -iParalel 3 -T 300 0.2   -gopt 1000,100000 0.25,1.0 -verb 0 -perframe 100
 #./$name -m 400  -x common_resources/xyz/1,20-eicosanediol     -g common_resources/xyz/NaCl_8x8_L3_step -iParalel 3 -T 1000 0.2  -gopt 1000,100000 0.25,1.0 -verb 0 -perframe 100
 #./$name -m 600  -x common_resources/xyz/deoxyglucose          -g common_resources/xyz/NaCl_8x8_L3      -iParalel 3 -T 300 0.2   -gopt 1000,100000 0.25,1.0 -verb 0 -perframe 100
 #./$name -m 400  -x common_resources/xyz/1,20-eicosanediol     -g common_resources/xyz/NaCl_8x8_L3      -iParalel 3 -T 300 0.2   -gopt 1000,100000 0.25,1.0 -verb 0 -perframe 100
-#./$name -m 1    -x common_resources/xyz/xylitol               -g common_resources/xyz/NaCl_8x8_L3      -iParalel 3 -T 300 0.2   -gopt 1000,100000 0.25,1.0 -verb 0 -perframe 100
+#./$name -m 1000    -x common_resources/xyz/xylitol_for_gridFF               -g common_resources/xyz/NaCl_8x8_L3      -iParalel 3 -T 300 0.2   -gopt 1000,100000 0.25,1.0 -verb 0 -perframe 100
+#./$name -m 1000    -x common_resources/xyz/xylitol_for_gridFF                                                        -iParalel 3 -T 300 0.2   -gopt 1000,100000 0.25,1.0 -verb 0 -perframe 100
+#./$name -m 1000    -x common_resources/xyz/xylitol_WO_gridFF              -g common_resources/xyz/NaCl_8x8_L3      -iParalel 3 -T 300 0.2   -gopt 1000,100000 0.25,1.0 -verb 0 -perframe 100 -nogridff
+#./$name -m 1000    -x common_resources/xyz/xylitol               -g common_resources/xyz/NaCl_8x8_L3      -iParalel 3 -T 300 0.2   -gopt 1000,100000 0.25,1.0 -verb 0 -perframe 100
 # ./$name -m 100 -x common_resources/xyz/xylitol               -g common_resources/xyz/NaCl_8x8_L3      -iParalel 3 -T 300 0.2   -gopt 1000,100000 0.25,1.0 -verb 0 -perframe 100
 #./$name -m 20 -x common_resources/xyz/xylitol               -g common_resources/xyz/NaCl_8x8_L3_step      -iParalel 3 -T 300 0.2   -gopt 1000,100000 0.25,1.0 -verb 0 -perframe 100
 #./$name -m 200 -x common_resources/xyz/xylitol               -g common_resources/xyz/NaCl_8x8_L3_NaClHole      -iParalel 3 -T 300 0.2   -gopt 1000,100000 0.25,1.0 -verb 0 -perframe 100
@@ -202,3 +205,6 @@ touch minima.dat
 #./$name -m 1000 -x common_resources/xyz/PTCDA_SAM             -g common_resources/xyz/NaCl_8x8_L3      -iParalel 3 -T 1000 0.2  -gopt 500,10000 0.25,1.0   -verb 0 -perframe 100
 #./$name -m 1500 -x common_resources/xyz/pyridine              -g common_resources/xyz/NaCl_8x8_L3      -iParalel 3 -T 1000 0.2  -gopt 1000,100000 0.25,1.0 -verb 0 -perframe 100
 #./$name -m 300   -x common_resources/xyz/nHexadecan_dicarboxylic -g common_resources/xyz/NaCl_8x8_L3    -iParalel 3 -T 1000 0.02 -gopt 1000,1000 0.25,1.0   -verb 0 -perframe 100 
+
+
+./$name -m 2000    -x common_resources/xyz/xylitol_WO_gridFF       -g common_resources/xyz/NaCl_3x3_L3            -iParalel 3 -T 300 0.2   -gopt 1000,100000 0.25,1.0 -verb 0 -perframe 100 -nogridff
