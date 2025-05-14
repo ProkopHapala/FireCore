@@ -212,6 +212,22 @@ static GLMeshBase<MPOS> makeSphere(){
     return m;
 }
 
+static GLMesh<MPOS> makeCross() {
+    GLMesh<MPOS> m = GLMesh<MPOS>(GL_LINES);
+    float sz = 0.5f;
+    m.addVertex({-sz, 0, 0}); m.addVertex({sz, 0, 0});
+    m.addVertex({0, -sz, 0}); m.addVertex({0, sz, 0});
+    return m;
+}
+
+static GLMesh<MPOS> makeXMark() {
+    GLMesh<MPOS> m = GLMesh<MPOS>(GL_LINES);
+    float sz = 0.5f;
+    m.addVertex({-sz, -sz, 0}); m.addVertex({sz, sz, 0});
+    m.addVertex({-sz, sz, 0}); m.addVertex({sz, -sz, 0});
+    return m;
+}
+
 namespace MeshLibrary {
     GLMesh<MPOS> pointCross = makePointCross();
     GLMesh<MPOS> line = makeLine();
@@ -222,4 +238,6 @@ namespace MeshLibrary {
     GLMesh<MPOS> rect = makeRectMesh();
     GLMesh<MPOS> circle = makeCircleMesh();
     GLMeshBase<MPOS> sphere = makeSphere();
+    GLMesh<MPOS> cross = makeCross();
+    GLMesh<MPOS> xmark = makeXMark();
 }
