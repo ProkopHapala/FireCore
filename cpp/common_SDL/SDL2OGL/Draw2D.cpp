@@ -1,4 +1,5 @@
 #include "GLMesh.h"
+#include "MeshLibrary.h"
 
 #include "Draw.h"
 #include "Renderer.h"
@@ -14,58 +15,27 @@ void Draw2D::drawPointCross( const Vec2f& vec, float d ){
 	drawLine( {vec.x  , vec.y-d}, {vec.x  , vec.y+d} );
 };
 
-static GLMesh<MPOS> makeLineMesh(){
-    GLMesh<MPOS> m = GLMesh<MPOS>(GL_LINES);
-    m.addVertex({0, 0, 0});
-    m.addVertex({1, 1, 0});
-    return m;
-}
-static GLMesh<MPOS> lineMesh = makeLineMesh();
-
 void Draw2D::drawLine( const Vec2f& p1, const Vec2f& p2 ){
-    lineMesh.setUniform3f("uColor", opengl1renderer.color);
-    lineMesh.draw2D( {p1.x, p1.y, z_layer}, p2-p1);
+    MeshLibrary::line2D.setUniform3f("uColor", opengl1renderer.color);
+    MeshLibrary::line2D.draw2D( {p1.x, p1.y, z_layer}, p2-p1);
 };
 
-static GLMesh<MPOS> makeRectMesh(){
-    GLMesh<MPOS> m;
-    m.addVertex( {0, 0, 0} );
-    m.addVertex( {0, 1, 0} );
-    m.addVertex( {1, 1, 0} );
-    m.addVertex( {1, 0, 0} );
-    return m;
-}
-static GLMesh<MPOS> rectMesh = makeRectMesh();
 void Draw2D::drawRectangle( float p1x, float p1y, float p2x, float p2y, Vec3f color, bool filled){ // TODO: create a list of drawn rects and them draw them at once using instancing?
-    rectMesh.drawMode = filled ? GL_TRIANGLE_FAN : GL_LINE_LOOP;
-    rectMesh.setUniform3f("uColor", color);
+    MeshLibrary::rect.drawMode = filled ? GL_TRIANGLE_FAN : GL_LINE_LOOP;
+    MeshLibrary::rect.setUniform3f("uColor", color);
 
     glDisable(GL_DEPTH_TEST);
-    rectMesh.draw2D({p1x, p1y, z_layer}, {p2x-p1x, p2y-p1y});
+    MeshLibrary::rect.draw2D({p1x, p1y, z_layer}, {p2x-p1x, p2y-p1y});
 };
 
 void Draw2D::drawRectangle( const Vec2f& p1, const Vec2f& p2, Vec3f color, bool filled ){
 	drawRectangle( p1.x, p1.y, p2.x, p2.y, color, filled );
 };
 
-static const GLMesh<MPOS> makeCircleMesh(){
-	GLMesh<MPOS> m = GLMesh<MPOS>(GL_LINE_LOOP);
-	const int n = 64;
-	float dphi =  6.28318530718f / n;
-	Vec2f drot; drot.fromAngle( dphi );
-	Vec2f v = {1, 0};
-	for ( int i=0; i<n; i++ ){
-		m.addVertex( {v.x, v.y, 0} );
-		v.mul_cmplx( drot );
-	}
-	return m;
-}
-static GLMesh<MPOS> circleMesh = makeCircleMesh();
-
 void Draw2D::drawCircle( const Vec2f& center, float radius, bool filled ){
-	circleMesh.drawMode = filled ? GL_TRIANGLE_FAN : GL_LINE_LOOP;
-	circleMesh.setUniform3f("uColor", opengl1renderer.color);
-	circleMesh.draw2D( {center.x, center.y, z_layer}, radius );
+	MeshLibrary::circle.drawMode = filled ? GL_TRIANGLE_FAN : GL_LINE_LOOP;
+	MeshLibrary::circle.setUniform3f("uColor", opengl1renderer.color);
+	MeshLibrary::circle.draw2D( {center.x, center.y, z_layer}, radius );
 };
 
 void Draw2D::plot( int n, float dx, double * ys ){

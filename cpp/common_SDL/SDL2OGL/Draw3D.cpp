@@ -1,4 +1,3 @@
-
 #include "GLES.h"
 #include "Renderer.h"
 #include "Vec2.h"
@@ -6,51 +5,27 @@
 #include "Vec3.h"
 #include "quaternion.h"
 #include "GLMesh.h"
+#include "MeshLibrary.h"
 
 #include "Draw3D.h" // THE HEADER
 
-
-static GLMesh<MPOS> makePointCross(){
-    GLMesh<MPOS> m = GLMesh<MPOS>(GL_LINES);
-    m.addVertex({-1, 0, 0}); m.addVertex({1, 0, 0});
-    m.addVertex({0, -1, 0}); m.addVertex({0, 1, 0});
-    m.addVertex({0, 0, -1}); m.addVertex({0, 0, 1});
-    return m;
-};
-static GLMesh<MPOS> pointCross = makePointCross();
-
-static GLMesh<MPOS> makePoint(){
-    GLMesh<MPOS> m = GLMesh<MPOS>(GL_POINTS);
-    m.addVertex({0, 0, 0});
-    return m;
-}
-static GLMesh<MPOS> point = makePoint();
-
 void Draw3D::drawPoint( const Vec3f& vec ){
-	point.setUniform3f("uColor", {1, 1, 1});
-	point.draw(vec);
+	MeshLibrary::point.setUniform3f("uColor", {1, 1, 1});
+	MeshLibrary::point.draw(vec);
 };
 
 void Draw3D::drawPointCross( const Vec3f& vec, float sz, Vec3f color ){
-    point.setUniform3f("uColor", color);
-	pointCross.draw(vec, (Vec3f){sz, sz, sz});
-};
-
-static GLMesh<MPOS> makeLineMesh(){
-    GLMesh<MPOS> m = GLMesh<MPOS>(GL_LINES);
-    m.addVertex({0, 0, 0});
-    m.addVertex({1, 1, 1});
-    return m;
-}
-static GLMesh<MPOS> lineMesh = makeLineMesh();
-
-void Draw3D::drawVecInPos( const Vec3f& v, const Vec3f& pos, Vec3f color ){
-    drawLine(pos, pos+v, color);
+    MeshLibrary::pointCross.setUniform3f("uColor", color);
+	MeshLibrary::pointCross.draw(vec, (Vec3f){sz, sz, sz});
 };
 
 void Draw3D::drawLine( const Vec3f& p1, const Vec3f& p2, Vec3f color ){
-    lineMesh.setUniform3f("uColor", color);
-    lineMesh.draw(p1, p2-p1);
+    MeshLibrary::line.setUniform3f("uColor", color);
+    MeshLibrary::line.draw(p1, p2-p1);
+};
+
+void Draw3D::drawVecInPos( const Vec3f& v, const Vec3f& pos, Vec3f color ){
+    drawLine(pos, pos+v, color);
 };
 
 void Draw3D::drawVec( const Vec3f& vec, Vec3f color ){
@@ -336,12 +311,12 @@ static const GLMeshBase<MPOS> makeSphere(){
 static GLMeshBase<MPOS> sphere = makeSphere();
 
 void Draw3D::drawSphere(Vec3f pos, float r, Vec3f color){
-    sphere.setUniform3f("uColor", color);
-    sphere.setUniformMatrix4f("uMVPMatrix", GLES::active_camera->viewProjectionMatrix());
-    sphere.setUniformMatrix4f("uMVPinv", GLES::active_camera->inverseViewProjectionMatrix());
-    sphere.setUniform3f("uPos", pos);
-    sphere.setUniform1f("uRadius", r);
-    sphere.draw();
+    MeshLibrary::sphere.setUniform3f("uColor", color);
+    MeshLibrary::sphere.setUniformMatrix4f("uMVPMatrix", GLES::active_camera->viewProjectionMatrix());
+    MeshLibrary::sphere.setUniformMatrix4f("uMVPinv", GLES::active_camera->inverseViewProjectionMatrix());
+    MeshLibrary::sphere.setUniform3f("uPos", pos);
+    MeshLibrary::sphere.setUniform1f("uRadius", r);
+    MeshLibrary::sphere.draw();
 }
 
 int Draw3D::drawCircleAxis( int n, const Vec3f& pos, const Vec3f& v0, const Vec3f& uaxis, float R, float dca, float dsa ){
@@ -863,111 +838,19 @@ void Draw3D::drawCurve( float tmin, float tmax, int n, Func1d3 func ){
     opengl1renderer.end();
 }
 
-void Draw3D::drawColorScale( int n, Vec3d pos, Vec3d dir, Vec3d up, void (_colorFunc_)(float f) ){
-    opengl1renderer.begin(GL_TRIANGLE_STRIP);
-    double d = 1.0/(n-1);
-    for(int i=0; i<n; i++){
-        double f = i*d;
-        _colorFunc_( f );
-        //opengl1renderer.color3f(1.0,1.0,1.0);
-        Vec3d p = pos + dir*f;
-        opengl1renderer.vertex3f( (float)(p.x     ),(float)( p.y     ),(float)( p.z     ) );
-        opengl1renderer.vertex3f( (float)(p.x+up.x),(float)( p.y+up.y),(float)( p.z+up.z) );
-        //printf( "(%g,%g,%g) (%g,%g,%g) \n", p.x, p.y, p.z, (float)(pos.x+up.x),(float)( pos.y+up.y),(float)( pos.z+up.z)  );
-    }
-    opengl1renderer.end();
-}
-
-// =================
-// from drawUtils.h
-// =================
-
-static GLMesh<MPOS,MNORMAL> makeCube(){ // TODO: test this
-    GLMesh<MPOS,MNORMAL> m = GLMesh<MPOS,MNORMAL>(GL_TRIANGLES); // TODO: use a triangle strip?
-
-    // positive x face
-    m.addVertex({1, 0, 0}, {1, 0, 0});
-    m.addVertex({1, 1, 0}, {1, 0, 0});
-    m.addVertex({1, 1, 1}, {1, 0, 0});
-    m.addVertex({1, 0, 0}, {1, 0, 0});
-    m.addVertex({1, 1, 1}, {1, 0, 0});
-    m.addVertex({1, 0, 1}, {1, 0, 0});
-
-    // negative x face
-    m.addVertex({0, 0, 0}, {-1, 0, 0});
-    m.addVertex({0, 1, 0}, {-1, 0, 0});
-    m.addVertex({0, 1, 1}, {-1, 0, 0});
-    m.addVertex({0, 0, 0}, {-1, 0, 0});
-    m.addVertex({0, 1, 1}, {-1, 0, 0});
-    m.addVertex({0, 0, 1}, {-1, 0, 0});
-
-    // positive y face
-    m.addVertex({0, 1, 0}, {0, 1, 0});
-    m.addVertex({1, 1, 0}, {0, 1, 0});
-    m.addVertex({1, 1, 1}, {0, 1, 0});
-    m.addVertex({0, 1, 0}, {0, 1, 0});
-    m.addVertex({1, 1, 1}, {0, 1, 0});
-    m.addVertex({0, 1, 1}, {0, 1, 0});
-
-    // negative y face
-    m.addVertex({0, 0, 0}, {0, -1, 0});
-    m.addVertex({1, 0, 0}, {0, -1, 0});
-    m.addVertex({1, 0, 1}, {0, -1, 0});
-    m.addVertex({0, 0, 0}, {0, -1, 0});
-    m.addVertex({1, 0, 1}, {0, -1, 0});
-    m.addVertex({0, 0, 1}, {0, -1, 0});
-
-    // positive z face
-    m.addVertex({0, 0, 1}, {0, 0, 1});
-    m.addVertex({1, 0, 1}, {0, 0, 1});
-    m.addVertex({1, 1, 1}, {0, 0, 1});
-    m.addVertex({0, 0, 1}, {0, 0, 1});
-    m.addVertex({1, 1, 1}, {0, 0, 1});
-    m.addVertex({0, 1, 1}, {0, 0, 1});
-
-    // negative z face
-    m.addVertex({0, 0, 0}, {0, 0, -1});
-    m.addVertex({1, 0, 0}, {0, 0, -1});
-    m.addVertex({1, 1, 0}, {0, 0, -1});
-    m.addVertex({0, 0, 0}, {0, 0, -1});
-    m.addVertex({1, 1, 0}, {0, 0, -1});
-    m.addVertex({0, 1, 0}, {0, 0, -1});
-
-    return m;
-}
-static GLMesh<MPOS,MNORMAL> cube = makeCube();
-
-static GLMesh<MPOS> makeWireCube(){
-    GLMesh<MPOS> m = GLMesh<MPOS>(GL_LINES);
-
-    m.addVertex({0, 0, 0}); m.addVertex({1, 0, 0});
-    m.addVertex({0, 0, 0}); m.addVertex({0, 1, 0});
-    m.addVertex({0, 0, 0}); m.addVertex({0, 0, 1});
-    m.addVertex({1, 0, 0}); m.addVertex({1, 1, 0});
-    m.addVertex({1, 0, 0}); m.addVertex({1, 0, 1});
-    m.addVertex({0, 1, 0}); m.addVertex({1, 1, 0});
-    m.addVertex({0, 1, 0}); m.addVertex({0, 1, 1});
-    m.addVertex({0, 0, 1}); m.addVertex({1, 0, 1});
-    m.addVertex({0, 0, 1}); m.addVertex({0, 1, 1});
-    m.addVertex({0, 1, 1}); m.addVertex({1, 1, 1});
-    m.addVertex({1, 0, 1}); m.addVertex({1, 1, 1});
-    m.addVertex({1, 1, 0}); m.addVertex({1, 1, 1});
-
-    return m;
-}
-static GLMesh<MPOS> wireCube = makeWireCube();
-
 void Draw3D::drawBox( float x0, float x1, float y0, float y1, float z0, float z1, float r, float g, float b ){
-	cube.setUniform3f("uColor", {r, g, b});
-    cube.draw((Vec3f){x0, y0, z0}, (Vec3f){x1-x0, y1-y0, z1-z0});
+	MeshLibrary::cubeWithNormals.setUniform3f("uColor", {r, g, b});
+    MeshLibrary::cubeWithNormals.draw((Vec3f){x0, y0, z0}, (Vec3f){x1-x0, y1-y0, z1-z0});
 }
 
 void Draw3D::drawBBox( const Vec3f& p0, const Vec3f& p1 ){
-	wireCube.setUniform3f("uColor", opengl1renderer.color);
-    wireCube.draw(p0, p1-p0);
+	MeshLibrary::wireCube.setUniform3f("uColor", opengl1renderer.color);
+    MeshLibrary::wireCube.draw(p0, p1-p0);
 }
 
-void Draw3D::drawBBox( const Vec3f& p, float r ){ drawBBox( Vec3f{p.x-r,p.y-r,p.z-r}, Vec3f{p.x+r,p.y+r,p.z+r} ); };
+void Draw3D::drawBBox( const Vec3f& p, float r ){ 
+    drawBBox( Vec3f{p.x-r,p.y-r,p.z-r}, Vec3f{p.x+r,p.y+r,p.z+r} ); 
+}
 
 void Draw3D::drawTriclinicBox( const Mat3f& lvec, const Vec3f& c0, const Vec3f& c1 ){
     Vec3f p0,p1;
