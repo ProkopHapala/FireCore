@@ -6,6 +6,9 @@
 //#include "MolWorld_sp3.h"
 #include "MolWorld_sp3_multi.h"
 
+#include <thread>
+#include <chrono>
+
 // ============ Global Variables
 
 MolWorld_sp3_multi W;
@@ -69,21 +72,42 @@ void init_buffers(){
 
 // int loadmol(char* fname_mol ){ return W.loadmol(fname_mol ); }
 
-void* init( int nSys, char* xyz_name, char* surf_name, char* smile_name, bool bMMFF, bool bEpairs, int* nPBC, double gridStep, char* sAtomTypes, char* sBondTypes, char* sAngleTypes ){
-    printf( "MMFFmulti_lib::init() nSys=%i xyz_name(%s) surf_name(%s) bMMFF=%i bEpairs=%i \n", nSys, xyz_name, surf_name, bMMFF, bEpairs );
-	W.smile_name = smile_name;
-	W.xyz_name   = xyz_name;
-	W.surf_name  = surf_name;
-	W.bMMFF      = bMMFF;
+void* init( int nSys, char* xyz_name, char* surf_name, char* smile_name, bool bMMFF, bool bEpairs, int* nPBC, double gridStep, char* sElementTypes, char* sAtomTypes, char* sBondTypes, char* sAngleTypes, double T, double gamma, int nExplore, int nRelax, double pos_kick, double vel_kick, int GridFF ){
+    printf( "MMFFmulti_lib::init() nSys=%i xyz_name(%s) surf_name(%s) bMMFF=%i bEpairs=%i T=%g gamma=%g nExplore=%i nRelax=%i pos_kick=%g vel_kick=%g \n", nSys, xyz_name, surf_name, bMMFF, bEpairs, T, gamma, nExplore, nRelax, pos_kick, vel_kick );
+    W.smile_name = smile_name;
+    W.xyz_name   = xyz_name;
+    W.surf_name  = surf_name;
+    W.bMMFF      = bMMFF;
     W.bEpairs    = bEpairs;
     W.gridStep   = gridStep;
     W.nPBC       = *(Vec3i*)nPBC;
-    W.params.init( sAtomTypes, sBondTypes, sAngleTypes );
-	W.builder.bindParams(&W.params);
+//    W.params.init( sElementTypes, sAtomTypes, sBondTypes, sAngleTypes );
+//	W.builder.bindParams(&W.params);
     W.nSystems=nSys;
-    bool bGrid = gridStep>0;
-    W.bGridFF = bGrid;
+    bool bGrid = GridFF>0;
+//    
+    W.bGopt = true;
+    W.go.T_target = T;
+    W.go.gamma_damp = gamma;
+    W.go.nExplore = nExplore;
+    W.go.nRelax = nRelax;
+    W.go.pos_kick = pos_kick;
+    W.go.vel_kick = vel_kick;
+
+    long T0=getCPUticks();
+    float nseconds = 0.1;
+    std::this_thread::sleep_for(std::chrono::milliseconds((int)(1000*0.1)) );
+    tick2second = nseconds/(getCPUticks()-T0);
+
+    if(surf_name){
+        printf("surf_name(%s)\n", surf_name);
+    }
+    else{
+        printf("No surface file specified\n");
+    }
     W.init();
+    W.bGridFF = bGrid;
+    printf("GridFF=%i\n", W.bGridFF);
     init_buffers();
     return &W;
 }
@@ -104,6 +128,13 @@ int run( int nstepMax, double dt, double Fconv, int ialg, double* outE, double* 
     return nitrdione;
     //return W.rum_omp_ocl( nstepMax, dt, Fconv, 1000.0, 1000 ); 
     //return W.run(nstepMax,dt,Fconv,ialg,outE,outF);  
+}
+
+void MDloop( int perframe, double Ftol = -1, int iParalel = 3, int perVF = 100 ){
+    W.iParalel = iParalel;
+    W.nPerVFs = perVF;
+    W.iterPerFrame = perframe;
+    W.MDloop( perframe, Ftol );
 }
 
 void set_opt( 
@@ -280,5 +311,20 @@ void  scan( int nconf, double* poss, double* rots, double* dirs, double* Es, dou
     // }
     W.scan_relaxed( nconf, (Vec3d*)poss, (Mat3d*)rots, (Vec3d*)dirs, Es, (Vec3d*)aforces, (Vec3d*)aposs, omp, niter_max, dt, Fconv, Flim );
 }
+
+void setSwitches_multi( int CheckInvariants, int PBC, int NonBonded, int MMFF, int Angles, int PiSigma, int PiPiI, int dovdW){
+    #define _setbool(b,i) { if(i>0){b=true;}else if(i<0){b=false;} }
+    _setbool( W.bCheckInvariants, CheckInvariants  );
+    _setbool( W.bPBC         , PBC       );
+    _setbool( W.bNonBonded   , NonBonded );
+    _setbool( W.bMMFF        , MMFF      );
+    _setbool( W.ffl.doAngles , Angles    );
+    _setbool( W.ffl.doPiSigma, PiSigma   );
+    _setbool( W.ffl.doPiPiI  , PiPiI     );
+    _setbool( W.dovdW, dovdW );
+    W.ffl.bSubtractAngleNonBond = W.bNonBonded;
+    #undef _setbool
+}
+
 
 } // extern "C"
