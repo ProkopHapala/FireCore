@@ -67,7 +67,7 @@ def process_eff_output(output_file, stdout):
         'positions': final_positions
     }
 
-def plot_energy_landscape(Xs, Ys, Es, energy_component="total", Espan=None, save_path=None):
+def plot_energy_landscape(Xs, Ys, Es, energy_component="total", Espan=None, save_path=None, reshape=None):
     """Plot energy landscape from arrays using imshow (simple and robust)."""
     # Ensure inputs are numpy arrays
     Xs = np.asarray(Xs)
@@ -80,39 +80,47 @@ def plot_energy_landscape(Xs, Ys, Es, energy_component="total", Espan=None, save
     if Xs.size == 0:
         print(f"No valid data to plot {energy_component}")
         return None
-    print(f"DEBUG {energy_component}: Xs min {Xs.min()}, max {Xs.max()}, Ys min {Ys.min()}, max {Ys.max()}, Es min {Es.min()}, max {Es.max()}")
-    # Unique grid axes for tiling
-    xs = np.unique(Xs)
-    ys = np.unique(Ys)
+    print(f"DEBUG {energy_component}: Xs min {Xs.min():.3f}, max {Xs.max():.3f}, Ys min {Ys.min():.3f}, max {Ys.max():.3f}, Es min {Es.min():.3f}, max {Es.max():.3f}")
+    # Determine grid axes and heatmap grid
     plt.figure(figsize=(10, 8))
-    # Determine plot type: 2D grid use imshow, else line or scatter
-    if len(xs) > 1 and len(ys) > 1:
-        # Build 2D energy grid
-        idx = {v: i for i, v in enumerate(xs)}
-        idy = {v: i for i, v in enumerate(ys)}
-        energy_grid = np.full((len(xs), len(ys)), np.nan)
-        for x, y, e in zip(Xs, Ys, Es):
-            energy_grid[idx[x], idy[y]] = e
-        # Color limits
-        vmin = np.nanmin(energy_grid)
-        vmax = vmin + Espan if Espan is not None else None
-        im = plt.imshow(energy_grid, extent=[xs.min(), xs.max(), ys.min(), ys.max()], aspect='auto', cmap='inferno', vmin=vmin, vmax=vmax)
-        plt.colorbar(im, label=f'{energy_component} Energy')
-        plt.xlabel('Distance (Å)')
-        plt.ylabel('Angle (rad)')
-    elif len(xs) > 1:
-        # Constant Y: plot X vs E
-        plt.plot(Xs, Es, '-o')
-        plt.xlabel('Distance (Å)')
-        plt.ylabel(f'{energy_component} Energy')
-    elif len(ys) > 1:
-        # Constant X: plot Y vs E
-        plt.plot(Ys, Es, '-o')
-        plt.xlabel('Angle (rad)')
-        plt.ylabel(f'{energy_component} Energy')
+    if reshape and Es.size == reshape[0] * reshape[1]:
+        # reshape array directly
+        grid = Es.reshape(reshape)
+        xs = np.unique(Xs)
+        ys = np.unique(Ys)
     else:
-        # Single point
-        plt.scatter(Xs, Ys, c=[Es[0]], cmap='inferno')
+        xs = np.unique(Xs)
+        ys = np.unique(Ys)
+        grid = np.full((len(xs), len(ys)), np.nan)
+        xi = {v: i for i, v in enumerate(xs)}
+        yi = {v: i for i, v in enumerate(ys)}
+        for x, y, e in zip(Xs, Ys, Es): grid[xi[x], yi[y]] = e
+    # Check for degenerate axes and warn
+    if len(xs) == 1:
+        print(f"WARNING: Only one unique X value: {xs[0]:.3f}")
+    if len(ys) == 1:
+        print(f"WARNING: Only one unique Y value: {ys[0]:.3f}")
+    # Determine extents, expanding degenerate axes
+    x_min, x_max = xs.min(), xs.max()
+    if x_min == x_max:
+        delta = x_min * 0.05 if x_min != 0 else 1.0
+        x_min -= delta; x_max += delta
+        print(f"WARNING: X axis degenerate; expanded by {delta:.3f}")
+    y_min, y_max = ys.min(), ys.max()
+    if y_min == y_max:
+        delta = y_min * 0.05 if y_min != 0 else 1.0
+        y_min -= delta; y_max += delta
+        print(f"WARNING: Y axis degenerate; expanded by {delta:.3f}")
+    # Debug: inspect grid and extents
+    valid = np.count_nonzero(~np.isnan(grid)); total = grid.size
+    print(f"DEBUG {energy_component}: grid shape {grid.shape}, valid entries {valid}/{total}")
+    print(f"DEBUG {energy_component}: extent x [{x_min:.3f}, {x_max:.3f}], y [{y_min:.3f}, {y_max:.3f}]")
+    # Plot heatmap
+    vmin = np.nanmin(grid)
+    vmax = vmin + Espan if Espan is not None else None
+    im = plt.imshow(grid, extent=[x_min, x_max, y_min, y_max], aspect='auto', cmap='inferno', vmin=vmin, vmax=vmax)
+    plt.colorbar(im, label=f'{energy_component} Energy')
+    plt.xlabel('Distance (Å)'); plt.ylabel('Angle (rad)')
     plt.title(f'LAMMPS eFF {energy_component} Energy')
     
     if save_path:
@@ -133,8 +141,24 @@ if __name__ == "__main__":
     parser.add_argument('--electron-type', type=int, default=None, help='Atom type to use for electrons')
     parser.add_argument('--keep-scratch', action='store_true', help='Keep scratch directory after completion')
     parser.add_argument('--energy-span', type=float, default=5.0, help='Energy span for plot in eV')
+    parser.add_argument('--scan-file', default=None, help='Original scan XYZ with ang/dist comments to infer grid shape')
     
     args = parser.parse_args()
+    
+    # Auto-detect original scan file from OUTeFF movie
+    if not args.scan_file and args.xyz_file.endswith('_OUTeFF.xyz'):
+        candidate = args.xyz_file.replace('_OUTeFF', '')
+        # check same dir
+        if os.path.exists(candidate):
+            args.scan_file = candidate
+            print(f"INFO: Inferred scan file {candidate}")
+        else:
+            # check export/scan_data subdir
+            base = os.path.basename(candidate)
+            alt = os.path.join('export', 'scan_data', base)
+            if os.path.exists(alt):
+                args.scan_file = alt
+                print(f"INFO: Inferred scan file {alt}")
     
     # Load frames and parse parameters
     print(f"Loading XYZ movie from: {args.xyz_file}")
@@ -143,27 +167,23 @@ if __name__ == "__main__":
     
     # Compute geometric parameters: H-O-H angle and O-H bond length
     angles, dists = [], []
-    for es, apos, *_ in xyz_movie:
-        try:
-            # find oxygen index and hydrogen indices
-            idx_O = es.index('8')
-            idx_H = [i for i, e in enumerate(es) if e == '1']
-            if len(idx_H) >= 2:
-                pO = apos[idx_O]
-                pH1, pH2 = apos[idx_H[0]], apos[idx_H[1]]
-                # O-H bond length (first hydrogen)
-                d = np.linalg.norm(pH1 - pO)
-                # H-O-H angle
-                v1, v2 = pH1 - pO, pH2 - pO
-                cosang = np.dot(v1, v2) / (np.linalg.norm(v1) * np.linalg.norm(v2))
-                cosang = np.clip(cosang, -1.0, 1.0)
-                a = np.arccos(cosang)
-            else:
-                a, d = np.nan, np.nan
-        except Exception:
-            a, d = np.nan, np.nan
-        angles.append(a)
-        dists.append(d)
+    for idx, (es, apos, *_) in enumerate(xyz_movie):
+        if '8' not in es:
+            raise ValueError(f"Frame {idx} missing oxygen atom")
+        iO = es.index('8')
+        iH = [i for i, e in enumerate(es) if e == '1']
+        if len(iH) < 2:
+            raise ValueError(f"Frame {idx} has {len(iH)} hydrogens; expected at least 2")
+        pO = apos[iO]
+        pH1, pH2 = apos[iH[0]], apos[iH[1]]
+        # O-H bond length
+        d = np.linalg.norm(pH1 - pO)
+        # H-O-H angle
+        v1, v2 = pH1 - pO, pH2 - pO
+        cosang = np.dot(v1, v2) / (np.linalg.norm(v1) * np.linalg.norm(v2))
+        cosang = np.clip(cosang, -1.0, 1.0)
+        a = np.arccos(cosang)
+        angles.append(a); dists.append(d)
     
     params = {'ang': np.array(angles), 'dist': np.array(dists)}
     nrec = len(angles)
@@ -256,11 +276,42 @@ if __name__ == "__main__":
             'residual': residual_energies
         }
         
-        for component_name, energy_values in energy_components.items():
-            plot_file = os.path.join(args.output_dir, f"lammps_map2d_{component_name}.png")
-            plot_energy_landscape(params['ang'], params['dist'], energy_values, 
-                                component_name, Espan=args.energy_span, save_path=plot_file)
-            print(f"Plot for {component_name} energy saved to {plot_file}")
+        if args.scan_file:
+            # Parse original scan file to infer grid dims matching processed frames
+            nres = len(results)
+            scan_ang = []
+            scan_dist = []
+            with open(args.scan_file) as f:
+                for line in f:
+                    if line.startswith('#') and 'ang' in line and 'dist' in line:
+                        parts = line.lstrip('#').split()
+                        ia = parts.index('ang') + 1; id = parts.index('dist') + 1
+                        scan_ang.append(float(parts[ia])); scan_dist.append(float(parts[id]))
+                        if len(scan_ang) >= nres:
+                            break
+            ua = np.unique(scan_ang)
+            ud = np.unique(scan_dist)
+            dims = (len(ua), len(ud))
+            # Reshape and plot for each component
+            for comp, vals in energy_components.items():
+                grid = np.array(vals[:len(scan_ang)]).reshape(dims)
+                plt.figure(figsize=(10, 8))
+                vmin = np.nanmin(grid)
+                vmax = vmin + args.energy_span
+                im = plt.imshow(grid, extent=[ud.min(), ud.max(), ua.min(), ua.max()], aspect='auto', cmap='inferno', vmin=vmin, vmax=vmax)
+                plt.colorbar(im, label=f'{comp} Energy')
+                plt.xlabel('Distance (Å)'); plt.ylabel('Angle (rad)')
+                plt.title(f'LAMMPS eFF {comp} Energy')
+                plot_file = os.path.join(args.output_dir, f"lammps_map2d_{comp}.png")
+                plt.savefig(plot_file)
+                print(f"Plot for {comp} energy saved to {plot_file}")
+        else:
+            for component_name, energy_values in energy_components.items():
+                plot_file = os.path.join(args.output_dir, f"lammps_map2d_{component_name}.png")
+                plot_energy_landscape(params['ang'], params['dist'], energy_values,
+                                     component_name, Espan=args.energy_span,
+                                     save_path=plot_file)
+                print(f"Plot for {component_name} energy saved to {plot_file}")
         
         # Generate XYZ file with energy data
         xyz_file = os.path.join(args.output_dir, "lammps_final_geometries.xyz")
