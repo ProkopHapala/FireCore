@@ -54,13 +54,15 @@ def transform_elements_for_eff(elements, atom_type_map=None, electron_type=None)
     transformed = []
     
     for element in elements:
-        atom_type = atom_type_map.get(element, 0)  # Default type if not found
-        element_num = int(element) if element.isdigit() else 0
-        
-        if atom_type < 0:  # This is an electron
-            element_num = 0
-            spin = atom_type + 2  # Transform to spin state
+        # Determine element number and initial atom_type
+        element_str = element
+        element_num = int(element_str) if element_str.isdigit() else 0
+        atom_type = atom_type_map.get(element_str, 0)
+        # Handle electrons: negative atom_type indicates spin state
+        if atom_type < 0:
+            spin = -atom_type  # spin encoded as positive integer
             atom_type = electron_type
+            element_num = 0
         else:
             spin = 0
         
@@ -107,7 +109,7 @@ def create_lammps_data_eff(elements, positions, charges, radii, box_size=500, ma
         
         if atom_type < 0:  # This is an electron
             element_num = 0
-            spin = atom_type + 2
+            spin = -atom_type
             atom_type = electron_type
         else:
             spin = 0
@@ -209,11 +211,11 @@ def read_lammps_data(filename, element_mapping=None):
             x, y, z = float(parts[5]), float(parts[6]), float(parts[7])
             
             # Convert atom type/element number back to element symbol
-            if element_num in element_mapping:
-                element = element_mapping[element_num]
-            elif element_num == 0 and spin in element_mapping.get(0, {}):
-                # This is an electron, get symbol based on spin
+            # Handle electrons (element_num 0) first based on spin
+            if element_num == 0 and spin in element_mapping.get(0, {}):
                 element = element_mapping[0][spin]
+            elif element_num in element_mapping and not isinstance(element_mapping[element_num], dict):
+                element = element_mapping[element_num]
             else:
                 # Default: just use the element number as string
                 element = str(element_num)
@@ -259,12 +261,12 @@ def run_lammps(script_content, work_dir=".", lammps_executable="lmp_serial"):
     
     return result.stdout, result.stderr, result.returncode
 
-def process_xyz_with_lammps(xyz_file, create_input_fn, process_output_fn, script_template, field_map=None, work_dir=".", box_size=500, max_frames=None, lammps_exec="lmp_serial", **kwargs):
+def process_xyz_with_lammps(xyz_frames, create_input_fn, process_output_fn, script_template, field_map=None, work_dir=".", box_size=500, max_frames=None, lammps_exec="lmp_serial", **kwargs):
     """
     Generic function to process XYZ file structures with LAMMPS
     
     Parameters:
-    - xyz_file: Path to XYZ file
+    - xyz_frames: list of frames (each frame is a list of [elements, positions, ...])
     - create_input_fn: Function to create input data from XYZ frame
       Signature: fn(elements, positions, ...) -> data_content
     - process_output_fn: Function to process output data after simulation
@@ -279,48 +281,8 @@ def process_xyz_with_lammps(xyz_file, create_input_fn, process_output_fn, script
     
     Returns: List of result dictionaries for each frame
     """
-    # Import xyz loading function from user space if available
-    try:
-        from pyBall import atomicUtils as au
-        load_xyz = au.load_xyz_movie
-    except ImportError:
-        # Fallback to simple XYZ loader if pyBall not available
-        def load_xyz(file_path):
-            # Simple XYZ loader that returns basic structure
-            import numpy as np
-            with open(file_path, 'r') as f:
-                lines = f.readlines()
-            
-            frames = []
-            i = 0
-            while i < len(lines):
-                try:
-                    n_atoms = int(lines[i].strip())
-                    comment = lines[i+1].strip()
-                    
-                    elements = []
-                    positions = []
-                    
-                    for j in range(i+2, i+2+n_atoms):
-                        if j >= len(lines):
-                            break
-                        parts = lines[j].strip().split()
-                        if len(parts) >= 4:
-                            elements.append(parts[0])
-                            positions.append([float(p) for p in parts[1:4]])
-                    
-                    # Create minimal frame structure
-                    frames.append([elements, positions])
-                    i += n_atoms + 2
-                except (ValueError, IndexError):
-                    i += 1
-            
-            return frames
-    
-    # Load structures from XYZ file
-    imgs = load_xyz(xyz_file)
-    print(f"Loaded {len(imgs)} frames")
-    
+    # Use provided list of frames
+    imgs = xyz_frames
     # Limit number of frames if specified
     if max_frames is not None:
         imgs = imgs[:max_frames]

@@ -335,12 +335,12 @@ def sample_EA( RSs, FEout=None, KRSrho=[1.125,0.9,-0.2], aPar=[4.,0.1,0.1,2.0], 
     lib.sample_EA(n, RSs, FEout, KRSrho, aPar, bEvalAECoulomb, bCoreCoul, bEvalAEPauli)
     return FEout
 
-#int processXYZ( const char* fname, double Rfac=-0.5, double* outEs=0, double* apos_, double* epos_, int nstepMax=1000, double dt=0.001, double Fconv=1e-3, int ialg=2, bool bAddEpairs=false, bool bCoreElectrons=true, bool bChangeCore=true, bool bChangeEsize=true, bool bOutXYZ=false, bool bOutFGO=false ){
-lib.processXYZ.argtypes  = [c_char_p, c_double, c_double_p, c_double_p, c_double_p, c_int, c_double, c_double, c_int, c_bool, c_bool, c_bool, c_bool, c_bool, c_bool ]
+#int processXYZ( const char* fname, double Rfac=-0.5, double* outEs=0, double* apos_=0, double* epos_=0, int nstepMax=1000, double dt=0.001, double Fconv=1e-3, int ialg=2, bool bAddEpairs=false, bool bCoreElectrons=true, bool bChangeCore=true, bool bChangeEsize=true, const char* xyz_out="processXYZ.xyz", const char* fgo_out="processXYZ.fgo" ){
+lib.processXYZ.argtypes  = [c_char_p, c_double, c_double_p, c_double_p, c_double_p, c_int, c_double, c_double, c_int, c_bool, c_bool, c_bool, c_bool, c_char_p, c_char_p ]
 lib.processXYZ.restype   =  c_int
-def processXYZ( fname, Rfac=-1.35, outEs=None, apos=None, epos=None, nstepMax=1000, dt=0.5e-2, Fconv=1e-3, ialg=2, bAddEpairs=False, bCoreElectrons=False, bChangeCore=True, bChangeEsize=True, bOutXYZ=False, bOutFGO=False ):
+def processXYZ( fname, Rfac=-1.35, outEs=None, apos=None, epos=None, nstepMax=1000, dt=0.5e-2, Fconv=1e-3, ialg=2, bAddEpairs=False, bCoreElectrons=False, bChangeCore=True, bChangeEsize=True,xyz_out="processXYZ.xyz", fgo_out="processXYZ.fgo" ):
     #if outEs is None: outEs = np.zeros(8, dtype=np.float64)
-    lib.processXYZ( cstr(fname), Rfac, _np_as(outEs, c_double_p), _np_as(apos, c_double_p), _np_as(epos, c_double_p), nstepMax, dt, Fconv, ialg, bAddEpairs, bCoreElectrons, bChangeCore, bChangeEsize, bOutXYZ, bOutFGO )
+    lib.processXYZ( cstr(fname), Rfac, _np_as(outEs, c_double_p), _np_as(apos, c_double_p), _np_as(epos, c_double_p), nstepMax, dt, Fconv, ialg, bAddEpairs, bCoreElectrons, bChangeCore, bChangeEsize, cstr(xyz_out), cstr(fgo_out) )
     return outEs
 
 #int preAllocateXYZ(const char* fname, double Rfac=-0.5, bool bCoreElectrons=true )

@@ -84,7 +84,7 @@ def plot_energy_landscape( Xs, Ys, Es, Espan=None):
 if __name__ == "__main__":
     print("#=========== RUN /home/prokophapala/git/FireCore/tests/tEFF/run_process_xyz.py")
 
-    eff.setVerbosity(1,0)
+    eff.setVerbosity(0,0)
 
     atomParams = np.array([
     #  Q   sQ   sP   cP
@@ -125,10 +125,10 @@ if __name__ == "__main__":
     #eff.aPars[0,2]=1
     eff.esize[:]=0.7
 
-    #eff.processXYZ( "export/scan_data/angdistscan_H2O.xyz", bOutXYZ=True, outEs=outEs, bCoreElectrons=False );
-    #eff.processXYZ( "export/scan_data/angdistscan_H2O.xyz", bOutXYZ=True, outEs=outEs, bCoreElectrons=True, nstepMax=1000, dt=0.001, Fconv=1e-3, ialg=2 );
-    #eff.processXYZ( "export/scan_data/angdistscan_H2O.xyz", bOutXYZ=True, outEs=outEs, bCoreElectrons=bCoreElectrons, bChangeCore=False, bChangeEsize=False, nstepMax=0 );
-    eff.processXYZ( "export/scan_data/angdistscan_H2O.xyz", bOutXYZ=True, outEs=outEs, bCoreElectrons=bCoreElectrons, bChangeCore=False, bChangeEsize=True, nstepMax=10000, dt=0.005, Fconv=1e-3, ialg=2 );
+    #eff.processXYZ( "export/scan_data/angdistscan_H2O.xyz", outEs=outEs, bCoreElectrons=False, xyz_out="angdistscan_H2O_OUTeFF.xyz" );
+    #eff.processXYZ( "export/scan_data/angdistscan_H2O.xyz", outEs=outEs, bCoreElectrons=True, nstepMax=1000, dt=0.001, Fconv=1e-3, ialg=2, xyz_out="angdistscan_H2O_OUTeFF.xyz" );
+    #eff.processXYZ( "export/scan_data/angdistscan_H2O.xyz", outEs=outEs, bCoreElectrons=bCoreElectrons, bChangeCore=False, bChangeEsize=False, nstepMax=0, xyz_out="angdistscan_H2O_OUTeFF.xyz" );
+    eff.processXYZ( "export/scan_data/angdistscan_H2O.xyz", outEs=outEs, bCoreElectrons=bCoreElectrons, bChangeCore=False, bChangeEsize=True, nstepMax=10000, dt=0.005, Fconv=1e-3, ialg=2, xyz_out="angdistscan_H2O_OUTeFF.xyz"  );
     #print(outEs)
     plot_energy_landscape( params['ang'], params['dist'], outEs[:,0] )
     plt.savefig("map2d_eFF.png")

@@ -205,7 +205,7 @@ int run( int nstepMax, double dt, double Fconv, int ialg, double* outE, double* 
     //printf( "verbosity %i nstepMax %i Fconv %g dt %g \n", verbosity, nstepMax, Fconv, dt );
     //printf( "trj_fname %s \n", trj_fname );
     if(ialg>0){
-        printf("run() opt.vel %p\n", opt.vel); 
+        //printf("run() opt.vel %p\n", opt.vel); 
         opt.cleanVel( ); 
     }
     bool bConv=false;
@@ -573,9 +573,9 @@ int preAllocateXYZ(const char* fname, double Rfac=-0.5, bool bCoreElectrons=true
     return 1;
 }
 
-int processXYZ( const char* fname, double Rfac=-0.5, double* outEs=0, double* apos_=0, double* epos_=0, int nstepMax=1000, double dt=0.001, double Fconv=1e-3, int ialg=2, bool bAddEpairs=false, bool bCoreElectrons=true, bool bChangeCore=true, bool bChangeEsize=true, bool bOutXYZ=false, bool bOutFGO=false ){
+int processXYZ( const char* fname, double Rfac=-0.5, double* outEs=0, double* apos_=0, double* epos_=0, int nstepMax=1000, double dt=0.001, double Fconv=1e-3, int ialg=2, bool bAddEpairs=false, bool bCoreElectrons=true, bool bChangeCore=true, bool bChangeEsize=true, const char* xyz_out="processXYZ.xyz", const char* fgo_out="processXYZ.fgo" ){
     setvbuf(stdout, NULL, _IONBF, 0);
-    printf( "processXYZ(%s) bAddEpairs=%i bOutXYZ=%i Rfac %g\n", fname, bAddEpairs, bOutXYZ, Rfac );
+    printf( "processXYZ(%s) bAddEpairs=%i Rfac %g xyz_out=%s fgo_out=%s \n", fname, bAddEpairs, Rfac, xyz_out, fgo_out );
 
     if(params.atypes.size()==0){
         const char* sElementTypes  = "common_resources/ElementTypes.dat";
@@ -653,8 +653,8 @@ int processXYZ( const char* fname, double Rfac=-0.5, double* outEs=0, double* ap
             }
             ff.eval();
             if(verbosity>0)printf("processXYZ() iconf=%i natoms=%i na=%i ne=%i | Etot(%g)=T(%g)+ee(%g)+ea(%g)+aa(%g) \n", iconf, atoms->natoms, ff.na, ff.ne, ff.Etot, ff.Ek, ff.Eee, ff.Eae, ff.Eaa );
-            if(bOutXYZ)ff.save_xyz( "processXYZ.xyz", "a" );
-            if(bOutFGO)ff.writeTo_fgo( "processXYZ.fgo", false, "a", iconf );
+            if(xyz_out)ff.save_xyz   ( xyz_out, "a" );
+            if(fgo_out)ff.writeTo_fgo( fgo_out, false, "a", iconf );
             if(apos_){
                 Vec3d*  apos = ((Vec3d* )apos_)+iconf*ff.na;
                 for(int j=0; j<ff.na; j++){ apos[j]   = ff.apos[j]; }

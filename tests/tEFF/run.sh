@@ -27,8 +27,10 @@ echo "#=========== RUN"
 #python3 -u run_scan_constr.py 2>ERR | tee OUT
 #python3 run_energyToBondlength_Gabriel.py 2>ERR | tee OUT
 
-python3 -u run_process_xyz_1d.py 2>ERR | tee OUT
-#python3 -u run_process_xyz.py 2>ERR | tee OUT
+#python3 -u run_process_xyz.py
+
+#python3 -u run_process_xyz_1d.py 2>ERR | tee OUT
+python3 -u run_process_xyz.py 2>ERR | tee OUT
 #python3 -u run_scan_Oe_ECP.py 2>ERR | tee OUT
 
 #python3 run_tests.py 2> ERR

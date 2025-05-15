@@ -6,8 +6,8 @@ import tempfile
 from pathlib import Path
 
 sys.path.append("../../")
-#import lammps_utils as lu
 from pyBall import lammps_utils as lu
+from pyBall.atomicUtils import load_xyz_movie
 
 # EFF LAMMPS script template with placeholders for formatting
 EFF_SCRIPT_TEMPLATE = """
@@ -110,9 +110,11 @@ if __name__ == "__main__":
     print(f"Using scratch directory: {scratch_dir}")
     
     try:
-        # Process the frames with LAMMPS using the generic function directly
+        # Load frames and process with LAMMPS
+        frames = load_xyz_movie(args.xyz_file)
+        print(f"Loaded {len(frames)} frames")
         results = lu.process_xyz_with_lammps(
-            xyz_file=args.xyz_file,
+            frames,
             create_input_fn=create_eff_input,
             process_output_fn=process_eff_output,
             script_template=EFF_SCRIPT_TEMPLATE,

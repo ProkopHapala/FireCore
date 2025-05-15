@@ -12,7 +12,11 @@ def work_dir( v__file__ ):
     return os.path.dirname( os.path.realpath( v__file__ ) )
 
 PACKAGE_PATH = work_dir( __file__ )
-BUILD_PATH   = os.path.normpath( PACKAGE_PATH + '../../../cpp/Build/libs/' )
+
+# Base root path (FireCore repository root)
+BASE_PATH = os.path.normpath(os.path.join(PACKAGE_PATH, '../'))
+# Default library path
+BUILD_PATH = os.path.normpath(os.path.join(BASE_PATH, 'cpp/Build/libs/'))
 
 #print (" PACKAGE_PATH : ", PACKAGE_PATH)
 #print (" BUILD_PATH   : ", BUILD_PATH)
@@ -87,13 +91,32 @@ def make( what="" ):
     os.system( "make "+what      )
     os.chdir ( current_directory )
 
-def loadLib( cpp_name, recompile=True, mode=ctypes.RTLD_LOCAL, is_cuda=False, path=BUILD_PATH ):
+def loadLib( cpp_name, recompile=True, mode=ctypes.RTLD_LOCAL, is_cuda=False, path=None ):
     if recompile and recompile_glob:  
         if is_cuda:
             compile_lib(cpp_name, is_cuda=True, path=path)
         else:
             make(cpp_name)
-    lib_path = path + "/lib" + cpp_name + lib_ext
+    # If path is None, use the default BUILD_PATH
+    if path is None:
+        path = BUILD_PATH
+        
+    # First try the provided path
+    lib_path = os.path.join(path, "lib" + cpp_name + lib_ext)
+    
+    # If file doesn't exist, try to find it in common locations
+    if not os.path.exists(lib_path):
+        # Try Molecular subdirectory
+        molecular_path = os.path.join(path, 'Molecular')
+        molecular_lib_path = os.path.join(molecular_path, "lib" + cpp_name + lib_ext)
+        
+        if os.path.exists(molecular_lib_path):
+            lib_path = molecular_lib_path
+        else:
+            # Try using absolute path from BASE_PATH
+            base_lib_path = os.path.join(BASE_PATH, 'cpp/Build/libs/Molecular', "lib" + cpp_name + lib_ext)
+            if os.path.exists(base_lib_path):
+                lib_path = base_lib_path
     print(f"Loading library from: {lib_path}")
     if lib_path in loaded_libs: 
         unload_lib_by_path(lib_path)  # Unload if already loaded
