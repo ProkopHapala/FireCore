@@ -75,26 +75,31 @@ def get_cl_info( device ):
     print(f"Local Memory Size: {device.local_mem_size / 1024} KB")
     print(f"Max Clock Frequency: {device.max_clock_frequency} MHz")
               
-    # Get local memory characteristics
-    granularity      = cl.characterize.local_memory_access_granularity(device)
-    bank_count       = cl.characterize.local_memory_bank_count(device)
-    usable_local_mem = cl.characterize.usable_local_mem_size(device)
-    # Print results
-    print(f"Local Memory Access Granularity: {granularity} bytes")
-    print(f"Number of Local Memory Banks: {bank_count}")
-    print(f"Usable Local Memory Size: {usable_local_mem} bytes")
+    # Get local memory characteristics - handle missing characterize module gracefully
+    try:
+        granularity      = cl.characterize.local_memory_access_granularity(device)
+        bank_count       = cl.characterize.local_memory_bank_count(device)
+        usable_local_mem = cl.characterize.usable_local_mem_size(device)
+        # Print results
+        print(f"Local Memory Access Granularity: {granularity} bytes")
+        print(f"Number of Local Memory Banks: {bank_count}")
+        print(f"Usable Local Memory Size: {usable_local_mem} bytes")
+    except AttributeError as e:
+        print(f"Note: PyOpenCL characterize module not available. Some device info will not be displayed.")
 
     # Retrieve various characteristics
-    fast_math_options = cl.characterize.get_fast_inaccurate_build_options(device)
-    simd_group_size   = cl.characterize.get_simd_group_size(device, 4)  # Assuming float4
-    double_support    = cl.characterize.has_amd_double_support(device)
-    #src_cache_support = cl.characterize.has_src_build_cache(device)
+    try:
+        fast_math_options = cl.characterize.get_fast_inaccurate_build_options(device)
+        simd_group_size   = cl.characterize.get_simd_group_size(device, 4)  # Assuming float4
+        double_support    = cl.characterize.has_amd_double_support(device)
+        #src_cache_support = cl.characterize.has_src_build_cache(device)
 
-    # Print results
-    print(f"Fast Math Options: {fast_math_options}")
-    print(f"SIMD Group Size: {simd_group_size}")
-    print(f"Double Precision Support: {double_support}")
-    #print(f"Source Build Cache Support: {src_cache_support}")
+        # Print additional information
+        print(f"SIMD Group Size: {simd_group_size}")
+        print(f"Has AMD Double Support: {double_support}")
+        print(f"Fast Math Options: {fast_math_options}")
+    except AttributeError as e:
+        print(f"Note: Additional PyOpenCL characterization info not available.")
 
 def local_memory_per_workgroup( device, local_size=32, sp_per_cu=128 ):
     return device.local_mem_size /( sp_per_cu/local_size )

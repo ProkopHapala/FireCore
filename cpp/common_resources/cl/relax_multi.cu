@@ -167,9 +167,7 @@ __global__ void cleanForceMMFFf4(
     const int iav = iG + iS*nvec; // global index in aforce
 
 
-    if( (iG==0) &&(iS==0) ){
-        printf("CUDA cleanForceMMFFf4(): natoms=%i, nnode=%i \n", natoms, nnode );
-    }
+    if( (iG==0) &&(iS==0) ){ printf("CUDA cleanForceMMFFf4(): natoms=%i, nnode=%i \n", natoms, nnode );}
 
     // Clear force on this vector (atom or pi-orbital)
     // This should be done for ALL vectors (0..nvec-1)
@@ -250,27 +248,27 @@ __global__ void getMMFFf4(
     const int ian = iG + i0n;  // index of current node atom (in apars, bLs, bKs, Ksp, Kpp)
     const int iav = iG + i0v;  // index of current vector (in apos, fapos)
 
-    if((iG==iGdbg)&&(iS==iSdbg)){
-        printf("CUDA getMMFFf4(): natoms=%i, nnode=%i nvec=%i, npbc=%i\n", nAtoms, nnode, nvec, npbc );
-        for(int ia=0; ia<nnode; ia++){
-            int4   ng=neighs[iaa+ia];
-            float4 pi=apos[iav+ia];
-            float4 bk=bLs[ian];
-            float4 bK=bKs[ian];
-            float4 Ks=Ksp[ian];
-            float4 Kp=Kpp[ian];
-            float4 apar=apars[ian];
-            //printf("OCL getMMFFf4(): ia %3i: pos=(%10.5f,%10.5f,%10.5f) ngs=(%3i,%3i,%3i,%3i) bLs=(%10.5f,%10.5f,%10.5f,%10.5f) bKs=(%10.5f,%10.5f,%10.5f,%10.5f) Ks=(%10.5f,%10.5f,%10.5f,%10.5f) Kp=(%10.5f,%10.5f,%10.5f,%10.5f) apar=(%10.5f,%10.5f,%10.5f,%10.5f)\n", 
-            //   ia, pi.x, pi.y, pi.z, ng.x, ng.y, ng.z, ng.w, bk.x, bk.y, bk.z, bk.w, bK.x, bK.y, bK.z, bK.w, Ks.x, Ks.y, Ks.z, Ks.w, Kp.x, Kp.y, Kp.z, Kp.w, apar.x, apar.y, apar.z, apar.w );
-            printf("CUDA getMMFFf4(): ia %3i: pos=(%10.5f,%10.5f,%10.5f) ngs=(%3i,%3i,%3i,%3i) bLs=(%10.5f,%10.5f,%10.5f,%10.5f) bKs=(%10.5f,%10.5f,%10.5f,%10.5f) apar=(%10.5f,%10.5f,%10.5f,%10.5f)\n", 
-                ia, pi.x, pi.y, pi.z, ng.x, ng.y, ng.z, ng.w, bk.x, bk.y, bk.z, bk.w, bK.x, bK.y, bK.z, bK.w, apar.x, apar.y, apar.z, apar.w );
-        } 
-        for(int ipbc=0; ipbc<npbc; ipbc++){
-            float4 shift = pbc_shifts[ipbc];
-            printf("CUDA getMMFFf4(): pbc %i: shift=(%10.5f,%10.5f,%10.5f,%10.5f)\n", ipbc, shift.x, shift.y, shift.z, shift.w); 
-        }  
-    }
-
+    //if(iG==iGdbg){ printf("CUDA getMMFFf4(): natoms=%i, nnode=%i nvec=%i iS=%i npbc=%i\n", nAtoms, nnode, nvec, iS, npbc ); }
+    //if((iG==iGdbg)&&(iS==iSdbg)){ printf("CUDA getMMFFf4(): natoms=%i, nnode=%i nvec=%i, npbc=%i\n", nAtoms, nnode, nvec, npbc ); }
+    // if((iG==iGdbg)&&(iS==iSdbg)){
+    //     for(int ia=0; ia<nnode; ia++){
+    //         int4   ng=neighs[iaa+ia];
+    //         float4 pi=apos[iav+ia];
+    //         float4 bk=bLs[ian];
+    //         float4 bK=bKs[ian];
+    //         float4 Ks=Ksp[ian];
+    //         float4 Kp=Kpp[ian];
+    //         float4 apar=apars[ian];
+    //         //printf("OCL getMMFFf4(): ia %3i: pos=(%10.5f,%10.5f,%10.5f) ngs=(%3i,%3i,%3i,%3i) bLs=(%10.5f,%10.5f,%10.5f,%10.5f) bKs=(%10.5f,%10.5f,%10.5f,%10.5f) Ks=(%10.5f,%10.5f,%10.5f,%10.5f) Kp=(%10.5f,%10.5f,%10.5f,%10.5f) apar=(%10.5f,%10.5f,%10.5f,%10.5f)\n", 
+    //         //   ia, pi.x, pi.y, pi.z, ng.x, ng.y, ng.z, ng.w, bk.x, bk.y, bk.z, bk.w, bK.x, bK.y, bK.z, bK.w, Ks.x, Ks.y, Ks.z, Ks.w, Kp.x, Kp.y, Kp.z, Kp.w, apar.x, apar.y, apar.z, apar.w );
+    //         printf("CUDA getMMFFf4(): ia %3i: pos=(%10.5f,%10.5f,%10.5f) ngs=(%3i,%3i,%3i,%3i) bLs=(%10.5f,%10.5f,%10.5f,%10.5f) bKs=(%10.5f,%10.5f,%10.5f,%10.5f) apar=(%10.5f,%10.5f,%10.5f,%10.5f)\n", 
+    //             ia, pi.x, pi.y, pi.z, ng.x, ng.y, ng.z, ng.w, bk.x, bk.y, bk.z, bk.w, bK.x, bK.y, bK.z, bK.w, apar.x, apar.y, apar.z, apar.w );
+    //     } 
+    //     for(int ipbc=0; ipbc<npbc; ipbc++){
+    //         float4 shift = pbc_shifts[ipbc];
+    //         printf("CUDA getMMFFf4(): pbc %i: shift=(%10.5f,%10.5f,%10.5f,%10.5f)\n", ipbc, shift.x, shift.y, shift.z, shift.w); 
+    //     }  
+    // }
 
     // ---- Dynamical
     float4  hs [NNEIGH];         // direction vectors of bonds (h) and inverse bond lengths (h.w)
@@ -333,7 +331,7 @@ __global__ void getMMFFf4(
             // --- Evaluate bond-length stretching energy and aforce
             if(iG<ing){
                 float elb = evalBond(h_xyz, l-bL[i], bK[i], &f1);
-                if((iG==iGdbg)&&(iS==iSdbg)){ printf("CUDA getMMFFf4(): bond-length:    iG %3i ing %3i elb %10.5f f(%10.5f,%10.5f,%10.5f) l %10.5f bL %10.5f bK %10.5f \n", iG, ing, elb, f1.x, f1.y, f1.z, l, bL[i], bK[i] ); }
+                //if((iG==iGdbg)&&(iS==iSdbg)){ printf("CUDA getMMFFf4(): bond-length:    iG %3i ing %3i elb %10.5f f(%10.5f,%10.5f,%10.5f) l %10.5f bL %10.5f bK %10.5f \n", iG, ing, elb, f1.x, f1.y, f1.z, l, bL[i], bK[i] ); }
                 fbs[i] -= f1;
                 fa     += f1;
                 E      +=elb;
@@ -342,7 +340,7 @@ __global__ void getMMFFf4(
                 float kpp = Kppi[i];
                 if( (ing<nnode) && (kpp>1.e-6f) ){   // Only node atoms have pi-pi alignemnt interaction (ing < nnode)
                     float epp = evalPiAling( hpi, XYZ(apos[ingv+nAtoms]), kpp,  &f1, &f2 ); // apos[ingv+nAtoms] is the pi-orbital of neighbor ing
-                    if((iG==iGdbg)&&(iS==iSdbg)){ printf("CUDA getMMFFf4(): cos(pi,pi):     iG %3i ing %3i epp %10.5f f(%10.5f,%10.5f,%10.5f) c %10.5f kpp %10.5f \n", iG, ing, epp, f1.x, f1.y, f1.z, dot(hpi,XYZ(apos[ingv+nAtoms])), kpp ); }
+                    //if((iG==iGdbg)&&(iS==iSdbg)){ printf("CUDA getMMFFf4(): cos(pi,pi):     iG %3i ing %3i epp %10.5f f(%10.5f,%10.5f,%10.5f) c %10.5f kpp %10.5f \n", iG, ing, epp, f1.x, f1.y, f1.z, dot(hpi,XYZ(apos[ingv+nAtoms])), kpp ); }
                     E     +=epp;
                     fpi   +=f1;
                     fps[i]+=f2; // Uses defined operator+=
@@ -353,7 +351,7 @@ __global__ void getMMFFf4(
             float ksp = Kspi[i];
             if(ksp>1.e-6f){
                 float esp = evalAngCos( make_float4(hpi.x, hpi.y, hpi.z, 1.f), h, ksp, par.w, &f1, &f2 ); // hpi is direction, hr1.w=1.f; h is bond vector, hr2.w=1./l;
-                if((iG==iGdbg)&&(iS==iSdbg)){ printf("CUDA getMMFFf4(): cos(pi,sigma):      iG %3i ing %3i esp %10.5f f1(%10.5f,%10.5f,%10.5f) c %10.5f ksp %10.5f par.w %10.5f \n", iG, ing, esp, f1.x, f1.y, f1.z, dot(hpi,XYZ(h)), ksp, par.w ); }
+                //if((iG==iGdbg)&&(iS==iSdbg)){ printf("CUDA getMMFFf4(): cos(pi,sigma):      iG %3i ing %3i esp %10.5f f1(%10.5f,%10.5f,%10.5f) c %10.5f ksp %10.5f par.w %10.5f \n", iG, ing, esp, f1.x, f1.y, f1.z, dot(hpi,XYZ(h)), ksp, par.w ); }
                 E     +=esp;
                 fpi   +=f1;
                 fa    -=f2; // Uses defined operator-=
@@ -401,8 +399,7 @@ __global__ void getMMFFf4(
                 fa    -= (f1+f2); // Uses defined operator-= // total angular force on center atom is -(f1+f2)
                 E     +=ea;
 
-                if((iG==iGdbg)&&(iS==iSdbg)){ printf("CUDA getMMFFf4(): angle():        iG %3i ing %3i jng %3i ea=%10.5f f1(%10.5f,%10.5f,%10.5f) f2(%10.5f,%10.5f,%10.5f) cos %10.5f apar(%10.5f,%10.5f,%10.5f) \n", iG, ing, jng, ea, f1.x, f1.y, f1.z, f2.x, f2.y, f2.z, dot(XYZ(hi),XYZ(hj)), par.x, par.y, par.z ); }
-
+                //if((iG==iGdbg)&&(iS==iSdbg)){ printf("CUDA getMMFFf4(): angle():        iG %3i ing %3i jng %3i ea=%10.5f f1(%10.5f,%10.5f,%10.5f) f2(%10.5f,%10.5f,%10.5f) cos %10.5f apar(%10.5f,%10.5f,%10.5f) \n", iG, ing, jng, ea, f1.x, f1.y, f1.z, f2.x, f2.y, f2.z, dot(XYZ(hi),XYZ(hj)), par.x, par.y, par.z ); }
 
                 if(bSubtractVdW){ // Remove non-bonded interactions from atoms that are bonded to common neighbor
                     float4 REQi=REQKs[inga];   // non-bonding parameters of i-th neighbor
@@ -463,6 +460,8 @@ __global__ void getNonBond(
     __shared__ float4 LCLJS [32];  // Shared memory for parameters
     const int iG = blockIdx.x * blockDim.x + threadIdx.x; // index of atom
     const int iS = blockIdx.y * blockDim.y + threadIdx.y; // index of system
+    // total number of threads along y direction
+    //const int nS = gridDim.y * blockDim.y;
     const int natoms=ns.x;               // number of atoms PER SYSTEM
     const int nnode =ns.y;               // number of node atoms PER SYSTEM
     const int nvec  =natoms+nnode; // number of vectors (atoms+node atoms)
@@ -493,18 +492,18 @@ __global__ void getNonBond(
 
     const cu_Mat3 lvec = lvecs[iS]; // lattice vectors for this system
 
-    if((iG==iGdbg)&&(iS==iSdbg)){ 
-        printf("CUDA getNonBond(): natoms=%i, nnode=%i nPBC=(%i,%i,%i)\n", natoms, nnode, nPBC.x, nPBC.y, nPBC.z);
-        printf("CUDA getNonBond(): lvec.a=(%g,%g,%g) lvec.b=(%g,%g,%g) lvec.c=(%g,%g,%g)\n", lvec.a.x, lvec.a.y, lvec.a.z, lvec.b.x, lvec.b.y, lvec.b.z, lvec.c.x, lvec.c.y, lvec.c.z);
-        printf("CUDA getNonBond(): GFFParams=(%g,%g,%g,%g) \n", GFFParams.x, GFFParams.y, GFFParams.z, GFFParams.w);
-        for(int i=0; i<natoms; i++){
-            float4 pi = apos[i];
-            int4   ng = neighs[i];
-            int4   ngC = neighCell[i];
-            float4 REQKi = REQKs[i];
-            printf("CUDA getNonBond(): atom %i: ng=(%i,%i,%i,%i), ngC=(%i,%i,%i,%i), REQKi=(%10.5f,%10.5f,%10.5f|%10.5f), posi=(%10.5f,%10.5f,%10.5f,%10.5f)\n", i, ng.x, ng.y, ng.z, ng.w, ngC.x, ngC.y, ngC.z, ngC.w, REQKi.x, REQKi.y, REQKi.z, REQKi.w, pi.x, pi.y, pi.z, pi.w);
-        }   
-    }
+    //if((iG==iGdbg)&&(iS==iSdbg)){ printf("CUDA getNonBond(): natoms=%i, nnode=%i nSys=(%i,%i)  nPBC=(%i,%i,%i)\n", natoms, nnode, blockDim.y, gridDim.y, nPBC.x, nPBC.y, nPBC.z); }
+    // if((iG==iGdbg)&&(iS==iSdbg)){ 
+    //     printf("CUDA getNonBond(): lvec.a=(%g,%g,%g) lvec.b=(%g,%g,%g) lvec.c=(%g,%g,%g)\n", lvec.a.x, lvec.a.y, lvec.a.z, lvec.b.x, lvec.b.y, lvec.b.z, lvec.c.x, lvec.c.y, lvec.c.z);
+    //     printf("CUDA getNonBond(): GFFParams=(%g,%g,%g,%g) \n", GFFParams.x, GFFParams.y, GFFParams.z, GFFParams.w);
+    //     for(int i=0; i<natoms; i++){
+    //         float4 pi = apos[i];
+    //         int4   ng = neighs[i];
+    //         int4   ngC = neighCell[i];
+    //         float4 REQKi = REQKs[i];
+    //         printf("CUDA getNonBond(): atom %i: ng=(%i,%i,%i,%i), ngC=(%i,%i,%i,%i), REQKi=(%10.5f,%10.5f,%10.5f|%10.5f), posi=(%10.5f,%10.5f,%10.5f,%10.5f)\n", i, ng.x, ng.y, ng.z, ng.w, ngC.x, ngC.y, ngC.z, ngC.w, REQKi.x, REQKi.y, REQKi.z, REQKi.w, pi.x, pi.y, pi.z, pi.w);
+    //     }   
+    // }
     // ========= Atom-to-Atom interaction in chunks
     for (int j0=0; j0<natoms; j0+=blockDim.x){ 
         int i = j0 + threadIdx.x + iS*natoms; 
@@ -564,7 +563,7 @@ __global__ void getNonBond(
                     } else { // If PBC is not used
                         if( !bBonded ){ // if atoms are not bonded, calculate interaction (only in origin image)
                             float4 fij = getLJQH( dp, REQK, R2damp ); // NOTE: getLJQH must be defined
-                            if((iG==iGdbg)&&(iS==iSdbg)){   printf("CUDA getNonBond(): ia,ja %3i %3i aj(%10.5f,%10.5f,%10.5f) dp( %10.5f | %10.5f,%10.5f,%10.5f)  fij( %10.5f,%10.5f,%10.5f|%10.5f)\n", iG, ja, aj.x,aj.y,aj.z, length(dp), dp.x, dp.y, dp.z, fij.x, fij.y, fij.z, fij.w); }
+                            //if((iG==iGdbg)&&(iS==iSdbg)){   printf("CUDA getNonBond(): ia,ja %3i %3i aj(%10.5f,%10.5f,%10.5f) dp( %10.5f | %10.5f,%10.5f,%10.5f)  fij( %10.5f,%10.5f,%10.5f|%10.5f)\n", iG, ja, aj.x,aj.y,aj.z, length(dp), dp.x, dp.y, dp.z, fij.x, fij.y, fij.z, fij.w); }
                             fe += fij;
                         }
                     }
@@ -816,8 +815,7 @@ __global__ void printOnGPU(
     const int i0a = isys * natoms; // base index for atoms data (constr, REQKs, neighs, etc.)
     const int i0v = isys * (natoms+nnode); // base index for vector data (apos, avel, aforce, cvf)
 
-    printf( "#### CUDA::printOnGPU(isys=%i) natoms=%i nnode=%i nS_=%i\n", isys,  natoms, nnode, nS_ );
-
+    printf( "CUDA::printOnGPU(isys=%i) natoms=%i nnode=%i nS_=%i\n", isys,  natoms, nnode, nS_ );
     if(mask.x){ // Print atom aforce/positions/constraints
         printf("--- Atoms (%i -- %i) ---\n", i0v, i0v+natoms-1);
         for(int i=0; i<natoms; i++){
