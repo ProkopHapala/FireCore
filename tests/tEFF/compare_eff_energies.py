@@ -4,125 +4,66 @@ import os
 import matplotlib.pyplot as plt
 from pathlib import Path
 import argparse
-
-sys.path.append("../../")
+import re
 
 # Energy component mapping between different implementations
 # Format: (component_name, homebrew_name, lammps_name, transform_function)
 ENERGY_MAPPINGS = [
     # Basic direct mappings
-    ('total', 'Etot', 'total', lambda x: x),
-    ('kinetic', 'Eke', 'eke', lambda x: x),
-    ('pauli', 'Epauli', 'epauli', lambda x: x),
-    ('coulomb', 'Ecoul', 'ecoul', lambda x: x),
-    ('residual', 'Erres', 'erres', lambda x: x),
+    ('total', 'Etot', 'Etot', lambda x: x),
+    ('kinetic', 'Eke', 'Eke', lambda x: x),
+    ('pauli', 'Epauli', 'Epauli', lambda x: x),
+    ('coulomb', 'Ecoul', 'Ecoul', lambda x: x),
+    ('residual', 'Erres', 'Erres', lambda x: x),
     # Composite mappings can be added here if needed
-    # Example: ('electronic', 'Eke', 'eke', lambda x: x * 0.5)
+    # Example: ('electronic', 'Eke', 'Eke', lambda x: x * 0.5)
 ]
 
 def extract_data_from_xyz(xyz_file):
-    """Extract energy and parameter data from XYZ file with comments.
-    Returns a dictionary with extracted parameters and energy components.
     """
-    params = {}
-    frames = []
-    
-    with open(xyz_file, 'r') as f:
-        line_num = 0
-        frame_num = 0
-        
-        while True:
-            # Read number of atoms
-            line = f.readline()
-            if not line:
-                break
-            
-            num_atoms = int(line.strip())
-            
-            # Read comment line with parameters
-            comment = f.readline().strip()
-            
-            # Extract energy and parameter data
-            if comment.startswith('#'):
-                # Format: #param1 value1 param2 value2 ...
-                parts = comment[1:].strip().split()
-                for i in range(0, len(parts) - 1, 2):
-                    key = parts[i]
-                    val = float(parts[i + 1])
-                    
-                    if key not in params:
-                        params[key] = []
-                    
-                    # Extend list if needed
-                    while len(params[key]) <= frame_num:
-                        params[key].append(np.nan)
-                    
-                    params[key][frame_num] = val
-            elif 'Etot' in comment:
-                # Format like: Etot(value) Eke(value) ...
-                for part in comment.split():
-                    if '(' in part and ')' in part:
-                        key = part.split('(')[0]
-                        val = float(part.split('(')[1].split(')')[0])
-                        
-                        if key not in params:
-                            params[key] = []
-                        
-                        # Extend list if needed
-                        while len(params[key]) <= frame_num:
-                            params[key].append(np.nan)
-                        
-                        params[key][frame_num] = val
-            
-            # Skip atom positions
-            for _ in range(num_atoms):
-                f.readline()
-            
-            frames.append(frame_num)
-            frame_num += 1
-    
-    # Convert lists to numpy arrays
-    for key in params:
-        params[key] = np.array(params[key])
-    
-    params['frames'] = np.array(frames)
-    return params
-
-def extract_data_from_npy(npy_file):
-    """Extract data from numpy file.
-    Expected format: columns are [ang, dist, total, eke, epauli, ecoul, erres]
+    Extract relevant parameters from XYZ comments.
+    Supports LAMMPS (#key val ...) and homebrew key(val) formats.
     """
-    data = np.load(npy_file)
-    params = {
-        'ang': data[:, 0],
-        'dist': data[:, 1],
-        'total': data[:, 2],
-        'eke': data[:, 3],
-        'epauli': data[:, 4],
-        'ecoul': data[:, 5],
-        'erres': data[:, 6],
-        'frames': np.arange(len(data))
-    }
-    return params
+    import re
+    import numpy as np
+    keys = ['ang','dist','Etot','Eke','Epauli','Ecoul','Erres','T','ee','ea','aa']
+    # compile patterns
+    p_paren = {k: re.compile(rf"{k}\((-?\d+\.\d+)\)") for k in keys}
+    p_space = {k: re.compile(rf"{k}\s+(-?\d+\.\d+)" ) for k in keys}
+    rows = []
+    with open(xyz_file) as f:
+        for line in f:
+            s = line.strip()
+            if not (s.startswith('#') or '(' in s):
+                continue
+            txt = s.lstrip('#')
+            row = {}
+            for k in keys:
+                m = p_paren[k].search(txt)
+                if m:
+                    row[k] = float(m.group(1))
+                else:
+                    m2 = p_space[k].search(txt)
+                    row[k] = float(m2.group(1)) if m2 else np.nan
+            rows.append(row)
+    # assemble arrays
+    raw = {k: np.array([r[k] for r in rows], dtype=float) for k in keys}
+    return raw
 
 def load_data(homebrew_source, lammps_source):
-    """Load data from either XYZ files or NPY files."""
-    # Try to load homebrew data
-    if homebrew_source.endswith('.xyz'):
-        homebrew_data = extract_data_from_xyz(homebrew_source)
-    elif homebrew_source.endswith('.npy'):
-        homebrew_data = extract_data_from_npy(homebrew_source)
-    else:
-        raise ValueError(f"Unsupported homebrew data source: {homebrew_source}")
-    
-    # Try to load LAMMPS data
-    if lammps_source.endswith('.xyz'):
-        lammps_data = extract_data_from_xyz(lammps_source)
-    elif lammps_source.endswith('.npy'):
-        lammps_data = extract_data_from_npy(lammps_source)
-    else:
-        raise ValueError(f"Unsupported LAMMPS data source: {lammps_source}")
-    
+    """Load and map homebrew and LAMMPS datasets."""
+    raw_h = extract_data_from_xyz(homebrew_source)
+    homebrew_data = {
+        'ang': raw_h['ang'], 'dist': raw_h['dist'],
+        'Etot': raw_h['Etot'], 'Eke': raw_h['T'],
+        'Epauli': raw_h['ee'], 'Ecoul': raw_h['ea'], 'Erres': raw_h['aa']
+    }
+    raw_l = extract_data_from_xyz(lammps_source)
+    lammps_data = {
+        'ang': raw_l['ang'], 'dist': raw_l['dist'],
+        'Etot': raw_l['Etot'], 'Eke': raw_l['Eke'],
+        'Epauli': raw_l['Epauli'], 'Ecoul': raw_l['Ecoul'], 'Erres': raw_l['Erres']
+    }
     return homebrew_data, lammps_data
 
 def create_comparison_grid(homebrew_data, lammps_data, param_x, param_y, energy_mapping):
@@ -131,11 +72,15 @@ def create_comparison_grid(homebrew_data, lammps_data, param_x, param_y, energy_
     component_name, homebrew_name, lammps_name, transform_fn = energy_mapping
     
     # Get parameters for grid creation
-    x_values = homebrew_data.get(param_x, None)
-    y_values = homebrew_data.get(param_y, None)
+    homebrew_x_values = homebrew_data.get(param_x, None)
+    homebrew_y_values = homebrew_data.get(param_y, None)
+    lammps_x_values = lammps_data.get(param_x, None)
+    lammps_y_values = lammps_data.get(param_y, None)
     
-    if x_values is None or y_values is None:
-        raise ValueError(f"Parameters {param_x} or {param_y} not found in data")
+    if homebrew_x_values is None or homebrew_y_values is None:
+        raise ValueError(f"Parameters {param_x} or {param_y} not found in homebrew data")
+    if lammps_x_values is None or lammps_y_values is None:
+        raise ValueError(f"Parameters {param_x} or {param_y} not found in lammps data")
     
     # Get energy values
     homebrew_energy = homebrew_data.get(homebrew_name, None)
@@ -150,168 +95,239 @@ def create_comparison_grid(homebrew_data, lammps_data, param_x, param_y, energy_
     homebrew_energy = transform_fn(homebrew_energy)
     lammps_energy = transform_fn(lammps_energy)
     
-    # Create grid matrices
-    unique_x = np.unique(x_values)
-    unique_y = np.unique(y_values)
+    # Create a unified grid using all unique values from both datasets
+    unique_x = np.unique(np.concatenate((homebrew_x_values, lammps_x_values)))
+    unique_y = np.unique(np.concatenate((homebrew_y_values, lammps_y_values)))
     homebrew_grid = np.full((len(unique_x), len(unique_y)), np.nan)
     lammps_grid = np.full((len(unique_x), len(unique_y)), np.nan)
     diff_grid = np.full((len(unique_x), len(unique_y)), np.nan)
     
-    # Fill grids
-    for i, x in enumerate(x_values):
-        x_idx = np.where(unique_x == x)[0][0]
-        y_idx = np.where(unique_y == y_values[i])[0][0]
-        
-        homebrew_grid[x_idx, y_idx] = homebrew_energy[i]
-        lammps_grid[x_idx, y_idx] = lammps_energy[i]
-        diff_grid[x_idx, y_idx] = homebrew_energy[i] - lammps_energy[i]
+    # Fill homebrew grid
+    for i in range(len(homebrew_energy)):
+        if i < len(homebrew_x_values) and i < len(homebrew_y_values):
+            x = homebrew_x_values[i]
+            y = homebrew_y_values[i]
+            
+            # Find the nearest values instead of exact matches (more robust)
+            if len(unique_x) > 0 and len(unique_y) > 0:
+                x_idx = np.abs(unique_x - x).argmin()
+                y_idx = np.abs(unique_y - y).argmin()
+                homebrew_grid[x_idx, y_idx] = homebrew_energy[i]
+    
+    # Fill lammps grid
+    for i in range(len(lammps_energy)):
+        if i < len(lammps_x_values) and i < len(lammps_y_values):
+            x = lammps_x_values[i]
+            y = lammps_y_values[i]
+            
+            # Find the nearest values instead of exact matches (more robust)
+            if len(unique_x) > 0 and len(unique_y) > 0:
+                x_idx = np.abs(unique_x - x).argmin()
+                y_idx = np.abs(unique_y - y).argmin()
+                lammps_grid[x_idx, y_idx] = lammps_energy[i]
+    
+    # Calculate differences where both values exist
+    for x_idx in range(len(unique_x)):
+        for y_idx in range(len(unique_y)):
+            if not np.isnan(homebrew_grid[x_idx, y_idx]) and not np.isnan(lammps_grid[x_idx, y_idx]):
+                diff_grid[x_idx, y_idx] = homebrew_grid[x_idx, y_idx] - lammps_grid[x_idx, y_idx]
     
     return {
-        'x': unique_x,
-        'y': unique_y,
-        'homebrew': homebrew_grid,
-        'lammps': lammps_grid,
-        'diff': diff_grid
+        'x_vals': unique_x,
+        'y_vals': unique_y,
+        'homebrew_vals': homebrew_grid.flatten(),
+        'lammps_vals': lammps_grid.flatten(),
+        'diff': diff_grid.flatten()
     }
 
 def plot_comparison(grid_data, param_x, param_y, component_name, output_dir=None):
     """Create comparison plots for a single energy component."""
-    fig, axes = plt.subplots(1, 3, figsize=(18, 6))
+    # Extract unique values for each parameter
+    x_vals = np.unique(grid_data['x_vals'])
+    y_vals = np.unique(grid_data['y_vals'])
+    nx, ny = len(x_vals), len(y_vals)
     
-    # Determine appropriate color scale limits
-    homebrew_min = np.nanmin(grid_data['homebrew'])
-    homebrew_max = np.nanmax(grid_data['homebrew'])
-    lammps_min = np.nanmin(grid_data['lammps'])
-    lammps_max = np.nanmax(grid_data['lammps'])
+    # Reshape grids to 2D for plotting
+    homebrew_grid = np.reshape(grid_data['homebrew_vals'], (nx, ny))
+    lammps_grid = np.reshape(grid_data['lammps_vals'], (nx, ny))
+    diff_grid = np.reshape(grid_data['diff'], (nx, ny))
     
-    # Use the same scale for homebrew and LAMMPS
-    energy_min = min(homebrew_min, lammps_min)
-    energy_max = max(homebrew_max, lammps_max)
+    # We'll return these for plotting in the combined function
+    return {
+        'component_name': component_name,
+        'homebrew_grid': homebrew_grid,
+        'lammps_grid': lammps_grid,
+        'diff_grid': diff_grid,
+        'x_vals': x_vals,
+        'y_vals': y_vals,
+        'stats': {
+            'component': component_name,
+            'mean_diff': np.mean(diff_grid[~np.isnan(diff_grid)]),
+            'abs_mean_diff': np.mean(np.abs(diff_grid[~np.isnan(diff_grid)])),
+            'min_diff': np.min(diff_grid[~np.isnan(diff_grid)]),
+            'max_diff': np.max(diff_grid[~np.isnan(diff_grid)]),
+            'std_diff': np.std(diff_grid[~np.isnan(diff_grid)]),
+            'rms_diff': np.sqrt(np.mean(diff_grid[~np.isnan(diff_grid)]**2))
+        }
+    }
+
+def compare_energy_components(homebrew_data, lammps_data, param_x, param_y, output_dir=None):
+    # Fallback to simple Etot time series if no valid ang/dist
+    if (param_x not in homebrew_data or param_y not in homebrew_data \
+        or homebrew_data[param_x].size == 0 or homebrew_data[param_y].size == 0 \
+        or np.isnan(homebrew_data[param_x]).all() or np.isnan(homebrew_data[param_y]).all()):
+         print("Using fallback Etot vs frame index plot")
+         plt.figure()
+         plt.plot(homebrew_data['Etot'], '-o', label='homebrew')
+         plt.plot(lammps_data['Etot'], '-x', label='lammps')
+         plt.xlabel('Frame index')
+         plt.ylabel('Etot')
+         plt.title('Total Energy Comparison')
+         plt.legend()
+         plt.show()
+         return []
     
-    # Compute absolute max for difference
-    diff_abs_max = np.nanmax(np.abs(grid_data['diff']))
+    valid_components = []
+    for mapping in ENERGY_MAPPINGS:
+        component_name = mapping[0]
+        try:
+            grid_data = create_comparison_grid(homebrew_data, lammps_data, param_x, param_y, mapping)
+            result = plot_comparison(grid_data, param_x, param_y, component_name)
+            valid_components.append(result)
+        except ValueError as e:
+            print(f"Warning: Could not compare {component_name} - {str(e)}")
     
-    # Plot homebrew data
-    im0 = axes[0].imshow(grid_data['homebrew'], 
-                         extent=[grid_data['y'].min(), grid_data['y'].max(), 
-                                grid_data['x'].max(), grid_data['x'].min()],
-                         aspect='auto', cmap='inferno', vmin=energy_min, vmax=energy_max)
-    axes[0].set_xlabel(f'{param_y} (Å)')
-    axes[0].set_ylabel(f'{param_x} (rad)')
-    axes[0].set_title(f'Homebrew {component_name} Energy')
-    plt.colorbar(im0, ax=axes[0], label='Energy (eV)')
+    if not valid_components:
+        print("No valid energy components to compare.")
+        return []
+        
+    # Now create a single figure with 3 rows and N columns (one for each component)
+    n_components = len(valid_components)
+    fig, axs = plt.subplots(3, n_components, figsize=(5*n_components, 15))
     
-    # Plot LAMMPS data
-    im1 = axes[1].imshow(grid_data['lammps'], 
-                         extent=[grid_data['y'].min(), grid_data['y'].max(), 
-                                grid_data['x'].max(), grid_data['x'].min()],
-                         aspect='auto', cmap='inferno', vmin=energy_min, vmax=energy_max)
-    axes[1].set_xlabel(f'{param_y} (Å)')
-    axes[1].set_ylabel(f'{param_x} (rad)')
-    axes[1].set_title(f'LAMMPS {component_name} Energy')
-    plt.colorbar(im1, ax=axes[1], label='Energy (eV)')
+    # If there's only one component, make sure axs is 2D
+    if n_components == 1:
+        axs = axs.reshape(3, 1)
     
-    # Plot difference
-    im2 = axes[2].imshow(grid_data['diff'], 
-                         extent=[grid_data['y'].min(), grid_data['y'].max(), 
-                                grid_data['x'].max(), grid_data['x'].min()],
-                         aspect='auto', cmap='coolwarm', 
-                         vmin=-diff_abs_max, vmax=diff_abs_max)
-    axes[2].set_xlabel(f'{param_y} (Å)')
-    axes[2].set_ylabel(f'{param_x} (rad)')
-    axes[2].set_title(f'Difference (Homebrew - LAMMPS)')
-    plt.colorbar(im2, ax=axes[2], label='Energy Difference (eV)')
+    # Plot all components in the grid
+    for i, result in enumerate(valid_components):
+        component_name = result['component_name']
+        homebrew_grid = result['homebrew_grid']
+        lammps_grid = result['lammps_grid']
+        diff_grid = result['diff_grid']
+        x_vals = result['x_vals']
+        y_vals = result['y_vals']
+        
+        # Row 1: Homebrew values
+        im0 = axs[0, i].imshow(homebrew_grid, origin='lower', aspect='auto',
+                           extent=[min(x_vals), max(x_vals), min(y_vals), max(y_vals)])
+        axs[0, i].set_title(f'Homebrew {component_name}')
+        axs[0, i].set_xlabel(param_x)
+        if i == 0:  # Only add y label on the leftmost plot
+            axs[0, i].set_ylabel(param_y)
+        plt.colorbar(im0, ax=axs[0, i])
+        
+        # Row 2: LAMMPS values
+        im1 = axs[1, i].imshow(lammps_grid, origin='lower', aspect='auto',
+                           extent=[min(x_vals), max(x_vals), min(y_vals), max(y_vals)])
+        axs[1, i].set_title(f'LAMMPS {component_name}')
+        axs[1, i].set_xlabel(param_x)
+        if i == 0:  # Only add y label on the leftmost plot
+            axs[1, i].set_ylabel(param_y)
+        plt.colorbar(im1, ax=axs[1, i])
+        
+        # Row 3: Difference
+        im2 = axs[2, i].imshow(diff_grid, origin='lower', aspect='auto', cmap='seismic',
+                           extent=[min(x_vals), max(x_vals), min(y_vals), max(y_vals)])
+        axs[2, i].set_title(f'Difference {component_name}')
+        axs[2, i].set_xlabel(param_x)
+        if i == 0:  # Only add y label on the leftmost plot
+            axs[2, i].set_ylabel(param_y)
+        plt.colorbar(im2, ax=axs[2, i])
     
     plt.tight_layout()
     
     # Save figure if output directory is provided
     if output_dir:
         os.makedirs(output_dir, exist_ok=True)
-        filename = os.path.join(output_dir, f'comparison_{component_name}.png')
+        filename = os.path.join(output_dir, 'all_components_comparison.png')
         plt.savefig(filename, dpi=300, bbox_inches='tight')
         print(f"Saved comparison plot to {filename}")
-    
-    # Calculate and return statistics
-    flat_diff = grid_data['diff'].flatten()
-    flat_diff = flat_diff[~np.isnan(flat_diff)]
-    
-    stats = {
-        'component': component_name,
-        'mean_diff': np.mean(flat_diff),
-        'abs_mean_diff': np.mean(np.abs(flat_diff)),
-        'min_diff': np.min(flat_diff),
-        'max_diff': np.max(flat_diff),
-        'std_diff': np.std(flat_diff),
-        'rms_diff': np.sqrt(np.mean(flat_diff**2))
-    }
-    
-    return stats
-
-def compare_energy_components(homebrew_data, lammps_data, param_x, param_y, output_dir=None):
-    """Compare all energy components based on the defined mappings."""
-    stats_summary = []
-    
-    for mapping in ENERGY_MAPPINGS:
-        component_name = mapping[0]
-        try:
-            grid_data = create_comparison_grid(homebrew_data, lammps_data, param_x, param_y, mapping)
-            stats = plot_comparison(grid_data, param_x, param_y, component_name, output_dir)
-            stats_summary.append(stats)
-        except ValueError as e:
-            print(f"Warning: Could not compare {component_name} - {str(e)}")
-    
-    # Create and save a summary table
-    if output_dir:
+        
+        # Also save individual component plots
+        for result in valid_components:
+            component_name = result['component_name']
+            fig_comp, axs_comp = plt.subplots(1, 3, figsize=(15, 5))
+            
+            # Plot homebrew values
+            im0 = axs_comp[0].imshow(result['homebrew_grid'], origin='lower', aspect='auto', extent=[min(result['x_vals']), max(result['x_vals']),  min(result['y_vals']), max(result['y_vals'])])
+            axs_comp[0].set_title(f'Homebrew {component_name}')
+            axs_comp[0].set_xlabel(param_x)
+            axs_comp[0].set_ylabel(param_y)
+            plt.colorbar(im0, ax=axs_comp[0])
+            
+            # Plot LAMMPS values
+            im1 = axs_comp[1].imshow(result['lammps_grid'], origin='lower', aspect='auto', extent=[min(result['x_vals']), max(result['x_vals']), min(result['y_vals']), max(result['y_vals'])])
+            axs_comp[1].set_title(f'LAMMPS {component_name}')
+            axs_comp[1].set_xlabel(param_x)
+            axs_comp[1].set_ylabel(param_y)
+            plt.colorbar(im1, ax=axs_comp[1])
+            
+            # Plot difference
+            im2 = axs_comp[2].imshow(result['diff_grid'], origin='lower', aspect='auto', cmap='seismic', extent=[min(result['x_vals']), max(result['x_vals']), min(result['y_vals']), max(result['y_vals'])])
+            axs_comp[2].set_title(f'Difference {component_name}')
+            axs_comp[2].set_xlabel(param_x)
+            axs_comp[2].set_ylabel(param_y)
+            plt.colorbar(im2, ax=axs_comp[2])
+            
+            plt.tight_layout()
+            component_filename = os.path.join(output_dir, f'comparison_{component_name}.png')
+            plt.savefig(component_filename, dpi=300, bbox_inches='tight')
+            print(f"Saved individual component plot to {component_filename}")
+            plt.close(fig_comp)
+        
+        # Create and save a summary table
         summary_file = os.path.join(output_dir, 'comparison_summary.txt')
         with open(summary_file, 'w') as f:
             f.write("Component\tMean Diff\tAbs Mean Diff\tMin Diff\tMax Diff\tStd Dev\tRMS Diff\n")
-            for stats in stats_summary:
+            for stats in [result['stats'] for result in valid_components]:
                 f.write(f"{stats['component']}\t{stats['mean_diff']:.6f}\t{stats['abs_mean_diff']:.6f}\t"
                         f"{stats['min_diff']:.6f}\t{stats['max_diff']:.6f}\t{stats['std_diff']:.6f}\t"
                         f"{stats['rms_diff']:.6f}\n")
         print(f"Saved comparison summary to {summary_file}")
     
-    return stats_summary
+    return [result['stats'] for result in valid_components]
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='Compare energy calculations between homebrew EFF and LAMMPS')
-    parser.add_argument('--homebrew-source', required=True, 
-                        help='Source file for homebrew EFF data (.xyz or .npy)')
-    parser.add_argument('--lammps-source', required=True, 
-                        help='Source file for LAMMPS EFF data (.xyz or .npy)')
-    parser.add_argument('--output-dir', default='comparison_results', 
-                        help='Directory for output files')
-    parser.add_argument('--param-x', default='ang', 
-                        help='Parameter to use for x-axis (default: ang)')
-    parser.add_argument('--param-y', default='dist', 
-                        help='Parameter to use for y-axis (default: dist)')
+    parser.add_argument('--homebrew-source', required=True,  help='Source file for homebrew EFF data (.xyz or .npy)')
+    parser.add_argument('--lammps-source', required=True,  help='Source file for LAMMPS EFF data (.xyz or .npy)')
+    parser.add_argument('--output-dir', default='comparison_results',    help='Directory for output files')
+    parser.add_argument('--param-x', default='ang',   help='Parameter to use for x-axis (default: ang)')
+    parser.add_argument('--param-y', default='dist',  help='Parameter to use for y-axis (default: dist)')
     
     args = parser.parse_args()
     
     # Create output directory if it doesn't exist
     os.makedirs(args.output_dir, exist_ok=True)
     
-    # Load data from sources
-    print(f"Loading homebrew data from: {args.homebrew_source}")
-    print(f"Loading LAMMPS data from: {args.lammps_source}")
+    # Load data and plot total energy comparison
+    print(f"Loading data from: {args.homebrew_source} and {args.lammps_source}")
     homebrew_data, lammps_data = load_data(args.homebrew_source, args.lammps_source)
-    
-    # Compare energy components
-    print("\nComparing energy components...")
-    stats_summary = compare_energy_components(
-        homebrew_data, lammps_data, 
-        args.param_x, args.param_y,
-        args.output_dir
-    )
-    
-    # Print summary statistics
-    print("\nSummary Statistics:")
-    print("-" * 80)
-    print(f"{'Component':<10} | {'Mean Diff':>10} | {'Abs Mean':>10} | {'Min Diff':>10} | {'Max Diff':>10} | {'Std Dev':>10} | {'RMS Diff':>10}")
-    print("-" * 80)
-    for stats in stats_summary:
-        print(f"{stats['component']:<10} | {stats['mean_diff']:>10.6f} | {stats['abs_mean_diff']:>10.6f} | "
-              f"{stats['min_diff']:>10.6f} | {stats['max_diff']:>10.6f} | {stats['std_diff']:>10.6f} | "
-              f"{stats['rms_diff']:>10.6f}")
-    
+    hb = homebrew_data.get('Etot', np.array([]))
+    lp = lammps_data.get('Etot', np.array([]))
+    if hb.size == 0 or lp.size == 0:
+        print("Error: Etot data not found in one of the sources.")
+        sys.exit(1)
+    plt.figure()
+    plt.plot(hb, '-o', label='homebrew')
+    plt.plot(lp, '-x', label='lammps')
+    plt.xlabel('Frame index')
+    plt.ylabel('Etot')
+    plt.title('Total Energy Comparison')
+    plt.legend()
+    output_png = os.path.join(args.output_dir, 'etot_comparison.png')
+    plt.savefig(output_png)
+    print(f"Saved total energy comparison plot to {output_png}")
     plt.show()
+    sys.exit(0)

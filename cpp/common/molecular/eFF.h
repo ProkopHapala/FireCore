@@ -880,11 +880,14 @@ void to_xyz( FILE* pFile ){
     }
 }
 
-void save_xyz( const char* filename, const char* mode="w" ){
+void save_xyz( const char* filename, const char* mode="w", const char* comment=0 ){
     //printf( "EFF::save_xyz(%s)\n", filename );
     FILE * pFile; 
     pFile = fopen (filename,mode);
     if(pFile==0){ printf("ERROR file >>%s<< not found \n", filename ); return; }
+    fprintf( pFile, " %i \n", na+ne );
+    if(comment!=0){ printf("%s | na,ne %i %i Etot(%g)=T(%g)+ee(%g)+ea(%g)+aa(%g) \n", comment,  na,ne, Etot, Ek, Eee, Eae, Eaa ); fprintf( pFile, "%s | na,ne %i %i Etot(%g)=T(%g)+ee(%g)+ea(%g)+aa(%g) \n", comment,  na,ne, Etot, Ek, Eee, Eae, Eaa ); }
+    else          { fprintf( pFile, "na,ne %i %i Etot(%g)=T(%g)+ee(%g)+ea(%g)+aa(%g) \n", na,ne, Etot, Ek, Eee, Eae, Eaa ); }
     to_xyz( pFile );
     fclose(pFile);
 }

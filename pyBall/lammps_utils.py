@@ -291,7 +291,7 @@ def process_xyz_with_lammps(xyz_frames, create_input_fn, process_output_fn, scri
     results = []
     
     for i, img in enumerate(imgs):
-        print(f"Processing frame {i}...")
+        #rint(f"Processing frame {i}...")
         # Extract atom data from the frame - handle different frame formats
         if len(img) >= 4:  # Assume pyBall format
             elements = img[0]

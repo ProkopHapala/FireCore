@@ -10,8 +10,10 @@ sys.path.append("../../")
 from pyBall import lammps_utils as lu
 from pyBall.atomicUtils import load_xyz_movie
 
-# EFF LAMMPS script template with placeholders for formatting
-EFF_SCRIPT_TEMPLATE = """
+# EFF LAMMPS script template generator with relaxation options
+def generate_lammps_script(data_file, output_file, relax_nuclei=False, relax_electrons=False, max_steps=4000):
+    """Generate LAMMPS script with appropriate relaxation settings"""
+    script = """
 units           electron
 newton          on
 boundary        f f f
@@ -31,17 +33,40 @@ variable        erres equal c_energies[4]
 thermo          1
 thermo_style    custom step etotal v_eke v_epauli v_ecoul v_erres
 thermo_modify   format float %23.15g
-
-group           atoms type 1 2
-fix             freeze atoms setforce 0.0 0.0 0.0
-
+"""
+    
+    # Create groups for nuclei and electrons
+    script += """
+group           nuclei type 1 2
+group           electrons type 3
+"""
+    
+    # Add fixes based on relaxation flags
+    if not relax_nuclei:
+        script += "fix             freeze_nuclei nuclei setforce 0.0 0.0 0.0\n"
+    if not relax_electrons:
+        script += "fix             freeze_electrons electrons setforce 0.0 0.0 0.0\n"
+    
+    # Skip minimization if both nuclei and electrons are fixed
+    if relax_nuclei or relax_electrons:
+        script += """
 min_style       cg
 compute         1 all property/atom spin eradius erforce
 dump            2 all custom 1 mini.lammpstrj id type q c_1[1] c_1[2] x y z fx fy fz c_1[3]
-minimize        0 1e-6 2000 4000
-
-write_data      {output_file}
+minimize        0 1e-6 2000 {max_steps}
 """
+    else:
+        script += """
+# No minimization needed - both nuclei and electrons are fixed
+run             0
+"""
+    
+    # Add final write_data
+    script += "write_data      {output_file}\n"
+
+    text = script.format(data_file=data_file, output_file=output_file, max_steps=max_steps)
+    print(text)
+    return text
 
 # EFF-specific field mapping for energy extraction
 EFF_FIELD_MAP = {
@@ -139,6 +164,9 @@ if __name__ == "__main__":
     parser.add_argument('--max-frames', type=int, default=None, help='Maximum number of frames to process')
     parser.add_argument('--lammps-exec', default='lmp_serial', help='LAMMPS executable name/path')
     parser.add_argument('--electron-type', type=int, default=None, help='Atom type to use for electrons')
+    parser.add_argument('--relax-nuclei', action='store_true', help='Allow nuclei (atoms) to relax during minimization')
+    parser.add_argument('--relax-electrons', action='store_true', help='Allow electrons to relax during minimization')
+    parser.add_argument('--max-steps', type=int, default=4000, help='Maximum number of minimization steps')
     parser.add_argument('--keep-scratch', action='store_true', help='Keep scratch directory after completion')
     parser.add_argument('--energy-span', type=float, default=5.0, help='Energy span for plot in eV')
     parser.add_argument('--scan-file', default=None, help='Original scan XYZ with ang/dist comments to infer grid shape')
@@ -206,12 +234,18 @@ if __name__ == "__main__":
     print(f"Using scratch directory: {scratch_dir}")
     
     try:
-        # Process the frames with LAMMPS
+        # Process frames with LAMMPS using the modular function
+        script_template = generate_lammps_script(
+            "{data_file}", "{output_file}",
+            relax_nuclei=args.relax_nuclei,
+            relax_electrons=args.relax_electrons,
+            max_steps=args.max_steps
+        )
         results = lu.process_xyz_with_lammps(
             xyz_movie,
-            create_input_fn=create_eff_input,
-            process_output_fn=process_eff_output,
-            script_template=EFF_SCRIPT_TEMPLATE,
+            create_eff_input,
+            process_eff_output,
+            script_template,
             field_map=EFF_FIELD_MAP,
             work_dir=scratch_dir,
             box_size=args.box_size,
@@ -250,6 +284,12 @@ if __name__ == "__main__":
         # Write summary of energies to file
         summary_file = os.path.join(args.output_dir, "lammps_energy_summary.txt")
         with open(summary_file, 'w') as f:
+            # Include relaxation info in header
+            relax_info = []
+            if args.relax_nuclei: relax_info.append("nuclei")
+            if args.relax_electrons: relax_info.append("electrons")
+            relax_str = f" (relaxed: {', '.join(relax_info)})" if relax_info else " (fully fixed)"
+            f.write(f"# LAMMPS eFF simulation{relax_str}\n")
             f.write("Frame Ang Dist Total_Energy E_ke E_pauli E_coul E_rres\n")
             for i, result in enumerate(results):
                 energies = result['energies']
@@ -317,6 +357,9 @@ if __name__ == "__main__":
         xyz_file = os.path.join(args.output_dir, "lammps_final_geometries.xyz")
         with open(xyz_file, 'w') as f:
             for i, result in enumerate(results):
+                if i >= len(params['ang']) or i >= len(params['dist']):
+                    continue  # Skip if we don't have parameters for this frame
+                    
                 processed = result.get('processed_data', {})
                 elements = processed.get('elements', [])
                 positions = processed.get('positions', [])
@@ -325,13 +368,21 @@ if __name__ == "__main__":
                 if elements and positions and len(elements) == len(positions):
                     f.write(f"{len(elements)}\n")
                     # Add parameter data
-                    if energy is not None and 'ang' in params and 'dist' in params:
-                        f.write(f"#ang {params['ang'][i]:.6f} dist {params['dist'][i]:.6f} "
-                                f"Etot {energy.get('total', 0):.6f} "
-                                f"Eke {energy.get('eke', 0):.6f} "
-                                f"Epauli {energy.get('epauli', 0):.6f} "
-                                f"Ecoul {energy.get('ecoul', 0):.6f} "
-                                f"Erres {energy.get('erres', 0):.6f}\n")
+                    if energy is not None:
+                        # Include relaxation info in XYZ comments
+                        relax_info = []
+                        if args.relax_nuclei: relax_info.append("nuclei")
+                        if args.relax_electrons: relax_info.append("electrons")
+                        relax_str = f"relax {','.join(relax_info)} " if relax_info else "fixed "
+                        
+                        # Format the comment line with parameters and energy values
+                        comment = (f"#ang {params['ang'][i]:.6f} dist {params['dist'][i]:.6f} {relax_str}"
+                                  f"Etot {energy.get('total', 0):.6f} "
+                                  f"Eke {energy.get('eke', 0):.6f} "
+                                  f"Epauli {energy.get('epauli', 0):.6f} "
+                                  f"Ecoul {energy.get('ecoul', 0):.6f} "
+                                  f"Erres {energy.get('erres', 0):.6f}")
+                        f.write(f"{comment}\n")
                     else:
                         f.write("\n")
                     

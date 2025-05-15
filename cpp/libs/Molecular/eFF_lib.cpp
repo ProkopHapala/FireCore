@@ -590,7 +590,8 @@ int processXYZ( const char* fname, double Rfac=-0.5, double* outEs=0, double* ap
     FILE* fin = fopen( fname, "r" );
     if(fin==0){ printf("cannot open '%s' \n", fname ); exit(0);}
     const int nline=1024;
-    char line[1024];
+    char line[nline];
+    char comment[nline];
     char at_name[8];
     // --- Open output file
     int il   = 0;
@@ -609,7 +610,9 @@ int processXYZ( const char* fname, double Rfac=-0.5, double* outEs=0, double* ap
             }
             }else{ printf( "ERROR in FitREQ::loadXYZ() Suspicious number of atoms (%i) while reading `%s`  => Exit() \n", na, fname ); exit(0); }
         }else if( il==1 ){               // --- Read comment line ( read reference energy )
+            //printf("comment_line=%s\n",line);
             sscanf( line, "%*s %*s %i %*s %lf ", &(atoms->n0), &(atoms->Energy) );
+            sprintf(comment,"%s",line);
         }else if( il<atoms->natoms+2 ){  // --- Road atom line (type, position, charge)
             double x,y,z,q;
             int nret = sscanf( line, "%s %lf %lf %lf %lf", at_name, &x, &y, &z, &q );
@@ -653,7 +656,7 @@ int processXYZ( const char* fname, double Rfac=-0.5, double* outEs=0, double* ap
             }
             ff.eval();
             if(verbosity>0)printf("processXYZ() iconf=%i natoms=%i na=%i ne=%i | Etot(%g)=T(%g)+ee(%g)+ea(%g)+aa(%g) \n", iconf, atoms->natoms, ff.na, ff.ne, ff.Etot, ff.Ek, ff.Eee, ff.Eae, ff.Eaa );
-            if(xyz_out)ff.save_xyz   ( xyz_out, "a" );
+            if(xyz_out)ff.save_xyz   ( xyz_out, "a", comment );
             if(fgo_out)ff.writeTo_fgo( fgo_out, false, "a", iconf );
             if(apos_){
                 Vec3d*  apos = ((Vec3d* )apos_)+iconf*ff.na;
