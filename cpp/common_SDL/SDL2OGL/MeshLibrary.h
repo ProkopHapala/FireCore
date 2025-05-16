@@ -16,8 +16,8 @@ namespace MeshLibrary {
     extern GLMeshBase<MPOS> sphere;
     extern GLMesh<MPOS> rect;
     extern GLMesh<MPOS> circle;
-    extern GLMesh<MPOS> cross;      // For plot_cross()
-    extern GLMesh<MPOS> xmark;      // For plot_X()
+    extern GLMesh<MPOS> cross;
+    extern GLMesh<MPOS> xmark;
 }
 
 #endif // MESH_LIBRARY_H

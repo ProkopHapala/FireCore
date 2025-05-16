@@ -58,7 +58,7 @@ private:
     std::vector<vertex> vertices;
     std::vector<GLuniform> uniforms;
 
-    std::unordered_map<std::string, GLuniform> lazy_uniforms;
+    std::unordered_map<std::string, GLuniform> lazy_uniforms; // TODO: figure out a better system for lazy initialization
 
     GLenum usage = GL_STATIC_DRAW;
     GLuint vbo = 0;
@@ -170,7 +170,8 @@ public:
         vbo_sync = true;
     }
 
-    inline void draw(){
+    inline void draw(GLenum drawMode=0){
+        if (drawMode == 0) drawMode = this->drawMode;
         bind_sync_vbo();
 
         int texi = 0;
@@ -202,13 +203,14 @@ public:
         : base(drawMode, usage, shader) {}
 
 
-    void drawMVP(Mat4f mvp){
+    void drawMVP(Mat4f mvp, GLenum drawMode=0){
         base::shader->setuMVPMatrix(mvp);
-        base::draw();
+        base::draw(drawMode);
     }
 
-    inline void draw(Vec3f position, float scale){draw(position, (Vec3f){scale, scale, scale});}
-    void draw(Vec3f position=Vec3fZero, Vec3f scale={1, 1, 1}){
+    inline void draw(GLenum drawMode){draw(Vec3fZero, Vec3fOne, drawMode);}
+    inline void draw(Vec3f position, float scale, GLenum drawMode=0){draw(position, (Vec3f){scale, scale, scale}, drawMode);}
+    void draw(Vec3f position=Vec3fZero, Vec3f scale={1, 1, 1}, GLenum drawMode=0){
         if (GLES::active_camera == nullptr){
             printf("Warning: No active camera - skipping rendering.\n");
             return;
@@ -222,10 +224,10 @@ public:
         // view + projection
         mvpMatrix.mmulL(GLES::active_camera->viewProjectionMatrix());
     
-        drawMVP(mvpMatrix);
+        drawMVP(mvpMatrix, drawMode);
     }
 
-    void draw(Vec3f position, Quat4f rotation, Vec3f scale={1, 1, 1}){
+    void draw(Vec3f position, Quat4f rotation, Vec3f scale={1, 1, 1}, GLenum drawMode=0){
         if (GLES::active_camera == nullptr){
             printf("Warning: No active camera - skipping rendering.\n");
             return;
@@ -253,11 +255,11 @@ public:
         mvpMatrix.mmulL(GLES::active_camera->viewMatrix());
         mvpMatrix.mmulL(GLES::active_camera->projectionMatrix());
     
-        drawMVP(mvpMatrix);
+        drawMVP(mvpMatrix, drawMode);
     }
 
-    inline void draw2D(Vec3f pos, float scale){draw2D(pos, (Vec2f){scale, scale});}
-    void draw2D(Vec3f pos=Vec3fZero, Vec2f scale={1, 1}){
+    inline void draw2D(Vec3f pos, float scale, GLenum drawMode=0){draw2D(pos, (Vec2f){scale, scale}, drawMode);}
+    void draw2D(Vec3f pos=Vec3fZero, Vec2f scale={1, 1}, GLenum drawMode=0){
         // convert from screen space ((0, 0)  to (WIDHT, HEIGHT)) to NDC ((-1, -1) to (1, 1))
 
         const int WIDTH = GLES::screen_size.x;
@@ -269,17 +271,17 @@ public:
         scale.x = scale.x*2/WIDTH;
         scale.y = scale.y*2/HEIGHT;
 
-        draw2D_NDC(pos, scale);
+        draw2D_NDC(pos, scale, drawMode);
     }
 
-    void draw2D_NDC(Vec3f pos=Vec3fZero, Vec2f scale={1, 1}){
+    void draw2D_NDC(Vec3f pos=Vec3fZero, Vec2f scale={1, 1}, GLenum drawMode=0){
         Mat4f mvp;
         mvp.array[ 0] = scale.x; mvp.array[ 4] = 0;       mvp.array[ 8] = 0; mvp.array[12] = pos.x;
         mvp.array[ 1] = 0;       mvp.array[ 5] = scale.y; mvp.array[ 9] = 0; mvp.array[13] = pos.y;
         mvp.array[ 2] = 0;       mvp.array[ 6] = 0;       mvp.array[10] = 1; mvp.array[14] = pos.z;
         mvp.array[ 3] = 0;       mvp.array[ 7] = 0;       mvp.array[11] = 0; mvp.array[15] = 1;
 
-        drawMVP(mvp);
+        drawMVP(mvp, drawMode);
     }
 };
 

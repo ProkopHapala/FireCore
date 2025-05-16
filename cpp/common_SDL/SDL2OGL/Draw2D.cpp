@@ -7,9 +7,7 @@
 #include "Vec3.h"
 #include "Draw2D.h"  // THE HEADER
 
-GLMesh<MPOS> lineStrip;
-GLMesh<MPOS> points;
-
+GLMesh<MPOS> tmpMesh;
 
 float Draw2D::z_layer = 0.0f; // should be initialized like this http://stackoverflow.com/questions/19136059/namespace-global-variable-losing-value-c
 
@@ -24,11 +22,11 @@ void Draw2D::drawLine( const Vec2f& p1, const Vec2f& p2 ){
 };
 
 void Draw2D::drawRectangle( float p1x, float p1y, float p2x, float p2y, Vec3f color, bool filled){ // TODO: create a list of drawn rects and them draw them at once using instancing?
-	MeshLibrary::rect.drawMode = filled ? GL_TRIANGLE_FAN : GL_LINE_LOOP;
+	GLenum drawMode = filled ? GL_TRIANGLE_FAN : GL_LINE_LOOP;
 	MeshLibrary::rect.setUniform3f("uColor", color);
 
 	glDisable(GL_DEPTH_TEST);
-	MeshLibrary::rect.draw2D({p1x, p1y, z_layer}, {p2x-p1x, p2y-p1y});
+	MeshLibrary::rect.draw2D({p1x, p1y, z_layer}, {p2x-p1x, p2y-p1y}, drawMode);
 };
 
 void Draw2D::drawRectangle( const Vec2f& p1, const Vec2f& p2, Vec3f color, bool filled ){
@@ -36,36 +34,36 @@ void Draw2D::drawRectangle( const Vec2f& p1, const Vec2f& p2, Vec3f color, bool 
 };
 
 void Draw2D::drawCircle( const Vec2f& center, float radius, bool filled ){
-	MeshLibrary::circle.drawMode = filled ? GL_TRIANGLE_FAN : GL_LINE_LOOP;
+	GLenum drawMode = filled ? GL_TRIANGLE_FAN : GL_LINE_LOOP;
 	MeshLibrary::circle.setUniform3f("uColor", opengl1renderer.color);
-	MeshLibrary::circle.draw2D({center.x, center.y, z_layer}, radius);
+	MeshLibrary::circle.draw2D({center.x, center.y, z_layer}, radius, drawMode);
 };
 
 void Draw2D::plot( int n, float dx, double * ys ){
-	lineStrip.clear();
+	tmpMesh.clear();
 	for(int i=0; i<n; i++){
-		lineStrip.addVertex({i*dx, (float)ys[i], z_layer});
+		tmpMesh.addVertex({i*dx, (float)ys[i], z_layer});
 	}
-	lineStrip.setUniform3f("uColor", opengl1renderer.color);
-	lineStrip.draw();
+	tmpMesh.setUniform3f("uColor", opengl1renderer.color);
+	tmpMesh.draw(GL_LINE_STRIP);
 };
 
 void Draw2D::plot( int n, double * xs, double * ys ){
-	lineStrip.clear();
+	tmpMesh.clear();
 	for(int i=0; i<n; i++){
-		lineStrip.addVertex({(float)xs[i], (float)ys[i], z_layer});
+		tmpMesh.addVertex({(float)xs[i], (float)ys[i], z_layer});
 	}
-	lineStrip.setUniform3f("uColor", opengl1renderer.color);
-	lineStrip.draw();
+	tmpMesh.setUniform3f("uColor", opengl1renderer.color);
+	tmpMesh.draw(GL_LINE_STRIP);
 };
 
 void Draw2D::plot_dots( int n, double * xs, double * ys ){
-	points.clear();
+	tmpMesh.clear();
 	for(int i=0; i<n; i++){
-		points.addVertex({(float)xs[i], (float)ys[i], z_layer});
+		tmpMesh.addVertex({(float)xs[i], (float)ys[i], z_layer});
 	}
-	points.setUniform3f("uColor", opengl1renderer.color);
-	points.draw();
+	tmpMesh.setUniform3f("uColor", opengl1renderer.color);
+	tmpMesh.draw(GL_POINTS);
 };
 
 void Draw2D::plot_cross( int n, double * xs, double * ys, double sz ){
@@ -83,10 +81,9 @@ void Draw2D::plot_X( int n, double * xs, double * ys, double sz ){
 };
 
 void Draw2D::plot_O( int n, double * xs, double * ys, double sz ){
-	MeshLibrary::circle.drawMode = GL_LINE_LOOP;
 	MeshLibrary::circle.setUniform3f("uColor", opengl1renderer.color);
 	for(int i=0; i<n; i++){
-		MeshLibrary::circle.draw2D({(float)xs[i], (float)ys[i], z_layer}, sz);
+		MeshLibrary::circle.draw2D({(float)xs[i], (float)ys[i], z_layer}, sz, GL_LINE_LOOP);
 	}
 };
 
