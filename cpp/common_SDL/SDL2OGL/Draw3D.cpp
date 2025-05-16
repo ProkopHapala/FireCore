@@ -821,24 +821,26 @@ void Draw3D::drawSimplexGridLinesToned( int na, int nb, const Vec2d& da, const V
 }
 
 void Draw3D::drawRectGridLines( Vec2i n, const Vec3d& p0, const Vec3d& da, const Vec3d& db ){
-    opengl1renderer.begin( GL_LINES );
+    tmpMesh1.clear();
     Vec3d p  = p0;
     Vec3d dn = db*n.b;
     for (int ia=0; ia<n.a; ia++){
-        opengl1renderer.vertex3f( (float)(p .x), (float)(p .y), (float)(p .z) );  Vec3d p_ = p+dn;
-        opengl1renderer.vertex3f( (float)(p_.x), (float)(p_.y), (float)(p_.z) );
-        //printf( "ia (%g,%g,%g) (%g,%g,%g)\n", p.x,p.y,p.z,   p_.x,p_.y,p_.z );
+        tmpMesh1.addVertex((Vec3f)p);
+        Vec3d p_ = p+dn;
+        tmpMesh1.addVertex((Vec3f)p_);
         p.add(da);
     }
+
     p   = p0;
     dn  = da*n.a;
     for (int ib=0; ib<n.b; ib++){
-        opengl1renderer.vertex3f( (float)(p .x), (float)(p .y), (float)(p .z) );  Vec3d p_ = p+dn;
-        opengl1renderer.vertex3f( (float)(p_.x), (float)(p_.y), (float)(p_.z) );
-        //printf( "ib (%g,%g,%g) (%g,%g,%g)\n", p.x,p.y,p.z,   p_.x,p_.y,p_.z );
+        tmpMesh1.addVertex((Vec3f)p);
+        Vec3d p_ = p+dn;
+        tmpMesh1.addVertex((Vec3f)p_);
         p.add(db);
     }
-    opengl1renderer.end();
+    tmpMesh1.setUniform3f("uColor", opengl1renderer.color);
+    tmpMesh1.draw(GL_LINES);
 }
 
 void Draw3D::drawTextBillboard( const char* str, Vec3f pos, float sz, bool ontop, int iend ){ // TODO: sz is unused
@@ -894,14 +896,15 @@ void Draw3D::drawAxis3D( Vec3i ns, Vec3d p0, Vec3d ls, Vec3d v0s, Vec3d dvs, int
 }
 
 void Draw3D::drawCurve( float tmin, float tmax, int n, Func1d3 func ){
-    opengl1renderer.begin(GL_LINE_STRIP);
+    tmpMesh1.clear();
     float dt = (tmax-tmin)/n;
     for( float t=tmin; t<=tmax; t+=dt ){
         double x,y,z;
         func( t, x, y, z );
-        opengl1renderer.vertex3f( (float)x, (float)y, (float)z );
+        tmpMesh1.addVertex({(float)x, (float)y, (float)z});
     }
-    opengl1renderer.end();
+    tmpMesh1.setUniform3f("uColor", opengl1renderer.color);
+    tmpMesh1.draw(GL_LINE_STRIP);
 }
 
 void Draw3D::drawBox( float x0, float x1, float y0, float y1, float z0, float z1, float r, float g, float b ){
