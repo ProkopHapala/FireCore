@@ -271,7 +271,11 @@ def test_gridFF_ocl( fname="./data/xyz/NaCl_1x1_L1.xyz", Element_Types_name="./d
     print("New_Atoms:",atoms.apos)
 
 
-    if np.isnan(z0): z0 = xyzq[0,2].max()
+    # Use a consistent method to determine z0 based on the topmost atom
+    # The grid should start from the highest z-coordinate (topmost atom)
+    if np.isnan(z0): 
+        z0 = xyzq[:,2].max()  # Use maximum z-value of all atoms
+        print(f"Setting z0 to maximum z-value of all atoms (topmost): {z0}")
     print( "test_gridFF_ocl() z0= ", z0 )
 
     grid = GridShape( dg=(0.1,0.1,0.1),  lvec=atoms.lvec)
@@ -409,6 +413,7 @@ def test_gridFF_ocl( fname="./data/xyz/NaCl_1x1_L1.xyz", Element_Types_name="./d
         path = os.path.basename( fname )
         path = "./data/" + os.path.splitext( path )[0]
         print( "test_gridFF_ocl() path = ", path )
+        os.makedirs(path, exist_ok=True)
         np.save(path + "/V_Paul_gpu_before.npy", temp_paul)
         np.save(path + "/V_Lond_gpu_before.npy", temp_lond)
         np.save(path + "/V_Coul_gpu_before.npy", temp_before)

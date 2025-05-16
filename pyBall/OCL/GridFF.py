@@ -204,7 +204,8 @@ class GridFF_cl:
         if name in names: self.try_make_buff( name+"_buff" , sz)
 
     def try_make_buffs(self, names, na, nps, bytePerFloat=4):
-        print("try_make_buffs na=", na," nxyz=",  np, " nxyz*bytePerFloat=", nps*bytePerFloat ) 
+        # print("try_make_buffs na=", na," nxyz=",  np, " nxyz*bytePerFloat=", nps*bytePerFloat ) 
+        print("try_make_buffs na=", na," nps=",  nps, " nps*bytePerFloat=", nps*bytePerFloat )
         self.try_buff("atoms",  names, na*4*bytePerFloat)
         self.try_buff("REQs",   names, na*4*bytePerFloat)
         self.try_buff("V_Paul", names, nps*bytePerFloat)
@@ -672,8 +673,8 @@ class GridFF_cl:
         if bTime:
             self.queue.finish()
             dT=time.perf_counter()-T0
-            npbc = (nPBC[0]*2+1)*(nPBC[1]*2+1)*(nPBC[2]*2+1)
-            nops = na_cl * nxyz * npbc
+            npbc = float((nPBC[0]*2+1)*(nPBC[1]*2+1)*(nPBC[2]*2+1))
+            nops = float(na_cl) * float(nxyz) * npbc
             print( "GridFF_cl::make_MorseFF() time[s] ", dT,   "  preparation[s]  ", T0-T00, "[s] nGOPs: ", nops*1e-9," speed[GOPs/s]: ", (nops*1e-9)/dT , " na,nxyz,npbc ", na_cl, nxyz, npbc  )
 
         if bReturn:
