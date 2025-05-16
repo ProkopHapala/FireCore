@@ -12,6 +12,7 @@
 // Dynamic meshes for operations that need to modify vertices
 static GLMesh<MPOS>         tmpMesh1 = GLMesh<MPOS>        (GL_TRIANGLES, GL_STREAM_DRAW);
 static GLMesh<MPOS,MNORMAL> tmpMesh2 = GLMesh<MPOS,MNORMAL>(GL_TRIANGLES, GL_STREAM_DRAW);
+static GLMesh<MPOS,MCOLOR>  tmpMesh3 = GLMesh<MPOS,MCOLOR> (GL_TRIANGLES, GL_STREAM_DRAW);
 
 void Draw3D::drawPoint( const Vec3f& vec ){
 	MeshLibrary::point.setUniform3f("uColor", {1, 1, 1});
@@ -194,19 +195,28 @@ void Draw3D::drawTetraIso( Vec3f** ps, Quat4d vals ){
 };
 
 void Draw3D::drawMatInPos( const Mat3f& mat, const Vec3f& pos, const Vec3f& sc ){
-	opengl1renderer.begin   (GL_LINES);
-		opengl1renderer.color3f( 1, 0, 0 ); opengl1renderer.vertex3d( pos.x, pos.y, pos.z ); opengl1renderer.vertex3d( pos.x+mat.xx*sc.x, pos.y+mat.xy*sc.x, pos.z+mat.xz*sc.x );
-		opengl1renderer.color3f( 0, 1, 0 ); opengl1renderer.vertex3d( pos.x, pos.y, pos.z ); opengl1renderer.vertex3d( pos.x+mat.yx*sc.y, pos.y+mat.yy*sc.y, pos.z+mat.yz*sc.y );
-		opengl1renderer.color3f( 0, 0, 1 ); opengl1renderer.vertex3d( pos.x, pos.y, pos.z ); opengl1renderer.vertex3d( pos.x+mat.zx*sc.z, pos.y+mat.zy*sc.z, pos.z+mat.zz*sc.z );
-	opengl1renderer.end();
-};
+    tmpMesh3.clear();
+    // X axis (red)
+    tmpMesh3.addVertex(pos, {1,0,0});
+    tmpMesh3.addVertex({pos.x+mat.xx*sc.x, pos.y+mat.xy*sc.x, pos.z+mat.xz*sc.x}, {1,0,0});
+    // Y axis (green)
+    tmpMesh3.addVertex(pos, {0,1,0});
+    tmpMesh3.addVertex({pos.x+mat.yx*sc.y, pos.y+mat.yy*sc.y, pos.z+mat.yz*sc.y}, {0,1,0});
+    // Z axis (blue)
+    tmpMesh3.addVertex(pos, {0,0,1});
+    tmpMesh3.addVertex({pos.x+mat.zx*sc.z, pos.y+mat.zy*sc.z, pos.z+mat.zz*sc.z}, {0,0,1});
+
+    tmpMesh3.draw(GL_LINES);
+}
 
 void Draw3D::drawShape( int shape, const Vec3f& pos, const Mat3f& rot, bool trasposed ){
-	opengl1renderer.pushMatrix();
-	float glMat[16];
-	if( trasposed ){
+    // TODO: This function needs to be reimplemented without using opengl1renderer.callList
+    // For now, keeping the old implementation
+    opengl1renderer.pushMatrix();
+    float glMat[16];
+    if( trasposed ){
         toGLMatT ( pos, rot, glMat );
-	}else{
+    }else{
         toGLMat( pos, rot, glMat );
 	}
 	opengl1renderer.multMatrixf( glMat );
@@ -224,38 +234,41 @@ void Draw3D::drawShape    ( int shape, const Vec3f& pos, const Quat4f& qrot, con
 };
 
 int Draw3D::drawConeFan( int n, float r, const Vec3f& base, const Vec3f& tip ){
-	int nvert=0;
-	Vec3f a,b,c,c_hat;
-	c.set_sub( tip, base );
-	c_hat.set_mul( c, 1/c.norm() );
-	c_hat.getSomeOrtho( a, b );
-	a.normalize();
-	b.normalize();
+    int nvert=0;
+    Vec3f a,b,c,c_hat;
+    c.set_sub( tip, base );
+    c_hat.set_mul( c, 1/c.norm() );
+    c_hat.getSomeOrtho( a, b );
+    a.normalize();
+    b.normalize();
     float alfa = 2*M_PI/n;
     Vec2f rot,drot;
     rot .set(1.0f,0.0f);
     drot.set( cos( alfa ), sin( alfa ) );
 
-	Vec3f q; q.set(c); q.add_mul( a, -r );
-	float pnab =  c_hat.dot( q )/q.norm();
-	float pnc  =  sqrt( 1 - pnab*pnab );
+    Vec3f q; q.set(c); q.add_mul( a, -r );
+    float pnab =  c_hat.dot( q )/q.norm();
+    float pnc  =  sqrt( 1 - pnab*pnab );
 
-	opengl1renderer.begin   ( GL_TRIANGLE_FAN );
+    tmpMesh2.clear();
+    tmpMesh2.addVertex(tip, c_hat);
 
-	opengl1renderer.normal3f( c_hat.x, c_hat.z, c_hat.z );
-	opengl1renderer.vertex3f( tip.x, tip.y, tip.z ); nvert++;
-	for(int i=0; i<=n; i++ ){
+    nvert++;
+
+    for(int i=0; i<=n; i++ ){
         Vec3f p,pn;
-		p .set( rot.x*a.x +  rot.y*b.x, rot.x*a.y + rot.y*b.y, rot.x*a.z + rot.y*b.z    );
-		pn.set( pnab*p.x + pnc*c_hat.x, pnab*p.y + pnc*c_hat.y, pnab*p.z + pnc*c_hat.z  );
+        p .set( rot.x*a.x +  rot.y*b.x, rot.x*a.y + rot.y*b.y, rot.x*a.z + rot.y*b.z    );
+        pn.set( pnab*p.x + pnc*c_hat.x, pnab*p.y + pnc*c_hat.y, pnab*p.z + pnc*c_hat.z  );
 
-        opengl1renderer.normal3f( pn.x, pn.y, pn.z );
-		opengl1renderer.vertex3f( base.x + r*p.x, base.y + r*p.y, base.z + r*p.z ); nvert++;
+        Vec3f vertex = {base.x + r*p.x, base.y + r*p.y, base.z + r*p.z};
+        tmpMesh2.addVertex(vertex, pn);
+        nvert++;
         rot.mul_cmplx( drot );
-	}
-	opengl1renderer.end();
-	return nvert;
-};
+    }
+
+    tmpMesh2.draw(GL_TRIANGLE_FAN);
+    return nvert;
+}
 
 static const char* vertexSphere = R"(
 #version 300 es
@@ -353,13 +366,13 @@ void Draw3D::drawSphere(Vec3f pos, float r, Vec3f color){
 int Draw3D::drawCircleAxis( int n, const Vec3f& pos, const Vec3f& v0, const Vec3f& uaxis, float R, float dca, float dsa ){
     int nvert=0;
     Vec3f v; v.set(v0);
-    opengl1renderer.begin( GL_LINE_LOOP );
+    tmpMesh1.clear();
     for( int i=0; i<n; i++ ){
-        opengl1renderer.vertex3f( pos.x+v.x*R, pos.y+v.y*R, pos.z+v.z*R ); nvert++;
-        //printf( " drawCircleAxis %i (%3.3f,%3.3f,%3.3f) \n", i, v.x, v.y, v.z );
+        tmpMesh1.addVertex(pos+v*R);
+        nvert++;
         v.rotate_csa( dca, dsa, uaxis );
     }
-    opengl1renderer.end();
+    tmpMesh1.draw(GL_LINE_LOOP);
     return nvert;
 }
 
@@ -371,17 +384,47 @@ int Draw3D::drawCircleAxis( int n, const Vec3f& pos, const Vec3f& v0, const Vec3
 }
 
 int Draw3D::drawSphereOctLines( int n, float R, const Vec3f& pos, const Mat3f& rot, bool bRGB ){
-	int nvert=0;
+    int nvert=0;
     float dphi = 2*M_PI/n;
     float dca  = cos( dphi );
     float dsa  = sin( dphi );
-    if(bRGB)opengl1renderer.color3f(1,0,0);
-    nvert += drawCircleAxis( n, pos, rot.b, rot.a, R, dca, dsa );
-    if(bRGB)opengl1renderer.color3f(0,1,0);
-    nvert += drawCircleAxis( n, pos, rot.c, rot.b, R, dca, dsa );
-    if(bRGB)opengl1renderer.color3f(0,0,1);
-    nvert += drawCircleAxis( n, pos, rot.a, rot.c, R, dca, dsa );
-	return nvert;
+
+    if(bRGB) {
+        // Red circle
+        tmpMesh3.clear();
+        Vec3f v = rot.b;
+        for(int i=0; i<n; i++){
+            tmpMesh3.addVertex({pos.x+v.x*R, pos.y+v.y*R, pos.z+v.z*R}, {1,0,0});
+            v.rotate_csa(dca, dsa, rot.a);
+        }
+        tmpMesh3.addVertex({pos.x+rot.b.x*R, pos.y+rot.b.y*R, pos.z+rot.b.z*R}, {1,0,0}); // Close the loop
+        tmpMesh3.draw(GL_LINE_STRIP);
+
+        // Green circle
+        tmpMesh3.clear();
+        v = rot.c;
+        for(int i=0; i<n; i++){
+            tmpMesh3.addVertex({pos.x+v.x*R, pos.y+v.y*R, pos.z+v.z*R}, {0,1,0});
+            v.rotate_csa(dca, dsa, rot.b);
+        }
+        tmpMesh3.addVertex({pos.x+rot.c.x*R, pos.y+rot.c.y*R, pos.z+rot.c.z*R}, {0,1,0}); // Close the loop
+        tmpMesh3.draw(GL_LINE_STRIP);
+
+        // Blue circle
+        tmpMesh3.clear();
+        v = rot.a;
+        for(int i=0; i<n; i++){
+            tmpMesh3.addVertex({pos.x+v.x*R, pos.y+v.y*R, pos.z+v.z*R}, {0,0,1});
+            v.rotate_csa(dca, dsa, rot.c);
+        }
+        tmpMesh3.addVertex({pos.x+rot.a.x*R, pos.y+rot.a.y*R, pos.z+rot.a.z*R}, {0,0,1}); // Close the loop
+        tmpMesh3.draw(GL_LINE_STRIP);
+    } else {
+        nvert += drawCircleAxis( n, pos, rot.b, rot.a, R, dca, dsa );
+        nvert += drawCircleAxis( n, pos, rot.c, rot.b, R, dca, dsa );
+        nvert += drawCircleAxis( n, pos, rot.a, rot.c, R, dca, dsa );
+    }
+    return nvert;
 }
 
 void Draw3D::drawPlanarPolygon( int n, const int * inds, const Vec3d * points ){
@@ -394,17 +437,16 @@ void Draw3D::drawPlanarPolygon( int n, const int * inds, const Vec3d * points ){
     normal.set_cross( a-b, b-c );
     normal.normalize();
 
-    opengl1renderer.begin( GL_TRIANGLE_FAN );
-    opengl1renderer.normal3f( normal.x, normal.y, normal.z );
-    opengl1renderer.vertex3f( a.x, a.y, a.z );
-    opengl1renderer.vertex3f( b.x, b.y, b.z );
-    opengl1renderer.vertex3f( c.x, c.y, c.z );
+    tmpMesh2.clear();
+    tmpMesh2.addVertex(a, normal);
+    tmpMesh2.addVertex(b, normal);
+    tmpMesh2.addVertex(c, normal);
+    
     for( int i=3; i<n; i++ ){
-        convert( points[inds[i]], a );
-        opengl1renderer.vertex3f( a.x, a.y, a.z );
-        //average.add( a );
+        Vec3f vertex = (Vec3f)points[inds[i]];
+        tmpMesh2.addVertex(vertex, normal);
     }
-    opengl1renderer.end();
+    tmpMesh2.draw(GL_TRIANGLE_FAN);
 }
 
 void Draw3D::drawPlanarPolygon( int ipl, Mesh& mesh ){
@@ -519,51 +561,55 @@ void Draw3D::drawVectorArray(int n, const Vec3d* ps, const Quat4f* qs, double sc
     tmpMesh1.draw(GL_LINES);
 }
 
-
-void Draw3D::drawScalarArray(int n,const Vec3d* ps,const double* vs, double vmin, double vmax, const uint32_t * colors, int ncol ){
-    opengl1renderer.begin(GL_POINTS);
+void Draw3D::drawScalarArray(int n, const Vec3d* ps, const double* vs, double vmin, double vmax, const uint32_t* colors, int ncol ){
+    tmpMesh3.clear();
     double sc = 1/(vmax-vmin);
     for(int i=0; i<n; i++){
-        Vec3d p=ps[i];
+        Vec3d p = ps[i];
         double c = (vs[i]-vmin)*sc;
         if(colors){
-            Draw::colorScale(c,ncol,colors);
-        }else{
-            opengl1renderer.color3f(c,c,c);
+            uint32_t color = Draw::icolorScale(c, ncol, colors);
+            tmpMesh3.addVertex((Vec3f)p, {((color>>16)&0xFF)/255.0f, ((color>>8)&0xFF)/255.0f, (color&0xFF)/255.0f});
+        } else {
+            tmpMesh3.addVertex((Vec3f)p, {(float)c,(float)c,(float)c});
         }
-        opengl1renderer.vertex3f(p.x,p.y,p.z);
-        //printf( "i %i p(%g,%g,%g) v: %g c: %g\n", i, p.x,p.y,p.z, vs[i], c );
     }
-    opengl1renderer.end();
+    tmpMesh3.draw(GL_POINTS);
 }
 
 void Draw3D::drawScalarField(Vec2i ns, const Vec3d* ps, const double* data, double vmin, double vmax, const uint32_t* colors, int ncol){
     double clsc = 1/(vmax-vmin);
+    tmpMesh3.clear();
     for(int iy=1; iy<ns.y; iy++){
         for(int ix=0; ix<ns.x; ix++){
             int i = (iy-1)*ns.x + ix;
-            //opengl1renderer.color3f ( data[i].x+0.5, data[i].y+0.5, 0.5 );
-            double c = clamp( clsc*(data[i]-vmin), 0, 1 );
-            if(colors){ Draw::colorScale( c,ncol,colors); }else{ opengl1renderer.color3f(c,c,c); }
-            //p = (gsh.dCell.a*(ix + (gsh.n.x*-0.5))) + (gsh.dCell.b*(iy-1 + (gsh.n.y*-0.5) ));
-            Vec3d p = ps[i];
-            opengl1renderer.vertex3f(p.x,p.y,p.z);
+            double c = clamp(clsc*(data[i]-vmin), 0, 1);
+            Vec3f color;
+            if(colors){ 
+                uint32_t col = Draw::icolorScale(c, ncol, colors);
+                color = {((col>>16)&0xFF)/255.0f, ((col>>8)&0xFF)/255.0f, (col&0xFF)/255.0f};
+            } else {
+                color = {(float)c,(float)c,(float)c};
+            }
+            tmpMesh3.addVertex((Vec3f)ps[i], color);
+
             i += ns.x;
-            //opengl1renderer.color3f ( data[i].x+0.5, data[i].y+0.5, 0.5 );
-            c = clamp(  clsc*(data[i]-vmin), 0, 1 );
-            if(colors){ Draw::colorScale( c,ncol,colors); }else{ opengl1renderer.color3f(c,c,c); }
-            p = ps[i];
-            opengl1renderer.vertex3f(p.x,p.y,p.z);
+            c = clamp(clsc*(data[i]-vmin), 0, 1);
+            if(colors){
+                uint32_t col = Draw::icolorScale(c, ncol, colors);
+                color = {((col>>16)&0xFF)/255.0f, ((col>>8)&0xFF)/255.0f, (col&0xFF)/255.0f};
+            } else {
+                color = {(float)c,(float)c,(float)c};
+            }
+            tmpMesh3.addVertex((Vec3f)ps[i], color);
         }
-        opengl1renderer.end();
     }
+    tmpMesh3.draw(GL_TRIANGLE_STRIP);
 }
 
-void Draw3D::drawScalarField( Vec2i ns, const Quat4f* ps,const  float* data, int pitch, int offset, double vmin, double vmax, const uint32_t * colors, int ncol ){
+void Draw3D::drawScalarField( Vec2i ns, const Quat4f* ps, const float* data, int pitch, int offset, double vmin, double vmax, const uint32_t* colors, int ncol ){
     printf( " Draw3D::drawScalarField() ns(%i,%i) vrange(%g,%g) @ps=%li @data=%li @colors=%li ncol=%i pitch=%i offset=%i \n", ns.x, ns.y, vmin, vmax, (long)ps, (long)data, (long)colors, ncol, pitch, offset );
-    double z0  = 1.5;
-    double dz0 = 0.1;
-    double clsc = 1./(vmax-vmin);
+    double clsc = 1/(vmax-vmin);
     if( (clsc<0)||(clsc>1e+300) ){ printf( "ERROR in drawScalarField() vrange(%g,%g) -> clsc=%g => exit() \n", vmin, vmax, clsc ); exit(0); }
     opengl1renderer.shadeModel(GL_SMOOTH);
     //opengl1renderer.enable( GL_POLYGON_SMOOTH);
@@ -592,209 +638,187 @@ void Draw3D::drawScalarField( Vec2i ns, const Quat4f* ps,const  float* data, int
     }
 }
 
-void Draw3D::drawScalarGrid(Vec2i ns, const Vec3d& p0, const Vec3d& a, const Vec3d& b,const double* data,  double vmin, double vmax, const uint32_t * colors, int ncol ){
-    //printf( " debug_draw_GridFF \n" );
-    double z0  = 1.5;
-    double dz0 = 0.1;
+void Draw3D::drawScalarGrid(Vec2i ns, const Vec3d& p0, const Vec3d& a, const Vec3d& b, const double* data, double vmin, double vmax, const uint32_t* colors, int ncol ){
     double clsc = 1/(vmax-vmin);
-    opengl1renderer.shadeModel(GL_SMOOTH);
-    //opengl1renderer.enable( GL_POLYGON_SMOOTH);
-    for(int iy=1;iy<ns.y;iy++){
-        opengl1renderer.begin( GL_TRIANGLE_STRIP );
-        for(int ix=0;ix<ns.x;ix++){
-            Vec3d p;
+    tmpMesh3.clear();
+    for(int iy=1; iy<ns.y; iy++){
+        for(int ix=0; ix<ns.x; ix++){
             int i = (iy-1)*ns.x + ix;
-            //opengl1renderer.color3f ( data[i].x+0.5, data[i].y+0.5, 0.5 );
-            double c = clamp( clsc*(data[i]-vmin), 0, 1 );
-            if(colors){ Draw::colorScale( c,ncol,colors); }else{ opengl1renderer.color3f(c,c,c); }
-            //p = (gsh.dCell.a*(ix + (gsh.n.x*-0.5))) + (gsh.dCell.b*(iy-1 + (gsh.n.y*-0.5) ));
-            p = a*ix + b*(iy-1) + p0;
-            opengl1renderer.vertex3f(p.x,p.y,p.z);
+            double c = clamp(clsc*(data[i]-vmin), 0, 1);
+            Vec3f color;
+            if(colors){
+                uint32_t col = Draw::icolorScale(c, ncol, colors);
+                color = {((col>>16)&0xFF)/255.0f, ((col>>8)&0xFF)/255.0f, (col&0xFF)/255.0f};
+            } else {
+                color = {(float)c,(float)c,(float)c};
+            }
+            Vec3d p = a*ix + b*(iy-1) + p0;
+            tmpMesh3.addVertex((Vec3f)p, color);
 
             i += ns.x;
-            //opengl1renderer.color3f ( data[i].x+0.5, data[i].y+0.5, 0.5 );
-            c = clamp(  clsc*(data[i]-vmin), 0, 1 );
-            if(colors){ Draw::colorScale( c,ncol,colors); }else{ opengl1renderer.color3f(c,c,c); }
+            c = clamp(clsc*(data[i]-vmin), 0, 1);
+            if(colors){
+                uint32_t col = Draw::icolorScale(c, ncol, colors);
+                color = {((col>>16)&0xFF)/255.0f, ((col>>8)&0xFF)/255.0f, (col&0xFF)/255.0f};
+            } else {
+                color = {(float)c,(float)c,(float)c};
+            }
             p.add(b);
-            opengl1renderer.vertex3f(p.x,p.y,p.z);
+            tmpMesh3.addVertex((Vec3f)p, color);
         }
-        opengl1renderer.end();
     }
+    tmpMesh3.draw(GL_TRIANGLE_STRIP);
 }
 
 void Draw3D::drawScalarGridLines(Vec2i ns, const Vec3d& p0, const Vec3d& a, const Vec3d& b, const Vec3d& up, const double* data, double sc, Vec2d vclamp ){
-    //printf( " debug_draw_GridFF \n" );
-    double z0  = 1.5;
-    double dz0 = 0.1;
-    for(int iy=1;iy<ns.y;iy++){
-        opengl1renderer.begin( GL_LINE_STRIP );
-        for(int ix=0;ix<ns.x;ix++){
-            Vec3d p;
+    for(int iy=1; iy<ns.y; iy++){
+        tmpMesh1.clear();
+        for(int ix=0; ix<ns.x; ix++){
             int i = iy*ns.x + ix;
-            double val = data[i];
-            //if( (val<vclamp.x) || (val>vclamp.y) ) continue;
-            val = _clamp( val, vclamp.x, vclamp.y );
-            val*=sc;
-            p = p0 + a*ix + b*iy + up*val;
-            opengl1renderer.vertex3f(p.x,p.y,p.z);
+            double val = _clamp(data[i], vclamp.x, vclamp.y);
+            val *= sc;
+            Vec3d p = p0 + a*ix + b*iy + up*val;
+            tmpMesh1.addVertex((Vec3f)p);
         }
-        opengl1renderer.end();
+        tmpMesh1.draw(GL_LINE_STRIP);
     }
-    for(int ix=0;ix<ns.x;ix++){
-        opengl1renderer.begin( GL_LINE_STRIP );
-        for(int iy=1;iy<ns.y;iy++){
-            Vec3d p;
+
+    for(int ix=0; ix<ns.x; ix++){
+        tmpMesh1.clear();
+        for(int iy=1; iy<ns.y; iy++){
             int i = iy*ns.x + ix;
-            double val = _clamp( data[i], vclamp.x, vclamp.y ) *sc;
-            p = p0 + a*ix + b*iy + up*val;
-            opengl1renderer.vertex3f(p.x,p.y,p.z);
+            double val = _clamp(data[i], vclamp.x, vclamp.y) * sc;
+            Vec3d p = p0 + a*ix + b*iy + up*val;
+            tmpMesh1.addVertex((Vec3f)p);
         }
-        opengl1renderer.end();
-    }
-}
-
-void Draw3D::drawScalarGrid(Vec2i ns, const Vec3d& p0, const Vec3d& a, const Vec3d& b,const float* data, int pitch, int offset, double vmin, double vmax, const uint32_t * colors, int ncol ){
-    //printf( " debug_draw_GridFF \n" );
-    double z0  = 1.5;
-    double dz0 = 0.1;
-    double clsc = 1/(vmax-vmin);
-    opengl1renderer.shadeModel(GL_SMOOTH);
-    //opengl1renderer.enable( GL_POLYGON_SMOOTH);
-    for(int iy=1;iy<ns.y;iy++){
-        opengl1renderer.begin( GL_TRIANGLE_STRIP );
-        for(int ix=0;ix<ns.x;ix++){
-            Vec3d p;
-            int i = (iy-1)*ns.x + ix;
-            double c = clamp( clsc*(data[i*pitch+offset]-vmin), 0, 1 );
-            if(colors){ Draw::colorScale( c,ncol,colors); }else{ opengl1renderer.color3f(c,c,c); }
-            //p = (gsh.dCell.a*(ix + (gsh.n.x*-0.5))) + (gsh.dCell.b*(iy-1 + (gsh.n.y*-0.5) ));
-            p = a*ix + b*(iy-1) + p0;
-            opengl1renderer.vertex3f(p.x,p.y,p.z);
-
-            i += ns.x;
-            c = clamp(  clsc*(data[i*pitch+offset]-vmin), 0, 1 );
-            if(colors){ Draw::colorScale( c,ncol,colors); }else{ opengl1renderer.color3f(c,c,c); }
-            p.add(b);
-            opengl1renderer.vertex3f(p.x,p.y,p.z);
-        }
-        opengl1renderer.end();
+        tmpMesh1.draw(GL_LINE_STRIP);
     }
 }
 
 void Draw3D::drawColorScale( int n, const Vec3d& p0, const Vec3d& fw, const Vec3d& up, const uint32_t * colors, int ncol ){
-    //printf( " debug_draw_GridFF \n" );
     double step = 1./(n-1);
-    //opengl1renderer.begin( GL_LINE_STRIP );
-    opengl1renderer.shadeModel(GL_SMOOTH);
-    opengl1renderer.begin( GL_TRIANGLE_STRIP );
-    for(int iy=0;iy<n;iy++){
+    tmpMesh3.clear();
+    for(int iy=0; iy<n; iy++){
         double c = iy*step;
-        Draw::colorScale( c,ncol,colors);
-        //opengl1renderer.color3f(1.,1.,1.);
+        uint32_t col = Draw::icolorScale(c, ncol, colors);
+        Vec3f color = {((col>>16)&0xFF)/255.0f, ((col>>8)&0xFF)/255.0f, (col&0xFF)/255.0f};
         Vec3d p = fw*c + p0;
-        //printf( "%i %g (%g,%g,%g)\n", iy, c, p.x,p.y,p.z );
-        opengl1renderer.vertex3f(p.x,p.y,p.z);
+        tmpMesh3.addVertex((Vec3f)p, color);
         p.add(up);
-        //printf( "%i %g (%g,%g,%g)\n", iy, c, p.x,p.y,p.z );
-        opengl1renderer.vertex3f(p.x,p.y,p.z);
+        tmpMesh3.addVertex((Vec3f)p, color);
     }
-    opengl1renderer.end();
+    tmpMesh3.draw(GL_TRIANGLE_STRIP);
 }
 
-
 void Draw3D::drawSimplexGrid( int na, int nb, const Vec2d& da, const Vec2d& db,  const double * hs, const double * clrs, int ncolors, const uint32_t * cscale ){
-    //const double * heights
-    //const double * colors
-    //const Vec2d  * normals
-
     Vec2d pa; pa.set(0.0);
     if( !cscale ){ cscale=&Draw::colors_rainbow[0]; ncolors=Draw::ncolors; }
     int ii=0;
-    opengl1renderer.normal3f(0.0f,1.0f,0.0f);
+    
     for (int ia=0; ia<(na-1); ia++){
-        opengl1renderer.begin( GL_TRIANGLE_STRIP );
         Vec2d p; p.set(pa);
-        for (int ib=0; ib<nb; ib++){
-            double h=0.0;
-            //printf( " %i %i %i (%3.3f,%3.3f) %f %f \n", ia, ib, ii, p.x, p.y, hs[ii], clrs[ii] );
-            if(clrs) Draw::colorScale( clrs[ii], ncolors, cscale );
-            if(hs){ h=hs[ii]; }
-            opengl1renderer.vertex3f( (float)(p.x), (float)(p.y), (float)h );
-            if(clrs) Draw::colorScale( clrs[ii+nb], ncolors, cscale );
-            if(hs){ h=hs[ii+nb]; }
-            opengl1renderer.vertex3f( (float)(p.x+da.x), (float)(p.y+da.y), (float)h );
-            p.add(db);
-            ii++;
+        if(clrs) {
+            tmpMesh3.clear();
+            for (int ib=0; ib<nb; ib++){
+                double h=0.0;
+                uint32_t col = Draw::icolorScale(clrs[ii], ncolors, cscale);
+                Vec3f color = {((col>>16)&0xFF)/255.0f, ((col>>8)&0xFF)/255.0f, (col&0xFF)/255.0f};
+                if(hs){ h=hs[ii]; }
+                tmpMesh3.addVertex({(float)p.x, (float)p.y, (float)h}, color);
+
+                col = Draw::icolorScale(clrs[ii+nb], ncolors, cscale);
+                color = {((col>>16)&0xFF)/255.0f, ((col>>8)&0xFF)/255.0f, (col&0xFF)/255.0f};
+                if(hs){ h=hs[ii+nb]; }
+                tmpMesh3.addVertex({(float)(p.x+da.x), (float)(p.y+da.y), (float)h}, color);
+                p.add(db);
+                ii++;
+            }
+            tmpMesh3.draw(GL_TRIANGLE_STRIP);
+        } else {
+            tmpMesh2.clear();
+            for (int ib=0; ib<nb; ib++){
+                double h=0.0;
+                if(hs){ h=hs[ii]; }
+                Vec3f normal = {0.0f, 1.0f, 0.0f}; // Default normal pointing up
+                tmpMesh2.addVertex({(float)p.x, (float)p.y, (float)h}, normal);
+                if(hs){ h=hs[ii+nb]; }
+                tmpMesh2.addVertex({(float)(p.x+da.x), (float)(p.y+da.y), (float)h}, normal);
+                p.add(db);
+                ii++;
+            }
+            tmpMesh2.draw(GL_TRIANGLE_STRIP);
         }
         pa.add(da);
-        opengl1renderer.end();
     }
 }
 
 void Draw3D::drawSimplexGridLines( int na, int nb, const Vec2d& da, const Vec2d& db,  const double * hs ){
     Vec2d p,pa; pa.set(0.0);
     for (int ia=0; ia<(na-1); ia++){
-        opengl1renderer.begin( GL_LINE_STRIP );
+        tmpMesh1.clear();
         p.set(pa);
         for (int ib=0; ib<nb; ib++){
-            opengl1renderer.vertex3f( (float)(p.x),      (float)(p.y),      (float)hs[ia*nb+ib] );
+            tmpMesh1.addVertex({(float)p.x, (float)p.y, (float)hs[ia*nb+ib]});
             p.add(db);
         }
-        opengl1renderer.end();
+        tmpMesh1.draw(GL_LINE_STRIP);
+
+        tmpMesh1.clear();
         p.set(pa);
-        opengl1renderer.begin( GL_LINE_STRIP );
         for (int ib=0; ib<nb; ib++){
             int ii=ia*nb+ib;
-            opengl1renderer.vertex3f( (float)(p.x),      (float)(p.y),      (float)hs[ii   ] );
-            opengl1renderer.vertex3f( (float)(p.x+da.x), (float)(p.y+da.y), (float)hs[ii+nb] );
+            tmpMesh1.addVertex({(float)p.x, (float)p.y, (float)hs[ii]});
+            tmpMesh1.addVertex({(float)(p.x+da.x), (float)(p.y+da.y), (float)hs[ii+nb]});
             p.add(db);
             ii++;
         }
-        opengl1renderer.end();
+        tmpMesh1.draw(GL_LINE_STRIP);
         pa.add(da);
     }
     p.set(pa);
-    opengl1renderer.begin( GL_LINE_STRIP );
+    tmpMesh1.clear();
     for (int ib=0; ib<nb; ib++){
-        opengl1renderer.vertex3f( (float)(p.x),  (float)(p.y), (float)hs[(na-1)*nb+ib] );
+        tmpMesh1.addVertex({(float)p.x, (float)p.y, (float)hs[(na-1)*nb+ib]});
         p.add(db);
     }
-    opengl1renderer.end();
+    tmpMesh1.draw(GL_LINE_STRIP);
 }
 
 void Draw3D::drawSimplexGridLinesToned( int na, int nb, const Vec2d& da, const Vec2d& db,  const double * hs ){
     Vec2d p,pa; pa.set(0.0);
-    float h;
     for (int ia=0; ia<(na-1); ia++){
-        opengl1renderer.begin( GL_LINE_STRIP );
+        tmpMesh3.clear();
         p.set(pa);
         for (int ib=0; ib<nb; ib++){
-            h = (float)hs[ia*nb+ib];
-            opengl1renderer.color3f( h,h*4,h*16 ); opengl1renderer.vertex3f( (float)(p.x),      (float)(p.y),      h );
+            float h = (float)hs[ia*nb+ib];
+            tmpMesh3.addVertex({(float)p.x, (float)p.y, h}, {h,h*4,h*16});
             p.add(db);
         }
-        opengl1renderer.end();
+        tmpMesh3.draw(GL_LINE_STRIP);
+
+        tmpMesh3.clear();
         p.set(pa);
-        opengl1renderer.begin( GL_LINE_STRIP );
         for (int ib=0; ib<nb; ib++){
             int ii=ia*nb+ib;
-            h=(float)hs[ii   ]; opengl1renderer.color3f( h,h*4,h*16 ); opengl1renderer.vertex3f( (float)(p.x),      (float)(p.y),      h );
-            h=(float)hs[ii+nb]; opengl1renderer.color3f( h,h*4,h*16 ); opengl1renderer.vertex3f( (float)(p.x+da.x), (float)(p.y+da.y), h );
+            float h = (float)hs[ii];
+            tmpMesh3.addVertex({(float)p.x, (float)p.y, h}, {h,h*4,h*16});
+            h = (float)hs[ii+nb];
+            tmpMesh3.addVertex({(float)(p.x+da.x), (float)(p.y+da.y), h}, {h,h*4,h*16});
             p.add(db);
             ii++;
         }
-        opengl1renderer.end();
+        tmpMesh3.draw(GL_LINE_STRIP);
         pa.add(da);
     }
     p.set(pa);
-    opengl1renderer.begin( GL_LINE_STRIP );
+    tmpMesh3.clear();
     for (int ib=0; ib<nb; ib++){
-        h=(float)hs[(na-1)*nb+ib]; opengl1renderer.color3f( h,h*4,h*16 ); opengl1renderer.vertex3f( (float)(p.x),  (float)(p.y), h );
+        float h = (float)hs[(na-1)*nb+ib];
+        tmpMesh3.addVertex({(float)p.x, (float)p.y, h}, {h,h*4,h*16});
         p.add(db);
     }
-    opengl1renderer.end();
+    tmpMesh3.draw(GL_LINE_STRIP);
 }
-
 
 void Draw3D::drawRectGridLines( Vec2i n, const Vec3d& p0, const Vec3d& da, const Vec3d& db ){
     opengl1renderer.begin( GL_LINES );
@@ -896,49 +920,57 @@ void Draw3D::drawBBox( const Vec3f& p, float r ){
 
 void Draw3D::drawTriclinicBox( const Mat3f& lvec, const Vec3f& c0, const Vec3f& c1 ){
     Vec3f p0,p1;
-	opengl1renderer.begin(GL_LINES);
-               lvec.dot_to({c0.x,c0.y,c0.z},p0);
-               lvec.dot_to({c0.x,c0.y,c1.z},p1); opengl1renderer.vertex3f( p0.x, p0.y, p0.z ); opengl1renderer.vertex3f( p1.x, p1.y, p1.z );
-               lvec.dot_to({c0.x,c1.y,c0.z},p1); opengl1renderer.vertex3f( p0.x, p0.y, p0.z ); opengl1renderer.vertex3f( p1.x, p1.y, p1.z );
-               lvec.dot_to({c1.x,c0.y,c0.z},p1); opengl1renderer.vertex3f( p0.x, p0.y, p0.z ); opengl1renderer.vertex3f( p1.x, p1.y, p1.z );
-		       lvec.dot_to({c1.x,c1.y,c1.z},p0);
-               lvec.dot_to({c0.x,c1.y,c1.z},p1); opengl1renderer.vertex3f( p0.x, p0.y, p0.z ); opengl1renderer.vertex3f( p1.x, p1.y, p1.z );
-               lvec.dot_to({c1.x,c0.y,c1.z},p1); opengl1renderer.vertex3f( p0.x, p0.y, p0.z ); opengl1renderer.vertex3f( p1.x, p1.y, p1.z );
-               lvec.dot_to({c1.x,c1.y,c0.z},p1); opengl1renderer.vertex3f( p0.x, p0.y, p0.z ); opengl1renderer.vertex3f( p1.x, p1.y, p1.z );
-        p0=p1; lvec.dot_to({c1.x,c0.y,c0.z},p1); opengl1renderer.vertex3f( p0.x, p0.y, p0.z ); opengl1renderer.vertex3f( p1.x, p1.y, p1.z );
-        p0=p1; lvec.dot_to({c1.x,c0.y,c1.z},p1); opengl1renderer.vertex3f( p0.x, p0.y, p0.z ); opengl1renderer.vertex3f( p1.x, p1.y, p1.z );
-        p0=p1; lvec.dot_to({c0.x,c0.y,c1.z},p1); opengl1renderer.vertex3f( p0.x, p0.y, p0.z ); opengl1renderer.vertex3f( p1.x, p1.y, p1.z );
-        p0=p1; lvec.dot_to({c0.x,c1.y,c1.z},p1); opengl1renderer.vertex3f( p0.x, p0.y, p0.z ); opengl1renderer.vertex3f( p1.x, p1.y, p1.z );
-        p0=p1; lvec.dot_to({c0.x,c1.y,c0.z},p1); opengl1renderer.vertex3f( p0.x, p0.y, p0.z ); opengl1renderer.vertex3f( p1.x, p1.y, p1.z );
-        p0=p1; lvec.dot_to({c1.x,c1.y,c0.z},p1); opengl1renderer.vertex3f( p0.x, p0.y, p0.z ); opengl1renderer.vertex3f( p1.x, p1.y, p1.z );
-	opengl1renderer.end();
+    tmpMesh1.clear();
+           lvec.dot_to({c0.x,c0.y,c0.z},p0);
+           lvec.dot_to({c0.x,c0.y,c1.z},p1); tmpMesh1.addVertex(p0); tmpMesh1.addVertex(p1);
+           lvec.dot_to({c0.x,c1.y,c0.z},p1); tmpMesh1.addVertex(p0); tmpMesh1.addVertex(p1);
+           lvec.dot_to({c1.x,c0.y,c0.z},p1); tmpMesh1.addVertex(p0); tmpMesh1.addVertex(p1);
+           lvec.dot_to({c1.x,c1.y,c1.z},p0);
+           lvec.dot_to({c0.x,c1.y,c1.z},p1); tmpMesh1.addVertex(p0); tmpMesh1.addVertex(p1);
+           lvec.dot_to({c1.x,c0.y,c1.z},p1); tmpMesh1.addVertex(p0); tmpMesh1.addVertex(p1);
+           lvec.dot_to({c1.x,c1.y,c0.z},p1); tmpMesh1.addVertex(p0); tmpMesh1.addVertex(p1);
+    p0=p1; lvec.dot_to({c1.x,c0.y,c0.z},p1); tmpMesh1.addVertex(p0); tmpMesh1.addVertex(p1);
+    p0=p1; lvec.dot_to({c1.x,c0.y,c1.z},p1); tmpMesh1.addVertex(p0); tmpMesh1.addVertex(p1);
+    p0=p1; lvec.dot_to({c0.x,c0.y,c1.z},p1); tmpMesh1.addVertex(p0); tmpMesh1.addVertex(p1);
+    p0=p1; lvec.dot_to({c0.x,c1.y,c1.z},p1); tmpMesh1.addVertex(p0); tmpMesh1.addVertex(p1);
+    p0=p1; lvec.dot_to({c0.x,c1.y,c0.z},p1); tmpMesh1.addVertex(p0); tmpMesh1.addVertex(p1);
+    p0=p1; lvec.dot_to({c1.x,c1.y,c0.z},p1); tmpMesh1.addVertex(p0); tmpMesh1.addVertex(p1);
+
+    tmpMesh1.draw(GL_LINES);
 }
 
 void Draw3D::drawTriclinicBoxT( const Mat3f& lvec, const Vec3f& c0, const Vec3f& c1 ){
     Vec3f p0,p1;
-	opengl1renderer.begin(GL_LINES);
-               lvec.dot_to_T({c0.x,c0.y,c0.z},p0);
-               lvec.dot_to_T({c0.x,c0.y,c1.z},p1); opengl1renderer.vertex3f( p0.x, p0.y, p0.z ); opengl1renderer.vertex3f( p1.x, p1.y, p1.z );
-               lvec.dot_to_T({c0.x,c1.y,c0.z},p1); opengl1renderer.vertex3f( p0.x, p0.y, p0.z ); opengl1renderer.vertex3f( p1.x, p1.y, p1.z );
-               lvec.dot_to_T({c1.x,c0.y,c0.z},p1); opengl1renderer.vertex3f( p0.x, p0.y, p0.z ); opengl1renderer.vertex3f( p1.x, p1.y, p1.z );
-		       lvec.dot_to_T({c1.x,c1.y,c1.z},p0);
-               lvec.dot_to_T({c0.x,c1.y,c1.z},p1); opengl1renderer.vertex3f( p0.x, p0.y, p0.z ); opengl1renderer.vertex3f( p1.x, p1.y, p1.z );
-               lvec.dot_to_T({c1.x,c0.y,c1.z},p1); opengl1renderer.vertex3f( p0.x, p0.y, p0.z ); opengl1renderer.vertex3f( p1.x, p1.y, p1.z );
-               lvec.dot_to_T({c1.x,c1.y,c0.z},p1); opengl1renderer.vertex3f( p0.x, p0.y, p0.z ); opengl1renderer.vertex3f( p1.x, p1.y, p1.z );
-        p0=p1; lvec.dot_to_T({c1.x,c0.y,c0.z},p1); opengl1renderer.vertex3f( p0.x, p0.y, p0.z ); opengl1renderer.vertex3f( p1.x, p1.y, p1.z );
-        p0=p1; lvec.dot_to_T({c1.x,c0.y,c1.z},p1); opengl1renderer.vertex3f( p0.x, p0.y, p0.z ); opengl1renderer.vertex3f( p1.x, p1.y, p1.z );
-        p0=p1; lvec.dot_to_T({c0.x,c0.y,c1.z},p1); opengl1renderer.vertex3f( p0.x, p0.y, p0.z ); opengl1renderer.vertex3f( p1.x, p1.y, p1.z );
-        p0=p1; lvec.dot_to_T({c0.x,c1.y,c1.z},p1); opengl1renderer.vertex3f( p0.x, p0.y, p0.z ); opengl1renderer.vertex3f( p1.x, p1.y, p1.z );
-        p0=p1; lvec.dot_to_T({c0.x,c1.y,c0.z},p1); opengl1renderer.vertex3f( p0.x, p0.y, p0.z ); opengl1renderer.vertex3f( p1.x, p1.y, p1.z );
-        p0=p1; lvec.dot_to_T({c1.x,c1.y,c0.z},p1); opengl1renderer.vertex3f( p0.x, p0.y, p0.z ); opengl1renderer.vertex3f( p1.x, p1.y, p1.z );
-	opengl1renderer.end();
+    tmpMesh1.clear();
+           lvec.dot_to_T({c0.x,c0.y,c0.z},p0);
+           lvec.dot_to_T({c0.x,c0.y,c1.z},p1); tmpMesh1.addVertex(p0); tmpMesh1.addVertex(p1);
+           lvec.dot_to_T({c0.x,c1.y,c0.z},p1); tmpMesh1.addVertex(p0); tmpMesh1.addVertex(p1);
+           lvec.dot_to_T({c1.x,c0.y,c0.z},p1); tmpMesh1.addVertex(p0); tmpMesh1.addVertex(p1);
+           lvec.dot_to_T({c1.x,c1.y,c1.z},p0);
+           lvec.dot_to_T({c0.x,c1.y,c1.z},p1); tmpMesh1.addVertex(p0); tmpMesh1.addVertex(p1);
+           lvec.dot_to_T({c1.x,c0.y,c1.z},p1); tmpMesh1.addVertex(p0); tmpMesh1.addVertex(p1);
+           lvec.dot_to_T({c1.x,c1.y,c0.z},p1); tmpMesh1.addVertex(p0); tmpMesh1.addVertex(p1);
+    p0=p1; lvec.dot_to_T({c1.x,c0.y,c0.z},p1); tmpMesh1.addVertex(p0); tmpMesh1.addVertex(p1);
+    p0=p1; lvec.dot_to_T({c1.x,c0.y,c1.z},p1); tmpMesh1.addVertex(p0); tmpMesh1.addVertex(p1);
+    p0=p1; lvec.dot_to_T({c0.x,c0.y,c1.z},p1); tmpMesh1.addVertex(p0); tmpMesh1.addVertex(p1);
+    p0=p1; lvec.dot_to_T({c0.x,c1.y,c1.z},p1); tmpMesh1.addVertex(p0); tmpMesh1.addVertex(p1);
+    p0=p1; lvec.dot_to_T({c0.x,c1.y,c0.z},p1); tmpMesh1.addVertex(p0); tmpMesh1.addVertex(p1);
+    p0=p1; lvec.dot_to_T({c1.x,c1.y,c0.z},p1); tmpMesh1.addVertex(p0); tmpMesh1.addVertex(p1);
+
+    tmpMesh1.draw(GL_LINES);
 }
 
 void Draw3D::drawAxis( float sc ){
-	opengl1renderer.begin   (GL_LINES);
-		opengl1renderer.color3f( 1, 0, 0 ); opengl1renderer.vertex3f( 0, 0, 0 ); opengl1renderer.vertex3f( 1*sc, 0, 0 );
-		opengl1renderer.color3f( 0, 1, 0 ); opengl1renderer.vertex3f( 0, 0, 0 ); opengl1renderer.vertex3f( 0, 1*sc, 0 );
-		opengl1renderer.color3f( 0, 0, 1 ); opengl1renderer.vertex3f( 0, 0, 0 ); opengl1renderer.vertex3f( 0, 0, 1*sc );
-	opengl1renderer.end();
+    tmpMesh3.clear();
+    // X axis (red)
+    tmpMesh3.addVertex({ 0,0,0}, {1,0,0});
+    tmpMesh3.addVertex({sc,0,0}, {1,0,0});
+    // Y axis (green)
+    tmpMesh3.addVertex({0, 0,0}, {0,1,0});
+    tmpMesh3.addVertex({0,sc,0}, {0,1,0});
+    // Z axis (blue)
+    tmpMesh3.addVertex({0,0, 0}, {0,0,1});
+    tmpMesh3.addVertex({0,0,sc}, {0,0,1});
+    tmpMesh3.draw(GL_LINES);
 }
 
