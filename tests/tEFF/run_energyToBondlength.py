@@ -101,8 +101,11 @@ outESpace = []
 
 i = 0
 for radius in tqdm(radiusSpace, desc="Computing Progress of energy to radius function"):
+    input()
     createH2(radius)
+    print("CreatedH2")
     outE=eff.relax_mol("H2", dt=0.03, outE=True)  
+    print("relaxed")
     outESpace.append(outE)
     i += 1
     print(f"Progress: {i}/{radiusSteps}")

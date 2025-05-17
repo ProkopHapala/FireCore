@@ -85,7 +85,7 @@ if __name__ == "__main__":
     print("#=========== RUN /home/prokophapala/git/FireCore/tests/tEFF/run_process_xyz.py")
 
     eff.setVerbosity(1,0)
-
+    print("verbos")
     atomParams = np.array([
     #  Q   sQ   sP   cP
     [ 0.,  1.0, 1.00, 0.0 ], # 0
@@ -100,9 +100,10 @@ if __name__ == "__main__":
     [ 7.,  0.0, 0.10, 1.0 ], # 9 F
     ], dtype=np.float64)
     eff.setAtomParams( atomParams )
-
+    print("set atom par")
     params, nrec = extract_blocks("export/scan_data/angdistscan_H2O.xyz")
     plot_energy_landscape( params['ang'], params['dist'], params['Etot'], Espan=5.0 )
+    plt.title("Before relaxetion")
     plt.savefig("map2D_referece.png")
 
     outEs = np.zeros((nrec,5))
@@ -131,9 +132,10 @@ if __name__ == "__main__":
     eff.processXYZ( "export/scan_data/angdistscan_H2O.xyz", bOutXYZ=True, outEs=outEs, bCoreElectrons=bCoreElectrons, bChangeCore=False, bChangeEsize=True, nstepMax=10000, dt=0.005, Fconv=1e-3, ialg=2 );
     #print(outEs)
     plot_energy_landscape( params['ang'], params['dist'], outEs[:,0] )
+    plt.title("After relaxetion")
     plt.savefig("map2d_eFF.png")
 
-    print("#=========== DONE /home/prokophapala/git/FireCore/tests/tEFF/run_process_xyz.py")
+    print("#=========== DONE /home/gabriel/git/FireCore/tests/tEFF/run_process_xyz.py")
     plt.show()
 
 

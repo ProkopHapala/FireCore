@@ -18,6 +18,8 @@ params, nrec = extract_blocks(fname)
 eff.setVerbosity(2,0)
 eff.initOpt( dt=0.005, damping=0.005, f_limit=1000.0)
 
+print("Initial")
+
 bCoreElectrons = False
 eff.setSwitches( coreCoul=1 )
 

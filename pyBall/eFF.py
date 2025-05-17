@@ -492,6 +492,7 @@ def relax_mol(name, dt=0.03,damping=0.1, bTrj=True, bResult=True, perN=1, bPrint
     initOpt(dt=dt,damping=damping )                              # initialize optimizer/propagator
     if(bTrj): setTrjName(name+"_relax.xyz", savePerNsteps=perN ) # setup output .xyz file to save trajectory of all atoms and electrons at each timespep (comment-out to ommit .xyz and improve performance ) 
     getBuffs()
+    print("Got buffs")
     #print("invMasses", invMasses )
     if(bFixNuclei): invAmass[:]=0 
     #print("invMasses", invMasses )
@@ -503,8 +504,10 @@ def relax_mol(name, dt=0.03,damping=0.1, bTrj=True, bResult=True, perN=1, bPrint
         result_name=name+"_relaxed.fgo"
         if(verbosity>0): print("Optimized molecule saved to ", result_name)
         save_fgo( result_name )                 # save final relaxed geometry to .fgo format (i.e. floating-gaussian-orbital).
+    print(outE)
+    print("nstep", nstep)
     if outE is not None: 
-        return outE[:nstep]
+        return outE[:nstep] #HUH?
     else:
         return nstep
 
