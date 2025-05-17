@@ -9,14 +9,18 @@ monomers ={
 #"T":  ("./backbones/TNA.mol2"          ,(5,6  )  ),
 #"P":  ("./backbones/PNA_sat-cis-.mol2" ,(2,23 ) ),
 #"D":  ("./backbones/diacetylene-.mol2" ,(1,4  ) ),
-"D":  ("./DANA_CG.mol2" ,(1,4  ) ),
+#"D":  ("./DANA_CG.mol2" ,(1,4  ) ),
+#"D":  ("./backbones/DANA_CG_2.mol2" ,(1,4  ) ),
+"D":  ("./backbones/DANA_CG_2inv.mol2" ,(1,4  ) ),
 "T":  ("./TNA_CG-.mol2" ,(6,5  ) ),
 "P":  ("./PNA_CG.mol2" ,(2,19  ) ),
 }
 
 #sequence = "TPTTDD"
 
-sequence = "PPPPPPP"
+#sequence = "PPPPPPP"
+
+sequence = "DDDD_DDDD"
 
 #sequence = "PPPPPPPPPPPP"
 #sequence = "DDDD"
@@ -24,6 +28,7 @@ sequence = "PPPPPPP"
 
 n0=0
 for i,letter in enumerate(sequence):
+    if letter == "_": continue
     print( "Adding %s" % letter )
     if i==0:
         orec = monomers[letter]

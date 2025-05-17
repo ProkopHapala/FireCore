@@ -1,4 +1,3 @@
-
 #ifndef EFF_h
 #define EFF_h
 /// @file EFF.h @brief Implements electron force-field solver based on Floating Gaussian Orbitals
@@ -7,7 +6,7 @@
 /// @{
 
 #include "fastmath.h"
-//#include "Vec2.h"
+#include "Vec2.h"
 #include "Vec3.h"
 #include "quaternion.h"
 #include "Forces.h"
@@ -174,19 +173,21 @@ inline double interp_gx4(double r2, double y1, double y2 ){
 /// EFF solver
 class EFF{ public:
 
+int nAtomParams = 10;
 constexpr static const Quat4d default_AtomParams[] = {
 //  Q   sQ   sP   cP
 { 0.,  1.0, 1.0, 0.0 }, // 0
-{ 1.,  0.1, 0.1, 0.0 }, // 1 H
-{ 0.,  1.0, 1.0, 2.0 }, // 2 He
-{ 1.,  0.1, 0.1, 2.0 }, // 3 Li
-{ 2.,  0.1, 0.1, 2.0 }, // 4 Be
-{ 3.,  0.1, 0.1, 2.0 }, // 5 B
-{ 4.,  0.1, 0.1, 2.0 }, // 6 C
-{ 5.,  0.1, 0.1, 2.0 }, // 7 N
-{ 6.,  0.1, 0.1, 2.0 }, // 8 O
-{ 7.,  0.1, 0.1, 2.0 }, // 9 F
+{ 1.,  0.0, 0.0, 0.0 }, // 1 H
+{ 0.,  1.0, 1.0, 1.0 }, // 2 He
+{ 1.,  0.0, 0.1, 1.0 }, // 3 Li
+{ 2.,  0.0, 0.1, 1.0 }, // 4 Be
+{ 3.,  0.0, 0.1, 1.0 }, // 5 B
+{ 4.,  0.0, 0.1, 1.0 }, // 6 C
+{ 5.,  0.0, 0.1, 1.0 }, // 7 N
+{ 6.,  0.0, 0.1, 1.0 }, // 8 O
+{ 7.,  0.0, 0.1, 1.0 }, // 9 F
 };
+const Quat4d* atom_params = default_AtomParams;
 
 //                                              H   He  Li    Be      B      C     N     O      F
 constexpr static const double aMasses[9] = {  1.0, 4.0, 7.0, 9.0,  11.0,  12.0,  14.0, 16.0,  19.0 };
@@ -280,87 +281,6 @@ void realloc(int na_, int ne_, bool bVel=false){
 
 }
 
-void realloc_fixed(int nfix_){
-    nfix=nfix_;
-    _realloc0( fixed_poss, nfix, Quat4dNAN );
-    _realloc0( fixed_inds, nfix, Vec2iZero );
-}
-
-void apply_hard_fix(){
-    //printf( "fFF:apply_fixed() nfix %i \n", nfix );
-    for(int i=0; i<nfix; i++){
-        const int     ia   = fixed_inds[i].x;
-        const int     mask = fixed_inds[i].y;
-        const Quat4d& p0   = fixed_poss[i];
-        // print bit mask as binary
-        //printf( "fFF:apply_fixed() i %3i ia %3i bit %08b pos0 %16.8f %16.8f %16.8f %16.8f \n", i, ia, mask, p0.x, p0.y, p0.z, p0.w );
-        if(ia<0){
-            int ie = -ia-1;
-            // if(mask&1){ epos[ie].x = p0.x; eforce[ie].x = 0; evel[ie].x = 0; }
-            // if(mask&2){ epos[ie].y = p0.y; eforce[ie].y = 0; evel[ie].y = 0; }
-            // if(mask&4){ epos[ie].z = p0.z; eforce[ie].z = 0; evel[ie].z = 0; }
-            // if(mask&8){ esize[ie]  = p0.w; fsize[ie]    = 0; vsize[ie]  = 0; }
-
-            if(mask&1){ epos[ie].x = p0.x; }
-            if(mask&2){ epos[ie].y = p0.y; }
-            if(mask&4){ epos[ie].z = p0.z; }
-            if(mask&8){ esize[ie]  = p0.w; }
-        }else{
-            //if(mask&1){ apos[ia].x = p0.x; aforce[ia].x = 0; avel[ia].x = 0; }
-            //if(mask&2){ apos[ia].y = p0.y; aforce[ia].y = 0; avel[ia].y = 0; }
-            //if(mask&4){ apos[ia].z = p0.z; aforce[ia].z = 0; avel[ia].z = 0; }
-
-            if(mask&1){ apos[ia].x = p0.x;  }
-            if(mask&2){ apos[ia].y = p0.y; }
-            if(mask&4){ apos[ia].z = p0.z;  }
-        }
-    }
-}
-
-void clear_fixed_force(){
-    //printf( "fFF:apply_fixed() nfix %i \n", nfix );
-    for(int i=0; i<nfix; i++){
-        const int     ia   = fixed_inds[i].x;
-        const int     mask = fixed_inds[i].y;
-        const Quat4d& p0   = fixed_poss[i];
-        // print bit mask as binary
-        //printf( "fFF:apply_fixed() i %3i ia %3i bit %08b pos0 %16.8f %16.8f %16.8f %16.8f \n", i, ia, mask, p0.x, p0.y, p0.z, p0.w );
-        if(ia<0){
-            int ie = -ia-1;
-            if(mask&1){ eforce[ie].x = 0; }
-            if(mask&2){ eforce[ie].y = 0; }
-            if(mask&4){ eforce[ie].z = 0; }
-            if(mask&8){ fsize[ie]    = 0; }
-        }else{
-            if(mask&1){ aforce[ia].x = 0; }
-            if(mask&2){ aforce[ia].y = 0; }
-            if(mask&4){ aforce[ia].z = 0; }
-        }
-    }
-}
-
-void clear_fixed_dynamics(){
-    //printf( "fFF:apply_fixed() nfix %i \n", nfix );
-    for(int i=0; i<nfix; i++){
-        const int     ia   = fixed_inds[i].x;
-        const int     mask = fixed_inds[i].y;
-        const Quat4d& p0   = fixed_poss[i];
-        // print bit mask as binary
-        //printf( "fFF:apply_fixed() i %3i ia %3i bit %08b pos0 %16.8f %16.8f %16.8f %16.8f \n", i, ia, mask, p0.x, p0.y, p0.z, p0.w );
-        if(ia<0){
-            int ie = -ia-1;
-            if(mask&1){ eforce[ie].x = 0; evel[ie].x = 0; }
-            if(mask&2){ eforce[ie].y = 0; evel[ie].y = 0; }
-            if(mask&4){ eforce[ie].z = 0; evel[ie].z = 0; }
-            if(mask&8){ fsize[ie]    = 0; vsize[ie]  = 0; }
-        }else{
-            if(mask&1){ aforce[ia].x = 0; avel[ia].x = 0; }
-            if(mask&2){ aforce[ia].y = 0; avel[ia].y = 0; }
-            if(mask&4){ aforce[ia].z = 0; avel[ia].z = 0; }
-        }
-    }
-}
-
 void makeMasses(double*& invMasses, double m_const=-1){
     //double atomic_mass   = 1.6605402e-27;
     //double electron_mass = 9.1093837e-31; 
@@ -421,6 +341,13 @@ void fixElectron(int ie, double* vs=0){
         vs[(na+ne)*3+ie]=0;  // size velocity
     };
 }
+
+void set_electron(int ie, const Vec3d& pos, double size, int spin){
+    epos [ie] = pos;
+    esize[ie] = size;
+    espin[ie] = spin;
+}
+
 
 /// evaluate kinetic energy of each electron
 double evalKinetic(){
@@ -555,11 +482,8 @@ double evalAE(){
                 //if(qqi<-1.00001) EaePaul += addDensOverlapGauss_S( dR,sj, abwi.z, abwi.a, f, fsj, fs_junk );     // correct
                 //double dEaePaul = addPauliGauss      ( dR, sj, abwi.z, f, fsj, fs_junk, false, KRSrho );     // correct
                 //double dEaePaul = addDensOverlapGauss_S( dR, sj, aPar.z, aPar.w, f, fsj, fs_junk );     // correct
-                
-                dEaePaul   = addPauliGauss_New( dR, sj, aPar.z, f, fsj, fs_junk, 0, KRSrho, aPar.w       );    
-                if(bCoreCoul){
-                    dEee       = addCoulombGauss  ( dR, sj, aPar.z, f, fsj, fs_junk,            aPar.w*2.0  );
-                }
+                dEaePaul   = addPauliGauss_New( dR, sj, aPar.z, f, fsj, fs_junk, 0, KRSrho, aPar.w       ); // spin=0 means both -1 and +1  
+                if(bCoreCoul){ dEee       = addCoulombGauss  ( dR, sj, aPar.z, f, fsj, fs_junk,            aPar.w*2.0  ); }
                 //printf( "EaePaul[%i,%i] E %g r %g s %g abw(%g,%g) \n", i, j, dEaePaul, dR.norm(), sj, abwi.z, abwi.a );
             }
             //if( i_DEBUG>0 ) printf( "evalAE[%i,%i] dR(%g,%g,%g) s %g q %g  ->   f(%g,%g,%g) fs %g \n", i,j, dR.x,dR.y,dR.z, sj, qqi,   f.x,f.y,f.z, fsj );
@@ -568,6 +492,7 @@ double evalAE(){
                 //printf("%s a%i-e%i Coul %5.20f \n",prefix,i,j,dEae); 
                 //printf("%s a%i-e%i Paul %5.20f \n",prefix,i,j,dEaePaul); 
             }
+            //printf( "evalAE[%i,%i] f(%g,%g,%g) r %g s %g E %g EPaul %g Eee %g \n", i,j, f.x,f.y,f.z, dR.norm(), aPar.y, sj, dEae,dEaePaul,dEee );
             Eae    +=dEae;
             EaePaul+=dEaePaul;
             Eee_   +=dEee;
@@ -673,6 +598,7 @@ double eval(){
     if(bEvalAE         ) Etot+= evalAE();
     if(bEvalAA         ) Etot+= evalAA();
     if(bEvalCoreCorect ) Etot+=evalCoreCorrection();
+    //printf( "eval() Etot %g epos[0](%g,%g,%g) \n", Etot, epos[0].x, epos[0].y, epos[0].z );
     return Etot;
 }
 
@@ -800,27 +726,33 @@ double* evalPotAtPoints( int n, Vec3d* ps, double* out=0, double s=0.0, double Q
 }
 
 void printEnergies(){
-    printf( "Etot (eFF.h) %g | Ek %g Eee,p(%g,%g) Eae,p(%g,%g) Eaa %g \n", Etot, Ek, Eee,EeePaul, Eae,EaePaul, Eaa );
+    printf( "Etot %g | Ek %g Eee,p(%g,%g) Eae,p(%g,%g) Eaa %g \n", Etot, Ek, Eee,EeePaul, Eae,EaePaul, Eaa );
 }
 
 void printAtoms(){
     //printf( "Etot %g Ek %g Eel %g(ee %g, ea %g aa %g)  EPaul %g(ee %g, ae %g) \n", Etot, Ek, Eel, Eee,Eae,Eaa,   EPaul, EeePaul, EaePaul );
     for(int i=0; i<na; i++){
         //printf( "a[%i] p(%g,%g,%g) q %g eAbW(%g,%g,%g) aAbW(%g,%g,%g) \n", i, apos[i].x, apos[i].y, apos[i].z, aQ[i], eAbWs[i].z,eAbWs[i].z,eAbWs[i].z, aAbWs[i].z,aAbWs[i].z,aAbWs[i].z );
-        printf( "a[%i] p(%g,%g,%g) Par(Q,sQ,sP,P)(%g,%g,%g,%g)  \n", i, apos[i].x, apos[i].y, apos[i].z, aPars[i].x,aPars[i].y,aPars[i].z,aPars[i].w );
+        printf( "a[%3i ] p(%16.8f ,%16.8f ,%16.8f ) Par(Q,sQ,sP,P)(%g,%g,%g,%g)  \n", i, apos[i].x, apos[i].y, apos[i].z, aPars[i].x,aPars[i].y,aPars[i].z,aPars[i].w );
         //printf( "a[%i] xyzs(%g,%g,%g) fxyzs(%g,%g,%g) \n", i, apos[i].x, apos[i].y, apos[i].z, aforce[i].x, aforce[i].y, aforce[i].z );
     }
 }
 
 void printElectrons(){
     for(int i=0; i<ne; i++){
-        printf( "e[%i] p(%g,%g,%g) sz %g s %i \n", i, epos[i].x, epos[i].y, epos[i].z, esize[i], espin[i] );
+        printf( "e[%3i ] p(%16.8f ,%16.8f ,%16.8f ) sz %16.8f s %i \n", i, epos[i].x, epos[i].y, epos[i].z, esize[i], espin[i] );
         //printf( "e[%i] xyzs(%g,%g,%g,%g) fxyzs(%g,%g,%g,%g) \n", i, ff.epos[i].x, ff.epos[i].y, ff.epos[i].z, ff.esize[i], ff.eforce[i].x, ff.eforce[i].y, ff.eforce[i].z, ff.fsize[i] );
     }
 }
 
+void printSwitches(){
+    printf( "iPauliModel %i KPauliOverlap %g bCoreCoul %i \n", iPauliModel, KPauliOverlap, bCoreCoul );
+    printf( "bEvalKinetic %i bEvalEE %i bEvalCoulomb %i bEvalPauli %i bEvalAE %i bEvalAECoulomb %i bEvalAEPauli %i bEvalAA %i bEvalCoreCorect %i  \n", bEvalKinetic, bEvalEE, bEvalCoulomb, bEvalPauli, bEvalAE, bEvalAECoulomb, bEvalAEPauli, bEvalAA, bEvalCoreCorect  );
+    printf( "KRSrho %g %g %g \n", KRSrho.x, KRSrho.y, KRSrho.z );
+}
+
 void info(){
-    printf( "iPauliModel %i KPauliOverlap %g \n", iPauliModel, KPauliOverlap );
+    printSwitches();
     printAtoms();
     printElectrons();
 }
@@ -869,8 +801,9 @@ void to_xyz( FILE* pFile ){
 
 void save_xyz( const char* filename, const char* mode="w" ){
     //printf( "EFF::save_xyz(%s)\n", filename );
-    FILE * pFile;
+    FILE * pFile; 
     pFile = fopen (filename,mode);
+    if(pFile==0){ printf("ERROR file >>%s<< not found \n", filename ); return; }
     to_xyz( pFile );
     fclose(pFile);
 }
@@ -930,26 +863,22 @@ bool loadFromFile_xyz( const char* filename ){
 }
 
 
-bool loadFromFile_fgo( char const* filename, bool bVel=false, double fUnits=1. ){
-    //printf(" filename: >>%s<< \n", filename );
-    FILE * pFile;
-    pFile = fopen (filename,"r");
-    if( pFile == NULL ){
-        printf("ERROR in eFF::loadFromFile_fgo(%s) : No such file !!! \n", filename );
-        return -1;
-    }
+int readSingleFGO(FILE* pFile, bool bVel=true, double fUnits=1., bool bRealloc=true){
+    //printf("readSingleFGO() bVel %i fUnits %g bRealloc %i pFile %p\n",bVel, fUnits, bRealloc, pFile);
     int ntot;
     const int nbuff = 1024;
     char buff[nbuff]; char* line;
     //fscanf (pFile, " %i \n", &ntot );
     int natom_=0, nOrb_=0, perOrb_=0; bool bClosedShell=0;
-    line=fgets(buff,nbuff,pFile);
+    int iline=0;
+    line=fgets(buff,nbuff,pFile); iline++;
+    if(line==0){ printf("ERROR in eFF::readSingleFGO : No line found \n"); return -1;}
     sscanf (line, "%i %i %i\n", &natom_, &nOrb_, &perOrb_, &bClosedShell );
-    //printf("na %i ne %i perORb %i \n", natom, nOrb, perOrb_);
-    //printf("na %i ne %i perORb %i \n", natom_, nOrb_, perOrb_ );
-    if(perOrb_!=1){ printf("ERROR in eFF::loadFromFile_fgo(%s) : perOrb must be =1 ( found %i instead) !!! \n", filename, perOrb_ );};
+    //printf("readSingleFGO() natom_ %i nOrb_ %i perOrb_ %i bClosedShell %i\n", natom_, nOrb_, perOrb_, bClosedShell );
+    if(perOrb_!=1){ printf("ERROR in eFF::readSingleFGO : perOrb must =1 ( found %i instead) !!! \n", perOrb_ ); return -1;};
     if(bClosedShell) nOrb_*=2;
-    realloc( natom_, nOrb_, bVel );
+    if(bRealloc)realloc( natom_, nOrb_, bVel );
+    //printf("readSingleFGO() natom_ %i nOrb_ %i na %i ne %i\n", natom_, nOrb_, na, ne );
     double Qasum = 0.0;
     for(int i=0; i<na; i++){ 
         // ionty, respektive jadra
@@ -960,14 +889,10 @@ bool loadFromFile_fgo( char const* filename, bool bVel=false, double fUnits=1. )
         fgets( buff, nbuff, pFile);
         //                                                                 1   2  3   4    5     6    7        8    9    10
         int nw = sscanf (buff, "%lf %lf %lf %lf %lf %lf %lf %lf %lf %lf", &x, &y, &z, &Q, &sQ, &sP, &cP,      &vx, &vy, &vz );
-        // Q - naboj
-        // sQ - rozšíření náboje
-        // sP - Pauliho repulze, respektive polomer vnitrinch elektronu
-        // cP - pocet korovych elektronu
         Q=-Q;
         apos  [i]=Vec3d{x*fUnits,y*fUnits,z*fUnits};
         aPars[i].set(Q,sQ*fUnits,sP*fUnits,cP);
-        if( (bVel)&&(nw>=10) ){ 
+        if( (bVel)&&(nw>=10) ){
             avel[i] = Vec3d{vx*fUnits,vy*fUnits,vz*fUnits};
         }
         Qasum += Q;
@@ -983,41 +908,44 @@ bool loadFromFile_fgo( char const* filename, bool bVel=false, double fUnits=1. )
         //                                                               1    2   3    4   5   6        7    8    9   10
         int nw = sscanf (buff, "%lf %lf %lf %lf %lf %i %lf %lf %lf %lf", &x, &y, &z,  &s, &c, &spin,   &vx, &vy, &vz, &vs );
         //int nw = sscanf (buff, "%lf %lf %lf %lf %lf %i", &x, &y, &z,  &s, &c, &spin );
-        // s - radius
-        // c - expansion coefficient - is irrelevant and always 1
-        // spin is spin, but 1 or -1
-
         epos [i]=Vec3d{x*fUnits,y*fUnits,z*fUnits};
         esize[i]=s*fUnits;
         if(bVel){ 
-            //if(verbosity>0)printf( "electron[%i] p(%g,%g,%g|%g) spin %i v(%g,%g,%g|%g) \n", i, x,y,z,s, spin,  vx,vy,vz,vs );
             if(nw>=9 )evel [i] = Vec3d{vx*fUnits,vy*fUnits,vz*fUnits};
             if(nw>=10)vsize[i] = vs*fUnits;
         }
-        //ecoef[i]=c;
-        //int io=i/perOrb;
         if( !bClosedShell ){ if(nw>5)espin[i]=spin; }else{ espin[i]=1; };
-        //printf( "ebasis[%i,%i|%i] p(%g,%g,%g) s %g c %g spin %i | nw %i io %i \n", i/perOrb, i%perOrb,i, x, y, z,  s, c, spin,  nw, io  );
     }
     if( bClosedShell ){
         for(int i=0; i<nBasRead; i++){
             int j = i+nBasRead;
             epos [j]=epos[i];
             esize[j]=esize[i];
-            //ecoef[j]=ecoef[i];
             espin[j]=-1;
         }
     }
-    //printf( "Qtot = %g (%g - 2*%i) \n",  Qasum - nOrb, Qasum, nOrb );
-    fclose (pFile);
-    return 0;
+    return iline;
 }
 
+bool loadFromFile_fgo( char const* filename, bool bVel=true, double fUnits=1. ){
+    FILE * pFile = fopen(filename,"r");
+    if( pFile == NULL ){
+        printf("ERROR in eFF::loadFromFile_fgo(%s) : No such file !!! \n", filename );
+        return -1;
+    }
+    int iline = readSingleFGO(pFile, bVel, fUnits);
+    fclose(pFile);
+    return iline < 2;
+}
 
-void writeTo_fgo( char const* filename, bool bVel=false, const char* fmode="w" ){
+void writeTo_fgo( char const* filename, bool bVel=false, const char* fmode="w", int iconf=-1 ){
     //printf(" writeTo_fgo(%s, %s) \n", filename, fmode);
     FILE * pFile = fopen (filename, fmode );
-    fprintf( pFile, "%i %i %i %i\n", na, ne, 1, 0 );
+    if(iconf>=0){
+        fprintf( pFile, "%i %i %i #iconf %i\n", na, ne, 1, iconf );
+    }else{
+        fprintf( pFile, "%i %i %i\n", na, ne, 1 );
+    }
     for(int i=0; i<na; i++){               
                 fprintf(pFile, "%f %f %f   %f %f %f %f ", apos[i].x, apos[i].y, apos[i].z,   -aPars[i].x, aPars[i].y, aPars[i].z, aPars[i].w );
         if(bVel)fprintf(pFile, "%f %f %f", avel[i].x, avel[i].y, avel[i].z  );
@@ -1031,6 +959,37 @@ void writeTo_fgo( char const* filename, bool bVel=false, const char* fmode="w" )
     fclose (pFile);
 }
 
+inline double analyse_distance(int ia,int ib)const{
+    Vec3d pi=(ia<0)?epos[-ia-1]:apos[ia];
+    Vec3d pj=(ib<0)?epos[-ib-1]:apos[ib];
+    Vec3d d=pj-pi;
+    return sqrt(d.norm2());
+}
+
+inline double analyse_angle(int i,int j,int k)const{
+    Vec3d pi=(i<0)?epos[-i-1]:apos[i];
+    Vec3d pj=(j<0)?epos[-j-1]:apos[j];
+    Vec3d pk=(k<0)?epos[-k-1]:apos[k];
+    Vec3d u=pi-pj;
+    Vec3d v=pk-pj;
+    double nu=sqrt(u.norm2());
+    double nv=sqrt(v.norm2());
+    double ca=(nu>0&&nv>0)?(u.dot(v)/(nu*nv)):1.;
+    if(ca>1)ca=1;
+    if(ca<-1)ca=-1;
+    return acos(ca);
+}
+
+inline void analyse_distances(const Vec2i* pairs,int nPairs,double* out){
+    for(int i=0;i<nPairs;i++)out[i]=analyse_distance(pairs[i].x,pairs[i].y);
+}
+
+inline void analyse_angles(const Vec3i* triples,int nTriples,double* out){
+    for(int i=0;i<nTriples;i++)out[i]=analyse_angle(triples[i].x,triples[i].y,triples[i].z);
+}
+
+
 };
+
 /// @}
 #endif

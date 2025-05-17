@@ -8,6 +8,12 @@ from . import elements
 import copy
 from . import atomicUtils as au
 
+VALENCE_DICT={
+#        nBond  nEpair
+'O':   ( 2,     2  ),
+'N':   ( 3,     1  ),
+}
+
 class AtomicSystem( ):
 
     def __init__(self,fname=None, apos=None, atypes=None, enames=None, lvec=None, qs=None, Rs=None, bonds=None, ngs=None, bReadN=True, bPreinit=True ) -> None:
@@ -745,3 +751,108 @@ class AtomicSystem( ):
 
         # 6. Update neighbor list
         self.neighs(bBond=True)
+
+# ========= Adding Electron Pairs
+
+    def add_electron_pairs(self):
+        """
+        Add electron pairs to atoms (N, O) based on their chemical neighborhood.
+        """
+        for i, ename in enumerate(self.enames):
+            if ename not in VALENCE_DICT:
+                continue
+            nb     = VALENCE_DICT[ename][0]
+            nep    = VALENCE_DICT[ename][1]
+            nsigma = len(self.ngs[i])
+            npi    = nb - nsigma
+            #print( "Atom %i: %s, npi = %i, nsigma = %i, nep = %i" % (i, ename, npi, nsigma, nep) )
+            if nep > 0:
+                self.make_epair_geom(i, npi, nsigma)
+
+    def get_atomi_pi_direction(self, i):
+        """
+        Get the pi-direction for atom i.
+        """
+        # we should go over 2-3 neighbors (depending how many there is) and compute cross product, take average and normalize
+        #if self.bonds is None or i not in self.ngs or len(self.ngs[i]) < 2:
+        #    return np.array([0.0, 0.0, 1.0])  # Default direction if not enough neighbors
+        neighbors = self.ngs[i]  # Take up to 3 neighbors
+        vectors = [ au.normalize(self.apos[j] - self.apos[i]) for j in neighbors if j != -1]
+        dir = np.zeros(3)
+        for a, b in zip(vectors, vectors[1:] + [vectors[0]]):
+            dir += au.normalize(np.cross(a, b))
+        return au.normalize(dir)
+
+    def make_epair_geom(self, i, npi, nb ):
+        """
+        Add electron pairs to atom i based on configuration using vector operations.
+        """
+        pos = self.apos[i]
+        # Get neighbor positions as list of numpy arrays
+        neighbors = [self.apos[j] for j in self.ngs[i]]
+        if nb > 0: v1 = au.normalize( neighbors[0] - pos )
+        if nb > 1: v2 = au.normalize( neighbors[1] - pos )
+        if nb > 2: v3 = au.normalize( neighbors[2] - pos )
+        #print( f"make_epair_geom() ia: {i} npi: {npi} nb: {nb}" )
+        if npi == 0:
+            if nb == 3:   # like NH3
+                #print( f"make_epair_geom() like NH3 {self.enames[i]}    ia: {i} npi: {npi} nb: {nb}" )
+                base = np.cross(v2 - v1, v3 - v1)
+                base = au.normalize(base)
+                if np.dot(base, (v1 + v2 + v3)) > 0:  base = -base
+                self.place_electron_pair(i, base)
+            elif nb == 2: # like H2O
+                #print( f"make_epair_geom() like H2O {self.enames[i]}    ia: {i} npi: {npi} nb: {nb}" )
+                m_c = au.normalize(v1 + v2)  # Average (bisector) direction
+                m_b = np.cross( v1, v2 )
+                m_b = au.normalize(m_b)
+                cc = 0.57735026919  # sqrt(1/3)
+                cb = 0.81649658092  # sqrt(2/3)
+                ep1 = au.normalize(m_c * -cc + m_b * cb)
+                ep2 = au.normalize(m_c * -cc - m_b * cb)
+                self.place_electron_pair(i, ep1)
+                self.place_electron_pair(i, ep2)
+        elif npi == 1:
+            #print( "make_epair_geom() PI=1 ia: %i npi: %i nb: %i" % (i, npi, nb ) )
+            if nb == 2: # like =N-
+                #print( f"make_epair_geom() like =N- {self.enames[i]}    ia: {i} npi: {npi} nb: {nb}" )
+                m_c = au.normalize(v1 + v2)  # Bisector
+                self.place_electron_pair(i, m_c*-1.)
+            elif nb == 1:  # like =O 
+                #print( f"make_epair_geom() like =O {self.enames[i]}    ia: {i} npi: {npi} nb: {nb}" )
+                m_b = self.get_atomi_pi_direction( self.ngs[i][0] )
+                m_c = au.normalize(np.cross( v1, m_b ))
+                self.place_electron_pair(i, v1*-0.5 + m_c*0.86602540378)
+                self.place_electron_pair(i, v1*-0.5 - m_c*0.86602540378)
+        # elif npi == 2:
+        #     if nb == 1:
+        #         m_c = normalize(neighbors[0] - pos)
+        #         self._place_electron_pair(i, -m_c)
+
+    def place_electron_pair(self, i, direction, distance=0.5, ename='E', atype=200, qs=0.0, Rs=1.0):
+        """
+        Place an electron pair in the specified direction from atom i.
+        Adds new atom with ename='E', atype=200 to apos, atypes, enames arrays.
+        """
+        # Calculate electron pair position
+        ep_pos = self.apos[i] + direction * distance
+
+        # Append to arrays
+        self.apos = np.append(self.apos, [ep_pos], axis=0)
+        self.atypes = np.append(self.atypes, atype)
+        self.enames.append(ename)
+
+        # Initialize charge to zero
+        if self.qs is not None:
+            self.qs = np.append(self.qs, qs)
+
+        # Initialize Rs with default value
+        if self.Rs is not None:
+            self.Rs = np.append(self.Rs, Rs)  # Default radius for electron pairs
+
+        # Update bonds and neighbors if needed
+        if self.bonds is not None:
+            self.bonds = np.append(self.bonds, [[i, len(self.apos) - 1]], axis=0)
+        if self.ngs is not None:
+            self.ngs[i][len(self.apos) - 1] = 1  # Add to neighbors
+            self.ngs.append({i: 1})  # Add new neighbor list for electron pair

@@ -218,16 +218,16 @@ void realloc( int nSystems_ ){
     ocl.initAtomsForces( nSystems, ffl.natoms,  ffl.nnode, npbc+1 );
     //printf( "MolWorld_sp3_multi::realloc() Systems %i nAtoms %i nnode %i nvecs %i \n", nSystems, ocl.nAtoms, ocl.nnode, ocl.nvecs );
     // --- dynamical
+
+
     _realloc ( atoms,     ocl.nvecs*nSystems  );
     _realloc0( aforces,   ocl.nvecs*nSystems  , Quat4fZero );
     _realloc0( avel,      ocl.nvecs*nSystems  , Quat4fZero );
     _realloc0( cvfs,      ocl.nvecs*nSystems  , Quat4fZero );
     _realloc0( constr,    ocl.nAtoms*nSystems , Quat4fOnes*-1. );
     _realloc0( constrK,   ocl.nAtoms*nSystems , Quat4fOnes*-1. );
-
-    cl_Mat3 _m0{cl_float4{-1e+8,-1e+8,-1e+8,-1e+8,},cl_float4{+1e+8,+1e+8,+1e+8,+1e+8,}, cl_float4{-1.,-1.,-1.,-1.} } ; 
-    _realloc0( bboxes,   nSystems, _m0 );
-
+    cl_Mat3 bbox0{cl_float4{-1e+8,-1e+8,-1e+8,-1e+8,},cl_float4{+1e+8,+1e+8,+1e+8,+1e+8,}, cl_float4{-1.,-1.,-1.,-1.} };
+    _realloc0( bboxes,   nSystems, bbox0 );
     // --- params
     _realloc( neighs,    ocl.nAtoms*nSystems );
     _realloc( neighCell, ocl.nAtoms*nSystems );
@@ -243,10 +243,7 @@ void realloc( int nSystems_ ){
     _realloc( lvecs,     nSystems  );
     _realloc( ilvecs,    nSystems  );
     _realloc( MDpars,    nSystems  );
-
-
-    Quat4f _q0{0.0,-1.0,0.0,0.0}; _realloc0( TDrive,   nSystems, _q0 );
-
+    _realloc0( TDrive,   nSystems, Quat4f{0.0,-1.0,0.0,0.0} );
 
 
     _realloc( pbcshifts, ocl.npbc*nSystems );
