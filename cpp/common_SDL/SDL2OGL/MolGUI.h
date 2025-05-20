@@ -1403,34 +1403,31 @@ void MolGUI::draw(){
                 glColor3f(0.0,0.0,1.0); Draw3D::drawVecInPos( cross(gfw[ig].f,gup[ig].f), gpos[ig].f );
             }
         }
-    }
 
-    if( bViewGroupBoxes ){
-        Vec6d* BBs; 
-        Buckets* pointBBs;
-        int nBBs = W->getGroupBoxes( BBs, pointBBs );
-        //printf( "MolGUI::draw(). nBBs %i \n", nBBs );
-        for(int i=0; i<nBBs; i++){
-            Vec6d& bb = BBs[i];
-            Draw::color_of_hash(i*76461+1459);
-            //printf( "MolGUI::draw(). BB %i  pmin(%16.8f,%16.8f,%16.8f) pmax(%16.8f,%16.8f,%16.8f) \n", i, bb.lo.x, bb.lo.y, bb.lo.z, bb.hi.x, bb.hi.y, bb.hi.z  );
-            Draw3D::drawBBox( bb.lo, bb.hi );
+
+        if( bViewGroupBoxes ){
+            Vec6d*   BBs; 
+            Buckets* pointBBs;
+            int nBBs = W->getGroupBoxes( BBs, pointBBs );
+            //printf( "MolGUI::draw(). nBBs %i \n", nBBs );
+            for(int i=0; i<nBBs; i++){
+                Vec6d& bb = BBs[i];
+                Draw::color_of_hash(i*76461+1459);
+                //printf( "MolGUI::draw(). BB %i  pmin(%16.8f,%16.8f,%16.8f) pmax(%16.8f,%16.8f,%16.8f) \n", i, bb.lo.x, bb.lo.y, bb.lo.z, bb.hi.x, bb.hi.y, bb.hi.z  );
+                Draw3D::drawBBox( bb.lo, bb.hi );
+            }
+            int ib=0; // pivot Box (Group of atoms)
+            int    inds [natoms];
+            Vec3d  ps   [natoms];
+            Quat4d paras[natoms];
+            int n = W->ffl.selectFromOtherBucketsInBox( ib ,6.0, ps,paras,inds );
+            //printf( "MolGUI::draw(). n %i \n", n );
+            glColor3f(0.0,1.0,1.0);
+            for(int ia=0; ia<n; ia++){
+                //Draw::color_of_hash(ia*76461+1459);
+                Draw3D::drawSphereOctLines(8,1.0,ps[ia]);
+            }
         }
-
-        
-        int ib=0; // pivot Box (Group of atoms)
-        int    inds [natoms];
-        Vec3d  ps   [natoms];
-        Quat4d paras[natoms];
-        int n = W->ffl.selectFromOtherBucketsInBox( ib ,6.0, ps,paras,inds );
-        //printf( "MolGUI::draw(). n %i \n", n );
-        glColor3f(0.0,1.0,1.0);
-        for(int ia=0; ia<n; ia++){
-            //Draw::color_of_hash(ia*76461+1459);
-            Draw3D::drawSphereOctLines(8,1.0,ps[ia]);
-        }
-
-
     }
 
     //if( bViewSubstrate && W->bSurfAtoms ) Draw3D::atomsREQ( W->surf.natoms, W->surf.apos, W->surf.REQs, ogl_sph, 1., 1., 0. );

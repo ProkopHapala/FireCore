@@ -64,6 +64,7 @@ class OCL_MM: public OCLsystem { public:
     int4   nPBC     {0,0,0,0};   // number of PBC images in each direction (nx,ny,nz,0)
     int    npbc=0;               // total number of PBC images
     int    bSubtractVdW=1;       // subtract non-bonded interactions for atoms bonnded to common neighbor ?
+    bool   bUseTexture=false;
     //float4 md_params{0.05,0.9,100.0,0.0};     // (dt,cdamp,forceLimit)
     float4 md_params{0.05,0.98,100.0,0.0};      // (dt,cdamp,forceLimit)
     //float4 md_params{0.05,0.995,100.0,0.0};   // (dt,cdamp,forceLimit)
@@ -92,6 +93,7 @@ class OCL_MM: public OCLsystem { public:
     int itex_FE_Paul=-1;
     int itex_FE_Lond=-1;
     int itex_FE_Coul=-1;
+    int itex_BsplinePLQH=-1;
     int ibuff_BsplinePLQ=-1;
 
     int ibuff_atoms_surf=-1;
@@ -170,6 +172,7 @@ class OCL_MM: public OCLsystem { public:
         newTask( "getNonBond"             ,program_relax, 2);
         newTask( "getNonBond_GridFF"      ,program_relax, 2);
         newTask( "getNonBond_GridFF_Bspline",program_relax, 2);
+        newTask( "getNonBond_GridFF_Bspline_tex",program_relax, 2);
         newTask( "getMMFFf4"              ,program_relax, 2);
         newTask( "cleanForceMMFFf4"       ,program_relax, 2);
         newTask( "updateGroups"           ,program_relax, 1);
@@ -507,6 +510,65 @@ class OCL_MM: public OCLsystem { public:
         // const int4     grid_ns,         // 11 // origin of the grid
         // const float4   grid_d,          // 12 // origin of the grid
         // const float4   grid_p0          // 13 // origin of the grid
+    }
+
+
+    OCLtask* setup_getNonBond_GridFF_Bspline_tex( int na, int nNode, Vec3i nPBC_, OCLtask* task=0){
+        printf("setup_getNonBond_GridFF_Bspline_tex(na=%i,nnode=%i) itex_BsplinePLQH=%i\n", na, nNode, itex_BsplinePLQH );
+        if(itex_BsplinePLQH<0){ printf( "ERROR in setup_getNonBond_GridFF_Bspline_tex() GridFF texture not initialized( itex_BsplinePLQH=%i ) => Exit() \n", itex_BsplinePLQH ); exit(0); }
+        if(task==0) task = getTask("getNonBond_GridFF_Bspline_tex");        
+        //int nloc = 1;
+        //int nloc = 4;
+        //int nloc = 8;
+        int nloc = 32;
+        //int nloc = 64;
+        task->local.x  = nloc;
+        task->global.x = na + nloc-(na%nloc);
+        task->global.y = nSystems;
+        grid_shift0_p0 = grid_p0;
+
+        useKernel( task->ikernel );
+        nDOFs.x=na; 
+        nDOFs.y=nNode; 
+
+        v2i4( nPBC_, nPBC );
+        // ------- Maybe We do-not need to do this every frame ?
+        int err=0;
+        err |= _useArg   ( nDOFs );           OCL_checkError(err, "setup_getNonBond_GridFF_Bspline_tex.arg 1");  // 1
+        // Dynamical
+        err |= useArgBuff( ibuff_atoms     ); OCL_checkError(err, "setup_getNonBond_GridFF_Bspline_tex.arg 2"); // 2
+        err |= useArgBuff( ibuff_aforces   ); OCL_checkError(err, "setup_getNonBond_GridFF_Bspline_tex.arg 3"); // 3
+        // parameters
+        err |= useArgBuff( ibuff_REQs      ); OCL_checkError(err, "setup_getNonBond_GridFF_Bspline_tex.arg 4"); // 4
+        err |= useArgBuff( ibuff_neighs    ); OCL_checkError(err, "setup_getNonBond_GridFF_Bspline_tex.arg 5"); // 5
+        err |= useArgBuff( ibuff_neighCell ); OCL_checkError(err, "setup_getNonBond_GridFF_Bspline_tex.arg 6"); // 6
+        err |= useArgBuff( ibuff_lvecs     ); OCL_checkError(err, "setup_getNonBond_GridFF_Bspline_tex.arg 7"); // 7
+        err |= _useArg( nPBC               ); OCL_checkError(err, "setup_getNonBond_GridFF_Bspline_tex.arg 8"); // 8
+        err |= _useArg( GFFparams          ); OCL_checkError(err, "setup_getNonBond_GridFF_Bspline_tex.arg 9"); // 9
+        err |= useArgBuff( itex_BsplinePLQH ); OCL_checkError(err, "setup_getNonBond_GridFF_Bspline_tex.arg 10"); // 10
+        err |= _useArg( grid_n             ); OCL_checkError(err, "setup_getNonBond_GridFF_Bspline_tex.arg 11"); // 11
+        err |= _useArg( grid_invStep       ); OCL_checkError(err, "setup_getNonBond_GridFF_Bspline_tex.arg 12"); // 12
+        err |= _useArg( grid_shift0_p0     ); OCL_checkError(err, "setup_getNonBond_GridFF_Bspline_tex.arg 13"); // 13
+        OCL_checkError(err, "setup_getNonBond_GridFF_Bspline_tex");
+        return task;
+        // __kernel void getNonBond_GridFF_Bspline_tex( // Renamed kernel to distinguish from buffer version
+        //     const int4 ns,                  // 1 // dimensions of the system (natoms,nnode,nvec)
+        //     // Dynamical
+        //     __global float4*  atoms,        // 2 // positions of atoms
+        //     __global float4*  forces,       // 3 // forces on atoms
+        //     // Parameters
+        //     __global float4*  REQKs,        // 4 // parameters of Lenard-Jones potential, Coulomb and Hydrogen Bond (RvdW,EvdW,Q,H)
+        //     __global int4*    neighs,       // 5 // indexes neighbors of atoms
+        //     __global int4*    neighCell,    // 6 // indexes of cells of neighbor atoms
+        //     __global cl_Mat3* lvecs,        // 7 // lattice vectors of the system
+        //     const int4 nPBC,                // 8 // number of PBC images in each direction
+        //     const float4  GFFParams,        // 9 // parameters of Grid-Force-Field (GFF) (RvdW_cutoff_factor_for_LJ, alphaMorse, Q_atom, H_bond_params_unused)
+        //     // GridFF - Using Texture
+        //     __read_only image3d_t BsplinePLQH_tex, // 10 // Grid-Force-Field (GFF) data (Pauli,London,Coulomb,HBond) in a 3D texture (Renamed texture)
+        //     const int4     grid_ns,         // 11 // dimensions of the grid (matches buffer code name)
+        //     const float4   grid_invStep,    // 12 // inverse of grid cell dimensions
+        //     const float4   grid_p0          // 13 // origin of the grid
+        // ){
     }
 
     OCLtask* setup_getMMFFf4( int na, int nNode, bool bPBC=false, OCLtask* task=0){

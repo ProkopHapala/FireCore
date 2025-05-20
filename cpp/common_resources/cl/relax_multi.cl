@@ -2485,6 +2485,332 @@ __kernel void getNonBond_GridFF_Bspline(
 
 
 
+
+
+
+// ======================================================================
+//         B-spline Interpolation Functions using 3D Texture
+// ======================================================================
+
+__constant sampler_t sampler_bspline = CLK_NORMALIZED_COORDS_FALSE | CLK_ADDRESS_REPEAT | CLK_FILTER_NEAREST;
+
+
+// 1D B-spline interpolation along Z, combining 4 potential components Reads 4 float4 values from texture at (ix, iy, qz[0..3]),  Combines R,G,B,A channels using C_coeffs (PLQH)m  Returns (Energy, dEnergy/duz)
+inline float2 fe1Dcomb_tex(__read_only image3d_t img,
+                           sampler_t smp,
+                           const float4 C,             // Coefficients for combining P,L,Q,H
+                           const float4 pz,            // B-spline basis functions for z (B0, B1, B2, B3)
+                           const float4 dz,            // B-spline derivative basis functions for z (B'0, B'1, B'2, B'3)
+                           const int ix, const int iy, // X and Y integer coordinates
+                           const int4 qz)    // 4 integer Z coordinates
+{
+    // Combine Pauli, London, Coulomb, H-bond components using C = (P,L,Q,H) for each grid point
+    const float4 cs = (float4)(
+        dot(C, read_imagef(img, smp, (int4)(ix, iy, qz.x, 0))), 
+        dot(C, read_imagef(img, smp, (int4)(ix, iy, qz.y, 0))), 
+        dot(C, read_imagef(img, smp, (int4)(ix, iy, qz.z, 0))), 
+        dot(C, read_imagef(img, smp, (int4)(ix, iy, qz.w, 0)))
+    );
+    // Interpolate energy and its derivative w.r.t. u_z using B-spline basis
+    return (float2)(
+        dot(pz, cs), // Energy
+        dot(dz, cs)  // dEnergy/du_z
+    );
+}
+
+// 2D B-spline interpolation in YZ plane, for a given X-coordinate slice
+// Calls fe1Dcomb_tex four times.
+// Returns (dEnergy/duy, dEnergy/duz, Energy)
+inline float3 fe2d_comb_tex(__read_only image3d_t img,
+                            sampler_t smp,
+                            const int  ix,         // Single X integer coordinate for this slice
+                            const int4 qy,         // 4 integer Y coordinates
+                            const int4 qz,         // 4 integer Z coordinates
+                            const float4 C,        // Coefficients for combining P,L,Q,H
+                            const float4 pz, const float4 dz,  // Basis for Z
+                            const float4 py, const float4 dy)  // Basis for Y
+{
+    // Interpolate along Z for 4 different Y lines (at the given ix)
+    const float2 fe0 = fe1Dcomb_tex(img, smp, C, pz, dz, ix, qy.x, qz);
+    const float2 fe1 = fe1Dcomb_tex(img, smp, C, pz, dz, ix, qy.y, qz);
+    const float2 fe2 = fe1Dcomb_tex(img, smp, C, pz, dz, ix, qy.z, qz);
+    const float2 fe3 = fe1Dcomb_tex(img, smp, C, pz, dz, ix, qy.w, qz);
+
+    // feN.x is Energy(yN,      uz_interp)
+    // feN.y is dEnergy/duz(yN, uz_interp)
+
+    // Interpolate along Y using results from 1D Z-interpolation
+    return (float3)(
+        dot(dy, (float4)(fe0.x, fe1.x, fe2.x, fe3.x)),     // dEnergy/du_y = sum_j (B'_j(u_y) * Energy(y_j, u_z_interp))
+        dot(py, (float4)(fe0.y, fe1.y, fe2.y, fe3.y)),     // dEnergy/du_z = sum_j (B_j(u_y) * dEnergy/du_z(y_j, u_z_interp))
+        dot(py, (float4)(fe0.x, fe1.x, fe2.x, fe3.x))      // Energy       = sum_j (B_j(u_y) * Energy(y_j, u_z_interp))
+    );
+}
+
+// 3D B-spline interpolation for force and energy
+// u: normalized coordinates (fractional cell coordinates)
+// n: dimensions of the B-spline grid (texture dimensions)
+// img: 3D texture storing (Pauli, London, Coulomb, H-bond_correction) potential values
+// PLQH: coefficients to combine the 4 potential components
+// xqis, yqis: precomputed PBC index patterns for X and Y dimensions
+// Returns (dEnergy/dux, dEnergy/duy, dEnergy/duz, Energy)
+inline float4 fe3d_pbc_comb_tex(const float3 u,
+                                const int3 n,
+                                __read_only image3d_t img,
+                                sampler_t smp,
+                                const float4 PLQH,
+                                __local const int4* xqis, // Patterns from make_inds_pbc for x-dim
+                                __local const int4* yqis) // Patterns from make_inds_pbc for y-dim
+{
+    // Integer part of u (knot index preceding the point)
+    // Matches original code's floor logic for ix, iy, iz
+    int ix = (int)u.x;
+    int iy = (int)u.y;
+    int iz = (int)u.z;
+    if (u.x < 0) ix--;
+    if (u.y < 0) iy--;
+    if (u.z < 0) iz--; // Also apply floor logic to z
+
+    // Fractional part of u (position within the cell defined by knot ix, iy, iz)
+    const float tx = u.x - ix;
+    const float ty = u.y - iy;
+    const float tz = u.z - iz;
+
+    // B-spline interpolation requires 4 knots starting from index (i-1).
+    // The indices needed are (i-1, i, i+1, i+2).
+    const int ix_knot_start = ix - 1;
+    const int iy_knot_start = iy - 1;
+    const int iz_knot_start = iz - 1;
+
+    // Boundary condition for Z: if iz_raw_knot is too close to edge, return zero.
+    // iz_raw_knot must be in [1, n.z - 3] for full 4-knot support (iz_knot_start must be >=0, iz_knot_start+3 must be < n.z).
+    if ((iz < 1) || (iz >= n.z - 2)) {
+        return (float4)(0.0f, 0.0f, 0.0f, 0.0f);
+    }
+    // Absolute Z indices (no PBC for Z based on this check and index range)
+    const int4 qz = (int4)(iz_knot_start, iz_knot_start + 1, iz_knot_start + 2, iz_knot_start + 3);
+
+    // Apply PBC for X and Y dimensions to get base knot index for choose_inds_pbc_3
+    // The base knot index for choose_inds_pbc_3 should be the starting index *after* modulo,
+    // i.e., (ix-1) % n.x.
+    const int ix_pbc_base = modulo(ix_knot_start, n.x);
+    const int iy_pbc_base = modulo(iy_knot_start, n.y);
+
+    // Get the 4 absolute integer grid indices for X and Y using PBC logic
+    // These indices will be used directly in read_imagef
+    const int4 qx = choose_inds_pbc_3(ix_pbc_base, n.x, xqis);
+    const int4 qy = choose_inds_pbc_3(iy_pbc_base, n.y, yqis);
+
+    // Calculate B-spline basis functions and their derivatives
+    const float4 bz = basis(tz);  const float4 dz = dbasis(tz);
+    const float4 by = basis(ty);  const float4 dy = dbasis(ty);
+    const float4 bx = basis(tx);  const float4 dx = dbasis(tx);
+
+    // Interpolate along YZ for 4 different X planes
+    // E#.x = dE/duy, E#.y = dE/duz, E#.z = E, all at (qx.#, u_y_interp, u_z_interp)
+    const float3 E1 = fe2d_comb_tex(img, smp, qx.x, qy, qz, PLQH, bz, dz, by, dy);
+    const float3 E2 = fe2d_comb_tex(img, smp, qx.y, qy, qz, PLQH, bz, dz, by, dy);
+    const float3 E3 = fe2d_comb_tex(img, smp, qx.z, qy, qz, PLQH, bz, dz, by, dy);
+    const float3 E4 = fe2d_comb_tex(img, smp, qx.w, qy, qz, PLQH, bz, dz, by, dy);
+
+    // Interpolate along X using results from 2D YZ-interpolation
+    // Result is (dE/dux, dE/duy, dE/duz, E_total)
+    return (float4)(
+        dot(dx, (float4)(E1.z, E2.z, E3.z, E4.z)),     // dEnergy/du_x = sum_i (B'_i(u_x) * Energy(x_i, u_y_interp, u_z_interp))
+        dot(bx, (float4)(E1.x, E2.x, E3.x, E4.x)),     // dEnergy/du_y = sum_i (B_i(u_x) * dEnergy/du_y(x_i, u_y_interp, u_z_interp))
+        dot(bx, (float4)(E1.y, E2.y, E3.y, E4.y)),     // dEnergy/du_z = sum_i (B_i(u_x) * dEnergy/du_z(x_i, u_y_interp, u_z_interp))
+        dot(bx, (float4)(E1.z, E2.z, E3.z, E4.z))      // Energy       = sum_i (B_i(u_x) * Energy(x_i, u_y_interp, u_z_interp))
+    );
+}
+
+
+// ======================================================================
+//                           getNonBond_GridFF_Bspline_tex()
+// ======================================================================
+// Calculate non-bonded forces on atoms (including both node atoms and capping atoms), considering periodic boundary conditions
+// It calculates Lenard-Jones, Coulomb and Hydrogen-bond forces between all atoms in the system,
+// and interactions of these atoms rigid surface described by Grid-Force-Field (GFF) done by tricubic B-spline texture interpolation
+// It can be run in parallel for multiple systems.
+// NOTE: This version uses a 3D texture for the B-spline GridFF.
+__attribute__((reqd_work_group_size(32,1,1)))
+__kernel void getNonBond_GridFF_Bspline_tex( // Renamed kernel to distinguish from buffer version
+    const int4 ns,                  // 1 // dimensions of the system (natoms,nnode,nvec)
+    // Dynamical
+    __global float4*  atoms,        // 2 // positions of atoms
+    __global float4*  forces,       // 3 // forces on atoms
+    // Parameters
+    __global float4*  REQKs,        // 4 // parameters of Lenard-Jones potential, Coulomb and Hydrogen Bond (RvdW,EvdW,Q,H)
+    __global int4*    neighs,       // 5 // indexes neighbors of atoms
+    __global int4*    neighCell,    // 6 // indexes of cells of neighbor atoms
+    __global cl_Mat3* lvecs,        // 7 // lattice vectors of the system
+    const int4 nPBC,                // 8 // number of PBC images in each direction
+    const float4  GFFParams,        // 9 // parameters of Grid-Force-Field (GFF) (RvdW_cutoff_factor_for_LJ, alphaMorse, Q_atom, H_bond_params_unused)
+    // GridFF - Using Texture
+    __read_only image3d_t BsplinePLQH_tex, // 10 // Grid-Force-Field (GFF) data (Pauli,London,Coulomb,HBond) in a 3D texture (Renamed texture)
+    const int4     grid_ns,         // 11 // dimensions of the grid (matches buffer code name)
+    const float4   grid_invStep,    // 12 // inverse of grid cell dimensions
+    const float4   grid_p0          // 13 // origin of the grid
+){
+    __local float4 LATOMS[32];         // local memory chumk of positions of atoms 
+    __local float4 LCLJS [32];         // local memory chumk of atom parameters
+    const int iG = get_global_id  (0); // index of atom in the system
+    const int iS = get_global_id  (1); // index of system
+    const int iL = get_local_id   (0); // index of atom in the local memory chunk
+    const int nG = get_global_size(0); // total number of atoms in the system
+    const int nS = get_global_size(1); // total number of systems
+    const int nL = get_local_size (0); // number of atoms in the local memory chunk
+
+    const int natoms=ns.x;         // number of atoms in the system
+    const int nnode =ns.y;         // number of nodes in the system
+    const int nvec  =natoms+nnode; // number of vectos (atoms and pi-orbitals) in the system
+
+    //const int i0n = iS*nnode;    // index of the first node in the system
+    const int i0a = iS*natoms;     // index of the first atom in the system
+    const int i0v = iS*nvec;       // index of the first vector (atom or pi-orbital) in the system
+    //const int ian = iG + i0n;    // index of the atom in the system
+    const int iaa = iG + i0a;      // index of the atom in the system
+    const int iav = iG + i0v;      // index of the vector (atom or pi-orbital) in the system
+    
+    const float4 REQKi = REQKs    [iaa];           // parameters of Lenard-Jones potential, Coulomb and Hydrogen Bond (RvdW,EvdW,Q,H) of the atom
+    const float3 posi  = atoms    [iav].xyz;       // position of the atom
+    float4 fe          = float4Zero;              // forces on the atom
+
+    const int iS_DBG = 0;
+    const int iG_DBG = 0;
+
+    // =================== Non-Bonded interaction ( molecule-molecule )
+
+    { // insulate nbff
+
+    const cl_Mat3 lvec = lvecs[iS]; // lattice vectors of the system
+
+    //if((iG==iG_DBG)&&(iS==iS_DBG)){  printf( "GPU::getNonBond_GridFF_Bspline() natoms,nnode,nvec(%i,%i,%i) nS,nG,nL(%i,%i,%i) \n", natoms,nnode,nvec, nS,nG,nL ); }
+    //if((iG==iG_DBG)&&(iS==iS_DBG)) printf( "GPU::getNonBond_GridFF_Bspline() nPBC_(%i,%i,%i) lvec (%g,%g,%g) (%g,%g,%g) (%g,%g,%g)\n", nPBC.x,nPBC.y,nPBC.z, lvec.a.x,lvec.a.y,lvec.a.z,  lvec.b.x,lvec.b.y,lvec.b.z,   lvec.c.x,lvec.c.y,lvec.c.z );
+    // if((iG==iG_DBG)&&(iS==iS_DBG)){ 
+    //     printf( "GPU::getNonBond_GridFF_Bspline() natoms,nnode,nvec(%i,%i,%i) nS,nG,nL(%i,%i,%i) \n", natoms,nnode,nvec, nS,nG,nL ); 
+    //     for(int i=0; i<nS*nG; i++){
+    //         int ia = i%nS;
+    //         int is = i/nS;
+    //         if(ia==0){ cl_Mat3 lvec = lvecs[is];  printf( "GPU[%i] lvec(%6.3f,%6.3f,%6.3f)(%6.3f,%6.3f,%6.3f)(%6.3f,%6.3f,%6.3f) \n", is, lvec.a.x,lvec.a.y,lvec.a.z,  lvec.b.x,lvec.b.y,lvec.b.z,   lvec.c.x,lvec.c.y,lvec.c.z  ); }
+    //         //printf( "GPU[%i,%i] \n", is,ia,  );        
+    //     }
+    // }
+
+    //if(iG>=natoms) return;
+
+    //const bool   bNode = iG<nnode;   // All atoms need to have neighbors !!!!
+    const bool   bPBC  = (nPBC.x+nPBC.y+nPBC.z)>0; // Periodic boundary conditions if any of nPBC.x,nPBC.y,nPBC.z is non-zero
+    const int4   ng    = neighs   [iaa];           // indexes of neighbors of the atom
+    const int4   ngC   = neighCell[iaa];           // indexes of cells of neighbors of the atom
+
+    const float  R2damp = GFFParams.x*GFFParams.x; // damping radius for Lenard-Jones potential
+
+    //if(iG==0){ for(int i=0; i<natoms; i++)printf( "GPU[%i] ng(%i,%i,%i,%i) REQ(%g,%g,%g) \n", i, neighs[i].x,neighs[i].y,neighs[i].z,neighs[i].w, REQKs[i].x,REQKs[i].y,REQKs[i].z ); }
+
+    const float3 shift0  = lvec.a.xyz*nPBC.x + lvec.b.xyz*nPBC.y + lvec.c.xyz*nPBC.z;  // shift of the first PBC image
+    const float3 shift_a = lvec.b.xyz + lvec.a.xyz*(nPBC.x*-2.f-1.f);                  // shift of lattice vector in the inner loop
+    const float3 shift_b = lvec.c.xyz + lvec.b.xyz*(nPBC.y*-2.f-1.f);                  // shift of lattice vector in the outer loop
+
+    // ========= Atom-to-Atom interaction ( N-body problem )     - we do it by chunks of nL atoms in order to reuse data and reduce number of global memory reads
+    for (int j0=0; j0<natoms; j0+= nL ){ // loop over atoms in the system by chunks of nL atoms which fit into local memory
+        const int i = j0 + iL;           // global index of atom in the system
+        LATOMS[iL] = atoms [i+i0v];      // load positions  of atoms into local memory
+        LCLJS [iL] = REQKs [i+i0a];      // load parameters of atoms into local memory
+        barrier(CLK_LOCAL_MEM_FENCE);    // wait until all atoms are loaded into local memory 
+        for (int jl=0; jl<nL; jl++){     // loop over atoms in the local memory chunk
+            const int ja=jl+j0;          // global index of atom in the system
+            if( (ja!=iG) && (ja<natoms) ){ // atom should not interact with himself, and should be in the system ( j0*nL+iL may be out of range of natoms )   
+                const float4 aj   = LATOMS[jl]; // position of the atom
+                float4       REQK = LCLJS [jl]; // parameters of the atom
+                float3 dp   = aj.xyz - posi;    // vector between atoms
+                REQK.x  +=REQKi.x;              // mixing of RvdW radii
+                REQK.yz *=REQKi.yz;             // mixing of EvdW and Q
+                const bool bBonded = ((ja==ng.x)||(ja==ng.y)||(ja==ng.z)||(ja==ng.w));   // atom is bonded if it is one of the neighbors
+                if(bPBC){       // ==== with periodic boundary conditions we need to consider all PBC images of the atom            
+                    int ipbc=0; // index of PBC image
+                    //if( (i0==0)&&(j==0)&&(iG==0) )printf( "pbc NONE dp(%g,%g,%g)\n", dp.x,dp.y,dp.z ); 
+                    dp -= shift0;  // shift to the first PBC image
+                    for(int iz=-nPBC.z; iz<=nPBC.z; iz++){      
+                        for(int iy=-nPBC.y; iy<=nPBC.y; iy++){
+                            for(int ix=-nPBC.x; ix<=nPBC.x; ix++){
+                                if( !( bBonded &&(  // if bonded in any of PBC images, then we have to check both index of atom and index of PBC image to decide if we should skip this interaction
+                                          ((ja==ng.x)&&(ipbc==ngC.x)) // check 1. neighbor and its PBC cell
+                                        ||((ja==ng.y)&&(ipbc==ngC.y)) // check 2. neighbor and its PBC cell
+                                        ||((ja==ng.z)&&(ipbc==ngC.z)) // ...
+                                        ||((ja==ng.w)&&(ipbc==ngC.w)) // ...
+                                ))){
+                                    //fe += getMorseQ( dp+shifts, REQK, R2damp );
+                                    float4 fij = getLJQH( dp, REQK, R2damp );  // calculate Lenard-Jones, Coulomb and Hydrogen-bond forces between atoms
+                                    //if((iG==iG_DBG)&&(iS==iS_DBG)){  printf( "GPU_LJQ[%i,%i|%i] fj(%g,%g,%g) R2damp %g REQ(%g,%g,%g) r %g \n", iG,ji,ipbc, fij.x,fij.y,fij.z, R2damp, REQK.x,REQK.y,REQK.z, length(dp+shift)  ); } 
+                                    fe += fij; // accumulate forces
+                                }
+                                ipbc++;         // increment index of PBC image
+                                dp+=lvec.a.xyz; // shift to the next PBC image
+                            }
+                            dp+=shift_a;        // shift to the next PBC image
+                        }
+                        dp+=shift_b;            // shift to the next PBC image
+                    }
+                }else{ //  ==== without periodic boundary it is much simpler, not need to care about PBC images
+                    if(bBonded) continue;  // Bonded ? 
+                    float4 fij = getLJQH( dp, REQK, R2damp ); // calculate Lenard-Jones, Coulomb and Hydrogen-bond forces between atoms
+                    fe += fij;
+                    //if((iG==iG_DBG)&&(iS==iS_DBG)){  printf( "GPU_LJQ[%i,%i] fj(%g,%g,%g) R2damp %g REQ(%g,%g,%g) r %g \n", iG,ji, fij.x,fij.y,fij.z, R2damp, REQK.x,REQK.y,REQK.z, length(dp)  ); } 
+                }
+            }
+        }
+        barrier(CLK_LOCAL_MEM_FENCE); // wait until all atoms are processed, ToDo: not sure if it is needed here ?
+    }
+
+    } // insulate nbff
+
+    if(iG>=natoms) return; // natoms <= nG, because nG must be multiple of nL (loccal kernel size). We cannot put this check at the beginning of the kernel, because it will break reading of atoms to local memory 
+
+    // ========== Molecule-Grid interaction with GridFF using tricubic Bspline (Texture based) ==================
+
+    __local int4 xqs[4]; // Local memory for PBC index patterns for X
+    __local int4 yqs[4]; // Local memory for PBC index patterns for Y
+
+    { // insulate gridff
+        // Initialize local memory for PBC index patterns. Only first 8 work-items do this.
+        if      (iL<4){ xqs[iL]=make_inds_pbc(grid_ns.x,iL); }
+        else if (iL<8){ yqs[iL-4]=make_inds_pbc(grid_ns.y,iL-4); };
+        barrier(CLK_LOCAL_MEM_FENCE); // Ensure local memory is populated
+
+        // Coefficients for combining Pauli, London, Coulomb, H-bond from the grid field
+        // Matches original calculation using GFFParams.y (alphaMorse) and REQKi
+        const float alphaMorse = GFFParams.y;
+        const float ej = exp( alphaMorse * REQKi.x ); // REQKi.x is RvdW of atom_i
+        const float4 PLQH = (float4){
+            ej*ej*REQKi.y,                   // Pauli coeff: EvdW_i * exp(2 * alphaMorse * RvdW_i)
+            ej*   REQKi.y,                   // London coeff: EvdW_i * exp(alphaMorse * RvdW_i)
+            REQKi.z,                         // Coulomb coeff: Q_i
+            0.0f                             // H-bond coeff (assuming zeroed out)
+        };
+
+        // Calculate normalized coordinates 'u' for B-spline interpolation
+        const float3 u = (posi - grid_p0.xyz) * grid_invStep.xyz;
+
+        // Perform 3D B-spline interpolation using texture
+        // fg contains (dE/dux, dE/duy, dE/duz, Energy)
+        float4 fg = fe3d_pbc_comb_tex(u, grid_ns.xyz, BsplinePLQH_tex, sampler_bspline, PLQH, xqs, yqs);
+
+        // Convert derivatives from du space to real space: Fx = -dE/dx = - (dE/dux) * (dux/dx)
+        // dux/dx = grid_invStep.x, etc.
+        fg.xyz *= -grid_invStep.xyz; // grid_invStep components are positive
+
+        fe += fg; // Add GridFF force and energy to atom's total
+        // fes[iG] = fe; // If you have a separate energy buffer
+    }  // insulate gridff
+
+    // Store the total force and energy for this atom
+    forces[iav] = fe;
+    // Use forces[iav] += fe; if forces buffer accumulates from multiple kernels
+}
+
+
+
+
 // ======================================================================
 //                           sampleGridFF()
 // ======================================================================
@@ -2494,7 +2820,7 @@ __kernel void sampleGridFF(
     const int4 ns,                  // 1
     __global float4*  atoms,        // 2
     __global float4*  forces,       // 3
-    __global float4*  REQs,        // 4
+    __global float4*  REQs,         // 4
     const float4  GFFParams,        // 5
     __read_only image3d_t  FE_Paul, // 6
     __read_only image3d_t  FE_Lond, // 7

@@ -163,6 +163,7 @@ class MolWorld_sp3_multi : public MolWorld_sp3, public MultiSolverInterface { pu
     OCLtask* task_NBFF=0;
     OCLtask* task_NBFF_Grid=0;
     OCLtask* task_NBFF_Grid_Bspline=0;
+    OCLtask* task_NBFF_Grid_Bspline_tex=0;
     OCLtask* task_SurfAtoms=0;
     OCLtask* task_MMFF=0;
     OCLtask* task_move=0;
@@ -253,18 +254,16 @@ void realloc( int nSystems_ ){
 }
 
 void initMultiCPU(int nSys){
+    printf("MolWorld_sp3_multi::initMultiCPU(%i)\n", nSys);
     _realloc( opts, nSys );
     _realloc( ffls, nSys );
     _realloc( gopts,nSys );
-
     double dtopt=ff.optimalTimeStep();
     for(int isys=0; isys<nSys; isys++){
         ffls[isys].clone( ffl, true, true );
         ffls[isys].makePBCshifts( nPBC, true );
         ffls[isys].id=isys;
-
         ffls[isys].PLQs = ffl.PLQs;  // WARNING : maybe we should make own copy of PLQs for each system because we have own copy of REQs for each system
-
         // ----- optimizer
         opts[isys].bindOrAlloc( ffls[isys].nDOFs, ffls[isys].DOFs, 0, ffls[isys].fDOFs, 0 ); 
         ffls[isys].vapos=(Vec3d*)opts[isys].vel;    
@@ -389,7 +388,8 @@ void groups2ocl( int isys, bool bForce=true, bool bPose=false, bool bWeights=tru
 
 
 int init_groups(){
-    printf("MolWorld_sp3_multi::init_groups()\n" );
+    int ngroup = groups.groups.size();
+    printf("MolWorld_sp3_multi::init_groups() ngroup=%i\n", ngroup );
     // int ngroup = -1;
     // printf("atom2group.size()==%i\n", atom2group.size() );
     // for(int i=0; i<atom2group.size(); i++){ 
@@ -397,17 +397,13 @@ int init_groups(){
     //     ngroup=_max(ngroup,atom2group[i]); 
     // }
     // ngroup+=1;
-    int ngroup = groups.groups.size();
-
     if(ngroup<=0) return -1;
-
     // int2*   granges  = 0; // [ nSystems*nGroup ]    
     // int*    a2g      = 0; // [ nSystems*nAtoms ]  
     // int*    g2a      = 0; // [ nSystems*nAtoms ]       
     // Quat4f* gforces  = 0; // [ nSystems*nGroup ]    
     // Quat4f* gtorqs   = 0; // [ nSystems*nGroup ]   
     // Quat4f* gcenters = 0; // [ nSystems*nGroup ] 
-
     int nGroupTot = ngroup*ocl.nSystems;
     int nAtomTot  = ocl.nvecs*ocl.nSystems;
     _realloc0( gforces,  nGroupTot, Quat4fZero );
@@ -436,19 +432,15 @@ int init_groups(){
     int err=0;
     err|= ocl.upload( ocl.ibuff_gweights,  gweights  ); OCL_checkError(err, "init_groups.upload(gweights)");
     err|= ocl.upload( ocl.ibuff_gfweights, gfweights ); OCL_checkError(err, "init_groups.upload(gfweights)");
-
     err|= ocl.upload( ocl.ibuff_gforces, gforces );     OCL_checkError(err, "init_groups.upload(gforces)");
     err|= ocl.upload( ocl.ibuff_gtorqs,  gtorqs  );     OCL_checkError(err, "init_groups.upload(gtorqs)");
-    err|= ocl.upload( ocl.ibuff_bboxes,  bboxes  );     OCL_checkError(err, "init_groups.upload(bboxes)");  // ToDo: this may need to go to different place
-
-    
+    err|= ocl.upload( ocl.ibuff_bboxes,  bboxes  );     OCL_checkError(err, "init_groups.upload(bboxes)");  // ToDo: this may need to go to different place    
     return err;
 }
 
 virtual void pre_loop() override {
     printf("MolWorld_sp3_multi::pre_loop()\n" );
     init_groups();
-
     for(int isys=0; isys<nSystems; isys++){
         for(int ia=0; ia<ffl.natoms; ia++ ){
             int iaa = isys * ocl.nAtoms + ia;
@@ -459,7 +451,6 @@ virtual void pre_loop() override {
             //if(isys==0){    printf( "pre_loop() ffl[ia=%i] constr(%g,%g,%g|%g) constrK(%g,%g,%g) \n", isys, ia, ffl.constr[ia].x,ffl.constr[ia].y,ffl.constr[ia].z,ffl.constr[ia].w, ffl.constrK[ia].x,ffl.constrK[ia].y,ffl.constrK[ia].z ); }
         }
     }
-
     //printConstrains();
     // for(int ic : constrain_list ){
     //     for(int isys=0; isys<nSystems; isys++){
@@ -469,6 +460,7 @@ virtual void pre_loop() override {
     //     }
     // }
     // ocl.upload( ocl.ibuff_constr, constr );     //OCL_checkError(err, "init_groups.upload(constr)");
+    print("MolWorld_sp3_multi::pre_loop() DONE\n");
 }
 
 // ==================================
@@ -626,7 +618,7 @@ void download_sys( int isys, bool bForces=false, bool bVel=false ){
 }
 
 void upload(  bool bParams=false, bool bForces=0, bool bVel=true, bool blvec=true ){
-    //printf("MolWorld_sp3_multi::upload() \n");
+    printf("MolWorld_sp3_multi::upload() nSys %i nAtoms %i nvecs %i bParams %i bForces %i bVel %i blvec %i \n", nSystems, ocl.nAtoms, ocl.nvecs, bParams, bForces, bVel, blvec);
     int err=0;
     err|= ocl.upload( ocl.ibuff_atoms,  atoms  );
     err|= ocl.upload( ocl.ibuff_constr,  constr );
@@ -1353,9 +1345,19 @@ void setup_MMFFf4_ocl(){
             printf( "MolWorld_sp3_multi::setup_MMFFf4_ocl() GridFFmod::%i => ocl.setup_getNonBond_GridFF() \n", gridFF.mode );
             task_NBFF_Grid         = ocl.setup_getNonBond_GridFF        ( ffl.natoms, ffl.nnode, nPBC_ ); } break;
         case GridFFmod::BsplineFloat:  [[fallthrough]]
-        case GridFFmod::BsplineDouble:  if(!task_NBFF_Grid_Bspline ){ 
-            printf( "MolWorld_sp3_multi::setup_MMFFf4_ocl() GridFFmod::%i => ocl.setup_getNonBond_GridFF_Bspline() \n", gridFF.mode );
-            task_NBFF_Grid_Bspline = ocl.setup_getNonBond_GridFF_Bspline( ffl.natoms, ffl.nnode, nPBC_ ); } break;
+        case GridFFmod::BsplineDouble:  
+            if(ocl.bUseTexture){
+                if(!task_NBFF_Grid_Bspline_tex ){ 
+                    printf( "MolWorld_sp3_multi::setup_MMFFf4_ocl() GridFFmod::%i && bUseTexture=%i => ocl.setup_getNonBond_GridFF_Bspline_tex() \n", gridFF.mode, ocl.bUseTexture );
+                    task_NBFF_Grid_Bspline_tex = ocl.setup_getNonBond_GridFF_Bspline_tex( ffl.natoms, ffl.nnode, nPBC_ ); 
+                } 
+            }else{
+                if(!task_NBFF_Grid_Bspline ){ 
+                    printf( "MolWorld_sp3_multi::setup_MMFFf4_ocl() GridFFmod::%i && bUseTexture=%i => ocl.setup_getNonBond_GridFF_Bspline() \n", gridFF.mode, ocl.bUseTexture );
+                    task_NBFF_Grid_Bspline = ocl.setup_getNonBond_GridFF_Bspline( ffl.natoms, ffl.nnode, nPBC_ ); 
+                }        
+            }
+        break;
         default: { printf( "MolWorld_sp3_multi::setup_MMFFf4_ocl() GridFFmod::%i not implemented \n", gridFF.mode ); } break;
     }
 
@@ -1665,7 +1667,11 @@ int run_ocl_opt( int niter, double Fconv=1e-6 ){
                         if  (bGridFF)[[likely]]{ 
                             if(bBspline)[[likely]]{
                                 //printf( " task_NBFF_Grid_Bspline ->enque_raw(); \n" );
-                                err |= task_NBFF_Grid_Bspline ->enque_raw(); //OCL_checkError(err, "task_NBFF_Grid->enque_raw(); ");
+                                if( ocl.bUseTexture ){
+                                    err |= task_NBFF_Grid_Bspline_tex ->enque_raw(); //OCL_checkError(err, "task_NBFF_Grid->enque_raw(); ");
+                                }else{
+                                    err |= task_NBFF_Grid_Bspline ->enque_raw(); //OCL_checkError(err, "task_NBFF_Grid->enque_raw(); ");
+                                }
                             }else{
                                 err |= task_NBFF_Grid ->enque_raw();   //OCL_checkError(err, "task_NBFF_Grid->enque_raw(); ");
                             }
@@ -1722,7 +1728,7 @@ int run_ocl_opt( int niter, double Fconv=1e-6 ){
             double t=(getCPUticks()-T0)*tick2second;
             //printf( "run_omp_ocl(nSys=%i|iPara=%i) CONVERGED in %i/%i nsteps |F|=%g time=%g[ms]\n", nSystems, iParalel, itr,niter_max, sqrt(F2max), T1*1000 );
             if(verbosity>0)
-            printf( "run_ocl_opt(nSys=%i|iPara=%i,bSurfAtoms=%i,bGridFF=%i,bExplore=%i) CONVERGED in %i/%i steps, |F|(%g)<%g time %g [ms]( %g [us/step]) bGridFF=%i \n", nSystems, iParalel, bSurfAtoms, bGridFF, bExplore, niterdone,niter, sqrt(F2), Fconv, t*1000, t*1e+6/niterdone, bGridFF ); 
+            printf( "run_ocl_opt(nSys=%i|iPara=%i,bSurfAtoms=%i,bGridFF=%i,bUseTexture=%i,bExplore=%i,) CONVERGED in %i/%i steps, |F|(%g)<%g time %g [ms]( %g [us/step]) bGridFF=%i \n", nSystems, iParalel, bSurfAtoms, bGridFF, ocl.bUseTexture, bExplore, niterdone,niter, sqrt(F2), Fconv, t*1000, t*1e+6/niterdone, bGridFF ); 
             return niterdone; 
         }
     }
@@ -2112,13 +2118,15 @@ virtual char* getStatusString( char* s, int nmax ) override {
     s += sprintf(s, "eval_MMFFf4_ocl |F|max=%g |F|min=%g \n", sqrt(F2max), sqrt(F2min) );
     return s;
 }
+
 bool first=true;
 uint64_t zeroT=0;
+
 virtual void MDloop( int nIter, double Ftol = -1 ) override {
     if(iParalel<-100){ iParalel=iParalel_default; };
 
     if(Ftol<0)  Ftol = Ftol_default;
-    //printf( "MolWorld_sp3_ocl::MDloop(%i) bGridFF %i bOcl %i bMMFF %i iParalel=%i \n", nIter, bGridFF, bOcl, bMMFF, iParalel );
+    //printf( "MolWorld_sp3_multi::MDloop(%i) bGridFF %i bOcl %i bMMFF %i iParalel=%i \n", nIter, bGridFF, bOcl, bMMFF, iParalel );
     //bMMFF=false;
     if(first){ zeroT = getCPUticks(); first=false; }
 
@@ -2367,9 +2375,7 @@ void surf2ocl( Vec3i nPBC ){
 //virtual double* initGridFF( const char * name, bool bGrid=true, bool bSaveDebugXSFs=false, double z0=NAN, Vec3d cel0={-0.5,-0.5,0.0}, bool bAutoNPBC=true, bool bCheckEval=true )override{
 virtual void initGridFF( const char * name, double z0=NAN, Vec3d cel0={-0.5,-0.5,0.0}, bool bSymetrize=true, bool bAutoNPBC=true, bool bCheckEval=true, bool bUseEwald=true, bool bFit=true, bool bRefine=true ) override {
     int err=0;
-    //printf( "MolWorld_sp3_multi::initGridFF() \n");
-    
-    
+    printf( "MolWorld_sp3_multi::initGridFF(%s) bSymetrize=%i bAutoNPBC=%i bCheckEval=%i bUseEwald=%i bFit=%i bRefine=%i ,cel0={%g,%g,%g}) \n", name,  bSymetrize, bAutoNPBC, bCheckEval, bUseEwald, bFit, bRefine, cel0.x,cel0.y,cel0.z );
     // if(verbosity>0)printf("MolWorld_sp3_multi::initGridFF(%s,bGrid=%i,z0=%g,cel0={%g,%g,%g})\n",  name, z0, cel0.x,cel0.y,cel0.z  );
     // if(gridFF.grid.n.anyEqual(0)){ printf("ERROR in MolWorld_sp3_multi::initGridFF() zero grid.n(%i,%i,%i) => Exit() \n", gridFF.grid.n.x,gridFF.grid.n.y,gridFF.grid.n.z ); exit(0); };
     // gridFF.grid.center_cell( cel0 );
@@ -2439,30 +2445,39 @@ virtual void initGridFF( const char * name, double z0=NAN, Vec3d cel0={-0.5,-0.5
         gridFF.tryLoad_new( bSymetrize, bFit, bRefine );
         bGridFF   =true; 
         //  copy to GPU
-        int nxyz = gridFF.Bspline_to_f4(true);
-        ocl.ibuff_BsplinePLQ = ocl.newBuffer( "BsplinePLQ", nxyz, sizeof(float4), 0, CL_MEM_READ_ONLY  );
-        err = ocl.upload( ocl.ibuff_BsplinePLQ, gridFF.Bspline_PLQf ); OCL_checkError(err, "MolWorld_sp3_multi::initGridFF().upload(BsplinePLQ)");
+        DEBUG
         GridShape& gsh = gridFF.grid;
         ocl.grid_step    = Quat4f{ (float)gsh.dCell.xx, (float)gsh.dCell.yy, (float)gsh.dCell.zz, 0.0 };
         ocl.grid_invStep.f.set_inv( ocl.grid_step.f );
-
-        { // Debug
-            for(int i=0; i<nxyz; i++){ gridFF.Bspline_PLQf[i]=Quat4fZero; }
-            err = ocl.download( ocl.ibuff_BsplinePLQ, gridFF.Bspline_PLQf);  OCL_checkError(err, "MolWorld_sp3_multi::initGridFF().download(BsplinePLQ)");
-            Vec3d  min1=Vec3dZero,max1=Vec3dZero;
-            Quat4f min2=Quat4fZero,max2=Quat4fZero;
-            for(int i=0; i<nxyz; i++){ 
-                gridFF.Bspline_PLQf[i].update_bounds( min2, max2 );
-                gridFF.Bspline_PLQ [i].update_bounds( min1, max1 );
+        DEBUG
+        int nxyz = gridFF.Bspline_to_f4(true);
+        DEBUG
+        if(ocl.bUseTexture){
+            printf("Uploading B-spline data to 3D Texture (itex_BsplinePLQH).\n");
+            ocl.itex_BsplinePLQH = ocl.newBufferImage3D( "BsplinePLQH_tex",  gsh.n.x, gsh.n.y, gsh.n.z, sizeof(cl_float4), gridFF.Bspline_PLQf, CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR, {CL_RGBA, CL_FLOAT} );
+            DEBUG
+            if(ocl.itex_BsplinePLQH < 0) { printf("Error creating BsplinePLQH_tex texture.\n"); exit(0); }
+        }else{
+            ocl.ibuff_BsplinePLQ = ocl.newBuffer( "BsplinePLQ", nxyz, sizeof(float4), 0, CL_MEM_READ_ONLY  );
+            err = ocl.upload( ocl.ibuff_BsplinePLQ, gridFF.Bspline_PLQf ); OCL_checkError(err, "MolWorld_sp3_multi::initGridFF().upload(BsplinePLQ)");
+            { // Debug
+                for(int i=0; i<nxyz; i++){ gridFF.Bspline_PLQf[i]=Quat4fZero; }
+                err = ocl.download( ocl.ibuff_BsplinePLQ, gridFF.Bspline_PLQf);  OCL_checkError(err, "MolWorld_sp3_multi::initGridFF().download(BsplinePLQ)");
+                Vec3d  min1=Vec3dZero,max1=Vec3dZero;
+                Quat4f min2=Quat4fZero,max2=Quat4fZero;
+                for(int i=0; i<nxyz; i++){ 
+                    gridFF.Bspline_PLQf[i].update_bounds( min2, max2 );
+                    gridFF.Bspline_PLQ [i].update_bounds( min1, max1 );
+                }
+                printf( "Bspline_PLQ  min(%g,%g,%g   ) max(%g,%g,%g   ) \n", min1.x,min1.y,min1.z,        max1.x,max1.y,max1.z        );
+                printf( "Bspline_PLQf min(%g,%g,%g,%g) max(%g,%g,%g,%g) \n", min2.x,min2.y,min2.z,min2.w, max2.x,max2.y,max2.z,max2.w );
             }
-            printf( "Bspline_PLQ  min(%g,%g,%g   ) max(%g,%g,%g   ) \n", min1.x,min1.y,min1.z,        max1.x,max1.y,max1.z        );
-            printf( "Bspline_PLQf min(%g,%g,%g,%g) max(%g,%g,%g,%g) \n", min2.x,min2.y,min2.z,min2.w, max2.x,max2.y,max2.z,max2.w );
-
         }
-
+        DEBUG
         //exit(0);
     }
     tryChangeDir( wd0 );
+    printf( "MolWorld_sp3_multi::initGridFF() DONE\n" );
 }
 
 

@@ -2520,7 +2520,8 @@ void assignTorsions( bool bNonPi=false, bool bNO=true ){
     void permutAtoms(int* permut, bool doBonds=false, bool bGroups=true ){
         std::vector<int> atom2group_;
         if(bGroups){
-            if (atom2group.size()!=atoms.size()){
+            if(atom2group.size()==0){ bGroups=false; }
+            else if (atom2group.size()!=atoms.size()){
                 printf("ERROR permutAtoms bGroups && atom2group.size(%i)!=atoms.size(%i)\n", atom2group.size(), atoms.size());
                 exit(1);
             }
