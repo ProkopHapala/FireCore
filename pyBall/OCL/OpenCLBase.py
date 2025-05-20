@@ -283,21 +283,33 @@ class OpenCLBase:
         for param in params:
             if not param:
                 continue
+            
+            # Handle image parameters (__read_only image*_t)
+            if '__read_only' in param and 'image' in param:
+                parts = param.split()
+                # Find the image type (image3d_t, image2d_t, etc)
+                for i, part in enumerate(parts):
+                    if part.startswith('image'):
+                        param_name = parts[i+1].replace(',', '').strip()
+                        args.append((param_name, 0))  # 2 indicates image type
+                        break
+                continue
+                
             # Handle buffer parameters (__global)
             if '__global' in param:
                 parts = param.split()
                 param_name = parts[-1].replace('*', '').strip()
-                args.append((param_name, 0))
-            # Handle direct parameters (const)
-            elif 'const' in param:
-                parts = param.split()
-                if len(parts) >= 3:
-                    param_name = parts[2].strip(',;')
-                    args.append((param_name, 1))
+                args.append((param_name, 0))  # 0 indicates buffer
+                continue
+                
+            # Handle other parameters (constants)
+            parts = param.split()
+            param_name = parts[-1].replace(',', '').strip()
+            args.append((param_name, 1))  # 1 indicates constant
         
         return args
     
-    def generate_kernel_args(self, kname):
+    def generate_kernel_args(self, kname, bPrint=False):
         """
         Generate argument list for a kernel based on its header definition.
         
@@ -316,8 +328,14 @@ class OpenCLBase:
             raise KeyError(f"Kernel '{kname}' not found in kernel headers")
             
         kernel_header = self.kernelheaders[kname]
-        args_names   = self.parse_kernel_header(kernel_header)
-        
+        args_names    = self.parse_kernel_header(kernel_header)
+
+        if bPrint:
+            print("OpenCLBase::generate_kernel_args() Kernel '{kname}' header:")
+            print(kernel_header)
+            print("OpenCLBase::generate_kernel_args() Kernel '{kname}' args_names:")
+            for i,arg in enumerate(args_names): print("    ", i, arg)
+
         args = []
         try:
             for aname, typ in args_names:
@@ -329,5 +347,9 @@ class OpenCLBase:
             print ( "kernel_header ", kernel_header )
             print(f"OpenCLBase::generate_kernel_args() KeyError: {e}")
             raise
-                
+
+        if bPrint:
+            print("OpenCLBase::generate_kernel_args() Kernel '{kname}' args:")
+            for i,arg in enumerate(args): print("    ", i, arg)
+
         return args

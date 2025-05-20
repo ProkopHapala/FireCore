@@ -1315,12 +1315,9 @@ __kernel void getNonBond_GridFF_Bspline(
     //if((iG==iG_DBG)&&(iS==iS_DBG)){  printf( "GPU::getNonBond_GridFF_Bspline() natoms,nnode,nvec(%i,%i,%i) nS,nG,nL(%i,%i,%i) \n", natoms,nnode,nvec, nS,nG,nL ); }
     //if((iG==iG_DBG)&&(iS==iS_DBG)) printf( "GPU::getNonBond_GridFF_Bspline() nPBC_(%i,%i,%i) lvec (%g,%g,%g) (%g,%g,%g) (%g,%g,%g)\n", nPBC.x,nPBC.y,nPBC.z, lvec.a.x,lvec.a.y,lvec.a.z,  lvec.b.x,lvec.b.y,lvec.b.z,   lvec.c.x,lvec.c.y,lvec.c.z );
     // if((iG==iG_DBG)&&(iS==iS_DBG)){ 
-    //     printf( "GPU::getNonBond_GridFF_Bspline() natoms,nnode,nvec(%i,%i,%i) nS,nG,nL(%i,%i,%i) \n", natoms,nnode,nvec, nS,nG,nL ); 
-    //     for(int i=0; i<nS*nG; i++){
-    //         int ia = i%nS;
-    //         int is = i/nS;
-    //         if(ia==0){ cl_Mat3 lvec = lvecs[is];  printf( "GPU[%i] lvec(%6.3f,%6.3f,%6.3f)(%6.3f,%6.3f,%6.3f)(%6.3f,%6.3f,%6.3f) \n", is, lvec.a.x,lvec.a.y,lvec.a.z,  lvec.b.x,lvec.b.y,lvec.b.z,   lvec.c.x,lvec.c.y,lvec.c.z  ); }
-    //         //printf( "GPU[%i,%i] \n", is,ia,  );        
+    //     //printf( "GPU::getNonBond_GridFF_Bspline() natoms,nnode,nvec(%i,%i,%i) nS,nG,nL(%i,%i,%i) \n", natoms,nnode,nvec, nS,nG,nL ); 
+    //     for(int i=0; i<natoms; i++){
+    //         printf( "GPU[%i] apos(%16.8f,%16.8f,%16.8f) neighs(%4i,%4i,%4i,%4i) REQ(%16.8f,%16.8f,%16.8f,%16.8f,%16.8f) \n", i, apos[iav+i].x,apos[iav+i].y,apos[iav+i].z, neighs[i].x,neighs[i].y,neighs[i].z,neighs[i].w, REQs[i].x,REQs[i].y,REQs[i].z,REQs[i].w );
     //     }
     // }
 
@@ -1419,9 +1416,22 @@ __kernel void getNonBond_GridFF_Bspline(
         //if((iG==iG_DBG)&&(iS==iS_DBG)){  printf( "GPU::getNonBond_GridFF_Bspline() fg(%g,%g,%g|%g) u(%g,%g,%g) posi(%g,%g,%g) grid_invStep(%g,%g,%g)\n", fg.x,fg.y,fg.z,fg.w,  u.x,u.y,u.z, posi.x,posi.y,posi.z, grid_invStep.x, grid_invStep.y, grid_invStep.z  ); }
 
         fg.xyz *= -grid_invStep.xyz;
-        fe += fg;
+        //fe += fg;
+
+        float4 feg = BsplinePLQ[ (int)( u.z + grid_ns.z * (u.y + grid_ns.y * u.x ) ) ];
+        fe += feg;
+
+        if((iG==iG_DBG)&&(iS==iS_DBG)){   
+            //printf( "GPU[%i] apos(%16.8f,%16.8f,%16.8f) u(%16.8f,%16.8f,%16.8f) fg(%16.8e,%16.8e,%16.8e,%16.8e) \n", iG, posi.x,posi.y,posi.z, u.x,u.y,u.z, fg.x,fg.y,fg.z,fg.w );   
+            //float4 feg = read_imagef(BsplinePLQH_tex, sampler_bspline, (int4)(u.x, -5,     u.z, 0));
+            printf("GPU[%i] apos(%16.8f,%16.8f,%16.8f) u(%16.8f,%16.8f,%16.8f) feg(%16.8e,%16.8e,%16.8e,%16.8e)\n", iG, posi.x,posi.y,posi.z, u.x,u.y,u.z, feg.x,feg.y,feg.z,feg.w);
+        }
+
         //fes[iG] = fe;
     }  // insulate gridff
+
+
+    //if((iG==iG_DBG)&&(iS==iS_DBG)){  printf( "GPU[%i] apos(%16.8f,%16.8f,%16.8f) force(%16.8f,%16.8f,%16.8f,%16.8f) BsplinePLQ=%li \n", iG, posi.x,posi.y,posi.z, fe.x,fe.y,fe.z,fe.w, BsplinePLQ );}
 
     aforce[iav] = fe;        // If we do    run it as first forcefield, in this case we do not need to clear forces before running this forcefield
     //aforce[iav] += fe;     // If we don't run it as first forcefield, we need to add forces to the forces calculated by previous forcefields
@@ -1720,6 +1730,7 @@ __kernel void getNonBond_GridFF_Bspline_tex( // Renamed kernel to distinguish fr
 
     { // insulate gridff
         // Initialize local memory for PBC index patterns. Only first 8 work-items do this.
+        // ToDo: We can perhaps remove this when using hardware periodic boundary conditions ( sampler with CLK_ADDRESS_REPEAT )
         if      (iL<4){ xqs[iL]=make_inds_pbc(grid_ns.x,iL); }
         else if (iL<8){ yqs[iL-4]=make_inds_pbc(grid_ns.y,iL-4); };
         barrier(CLK_LOCAL_MEM_FENCE); // Ensure local memory is populated
@@ -1746,9 +1757,22 @@ __kernel void getNonBond_GridFF_Bspline_tex( // Renamed kernel to distinguish fr
         // dux/dx = grid_invStep.x, etc.
         fg.xyz *= -grid_invStep.xyz; // grid_invStep components are positive
 
-        fe += fg; // Add GridFF force and energy to atom's total
+        //fe += fg; // Add GridFF force and energy to atom's total
+
+        float4 feg = read_imagef(BsplinePLQH_tex, sampler_bspline, (float4)( u.x, u.y, u.z, 0.0));
+        fe += feg;
+
         // fes[iG] = fe; // If you have a separate energy buffer
+
+        //if((iG==iG_DBG)&&(iS==iS_DBG)){   printf( "GPU[%i] apos(%16.8f,%16.8f,%16.8f) u(%16.8f,%16.8f,%16.8f) fg(%16.8f,%16.8f,%16.8f,%16.8f) \n", iG, posi.x,posi.y,posi.z, u.x,u.y,u.z, fg.x,fg.y,fg.z,fg.w );   }
+        if((iG==iG_DBG)&&(iS==iS_DBG)){   
+            //printf( "GPU[%i] apos(%16.8f,%16.8f,%16.8f) u(%16.8f,%16.8f,%16.8f) fg(%16.8e,%16.8e,%16.8e,%16.8e) \n", iG, posi.x,posi.y,posi.z, u.x,u.y,u.z, fg.x,fg.y,fg.z,fg.w );   
+            //float4 feg = read_imagef(BsplinePLQH_tex, sampler_bspline, (int4)(u.x, -5,     u.z, 0));
+            printf("GPU[%i] apos(%16.8f,%16.8f,%16.8f) u(%16.8f,%16.8f,%16.8f) feg(%16.8e,%16.8e,%16.8e,%16.8e)\n", iG, posi.x,posi.y,posi.z, u.x,u.y,u.z, feg.x,feg.y,feg.z,feg.w);
+        }
     }  // insulate gridff
+
+    //if((iG==iG_DBG)&&(iS==iS_DBG)){   printf( "GPU[%i] apos(%16.8f,%16.8f,%16.8f) force(%16.8f,%16.8f,%16.8f,%16.8f) \n", iG, posi.x,posi.y,posi.z, fe.x,fe.y,fe.z,fe.w );}
 
     // Store the total force and energy for this atom
     aforce[iav] = fe;
