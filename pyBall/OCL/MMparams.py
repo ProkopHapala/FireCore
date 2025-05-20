@@ -92,8 +92,8 @@ def read_element_types(filepath):
     Returns:
     - dict: Dictionary mapping element names to ElementType objects
     """
+    print("read_element_types() filepath=", filepath)
     element_types = {}
-    
     with open(filepath, 'r') as f:
         lines = f.readlines()
         
@@ -247,8 +247,11 @@ def read_atom_types(filepath, element_types=None):
     return atom_types
 
 def read_AtomAndElementTypes(path, felement_types='ElementTypes.dat', fatom_types='AtomTypes.dat'):
-    element_types = read_element_types(path + felement_types)
-    atom_types    = read_atom_types   (path + fatom_types, element_types)
+    print("read_AtomAndElementTypes() path", path)
+    path1 = path + felement_types; print("path1", path1)
+    path2 = path + fatom_types;    print("path2", path2)
+    element_types = read_element_types(path1)
+    atom_types    = read_atom_types   (path2, element_types)
     return element_types, atom_types
 
 def generate_REQs_from_atom_types(mol, atom_types):

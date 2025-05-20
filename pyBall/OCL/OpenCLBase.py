@@ -316,13 +316,18 @@ class OpenCLBase:
             raise KeyError(f"Kernel '{kname}' not found in kernel headers")
             
         kernel_header = self.kernelheaders[kname]
-        args_names = self.parse_kernel_header(kernel_header)
+        args_names   = self.parse_kernel_header(kernel_header)
         
         args = []
-        for aname, typ in args_names:
-            if typ == 0:
-                args.append(self.buffer_dict[aname])
-            else:
-                args.append(self.kernel_params[aname])
+        try:
+            for aname, typ in args_names:
+                if typ == 0:
+                    args.append(self.buffer_dict[aname])
+                else:
+                    args.append(self.kernel_params[aname])
+        except KeyError as e:
+            print ( "kernel_header ", kernel_header )
+            print(f"OpenCLBase::generate_kernel_args() KeyError: {e}")
+            raise
                 
         return args

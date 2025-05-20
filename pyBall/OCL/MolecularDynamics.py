@@ -201,6 +201,7 @@ class MolecularDynamics(OpenCLBase):
         Prepares the kernel arguments for all kernels by parsing their headers.
         Also sets up the work sizes for each kernel.
         """
+        print("MolecularDynamics::setup_kernels()")
         # Get all work sizes at once
         work_sizes = self.get_work_sizes()
         sz_loc    = work_sizes['sz_loc']
@@ -216,6 +217,8 @@ class MolecularDynamics(OpenCLBase):
         # Generate kernel arguments
         self.kernel_args_getMMFFf4         = self.generate_kernel_args("getMMFFf4")
         self.kernel_args_getNonBond        = self.generate_kernel_args("getNonBond")
+        self.kernel_args_getNonBond_GridFF_Bspline = self.generate_kernel_args("getNonBond_GridFF_Bspline")
+        self.kernel_args_getNonBond_GridFF_Bspline_tex = self.generate_kernel_args("getNonBond_GridFF_Bspline_tex")
         self.kernel_args_updateAtomsMMFFf4 = self.generate_kernel_args("updateAtomsMMFFf4")
         self.kernel_args_cleanForceMMFFf4  = self.generate_kernel_args("cleanForceMMFFf4")
         self.kernel_args_runMD             = self.generate_kernel_args("runMD")
@@ -236,6 +239,7 @@ class MolecularDynamics(OpenCLBase):
         Initialize a dictionary of standard kernel parameters.
         This provides default values for common parameters used in kernels.
         """
+        print("MolecularDynamics::init_kernel_params()")
         # Create a dictionary to store kernel parameters
         self.kernel_params = {
             # Common dimension parameters
@@ -246,6 +250,9 @@ class MolecularDynamics(OpenCLBase):
             # Common scalar parameters
             'npbc':         np.int32(self.npbc),
             'bSubtractVdW': np.int32(0),
+            'grid_ns':      np.array([0,0,0,0], dtype=np.int32),
+            'grid_invStep': np.array([0.0,0.0,0.0,0.0], dtype=np.float32),
+            'grid_p0':      np.array([0.0,0.0,0.0,0.0], dtype=np.float32),
         }
         
     def get_work_sizes(self):
@@ -279,6 +286,28 @@ class MolecularDynamics(OpenCLBase):
         self.prg.getNonBond(self.queue, self.global_size_nonbond, self.local_size_opt, *self.kernel_args_getNonBond)
         self.queue.finish()
     
+    def run_getNonBond_GridFF_Bspline(self):
+        if not self.has_gridff:
+            print("Warning: GridFF not initialized.")
+            return
+        if self.use_texture:
+            print("Warning: use_texture=True, use run_getNonBond_GridFF_Bspline_tex")
+            return
+        self.prg.getNonBond_GridFF_Bspline(self.queue, self.global_size_nonbond, self.local_size_opt,
+                                          *self.kernel_args_getNonBond_GridFF_Bspline)
+        self.queue.finish()
+
+    def run_getNonBond_GridFF_Bspline_tex(self):
+        if not self.has_gridff:
+            print("Warning: GridFF not initialized.")
+            return
+        if not self.use_texture:
+            print("Warning: use_texture=False, use run_getNonBond_GridFF_Bspline")
+            return
+        self.prg.getNonBond_GridFF_Bspline_tex(self.queue, self.global_size_nonbond, self.local_size_opt,
+                                              *self.kernel_args_getNonBond_GridFF_Bspline_tex)
+        self.queue.finish()
+
     def run_getMMFFf4(self):
         self.prg.getMMFFf4(self.queue, self.global_size_mmff, self.local_size_opt, *self.kernel_args_getMMFFf4)
         self.queue.finish()
@@ -295,13 +324,18 @@ class MolecularDynamics(OpenCLBase):
         self.prg.runMD(self.queue, self.global_size_update, self.local_size_opt, *self.kernel_args_runMD)
         self.queue.finish()
     
-    def run_MD_py(self, nsteps):
-        #print( "MolecularDynamics::run_MD_py() nsteps=", nsteps)
-        #print( "MolecularDynamics::run_MD_py() kernel_args_getNonBond=", self.kernel_args_getNonBond)
-        #print( "MolecularDynamics::run_MD_py() kernel_args_getMMFFf4=", self.kernel_args_getMMFFf4)
-        #print( "MolecularDynamics::run_MD_py() kernel_args_updateAtomsMMFFf4=", self.kernel_args_updateAtomsMMFFf4)
+    def run_MD_py(self, nsteps, use_gridff=False):
+        """Run molecular dynamics simulation..."""
         for i in range(nsteps):
-            self.prg.getNonBond       (self.queue, self.global_size_nonbond, self.local_size_opt, *self.kernel_args_getNonBond)
+            if use_gridff and self.has_gridff:
+                if self.use_texture:
+                    self.prg.getNonBond_GridFF_Bspline_tex(self.queue, self.global_size_nonbond, self.local_size_opt,
+                                                         *self.kernel_args_getNonBond_GridFF_Bspline_tex)
+                else:
+                    self.prg.getNonBond_GridFF_Bspline(self.queue, self.global_size_nonbond, self.local_size_opt,
+                                                      *self.kernel_args_getNonBond_GridFF_Bspline)
+            else:
+                self.prg.getNonBond       (self.queue, self.global_size_nonbond, self.local_size_opt,*self.kernel_args_getNonBond)
             self.prg.getMMFFf4        (self.queue, self.global_size_mmff,    self.local_size_opt, *self.kernel_args_getMMFFf4)
             self.prg.updateAtomsMMFFf4(self.queue, self.global_size_update,  self.local_size_opt, *self.kernel_args_updateAtomsMMFFf4)
         self.fromGPU('apos',   self.atoms)
@@ -313,3 +347,35 @@ class MolecularDynamics(OpenCLBase):
         self.fromGPU('apos',   self.atoms)
         self.fromGPU('aforce', self.aforce)
         return self.atoms.reshape(-1, 4), self.aforce.reshape(-1, 4)
+    
+    def initGridFF(self, grid_shape, bspline_data, grid_p0, grid_step, use_texture=False, r_damp=0.0, alpha_morse=0.0):
+        """Initialize GridFF with B-spline data"""
+        print("MolecularDynamics::initGridFF() grid_shape: ", grid_shape)
+        self.has_gridff = True
+        self.use_texture = use_texture
+        
+        # 1. Ensure kernel_params exists
+        if not hasattr(self, 'kernel_params'):
+            self.init_kernel_params()
+            
+        # 2. Set grid parameters
+        self.kernel_params.update({
+            'grid_ns':      np.array([*grid_shape,0], dtype=np.int32),
+            'grid_invStep': np.array([1.0/s for s in grid_step] + [0.0], dtype=np.float32),
+            'grid_p0':      np.array([*grid_p0,0.0], dtype=np.float32),
+            'GFFParams':    np.array([r_damp, alpha_morse, 0.0, 0.0], dtype=np.float32)
+        })
+        
+        # 3. Create buffers BEFORE generating kernel args
+        if use_texture:
+            fmt = cl.ImageFormat(cl.channel_order.RGBA, cl.channel_type.FLOAT)
+            tex = cl.Image(self.ctx, cl.mem_flags.READ_ONLY, fmt, shape=tuple(grid_shape))
+            cl.enqueue_copy(self.queue, tex, bspline_data)
+            self.buffer_dict['BsplinePLQH_tex'] = tex
+            self.kernel_args_getNonBond_GridFF_Bspline_tex = self.generate_kernel_args("getNonBond_GridFF_Bspline_tex")
+        else:
+            buf = cl.Buffer(self.ctx, cl.mem_flags.READ_ONLY|cl.mem_flags.COPY_HOST_PTR, hostbuf=bspline_data)
+            self.buffer_dict['BsplinePLQ'] = buf
+            self.kernel_args_getNonBond_GridFF_Bspline = self.generate_kernel_args("getNonBond_GridFF_Bspline")
+        
+        print(f"GridFF initialized, use_texture={use_texture}")
