@@ -5,6 +5,39 @@ import matplotlib.pyplot as plt
 
 COULOMB_CONST  =    14.3996448915 
 
+def create_linear_texture(ns, sizes=None, dtype=np.float32):
+    """
+    Create a debug texture with clear coordinate patterns in each channel.
+    
+    Args:
+        ns (tuple): Grid dimensions
+        sizes (tuple): Grid sizes
+        dtype (np.dtype): Data type of the texture
+        
+    Returns:
+        np.ndarray: 4-channel texture array with shape (nz,ny,nx,4)
+        Channels: [x,y,z,x²+y²+z²]
+    """
+    nx, ny, nz = ns
+    if sizes is not None:
+        Lx, Ly, Lz = sizes
+    else:
+        Lx, Ly, Lz = nx, ny, nz
+    
+    grid = np.zeros((nx, ny, nz, 4), dtype=dtype)
+    # Generate normalized coordinates in [-1,1] range
+    x = np.linspace(0, Lx, nx)
+    y = np.linspace(0, Ly, ny)
+    z = np.linspace(0, Lz, nz)
+    # Create coordinate grids
+    xx, yy, zz = np.meshgrid(x, y, z, indexing='xy')
+    # Fill texture channels
+    grid[:, :, :, 0] = xx  # X coordinate
+    grid[:, :, :, 1] = yy  # Y coordinate
+    grid[:, :, :, 2] = zz  # Z coordinate
+    grid[:, :, :, 3] = (xx**2 + yy**2 + zz**2)  # Squared distance
+    return grid
+
 def getPLQH( R0, E0, a, Q, H ):
     
     e  = np.exp(a*R0);

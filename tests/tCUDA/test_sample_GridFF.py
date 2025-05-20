@@ -12,6 +12,7 @@ from pyBall.OCL.MMparams import read_AtomAndElementTypes #read_element_types, re
 os.environ['PYOPENCL_COMPILER_OUTPUT'] = '1'
 os.environ['PYOPENCL_CTX'] = '0:1'  # Enables double precision on device 0
 from pyBall.OCL import MolecularDynamics as clMD
+from pyBall.tests.utils import create_linear_texture
 
 # ========== Body
 
@@ -74,13 +75,7 @@ print(f"Loading grid from {grid_path}")
 grid_data = np.load(grid_path)
 print(f"Loaded grid shape: {grid_data.shape}")
 
-# Visualize a slice of the grid
-mid = grid_data.shape[2] // 2
-plt.figure()
-plt.imshow(grid_data[:,:,mid,0], origin='lower')
-plt.colorbar()
-plt.title('GridFF Pauli slice (Z='+str(mid)+')')
-plt.savefig('gridff_pauli_slice.png')
+
 
 # Create a simple system with one atom
 print("\nCreating single atom system...")
@@ -112,8 +107,22 @@ grid_data_[:,:,:,:3] = grid_data
 grid_data = grid_data_
 #grid_data = grid_data.astype(np.float32)
 
+# We need to pad grid_data to 4 channels (RGBA. float32)
+#grid_data_ = np.zeros(grid_shape[:3] + (4,), dtype=np.float32)
+#grid_data_[:,:,:,:3] = grid_data
 
- 
+grid_data = create_linear_texture(grid_shape, sizes=None, dtype=np.float32)
+
+
+# Visualize a slice of the grid
+iz  = grid_shape[2] // 2
+plt.figure(figsize=(9, 3))
+plt.subplot(1, 3, 1); plt.imshow(grid_data[:,:,iz,0], origin='lower'); plt.title('GridFF Pauli'); plt.colorbar()
+plt.subplot(1, 3, 2); plt.imshow(grid_data[:,:,iz,1], origin='lower'); plt.title('GridFF London'); plt.colorbar()
+plt.subplot(1, 3, 3); plt.imshow(grid_data[:,:,iz,2], origin='lower'); plt.title('GridFF Coulomb'); plt.colorbar()
+plt.savefig('gridff_pauli_slice.png')
+
+
 grid_p0   = (0.0, 0.0, 0.0)  # Grid origin
 grid_step = (0.1, 0.1, 1.0)  # Grid spacing
 print(f"Initializing GridFF with shape {grid_shape}, p0={grid_p0}, step={grid_step}")
@@ -121,8 +130,7 @@ print(f"Initializing GridFF with shape {grid_shape}, p0={grid_p0}, step={grid_st
 use_texture = True
 #use_texture = False
 
-
-mdcl.initGridFF(grid_shape, grid_data, grid_p0, grid_step,  use_texture=use_texture, r_damp=0.5, alpha_morse=2.0)
+mdcl.initGridFF(grid_shape, grid_data_, grid_p0, grid_step,  use_texture=use_texture, r_damp=0.5, alpha_morse=2.0)
 
 # Setup kernels
 print("Setting up kernels...")
@@ -130,7 +138,7 @@ mdcl.setup_kernels()
 
 
 # ----- Sample 1D
-'''
+
 # Initialize position and force grid_dataays
 nsteps = 100
 pos    = np.zeros((nsteps, 4), dtype=np.float32)
@@ -172,9 +180,9 @@ plt.grid(True, alpha=0.3)
 plt.tight_layout()
 #plt.savefig('gridff_force_scan.png')
 #print("Saved force scan plot to gridff_force_scan.png")
+
+
 '''
-
-
 # Sample 2D
 # Initialize position and force grid_dataays
 nsteps = 50
@@ -202,7 +210,7 @@ plt.subplot(1, 3, 1); plt.imshow(forces[:, :, 0], origin='lower'); plt.title('Gr
 plt.subplot(1, 3, 2); plt.imshow(forces[:, :, 1], origin='lower'); plt.title('GridFF Force (Y component)'); plt.colorbar()
 plt.subplot(1, 3, 3); plt.imshow(forces[:, :, 2], origin='lower'); plt.title('GridFF Force (Z component)'); plt.colorbar()
 plt.show()
-
+'''
 
 # Show the plots
 plt.show()
