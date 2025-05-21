@@ -356,14 +356,57 @@ class MolecularDynamics(OpenCLBase):
         # 3. Create buffers BEFORE generating kernel args
         if use_texture:
             print(f"MolecularDynamics::initGridFF() use_texture=True grid_shape={grid_shape} bspline_data.shape={bspline_data.shape} bspline_data.dtype={bspline_data.dtype}")
+            print("Original bspline_data dimensions:", bspline_data.ndim)
+            # Transpose spatial dimensions while preserving channels
+            #if bspline_data.ndim == 4:
+            # For RGBA format with shape (z,y,x,4)
+            #bspline_data = bspline_data.transpose(2,1,0,3).copy()
+            
+            #bspline_data = bspline_data.transpose(2,0,1,3).copy()
+            #grid_shape = (grid_shape[2], grid_shape[1], grid_shape[0])
+            #bspline_data = bspline_data.transpose(1,0,2,3).copy()
+
+            #bspline_data = bspline_data.copy();   grid_shape = (200,40,40)  
+            #bspline_data = bspline_data.copy();   grid_shape = (40,200,40)
+            #bspline_data = bspline_data.copy();   grid_shape = (40,40,200)
+            
+
+            #bspline_data = bspline_data.transpose(2,1,0,3).copy(); grid_shape = (200,40,40)  # BAD - only x-direction Fy
+            #bspline_data = bspline_data.transpose(2,1,0,3).copy(); grid_shape = (40,200,40)  # better x->Fy, y->Fy
+            bspline_data = bspline_data.transpose(2,1,0,3).copy(); grid_shape = (40,40,200)   # better 
+
+            #bspline_data = bspline_data.transpose(2,0,1,3).copy(); grid_shape = (40,200,40)
+
+
+            #grid_shape = (grid_shape[0], grid_shape[1], grid_shape[2])
+            #grid_shape = (grid_shape[2], grid_shape[1], grid_shape[0])
+
+            #grid_shape = (grid_shape[1], grid_shape[2], grid_shape[0])
+
+            #grid_shape = (200,40,40)
+            #grid_shape = (40,200,40)
+            #grid_shape = (40,40,200)
+
+            print("!!!!! grid_shape: ", grid_shape)
+
+            #else:
+            #    # For 3D data without channels
+            #    bspline_data = bspline_data.transpose(2,1,0).copy()
+            #    grid_shape = (grid_shape[2], grid_shape[1], grid_shape[0])
             fmt = cl.ImageFormat(cl.channel_order.RGBA, cl.channel_type.FLOAT)
             tex = cl.Image(self.ctx, cl.mem_flags.READ_ONLY, fmt, shape=tuple(grid_shape))
-            cl.enqueue_copy(self.queue, tex, bspline_data,  origin=(0, 0, 0), region=bspline_data.shape[:3])
+            
+            #tex = cl.Image(self.ctx, cl.mem_flags.READ_ONLY, fmt, shape=tuple(grid_shape[::-1]))
+
+            cl.enqueue_copy(self.queue, tex, bspline_data,  origin=(0, 0, 0), region=grid_shape)
+            #cl.enqueue_copy(self.queue, tex, bspline_data,  origin=(0, 0, 0), region=bspline_data.shape[:3])
+
+
             self.buffer_dict['BsplinePLQH_tex'] = tex
-            self.kernel_args_getNonBond_GridFF_Bspline_tex = self.generate_kernel_args("getNonBond_GridFF_Bspline_tex", bPrint=True)            
+            self.kernel_args_getNonBond_GridFF_Bspline_tex = self.generate_kernel_args("getNonBond_GridFF_Bspline_tex", bPrint=False)            
         else:
             print("MolecularDynamics::initGridFF() use_texture=False")
             buf = cl.Buffer(self.ctx, cl.mem_flags.READ_ONLY|cl.mem_flags.COPY_HOST_PTR, hostbuf=bspline_data)
             self.buffer_dict['BsplinePLQ'] = buf
-            self.kernel_args_getNonBond_GridFF_Bspline = self.generate_kernel_args("getNonBond_GridFF_Bspline", bPrint=True)
+            self.kernel_args_getNonBond_GridFF_Bspline = self.generate_kernel_args("getNonBond_GridFF_Bspline", bPrint=False)
         print("MolecularDynamics::initGridFF() DONE")

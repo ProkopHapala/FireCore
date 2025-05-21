@@ -1765,11 +1765,11 @@ __kernel void getNonBond_GridFF_Bspline_tex( // Renamed kernel to distinguish fr
         // fes[iG] = fe; // If you have a separate energy buffer
 
         //if((iG==iG_DBG)&&(iS==iS_DBG)){   printf( "GPU[%i] apos(%16.8f,%16.8f,%16.8f) u(%16.8f,%16.8f,%16.8f) fg(%16.8f,%16.8f,%16.8f,%16.8f) \n", iG, posi.x,posi.y,posi.z, u.x,u.y,u.z, fg.x,fg.y,fg.z,fg.w );   }
-        if((iG==iG_DBG)&&(iS==iS_DBG)){   
-            //printf( "GPU[%i] apos(%16.8f,%16.8f,%16.8f) u(%16.8f,%16.8f,%16.8f) fg(%16.8e,%16.8e,%16.8e,%16.8e) \n", iG, posi.x,posi.y,posi.z, u.x,u.y,u.z, fg.x,fg.y,fg.z,fg.w );   
-            //float4 feg = read_imagef(BsplinePLQH_tex, sampler_bspline, (int4)(u.x, -5,     u.z, 0));
-            printf("GPU[%i] apos(%16.8f,%16.8f,%16.8f) u(%16.8f,%16.8f,%16.8f) feg(%16.8e,%16.8e,%16.8e,%16.8e)\n", iG, posi.x,posi.y,posi.z, u.x,u.y,u.z, feg.x,feg.y,feg.z,feg.w);
-        }
+        // if((iG==iG_DBG)&&(iS==iS_DBG)){   
+        //     //printf( "GPU[%i] apos(%16.8f,%16.8f,%16.8f) u(%16.8f,%16.8f,%16.8f) fg(%16.8e,%16.8e,%16.8e,%16.8e) \n", iG, posi.x,posi.y,posi.z, u.x,u.y,u.z, fg.x,fg.y,fg.z,fg.w );   
+        //     //float4 feg = read_imagef(BsplinePLQH_tex, sampler_bspline, (int4)(u.x, -5,     u.z, 0));
+        //     printf("GPU[%i] apos(%16.8f,%16.8f,%16.8f) u(%16.8f,%16.8f,%16.8f) feg(%16.8e,%16.8e,%16.8e,%16.8e)\n", iG, posi.x,posi.y,posi.z, u.x,u.y,u.z, feg.x,feg.y,feg.z,feg.w);
+        // }
     }  // insulate gridff
 
     //if((iG==iG_DBG)&&(iS==iS_DBG)){   printf( "GPU[%i] apos(%16.8f,%16.8f,%16.8f) force(%16.8f,%16.8f,%16.8f,%16.8f) \n", iG, posi.x,posi.y,posi.z, fe.x,fe.y,fe.z,fe.w );}
