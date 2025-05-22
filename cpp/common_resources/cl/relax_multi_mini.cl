@@ -1808,63 +1808,17 @@ __kernel void sampleGrid_tex(
     const float  R2damp     = GFFParams.x*GFFParams.x;
     const float  alphaMorse = GFFParams.y;
 
-
     //aforce[iG] = read_imagef( BsplinePLQH_tex, sampler_bspline, (int4)( (int)posi.x, (int)posi.y, (int)posi.z, 0 ) );
+    aforce[iG] = read_imagef( BsplinePLQH_tex, sampler_bspline, (float4)( posi.x, posi.y, posi.z, 0.0f ) );    
 
-    aforce[iG] = read_imagef( BsplinePLQH_tex, sampler_bspline, (float4)( posi.x, posi.y, posi.z, 0.0f ) );
-
-    /*
-    if(iG==0){ printf( "GPU::sampleGridFF() np=%i R2damp=%g aMorse=%g p(%g,%g,%g) REQ(%g,%g,%g)  cP=%g cL=%g ej=%g \n", np, R2damp, alphaMorse, posi.x,posi.y,posi.z, REQ.x,REQ.y,REQ.z, cP,cL,ej  ); }
-    if(iG==0){
-        printf( "GPU_sGFF #i  z  E_Paul Fz_Paul   E_Lond Fz_Lond   E_Coul Fz_Coul  \n" );
+    if(iG==0){ 
+        printf( "GPU::sampleGridFF() np=%i R2damp=%g aMorse=%g \n", np, R2damp, alphaMorse ); 
         for(int i=0; i<np; i++){
-            const float4 REQ  = REQs[i];
-            //const float3 posi = atoms[i].xyz;
-            const float3 posi = grid_p0.xyz + dz*i;
-            const float ej   = exp( alphaMorse* REQ.x );
-            const float cL   = ej*REQ.y;
-            const float cP   = ej*cL;
-
-            float4 fe          = float4Zero;
-            const float3 posg  = posi - grid_p0.xyz;
-            const float4 coord = (float4)( dot(posg, diGrid.a.xyz),   dot(posg,diGrid.b.xyz), dot(posg,diGrid.c.xyz), 0.0f );
-            #if 0
-                //coord +=(float4){0.5f,0.5f,0.5f,0.0f}; // shift 0.5 voxel when using native texture interpolation
-                const float4 fe_Paul = read_imagef( FE_Paul, sampler_gff_norm, coord );
-                const float4 fe_Lond = read_imagef( FE_Lond, sampler_gff_norm, coord );
-                const float4 fe_Coul = read_imagef( FE_Coul, sampler_gff_norm, coord );
-            #else
-                const float4 fe_Paul = read_imagef_trilin_norm( FE_Paul, coord );
-                const float4 fe_Lond = read_imagef_trilin_norm( FE_Lond, coord );
-                const float4 fe_Coul = read_imagef_trilin_norm( FE_Coul, coord );
-            #endif
-            //read_imagef_trilin( imgIn, coord );  // This is for higher accuracy (not using GPU hw texture interpolation)
-            fe  += fe_Paul*cP  + fe_Lond*cL  +  fe_Coul*REQ.z;
-            //printf( "GPU[%i] z(%g) E,fz(%g,%g)  PLQ(%g,%g,%g) REQ(%g,%g) \n", i, posi.z,  fe.w,fe.z,  cP,cL,REQ.z,  REQ.x,REQ.y  );
-            printf(  "GPU_sGFF %3i %8.3f    %14.6f %14.6f    %14.6f %14.6f    %14.6f %14.6f\n", i, posi.z, fe_Paul.w,fe_Paul.z, fe_Lond.w,fe_Lond.z,  fe_Coul.w,fe_Coul.z  );
-        }
+            float4 pi = apos[i];
+            float4 fe = read_imagef( BsplinePLQH_tex, sampler_bspline, (float4)( pi.x, pi.y, pi.z, 0.0f ) );
+            printf( "GPU::sampleGridFF() %i p(%16.8f,%16.8f,%16.8f) force(%16.8f,%16.8f,%16.8f|%16.8f) \n", i, pi.x,pi.y,pi.z, fe.x,fe.y,fe.z,fe.w ); 
+        }; 
     }
-    */
-
 // NOTE: https://registry.khronos.org/OpenCL/sdk/1.1/docs/man/xhtml/sampler_t.html
 // CLK_ADDRESS_REPEAT - out-of-range image coordinates are wrapped to the valid range. This address mode can only be used with normalized coordinates. If normalized coordinates are not used, this addressing mode may generate image coordinates that are undefined.
-
-
-
-/*
-
-    const float ej   = exp( alphaMorse* REQ.x );
-    const float cL   = ej*REQ.y;
-    const float cP   = ej*cL;
-    // ========== Interaction with grid
-    float4 fe               = float4Zero;
-    const float3 posg  = posi - grid_p0.xyz;
-    float4 coord = (float4)( dot(posg, diGrid.a.xyz),   dot(posg,diGrid.b.xyz), dot(posg,diGrid.c.xyz), 0.0f );
-    if(iG==0){ printf( "coord(%g,%g,%g) pos(%g,%g,%g) diGrid.a(%g,%g,%g)\n", coord.x,coord.y,coord.z,  posi.x,posi.y,posi.z, diGrid.a.x,diGrid.a.y,diGrid.a.z ); }
-
-        const float4 fe_Paul = read_imagef( FE_Paul, sampler_gff_norm, coord );
-        const float4 fe_Lond = read_imagef( FE_Lond, sampler_gff_norm, coord );
-        const float4 fe_Coul = read_imagef( FE_Coul, sampler_gff_norm, coord );
-    forces[iG] = fe_Paul*cP  + fe_Lond*cL  +  fe_Coul*REQ.z;
-*/
 }

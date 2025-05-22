@@ -351,7 +351,7 @@ class MolecularDynamics(OpenCLBase):
         self.prg.sampleGrid_tex(self.queue, self.sz_na, self.sz_loc, *self.kernel_args_sampleGrid_tex)
         self.fromGPU('aforce', self.aforce)
         self.queue.finish()
-        return self.aforce.reshape(-1, 4)
+        return self.aforce.reshape(-1, 4).copy()
 
     def run_MD_py(self, nsteps, use_gridff=False):
         """Run molecular dynamics simulation..."""
@@ -400,42 +400,12 @@ class MolecularDynamics(OpenCLBase):
         if use_texture:
             print(f"MolecularDynamics::initGridFF() use_texture=True grid_shape={grid_shape} bspline_data.shape={bspline_data.shape} bspline_data.dtype={bspline_data.dtype}")
             print("Original bspline_data dimensions:", bspline_data.ndim)
-            # Transpose spatial dimensions while preserving channels
-            #if bspline_data.ndim == 4:
-            # For RGBA format with shape (z,y,x,4)
-            #bspline_data = bspline_data.transpose(2,1,0,3).copy()
-            
-            #bspline_data = bspline_data.transpose(2,0,1,3).copy()
-            #grid_shape = (grid_shape[2], grid_shape[1], grid_shape[0])
-            #bspline_data = bspline_data.transpose(1,0,2,3).copy()
 
-            #bspline_data = bspline_data.copy();   grid_shape = (200,40,40)  
-            #bspline_data = bspline_data.copy();   grid_shape = (40,200,40)
-            #bspline_data = bspline_data.copy();   grid_shape = (40,40,200)
-            
-
-            #bspline_data = bspline_data.transpose(2,1,0,3).copy(); grid_shape = (200,40,40)  # BAD - only x-direction Fy
-            #bspline_data = bspline_data.transpose(2,1,0,3).copy(); grid_shape = (40,200,40)  # better x->Fy, y->Fy
-            bspline_data = bspline_data.transpose(2,1,0,3).copy(); grid_shape = (40,40,200)   # better 
-
-            #bspline_data = bspline_data.transpose(2,0,1,3).copy(); grid_shape = (40,200,40)
-
-
-            #grid_shape = (grid_shape[0], grid_shape[1], grid_shape[2])
-            #grid_shape = (grid_shape[2], grid_shape[1], grid_shape[0])
-
-            #grid_shape = (grid_shape[1], grid_shape[2], grid_shape[0])
-
-            #grid_shape = (200,40,40)
-            #grid_shape = (40,200,40)
-            #grid_shape = (40,40,200)
-
+            #bspline_data = bspline_data.transpose(2,1,0,3).copy(); grid_shape = (40,40,200)   # better 
+            #bspline_data = bspline_data.transpose(2,1,0,3).copy(); grid_shape = ( grid_shape[2], grid_shape[1], grid_shape[0] )   # better 
+            bspline_data = bspline_data.transpose(2,1,0,3).copy(); grid_shape = ( grid_shape[0], grid_shape[1], grid_shape[2] )   # better 
             print("!!!!! grid_shape: ", grid_shape)
 
-            #else:
-            #    # For 3D data without channels
-            #    bspline_data = bspline_data.transpose(2,1,0).copy()
-            #    grid_shape = (grid_shape[2], grid_shape[1], grid_shape[0])
             fmt = cl.ImageFormat(cl.channel_order.RGBA, cl.channel_type.FLOAT)
             tex = cl.Image(self.ctx, cl.mem_flags.READ_ONLY, fmt, shape=tuple(grid_shape))
             

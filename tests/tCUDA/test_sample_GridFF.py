@@ -56,10 +56,11 @@ grid_data = grid_data_
 
 #grid_data = create_linear_texture(grid_shape, sizes=None, dtype=np.float32)
 
-def func(X,Y,Z,fe):
-    fe[:, :, :, 0] = np.sin(X*0.17)
-    fe[:, :, :, 1] = np.cos(Y*0.2)
-    fe[:, :, :, 2] = np.sin(Z*0.25)
+def func(X, Y, Z, fe):
+    fe[:, :, :, 0] = np.sin(X*0.17)  # Pauli
+    fe[:, :, :, 1] = np.sin(Y*0.2)   # London
+    fe[:, :, :, 2] = np.sin(Z*0.25)  # Coulomb
+    fe[:, :, :, 3] = fe[:, :, :, 0]**2 + fe[:, :, :, 1]**2 + fe[:, :, :, 2]**2 
     return fe
     
 grid_data = ut.create_linear_func( func, grid_shape, sizes=None, dtype=np.float32)

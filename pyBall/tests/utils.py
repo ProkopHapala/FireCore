@@ -19,7 +19,8 @@ def create_3d_grid_sampling( ns, sizes=None, dtype=np.float32 ):
     y = np.linspace(0, Ly, ny)
     z = np.linspace(0, Lz, nz)
     # Create coordinate grids
-    Xs, Ys, Zs = np.meshgrid(x, y, z, indexing='xy')
+    #Xs, Ys, Zs = np.meshgrid(x, y, z, indexing='xy')
+    Xs, Ys, Zs = np.meshgrid(x, y, z, indexing='ij' )
     return Xs, Ys, Zs
 
 def create_linear_texture(ns, sizes=None, dtype=np.float32):
@@ -47,7 +48,8 @@ def create_linear_texture(ns, sizes=None, dtype=np.float32):
 def plot_1d_fe(x, fe, mask=(1,1,1,1), ax=None, title=None):
     # Plot the force components
     if ax is None: fig,ax = plt.subplots(figsize=(5,5))
-    print( x.shape, fe.shape)
+    #print("plot_1d_fe() fe = ", fe)
+    #print( x.shape, fe.shape)
     if mask[0]: ax.plot(x, fe[:,0], 'b-', label='Fx')
     if mask[1]: ax.plot(x, fe[:,1], 'g-', label='Fy')
     if mask[2]: ax.plot(x, fe[:,2], 'r-', label='Fz')

@@ -51,13 +51,14 @@ grid_data = grid_data_
 # Create a test function for the grid
 def func(X, Y, Z, fe):
     fe[:, :, :, 0] = np.sin(X*0.17)  # Pauli
-    fe[:, :, :, 1] = np.cos(Y*0.2)   # London
+    fe[:, :, :, 1] = np.sin(Y*0.2)   # London
     fe[:, :, :, 2] = np.sin(Z*0.25)  # Coulomb
+    fe[:, :, :, 3] = fe[:, :, :, 0]**2 + fe[:, :, :, 1]**2 + fe[:, :, :, 2]**2 
     return fe
     
 grid_data = ut.create_linear_func(func, grid_shape, sizes=None, dtype=np.float32)
 
-grid_p0 = (0.0, 0.0, 0.0)  # Grid origin
+grid_p0   = (0.0, 0.0, 0.0)  # Grid origin
 grid_step = (0.1, 0.1, 1.0)  # Grid spacing
 print(f"Initializing GridFF with shape {grid_shape}, p0={grid_p0}, step={grid_step}")
 
@@ -82,38 +83,17 @@ mdcl.init_with_atoms(atoms)
 # Initialize the grid force field
 print("Initializing GridFF...")
 use_texture = True
-mdcl.initGridFF(
-    grid_shape, 
-    grid_data, 
-    grid_p0, 
-    grid_step,  
-    use_texture=use_texture, 
-    r_damp=0.5, 
-    alpha_morse=2.0,
-    bKernels=False
-)
-
-# Prepare kernel arguments
-#ns        = np.array([mdcl.natoms, 0, 0, 0], dtype=np.int32)  # Just using natoms
-#GFFParams = np.array([0.5, 2.0, 0.0, 0.0], dtype=np.float32)  # r_damp, alpha_morse, padding, padding
+mdcl.initGridFF(grid_shape, grid_data, grid_p0, grid_step, use_texture=use_texture, r_damp=0.5, alpha_morse=2.0, bKernels=False)
 
 mdcl.get_work_sizes()
 mdcl.init_kernel_params()
-mdcl.kernel_args_sampleGrid_tex = mdcl.generate_kernel_args("sampleGrid_tex", bPrint=True) 
-
-ps_x = point_along_line(p0=(0.0,0.0,0.0), d=(1.0,0.0,0.0), n=10); fe_x = mdcl.run_sampleGrid_tex( apos=ps_x)
-ps_y = point_along_line(p0=(0.0,0.0,0.0), d=(0.0,1.0,0.0), n=10); fe_y = mdcl.run_sampleGrid_tex( apos=ps_y)
-ps_z = point_along_line(p0=(0.0,0.0,0.0), d=(0.0,0.0,1.0), n=10); fe_z = mdcl.run_sampleGrid_tex( apos=ps_z)
-
-
-#plt.plot( mdcl.atoms[:, 0], aforce[:,0])
-#plt.plot( mdcl.atoms[:, 0], aforce[:,1])
-#plt.plot( mdcl.atoms[:, 0], aforce[:,2])
-
+mdcl.kernel_args_sampleGrid_tex = mdcl.generate_kernel_args("sampleGrid_tex", bPrint=False) 
+ps_x = point_along_line(p0=(0.0,0.0,0.0), d=(1.0,0.0,0.0), n=10); fe_x = mdcl.run_sampleGrid_tex( apos=ps_x); #print("fe_x",fe_x)
+ps_y = point_along_line(p0=(0.0,0.0,0.0), d=(0.0,1.0,0.0), n=10); fe_y = mdcl.run_sampleGrid_tex( apos=ps_y); #print("fe_y",fe_y)
+ps_z = point_along_line(p0=(0.0,0.0,0.0), d=(0.0,0.0,1.0), n=10); fe_z = mdcl.run_sampleGrid_tex( apos=ps_z); #print("fe_z",fe_z)
 fig, (ax1,ax2,ax3) = plt.subplots(1,3, figsize=(15,5))
 ut.plot_1d_fe(ps_x[:,0], fe_x, ax=ax1, title="x-direction")
 ut.plot_1d_fe(ps_y[:,1], fe_y, ax=ax2, title="y-direction")
 ut.plot_1d_fe(ps_z[:,2], fe_z, ax=ax3, title="z-direction")
-
 
 plt.show()
