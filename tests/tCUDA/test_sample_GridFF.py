@@ -60,9 +60,9 @@ def func(X, Y, Z, fe):
     sx = np.sin(X*0.25)
     sy = np.sin(Y*0.2)
     sz = np.sin(Z*0.15)
-    fe[:, :, :, 0] = sx*0  # Pauli
-    fe[:, :, :, 1] = sy*0  # London
-    fe[:, :, :, 2] = sx**2 + sy**2 + sz**2   # Coulomb
+    fe[:, :, :, 0] =  sx*0  # Pauli
+    fe[:, :, :, 1] =  sy*0  # London
+    fe[:, :, :, 2] =  sx**2 + sy**2 + sz**2   # Coulomb
     fe[:, :, :, 3] = (sx**2 + sy**2 + sz**2)*0 
     return fe
     
@@ -100,8 +100,8 @@ print("Allocating memory...")
 mdcl.realloc(mmff=mmff, nSystems=1)
 
 
-use_texture = True
-#use_texture = False
+#use_texture = True
+use_texture = False
 
 mdcl.initGridFF(grid_shape, grid_data, grid_p0, grid_step,  use_texture=use_texture, r_damp=0.5, alpha_morse=2.0)
 mdcl.setup_kernels()

@@ -331,9 +331,9 @@ class OpenCLBase:
         args_names    = self.parse_kernel_header(kernel_header)
 
         if bPrint:
-            print("OpenCLBase::generate_kernel_args() Kernel '{kname}' header:")
+            print(f"OpenCLBase::generate_kernel_args() Kernel '{kname}' header:")
             print(kernel_header)
-            print("OpenCLBase::generate_kernel_args() Kernel '{kname}' args_names:")
+            print(f"OpenCLBase::generate_kernel_args() Kernel '{kname}' args_names:")
             for i,arg in enumerate(args_names): print("    ", i, arg)
 
         args = []
@@ -349,7 +349,7 @@ class OpenCLBase:
             raise
 
         if bPrint:
-            print("OpenCLBase::generate_kernel_args() Kernel '{kname}' args:")
+            print(f"OpenCLBase::generate_kernel_args() Kernel '{kname}' args:")
             for i,arg in enumerate(args): print("    ", i, arg)
 
         return args

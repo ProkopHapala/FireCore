@@ -50,10 +50,13 @@ grid_data = grid_data_
 
 # Create a test function for the grid
 def func(X, Y, Z, fe):
-    fe[:, :, :, 0] = np.sin(X*0.17)  # Pauli
-    fe[:, :, :, 1] = np.sin(Y*0.2)   # London
-    fe[:, :, :, 2] = np.sin(Z*0.25)  # Coulomb
-    fe[:, :, :, 3] = fe[:, :, :, 0]**2 + fe[:, :, :, 1]**2 + fe[:, :, :, 2]**2 
+    sx = np.sin(X*0.25)
+    sy = np.sin(Y*0.2)
+    sz = np.sin(Z*0.15)
+    fe[:, :, :, 0] = sx*0  # Pauli
+    fe[:, :, :, 1] = sy*0  # London
+    fe[:, :, :, 2] = sx**2 + sy**2 + sz**2   # Coulomb
+    fe[:, :, :, 3] = (sx**2 + sy**2 + sz**2)*0 
     return fe
     
 grid_data = ut.create_linear_func(func, grid_shape, sizes=None, dtype=np.float32)
@@ -67,33 +70,83 @@ print(f"Initializing GridFF with shape {grid_shape}, p0={grid_p0}, step={grid_st
 def point_along_line(  p0=(0.0,0.0,0.0), d=(1.0,0.0,0.0), n=10):
     p0 = np.array(p0, dtype=np.float32)
     d = np.array (d, dtype=np.float32)
+    ts = np.arange(n, dtype=np.float32)
     ps = np.zeros((n, 4), dtype=np.float32)
-    for i in range(n):
-        ps[i,:3] = p0 + d*i
+    ps[:, :3] = p0[None, :] + d[None, :]*ts[:, None]
     return ps
 
-atoms = point_along_line()
+def point_2d(  p0=(0.0,0.0,0.0), du=(1.0,0.0,0.0), dv=(0.0,1.0,0.0), ns=(10,10)):
+    p0 = np.array(p0, dtype=np.float32)
+    du = np.array (du, dtype=np.float32)
+    dv = np.array (dv, dtype=np.float32)
+    us = np.arange(ns[0], dtype=np.float32)
+    vs = np.arange(ns[1], dtype=np.float32)
+    Us,Vs = np.meshgrid(us, vs)
+    Us = Us.flatten()
+    Vs = Vs.flatten()
+    ps = np.zeros((ns[0]*ns[1], 4), dtype=np.float32)
+    ps[:, :3] = p0[None, :] + du[None, :]*Us[:, None] + dv[None, :]*Vs[:, None]
+    return ps
+
+#atoms = point_along_line()
 
 # ======= Initialize MolecularDynamics with atoms
 print("\nInitializing MolecularDynamics with atoms directly...")
 
+n = 40
+na=n*n
+
 mdcl = clMD.MolecularDynamics(nloc=32)
-mdcl.init_with_atoms(atoms)
+mdcl.init_with_atoms(na)
 
 # Initialize the grid force field
 print("Initializing GridFF...")
 use_texture = True
-mdcl.initGridFF(grid_shape, grid_data, grid_p0, grid_step, use_texture=use_texture, r_damp=0.5, alpha_morse=2.0, bKernels=False)
-
+#use_texture = False
 mdcl.get_work_sizes()
 mdcl.init_kernel_params()
-mdcl.kernel_args_sampleGrid_tex = mdcl.generate_kernel_args("sampleGrid_tex", bPrint=False) 
-ps_x = point_along_line(p0=(0.0,0.0,0.0), d=(1.0,0.0,0.0), n=10); fe_x = mdcl.run_sampleGrid_tex( apos=ps_x); #print("fe_x",fe_x)
-ps_y = point_along_line(p0=(0.0,0.0,0.0), d=(0.0,1.0,0.0), n=10); fe_y = mdcl.run_sampleGrid_tex( apos=ps_y); #print("fe_y",fe_y)
+
+mdcl.nstep = 1000
+mdcl.kernel_params['MDparams'][0] = 0.00001   # dt
+mdcl.kernel_params['MDparams'][1] = 0.05  # cdamp
+mdcl.initGridFF(grid_shape, grid_data, grid_p0, grid_step, use_texture=use_texture, r_damp=0.5, alpha_morse=2.0, bKernels=False)
+
+if use_texture:
+    mdcl.kernel_args_sampleGrid_tex = mdcl.generate_kernel_args("sampleGrid_tex", bPrint=False) 
+else:
+    mdcl.kernel_args_sampleGrid = mdcl.generate_kernel_args("sampleGrid", bPrint=True) 
+
+'''
+# -------- 1D sampling
+ps_x = point_along_line(p0=(0.0,0.0,0.0), d=(1.0,0.0,0.0), n=10); 
+if use_texture:
+    fe_x = mdcl.run_sampleGrid_tex( apos=ps_x); #print("fe_x",fe_x)
+else:
+    fe_x = mdcl.run_sampleGrid( apos=ps_x); #print("fe_x",fe_x)
+ps_y = point_along_line(p0=(0.0,0.0,0.0), d=(0.0,1.0,0.0), n=10); 
+if use_texture:
+    fe_y = mdcl.run_sampleGrid_tex( apos=ps_y); #print("fe_y",fe_y)
+else:
+    fe_y = mdcl.run_sampleGrid( apos=ps_y); #print("fe_y",fe_y)
 ps_z = point_along_line(p0=(0.0,0.0,0.0), d=(0.0,0.0,1.0), n=10); fe_z = mdcl.run_sampleGrid_tex( apos=ps_z); #print("fe_z",fe_z)
 fig, (ax1,ax2,ax3) = plt.subplots(1,3, figsize=(15,5))
 ut.plot_1d_fe(ps_x[:,0], fe_x, ax=ax1, title="x-direction")
 ut.plot_1d_fe(ps_y[:,1], fe_y, ax=ax2, title="y-direction")
 ut.plot_1d_fe(ps_z[:,2], fe_z, ax=ax3, title="z-direction")
+'''
+
+# -------- 2D sampling
+d = 0.1
+
+ps_xy = point_2d(p0=(0.0,0.0,0.5), du=(d,0.0,0.0), dv=(0.0,d,0.0), ns=(n,n)); 
+
+t0 = time.perf_counter()
+fe_xy = mdcl.run_sampleGrid_tex( apos=ps_xy, bUseTexture=use_texture); #print("fe_xy",fe_xy)
+t1 = time.perf_counter(); print("Time(run_sampleGrid_tex): ", t1-t0)
+
+fe_xy = fe_xy.reshape(n,n,4)
+ut.plot_2d_fe(fe_xy)
+plt.show()
+
 
 plt.show()

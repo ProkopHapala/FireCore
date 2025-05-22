@@ -73,6 +73,7 @@ class MolecularDynamics(OpenCLBase):
         self.mmff_list = []
         self.MD_event_batch = None
         self.perBatch = perBatch
+        self.nstep = 1
 
     def realloc(self, mmff, nSystems=1 ):
         """
@@ -197,14 +198,14 @@ class MolecularDynamics(OpenCLBase):
         self.toGPU('MDparams',  np.array([mmff.dt, mmff.damp, mmff.Flimit], dtype=np.float32), byte_offset=iSys*float4_size)
 
 
-    def init_with_atoms(self, atoms, REQs=None, REQ_default=REQ_DEFAULT):
+    def init_with_atoms(self, na=None, atoms=None, REQs=None, REQ_default=REQ_DEFAULT):
         """
         Initialize MolecularDynamics directly with atom positions and REQ parameters,
         without using MMFF object.
         
         Args:
-            atoms: numpy array of shape (n_atoms, 3) with atom positions
-            REQs: numpy array of shape (n_atoms, 4) with REQ parameters or None for defaults
+            atoms: numpy array of shape (na, 3) with atom positions
+            REQs: numpy array of shape (na, 4) with REQ parameters or None for defaults
             nSystems: number of systems
             nloc: local workgroup size
             
@@ -212,37 +213,43 @@ class MolecularDynamics(OpenCLBase):
             Initialized MolecularDynamics instance
         """
         float_size = np.float32().itemsize
-        n_atoms = atoms.shape[0]
+
+        if na is None:
+            na = len(atoms)
         mf = cl.mem_flags
 
         # Initialize necessary attributes
         self.nSystems = 1
-        self.natoms   = n_atoms
-        self.nvecs    = n_atoms   # We don't have nodes or pi-orbitals, just atoms
+        self.natoms   = na
+        self.nvecs    = na   # We don't have nodes or pi-orbitals, just atoms
         self.nnode    = 0         # No node atoms
-        self.nDOFs    = (n_atoms, 0)  # (natoms, nnode)
+        self.nDOFs    = (na, 0)  # (natoms, nnode)
         
         # Additional required attributes for initGridFF
-        self.nPBC = (0, 0, 0)  # No periodic boundary conditions
-        self.npbc = 0
-        self.nbkng = n_atoms
-        self.ncap = 0
+        self.nPBC  = (0, 0, 0)  # No periodic boundary conditions
+        self.npbc  = 0
+        self.nbkng = na
+        self.ncap  = 0
         self.ntors = 0
         # Convert atoms to float32 if needed
-        self.atoms   = np.asarray(atoms, dtype=np.float32)
+        
+        if atoms is None:
+            self.atoms = np.zeros((na, 4), dtype=np.float32)
+        else:
+            self.atoms = np.asarray(atoms, dtype=np.float32)
         if REQs is None:
-            self.REQs    = np.zeros((atoms.shape[0], 4), dtype=np.float32)
+            self.REQs    = np.zeros((na, 4), dtype=np.float32)
             self.REQs[:, 0] = REQ_default[0]
             self.REQs[:, 1] = REQ_default[1]
             self.REQs[:, 2] = REQ_default[2]
             self.REQs[:, 3] = REQ_default[3]
         else:
             self.REQs    = np.asarray(REQs, dtype=np.float32)
-        self.aforce = np.zeros((n_atoms, 4), dtype=np.float32)
+        self.aforce = np.zeros((na, 4), dtype=np.float32)
 
-        self.create_buffer('apos',   n_atoms * 4 * float_size, mf.READ_WRITE)
-        self.create_buffer('aforce', n_atoms * 4 * float_size, mf.READ_WRITE)
-        self.create_buffer('REQs',   n_atoms * 4 * float_size, mf.READ_ONLY)
+        self.create_buffer('apos',   na * 4 * float_size, mf.READ_WRITE)
+        self.create_buffer('aforce', na * 4 * float_size, mf.READ_WRITE)
+        self.create_buffer('REQs',   na * 4 * float_size, mf.READ_ONLY)
 
         self.toGPU('apos',   self.atoms  )
         self.toGPU('aforce', self.aforce )
@@ -281,7 +288,8 @@ class MolecularDynamics(OpenCLBase):
             'nDOFs':        np.array([self.natoms, self.nnode, 0, self.perBatch], dtype=np.int32),
             'mask':         np.array([1, 1, 1, 1],         dtype=np.int32),
             'nPBC':         np.array(self.nPBC+(0,),       dtype=np.int32),
-            'GFFParams':    np.array([0.0, 0.0, 0.0, 0.0], dtype=np.float32),
+            'GFFParams':    np.array([0.0, 0.0,  0.0, 0.0], dtype=np.float32),
+            'MDparams':     np.array([0.1, 0.05, 0.0, 0.0], dtype=np.float32),
             # Common scalar parameters
             'npbc':         np.int32(self.npbc),
             'bSubtractVdW': np.int32(0),
@@ -345,10 +353,13 @@ class MolecularDynamics(OpenCLBase):
         self.prg.runMD(self.queue, self.sz_nvec, self.sz_loc, *self.kernel_args_runMD)
         self.queue.finish()
     
-    def run_sampleGrid_tex(self, apos=None):
+    def run_sampleGrid_tex(self, apos=None, bUseTexture=False):
         if apos is not None:
             self.toGPU('apos', apos)
-        self.prg.sampleGrid_tex(self.queue, self.sz_na, self.sz_loc, *self.kernel_args_sampleGrid_tex)
+        if bUseTexture:
+            self.prg.sampleGrid_tex(self.queue, self.sz_na, self.sz_loc, *self.kernel_args_sampleGrid_tex)
+        else:
+            self.prg.sampleGrid(self.queue, self.sz_na, self.sz_loc, *self.kernel_args_sampleGrid)
         self.fromGPU('aforce', self.aforce)
         self.queue.finish()
         return self.aforce.reshape(-1, 4).copy()
@@ -393,7 +404,8 @@ class MolecularDynamics(OpenCLBase):
             'grid_ns':      np.array([*grid_shape ,0],                   dtype=np.int32),
             'grid_invStep': np.array([1.0/s for s in grid_step] + [0.0], dtype=np.float32),
             'grid_p0':      np.array([*grid_p0   ,0.0],                  dtype=np.float32),
-            'GFFParams':    np.array([r_damp, alpha_morse, 0.0, 0.0],    dtype=np.float32)
+            'GFFParams':    np.array([r_damp, alpha_morse, 0.0, 0.0],    dtype=np.float32),
+            'nstep':        np.int32(self.nstep),
         })
         
         # 3. Create buffers BEFORE generating kernel args
@@ -418,8 +430,13 @@ class MolecularDynamics(OpenCLBase):
                 self.kernel_args_getNonBond_GridFF_Bspline_tex = self.generate_kernel_args("getNonBond_GridFF_Bspline_tex", bPrint=False)            
         else:
             print("MolecularDynamics::initGridFF() use_texture=False")
+
+            #bspline_data = bspline_data.transpose(2,1,0,3).copy(); # grid_shape = ( grid_shape[2], grid_shape[1], grid_shape[0] )   # better 
+
+            print("!!!!! grid_shape: ", grid_shape)
+
             buf = cl.Buffer(self.ctx, cl.mem_flags.READ_ONLY|cl.mem_flags.COPY_HOST_PTR, hostbuf=bspline_data)
-            self.buffer_dict['BsplinePLQ'] = buf
+            self.buffer_dict['BsplinePLQH'] = buf
             if bKernels:
                 self.kernel_args_getNonBond_GridFF_Bspline = self.generate_kernel_args("getNonBond_GridFF_Bspline", bPrint=False)
         print("MolecularDynamics::initGridFF() DONE")

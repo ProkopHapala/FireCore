@@ -65,11 +65,17 @@ def plot_1d_fe(x, fe, mask=(1,1,1,1), ax=None, title=None):
     #print("Saved force scan plot to gridff_force_scan.png")
 
 
-def plot_2d_fe(fe):
-    plt.figure(figsize=(12,4))
-    plt.subplot(1, 3, 1); plt.imshow(fe[:, :, 0], origin='lower'); plt.title('Fx'); plt.colorbar()
-    plt.subplot(1, 3, 2); plt.imshow(fe[:, :, 1], origin='lower'); plt.title('Fy'); plt.colorbar()
-    plt.subplot(1, 3, 3); plt.imshow(fe[:, :, 2], origin='lower'); plt.title('Fz'); plt.colorbar()
+def plot_2d_fe(fe, mask=(1,1,1,1), ax=None, title=None):
+    nsub=sum(mask)
+    if ax is None: fig,axs = plt.subplots(1, nsub, figsize=(3*nsub,3))
+    isub=0
+    if mask[0]: ax=axs[isub]; ax.imshow(fe[:, :, 0], origin='lower'); ax.set_title('Fx'); ax.figure.colorbar(ax.images[0]); isub+=1
+    if mask[1]: ax=axs[isub]; ax.imshow(fe[:, :, 1], origin='lower'); ax.set_title('Fy'); ax.figure.colorbar(ax.images[0]); isub+=1
+    if mask[2]: ax=axs[isub]; ax.imshow(fe[:, :, 2], origin='lower'); ax.set_title('Fz'); ax.figure.colorbar(ax.images[0]); isub+=1
+    if mask[3]: ax=axs[isub]; ax.imshow(fe[:, :, 3], origin='lower'); ax.set_title('E');  ax.figure.colorbar(ax.images[0]); isub+=1
+    plt.tight_layout()
+    if title is not None: plt.title(title)
+    plt.savefig('gridff_force_scan.png')
     #plt.show()
 
 def create_linear_func( func, ns, sizes=None, dtype=np.float32):
