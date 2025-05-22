@@ -44,6 +44,32 @@ def create_linear_texture(ns, sizes=None, dtype=np.float32):
     grid[:, :, :, 3] = (Xs**2 + Ys**2 + Zs**2)  # Squared distance
     return grid
 
+def plot_1d_fe(x, fe, mask=(1,1,1,1), ax=None, title=None):
+    # Plot the force components
+    if ax is None: fig,ax = plt.subplots(figsize=(5,5))
+    print( x.shape, fe.shape)
+    if mask[0]: ax.plot(x, fe[:,0], 'b-', label='Fx')
+    if mask[1]: ax.plot(x, fe[:,1], 'g-', label='Fy')
+    if mask[2]: ax.plot(x, fe[:,2], 'r-', label='Fz')
+    if mask[3]: ax.plot(x, fe[:,3], 'k-', label='E')
+    ax.set_xlabel('position')
+    ax.set_ylabel('force / energy')
+    if title is not None: ax.set_title(title)
+    ax.legend()
+    ax.grid(True, alpha=0.3)
+    #ax.tight_layout()
+
+    #plt.savefig('gridff_force_scan.png')
+    #print("Saved force scan plot to gridff_force_scan.png")
+
+
+def plot_2d_fe(fe):
+    plt.figure(figsize=(12,4))
+    plt.subplot(1, 3, 1); plt.imshow(fe[:, :, 0], origin='lower'); plt.title('Fx'); plt.colorbar()
+    plt.subplot(1, 3, 2); plt.imshow(fe[:, :, 1], origin='lower'); plt.title('Fy'); plt.colorbar()
+    plt.subplot(1, 3, 3); plt.imshow(fe[:, :, 2], origin='lower'); plt.title('Fz'); plt.colorbar()
+    #plt.show()
+
 def create_linear_func( func, ns, sizes=None, dtype=np.float32):
     Xs, Ys, Zs = create_3d_grid_sampling(ns, sizes, dtype)
     fe = np.zeros(Xs.shape + (4,), dtype=dtype)

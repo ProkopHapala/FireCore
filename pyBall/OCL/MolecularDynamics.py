@@ -13,6 +13,8 @@ from . import clUtils as clu
 from .MMFF import MMFF
 from .OpenCLBase import OpenCLBase
 
+REQ_DEFAULT = np.array([1.7, 0.1, 0.0, 0.0], dtype=np.float32)  # R, E, Q, padding
+
 verbose=False
 
 def pack(iSys, source_array, target_buffer, queue):
@@ -68,7 +70,7 @@ class MolecularDynamics(OpenCLBase):
         
         # Initialize other attributes that will be set in realloc
         self.nSystems = 0
-        self.mmff_instances = []
+        self.mmff_list = []
         self.MD_event_batch = None
         self.perBatch = perBatch
 
@@ -79,7 +81,7 @@ class MolecularDynamics(OpenCLBase):
         # Store dimensions explicitly to avoid reference issues
         print(f"MolecularDynamics::realloc() natoms={mmff.natoms}, nvecs={mmff.nvecs}, nnode={mmff.nnode}")
         self.nSystems = nSystems
-        self.mmff_instances = [mmff] * nSystems  # Assuming all systems use the same MMFF parameters
+        self.mmff_list = [mmff] * nSystems  # Assuming all systems use the same MMFF parameters
         self.allocate_cl_buffers(mmff)
         self.allocate_host_buffers()
 
@@ -195,6 +197,58 @@ class MolecularDynamics(OpenCLBase):
         self.toGPU('MDparams',  np.array([mmff.dt, mmff.damp, mmff.Flimit], dtype=np.float32), byte_offset=iSys*float4_size)
 
 
+    def init_with_atoms(self, atoms, REQs=None, REQ_default=REQ_DEFAULT):
+        """
+        Initialize MolecularDynamics directly with atom positions and REQ parameters,
+        without using MMFF object.
+        
+        Args:
+            atoms: numpy array of shape (n_atoms, 3) with atom positions
+            REQs: numpy array of shape (n_atoms, 4) with REQ parameters or None for defaults
+            nSystems: number of systems
+            nloc: local workgroup size
+            
+        Returns:
+            Initialized MolecularDynamics instance
+        """
+        float_size = np.float32().itemsize
+        n_atoms = atoms.shape[0]
+        mf = cl.mem_flags
+
+        # Initialize necessary attributes
+        self.nSystems = 1
+        self.natoms   = n_atoms
+        self.nvecs    = n_atoms   # We don't have nodes or pi-orbitals, just atoms
+        self.nnode    = 0         # No node atoms
+        self.nDOFs    = (n_atoms, 0)  # (natoms, nnode)
+        
+        # Additional required attributes for initGridFF
+        self.nPBC = (0, 0, 0)  # No periodic boundary conditions
+        self.npbc = 0
+        self.nbkng = n_atoms
+        self.ncap = 0
+        self.ntors = 0
+        # Convert atoms to float32 if needed
+        self.atoms   = np.asarray(atoms, dtype=np.float32)
+        if REQs is None:
+            self.REQs    = np.zeros((atoms.shape[0], 4), dtype=np.float32)
+            self.REQs[:, 0] = REQ_default[0]
+            self.REQs[:, 1] = REQ_default[1]
+            self.REQs[:, 2] = REQ_default[2]
+            self.REQs[:, 3] = REQ_default[3]
+        else:
+            self.REQs    = np.asarray(REQs, dtype=np.float32)
+        self.aforce = np.zeros((n_atoms, 4), dtype=np.float32)
+
+        self.create_buffer('apos',   n_atoms * 4 * float_size, mf.READ_WRITE)
+        self.create_buffer('aforce', n_atoms * 4 * float_size, mf.READ_WRITE)
+        self.create_buffer('REQs',   n_atoms * 4 * float_size, mf.READ_ONLY)
+
+        self.toGPU('apos',   self.atoms  )
+        self.toGPU('aforce', self.aforce )
+        self.toGPU('REQs',   self.REQs   )
+        self.queue.finish()
+
     def setup_kernels(self):
         """
         Prepares the kernel arguments for all kernels by parsing their headers.
@@ -202,17 +256,9 @@ class MolecularDynamics(OpenCLBase):
         """
         print("MolecularDynamics::setup_kernels()")
         # Get all work sizes at once
-        work_sizes = self.get_work_sizes()
-        sz_loc    = work_sizes['sz_loc']
-        self.local_size_opt = sz_loc
+        self.get_work_sizes()
         self.init_kernel_params()
-        
-        # Set global work sizes for each kernel
-        self.global_size_mmff    = (self.roundUpGlobalSize(self.nSystems * self.nnode  ),self.nSystems)
-        self.global_size_nonbond = (self.roundUpGlobalSize(self.nSystems * self.natoms ),self.nSystems)
-        self.global_size_update  = (self.roundUpGlobalSize(self.nSystems * self.nvecs  ),self.nSystems)
-        self.global_size_clean   = (self.roundUpGlobalSize(self.nSystems * self.natoms ),self.nSystems)
-        
+                
         # Generate kernel arguments
         self.kernel_args_getMMFFf4         = self.generate_kernel_args("getMMFFf4")
         self.kernel_args_getNonBond        = self.generate_kernel_args("getNonBond")
@@ -222,17 +268,6 @@ class MolecularDynamics(OpenCLBase):
         self.kernel_args_updateAtomsMMFFf4 = self.generate_kernel_args("updateAtomsMMFFf4")
         self.kernel_args_cleanForceMMFFf4  = self.generate_kernel_args("cleanForceMMFFf4")
         self.kernel_args_runMD             = self.generate_kernel_args("runMD")
-
-        # print("MolecularDynamics::setup_kernels() kernel_args_getNonBond:"); 
-        # for arg in self.kernel_args_getNonBond: print("    ", arg)
-        # print("MolecularDynamics::setup_kernels() kernel_args_getMMFFf4:");  
-        # for arg in self.kernel_args_getMMFFf4: print("    ", arg)
-        # print("MolecularDynamics::setup_kernels() kernel_args_updateAtomsMMFFf4:")
-        # for arg in self.kernel_args_updateAtomsMMFFf4: print("    ", arg)
-        # print("MolecularDynamics::setup_kernels() kernel_args_cleanForceMMFFf4:")
-        # for arg in self.kernel_args_cleanForceMMFFf4: print("    ", arg)
-        # print("MolecularDynamics::setup_kernels() kernel_args_runMD:")
-        # for arg in self.kernel_args_runMD: print("    ", arg)
 
     def init_kernel_params(self):
         """
@@ -263,65 +298,73 @@ class MolecularDynamics(OpenCLBase):
             dict: Dictionary containing sz_na, sz_node, sz_nvec, sz_loc
         """
         # Default to the standard work size parameters
-        sz_loc = (self.nloc, 1)
-        sz_na   = (clu.roundup_global_size(self.natoms, self.nloc), self.nSystems)
-        sz_node = (clu.roundup_global_size(self.nnode, self.nloc), self.nSystems)
-        sz_nvec = (clu.roundup_global_size(self.nvecs, self.nloc), self.nSystems)
+        self.sz_loc = (self.nloc, 1)
+        self.sz_na   = (clu.roundup_global_size(self.natoms, self.nloc), self.nSystems)
+        self.sz_node = (clu.roundup_global_size(self.nnode,  self.nloc), self.nSystems)
+        self.sz_nvec = (clu.roundup_global_size(self.nvecs,  self.nloc), self.nSystems)
         
         # Return all sizes, let the caller decide which to use
         return {
-            'sz_na':   sz_na,
-            'sz_node': sz_node,
-            'sz_nvec': sz_nvec,
-            'sz_loc':  sz_loc
+            'sz_na':   self.sz_na,
+            'sz_node': self.sz_node,
+            'sz_nvec': self.sz_nvec,
+            'sz_loc':  self.sz_loc
         }
 
     def upload_all_systems(self):
         """Uploads data for all systems to the GPU."""
         for sys_idx in range(self.nSystems):
-            self.pack_system(sys_idx, self.mmff_instances[sys_idx])
+            self.pack_system(sys_idx, self.mmff_list[sys_idx])
         #print("MolecularDynamics::upload_all_systems() DONE")
 
     def run_getNonBond(self):
-        self.prg.getNonBond(self.queue, self.global_size_nonbond, self.local_size_opt, *self.kernel_args_getNonBond)
+        self.prg.getNonBond(self.queue, self.sz_na, self.sz_loc, *self.kernel_args_getNonBond)
         self.queue.finish()
     
     def run_getNonBond_GridFF_Bspline(self):
-        self.prg.getNonBond_GridFF_Bspline(self.queue, self.global_size_nonbond, self.local_size_opt,  *self.kernel_args_getNonBond_GridFF_Bspline)
+        self.prg.getNonBond_GridFF_Bspline(self.queue, self.sz_na, self.sz_loc,  *self.kernel_args_getNonBond_GridFF_Bspline)
         self.queue.finish()
 
     def run_getNonBond_GridFF_Bspline_tex(self):
-        self.prg.getNonBond_GridFF_Bspline_tex(self.queue, self.global_size_nonbond, self.local_size_opt,  *self.kernel_args_getNonBond_GridFF_Bspline_tex)
+        self.prg.getNonBond_GridFF_Bspline_tex(self.queue, self.sz_na, self.sz_loc,  *self.kernel_args_getNonBond_GridFF_Bspline_tex)
         self.queue.finish()
 
     def run_getMMFFf4(self):
-        self.prg.getMMFFf4(self.queue, self.global_size_mmff, self.local_size_opt, *self.kernel_args_getMMFFf4)
+        self.prg.getMMFFf4(self.queue, self.sz_node, self.sz_loc, *self.kernel_args_getMMFFf4)
         self.queue.finish()
     
     def run_updateAtomsMMFFf4(self):
-        self.prg.updateAtomsMMFFf4(self.queue, self.global_size_update, self.local_size_opt, *self.kernel_args_updateAtomsMMFFf4)
+        self.prg.updateAtomsMMFFf4(self.queue, self.sz_nvec, self.sz_loc, *self.kernel_args_updateAtomsMMFFf4)
         self.queue.finish()
     
     def run_cleanForceMMFFf4(self):
-        self.prg.cleanForceMMFFf4(self.queue, self.global_size_clean, self.local_size_opt, *self.kernel_args_cleanForceMMFFf4)
+        self.prg.cleanForceMMFFf4(self.queue, self.sz_na, self.sz_loc, *self.kernel_args_cleanForceMMFFf4)
         self.queue.finish()
     
     def run_runMD(self):
-        self.prg.runMD(self.queue, self.global_size_update, self.local_size_opt, *self.kernel_args_runMD)
+        self.prg.runMD(self.queue, self.sz_nvec, self.sz_loc, *self.kernel_args_runMD)
         self.queue.finish()
     
+    def run_sampleGrid_tex(self, apos=None):
+        if apos is not None:
+            self.toGPU('apos', apos)
+        self.prg.sampleGrid_tex(self.queue, self.sz_na, self.sz_loc, *self.kernel_args_sampleGrid_tex)
+        self.fromGPU('aforce', self.aforce)
+        self.queue.finish()
+        return self.aforce.reshape(-1, 4)
+
     def run_MD_py(self, nsteps, use_gridff=False):
         """Run molecular dynamics simulation..."""
         for i in range(nsteps):
             if use_gridff and self.has_gridff:
                 if self.use_texture:
-                    self.prg.getNonBond_GridFF_Bspline_tex(self.queue, self.global_size_nonbond, self.local_size_opt, *self.kernel_args_getNonBond_GridFF_Bspline_tex)
+                    self.prg.getNonBond_GridFF_Bspline_tex(self.queue, self.sz_na, self.sz_loc, *self.kernel_args_getNonBond_GridFF_Bspline_tex)
                 else:
-                    self.prg.getNonBond_GridFF_Bspline(self.queue, self.global_size_nonbond, self.local_size_opt, *self.kernel_args_getNonBond_GridFF_Bspline)
+                    self.prg.getNonBond_GridFF_Bspline(self.queue, self.sz_na, self.sz_loc, *self.kernel_args_getNonBond_GridFF_Bspline)
             else:
-                self.prg.getNonBond       (self.queue, self.global_size_nonbond, self.local_size_opt,*self.kernel_args_getNonBond)
-            self.prg.getMMFFf4        (self.queue, self.global_size_mmff,    self.local_size_opt, *self.kernel_args_getMMFFf4)
-            self.prg.updateAtomsMMFFf4(self.queue, self.global_size_update,  self.local_size_opt, *self.kernel_args_updateAtomsMMFFf4)
+                self.prg.getNonBond       (self.queue, self.sz_na, self.sz_loc,*self.kernel_args_getNonBond)
+            self.prg.getMMFFf4        (self.queue, self.sz_node, self.sz_loc, *self.kernel_args_getMMFFf4)
+            self.prg.updateAtomsMMFFf4(self.queue, self.sz_nvec, self.sz_loc, *self.kernel_args_updateAtomsMMFFf4)
         self.fromGPU('apos',   self.atoms)
         self.fromGPU('aforce', self.aforce)
         self.queue.finish()
@@ -332,7 +375,7 @@ class MolecularDynamics(OpenCLBase):
         self.fromGPU('aforce', self.aforce)
         return self.atoms.reshape(-1, 4), self.aforce.reshape(-1, 4)
     
-    def initGridFF(self, grid_shape, bspline_data, grid_p0, grid_step, use_texture=False, r_damp=0.0, alpha_morse=0.0):
+    def initGridFF(self, grid_shape, bspline_data, grid_p0, grid_step, use_texture=False, r_damp=0.0, alpha_morse=0.0, bKernels=True):
         """Initialize GridFF with B-spline data"""
         
         #grid_shape = grid_shape[::-1] #.copy()
@@ -400,13 +443,57 @@ class MolecularDynamics(OpenCLBase):
 
             cl.enqueue_copy(self.queue, tex, bspline_data,  origin=(0, 0, 0), region=grid_shape)
             #cl.enqueue_copy(self.queue, tex, bspline_data,  origin=(0, 0, 0), region=bspline_data.shape[:3])
-
-
             self.buffer_dict['BsplinePLQH_tex'] = tex
-            self.kernel_args_getNonBond_GridFF_Bspline_tex = self.generate_kernel_args("getNonBond_GridFF_Bspline_tex", bPrint=False)            
+            if bKernels:
+                self.kernel_args_getNonBond_GridFF_Bspline_tex = self.generate_kernel_args("getNonBond_GridFF_Bspline_tex", bPrint=False)            
         else:
             print("MolecularDynamics::initGridFF() use_texture=False")
             buf = cl.Buffer(self.ctx, cl.mem_flags.READ_ONLY|cl.mem_flags.COPY_HOST_PTR, hostbuf=bspline_data)
             self.buffer_dict['BsplinePLQ'] = buf
-            self.kernel_args_getNonBond_GridFF_Bspline = self.generate_kernel_args("getNonBond_GridFF_Bspline", bPrint=False)
+            if bKernels:
+                self.kernel_args_getNonBond_GridFF_Bspline = self.generate_kernel_args("getNonBond_GridFF_Bspline", bPrint=False)
         print("MolecularDynamics::initGridFF() DONE")
+
+    def scan_1D( self, nsteps=100, d=[0.1,0.0,0.0], p0=[0.0,0.0,0.0], use_texture=False, mmff=None ):
+        if mmff is None: mmff = self.mmff_list[0]
+        # Initialize position and force grid_dataays
+        pos    = np.zeros((nsteps,4), dtype=np.float32)
+        forces = np.zeros((nsteps,4), dtype=np.float32)
+        print("Running 1D force scan...")
+        d  = np.array(d, dtype=np.float32)
+        p0 = np.array(p0,  dtype=np.float32)
+        for i in range(nsteps):
+            # Update atom position along x-axis
+            mmff.apos[0,:3] = p0 + d*i
+            self.upload_all_systems()
+            if use_texture:
+                self.run_getNonBond_GridFF_Bspline_tex()
+            else:
+                self.run_getNonBond_GridFF_Bspline()
+            pos_i, force_i = self.download_results()
+            forces[i] = force_i[0]  # Get force on first (and only) atom
+            pos[i] = pos_i[0]  # Store position for reference
+            #if i % 10 == 0:  print(f"Step {i+1}/{nsteps}: x = {x[i]:.2f} Å, F = ({forces[i,0]:.3f}, {forces[i,1]:.3f}, {forces[i,2]:.3f}) kJ/mol/Å")
+        return pos, forces
+
+    def scan_2D( self, ns=(50,50), du=[0.1,0.0,0.0], dv=[0.0,0.1,0.0],  p0=[0.0,0.0,0.0], use_texture=False, mmff=None ):
+        if mmff is None: mmff = self.mmff_list[0]
+        pos    = np.zeros((ns[0],ns[1],4), dtype=np.float32)
+        forces = np.zeros((ns[0],ns[1],4), dtype=np.float32)
+        du = np.array(du, dtype=np.float32)
+        dv = np.array(dv, dtype=np.float32)
+        p0 = np.array(p0,  dtype=np.float32)
+        print("Running 2D force scan...")
+        for ix in range(ns[0]):
+            for iy in range(ns[1]):
+                p = p0 + du*ix + dv*iy
+                mmff.apos[0,:3] = p
+                self.upload_all_systems()
+                if use_texture:
+                    self.run_getNonBond_GridFF_Bspline_tex()
+                else:
+                    self.run_getNonBond_GridFF_Bspline()
+                pos_i, force_i = self.download_results()
+                forces[ix, iy,:] = force_i[0,: ]  # Get force on first (and only) atom
+                pos   [ix, iy,:] = pos_i  [0,: ]  # Store position for reference
+        return pos, forces
