@@ -93,7 +93,7 @@ def point_2d(  p0=(0.0,0.0,0.0), du=(1.0,0.0,0.0), dv=(0.0,1.0,0.0), ns=(10,10))
 # ======= Initialize MolecularDynamics with atoms
 print("\nInitializing MolecularDynamics with atoms directly...")
 
-n = 40
+n = 1000
 na=n*n
 
 mdcl = clMD.MolecularDynamics(nloc=32)
@@ -101,12 +101,12 @@ mdcl.init_with_atoms(na)
 
 # Initialize the grid force field
 print("Initializing GridFF...")
-use_texture = True
-#use_texture = False
+#use_texture = True
+use_texture = False
 mdcl.get_work_sizes()
 mdcl.init_kernel_params()
 
-mdcl.nstep = 1000
+mdcl.nstep = 10000
 mdcl.kernel_params['MDparams'][0] = 0.00001   # dt
 mdcl.kernel_params['MDparams'][1] = 0.05  # cdamp
 mdcl.initGridFF(grid_shape, grid_data, grid_p0, grid_step, use_texture=use_texture, r_damp=0.5, alpha_morse=2.0, bKernels=False)
@@ -136,13 +136,13 @@ ut.plot_1d_fe(ps_z[:,2], fe_z, ax=ax3, title="z-direction")
 '''
 
 # -------- 2D sampling
-d = 0.1
+d = 0.01
 
 ps_xy = point_2d(p0=(0.0,0.0,0.5), du=(d,0.0,0.0), dv=(0.0,d,0.0), ns=(n,n)); 
 
 t0 = time.perf_counter()
 fe_xy = mdcl.run_sampleGrid_tex( apos=ps_xy, bUseTexture=use_texture); #print("fe_xy",fe_xy)
-t1 = time.perf_counter(); print("Time(run_sampleGrid_tex): ", t1-t0)
+t1 = time.perf_counter(); print(f"Time(run_sampleGrid_tex) use_texture({use_texture}): {t1-t0}")
 
 fe_xy = fe_xy.reshape(n,n,4)
 ut.plot_2d_fe(fe_xy)

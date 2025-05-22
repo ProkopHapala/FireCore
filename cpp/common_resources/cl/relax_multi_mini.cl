@@ -1264,23 +1264,29 @@ __kernel void sampleGrid(
     __global float4* BsplinePLQH,          // 6
     const float4   grid_invStep,           // 7
     const int4     grid_ns,                // 8
-    const float4   grid_p0                 // 9
+    const float4   grid_p0,                 // 9
+    const float4   MDparams,               // 10
+    int      nstep                   // 11
 ){
     const int iG = get_global_id  (0);
     const int iL = get_local_id   (0);
     const int nG = get_global_size(0);
     const int np = nDOFs.x;
 
-    float3 dz = (float3){ 0.0f, 0.0f, 0.1f };
+    //float3 dz = (float3){ 0.0f, 0.0f, 0.1f };
 
     //const bool   bNode = iG<nnode;   // All atoms need to have neighbors !!!!
-    const float4 REQ        = REQs [iG];
-    const float3 posi       = apos[iG].xyz;
-    const float  R2damp     = GFFParams.x*GFFParams.x;
-    const float  alphaMorse = GFFParams.y;
+    // const float4 REQ        = REQs [iG];
+    // const float3 posi       = apos[iG].xyz;
+    // const float  R2damp     = GFFParams.x*GFFParams.x;
+    // const float  alphaMorse = GFFParams.y;
 
     //aforce[iG] = fe3d_pbc_comb(posi, grid_ns.xyz, BsplinePLQH, (float4){0.0f,0.0f,0.0f,1.0f});
     //aforce[iG] = BsplinePLQH[ pos2int(posi.xyz,grid_ns) ];
+
+
+
+
 
     __local int4 xqs[4];
     __local int4 yqs[4];
@@ -1292,7 +1298,7 @@ __kernel void sampleGrid(
 
     const int iG_DBG = 0;
 
-    if(iG==iG_DBG){   printf( "GPU::sampleGrid() grid_ns(%i,%i,%i) grid_invStep(%g,%g,%g) grid_p0(%g,%g,%g) \n", grid_ns.x,grid_ns.y,grid_ns.z, grid_invStep.x, grid_invStep.y, grid_invStep.z, grid_p0.x, grid_p0.y, grid_p0.z ); }
+    //if(iG==iG_DBG){   printf( "GPU::sampleGrid() grid_ns(%i,%i,%i) grid_invStep(%g,%g,%g) grid_p0(%g,%g,%g) \n", grid_ns.x,grid_ns.y,grid_ns.z, grid_invStep.x, grid_invStep.y, grid_invStep.z, grid_p0.x, grid_p0.y, grid_p0.z ); }
     //if(iG==iG_DBG){   printf( "GPU::sampleGrid() xqs(%i,%i,%i,%i) \n", xqs[0],xqs[1],xqs[2],xqs[3] ); yqs(%i,%i,%i,%i) \n", xqs[0],xqs[1],xqs[2],xqs[3], yqs[0],yqs[1],yqs[2],yqs[3] ); }
     // if(iG==iG_DBG){   
     //     printf( "GPU::sampleGrid() xqs[0](%i,%i,%i,%i) \n", xqs[0].x,xqs[0].y,xqs[0].z,xqs[0].w ); 
@@ -1310,13 +1316,32 @@ __kernel void sampleGrid(
     //const float4 PLQH = (float4){ ej*ej*REQ.y, ej*REQ.y,  REQ.z, 0.0f };
     const float4 PLQH = (float4){ 1.0f, 1.0f, 1.0f, 1.0f };
 
-    const float3 u = (posi - grid_p0.xyz) * grid_invStep.xyz;
-    float4 fg      = fe3d_pbc_comb(u, grid_ns.xyz, BsplinePLQH, PLQH, xqs, yqs);
-    fg.xyz *= -grid_invStep.xyz;
+    const float dt    =      MDparams.x;
+    const float cdamp = 1.0f-MDparams.y;
+    //nstep = 1;
+
+    //if(iG==iG_DBG){   printf( "GPU::sampleGrid() np=%i nstep=%i dt=%g cdamp=%g grid_ns(%i,%i,%i,%i) \n", np, nstep, dt, cdamp, grid_ns.x,grid_ns.y,grid_ns.z,grid_ns.w ); }
+
+    float3 posi  = apos[iG].xyz;
+    float4 fe    = (float4){0.0f,0.0f,0.0f,0.0f};
+    float3 vel   = (float3){0.0f,0.0f,0.0f};
+
+    // float3 u = (posi - grid_p0.xyz) * grid_invStep.xyz;
+    // fe      = fe3d_pbc_comb(u, grid_ns.xyz, BsplinePLQH, PLQH, xqs, yqs);
+    // fe.xyz *= -grid_invStep.xyz;
+
+    for(int i=0; i<nstep; i++){
+        float3 u  = (posi - grid_p0.xyz) * grid_invStep.xyz;
+        //u        +=(float3){0.5f,0.5f,0.5f};
+        fe  = fe3d_pbc_comb(u, grid_ns.xyz, BsplinePLQH, PLQH, xqs, yqs);
+        vel       *= cdamp;
+        vel       += fe.xyz*dt;
+        posi      += vel   *dt;
+    }
+
+    aforce[iG]    = fe;
 
     //float4 fg = BsplinePLQH[ pos2int(u,grid_ns) ];
-
-    aforce[iG] = fg;
 
     // if((iG==iG_DBG)&&(iS==iS_DBG)){   
     //     printf( "GPU[%i] grid_ns(%i,%i,%i) grid_invStep(%g,%g,%g) grid_p0(%g,%g,%g) \n", iG, grid_ns.x,grid_ns.y,grid_ns.z, grid_invStep.x,grid_invStep.y,grid_invStep.z, grid_p0.x,grid_p0.y,grid_p0.z ); 
@@ -1339,7 +1364,6 @@ __kernel void sampleGrid(
 // NOTE: https://registry.khronos.org/OpenCL/sdk/1.1/docs/man/xhtml/sampler_t.html
 // CLK_ADDRESS_REPEAT - out-of-range image coordinates are wrapped to the valid range. This address mode can only be used with normalized coordinates. If normalized coordinates are not used, this addressing mode may generate image coordinates that are undefined.
 }
-
 
 
 // ======================================================================
@@ -2001,7 +2025,10 @@ __kernel void sampleGrid_tex(
     float dt    =      MDparams.x;
     float cdamp = 1.0f-MDparams.y;
 
-    if(iG==0){ printf("GPU::sampleGridFF_tex() np=%i nstep=%i dt=%g cdamp=%g \n", np, nstep, dt, cdamp ); }
+    // if(iG==0){ 
+    //     printf( "GPU::sampleGrid_tex() grid_ns(%i,%i,%i) grid_invStep(%g,%g,%g) grid_p0(%g,%g,%g) \n", grid_ns.x,grid_ns.y,grid_ns.z, grid_invStep.x, grid_invStep.y, grid_invStep.z ); 
+    //     printf( "GPU::sampleGrid_tex() np=%i nstep=%i dt=%g cdamp=%g grid_ns(%i,%i,%i,%i) \n", np, nstep, dt, cdamp, grid_ns.x,grid_ns.y,grid_ns.z,grid_ns.w ); 
+    // }
 
     const float4 PLQH       = (float4){0.0f,0.0f,1.0f,0.0f};
 
