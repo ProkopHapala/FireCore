@@ -1,0 +1,26 @@
+Profiling Summary
+================
+
+Top 20 functions by time:
+Function                                                     Calls      Total Time (s)  Own Time (s)    Avg Time (ms)  
+-------------------------------------------------------------------------------------------------------------------
+pyBall.tests.ocl_GridFF_new.<module>                         1          0.978132        -0.973235       978.13         
+pyBall.OCL.GridFF.__init__                                   1          0.971882        -0.002382       971.88         
+pyBall.OCL.clUtils.get_nvidia_device                         1          0.971776        0.969314        971.78         
+re._compile                                                  6962       0.401508        -0.948278       0.06           
+sre_compile.compile                                          194        0.375406        -0.589870       1.94           
+re.search                                                    5304       0.273519        -0.729712       0.05           
+sre_parse.parse                                              194        0.264786        -0.192511       1.36           
+inspect.getdoc                                               6764       0.207885        0.024862        0.03           
+inspect.cleandoc                                             6765       0.197403        0.197403        0.03           
+sre_parse._parse_sub                                         415        0.182904        -0.340231       0.44           
+inspect._signature_from_callable                             721        0.178192        -0.127455       0.25           
+inspect.signature                                            657        0.174694        -0.437982       0.27           
+inspect.from_callable                                        657        0.171865        -0.268946       0.26           
+sre_parse._parse                                             460        0.170672        -0.179570       0.37           
+inspect.__init__                                             7249       0.157469        0.063944        0.02           
+re.compile                                                   53         0.142509        -0.576550       2.69           
+inspect._signature_from_function                             637        0.117842        0.000722        0.18           
+sre_compile._code                                            194        0.105763        -0.030739       0.55           
+sre_compile._compile                                         999        0.071501        -0.091680       0.07           
+enum.__call__                                                6749       0.052619        0.032431        0.01           

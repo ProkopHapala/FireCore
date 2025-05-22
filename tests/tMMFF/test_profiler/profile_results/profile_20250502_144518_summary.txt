@@ -1,0 +1,16 @@
+OpenCL Profiling Summary
+======================
+
+Command: python ../run_test_GridFF_ocl_new.py
+Working Directory: /home/indranil/git/FireCore/tests/tMMFF/test_profiler
+Timestamp: 20250502_144518
+Exit Code: 0
+Total Execution Time: 1.47 seconds
+
+OpenCL Environment Variables:
+  PYOPENCL_COMPILER_OUTPUT=1
+  OPENCL_PROFILE=1
+  CUDA_PROFILE=1
+  CUDA_PROFILE_CSV=1
+  AMD_OCL_BUILD_OPTIONS_APPEND=-cl-opt-disable
+  INTEL_OPENCL_PROFILE=1

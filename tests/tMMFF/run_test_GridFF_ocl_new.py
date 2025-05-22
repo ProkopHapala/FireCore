@@ -42,7 +42,9 @@ import pyopencl as cl
 # name="NaCl_8x8_L3_final"
 
 # name="NaCl_1x1_L1"
-name="Na_0.9_Cl_-0.9"
+# name="Na_0.9_Cl_-0.9"
+# name="new_Na_0.9_Cl_-0.9"
+name="NaCl_old"
 # name ="NaCl_paolo"
 # name ="NaCl.ptcda"
 # name="2_atom_NaCl"

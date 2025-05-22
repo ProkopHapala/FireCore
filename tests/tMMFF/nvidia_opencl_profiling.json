@@ -1,0 +1,17 @@
+{
+  "device": {
+    "name": "NVIDIA GeForce RTX 3060",
+    "compute_capability": "8.6",
+    "multiprocessor_count": 28,
+    "max_threads_per_block": 1024,
+    "max_grid_dim": [2147483647, 65535, 65535],
+    "max_block_dim": [1024, 1024, 64],
+    "warp_size": 32,
+    "max_registers_per_block": 65536,
+    "shared_memory_per_block": 49152,
+    "total_constant_memory": 65536
+  },
+  "kernels": [
+
+  ]
+}

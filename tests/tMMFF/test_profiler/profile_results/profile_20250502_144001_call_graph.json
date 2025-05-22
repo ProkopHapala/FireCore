@@ -1,0 +1,917 @@
+{
+  "posixpath.abspath": [
+    "posixpath.join",
+    "posixpath.isabs",
+    "posixpath.normpath"
+  ],
+  "posixpath.isabs": [
+    "posixpath._get_sep"
+  ],
+  "posixpath.join": [
+    "posixpath._get_sep"
+  ],
+  "posixpath.dirname": [
+    "posixpath._get_sep"
+  ],
+  "pprint.<module>": [
+    "dataclasses.<module>",
+    "io.__getattr__",
+    "pprint.PrettyPrinter",
+    "pprint._safe_key"
+  ],
+  "dataclasses.<module>": [
+    "re.compile",
+    "dataclasses.InitVar",
+    "dataclasses._HAS_DEFAULT_FACTORY_CLASS",
+    "copy.<module>",
+    "dataclasses.FrozenInstanceError",
+    "dataclasses._MISSING_TYPE",
+    "dataclasses.Field",
+    "dataclasses._DataclassParams",
+    "dataclasses._FIELD_BASE",
+    "dataclasses._KW_ONLY_TYPE",
+    "dataclasses.__init__"
+  ],
+  "copy.<module>": [
+    "copy.Error"
+  ],
+  "re.compile": [
+    "re._compile"
+  ],
+  "re._compile": [
+    "types.__get__",
+    "sre_compile.compile",
+    "enum.__and__",
+    "sre_compile.isstring"
+  ],
+  "sre_compile.compile": [
+    "sre_parse.groups",
+    "sre_parse.parse",
+    "sre_compile.isstring",
+    "sre_compile._code"
+  ],
+  "sre_parse.parse": [
+    "sre_parse._parse_sub",
+    "sre_parse.__init__",
+    "sre_parse.fix_flags"
+  ],
+  "sre_parse.__init__": [
+    "sre_parse.__next"
+  ],
+  "sre_parse._parse_sub": [
+    "sre_parse.match",
+    "sre_parse._parse",
+    "sre_parse.append",
+    "sre_parse.__getitem__",
+    "sre_parse.__len__",
+    "sre_parse.__init__",
+    "sre_parse.tell"
+  ],
+  "sre_parse._parse": [
+    "sre_parse._parse_sub",
+    "sre_parse._uniq",
+    "sre_parse.match",
+    "sre_parse.append",
+    "sre_parse.opengroup",
+    "sre_parse.__getitem__",
+    "sre_parse._parse_flags",
+    "sre_parse.getuntil",
+    "sre_parse.closegroup",
+    "sre_parse.__init__",
+    "sre_parse._escape",
+    "sre_parse.__len__",
+    "sre_parse._class_escape",
+    "sre_parse.__setitem__",
+    "sre_parse.get",
+    "sre_parse.tell"
+  ],
+  "sre_parse.get": [
+    "sre_parse.__next"
+  ],
+  "sre_parse.match": [
+    "sre_parse.__next"
+  ],
+  "sre_parse.__getitem__": [
+    "sre_parse.__init__"
+  ],
+  "sre_parse.opengroup": [
+    "sre_parse.groups"
+  ],
+  "sre_parse.closegroup": [
+    "sre_parse.getwidth"
+  ],
+  "sre_parse.getwidth": [
+    "sre_parse.getwidth"
+  ],
+  "sre_compile._code": [
+    "sre_compile._compile",
+    "sre_compile._compile_info"
+  ],
+  "sre_compile._compile_info": [
+    "sre_compile._compile_charset",
+    "sre_compile._get_charset_prefix",
+    "sre_compile._optimize_charset",
+    "sre_compile._get_literal_prefix",
+    "sre_parse.getwidth",
+    "sre_compile._generate_overlap_table"
+  ],
+  "sre_compile._get_literal_prefix": [
+    "sre_compile._combine_flags",
+    "sre_compile._get_literal_prefix",
+    "sre_compile._get_iscased"
+  ],
+  "sre_compile._get_charset_prefix": [
+    "sre_parse.__getitem__",
+    "sre_compile._combine_flags",
+    "sre_parse.__len__",
+    "sre_compile._get_iscased"
+  ],
+  "sre_compile._compile": [
+    "sre_compile._combine_flags",
+    "sre_compile._compile_charset",
+    "sre_compile._compile",
+    "sre_compile._optimize_charset",
+    "sre_compile._simple",
+    "sre_parse.__getitem__"
+  ],
+  "sre_compile._simple": [
+    "sre_parse.__getitem__",
+    "sre_parse.__len__"
+  ],
+  "enum.__and__": [
+    "enum.__call__"
+  ],
+  "enum.__call__": [
+    "enum.__new__",
+    "enum._create_"
+  ],
+  "dataclasses.Field": [
+    "dataclasses._recursive_repr"
+  ],
+  "dataclasses._recursive_repr": [
+    "functools.update_wrapper",
+    "functools.wraps"
+  ],
+  "tempfile.<module>": [
+    "tempfile._TemporaryFileWrapper",
+    "tempfile.TemporaryDirectory",
+    "tempfile.SpooledTemporaryFile",
+    "tempfile._RandomNameSequence",
+    "tempfile._TemporaryFileCloser"
+  ],
+  "typing.inner": [
+    "typing.__getitem_inner__",
+    "typing.__getitem__",
+    "typing.__hash__"
+  ],
+  "typing.__getitem__": [
+    "typing.<genexpr>",
+    "typing._type_check",
+    "typing.Union",
+    "typing.inner",
+    "typing.copy_with"
+  ],
+  "typing.Union": [
+    "typing._remove_dups_flatten",
+    "typing.<genexpr>",
+    "typing.__init__",
+    "typing.__eq__"
+  ],
+  "typing.<genexpr>": [
+    "typing._type_check",
+    "typing._type_convert"
+  ],
+  "typing._type_check": [
+    "typing.__eq__",
+    "typing._type_convert"
+  ],
+  "typing._remove_dups_flatten": [
+    "typing._deduplicate"
+  ],
+  "typing.__init__": [
+    "typing.__setattr__",
+    "typing.<genexpr>",
+    "typing.__init__",
+    "typing._collect_type_vars"
+  ],
+  "typing.__setattr__": [
+    "typing._is_dunder"
+  ],
+  "typing.copy_with": [
+    "typing.__init__"
+  ],
+  "typing._collect_type_vars": [
+    "typing.<listcomp>"
+  ],
+  "typing._deduplicate": [
+    "typing.__hash__"
+  ],
+  "typing.__hash__": [
+    "typing.__hash__"
+  ],
+  "typing.__getitem_inner__": [
+    "typing.copy_with",
+    "typing.<genexpr>",
+    "typing._type_check"
+  ],
+  "typing.__new__": [
+    "typing._make_nmtuple",
+    "typing.<listcomp>"
+  ],
+  "typing._make_nmtuple": [
+    "typing.<dictcomp>",
+    "collections.namedtuple",
+    "typing.<listcomp>"
+  ],
+  "typing.<dictcomp>": [
+    "typing._type_check"
+  ],
+  "typing._type_convert": [
+    "typing.__init__"
+  ],
+  "collections.namedtuple": [
+    "namedtuple__ExecInfo.<module>",
+    "namedtuple_DecimalTuple.<module>",
+    "namedtuple__TagInfo.<module>",
+    "collections.<genexpr>",
+    "namedtuple_CompositePart.<module>",
+    "namedtuple__ZoomInfo.<module>",
+    "namedtuple__GlueSpec.<module>",
+    "namedtuple__VersionInfo.<module>",
+    "namedtuple_Box.<module>",
+    "namedtuple__PanInfo.<module>",
+    "namedtuple__XYPair.<module>",
+    "namedtuple_Text.<module>",
+    "namedtuple_CharMetrics.<module>",
+    "namedtuple_VectorParse.<module>",
+    "namedtuple_RasterParse.<module>",
+    "namedtuple_Page.<module>",
+    "namedtuple__Version.<module>",
+    "namedtuple_PsFont.<module>",
+    "namedtuple__Result.<module>"
+  ],
+  "enum.__or__": [
+    "enum.__call__"
+  ],
+  "types.__get__": [
+    "enum.name",
+    "enum.value"
+  ],
+  "sre_parse.getuntil": [
+    "sre_parse.__next"
+  ],
+  "sre_parse.__setitem__": [
+    "sre_parse.__getitem__",
+    "sre_parse.__len__"
+  ],
+  "sre_compile._optimize_charset": [
+    "sre_compile._bytes_to_codes",
+    "sre_compile._mk_bitmap"
+  ],
+  "sre_compile._mk_bitmap": [
+    "sre_compile.<listcomp>"
+  ],
+  "contextlib.contextmanager": [
+    "functools.update_wrapper",
+    "functools.wraps"
+  ],
+  "gzip.<module>": [
+    "abc.__new__",
+    "gzip._GzipReader",
+    "gzip.GzipFile",
+    "gzip.BadGzipFile",
+    "gzip._PaddedFile"
+  ],
+  "shlex.<module>": [
+    "shlex.shlex",
+    "io.__getattr__",
+    "re.compile"
+  ],
+  "functools.decorating_function": [
+    "functools.update_wrapper"
+  ],
+  "xml.etree.ElementTree.<module>": [
+    "xml.etree.ElementTree.C14NWriterTarget",
+    "xml.etree.ElementTree.ParseError",
+    "xml.etree.ElementTree.Element",
+    "xml.etree.ElementTree.ElementTree",
+    "contextlib.contextmanager",
+    "xml.etree.ElementTree.XMLPullParser",
+    "xml.etree.ElementTree.XMLParser",
+    "re.compile",
+    "xml.etree.ElementTree._ListDataStream",
+    "xml.etree.ElementTree.TreeBuilder",
+    "xml.etree.ElementPath.<module>",
+    "abc.__new__",
+    "xml.etree.ElementTree.QName"
+  ],
+  "xml.etree.ElementPath.<module>": [
+    "xml.etree.ElementPath._SelectorContext",
+    "re.compile"
+  ],
+  "logging.getLogger": [
+    "logging._fixupChildren",
+    "logging._releaseLock",
+    "logging._fixupParents",
+    "logging.__init__",
+    "logging._acquireLock",
+    "logging.getLogger"
+  ],
+  "logging.__init__": [
+    "logging.__init__",
+    "logging._checkLevel"
+  ],
+  "logging._fixupParents": [
+    "logging.__init__",
+    "logging.append"
+  ],
+  "weakref.__init__": [
+    "weakref.update"
+  ],
+  "collections.abc.__contains__": [
+    "os.__getitem__"
+  ],
+  "os.__getitem__": [
+    "os.decode",
+    "os.encode"
+  ],
+  "abc.register": [
+    "abc.__subclasscheck__"
+  ],
+  "abc.__subclasscheck__": [
+    "collections.abc.__subclasshook__",
+    "abc.__subclasscheck__"
+  ],
+  "inspect.getdoc": [
+    "inspect.cleandoc",
+    "inspect._finddoc"
+  ],
+  "textwrap.indent": [
+    "textwrap.prefixed_lines"
+  ],
+  "textwrap.prefixed_lines": [
+    "textwrap.predicate"
+  ],
+  "inspect._finddoc": [
+    "inspect._findclass",
+    "inspect.isclass",
+    "inspect.isfunction",
+    "inspect.ismethod"
+  ],
+  "inspect._findclass": [
+    "inspect.isclass"
+  ],
+  "inspect.signature": [
+    "inspect.from_callable"
+  ],
+  "inspect.from_callable": [
+    "inspect._signature_from_callable"
+  ],
+  "inspect._signature_from_callable": [
+    "inspect._signature_from_function",
+    "inspect.isfunction",
+    "inspect.unwrap",
+    "inspect._signature_is_functionlike",
+    "inspect._signature_is_builtin",
+    "inspect._signature_from_callable",
+    "inspect._signature_get_user_defined_method",
+    "inspect._signature_bound_method"
+  ],
+  "inspect.unwrap": [
+    "inspect._is_wrapper"
+  ],
+  "inspect._signature_from_function": [
+    "inspect.get_annotations",
+    "inspect.isfunction",
+    "inspect.__init__"
+  ],
+  "inspect.__init__": [
+    "inspect.kind",
+    "inspect.<genexpr>",
+    "enum.__call__",
+    "inspect.name",
+    "inspect.default"
+  ],
+  "inspect.<genexpr>": [
+    "inspect.kind",
+    "inspect.name"
+  ],
+  "inspect.__hash__": [
+    "inspect.kind",
+    "inspect.__hash__",
+    "inspect._hash_basis",
+    "inspect.annotation",
+    "inspect.name",
+    "inspect.default"
+  ],
+  "inspect._hash_basis": [
+    "inspect.return_annotation",
+    "inspect.parameters",
+    "inspect.<genexpr>",
+    "inspect.<dictcomp>"
+  ],
+  "inspect.<dictcomp>": [
+    "inspect.kind",
+    "inspect.name"
+  ],
+  "inspect.replace": [
+    "inspect.__init__"
+  ],
+  "traceback.extract_stack": [
+    "traceback.walk_stack",
+    "traceback.extract"
+  ],
+  "traceback.extract": [
+    "traceback.walk_stack",
+    "linecache.lazycache",
+    "linecache.checkcache",
+    "traceback.walk_tb",
+    "traceback.__init__",
+    "traceback.line"
+  ],
+  "traceback.line": [
+    "linecache.getline"
+  ],
+  "linecache.getline": [
+    "linecache.getlines"
+  ],
+  "linecache.getlines": [
+    "linecache.updatecache"
+  ],
+  "linecache.updatecache": [
+    "codecs.decode",
+    "tokenize.open"
+  ],
+  "tokenize.open": [
+    "codecs.__init__",
+    "tokenize.detect_encoding"
+  ],
+  "tokenize.detect_encoding": [
+    "tokenize.find_cookie",
+    "tokenize.read_or_stop"
+  ],
+  "tokenize.find_cookie": [
+    "tokenize._get_normal_name"
+  ],
+  "codecs.__init__": [
+    "codecs.__init__"
+  ],
+  "traceback.__getitem__": [
+    "traceback.line"
+  ],
+  "abc.__instancecheck__": [
+    "abc.__subclasscheck__"
+  ],
+  "collections.abc.__subclasshook__": [
+    "collections.abc._check_methods"
+  ],
+  "copy.copy": [
+    "copy._reconstruct",
+    "copyreg._slotnames"
+  ],
+  "copy._reconstruct": [
+    "copyreg.__newobj__"
+  ],
+  "sre_parse._escape": [
+    "sre_parse.groups",
+    "sre_parse.checkgroup",
+    "sre_parse.checklookbehindgroup"
+  ],
+  "sre_parse.checkgroup": [
+    "sre_parse.groups"
+  ],
+  "functools.lru_cache": [
+    "functools.update_wrapper"
+  ],
+  "enum.__prepare__": [
+    "enum._get_mixins_",
+    "enum.__setitem__",
+    "enum._check_for_existing_members",
+    "enum.__init__"
+  ],
+  "enum._get_mixins_": [
+    "enum._find_data_type"
+  ],
+  "enum.__setitem__": [
+    "enum._is_dunder",
+    "enum._is_sunder",
+    "enum._generate_next_value_",
+    "enum._is_descriptor",
+    "enum._is_private"
+  ],
+  "enum.__new__": [
+    "enum.__setattr__",
+    "enum.<genexpr>",
+    "enum.<setcomp>",
+    "enum.__setitem__",
+    "enum.<dictcomp>",
+    "enum._find_new_",
+    "enum._get_mixins_"
+  ],
+  "enum._find_new_": [
+    "enum.__getattr__"
+  ],
+  "enum.__getattr__": [
+    "enum._is_dunder"
+  ],
+  "pathlib.__new__": [
+    "pathlib._from_parts"
+  ],
+  "pathlib._from_parts": [
+    "pathlib._parse_args"
+  ],
+  "pathlib._parse_args": [
+    "pathlib.parse_parts"
+  ],
+  "pathlib.parse_parts": [
+    "pathlib.splitroot"
+  ],
+  "pathlib.with_name": [
+    "pathlib._from_parsed_parts",
+    "pathlib.parse_parts",
+    "pathlib.name"
+  ],
+  "pathlib.__str__": [
+    "pathlib._format_parsed_parts"
+  ],
+  "logging.debug": [
+    "logging.isEnabledFor"
+  ],
+  "logging.isEnabledFor": [
+    "logging.disable",
+    "logging._releaseLock",
+    "logging._acquireLock",
+    "logging.getEffectiveLevel"
+  ],
+  "contextlib.helper": [
+    "contextlib.__init__"
+  ],
+  "contextlib.__enter__": [
+    "warnings.simplefilter",
+    "codecs.__init__",
+    "posixpath.expanduser",
+    "warnings.__enter__",
+    "warnings.__init__"
+  ],
+  "posixpath.expanduser": [
+    "posixpath._get_sep",
+    "os.__getitem__",
+    "pathlib.__fspath__",
+    "collections.abc.__contains__"
+  ],
+  "pathlib.__fspath__": [
+    "pathlib.__str__"
+  ],
+  "collections.abc.update": [
+    "abc.__instancecheck__"
+  ],
+  "re.match": [
+    "re._compile"
+  ],
+  "ast.visit": [
+    "ast.visit_Constant",
+    "ast.generic_visit"
+  ],
+  "ast.generic_visit": [
+    "ast.visit",
+    "ast.iter_fields"
+  ],
+  "ast.visit_Constant": [
+    "ast.generic_visit"
+  ],
+  ".<module>": [
+    "abc.__instancecheck__",
+    "re.match",
+    "ast.literal_eval"
+  ],
+  "ast.literal_eval": [
+    "ast._convert",
+    "ast.parse"
+  ],
+  "ast._convert": [
+    "ast._convert_signed_num",
+    "ast._convert"
+  ],
+  "collections.abc.get": [
+    "os.__getitem__"
+  ],
+  "pathlib.home": [
+    "pathlib.expanduser",
+    "pathlib.__new__"
+  ],
+  "pathlib.expanduser": [
+    "pathlib._from_parts",
+    "posixpath.expanduser"
+  ],
+  "pathlib.__truediv__": [
+    "pathlib._make_child"
+  ],
+  "pathlib._make_child": [
+    "pathlib._parse_args",
+    "pathlib._from_parsed_parts",
+    "pathlib.join_parsed_parts"
+  ],
+  "pathlib.mkdir": [
+    "pathlib.is_dir",
+    "pathlib.__fspath__"
+  ],
+  "pathlib.is_dir": [
+    "pathlib.stat",
+    "pathlib._ignore_error"
+  ],
+  "pathlib.stat": [
+    "pathlib.__fspath__"
+  ],
+  "collections.abc.keys": [
+    "collections.abc.__init__"
+  ],
+  "collections.abc.__iter__": [
+    "contextlib.__exit__",
+    "contextlib.helper",
+    "contextlib.__enter__"
+  ],
+  "warnings.simplefilter": [
+    "warnings._add_filter"
+  ],
+  "contextlib.__exit__": [
+    "warnings.__exit__"
+  ],
+  "numpy.core.overrides.linspace": [
+    "numpy.core.overrides.any",
+    "numpy.core.overrides.result_type",
+    "numpy.core.overrides.ndim"
+  ],
+  "numpy.core.overrides.column_stack": [
+    "numpy.core.overrides.concatenate"
+  ],
+  "re.sub": [
+    "re._compile"
+  ],
+  "re.search": [
+    "re._compile"
+  ],
+  "sre_parse._parse_flags": [
+    "sre_parse.get"
+  ],
+  "inspect._is_wrapper": [
+    "inspect.<lambda>"
+  ],
+  "uuid.<module>": [
+    "uuid.SafeUUID",
+    "uuid.__init__",
+    "enum.__prepare__",
+    "platform.system",
+    "uuid.UUID",
+    "enum.__new__"
+  ],
+  "platform.system": [
+    "platform.uname"
+  ],
+  "uuid.SafeUUID": [
+    "enum.__setitem__"
+  ],
+  "dataclasses.field": [
+    "dataclasses.__init__"
+  ],
+  "dataclasses.make_dataclass": [
+    "types.new_class",
+    "dataclasses.dataclass"
+  ],
+  "types.new_class": [
+    "types.prepare_class",
+    "dataclasses.__set_name__",
+    "types.resolve_bases",
+    "dataclasses.exec_body_callback"
+  ],
+  "types.prepare_class": [
+    "types._calculate_meta"
+  ],
+  "dataclasses.dataclass": [
+    "dataclasses.wrap"
+  ],
+  "dataclasses.wrap": [
+    "dataclasses._process_class"
+  ],
+  "dataclasses._process_class": [
+    "dataclasses.<listcomp>",
+    "dataclasses._get_field",
+    "dataclasses._set_new_attribute",
+    "inspect.signature",
+    "abc.update_abstractmethods",
+    "dataclasses._is_type",
+    "dataclasses._tuple_str",
+    "dataclasses._repr_fn",
+    "dataclasses._fields_in_init_order",
+    "dataclasses._init_fn",
+    "dataclasses._hash_set_none",
+    "inspect.__str__",
+    "dataclasses._is_kw_only",
+    "dataclasses._cmp_fn",
+    "dataclasses.<genexpr>",
+    "dataclasses.__init__"
+  ],
+  "dataclasses._get_field": [
+    "dataclasses.field",
+    "dataclasses._is_initvar",
+    "dataclasses._is_type",
+    "dataclasses._is_classvar"
+  ],
+  "dataclasses._fields_in_init_order": [
+    "dataclasses.<genexpr>"
+  ],
+  "dataclasses._init_fn": [
+    "dataclasses.<listcomp>",
+    "dataclasses.<dictcomp>",
+    "dataclasses._field_init",
+    "dataclasses._create_fn"
+  ],
+  "dataclasses._field_init": [
+    "dataclasses._field_assign"
+  ],
+  "dataclasses.<listcomp>": [
+    "dataclasses._init_param"
+  ],
+  "dataclasses._create_fn": [
+    "types.__create_fn__",
+    "types.<module>",
+    "dataclasses.<genexpr>"
+  ],
+  "dataclasses._set_new_attribute": [
+    "dataclasses._set_qualname"
+  ],
+  "dataclasses._repr_fn": [
+    "dataclasses.<listcomp>",
+    "dataclasses._recursive_repr",
+    "dataclasses._create_fn"
+  ],
+  "dataclasses._tuple_str": [
+    "dataclasses.<listcomp>"
+  ],
+  "dataclasses._cmp_fn": [
+    "dataclasses._create_fn"
+  ],
+  "json.load": [
+    "json.loads",
+    "codecs.decode"
+  ],
+  "json.loads": [
+    "json.decoder.decode",
+    "json.decoder.__init__"
+  ],
+  "json.decoder.decode": [
+    "json.decoder.raw_decode"
+  ],
+  "json.decoder.raw_decode": [
+    "posixpath.join",
+    "posixpath.isabs"
+  ],
+  "inspect._signature_is_functionlike": [
+    "inspect.isclass"
+  ],
+  "inspect._signature_is_builtin": [
+    "inspect.ismethoddescriptor",
+    "inspect.isbuiltin"
+  ],
+  "inspect.ismethoddescriptor": [
+    "inspect.isclass"
+  ],
+  "inspect._signature_bound_method": [
+    "inspect.kind",
+    "inspect.replace",
+    "inspect.parameters"
+  ],
+  "inspect.__str__": [
+    "inspect.kind",
+    "inspect.parameters",
+    "inspect.formatannotation",
+    "inspect.return_annotation",
+    "inspect.__str__"
+  ],
+  "enum._create_": [
+    "enum.__prepare__",
+    "enum.__setattr__",
+    "enum.__setitem__",
+    "enum._generate_next_value_",
+    "enum.__new__",
+    "enum._get_mixins_"
+  ],
+  "abc.__new__": [
+    "typing.__init_subclass__"
+  ],
+  "typing.__init_subclass__": [
+    "typing.<genexpr>",
+    "typing.__init_subclass__"
+  ],
+  "functools.singledispatch": [
+    "functools.update_wrapper",
+    "weakref.__init__"
+  ],
+  "functools.register": [
+    "collections.abc.clear",
+    "functools._is_valid_dispatch_type"
+  ],
+  "functools.<lambda>": [
+    "functools.register"
+  ],
+  "collections.abc.clear": [
+    "weakref.popitem"
+  ],
+  "pathlib.glob": [
+    "pathlib._make_selector",
+    "pathlib.parse_parts",
+    "pathlib._select_from",
+    "pathlib.select_from"
+  ],
+  "pathlib._make_selector": [
+    "pathlib.__init__",
+    "pathlib._is_wildcard_pattern"
+  ],
+  "pathlib.__init__": [
+    "pathlib.compile_pattern",
+    "pathlib.__init__"
+  ],
+  "pathlib.compile_pattern": [
+    "fnmatch.translate",
+    "re.compile"
+  ],
+  "fnmatch.translate": [
+    "re.escape"
+  ],
+  "pathlib.select_from": [
+    "pathlib.is_dir"
+  ],
+  "pathlib._select_from": [
+    "pathlib.__fspath__",
+    "pathlib._make_child_relpath",
+    "pathlib._select_from"
+  ],
+  "pathlib._make_child_relpath": [
+    "pathlib._from_parsed_parts"
+  ],
+  "pathlib.stem": [
+    "pathlib.name"
+  ],
+  "ast._convert_signed_num": [
+    "ast._convert_num"
+  ],
+  "ast._convert_num": [
+    "ast._raise_malformed_node"
+  ],
+  "decimal.<module>": [
+    "abc.__new__",
+    "abc.register",
+    "collections.namedtuple"
+  ],
+  "calendar.<module>": [
+    "calendar.Calendar",
+    "calendar.IllegalMonthError",
+    "calendar.LocaleHTMLCalendar",
+    "calendar.LocaleTextCalendar",
+    "calendar._localized_day",
+    "calendar.TextCalendar",
+    "calendar.HTMLCalendar",
+    "calendar.different_locale",
+    "calendar.IllegalWeekdayError",
+    "calendar._localized_month",
+    "calendar.__init__"
+  ],
+  "calendar._localized_month": [
+    "calendar.<listcomp>"
+  ],
+  "calendar._localized_day": [
+    "calendar.<listcomp>"
+  ],
+  "calendar.__init__": [
+    "calendar.setfirstweekday"
+  ],
+  "textwrap.dedent": [
+    "re.sub"
+  ],
+  "traceback.print_exc": [
+    "traceback.print_exception"
+  ],
+  "traceback.print_exception": [
+    "traceback.__init__",
+    "traceback.format",
+    "traceback._parse_value_tb"
+  ],
+  "traceback.__init__": [
+    "traceback._load_lines",
+    "traceback._some_str",
+    "traceback.extract"
+  ],
+  "traceback._load_lines": [
+    "traceback.line"
+  ],
+  "traceback.format": [
+    "traceback.format",
+    "traceback.format_exception_only",
+    "traceback.line"
+  ],
+  "traceback.format_exception_only": [
+    "traceback._format_final_exc_line"
+  ],
+  "traceback._format_final_exc_line": [
+    "traceback._some_str"
+  ]
+}

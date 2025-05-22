@@ -1,0 +1,8 @@
+GridFF OpenCL Kernel Profiling Summary
+====================================
+
+Job: PLQ
+Dataset: NaCl_1x1_L1
+Timestamp: 20250502_154906
+
+No kernel execution data captured.

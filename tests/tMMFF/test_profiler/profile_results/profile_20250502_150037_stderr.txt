@@ -1,0 +1,2 @@
+/usr/lib/python3/dist-packages/pyopencl/characterize/__init__.py:152: CLCharacterizationWarning: wildly guessing local memory bank count on '<pyopencl.Device 'NVIDIA GeForce RTX 3060' on 'NVIDIA CUDA' at 0x556b400beb50>'
+  warn("wildly guessing local memory bank count on '%s'"

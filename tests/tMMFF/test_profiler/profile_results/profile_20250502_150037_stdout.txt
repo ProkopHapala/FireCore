@@ -1,0 +1,16 @@
+Selected device: NVIDIA GeForce RTX 3060
+Device Name: NVIDIA GeForce RTX 3060
+Max Compute Units: 28
+Max Work Group Size: 1024
+Global Memory Size: 12044.4375 MB
+Local Memory Size: 48.0 KB
+Max Clock Frequency: 1777 MHz
+Local Memory Access Granularity: 4 bytes
+Number of Local Memory Banks: 32
+Usable Local Memory Size: 49152 bytes
+Fast Math Options: ['-cl-mad-enable', '-cl-fast-relaxed-math', '-cl-no-signed-zeros', '-cl-strict-aliasing']
+SIMD Group Size: 32
+Double Precision Support: False
+ local_memory_per_workgroup() size= 64  __local []   3072.0  float32 
+GridFF_cl() called from path= /home/indranil/git/FireCore/tests/tMMFF/test_profiler
+Error compiling OpenCL program: [Errno 2] No such file or directory: '../../cpp/common_resources/cl/GridFF.cl'

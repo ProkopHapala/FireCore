@@ -1,0 +1,9 @@
+GridFF OpenCL Kernel Profiling Summary
+===================================
+
+Job: PLQ
+Dataset: NaCl_1x1_L1
+Timestamp: 20250502_145616
+
+Kernel                                   Calls    Total (ms)   Avg (ms)     Min (ms)     Max (ms)    
+----------------------------------------------------------------------------------------------------

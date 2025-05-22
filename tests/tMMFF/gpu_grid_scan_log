@@ -1,0 +1,596 @@
+ ./run.sh 
+ln: failed to create symbolic link 'data/common_resources': File exists
+ln: failed to create symbolic link 'common_resources/common_resources': File exists
+/home/indranil/git/FireCore/cpp/Build/libs/Molecular
+[  0%] Built target ProjectiveDynamics_d
+[ 33%] Built target DynamicOpt
+[ 66%] Linking CXX shared library libMMFF_lib.so
+[100%] Built target MMFF_lib
+[  0%] Linking CXX shared library libLattice2D_lib.so
+[100%] Built target Lattice2D_lib
+[ 80%] Built target SDL2OGL
+[ 90%] Built target DynamicOpt
+[100%] Linking CXX shared library libMolGUIlib.so
+[100%] Built target MolGUIlib
+compile using ncpu=11
+./run.sh: line 33: /usr/lib/gcc/x86_64-linux-gnu/11/../../../x86_64-linux-gnu/libfftw3.so: Permission denied
+/usr/lib/gcc/x86_64-linux-gnu/11/libasan.so
+MolWorld_sp3::initParams():
+        sElemTypes(data/ElementTypes.dat)
+        sAtomTypes(data/AtomTypes.dat)
+        sBondTypes(data/BondTypes.dat)
+        sAngleTypes(data/AngleTypes.dat)
+MMFFparams::loadElementTypes(fname=data/ElementTypes.dat)
+loadElementTypes[1] name='E' iZ=200 neval=0 valence=0 piMax=0 
+loadElementTypes[2] name='H' iZ=1 neval=1 valence=1 piMax=0 
+loadElementTypes[3] name='He' iZ=2 neval=2 valence=0 piMax=0 
+loadElementTypes[4] name='Li' iZ=3 neval=1 valence=1 piMax=0 
+loadElementTypes[5] name='Be' iZ=4 neval=2 valence=2 piMax=0 
+loadElementTypes[6] name='B' iZ=5 neval=3 valence=3 piMax=1 
+loadElementTypes[7] name='C' iZ=6 neval=4 valence=4 piMax=2 
+loadElementTypes[8] name='N' iZ=7 neval=5 valence=3 piMax=2 
+loadElementTypes[9] name='O' iZ=8 neval=6 valence=2 piMax=1 
+loadElementTypes[10] name='F' iZ=9 neval=7 valence=1 piMax=0 
+loadElementTypes[11] name='Ne' iZ=10 neval=8 valence=0 piMax=0 
+loadElementTypes[12] name='Na' iZ=11 neval=1 valence=1 piMax=0 
+loadElementTypes[13] name='Mg' iZ=12 neval=2 valence=2 piMax=0 
+loadElementTypes[14] name='Al' iZ=13 neval=3 valence=3 piMax=0 
+loadElementTypes[15] name='Si' iZ=14 neval=4 valence=4 piMax=0 
+loadElementTypes[16] name='P' iZ=15 neval=3 valence=3 piMax=1 
+loadElementTypes[17] name='S' iZ=16 neval=2 valence=2 piMax=2 
+loadElementTypes[18] name='Se' iZ=34 neval=2 valence=2 piMax=2 
+loadElementTypes[19] name='Cl' iZ=17 neval=7 valence=1 piMax=3 
+MMFFparams::loadAtomTypes(fname=data/AtomTypes.dat)
+loadAtomTypes[1] name='*' valence=1 nepair=0 npi=0 sym=0
+loadAtomTypes[2] name='E' valence=0 nepair=0 npi=0 sym=0
+loadAtomTypes[3] name='E_F' valence=0 nepair=0 npi=0 sym=0
+loadAtomTypes[4] name='H' valence=1 nepair=0 npi=0 sym=0
+loadAtomTypes[5] name='He' valence=0 nepair=0 npi=0 sym=0
+loadAtomTypes[6] name='Li' valence=1 nepair=0 npi=0 sym=0
+loadAtomTypes[7] name='Be' valence=2 nepair=0 npi=0 sym=0
+loadAtomTypes[8] name='B' valence=3 nepair=255 npi=0 sym=0
+loadAtomTypes[9] name='C' valence=4 nepair=0 npi=0 sym=0
+loadAtomTypes[10] name='N' valence=3 nepair=1 npi=0 sym=0
+loadAtomTypes[11] name='O' valence=2 nepair=2 npi=0 sym=0
+loadAtomTypes[12] name='F' valence=1 nepair=1 npi=0 sym=0
+loadAtomTypes[13] name='Ne' valence=0 nepair=0 npi=0 sym=0
+loadAtomTypes[14] name='Na' valence=1 nepair=0 npi=0 sym=0
+loadAtomTypes[15] name='Mg' valence=2 nepair=0 npi=0 sym=0
+loadAtomTypes[16] name='Al' valence=3 nepair=255 npi=0 sym=0
+loadAtomTypes[17] name='Si' valence=4 nepair=0 npi=0 sym=0
+loadAtomTypes[18] name='P' valence=3 nepair=1 npi=0 sym=0
+loadAtomTypes[19] name='S' valence=2 nepair=2 npi=0 sym=0
+loadAtomTypes[20] name='Se' valence=2 nepair=2 npi=0 sym=0
+loadAtomTypes[21] name='Cl' valence=1 nepair=1 npi=0 sym=0
+loadAtomTypes[22] name='H_' valence=1 nepair=0 npi=0 sym=0
+loadAtomTypes[23] name='C_3' valence=4 nepair=0 npi=0 sym=0
+loadAtomTypes[24] name='C_R' valence=4 nepair=0 npi=0 sym=0
+loadAtomTypes[25] name='C_2' valence=4 nepair=0 npi=0 sym=0
+loadAtomTypes[26] name='C_1' valence=4 nepair=0 npi=0 sym=0
+loadAtomTypes[27] name='N_3' valence=3 nepair=1 npi=0 sym=0
+loadAtomTypes[28] name='N_R' valence=3 nepair=1 npi=0 sym=0
+loadAtomTypes[29] name='N_2' valence=3 nepair=1 npi=0 sym=0
+loadAtomTypes[30] name='N_1' valence=3 nepair=1 npi=0 sym=0
+loadAtomTypes[31] name='O_3' valence=2 nepair=2 npi=0 sym=0
+loadAtomTypes[32] name='O_R' valence=2 nepair=2 npi=0 sym=0
+loadAtomTypes[33] name='O_2' valence=2 nepair=2 npi=0 sym=0
+loadAtomTypes[34] name='O_1' valence=2 nepair=2 npi=0 sym=0
+loadAtomTypes[35] name='C_CH3' valence=4 nepair=0 npi=0 sym=0
+loadAtomTypes[36] name='C_ene' valence=4 nepair=0 npi=0 sym=0
+loadAtomTypes[37] name='C_yne' valence=4 nepair=0 npi=0 sym=0
+loadAtomTypes[38] name='C_ald' valence=4 nepair=0 npi=0 sym=0
+loadAtomTypes[39] name='C_COO' valence=4 nepair=0 npi=0 sym=0
+loadAtomTypes[40] name='O_OH' valence=2 nepair=2 npi=0 sym=0
+loadAtomTypes[41] name='O_ald' valence=2 nepair=2 npi=0 sym=0
+loadAtomTypes[42] name='O_sCOO' valence=2 nepair=2 npi=0 sym=0
+loadAtomTypes[43] name='O_pCOO' valence=2 nepair=2 npi=0 sym=0
+loadAtomTypes[44] name='H_F' valence=1 nepair=0 npi=0 sym=0
+loadAtomTypes[45] name='H_OH' valence=1 nepair=0 npi=0 sym=0
+loadAtomTypes[46] name='H_NH2' valence=1 nepair=0 npi=0 sym=0
+loadAtomTypes[47] name='H_CH3' valence=1 nepair=0 npi=0 sym=0
+loadAtomTypes[48] name='H_ene' valence=1 nepair=0 npi=0 sym=0
+loadAtomTypes[49] name='H_yne' valence=1 nepair=0 npi=0 sym=0
+loadAtomTypes[50] name='H_ald' valence=1 nepair=0 npi=0 sym=0
+loadAtomTypes[51] name='H_COO' valence=1 nepair=0 npi=0 sym=0
+MMFFparams::loadBondTypes(fname=data/BondTypes.dat)
+loadBondTypes[1] atom1='H' atom2='H' order=1
+loadBondTypes[2] atom1='H' atom2='C' order=1
+loadBondTypes[3] atom1='H' atom2='N' order=1
+loadBondTypes[4] atom1='H' atom2='O' order=1
+loadBondTypes[5] atom1='H' atom2='F' order=1
+loadBondTypes[6] atom1='C' atom2='C' order=1
+loadBondTypes[7] atom1='C' atom2='C' order=2
+loadBondTypes[8] atom1='C' atom2='C' order=3
+loadBondTypes[9] atom1='C' atom2='N' order=1
+loadBondTypes[10] atom1='C' atom2='N' order=2
+loadBondTypes[11] atom1='C' atom2='N' order=3
+loadBondTypes[12] atom1='C' atom2='O' order=1
+loadBondTypes[13] atom1='C' atom2='O' order=2
+loadBondTypes[14] atom1='C' atom2='O' order=3
+loadBondTypes[15] atom1='C' atom2='F' order=1
+loadBondTypes[16] atom1='C' atom2='S' order=1
+loadBondTypes[17] atom1='Si' atom2='Si' order=1
+WARNING in MMFFparams::loadBondTypes: BondType[18](Si-C) has been flipped into (C-Si)
+loadBondTypes[18] atom1='C' atom2='Si' order=1
+WARNING in MMFFparams::loadBondTypes: BondType[19](Si-H) has been flipped into (H-Si)
+loadBondTypes[19] atom1='H' atom2='Si' order=1
+loadBondTypes[20] atom1='N' atom2='N' order=1
+loadBondTypes[21] atom1='N' atom2='N' order=2
+loadBondTypes[22] atom1='N' atom2='N' order=3
+loadBondTypes[23] atom1='N' atom2='O' order=1
+loadBondTypes[24] atom1='N' atom2='O' order=2
+loadBondTypes[25] atom1='N' atom2='O' order=3
+loadBondTypes[26] atom1='O' atom2='O' order=1
+loadBondTypes[27] atom1='O' atom2='O' order=2
+loadBondTypes[28] atom1='E' atom2='C' order=1
+loadBondTypes[29] atom1='E' atom2='N' order=1
+loadBondTypes[30] atom1='E' atom2='O' order=1
+loadBondTypes[31] atom1='E' atom2='F' order=1
+loadBondTypes[32] atom1='Na' atom2='Cl' order=1
+MMFFparams::loadAngleTypes(fname=data/AngleTypes.dat)
+loadAngleTypes[1] atom1='*' atom2='C' atom3='*'
+loadAngleTypes[2] atom1='*' atom2='N' atom3='*'
+loadAngleTypes[3] atom1='*' atom2='O' atom3='*'
+loadAngleTypes[4] atom1='*' atom2='C_2' atom3='*'
+loadAngleTypes[5] atom1='*' atom2='C_R' atom3='*'
+loadAngleTypes[6] atom1='*' atom2='N_2' atom3='*'
+loadAngleTypes[7] atom1='*' atom2='N_R' atom3='*'
+loadAngleTypes[8] atom1='*' atom2='O_2' atom3='*'
+loadAngleTypes[9] atom1='*' atom2='O_R' atom3='*'
+loadAngleTypes[10] atom1='H' atom2='C_R' atom3='H'
+loadAngleTypes[11] atom1='C' atom2='C_R' atom3='C'
+loadAngleTypes[12] atom1='C' atom2='C_R' atom3='O'
+loadAngleTypes[13] atom1='C' atom2='C_R' atom3='N'
+loadAngleTypes[14] atom1='H' atom2='C_R' atom3='C'
+MMFFparams::loadDihedralTypes(fname=data/DihedralTypes.dat)
+loadDihedralTypes[1] atom1='*' atom2='C_2' atom3='C_2' atom4='*' bond order=2
+loadDihedralTypes[2] atom1='*' atom2='C_2' atom3='N_2' atom4='*' bond order=2
+loadDihedralTypes[3] atom1='*' atom2='C_2' atom3='O_2' atom4='*' bond order=2
+loadDihedralTypes[4] atom1='*' atom2='C_R' atom3='C_2' atom4='*' bond order=2
+loadDihedralTypes[5] atom1='*' atom2='C_2' atom3='N_R' atom4='*' bond order=2
+loadDihedralTypes[6] atom1='*' atom2='C_2' atom3='O_R' atom4='*' bond order=2
+loadDihedralTypes[7] atom1='*' atom2='C_R' atom3='N_2' atom4='*' bond order=2
+loadDihedralTypes[8] atom1='*' atom2='C_R' atom3='O_2' atom4='*' bond order=2
+loadDihedralTypes[9] atom1='*' atom2='C_R' atom3='C_R' atom4='*' bond order=2
+loadDihedralTypes[10] atom1='*' atom2='C_R' atom3='N_R' atom4='*' bond order=2
+loadDihedralTypes[11] atom1='*' atom2='C_R' atom3='O_R' atom4='*' bond order=2
+loadDihedralTypes[12] atom1='*' atom2='N_2' atom3='N_2' atom4='*' bond order=2
+loadDihedralTypes[13] atom1='*' atom2='N_R' atom3='N_2' atom4='*' bond order=2
+loadDihedralTypes[14] atom1='*' atom2='N_2' atom3='O_2' atom4='*' bond order=2
+loadDihedralTypes[15] atom1='*' atom2='N_2' atom3='O_R' atom4='*' bond order=2
+loadDihedralTypes[16] atom1='*' atom2='N_R' atom3='N_R' atom4='*' bond order=2
+loadDihedralTypes[17] atom1='*' atom2='N_R' atom3='O_2' atom4='*' bond order=2
+loadDihedralTypes[18] atom1='*' atom2='N_R' atom3='O_R' atom4='*' bond order=2
+MolWorld_sp3::init() verbosity=2
+params.atypes.size() 51
+
+#### MolWorld_sp3::init()
+xyz_name    (data/xyz/noQ_H2O)
+surf_name   (data/xyz/NaCl_1x1_L1)
+MolWorld_sp3::init() bMMFF 1 bUFF 0 bRigid 0
+MMFFparams::loadXYZ() atom[  0] atyp( 20) xyz(    2.000000,    2.000000,    0.000000) REQs(    1.973500,    0.099215,   -0.700000,    0.000000) 
+MMFFparams::loadXYZ() atom[  1] atyp( 13) xyz(    0.000000,    0.000000,    0.000000) REQs(    1.491500,    0.036068,    0.700000,    0.000000) 
+MMFFparams::loadXYZ() DONE 
+MolWorld_sp3::loadSurf(data/xyz/NaCl_1x1_L1) 1 natoms 2 apos 105827994197456 atyps 105690555457808 
+MolWorld_sp3::initGridFF(data/xyz/NaCl_1x1_L1,bSymetrize=1,bAutoNPBC=1 bCheckEval=1 bUseEwald=1 bFit=1 bRefine=1 bGridDouble=1 gridStep=0.1,z0=nan,cel0={-0.5,-0.5,0} )
+GridFF::initGridFF(data/xyz/NaCl_1x1_L1) bSymetrize=1 bAutoNPBC=1 z0=nan 
+GridFF::findTop() z0=0 
+ n      40 40 200 
+ pos0   -2.000000 -2.000000 0.000000 
+ a      4.000000 0.000000 0.000000 
+ b      0.000000 4.000000 0.000000 
+ c      0.000000 0.000000 20.000000 
+ da     0.100000 0.000000 0.000000 
+ db     0.000000 0.100000 0.000000 
+ dc     0.000000 0.000000 0.100000 
+ inv_da 10.000000 0.000000 0.000000 
+ inv_db 0.000000 10.000000 0.000000 
+ inv_dc 0.000000 0.000000 10.000000 
+GridFF::initGridFF() nPBC(5,5,0|121) Mpol qcog(0,0,0) Q=0 dipol(0,0,0) quadrupol:xx,yy,zz(-2.8,-2.8,0)yz,xz,xy(0,0,0)
+MolWorld_sp3::initGridFF() 1 wd0=`/home/indranil/git/FireCore/tests/tMMFF`
+MolWorld_sp3::initGridFF() 1 wd=`data/NaCl_1x1_L1`
+GridFF::tryLoad_new() mode=6 bSymetrize=1 bFit=1 bRefine=1 
+Current  directory: /home/indranil/git/FireCore/cpp/common_resources/NaCl_1x1_L1
+GridFF::tryLoad_new() load Bspline_PLQ from Bspline_PLQd.npy
+NumpyFile() dtype=`<f8` nbyte=8 ntot=960000 shape(40,40,200,3,)
+ n      40 40 200 
+ pos0   -2.000000 -2.000000 0.000000 
+ a      4.000000 0.000000 0.000000 
+ b      0.000000 4.000000 0.000000 
+ c      0.000000 0.000000 20.000000 
+ da     0.100000 0.000000 0.000000 
+ db     0.000000 0.100000 0.000000 
+ dc     0.000000 0.000000 0.100000 
+ inv_da 10.000000 0.000000 0.000000 
+ inv_db 0.000000 10.000000 0.000000 
+ inv_dc 0.000000 0.000000 10.000000 
+GridFF::tryLoad_new() Bspline_PLQ Paul(-2.35111e-22,41.552) Lond(-7.38734,-3.30021e-12) Coul(-81.0616,81.0616) 
+grid_shift0(0,0,0)
+buildMolecule_xyz( data/xyz/noQ_H2O )
+MolWorld_sp3::loadGeom(data/xyz/noQ_H2O)
+MM::Builder::loadXYZ_Atoms(data/xyz/noQ_H2O.xyz) 
+WARNING: lvec not read from data/xyz/noQ_H2O.xyz 
+MMFFparams::loadXYZ() atom[  0] atyp( 10) xyz(    0.000000,    0.000000,    0.000000) REQs(    1.750000,    0.051008,    0.000000,    0.000000) 
+MMFFparams::loadXYZ() atom[  1] atyp(  3) xyz(   -0.758063,    0.635810,    0.000000) REQs(    1.443000,    0.043681,    0.000000,    0.000000) 
+MMFFparams::loadXYZ() atom[  2] atyp(  3) xyz(    0.758066,    0.635807,    0.000000) REQs(    1.443000,    0.043681,    0.000000,    0.000000) 
+MMFFparams::loadXYZ() DONE 
+ # MM::Builder.printAtoms(na=3) 
+atom[0] Atom{id -1 t 10 c 0 f 0 REQ(1.75,0.0510083,0,0) pos(0,0,0)}
+atom[1] Atom{id -1 t 3 c -1 f 0 REQ(1.443,0.0436809,0,0) pos(-0.758063,0.63581,0)}
+atom[2] Atom{id -1 t 3 c -1 f 0 REQ(1.443,0.0436809,0,0) pos(0.758066,0.635807,0)}
+MM::Builder::autoBonds() 
+MolWorld_sp3::buildMolecule_xyz(data/xyz/noQ_H2O) ifrag=0 
+MMFFBuilder::assignBondParams(ib=0|ia=0,ja=1) types: 10=O 3=H 
+MMFFBuilder::assignBondParams(ib=1|ia=0,ja=2) types: 10=O 3=H 
+ # MM::Builder.printAtoms(na=3) 
+atom[0] Atom{id -1 t 10 c 0 f 0 REQ(1.75,0.0510083,0,0) pos(0,0,0)}
+atom[1] Atom{id -1 t 3 c -1 f 0 REQ(1.443,0.0436809,0,0) pos(-0.758063,0.63581,0)}
+atom[2] Atom{id -1 t 3 c -1 f 0 REQ(1.443,0.0436809,0,0) pos(0.758066,0.635807,0)}
+ # MM::Builder.printBonds(nb=2) 
+bond[0] Bond{t -1 a(0,1) l0 0.973 k 24.436}
+bond[1] Bond{t -1 a(0,2) l0 0.973 k 24.436}
+ # MM::Builder.printAtomConfs(na=3,nc=1) 
+atom[0] O=10 ic 0  AtomConf{ia 0, n,nb,np,ne,nH(4,2,0,2,0) [0,1,-1,-1]}
+Builder::randomFragmentCollors()
+frags[0].color FF723739 (57,55,114)
+MolWorld_sp3::makeFFs()
+MolWorld_sp3::makeMMFFs()
+DEBUG #l 1354 makeMMFFs 
+DEBUG #l 1359 makeMMFFs 
+DEBUG #l 1370 makeMMFFs 
+ # MM::Builder.printAtomConfs(na=3,nc=1) 
+atom[0] O_3=30 ic 0  AtomConf{ia 0, n,nb,np,ne,nH(4,2,0,2,0) [0,1,-1,-1]}
+ # MM::Builder.printBonds(nb=2) 
+bond[0] Bond{t -1 a(0,1) l0 0.973 k 24.436}
+bond[1] Bond{t -1 a(0,2) l0 0.973 k 24.436}
+DEBUG #l 1379 makeMMFFs 
+MM::Builder::toMMFFsp3_loc() nconf 1 ncap 2 npi 0 ne 0 
+MM::Builder::toMMFFsp3_loc() DONE 
+DEBUG #l 1385 makeMMFFs 
+MM::Builder::toMMFFsp3() nconf 1 ncap 2 npi 0 ne 0 
+ 1, 2, -1, -1,] 
+MM::Builder::toMMFFsp3() DONE 
+DEBUG #l 1388 makeMMFFs 
+MMFFsp3_loc::printNeighs()
+atom[0] neigh{  1,  2, -1, -1} neighCell{ -1, -1, -1, -1} 
+atom[1] neigh{  0, -1, -1, -1} neighCell{ -1, -1, -1, -1} 
+atom[2] neigh{  0, -1, -1, -1} neighCell{ -1, -1, -1, -1} 
+DEBUG #l 1432 makeFFs 
+DEBUG #l 1498 makeFFs 
+MolWorld_sp3::initNBmol() na 3 
+DEBUG #l 998 initNBmol 
+DEBUG #l 1006 initNBmol 
+MMFFparams::assignREs(3) @itypes=105690555458320 
+DEBUG #l 1010 initNBmol 
+NBFF::evalPLQs() natoms 3 K 1.5 @PLQs=0x604000005fd0 
+evalPLQs[0] REQ(1.75,0.0510083,0) PLQ(9.72046,0.704148,0)
+evalPLQs[1] REQ(1.443,0.0436809,0) PLQ(3.314,0.380471,0)
+evalPLQs[2] REQ(1.443,0.0436809,0) PLQ(3.314,0.380471,0)
+DEBUG #l 1012 initNBmol 
+NBFF::evalPLQd() natoms 3 K 1.5 @PLQd=0x608000002020 
+evalPLQd[0] REQ(1.75,0.0510083,0) PLQ(9.72046,0.704148,0)
+evalPLQd[1] REQ(1.443,0.0436809,0) PLQ(3.314,0.380471,0)
+evalPLQd[2] REQ(1.443,0.0436809,0) PLQ(3.314,0.380471,0)
+NBFF::print_nonbonded(n=3)
+nb_atom[0] REQ(  1.750,0.0510083,0,0) PLQ(  9.72046061,  0.70414780,  0.0000,0) pos(  0.000,  0.000,  0.000) atyp 30 
+nb_atom[1] REQ(  1.443,0.0436809,0,0) PLQ(  3.31399875,  0.38047133,  0.0000,0) pos( -0.758,  0.636,  0.000) atyp 3 
+nb_atom[2] REQ(  1.443,0.0436809,0,0) PLQ(  3.31399875,  0.38047133,  0.0000,0) pos(  0.758,  0.636,  0.000) atyp 3 
+DEBUG #l 1016 initNBmol 
+Atoms::print() natom=3
+[0] atype 30 apos( 0.000, 0.000, 0.000)
+[1] atype 3 apos(-0.758, 0.636, 0.000)
+[2] atype 3 apos( 0.758, 0.636, 0.000)
+DEBUG #l 1501 makeFFs 
+DEBUG>> makeFFs (after initNBmol): nbmol.REQs[0](RvdW=1.75, sqrtEvdW=0.0510083, Q=0, Hb?=0)
+DEBUG #l 1511 makeFFs 
+DEBUG #l 1516 makeFFs 
+DEBUG #l 1518 makeFFs 
+MMFFsp3_loc::chargeToEpairs() na 3 nnode 1 cQ -0.2 etyp 1 @atypes=0x60200003a310 @REQs=0x608000001ea0 
+MMFFsp3_loc::chargeToEpairs() atom[0] ngs{1,2,-1,-1} 
+MMFFsp3_loc::chargeToEpairs() atom[0] ngh[0|1] tj=3 Qi=0 Qj=0 
+MMFFsp3_loc::chargeToEpairs() atom[0] ngh[1|2] tj=3 Qi=0 Qj=0 
+MMFFsp3_loc::chargeToEpairs() DONE 
+DEBUG #l 1521 makeFFs 
+DEBUG #l 1523 makeFFs 
+DEBUG>> makeFFs (before evalPLQd): gridFF.alphaMorse = 1.5
+DEBUG>> makeFFs (before evalPLQd): ffl.REQs[0](RvdW=1.75, sqrtEvdW=0.0510083, Q=0, Hb?=0)
+NBFF::evalPLQs() natoms 3 K 1.5 @PLQs=0x604000005fd0 
+evalPLQs[0] REQ(1.75,0.0510083,0) PLQ(9.72046,0.704148,0)
+evalPLQs[1] REQ(1.443,0.0436809,0) PLQ(3.314,0.380471,0)
+evalPLQs[2] REQ(1.443,0.0436809,0) PLQ(3.314,0.380471,0)
+NBFF::evalPLQd() natoms 3 K 1.5 @PLQd=0x608000002020 
+evalPLQd[0] REQ(1.75,0.0510083,0) PLQ(9.72046,0.704148,0)
+evalPLQd[1] REQ(1.443,0.0436809,0) PLQ(3.314,0.380471,0)
+evalPLQd[2] REQ(1.443,0.0436809,0) PLQ(3.314,0.380471,0)
+DEBUG #l 1534 makeFFs 
+DEBUG>> makeFFs (after evalPLQd): ffl.PLQd[0](Pauli=9.72046, Lond=0.704148, Coul=0, alpha*RvdW?=0)
+DEBUG #l 1551 makeFFs 
+makeFFs(): ffl  .print_nonbonded() 
+NBFF::print_nonbonded(n=3)
+nb_atom[0] REQ(  1.750,0.0510083,0,0) PLQ(  9.72046061,  0.70414780,  0.0000,0) pos(  0.000,  0.000,  0.000) atyp 30 
+nb_atom[1] REQ(  1.443,0.0436809,0,0) PLQ(  3.31399875,  0.38047133,  0.0000,0) pos( -0.758,  0.636,  0.000) atyp 3 
+nb_atom[2] REQ(  1.443,0.0436809,0,0) PLQ(  3.31399875,  0.38047133,  0.0000,0) pos(  0.758,  0.636,  0.000) atyp 3 
+makeFFs(): nbmol.print_nonbonded() 
+NBFF::print_nonbonded(n=3)
+nb_atom[0] REQ(  1.750,0.0510083,0,0) PLQ(  9.72046061,  0.70414780,  0.0000,0) pos(  0.000,  0.000,  0.000) atyp 30 
+nb_atom[1] REQ(  1.443,0.0436809,0,0) PLQ(  3.31399875,  0.38047133,  0.0000,0) pos( -0.758,  0.636,  0.000) atyp 3 
+nb_atom[2] REQ(  1.443,0.0436809,0,0) PLQ(  3.31399875,  0.38047133,  0.0000,0) pos(  0.758,  0.636,  0.000) atyp 3 
+DEBUG #l 1555 makeFFs 
+MolWorld_sp3::setOptimizer(): optimal time_step = 0.05 
+DEBUG #l 1563 makeFFs 
+DEBUG #l 1565 makeFFs 
+MolWorld_sp3::init() builder.lvec 
+ 1.000000 0.000000 0.000000 
+ 0.000000 1.000000 0.000000 
+ 0.000000 0.000000 1.000000 
+MolWorld_sp3::init() ffl.lvec     
+ 0.000000 0.000000 0.000000 
+ 0.000000 0.000000 0.000000 
+ 0.000000 0.000000 0.000000 
+#### MolWorld_sp3::init() DONE
+
+before_MMFF_lib.cpp::init_buffers() ndims{nDOFs=12,natoms=3,nnode=1,ncap=2}
+MMFF_lib.cpp::init_buffers() ndims{nDOFs=9,natoms=3,nnode=1,ncap=2,npi=0,nbonds=2,nvecs=3,ne=0,ie0=3}
+Debug: Library path: /home/indranil/git/FireCore/cpp/Build/libs/Molecular/libMMFF_lib.so
+Debug: Library path: /home/indranil/git/FireCore/cpp/Build/libs/Molecular/libMMFF_lib.so
+Debug: ndims pointer address: 0x7fa117a79d30
+Debug: ndims array after conversion: [9 3 1 2 0 2 3 0 3]
+Debug: Raw ndims array from C++: [9 3 1 2 0 2 3 0 3]
+getBuffs(): nDOFs=9 nvecs=3  natoms=3 nnode=1 ncap=2 npi=0 nbonds=2 nvecs=3 ne=0 ie0=3 
+getBuffs(): natoms=3 nnode=1 ncap=2 npi=0 nbonds=2 nvecs=3 ne=0 ie0=3 
+getBuffs DONE
+setSwitches2() W.bCheckInvariants==1 bPBC=0 | bNonBonded=0 bNonBondNeighs=0 | bSurfAtoms=1 bGridFF=1 | bMMFF=1 doAngles=1 doPiSigma=1 doPiPiI=1 
+DEBUG>> MMFF_lib: AFTER setSwitches2: W.ffl.PLQd[0].z = 0.000000
+DEBUG>> MMFF_lib: AFTER setSwitches2: W.ffl.PLQd[0].z = 0.000000
+DEBUG>> scan_rigid: START: ffl.PLQd[0].z = 0.000000
+MolWorld_sp3::scan_rigid(nconf=125,omp=0) ...
+DEBUG>> eval_no_omp[ia=0]: pos(2,2,2.7) PLQd(Pauli=9.72046, Lond=0.704148, Coul=0, aR?=0)
+DEBUG<< eval_no_omp[ia=0]: E_grid=0.0678031, f_accum(1.38948e-05,0.712449,1.59067)
+DEBUG>> eval_no_omp[ia=0]: pos(2.1,2.1,2.7) PLQd(Pauli=9.72046, Lond=0.704148, Coul=0, aR?=0)
+DEBUG<< eval_no_omp[ia=0]: E_grid=0.0665637, f_accum(0.012322,0.724757,1.58615)
+DEBUG>> eval_no_omp[ia=0]: pos(2.2,2.2,2.7) PLQd(Pauli=9.72046, Lond=0.704148, Coul=0, aR?=0)
+DEBUG<< eval_no_omp[ia=0]: E_grid=0.0629463, f_accum(0.0236358,0.736071,1.573)
+DEBUG>> eval_no_omp[ia=0]: pos(2.3,2.3,2.7) PLQd(Pauli=9.72046, Lond=0.704148, Coul=0, aR?=0)
+DEBUG<< eval_no_omp[ia=0]: E_grid=0.0572387, f_accum(0.0330999,0.745535,1.55234)
+DEBUG>> eval_no_omp[ia=0]: pos(2.4,2.4,2.7) PLQd(Pauli=9.72046, Lond=0.704148, Coul=0, aR?=0)
+DEBUG<< eval_no_omp[ia=0]: E_grid=0.0498762, f_accum(0.0401083,0.752543,1.52586)
+DEBUG>> eval_no_omp[ia=0]: pos(2.5,2.5,2.7) PLQd(Pauli=9.72046, Lond=0.704148, Coul=0, aR?=0)
+DEBUG<< eval_no_omp[ia=0]: E_grid=0.0413854, f_accum(0.0443592,0.756794,1.49556)
+DEBUG>> eval_no_omp[ia=0]: pos(2.6,2.6,2.7) PLQd(Pauli=9.72046, Lond=0.704148, Coul=0, aR?=0)
+DEBUG<< eval_no_omp[ia=0]: E_grid=0.0323212, f_accum(0.0458672,0.758302,1.46353)
+DEBUG>> eval_no_omp[ia=0]: pos(2.7,2.7,2.7) PLQd(Pauli=9.72046, Lond=0.704148, Coul=0, aR?=0)
+DEBUG<< eval_no_omp[ia=0]: E_grid=0.0232089, f_accum(0.0449064,0.757341,1.43167)
+DEBUG>> eval_no_omp[ia=0]: pos(2.8,2.8,2.7) PLQd(Pauli=9.72046, Lond=0.704148, Coul=0, aR?=0)
+DEBUG<< eval_no_omp[ia=0]: E_grid=0.0144977, f_accum(0.0419453,0.75438,1.40159)
+DEBUG>> eval_no_omp[ia=0]: pos(2.9,2.9,2.7) PLQd(Pauli=9.72046, Lond=0.704148, Coul=0, aR?=0)
+DEBUG<< eval_no_omp[ia=0]: E_grid=0.00653218, f_accum(0.0375456,0.749981,1.37444)
+DEBUG>> eval_no_omp[ia=0]: pos(3,3,2.7) PLQd(Pauli=9.72046, Lond=0.704148, Coul=0, aR?=0)
+DEBUG<< eval_no_omp[ia=0]: E_grid=-0.000457842, f_accum(0.0322855,0.744721,1.35094)
+DEBUG>> eval_no_omp[ia=0]: pos(3.1,3.1,2.7) PLQd(Pauli=9.72046, Lond=0.704148, Coul=0, aR?=0)
+DEBUG<< eval_no_omp[ia=0]: E_grid=-0.00635477, f_accum(0.0266968,0.739132,1.33141)
+DEBUG>> eval_no_omp[ia=0]: pos(3.2,3.2,2.7) PLQd(Pauli=9.72046, Lond=0.704148, Coul=0, aR?=0)
+DEBUG<< eval_no_omp[ia=0]: E_grid=-0.0111387, f_accum(0.0212195,0.733655,1.31582)
+DEBUG>> eval_no_omp[ia=0]: pos(3.3,3.3,2.7) PLQd(Pauli=9.72046, Lond=0.704148, Coul=0, aR?=0)
+DEBUG<< eval_no_omp[ia=0]: E_grid=-0.0148669, f_accum(0.0161859,0.728621,1.30388)
+DEBUG>> eval_no_omp[ia=0]: pos(3.4,3.4,2.7) PLQd(Pauli=9.72046, Lond=0.704148, Coul=0, aR?=0)
+DEBUG<< eval_no_omp[ia=0]: E_grid=-0.0176518, f_accum(0.0118139,0.724249,1.29514)
+DEBUG>> eval_no_omp[ia=0]: pos(3.5,3.5,2.7) PLQd(Pauli=9.72046, Lond=0.704148, Coul=0, aR?=0)
+DEBUG<< eval_no_omp[ia=0]: E_grid=-0.0196386, f_accum(0.00821488,0.72065,1.28905)
+DEBUG>> eval_no_omp[ia=0]: pos(3.6,3.6,2.7) PLQd(Pauli=9.72046, Lond=0.704148, Coul=0, aR?=0)
+DEBUG<< eval_no_omp[ia=0]: E_grid=-0.0209852, f_accum(0.00540814,0.717843,1.28505)
+DEBUG>> eval_no_omp[ia=0]: pos(3.7,3.7,2.7) PLQd(Pauli=9.72046, Lond=0.704148, Coul=0, aR?=0)
+DEBUG<< eval_no_omp[ia=0]: E_grid=-0.0218451, f_accum(0.00333237,0.715768,1.28259)
+DEBUG>> eval_no_omp[ia=0]: pos(3.8,3.8,2.7) PLQd(Pauli=9.72046, Lond=0.704148, Coul=0, aR?=0)
+DEBUG<< eval_no_omp[ia=0]: E_grid=-0.022353, f_accum(0.00186299,0.714298,1.2812)
+DEBUG>> eval_no_omp[ia=0]: pos(3.9,3.9,2.7) PLQd(Pauli=9.72046, Lond=0.704148, Coul=0, aR?=0)
+DEBUG<< eval_no_omp[ia=0]: E_grid=-0.0226137, f_accum(0.000826339,0.713262,1.28052)
+DEBUG>> eval_no_omp[ia=0]: pos(4,4,2.7) PLQd(Pauli=9.72046, Lond=0.704148, Coul=0, aR?=0)
+DEBUG<< eval_no_omp[ia=0]: E_grid=-0.022693, f_accum(1.38457e-05,0.712449,1.28032)
+DEBUG>> eval_no_omp[ia=0]: pos(4.1,4.1,2.7) PLQd(Pauli=9.72046, Lond=0.704148, Coul=0, aR?=0)
+DEBUG<< eval_no_omp[ia=0]: E_grid=-0.0226136, f_accum(-0.000798382,0.711637,1.28052)
+DEBUG>> eval_no_omp[ia=0]: pos(4.2,4.2,2.7) PLQd(Pauli=9.72046, Lond=0.704148, Coul=0, aR?=0)
+DEBUG<< eval_no_omp[ia=0]: E_grid=-0.0223531, f_accum(-0.00183541,0.7106,1.2812)
+DEBUG>> eval_no_omp[ia=0]: pos(4.3,4.3,2.7) PLQd(Pauli=9.72046, Lond=0.704148, Coul=0, aR?=0)
+DEBUG<< eval_no_omp[ia=0]: E_grid=-0.0218451, f_accum(-0.0033043,0.709131,1.28259)
+DEBUG>> eval_no_omp[ia=0]: pos(4.4,4.4,2.7) PLQd(Pauli=9.72046, Lond=0.704148, Coul=0, aR?=0)
+DEBUG<< eval_no_omp[ia=0]: E_grid=-0.0209851, f_accum(-0.00538027,0.707055,1.28505)
+DEBUG>> eval_no_omp[ia=0]: pos(4.5,4.5,2.7) PLQd(Pauli=9.72046, Lond=0.704148, Coul=0, aR?=0)
+DEBUG<< eval_no_omp[ia=0]: E_grid=-0.0196386, f_accum(-0.00818704,0.704248,1.28905)
+DEBUG>> eval_no_omp[ia=0]: pos(4.6,4.6,2.7) PLQd(Pauli=9.72046, Lond=0.704148, Coul=0, aR?=0)
+DEBUG<< eval_no_omp[ia=0]: E_grid=-0.0176518, f_accum(-0.0117861,0.700649,1.29514)
+DEBUG>> eval_no_omp[ia=0]: pos(4.7,4.7,2.7) PLQd(Pauli=9.72046, Lond=0.704148, Coul=0, aR?=0)
+DEBUG<< eval_no_omp[ia=0]: E_grid=-0.0148669, f_accum(-0.016158,0.696277,1.30388)
+DEBUG>> eval_no_omp[ia=0]: pos(4.8,4.8,2.7) PLQd(Pauli=9.72046, Lond=0.704148, Coul=0, aR?=0)
+DEBUG<< eval_no_omp[ia=0]: E_grid=-0.0111387, f_accum(-0.0211921,0.691243,1.31582)
+DEBUG>> eval_no_omp[ia=0]: pos(4.9,4.9,2.7) PLQd(Pauli=9.72046, Lond=0.704148, Coul=0, aR?=0)
+DEBUG<< eval_no_omp[ia=0]: E_grid=-0.0063548, f_accum(-0.0266689,0.685766,1.33141)
+DEBUG>> eval_no_omp[ia=0]: pos(5,5,2.7) PLQd(Pauli=9.72046, Lond=0.704148, Coul=0, aR?=0)
+DEBUG<< eval_no_omp[ia=0]: E_grid=-0.000457837, f_accum(-0.0322575,0.680178,1.35094)
+DEBUG>> eval_no_omp[ia=0]: pos(5.1,5.1,2.7) PLQd(Pauli=9.72046, Lond=0.704148, Coul=0, aR?=0)
+DEBUG<< eval_no_omp[ia=0]: E_grid=0.00653217, f_accum(-0.037518,0.674917,1.37444)
+DEBUG>> eval_no_omp[ia=0]: pos(5.2,5.2,2.7) PLQd(Pauli=9.72046, Lond=0.704148, Coul=0, aR?=0)
+DEBUG<< eval_no_omp[ia=0]: E_grid=0.0144976, f_accum(-0.0419175,0.670518,1.40159)
+DEBUG>> eval_no_omp[ia=0]: pos(5.3,5.3,2.7) PLQd(Pauli=9.72046, Lond=0.704148, Coul=0, aR?=0)
+DEBUG<< eval_no_omp[ia=0]: E_grid=0.0232088, f_accum(-0.0448786,0.667557,1.43167)
+DEBUG>> eval_no_omp[ia=0]: pos(5.4,5.4,2.7) PLQd(Pauli=9.72046, Lond=0.704148, Coul=0, aR?=0)
+DEBUG<< eval_no_omp[ia=0]: E_grid=0.0323212, f_accum(-0.0458391,0.666596,1.46353)
+DEBUG>> eval_no_omp[ia=0]: pos(5.5,5.5,2.7) PLQd(Pauli=9.72046, Lond=0.704148, Coul=0, aR?=0)
+DEBUG<< eval_no_omp[ia=0]: E_grid=0.0413854, f_accum(-0.0443315,0.668104,1.49556)
+DEBUG>> eval_no_omp[ia=0]: pos(5.6,5.6,2.7) PLQd(Pauli=9.72046, Lond=0.704148, Coul=0, aR?=0)
+DEBUG<< eval_no_omp[ia=0]: E_grid=0.0498762, f_accum(-0.0400804,0.672355,1.52586)
+DEBUG>> eval_no_omp[ia=0]: pos(5.7,5.7,2.7) PLQd(Pauli=9.72046, Lond=0.704148, Coul=0, aR?=0)
+DEBUG<< eval_no_omp[ia=0]: E_grid=0.0572387, f_accum(-0.0330719,0.679363,1.55234)
+DEBUG>> eval_no_omp[ia=0]: pos(5.8,5.8,2.7) PLQd(Pauli=9.72046, Lond=0.704148, Coul=0, aR?=0)
+DEBUG<< eval_no_omp[ia=0]: E_grid=0.0629463, f_accum(-0.0236084,0.688827,1.573)
+DEBUG>> eval_no_omp[ia=0]: pos(5.9,5.9,2.7) PLQd(Pauli=9.72046, Lond=0.704148, Coul=0, aR?=0)
+DEBUG<< eval_no_omp[ia=0]: E_grid=0.0665637, f_accum(-0.012294,0.700141,1.58615)
+DEBUG>> eval_no_omp[ia=0]: pos(6,6,2.7) PLQd(Pauli=9.72046, Lond=0.704148, Coul=0, aR?=0)
+DEBUG<< eval_no_omp[ia=0]: E_grid=0.0678031, f_accum(1.38948e-05,0.712449,1.59067)
+DEBUG>> eval_no_omp[ia=0]: pos(6.1,6.1,2.7) PLQd(Pauli=9.72046, Lond=0.704148, Coul=0, aR?=0)
+DEBUG<< eval_no_omp[ia=0]: E_grid=0.0665637, f_accum(0.012322,0.724757,1.58615)
+DEBUG>> eval_no_omp[ia=0]: pos(6.2,6.2,2.7) PLQd(Pauli=9.72046, Lond=0.704148, Coul=0, aR?=0)
+DEBUG<< eval_no_omp[ia=0]: E_grid=0.0629463, f_accum(0.0236358,0.736071,1.573)
+DEBUG>> eval_no_omp[ia=0]: pos(6.3,6.3,2.7) PLQd(Pauli=9.72046, Lond=0.704148, Coul=0, aR?=0)
+DEBUG<< eval_no_omp[ia=0]: E_grid=0.0572387, f_accum(0.0330999,0.745535,1.55234)
+DEBUG>> eval_no_omp[ia=0]: pos(6.4,6.4,2.7) PLQd(Pauli=9.72046, Lond=0.704148, Coul=0, aR?=0)
+DEBUG<< eval_no_omp[ia=0]: E_grid=0.0498762, f_accum(0.0401083,0.752543,1.52586)
+DEBUG>> eval_no_omp[ia=0]: pos(6.5,6.5,2.7) PLQd(Pauli=9.72046, Lond=0.704148, Coul=0, aR?=0)
+DEBUG<< eval_no_omp[ia=0]: E_grid=0.0413854, f_accum(0.0443592,0.756794,1.49556)
+DEBUG>> eval_no_omp[ia=0]: pos(6.6,6.6,2.7) PLQd(Pauli=9.72046, Lond=0.704148, Coul=0, aR?=0)
+DEBUG<< eval_no_omp[ia=0]: E_grid=0.0323212, f_accum(0.0458672,0.758302,1.46353)
+DEBUG>> eval_no_omp[ia=0]: pos(6.7,6.7,2.7) PLQd(Pauli=9.72046, Lond=0.704148, Coul=0, aR?=0)
+DEBUG<< eval_no_omp[ia=0]: E_grid=0.0232089, f_accum(0.0449064,0.757341,1.43167)
+DEBUG>> eval_no_omp[ia=0]: pos(6.8,6.8,2.7) PLQd(Pauli=9.72046, Lond=0.704148, Coul=0, aR?=0)
+DEBUG<< eval_no_omp[ia=0]: E_grid=0.0144977, f_accum(0.0419453,0.75438,1.40159)
+DEBUG>> eval_no_omp[ia=0]: pos(6.9,6.9,2.7) PLQd(Pauli=9.72046, Lond=0.704148, Coul=0, aR?=0)
+DEBUG<< eval_no_omp[ia=0]: E_grid=0.00653218, f_accum(0.0375456,0.749981,1.37444)
+DEBUG>> eval_no_omp[ia=0]: pos(7,7,2.7) PLQd(Pauli=9.72046, Lond=0.704148, Coul=0, aR?=0)
+DEBUG<< eval_no_omp[ia=0]: E_grid=-0.000457842, f_accum(0.0322855,0.744721,1.35094)
+DEBUG>> eval_no_omp[ia=0]: pos(7.1,7.1,2.7) PLQd(Pauli=9.72046, Lond=0.704148, Coul=0, aR?=0)
+DEBUG<< eval_no_omp[ia=0]: E_grid=-0.00635477, f_accum(0.0266968,0.739132,1.33141)
+DEBUG>> eval_no_omp[ia=0]: pos(7.2,7.2,2.7) PLQd(Pauli=9.72046, Lond=0.704148, Coul=0, aR?=0)
+DEBUG<< eval_no_omp[ia=0]: E_grid=-0.0111387, f_accum(0.0212195,0.733655,1.31582)
+DEBUG>> eval_no_omp[ia=0]: pos(7.3,7.3,2.7) PLQd(Pauli=9.72046, Lond=0.704148, Coul=0, aR?=0)
+DEBUG<< eval_no_omp[ia=0]: E_grid=-0.0148669, f_accum(0.0161859,0.728621,1.30388)
+DEBUG>> eval_no_omp[ia=0]: pos(7.4,7.4,2.7) PLQd(Pauli=9.72046, Lond=0.704148, Coul=0, aR?=0)
+DEBUG<< eval_no_omp[ia=0]: E_grid=-0.0176518, f_accum(0.0118139,0.724249,1.29514)
+DEBUG>> eval_no_omp[ia=0]: pos(7.5,7.5,2.7) PLQd(Pauli=9.72046, Lond=0.704148, Coul=0, aR?=0)
+DEBUG<< eval_no_omp[ia=0]: E_grid=-0.0196386, f_accum(0.00821488,0.72065,1.28905)
+DEBUG>> eval_no_omp[ia=0]: pos(7.6,7.6,2.7) PLQd(Pauli=9.72046, Lond=0.704148, Coul=0, aR?=0)
+DEBUG<< eval_no_omp[ia=0]: E_grid=-0.0209852, f_accum(0.00540814,0.717843,1.28505)
+DEBUG>> eval_no_omp[ia=0]: pos(7.7,7.7,2.7) PLQd(Pauli=9.72046, Lond=0.704148, Coul=0, aR?=0)
+DEBUG<< eval_no_omp[ia=0]: E_grid=-0.0218451, f_accum(0.00333237,0.715768,1.28259)
+DEBUG>> eval_no_omp[ia=0]: pos(7.8,7.8,2.7) PLQd(Pauli=9.72046, Lond=0.704148, Coul=0, aR?=0)
+DEBUG<< eval_no_omp[ia=0]: E_grid=-0.022353, f_accum(0.00186299,0.714298,1.2812)
+DEBUG>> eval_no_omp[ia=0]: pos(7.9,7.9,2.7) PLQd(Pauli=9.72046, Lond=0.704148, Coul=0, aR?=0)
+DEBUG<< eval_no_omp[ia=0]: E_grid=-0.0226137, f_accum(0.000826339,0.713262,1.28052)
+DEBUG>> eval_no_omp[ia=0]: pos(8,8,2.7) PLQd(Pauli=9.72046, Lond=0.704148, Coul=0, aR?=0)
+DEBUG<< eval_no_omp[ia=0]: E_grid=-0.022693, f_accum(1.38457e-05,0.712449,1.28032)
+DEBUG>> eval_no_omp[ia=0]: pos(8.1,8.1,2.7) PLQd(Pauli=9.72046, Lond=0.704148, Coul=0, aR?=0)
+DEBUG<< eval_no_omp[ia=0]: E_grid=-0.0226136, f_accum(-0.000798382,0.711637,1.28052)
+DEBUG>> eval_no_omp[ia=0]: pos(8.2,8.2,2.7) PLQd(Pauli=9.72046, Lond=0.704148, Coul=0, aR?=0)
+DEBUG<< eval_no_omp[ia=0]: E_grid=-0.0223531, f_accum(-0.00183541,0.7106,1.2812)
+DEBUG>> eval_no_omp[ia=0]: pos(8.3,8.3,2.7) PLQd(Pauli=9.72046, Lond=0.704148, Coul=0, aR?=0)
+DEBUG<< eval_no_omp[ia=0]: E_grid=-0.0218451, f_accum(-0.0033043,0.709131,1.28259)
+DEBUG>> eval_no_omp[ia=0]: pos(8.4,8.4,2.7) PLQd(Pauli=9.72046, Lond=0.704148, Coul=0, aR?=0)
+DEBUG<< eval_no_omp[ia=0]: E_grid=-0.0209851, f_accum(-0.00538027,0.707055,1.28505)
+DEBUG>> eval_no_omp[ia=0]: pos(8.5,8.5,2.7) PLQd(Pauli=9.72046, Lond=0.704148, Coul=0, aR?=0)
+DEBUG<< eval_no_omp[ia=0]: E_grid=-0.0196386, f_accum(-0.00818704,0.704248,1.28905)
+DEBUG>> eval_no_omp[ia=0]: pos(8.6,8.6,2.7) PLQd(Pauli=9.72046, Lond=0.704148, Coul=0, aR?=0)
+DEBUG<< eval_no_omp[ia=0]: E_grid=-0.0176518, f_accum(-0.0117861,0.700649,1.29514)
+DEBUG>> eval_no_omp[ia=0]: pos(8.7,8.7,2.7) PLQd(Pauli=9.72046, Lond=0.704148, Coul=0, aR?=0)
+DEBUG<< eval_no_omp[ia=0]: E_grid=-0.0148669, f_accum(-0.016158,0.696277,1.30388)
+DEBUG>> eval_no_omp[ia=0]: pos(8.8,8.8,2.7) PLQd(Pauli=9.72046, Lond=0.704148, Coul=0, aR?=0)
+DEBUG<< eval_no_omp[ia=0]: E_grid=-0.0111387, f_accum(-0.0211921,0.691243,1.31582)
+DEBUG>> eval_no_omp[ia=0]: pos(8.9,8.9,2.7) PLQd(Pauli=9.72046, Lond=0.704148, Coul=0, aR?=0)
+DEBUG<< eval_no_omp[ia=0]: E_grid=-0.0063548, f_accum(-0.0266689,0.685766,1.33141)
+DEBUG>> eval_no_omp[ia=0]: pos(9,9,2.7) PLQd(Pauli=9.72046, Lond=0.704148, Coul=0, aR?=0)
+DEBUG<< eval_no_omp[ia=0]: E_grid=-0.000457837, f_accum(-0.0322575,0.680178,1.35094)
+DEBUG>> eval_no_omp[ia=0]: pos(9.1,9.1,2.7) PLQd(Pauli=9.72046, Lond=0.704148, Coul=0, aR?=0)
+DEBUG<< eval_no_omp[ia=0]: E_grid=0.00653217, f_accum(-0.037518,0.674917,1.37444)
+DEBUG>> eval_no_omp[ia=0]: pos(9.2,9.2,2.7) PLQd(Pauli=9.72046, Lond=0.704148, Coul=0, aR?=0)
+DEBUG<< eval_no_omp[ia=0]: E_grid=0.0144976, f_accum(-0.0419175,0.670518,1.40159)
+DEBUG>> eval_no_omp[ia=0]: pos(9.3,9.3,2.7) PLQd(Pauli=9.72046, Lond=0.704148, Coul=0, aR?=0)
+DEBUG<< eval_no_omp[ia=0]: E_grid=0.0232088, f_accum(-0.0448786,0.667557,1.43167)
+DEBUG>> eval_no_omp[ia=0]: pos(9.4,9.4,2.7) PLQd(Pauli=9.72046, Lond=0.704148, Coul=0, aR?=0)
+DEBUG<< eval_no_omp[ia=0]: E_grid=0.0323212, f_accum(-0.0458391,0.666596,1.46353)
+DEBUG>> eval_no_omp[ia=0]: pos(9.5,9.5,2.7) PLQd(Pauli=9.72046, Lond=0.704148, Coul=0, aR?=0)
+DEBUG<< eval_no_omp[ia=0]: E_grid=0.0413854, f_accum(-0.0443315,0.668104,1.49556)
+DEBUG>> eval_no_omp[ia=0]: pos(9.6,9.6,2.7) PLQd(Pauli=9.72046, Lond=0.704148, Coul=0, aR?=0)
+DEBUG<< eval_no_omp[ia=0]: E_grid=0.0498762, f_accum(-0.0400804,0.672355,1.52586)
+DEBUG>> eval_no_omp[ia=0]: pos(9.7,9.7,2.7) PLQd(Pauli=9.72046, Lond=0.704148, Coul=0, aR?=0)
+DEBUG<< eval_no_omp[ia=0]: E_grid=0.0572387, f_accum(-0.0330719,0.679363,1.55234)
+DEBUG>> eval_no_omp[ia=0]: pos(9.8,9.8,2.7) PLQd(Pauli=9.72046, Lond=0.704148, Coul=0, aR?=0)
+DEBUG<< eval_no_omp[ia=0]: E_grid=0.0629463, f_accum(-0.0236084,0.688827,1.573)
+DEBUG>> eval_no_omp[ia=0]: pos(9.9,9.9,2.7) PLQd(Pauli=9.72046, Lond=0.704148, Coul=0, aR?=0)
+DEBUG<< eval_no_omp[ia=0]: E_grid=0.0665637, f_accum(-0.012294,0.700141,1.58615)
+DEBUG>> eval_no_omp[ia=0]: pos(10,10,2.7) PLQd(Pauli=9.72046, Lond=0.704148, Coul=0, aR?=0)
+DEBUG<< eval_no_omp[ia=0]: E_grid=0.0678031, f_accum(1.38948e-05,0.712449,1.59067)
+DEBUG>> eval_no_omp[ia=0]: pos(10.1,10.1,2.7) PLQd(Pauli=9.72046, Lond=0.704148, Coul=0, aR?=0)
+DEBUG<< eval_no_omp[ia=0]: E_grid=0.0665637, f_accum(0.012322,0.724757,1.58615)
+DEBUG>> eval_no_omp[ia=0]: pos(10.2,10.2,2.7) PLQd(Pauli=9.72046, Lond=0.704148, Coul=0, aR?=0)
+DEBUG<< eval_no_omp[ia=0]: E_grid=0.0629463, f_accum(0.0236358,0.736071,1.573)
+DEBUG>> eval_no_omp[ia=0]: pos(10.3,10.3,2.7) PLQd(Pauli=9.72046, Lond=0.704148, Coul=0, aR?=0)
+DEBUG<< eval_no_omp[ia=0]: E_grid=0.0572387, f_accum(0.0330999,0.745535,1.55234)
+DEBUG>> eval_no_omp[ia=0]: pos(10.4,10.4,2.7) PLQd(Pauli=9.72046, Lond=0.704148, Coul=0, aR?=0)
+DEBUG<< eval_no_omp[ia=0]: E_grid=0.0498762, f_accum(0.0401083,0.752543,1.52586)
+DEBUG>> eval_no_omp[ia=0]: pos(10.5,10.5,2.7) PLQd(Pauli=9.72046, Lond=0.704148, Coul=0, aR?=0)
+DEBUG<< eval_no_omp[ia=0]: E_grid=0.0413854, f_accum(0.0443592,0.756794,1.49556)
+DEBUG>> eval_no_omp[ia=0]: pos(10.6,10.6,2.7) PLQd(Pauli=9.72046, Lond=0.704148, Coul=0, aR?=0)
+DEBUG<< eval_no_omp[ia=0]: E_grid=0.0323212, f_accum(0.0458672,0.758302,1.46353)
+DEBUG>> eval_no_omp[ia=0]: pos(10.7,10.7,2.7) PLQd(Pauli=9.72046, Lond=0.704148, Coul=0, aR?=0)
+DEBUG<< eval_no_omp[ia=0]: E_grid=0.0232089, f_accum(0.0449064,0.757341,1.43167)
+DEBUG>> eval_no_omp[ia=0]: pos(10.8,10.8,2.7) PLQd(Pauli=9.72046, Lond=0.704148, Coul=0, aR?=0)
+DEBUG<< eval_no_omp[ia=0]: E_grid=0.0144977, f_accum(0.0419453,0.75438,1.40159)
+DEBUG>> eval_no_omp[ia=0]: pos(10.9,10.9,2.7) PLQd(Pauli=9.72046, Lond=0.704148, Coul=0, aR?=0)
+DEBUG<< eval_no_omp[ia=0]: E_grid=0.00653218, f_accum(0.0375456,0.749981,1.37444)
+DEBUG>> eval_no_omp[ia=0]: pos(11,11,2.7) PLQd(Pauli=9.72046, Lond=0.704148, Coul=0, aR?=0)
+DEBUG<< eval_no_omp[ia=0]: E_grid=-0.000457842, f_accum(0.0322855,0.744721,1.35094)
+DEBUG>> eval_no_omp[ia=0]: pos(11.1,11.1,2.7) PLQd(Pauli=9.72046, Lond=0.704148, Coul=0, aR?=0)
+DEBUG<< eval_no_omp[ia=0]: E_grid=-0.00635477, f_accum(0.0266968,0.739132,1.33141)
+DEBUG>> eval_no_omp[ia=0]: pos(11.2,11.2,2.7) PLQd(Pauli=9.72046, Lond=0.704148, Coul=0, aR?=0)
+DEBUG<< eval_no_omp[ia=0]: E_grid=-0.0111387, f_accum(0.0212195,0.733655,1.31582)
+DEBUG>> eval_no_omp[ia=0]: pos(11.3,11.3,2.7) PLQd(Pauli=9.72046, Lond=0.704148, Coul=0, aR?=0)
+DEBUG<< eval_no_omp[ia=0]: E_grid=-0.0148669, f_accum(0.0161859,0.728621,1.30388)
+DEBUG>> eval_no_omp[ia=0]: pos(11.4,11.4,2.7) PLQd(Pauli=9.72046, Lond=0.704148, Coul=0, aR?=0)
+DEBUG<< eval_no_omp[ia=0]: E_grid=-0.0176518, f_accum(0.0118139,0.724249,1.29514)
+DEBUG>> eval_no_omp[ia=0]: pos(11.5,11.5,2.7) PLQd(Pauli=9.72046, Lond=0.704148, Coul=0, aR?=0)
+DEBUG<< eval_no_omp[ia=0]: E_grid=-0.0196386, f_accum(0.00821488,0.72065,1.28905)
+DEBUG>> eval_no_omp[ia=0]: pos(11.6,11.6,2.7) PLQd(Pauli=9.72046, Lond=0.704148, Coul=0, aR?=0)
+DEBUG<< eval_no_omp[ia=0]: E_grid=-0.0209852, f_accum(0.00540814,0.717843,1.28505)
+DEBUG>> eval_no_omp[ia=0]: pos(11.7,11.7,2.7) PLQd(Pauli=9.72046, Lond=0.704148, Coul=0, aR?=0)
+DEBUG<< eval_no_omp[ia=0]: E_grid=-0.0218451, f_accum(0.00333237,0.715768,1.28259)
+DEBUG>> eval_no_omp[ia=0]: pos(11.8,11.8,2.7) PLQd(Pauli=9.72046, Lond=0.704148, Coul=0, aR?=0)
+DEBUG<< eval_no_omp[ia=0]: E_grid=-0.022353, f_accum(0.00186299,0.714298,1.2812)
+DEBUG>> eval_no_omp[ia=0]: pos(11.9,11.9,2.7) PLQd(Pauli=9.72046, Lond=0.704148, Coul=0, aR?=0)
+DEBUG<< eval_no_omp[ia=0]: E_grid=-0.0226137, f_accum(0.000826339,0.713262,1.28052)
+DEBUG>> eval_no_omp[ia=0]: pos(12,12,2.7) PLQd(Pauli=9.72046, Lond=0.704148, Coul=0, aR?=0)
+DEBUG<< eval_no_omp[ia=0]: E_grid=-0.022693, f_accum(1.38457e-05,0.712449,1.28032)
+DEBUG>> eval_no_omp[ia=0]: pos(12.1,12.1,2.7) PLQd(Pauli=9.72046, Lond=0.704148, Coul=0, aR?=0)
+DEBUG<< eval_no_omp[ia=0]: E_grid=-0.0226136, f_accum(-0.000798382,0.711637,1.28052)
+DEBUG>> eval_no_omp[ia=0]: pos(12.2,12.2,2.7) PLQd(Pauli=9.72046, Lond=0.704148, Coul=0, aR?=0)
+DEBUG<< eval_no_omp[ia=0]: E_grid=-0.0223531, f_accum(-0.00183541,0.7106,1.2812)
+DEBUG>> eval_no_omp[ia=0]: pos(12.3,12.3,2.7) PLQd(Pauli=9.72046, Lond=0.704148, Coul=0, aR?=0)
+DEBUG<< eval_no_omp[ia=0]: E_grid=-0.0218451, f_accum(-0.0033043,0.709131,1.28259)
+DEBUG>> eval_no_omp[ia=0]: pos(12.4,12.4,2.7) PLQd(Pauli=9.72046, Lond=0.704148, Coul=0, aR?=0)
+DEBUG<< eval_no_omp[ia=0]: E_grid=-0.0209851, f_accum(-0.00538027,0.707055,1.28505)
+DEBUG>> eval_no_omp[ia=0]: pos(12.5,12.5,2.7) PLQd(Pauli=9.72046, Lond=0.704148, Coul=0, aR?=0)
+DEBUG<< eval_no_omp[ia=0]: E_grid=-0.0196386, f_accum(-0.00818704,0.704248,1.28905)
+DEBUG>> eval_no_omp[ia=0]: pos(12.6,12.6,2.7) PLQd(Pauli=9.72046, Lond=0.704148, Coul=0, aR?=0)
+DEBUG<< eval_no_omp[ia=0]: E_grid=-0.0176518, f_accum(-0.0117861,0.700649,1.29514)
+DEBUG>> eval_no_omp[ia=0]: pos(12.7,12.7,2.7) PLQd(Pauli=9.72046, Lond=0.704148, Coul=0, aR?=0)
+DEBUG<< eval_no_omp[ia=0]: E_grid=-0.0148669, f_accum(-0.016158,0.696277,1.30388)
+DEBUG>> eval_no_omp[ia=0]: pos(12.8,12.8,2.7) PLQd(Pauli=9.72046, Lond=0.704148, Coul=0, aR?=0)
+DEBUG<< eval_no_omp[ia=0]: E_grid=-0.0111387, f_accum(-0.0211921,0.691243,1.31582)
+DEBUG>> eval_no_omp[ia=0]: pos(12.9,12.9,2.7) PLQd(Pauli=9.72046, Lond=0.704148, Coul=0, aR?=0)
+DEBUG<< eval_no_omp[ia=0]: E_grid=-0.0063548, f_accum(-0.0266689,0.685766,1.33141)
+DEBUG>> eval_no_omp[ia=0]: pos(13,13,2.7) PLQd(Pauli=9.72046, Lond=0.704148, Coul=0, aR?=0)
+DEBUG<< eval_no_omp[ia=0]: E_grid=-0.000457837, f_accum(-0.0322575,0.680178,1.35094)
+DEBUG>> eval_no_omp[ia=0]: pos(13.1,13.1,2.7) PLQd(Pauli=9.72046, Lond=0.704148, Coul=0, aR?=0)
+DEBUG<< eval_no_omp[ia=0]: E_grid=0.00653217, f_accum(-0.037518,0.674917,1.37444)
+DEBUG>> eval_no_omp[ia=0]: pos(13.2,13.2,2.7) PLQd(Pauli=9.72046, Lond=0.704148, Coul=0, aR?=0)
+DEBUG<< eval_no_omp[ia=0]: E_grid=0.0144976, f_accum(-0.0419175,0.670518,1.40159)
+DEBUG>> eval_no_omp[ia=0]: pos(13.3,13.3,2.7) PLQd(Pauli=9.72046, Lond=0.704148, Coul=0, aR?=0)
+DEBUG<< eval_no_omp[ia=0]: E_grid=0.0232088, f_accum(-0.0448786,0.667557,1.43167)
+DEBUG>> eval_no_omp[ia=0]: pos(13.4,13.4,2.7) PLQd(Pauli=9.72046, Lond=0.704148, Coul=0, aR?=0)
+DEBUG<< eval_no_omp[ia=0]: E_grid=0.0323212, f_accum(-0.0458391,0.666596,1.46353)
+DEBUG>> eval_no_omp[ia=0]: pos(13.5,13.5,2.7) PLQd(Pauli=9.72046, Lond=0.704148, Coul=0, aR?=0)
+DEBUG<< eval_no_omp[ia=0]: E_grid=0.0413854, f_accum(-0.0443315,0.668104,1.49556)
+DEBUG>> eval_no_omp[ia=0]: pos(13.6,13.6,2.7) PLQd(Pauli=9.72046, Lond=0.704148, Coul=0, aR?=0)
+DEBUG<< eval_no_omp[ia=0]: E_grid=0.0498762, f_accum(-0.0400804,0.672355,1.52586)
+DEBUG>> eval_no_omp[ia=0]: pos(13.7,13.7,2.7) PLQd(Pauli=9.72046, Lond=0.704148, Coul=0, aR?=0)
+DEBUG<< eval_no_omp[ia=0]: E_grid=0.0572387, f_accum(-0.0330719,0.679363,1.55234)
+DEBUG>> eval_no_omp[ia=0]: pos(13.8,13.8,2.7) PLQd(Pauli=9.72046, Lond=0.704148, Coul=0, aR?=0)
+DEBUG<< eval_no_omp[ia=0]: E_grid=0.0629463, f_accum(-0.0236084,0.688827,1.573)
+DEBUG>> eval_no_omp[ia=0]: pos(13.9,13.9,2.7) PLQd(Pauli=9.72046, Lond=0.704148, Coul=0, aR?=0)
+DEBUG<< eval_no_omp[ia=0]: E_grid=0.0665637, f_accum(-0.012294,0.700141,1.58615)
+DEBUG>> eval_no_omp[ia=0]: pos(14,14,2.7) PLQd(Pauli=9.72046, Lond=0.704148, Coul=0, aR?=0)
+DEBUG<< eval_no_omp[ia=0]: E_grid=0.0678031, f_accum(1.38948e-05,0.712449,1.59067)
+DEBUG>> eval_no_omp[ia=0]: pos(14.1,14.1,2.7) PLQd(Pauli=9.72046, Lond=0.704148, Coul=0, aR?=0)
+DEBUG<< eval_no_omp[ia=0]: E_grid=0.0665637, f_accum(0.012322,0.724757,1.58615)
+DEBUG>> eval_no_omp[ia=0]: pos(14.2,14.2,2.7) PLQd(Pauli=9.72046, Lond=0.704148, Coul=0, aR?=0)
+DEBUG<< eval_no_omp[ia=0]: E_grid=0.0629463, f_accum(0.0236358,0.736071,1.573)
+DEBUG>> eval_no_omp[ia=0]: pos(14.3,14.3,2.7) PLQd(Pauli=9.72046, Lond=0.704148, Coul=0, aR?=0)
+DEBUG<< eval_no_omp[ia=0]: E_grid=0.0572387, f_accum(0.0330999,0.745535,1.55234)
+DEBUG>> eval_no_omp[ia=0]: pos(14.4,14.4,2.7) PLQd(Pauli=9.72046, Lond=0.704148, Coul=0, aR?=0)
+DEBUG<< eval_no_omp[ia=0]: E_grid=0.0498762, f_accum(0.0401083,0.752543,1.52586)

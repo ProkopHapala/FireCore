@@ -1,0 +1,1852 @@
+/home/indranil/git/FireCore/cpp/Build/libs/Molecular
+[  0%] Built target ProjectiveDynamics_d
+[ 33%] Built target DynamicOpt
+Consolidate compiler generated dependencies of target MMFF_lib
+[ 66%] Linking CXX shared library libMMFF_lib.so
+[100%] Built target MMFF_lib
+[  0%] Linking CXX shared library libLattice2D_lib.so
+[100%] Built target Lattice2D_lib
+[ 80%] Built target SDL2OGL
+[ 90%] Built target DynamicOpt
+Consolidate compiler generated dependencies of target MolGUIlib
+[100%] Linking CXX shared library libMolGUIlib.so
+[100%] Built target MolGUIlib
+compile using ncpu=11
+/usr/lib/gcc/x86_64-linux-gnu/11/libasan.so
+MolWorld_sp3::initParams():
+	sElemTypes(data/ElementTypes.dat)
+	sAtomTypes(data/AtomTypes.dat)
+	sBondTypes(data/BondTypes.dat)
+	sAngleTypes(data/AngleTypes.dat)
+MMFFparams::loadElementTypes(fname=data/ElementTypes.dat)
+loadElementTypes[1] name='E' iZ=200 neval=0 valence=0 piMax=0 
+loadElementTypes[2] name='H' iZ=1 neval=1 valence=1 piMax=0 
+loadElementTypes[3] name='He' iZ=2 neval=2 valence=0 piMax=0 
+loadElementTypes[4] name='Li' iZ=3 neval=1 valence=1 piMax=0 
+loadElementTypes[5] name='Be' iZ=4 neval=2 valence=2 piMax=0 
+loadElementTypes[6] name='B' iZ=5 neval=3 valence=3 piMax=1 
+loadElementTypes[7] name='C' iZ=6 neval=4 valence=4 piMax=2 
+loadElementTypes[8] name='N' iZ=7 neval=5 valence=3 piMax=2 
+loadElementTypes[9] name='O' iZ=8 neval=6 valence=2 piMax=1 
+loadElementTypes[10] name='F' iZ=9 neval=7 valence=1 piMax=0 
+loadElementTypes[11] name='Ne' iZ=10 neval=8 valence=0 piMax=0 
+loadElementTypes[12] name='Na' iZ=11 neval=1 valence=1 piMax=0 
+loadElementTypes[13] name='Mg' iZ=12 neval=2 valence=2 piMax=0 
+loadElementTypes[14] name='Al' iZ=13 neval=3 valence=3 piMax=0 
+loadElementTypes[15] name='Si' iZ=14 neval=4 valence=4 piMax=0 
+loadElementTypes[16] name='P' iZ=15 neval=3 valence=3 piMax=1 
+loadElementTypes[17] name='S' iZ=16 neval=2 valence=2 piMax=2 
+loadElementTypes[18] name='Se' iZ=34 neval=2 valence=2 piMax=2 
+loadElementTypes[19] name='Cl' iZ=17 neval=7 valence=1 piMax=3 
+MMFFparams::loadAtomTypes(fname=data/AtomTypes.dat)
+loadAtomTypes[1] name='*' valence=1 nepair=0 npi=0 sym=0
+loadAtomTypes[2] name='E' valence=0 nepair=0 npi=0 sym=0
+loadAtomTypes[3] name='E_F' valence=0 nepair=0 npi=0 sym=0
+loadAtomTypes[4] name='H' valence=1 nepair=0 npi=0 sym=0
+loadAtomTypes[5] name='He' valence=0 nepair=0 npi=0 sym=0
+loadAtomTypes[6] name='Li' valence=1 nepair=0 npi=0 sym=0
+loadAtomTypes[7] name='Be' valence=2 nepair=0 npi=0 sym=0
+loadAtomTypes[8] name='B' valence=3 nepair=255 npi=0 sym=0
+loadAtomTypes[9] name='C' valence=4 nepair=0 npi=0 sym=0
+loadAtomTypes[10] name='N' valence=3 nepair=1 npi=0 sym=0
+loadAtomTypes[11] name='O' valence=2 nepair=2 npi=0 sym=0
+loadAtomTypes[12] name='F' valence=1 nepair=1 npi=0 sym=0
+loadAtomTypes[13] name='Ne' valence=0 nepair=0 npi=0 sym=0
+loadAtomTypes[14] name='Na' valence=1 nepair=0 npi=0 sym=0
+loadAtomTypes[15] name='Mg' valence=2 nepair=0 npi=0 sym=0
+loadAtomTypes[16] name='Al' valence=3 nepair=255 npi=0 sym=0
+loadAtomTypes[17] name='Si' valence=4 nepair=0 npi=0 sym=0
+loadAtomTypes[18] name='P' valence=3 nepair=1 npi=0 sym=0
+loadAtomTypes[19] name='S' valence=2 nepair=2 npi=0 sym=0
+loadAtomTypes[20] name='Se' valence=2 nepair=2 npi=0 sym=0
+loadAtomTypes[21] name='Cl' valence=1 nepair=1 npi=0 sym=0
+loadAtomTypes[22] name='H_' valence=1 nepair=0 npi=0 sym=0
+loadAtomTypes[23] name='C_3' valence=4 nepair=0 npi=0 sym=0
+loadAtomTypes[24] name='C_R' valence=4 nepair=0 npi=0 sym=0
+loadAtomTypes[25] name='C_2' valence=4 nepair=0 npi=0 sym=0
+loadAtomTypes[26] name='C_1' valence=4 nepair=0 npi=0 sym=0
+loadAtomTypes[27] name='N_3' valence=3 nepair=1 npi=0 sym=0
+loadAtomTypes[28] name='N_R' valence=3 nepair=1 npi=0 sym=0
+loadAtomTypes[29] name='N_2' valence=3 nepair=1 npi=0 sym=0
+loadAtomTypes[30] name='N_1' valence=3 nepair=1 npi=0 sym=0
+loadAtomTypes[31] name='O_3' valence=2 nepair=2 npi=0 sym=0
+loadAtomTypes[32] name='O_R' valence=2 nepair=2 npi=0 sym=0
+loadAtomTypes[33] name='O_2' valence=2 nepair=2 npi=0 sym=0
+loadAtomTypes[34] name='O_1' valence=2 nepair=2 npi=0 sym=0
+loadAtomTypes[35] name='C_CH3' valence=4 nepair=0 npi=0 sym=0
+loadAtomTypes[36] name='C_ene' valence=4 nepair=0 npi=0 sym=0
+loadAtomTypes[37] name='C_yne' valence=4 nepair=0 npi=0 sym=0
+loadAtomTypes[38] name='C_ald' valence=4 nepair=0 npi=0 sym=0
+loadAtomTypes[39] name='C_COO' valence=4 nepair=0 npi=0 sym=0
+loadAtomTypes[40] name='O_OH' valence=2 nepair=2 npi=0 sym=0
+loadAtomTypes[41] name='O_ald' valence=2 nepair=2 npi=0 sym=0
+loadAtomTypes[42] name='O_sCOO' valence=2 nepair=2 npi=0 sym=0
+loadAtomTypes[43] name='O_pCOO' valence=2 nepair=2 npi=0 sym=0
+loadAtomTypes[44] name='H_F' valence=1 nepair=0 npi=0 sym=0
+loadAtomTypes[45] name='H_OH' valence=1 nepair=0 npi=0 sym=0
+loadAtomTypes[46] name='H_NH2' valence=1 nepair=0 npi=0 sym=0
+loadAtomTypes[47] name='H_CH3' valence=1 nepair=0 npi=0 sym=0
+loadAtomTypes[48] name='H_ene' valence=1 nepair=0 npi=0 sym=0
+loadAtomTypes[49] name='H_yne' valence=1 nepair=0 npi=0 sym=0
+loadAtomTypes[50] name='H_ald' valence=1 nepair=0 npi=0 sym=0
+loadAtomTypes[51] name='H_COO' valence=1 nepair=0 npi=0 sym=0
+MMFFparams::loadBondTypes(fname=data/BondTypes.dat)
+loadBondTypes[1] atom1='H' atom2='H' order=1
+loadBondTypes[2] atom1='H' atom2='C' order=1
+loadBondTypes[3] atom1='H' atom2='N' order=1
+loadBondTypes[4] atom1='H' atom2='O' order=1
+loadBondTypes[5] atom1='H' atom2='F' order=1
+loadBondTypes[6] atom1='C' atom2='C' order=1
+loadBondTypes[7] atom1='C' atom2='C' order=2
+loadBondTypes[8] atom1='C' atom2='C' order=3
+loadBondTypes[9] atom1='C' atom2='N' order=1
+loadBondTypes[10] atom1='C' atom2='N' order=2
+loadBondTypes[11] atom1='C' atom2='N' order=3
+loadBondTypes[12] atom1='C' atom2='O' order=1
+loadBondTypes[13] atom1='C' atom2='O' order=2
+loadBondTypes[14] atom1='C' atom2='O' order=3
+loadBondTypes[15] atom1='C' atom2='F' order=1
+loadBondTypes[16] atom1='C' atom2='S' order=1
+loadBondTypes[17] atom1='Si' atom2='Si' order=1
+WARNING in MMFFparams::loadBondTypes: BondType[18](Si-C) has been flipped into (C-Si)
+loadBondTypes[18] atom1='C' atom2='Si' order=1
+WARNING in MMFFparams::loadBondTypes: BondType[19](Si-H) has been flipped into (H-Si)
+loadBondTypes[19] atom1='H' atom2='Si' order=1
+loadBondTypes[20] atom1='N' atom2='N' order=1
+loadBondTypes[21] atom1='N' atom2='N' order=2
+loadBondTypes[22] atom1='N' atom2='N' order=3
+loadBondTypes[23] atom1='N' atom2='O' order=1
+loadBondTypes[24] atom1='N' atom2='O' order=2
+loadBondTypes[25] atom1='N' atom2='O' order=3
+loadBondTypes[26] atom1='O' atom2='O' order=1
+loadBondTypes[27] atom1='O' atom2='O' order=2
+loadBondTypes[28] atom1='E' atom2='C' order=1
+loadBondTypes[29] atom1='E' atom2='N' order=1
+loadBondTypes[30] atom1='E' atom2='O' order=1
+loadBondTypes[31] atom1='E' atom2='F' order=1
+loadBondTypes[32] atom1='Na' atom2='Cl' order=1
+MMFFparams::loadAngleTypes(fname=data/AngleTypes.dat)
+loadAngleTypes[1] atom1='*' atom2='C' atom3='*'
+loadAngleTypes[2] atom1='*' atom2='N' atom3='*'
+loadAngleTypes[3] atom1='*' atom2='O' atom3='*'
+loadAngleTypes[4] atom1='*' atom2='C_2' atom3='*'
+loadAngleTypes[5] atom1='*' atom2='C_R' atom3='*'
+loadAngleTypes[6] atom1='*' atom2='N_2' atom3='*'
+loadAngleTypes[7] atom1='*' atom2='N_R' atom3='*'
+loadAngleTypes[8] atom1='*' atom2='O_2' atom3='*'
+loadAngleTypes[9] atom1='*' atom2='O_R' atom3='*'
+loadAngleTypes[10] atom1='H' atom2='C_R' atom3='H'
+loadAngleTypes[11] atom1='C' atom2='C_R' atom3='C'
+loadAngleTypes[12] atom1='C' atom2='C_R' atom3='O'
+loadAngleTypes[13] atom1='C' atom2='C_R' atom3='N'
+loadAngleTypes[14] atom1='H' atom2='C_R' atom3='C'
+MMFFparams::loadDihedralTypes(fname=data/DihedralTypes.dat)
+loadDihedralTypes[1] atom1='*' atom2='C_2' atom3='C_2' atom4='*' bond order=2
+loadDihedralTypes[2] atom1='*' atom2='C_2' atom3='N_2' atom4='*' bond order=2
+loadDihedralTypes[3] atom1='*' atom2='C_2' atom3='O_2' atom4='*' bond order=2
+loadDihedralTypes[4] atom1='*' atom2='C_R' atom3='C_2' atom4='*' bond order=2
+loadDihedralTypes[5] atom1='*' atom2='C_2' atom3='N_R' atom4='*' bond order=2
+loadDihedralTypes[6] atom1='*' atom2='C_2' atom3='O_R' atom4='*' bond order=2
+loadDihedralTypes[7] atom1='*' atom2='C_R' atom3='N_2' atom4='*' bond order=2
+loadDihedralTypes[8] atom1='*' atom2='C_R' atom3='O_2' atom4='*' bond order=2
+loadDihedralTypes[9] atom1='*' atom2='C_R' atom3='C_R' atom4='*' bond order=2
+loadDihedralTypes[10] atom1='*' atom2='C_R' atom3='N_R' atom4='*' bond order=2
+loadDihedralTypes[11] atom1='*' atom2='C_R' atom3='O_R' atom4='*' bond order=2
+loadDihedralTypes[12] atom1='*' atom2='N_2' atom3='N_2' atom4='*' bond order=2
+loadDihedralTypes[13] atom1='*' atom2='N_R' atom3='N_2' atom4='*' bond order=2
+loadDihedralTypes[14] atom1='*' atom2='N_2' atom3='O_2' atom4='*' bond order=2
+loadDihedralTypes[15] atom1='*' atom2='N_2' atom3='O_R' atom4='*' bond order=2
+loadDihedralTypes[16] atom1='*' atom2='N_R' atom3='N_R' atom4='*' bond order=2
+loadDihedralTypes[17] atom1='*' atom2='N_R' atom3='O_2' atom4='*' bond order=2
+loadDihedralTypes[18] atom1='*' atom2='N_R' atom3='O_R' atom4='*' bond order=2
+MolWorld_sp3::init() verbosity=2
+params.atypes.size() 51
+
+#### MolWorld_sp3::init()
+xyz_name    (data/xyz/PTCDA_charge_on_Na)
+surf_name   (data/xyz/Na_0.9_Cl_-0.9)
+MolWorld_sp3::init() bMMFF 1 bUFF 0 bRigid 0
+MMFFparams::loadXYZ() atom[  0] atyp( 13) xyz(    0.000000,    0.000000,    5.656854) REQs(    1.491500,    0.036068,    0.900000,    0.000000) 
+MMFFparams::loadXYZ() atom[  1] atyp( 20) xyz(    0.000000,    0.000000,    2.828427) REQs(    1.973500,    0.099215,   -0.900000,    0.000000) 
+MMFFparams::loadXYZ() atom[  2] atyp( 13) xyz(    0.000000,    0.000000,    0.000000) REQs(    1.491500,    0.036068,    0.900000,    0.000000) 
+MMFFparams::loadXYZ() atom[  3] atyp( 20) xyz(    2.000000,    2.000000,    5.656854) REQs(    1.973500,    0.099215,   -0.900000,    0.000000) 
+MMFFparams::loadXYZ() atom[  4] atyp( 13) xyz(    2.000000,    2.000000,    2.828427) REQs(    1.491500,    0.036068,    0.900000,    0.000000) 
+MMFFparams::loadXYZ() atom[  5] atyp( 20) xyz(    2.000000,    2.000000,    0.000000) REQs(    1.973500,    0.099215,   -0.900000,    0.000000) 
+MMFFparams::loadXYZ() atom[  6] atyp( 13) xyz(    4.000000,    0.000000,    5.656854) REQs(    1.491500,    0.036068,    0.900000,    0.000000) 
+MMFFparams::loadXYZ() atom[  7] atyp( 20) xyz(    4.000000,    0.000000,    2.828427) REQs(    1.973500,    0.099215,   -0.900000,    0.000000) 
+MMFFparams::loadXYZ() atom[  8] atyp( 13) xyz(    4.000000,    0.000000,    0.000000) REQs(    1.491500,    0.036068,    0.900000,    0.000000) 
+MMFFparams::loadXYZ() atom[  9] atyp( 20) xyz(    6.000000,    2.000000,    5.656854) REQs(    1.973500,    0.099215,   -0.900000,    0.000000) 
+MMFFparams::loadXYZ() atom[ 10] atyp( 13) xyz(    6.000000,    2.000000,    2.828427) REQs(    1.491500,    0.036068,    0.900000,    0.000000) 
+MMFFparams::loadXYZ() atom[ 11] atyp( 20) xyz(    6.000000,    2.000000,    0.000000) REQs(    1.973500,    0.099215,   -0.900000,    0.000000) 
+MMFFparams::loadXYZ() atom[ 12] atyp( 13) xyz(    8.000000,    0.000000,    5.656854) REQs(    1.491500,    0.036068,    0.900000,    0.000000) 
+MMFFparams::loadXYZ() atom[ 13] atyp( 20) xyz(    8.000000,    0.000000,    2.828427) REQs(    1.973500,    0.099215,   -0.900000,    0.000000) 
+MMFFparams::loadXYZ() atom[ 14] atyp( 13) xyz(    8.000000,    0.000000,    0.000000) REQs(    1.491500,    0.036068,    0.900000,    0.000000) 
+MMFFparams::loadXYZ() atom[ 15] atyp( 20) xyz(   10.000000,    2.000000,    5.656854) REQs(    1.973500,    0.099215,   -0.900000,    0.000000) 
+MMFFparams::loadXYZ() atom[ 16] atyp( 13) xyz(   10.000000,    2.000000,    2.828427) REQs(    1.491500,    0.036068,    0.900000,    0.000000) 
+MMFFparams::loadXYZ() atom[ 17] atyp( 20) xyz(   10.000000,    2.000000,    0.000000) REQs(    1.973500,    0.099215,   -0.900000,    0.000000) 
+MMFFparams::loadXYZ() atom[ 18] atyp( 13) xyz(   12.000000,    0.000000,    5.656854) REQs(    1.491500,    0.036068,    0.900000,    0.000000) 
+MMFFparams::loadXYZ() atom[ 19] atyp( 20) xyz(   12.000000,    0.000000,    2.828427) REQs(    1.973500,    0.099215,   -0.900000,    0.000000) 
+MMFFparams::loadXYZ() atom[ 20] atyp( 13) xyz(   12.000000,    0.000000,    0.000000) REQs(    1.491500,    0.036068,    0.900000,    0.000000) 
+MMFFparams::loadXYZ() atom[ 21] atyp( 20) xyz(   14.000000,    2.000000,    5.656854) REQs(    1.973500,    0.099215,   -0.900000,    0.000000) 
+MMFFparams::loadXYZ() atom[ 22] atyp( 13) xyz(   14.000000,    2.000000,    2.828427) REQs(    1.491500,    0.036068,    0.900000,    0.000000) 
+MMFFparams::loadXYZ() atom[ 23] atyp( 20) xyz(   14.000000,    2.000000,    0.000000) REQs(    1.973500,    0.099215,   -0.900000,    0.000000) 
+MMFFparams::loadXYZ() atom[ 24] atyp( 13) xyz(   16.000000,    0.000000,    5.656854) REQs(    1.491500,    0.036068,    0.900000,    0.000000) 
+MMFFparams::loadXYZ() atom[ 25] atyp( 20) xyz(   16.000000,    0.000000,    2.828427) REQs(    1.973500,    0.099215,   -0.900000,    0.000000) 
+MMFFparams::loadXYZ() atom[ 26] atyp( 13) xyz(   16.000000,    0.000000,    0.000000) REQs(    1.491500,    0.036068,    0.900000,    0.000000) 
+MMFFparams::loadXYZ() atom[ 27] atyp( 20) xyz(   18.000000,    2.000000,    5.656854) REQs(    1.973500,    0.099215,   -0.900000,    0.000000) 
+MMFFparams::loadXYZ() atom[ 28] atyp( 13) xyz(   18.000000,    2.000000,    2.828427) REQs(    1.491500,    0.036068,    0.900000,    0.000000) 
+MMFFparams::loadXYZ() atom[ 29] atyp( 20) xyz(   18.000000,    2.000000,    0.000000) REQs(    1.973500,    0.099215,   -0.900000,    0.000000) 
+MMFFparams::loadXYZ() atom[ 30] atyp( 13) xyz(   20.000000,    0.000000,    5.656854) REQs(    1.491500,    0.036068,    0.900000,    0.000000) 
+MMFFparams::loadXYZ() atom[ 31] atyp( 20) xyz(   20.000000,    0.000000,    2.828427) REQs(    1.973500,    0.099215,   -0.900000,    0.000000) 
+MMFFparams::loadXYZ() atom[ 32] atyp( 13) xyz(   20.000000,    0.000000,    0.000000) REQs(    1.491500,    0.036068,    0.900000,    0.000000) 
+MMFFparams::loadXYZ() atom[ 33] atyp( 20) xyz(   22.000000,    2.000000,    5.656854) REQs(    1.973500,    0.099215,   -0.900000,    0.000000) 
+MMFFparams::loadXYZ() atom[ 34] atyp( 13) xyz(   22.000000,    2.000000,    2.828427) REQs(    1.491500,    0.036068,    0.900000,    0.000000) 
+MMFFparams::loadXYZ() atom[ 35] atyp( 20) xyz(   22.000000,    2.000000,    0.000000) REQs(    1.973500,    0.099215,   -0.900000,    0.000000) 
+MMFFparams::loadXYZ() atom[ 36] atyp( 13) xyz(   24.000000,    0.000000,    5.656854) REQs(    1.491500,    0.036068,    0.900000,    0.000000) 
+MMFFparams::loadXYZ() atom[ 37] atyp( 20) xyz(   24.000000,    0.000000,    2.828427) REQs(    1.973500,    0.099215,   -0.900000,    0.000000) 
+MMFFparams::loadXYZ() atom[ 38] atyp( 13) xyz(   24.000000,    0.000000,    0.000000) REQs(    1.491500,    0.036068,    0.900000,    0.000000) 
+MMFFparams::loadXYZ() atom[ 39] atyp( 20) xyz(   26.000000,    2.000000,    5.656854) REQs(    1.973500,    0.099215,   -0.900000,    0.000000) 
+MMFFparams::loadXYZ() atom[ 40] atyp( 13) xyz(   26.000000,    2.000000,    2.828427) REQs(    1.491500,    0.036068,    0.900000,    0.000000) 
+MMFFparams::loadXYZ() atom[ 41] atyp( 20) xyz(   26.000000,    2.000000,    0.000000) REQs(    1.973500,    0.099215,   -0.900000,    0.000000) 
+MMFFparams::loadXYZ() atom[ 42] atyp( 13) xyz(   28.000000,    0.000000,    5.656854) REQs(    1.491500,    0.036068,    0.900000,    0.000000) 
+MMFFparams::loadXYZ() atom[ 43] atyp( 20) xyz(   28.000000,    0.000000,    2.828427) REQs(    1.973500,    0.099215,   -0.900000,    0.000000) 
+MMFFparams::loadXYZ() atom[ 44] atyp( 13) xyz(   28.000000,    0.000000,    0.000000) REQs(    1.491500,    0.036068,    0.900000,    0.000000) 
+MMFFparams::loadXYZ() atom[ 45] atyp( 20) xyz(   30.000000,    2.000000,    5.656854) REQs(    1.973500,    0.099215,   -0.900000,    0.000000) 
+MMFFparams::loadXYZ() atom[ 46] atyp( 13) xyz(   30.000000,    2.000000,    2.828427) REQs(    1.491500,    0.036068,    0.900000,    0.000000) 
+MMFFparams::loadXYZ() atom[ 47] atyp( 20) xyz(   30.000000,    2.000000,    0.000000) REQs(    1.973500,    0.099215,   -0.900000,    0.000000) 
+MMFFparams::loadXYZ() atom[ 48] atyp( 13) xyz(    0.000000,    4.000000,    5.656854) REQs(    1.491500,    0.036068,    0.900000,    0.000000) 
+MMFFparams::loadXYZ() atom[ 49] atyp( 20) xyz(    0.000000,    4.000000,    2.828427) REQs(    1.973500,    0.099215,   -0.900000,    0.000000) 
+MMFFparams::loadXYZ() atom[ 50] atyp( 13) xyz(    0.000000,    4.000000,    0.000000) REQs(    1.491500,    0.036068,    0.900000,    0.000000) 
+MMFFparams::loadXYZ() atom[ 51] atyp( 20) xyz(    2.000000,    6.000000,    5.656854) REQs(    1.973500,    0.099215,   -0.900000,    0.000000) 
+MMFFparams::loadXYZ() atom[ 52] atyp( 13) xyz(    2.000000,    6.000000,    2.828427) REQs(    1.491500,    0.036068,    0.900000,    0.000000) 
+MMFFparams::loadXYZ() atom[ 53] atyp( 20) xyz(    2.000000,    6.000000,    0.000000) REQs(    1.973500,    0.099215,   -0.900000,    0.000000) 
+MMFFparams::loadXYZ() atom[ 54] atyp( 13) xyz(    4.000000,    4.000000,    5.656854) REQs(    1.491500,    0.036068,    0.900000,    0.000000) 
+MMFFparams::loadXYZ() atom[ 55] atyp( 20) xyz(    4.000000,    4.000000,    2.828427) REQs(    1.973500,    0.099215,   -0.900000,    0.000000) 
+MMFFparams::loadXYZ() atom[ 56] atyp( 13) xyz(    4.000000,    4.000000,    0.000000) REQs(    1.491500,    0.036068,    0.900000,    0.000000) 
+MMFFparams::loadXYZ() atom[ 57] atyp( 20) xyz(    6.000000,    6.000000,    5.656854) REQs(    1.973500,    0.099215,   -0.900000,    0.000000) 
+MMFFparams::loadXYZ() atom[ 58] atyp( 13) xyz(    6.000000,    6.000000,    2.828427) REQs(    1.491500,    0.036068,    0.900000,    0.000000) 
+MMFFparams::loadXYZ() atom[ 59] atyp( 20) xyz(    6.000000,    6.000000,    0.000000) REQs(    1.973500,    0.099215,   -0.900000,    0.000000) 
+MMFFparams::loadXYZ() atom[ 60] atyp( 13) xyz(    8.000000,    4.000000,    5.656854) REQs(    1.491500,    0.036068,    0.900000,    0.000000) 
+MMFFparams::loadXYZ() atom[ 61] atyp( 20) xyz(    8.000000,    4.000000,    2.828427) REQs(    1.973500,    0.099215,   -0.900000,    0.000000) 
+MMFFparams::loadXYZ() atom[ 62] atyp( 13) xyz(    8.000000,    4.000000,    0.000000) REQs(    1.491500,    0.036068,    0.900000,    0.000000) 
+MMFFparams::loadXYZ() atom[ 63] atyp( 20) xyz(   10.000000,    6.000000,    5.656854) REQs(    1.973500,    0.099215,   -0.900000,    0.000000) 
+MMFFparams::loadXYZ() atom[ 64] atyp( 13) xyz(   10.000000,    6.000000,    2.828427) REQs(    1.491500,    0.036068,    0.900000,    0.000000) 
+MMFFparams::loadXYZ() atom[ 65] atyp( 20) xyz(   10.000000,    6.000000,    0.000000) REQs(    1.973500,    0.099215,   -0.900000,    0.000000) 
+MMFFparams::loadXYZ() atom[ 66] atyp( 13) xyz(   12.000000,    4.000000,    5.656854) REQs(    1.491500,    0.036068,    0.900000,    0.000000) 
+MMFFparams::loadXYZ() atom[ 67] atyp( 20) xyz(   12.000000,    4.000000,    2.828427) REQs(    1.973500,    0.099215,   -0.900000,    0.000000) 
+MMFFparams::loadXYZ() atom[ 68] atyp( 13) xyz(   12.000000,    4.000000,    0.000000) REQs(    1.491500,    0.036068,    0.900000,    0.000000) 
+MMFFparams::loadXYZ() atom[ 69] atyp( 20) xyz(   14.000000,    6.000000,    5.656854) REQs(    1.973500,    0.099215,   -0.900000,    0.000000) 
+MMFFparams::loadXYZ() atom[ 70] atyp( 13) xyz(   14.000000,    6.000000,    2.828427) REQs(    1.491500,    0.036068,    0.900000,    0.000000) 
+MMFFparams::loadXYZ() atom[ 71] atyp( 20) xyz(   14.000000,    6.000000,    0.000000) REQs(    1.973500,    0.099215,   -0.900000,    0.000000) 
+MMFFparams::loadXYZ() atom[ 72] atyp( 13) xyz(   16.000000,    4.000000,    5.656854) REQs(    1.491500,    0.036068,    0.900000,    0.000000) 
+MMFFparams::loadXYZ() atom[ 73] atyp( 20) xyz(   16.000000,    4.000000,    2.828427) REQs(    1.973500,    0.099215,   -0.900000,    0.000000) 
+MMFFparams::loadXYZ() atom[ 74] atyp( 13) xyz(   16.000000,    4.000000,    0.000000) REQs(    1.491500,    0.036068,    0.900000,    0.000000) 
+MMFFparams::loadXYZ() atom[ 75] atyp( 20) xyz(   18.000000,    6.000000,    5.656854) REQs(    1.973500,    0.099215,   -0.900000,    0.000000) 
+MMFFparams::loadXYZ() atom[ 76] atyp( 13) xyz(   18.000000,    6.000000,    2.828427) REQs(    1.491500,    0.036068,    0.900000,    0.000000) 
+MMFFparams::loadXYZ() atom[ 77] atyp( 20) xyz(   18.000000,    6.000000,    0.000000) REQs(    1.973500,    0.099215,   -0.900000,    0.000000) 
+MMFFparams::loadXYZ() atom[ 78] atyp( 13) xyz(   20.000000,    4.000000,    5.656854) REQs(    1.491500,    0.036068,    0.900000,    0.000000) 
+MMFFparams::loadXYZ() atom[ 79] atyp( 20) xyz(   20.000000,    4.000000,    2.828427) REQs(    1.973500,    0.099215,   -0.900000,    0.000000) 
+MMFFparams::loadXYZ() atom[ 80] atyp( 13) xyz(   20.000000,    4.000000,    0.000000) REQs(    1.491500,    0.036068,    0.900000,    0.000000) 
+MMFFparams::loadXYZ() atom[ 81] atyp( 20) xyz(   22.000000,    6.000000,    5.656854) REQs(    1.973500,    0.099215,   -0.900000,    0.000000) 
+MMFFparams::loadXYZ() atom[ 82] atyp( 13) xyz(   22.000000,    6.000000,    2.828427) REQs(    1.491500,    0.036068,    0.900000,    0.000000) 
+MMFFparams::loadXYZ() atom[ 83] atyp( 20) xyz(   22.000000,    6.000000,    0.000000) REQs(    1.973500,    0.099215,   -0.900000,    0.000000) 
+MMFFparams::loadXYZ() atom[ 84] atyp( 13) xyz(   24.000000,    4.000000,    5.656854) REQs(    1.491500,    0.036068,    0.900000,    0.000000) 
+MMFFparams::loadXYZ() atom[ 85] atyp( 20) xyz(   24.000000,    4.000000,    2.828427) REQs(    1.973500,    0.099215,   -0.900000,    0.000000) 
+MMFFparams::loadXYZ() atom[ 86] atyp( 13) xyz(   24.000000,    4.000000,    0.000000) REQs(    1.491500,    0.036068,    0.900000,    0.000000) 
+MMFFparams::loadXYZ() atom[ 87] atyp( 20) xyz(   26.000000,    6.000000,    5.656854) REQs(    1.973500,    0.099215,   -0.900000,    0.000000) 
+MMFFparams::loadXYZ() atom[ 88] atyp( 13) xyz(   26.000000,    6.000000,    2.828427) REQs(    1.491500,    0.036068,    0.900000,    0.000000) 
+MMFFparams::loadXYZ() atom[ 89] atyp( 20) xyz(   26.000000,    6.000000,    0.000000) REQs(    1.973500,    0.099215,   -0.900000,    0.000000) 
+MMFFparams::loadXYZ() atom[ 90] atyp( 13) xyz(   28.000000,    4.000000,    5.656854) REQs(    1.491500,    0.036068,    0.900000,    0.000000) 
+MMFFparams::loadXYZ() atom[ 91] atyp( 20) xyz(   28.000000,    4.000000,    2.828427) REQs(    1.973500,    0.099215,   -0.900000,    0.000000) 
+MMFFparams::loadXYZ() atom[ 92] atyp( 13) xyz(   28.000000,    4.000000,    0.000000) REQs(    1.491500,    0.036068,    0.900000,    0.000000) 
+MMFFparams::loadXYZ() atom[ 93] atyp( 20) xyz(   30.000000,    6.000000,    5.656854) REQs(    1.973500,    0.099215,   -0.900000,    0.000000) 
+MMFFparams::loadXYZ() atom[ 94] atyp( 13) xyz(   30.000000,    6.000000,    2.828427) REQs(    1.491500,    0.036068,    0.900000,    0.000000) 
+MMFFparams::loadXYZ() atom[ 95] atyp( 20) xyz(   30.000000,    6.000000,    0.000000) REQs(    1.973500,    0.099215,   -0.900000,    0.000000) 
+MMFFparams::loadXYZ() atom[ 96] atyp( 13) xyz(    0.000000,    8.000000,    5.656854) REQs(    1.491500,    0.036068,    0.900000,    0.000000) 
+MMFFparams::loadXYZ() atom[ 97] atyp( 20) xyz(    0.000000,    8.000000,    2.828427) REQs(    1.973500,    0.099215,   -0.900000,    0.000000) 
+MMFFparams::loadXYZ() atom[ 98] atyp( 13) xyz(    0.000000,    8.000000,    0.000000) REQs(    1.491500,    0.036068,    0.900000,    0.000000) 
+MMFFparams::loadXYZ() atom[ 99] atyp( 20) xyz(    2.000000,   10.000000,    5.656854) REQs(    1.973500,    0.099215,   -0.900000,    0.000000) 
+MMFFparams::loadXYZ() atom[100] atyp( 13) xyz(    2.000000,   10.000000,    2.828427) REQs(    1.491500,    0.036068,    0.900000,    0.000000) 
+MMFFparams::loadXYZ() atom[101] atyp( 20) xyz(    2.000000,   10.000000,    0.000000) REQs(    1.973500,    0.099215,   -0.900000,    0.000000) 
+MMFFparams::loadXYZ() atom[102] atyp( 13) xyz(    4.000000,    8.000000,    5.656854) REQs(    1.491500,    0.036068,    0.900000,    0.000000) 
+MMFFparams::loadXYZ() atom[103] atyp( 20) xyz(    4.000000,    8.000000,    2.828427) REQs(    1.973500,    0.099215,   -0.900000,    0.000000) 
+MMFFparams::loadXYZ() atom[104] atyp( 13) xyz(    4.000000,    8.000000,    0.000000) REQs(    1.491500,    0.036068,    0.900000,    0.000000) 
+MMFFparams::loadXYZ() atom[105] atyp( 20) xyz(    6.000000,   10.000000,    5.656854) REQs(    1.973500,    0.099215,   -0.900000,    0.000000) 
+MMFFparams::loadXYZ() atom[106] atyp( 13) xyz(    6.000000,   10.000000,    2.828427) REQs(    1.491500,    0.036068,    0.900000,    0.000000) 
+MMFFparams::loadXYZ() atom[107] atyp( 20) xyz(    6.000000,   10.000000,    0.000000) REQs(    1.973500,    0.099215,   -0.900000,    0.000000) 
+MMFFparams::loadXYZ() atom[108] atyp( 13) xyz(    8.000000,    8.000000,    5.656854) REQs(    1.491500,    0.036068,    0.900000,    0.000000) 
+MMFFparams::loadXYZ() atom[109] atyp( 20) xyz(    8.000000,    8.000000,    2.828427) REQs(    1.973500,    0.099215,   -0.900000,    0.000000) 
+MMFFparams::loadXYZ() atom[110] atyp( 13) xyz(    8.000000,    8.000000,    0.000000) REQs(    1.491500,    0.036068,    0.900000,    0.000000) 
+MMFFparams::loadXYZ() atom[111] atyp( 20) xyz(   10.000000,   10.000000,    5.656854) REQs(    1.973500,    0.099215,   -0.900000,    0.000000) 
+MMFFparams::loadXYZ() atom[112] atyp( 13) xyz(   10.000000,   10.000000,    2.828427) REQs(    1.491500,    0.036068,    0.900000,    0.000000) 
+MMFFparams::loadXYZ() atom[113] atyp( 20) xyz(   10.000000,   10.000000,    0.000000) REQs(    1.973500,    0.099215,   -0.900000,    0.000000) 
+MMFFparams::loadXYZ() atom[114] atyp( 13) xyz(   12.000000,    8.000000,    5.656854) REQs(    1.491500,    0.036068,    0.900000,    0.000000) 
+MMFFparams::loadXYZ() atom[115] atyp( 20) xyz(   12.000000,    8.000000,    2.828427) REQs(    1.973500,    0.099215,   -0.900000,    0.000000) 
+MMFFparams::loadXYZ() atom[116] atyp( 13) xyz(   12.000000,    8.000000,    0.000000) REQs(    1.491500,    0.036068,    0.900000,    0.000000) 
+MMFFparams::loadXYZ() atom[117] atyp( 20) xyz(   14.000000,   10.000000,    5.656854) REQs(    1.973500,    0.099215,   -0.900000,    0.000000) 
+MMFFparams::loadXYZ() atom[118] atyp( 13) xyz(   14.000000,   10.000000,    2.828427) REQs(    1.491500,    0.036068,    0.900000,    0.000000) 
+MMFFparams::loadXYZ() atom[119] atyp( 20) xyz(   14.000000,   10.000000,    0.000000) REQs(    1.973500,    0.099215,   -0.900000,    0.000000) 
+MMFFparams::loadXYZ() atom[120] atyp( 13) xyz(   16.000000,    8.000000,    5.656854) REQs(    1.491500,    0.036068,    0.900000,    0.000000) 
+MMFFparams::loadXYZ() atom[121] atyp( 20) xyz(   16.000000,    8.000000,    2.828427) REQs(    1.973500,    0.099215,   -0.900000,    0.000000) 
+MMFFparams::loadXYZ() atom[122] atyp( 13) xyz(   16.000000,    8.000000,    0.000000) REQs(    1.491500,    0.036068,    0.900000,    0.000000) 
+MMFFparams::loadXYZ() atom[123] atyp( 20) xyz(   18.000000,   10.000000,    5.656854) REQs(    1.973500,    0.099215,   -0.900000,    0.000000) 
+MMFFparams::loadXYZ() atom[124] atyp( 13) xyz(   18.000000,   10.000000,    2.828427) REQs(    1.491500,    0.036068,    0.900000,    0.000000) 
+MMFFparams::loadXYZ() atom[125] atyp( 20) xyz(   18.000000,   10.000000,    0.000000) REQs(    1.973500,    0.099215,   -0.900000,    0.000000) 
+MMFFparams::loadXYZ() atom[126] atyp( 13) xyz(   20.000000,    8.000000,    5.656854) REQs(    1.491500,    0.036068,    0.900000,    0.000000) 
+MMFFparams::loadXYZ() atom[127] atyp( 20) xyz(   20.000000,    8.000000,    2.828427) REQs(    1.973500,    0.099215,   -0.900000,    0.000000) 
+MMFFparams::loadXYZ() atom[128] atyp( 13) xyz(   20.000000,    8.000000,    0.000000) REQs(    1.491500,    0.036068,    0.900000,    0.000000) 
+MMFFparams::loadXYZ() atom[129] atyp( 20) xyz(   22.000000,   10.000000,    5.656854) REQs(    1.973500,    0.099215,   -0.900000,    0.000000) 
+MMFFparams::loadXYZ() atom[130] atyp( 13) xyz(   22.000000,   10.000000,    2.828427) REQs(    1.491500,    0.036068,    0.900000,    0.000000) 
+MMFFparams::loadXYZ() atom[131] atyp( 20) xyz(   22.000000,   10.000000,    0.000000) REQs(    1.973500,    0.099215,   -0.900000,    0.000000) 
+MMFFparams::loadXYZ() atom[132] atyp( 13) xyz(   24.000000,    8.000000,    5.656854) REQs(    1.491500,    0.036068,    0.900000,    0.000000) 
+MMFFparams::loadXYZ() atom[133] atyp( 20) xyz(   24.000000,    8.000000,    2.828427) REQs(    1.973500,    0.099215,   -0.900000,    0.000000) 
+MMFFparams::loadXYZ() atom[134] atyp( 13) xyz(   24.000000,    8.000000,    0.000000) REQs(    1.491500,    0.036068,    0.900000,    0.000000) 
+MMFFparams::loadXYZ() atom[135] atyp( 20) xyz(   26.000000,   10.000000,    5.656854) REQs(    1.973500,    0.099215,   -0.900000,    0.000000) 
+MMFFparams::loadXYZ() atom[136] atyp( 13) xyz(   26.000000,   10.000000,    2.828427) REQs(    1.491500,    0.036068,    0.900000,    0.000000) 
+MMFFparams::loadXYZ() atom[137] atyp( 20) xyz(   26.000000,   10.000000,    0.000000) REQs(    1.973500,    0.099215,   -0.900000,    0.000000) 
+MMFFparams::loadXYZ() atom[138] atyp( 13) xyz(   28.000000,    8.000000,    5.656854) REQs(    1.491500,    0.036068,    0.900000,    0.000000) 
+MMFFparams::loadXYZ() atom[139] atyp( 20) xyz(   28.000000,    8.000000,    2.828427) REQs(    1.973500,    0.099215,   -0.900000,    0.000000) 
+MMFFparams::loadXYZ() atom[140] atyp( 13) xyz(   28.000000,    8.000000,    0.000000) REQs(    1.491500,    0.036068,    0.900000,    0.000000) 
+MMFFparams::loadXYZ() atom[141] atyp( 20) xyz(   30.000000,   10.000000,    5.656854) REQs(    1.973500,    0.099215,   -0.900000,    0.000000) 
+MMFFparams::loadXYZ() atom[142] atyp( 13) xyz(   30.000000,   10.000000,    2.828427) REQs(    1.491500,    0.036068,    0.900000,    0.000000) 
+MMFFparams::loadXYZ() atom[143] atyp( 20) xyz(   30.000000,   10.000000,    0.000000) REQs(    1.973500,    0.099215,   -0.900000,    0.000000) 
+MMFFparams::loadXYZ() atom[144] atyp( 13) xyz(    0.000000,   12.000000,    5.656854) REQs(    1.491500,    0.036068,    0.900000,    0.000000) 
+MMFFparams::loadXYZ() atom[145] atyp( 20) xyz(    0.000000,   12.000000,    2.828427) REQs(    1.973500,    0.099215,   -0.900000,    0.000000) 
+MMFFparams::loadXYZ() atom[146] atyp( 13) xyz(    0.000000,   12.000000,    0.000000) REQs(    1.491500,    0.036068,    0.900000,    0.000000) 
+MMFFparams::loadXYZ() atom[147] atyp( 20) xyz(    2.000000,   14.000000,    5.656854) REQs(    1.973500,    0.099215,   -0.900000,    0.000000) 
+MMFFparams::loadXYZ() atom[148] atyp( 13) xyz(    2.000000,   14.000000,    2.828427) REQs(    1.491500,    0.036068,    0.900000,    0.000000) 
+MMFFparams::loadXYZ() atom[149] atyp( 20) xyz(    2.000000,   14.000000,    0.000000) REQs(    1.973500,    0.099215,   -0.900000,    0.000000) 
+MMFFparams::loadXYZ() atom[150] atyp( 13) xyz(    4.000000,   12.000000,    5.656854) REQs(    1.491500,    0.036068,    0.900000,    0.000000) 
+MMFFparams::loadXYZ() atom[151] atyp( 20) xyz(    4.000000,   12.000000,    2.828427) REQs(    1.973500,    0.099215,   -0.900000,    0.000000) 
+MMFFparams::loadXYZ() atom[152] atyp( 13) xyz(    4.000000,   12.000000,    0.000000) REQs(    1.491500,    0.036068,    0.900000,    0.000000) 
+MMFFparams::loadXYZ() atom[153] atyp( 20) xyz(    6.000000,   14.000000,    5.656854) REQs(    1.973500,    0.099215,   -0.900000,    0.000000) 
+MMFFparams::loadXYZ() atom[154] atyp( 13) xyz(    6.000000,   14.000000,    2.828427) REQs(    1.491500,    0.036068,    0.900000,    0.000000) 
+MMFFparams::loadXYZ() atom[155] atyp( 20) xyz(    6.000000,   14.000000,    0.000000) REQs(    1.973500,    0.099215,   -0.900000,    0.000000) 
+MMFFparams::loadXYZ() atom[156] atyp( 13) xyz(    8.000000,   12.000000,    5.656854) REQs(    1.491500,    0.036068,    0.900000,    0.000000) 
+MMFFparams::loadXYZ() atom[157] atyp( 20) xyz(    8.000000,   12.000000,    2.828427) REQs(    1.973500,    0.099215,   -0.900000,    0.000000) 
+MMFFparams::loadXYZ() atom[158] atyp( 13) xyz(    8.000000,   12.000000,    0.000000) REQs(    1.491500,    0.036068,    0.900000,    0.000000) 
+MMFFparams::loadXYZ() atom[159] atyp( 20) xyz(   10.000000,   14.000000,    5.656854) REQs(    1.973500,    0.099215,   -0.900000,    0.000000) 
+MMFFparams::loadXYZ() atom[160] atyp( 13) xyz(   10.000000,   14.000000,    2.828427) REQs(    1.491500,    0.036068,    0.900000,    0.000000) 
+MMFFparams::loadXYZ() atom[161] atyp( 20) xyz(   10.000000,   14.000000,    0.000000) REQs(    1.973500,    0.099215,   -0.900000,    0.000000) 
+MMFFparams::loadXYZ() atom[162] atyp( 13) xyz(   12.000000,   12.000000,    5.656854) REQs(    1.491500,    0.036068,    0.900000,    0.000000) 
+MMFFparams::loadXYZ() atom[163] atyp( 20) xyz(   12.000000,   12.000000,    2.828427) REQs(    1.973500,    0.099215,   -0.900000,    0.000000) 
+MMFFparams::loadXYZ() atom[164] atyp( 13) xyz(   12.000000,   12.000000,    0.000000) REQs(    1.491500,    0.036068,    0.900000,    0.000000) 
+MMFFparams::loadXYZ() atom[165] atyp( 20) xyz(   14.000000,   14.000000,    5.656854) REQs(    1.973500,    0.099215,   -0.900000,    0.000000) 
+MMFFparams::loadXYZ() atom[166] atyp( 13) xyz(   14.000000,   14.000000,    2.828427) REQs(    1.491500,    0.036068,    0.900000,    0.000000) 
+MMFFparams::loadXYZ() atom[167] atyp( 20) xyz(   14.000000,   14.000000,    0.000000) REQs(    1.973500,    0.099215,   -0.900000,    0.000000) 
+MMFFparams::loadXYZ() atom[168] atyp( 13) xyz(   16.000000,   12.000000,    5.656854) REQs(    1.491500,    0.036068,    0.900000,    0.000000) 
+MMFFparams::loadXYZ() atom[169] atyp( 20) xyz(   16.000000,   12.000000,    2.828427) REQs(    1.973500,    0.099215,   -0.900000,    0.000000) 
+MMFFparams::loadXYZ() atom[170] atyp( 13) xyz(   16.000000,   12.000000,    0.000000) REQs(    1.491500,    0.036068,    0.900000,    0.000000) 
+MMFFparams::loadXYZ() atom[171] atyp( 20) xyz(   18.000000,   14.000000,    5.656854) REQs(    1.973500,    0.099215,   -0.900000,    0.000000) 
+MMFFparams::loadXYZ() atom[172] atyp( 13) xyz(   18.000000,   14.000000,    2.828427) REQs(    1.491500,    0.036068,    0.900000,    0.000000) 
+MMFFparams::loadXYZ() atom[173] atyp( 20) xyz(   18.000000,   14.000000,    0.000000) REQs(    1.973500,    0.099215,   -0.900000,    0.000000) 
+MMFFparams::loadXYZ() atom[174] atyp( 13) xyz(   20.000000,   12.000000,    5.656854) REQs(    1.491500,    0.036068,    0.900000,    0.000000) 
+MMFFparams::loadXYZ() atom[175] atyp( 20) xyz(   20.000000,   12.000000,    2.828427) REQs(    1.973500,    0.099215,   -0.900000,    0.000000) 
+MMFFparams::loadXYZ() atom[176] atyp( 13) xyz(   20.000000,   12.000000,    0.000000) REQs(    1.491500,    0.036068,    0.900000,    0.000000) 
+MMFFparams::loadXYZ() atom[177] atyp( 20) xyz(   22.000000,   14.000000,    5.656854) REQs(    1.973500,    0.099215,   -0.900000,    0.000000) 
+MMFFparams::loadXYZ() atom[178] atyp( 13) xyz(   22.000000,   14.000000,    2.828427) REQs(    1.491500,    0.036068,    0.900000,    0.000000) 
+MMFFparams::loadXYZ() atom[179] atyp( 20) xyz(   22.000000,   14.000000,    0.000000) REQs(    1.973500,    0.099215,   -0.900000,    0.000000) 
+MMFFparams::loadXYZ() atom[180] atyp( 13) xyz(   24.000000,   12.000000,    5.656854) REQs(    1.491500,    0.036068,    0.900000,    0.000000) 
+MMFFparams::loadXYZ() atom[181] atyp( 20) xyz(   24.000000,   12.000000,    2.828427) REQs(    1.973500,    0.099215,   -0.900000,    0.000000) 
+MMFFparams::loadXYZ() atom[182] atyp( 13) xyz(   24.000000,   12.000000,    0.000000) REQs(    1.491500,    0.036068,    0.900000,    0.000000) 
+MMFFparams::loadXYZ() atom[183] atyp( 20) xyz(   26.000000,   14.000000,    5.656854) REQs(    1.973500,    0.099215,   -0.900000,    0.000000) 
+MMFFparams::loadXYZ() atom[184] atyp( 13) xyz(   26.000000,   14.000000,    2.828427) REQs(    1.491500,    0.036068,    0.900000,    0.000000) 
+MMFFparams::loadXYZ() atom[185] atyp( 20) xyz(   26.000000,   14.000000,    0.000000) REQs(    1.973500,    0.099215,   -0.900000,    0.000000) 
+MMFFparams::loadXYZ() atom[186] atyp( 13) xyz(   28.000000,   12.000000,    5.656854) REQs(    1.491500,    0.036068,    0.900000,    0.000000) 
+MMFFparams::loadXYZ() atom[187] atyp( 20) xyz(   28.000000,   12.000000,    2.828427) REQs(    1.973500,    0.099215,   -0.900000,    0.000000) 
+MMFFparams::loadXYZ() atom[188] atyp( 13) xyz(   28.000000,   12.000000,    0.000000) REQs(    1.491500,    0.036068,    0.900000,    0.000000) 
+MMFFparams::loadXYZ() atom[189] atyp( 20) xyz(   30.000000,   14.000000,    5.656854) REQs(    1.973500,    0.099215,   -0.900000,    0.000000) 
+MMFFparams::loadXYZ() atom[190] atyp( 13) xyz(   30.000000,   14.000000,    2.828427) REQs(    1.491500,    0.036068,    0.900000,    0.000000) 
+MMFFparams::loadXYZ() atom[191] atyp( 20) xyz(   30.000000,   14.000000,    0.000000) REQs(    1.973500,    0.099215,   -0.900000,    0.000000) 
+MMFFparams::loadXYZ() atom[192] atyp( 13) xyz(    0.000000,   16.000000,    5.656854) REQs(    1.491500,    0.036068,    0.900000,    0.000000) 
+MMFFparams::loadXYZ() atom[193] atyp( 20) xyz(    0.000000,   16.000000,    2.828427) REQs(    1.973500,    0.099215,   -0.900000,    0.000000) 
+MMFFparams::loadXYZ() atom[194] atyp( 13) xyz(    0.000000,   16.000000,    0.000000) REQs(    1.491500,    0.036068,    0.900000,    0.000000) 
+MMFFparams::loadXYZ() atom[195] atyp( 20) xyz(    2.000000,   18.000000,    5.656854) REQs(    1.973500,    0.099215,   -0.900000,    0.000000) 
+MMFFparams::loadXYZ() atom[196] atyp( 13) xyz(    2.000000,   18.000000,    2.828427) REQs(    1.491500,    0.036068,    0.900000,    0.000000) 
+MMFFparams::loadXYZ() atom[197] atyp( 20) xyz(    2.000000,   18.000000,    0.000000) REQs(    1.973500,    0.099215,   -0.900000,    0.000000) 
+MMFFparams::loadXYZ() atom[198] atyp( 13) xyz(    4.000000,   16.000000,    5.656854) REQs(    1.491500,    0.036068,    0.900000,    0.000000) 
+MMFFparams::loadXYZ() atom[199] atyp( 20) xyz(    4.000000,   16.000000,    2.828427) REQs(    1.973500,    0.099215,   -0.900000,    0.000000) 
+MMFFparams::loadXYZ() atom[200] atyp( 13) xyz(    4.000000,   16.000000,    0.000000) REQs(    1.491500,    0.036068,    0.900000,    0.000000) 
+MMFFparams::loadXYZ() atom[201] atyp( 20) xyz(    6.000000,   18.000000,    5.656854) REQs(    1.973500,    0.099215,   -0.900000,    0.000000) 
+MMFFparams::loadXYZ() atom[202] atyp( 13) xyz(    6.000000,   18.000000,    2.828427) REQs(    1.491500,    0.036068,    0.900000,    0.000000) 
+MMFFparams::loadXYZ() atom[203] atyp( 20) xyz(    6.000000,   18.000000,    0.000000) REQs(    1.973500,    0.099215,   -0.900000,    0.000000) 
+MMFFparams::loadXYZ() atom[204] atyp( 13) xyz(    8.000000,   16.000000,    5.656854) REQs(    1.491500,    0.036068,    0.900000,    0.000000) 
+MMFFparams::loadXYZ() atom[205] atyp( 20) xyz(    8.000000,   16.000000,    2.828427) REQs(    1.973500,    0.099215,   -0.900000,    0.000000) 
+MMFFparams::loadXYZ() atom[206] atyp( 13) xyz(    8.000000,   16.000000,    0.000000) REQs(    1.491500,    0.036068,    0.900000,    0.000000) 
+MMFFparams::loadXYZ() atom[207] atyp( 20) xyz(   10.000000,   18.000000,    5.656854) REQs(    1.973500,    0.099215,   -0.900000,    0.000000) 
+MMFFparams::loadXYZ() atom[208] atyp( 13) xyz(   10.000000,   18.000000,    2.828427) REQs(    1.491500,    0.036068,    0.900000,    0.000000) 
+MMFFparams::loadXYZ() atom[209] atyp( 20) xyz(   10.000000,   18.000000,    0.000000) REQs(    1.973500,    0.099215,   -0.900000,    0.000000) 
+MMFFparams::loadXYZ() atom[210] atyp( 13) xyz(   12.000000,   16.000000,    5.656854) REQs(    1.491500,    0.036068,    0.900000,    0.000000) 
+MMFFparams::loadXYZ() atom[211] atyp( 20) xyz(   12.000000,   16.000000,    2.828427) REQs(    1.973500,    0.099215,   -0.900000,    0.000000) 
+MMFFparams::loadXYZ() atom[212] atyp( 13) xyz(   12.000000,   16.000000,    0.000000) REQs(    1.491500,    0.036068,    0.900000,    0.000000) 
+MMFFparams::loadXYZ() atom[213] atyp( 20) xyz(   14.000000,   18.000000,    5.656854) REQs(    1.973500,    0.099215,   -0.900000,    0.000000) 
+MMFFparams::loadXYZ() atom[214] atyp( 13) xyz(   14.000000,   18.000000,    2.828427) REQs(    1.491500,    0.036068,    0.900000,    0.000000) 
+MMFFparams::loadXYZ() atom[215] atyp( 20) xyz(   14.000000,   18.000000,    0.000000) REQs(    1.973500,    0.099215,   -0.900000,    0.000000) 
+MMFFparams::loadXYZ() atom[216] atyp( 13) xyz(   16.000000,   16.000000,    5.656854) REQs(    1.491500,    0.036068,    0.900000,    0.000000) 
+MMFFparams::loadXYZ() atom[217] atyp( 20) xyz(   16.000000,   16.000000,    2.828427) REQs(    1.973500,    0.099215,   -0.900000,    0.000000) 
+MMFFparams::loadXYZ() atom[218] atyp( 13) xyz(   16.000000,   16.000000,    0.000000) REQs(    1.491500,    0.036068,    0.900000,    0.000000) 
+MMFFparams::loadXYZ() atom[219] atyp( 20) xyz(   18.000000,   18.000000,    5.656854) REQs(    1.973500,    0.099215,   -0.900000,    0.000000) 
+MMFFparams::loadXYZ() atom[220] atyp( 13) xyz(   18.000000,   18.000000,    2.828427) REQs(    1.491500,    0.036068,    0.900000,    0.000000) 
+MMFFparams::loadXYZ() atom[221] atyp( 20) xyz(   18.000000,   18.000000,    0.000000) REQs(    1.973500,    0.099215,   -0.900000,    0.000000) 
+MMFFparams::loadXYZ() atom[222] atyp( 13) xyz(   20.000000,   16.000000,    5.656854) REQs(    1.491500,    0.036068,    0.900000,    0.000000) 
+MMFFparams::loadXYZ() atom[223] atyp( 20) xyz(   20.000000,   16.000000,    2.828427) REQs(    1.973500,    0.099215,   -0.900000,    0.000000) 
+MMFFparams::loadXYZ() atom[224] atyp( 13) xyz(   20.000000,   16.000000,    0.000000) REQs(    1.491500,    0.036068,    0.900000,    0.000000) 
+MMFFparams::loadXYZ() atom[225] atyp( 20) xyz(   22.000000,   18.000000,    5.656854) REQs(    1.973500,    0.099215,   -0.900000,    0.000000) 
+MMFFparams::loadXYZ() atom[226] atyp( 13) xyz(   22.000000,   18.000000,    2.828427) REQs(    1.491500,    0.036068,    0.900000,    0.000000) 
+MMFFparams::loadXYZ() atom[227] atyp( 20) xyz(   22.000000,   18.000000,    0.000000) REQs(    1.973500,    0.099215,   -0.900000,    0.000000) 
+MMFFparams::loadXYZ() atom[228] atyp( 13) xyz(   24.000000,   16.000000,    5.656854) REQs(    1.491500,    0.036068,    0.900000,    0.000000) 
+MMFFparams::loadXYZ() atom[229] atyp( 20) xyz(   24.000000,   16.000000,    2.828427) REQs(    1.973500,    0.099215,   -0.900000,    0.000000) 
+MMFFparams::loadXYZ() atom[230] atyp( 13) xyz(   24.000000,   16.000000,    0.000000) REQs(    1.491500,    0.036068,    0.900000,    0.000000) 
+MMFFparams::loadXYZ() atom[231] atyp( 20) xyz(   26.000000,   18.000000,    5.656854) REQs(    1.973500,    0.099215,   -0.900000,    0.000000) 
+MMFFparams::loadXYZ() atom[232] atyp( 13) xyz(   26.000000,   18.000000,    2.828427) REQs(    1.491500,    0.036068,    0.900000,    0.000000) 
+MMFFparams::loadXYZ() atom[233] atyp( 20) xyz(   26.000000,   18.000000,    0.000000) REQs(    1.973500,    0.099215,   -0.900000,    0.000000) 
+MMFFparams::loadXYZ() atom[234] atyp( 13) xyz(   28.000000,   16.000000,    5.656854) REQs(    1.491500,    0.036068,    0.900000,    0.000000) 
+MMFFparams::loadXYZ() atom[235] atyp( 20) xyz(   28.000000,   16.000000,    2.828427) REQs(    1.973500,    0.099215,   -0.900000,    0.000000) 
+MMFFparams::loadXYZ() atom[236] atyp( 13) xyz(   28.000000,   16.000000,    0.000000) REQs(    1.491500,    0.036068,    0.900000,    0.000000) 
+MMFFparams::loadXYZ() atom[237] atyp( 20) xyz(   30.000000,   18.000000,    5.656854) REQs(    1.973500,    0.099215,   -0.900000,    0.000000) 
+MMFFparams::loadXYZ() atom[238] atyp( 13) xyz(   30.000000,   18.000000,    2.828427) REQs(    1.491500,    0.036068,    0.900000,    0.000000) 
+MMFFparams::loadXYZ() atom[239] atyp( 20) xyz(   30.000000,   18.000000,    0.000000) REQs(    1.973500,    0.099215,   -0.900000,    0.000000) 
+MMFFparams::loadXYZ() atom[240] atyp( 13) xyz(    0.000000,   20.000000,    5.656854) REQs(    1.491500,    0.036068,    0.900000,    0.000000) 
+MMFFparams::loadXYZ() atom[241] atyp( 20) xyz(    0.000000,   20.000000,    2.828427) REQs(    1.973500,    0.099215,   -0.900000,    0.000000) 
+MMFFparams::loadXYZ() atom[242] atyp( 13) xyz(    0.000000,   20.000000,    0.000000) REQs(    1.491500,    0.036068,    0.900000,    0.000000) 
+MMFFparams::loadXYZ() atom[243] atyp( 20) xyz(    2.000000,   22.000000,    5.656854) REQs(    1.973500,    0.099215,   -0.900000,    0.000000) 
+MMFFparams::loadXYZ() atom[244] atyp( 13) xyz(    2.000000,   22.000000,    2.828427) REQs(    1.491500,    0.036068,    0.900000,    0.000000) 
+MMFFparams::loadXYZ() atom[245] atyp( 20) xyz(    2.000000,   22.000000,    0.000000) REQs(    1.973500,    0.099215,   -0.900000,    0.000000) 
+MMFFparams::loadXYZ() atom[246] atyp( 13) xyz(    4.000000,   20.000000,    5.656854) REQs(    1.491500,    0.036068,    0.900000,    0.000000) 
+MMFFparams::loadXYZ() atom[247] atyp( 20) xyz(    4.000000,   20.000000,    2.828427) REQs(    1.973500,    0.099215,   -0.900000,    0.000000) 
+MMFFparams::loadXYZ() atom[248] atyp( 13) xyz(    4.000000,   20.000000,    0.000000) REQs(    1.491500,    0.036068,    0.900000,    0.000000) 
+MMFFparams::loadXYZ() atom[249] atyp( 20) xyz(    6.000000,   22.000000,    5.656854) REQs(    1.973500,    0.099215,   -0.900000,    0.000000) 
+MMFFparams::loadXYZ() atom[250] atyp( 13) xyz(    6.000000,   22.000000,    2.828427) REQs(    1.491500,    0.036068,    0.900000,    0.000000) 
+MMFFparams::loadXYZ() atom[251] atyp( 20) xyz(    6.000000,   22.000000,    0.000000) REQs(    1.973500,    0.099215,   -0.900000,    0.000000) 
+MMFFparams::loadXYZ() atom[252] atyp( 13) xyz(    8.000000,   20.000000,    5.656854) REQs(    1.491500,    0.036068,    0.900000,    0.000000) 
+MMFFparams::loadXYZ() atom[253] atyp( 20) xyz(    8.000000,   20.000000,    2.828427) REQs(    1.973500,    0.099215,   -0.900000,    0.000000) 
+MMFFparams::loadXYZ() atom[254] atyp( 13) xyz(    8.000000,   20.000000,    0.000000) REQs(    1.491500,    0.036068,    0.900000,    0.000000) 
+MMFFparams::loadXYZ() atom[255] atyp( 20) xyz(   10.000000,   22.000000,    5.656854) REQs(    1.973500,    0.099215,   -0.900000,    0.000000) 
+MMFFparams::loadXYZ() atom[256] atyp( 13) xyz(   10.000000,   22.000000,    2.828427) REQs(    1.491500,    0.036068,    0.900000,    0.000000) 
+MMFFparams::loadXYZ() atom[257] atyp( 20) xyz(   10.000000,   22.000000,    0.000000) REQs(    1.973500,    0.099215,   -0.900000,    0.000000) 
+MMFFparams::loadXYZ() atom[258] atyp( 13) xyz(   12.000000,   20.000000,    5.656854) REQs(    1.491500,    0.036068,    0.900000,    0.000000) 
+MMFFparams::loadXYZ() atom[259] atyp( 20) xyz(   12.000000,   20.000000,    2.828427) REQs(    1.973500,    0.099215,   -0.900000,    0.000000) 
+MMFFparams::loadXYZ() atom[260] atyp( 13) xyz(   12.000000,   20.000000,    0.000000) REQs(    1.491500,    0.036068,    0.900000,    0.000000) 
+MMFFparams::loadXYZ() atom[261] atyp( 20) xyz(   14.000000,   22.000000,    5.656854) REQs(    1.973500,    0.099215,   -0.900000,    0.000000) 
+MMFFparams::loadXYZ() atom[262] atyp( 13) xyz(   14.000000,   22.000000,    2.828427) REQs(    1.491500,    0.036068,    0.900000,    0.000000) 
+MMFFparams::loadXYZ() atom[263] atyp( 20) xyz(   14.000000,   22.000000,    0.000000) REQs(    1.973500,    0.099215,   -0.900000,    0.000000) 
+MMFFparams::loadXYZ() atom[264] atyp( 13) xyz(   16.000000,   20.000000,    5.656854) REQs(    1.491500,    0.036068,    0.900000,    0.000000) 
+MMFFparams::loadXYZ() atom[265] atyp( 20) xyz(   16.000000,   20.000000,    2.828427) REQs(    1.973500,    0.099215,   -0.900000,    0.000000) 
+MMFFparams::loadXYZ() atom[266] atyp( 13) xyz(   16.000000,   20.000000,    0.000000) REQs(    1.491500,    0.036068,    0.900000,    0.000000) 
+MMFFparams::loadXYZ() atom[267] atyp( 20) xyz(   18.000000,   22.000000,    5.656854) REQs(    1.973500,    0.099215,   -0.900000,    0.000000) 
+MMFFparams::loadXYZ() atom[268] atyp( 13) xyz(   18.000000,   22.000000,    2.828427) REQs(    1.491500,    0.036068,    0.900000,    0.000000) 
+MMFFparams::loadXYZ() atom[269] atyp( 20) xyz(   18.000000,   22.000000,    0.000000) REQs(    1.973500,    0.099215,   -0.900000,    0.000000) 
+MMFFparams::loadXYZ() atom[270] atyp( 13) xyz(   20.000000,   20.000000,    5.656854) REQs(    1.491500,    0.036068,    0.900000,    0.000000) 
+MMFFparams::loadXYZ() atom[271] atyp( 20) xyz(   20.000000,   20.000000,    2.828427) REQs(    1.973500,    0.099215,   -0.900000,    0.000000) 
+MMFFparams::loadXYZ() atom[272] atyp( 13) xyz(   20.000000,   20.000000,    0.000000) REQs(    1.491500,    0.036068,    0.900000,    0.000000) 
+MMFFparams::loadXYZ() atom[273] atyp( 20) xyz(   22.000000,   22.000000,    5.656854) REQs(    1.973500,    0.099215,   -0.900000,    0.000000) 
+MMFFparams::loadXYZ() atom[274] atyp( 13) xyz(   22.000000,   22.000000,    2.828427) REQs(    1.491500,    0.036068,    0.900000,    0.000000) 
+MMFFparams::loadXYZ() atom[275] atyp( 20) xyz(   22.000000,   22.000000,    0.000000) REQs(    1.973500,    0.099215,   -0.900000,    0.000000) 
+MMFFparams::loadXYZ() atom[276] atyp( 13) xyz(   24.000000,   20.000000,    5.656854) REQs(    1.491500,    0.036068,    0.900000,    0.000000) 
+MMFFparams::loadXYZ() atom[277] atyp( 20) xyz(   24.000000,   20.000000,    2.828427) REQs(    1.973500,    0.099215,   -0.900000,    0.000000) 
+MMFFparams::loadXYZ() atom[278] atyp( 13) xyz(   24.000000,   20.000000,    0.000000) REQs(    1.491500,    0.036068,    0.900000,    0.000000) 
+MMFFparams::loadXYZ() atom[279] atyp( 20) xyz(   26.000000,   22.000000,    5.656854) REQs(    1.973500,    0.099215,   -0.900000,    0.000000) 
+MMFFparams::loadXYZ() atom[280] atyp( 13) xyz(   26.000000,   22.000000,    2.828427) REQs(    1.491500,    0.036068,    0.900000,    0.000000) 
+MMFFparams::loadXYZ() atom[281] atyp( 20) xyz(   26.000000,   22.000000,    0.000000) REQs(    1.973500,    0.099215,   -0.900000,    0.000000) 
+MMFFparams::loadXYZ() atom[282] atyp( 13) xyz(   28.000000,   20.000000,    5.656854) REQs(    1.491500,    0.036068,    0.900000,    0.000000) 
+MMFFparams::loadXYZ() atom[283] atyp( 20) xyz(   28.000000,   20.000000,    2.828427) REQs(    1.973500,    0.099215,   -0.900000,    0.000000) 
+MMFFparams::loadXYZ() atom[284] atyp( 13) xyz(   28.000000,   20.000000,    0.000000) REQs(    1.491500,    0.036068,    0.900000,    0.000000) 
+MMFFparams::loadXYZ() atom[285] atyp( 20) xyz(   30.000000,   22.000000,    5.656854) REQs(    1.973500,    0.099215,   -0.900000,    0.000000) 
+MMFFparams::loadXYZ() atom[286] atyp( 13) xyz(   30.000000,   22.000000,    2.828427) REQs(    1.491500,    0.036068,    0.900000,    0.000000) 
+MMFFparams::loadXYZ() atom[287] atyp( 20) xyz(   30.000000,   22.000000,    0.000000) REQs(    1.973500,    0.099215,   -0.900000,    0.000000) 
+MMFFparams::loadXYZ() atom[288] atyp( 13) xyz(    0.000000,   24.000000,    5.656854) REQs(    1.491500,    0.036068,    0.900000,    0.000000) 
+MMFFparams::loadXYZ() atom[289] atyp( 20) xyz(    0.000000,   24.000000,    2.828427) REQs(    1.973500,    0.099215,   -0.900000,    0.000000) 
+MMFFparams::loadXYZ() atom[290] atyp( 13) xyz(    0.000000,   24.000000,    0.000000) REQs(    1.491500,    0.036068,    0.900000,    0.000000) 
+MMFFparams::loadXYZ() atom[291] atyp( 20) xyz(    2.000000,   26.000000,    5.656854) REQs(    1.973500,    0.099215,   -0.900000,    0.000000) 
+MMFFparams::loadXYZ() atom[292] atyp( 13) xyz(    2.000000,   26.000000,    2.828427) REQs(    1.491500,    0.036068,    0.900000,    0.000000) 
+MMFFparams::loadXYZ() atom[293] atyp( 20) xyz(    2.000000,   26.000000,    0.000000) REQs(    1.973500,    0.099215,   -0.900000,    0.000000) 
+MMFFparams::loadXYZ() atom[294] atyp( 13) xyz(    4.000000,   24.000000,    5.656854) REQs(    1.491500,    0.036068,    0.900000,    0.000000) 
+MMFFparams::loadXYZ() atom[295] atyp( 20) xyz(    4.000000,   24.000000,    2.828427) REQs(    1.973500,    0.099215,   -0.900000,    0.000000) 
+MMFFparams::loadXYZ() atom[296] atyp( 13) xyz(    4.000000,   24.000000,    0.000000) REQs(    1.491500,    0.036068,    0.900000,    0.000000) 
+MMFFparams::loadXYZ() atom[297] atyp( 20) xyz(    6.000000,   26.000000,    5.656854) REQs(    1.973500,    0.099215,   -0.900000,    0.000000) 
+MMFFparams::loadXYZ() atom[298] atyp( 13) xyz(    6.000000,   26.000000,    2.828427) REQs(    1.491500,    0.036068,    0.900000,    0.000000) 
+MMFFparams::loadXYZ() atom[299] atyp( 20) xyz(    6.000000,   26.000000,    0.000000) REQs(    1.973500,    0.099215,   -0.900000,    0.000000) 
+MMFFparams::loadXYZ() atom[300] atyp( 13) xyz(    8.000000,   24.000000,    5.656854) REQs(    1.491500,    0.036068,    0.900000,    0.000000) 
+MMFFparams::loadXYZ() atom[301] atyp( 20) xyz(    8.000000,   24.000000,    2.828427) REQs(    1.973500,    0.099215,   -0.900000,    0.000000) 
+MMFFparams::loadXYZ() atom[302] atyp( 13) xyz(    8.000000,   24.000000,    0.000000) REQs(    1.491500,    0.036068,    0.900000,    0.000000) 
+MMFFparams::loadXYZ() atom[303] atyp( 20) xyz(   10.000000,   26.000000,    5.656854) REQs(    1.973500,    0.099215,   -0.900000,    0.000000) 
+MMFFparams::loadXYZ() atom[304] atyp( 13) xyz(   10.000000,   26.000000,    2.828427) REQs(    1.491500,    0.036068,    0.900000,    0.000000) 
+MMFFparams::loadXYZ() atom[305] atyp( 20) xyz(   10.000000,   26.000000,    0.000000) REQs(    1.973500,    0.099215,   -0.900000,    0.000000) 
+MMFFparams::loadXYZ() atom[306] atyp( 13) xyz(   12.000000,   24.000000,    5.656854) REQs(    1.491500,    0.036068,    0.900000,    0.000000) 
+MMFFparams::loadXYZ() atom[307] atyp( 20) xyz(   12.000000,   24.000000,    2.828427) REQs(    1.973500,    0.099215,   -0.900000,    0.000000) 
+MMFFparams::loadXYZ() atom[308] atyp( 13) xyz(   12.000000,   24.000000,    0.000000) REQs(    1.491500,    0.036068,    0.900000,    0.000000) 
+MMFFparams::loadXYZ() atom[309] atyp( 20) xyz(   14.000000,   26.000000,    5.656854) REQs(    1.973500,    0.099215,   -0.900000,    0.000000) 
+MMFFparams::loadXYZ() atom[310] atyp( 13) xyz(   14.000000,   26.000000,    2.828427) REQs(    1.491500,    0.036068,    0.900000,    0.000000) 
+MMFFparams::loadXYZ() atom[311] atyp( 20) xyz(   14.000000,   26.000000,    0.000000) REQs(    1.973500,    0.099215,   -0.900000,    0.000000) 
+MMFFparams::loadXYZ() atom[312] atyp( 13) xyz(   16.000000,   24.000000,    5.656854) REQs(    1.491500,    0.036068,    0.900000,    0.000000) 
+MMFFparams::loadXYZ() atom[313] atyp( 20) xyz(   16.000000,   24.000000,    2.828427) REQs(    1.973500,    0.099215,   -0.900000,    0.000000) 
+MMFFparams::loadXYZ() atom[314] atyp( 13) xyz(   16.000000,   24.000000,    0.000000) REQs(    1.491500,    0.036068,    0.900000,    0.000000) 
+MMFFparams::loadXYZ() atom[315] atyp( 20) xyz(   18.000000,   26.000000,    5.656854) REQs(    1.973500,    0.099215,   -0.900000,    0.000000) 
+MMFFparams::loadXYZ() atom[316] atyp( 13) xyz(   18.000000,   26.000000,    2.828427) REQs(    1.491500,    0.036068,    0.900000,    0.000000) 
+MMFFparams::loadXYZ() atom[317] atyp( 20) xyz(   18.000000,   26.000000,    0.000000) REQs(    1.973500,    0.099215,   -0.900000,    0.000000) 
+MMFFparams::loadXYZ() atom[318] atyp( 13) xyz(   20.000000,   24.000000,    5.656854) REQs(    1.491500,    0.036068,    0.900000,    0.000000) 
+MMFFparams::loadXYZ() atom[319] atyp( 20) xyz(   20.000000,   24.000000,    2.828427) REQs(    1.973500,    0.099215,   -0.900000,    0.000000) 
+MMFFparams::loadXYZ() atom[320] atyp( 13) xyz(   20.000000,   24.000000,    0.000000) REQs(    1.491500,    0.036068,    0.900000,    0.000000) 
+MMFFparams::loadXYZ() atom[321] atyp( 20) xyz(   22.000000,   26.000000,    5.656854) REQs(    1.973500,    0.099215,   -0.900000,    0.000000) 
+MMFFparams::loadXYZ() atom[322] atyp( 13) xyz(   22.000000,   26.000000,    2.828427) REQs(    1.491500,    0.036068,    0.900000,    0.000000) 
+MMFFparams::loadXYZ() atom[323] atyp( 20) xyz(   22.000000,   26.000000,    0.000000) REQs(    1.973500,    0.099215,   -0.900000,    0.000000) 
+MMFFparams::loadXYZ() atom[324] atyp( 13) xyz(   24.000000,   24.000000,    5.656854) REQs(    1.491500,    0.036068,    0.900000,    0.000000) 
+MMFFparams::loadXYZ() atom[325] atyp( 20) xyz(   24.000000,   24.000000,    2.828427) REQs(    1.973500,    0.099215,   -0.900000,    0.000000) 
+MMFFparams::loadXYZ() atom[326] atyp( 13) xyz(   24.000000,   24.000000,    0.000000) REQs(    1.491500,    0.036068,    0.900000,    0.000000) 
+MMFFparams::loadXYZ() atom[327] atyp( 20) xyz(   26.000000,   26.000000,    5.656854) REQs(    1.973500,    0.099215,   -0.900000,    0.000000) 
+MMFFparams::loadXYZ() atom[328] atyp( 13) xyz(   26.000000,   26.000000,    2.828427) REQs(    1.491500,    0.036068,    0.900000,    0.000000) 
+MMFFparams::loadXYZ() atom[329] atyp( 20) xyz(   26.000000,   26.000000,    0.000000) REQs(    1.973500,    0.099215,   -0.900000,    0.000000) 
+MMFFparams::loadXYZ() atom[330] atyp( 13) xyz(   28.000000,   24.000000,    5.656854) REQs(    1.491500,    0.036068,    0.900000,    0.000000) 
+MMFFparams::loadXYZ() atom[331] atyp( 20) xyz(   28.000000,   24.000000,    2.828427) REQs(    1.973500,    0.099215,   -0.900000,    0.000000) 
+MMFFparams::loadXYZ() atom[332] atyp( 13) xyz(   28.000000,   24.000000,    0.000000) REQs(    1.491500,    0.036068,    0.900000,    0.000000) 
+MMFFparams::loadXYZ() atom[333] atyp( 20) xyz(   30.000000,   26.000000,    5.656854) REQs(    1.973500,    0.099215,   -0.900000,    0.000000) 
+MMFFparams::loadXYZ() atom[334] atyp( 13) xyz(   30.000000,   26.000000,    2.828427) REQs(    1.491500,    0.036068,    0.900000,    0.000000) 
+MMFFparams::loadXYZ() atom[335] atyp( 20) xyz(   30.000000,   26.000000,    0.000000) REQs(    1.973500,    0.099215,   -0.900000,    0.000000) 
+MMFFparams::loadXYZ() atom[336] atyp( 13) xyz(    0.000000,   28.000000,    5.656854) REQs(    1.491500,    0.036068,    0.900000,    0.000000) 
+MMFFparams::loadXYZ() atom[337] atyp( 20) xyz(    0.000000,   28.000000,    2.828427) REQs(    1.973500,    0.099215,   -0.900000,    0.000000) 
+MMFFparams::loadXYZ() atom[338] atyp( 13) xyz(    0.000000,   28.000000,    0.000000) REQs(    1.491500,    0.036068,    0.900000,    0.000000) 
+MMFFparams::loadXYZ() atom[339] atyp( 20) xyz(    2.000000,   30.000000,    5.656854) REQs(    1.973500,    0.099215,   -0.900000,    0.000000) 
+MMFFparams::loadXYZ() atom[340] atyp( 13) xyz(    2.000000,   30.000000,    2.828427) REQs(    1.491500,    0.036068,    0.900000,    0.000000) 
+MMFFparams::loadXYZ() atom[341] atyp( 20) xyz(    2.000000,   30.000000,    0.000000) REQs(    1.973500,    0.099215,   -0.900000,    0.000000) 
+MMFFparams::loadXYZ() atom[342] atyp( 13) xyz(    4.000000,   28.000000,    5.656854) REQs(    1.491500,    0.036068,    0.900000,    0.000000) 
+MMFFparams::loadXYZ() atom[343] atyp( 20) xyz(    4.000000,   28.000000,    2.828427) REQs(    1.973500,    0.099215,   -0.900000,    0.000000) 
+MMFFparams::loadXYZ() atom[344] atyp( 13) xyz(    4.000000,   28.000000,    0.000000) REQs(    1.491500,    0.036068,    0.900000,    0.000000) 
+MMFFparams::loadXYZ() atom[345] atyp( 20) xyz(    6.000000,   30.000000,    5.656854) REQs(    1.973500,    0.099215,   -0.900000,    0.000000) 
+MMFFparams::loadXYZ() atom[346] atyp( 13) xyz(    6.000000,   30.000000,    2.828427) REQs(    1.491500,    0.036068,    0.900000,    0.000000) 
+MMFFparams::loadXYZ() atom[347] atyp( 20) xyz(    6.000000,   30.000000,    0.000000) REQs(    1.973500,    0.099215,   -0.900000,    0.000000) 
+MMFFparams::loadXYZ() atom[348] atyp( 13) xyz(    8.000000,   28.000000,    5.656854) REQs(    1.491500,    0.036068,    0.900000,    0.000000) 
+MMFFparams::loadXYZ() atom[349] atyp( 20) xyz(    8.000000,   28.000000,    2.828427) REQs(    1.973500,    0.099215,   -0.900000,    0.000000) 
+MMFFparams::loadXYZ() atom[350] atyp( 13) xyz(    8.000000,   28.000000,    0.000000) REQs(    1.491500,    0.036068,    0.900000,    0.000000) 
+MMFFparams::loadXYZ() atom[351] atyp( 20) xyz(   10.000000,   30.000000,    5.656854) REQs(    1.973500,    0.099215,   -0.900000,    0.000000) 
+MMFFparams::loadXYZ() atom[352] atyp( 13) xyz(   10.000000,   30.000000,    2.828427) REQs(    1.491500,    0.036068,    0.900000,    0.000000) 
+MMFFparams::loadXYZ() atom[353] atyp( 20) xyz(   10.000000,   30.000000,    0.000000) REQs(    1.973500,    0.099215,   -0.900000,    0.000000) 
+MMFFparams::loadXYZ() atom[354] atyp( 13) xyz(   12.000000,   28.000000,    5.656854) REQs(    1.491500,    0.036068,    0.900000,    0.000000) 
+MMFFparams::loadXYZ() atom[355] atyp( 20) xyz(   12.000000,   28.000000,    2.828427) REQs(    1.973500,    0.099215,   -0.900000,    0.000000) 
+MMFFparams::loadXYZ() atom[356] atyp( 13) xyz(   12.000000,   28.000000,    0.000000) REQs(    1.491500,    0.036068,    0.900000,    0.000000) 
+MMFFparams::loadXYZ() atom[357] atyp( 20) xyz(   14.000000,   30.000000,    5.656854) REQs(    1.973500,    0.099215,   -0.900000,    0.000000) 
+MMFFparams::loadXYZ() atom[358] atyp( 13) xyz(   14.000000,   30.000000,    2.828427) REQs(    1.491500,    0.036068,    0.900000,    0.000000) 
+MMFFparams::loadXYZ() atom[359] atyp( 20) xyz(   14.000000,   30.000000,    0.000000) REQs(    1.973500,    0.099215,   -0.900000,    0.000000) 
+MMFFparams::loadXYZ() atom[360] atyp( 13) xyz(   16.000000,   28.000000,    5.656854) REQs(    1.491500,    0.036068,    0.900000,    0.000000) 
+MMFFparams::loadXYZ() atom[361] atyp( 20) xyz(   16.000000,   28.000000,    2.828427) REQs(    1.973500,    0.099215,   -0.900000,    0.000000) 
+MMFFparams::loadXYZ() atom[362] atyp( 13) xyz(   16.000000,   28.000000,    0.000000) REQs(    1.491500,    0.036068,    0.900000,    0.000000) 
+MMFFparams::loadXYZ() atom[363] atyp( 20) xyz(   18.000000,   30.000000,    5.656854) REQs(    1.973500,    0.099215,   -0.900000,    0.000000) 
+MMFFparams::loadXYZ() atom[364] atyp( 13) xyz(   18.000000,   30.000000,    2.828427) REQs(    1.491500,    0.036068,    0.900000,    0.000000) 
+MMFFparams::loadXYZ() atom[365] atyp( 20) xyz(   18.000000,   30.000000,    0.000000) REQs(    1.973500,    0.099215,   -0.900000,    0.000000) 
+MMFFparams::loadXYZ() atom[366] atyp( 13) xyz(   20.000000,   28.000000,    5.656854) REQs(    1.491500,    0.036068,    0.900000,    0.000000) 
+MMFFparams::loadXYZ() atom[367] atyp( 20) xyz(   20.000000,   28.000000,    2.828427) REQs(    1.973500,    0.099215,   -0.900000,    0.000000) 
+MMFFparams::loadXYZ() atom[368] atyp( 13) xyz(   20.000000,   28.000000,    0.000000) REQs(    1.491500,    0.036068,    0.900000,    0.000000) 
+MMFFparams::loadXYZ() atom[369] atyp( 20) xyz(   22.000000,   30.000000,    5.656854) REQs(    1.973500,    0.099215,   -0.900000,    0.000000) 
+MMFFparams::loadXYZ() atom[370] atyp( 13) xyz(   22.000000,   30.000000,    2.828427) REQs(    1.491500,    0.036068,    0.900000,    0.000000) 
+MMFFparams::loadXYZ() atom[371] atyp( 20) xyz(   22.000000,   30.000000,    0.000000) REQs(    1.973500,    0.099215,   -0.900000,    0.000000) 
+MMFFparams::loadXYZ() atom[372] atyp( 13) xyz(   24.000000,   28.000000,    5.656854) REQs(    1.491500,    0.036068,    0.900000,    0.000000) 
+MMFFparams::loadXYZ() atom[373] atyp( 20) xyz(   24.000000,   28.000000,    2.828427) REQs(    1.973500,    0.099215,   -0.900000,    0.000000) 
+MMFFparams::loadXYZ() atom[374] atyp( 13) xyz(   24.000000,   28.000000,    0.000000) REQs(    1.491500,    0.036068,    0.900000,    0.000000) 
+MMFFparams::loadXYZ() atom[375] atyp( 20) xyz(   26.000000,   30.000000,    5.656854) REQs(    1.973500,    0.099215,   -0.900000,    0.000000) 
+MMFFparams::loadXYZ() atom[376] atyp( 13) xyz(   26.000000,   30.000000,    2.828427) REQs(    1.491500,    0.036068,    0.900000,    0.000000) 
+MMFFparams::loadXYZ() atom[377] atyp( 20) xyz(   26.000000,   30.000000,    0.000000) REQs(    1.973500,    0.099215,   -0.900000,    0.000000) 
+MMFFparams::loadXYZ() atom[378] atyp( 13) xyz(   28.000000,   28.000000,    5.656854) REQs(    1.491500,    0.036068,    0.900000,    0.000000) 
+MMFFparams::loadXYZ() atom[379] atyp( 20) xyz(   28.000000,   28.000000,    2.828427) REQs(    1.973500,    0.099215,   -0.900000,    0.000000) 
+MMFFparams::loadXYZ() atom[380] atyp( 13) xyz(   28.000000,   28.000000,    0.000000) REQs(    1.491500,    0.036068,    0.900000,    0.000000) 
+MMFFparams::loadXYZ() atom[381] atyp( 20) xyz(   30.000000,   30.000000,    5.656854) REQs(    1.973500,    0.099215,   -0.900000,    0.000000) 
+MMFFparams::loadXYZ() atom[382] atyp( 13) xyz(   30.000000,   30.000000,    2.828427) REQs(    1.491500,    0.036068,    0.900000,    0.000000) 
+MMFFparams::loadXYZ() atom[383] atyp( 20) xyz(   30.000000,   30.000000,    0.000000) REQs(    1.973500,    0.099215,   -0.900000,    0.000000) 
+MMFFparams::loadXYZ() DONE 
+MolWorld_sp3::loadSurf(data/xyz/Na_0.9_Cl_-0.9) 1 natoms 384 apos 108095747852544 atyps 107408543896448 
+MolWorld_sp3::initGridFF(data/xyz/Na_0.9_Cl_-0.9,bSymetrize=1,bAutoNPBC=1 bCheckEval=1 bUseEwald=1 bFit=1 bRefine=1 bGridDouble=1 gridStep=0.1,z0=nan,cel0={-0.5,-0.5,0} )
+GridFF::initGridFF(data/xyz/Na_0.9_Cl_-0.9) bSymetrize=1 bAutoNPBC=1 z0=nan 
+GridFF::findTop() z0=5.65685 
+ n      320 320 600 
+ pos0   -16.000000 -16.000000 5.656854 
+ a      32.000000 0.000000 0.000000 
+ b      0.000000 32.000000 0.000000 
+ c      0.000000 0.000000 60.000000 
+ da     0.100000 0.000000 0.000000 
+ db     0.000000 0.100000 0.000000 
+ dc     0.000000 0.000000 0.100000 
+ inv_da 10.000000 0.000000 0.000000 
+ inv_db 0.000000 10.000000 0.000000 
+ inv_dc 0.000000 0.000000 10.000000 
+GridFF::initGridFF() nPBC(0,0,0|1) Mpol qcog(0,0,0) Q=1.66533e-16 dipol(-1.94289e-15,1.74305e-14,-2.86438e-14) quadrupol:xx,yy,zz(-2073.6,-1612.8,-1.33227e-15)yz,xz,xy(-6.9722e-14,2.19824e-14,2.33036e-13)
+MolWorld_sp3::initGridFF() 1 wd0=`/home/indranil/git/FireCore/tests/tMMFF`
+MolWorld_sp3::initGridFF() 1 wd=`data/Na_0.9_Cl_-0.9`
+GridFF::tryLoad_new() mode=6 bSymetrize=1 bFit=1 bRefine=1 
+Current  directory: /home/indranil/git/FireCore/cpp/common_resources/Na_0.9_Cl_-0.9
+GridFF::tryLoad_new() load Bspline_PLQ from Bspline_PLQd.npy
+NumpyFile() dtype=`<f8` nbyte=8 ntot=184320000 shape(320,320,600,3,)
+ n      320 320 600 
+ pos0   -16.000000 -16.000000 5.656854 
+ a      32.000000 0.000000 0.000000 
+ b      0.000000 32.000000 0.000000 
+ c      0.000000 0.000000 60.000000 
+ da     0.100000 0.000000 0.000000 
+ db     0.000000 0.100000 0.000000 
+ dc     0.000000 0.000000 0.100000 
+ inv_da 10.000000 0.000000 0.000000 
+ inv_db 0.000000 10.000000 0.000000 
+ inv_dc 0.000000 0.000000 10.000000 
+GridFF::tryLoad_new() Bspline_PLQ Paul(0,90.1987) Lond(-7.47143,-8.51454e-38) Coul(-104.207,104.207) 
+grid_shift0(0,0,0)
+buildMolecule_xyz( data/xyz/PTCDA_charge_on_Na )
+MolWorld_sp3::loadGeom(data/xyz/PTCDA_charge_on_Na)
+MM::Builder::loadXYZ_Atoms(data/xyz/PTCDA_charge_on_Na.xyz) 
+MMFFparams::loadXYZ() atom[  0] atyp(  8) xyz(    2.782244,    3.417241,    5.656854) REQs(    1.925500,    0.067478,   -0.005690,    0.000000) 
+MMFFparams::loadXYZ() atom[  1] atyp(  8) xyz(    8.462902,    3.417139,    5.656854) REQs(    1.925500,    0.067478,   -0.005690,    0.000000) 
+MMFFparams::loadXYZ() atom[  2] atyp(  8) xyz(    7.037988,    3.417164,    5.656854) REQs(    1.925500,    0.067478,    0.012380,    0.000000) 
+MMFFparams::loadXYZ() atom[  3] atyp(  8) xyz(    4.207158,    3.417215,    5.656854) REQs(    1.925500,    0.067478,    0.012380,    0.000000) 
+MMFFparams::loadXYZ() atom[  4] atyp(  8) xyz(    6.335693,    2.179454,    5.656854) REQs(    1.925500,    0.067478,    0.016310,    0.000000) 
+MMFFparams::loadXYZ() atom[  5] atyp(  8) xyz(    4.909409,    2.179479,    5.656854) REQs(    1.925500,    0.067478,    0.016310,    0.000000) 
+MMFFparams::loadXYZ() atom[  6] atyp(  8) xyz(    4.909453,    4.654926,    5.656854) REQs(    1.925500,    0.067478,    0.016310,    0.000000) 
+MMFFparams::loadXYZ() atom[  7] atyp(  8) xyz(    6.335738,    4.654900,    5.656854) REQs(    1.925500,    0.067478,    0.016310,    0.000000) 
+MMFFparams::loadXYZ() atom[  8] atyp(  8) xyz(    4.150684,    0.980248,    5.656854) REQs(    1.925500,    0.067478,   -0.038425,    0.000000) 
+MMFFparams::loadXYZ() atom[  9] atyp(  8) xyz(    7.094374,    0.980194,    5.656854) REQs(    1.925500,    0.067478,   -0.038425,    0.000000) 
+MMFFparams::loadXYZ() atom[ 10] atyp(  8) xyz(    4.150772,    5.854185,    5.656854) REQs(    1.925500,    0.067478,   -0.038425,    0.000000) 
+MMFFparams::loadXYZ() atom[ 11] atyp(  8) xyz(    7.094462,    5.854132,    5.656854) REQs(    1.925500,    0.067478,   -0.038425,    0.000000) 
+MMFFparams::loadXYZ() atom[ 12] atyp(  8) xyz(    2.759834,    0.996402,    5.656854) REQs(    1.925500,    0.067478,   -0.032570,    0.000000) 
+MMFFparams::loadXYZ() atom[ 13] atyp(  8) xyz(    2.759921,    5.838081,    5.656854) REQs(    1.925500,    0.067478,   -0.032570,    0.000000) 
+MMFFparams::loadXYZ() atom[ 14] atyp(  8) xyz(    8.485225,    0.996299,    5.656854) REQs(    1.925500,    0.067478,   -0.032570,    0.000000) 
+MMFFparams::loadXYZ() atom[ 15] atyp(  8) xyz(    8.485313,    5.837978,    5.656854) REQs(    1.925500,    0.067478,   -0.032570,    0.000000) 
+MMFFparams::loadXYZ() atom[ 16] atyp(  8) xyz(    2.064006,    4.627939,    5.656854) REQs(    1.925500,    0.067478,    0.019990,    0.000000) 
+MMFFparams::loadXYZ() atom[ 17] atyp(  8) xyz(    2.063963,    2.206569,    5.656854) REQs(    1.925500,    0.067478,    0.019990,    0.000000) 
+MMFFparams::loadXYZ() atom[ 18] atyp(  8) xyz(    9.181140,    2.206441,    5.656854) REQs(    1.925500,    0.067478,    0.019990,    0.000000) 
+MMFFparams::loadXYZ() atom[ 19] atyp(  8) xyz(    9.181184,    4.627810,    5.656854) REQs(    1.925500,    0.067478,    0.019990,    0.000000) 
+MMFFparams::loadXYZ() atom[ 20] atyp(  8) xyz(   10.589827,    2.251680,    5.656854) REQs(    1.925500,    0.067478,    0.226940,    0.000000) 
+MMFFparams::loadXYZ() atom[ 21] atyp(  8) xyz(   10.589869,    4.582520,    5.656854) REQs(    1.925500,    0.067478,    0.226940,    0.000000) 
+MMFFparams::loadXYZ() atom[ 22] atyp(  8) xyz(    0.655277,    2.251859,    5.656854) REQs(    1.925500,    0.067478,    0.226940,    0.000000) 
+MMFFparams::loadXYZ() atom[ 23] atyp(  8) xyz(    0.655319,    4.582700,    5.656854) REQs(    1.925500,    0.067478,    0.226940,    0.000000) 
+MMFFparams::loadXYZ() atom[ 24] atyp( 10) xyz(   11.223301,    3.417089,    5.656854) REQs(    1.750000,    0.051008,   -0.122780,    0.000000) 
+MMFFparams::loadXYZ() atom[ 25] atyp( 10) xyz(    0.021846,    3.417291,    5.656854) REQs(    1.750000,    0.051008,   -0.122780,    0.000000) 
+MMFFparams::loadXYZ() atom[ 26] atyp( 10) xyz(   11.245146,    5.610278,    5.656854) REQs(    1.750000,    0.051008,   -0.276890,    0.000000) 
+MMFFparams::loadXYZ() atom[ 27] atyp( 10) xyz(   11.245067,    1.223898,    5.656854) REQs(    1.750000,    0.051008,   -0.276890,    0.000000) 
+MMFFparams::loadXYZ() atom[ 28] atyp( 10) xyz(    0.000079,    5.610481,    5.656854) REQs(    1.750000,    0.051008,   -0.276890,    0.000000) 
+MMFFparams::loadXYZ() atom[ 29] atyp( 10) xyz(    0.000000,    1.224101,    5.656854) REQs(    1.750000,    0.051008,   -0.276890,    0.000000) 
+MMFFparams::loadXYZ() atom[ 30] atyp(  3) xyz(    2.227259,    0.051231,    5.656854) REQs(    1.443000,    0.043681,    0.086370,    0.000000) 
+MMFFparams::loadXYZ() atom[ 31] atyp(  3) xyz(    2.227381,    6.783271,    5.656854) REQs(    1.443000,    0.043681,    0.086370,    0.000000) 
+MMFFparams::loadXYZ() atom[ 32] atyp(  3) xyz(    9.017765,    0.051108,    5.656854) REQs(    1.443000,    0.043681,    0.086370,    0.000000) 
+MMFFparams::loadXYZ() atom[ 33] atyp(  3) xyz(    9.017887,    6.783149,    5.656854) REQs(    1.443000,    0.043681,    0.086370,    0.000000) 
+MMFFparams::loadXYZ() atom[ 34] atyp(  3) xyz(    4.594097,    0.000037,    5.656854) REQs(    1.443000,    0.043681,    0.056320,    0.000000) 
+MMFFparams::loadXYZ() atom[ 35] atyp(  3) xyz(    4.594221,    6.834380,    5.656854) REQs(    1.443000,    0.043681,    0.056320,    0.000000) 
+MMFFparams::loadXYZ() atom[ 36] atyp(  3) xyz(    6.650925,    0.000000,    5.656854) REQs(    1.443000,    0.043681,    0.056320,    0.000000) 
+MMFFparams::loadXYZ() atom[ 37] atyp(  3) xyz(    6.651049,    6.834343,    5.656854) REQs(    1.443000,    0.043681,    0.056320,    0.000000) 
+MMFFparams::loadXYZ() DONE 
+ # MM::Builder.printAtoms(na=38) 
+atom[0] Atom{id -1 t 8 c 0 f 0 REQ(1.9255,0.0674776,-0.00569,0) pos(2.78224,3.41724,5.65685)}
+atom[1] Atom{id -1 t 8 c 1 f 0 REQ(1.9255,0.0674776,-0.00569,0) pos(8.4629,3.41714,5.65685)}
+atom[2] Atom{id -1 t 8 c 2 f 0 REQ(1.9255,0.0674776,0.01238,0) pos(7.03799,3.41716,5.65685)}
+atom[3] Atom{id -1 t 8 c 3 f 0 REQ(1.9255,0.0674776,0.01238,0) pos(4.20716,3.41722,5.65685)}
+atom[4] Atom{id -1 t 8 c 4 f 0 REQ(1.9255,0.0674776,0.01631,0) pos(6.33569,2.17945,5.65685)}
+atom[5] Atom{id -1 t 8 c 5 f 0 REQ(1.9255,0.0674776,0.01631,0) pos(4.90941,2.17948,5.65685)}
+atom[6] Atom{id -1 t 8 c 6 f 0 REQ(1.9255,0.0674776,0.01631,0) pos(4.90945,4.65493,5.65685)}
+atom[7] Atom{id -1 t 8 c 7 f 0 REQ(1.9255,0.0674776,0.01631,0) pos(6.33574,4.6549,5.65685)}
+atom[8] Atom{id -1 t 8 c 8 f 0 REQ(1.9255,0.0674776,-0.038425,0) pos(4.15068,0.980248,5.65685)}
+atom[9] Atom{id -1 t 8 c 9 f 0 REQ(1.9255,0.0674776,-0.038425,0) pos(7.09437,0.980194,5.65685)}
+atom[10] Atom{id -1 t 8 c 10 f 0 REQ(1.9255,0.0674776,-0.038425,0) pos(4.15077,5.85419,5.65685)}
+atom[11] Atom{id -1 t 8 c 11 f 0 REQ(1.9255,0.0674776,-0.038425,0) pos(7.09446,5.85413,5.65685)}
+atom[12] Atom{id -1 t 8 c 12 f 0 REQ(1.9255,0.0674776,-0.03257,0) pos(2.75983,0.996402,5.65685)}
+atom[13] Atom{id -1 t 8 c 13 f 0 REQ(1.9255,0.0674776,-0.03257,0) pos(2.75992,5.83808,5.65685)}
+atom[14] Atom{id -1 t 8 c 14 f 0 REQ(1.9255,0.0674776,-0.03257,0) pos(8.48523,0.996299,5.65685)}
+atom[15] Atom{id -1 t 8 c 15 f 0 REQ(1.9255,0.0674776,-0.03257,0) pos(8.48531,5.83798,5.65685)}
+atom[16] Atom{id -1 t 8 c 16 f 0 REQ(1.9255,0.0674776,0.01999,0) pos(2.06401,4.62794,5.65685)}
+atom[17] Atom{id -1 t 8 c 17 f 0 REQ(1.9255,0.0674776,0.01999,0) pos(2.06396,2.20657,5.65685)}
+atom[18] Atom{id -1 t 8 c 18 f 0 REQ(1.9255,0.0674776,0.01999,0) pos(9.18114,2.20644,5.65685)}
+atom[19] Atom{id -1 t 8 c 19 f 0 REQ(1.9255,0.0674776,0.01999,0) pos(9.18118,4.62781,5.65685)}
+atom[20] Atom{id -1 t 8 c 20 f 0 REQ(1.9255,0.0674776,0.22694,0) pos(10.5898,2.25168,5.65685)}
+atom[21] Atom{id -1 t 8 c 21 f 0 REQ(1.9255,0.0674776,0.22694,0) pos(10.5899,4.58252,5.65685)}
+atom[22] Atom{id -1 t 8 c 22 f 0 REQ(1.9255,0.0674776,0.22694,0) pos(0.655277,2.25186,5.65685)}
+atom[23] Atom{id -1 t 8 c 23 f 0 REQ(1.9255,0.0674776,0.22694,0) pos(0.655319,4.5827,5.65685)}
+atom[24] Atom{id -1 t 10 c 24 f 0 REQ(1.75,0.0510083,-0.12278,0) pos(11.2233,3.41709,5.65685)}
+atom[25] Atom{id -1 t 10 c 25 f 0 REQ(1.75,0.0510083,-0.12278,0) pos(0.0218456,3.41729,5.65685)}
+atom[26] Atom{id -1 t 10 c 26 f 0 REQ(1.75,0.0510083,-0.27689,0) pos(11.2451,5.61028,5.65685)}
+atom[27] Atom{id -1 t 10 c 27 f 0 REQ(1.75,0.0510083,-0.27689,0) pos(11.2451,1.2239,5.65685)}
+atom[28] Atom{id -1 t 10 c 28 f 0 REQ(1.75,0.0510083,-0.27689,0) pos(7.89553e-05,5.61048,5.65685)}
+atom[29] Atom{id -1 t 10 c 29 f 0 REQ(1.75,0.0510083,-0.27689,0) pos(0,1.2241,5.65685)}
+atom[30] Atom{id -1 t 3 c -1 f 0 REQ(1.443,0.0436809,0.08637,0) pos(2.22726,0.0512309,5.65685)}
+atom[31] Atom{id -1 t 3 c -1 f 0 REQ(1.443,0.0436809,0.08637,0) pos(2.22738,6.78327,5.65685)}
+atom[32] Atom{id -1 t 3 c -1 f 0 REQ(1.443,0.0436809,0.08637,0) pos(9.01777,0.0511083,5.65685)}
+atom[33] Atom{id -1 t 3 c -1 f 0 REQ(1.443,0.0436809,0.08637,0) pos(9.01789,6.78315,5.65685)}
+atom[34] Atom{id -1 t 3 c -1 f 0 REQ(1.443,0.0436809,0.05632,0) pos(4.5941,3.71263e-05,5.65685)}
+atom[35] Atom{id -1 t 3 c -1 f 0 REQ(1.443,0.0436809,0.05632,0) pos(4.59422,6.83438,5.65685)}
+atom[36] Atom{id -1 t 3 c -1 f 0 REQ(1.443,0.0436809,0.05632,0) pos(6.65093,0,5.65685)}
+atom[37] Atom{id -1 t 3 c -1 f 0 REQ(1.443,0.0436809,0.05632,0) pos(6.65105,6.83434,5.65685)}
+MM::Builder::autoBondsPBC() builder.lvec: 
+ 32.000000 0.000000 0.000000 
+ 0.000000 32.000000 0.000000 
+ 0.000000 0.000000 60.000000 
+MolWorld_sp3::buildMolecule_xyz(data/xyz/PTCDA_charge_on_Na) ifrag=0 
+MMFFBuilder::assignBondParams(ib=0|ia=0,ja=3) types: 8=C 8=C 
+MMFFBuilder::assignBondParams(ib=1|ia=0,ja=16) types: 8=C 8=C 
+MMFFBuilder::assignBondParams(ib=2|ia=0,ja=17) types: 8=C 8=C 
+MMFFBuilder::assignBondParams(ib=3|ia=1,ja=2) types: 8=C 8=C 
+MMFFBuilder::assignBondParams(ib=4|ia=1,ja=18) types: 8=C 8=C 
+MMFFBuilder::assignBondParams(ib=5|ia=1,ja=19) types: 8=C 8=C 
+MMFFBuilder::assignBondParams(ib=6|ia=2,ja=4) types: 8=C 8=C 
+MMFFBuilder::assignBondParams(ib=7|ia=2,ja=7) types: 8=C 8=C 
+MMFFBuilder::assignBondParams(ib=8|ia=3,ja=5) types: 8=C 8=C 
+MMFFBuilder::assignBondParams(ib=9|ia=3,ja=6) types: 8=C 8=C 
+MMFFBuilder::assignBondParams(ib=10|ia=4,ja=5) types: 8=C 8=C 
+MMFFBuilder::assignBondParams(ib=11|ia=4,ja=9) types: 8=C 8=C 
+MMFFBuilder::assignBondParams(ib=12|ia=5,ja=8) types: 8=C 8=C 
+MMFFBuilder::assignBondParams(ib=13|ia=6,ja=7) types: 8=C 8=C 
+MMFFBuilder::assignBondParams(ib=14|ia=6,ja=10) types: 8=C 8=C 
+MMFFBuilder::assignBondParams(ib=15|ia=7,ja=11) types: 8=C 8=C 
+MMFFBuilder::assignBondParams(ib=16|ia=8,ja=12) types: 8=C 8=C 
+MMFFBuilder::assignBondParams(ib=17|ia=8,ja=34) types: 8=C 3=H 
+MMFFBuilder::assignBondParams(ib=18|ia=9,ja=14) types: 8=C 8=C 
+MMFFBuilder::assignBondParams(ib=19|ia=9,ja=36) types: 8=C 3=H 
+MMFFBuilder::assignBondParams(ib=20|ia=10,ja=13) types: 8=C 8=C 
+MMFFBuilder::assignBondParams(ib=21|ia=10,ja=35) types: 8=C 3=H 
+MMFFBuilder::assignBondParams(ib=22|ia=11,ja=15) types: 8=C 8=C 
+MMFFBuilder::assignBondParams(ib=23|ia=11,ja=37) types: 8=C 3=H 
+MMFFBuilder::assignBondParams(ib=24|ia=12,ja=17) types: 8=C 8=C 
+MMFFBuilder::assignBondParams(ib=25|ia=12,ja=30) types: 8=C 3=H 
+MMFFBuilder::assignBondParams(ib=26|ia=13,ja=16) types: 8=C 8=C 
+MMFFBuilder::assignBondParams(ib=27|ia=13,ja=31) types: 8=C 3=H 
+MMFFBuilder::assignBondParams(ib=28|ia=14,ja=18) types: 8=C 8=C 
+MMFFBuilder::assignBondParams(ib=29|ia=14,ja=32) types: 8=C 3=H 
+MMFFBuilder::assignBondParams(ib=30|ia=15,ja=19) types: 8=C 8=C 
+MMFFBuilder::assignBondParams(ib=31|ia=15,ja=33) types: 8=C 3=H 
+MMFFBuilder::assignBondParams(ib=32|ia=16,ja=23) types: 8=C 8=C 
+MMFFBuilder::assignBondParams(ib=33|ia=17,ja=22) types: 8=C 8=C 
+MMFFBuilder::assignBondParams(ib=34|ia=18,ja=20) types: 8=C 8=C 
+MMFFBuilder::assignBondParams(ib=35|ia=19,ja=21) types: 8=C 8=C 
+MMFFBuilder::assignBondParams(ib=36|ia=20,ja=24) types: 8=C 10=O 
+MMFFBuilder::assignBondParams(ib=37|ia=20,ja=27) types: 8=C 10=O 
+MMFFBuilder::assignBondParams(ib=38|ia=21,ja=24) types: 8=C 10=O 
+MMFFBuilder::assignBondParams(ib=39|ia=21,ja=26) types: 8=C 10=O 
+MMFFBuilder::assignBondParams(ib=40|ia=22,ja=25) types: 8=C 10=O 
+MMFFBuilder::assignBondParams(ib=41|ia=22,ja=29) types: 8=C 10=O 
+MMFFBuilder::assignBondParams(ib=42|ia=23,ja=25) types: 8=C 10=O 
+MMFFBuilder::assignBondParams(ib=43|ia=23,ja=28) types: 8=C 10=O 
+ # MM::Builder.printAtoms(na=38) 
+atom[0] Atom{id -1 t 8 c 0 f 0 REQ(1.9255,0.0674776,-0.00569,0) pos(2.78224,3.41724,5.65685)}
+atom[1] Atom{id -1 t 8 c 1 f 0 REQ(1.9255,0.0674776,-0.00569,0) pos(8.4629,3.41714,5.65685)}
+atom[2] Atom{id -1 t 8 c 2 f 0 REQ(1.9255,0.0674776,0.01238,0) pos(7.03799,3.41716,5.65685)}
+atom[3] Atom{id -1 t 8 c 3 f 0 REQ(1.9255,0.0674776,0.01238,0) pos(4.20716,3.41722,5.65685)}
+atom[4] Atom{id -1 t 8 c 4 f 0 REQ(1.9255,0.0674776,0.01631,0) pos(6.33569,2.17945,5.65685)}
+atom[5] Atom{id -1 t 8 c 5 f 0 REQ(1.9255,0.0674776,0.01631,0) pos(4.90941,2.17948,5.65685)}
+atom[6] Atom{id -1 t 8 c 6 f 0 REQ(1.9255,0.0674776,0.01631,0) pos(4.90945,4.65493,5.65685)}
+atom[7] Atom{id -1 t 8 c 7 f 0 REQ(1.9255,0.0674776,0.01631,0) pos(6.33574,4.6549,5.65685)}
+atom[8] Atom{id -1 t 8 c 8 f 0 REQ(1.9255,0.0674776,-0.038425,0) pos(4.15068,0.980248,5.65685)}
+atom[9] Atom{id -1 t 8 c 9 f 0 REQ(1.9255,0.0674776,-0.038425,0) pos(7.09437,0.980194,5.65685)}
+atom[10] Atom{id -1 t 8 c 10 f 0 REQ(1.9255,0.0674776,-0.038425,0) pos(4.15077,5.85419,5.65685)}
+atom[11] Atom{id -1 t 8 c 11 f 0 REQ(1.9255,0.0674776,-0.038425,0) pos(7.09446,5.85413,5.65685)}
+atom[12] Atom{id -1 t 8 c 12 f 0 REQ(1.9255,0.0674776,-0.03257,0) pos(2.75983,0.996402,5.65685)}
+atom[13] Atom{id -1 t 8 c 13 f 0 REQ(1.9255,0.0674776,-0.03257,0) pos(2.75992,5.83808,5.65685)}
+atom[14] Atom{id -1 t 8 c 14 f 0 REQ(1.9255,0.0674776,-0.03257,0) pos(8.48523,0.996299,5.65685)}
+atom[15] Atom{id -1 t 8 c 15 f 0 REQ(1.9255,0.0674776,-0.03257,0) pos(8.48531,5.83798,5.65685)}
+atom[16] Atom{id -1 t 8 c 16 f 0 REQ(1.9255,0.0674776,0.01999,0) pos(2.06401,4.62794,5.65685)}
+atom[17] Atom{id -1 t 8 c 17 f 0 REQ(1.9255,0.0674776,0.01999,0) pos(2.06396,2.20657,5.65685)}
+atom[18] Atom{id -1 t 8 c 18 f 0 REQ(1.9255,0.0674776,0.01999,0) pos(9.18114,2.20644,5.65685)}
+atom[19] Atom{id -1 t 8 c 19 f 0 REQ(1.9255,0.0674776,0.01999,0) pos(9.18118,4.62781,5.65685)}
+atom[20] Atom{id -1 t 8 c 20 f 0 REQ(1.9255,0.0674776,0.22694,0) pos(10.5898,2.25168,5.65685)}
+atom[21] Atom{id -1 t 8 c 21 f 0 REQ(1.9255,0.0674776,0.22694,0) pos(10.5899,4.58252,5.65685)}
+atom[22] Atom{id -1 t 8 c 22 f 0 REQ(1.9255,0.0674776,0.22694,0) pos(0.655277,2.25186,5.65685)}
+atom[23] Atom{id -1 t 8 c 23 f 0 REQ(1.9255,0.0674776,0.22694,0) pos(0.655319,4.5827,5.65685)}
+atom[24] Atom{id -1 t 10 c 24 f 0 REQ(1.75,0.0510083,-0.12278,0) pos(11.2233,3.41709,5.65685)}
+atom[25] Atom{id -1 t 10 c 25 f 0 REQ(1.75,0.0510083,-0.12278,0) pos(0.0218456,3.41729,5.65685)}
+atom[26] Atom{id -1 t 10 c 26 f 0 REQ(1.75,0.0510083,-0.27689,0) pos(11.2451,5.61028,5.65685)}
+atom[27] Atom{id -1 t 10 c 27 f 0 REQ(1.75,0.0510083,-0.27689,0) pos(11.2451,1.2239,5.65685)}
+atom[28] Atom{id -1 t 10 c 28 f 0 REQ(1.75,0.0510083,-0.27689,0) pos(7.89553e-05,5.61048,5.65685)}
+atom[29] Atom{id -1 t 10 c 29 f 0 REQ(1.75,0.0510083,-0.27689,0) pos(0,1.2241,5.65685)}
+atom[30] Atom{id -1 t 3 c -1 f 0 REQ(1.443,0.0436809,0.08637,0) pos(2.22726,0.0512309,5.65685)}
+atom[31] Atom{id -1 t 3 c -1 f 0 REQ(1.443,0.0436809,0.08637,0) pos(2.22738,6.78327,5.65685)}
+atom[32] Atom{id -1 t 3 c -1 f 0 REQ(1.443,0.0436809,0.08637,0) pos(9.01777,0.0511083,5.65685)}
+atom[33] Atom{id -1 t 3 c -1 f 0 REQ(1.443,0.0436809,0.08637,0) pos(9.01789,6.78315,5.65685)}
+atom[34] Atom{id -1 t 3 c -1 f 0 REQ(1.443,0.0436809,0.05632,0) pos(4.5941,3.71263e-05,5.65685)}
+atom[35] Atom{id -1 t 3 c -1 f 0 REQ(1.443,0.0436809,0.05632,0) pos(4.59422,6.83438,5.65685)}
+atom[36] Atom{id -1 t 3 c -1 f 0 REQ(1.443,0.0436809,0.05632,0) pos(6.65093,0,5.65685)}
+atom[37] Atom{id -1 t 3 c -1 f 0 REQ(1.443,0.0436809,0.05632,0) pos(6.65105,6.83434,5.65685)}
+ # MM::Builder.printBonds(nb=44) 
+bond[0] Bond{t -1 a(0,3) l0 1.334 k 20.893} pbc(0,0,0)
+bond[1] Bond{t -1 a(0,16) l0 1.334 k 20.893} pbc(0,0,0)
+bond[2] Bond{t -1 a(0,17) l0 1.334 k 20.893} pbc(0,0,0)
+bond[3] Bond{t -1 a(1,2) l0 1.334 k 20.893} pbc(0,0,0)
+bond[4] Bond{t -1 a(1,18) l0 1.334 k 20.893} pbc(0,0,0)
+bond[5] Bond{t -1 a(1,19) l0 1.334 k 20.893} pbc(0,0,0)
+bond[6] Bond{t -1 a(2,4) l0 1.334 k 20.893} pbc(0,0,0)
+bond[7] Bond{t -1 a(2,7) l0 1.334 k 20.893} pbc(0,0,0)
+bond[8] Bond{t -1 a(3,5) l0 1.334 k 20.893} pbc(0,0,0)
+bond[9] Bond{t -1 a(3,6) l0 1.334 k 20.893} pbc(0,0,0)
+bond[10] Bond{t -1 a(4,5) l0 1.334 k 20.893} pbc(0,0,0)
+bond[11] Bond{t -1 a(4,9) l0 1.334 k 20.893} pbc(0,0,0)
+bond[12] Bond{t -1 a(5,8) l0 1.334 k 20.893} pbc(0,0,0)
+bond[13] Bond{t -1 a(6,7) l0 1.334 k 20.893} pbc(0,0,0)
+bond[14] Bond{t -1 a(6,10) l0 1.334 k 20.893} pbc(0,0,0)
+bond[15] Bond{t -1 a(7,11) l0 1.334 k 20.893} pbc(0,0,0)
+bond[16] Bond{t -1 a(8,12) l0 1.334 k 20.893} pbc(0,0,0)
+bond[17] Bond{t -1 a(8,34) l0 1.095 k 16.457} pbc(0,0,0)
+bond[18] Bond{t -1 a(9,14) l0 1.334 k 20.893} pbc(0,0,0)
+bond[19] Bond{t -1 a(9,36) l0 1.095 k 16.457} pbc(0,0,0)
+bond[20] Bond{t -1 a(10,13) l0 1.334 k 20.893} pbc(0,0,0)
+bond[21] Bond{t -1 a(10,35) l0 1.095 k 16.457} pbc(0,0,0)
+bond[22] Bond{t -1 a(11,15) l0 1.334 k 20.893} pbc(0,0,0)
+bond[23] Bond{t -1 a(11,37) l0 1.095 k 16.457} pbc(0,0,0)
+bond[24] Bond{t -1 a(12,17) l0 1.334 k 20.893} pbc(0,0,0)
+bond[25] Bond{t -1 a(12,30) l0 1.095 k 16.457} pbc(0,0,0)
+bond[26] Bond{t -1 a(13,16) l0 1.334 k 20.893} pbc(0,0,0)
+bond[27] Bond{t -1 a(13,31) l0 1.095 k 16.457} pbc(0,0,0)
+bond[28] Bond{t -1 a(14,18) l0 1.334 k 20.893} pbc(0,0,0)
+bond[29] Bond{t -1 a(14,32) l0 1.095 k 16.457} pbc(0,0,0)
+bond[30] Bond{t -1 a(15,19) l0 1.334 k 20.893} pbc(0,0,0)
+bond[31] Bond{t -1 a(15,33) l0 1.095 k 16.457} pbc(0,0,0)
+bond[32] Bond{t -1 a(16,23) l0 1.334 k 20.893} pbc(0,0,0)
+bond[33] Bond{t -1 a(17,22) l0 1.334 k 20.893} pbc(0,0,0)
+bond[34] Bond{t -1 a(18,20) l0 1.334 k 20.893} pbc(0,0,0)
+bond[35] Bond{t -1 a(19,21) l0 1.334 k 20.893} pbc(0,0,0)
+bond[36] Bond{t -1 a(20,24) l0 1.423 k 12.723} pbc(0,0,0)
+bond[37] Bond{t -1 a(20,27) l0 1.225 k 27.545} pbc(0,0,0)
+bond[38] Bond{t -1 a(21,24) l0 1.423 k 12.723} pbc(0,0,0)
+bond[39] Bond{t -1 a(21,26) l0 1.225 k 27.545} pbc(0,0,0)
+bond[40] Bond{t -1 a(22,25) l0 1.423 k 12.723} pbc(0,0,0)
+bond[41] Bond{t -1 a(22,29) l0 1.225 k 27.545} pbc(0,0,0)
+bond[42] Bond{t -1 a(23,25) l0 1.423 k 12.723} pbc(0,0,0)
+bond[43] Bond{t -1 a(23,28) l0 1.225 k 27.545} pbc(0,0,0)
+ # MM::Builder.printAtomConfs(na=38,nc=30) 
+atom[0] C=8 ic 0  AtomConf{ia 0, n,nb,np,ne,nH(4,3,1,0,0) [0,1,2,-1]}
+atom[1] C=8 ic 1  AtomConf{ia 1, n,nb,np,ne,nH(4,3,1,0,0) [3,4,5,-1]}
+atom[2] C=8 ic 2  AtomConf{ia 2, n,nb,np,ne,nH(4,3,1,0,0) [3,6,7,-1]}
+atom[3] C=8 ic 3  AtomConf{ia 3, n,nb,np,ne,nH(4,3,1,0,0) [0,8,9,-1]}
+atom[4] C=8 ic 4  AtomConf{ia 4, n,nb,np,ne,nH(4,3,1,0,0) [6,10,11,-1]}
+atom[5] C=8 ic 5  AtomConf{ia 5, n,nb,np,ne,nH(4,3,1,0,0) [8,10,12,-1]}
+atom[6] C=8 ic 6  AtomConf{ia 6, n,nb,np,ne,nH(4,3,1,0,0) [9,13,14,-1]}
+atom[7] C=8 ic 7  AtomConf{ia 7, n,nb,np,ne,nH(4,3,1,0,0) [7,13,15,-1]}
+atom[8] C=8 ic 8  AtomConf{ia 8, n,nb,np,ne,nH(4,3,1,0,0) [12,16,17,-1]}
+atom[9] C=8 ic 9  AtomConf{ia 9, n,nb,np,ne,nH(4,3,1,0,0) [11,18,19,-1]}
+atom[10] C=8 ic 10  AtomConf{ia 10, n,nb,np,ne,nH(4,3,1,0,0) [14,20,21,-1]}
+atom[11] C=8 ic 11  AtomConf{ia 11, n,nb,np,ne,nH(4,3,1,0,0) [15,22,23,-1]}
+atom[12] C=8 ic 12  AtomConf{ia 12, n,nb,np,ne,nH(4,3,1,0,0) [16,24,25,-1]}
+atom[13] C=8 ic 13  AtomConf{ia 13, n,nb,np,ne,nH(4,3,1,0,0) [20,26,27,-1]}
+atom[14] C=8 ic 14  AtomConf{ia 14, n,nb,np,ne,nH(4,3,1,0,0) [18,28,29,-1]}
+atom[15] C=8 ic 15  AtomConf{ia 15, n,nb,np,ne,nH(4,3,1,0,0) [22,30,31,-1]}
+atom[16] C=8 ic 16  AtomConf{ia 16, n,nb,np,ne,nH(4,3,1,0,0) [1,26,32,-1]}
+atom[17] C=8 ic 17  AtomConf{ia 17, n,nb,np,ne,nH(4,3,1,0,0) [2,24,33,-1]}
+atom[18] C=8 ic 18  AtomConf{ia 18, n,nb,np,ne,nH(4,3,1,0,0) [4,28,34,-1]}
+atom[19] C=8 ic 19  AtomConf{ia 19, n,nb,np,ne,nH(4,3,1,0,0) [5,30,35,-1]}
+atom[20] C=8 ic 20  AtomConf{ia 20, n,nb,np,ne,nH(4,3,1,0,0) [34,36,37,-1]}
+atom[21] C=8 ic 21  AtomConf{ia 21, n,nb,np,ne,nH(4,3,1,0,0) [35,38,39,-1]}
+atom[22] C=8 ic 22  AtomConf{ia 22, n,nb,np,ne,nH(4,3,1,0,0) [33,40,41,-1]}
+atom[23] C=8 ic 23  AtomConf{ia 23, n,nb,np,ne,nH(4,3,1,0,0) [32,42,43,-1]}
+atom[24] O=10 ic 24  AtomConf{ia 24, n,nb,np,ne,nH(4,2,0,2,0) [36,38,-1,-1]}
+atom[25] O=10 ic 25  AtomConf{ia 25, n,nb,np,ne,nH(4,2,0,2,0) [40,42,-1,-1]}
+atom[26] O=10 ic 26  AtomConf{ia 26, n,nb,np,ne,nH(4,1,1,2,0) [39,-1,-1,-1]}
+atom[27] O=10 ic 27  AtomConf{ia 27, n,nb,np,ne,nH(4,1,1,2,0) [37,-1,-1,-1]}
+atom[28] O=10 ic 28  AtomConf{ia 28, n,nb,np,ne,nH(4,1,1,2,0) [43,-1,-1,-1]}
+atom[29] O=10 ic 29  AtomConf{ia 29, n,nb,np,ne,nH(4,1,1,2,0) [41,-1,-1,-1]}
+Builder::randomFragmentCollors()
+frags[0].color FF723739 (57,55,114)
+MolWorld_sp3::makeFFs()
+MolWorld_sp3::makeMMFFs()
+DEBUG #l 1348 makeMMFFs 
+DEBUG #l 1353 makeMMFFs 
+DEBUG #l 1361 makeMMFFs 
+ # MM::Builder.printAtomConfs(na=38,nc=30) 
+atom[0] C_R=23 ic 0  AtomConf{ia 0, n,nb,np,ne,nH(4,3,1,0,0) [0,1,2,-1]}
+atom[1] C_R=23 ic 1  AtomConf{ia 1, n,nb,np,ne,nH(4,3,1,0,0) [3,4,5,-1]}
+atom[2] C_R=23 ic 2  AtomConf{ia 2, n,nb,np,ne,nH(4,3,1,0,0) [3,6,7,-1]}
+atom[3] C_R=23 ic 3  AtomConf{ia 3, n,nb,np,ne,nH(4,3,1,0,0) [0,8,9,-1]}
+atom[4] C_R=23 ic 4  AtomConf{ia 4, n,nb,np,ne,nH(4,3,1,0,0) [6,10,11,-1]}
+atom[5] C_R=23 ic 5  AtomConf{ia 5, n,nb,np,ne,nH(4,3,1,0,0) [8,10,12,-1]}
+atom[6] C_R=23 ic 6  AtomConf{ia 6, n,nb,np,ne,nH(4,3,1,0,0) [9,13,14,-1]}
+atom[7] C_R=23 ic 7  AtomConf{ia 7, n,nb,np,ne,nH(4,3,1,0,0) [7,13,15,-1]}
+atom[8] C_R=23 ic 8  AtomConf{ia 8, n,nb,np,ne,nH(4,3,1,0,0) [12,16,17,-1]}
+atom[9] C_R=23 ic 9  AtomConf{ia 9, n,nb,np,ne,nH(4,3,1,0,0) [11,18,19,-1]}
+atom[10] C_R=23 ic 10  AtomConf{ia 10, n,nb,np,ne,nH(4,3,1,0,0) [14,20,21,-1]}
+atom[11] C_R=23 ic 11  AtomConf{ia 11, n,nb,np,ne,nH(4,3,1,0,0) [15,22,23,-1]}
+atom[12] C_R=23 ic 12  AtomConf{ia 12, n,nb,np,ne,nH(4,3,1,0,0) [16,24,25,-1]}
+atom[13] C_R=23 ic 13  AtomConf{ia 13, n,nb,np,ne,nH(4,3,1,0,0) [20,26,27,-1]}
+atom[14] C_R=23 ic 14  AtomConf{ia 14, n,nb,np,ne,nH(4,3,1,0,0) [18,28,29,-1]}
+atom[15] C_R=23 ic 15  AtomConf{ia 15, n,nb,np,ne,nH(4,3,1,0,0) [22,30,31,-1]}
+atom[16] C_R=23 ic 16  AtomConf{ia 16, n,nb,np,ne,nH(4,3,1,0,0) [1,26,32,-1]}
+atom[17] C_R=23 ic 17  AtomConf{ia 17, n,nb,np,ne,nH(4,3,1,0,0) [2,24,33,-1]}
+atom[18] C_R=23 ic 18  AtomConf{ia 18, n,nb,np,ne,nH(4,3,1,0,0) [4,28,34,-1]}
+atom[19] C_R=23 ic 19  AtomConf{ia 19, n,nb,np,ne,nH(4,3,1,0,0) [5,30,35,-1]}
+atom[20] C_COO=38 ic 20  AtomConf{ia 20, n,nb,np,ne,nH(4,3,1,0,0) [34,36,37,-1]}
+atom[21] C_COO=38 ic 21  AtomConf{ia 21, n,nb,np,ne,nH(4,3,1,0,0) [35,38,39,-1]}
+atom[22] C_COO=38 ic 22  AtomConf{ia 22, n,nb,np,ne,nH(4,3,1,0,0) [33,40,41,-1]}
+atom[23] C_COO=38 ic 23  AtomConf{ia 23, n,nb,np,ne,nH(4,3,1,0,0) [32,42,43,-1]}
+atom[24] O_sCOO=41 ic 24  AtomConf{ia 24, n,nb,np,ne,nH(4,2,0,2,0) [36,38,-1,-1]}
+atom[25] O_sCOO=41 ic 25  AtomConf{ia 25, n,nb,np,ne,nH(4,2,0,2,0) [40,42,-1,-1]}
+atom[26] O_pCOO=42 ic 26  AtomConf{ia 26, n,nb,np,ne,nH(4,1,1,2,0) [39,-1,-1,-1]}
+atom[27] O_pCOO=42 ic 27  AtomConf{ia 27, n,nb,np,ne,nH(4,1,1,2,0) [37,-1,-1,-1]}
+atom[28] O_pCOO=42 ic 28  AtomConf{ia 28, n,nb,np,ne,nH(4,1,1,2,0) [43,-1,-1,-1]}
+atom[29] O_pCOO=42 ic 29  AtomConf{ia 29, n,nb,np,ne,nH(4,1,1,2,0) [41,-1,-1,-1]}
+ # MM::Builder.printBonds(nb=44) 
+bond[0] Bond{t -1 a(0,3) l0 1.334 k 20.893} pbc(0,0,0)
+bond[1] Bond{t -1 a(0,16) l0 1.334 k 20.893} pbc(0,0,0)
+bond[2] Bond{t -1 a(0,17) l0 1.334 k 20.893} pbc(0,0,0)
+bond[3] Bond{t -1 a(1,2) l0 1.334 k 20.893} pbc(0,0,0)
+bond[4] Bond{t -1 a(1,18) l0 1.334 k 20.893} pbc(0,0,0)
+bond[5] Bond{t -1 a(1,19) l0 1.334 k 20.893} pbc(0,0,0)
+bond[6] Bond{t -1 a(2,4) l0 1.334 k 20.893} pbc(0,0,0)
+bond[7] Bond{t -1 a(2,7) l0 1.334 k 20.893} pbc(0,0,0)
+bond[8] Bond{t -1 a(3,5) l0 1.334 k 20.893} pbc(0,0,0)
+bond[9] Bond{t -1 a(3,6) l0 1.334 k 20.893} pbc(0,0,0)
+bond[10] Bond{t -1 a(4,5) l0 1.334 k 20.893} pbc(0,0,0)
+bond[11] Bond{t -1 a(4,9) l0 1.334 k 20.893} pbc(0,0,0)
+bond[12] Bond{t -1 a(5,8) l0 1.334 k 20.893} pbc(0,0,0)
+bond[13] Bond{t -1 a(6,7) l0 1.334 k 20.893} pbc(0,0,0)
+bond[14] Bond{t -1 a(6,10) l0 1.334 k 20.893} pbc(0,0,0)
+bond[15] Bond{t -1 a(7,11) l0 1.334 k 20.893} pbc(0,0,0)
+bond[16] Bond{t -1 a(8,12) l0 1.334 k 20.893} pbc(0,0,0)
+bond[17] Bond{t -1 a(8,34) l0 1.095 k 16.457} pbc(0,0,0)
+bond[18] Bond{t -1 a(9,14) l0 1.334 k 20.893} pbc(0,0,0)
+bond[19] Bond{t -1 a(9,36) l0 1.095 k 16.457} pbc(0,0,0)
+bond[20] Bond{t -1 a(10,13) l0 1.334 k 20.893} pbc(0,0,0)
+bond[21] Bond{t -1 a(10,35) l0 1.095 k 16.457} pbc(0,0,0)
+bond[22] Bond{t -1 a(11,15) l0 1.334 k 20.893} pbc(0,0,0)
+bond[23] Bond{t -1 a(11,37) l0 1.095 k 16.457} pbc(0,0,0)
+bond[24] Bond{t -1 a(12,17) l0 1.334 k 20.893} pbc(0,0,0)
+bond[25] Bond{t -1 a(12,30) l0 1.095 k 16.457} pbc(0,0,0)
+bond[26] Bond{t -1 a(13,16) l0 1.334 k 20.893} pbc(0,0,0)
+bond[27] Bond{t -1 a(13,31) l0 1.095 k 16.457} pbc(0,0,0)
+bond[28] Bond{t -1 a(14,18) l0 1.334 k 20.893} pbc(0,0,0)
+bond[29] Bond{t -1 a(14,32) l0 1.095 k 16.457} pbc(0,0,0)
+bond[30] Bond{t -1 a(15,19) l0 1.334 k 20.893} pbc(0,0,0)
+bond[31] Bond{t -1 a(15,33) l0 1.095 k 16.457} pbc(0,0,0)
+bond[32] Bond{t -1 a(16,23) l0 1.334 k 20.893} pbc(0,0,0)
+bond[33] Bond{t -1 a(17,22) l0 1.334 k 20.893} pbc(0,0,0)
+bond[34] Bond{t -1 a(18,20) l0 1.334 k 20.893} pbc(0,0,0)
+bond[35] Bond{t -1 a(19,21) l0 1.334 k 20.893} pbc(0,0,0)
+bond[36] Bond{t -1 a(20,24) l0 1.423 k 12.723} pbc(0,0,0)
+bond[37] Bond{t -1 a(20,27) l0 1.225 k 27.545} pbc(0,0,0)
+bond[38] Bond{t -1 a(21,24) l0 1.423 k 12.723} pbc(0,0,0)
+bond[39] Bond{t -1 a(21,26) l0 1.225 k 27.545} pbc(0,0,0)
+bond[40] Bond{t -1 a(22,25) l0 1.423 k 12.723} pbc(0,0,0)
+bond[41] Bond{t -1 a(22,29) l0 1.225 k 27.545} pbc(0,0,0)
+bond[42] Bond{t -1 a(23,25) l0 1.423 k 12.723} pbc(0,0,0)
+bond[43] Bond{t -1 a(23,28) l0 1.225 k 27.545} pbc(0,0,0)
+DEBUG #l 1370 makeMMFFs 
+MM::Builder::toMMFFsp3_loc() nconf 30 ncap 8 npi 28 ne 0 
+MM::Builder::toMMFFsp3_loc() DONE 
+DEBUG #l 1376 makeMMFFs 
+MM::Builder::toMMFFsp3() nconf 30 ncap 8 npi 28 ne 0 
+ 3, 16, 17, -2,] 
+ 2, 18, 19, -3,] 
+ 1, 4, 7, -4,] 
+ 0, 5, 6, -5,] 
+ 2, 5, 9, -6,] 
+ 3, 4, 8, -7,] 
+ 3, 7, 10, -8,] 
+ 2, 6, 11, -9,] 
+ 5, 12, 34, -10,] 
+ 4, 14, 36, -11,] 
+ 6, 13, 35, -12,] 
+ 7, 15, 37, -13,] 
+ 8, 17, 30, -14,] 
+ 10, 16, 31, -15,] 
+ 9, 18, 32, -16,] 
+ 11, 19, 33, -17,] 
+ 0, 13, 23, -18,] 
+ 0, 12, 22, -19,] 
+ 1, 14, 20, -20,] 
+ 1, 15, 21, -21,] 
+ 18, 24, 27, -22,] 
+ 19, 24, 26, -23,] 
+ 17, 25, 29, -24,] 
+ 16, 25, 28, -25,] 
+ 20, 21, -1, -1,] 
+ 22, 23, -1, -1,] 
+ 21, -1, -1, -26,] 
+ 20, -1, -1, -27,] 
+ 23, -1, -1, -28,] 
+ 22, -1, -1, -29,] 
+MM::Builder::toMMFFsp3() DONE 
+DEBUG #l 1379 makeMMFFs 
+MMFFsp3_loc::printNeighs()
+atom[0] neigh{  3, 16, 17, -1} neighCell{ -1, -1, -1, -1} 
+atom[1] neigh{  2, 18, 19, -1} neighCell{ -1, -1, -1, -1} 
+atom[2] neigh{  1,  4,  7, -1} neighCell{ -1, -1, -1, -1} 
+atom[3] neigh{  0,  5,  6, -1} neighCell{ -1, -1, -1, -1} 
+atom[4] neigh{  2,  5,  9, -1} neighCell{ -1, -1, -1, -1} 
+atom[5] neigh{  3,  4,  8, -1} neighCell{ -1, -1, -1, -1} 
+atom[6] neigh{  3,  7, 10, -1} neighCell{ -1, -1, -1, -1} 
+atom[7] neigh{  2,  6, 11, -1} neighCell{ -1, -1, -1, -1} 
+atom[8] neigh{  5, 12, 34, -1} neighCell{ -1, -1, -1, -1} 
+atom[9] neigh{  4, 14, 36, -1} neighCell{ -1, -1, -1, -1} 
+atom[10] neigh{  6, 13, 35, -1} neighCell{ -1, -1, -1, -1} 
+atom[11] neigh{  7, 15, 37, -1} neighCell{ -1, -1, -1, -1} 
+atom[12] neigh{  8, 17, 30, -1} neighCell{ -1, -1, -1, -1} 
+atom[13] neigh{ 10, 16, 31, -1} neighCell{ -1, -1, -1, -1} 
+atom[14] neigh{  9, 18, 32, -1} neighCell{ -1, -1, -1, -1} 
+atom[15] neigh{ 11, 19, 33, -1} neighCell{ -1, -1, -1, -1} 
+atom[16] neigh{  0, 13, 23, -1} neighCell{ -1, -1, -1, -1} 
+atom[17] neigh{  0, 12, 22, -1} neighCell{ -1, -1, -1, -1} 
+atom[18] neigh{  1, 14, 20, -1} neighCell{ -1, -1, -1, -1} 
+atom[19] neigh{  1, 15, 21, -1} neighCell{ -1, -1, -1, -1} 
+atom[20] neigh{ 18, 24, 27, -1} neighCell{ -1, -1, -1, -1} 
+atom[21] neigh{ 19, 24, 26, -1} neighCell{ -1, -1, -1, -1} 
+atom[22] neigh{ 17, 25, 29, -1} neighCell{ -1, -1, -1, -1} 
+atom[23] neigh{ 16, 25, 28, -1} neighCell{ -1, -1, -1, -1} 
+atom[24] neigh{ 20, 21, -1, -1} neighCell{ -1, -1, -1, -1} 
+atom[25] neigh{ 22, 23, -1, -1} neighCell{ -1, -1, -1, -1} 
+atom[26] neigh{ 21, -1, -1, -1} neighCell{ -1, -1, -1, -1} 
+atom[27] neigh{ 20, -1, -1, -1} neighCell{ -1, -1, -1, -1} 
+atom[28] neigh{ 23, -1, -1, -1} neighCell{ -1, -1, -1, -1} 
+atom[29] neigh{ 22, -1, -1, -1} neighCell{ -1, -1, -1, -1} 
+atom[30] neigh{ 12, -1, -1, -1} neighCell{ -1, -1, -1, -1} 
+atom[31] neigh{ 13, -1, -1, -1} neighCell{ -1, -1, -1, -1} 
+atom[32] neigh{ 14, -1, -1, -1} neighCell{ -1, -1, -1, -1} 
+atom[33] neigh{ 15, -1, -1, -1} neighCell{ -1, -1, -1, -1} 
+atom[34] neigh{  8, -1, -1, -1} neighCell{ -1, -1, -1, -1} 
+atom[35] neigh{ 10, -1, -1, -1} neighCell{ -1, -1, -1, -1} 
+atom[36] neigh{  9, -1, -1, -1} neighCell{ -1, -1, -1, -1} 
+atom[37] neigh{ 11, -1, -1, -1} neighCell{ -1, -1, -1, -1} 
+DEBUG #l 1396 makeMMFFs 
+DEBUG #l 1402 makeMMFFs 
+DEBUG #l 1407 makeMMFFs 
+DEBUG #l 1423 makeFFs 
+DEBUG #l 1467 makeFFs 
+MolWorld_sp3::initNBmol() na 38 
+DEBUG #l 997 initNBmol 
+DEBUG #l 1005 initNBmol 
+MMFFparams::assignREs(38) @itypes=106515188942880 
+DEBUG #l 1009 initNBmol 
+NBFF::evalPLQs() natoms 38 K 1.5 @PLQs=0x6160003d1d80 
+evalPLQs[0] REQ(1.9255,0.0674776,-0.00569) PLQ(21.7702,1.21202,-0.00569)
+evalPLQs[1] REQ(1.9255,0.0674776,-0.00569) PLQ(21.7702,1.21202,-0.00569)
+evalPLQs[2] REQ(1.9255,0.0674776,0.01238) PLQ(21.7702,1.21202,0.01238)
+evalPLQs[3] REQ(1.9255,0.0674776,0.01238) PLQ(21.7702,1.21202,0.01238)
+evalPLQs[4] REQ(1.9255,0.0674776,0.01631) PLQ(21.7702,1.21202,0.01631)
+evalPLQs[5] REQ(1.9255,0.0674776,0.01631) PLQ(21.7702,1.21202,0.01631)
+evalPLQs[6] REQ(1.9255,0.0674776,0.01631) PLQ(21.7702,1.21202,0.01631)
+evalPLQs[7] REQ(1.9255,0.0674776,0.01631) PLQ(21.7702,1.21202,0.01631)
+evalPLQs[8] REQ(1.9255,0.0674776,-0.038425) PLQ(21.7702,1.21202,-0.038425)
+evalPLQs[9] REQ(1.9255,0.0674776,-0.038425) PLQ(21.7702,1.21202,-0.038425)
+evalPLQs[10] REQ(1.9255,0.0674776,-0.038425) PLQ(21.7702,1.21202,-0.038425)
+evalPLQs[11] REQ(1.9255,0.0674776,-0.038425) PLQ(21.7702,1.21202,-0.038425)
+evalPLQs[12] REQ(1.9255,0.0674776,-0.03257) PLQ(21.7702,1.21202,-0.03257)
+evalPLQs[13] REQ(1.9255,0.0674776,-0.03257) PLQ(21.7702,1.21202,-0.03257)
+evalPLQs[14] REQ(1.9255,0.0674776,-0.03257) PLQ(21.7702,1.21202,-0.03257)
+evalPLQs[15] REQ(1.9255,0.0674776,-0.03257) PLQ(21.7702,1.21202,-0.03257)
+evalPLQs[16] REQ(1.9255,0.0674776,0.01999) PLQ(21.7702,1.21202,0.01999)
+evalPLQs[17] REQ(1.9255,0.0674776,0.01999) PLQ(21.7702,1.21202,0.01999)
+evalPLQs[18] REQ(1.9255,0.0674776,0.01999) PLQ(21.7702,1.21202,0.01999)
+evalPLQs[19] REQ(1.9255,0.0674776,0.01999) PLQ(21.7702,1.21202,0.01999)
+evalPLQs[20] REQ(1.9255,0.0674776,0.22694) PLQ(21.7702,1.21202,0.22694)
+evalPLQs[21] REQ(1.9255,0.0674776,0.22694) PLQ(21.7702,1.21202,0.22694)
+evalPLQs[22] REQ(1.9255,0.0674776,0.22694) PLQ(21.7702,1.21202,0.22694)
+evalPLQs[23] REQ(1.9255,0.0674776,0.22694) PLQ(21.7702,1.21202,0.22694)
+evalPLQs[24] REQ(1.75,0.0510083,-0.12278) PLQ(9.72046,0.704148,-0.12278)
+evalPLQs[25] REQ(1.75,0.0510083,-0.12278) PLQ(9.72046,0.704148,-0.12278)
+evalPLQs[26] REQ(1.75,0.0510083,-0.27689) PLQ(9.72046,0.704148,-0.27689)
+evalPLQs[27] REQ(1.75,0.0510083,-0.27689) PLQ(9.72046,0.704148,-0.27689)
+evalPLQs[28] REQ(1.75,0.0510083,-0.27689) PLQ(9.72046,0.704148,-0.27689)
+evalPLQs[29] REQ(1.75,0.0510083,-0.27689) PLQ(9.72046,0.704148,-0.27689)
+evalPLQs[30] REQ(1.443,0.0436809,0.08637) PLQ(3.314,0.380471,0.08637)
+evalPLQs[31] REQ(1.443,0.0436809,0.08637) PLQ(3.314,0.380471,0.08637)
+evalPLQs[32] REQ(1.443,0.0436809,0.08637) PLQ(3.314,0.380471,0.08637)
+evalPLQs[33] REQ(1.443,0.0436809,0.08637) PLQ(3.314,0.380471,0.08637)
+evalPLQs[34] REQ(1.443,0.0436809,0.05632) PLQ(3.314,0.380471,0.05632)
+evalPLQs[35] REQ(1.443,0.0436809,0.05632) PLQ(3.314,0.380471,0.05632)
+evalPLQs[36] REQ(1.443,0.0436809,0.05632) PLQ(3.314,0.380471,0.05632)
+evalPLQs[37] REQ(1.443,0.0436809,0.05632) PLQ(3.314,0.380471,0.05632)
+DEBUG #l 1011 initNBmol 
+NBFF::evalPLQd() natoms 38 K 1.5 @PLQd=0x61a000247e80 
+evalPLQd[0] REQ(1.9255,0.0674776,-0.00569) PLQ(21.7702,1.21202,-0.00569)
+evalPLQd[1] REQ(1.9255,0.0674776,-0.00569) PLQ(21.7702,1.21202,-0.00569)
+evalPLQd[2] REQ(1.9255,0.0674776,0.01238) PLQ(21.7702,1.21202,0.01238)
+evalPLQd[3] REQ(1.9255,0.0674776,0.01238) PLQ(21.7702,1.21202,0.01238)
+evalPLQd[4] REQ(1.9255,0.0674776,0.01631) PLQ(21.7702,1.21202,0.01631)
+evalPLQd[5] REQ(1.9255,0.0674776,0.01631) PLQ(21.7702,1.21202,0.01631)
+evalPLQd[6] REQ(1.9255,0.0674776,0.01631) PLQ(21.7702,1.21202,0.01631)
+evalPLQd[7] REQ(1.9255,0.0674776,0.01631) PLQ(21.7702,1.21202,0.01631)
+evalPLQd[8] REQ(1.9255,0.0674776,-0.038425) PLQ(21.7702,1.21202,-0.038425)
+evalPLQd[9] REQ(1.9255,0.0674776,-0.038425) PLQ(21.7702,1.21202,-0.038425)
+evalPLQd[10] REQ(1.9255,0.0674776,-0.038425) PLQ(21.7702,1.21202,-0.038425)
+evalPLQd[11] REQ(1.9255,0.0674776,-0.038425) PLQ(21.7702,1.21202,-0.038425)
+evalPLQd[12] REQ(1.9255,0.0674776,-0.03257) PLQ(21.7702,1.21202,-0.03257)
+evalPLQd[13] REQ(1.9255,0.0674776,-0.03257) PLQ(21.7702,1.21202,-0.03257)
+evalPLQd[14] REQ(1.9255,0.0674776,-0.03257) PLQ(21.7702,1.21202,-0.03257)
+evalPLQd[15] REQ(1.9255,0.0674776,-0.03257) PLQ(21.7702,1.21202,-0.03257)
+evalPLQd[16] REQ(1.9255,0.0674776,0.01999) PLQ(21.7702,1.21202,0.01999)
+evalPLQd[17] REQ(1.9255,0.0674776,0.01999) PLQ(21.7702,1.21202,0.01999)
+evalPLQd[18] REQ(1.9255,0.0674776,0.01999) PLQ(21.7702,1.21202,0.01999)
+evalPLQd[19] REQ(1.9255,0.0674776,0.01999) PLQ(21.7702,1.21202,0.01999)
+evalPLQd[20] REQ(1.9255,0.0674776,0.22694) PLQ(21.7702,1.21202,0.22694)
+evalPLQd[21] REQ(1.9255,0.0674776,0.22694) PLQ(21.7702,1.21202,0.22694)
+evalPLQd[22] REQ(1.9255,0.0674776,0.22694) PLQ(21.7702,1.21202,0.22694)
+evalPLQd[23] REQ(1.9255,0.0674776,0.22694) PLQ(21.7702,1.21202,0.22694)
+evalPLQd[24] REQ(1.75,0.0510083,-0.12278) PLQ(9.72046,0.704148,-0.12278)
+evalPLQd[25] REQ(1.75,0.0510083,-0.12278) PLQ(9.72046,0.704148,-0.12278)
+evalPLQd[26] REQ(1.75,0.0510083,-0.27689) PLQ(9.72046,0.704148,-0.27689)
+evalPLQd[27] REQ(1.75,0.0510083,-0.27689) PLQ(9.72046,0.704148,-0.27689)
+evalPLQd[28] REQ(1.75,0.0510083,-0.27689) PLQ(9.72046,0.704148,-0.27689)
+evalPLQd[29] REQ(1.75,0.0510083,-0.27689) PLQ(9.72046,0.704148,-0.27689)
+evalPLQd[30] REQ(1.443,0.0436809,0.08637) PLQ(3.314,0.380471,0.08637)
+evalPLQd[31] REQ(1.443,0.0436809,0.08637) PLQ(3.314,0.380471,0.08637)
+evalPLQd[32] REQ(1.443,0.0436809,0.08637) PLQ(3.314,0.380471,0.08637)
+evalPLQd[33] REQ(1.443,0.0436809,0.08637) PLQ(3.314,0.380471,0.08637)
+evalPLQd[34] REQ(1.443,0.0436809,0.05632) PLQ(3.314,0.380471,0.05632)
+evalPLQd[35] REQ(1.443,0.0436809,0.05632) PLQ(3.314,0.380471,0.05632)
+evalPLQd[36] REQ(1.443,0.0436809,0.05632) PLQ(3.314,0.380471,0.05632)
+evalPLQd[37] REQ(1.443,0.0436809,0.05632) PLQ(3.314,0.380471,0.05632)
+NBFF::print_nonbonded(n=38)
+nb_atom[0] REQ(  1.925,0.0674776,-0.00569,0) PLQ( 21.77017471,  1.21202304, -0.0057,0) pos(  2.782,  3.417,  5.657) atyp 23 
+nb_atom[1] REQ(  1.925,0.0674776,-0.00569,0) PLQ( 21.77017471,  1.21202304, -0.0057,0) pos(  8.463,  3.417,  5.657) atyp 23 
+nb_atom[2] REQ(  1.925,0.0674776,0.01238,0) PLQ( 21.77017471,  1.21202304,  0.0124,0) pos(  7.038,  3.417,  5.657) atyp 23 
+nb_atom[3] REQ(  1.925,0.0674776,0.01238,0) PLQ( 21.77017471,  1.21202304,  0.0124,0) pos(  4.207,  3.417,  5.657) atyp 23 
+nb_atom[4] REQ(  1.925,0.0674776,0.01631,0) PLQ( 21.77017471,  1.21202304,  0.0163,0) pos(  6.336,  2.179,  5.657) atyp 23 
+nb_atom[5] REQ(  1.925,0.0674776,0.01631,0) PLQ( 21.77017471,  1.21202304,  0.0163,0) pos(  4.909,  2.179,  5.657) atyp 23 
+nb_atom[6] REQ(  1.925,0.0674776,0.01631,0) PLQ( 21.77017471,  1.21202304,  0.0163,0) pos(  4.909,  4.655,  5.657) atyp 23 
+nb_atom[7] REQ(  1.925,0.0674776,0.01631,0) PLQ( 21.77017471,  1.21202304,  0.0163,0) pos(  6.336,  4.655,  5.657) atyp 23 
+nb_atom[8] REQ(  1.925,0.0674776,-0.038425,0) PLQ( 21.77017471,  1.21202304, -0.0384,0) pos(  4.151,  0.980,  5.657) atyp 23 
+nb_atom[9] REQ(  1.925,0.0674776,-0.038425,0) PLQ( 21.77017471,  1.21202304, -0.0384,0) pos(  7.094,  0.980,  5.657) atyp 23 
+nb_atom[10] REQ(  1.925,0.0674776,-0.038425,0) PLQ( 21.77017471,  1.21202304, -0.0384,0) pos(  4.151,  5.854,  5.657) atyp 23 
+nb_atom[11] REQ(  1.925,0.0674776,-0.038425,0) PLQ( 21.77017471,  1.21202304, -0.0384,0) pos(  7.094,  5.854,  5.657) atyp 23 
+nb_atom[12] REQ(  1.925,0.0674776,-0.03257,0) PLQ( 21.77017471,  1.21202304, -0.0326,0) pos(  2.760,  0.996,  5.657) atyp 23 
+nb_atom[13] REQ(  1.925,0.0674776,-0.03257,0) PLQ( 21.77017471,  1.21202304, -0.0326,0) pos(  2.760,  5.838,  5.657) atyp 23 
+nb_atom[14] REQ(  1.925,0.0674776,-0.03257,0) PLQ( 21.77017471,  1.21202304, -0.0326,0) pos(  8.485,  0.996,  5.657) atyp 23 
+nb_atom[15] REQ(  1.925,0.0674776,-0.03257,0) PLQ( 21.77017471,  1.21202304, -0.0326,0) pos(  8.485,  5.838,  5.657) atyp 23 
+nb_atom[16] REQ(  1.925,0.0674776,0.01999,0) PLQ( 21.77017471,  1.21202304,  0.0200,0) pos(  2.064,  4.628,  5.657) atyp 23 
+nb_atom[17] REQ(  1.925,0.0674776,0.01999,0) PLQ( 21.77017471,  1.21202304,  0.0200,0) pos(  2.064,  2.207,  5.657) atyp 23 
+nb_atom[18] REQ(  1.925,0.0674776,0.01999,0) PLQ( 21.77017471,  1.21202304,  0.0200,0) pos(  9.181,  2.206,  5.657) atyp 23 
+nb_atom[19] REQ(  1.925,0.0674776,0.01999,0) PLQ( 21.77017471,  1.21202304,  0.0200,0) pos(  9.181,  4.628,  5.657) atyp 23 
+nb_atom[20] REQ(  1.925,0.0674776,0.22694,0) PLQ( 21.77017471,  1.21202304,  0.2269,0) pos( 10.590,  2.252,  5.657) atyp 38 
+nb_atom[21] REQ(  1.925,0.0674776,0.22694,0) PLQ( 21.77017471,  1.21202304,  0.2269,0) pos( 10.590,  4.583,  5.657) atyp 38 
+nb_atom[22] REQ(  1.925,0.0674776,0.22694,0) PLQ( 21.77017471,  1.21202304,  0.2269,0) pos(  0.655,  2.252,  5.657) atyp 38 
+nb_atom[23] REQ(  1.925,0.0674776,0.22694,0) PLQ( 21.77017471,  1.21202304,  0.2269,0) pos(  0.655,  4.583,  5.657) atyp 38 
+nb_atom[24] REQ(  1.750,0.0510083,-0.12278,0) PLQ(  9.72046061,  0.70414780, -0.1228,0) pos( 11.223,  3.417,  5.657) atyp 41 
+nb_atom[25] REQ(  1.750,0.0510083,-0.12278,0) PLQ(  9.72046061,  0.70414780, -0.1228,0) pos(  0.022,  3.417,  5.657) atyp 41 
+nb_atom[26] REQ(  1.750,0.0510083,-0.27689,0) PLQ(  9.72046061,  0.70414780, -0.2769,0) pos( 11.245,  5.610,  5.657) atyp 42 
+nb_atom[27] REQ(  1.750,0.0510083,-0.27689,0) PLQ(  9.72046061,  0.70414780, -0.2769,0) pos( 11.245,  1.224,  5.657) atyp 42 
+nb_atom[28] REQ(  1.750,0.0510083,-0.27689,0) PLQ(  9.72046061,  0.70414780, -0.2769,0) pos(  0.000,  5.610,  5.657) atyp 42 
+nb_atom[29] REQ(  1.750,0.0510083,-0.27689,0) PLQ(  9.72046061,  0.70414780, -0.2769,0) pos(  0.000,  1.224,  5.657) atyp 42 
+nb_atom[30] REQ(  1.443,0.0436809,0.08637,0) PLQ(  3.31399875,  0.38047133,  0.0864,0) pos(  2.227,  0.051,  5.657) atyp 47 
+nb_atom[31] REQ(  1.443,0.0436809,0.08637,0) PLQ(  3.31399875,  0.38047133,  0.0864,0) pos(  2.227,  6.783,  5.657) atyp 47 
+nb_atom[32] REQ(  1.443,0.0436809,0.08637,0) PLQ(  3.31399875,  0.38047133,  0.0864,0) pos(  9.018,  0.051,  5.657) atyp 47 
+nb_atom[33] REQ(  1.443,0.0436809,0.08637,0) PLQ(  3.31399875,  0.38047133,  0.0864,0) pos(  9.018,  6.783,  5.657) atyp 47 
+nb_atom[34] REQ(  1.443,0.0436809,0.05632,0) PLQ(  3.31399875,  0.38047133,  0.0563,0) pos(  4.594,  0.000,  5.657) atyp 47 
+nb_atom[35] REQ(  1.443,0.0436809,0.05632,0) PLQ(  3.31399875,  0.38047133,  0.0563,0) pos(  4.594,  6.834,  5.657) atyp 47 
+nb_atom[36] REQ(  1.443,0.0436809,0.05632,0) PLQ(  3.31399875,  0.38047133,  0.0563,0) pos(  6.651,  0.000,  5.657) atyp 47 
+nb_atom[37] REQ(  1.443,0.0436809,0.05632,0) PLQ(  3.31399875,  0.38047133,  0.0563,0) pos(  6.651,  6.834,  5.657) atyp 47 
+DEBUG #l 1015 initNBmol 
+Atoms::print() natom=38
+[0] atype 23 apos( 2.782, 3.417, 5.657)
+[1] atype 23 apos( 8.463, 3.417, 5.657)
+[2] atype 23 apos( 7.038, 3.417, 5.657)
+[3] atype 23 apos( 4.207, 3.417, 5.657)
+[4] atype 23 apos( 6.336, 2.179, 5.657)
+[5] atype 23 apos( 4.909, 2.179, 5.657)
+[6] atype 23 apos( 4.909, 4.655, 5.657)
+[7] atype 23 apos( 6.336, 4.655, 5.657)
+[8] atype 23 apos( 4.151, 0.980, 5.657)
+[9] atype 23 apos( 7.094, 0.980, 5.657)
+[10] atype 23 apos( 4.151, 5.854, 5.657)
+[11] atype 23 apos( 7.094, 5.854, 5.657)
+[12] atype 23 apos( 2.760, 0.996, 5.657)
+[13] atype 23 apos( 2.760, 5.838, 5.657)
+[14] atype 23 apos( 8.485, 0.996, 5.657)
+[15] atype 23 apos( 8.485, 5.838, 5.657)
+[16] atype 23 apos( 2.064, 4.628, 5.657)
+[17] atype 23 apos( 2.064, 2.207, 5.657)
+[18] atype 23 apos( 9.181, 2.206, 5.657)
+[19] atype 23 apos( 9.181, 4.628, 5.657)
+[20] atype 38 apos(10.590, 2.252, 5.657)
+[21] atype 38 apos(10.590, 4.583, 5.657)
+[22] atype 38 apos( 0.655, 2.252, 5.657)
+[23] atype 38 apos( 0.655, 4.583, 5.657)
+[24] atype 41 apos(11.223, 3.417, 5.657)
+[25] atype 41 apos( 0.022, 3.417, 5.657)
+[26] atype 42 apos(11.245, 5.610, 5.657)
+[27] atype 42 apos(11.245, 1.224, 5.657)
+[28] atype 42 apos( 0.000, 5.610, 5.657)
+[29] atype 42 apos( 0.000, 1.224, 5.657)
+[30] atype 47 apos( 2.227, 0.051, 5.657)
+[31] atype 47 apos( 2.227, 6.783, 5.657)
+[32] atype 47 apos( 9.018, 0.051, 5.657)
+[33] atype 47 apos( 9.018, 6.783, 5.657)
+[34] atype 47 apos( 4.594, 0.000, 5.657)
+[35] atype 47 apos( 4.594, 6.834, 5.657)
+[36] atype 47 apos( 6.651, 0.000, 5.657)
+[37] atype 47 apos( 6.651, 6.834, 5.657)
+DEBUG #l 1470 makeFFs 
+DEBUG>> makeFFs (after initNBmol): nbmol.REQs[0](RvdW=1.9255, sqrtEvdW=0.0674776, Q=-0.00569, Hb?=0)
+DEBUG #l 1480 makeFFs 
+DEBUG #l 1485 makeFFs 
+DEBUG #l 1487 makeFFs 
+MMFFsp3_loc::chargeToEpairs() na 38 nnode 30 cQ -0.2 etyp 1 @atypes=0x60e000000820 @REQs=0x61a000246c80 
+MMFFsp3_loc::chargeToEpairs() atom[0] ngs{3,16,17,-1} 
+MMFFsp3_loc::chargeToEpairs() atom[0] ngh[0|3] tj=23 Qi=-0.00569 Qj=0.01238 
+MMFFsp3_loc::chargeToEpairs() atom[0] ngh[1|16] tj=23 Qi=-0.00569 Qj=0.01999 
+MMFFsp3_loc::chargeToEpairs() atom[0] ngh[2|17] tj=23 Qi=-0.00569 Qj=0.01999 
+MMFFsp3_loc::chargeToEpairs() atom[1] ngs{2,18,19,-1} 
+MMFFsp3_loc::chargeToEpairs() atom[1] ngh[0|2] tj=23 Qi=-0.00569 Qj=0.01238 
+MMFFsp3_loc::chargeToEpairs() atom[1] ngh[1|18] tj=23 Qi=-0.00569 Qj=0.01999 
+MMFFsp3_loc::chargeToEpairs() atom[1] ngh[2|19] tj=23 Qi=-0.00569 Qj=0.01999 
+MMFFsp3_loc::chargeToEpairs() atom[2] ngs{1,4,7,-1} 
+MMFFsp3_loc::chargeToEpairs() atom[2] ngh[0|1] tj=23 Qi=0.01238 Qj=-0.00569 
+MMFFsp3_loc::chargeToEpairs() atom[2] ngh[1|4] tj=23 Qi=0.01238 Qj=0.01631 
+MMFFsp3_loc::chargeToEpairs() atom[2] ngh[2|7] tj=23 Qi=0.01238 Qj=0.01631 
+MMFFsp3_loc::chargeToEpairs() atom[3] ngs{0,5,6,-1} 
+MMFFsp3_loc::chargeToEpairs() atom[3] ngh[0|0] tj=23 Qi=0.01238 Qj=-0.00569 
+MMFFsp3_loc::chargeToEpairs() atom[3] ngh[1|5] tj=23 Qi=0.01238 Qj=0.01631 
+MMFFsp3_loc::chargeToEpairs() atom[3] ngh[2|6] tj=23 Qi=0.01238 Qj=0.01631 
+MMFFsp3_loc::chargeToEpairs() atom[4] ngs{2,5,9,-1} 
+MMFFsp3_loc::chargeToEpairs() atom[4] ngh[0|2] tj=23 Qi=0.01631 Qj=0.01238 
+MMFFsp3_loc::chargeToEpairs() atom[4] ngh[1|5] tj=23 Qi=0.01631 Qj=0.01631 
+MMFFsp3_loc::chargeToEpairs() atom[4] ngh[2|9] tj=23 Qi=0.01631 Qj=-0.038425 
+MMFFsp3_loc::chargeToEpairs() atom[5] ngs{3,4,8,-1} 
+MMFFsp3_loc::chargeToEpairs() atom[5] ngh[0|3] tj=23 Qi=0.01631 Qj=0.01238 
+MMFFsp3_loc::chargeToEpairs() atom[5] ngh[1|4] tj=23 Qi=0.01631 Qj=0.01631 
+MMFFsp3_loc::chargeToEpairs() atom[5] ngh[2|8] tj=23 Qi=0.01631 Qj=-0.038425 
+MMFFsp3_loc::chargeToEpairs() atom[6] ngs{3,7,10,-1} 
+MMFFsp3_loc::chargeToEpairs() atom[6] ngh[0|3] tj=23 Qi=0.01631 Qj=0.01238 
+MMFFsp3_loc::chargeToEpairs() atom[6] ngh[1|7] tj=23 Qi=0.01631 Qj=0.01631 
+MMFFsp3_loc::chargeToEpairs() atom[6] ngh[2|10] tj=23 Qi=0.01631 Qj=-0.038425 
+MMFFsp3_loc::chargeToEpairs() atom[7] ngs{2,6,11,-1} 
+MMFFsp3_loc::chargeToEpairs() atom[7] ngh[0|2] tj=23 Qi=0.01631 Qj=0.01238 
+MMFFsp3_loc::chargeToEpairs() atom[7] ngh[1|6] tj=23 Qi=0.01631 Qj=0.01631 
+MMFFsp3_loc::chargeToEpairs() atom[7] ngh[2|11] tj=23 Qi=0.01631 Qj=-0.038425 
+MMFFsp3_loc::chargeToEpairs() atom[8] ngs{5,12,34,-1} 
+MMFFsp3_loc::chargeToEpairs() atom[8] ngh[0|5] tj=23 Qi=-0.038425 Qj=0.01631 
+MMFFsp3_loc::chargeToEpairs() atom[8] ngh[1|12] tj=23 Qi=-0.038425 Qj=-0.03257 
+MMFFsp3_loc::chargeToEpairs() atom[8] ngh[2|34] tj=47 Qi=-0.038425 Qj=0.05632 
+MMFFsp3_loc::chargeToEpairs() atom[9] ngs{4,14,36,-1} 
+MMFFsp3_loc::chargeToEpairs() atom[9] ngh[0|4] tj=23 Qi=-0.038425 Qj=0.01631 
+MMFFsp3_loc::chargeToEpairs() atom[9] ngh[1|14] tj=23 Qi=-0.038425 Qj=-0.03257 
+MMFFsp3_loc::chargeToEpairs() atom[9] ngh[2|36] tj=47 Qi=-0.038425 Qj=0.05632 
+MMFFsp3_loc::chargeToEpairs() atom[10] ngs{6,13,35,-1} 
+MMFFsp3_loc::chargeToEpairs() atom[10] ngh[0|6] tj=23 Qi=-0.038425 Qj=0.01631 
+MMFFsp3_loc::chargeToEpairs() atom[10] ngh[1|13] tj=23 Qi=-0.038425 Qj=-0.03257 
+MMFFsp3_loc::chargeToEpairs() atom[10] ngh[2|35] tj=47 Qi=-0.038425 Qj=0.05632 
+MMFFsp3_loc::chargeToEpairs() atom[11] ngs{7,15,37,-1} 
+MMFFsp3_loc::chargeToEpairs() atom[11] ngh[0|7] tj=23 Qi=-0.038425 Qj=0.01631 
+MMFFsp3_loc::chargeToEpairs() atom[11] ngh[1|15] tj=23 Qi=-0.038425 Qj=-0.03257 
+MMFFsp3_loc::chargeToEpairs() atom[11] ngh[2|37] tj=47 Qi=-0.038425 Qj=0.05632 
+MMFFsp3_loc::chargeToEpairs() atom[12] ngs{8,17,30,-1} 
+MMFFsp3_loc::chargeToEpairs() atom[12] ngh[0|8] tj=23 Qi=-0.03257 Qj=-0.038425 
+MMFFsp3_loc::chargeToEpairs() atom[12] ngh[1|17] tj=23 Qi=-0.03257 Qj=0.01999 
+MMFFsp3_loc::chargeToEpairs() atom[12] ngh[2|30] tj=47 Qi=-0.03257 Qj=0.08637 
+MMFFsp3_loc::chargeToEpairs() atom[13] ngs{10,16,31,-1} 
+MMFFsp3_loc::chargeToEpairs() atom[13] ngh[0|10] tj=23 Qi=-0.03257 Qj=-0.038425 
+MMFFsp3_loc::chargeToEpairs() atom[13] ngh[1|16] tj=23 Qi=-0.03257 Qj=0.01999 
+MMFFsp3_loc::chargeToEpairs() atom[13] ngh[2|31] tj=47 Qi=-0.03257 Qj=0.08637 
+MMFFsp3_loc::chargeToEpairs() atom[14] ngs{9,18,32,-1} 
+MMFFsp3_loc::chargeToEpairs() atom[14] ngh[0|9] tj=23 Qi=-0.03257 Qj=-0.038425 
+MMFFsp3_loc::chargeToEpairs() atom[14] ngh[1|18] tj=23 Qi=-0.03257 Qj=0.01999 
+MMFFsp3_loc::chargeToEpairs() atom[14] ngh[2|32] tj=47 Qi=-0.03257 Qj=0.08637 
+MMFFsp3_loc::chargeToEpairs() atom[15] ngs{11,19,33,-1} 
+MMFFsp3_loc::chargeToEpairs() atom[15] ngh[0|11] tj=23 Qi=-0.03257 Qj=-0.038425 
+MMFFsp3_loc::chargeToEpairs() atom[15] ngh[1|19] tj=23 Qi=-0.03257 Qj=0.01999 
+MMFFsp3_loc::chargeToEpairs() atom[15] ngh[2|33] tj=47 Qi=-0.03257 Qj=0.08637 
+MMFFsp3_loc::chargeToEpairs() atom[16] ngs{0,13,23,-1} 
+MMFFsp3_loc::chargeToEpairs() atom[16] ngh[0|0] tj=23 Qi=0.01999 Qj=-0.00569 
+MMFFsp3_loc::chargeToEpairs() atom[16] ngh[1|13] tj=23 Qi=0.01999 Qj=-0.03257 
+MMFFsp3_loc::chargeToEpairs() atom[16] ngh[2|23] tj=38 Qi=0.01999 Qj=0.22694 
+MMFFsp3_loc::chargeToEpairs() atom[17] ngs{0,12,22,-1} 
+MMFFsp3_loc::chargeToEpairs() atom[17] ngh[0|0] tj=23 Qi=0.01999 Qj=-0.00569 
+MMFFsp3_loc::chargeToEpairs() atom[17] ngh[1|12] tj=23 Qi=0.01999 Qj=-0.03257 
+MMFFsp3_loc::chargeToEpairs() atom[17] ngh[2|22] tj=38 Qi=0.01999 Qj=0.22694 
+MMFFsp3_loc::chargeToEpairs() atom[18] ngs{1,14,20,-1} 
+MMFFsp3_loc::chargeToEpairs() atom[18] ngh[0|1] tj=23 Qi=0.01999 Qj=-0.00569 
+MMFFsp3_loc::chargeToEpairs() atom[18] ngh[1|14] tj=23 Qi=0.01999 Qj=-0.03257 
+MMFFsp3_loc::chargeToEpairs() atom[18] ngh[2|20] tj=38 Qi=0.01999 Qj=0.22694 
+MMFFsp3_loc::chargeToEpairs() atom[19] ngs{1,15,21,-1} 
+MMFFsp3_loc::chargeToEpairs() atom[19] ngh[0|1] tj=23 Qi=0.01999 Qj=-0.00569 
+MMFFsp3_loc::chargeToEpairs() atom[19] ngh[1|15] tj=23 Qi=0.01999 Qj=-0.03257 
+MMFFsp3_loc::chargeToEpairs() atom[19] ngh[2|21] tj=38 Qi=0.01999 Qj=0.22694 
+MMFFsp3_loc::chargeToEpairs() atom[20] ngs{18,24,27,-1} 
+MMFFsp3_loc::chargeToEpairs() atom[20] ngh[0|18] tj=23 Qi=0.22694 Qj=0.01999 
+MMFFsp3_loc::chargeToEpairs() atom[20] ngh[1|24] tj=41 Qi=0.22694 Qj=-0.12278 
+MMFFsp3_loc::chargeToEpairs() atom[20] ngh[2|27] tj=42 Qi=0.22694 Qj=-0.27689 
+MMFFsp3_loc::chargeToEpairs() atom[21] ngs{19,24,26,-1} 
+MMFFsp3_loc::chargeToEpairs() atom[21] ngh[0|19] tj=23 Qi=0.22694 Qj=0.01999 
+MMFFsp3_loc::chargeToEpairs() atom[21] ngh[1|24] tj=41 Qi=0.22694 Qj=-0.12278 
+MMFFsp3_loc::chargeToEpairs() atom[21] ngh[2|26] tj=42 Qi=0.22694 Qj=-0.27689 
+MMFFsp3_loc::chargeToEpairs() atom[22] ngs{17,25,29,-1} 
+MMFFsp3_loc::chargeToEpairs() atom[22] ngh[0|17] tj=23 Qi=0.22694 Qj=0.01999 
+MMFFsp3_loc::chargeToEpairs() atom[22] ngh[1|25] tj=41 Qi=0.22694 Qj=-0.12278 
+MMFFsp3_loc::chargeToEpairs() atom[22] ngh[2|29] tj=42 Qi=0.22694 Qj=-0.27689 
+MMFFsp3_loc::chargeToEpairs() atom[23] ngs{16,25,28,-1} 
+MMFFsp3_loc::chargeToEpairs() atom[23] ngh[0|16] tj=23 Qi=0.22694 Qj=0.01999 
+MMFFsp3_loc::chargeToEpairs() atom[23] ngh[1|25] tj=41 Qi=0.22694 Qj=-0.12278 
+MMFFsp3_loc::chargeToEpairs() atom[23] ngh[2|28] tj=42 Qi=0.22694 Qj=-0.27689 
+MMFFsp3_loc::chargeToEpairs() atom[24] ngs{20,21,-1,-1} 
+MMFFsp3_loc::chargeToEpairs() atom[24] ngh[0|20] tj=38 Qi=-0.12278 Qj=0.22694 
+MMFFsp3_loc::chargeToEpairs() atom[24] ngh[1|21] tj=38 Qi=-0.12278 Qj=0.22694 
+MMFFsp3_loc::chargeToEpairs() atom[25] ngs{22,23,-1,-1} 
+MMFFsp3_loc::chargeToEpairs() atom[25] ngh[0|22] tj=38 Qi=-0.12278 Qj=0.22694 
+MMFFsp3_loc::chargeToEpairs() atom[25] ngh[1|23] tj=38 Qi=-0.12278 Qj=0.22694 
+MMFFsp3_loc::chargeToEpairs() atom[26] ngs{21,-1,-1,-1} 
+MMFFsp3_loc::chargeToEpairs() atom[26] ngh[0|21] tj=38 Qi=-0.27689 Qj=0.22694 
+MMFFsp3_loc::chargeToEpairs() atom[27] ngs{20,-1,-1,-1} 
+MMFFsp3_loc::chargeToEpairs() atom[27] ngh[0|20] tj=38 Qi=-0.27689 Qj=0.22694 
+MMFFsp3_loc::chargeToEpairs() atom[28] ngs{23,-1,-1,-1} 
+MMFFsp3_loc::chargeToEpairs() atom[28] ngh[0|23] tj=38 Qi=-0.27689 Qj=0.22694 
+MMFFsp3_loc::chargeToEpairs() atom[29] ngs{22,-1,-1,-1} 
+MMFFsp3_loc::chargeToEpairs() atom[29] ngh[0|22] tj=38 Qi=-0.27689 Qj=0.22694 
+MMFFsp3_loc::chargeToEpairs() DONE 
+DEBUG #l 1490 makeFFs 
+DEBUG #l 1492 makeFFs 
+DEBUG>> makeFFs (before evalPLQd): gridFF.alphaMorse = 1.5
+DEBUG>> makeFFs (before evalPLQd): ffl.REQs[0](RvdW=1.9255, sqrtEvdW=0.0674776, Q=-0.00569, Hb?=0)
+NBFF::evalPLQs() natoms 38 K 1.5 @PLQs=0x6160003d1d80 
+evalPLQs[0] REQ(1.9255,0.0674776,-0.00569) PLQ(21.7702,1.21202,-0.00569)
+evalPLQs[1] REQ(1.9255,0.0674776,-0.00569) PLQ(21.7702,1.21202,-0.00569)
+evalPLQs[2] REQ(1.9255,0.0674776,0.01238) PLQ(21.7702,1.21202,0.01238)
+evalPLQs[3] REQ(1.9255,0.0674776,0.01238) PLQ(21.7702,1.21202,0.01238)
+evalPLQs[4] REQ(1.9255,0.0674776,0.01631) PLQ(21.7702,1.21202,0.01631)
+evalPLQs[5] REQ(1.9255,0.0674776,0.01631) PLQ(21.7702,1.21202,0.01631)
+evalPLQs[6] REQ(1.9255,0.0674776,0.01631) PLQ(21.7702,1.21202,0.01631)
+evalPLQs[7] REQ(1.9255,0.0674776,0.01631) PLQ(21.7702,1.21202,0.01631)
+evalPLQs[8] REQ(1.9255,0.0674776,-0.038425) PLQ(21.7702,1.21202,-0.038425)
+evalPLQs[9] REQ(1.9255,0.0674776,-0.038425) PLQ(21.7702,1.21202,-0.038425)
+evalPLQs[10] REQ(1.9255,0.0674776,-0.038425) PLQ(21.7702,1.21202,-0.038425)
+evalPLQs[11] REQ(1.9255,0.0674776,-0.038425) PLQ(21.7702,1.21202,-0.038425)
+evalPLQs[12] REQ(1.9255,0.0674776,-0.03257) PLQ(21.7702,1.21202,-0.03257)
+evalPLQs[13] REQ(1.9255,0.0674776,-0.03257) PLQ(21.7702,1.21202,-0.03257)
+evalPLQs[14] REQ(1.9255,0.0674776,-0.03257) PLQ(21.7702,1.21202,-0.03257)
+evalPLQs[15] REQ(1.9255,0.0674776,-0.03257) PLQ(21.7702,1.21202,-0.03257)
+evalPLQs[16] REQ(1.9255,0.0674776,0.01999) PLQ(21.7702,1.21202,0.01999)
+evalPLQs[17] REQ(1.9255,0.0674776,0.01999) PLQ(21.7702,1.21202,0.01999)
+evalPLQs[18] REQ(1.9255,0.0674776,0.01999) PLQ(21.7702,1.21202,0.01999)
+evalPLQs[19] REQ(1.9255,0.0674776,0.01999) PLQ(21.7702,1.21202,0.01999)
+evalPLQs[20] REQ(1.9255,0.0674776,0.22694) PLQ(21.7702,1.21202,0.22694)
+evalPLQs[21] REQ(1.9255,0.0674776,0.22694) PLQ(21.7702,1.21202,0.22694)
+evalPLQs[22] REQ(1.9255,0.0674776,0.22694) PLQ(21.7702,1.21202,0.22694)
+evalPLQs[23] REQ(1.9255,0.0674776,0.22694) PLQ(21.7702,1.21202,0.22694)
+evalPLQs[24] REQ(1.75,0.0510083,-0.12278) PLQ(9.72046,0.704148,-0.12278)
+evalPLQs[25] REQ(1.75,0.0510083,-0.12278) PLQ(9.72046,0.704148,-0.12278)
+evalPLQs[26] REQ(1.75,0.0510083,-0.27689) PLQ(9.72046,0.704148,-0.27689)
+evalPLQs[27] REQ(1.75,0.0510083,-0.27689) PLQ(9.72046,0.704148,-0.27689)
+evalPLQs[28] REQ(1.75,0.0510083,-0.27689) PLQ(9.72046,0.704148,-0.27689)
+evalPLQs[29] REQ(1.75,0.0510083,-0.27689) PLQ(9.72046,0.704148,-0.27689)
+evalPLQs[30] REQ(1.443,0.0436809,0.08637) PLQ(3.314,0.380471,0.08637)
+evalPLQs[31] REQ(1.443,0.0436809,0.08637) PLQ(3.314,0.380471,0.08637)
+evalPLQs[32] REQ(1.443,0.0436809,0.08637) PLQ(3.314,0.380471,0.08637)
+evalPLQs[33] REQ(1.443,0.0436809,0.08637) PLQ(3.314,0.380471,0.08637)
+evalPLQs[34] REQ(1.443,0.0436809,0.05632) PLQ(3.314,0.380471,0.05632)
+evalPLQs[35] REQ(1.443,0.0436809,0.05632) PLQ(3.314,0.380471,0.05632)
+evalPLQs[36] REQ(1.443,0.0436809,0.05632) PLQ(3.314,0.380471,0.05632)
+evalPLQs[37] REQ(1.443,0.0436809,0.05632) PLQ(3.314,0.380471,0.05632)
+NBFF::evalPLQd() natoms 38 K 1.5 @PLQd=0x61a000247e80 
+evalPLQd[0] REQ(1.9255,0.0674776,-0.00569) PLQ(21.7702,1.21202,-0.00569)
+evalPLQd[1] REQ(1.9255,0.0674776,-0.00569) PLQ(21.7702,1.21202,-0.00569)
+evalPLQd[2] REQ(1.9255,0.0674776,0.01238) PLQ(21.7702,1.21202,0.01238)
+evalPLQd[3] REQ(1.9255,0.0674776,0.01238) PLQ(21.7702,1.21202,0.01238)
+evalPLQd[4] REQ(1.9255,0.0674776,0.01631) PLQ(21.7702,1.21202,0.01631)
+evalPLQd[5] REQ(1.9255,0.0674776,0.01631) PLQ(21.7702,1.21202,0.01631)
+evalPLQd[6] REQ(1.9255,0.0674776,0.01631) PLQ(21.7702,1.21202,0.01631)
+evalPLQd[7] REQ(1.9255,0.0674776,0.01631) PLQ(21.7702,1.21202,0.01631)
+evalPLQd[8] REQ(1.9255,0.0674776,-0.038425) PLQ(21.7702,1.21202,-0.038425)
+evalPLQd[9] REQ(1.9255,0.0674776,-0.038425) PLQ(21.7702,1.21202,-0.038425)
+evalPLQd[10] REQ(1.9255,0.0674776,-0.038425) PLQ(21.7702,1.21202,-0.038425)
+evalPLQd[11] REQ(1.9255,0.0674776,-0.038425) PLQ(21.7702,1.21202,-0.038425)
+evalPLQd[12] REQ(1.9255,0.0674776,-0.03257) PLQ(21.7702,1.21202,-0.03257)
+evalPLQd[13] REQ(1.9255,0.0674776,-0.03257) PLQ(21.7702,1.21202,-0.03257)
+evalPLQd[14] REQ(1.9255,0.0674776,-0.03257) PLQ(21.7702,1.21202,-0.03257)
+evalPLQd[15] REQ(1.9255,0.0674776,-0.03257) PLQ(21.7702,1.21202,-0.03257)
+evalPLQd[16] REQ(1.9255,0.0674776,0.01999) PLQ(21.7702,1.21202,0.01999)
+evalPLQd[17] REQ(1.9255,0.0674776,0.01999) PLQ(21.7702,1.21202,0.01999)
+evalPLQd[18] REQ(1.9255,0.0674776,0.01999) PLQ(21.7702,1.21202,0.01999)
+evalPLQd[19] REQ(1.9255,0.0674776,0.01999) PLQ(21.7702,1.21202,0.01999)
+evalPLQd[20] REQ(1.9255,0.0674776,0.22694) PLQ(21.7702,1.21202,0.22694)
+evalPLQd[21] REQ(1.9255,0.0674776,0.22694) PLQ(21.7702,1.21202,0.22694)
+evalPLQd[22] REQ(1.9255,0.0674776,0.22694) PLQ(21.7702,1.21202,0.22694)
+evalPLQd[23] REQ(1.9255,0.0674776,0.22694) PLQ(21.7702,1.21202,0.22694)
+evalPLQd[24] REQ(1.75,0.0510083,-0.12278) PLQ(9.72046,0.704148,-0.12278)
+evalPLQd[25] REQ(1.75,0.0510083,-0.12278) PLQ(9.72046,0.704148,-0.12278)
+evalPLQd[26] REQ(1.75,0.0510083,-0.27689) PLQ(9.72046,0.704148,-0.27689)
+evalPLQd[27] REQ(1.75,0.0510083,-0.27689) PLQ(9.72046,0.704148,-0.27689)
+evalPLQd[28] REQ(1.75,0.0510083,-0.27689) PLQ(9.72046,0.704148,-0.27689)
+evalPLQd[29] REQ(1.75,0.0510083,-0.27689) PLQ(9.72046,0.704148,-0.27689)
+evalPLQd[30] REQ(1.443,0.0436809,0.08637) PLQ(3.314,0.380471,0.08637)
+evalPLQd[31] REQ(1.443,0.0436809,0.08637) PLQ(3.314,0.380471,0.08637)
+evalPLQd[32] REQ(1.443,0.0436809,0.08637) PLQ(3.314,0.380471,0.08637)
+evalPLQd[33] REQ(1.443,0.0436809,0.08637) PLQ(3.314,0.380471,0.08637)
+evalPLQd[34] REQ(1.443,0.0436809,0.05632) PLQ(3.314,0.380471,0.05632)
+evalPLQd[35] REQ(1.443,0.0436809,0.05632) PLQ(3.314,0.380471,0.05632)
+evalPLQd[36] REQ(1.443,0.0436809,0.05632) PLQ(3.314,0.380471,0.05632)
+evalPLQd[37] REQ(1.443,0.0436809,0.05632) PLQ(3.314,0.380471,0.05632)
+DEBUG #l 1503 makeFFs 
+DEBUG>> makeFFs (after evalPLQd): ffl.PLQd[0](Pauli=21.7702, Lond=1.21202, Coul=-0.00569, alpha*RvdW?=0)
+DEBUG #l 1520 makeFFs 
+makeFFs(): ffl  .print_nonbonded() 
+NBFF::print_nonbonded(n=38)
+nb_atom[0] REQ(  1.925,0.0674776,-0.00569,0) PLQ( 21.77017471,  1.21202304, -0.0057,0) pos(  2.782,  3.417,  5.657) atyp 23 
+nb_atom[1] REQ(  1.925,0.0674776,-0.00569,0) PLQ( 21.77017471,  1.21202304, -0.0057,0) pos(  8.463,  3.417,  5.657) atyp 23 
+nb_atom[2] REQ(  1.925,0.0674776,0.01238,0) PLQ( 21.77017471,  1.21202304,  0.0124,0) pos(  7.038,  3.417,  5.657) atyp 23 
+nb_atom[3] REQ(  1.925,0.0674776,0.01238,0) PLQ( 21.77017471,  1.21202304,  0.0124,0) pos(  4.207,  3.417,  5.657) atyp 23 
+nb_atom[4] REQ(  1.925,0.0674776,0.01631,0) PLQ( 21.77017471,  1.21202304,  0.0163,0) pos(  6.336,  2.179,  5.657) atyp 23 
+nb_atom[5] REQ(  1.925,0.0674776,0.01631,0) PLQ( 21.77017471,  1.21202304,  0.0163,0) pos(  4.909,  2.179,  5.657) atyp 23 
+nb_atom[6] REQ(  1.925,0.0674776,0.01631,0) PLQ( 21.77017471,  1.21202304,  0.0163,0) pos(  4.909,  4.655,  5.657) atyp 23 
+nb_atom[7] REQ(  1.925,0.0674776,0.01631,0) PLQ( 21.77017471,  1.21202304,  0.0163,0) pos(  6.336,  4.655,  5.657) atyp 23 
+nb_atom[8] REQ(  1.925,0.0674776,-0.038425,0) PLQ( 21.77017471,  1.21202304, -0.0384,0) pos(  4.151,  0.980,  5.657) atyp 23 
+nb_atom[9] REQ(  1.925,0.0674776,-0.038425,0) PLQ( 21.77017471,  1.21202304, -0.0384,0) pos(  7.094,  0.980,  5.657) atyp 23 
+nb_atom[10] REQ(  1.925,0.0674776,-0.038425,0) PLQ( 21.77017471,  1.21202304, -0.0384,0) pos(  4.151,  5.854,  5.657) atyp 23 
+nb_atom[11] REQ(  1.925,0.0674776,-0.038425,0) PLQ( 21.77017471,  1.21202304, -0.0384,0) pos(  7.094,  5.854,  5.657) atyp 23 
+nb_atom[12] REQ(  1.925,0.0674776,-0.03257,0) PLQ( 21.77017471,  1.21202304, -0.0326,0) pos(  2.760,  0.996,  5.657) atyp 23 
+nb_atom[13] REQ(  1.925,0.0674776,-0.03257,0) PLQ( 21.77017471,  1.21202304, -0.0326,0) pos(  2.760,  5.838,  5.657) atyp 23 
+nb_atom[14] REQ(  1.925,0.0674776,-0.03257,0) PLQ( 21.77017471,  1.21202304, -0.0326,0) pos(  8.485,  0.996,  5.657) atyp 23 
+nb_atom[15] REQ(  1.925,0.0674776,-0.03257,0) PLQ( 21.77017471,  1.21202304, -0.0326,0) pos(  8.485,  5.838,  5.657) atyp 23 
+nb_atom[16] REQ(  1.925,0.0674776,0.01999,0) PLQ( 21.77017471,  1.21202304,  0.0200,0) pos(  2.064,  4.628,  5.657) atyp 23 
+nb_atom[17] REQ(  1.925,0.0674776,0.01999,0) PLQ( 21.77017471,  1.21202304,  0.0200,0) pos(  2.064,  2.207,  5.657) atyp 23 
+nb_atom[18] REQ(  1.925,0.0674776,0.01999,0) PLQ( 21.77017471,  1.21202304,  0.0200,0) pos(  9.181,  2.206,  5.657) atyp 23 
+nb_atom[19] REQ(  1.925,0.0674776,0.01999,0) PLQ( 21.77017471,  1.21202304,  0.0200,0) pos(  9.181,  4.628,  5.657) atyp 23 
+nb_atom[20] REQ(  1.925,0.0674776,0.22694,0) PLQ( 21.77017471,  1.21202304,  0.2269,0) pos( 10.590,  2.252,  5.657) atyp 38 
+nb_atom[21] REQ(  1.925,0.0674776,0.22694,0) PLQ( 21.77017471,  1.21202304,  0.2269,0) pos( 10.590,  4.583,  5.657) atyp 38 
+nb_atom[22] REQ(  1.925,0.0674776,0.22694,0) PLQ( 21.77017471,  1.21202304,  0.2269,0) pos(  0.655,  2.252,  5.657) atyp 38 
+nb_atom[23] REQ(  1.925,0.0674776,0.22694,0) PLQ( 21.77017471,  1.21202304,  0.2269,0) pos(  0.655,  4.583,  5.657) atyp 38 
+nb_atom[24] REQ(  1.750,0.0510083,-0.12278,0) PLQ(  9.72046061,  0.70414780, -0.1228,0) pos( 11.223,  3.417,  5.657) atyp 41 
+nb_atom[25] REQ(  1.750,0.0510083,-0.12278,0) PLQ(  9.72046061,  0.70414780, -0.1228,0) pos(  0.022,  3.417,  5.657) atyp 41 
+nb_atom[26] REQ(  1.750,0.0510083,-0.27689,0) PLQ(  9.72046061,  0.70414780, -0.2769,0) pos( 11.245,  5.610,  5.657) atyp 42 
+nb_atom[27] REQ(  1.750,0.0510083,-0.27689,0) PLQ(  9.72046061,  0.70414780, -0.2769,0) pos( 11.245,  1.224,  5.657) atyp 42 
+nb_atom[28] REQ(  1.750,0.0510083,-0.27689,0) PLQ(  9.72046061,  0.70414780, -0.2769,0) pos(  0.000,  5.610,  5.657) atyp 42 
+nb_atom[29] REQ(  1.750,0.0510083,-0.27689,0) PLQ(  9.72046061,  0.70414780, -0.2769,0) pos(  0.000,  1.224,  5.657) atyp 42 
+nb_atom[30] REQ(  1.443,0.0436809,0.08637,0) PLQ(  3.31399875,  0.38047133,  0.0864,0) pos(  2.227,  0.051,  5.657) atyp 47 
+nb_atom[31] REQ(  1.443,0.0436809,0.08637,0) PLQ(  3.31399875,  0.38047133,  0.0864,0) pos(  2.227,  6.783,  5.657) atyp 47 
+nb_atom[32] REQ(  1.443,0.0436809,0.08637,0) PLQ(  3.31399875,  0.38047133,  0.0864,0) pos(  9.018,  0.051,  5.657) atyp 47 
+nb_atom[33] REQ(  1.443,0.0436809,0.08637,0) PLQ(  3.31399875,  0.38047133,  0.0864,0) pos(  9.018,  6.783,  5.657) atyp 47 
+nb_atom[34] REQ(  1.443,0.0436809,0.05632,0) PLQ(  3.31399875,  0.38047133,  0.0563,0) pos(  4.594,  0.000,  5.657) atyp 47 
+nb_atom[35] REQ(  1.443,0.0436809,0.05632,0) PLQ(  3.31399875,  0.38047133,  0.0563,0) pos(  4.594,  6.834,  5.657) atyp 47 
+nb_atom[36] REQ(  1.443,0.0436809,0.05632,0) PLQ(  3.31399875,  0.38047133,  0.0563,0) pos(  6.651,  0.000,  5.657) atyp 47 
+nb_atom[37] REQ(  1.443,0.0436809,0.05632,0) PLQ(  3.31399875,  0.38047133,  0.0563,0) pos(  6.651,  6.834,  5.657) atyp 47 
+makeFFs(): nbmol.print_nonbonded() 
+NBFF::print_nonbonded(n=38)
+nb_atom[0] REQ(  1.925,0.0674776,-0.00569,0) PLQ( 21.77017471,  1.21202304, -0.0057,0) pos(  2.782,  3.417,  5.657) atyp 23 
+nb_atom[1] REQ(  1.925,0.0674776,-0.00569,0) PLQ( 21.77017471,  1.21202304, -0.0057,0) pos(  8.463,  3.417,  5.657) atyp 23 
+nb_atom[2] REQ(  1.925,0.0674776,0.01238,0) PLQ( 21.77017471,  1.21202304,  0.0124,0) pos(  7.038,  3.417,  5.657) atyp 23 
+nb_atom[3] REQ(  1.925,0.0674776,0.01238,0) PLQ( 21.77017471,  1.21202304,  0.0124,0) pos(  4.207,  3.417,  5.657) atyp 23 
+nb_atom[4] REQ(  1.925,0.0674776,0.01631,0) PLQ( 21.77017471,  1.21202304,  0.0163,0) pos(  6.336,  2.179,  5.657) atyp 23 
+nb_atom[5] REQ(  1.925,0.0674776,0.01631,0) PLQ( 21.77017471,  1.21202304,  0.0163,0) pos(  4.909,  2.179,  5.657) atyp 23 
+nb_atom[6] REQ(  1.925,0.0674776,0.01631,0) PLQ( 21.77017471,  1.21202304,  0.0163,0) pos(  4.909,  4.655,  5.657) atyp 23 
+nb_atom[7] REQ(  1.925,0.0674776,0.01631,0) PLQ( 21.77017471,  1.21202304,  0.0163,0) pos(  6.336,  4.655,  5.657) atyp 23 
+nb_atom[8] REQ(  1.925,0.0674776,-0.038425,0) PLQ( 21.77017471,  1.21202304, -0.0384,0) pos(  4.151,  0.980,  5.657) atyp 23 
+nb_atom[9] REQ(  1.925,0.0674776,-0.038425,0) PLQ( 21.77017471,  1.21202304, -0.0384,0) pos(  7.094,  0.980,  5.657) atyp 23 
+nb_atom[10] REQ(  1.925,0.0674776,-0.038425,0) PLQ( 21.77017471,  1.21202304, -0.0384,0) pos(  4.151,  5.854,  5.657) atyp 23 
+nb_atom[11] REQ(  1.925,0.0674776,-0.038425,0) PLQ( 21.77017471,  1.21202304, -0.0384,0) pos(  7.094,  5.854,  5.657) atyp 23 
+nb_atom[12] REQ(  1.925,0.0674776,-0.03257,0) PLQ( 21.77017471,  1.21202304, -0.0326,0) pos(  2.760,  0.996,  5.657) atyp 23 
+nb_atom[13] REQ(  1.925,0.0674776,-0.03257,0) PLQ( 21.77017471,  1.21202304, -0.0326,0) pos(  2.760,  5.838,  5.657) atyp 23 
+nb_atom[14] REQ(  1.925,0.0674776,-0.03257,0) PLQ( 21.77017471,  1.21202304, -0.0326,0) pos(  8.485,  0.996,  5.657) atyp 23 
+nb_atom[15] REQ(  1.925,0.0674776,-0.03257,0) PLQ( 21.77017471,  1.21202304, -0.0326,0) pos(  8.485,  5.838,  5.657) atyp 23 
+nb_atom[16] REQ(  1.925,0.0674776,0.01999,0) PLQ( 21.77017471,  1.21202304,  0.0200,0) pos(  2.064,  4.628,  5.657) atyp 23 
+nb_atom[17] REQ(  1.925,0.0674776,0.01999,0) PLQ( 21.77017471,  1.21202304,  0.0200,0) pos(  2.064,  2.207,  5.657) atyp 23 
+nb_atom[18] REQ(  1.925,0.0674776,0.01999,0) PLQ( 21.77017471,  1.21202304,  0.0200,0) pos(  9.181,  2.206,  5.657) atyp 23 
+nb_atom[19] REQ(  1.925,0.0674776,0.01999,0) PLQ( 21.77017471,  1.21202304,  0.0200,0) pos(  9.181,  4.628,  5.657) atyp 23 
+nb_atom[20] REQ(  1.925,0.0674776,0.22694,0) PLQ( 21.77017471,  1.21202304,  0.2269,0) pos( 10.590,  2.252,  5.657) atyp 38 
+nb_atom[21] REQ(  1.925,0.0674776,0.22694,0) PLQ( 21.77017471,  1.21202304,  0.2269,0) pos( 10.590,  4.583,  5.657) atyp 38 
+nb_atom[22] REQ(  1.925,0.0674776,0.22694,0) PLQ( 21.77017471,  1.21202304,  0.2269,0) pos(  0.655,  2.252,  5.657) atyp 38 
+nb_atom[23] REQ(  1.925,0.0674776,0.22694,0) PLQ( 21.77017471,  1.21202304,  0.2269,0) pos(  0.655,  4.583,  5.657) atyp 38 
+nb_atom[24] REQ(  1.750,0.0510083,-0.12278,0) PLQ(  9.72046061,  0.70414780, -0.1228,0) pos( 11.223,  3.417,  5.657) atyp 41 
+nb_atom[25] REQ(  1.750,0.0510083,-0.12278,0) PLQ(  9.72046061,  0.70414780, -0.1228,0) pos(  0.022,  3.417,  5.657) atyp 41 
+nb_atom[26] REQ(  1.750,0.0510083,-0.27689,0) PLQ(  9.72046061,  0.70414780, -0.2769,0) pos( 11.245,  5.610,  5.657) atyp 42 
+nb_atom[27] REQ(  1.750,0.0510083,-0.27689,0) PLQ(  9.72046061,  0.70414780, -0.2769,0) pos( 11.245,  1.224,  5.657) atyp 42 
+nb_atom[28] REQ(  1.750,0.0510083,-0.27689,0) PLQ(  9.72046061,  0.70414780, -0.2769,0) pos(  0.000,  5.610,  5.657) atyp 42 
+nb_atom[29] REQ(  1.750,0.0510083,-0.27689,0) PLQ(  9.72046061,  0.70414780, -0.2769,0) pos(  0.000,  1.224,  5.657) atyp 42 
+nb_atom[30] REQ(  1.443,0.0436809,0.08637,0) PLQ(  3.31399875,  0.38047133,  0.0864,0) pos(  2.227,  0.051,  5.657) atyp 47 
+nb_atom[31] REQ(  1.443,0.0436809,0.08637,0) PLQ(  3.31399875,  0.38047133,  0.0864,0) pos(  2.227,  6.783,  5.657) atyp 47 
+nb_atom[32] REQ(  1.443,0.0436809,0.08637,0) PLQ(  3.31399875,  0.38047133,  0.0864,0) pos(  9.018,  0.051,  5.657) atyp 47 
+nb_atom[33] REQ(  1.443,0.0436809,0.08637,0) PLQ(  3.31399875,  0.38047133,  0.0864,0) pos(  9.018,  6.783,  5.657) atyp 47 
+nb_atom[34] REQ(  1.443,0.0436809,0.05632,0) PLQ(  3.31399875,  0.38047133,  0.0563,0) pos(  4.594,  0.000,  5.657) atyp 47 
+nb_atom[35] REQ(  1.443,0.0436809,0.05632,0) PLQ(  3.31399875,  0.38047133,  0.0563,0) pos(  4.594,  6.834,  5.657) atyp 47 
+nb_atom[36] REQ(  1.443,0.0436809,0.05632,0) PLQ(  3.31399875,  0.38047133,  0.0563,0) pos(  6.651,  0.000,  5.657) atyp 47 
+nb_atom[37] REQ(  1.443,0.0436809,0.05632,0) PLQ(  3.31399875,  0.38047133,  0.0563,0) pos(  6.651,  6.834,  5.657) atyp 47 
+DEBUG #l 1524 makeFFs 
+MolWorld_sp3::setOptimizer(): optimal time_step = 0.05 
+DEBUG #l 1532 makeFFs 
+DEBUG #l 1534 makeFFs 
+MolWorld_sp3::init() builder.lvec 
+ 32.000000 0.000000 0.000000 
+ 0.000000 32.000000 0.000000 
+ 0.000000 0.000000 60.000000 
+MolWorld_sp3::init() ffl.lvec     
+ 32.000000 0.000000 0.000000 
+ 0.000000 32.000000 0.000000 
+ 0.000000 0.000000 60.000000 
+#### MolWorld_sp3::init() DONE
+
+before_MMFF_lib.cpp::init_buffers() ndims{nDOFs=204,natoms=38,nnode=30,ncap=8}
+MMFF_lib.cpp::init_buffers() ndims{nDOFs=198,natoms=38,nnode=30,ncap=8,npi=28,nbonds=44,nvecs=66,ne=0,ie0=38}
+setSwitches2() W.bCheckInvariants==1 bPBC=1 | bNonBonded=0 bNonBondNeighs=0 | bSurfAtoms=1 bGridFF=1 | bMMFF=1 doAngles=1 doPiSigma=1 doPiPiI=1 
+--- MolWorld_sp3::scan_rigid DEBUG ---
+  nconf         : 125
+  ffl.natoms    : 38
+  sizeof(Vec3d) : 24 bytes
+  Expected total size for aforces: 125 * 38 * 24 = 114000 bytes (4750 elements)
+  aforces buffer address : 0x634000120800
+  (ASan reported allocated size: 90000 bytes = 3750 elements)
+-------------------------------------
+MolWorld_sp3::scan_rigid(nconf=125,omp=0) @poss=107683421274752 @rots=0 @Es=107271122934144 @aforces=109126530238464 @aposs=109126530369536 
+MolWorld_sp3::scan_rigid() bNonBonded=0 bNonBondNeighs=0 bPBC=1 bSurfAtoms=1 bGridFF=1 gridFF.mode=6 
+DEBUG>> eval_no_omp[ia=0]: gridFF.alphaMorse=1.5
+DEBUG>> eval_no_omp[ia=0]: pos(2.78224,3.41724,8.25685) PLQd(Pauli=21.7702, Lond=1.21202, Coul=0, aR?=0)
+DEBUG<< eval_no_omp[ia=0]: E_grid=0.0237816, f_accum(0.109401,0.0939569,0.201014)
+DEBUG>> eval_no_omp[ia=0]: gridFF.alphaMorse=1.5
+DEBUG>> eval_no_omp[ia=0]: pos(2.78224,3.41724,8.35685) PLQd(Pauli=21.7702, Lond=1.21202, Coul=0, aR?=0)
+DEBUG<< eval_no_omp[ia=0]: E_grid=0.00665008, f_accum(0.0942539,0.0684363,0.144053)
+DEBUG>> eval_no_omp[ia=0]: gridFF.alphaMorse=1.5
+DEBUG>> eval_no_omp[ia=0]: pos(2.78224,3.41724,8.45685) PLQd(Pauli=21.7702, Lond=1.21202, Coul=0, aR?=0)
+DEBUG<< eval_no_omp[ia=0]: E_grid=-0.00546731, f_accum(0.0829111,0.0495618,0.100244)
+DEBUG>> eval_no_omp[ia=0]: gridFF.alphaMorse=1.5
+DEBUG>> eval_no_omp[ia=0]: pos(2.78224,3.41724,8.55685) PLQd(Pauli=21.7702, Lond=1.21202, Coul=0, aR?=0)
+DEBUG<< eval_no_omp[ia=0]: E_grid=-0.013748, f_accum(0.0744672,0.0356734,0.0669148)
+DEBUG>> eval_no_omp[ia=0]: gridFF.alphaMorse=1.5
+DEBUG>> eval_no_omp[ia=0]: pos(2.78224,3.41724,8.65685) PLQd(Pauli=21.7702, Lond=1.21202, Coul=0, aR?=0)
+DEBUG<< eval_no_omp[ia=0]: E_grid=-0.0191264, f_accum(0.0682156,0.0255065,0.0418692)
+DEBUG>> eval_no_omp[ia=0]: gridFF.alphaMorse=1.5
+DEBUG>> eval_no_omp[ia=0]: pos(2.78224,3.41724,8.75685) PLQd(Pauli=21.7702, Lond=1.21202, Coul=0, aR?=0)
+DEBUG<< eval_no_omp[ia=0]: E_grid=-0.0223382, f_accum(0.0636167,0.0181011,0.0233153)
+DEBUG>> eval_no_omp[ia=0]: gridFF.alphaMorse=1.5
+DEBUG>> eval_no_omp[ia=0]: pos(2.78224,3.41724,8.85685) PLQd(Pauli=21.7702, Lond=1.21202, Coul=0, aR?=0)
+DEBUG<< eval_no_omp[ia=0]: E_grid=-0.0239576, f_accum(0.0602553,0.0127366,0.00980466)
+DEBUG>> eval_no_omp[ia=0]: gridFF.alphaMorse=1.5
+DEBUG>> eval_no_omp[ia=0]: pos(2.78224,3.41724,8.95685) PLQd(Pauli=21.7702, Lond=1.21202, Coul=0, aR?=0)
+DEBUG<< eval_no_omp[ia=0]: E_grid=-0.0244287, f_accum(0.0578153,0.00887257,0.000178989)
+DEBUG>> eval_no_omp[ia=0]: gridFF.alphaMorse=1.5
+DEBUG>> eval_no_omp[ia=0]: pos(2.78224,3.41724,9.05685) PLQd(Pauli=21.7702, Lond=1.21202, Coul=0, aR?=0)
+DEBUG<< eval_no_omp[ia=0]: E_grid=-0.0240921, f_accum(0.0560583,0.00610639,-0.00648408)
+DEBUG>> eval_no_omp[ia=0]: gridFF.alphaMorse=1.5
+DEBUG>> eval_no_omp[ia=0]: pos(2.78224,3.41724,9.15685) PLQd(Pauli=21.7702, Lond=1.21202, Coul=0, aR?=0)
+DEBUG<< eval_no_omp[ia=0]: E_grid=-0.0232065, f_accum(0.0548044,0.00413993,-0.0109089)
+DEBUG>> eval_no_omp[ia=0]: gridFF.alphaMorse=1.5
+DEBUG>> eval_no_omp[ia=0]: pos(2.78224,3.41724,9.25685) PLQd(Pauli=21.7702, Lond=1.21202, Coul=0, aR?=0)
+DEBUG<< eval_no_omp[ia=0]: E_grid=-0.021966, f_accum(0.0539193,0.00275299,-0.0136626)
+DEBUG>> eval_no_omp[ia=0]: gridFF.alphaMorse=1.5
+DEBUG>> eval_no_omp[ia=0]: pos(2.78224,3.41724,9.35685) PLQd(Pauli=21.7702, Lond=1.21202, Coul=0, aR?=0)
+DEBUG<< eval_no_omp[ia=0]: E_grid=-0.0205149, f_accum(0.0533023,0.00178364,-0.0151864)
+DEBUG>> eval_no_omp[ia=0]: gridFF.alphaMorse=1.5
+DEBUG>> eval_no_omp[ia=0]: pos(2.78224,3.41724,9.45685) PLQd(Pauli=21.7702, Lond=1.21202, Coul=0, aR?=0)
+DEBUG<< eval_no_omp[ia=0]: E_grid=-0.0189584, f_accum(0.0528788,0.00111318,-0.0158203)
+DEBUG>> eval_no_omp[ia=0]: gridFF.alphaMorse=1.5
+DEBUG>> eval_no_omp[ia=0]: pos(2.78224,3.41724,9.55685) PLQd(Pauli=21.7702, Lond=1.21202, Coul=0, aR?=0)
+DEBUG<< eval_no_omp[ia=0]: E_grid=-0.0173719, f_accum(0.052594,0.000656004,-0.0158228)
+DEBUG>> eval_no_omp[ia=0]: gridFF.alphaMorse=1.5
+DEBUG>> eval_no_omp[ia=0]: pos(2.78224,3.41724,9.65685) PLQd(Pauli=21.7702, Lond=1.21202, Coul=0, aR?=0)
+DEBUG<< eval_no_omp[ia=0]: E_grid=-0.0158083, f_accum(0.052408,0.000349429,-0.0153911)
+DEBUG>> eval_no_omp[ia=0]: gridFF.alphaMorse=1.5
+DEBUG>> eval_no_omp[ia=0]: pos(2.78224,3.41724,9.75685) PLQd(Pauli=21.7702, Lond=1.21202, Coul=0, aR?=0)
+DEBUG<< eval_no_omp[ia=0]: E_grid=-0.0143032, f_accum(0.052291,0.000148297,-0.0146732)
+DEBUG>> eval_no_omp[ia=0]: gridFF.alphaMorse=1.5
+DEBUG>> eval_no_omp[ia=0]: pos(2.78224,3.41724,9.85685) PLQd(Pauli=21.7702, Lond=1.21202, Coul=0, aR?=0)
+DEBUG<< eval_no_omp[ia=0]: E_grid=-0.0128796, f_accum(0.0522218,2.05934e-05,-0.0137781)
+DEBUG>> eval_no_omp[ia=0]: gridFF.alphaMorse=1.5
+DEBUG>> eval_no_omp[ia=0]: pos(2.78224,3.41724,9.95685) PLQd(Pauli=21.7702, Lond=1.21202, Coul=0, aR?=0)
+DEBUG<< eval_no_omp[ia=0]: E_grid=-0.0115508, f_accum(0.0521852,-5.70759e-05,-0.0127865)
+DEBUG>> eval_no_omp[ia=0]: gridFF.alphaMorse=1.5
+DEBUG>> eval_no_omp[ia=0]: pos(2.78224,3.41724,10.0569) PLQd(Pauli=21.7702, Lond=1.21202, Coul=0, aR?=0)
+DEBUG<< eval_no_omp[ia=0]: E_grid=-0.0103236, f_accum(0.0521704,-0.000100738,-0.0117557)
+DEBUG>> eval_no_omp[ia=0]: gridFF.alphaMorse=1.5
+DEBUG>> eval_no_omp[ia=0]: pos(2.78224,3.41724,10.1569) PLQd(Pauli=21.7702, Lond=1.21202, Coul=0, aR?=0)
+DEBUG<< eval_no_omp[ia=0]: E_grid=-0.00919964, f_accum(0.0521694,-0.00012184,-0.0107266)
+DEBUG>> eval_no_omp[ia=0]: gridFF.alphaMorse=1.5
+DEBUG>> eval_no_omp[ia=0]: pos(2.78224,3.41724,10.2569) PLQd(Pauli=21.7702, Lond=1.21202, Coul=0, aR?=0)
+DEBUG<< eval_no_omp[ia=0]: E_grid=-0.00817729, f_accum(0.0521769,-0.000128492,-0.00972711)
+DEBUG>> eval_no_omp[ia=0]: gridFF.alphaMorse=1.5
+DEBUG>> eval_no_omp[ia=0]: pos(2.78224,3.41724,10.3569) PLQd(Pauli=21.7702, Lond=1.21202, Coul=0, aR?=0)
+DEBUG<< eval_no_omp[ia=0]: E_grid=-0.00725262, f_accum(0.0521895,-0.000126197,-0.00877546)
+DEBUG>> eval_no_omp[ia=0]: gridFF.alphaMorse=1.5
+DEBUG>> eval_no_omp[ia=0]: pos(2.78224,3.41724,10.4569) PLQd(Pauli=21.7702, Lond=1.21202, Coul=0, aR?=0)
+DEBUG<< eval_no_omp[ia=0]: E_grid=-0.00642023, f_accum(0.0522043,-0.000118546,-0.00788275)
+DEBUG>> eval_no_omp[ia=0]: gridFF.alphaMorse=1.5
+DEBUG>> eval_no_omp[ia=0]: pos(2.78224,3.41724,10.5569) PLQd(Pauli=21.7702, Lond=1.21202, Coul=0, aR?=0)
+DEBUG<< eval_no_omp[ia=0]: E_grid=-0.00567391, f_accum(0.05222,-0.000108277,-0.00705495)
+DEBUG>> eval_no_omp[ia=0]: gridFF.alphaMorse=1.5
+DEBUG>> eval_no_omp[ia=0]: pos(2.78224,3.41724,10.6569) PLQd(Pauli=21.7702, Lond=1.21202, Coul=0, aR?=0)
+DEBUG<< eval_no_omp[ia=0]: E_grid=-0.005007, f_accum(0.0522354,-9.67196e-05,-0.00629449)
+DEBUG>> eval_no_omp[ia=0]: gridFF.alphaMorse=1.5
+DEBUG>> eval_no_omp[ia=0]: pos(2.78224,3.41724,10.7569) PLQd(Pauli=21.7702, Lond=1.21202, Coul=0, aR?=0)
+DEBUG<< eval_no_omp[ia=0]: E_grid=-0.00441278, f_accum(0.05225,-8.50452e-05,-0.00560098)
+DEBUG>> eval_no_omp[ia=0]: gridFF.alphaMorse=1.5
+DEBUG>> eval_no_omp[ia=0]: pos(2.78224,3.41724,10.8569) PLQd(Pauli=21.7702, Lond=1.21202, Coul=0, aR?=0)
+DEBUG<< eval_no_omp[ia=0]: E_grid=-0.00388464, f_accum(0.0522633,-7.3965e-05,-0.00497239)
+DEBUG>> eval_no_omp[ia=0]: gridFF.alphaMorse=1.5
+DEBUG>> eval_no_omp[ia=0]: pos(2.78224,3.41724,10.9569) PLQd(Pauli=21.7702, Lond=1.21202, Coul=0, aR?=0)
+DEBUG<< eval_no_omp[ia=0]: E_grid=-0.00341624, f_accum(0.0522753,-6.37229e-05,-0.00440554)
+DEBUG>> eval_no_omp[ia=0]: gridFF.alphaMorse=1.5
+DEBUG>> eval_no_omp[ia=0]: pos(2.78224,3.41724,11.0569) PLQd(Pauli=21.7702, Lond=1.21202, Coul=0, aR?=0)
+DEBUG<< eval_no_omp[ia=0]: E_grid=-0.0030016, f_accum(0.0522859,-5.45073e-05,-0.00389644)
+DEBUG>> eval_no_omp[ia=0]: gridFF.alphaMorse=1.5
+DEBUG>> eval_no_omp[ia=0]: pos(2.78224,3.41724,11.1569) PLQd(Pauli=21.7702, Lond=1.21202, Coul=0, aR?=0)
+DEBUG<< eval_no_omp[ia=0]: E_grid=-0.00263517, f_accum(0.0522952,-4.63601e-05,-0.00344094)
+DEBUG>> eval_no_omp[ia=0]: gridFF.alphaMorse=1.5
+DEBUG>> eval_no_omp[ia=0]: pos(2.78224,3.41724,11.2569) PLQd(Pauli=21.7702, Lond=1.21202, Coul=0, aR?=0)
+DEBUG<< eval_no_omp[ia=0]: E_grid=-0.00231178, f_accum(0.0523031,-3.92176e-05,-0.0030346)
+DEBUG>> eval_no_omp[ia=0]: gridFF.alphaMorse=1.5
+DEBUG>> eval_no_omp[ia=0]: pos(2.78224,3.41724,11.3569) PLQd(Pauli=21.7702, Lond=1.21202, Coul=0, aR?=0)
+DEBUG<< eval_no_omp[ia=0]: E_grid=-0.00202675, f_accum(0.05231,-3.31118e-05,-0.00267305)
+DEBUG>> eval_no_omp[ia=0]: gridFF.alphaMorse=1.5
+DEBUG>> eval_no_omp[ia=0]: pos(2.78224,3.41724,11.4569) PLQd(Pauli=21.7702, Lond=1.21202, Coul=0, aR?=0)
+DEBUG<< eval_no_omp[ia=0]: E_grid=-0.00177581, f_accum(0.0523159,-2.78626e-05,-0.00235215)
+DEBUG>> eval_no_omp[ia=0]: gridFF.alphaMorse=1.5
+DEBUG>> eval_no_omp[ia=0]: pos(2.78224,3.41724,11.5569) PLQd(Pauli=21.7702, Lond=1.21202, Coul=0, aR?=0)
+DEBUG<< eval_no_omp[ia=0]: E_grid=-0.0015551, f_accum(0.0523208,-2.34097e-05,-0.00206778)
+DEBUG>> eval_no_omp[ia=0]: gridFF.alphaMorse=1.5
+DEBUG>> eval_no_omp[ia=0]: pos(2.78224,3.41724,11.6569) PLQd(Pauli=21.7702, Lond=1.21202, Coul=0, aR?=0)
+DEBUG<< eval_no_omp[ia=0]: E_grid=-0.00136116, f_accum(0.052325,-1.96494e-05,-0.00181628)
+DEBUG>> eval_no_omp[ia=0]: gridFF.alphaMorse=1.5
+DEBUG>> eval_no_omp[ia=0]: pos(2.78224,3.41724,11.7569) PLQd(Pauli=21.7702, Lond=1.21202, Coul=0, aR?=0)
+DEBUG<< eval_no_omp[ia=0]: E_grid=-0.00119087, f_accum(0.0523285,-1.64971e-05,-0.00159417)
+DEBUG>> eval_no_omp[ia=0]: gridFF.alphaMorse=1.5
+DEBUG>> eval_no_omp[ia=0]: pos(2.78224,3.41724,11.8569) PLQd(Pauli=21.7702, Lond=1.21202, Coul=0, aR?=0)
+DEBUG<< eval_no_omp[ia=0]: E_grid=-0.00104145, f_accum(0.0523314,-1.38553e-05,-0.00139827)
+DEBUG>> eval_no_omp[ia=0]: gridFF.alphaMorse=1.5
+DEBUG>> eval_no_omp[ia=0]: pos(2.78224,3.41724,11.9569) PLQd(Pauli=21.7702, Lond=1.21202, Coul=0, aR?=0)
+DEBUG<< eval_no_omp[ia=0]: E_grid=-0.000910436, f_accum(0.0523339,-1.16355e-05,-0.0012257)
+DEBUG>> eval_no_omp[ia=0]: gridFF.alphaMorse=1.5
+DEBUG>> eval_no_omp[ia=0]: pos(2.78224,3.41724,12.0569) PLQd(Pauli=21.7702, Lond=1.21202, Coul=0, aR?=0)
+DEBUG<< eval_no_omp[ia=0]: E_grid=-0.000795622, f_accum(0.0523359,-9.80297e-06,-0.00107382)
+DEBUG>> eval_no_omp[ia=0]: gridFF.alphaMorse=1.5
+DEBUG>> eval_no_omp[ia=0]: pos(2.78224,3.41724,12.1569) PLQd(Pauli=21.7702, Lond=1.21202, Coul=0, aR?=0)
+DEBUG<< eval_no_omp[ia=0]: E_grid=-0.00069506, f_accum(0.0523376,-8.28421e-06,-0.000940288)
+DEBUG>> eval_no_omp[ia=0]: gridFF.alphaMorse=1.5
+DEBUG>> eval_no_omp[ia=0]: pos(2.78224,3.41724,12.2569) PLQd(Pauli=21.7702, Lond=1.21202, Coul=0, aR?=0)
+DEBUG<< eval_no_omp[ia=0]: E_grid=-0.000607024, f_accum(0.052339,-7.02795e-06,-0.00082297)
+DEBUG>> eval_no_omp[ia=0]: gridFF.alphaMorse=1.5
+DEBUG>> eval_no_omp[ia=0]: pos(2.78224,3.41724,12.3569) PLQd(Pauli=21.7702, Lond=1.21202, Coul=0, aR?=0)
+DEBUG<< eval_no_omp[ia=0]: E_grid=-0.000529988, f_accum(0.0523402,-5.98852e-06,-0.000719993)
+DEBUG>> eval_no_omp[ia=0]: gridFF.alphaMorse=1.5
+DEBUG>> eval_no_omp[ia=0]: pos(2.78224,3.41724,12.4569) PLQd(Pauli=21.7702, Lond=1.21202, Coul=0, aR?=0)
+DEBUG<< eval_no_omp[ia=0]: E_grid=-0.000462604, f_accum(0.0523412,-5.13443e-06,-0.000629649)
+DEBUG>> eval_no_omp[ia=0]: gridFF.alphaMorse=1.5
+DEBUG>> eval_no_omp[ia=0]: pos(2.78224,3.41724,12.5569) PLQd(Pauli=21.7702, Lond=1.21202, Coul=0, aR?=0)
+DEBUG<< eval_no_omp[ia=0]: E_grid=-0.000403687, f_accum(0.052342,-4.42659e-06,-0.00055044)
+DEBUG>> eval_no_omp[ia=0]: gridFF.alphaMorse=1.5
+DEBUG>> eval_no_omp[ia=0]: pos(2.78224,3.41724,12.6569) PLQd(Pauli=21.7702, Lond=1.21202, Coul=0, aR?=0)
+DEBUG<< eval_no_omp[ia=0]: E_grid=-0.000352189, f_accum(0.0523426,-3.84238e-06,-0.000481039)
+DEBUG>> eval_no_omp[ia=0]: gridFF.alphaMorse=1.5
+DEBUG>> eval_no_omp[ia=0]: pos(2.78224,3.41724,12.7569) PLQd(Pauli=21.7702, Lond=1.21202, Coul=0, aR?=0)
+DEBUG<< eval_no_omp[ia=0]: E_grid=-0.000307192, f_accum(0.0523431,-3.36801e-06,-0.000420242)
+DEBUG>> eval_no_omp[ia=0]: gridFF.alphaMorse=1.5
+DEBUG>> eval_no_omp[ia=0]: pos(2.78224,3.41724,12.8569) PLQd(Pauli=21.7702, Lond=1.21202, Coul=0, aR?=0)
+DEBUG<< eval_no_omp[ia=0]: E_grid=-0.000267888, f_accum(0.0523436,-2.9784e-06,-0.000367034)
+DEBUG>> eval_no_omp[ia=0]: gridFF.alphaMorse=1.5
+DEBUG>> eval_no_omp[ia=0]: pos(2.78224,3.41724,12.9569) PLQd(Pauli=21.7702, Lond=1.21202, Coul=0, aR?=0)
+DEBUG<< eval_no_omp[ia=0]: E_grid=-0.000233564, f_accum(0.052344,-2.65347e-06,-0.000320471)
+DEBUG>> eval_no_omp[ia=0]: gridFF.alphaMorse=1.5
+DEBUG>> eval_no_omp[ia=0]: pos(2.78224,3.41724,13.0569) PLQd(Pauli=21.7702, Lond=1.21202, Coul=0, aR?=0)
+DEBUG<< eval_no_omp[ia=0]: E_grid=-0.000203599, f_accum(0.0523443,-2.39214e-06,-0.000279738)
+DEBUG>> eval_no_omp[ia=0]: gridFF.alphaMorse=1.5
+DEBUG>> eval_no_omp[ia=0]: pos(2.78224,3.41724,13.1569) PLQd(Pauli=21.7702, Lond=1.21202, Coul=0, aR?=0)
+DEBUG<< eval_no_omp[ia=0]: E_grid=-0.000177446, f_accum(0.0523445,-2.17909e-06,-0.000244126)
+DEBUG>> eval_no_omp[ia=0]: gridFF.alphaMorse=1.5
+DEBUG>> eval_no_omp[ia=0]: pos(2.78224,3.41724,13.2569) PLQd(Pauli=21.7702, Lond=1.21202, Coul=0, aR?=0)
+DEBUG<< eval_no_omp[ia=0]: E_grid=-0.000154624, f_accum(0.0523447,-2.00182e-06,-0.000212997)
+DEBUG>> eval_no_omp[ia=0]: gridFF.alphaMorse=1.5
+DEBUG>> eval_no_omp[ia=0]: pos(2.78224,3.41724,13.3569) PLQd(Pauli=21.7702, Lond=1.21202, Coul=0, aR?=0)
+DEBUG<< eval_no_omp[ia=0]: E_grid=-0.000134715, f_accum(0.0523449,-1.85763e-06,-0.000185798)
+DEBUG>> eval_no_omp[ia=0]: gridFF.alphaMorse=1.5
+DEBUG>> eval_no_omp[ia=0]: pos(2.78224,3.41724,13.4569) PLQd(Pauli=21.7702, Lond=1.21202, Coul=0, aR?=0)
+DEBUG<< eval_no_omp[ia=0]: E_grid=-0.00011735, f_accum(0.052345,-1.74017e-06,-0.000162036)
+DEBUG>> eval_no_omp[ia=0]: gridFF.alphaMorse=1.5
+DEBUG>> eval_no_omp[ia=0]: pos(2.78224,3.41724,13.5569) PLQd(Pauli=21.7702, Lond=1.21202, Coul=0, aR?=0)
+DEBUG<< eval_no_omp[ia=0]: E_grid=-0.000102208, f_accum(0.0523451,-1.64358e-06,-0.000141284)
+DEBUG>> eval_no_omp[ia=0]: gridFF.alphaMorse=1.5
+DEBUG>> eval_no_omp[ia=0]: pos(2.78224,3.41724,13.6569) PLQd(Pauli=21.7702, Lond=1.21202, Coul=0, aR?=0)
+DEBUG<< eval_no_omp[ia=0]: E_grid=-8.90057e-05, f_accum(0.0523452,-1.56628e-06,-0.000123169)
+DEBUG>> eval_no_omp[ia=0]: gridFF.alphaMorse=1.5
+DEBUG>> eval_no_omp[ia=0]: pos(2.78224,3.41724,13.7569) PLQd(Pauli=21.7702, Lond=1.21202, Coul=0, aR?=0)
+DEBUG<< eval_no_omp[ia=0]: E_grid=-7.74975e-05, f_accum(0.0523453,-1.5022e-06,-0.000107353)
+DEBUG>> eval_no_omp[ia=0]: gridFF.alphaMorse=1.5
+DEBUG>> eval_no_omp[ia=0]: pos(2.78224,3.41724,13.8569) PLQd(Pauli=21.7702, Lond=1.21202, Coul=0, aR?=0)
+DEBUG<< eval_no_omp[ia=0]: E_grid=-6.74678e-05, f_accum(0.0523453,-1.45008e-06,-9.35549e-05)
+DEBUG>> eval_no_omp[ia=0]: gridFF.alphaMorse=1.5
+DEBUG>> eval_no_omp[ia=0]: pos(2.78224,3.41724,13.9569) PLQd(Pauli=21.7702, Lond=1.21202, Coul=0, aR?=0)
+DEBUG<< eval_no_omp[ia=0]: E_grid=-5.87279e-05, f_accum(0.0523454,-1.40709e-06,-8.15159e-05)
+DEBUG>> eval_no_omp[ia=0]: gridFF.alphaMorse=1.5
+DEBUG>> eval_no_omp[ia=0]: pos(2.78224,3.41724,14.0569) PLQd(Pauli=21.7702, Lond=1.21202, Coul=0, aR?=0)
+DEBUG<< eval_no_omp[ia=0]: E_grid=-5.11133e-05, f_accum(0.0523454,-1.37235e-06,-7.10139e-05)
+DEBUG>> eval_no_omp[ia=0]: gridFF.alphaMorse=1.5
+DEBUG>> eval_no_omp[ia=0]: pos(2.78224,3.41724,14.1569) PLQd(Pauli=21.7702, Lond=1.21202, Coul=0, aR?=0)
+DEBUG<< eval_no_omp[ia=0]: E_grid=-4.44803e-05, f_accum(0.0523455,-1.34417e-06,-6.18555e-05)
+DEBUG>> eval_no_omp[ia=0]: gridFF.alphaMorse=1.5
+DEBUG>> eval_no_omp[ia=0]: pos(2.78224,3.41724,14.2569) PLQd(Pauli=21.7702, Lond=1.21202, Coul=0, aR?=0)
+DEBUG<< eval_no_omp[ia=0]: E_grid=-3.87032e-05, f_accum(0.0523455,-1.32123e-06,-5.38689e-05)
+DEBUG>> eval_no_omp[ia=0]: gridFF.alphaMorse=1.5
+DEBUG>> eval_no_omp[ia=0]: pos(2.78224,3.41724,14.3569) PLQd(Pauli=21.7702, Lond=1.21202, Coul=0, aR?=0)
+DEBUG<< eval_no_omp[ia=0]: E_grid=-3.36723e-05, f_accum(0.0523455,-1.30204e-06,-4.69076e-05)
+DEBUG>> eval_no_omp[ia=0]: gridFF.alphaMorse=1.5
+DEBUG>> eval_no_omp[ia=0]: pos(2.78224,3.41724,14.4569) PLQd(Pauli=21.7702, Lond=1.21202, Coul=0, aR?=0)
+DEBUG<< eval_no_omp[ia=0]: E_grid=-2.92919e-05, f_accum(0.0523455,-1.2868e-06,-4.08403e-05)
+DEBUG>> eval_no_omp[ia=0]: gridFF.alphaMorse=1.5
+DEBUG>> eval_no_omp[ia=0]: pos(2.78224,3.41724,14.5569) PLQd(Pauli=21.7702, Lond=1.21202, Coul=0, aR?=0)
+DEBUG<< eval_no_omp[ia=0]: E_grid=-2.54783e-05, f_accum(0.0523455,-1.27454e-06,-3.55524e-05)
+DEBUG>> eval_no_omp[ia=0]: gridFF.alphaMorse=1.5
+DEBUG>> eval_no_omp[ia=0]: pos(2.78224,3.41724,14.6569) PLQd(Pauli=21.7702, Lond=1.21202, Coul=0, aR?=0)
+DEBUG<< eval_no_omp[ia=0]: E_grid=-2.21587e-05, f_accum(0.0523455,-1.26431e-06,-3.09451e-05)
+DEBUG>> eval_no_omp[ia=0]: gridFF.alphaMorse=1.5
+DEBUG>> eval_no_omp[ia=0]: pos(2.78224,3.41724,14.7569) PLQd(Pauli=21.7702, Lond=1.21202, Coul=0, aR?=0)
+DEBUG<< eval_no_omp[ia=0]: E_grid=-1.92695e-05, f_accum(0.0523456,-1.25596e-06,-2.69309e-05)
+DEBUG>> eval_no_omp[ia=0]: gridFF.alphaMorse=1.5
+DEBUG>> eval_no_omp[ia=0]: pos(2.78224,3.41724,14.8569) PLQd(Pauli=21.7702, Lond=1.21202, Coul=0, aR?=0)
+DEBUG<< eval_no_omp[ia=0]: E_grid=-1.67552e-05, f_accum(0.0523456,-1.24929e-06,-2.3435e-05)
+DEBUG>> eval_no_omp[ia=0]: gridFF.alphaMorse=1.5
+DEBUG>> eval_no_omp[ia=0]: pos(2.78224,3.41724,14.9569) PLQd(Pauli=21.7702, Lond=1.21202, Coul=0, aR?=0)
+DEBUG<< eval_no_omp[ia=0]: E_grid=-1.45675e-05, f_accum(0.0523456,-1.24377e-06,-2.03905e-05)
+DEBUG>> eval_no_omp[ia=0]: gridFF.alphaMorse=1.5
+DEBUG>> eval_no_omp[ia=0]: pos(2.78224,3.41724,15.0569) PLQd(Pauli=21.7702, Lond=1.21202, Coul=0, aR?=0)
+DEBUG<< eval_no_omp[ia=0]: E_grid=-1.2664e-05, f_accum(0.0523456,-1.23936e-06,-1.77391e-05)
+DEBUG>> eval_no_omp[ia=0]: gridFF.alphaMorse=1.5
+DEBUG>> eval_no_omp[ia=0]: pos(2.78224,3.41724,15.1569) PLQd(Pauli=21.7702, Lond=1.21202, Coul=0, aR?=0)
+DEBUG<< eval_no_omp[ia=0]: E_grid=-1.10082e-05, f_accum(0.0523456,-1.23577e-06,-1.54305e-05)
+DEBUG>> eval_no_omp[ia=0]: gridFF.alphaMorse=1.5
+DEBUG>> eval_no_omp[ia=0]: pos(2.78224,3.41724,15.2569) PLQd(Pauli=21.7702, Lond=1.21202, Coul=0, aR?=0)
+DEBUG<< eval_no_omp[ia=0]: E_grid=-9.56798e-06, f_accum(0.0523456,-1.23286e-06,-1.34209e-05)
+DEBUG>> eval_no_omp[ia=0]: gridFF.alphaMorse=1.5
+DEBUG>> eval_no_omp[ia=0]: pos(2.78224,3.41724,15.3569) PLQd(Pauli=21.7702, Lond=1.21202, Coul=0, aR?=0)
+DEBUG<< eval_no_omp[ia=0]: E_grid=-8.31535e-06, f_accum(0.0523456,-1.23041e-06,-1.16721e-05)
+DEBUG>> eval_no_omp[ia=0]: gridFF.alphaMorse=1.5
+DEBUG>> eval_no_omp[ia=0]: pos(2.78224,3.41724,15.4569) PLQd(Pauli=21.7702, Lond=1.21202, Coul=0, aR?=0)
+DEBUG<< eval_no_omp[ia=0]: E_grid=-7.22602e-06, f_accum(0.0523456,-1.22855e-06,-1.01497e-05)
+DEBUG>> eval_no_omp[ia=0]: gridFF.alphaMorse=1.5
+DEBUG>> eval_no_omp[ia=0]: pos(2.78224,3.41724,15.5569) PLQd(Pauli=21.7702, Lond=1.21202, Coul=0, aR?=0)
+DEBUG<< eval_no_omp[ia=0]: E_grid=-6.27882e-06, f_accum(0.0523456,-1.22695e-06,-8.825e-06)
+DEBUG>> eval_no_omp[ia=0]: gridFF.alphaMorse=1.5
+DEBUG>> eval_no_omp[ia=0]: pos(2.78224,3.41724,15.6569) PLQd(Pauli=21.7702, Lond=1.21202, Coul=0, aR?=0)
+DEBUG<< eval_no_omp[ia=0]: E_grid=-5.45529e-06, f_accum(0.0523456,-1.22569e-06,-7.67234e-06)
+DEBUG>> eval_no_omp[ia=0]: gridFF.alphaMorse=1.5
+DEBUG>> eval_no_omp[ia=0]: pos(2.78224,3.41724,15.7569) PLQd(Pauli=21.7702, Lond=1.21202, Coul=0, aR?=0)
+DEBUG<< eval_no_omp[ia=0]: E_grid=-4.73936e-06, f_accum(0.0523456,-1.22459e-06,-6.6696e-06)
+DEBUG>> eval_no_omp[ia=0]: gridFF.alphaMorse=1.5
+DEBUG>> eval_no_omp[ia=0]: pos(2.78224,3.41724,15.8569) PLQd(Pauli=21.7702, Lond=1.21202, Coul=0, aR?=0)
+DEBUG<< eval_no_omp[ia=0]: E_grid=-4.11701e-06, f_accum(0.0523456,-1.22377e-06,-5.7974e-06)
+DEBUG>> eval_no_omp[ia=0]: gridFF.alphaMorse=1.5
+DEBUG>> eval_no_omp[ia=0]: pos(2.78224,3.41724,15.9569) PLQd(Pauli=21.7702, Lond=1.21202, Coul=0, aR?=0)
+DEBUG<< eval_no_omp[ia=0]: E_grid=-3.57609e-06, f_accum(0.0523456,-1.22307e-06,-5.03872e-06)
+DEBUG>> eval_no_omp[ia=0]: gridFF.alphaMorse=1.5
+DEBUG>> eval_no_omp[ia=0]: pos(2.78224,3.41724,16.0569) PLQd(Pauli=21.7702, Lond=1.21202, Coul=0, aR?=0)
+DEBUG<< eval_no_omp[ia=0]: E_grid=-3.10598e-06, f_accum(0.0523456,-1.22246e-06,-4.37889e-06)
+DEBUG>> eval_no_omp[ia=0]: gridFF.alphaMorse=1.5
+DEBUG>> eval_no_omp[ia=0]: pos(2.78224,3.41724,16.1569) PLQd(Pauli=21.7702, Lond=1.21202, Coul=0, aR?=0)
+DEBUG<< eval_no_omp[ia=0]: E_grid=-2.69745e-06, f_accum(0.0523456,-1.22207e-06,-3.80508e-06)
+DEBUG>> eval_no_omp[ia=0]: gridFF.alphaMorse=1.5
+DEBUG>> eval_no_omp[ia=0]: pos(2.78224,3.41724,16.2569) PLQd(Pauli=21.7702, Lond=1.21202, Coul=0, aR?=0)
+DEBUG<< eval_no_omp[ia=0]: E_grid=-2.34246e-06, f_accum(0.0523456,-1.2217e-06,-3.30626e-06)
+DEBUG>> eval_no_omp[ia=0]: gridFF.alphaMorse=1.5
+DEBUG>> eval_no_omp[ia=0]: pos(2.78224,3.41724,16.3569) PLQd(Pauli=21.7702, Lond=1.21202, Coul=0, aR?=0)
+DEBUG<< eval_no_omp[ia=0]: E_grid=-2.03403e-06, f_accum(0.0523456,-1.22138e-06,-2.87251e-06)
+DEBUG>> eval_no_omp[ia=0]: gridFF.alphaMorse=1.5
+DEBUG>> eval_no_omp[ia=0]: pos(2.78224,3.41724,16.4569) PLQd(Pauli=21.7702, Lond=1.21202, Coul=0, aR?=0)
+DEBUG<< eval_no_omp[ia=0]: E_grid=-1.76607e-06, f_accum(0.0523456,-1.22114e-06,-2.49545e-06)
+DEBUG>> eval_no_omp[ia=0]: gridFF.alphaMorse=1.5
+DEBUG>> eval_no_omp[ia=0]: pos(2.78224,3.41724,16.5569) PLQd(Pauli=21.7702, Lond=1.21202, Coul=0, aR?=0)
+DEBUG<< eval_no_omp[ia=0]: E_grid=-1.53329e-06, f_accum(0.0523456,-1.22095e-06,-2.16768e-06)
+DEBUG>> eval_no_omp[ia=0]: gridFF.alphaMorse=1.5
+DEBUG>> eval_no_omp[ia=0]: pos(2.78224,3.41724,16.6569) PLQd(Pauli=21.7702, Lond=1.21202, Coul=0, aR?=0)
+DEBUG<< eval_no_omp[ia=0]: E_grid=-1.3311e-06, f_accum(0.0523456,-1.22077e-06,-1.88281e-06)
+DEBUG>> eval_no_omp[ia=0]: gridFF.alphaMorse=1.5
+DEBUG>> eval_no_omp[ia=0]: pos(2.78224,3.41724,16.7569) PLQd(Pauli=21.7702, Lond=1.21202, Coul=0, aR?=0)
+DEBUG<< eval_no_omp[ia=0]: E_grid=-1.15549e-06, f_accum(0.0523456,-1.22064e-06,-1.63528e-06)
+DEBUG>> eval_no_omp[ia=0]: gridFF.alphaMorse=1.5
+DEBUG>> eval_no_omp[ia=0]: pos(2.78224,3.41724,16.8569) PLQd(Pauli=21.7702, Lond=1.21202, Coul=0, aR?=0)
+DEBUG<< eval_no_omp[ia=0]: E_grid=-1.00297e-06, f_accum(0.0523456,-1.22054e-06,-1.42014e-06)
+DEBUG>> eval_no_omp[ia=0]: gridFF.alphaMorse=1.5
+DEBUG>> eval_no_omp[ia=0]: pos(2.78224,3.41724,16.9569) PLQd(Pauli=21.7702, Lond=1.21202, Coul=0, aR?=0)
+DEBUG<< eval_no_omp[ia=0]: E_grid=-8.70517e-07, f_accum(0.0523456,-1.22047e-06,-1.23322e-06)
+DEBUG>> eval_no_omp[ia=0]: gridFF.alphaMorse=1.5
+DEBUG>> eval_no_omp[ia=0]: pos(2.78224,3.41724,17.0569) PLQd(Pauli=21.7702, Lond=1.21202, Coul=0, aR?=0)
+DEBUG<< eval_no_omp[ia=0]: E_grid=-7.55505e-07, f_accum(0.0523456,-1.22039e-06,-1.07081e-06)
+DEBUG>> eval_no_omp[ia=0]: gridFF.alphaMorse=1.5
+DEBUG>> eval_no_omp[ia=0]: pos(2.78224,3.41724,17.1569) PLQd(Pauli=21.7702, Lond=1.21202, Coul=0, aR?=0)
+DEBUG<< eval_no_omp[ia=0]: E_grid=-6.55645e-07, f_accum(0.0523456,-1.22032e-06,-9.29704e-07)
+DEBUG>> eval_no_omp[ia=0]: gridFF.alphaMorse=1.5
+DEBUG>> eval_no_omp[ia=0]: pos(2.78224,3.41724,17.2569) PLQd(Pauli=21.7702, Lond=1.21202, Coul=0, aR?=0)
+DEBUG<< eval_no_omp[ia=0]: E_grid=-5.68946e-07, f_accum(0.0523456,-1.22028e-06,-8.07153e-07)
+DEBUG>> eval_no_omp[ia=0]: gridFF.alphaMorse=1.5
+DEBUG>> eval_no_omp[ia=0]: pos(2.78224,3.41724,17.3569) PLQd(Pauli=21.7702, Lond=1.21202, Coul=0, aR?=0)
+DEBUG<< eval_no_omp[ia=0]: E_grid=-4.93678e-07, f_accum(0.0523456,-1.22025e-06,-7.00703e-07)
+DEBUG>> eval_no_omp[ia=0]: gridFF.alphaMorse=1.5
+DEBUG>> eval_no_omp[ia=0]: pos(2.78224,3.41724,17.4569) PLQd(Pauli=21.7702, Lond=1.21202, Coul=0, aR?=0)
+DEBUG<< eval_no_omp[ia=0]: E_grid=-4.28339e-07, f_accum(0.0523456,-1.22021e-06,-6.08244e-07)
+DEBUG>> eval_no_omp[ia=0]: gridFF.alphaMorse=1.5
+DEBUG>> eval_no_omp[ia=0]: pos(2.78224,3.41724,17.5569) PLQd(Pauli=21.7702, Lond=1.21202, Coul=0, aR?=0)
+DEBUG<< eval_no_omp[ia=0]: E_grid=-3.71624e-07, f_accum(0.0523456,-1.2202e-06,-5.27935e-07)
+DEBUG>> eval_no_omp[ia=0]: gridFF.alphaMorse=1.5
+DEBUG>> eval_no_omp[ia=0]: pos(2.78224,3.41724,17.6569) PLQd(Pauli=21.7702, Lond=1.21202, Coul=0, aR?=0)
+DEBUG<< eval_no_omp[ia=0]: E_grid=-3.22399e-07, f_accum(0.0523456,-1.22017e-06,-4.58211e-07)
+DEBUG>> eval_no_omp[ia=0]: gridFF.alphaMorse=1.5
+DEBUG>> eval_no_omp[ia=0]: pos(2.78224,3.41724,17.7569) PLQd(Pauli=21.7702, Lond=1.21202, Coul=0, aR?=0)
+DEBUG<< eval_no_omp[ia=0]: E_grid=-2.79676e-07, f_accum(0.0523456,-1.22015e-06,-3.97668e-07)
+DEBUG>> eval_no_omp[ia=0]: gridFF.alphaMorse=1.5
+DEBUG>> eval_no_omp[ia=0]: pos(2.78224,3.41724,17.8569) PLQd(Pauli=21.7702, Lond=1.21202, Coul=0, aR?=0)
+DEBUG<< eval_no_omp[ia=0]: E_grid=-2.426e-07, f_accum(0.0523456,-1.22014e-06,-3.45095e-07)
+DEBUG>> eval_no_omp[ia=0]: gridFF.alphaMorse=1.5
+DEBUG>> eval_no_omp[ia=0]: pos(2.78224,3.41724,17.9569) PLQd(Pauli=21.7702, Lond=1.21202, Coul=0, aR?=0)
+DEBUG<< eval_no_omp[ia=0]: E_grid=-2.10426e-07, f_accum(0.0523456,-1.22013e-06,-2.99454e-07)
+DEBUG>> eval_no_omp[ia=0]: gridFF.alphaMorse=1.5
+DEBUG>> eval_no_omp[ia=0]: pos(2.78224,3.41724,18.0569) PLQd(Pauli=21.7702, Lond=1.21202, Coul=0, aR?=0)
+DEBUG<< eval_no_omp[ia=0]: E_grid=-1.82508e-07, f_accum(0.0523456,-1.22012e-06,-2.5983e-07)
+DEBUG>> eval_no_omp[ia=0]: gridFF.alphaMorse=1.5
+DEBUG>> eval_no_omp[ia=0]: pos(2.78224,3.41724,18.1569) PLQd(Pauli=21.7702, Lond=1.21202, Coul=0, aR?=0)
+DEBUG<< eval_no_omp[ia=0]: E_grid=-1.58286e-07, f_accum(0.0523456,-1.22012e-06,-2.25436e-07)
+DEBUG>> eval_no_omp[ia=0]: gridFF.alphaMorse=1.5
+DEBUG>> eval_no_omp[ia=0]: pos(2.78224,3.41724,18.2569) PLQd(Pauli=21.7702, Lond=1.21202, Coul=0, aR?=0)
+DEBUG<< eval_no_omp[ia=0]: E_grid=-1.3727e-07, f_accum(0.0523456,-1.22011e-06,-1.95586e-07)
+DEBUG>> eval_no_omp[ia=0]: gridFF.alphaMorse=1.5
+DEBUG>> eval_no_omp[ia=0]: pos(2.78224,3.41724,18.3569) PLQd(Pauli=21.7702, Lond=1.21202, Coul=0, aR?=0)
+DEBUG<< eval_no_omp[ia=0]: E_grid=-1.19037e-07, f_accum(0.0523456,-1.22011e-06,-1.69674e-07)
+DEBUG>> eval_no_omp[ia=0]: gridFF.alphaMorse=1.5
+DEBUG>> eval_no_omp[ia=0]: pos(2.78224,3.41724,18.4569) PLQd(Pauli=21.7702, Lond=1.21202, Coul=0, aR?=0)
+DEBUG<< eval_no_omp[ia=0]: E_grid=-1.03221e-07, f_accum(0.0523456,-1.2201e-06,-1.47187e-07)
+DEBUG>> eval_no_omp[ia=0]: gridFF.alphaMorse=1.5
+DEBUG>> eval_no_omp[ia=0]: pos(2.78224,3.41724,18.5569) PLQd(Pauli=21.7702, Lond=1.21202, Coul=0, aR?=0)
+DEBUG<< eval_no_omp[ia=0]: E_grid=-8.95008e-08, f_accum(0.0523456,-1.2201e-06,-1.2767e-07)
+DEBUG>> eval_no_omp[ia=0]: gridFF.alphaMorse=1.5
+DEBUG>> eval_no_omp[ia=0]: pos(2.78224,3.41724,18.6569) PLQd(Pauli=21.7702, Lond=1.21202, Coul=0, aR?=0)
+DEBUG<< eval_no_omp[ia=0]: E_grid=-7.76005e-08, f_accum(0.0523456,-1.2201e-06,-1.10737e-07)
+DEBUG>> eval_no_omp[ia=0]: gridFF.alphaMorse=1.5
+DEBUG>> eval_no_omp[ia=0]: pos(2.78224,3.41724,18.7569) PLQd(Pauli=21.7702, Lond=1.21202, Coul=0, aR?=0)
+DEBUG<< eval_no_omp[ia=0]: E_grid=-6.72787e-08, f_accum(0.0523456,-1.22009e-06,-9.60441e-08)
+DEBUG>> eval_no_omp[ia=0]: gridFF.alphaMorse=1.5
+DEBUG>> eval_no_omp[ia=0]: pos(2.78224,3.41724,18.8569) PLQd(Pauli=21.7702, Lond=1.21202, Coul=0, aR?=0)
+DEBUG<< eval_no_omp[ia=0]: E_grid=-5.83269e-08, f_accum(0.0523456,-1.22009e-06,-8.32948e-08)
+DEBUG>> eval_no_omp[ia=0]: gridFF.alphaMorse=1.5
+DEBUG>> eval_no_omp[ia=0]: pos(2.78224,3.41724,18.9569) PLQd(Pauli=21.7702, Lond=1.21202, Coul=0, aR?=0)
+DEBUG<< eval_no_omp[ia=0]: E_grid=-5.05634e-08, f_accum(0.0523456,-1.22009e-06,-7.22355e-08)
+DEBUG>> eval_no_omp[ia=0]: gridFF.alphaMorse=1.5
+DEBUG>> eval_no_omp[ia=0]: pos(2.78224,3.41724,19.0569) PLQd(Pauli=21.7702, Lond=1.21202, Coul=0, aR?=0)
+DEBUG<< eval_no_omp[ia=0]: E_grid=-4.3831e-08, f_accum(0.0523456,-1.22009e-06,-6.26383e-08)
+DEBUG>> eval_no_omp[ia=0]: gridFF.alphaMorse=1.5
+DEBUG>> eval_no_omp[ia=0]: pos(2.78224,3.41724,19.1569) PLQd(Pauli=21.7702, Lond=1.21202, Coul=0, aR?=0)
+DEBUG<< eval_no_omp[ia=0]: E_grid=-3.79933e-08, f_accum(0.0523456,-1.22009e-06,-5.43142e-08)
+DEBUG>> eval_no_omp[ia=0]: gridFF.alphaMorse=1.5
+DEBUG>> eval_no_omp[ia=0]: pos(2.78224,3.41724,19.2569) PLQd(Pauli=21.7702, Lond=1.21202, Coul=0, aR?=0)
+DEBUG<< eval_no_omp[ia=0]: E_grid=-3.29314e-08, f_accum(0.0523456,-1.22009e-06,-4.70952e-08)
+DEBUG>> eval_no_omp[ia=0]: gridFF.alphaMorse=1.5
+DEBUG>> eval_no_omp[ia=0]: pos(2.78224,3.41724,19.3569) PLQd(Pauli=21.7702, Lond=1.21202, Coul=0, aR?=0)
+DEBUG<< eval_no_omp[ia=0]: E_grid=-2.85424e-08, f_accum(0.0523456,-1.22009e-06,-4.0832e-08)
+DEBUG>> eval_no_omp[ia=0]: gridFF.alphaMorse=1.5
+DEBUG>> eval_no_omp[ia=0]: pos(2.78224,3.41724,19.4569) PLQd(Pauli=21.7702, Lond=1.21202, Coul=0, aR?=0)
+DEBUG<< eval_no_omp[ia=0]: E_grid=-2.47372e-08, f_accum(0.0523456,-1.22009e-06,-3.54005e-08)
+DEBUG>> eval_no_omp[ia=0]: gridFF.alphaMorse=1.5
+DEBUG>> eval_no_omp[ia=0]: pos(2.78224,3.41724,19.5569) PLQd(Pauli=21.7702, Lond=1.21202, Coul=0, aR?=0)
+DEBUG<< eval_no_omp[ia=0]: E_grid=-2.14383e-08, f_accum(0.0523456,-1.22009e-06,-3.06893e-08)
+DEBUG>> eval_no_omp[ia=0]: gridFF.alphaMorse=1.5
+DEBUG>> eval_no_omp[ia=0]: pos(2.78224,3.41724,19.6569) PLQd(Pauli=21.7702, Lond=1.21202, Coul=0, aR?=0)
+DEBUG<< eval_no_omp[ia=0]: E_grid=-1.85785e-08, f_accum(0.0523456,-1.22009e-06,-2.6604e-08)
+DEBUG>> eval_no_omp[ia=0]: gridFF.alphaMorse=1.5
+DEBUG>> eval_no_omp[ia=0]: pos(2.78224,3.41724,19.7569) PLQd(Pauli=21.7702, Lond=1.21202, Coul=0, aR?=0)
+DEBUG<< eval_no_omp[ia=0]: E_grid=-1.60994e-08, f_accum(0.0523456,-1.22009e-06,-2.30619e-08)
+DEBUG>> eval_no_omp[ia=0]: gridFF.alphaMorse=1.5
+DEBUG>> eval_no_omp[ia=0]: pos(2.78224,3.41724,19.8569) PLQd(Pauli=21.7702, Lond=1.21202, Coul=0, aR?=0)
+DEBUG<< eval_no_omp[ia=0]: E_grid=-1.39505e-08, f_accum(0.0523456,-1.22009e-06,-1.99896e-08)
+DEBUG>> eval_no_omp[ia=0]: gridFF.alphaMorse=1.5
+DEBUG>> eval_no_omp[ia=0]: pos(2.78224,3.41724,19.9569) PLQd(Pauli=21.7702, Lond=1.21202, Coul=0, aR?=0)
+DEBUG<< eval_no_omp[ia=0]: E_grid=-1.20879e-08, f_accum(0.0523456,-1.22009e-06,-1.73263e-08)
+DEBUG>> eval_no_omp[ia=0]: gridFF.alphaMorse=1.5
+DEBUG>> eval_no_omp[ia=0]: pos(2.78224,3.41724,20.0569) PLQd(Pauli=21.7702, Lond=1.21202, Coul=0, aR?=0)
+DEBUG<< eval_no_omp[ia=0]: E_grid=-1.04734e-08, f_accum(0.0523456,-1.22009e-06,-1.50167e-08)
+DEBUG>> eval_no_omp[ia=0]: gridFF.alphaMorse=1.5
+DEBUG>> eval_no_omp[ia=0]: pos(2.78224,3.41724,20.1569) PLQd(Pauli=21.7702, Lond=1.21202, Coul=0, aR?=0)
+DEBUG<< eval_no_omp[ia=0]: E_grid=-9.07427e-09, f_accum(0.0523456,-1.22009e-06,-1.30144e-08)
+DEBUG>> eval_no_omp[ia=0]: gridFF.alphaMorse=1.5
+DEBUG>> eval_no_omp[ia=0]: pos(2.78224,3.41724,20.2569) PLQd(Pauli=21.7702, Lond=1.21202, Coul=0, aR?=0)
+DEBUG<< eval_no_omp[ia=0]: E_grid=-7.86166e-09, f_accum(0.0523456,-1.22009e-06,-1.12789e-08)
+DEBUG>> eval_no_omp[ia=0]: gridFF.alphaMorse=1.5
+DEBUG>> eval_no_omp[ia=0]: pos(2.78224,3.41724,20.3569) PLQd(Pauli=21.7702, Lond=1.21202, Coul=0, aR?=0)
+DEBUG<< eval_no_omp[ia=0]: E_grid=-6.8108e-09, f_accum(0.0523456,-1.22009e-06,-9.77412e-09)
+DEBUG>> eval_no_omp[ia=0]: gridFF.alphaMorse=1.5
+DEBUG>> eval_no_omp[ia=0]: pos(2.78224,3.41724,20.4569) PLQd(Pauli=21.7702, Lond=1.21202, Coul=0, aR?=0)
+DEBUG<< eval_no_omp[ia=0]: E_grid=-5.90016e-09, f_accum(0.0523456,-1.22009e-06,-8.4696e-09)
+DEBUG>> eval_no_omp[ia=0]: gridFF.alphaMorse=1.5
+DEBUG>> eval_no_omp[ia=0]: pos(2.78224,3.41724,20.5569) PLQd(Pauli=21.7702, Lond=1.21202, Coul=0, aR?=0)
+DEBUG<< eval_no_omp[ia=0]: E_grid=-5.11108e-09, f_accum(0.0523456,-1.22009e-06,-7.33903e-09)
+DEBUG>> eval_no_omp[ia=0]: gridFF.alphaMorse=1.5
+DEBUG>> eval_no_omp[ia=0]: pos(2.78224,3.41724,20.6569) PLQd(Pauli=21.7702, Lond=1.21202, Coul=0, aR?=0)
+DEBUG<< eval_no_omp[ia=0]: E_grid=-4.42733e-09, f_accum(0.0523456,-1.22009e-06,-6.35917e-09)
+Debug: Library path: /home/indranil/git/FireCore/cpp/Build/libs/Molecular/libMMFF_lib.so
+Debug: Library path: /home/indranil/git/FireCore/cpp/Build/libs/Molecular/libMMFF_lib.so
+Debug: ndims pointer address: 0x7fc1e79c6df0
+Debug: ndims array after conversion: [198  38  30   8  28  44  66   0  38]
+Debug: Raw ndims array from C++: [198  38  30   8  28  44  66   0  38]
+getBuffs(): nDOFs=198 nvecs=66  natoms=38 nnode=30 ncap=8 npi=28 nbonds=44 nvecs=66 ne=0 ie0=38 
+getBuffs(): natoms=38 nnode=30 ncap=8 npi=28 nbonds=44 nvecs=66 ne=0 ie0=38 
+getBuffs DONE

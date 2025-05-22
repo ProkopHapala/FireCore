@@ -1,0 +1,14 @@
+Category,Operation,Time (ms),% of Total
+Overall,total_Morse,321.47,100.00
+Overall,test_Morse,320.24,99.62
+Overall,make_MorseFF,16.48,5.13
+Overall,data_loading,1.23,0.38
+Overall,set_grid,0.03,0.01
+Memory,V_Paul_buff,1.22 MB,
+Memory,V_Lond_buff,1.22 MB,
+Memory,Gs_buff,1.22 MB,
+Memory,fGs_buff,1.22 MB,
+Memory,dGs_buff,1.22 MB,
+Memory,vGs_buff,1.22 MB,
+Memory,atoms_buff,0.00 MB,
+Memory,REQs_buff,0.00 MB,

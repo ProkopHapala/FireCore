@@ -1,0 +1,28 @@
+         319 function calls in 16.560 seconds
+
+   Ordered by: cumulative time
+   List reduced from 60 to 20 due to restriction <20>
+
+   ncalls  tottime  percall  cumtime  percall filename:lineno(function)
+        1    0.000    0.000   16.559   16.559 /usr/lib/python3.10/subprocess.py:1204(wait)
+        1    0.000    0.000   16.559   16.559 /usr/lib/python3.10/subprocess.py:1927(_wait)
+        1    0.000    0.000   16.559   16.559 /usr/lib/python3.10/subprocess.py:1914(_try_wait)
+        1   16.559   16.559   16.559   16.559 {built-in method posix.waitpid}
+        1    0.000    0.000    0.001    0.001 /usr/lib/python3.10/subprocess.py:758(__init__)
+        1    0.000    0.000    0.000    0.000 /usr/lib/python3.10/subprocess.py:1703(_execute_child)
+        1    0.000    0.000    0.000    0.000 {built-in method _posixsubprocess.fork_exec}
+       23    0.000    0.000    0.000    0.000 /usr/lib/python3.10/subprocess.py:1791(<genexpr>)
+       22    0.000    0.000    0.000    0.000 /usr/lib/python3.10/posixpath.py:71(join)
+        1    0.000    0.000    0.000    0.000 /usr/lib/python3.10/os.py:620(get_exec_path)
+       23    0.000    0.000    0.000    0.000 /usr/lib/python3.10/os.py:805(fsencode)
+       55    0.000    0.000    0.000    0.000 {built-in method builtins.isinstance}
+        1    0.000    0.000    0.000    0.000 /usr/lib/python3.10/subprocess.py:1867(_handle_exitstatus)
+        1    0.000    0.000    0.000    0.000 /usr/lib/python3.10/subprocess.py:1227(_close_pipe_fds)
+        2    0.000    0.000    0.000    0.000 /usr/lib/python3.10/posixpath.py:150(dirname)
+        1    0.000    0.000    0.000    0.000 /usr/lib/python3.10/abc.py:117(__instancecheck__)
+        1    0.000    0.000    0.000    0.000 {built-in method _abc._abc_instancecheck}
+        1    0.000    0.000    0.000    0.000 /usr/lib/python3.10/warnings.py:165(simplefilter)
+        2    0.000    0.000    0.000    0.000 /usr/lib/python3.10/os.py:675(__getitem__)
+        1    0.000    0.000    0.000    0.000 /usr/lib/python3.10/abc.py:121(__subclasscheck__)
+
+

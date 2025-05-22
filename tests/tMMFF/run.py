@@ -776,7 +776,20 @@ mmff.setVerbosity( verbosity=2, idebug=1 )
 
 
 # mmff.init( xyz_name="data/xyz/PTCDA_charge_on_Na", surf_name="data/xyz/Na_0.9_Cl_-0.9", bUFF=True, bSimple=True )
-mmff.init( xyz_name="data/xyz/PTCDA_charge_on_Na_relax", surf_name="data/xyz/Na_0.9_Cl_-0.9", bUFF=True, bSimple=True )
+# mmff.init( xyz_name="data/xyz/PTCDA_charge_on_Na_relax", surf_name="data/xyz/Na_0.9_Cl_-0.9", bUFF=True, bSimple=True )
+# mmff.init( xyz_name="data/xyz/PTCDA_final", surf_name="data/xyz/NaCl_8x8_L3_final", bUFF=True, bSimple=True ) 
+
+
+# mmff.init( xyz_name="data/xyz/old_mol_old_sub_PTCDA", surf_name="data/xyz/NaCl_old", bUFF=True, bSimple=True )
+# mmff.init( xyz_name="data/xyz/new_mol_old_sub_PTCDA", surf_name="data/xyz/NaCl_old", bUFF=True, bSimple=True )
+# mmff.init( xyz_name="data/xyz/new_mol_new_sub_PTCDA", surf_name="data/xyz/NaCl_8x8_L3_final", bUFF=True, bSimple=True )
+mmff.init( xyz_name="data/xyz/old_mol_new_sub_PTCDA", surf_name="data/xyz/NaCl_8x8_L3_final", bUFF=True, bSimple=True )
+
+
+
+# mmff.init( xyz_name="data/xyz/PTCDA_final", surf_name="data/xyz/new_Na_0.9_Cl_-0.9", bUFF=True, bSimple=True )
+
+# mmff.init( xyz_name="data/xyz/ptcda_new_rigid", surf_name="data/xyz/Na_0.9_Cl_-0.9", bUFF=True, bSimple=True )  
 # mmff.init( xyz_name="data/xyz/PTCDA_charge_on_Na", surf_name="data/xyz/Na_0.9_Cl_-0.9" )   
 # mmff.init( xyz_name="data/xyz/PTCDA_charge_on_Cl", surf_name="data/xyz/Na_0.9_Cl_-0.9" )
 # mmff.init( xyz_name="data/xyz/PTCDA_charge_on_hollow", surf_name="data/xyz/Na_0.9_Cl_-0.9" )
@@ -807,6 +820,9 @@ mmff.setSwitches2( NonBonded=1, MMFF=1, SurfAtoms=1, GridFF=1 )   ### For Relaxe
 # mmff.PLQs[:,2 ] = 0.0 # delete Coulomb (charges)
 
 ###################################################################################################################################################
+
+
+
 
 ######################################################################################## 1D Scan Plotting #########################################
 # scanPlot( nscan=10, span=(0.0,4.0), dir=(1.0,0.0,0.0), p0=(0.0,0.0,0.0),  label="E_x", saveFig="E_x_scan.png", saveData="E_x_scan.dat")
@@ -880,16 +896,30 @@ mmff.setSwitches2( NonBonded=1, MMFF=1, SurfAtoms=1, GridFF=1 )   ### For Relaxe
 # scanPlot( nscan=125, span=(2.6,15.1), dir=(0.0,0.0,1.0), p0=(0.0,0.0,0), label="PTCDA on hollow", saveFig="E_z_scan_on_hollow_PTCDA_Morse.png", saveData="E_z_scan_on_hollow_PTCDA_Morse.dat" )
 # scanPlot( nscan=125, span=(2.6,15.1), dir=(0.0,0.0,1.0), p0=(0.0,0.0,0), label="PTCDA on hollow", saveFig="E_z_scan_on_hollow_PTCDA_Coulomb.png", saveData="E_z_scan_on_hollow_PTCDA_Coulomb.dat" )
 # scanPlot( nscan=125, span=(2.6,15.1), dir=(0.0,0.0,1.0), p0=(0.0,0.0,0), label="PTCDA on hollow", saveFig="E_z_scan_on_hollow_PTCDA_Morse_Coulomb.png", saveData="E_z_scan_on_hollow_PTCDA_Morse_Coulomb.dat" )
+##************************* Final Scans *****************************************
+# scanPlot_uff( nscan=125, span=(2.6,15.1), dir=(0.0,0.0,1.0), p0=(0.0,0.0,0.0), label="PTCDA on Na", saveFig="final_uff_E_z_scan_on_Na_PTCDA_Morse.png", saveData="final_uff_E_z_scan_on_Na_PTCDA_Morse.dat" )
+# scanPlot_uff( nscan=125, span=(2.6,15.1), dir=(0.0,0.0,1.0), p0=(-0.0,-0.0,0.0), label="PTCDA on Na", saveFig="final_uff_E_z_scan_on_Na_PTCDA_Coulomb.png", saveData="final_uff_E_z_scan_on_Na_PTCDA_Coulomb.dat" )
+# scanPlot_uff( nscan=125, span=(2.6,15.1), dir=(0.0,0.0,1.0), p0=(0,0,0), label="PTCDA on Na", saveFig="final_uff_E_z_scan_on_Na_PTCDA_Morse_Coulomb.png", saveData="morse_new2_final_uff_E_z_scan_on_Na_PTCDA_Morse_Coulomb.dat" )
+
+# scanPlot_uff( nscan=125, span=(2.6,15.1), dir=(0.0,0.0,1.0), p0=(0,0,0), label="PTCDA on Na", saveFig=None, saveData="old_mol_old_sub_total.dat" )
+# scanPlot_uff( nscan=125, span=(2.6,15.1), dir=(0.0,0.0,1.0), p0=(0,0,0), label="PTCDA on Na", saveFig=None, saveData="new_mol_old_sub_total.dat" )
+# scanPlot_uff( nscan=125, span=(2.6,15.1), dir=(0.0,0.0,1.0), p0=(0,0,0), label="PTCDA on Na", saveFig=None, saveData="new_mol_new_sub_total.dat" )
+scanPlot_uff( nscan=125, span=(2.6,15.1), dir=(0.0,0.0,1.0), p0=(0,0,0), label="PTCDA on Na", saveFig=None, saveData="old_mol_new_sub_total.dat" )
+
+# scanPlot_uff( nscan=125, span=(2.6,15.1), dir=(0.0,0.0,1.0), p0=(0,0,0), label="PTCDA on Na", saveFig=None, saveData="new_mol_new1_sub_total.dat" )
+
+# scanPlot_uff( nscan=125, span=(2.6,15.1), dir=(0.0,0.0,1.0), p0=(0,0,0), label="PTCDA on Na", saveFig=None, saveData="paolo_new_substrate_total.dat" )
+# scanPlot_uff( nscan=125, span=(2.6,15.1), dir=(0.0,0.0,1.0), p0=(0,0,0), label="PTCDA on Na", saveFig=None, saveData="new_molecule_substrate_total.dat" )
 
 
-
+# (2*0.09935)
 import gc
 gc.disable()
 
 ###########********************* Relax 1D
 # t,Es,Ps=relax_scanPlot1D(bRelax=True, nscan=125, span=(2.6,15.1), dir=(0.0,0.0,1.0), p0=(0.0,0.0,(0+2.6)), label="PTCDA on Na", saveFig=None, saveData=None,niter_max=100 )   
-t,Es,Ps=relax_scanPlot1D(bRelax=True, nscan=125, span=(2.6,15.1),  dir=(0.0,0.0,1.0), p0=(0.0,0.0,(0+0)), label="PTCDA on Na", saveFig=None, saveData="new_trial_relax_scan_ptcda_test_morse",
-                        niter_max=100000,Fconv=1e-3,dt=0.02 )  ### z scan dt 0.05 is giving energy in the order of less than 100 but for more smaller step it is giving absolute energy in the order of 1e7 and greater value of like 0.1 is giving random values 0.1 is to match with LAMMPs 0.001femto
+# t,Es,Ps=relax_scanPlot1D(bRelax=True, nscan=125, span=(2.6,15.1),  dir=(0.0,0.0,1.0), p0=(0.0,0.0,(0+0)), label="PTCDA on Na", saveFig=None, saveData="new_substrate_trial_relax_scan_ptcda_test_morse",
+#                         niter_max=100000,Fconv=1e-3,dt=0.02 )  ### z scan dt 0.05 is giving energy in the order of less than 100 but for more smaller step it is giving absolute energy in the order of 1e7 and greater value of like 0.1 is giving random values 0.1 is to match with LAMMPs 0.001femto
 
 # t,Es,Ps=relax_scanPlot1D(bRelax=True, nscan=120, span=(0,12), dir=(0.866,0.5,0.0), p0=(0.0,0.0,(0+3.1)), label="PTCDA on Na", saveFig=None, saveData="trial_relax_scan_ptcda_line_test",
 #                         niter_max=50000,Fconv=1e-6,dt=0.1 )  # x y scan  and diagonal #dir=(0.866,0.5,0.0) for 30 degree  nscan=351, span=(0,35.1)

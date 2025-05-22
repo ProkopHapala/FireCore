@@ -1,0 +1,311 @@
+GridFF::initGridFF() nPBC(5,5,0|121) Mpol qcog(0,0,0) Q=0 dipol(0,0,0) quadrupol:xx,yy,zz(-2.8,-2.8,0)yz,xz,xy(0,0,0)
+MolWorld_sp3::initGridFF() 1 wd0=`/home/indranil/git/FireCore/tests/tMMFF`
+MolWorld_sp3::initGridFF() 1 wd=`data/NaCl_1x1_L1`
+GridFF::tryLoad_new() mode=6 bSymetrize=1 bFit=1 bRefine=1 
+Current  directory: /home/indranil/git/FireCore/cpp/common_resources/NaCl_1x1_L1
+GridFF::makeGridFF_Bspline_d() bUseEwald=1 bSaveNPY=0 bSaveXSF=0 bFit=1 
+GridFF::tryLoadGridFF_potentials() natoms_=5 bUseEwald=1 bForceRecalc=0 bSaveNPY=0 bSaveXSF=0 
+GridFF::evalBsplineRef() natoms=5 Rdamp=1 alphaMorse=1.5 bEvalCoulomb=0 nBPC_mors(5,5,0) nPBC_coul(25,25,0) @VPaul=140398047229952 @VLond=140398044661760 @VCoul=0 
+GridFF::evalBsplineRef(ntot=320000,natom=5,nPBC(5,5,0)(coul=0,morse=3302528) DONE in 13.2095 [GTick] 41.2798 [kTick/point] 
+EwaldGrid::potential_of_atoms() natoms=5 order=3 nBlur=4 cV=0.95 
+project_atoms_on_grid_quintic() na=5 ns(40,40,400) pos0(-2,-2,0) bPBC=1
+CPU atom[0]  gi( 40, 40,  0) (  2.0000,  2.0000,  0.0000 | -0.1750) 
+CPU atom[1]  gi(  0, 40,  0) ( -2.0000,  2.0000,  0.0000 | -0.1750) 
+CPU atom[2]  gi( 40,  0,  0) (  2.0000, -2.0000,  0.0000 | -0.1750) 
+CPU atom[3]  gi(  0,  0,  0) ( -2.0000, -2.0000,  0.0000 | -0.1750) 
+CPU atom[4]  gi( 20, 20,  0) (  0.0000,  0.0000,  0.0000 |  0.7000) 
+EwaldGrid::projectAtoms(order=3) na=5 ng(40,40,400) T(project_atoms_on_grid)=0.09528 [Mticks] 
+saveNpy(Qgrid.npy) header={'descr': '<f8', 'fortran_order': False, 'shape': (400, 40, 40), }
+saveNpy(debug_Ewald_V.npy) header={'descr': '<f8', 'fortran_order': False, 'shape': (400, 40, 40), }
+saveNpy(debug_Ewald_dens.npy) header={'descr': '<f8', 'fortran_order': False, 'shape': (400, 40, 40), }
+EwaldGrid::slabPotential() ns(40,40,400) Ls(4,4,40) nz_slab=200 
+EwaldGrid::slabPotential() dipole(0,0,0) dz=0.1 [A] Vol=640[A^3] dVcor=0 [eV/A] 
+EwaldGrid::solve_laplace_macro() DONE flags=-1 nCPUs=1 n(40,40,400) T(prepare_laplace)= 11.3703 [Mticks] T(solve_laplace)= 135.278 [Mticks] T(laplace_real_loop)= 78.4457 [Mticks]
+saveNpy(VPaul.npy) header={'descr': '<f8', 'fortran_order': False, 'shape': (200, 40, 40), }
+saveNpy(VLond.npy) header={'descr': '<f8', 'fortran_order': False, 'shape': (200, 40, 40), }
+saveNpy(VCoul.npy) header={'descr': '<f8', 'fortran_order': False, 'shape': (200, 40, 40), }
+GridFF::makeGridFF_Bspline_d() testPLQ( Paul=21.1281, Lond=1.41993, Coul=0.18 )  vmaxs( P=36.9709, L=3.9108, C=52.0122 )
+GridFF::makeGridFF_Bspline_d() ========= FITTING start======== 
+GridFF::makeGridFF_Bspline_d().fit(Bspline_Pauli  ) : Bspline::fit3D_omp() RMS=4.40e-13 |F|=9.81e-14 niter(2861) nxyz=(  320000) time 26.1965[GTicks] 28.6138[tick/(nxyz*iter)] 
+GridFF::makeGridFF_Bspline_d().fit(Bspline_London ) : Bspline::fit3D_omp() RMS=1.29e-12 |F|=9.26e-14 niter(2393) nxyz=(  320000) time 21.2256[GTicks] 27.7183[tick/(nxyz*iter)] 
+GridFF::makeGridFF_Bspline_d().fit(Bspline_Coulomb) : Bspline::fit3D_omp() RMS=5.19e-13 |F|=9.38e-14 niter(2432) nxyz=(  320000) time 20.474[GTicks] 26.3081[tick/(nxyz*iter)] 
+GridFF::makeGridFF_Bspline_d() ========= FITTING finish ======== 
+GridFF::pack_Bspline_d() grid.n(40,40,200) @Bspline_Pauli=140397995337728 @Bspline_London=140397992769536 @Bspline_Coulomb=140397990201344 
+GridFF::pack_Bspline_d() DONE @Bspline_PLQ=140397874694144
+saveNpy(Bspline_PLQd.npy) header={'descr': '<f8', 'fortran_order': False, 'shape': (40, 40, 200, 3), }
+ n      40 40 200 
+ pos0   -2.000000 -2.000000 0.000000 
+ a      4.000000 0.000000 0.000000 
+ b      0.000000 4.000000 0.000000 
+ c      0.000000 0.000000 20.000000 
+ da     0.100000 0.000000 0.000000 
+ db     0.000000 0.100000 0.000000 
+ dc     0.000000 0.000000 0.100000 
+ inv_da 10.000000 0.000000 0.000000 
+ inv_db 0.000000 10.000000 0.000000 
+ inv_dc 0.000000 0.000000 10.000000 
+GridFF::tryLoad_new() Bspline_PLQ Paul(-2.38376e-16,33.1445) Lond(-6.30187,-2.8759e-12) Coul(-71.193,71.193) 
+grid_shift0(0,0,0)
+buildMolecule_xyz( data/xyz/noQ_H2O )
+MolWorld_sp3::loadGeom(data/xyz/noQ_H2O)
+MM::Builder::loadXYZ_Atoms(data/xyz/noQ_H2O.xyz) 
+WARNING: lvec not read from data/xyz/noQ_H2O.xyz 
+MMFFparams::loadXYZ() atom[  0] atyp( 10) xyz(    0.000000,    0.000000,    0.000000) REQs(    1.750000,    0.051008,    0.000000,    0.000000) 
+MMFFparams::loadXYZ() atom[  1] atyp(  3) xyz(   -0.758063,    0.635810,    0.000000) REQs(    1.443000,    0.043681,    0.000000,    0.000000) 
+MMFFparams::loadXYZ() atom[  2] atyp(  3) xyz(    0.758066,    0.635807,    0.000000) REQs(    1.443000,    0.043681,    0.000000,    0.000000) 
+MMFFparams::loadXYZ() DONE 
+ # MM::Builder.printAtoms(na=3) 
+atom[0] Atom{id -1 t 10 c 0 f 0 REQ(1.75,0.0510083,0,0) pos(0,0,0)}
+atom[1] Atom{id -1 t 3 c -1 f 0 REQ(1.443,0.0436809,0,0) pos(-0.758063,0.63581,0)}
+atom[2] Atom{id -1 t 3 c -1 f 0 REQ(1.443,0.0436809,0,0) pos(0.758066,0.635807,0)}
+MM::Builder::autoBonds() 
+MolWorld_sp3::buildMolecule_xyz(data/xyz/noQ_H2O) ifrag=0 
+MMFFBuilder::assignBondParams(ib=0|ia=0,ja=1) types: 10=O 3=H 
+MMFFBuilder::assignBondParams(ib=1|ia=0,ja=2) types: 10=O 3=H 
+ # MM::Builder.printAtoms(na=3) 
+atom[0] Atom{id -1 t 10 c 0 f 0 REQ(1.75,0.0510083,0,0) pos(0,0,0)}
+atom[1] Atom{id -1 t 3 c -1 f 0 REQ(1.443,0.0436809,0,0) pos(-0.758063,0.63581,0)}
+atom[2] Atom{id -1 t 3 c -1 f 0 REQ(1.443,0.0436809,0,0) pos(0.758066,0.635807,0)}
+ # MM::Builder.printBonds(nb=2) 
+bond[0] Bond{t -1 a(0,1) l0 0.973 k 24.436}
+bond[1] Bond{t -1 a(0,2) l0 0.973 k 24.436}
+ # MM::Builder.printAtomConfs(na=3,nc=1) 
+atom[0] O=10 ic 0  AtomConf{ia 0, n,nb,np,ne,nH(4,2,0,2,0) [0,1,-1,-1]}
+Builder::randomFragmentCollors()
+frags[0].color FF723739 (57,55,114)
+MolWorld_sp3::makeFFs()
+MolWorld_sp3::makeMMFFs()
+DEBUG #l 1354 makeMMFFs 
+DEBUG #l 1359 makeMMFFs 
+DEBUG #l 1370 makeMMFFs 
+ # MM::Builder.printAtomConfs(na=3,nc=1) 
+atom[0] O_3=30 ic 0  AtomConf{ia 0, n,nb,np,ne,nH(4,2,0,2,0) [0,1,-1,-1]}
+ # MM::Builder.printBonds(nb=2) 
+bond[0] Bond{t -1 a(0,1) l0 0.973 k 24.436}
+bond[1] Bond{t -1 a(0,2) l0 0.973 k 24.436}
+DEBUG #l 1379 makeMMFFs 
+MM::Builder::toMMFFsp3_loc() nconf 1 ncap 2 npi 0 ne 0 
+MM::Builder::toMMFFsp3_loc() DONE 
+DEBUG #l 1385 makeMMFFs 
+MM::Builder::toMMFFsp3() nconf 1 ncap 2 npi 0 ne 0 
+ 1, 2, -1, -1,] 
+MM::Builder::toMMFFsp3() DONE 
+DEBUG #l 1388 makeMMFFs 
+MMFFsp3_loc::printNeighs()
+atom[0] neigh{  1,  2, -1, -1} neighCell{ -1, -1, -1, -1} 
+atom[1] neigh{  0, -1, -1, -1} neighCell{ -1, -1, -1, -1} 
+atom[2] neigh{  0, -1, -1, -1} neighCell{ -1, -1, -1, -1} 
+DEBUG #l 1432 makeFFs 
+DEBUG #l 1498 makeFFs 
+MolWorld_sp3::initNBmol() na 3 
+DEBUG #l 998 initNBmol 
+DEBUG #l 1006 initNBmol 
+MMFFparams::assignREs(3) @itypes=105690555458320 
+DEBUG #l 1010 initNBmol 
+NBFF::evalPLQs() natoms 3 K 1.5 @PLQs=0x604000006010 
+evalPLQs[0] REQ(1.75,0.0510083,0) PLQ(9.72046,0.704148,0)
+evalPLQs[1] REQ(1.443,0.0436809,0) PLQ(3.314,0.380471,0)
+evalPLQs[2] REQ(1.443,0.0436809,0) PLQ(3.314,0.380471,0)
+DEBUG #l 1012 initNBmol 
+NBFF::evalPLQd() natoms 3 K 1.5 @PLQd=0x608000027520 
+evalPLQd[0] REQ(1.75,0.0510083,0) PLQ(9.72046,0.704148,0)
+evalPLQd[1] REQ(1.443,0.0436809,0) PLQ(3.314,0.380471,0)
+evalPLQd[2] REQ(1.443,0.0436809,0) PLQ(3.314,0.380471,0)
+NBFF::print_nonbonded(n=3)
+nb_atom[0] REQ(  1.750,0.0510083,0,0) PLQ(  9.72046061,  0.70414780,  0.0000,0) pos(  0.000,  0.000,  0.000) atyp 30 
+nb_atom[1] REQ(  1.443,0.0436809,0,0) PLQ(  3.31399875,  0.38047133,  0.0000,0) pos( -0.758,  0.636,  0.000) atyp 3 
+nb_atom[2] REQ(  1.443,0.0436809,0,0) PLQ(  3.31399875,  0.38047133,  0.0000,0) pos(  0.758,  0.636,  0.000) atyp 3 
+DEBUG #l 1016 initNBmol 
+Atoms::print() natom=3
+[0] atype 30 apos( 0.000, 0.000, 0.000)
+[1] atype 3 apos(-0.758, 0.636, 0.000)
+[2] atype 3 apos( 0.758, 0.636, 0.000)
+DEBUG #l 1501 makeFFs 
+DEBUG>> makeFFs (after initNBmol): nbmol.REQs[0](RvdW=1.75, sqrtEvdW=0.0510083, Q=0, Hb?=0)
+DEBUG #l 1511 makeFFs 
+DEBUG #l 1516 makeFFs 
+DEBUG #l 1518 makeFFs 
+MMFFsp3_loc::chargeToEpairs() na 3 nnode 1 cQ -0.2 etyp 1 @atypes=0x60200003a310 @REQs=0x6080000273a0 
+MMFFsp3_loc::chargeToEpairs() atom[0] ngs{1,2,-1,-1} 
+MMFFsp3_loc::chargeToEpairs() atom[0] ngh[0|1] tj=3 Qi=0 Qj=0 
+MMFFsp3_loc::chargeToEpairs() atom[0] ngh[1|2] tj=3 Qi=0 Qj=0 
+MMFFsp3_loc::chargeToEpairs() DONE 
+DEBUG #l 1521 makeFFs 
+DEBUG #l 1523 makeFFs 
+DEBUG>> makeFFs (before evalPLQd): gridFF.alphaMorse = 1.5
+DEBUG>> makeFFs (before evalPLQd): ffl.REQs[0](RvdW=1.75, sqrtEvdW=0.0510083, Q=0, Hb?=0)
+NBFF::evalPLQs() natoms 3 K 1.5 @PLQs=0x604000006010 
+evalPLQs[0] REQ(1.75,0.0510083,0) PLQ(9.72046,0.704148,0)
+evalPLQs[1] REQ(1.443,0.0436809,0) PLQ(3.314,0.380471,0)
+evalPLQs[2] REQ(1.443,0.0436809,0) PLQ(3.314,0.380471,0)
+NBFF::evalPLQd() natoms 3 K 1.5 @PLQd=0x608000027520 
+evalPLQd[0] REQ(1.75,0.0510083,0) PLQ(9.72046,0.704148,0)
+evalPLQd[1] REQ(1.443,0.0436809,0) PLQ(3.314,0.380471,0)
+evalPLQd[2] REQ(1.443,0.0436809,0) PLQ(3.314,0.380471,0)
+DEBUG #l 1534 makeFFs 
+DEBUG>> makeFFs (after evalPLQd): ffl.PLQd[0](Pauli=9.72046, Lond=0.704148, Coul=0, alpha*RvdW?=0)
+DEBUG #l 1551 makeFFs 
+makeFFs(): ffl  .print_nonbonded() 
+NBFF::print_nonbonded(n=3)
+nb_atom[0] REQ(  1.750,0.0510083,0,0) PLQ(  9.72046061,  0.70414780,  0.0000,0) pos(  0.000,  0.000,  0.000) atyp 30 
+nb_atom[1] REQ(  1.443,0.0436809,0,0) PLQ(  3.31399875,  0.38047133,  0.0000,0) pos( -0.758,  0.636,  0.000) atyp 3 
+nb_atom[2] REQ(  1.443,0.0436809,0,0) PLQ(  3.31399875,  0.38047133,  0.0000,0) pos(  0.758,  0.636,  0.000) atyp 3 
+makeFFs(): nbmol.print_nonbonded() 
+NBFF::print_nonbonded(n=3)
+nb_atom[0] REQ(  1.750,0.0510083,0,0) PLQ(  9.72046061,  0.70414780,  0.0000,0) pos(  0.000,  0.000,  0.000) atyp 30 
+nb_atom[1] REQ(  1.443,0.0436809,0,0) PLQ(  3.31399875,  0.38047133,  0.0000,0) pos( -0.758,  0.636,  0.000) atyp 3 
+nb_atom[2] REQ(  1.443,0.0436809,0,0) PLQ(  3.31399875,  0.38047133,  0.0000,0) pos(  0.758,  0.636,  0.000) atyp 3 
+DEBUG #l 1555 makeFFs 
+MolWorld_sp3::setOptimizer(): optimal time_step = 0.05 
+DEBUG #l 1563 makeFFs 
+DEBUG #l 1565 makeFFs 
+MolWorld_sp3::init() builder.lvec 
+ 1.000000 0.000000 0.000000 
+ 0.000000 1.000000 0.000000 
+ 0.000000 0.000000 1.000000 
+MolWorld_sp3::init() ffl.lvec     
+ 0.000000 0.000000 0.000000 
+ 0.000000 0.000000 0.000000 
+ 0.000000 0.000000 0.000000 
+#### MolWorld_sp3::init() DONE
+
+before_MMFF_lib.cpp::init_buffers() ndims{nDOFs=12,natoms=3,nnode=1,ncap=2}
+MMFF_lib.cpp::init_buffers() ndims{nDOFs=9,natoms=3,nnode=1,ncap=2,npi=0,nbonds=2,nvecs=3,ne=0,ie0=3}
+Debug: Library path: /home/indranil/git/FireCore/cpp/Build/libs/Molecular/libMMFF_lib.so
+Debug: Library path: /home/indranil/git/FireCore/cpp/Build/libs/Molecular/libMMFF_lib.so
+Debug: ndims pointer address: 0x7fb0faeb8d30
+Debug: ndims array after conversion: [9 3 1 2 0 2 3 0 3]
+Debug: Raw ndims array from C++: [9 3 1 2 0 2 3 0 3]
+getBuffs(): nDOFs=9 nvecs=3  natoms=3 nnode=1 ncap=2 npi=0 nbonds=2 nvecs=3 ne=0 ie0=3 
+getBuffs(): natoms=3 nnode=1 ncap=2 npi=0 nbonds=2 nvecs=3 ne=0 ie0=3 
+getBuffs DONE
+setSwitches2() W.bCheckInvariants==1 bPBC=0 | bNonBonded=0 bNonBondNeighs=0 | bSurfAtoms=1 bGridFF=0 | bMMFF=1 doAngles=1 doPiSigma=1 doPiPiI=1 
+DEBUG>> MMFF_lib: AFTER setSwitches2: W.ffl.PLQd[0].z = 0.000000
+DEBUG>> MMFF_lib: AFTER setSwitches2: W.ffl.PLQd[0].z = 0.000000
+DEBUG>> scan_rigid: START: ffl.PLQd[0].z = 0.000000
+MolWorld_sp3::scan_rigid(nconf=125,omp=0) ...
+No_Grid_DEBUG<< eval_no_omp[ia=0]: E_no_grid=0.260593, f_accum(1.38944e-05,0.712449,1.52083)
+No_Grid_DEBUG<< eval_no_omp[ia=0]: E_no_grid=0.259617, f_accum(0.00969812,0.722133,1.51726)
+No_Grid_DEBUG<< eval_no_omp[ia=0]: E_no_grid=0.256772, f_accum(0.0185936,0.731029,1.50686)
+No_Grid_DEBUG<< eval_no_omp[ia=0]: E_no_grid=0.252284, f_accum(0.0260218,0.738457,1.49053)
+No_Grid_DEBUG<< eval_no_omp[ia=0]: E_no_grid=0.246499, f_accum(0.0315012,0.743936,1.4696)
+No_Grid_DEBUG<< eval_no_omp[ia=0]: E_no_grid=0.239835, f_accum(0.0347949,0.74723,1.44569)
+No_Grid_DEBUG<< eval_no_omp[ia=0]: E_no_grid=0.232732, f_accum(0.0359131,0.748348,1.42044)
+No_Grid_DEBUG<< eval_no_omp[ia=0]: E_no_grid=0.225606, f_accum(0.0350769,0.747512,1.39537)
+No_Grid_DEBUG<< eval_no_omp[ia=0]: E_no_grid=0.218813, f_accum(0.0326564,0.745092,1.37176)
+No_Grid_DEBUG<< eval_no_omp[ia=0]: E_no_grid=0.212625, f_accum(0.0291007,0.741536,1.35052)
+No_Grid_DEBUG<< eval_no_omp[ia=0]: E_no_grid=0.207223, f_accum(0.0248718,0.737307,1.33223)
+No_Grid_DEBUG<< eval_no_omp[ia=0]: E_no_grid=0.202698, f_accum(0.0203945,0.73283,1.31713)
+No_Grid_DEBUG<< eval_no_omp[ia=0]: E_no_grid=0.199063, f_accum(0.0160232,0.728458,1.3052)
+No_Grid_DEBUG<< eval_no_omp[ia=0]: E_no_grid=0.196269, f_accum(0.0120261,0.724461,1.29619)
+No_Grid_DEBUG<< eval_no_omp[ia=0]: E_no_grid=0.194221, f_accum(0.00858127,0.721016,1.28974)
+No_Grid_DEBUG<< eval_no_omp[ia=0]: E_no_grid=0.192799, f_accum(0.00578219,0.718217,1.28539)
+No_Grid_DEBUG<< eval_no_omp[ia=0]: E_no_grid=0.19187, f_accum(0.00364599,0.716081,1.28265)
+No_Grid_DEBUG<< eval_no_omp[ia=0]: E_no_grid=0.191305, f_accum(0.00212413,0.714559,1.28108)
+No_Grid_DEBUG<< eval_no_omp[ia=0]: E_no_grid=0.190992, f_accum(0.00111354,0.713549,1.28027)
+No_Grid_DEBUG<< eval_no_omp[ia=0]: E_no_grid=0.190841, f_accum(0.000468525,0.712904,1.27991)
+No_Grid_DEBUG<< eval_no_omp[ia=0]: E_no_grid=0.190797, f_accum(1.38944e-05,0.712449,1.27982)
+No_Grid_DEBUG<< eval_no_omp[ia=0]: E_no_grid=0.190841, f_accum(-0.000440736,0.711994,1.27991)
+No_Grid_DEBUG<< eval_no_omp[ia=0]: E_no_grid=0.190992, f_accum(-0.00108575,0.711349,1.28027)
+No_Grid_DEBUG<< eval_no_omp[ia=0]: E_no_grid=0.191305, f_accum(-0.00209634,0.710339,1.28108)
+No_Grid_DEBUG<< eval_no_omp[ia=0]: E_no_grid=0.19187, f_accum(-0.0036182,0.708817,1.28265)
+No_Grid_DEBUG<< eval_no_omp[ia=0]: E_no_grid=0.192799, f_accum(-0.0057544,0.706681,1.28539)
+No_Grid_DEBUG<< eval_no_omp[ia=0]: E_no_grid=0.194221, f_accum(-0.00855348,0.703882,1.28974)
+No_Grid_DEBUG<< eval_no_omp[ia=0]: E_no_grid=0.196269, f_accum(-0.0119983,0.700437,1.29619)
+No_Grid_DEBUG<< eval_no_omp[ia=0]: E_no_grid=0.199063, f_accum(-0.0159955,0.69644,1.3052)
+No_Grid_DEBUG<< eval_no_omp[ia=0]: E_no_grid=0.202698, f_accum(-0.0203667,0.692068,1.31713)
+No_Grid_DEBUG<< eval_no_omp[ia=0]: E_no_grid=0.207223, f_accum(-0.024844,0.687591,1.33223)
+No_Grid_DEBUG<< eval_no_omp[ia=0]: E_no_grid=0.212625, f_accum(-0.0290729,0.683362,1.35052)
+No_Grid_DEBUG<< eval_no_omp[ia=0]: E_no_grid=0.218813, f_accum(-0.0326286,0.679807,1.37176)
+No_Grid_DEBUG<< eval_no_omp[ia=0]: E_no_grid=0.225606, f_accum(-0.0350491,0.677386,1.39537)
+No_Grid_DEBUG<< eval_no_omp[ia=0]: E_no_grid=0.232732, f_accum(-0.0358853,0.67655,1.42044)
+No_Grid_DEBUG<< eval_no_omp[ia=0]: E_no_grid=0.239835, f_accum(-0.0347671,0.677668,1.44569)
+No_Grid_DEBUG<< eval_no_omp[ia=0]: E_no_grid=0.246499, f_accum(-0.0314734,0.680962,1.4696)
+No_Grid_DEBUG<< eval_no_omp[ia=0]: E_no_grid=0.252284, f_accum(-0.025994,0.686441,1.49053)
+No_Grid_DEBUG<< eval_no_omp[ia=0]: E_no_grid=0.256772, f_accum(-0.0185658,0.693869,1.50686)
+No_Grid_DEBUG<< eval_no_omp[ia=0]: E_no_grid=0.259617, f_accum(-0.00967033,0.702765,1.51726)
+No_Grid_DEBUG<< eval_no_omp[ia=0]: E_no_grid=0.260593, f_accum(1.38944e-05,0.712449,1.52083)
+No_Grid_DEBUG<< eval_no_omp[ia=0]: E_no_grid=0.259617, f_accum(0.00969812,0.722133,1.51726)
+No_Grid_DEBUG<< eval_no_omp[ia=0]: E_no_grid=0.256772, f_accum(0.0185936,0.731029,1.50686)
+No_Grid_DEBUG<< eval_no_omp[ia=0]: E_no_grid=0.252284, f_accum(0.0260218,0.738457,1.49053)
+No_Grid_DEBUG<< eval_no_omp[ia=0]: E_no_grid=0.246499, f_accum(0.0315012,0.743936,1.4696)
+No_Grid_DEBUG<< eval_no_omp[ia=0]: E_no_grid=0.239835, f_accum(0.0347949,0.74723,1.44569)
+No_Grid_DEBUG<< eval_no_omp[ia=0]: E_no_grid=0.232732, f_accum(0.0359131,0.748348,1.42044)
+No_Grid_DEBUG<< eval_no_omp[ia=0]: E_no_grid=0.225606, f_accum(0.0350769,0.747512,1.39537)
+No_Grid_DEBUG<< eval_no_omp[ia=0]: E_no_grid=0.218813, f_accum(0.0326564,0.745092,1.37176)
+No_Grid_DEBUG<< eval_no_omp[ia=0]: E_no_grid=0.212625, f_accum(0.0291007,0.741536,1.35052)
+No_Grid_DEBUG<< eval_no_omp[ia=0]: E_no_grid=0.207223, f_accum(0.0248718,0.737307,1.33223)
+No_Grid_DEBUG<< eval_no_omp[ia=0]: E_no_grid=0.202698, f_accum(0.0203945,0.73283,1.31713)
+No_Grid_DEBUG<< eval_no_omp[ia=0]: E_no_grid=0.199063, f_accum(0.0160232,0.728458,1.3052)
+No_Grid_DEBUG<< eval_no_omp[ia=0]: E_no_grid=0.196269, f_accum(0.0120261,0.724461,1.29619)
+No_Grid_DEBUG<< eval_no_omp[ia=0]: E_no_grid=0.194221, f_accum(0.00858127,0.721016,1.28974)
+No_Grid_DEBUG<< eval_no_omp[ia=0]: E_no_grid=0.192799, f_accum(0.00578219,0.718217,1.28539)
+No_Grid_DEBUG<< eval_no_omp[ia=0]: E_no_grid=0.19187, f_accum(0.00364599,0.716081,1.28265)
+No_Grid_DEBUG<< eval_no_omp[ia=0]: E_no_grid=0.191305, f_accum(0.00212413,0.714559,1.28108)
+No_Grid_DEBUG<< eval_no_omp[ia=0]: E_no_grid=0.190992, f_accum(0.00111354,0.713549,1.28027)
+No_Grid_DEBUG<< eval_no_omp[ia=0]: E_no_grid=0.190841, f_accum(0.000468525,0.712904,1.27991)
+No_Grid_DEBUG<< eval_no_omp[ia=0]: E_no_grid=0.190797, f_accum(1.38943e-05,0.712449,1.27982)
+No_Grid_DEBUG<< eval_no_omp[ia=0]: E_no_grid=0.190841, f_accum(-0.000440737,0.711994,1.27991)
+No_Grid_DEBUG<< eval_no_omp[ia=0]: E_no_grid=0.190992, f_accum(-0.00108575,0.711349,1.28027)
+No_Grid_DEBUG<< eval_no_omp[ia=0]: E_no_grid=0.191305, f_accum(-0.00209634,0.710339,1.28108)
+No_Grid_DEBUG<< eval_no_omp[ia=0]: E_no_grid=0.19187, f_accum(-0.0036182,0.708817,1.28265)
+No_Grid_DEBUG<< eval_no_omp[ia=0]: E_no_grid=0.192799, f_accum(-0.0057544,0.706681,1.28539)
+No_Grid_DEBUG<< eval_no_omp[ia=0]: E_no_grid=0.194221, f_accum(-0.00855348,0.703882,1.28974)
+No_Grid_DEBUG<< eval_no_omp[ia=0]: E_no_grid=0.196269, f_accum(-0.0119983,0.700437,1.29619)
+No_Grid_DEBUG<< eval_no_omp[ia=0]: E_no_grid=0.199063, f_accum(-0.0159955,0.69644,1.3052)
+No_Grid_DEBUG<< eval_no_omp[ia=0]: E_no_grid=0.202698, f_accum(-0.0203667,0.692068,1.31713)
+No_Grid_DEBUG<< eval_no_omp[ia=0]: E_no_grid=0.207223, f_accum(-0.024844,0.687591,1.33223)
+No_Grid_DEBUG<< eval_no_omp[ia=0]: E_no_grid=0.212625, f_accum(-0.0290729,0.683362,1.35052)
+No_Grid_DEBUG<< eval_no_omp[ia=0]: E_no_grid=0.218813, f_accum(-0.0326286,0.679807,1.37176)
+No_Grid_DEBUG<< eval_no_omp[ia=0]: E_no_grid=0.225606, f_accum(-0.0350491,0.677386,1.39537)
+No_Grid_DEBUG<< eval_no_omp[ia=0]: E_no_grid=0.232732, f_accum(-0.0358853,0.67655,1.42044)
+No_Grid_DEBUG<< eval_no_omp[ia=0]: E_no_grid=0.239835, f_accum(-0.0347671,0.677668,1.44569)
+No_Grid_DEBUG<< eval_no_omp[ia=0]: E_no_grid=0.246499, f_accum(-0.0314734,0.680962,1.4696)
+No_Grid_DEBUG<< eval_no_omp[ia=0]: E_no_grid=0.252284, f_accum(-0.025994,0.686441,1.49053)
+No_Grid_DEBUG<< eval_no_omp[ia=0]: E_no_grid=0.256772, f_accum(-0.0185658,0.693869,1.50686)
+No_Grid_DEBUG<< eval_no_omp[ia=0]: E_no_grid=0.259617, f_accum(-0.00967033,0.702765,1.51726)
+No_Grid_DEBUG<< eval_no_omp[ia=0]: E_no_grid=0.260593, f_accum(1.38935e-05,0.712449,1.52083)
+No_Grid_DEBUG<< eval_no_omp[ia=0]: E_no_grid=0.259617, f_accum(0.00969812,0.722133,1.51726)
+No_Grid_DEBUG<< eval_no_omp[ia=0]: E_no_grid=0.256772, f_accum(0.0185936,0.731029,1.50686)
+No_Grid_DEBUG<< eval_no_omp[ia=0]: E_no_grid=0.252284, f_accum(0.0260218,0.738457,1.49053)
+No_Grid_DEBUG<< eval_no_omp[ia=0]: E_no_grid=0.246499, f_accum(0.0315012,0.743936,1.4696)
+No_Grid_DEBUG<< eval_no_omp[ia=0]: E_no_grid=0.239835, f_accum(0.0347949,0.74723,1.44569)
+No_Grid_DEBUG<< eval_no_omp[ia=0]: E_no_grid=0.232732, f_accum(0.0359131,0.748348,1.42044)
+No_Grid_DEBUG<< eval_no_omp[ia=0]: E_no_grid=0.225606, f_accum(0.0350769,0.747512,1.39537)
+No_Grid_DEBUG<< eval_no_omp[ia=0]: E_no_grid=0.218813, f_accum(0.0326564,0.745092,1.37176)
+No_Grid_DEBUG<< eval_no_omp[ia=0]: E_no_grid=0.212625, f_accum(0.0291007,0.741536,1.35052)
+No_Grid_DEBUG<< eval_no_omp[ia=0]: E_no_grid=0.207223, f_accum(0.0248718,0.737307,1.33223)
+No_Grid_DEBUG<< eval_no_omp[ia=0]: E_no_grid=0.202698, f_accum(0.0203945,0.73283,1.31713)
+No_Grid_DEBUG<< eval_no_omp[ia=0]: E_no_grid=0.199063, f_accum(0.0160232,0.728458,1.3052)
+No_Grid_DEBUG<< eval_no_omp[ia=0]: E_no_grid=0.196269, f_accum(0.0120261,0.724461,1.29619)
+No_Grid_DEBUG<< eval_no_omp[ia=0]: E_no_grid=0.194221, f_accum(0.00858126,0.721016,1.28974)
+No_Grid_DEBUG<< eval_no_omp[ia=0]: E_no_grid=0.192799, f_accum(0.00578218,0.718217,1.28539)
+No_Grid_DEBUG<< eval_no_omp[ia=0]: E_no_grid=0.19187, f_accum(0.00364598,0.716081,1.28265)
+No_Grid_DEBUG<< eval_no_omp[ia=0]: E_no_grid=0.191305, f_accum(0.00212412,0.714559,1.28108)
+No_Grid_DEBUG<< eval_no_omp[ia=0]: E_no_grid=0.190992, f_accum(0.00111352,0.713549,1.28027)
+No_Grid_DEBUG<< eval_no_omp[ia=0]: E_no_grid=0.190841, f_accum(0.000468511,0.712904,1.27991)
+No_Grid_DEBUG<< eval_no_omp[ia=0]: E_no_grid=0.190797, f_accum(1.38783e-05,0.712449,1.27982)
+No_Grid_DEBUG<< eval_no_omp[ia=0]: E_no_grid=0.190841, f_accum(-0.000440755,0.711994,1.27991)
+No_Grid_DEBUG<< eval_no_omp[ia=0]: E_no_grid=0.190992, f_accum(-0.00108577,0.711349,1.28027)
+No_Grid_DEBUG<< eval_no_omp[ia=0]: E_no_grid=0.191305, f_accum(-0.00209637,0.710339,1.28108)
+No_Grid_DEBUG<< eval_no_omp[ia=0]: E_no_grid=0.19187, f_accum(-0.00361823,0.708817,1.28265)
+No_Grid_DEBUG<< eval_no_omp[ia=0]: E_no_grid=0.192799, f_accum(-0.00575443,0.706681,1.28539)
+No_Grid_DEBUG<< eval_no_omp[ia=0]: E_no_grid=0.194222, f_accum(-0.00855351,0.703882,1.28974)
+No_Grid_DEBUG<< eval_no_omp[ia=0]: E_no_grid=0.196269, f_accum(-0.0119983,0.700437,1.29619)
+No_Grid_DEBUG<< eval_no_omp[ia=0]: E_no_grid=0.199063, f_accum(-0.0159955,0.69644,1.3052)
+No_Grid_DEBUG<< eval_no_omp[ia=0]: E_no_grid=0.202698, f_accum(-0.0203668,0.692068,1.31713)
+No_Grid_DEBUG<< eval_no_omp[ia=0]: E_no_grid=0.207223, f_accum(-0.0248441,0.687591,1.33223)
+No_Grid_DEBUG<< eval_no_omp[ia=0]: E_no_grid=0.212625, f_accum(-0.029073,0.683362,1.35052)
+No_Grid_DEBUG<< eval_no_omp[ia=0]: E_no_grid=0.218813, f_accum(-0.0326287,0.679806,1.37176)
+No_Grid_DEBUG<< eval_no_omp[ia=0]: E_no_grid=0.225606, f_accum(-0.0350492,0.677386,1.39537)
+No_Grid_DEBUG<< eval_no_omp[ia=0]: E_no_grid=0.232732, f_accum(-0.0358854,0.67655,1.42044)
+No_Grid_DEBUG<< eval_no_omp[ia=0]: E_no_grid=0.239835, f_accum(-0.0347673,0.677668,1.44569)
+No_Grid_DEBUG<< eval_no_omp[ia=0]: E_no_grid=0.246499, f_accum(-0.0314736,0.680962,1.4696)
+No_Grid_DEBUG<< eval_no_omp[ia=0]: E_no_grid=0.252284, f_accum(-0.0259942,0.686441,1.49053)
+No_Grid_DEBUG<< eval_no_omp[ia=0]: E_no_grid=0.256772, f_accum(-0.018566,0.693869,1.50686)
+No_Grid_DEBUG<< eval_no_omp[ia=0]: E_no_grid=0.259618, f_accum(-0.00967057,0.702765,1.51726)
+No_Grid_DEBUG<< eval_no_omp[ia=0]: E_no_grid=0.260593, f_accum(1.36244e-05,0.712449,1.52083)
+No_Grid_DEBUG<< eval_no_omp[ia=0]: E_no_grid=0.259618, f_accum(0.00969781,0.722133,1.51726)
+No_Grid_DEBUG<< eval_no_omp[ia=0]: E_no_grid=0.256772, f_accum(0.0185933,0.731028,1.50686)
+No_Grid_DEBUG<< eval_no_omp[ia=0]: E_no_grid=0.252284, f_accum(0.0260214,0.738457,1.49053)
+No_Grid_DEBUG<< eval_no_omp[ia=0]: E_no_grid=0.2465, f_accum(0.0315008,0.743936,1.4696)

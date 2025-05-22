@@ -635,12 +635,26 @@ class GridFF_cl:
         self.V_Coul_buff = cl.Buffer(self.ctx, cl.mem_flags.WRITE_ONLY, size=nxyz*bytePerFloat )
 
 
-    def make_MorseFF(self, atoms, REQs, nPBC=(4, 4, 0), dg=(0.1, 0.1, 0.1), ng=None,            lvec=[[20.0, 0.0, 0.0], [0.0, 20.0, 0.0], [0.0, 0.0, 20.0]],                     g0=(0.0, 0.0, 0.0), GFFParams=(0.1, 1.5, 0.0, 0.0), bTime=True, bReturn=True ):
+    def make_MorseFF(self, atoms, REQs, nPBC=(4, 4, 0), dg=None, ng=None, lvec=None, g0=None, GFFParams=(0.1, 1.5, 0.0, 0.0), bTime=True, bReturn=True ):
 
         T00 = time.perf_counter()
 
-        grid = GridShape( ns=ng, dg=dg, lvec=lvec, g0=g0 )
-        self.set_grid( grid )
+        # Only create a new grid if one doesn't exist or if parameters are explicitly provided
+        if self.gsh is None or dg is not None or ng is not None or lvec is not None or g0 is not None:
+            # Use existing grid parameters if not explicitly provided
+            if dg is None and hasattr(self, 'gsh'):
+                dg = self.gsh.dg
+                print(f"Using existing grid step size: {dg}")
+            if lvec is None and hasattr(self, 'gsh') and self.gsh.lvec is not None:
+                lvec = self.gsh.lvec
+                print(f"Using existing lattice vectors: {lvec}")
+            if g0 is None and hasattr(self, 'gsh'):
+                g0 = self.gsh.g0
+                print(f"Using existing grid origin: {g0}")
+            
+            grid = GridShape(ns=ng, dg=dg, lvec=lvec, g0=g0)
+            print(f"Creating grid with: ns={grid.ns}, dg={grid.dg}, lvec={lvec}")
+            self.set_grid(grid)
         
         # atoms.apos = xyzq[:,:3]
         # print("New_Atoms:",atoms.shape)
@@ -1159,14 +1173,14 @@ class GridFF_cl:
 
     def makeCoulombEwald_slab(self, atoms, Lz_slab=20.0, dipol=0.0, niter=4, bDipoleCoorection=False, bReturn=True, bTranspose=False, bSaveQgrid=False, bCheckVin=False, bCheckPoisson=False ):
         print( f"GridFF_cl::makeCoulombEwald_slab()  Lz_slab {Lz_slab}, dipol {dipol} niter {niter} bDipoleCoorectio {bDipoleCoorection} bReturn {bReturn} bTranspose {bTranspose} bSaveQgrid {bSaveQgrid} bCheckVin{bCheckVin} bCheckPoisson {bCheckPoisson} " )
-
+        
         clu.try_load_clFFT()
         if self.gcl is None: 
             print("ERROR in GridFF_cl::makeCoulombEwald() gcl is None, => please call set_grid() first " )
             exit()
 
         nz_slab   = Lz_slab/self.gsh.dg[2]; print("nz_slab", nz_slab, " ns[2] ", self.gcl.ns[2] )
-                
+        dz = self.gsh.dg[2]; print("Using grid step size dz =", dz)        
         raw_nz = self.gsh.ns[2] + nz_slab
         raw_nz_int = int(np.ceil(raw_nz))
         adj_nz = clu.next_nice(raw_nz_int, allowed_factors={2, 3, 5})
@@ -1185,7 +1199,9 @@ class GridFF_cl:
 
         self.try_make_buffs(buff_names, na, nxyz_slab )
         atoms_np = np.array(atoms, dtype=np.float32)
-
+        print("Checking GridFF_cl::makeCoulombEwald_slab() dg", self.gsh.dg)
+        print("Grid dimensions (ns):", self.gsh.ns)
+        print("Grid lattice vectors (Ls):", self.gsh.Ls)
         # nxyz = self.gcl.nxyz
         # na = len(atoms)
         # self.prepare_Coulomb_buffers(na, nxyz)

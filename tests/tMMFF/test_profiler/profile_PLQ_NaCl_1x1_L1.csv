@@ -1,0 +1,7 @@
+Category,Operation,Time (ms),% of Total
+Overall,total_PLQ,9379.40,100.00
+Overall,test_PLQ,9378.19,99.99
+Overall,poisson,967.78,10.32
+Overall,make_MorseFF,15.09,0.16
+Overall,data_loading,1.20,0.01
+Overall,set_grid,0.04,0.00

@@ -1,0 +1,16 @@
+OpenCL Profiling Summary
+======================
+
+Command: python -c import sys; sys.path.insert(0, '/home/indranil/git/FireCore'); from pyBall.tests import ocl_GridFF_new as gff; gff.test_gridFF_ocl(job='PLQ', fname='./data/xyz/NaCl_1x1_L1.xyz')
+Working Directory: /home/indranil/git/FireCore/tests/tMMFF/test_profiler
+Timestamp: 20250502_150037
+Exit Code: 0
+Total Execution Time: 1.43 seconds
+
+OpenCL Environment Variables:
+  PYOPENCL_COMPILER_OUTPUT=1
+  OPENCL_PROFILE=1
+  CUDA_PROFILE=1
+  CUDA_PROFILE_CSV=1
+  AMD_OCL_BUILD_OPTIONS_APPEND=-cl-opt-disable
+  INTEL_OPENCL_PROFILE=1

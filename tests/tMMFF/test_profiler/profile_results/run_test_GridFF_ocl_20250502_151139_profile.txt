@@ -1,0 +1,28 @@
+         916469 function calls (905366 primitive calls) in 0.512 seconds
+
+   Ordered by: cumulative time
+   List reduced from 2629 to 20 due to restriction <20>
+
+   ncalls  tottime  percall  cumtime  percall filename:lineno(function)
+    254/1    0.001    0.000    0.512    0.512 <frozen importlib._bootstrap_external>:877(exec_module)
+    442/2    0.000    0.000    0.511    0.256 <frozen importlib._bootstrap>:233(_call_with_frames_removed)
+    261/1    0.001    0.000    0.511    0.511 {built-in method builtins.exec}
+        1    0.000    0.000    0.511    0.511 /home/indranil/git/FireCore/tests/tMMFF/test_profiler/../run_test_GridFF_ocl.py:1(<module>)
+    307/3    0.001    0.000    0.511    0.170 <frozen importlib._bootstrap>:1022(_find_and_load)
+    303/3    0.001    0.000    0.511    0.170 <frozen importlib._bootstrap>:987(_find_and_load_unlocked)
+    294/3    0.001    0.000    0.510    0.170 <frozen importlib._bootstrap>:664(_load_unlocked)
+   423/15    0.001    0.000    0.473    0.032 {built-in method builtins.__import__}
+   438/55    0.001    0.000    0.447    0.008 <frozen importlib._bootstrap>:1053(_handle_fromlist)
+        1    0.000    0.000    0.346    0.346 /home/indranil/.local/lib/python3.10/site-packages/matplotlib/pyplot.py:1(<module>)
+ 1022/917    0.011    0.000    0.291    0.000 {built-in method builtins.__build_class__}
+      100    0.001    0.000    0.221    0.002 /home/indranil/.local/lib/python3.10/site-packages/matplotlib/artist.py:159(_update_set_signature_and_docstring)
+       99    0.000    0.000    0.217    0.002 /home/indranil/.local/lib/python3.10/site-packages/matplotlib/artist.py:126(__init_subclass__)
+      112    0.000    0.000    0.175    0.002 /home/indranil/.local/lib/python3.10/site-packages/matplotlib/artist.py:1841(kwdoc)
+        1    0.000    0.000    0.172    0.172 /home/indranil/.local/lib/python3.10/site-packages/matplotlib/figure.py:1(<module>)
+        1    0.000    0.000    0.162    0.162 /home/indranil/.local/lib/python3.10/site-packages/matplotlib/projections/__init__.py:1(<module>)
+      112    0.005    0.000    0.150    0.001 /home/indranil/.local/lib/python3.10/site-packages/matplotlib/artist.py:1602(pprint_setters)
+        1    0.000    0.000    0.144    0.144 /home/indranil/.local/lib/python3.10/site-packages/matplotlib/colorbar.py:1(<module>)
+     4050    0.010    0.000    0.122    0.000 /home/indranil/.local/lib/python3.10/site-packages/matplotlib/artist.py:1474(get_valid_values)
+        1    0.000    0.000    0.098    0.098 /home/indranil/.local/lib/python3.10/site-packages/numpy/__init__.py:1(<module>)
+
+

@@ -1,0 +1,151 @@
+/usr/lib/python3/dist-packages/pyopencl/characterize/__init__.py:152: CLCharacterizationWarning: wildly guessing local memory bank count on '<pyopencl.Device 'NVIDIA GeForce RTX 3060' on 'NVIDIA CUDA' at 0x558bdc5cc6c0>'
+  warn("wildly guessing local memory bank count on '%s'"
+/usr/lib/python3/dist-packages/pyopencl/__init__.py:266: CompilerWarning: Non-empty compiler output encountered. Set the environment variable PYOPENCL_COMPILER_OUTPUT=1 to see more.
+  warn("Non-empty compiler output encountered. Set the "
+DEBUG Dimensions:
+GPU slabPotential_zyx() ng(40,40,200,200) ixyz(0,0,51|1)) dz=0.1 dVcor=0 Vcor0=-0  
+   Grid: ng=(40,40,200,200), nz_=400
+After GPU slabPotential_zyx() ng(40,40,200) dz=0.1 dVcor=0 Vcor0=-0  
+   Index j range: 0 to 639999
+  Index i range: 0 to 320199
+  j calculation: (ng[0]-ix-1) + ng.x*(ng[1]-iy-1) + ng.x*ng.y*(nz_-iz-1)
+  i calculation: iz + ng.z*(iy + ng.y*ix)
+Kernel dimensions: ng=(40,40,200,200)
+Total buffer size: 320000
+Index ranges:
+  ix: 0 to 39
+  iy: 0 to 39
+  iz: 0 to 199
+GPU nAtoms 2 alphaMorse(1.5) R2damp(0.01) 
+GPU atom[0] pos(  2.0000,  2.0000,  0.0000| -0.7000) REQs (      1.97350001,      0.09921518,     -0.69999999,      0.00000000) R2damp(9.88131e-324) 
+GPU atom[1] pos(  0.0000,  0.0000,  0.0000|  0.7000) REQs (      1.49150002,      0.03606831,      0.69999999,      0.00000000) R2damp(9.88131e-324) 
+Selected device: NVIDIA GeForce RTX 3060
+Device Name: NVIDIA GeForce RTX 3060
+Max Compute Units: 28
+Max Work Group Size: 1024
+Global Memory Size: 11910.0625 MB
+Local Memory Size: 48.0 KB
+Max Clock Frequency: 1777 MHz
+Local Memory Access Granularity: 4 bytes
+Number of Local Memory Banks: 32
+Usable Local Memory Size: 49152 bytes
+Fast Math Options: ['-cl-mad-enable', '-cl-fast-relaxed-math', '-cl-no-signed-zeros', '-cl-strict-aliasing']
+SIMD Group Size: 32
+Double Precision Support: False
+ local_memory_per_workgroup() size= 64  __local []   3072.0  float32 
+
+===== PROFILING ENABLED =====
+
+py======= test_gridFF_ocl() START
+bSymetrize  False
+Raw atom types: [17 11]
+Raw atom charges: [-0.7  0.7]
+Qtot  0.0  Qabs  1.4
+Raw REvdW parameters from ElementTypes.dat: [[1.97350000e+00 9.84365166e-03]
+ [1.49150000e+00 1.30092313e-03]]
+
+Component-wise breakdown:
+Atom[0]:
+  Type: 17
+  Position: [2. 2. 0.]
+  Charge: -0.7
+  REvdW raw: [1.9735     0.00984365]
+  Final REQ: [ 1.9735      0.09921518 -0.7         0.        ]
+Atom[1]:
+  Type: 11
+  Position: [0. 0. 0.]
+  Charge: 0.7
+  REvdW raw: [1.49150000e+00 1.30092313e-03]
+  Final REQ: [1.4915     0.03606831 0.7        0.        ]
+Atoms: [[2. 2. 0.]
+ [0. 0. 0.]]
+Debug :: REQs = [[ 1.9735      0.09921518 -0.7         0.        ]
+ [ 1.4915      0.03606831  0.7         0.        ]]
+New_Atoms: [[2. 2. 0.]
+ [0. 0. 0.]]
+test_gridFF_ocl() z0=  0.0
+next_nice: for raw value 40 -> adjusted to 40
+next_nice: for raw value 40 -> adjusted to 40
+next_nice: for raw value 200 -> adjusted to 200
+!!!! Starting Coulomb potential calculation...
+GridFF_cl::makeCoulombEwald_slab()  Lz_slab 20.0, dipol 0.0 niter 2 bDipoleCoorectio False bReturn True bTranspose True bSaveQgrid True bCheckVinTrue bCheckPoisson False 
+nz_slab 200.0  ns[2]  200
+next_nice: for raw value 400 -> adjusted to 400
+ns_cl [ 40  40 400   0]
+try_make_buffs na= 2  nxyz= <module 'numpy' from '/home/indranil/.local/lib/python3.10/site-packages/numpy/__init__.py'>  nxyz*bytePerFloat= 2560000
+try_make_buff( atoms_buff ) reallocate to [bytes]:  32
+try_make_buff( Qgrid_buff ) reallocate to [bytes]:  5120000
+try_make_buff( Vgrid_buff ) reallocate to [bytes]:  5120000
+GridFF_cl::makeCoulombEwald_slab()._project_atoms_on_grid_quintic_pbc
+Debug Project Atoms on Grid Quintic PBC [-2.000000, -2.000000, 0.000000, 0.000000]
+Qgrid min,max  -0.11646251 0.11646251
+try_make_buffs na= 0  nxyz= <module 'numpy' from '/home/indranil/.local/lib/python3.10/site-packages/numpy/__init__.py'>  nxyz*bytePerFloat= 2560000
+GridFF_cl::prepare_poisson() sh= [400  40  40]
+FFT is about to be created with grid shape: (400, 40, 40)
+GridFF_cl::laplace_real_loop_inert() 
+try_make_buffs na= 0  nxyz= <module 'numpy' from '/home/indranil/.local/lib/python3.10/site-packages/numpy/__init__.py'>  nxyz*bytePerFloat= 2560000
+try_make_buff( V1_buff ) reallocate to [bytes]:  2560000
+try_make_buff( V2_buff ) reallocate to [bytes]:  2560000
+try_make_buff( vV_buff ) reallocate to [bytes]:  2560000
+
+Debug before slabPotential:
+V_Coul_buff does not exist yet
+dz, Lz, dL_slab, Lz_slab, Vol, dVcor, Vcor0 ,g0 ,g0 0.1 20.0 20.0 40.0 640.0000000000001 0.0 -0.0 [-2. -2.  0.  0.] (-2.0, -2.0, 0.0)
+try_make_buffs na= 0  nxyz= <module 'numpy' from '/home/indranil/.local/lib/python3.10/site-packages/numpy/__init__.py'>  nxyz*bytePerFloat= 1280000
+try_make_buff( V_Coul_buff ) reallocate to [bytes]:  1280000
+next_nice: for raw value 400 -> adjusted to 400
+Buffer dimensions: [40, 40, 200]
+Kernel parameters: ns_cl=[ 40  40 200 200]
+!!!!!! slabPotential()  bTranspose   True
+GridFF_cl::slabPotential() Transpose => slabPotential_zyx
+V_Coul_buff state in slabPotential: range [0.000, 0.000]
+
+Debug V_Coul_buff before final copy:
+Shape: (40, 40, 200)
+Range: 0.000 to 0.000
+
+Debug V_Coul_buff after final copy:
+Shape: (40, 40, 200)
+Range: 0.000 to 0.000
+Verification buffer shape: (40, 40, 200)
+Verification buffer range: [0.000, 0.000]
+Vin min,max  0.0 0.0
+V_Coul_buff: shape=(40, 40, 200), range=[0.000, 0.000]
+GridFF_cl::fit3D() dt=0.5, damp=0.05 nmaxiter=10000 Ftol1e-16
+try_make_buffs na= 0  nxyz= <module 'numpy' from '/home/indranil/.local/lib/python3.10/site-packages/numpy/__init__.py'>  nxyz*bytePerFloat= 1280000
+try_make_buff( Gs_buff ) reallocate to [bytes]:  1280000
+try_make_buff( fGs_buff ) reallocate to [bytes]:  1280000
+try_make_buff( dGs_buff ) reallocate to [bytes]:  1280000
+try_make_buff( vGs_buff ) reallocate to [bytes]:  1280000
+GridFF_cl::fit3D() time[s]  0.004292412999802764   preparation[s]   0.00014003300020704046 [s] nGOPs:  0.0032  speed[GOPs/s]:  0.7455014231265817  nstep, nxyz  10 320000
+GridFF_cl::fit3D() DONE Gs_buff.min,max:  0.0 0.0
+Starting Morse potential calculation...
+autoPBC(nPBC_mors):  (6, 6, 0)
+next_nice: for raw value 40 -> adjusted to 40
+next_nice: for raw value 40 -> adjusted to 40
+next_nice: for raw value 200 -> adjusted to 200
+try_make_buffs na= 2  nxyz= <module 'numpy' from '/home/indranil/.local/lib/python3.10/site-packages/numpy/__init__.py'>  nxyz*bytePerFloat= 1280000
+try_make_buff( REQs_buff ) reallocate to [bytes]:  32
+try_make_buff( V_Paul_buff ) reallocate to [bytes]:  1280000
+try_make_buff( V_Lond_buff ) reallocate to [bytes]:  1280000
+GridFF_cl::make_MorseFF() time[s]  0.014872400000058406   preparation[s]   0.00019386800022402895 [s] nGOPs:  0.10816  speed[GOPs/s]:  7.272531669372478  na,nxyz,npbc  2 320000 169
+GridFF_cl::fit3D() dt=0.5, damp=0.05 nmaxiter=10000 Ftol1e-16
+try_make_buffs na= 0  nxyz= <module 'numpy' from '/home/indranil/.local/lib/python3.10/site-packages/numpy/__init__.py'>  nxyz*bytePerFloat= 1280000
+GridFF_cl::fit3D() time[s]  2.419693962999645   preparation[s]   0.00010411300036139437 [s] nGOPs:  3.2  speed[GOPs/s]:  1.3224812926478626  nstep, nxyz  10000 320000
+GridFF_cl::fit3D() DONE Gs_buff.min,max:  -3.9209154e-22 71.93162
+GridFF_cl::fit3D() dt=0.5, damp=0.05 nmaxiter=10000 Ftol1e-16
+try_make_buffs na= 0  nxyz= <module 'numpy' from '/home/indranil/.local/lib/python3.10/site-packages/numpy/__init__.py'>  nxyz*bytePerFloat= 1280000
+GridFF_cl::fit3D() time[s]  2.4446542179998687   preparation[s]   0.00010920900012933998 [s] nGOPs:  3.2  speed[GOPs/s]:  1.308978577190409  nstep, nxyz  10000 320000
+GridFF_cl::fit3D() DONE Gs_buff.min,max:  -6.301869 -2.8758031e-12
+test_gridFF_ocl() path =  ./data/NaCl_1x1_L1
+Paul  min,max =  -3.9209154e-22 71.93162
+Lond  min,max =  -6.301869 -2.8758031e-12
+Coul  min,max =  0.0 0.0
+CoulB min,max =  0.0 0.0
+test_gridFF_ocl() path =  ./data/NaCl_1x1_L1
+Final PLQ Coulomb layer stats: 0.0 0.0 0.0
+test_gridFF_ocl() - save Morse to:  ./data/NaCl_1x1_L1/Bspline_PLQd.npy
+py======= test_gridFF() DONE
+
+===== TOTAL EXECUTION TIME: 18.0454s =====
+
