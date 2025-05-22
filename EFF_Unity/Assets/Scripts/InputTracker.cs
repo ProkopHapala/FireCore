@@ -31,6 +31,10 @@ public class InputTracker : MonoBehaviour
         if(Input.GetKeyDown(KeyCode.R)) {
             GameController.main.SpawnGUI();
         }
+
+        if(Input.GetKeyDown(KeyCode.Escape)) {
+            GameController.main.inputFields.Despawn();
+        }
     }
 
     // void OnKeyDown(KeyDownEvent ev) {

@@ -1,3 +1,5 @@
+using System;
+using System.Linq.Expressions;
 using UnityEditor;
 using UnityEngine;
 
@@ -7,9 +9,12 @@ public class CameraControl : MonoBehaviour
 
     private new Camera camera;
     private Vector3 pivotPoint;
-    public float rotationSpeed = 100;
-    public float zoomSpeed = 3;
-    public float moveSpeed = 1;
+    [SerializeField] private float rotationSpeed;
+    [SerializeField] private float zoomSpeed;
+    [SerializeField] private float moveSpeed;
+
+    private Vector2 rotation = new Vector2(90, 0);
+    private float distanceToPivot = 30;
 
     void Awake() {
         camera = GetComponent<Camera>();
@@ -45,17 +50,37 @@ public class CameraControl : MonoBehaviour
             return;
         }
 
+        // if(Input.GetKey(KeyCode.RightArrow)) {
+        //     transform.RotateAround(pivotPoint, Vector3.up, -rotationSpeed * Time.deltaTime);
+        // }
+        // else if(Input.GetKey(KeyCode.LeftArrow)) {
+        //     transform.RotateAround(pivotPoint, Vector3.up, rotationSpeed * Time.deltaTime);
+        // }
+        // if(Input.GetKey(KeyCode.UpArrow)) {
+            
+        //     transform.RotateAround(pivotPoint, new Vector3(transform.position.z, 0, -transform.position.x), -rotationSpeed * Time.deltaTime);
+        // }
+        // else if(Input.GetKey(KeyCode.DownArrow)) {
+        //     transform.RotateAround(pivotPoint, new Vector3(transform.position.z, 0, -transform.position.x), rotationSpeed * Time.deltaTime);
+        // }
+        // if(Input.GetKey(KeyCode.K)) {
+        //     camera.fieldOfView += zoomSpeed * Time.deltaTime;
+        // }
+        // else if(Input.GetKey(KeyCode.L)) {
+        //     camera.fieldOfView -= zoomSpeed * Time.deltaTime;
+        // }
+
         if(Input.GetKey(KeyCode.RightArrow)) {
-            transform.RotateAround(pivotPoint, Vector3.up, -rotationSpeed * Time.deltaTime);
+            rotation.x += rotationSpeed * Time.deltaTime;
         }
         else if(Input.GetKey(KeyCode.LeftArrow)) {
-            transform.RotateAround(pivotPoint, Vector3.up, rotationSpeed * Time.deltaTime);
+            rotation.x -= rotationSpeed * Time.deltaTime;
         }
         if(Input.GetKey(KeyCode.UpArrow)) {
-            transform.RotateAround(pivotPoint, new Vector3(transform.position.z, 0, -transform.position.x), -rotationSpeed * Time.deltaTime);
+            rotation.y += rotationSpeed * Time.deltaTime;
         }
         else if(Input.GetKey(KeyCode.DownArrow)) {
-            transform.RotateAround(pivotPoint, new Vector3(transform.position.z, 0, -transform.position.x), rotationSpeed * Time.deltaTime);
+            rotation.y -= rotationSpeed * Time.deltaTime;
         }
         if(Input.GetKey(KeyCode.K)) {
             camera.fieldOfView += zoomSpeed * Time.deltaTime;
@@ -64,11 +89,23 @@ public class CameraControl : MonoBehaviour
             camera.fieldOfView -= zoomSpeed * Time.deltaTime;
         }
 
-        
+        UpdateRotation();
+    }
+
+    private void UpdateRotation() {
+        // transform.rotation = Quaternion.Euler(rotation.x, rotation.y, 0);
+        //float distanceToPivot = Vector3.Distance(transform.position, pivotPoint);
+        transform.position = pivotPoint + new Vector3(
+            (distanceToPivot * (float)Math.Cos(rotation.x)) * (float)Math.Cos(rotation.y), 
+            distanceToPivot * (float)Math.Sin(rotation.y), 
+            (distanceToPivot * (float)Math.Sin(rotation.x)) * (float)Math.Cos(rotation.y));
+
+        transform.LookAt(pivotPoint);
     }
 
     public void SetPivot(Vector3 newPivot) {
         transform.position += newPivot - pivotPoint;
         pivotPoint = newPivot;
+        distanceToPivot = Vector3.Distance(transform.position, pivotPoint);
     }
 }

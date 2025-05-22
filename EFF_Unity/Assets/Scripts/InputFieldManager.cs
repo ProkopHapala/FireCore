@@ -1,8 +1,10 @@
 using System;
 using System.Linq;
 using TMPro;
+using Unity.VisualScripting;
 using UnityEngine;
 using UnityEngine.Networking;
+using UnityEngine.Rendering.Universal;
 
 public class InputFieldManager : MonoBehaviour
 {
@@ -84,6 +86,11 @@ public class InputFieldManager : MonoBehaviour
             foreach(var field in fieldObjects) {
                 field.SetActive(true);
             }
+        }
+    }
+    public void Despawn() {
+        foreach(var field in fieldObjects) {
+            field.SetActive(false);
         }
     }
 }
