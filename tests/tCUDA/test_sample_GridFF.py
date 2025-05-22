@@ -57,16 +57,19 @@ grid_data = grid_data_
 #grid_data = create_linear_texture(grid_shape, sizes=None, dtype=np.float32)
 
 def func(X, Y, Z, fe):
-    fe[:, :, :, 0] = np.sin(X*0.17)  # Pauli
-    fe[:, :, :, 1] = np.sin(Y*0.2)   # London
-    fe[:, :, :, 2] = np.sin(Z*0.25)  # Coulomb
-    fe[:, :, :, 3] = fe[:, :, :, 0]**2 + fe[:, :, :, 1]**2 + fe[:, :, :, 2]**2 
+    sx = np.sin(X*0.25)
+    sy = np.sin(Y*0.2)
+    sz = np.sin(Z*0.15)
+    fe[:, :, :, 0] = sx*0  # Pauli
+    fe[:, :, :, 1] = sy*0  # London
+    fe[:, :, :, 2] = sx**2 + sy**2 + sz**2   # Coulomb
+    fe[:, :, :, 3] = (sx**2 + sy**2 + sz**2)*0 
     return fe
     
 grid_data = ut.create_linear_func( func, grid_shape, sizes=None, dtype=np.float32)
 
 grid_p0   = (0.0, 0.0, 0.0)  # Grid origin
-grid_step = (0.1, 0.1, 1.0)  # Grid spacing
+grid_step = (0.1, 0.1, 0.1)  # Grid spacing
 print(f"Initializing GridFF with shape {grid_shape}, p0={grid_p0}, step={grid_step}")
 
 #plot_2d_fe(grid_data[:, :, 10])
@@ -86,6 +89,7 @@ mol.neighs()
 print("Initializing MMFF...")
 mmff = MMFF.MMFF(bTorsion=False, verbosity=1)
 mmff.toMMFFsp3_loc(mol=mol, atom_types=atom_types)
+mmff.REQs[:,2] = 1.0 # Q = 1.0
 
 # Initialize OpenCL MD
 print("Initializing OpenCL MD...")
@@ -107,9 +111,12 @@ mdcl.setup_kernels()
 #pos_y, fe_y = mdcl.scan_1D(nsteps=40, d=[0.0,0.1,0.0], p0=[0.0,0.0,0.0], use_texture=use_texture)
 #pos_z, fe_z = mdcl.scan_1D(nsteps=40, d=[0.0,0.0,0.1], p0=[0.0,0.0,0.0], use_texture=use_texture)
 
-pos_x, fe_x = mdcl.scan_1D(nsteps=40, d=[1.0,0.0,0.0], p0=[0.0,0.0,0.0], use_texture=use_texture)
-pos_y, fe_y = mdcl.scan_1D(nsteps=40, d=[0.0,1.0,0.0], p0=[0.0,0.0,0.0], use_texture=use_texture)
-pos_z, fe_z = mdcl.scan_1D(nsteps=40, d=[0.0,0.0,1.0], p0=[0.0,0.0,0.0], use_texture=use_texture)
+d = 0.01
+dd=1e-4
+p0=[1.0+dd,1.0+dd,1.0+dd]
+pos_x, fe_x = mdcl.scan_1D(nsteps=160, d=[d,0.0,0.0], p0=p0, use_texture=use_texture)
+pos_y, fe_y = mdcl.scan_1D(nsteps=160, d=[0.0,d,0.0], p0=p0, use_texture=use_texture)
+pos_z, fe_z = mdcl.scan_1D(nsteps=160, d=[0.0,0.0,d], p0=p0, use_texture=use_texture)
 
 fig, (ax1,ax2,ax3) = plt.subplots(1,3, figsize=(15,5))
 ut.plot_1d_fe(pos_x[:,0], fe_x, ax=ax1, title="x-direction")

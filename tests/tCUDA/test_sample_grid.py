@@ -59,7 +59,7 @@ def func(X, Y, Z, fe):
 grid_data = ut.create_linear_func(func, grid_shape, sizes=None, dtype=np.float32)
 
 grid_p0   = (0.0, 0.0, 0.0)  # Grid origin
-grid_step = (0.1, 0.1, 1.0)  # Grid spacing
+grid_step = (0.1, 0.1, 0.1)  # Grid spacing
 print(f"Initializing GridFF with shape {grid_shape}, p0={grid_p0}, step={grid_step}")
 
 # ======= Create atoms and REQ parameters

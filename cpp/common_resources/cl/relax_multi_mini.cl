@@ -1451,22 +1451,23 @@ __kernel void getNonBond_GridFF_Bspline(
 
 __constant sampler_t sampler_bspline = CLK_NORMALIZED_COORDS_FALSE | CLK_ADDRESS_REPEAT | CLK_FILTER_NEAREST;
 
+__constant sampler_t sampler_norm_rep_near = CLK_NORMALIZED_COORDS_TRUE | CLK_ADDRESS_REPEAT | CLK_FILTER_NEAREST;
 
-// 1D B-spline interpolation along Z, combining 4 potential components Reads 4 float4 values from texture at (ix, iy, qz[0..3]),  Combines R,G,B,A channels using C_coeffs (PLQH)m  Returns (Energy, dEnergy/duz)
-inline float2 fe1Dcomb_tex(__read_only image3d_t img,
-                           sampler_t smp,
-                           const float4 C,             // Coefficients for combining P,L,Q,H
-                           const float4 pz,            // B-spline basis functions for z (B0, B1, B2, B3)
-                           const float4 dz,            // B-spline derivative basis functions for z (B'0, B'1, B'2, B'3)
-                           const int ix, const int iy, // X and Y integer coordinates
-                           const int4 qz)    // 4 integer Z coordinates
-{
+
+// 1D B-spline interpolation along Z, combining 4 potential components Reads 4 float4 values from texture at (ix, iy, qz[0..3]),  Combines R,G,B,A channels using C_coeffs (PLQH),  Returns (Energy, dEnergy/duz)
+inline float2 fe1Dcomb_tex_(
+    __read_only image3d_t img,  // 3D texture storing (Pauli, London, Coulomb, H-bond_correction) potential values
+    const float4 C,             // Coefficients for combining P,L,Q,H
+    const float4 pz,            // B-spline basis functions for z (B0, B1, B2, B3)
+    const float4 dz,            // B-spline basis functions for z (B'0, B'1, B'2, B'3) derivatives
+    const int3 i      
+){
     // Combine Pauli, London, Coulomb, H-bond components using C = (P,L,Q,H) for each grid point
     const float4 cs = (float4)(
-        dot(C, read_imagef(img, smp, (int4)(ix, iy, qz.x, 0))), 
-        dot(C, read_imagef(img, smp, (int4)(ix, iy, qz.y, 0))), 
-        dot(C, read_imagef(img, smp, (int4)(ix, iy, qz.z, 0))), 
-        dot(C, read_imagef(img, smp, (int4)(ix, iy, qz.w, 0)))
+        dot(C, read_imagef(img, sampler_bspline, (int4)(i.x, i.y, i.z  ,0) )), 
+        dot(C, read_imagef(img, sampler_bspline, (int4)(i.x, i.y, i.z+1,0) )), 
+        dot(C, read_imagef(img, sampler_bspline, (int4)(i.x, i.y, i.z+2,0) )), 
+        dot(C, read_imagef(img, sampler_bspline, (int4)(i.x, i.y, i.z+3,0) ))
     );
     // Interpolate energy and its derivative w.r.t. u_z using B-spline basis
     return (float2)(
@@ -1475,23 +1476,26 @@ inline float2 fe1Dcomb_tex(__read_only image3d_t img,
     );
 }
 
+
 // 2D B-spline interpolation in YZ plane, for a given X-coordinate slice
 // Calls fe1Dcomb_tex four times.
 // Returns (dEnergy/duy, dEnergy/duz, Energy)
-inline float3 fe2d_comb_tex(__read_only image3d_t img,
-                            sampler_t smp,
-                            const int  ix,         // Single X integer coordinate for this slice
-                            const int4 qy,         // 4 integer Y coordinates
-                            const int4 qz,         // 4 integer Z coordinates
-                            const float4 C,        // Coefficients for combining P,L,Q,H
-                            const float4 pz, const float4 dz,  // Basis for Z
-                            const float4 py, const float4 dy)  // Basis for Y
-{
+inline float3 fe2d_comb_tex_(
+    __read_only image3d_t img,  // 3D texture storing (Pauli, London, Coulomb, H-bond_correction) potential values
+    const int  ix,              // Single X integer coordinate for this slice
+    const int4 qy,              // 4 integer Y coordinates
+    const int  iz,              // pixel index along z-axis
+    const float4 C,             // Coefficients for combining P,L,Q,H
+    const float4 pz,            // B-spline polynomials for Z
+    const float4 dz,            // B-spline polynomials for Z derivative
+    const float4 py,            // B-spline polynomials for Y 
+    const float4 dy             // B-spline polynomials for Y derivative
+){
     // Interpolate along Z for 4 different Y lines (at the given ix)
-    const float2 fe0 = fe1Dcomb_tex(img, smp, C, pz, dz, ix, qy.x, qz);
-    const float2 fe1 = fe1Dcomb_tex(img, smp, C, pz, dz, ix, qy.y, qz);
-    const float2 fe2 = fe1Dcomb_tex(img, smp, C, pz, dz, ix, qy.z, qz);
-    const float2 fe3 = fe1Dcomb_tex(img, smp, C, pz, dz, ix, qy.w, qz);
+    const float2 fe0 = fe1Dcomb_tex_(img, C, pz, dz, (int3){ix, qy.x, iz});
+    const float2 fe1 = fe1Dcomb_tex_(img, C, pz, dz, (int3){ix, qy.y, iz});
+    const float2 fe2 = fe1Dcomb_tex_(img, C, pz, dz, (int3){ix, qy.z, iz});
+    const float2 fe3 = fe1Dcomb_tex_(img, C, pz, dz, (int3){ix, qy.w, iz});
 
     // feN.x is Energy(yN,      uz_interp)
     // feN.y is dEnergy/duz(yN, uz_interp)
@@ -1511,14 +1515,14 @@ inline float3 fe2d_comb_tex(__read_only image3d_t img,
 // PLQH: coefficients to combine the 4 potential components
 // xqis, yqis: precomputed PBC index patterns for X and Y dimensions
 // Returns (dEnergy/dux, dEnergy/duy, dEnergy/duz, Energy)
-inline float4 fe3d_pbc_comb_tex(const float3 u,
-                                const int3 n,
-                                __read_only image3d_t img,
-                                sampler_t smp,
-                                const float4 PLQH,
-                                __local const int4* xqis, // Patterns from make_inds_pbc for x-dim
-                                __local const int4* yqis) // Patterns from make_inds_pbc for y-dim
-{
+inline float4 fe3d_pbc_comb_tex_(
+    const float3 u,            // normalized coordinates (fractional voxel coordinates)
+    const int3 n,              // dimensions of the B-spline grid (texture dimensions)
+    __read_only image3d_t img, // 3D texture storing (Pauli, London, Coulomb, H-bond_correction) potential values
+    const float4 PLQH,         // coefficients to combine the 4 potential components
+    __local const int4* xqis,  // Patterns from make_inds_pbc for x-dim
+    __local const int4* yqis   // Patterns from make_inds_pbc for y-dim
+) {
     // Integer part of u (knot index preceding the point)
     // Matches original code's floor logic for ix, iy, iz
     int ix = (int)u.x;
@@ -1535,23 +1539,19 @@ inline float4 fe3d_pbc_comb_tex(const float3 u,
 
     // B-spline interpolation requires 4 knots starting from index (i-1).
     // The indices needed are (i-1, i, i+1, i+2).
-    const int ix_knot_start = ix - 1;
-    const int iy_knot_start = iy - 1;
-    const int iz_knot_start = iz - 1;
+    const int ix_ = ix - 1;
+    const int iy_ = iy - 1;
+    const int iz_ = iz - 1;
 
     // Boundary condition for Z: if iz_raw_knot is too close to edge, return zero.
     // iz_raw_knot must be in [1, n.z - 3] for full 4-knot support (iz_knot_start must be >=0, iz_knot_start+3 must be < n.z).
-    if ((iz < 1) || (iz >= n.z - 2)) {
-        return (float4)(0.0f, 0.0f, 0.0f, 0.0f);
-    }
-    // Absolute Z indices (no PBC for Z based on this check and index range)
-    const int4 qz = (int4)(iz_knot_start, iz_knot_start + 1, iz_knot_start + 2, iz_knot_start + 3);
+    if ((iz < 1) || (iz >= n.z - 2)) {  return (float4)(1.2345f, 0.0f, 0.0f, 0.0f); }
 
     // Apply PBC for X and Y dimensions to get base knot index for choose_inds_pbc_3
     // The base knot index for choose_inds_pbc_3 should be the starting index *after* modulo,
     // i.e., (ix-1) % n.x.
-    const int ix_pbc_base = modulo(ix_knot_start, n.x);
-    const int iy_pbc_base = modulo(iy_knot_start, n.y);
+    const int ix_pbc_base = modulo(ix_, n.x);
+    const int iy_pbc_base = modulo(iy_, n.y);
 
     // Get the 4 absolute integer grid indices for X and Y using PBC logic
     // These indices will be used directly in read_imagef
@@ -1563,13 +1563,106 @@ inline float4 fe3d_pbc_comb_tex(const float3 u,
     const float4 by = basis(ty);  const float4 dy = dbasis(ty);
     const float4 bx = basis(tx);  const float4 dx = dbasis(tx);
 
+    //return read_imagef(img, smp, (int4)( qx.x, qy.x, iz, 0 ));
+    //return read_imagef(img, smp, (int4)( qx.y, qy.y, iz+1, 0 ));
+
+    //float2 efz = fe1Dcomb_tex(img, PLQH, bz, dz, (int3){ix, iy, iz});
+    //return (float4){0.0f,0.0f,efz.y,efz.x};
+
     // Interpolate along YZ for 4 different X planes
     // E#.x = dE/duy, E#.y = dE/duz, E#.z = E, all at (qx.#, u_y_interp, u_z_interp)
-    const float3 E1 = fe2d_comb_tex(img, smp, qx.x, qy, qz, PLQH, bz, dz, by, dy);
-    const float3 E2 = fe2d_comb_tex(img, smp, qx.y, qy, qz, PLQH, bz, dz, by, dy);
-    const float3 E3 = fe2d_comb_tex(img, smp, qx.z, qy, qz, PLQH, bz, dz, by, dy);
-    const float3 E4 = fe2d_comb_tex(img, smp, qx.w, qy, qz, PLQH, bz, dz, by, dy);
+    const float3 E1 = fe2d_comb_tex_(img, qx.x, qy, iz, PLQH, bz, dz, by, dy);
+    const float3 E2 = fe2d_comb_tex_(img, qx.y, qy, iz, PLQH, bz, dz, by, dy);
+    const float3 E3 = fe2d_comb_tex_(img, qx.z, qy, iz, PLQH, bz, dz, by, dy);
+    const float3 E4 = fe2d_comb_tex_(img, qx.w, qy, iz, PLQH, bz, dz, by, dy);
 
+    // Interpolate along X using results from 2D YZ-interpolation
+    // Result is (dE/dux, dE/duy, dE/duz, E_total)
+    return (float4)(
+        dot(dx, (float4)(E1.z, E2.z, E3.z, E4.z)),     // dEnergy/du_x = sum_i (B'_i(u_x) * Energy(x_i, u_y_interp, u_z_interp))
+        dot(bx, (float4)(E1.x, E2.x, E3.x, E4.x)),     // dEnergy/du_y = sum_i (B_i(u_x) * dEnergy/du_y(x_i, u_y_interp, u_z_interp))
+        dot(bx, (float4)(E1.y, E2.y, E3.y, E4.y)),     // dEnergy/du_z = sum_i (B_i(u_x) * dEnergy/du_z(x_i, u_y_interp, u_z_interp))
+        dot(bx, (float4)(E1.z, E2.z, E3.z, E4.z))      // Energy       = sum_i (B_i(u_x) * Energy(x_i, u_y_interp, u_z_interp))
+    );
+    
+
+}
+
+
+
+
+
+
+
+
+
+// ======================================================================
+//         B-spline Interpolation Functions using 3D Texture  New ( using (float4) texture repeat and normalized coordinates )
+// ======================================================================
+
+inline float2 fe1Dcomb_tex(
+    __read_only image3d_t img,  // 3D texture storing (Pauli, London, Coulomb, H-bond_correction) potential values
+    const float4 C,             // Coefficients for combining P,L,Q,H
+    const float4 pz,            // B-spline basis functions for z (B0, B1, B2, B3)
+    const float4 dz,            // B-spline basis functions for z (B'0, B'1, B'2, B'3) derivatives
+    const float3 uc,            // normalized coordinates (fractional cell coordinates)
+    const float duz             // duz = 1.0f/n.z ( shift by one voxel in z-direction)
+){
+    // Combine Pauli, London, Coulomb, H-bond components using C = (P,L,Q,H) for each grid point
+    const float4 cs = (float4)(
+        dot(C, read_imagef(img, sampler_norm_rep_near, (float4)(uc.x, uc.y, uc.z          , 0.0f ) )), 
+        dot(C, read_imagef(img, sampler_norm_rep_near, (float4)(uc.x, uc.y, uc.z+duz*1.0f , 0.0f ) )), 
+        dot(C, read_imagef(img, sampler_norm_rep_near, (float4)(uc.x, uc.y, uc.z+duz*2.0f , 0.0f ) )), 
+        dot(C, read_imagef(img, sampler_norm_rep_near, (float4)(uc.x, uc.y, uc.z+duz*3.0f , 0.0f ) ))
+    );
+    // Interpolate energy and its derivative w.r.t. u_z using B-spline basis
+    return (float2)(
+        dot(pz, cs), // Energy
+        dot(dz, cs)  // dEnergy/du_z
+    );
+}
+
+inline float3 fe2d_comb_tex(
+    __read_only image3d_t img,  // 3D texture storing (Pauli, London, Coulomb, H-bond_correction) potential values
+    const float3 uc,            // normalized coordinates (fractional cell coordinates)
+    const float4 C,             // Coefficients for combining P,L,Q,H
+    const float4 pz,            // B-spline polynomials for Z
+    const float4 dz,            // B-spline polynomials for Z derivative
+    const float4 py,            // B-spline polynomials for Y 
+    const float4 dy,            // B-spline polynomials for Y derivative
+    const float3 dc
+){
+    // Interpolate along Z for 4 different Y lines (at the given ix)
+    const float2 fe0 = fe1Dcomb_tex(img, C, pz, dz, (float3){uc.x, uc.y           , uc.z }, dc.z );
+    const float2 fe1 = fe1Dcomb_tex(img, C, pz, dz, (float3){uc.x, uc.y+dc.y      , uc.z }, dc.z );
+    const float2 fe2 = fe1Dcomb_tex(img, C, pz, dz, (float3){uc.x, uc.y+dc.y*2.0f , uc.z }, dc.z );
+    const float2 fe3 = fe1Dcomb_tex(img, C, pz, dz, (float3){uc.x, uc.y+dc.y*3.0f , uc.z }, dc.z );
+    // Interpolate along Y using results from 1D Z-interpolation
+    return (float3)(
+        dot(dy, (float4)(fe0.x, fe1.x, fe2.x, fe3.x)),     // dEnergy/du_y = sum_j (B'_j(u_y) * Energy(y_j, u_z_interp))
+        dot(py, (float4)(fe0.y, fe1.y, fe2.y, fe3.y)),     // dEnergy/du_z = sum_j (B_j(u_y) * dEnergy/du_z(y_j, u_z_interp))
+        dot(py, (float4)(fe0.x, fe1.x, fe2.x, fe3.x))      // Energy       = sum_j (B_j(u_y) * Energy(y_j, u_z_interp))
+    );
+}
+
+inline float4 fe3d_pbc_comb_tex(
+    const float3 u,            // normalized coordinates (fractional voxel coordinates)
+    const int3   n,            // dimensions of the B-spline grid (texture dimensions)
+    __read_only image3d_t img, // 3D texture storing (Pauli, London, Coulomb, H-bond_correction) potential values
+    const float4 PLQH          // coefficients to combine the 4 potential components
+) {
+    float4 bx,by,bz, dx,dy,dz;
+    {  int ix = (int)u.x; const float tx=u.x - ix;  bx=basis(tx);  dx=dbasis(tx); }
+    {  int iy = (int)u.y; const float ty=u.y - iy;  by=basis(ty);  dy=dbasis(ty); }
+    {  int iz = (int)u.z; const float tz=u.z - iz;  bz=basis(tz);  dz=dbasis(tz); }
+    const float3 dc = (float3){ 1.0f/n.x, 1.0f/n.y, 1.0f/n.z };
+    const float3 uc = u*dc;
+    // Interpolate along YZ for 4 different X planes
+    // E#.x = dE/duy, E#.y = dE/duz, E#.z = E, all at (qx.#, u_y_interp, u_z_interp)
+    const float3 E1 = fe2d_comb_tex(img, (float3){uc.x           , uc.y, uc.z}, PLQH, bz, dz, by, dy, dc);
+    const float3 E2 = fe2d_comb_tex(img, (float3){uc.x+dc.x      , uc.y, uc.z}, PLQH, bz, dz, by, dy, dc);
+    const float3 E3 = fe2d_comb_tex(img, (float3){uc.x+dc.x*2.0f , uc.y, uc.z}, PLQH, bz, dz, by, dy, dc);
+    const float3 E4 = fe2d_comb_tex(img, (float3){uc.x+dc.x*3.0f , uc.y, uc.z}, PLQH, bz, dz, by, dy, dc);
     // Interpolate along X using results from 2D YZ-interpolation
     // Result is (dE/dux, dE/duy, dE/duz, E_total)
     return (float4)(
@@ -1725,49 +1818,55 @@ __kernel void getNonBond_GridFF_Bspline_tex( // Renamed kernel to distinguish fr
 
     // ========== Molecule-Grid interaction with GridFF using tricubic Bspline (Texture based) ==================
 
-    __local int4 xqs[4]; // Local memory for PBC index patterns for X
-    __local int4 yqs[4]; // Local memory for PBC index patterns for Y
+    //__local int4 xqs[4]; // Local memory for PBC index patterns for X
+    //__local int4 yqs[4]; // Local memory for PBC index patterns for Y
 
     { // insulate gridff
         // Initialize local memory for PBC index patterns. Only first 8 work-items do this.
         // ToDo: We can perhaps remove this when using hardware periodic boundary conditions ( sampler with CLK_ADDRESS_REPEAT )
-        if      (iL<4){ xqs[iL]=make_inds_pbc(grid_ns.x,iL); }
-        else if (iL<8){ yqs[iL-4]=make_inds_pbc(grid_ns.y,iL-4); };
-        barrier(CLK_LOCAL_MEM_FENCE); // Ensure local memory is populated
+        //if      (iL<4){ xqs[iL]=make_inds_pbc(grid_ns.x,iL); }
+        //else if (iL<8){ yqs[iL-4]=make_inds_pbc(grid_ns.y,iL-4); };
+        //barrier(CLK_LOCAL_MEM_FENCE); // Ensure local memory is populated
 
         // Coefficients for combining Pauli, London, Coulomb, H-bond from the grid field
         // Matches original calculation using GFFParams.y (alphaMorse) and REQKi
         const float alphaMorse = GFFParams.y;
         const float ej = exp( alphaMorse * REQKi.x ); // REQKi.x is RvdW of atom_i
         const float4 PLQH = (float4){
-            ej*ej*REQKi.y,                   // Pauli coeff: EvdW_i * exp(2 * alphaMorse * RvdW_i)
-            ej*   REQKi.y,                   // London coeff: EvdW_i * exp(alphaMorse * RvdW_i)
+            ej*ej*REQKi.y,                   // Pauli coeff:   EvdW_i * exp(2 * alphaMorse * RvdW_i)
+            ej*   REQKi.y,                   // London coeff:  EvdW_i * exp(    alphaMorse * RvdW_i)
             REQKi.z,                         // Coulomb coeff: Q_i
             0.0f                             // H-bond coeff (assuming zeroed out)
         };
+        //const float4 PLQH = (float4){0.0f,0.0f,0.0f,1.0f};
 
         // Calculate normalized coordinates 'u' for B-spline interpolation
-        const float3 u = (posi - grid_p0.xyz) * grid_invStep.xyz;
-
+        const float3 u  = (posi - grid_p0.xyz) * grid_invStep.xyz;
+        //const float3 uc = (posi - grid_p0.xyz) * grid_invStep.xyz * (float3){ 1.f/(float)grid_ns.x, 1.f/(float)grid_ns.y, 1.f/(float)grid_ns.z};
         // Perform 3D B-spline interpolation using texture
         // fg contains (dE/dux, dE/duy, dE/duz, Energy)
-        float4 fg = fe3d_pbc_comb_tex(u, grid_ns.xyz, BsplinePLQH_tex, sampler_bspline, PLQH, xqs, yqs);
+        float4 fg = fe3d_pbc_comb_tex(u, grid_ns.xyz, BsplinePLQH_tex, PLQH);
 
-        // Convert derivatives from du space to real space: Fx = -dE/dx = - (dE/dux) * (dux/dx)
-        // dux/dx = grid_invStep.x, etc.
-        fg.xyz *= -grid_invStep.xyz; // grid_invStep components are positive
+        //float4 fg = fe3d_pbc_comb_tex(u, uc, BsplinePLQH_tex, PLQH);
+        
+        //fg.xyz *= -grid_invStep.xyz; // dux/dx = grid_invStep.x, etc.   Fx = -dE/dx = - (dE/dux) * (dux/dx)
 
-        //fe += fg; // Add GridFF force and energy to atom's total
+        //float4 fg = read_imagef(BsplinePLQH_tex, sampler_bspline, (float4)( u.x, u.y, u.z, 0.0));
+        //float4 fg = read_imagef(BsplinePLQH_tex, sampler_bspline, (int4)( (int)(u.x+0.5f), (int)(u.y+0.5f), (int)(u.z+0.5f), 0));
 
-        //float4 feg = read_imagef(BsplinePLQH_tex, sampler_bspline, (float4)( u.x, u.y, u.z, 0.0));
-        //float4 feg = read_imagef(BsplinePLQH_tex, sampler_bspline, (float4)( posi.x, posi.y, posi.z, 0.0) );
+        //float4 fg = read_imagef(BsplinePLQH_tex, sampler_bspline, (float4)( posi.x, posi.y, posi.z, 0.0) );
+        //float4 fg = read_imagef(BsplinePLQH_tex, sampler_bspline, (float4)( posi.x+0.5f, posi.y+0.5f, posi.z+0.5f, 0.0) );
 
-        float4 feg = read_imagef(BsplinePLQH_tex, sampler_bspline, (float4)( posi.x+0.5f, posi.y+0.5f, posi.z+0.5f, 0.0) );
+        //float4 fg = read_imagef(BsplinePLQH_tex, sampler_norm_rep_near, (float4)( uc.x+0.000001, uc.y+0.000001, uc.z+0.000001, 0.f ));
 
-        fe += feg;
+        fe += fg;
 
         // fes[iG] = fe; // If you have a separate energy buffer
 
+        //if((iG==iG_DBG)&&(iS==iS_DBG)){   printf( "GPU[%i] apos(%16.8f,%16.8f,%16.8f) u(%16.8f,%16.8f,%16.8f) fg(%16.8f,%16.8f,%16.8f,%16.8f) grid_p0(%16.8f,%16.8f,%16.8f) grid_invStep(%16.8f,%16.8f,%16.8f) \n", iG, posi.x,posi.y,posi.z, u.x,u.y,u.z, fg.x,fg.y,fg.z,fg.w, grid_p0.x,grid_p0.y,grid_p0.z, grid_invStep.x,grid_invStep.y,grid_invStep.z );   }
+        //if((iG==iG_DBG)&&(iS==iS_DBG)){   printf( "GPU[%i] PLQH(%16.8e,%16.8e,%16.8e,%16.8e) apos(%16.8f,%16.8f,%16.8f) u(%16.8f,%16.8f,%16.8f) fg(%16.8f,%16.8f,%16.8f,%16.8f) grid_ns(%3i,%3i,%3i) grid_invStep(%16.8f,%16.8f,%16.8f) \n", iG, PLQH.x,PLQH.y,PLQH.z,PLQH.w, posi.x,posi.y,posi.z, u.x,u.y,u.z, fg.x,fg.y,fg.z,fg.w, grid_ns.x,grid_ns.y,grid_ns.z, grid_invStep.x,grid_invStep.y,grid_invStep.z );   }
+        //if((iG==iG_DBG)&&(iS==iS_DBG)){   printf( "GPU[%i] apos(%16.8f,%16.8f,%16.8f) u(%16.8f,%16.8f,%16.8f) fg(%16.8f,%16.8f,%16.8f,%16.8f) grid_ns(%3i,%3i,%3i) grid_invStep(%16.8f,%16.8f,%16.8f) \n", iG, posi.x,posi.y,posi.z, u.x,u.y,u.z, fg.x,fg.y,fg.z,fg.w, grid_ns.x,grid_ns.y,grid_ns.z, grid_invStep.x,grid_invStep.y,grid_invStep.z );   }
+        
         //if((iG==iG_DBG)&&(iS==iS_DBG)){   printf( "GPU[%i] apos(%16.8f,%16.8f,%16.8f) u(%16.8f,%16.8f,%16.8f) fg(%16.8f,%16.8f,%16.8f,%16.8f) \n", iG, posi.x,posi.y,posi.z, u.x,u.y,u.z, fg.x,fg.y,fg.z,fg.w );   }
         // if((iG==iG_DBG)&&(iS==iS_DBG)){   
         //     //printf( "GPU[%i] apos(%16.8f,%16.8f,%16.8f) u(%16.8f,%16.8f,%16.8f) fg(%16.8e,%16.8e,%16.8e,%16.8e) \n", iG, posi.x,posi.y,posi.z, u.x,u.y,u.z, fg.x,fg.y,fg.z,fg.w );   

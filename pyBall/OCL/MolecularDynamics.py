@@ -390,10 +390,10 @@ class MolecularDynamics(OpenCLBase):
             
         # 2. Set grid parameters
         self.kernel_params.update({
-            'grid_ns':      np.array([*grid_shape,0], dtype=np.int32),
+            'grid_ns':      np.array([*grid_shape ,0],                   dtype=np.int32),
             'grid_invStep': np.array([1.0/s for s in grid_step] + [0.0], dtype=np.float32),
-            'grid_p0':      np.array([*grid_p0,0.0], dtype=np.float32),
-            'GFFParams':    np.array([r_damp, alpha_morse, 0.0, 0.0], dtype=np.float32)
+            'grid_p0':      np.array([*grid_p0   ,0.0],                  dtype=np.float32),
+            'GFFParams':    np.array([r_damp, alpha_morse, 0.0, 0.0],    dtype=np.float32)
         })
         
         # 3. Create buffers BEFORE generating kernel args
