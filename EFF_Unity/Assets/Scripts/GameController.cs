@@ -14,7 +14,8 @@ public class GameController : MonoBehaviour
     private int electronCount;
 
     public GameObject atomPrefab;
-    public GameObject electronPrefab;
+    public GameObject electronPrefabPlusSpin;
+    public GameObject electronPrefabMinusSpin;
     public GameObject infoBoxPrefab_e;
     public GameObject infoBoxPrefab_a;
     public GameObject infoBoxAnchor;
@@ -34,6 +35,9 @@ public static extern IntPtr unityNextFrame(out int size);
 [DllImport(PATH_TO_EFF_APP, CallingConvention = CallingConvention.Cdecl, CharSet = CharSet.Ansi)]
 public static extern void cleanupPositions(IntPtr positions);
 
+[DllImport(PATH_TO_EFF_APP, CallingConvention = CallingConvention.Cdecl, CharSet = CharSet.Ansi)]
+public static extern void cleanupInitData(IntPtr data);
+
     [DllImport(PATH_TO_EFF_APP, CallingConvention = CallingConvention.Cdecl, CharSet = CharSet.Ansi)]
     public static extern void unitySetElectronPosition(int electronIndex, float x, float y, float z, float size);
     
@@ -44,6 +48,7 @@ public static extern void cleanupPositions(IntPtr positions);
 
     public Vector3[] positions { get; private set; }
     public float[] sizes { get; private set; }
+    public int[] espins { get; private set; }
 
     private (Vector3[] positions, float[] sizes) GetPositionsFromNative()
     {
@@ -100,7 +105,8 @@ public static extern void cleanupPositions(IntPtr positions);
         particles = new GameObject[atomCount + electronCount];
 
         for (int i = 0; i < electronCount; i++) {
-            particles[i] = Instantiate(electronPrefab, new Vector3(0, 0, 0), Quaternion.identity);
+            particles[i] = espins[i] == 1 ? Instantiate(electronPrefabPlusSpin, new Vector3(0, 0, 0), Quaternion.identity) : Instantiate(electronPrefabMinusSpin, new Vector3(0, 0, 0), Quaternion.identity);
+
 
             // var info = Instantiate(infoBoxPrefab_e, infoBoxAnchor.transform);
             // info.GetComponent<InfoBox>().SetConnector(i, i, ObjectType.ELECTRON);
@@ -155,10 +161,22 @@ public static extern void cleanupPositions(IntPtr positions);
     // Update is called once per frame
 
     public void StartSimulation(string fileName) {
-        int[] counts = new int[2];
-        Marshal.Copy(unityInit(@"../cpp/sketches_SDL/Molecular/data/" + fileName), counts, 0, 2);
-        electronCount = counts[0];
-        atomCount = counts[1];
+        // Get the pointer to the data returned from unityInit
+        IntPtr dataPtr = unityInit(@"../cpp/sketches_SDL/Molecular/data/" + fileName);
+        
+        // First get the electron and atom counts
+        electronCount = Marshal.ReadInt32(dataPtr, 0);
+        atomCount = Marshal.ReadInt32(dataPtr, sizeof(int));
+        
+        // Create and populate the espins array
+        espins = new int[electronCount];
+        for (int i = 0; i < electronCount; i++) {
+            espins[i] = Marshal.ReadInt32(dataPtr, (2 + i) * sizeof(int));
+        }
+        
+        // Free the unmanaged memory
+        cleanupInitData(dataPtr);
+        
         enabled = true;
     }
 

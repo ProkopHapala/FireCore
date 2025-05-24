@@ -2302,7 +2302,8 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   atomPrefab: {fileID: 8012776171943920120, guid: 6d83efdadcbea3b97afdbdc49019639e, type: 3}
-  electronPrefab: {fileID: 2992159047530468925, guid: 6f13f0e12d725b8099bf09ee48c75f12, type: 3}
+  electronPrefabPlusSpin: {fileID: 2992159047530468925, guid: 8b78cb47f685de49f807c4c2820f2f70, type: 3}
+  electronPrefabMinusSpin: {fileID: 2992159047530468925, guid: 6f13f0e12d725b8099bf09ee48c75f12, type: 3}
   infoBoxPrefab_e: {fileID: 1494640812655059799, guid: 4e0626bd797fbd6699c326c23d906783, type: 3}
   infoBoxPrefab_a: {fileID: 8955209301228641717, guid: 94062943915ec8cebb8293a93633e444, type: 3}
   infoBoxAnchor: {fileID: 1060263083}

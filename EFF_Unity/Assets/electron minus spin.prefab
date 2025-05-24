@@ -14,7 +14,7 @@ GameObject:
   - component: {fileID: 3359839630563515954}
   - component: {fileID: -397611971356832929}
   m_Layer: 0
-  m_Name: electron
+  m_Name: electron minus spin
   m_TagString: Untagged
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
@@ -66,7 +66,7 @@ MeshRenderer:
   m_RenderingLayerMask: 1
   m_RendererPriority: 0
   m_Materials:
-  - {fileID: 2100000, guid: 81911198362639d0487005bc18ba7a89, type: 2}
+  - {fileID: 2100000, guid: 3bcf4ac6c7baa9a218fbe99de9e95151, type: 2}
   m_StaticBatchInfo:
     firstSubMesh: 0
     subMeshCount: 0

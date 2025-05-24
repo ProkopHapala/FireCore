@@ -130,7 +130,21 @@ int main(int argc, char *argv[]) {
 
 extern "C" EXPORT_API int* unityInit(const char* fileName) {
     eff.initEFFsystem(fileName);
-    return new int[2]{eff.ff.ne, eff.ff.na};
+    
+    // Calculate the size of the return array: 2 (for ne and na) + ne (for espin array)
+    int returnSize = 2 + eff.ff.ne;
+    int* returnArray = new int[returnSize];
+    
+    // Set the first two elements (ne and na)
+    returnArray[0] = eff.ff.ne;
+    returnArray[1] = eff.ff.na;
+    
+    // Append the espin array
+    for (int i = 0; i < eff.ff.ne; i++) {
+        returnArray[2 + i] = eff.ff.espin[i];
+    }
+    
+    return returnArray;
 }
 
 // Export the frame update function returning float array pointer
@@ -176,4 +190,9 @@ extern "C" EXPORT_API void unitySetAtomPosition(int atomIndex, float x, float y,
 // Export function to set a single electron position and size
 extern "C" EXPORT_API void unitySetElectronPosition(int electronIndex, float x, float y, float z, float size) {
     eff.setElectronPosition(electronIndex, x, y, z, size);
+}
+
+// Add cleanup function for unityInit return value to prevent memory leaks
+extern "C" EXPORT_API void cleanupInitData(int* data) {
+    delete[] data;
 }

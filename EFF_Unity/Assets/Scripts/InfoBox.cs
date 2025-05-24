@@ -76,7 +76,7 @@ public class InfoBox : MonoBehaviour
     public void SetConnector(int id, int posId, ObjectType type) {
         inputFields = GameController.main.inputFields;
 
-        objText.SetText($"{(type == ObjectType.ATOM ? "ATOM" : "ELECTRON")} {id}");
+        objText.SetText($"{(type == ObjectType.ATOM ? "ATOM" : "ELECTRON")} {id} {(GameController.main.espins[id] == 1 ? "(+1/2)" : "(-1/2)")}");
         this.posId = posId;
         this.id = id;
         Type = type;
