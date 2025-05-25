@@ -204,7 +204,7 @@ class EFF{ public:
     
         constexpr static const double default_esize = 0.5;
         constexpr static const double min_esize     = 0.1;
-        constexpr static const Vec3d KRSrho = { 1.125, 0.9, -0.2 }; ///< eFF universal parameters
+        Vec3d KRSrho = {1.125, 0.9, -0.2 };// { 1.125, 0.9, -0.2 }; ///< eFF universal parameters
         //constexpr static const Vec3d KRSrho = { 1.125, 0.9, -0.3 }; ///< eFF universal parameters // If it is sufficiently strong electron pairs are formed
         //constexpr static const Vec3d KRSrho = { 1.125, 0.9, -1.0 }; ///< eFF universal parameters // If it is sufficiently strong electron pairs are formed
         //Vec3d KRSrho = { 1.125, 0.9, 0.2 };
@@ -249,6 +249,8 @@ class EFF{ public:
     
         double Etot=0,Ek=0, Eee=0,EeePaul=0,EeeExch=0,  Eae=0,EaePaul=0,  Eaa=0; ///< different kinds of energy
     
+    void setKRSrho( const Vec3d& KRSrho_ ){ KRSrho = KRSrho_; }
+
     void realloc(int na_, int ne_, bool bVel=false){
         bDealoc = true;
         na=na_; ne=ne_;

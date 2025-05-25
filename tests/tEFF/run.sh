@@ -35,7 +35,7 @@ echo "#=========== RUN"
 # python3 -u run_process_xyz.py
 # python3 -u run_scan_Oe_ECP.py #2>ERR | tee OUT\
 
-# python3 -u AI_angdist_sim.py
+python3 -u AI_angdist_sim.py
 python3 -u AI_angdist_show.py 
 
 #python3 run_energyToBondlength_Gabriel.py 2>ERR | tee OUT

@@ -205,7 +205,7 @@ int run( int nstepMax, double dt, double Fconv, int ialg, double* outE, double* 
     //printf( "verbosity %i nstepMax %i Fconv %g dt %g \n", verbosity, nstepMax, Fconv, dt );
     //printf( "trj_fname %s \n", trj_fname );
     if(ialg>0){
-        printf("run() opt.vel %p\n", opt.vel); 
+        if(verbosity>0)printf("run() opt.vel %p\n", opt.vel); 
         opt.cleanVel( ); 
     }
     bool bConv=false;
@@ -579,7 +579,11 @@ int preAllocateXYZ(const char* fname, double Rfac=-0.5, bool bCoreElectrons=true
     return 1;
 }
 
-int processXYZ( const char* fname, double Rfac=-0.5, double*    =0, double* apos_=0, double* epos_=0, int nstepMax=1000, double dt=0.001, double Fconv=1e-3, int ialg=2, bool bAddEpairs=false, bool bCoreElectrons=true, bool bChangeCore=true, bool bChangeEsize=true, bool bOutXYZ=false, bool bOutFGO=false ){
+int processXYZ( const char* fname, double Rfac=-0.5, double* outEs=0, double* apos_=0, double* epos_=0, int nstepMax=1000, double dt=0.001, double Fconv=1e-3, int ialg=2, bool bAddEpairs=false, bool bCoreElectrons=true, bool bChangeCore=true, bool bChangeEsize=true, bool bOutXYZ=false, bool bOutFGO=false, double* KRSrho_=0 ){
+    Vec3d KRSrho =*(Vec3d*)KRSrho_;
+
+    ff.setKRSrho( KRSrho );
+    
     setvbuf(stdout, NULL, _IONBF, 0);
     printf( "processXYZ(%s) bAddEpairs=%i bOutXYZ=%i Rfac %g\n", fname, bAddEpairs, bOutXYZ, Rfac );
 
