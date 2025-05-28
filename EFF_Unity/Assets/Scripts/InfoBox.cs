@@ -1,6 +1,8 @@
 using System;
+using System.Linq;
 using System.Security;
 using TMPro;
+using Unity.PlasticSCM.Editor.WebApi;
 using UnityEngine;
 using UnityEngine.EventSystems;
 using UnityEngine.UI;
@@ -26,6 +28,9 @@ public class InfoBox : MonoBehaviour
     private CameraControl cameraControl;
     private delegate void del();
     private del SetStats;
+    private bool cursorOn;
+    public bool IsFixed = false;
+
     public ObjectType Type {get; private set;}
     
     // Start is called once before the first execution of Update after the MonoBehaviour is created
@@ -55,8 +60,41 @@ public class InfoBox : MonoBehaviour
     // Update is called once per frame
     void Update()
     {
-        if(!GameController.main.isRunning) {
-            return;
+        if(cursorOn){
+            if(Input.GetKeyDown(KeyCode.S)) {
+                if(IsFixed) {
+                    if(Type == ObjectType.ATOM){
+                        GameController.unfixAtom(id);
+                        Debug.Log("Unfixed atom " + id);
+                    }
+                    else {
+                        GameController.unfixElectron(id);
+                        Debug.Log("Unfixed electron " + id);
+                    }
+                    objText.SetText(objText.text[..^4]);
+                    IsFixed = false;
+                }
+                else {
+                    if(Type == ObjectType.ATOM){
+                        GameController.fixAtom(id);
+                        Debug.Log("Fixed atom " + id);
+                    }
+                    else {
+                        GameController.fixElectron(id);
+                        Debug.Log("fixed electron " + id);
+                    }
+                    objText.SetText(objText.text + " [S]");
+                    IsFixed = true;
+                }
+            }
+
+            if(Input.GetKeyDown(KeyCode.F) && !Input.GetKey(KeyCode.LeftShift)) {
+                GameController.main.cameraControl.FollowParticle(particle);
+            }
+
+            if(!GameController.main.isRunning) {
+                return;
+            }
         }
         // var pos = connector.positions[id];
         // if(type == ObjectType.ATOM) {
@@ -124,11 +162,13 @@ public class InfoBox : MonoBehaviour
     public void OnPointerEnter(PointerEventData eventData)
     {
         particleOutline.OutlineMode = Outline.Mode.OutlineAndSilhouette;
+        cursorOn = true;
     }
 
     public void OnPointerExit(PointerEventData eventData)
     {
         particleOutline.OutlineMode = Outline.Mode.OutlineHidden;
+        cursorOn = false;
     }
 
 

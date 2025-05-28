@@ -21,6 +21,8 @@ public class GameController : MonoBehaviour
     public GameObject infoBoxAnchor;
     public GameObject[] particles;
     public TextMeshProUGUI runningStatusText;
+    public CameraControl cameraControl;
+    public GameObject keybinds;
 
     public InputFieldManager inputFields;
 
@@ -43,6 +45,20 @@ public static extern void cleanupInitData(IntPtr data);
     
     [DllImport(PATH_TO_EFF_APP, CallingConvention = CallingConvention.Cdecl, CharSet = CharSet.Ansi)]
     public static extern void unitySetAtomPosition(int atomIndex, float x, float y, float z);
+
+    [DllImport(PATH_TO_EFF_APP, CallingConvention = CallingConvention.Cdecl, CharSet = CharSet.Ansi)]
+    public static extern void fixAtom(int atomIndex);
+
+    [DllImport(PATH_TO_EFF_APP, CallingConvention = CallingConvention.Cdecl, CharSet = CharSet.Ansi)]
+    public static extern void fixElectron(int atomIndex);
+
+    [DllImport(PATH_TO_EFF_APP, CallingConvention = CallingConvention.Cdecl, CharSet = CharSet.Ansi)]
+    public static extern void unfixAtom(int atomIndex);
+
+    [DllImport(PATH_TO_EFF_APP, CallingConvention = CallingConvention.Cdecl, CharSet = CharSet.Ansi)]
+    public static extern void unfixElectron(int atomIndex);
+
+
 
     public bool isRunning = false;
 
@@ -237,5 +253,9 @@ public static extern void cleanupInitData(IntPtr data);
         } catch (Exception e) {
             UnityEngine.Debug.LogError($"Exception in SetParticlePosition: {e.GetType()} : {e.Message}\n{e.StackTrace}");
         }
+    }
+
+    public void ToggleKeybindList() {
+        keybinds.SetActive(!keybinds.activeInHierarchy);
     }
 }

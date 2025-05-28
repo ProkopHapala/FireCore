@@ -35,6 +35,14 @@ public class InputTracker : MonoBehaviour
         if(Input.GetKeyDown(KeyCode.Escape)) {
             GameController.main.inputFields.Despawn();
         }
+
+        if(Input.GetKeyDown(KeyCode.F) && Input.GetKey(KeyCode.LeftShift)) {
+            GameController.main.cameraControl.StopFollowing();
+        }
+
+        if(Input.GetKeyDown(KeyCode.H)) {
+            GameController.main.ToggleKeybindList();
+        }
     }
 
     // void OnKeyDown(KeyDownEvent ev) {

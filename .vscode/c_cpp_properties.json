@@ -1,0 +1,28 @@
+{
+    "configurations": [
+        {
+            "name": "Linux",
+            "includePath": [
+                "${workspaceFolder}/**",
+                "${workspaceFolder}/cpp/common",
+                "${workspaceFolder}/cpp/common/math",
+                "${workspaceFolder}/cpp/common/molecular",
+                "${workspaceFolder}/cpp/common/dataStructures",
+                "${workspaceFolder}/cpp/common/OpenCL",
+                "${workspaceFolder}/cpp/common_SDL",
+                "${workspaceFolder}/cpp/common_SDL/SDL2",
+                "${workspaceFolder}/cpp/common_SDL/SDL2OGL",
+                "/usr/include",
+                "/usr/local/include",
+                "/usr/include/c++/**"
+            ],
+            "defines": [],
+            "compilerPath": "/usr/bin/gcc",
+            "cStandard": "c17",
+            "cppStandard": "c++20",
+            "intelliSenseMode": "linux-gcc-x64",
+            "compileCommands": "${workspaceFolder}/cpp/Build/compile_commands.json"
+        }
+    ],
+    "version": 4
+}

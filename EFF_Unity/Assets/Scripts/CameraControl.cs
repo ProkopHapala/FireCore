@@ -16,6 +16,9 @@ public class CameraControl : MonoBehaviour
     private Vector2 rotation = new Vector2(90, 0);
     private float distanceToPivot = 30;
 
+    private GameObject trackingObject;
+    private bool isFollowing = false;
+
     void Awake() {
         camera = GetComponent<Camera>();
         pivotPoint = Vector3.zero;
@@ -23,6 +26,10 @@ public class CameraControl : MonoBehaviour
     }
     void Update()
     {
+        if(isFollowing && GameController.main.isRunning) {
+            SetPivot(trackingObject.transform.position);
+        }
+
         if(Input.GetKey(KeyCode.LeftShift)) {
             Vector3 moveVector = Vector3.zero;
             if(Input.GetKey(KeyCode.RightArrow)) {
@@ -101,6 +108,15 @@ public class CameraControl : MonoBehaviour
             (distanceToPivot * (float)Math.Sin(rotation.x)) * (float)Math.Cos(rotation.y));
 
         transform.LookAt(pivotPoint);
+    }
+
+    public void FollowParticle(GameObject particleObject) {
+        isFollowing = true;
+        trackingObject = particleObject;
+    }
+
+    public void StopFollowing() {
+        isFollowing = false;
     }
 
     public void SetPivot(Vector3 newPivot) {

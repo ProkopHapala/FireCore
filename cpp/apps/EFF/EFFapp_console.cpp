@@ -1,3 +1,4 @@
+#include <memory>
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
@@ -5,6 +6,7 @@
 #include <vector>
 #include <math.h>
 #include <functional>
+#include <list>
 
 #include "fastmath.h"
 #include "Vec3.h"
@@ -32,6 +34,9 @@ public:
     DynamicOpt opt;
     int perFrame = 10;
     bool bRun = true;
+
+    std::vector<int> fixedAtoms = {};
+    std::vector<int> fixedElectrons = {};
 
     void initEFFsystem(const char* fname, bool bTestEval = true) {
         ff.loadFromFile_fgo(fname);
@@ -97,6 +102,13 @@ public:
     
     // Set position and size of a single electron
     bool setElectronPosition(int electronIndex, float x, float y, float z, float size) {
+        if(setElectronPosition(electronIndex, x, y, z)) {
+            ff.esize[electronIndex] = size;
+            return true;
+        }
+        return false;
+    }
+    bool setElectronPosition(int electronIndex, float x, float y, float z) {
         if (electronIndex < 0 || electronIndex >= ff.ne) {
             printf("Error: Electron index %d out of range (0-%d)\n", electronIndex, ff.ne-1);
             return false;
@@ -105,7 +117,7 @@ public:
         ff.epos[electronIndex].x = x;
         ff.epos[electronIndex].y = y;
         ff.epos[electronIndex].z = z;
-        ff.esize[electronIndex] = size;
+        
         
         // No need to update DOFs as epos and esize directly point to the DOFs array
         return true;
@@ -149,12 +161,28 @@ extern "C" EXPORT_API int* unityInit(const char* fileName) {
 
 // Export the frame update function returning float array pointer
 extern "C" EXPORT_API float* unityNextFrame(int* size) {
+    // save previous positions for fixed particles before the simulation step
+    int nfa = eff.fixedAtoms.size();
+    int nfe = eff.fixedElectrons.size();
+    
+    std::vector<Vec3d> fixedAPositions;
+    std::vector<Vec3d> fixedEPositions;
+
+    for(int i=0; i < nfe; i++) {
+        fixedEPositions.push_back(eff.ff.epos[eff.fixedElectrons[i]]);
+    }
+
+    for(int i=0; i < nfa; i++) {
+        fixedAPositions.push_back(eff.ff.apos[eff.fixedAtoms[i]]);
+    }
+
+
     eff.runSimulation();
     
     // Calculate total size needed (3 coordinates per position)
     *size = ((eff.ff.ne + eff.ff.na) * 3) + eff.ff.ne;
     float* positions = new float[*size];
-    
+
     int idx = 0;
     // Copy electron positions
     for(int i=0; i < eff.ff.ne; i++) {
@@ -173,6 +201,15 @@ extern "C" EXPORT_API float* unityNextFrame(int* size) {
     for (int i = 0; i < eff.ff.ne; i++) {
         positions[idx++] = eff.ff.esize[i];
     }
+
+    // set the fixed original positions of fixed paricles
+    for(int i=0; i < nfe; i++) {
+        eff.setElectronPosition(eff.fixedElectrons[i], fixedEPositions[i].x, fixedEPositions[i].y, fixedEPositions[i].z, eff.ff.esize[eff.fixedElectrons[i]]);
+    }
+
+    for(int i=0; i < nfa; i++) {
+        eff.setAtomPosition(eff.fixedAtoms[i], fixedAPositions[i].x, fixedAPositions[i].y, fixedAPositions[i].z);
+    }
     
     return positions;
 }
@@ -185,6 +222,30 @@ extern "C" EXPORT_API void cleanupPositions(float* positions) {
 // Export function to set a single atom position
 extern "C" EXPORT_API void unitySetAtomPosition(int atomIndex, float x, float y, float z) {
     eff.setAtomPosition(atomIndex, x, y, z);
+}
+
+extern "C" EXPORT_API void fixAtom(int atomIndex) {
+    eff.fixedAtoms.push_back(atomIndex);
+}
+
+extern "C" EXPORT_API void unfixAtom(int atomIndex) {
+    for (int i=0; i<eff.fixedAtoms.size(); i++) {
+        if (eff.fixedAtoms[i] == atomIndex) {
+            eff.fixedAtoms.erase(eff.fixedAtoms.begin()+i);
+        }
+    }
+}
+
+extern "C" EXPORT_API void fixElectron(int electronIndex) {
+    eff.fixedElectrons.push_back(electronIndex);
+}
+
+extern "C" EXPORT_API void unfixElectron(int electronIndex) {
+    for (int i=0; i<eff.fixedElectrons.size(); i++) {
+        if (eff.fixedElectrons[i] == electronIndex) {
+            eff.fixedElectrons.erase(eff.fixedElectrons.begin()+i);
+        }
+    }
 }
 
 // Export function to set a single electron position and size
