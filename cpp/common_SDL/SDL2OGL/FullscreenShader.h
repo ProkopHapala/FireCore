@@ -18,14 +18,14 @@ void main(){
 
 class FullscreenShader{
 private:
-    Shader<MPOS> shader;
+    Shader shader;
     GLMeshBase<MPOS> mesh;
     GLFramebuffer framebuffer_back; // everything rendered between "begin()" and "end()" will be rendered to this framebuffer
     
 public:
     GLFramebuffer out_framebuffer; // after "end()", the result of the shader is stored in this framebuffer
     
-    FullscreenShader(const char* fragShaderSource) : shader(Shader<MPOS>(vertexShaderSource, fragShaderSource))
+    FullscreenShader(const char* fragShaderSource) : shader(Shader(vertexShaderSource, fragShaderSource))
     {
         printf("%s\n", fragShaderSource);
         mesh = GLMeshBase<MPOS>(GL_TRIANGLES, GL_STATIC_DRAW, &shader);

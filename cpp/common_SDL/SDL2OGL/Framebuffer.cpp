@@ -48,7 +48,7 @@ void main(){
 
 )";
 
-static Shader<MPOS> shader = Shader<MPOS>(vertexShaderSource, fragmentShaderSource);
+static Shader shader = Shader(vertexShaderSource, fragmentShaderSource);
 
 static inline GLMeshBase<MPOS>makeMergeMesh(){
     GLMeshBase<MPOS> m = GLMeshBase<MPOS>(GL_TRIANGLES, GL_STATIC_DRAW, &shader);

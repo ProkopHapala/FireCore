@@ -3,22 +3,20 @@
 
 #include "GLattribs.h"
 #include "Mat4.h"
-#include <GLES3/gl3.h>
 #include <cstring>
+#include <iostream>
+#include <stdexcept>
 #include <string>
+#include <unordered_map>
 #include <utility>
 #include "GLuniform.h"
 
 GLuint linkProgram(GLuint vertexShader, GLuint fragmentShader);
 GLuint compileShader(GLenum shaderType, const char* source);
 
-template<attrib ... attribs>
 class Shader{
 private:
-static_assert(GLattrib::check_attribs<attribs...>(), "ERROR: attribute list cannot contain duplicate names.");
-
-    using attrIdxSeq = std::make_index_sequence<sizeof...(attribs)>;
-    GLuint attribLocs[sizeof...(attribs)];
+    GLint attrName2LocMap[GLattrib::ATTRIB_NAME_MAX];
 
     GLuint programId        = 0;
     GLuint vertexShaderId   = 0;
@@ -133,14 +131,21 @@ public:
     inline void setUniform4m(const char* name, Mat4T<GLfloat> value){ setUniformName(name, {.type=GLuniform::m4, .data={.m4=value}}); }
 
 
-    inline GLuint getAttribLoc(unsigned int attrIdx){
+    inline GLint attrName2Loc(GLattrib::Name attrName){
         ensure_handle();
-        return attribLocs[attrIdx];
+        if (attrName > GLattrib::ATTRIB_NAME_MAX){
+            printf("ERROR: invalid attribute name\n");
+            return -1;
+        }
+        GLint loc = attrName2LocMap[attrName];
+        if (loc == -1){
+            std::cout << "Warning: attribute name " << attrName << " was not found\n";
+        }
+        return loc;
     }
 
 private:
-    inline void create_handle(){_create_handle_impl(attrIdxSeq{});}
-    template<size_t...i> void _create_handle_impl(std::index_sequence<i...>){
+    inline void create_handle(){
         if (programId){
             printf("ERROR: shader handle already exists!\n");
             return;
@@ -150,16 +155,9 @@ private:
         fragmentShaderId = compileShader(GL_FRAGMENT_SHADER, __fragmentShaderSource);
         programId = linkProgram(vertexShaderId, fragmentShaderId);
     
-
-        ((attribLocs[i] = glGetAttribLocation(programId, GLattrib::name2str<attribs.name>())), ...);
-        ((glEnableVertexAttribArray(attribLocs[i])), ...); // TODO - do we ever need to disable VertexAttribArrays?
-
-        for(int j=0; j<sizeof...(attribs); j++){
-            if (attribLocs[j] == -1){
-                printf("ERROR: attribute at index %i not found!\n", j);
-                printf(((std::string(GLattrib::name2str<attribs.name>()) + ", ") + ...).c_str());
-                printf("vert shader source:\n%s\n", __vertexShaderSource);
-            }
+        for (int i = 0; i < GLattrib::ATTRIB_NAME_MAX; i++){
+            attrName2LocMap[i] = glGetAttribLocation(programId, GLattrib::name2str(GLattrib::Name(i)));
+            if (attrName2LocMap[i] != -1) glEnableVertexAttribArray(attrName2LocMap[i]); // TODO - do we ever need to disable VertexAttribArrays?
         }
     
         uMVPloc = glGetUniformLocation(programId, "uMVPMatrix");
@@ -249,16 +247,16 @@ constexpr const std::string buildDefaultFragmentShaderSource(bool tex, bool ucol
 }
 
 template<attrib...attribs>
-Shader<attribs...>* defaultShader = new Shader<attribs...>(buildDefaultVertexShaderSource<attribs...>().c_str(), buildDefaultFragmentShaderSource<attribs...>(false, false).c_str());
+Shader* defaultShader = new Shader(buildDefaultVertexShaderSource<attribs...>().c_str(), buildDefaultFragmentShaderSource<attribs...>(false, false).c_str());
 
 template<attrib...attribs>
-Shader<attribs...>* defaultcolorShader = new Shader<attribs...>(buildDefaultVertexShaderSource<attribs...>().c_str(), buildDefaultFragmentShaderSource<attribs...>(false, true).c_str());
+Shader* defaultcolorShader = new Shader(buildDefaultVertexShaderSource<attribs...>().c_str(), buildDefaultFragmentShaderSource<attribs...>(false, true).c_str());
 
 template<attrib...attribs>
-Shader<attribs...>* defaultTexShader = new Shader<attribs...>(buildDefaultVertexShaderSource<attribs...>().c_str(), buildDefaultFragmentShaderSource<attribs...>(true, false).c_str());
+Shader* defaultTexShader = new Shader(buildDefaultVertexShaderSource<attribs...>().c_str(), buildDefaultFragmentShaderSource<attribs...>(true, false).c_str());
 
 template<attrib...attribs>
-Shader<attribs...>* defaultTexColorShader = new Shader<attribs...>(buildDefaultVertexShaderSource<attribs...>().c_str(), buildDefaultFragmentShaderSource<attribs...>(true, true).c_str());
+Shader* defaultTexColorShader = new Shader(buildDefaultVertexShaderSource<attribs...>().c_str(), buildDefaultFragmentShaderSource<attribs...>(true, true).c_str());
 
 
 #endif // _SHADER_H_

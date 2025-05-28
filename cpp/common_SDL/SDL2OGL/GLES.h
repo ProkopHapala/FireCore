@@ -14,6 +14,7 @@ namespace GLES{
     extern GLuint currentGL_ARRAY_BUFFER;
     extern Vec2i screen_size;
     extern GLuint activeProgram;
+    extern bool context;
 
     void checkError(const char* file, int line);
     void pushFramebuffer(GLuint handle);

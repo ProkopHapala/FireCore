@@ -3,10 +3,17 @@
 
 #include "GLES.h"
 #include "quaternion.h"
+#include <stdexcept>
 #include <utility>
+#include <cstddef>
 
 namespace GLattrib{
-    enum Name {Position, Normal, Color, UV};
+    enum Name {
+        Position = 0,
+        Normal   = 1,
+        Color    = 2,
+        UV       = 3,
+    ATTRIB_NAME_MAX}; // ATTRIB_NAME_MAX must be last
 }
 
 
@@ -16,12 +23,46 @@ struct attrib{
     GLattrib::Name name;
 };
 
+template<attrib...attribs>
+struct attribs_monostate{};
+
+
+template <typename T, typename ... Ts>
+struct GLvertex{
+    T first;
+    GLvertex<Ts...> next;
+
+    GLvertex(T first, Ts... next) : first(first), next(next...) {}
+
+    template<size_t i> auto& get(){
+        if constexpr(i==0) return first;
+        else return next.template get<i-1>();
+    }
+
+    template<size_t i> static constexpr size_t get_offset() {
+        if constexpr(i==0) return __builtin_offsetof(GLvertex<T, Ts...>, first); // TODO: using just offsetof() throws error for some reason, so we use __builtin_offsetof() instead - but it isn't portable
+        else return __builtin_offsetof(GLvertex<T, Ts...>, next) + decltype(next)::template get_offset<i-1>();
+    }
+};
+template<typename T>
+struct GLvertex<T>{
+    T first;
+
+    template <size_t i> auto& get(){
+        static_assert(i==0, "Error: index out of bounds"); // TODO: is a static assert the correct way to do this?
+        return first;
+    }
+
+    template<size_t i> static constexpr size_t get_offset() {
+        static_assert(i==0, "Error: index out of bounds"); // note: i should be know at compile time (because this is a constexpr), so static assert is ok
+        if constexpr(i==0) return offsetof(GLvertex<T>, first);
+    }
+};
 
 namespace GLattrib{
     template<typename T> constexpr GLenum type2GLenum();
     template<typename T> constexpr GLint type2count();
     template<Name> constexpr const char* name2str();
-
 
     template<attrib...attribs, size_t...i>
     static constexpr bool _check_attribs_impl(std::index_sequence<i...>){
@@ -63,6 +104,16 @@ namespace GLattrib{
     template<> constexpr const char* name2str<Normal>()  { return "vNormal"; }
     template<> constexpr const char* name2str<Color>()   { return "vColor"; }
     template<> constexpr const char* name2str<UV>()      { return "vUV"; }
+
+    static inline const char* name2str(Name name){
+        switch(name){
+            case Position: return "vPosition";
+            case Normal:   return "vNormal";
+            case Color:    return "vColor";
+            case UV:       return "vUV";
+            default:       throw std::runtime_error("Error: invalid name");
+        }
+    }
 };
 
 #define MPOS    attrib<Vec3f>(GLattrib::Position)

@@ -342,7 +342,7 @@ void main(){
 )";
 
 static const GLMeshBase<MPOS> makeSphere(){
-    GLMeshBase<MPOS> m = GLMeshBase<MPOS>(GL_TRIANGLES, GL_STATIC_DRAW, new Shader<MPOS>(vertexSphere, fragSphere));
+    GLMeshBase<MPOS> m = GLMeshBase<MPOS>(GL_TRIANGLES, GL_STATIC_DRAW, new Shader(vertexSphere, fragSphere));
     m.addVertex({-1, -1, -1});
     m.addVertex({ 1, -1, -1});
     m.addVertex({-1,  1, -1});
