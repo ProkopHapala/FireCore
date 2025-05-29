@@ -191,7 +191,7 @@ class MolWorld_sp3_multi : public MolWorld_sp3, public MultiSolverInterface { pu
 
     const char* uploadPopName=0;
 
-    bool bMILAN = true;
+    bool bMILAN = false;
     bool bSaveToDatabase=false;
 
     long nStepConvSum = 0;
@@ -346,7 +346,7 @@ virtual void init() override {
 
     if(database)bSaveToDatabase=true;
     
-    printf( "uploadPopName @ %li", uploadPopName );
+    printf( "uploadPopName @ %li\n", uploadPopName );
     if( uploadPopName ){   printf( "!!!!!!!!!!!!\n UPLOADING POPULATION FROM FILE (%s)\n", uploadPopName );  upload_pop( uploadPopName ); }
 
     printf("# ========== MolWorld_sp3_multi::init() DONE\n\n");

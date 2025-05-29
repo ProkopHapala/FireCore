@@ -354,7 +354,7 @@ class OCL_MM: public OCLsystem { public:
         //int nloc = 4;
         //int nloc = 8;
         //int nloc = 16;
-        int nloc = 32;
+        int nloc = 32; //nlocNBFF
         //int nloc = 64;
         task->local.x  = nloc;
         task->global.x = na + nloc-(na%nloc); // round up to multiple of nloc
@@ -401,7 +401,7 @@ class OCL_MM: public OCLsystem { public:
         //int nloc = 1;
         //int nloc = 4;
         //int nloc = 8;
-        int nloc = 32;
+        int nloc = 32; //nlocGridFF
         //int nloc = 64;
         task->local.x  = nloc;
         task->global.x = na + nloc-(na%nloc);
@@ -460,7 +460,7 @@ class OCL_MM: public OCLsystem { public:
         //int nloc = 1;
         //int nloc = 4;
         //int nloc = 8;
-        int nloc = 32;
+        int nloc =   32; //nlocGridFFbSpline
         //int nloc = 64;
         task->local.x  = nloc;
         task->global.x = na + nloc-(na%nloc);
@@ -512,7 +512,7 @@ class OCL_MM: public OCLsystem { public:
     OCLtask* setup_getMMFFf4( int na, int nNode, bool bPBC=false, OCLtask* task=0){
         printf("setup_getMMFFf4(na=%i,nnode=%i) \n", na, nNode);
         if(task==0) task = getTask("getMMFFf4");
-        int nloc = 32;
+        int nloc = 32; //nlocMMFF
         task->local.x  = nloc;
         task->global.x = nNode + nloc-(nNode%nloc); // round up to multiple of nloc
         //task->global.x = nNode;
@@ -570,7 +570,7 @@ class OCL_MM: public OCLsystem { public:
         if(task==0) task = getTask("updateAtomsMMFFf4");
         int nvec = na+nNode;
         //task->local .x = 1;
-        int nloc=32;
+        int nloc=32; //nlocmove
         task->local.x   = nloc;
         task->global.x  = nvec + nloc-(nvec%nloc);
         //task->global.x = nvec;
@@ -848,9 +848,8 @@ class OCL_MM: public OCLsystem { public:
         //int nloc = 1;
         //int nloc = 4;
         //int nloc = 8;
-        int nloc  = 32;
+        int nloc = 32; //nlocSurf
         //int nloc = 64;
-//        int nloc = 512;
         task->local.x = nloc;
         task->global.x = nAtoms + nloc-(nAtoms%nloc);
         //task->local.x = 1;

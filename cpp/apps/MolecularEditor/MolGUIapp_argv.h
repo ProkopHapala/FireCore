@@ -68,7 +68,8 @@
     funcs["-group"]={3,[&](const char** ss){  }};
     funcs["-shift"]={1,[&](const char** ss){ }};
 
-    funcs["-nPBC"]={1,[&](const char** ss){ sscanf( ss[0],"%i,%i,%i", &(W->nPBC.x),&(W->nPBC.y),&(W->nPBC.z) ); }};
+    funcs["-nPBC"]={1,[&](const char** ss){ sscanf( ss[0],"%i,%i,%i", &(W->nPBC.x),&(W->nPBC.y),&(W->nPBC.z) );}};
+    funcs["-grid_nPBC"]={1,[&](const char** ss){ sscanf( ss[0],"%i,%i,%i", &(W->gridFF.nPBC.x),&(W->gridFF.nPBC.y),&(W->gridFF.nPBC.z) ); }};
     
     
 
