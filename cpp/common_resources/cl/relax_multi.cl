@@ -1049,7 +1049,9 @@ __kernel void updateAtomsMMFFf4(
         pe.xyz=normalize(pe.xyz);                   // normalize pi-orobitals
     }
     pe.w=0;ve.w=0;  // This seems to be needed, not sure why ?????
-    avel[iav] = ve;__attribute__((reqd_work_group_size(32,1,1)))
+    avel[iav] = ve;
+}
+//__attribute__((reqd_work_group_size(32,1,1)))
 __kernel void getNonBond(
     const int4 ns,                  // 1
     // Dynamical
@@ -1636,7 +1638,7 @@ __kernel void sortAtomsToBucketOverlaps(
 // It calculate Lenard-Jones, Coulomb and Hydrogen-bond forces between all atoms in the system
 // it can be run in parallel for multiple systems, in order to efficiently use number of GPU cores (for small systems with <100 this is essential to get good performance)
 // This is the most time consuming part of the forcefield evaluation, especially for large systems when nPBC>1
-__attribute__((reqd_work_group_size(32,1,1)))
+//__attribute__((reqd_work_group_size(32,1,1)))
 __kernel void getNonBond(
     const int4 ns,                  // 1 // (natoms,nnode) dimensions of the system
     // Dynamical
@@ -1652,20 +1654,9 @@ __kernel void getNonBond(
 ){
 
     // we use local memory to store atomic position and parameters to speed up calculation, the size of local buffers should be equal to local workgroup size
-    //__local float4 LATOMS[2];
-    //__local float4 LCLJS [2];
-    //__local float4 LATOMS[4];
-    //__local float4 LCLJS [4];
-    //__local float4 LATOMS[8];
-    //__local float4 LCLJS [8];
-    //__local float4 LATOMS[16];
-    //__local float4 LCLJS [16];
     __local float4 LATOMS[32];   // local buffer for atom positions
     __local float4 LCLJS [32];   // local buffer for atom parameters
-    //__local float4 LATOMS[64];
-    //__local float4 LCLJS [64];
-    //__local float4 LATOMS[128];
-    //__local float4 LCLJS [128];
+
 
     const int iG = get_global_id  (0); // index of atom
     const int nG = get_global_size(0); // number of atoms
