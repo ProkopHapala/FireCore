@@ -310,6 +310,16 @@ void viewSubstrate( int nx, int ny, int isoOgl, Vec3d a, Vec3d b, Vec3d pos0=Vec
     opengl1renderer.popMatrix();
 }
 
+void generateSubstrateOffsets( Vec2i nxs, Vec2i nys, GLvbo<MPOSOFFSET>* insts, Vec3d a, Vec3d b, Vec3d pos0=Vec3dZero ){
+    insts->clear();
+    for( int ix = nxs.x; ix<=nxs.y; ix++ ){
+        for( int iy = nys.x; iy<=nys.y; iy++ ){
+            Vec3d pos = a*ix + b*iy + pos0;
+            insts->push_back((Vec3f)pos);
+        }
+    }
+}
+
 void viewSubstrate( Vec2i nxs, Vec2i nys, GLMesh<MPOS,MNORMAL,MCOLOR>* isoOgl, Vec3d a, Vec3d b, Vec3d pos0=Vec3dZero ){
     for( int ix = nxs.x; ix<=nxs.y; ix++ ){
         for( int iy = nys.x; iy<=nys.y; iy++ ){

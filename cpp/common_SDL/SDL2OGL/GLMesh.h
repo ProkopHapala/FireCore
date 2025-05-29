@@ -20,7 +20,6 @@ public:
     using attr_monostate = attribs_monostate<attribs...>;
 
 private:
-    GLvbo<attribs...> verts;
     std::vector<GLuniform> uniforms;
 
     std::unordered_map<std::string, GLuniform> lazy_uniforms; // TODO: figure out a better system for lazy initialization
@@ -33,33 +32,36 @@ private:
         lazy_uniforms.clear();
     }
     
-    inline void bind_sync_vbo() const { verts.bind([this](GLattrib::Name name){return shader->attrName2Loc(name);} ); }
+    inline void bind_sync_vbo() const { verts->bind([this](GLattrib::Name name){return shader->attrName2Loc(name);} ); }
     
 public:
     GLenum drawMode;
+    GLvbo<attribs...>* verts;
     Shader* shader;
     // TODO: texture? color?
 
     GLMeshBase(GLenum drawMode=GL_TRIANGLES, GLenum usage=GL_STATIC_DRAW, Shader* shader=defaultcolorShader<attribs...>)
-        : drawMode(drawMode), verts(usage), shader(shader) {}
+        : drawMode(drawMode), shader(shader), verts(new GLvbo<attribs...>(usage)) {}
+    GLMeshBase(GLvbo<attribs...>* vbo, GLenum drawMode=GL_TRIANGLES, Shader* shader=defaultcolorShader<attribs...>)
+        : drawMode(drawMode), shader(shader), verts(vbo) {}
 
-    void clear(){ verts.clear(); }
+    void clear(){ verts->clear(); }
 
-    void addVertex(typename decltype(attribs)::type ... args){ verts.push_back(args...); }
+    void addVertex(typename decltype(attribs)::type ... args){ verts->push_back(args...); }
     void addVertex_strip(typename decltype(attribs)::type ... args){
         vertex v = vertex(args...);
 
         if (vertexCount() >= 3){
-            vertex v1 = verts[verts.size()-1];
-            vertex v2 = verts[verts.size()-2];
+            vertex v1 = verts[verts->size()-1];
+            vertex v2 = verts[verts->size()-2];
 
-            verts.push_back(v2);
-            verts.push_back(v1);
+            verts->push_back(v2);
+            verts->push_back(v1);
         }
 
-        verts.push_back(v);
+        verts->push_back(v);
     }
-    inline int vertexCount() const { return verts.size(); }
+    inline int vertexCount() const { return verts->size(); }
 
 
     void setUniformName(const char* name, GLuniform u){
@@ -121,6 +123,8 @@ public:
     using base = GLMeshBase<attribs...>;
     GLMesh(GLenum drawMode=GL_TRIANGLES, GLenum usage=GL_STATIC_DRAW, Shader* shader=defaultcolorShader<attribs...>)
         : base(drawMode, usage, shader) {}
+    GLMesh(GLvbo<attribs...>* vbo, GLenum drawMode=GL_TRIANGLES, Shader* shader=defaultcolorShader<attribs...>)
+        : base(vbo, drawMode, shader) {}
 
 
     void drawMVP(Mat4f mvp, GLenum drawMode=0){

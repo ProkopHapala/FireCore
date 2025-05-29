@@ -44,6 +44,7 @@
 #include "MolGUI_tests.h"
 
 #include "FullscreenShader.h"
+#include "GLInstancedMesh.h"
 
 #include "MethodDict.h"
 
@@ -391,7 +392,8 @@ class MolGUI : public AppSDL2OGL_3D { public:
     int  ogl_afm_trj   = 0;
     int  ogl_esp       = 0;
     int  ogl_mol       = 0;
-    GLMesh<MPOS,MNORMAL,MCOLOR> ogl_isosurf = GLMesh<MPOS,MNORMAL,MCOLOR>(GL_TRIANGLES, GL_STATIC_DRAW, defaultShader<MPOS,MNORMAL,MCOLOR>);
+    GLvbo<MPOS,MNORMAL,MCOLOR> ogl_isosurf;
+    GLInstancedMeshBase<GLvbo<MPOS,MNORMAL,MCOLOR>, MPOSOFFSET> ogl_isosurf_renderer_instanced = GLInstancedMeshBase<GLvbo<MPOS,MNORMAL,MCOLOR>, MPOSOFFSET>(&ogl_isosurf);
     int  ogl_MO        = 0;
     int  ogl_nonBond   = 0;
     int  ogl_Hbonds    = 0;
@@ -1419,8 +1421,9 @@ void MolGUI::draw(){
 
     if( bViewSubstrate ){
         if( ( W->bGridFF )&&( ((int)(W->gridFF.mode))!=0) ){
-            if( (ogl_isosurf.vertexCount()==0) ){ renderGridFF_new( subs_iso ); }
-            viewSubstrate( {-5,10}, {-5,10}, &ogl_isosurf, W->gridFF.grid.cell.a, W->gridFF.grid.cell.b );
+            if( (ogl_isosurf.size()==0) ){ renderGridFF_new( subs_iso ); }
+            generateSubstrateOffsets({-5,10}, {-5,10}, ogl_isosurf_renderer_instanced.instances, W->gridFF.grid.cell.a, W->gridFF.grid.cell.b);
+            ogl_isosurf_renderer_instanced.draw();
         }else{
             renderSurfAtoms(  Vec3i{1,1,0}, false );  
         }

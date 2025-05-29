@@ -191,9 +191,10 @@ constexpr const std::string buildDefaultVertexShaderSource(){
 
     // attributes
     source += "attribute mediump vec4 vPosition;\n";
-    (appendToSource(source, attribs, GLattrib::Normal, "attribute mediump vec3 vNormal;\n"), ...);
-    (appendToSource(source, attribs, GLattrib::Color , "attribute mediump vec3 vColor;\n" ), ...);
-    (appendToSource(source, attribs, GLattrib::UV    , "attribute mediump vec2 vUV;\n"    ), ...);
+    (appendToSource(source, attribs, GLattrib::PosOffset, "attribute mediump vec3 vPosOffset;\n"), ...);
+    (appendToSource(source, attribs, GLattrib::Normal   , "attribute mediump vec3 vNormal;\n"   ), ...);
+    (appendToSource(source, attribs, GLattrib::Color    , "attribute mediump vec3 vColor;\n"    ), ...);
+    (appendToSource(source, attribs, GLattrib::UV       , "attribute mediump vec2 vUV;\n"       ), ...);
 
     // varyings
     (appendToSource(source, attribs, GLattrib::Normal, "varying mediump vec3 fNormal;\n"), ...);
@@ -202,7 +203,9 @@ constexpr const std::string buildDefaultVertexShaderSource(){
 
     // void main()
     source += "void main(){\n";
-    source += "gl_Position = uMVPMatrix * vPosition;\n";
+    source += "mediump vec4 world_pos = vPosition;\n";
+    (appendToSource(source, attribs, GLattrib::PosOffset, "world_pos += vec4(vPosOffset, 0.0);\n"), ...);
+    source += "gl_Position = uMVPMatrix * world_pos;\n";
     (appendToSource(source, attribs, GLattrib::Normal, "fNormal" " = vNormal;\n"), ...);
     (appendToSource(source, attribs, GLattrib::Color , "fColor"  " = vColor;\n" ), ...);
     (appendToSource(source, attribs, GLattrib::UV    , "fUV"     " = vUV;\n"    ), ...);

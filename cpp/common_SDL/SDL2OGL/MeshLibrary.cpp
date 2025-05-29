@@ -27,9 +27,9 @@ static GLMesh<MPOS> makeLine2D() {
 }
 
 static GLMesh<MPOS> makePoint() {
-    GLMesh<MPOS> m = GLMesh<MPOS>(GL_POINTS);
-    m.addVertex({0, 0, 0});
-    return m;
+    GLMesh<MPOS> mesh((GLenum)GL_POINTS);
+    mesh.addVertex({0, 0, 0});
+    return mesh;
 }
 
 static GLMesh<MPOS> makeWireCube() {

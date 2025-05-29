@@ -9,10 +9,11 @@
 
 namespace GLattrib{
     enum Name {
-        Position = 0,
-        Normal   = 1,
-        Color    = 2,
-        UV       = 3,
+        Position  = 0,
+        Normal    = 1,
+        Color     = 2,
+        UV        = 3,
+        PosOffset = 4,
     ATTRIB_NAME_MAX}; // ATTRIB_NAME_MAX must be last
 }
 
@@ -86,31 +87,33 @@ namespace GLattrib{
     template<> constexpr GLenum type2GLenum<Vec2f>() { return GL_FLOAT; }
     template<> constexpr GLenum type2GLenum<Vec3f>() { return GL_FLOAT; }
     template<> constexpr GLenum type2GLenum<Quat4f>(){ return GL_FLOAT; }
-    template<> constexpr GLenum type2GLenum<int>()  { return GL_INT; }
-    template<> constexpr GLenum type2GLenum<Vec2i>(){ return GL_INT; }
-    template<> constexpr GLenum type2GLenum<Vec3i>(){ return GL_INT; }
+    template<> constexpr GLenum type2GLenum<int>()   { return GL_INT;   }
+    template<> constexpr GLenum type2GLenum<Vec2i>() { return GL_INT;   }
+    template<> constexpr GLenum type2GLenum<Vec3i>() { return GL_INT;   }
     template<> constexpr GLenum type2GLenum<unsigned int>(){ return GL_UNSIGNED_INT; }
 
     template<> constexpr GLint type2count<float>() { return 1; }
     template<> constexpr GLint type2count<Vec2f>() { return 2; }
     template<> constexpr GLint type2count<Vec3f>() { return 3; }
     template<> constexpr GLint type2count<Quat4f>(){ return 4; }
-    template<> constexpr GLint type2count<int>()  { return 1; }
-    template<> constexpr GLint type2count<Vec2i>(){ return 2; }
-    template<> constexpr GLint type2count<Vec3i>(){ return 3; }
+    template<> constexpr GLint type2count<int>()   { return 1; }
+    template<> constexpr GLint type2count<Vec2i>() { return 2; }
+    template<> constexpr GLint type2count<Vec3i>() { return 3; }
     template<> constexpr GLint type2count<unsigned int>(){ return 1; }
 
-    template<> constexpr const char* name2str<Position>(){ return "vPosition"; }
-    template<> constexpr const char* name2str<Normal>()  { return "vNormal"; }
-    template<> constexpr const char* name2str<Color>()   { return "vColor"; }
-    template<> constexpr const char* name2str<UV>()      { return "vUV"; }
+    template<> constexpr const char* name2str<Position>() { return "vPosition" ; }
+    template<> constexpr const char* name2str<Normal>()   { return "vNormal"   ; }
+    template<> constexpr const char* name2str<Color>()    { return "vColor"    ; }
+    template<> constexpr const char* name2str<UV>()       { return "vUV"       ; }
+    template<> constexpr const char* name2str<PosOffset>(){ return "vPosOffset"; }
 
     static inline const char* name2str(Name name){
         switch(name){
-            case Position: return "vPosition";
-            case Normal:   return "vNormal";
-            case Color:    return "vColor";
-            case UV:       return "vUV";
+            case Position:  return "vPosition";
+            case Normal:    return "vNormal";
+            case Color:     return "vColor";
+            case UV:        return "vUV";
+            case PosOffset: return "vPosOffset";
             default:       throw std::runtime_error("Error: invalid name");
         }
     }
@@ -120,5 +123,6 @@ namespace GLattrib{
 #define MNORMAL attrib<Vec3f>(GLattrib::Normal)
 #define MCOLOR  attrib<Vec3f>(GLattrib::Color)
 #define MUV     attrib<Vec2f>(GLattrib::UV)
+#define MPOSOFFSET attrib<Vec3f>(GLattrib::PosOffset)
 
 #endif // _GLATTRIBS_H_

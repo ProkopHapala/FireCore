@@ -19,10 +19,10 @@ private:
     std::vector<vertex> elements;
     mutable GLuint id = 0;
     mutable bool sync = false;
-    GLenum usage;
+    GLenum usage = GL_STATIC_DRAW;
 
     template<size_t ... attrIdx>
-    inline void _bind_impl(std::index_sequence<attrIdx...> seq, const std::function<GLint(GLattrib::Name)> attrName2locFunc) const {
+    inline void _bind_impl(std::index_sequence<attrIdx...> seq, const std::function<GLint(GLattrib::Name)> attrName2locFunc, GLuint divisor) const {
         GL_CHECK_ERROR();
         ensure_id();
 
@@ -36,6 +36,10 @@ private:
             GL_FALSE,
             sizeof(vertex),
             (void*)vertex::template get_offset<attrIdx>())
+        ,...);
+        (glVertexAttribDivisor(
+            attrName2locFunc(attribs.name),
+            divisor)
         ,...);
         GL_CHECK_ERROR();
     }
@@ -59,9 +63,23 @@ public:
     inline void push_back(const typename decltype(attribs)::type ... args){ push_back(vertex(args...)); }
     void clear() {elements.clear();}
 
-    inline void bind_raw(const std::function<GLint(GLattrib::Name)> attrName2locFunc) const { _bind_impl(attrIdxSeq{}, attrName2locFunc); } // binds the buffer to GL_ARRAY_BUFFER and sets up glVertexAttribPointers
-    inline void bind(const std::function<GLint(GLattrib::Name)> attrName2locFunc) const{ // same as bind_raw(), but also syncs the buffer data (preffered)
-        bind_raw(attrName2locFunc);
+    void addVertex_strip(typename decltype(attribs)::type ... args){
+        vertex v = vertex(args...);
+
+        if (elements.size() >= 3){
+            vertex v1 = elements[elements.size()-1];
+            vertex v2 = elements[elements.size()-2];
+
+            elements.push_back(v2);
+            elements.push_back(v1);
+        }
+
+        elements.push_back(v);
+    }
+
+    inline void bind_raw(const std::function<GLint(GLattrib::Name)> attrName2locFunc, GLuint divisor=0) const { _bind_impl(attrIdxSeq{}, attrName2locFunc, divisor); } // binds the buffer to GL_ARRAY_BUFFER and sets up glVertexAttribPointers
+    inline void bind(const std::function<GLint(GLattrib::Name)> attrName2locFunc, GLuint divisor=0) const{ // same as bind_raw(), but also syncs the buffer data (preffered)
+        bind_raw(attrName2locFunc, divisor);
         if (sync) return;
 
         glBufferData(GL_ARRAY_BUFFER, elements.size() * sizeof(vertex), elements.data(), usage);
