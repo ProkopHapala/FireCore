@@ -2,6 +2,7 @@
 #define MESH_LIBRARY_H
 
 #include "GLMesh.h"
+#include "GLInstancedMesh.h"
 
 namespace MeshLibrary {
     extern GLMesh<MPOS> point;
@@ -21,6 +22,7 @@ namespace MeshLibrary {
 
     extern GLvbo<MPOS> octSphere;
     extern GLMesh<MPOS> octSphereMesh;
+    extern GLInstancedMeshBase<GLvbo<MPOS>, MPOSOFFSET> octSphereInstanced;
 }
 
 #endif // MESH_LIBRARY_H

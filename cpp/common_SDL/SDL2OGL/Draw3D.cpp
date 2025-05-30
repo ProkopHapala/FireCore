@@ -426,6 +426,23 @@ int Draw3D::drawSphereOctLines( int n, float R, const Vec3f& pos, const Mat3f& r
     return nvert;
 }
 
+void Draw3D::drawSphereOctLinesInstanced( float r, const std::vector<Vec3f>& ps, Vec3f color ){
+    MeshLibrary::octSphereInstanced.uniforms.set3f("uColor", color);
+    MeshLibrary::octSphereInstanced.instances->clear();
+    for( auto& p : ps ){
+        MeshLibrary::octSphereInstanced.addInstance(p);
+    }
+    MeshLibrary::octSphereInstanced.draw(); // TODO: use r
+}
+void Draw3D::drawSphereOctLinesInstanced( float r, const Vec3d* ps, int n, Vec3f color ){
+    MeshLibrary::octSphereInstanced.uniforms.set3f("uColor", color);
+    MeshLibrary::octSphereInstanced.instances->clear();
+    for(int i=0; i<n; i++){
+        MeshLibrary::octSphereInstanced.addInstance((Vec3f)ps[i]);
+    }
+    MeshLibrary::octSphereInstanced.draw(); // TODO: use r
+}
+
 void Draw3D::drawPlanarPolygon( int n, const int * inds, const Vec3d * points ){
     if( n < 3 ) return;
 

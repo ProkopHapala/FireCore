@@ -56,6 +56,8 @@ int  drawConeFan        ( int n, float r,                const Vec3f& base, cons
 int  drawCone           ( int n, float phi1, float phi2, float r1, float r2, const Vec3f& base, const Vec3f& tip, bool smooth );
 
 int  drawSphereOctLines ( int n, float R, const Vec3f& pos, const Mat3f& rot=Mat3fIdentity, bool bRGB=false );
+void drawSphereOctLinesInstanced( float r, const std::vector<Vec3f>& ps, Vec3f color=COLOR_WHITE );
+void drawSphereOctLinesInstanced( float r, const Vec3d* ps, int n, Vec3f color=COLOR_WHITE );
 //void drawSphere_oct     ( int n, float R, const Vec3f& pos, bool wire=false );
 void drawSphere ( Vec3f pos, float r, Vec3f color=opengl1renderer.color );
 

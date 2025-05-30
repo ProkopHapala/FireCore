@@ -248,5 +248,6 @@ namespace MeshLibrary {
     GLMesh<MPOS> xmark = makeXMark();
 
     GLvbo<MPOS> octSphere = makeOctSphere();
-    GLMesh<MPOS> octSphereMesh = GLMesh<MPOS>(&octSphere, GL_LINES);
+    GLMesh<MPOS> octSphereMesh(&octSphere, GL_LINES);
+    GLInstancedMeshBase<GLvbo<MPOS>, MPOSOFFSET> octSphereInstanced(&octSphere, GL_LINES);
 }

@@ -1457,12 +1457,7 @@ void MolGUI::draw(){
         Vec3d  ps   [natoms];
         Quat4d paras[natoms];
         int n = W->ffl.selectFromOtherBucketsInBox( ib ,6.0, ps,paras,inds );
-        //printf( "MolGUI::draw(). n %i \n", n );
-        Draw3D::color((Vec3f){0.0,1.0,1.0});
-        for(int ia=0; ia<n; ia++){
-            //Draw::color_of_hash(ia*76461+1459);
-            Draw3D::drawSphereOctLines(8,1.0,ps[ia]);
-        }
+        Draw3D::drawSphereOctLinesInstanced(1.0, ps, n, COLOR_GREEN);
     }
 
     //if( bViewSubstrate && W->bSurfAtoms ) Draw3D::atomsREQ( W->surf.natoms, W->surf.apos, W->surf.REQs, ogl_sph, 1., 1., 0. );
