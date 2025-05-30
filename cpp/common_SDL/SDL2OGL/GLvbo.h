@@ -77,15 +77,8 @@ public:
     inline void push_back(const typename decltype(attribs)::type ... args){ push_back(vertex(args...)); }
 
     template<attrib...As>
-    static constexpr bool is_subset(){ // TODO: move this to GLattribs.h
-        GLattrib::Name needs;
-        bool foundAll = ((needs = attribs.name, ((As.name == needs)||...))&&...);
-        return foundAll;
-    }
-
-    template<attrib...As>
     void push_back_t(const typename decltype(As)::type ... args){
-        static_assert(is_subset<As...>(), "Error: call to 'push_back_t' does not supply all attributes used by this GLvbo.");
+        static_assert(GLattrib::is_subset(attr_monostate{}, attribs_monostate<As...>{}), "Error: call to 'push_back_t' does not supply all attributes used by this GLvbo.");
         _push_back_t_impl<As...>(attrIdxSeq{}, args...);
     }
 

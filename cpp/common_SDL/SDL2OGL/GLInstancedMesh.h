@@ -24,22 +24,18 @@ constexpr bool is_specialization_v = is_specialization<T, Template>::value;
 
 
 template<class VertVboType, attrib...instAttribs>
-class GLInstancedMeshBase {private:
-    static_assert(is_specialization_v<VertVboType, GLvbo>, "MeshType must be specialization of GLMeshBase");
-    static_assert(GLattrib::check_attribs<instAttribs...>(), "Attribute list cannot contain duplicate names.");
-    
-    template<attrib...vertAttribs>
-    static constexpr bool check_attribs_merged(attribs_monostate<vertAttribs...>){
-        return GLattrib::check_attribs<vertAttribs..., instAttribs...>();
-    }
-    static_assert(check_attribs_merged(typename VertVboType::attr_monostate{}), "MeshType and instAttribs must have disjunct attribute names.");
-
+class GLInstancedMeshBase {
 public:
     using vertex = GLvertex<typename decltype(instAttribs)::type ...>;
     using attrIdxSeq = std::make_index_sequence<sizeof...(instAttribs)>;
     using attr_monostate = attribs_monostate<instAttribs...>;
 
 private:
+    static_assert(is_specialization_v<VertVboType, GLvbo>, "VertVboType must be specialization of GLvbo");
+    static_assert(GLattrib::check_attribs<instAttribs...>(), "Attribute list cannot contain duplicate names.");
+    static_assert(GLattrib::check_attribs(typename VertVboType::attr_monostate{}, attr_monostate{}), "vertex attribs and instAttribs must have disjunct attribute names.");
+
+
     template<attrib...vertAttribs>
     static constexpr Shader* get_default_shader(attribs_monostate<vertAttribs...>){
         return defaultShader<vertAttribs..., instAttribs...>;

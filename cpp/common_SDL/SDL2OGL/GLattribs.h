@@ -49,7 +49,7 @@ struct GLvertex{
         else next.template set<i-1>(value);
     }
 
-    template<size_t i> static constexpr size_t get_offset() {
+    template<size_t i> static consteval size_t get_offset() {
         if constexpr(i==0) return __builtin_offsetof(GLvertex<T, Ts...>, first); // TODO: using just offsetof() throws error for some reason, so we use __builtin_offsetof() instead - but it isn't portable
         else return __builtin_offsetof(GLvertex<T, Ts...>, next) + decltype(next)::template get_offset<i-1>();
     }
@@ -71,19 +71,19 @@ struct GLvertex<T>{
         first = value;
     }
 
-    template<size_t i> static constexpr size_t get_offset() {
-        static_assert(i==0, "Error: index out of bounds"); // note: i should be know at compile time (because this is a constexpr), so static assert is ok
+    template<size_t i> static consteval size_t get_offset() {
+        static_assert(i==0, "Error: index out of bounds");
         if constexpr(i==0) return offsetof(GLvertex<T>, first);
     }
 };
 
 namespace GLattrib{
-    template<typename T> constexpr GLenum type2GLenum();
-    template<typename T> constexpr GLint type2count();
-    template<Name> constexpr const char* name2str();
+    template<typename T> consteval GLenum type2GLenum();
+    template<typename T> consteval GLint type2count();
+    template<Name> consteval const char* name2str();
 
     template<attrib...attribs, size_t...i>
-    static constexpr bool _check_attribs_impl(std::index_sequence<i...>){
+    static consteval bool _check_attribs_impl(std::index_sequence<i...>){
         Name name;
         size_t idx;
         bool invalid = false;
@@ -95,34 +95,49 @@ namespace GLattrib{
         return !invalid;
     }
     template<attrib...attribs>
-    static constexpr bool check_attribs(){
+    static consteval bool check_attribs(){
         return _check_attribs_impl<attribs...>(std::make_index_sequence<sizeof...(attribs)>{});
+    }
+    template<attrib...As>
+    static consteval bool check_attribs(attribs_monostate<As...>){
+        return check_attribs<As...>();
+    }
+    template<attrib...A1s, attrib...A2s>
+    static consteval bool check_attribs(attribs_monostate<A1s...>, attribs_monostate<A2s...>){
+        return check_attribs<A1s...,A2s...>();
+    }
+
+    template<attrib...BaseAttribs, attrib...As>
+    static consteval bool is_subset(attribs_monostate<BaseAttribs...>, attribs_monostate<As...>){
+        GLattrib::Name needs;
+        bool foundAll = ((needs = BaseAttribs.name, ((As.name == needs)||...))&&...);
+        return foundAll;
     }
 
 
-    template<> constexpr GLenum type2GLenum<float>() { return GL_FLOAT; }
-    template<> constexpr GLenum type2GLenum<Vec2f>() { return GL_FLOAT; }
-    template<> constexpr GLenum type2GLenum<Vec3f>() { return GL_FLOAT; }
-    template<> constexpr GLenum type2GLenum<Quat4f>(){ return GL_FLOAT; }
-    template<> constexpr GLenum type2GLenum<int>()   { return GL_INT;   }
-    template<> constexpr GLenum type2GLenum<Vec2i>() { return GL_INT;   }
-    template<> constexpr GLenum type2GLenum<Vec3i>() { return GL_INT;   }
-    template<> constexpr GLenum type2GLenum<unsigned int>(){ return GL_UNSIGNED_INT; }
+    template<> consteval GLenum type2GLenum<float>() { return GL_FLOAT; }
+    template<> consteval GLenum type2GLenum<Vec2f>() { return GL_FLOAT; }
+    template<> consteval GLenum type2GLenum<Vec3f>() { return GL_FLOAT; }
+    template<> consteval GLenum type2GLenum<Quat4f>(){ return GL_FLOAT; }
+    template<> consteval GLenum type2GLenum<int>()   { return GL_INT;   }
+    template<> consteval GLenum type2GLenum<Vec2i>() { return GL_INT;   }
+    template<> consteval GLenum type2GLenum<Vec3i>() { return GL_INT;   }
+    template<> consteval GLenum type2GLenum<unsigned int>(){ return GL_UNSIGNED_INT; }
 
-    template<> constexpr GLint type2count<float>() { return 1; }
-    template<> constexpr GLint type2count<Vec2f>() { return 2; }
-    template<> constexpr GLint type2count<Vec3f>() { return 3; }
-    template<> constexpr GLint type2count<Quat4f>(){ return 4; }
-    template<> constexpr GLint type2count<int>()   { return 1; }
-    template<> constexpr GLint type2count<Vec2i>() { return 2; }
-    template<> constexpr GLint type2count<Vec3i>() { return 3; }
-    template<> constexpr GLint type2count<unsigned int>(){ return 1; }
+    template<> consteval GLint type2count<float>() { return 1; }
+    template<> consteval GLint type2count<Vec2f>() { return 2; }
+    template<> consteval GLint type2count<Vec3f>() { return 3; }
+    template<> consteval GLint type2count<Quat4f>(){ return 4; }
+    template<> consteval GLint type2count<int>()   { return 1; }
+    template<> consteval GLint type2count<Vec2i>() { return 2; }
+    template<> consteval GLint type2count<Vec3i>() { return 3; }
+    template<> consteval GLint type2count<unsigned int>(){ return 1; }
 
-    template<> constexpr const char* name2str<Position>() { return "vPosition" ; }
-    template<> constexpr const char* name2str<Normal>()   { return "vNormal"   ; }
-    template<> constexpr const char* name2str<Color>()    { return "vColor"    ; }
-    template<> constexpr const char* name2str<UV>()       { return "vUV"       ; }
-    template<> constexpr const char* name2str<PosOffset>(){ return "vPosOffset"; }
+    template<> consteval const char* name2str<Position>() { return "vPosition" ; }
+    template<> consteval const char* name2str<Normal>()   { return "vNormal"   ; }
+    template<> consteval const char* name2str<Color>()    { return "vColor"    ; }
+    template<> consteval const char* name2str<UV>()       { return "vUV"       ; }
+    template<> consteval const char* name2str<PosOffset>(){ return "vPosOffset"; }
 
     static inline const char* name2str(Name name){
         switch(name){

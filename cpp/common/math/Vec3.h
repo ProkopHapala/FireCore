@@ -127,42 +127,42 @@ class Vec3T{
 	T makeOrthoU( const VEC& a ){ T c = dot(a);           add_mul(a, -c); return c; }
 	T makeOrtho ( const VEC& a ){ T c = dot(a)/a.norm2(); add_mul(a, -c); return c; }
 
-	inline void operator+=( const VEC& v ){ x+=v.x; y+=v.y; z=z+v.z; };
-    inline void operator*=( const VEC& v ){ x*=v.x; y*=v.y; z=z*v.z; };
+	constexpr  inline void operator+=( const VEC& v ){ x+=v.x; y+=v.y; z=z+v.z; };
+    constexpr  inline void operator*=( const VEC& v ){ x*=v.x; y*=v.y; z=z*v.z; };
 
     //inline VEC operator+ ( T f   ) const { return VEC{ x+f, y+f, z+f }; };
-    inline VEC operator* ( T f   ) const { return VEC{ x*f, y*f, z*f }; };
+    constexpr inline VEC operator* ( T f   ) const { return VEC{ x*f, y*f, z*f }; };
 
-    inline VEC operator+ ( const VEC& vi ) const { return VEC{ x+vi.x, y+vi.y, z+vi.z }; };
-    inline VEC operator- ( const VEC& vi ) const { return VEC{ x-vi.x, y-vi.y, z-vi.z }; };
-    inline VEC operator- (               ) const { return VEC{     -x,     -y,     -z }; };
-    inline VEC operator* ( const VEC& vi ) const { return VEC{ x*vi.x, y*vi.y, z*vi.z }; };
-    inline VEC operator/ ( const VEC& vi ) const { return VEC{ x/vi.x, y/vi.y, z/vi.z }; };
+    constexpr  inline VEC operator+ ( const VEC& vi ) const { return VEC{ x+vi.x, y+vi.y, z+vi.z }; };
+    constexpr  inline VEC operator- ( const VEC& vi ) const { return VEC{ x-vi.x, y-vi.y, z-vi.z }; };
+    constexpr  inline VEC operator- (               ) const { return VEC{     -x,     -y,     -z }; };
+    constexpr  inline VEC operator* ( const VEC& vi ) const { return VEC{ x*vi.x, y*vi.y, z*vi.z }; };
+    constexpr  inline VEC operator/ ( const VEC& vi ) const { return VEC{ x/vi.x, y/vi.y, z/vi.z }; };
 
-    inline bool operator==( const VEC& v ) const { return x==v.x && y==v.y && z==v.z; }
-    inline bool operator!=( const VEC& v ) const { return x!=v.x || y!=v.y || z!=v.z; };
+    constexpr  inline bool operator==( const VEC& v ) const { return x==v.x && y==v.y && z==v.z; }
+    constexpr  inline bool operator!=( const VEC& v ) const { return x!=v.x || y!=v.y || z!=v.z; };
 
-    inline T bidot  ( const VEC& a, const VEC& b ) const { return x*a.x*b.x + y*a.y*b.y + z*a.z*b.z;  };
-    inline T antidot( const VEC& a, const VEC& b ) const { return x*a.y*b.z + y*a.z*b.x + z*a.x*b.y;  };
+    constexpr inline T bidot  ( const VEC& a, const VEC& b ) const { return x*a.x*b.x + y*a.y*b.y + z*a.z*b.z;  };
+    constexpr inline T antidot( const VEC& a, const VEC& b ) const { return x*a.y*b.z + y*a.z*b.x + z*a.x*b.y;  };
 
-    inline T triple_product( const VEC& a, const VEC& b ) const { return x*(a.y*b.z-a.z*b.y) + y*(a.z*b.x-a.x*b.z) + z*(a.x*b.y-a.y*b.x);  };  // https://en.wikipedia.org/wiki/Triple_product
+    constexpr inline T triple_product( const VEC& a, const VEC& b ) const { return x*(a.y*b.z-a.z*b.y) + y*(a.z*b.x-a.x*b.z) + z*(a.x*b.y-a.y*b.x);  };  // https://en.wikipedia.org/wiki/Triple_product
 
-	inline T dot  ( const VEC& a ) const { return x*a.x + y*a.y + z*a.z;  };
-	inline T norm2(              ) const { return x*x + y*y + z*z;        };
-	inline T norm ( ) const { return  sqrt( x*x + y*y + z*z ); };
-    inline T normalize() {
+	constexpr inline T dot  ( const VEC& a ) const { return x*a.x + y*a.y + z*a.z;  };
+	constexpr inline T norm2(              ) const { return x*x + y*y + z*z;        };
+	constexpr inline T norm ( ) const { return  sqrt( x*x + y*y + z*z ); };
+    constexpr inline T normalize() {
 		T norm  = sqrt( x*x + y*y + z*z );
 		T inVnorm = 1.0/norm;
 		x *= inVnorm;    y *= inVnorm;    z *= inVnorm;
 		return norm;
     }
-    inline VEC normalized()const{
+    constexpr inline VEC normalized()const{
         VEC v; v.set(*this);
         v.normalize();
         return v;
     }
 
-    inline T cos_v( const VEC& b ){ return dot(b)/sqrt( norm2() * b.norm2() ); }
+    constexpr inline T cos_v( const VEC& b ){ return dot(b)/sqrt( norm2() * b.norm2() ); }
 
 
     inline bool tryNormalize(double errMax){
@@ -324,7 +324,7 @@ class Vec3T{
  		return *this;
 	};
 
-	inline VEC& rotate_csa( T ca, T sa, const VEC& uaxis ){
+	constexpr inline VEC& rotate_csa( T ca, T sa, const VEC& uaxis ){
 		T cu = (1-ca)*dot(uaxis);
 		T utx  = uaxis.y*z - uaxis.z*y;
 		T uty  = uaxis.z*x - uaxis.x*z;
@@ -336,9 +336,9 @@ class Vec3T{
 		return *this;
 	};
 
-    inline VEC& rotate_csa( T ca, T sa, const VEC& uaxis, const VEC& p0        ){ sub(p0); rotate_csa( ca, sa, uaxis ); add(p0); return *this; };
-    inline VEC& rotate    ( T angle,    const VEC& axis , const VEC& p0        ){ sub(p0); rotate    ( angle,   axis ); add(p0); return *this; };
-    inline VEC& scale     (             const VEC& sc   , const VEC& p0        ){ sub(p0); mul(sc);                     add(p0); return *this; };
+    constexpr inline VEC& rotate_csa( T ca, T sa, const VEC& uaxis, const VEC& p0        ){ sub(p0); rotate_csa( ca, sa, uaxis ); add(p0); return *this; };
+    constexpr inline VEC& rotate    ( T angle,    const VEC& axis , const VEC& p0        ){ sub(p0); rotate    ( angle,   axis ); add(p0); return *this; };
+    constexpr inline VEC& scale     (             const VEC& sc   , const VEC& p0        ){ sub(p0); mul(sc);                     add(p0); return *this; };
 
 	inline VEC& rotateTo( const VEC& rot0, double coef ){
         //rot.add_mul( rot0, coef ); rot.normalize();
