@@ -18,6 +18,9 @@ namespace MeshLibrary {
     extern GLMesh<MPOS> circle;
     extern GLMesh<MPOS> cross;
     extern GLMesh<MPOS> xmark;
+
+    extern GLvbo<MPOS> octSphere;
+    extern GLMesh<MPOS> octSphereMesh;
 }
 
 #endif // MESH_LIBRARY_H

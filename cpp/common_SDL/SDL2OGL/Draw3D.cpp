@@ -420,9 +420,8 @@ int Draw3D::drawSphereOctLines( int n, float R, const Vec3f& pos, const Mat3f& r
         tmpMesh3.addVertex({pos.x+rot.a.x*R, pos.y+rot.a.y*R, pos.z+rot.a.z*R}, {0,0,1}); // Close the loop
         tmpMesh3.draw(GL_LINE_STRIP);
     } else {
-        nvert += drawCircleAxis( n, pos, rot.b, rot.a, R, dca, dsa );
-        nvert += drawCircleAxis( n, pos, rot.c, rot.b, R, dca, dsa );
-        nvert += drawCircleAxis( n, pos, rot.a, rot.c, R, dca, dsa );
+        MeshLibrary::octSphereMesh.uniforms.set3f("uColor", COLOR_GREEN);
+        MeshLibrary::octSphereMesh.draw(pos, R);
     }
     return nvert;
 }

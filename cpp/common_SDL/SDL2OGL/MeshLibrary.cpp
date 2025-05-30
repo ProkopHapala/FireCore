@@ -1,5 +1,5 @@
 #include "MeshLibrary.h"
-#include "Vec3.h"
+#include "MeshBuilder.h"
 
 static GLMesh<MPOS> makePointCross() {
     GLMesh<MPOS> mesh(GL_LINES);
@@ -228,6 +228,12 @@ static GLMesh<MPOS> makeXMark() {
     return m;
 }
 
+static GLvbo<MPOS> makeOctSphere(){
+    GLvbo<MPOS> m;
+    MeshBuilder::addSphereOct(m, 8, 1, Vec3fZero);
+    return m;
+}
+
 namespace MeshLibrary {
     GLMesh<MPOS> pointCross = makePointCross();
     GLMesh<MPOS> line = makeLine();
@@ -240,4 +246,7 @@ namespace MeshLibrary {
     GLMeshBase<MPOS> sphere = makeSphere();
     GLMesh<MPOS> cross = makeCross();
     GLMesh<MPOS> xmark = makeXMark();
+
+    GLvbo<MPOS> octSphere = makeOctSphere();
+    GLMesh<MPOS> octSphereMesh = GLMesh<MPOS>(&octSphere, GL_LINES);
 }

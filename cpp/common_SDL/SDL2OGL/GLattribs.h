@@ -6,6 +6,7 @@
 #include <stdexcept>
 #include <utility>
 #include <cstddef>
+#include <variant>
 
 namespace GLattrib{
     enum Name {
@@ -35,9 +36,17 @@ struct GLvertex{
 
     GLvertex(T first, Ts... next) : first(first), next(next...) {}
 
+    template<size_t i>
+    using get_type = std::conditional_t<i==0, T, typename decltype(next)::template get_type<i-1>>;
+
     template<size_t i> auto& get(){
         if constexpr(i==0) return first;
         else return next.template get<i-1>();
+    }
+
+    template <size_t i> void set(get_type<i> value){
+        if constexpr(i==0) first = value;
+        else next.template set<i-1>(value);
     }
 
     template<size_t i> static constexpr size_t get_offset() {
@@ -49,9 +58,17 @@ template<typename T>
 struct GLvertex<T>{
     T first;
 
+    template<size_t i>
+    using get_type = std::conditional_t<i==0, T, std::monostate>; // TODO: replace std::monostate with some sort of error
+
     template <size_t i> auto& get(){
-        static_assert(i==0, "Error: index out of bounds"); // TODO: is a static assert the correct way to do this?
+        static_assert(i==0, "Error: index out of bounds");
         return first;
+    }
+
+    template <size_t i> void set(T value){
+        static_assert(i==0, "Error: index out of bounds");
+        first = value;
     }
 
     template<size_t i> static constexpr size_t get_offset() {

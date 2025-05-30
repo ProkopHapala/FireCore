@@ -43,6 +43,20 @@ private:
         ,...);
         GL_CHECK_ERROR();
     }
+    template<GLattrib::Name target_name, size_t target_idx, attrib...As>
+    void set_vertex_attr_from_list(vertex& v, const typename decltype(As)::type ... list){
+        ((
+            (target_name == As.name) ? v.template set<target_idx>(list),0 : 0
+        ),...);
+    }
+
+    template<attrib...As,size_t ... attrIdx>
+    void _push_back_t_impl(std::index_sequence<attrIdx...> seq, const typename decltype(As)::type ... args){
+        vertex v;
+        (set_vertex_attr_from_list<attribs.name, attrIdx, As...>(v, args...)
+        ,...);
+        push_back(v);
+    }
 
 public:
     GLvbo(GLenum usage=GL_STATIC_DRAW) : usage(usage){} 
@@ -61,6 +75,20 @@ public:
         sync = false;
     }
     inline void push_back(const typename decltype(attribs)::type ... args){ push_back(vertex(args...)); }
+
+    template<attrib...As>
+    static constexpr bool is_subset(){ // TODO: move this to GLattribs.h
+        GLattrib::Name needs;
+        bool foundAll = ((needs = attribs.name, ((As.name == needs)||...))&&...);
+        return foundAll;
+    }
+
+    template<attrib...As>
+    void push_back_t(const typename decltype(As)::type ... args){
+        static_assert(is_subset<As...>(), "Error: call to 'push_back_t' does not supply all attributes used by this GLvbo.");
+        _push_back_t_impl<As...>(attrIdxSeq{}, args...);
+    }
+
     void clear() {elements.clear();}
 
     void addVertex_strip(typename decltype(attribs)::type ... args){
