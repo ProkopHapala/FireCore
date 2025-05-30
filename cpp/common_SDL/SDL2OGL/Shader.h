@@ -5,9 +5,8 @@
 #include "Mat4.h"
 #include <cstring>
 #include <iostream>
-#include <stdexcept>
 #include <string>
-#include <unordered_map>
+#include <unordered_set>
 #include <utility>
 #include "GLuniform.h"
 
@@ -22,15 +21,12 @@ private:
     GLuint vertexShaderId   = 0;
     GLuint fragmentShaderId = 0;
 
-    GLuint uMVPloc = -1; // TODO: this isnt good architecture
-
     char* __vertexShaderSource   = nullptr;
     char* __fragmentShaderSource = nullptr;
 
     unsigned int update_uniforms = 0;
     std::vector<GLuniform> uniforms;
-
-
+    std::unordered_set<GLuint> tex_uniforms;
 
 public:
     Shader(const char* vertexShaderSource, const char* fragmentShaderSource){
@@ -76,10 +72,19 @@ public:
                 case GLuniform::ui4:  glUniform4ui(i, u.data.ui4.x, u.data.ui4.y, u.data.ui4.z, u.data.ui4.w); break;
                 case GLuniform::m3:   glUniformMatrix3fv(i, 1, GL_FALSE, u.data.m3.array); break;
                 case GLuniform::m4:   glUniformMatrix4fv(i, 1, GL_FALSE, u.data.m4.array); break;
-                case GLuniform::tex:  printf("ERROR: setting texture uniforms in shader is not yet implemented. Please set it in GLMesh instead.\n"); break;
+                case GLuniform::tex:  break;
                 default: printf("ERROR: invalid uniform type\n");
             }
             update_uniforms &= ~(1 << i);
+        }
+
+        // update textures
+        int texi = 0;
+        for (auto loc : tex_uniforms) {
+            glActiveTexture(GL_TEXTURE0 + texi);
+            glBindTexture(GL_TEXTURE_2D, uniforms[loc].data.tex->getHandle());
+            glUniform1i(loc, texi);
+            texi++;
         }
     }
     
@@ -107,10 +112,16 @@ public:
         // TODO: optimise matrix writes to only update changed rows (if only one row changes)
         if (uniforms[loc] == value) return;
         update_uniforms |= (1 << loc); // TODO: check that loc is not > 32
+        if (uniforms[loc].type == GLuniform::tex) tex_uniforms.erase(loc);
         uniforms[loc] = value;
+        if (value.type == GLuniform::tex) tex_uniforms.insert(loc);
     }
 
-    inline void setuMVPMatrix(Mat4f mat){ setUniformLoc(uMVPloc, {.type=GLuniform::m4, .data={.m4=mat}});}
+    inline void setUniforms(const GLuniformSet& set){
+        for (auto u : set.uniforms){
+            setUniformName(u.first.c_str(), u.second);
+        }
+    }
 
     inline void setUniform1f(const char* name, GLfloat value)       { setUniformName(name, {.type=GLuniform::f1, .data={.f1=value}}); }
     inline void setUniform2f(const char* name, Vec2T<GLfloat> value){ setUniformName(name, {.type=GLuniform::f2, .data={.f2=value}}); }
@@ -159,8 +170,6 @@ private:
             attrName2LocMap[i] = glGetAttribLocation(programId, GLattrib::name2str(GLattrib::Name(i)));
             if (attrName2LocMap[i] != -1) glEnableVertexAttribArray(attrName2LocMap[i]); // TODO - do we ever need to disable VertexAttribArrays?
         }
-    
-        uMVPloc = glGetUniformLocation(programId, "uMVPMatrix");
 
         free(__vertexShaderSource  ); __vertexShaderSource   = nullptr;
         free(__fragmentShaderSource); __fragmentShaderSource = nullptr;

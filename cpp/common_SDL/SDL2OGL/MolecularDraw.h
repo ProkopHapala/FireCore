@@ -233,7 +233,7 @@ int renderSubstrate_( const GridShape& grid, Quat4f * FF, Quat4f * FFel, double 
     return nvert;
 }
 
-void renderSubstrate_new( GLMesh<MPOS,MNORMAL,MCOLOR>* outMesh, const GridFF& gff, Vec2d zrange, double isoval, Quat4d PLQ, double sclr, bool bErrNan=false ){
+void renderSubstrate_new( GLvbo<MPOS,MNORMAL,MCOLOR>* outMesh, const GridFF& gff, Vec2d zrange, double isoval, Quat4d PLQ, double sclr, bool bErrNan=false ){
     printf( "renderSubstrate_new() gff.mode=%i @gff.Bspline_PLQ=%li \n", gff.mode, (long)gff.Bspline_PLQ );
     Quat4d PL{PLQ.x,PLQ.y,0.0,0.0};
     Quat4d Q {0.0,0.0,PLQ.y,0.0};
@@ -242,7 +242,6 @@ void renderSubstrate_new( GLMesh<MPOS,MNORMAL,MCOLOR>* outMesh, const GridFF& gf
     int nvert = 0;
 
     outMesh->clear();
-    outMesh->drawMode = GL_TRIANGLES;
     for ( int ib=1; ib<=gn.y; ib++ ){
         int strip_vert_count = 0;
         for ( int ia=0; ia<=gn.x; ia++ ){
@@ -284,13 +283,13 @@ void renderSubstrate_new( GLMesh<MPOS,MNORMAL,MCOLOR>* outMesh, const GridFF& gf
             Vec3f color = colorRBH( el1*sclr, sin(p1.z*1.0)*0.1 );
             Vec3f normal = (Vec3f)f1;
             Vec3f pos = (Vec3f)p1;
-            if (strip_vert_count >= 3) outMesh->addVertex_strip(pos, normal, color); else outMesh->addVertex(pos, normal, color);
+            if (strip_vert_count >= 3) outMesh->addVertex_strip(pos, normal, color); else outMesh->push_back(pos, normal, color);
             strip_vert_count++;
 
             color = colorRBH( el2*sclr, sin(p2.z*1.0)*0.1 );
             normal = (Vec3f)f2;
             pos = (Vec3f)p2;
-            if (strip_vert_count >= 3) outMesh->addVertex_strip(pos, normal, color); else outMesh->addVertex(pos, normal, color);
+            if (strip_vert_count >= 3) outMesh->addVertex_strip(pos, normal, color); else outMesh->push_back(pos, normal, color);
             strip_vert_count++;
         }
     }

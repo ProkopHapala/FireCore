@@ -1,7 +1,6 @@
 #ifndef _GLMesh_H_
 #define _GLMesh_H_
 
-#include <unordered_map>
 #include <utility>
 #include "GLattribs.h"
 #include "GLuniform.h"
@@ -19,26 +18,14 @@ public:
     using attrIdxSeq = std::make_index_sequence<sizeof...(attribs)>;
     using attr_monostate = attribs_monostate<attribs...>;
 
-private:
-    std::vector<GLuniform> uniforms;
-
-    std::unordered_map<std::string, GLuniform> lazy_uniforms; // TODO: figure out a better system for lazy initialization
-
-    inline void commit_lazy_uniforms(){
-        if (lazy_uniforms.size() == 0) return;
-        for (auto i : lazy_uniforms) {
-            setUniformName(i.first.c_str(), i.second);
-        }
-        lazy_uniforms.clear();
-    }
-    
+private:    
     inline void bind_sync_vbo() const { verts->bind([this](GLattrib::Name name){return shader->attrName2Loc(name);} ); }
     
 public:
     GLenum drawMode;
     GLvbo<attribs...>* verts;
     Shader* shader;
-    // TODO: texture? color?
+    GLuniformSet uniforms;
 
     GLMeshBase(GLenum drawMode=GL_TRIANGLES, GLenum usage=GL_STATIC_DRAW, Shader* shader=defaultcolorShader<attribs...>)
         : drawMode(drawMode), shader(shader), verts(new GLvbo<attribs...>(usage)) {}
@@ -63,51 +50,25 @@ public:
     }
     inline int vertexCount() const { return verts->size(); }
 
-
-    void setUniformName(const char* name, GLuniform u){
-        if (!GLES::context){
-            lazy_uniforms[std::string(name)] = u;
-            return;
-        }
-        setUniformLoc(shader->getUniformLocation(name), u);
-    }
-
-    void setUniformLoc(GLuint loc, GLuniform u){
-        if (loc == -1) return;
-        while (uniforms.size() <= loc) uniforms.push_back({.type=GLuniform::NONE});
-        uniforms[loc] = u;
-    }
-
-    void setUniform1f(const char* name, GLfloat v)        {setUniformName(name, {.type=GLuniform::f1, .data={.f1=v}}); }
-    void setUniform2f(const char* name, Vec2T<GLfloat> v) {setUniformName(name, {.type=GLuniform::f2, .data={.f2=v}}); }
-    void setUniform3f(const char* name, Vec3T<GLfloat> v) {setUniformName(name, {.type=GLuniform::f3, .data={.f3=v}}); }
-    void setUniform4f(const char* name, Vec4T<GLfloat> v) {setUniformName(name, {.type=GLuniform::f4, .data={.f4=v}}); }
-    void setUniform1i(const char* name, GLint v)          {setUniformName(name, {.type=GLuniform::i1, .data={.i1=v}}); }
-    void setUniform2i(const char* name, Vec2T<GLint> v)   {setUniformName(name, {.type=GLuniform::i2, .data={.i2=v}}); }
-    void setUniform3i(const char* name, Vec3T<GLint> v)   {setUniformName(name, {.type=GLuniform::i3, .data={.i3=v}}); }
-    void setUniform4i(const char* name, Vec4T<GLint> v)   {setUniformName(name, {.type=GLuniform::i4, .data={.i4=v}}); }
-    void setUniformMatrix3f(const char* name, Mat3T<GLfloat> v) {setUniformName(name, {.type=GLuniform::m3, .data={.m3=v}}); }
-    void setUniformMatrix4f(const char* name, Mat4T<GLfloat> v) {setUniformName(name, {.type=GLuniform::m4, .data={.m4=v}}); }  
-    void setUniformTex(const char* name, GLTexture* tex) {setUniformName(name, {.type=GLuniform::tex, .data={.tex=tex}});} 
+    inline void setUniformName(std::string name, GLuniform u){ uniforms.set(name, u); }
+    void setUniform1f(std::string name, GLfloat v)        {setUniformName(name, {.type=GLuniform::f1, .data={.f1=v}}); }
+    void setUniform2f(std::string name, Vec2T<GLfloat> v) {setUniformName(name, {.type=GLuniform::f2, .data={.f2=v}}); }
+    void setUniform3f(std::string name, Vec3T<GLfloat> v) {setUniformName(name, {.type=GLuniform::f3, .data={.f3=v}}); }
+    void setUniform4f(std::string name, Vec4T<GLfloat> v) {setUniformName(name, {.type=GLuniform::f4, .data={.f4=v}}); }
+    void setUniform1i(std::string name, GLint v)          {setUniformName(name, {.type=GLuniform::i1, .data={.i1=v}}); }
+    void setUniform2i(std::string name, Vec2T<GLint> v)   {setUniformName(name, {.type=GLuniform::i2, .data={.i2=v}}); }
+    void setUniform3i(std::string name, Vec3T<GLint> v)   {setUniformName(name, {.type=GLuniform::i3, .data={.i3=v}}); }
+    void setUniform4i(std::string name, Vec4T<GLint> v)   {setUniformName(name, {.type=GLuniform::i4, .data={.i4=v}}); }
+    void setUniformMatrix3f(std::string name, Mat3T<GLfloat> v) {setUniformName(name, {.type=GLuniform::m3, .data={.m3=v}}); }
+    void setUniformMatrix4f(std::string name, Mat4T<GLfloat> v) {setUniformName(name, {.type=GLuniform::m4, .data={.m4=v}}); }  
+    void setUniformTex(std::string name, GLTexture* tex) {setUniformName(name, {.type=GLuniform::tex, .data={.tex=tex}});} 
 
     inline void draw(GLenum drawMode=0){
         if (drawMode == 0) drawMode = this->drawMode;
-        commit_lazy_uniforms();
         bind_sync_vbo();
         GL_CHECK_ERROR();
 
-        int texi = 0;
-        for (int i=0; i<uniforms.size(); i++){
-            if (uniforms[i].type == GLuniform::NONE) continue;
-            if (uniforms[i].type == GLuniform::tex){
-                glActiveTexture(GL_TEXTURE0 + texi);
-                uniforms[i].data.tex->bind();
-                shader->setUniformLoc(i, {.type=GLuniform::i1, .data={.i1=texi}});
-                texi++;
-                continue;
-            }
-            shader->setUniformLoc(i, uniforms[i]);
-        }
+        shader->setUniforms(uniforms);
         shader->use();
         GL_CHECK_ERROR();
 
@@ -128,7 +89,7 @@ public:
 
 
     void drawMVP(Mat4f mvp, GLenum drawMode=0){
-        base::shader->setuMVPMatrix(mvp);
+        base::uniforms.set4m("uMVPMatrix", mvp);
         base::draw(drawMode);
     }
 

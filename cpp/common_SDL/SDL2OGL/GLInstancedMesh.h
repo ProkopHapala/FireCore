@@ -1,8 +1,11 @@
 #ifndef GLINSTANCEDMESH_H
 #define GLINSTANCEDMESH_H
 
-#include "GLMesh.h"
-#include "MeshLibrary.h"
+#include "GLES.h"
+#include "GLattribs.h"
+#include "GLvbo.h"
+#include "Shader.h"
+#include "Camera.h"
 
 template <class T, template<attrib...> class Template>
 struct is_specialization : std::false_type {};
@@ -47,9 +50,8 @@ public:
     VertVboType* verts;
     GLvbo<instAttribs...>* instances;
     Shader* shader;
+    GLuniformSet uniforms;
 
-    //template<attrib...vertAttribs>
-    //GLInstancedMesh(MeshType* mesh) : mesh(mesh), shader(get_default_shader(typename MeshType::attr_monostate{})) {}
     GLInstancedMeshBase(VertVboType* vbo, GLenum draw_mode=GL_TRIANGLES, Shader* shader=get_default_shader(typename VertVboType::attr_monostate{}))
         : shader(shader), verts(vbo), drawMode(draw_mode), instances(new GLvbo<instAttribs...>()) {}
     
@@ -70,7 +72,8 @@ public:
         }
 
         bind_sync_vbos();
-        shader->setuMVPMatrix(GLES::active_camera->viewProjectionMatrix());
+        shader->setUniforms(uniforms);
+        shader->setUniform4m("uMVPMatrix", GLES::active_camera->viewProjectionMatrix());
         shader->use();
         glDrawArraysInstanced(drawMode, 0, verts->size(), instances->size());
     }
