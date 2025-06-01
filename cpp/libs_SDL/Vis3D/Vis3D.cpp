@@ -110,7 +110,6 @@ extern "C"{
 
         int ilist = opengl1renderer.genLists(1);
         opengl1renderer.newList(ilist, GL_COMPILE);
-        opengl1renderer.enable (GL_LIGHTING);
         for( int i=0; i<n; i++ ){
             Vec3f clr; convert(colors[i],clr);
             Vec3f pos; convert(poss[i],pos);
@@ -133,7 +132,6 @@ extern "C"{
         if( !thisApp->wait_LOCK(10,5) ) return -1; thisApp->GL_LOCK = true;
         int ilist = opengl1renderer.genLists(1);
         opengl1renderer.newList(ilist, GL_COMPILE);
-            opengl1renderer.disable (GL_LIGHTING);
             Draw::setRGBA(icolor);
             Draw3D::drawPolyLine( n, (Vec3d*)points_, closed );
         opengl1renderer.endList();
@@ -146,7 +144,6 @@ extern "C"{
         if( !thisApp->wait_LOCK(10,5) ) return -1; thisApp->GL_LOCK = true;
         int ilist = opengl1renderer.genLists(1);
         opengl1renderer.newList(ilist, GL_COMPILE);
-            opengl1renderer.disable (GL_LIGHTING);
             Draw::setRGBA(icolor);
             Draw3D::drawLines( nedges, edges, (Vec3d *)points_ );
         opengl1renderer.endList();
@@ -159,7 +156,6 @@ extern "C"{
         if( !thisApp->wait_LOCK(10,5) ) return -1; thisApp->GL_LOCK = true;
         int ilist = opengl1renderer.genLists(1);
         opengl1renderer.newList(ilist, GL_COMPILE);
-            opengl1renderer.disable (GL_LIGHTING);
             Draw::setRGBA(icolor);
             for(int i=0; i<n; i++){
                 int i3 = i*3;
@@ -178,7 +174,6 @@ extern "C"{
         if( !thisApp->wait_LOCK(10,5) ) return -1; thisApp->GL_LOCK = true;
         int ilist = opengl1renderer.genLists(1);
         opengl1renderer.newList(ilist, GL_COMPILE);
-            opengl1renderer.enable (GL_LIGHTING);
             Draw::setRGBA(icolor);
             Draw3D::drawTriangles( ntris, tris, (Vec3d *)points_ );
         opengl1renderer.endList();

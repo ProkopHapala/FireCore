@@ -60,15 +60,8 @@ void default_draw(){
     opengl1renderer.clearColor( 0.5f, 0.5f, 0.5f, 1.0f );
     opengl1renderer.clear( GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT );
 
-    opengl1renderer.enable    ( GL_LIGHTING );
-    opengl1renderer.shadeModel( GL_FLAT     );
-
     Draw3D::drawBox       ( -1.0f, 1.0f, -1.0f, 1.0f, -1.0f, 1.0f, 0.8f, 0.8f, 0.8f );
-
-    opengl1renderer.shadeModel( GL_SMOOTH     );
     Draw3D::drawSphere( Vec3f{3.0,3.0,3.0}, 1 );
-
-    opengl1renderer.disable ( GL_LIGHTING );
     Draw3D::drawAxis ( 3.0f );
 }
 
@@ -200,33 +193,7 @@ class GLView{ public:
 
 
 void GLView::setupRenderer(){
-    //float white    [] = { 1.0f, 1.0f,  1.0f,  1.0f };
-    float ambient  [] = { 0.1f, 0.15f, 0.25f, 1.0f };
-    float diffuse  [] = { 0.9f, 0.8f,  0.7f,  1.0f };
-    float specular [] = { 1.0f, 1.0f,  1.0f,  1.0f };
-    float shininess[] = { 80.0f                    };
-    float lightPos [] = { 1.0f, -1.0f, 1.0f, 0.0f  };
-
-    //opengl1renderer.materialfv ( GL_FRONT_AND_BACK, GL_AMBIENT,   ambient);
-    //opengl1renderer.materialfv ( GL_FRONT_AND_BACK, GL_DIFFUSE,   diffuse);
-    opengl1renderer.materialfv ( GL_FRONT_AND_BACK, GL_SPECULAR,  specular);
-    opengl1renderer.materialfv ( GL_FRONT_AND_BACK, GL_SHININESS, shininess);
-
-    opengl1renderer.enable     ( GL_COLOR_MATERIAL    );
-    opengl1renderer.lightfv    ( GL_LIGHT0, GL_POSITION,  lightPos );
-    opengl1renderer.lightfv    ( GL_LIGHT0, GL_DIFFUSE,   diffuse  );
-    opengl1renderer.lightfv    ( GL_LIGHT0, GL_AMBIENT,   ambient  );
-    opengl1renderer.lightfv    ( GL_LIGHT0, GL_SPECULAR,  specular );
-    //opengl1renderer.lightfv    ( GL_LIGHT0, GL_AMBIENT,  ambient  );
-    opengl1renderer.enable     ( GL_LIGHTING         );
-    opengl1renderer.enable     ( GL_LIGHT0           );
-    opengl1renderer.enable     ( GL_NORMALIZE        );
-
-    //opengl1renderer.lightModeli( GL_LIGHT_MODEL_TWO_SIDE, 1 );
-
     opengl1renderer.enable     ( GL_DEPTH_TEST       );
-    opengl1renderer.hint       ( GL_LINE_SMOOTH_HINT, GL_NICEST );
-    opengl1renderer.shadeModel ( GL_SMOOTH           );
     opengl1renderer.polygonMode( GL_FRONT_AND_BACK, GL_FILL );
 }
 

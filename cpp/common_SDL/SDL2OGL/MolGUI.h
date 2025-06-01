@@ -1096,8 +1096,6 @@ void MolGUI::drawParticles(){
     // AtomType& atyp = W->params.atypes[ityp];
     // double r = ((atyp.RvdW-mm_Rsub)*mm_Rsc);
     Mat3d m  = Mat3dIdentity*0.2;
-    opengl1renderer.enable(GL_LIGHTING);
-    opengl1renderer.shadeModel(GL_SMOOTH);
     for( int i=0; i<particles.size(); i++ ){
         Quat4d& p = particles[i];
         Draw3D::drawSphere((Vec3f)p.f, 1, COLOR_GREEN);
@@ -1719,7 +1717,6 @@ Vec3d MolGUI::showNonBond( char* s, Vec2i b, bool bDraw ){
 }
 
 void MolGUI::drawHUD(){
-    opengl1renderer.disable ( GL_LIGHTING );
     gui.draw();
 
     opengl1renderer.pushMatrix();
@@ -1890,8 +1887,6 @@ void MolGUI::renderGridFF_new( double isoVal, int isoSurfRenderType, double colo
     Quat4d PLQ = REQ2PLQ_d( REQ, W->gridFF.alphaMorse );
     printf( "MolGUI::renderGridFF_new() isoVal=%g REQ{%g,%g,%g,%g} PLQ{%g,%g,%g,%g}\n", isoVal, REQ.x, REQ.y, REQ.z,  REQ.z, PLQ.x, PLQ.y, PLQ.z, PLQ.w );
 
-    opengl1renderer.shadeModel( GL_SMOOTH );
-    opengl1renderer.enable(GL_LIGHTING);
     opengl1renderer.enable(GL_DEPTH_TEST);
 
     Vec2d zrange{-5.0,5.0};
@@ -1902,8 +1897,6 @@ void MolGUI::renderGridFF_new( double isoVal, int isoSurfRenderType, double colo
 void MolGUI::renderSurfAtoms( Vec3i nPBC, bool bPointCross, float qsc, float Rsc, float Rsub ){
     //if(verbosity>0) printf( "MolGUI::renderSurfAtoms() nPBC(%i,%i,%i) qsc=%g Rsc=%g Rsub=%g W->gridFF.apos_.size()=%li bPointCross=%i\n", nPBC.x, nPBC.y, nPBC.z, qsc, Rsc, Rsub, W->gridFF.apos_.size(), bPointCross );
     
-    opengl1renderer.shadeModel( GL_SMOOTH );
-    opengl1renderer.enable(GL_LIGHTING);
     opengl1renderer.enable(GL_DEPTH_TEST);
 
     Mat3d& lvec =  W->gridFF.grid.cell;
@@ -1924,8 +1917,6 @@ void MolGUI::renderESP( Quat4d REQ ){
     printf( "MolGUI::renderESP() %li \n", ogl_esp );
     ogl_esp = opengl1renderer.genLists(1);
     opengl1renderer.newList(ogl_esp, GL_COMPILE);
-    opengl1renderer.shadeModel( GL_SMOOTH );
-    opengl1renderer.enable(GL_LIGHTING);
     opengl1renderer.enable(GL_DEPTH_TEST);
     const NBFF& nbmol = W->nbmol;
     int nvert = Draw3D::drawESP( nbmol.natoms, nbmol.apos, nbmol.REQs, REQ );
@@ -2024,9 +2015,6 @@ void MolGUI::renderAFM( int iz, int offset ){
     if(ogl_afm>0)opengl1renderer.deleteLists(ogl_afm,1);
     ogl_afm = opengl1renderer.genLists(1);
     opengl1renderer.newList(ogl_afm, GL_COMPILE);
-    opengl1renderer.shadeModel( GL_SMOOTH );
-    //opengl1renderer.enable(GL_LIGHTING);
-    opengl1renderer.disable(GL_LIGHTING);
     opengl1renderer.enable(GL_DEPTH_TEST);
     double vmin=+1e+300;
     double vmax=-1e+300;
@@ -2052,9 +2040,6 @@ void MolGUI::renderAFM_trjs( int di ){
     if(ogl_afm_trj>0)opengl1renderer.deleteLists(ogl_afm_trj,1);
     ogl_afm_trj = opengl1renderer.genLists(1);
     opengl1renderer.newList(ogl_afm_trj, GL_COMPILE);
-    opengl1renderer.shadeModel( GL_SMOOTH );
-    //opengl1renderer.enable(GL_LIGHTING);
-    opengl1renderer.disable(GL_LIGHTING);
     opengl1renderer.enable(GL_DEPTH_TEST);
     Vec3i ns = afm_scan_grid.n;
     int nxy=ns.x*ns.y;
@@ -2187,8 +2172,6 @@ void MolGUI::drawBuilder( Vec3i ixyz ){
     MM::Builder& B = W->builder;
     bool bOrig = (ixyz.x==0)&&(ixyz.y==0)&&(ixyz.z==0);
     if(bViewAtomSpheres&&mm_bAtoms ){       
-        opengl1renderer.enable(GL_LIGHTING);
-        opengl1renderer.shadeModel(GL_SMOOTH);                     
         for(int ia=0; ia<B.atoms.size(); ia++){
             const MM::Atom& a = B.atoms[ia];
             //const MM::AtomType& atyp = W->params.atypes[a.type];
@@ -2220,7 +2203,6 @@ void MolGUI::drawBuilder( Vec3i ixyz ){
         } 
     }
     if( bViewBonds ){
-        opengl1renderer.disable(GL_LIGHTING);
         opengl1renderer.color3f(0.0f,0.0f,0.0f);
         opengl1renderer.lineWidth(3.0f);
         opengl1renderer.begin(GL_LINES);

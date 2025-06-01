@@ -54,9 +54,7 @@ void torsion( Quat4i t, const Vec3d* apos ){
 }
 
 void atomsREQ( int n, Vec3d* ps, Quat4d* REQs, float qsc=1, float Rsc=1, float Rsub=0, bool bPointCross=false, Vec3d pos0=Vec3dZero ){
-    opengl1renderer.enable(GL_LIGHTING);
     opengl1renderer.enable(GL_DEPTH_TEST);
-    opengl1renderer.shadeModel(GL_SMOOTH);
     for(int i=0; i<n; i++){
         float q = (float)REQs[i].z*qsc;
         if(bPointCross){
@@ -380,9 +378,7 @@ int drawESP( int na, Vec3d* apos, Quat4d* REQs, Quat4d REQ ){
 
 #ifdef MMFFparams_h
 void atoms( int n, Vec3d* ps, int* atypes, const MMFFparams& params, float qsc=1, float Rsc=1, float Rsub=0, Vec3d offset=Vec3dZero ){
-    opengl1renderer.enable(GL_LIGHTING);
     opengl1renderer.enable(GL_DEPTH_TEST);
-    opengl1renderer.shadeModel(GL_SMOOTH);
     MeshLibrary::sphereInstanced.instances->clear();
     for(int i=0; i<n; i++){
         const AtomType& atyp = params.atypes[atypes[i]];

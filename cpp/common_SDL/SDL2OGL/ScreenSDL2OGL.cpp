@@ -10,107 +10,13 @@
 // ============== per frame
 
 void setLightingNormal(){
-//float white    [] = { 1.0f, 1.0f,  1.0f,  1.0f };
-	float ambient  []{ 1.0f, 1.0f, 1.0f, 1.0f };
-	float diffuse  []{ 2.0f, 1.0f, 1.0f, 1.0f };
-	float specular []{ 1.0f, 1.0f, 1.0f, 1.0f };
-	float shininess[]{ 128, 1.0f }; // exponent for specular
-	float emission []{ 0.0f, 0.0f, 0.0f, 1.0f }; // as light source
-
-	opengl1renderer.enable     ( GL_COLOR_MATERIAL    );
-    opengl1renderer.materialfv( GL_FRONT_AND_BACK, GL_AMBIENT,   ambient   );
-	opengl1renderer.materialfv( GL_FRONT_AND_BACK, GL_DIFFUSE,   diffuse   );
-	opengl1renderer.materialfv( GL_FRONT_AND_BACK, GL_SPECULAR,  specular  );
-	opengl1renderer.materialfv( GL_FRONT_AND_BACK, GL_SHININESS, shininess );
-	opengl1renderer.materialfv( GL_FRONT_AND_BACK, GL_EMISSION,  emission  );
-
-    float lightPos   []{ 1.0f, -1.0f, 1.0f, 0.0f  };
-    opengl1renderer.lightfv    ( GL_LIGHT0, GL_POSITION,  lightPos );
-    //float l_ambient  []{ 0.1f*0, 0.15f*0, 0.2f*0,  1.0f };
-    float l_ambient  []{ 0.15f, 0.20f, 0.25f,  1.0f };
-    //float l_ambient  []{ 0.2f, 0.2f, 0.2f,  1.0f };
-	float l_diffuse  []{ 0.9f, 0.85f, 0.8f,  1.0f };
-	float l_specular []{ 1.0f, 1.0f,  1.0f,  1.0f };
-    opengl1renderer.lightfv    ( GL_LIGHT0, GL_AMBIENT,   l_ambient  );
-	opengl1renderer.lightfv    ( GL_LIGHT0, GL_DIFFUSE,   l_diffuse  );
-	opengl1renderer.lightfv    ( GL_LIGHT0, GL_SPECULAR,  l_specular );
-
-	opengl1renderer.lightModeli( GL_LIGHT_MODEL_LOCAL_VIEWER, 1 );
-
-	//float ambient_lm  []{ 0.15f, 0.2f, 0.25f, 1.0f };
-	float ambient_lm  []{ 0.2f, 0.2f, 0.2f, 1.0f };
-	opengl1renderer.lightModelfv( GL_LIGHT_MODEL_AMBIENT, ambient_lm );
-
-	opengl1renderer.enable     ( GL_LIGHTING         );
-	opengl1renderer.enable     ( GL_LIGHT0           );
-	opengl1renderer.enable     ( GL_NORMALIZE        );
-
 	opengl1renderer.enable     ( GL_DEPTH_TEST       );
-	opengl1renderer.hint       ( GL_LINE_SMOOTH_HINT, GL_NICEST );
-	opengl1renderer.shadeModel ( GL_SMOOTH           );
 	opengl1renderer.polygonMode( GL_FRONT_AND_BACK, GL_FILL );
-    //opengl1renderer.lightModeli( GL_LIGHT_MODEL_TWO_SIDE, 1 );
 }
 
 void setLightingRGB(){
-//float white    [] = { 1.0f, 1.0f,  1.0f,  1.0f };
-	float ambient  []{ 1.0f, 1.0f, 1.0f, 1.0f };
-	float diffuse  []{ 2.0f, 1.0f, 1.0f, 1.0f };
-	float specular []{ 1.0f, 1.0f, 1.0f, 1.0f };
-	float shininess[]{ 128, 1.0f }; // exponent for specular
-	float emission []{ 0.0f, 0.0f, 0.0f, 1.0f }; // as light source
-
-	opengl1renderer.enable     ( GL_COLOR_MATERIAL    );
-    opengl1renderer.materialfv( GL_FRONT_AND_BACK, GL_AMBIENT,   ambient   );
-	opengl1renderer.materialfv( GL_FRONT_AND_BACK, GL_DIFFUSE,   diffuse   );
-	opengl1renderer.materialfv( GL_FRONT_AND_BACK, GL_SPECULAR,  specular  );
-	opengl1renderer.materialfv( GL_FRONT_AND_BACK, GL_SHININESS, shininess );
-	opengl1renderer.materialfv( GL_FRONT_AND_BACK, GL_EMISSION,  emission  );
-
-    float lightPos_r   []{ -1.0f,  0.0f,  0.0f, 0.0f  };
-    float lightPos_g   []{  0.0f, -1.0f,  0.0f, 0.0f  };
-    float lightPos_b   []{  0.0f,  0.0f, -1.0f, 0.0f  };
-
-	opengl1renderer.enable     ( GL_LIGHTING         );
-
-	opengl1renderer.enable     ( GL_NORMALIZE        );
-	opengl1renderer.enable     ( GL_LIGHT0           );
-    opengl1renderer.enable     ( GL_LIGHT1           );
-    opengl1renderer.enable     ( GL_LIGHT2           );
-
-    opengl1renderer.lightfv    ( GL_LIGHT0, GL_POSITION,  lightPos_r );
-    opengl1renderer.lightfv    ( GL_LIGHT1, GL_POSITION,  lightPos_g );
-    opengl1renderer.lightfv    ( GL_LIGHT2, GL_POSITION,  lightPos_b );
-
-    float l_ambient  []{ 0.1f, 0.1f, 0.1f,  1.0f };
-	float l_specular []{ 1.0f, 1.0f,  1.0f,  1.0f };
-
-	float r_diffuse  []{ 0.8f, 0.2f, 0.2f,  1.0f };
-	float g_diffuse  []{ 0.2f, 0.8f, 0.2f,  1.0f };
-	float b_diffuse  []{ 0.2f, 0.2f, 0.8f,  1.0f };
-    opengl1renderer.lightfv    ( GL_LIGHT0, GL_AMBIENT,   l_ambient  );
-	opengl1renderer.lightfv    ( GL_LIGHT0, GL_DIFFUSE,   r_diffuse  );
-	opengl1renderer.lightfv    ( GL_LIGHT0, GL_SPECULAR,  l_specular );
-
-    opengl1renderer.lightfv    ( GL_LIGHT1, GL_AMBIENT,   l_ambient  );
-	opengl1renderer.lightfv    ( GL_LIGHT1, GL_DIFFUSE,   g_diffuse );
-	opengl1renderer.lightfv    ( GL_LIGHT1, GL_SPECULAR,  l_specular );
-
-    opengl1renderer.lightfv    ( GL_LIGHT2, GL_AMBIENT,   l_ambient  );
-	opengl1renderer.lightfv    ( GL_LIGHT2, GL_DIFFUSE,   b_diffuse  );
-	opengl1renderer.lightfv    ( GL_LIGHT2, GL_SPECULAR,  l_specular );
-
-	opengl1renderer.lightModeli( GL_LIGHT_MODEL_LOCAL_VIEWER, 1 );
-
-	//float ambient_lm  []{ 0.15f, 0.2f, 0.25f, 1.0f };
-	float ambient_lm  []{ 0.2f, 0.2f, 0.2f, 1.0f };
-	opengl1renderer.lightModelfv( GL_LIGHT_MODEL_AMBIENT, ambient_lm );
-
 	opengl1renderer.enable     ( GL_DEPTH_TEST       );
-	opengl1renderer.hint       ( GL_LINE_SMOOTH_HINT, GL_NICEST );
-	opengl1renderer.shadeModel ( GL_SMOOTH           );
 	opengl1renderer.polygonMode( GL_FRONT_AND_BACK, GL_FILL );
-    //opengl1renderer.lightModeli( GL_LIGHT_MODEL_TWO_SIDE, 1 );
 }
 
 std::chrono::duration<long, std::ratio<1, 1000>> durationTotal;

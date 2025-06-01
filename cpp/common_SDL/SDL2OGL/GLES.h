@@ -33,6 +33,11 @@ namespace GLES{
 } while (0)
 
 
+#define glEnable(cap) do { \
+    glEnable(cap); \
+    GL_CHECK_ERROR(); \
+} while(0)
+
 
 
 #ifdef DEBUG_GLES

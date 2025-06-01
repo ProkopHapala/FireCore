@@ -21,17 +21,9 @@ void AppSDL2OGL_3D::draw(){
     opengl1renderer.clearColor( 0.5f, 0.5f, 0.5f, 1.0f );
 	opengl1renderer.clear( GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT );
 
-	opengl1renderer.enable    ( GL_LIGHTING );
-	opengl1renderer.shadeModel( GL_FLAT     );
-
 	Draw3D::drawBox       ( -1.0f, 1.0f, -1.0f, 1.0f, -1.0f, 1.0f, 0.8f, 0.8f, 0.8f );
-
-	opengl1renderer.shadeModel( GL_SMOOTH     );
 	Draw3D::drawSphere( Vec3f{3.0,3.0,3.0}, 1 );
-
-	opengl1renderer.disable ( GL_LIGHTING );
 	Draw3D::drawAxis ( 3.0f );
-
 };
 
 void AppSDL2OGL_3D::eventHandling ( const SDL_Event& event  ){

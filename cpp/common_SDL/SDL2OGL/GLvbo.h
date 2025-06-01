@@ -23,7 +23,6 @@ private:
 
     template<size_t ... attrIdx>
     inline void _setup_vertex_attribs_impl(std::index_sequence<attrIdx...> seq, const std::function<GLint(GLattrib::Name)> attrName2locFunc, GLuint divisor) const {
-        GL_CHECK_ERROR();
         ensure_id();
 
         if (GLES::currentGL_ARRAY_BUFFER == id) return;
@@ -43,7 +42,6 @@ private:
             attrName2locFunc(attribs.name),
             divisor)
         ,...);
-        GL_CHECK_ERROR();
     }
     template<GLattrib::Name target_name, size_t target_idx, attrib...As>
     void set_vertex_attr_from_list(vertex& v, const typename decltype(As)::type ... list){
@@ -63,7 +61,6 @@ private:
     inline void sync_raw() const { // assumes that the vbo is bound to GL_ARRAY_BUFFER
         glBufferData(GL_ARRAY_BUFFER, elements.size() * sizeof(vertex), elements.data(), usage);
         _sync = true;
-        GL_CHECK_ERROR();
     }
 
 public:

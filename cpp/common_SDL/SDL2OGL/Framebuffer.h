@@ -28,17 +28,15 @@ private:
         depthBuffer.setMagFilter(GL_NEAREST);
         depthBuffer.setMinFilter(GL_NEAREST);
 
-        GL_CHECK_ERROR();
-
         //glGenRenderbuffers(1, &depthBufferHandle);
         //glBindRenderbuffer(GL_RENDERBUFFER, depthBufferHandle);
         //glRenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH_COMPONENT24, GLES::screen_size.x, GLES::screen_size.y);
         //glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_RENDERBUFFER, depthBufferHandle);
-        glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT , GL_TEXTURE_2D, depthBuffer.getHandle(), 0); GL_CHECK_ERROR();
-        glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, colorBuffer.getHandle(), 0); GL_CHECK_ERROR();
+        glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT , GL_TEXTURE_2D, depthBuffer.getHandle(), 0);
+        glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, colorBuffer.getHandle(), 0);
 
         //Check framebuffer status
-        GLenum status = glCheckFramebufferStatus(GL_FRAMEBUFFER); GL_CHECK_ERROR();
+        GLenum status = glCheckFramebufferStatus(GL_FRAMEBUFFER);
         if (status != GL_FRAMEBUFFER_COMPLETE) {
             char* status_str;
             switch(status) {

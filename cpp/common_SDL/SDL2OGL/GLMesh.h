@@ -83,17 +83,14 @@ public:
     inline void draw(GLenum drawMode=0){
         if (drawMode == 0) drawMode = this->drawMode;
         ensure_vao();
-        
+
         glBindVertexArray(vao);
         verts->sync();
-        GL_CHECK_ERROR();
 
         shader->setUniforms(uniforms);
         shader->use();
-        GL_CHECK_ERROR();
 
         glDrawArrays(drawMode, 0, vertexCount());
-        GL_CHECK_ERROR();
         glBindVertexArray(0);
     }
 };

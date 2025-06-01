@@ -5,35 +5,30 @@
 #include "drawMath.h" // THE HEADER
 
 void drawPoint( const Vec3d& vec ){
-	opengl1renderer.disable (GL_LIGHTING);
 	opengl1renderer.begin   (GL_POINTS);	          	     
 		opengl1renderer.vertex3d( vec.x, vec.y, vec.z );
 	opengl1renderer.end();
 };
 
 void drawVec( const Vec3d& vec ){
-	opengl1renderer.disable (GL_LIGHTING);
 	opengl1renderer.begin   (GL_LINES);	          	     
 		opengl1renderer.vertex3d( 0, 0, 0 ); opengl1renderer.vertex3d( vec.x, vec.y, vec.z );
 	opengl1renderer.end();
 };
 
 void drawVecInPos( const Vec3d& v, const Vec3d& pos ){
-	opengl1renderer.disable (GL_LIGHTING);
 	opengl1renderer.begin   (GL_LINES);	          	     
 		opengl1renderer.vertex3d( pos.x, pos.y, pos.z ); opengl1renderer.vertex3d( pos.x+v.x, pos.y+v.y, pos.z+v.z );
 	opengl1renderer.end();
 };
 
 void drawLine( const Vec3d& p1, const Vec3d& p2 ){
-	opengl1renderer.disable (GL_LIGHTING);
 	opengl1renderer.begin   (GL_LINES);	          	     
 		opengl1renderer.vertex3d( p1.x, p1.y, p1.z ); opengl1renderer.vertex3d( p2.x, p2.y, p2.z );
 	opengl1renderer.end();
 };
 
 void drawVecInPos( const Vec3f& v, const Vec3f& pos ){
-	opengl1renderer.disable (GL_LIGHTING);
 	opengl1renderer.begin   (GL_LINES);	          	     
 		opengl1renderer.vertex3f( pos.x, pos.y, pos.z ); opengl1renderer.vertex3d( pos.x+v.x, pos.y+v.y, pos.z+v.z );
 	opengl1renderer.end();

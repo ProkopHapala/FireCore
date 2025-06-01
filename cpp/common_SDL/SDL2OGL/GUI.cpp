@@ -30,9 +30,7 @@ void GUITextInput::applyVal( float f ){
 
 void GUITextInput::view3D( const Vec3d& pos, int fontTex, float textSize ){ // TODO: use Draw3D::drawTextBillboard() ??
     //Draw3D::drawText( inputText.c_str(), pos, fontTex, textSize, 0, 0 );
-    opengl1renderer.disable    ( GL_LIGHTING   );
     opengl1renderer.disable    ( GL_DEPTH_TEST );
-    opengl1renderer.shadeModel ( GL_FLAT       );
     opengl1renderer.pushMatrix();
         opengl1renderer.translatef( pos.x, pos.y, pos.z );
         Draw::billboardCam( );
@@ -125,9 +123,7 @@ void GUIAbstractPanel::moveTo(int x, int y){
 
 void GUIAbstractPanel::render(){
     //printf( "GUIAbstractPanel::render() p0(%i,%i) p2(%i,%i) \n", xmin, ymin, xmax, ymax );
-    opengl1renderer.disable   ( GL_LIGHTING    );
     opengl1renderer.disable   ( GL_DEPTH_TEST  );
-    opengl1renderer.shadeModel( GL_FLAT        );
     Draw2D::drawRectangle( xmin, ymin, xmax, ymax, COL2VEC(bgColor) );
     if(caption.length()>0) {
         Draw  ::setRGB( textColor );
@@ -165,9 +161,7 @@ bool GUIPanel::checkValue(bool bExit, bool bWarn){
 
 void GUIPanel::render(){
     if(isInt){ value=getIntVal(); }
-    opengl1renderer.disable( GL_LIGHTING   );
     opengl1renderer.disable( GL_DEPTH_TEST );
-    opengl1renderer.shadeModel( GL_FLAT    );
     Draw2D::drawRectangle( xmin, ymin, xmax, ymax, COL2VEC(bgColor) );
 
     // Border ?
@@ -375,9 +369,7 @@ void CheckBoxList::update(){
 }
 
 void CheckBoxList::render(){
-    opengl1renderer.disable( GL_LIGHTING );
     opengl1renderer.disable( GL_DEPTH_TEST);
-    opengl1renderer.shadeModel( GL_FLAT );
     update();
 
     int y0 = ymin+boxes.size()*dy;
@@ -432,9 +424,7 @@ void ScisorBox::apply( ){
 }
 
 void ScisorBox::render(){
-    opengl1renderer.disable   ( GL_LIGHTING    );
     opengl1renderer.disable   ( GL_DEPTH_TEST  );
-    opengl1renderer.shadeModel( GL_FLAT        );
     Draw2D::drawRectangle( xmin, ymin, xmax, ymax, COL2VEC(textColor) );
     if(caption.length()>0) {
         //Draw  ::setRGB( textColor );
@@ -477,9 +467,7 @@ bool CommandList::getKeyb(int key){
 }
 
 void CommandList::render(){
-    opengl1renderer.disable( GL_LIGHTING );
     opengl1renderer.disable( GL_DEPTH_TEST);
-    opengl1renderer.shadeModel( GL_FLAT );
     update();
     auto& cmds = commands->commands;
     char stmp[256];
@@ -561,9 +549,7 @@ void DropDownList::close(){
 }
 
 void DropDownList ::render(){
-    opengl1renderer.disable   ( GL_LIGHTING    );
     opengl1renderer.disable   ( GL_DEPTH_TEST  );
-    opengl1renderer.shadeModel( GL_FLAT        );
     Draw2D::drawRectangle( xmin, ymin, xmax, ymax, COL2VEC(bgColor) );
     Draw  ::setRGB( textColor );
     //bOpened = false;
@@ -718,9 +704,7 @@ void TableView::initTableView( Table* table_, const std::string& caption_, int x
 }
 
 void TableView::render(){
-    opengl1renderer.disable( GL_LIGHTING );
     opengl1renderer.disable( GL_DEPTH_TEST);
-    opengl1renderer.shadeModel( GL_FLAT );
     Draw2D::drawRectangle( xmin, ymin, xmax, ymax, COL2VEC(bgColor) );
     //int ncol = table->columns.size();
     //int ncol=jmax-j0;
@@ -841,8 +825,6 @@ GUIAbstractPanel* GUI::onEvent( int mouseX, int mouseY, const SDL_Event& event )
 }
 
 void GUI::draw(){
-    opengl1renderer.disable(GL_LINE_SMOOTH);
-    opengl1renderer.disable(GL_LIGHTING);
     opengl1renderer.disable(GL_DEPTH_TEST);
     for(GUIAbstractPanel* panel: panels){ if(focused!=panel)panel->draw(); }
     if(focused){
