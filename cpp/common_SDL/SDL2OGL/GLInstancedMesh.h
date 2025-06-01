@@ -41,6 +41,24 @@ private:
         return defaultShader<vertAttribs..., instAttribs...>;
     }
 
+    GLuint vao = 0;
+
+    inline void ensure_vao(){
+        if (vao) return;
+        glGenVertexArrays(1, &vao);
+        glBindVertexArray(vao);
+        
+        verts->setup_vertex_attribs(
+            [this](GLattrib::Name name){return shader->attrName2Loc(name);}
+        );
+        instances->setup_vertex_attribs(
+            [this](GLattrib::Name name){return shader->attrName2Loc(name);},
+            1
+        );
+
+        glBindVertexArray(0);
+    }
+
 public:
     GLenum drawMode = GL_TRIANGLES;
     VertVboType* verts;
@@ -55,11 +73,6 @@ public:
         instances->push_back(vertex(args...));
     }
 
-    inline void bind_sync_vbos(){
-        verts->bind( [this](GLattrib::Name name){return shader->attrName2Loc(name);} );
-        instances->bind( [this](GLattrib::Name name){return shader->attrName2Loc(name);}, 1 );
-    }
-
     inline void draw(GLenum drawMode=0){
         if (drawMode == 0) drawMode = this->drawMode;
         if (GLES::active_camera == nullptr){
@@ -67,11 +80,18 @@ public:
             return;
         }
 
-        bind_sync_vbos();
+        ensure_vao();
+        glBindVertexArray(vao);
+        
+        verts->sync();
+        instances->sync();
+
         shader->setUniforms(uniforms);
         shader->setUniform4m("uMVPMatrix", GLES::active_camera->viewProjectionMatrix());
         shader->use();
         glDrawArraysInstanced(drawMode, 0, verts->size(), instances->size());
+
+        glBindVertexArray(0);
     }
 };
 

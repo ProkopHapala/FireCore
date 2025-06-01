@@ -18,17 +18,19 @@ public:
 private:
     std::vector<vertex> elements;
     mutable GLuint id = 0;
-    mutable bool sync = false;
+    mutable bool _sync = false;
     GLenum usage = GL_STATIC_DRAW;
 
     template<size_t ... attrIdx>
-    inline void _bind_impl(std::index_sequence<attrIdx...> seq, const std::function<GLint(GLattrib::Name)> attrName2locFunc, GLuint divisor) const {
+    inline void _setup_vertex_attribs_impl(std::index_sequence<attrIdx...> seq, const std::function<GLint(GLattrib::Name)> attrName2locFunc, GLuint divisor) const {
         GL_CHECK_ERROR();
         ensure_id();
 
         if (GLES::currentGL_ARRAY_BUFFER == id) return;
 
         glBindBuffer(GL_ARRAY_BUFFER, id);
+        (glEnableVertexAttribArray(attrName2locFunc(attribs.name))
+        ,...);
         (glVertexAttribPointer(
             attrName2locFunc(attribs.name),
             GLattrib::type2count <typename decltype(attribs)::type>(),
@@ -58,6 +60,12 @@ private:
         push_back(v);
     }
 
+    inline void sync_raw() const { // assumes that the vbo is bound to GL_ARRAY_BUFFER
+        glBufferData(GL_ARRAY_BUFFER, elements.size() * sizeof(vertex), elements.data(), usage);
+        _sync = true;
+        GL_CHECK_ERROR();
+    }
+
 public:
     GLvbo(GLenum usage=GL_STATIC_DRAW) : usage(usage){} 
 
@@ -72,7 +80,7 @@ public:
 
     void push_back(const vertex v){
         elements.push_back(v);
-        sync = false;
+        _sync = false;
     }
     inline void push_back(const typename decltype(attribs)::type ... args){ push_back(vertex(args...)); }
 
@@ -98,14 +106,25 @@ public:
         elements.push_back(v);
     }
 
-    inline void bind_raw(const std::function<GLint(GLattrib::Name)> attrName2locFunc, GLuint divisor=0) const { _bind_impl(attrIdxSeq{}, attrName2locFunc, divisor); } // binds the buffer to GL_ARRAY_BUFFER and sets up glVertexAttribPointers
-    inline void bind(const std::function<GLint(GLattrib::Name)> attrName2locFunc, GLuint divisor=0) const{ // same as bind_raw(), but also syncs the buffer data (preffered)
-        bind_raw(attrName2locFunc, divisor);
-        if (sync) return;
+    inline void setup_vertex_attribs(const std::function<GLint(GLattrib::Name)> attrName2locFunc, GLuint divisor=0)
+        { _setup_vertex_attribs_impl(attrIdxSeq{}, attrName2locFunc, divisor); }
 
-        glBufferData(GL_ARRAY_BUFFER, elements.size() * sizeof(vertex), elements.data(), usage);
-        sync = true;
-        GL_CHECK_ERROR();
+    inline void bind() const{
+        ensure_id();
+        glBindBuffer(GL_ARRAY_BUFFER, id);
+    }
+    inline void bind_sync() const{
+        bind();
+        if (!_sync) sync_raw();
+    }
+    inline void sync() const {
+        if (_sync) return;
+        bind();
+        sync_raw();
+    }
+    inline void full_bind(const std::function<GLint(GLattrib::Name)> attrName2locFunc, GLuint divisor=0){ // binds, syncs, and sets up vertex attributes
+        setup_vertex_attribs(attrName2locFunc, divisor);
+        if (!_sync) sync_raw();
     }
 
 

@@ -18,9 +18,21 @@ public:
     using attrIdxSeq = std::make_index_sequence<sizeof...(attribs)>;
     using attr_monostate = attribs_monostate<attribs...>;
 
-private:    
-    inline void bind_sync_vbo() const { verts->bind([this](GLattrib::Name name){return shader->attrName2Loc(name);} ); }
-    
+private:
+    GLuint vao = 0;
+
+    inline void ensure_vao(){
+        if (vao) return;
+        glGenVertexArrays(1, &vao);
+        glBindVertexArray(vao);
+        
+        verts->setup_vertex_attribs(
+            [this](GLattrib::Name name){return shader->attrName2Loc(name);}
+        );
+
+        glBindVertexArray(0);
+    }
+
 public:
     GLenum drawMode;
     GLvbo<attribs...>* verts;
@@ -31,6 +43,11 @@ public:
         : drawMode(drawMode), shader(shader), verts(new GLvbo<attribs...>(usage)) {}
     GLMeshBase(GLvbo<attribs...>* vbo, GLenum drawMode=GL_TRIANGLES, Shader* shader=defaultcolorShader<attribs...>)
         : drawMode(drawMode), shader(shader), verts(vbo) {}
+
+    ~GLMeshBase(){
+        if (vao) glDeleteVertexArrays(1, &vao);
+        vao = 0;
+    }
 
     void clear(){ verts->clear(); }
 
@@ -65,7 +82,10 @@ public:
 
     inline void draw(GLenum drawMode=0){
         if (drawMode == 0) drawMode = this->drawMode;
-        bind_sync_vbo();
+        ensure_vao();
+        
+        glBindVertexArray(vao);
+        verts->sync();
         GL_CHECK_ERROR();
 
         shader->setUniforms(uniforms);
@@ -74,6 +94,7 @@ public:
 
         glDrawArrays(drawMode, 0, vertexCount());
         GL_CHECK_ERROR();
+        glBindVertexArray(0);
     }
 };
 
