@@ -117,7 +117,7 @@ void Draw::billboardCamProj( ){
 static GLTexture font = GLTexture("common_resources/dejvu_sans_mono_RGBA_pix-UpDown.bmp");
 static GLMesh<MPOS,MUV> makeFontMesh(){
     GLMesh<MPOS,MUV> m = GLMesh<MPOS,MUV>(GL_TRIANGLES, GL_DYNAMIC_DRAW, defaultTexColorShader<MPOS,MUV>);
-    m.setUniformTex("uTexture", &font);
+    m.uniforms.setTex<"uTexture">(&font);
     return m;
 }
 static GLMesh<MPOS,MUV> fontMesh = makeFontMesh();
@@ -180,7 +180,7 @@ void Draw::drawText( const char * str, Vec3f pos, float sz, int iend, Vec3f colo
     float persprite = 1.0f/nchars;
 
     makeTextMesh(fontMesh, str, iend);
-    fontMesh.setUniform3f("uColor", color);
+    fontMesh.uniforms.set3f<"uColor">(color);
     fontMesh.draw2D(pos, {sz, sz});
 }
 
@@ -192,6 +192,6 @@ void Draw::drawText( const char * str, Vec3f pos, float sz, Vec2i block_size, Ve
     float persprite = 1.0f/nchars;
 
     makeTextMesh( fontMesh, str, block_size);
-    fontMesh.setUniform3f("uColor", color);
+    fontMesh.uniforms.set3f<"uColor">(color);
     fontMesh.draw2D(pos, {sz, sz});
 };

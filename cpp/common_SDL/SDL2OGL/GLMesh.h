@@ -50,19 +50,6 @@ public:
     }
     inline int vertexCount() const { return verts->size(); }
 
-    inline void setUniformName(std::string name, GLuniform u){ uniforms.set(name, u); }
-    void setUniform1f(std::string name, GLfloat v)        {setUniformName(name, {.type=GLuniform::f1, .data={.f1=v}}); }
-    void setUniform2f(std::string name, Vec2T<GLfloat> v) {setUniformName(name, {.type=GLuniform::f2, .data={.f2=v}}); }
-    void setUniform3f(std::string name, Vec3T<GLfloat> v) {setUniformName(name, {.type=GLuniform::f3, .data={.f3=v}}); }
-    void setUniform4f(std::string name, Vec4T<GLfloat> v) {setUniformName(name, {.type=GLuniform::f4, .data={.f4=v}}); }
-    void setUniform1i(std::string name, GLint v)          {setUniformName(name, {.type=GLuniform::i1, .data={.i1=v}}); }
-    void setUniform2i(std::string name, Vec2T<GLint> v)   {setUniformName(name, {.type=GLuniform::i2, .data={.i2=v}}); }
-    void setUniform3i(std::string name, Vec3T<GLint> v)   {setUniformName(name, {.type=GLuniform::i3, .data={.i3=v}}); }
-    void setUniform4i(std::string name, Vec4T<GLint> v)   {setUniformName(name, {.type=GLuniform::i4, .data={.i4=v}}); }
-    void setUniformMatrix3f(std::string name, Mat3T<GLfloat> v) {setUniformName(name, {.type=GLuniform::m3, .data={.m3=v}}); }
-    void setUniformMatrix4f(std::string name, Mat4T<GLfloat> v) {setUniformName(name, {.type=GLuniform::m4, .data={.m4=v}}); }  
-    void setUniformTex(std::string name, GLTexture* tex) {setUniformName(name, {.type=GLuniform::tex, .data={.tex=tex}});} 
-
     inline void draw(GLenum drawMode=0){
         if (drawMode == 0) drawMode = this->drawMode;
         bind_sync_vbo();
@@ -89,7 +76,7 @@ public:
 
 
     void drawMVP(Mat4f mvp, GLenum drawMode=0){
-        base::uniforms.set4m("uMVPMatrix", mvp);
+        base::uniforms.template set4m<"uMVPMatrix">(mvp);
         base::draw(drawMode);
     }
 
