@@ -60,10 +60,10 @@ static inline GLMeshBase<MPOS>makeMergeMesh(){
 static GLMeshBase<MPOS> mergeMesh = makeMergeMesh();
 
 void mergeFramebuffers(GLFramebuffer& fb1, GLFramebuffer& fb2){
-    mergeMesh.uniforms.setTex<"uTexture1">(&fb1.colorBuffer);
-    mergeMesh.uniforms.setTex<"uTexture2">(&fb2.colorBuffer);
-    mergeMesh.uniforms.setTex<"uDepth1"  >(&fb1.depthBuffer);
-    mergeMesh.uniforms.setTex<"uDepth2"  >(&fb2.depthBuffer);
+    mergeMesh.setUniformTex("uTexture1", &fb1.colorBuffer);
+    mergeMesh.setUniformTex("uTexture2", &fb2.colorBuffer);
+    mergeMesh.setUniformTex("uDepth1"  , &fb1.depthBuffer);
+    mergeMesh.setUniformTex("uDepth2"  , &fb2.depthBuffer);
     
     glEnable(GL_DEPTH_TEST);
     mergeMesh.draw();

@@ -15,17 +15,17 @@ static GLMesh<MPOS,MNORMAL> tmpMesh2 = GLMesh<MPOS,MNORMAL>(GL_TRIANGLES, GL_STR
 static GLMesh<MPOS,MCOLOR>  tmpMesh3 = GLMesh<MPOS,MCOLOR> (GL_TRIANGLES, GL_STREAM_DRAW);
 
 void Draw3D::drawPoint( const Vec3f& vec ){
-	MeshLibrary::point.uniforms.set3f<"uColor">({1, 1, 1});
+	MeshLibrary::point.setUniform3f("uColor", {1, 1, 1});
 	MeshLibrary::point.draw(vec);
 };
 
 void Draw3D::drawPointCross( const Vec3f& vec, float sz, Vec3f color ){
-    MeshLibrary::pointCross.uniforms.set3f<"uColor">(color);
+    MeshLibrary::pointCross.setUniform3f("uColor", color);
 	MeshLibrary::pointCross.draw(vec, (Vec3f){sz, sz, sz});
 };
 
 void Draw3D::drawLine( const Vec3f& p1, const Vec3f& p2, Vec3f color ){
-    MeshLibrary::line.uniforms.set3f<"uColor">(color);
+    MeshLibrary::line.setUniform3f("uColor", color);
     MeshLibrary::line.draw(p1, p2-p1);
 };
 
@@ -63,7 +63,7 @@ void Draw3D::drawArrow( const Vec3f& p1, const Vec3f& p2, float sz ){
     p = tip + back + right; tmpMesh1.addVertex(tip); tmpMesh1.addVertex(p);
     p = tip + back - right; tmpMesh1.addVertex(tip); tmpMesh1.addVertex(p);
     
-    tmpMesh1.uniforms.set3f<"uColor">(opengl1renderer.color);
+    tmpMesh1.setUniform3f("uColor", opengl1renderer.color);
     tmpMesh1.draw(GL_LINES);
 };
 
@@ -76,7 +76,7 @@ void Draw3D::vecsInPoss( int n, const Vec3d* vs, const Vec3d* ps, float sc, Vec3
         tmpMesh1.addVertex(p1);
         tmpMesh1.addVertex(p2);
     }
-    tmpMesh1.uniforms.set3f<"uColor">(color);
+    tmpMesh1.setUniform3f("uColor", color);
     tmpMesh1.draw(GL_LINES);
 };
 
@@ -85,7 +85,7 @@ void Draw3D::drawPolyLine( int n, Vec3d * ps, bool closed ){
     for(int i=0; i<n; i++){
         tmpMesh1.addVertex((Vec3f)ps[i]);
     }
-    tmpMesh1.uniforms.set3f<"uColor">(opengl1renderer.color);
+    tmpMesh1.setUniform3f("uColor", opengl1renderer.color);
     tmpMesh1.draw(closed ? GL_LINE_LOOP : GL_LINE_STRIP);
 };
 
@@ -99,7 +99,7 @@ void Draw3D::drawTriangle( const Vec3f& p1, const Vec3f& p2, const Vec3f& p3 ){
     tmpMesh2.addVertex(p1, nr);
     tmpMesh2.addVertex(p2, nr);
     tmpMesh2.addVertex(p3, nr);
-    tmpMesh2.uniforms.set3f<"uColor">(opengl1renderer.color);
+    tmpMesh2.setUniform3f("uColor", opengl1renderer.color);
     tmpMesh2.draw(GL_TRIANGLES);
 }
 
@@ -111,7 +111,7 @@ void Draw3D::drawTriangle ( const Vec3f& p1,  const Vec3f& p2, const Vec3f& p3, 
         tmpMesh1.addVertex(p1); tmpMesh1.addVertex(p2);
         tmpMesh1.addVertex(p2); tmpMesh1.addVertex(p3);
         tmpMesh1.addVertex(p3); tmpMesh1.addVertex(p1);
-        tmpMesh1.uniforms.set3f<"uColor">(opengl1renderer.color);
+        tmpMesh1.setUniform3f("uColor", opengl1renderer.color);
         tmpMesh1.draw(GL_LINES);
     }
 }
@@ -355,11 +355,11 @@ static const GLMeshBase<MPOS> makeSphere(){
 static GLMeshBase<MPOS> sphere = makeSphere();
 
 void Draw3D::drawSphere(Vec3f pos, float r, Vec3f color){
-    MeshLibrary::sphere.uniforms.set3f<"uColor">(color);
-    MeshLibrary::sphere.uniforms.set4m<"uMVPMatrix">(GLES::active_camera->viewProjectionMatrix());
-    MeshLibrary::sphere.uniforms.set4m<"uMVPinv">(GLES::active_camera->inverseViewProjectionMatrix());
-    MeshLibrary::sphere.uniforms.set3f<"uPos">(pos);
-    MeshLibrary::sphere.uniforms.set1f<"uRadius">(r);
+    MeshLibrary::sphere.setUniform3f("uColor", color);
+    MeshLibrary::sphere.setUniformMatrix4f("uMVPMatrix", GLES::active_camera->viewProjectionMatrix());
+    MeshLibrary::sphere.setUniformMatrix4f("uMVPinv", GLES::active_camera->inverseViewProjectionMatrix());
+    MeshLibrary::sphere.setUniform3f("uPos", pos);
+    MeshLibrary::sphere.setUniform1f("uRadius", r);
     MeshLibrary::sphere.draw();
 }
 
@@ -420,14 +420,14 @@ int Draw3D::drawSphereOctLines( int n, float R, const Vec3f& pos, const Mat3f& r
         tmpMesh3.addVertex({pos.x+rot.a.x*R, pos.y+rot.a.y*R, pos.z+rot.a.z*R}, {0,0,1}); // Close the loop
         tmpMesh3.draw(GL_LINE_STRIP);
     } else {
-        MeshLibrary::octSphereMesh.uniforms.set3f<"uColor">(COLOR_GREEN);
+        MeshLibrary::octSphereMesh.uniforms.set3f("uColor", COLOR_GREEN);
         MeshLibrary::octSphereMesh.draw(pos, R);
     }
     return nvert;
 }
 
 void Draw3D::drawSphereOctLinesInstanced( float r, const std::vector<Vec3f>& ps, Vec3f color ){
-    MeshLibrary::octSphereInstanced.uniforms.set3f<"uColor">(color);
+    MeshLibrary::octSphereInstanced.uniforms.set3f("uColor", color);
     MeshLibrary::octSphereInstanced.instances->clear();
     for( auto& p : ps ){
         MeshLibrary::octSphereInstanced.addInstance(p);
@@ -435,7 +435,7 @@ void Draw3D::drawSphereOctLinesInstanced( float r, const std::vector<Vec3f>& ps,
     MeshLibrary::octSphereInstanced.draw(); // TODO: use r
 }
 void Draw3D::drawSphereOctLinesInstanced( float r, const Vec3d* ps, int n, Vec3f color ){
-    MeshLibrary::octSphereInstanced.uniforms.set3f<"uColor">(color);
+    MeshLibrary::octSphereInstanced.uniforms.set3f("uColor", color);
     MeshLibrary::octSphereInstanced.instances->clear();
     for(int i=0; i<n; i++){
         MeshLibrary::octSphereInstanced.addInstance((Vec3f)ps[i]);
@@ -476,7 +476,7 @@ void Draw3D::drawPoints( int n, const Vec3d * points, float sz ){
         for(int i=0; i<n; i++){
             tmpMesh1.addVertex((Vec3f)points[i]);
         }
-        tmpMesh1.uniforms.set3f<"uColor">(opengl1renderer.color);
+        tmpMesh1.setUniform3f("uColor", opengl1renderer.color);
         tmpMesh1.draw(GL_POINTS);
     } else {
         tmpMesh1.clear();
@@ -486,7 +486,7 @@ void Draw3D::drawPoints( int n, const Vec3d * points, float sz ){
             tmpMesh1.addVertex({vec.x   , vec.y-sz, vec.z   }); tmpMesh1.addVertex({vec.x   , vec.y+sz, vec.z   });
             tmpMesh1.addVertex({vec.x   , vec.y   , vec.z-sz}); tmpMesh1.addVertex({vec.x   , vec.y   , vec.z+sz});
         }
-        tmpMesh1.uniforms.set3f<"uColor">(opengl1renderer.color);
+        tmpMesh1.setUniform3f("uColor", opengl1renderer.color);
         tmpMesh1.draw(GL_LINES);
     }
 }
@@ -499,7 +499,7 @@ void Draw3D::drawLines( int nlinks, const int * links, const Vec3d * points ){
         tmpMesh1.addVertex(a);
         tmpMesh1.addVertex(b);
     }
-    tmpMesh1.uniforms.set3f<"uColor">(opengl1renderer.color);
+    tmpMesh1.setUniform3f("uColor", opengl1renderer.color);
     tmpMesh1.draw(GL_LINES);
 }
 
@@ -516,7 +516,7 @@ void Draw3D::drawTriangles( int nlinks, const int * links, const Vec3d * points,
             tmpMesh1.addVertex(cog);
             tmpMesh1.addVertex(cog + nor);
         }
-        tmpMesh1.uniforms.set3f<"uColor">(opengl1renderer.color);
+        tmpMesh1.setUniform3f("uColor", opengl1renderer.color);
         tmpMesh1.draw(GL_LINES);
     } else if(mode == 1) { // Wireframe
         tmpMesh1.clear();
@@ -528,7 +528,7 @@ void Draw3D::drawTriangles( int nlinks, const int * links, const Vec3d * points,
             tmpMesh1.addVertex(b); tmpMesh1.addVertex(c);
             tmpMesh1.addVertex(c); tmpMesh1.addVertex(a);
         }
-        tmpMesh1.uniforms.set3f<"uColor">(opengl1renderer.color);
+        tmpMesh1.setUniform3f("uColor", opengl1renderer.color);
         tmpMesh1.draw(GL_LINES);
     } else { // Solid triangles
         tmpMesh2.clear();
@@ -542,7 +542,7 @@ void Draw3D::drawTriangles( int nlinks, const int * links, const Vec3d * points,
             tmpMesh2.addVertex(b, nor);
             tmpMesh2.addVertex(c, nor);
         }
-        tmpMesh2.uniforms.set3f<"uColor">(opengl1renderer.color);
+        tmpMesh2.setUniform3f("uColor", opengl1renderer.color);
         tmpMesh2.draw(GL_TRIANGLES);
     }
 }
@@ -558,7 +558,7 @@ void Draw3D::drawVectorArray(int n, const Vec3d* ps, const Vec3d* vs, double sc,
         tmpMesh1.addVertex((Vec3f)p1);
         tmpMesh1.addVertex((Vec3f)p2);
     }
-    tmpMesh1.uniforms.set3f<"uColor">(opengl1renderer.color);
+    tmpMesh1.setUniform3f("uColor", opengl1renderer.color);
     tmpMesh1.draw(GL_LINES);
 }
 
@@ -573,7 +573,7 @@ void Draw3D::drawVectorArray(int n, const Vec3d* ps, const Quat4f* qs, double sc
         tmpMesh1.addVertex((Vec3f)p1);
         tmpMesh1.addVertex((Vec3f)p2);
     }
-    tmpMesh1.uniforms.set3f<"uColor">(opengl1renderer.color);
+    tmpMesh1.setUniform3f("uColor", opengl1renderer.color);
     tmpMesh1.draw(GL_LINES);
 }
 
@@ -855,7 +855,7 @@ void Draw3D::drawRectGridLines( Vec2i n, const Vec3d& p0, const Vec3d& da, const
         tmpMesh1.addVertex((Vec3f)p_);
         p.add(db);
     }
-    tmpMesh1.uniforms.set3f<"uColor">(opengl1renderer.color);
+    tmpMesh1.setUniform3f("uColor", opengl1renderer.color);
     tmpMesh1.draw(GL_LINES);
 }
 
@@ -919,17 +919,17 @@ void Draw3D::drawCurve( float tmin, float tmax, int n, Func1d3 func ){
         func( t, x, y, z );
         tmpMesh1.addVertex({(float)x, (float)y, (float)z});
     }
-    tmpMesh1.uniforms.set3f<"uColor">(opengl1renderer.color);
+    tmpMesh1.setUniform3f("uColor", opengl1renderer.color);
     tmpMesh1.draw(GL_LINE_STRIP);
 }
 
 void Draw3D::drawBox( float x0, float x1, float y0, float y1, float z0, float z1, float r, float g, float b ){
-	MeshLibrary::cubeWithNormals.uniforms.set3f<"uColor">({r, g, b});
+	MeshLibrary::cubeWithNormals.setUniform3f("uColor", {r, g, b});
     MeshLibrary::cubeWithNormals.draw((Vec3f){x0, y0, z0}, (Vec3f){x1-x0, y1-y0, z1-z0});
 }
 
 void Draw3D::drawBBox( const Vec3f& p0, const Vec3f& p1 ){
-	MeshLibrary::wireCube.uniforms.set3f<"uColor">(opengl1renderer.color);
+	MeshLibrary::wireCube.setUniform3f("uColor", opengl1renderer.color);
     MeshLibrary::wireCube.draw(p0, p1-p0);
 }
 

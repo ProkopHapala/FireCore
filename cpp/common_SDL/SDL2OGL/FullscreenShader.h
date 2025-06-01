@@ -32,8 +32,8 @@ public:
         mesh.addVertex({-1, -1, -1});
         mesh.addVertex({ 3, -1, -1});
         mesh.addVertex({-1,  3, -1});
-        mesh.uniforms.setTex<"uTexture">(&framebuffer_back.colorBuffer);
-        mesh.uniforms.setTex<"uDepth">  (&framebuffer_back.depthBuffer);
+        mesh.setUniformTex("uTexture", &framebuffer_back.colorBuffer);
+        mesh.setUniformTex("uDepth"  , &framebuffer_back.depthBuffer);
     }
 
     void begin(){

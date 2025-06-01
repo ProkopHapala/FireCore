@@ -6,7 +6,6 @@
 #include "GLTexture.h"
 #include <unordered_map>
 #include <string>
-#include "constexprString.h"
 
 struct GLuniform{
     enum {NONE, f1, f2, f3, f4, i1, i2, i3, i4, ui1, ui2, ui3, ui4, m2, m3, m4, tex} type;
@@ -77,54 +76,27 @@ struct GLuniform{
     }
 };
 
-
-
 class GLuniformSet{
 public:
-    using common_uniforms_enum = constexprStringList<
-        "uMVPMatrix",
-        "uColor",
-        "uTexture",
-        "uDepth",
-        "uPos",
-        "uRadius",
-        "uTexture1",
-        "uTexture2",
-        "uDepth1",
-        "uDepth2",
-        "uMVPinv"
-    >;
+    std::unordered_map<std::string, GLuniform> uniforms;
 
-    GLuniform enum_uniforms[common_uniforms_enum::size()];
-    std::unordered_map<std::string, GLuniform> named_uniforms;
+    inline void set(std::string name, GLuniform u){ uniforms[name] = u; }
 
-    GLuniformSet(){
-        for (int i=0; i<common_uniforms_enum::size(); i++) enum_uniforms[i].type = GLuniform::NONE;
-    }
-
-    template <constexprString name> inline void set(GLuniform u){
-        if constexpr(common_uniforms_enum::template contains<name>()){
-            enum_uniforms[common_uniforms_enum::template get_idx<name>()] = u;
-        }else{
-            named_uniforms[name] = u;
-        }
-    }
-
-    template <constexprString name> inline void set1f (GLfloat value)       { set<name>({.type=GLuniform::f1,  .data={.f1 =value}}); }
-    template <constexprString name> inline void set2f (Vec2T<GLfloat> value){ set<name>({.type=GLuniform::f2,  .data={.f2 =value}}); }
-    template <constexprString name> inline void set3f (Vec3T<GLfloat> value){ set<name>({.type=GLuniform::f3,  .data={.f3 =value}}); }
-    template <constexprString name> inline void set4f (Vec4T<GLfloat> value){ set<name>({.type=GLuniform::f4,  .data={.f4 =value}}); }
-    template <constexprString name> inline void set1i (GLint value)         { set<name>({.type=GLuniform::i1,  .data={.i1 =value}}); }
-    template <constexprString name> inline void set2i (Vec2T<GLint> value)  { set<name>({.type=GLuniform::i2,  .data={.i2 =value}}); }
-    template <constexprString name> inline void set3i (Vec3T<GLint> value)  { set<name>({.type=GLuniform::i3,  .data={.i3 =value}}); }
-    template <constexprString name> inline void set4i (Vec4T<GLint> value)  { set<name>({.type=GLuniform::i4,  .data={.i4 =value}}); }
-    template <constexprString name> inline void set1ui(GLuint value)        { set<name>({.type=GLuniform::ui1, .data={.ui1=value}}); }
-    template <constexprString name> inline void set2ui(Vec2T<GLuint> value) { set<name>({.type=GLuniform::ui2, .data={.ui2=value}}); }
-    template <constexprString name> inline void set3ui(Vec3T<GLuint> value) { set<name>({.type=GLuniform::ui3, .data={.ui3=value}}); }
-    template <constexprString name> inline void set4ui(Vec4T<GLuint> value) { set<name>({.type=GLuniform::ui4, .data={.ui4=value}}); }
-    template <constexprString name> inline void set3m (Mat3T<GLfloat> value){ set<name>({.type=GLuniform::m3,  .data={.m3 =value}}); }
-    template <constexprString name> inline void set4m (Mat4T<GLfloat> value){ set<name>({.type=GLuniform::m4,  .data={.m4 =value}}); }
-    template <constexprString name> inline void setTex(GLTexture*     value){ set<name>({.type=GLuniform::tex, .data={.tex=value}}); }
+    inline void set1f (std::string name, GLfloat value)       { uniforms[name] = {.type=GLuniform::f1,  .data={.f1 =value}}; }
+    inline void set2f (std::string name, Vec2T<GLfloat> value){ uniforms[name] = {.type=GLuniform::f2,  .data={.f2 =value}}; }
+    inline void set3f (std::string name, Vec3T<GLfloat> value){ uniforms[name] = {.type=GLuniform::f3,  .data={.f3 =value}}; }
+    inline void set4f (std::string name, Vec4T<GLfloat> value){ uniforms[name] = {.type=GLuniform::f4,  .data={.f4 =value}}; }
+    inline void set1i (std::string name, GLint value)         { uniforms[name] = {.type=GLuniform::i1,  .data={.i1 =value}}; }
+    inline void set2i (std::string name, Vec2T<GLint> value)  { uniforms[name] = {.type=GLuniform::i2,  .data={.i2 =value}}; }
+    inline void set3i (std::string name, Vec3T<GLint> value)  { uniforms[name] = {.type=GLuniform::i3,  .data={.i3 =value}}; }
+    inline void set4i (std::string name, Vec4T<GLint> value)  { uniforms[name] = {.type=GLuniform::i4,  .data={.i4 =value}}; }
+    inline void set1ui(std::string name, GLuint value)        { uniforms[name] = {.type=GLuniform::ui1, .data={.ui1=value}}; }
+    inline void set2ui(std::string name, Vec2T<GLuint> value) { uniforms[name] = {.type=GLuniform::ui2, .data={.ui2=value}}; }
+    inline void set3ui(std::string name, Vec3T<GLuint> value) { uniforms[name] = {.type=GLuniform::ui3, .data={.ui3=value}}; }
+    inline void set4ui(std::string name, Vec4T<GLuint> value) { uniforms[name] = {.type=GLuniform::ui4, .data={.ui4=value}}; }
+    inline void set3m (std::string name, Mat3T<GLfloat> value){ uniforms[name] = {.type=GLuniform::m3,  .data={.m3 =value}}; }
+    inline void set4m (std::string name, Mat4T<GLfloat> value){ uniforms[name] = {.type=GLuniform::m4,  .data={.m4 =value}}; }
 };
+
 
 #endif // _GLuniform_H_

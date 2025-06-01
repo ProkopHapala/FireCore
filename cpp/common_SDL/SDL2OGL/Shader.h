@@ -16,7 +16,6 @@ GLuint compileShader(GLenum shaderType, const char* source);
 class Shader{
 private:
     GLint attrName2LocMap[GLattrib::ATTRIB_NAME_MAX];
-    GLint uniformIdx2loc[GLuniformSet::common_uniforms_enum::size()];
 
     GLuint programId        = 0;
     GLuint vertexShaderId   = 0;
@@ -28,13 +27,6 @@ private:
     unsigned int update_uniforms = 0;
     std::vector<GLuniform> uniforms;
     std::unordered_set<GLuint> tex_uniforms;
-
-    template<constexprString...list, size_t...Idx>
-    void setup_uniformIdx2loc(constexprStringList<list...>, std::index_sequence<Idx...>){
-        ((
-            uniformIdx2loc[Idx] = glGetUniformLocation(programId, list.c_str())
-        ),...);
-    }
 
 public:
     Shader(const char* vertexShaderSource, const char* fragmentShaderSource){
@@ -125,16 +117,10 @@ public:
         if (value.type == GLuniform::tex) tex_uniforms.insert(loc);
     }
 
-    template<size_t...Idx> inline void _setUniforms_impl(std::index_sequence<Idx...>, const GLuniformSet& set){
-        ((
-            setUniformLoc(uniformIdx2loc[Idx], set.enum_uniforms[Idx])
-        ),...);
-    }
     inline void setUniforms(const GLuniformSet& set){
-        for (auto u : set.named_uniforms){
+        for (auto u : set.uniforms){
             setUniformName(u.first.c_str(), u.second);
         }
-        _setUniforms_impl(std::make_index_sequence<GLuniformSet::common_uniforms_enum::size()>{}, set);
     }
 
     inline void setUniform1f(const char* name, GLfloat value)       { setUniformName(name, {.type=GLuniform::f1, .data={.f1=value}}); }
@@ -187,8 +173,6 @@ private:
 
         free(__vertexShaderSource  ); __vertexShaderSource   = nullptr;
         free(__fragmentShaderSource); __fragmentShaderSource = nullptr;
-
-        setup_uniformIdx2loc(GLuniformSet::common_uniforms_enum{}, std::make_index_sequence<GLuniformSet::common_uniforms_enum::size()>{});
     }
 };
 
