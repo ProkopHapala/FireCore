@@ -15,6 +15,7 @@ namespace GLattrib{
         Color     = 2,
         UV        = 3,
         PosOffset = 4,
+        Radius    = 5,
     ATTRIB_NAME_MAX}; // ATTRIB_NAME_MAX must be last
 }
 
@@ -138,6 +139,7 @@ namespace GLattrib{
     template<> consteval const char* name2str<Color>()    { return "vColor"    ; }
     template<> consteval const char* name2str<UV>()       { return "vUV"       ; }
     template<> consteval const char* name2str<PosOffset>(){ return "vPosOffset"; }
+    template<> consteval const char* name2str<Radius>()   { return "vRadius"   ; }
 
     static inline const char* name2str(Name name){
         switch(name){
@@ -146,6 +148,7 @@ namespace GLattrib{
             case Color:     return "vColor";
             case UV:        return "vUV";
             case PosOffset: return "vPosOffset";
+            case Radius:    return "vRadius";
             default:       throw std::runtime_error("Error: invalid name");
         }
     }
@@ -156,5 +159,7 @@ namespace GLattrib{
 #define MCOLOR  attrib<Vec3f>(GLattrib::Color)
 #define MUV     attrib<Vec2f>(GLattrib::UV)
 #define MPOSOFFSET attrib<Vec3f>(GLattrib::PosOffset)
+#define MRADIUS attrib<float>(GLattrib::Radius)
+
 
 #endif // _GLATTRIBS_H_

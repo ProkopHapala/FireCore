@@ -12,6 +12,7 @@
 
 #include "Draw2D.h"
 #include "GLMesh.h"
+#include "MeshLibrary.h"
 #include "Renderer.h"
 #include "fastmath.h"
 #include "Vec2.h"
@@ -382,11 +383,14 @@ void atoms( int n, Vec3d* ps, int* atypes, const MMFFparams& params, float qsc=1
     opengl1renderer.enable(GL_LIGHTING);
     opengl1renderer.enable(GL_DEPTH_TEST);
     opengl1renderer.shadeModel(GL_SMOOTH);
+    MeshLibrary::sphereInstanced.instances->clear();
     for(int i=0; i<n; i++){
         const AtomType& atyp = params.atypes[atypes[i]];
         float sz = (atyp.RvdW-Rsub)*Rsc;
-        Draw3D::drawSphere((Vec3f)(ps[i]+offset), sz, COL2VEC(atyp.color));
+        MeshLibrary::sphereInstanced.addInstance( (Vec3f)(ps[i]+offset), sz, COL2VEC(atyp.color) );
     }
+    MeshLibrary::sphereInstanced.uniforms.set4m("uMVPinv", GLES::active_camera->inverseViewProjectionMatrix());
+    MeshLibrary::sphereInstanced.draw();
 }
 #endif
 

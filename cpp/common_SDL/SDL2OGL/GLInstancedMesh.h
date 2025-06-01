@@ -68,7 +68,9 @@ public:
 
     GLInstancedMeshBase(VertVboType* vbo, GLenum draw_mode=GL_TRIANGLES, Shader* shader=get_default_shader(typename VertVboType::attr_monostate{}))
         : shader(shader), verts(vbo), drawMode(draw_mode), instances(new GLvbo<instAttribs...>()) {}
-    
+    GLInstancedMeshBase(GLenum draw_mode=GL_TRIANGLES, Shader* shader=get_default_shader(typename VertVboType::attr_monostate{}))
+        : shader(shader), verts(new VertVboType()), drawMode(draw_mode), instances(new GLvbo<instAttribs...>()) {}
+
     void addInstance(typename decltype(instAttribs)::type ... args){
         instances->push_back(vertex(args...));
     }

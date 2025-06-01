@@ -270,96 +270,13 @@ int Draw3D::drawConeFan( int n, float r, const Vec3f& base, const Vec3f& tip ){
     return nvert;
 }
 
-static const char* vertexSphere = R"(
-#version 300 es
-
-in highp vec3 vPosition;
-
-out highp vec3 fPos;
-out highp vec3 fDir;
-
-uniform mat4 uMVPinv;
-uniform mat4 uMVPMatrix;
-uniform vec3 uPos;
-uniform float uRadius;
-
-vec4 model2clip(vec4 pos){
-    return uMVPMatrix * (pos*uRadius + vec4(uPos, 0.0)*pos.w);
-}
-
-vec4 clip2model(vec4 pos){
-    return ((uMVPinv * pos) - vec4(uPos, 0.0)*pos.w) / uRadius;
-}
-
-void main(){
-    mediump vec3 sphPos = model2clip(vec4(0.0, 0.0, 0.0, 1.0)).xyz;
-    mediump vec3 vecRight = normalize(clip2model(vec4(1.0, 0.0, 0.0, 0.0)).xyz);
-    mediump vec3 vecUp    = normalize(clip2model(vec4(0.0, 1.0, 0.0, 0.0)).xyz);
-    
-    vecRight = model2clip(vec4(vecRight, 0.0)).xyz;
-    vecUp    = model2clip(vec4(vecUp   , 0.0)).xyz;
-
-    mediump vec3 newPos = vecRight*vPosition.x + vecUp*vPosition.y;
-    gl_Position = vec4(newPos + sphPos, 1.0);
-
-    fPos = clip2model(vec4(gl_Position.xy, 0.0, 1.0)).xyz; // note: no need to divide by w, because it should always be 1 (atleast for orthographic projection)
-    fDir = clip2model(vec4(0.0, 0.0, 2.0, 0.0)).xyz;
-}
-)";
-
-static const char* fragSphere = R"(
-#version 300 es
-
-in highp vec3 fPos;
-in highp vec3 fDir;
-
-layout(location=0) out mediump vec4 FragColor;
-
-uniform mediump vec3 uColor;
-
-void main(){
-    FragColor = vec4(uColor, 1.0);
-
-    highp float DirLen = length(fDir);
-    highp vec3 Dir = fDir / DirLen;
-    highp float Tc = -dot(fPos, Dir);
-    highp float dsqr = dot(fPos, fPos) - Tc*Tc;
-    if (dsqr >= 1.0) discard;
-    highp float T1c = sqrt(1.0 - dsqr);
-
-    highp float T1 = Tc - T1c;
-    // highp float T2 = Tc + T1c; // T2 is always further away, so we don't care
-
-    highp vec3 normal = fPos + T1*Dir;
-    gl_FragDepth = clamp((T1 / DirLen) + 0.5, 0.0, 1.0);
-
-    // lighting
-    mediump float light = dot(normal, vec3(1.0, -1.0, 1.0));
-    light = (light+1.0)/2.0;
-    light = 0.3 + light*0.6;
-    FragColor = FragColor*vec4(light, light, light, 1.0);
-}
-)";
-
-static const GLMeshBase<MPOS> makeSphere(){
-    GLMeshBase<MPOS> m = GLMeshBase<MPOS>(GL_TRIANGLES, GL_STATIC_DRAW, new Shader(vertexSphere, fragSphere));
-    m.addVertex({-1, -1, -1});
-    m.addVertex({ 1, -1, -1});
-    m.addVertex({-1,  1, -1});
-
-    m.addVertex({-1,  1, -1});
-    m.addVertex({ 1, -1, -1});
-    m.addVertex({ 1,  1, -1});
-    return m;
-}
-static GLMeshBase<MPOS> sphere = makeSphere();
-
 void Draw3D::drawSphere(Vec3f pos, float r, Vec3f color){
-    MeshLibrary::sphere.setUniform3f("uColor", color);
-    MeshLibrary::sphere.setUniformMatrix4f("uMVPMatrix", GLES::active_camera->viewProjectionMatrix());
-    MeshLibrary::sphere.setUniformMatrix4f("uMVPinv", GLES::active_camera->inverseViewProjectionMatrix());
-    MeshLibrary::sphere.setUniform3f("uPos", pos);
-    MeshLibrary::sphere.setUniform1f("uRadius", r);
+    MeshLibrary::sphere.uniforms.set3f("uColor", color);
+    MeshLibrary::sphere.uniforms.set4m("uMVPMatrix", GLES::active_camera->viewProjectionMatrix());
+    MeshLibrary::sphere.uniforms.set4m("uMVPinv", GLES::active_camera->inverseViewProjectionMatrix());
+    MeshLibrary::sphere.uniforms.set3f("uPos", pos);
+    MeshLibrary::sphere.uniforms.set1f("uRadius", r);
+
     MeshLibrary::sphere.draw();
 }
 

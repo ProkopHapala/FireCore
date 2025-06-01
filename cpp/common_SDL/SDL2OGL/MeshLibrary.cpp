@@ -131,84 +131,123 @@ static const GLMesh<MPOS> makeCircleMesh(){
 	return m;
 }
 
-static const char* vertexSphere = R"(
-#version 300 es
+template<bool instanced>
+static constexpr std::string makeSphereVertexShader(){
+    std::string sh = "#version 300 es\n";
 
-in highp vec3 vPosition;
+    sh += "in mediump vec3 vPosition;\n";
+    if constexpr (instanced){
+        sh += "in mediump vec3  vPosOffset;\n";
+        sh += "in mediump vec3  vColor;\n";
+        sh += "in mediump float vRadius;\n";
+    }
 
-out highp vec3 fPos;
-out highp vec3 fDir;
+    sh += "out highp vec3 fPos;\n";
+    sh += "out highp vec3 fDir;\n";
+    if constexpr (instanced)
+        sh += "out mediump vec3 fColor;\n";
 
-uniform mat4 uMVPinv;
-uniform mat4 uMVPMatrix;
-uniform vec3 uPos;
-uniform float uRadius;
+    sh += "uniform mat4 uMVPinv;\n";
+    sh += "uniform mat4 uMVPMatrix;\n";
+    if constexpr (!instanced){
+        sh += "uniform vec3  uPos;\n";
+        sh += "uniform float uRadius;\n";
+    }
 
-vec4 model2clip(vec4 pos){
-    return uMVPMatrix * (pos*uRadius + vec4(uPos, 0.0)*pos.w);
+    if constexpr (instanced){
+        sh += "#define SpherePos vPosOffset\n";
+        sh += "#define SphereRadius vRadius\n";
+    }else{
+        sh += "#define SpherePos uPos\n";
+        sh += "#define SphereRadius uRadius\n";
+    }
+
+    sh += "vec4 model2clip(vec4 pos){";
+    sh +=   "return uMVPMatrix * (pos*SphereRadius + vec4(SpherePos, 0.0)*pos.w);";
+    sh += "}";
+
+    sh += "vec4 clip2model(vec4 pos){";
+    sh +=   "return ((uMVPinv * pos) - vec4(SpherePos, 0.0)*pos.w) / SphereRadius;";
+    sh += "}";
+
+    sh += "void main(){\n";
+    sh +=   "mediump vec3 sphPos = model2clip(vec4(0.0, 0.0, 0.0, 1.0)).xyz;\n";
+    sh +=   "mediump vec3 vecRight = normalize(clip2model(vec4(1.0, 0.0, 0.0, 0.0)).xyz);\n";
+    sh +=   "mediump vec3 vecUp    = normalize(clip2model(vec4(0.0, 1.0, 0.0, 0.0)).xyz);\n";
+
+    sh +=   "vecRight = model2clip(vec4(vecRight, 0.0)).xyz;\n";
+    sh +=   "vecUp    = model2clip(vec4(vecUp   , 0.0)).xyz;\n";
+
+    sh +=   "mediump vec3 newPos = vecRight*vPosition.x + vecUp*vPosition.y;\n";
+    sh +=   "gl_Position = vec4(newPos + sphPos, 1.0);\n";
+
+    sh +=   "fPos = clip2model(vec4(gl_Position.xy, 0.0, 1.0)).xyz;\n";
+    sh +=   "fDir = clip2model(vec4(0.0, 0.0, 2.0, 0.0)).xyz;\n";
+    if constexpr (instanced) sh += "fColor = vColor;\n";
+    sh += "}";
+
+    return sh;
 }
 
-vec4 clip2model(vec4 pos){
-    return ((uMVPinv * pos) - vec4(uPos, 0.0)*pos.w) / uRadius;
+template <bool instanced>
+static constexpr std::string makeSphereFragmentShader(){
+    std::string sh = "#version 300 es\n";
+
+    sh += "in highp vec3 fPos;\n";
+    sh += "in highp vec3 fDir;\n";
+    if constexpr (instanced){
+        sh += "in mediump vec3 fColor;\n";
+        sh += "#define SphereColor fColor\n";
+    }
+    else{
+        sh += "uniform mediump vec3 uColor;\n";
+        sh += "#define SphereColor uColor\n";
+    }
+
+    sh += "layout(location=0) out mediump vec4 FragColor;\n";
+
+    sh += "void main(){\n";
+    sh +=   "highp float DirLen = length(fDir);\n";
+    sh +=   "highp vec3 Dir = fDir / DirLen;\n";
+    sh +=   "highp float Tc = -dot(fPos, Dir);\n";
+    sh +=   "highp float dsqr = dot(fPos, fPos) - Tc*Tc;\n";
+    sh +=   "if (dsqr >= 1.0) discard;\n";
+    sh +=   "highp float T1c = sqrt(1.0 - dsqr);\n";
+    sh +=   "highp float T1 = Tc - T1c;\n";
+
+    sh +=   "highp vec3 normal = fPos + T1*Dir;\n";
+    sh +=   "gl_FragDepth = clamp((T1 / DirLen) + .5, 0.0, 1.0);\n";
+
+    sh +=   "mediump float light = dot(normal, vec3(1.0, -1.0, 1.0));\n";
+    sh +=   "light = (light+1.0)/2.0;\n";
+    sh +=   "light = .3 + light*.6;\n";
+    sh +=   "FragColor = vec4(SphereColor, 1.0)*vec4(light, light, light, 1.0);\n";
+    sh += "}";
+
+    return sh;
 }
 
-void main(){
-    mediump vec3 sphPos = model2clip(vec4(0.0, 0.0, 0.0, 1.0)).xyz;
-    mediump vec3 vecRight = normalize(clip2model(vec4(1.0, 0.0, 0.0, 0.0)).xyz);
-    mediump vec3 vecUp    = normalize(clip2model(vec4(0.0, 1.0, 0.0, 0.0)).xyz);
-    
-    vecRight = model2clip(vec4(vecRight, 0.0)).xyz;
-    vecUp    = model2clip(vec4(vecUp   , 0.0)).xyz;
+static GLInstancedMeshBase<GLvbo<MPOS>, MPOSOFFSET, MRADIUS, MCOLOR> makeSphereInstanced(){
+    GLInstancedMeshBase<GLvbo<MPOS>, MPOSOFFSET, MRADIUS, MCOLOR> m(GL_TRIANGLES, new Shader(makeSphereVertexShader<true>().c_str(), makeSphereFragmentShader<true>().c_str()));
+    m.verts->push_back((Vec3f){-1, -1, -1});
+    m.verts->push_back((Vec3f){ 1, -1, -1});
+    m.verts->push_back((Vec3f){-1,  1, -1});
 
-    mediump vec3 newPos = vecRight*vPosition.x + vecUp*vPosition.y;
-    gl_Position = vec4(newPos + sphPos, 1.0);
-
-    fPos = clip2model(vec4(gl_Position.xy, 0.0, 1.0)).xyz;
-    fDir = clip2model(vec4(0.0, 0.0, 2.0, 0.0)).xyz;
+    m.verts->push_back((Vec3f){-1,  1, -1});
+    m.verts->push_back((Vec3f){ 1, -1, -1});
+    m.verts->push_back((Vec3f){ 1,  1, -1});
+    return m;
 }
-)";
-
-static const char* fragSphere = R"(
-#version 300 es
-
-in highp vec3 fPos;
-in highp vec3 fDir;
-
-layout(location=0) out mediump vec4 FragColor;
-
-uniform mediump vec3 uColor;
-
-void main(){
-    FragColor = vec4(uColor, 1.0);
-
-    highp float DirLen = length(fDir);
-    highp vec3 Dir = fDir / DirLen;
-    highp float Tc = -dot(fPos, Dir);
-    highp float dsqr = dot(fPos, fPos) - Tc*Tc;
-    if (dsqr >= 1.0) discard;
-    highp float T1c = sqrt(1.0 - dsqr);
-
-    highp float T1 = Tc - T1c;
-
-    highp vec3 normal = fPos + T1*Dir;
-    gl_FragDepth = clamp((T1 / DirLen) + .5, 0.0, 1.0);
-
-    mediump float light = dot(normal, vec3(1.0, -1.0, 1.0));
-    light = (light+1.0)/2.0;
-    light = .3 + light*.6;
-    FragColor = FragColor*vec4(light, light, light, 1.0);
-}
-)";
 
 static GLMeshBase<MPOS> makeSphere(){
-    GLMeshBase<MPOS> m = GLMeshBase<MPOS>(GL_TRIANGLES, GL_STATIC_DRAW, new Shader(vertexSphere, fragSphere));
-    m.addVertex({-1, -1, -1});
-    m.addVertex({ 1, -1, -1});
-    m.addVertex({-1,  1, -1});
+    GLMeshBase<MPOS> m(GL_TRIANGLES, GL_STATIC_DRAW, new Shader(makeSphereVertexShader<false>().c_str(), makeSphereFragmentShader<false>().c_str()));
+    m.verts->push_back((Vec3f){-1, -1, -1});
+    m.verts->push_back((Vec3f){ 1, -1, -1});
+    m.verts->push_back((Vec3f){-1,  1, -1});
 
-    m.addVertex({-1,  1, -1});
-    m.addVertex({ 1, -1, -1});
-    m.addVertex({ 1,  1, -1});
+    m.verts->push_back((Vec3f){-1,  1, -1});
+    m.verts->push_back((Vec3f){ 1, -1, -1});
+    m.verts->push_back((Vec3f){ 1,  1, -1});
     return m;
 }
 
@@ -244,6 +283,7 @@ namespace MeshLibrary {
     GLMesh<MPOS> rect = makeRectMesh();
     GLMesh<MPOS> circle = makeCircleMesh();
     GLMeshBase<MPOS> sphere = makeSphere();
+    GLInstancedMeshBase<GLvbo<MPOS>, MPOSOFFSET, MRADIUS, MCOLOR> sphereInstanced = makeSphereInstanced();
     GLMesh<MPOS> cross = makeCross();
     GLMesh<MPOS> xmark = makeXMark();
 

@@ -15,6 +15,7 @@ namespace MeshLibrary {
     extern GLMesh<MPOS,MNORMAL> cubeWithNormals;
 
     extern GLMeshBase<MPOS> sphere;
+    extern GLInstancedMeshBase<GLvbo<MPOS>, MPOSOFFSET, MRADIUS, MCOLOR> sphereInstanced;
     extern GLMesh<MPOS> rect;
     extern GLMesh<MPOS> circle;
     extern GLMesh<MPOS> cross;
