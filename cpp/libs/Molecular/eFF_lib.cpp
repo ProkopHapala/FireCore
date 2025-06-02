@@ -1,4 +1,4 @@
-﻿#include <stdlib.h>
+#include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
 #include <vector>
@@ -630,7 +630,7 @@ int processXYZ( const char* fname, double Rfac=-0.5, double* outEs=0, double* ap
                 builder.printAtomConfs();
                 builder.autoBonds( Rfac ); 
                 int ne = builder2EFFstatic( 0, builder, bCoreElectrons, bChangeCore, bChangeEsize );
-                if(verbosity>0)printf("processXYZ() iconf=%i natoms=%i builder.atoms.size()=%i builder.bonds.size()=%i\n", iconf, atoms->natoms, builder.atoms.size(), builder.bonds.size() );
+                if(verbosity>0)printf("processXYZ() iconf=%i natoms=%i ne=%i builder.atoms.size()=%i builder.bonds.size()=%i\n", iconf, atoms->natoms, ne, builder.atoms.size(), builder.bonds.size() );
                 ff.realloc( atoms->natoms, ne, true );
                 opt.bindOrAlloc( ff.nDOFs, ff.pDOFs, ff.vDOFs, ff.fDOFs, ff.invMasses );
             }
@@ -655,9 +655,13 @@ int processXYZ( const char* fname, double Rfac=-0.5, double* outEs=0, double* ap
                 run( nstepMax, dt, Fconv, ialg, 0, 0 );
             }
             ff.eval();
-            if(verbosity>0)printf("processXYZ() iconf=%i natoms=%i na=%i ne=%i | Etot(%g)=T(%g)+ee(%g)+ea(%g)+aa(%g) \n", iconf, atoms->natoms, ff.na, ff.ne, ff.Etot, ff.Ek, ff.Eee, ff.Eae, ff.Eaa );
-            if(xyz_out)ff.save_xyz   ( xyz_out, "a", comment );
-            if(fgo_out)ff.writeTo_fgo( fgo_out, false, "a", iconf );
+            //snprintf(comment, nline, "na,ne %i %i Etot(%.3f)=T(%.2f)+ee(%.3f)+ea(%.3f)+aa(%.3f)", ff.na, ff.ne, ff.Etot, ff.Ek, ff.Eee, ff.Eae, ff.Eaa);
+            if(verbosity>0){
+                //printf("processXYZ() iconf=%i natoms=%i | %s \n", iconf, atoms->natoms, comment);
+                printf("processXYZ() iconf=%i na: %i ne: %i Etot(%.3f)=T(%.2f)+ee(%.3f)+ea(%.3f)+aa(%.3f)\n", iconf, ff.na, ff.ne, ff.Etot, ff.Ek, ff.Eee, ff.Eae, ff.Eaa );
+            }
+            if(xyz_out)ff.save_xyz(xyz_out, "a", comment);
+            if(fgo_out)ff.writeTo_fgo(fgo_out, false, "a", iconf);
             if(apos_){
                 Vec3d*  apos = ((Vec3d* )apos_)+iconf*ff.na;
                 for(int j=0; j<ff.na; j++){ apos[j]   = ff.apos[j]; }

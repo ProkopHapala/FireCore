@@ -5,6 +5,8 @@
 /// @addtogroup Electron_Forcefield
 /// @{
 
+
+#include "datatypes.h"
 #include "fastmath.h"
 #include "Vec2.h"
 #include "Vec3.h"
@@ -13,6 +15,8 @@
 
 
 #include "InteractionsGauss.h"
+
+#include "eFF_LAMMPS_funcs.h"
 
 
 /*
@@ -57,6 +61,8 @@ Erf approximation:
 
 //#define QE -2.0
 #define QE -1.0
+
+constexpr static const double Hartree_to_eV = 27.211386245988;
 
 // ToDo : Later properly
 // ToDo : Perhaps we should use differenw size(width) for Pauli and Coulomb similarly to CLCFGO
@@ -173,21 +179,38 @@ inline double interp_gx4(double r2, double y1, double y2 ){
 /// EFF solver
 class EFF{ public:
 
-int nAtomParams = 10;
-constexpr static const Quat4d default_AtomParams[] = {
-//  Q   sQ   sP   cP
-{ 0.,  1.0, 1.0, 0.0 }, // 0
-{ 1.,  0.0, 0.0, 0.0 }, // 1 H
-{ 0.,  1.0, 1.0, 1.0 }, // 2 He
-{ 1.,  0.0, 0.1, 1.0 }, // 3 Li
-{ 2.,  0.0, 0.1, 1.0 }, // 4 Be
-{ 3.,  0.0, 0.1, 1.0 }, // 5 B
-{ 4.,  0.0, 0.1, 1.0 }, // 6 C
-{ 5.,  0.0, 0.1, 1.0 }, // 7 N
-{ 6.,  0.0, 0.1, 1.0 }, // 8 O
-{ 7.,  0.0, 0.1, 1.0 }, // 9 F
+    int nAtomParams = 10;
+    constexpr static const Quat4d default_AtomParams[] = {
+    //  Q   sQ   sP   cP
+    { 0.,  1.0, 1.0, 0.0 }, // 0
+    { 1.,  0.0, 0.0, 0.0 }, // 1 H
+    { 0.,  1.0, 1.0, 1.0 }, // 2 He
+    { 1.,  0.0, 0.1, 1.0 }, // 3 Li
+    { 2.,  0.0, 0.1, 1.0 }, // 4 Be
+    { 3.,  0.0, 0.1, 1.0 }, // 5 B
+    { 4.,  0.0, 0.1, 1.0 }, // 6 C
+    { 5.,  0.0, 0.1, 1.0 }, // 7 N
+    { 6.,  0.0, 0.1, 1.0 }, // 8 O
+    { 7.,  0.0, 0.1, 1.0 }, // 9 F
+    };
+
+
+    constexpr static const double8 default_AtomParams2[] = {
+    // Z_nuc, R_eff, Zcore_eff,   PA,        PB,        PC,        PD,        PE
+{ 0.0,   1.0,      0.0,      0.0,       0.0,       0.0,       0.0,       0.0      }, // 0: Dummy
+{ 1.0,   0.0,      0.0,      0.0,       0.0,       0.0,       0.0,       0.0      }, // 1: H (Bare nucleus)
+{ 2.0,   0.1,      2.0,      0.0,       0.0,       0.0,       0.0,       0.0      }, // 2: He (Simple core: 1 pair (2e), radius 0.3. sQ=0.3, sP=0.3, cP=1.0)
+{ 3.0,   0.1,      2.0,      0.0,       0.0,       0.0,       0.0,       0.0      }, // 3: Li (Simple core: Z=3, sQ=0.5, sP=0.5, cP=1.0 for 1s2)
+{ 4.0,   0.1,      2.0,      0.0,       0.0,       0.0,       0.0,       0.0      }, // 4: Be (Simple core: Z=4, sQ=0.4, sP=0.4, cP=1.0 for 1s2)
+{ 5.0,   0.1,      2.0,      0.0,       0.0,       0.0,       0.0,       0.0      }, // 5: B  (Simple core: Z=5, sQ=0.35,sP=0.35,cP=1.0 for 1s2)
+{ 6.0,   0.621427, 2.0,     22.721015, 0.728733,  1.103199,  17.695345, 6.693621  }, // 6: C (ECP: Z_nuc=6, R_core=0.621, Z_core=2. p-type)
+{ 7.0,   0.0,      2.0,      0.0,       0.0,       0.0,       0.0,       0.0      }, // 7: N (ECP: Z_nuc=7, R_core=0.0,   Z_core=2. p-type)
+{ 8.0,   0.167813, 2.0,     25.080199, 0.331574,  1.276183,  12.910142, 3.189333  }, // 8: O (ECP: Z_nuc=8, R_core=0.167, Z_core=2. p-type)
+{ 9.0,   0.3,      2.0,      0.0,       0.0,       0.0,       0.0,       0.0      }  // 9: F (Simple core: Z=9, sQ=0.3, sP=0.3, cP=1.0 for 1s2)
+// Add Al, Si etc. as needed
 };
-const Quat4d* atom_params = default_AtomParams;
+
+    const Quat4d* atom_params = default_AtomParams;
 
 //                                              H   He  Li    Be      B      C     N     O      F
 constexpr static const double aMasses[9] = {  1.0, 4.0, 7.0, 9.0,  11.0,  12.0,  14.0, 16.0,  19.0 };
@@ -226,7 +249,10 @@ constexpr static const double aMasses[9] = {  1.0, 4.0, 7.0, 9.0,  11.0,  12.0, 
     Vec3d  * aforce =0; ///< atomic forces
     Vec3d  * avel   =0; ///< atomic velocities
 
-    Quat4d * aPars = 0;   /// electron params { x=Q,y=sQ,z=sP,w=cP }
+    Quat4d * aPars  = 0;   /// electron params { x=Q,y=sQ,z=sP,w=cP }
+    Quat4d * aPars2 = 0;   /// electron params { x=Q,y=sQ,z=sP,w=cP }
+
+    bool bUseECPs = false;
 
     //double * espin  =0;
     int    * espin  =0; ///< electron spins
@@ -256,10 +282,9 @@ void realloc(int na_, int ne_, bool bVel=false){
     _realloc( pDOFs, nDOFs);
     _realloc( fDOFs, nDOFs);
     _realloc( aPars, na);
+    _realloc( aPars2, na);
     _realloc( espin, ne);
     _realloc( eE, ne );
-
-
 
     apos   = (Vec3d*)pDOFs;
     aforce = (Vec3d*)fDOFs;
@@ -406,6 +431,7 @@ void dealloc(){
     //delete [] aAbWs;
     //delete [] eAbWs;
     delete [] aPars;
+    delete [] aPars2;
     delete [] espin;
     delete [] eE;
 }
@@ -595,6 +621,82 @@ double evalAE(){
     return Eae+EaePaul+Eee_;
 }
 
+
+double evalECP( Vec3d dR, Quat4d aPar, Quat4d BCDE, double sj, Vec3d& f, double& fs ){
+    double dEae = 0;
+    if(bEvalAECoulomb){
+        double fs_junk;
+        dEae += addCoulombGauss(dR, aPar.z, sj, f, fs_junk, fs, (aPar.x - aPar.z) );   // ( Z - Zeff )
+    }
+    // Pauli: pseudo-atom (i) - electron (j)
+    if(bEvalAEPauli){
+        const double rc = dR.norm();
+        double fe_ = 0.0;
+        double dE_ = 0.0;
+        double fr_ = 0; 
+        double fs_ = 0;
+        if (BCDE.w>0){ LAMMPS_NS::PauliCoreElec (rc, sj, &dE_, &fr_, &fe_, aPar.w, BCDE.x, BCDE.y); } 
+        else         { LAMMPS_NS::PauliCorePElec(rc, sj, &dE_, &fr_, &fe_, aPar.w, BCDE.x, BCDE.y, BCDE.z, BCDE.w);  }
+        dEae += dE_ * Hartree_to_eV;
+        fs   -= fe_ * Hartree_to_eV;
+        f.add_mul(dR, (fr_ * Hartree_to_eV) / rc);
+    }
+    return dEae;
+}
+
+double evalAE_ECP(){
+    Eae    =0;
+    EaePaul=0;
+    double Eee_=0;
+    for(int i=0; i<na; i++){
+        const Vec3d  pi   = apos[i];
+        const Quat4d aPar = aPars[i]; // { x=Q,y=sQ,z=sP,w=cP }
+        const double qq  = aPar.x*QE;
+        const Quat4d& BCDE = aPars2[i];
+        const bool is_eCP  = ( aPar.w  > 0.0 );
+
+        for(int j=0; j<ne; j++){
+            Vec3d f=Vec3dZero;
+            const Vec3d   dR  = epos [j] - pi;
+            const double  sj  = esize[j];
+            double& fsj = fsize[j];
+            double  fs_junk=0;
+            double dEae=0,dEaePaul=0,dEee=0;
+            if(bEvalAECoulomb){
+                dEae  = addCoulombGauss(dR, aPar.z, sj, f, fs_junk, fsj, (aPar.x - aPar.z) );   // ( Z - Zeff )
+            }
+            if(bEvalAEPauli){
+                if(is_eCP){
+                    const double rc = dR.norm();
+                    double fe_ = 0.0;
+                    double dE_ = 0.0;
+                    double fr_ = 0; 
+                    double fs_ = 0;
+                    if (BCDE.w>0){ LAMMPS_NS::PauliCoreElec (rc, sj, &dE_, &fr_, &fe_, aPar.w, BCDE.x, BCDE.y); } 
+                    else         { LAMMPS_NS::PauliCorePElec(rc, sj, &dE_, &fr_, &fe_, aPar.w, BCDE.x, BCDE.y, BCDE.z, BCDE.w);  }
+                    dEaePaul  += dE_ * Hartree_to_eV;
+                    fsj       -= fe_ * Hartree_to_eV;
+                    f.add_mul(dR, (fr_ * Hartree_to_eV) / rc);
+                }else{
+                    dEaePaul   = addPauliGauss_New( dR, sj, aPar.z, f, fsj, fs_junk, 0, KRSrho, aPar.z*0.5 ); // spin=0 means both -1 and +1  
+                    //dEaePaul   = addPauliGauss_New( dR, sj, aPar.z, f, fsj, fs_junk, 0, KRSrho, aPar.z*0.5 ); // spin=0 means both -1 and +1 
+                }
+            }
+            //printf( "evalAE[%i,%i] f(%g,%g,%g) r %g s %g E %g EPaul %g Eee %g \n", i,j, f.x,f.y,f.z, dR.norm(), aPar.y, sj, dEae,dEaePaul,dEee );
+            Eae    +=dEae;
+            EaePaul+=dEaePaul;
+            Eee_   +=dEee;
+            eE[j]  +=dEae+dEaePaul+dEee;
+            eforce[j].sub(f);
+            aforce[i].add(f);
+        }
+    }
+    Eee+=Eee_;
+    //if( i_DEBUG>0 )  for(int j=0; j<ne; j++){  printf( "evalAE: esize[%i] %g f %g \n", j, esize[j], fsize[j] ); }
+    return Eae+EaePaul+Eee_;
+}
+
+
 /// evaluate Atom-Atom forces
 double evalAA(){
     //if( i_DEBUG>0 ) printf( "evalAA \n" );
@@ -676,7 +778,10 @@ double eval(){
     Etot = 0;
     if(bEvalKinetic    ) Etot+= evalKinetic();
     if(bEvalEE         ) Etot+= evalEE();
-    if(bEvalAE         ) Etot+= evalAE();
+    if(bEvalAE){
+        if(bUseECPs){ Etot+= evalAE_ECP(); }
+        else        { Etot+= evalAE();     }
+    }
     if(bEvalAA         ) Etot+= evalAA();
     if(bEvalCoreCorect ) Etot+=evalCoreCorrection();
     //printf( "eval() Etot %g epos[0](%g,%g,%g) \n", Etot, epos[0].x, epos[0].y, epos[0].z );
@@ -864,9 +969,13 @@ char* orbs2str(char* str0){
     return str;
 }
 
-void to_xyz( FILE* pFile ){
+void to_xyz( FILE* pFile, const char* comment=0 ){
     fprintf( pFile, " %i \n", na+ne );
-    fprintf( pFile, "na,ne %i %i Etot(%g)=T(%g)+ee(%g)+ea(%g)+aa(%g) \n", na,ne, Etot, Ek, Eee, Eae, Eaa );
+    if(comment!=0){ 
+        fprintf( pFile, "na,ne %i %i Etot(%g)=T(%g)+ee(%g)+ea(%g)+aa(%g) | %s \n", na,ne, Etot, Ek, Eee, Eae, Eaa, comment ); 
+    }else{ 
+        fprintf( pFile, "na,ne %i %i Etot(%g)=T(%g)+ee(%g)+ea(%g)+aa(%g) \n", na,ne, Etot, Ek, Eee, Eae, Eaa ); 
+    }
     for (int i=0; i<na; i++){
         int iZ = (int)(aPars[i].x+0.5);
         //if(iZ>1)iZ+=2;
@@ -885,10 +994,7 @@ void save_xyz( const char* filename, const char* mode="w", const char* comment=0
     FILE * pFile; 
     pFile = fopen (filename,mode);
     if(pFile==0){ printf("ERROR file >>%s<< not found \n", filename ); return; }
-    fprintf( pFile, " %i \n", na+ne );
-    if(comment!=0){ printf("%s | na,ne %i %i Etot(%g)=T(%g)+ee(%g)+ea(%g)+aa(%g) \n", comment,  na,ne, Etot, Ek, Eee, Eae, Eaa ); fprintf( pFile, "%s | na,ne %i %i Etot(%g)=T(%g)+ee(%g)+ea(%g)+aa(%g) \n", comment,  na,ne, Etot, Ek, Eee, Eae, Eaa ); }
-    else          { fprintf( pFile, "na,ne %i %i Etot(%g)=T(%g)+ee(%g)+ea(%g)+aa(%g) \n", na,ne, Etot, Ek, Eee, Eae, Eaa ); }
-    to_xyz( pFile );
+    to_xyz( pFile, comment );
     fclose(pFile);
 }
 

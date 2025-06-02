@@ -13,7 +13,14 @@ struct int8   { int x,y,z,w,hx,hy,hz,hw; };
 
 struct double2 { double x,y; };
 struct double4 { double x,y,z,w; };
-struct double8 { double x,y,z,w,hx,hy,hz,hw; };
+struct double8 { 
+    union{
+        struct{ double x,y,z,w,hx,hy,hz,hw; };
+        struct{ double4 lo,hi; };
+        double array[8];
+    };
+};
+
 
 struct size_t4 { size_t x,y,z,w; };
 

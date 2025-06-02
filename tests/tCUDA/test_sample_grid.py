@@ -101,8 +101,8 @@ mdcl.init_with_atoms(na)
 
 # Initialize the grid force field
 print("Initializing GridFF...")
-#use_texture = True
-use_texture = False
+use_texture = True
+#use_texture = False
 mdcl.get_work_sizes()
 mdcl.init_kernel_params()
 
