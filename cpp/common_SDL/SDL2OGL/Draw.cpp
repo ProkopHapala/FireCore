@@ -3,6 +3,8 @@
 #include "Vec2.h"
 #include "Vec3.h"
 
+#include "MeshBuilder.h"
+#include "TextRenderer.h"
 #include "Draw.h"  // THE HEADER
 
 void Draw::colorScale( double d, int ncol, const uint32_t * colors ){
@@ -114,84 +116,13 @@ void Draw::billboardCamProj( ){
 };
 */
 
-static GLTexture font = GLTexture("common_resources/dejvu_sans_mono_RGBA_pix-UpDown.bmp");
-static GLMesh<MPOS,MUV> makeFontMesh(){
-    GLMesh<MPOS,MUV> m = GLMesh<MPOS,MUV>(GL_TRIANGLES, GL_DYNAMIC_DRAW, defaultTexColorShader<MPOS,MUV>);
-    m.setUniformTex("uTexture", &font);
-    return m;
-}
-static GLMesh<MPOS,MUV> fontMesh = makeFontMesh();
-
-static void addCharToMesh( GLMesh<MPOS,MUV>& mesh, char c, Vec2f pos, Vec2f size){
-    const int nchars = 95;
-    const float persprite = 1.0f/nchars;
-
-    int chari = c - 33;
-    float UVstart = chari*persprite + (persprite*0.57);
-    float UVend   = UVstart + persprite;
-
-    fontMesh.addVertex({pos.x         , pos.y         , 0}, {UVstart, 0});
-    fontMesh.addVertex({pos.x + size.x, pos.y         , 0}, {UVend  , 0});
-    fontMesh.addVertex({pos.x + size.x, pos.y + size.y, 0}, {UVend  , 1});
-    fontMesh.addVertex({pos.x         , pos.y         , 0}, {UVstart, 0});
-    fontMesh.addVertex({pos.x + size.x, pos.y + size.y, 0}, {UVend  , 1});
-    fontMesh.addVertex({pos.x         , pos.y + size.y, 0}, {UVstart, 1});
-}
-
-static void makeTextMesh( GLMesh<MPOS,MUV>& mesh, const char* str, int iend ){
-    const int nchars = 95;
-    float persprite = 1.0f/nchars;
-
-    mesh.clear();
-
-    int terminator = 0xFFFF;
-    if(iend<=0) { terminator=-iend; iend=256; };
-    for(int i=0; i<iend; i++){
-        if  (str[i]==terminator) break;
-
-        addCharToMesh(mesh, str[i], {i, 0}, {1, 2});
-    }
-}
-
-static void makeTextMesh( GLMesh<MPOS,MUV>& mesh, const char * str, Vec2i block_size ){
-    const int nchars = 95;
-    float persprite = 1.0f/nchars;
-
-    mesh.clear();
-
-    char terminator = '\0';
-    int iline=0,ix=0;
-    for(int i=0; i<65536; i++){
-        char ch = str[i];
-        if       (ch==terminator){ break; }
-        else if ((ch=='\n')||(ix>block_size.x)){ iline++; ix=0; if(iline>block_size.y) break; continue; }
-
-        addCharToMesh( mesh, str[i], {ix, -iline*2}, {1, 2});
-
-        ix++;
-    }
-}
-
+TextRenderer text;
 void Draw::drawText( const char * str, Vec3f pos, float sz, int iend, Vec3f color ){
-    font.setMagFilter(GL_NEAREST);
-    font.setMinFilter(GL_NEAREST);
-
-    const int nchars = 95;
-    float persprite = 1.0f/nchars;
-
-    makeTextMesh(fontMesh, str, iend);
-    fontMesh.setUniform3f("uColor", color);
-    fontMesh.draw2D(pos, {sz, sz});
+    text.set(str);
+    text.draw2D(pos, sz, color);
 }
 
 void Draw::drawText( const char * str, Vec3f pos, float sz, Vec2i block_size, Vec3f color ){
-    font.setMagFilter(GL_NEAREST);
-    font.setMinFilter(GL_NEAREST);
-
-    const int nchars = 95;
-    float persprite = 1.0f/nchars;
-
-    makeTextMesh( fontMesh, str, block_size);
-    fontMesh.setUniform3f("uColor", color);
-    fontMesh.draw2D(pos, {sz, sz});
+    text.set(str, block_size.x, block_size.y);
+    text.draw2D(pos, sz, color);
 };

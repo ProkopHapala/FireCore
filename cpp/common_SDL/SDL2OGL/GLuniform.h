@@ -96,6 +96,7 @@ public:
     inline void set4ui(std::string name, Vec4T<GLuint> value) { uniforms[name] = {.type=GLuniform::ui4, .data={.ui4=value}}; }
     inline void set3m (std::string name, Mat3T<GLfloat> value){ uniforms[name] = {.type=GLuniform::m3,  .data={.m3 =value}}; }
     inline void set4m (std::string name, Mat4T<GLfloat> value){ uniforms[name] = {.type=GLuniform::m4,  .data={.m4 =value}}; }
+    inline void setTex(std::string name, GLTexture* value)    { uniforms[name] = {.type=GLuniform::tex, .data={.tex=value}}; }
 };
 
 

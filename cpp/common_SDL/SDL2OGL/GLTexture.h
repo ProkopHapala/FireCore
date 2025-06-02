@@ -28,7 +28,25 @@ class GLTexture{
                     glBindTexture(GL_TEXTURE_2D, handle);
                     glTexImage2D(GL_TEXTURE_2D, 0, internalformat, size.x, size.y, 0, format, type, 0);
                 }
+                if (lazy_params.size() > 0){
+                    for (auto x : lazy_params){
+                        set_param(x.first, x.second);
+                    }
+                    lazy_params.clear();
+                }
             }
+        }
+        
+        std::vector<std::pair<GLenum,GLenum>> lazy_params;
+
+        inline void set_param(GLenum pname, GLenum param){
+            if (!GLES::context){
+                lazy_params.push_back({pname, param});
+                return;
+            }
+
+            bind();
+            glTexParameteri(GL_TEXTURE_2D, pname, param);
         }
     
     public:
@@ -50,10 +68,10 @@ class GLTexture{
             glBindTexture(target, handle);
         }
 
-        void setMinFilter(GLenum filter)    { bind(); glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, filter ); } // default is GL_NEAREST_MIPMAP_LINEAR
-        void setMagFilter(GLenum filter)    { bind(); glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, filter ); } // default is GL_LINER
-        void setWrapHorizontal(GLenum wrap) { bind(); glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S    , wrap   ); } // default is GL_REPEAT
-        void setWrapVertical  (GLenum wrap) { bind(); glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T    , wrap   ); } // default is GL_REPEAT
+        void setMinFilter(GLenum filter)    { set_param(GL_TEXTURE_MIN_FILTER, filter ); } // default is GL_NEAREST_MIPMAP_LINEAR
+        void setMagFilter(GLenum filter)    { set_param(GL_TEXTURE_MAG_FILTER, filter ); } // default is GL_LINER
+        void setWrapHorizontal(GLenum wrap) { set_param(GL_TEXTURE_WRAP_S    , wrap   ); } // default is GL_REPEAT
+        void setWrapVertical  (GLenum wrap) { set_param(GL_TEXTURE_WRAP_T    , wrap   ); } // default is GL_REPEAT
 
         void loadImage(int width, int height, GLenum format, GLenum type, const void* data){
             bind();

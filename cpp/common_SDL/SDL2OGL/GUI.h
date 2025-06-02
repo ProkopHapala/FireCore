@@ -7,6 +7,7 @@
 
 #include "Draw.h"
 #include "Renderer.h"
+#include "TextRenderer.h"
 
 #include "Table.h"
 #include "Interfaces.h"
@@ -87,6 +88,7 @@ class GUITextInput{ public:
 
     int         curPos=0;
 	std::string inputText;
+    TextRenderer textRenderer;
 
     bool     isNumber=true,checkRange=false;
 	float    vmin=0.0f, vmax=1.0f;
@@ -120,6 +122,7 @@ class GUIAbstractPanel{ public:
 	//int      fontTex=0;
     //char*    caption=NULL;
     std::string caption;
+    TextRenderer textRenderer;
 	//void (*command)(double,void*) = NULL;
     //std::function<void(double)> command =0;
     std::function<void(GUIAbstractPanel*)> command =0; // = [] { return 0; }
@@ -173,6 +176,7 @@ class GUIPanel : public GUIAbstractPanel { public:
 	bool     executed=false;
 	int      curPos=0;
 	std::string inputText;
+    TextRenderer textRenderer2;
     int      ndigits=2;
 
 	float    vmin=0.0f, vmax=1.0f;

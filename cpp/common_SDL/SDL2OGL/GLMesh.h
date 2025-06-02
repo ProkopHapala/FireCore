@@ -104,7 +104,8 @@ public:
         : base(drawMode, usage, shader) {}
     GLMesh(GLvbo<attribs...>* vbo, GLenum drawMode=GL_TRIANGLES, Shader* shader=defaultcolorShader<attribs...>)
         : base(vbo, drawMode, shader) {}
-
+    GLMesh(Shader* shader)
+        : base(GL_TRIANGLES, GL_STATIC_DRAW, shader) {}
 
     void drawMVP(Mat4f mvp, GLenum drawMode=0){
         base::uniforms.set4m("uMVPMatrix", mvp);

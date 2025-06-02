@@ -29,13 +29,12 @@ void GUITextInput::applyVal( float f ){
 }
 
 void GUITextInput::view3D( const Vec3d& pos, int fontTex, float textSize ){ // TODO: use Draw3D::drawTextBillboard() ??
-    //Draw3D::drawText( inputText.c_str(), pos, fontTex, textSize, 0, 0 );
     opengl1renderer.disable    ( GL_DEPTH_TEST );
     opengl1renderer.pushMatrix();
         opengl1renderer.translatef( pos.x, pos.y, pos.z );
         Draw::billboardCam( );
-        //Draw::drawText( inputText.c_str(), fontTex, textSize, 0, 0 );
-        Draw::drawText( inputText.c_str(), (Vec3f)pos, textSize, 0 );
+        textRenderer.set(inputText);
+        textRenderer.draw2D((Vec3f)pos, textSize);
         Draw3D::drawLine( Vec3f{curPos*textSize,0.0,0.0}, Vec3f{curPos*textSize,textSize*2,0.0}, COLOR_BLACK );
     opengl1renderer.popMatrix();
 }
@@ -43,11 +42,10 @@ void GUITextInput::view3D( const Vec3d& pos, int fontTex, float textSize ){ // T
 void GUITextInput::viewHUD( const Vec2i& pos, int fontTex, bool bBack ){ // TODO: use Draw3D::drawTextBillboard() ??
     opengl1renderer.pushMatrix();
         opengl1renderer.translatef( pos.x, pos.y, 0.0 );
-        //Draw::billboardCam();
-        //Draw::drawText( inputText.c_str(), fontTex, textSize, 0, 0 );
         int nl = inputText.size();
         if(bBack)Draw2D::drawRectangle( (Vec2f){pos.x,pos.y}, (Vec2f){pos.x+nl*fontSizeDef, pos.y+fontSizeDef*2}, COL2VEC(0xA0A0A0) );
-        Draw::drawText( inputText.c_str(), (Vec3f){pos.x, pos.y, 0}, fontSizeDef, 0 );
+        textRenderer.set(inputText);
+        textRenderer.draw2D({pos.x, pos.y, 0}, fontSizeDef);
         Draw3D::drawLine( Vec3f{curPos*fontSizeDef,0.0,0.0}, Vec3f{curPos*fontSizeDef,fontSizeDef*2,0.0}, COLOR_BLACK );
     opengl1renderer.popMatrix();
 }
@@ -127,7 +125,8 @@ void GUIAbstractPanel::render(){
     Draw2D::drawRectangle( xmin, ymin, xmax, ymax, COL2VEC(bgColor) );
     if(caption.length()>0) {
         Draw  ::setRGB( textColor );
-        Draw2D::drawText( caption.c_str(), caption.length(), {xmin, ymax-fontSizeDef*2},  0.0, GUI_fontTex, fontSizeDef );
+        textRenderer.set(caption);
+        textRenderer.draw2D({xmin, ymax-fontSizeDef*2}, fontSizeDef);
     }
 }
 
@@ -174,15 +173,13 @@ void GUIPanel::render(){
     }
     Draw  ::setRGB( textColor );
     int nch0 = caption.length();
-    //Draw2D::drawText( caption, nch, {xmin, ymin+fontSizeDef*2,}, 0.0,  GUI_fontTex, fontSizeDef );
-    Draw2D::drawText( caption.c_str(), caption.length(), {xmin, ymax-fontSizeDef*2}, 0.0,  GUI_fontTex, fontSizeDef );
+    textRenderer.set(caption);
+    textRenderer.draw2D({xmin, ymax-fontSizeDef*2}, fontSizeDef);
     if(viewVal){ val2text(); }
     int nch = inputText.length();
     if( nch > 0 ){
-        //Draw  ::setRGB( 0xFFFFFFFF );
-        //Draw2D::drawRectangle( xmin+nch0*fontSizeDef, ymax-2*fontSizeDef, xmax, ymax, true );
-        Draw  ::setRGB( textColor );
-        Draw2D::drawText( inputText.c_str(), nch, {xmin+fontSizeDef*nch0, ymin}, 0.0, GUI_fontTex, fontSizeDef );
+        textRenderer2.set(inputText);
+        textRenderer2.draw2D({xmin+fontSizeDef*nch0, ymin}, fontSizeDef, COL2VEC(textColor));
     }
 
     int xcur = xmin + (nch0+curPos)*fontSizeDef;
@@ -375,8 +372,8 @@ void CheckBoxList::render(){
     int y0 = ymin+boxes.size()*dy;
     Draw2D::drawRectangle( xmin, y0, xmax, y0+dy, COL2VEC(bgColor) );
     Draw  ::setRGB( textColor );
-    Draw2D::drawText( caption.c_str(), caption.length(), {xmin, ymax-fontSizeDef*2}, 0.0,  GUI_fontTex, fontSizeDef );
-    //Draw2D::drawText( caption.c_str(), 0, {xmin, y0}, 0.0, GUI_fontTex, fontSizeDef );
+    textRenderer.set(caption);
+    textRenderer.draw2D({xmin, ymax-fontSizeDef*2}, fontSizeDef);
     for(int i=0; i<boxes.size(); i++){
         const CheckBox& box = boxes[i];
         uint32_t col;
@@ -427,10 +424,8 @@ void ScisorBox::render(){
     opengl1renderer.disable   ( GL_DEPTH_TEST  );
     Draw2D::drawRectangle( xmin, ymin, xmax, ymax, COL2VEC(textColor) );
     if(caption.length()>0) {
-        //Draw  ::setRGB( textColor );
-        //int nchr = strlen(caption);
-        //Draw2D::drawText( caption, nchr, {xmin, ymax-fontSizeDef*2},  0.0, GUI_fontTex, fontSizeDef );
-        Draw2D::drawText( caption.c_str(), caption.length(), {xmin, ymax-fontSizeDef*2},  0.0, GUI_fontTex, fontSizeDef );
+        textRenderer.set(caption);
+        textRenderer.draw2D({xmin, ymax-fontSizeDef*2}, fontSizeDef);
     }
 }
 
@@ -481,7 +476,8 @@ void CommandList::render(){
         Draw  ::setRGB( textColor );
         if( (cmd.key>=32)&&(cmd.key<128) ){ sprintf( stmp, " '%c' %s" , (char)cmd.key, cmd.name.c_str() ); }
         else                              { sprintf( stmp, "#%03i %s",       cmd.key, cmd.name.c_str() ); }
-        Draw2D::drawText( stmp, 0, {xmin, y}, 0.0, GUI_fontTex, fontSizeDef );
+        textRenderer.set(stmp);
+        textRenderer.draw2D({xmin, y}, fontSizeDef);
     }
 }
 
@@ -559,7 +555,8 @@ void DropDownList ::render(){
         if((icur>=0)&&(icur<nSlots)) Draw2D::drawRectangle( xmin, ymax-(icur+2)*(fontSizeDef*2), xmax, ymax-(icur+1)*(fontSizeDef*2), COLOR_GREEN );
         Draw  ::setRGB( textColor );
         if(caption.length()>0) {
-            Draw2D::drawText( caption.c_str(), caption.length(), {xmin, ymax-fontSizeDef*2},  0.0, GUI_fontTex, fontSizeDef );
+            textRenderer.set(caption);
+            textRenderer.draw2D({xmin, ymax-fontSizeDef*2}, fontSizeDef);
         }
         for(int i=0; i<nSlots; i++){
             int iItem = i+iItem0;
@@ -570,10 +567,8 @@ void DropDownList ::render(){
             }
         }
     }else{
-        //if( iSelected<nItems ){
-        //int nch = strlen(caption);
-        Draw2D::drawText( labels[iSelected].c_str(), labels[iSelected].length(), {xmin, ymin}, 0.0, GUI_fontTex, fontSizeDef );
-        //}
+        textRenderer.set(labels[iSelected]);
+        textRenderer.draw2D({xmin, ymin}, fontSizeDef);
     }
 }
 

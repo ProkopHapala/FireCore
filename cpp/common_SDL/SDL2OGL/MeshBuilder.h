@@ -118,6 +118,29 @@ namespace MeshBuilder{
         addCircleAxis(vbo, n, pos, {0, 0, 1}, {0, 1, 0}, r, color);
         addCircleAxis(vbo, n, pos, {1, 0, 0}, {0, 0, 1}, r, color);
     }
+
+
+    // ========================
+    // ====== text meshes =====
+    // ========================
+
+    static void addChar(GLvbo<MPOS,MUV>& vbo, char c, Vec2f pos, Vec2f size){
+        const int nchars = 95;
+        const float persprite = 1.0f/nchars;
+
+        int chari = c - 33;
+        float UVstart = chari*persprite + (persprite*0.57);
+        float UVend   = UVstart + persprite;
+
+        vbo.push_back({pos.x         , pos.y         , 0}, {UVstart, 0});
+        vbo.push_back({pos.x + size.x, pos.y         , 0}, {UVend  , 0});
+        vbo.push_back({pos.x + size.x, pos.y + size.y, 0}, {UVend  , 1});
+        
+        vbo.push_back({pos.x         , pos.y         , 0}, {UVstart, 0});
+        vbo.push_back({pos.x + size.x, pos.y + size.y, 0}, {UVend  , 1});
+        vbo.push_back({pos.x         , pos.y + size.y, 0}, {UVstart, 1});
+    }
+
 };
 
 #endif // _MESH_BUILDER_H_
