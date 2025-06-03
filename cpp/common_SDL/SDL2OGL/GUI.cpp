@@ -124,9 +124,8 @@ void GUIAbstractPanel::render(){
     opengl1renderer.disable   ( GL_DEPTH_TEST  );
     Draw2D::drawRectangle( xmin, ymin, xmax, ymax, COL2VEC(bgColor) );
     if(caption.length()>0) {
-        Draw  ::setRGB( textColor );
-        textRenderer.set(caption);
-        textRenderer.draw2D({xmin, ymax-fontSizeDef*2}, fontSizeDef);
+        captionRenderer.set(caption);
+        captionRenderer.draw2D({xmin, ymax-fontSizeDef*2}, fontSizeDef, COL2VEC(textColor));
     }
 }
 
@@ -173,13 +172,13 @@ void GUIPanel::render(){
     }
     Draw  ::setRGB( textColor );
     int nch0 = caption.length();
-    textRenderer.set(caption);
-    textRenderer.draw2D({xmin, ymax-fontSizeDef*2}, fontSizeDef);
+    captionRenderer.set(caption);
+    captionRenderer.draw2D({xmin, ymax-fontSizeDef*2}, fontSizeDef);
     if(viewVal){ val2text(); }
     int nch = inputText.length();
     if( nch > 0 ){
-        textRenderer2.set(inputText);
-        textRenderer2.draw2D({xmin+fontSizeDef*nch0, ymin}, fontSizeDef, COL2VEC(textColor));
+        inputTextRenderer.set(inputText);
+        inputTextRenderer.draw2D({xmin+fontSizeDef*nch0, ymin}, fontSizeDef, COL2VEC(textColor));
     }
 
     int xcur = xmin + (nch0+curPos)*fontSizeDef;
@@ -372,8 +371,8 @@ void CheckBoxList::render(){
     int y0 = ymin+boxes.size()*dy;
     Draw2D::drawRectangle( xmin, y0, xmax, y0+dy, COL2VEC(bgColor) );
     Draw  ::setRGB( textColor );
-    textRenderer.set(caption);
-    textRenderer.draw2D({xmin, ymax-fontSizeDef*2}, fontSizeDef);
+    captionRenderer.set(caption);
+    captionRenderer.draw2D({xmin, ymax-fontSizeDef*2}, fontSizeDef);
     for(int i=0; i<boxes.size(); i++){
         const CheckBox& box = boxes[i];
         uint32_t col;
@@ -424,8 +423,8 @@ void ScisorBox::render(){
     opengl1renderer.disable   ( GL_DEPTH_TEST  );
     Draw2D::drawRectangle( xmin, ymin, xmax, ymax, COL2VEC(textColor) );
     if(caption.length()>0) {
-        textRenderer.set(caption);
-        textRenderer.draw2D({xmin, ymax-fontSizeDef*2}, fontSizeDef);
+        captionRenderer.set(caption);
+        captionRenderer.draw2D({xmin, ymax-fontSizeDef*2}, fontSizeDef);
     }
 }
 
@@ -476,8 +475,8 @@ void CommandList::render(){
         Draw  ::setRGB( textColor );
         if( (cmd.key>=32)&&(cmd.key<128) ){ sprintf( stmp, " '%c' %s" , (char)cmd.key, cmd.name.c_str() ); }
         else                              { sprintf( stmp, "#%03i %s",       cmd.key, cmd.name.c_str() ); }
-        textRenderer.set(stmp);
-        textRenderer.draw2D({xmin, y}, fontSizeDef);
+        captionRenderer.set(stmp);
+        captionRenderer.draw2D({xmin, y}, fontSizeDef);
     }
 }
 
@@ -555,8 +554,8 @@ void DropDownList ::render(){
         if((icur>=0)&&(icur<nSlots)) Draw2D::drawRectangle( xmin, ymax-(icur+2)*(fontSizeDef*2), xmax, ymax-(icur+1)*(fontSizeDef*2), COLOR_GREEN );
         Draw  ::setRGB( textColor );
         if(caption.length()>0) {
-            textRenderer.set(caption);
-            textRenderer.draw2D({xmin, ymax-fontSizeDef*2}, fontSizeDef);
+            captionRenderer.set(caption);
+            captionRenderer.draw2D({xmin, ymax-fontSizeDef*2}, fontSizeDef);
         }
         for(int i=0; i<nSlots; i++){
             int iItem = i+iItem0;
@@ -567,8 +566,8 @@ void DropDownList ::render(){
             }
         }
     }else{
-        textRenderer.set(labels[iSelected]);
-        textRenderer.draw2D({xmin, ymin}, fontSizeDef);
+        captionRenderer.set(labels[iSelected]);
+        captionRenderer.draw2D({xmin, ymin}, fontSizeDef);
     }
 }
 

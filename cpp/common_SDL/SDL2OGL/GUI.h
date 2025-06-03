@@ -122,7 +122,7 @@ class GUIAbstractPanel{ public:
 	//int      fontTex=0;
     //char*    caption=NULL;
     std::string caption;
-    TextRenderer textRenderer;
+    TextRenderer captionRenderer;
 	//void (*command)(double,void*) = NULL;
     //std::function<void(double)> command =0;
     std::function<void(GUIAbstractPanel*)> command =0; // = [] { return 0; }
@@ -176,7 +176,7 @@ class GUIPanel : public GUIAbstractPanel { public:
 	bool     executed=false;
 	int      curPos=0;
 	std::string inputText;
-    TextRenderer textRenderer2;
+    TextRenderer inputTextRenderer;
     int      ndigits=2;
 
 	float    vmin=0.0f, vmax=1.0f;
