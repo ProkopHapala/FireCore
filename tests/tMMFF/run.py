@@ -780,11 +780,20 @@ mmff.setVerbosity( verbosity=2, idebug=1 )
 # mmff.init( xyz_name="data/xyz/PTCDA_final", surf_name="data/xyz/NaCl_8x8_L3_final", bUFF=True, bSimple=True ) 
 
 
-# mmff.init( xyz_name="data/xyz/old_mol_old_sub_PTCDA", surf_name="data/xyz/NaCl_old", bUFF=True, bSimple=True )
+mmff.init( xyz_name="data/xyz/old_mol_old_sub_PTCDA", surf_name="data/xyz/Na_0.9_Cl_-0.9", bUFF=True, bSimple=True )
 # mmff.init( xyz_name="data/xyz/new_mol_old_sub_PTCDA", surf_name="data/xyz/NaCl_old", bUFF=True, bSimple=True )
 # mmff.init( xyz_name="data/xyz/new_mol_new_sub_PTCDA", surf_name="data/xyz/NaCl_8x8_L3_final", bUFF=True, bSimple=True )
-mmff.init( xyz_name="data/xyz/old_mol_new_sub_PTCDA", surf_name="data/xyz/NaCl_8x8_L3_final", bUFF=True, bSimple=True )
+# mmff.init( xyz_name="data/xyz/old_mol_new_sub_PTCDA", surf_name="data/xyz/NaCl_8x8_L3_final", bUFF=True, bSimple=True )
 
+# mmff.init( xyz_name="data/xyz/old_Na_atom", surf_name="data/xyz/NaCl_old", bUFF=True, bSimple=True )
+# # mmff.init( xyz_name="data/xyz/new_Na_atom", surf_name="data/xyz/NaCl_8x8_L3_final", bUFF=True, bSimple=True )
+# mmff.init( xyz_name="data/xyz/exp_Na_atom", surf_name="data/xyz/exp_NaCl", bUFF=True, bSimple=True )
+# mmff.init( xyz_name="data/xyz/exp_PTCDA", surf_name="data/xyz/exp_NaCl", bUFF=True, bSimple=True )
+# mmff.init( xyz_name="data/xyz/N2", surf_name="data/xyz/exp_NaCl", bUFF=True, bSimple=True )
+# mmff.init( xyz_name="data/xyz/N2", surf_name="data/xyz/Na_0.9_Cl_-0.9", bUFF=True, bSimple=True )
+
+# mmff.init( xyz_name="data/xyz/asym_Na_atom", surf_name="data/xyz/asym_NaCl", bUFF=True, bSimple=True )
+# mmff.init( xyz_name="data/xyz/extrm_Na_atom", surf_name="data/xyz/extrm_NaCl", bUFF=True, bSimple=True )
 
 
 # mmff.init( xyz_name="data/xyz/PTCDA_final", surf_name="data/xyz/new_Na_0.9_Cl_-0.9", bUFF=True, bSimple=True )
@@ -901,15 +910,47 @@ mmff.setSwitches2( NonBonded=1, MMFF=1, SurfAtoms=1, GridFF=1 )   ### For Relaxe
 # scanPlot_uff( nscan=125, span=(2.6,15.1), dir=(0.0,0.0,1.0), p0=(-0.0,-0.0,0.0), label="PTCDA on Na", saveFig="final_uff_E_z_scan_on_Na_PTCDA_Coulomb.png", saveData="final_uff_E_z_scan_on_Na_PTCDA_Coulomb.dat" )
 # scanPlot_uff( nscan=125, span=(2.6,15.1), dir=(0.0,0.0,1.0), p0=(0,0,0), label="PTCDA on Na", saveFig="final_uff_E_z_scan_on_Na_PTCDA_Morse_Coulomb.png", saveData="morse_new2_final_uff_E_z_scan_on_Na_PTCDA_Morse_Coulomb.dat" )
 
-# scanPlot_uff( nscan=125, span=(2.6,15.1), dir=(0.0,0.0,1.0), p0=(0,0,0), label="PTCDA on Na", saveFig=None, saveData="old_mol_old_sub_total.dat" )
+scanPlot_uff( nscan=125, span=(2.6,15.1), dir=(0.0,0.0,1.0), p0=(0,0,0), label="PTCDA on Na", saveFig=None, saveData=None )
 # scanPlot_uff( nscan=125, span=(2.6,15.1), dir=(0.0,0.0,1.0), p0=(0,0,0), label="PTCDA on Na", saveFig=None, saveData="new_mol_old_sub_total.dat" )
 # scanPlot_uff( nscan=125, span=(2.6,15.1), dir=(0.0,0.0,1.0), p0=(0,0,0), label="PTCDA on Na", saveFig=None, saveData="new_mol_new_sub_total.dat" )
-scanPlot_uff( nscan=125, span=(2.6,15.1), dir=(0.0,0.0,1.0), p0=(0,0,0), label="PTCDA on Na", saveFig=None, saveData="old_mol_new_sub_total.dat" )
+# scanPlot_uff( nscan=125, span=(2.6,15.1), dir=(0.0,0.0,1.0), p0=(0,0,0), label="PTCDA on Na", saveFig=None, saveData="old_mol_new_sub_total.dat" )
+
+
+# shift_x = -(0.1 - 0.09935) * 31.792 / 2  # Half the difference across the entire substrate
+# shift_y = -(0.1 - 0.09935) * 31.792 / 2
+shift_x =0
+shift_y=0
+
+# scanPlot_uff( nscan=133, span=(1.8,15.1), dir=(0.0,0.0,1.0), p0=(0,0,0), label="Na", saveFig=None, saveData="old_Na_atom.dat" )
+# scanPlot_uff( nscan=133, span=(1.8,15.1), dir=(0.0,0.0,1.0), p0=(shift_x,shift_y,0.0), label="Na", saveFig=None, saveData="new_Na_atom.dat" )
+
+# scanPlot_uff( nscan=133, span=(1.8,15.1), dir=(0.0,0.0,1.0), p0=(shift_x,shift_y,0.0), label="Na", saveFig=None, saveData="exp_new_Na_atom.dat" )
+
+# scanPlot_uff( nscan=133, span=(1.8,15.1), dir=(0.0,0.0,1.0), p0=(shift_x,shift_y,0.0), label="Na", saveFig=None, saveData="asym_new_Na_atom.dat" )
+# scanPlot_uff( nscan=133, span=(1.8,15.1), dir=(0.0,0.0,1.0), p0=(shift_x,shift_y,0.0), label="Na", saveFig=None, saveData="extrm_asym_new_Na_atom.dat" )
+
+
+# scanPlot_uff( nscan=142, span=(0.9,15.1), dir=(0.0,0.0,1.0), p0=(shift_x,shift_y,0.0), label="N2_morse", saveFig=None, saveData="N2_morse.dat" )
+# scanPlot_uff( nscan=142, span=(0.9,15.1), dir=(0.0,0.0,1.0), p0=(shift_x,shift_y,0.0), label="N2_coulomb", saveFig=None, saveData="N2_coul.dat" )
+# scanPlot_uff( nscan=142, span=(0.9,6.1), dir=(0.0,0.0,1.0), p0=(shift_x,shift_y,0.0), label="N2_total", saveFig=None, saveData="N2_total.dat" )
+# scanPlot_uff( nscan=306, span=(0.9,7.02), dir=(0.0,0.0,1.0), p0=(shift_x,shift_y,0.0), label="N2_total", saveFig=None, saveData="N2_total.dat" )
+
+# scanPlot_uff( nscan=306, span=(0.9,7.02), dir=(0.0,0.0,1.0), p0=(shift_x,shift_y,0.0), label="N2_total", saveFig=None, saveData="N2_total_nice_sub.dat" )
+# scanPlot_uff( nscan=142, span=(0.9,15.1), dir=(0.0,0.0,1.0), p0=(shift_x,shift_y,0.0), label="N2_total", saveFig=None, saveData="01_N2_total_nice_sub.dat" )
+
+# scanPlot_uff( nscan=121, span=(0.0,12.02116858971611587752), dir=(1.0,0.0,0.0), p0=(shift_x,shift_y,1.5), label="X_N2_morse", saveFig=None, saveData="X_N2_morse.dat" )
+# scanPlot_uff( nscan=121, span=(0.0,12.02116858971611587752), dir=(1.0,0.0,0.0), p0=(shift_x,shift_y,1.5), label="X_N2_coulomb", saveFig=None, saveData="X_N2_coul.dat" )
+# scanPlot_uff( nscan=121, span=(0.0,12.02116858971611587752), dir=(1.0,0.0,0.0), p0=(shift_x,shift_y,1.5), label="X_N2_total", saveFig=None, saveData="X_N2_total.dat" )
+# #11.92182008897466037440
+#0.09934850074145550312
 
 # scanPlot_uff( nscan=125, span=(2.6,15.1), dir=(0.0,0.0,1.0), p0=(0,0,0), label="PTCDA on Na", saveFig=None, saveData="new_mol_new1_sub_total.dat" )
 
 # scanPlot_uff( nscan=125, span=(2.6,15.1), dir=(0.0,0.0,1.0), p0=(0,0,0), label="PTCDA on Na", saveFig=None, saveData="paolo_new_substrate_total.dat" )
-# scanPlot_uff( nscan=125, span=(2.6,15.1), dir=(0.0,0.0,1.0), p0=(0,0,0), label="PTCDA on Na", saveFig=None, saveData="new_molecule_substrate_total.dat" )
+# scanPlot_uff( nscan=125, span=(2.6,15.1), dir=(0.0,0.0,1.0), p0=(0,0,0), label="PTCDA on Na", saveFig=None, saveData="exp_new_molecule_substrate_coul.dat" )
+# scanPlot_uff( nscan=121, span=(0,12.021168589716126598), dir=(1.0,0.0,0.0), p0=(0,0,3.3), label="PTCDA on Na", saveFig=None, saveData="X_exp_new_molecule_substrate_coul.dat" )
+# scanPlot_uff( nscan=121, span=(0,12.021168589716126598), dir=(1.0,0.0,0.0), p0=(0,0,3.3), label="PTCDA on Na", saveFig=None, saveData="X_exp_new_molecule_substrate_morse.dat" )
+# scanPlot_uff( nscan=121, span=(0,12.021168589716126598), dir=(1.0,0.0,0.0), p0=(0,0,3.3), label="PTCDA on Na", saveFig=None, saveData="X_exp_new_molecule_substrate_total.dat" )
 
 
 # (2*0.09935)
