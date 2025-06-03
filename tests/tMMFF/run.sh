@@ -36,8 +36,17 @@ export LD_PRELOAD
 # --- ignore memory leaks in ASAM
 #export LSAN_OPTIONS=detect_leaks=0
 
-python3 run.py
-#python3 run_gui.py
+# python3 run.py 
+# python3 generate_scans.py --scan-types all --compare --nscan 63 --span-min 2.6 --span-max 15.2
+# python3 generate_scans.py --scan-types all --compare --output-dir PTCDA_data_trial --lammps-dir /home/indranil/Documents/Project_1/Lammps/1-rigid_zscan --nscan 215 --span-min 2.6 --span-max 15.2
+# python3 generate_scans.py --scan-types all --compare --output-dir PTCDA_data_trial --lammps-dir /home/indranil/Documents/Project_1/Lammps/1-rigid_zscan --nscan 215 --span-min 2.6 --span-max 15.1
+# Run each scan type separately to avoid MMFF reinitialization issues
+python3 generate_scans.py --scan-types total --compare --output-dir PTCDA_data_trial --lammps-dir /home/indranil/Documents/Project_1/Lammps/1-rigid_zscan --nscan 125 --span-min 2.6 --span-max 15.1
+python3 generate_scans.py --scan-types morse --compare --output-dir PTCDA_data_trial --lammps-dir /home/indranil/Documents/Project_1/Lammps/1-rigid_zscan --nscan 125 --span-min 2.6 --span-max 15.1
+python3 generate_scans.py --scan-types coulomb --compare --output-dir PTCDA_data_trial --lammps-dir /home/indranil/Documents/Project_1/Lammps/1-rigid_zscan --nscan 125 --span-min 2.6 --span-max 15.1
+
+
+
 #python3 run_surf_lattice.py
 #python3 run_propandiol.py
 #python3 run_sample.py
