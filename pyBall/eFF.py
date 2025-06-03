@@ -250,13 +250,13 @@ lib.setKPauli.restype   =  None
 def setKPauli(KPauli):
     return lib.setKPauli(KPauli) 
 
-# void setAtomParams( int n, const double* params_, bool bCopy=true ){ 
-lib.setAtomParams.argtypes = [ c_int, c_double_p, c_bool ]
+# void setAtomParams( int n, const double* params_, bool bCopy=true, int mode=1 ){ 
+lib.setAtomParams.argtypes = [ c_int, c_double_p, c_bool, c_int ]
 lib.setAtomParams.restype  = None
-def setAtomParams( params, bCopy=True ):
+def setAtomParams( params, bCopy=True, mode=1 ):
     n = len(params)
     if bCopy: params = np.array(params, dtype=np.double)
-    return lib.setAtomParams( n, _np_as(params,c_double_p), bCopy )
+    return lib.setAtomParams( n, _np_as(params,c_double_p), bCopy, mode )
 
 #void setSwitches( int bEvalKinetic, int bEvalCoulomb, int  bEvalPauli, int bEvalAA, int bEvalAE, int bEvalAECoulomb, int bEvalAEPauli, int bCoreCoul, int bEvalCoreCorect ){
 lib.setSwitches.argtypes = [ c_int, c_int, c_int, c_int, c_int, c_int, c_int, c_int, c_int ]
@@ -264,6 +264,11 @@ lib.setSwitches.restype  = None
 def setSwitches( kinetic=0, coulomb=0, pauli=0, AA=0, AE=0, AECoulomb=0, AEPauli=0, coreCoul=0, coreCorect=0 ):
     lib.setSwitches( kinetic, coulomb, pauli, AA, AE, AECoulomb, AEPauli, coreCoul, coreCorect )
 
+#void setup( int isetup ){
+lib.setup.argtypes = [ c_int ]
+lib.setup.restype  = None
+def setup( isetup ):
+    lib.setup( isetup )
 
 #  void initOpt( double dt, double damping, double f_limit ){
 lib.initOpt.argtypes  = [c_double, c_double, c_double, c_bool ] 
@@ -338,10 +343,37 @@ def sample_EA( RSs, FEout=None, KRSrho=[1.125,0.9,-0.2], aPar=[4.,0.1,0.1,2.0], 
 #int processXYZ( const char* fname, double Rfac=-0.5, double* outEs=0, double* apos_=0, double* epos_=0, int nstepMax=1000, double dt=0.001, double Fconv=1e-3, int ialg=2, bool bAddEpairs=false, bool bCoreElectrons=true, bool bChangeCore=true, bool bChangeEsize=true, const char* xyz_out="processXYZ.xyz", const char* fgo_out="processXYZ.fgo" ){
 lib.processXYZ.argtypes  = [c_char_p, c_double, c_double_p, c_double_p, c_double_p, c_int, c_double, c_double, c_int, c_bool, c_bool, c_bool, c_bool, c_char_p, c_char_p ]
 lib.processXYZ.restype   =  c_int
-def processXYZ( fname, Rfac=-1.35, outEs=None, apos=None, epos=None, nstepMax=1000, dt=0.5e-2, Fconv=1e-3, ialg=2, bAddEpairs=False, bCoreElectrons=False, bChangeCore=True, bChangeEsize=True,xyz_out="processXYZ.xyz", fgo_out="processXYZ.fgo" ):
-    #if outEs is None: outEs = np.zeros(8, dtype=np.float64)
+def processXYZ( fname, Rfac=-1.35, outEs=None, apos=None, epos=None, nstepMax=1000, dt=0.5e-2, Fconv=1e-3, ialg=2, bAddEpairs=False, bCoreElectrons=False, bChangeCore=True, bChangeEsize=True,xyz_out="processXYZ.xyz", fgo_out="processXYZ.fgo",  bOutputs=(0,0,0) ):
+    if bOutputs[0] and outEs is None: outEs = np.zeros(8, dtype=np.float64)
+    if bOutputs[1] and apos  is None: apos  = np.zeros( (na, 3) )
+    if bOutputs[2] and epos  is None: epos  = np.zeros( (ne, 4) )
     lib.processXYZ( cstr(fname), Rfac, _np_as(outEs, c_double_p), _np_as(apos, c_double_p), _np_as(epos, c_double_p), nstepMax, dt, Fconv, ialg, bAddEpairs, bCoreElectrons, bChangeCore, bChangeEsize, cstr(xyz_out), cstr(fgo_out) )
-    return outEs
+    return outEs, apos, epos
+
+#int processXYZ_e( const char* fname, double* outEs=0, double* apos_=0, double* epos_=0, int nstepMax=1000, double dt=0.001, double Fconv=1e-3, int optAlg=2, const char* xyz_out="processXYZ.xyz", const char* fgo_out="processXYZ.fgo" ){
+lib.processXYZ_e.argtypes  = [c_char_p, c_double_p, c_double_p, c_double_p, c_int, c_double, c_double, c_int, c_char_p, c_char_p ]
+lib.processXYZ_e.restype   =  c_int
+def processXYZ_e( fname, outEs=None, apos=None, epos=None, nstepMax=0, dt=0.001, Fconv=1e-3, optAlg=2, xyz_out="processXYZ.xyz", fgo_out="processXYZ.fgo", bOutputs=(0,0,0) ):
+    """
+    Process XYZ file with electrons
+    Returns: outEs, apos, epos
+    """    
+    # Get number of atoms and electrons from file (first and second line)
+    if (bOutputs[1] and apos  is None) or (bOutputs[2] and epos  is None):
+        with open(fname) as f:
+            nae = int(f.readline().strip().split()[0])
+            ne  = int(f.readline().strip().split()[1])
+            na = nae - ne
+            nconf = 1
+            for line in f:
+                ws = line.strip().split()
+                if len(ws) == 1: nconf += 1
+    if bOutputs[0] and outEs is None: outEs = np.zeros( (nconf,5) )
+    if bOutputs[1] and apos  is None: apos  = np.zeros( (nconf, na, 3) )
+    if bOutputs[2] and epos  is None: epos  = np.zeros( (nconf, ne, 4) )
+    lib.processXYZ_e( cstr(fname), _np_as(outEs, c_double_p), _np_as(apos, c_double_p), _np_as(epos, c_double_p), nstepMax, dt, Fconv, optAlg, cstr(xyz_out), cstr(fgo_out) )
+    return outEs, apos, epos
+
 
 #int preAllocateXYZ(const char* fname, double Rfac=-0.5, bool bCoreElectrons=true )
 lib.preAllocateXYZ.argtypes = [c_char_p, c_double, c_bool]
@@ -396,7 +428,7 @@ def getNearestAtoms( apos, bPrint=False ):
     return imins, rmins
     
 def eval_mol(name, fUnits=1., bPrint=True ):
-    load_fgo(default_path+name+".fgo", False, fUnits=fUnits )                               # load molecule in  .fgo format (i.e. floating-gaussian-orbital)
+    load_fgo(default_path+name+".fgo" )                               # load molecule in  .fgo format (i.e. floating-gaussian-orbital)
     eval()
     if bPrint:
         getBuffs()

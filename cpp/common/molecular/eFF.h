@@ -210,7 +210,8 @@ class EFF{ public:
 // Add Al, Si etc. as needed
 };
 
-    const Quat4d* atom_params = default_AtomParams;
+    const Quat4d*  atom_params   = default_AtomParams;
+    const double8* atom_params2 = default_AtomParams2;
 
 //                                              H   He  Li    Be      B      C     N     O      F
 constexpr static const double aMasses[9] = {  1.0, 4.0, 7.0, 9.0,  11.0,  12.0,  14.0, 16.0,  19.0 };
@@ -252,7 +253,8 @@ constexpr static const double aMasses[9] = {  1.0, 4.0, 7.0, 9.0,  11.0,  12.0, 
     Quat4d * aPars  = 0;   /// electron params { x=Q,y=sQ,z=sP,w=cP }
     Quat4d * aPars2 = 0;   /// electron params { x=Q,y=sQ,z=sP,w=cP }
 
-    bool bUseECPs = false;
+    bool  bUseECPs = false;
+    int   iECPmodel = 0;
 
     //double * espin  =0;
     int    * espin  =0; ///< electron spins
@@ -650,7 +652,7 @@ double evalAE_ECP(){
     double Eee_=0;
     for(int i=0; i<na; i++){
         const Vec3d  pi   = apos[i];
-        const Quat4d aPar = aPars[i]; // { x=Q,y=sQ,z=sP,w=cP }
+        const Quat4d aPar = aPars[i]; // {x=Z,y=size,z=Zeff,w=A}
         const double qq  = aPar.x*QE;
         const Quat4d& BCDE = aPars2[i];
         const bool is_eCP  = ( aPar.w  > 0.0 );
@@ -672,8 +674,22 @@ double evalAE_ECP(){
                     double dE_ = 0.0;
                     double fr_ = 0; 
                     double fs_ = 0;
-                    if (BCDE.w>0){ LAMMPS_NS::PauliCoreElec (rc, sj, &dE_, &fr_, &fe_, aPar.w, BCDE.x, BCDE.y); } 
-                    else         { LAMMPS_NS::PauliCorePElec(rc, sj, &dE_, &fr_, &fe_, aPar.w, BCDE.x, BCDE.y, BCDE.z, BCDE.w);  }
+                    switch( iECPmodel ){
+                        case 0:
+                            if (BCDE.w>0){ LAMMPS_NS::PauliCoreElec (rc, sj, &dE_, &fr_, &fe_, aPar.w, BCDE.x, BCDE.y); } 
+                            else         { LAMMPS_NS::PauliCorePElec(rc, sj, &dE_, &fr_, &fe_, aPar.w, BCDE.x, BCDE.y, BCDE.z, BCDE.w);  }
+                            break;
+                        case 1:
+                            if (BCDE.w>0){ LAMMPS_NS::PauliCoreElec_optGemini (rc, sj, dE_, fr_, fe_, aPar.w, BCDE.x, BCDE.y); }
+                            else         { LAMMPS_NS::PauliCorePElec_optGemini(rc, sj, dE_, fr_, fe_, aPar.w, BCDE.x, BCDE.y, BCDE.z, BCDE.w); }
+                            break;
+                        case 2:
+                            if (BCDE.w>0){ LAMMPS_NS::PauliCoreElec_optDeepSeek (rc, sj, dE_, fr_, fe_, aPar.w, BCDE.x, BCDE.y); }
+                            else         { LAMMPS_NS::PauliCorePElec_optDeepSeek(rc, sj, dE_, fr_, fe_, aPar.w, BCDE.x, BCDE.y, BCDE.z, BCDE.w); }
+                            break;
+                        default:
+                            break;
+                    }
                     dEaePaul  += dE_ * Hartree_to_eV;
                     fsj       -= fe_ * Hartree_to_eV;
                     f.add_mul(dR, (fr_ * Hartree_to_eV) / rc);
@@ -1175,6 +1191,34 @@ inline void analyse_angles(const Vec3i* triples,int nTriples,double* out){
 }
 
 
+    // ============ Output Handling Methods ==========
+    void copyAtomPositions(Vec3d* apos_out, int iconf=0) const {
+        if(apos_out){
+            Vec3d* apos = apos_out + iconf*na;
+            for(int j=0; j<na; j++){ apos[j] = this->apos[j]; }
+        }
+    }
+
+    void copyElectronPositions(Quat4d* epos_out, int iconf=0) const {
+        if(epos_out){
+            Quat4d* epos = epos_out + iconf*ne;
+            for(int j=0; j<ne; j++){ 
+                epos[j].f = this->epos[j]; 
+                epos[j].w = this->esize[j]; 
+            }
+        }
+    }
+
+    void copyEnergies(double* outEs, int iconf=0, const int nEperConf=5) const {
+        if(outEs){
+            double* outEi = outEs + iconf*nEperConf;
+            outEi[0] = Etot;
+            outEi[1] = Ek;
+            outEi[2] = Eee;
+            outEi[3] = Eae;
+            outEi[4] = Eaa;
+        }
+    }
 };
 
 /// @}

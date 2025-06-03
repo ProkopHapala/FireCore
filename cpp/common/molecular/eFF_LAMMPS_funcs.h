@@ -542,77 +542,25 @@ namespace LAMMPS_NS {
       *fre2 -= dEdre2;
     }
     
-    /**
-     * @brief Calculates the ECP Pauli repulsion energy and its derivatives for interactions
-     *        between a pseudo-core and an s-type valence electron. (Optimized)
-     *
-     * The implemented formula for energy (E_calc) is:
-     * \f[
-     * E_{calc} = \text{paramA} \cdot \exp\left(-\frac{\text{paramB} \cdot rc^2}{re2^2 + \text{paramC}}\right)
-     * \f]
-     * The function calculates the energy $E_{calc}$, its derivative with respect to $rc$ ($\frac{\partial E_{calc}}{\partial rc}$),
-     * and its derivative with respect to $re2$ ($\frac{\partial E_{calc}}{\partial re2}$).
-     *
-     * @param rc Distance between the pseudo-core and the valence electron ($rc$).
-     * @param re2 Size of the valence electron ($s$ in the formula, passed as re2).
-     * @param epauli Pointer to which the calculated Pauli energy $E_{calc}$ is added.
-     * @param frc Pointer to which $-\frac{\partial E_{calc}}{\partial rc}$ is added.
-     * @param fre2 Pointer to which $-\frac{\partial E_{calc}}{\partial re2}$ is added.
-     * @param paramA Parameter $P_A$ (pseudo-core wave function amplitude).
-     * @param paramB Parameter $P_B$ (pseudo-core wavefunction decay factor).
-     * @param paramC Parameter $P_C$ (square of effective pseudo-core particle size).
-     */
-    static inline void PauliCoreElec_optGemmini(double rc, double re2, double *epauli, double *frc, double *fre2,
-        double paramA, double paramB, double paramC) {
-    // Pre-calculate squares and common terms
-    double rc_sq = rc * rc;
-    double re2_sq = re2 * re2;
-
-    double den = re2_sq + paramC;
-    // It's generally assumed den > 0 (paramC is square of a size, re2_sq is square of a size)
-    // Add a check or ensure params guarantee this if necessary.
-    // if (den == 0.0) { /* handle error or return */ return; } 
-    double inv_den = 1.0 / den;
-
-    double exp_arg = -paramB * rc_sq * inv_den;
-    double exp_val = exp(exp_arg);
-
-    double E_calc = paramA * exp_val;
-
-    // Derivatives can reuse E_calc and other pre-calculated terms
-    // dE/d(rc) = A * exp(...) * (-B * 2*rc / den)
-    //          = E_calc * (-2 * paramB * rc * inv_den)
-    double dEdrc = E_calc * (-2.0 * paramB * rc * inv_den);
-
-    // dE/d(re2) = A * exp(...) * (-B * rc_sq * (-1) * (2*re2) / den^2)
-    //           = E_calc * (2 * paramB * re2 * rc_sq * inv_den * inv_den)
-    double dEdre2 = E_calc * (2.0 * paramB * re2 * rc_sq * inv_den * inv_den);
-
-    *epauli += E_calc;
-    *frc -= dEdrc;    // Add -dE/drc
-    *fre2 -= dEdre2;  // Add -dE/dre2
-    }
-
-   
-    static inline void PauliCoreElec_optDeepSeek(double rc, double re2, double *epauli, double *frc, double *fre2, double A, double B, double C) {
+    static inline void PauliCoreElec_optDeepSeek(double rc, double re2, double& epauli, double& frc, double& fre2, double A, double B, double C) {
         double rcsq  = rc * rc;
         double ssq   = re2 * re2;
         double denom = ssq + C;
         double inv_denom = 1.0 / denom;
-        double arg = -B * rcsq * inv_denom;
-        double exp_val = exp(arg);
-        double coef = A * B * exp_val;
+        double arg       = -B * rcsq * inv_denom;
+        double exp_val   = exp(arg);
+        double coef      = A * B * exp_val;
         
         double E = A * exp_val;
         double dEdrc = -2.0 * coef * rc * inv_denom;
         double dEdre2 = 2.0 * coef * re2 * rcsq * inv_denom * inv_denom;
         
-        *epauli += E;
-        *frc -= dEdrc;
-        *fre2 -= dEdre2;
+        epauli += E;
+        frc    -= dEdrc;
+        fre2   -= dEdre2;
     }
     
-    static inline void PauliCorePElec_optDeepSeek(double rc, double re2, double *epauli, double *frc, double *fre2, double A, double B, double C, double D, double E_param) {
+    static inline void PauliCorePElec_optDeepSeek(double rc, double re2, double& epauli, double& frc, double& fre2, double A, double B, double C, double D, double E_param) {
         double re2_2       = re2 * re2;
         double B2          = B * B;
         double denom_ratio = B2 + re2_2;
@@ -643,9 +591,59 @@ namespace LAMMPS_NS {
         double term3 = E_val    * 2.0 *   D  * delta * (C * denom2 + re2 * delta) * (inv_denom2 * inv_denom2);
         double dEdre2_val = term1 + term2 + term3;
         
-        *epauli += E_val;
-        *frc -= dEdrc_val;
-        *fre2 -= dEdre2_val;
+        epauli += E_val;
+        frc    -= dEdrc_val;
+        fre2   -= dEdre2_val;
+    }
+
+    /**
+     * @brief Calculates the ECP Pauli repulsion energy and its derivatives for interactions
+     *        between a pseudo-core and an s-type valence electron. (Optimized)
+     *
+     * The implemented formula for energy (E_calc) is:
+     * \f[
+     * E_{calc} = \text{paramA} \cdot \exp\left(-\frac{\text{paramB} \cdot rc^2}{re2^2 + \text{paramC}}\right)
+     * \f]
+     * The function calculates the energy $E_{calc}$, its derivative with respect to $rc$ ($\frac{\partial E_{calc}}{\partial rc}$),
+     * and its derivative with respect to $re2$ ($\frac{\partial E_{calc}}{\partial re2}$).
+     *
+     * @param rc Distance between the pseudo-core and the valence electron ($rc$).
+     * @param re2 Size of the valence electron ($s$ in the formula, passed as re2).
+     * @param epauli Pointer to which the calculated Pauli energy $E_{calc}$ is added.
+     * @param frc Pointer to which $-\frac{\partial E_{calc}}{\partial rc}$ is added.
+     * @param fre2 Pointer to which $-\frac{\partial E_{calc}}{\partial re2}$ is added.
+     * @param A Parameter $P_A$ (pseudo-core wave function amplitude).
+     * @param B Parameter $P_B$ (pseudo-core wavefunction decay factor).
+     * @param C Parameter $P_C$ (square of effective pseudo-core particle size).
+     */
+    static inline void PauliCoreElec_optGemini(double rc, double re2, double& epauli, double& frc, double& fre2, double A, double B, double C) {
+        // Pre-calculate squares and common terms
+        double rc_sq = rc * rc;
+        double re2_sq = re2 * re2;
+
+        double den = re2_sq + C;
+        // It's generally assumed den > 0 (C is square of a size, re2_sq is square of a size)
+        // Add a check or ensure params guarantee this if necessary.
+        // if (den == 0.0) { /* handle error or return */ return; } 
+        double inv_den = 1.0 / den;
+
+        double exp_arg = -B * rc_sq * inv_den;
+        double exp_val = exp(exp_arg);
+
+        double Energy = A * exp_val;
+
+        // Derivatives can reuse E_calc and other pre-calculated terms
+        // dE/d(rc) = A * exp(...) * (-B * 2*rc / den)
+        //          = Energy * (-2 * B * rc * inv_den)
+        double dEdrc = Energy * (-2.0 * B * rc * inv_den);
+
+        // dE/d(re2) = A * exp(...) * (-B * rc_sq * (-1) * (2*re2) / den^2)
+        //           = Energy * (2 * B * re2 * rc_sq * inv_den * inv_den)
+        double dEdre2 = Energy * (2.0 * B * re2 * rc_sq * inv_den * inv_den);
+
+        epauli += Energy;
+        frc    -= dEdrc;    // Add -dE/drc
+        fre2   -= dEdre2;   // Add -dE/dre2
     }
 
     /**
@@ -664,99 +662,95 @@ namespace LAMMPS_NS {
      * @param epauli Pointer to which the calculated Pauli energy $E_{calc}$ is added.
      * @param frc Pointer to which $-\frac{\partial E_{calc}}{\partial rc}$ is added.
      * @param fre2 Pointer to which $-\frac{\partial E_{calc}}{\partial re2}$ is added.
-     * @param paramA Parameter $P_A$ (pseudo-core wave function amplitude).
-     * @param paramB Parameter $P_B$ (second effective size for overlap amplitude).
-     * @param paramC Parameter $P_C$ (off-center measure).
-     * @param paramD Parameter $P_D$ (pseudo-core wavefunction decay factor).
-     * @param paramE Parameter $P_E$ (square of effective pseudo-core particle size).
+     * @param A Parameter $P_A$ (pseudo-core wave function amplitude).
+     * @param B Parameter $P_B$ (second effective size for overlap amplitude).
+     * @param C Parameter $P_C$ (off-center measure).
+     * @param D Parameter $P_D$ (pseudo-core wavefunction decay factor).
+     * @param E Parameter $P_E$ (square of effective pseudo-core particle size).
      */
-    static inline void PauliCorePElec_optGemini(double rc, double re2, double *epauli, double *frc, double *fre2,
-        double paramA, double paramB, double paramC, double paramD, double paramE_const) {
-// It's assumed re2 > 0 and paramB > 0. Add checks if necessary.
-// if (re2 <= 0.0 || paramB <= 0.0) { /* handle error or return */ return; }
+    static inline void PauliCorePElec_optGemini(double rc, double re2, double& epauli, double& frc, double& fre2, double A, double B, double C, double D, double E ) {
+        // It's assumed re2 > 0 and paramB > 0. Add checks if necessary.
+        // if (re2 <= 0.0 || paramB <= 0.0) { /* handle error or return */ return; }
 
-double re2_sq = re2 * re2;
-double inv_re2 = 1.0 / re2;
+        double re2_sq = re2 * re2;
+        double inv_re2 = 1.0 / re2;
 
-// Prefactor term: (2 / (paramB/re2 + re2/paramB))^5
-double B_div_s = paramB * inv_re2;
-double s_div_B = re2 / paramB; // or re2 * inv_paramB if paramB is constant over many calls
-double sum_ratios = B_div_s + s_div_B;
-// if (sum_ratios == 0.0) { /* handle error or return */ return; }
-double inv_sum_ratios = 1.0 / sum_ratios;
-double prefactor_base = 2.0 * inv_sum_ratios;
+        // Prefactor term: (2 / (paramB/re2 + re2/paramB))^5
+        double B_div_s = B * inv_re2;
+        double s_div_B = re2 / B; // or re2 * inv_paramB if paramB is constant over many calls
+        double sum_ratios = B_div_s + s_div_B;
+        // if (sum_ratios == 0.0) { /* handle error or return */ return; }
+        double inv_sum_ratios = 1.0 / sum_ratios;
+        double prefactor_base = 2.0 * inv_sum_ratios;
 
-double pb_sq = prefactor_base * prefactor_base;
-double pb_p4 = pb_sq * pb_sq;
-double prefactor_pow5 = pb_p4 * prefactor_base;
+        double pb_sq = prefactor_base * prefactor_base;
+        double pb_p4 = pb_sq * pb_sq;
+        double prefactor_pow5 = pb_p4 * prefactor_base;
 
-// Effective distance term: (rc - paramC * re2)
-double R_eff = rc - paramC * re2;
-double R_eff_sq = R_eff * R_eff;
+        // Effective distance term: (rc - paramC * re2)
+        double R_eff = rc - C * re2;
+        double R_eff_sq = R_eff * R_eff;
 
-// Exponential term
-double exp_den = paramE_const + re2_sq;
-// if (exp_den == 0.0) { /* handle error or return */ return; }
-double inv_exp_den = 1.0 / exp_den;
-double exp_arg = -paramD * R_eff_sq * inv_exp_den;
-double exp_val = exp(exp_arg);
+        // Exponential term
+        double exp_den = E + re2_sq;
+        // if (exp_den == 0.0) { /* handle error or return */ return; }
+        double inv_exp_den = 1.0 / exp_den;
+        double exp_arg = -D * R_eff_sq * inv_exp_den;
+        double exp_val = exp(exp_arg);
 
-// Energy
-double E_calc = paramA * prefactor_pow5 * R_eff_sq * exp_val;
+        // Energy
+        double Energy = A * prefactor_pow5 * R_eff_sq * exp_val;
 
-// Derivatives
-// Common factor for some derivative terms
-double term_A_P5_Exp = paramA * prefactor_pow5 * exp_val;
+        // Derivatives
+        // Common factor for some derivative terms
+        double term_A_P5_Exp = A * prefactor_pow5 * exp_val;
 
-// dE/drc = A*P^5 * exp(...) * d(R_eff_sq)/drc + A*P^5*R_eff_sq * d(exp(...))/drc
-// d(R_eff_sq)/drc = 2*R_eff
-// d(exp(...))/drc = exp(...) * (-D * d(R_eff_sq)/drc / exp_den)
-//                 = exp(...) * (-D * 2*R_eff / exp_den)
-// dEdrc = term_A_P5_Exp * 2.0 * R_eff + (paramA * prefactor_pow5 * R_eff_sq) * exp_val * (-paramD * 2.0 * R_eff * inv_exp_den)
-//       = term_A_P5_Exp * 2.0 * R_eff + E_calc * (-paramD * 2.0 * R_eff * inv_exp_den)
-// This form is robust if R_eff = 0 (making E_calc = 0 and dEdrc = 0)
-double dEdrc = term_A_P5_Exp * 2.0 * R_eff + E_calc * (-2.0 * paramD * R_eff * inv_exp_den);
+        // dE/drc = A*P^5 * exp(...) * d(R_eff_sq)/drc + A*P^5*R_eff_sq * d(exp(...))/drc
+        // d(R_eff_sq)/drc = 2*R_eff
+        // d(exp(...))/drc = exp(...) * (-D * d(R_eff_sq)/drc / exp_den)
+        //                 = exp(...) * (-D * 2*R_eff / exp_den)
+        // dEdrc = term_A_P5_Exp * 2.0 * R_eff + (paramA * prefactor_pow5 * R_eff_sq) * exp_val * (-paramD * 2.0 * R_eff * inv_exp_den)
+        //       = term_A_P5_Exp * 2.0 * R_eff + Energy * (-paramD * 2.0 * R_eff * inv_exp_den)
+        // This form is robust if R_eff = 0 (making Energy = 0 and dEdrc = 0)
+        double dEdrc = term_A_P5_Exp * 2.0 * R_eff + Energy * (-2.0 * D * R_eff * inv_exp_den);
 
-// dE/dre2 has three parts from differentiating Prefactor, R_eff_sq, and Exp_val w.r.t re2
-// Part 1: d(Prefactor_pow5)/dre2
-// d(sum_ratios)/dre2 = -paramB/(re2*re2) + 1.0/paramB
-double d_sum_ratios_ds = -paramB * inv_re2 * inv_re2 + (1.0 / paramB);
-// d(Prefactor_base)/dre2 = d(2.0/sum_ratios)/dre2 = -2.0 * inv_sum_ratios^2 * d_sum_ratios_ds
-// d(Prefactor_pow5)/dre2 = 5 * Prefactor_base^4 * d(Prefactor_base)/dre2
-//                        = 5 * (Prefactor_pow5 / Prefactor_base) * (-2.0 * inv_sum_ratios^2 * d_sum_ratios_ds)
-//                        = Prefactor_pow5 * 5 * (sum_ratios/2.0) * (-2.0 * inv_sum_ratios^2 * d_sum_ratios_ds)
-//                        = Prefactor_pow5 * (-5.0 * inv_sum_ratios * d_sum_ratios_ds)
-double dEdre2_term1 = E_calc * (-5.0 * inv_sum_ratios * d_sum_ratios_ds);
+        // dE/dre2 has three parts from differentiating Prefactor, R_eff_sq, and Exp_val w.r.t re2
+        // Part 1: d(Prefactor_pow5)/dre2
+        // d(sum_ratios)/dre2 = -paramB/(re2*re2) + 1.0/paramB
+        double d_sum_ratios_ds = -B * inv_re2 * inv_re2 + (1.0 / B);
+        // d(Prefactor_base)/dre2 = d(2.0/sum_ratios)/dre2 = -2.0 * inv_sum_ratios^2 * d_sum_ratios_ds
+        // d(Prefactor_pow5)/dre2 = 5 * Prefactor_base^4 * d(Prefactor_base)/dre2
+        //                        = 5 * (Prefactor_pow5 / Prefactor_base) * (-2.0 * inv_sum_ratios^2 * d_sum_ratios_ds)
+        //                        = Prefactor_pow5 * 5 * (sum_ratios/2.0) * (-2.0 * inv_sum_ratios^2 * d_sum_ratios_ds)
+        //                        = Prefactor_pow5 * (-5.0 * inv_sum_ratios * d_sum_ratios_ds)
+        double dEdre2_term1 = Energy * (-5.0 * inv_sum_ratios * d_sum_ratios_ds);
 
-// Part 2: d(R_eff_sq)/dre2
-// d(R_eff_sq)/dre2 = 2 * R_eff * (-paramC)
-double dEdre2_term2 = term_A_P5_Exp * 2.0 * R_eff * (-paramC);
+        // Part 2: d(R_eff_sq)/dre2
+        // d(R_eff_sq)/dre2 = 2 * R_eff * (-paramC)
+        double dEdre2_term2 = term_A_P5_Exp * 2.0 * R_eff * (-C);
 
-// Part 3: d(Exp_val)/dre2
-// d(Exp_arg)/dre2 = -paramD * [ d(R_eff_sq)/dre2 * inv_exp_den + R_eff_sq * d(inv_exp_den)/dre2 ]
-// d(inv_exp_den)/dre2 = -1.0 * inv_exp_den^2 * (2.0*re2)
-// d(Exp_arg)/dre2 = -paramD * [ (2*R_eff*(-paramC))*inv_exp_den - R_eff_sq*2*re2*inv_exp_den^2 ]
-//                 = -paramD * 2 * R_eff * inv_exp_den^2 * [ (-paramC*exp_den) - (R_eff*re2) ]
-//                 =  paramD * 2 * R_eff * inv_exp_den^2 * [ paramC*exp_den + R_eff*re2 ]
-//                 =  paramD * 2 * R_eff * inv_exp_den^2 * [ paramC*(paramE_const+re2_sq) + (rc-paramC*re2)*re2 ]
-//                 =  paramD * 2 * R_eff * inv_exp_den^2 * [ paramC*paramE_const + paramC*re2_sq + rc*re2 - paramC*re2_sq ]
-//                 =  paramD * 2 * R_eff * inv_exp_den^2 * [ paramC*paramE_const + rc*re2 ]
-// d(Exp_val)/dre2 = Exp_val * d(Exp_arg)/dre2
-// So this term is E_calc * d(Exp_arg)/dre2 (if A_p*Prefactor_pow5*R_eff_sq is not zero)
-// Original code: E_calc * (2.0 * D * R_eff * (C*E_const + rc*re2) / (exp_den^2))
-// This matches my derivation for d(Exp_arg)/dre2.
-double dEdre2_term3_factor_num = 2.0 * paramD * R_eff * (paramC * paramE_const + rc * re2);
-double dEdre2_term3 = E_calc * (dEdre2_term3_factor_num * inv_exp_den * inv_exp_den);
+        // Part 3: d(Exp_val)/dre2
+        // d(Exp_arg)/dre2 = -paramD * [ d(R_eff_sq)/dre2 * inv_exp_den + R_eff_sq * d(inv_exp_den)/dre2 ]
+        // d(inv_exp_den)/dre2 = -1.0 * inv_exp_den^2 * (2.0*re2)
+        // d(Exp_arg)/dre2 = -paramD * [ (2*R_eff*(-paramC))*inv_exp_den - R_eff_sq*2*re2*inv_exp_den^2 ]
+        //                 = -paramD * 2 * R_eff * inv_exp_den^2 * [ (-paramC*exp_den) - (R_eff*re2) ]
+        //                 =  paramD * 2 * R_eff * inv_exp_den^2 * [ paramC*exp_den + R_eff*re2 ]
+        //                 =  paramD * 2 * R_eff * inv_exp_den^2 * [ paramC*(paramE_const+re2_sq) + (rc-paramC*re2)*re2 ]
+        //                 =  paramD * 2 * R_eff * inv_exp_den^2 * [ paramC*paramE_const + paramC*re2_sq + rc*re2 - paramC*re2_sq ]
+        //                 =  paramD * 2 * R_eff * inv_exp_den^2 * [ paramC*paramE_const + rc*re2 ]
+        // d(Exp_val)/dre2 = Exp_val * d(Exp_arg)/dre2
+        // So this term is E_calc * d(Exp_arg)/dre2 (if A_p*Prefactor_pow5*R_eff_sq is not zero)
+        // Original code: E_calc * (2.0 * D * R_eff * (C*E_param + rc*re2) / (exp_den^2))
+        // This matches my derivation for d(Exp_arg)/dre2.
+        double dEdre2_term3_factor_num = 2.0 * D * R_eff * (C * E + rc * re2);
+        double dEdre2_term3 = Energy * (dEdre2_term3_factor_num * inv_exp_den * inv_exp_den);
 
-double dEdre2 = dEdre2_term1 + dEdre2_term2 + dEdre2_term3;
+        double dEdre2 = dEdre2_term1 + dEdre2_term2 + dEdre2_term3;
 
-*epauli += E_calc;
-*frc -= dEdrc;
-*fre2 -= dEdre2;
-}
-
-
-
+        epauli += Energy;
+        frc    -= dEdrc;
+        fre2   -= dEdre2;
+    }
 
     // ----------------------------------------------------------------------
     
