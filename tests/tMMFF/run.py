@@ -776,6 +776,7 @@ mmff.setVerbosity( verbosity=2, idebug=1 )
 
 
 # mmff.init( xyz_name="data/xyz/PTCDA_charge_on_Na", surf_name="data/xyz/Na_0.9_Cl_-0.9", bUFF=True, bSimple=True )
+
 # mmff.init( xyz_name="data/xyz/PTCDA_charge_on_Na_relax", surf_name="data/xyz/Na_0.9_Cl_-0.9", bUFF=True, bSimple=True )
 # mmff.init( xyz_name="data/xyz/PTCDA_final", surf_name="data/xyz/NaCl_8x8_L3_final", bUFF=True, bSimple=True ) 
 
@@ -799,6 +800,7 @@ mmff.init( xyz_name="data/xyz/old_mol_old_sub_PTCDA", surf_name="data/xyz/Na_0.9
 # mmff.init( xyz_name="data/xyz/PTCDA_final", surf_name="data/xyz/new_Na_0.9_Cl_-0.9", bUFF=True, bSimple=True )
 
 # mmff.init( xyz_name="data/xyz/ptcda_new_rigid", surf_name="data/xyz/Na_0.9_Cl_-0.9", bUFF=True, bSimple=True )  
+# mmff.init( xyz_name="data/xyz/PTCDA_charge_on_Na_relax", surf_name="data/xyz/Na_0.9_Cl_-0.9", bUFF=True, bSimple=True )
 # mmff.init( xyz_name="data/xyz/PTCDA_charge_on_Na", surf_name="data/xyz/Na_0.9_Cl_-0.9" )   
 # mmff.init( xyz_name="data/xyz/PTCDA_charge_on_Cl", surf_name="data/xyz/Na_0.9_Cl_-0.9" )
 # mmff.init( xyz_name="data/xyz/PTCDA_charge_on_hollow", surf_name="data/xyz/Na_0.9_Cl_-0.9" )
