@@ -141,7 +141,8 @@ void* init( char* xyz_name, char* surf_name, char* smile_name, bool bMMFF, bool 
     return &W;
 }
 
-void makeGridFF( const char* name, int* ffshape, int mode, double z0, double* cel0, bool bSymmetrize, bool bAutoNPBC, bool bFit, bool bRefine ){
+// void makeGridFF( const char* name, int* ffshape, int mode, double z0, double* cel0, bool bSymmetrize, bool bAutoNPBC, bool bFit, bool bRefine ){
+void makeGridFF( const char* name, int* ffshape, int mode, double z0, double* cel0, bool bSymmetrize, bool bAutoNPBC, bool bFit, bool bRefine, double gridStepPy=0.1 ){
     bool bCheckEval=false;
     bool bUseEwald =true;
     printf("MMFF_lib::makeGridFF() bAutoNPBC=%i bCheckEval=%i bUseEwald=%i bFit=%i bRefine=%i \n", bAutoNPBC, bCheckEval, bUseEwald, bFit, bRefine );
@@ -150,7 +151,15 @@ void makeGridFF( const char* name, int* ffshape, int mode, double z0, double* ce
     int ret = W.params.loadXYZ( fname, W.surf.natoms, &W.surf.apos, &W.surf.REQs, &W.surf.atypes, 0, &W.gridFF.grid.cell );
     if     ( ret<0 ){ getcwd(tmpstr,1024); printf("ERROR in MMFF_lib::makeGridFF() file(%s) not found in path(%s)=> Exit() \n", fname, tmpstr ); exit(0); }
     if     ( ret==0){                      printf("ERROR in MMFF_lib::makeGridFF() no lattice vectors in (%s) => Exit() \n",    fname ); exit(0); }
-    else if( ret>0 ){ W.gridFF.grid.updateCell(W.gridStep); W.gridFF.bCellSet=true;  }
+    // else if( ret>0 ){ W.gridFF.grid.updateCell(W.gridStep); W.gridFF.bCellSet=true;  }
+    else if( ret>0 ){ 
+        // Override hardcoded gridStep with the passed Python value for consistency
+        double originalGridStep = W.gridStep;
+        W.gridStep = gridStepPy;
+        printf("DEBUG: Using grid step from Python: %g (was: %g)\n", gridStepPy, originalGridStep);
+        W.gridFF.grid.updateCell(gridStepPy); 
+        W.gridFF.bCellSet=true;
+    }
     //gridFF.grid.printCell(); 
     //if(verbosity>0)printf("MolWorld_sp3::loadSurf(%s) 1 natoms %i apos %li atyps %li \n", name, surf.natoms, (long)surf.apos, (long)surf.atypes  );
     //surf.print();

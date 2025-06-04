@@ -4,18 +4,20 @@
 import sys
 import numpy as np
 import os
+import argparse
 import matplotlib.pyplot as plt
+from matplotlib.colors import Normalize
 import subprocess
 import time
 import shutil
 
 # Regular imports
 sys.path.append("../../")
+from all_scan import run_scan, scanPlot2D_uff, scanPlot_uff
 from pyBall import atomicUtils as au
 from pyBall import MMFF as mmff
 
 # Import the all_scan module for scan functions
-from all_scan import run_scan
 
 
 def generate_scan(molecule, substrate, output_dir, scan_type='total', scan_params=None, skip_init=False):
@@ -44,14 +46,9 @@ def generate_scan(molecule, substrate, output_dir, scan_type='total', scan_param
         return False
         
     # Call the run_scan function from all_scan.py
-    try:
-        return run_scan(molecule, substrate, output_dir, scan_type, scan_params, skip_init=skip_init)
-    except ValueError as e:
-        print(f"Error: {e}")
-        return False
-    except Exception as e:
-        print(f"Unexpected error during {scan_type} scan: {e}")
-        return False
+    return run_scan(molecule, substrate, output_dir, scan_type, scan_params, skip_init=skip_init)
+    
+    
 
 
 def plot_multiple_comparisons(data_pairs, titles, output_filename, x_range=None, y_ranges=None, error_ranges=None):
@@ -132,6 +129,93 @@ def plot_multiple_comparisons(data_pairs, titles, output_filename, x_range=None,
     
     return fig
 
+
+
+
+
+def preprocess_lammps_data(input_file, output_file):
+    """Remove blank lines from LAMMPS data file"""
+    with open(input_file, 'r') as f_in, open(output_file, 'w') as f_out:
+        for line in f_in:
+            if line.strip():  # Check if the line is not empty after stripping whitespace
+                f_out.write(line)
+
+def compare_2d_with_lammps(molecule, lammps_dir, firecore_dir, output_dir, scan_type):
+    """Compare 2D scan results between FireCore and LAMMPS
+    
+    Args:
+        molecule (str): Name of the molecule for file naming
+        lammps_dir (str): Directory containing LAMMPS data
+        firecore_dir (str): Directory containing FireCore data
+        output_dir (str): Directory to save comparison plots
+        scan_type (str): Type of scan (total, morse, coulomb)
+    """
+    # Map scan types to file names (both LAMMPS and FireCore use 'coul')
+    file_name = {'morse': 'morse', 'coulomb': 'coul', 'total': 'total'}[scan_type]
+    
+    # Define file paths
+    lammps_raw = os.path.join(lammps_dir, f'{file_name}.dat')
+    lammps_processed = os.path.join(lammps_dir, f'{file_name}_no_blank.dat')
+    firecore_file = os.path.join(firecore_dir, f'{molecule}_{file_name}_2d.dat')
+    
+    # Ensure files exist (this should already be checked by the caller)
+    assert os.path.exists(lammps_raw), f"LAMMPS data file not found: {lammps_raw}"
+    assert os.path.exists(firecore_file), f"FireCore data file not found: {firecore_file}"
+    
+    # Preprocess LAMMPS data to remove blank lines
+    preprocess_lammps_data(lammps_raw, lammps_processed)
+    
+    # Load and prepare data
+    lammps_data = np.loadtxt(lammps_processed)
+    firecore_data = np.loadtxt(firecore_file)
+    firecore_data[:, 2] -= np.min(firecore_data[:, 2])  # Scale to match LAMMPS
+    
+    # Extract coordinates and energies
+    x_lammps, y_lammps, e_lammps = lammps_data.T
+    x_firecore, y_firecore, e_firecore = firecore_data.T
+    
+    # Reshape data into 2D grids
+    nx = len(np.unique(x_lammps))
+    ny = len(np.unique(y_lammps))
+    e_lammps_grid = e_lammps.reshape(ny, nx)
+    e_firecore_grid = e_firecore.reshape(ny, nx)
+    difference_grid = e_firecore_grid - e_lammps_grid
+    
+    # Set common scale for plots
+    vmin = min(np.min(e_lammps_grid), np.min(e_firecore_grid))
+    vmax = max(np.max(e_lammps_grid), np.max(e_firecore_grid))
+    extent = (x_lammps.min(), x_lammps.max(), y_lammps.min(), y_lammps.max())
+    
+    # Create figure and subplots
+    fig, axes = plt.subplots(1, 3, figsize=(18, 6))
+    
+    # Plot LAMMPS data
+    im1 = axes[0].imshow(e_lammps_grid, extent=extent, origin='lower', 
+                        cmap='viridis', vmin=vmin, vmax=vmax)
+    axes[0].set_title('LAMMPS')
+    fig.colorbar(im1, ax=axes[0], label='Energy')
+    
+    # Plot FireCore data
+    im2 = axes[1].imshow(e_firecore_grid, extent=extent, origin='lower', 
+                        cmap='viridis', vmin=vmin, vmax=vmax)
+    axes[1].set_title('FireCore')
+    fig.colorbar(im2, ax=axes[1], label='Energy')
+    
+    # Plot difference
+    im3 = axes[2].imshow(difference_grid, extent=extent, origin='lower', 
+                        cmap='coolwarm')
+    axes[2].set_title('Difference (FireCore - LAMMPS)')
+    fig.colorbar(im3, ax=axes[2], label='Energy Difference')
+    
+    # Set title and save
+    fig.suptitle(f"{scan_type.capitalize()} potential at Z=3.3 Å", fontsize=22)
+    plt.tight_layout()
+    
+    # Save plot
+    output_file = os.path.join(output_dir, f'{molecule}_{scan_type}_2d_comparison.png')
+    plt.savefig(output_file, dpi=300, bbox_inches='tight')
+    plt.close()
+
 def compare_with_lammps(molecule, lammps_dir, firecore_dir, output_dir):
     """
     Create comparison plots between FireCore and LAMMPS data
@@ -185,13 +269,25 @@ if __name__ == "__main__":
                         choices=['total', 'morse', 'coulomb', 'all'], 
                         default=['all'], help='Types of scans to run')
     parser.add_argument('--compare', action='store_true', help='Compare with LAMMPS data after generating scans')
-    # parser.add_argument('--lammps-dir', default='/home/indranil/Documents/Project_1/Lammps_backup15.05/3-rigid_PES/1-zscan_on_Na', help='Directory containing LAMMPS data files')
-    parser.add_argument('--lammps-dir', default='/home/indranil/Documents/Project_1/Lammps/1-rigid_zscan_step_0.05', help='Directory containing LAMMPS data files')
-    # parser.add_argument('--lammps-dir', default='/home/indranil/Documents/Project_1/Lammps/1-rigid_zscan_step_0.2', help='Directory containing LAMMPS data files')
+    parser.add_argument('--lammps-1d-dir', type=str, help='Directory containing LAMMPS 1D scan data for comparison')
+    parser.add_argument('--lammps-2d-dir', type=str, help='Directory containing LAMMPS 2D scan data for comparison')
     
-    parser.add_argument('--nscan', type=int, default=250, help='Number of scan points')
-    parser.add_argument('--span-min', type=float, default=2.6, help='Minimum scan distance')
-    parser.add_argument('--span-max', type=float, default=15.1, help='Maximum scan distance')
+    parser.add_argument('--scan-mode', default='1d', help="Scan mode: '1d' for one-dimensional scan, '2d' for two-dimensional scan.")
+    parser.add_argument('--scan-dir', default='0,0,1', help='Direction vector for 1d scan. Used if --scan-mode is 1d')
+    parser.add_argument('--scan-dir1', default='1,0,0', help='Direction vector for 2d scan. Required if --scan-mode is 2d')
+    parser.add_argument('--scan-dir2', default='0,1,0', help='Second direction vector for 2d scan. Required if --scan-mode is 2d')
+    parser.add_argument('--scan-origin', default='0,0,0', help='Scan origin for 2d scan. Required if --scan-mode is 2d')
+    
+    parser.add_argument('--nscan', type=int, default=250, help='Number of scan points for 1d scan')
+    parser.add_argument('--span-min', type=float, default=2.6, help='Minimum scan distance for 1d scan')
+    parser.add_argument('--span-max', type=float, default=15.1, help='Maximum scan distance for 1d scan')
+
+    parser.add_argument('--nscan-1', type=int, default=250, help='Number of scan points along x for 2d scan')
+    parser.add_argument('--span-min-1', type=float, default=2.6, help='Minimum scan distance along x for 2d scan')
+    parser.add_argument('--span-max-1', type=float, default=15.1, help='Maximum scan distance along x for 2d scan')
+    parser.add_argument('--nscan-2', type=int, default=250, help='Number of scan points along y for 2d scan')
+    parser.add_argument('--span-min-2', type=float, default=2.6, help='Minimum scan distance along y for 2d scan')
+    parser.add_argument('--span-max-2', type=float, default=15.1, help='Maximum scan distance along y for 2d scan')
     
     args = parser.parse_args()
     
@@ -223,59 +319,112 @@ if __name__ == "__main__":
     print(f"Scan parameters: {scan_params}")
     print("=" * 80)
     
-    # Generate the scans
-    results = {}
-    
-    # If 'all' was specified and there are multiple scan types,
-    # and this is not a recursive call, handle each scan type separately
-    if 'all' in args.scan_types and len(run_types) > 1:
-        # For each scan type, call the script again with just that scan type
-        for scan_type in run_types:
-            print(f"\n=====================================================================")
-            print(f"RUNNING {scan_type.upper()} SCAN")
-            print(f"====================================================================\n")
-            
-            # Run the scan for this type individually
-            result = generate_scan(
-                args.molecule, 
-                args.substrate, 
-                args.output_dir, 
-                scan_params=scan_params,
-                scan_type=scan_type  # This must be a string, not a list
-            )
-            
-            results[scan_type] = result
+    if args.scan_mode == '2d':
+        # Validate required 2d scan parameters
+        if not args.scan_dir1 or not args.scan_dir2 or not args.scan_origin:
+            raise ValueError('For 2d scan, --scan-dir1, --scan-dir2, and --scan-origin must be provided')
+        
+        # Parse direction vectors and origin from string to float arrays
+        dir1 = np.array([float(x) for x in args.scan_dir1.split(',')])
+        dir2 = np.array([float(x) for x in args.scan_dir2.split(',')])
+        p0 = np.array([float(x) for x in args.scan_origin.split(',')])
+        
+        # Prepare scan parameters for 2D scan
+        scan_params = {
+            'nscan1': args.nscan_1,
+            'nscan2': args.nscan_2,
+            'span1': (args.span_min_1, args.span_max_1),
+            'span2': (args.span_min_2, args.span_max_2),
+            'p0': p0,
+            'dir1': dir1,
+            'dir2': dir2
+        }
+        print('Running 2D scan using scanPlot2D_uff...')
+    elif args.scan_mode == '1d':
+        # Parse direction vector and origin from string to float arrays
+        dir1 = np.array([float(x) for x in args.scan_dir1.split(',')])
+        p0 = np.array([float(x) for x in args.scan_origin.split(',')])
+        
+        # Prepare scan parameters for 1D scan
+        scan_params = {
+            'nscan': args.nscan_1,
+            'span': (args.span_min_1, args.span_max_1),
+            'dir': dir1,
+            'p0': p0
+        }
+        print('Running 1D scan using scanPlot_uff...')
     else:
-        # Process a single scan type - this is either a direct call with a single type
-        # or a recursive call from the 'all' handler above
-        for scan_type in run_types:
-            print(f"\n=====================================================================")
-            print(f"RUNNING {scan_type.upper()} SCAN")
-            print(f"====================================================================\n")
-            
-            # Run the scan for this type (passing a single string, not a list)
-            result = generate_scan(
-                args.molecule, 
-                args.substrate, 
-                args.output_dir, 
-                scan_params=scan_params,
-                scan_type=scan_type  # This must be a string, not a list
-            )
-            
-            results[scan_type] = result
-    
-    print(f"\n=====================================================================")
-    print(f"ALL REQUESTED SCANS COMPLETED")
-    print(f"Results:") 
-    for scan_type, success in results.items():
-        status = "SUCCESS" if success else "FAILED"
-        print(f"  {scan_type}: {status}")
-    print(f"====================================================================\n")
+        raise ValueError(f'Unsupported scan mode: {args.scan_mode}')
 
-    
+    # Run scans for each requested type
+    results = {}
+    for scan_type in run_types:
+        print(f"\n=====================================================================")
+        print(f"RUNNING {scan_type.upper()} {'2D' if args.scan_mode == '2d' else '1D'} SCAN")
+        try:
+            success = run_scan(
+                molecule=args.molecule,
+                substrate=args.substrate,
+                output_dir=args.output_dir,
+                scan_type=scan_type,
+                scan_params=scan_params,
+                skip_init=False
+            )
+            results[scan_type] = 'SUCCESS' if success else 'FAILED'
+        except Exception as e:
+            print(f"Error running {scan_type} scan: {e}")
+            results[scan_type] = 'ERROR'
+
+    print("\n=====================================================================\nALL REQUESTED SCANS COMPLETED")
+    print("Results:")
+    for scan_type, result in results.items():
+        print(f"  {scan_type}: {result}")
+    print("====================================================================\n")
+
     # Compare with LAMMPS data if requested
-    if args.compare and results and all(results.values()):
+    if args.compare and results and all(r == 'SUCCESS' for r in results.values()):
         print("\nComparing with LAMMPS data...")
         mol_name = os.path.basename(args.molecule)
-        compare_with_lammps(mol_name, args.lammps_dir, args.output_dir, args.output_dir)
-        print(f"Comparison plots saved to {args.output_dir}")
+        
+        # Early return if required LAMMPS directory is not provided
+        if args.scan_mode == '2d' and not args.lammps_2d_dir:
+            print("Warning: No LAMMPS 2D data directory provided. Skipping comparison.")
+        elif args.scan_mode == '1d' and not args.lammps_1d_dir:
+            print("Warning: No LAMMPS 1D data directory provided. Skipping comparison.")
+        else:
+            # Proceed with comparison based on scan mode
+            if args.scan_mode == '2d':
+                # For 2D scans, generate separate plots for each component
+                for scan_type in ['morse', 'coulomb', 'total']:
+                    # Map scan types to file names (both LAMMPS and FireCore use 'coul')
+                    file_name = {'morse': 'morse', 'coulomb': 'coul', 'total': 'total'}[scan_type]
+                    
+                    # Check file existence
+                    lammps_file = os.path.join(args.lammps_2d_dir, f'{file_name}.dat')
+                    firecore_file = os.path.join(args.output_dir, f'{mol_name}_{file_name}_2d.dat')
+                    
+                    if not os.path.exists(firecore_file):
+                        print(f"  Skipping {scan_type} comparison: FireCore data file not found")
+                        continue
+                        
+                    if not os.path.exists(lammps_file):
+                        print(f"  Skipping {scan_type} comparison: LAMMPS data file not found")
+                        continue
+                    
+                    # Generate comparison plot
+                    compare_2d_with_lammps(
+                        mol_name, 
+                        args.lammps_2d_dir,
+                        args.output_dir, 
+                        args.output_dir,
+                        scan_type
+                    )
+                    print(f"  Generated comparison plot for {scan_type} potential")
+            else:
+                # For 1D scans, use existing comparison function
+                compare_with_lammps(mol_name, args.lammps_1d_dir, args.output_dir, args.output_dir)
+            
+            print(f"Comparison plots saved to {args.output_dir}")
+
+    fig_path = 'fig_path'
+    data_path = 'data_path'

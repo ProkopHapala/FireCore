@@ -662,62 +662,44 @@ def scanPlot2D_uff(nscan1=1000, nscan2=1000, span1=(0.0,4.0), span2=(0.0,4.0),
         tuple: (energies, x_grid, y_grid) - 2D energy array and coordinate grids
     """
     # Create coordinate arrays for the scan
-    ts1 = np.linspace(span1[0], span1[1], nscan1, endpoint=False)
-    ts2 = np.linspace(span2[0], span2[1], nscan2, endpoint=False)
+    # Create linspace arrays for both scan directions
+    t1 = np.linspace(span1[0], span1[1], nscan1, endpoint=False)
+    t2 = np.linspace(span2[0], span2[1], nscan2, endpoint=False)
     
-    # Create a 2D grid for scanning
-    Es = np.zeros((nscan1, nscan2))
+    # Generate a meshgrid for these parameters
+    T1, T2 = np.meshgrid(t1, t2, indexing="ij")
     
-    # Scan each position in the grid
-    for i, t1 in enumerate(ts1):
-        # Create a batch of positions for this row (all columns)
-        row_poss = np.zeros((nscan2, 3))
-        for j, t2 in enumerate(ts2):
-            # Calculate position as p0 + t1*dir1 + t2*dir2
-            row_poss[j] = p0 + t1*np.array(dir1) + t2*np.array(dir2)
-        
-        # Get energies for this row of positions using rigid UFF scan
-        row_Es, _, _ = mmff.scan_rigid_uff(row_poss, bF=False, bP=False)
-        Es[i, :] = row_Es
+    # Prepare positions array
+    poss = np.zeros((nscan1*nscan2, 3))
     
-    # Get the minimum energy value for reference
-    Es_min = np.min(Es)
-    Es_relative = Es - Es_min
+    # Each scanned position is the starting point plus contributions along two directions
+    poss[:, 0] = p0[0] + T1.ravel()*dir1[0] + T2.ravel()*dir2[0]
+    poss[:, 1] = p0[1] + T1.ravel()*dir1[1] + T2.ravel()*dir2[1]
+    poss[:, 2] = p0[2] + T1.ravel()*dir1[2] + T2.ravel()*dir2[2]
     
-    # Create coordinate grids for plotting
-    X, Y = np.meshgrid(ts1, ts2, indexing='ij')
+    # Call the scan function using the computed positions.
+ 
+    Es, Fs, Ps = mmff.scan_rigid_uff(poss, bF=True, bP=True)
     
-    # Create the plot
-    plt.figure(figsize=(10, 8))
-    plt.pcolormesh(X, Y, Es_relative, shading='auto', cmap='viridis')
-    plt.colorbar(label='Energy (eV)')
-    plt.xlabel(f'Position along direction 1 {dir1} (Å)')
-    plt.ylabel(f'Position along direction 2 {dir2} (Å)')
-    plt.title(f'{label} (min={Es_min:.3f} eV)')
+    # Reshape the energies into a 2D grid matching the T1, T2 shape
+    Egrid = Es.reshape(nscan1, nscan2)
     
-    # Save the figure if requested
+    # Create a contour plot for the 2D energy scan.
+    plt.figure()
+    cp = plt.contourf(T1, T2, Egrid, levels=20, cmap="viridis")
+    plt.colorbar(cp)
+    plt.title(label)
+    plt.xlabel(f"Scan parameter along ({dir1[0]}_{dir1[1]}_{dir1[2]}) direction")
+    plt.ylabel(f"Scan parameter along ({dir2[0]}_{dir2[1]}_{dir2[2]}) direction")
+
     if saveFig is not None:
-        plt.savefig(saveFig, dpi=300, bbox_inches='tight')
-    
-    # Save the data if requested
+        plt.savefig(saveFig)
     if saveData is not None:
-        # Save as NPZ file with all necessary data
-        np.savez(saveData, X=X, Y=Y, Es=Es_relative, Es_min=Es_min, 
-                 p0=p0, dir1=dir1, dir2=dir2, span1=span1, span2=span2)
-        
-        # Also save as a plain text file for easier inspection
-        with open(f"{saveData}.txt", 'w') as f:
-            f.write("# 2D Rigid UFF Scan\n")
-            f.write(f"# p0: {p0}, dir1: {dir1}, dir2: {dir2}\n")
-            f.write(f"# span1: {span1}, span2: {span2}\n")
-            f.write(f"# Minimum energy: {Es_min} eV\n")
-            f.write("# X, Y, Energy (eV)\n")
-            
-            for i in range(nscan1):
-                for j in range(nscan2):
-                    f.write(f"{X[i,j]:.6f}\t{Y[i,j]:.6f}\t{Es_relative[i,j]:.6f}\n")
-    
-    return Es_relative, X, Y
+        # Save in 3-column format: x, y, E
+        data_out = np.column_stack((T1.ravel(), T2.ravel(), Es))
+        header = f"# Scan coordinates along:\n# dir1: {dir1}\n# dir2: {dir2}\n# x\ty\tEnergy(eV)"
+        np.savetxt(saveData, data_out, header=header, comments='')
+    plt.show()
 
 def relax_scanPlot2D(nscan1=1000, nscan2=1000, span1=(0.0,4.0), span2=(0.0,4.0),
                p0=(0.0,0.0,0.0), dir1=(1.0,0.0,0.0), dir2=(0.0,1.0,0.0),
@@ -991,7 +973,7 @@ mmff.setSwitches2( NonBonded=1, MMFF=1, SurfAtoms=1, GridFF=1 )   ### For Relaxe
 # scanPlot_uff( nscan=125, span=(2.6,15.1), dir=(0.0,0.0,1.0), p0=(-0.0,-0.0,0.0), label="PTCDA on Na", saveFig="final_uff_E_z_scan_on_Na_PTCDA_Coulomb.png", saveData="final_uff_E_z_scan_on_Na_PTCDA_Coulomb.dat" )
 # scanPlot_uff( nscan=125, span=(2.6,15.1), dir=(0.0,0.0,1.0), p0=(0,0,0), label="PTCDA on Na", saveFig="final_uff_E_z_scan_on_Na_PTCDA_Morse_Coulomb.png", saveData="morse_new2_final_uff_E_z_scan_on_Na_PTCDA_Morse_Coulomb.dat" )
 
-scanPlot_uff( nscan=125, span=(2.6,15.1), dir=(0.0,0.0,1.0), p0=(0,0,0), label="PTCDA on Na", saveFig=None, saveData=None )
+# scanPlot_uff( nscan=125, span=(2.6,15.1), dir=(0.0,0.0,1.0), p0=(0,0,0), label="PTCDA on Na", saveFig=None, saveData=None )
 # scanPlot_uff( nscan=125, span=(2.6,15.1), dir=(0.0,0.0,1.0), p0=(0,0,0), label="PTCDA on Na", saveFig=None, saveData="new_mol_old_sub_total.dat" )
 # scanPlot_uff( nscan=125, span=(2.6,15.1), dir=(0.0,0.0,1.0), p0=(0,0,0), label="PTCDA on Na", saveFig=None, saveData="new_mol_new_sub_total.dat" )
 # scanPlot_uff( nscan=125, span=(2.6,15.1), dir=(0.0,0.0,1.0), p0=(0,0,0), label="PTCDA on Na", saveFig=None, saveData="old_mol_new_sub_total.dat" )
@@ -999,8 +981,8 @@ scanPlot_uff( nscan=125, span=(2.6,15.1), dir=(0.0,0.0,1.0), p0=(0,0,0), label="
 
 # shift_x = -(0.1 - 0.09935) * 31.792 / 2  # Half the difference across the entire substrate
 # shift_y = -(0.1 - 0.09935) * 31.792 / 2
-shift_x =0
-shift_y=0
+# shift_x =0
+# shift_y=0
 
 # scanPlot_uff( nscan=133, span=(1.8,15.1), dir=(0.0,0.0,1.0), p0=(0,0,0), label="Na", saveFig=None, saveData="old_Na_atom.dat" )
 # scanPlot_uff( nscan=133, span=(1.8,15.1), dir=(0.0,0.0,1.0), p0=(shift_x,shift_y,0.0), label="Na", saveFig=None, saveData="new_Na_atom.dat" )
@@ -1027,7 +1009,7 @@ shift_y=0
 
 # scanPlot_uff( nscan=125, span=(2.6,15.1), dir=(0.0,0.0,1.0), p0=(0,0,0), label="PTCDA on Na", saveFig=None, saveData="new_mol_new1_sub_total.dat" )
 
-# scanPlot_uff( nscan=125, span=(2.6,15.1), dir=(0.0,0.0,1.0), p0=(0,0,0), label="PTCDA on Na", saveFig=None, saveData="paolo_new_substrate_total.dat" )
+# scanPlot( nscan=125, span=(2.6,15.1), dir=(0.0,0.0,1.0), p0=(0,0,0), label="PTCDA on Na", saveFig=None, saveData=None )
 # scanPlot_uff( nscan=125, span=(2.6,15.1), dir=(0.0,0.0,1.0), p0=(0,0,0), label="PTCDA on Na", saveFig=None, saveData="exp_new_molecule_substrate_coul.dat" )
 # scanPlot_uff( nscan=121, span=(0,12.021168589716126598), dir=(1.0,0.0,0.0), p0=(0,0,3.3), label="PTCDA on Na", saveFig=None, saveData="X_exp_new_molecule_substrate_coul.dat" )
 # scanPlot_uff( nscan=121, span=(0,12.021168589716126598), dir=(1.0,0.0,0.0), p0=(0,0,3.3), label="PTCDA on Na", saveFig=None, saveData="X_exp_new_molecule_substrate_morse.dat" )
@@ -1035,8 +1017,8 @@ shift_y=0
 
 
 # (2*0.09935)
-import gc
-gc.disable()
+# import gc
+# gc.disable()
 
 ###########********************* Relax 1D
 # t,Es,Ps=relax_scanPlot1D(bRelax=True, nscan=125, span=(2.6,15.1), dir=(0.0,0.0,1.0), p0=(0.0,0.0,(0+2.6)), label="PTCDA on Na", saveFig=None, saveData=None,niter_max=100 )   
@@ -1052,9 +1034,9 @@ gc.disable()
 
 
 ######Add these lines at the end of your script
-plt.close('all')  # Close all matplotlib figures
-gc.enable()
-gc.collect()      # Force garbage collection
+# plt.close('all')  # Close all matplotlib figures
+# gc.enable()
+# gc.collect()      # Force garbage collection
 
 """
 The time i FireCore is            1.0180506e-14 s   
@@ -1081,6 +1063,13 @@ sys	0m5.760s
 # sys	0m6.427s
 
 ########################################### 2D Scan Plotting #########################################
+scanPlot2D_uff(nscan1=41, nscan2=41,
+            span1=(0.0, 4.1), span2=(0.0, 4.1),
+            dir1=(1.0,0.0,0.0), dir2=(0.0,1.0,0.0),
+            p0=(0.0,0.0,3.3), label="E_xy for z=2.0", #) #,
+            saveFig=None, saveData=None)
+
+
 # scanPlot2D(nscan1=41, nscan2=41,
 #            span1=(0.0, 4.1), span2=(0.0, 4.1),
 #            dir1=(1.0,0.0,0.0), dir2=(0.0,1.0,0.0),
