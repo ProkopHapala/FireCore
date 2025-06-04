@@ -76,6 +76,84 @@ def scanPlot_uff(nscan=1000, span=(0.0,8.0), dir=(0.0,0.0,1.0), p0=(0.0,0.0,0.0)
         plt.savefig(saveFig, dpi=300)
         plt.close()
 
+def scanPlot2D_uff(nscan1=1000, nscan2=1000, span1=(0.0,4.0), span2=(0.0,4.0),
+               p0=(0.0,0.0,0.0), dir1=(1.0,0.0,0.0), dir2=(0.0,1.0,0.0),
+               label="E_2D_UFF", saveFig=None, saveData=None):
+    """
+    Perform a 2D scan using rigid UFF across two directions.
+    
+    Args:
+        nscan1 (int): Number of scan points in first direction
+        nscan2 (int): Number of scan points in second direction
+        span1 (tuple): Distance range to scan in first direction (min, max)
+        span2 (tuple): Distance range to scan in second direction (min, max)
+        dir1 (tuple): First direction vector for the scan
+        dir2 (tuple): Second direction vector for the scan
+        p0 (tuple): Starting position
+        label (str): Label for the plot
+        saveFig (str): Path to save figure
+        saveData (str): Path to save data
+    
+    Returns:
+        tuple: (energies, x_grid, y_grid) - 2D energy array and coordinate grids
+    """
+    # Create coordinate arrays for the scan
+    ts1 = np.linspace(span1[0], span1[1], nscan1, endpoint=False)
+    ts2 = np.linspace(span2[0], span2[1], nscan2, endpoint=False)
+    
+    # Create a 2D grid for scanning
+    Es = np.zeros((nscan1, nscan2))
+    
+    # Scan each position in the grid
+    for i, t1 in enumerate(ts1):
+        # Create a batch of positions for this row (all columns)
+        row_poss = np.zeros((nscan2, 3))
+        for j, t2 in enumerate(ts2):
+            # Calculate position as p0 + t1*dir1 + t2*dir2
+            row_poss[j] = p0 + t1*np.array(dir1) + t2*np.array(dir2)
+        
+        # Get energies for this row of positions using rigid UFF scan
+        row_Es, _, _ = mmff.scan_rigid_uff(row_poss, bF=False, bP=False)
+        Es[i, :] = row_Es
+    
+    # Get the minimum energy value for reference
+    Es_min = np.min(Es)
+    Es_relative = Es - Es_min
+    
+    # Create coordinate grids for plotting
+    X, Y = np.meshgrid(ts1, ts2, indexing='ij')
+    
+    # Create the plot
+    plt.figure(figsize=(10, 8))
+    plt.pcolormesh(X, Y, Es_relative, shading='auto', cmap='viridis')
+    plt.colorbar(label='Energy (eV)')
+    plt.xlabel(f'Position along direction 1 {dir1} (Å)')
+    plt.ylabel(f'Position along direction 2 {dir2} (Å)')
+    plt.title(f'{label} (min={Es_min:.3f} eV)')
+    
+    # Save the figure if requested
+    if saveFig is not None:
+        plt.savefig(saveFig, dpi=300, bbox_inches='tight')
+    
+    # Save the data if requested
+    if saveData is not None:
+        # Save as NPZ file with all necessary data
+        np.savez(saveData, X=X, Y=Y, Es=Es_relative, Es_min=Es_min, 
+                 p0=p0, dir1=dir1, dir2=dir2, span1=span1, span2=span2)
+        
+        # Also save as a plain text file for easier inspection
+        with open(f"{saveData}.txt", 'w') as f:
+            f.write("# 2D Rigid UFF Scan\n")
+            f.write(f"# p0: {p0}, dir1: {dir1}, dir2: {dir2}\n")
+            f.write(f"# span1: {span1}, span2: {span2}\n")
+            f.write(f"# Minimum energy: {Es_min} eV\n")
+            f.write("# X, Y, Energy (eV)\n")
+            
+            for i in range(nscan1):
+                for j in range(nscan2):
+                    f.write(f"{X[i,j]:.6f}\t{Y[i,j]:.6f}\t{Es_relative[i,j]:.6f}\n")
+    
+    return Es_relative, X, Y
 
 def relax_scanPlot1D(nscan=1000, span=(0.0,4.0),
                p0=(0.0,0.0,0.0), dir=(1.0,0.0,0.0),
