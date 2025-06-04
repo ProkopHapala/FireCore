@@ -41,9 +41,9 @@ export LD_PRELOAD
 # python3 generate_scans.py --scan-types all --compare --output-dir PTCDA_data_trial --lammps-dir /home/indranil/Documents/Project_1/Lammps/1-rigid_zscan --nscan 215 --span-min 2.6 --span-max 15.2
 # python3 generate_scans.py --scan-types all --compare --output-dir PTCDA_data_trial --lammps-dir /home/indranil/Documents/Project_1/Lammps/1-rigid_zscan --nscan 215 --span-min 2.6 --span-max 15.1
 # Run each scan type separately to avoid MMFF reinitialization issues
-python3 generate_scans.py --scan-types total --compare --output-dir PTCDA_data_trial --lammps-dir /home/indranil/Documents/Project_1/Lammps/1-rigid_zscan --nscan 125 --span-min 2.6 --span-max 15.1
-python3 generate_scans.py --scan-types morse --compare --output-dir PTCDA_data_trial --lammps-dir /home/indranil/Documents/Project_1/Lammps/1-rigid_zscan --nscan 125 --span-min 2.6 --span-max 15.1
-python3 generate_scans.py --scan-types coulomb --compare --output-dir PTCDA_data_trial --lammps-dir /home/indranil/Documents/Project_1/Lammps/1-rigid_zscan --nscan 125 --span-min 2.6 --span-max 15.1
+python3 generate_scans.py --scan-types total --output-dir PTCDA_data_trial --lammps-dir /home/indranil/Documents/Project_1/Lammps/1-rigid_zscan --nscan 125 --span-min 2.6 --span-max 15.1 --molecule data/xyz/new_mol_old_sub_PTCDA --substrate data/xyz/Na_0.9_Cl_-0.9_vox_0.13 
+python3 generate_scans.py --scan-types morse --output-dir PTCDA_data_trial --lammps-dir /home/indranil/Documents/Project_1/Lammps/1-rigid_zscan --nscan 125 --span-min 2.6 --span-max 15.1 --molecule data/xyz/new_mol_old_sub_PTCDA --substrate data/xyz/Na_0.9_Cl_-0.9_vox_0.13 
+python3 generate_scans.py --scan-types coulomb --compare --output-dir PTCDA_data_trial --lammps-dir /home/indranil/Documents/Project_1/Lammps/1-rigid_zscan --nscan 125 --span-min 2.6 --span-max 15.1 --molecule data/xyz/new_mol_old_sub_PTCDA --substrate data/xyz/Na_0.9_Cl_-0.9_vox_0.13 
 
 
 

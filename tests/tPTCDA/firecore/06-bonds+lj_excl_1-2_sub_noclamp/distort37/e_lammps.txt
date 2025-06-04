@@ -1,0 +1,1 @@
+../../../ref/06-bonds+lj_excl_1-2_sub_noclamp/distort37/e_lammps.txt

@@ -1,0 +1,1 @@
+../../../ref/12-intra_excl_ng4_clamp/distort38/e_lammps.txt

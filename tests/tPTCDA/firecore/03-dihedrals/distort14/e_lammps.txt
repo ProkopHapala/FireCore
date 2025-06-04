@@ -1,0 +1,1 @@
+../../../ref/03-dihedrals/distort14/e_lammps.txt

@@ -1,0 +1,1 @@
+../../../ref/03-dihedrals/distort20/f_lammps.txt

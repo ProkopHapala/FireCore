@@ -1,0 +1,1 @@
+../../../ref/13-all_ng4_noclamp/distort30/e_lammps.txt

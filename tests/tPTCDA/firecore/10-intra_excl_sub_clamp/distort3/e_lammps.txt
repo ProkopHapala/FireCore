@@ -1,0 +1,1 @@
+../../../ref/10-intra_excl_sub_clamp/distort3/e_lammps.txt

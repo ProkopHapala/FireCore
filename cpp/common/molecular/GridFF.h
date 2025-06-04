@@ -369,6 +369,7 @@ inline Quat4d getForce_Bspline( Vec3d p, const Quat4d& PLQH, bool bSurf=true ) c
     grid.diCell.dot_to( p, t );
     Vec3d inv_dg2{ -grid.diCell.xx, -grid.diCell.yy, -grid.diCell.zz };
 
+    // printf("@@@@@@@@@@@####GridFF::getForce_Bspline() grid.diCell.xx %g diCell.yy %g diCell.zz %g \n", grid.diCell.xx, grid.diCell.yy, grid.diCell.zz );
     // printf("DEBUG: Bspline | Grid pos0=%.3f,%.3f,%.3f | Atom pos=%.3f,%.3f,%.3f \n", grid.pos0.x,grid.pos0.y,grid.pos0.z, p.x,p.y,p.z);
     //Quat4d fe = Quat4dZero;
     
@@ -1695,6 +1696,7 @@ void initGridFF( const char * name, double z0=NAN, bool bAutoNPBC=true, bool bSy
 
     bool tryLoad_new( bool bSymetrize=true, bool bFit=true, bool bRefine=true, bool bPrint=false ){
         printf( "GridFF::tryLoad_new() mode=%i bSymetrize=%i bFit=%i bRefine=%i \n", (int)mode, bSymetrize, bFit, bRefine );
+        printf("GridFF::tryLoad_new() loaded grid params: dg=(%g,%g,%g) pos0=(%g,%g,%g) dims=(%d,%d,%d)\n",grid.dCell.xx, grid.dCell.yy, grid.dCell.zz,grid.pos0.x, grid.pos0.y, grid.pos0.z,grid.n.x, grid.n.y, grid.n.z);
         // print current directory
         char cwd[128]; getcwd(cwd, 128); printf( "Current  directory: %s\n", cwd );
         //const char* fname_Coul=0; 
@@ -1785,6 +1787,26 @@ void initGridFF( const char * name, double z0=NAN, bool bAutoNPBC=true, bool bSy
                     //_realloc( Bspline_PLQ, npoint*3 );
                     NumpyFile npy(fnames[0]);
                     npy.print();
+
+                    // Update grid dimensions from numpy file if necessary
+                    if(npy.ndims >= 3 && (npy.shape[0] != grid.n.x || npy.shape[1] != grid.n.y || npy.shape[2] != grid.n.z)) {
+                        // Update grid dimensions with those from the numpy file
+                        grid.n.x = npy.shape[0];
+                        grid.n.y = npy.shape[1];
+                        grid.n.z = npy.shape[2];
+                        
+                        // Use GridShape's built-in method to properly update all grid parameters
+                        grid.updateCell();
+                        
+                        // Update local variables for consistency
+                        ns = grid.n;
+                        npoint = ns.totprod();
+                        nbyte  = npoint*sizeof(double);
+                        
+                        printf("GridFF::tryLoad_new() Updated grid dimensions from numpy file: ns=(%d,%d,%d) dg=(%g,%g,%g)\n", 
+                               grid.n.x, grid.n.y, grid.n.z, grid.dCell.xx, grid.dCell.yy, grid.dCell.zz);
+                    }
+
                     Bspline_PLQ = (Vec3d*)npy.data;
                     done=true;
                 } else if( fileExist( fnames[1] ) ){

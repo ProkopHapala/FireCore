@@ -96,14 +96,38 @@ class GridShape{ public:
 	inline double voxelVolume()const{ return dCell.determinant(); }
 
     inline int ip2i(const Vec3i& ip){ return ip.a + ( n.a*( ip.b + n.b*ip.c) );  }
+    
+    inline bool is_nice(int n) {
+        // Checks if integer n factors completely into allowed factors {2, 3, 5}
+        // Same as Python implementation in pyBall/OCL/clUtils.py
+        int temp = n;
+        while (temp % 2 == 0) temp /= 2;
+        while (temp % 3 == 0) temp /= 3;
+        while (temp % 5 == 0) temp /= 5;
+        return temp == 1;
+    }
+    
+    inline int next_nice(int n) {
+        // Returns the smallest integer >= n that is FFT-friendly (factors only of 2, 3, 5)
+        // Same algorithm as in pyBall/OCL/clUtils.py
+        int original = n;
+        while (!is_nice(n)) {
+            n += 1;
+        }
+        printf("next_nice: for raw value %d -> adjusted to %d\n", original, n);
+        return n;
+    }
 
-    inline void autoN( double step){
-        //n.a=(int)(cell.a.norm()/step)+1;
-        //n.b=(int)(cell.b.norm()/step)+1;
-        //n.c=(int)(cell.c.norm()/step)+1;
-        n.a=(int)(cell.a.norm()/step);
-        n.b=(int)(cell.b.norm()/step);
-        n.c=(int)(cell.c.norm()/step);
+    inline void autoN(double step) {
+        // First calculate raw grid dimensions by dividing cell sizes by step
+        int raw_na = (int)ceil(cell.a.norm() / step);
+        int raw_nb = (int)ceil(cell.b.norm() / step);
+        int raw_nc = (int)ceil(cell.c.norm() / step);
+        
+        // Then adjust to FFT-friendly sizes using next_nice
+        n.a = next_nice(raw_na);
+        n.b = next_nice(raw_nb);
+        n.c = next_nice(raw_nc);
     }
 
 	inline void updateCell( double step=-1.0 ){

@@ -1,0 +1,1 @@
+../../../ref/21-all/zscan16/f_lammps.txt

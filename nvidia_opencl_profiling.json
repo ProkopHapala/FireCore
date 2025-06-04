@@ -1,0 +1,17 @@
+{
+  "device": {
+    "name": "",
+    "compute_capability": "0.0",
+    "multiprocessor_count": 0,
+    "max_threads_per_block": 0,
+    "max_grid_dim": [0, 0, 0],
+    "max_block_dim": [0, 0, 0],
+    "warp_size": 0,
+    "max_registers_per_block": 0,
+    "shared_memory_per_block": 0,
+    "total_constant_memory": 0
+  },
+  "kernels": [
+
+  ]
+}

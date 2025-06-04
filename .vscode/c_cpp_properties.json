@@ -1,0 +1,23 @@
+{
+    "configurations": [
+        {
+            "name": "Linux",
+            "includePath": [
+                "${workspaceFolder}/**",
+                "${workspaceFolder}/cpp/**",
+                "${workspaceFolder}/cpp/common/**",
+                "${workspaceFolder}/cpp/common/molecular/**",
+                "${workspaceFolder}/cpp/libs/**",
+                "${workspaceFolder}/cpp/libs/Molecular/**",
+                "/usr/include/**",
+                "/usr/local/include/**"
+            ],
+            "defines": [],
+            "compilerPath": "/usr/bin/g++",
+            "cStandard": "c11",
+            "cppStandard": "c++17",
+            "intelliSenseMode": "linux-gcc-x64"
+        }
+    ],
+    "version": 4
+}

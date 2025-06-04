@@ -1,0 +1,1 @@
+../../../ref/21-all/yscan3/f_lammps.txt

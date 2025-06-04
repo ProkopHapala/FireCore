@@ -1,0 +1,1 @@
+../../../ref/11-intra_excl_ng4_noclamp/distort37/e_lammps.txt

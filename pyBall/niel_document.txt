@@ -1,0 +1,261 @@
+FireCore/
+├── fortran/                      # Core Computational Engine
+│   ├── ASSEMBLERS/              # Assembly Operations
+│   │   ├── assemble_usr.f90     # User-defined assemblies
+│   │   ├── assemble_olsxc_1c.f90# One-center exchange-correlation
+│   │   └── assemble_KS_den.f90  # Kohn-Sham density assembly
+│   │
+│   ├── GRID/                    # Grid Operations
+│   │   ├── project_dens0.f90    # Density projection
+│   │   └── assemble_KS_den.f90  # KS density on grid
+│   │
+│   ├── INITIALIZERS/           # System Setup
+│   │   ├── initcharges.f90     # Charge initialization
+│   │   ├── initneighbors.f90   # Neighbor list setup
+│   │   └── readbasis.f90       # Basis set initialization
+│   │
+│   ├── INTERACTIONS/           # Physical Interactions
+│   │   └── internalLambda.f90  # Thermodynamic integration
+│   │
+│   ├── MATH/                   # Mathematical Utilities
+│   │   └── cepal.f90          # Mathematical functions
+│   │
+│   ├── READFILES/             # Input Processing
+│   │   ├── readparam.f90      # Parameter reading
+│   │   ├── readheader_2c.f90  # Two-center header reading
+│   │   └── readbasis.f90      # Basis set reading
+│   │
+│   └── ROTATIONS/             # Symmetry Operations
+│       └── deps2center.f90    # Two-center rotations
+│
+├── cpp/                        # Visualization & Interface Layer
+│   ├── common/                # Shared Utilities
+│   │   └── math/
+│   │       └── Multipoles.h   # Multipole calculations
+│   │
+│   └── sketches_SDL/          # Graphics Interface
+│       └── Molecular/
+│           └── test_RARFF2.cpp# Molecular visualization
+│
+└── pyBall/                    # Python Interface Layer
+   └── OCL/                   # OpenCL Integration
+       └── GridFF.py         # Grid force field calculations
+
+Key Features:
+1. Core Engine (Fortran)
+  - Quantum mechanical calculations
+  - Density functional theory
+  - Force field computations
+  - System initialization
+
+2. Visualization Layer (C++)
+  - Molecular structure display
+  - Real-time visualization
+  - Interactive graphics
+
+3. High-level Interface (Python)
+  - User interface
+  - Grid operations
+  - OpenCL acceleration
+
+
+
+cpp/
+├── common/                           # Core utilities and mathematical operations
+│   ├── math/
+│   │   ├── Multipoles.h             # Multipole calculations and vector projections
+│   │   │   - project() function     # Projects vectors onto multipole basis
+│   │   │   - evalCrossTerms()       # Evaluates wavefunction overlap energies
+│   │   │   - evalExchangeCorrelation() # Handles exchange-correlation terms
+│   │   └── [Other math utilities]
+│   │
+│   ├── molecular/                   # Molecular mechanics core
+│   │   └── CLCFGO.h                # Contracted Linear Combination of Floating Gaussian Orbitals
+│   │       - Orbital evaluation
+│   │       - Wavefunction overlap
+│   │       - Energy calculations
+│   │
+│   └── [Other common utilities]
+│
+├── sketches_SDL/                    # Visualization and graphics components
+│   └── Molecular/
+│       └── test_RARFF2.cpp         # Molecular visualization implementation
+│           - OpenGL rendering
+│           - Atom force visualization
+│           - Interactive molecular display
+│           - Real-time force updates
+│           - Sphere drawing primitives
+│
+└── [Additional cpp components]
+
+Key Features:
+1. Mathematical Core (common/math/)
+   - Vector operations
+   - Multipole expansions
+   - Projection algorithms
+   - Cross-term evaluations
+
+2. Molecular Mechanics (common/molecular/)
+   - Gaussian orbital handling
+   - Wavefunction calculations
+   - Energy evaluations
+   - Molecular interactions
+
+3. Visualization System (sketches_SDL/)
+   - Real-time molecular rendering
+   - Force vector display
+   - Interactive molecular manipulation
+   - OpenGL-based graphics
+
+
+
+fortran/
+├── ASSEMBLERS/                      # Assembly and Integration Components
+│   ├── buildh.f90                  # Hamiltonian construction
+│   ├── assemble_usr.f90            # User-defined assemblies
+│   ├── assemble_olsxc_1c.f90       # One-center exchange-correlation
+│   └── assemble_KS_den.f90         # Kohn-Sham density assembly
+│
+├── GRID/                           # Grid-based Operations
+│   ├── project_dens0.f90           # Density projection routines
+│   ├── assemble_KS_den.f90         # KS density grid assembly
+│   └── [Grid utilities]
+│
+├── INITIALIZERS/                   # System Setup Components
+│   ├── initcharges.f90             # Charge distribution initialization
+│   ├── initneighbors.f90           # Neighbor list construction
+│   └── readbasis.f90               # Basis set initialization
+│
+├── INTERACTIONS/                   # Physical Interaction Handlers
+│   ├── DtrescentrosS.f90           # Three-center interactions
+│   ├── doscentrosS.f90             # Two-center interactions
+│   ├── get_ewald.f90               # Ewald summation
+│   └── internalLambda.f90          # Thermodynamic integration
+│
+├── INTERPOLATERS/                  # Interpolation Functions
+│   ├── getpsi.f90                  # Wavefunction interpolation
+│   ├── getvna.f90                  # Neutral atom potential
+│   └── setterp_2d.f90              # 2D interpolation setup
+│
+├── MATH/                          # Mathematical Utilities
+│   ├── cepal.f90                   # Mathematical functions
+│   └── [Other math routines]
+│
+├── READFILES/                     # Input Processing
+│   ├── readparam.f90               # Parameter reading
+│   ├── readheader_2c.f90           # Two-center header processing
+│   ├── readdata_mcweda.f90         # McWeda data reading
+│   └── readbasis.f90               # Basis set reading
+│
+└── ROTATIONS/                     # Symmetry Operations
+    └── deps2center.f90             # Two-center rotation derivatives
+
+
+pyBall/
+└── OCL/                           # OpenCL Integration
+    └── GridFF.py                  # Grid force field implementation
+    - Project atoms on grid
+    - PBC handling
+    - GPU acceleration
+
+
+
+""""
+pyBall Documentation
+
+The pyBall folder contains Python modules for molecular mechanics calculations and force field operations. 
+Key components include:
+
+- MMFF.py: Implementation of molecular mechanics force field calculations
+- atomicUtils.py: Utilities for atomic structure manipulation and analysis
+- FunctionSampling.py: Tools for function sampling and interpolation
+
+This package is part of the FireCore project, providing Python interfaces and utilities 
+for molecular dynamics and computational chemistry applications.
+
+Detailed File Descriptions:
+
+1. MMFF.py
+  - Implements Molecular Mechanics Force Field calculations
+  - Contains classes and methods for energy calculations, force computations
+  - Handles bond stretching, angle bending, torsion, and non-bonded interactions
+  - Provides interfaces for molecular dynamics simulations
+
+2. atomicUtils.py
+  - Provides utility functions for atomic structure manipulation
+  - Includes functions for:
+    - Atomic coordinate transformations
+    - Molecular geometry analysis
+    - Bond length and angle calculations
+    - Molecular visualization helpers
+  - Contains data structures for efficient atomic data storage
+
+3. FunctionSampling.py
+  - Implements various function sampling techniques
+  - Includes methods for:
+    - Grid-based sampling
+    - Adaptive sampling
+    - Interpolation between sampled points
+  - Provides utilities for energy surface exploration
+  - Contains visualization tools for sampled functions
+""""
+""""
+Provides utility functions for atomic structure manipulation.
+
+This module includes functions for:
+- Atomic coordinate transformations
+- Molecular geometry analysis
+- Bond length and angle calculations
+- Molecular visualization helpers
+
+It also contains data structures for efficient atomic data storage.
+""""
+
+Key Features by Section:
+
+1.ASSEMBLERS:
+   Hamiltonian construction
+   Exchange-correlation terms
+   Density matrix assembly
+   Energy components
+
+2. GRID:
+   Density projections
+   Grid-based calculations
+   Mesh operations
+   INITIALIZERS:
+   System setup
+   Charge initialization
+   Neighbor list management
+
+3. INTERACTIONS:
+   Multi-center interactions
+   Ewald summation
+   Force calculations
+
+4. INTERPOLATERS:
+   Wavefunction handling
+   Potential interpolation
+   Grid interpolation
+
+5. MATH:
+   Core mathematical routines
+   Numerical methods
+   Function evaluation
+
+6. READFILES:
+   Input processing
+   Parameter handling
+   Data structure setup
+
+7. ROTATIONS:
+   Symmetry operations
+   Coordinate transformations
+   PYTHON Interface:
+   High-level control
+   GPU acceleration
+   Grid operations
+
+
+
+

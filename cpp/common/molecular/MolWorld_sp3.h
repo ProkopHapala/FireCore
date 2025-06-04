@@ -1,4 +1,4 @@
-﻿#ifndef MolWorld_sp3_h  
+#ifndef MolWorld_sp3_h  
 #define MolWorld_sp3_h  
 #define MolWorld_sp3_h
 /// @file MolWorld_sp3.h @brief contains MolWorld_sp3 class, which is a comprehensive class storing the state of a molecular simulation including bonding,non-bodning of molecules and molecules with substrate
@@ -1065,6 +1065,7 @@ void printPBCshifts(){
             gridFF.makePBCshifts(gridFF.nPBC, gridFF.lvec);
 
         }
+        printf("MolWorld_sp3::loadSurf(%s) gridstep=%g \n", name, gridFF.grid.dCell.a.norm() );
         return true;
     }
 

@@ -1,0 +1,1 @@
+../../../ref/07-bonds+lj_excl_1-2_sub_clamp/distort18/f_lammps.txt

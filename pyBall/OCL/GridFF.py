@@ -640,25 +640,26 @@ class GridFF_cl:
         T00 = time.perf_counter()
 
         # Only create a new grid if one doesn't exist or if parameters are explicitly provided
-        if self.gsh is None or dg is not None or ng is not None or lvec is not None or g0 is not None:
-            # Use existing grid parameters if not explicitly provided
-            if dg is None and hasattr(self, 'gsh'):
-                dg = self.gsh.dg
-                print(f"Using existing grid step size: {dg}")
-            if lvec is None and hasattr(self, 'gsh') and self.gsh.lvec is not None:
-                lvec = self.gsh.lvec
-                print(f"Using existing lattice vectors: {lvec}")
-            if g0 is None and hasattr(self, 'gsh'):
-                g0 = self.gsh.g0
-                print(f"Using existing grid origin: {g0}")
+        # if self.gsh is None or dg is not None or ng is not None or lvec is not None or g0 is not None:
+        #     # Use existing grid parameters if not explicitly provided
+        #     if dg is None and hasattr(self, 'gsh'):
+        #         dg = self.gsh.dg
+        #         print(f"Using existing grid step size: {dg}")
+        #     if lvec is None and hasattr(self, 'gsh') and self.gsh.lvec is not None:
+        #         lvec = self.gsh.lvec
+        #         print(f"Using existing lattice vectors: {lvec}")
+        #     if g0 is None and hasattr(self, 'gsh'):
+        #         g0 = self.gsh.g0
+        #         print(f"Using existing grid origin: {g0}")
             
-            grid = GridShape(ns=ng, dg=dg, lvec=lvec, g0=g0)
-            print(f"Creating grid with: ns={grid.ns}, dg={grid.dg}, lvec={lvec}")
-            self.set_grid(grid)
+        #     grid = GridShape(ns=ng, dg=dg, lvec=lvec, g0=g0)
+        #     print(f"Creating grid with: ns={grid.ns}, dg={grid.dg}, lvec={lvec}")
+        #     self.set_grid(grid)
         
         # atoms.apos = xyzq[:,:3]
         # print("New_Atoms:",atoms.shape)
         # print("xyzq[:,:3] =", atoms[:,:3])
+        print("GridFF_cl::make_MorseFF() dg = ",dg)
 
 
         na   = len(atoms)
@@ -986,10 +987,9 @@ class GridFF_cl:
         raw_nz = self.gsh.ns[2] + nz_slab
         raw_nz_int = int(np.ceil(raw_nz))
         adj_nz = clu.next_nice(raw_nz_int, allowed_factors={2, 3, 5})
-       
-      
+        ns_cl = np.array([self.gsh.ns[0], self.gsh.ns[1], self.gsh.ns[2], adj_nz-self.gsh.ns[2]], dtype=np.int32)
         #ns_cl = np.array([self.gsh.ns[0], self.gsh.ns[1], adj_nz, 0], dtype=np.int32)
-        ns_cl = np.array([self.gsh.ns[0], self.gsh.ns[1], adj_nz-nz_slab, (nz_slab) ], dtype=np.int32)
+        # ns_cl = np.array([self.gsh.ns[0], self.gsh.ns[1], adj_nz-nz_slab, (nz_slab) ], dtype=np.int32)
         # ns_cl = np.array((self.gsh.ns[0], self.gsh.ns[1], self.gsh.ns[2], nz_slab), dtype=np.int32)
         # ns_cl  = np.array( self.gsh.ns+(nz_slab,),  dtype=np.int32   )
         # Debug dimensions
@@ -1079,7 +1079,7 @@ class GridFF_cl:
         #     return result
         # return None
 
-    def laplace_real_loop_inert(self, niter=16, cSOR=0.0, cV=0.6, bReturn=False, sh=None ):
+    def laplace_real_loop_inert(self, niter=16, cSOR=0.0, cV=0.8, bReturn=False, sh=None ):
         print( "GridFF_cl::laplace_real_loop_inert() " )
 
         if sh is None: sh=self.gsh.ns[::-1]
@@ -1171,7 +1171,7 @@ class GridFF_cl:
         return Vgrid
 
 
-    def makeCoulombEwald_slab(self, atoms, Lz_slab=20.0, dipol=0.0, niter=4, bDipoleCoorection=False, bReturn=True, bTranspose=False, bSaveQgrid=False, bCheckVin=False, bCheckPoisson=False ):
+    def makeCoulombEwald_slab(self, atoms, Lz_slab=20.0, dipol=0.0, niter=16, bDipoleCoorection=False, bReturn=True, bTranspose=False, bSaveQgrid=False, bCheckVin=False, bCheckPoisson=False ):
         print( f"GridFF_cl::makeCoulombEwald_slab()  Lz_slab {Lz_slab}, dipol {dipol} niter {niter} bDipoleCoorectio {bDipoleCoorection} bReturn {bReturn} bTranspose {bTranspose} bSaveQgrid {bSaveQgrid} bCheckVin{bCheckVin} bCheckPoisson {bCheckPoisson} " )
         
         clu.try_load_clFFT()
@@ -1184,7 +1184,7 @@ class GridFF_cl:
         raw_nz = self.gsh.ns[2] + nz_slab
         raw_nz_int = int(np.ceil(raw_nz))
         adj_nz = clu.next_nice(raw_nz_int, allowed_factors={2, 3, 5})
-        ns_cl = np.array([self.gsh.ns[0], self.gsh.ns[1], adj_nz, 0], dtype=np.int32); print("ns_cl", ns_cl)
+        ns_cl = np.array([self.gsh.ns[0], self.gsh.ns[1], adj_nz, adj_nz-self.gsh.ns[2]], dtype=np.int32); print("ns_cl", ns_cl)
 
         nxyz_slab = ns_cl[0]*ns_cl[1]*ns_cl[2]
 

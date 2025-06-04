@@ -1,0 +1,112 @@
+
+**1. Text Overview**
+
+The calculation for the "PLQ" job type within the `test_gridFF_ocl` function aims to compute and fit Pauli repulsion (P), London dispersion (L), and Coulomb (Q) potentials on a 3D grid.
+
+*   **Setup:**
+    *   Atom data (positions `xyzq`, parameters `REQs`) is loaded using `make_atoms_arrays`.
+    *   A `GridShape` object defines the grid parameters (dimensions, spacing, origin).
+    *   `clgff.set_grid()` initializes these parameters in the `GridFF_cl` OpenCL interface object.
+
+*   **Coulomb Potential (Q) Calculation & Fitting:**
+    1.  **`clgff.makeCoulombEwald_slab()`:** Orchestrates the slab-corrected Ewald summation.
+        *   Allocates necessary OpenCL buffers (`atoms`, `Qgrid`, `Vgrid`, `V1`, `V2`, `vV`, `V_Coul`).
+        *   Copies atom data (`xyzq`) to the GPU (`atoms_buff`).
+        *   **`project_atoms_on_grid_quintic_pbc` (Kernel):** Projects atom charges onto `Qgrid_buff` using B-splines.
+        *   **`poisson()` (Python wrapper):**
+            *   Sets up FFT plans.
+            *   Performs FFT on `Qgrid_buff`.
+            *   **`poissonW` (Kernel):** Solves Poisson equation in k-space, storing potential in `Vgrid_buff`.
+            *   Performs inverse FFT on `Vgrid_buff`.
+        *   **`laplace_real_loop_inert()` (Python wrapper):**
+            *   **`laplace_real_pbc` (Kernel):** Refines the real-space potential iteratively using SOR and inertia, storing the result in `V1_buff` (or `V2_buff`).
+        *   **`slabPotential()` (Python wrapper):**
+            *   **`slabPotential` / `slabPotential_zyx` (Kernel):** Applies analytical slab corrections to the potential from the relaxation step (`V1_buff`), storing the final corrected potential in `V_Coul_buff`.
+    2.  **`clgff.fit3D(clgff.V1_buff, ...)`:** Fits the calculated potential (using the relaxed potential from `V1_buff` as reference) to B-spline coefficients.
+        *   Allocates fitting buffers (`Gs`, `dGs`, `fGs`, `vGs`).
+        *   Initializes `Gs_buff` with the reference potential.
+        *   Iteratively:
+            *   **`BsplineConv3D` (Kernel):** Calculates potential error (`dGs_buff`).
+            *   **`BsplineConv3D` (Kernel):** Calculates coefficient forces (`fGs_buff`).
+            *   **`move` (Kernel):** Updates coefficients (`Gs_buff`) and velocities (`vGs_buff`).
+        *   Returns fitted coefficients (`VcoulB`).
+
+*   **Morse Potential (P & L) Calculation & Fitting:**
+    1.  **`clgff.make_MorseFF()`:** Orchestrates direct grid calculation.
+        *   Allocates buffers (`atoms`, `REQs`, `V_Paul`, `V_Lond`).
+        *   Copies atom (`xyzq`) and parameter (`REQs`) data to GPU.
+        *   **`make_MorseFF` (Kernel):** Directly calculates Pauli and London potentials at each grid point by summing atom contributions (including PBC images), storing results in `V_Paul_buff` and `V_Lond_buff`.
+    2.  **`clgff.fit3D(clgff.V_Paul_buff, ...)`:** Fits the Pauli potential using `V_Paul_buff` as reference. Returns fitted coefficients (`V_Paul`).
+    3.  **`clgff.fit3D(clgff.V_Lond_buff, ...)`:** Fits the London potential using `V_Lond_buff` as reference. Returns fitted coefficients (`V_Lond`).
+
+*   **Output:**
+    *   The test script plots slices of the raw and fitted potentials and convergence trajectories.
+    *   Optionally (if `save_name=='double3'`), the fitted coefficients (`V_Paul`, `V_Lond`, `VcoulB`) are combined and saved as a `.npy` file.
+
+**2. Diagram**
+
+This sequence diagram illustrates the interactions:
+
+```mermaid
+sequenceDiagram
+    participant TestScript as TestScript<br>(ocl_GridFF_new.py)
+    participant GridFF_cl as GridFF_cl<br>(OCL/GridFF.py)
+    participant OCL Kernels as OpenCL Kernels<br>(GridFF.cl)
+
+    TestScript->>GridFF_cl: make_atoms_arrays()
+    TestScript->>GridFF_cl: set_grid(grid)
+
+    par Coulomb Calculation and Fit
+        TestScript->>GridFF_cl: makeCoulombEwald_slab(xyzq)
+        Note over GridFF_cl: Allocate Buffers (atoms, Qgrid, Vgrid, V1, V2, vV, V_Coul)
+        GridFF_cl->>OCL Kernels: project_atoms_on_grid_quintic_pbc(atoms_buff -> Qgrid_buff)
+        GridFF_cl->>GridFF_cl: poisson()
+        Note over GridFF_cl: Setup FFT, Run FFT(Qgrid_buff)
+        GridFF_cl->>OCL Kernels: poissonW(Qgrid_buff -> Vgrid_buff)
+        Note over GridFF_cl: Run iFFT(Vgrid_buff)
+        GridFF_cl->>GridFF_cl: laplace_real_loop_inert()
+        loop Relaxation Iterations
+            GridFF_cl->>OCL Kernels: laplace_real_pbc(V1/V2_buff -> V2/V1_buff)
+        end
+        Note over GridFF_cl: Result in V1_buff (or V2_buff)
+        GridFF_cl->>GridFF_cl: slabPotential()
+        GridFF_cl->>OCL Kernels: slabPotential(V1_buff -> V_Coul_buff)
+        GridFF_cl-->>TestScript: Return (implicitly uses V1_buff for fitting later)
+
+        TestScript->>GridFF_cl: fit3D(V1_buff)
+        Note over GridFF_cl: Allocate Fitting Buffers (Gs, dGs, fGs, vGs)
+        Note over GridFF_cl: Initialize Gs_buff = V1_buff, vGs_buff = 0
+        loop Fitting Iterations
+            GridFF_cl->>OCL Kernels: BsplineConv3D(Gs_buff, V1_buff -> dGs_buff)
+            GridFF_cl->>OCL Kernels: BsplineConv3D(dGs_buff -> fGs_buff)
+            GridFF_cl->>OCL Kernels: move(Gs_buff, vGs_buff, fGs_buff -> Gs_buff, vGs_buff)
+        end
+        GridFF_cl-->>TestScript: Return fitted VcoulB (from Gs_buff)
+    and Morse Calculation and Fit
+        TestScript->>GridFF_cl: make_MorseFF(xyzq, REQs)
+        Note over GridFF_cl: Allocate Buffers (atoms, REQs, V_Paul, V_Lond)
+        GridFF_cl->>OCL Kernels: make_MorseFF(atoms_buff, REQs_buff -> V_Paul_buff, V_Lond_buff)
+        GridFF_cl-->>TestScript: Return (implicitly V_Paul_buff, V_Lond_buff)
+
+        TestScript->>GridFF_cl: fit3D(V_Paul_buff)
+        Note over GridFF_cl: Fit loop similar to Coulomb...
+        GridFF_cl-->>TestScript: Return fitted V_Paul
+
+        TestScript->>GridFF_cl: fit3D(V_Lond_buff)
+        Note over GridFF_cl: Fit loop similar to Coulomb...
+        GridFF_cl-->>TestScript: Return fitted V_Lond
+    end
+
+    TestScript->>TestScript: Combine V_Paul, V_Lond, VcoulB into PLQ
+    TestScript->>TestScript: Save PLQ array (optional)
+    TestScript->>TestScript: Plot results
+
+```
+
+**How to Render the Diagram:**
+
+1.  **Copy the Code:** Copy the entire text block starting with ````mermaid` and ending with ````.
+2.  **Use a Mermaid Renderer:**
+    *   **Online Editors:** Paste the code into an online Mermaid editor like the official Mermaid Live Editor ([https://mermaid.live](https://mermaid.live)) or others available online.
+    *   **Markdown Preview:** Many Markdown editors and platforms (like GitHub, GitLab, Obsidian, VS Code with extensions) have built-in support or plugins for rendering Mermaid diagrams directly within Markdown files. Simply paste the code block into your Markdown document.
+    *   **Command Line:** You can use the Mermaid CLI tool (`mmdc`) if you have Node.js installed (`npm install -g @mermaid-js/mermaid-cli`). Save the code to a file (e.g., `diagram.mmd`) and run `mmdc -i diagram.mmd -o diagram.png` (or `.svg`).
