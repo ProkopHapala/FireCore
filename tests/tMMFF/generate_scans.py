@@ -4,6 +4,7 @@
 import sys
 import numpy as np
 import os
+import shutil
 import argparse
 import matplotlib.pyplot as plt
 from matplotlib.colors import Normalize
@@ -35,6 +36,8 @@ def generate_scan(molecule, substrate, output_dir, scan_type='total', scan_param
     Returns:
         bool: True if scan completed successfully
     """
+    # global mmff
+    
     # Validate scan_type is a string and one of the allowed types
     if not isinstance(scan_type, str):
         print(f"Error: scan_type must be a string, not {type(scan_type)}")
@@ -319,6 +322,28 @@ if __name__ == "__main__":
     parser.add_argument('--span-max-2', type=float, default=15.1, help='Maximum scan distance along y for 2d scan')
     
     args = parser.parse_args()
+    
+    # Create output directory and copy input files
+    os.makedirs(args.output_dir, exist_ok=True)
+    
+    # Ensure paths have .xyz extension
+    mol_path = args.molecule + '.xyz' if not args.molecule.endswith('.xyz') else args.molecule
+    sub_path = args.substrate + '.xyz' if not args.substrate.endswith('.xyz') else args.substrate
+    
+    # Get base names and copy files
+    mol_name = os.path.basename(mol_path)
+    sub_name = os.path.basename(sub_path)
+    
+    try:
+        shutil.copy2(mol_path, os.path.join(args.output_dir, mol_name))
+        shutil.copy2(sub_path, os.path.join(args.output_dir, sub_name))
+        print(f"Saved input files:")
+        print(f"  Molecule: {mol_name}")
+        print(f"  Substrate: {sub_name}")
+    except FileNotFoundError as e:
+        print(f"Error: Could not find input file: {e.filename}")
+        print("Please make sure the paths are correct and include .xyz extension if needed.")
+        sys.exit(1)
     
     # Process the requested scan types
     if 'all' in args.scan_types:
