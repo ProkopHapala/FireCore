@@ -183,8 +183,8 @@ def compare_2d_with_lammps(molecule, lammps_dir, firecore_dir, output_dir, scan_
     ny = nx
     
     # Print coordinate ranges for debugging
-    print(f"X range: {np.min(x_firecore):.6f} to {np.max(x_firecore):.6f}")
-    print(f"Y range: {np.min(y_firecore):.6f} to {np.max(y_firecore):.6f}")
+    print(f"X range: {np.min(x_firecore):.12f} to {np.max(x_firecore):.12f}")
+    print(f"Y range: {np.min(y_firecore):.12f} to {np.max(y_firecore):.12f}")
     
     # Reshape data into grids (transpose to match coordinate convention)
     e_firecore_grid = e_firecore.reshape(nx, ny).T
@@ -194,13 +194,21 @@ def compare_2d_with_lammps(molecule, lammps_dir, firecore_dir, output_dir, scan_
     x_grid = x_firecore.reshape(nx, ny).T
     y_grid = y_firecore.reshape(nx, ny).T
     
-    # Print some debug info
+    # Print detailed energy statistics
     print(f"Grid dimensions: {nx}x{ny}")
-    print(f"FireCore grid range: {np.min(e_firecore_grid):.6f} to {np.max(e_firecore_grid):.6f} eV")
-    print(f"LAMMPS grid range: {np.min(e_lammps_grid):.6f} to {np.max(e_lammps_grid):.6f} eV")
+    print(f"FireCore {scan_type} energies:")
+    print(f"  Range: {np.min(e_firecore_grid):.12f} to {np.max(e_firecore_grid):.12f} eV")
+    print(f"  Mean: {np.mean(e_firecore_grid):.12f} eV")
+    print(f"LAMMPS {scan_type} energies:")
+    print(f"  Range: {np.min(e_lammps_grid):.12f} to {np.max(e_lammps_grid):.12f} eV")
+    print(f"  Mean: {np.mean(e_lammps_grid):.12f} eV")
     
-    # Calculate difference
-    difference_grid = e_firecore_grid - e_lammps_grid
+    # Calculate difference with full precision
+    difference_grid = np.subtract(e_firecore_grid, e_lammps_grid, dtype=np.float64)
+    print(f"Difference statistics:")
+    print(f"  Range: {np.min(difference_grid):.12f} to {np.max(difference_grid):.12f} eV")
+    print(f"  Mean: {np.mean(difference_grid):.12f} eV")
+    print(f"  RMS: {np.sqrt(np.mean(np.square(difference_grid))):.12f} eV")
     
     # Set common scale for plots
     vmin = min(np.min(e_lammps_grid), np.min(e_firecore_grid))
