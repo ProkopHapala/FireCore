@@ -401,8 +401,8 @@ if __name__ == "__main__":
         
         # Prepare scan parameters for 1D scan
         scan_params = {
-            'nscan': args.nscan_1,
-            'span': (args.span_min_1, args.span_max_1),
+            'nscan': args.nscan,
+            'span': (args.span_min, args.span_max),
             'dir': dir1,
             'p0': p0
         }
