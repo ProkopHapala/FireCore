@@ -165,20 +165,41 @@ def compare_2d_with_lammps(molecule, lammps_dir, firecore_dir, output_dir, scan_
     # Preprocess LAMMPS data to remove blank lines
     preprocess_lammps_data(lammps_raw, lammps_processed)
     
-    # Load and prepare data
+    # Load data
     lammps_data = np.loadtxt(lammps_processed)
-    firecore_data = np.loadtxt(firecore_file)
-    firecore_data[:, 2] -= np.min(firecore_data[:, 2])  # Scale to match LAMMPS
+    firecore_data = np.loadtxt(firecore_file, skiprows=4)  # Skip header rows
     
     # Extract coordinates and energies
     x_lammps, y_lammps, e_lammps = lammps_data.T
     x_firecore, y_firecore, e_firecore = firecore_data.T
     
-    # Reshape data into 2D grids
-    nx = len(np.unique(x_lammps))
-    ny = len(np.unique(y_lammps))
-    e_lammps_grid = e_lammps.reshape(ny, nx)
-    e_firecore_grid = e_firecore.reshape(ny, nx)
+    # Normalize FireCore energies to start at 0
+    firecore_min = np.min(e_firecore)
+    e_firecore -= firecore_min
+    print(f"FireCore {scan_type} data range: {firecore_min:.6f} to {np.max(e_firecore):.6f} eV")
+    
+    # Determine grid dimensions
+    nx = int(np.sqrt(len(x_firecore)))  # Assuming square grid
+    ny = nx
+    
+    # Print coordinate ranges for debugging
+    print(f"X range: {np.min(x_firecore):.6f} to {np.max(x_firecore):.6f}")
+    print(f"Y range: {np.min(y_firecore):.6f} to {np.max(y_firecore):.6f}")
+    
+    # Reshape data into grids (transpose to match coordinate convention)
+    e_firecore_grid = e_firecore.reshape(nx, ny).T
+    e_lammps_grid = e_lammps.reshape(nx, ny).T
+    
+    # Store grid coordinates for plotting
+    x_grid = x_firecore.reshape(nx, ny).T
+    y_grid = y_firecore.reshape(nx, ny).T
+    
+    # Print some debug info
+    print(f"Grid dimensions: {nx}x{ny}")
+    print(f"FireCore grid range: {np.min(e_firecore_grid):.6f} to {np.max(e_firecore_grid):.6f} eV")
+    print(f"LAMMPS grid range: {np.min(e_lammps_grid):.6f} to {np.max(e_lammps_grid):.6f} eV")
+    
+    # Calculate difference
     difference_grid = e_firecore_grid - e_lammps_grid
     
     # Set common scale for plots
