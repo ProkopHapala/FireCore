@@ -219,7 +219,7 @@ def relax_scanPlot1D(nscan=1000, span=(0.0,4.0),
     #     Es, Fs, Ps = mmff.scan(poss, bF=True, bP=True)
 
     # scan_constr(nconf, ncontr, icontrs, contrs, Es=None, aforces=None, aposs=None, bHardConstr=False, omp=False, niter_max=10000, dt=0.05, Fconv=1e-5, Flim=100.0 ):
-    iconstr = np.array( [29], np.int32)
+    iconstr = np.array( [26], np.int32)
     # iconstr = np.arange(1, 38, 1, dtype=np.int32)
     # iconstr = np.array( [0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31,32,33,34,35,36,37], np.int32)
     # nconf = 10
@@ -1025,8 +1025,14 @@ mmff.setSwitches2( NonBonded=1, MMFF=1, SurfAtoms=1, GridFF=1 )   ### For Relaxe
 # t,Es,Ps=relax_scanPlot1D(bRelax=True, nscan=125, span=(2.6,15.1),  dir=(0.0,0.0,1.0), p0=(0.0,0.0,(0+0)), label="PTCDA on Na", saveFig=None, saveData="new_substrate_trial_relax_scan_ptcda_test_morse",
 #                         niter_max=100000,Fconv=1e-3,dt=0.02 )  ### z scan dt 0.05 is giving energy in the order of less than 100 but for more smaller step it is giving absolute energy in the order of 1e7 and greater value of like 0.1 is giving random values 0.1 is to match with LAMMPs 0.001femto
 
-# t,Es,Ps=relax_scanPlot1D(bRelax=True, nscan=120, span=(0,12), dir=(0.866,0.5,0.0), p0=(0.0,0.0,(0+3.1)), label="PTCDA on Na", saveFig=None, saveData="trial_relax_scan_ptcda_line_test",
-#                         niter_max=50000,Fconv=1e-6,dt=0.1 )  # x y scan  and diagonal #dir=(0.866,0.5,0.0) for 30 degree  nscan=351, span=(0,35.1)
+#As per new lammps setup 
+# t,Es,Ps=relax_scanPlot1D(bRelax=True, nscan=201, span=(1.3,21.4),  dir=(0.0,0.0,1.0), p0=(0.0,0.0,(0+0)), label="PTCDA on Na", saveFig=None, saveData="new_substrate_trial_relax_scan_ptcda_test_total",
+#                         niter_max=100000,Fconv=1e-3,dt=0.02 ) 
+
+## For certain angle 221
+t,Es,Ps=relax_scanPlot1D(bRelax=True, nscan=357, span=(0.0,35.7),  dir=(2.0,1.0,0.0), p0=(0.0,0.0,(2.8)), label="PTCDA on Na", saveFig=None, saveData="new_substrate_trial_relax_scan_ptcda_test_total_angle_210",
+                        niter_max=100000,Fconv=1e-3,dt=0.02 ) 
+
 
 # # Visualize trajectory
 # visualize_molecular_trajectory(t, Ps)
@@ -1063,11 +1069,11 @@ sys	0m5.760s
 # sys	0m6.427s
 
 ########################################### 2D Scan Plotting #########################################
-scanPlot2D_uff(nscan1=41, nscan2=41,
-            span1=(0.0, 4.1), span2=(0.0, 4.1),
-            dir1=(1.0,0.0,0.0), dir2=(0.0,1.0,0.0),
-            p0=(0.0,0.0,3.3), label="E_xy for z=2.0", #) #,
-            saveFig=None, saveData=None)
+# scanPlot2D_uff(nscan1=41, nscan2=41,
+#             span1=(0.0, 4.1), span2=(0.0, 4.1),
+#             dir1=(1.0,0.0,0.0), dir2=(0.0,1.0,0.0),
+#             p0=(0.0,0.0,3.3), label="E_xy for z=2.0", #) #,
+#             saveFig=None, saveData=None)
 
 
 # scanPlot2D(nscan1=41, nscan2=41,

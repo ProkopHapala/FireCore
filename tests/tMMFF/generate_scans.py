@@ -14,7 +14,7 @@ import shutil
 
 # Regular imports
 sys.path.append("../../")
-from all_scan import run_scan, scanPlot2D_uff, scanPlot_uff
+from all_scan import run_scan, scanPlot2D_uff, scanPlot_uff, relax_scanPlot1D
 from pyBall import atomicUtils as au
 from pyBall import MMFF as mmff
 
@@ -320,6 +320,14 @@ if __name__ == "__main__":
     parser.add_argument('--nscan-2', type=int, default=250, help='Number of scan points along y for 2d scan')
     parser.add_argument('--span-min-2', type=float, default=2.6, help='Minimum scan distance along y for 2d scan')
     parser.add_argument('--span-max-2', type=float, default=15.1, help='Maximum scan distance along y for 2d scan')
+
+    # Relaxed scan parameters
+    parser.add_argument('--relaxed', action='store_true', help='Enable relaxed scan mode for 1D scans')
+    parser.add_argument('--niter-max', type=int, default=100000, help='Maximum number of iterations for relaxation')
+    parser.add_argument('--dt', type=float, default=0.02, help='Time step for relaxation')
+    parser.add_argument('--fconv', type=float, default=1e-3, help='Force convergence criterion for relaxation')
+    parser.add_argument('--cons-atom', type=int, help='Atom index to constrain during relaxation')
+    
     
     args = parser.parse_args()
     
@@ -406,7 +414,17 @@ if __name__ == "__main__":
             'dir': dir1,
             'p0': p0
         }
-        print('Running 1D scan using scanPlot_uff...')
+        if args.relaxed:
+            scan_params.update({
+                'relaxed': True,
+                'niter_max': args.niter_max,
+                'dt': args.dt,
+                'Fconv': args.fconv,
+                'cons_atom': args.cons_atom
+            })
+            print('Running 1D relaxed scan using relax_scanPlot1D...')
+        else:
+            print('Running 1D scan using scanPlot_uff...')
     else:
         raise ValueError(f'Unsupported scan mode: {args.scan_mode}')
 
