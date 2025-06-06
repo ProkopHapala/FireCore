@@ -258,6 +258,7 @@ constexpr static const double aMasses[9] = {  1.0, 4.0, 7.0, 9.0,  11.0,  12.0, 
 
     //double * espin  =0;
     int    * espin  =0; ///< electron spins
+    double * echarge =0; ///< electron charge (QE for individual, 2*QE for pair)
     Vec3d  * epos   =0; ///< electron positions
     Vec3d  * eforce =0; ///< electron forces
     Vec3d  * evel   =0; ///< electron velocities
@@ -287,6 +288,7 @@ void realloc(int na_, int ne_, bool bVel=false){
     _realloc( aPars2, na);
     _realloc( espin, ne);
     _realloc( eE, ne );
+    _realloc( echarge, ne);  for(int i=0; i<ne; i++){ echarge[i]=1; }
 
     apos   = (Vec3d*)pDOFs;
     aforce = (Vec3d*)fDOFs;
@@ -402,7 +404,7 @@ void makeMasses(double*& invMasses, double m_const=-1){
         int ne3 =ne*3; 
         double* buff=invMasses; for(int i=0; i<na;  i++){ double m = eV_MeAfs/( aMasses[ (int)(aPars[i].x-0.5) ] * au_Me ); int i3=i*3; buff[i3]=m;buff[i3+1]=m;buff[i3+2]=m;  } // assign atomic masses   [Me] i.e. in units of electron mass
         buff+=na3;              for(int i=0; i<ne3; i++){ buff[i]  = eV_MeAfs;         }                                      // assign electron masses [Me] i.e. in units of electron mass
-        buff+=ne3;              for(int i=0; i<ne;  i++){ buff[i]  = 0.01*eV_MeAfs/( 0.5 ); }                                      // assign electron size massses ????  ToDo:  What should be this mass ?????
+        buff+=ne3;              for(int i=0; i<ne;  i++){ buff[i]  = 0.01*eV_MeAfs/( 0.5 )*echarge[i]; }                                      // assign electron size massses ????  ToDo:  What should be this mass ?????
     }
     /*
     // Force units:  [eV/A]
@@ -435,6 +437,7 @@ void dealloc(){
     delete [] aPars;
     delete [] aPars2;
     delete [] espin;
+    delete [] echarge;
     delete [] eE;
 }
 ~EFF(){ if(bDealoc)dealloc(); }
@@ -451,12 +454,12 @@ void fixElectron(int ie, double* vs=0){
     };
 }
 
-void set_electron(int ie, const Vec3d& pos, double size, int spin){
-    epos [ie] = pos;
-    esize[ie] = size;
-    espin[ie] = spin;
+void set_electron(int ie, const Vec3d& pos, double size, int spin, double charge=1.0){
+    epos   [ie] = pos;
+    esize  [ie] = size;
+    espin  [ie] = spin;
+    echarge[ie] = charge;
 }
-
 
 /// evaluate kinetic energy of each electron
 double evalKinetic(){
@@ -469,10 +472,9 @@ double evalKinetic(){
         //if( i_DEBUG>0 ) printf( "evalKinetic[%i] s %g -> f %g Ek %g \n", i, esize[i], fsize[i], Ek );
         double s = esize[i];
         if(s<min_esize){ s=min_esize; esize[i]=s; bNegativeSizes=true; };
-        double dEk = addKineticGauss_eFF( esize[i], fsize[i] );
+        double dEk = addKineticGauss_eFF( esize[i], fsize[i], echarge[i] );
         eE[i] =dEk;
         Ek   +=dEk;
-
         //if(verbosity>2){ printf("%s e%i Ke %5.20f \n",prefix, i,dEk); }
     }
     //if( bNegativeSizes & (verbosity>0) ){ printf( "negative electron sizes => perhaps decrease relaxation time step? \n" ); }
@@ -484,7 +486,7 @@ double evalEE(){
     Eee    =0;
     EeePaul=0;
     //double w2ee = wee*wee;
-    const double qq = QE*QE;
+    //const double qq = QE*QE;
     for(int i=0; i<ne; i++){
         const Vec3d    pi  = epos[i];
         //Vec3d&   fi  = eforce[i];
@@ -492,15 +494,23 @@ double evalEE(){
         //const double   si  = esize[i];
         const double   si  = esize[i];
         double&       fsi  = fsize[i];
+        const double  qi   = echarge[i];
         for(int j=0; j<i; j++){
             Vec3d  f  = Vec3dZero;
             const Vec3d  dR = epos [j] - pi;
             //const double sj = esize[j];
             const double sj = esize[j];
             double&     fsj = fsize[j];
+            const double qj = echarge[j];
+            const double qij = qi*qj;
+
+            const int spinj  = espin[j];
+            const int spinij = spini*spinj;
+            const double q2  = (spini==0)&&(spinj==0)? 2 : 1.0;
+
             double dEee=0,dEpaul=0;
             if(bEvalCoulomb){
-                dEee = addCoulombGauss( dR, si, sj, f, fsi, fsj, qq );
+                dEee = addCoulombGauss( dR, si, sj, f, fsi, fsj, qij );
                 //dEee = addCoulombGauss( dR, si*M_SQRT2, sj*M_SQRT2, f, fsi, fsj, qq );
                 //dEee = addCoulombGauss( dR, si*2, sj*2, f, fsi, fsj, qq );
             }
@@ -512,7 +522,7 @@ double evalEE(){
                         //printf( "evalEE() r %g pi (%g,%g,%g) pj (%g,%g,%g) \n", dR.norm(), epos[j].x,epos[j].y,epos[j].z, pi.x,pi.y,pi.z  );
                         //dEpaul = addPauliGauss  ( dR, si, sj, f, fsi, fsj, spini!=espin[j], KRSrho );
                         //dEpaul = addPauliGauss_New  ( dR, si, sj, f, fsi, fsj, spini!=espin[j], KRSrho );
-                        dEpaul = addPauliGauss_New  ( dR, si, sj, f, fsi, fsj, spini*espin[j], KRSrho );
+                        dEpaul = addPauliGauss_New  ( dR, si, sj, f, fsi, fsj, spinij, KRSrho, q2 );
                         //printf( "EeePaul[%i,%i]= %g \n", i, j, dEpaul );
                     //}
                 }else if( iPauliModel == 2 ){ // iPauliModel==0 Pauli repulasion from Valence-Bond theory
@@ -579,6 +589,7 @@ double evalAE(){
             Vec3d f=Vec3dZero;
             const Vec3d   dR  = epos [j] - pi;
             const double  sj  = esize[j];
+            const double  qj  = echarge[j];
             double& fsj = fsize[j];
             double  fs_junk=0;
             //Eae += addPairEF_expQ( epos[j]-pi, f, abwi.z, qi*QE, abwi.y, abwi.x );
@@ -591,8 +602,8 @@ double evalAE(){
                 //if(qqi<-1.00001) EaePaul += addDensOverlapGauss_S( dR,sj, abwi.z, abwi.a, f, fsj, fs_junk );     // correct
                 //double dEaePaul = addPauliGauss      ( dR, sj, abwi.z, f, fsj, fs_junk, false, KRSrho );     // correct
                 //double dEaePaul = addDensOverlapGauss_S( dR, sj, aPar.z, aPar.w, f, fsj, fs_junk );     // correct
-                dEaePaul   = addPauliGauss_New( dR, sj, aPar.z, f, fsj, fs_junk, 0, KRSrho, aPar.w       ); // spin=0 means both -1 and +1  
-                if(bCoreCoul){ dEee       = addCoulombGauss  ( dR, sj, aPar.z, f, fsj, fs_junk,            aPar.w*2.0  ); }
+                dEaePaul            = addPauliGauss_New( dR, sj, aPar.z, f, fsj, fs_junk, 0, KRSrho, qj      ); // spin=0 means both -1 and +1  
+                if(bCoreCoul){ dEee = addCoulombGauss  ( dR, sj, aPar.z, f, fsj, fs_junk,            qj*2.0  ); }
                 //printf( "EaePaul[%i,%i] E %g r %g s %g abw(%g,%g) \n", i, j, dEaePaul, dR.norm(), sj, abwi.z, abwi.a );
             }
             //if( i_DEBUG>0 ) printf( "evalAE[%i,%i] dR(%g,%g,%g) s %g q %g  ->   f(%g,%g,%g) fs %g \n", i,j, dR.x,dR.y,dR.z, sj, qqi,   f.x,f.y,f.z, fsj );
@@ -661,9 +672,11 @@ double evalAE_ECP(){
             Vec3d f=Vec3dZero;
             const Vec3d   dR  = epos [j] - pi;
             const double  sj  = esize[j];
+            const double  qj  = echarge[j];
             double& fsj = fsize[j];
             double  fs_junk=0;
             double dEae=0,dEaePaul=0,dEee=0;
+
             if(bEvalAECoulomb){
                 dEae  = addCoulombGauss(dR, aPar.z, sj, f, fs_junk, fsj, (aPar.x - aPar.z) );   // ( Z - Zeff )
             }
@@ -690,11 +703,11 @@ double evalAE_ECP(){
                         default:
                             break;
                     }
-                    dEaePaul  += dE_ * Hartree_to_eV;
-                    fsj       -= fe_ * Hartree_to_eV;
-                    f.add_mul(dR, (fr_ * Hartree_to_eV) / rc);
+                    dEaePaul    += dE_*qj * Hartree_to_eV;
+                    fsj         -= fe_*qj * Hartree_to_eV;
+                    f.add_mul(dR, (fr_*qj * Hartree_to_eV) / rc);
                 }else{
-                    dEaePaul   = addPauliGauss_New( dR, sj, aPar.z, f, fsj, fs_junk, 0, KRSrho, aPar.z*0.5 ); // spin=0 means both -1 and +1  
+                    dEaePaul   = addPauliGauss_New( dR, sj, aPar.z, f, fsj, fs_junk, 0, KRSrho, qj ); // spin=0 means both -1 and +1  
                     //dEaePaul   = addPauliGauss_New( dR, sj, aPar.z, f, fsj, fs_junk, 0, KRSrho, aPar.z*0.5 ); // spin=0 means both -1 and +1 
                 }
             }
@@ -773,7 +786,7 @@ double evalCoreCorrection(){
         if(aPar.w<1e-8) continue;
         double s = aPar.z;
         double w = aPar.w;
-        Ek_       += addKineticGauss_eFF( s, fsi )*2.0*w;                                        // kineatic energy of core electrons
+        Ek_       += addKineticGauss_eFF( s, fsi, w*2.0 );                                        // kineatic energy of core electrons
       //EaePaul_  += addPauliGauss_New( Vec3dZero, s, s, f, fsi, fsj, -1, KRSrho, aPar.w );             // Pauli repulsion of core electrons
         Eee_      += addCoulombGauss  ( Vec3dZero, s, s, f, fsi, fsj,            aPar.w );             // core electrons with each other
         Eae_      += addCoulombGauss  ( Vec3dZero, aPar.y, s, f, fsi, fsj,       aPar.w*-2.0*aPar.x ); // nuclie with core electrons

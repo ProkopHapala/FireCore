@@ -181,6 +181,12 @@ subroutine firecore_init( natoms_, atomTypes, atomsPos ) bind(c, name='firecore_
     call allocate_rho() 
     call readdata_mcweda ()
     call init_wfs(norbitals, nkpoints)
+
+    !   usefull for projecting orbitals and density on grid
+    call allocate_grid !(natoms, nspecies)
+    call read_wf ()
+    call read_vna ()
+
     call write_to_xyz( "#DEBUG libFireCore::firecore_init() ", 1 )
     return
 end subroutine firecore_init
@@ -648,6 +654,43 @@ subroutine firecore_orb2points( iband,ikpoint, npoints, points, ewfaux )  bind(c
     !if(verbosity.gt.0)write(*,*) "firecore_orb2points() "
     call project_orb_points( iband, ikpoint, npoints, points, ewfaux )
 end subroutine firecore_orb2points
+
+subroutine firecore_dens2points(npoints, points, f_den, f_den0, ewfaux_out) bind(c, name='firecore_dens2points')
+    use iso_c_binding
+    use configuration  ! For natoms, ratom, imass, num_orb, xl, neigh_*, etc.
+    use density        ! For rho, rhoA
+    use interactions   ! For Rc_max, nssh, lssh
+    ! project_dens_points is in project_dens module
+    !use project_dens, only: project_dens_points
+    ! project_dens0_points and initdenmat0 are in project_dens0 module
+    !use project_dens0, only: project_dens0_points, initdenmat0
+    use options, only: verbosity
+    implicit none
+
+    integer(c_int), value, intent(in) :: npoints
+    real(c_double), dimension(3, npoints), intent(in) :: points
+    real(c_double), value, intent(in) :: f_den    ! Coefficient for rho_SCF
+    real(c_double), value, intent(in) :: f_den0   ! Coefficient for rho_NA
+    real(c_double), dimension(npoints), intent(out) :: ewfaux_out
+
+    !if(verbosity.gt.0) 
+    write(*,*) "firecore_dens2points() "
+    if(verbosity.gt.0) write(*,*) "firecore_dens2points() npoints=", npoints, "f_den=", f_den, "f_den0=", f_den0
+
+    ewfaux_out = 0.0_c_double
+
+    if (npoints == 0) return
+
+    if (abs(f_den) > 1.0e-16_c_double) then
+        call project_dens_points(npoints, points, ewfaux_out, f_den)
+    end if
+
+    if (abs(f_den0) > 1.0e-16_c_double) then
+        call initdenmat0() ! Ensure rhoA is initialized
+        call project_dens0_points(npoints, points, ewfaux_out, f_den0)
+    end if
+
+end subroutine firecore_dens2points
 
 subroutine firecore_getpsi( l, m, in1, issh, n, poss, ys )  bind(c, name='firecore_getpsi' )
     use iso_c_binding

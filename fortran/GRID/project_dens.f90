@@ -209,3 +209,76 @@ subroutine project_dens( ewfaux, f_mul )
    !write (*,*) "project_orb vmin, vmax ", vmin, vmax
    return
 end subroutine project_dens
+
+!======================================================================
+! Projects self-consistent density (rho_SCF) onto a specific list of points
+!======================================================================
+subroutine project_dens_points(npts, points, rho_out, factor_mul)
+  use iso_c_binding
+  use configuration
+  use dimensions
+  use interactions
+  use neighbor_map
+  use density
+  ! getAtomBasis is in this file
+  implicit none
+
+  integer(c_int), intent(in) :: npts
+  real(c_double), dimension(3, npts), intent(in) :: points
+  real(c_double), dimension(npts), intent(inout) :: rho_out
+  real(c_double), intent(in) :: factor_mul
+
+  ! Local Variables
+  integer :: ipoint, iatom, jatom, ineigh
+  integer :: imu, inu
+  integer :: in1, in2
+  integer :: mbeta
+
+  real(c_double) :: ri, rj
+  real(c_double) :: dens
+  real(c_double) :: rho_ij
+
+  real(c_double), dimension(3) :: dXr, dYr, r21 ! Vector from atom X/Y to evaluation point P
+
+  real(c_double), dimension(numorb_max) :: psi1, psi2
+
+  if (npts == 0) return
+
+  do ipoint = 1, npts
+    dens = 0.0
+    do iatom = 1, natoms
+      in1 = imass(iatom)
+      do ineigh = 1, neighn(iatom)
+        jatom = neigh_j(ineigh, iatom)
+        mbeta = neigh_b(ineigh, iatom)
+        in2 = imass(jatom)
+
+        ! Vector from iatom (X0) to the evaluation point P
+        dXr(:) = points(:, ipoint) - ratom(:, iatom)
+        
+        ! Vector from iatom (X0) to jatom (Y0)
+        r21(:) = (ratom(:, jatom) + xl(:, mbeta)) - ratom(:, iatom)
+        
+        ! Vector from jatom (Y0) to the evaluation point P: P - Y0 = (P - X0) - (Y0 - X0) = dXr_vec - r21_vec
+        dYr(:) = dXr(:) - r21(:)
+
+        ri = sqrt(sum(dXr(:)**2))
+        rj = sqrt(sum(dYr(:)**2))
+        
+        rho_ij = 0.0
+        !if (dist_Y_point < Rc_max .and. dist_X_point < Rc_max) then ! Check cutoffs for both atoms
+          call getAtomBasis(in1, ri, dXr, psi1)
+          call getAtomBasis(in2, rj, dYr, psi2)
+          do inu = 1, num_orb(in1)
+            do imu = 1, num_orb(in2)
+              rho_ij = rho_ij + rho(inu, imu, ineigh, iatom) * psi1(inu) * psi2(imu)
+            enddo
+          enddo
+        !endif
+        dens = dens + rho_ij
+      enddo ! ineigh (jatom)
+    enddo ! iatom
+    rho_out(ipoint) = rho_out(ipoint) + dens * factor_mul
+  enddo ! ipoint
+end subroutine project_dens_points
+

@@ -71,6 +71,7 @@ subroutine initbasics ()
    use forces
    !use mpi_main
    !use hartree_fock
+   use options, only : verbosity
    implicit none
 
 ! Argument Declaration and Description
@@ -99,6 +100,7 @@ subroutine initbasics ()
 
    real distance
    real, dimension (3) :: vector
+   
 
    logical file_exists
 
@@ -122,6 +124,9 @@ subroutine initbasics ()
 ! ---------------------------------------------------------------------------
 ! ===========================================================================
 ! Initialize some constants
+
+   if(verbosity.gt.0) write(*,*) "subroutine initbasics() "
+
    call initconstants ! (sigma, sigmaold, scf_achieved)
    ! sigma = 0.0d0
    ! sigmaold = 0.0d0
@@ -369,6 +374,11 @@ subroutine initbasics ()
 ! Initialize the amat array for twister routines and set haveDorbitals
    call initamat(nspecies)
 
+
+   !  we need wavefunctions even when we do not use real-space grid
+   call allocate_grid !(natoms, nspecies)
+   call read_wf ()
+   call read_vna ()
 ! IF_DEF_GRID
 ! check if we need the grid
         !igrid = 0
@@ -380,11 +390,13 @@ subroutine initbasics ()
         if (igrid    .eq. 1) then
 !    call readgrid before initconstraints subroutine to avoid atom shift  when we fix the mesh position
           call readgrid !(iwrtewf)
-          call allocate_grid !(natoms, nspecies)
-          call read_wf ()
-          call read_vna ()
+          !call allocate_grid !(natoms, nspecies)
+          !call read_wf ()
+          !call read_vna ()
           call initgrid !(icluster)
-         endif
+        endif
+
+
 ! END_DEF_GRID
 
 

@@ -54,6 +54,7 @@
     use vnneutral
     use interactions
     use grid
+    use options, only : verbosity
     implicit none
  
 ! Argument Declaration and Description
@@ -74,6 +75,8 @@
 ! Procedure
 ! ===========================================================================
 
+    if(verbosity.gt.0) write(*,*) "subroutine reallocate_grid() "
+    
 ! wave function part
     allocate (mesh_wf (nsh_max, nspecies))
     allocate (drr_wf (nsh_max, nspecies))

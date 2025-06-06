@@ -23,4 +23,5 @@ LD_LIBRARY_PATH=/usr/lib/gcc/x86_64-linux-gnu/11/:$LD_LIBRARY_PATH
 #/usr/lib/gcc/x86_64-linux-gnu/11/libgfortran.so
 
 echo "#=========== RUN"
-python3 relax_molecules.py
+#python3 relax_molecules.py
+python3 density_along_line.py
