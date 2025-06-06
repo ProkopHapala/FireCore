@@ -7,6 +7,9 @@ np.set_printoptions(linewidth=np.inf, threshold=np.inf)
 sys.path.append("../../")
 from pyBall import eFF as eff
 
+eff.setVerbosity(2)
+
+
 # Initialize eFF (if needed)
 
 # Set atom parameters (mode=2 for double8 format)
@@ -27,15 +30,10 @@ atomParams2 = np.array([
 eff.setAtomParams(atomParams2, mode=2)
 
 # Process XYZ file
-xyz_file = os.path.join(os.path.dirname(__file__), 'export/scan_data/distscan_Oe.xyz')
-outEs, apos, epos = eff.processXYZ_e(
-    xyz_file,
-    nstepMax=0,  # Set to 0 for no dynamics, >0 for optimization
-    dt=0.001,
-    Fconv=1e-3,
-    optAlg=2,
-    bOutputs=(1,1,1)
-)
+#xyz_file = os.path.join(os.path.dirname(__file__), 'export/scan_data/distscan_Oe.xyz')
+#outEs, apos, epos = eff.processXYZ_e( xyz_file, nstepMax=0,  dt=0.001, Fconv=1e-3, optAlg=2, bOutputs=(1,1,1) )
+
+outEs, apos, epos = eff.processXYZ_e( "H2O_pairs.xyz", nstepMax=1000,  dt=0.001, Fconv=1e-3, optAlg=2, bOutputs=(1,1,1) )
 
 print("Results:")
 print("Energies:", outEs)

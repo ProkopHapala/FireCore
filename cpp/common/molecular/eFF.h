@@ -210,7 +210,7 @@ class EFF{ public:
 // Add Al, Si etc. as needed
 };
 
-    const Quat4d*  atom_params   = default_AtomParams;
+    const Quat4d*  atom_params  = default_AtomParams;
     const double8* atom_params2 = default_AtomParams2;
 
 //                                              H   He  Li    Be      B      C     N     O      F
@@ -289,6 +289,15 @@ void realloc(int na_, int ne_, bool bVel=false){
     _realloc( espin, ne);
     _realloc( eE, ne );
     _realloc( echarge, ne);  for(int i=0; i<ne; i++){ echarge[i]=1; }
+
+    // initialize atom parameters
+    for(int i=0; i<na; i++){
+        // TODO: Get proper atomic number from atom name
+        int iZ = (i == 0) ? 8 : 1; // Assume first is O, others H for now
+        double8 ap = atom_params2[iZ];
+        aPars[i]  = *(Quat4d*)(ap.array   );
+        aPars2[i] = *(Quat4d*)(ap.array+4 );
+    }
 
     apos   = (Vec3d*)pDOFs;
     aforce = (Vec3d*)fDOFs;
@@ -1025,6 +1034,26 @@ void save_xyz( const char* filename, const char* mode="w", const char* comment=0
     if(pFile==0){ printf("ERROR file >>%s<< not found \n", filename ); return; }
     to_xyz( pFile, comment );
     fclose(pFile);
+}
+
+char from_xyz_line( const char* line, int& ie, int& ia ){
+    double x,y,z, spin, size;
+    char ename[8];
+    int nret = sscanf(line, "%s %lf %lf %lf %lf %lf", ename, &x, &y, &z, &spin, &size);
+    if(nret<3){ printf("ERROR in from_xyz_line() nret=%i (ie=%i,ia=%i) line %s\n", nret, ie, ia, line); exit(0); }
+    if( ename[0]=='e' ){
+        char cspin = ename[1]; if(cspin=='+'){spin=1;}else if(cspin=='-'){spin=-1;}else{spin=0;}
+        if(verbosity>1)printf( "elec[%i]: %s %lf %lf %lf %lf %lf\n", ie, ename, x, y, z, spin, size );
+        epos [ie].set(x,y,z);
+        espin[ie] = (int)spin;
+        esize[ie] = size;
+        ie++;
+        return 'e';
+    }
+    if(verbosity>1)printf( "atom[%i]: %s %lf %lf %lf\n", ia, ename, x, y, z );
+    apos[ia].set(x,y,z);
+    ia++;
+    return 'a';
 }
 
 bool loadFromFile_xyz( const char* filename ){

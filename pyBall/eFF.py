@@ -362,8 +362,10 @@ def processXYZ_e( fname, outEs=None, apos=None, epos=None, nstepMax=0, dt=0.001,
     if (bOutputs[1] and apos  is None) or (bOutputs[2] and epos  is None):
         with open(fname) as f:
             nae = int(f.readline().strip().split()[0])
-            ne  = int(f.readline().strip().split()[1])
-            na = nae - ne
+            ws  = f.readline().strip().split()
+            na  = int(ws[1])
+            ne  = int(ws[2])
+            if nae != na + ne: raise Exception(f"nae({nae}) != na({na}) + ne({ne}) while reading `{fname}`" )
             nconf = 1
             for line in f:
                 ws = line.strip().split()

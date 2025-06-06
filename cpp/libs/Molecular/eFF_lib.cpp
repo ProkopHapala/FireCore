@@ -718,40 +718,20 @@ int processXYZ_e( const char* fname, double* outEs=0, double* apos_=0, double* e
         if      (il == 0){
             sscanf(line, "%d", &nae);
         }else if(il == 1){
-            sscanf(line, "# %d E", &ne);
-            na=nae-ne;
+            sscanf(line, "na,ne %i %i ", &na, &ne );
+            //na=nae-ne;
+            if(nae!=na+ne){ printf("ERROR in processXYZ_e() nae(%i) != na(%i) + ne(%i) while reading `%s`  => Exit() \n", nae, na, ne, fname ); exit(0); }
             if(iconf == 0){
                 ff.realloc(na, ne, true);
-                opt.bindOrAlloc(ff.nDOFs, ff.pDOFs, ff.vDOFs, ff.fDOFs, ff.invMasses);
-                // Set atom parameters from default_AtomParams2
-                for(int i=0; i<na; i++){
-                    // TODO: Get proper atomic number from atom name
-                    int iZ = (i == 0) ? 8 : 1; // Assume first is O, others H for now
-                    double8 ap = ff.atom_params2[iZ];
-                    ff.aPars[i]  = *(Quat4d*)(ap.array   );
-                    ff.aPars2[i] = *(Quat4d*)(ap.array+4 );
-                }
+                //opt.bindOrAlloc(ff.nDOFs, ff.pDOFs, ff.vDOFs, ff.fDOFs, ff.invMasses);
+                initOpt( dt, 0.1, 100.0, false );
             }
         }else{
-            //printf( "particle_line: %s ", line );
-            double x,y,z, spin, size;
-            char ename[8];
-            int nret = sscanf(line, "%s %lf %lf %lf %lf %lf", ename, &x, &y, &z, &spin, &size);
-            if(nret<3){ printf("ERROR in processXYZ_e() nret=%i (iconf=%i,il=%i,ie=%i,ia=%i) line %s\n", nret, iconf, il, ie, ia, line); exit(0); }
-            if( ename[0]=='E' ){ 
-                if(verbosity>1)printf( "l[%i] elec[%i]: %s %lf %lf %lf %lf %lf\n", il, ie, ename, x, y, z, spin, size );
-                ff.epos [ie].set(x,y,z);
-                ff.espin[ie] = (int)spin;
-                ff.esize[ie] = size;
-                ie++;
-            }else{
-                if(verbosity>1)printf( "l[%i] atom[%i]: %s %lf %lf %lf\n", il, ia, ename, x, y, z );
-                ff.apos[ia].set(x,y,z);
-                ia++;
-            }
+            //printf( "particle_line[%i]: %s ", il, line );
+            char type = ff.from_xyz_line(line, ie, ia);
         }
         il++;
-        if (il>na+2){
+        if (il>=nae+2){
             //printf( "----- conf: %i \n", iconf );
             if(nstepMax > 0) run(nstepMax, dt, Fconv, optAlg, 0, 0);   
             ff.eval();

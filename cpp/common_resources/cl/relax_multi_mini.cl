@@ -1568,7 +1568,8 @@ __kernel void getNonBond_GridFF_Bspline(
 __constant sampler_t sampler_bspline = CLK_NORMALIZED_COORDS_FALSE | CLK_ADDRESS_REPEAT | CLK_FILTER_NEAREST;
 
 __constant sampler_t sampler_norm_rep_near = CLK_NORMALIZED_COORDS_TRUE | CLK_ADDRESS_REPEAT | CLK_FILTER_NEAREST;
-
+//__constant sampler_t sampler_norm_rep_near = CLK_NORMALIZED_COORDS_TRUE | CLK_ADDRESS_CLAMP_TO_EDGE | CLK_FILTER_NEAREST;
+//__constant sampler_t sampler_norm_rep_near = CLK_NORMALIZED_COORDS_FALSE | CLK_ADDRESS_REPEAT | CLK_FILTER_NEAREST;
 
 // 1D B-spline interpolation along Z, combining 4 potential components Reads 4 float4 values from texture at (ix, iy, qz[0..3]),  Combines R,G,B,A channels using C_coeffs (PLQH),  Returns (Energy, dEnergy/duz)
 inline float2 fe1Dcomb_tex_(
