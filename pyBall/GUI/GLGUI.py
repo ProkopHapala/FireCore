@@ -244,17 +244,18 @@ def octahedron_sphere_mesh(radius=1.0, nsub=2):
 VERTEX_SHADER_SOURCE = """
 #version 330 core
 
-layout (location = 0) in vec3 aPos;      // Vertex position of the base sphere
-layout (location = 1) in vec3 aNormal;   // Vertex normal of the base sphere
+layout (location = 0) in vec3 aPos;      // Vertex position of the base sphere mesh
+layout (location = 1) in vec3 aNormal;   // Vertex normal of the base sphere mesh (not used by raytracer directly)
 
 // Per-instance attributes
-layout (location = 2) in vec3 instancePosition; // Center of the sphere instance
+layout (location = 2) in vec3 instancePosition; // Center of the sphere instance (model space)
 layout (location = 3) in float instanceRadius;  // Radius of the sphere instance
 layout (location = 4) in vec4 instanceColor;    // Color (RGBA) of the sphere instance
 
-out vec3 FragPos;
-out vec3 Normal;
-out vec4 AtomColor;
+// Outputs to Fragment Shader
+out vec3 fpos_world;        // Fragment position on the bounding mesh in world space
+out vec4 sphere_obj_world;  // Sphere center (xyz) and radius (w) in world space
+out vec4 atomColor_out;     // Pass through atom color
 
 uniform mat4 projection;
 uniform mat4 view;
@@ -262,65 +263,198 @@ uniform mat4 model; // Overall model orientation (trackball)
 
 void main()
 {
-    // Create a model matrix for this specific instance (sphere)
-    // It translates to instancePosition and scales by instanceRadius
-    mat4 instanceModelMatrix = mat4(1.0);
-    instanceModelMatrix[3][0] = instancePosition.x;
-    instanceModelMatrix[3][1] = instancePosition.y;
-    instanceModelMatrix[3][2] = instancePosition.z;
-    
-    instanceModelMatrix[0][0] = instanceRadius;
-    instanceModelMatrix[1][1] = instanceRadius;
-    instanceModelMatrix[2][2] = instanceRadius;
+    // World space center of the sphere instance
+    vec3 sphereCenter_model = instancePosition;
+    vec3 sphereCenter_world_transformed = vec3(model * vec4(sphereCenter_model, 1.0));
+    sphere_obj_world = vec4(sphereCenter_world_transformed, instanceRadius);
 
-    // Apply the overall model rotation first, then the instance-specific transform
-    mat4 finalModelMatrix = model * instanceModelMatrix;
+    // Create a model matrix for this specific instance (sphere) to transform the unit sphere mesh
+    mat4 instanceTransformMatrix = mat4(1.0);
+    instanceTransformMatrix[0][0] = instanceRadius;
+    instanceTransformMatrix[1][1] = instanceRadius;
+    instanceTransformMatrix[2][2] = instanceRadius; // Scale
+    instanceTransformMatrix[3] = vec4(instancePosition, 1.0); // Translate
 
-    FragPos = vec3(finalModelMatrix * vec4(aPos, 1.0));
-    Normal = mat3(transpose(inverse(finalModelMatrix))) * aNormal; // Transform normals correctly
-    AtomColor = instanceColor;
+    // Apply the overall model rotation first, then the instance-specific transform to the mesh
+    mat4 finalMeshModelMatrix = model * instanceTransformMatrix;
 
-    gl_Position = projection * view * finalModelMatrix * vec4(aPos, 1.0);
+    fpos_world = vec3(finalMeshModelMatrix * vec4(aPos, 1.0));
+    atomColor_out = instanceColor;
+
+    gl_Position = projection * view * finalMeshModelMatrix * vec4(aPos, 1.0);
 }
 """
 
 FRAGMENT_SHADER_SOURCE = """
 #version 330 core
-
 out vec4 FragColor;
 
-in vec3 FragPos;
-in vec3 Normal;
-in vec4 AtomColor; // Received from vertex shader (includes opacity)
+in vec4 sphere_obj_world; // Sphere center (xyz) and radius (w) in world space
+in vec3 fpos_world;       // Fragment position on the bounding mesh in world space
+in vec4 atomColor_out;    // Color from vertex shader
 
+// Uniforms from BaseGLWidget
+uniform vec3 viewPos;      // Camera position in world space
+uniform mat4 projection;
+uniform mat4 view;
 uniform vec3 lightPos;
-uniform vec3 viewPos;
 uniform vec3 lightColor;
+
+// Lighting parameters (can be tuned or made into uniforms)
+const vec3  ambient_material_color = vec3(0.2, 0.2, 0.2); // Base ambient color
+const float specular_strength_factor = 0.7;
+const float shininess_factor = 128.0;
+
+vec2 rayPointDist( vec3 ray0, vec3 hRay, vec3 point ){
+	vec3 pt  = point - ray0;	
+	float t  = dot( hRay, pt );
+    pt      -= t * hRay;
+	float r2 = dot( pt, pt );  
+	return vec2( t, r2 );
+}
+
+float raySphere( vec3 ray0, vec3 hRay, vec3 center, float R ){
+	vec2 res = rayPointDist( ray0, hRay, center );
+	float dr2 = R*R - res.y;
+	if( dr2 > 0.0 ){
+		return res.x - sqrt( dr2 );
+	}else{
+		return 1e+8; // No intersection or behind ray origin
+	}
+}
+
+vec3 sphereNormal( float t, vec3 ray0, vec3 hRay, vec3 center ){
+	return normalize(ray0 + t*hRay - center);
+}
 
 void main()
 {
-    // Ambient
-    float ambientStrength = 0.3;
-    vec3 ambient = ambientStrength * lightColor;
+    vec3 ray_origin = viewPos; 
+    vec3 ray_direction = normalize(fpos_world - viewPos); 
 
-    // Diffuse
-    vec3 norm = normalize(Normal);
-    vec3 lightDir = normalize(lightPos - FragPos);
-    float diff = max(dot(norm, lightDir), 0.0);
-    vec3 diffuse = diff * lightColor;
+    vec3 sphere_center_w = sphere_obj_world.xyz;
+    float sphere_radius_w = sphere_obj_world.w;
 
-    // Specular
-    float specularStrength = 0.9;
-    vec3 viewDir = normalize(viewPos - FragPos);
-    vec3 reflectDir = reflect(-lightDir, norm);
-    float spec = pow(max(dot(viewDir, reflectDir), 0.0), 64); // Shininess
-    vec3 specular = specularStrength * spec * lightColor;
+    float t = raySphere( ray_origin, ray_direction, sphere_center_w, sphere_radius_w );
 
-    vec3 result = (ambient + diffuse + specular) * AtomColor.rgb;
-    FragColor = vec4(result, AtomColor.a); // Use alpha from AtomColor
+    if( t > 1e+5 || t < 0.0 ){ // Discard if no hit, or hit behind camera
+       discard;
+    } else {
+        vec3 P_intersect_world = ray_origin + t * ray_direction;
+        vec3 N = sphereNormal( t, ray_origin, ray_direction, sphere_center_w );
+
+        // Lighting
+        vec3 ambient = ambient_material_color * lightColor;
+
+        vec3 L = normalize(lightPos - P_intersect_world); // Light direction
+        float diff_intensity = max(dot(N, L), 0.0);
+        vec3 diffuse = diff_intensity * lightColor;
+
+        vec3 V = normalize(viewPos - P_intersect_world); // View direction
+        vec3 R = reflect(-L, N); // Reflected light direction
+        float spec_intensity = pow(max(dot(V, R), 0.0), shininess_factor);
+        vec3 specular = specular_strength_factor * spec_intensity * lightColor;
+
+        vec3 result_rgb = (ambient + diffuse + specular) * atomColor_out.rgb;
+        FragColor = vec4(result_rgb, atomColor_out.a);
+
+        // Calculate gl_FragDepth
+        vec4 clip_space_pos = projection * view * vec4(P_intersect_world, 1.0);
+        float ndc_depth = clip_space_pos.z / clip_space_pos.w; // Perspective divide
+        gl_FragDepth = (ndc_depth * 0.5) + 0.5; // Map from [-1, 1] to [0, 1]
+    }
 }
 """
 
+
+Sphere_FragShader = """
+#version 330 core
+#define CUSTOM_DEPTH_0
+// ... (original comments)
+// https://www.gamedev.net/forums/topic/591110-geometry-shader-point-sprites-to-spheres/
+// More info here: http://www.iquilezles.org/www/articles/distfunctions/distfunctions.htm
+// https://gamedev.stackexchange.com/questions/16588/computing-gl-fragdepth/16605#16605
+//in        vec2 gl_PointCoord;
+in        vec4 obj;
+in        vec3 fpos_world;
+out       vec4 fragColor; // Define a custom output color variable
+//uniform mat3 camRot;
+uniform vec3 viewPos; // Changed from camPos to match BaseGLWidget uniform
+uniform mat4 projection; // For gl_FragDepth
+uniform mat4 view;       // For gl_FragDepth
+in vec4 sphere_obj_world; // Renamed from 'obj', input from VS
+in vec4 atomColor_out;   // Input from VS
+
+const float inscribedRadius = 0.755761;     // https://en.wikipedia.org/wiki/Regular_icosahedron
+const vec3  light_pos    = normalize( vec3( 1, 1, 2 ) );
+const vec3  light_clr    = vec3( 1.0,  0.9,  0.8  );
+const vec3  ambient_clr  = vec3( 0.15, 0.20, 0.25 );
+const vec2  obj_specular = vec2( 400.0, 0.5 );
+
+// ==== functions
+
+vec2 rayPointDist( vec3 ray0, vec3 hRay, vec3 point ){
+	vec3 pt  = point - ray0;	
+	float t  = dot( hRay, pt );
+    pt      -= t * hRay;
+	float r2 = dot( pt, pt );  
+	return vec2( t, r2 );
+}
+
+float raySphere( vec3 ray0, vec3 hRay, vec3 center, float R ){
+	vec2 res = rayPointDist( ray0, hRay, center );
+	float dr2 = R*R - res.y;
+	if( dr2 > 0.0 ){
+		return res.x - sqrt( dr2 );
+	}else{
+		return 1e+8;
+	}
+}
+
+vec3 sphereNormal( float t, vec3 ray0, vec3 hRay, vec3 center ){
+	return ray0 - center + t*hRay;
+}
+
+float lorenz(float x){ return 1/(1+x*x); }
+
+// ==== main
+void main(){
+	vec3 ray0 = viewPos; 
+	vec3 hRay = fpos_world - viewPos;
+	float lZ = length(hRay); hRay *= (1/lZ); 
+
+    vec3 current_sphere_center = sphere_obj_world.xyz;
+    float current_sphere_radius = sphere_obj_world.w; // Use radius directly, not inscribedRadius scaling
+
+	float t = raySphere( ray0, hRay, current_sphere_center, current_sphere_radius );
+
+	if( t > 1e+5 || t < 0.0 ){ // Also check for t < 0
+       discard;
+	}else{
+        vec3 P_intersect_world = ray0 + t * hRay;
+		vec3 normal = sphereNormal( t, ray0, hRay, current_sphere_center );   
+		// normal      = normalize( normal ); // sphereNormal should return normalized
+
+		float cD    = -dot( normal, light_pos );
+		float cS    = -dot( normal, normalize(hRay+light_pos) ); 
+		cS          = lorenz( (cS-1)*obj_specular.x )*obj_specular.y;
+
+        // Combine lighting with atomColor_out
+        vec3 lit_color = (ambient_clr*0.5 + cD*0.8) * light_clr + cS * light_clr; // Simplified lighting
+		fragColor   = vec4( lit_color * atomColor_out.rgb, atomColor_out.a );
+
+// Enable one of these for depth writing
+#if defined(CUSTOM_DEPTH_0) || defined(CUSTOM_DEPTH_1)
+        // Calculate gl_FragDepth correctly
+        vec4 clip_space_pos = projection * view * vec4(P_intersect_world, 1.0);
+        float ndc_depth = clip_space_pos.z / clip_space_pos.w;
+        gl_FragDepth = (ndc_depth * 0.5) + 0.5; // Map from [-1, 1] to [0, 1]
+#else
+        // If no custom depth, ensure standard depth behavior (though raytracing needs explicit depth)
+#endif 
+	}
+}
+"""
 
 class BaseGLWidget(QOpenGLWidget):
     def __init__(self, parent=None):
@@ -349,7 +483,7 @@ class BaseGLWidget(QOpenGLWidget):
         glEnable(GL_DEPTH_TEST)
         glEnable(GL_BLEND)
         glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA)
-        # glEnable(GL_CULL_FACE) # Optional
+        glEnable(GL_CULL_FACE) # Cull back faces
 
         # Compile shaders
         try:
@@ -365,7 +499,7 @@ class BaseGLWidget(QOpenGLWidget):
         #sphere_v, sphere_n, sphere_idx = create_sphere_mesh(radius=1.0)
         #self.default_sphere_mesh = Mesh(vertices=sphere_v, normals=sphere_n, indices=sphere_idx)
 
-        sphere_v, sphere_n = octahedron_sphere_mesh(radius=1.0, nsub=2)
+        sphere_v, sphere_n = octahedron_sphere_mesh(radius=1.5, nsub=2)
         self.default_sphere_mesh = Mesh(vertices=sphere_v, normals=sphere_n)
         self.default_sphere_mesh.setup_buffers()
 
