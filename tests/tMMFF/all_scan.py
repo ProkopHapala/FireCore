@@ -262,7 +262,7 @@ def relax_scanPlot1D(nscan=1000, span=(0.0,4.0),
         base_name = saveData.rsplit('.', 1)[0]
         
         # Save energy data separately
-        energy_file = f"{base_name}_energy.dat"
+        energy_file = f"{base_name}.dat"
         
         Es_end = Es[-1]
         # Es_end = 0
@@ -336,7 +336,7 @@ def relax_scanPlot1D(nscan=1000, span=(0.0,4.0),
                     
                     
     
-    plt.show()
+   # plt.show()
     
     # Create a separate 3D trajectory plot
     plt.figure(figsize=(10, 8))
@@ -355,7 +355,7 @@ def relax_scanPlot1D(nscan=1000, span=(0.0,4.0),
     ax3d.set_zlabel('Z')
     ax3d.legend()
     plt.title("3D Atom Trajectories")
-    plt.show()
+   # plt.show()
     
     return t, Es, Ps
 
@@ -593,8 +593,8 @@ def run_scan(molecule, substrate, output_dir, scan_type, scan_params, skip_init=
                 dir=scan_params['dir'],
                 p0=scan_params['p0'],
                 label=scan_label,
-                saveFig=f"{output_dir}/{mol_name}_{scan_file_prefix}_1d.png",
-                saveData=f"{output_dir}/{mol_name}_{scan_file_prefix}_1d.dat",
+                saveFig=f"{output_dir}/{mol_name}_{scan_file_prefix}.png",
+                saveData=f"{output_dir}/{mol_name}_{scan_file_prefix}.dat",
                 bRelax=True,
                 niter_max=scan_params['niter_max'],
                 dt=scan_params['dt'],
