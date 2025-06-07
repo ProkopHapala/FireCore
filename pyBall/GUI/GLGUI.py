@@ -1,0 +1,400 @@
+import sys
+import numpy as np
+from scipy.spatial.transform import Rotation as R
+import argparse
+
+from PyQt5.QtWidgets import ( QOpenGLWidget)
+from PyQt5.QtCore import Qt
+from PyQt5.QtGui import QMatrix4x4, QVector3D
+
+from OpenGL.GL import *
+from OpenGL.GL.shaders import compileProgram, compileShader
+
+# It's good practice to keep shaders in separate files or as multi-line strings
+# For simplicity here, they are embedded as strings.
+
+def setup_vbo(vertices, array_indx, components=3, usage=GL_STATIC_DRAW):
+    vbo = glGenBuffers(1)
+    glBindBuffer(GL_ARRAY_BUFFER, vbo)
+    glBufferData(GL_ARRAY_BUFFER, vertices.nbytes, vertices, usage)
+    glVertexAttribPointer(array_indx, components, GL_FLOAT, GL_FALSE, 0, None) # Location 0 for positions
+    glEnableVertexAttribArray(array_indx)
+    return vbo
+
+def setup_ebo(indices):
+    ebo = glGenBuffers(1)
+    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, ebo)
+    glBufferData(GL_ELEMENT_ARRAY_BUFFER, indices.nbytes, indices, GL_STATIC_DRAW)
+    return ebo
+
+class Mesh:
+    def __init__(self, vertices, normals=None, indices=None):
+        self.vertices = vertices
+        self.normals = normals
+        self.indices = indices
+
+        self.vao = None
+        self.vbo_vertices = None
+        self.vbo_normals = None
+        self.ebo = None
+        self.num_indices = len(indices) if indices is not None else len(vertices) // 3
+        self.num_vertices = len(vertices) // 3
+
+    def setup_buffers(self):
+        self.vao = glGenVertexArrays(1)
+        glBindVertexArray(self.vao)
+        self.vbo_vertices = setup_vbo(self.vertices, 0)
+        if self.normals is not None:
+            self.vbo_normals = setup_vbo(self.normals, 1)
+        if self.indices is not None:
+            self.ebo = setup_ebo(self.indices)
+        glBindBuffer(GL_ARRAY_BUFFER, 0)
+        glBindVertexArray(0) # Unbind VAO
+
+    def draw(self):
+        glBindVertexArray(self.vao)
+        if self.ebo:
+            glDrawElements(GL_TRIANGLES, self.num_indices, GL_UNSIGNED_INT, None)
+        else:
+            glDrawArrays(GL_TRIANGLES, 0, self.num_vertices)
+        glBindVertexArray(0)
+
+    def cleanup(self):
+        if self.vbo_vertices: glDeleteBuffers(1, [self.vbo_vertices])
+        if self.vbo_normals:  glDeleteBuffers(1, [self.vbo_normals])
+        if self.ebo:          glDeleteBuffers(1, [self.ebo])
+        if self.vao:          glDeleteVertexArrays(1, [self.vao])
+
+    def bind(self):
+        glBindVertexArray(self.vao)
+
+    def unbind(self):
+        glBindVertexArray(0)
+
+    def draw_instanced(self, num_instances):
+        glBindVertexArray(self.vao)
+        glDrawElementsInstanced(GL_TRIANGLES, self.num_indices, GL_UNSIGNED_INT, None, num_instances)
+        glBindVertexArray(0)
+
+class InstancedData:
+    def __init__(self, base_attrib_location):
+        self.vbos = {}
+        self.base_attrib_location = base_attrib_location # Starting location for instance attributes
+        self.associated_mesh = None
+        self.num_instances = 0 # Now stored here
+
+    def add_vbo(self, name, data_np, attrib_idx_offset, components, dtype=GL_FLOAT, normalized=GL_FALSE, divisor=1, usage=GL_DYNAMIC_DRAW):
+        vbo = glGenBuffers(1)
+        glBindBuffer(GL_ARRAY_BUFFER, vbo)
+        glBufferData(GL_ARRAY_BUFFER, data_np.nbytes if data_np is not None else 0, data_np, usage)
+        attrib_location = self.base_attrib_location + attrib_idx_offset
+        glVertexAttribPointer    (attrib_location, components, dtype, normalized, 0, None)
+        glEnableVertexAttribArray(attrib_location)
+        glVertexAttribDivisor    (attrib_location, divisor)
+        self.vbos[name] = vbo
+        glBindBuffer(GL_ARRAY_BUFFER, 0)
+        return vbo
+
+    def update_vbo(self, name, data_np,  usage=GL_DYNAMIC_DRAW):
+        # TODO: if we pack data_np directly to vbos we do not need to do this so complicated 
+        if name in self.vbos:
+            glBindBuffer(GL_ARRAY_BUFFER, self.vbos[name])
+            glBufferData(GL_ARRAY_BUFFER, data_np.nbytes, data_np, usage) # Upload new data
+            # Or use glBufferSubData if only part of the buffer changes and size is fixed
+            glBindBuffer(GL_ARRAY_BUFFER, 0)
+        else:
+            print(f"Warning: VBO '{name}' not found for updating.")
+
+    def cleanup(self):
+        for vbo in self.vbos.values():
+            glDeleteBuffers(1, [vbo])
+        self.vbos.clear()
+
+    def associate_mesh(self, mesh_object):
+        self.associated_mesh = mesh_object
+
+    def setup_instance_vbos(self, attribs):
+        self.associated_mesh.bind()
+        for name, ioff, iloc in attribs:
+            self.add_vbo(name, None, ioff, iloc)
+        self.associated_mesh.unbind()
+
+    def update(self, buffs, num_instances):
+        self.num_instances = num_instances
+        self.associated_mesh.bind()
+        for name, buff in buffs.items():
+            self.update_vbo( name, buff )
+        self.associated_mesh.unbind()
+
+    def draw(self):
+        if self.associated_mesh is None or self.associated_mesh.vao is None or self.num_instances == 0:
+            return
+        self.associated_mesh.bind() # Binds the VAO of the associated mesh
+        glDrawElementsInstanced(GL_TRIANGLES, self.associated_mesh.num_indices, GL_UNSIGNED_INT, None, self.num_instances)
+        self.associated_mesh.unbind() # Unbinds the VAO
+
+
+# ================= Free Utility Functions =================
+
+def create_sphere_mesh(radius=1.0, segments=16, rings=16):
+    """Generates vertices and normals for a sphere."""
+    vertices = []
+    normals = []
+    indices = []
+
+    for ring_num in range(rings + 1):
+        theta = ring_num * np.pi / rings
+        sin_theta = np.sin(theta)
+        cos_theta = np.cos(theta)
+
+        for seg_num in range(segments + 1):
+            phi = seg_num * 2 * np.pi / segments
+            sin_phi = np.sin(phi)
+            cos_phi = np.cos(phi)
+
+            x = radius * cos_phi * sin_theta
+            y = radius * sin_phi * sin_theta
+            z = radius * cos_theta
+            
+            nx, ny, nz = x/radius, y/radius, z/radius # Normals are just normalized positions for a sphere centered at origin
+
+            vertices.extend([x, y, z])
+            normals.extend([nx,ny,nz])
+
+    for ring_num in range(rings):
+        for seg_num in range(segments):
+            first  = (ring_num * (segments + 1)) + seg_num
+            second = first + segments + 1
+            
+            indices.extend([first, second, first + 1])
+            indices.extend([second, second + 1, first + 1])
+            
+    return np.array(vertices, dtype=np.float32), np.array(normals, dtype=np.float32), np.array(indices, dtype=np.uint32)
+
+VERTEX_SHADER_SOURCE = """
+#version 330 core
+
+layout (location = 0) in vec3 aPos;      // Vertex position of the base sphere
+layout (location = 1) in vec3 aNormal;   // Vertex normal of the base sphere
+
+// Per-instance attributes
+layout (location = 2) in vec3 instancePosition; // Center of the sphere instance
+layout (location = 3) in float instanceRadius;  // Radius of the sphere instance
+layout (location = 4) in vec4 instanceColor;    // Color (RGBA) of the sphere instance
+
+out vec3 FragPos;
+out vec3 Normal;
+out vec4 AtomColor;
+
+uniform mat4 projection;
+uniform mat4 view;
+uniform mat4 model; // Overall model orientation (trackball)
+
+void main()
+{
+    // Create a model matrix for this specific instance (sphere)
+    // It translates to instancePosition and scales by instanceRadius
+    mat4 instanceModelMatrix = mat4(1.0);
+    instanceModelMatrix[3][0] = instancePosition.x;
+    instanceModelMatrix[3][1] = instancePosition.y;
+    instanceModelMatrix[3][2] = instancePosition.z;
+    
+    instanceModelMatrix[0][0] = instanceRadius;
+    instanceModelMatrix[1][1] = instanceRadius;
+    instanceModelMatrix[2][2] = instanceRadius;
+
+    // Apply the overall model rotation first, then the instance-specific transform
+    mat4 finalModelMatrix = model * instanceModelMatrix;
+
+    FragPos = vec3(finalModelMatrix * vec4(aPos, 1.0));
+    Normal = mat3(transpose(inverse(finalModelMatrix))) * aNormal; // Transform normals correctly
+    AtomColor = instanceColor;
+
+    gl_Position = projection * view * finalModelMatrix * vec4(aPos, 1.0);
+}
+"""
+
+FRAGMENT_SHADER_SOURCE = """
+#version 330 core
+
+out vec4 FragColor;
+
+in vec3 FragPos;
+in vec3 Normal;
+in vec4 AtomColor; // Received from vertex shader (includes opacity)
+
+uniform vec3 lightPos;
+uniform vec3 viewPos;
+uniform vec3 lightColor;
+
+void main()
+{
+    // Ambient
+    float ambientStrength = 0.3;
+    vec3 ambient = ambientStrength * lightColor;
+
+    // Diffuse
+    vec3 norm = normalize(Normal);
+    vec3 lightDir = normalize(lightPos - FragPos);
+    float diff = max(dot(norm, lightDir), 0.0);
+    vec3 diffuse = diff * lightColor;
+
+    // Specular
+    float specularStrength = 0.9;
+    vec3 viewDir = normalize(viewPos - FragPos);
+    vec3 reflectDir = reflect(-lightDir, norm);
+    float spec = pow(max(dot(viewDir, reflectDir), 0.0), 64); // Shininess
+    vec3 specular = specularStrength * spec * lightColor;
+
+    vec3 result = (ambient + diffuse + specular) * AtomColor.rgb;
+    FragColor = vec4(result, AtomColor.a); // Use alpha from AtomColor
+}
+"""
+
+
+class BaseGLWidget(QOpenGLWidget):
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.zoom_factor = 20.0  # Initial zoom
+        self.orientation = R.identity()
+        self.last_mouse_pos = None
+        self.shader_program = None
+        self.default_sphere_mesh = None # For common sphere rendering
+
+        # Camera and light
+        self.view_matrix = QMatrix4x4()
+        self.projection_matrix = QMatrix4x4()
+        self.light_pos = QVector3D(15.0, 15.0, 30.0)
+        self.light_color = QVector3D(1.0, 1.0, 1.0)
+        self.camera_pos = QVector3D(0, 0, self.zoom_factor) # Will be updated by zoom
+
+    def initializeGL_base(self, vertex_shader_src, fragment_shader_src):
+        # Modern OpenGL context should be requested via QSurfaceFormat in main
+        print(f"OpenGL Version: {glGetString(GL_VERSION).decode()}")
+        print(f"GLSL Version: {glGetString(GL_SHADING_LANGUAGE_VERSION).decode()}")
+
+        glClearColor(1.0, 1.0, 1.0, 1.0) # White background
+        glEnable(GL_DEPTH_TEST)
+        glEnable(GL_BLEND)
+        glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA)
+        # glEnable(GL_CULL_FACE) # Optional
+
+        # Compile shaders
+        try:
+            self.shader_program = compileProgram(
+                compileShader(vertex_shader_src, GL_VERTEX_SHADER),
+                compileShader(fragment_shader_src, GL_FRAGMENT_SHADER)
+            )
+        except RuntimeError as e:
+            print(f"Shader Compilation Error: {e}")
+            sys.exit(1)
+        
+        # Initialize a default sphere mesh
+        sphere_v, sphere_n, sphere_idx = create_sphere_mesh(radius=1.0)
+        self.default_sphere_mesh = Mesh(vertices=sphere_v, normals=sphere_n, indices=sphere_idx)
+        self.default_sphere_mesh.setup_buffers()
+
+    def cleanupGL_base(self):
+        if self.shader_program:
+            glDeleteProgram(self.shader_program)
+        self.shader_program = None
+        if self.default_sphere_mesh:
+            self.default_sphere_mesh.cleanup()
+
+    def paintGL_base(self):
+        glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT)
+        
+        if self.shader_program is None:
+            return
+
+        glUseProgram(self.shader_program)
+
+        # Camera / View transformation
+        self.camera_pos = QVector3D(0, 0, self.zoom_factor)
+        self.view_matrix.setToIdentity()
+        self.view_matrix.lookAt(self.camera_pos, QVector3D(0, 0, 0), QVector3D(0, 1, 0))
+
+        # Model transformation (from trackball)
+        model_matrix_np = self._rotation_to_gl_matrix(self.orientation)
+        model_qmatrix = QMatrix4x4(model_matrix_np.reshape(4,4).T.flatten().tolist())
+
+        # Set common uniforms
+        glUniformMatrix4fv(glGetUniformLocation(self.shader_program, "projection"), 1, GL_FALSE, self.projection_matrix.data())
+        glUniformMatrix4fv(glGetUniformLocation(self.shader_program, "view"),       1, GL_FALSE, self.view_matrix.data())
+        glUniformMatrix4fv(glGetUniformLocation(self.shader_program, "model"),      1, GL_FALSE, model_qmatrix.data())
+        
+        glUniform3fv(glGetUniformLocation(self.shader_program, "lightPos"),   1, [self.light_pos.x(),   self.light_pos.y(),   self.light_pos.z()])
+        glUniform3fv(glGetUniformLocation(self.shader_program, "viewPos"),    1, [self.camera_pos.x(),  self.camera_pos.y(),  self.camera_pos.z()])
+        glUniform3fv(glGetUniformLocation(self.shader_program, "lightColor"), 1, [self.light_color.x(), self.light_color.y(), self.light_color.z()])
+
+        self.draw_scene() # Call specific drawing method of derived class
+
+        glUseProgram(0)
+
+    def resizeGL(self, width, height):
+        glViewport(0, 0, width, height)
+        self.projection_matrix.setToIdentity()
+        aspect_ratio = width / height if height > 0 else 1
+        self.projection_matrix.perspective(45.0, aspect_ratio, 0.1, 200.0)
+
+    def mousePressEvent(self, event):
+        if event.buttons() == Qt.LeftButton:
+            self.last_mouse_pos = event.pos()
+
+    def mouseMoveEvent(self, event):
+        if event.buttons() == Qt.LeftButton and self.last_mouse_pos:
+            p1 = self._project_to_sphere(self.last_mouse_pos.x(), self.last_mouse_pos.y())
+            p2 = self._project_to_sphere(event.x(), event.y())
+            
+            rotation_axis = np.cross(p1, p2)
+            rotation_axis_norm = np.linalg.norm(rotation_axis)
+
+            if rotation_axis_norm > 1e-6:
+                rotation_axis /= rotation_axis_norm
+                dot_product = np.dot(p1, p2)
+                rotation_angle = np.arccos(np.clip(dot_product, -1.0, 1.0))
+                delta_rotation = R.from_rotvec(rotation_angle * rotation_axis)
+                self.orientation = delta_rotation * self.orientation
+            
+            self.last_mouse_pos = event.pos()
+            self.update()
+
+    def wheelEvent(self, event):
+        delta = event.angleDelta().y()
+        self.zoom_factor -= delta * 0.01 
+        self.zoom_factor = max(1.0, min(self.zoom_factor, 100.0)) # Clamp zoom
+        self.update()
+
+    def _project_to_sphere(self, x, y):
+        width = self.width()
+        height = self.height()
+        radius = min(width, height) * 0.4 
+
+        vx = (x - width / 2.0) / radius
+        vy = (height / 2.0 - y) / radius 
+
+        vz_squared = 1.0 - vx * vx - vy * vy
+        if vz_squared > 0:
+            vz = np.sqrt(vz_squared)
+        else:
+            norm_xy = np.sqrt(vx*vx + vy*vy)
+            if norm_xy > 1e-6: 
+                vx /= norm_xy
+                vy /= norm_xy
+            vz = 0.0
+        
+        p = np.array([vx, vy, vz])
+        norm_p = np.linalg.norm(p)
+        return p / norm_p if norm_p > 1e-6 else np.array([0.0, 0.0, 1.0])
+
+    def _rotation_to_gl_matrix(self, rotation_obj):
+        mat3x3 = rotation_obj.as_matrix()
+        mat4x4 = np.eye(4, dtype=np.float32)
+        mat4x4[:3, :3] = mat3x3
+        return mat4x4.flatten(order='F')
+
+    def draw_scene(self):
+        # This method MUST be overridden by derived classes to perform actual drawing.
+        # It is called after common uniforms and transformations are set.
+        # The shader program is already in use.
+        pass
