@@ -225,7 +225,7 @@ int run( int nstepMax, double dt, double Fconv, int ialg, double* outE, double* 
         //if(ff.nfix>0){ ff.apply_hard_fix(); }
         if(outE){ outE[itr]=Etot;     }
         if(outF){ outF[itr]=sqrt(F2); }
-        if(verbosity>1){ printf("itr: %6i Etot[eV] %16.8f |F|[eV/A] %16.8f \n", itr, Etot, sqrt(F2) ); };
+        if(verbosity>2){ printf("itr: %6i Etot[eV] %16.8f |F|[eV/A] %16.8f \n", itr, Etot, sqrt(F2) ); };
         if(F2<F2conv){
             //if(verbosity>0){ printf("Converged in %i iteration Etot %g[eV] |F| %g[eV/A] <(Fconv=%g) \n", itr, Etot, sqrt(F2), Fconv ); };
             bConv=true;
@@ -233,7 +233,7 @@ int run( int nstepMax, double dt, double Fconv, int ialg, double* outE, double* 
         }
         if( (trj_fname) && (itr%savePerNsteps==0) )  ff.save_xyz( trj_fname, "a" );
     }
-    if(verbosity>0){ printf("%s in %6i iterations Etot[eV] %16.8f |F|[eV/A] %16.8f (Fconv=%g) \n", bConv ? "    CONVERGED" : "NOT-CONVERGED", itr, Etot, sqrt(F2), Fconv ); };
+    if(verbosity>1){ printf("run() %s in %6i iterations Etot[eV] %16.8f |F|[eV/A] %16.8f (Fconv=%g) \n", bConv ? "    CONVERGED" : "NOT-CONVERGED", itr, Etot, sqrt(F2), Fconv ); };
     //printShortestBondLengths();
     return itr;
 }
@@ -731,7 +731,9 @@ int processXYZ_e( const char* fname, double* outEs=0, double* apos_=0, double* e
         if      (il == 0){
             sscanf(line, "%d", &nae);
         }else if(il == 1){
-            sscanf(line, "na,ne %i %i ", &na, &ne );
+            char coreMode;
+            sscanf(line, "na,ne,core %i %i %c ", &na, &ne, &coreMode );
+            ff.setCoreMode(coreMode);
             //na=nae-ne;
             if(nae!=na+ne){ printf("ERROR in processXYZ_e() nae(%i) != na(%i) + ne(%i) while reading `%s`  => Exit() \n", nae, na, ne, fname ); exit(0); }
             if(iconf == 0){

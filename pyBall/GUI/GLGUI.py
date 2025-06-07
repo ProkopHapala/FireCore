@@ -274,10 +274,11 @@ class BaseGLWidget(QOpenGLWidget):
         self.light_color = QVector3D(1.0, 1.0, 1.0)
         self.camera_pos = QVector3D(0, 0, self.zoom_factor) # Will be updated by zoom
 
-    def initializeGL_base(self, vertex_shader_src, fragment_shader_src):
+    def initializeGL_base(self, vertex_shader_src, fragment_shader_src, bPrint=False):
         # Modern OpenGL context should be requested via QSurfaceFormat in main
-        print(f"OpenGL Version: {glGetString(GL_VERSION).decode()}")
-        print(f"GLSL Version: {glGetString(GL_SHADING_LANGUAGE_VERSION).decode()}")
+        if bPrint:
+            print(f"OpenGL Version: {glGetString(GL_VERSION).decode()}")
+            print(f"GLSL Version: {glGetString(GL_SHADING_LANGUAGE_VERSION).decode()}")
 
         glClearColor(1.0, 1.0, 1.0, 1.0) # White background
         glEnable(GL_DEPTH_TEST)

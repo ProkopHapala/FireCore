@@ -27,7 +27,7 @@ atomParams2 = np.array([
     [9.0,   0.3,      2.0,      0.0,       0.0,       0.0,       0.0,       0.0]  # 9: F
 ], dtype=np.float64)
 
-eff.setAtomParams(atomParams2, mode=2)
+eff.setAtomParams(atomParams2, mode=1)
 
 # Process XYZ file
 #xyz_file = os.path.join(os.path.dirname(__file__), 'export/scan_data/distscan_Oe.xyz')
@@ -35,11 +35,10 @@ eff.setAtomParams(atomParams2, mode=2)
 
 trjname = 'relaxation.xyz'
 eff.setTrjName( trjname, savePerNsteps=10)
-print("Processing trajectory...")
-outEs, apos, epos = eff.processXYZ_e( "H2O_pairs.xyz", nstepMax=1000,  dt=0.001, Fconv=1e-3, optAlg=2, bOutputs=(1,1,1) )
-print("Done.")
+#outEs, apos, epos = eff.processXYZ_e( "H2O_pairs.xyz", nstepMax=10000,  dt=0.001, Fconv=1e-3, optAlg=2, bOutputs=(1,1,1) )
+outEs, apos, epos = eff.processXYZ_e( "H2O_pairs_fc.xyz", nstepMax=1000,  dt=0.01, Fconv=1e-3, optAlg=2, bOutputs=(1,1,1) )
 
-print("Results:")
+print("==== Results:")
 print("Energies:", outEs)
 print("Atom positions:\n", apos)
 print("Electron positions and sizes:\n", epos)
@@ -49,7 +48,7 @@ from xyz_view_new import MolViewer
 from pyBall import atomicUtils as au
 trj = au.load_xyz_movie(trjname)
 trj = au.trj_to_ename(trj)
-trj = au.trj_fill_radius(trj, bVdw=True, rFactor=0.005, rmin=0.1)
+trj = au.trj_fill_radius(trj, bVdw=True, rFactor=0.001, rmin=0.05)
 #trj = au.trj_fill_radius(trj, bVdw=False, rFactor=1.0)
-print( "trj.enames", trj[0])
+#print( "trj.enames", trj[0])
 MolViewer.launch(trj=trj)

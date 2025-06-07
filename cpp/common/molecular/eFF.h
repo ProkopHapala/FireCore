@@ -115,6 +115,34 @@ constexpr static const default_EPCs[] = {
 };
 */
 
+
+int get_iZ( const char* name ){
+    char c0 = name[0];
+    char c1 = name[1];
+    if(c1!='\0'){
+        if(name[2]=='\0'){ printf("ERROR in get_iZ(): element %s not supported\n", name); exit(0); }
+        if     (c0=='H' && c1=='e') return 2;  // He
+        else if(c0=='B' && c1=='e') return 3;  // Be
+        else if(c0=='S' && c1=='i') return 14;  // Si
+        //else if(c0=='C' && c1=='l') return 17; // Cl
+        //else if(c0=='A' && c1=='l') return 13; // Al
+        //else if(c0=='N' && c1=='a') return 11; // Na
+        //else if(c0=='N' && c1=='e') return 11; // Ne
+    }
+    switch(c0){
+        case 'H': return 1;  
+        case 'B': return 5;  
+        case 'C': return 6;  
+        case 'N': return 7;  
+        case 'O': return 8;  
+        case 'F': return 9;  
+        //case 'P': return 15; 
+        //case 'S': return 16; 
+        default: printf("ERROR in get_iZ(): element %s not supported\n", name); exit(0);
+    }
+}
+
+
 struct EFFAtomType{
     int ne;       // number of valence electrons
     double Rcore; // core electron radius
@@ -129,7 +157,6 @@ EFFAtomType EFFparams[11]{
     {0,0.,0.}, // void ... (or electron?)
     {1,0.,0.}, // H
     {2,0.,0.}, // He // only core ?
-
     {1,0.1,2.0}, // Li
     {2,0.1,2.0}, // Be
     {3,0.1,2.0}, // B
@@ -217,8 +244,8 @@ class EFF{ public:
 constexpr static const double aMasses[9] = {  1.0, 4.0, 7.0, 9.0,  11.0,  12.0,  14.0, 16.0,  19.0 };
 
     bool bDealoc = false;
-
     bool bNegativeSizes=false;
+    char coreMode='a';
 
     int iPauliModel = 1;
     bool bCoreCoul  = true;
@@ -241,7 +268,8 @@ constexpr static const double aMasses[9] = {  1.0, 4.0, 7.0, 9.0,  11.0,  12.0, 
     bool bEvalAECoulomb = true;
     bool bEvalAEPauli   = true;
     bool bEvalAA        = true;
-    bool bEvalCoreCorect = true;
+    //bool bEvalCoreCorect = true;
+    bool bEvalCoreCorect = false;
 
     int ne=0,na=0,nDOFs=0; ///< number of electrons, atoms, degrees of freedom
     //int*   atype  =0;
@@ -293,21 +321,10 @@ void realloc(int na_, int ne_, bool bVel=false){
     _realloc( aPars2, na);
     _realloc( espin, ne);
     _realloc( eE, ne );
-    _realloc0( echarge, ne, 1.0);
+    _realloc0( echarge, ne, QE );
 
     _realloc0( fixmask, nDOFs, false );
 
-    //_realloc0( efix, ne, Quat4bNone );
-    //_realloc0( afix, na, Quat4bNone );
-
-    // initialize atom parameters
-    for(int i=0; i<na; i++){
-        // TODO: Get proper atomic number from atom name
-        int iZ = (i == 0) ? 8 : 1; // Assume first is O, others H for now
-        double8 ap = atom_params2[iZ];
-        aPars[i]  = *(Quat4d*)(ap.array   );
-        aPars2[i] = *(Quat4d*)(ap.array+4 );
-    }
 
     apos   = (Vec3d*)pDOFs;
     aforce = (Vec3d*)fDOFs;
@@ -331,6 +348,12 @@ void realloc(int na_, int ne_, bool bVel=false){
         for(int i=0; i<nDOFs; i++){ invMasses[i]=1; }
     }
 
+}
+
+void assign_params(int ia, int iZ){
+    double8 ap = atom_params2[iZ];
+    aPars [ia] = *(Quat4d*)(ap.array   );
+    aPars2[ia] = *(Quat4d*)(ap.array+4 );
 }
 
 void realloc_fixed(int nfix_){
@@ -527,7 +550,7 @@ double evalEE(){
 
             const int spinj  = espin[j];
             const int spinij = spini*spinj;
-            const double q2  = (spini==0)&&(spinj==0)? 2 : 1.0;
+            const double qq  = (spini==0)&&(spinj==0)? 2.0 : 1.0;
 
             double dEee=0,dEpaul=0;
             if(bEvalCoulomb){
@@ -543,7 +566,7 @@ double evalEE(){
                         //printf( "evalEE() r %g pi (%g,%g,%g) pj (%g,%g,%g) \n", dR.norm(), epos[j].x,epos[j].y,epos[j].z, pi.x,pi.y,pi.z  );
                         //dEpaul = addPauliGauss  ( dR, si, sj, f, fsi, fsj, spini!=espin[j], KRSrho );
                         //dEpaul = addPauliGauss_New  ( dR, si, sj, f, fsi, fsj, spini!=espin[j], KRSrho );
-                        dEpaul = addPauliGauss_New  ( dR, si, sj, f, fsi, fsj, spinij, KRSrho, q2 );
+                        dEpaul = addPauliGauss_New  ( dR, si, sj, f, fsi, fsj, spinij, KRSrho, qq );
                         //printf( "EeePaul[%i,%i]= %g \n", i, j, dEpaul );
                     //}
                 }else if( iPauliModel == 2 ){ // iPauliModel==0 Pauli repulasion from Valence-Bond theory
@@ -605,7 +628,6 @@ double evalAE(){
         //const double qqi  = aQ[i]*QE;
         //const Vec3d  abwi = eAbWs[i];
         const Quat4d aPar = aPars[i]; // { x=Q,y=sQ,z=sP,w=cP }
-        const double qq  = aPar.x*QE;
         for(int j=0; j<ne; j++){
             Vec3d f=Vec3dZero;
             const Vec3d   dR  = epos [j] - pi;
@@ -617,22 +639,23 @@ double evalAE(){
             //Eae  += addCoulombGauss( dR,sj,      f, fsj,      qqi );     // correct
             double dEae=0,dEaePaul=0,dEee=0;
             if(bEvalAECoulomb){
-                dEae  = addCoulombGauss( dR, aPar.y, sj, f, fs_junk, fsj, qq );
+                double qCore = bCoreCoul ? aPar.x : (aPar.x-aPar.z);
+                dEae  = addCoulombGauss( dR, aPar.y, sj, f, fs_junk, fsj, qCore*-qj );
             }
-            if( bEvalAEPauli && (aPar.w>1e-8) ){
+            if( aPar.z>1e-8 ){ // is there a core electron?
                 //if(qqi<-1.00001) EaePaul += addDensOverlapGauss_S( dR,sj, abwi.z, abwi.a, f, fsj, fs_junk );     // correct
                 //double dEaePaul = addPauliGauss      ( dR, sj, abwi.z, f, fsj, fs_junk, false, KRSrho );     // correct
                 //double dEaePaul = addDensOverlapGauss_S( dR, sj, aPar.z, aPar.w, f, fsj, fs_junk );     // correct
-                dEaePaul            = addPauliGauss_New( dR, sj, aPar.z, f, fsj, fs_junk, 0, KRSrho, qj      ); // spin=0 means both -1 and +1  
-                if(bCoreCoul){ dEee = addCoulombGauss  ( dR, sj, aPar.z, f, fsj, fs_junk,            qj*2.0  ); }
+                if(bEvalAEPauli){ dEaePaul = addPauliGauss_New( dR, aPar.y, sj, f, fsj, fs_junk, 0, KRSrho, qj*aPar.z*0.5 ); } // spin=0 means both -1 and +1  
+                if(bCoreCoul   ){ dEee     = addCoulombGauss  ( dR, aPar.y, sj, f, fsj, fs_junk,            qj*aPar.z     ); }
                 //printf( "EaePaul[%i,%i] E %g r %g s %g abw(%g,%g) \n", i, j, dEaePaul, dR.norm(), sj, abwi.z, abwi.a );
             }
             //if( i_DEBUG>0 ) printf( "evalAE[%i,%i] dR(%g,%g,%g) s %g q %g  ->   f(%g,%g,%g) fs %g \n", i,j, dR.x,dR.y,dR.z, sj, qqi,   f.x,f.y,f.z, fsj );
             //printf( "evalAE[%i,%i] E %g r %g s(%g,%g) \n", i,j, Eae, dR.norm(), aPar.y, sj );
-            if(verbosity>2){ 
-                //printf("%s a%i-e%i Coul %5.20f \n",prefix,i,j,dEae); 
-                //printf("%s a%i-e%i Paul %5.20f \n",prefix,i,j,dEaePaul); 
-            }
+            // if(verbosity>2){ 
+            //     printf("%s a%i-e%i Coul %5.20f \n",prefix,i,j,dEae); 
+            //     printf("%s a%i-e%i Paul %5.20f \n",prefix,i,j,dEaePaul); 
+            // }
             //printf( "evalAE[%i,%i] f(%g,%g,%g) r %g s %g E %g EPaul %g Eee %g \n", i,j, f.x,f.y,f.z, dR.norm(), aPar.y, sj, dEae,dEaePaul,dEee );
             Eae    +=dEae;
             EaePaul+=dEaePaul;
@@ -685,7 +708,6 @@ double evalAE_ECP(){
     for(int i=0; i<na; i++){
         const Vec3d  pi   = apos[i];
         const Quat4d aPar = aPars[i]; // {x=Z,y=size,z=Zeff,w=A}
-        const double qq  = aPar.x*QE;
         const Quat4d& BCDE = aPars2[i];
         const bool is_eCP  = ( aPar.w  > 0.0 );
 
@@ -728,7 +750,7 @@ double evalAE_ECP(){
                     fsj         -= fe_*qj * Hartree_to_eV;
                     f.add_mul(dR, (fr_*qj * Hartree_to_eV) / rc);
                 }else{
-                    dEaePaul   = addPauliGauss_New( dR, sj, aPar.z, f, fsj, fs_junk, 0, KRSrho, qj ); // spin=0 means both -1 and +1  
+                    dEaePaul   = addPauliGauss_New( dR, sj, aPar.y, f, fsj, fs_junk, 0, KRSrho, qj ); // spin=0 means both -1 and +1  
                     //dEaePaul   = addPauliGauss_New( dR, sj, aPar.z, f, fsj, fs_junk, 0, KRSrho, aPar.z*0.5 ); // spin=0 means both -1 and +1 
                 }
             }
@@ -769,8 +791,8 @@ double evalAA(){
             //Eaa += addPairEF_expQ( apos[j]-pi, f, abw.z, qi*aQ[j], abw.y, abw.x );
             double qq;
             if(bCoreCoul){
-                qq = (aPari.x-aPari.w*2)*(aParj.x-aParj.w*2);
-                //printf( "evalAA()[%i,%i] qq %g qi(%g,%g) qi(%g,%g)\n", i,j, qq, aPari.x, aPari.w, aParj.x, aParj.w );
+                qq = (aPari.x-aPari.z)*(aParj.x-aParj.z);
+                //printf( "evalAA()[%i,%i] qq %g qi(%g,%g) qi(%g,%g)\n", i,j, qq, aPari.x, aPari.z, aParj.x, aParj.z );
             }else{
                 qq = aPari.x*aParj.x;
             }
@@ -962,10 +984,12 @@ double* evalPotAtPoints( int n, Vec3d* ps, double* out=0, double s=0.0, double Q
 }
 
 void printEnergies(){
+    printf( "EFF::printEnergies()\n" );
     printf( "Etot %16.8f | Ek %16.8f Eee,p(%16.8f,%16.8f) Eae,p(%16.8f,%16.8f) Eaa %g \n", Etot, Ek, Eee,EeePaul, Eae,EaePaul, Eaa );
 }
 
 void printAtoms(){
+    printf( "EFF::printAtoms()\n" );
     //printf( "Etot %g Ek %g Eel %g(ee %g, ea %g aa %g)  EPaul %g(ee %g, ae %g) \n", Etot, Ek, Eel, Eee,Eae,Eaa,   EPaul, EeePaul, EaePaul );
     for(int i=0; i<na; i++){
         //printf( "a[%i] p(%g,%g,%g) q %g eAbW(%g,%g,%g) aAbW(%g,%g,%g) \n", i, apos[i].x, apos[i].y, apos[i].z, aQ[i], eAbWs[i].z,eAbWs[i].z,eAbWs[i].z, aAbWs[i].z,aAbWs[i].z,aAbWs[i].z );
@@ -975,19 +999,22 @@ void printAtoms(){
 }
 
 void printElectrons(){
+    printf( "EFF::printElectrons()\n" );
     for(int i=0; i<ne; i++){
-        printf( "e[%3i ] p(%16.8f ,%16.8f ,%16.8f ) sz %16.8f spin %i fix(%i,%i,%i|%i) \n", i, epos[i].x, epos[i].y, epos[i].z, esize[i], espin[i], epos_fix[i].x,epos_fix[i].y,epos_fix[i].z,esize_fix[i] );
+        printf( "e[%3i ] p(%16.8f ,%16.8f ,%16.8f ) sz %16.8f spin %i Q %4.2f fix(%i,%i,%i|%i) \n", i, epos[i].x, epos[i].y, epos[i].z, esize[i], espin[i], echarge[i], epos_fix[i].x,epos_fix[i].y,epos_fix[i].z,esize_fix[i] );
         //printf( "e[%i] xyzs(%g,%g,%g,%g) fxyzs(%g,%g,%g,%g) \n", i, ff.epos[i].x, ff.epos[i].y, ff.epos[i].z, ff.esize[i], ff.eforce[i].x, ff.eforce[i].y, ff.eforce[i].z, ff.fsize[i] );
     }
 }
 
 void printSwitches(){
-    printf( "iPauliModel %i KPauliOverlap %g bCoreCoul %i \n", iPauliModel, KPauliOverlap, bCoreCoul );
+    printf( "EFF::printSwitches()\n" );
+    printf( "coreMode %c bCoreCoul %i bUseECPs %i iECPmodel %i iPauliModel %i KPauliOverlap %g \n", coreMode, bCoreCoul, bUseECPs, iECPmodel, iPauliModel, KPauliOverlap );
     printf( "bEvalKinetic %i bEvalEE %i bEvalCoulomb %i bEvalPauli %i bEvalAE %i bEvalAECoulomb %i bEvalAEPauli %i bEvalAA %i bEvalCoreCorect %i  \n", bEvalKinetic, bEvalEE, bEvalCoulomb, bEvalPauli, bEvalAE, bEvalAECoulomb, bEvalAEPauli, bEvalAA, bEvalCoreCorect  );
     printf( "KRSrho %g %g %g \n", KRSrho.x, KRSrho.y, KRSrho.z );
 }
 
 void info(){
+    printf( "EFF::info()\n" );
     printSwitches();
     printAtoms();
     printElectrons();
@@ -1048,27 +1075,56 @@ void save_xyz( const char* filename, const char* mode="w", const char* comment=0
     fclose(pFile);
 }
 
+void setCoreMode(char coreMode_){
+    coreMode = coreMode_;
+    switch(coreMode){
+        case 'a': // all-atom potential 
+            //bCoreCoul = false;
+            bUseECPs  = false;
+            break;
+        case 'f': // Frozen Core ( i.e. electron-pair with fixed size placed at core position ) 
+            bCoreCoul = true;
+            //bCoreCoul = false;
+            bUseECPs  = false;
+            break;
+        case 'e': // ECP: Enhanced Core pseudo-Potential
+            //bCoreCoul = true;
+            bUseECPs  = true;
+            break;
+        default:
+            printf("ERROR in setCoreMode() coreMode=%c\n", coreMode); exit(0);
+    }
+}
+
 char from_xyz_line( const char* line, int& ie, int& ia ){
-    double x,y,z, spin, size;
+    double x,y,z, Q, size;
     char _ename[8]; char* ename = _ename;
-    int nret = sscanf(line, "%s %lf %lf %lf %lf %lf", ename, &x, &y, &z, &spin, &size);
+    int nret = sscanf(line, "%s %lf %lf %lf %lf %lf", ename, &x, &y, &z, &Q, &size);
     if(nret<3){ printf("ERROR in from_xyz_line() nret=%i (ie=%i,ia=%i) line %s\n", nret, ie, ia, line); exit(0); }
     bool fixed = false;
     if( ename[0]=='.' ){ fixed = true; ename++; }
     if( ename[0]=='e' ){
-        char cspin = ename[1]; if(cspin=='+'){spin=1;}else if(cspin=='-'){spin=-1;}else{spin=0;}
-        if(verbosity>1)printf( "elec[%i]: %s %lf %lf %lf %lf %lf\n", ie, ename, x, y, z, spin, size );
-        epos [ie].set(x,y,z);
-        espin[ie] = (int)spin;
-        esize[ie] = size;
+        int spin=0;
+        if( Q<1.5 ){ if( Q>0.0 ){ spin=1; }else{ spin=-1; } }
+        //char cspin = ename[1]; if(cspin=='+'){spin=1;}else if(cspin=='-'){spin=-1;}else{spin=0;}
+        if(verbosity>2)printf( "elec[%i]: %s %lf %lf %lf %lf %lf\n", ie, ename, x, y, z, Q, size );
+        epos   [ie].set(x,y,z);
+        espin  [ie] = spin;
+        esize  [ie] = size;
+        echarge[ie] = fabs(Q);
         epos_fix [ie]=Vec3b{fixed,fixed,fixed};
         esize_fix[ie]=fixed;
         ie++;
         return 'e';
     }
-    if(verbosity>1)printf( "atom[%i]: %s %lf %lf %lf\n", ia, ename, x, y, z );
+
+
+    if(verbosity>2)printf( "atom[%i]: %s %lf %lf %lf\n", ia, ename, x, y, z );
+    int iZ = get_iZ(ename);
     apos[ia].set(x,y,z);
     apos_fix[ia]=Vec3b{fixed,fixed,fixed};
+    assign_params(ia, iZ);
+    if( coreMode=='a' ){ aPars[ia] = Quat4d{ default_AtomParams2[iZ].x,0.0,0.0,0.0}; }
     ia++;
     return 'a';
 }
