@@ -41,6 +41,9 @@ class DynamicOpt{ public:
     double * force     = 0;
     double * invMasses = 0;
 
+    bool  bfixmask=false;
+    bool* fixmask = 0;
+
     double * avs =0;
     double * avs2=0;
 
@@ -132,6 +135,7 @@ class DynamicOpt{ public:
     inline void project_vf(){
         ff=0,vv=0,vf=0;
         for(int i=0; i<n; i++){
+            if(bfixmask){ if(fixmask[i])continue; }
             //double fi = force[i];
             double fi = force[i]*invMasses[i];
             double vi = vel[i];

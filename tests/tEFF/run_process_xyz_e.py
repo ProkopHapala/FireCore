@@ -33,7 +33,8 @@ eff.setAtomParams(atomParams2, mode=2)
 #xyz_file = os.path.join(os.path.dirname(__file__), 'export/scan_data/distscan_Oe.xyz')
 #outEs, apos, epos = eff.processXYZ_e( xyz_file, nstepMax=0,  dt=0.001, Fconv=1e-3, optAlg=2, bOutputs=(1,1,1) )
 
-outEs, apos, epos = eff.processXYZ_e( "H2O_pairs.xyz", nstepMax=1000,  dt=0.001, Fconv=1e-3, optAlg=2, bOutputs=(1,1,1) )
+eff.setTrjName('relaxation.xyz', savePerNsteps=10)
+outEs, apos, epos = eff.processXYZ_e( "H2O_pairs.xyz", nstepMax=1000,  dt=0.0001, Fconv=1e-3, optAlg=2, bOutputs=(1,1,1) )
 
 print("Results:")
 print("Energies:", outEs)

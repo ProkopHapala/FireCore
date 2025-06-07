@@ -208,19 +208,19 @@ int run( int nstepMax, double dt, double Fconv, int ialg, double* outE, double* 
         opt.cleanVel( ); 
     }
     bool bConv=false;
-    if(ff.nfix>0){ ff.apply_hard_fix(); }
+    //if(ff.nfix>0){ ff.apply_hard_fix(); }
     for(itr=0; itr<nstepMax; itr++ ){
         ff.clearForce();
         Etot = ff.eval();
         if( ff.bNegativeSizes & (verbosity>0) ){ printf( "negative electron sizes in step #%i => perhaps decrease relaxation time step dt=%g[fs]? \n", itr, opt.dt ); }
-        if(ff.nfix>0){ if(ialg>0){ ff.clear_fixed_dynamics(); }else{ ff.clear_fixed_force(); } }
+        //if(ff.nfix>0){ if(ialg>0){ ff.clear_fixed_dynamics(); }else{ ff.clear_fixed_force(); } }
         switch(ialg){
             case  0: F2 = ff .move_GD      (dt);      break;
             case -1: F2 = opt.move_LeapFrog(dt);      break;
             case  1: F2 = opt.move_MD (dt,opt.damping); break;
             case  2: F2 = opt.move_FIRE();       break;
         }
-        if(ff.nfix>0){ ff.apply_hard_fix(); }
+        //if(ff.nfix>0){ ff.apply_hard_fix(); }
         if(outE){ outE[itr]=Etot;     }
         if(outF){ outF[itr]=sqrt(F2); }
         if(verbosity>1){ printf("itr: %6i Etot[eV] %16.8f |F|[eV/A] %16.8f \n", itr, Etot, sqrt(F2) ); };
@@ -241,11 +241,22 @@ void set_constrains( int nfix, Quat4d* fixed_poss, Vec2i* fixed_inds, bool bReal
     // int nfix=0;
     // Quat4d* fixed_poss=0; // [nfix], {x,y,z,w} position of fixed particles
     // Vec2i*  fixed_inds=0; // [nfix]  {ia/-ie, bitmask{x|y|z|w}}, ia/-ie is index of atom/ or negative index of electron, bitmax indicate which component is fixed
+    
     if(bRealloc) ff.realloc_fixed(nfix);
     for(int i=0; i<nfix; i++){
         ff.fixed_poss[i] = fixed_poss[i];
         ff.fixed_inds[i] = fixed_inds[i];
     }
+
+    // for(int i=0; i<nfix; i++){
+    //     Quat4i ip = fixed_poss[i];
+    //     if(fixed_inds[i].x>=0){
+    //         ff.apos_fix[i] = ip.f;
+    //     }else{
+    //         ff.epos_fix [i].x = ip.f;
+    //         ff.esize_fix[i] = fixed_inds[i].e;
+    //     }
+    // }
 }
 
 void relaxed_scan( int nconf, int nfix, double* fixed_poss, int* fixed_inds_, double* outEs, double* apos_, double* epos_, int nstepMax, double dt, double Fconv, int ialg, char* scan_trj_name ){

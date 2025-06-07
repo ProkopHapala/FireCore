@@ -257,15 +257,20 @@ constexpr static const double aMasses[9] = {  1.0, 4.0, 7.0, 9.0,  11.0,  12.0, 
     int   iECPmodel = 0;
 
     //double * espin  =0;
-    int    * espin  =0; ///< electron spins
+    int    * espin   =0; ///< electron spins
     double * echarge =0; ///< electron charge (QE for individual, 2*QE for pair)
-    Vec3d  * epos   =0; ///< electron positions
-    Vec3d  * eforce =0; ///< electron forces
-    Vec3d  * evel   =0; ///< electron velocities
-    double * esize  =0; ///< electron size
-    double * fsize  =0; ///< electron force on size
-    double * vsize  =0; ///< electron velocity on size
-    double * eE = 0;
+    Vec3d  * epos    =0; ///< electron positions
+    Vec3d  * eforce  =0; ///< electron forces
+    Vec3d  * evel    =0; ///< electron velocities
+    double * esize   =0; ///< electron size
+    double * fsize   =0; ///< electron force on size
+    double * vsize   =0; ///< electron velocity on size
+    double * eE      =0;
+
+    bool   * fixmask    =0;
+    Vec3b  * apos_fix   =0;
+    Vec3b  * epos_fix   =0;
+    bool   * esize_fix  =0;
 
     double* pDOFs =0;  ///< buffer of degrees of freedom
     double* fDOFs =0;  ///< buffer of forces on degrees of freedom
@@ -288,7 +293,12 @@ void realloc(int na_, int ne_, bool bVel=false){
     _realloc( aPars2, na);
     _realloc( espin, ne);
     _realloc( eE, ne );
-    _realloc( echarge, ne);  for(int i=0; i<ne; i++){ echarge[i]=1; }
+    _realloc0( echarge, ne, 1.0);
+
+    _realloc0( fixmask, nDOFs, false );
+
+    //_realloc0( efix, ne, Quat4bNone );
+    //_realloc0( afix, na, Quat4bNone );
 
     // initialize atom parameters
     for(int i=0; i<na; i++){
@@ -306,6 +316,10 @@ void realloc(int na_, int ne_, bool bVel=false){
     eforce = (Vec3d*)(fDOFs + na*3);
     esize  =          pDOFs + na*3 + ne*3;
     fsize  =          fDOFs + na*3 + ne*3;
+
+    apos_fix  = (Vec3b*)(fixmask);
+    epos_fix  = (Vec3b*)(fixmask + na*3);
+    esize_fix =         (fixmask + na*3 + ne*3);
 
     if(bVel){
         _realloc( vDOFs, nDOFs      ); // velocities
@@ -339,7 +353,6 @@ void apply_hard_fix(){
             // if(mask&2){ epos[ie].y = p0.y; eforce[ie].y = 0; evel[ie].y = 0; }
             // if(mask&4){ epos[ie].z = p0.z; eforce[ie].z = 0; evel[ie].z = 0; }
             // if(mask&8){ esize[ie]  = p0.w; fsize[ie]    = 0; vsize[ie]  = 0; }
-
             if(mask&1){ epos[ie].x = p0.x; }
             if(mask&2){ epos[ie].y = p0.y; }
             if(mask&4){ epos[ie].z = p0.z; }
@@ -348,7 +361,6 @@ void apply_hard_fix(){
             //if(mask&1){ apos[ia].x = p0.x; aforce[ia].x = 0; avel[ia].x = 0; }
             //if(mask&2){ apos[ia].y = p0.y; aforce[ia].y = 0; avel[ia].y = 0; }
             //if(mask&4){ apos[ia].z = p0.z; aforce[ia].z = 0; avel[ia].z = 0; }
-
             if(mask&1){ apos[ia].x = p0.x;  }
             if(mask&2){ apos[ia].y = p0.y; }
             if(mask&4){ apos[ia].z = p0.z;  }
@@ -1038,20 +1050,25 @@ void save_xyz( const char* filename, const char* mode="w", const char* comment=0
 
 char from_xyz_line( const char* line, int& ie, int& ia ){
     double x,y,z, spin, size;
-    char ename[8];
+    char _ename[8]; char* ename = _ename;
     int nret = sscanf(line, "%s %lf %lf %lf %lf %lf", ename, &x, &y, &z, &spin, &size);
     if(nret<3){ printf("ERROR in from_xyz_line() nret=%i (ie=%i,ia=%i) line %s\n", nret, ie, ia, line); exit(0); }
+    bool fixed = false;
+    if( ename[0]=='.' ){ fixed = true; ename++; }
     if( ename[0]=='e' ){
         char cspin = ename[1]; if(cspin=='+'){spin=1;}else if(cspin=='-'){spin=-1;}else{spin=0;}
         if(verbosity>1)printf( "elec[%i]: %s %lf %lf %lf %lf %lf\n", ie, ename, x, y, z, spin, size );
         epos [ie].set(x,y,z);
         espin[ie] = (int)spin;
         esize[ie] = size;
+        epos_fix [ie]=Vec3b{fixed,fixed,fixed};
+        esize_fix[ie]=fixed;
         ie++;
         return 'e';
     }
     if(verbosity>1)printf( "atom[%i]: %s %lf %lf %lf\n", ia, ename, x, y, z );
     apos[ia].set(x,y,z);
+    apos_fix[ia]=Vec3b{fixed,fixed,fixed};
     ia++;
     return 'a';
 }
