@@ -969,14 +969,14 @@ void printAtoms(){
     //printf( "Etot %g Ek %g Eel %g(ee %g, ea %g aa %g)  EPaul %g(ee %g, ae %g) \n", Etot, Ek, Eel, Eee,Eae,Eaa,   EPaul, EeePaul, EaePaul );
     for(int i=0; i<na; i++){
         //printf( "a[%i] p(%g,%g,%g) q %g eAbW(%g,%g,%g) aAbW(%g,%g,%g) \n", i, apos[i].x, apos[i].y, apos[i].z, aQ[i], eAbWs[i].z,eAbWs[i].z,eAbWs[i].z, aAbWs[i].z,aAbWs[i].z,aAbWs[i].z );
-        printf( "a[%3i ] p(%16.8f ,%16.8f ,%16.8f ) Par(Q,sQ,sP,P)(%g,%g,%g,%g)  \n", i, apos[i].x, apos[i].y, apos[i].z, aPars[i].x,aPars[i].y,aPars[i].z,aPars[i].w );
+        printf( "a[%3i ] p(%16.8f ,%16.8f ,%16.8f ) Par(Q,sQ,sP,P)(%g,%g,%g,%g)  fix(%i,%i,%i) \n", i, apos[i].x, apos[i].y, apos[i].z, aPars[i].x,aPars[i].y,aPars[i].z,aPars[i].w,  apos_fix[i].x,apos_fix[i].y,apos_fix[i].z );
         //printf( "a[%i] xyzs(%g,%g,%g) fxyzs(%g,%g,%g) \n", i, apos[i].x, apos[i].y, apos[i].z, aforce[i].x, aforce[i].y, aforce[i].z );
     }
 }
 
 void printElectrons(){
     for(int i=0; i<ne; i++){
-        printf( "e[%3i ] p(%16.8f ,%16.8f ,%16.8f ) sz %16.8f s %i \n", i, epos[i].x, epos[i].y, epos[i].z, esize[i], espin[i] );
+        printf( "e[%3i ] p(%16.8f ,%16.8f ,%16.8f ) sz %16.8f spin %i fix(%i,%i,%i|%i) \n", i, epos[i].x, epos[i].y, epos[i].z, esize[i], espin[i], epos_fix[i].x,epos_fix[i].y,epos_fix[i].z,esize_fix[i] );
         //printf( "e[%i] xyzs(%g,%g,%g,%g) fxyzs(%g,%g,%g,%g) \n", i, ff.epos[i].x, ff.epos[i].y, ff.epos[i].z, ff.esize[i], ff.eforce[i].x, ff.eforce[i].y, ff.eforce[i].z, ff.fsize[i] );
     }
 }

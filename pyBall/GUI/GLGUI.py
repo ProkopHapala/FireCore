@@ -6,6 +6,11 @@ import argparse
 from PyQt5.QtWidgets import ( QOpenGLWidget)
 from PyQt5.QtCore import Qt
 from PyQt5.QtGui import QMatrix4x4, QVector3D
+from PyQt5.QtWidgets import (QMainWindow)
+#from PyQt5.QtOpenGLWidgets import QOpenGLWidget
+from PyQt5.QtGui import QSurfaceFormat
+from PyQt5.QtWidgets import QApplication
+
 
 from OpenGL.GL import *
 from OpenGL.GL.shaders import compileProgram, compileShader
@@ -255,6 +260,7 @@ void main()
 class BaseGLWidget(QOpenGLWidget):
     def __init__(self, parent=None):
         super().__init__(parent)
+
         self.zoom_factor = 20.0  # Initial zoom
         self.orientation = R.identity()
         self.last_mouse_pos = None
@@ -398,3 +404,29 @@ class BaseGLWidget(QOpenGLWidget):
         # It is called after common uniforms and transformations are set.
         # The shader program is already in use.
         pass
+
+class AppWindow(QMainWindow):
+    def __init__(self, parent=None, **kwargs ): # Accept kwargs to pass to QMainWindow if needed
+        super().__init__(parent, **kwargs)
+        # Common window initialization can go here if any, e.g., default title
+        # self.setWindowTitle("Application Window") 
+
+    @classmethod
+    def launch(cls, *args, **kwargs):
+        """
+        Creates and runs the Qt application with an instance of this window class (or a derived class).
+        This function will block until the GUI is closed.
+        Any *args and **kwargs will be passed to the constructor of `cls`.
+        """
+        app = QApplication.instance()
+        if not app: # Create QApplication if it doesn't exist
+            gl_format = QSurfaceFormat()
+            gl_format.setVersion(3, 3)
+            gl_format.setProfile(QSurfaceFormat.CoreProfile)
+            QSurfaceFormat.setDefaultFormat(gl_format)
+            # Pass sys.argv if available, otherwise an empty list for robustness
+            app = QApplication(sys.argv if hasattr(sys, 'argv') and sys.argv is not None else [])
+        
+        main_window = cls(*args, **kwargs) # Instantiate the class `cls`
+        main_window.show()
+        return app.exec_()

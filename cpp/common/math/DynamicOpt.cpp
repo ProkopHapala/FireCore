@@ -10,10 +10,11 @@
 
 double DynamicOpt::move_LeapFrog(double dt_loc){
     //double dt_ = dt*fscale_safe;
+    //printf("DynamicOpt::move_LeapFrog() dt %g \n", dt_loc);
     double f2sum=0;
     for ( int i=0; i<n; i++ ){
         if(bfixmask){ if(fixmask[i])continue; }
-        //printf( "i %i v %g f %g p %g iM %g \n", i, vel[i],force[i],pos[i],invMasses[i]  );
+        //printf( "%3i %c v %12.5e f %12.5e p %12.5e iM %12.5e \n", i, (fixmask[i])?'.':' ', vel[i],force[i],pos[i],invMasses[i]  );
         double f = force[i];
         double v = vel[i];
         f2sum+=f*f;
@@ -290,6 +291,7 @@ double DynamicOpt::move_FIRE(){
 	double cv;
     double cf  = renorm_vf * damp_func_FIRE( cos_vf, cv );
     for(int i=0; i<n; i++){ 
+        //printf( "DynamicOpt::move_FIRE() [%i] fix %i \n", i, fixmask[i] );
         if(bfixmask){ if(fixmask[i])continue; }
         vel[i]  = vel[i]*cv  + force[i]*invMasses[i]*cf;  
     }

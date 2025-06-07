@@ -191,6 +191,8 @@ void initOpt( double dt, double damping, double f_limit, bool bMass ){
     opt.setDamping  (damping);
     opt.f_limit = f_limit;
     opt_initialized=true;
+    opt.fixmask = ff.fixmask;
+    opt.bfixmask=true;
 };
 
 //int run( int nstepMax, double dt, double Fconv=1e-6, int ialg=0, double* outE, double* outF ){ 
@@ -743,7 +745,8 @@ int processXYZ_e( const char* fname, double* outEs=0, double* apos_=0, double* e
         }
         il++;
         if (il>=nae+2){
-            //printf( "----- conf: %i \n", iconf );
+            printf( "----- conf: %i \n", iconf );
+            ff.info();
             if(nstepMax > 0) run(nstepMax, dt, Fconv, optAlg, 0, 0);   
             ff.eval();
             ff.copyEnergies         (         outEs, iconf );

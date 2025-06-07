@@ -1580,7 +1580,7 @@ def trj_to_ename(trj):
         trj[i] = (es,apos,qs,rs,comment)
     return trj
 
-def trj_fill_radius(trj, bOnlyNAN=True, rFactor=1.0, bVdw=False ):
+def trj_fill_radius(trj, bOnlyNAN=True, rFactor=1.0, bVdw=False, rmin=0.1 ):
     if bVdw:
         index_R = elements.index_Rvdw
     else:
@@ -1592,7 +1592,7 @@ def trj_fill_radius(trj, bOnlyNAN=True, rFactor=1.0, bVdw=False ):
             if bOnlyNAN and not np.isnan(rs[j]): continue
             r = typ[index_R]
             #print( "trj_fill_radius", es[j], r, rs[j] )
-            rs[j] = r*rFactor
+            rs[j] = max(r*rFactor, rmin)
         trj[i] = (es,apos,qs,rs,comment)
     return trj
 

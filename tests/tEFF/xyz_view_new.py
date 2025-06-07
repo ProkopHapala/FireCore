@@ -2,17 +2,18 @@ import sys
 import numpy as np
 from PyQt5.QtWidgets import (QApplication, QMainWindow, QVBoxLayout, QWidget, QSlider, QLabel)
 from PyQt5.QtCore    import Qt
-from PyQt5.QtGui     import QSurfaceFormat
+# from PyQt5.QtGui     import QSurfaceFormat
 import argparse
 
 sys.path.append("../../") # To find pyBall
-from pyBall import atomicUtils as au
-from pyBall.GUI.GLGUI import VERTEX_SHADER_SOURCE, FRAGMENT_SHADER_SOURCE, Mesh, InstancedData, create_sphere_mesh, BaseGLWidget
+from pyBall import elements
+from pyBall.GUI.GLGUI import VERTEX_SHADER_SOURCE, FRAGMENT_SHADER_SOURCE, InstancedData, BaseGLWidget, AppWindow
 
-class SphereViewerWidget(BaseGLWidget):
+
+class MolViewerWidget(BaseGLWidget):
     def __init__(self, parent=None):
         super().__init__(parent)
-        self.traj = []
+        self.trj = []
         self.current_frame_index = 0
         self.opacity = 0.5
         self.sphere_instances = None # Manages VBOs for instance attributes
@@ -36,11 +37,11 @@ class SphereViewerWidget(BaseGLWidget):
             self.sphere_instances.cleanup()
 
     def update_instance_data(self):
-        if not self.traj or not (0 <= self.current_frame_index < len(self.traj)):
+        if not self.trj or not (0 <= self.current_frame_index < len(self.trj)):
             print("Invalid trajectory or frame index")
             return
 
-        es, apos, qs, rs, comment = self.traj[self.current_frame_index]
+        es, apos, qs, rs, comment = self.trj[self.current_frame_index]
         na = len(es)
         positions  = np.zeros((na, 3), dtype=np.float32)
         radii      = np.zeros( na,     dtype=np.float32)
@@ -51,9 +52,9 @@ class SphereViewerWidget(BaseGLWidget):
             atom_symbol  = es[i]
             opacity  = self.opacity if(atom_symbol == "E") else 1.0
             try:
-                element_data  = au.elements.ELEMENT_DICT[atom_symbol]
-                hex_color_str = element_data[au.elements.index_color]
-                r_col, g_col, b_col = au.elements.hex_to_float_rgb(hex_color_str)
+                element_data  = elements.ELEMENT_DICT[atom_symbol]
+                hex_color_str = element_data[elements.index_color]
+                r_col, g_col, b_col = elements.hex_to_float_rgb(hex_color_str)
             except KeyError:
                 r_col, g_col, b_col = 0.5, 0.5, 0.5 # Gray for unknowns
             colors[i,0] = r_col
@@ -74,17 +75,17 @@ class SphereViewerWidget(BaseGLWidget):
         self.sphere_instances.draw() # Pass the number of instances to draw
 
     # --- Trajectory specific methods ---
-    def load_trajectory(self, filename):
-        self.traj = au.load_xyz_movie(filename)
-        self.traj = au.trj_to_ename(self.traj) # Ensure element names
-        self.traj = au.trj_fill_radius(self.traj, bVdw=False, rFactor=1.0) # Use covalent radii
-        self.current_frame_index = 0
-        self.instance_data_dirty = True
-        self.update()
-        return len(self.traj)
+    # def load_trajectory(self, filename):
+    #     self.trj = au.load_xyz_movie(filename)
+    #     self.trj = au.trj_to_ename(self.trj) # Ensure element names
+    #     self.trj = au.trj_fill_radius(self.trj, bVdw=False, rFactor=1.0, rmin=0.1) # Use covalent radii
+    #     self.current_frame_index = 0
+    #     self.instance_data_dirty = True
+    #     self.update()
+    #     return len(self.trj)
 
     def set_frame(self, frame_idx):
-        if 0 <= frame_idx < len(self.traj):
+        if 0 <= frame_idx < len(self.trj):
             self.current_frame_index = frame_idx
             self.instance_data_dirty = True
             self.update()
@@ -95,8 +96,8 @@ class SphereViewerWidget(BaseGLWidget):
         self.update()
 
 
-class ModernMainWindow(QMainWindow):
-    def __init__(self, filepath=None, trj=None):
+class MolViewer(AppWindow):
+    def __init__(self, trj):
         super().__init__()
         self.setWindowTitle("Modern OpenGL Molecular Viewer")
         self.setGeometry(100, 100, 800, 600)
@@ -105,7 +106,7 @@ class ModernMainWindow(QMainWindow):
         self.setCentralWidget(central_widget)
         layout = QVBoxLayout(central_widget)
 
-        self.gl_widget = SphereViewerWidget()
+        self.gl_widget = MolViewerWidget()
         layout.addWidget(self.gl_widget, 1) # <-- Add stretch factor here
 
         self.frame_slider = QSlider(Qt.Horizontal)
@@ -121,40 +122,30 @@ class ModernMainWindow(QMainWindow):
         layout.addWidget(QLabel("Opacity:"))
         layout.addWidget(self.opacity_slider)
         
-        if trj is not None:
-            self.gl_widget.traj = trj
-            self.gl_widget.update()
-        if filepath is not None:
-            self.filepath = filepath
-            self.gl_widget.load_trajectory(self.filepath)
-        if self.gl_widget.traj:
+        self.gl_widget.trj = trj
+        self.gl_widget.update()
+        # if filepath is not None:
+        #     self.filepath = filepath
+        #     self.gl_widget.load_trajectory(self.filepath)
+        if self.gl_widget.trj:
             self.frame_slider.setMinimum(0)
-            self.frame_slider.setMaximum(len(self.gl_widget.traj) - 1)
+            self.frame_slider.setMaximum(len(self.gl_widget.trj) - 1)
+        self.show()
 
 
 if __name__ == '__main__':
-    app = QApplication(sys.argv)
-
-    # --- Crucial for Modern OpenGL with PyQt ---
-    # Request a specific OpenGL version and profile.
-    # 3.3 Core is a good baseline for modern features.
-    gl_format = QSurfaceFormat()
-    gl_format.setVersion(3, 3)
-    gl_format.setProfile(QSurfaceFormat.CoreProfile)
-    # gl_format.setSamples(4) # Optional: for multisampling/antialiasing
-    QSurfaceFormat.setDefaultFormat(gl_format)
-    # ---
-
+    from pyBall import atomicUtils as au
+    #app = QApplication(sys.argv)
     parser = argparse.ArgumentParser(description="Modern OpenGL Molecular Viewer")
     parser.add_argument("-f", "--file", type=str, help="Path to the XYZ trajectory file", default=None) # Default to None
     args = parser.parse_args()
 
     trj = au.load_xyz_movie(args.file)
     trj = au.trj_to_ename(trj)
-    #traj = au.trj_fill_radius(traj, bVdw=True, rFactor=0.5)
-    trj = au.trj_fill_radius(trj, bVdw=False, rFactor=1.0)
+    trj = au.trj_fill_radius(trj, bVdw=True, rFactor=0.005, rmin=0.1)
+    #trj = au.trj_fill_radius(trj, bVdw=False, rFactor=1.0)
     print( "trj.enames", trj[0])
+    MolViewer.launch(trj=trj)
 
-    main_window = ModernMainWindow( trj=trj)
-    main_window.show()
-    sys.exit(app.exec_())
+    #main_window = MolViewer( trj=trj)
+    #sys.exit(app.exec_())
