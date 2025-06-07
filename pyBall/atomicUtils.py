@@ -1533,7 +1533,7 @@ def loadAtoms( name ):
 def load_xyz_movie( fname ):
     f = open(fname,"r")
     il=0
-    imgs=[]
+    trj=[]
     comment=None
     while True:
         if il==0:
@@ -1563,8 +1563,38 @@ def load_xyz_movie( fname ):
                     rs[i] = float(words[5])
                 il+=1
             il=0
-            imgs.append( (es,apos,qs,rs,comment) )
-    return imgs
+            trj.append( (es,apos,qs,rs,comment) )
+    return trj
+
+def trj_to_ename(trj):
+    for i in range(len(trj)):
+        es,apos,qs,rs,comment = trj[i]
+        for j in range(len(es)):
+            e = es[j]
+            try:
+                iZ=int(e)
+                ename = elements.ELEMENTS[iZ-1][1]
+            except:
+                ename = e
+            es[j] = ename
+        trj[i] = (es,apos,qs,rs,comment)
+    return trj
+
+def trj_fill_radius(trj, bOnlyNAN=True, rFactor=1.0, bVdw=False ):
+    if bVdw:
+        index_R = elements.index_Rvdw
+    else:
+        index_R = elements.index_Rcov
+    for i in range(len(trj)):
+        es,apos,qs,rs,comment = trj[i]
+        for j in range(len(es)):
+            typ = elements.ELEMENT_DICT[es[j]]
+            if bOnlyNAN and not np.isnan(rs[j]): continue
+            r = typ[index_R]
+            #print( "trj_fill_radius", es[j], r, rs[j] )
+            rs[j] = r*rFactor
+        trj[i] = (es,apos,qs,rs,comment)
+    return trj
 
 #def loadCoefs( characters=['s','px','py','pz'] ):
 def loadCoefs( characters=['s'] ):

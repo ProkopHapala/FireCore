@@ -1035,7 +1035,7 @@ void to_xyz( FILE* pFile, const char* comment=0 ){
         int e = espin[i];
         if(e==1 ){e=92;}
         if(e==-1){e=109;} // see Jmol colors https://jmol.sourceforge.net/jscolors/
-        fprintf( pFile, "%3i %10.6f %10.6f %10.6f 0 %10.6f \n", e, epos[i].x, epos[i].y, epos[i].z,  esize[i]*4.0 );
+        fprintf( pFile, "%3i %10.6f %10.6f %10.6f 0 %10.6f \n", e, epos[i].x, epos[i].y, epos[i].z,  esize[i] );
     }
 }
 
