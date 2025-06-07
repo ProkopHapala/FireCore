@@ -11,7 +11,6 @@ from PyQt5.QtWidgets import (QMainWindow)
 from PyQt5.QtGui import QSurfaceFormat
 from PyQt5.QtWidgets import QApplication
 
-
 from OpenGL.GL import *
 from OpenGL.GL.shaders import compileProgram, compileShader
 
@@ -42,8 +41,10 @@ class Mesh:
         self.vbo_vertices = None
         self.vbo_normals = None
         self.ebo = None
-        self.num_indices = len(indices) if indices is not None else len(vertices) // 3
-        self.num_vertices = len(vertices) // 3
+
+        self.has_indices = indices is not None
+        self.vertex_count = len(vertices) // 3
+        self.index_count = len(indices) if self.has_indices else 0
 
     def setup_buffers(self):
         self.vao = glGenVertexArrays(1)
@@ -51,23 +52,23 @@ class Mesh:
         self.vbo_vertices = setup_vbo(self.vertices, 0)
         if self.normals is not None:
             self.vbo_normals = setup_vbo(self.normals, 1)
-        if self.indices is not None:
+        if self.has_indices:
             self.ebo = setup_ebo(self.indices)
         glBindBuffer(GL_ARRAY_BUFFER, 0)
         glBindVertexArray(0) # Unbind VAO
 
-    def draw(self):
+    def draw(self, mode=GL_TRIANGLES):
         glBindVertexArray(self.vao)
-        if self.ebo:
-            glDrawElements(GL_TRIANGLES, self.num_indices, GL_UNSIGNED_INT, None)
+        if self.has_indices:
+            glDrawElements(mode, self.index_count, GL_UNSIGNED_INT, None)
         else:
-            glDrawArrays(GL_TRIANGLES, 0, self.num_vertices)
+            glDrawArrays(mode, 0, self.vertex_count)
         glBindVertexArray(0)
 
     def cleanup(self):
         if self.vbo_vertices: glDeleteBuffers(1, [self.vbo_vertices])
         if self.vbo_normals:  glDeleteBuffers(1, [self.vbo_normals])
-        if self.ebo:          glDeleteBuffers(1, [self.ebo])
+        if self.has_indices and self.ebo: glDeleteBuffers(1, [self.ebo])
         if self.vao:          glDeleteVertexArrays(1, [self.vao])
 
     def bind(self):
@@ -76,9 +77,12 @@ class Mesh:
     def unbind(self):
         glBindVertexArray(0)
 
-    def draw_instanced(self, num_instances):
+    def draw_instanced(self, num_instances, mode=GL_TRIANGLES):
         glBindVertexArray(self.vao)
-        glDrawElementsInstanced(GL_TRIANGLES, self.num_indices, GL_UNSIGNED_INT, None, num_instances)
+        if self.has_indices:
+            glDrawElementsInstanced(mode, self.index_count, GL_UNSIGNED_INT, None, num_instances)
+        else:
+            glDrawArraysInstanced(mode, 0, self.vertex_count, num_instances)
         glBindVertexArray(0)
 
 class InstancedData:
@@ -131,13 +135,11 @@ class InstancedData:
             self.update_vbo( name, buff )
         self.associated_mesh.unbind()
 
-    def draw(self):
+    def draw(self, mode=GL_TRIANGLES):
         if self.associated_mesh is None or self.associated_mesh.vao is None or self.num_instances == 0:
             return
-        self.associated_mesh.bind() # Binds the VAO of the associated mesh
-        glDrawElementsInstanced(GL_TRIANGLES, self.associated_mesh.num_indices, GL_UNSIGNED_INT, None, self.num_instances)
-        self.associated_mesh.unbind() # Unbinds the VAO
-
+        # Delegate to the mesh's instanced drawing method
+        self.associated_mesh.draw_instanced(self.num_instances, mode)
 
 # ================= Free Utility Functions =================
 
@@ -175,6 +177,69 @@ def create_sphere_mesh(radius=1.0, segments=16, rings=16):
             indices.extend([second, second + 1, first + 1])
             
     return np.array(vertices, dtype=np.float32), np.array(normals, dtype=np.float32), np.array(indices, dtype=np.uint32)
+
+# def _normalize_np_array(arr_n_by_3):
+#     """Normalizes an array of N vectors (N x 3)."""
+#     norms = np.linalg.norm(arr_n_by_3, axis=1, keepdims=True)
+#     # Prevent division by zero for zero-length vectors
+#     norms[norms == 0] = 1.0
+#     return arr_n_by_3 / norms
+
+def append_normalized( v_list, radius, vertices_list, normals_list ):
+    for v in v_list:
+        v_norm = v / np.linalg.norm(v)
+        vertices_list.extend(v_norm * radius)
+        normals_list .extend(v_norm)
+
+def octahedron_sphere_face(c1, c2, c3, vertices_list, normals_list, nsub=2,  radius=1.0):
+    """
+    Generates vertices and normals for one face of an octahedron, subdivided,
+    for non-indexed drawing. Appends directly to vertices_list and normals_list.
+    """
+    # Interpolation vectors along the edges of the base triangle face
+    da = (c2 - c1) / nsub
+    db = (c3 - c1) / nsub
+    for i in range(nsub):      # Iterate along the c1-c2 edge direction
+        for j in range(nsub - i):  # Iterate along the c1-c3 edge direction
+            # Define the 3 vertices of the "bottom-left" triangle in the current cell
+            p00 = c1 + da*i     + db*j
+            p10 = c1 + da*(i+1) + db*j
+            p01 = c1 + da*i     + db*(j+1)
+            append_normalized([p00, p10, p01], radius, vertices_list, normals_list)
+            # Define the 3 vertices of the "top-right" triangle in the current cell (if it exists)
+            if j < nsub - 1 - i: # Check if there's a second triangle in this parallelogram
+                p11 = c1 + da*(i+1) + db*(j+1)
+                append_normalized([p10, p11, p01], radius, vertices_list, normals_list)
+
+def octahedron_sphere_mesh(radius=1.0, nsub=2):
+    """
+    Generates vertices and normals for a sphere by subdividing an octahedron,
+    vectorized with NumPy for non-indexed GL_TRIANGLES drawing.
+    'subdivisions' is recursion depth: 0 for base octahedron (8 tris), 1 for 32 tris, etc.
+    Returns flat vertices, flat normals, and None for indices.
+    """
+    pv_np = np.array([
+        [ 1.0,  0.0,  0.0], [-1.0,  0.0,  0.0], [ 0.0,  1.0,  0.0], 
+        [ 0.0, -1.0,  0.0], [ 0.0,  0.0,  1.0], [ 0.0,  0.0, -1.0]
+    ], dtype=np.float32)
+    octa_face_indices = np.array([ # CCW from outside
+        [4, 1, 3], [4, 3, 0], [4, 0, 2], [4, 2, 1], # Top pyramid (pz, mx, my), ...
+        [5, 3, 1], [5, 0, 3], [5, 2, 0], [5, 1, 2]   # Bottom pyramid (mz, my, mx), ...
+    ], dtype=np.int32)
+    vertices_list = []
+    normals_list  = []
+    for face_def_indices in octa_face_indices:
+        c1, c2, c3 = pv_np[face_def_indices,:]
+        octahedron_sphere_face(c1, c2, c3, vertices_list, normals_list, nsub=nsub, radius=radius)
+    final_vertices = np.array(vertices_list, dtype=np.float32)
+    final_normals  = np.array(normals_list,  dtype=np.float32)
+    # print("final_vertices.shape", final_vertices.shape ) #, final_vertices ) # Debug: too verbose
+    # print("final_normals.shape",  final_normals.shape ) #, final_normals )  # Debug: too verbose
+    return final_vertices, final_normals
+
+
+
+
 
 VERTEX_SHADER_SOURCE = """
 #version 330 core
@@ -297,8 +362,11 @@ class BaseGLWidget(QOpenGLWidget):
             sys.exit(1)
         
         # Initialize a default sphere mesh
-        sphere_v, sphere_n, sphere_idx = create_sphere_mesh(radius=1.0)
-        self.default_sphere_mesh = Mesh(vertices=sphere_v, normals=sphere_n, indices=sphere_idx)
+        #sphere_v, sphere_n, sphere_idx = create_sphere_mesh(radius=1.0)
+        #self.default_sphere_mesh = Mesh(vertices=sphere_v, normals=sphere_n, indices=sphere_idx)
+
+        sphere_v, sphere_n = octahedron_sphere_mesh(radius=1.0, nsub=2)
+        self.default_sphere_mesh = Mesh(vertices=sphere_v, normals=sphere_n)
         self.default_sphere_mesh.setup_buffers()
 
     def cleanupGL_base(self):
