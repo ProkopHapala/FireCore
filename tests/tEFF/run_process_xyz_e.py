@@ -48,7 +48,7 @@ from xyz_view_new import MolViewer
 from pyBall import atomicUtils as au
 trj = au.load_xyz_movie(trjname)
 trj = au.trj_to_ename(trj)
-trj = au.trj_fill_radius(trj, bVdw=True, rFactor=0.001, rmin=0.05)
+trj = au.trj_fill_radius(trj, bVdw=True, rFactor=0.6, rmin=0.1) # Use a larger rFactor
 #trj = au.trj_fill_radius(trj, bVdw=False, rFactor=1.0)
 #print( "trj.enames", trj[0])
 MolViewer.launch(trj=trj)

@@ -78,12 +78,11 @@ class Mesh:
         glBindVertexArray(0)
 
     def draw_instanced(self, num_instances, mode=GL_TRIANGLES):
-        glBindVertexArray(self.vao)
+        # Assumes the correct VAO (e.g., from InstancedData) is already bound by the caller.
         if self.has_indices:
             glDrawElementsInstanced(mode, self.index_count, GL_UNSIGNED_INT, None, num_instances)
         else:
             glDrawArraysInstanced(mode, 0, self.vertex_count, num_instances)
-        glBindVertexArray(0)
 
 class InstancedData:
     def __init__(self, base_attrib_location):
@@ -91,55 +90,88 @@ class InstancedData:
         self.base_attrib_location = base_attrib_location # Starting location for instance attributes
         self.associated_mesh = None
         self.num_instances = 0 # Now stored here
-
-    def add_vbo(self, name, data_np, attrib_idx_offset, components, dtype=GL_FLOAT, normalized=GL_FALSE, divisor=1, usage=GL_DYNAMIC_DRAW):
-        vbo = glGenBuffers(1)
-        glBindBuffer(GL_ARRAY_BUFFER, vbo)
-        glBufferData(GL_ARRAY_BUFFER, data_np.nbytes if data_np is not None else 0, data_np, usage)
-        attrib_location = self.base_attrib_location + attrib_idx_offset
-        glVertexAttribPointer    (attrib_location, components, dtype, normalized, 0, None)
-        glEnableVertexAttribArray(attrib_location)
-        glVertexAttribDivisor    (attrib_location, divisor)
-        self.vbos[name] = vbo
-        glBindBuffer(GL_ARRAY_BUFFER, 0)
-        return vbo
-
-    def update_vbo(self, name, data_np,  usage=GL_DYNAMIC_DRAW):
-        # TODO: if we pack data_np directly to vbos we do not need to do this so complicated 
-        if name in self.vbos:
-            glBindBuffer(GL_ARRAY_BUFFER, self.vbos[name])
-            glBufferData(GL_ARRAY_BUFFER, data_np.nbytes, data_np, usage) # Upload new data
-            # Or use glBufferSubData if only part of the buffer changes and size is fixed
-            glBindBuffer(GL_ARRAY_BUFFER, 0)
-        else:
-            print(f"Warning: VBO '{name}' not found for updating.")
+        self.vao = None # Each InstancedData will have its own VAO
+        self._instance_attrib_configs = [] # To store VBO configs
 
     def cleanup(self):
         for vbo in self.vbos.values():
             glDeleteBuffers(1, [vbo])
         self.vbos.clear()
+        if self.vao:
+            glDeleteVertexArrays(1, [self.vao])
+            self.vao = None
 
     def associate_mesh(self, mesh_object):
         self.associated_mesh = mesh_object
+        if self.associated_mesh is None:
+            if self.vao: # Cleanup old VAO if mesh is disassociated
+                glDeleteVertexArrays(1, [self.vao])
+                self.vao = None
+            return
+
+        if self.vao is None:
+            self.vao = glGenVertexArrays(1)
+
+        glBindVertexArray(self.vao)
+        # Bind mesh's vertex buffer and set attribute pointer for location 0 (aPos)
+        glBindBuffer(GL_ARRAY_BUFFER, self.associated_mesh.vbo_vertices)
+        glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 0, None)
+        glEnableVertexAttribArray(0)
+
+        # Bind mesh's normal buffer and set attribute pointer for location 1 (aNormal)
+        if self.associated_mesh.vbo_normals is not None:
+            glBindBuffer(GL_ARRAY_BUFFER, self.associated_mesh.vbo_normals)
+            glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, 0, None)
+            glEnableVertexAttribArray(1)
+        
+        # If mesh has EBO, bind it to this VAO as well
+        if self.associated_mesh.ebo is not None:
+            glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, self.associated_mesh.ebo)
+
+        glBindVertexArray(0)
+        glBindBuffer(GL_ARRAY_BUFFER, 0) # Unbind GL_ARRAY_BUFFER
+        if self.associated_mesh.ebo is not None:
+            glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0) # Unbind GL_ELEMENT_ARRAY_BUFFER
 
     def setup_instance_vbos(self, attribs):
-        self.associated_mesh.bind()
-        for name, ioff, iloc in attribs:
-            self.add_vbo(name, None, ioff, iloc)
-        self.associated_mesh.unbind()
+        if self.vao is None:
+            print("Error: InstancedData VAO not initialized. Call associate_mesh first.")
+            return
+
+        glBindVertexArray(self.vao)
+        self._instance_attrib_configs = [] # Clear previous configs
+        for name, attrib_idx_offset, num_components in attribs:
+            vbo = glGenBuffers(1)
+            glBindBuffer(GL_ARRAY_BUFFER, vbo)
+            glBufferData(GL_ARRAY_BUFFER, 0, None, GL_DYNAMIC_DRAW) # Initial empty allocation
+            
+            attrib_loc = self.base_attrib_location + attrib_idx_offset
+            glVertexAttribPointer(attrib_loc, num_components, GL_FLOAT, GL_FALSE, 0, None)
+            glEnableVertexAttribArray(attrib_loc)
+            glVertexAttribDivisor(attrib_loc, 1) # Per-instance
+            self.vbos[name] = vbo
+        glBindVertexArray(0)
+        glBindBuffer(GL_ARRAY_BUFFER, 0)
 
     def update(self, buffs, num_instances):
         self.num_instances = num_instances
-        self.associated_mesh.bind()
-        for name, buff in buffs.items():
-            self.update_vbo( name, buff )
-        self.associated_mesh.unbind()
+        # No VAO binding needed here, just VBO data update
+        for name, buff_data in buffs.items():
+            if name in self.vbos:
+                glBindBuffer(GL_ARRAY_BUFFER, self.vbos[name])
+                glBufferData(GL_ARRAY_BUFFER, buff_data.nbytes, buff_data, GL_DYNAMIC_DRAW)
+                glBindBuffer(GL_ARRAY_BUFFER, 0)
+            else:
+                print(f"Warning: VBO '{name}' not found for updating in InstancedData.update for {self}.")
 
     def draw(self, mode=GL_TRIANGLES):
-        if self.associated_mesh is None or self.associated_mesh.vao is None or self.num_instances == 0:
+        if self.vao is None or self.associated_mesh is None or self.num_instances == 0:
             return
-        # Delegate to the mesh's instanced drawing method
+
+        glBindVertexArray(self.vao)
+        # The VAO is already configured with base mesh EBO if it exists (done in associate_mesh)
         self.associated_mesh.draw_instanced(self.num_instances, mode)
+        glBindVertexArray(0)
 
 # ================= Free Utility Functions =================
 
@@ -237,225 +269,6 @@ def octahedron_sphere_mesh(radius=1.0, nsub=2):
     # print("final_normals.shape",  final_normals.shape ) #, final_normals )  # Debug: too verbose
     return final_vertices, final_normals
 
-
-
-
-
-VERTEX_SHADER_SOURCE = """
-#version 330 core
-
-layout (location = 0) in vec3 aPos;      // Vertex position of the base sphere mesh
-layout (location = 1) in vec3 aNormal;   // Vertex normal of the base sphere mesh (not used by raytracer directly)
-
-// Per-instance attributes
-layout (location = 2) in vec3 instancePosition; // Center of the sphere instance (model space)
-layout (location = 3) in float instanceRadius;  // Radius of the sphere instance
-layout (location = 4) in vec4 instanceColor;    // Color (RGBA) of the sphere instance
-
-// Outputs to Fragment Shader
-out vec3 fpos_world;        // Fragment position on the bounding mesh in world space
-out vec4 sphere_obj_world;  // Sphere center (xyz) and radius (w) in world space
-out vec4 atomColor_out;     // Pass through atom color
-
-uniform mat4 projection;
-uniform mat4 view;
-uniform mat4 model; // Overall model orientation (trackball)
-
-void main()
-{
-    // World space center of the sphere instance
-    vec3 sphereCenter_model = instancePosition;
-    vec3 sphereCenter_world_transformed = vec3(model * vec4(sphereCenter_model, 1.0));
-    sphere_obj_world = vec4(sphereCenter_world_transformed, instanceRadius);
-
-    // Create a model matrix for this specific instance (sphere) to transform the unit sphere mesh
-    mat4 instanceTransformMatrix = mat4(1.0);
-    instanceTransformMatrix[0][0] = instanceRadius;
-    instanceTransformMatrix[1][1] = instanceRadius;
-    instanceTransformMatrix[2][2] = instanceRadius; // Scale
-    instanceTransformMatrix[3] = vec4(instancePosition, 1.0); // Translate
-
-    // Apply the overall model rotation first, then the instance-specific transform to the mesh
-    mat4 finalMeshModelMatrix = model * instanceTransformMatrix;
-
-    fpos_world = vec3(finalMeshModelMatrix * vec4(aPos, 1.0));
-    atomColor_out = instanceColor;
-
-    gl_Position = projection * view * finalMeshModelMatrix * vec4(aPos, 1.0);
-}
-"""
-
-FRAGMENT_SHADER_SOURCE = """
-#version 330 core
-out vec4 FragColor;
-
-in vec4 sphere_obj_world; // Sphere center (xyz) and radius (w) in world space
-in vec3 fpos_world;       // Fragment position on the bounding mesh in world space
-in vec4 atomColor_out;    // Color from vertex shader
-
-// Uniforms from BaseGLWidget
-uniform vec3 viewPos;      // Camera position in world space
-uniform mat4 projection;
-uniform mat4 view;
-uniform vec3 lightPos;
-uniform vec3 lightColor;
-
-// Lighting parameters (can be tuned or made into uniforms)
-const vec3  ambient_material_color = vec3(0.2, 0.2, 0.2); // Base ambient color
-const float specular_strength_factor = 0.7;
-const float shininess_factor = 128.0;
-
-vec2 rayPointDist( vec3 ray0, vec3 hRay, vec3 point ){
-	vec3 pt  = point - ray0;	
-	float t  = dot( hRay, pt );
-    pt      -= t * hRay;
-	float r2 = dot( pt, pt );  
-	return vec2( t, r2 );
-}
-
-float raySphere( vec3 ray0, vec3 hRay, vec3 center, float R ){
-	vec2 res = rayPointDist( ray0, hRay, center );
-	float dr2 = R*R - res.y;
-	if( dr2 > 0.0 ){
-		return res.x - sqrt( dr2 );
-	}else{
-		return 1e+8; // No intersection or behind ray origin
-	}
-}
-
-vec3 sphereNormal( float t, vec3 ray0, vec3 hRay, vec3 center ){
-	return normalize(ray0 + t*hRay - center);
-}
-
-void main()
-{
-    vec3 ray_origin = viewPos; 
-    vec3 ray_direction = normalize(fpos_world - viewPos); 
-
-    vec3 sphere_center_w = sphere_obj_world.xyz;
-    float sphere_radius_w = sphere_obj_world.w;
-
-    float t = raySphere( ray_origin, ray_direction, sphere_center_w, sphere_radius_w );
-
-    if( t > 1e+5 || t < 0.0 ){ // Discard if no hit, or hit behind camera
-       discard;
-    } else {
-        vec3 P_intersect_world = ray_origin + t * ray_direction;
-        vec3 N = sphereNormal( t, ray_origin, ray_direction, sphere_center_w );
-
-        // Lighting
-        vec3 ambient = ambient_material_color * lightColor;
-
-        vec3 L = normalize(lightPos - P_intersect_world); // Light direction
-        float diff_intensity = max(dot(N, L), 0.0);
-        vec3 diffuse = diff_intensity * lightColor;
-
-        vec3 V = normalize(viewPos - P_intersect_world); // View direction
-        vec3 R = reflect(-L, N); // Reflected light direction
-        float spec_intensity = pow(max(dot(V, R), 0.0), shininess_factor);
-        vec3 specular = specular_strength_factor * spec_intensity * lightColor;
-
-        vec3 result_rgb = (ambient + diffuse + specular) * atomColor_out.rgb;
-        FragColor = vec4(result_rgb, atomColor_out.a);
-
-        // Calculate gl_FragDepth
-        vec4 clip_space_pos = projection * view * vec4(P_intersect_world, 1.0);
-        float ndc_depth = clip_space_pos.z / clip_space_pos.w; // Perspective divide
-        gl_FragDepth = (ndc_depth * 0.5) + 0.5; // Map from [-1, 1] to [0, 1]
-    }
-}
-"""
-
-
-Sphere_FragShader = """
-#version 330 core
-#define CUSTOM_DEPTH_0
-// ... (original comments)
-// https://www.gamedev.net/forums/topic/591110-geometry-shader-point-sprites-to-spheres/
-// More info here: http://www.iquilezles.org/www/articles/distfunctions/distfunctions.htm
-// https://gamedev.stackexchange.com/questions/16588/computing-gl-fragdepth/16605#16605
-//in        vec2 gl_PointCoord;
-in        vec4 obj;
-in        vec3 fpos_world;
-out       vec4 fragColor; // Define a custom output color variable
-//uniform mat3 camRot;
-uniform vec3 viewPos; // Changed from camPos to match BaseGLWidget uniform
-uniform mat4 projection; // For gl_FragDepth
-uniform mat4 view;       // For gl_FragDepth
-in vec4 sphere_obj_world; // Renamed from 'obj', input from VS
-in vec4 atomColor_out;   // Input from VS
-
-const float inscribedRadius = 0.755761;     // https://en.wikipedia.org/wiki/Regular_icosahedron
-const vec3  light_pos    = normalize( vec3( 1, 1, 2 ) );
-const vec3  light_clr    = vec3( 1.0,  0.9,  0.8  );
-const vec3  ambient_clr  = vec3( 0.15, 0.20, 0.25 );
-const vec2  obj_specular = vec2( 400.0, 0.5 );
-
-// ==== functions
-
-vec2 rayPointDist( vec3 ray0, vec3 hRay, vec3 point ){
-	vec3 pt  = point - ray0;	
-	float t  = dot( hRay, pt );
-    pt      -= t * hRay;
-	float r2 = dot( pt, pt );  
-	return vec2( t, r2 );
-}
-
-float raySphere( vec3 ray0, vec3 hRay, vec3 center, float R ){
-	vec2 res = rayPointDist( ray0, hRay, center );
-	float dr2 = R*R - res.y;
-	if( dr2 > 0.0 ){
-		return res.x - sqrt( dr2 );
-	}else{
-		return 1e+8;
-	}
-}
-
-vec3 sphereNormal( float t, vec3 ray0, vec3 hRay, vec3 center ){
-	return ray0 - center + t*hRay;
-}
-
-float lorenz(float x){ return 1/(1+x*x); }
-
-// ==== main
-void main(){
-	vec3 ray0 = viewPos; 
-	vec3 hRay = fpos_world - viewPos;
-	float lZ = length(hRay); hRay *= (1/lZ); 
-
-    vec3 current_sphere_center = sphere_obj_world.xyz;
-    float current_sphere_radius = sphere_obj_world.w; // Use radius directly, not inscribedRadius scaling
-
-	float t = raySphere( ray0, hRay, current_sphere_center, current_sphere_radius );
-
-	if( t > 1e+5 || t < 0.0 ){ // Also check for t < 0
-       discard;
-	}else{
-        vec3 P_intersect_world = ray0 + t * hRay;
-		vec3 normal = sphereNormal( t, ray0, hRay, current_sphere_center );   
-		// normal      = normalize( normal ); // sphereNormal should return normalized
-
-		float cD    = -dot( normal, light_pos );
-		float cS    = -dot( normal, normalize(hRay+light_pos) ); 
-		cS          = lorenz( (cS-1)*obj_specular.x )*obj_specular.y;
-
-        // Combine lighting with atomColor_out
-        vec3 lit_color = (ambient_clr*0.5 + cD*0.8) * light_clr + cS * light_clr; // Simplified lighting
-		fragColor   = vec4( lit_color * atomColor_out.rgb, atomColor_out.a );
-
-// Enable one of these for depth writing
-#if defined(CUSTOM_DEPTH_0) || defined(CUSTOM_DEPTH_1)
-        // Calculate gl_FragDepth correctly
-        vec4 clip_space_pos = projection * view * vec4(P_intersect_world, 1.0);
-        float ndc_depth = clip_space_pos.z / clip_space_pos.w;
-        gl_FragDepth = (ndc_depth * 0.5) + 0.5; // Map from [-1, 1] to [0, 1]
-#else
-        // If no custom depth, ensure standard depth behavior (though raytracing needs explicit depth)
-#endif 
-	}
-}
-"""
-
 class BaseGLWidget(QOpenGLWidget):
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -485,10 +298,11 @@ class BaseGLWidget(QOpenGLWidget):
         glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA)
         glEnable(GL_CULL_FACE) # Cull back faces
 
+
         # Compile shaders
         try:
             self.shader_program = compileProgram(
-                compileShader(vertex_shader_src, GL_VERTEX_SHADER),
+                compileShader(vertex_shader_src,   GL_VERTEX_SHADER),
                 compileShader(fragment_shader_src, GL_FRAGMENT_SHADER)
             )
         except RuntimeError as e:
