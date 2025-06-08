@@ -22,8 +22,8 @@
 
 const int N_CHAR_TMP = 256;
 
-template <typename T> void toBuff  (  const T& v, void* buff, int& i){ (*(T*)(buff+i))=v; i+=sizeof(T); };
-template <typename T> void fromBuff(        T& v, void* buff, int& i){ v=*((T*)(buff+i)); i+=sizeof(T); };
+template <typename T> void toBuff  (  const T& v, void* buff, int& i){ (*(T*)((size_t)buff+i))=v; i+=sizeof(T); };
+template <typename T> void fromBuff(        T& v, void* buff, int& i){ v=*((T*)((size_t)buff+i)); i+=sizeof(T); };
 
 inline int print(       char*   v){ return printf( "%s", v ); };
 inline int print(       float   v){ return printf( "%g", v ); };

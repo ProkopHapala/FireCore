@@ -11,8 +11,9 @@ option(WITH_OMP    "build with OpenMP paralelization for multiple CPUs"         
 option(WITH_AVX    "build with AVX256 SIMD intrinstic ? up to 10x speedup on 1CPU"         OFF)
 option(RELEASE     "build optimized release (-O3/-Ofast) rather than debug? (-g -Og)"      OFF)
 option(WITH_ASAN   "use runtime memory sanitizer (asan) to trace segfaults and mem-leaks?" OFF)
+option(TARGET_WASM "compile to WASM for running in html5."                                 OFF)
 
-message("OPTIONS: -DWITH_SDL=${WITH_SDL} -DWITH_LUA=${WITH_LUA} -DWITH_FFTW=${WITH_FFTW} -DWITH_OPENCL=${WITH_OPENCL} -DWITH_OMP=${WITH_OMP} -DWITH_AVX=${WITH_AVX} -DRELEASE=${RELEASE} -DWITH_ASAN=${WITH_ASAN}" )
+message("OPTIONS: -DWITH_SDL=${WITH_SDL} -DWITH_LUA=${WITH_LUA} -DWITH_FFTW=${WITH_FFTW} -DWITH_OPENCL=${WITH_OPENCL} -DWITH_OMP=${WITH_OMP} -DWITH_AVX=${WITH_AVX} -DRELEASE=${RELEASE} -DWITH_ASAN=${WITH_ASAN} -DTARGET_WASM=${TARGET_WASM}" )
 
 # ==============================
 # ==== FLAGS
@@ -28,6 +29,19 @@ if(WITH_LUA)
     # Add more Lua-specific setup here, e.g., including directories, linking libraries
 else()
     set(LUA_LIBRARIES "")
+endif()
+
+if(TARGET_WASM)
+	if(WITH_FFTW)
+		message( FATAL_ERROR "-DWITH_FFTW must be 'NO' when targeting Web Assembly (-DTARGET_WASM=ON)." )
+	endif()
+	if(WITH_OMP)
+		message( FATAL_ERROR "-DWITH_OMP must be 'NO' when targeting Web Assembly (-DTARGET_WASM=ON)." )
+	endif()
+
+	SET(CMAKE_EXECUTABLE_SUFFIX ".html")
+	SET(AXULIARY_COMPILE_FLAGS "${AXULIARY_COMPILE_FLAGS} -fno-openmp -std=c++20 -march=wasm")
+	SET(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} --use-port=sdl2")
 endif()
 
 if(WITH_FFTW)
@@ -56,13 +70,16 @@ endif()
 # https://stackoverflow.com/questions/7724569/debug-vs-release-in-cmake
 message ( "CMAKE_BUILD_TYPE "   ${CMAKE_BUILD_TYPE} )
 if (  CMAKE_BUILD_TYPE MATCHES Debug )
+	SET( AXULIARY_COMPILE_FLAGS "${AXULIARY_COMPILE_FLAGS} -g")
+	if ( TARGET_WASM ) # emscripten doesn't work with -Og, and needs -march=wasm
+		SET( AXULIARY_COMPILE_FLAGS "${AXULIARY_COMPILE_FLAGS} -O0")
+	else()
+		SET( AXULIARY_COMPILE_FLAGS "${AXULIARY_COMPILE_FLAGS} -Og -march=native")
+	endif()
+	
     if ( WITH_ASAN )
-        SET( AXULIARY_COMPILE_FLAGS "-g -Og -march=native -fsanitize=address -fno-omit-frame-pointer")
+        SET( AXULIARY_COMPILE_FLAGS "${AXULIARY_COMPILE_FLAGS} -fsanitize=address -fno-omit-frame-pointer")
         #SET( AXULIARY_COMPILE_FLAGS "-g -Og -fsanitize=address -fno-omit-frame-pointer -static-libasan") # static-asan does not work see https://github.com/google/sanitizers/issues/796
-    else()
-        #SET( AXULIARY_COMPILE_FLAGS "-Wall -g -Og")
-        ### flags for debug
-        SET( AXULIARY_COMPILE_FLAGS "-g -Og -march=native")
     endif()
     #set(CMAKE_CXX_CPPCHECK "cppcheck")
     #message("DEBUG BUILD FFLAGS : " )
@@ -70,7 +87,7 @@ else()
     #SET( AXULIARY_COMPILE_FLAGS "-w -O3 -fPIC ")
     #SET( AXULIARY_COMPILE_FLAGS "-w -O2 -march=native")
     #SET( AXULIARY_COMPILE_FLAGS "-w -O2 -march=native")
-    SET( AXULIARY_COMPILE_FLAGS "-w -Ofast -march=native -mtune=native")
+    SET( AXULIARY_COMPILE_FLAGS "${AXULIARY_COMPILE_FLAGS} -w -Ofast -march=native -mtune=native")
     #SET( AXULIARY_COMPILE_FLAGS "-w -Ofast -march=native -fopt-info-vec-all")
 endif()
 if ( WITH_OMP )
@@ -82,7 +99,12 @@ if ( WITH_OMP )
 endif()
 
 ### flags always there
-SET( IGNORE_WARRNING_FLAGS "-Wno-int-to-pointer-cast -Wno-switch -Wno-reorder -Wno-deprecated -Wno-maybe-uninitialized -Wno-char-subscripts -Wno-write-strings -Wno-format -Wno-parentheses -Wno-unused-but-set-variable  -Wno-narrowing -Wno-unused-result  -Wno-sign-compare -Wno-strict-aliasing -Wno-unused-variable -Wno-unused-value -Wno-comment -Wno-misleading-indentation " )
+SET( IGNORE_WARRNING_FLAGS "-Wno-int-to-pointer-cast -Wno-switch -Wno-reorder -Wno-deprecated -Wno-char-subscripts -Wno-write-strings -Wno-format -Wno-parentheses -Wno-unused-but-set-variable  -Wno-narrowing -Wno-unused-result  -Wno-sign-compare -Wno-strict-aliasing -Wno-unused-variable -Wno-unused-value -Wno-comment -Wno-misleading-indentation " )
+if ( TARGET_WASM )
+	SET( IGNORE_WARRNING_FLAGS "${IGNORE_WARRNING_FLAGS} -Wno-implicit-const-int-float-conversion" )
+else ()
+	SET( IGNORE_WARRNING_FLAGS "${IGNORE_WARRNING_FLAGS} -Wno-maybe-uninitialized" )
+endif()
 SET( WARRNING_TO_ERROR     "-Werror=return-type -Werror=init-self -Werror=uninitialized -Werror=implicit-fallthrough -Werror=tautological-compare -Werror=delete-non-virtual-dtor")
 SET( CMAKE_CXX_FLAGS  "${CMAKE_CXX_FLAGS} ${AXULIARY_COMPILE_FLAGS} ${IGNORE_WARRNING_FLAGS} ${WARRNING_TO_ERROR}" )
 message("BUILD FFLAGS : " )
@@ -137,6 +159,21 @@ function(setup_precompiled_headers target)
     target_precompile_headers(${target} PRIVATE ${all_headers})
 endfunction()
 
+if ( WITH_WASM )
+include_directories(
+        ${COMMON_SRCS}
+        ${COMMON_SRCS}/math
+        ${COMMON_SRCS}/OpenCL
+        ${COMMON_SRCS}/molecular
+        ${COMMON_SRCS}/dataStructures
+        ${COMMON_SDL_SRCS}
+        ${COMMON_SDL_SRCS}/SDL2
+        ${COMMON_SDL_SRCS}/SDL2OGL
+        
+        ${MY_SRC_DIR}/wasmlib/simde
+        ${MY_SRC_DIR}/wasmlib/fftw3/api
+)
+else()
 include_directories(
         ${COMMON_SRCS}
         ${COMMON_SRCS}/math
@@ -147,6 +184,7 @@ include_directories(
         ${COMMON_SDL_SRCS}/SDL2
         ${COMMON_SDL_SRCS}/SDL2OGL
 )
+endif()
 
 set( CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} ${CMAKE_SOURCE_DIR}/cmake_utils )
 

@@ -6,7 +6,9 @@
 
 #define ANG_HALF_COS  1
 
+#ifdef WITH_OMP
 #include <omp.h>
+#endif
 
 #include "fastmath.h"   // fast math operations
 #include "Vec2.h"       // 2D vector
@@ -1131,7 +1133,9 @@ int run_omp( int niter, double dt, double Fconv, double Flim, double damping=0.1
         // ------ eval MMFF
         #pragma omp for reduction(+:E)
         for(int ia=0; ia<natoms; ia++){ 
+            #ifdef WITH_OMP
             if(verbosity>3)[[unlikely]]{ printf( "atom[%i]@cpu[%i/%i]\n", ia, omp_get_thread_num(), omp_get_num_threads()  ); }
+            #endif
             {             fapos[ia       ] = Vec3dZero; } // atom pos force
             if(ia<nnode){ fapos[ia+natoms] = Vec3dZero; } // atom pi  force
             if(ia<nnode)E += eval_atom(ia);
@@ -1157,7 +1161,9 @@ int run_omp( int niter, double dt, double Fconv, double Flim, double damping=0.1
             cvf.x=ff; cvf.y=vv; cvf.z=vf;
             if(cvf.x<0){ cleanVelocity(); };
             //if(cvf.z<F2conv)break;
+            #ifdef WITH_OMP
             if(verbosity>2)[[unlikely]]{printf( "step[%i] E %g |F| %g ncpu[%i] \n", itr, E, sqrt(ff), omp_get_num_threads() );}
+            #endif
         }
     }
     return itr;

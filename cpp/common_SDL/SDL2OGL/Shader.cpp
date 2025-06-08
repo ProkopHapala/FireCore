@@ -18,7 +18,7 @@ GLuint compileShader(GLenum shaderType, const char* source) {
     if (infoLen > 1) {
         char* infoLog = (char*)malloc(sizeof(char) * infoLen);
         glGetShaderInfoLog(shader, infoLen, nullptr, infoLog);
-        printf("Error/Warning compiling shader:\n %s\n", infoLog);
+        printf("Error/Warning compiling shader:\n\t%s\n", infoLog);
         free(infoLog);
 
         printf("Shader source:\n%s\n", source);
@@ -51,7 +51,7 @@ GLuint linkProgram(GLuint vertexShader, GLuint fragmentShader) {
     if (infoLen > 1) {
         char* infoLog = (char*)malloc(sizeof(char) * infoLen);
         glGetProgramInfoLog(program, infoLen, nullptr, infoLog);
-        printf("Error/Warning linking program:\n %s\n", infoLog);
+        printf("Error/Warning linking program:\n\t%s\n", infoLog);
         free(infoLog);
     }
     

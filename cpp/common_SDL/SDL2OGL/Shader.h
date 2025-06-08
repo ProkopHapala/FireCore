@@ -184,14 +184,14 @@ private:
 // default shaders
 
 template<typename T>
-constexpr static void appendToSource(std::string& source, const attrib<T> attr, GLattrib::Name ifname, std::string append){
+static void appendToSource(std::string& source, const attrib<T> attr, GLattrib::Name ifname, std::string append){
     if (attr.name == ifname){
         source += append;
     }
 }
 
 template<attrib...attribs>
-constexpr const std::string buildDefaultVertexShaderSource(){
+const std::string buildDefaultVertexShaderSource(){
     std::string source = std::string("");
     source += "#version 100\n";
 
@@ -224,7 +224,7 @@ constexpr const std::string buildDefaultVertexShaderSource(){
 }
 
 template<attrib...attribs>
-constexpr const std::string buildDefaultFragmentShaderSource(bool tex, bool ucolor){
+const std::string buildDefaultFragmentShaderSource(bool tex, bool ucolor){
     std::string source = std::string("");
     source += "#version 100\n";
 

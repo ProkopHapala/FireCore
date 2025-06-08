@@ -763,6 +763,7 @@ if (containsNaN(currentStructure)) {
                         xi =std::fmod(b[i]-(*x)[i], 2*range);
                         (*x)[i] = b[i]-std::min(xi, 2*range-xi);
                     }
+                break;
             default://free boundaries
                 break;
             }

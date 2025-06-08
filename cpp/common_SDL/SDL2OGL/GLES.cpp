@@ -1,6 +1,5 @@
 #include "GLES.h"
 #include <cstdlib>
-#include <execinfo.h>
 #include <cstdio>
 
 CameraT<float>* GLES::active_camera = nullptr;
@@ -22,23 +21,11 @@ static const char* GLErrorString(GLenum error) {
     }
 }
 
-static void PrintStackTrace() {
-    void* callstack[128];
-    int frames = backtrace(callstack, 128);
-    char** strs = backtrace_symbols(callstack, frames);
-    for (int i = 0; i < frames; ++i) {
-        printf("%s\n", strs[i]);
-    }
-    free(strs);
-}
-
 void GLES::checkError(const char* file, int line){
     GLenum err = glGetError();
     if (err == GL_NO_ERROR) return;
     
     printf("\033[1m\033[31m GL error: %s at %s:%i\033[0m\n", GLErrorString(err), file, line);
-    //PrintStackTrace();
-    //exit(1);
 }
 
 static std::vector<GLuint> framebufferStack;

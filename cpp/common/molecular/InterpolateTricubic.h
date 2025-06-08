@@ -7,7 +7,12 @@
 #include "quaternion.h"
 #include "spline_hermite.h"
 
+#ifndef __EMSCRIPTEN__
 #include <immintrin.h>
+#else
+#define SIMDE_ENABLE_NATIVE_ALIASES
+#include <simde/x86/fma.h>
+#endif
 
 inline int fold_cubic( int i, int n ){
     if( i==0 )[[unlikely]]{  return n-1; } else if (i>n)[[unlikely]]{ return i-n; } else [[likely]] {  return i-1; };

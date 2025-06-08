@@ -4,7 +4,9 @@
 /// @file UFF.h @brief Implements universal forcefield accodring to article J. Am. Chem. Soc. 1992, 114, 25, 10024–10035 @link https://doi.org/10.1021/ja00051a040 [ref] @endlink, or generally any bond-topology forcefield composed of bonds, angles, torsions (proper-dihedrals) and plane-inversions (improper-dihedrals) 
 /// @ingroup Classical_Molecular_Mechanics
 
+#ifdef WITH_OMP
 #include <omp.h>
+#endif
 #include "fastmath.h"   // fast math operations
 #include "Vec2.h"       // 2D vector
 #include "Vec3.h"       // 3D vector

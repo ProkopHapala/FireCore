@@ -23,7 +23,25 @@ Mat3d prelat_dlvec;
 #include "MolGUIapp_Lua.h"
 #endif // WITH_LUA
 
+#ifdef __EMSCRIPTEN__
+void main_loop(){
+    if (app->GL_LOCK) return;
+    app->loop(1);
+}
+#endif
+
 int main(int argc, char *argv[]){
+#ifdef __EMSCRIPTEN__
+    argc = 5;
+    char* new_argv[5];
+    argv = new_argv;
+    argv[0] = "./MolGUIapp";
+    argv[1] = "-x";
+    argv[2] = "common_resources/xyz/PTCDA";
+    argv[3] = "-g";
+    argv[4] = "common_resources/xyz/NaCl_1x1_L3";
+#endif
+
 	SDL_Init(SDL_INIT_VIDEO);
 
     // === GLES 3 setup ===
@@ -100,7 +118,11 @@ int main(int argc, char *argv[]){
     
     if(prelat_nstep>0)W->change_lvec_relax( prelat_nstep, prelat_nItrMax, 1e-3, prelat_dlvec );
     W->pre_loop();
-    app->loop( 1000000 );
+    #ifdef __EMSCRIPTEN__
+        emscripten_set_main_loop(main_loop, 0, 1);
+    #else
+        app->loop( 1000000 );
+    #endif
 
     W->clear( true, true );
 #ifdef DEBUG_ALLOCATOR

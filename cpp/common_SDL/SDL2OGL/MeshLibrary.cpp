@@ -132,7 +132,7 @@ static const GLMesh<MPOS> makeCircleMesh(){
 }
 
 template<bool instanced>
-static constexpr std::string makeSphereVertexShader(){
+static std::string makeSphereVertexShader(){
     std::string sh = "#version 300 es\n";
 
     sh += "in mediump vec3 vPosition;\n";
@@ -190,7 +190,7 @@ static constexpr std::string makeSphereVertexShader(){
 }
 
 template <bool instanced>
-static constexpr std::string makeSphereFragmentShader(){
+static std::string makeSphereFragmentShader(){
     std::string sh = "#version 300 es\n";
 
     sh += "in highp vec3 fPos;\n";

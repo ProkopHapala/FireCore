@@ -3,6 +3,7 @@
 #define  Mat3_h
 
 #include <math.h>
+#include <cmath>
 #include <cstdlib>
 #include <stdint.h>
 

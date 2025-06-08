@@ -653,7 +653,7 @@ public:
             }
             for (int i = 0; i < nBonds; i++)
             {
-                int currentNeighs_a, currentNeighs_b;
+                int currentNeighs_a, currentNeighs_b = 0;
                 for (int j = 0; j < nNeighs; j++)
                 {
                     if (neighs[nNeighs * bonds[i].a + j] == -1)

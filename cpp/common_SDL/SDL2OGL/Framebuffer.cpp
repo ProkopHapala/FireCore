@@ -3,8 +3,7 @@
 #include "GLTexture.h"
 #include "GLMesh.h"
 
-const static char* vertexShaderSource = R"(
-#version 300 es
+const static char* vertexShaderSource = R"(#version 300 es
 
 in mediump vec4 vPosition;
 out mediump vec2 fUV;
@@ -16,8 +15,7 @@ void main(){
 
 )";
 
-static const char* fragmentShaderSource = R"(
-#version 300 es
+static const char* fragmentShaderSource = R"(#version 300 es
 
 uniform sampler2D uTexture1;
 uniform sampler2D uDepth1;

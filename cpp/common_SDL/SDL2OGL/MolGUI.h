@@ -134,8 +134,7 @@ void drawDipoleMapGrid( DipoleMap& dipoleMap, Vec2d sc=Vec2d{1.,1.}, bool radial
 
 //void command_example(double x, void* caller);
 
-static const char* ssaoFragmentShader = R"(
-#version 300 es
+static const char* ssaoFragmentShader = R"(#version 300 es
 
 uniform sampler2D uTexture;
 uniform sampler2D uDepth;
@@ -182,7 +181,7 @@ highp float kernel_depth = 0.0005;
 
 layout(location=0) out mediump vec4 fragColor;
 
-mediump float smoothstep(float edge0, float edge1, float x){
+mediump float my_smoothstep(highp float edge0, highp float edge1, highp float x){
     x = clamp((x - edge0) / (edge1 - edge0), 0.0, 1.0);
     return x * x * (3.0 - 2.0 * x); // 3x^2 + 2x^3
 }
@@ -199,7 +198,7 @@ void main(){
 
         highp float extra_occlusion = 0.0;
         extra_occlusion = clamp(relativeDepth, -kernel_depth, kernel_depth) / (2.0*kernel_depth);
-        extra_occlusion = smoothstep(-kernel_depth, 0.0, relativeDepth) * extra_occlusion;
+        extra_occlusion = my_smoothstep(-kernel_depth, 0.0, relativeDepth) * extra_occlusion;
 
         occlusion += extra_occlusion;
     }

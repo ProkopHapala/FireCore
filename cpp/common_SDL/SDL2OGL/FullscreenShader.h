@@ -3,11 +3,10 @@
 #include "GLTexture.h"
 #include "Framebuffer.h"
 
-const static char* vertexShaderSource = R"(
+const static char* vertexShaderSource = R"(#version 300 es
 
-attribute vec4 vPosition;
-
-varying vec2 fUV;
+in vec4 vPosition;
+out vec2 fUV;
 
 void main(){
     gl_Position = vPosition;

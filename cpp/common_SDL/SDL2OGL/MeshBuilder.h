@@ -80,20 +80,20 @@ namespace MeshBuilder{
     }
 
     template<attrib...As>
-    constexpr inline void addLine(GLvbo<As...>& vbo, std::vector<Vec3f> ps, Vec3f color=COLOR_WHITE){
+    inline void addLine(GLvbo<As...>& vbo, std::vector<Vec3f> ps, Vec3f color=COLOR_WHITE){
         for(int i=0; i<ps.size()-1; i++){
             addLine(vbo, ps[i], ps[i+1], color);
         }
     }
 
     template<attrib...As>
-    constexpr inline void addLineLoop(GLvbo<As...>& vbo, std::vector<Vec3f> ps, Vec3f color=COLOR_WHITE){
+    inline void addLineLoop(GLvbo<As...>& vbo, std::vector<Vec3f> ps, Vec3f color=COLOR_WHITE){
         addLine(vbo, ps, color);
         addLine(vbo, ps[ps.size()-1], ps[0], color);
     }
 
     template<attrib...As>
-    constexpr inline void addCircleAxis( GLvbo<As...>& vbo, int n, const Vec3f& pos, Vec3f v0, const Vec3f& uaxis, float R, float dca, float dsa, Vec3f color=COLOR_WHITE){
+    inline void addCircleAxis( GLvbo<As...>& vbo, int n, const Vec3f& pos, Vec3f v0, const Vec3f& uaxis, float R, float dca, float dsa, Vec3f color=COLOR_WHITE){
         std::vector<Vec3f> ps;
         for( int i=0; i<n; i++ ){
             ps.push_back(pos+v0*R);
@@ -103,7 +103,7 @@ namespace MeshBuilder{
     }
 
     template<attrib...As>
-    constexpr inline void addCircleAxis(GLvbo<As...>& vbo, int n, Vec3f pos, Vec3f v0, Vec3f normal, float r, Vec3f color=COLOR_WHITE){
+    inline void addCircleAxis(GLvbo<As...>& vbo, int n, Vec3f pos, Vec3f v0, Vec3f normal, float r, Vec3f color=COLOR_WHITE){
         // add a polygon made of n vertices
         // v0 is the the direction of the first vertex
         float dphi = 2*M_PI/n;
@@ -113,7 +113,7 @@ namespace MeshBuilder{
     }
 
     template<attrib...As>
-    constexpr inline void addSphereOct(GLvbo<As...>& vbo, int n, float r, Vec3f pos, Vec3f color=COLOR_WHITE){
+    inline void addSphereOct(GLvbo<As...>& vbo, int n, float r, Vec3f pos, Vec3f color=COLOR_WHITE){
         addCircleAxis(vbo, n, pos, {0, 1, 0}, {1, 0, 0}, r, color);
         addCircleAxis(vbo, n, pos, {0, 0, 1}, {0, 1, 0}, r, color);
         addCircleAxis(vbo, n, pos, {1, 0, 0}, {0, 0, 1}, r, color);

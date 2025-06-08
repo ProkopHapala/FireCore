@@ -154,6 +154,7 @@ double checkDeriv3d(Func getEF,const Vec3d p0, double d, Vec3d& fE, Vec3d& f ){
 
 
 inline uint64_t getCPUticks(){
+    #ifndef __EMSCRIPTEN__
     uint32_t lo, hi;
     __asm__ __volatile__ (
       "xorl %%eax, %%eax\n"
@@ -163,6 +164,9 @@ inline uint64_t getCPUticks(){
       :
       : "%ebx", "%ecx" );
     return (uint64_t)hi << 32 | lo;
+    #else
+    return std::chrono::high_resolution_clock::now().time_since_epoch().count();
+    #endif
 }
 
 class StopWatch{ public:

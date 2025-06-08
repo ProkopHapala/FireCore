@@ -22,8 +22,10 @@ namespace GLattrib{
 
 template<typename T>
 struct attrib{
-    typedef T type;
+    using type = T;
     GLattrib::Name name;
+
+    constexpr attrib(GLattrib::Name name) : name(name) {}
 };
 
 template<attrib...attribs>
@@ -36,6 +38,7 @@ struct GLvertex{
     GLvertex<Ts...> next;
 
     GLvertex(T first, Ts... next) : first(first), next(next...) {}
+    GLvertex() {}
 
     template<size_t i>
     using get_type = std::conditional_t<i==0, T, typename decltype(next)::template get_type<i-1>>;
@@ -58,6 +61,9 @@ struct GLvertex{
 template<typename T>
 struct GLvertex<T>{
     T first;
+
+    GLvertex(T first) : first(first) {}
+    GLvertex() {}
 
     template<size_t i>
     using get_type = std::conditional_t<i==0, T, std::monostate>; // TODO: replace std::monostate with some sort of error

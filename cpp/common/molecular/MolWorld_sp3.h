@@ -11,7 +11,9 @@
 #include <vector>
 #include <math.h>
 
+#ifdef WITH_OMP
 #include <omp.h>
+#endif
 
 #include "IO_utils.h"
 
