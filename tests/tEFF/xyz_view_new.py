@@ -7,9 +7,30 @@ import argparse
 
 sys.path.append("../../") # To find pyBall
 from pyBall import elements
-from pyBall.GUI.GLGUI import InstancedData, BaseGLWidget, AppWindow
+from pyBall.GUI.GLGUI import BaseGLWidget, AppWindow, InstancedData, set_ogl_blend_mode, disable_blend, alpha_blend_modes
 
-from OpenGL.GL import ( glBlendEquation, glBlendFunc, glDisable, glEnable, GL_BLEND, GL_FUNC_ADD, GL_FUNC_REVERSE_SUBTRACT, GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA, GL_ONE)
+
+#from OpenGL.GL import (
+#     glDisable, glEnable, GL_BLEND,
+#     glBlendEquation, glBlendFunc, 
+#     GL_FUNC_ADD, GL_FUNC_REVERSE_SUBTRACT, GL_MIN, GL_MAX,
+#     GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA, GL_ONE
+# )
+
+# def set_ogl_blend_mode(mode_str):
+#     """Sets the OpenGL blend function and equation based on a mode string."""
+#     if mode_str == "standard":
+#         glBlendEquation(GL_FUNC_ADD)
+#         glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA)
+#     elif mode_str == "additive":
+#         glBlendEquation(GL_FUNC_ADD)
+#         glBlendFunc(GL_SRC_ALPHA, GL_ONE)
+#     elif mode_str == "subtractive_alpha_one":
+#         glBlendEquation(GL_FUNC_REVERSE_SUBTRACT)
+#         glBlendFunc(GL_SRC_ALPHA, GL_ONE)
+#     elif mode_str == "minimum" or mode_str == "maximum":
+#         glBlendEquation(GL_MIN if mode_str == "minimum" else GL_MAX)
+#         glBlendFunc(GL_ONE, GL_ONE) # Common for min/max, takes component-wise min/max
 
 class MolViewerWidget(BaseGLWidget):
     def __init__(self, parent=None):
@@ -19,7 +40,7 @@ class MolViewerWidget(BaseGLWidget):
         self.opacity = 0.5
         self.opaque_sphere_instances = None
         self.transparent_sphere_instances = None
-        self.blend_mode = "standard" # Default blend mode for transparent spheres
+        self.blend_mode = alpha_blend_modes["standard"] # Default blend mode for transparent spheres
         self.instance_data_dirty = True
 
     def initializeGL(self):
@@ -127,26 +148,14 @@ class MolViewerWidget(BaseGLWidget):
 
         # Set blend mode for opaque spheres (standard)
         # This ensures if previous draw call changed blend equation, it's reset.
-        glDisable(GL_BLEND)
+        disable_blend() # Opaque objects don't need blending
         self.opaque_sphere_instances.draw()
 
         # # Set blend mode for transparent spheres based on selection
-        glEnable(GL_BLEND)
-        if self.blend_mode == "standard":
-            glBlendEquation(GL_FUNC_ADD)
-            glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA)
-        elif self.blend_mode == "additive":
-            glBlendEquation(GL_FUNC_ADD)
-            glBlendFunc(GL_SRC_ALPHA, GL_ONE) # Source color * alpha + Dest color * 1
-        elif self.blend_mode == "subtractive_alpha_one": # Dest - Src*Alpha
-            glBlendEquation(GL_FUNC_REVERSE_SUBTRACT) # Dst - Src
-            glBlendFunc(GL_SRC_ALPHA, GL_ONE) 
-        # Add more modes as needed
+        set_ogl_blend_mode(self.blend_mode)
         self.transparent_sphere_instances.draw()
-
-        # Reset to standard blending for safety, in case other things are drawn later by base or other widgets
-        glBlendEquation(GL_FUNC_ADD)
-        glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA)    # --- Trajectory specific methods ---
+        # set_ogl_blend_mode(self.blend_mode)
+        # self.transparent_sphere_instances.draw()
     # def load_trajectory(self, filename):
     #     self.trj = au.load_xyz_movie(filename)
     #     self.trj = au.trj_to_ename(self.trj) # Ensure element names
@@ -167,10 +176,10 @@ class MolViewerWidget(BaseGLWidget):
         self.instance_data_dirty = True # Need to update colors VBO
         self.update()
 
-    def set_blend_mode(self, mode_str):
-        if mode_str in ["standard", "additive", "subtractive_alpha_one"]:
-            self.blend_mode = mode_str
-            self.update() # Trigger repaint
+    # def set_blend_mode(self, mode_str):
+    #     if mode_str in ["standard", "additive", "subtractive_alpha_one", "minimum", "maximum"]:
+    #         self.blend_mode = mode_str
+    #         self.update() # Trigger repaint
 
 
 class MolViewer(AppWindow):
@@ -200,7 +209,7 @@ class MolViewer(AppWindow):
         layout.addWidget(self.opacity_slider)
 
         self.blend_mode_combo = QComboBox()
-        self.blend_mode_combo.addItems(["Standard", "Additive", "Subtractive (Alpha-One)"])
+        self.blend_mode_combo.addItems(alpha_blend_modes.keys())
         self.blend_mode_combo.currentTextChanged.connect(self.on_blend_mode_changed)
         layout.addWidget(QLabel("Transparent Blend Mode:"))
         layout.addWidget(self.blend_mode_combo)
@@ -216,12 +225,8 @@ class MolViewer(AppWindow):
         self.show()
 
     def on_blend_mode_changed(self, text):
-        mode_map = {
-            "Standard": "standard",
-            "Additive": "additive",
-            "Subtractive (Alpha-One)": "subtractive_alpha_one"
-        }
-        self.gl_widget.set_blend_mode(mode_map.get(text, "standard"))
+        self.gl_widget.blend_mode = alpha_blend_modes[text]
+        self.gl_widget.update()
 
 
 if __name__ == '__main__':

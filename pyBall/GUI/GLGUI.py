@@ -17,6 +17,47 @@ from OpenGL.GL.shaders import compileProgram, compileShader
 # It's good practice to keep shaders in separate files or as multi-line strings
 # For simplicity here, they are embedded as strings.
 
+# def set_ogl_blend_mode(mode_str):
+#     """Sets the OpenGL blend function and equation based on a mode string."""
+#     if mode_str == "standard":
+#         glBlendEquation(GL_FUNC_ADD)
+#         glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA)
+#     elif mode_str == "additive":
+#         glBlendEquation(GL_FUNC_ADD)
+#         glBlendFunc(GL_SRC_ALPHA, GL_ONE)
+#     elif mode_str == "subtractive_alpha_one":
+#         glBlendEquation(GL_FUNC_REVERSE_SUBTRACT)
+#         glBlendFunc(GL_SRC_ALPHA, GL_ONE)
+#     elif mode_str == "minimum" or mode_str == "maximum":
+#         glBlendEquation(GL_MIN if mode_str == "minimum" else GL_MAX)
+#         glBlendFunc(GL_ONE, GL_ONE) # Common for min/max, takes component-wise min/max
+
+alpha_blend_modes={
+    "standard"   :(GL_FUNC_ADD, GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA),
+    "additive"   :(GL_FUNC_ADD, GL_SRC_ALPHA, GL_ONE),
+    "subtractive":(GL_FUNC_REVERSE_SUBTRACT, GL_SRC_ALPHA, GL_ONE),
+    #"subtractive":(GL_FUNC_SUBTRACT, GL_SRC_ALPHA, GL_ONE),
+    "minimum"    :(GL_MIN, GL_ONE, GL_ONE),
+    "maximum"    :(GL_MAX, GL_ONE, GL_ONE)
+}
+
+def set_ogl_blend_mode( mode):
+    #print("set_ogl_blend_mode", mode)
+    glEnable(GL_BLEND)
+    glBlendEquation(mode[0])
+    glBlendFunc(mode[1], mode[2])
+    #glDepthMask(GL_FALSE)
+    #glDepthTest(GL_FALSE)
+    glDisable(GL_DEPTH_TEST)
+
+def disable_blend():
+    glDisable(GL_BLEND)
+    #glDepthMask(GL_TRUE)
+    #glDepthTest(GL_TRUE)
+    glEnable(GL_DEPTH_TEST)
+
+
+
 def setup_vbo(vertices, array_indx, components=3, usage=GL_STATIC_DRAW):
     vbo = glGenBuffers(1)
     glBindBuffer(GL_ARRAY_BUFFER, vbo)
