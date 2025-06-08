@@ -9,28 +9,13 @@ sys.path.append("../../") # To find pyBall
 from pyBall import elements
 from pyBall.GUI.GLGUI import BaseGLWidget, AppWindow, InstancedData, set_ogl_blend_mode, disable_blend, alpha_blend_modes
 
-
-#from OpenGL.GL import (
+from OpenGL.GL import glUseProgram, glGetUniformLocation
 #     glDisable, glEnable, GL_BLEND,
 #     glBlendEquation, glBlendFunc, 
 #     GL_FUNC_ADD, GL_FUNC_REVERSE_SUBTRACT, GL_MIN, GL_MAX,
 #     GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA, GL_ONE
 # )
 
-# def set_ogl_blend_mode(mode_str):
-#     """Sets the OpenGL blend function and equation based on a mode string."""
-#     if mode_str == "standard":
-#         glBlendEquation(GL_FUNC_ADD)
-#         glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA)
-#     elif mode_str == "additive":
-#         glBlendEquation(GL_FUNC_ADD)
-#         glBlendFunc(GL_SRC_ALPHA, GL_ONE)
-#     elif mode_str == "subtractive_alpha_one":
-#         glBlendEquation(GL_FUNC_REVERSE_SUBTRACT)
-#         glBlendFunc(GL_SRC_ALPHA, GL_ONE)
-#     elif mode_str == "minimum" or mode_str == "maximum":
-#         glBlendEquation(GL_MIN if mode_str == "minimum" else GL_MAX)
-#         glBlendFunc(GL_ONE, GL_ONE) # Common for min/max, takes component-wise min/max
 
 class MolViewerWidget(BaseGLWidget):
     def __init__(self, parent=None):
@@ -41,16 +26,56 @@ class MolViewerWidget(BaseGLWidget):
         self.opaque_sphere_instances = None
         self.transparent_sphere_instances = None
         self.blend_mode = alpha_blend_modes["standard"] # Default blend mode for transparent spheres
+        self.shader_program_sphere_raytrace = None
+        self.shader_program_sphere_max_vol = None
         self.instance_data_dirty = True
+
+    @property
+    def all_shader_programs(self):
+        programs = []
+        if self.shader_program_sphere_raytrace: programs.append(self.shader_program_sphere_raytrace)
+        if self.shader_program_sphere_max_vol:  programs.append(self.shader_program_sphere_max_vol)
+        return programs
 
     def initializeGL(self):
         # Call base class initialization for shaders, basic GL setup
         shader_folder="../../pyBall/GUI/shaders"
         VERTEX_SHADER_SOURCE   = open(shader_folder + "/instances.glslv").read()
         FRAGMENT_SHADER_SOURCE = open(shader_folder + "/sphere.glslf").read()
-        super().initializeGL_base(VERTEX_SHADER_SOURCE, FRAGMENT_SHADER_SOURCE)
-        sphere_mesh=self.default_sphere_mesh
+        # Use sphere_simple.glslf for FRAGMENT_SHADER_MAX_VOL_SOURCE for this diagnostic
+        FRAGMENT_SHADER_MAX_VOL_SOURCE = open(shader_folder + "/sphere_max.glslf").read() 
+        #FRAGMENT_SHADER_MAX_VOL_SOURCE = open(shader_folder + "/sphere_simple.glslf").read() 
+        self.shader_program_sphere_raytrace = self.compile_shader_program( VERTEX_SHADER_SOURCE, FRAGMENT_SHADER_SOURCE)
+        self.shader_program_sphere_max_vol  = self.compile_shader_program( VERTEX_SHADER_SOURCE, FRAGMENT_SHADER_MAX_VOL_SOURCE)
 
+        # --- Diagnostic: Check uniform locations ---
+        print(f"MolViewerWidget.initializeGL: shader_program_sphere_raytrace ID = {self.shader_program_sphere_raytrace}")
+        if self.shader_program_sphere_raytrace:
+            glUseProgram(self.shader_program_sphere_raytrace) # Must use program to query active uniforms
+            print(f"  Raytrace - model loc: {glGetUniformLocation(self.shader_program_sphere_raytrace, 'model')}")
+            print(f"  Raytrace - view loc: {glGetUniformLocation(self.shader_program_sphere_raytrace, 'view')}")
+            print(f"  Raytrace - projection loc: {glGetUniformLocation(self.shader_program_sphere_raytrace, 'projection')}")
+
+        print(f"MolViewerWidget.initializeGL: shader_program_sphere_max_vol ID =  {self.shader_program_sphere_max_vol}")
+        if self.shader_program_sphere_max_vol:
+            glUseProgram(self.shader_program_sphere_max_vol) # Must use program
+            print(f"  MaxVol/Simple - model loc: {glGetUniformLocation(self.shader_program_sphere_max_vol, 'model')}")
+            print(f"  MaxVol/Simple - view loc: {glGetUniformLocation(self.shader_program_sphere_max_vol, 'view')}")
+            print(f"  MaxVol/Simple - projection loc: {glGetUniformLocation(self.shader_program_sphere_max_vol, 'projection')}")
+        glUseProgram(0) # Unbind
+        # --- End Diagnostic ---
+
+        print(f"MolViewerWidget.initializeGL: shader_program_sphere_raytrace ID = {self.shader_program_sphere_raytrace}")
+        print(f"MolViewerWidget.initializeGL: shader_program_sphere_max_vol ID =  {self.shader_program_sphere_max_vol}")
+
+
+        # Set the default shader program for BaseGLWidget's uniform setup
+        self.shader_program = self.shader_program_sphere_raytrace
+        if not self.shader_program: # Fallback if primary fails
+            self.shader_program = self.shader_program_sphere_max_vol
+
+        super().initializeGL_base(None, None) # Pass None for shaders, as we compile them here
+        sphere_mesh=self.default_sphere_mesh
         self.opaque_sphere_instances = InstancedData(base_attrib_location=2)
         self.opaque_sphere_instances.associate_mesh(sphere_mesh)
         self.opaque_sphere_instances.setup_instance_vbos([
@@ -67,7 +92,13 @@ class MolViewerWidget(BaseGLWidget):
             ("colors",    2, 4),
         ])
     def cleanupGL(self):
-        super().cleanupGL_base() # Clean up shader program
+        # super().cleanupGL_base() # BaseGLWidget.shader_program will be one of these
+        if self.shader_program_sphere_raytrace:
+            glDeleteProgram(self.shader_program_sphere_raytrace)
+            self.shader_program_sphere_raytrace = None
+        if self.shader_program_sphere_max_vol:
+            glDeleteProgram(self.shader_program_sphere_max_vol)
+            self.shader_program_sphere_max_vol = None
         if self.opaque_sphere_instances:
             self.opaque_sphere_instances.cleanup()
         if self.transparent_sphere_instances:
@@ -75,15 +106,14 @@ class MolViewerWidget(BaseGLWidget):
 
     def update_instance_data(self):
         if not self.trj or not (0 <= self.current_frame_index < len(self.trj)):
-            print("MolViewerWidget.update_instance_data: Invalid trajectory or frame index")
+            #print("MolViewerWidget.update_instance_data: Invalid trajectory or frame index")
             self.opaque_sphere_instances.update({}, 0)
             self.transparent_sphere_instances.update({}, 0)
             self.instance_data_dirty = False
             return
-
         es, apos, qs, rs, comment = self.trj[self.current_frame_index]
         na = len(es)
-        print(f"MolViewerWidget.update_instance_data: Frame {self.current_frame_index}, Total particles: {na}")
+        #print(f"MolViewerWidget.update_instance_data: Frame {self.current_frame_index}, Total particles: {na}")
         if na == 0: # Handle empty frames
             self.opaque_sphere_instances.update({}, 0)
             self.transparent_sphere_instances.update({}, 0)
@@ -148,14 +178,24 @@ class MolViewerWidget(BaseGLWidget):
 
         # Set blend mode for opaque spheres (standard)
         # This ensures if previous draw call changed blend equation, it's reset.
+        self.use_shader(self.shader_program_sphere_raytrace)
         disable_blend() # Opaque objects don't need blending
         self.opaque_sphere_instances.draw()
 
         # # Set blend mode for transparent spheres based on selection
+        self.use_shader(self.shader_program_sphere_max_vol)
+        # Ensure sphere_simple.glslf is outputting opaque blue for this test: vec4(0.0, 0.0, 1.0, 1.0)
+        # If using sphere_simple, blending mode doesn't strictly matter if output is opaque, but depth test does.
         set_ogl_blend_mode(self.blend_mode)
+        # print(f"MolViewerWidget.draw_scene (Transparent Pass):")
+        # print(f"  Using shader_program_sphere_max_vol ID = {self.shader_program_sphere_max_vol}")
+        # print(f"  transparent_sphere_instances.num_instances = {self.transparent_sphere_instances.num_instances}")
+        # print(f"  Current opacity setting for electrons (self.opacity) = {self.opacity}")
         self.transparent_sphere_instances.draw()
-        # set_ogl_blend_mode(self.blend_mode)
-        # self.transparent_sphere_instances.draw()
+
+    def use_shader(self, shader_prog_id):
+        glUseProgram(shader_prog_id)
+        self.current_shader_program_id = shader_prog_id # For BaseGLWidget to set uniforms
     # def load_trajectory(self, filename):
     #     self.trj = au.load_xyz_movie(filename)
     #     self.trj = au.trj_to_ename(self.trj) # Ensure element names
@@ -210,6 +250,9 @@ class MolViewer(AppWindow):
 
         self.blend_mode_combo = QComboBox()
         self.blend_mode_combo.addItems(alpha_blend_modes.keys())
+        self.blend_mode_combo.setCurrentText("subtractive")
+        self.gl_widget.blend_mode = alpha_blend_modes[self.blend_mode_combo.currentText()]
+        
         self.blend_mode_combo.currentTextChanged.connect(self.on_blend_mode_changed)
         layout.addWidget(QLabel("Transparent Blend Mode:"))
         layout.addWidget(self.blend_mode_combo)
@@ -222,6 +265,7 @@ class MolViewer(AppWindow):
         if self.gl_widget.trj:
             self.frame_slider.setMinimum(0)
             self.frame_slider.setMaximum(len(self.gl_widget.trj) - 1)
+        self.gl_widget.update()
         self.show()
 
     def on_blend_mode_changed(self, text):

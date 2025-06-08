@@ -17,27 +17,13 @@ from OpenGL.GL.shaders import compileProgram, compileShader
 # It's good practice to keep shaders in separate files or as multi-line strings
 # For simplicity here, they are embedded as strings.
 
-# def set_ogl_blend_mode(mode_str):
-#     """Sets the OpenGL blend function and equation based on a mode string."""
-#     if mode_str == "standard":
-#         glBlendEquation(GL_FUNC_ADD)
-#         glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA)
-#     elif mode_str == "additive":
-#         glBlendEquation(GL_FUNC_ADD)
-#         glBlendFunc(GL_SRC_ALPHA, GL_ONE)
-#     elif mode_str == "subtractive_alpha_one":
-#         glBlendEquation(GL_FUNC_REVERSE_SUBTRACT)
-#         glBlendFunc(GL_SRC_ALPHA, GL_ONE)
-#     elif mode_str == "minimum" or mode_str == "maximum":
-#         glBlendEquation(GL_MIN if mode_str == "minimum" else GL_MAX)
-#         glBlendFunc(GL_ONE, GL_ONE) # Common for min/max, takes component-wise min/max
-
 alpha_blend_modes={
     "standard"   :(GL_FUNC_ADD, GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA),
     "additive"   :(GL_FUNC_ADD, GL_SRC_ALPHA, GL_ONE),
     "subtractive":(GL_FUNC_REVERSE_SUBTRACT, GL_SRC_ALPHA, GL_ONE),
     #"subtractive":(GL_FUNC_SUBTRACT, GL_SRC_ALPHA, GL_ONE),
-    "minimum"    :(GL_MIN, GL_ONE, GL_ONE),
+    "minimum"    :(GL_MIN, GL_SRC_ALPHA, GL_ONE),
+    #"minimum"    :(GL_FUNC_MIN, GL_ONE, GL_ONE),
     "maximum"    :(GL_MAX, GL_ONE, GL_ONE)
 }
 
@@ -326,6 +312,7 @@ class BaseGLWidget(QOpenGLWidget):
         self.light_pos = QVector3D(15.0, 15.0, 30.0)
         self.light_color = QVector3D(1.0, 1.0, 1.0)
         self.camera_pos = QVector3D(0, 0, self.zoom_factor) # Will be updated by zoom
+        self.current_shader_program_id = None # To be set by derived class if it manages shaders
 
     def initializeGL_base(self, vertex_shader_src, fragment_shader_src, bPrint=False):
         # Modern OpenGL context should be requested via QSurfaceFormat in main
@@ -340,23 +327,30 @@ class BaseGLWidget(QOpenGLWidget):
         glEnable(GL_CULL_FACE) # Cull back faces
 
 
-        # Compile shaders
+        # Compile shaders if sources are provided
+        if vertex_shader_src and fragment_shader_src:
+            self.shader_program = self.compile_shader_program(vertex_shader_src, fragment_shader_src)
+        elif not hasattr(self, 'shader_program') or not self.shader_program:
+             print("BaseGLWidget: No shader sources provided and no shader_program pre-set.")
+             # self.shader_program should be set by derived class if sources are None
+
+        # Initialize a default sphere mesh
+        #sphere_v, sphere_n, sphere_idx = create_sphere_mesh(radius=1.0)
+        #self.default_sphere_mesh = Mesh(vertices=sphere_v, normals=sphere_n, indices=sphere_idx)
+
+        sphere_v, sphere_n = octahedron_sphere_mesh(radius=1.0, nsub=2)
+        self.default_sphere_mesh = Mesh(vertices=sphere_v, normals=sphere_n)
+        self.default_sphere_mesh.setup_buffers()
+
+    def compile_shader_program(self, vertex_shader_src, fragment_shader_src):
         try:
-            self.shader_program = compileProgram(
+            return compileProgram(
                 compileShader(vertex_shader_src,   GL_VERTEX_SHADER),
                 compileShader(fragment_shader_src, GL_FRAGMENT_SHADER)
             )
         except RuntimeError as e:
             print(f"Shader Compilation Error: {e}")
             sys.exit(1)
-        
-        # Initialize a default sphere mesh
-        #sphere_v, sphere_n, sphere_idx = create_sphere_mesh(radius=1.0)
-        #self.default_sphere_mesh = Mesh(vertices=sphere_v, normals=sphere_n, indices=sphere_idx)
-
-        sphere_v, sphere_n = octahedron_sphere_mesh(radius=1.5, nsub=2)
-        self.default_sphere_mesh = Mesh(vertices=sphere_v, normals=sphere_n)
-        self.default_sphere_mesh.setup_buffers()
 
     def cleanupGL_base(self):
         if self.shader_program:
@@ -368,10 +362,6 @@ class BaseGLWidget(QOpenGLWidget):
     def paintGL_base(self):
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT)
         
-        if self.shader_program is None:
-            return
-
-        glUseProgram(self.shader_program)
 
         # Camera / View transformation
         self.camera_pos = QVector3D(0, 0, self.zoom_factor)
@@ -382,18 +372,30 @@ class BaseGLWidget(QOpenGLWidget):
         model_matrix_np = self._rotation_to_gl_matrix(self.orientation)
         model_qmatrix = QMatrix4x4(model_matrix_np.reshape(4,4).T.flatten().tolist())
 
-        # Set common uniforms
-        glUniformMatrix4fv(glGetUniformLocation(self.shader_program, "projection"), 1, GL_FALSE, self.projection_matrix.data())
-        glUniformMatrix4fv(glGetUniformLocation(self.shader_program, "view"),       1, GL_FALSE, self.view_matrix.data())
-        glUniformMatrix4fv(glGetUniformLocation(self.shader_program, "model"),      1, GL_FALSE, model_qmatrix.data())
+        programs_to_update = self.all_shader_programs
         
-        glUniform3fv(glGetUniformLocation(self.shader_program, "lightPos"),   1, [self.light_pos.x(),   self.light_pos.y(),   self.light_pos.z()])
-        glUniform3fv(glGetUniformLocation(self.shader_program, "viewPos"),    1, [self.camera_pos.x(),  self.camera_pos.y(),  self.camera_pos.z()])
-        glUniform3fv(glGetUniformLocation(self.shader_program, "lightColor"), 1, [self.light_color.x(), self.light_color.y(), self.light_color.z()])
-
+        for prog_id in programs_to_update:
+            #print(f"BaseGLWidget.paintGL_base: Updating uniforms for program: {prog_id}")
+            #if prog_id is None or prog_id == 0: # Check for 0 as it's an invalid program ID
+            #    print(f"BaseGLWidget.paintGL_base: Skipping invalid prog_id: {prog_id}")
+            #    continue
+            
+            # print(f"BaseGLWidget.paintGL_base: Using program {prog_id} for common uniforms")
+            glUseProgram(prog_id)
+            
+            # Check and set common uniforms
+            # It's good to check locations, though if a shader doesn't use a uniform, glGetUniformLocation returns -1, and glUniform* with -1 is a no-op.
+            glUniformMatrix4fv(glGetUniformLocation(prog_id, "projection"), 1, GL_FALSE, self.projection_matrix.data()) # pyArgs: (location, count, transpose, value_ptr)
+            glUniformMatrix4fv(glGetUniformLocation(prog_id, "view"),       1, GL_FALSE, self.view_matrix.data())
+            glUniformMatrix4fv(glGetUniformLocation(prog_id, "model"),      1, GL_FALSE, model_qmatrix.data())
+            
+            glUniform3fv(glGetUniformLocation(prog_id, "lightPos"),   1, [self.light_pos.x(),   self.light_pos.y(),   self.light_pos.z()])
+            glUniform3fv(glGetUniformLocation(prog_id, "viewPos"),    1, [self.camera_pos.x(),  self.camera_pos.y(),  self.camera_pos.z()])
+            glUniform3fv(glGetUniformLocation(prog_id, "lightColor"), 1, [self.light_color.x(), self.light_color.y(), self.light_color.z()])
+        
         self.draw_scene() # Call specific drawing method of derived class
 
-        glUseProgram(0)
+        glUseProgram(0) # Unbind shader after this widget's drawing pass is complete
 
     def resizeGL(self, width, height):
         glViewport(0, 0, width, height)
