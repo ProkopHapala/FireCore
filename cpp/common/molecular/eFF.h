@@ -1058,11 +1058,24 @@ void to_xyz( FILE* pFile, const char* comment=0 ){
         //if(iZ>1)iZ+=2;
         fprintf( pFile, "%3i %10.6f %10.6f %10.6f \n", iZ, apos[i].x, apos[i].y, apos[i].z );
     }
-    for (int i=0; i<ne; i++){
-        int e = espin[i];
-        if(e==1 ){e=92;}
-        if(e==-1){e=109;} // see Jmol colors https://jmol.sourceforge.net/jscolors/
-        fprintf( pFile, "%3i %10.6f %10.6f %10.6f 0 %10.6f \n", e, epos[i].x, epos[i].y, epos[i].z,  esize[i] );
+    bool bE2name = true;
+    if(bE2name){
+        for (int i=0; i<ne; i++){
+            int e = espin[i];
+            char* ename=0;
+            if     (e== 0){ ename="e2"; }
+            else if(e== 1){ ename="e+"; }
+            else if(e==-1){ ename="e-"; } 
+            fprintf( pFile, "%3s %10.6f %10.6f %10.6f 0 %10.6f \n", ename, epos[i].x, epos[i].y, epos[i].z,  esize[i] );
+        }
+    }else{
+        for (int i=0; i<ne; i++){
+            int e = espin[i];
+            if     (e== 0){ e=0;   }
+            else if(e== 1){ e=92;  }
+            else if(e==-1){ e=109; } // see Jmol colors https://jmol.sourceforge.net/jscolors/
+            fprintf( pFile, "%3i %10.6f %10.6f %10.6f 0 %10.6f \n", e, epos[i].x, epos[i].y, epos[i].z,  esize[i] );
+        }
     }
 }
 

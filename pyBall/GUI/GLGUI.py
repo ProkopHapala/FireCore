@@ -42,8 +42,6 @@ def disable_blend():
     #glDepthTest(GL_TRUE)
     glEnable(GL_DEPTH_TEST)
 
-
-
 def setup_vbo(vertices, array_indx, components=3, usage=GL_STATIC_DRAW):
     vbo = glGenBuffers(1)
     glBindBuffer(GL_ARRAY_BUFFER, vbo)
@@ -111,9 +109,30 @@ class Mesh:
         else:
             glDrawArraysInstanced(mode, 0, self.vertex_count, num_instances)
 
-class InstancedData:
+
+class InstanceData:
     def __init__(self, base_attrib_location):
         self.vbos = {}
+        self.base_attrib_location = base_attrib_location # Starting location for instance attributes
+        self.associated_mesh = None
+        self.num_instances = 0 # Now stored here
+        self.vao = None # Each InstancedData will have its own VAO
+        self._instance_attrib_configs = [] # To store VBO configs
+
+def make_vbo( num_components, base_attrib_location, attrib_idx_offset, usage=GL_DYNAMIC_DRAW):
+    vbo = glGenBuffers(1)
+    glBindBuffer(GL_ARRAY_BUFFER, vbo)
+    glBufferData(GL_ARRAY_BUFFER, 0, None, usage) # Initial empty allocation
+    attrib_loc = base_attrib_location + attrib_idx_offset
+    glVertexAttribPointer(attrib_loc, num_components, GL_FLOAT, GL_FALSE, 0, None)
+    glEnableVertexAttribArray(attrib_loc)
+    glVertexAttribDivisor(attrib_loc, 1) # Per-instance
+    return vbo
+
+class InstancedData:
+    def __init__(self, base_attrib_location):
+        self.vbos = []
+        self.vbos_inds = {}
         self.base_attrib_location = base_attrib_location # Starting location for instance attributes
         self.associated_mesh = None
         self.num_instances = 0 # Now stored here
@@ -164,32 +183,35 @@ class InstancedData:
         if self.vao is None:
             print("Error: InstancedData VAO not initialized. Call associate_mesh first.")
             return
-
         glBindVertexArray(self.vao)
         self._instance_attrib_configs = [] # Clear previous configs
-        for name, attrib_idx_offset, num_components in attribs:
-            vbo = glGenBuffers(1)
-            glBindBuffer(GL_ARRAY_BUFFER, vbo)
-            glBufferData(GL_ARRAY_BUFFER, 0, None, GL_DYNAMIC_DRAW) # Initial empty allocation
-            
-            attrib_loc = self.base_attrib_location + attrib_idx_offset
-            glVertexAttribPointer(attrib_loc, num_components, GL_FLOAT, GL_FALSE, 0, None)
-            glEnableVertexAttribArray(attrib_loc)
-            glVertexAttribDivisor(attrib_loc, 1) # Per-instance
-            self.vbos[name] = vbo
+        for i, (name, attrib_idx_offset, num_components) in enumerate(attribs):
+            vbo = make_vbo(num_components, self.base_attrib_location, attrib_idx_offset)
+            self.vbos.append(vbo)
+            self.vbos_inds[name]=i  # this should be faster than using name as key
         glBindVertexArray(0)
         glBindBuffer(GL_ARRAY_BUFFER, 0)
+        return self.get_vbo_inds( [name for name, _, _ in attribs] )
 
-    def update(self, buffs, num_instances):
-        self.num_instances = num_instances
-        # No VAO binding needed here, just VBO data update
+    def get_vbo_inds(self, names):
+        return [self.vbos_inds[name] for name in names]
+
+    def update(self, buffs, n=-1):
+        if n<0: n=len(buffs["positions"])
+        self.num_instances = n
         for name, buff_data in buffs.items():
-            if name in self.vbos:
-                glBindBuffer(GL_ARRAY_BUFFER, self.vbos[name])
-                glBufferData(GL_ARRAY_BUFFER, buff_data.nbytes, buff_data, GL_DYNAMIC_DRAW)
-                glBindBuffer(GL_ARRAY_BUFFER, 0)
-            else:
-                print(f"Warning: VBO '{name}' not found for updating in InstancedData.update for {self}.")
+            i = self.vbos_inds[name]
+            glBindBuffer(GL_ARRAY_BUFFER, self.vbos[i])
+            glBufferData(GL_ARRAY_BUFFER, buff_data.nbytes, buff_data, GL_DYNAMIC_DRAW)
+            glBindBuffer(GL_ARRAY_BUFFER, 0)
+
+    def update_list(self, buffs, n=-1):  # this should be faster than using name as key
+        if n<0: n=len(buffs[0])
+        self.num_instances = n
+        for i, buff_data in enumerate(buffs):
+            glBindBuffer(GL_ARRAY_BUFFER, self.vbos[i])
+            glBufferData(GL_ARRAY_BUFFER, buff_data.nbytes, buff_data, GL_DYNAMIC_DRAW)
+            glBindBuffer(GL_ARRAY_BUFFER, 0)
 
     def draw(self, mode=GL_TRIANGLES):
         if self.vao is None or self.associated_mesh is None or self.num_instances == 0:
@@ -236,13 +258,6 @@ def create_sphere_mesh(radius=1.0, segments=16, rings=16):
             indices.extend([second, second + 1, first + 1])
             
     return np.array(vertices, dtype=np.float32), np.array(normals, dtype=np.float32), np.array(indices, dtype=np.uint32)
-
-# def _normalize_np_array(arr_n_by_3):
-#     """Normalizes an array of N vectors (N x 3)."""
-#     norms = np.linalg.norm(arr_n_by_3, axis=1, keepdims=True)
-#     # Prevent division by zero for zero-length vectors
-#     norms[norms == 0] = 1.0
-#     return arr_n_by_3 / norms
 
 def append_normalized( v_list, radius, vertices_list, normals_list ):
     for v in v_list:

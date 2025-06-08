@@ -1,3 +1,4 @@
+from re import S
 import sys
 import numpy as np
 from PyQt5.QtWidgets import (QApplication, QMainWindow, QVBoxLayout, QWidget, QSlider, QLabel, QComboBox)
@@ -16,6 +17,22 @@ from OpenGL.GL import glUseProgram, glGetUniformLocation
 #     GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA, GL_ONE
 # )
 
+# class SphereInstancesData:
+#     def __init__(self, positions=[], radii=[], colors=[]):
+#         self.positions  = positions
+#         self.radii      = radii
+#         self.colors_rgb = colors
+#         #self.nu         = len(self.positions)
+
+#     def add_instance(self, position, radius, color):
+#         self.positions .append(position)
+#         self.radii     .append(radius)
+#         self.colors_rgb.append(color)
+
+#     def to_array(self, dtype=np.float32):
+#         self.positions  = np.array(self.positions,  dtype=dtype)
+#         self.radii      = np.array(self.radii,      dtype=dtype)
+#         self.colors_rgb = np.array(self.colors_rgb, dtype=dtype)
 
 class MolViewerWidget(BaseGLWidget):
     def __init__(self, parent=None):
@@ -23,12 +40,13 @@ class MolViewerWidget(BaseGLWidget):
         self.trj = []
         self.current_frame_index = 0
         self.opacity = 0.5
-        self.opaque_sphere_instances = None
-        self.transparent_sphere_instances = None
+        self.frames_atoms = []
+        self.frames_elecs = []
         self.blend_mode = alpha_blend_modes["standard"] # Default blend mode for transparent spheres
         self.shader_program_sphere_raytrace = None
         self.shader_program_sphere_max_vol = None
         self.instance_data_dirty = True
+        self.electron_names = set(["E", "e", "e2", "e+", "e-"])
 
     @property
     def all_shader_programs(self):
@@ -68,7 +86,6 @@ class MolViewerWidget(BaseGLWidget):
         print(f"MolViewerWidget.initializeGL: shader_program_sphere_raytrace ID = {self.shader_program_sphere_raytrace}")
         print(f"MolViewerWidget.initializeGL: shader_program_sphere_max_vol ID =  {self.shader_program_sphere_max_vol}")
 
-
         # Set the default shader program for BaseGLWidget's uniform setup
         self.shader_program = self.shader_program_sphere_raytrace
         if not self.shader_program: # Fallback if primary fails
@@ -76,21 +93,18 @@ class MolViewerWidget(BaseGLWidget):
 
         super().initializeGL_base(None, None) # Pass None for shaders, as we compile them here
         sphere_mesh=self.default_sphere_mesh
-        self.opaque_sphere_instances = InstancedData(base_attrib_location=2)
-        self.opaque_sphere_instances.associate_mesh(sphere_mesh)
-        self.opaque_sphere_instances.setup_instance_vbos([
+        self.atom_instances = InstancedData(base_attrib_location=2)
+        self.atom_instances.associate_mesh(sphere_mesh)
+        atribs = [
             ("positions", 0, 3),
             ("radii",     1, 1),
             ("colors",    2, 4),
-        ])
-
-        self.transparent_sphere_instances = InstancedData(base_attrib_location=2) # Same attrib locations
-        self.transparent_sphere_instances.associate_mesh(sphere_mesh)
-        self.transparent_sphere_instances.setup_instance_vbos([
-            ("positions", 0, 3),
-            ("radii",     1, 1),
-            ("colors",    2, 4),
-        ])
+        ]
+        self.sphere_vbo_inds = self.atom_instances.setup_instance_vbos(atribs)
+        self.elec_instances = InstancedData(base_attrib_location=2) # Same attrib locations
+        self.elec_instances.associate_mesh(sphere_mesh)
+        self.elec_instances.setup_instance_vbos(atribs)
+    
     def cleanupGL(self):
         # super().cleanupGL_base() # BaseGLWidget.shader_program will be one of these
         if self.shader_program_sphere_raytrace:
@@ -99,73 +113,61 @@ class MolViewerWidget(BaseGLWidget):
         if self.shader_program_sphere_max_vol:
             glDeleteProgram(self.shader_program_sphere_max_vol)
             self.shader_program_sphere_max_vol = None
-        if self.opaque_sphere_instances:
-            self.opaque_sphere_instances.cleanup()
-        if self.transparent_sphere_instances:
-            self.transparent_sphere_instances.cleanup()
+        if self.atom_instances:
+            self.atom_instances.cleanup()
+        if self.elec_instances:
+            self.elec_instances.cleanup()
+
+    def precalculate_frames_data(self, dtype=np.float32):
+        for frame_idx in range(len(self.trj)):
+            es,ps,qs, rs, comment = self.trj[frame_idx]
+            na = len(es)
+            # atoms = SphereInstancesData()
+            # elecs = SphereInstancesData()
+            apos,arad,acol=[],[],[]
+            epos,erad,ecol=[],[],[]
+            if na > 0:
+                for i in range(na):
+                    atom_symbol = es[i]
+                    current_radius = rs[i]
+                    element_data = elements.ELEMENT_DICT[atom_symbol]
+                    hex_color_str = element_data[elements.index_color]
+                    r_col, g_col, b_col = elements.hex_to_float_rgb(hex_color_str)
+                    if atom_symbol in self.electron_names: # Electron or transparent particle
+                        epos.append(ps[i])
+                        erad.append(current_radius)
+                        ecol.append([r_col, g_col, b_col, self.opacity])
+                    else: 
+                        apos.append(ps[i])
+                        arad.append(current_radius)
+                        acol.append([r_col, g_col, b_col, 1.0])
+            
+            self.frames_atoms.append( [np.array(apos,dtype=dtype), np.array(arad,dtype=dtype), np.array(acol,dtype=dtype)] )
+            self.frames_elecs.append( [np.array(epos,dtype=dtype), np.array(erad,dtype=dtype), np.array(ecol,dtype=dtype)] )
+            if frame_idx == 0:
+                print("arad",   self.frames_atoms[-1][1])
+                print("apos\n", self.frames_atoms[-1][0])
+                print("acol\n", self.frames_atoms[-1][2])
+
+                print("erad",   self.frames_elecs[-1][1])
+                print("epos\n", self.frames_elecs[-1][0])
+                print("ecol\n", self.frames_elecs[-1][2])
 
     def update_instance_data(self):
-        if not self.trj or not (0 <= self.current_frame_index < len(self.trj)):
-            #print("MolViewerWidget.update_instance_data: Invalid trajectory or frame index")
-            self.opaque_sphere_instances.update({}, 0)
-            self.transparent_sphere_instances.update({}, 0)
-            self.instance_data_dirty = False
-            return
-        es, apos, qs, rs, comment = self.trj[self.current_frame_index]
-        na = len(es)
-        #print(f"MolViewerWidget.update_instance_data: Frame {self.current_frame_index}, Total particles: {na}")
-        if na == 0: # Handle empty frames
-            self.opaque_sphere_instances.update({}, 0)
-            self.transparent_sphere_instances.update({}, 0)
-            self.instance_data_dirty = False
-            return
-
-        opaque_positions_list = []
-        opaque_radii_list = []
-        opaque_colors_list = []
-
-        transparent_positions_list = []
-        transparent_radii_list = []
-        transparent_colors_list = []
-
-        for i in range(na):
-            atom_symbol    = es[i]
-            current_radius = rs[i]
-            element_data  = elements.ELEMENT_DICT[atom_symbol]
-            hex_color_str = element_data[elements.index_color]
-            r_col, g_col, b_col = elements.hex_to_float_rgb(hex_color_str)
-
-            if atom_symbol == "E": # Assuming "E" denotes an electron or transparent particle
-                #print(f"  Transparent ({atom_symbol}): idx={i}, pos={apos[i]}, radius={current_radius}, alpha={self.opacity}")
-                transparent_positions_list.append(apos[i])
-                transparent_radii_list.append(current_radius)
-                transparent_colors_list.append([r_col, g_col, b_col, self.opacity])
-            else:
-                #print(f"  Opaque      ({atom_symbol}): idx={i}, pos={apos[i]}, radius={current_radius}, alpha=1.0 color=({r_col},{g_col},{b_col})")
-                opaque_positions_list.append(apos[i])
-                opaque_radii_list.append(current_radius)
-                opaque_colors_list.append([r_col, g_col, b_col, 1.0]) # Opaque atoms have alpha = 1.0
-
-        num_opaque      = len(opaque_positions_list)
-        num_transparent = len(transparent_positions_list)
-        #print(f"MolViewerWidget.update_instance_data: num_opaque_processed={num_opaque}, num_transparent_processed={num_transparent}")
-
-        if num_opaque > 0:
-            opaque_positions = np.array(opaque_positions_list, dtype=np.float32)
-            opaque_radii     = np.array(opaque_radii_list, dtype=np.float32)
-            opaque_colors    = np.array(opaque_colors_list, dtype=np.float32)
-            # print(f"  Opaque radii being sent to GPU: {opaque_radii.flatten()}")
-            self.opaque_sphere_instances.update({"positions": opaque_positions, "radii": opaque_radii, "colors": opaque_colors}, num_opaque)
-        else:
-            self.opaque_sphere_instances.update({}, 0) # Clear if no opaque instances
-        if num_transparent > 0:
-            transparent_positions = np.array(transparent_positions_list, dtype=np.float32)
-            transparent_radii     = np.array(transparent_radii_list, dtype=np.float32)
-            transparent_colors    = np.array(transparent_colors_list, dtype=np.float32)
-            self.transparent_sphere_instances.update({"positions": transparent_positions, "radii": transparent_radii, "colors": transparent_colors}, num_transparent)
-        else:
-            self.transparent_sphere_instances.update({}, 0) # Clear if no transparent instances
-
+        elecs = self.frames_elecs[self.current_frame_index]
+        elecs[2][:,3] = self.opacity
+        self.atom_instances.update_list( self.frames_atoms[self.current_frame_index] )
+        self.elec_instances.update_list( elecs )
+        # self.atom_instances     .update( {
+        #     "positions": self.frames_atoms[self.current_frame_index][0],
+        #     "radii":     self.frames_atoms[self.current_frame_index][1],
+        #     "colors":    self.frames_atoms[self.current_frame_index][2]
+        #     })
+        # self.elec_instances.update( {
+        #     "positions": self.frames_elecs[self.current_frame_index][0],
+        #     "radii":     self.frames_elecs[self.current_frame_index][1],
+        #     "colors":    self.frames_elecs[self.current_frame_index][2]
+        #     })
         self.instance_data_dirty = False
 
     def paintGL(self):
@@ -175,35 +177,17 @@ class MolViewerWidget(BaseGLWidget):
     def draw_scene(self):
         if self.instance_data_dirty:
             self.update_instance_data()
-
-        # Set blend mode for opaque spheres (standard)
-        # This ensures if previous draw call changed blend equation, it's reset.
         self.use_shader(self.shader_program_sphere_raytrace)
         disable_blend() # Opaque objects don't need blending
-        self.opaque_sphere_instances.draw()
-
-        # # Set blend mode for transparent spheres based on selection
+        self.atom_instances.draw()
+        
         self.use_shader(self.shader_program_sphere_max_vol)
-        # Ensure sphere_simple.glslf is outputting opaque blue for this test: vec4(0.0, 0.0, 1.0, 1.0)
-        # If using sphere_simple, blending mode doesn't strictly matter if output is opaque, but depth test does.
         set_ogl_blend_mode(self.blend_mode)
-        # print(f"MolViewerWidget.draw_scene (Transparent Pass):")
-        # print(f"  Using shader_program_sphere_max_vol ID = {self.shader_program_sphere_max_vol}")
-        # print(f"  transparent_sphere_instances.num_instances = {self.transparent_sphere_instances.num_instances}")
-        # print(f"  Current opacity setting for electrons (self.opacity) = {self.opacity}")
-        self.transparent_sphere_instances.draw()
+        self.elec_instances.draw()
 
     def use_shader(self, shader_prog_id):
         glUseProgram(shader_prog_id)
         self.current_shader_program_id = shader_prog_id # For BaseGLWidget to set uniforms
-    # def load_trajectory(self, filename):
-    #     self.trj = au.load_xyz_movie(filename)
-    #     self.trj = au.trj_to_ename(self.trj) # Ensure element names
-    #     self.trj = au.trj_fill_radius(self.trj, bVdw=False, rFactor=1.0, rmin=0.1) # Use covalent radii
-    #     self.current_frame_index = 0
-    #     self.instance_data_dirty = True
-    #     self.update()
-    #     return len(self.trj)
 
     def set_frame(self, frame_idx):
         if 0 <= frame_idx < len(self.trj):
@@ -215,11 +199,6 @@ class MolViewerWidget(BaseGLWidget):
         self.opacity = opacity_percent / 100.0
         self.instance_data_dirty = True # Need to update colors VBO
         self.update()
-
-    # def set_blend_mode(self, mode_str):
-    #     if mode_str in ["standard", "additive", "subtractive_alpha_one", "minimum", "maximum"]:
-    #         self.blend_mode = mode_str
-    #         self.update() # Trigger repaint
 
 
 class MolViewer(AppWindow):
@@ -259,12 +238,11 @@ class MolViewer(AppWindow):
         
         self.gl_widget.trj = trj
         self.gl_widget.update()
-        # if filepath is not None:
-        #     self.filepath = filepath
-        #     self.gl_widget.load_trajectory(self.filepath)
         if self.gl_widget.trj:
             self.frame_slider.setMinimum(0)
             self.frame_slider.setMaximum(len(self.gl_widget.trj) - 1)
+
+        self.gl_widget.precalculate_frames_data()
         self.gl_widget.update()
         self.show()
 

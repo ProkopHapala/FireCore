@@ -36,7 +36,10 @@ eff.setAtomParams(atomParams2, mode=1)
 trjname = 'relaxation.xyz'
 eff.setTrjName( trjname, savePerNsteps=10)
 #outEs, apos, epos = eff.processXYZ_e( "H2O_pairs.xyz", nstepMax=10000,  dt=0.001, Fconv=1e-3, optAlg=2, bOutputs=(1,1,1) )
-outEs, apos, epos = eff.processXYZ_e( "H2O_pairs_fc.xyz", nstepMax=1000,  dt=0.01, Fconv=1e-3, optAlg=2, bOutputs=(1,1,1) )
+#outEs, apos, epos = eff.processXYZ_e( "H2O_pairs_fc.xyz", nstepMax=1000,  dt=0.01, Fconv=1e-3, optAlg=2, bOutputs=(1,1,1) )
+
+outEs, apos, epos = eff.processXYZ_e( "H2O_spins.xyz",    nstepMax=1000,  dt=0.001, Fconv=1e-3, optAlg=2, bOutputs=(1,1,1) )
+#outEs, apos, epos = eff.processXYZ_e( "H2O_spins_fc.xyz", nstepMax=1000,  dt=0.01, Fconv=1e-3, optAlg=2, bOutputs=(1,1,1) )
 
 print("==== Results:")
 print("Energies:", outEs)
@@ -48,7 +51,7 @@ from xyz_view_new import MolViewer
 from pyBall import atomicUtils as au
 trj = au.load_xyz_movie(trjname)
 trj = au.trj_to_ename(trj)
-trj = au.trj_fill_radius(trj, bVdw=True, rFactor=0.6, rmin=0.1) # Use a larger rFactor
+trj = au.trj_fill_radius(trj, bVdw=True, rFactor=0.001, rmin=0.05) # Use a larger rFactor
 #trj = au.trj_fill_radius(trj, bVdw=False, rFactor=1.0)
 #print( "trj.enames", trj[0])
 MolViewer.launch(trj=trj)
