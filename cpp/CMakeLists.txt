@@ -41,7 +41,7 @@ if(TARGET_WASM)
 
 	SET(CMAKE_EXECUTABLE_SUFFIX ".html")
 	SET(AXULIARY_COMPILE_FLAGS "${AXULIARY_COMPILE_FLAGS} -fno-openmp -std=c++20 -march=wasm")
-	SET(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} --use-port=sdl2")
+	SET(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} --use-port=sdl2 -sUSE_SDL=2 -sMIN_WEBGL_VERSION=3 -sMAX_WEBGL_VERSION=3 -sALLOW_MEMORY_GROWTH=1")
 endif()
 
 if(WITH_FFTW)
@@ -159,7 +159,7 @@ function(setup_precompiled_headers target)
     target_precompile_headers(${target} PRIVATE ${all_headers})
 endfunction()
 
-if ( WITH_WASM )
+if ( TARGET_WASM )
 include_directories(
         ${COMMON_SRCS}
         ${COMMON_SRCS}/math
@@ -171,7 +171,6 @@ include_directories(
         ${COMMON_SDL_SRCS}/SDL2OGL
         
         ${MY_SRC_DIR}/wasmlib/simde
-        ${MY_SRC_DIR}/wasmlib/fftw3/api
 )
 else()
 include_directories(

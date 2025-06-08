@@ -29,28 +29,17 @@ $(WASM_BUILD_DIR)/index.html: $(WASM_BUILD_DIR)/makefile $(WASM_BUILD_DIR)/vfile
 	make wasm-libs
 	cd $(WASM_BUILD_DIR) && emmake --em-config $(shell pwd)/wasmlib/custom_cache/config make MolGUIapp -j 5 || echo "whoops"
 
-	echo ' -sMIN_WEBGL_VERSION=3 -sMAX_WEBGL_VERSION=3 $(shell pwd)/wasmlib/fftw3/Install/lib/libfftw3.a -sUSE_SDL=2 --pre-js $(shell pwd)/$(WASM_BUILD_DIR)/vfilesystem.js  -sFORCE_FILESYSTEM -s ALLOW_MEMORY_GROWTH=1 ' > $(WASM_BUILD_DIR)/apps/MolecularEditor/CMakeFiles/MolGUIapp.dir/linkLibs.rsp
+	echo ' --pre-js $(shell pwd)/$(WASM_BUILD_DIR)/vfilesystem.js -sFORCE_FILESYSTEM' > $(WASM_BUILD_DIR)/apps/MolecularEditor/CMakeFiles/MolGUIapp.dir/linkLibs.rsp
 	cd $(WASM_BUILD_DIR) && emmake --em-config $(shell pwd)/wasmlib/custom_cache/config make MolGUIapp
 
 
 
 # ------------ extra libraries that have to be included or built for wasm (SIMDE, gl4es, fftw3) -------------
-wasm-libs: wasmlib/simde/simde/x86/fma.h wasmlib/fftw3/api/fftw3.h wasmlib/custom_cache/config
+wasm-libs: wasmlib/simde/simde/x86/fma.h wasmlib/custom_cache/config
 
 wasmlib/simde/simde/x86/fma.h:
 	@mkdir wasmlib -p
 	cd wasmlib && git clone https://github.com/simd-everywhere/simde
-
-wasmlib/fftw3/api/fftw3.h:
-	rm -rf wasmlib/fftw3
-	cd wasmlib && curl "http://www.fftw.org/fftw-3.3.10.tar.gz" -o fftw3.tar.gz
-	cd wasmlib && tar -xf fftw3.tar.gz
-	cd wasmlib && mv fftw-3.3.10/ fftw3/
-	rm wasmlib/fftw3.tar.gz
-	mkdir wasmlib/fftw3/Install
-	cd wasmlib/fftw3 && emconfigure ./configure --prefix=$(shell pwd)/wasmlib/fftw3/Install --host=none --enable-silent-rules --disable-doc --disable-dependency-tracking --disable-fortran
-	cd wasmlib/fftw3 && emmake make --no-print-directory -j
-	cd wasmlib/fftw3 && emmake make install --no-print-directory
 
 wasmlib/custom_cache/config:
 	mkdir wasmlib/custom_cache/ -p
