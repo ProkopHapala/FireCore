@@ -30,10 +30,12 @@ void main()
     // The overall 'model' matrix (from trackball) will handle rotation.
     mat4 boundingBoxTransformMatrix = mat4(1.0);
     boundingBoxTransformMatrix[3] = vec4(instancePosition_model, 1.0); // Translate
-
     mat4 finalBoundingBoxModelMatrix = model * boundingBoxTransformMatrix;
 
-    fpos_world = vec3(finalBoundingBoxModelMatrix * vec4(aPos, 1.0));
+    // Scale the base mesh vertices by the instance's actual radius
+    vec3 scaled_aPos = aPos * instanceActualSphereRadius;
+
+    fpos_world = vec3(finalBoundingBoxModelMatrix * vec4(scaled_aPos, 1.0));
     atomColor_out = instanceColor;
-    gl_Position = projection * view * finalBoundingBoxModelMatrix * vec4(aPos, 1.0);
+    gl_Position = projection * view * finalBoundingBoxModelMatrix * vec4(scaled_aPos, 1.0);
 }

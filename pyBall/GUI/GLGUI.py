@@ -18,29 +18,43 @@ from OpenGL.GL.shaders import compileProgram, compileShader
 # For simplicity here, they are embedded as strings.
 
 alpha_blend_modes={
-    "standard"   :(GL_FUNC_ADD, GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA),
-    "additive"   :(GL_FUNC_ADD, GL_SRC_ALPHA, GL_ONE),
-    "subtractive":(GL_FUNC_REVERSE_SUBTRACT, GL_SRC_ALPHA, GL_ONE),
+    "standard"    :(GL_FUNC_ADD, GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA),
+    "standard2"    :(GL_FUNC_ADD, GL_ONE, GL_ONE_MINUS_SRC_ALPHA),
+    #"standard2"   :(GL_FUNC_ADD, GL_SRC_ALPHA, GL_ONE),
+    #"standard3"   :(GL_FUNC_ADD, GL_ONE,       GL_ONE),
+    #"minimum1"    :(GL_MIN,      GL_ONE,       GL_ONE),
+    #"minimum2"    :(GL_MIN,      GL_SRC_ALPHA, GL_ONE),
+    #"minimum3"    :(GL_MIN,      GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA),
+    #"minimum4"    :(GL_MIN,GL_ONE, GL_ONE,   GL_FUNC_ADD,GL_SRC_ALPHA,GL_ONE_MINUS_SRC_ALPHA ),
+    #"additive"   :(GL_FUNC_ADD, GL_SRC_ALPHA, GL_ONE),
+    "subtractive" :(GL_FUNC_REVERSE_SUBTRACT, GL_SRC_ALPHA, GL_ONE),
+    #"subtractive2" :(GL_FUNC_REVERSE_SUBTRACT, GL_ONE, GL_ONE),
+    #"subtractive2" :(GL_FUNC_REVERSE_SUBTRACT, GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA),
     #"subtractive":(GL_FUNC_SUBTRACT, GL_SRC_ALPHA, GL_ONE),
-    "minimum"    :(GL_MIN, GL_SRC_ALPHA, GL_ONE),
     #"minimum"    :(GL_FUNC_MIN, GL_ONE, GL_ONE),
-    "maximum"    :(GL_MAX, GL_ONE, GL_ONE)
+    #"maximum"    :(GL_MAX, GL_ONE, GL_ONE)
 }
 
-def set_ogl_blend_mode( mode):
+def set_ogl_blend_mode(mode, depth_test=True):
     #print("set_ogl_blend_mode", mode)
     glEnable(GL_BLEND)
-    glBlendEquation(mode[0])
-    glBlendFunc(mode[1], mode[2])
+    if len(mode) == 3:
+        glBlendEquation(mode[0])
+        glBlendFunc(mode[1], mode[2])
+    else:
+        glBlendEquationSeparate(mode[0], mode[3])
+        glBlendFuncSeparate    (mode[1], mode[2], mode[4], mode[5])
     #glDepthMask(GL_FALSE)
     #glDepthTest(GL_FALSE)
-    glDisable(GL_DEPTH_TEST)
+    if depth_test:
+        glDisable(GL_DEPTH_TEST)
 
-def disable_blend():
+def disable_blend( depth_test=True):
     glDisable(GL_BLEND)
     #glDepthMask(GL_TRUE)
     #glDepthTest(GL_TRUE)
-    glEnable(GL_DEPTH_TEST)
+    if depth_test:
+        glEnable(GL_DEPTH_TEST)
 
 def setup_vbo(vertices, array_indx, components=3, usage=GL_STATIC_DRAW):
     vbo = glGenBuffers(1)
@@ -315,18 +329,18 @@ class BaseGLWidget(QOpenGLWidget):
     def __init__(self, parent=None):
         super().__init__(parent)
 
-        self.zoom_factor = 20.0  # Initial zoom
-        self.orientation = R.identity()
+        self.zoom_factor    = 10.0  # Initial zoom
+        self.orientation    = R.identity()
         self.last_mouse_pos = None
         self.shader_program = None
         self.default_sphere_mesh = None # For common sphere rendering
 
         # Camera and light
-        self.view_matrix = QMatrix4x4()
+        self.view_matrix       = QMatrix4x4()
         self.projection_matrix = QMatrix4x4()
-        self.light_pos = QVector3D(15.0, 15.0, 30.0)
-        self.light_color = QVector3D(1.0, 1.0, 1.0)
-        self.camera_pos = QVector3D(0, 0, self.zoom_factor) # Will be updated by zoom
+        self.light_pos         = QVector3D(15.0, 15.0, 30.0)
+        self.light_color       = QVector3D( 1.0,  1.0,  1.0)
+        self.camera_pos        = QVector3D( 0  ,  0  , self.zoom_factor) # Will be updated by zoom
         self.current_shader_program_id = None # To be set by derived class if it manages shaders
 
     def initializeGL_base(self, vertex_shader_src, fragment_shader_src, bPrint=False):
@@ -353,7 +367,7 @@ class BaseGLWidget(QOpenGLWidget):
         #sphere_v, sphere_n, sphere_idx = create_sphere_mesh(radius=1.0)
         #self.default_sphere_mesh = Mesh(vertices=sphere_v, normals=sphere_n, indices=sphere_idx)
 
-        sphere_v, sphere_n = octahedron_sphere_mesh(radius=1.0, nsub=2)
+        sphere_v, sphere_n = octahedron_sphere_mesh(radius=1.3, nsub=2)
         self.default_sphere_mesh = Mesh(vertices=sphere_v, normals=sphere_n)
         self.default_sphere_mesh.setup_buffers()
 
