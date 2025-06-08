@@ -21,14 +21,12 @@ $(WASM_BUILD_DIR)/makefile: wasm-libs
 
 .PHONY: $(WASM_BUILD_DIR)/vfilesystem.js
 $(WASM_BUILD_DIR)/vfilesystem.js:
-	cp common_resources data -r
+	@cp common_resources data -r
 	/usr/share/emscripten/tools/file_packager TARGET --embed common_resources --embed data --js-output=$(WASM_BUILD_DIR)/vfilesystem.js
-	rm data -r
+	@rm data -r
 	
 $(WASM_BUILD_DIR)/index.html: $(WASM_BUILD_DIR)/makefile $(WASM_BUILD_DIR)/vfilesystem.js wasm-libs
-	make wasm-libs
 	cd $(WASM_BUILD_DIR) && emmake --em-config $(shell pwd)/wasmlib/custom_cache/config make MolGUIapp -j 5 || echo "whoops"
-
 	echo ' --pre-js $(shell pwd)/$(WASM_BUILD_DIR)/vfilesystem.js -sFORCE_FILESYSTEM' > $(WASM_BUILD_DIR)/apps/MolecularEditor/CMakeFiles/MolGUIapp.dir/linkLibs.rsp
 	cd $(WASM_BUILD_DIR) && emmake --em-config $(shell pwd)/wasmlib/custom_cache/config make MolGUIapp
 
@@ -42,7 +40,7 @@ wasmlib/simde/simde/x86/fma.h:
 	cd wasmlib && git clone https://github.com/simd-everywhere/simde
 
 wasmlib/custom_cache/config:
-	mkdir wasmlib/custom_cache/ -p
+	@mkdir wasmlib/custom_cache/ -p
 	cp /usr/share/emscripten/cache/ wasmlib/custom_cache/cache -r
 	cp /usr/share/emscripten/.emscripten wasmlib/custom_cache/config
 	echo -e "\n\nCACHE = '$(shell pwd)/wasmlib/custom_cache/cache'" >> wasmlib/custom_cache/config
