@@ -33,11 +33,7 @@ $(WASM_BUILD_DIR)/index.html: $(WASM_BUILD_DIR)/makefile $(WASM_BUILD_DIR)/vfile
 
 
 # ------------ extra libraries that have to be included or built for wasm (SIMDE, gl4es, fftw3) -------------
-wasm-libs: wasmlib/simde/simde/x86/fma.h wasmlib/custom_cache/config
-
-wasmlib/simde/simde/x86/fma.h:
-	@mkdir wasmlib -p
-	cd wasmlib && git clone https://github.com/simd-everywhere/simde
+wasm-libs: wasmlib/custom_cache/config
 
 wasmlib/custom_cache/config:
 	@mkdir wasmlib/custom_cache/ -p

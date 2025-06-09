@@ -170,7 +170,7 @@ include_directories(
         ${COMMON_SDL_SRCS}/SDL2
         ${COMMON_SDL_SRCS}/SDL2OGL
         
-        ${MY_SRC_DIR}/wasmlib/simde
+        ${CMAKE_CURRENT_BINARY_DIR}/simde
 )
 else()
 include_directories(
@@ -222,4 +222,12 @@ endif()
 
 if ( WITH_OPENCL AND WITH_SDL )
     add_subdirectory( ${MY_SRC_DIR}/apps_OCL     )
+endif()
+
+if(TARGET_WASM)
+	ADD_CUSTOM_COMMAND(OUTPUT "${CMAKE_CURRENT_BINARY_DIR}/simde/simde/x86/fma.h"
+		VERBATIM COMMAND cd ${CMAKE_CURRENT_BINARY_DIR} && git clone https://github.com/simd-everywhere/simde 
+	)
+	ADD_CUSTOM_TARGET(simde DEPENDS "${CMAKE_CURRENT_BINARY_DIR}/simde/simde/x86/fma.h")
+	add_dependencies(MolGUIapp simde)
 endif()
