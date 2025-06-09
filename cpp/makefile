@@ -26,9 +26,7 @@ $(WASM_BUILD_DIR)/vfilesystem.js:
 	@rm data -r
 	
 $(WASM_BUILD_DIR)/index.html: $(WASM_BUILD_DIR)/makefile $(WASM_BUILD_DIR)/vfilesystem.js wasm-libs
-	cd $(WASM_BUILD_DIR) && emmake --em-config $(shell pwd)/wasmlib/custom_cache/config make MolGUIapp -j 5 || echo "whoops"
-	echo ' --pre-js $(shell pwd)/$(WASM_BUILD_DIR)/vfilesystem.js -sFORCE_FILESYSTEM' > $(WASM_BUILD_DIR)/apps/MolecularEditor/CMakeFiles/MolGUIapp.dir/linkLibs.rsp
-	cd $(WASM_BUILD_DIR) && emmake --em-config $(shell pwd)/wasmlib/custom_cache/config make MolGUIapp
+	cd $(WASM_BUILD_DIR) && emmake --em-config $(shell pwd)/wasmlib/custom_cache/config make MolGUIapp -j 5
 
 
 
