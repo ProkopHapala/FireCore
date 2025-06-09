@@ -42,7 +42,8 @@ if(TARGET_WASM)
 	SET(CMAKE_EXECUTABLE_SUFFIX ".html")
 	SET(AXULIARY_COMPILE_FLAGS "${AXULIARY_COMPILE_FLAGS} -fno-openmp -std=c++20 -march=wasm")
 	SET(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} --use-port=sdl2 -sUSE_SDL=2 -sMIN_WEBGL_VERSION=3 -sMAX_WEBGL_VERSION=3 -sALLOW_MEMORY_GROWTH=1")
-	SET(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} --pre-js ${CMAKE_CURRENT_BINARY_DIR}/vfilesystem.js -sFORCE_FILESYSTEM")
+	SET(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} --embed-file ${CMAKE_SOURCE_DIR}/common_resources@common_resources --embed-file ${CMAKE_SOURCE_DIR}/common_resources@data")
+	SET(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -sTOTAL_MEMORY=268435456") # 256MiB
 endif()
 
 if(WITH_FFTW)
@@ -231,6 +232,11 @@ if(TARGET_WASM)
 	)
 	ADD_CUSTOM_TARGET(simde DEPENDS "${CMAKE_CURRENT_BINARY_DIR}/simde/simde/x86/fma.h")
 	add_dependencies(MolGUIapp simde)
+
+	#ADD_CUSTOM_TARGET(vfilesystem
+	#	VERBATIM COMMAND "/usr/share/emscripten/tools/file_packager TARGET --embed ${CMAKE_SOURCE_DIR}/common_resources@common_resources --embed ${CMAKE_SOURCE_DIR}/common_resources@data --js-output=${CMAKE_CURRENT_BINARY_DIR}/vfilesystem.js"
+	#)
+	#add_dependencies(MolGUIapp vfilesystem)
 
 	## bugfix: not sure why it tries to link -lnul, but it doesn't exist and we don't need it
 	get_target_property(TARGET_LIBRARIES MolGUIapp LINK_LIBRARIES)

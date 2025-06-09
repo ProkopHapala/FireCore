@@ -19,13 +19,7 @@ $(WASM_BUILD_DIR)/makefile: wasm-libs
 	@mkdir -p $(WASM_BUILD_DIR)
 	cd $(WASM_BUILD_DIR) && emcmake --em-config $(shell pwd)/wasmlib/custom_cache/config cmake .. -DWITH_SDL=ON -DWITH_FFTW=OFF -DWITH_OPENCL=OFF -DTARGET_WASM=ON -Wno-dev
 
-.PHONY: $(WASM_BUILD_DIR)/vfilesystem.js
-$(WASM_BUILD_DIR)/vfilesystem.js:
-	@cp common_resources data -r
-	/usr/share/emscripten/tools/file_packager TARGET --embed common_resources --embed data --js-output=$(WASM_BUILD_DIR)/vfilesystem.js
-	@rm data -r
-	
-$(WASM_BUILD_DIR)/index.html: $(WASM_BUILD_DIR)/makefile $(WASM_BUILD_DIR)/vfilesystem.js wasm-libs
+$(WASM_BUILD_DIR)/index.html: $(WASM_BUILD_DIR)/makefile wasm-libs
 	cd $(WASM_BUILD_DIR) && emmake --em-config $(shell pwd)/wasmlib/custom_cache/config make MolGUIapp -j 5
 
 
