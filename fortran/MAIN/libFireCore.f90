@@ -737,21 +737,21 @@ subroutine firecore_get_HS_dims( &
     ! Fortran side debug print for dimensions
 ! Fortran side debug print for dimensions
     if(verbosity.gt.1) then
-        write(*,*) "Fortran firecore_get_HS_dims: natoms (current system)=", natoms
-        write(*,*) "Fortran firecore_get_HS_dims: norbitals=", norbitals
-        write(*,*) "Fortran firecore_get_HS_dims: nspecies (distinct in current system)=", nspecies
-        write(*,*) "Fortran firecore_get_HS_dims: neigh_max=", neigh_max
-        write(*,*) "Fortran firecore_get_HS_dims: numorb_max=", numorb_max
-        write(*,*) "Fortran firecore_get_HS_dims: nsh_max=", nsh_max
+        write(*,*) "firecore_get_HS_dims(): natoms     =", natoms
+        write(*,*) "firecore_get_HS_dims(): norbitals  =", norbitals
+        write(*,*) "firecore_get_HS_dims(): nspecies   =", nspecies
+        write(*,*) "firecore_get_HS_dims(): neigh_max  =", neigh_max
+        write(*,*) "firecore_get_HS_dims(): numorb_max =", numorb_max
+        write(*,*) "firecore_get_HS_dims(): nsh_max    =", nsh_max
         if (allocated(mu)) then
-            write(*,*) "Fortran firecore_get_HS_dims: shape(mu)=", shape(mu)
+            write(*,*) "firecore_get_HS_dims(): shape(mu)=", shape(mu)
         else
-              if(verbosity.gt.0) write(*,*) "Fortran firecore_get_HS_dims: xl not allocated yet!"
+            if(verbosity.gt.0) write(*,*) "firecore_get_HS_dims(): xl not allocated yet!"
         end if
         if (allocated(nzx)) then
-            write(*,*) "Fortran firecore_get_HS_dims: shape(charges.nzx)=", shape(nzx)
+            write(*,*) "firecore_get_HS_dims(): shape(charges.nzx)=", shape(nzx)
         else
-            if(verbosity.gt.0) write(*,*) "Fortran firecore_get_HS_dims: charges.nzx not allocated yet!"
+            if(verbosity.gt.0) write(*,*) "firecore_get_HS_dims(): charges.nzx not allocated yet!"
         end if
     end if
     norbitals_out  = norbitals
@@ -793,6 +793,8 @@ subroutine firecore_get_HS_sparse( &
     use neighbor_map,  only: neighn, neigh_j, neigh_b, neigh_max
     use charges, only: nzx
     use options, only: verbosity
+    use debug, only: debug_writeBlockedMat
+    use, intrinsic :: iso_fortran_env 
     implicit none
     ! Output arrays (pointers to pre-allocated memory from C/Python)
     real(c_double), dimension(numorb_max, numorb_max, neigh_max, natoms), intent(out) :: h_mat_out
@@ -811,38 +813,46 @@ subroutine firecore_get_HS_sparse( &
     integer(c_int), dimension(neigh_max, natoms), intent(out) :: neigh_b_out
     real(c_double), dimension(3,size(xl,2)), intent(out) :: xl_out
 
+
+    write(*,*) "Standard output unit:", OUTPUT_UNIT
+
     write (*,*) "firecore_get_HS_sparse() verbosity=", verbosity," h_mat, s_mat allocated? ", allocated(h_mat), allocated(s_mat)
 
     ! Check if source arrays are allocated
     if (.not. allocated(h_mat)) then
-        if(verbosity.gt.0) write(*,*) "firecore_get_HS_sparse: h_mat not allocated!"
+        if(verbosity.gt.0) write(*,*) "firecore_get_HS_sparse(): h_mat not allocated!"
         return
     end if
     if (.not. allocated(s_mat)) then
-        if(verbosity.gt.0) write(*,*) "firecore_get_HS_sparse: s_mat not allocated!"
+        if(verbosity.gt.0) write(*,*) "firecore_get_HS_sparse(): s_mat not allocated!"
         return
     end if
     ! Add more checks for other arrays as needed
 
     if(verbosity.gt.1) then
-        write(*,"(A,I4,A,I4,A,I4,A,I4,A,4I4)") "Fortran DIMS: h_mat_out(",numorb_max,",",numorb_max,",",neigh_max,",",natoms,") vs src h_mat",shape(h_mat)
-        write(*,"(A,I4,A,I4,A,I4,A,I4,A,4I4)") "Fortran DIMS: s_mat_out(",numorb_max,",",numorb_max,",",neigh_max,",",natoms,") vs src s_mat",shape(s_mat)
-        write(*,"(A,I2,A,I2)")       "Fortran DIMS: num_orb_out(",nspecies,") vs src num_orb",shape(num_orb)
-        write(*,"(A,I2,A,I2)")       "Fortran DIMS: degelec_out(",natoms,") vs src degelec",shape(degelec)
-        write(*,"(A,I2,A,I2)")       "Fortran DIMS: iatyp_out(",natoms,") vs src iatyp",shape(iatyp)
-        write(*,"(A,I2,A,I2,A,I2)")  "Fortran DIMS: lssh_out(",nsh_max,",",nspecies,") vs src lssh",shape(lssh)
-        write(*,"(A,I2,A,I2,A,I2,A,I2,A,I2,A,I2)") "Fortran DIMS: mu_out(",size(mu,1),",",size(mu,2),",",size(mu,3),") vs src mu",shape(mu)
-        write(*,"(A,I2,A,I2,A,I2,A,I2,A,I2,A,I2)") "Fortran DIMS: nu_out(",size(nu,1),",",size(nu,2),",",size(nu,3),") vs src nu",shape(nu)
-        write(*,"(A,I2,A,I2,A,I2,A,I2,A,I2,A,I2)") "Fortran DIMS: mvalue_out(",size(mvalue,1),",",size(mvalue,2),",",size(mvalue,3),") vs src mvalue",shape(mvalue)
-        write(*,"(A,I2,A,I2)")       "Fortran DIMS: nssh_out(",nspecies,") vs src nssh",shape(nssh)
-        write(*,"(A,I2,A,I2)")       "Fortran DIMS: nzx_out(",size(nzx,1),") vs src charges.nzx",shape(nzx)
-        write(*,"(A,I2,A,I2)")       "Fortran DIMS: neighn_out(",natoms,") vs src neighn",shape(neighn)
-        write(*,"(A,I2,A,I2,A,I2)")  "Fortran DIMS: neigh_j_out(",neigh_max,",",natoms,") vs src neigh_j",shape(neigh_j)
-        write(*,"(A,I2,A,I2,A,I2)")  "Fortran DIMS: neigh_b_out(",neigh_max,",",natoms,") vs src neigh_b",shape(neigh_b)
-        write(*,"(A,I2,A,I2,A,I2)")  "Fortran DIMS: xl_out(3,",size(xl,2),") vs src xl",shape(xl)
+        write(*,"(A,I0,A,I0,A,I0,A,I0,A,I0,1X,I0,1X,I0,1X,I0)") "Fortran DIMS: h_mat_out(",numorb_max,",",numorb_max,",",neigh_max,",",natoms,") vs src h_mat ",shape(h_mat)
+        write(*,"(A,I0,A,I0,A,I0,A,I0,A,I0,1X,I0,1X,I0,1X,I0)") "Fortran DIMS: s_mat_out(",numorb_max,",",numorb_max,",",neigh_max,",",natoms,") vs src s_mat ",shape(s_mat)
+        write(*,"(A,I0,A,I0)")                                  "Fortran DIMS: num_orb_out(",nspecies,") vs src num_orb ",shape(num_orb) ! num_orb is 1D
+        write(*,"(A,I0,A,I0)")                                  "Fortran DIMS: degelec_out(",natoms,") vs src degelec ",shape(degelec) ! degelec is 1D
+        write(*,"(A,I0,A,I0)")                                  "Fortran DIMS: iatyp_out(",natoms,") vs src iatyp ",shape(iatyp)     ! iatyp is 1D
+        write(*,"(A,I0,A,I0,A,I0,1X,I0)")                       "Fortran DIMS: lssh_out(",nsh_max,",",nspecies,") vs src lssh ",shape(lssh)
+        write(*,"(A,I0,A,I0,A,I0,A,I0,1X,I0,1X,I0)")            "Fortran DIMS: mu_out(",size(mu,1),",",size(mu,2),",",size(mu,3),") vs src mu ",shape(mu)
+        write(*,"(A,I0,A,I0,A,I0,A,I0,1X,I0,1X,I0)")            "Fortran DIMS: nu_out(",size(nu,1),",",size(nu,2),",",size(nu,3),") vs src nu ",shape(nu)
+        write(*,"(A,I0,A,I0,A,I0,A,I0,1X,I0,1X,I0)")            "Fortran DIMS: mvalue_out(",size(mvalue,1),",",size(mvalue,2),",",size(mvalue,3),") vs src mvalue ",shape(mvalue)
+        write(*,"(A,I0,A,I0)")                                  "Fortran DIMS: nssh_out(",nspecies,") vs src nssh ",shape(nssh)     ! nssh is 1D
+        write(*,"(A,I0,A,I0)")                                  "Fortran DIMS: nzx_out(",size(nzx,1),") vs src charges.nzx ",shape(nzx) ! nzx is 1D
+        write(*,"(A,I0,A,I0)")                                  "Fortran DIMS: neighn_out(",natoms,") vs src neighn ",shape(neighn)   ! neighn is 1D
+        write(*,"(A,I0,A,I0,A,I0,1X,I0)")                       "Fortran DIMS: neigh_j_out(",neigh_max,",",natoms,") vs src neigh_j ",shape(neigh_j)
+        write(*,"(A,I0,A,I0,A,I0,1X,I0)")                       "Fortran DIMS: neigh_b_out(",neigh_max,",",natoms,") vs src neigh_b ",shape(neigh_b)
+        write(*,"(A,I0,A,I0,1X,I0)")                            "Fortran DIMS: xl_out(3,",size(xl,2),") vs src xl ",shape(xl)
     end if
     h_mat_out = h_mat
     s_mat_out = s_mat
+
+    write(*,*) " ==== firecore_get_HS_sparse() print h_mat"
+    call debug_writeBlockedMat( "h_mat.log", h_mat, OUTPUT_UNIT )
+    write(*,*) " ==== firecore_get_HS_sparse() print s_mat"
+    call debug_writeBlockedMat( "s_mat.log", s_mat, OUTPUT_UNIT )
 
     if(allocated(num_orb)) num_orb_out = num_orb
     if(allocated(degelec)) degelec_out = degelec

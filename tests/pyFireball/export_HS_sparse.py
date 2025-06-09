@@ -15,16 +15,14 @@ def print_sparse_matrices_info(sparse_data, dims):
     Prints information from the sparse Hamiltonian and Overlap matrices
     in an understandable way.
     """
-    natoms = dims["natoms"]
-    h_mat = sparse_data["h_mat"]
-    s_mat = sparse_data["s_mat"]
-    
-    iatyp   = sparse_data["iatyp"]   # Species type for each atom (0-indexed from Fortran, adjust if needed)
-    num_orb = sparse_data["num_orb"] # Number of orbitals for each species type (0-indexed)
-    nzx     = sparse_data["nzx"]     # Z number for each compact Fireball species type
-    
-    neighn  = sparse_data["neighn"]  # Number of neighbors for each atom (0-indexed)
-    neigh_j = sparse_data["neigh_j"] # Index of the j-th neighbor of atom i (Fortran: neigh_j(ineigh,iatom))
+    natoms  = dims.natoms
+    h_mat   = sparse_data.h_mat
+    s_mat   = sparse_data.s_mat
+    iatyp   = sparse_data.iatyp   # Species type for each atom (0-indexed from Fortran, adjust if needed)
+    num_orb = sparse_data.num_orb # Number of orbitals for each species type (0-indexed)
+    nzx     = sparse_data.nzx     # Z number for each compact Fireball species type
+    neighn  = sparse_data.neighn  # Number of neighbors for each atom (0-indexed)
+    neigh_j = sparse_data.neigh_j # Index of the j-th neighbor of atom i (Fortran: neigh_j(ineigh,iatom))
                                      # Python: neigh_j[iatom, ineigh] if reshaped, or handle Fortran order
     
     # Orbital labels (simplified for minimal basis, extend as needed)
@@ -41,7 +39,7 @@ def print_sparse_matrices_info(sparse_data, dims):
     # Create a mapping from Z to compact Fireball species index (0-based for Python)
     Z_to_fb_species_idx_map = {z: i for i, z in enumerate(nzx)}
 
-    for fb_sp_idx_py in range(dims["nspecies"]): # Iterate 0 to nspecies_distinct-1
+    for fb_sp_idx_py in range(dims.nspecies): # Iterate 0 to nspecies_distinct-1
         current_Z = nzx[fb_sp_idx_py]
         n_orb_sp = num_orb[fb_sp_idx_py]
         labels = []
@@ -78,10 +76,9 @@ def print_sparse_matrices_info(sparse_data, dims):
 
         for ineigh_idx_f in range(neighn[iatom]): # Fortran ineigh runs 1 to neighn(iatom)
             # Adjust for 0-based Python indexing if neigh_j was directly copied
-            # neigh_j in Fortran is (neigh_max, natoms). In Python, if copied directly, it's neigh_j[iatom, ineigh_idx_f]
-            # The provided Fortran interface for neigh_j is (neigh_max, natoms)
-            # So, if Python array `neigh_j_py` is `neigh_j_py[ineigh_idx_py, iatom_py]`
-            jatom_fortran_idx = neigh_j[ineigh_idx_f, iatom] # Fortran: neigh_j(ineigh_idx_f+1, iatom+1)
+            # Fortran: neigh_j(ineigh, iatom)
+            # Python:  neigh_j[iatom, ineigh] (with 0-based indices)
+            jatom_fortran_idx = neigh_j[iatom, ineigh_idx_f] # Fortran: neigh_j(ineigh_idx_f+1, iatom+1)
             jatom_python_idx = jatom_fortran_idx -1 # Convert to 0-based for Python array access
 
             if jatom_python_idx < 0 or jatom_python_idx >= natoms : # Skip invalid neighbor indices
@@ -102,9 +99,8 @@ def print_sparse_matrices_info(sparse_data, dims):
 
             # Accessing h_mat and s_mat:
             # Fortran: h_mat(imu, inu, ineigh, iatom)
-            # Python:  h_mat[iatom, ineigh_idx_f, inu_py, imu_py] (if C-order reshape)
-            # OR       h_mat[imu_py, inu_py, ineigh_idx_f, iatom] (if direct Fortran order copy)
-            # The current Python wrapper allocates as (numorb_max, numorb_max, neigh_max, natoms)
+            # Python:  h_mat[iatom, ineigh, inu, imu] (with 0-based indices)
+            # The Python wrapper now allocates as (natoms, neigh_max, numorb_max, numorb_max)
             # which matches Fortran's dummy argument declaration order.
             
             print("    Hamiltonian Block (H):      Overlap Block (S):")
@@ -118,8 +114,8 @@ def print_sparse_matrices_info(sparse_data, dims):
                 for inu_idx_py in range(num_orbitals_j): # Iterate up to actual number of orbitals for atom j
                     # Fortran indices for h_mat/s_mat are 1-based for imu, inu
                     # ineigh_idx_f is 0-based for Python array access, iatom is 0-based
-                    h_val = h_mat[imu_idx_py, inu_idx_py, ineigh_idx_f, iatom]
-                    s_val = s_mat[imu_idx_py, inu_idx_py, ineigh_idx_f, iatom]
+                    h_val = h_mat[iatom, ineigh_idx_f, inu_idx_py, imu_idx_py]
+                    s_val = s_mat[iatom, ineigh_idx_f, inu_idx_py, imu_idx_py]
                     
                     # Only print if non-zero or if you want to see the full allocated block
                     # For now, printing all up to num_orbitals_i/j
@@ -128,7 +124,7 @@ def print_sparse_matrices_info(sparse_data, dims):
                 
                 # For clarity, let's print H and S side-by-side if possible, or one after another
                 # This example prints S matrix block fully, then implies H would be similar
-                print(row_s_str) 
+                print( row_h_str+"   |    "+row_s_str) 
             print("    (Hamiltonian block would be similar format)")
 
 
@@ -170,27 +166,27 @@ if __name__ == "__main__":
     # 2. Get dimensions
     print("\nFetching dimensions...")
     dims = fc.get_HS_dims()
-    print("Dimensions retrieved:", dims)
-    print("Python: natoms    ", dims["natoms"]) # This was already correct
-    print("Python: norbitals ", dims["norbitals"])
-    print("Python: nspecies  ", dims["nspecies"])
-    print("Python: neigh_max ", dims["neigh_max"])
-    print("Python: numorb_max", dims["numorb_max"])
-    print("Python: nsh_max   ", dims["nsh_max"])
+    print("Dimensions retrieved (type):", type(dims))
+    print("Python: natoms    ", dims.natoms)
+    print("Python: norbitals ", dims.norbitals)
+    print("Python: nspecies  ", dims.nspecies)
+    print("Python: neigh_max ", dims.neigh_max)
+    print("Python: numorb_max", dims.numorb_max)
+    print("Python: nsh_max   ", dims.nsh_max)
 
-    print(f"Python: max_mu_dims: ({dims['max_mu_dim1']}, {dims['max_mu_dim2']}, {dims['max_mu_dim3']})") # Corrected key
-    print(f"Python: mbeta_max (size of xl dim 2): {dims['mbeta_max']}")
-    print(f"Python: nspecies_fdata (dim for nzx): {dims['nspecies_fdata']}")
+    print(f"Python: max_mu_dims: ({dims.max_mu_dim1}, {dims.max_mu_dim2}, {dims.max_mu_dim3})")
+    print(f"Python: mbeta_max (size of xl dim 2): {dims.mbeta_max}")
+    print(f"Python: nspecies_fdata (dim for nzx): {dims.nspecies_fdata}")
 
     print("\nPython: Expected allocation shapes for firecore_get_HS_sparse:")
-    print(f"  h_mat_out: ({dims['numorb_max']}, {dims['numorb_max']}, {dims['neigh_max']}, {dims['natoms']})")
-    print(f"  num_orb_out: ({dims['nspecies']},)")
+    print(f"  h_mat_out: ({dims.numorb_max}, {dims.numorb_max}, {dims.neigh_max}, {dims.natoms})")
+    print(f"  num_orb_out: ({dims.nspecies},)")
     # Use the new dimension for mu, nu, mvalue
-    print(f"  mu_out: ({dims['max_mu_dim1']}, {dims['max_mu_dim2']}, {dims['max_mu_dim3']})")
-    print(f"  xl_out: (3, {dims['mbeta_max']})")
-    print(f"  nzx_out: ({dims['nspecies_fdata']},)")
+    print(f"  mu_out: ({dims.max_mu_dim1}, {dims.max_mu_dim2}, {dims.max_mu_dim3})")
+    print(f"  xl_out: (3, {dims.mbeta_max})")
+    print(f"  nzx_out: ({dims.nspecies_fdata},)")
     
-    if dims["natoms"] == 0 or dims["norbitals"] == 0:
+    if dims.natoms == 0 or dims.norbitals == 0:
         print("Error: System not properly initialized or empty. Exiting.")
         sys.exit(1)
 
@@ -198,10 +194,10 @@ if __name__ == "__main__":
     print("\nFetching sparse H, S and indexing data...")
     sparse_data = fc.get_HS_sparse(dims)
     print("Sparse data fetched.")
-    # print("iatyp:", sparse_data["iatyp"])
-    # print("num_orb (per species):", sparse_data["num_orb"])
-    # print("neighn (per atom):", sparse_data["neighn"])
-    # print("neigh_j (Fortran order): shape", sparse_data["neigh_j"].shape)
+    # print("iatyp:", sparse_data.iatyp)
+    # print("num_orb (per species):", sparse_data.num_orb)
+    # print("neighn (per atom):", sparse_data.neighn)
+    # print("neigh_j (Fortran order): shape", sparse_data.neigh_j.shape)
 
     # 4. Print the sparse matrix information
     print_sparse_matrices_info(sparse_data, dims)
@@ -209,13 +205,13 @@ if __name__ == "__main__":
     # 5. Get dense k-space H, S (optional, for a specific k-point)
     print("\nFetching dense k-space H and S for Gamma point...")
     kvec_gamma = [0.0, 0.0, 0.0]
-    Hk, Sk = fc.get_HS_k(kvec_gamma, dims["norbitals"])
+    Hk, Sk = fc.get_HS_k(kvec_gamma, dims.norbitals)
     print(f"Hk shape: {Hk.shape}, Sk shape: {Sk.shape}")
     
     # You can print parts of Hk and Sk if desired
-    print("Hk (Gamma, upper-left 5x5 block):")
+    print("Hk:")
     print(Hk[:, :])
-    print("Sk (Gamma, upper-left 5x5 block):")
+    print("Sk:")
     print(Sk[:, :])
 
     print("\nScript finished.")
