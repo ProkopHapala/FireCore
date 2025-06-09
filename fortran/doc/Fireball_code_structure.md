@@ -19,10 +19,10 @@ Fireball is a Density Functional Tight Binding (DFTB) code, characterized by:
     *   New charges/density are calculated from the new orbitals.
     *   The new and old charges are mixed, and the process repeats until self-consistency.
 5.  **Approximations for XC and Self-Consistency:**
-    *   **Harris Functional:** A non-SCF or simplified SCF approach, often using a superposition of neutral atom densities.
-    *   **Sankey-Niklewski (SNXC):** An early SCF scheme for tight-binding.
-    *   **McWEDA (McLean-Yoshimine-Ewald-Dupuis-Args):** A more advanced SCF scheme, likely involving corrections for charge sloshing and self-interaction, often using an Orthogonalized Linear Combination of Slater-type Orbitals for Exchange and Correlation (OLSXC) approach for three-center terms.
-    *   **Kohn-Sham Grid:** Indicates the capability to solve parts of the XC problem on a real-space grid, potentially for higher accuracy or more standard DFT functionals, moving beyond the pure TB integral-based approach for some terms.
+    *   **Harris Functional:** The **Harris Functional** (also known as Harris-Foulkes functional) is a non-self-consistent (non-SCF) approach that approximates the total energy of a system using a superposition of neutral atomic charge densities. It avoids the iterative self-consistency loop, making it computationally very efficient, especially for obtaining initial energy estimates or for systems where a full SCF treatment is not strictly necessary. While not fully self-consistent, it provides a robust and often surprisingly accurate first approximation.
+    *   **Sankey-Niklewski (SNXC):** The **Sankey-Niklewski (SNXC)** method represents an early self-consistent field (SCF) scheme within the tight-binding framework. It was a foundational step towards incorporating charge self-consistency into FIREBALL, allowing for a more accurate description of charge transfer effects compared to non-SCF methods. However, it had limitations, particularly in its treatment of exchange-correlation (XC) interactions, which led to the development of more sophisticated approximations.
+    *   **McWEDA (Multi-center Weighted Exchange-correlation Density Approximation):** The **Multi-center Weighted Exchange-correlation Density Approximation (McWEDA)** is a significant advancement in FIREBALL for accurately calculating exchange-correlation (XC) matrix elements. It addresses deficiencies found in earlier approximations (like SNXC) by employing a multi-center approach and weighted densities, which allows for a more precise description of the XC potential and energy. McWEDA is crucial for improving the accuracy of the self-consistent field (SCF) calculations within FIREBALL, particularly for systems with complex electronic structures.
+    *   **Kohn-Sham Grid:** A **Kohn-Sham Grid** refers to a real-space numerical grid commonly employed in conventional Density Functional Theory (DFT) codes to perform numerical integrations, particularly for exchange-correlation terms. While FIREBALL's core methodology prioritizes efficiency by largely avoiding a real-space grid for its primary charge density and potential calculations (relying on local-orbital basis sets and tabulated integrals), the framework does allow for the use of a real-space grid for specific parts of the XC problem. This can enable the use of more standard and potentially more accurate DFT functionals, albeit at a higher computational cost compared to the highly optimized, grid-less approximations like McWEDA.
 
 ### Directory Overview
 
@@ -152,7 +152,7 @@ These modules define global variables and data structures.
 
 *   **`mixer.f90`:**
     *   Orchestrates the charge mixing step of the SCF cycle.
-    *   Calculates `$\sigma = \sqrt{\sum (Q_{in} - Q_{out})^2}$`.
+    *   Calculates $\sigma = \sqrt{\sum (Q_{in} - Q_{out})^2}$.
     *   If not converged, calls a mixing algorithm (e.g., `anderson2`) to update `Qin`.
     *   Renormalizes `Qin` for charge conservation.
 
@@ -167,7 +167,7 @@ These modules define global variables and data structures.
 *   **`sqrtS.f90`:**
     *   Diagonalizes the k-space overlap matrix S(k).
     *   Identifies and handles linear dependencies (small eigenvalues).
-    *   Constructs `S(k)^{-1/2}` using the eigenvalues and eigenvectors of S(k).
+    *   Constructs $S(k)^{-1/2}$ using the eigenvalues and eigenvectors of S(k).
 
 ### Mapping the Overall Code Execution Flow
 
