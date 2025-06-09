@@ -5,13 +5,13 @@
 
 subroutine firecore_setVerbosity( verbosity_, idebugWrite_ ) bind(c, name='firecore_setVerbosity')
     use iso_c_binding
-    use options
+    use options, only : verbosity, idebugWrite
     implicit none
     integer(c_int),intent(in), value :: verbosity_
     integer(c_int),intent(in), value :: idebugWrite_
     verbosity   = verbosity_
     idebugWrite = idebugWrite_
-    !write(*,*) "DEBUG firecore_setVerbosity() ", verbosity, idebugWrite_
+    write(*,*) "firecore_setVerbosity() ", verbosity, idebugWrite_
 end subroutine
 
 ! see : https://stackoverflow.com/questions/29153501/when-i-pass-a-pointer-from-fortran-to-c-the-value-of-the-first-element-is-lost
@@ -711,3 +711,201 @@ subroutine firecore_getpsi( l, m, in1, issh, n, poss, ys )  bind(c, name='fireco
         !write (*,*) "", in1,issh,l,m, i,x,psi,Y(m)
     end do 
 end subroutine
+
+! ==================================================
+! ============ Export H and S matrices
+! ==================================================
+
+subroutine firecore_get_HS_dims( &
+    natoms_out, norbitals_out, nspecies_out, neigh_max_out, numorb_max_out, &
+    nsh_max_out, ME2c_max_out, max_mu_dim1_out, max_mu_dim2_out, max_mu_dim3_out, mbeta_max_out, nspecies_fdata_out &
+  ) bind(c, name='firecore_get_HS_dims')
+    use iso_c_binding
+    use configuration, only: natoms, nspecies, xl ! nspecies here is for distinct species in current system
+    use interactions,  only: norbitals, numorb_max, nsh_max, ME2c_max, mu
+    use neighbor_map,  only: neigh_max
+    use charges, only: nzx  ! This nzx is dimensioned by total species in info.dat
+    use options, only: verbosity
+    implicit none
+    integer(c_int), intent(out) :: natoms_out, norbitals_out, nspecies_out, neigh_max_out, numorb_max_out
+    integer(c_int), intent(out) :: nsh_max_out, ME2c_max_out
+    integer(c_int), intent(out) :: max_mu_dim1_out, max_mu_dim2_out, max_mu_dim3_out, mbeta_max_out, nspecies_fdata_out
+
+    write (*,*) "firecore_get_HS_dims() verbosity=", verbosity
+
+    natoms_out     = natoms
+    ! Fortran side debug print for dimensions
+! Fortran side debug print for dimensions
+    if(verbosity.gt.1) then
+        write(*,*) "Fortran firecore_get_HS_dims: natoms (current system)=", natoms
+        write(*,*) "Fortran firecore_get_HS_dims: norbitals=", norbitals
+        write(*,*) "Fortran firecore_get_HS_dims: nspecies (distinct in current system)=", nspecies
+        write(*,*) "Fortran firecore_get_HS_dims: neigh_max=", neigh_max
+        write(*,*) "Fortran firecore_get_HS_dims: numorb_max=", numorb_max
+        write(*,*) "Fortran firecore_get_HS_dims: nsh_max=", nsh_max
+        if (allocated(mu)) then
+            write(*,*) "Fortran firecore_get_HS_dims: shape(mu)=", shape(mu)
+        else
+              if(verbosity.gt.0) write(*,*) "Fortran firecore_get_HS_dims: xl not allocated yet!"
+        end if
+        if (allocated(nzx)) then
+            write(*,*) "Fortran firecore_get_HS_dims: shape(charges.nzx)=", shape(nzx)
+        else
+            if(verbosity.gt.0) write(*,*) "Fortran firecore_get_HS_dims: charges.nzx not allocated yet!"
+        end if
+    end if
+    norbitals_out  = norbitals
+    nspecies_out   = nspecies ! Number of distinct species in the current calculation
+    neigh_max_out  = neigh_max
+    numorb_max_out = numorb_max
+    nsh_max_out    = nsh_max
+    ME2c_max_out   = ME2c_max ! Example, can add more ME_max if needed
+    if (allocated(mu)) then
+        max_mu_dim1_out = size(mu,1)
+        max_mu_dim2_out = size(mu,2)
+        max_mu_dim3_out = size(mu,3)
+    else
+        max_mu_dim1_out = 0 ! Default or error indicator
+        max_mu_dim2_out = 0
+        max_mu_dim3_out = 0
+    end if
+    if (allocated(xl)) then
+        mbeta_max_out = size(xl,2) ! Get the actual second dimension size
+    else
+        mbeta_max_out = 0 ! Default or error indicator
+    end if
+    if (allocated(nzx)) then
+        nspecies_fdata_out = size(nzx,1) ! Number of species defined in Fdata/info.dat
+    else
+        nspecies_fdata_out = 0
+    end if
+end subroutine firecore_get_HS_dims
+
+subroutine firecore_get_HS_sparse( &
+    h_mat_out, s_mat_out, &
+    num_orb_out, degelec_out, iatyp_out, &
+    lssh_out, mu_out, nu_out, mvalue_out, nssh_out, nzx_out, &
+    neighn_out, neigh_j_out, neigh_b_out, xl_out &
+  ) bind(c, name='firecore_get_HS_sparse')
+    use iso_c_binding
+    use configuration, only: natoms, xl, nspecies ! nspecies is from configuration
+    use interactions,  only: h_mat, s_mat, num_orb, degelec, iatyp, lssh, mu, nu, mvalue, nssh, numorb_max, nsh_max
+    use neighbor_map,  only: neighn, neigh_j, neigh_b, neigh_max
+    use charges, only: nzx
+    use options, only: verbosity
+    implicit none
+    ! Output arrays (pointers to pre-allocated memory from C/Python)
+    real(c_double), dimension(numorb_max, numorb_max, neigh_max, natoms), intent(out) :: h_mat_out
+    real(c_double), dimension(numorb_max, numorb_max, neigh_max, natoms), intent(out) :: s_mat_out
+    integer(c_int), dimension(nspecies), intent(out) :: num_orb_out
+    integer(c_int), dimension(natoms),   intent(out) :: degelec_out
+    integer(c_int), dimension(natoms),   intent(out) :: iatyp_out
+    integer(c_int), dimension(nsh_max, nspecies), intent(out) :: lssh_out
+    integer(c_int), dimension(size(mu,1), size(mu,2), size(mu,3)), intent(out) :: mu_out
+    integer(c_int), dimension(size(nu,1), size(nu,2), size(nu,3)), intent(out) :: nu_out
+    integer(c_int), dimension(size(mvalue,1), size(mvalue,2), size(mvalue,3)), intent(out) :: mvalue_out
+    integer(c_int), dimension(nspecies), intent(out) :: nssh_out
+    integer(c_int), dimension(size(nzx,1)), intent(out) :: nzx_out ! Use actual size of charges.nzx
+    integer(c_int), dimension(natoms),   intent(out) :: neighn_out
+    integer(c_int), dimension(neigh_max, natoms), intent(out) :: neigh_j_out
+    integer(c_int), dimension(neigh_max, natoms), intent(out) :: neigh_b_out
+    real(c_double), dimension(3,size(xl,2)), intent(out) :: xl_out
+
+    write (*,*) "firecore_get_HS_sparse() verbosity=", verbosity," h_mat, s_mat allocated? ", allocated(h_mat), allocated(s_mat)
+
+    ! Check if source arrays are allocated
+    if (.not. allocated(h_mat)) then
+        if(verbosity.gt.0) write(*,*) "firecore_get_HS_sparse: h_mat not allocated!"
+        return
+    end if
+    if (.not. allocated(s_mat)) then
+        if(verbosity.gt.0) write(*,*) "firecore_get_HS_sparse: s_mat not allocated!"
+        return
+    end if
+    ! Add more checks for other arrays as needed
+
+    if(verbosity.gt.1) then
+        write(*,"(A,I4,A,I4,A,I4,A,I4,A,4I4)") "Fortran DIMS: h_mat_out(",numorb_max,",",numorb_max,",",neigh_max,",",natoms,") vs src h_mat",shape(h_mat)
+        write(*,"(A,I4,A,I4,A,I4,A,I4,A,4I4)") "Fortran DIMS: s_mat_out(",numorb_max,",",numorb_max,",",neigh_max,",",natoms,") vs src s_mat",shape(s_mat)
+        write(*,"(A,I2,A,I2)")       "Fortran DIMS: num_orb_out(",nspecies,") vs src num_orb",shape(num_orb)
+        write(*,"(A,I2,A,I2)")       "Fortran DIMS: degelec_out(",natoms,") vs src degelec",shape(degelec)
+        write(*,"(A,I2,A,I2)")       "Fortran DIMS: iatyp_out(",natoms,") vs src iatyp",shape(iatyp)
+        write(*,"(A,I2,A,I2,A,I2)")  "Fortran DIMS: lssh_out(",nsh_max,",",nspecies,") vs src lssh",shape(lssh)
+        write(*,"(A,I2,A,I2,A,I2,A,I2,A,I2,A,I2)") "Fortran DIMS: mu_out(",size(mu,1),",",size(mu,2),",",size(mu,3),") vs src mu",shape(mu)
+        write(*,"(A,I2,A,I2,A,I2,A,I2,A,I2,A,I2)") "Fortran DIMS: nu_out(",size(nu,1),",",size(nu,2),",",size(nu,3),") vs src nu",shape(nu)
+        write(*,"(A,I2,A,I2,A,I2,A,I2,A,I2,A,I2)") "Fortran DIMS: mvalue_out(",size(mvalue,1),",",size(mvalue,2),",",size(mvalue,3),") vs src mvalue",shape(mvalue)
+        write(*,"(A,I2,A,I2)")       "Fortran DIMS: nssh_out(",nspecies,") vs src nssh",shape(nssh)
+        write(*,"(A,I2,A,I2)")       "Fortran DIMS: nzx_out(",size(nzx,1),") vs src charges.nzx",shape(nzx)
+        write(*,"(A,I2,A,I2)")       "Fortran DIMS: neighn_out(",natoms,") vs src neighn",shape(neighn)
+        write(*,"(A,I2,A,I2,A,I2)")  "Fortran DIMS: neigh_j_out(",neigh_max,",",natoms,") vs src neigh_j",shape(neigh_j)
+        write(*,"(A,I2,A,I2,A,I2)")  "Fortran DIMS: neigh_b_out(",neigh_max,",",natoms,") vs src neigh_b",shape(neigh_b)
+        write(*,"(A,I2,A,I2,A,I2)")  "Fortran DIMS: xl_out(3,",size(xl,2),") vs src xl",shape(xl)
+    end if
+    h_mat_out = h_mat
+    s_mat_out = s_mat
+
+    if(allocated(num_orb)) num_orb_out = num_orb
+    if(allocated(degelec)) degelec_out = degelec
+    if(allocated(iatyp))   iatyp_out   = iatyp
+
+    if(allocated(lssh))    lssh_out    = lssh
+    if(allocated(mu))      mu_out      = mu
+    if(allocated(nu))      nu_out      = nu
+    if(allocated(mvalue))  mvalue_out  = mvalue
+    if(allocated(nssh))    nssh_out    = nssh
+    if(allocated(nzx))     nzx_out     = nzx
+
+    if(allocated(neighn))  neighn_out  = neighn
+    if(allocated(neigh_j)) neigh_j_out = neigh_j
+    if(allocated(neigh_b)) neigh_b_out = neigh_b
+    if(allocated(xl))      xl_out      = xl
+
+end subroutine firecore_get_HS_sparse
+
+subroutine firecore_get_HS_k(kpoint_vec, Hk_out, Sk_out) bind(c, name='firecore_get_HS_k')
+    use iso_c_binding
+    use interactions, only: norbitals
+    ! Assuming ktransform is made available or its core logic is callable
+    implicit none
+    real(c_double),    dimension(3), intent(in) :: kpoint_vec
+    complex(c_double), dimension(norbitals,norbitals), intent(out) :: Hk_out
+    complex(c_double), dimension(norbitals,norbitals), intent(out) :: Sk_out
+    ! Local copies for ktransform
+    complex(c_double), dimension(norbitals,norbitals) :: local_Hk, local_Sk
+
+    ! Call the k-transformation.
+    ! ktransform itself uses h_mat, s_mat, vnl from interactions module
+    ! and other arrays from configuration, neighbor_map etc.
+    ! Ensure firecore_assembleH has been called.
+    call ktransform(kpoint_vec, norbitals, local_Sk, local_Hk)
+
+    Hk_out = local_Hk
+    Sk_out = local_Sk
+
+end subroutine firecore_get_HS_k
+
+! Helper to get nspecies for dimensioning on C side (already have norbitals)
+subroutine firecore_get_nspecies(nspecies_out) bind(c, name='firecore_get_nspecies')
+    use iso_c_binding
+    use configuration, only: nspecies
+    implicit none
+    integer(c_int), intent(out) :: nspecies_out
+    nspecies_out = nspecies
+end subroutine firecore_get_nspecies
+
+subroutine firecore_get_nsh_max(nsh_max_out) bind(c, name='firecore_get_nsh_max')
+    use iso_c_binding
+    use interactions, only: nsh_max
+    implicit none
+    integer(c_int), intent(out) :: nsh_max_out
+    nsh_max_out = nsh_max
+end subroutine firecore_get_nsh_max
+
+! Add other simple dimension getters if needed, e.g., for ME2c_max
+subroutine firecore_get_ME2c_max(ME2c_max_out) bind(c, name='firecore_get_ME2c_max')
+    use iso_c_binding
+    use interactions, only: ME2c_max
+    implicit none
+    integer(c_int), intent(out) :: ME2c_max_out
+    ME2c_max_out = ME2c_max
+end subroutine firecore_get_ME2c_max

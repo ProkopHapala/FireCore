@@ -2,7 +2,7 @@
 
 The `assemble_mcweda.f90` subroutine is the central routine for constructing the Hamiltonian (`h_mat`) and Overlap (`s_mat`) matrices in Fireball for the McWEDA/DOGS theories. It orchestrates calls to various subroutines that calculate different interaction terms based on atomic positions, orbital types, pre-calculated integral tables, and the current self-consistent charge distribution.
 
-### Key Hamiltonian/Overlap Matrix Components (Variables in `interactions` module):
+### Key Hamiltonian/Overlap Matrix Components (Variables in module `interactions.f90` ):
 The final Hamiltonian $H$ is constructed as a sum of several terms:
 $H = T + V_{na} + V_{nl} + V_{xc} + V_{xc\_1c} + V_{ca} + V_{xc\_ca} + V_{Ewald}$
 

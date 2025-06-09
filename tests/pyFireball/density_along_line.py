@@ -46,6 +46,8 @@ print("#=========== DEBUG 1 ")
 # 2. Initialize FireCore and perform SCF
 print("Initializing FireCore...")
 fc.setVerbosity(1) # Set verbosity (0 for less output, 1 or more for more)
+print( "mol.atypes ", mol.atypes )
+print( "mol.apos   ", mol.apos )
 fc.initialize(atomType=mol.atypes, atomPos=mol.apos)
 print("Performing SCF calculation (via evalForce)...")
 # evalForce performs an SCF cycle and calculates energy/forces

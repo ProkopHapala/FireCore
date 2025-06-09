@@ -49,6 +49,10 @@ header_strings = [
 "void firecore_getpsi( int in1, int issh, int n, double x0, double dx, double ys )",
 "void firecore_MOtoXSF( int iMO )",
 "void firecore_orb2points( int iband, int ikpoint, int npoints, double* points, double* ewfaux )",
+"void firecore_get_HS_dims( int* natoms_out, int* norbitals_out, int* nspecies_out, int* neigh_max_out, int* numorb_max_out, int* nsh_max_out, int* ME2c_max_out, int* max_mu_dim1_out, int* max_mu_dim2_out, int* max_mu_dim3_out, int* mbeta_max_out, int* nspecies_fdata_out)",
+"void firecore_get_HS_sparse( double* h_mat_out, double* s_mat_out, int* num_orb_out, int* degelec_out, int* iatyp_out, int* lssh_out, int* mu_out, int* nu_out, int* mvalue_out, int* nssh_out, int* nzx_out, int* neighn_out, int* neigh_j_out, int* neigh_b_out, double* xl_out )",
+"void firecore_get_HS_k( double* kpoint_vec, void* Hk_out, void* Sk_out )",
+"void firecore_get_nspecies( int* nspecies_out )",
 ]
 #cpp_utils.writeFuncInterfaces( header_strings );        exit()     #   uncomment this to re-generate C-python interfaces
 
@@ -86,6 +90,9 @@ array2i  = np.ctypeslib.ndpointer(dtype=np.int32,  ndim=2, flags='CONTIGUOUS')
 array1d  = np.ctypeslib.ndpointer(dtype=np.double, ndim=1, flags='CONTIGUOUS')
 array2d  = np.ctypeslib.ndpointer(dtype=np.double, ndim=2, flags='CONTIGUOUS')
 array3d  = np.ctypeslib.ndpointer(dtype=np.double, ndim=3, flags='CONTIGUOUS')
+array3i  = np.ctypeslib.ndpointer(dtype=np.int32,  ndim=3, flags='CONTIGUOUS')
+array4d  = np.ctypeslib.ndpointer(dtype=np.double, ndim=4, flags='CONTIGUOUS')
+array2cd = np.ctypeslib.ndpointer(dtype=np.complex128, ndim=2, flags='CONTIGUOUS') # 
 # ========= C functions
 
 
@@ -323,6 +330,79 @@ def dens2points( points, f_den=1.0, f_den0=0.0, ewfaux_out=None ):
     lib.firecore_dens2points( n, points, f_den, f_den0, ewfaux_out )
     return ewfaux_out
 
+# --- Export H and S matrices ---
+
+# void firecore_get_HS_dims( int* natoms_out, int* norbitals_out, int* nspecies_out, int* neigh_max_out, int* numorb_max_out, int* nsh_max_out, int* ME2c_max_out, int* max_mu_dim1_out, int* max_mu_dim2_out, int* max_mu_dim3_out, int* mbeta_max_out, int* nspecies_fdata_out)
+argDict["firecore_get_HS_dims"]=( None, [c_int_p, c_int_p, c_int_p, c_int_p, c_int_p, c_int_p, c_int_p, c_int_p, c_int_p, c_int_p, c_int_p, c_int_p] ) # Matches 12 args
+def get_HS_dims():
+    natoms_out     = ct.c_int()
+    norbitals_out  = ct.c_int()
+    nspecies_out   = ct.c_int()
+    neigh_max_out  = ct.c_int()
+    numorb_max_out = ct.c_int()
+    nsh_max_out    = ct.c_int()
+    ME2c_max_out   = ct.c_int()
+    max_mu_dim1_out = ct.c_int()
+    max_mu_dim2_out = ct.c_int()
+    max_mu_dim3_out = ct.c_int()
+    mbeta_max_out   = ct.c_int()
+    nspecies_fdata_out = ct.c_int()
+    lib.firecore_get_HS_dims(
+        ct.byref(natoms_out), ct.byref(norbitals_out), ct.byref(nspecies_out),
+        ct.byref(neigh_max_out), ct.byref(numorb_max_out),
+        ct.byref(nsh_max_out), ct.byref(ME2c_max_out),
+        ct.byref(max_mu_dim1_out), ct.byref(max_mu_dim2_out), ct.byref(max_mu_dim3_out),
+        ct.byref(mbeta_max_out), ct.byref(nspecies_fdata_out)
+    )
+    return {
+        "natoms": natoms_out.value, "norbitals": norbitals_out.value,
+        "nspecies": nspecies_out.value, # Distinct species in current calculation
+        "neigh_max": neigh_max_out.value, "numorb_max": numorb_max_out.value,
+        "nsh_max": nsh_max_out.value, "ME2c_max": ME2c_max_out.value,
+        "max_mu_dim1": max_mu_dim1_out.value, "max_mu_dim2": max_mu_dim2_out.value, "max_mu_dim3": max_mu_dim3_out.value,
+        "mbeta_max": mbeta_max_out.value, "nspecies_fdata": nspecies_fdata_out.value # Total species in info.dat
+    }
+# void firecore_get_HS_sparse( double* h_mat_out, double* s_mat_out, int* num_orb_out, int* degelec_out, int* iatyp_out, int* lssh_out, int* mu_out, int* nu_out, int* mvalue_out, int* nssh_out, int* nzx_out, int* neighn_out, int* neigh_j_out, int* neigh_b_out, double* xl_out )
+argDict["firecore_get_HS_sparse"]=( None, [array4d, array4d, array1i, array1i, array1i, array2i, array3i, array3i, array3i, array1i, array1i, array1i, array2i, array2i, array2d] )
+def get_HS_sparse(dims):
+    # Allocate numpy arrays based on dims
+    h_mat_out   = np.zeros((dims["numorb_max"], dims["numorb_max"], dims["neigh_max"], dims["natoms"]), dtype=np.float64)
+    s_mat_out   = np.zeros((dims["numorb_max"], dims["numorb_max"], dims["neigh_max"], dims["natoms"]), dtype=np.float64)
+    num_orb_out = np.zeros(dims["nspecies"], dtype=np.int32)
+    degelec_out = np.zeros(dims["natoms"], dtype=np.int32)
+    iatyp_out   = np.zeros(dims["natoms"], dtype=np.int32)
+    lssh_out    = np.zeros((dims["nsh_max"], dims["nspecies"]), dtype=np.int32)
+    mu_out      = np.zeros((dims["max_mu_dim1"], dims["max_mu_dim2"], dims["max_mu_dim3"]), dtype=np.int32)
+    nu_out      = np.zeros((dims["max_mu_dim1"], dims["max_mu_dim2"], dims["max_mu_dim3"]), dtype=np.int32) # Assuming nu, mvalue have same dims as mu
+    mvalue_out  = np.zeros((dims["max_mu_dim1"], dims["max_mu_dim2"], dims["max_mu_dim3"]), dtype=np.int32)
+    nssh_out    = np.zeros(dims["nspecies"], dtype=np.int32)
+    nzx_out     = np.zeros(dims["nspecies_fdata"], dtype=np.int32) # Use nspecies_fdata for nzx
+    neighn_out  = np.zeros(dims["natoms"], dtype=np.int32)
+    neigh_j_out = np.zeros((dims["neigh_max"], dims["natoms"]), dtype=np.int32)
+    neigh_b_out = np.zeros((dims["neigh_max"], dims["natoms"]), dtype=np.int32)
+    xl_out      = np.zeros((3, dims["mbeta_max"]), dtype=np.float64)
+
+    lib.firecore_get_HS_sparse(
+        h_mat_out, s_mat_out,
+        num_orb_out, degelec_out, iatyp_out,
+        lssh_out, mu_out, nu_out, mvalue_out, nssh_out, nzx_out,
+        neighn_out, neigh_j_out, neigh_b_out, xl_out
+    )
+    return {
+        "h_mat": h_mat_out, "s_mat": s_mat_out, "num_orb": num_orb_out, "degelec": degelec_out,
+        "iatyp": iatyp_out, "lssh": lssh_out, "mu": mu_out, "nu": nu_out, "mvalue": mvalue_out,
+        "nssh": nssh_out, "nzx": nzx_out, "neighn": neighn_out, "neigh_j": neigh_j_out, "neigh_b": neigh_b_out,
+        "xl": xl_out
+    }
+
+# void firecore_get_HS_k( double* kpoint_vec, void* Hk_out, void* Sk_out ) # Using void* for complex arrays
+argDict["firecore_get_HS_k"]=( None, [array1d, array2cd, array2cd] ) # array2cd for complex double
+def get_HS_k(kpoint_vec, norbitals):
+    Hk_out = np.zeros((norbitals, norbitals), dtype=np.complex128)
+    Sk_out = np.zeros((norbitals, norbitals), dtype=np.complex128)
+    kpoint_vec_np = np.array(kpoint_vec, dtype=np.float64)
+    lib.firecore_get_HS_k(kpoint_vec_np, Hk_out, Sk_out)
+    return Hk_out, Sk_out
 
 cpp_utils.set_args_dict(lib, argDict)
 
@@ -338,12 +418,14 @@ def run_nonSCF( atomType, atomPos ):
     sigma=updateCharges(); #print( sigma )
     return norb, sigma
 
-def initialize( atomType=None, atomPos=None, verbosity=0 ):
+def initialize( atomType=None, atomPos=None, verbosity=1 ):
     global norb
-    setVerbosity(verbosity=verbosity)
+    #if verbosity is not None: 
+    setVerbosity(verbosity=verbosity)  # NOTE: verbosity must be set here, because previous values would be overwritten by preinit()
     preinit()
     norb = init( atomType, atomPos )
     return norb
+
 
 #===================================
 # ========= Main
@@ -411,4 +493,17 @@ if __name__ == "__main__":
     #forces = evalForce(atomPos, nmax_scf=100)
     #print( "Python: Forces", forces.transpose() )
     
+    # Test new HS export functions
+    print("\nTesting HS export functions:")
+    dims = get_HS_dims()
+    print("Dimensions:", dims)
+    if dims["natoms"] > 0 and dims["norbitals"] > 0 : # Ensure system is initialized
+        sparse_data = get_HS_sparse(dims)
+        print("iatyp:", sparse_data["iatyp"])
+        print("h_mat shape:", sparse_data["h_mat"].shape)
+        print("s_mat shape:", sparse_data["s_mat"].shape)
 
+        kvec = [0.0, 0.0, 0.0]
+        Hk, Sk = get_HS_k(kvec, dims["norbitals"])
+        print("Hk shape:", Hk.shape)
+        print("Sk shape:", Sk.shape)
