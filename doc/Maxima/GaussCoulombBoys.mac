@@ -1,0 +1,50 @@
+/* Maxima script to verify integrand transformation for Boys function derivation */
+
+echo: false$ /* Suppress echoing of input commands */
+linel: 120$ /* Set maximum line length for 1D output */
+display2d: false$ /* Output in 1D plain text format */
+kill(all)$
+assume(T > 0, p > 0)$ /* T = p*R_C^2 */
+
+/* Define the integrand of I_x(T) */
+integrand_x(x_var, T_val) := x_var^(-1/2) * (1+x_var)^(-3/2) * exp(- (T_val*x_var)/(1+x_var) )$
+
+/* Display the integrand in x */
+print("Integrand in terms of x: G(x,T) = ", integrand_x(x,T) );
+
+/* Perform the substitution x = u^2/(1-u^2) */
+/* We need dx/du for the change of variables in the integral. */
+assume(u > 0, u < 1)$ /* Limits for u after substitution */
+x_of_u : u^2 / (1 - u^2)$
+dx_du  : factor(ratsimp(diff(x_of_u, u)))$
+
+print("Substitution: x(u) = ", x_of_u);
+print("dx/du = ", dx_du);
+
+/* Substitute x(u) into the terms of integrand_x */
+term1_xu_inv_sqrt : factor(ratsimp( subst(x=x_of_u, x^(-1/2)) ))$
+/* Expected: sqrt(1-u^2)/u */
+print("x^(-1/2) with x(u) substituted = ", term1_xu_inv_sqrt);
+
+term2_1plusxu_inv_3half : factor(ratsimp( subst(x=x_of_u, (1+x)^(-3/2)) ))$
+/* Expected: (1-u^2)^(3/2) */
+print("(1+x)^(-3/2) with x(u) substituted = ", term2_1plusxu_inv_3half);
+
+term3_exp_xu : factor(ratsimp( subst(x=x_of_u, exp(- (T*x)/(1+x) )) ))$
+/* Expected: exp(-T*u^2) */
+print("exp(- (T*x)/(1+x) ) with x(u) substituted = ", term3_exp_xu)$
+
+/* The new integrand in terms of u is G(x(u),T) * (dx/du) */
+integrand_u_transformed : factor(ratsimp( term1_xu_inv_sqrt * term2_1plusxu_inv_3half * term3_exp_xu * dx_du ))$
+
+print("Transformed integrand G(x(u),T) * (dx/du) simplifies to: ", integrand_u_transformed);
+
+/* Define F0(T) using its integral definition */
+F0_definition(T_val) := integrate(exp(-T_val*k^2), k, 0, 1)$
+print("Definition of F0(T) = integrate(exp(-T*k^2), k, 0, 1)");
+print("The transformed integrand should be 2*exp(-T*u^2), so its integral from u=0 to 1 is 2*F0(T).");
+
+/* Verify against the known analytic form of F0(T) for completeness */
+F0_analytic(T_val) := sqrt(%pi)*erf(sqrt(T_val))/(2*sqrt(T_val))$
+print("Analytic F0(T) = ", F0_analytic(T));
+print("Is definition equal to analytic form? ", is(equal(F0_definition(T),F0_analytic(T))));
