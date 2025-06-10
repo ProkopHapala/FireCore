@@ -77,14 +77,20 @@ def ana_gauss_charge_interact(Q1, a1, X1, Q2, a2, X2):
     Analytical interaction energy between two Gaussian charge distributions.
     """
     R = np.abs(X1 - X2)
+    #R*=np.sqrt(2.0)
+    #a1 = np.sqrt(0.5)
+    #a2 = np.sqrt(2.0)
+    sc=1.0
     if a1 <= 1e-10 or a2 <= 1e-10:
         print(f"Warning: Very small alpha ({a1}, {a2}) in Gaussian interaction.")
         return 0.0
     if R < 1e-9:
+        # R=0 limit that matches numerical result and user's expectation
         return Q1 * Q2 * 2 * np.sqrt(a1 * a2 / (np.pi * (a1 + a2)))
-    s2_sum = 0.5/a1 + 0.5/a2
+    # s2_sum must be 1/a1 + 1/a2 to be consistent with the R=0 limit above
+    s2_sum = 1/a1 + 1/a2
     arg_erf = R / np.sqrt(s2_sum)
-    return (Q1 * Q2 / R) * erf(arg_erf)
+    return sc*(Q1 * Q2 / R) * erf(arg_erf)
 
 # --- Core numerical integration and plotting functions ---
 
@@ -110,7 +116,7 @@ def num_int_vs_dist(x_vals, f1_grid, f2_grid, max_sh_idx):
 
 # ============== Plotting Functions ================
 
-def plot1d(x_data, plots_data, title="", xlabel="x", ylabel="y", fig=None, ax=None):
+def plot1d(x_data, plots_data, title="", xlabel="x", ylabel="y", fig=None, ax=None, show_plot_after = False):
     """
     Plots multiple functions on the same axes.
 
@@ -125,10 +131,10 @@ def plot1d(x_data, plots_data, title="", xlabel="x", ylabel="y", fig=None, ax=No
         fig (matplotlib.figure.Figure, optional): Existing figure.
         ax (matplotlib.axes.Axes, optional): Existing axes.
     """
-    show_plot_after = False
+    
     if ax is None:
         fig, ax = plt.subplots(figsize=(10, 4)) # Default size
-        show_plot_after = True
+        #show_plot_after = True
 
     for y_vals, lbl, fmt_str, lw in plots_data:
         ax.plot(x_data, y_vals, fmt_str, lw=lw, label=lbl)
@@ -145,50 +151,45 @@ def plot1d(x_data, plots_data, title="", xlabel="x", ylabel="y", fig=None, ax=No
 
 def plot_integral_vs_distance(
         d_vals, ana_vals, num_vals,
-        x_plot, f1_grid, f2_init_grid,
-        title, int_lbl="Integral Value", #NOSONAR
-        f1_lbl="Stationary Func1",
-        f2_lbl="Initial Rolled Func2",
+        title, int_lbl="Integral Value",
         show_diff=False, show_ratio=False, diff_scale=1.0, eps_ratio=1e-9
     ):
     """
-    Plots analytical vs numerical integrals against distance, and the initial functions.
+    Plots analytical vs numerical integrals against distance.
     Optionally plots difference and ratio.
     """
-    num_subplots = 2
+    num_active_plots = 1 # For the main integral plot
     if show_diff:
-        num_subplots += 1
+        num_active_plots += 1
     if show_ratio:
-        num_subplots += 1
-    fig, axes = plt.subplots(num_subplots, 1, figsize=(12, 4 * num_subplots), sharex=False)
+        num_active_plots += 1
+
+    fig, axes_arg = plt.subplots(num_active_plots, 1, figsize=(12, 4 * num_active_plots), squeeze=False, sharex=False)
     fig.suptitle(title, fontsize=16)
+
+    # Ensure axes is a flat list for consistent indexing
+    current_axes_list = axes_arg.flatten()
 
     current_ax_idx = 0
     plot1d(d_vals, [
         (ana_vals, f'Analytical {int_lbl}', 'b-', 0.5),
         (num_vals, f'Numerical (roll) {int_lbl}', 'r:', 1.5)],
-    title='Integral vs. Distance', xlabel='Distance d (Bohr)', ylabel=int_lbl, fig=fig, ax=axes[current_ax_idx])
+    title='Integral vs. Distance', xlabel='Distance d (Bohr)', ylabel=int_lbl, fig=fig, ax=current_axes_list[current_ax_idx])
     current_ax_idx+=1
     
-    plot1d(x_plot,[
-        (f1_grid,      f1_lbl, 'g-', 0.7),
-        (f2_init_grid, f2_lbl, 'm:', 1.0)],
-    title='Initial Functions on Grid', xlabel='x (Bohr)', ylabel='Amplitude', fig=fig, ax=axes[current_ax_idx])
-    current_ax_idx+=1
     if show_diff:
         diff = (ana_vals - num_vals) * diff_scale
-        plot1d(d_vals, [(diff, f'Difference (Ana - Num) * {diff_scale}', 'k-', 1.0)],title='Difference Plot', xlabel='Distance d (Bohr)', ylabel='Difference',fig=fig, ax=axes[current_ax_idx])
+        plot1d(d_vals, [(diff, f'Difference (Ana - Num) * {diff_scale}', 'k-', 1.0)],title='Difference Plot', xlabel='Distance d (Bohr)', ylabel='Difference',fig=fig, ax=current_axes_list[current_ax_idx])
         current_ax_idx+=1
+
     if show_ratio:
-        # Avoid division by zero or very small numbers for ratio
         safe_num_vals = num_vals + np.sign(num_vals)*eps_ratio + eps_ratio*(num_vals==0)
         ratio = ana_vals / safe_num_vals
-        plot1d(d_vals, [(ratio, 'Ratio (Ana / Num)', 'purple', 1.0)], title='Ratio Plot', xlabel='Distance d (Bohr)', ylabel='Ratio',fig=fig, ax=axes[current_ax_idx])
-        axes[current_ax_idx].axhline(1.0, color='gray', linestyle=':', linewidth=0.8)
+        plot1d(d_vals, [(ratio, 'Ratio (Ana / Num)', 'purple', 1.0)], title='Ratio Plot', xlabel='Distance d (Bohr)', ylabel='Ratio',fig=fig, ax=current_axes_list[current_ax_idx])
+        current_axes_list[current_ax_idx].axhline(1.0, color='gray', linestyle=':', linewidth=0.8)
 
     plt.tight_layout(rect=[0, 0, 1, 0.96]) # Adjust layout to make space for suptitle
     plt.show()
-
 
 # ============== Test Functions ================
 
@@ -199,16 +200,19 @@ def test_overlap():
     phi1_s_on_grid = gauss_to_grid(x_grid, X_center_stationary, alpha_1) # Stationary
     phi2_s_grid = gauss_to_grid(x_grid, X_center_stationary, alpha_2) # This will be rolled
 
+    plot1d(x_grid, [
+        (phi1_s_on_grid, f'Stationary $\\phi_1(x)$ ($\\alpha_1=${alpha_1})', 'g-', 0.7),
+        (phi2_s_grid,    f'Initial $\\phi_2(x)$ ($\\alpha_2=${alpha_2})', 'm:', 1.0)
+        ], title='Initial Functions for Overlap Test', xlabel='x (Bohr)', ylabel='Amplitude')
+
     d_s, num_s_vals = num_int_vs_dist(x_grid, phi1_s_on_grid, phi2_s_grid, max_shift_idx)
     ana_s_vals = np.array([overlap_element_gauss(alpha_1, X_center_stationary, alpha_2, X_center_stationary + d) for d in d_s])
     
     plot_integral_vs_distance(
         d_s, ana_s_vals, num_s_vals,
-        x_grid, phi1_s_on_grid, phi2_s_grid,
         title=f'Overlap Integral S(d) for $\\alpha_1=${alpha_1}, $\\alpha_2=${alpha_2}',
-        int_lbl='S(d)',
-        f1_lbl=f'Stationary $\\phi_1(x)$ ($\\alpha_1=${alpha_1})',
-        f2_lbl=f'Initial $\\phi_2(x)$ ($\\alpha_2=${alpha_2})')
+        int_lbl='S(d)'
+    )
 
 def test_kinetic_energy():
     # --- 2. Kinetic Energy Integral Test: <phi1(x-d) | -1/2 d^2/dx^2 | phi2(x)> ---
@@ -229,6 +233,13 @@ def test_kinetic_energy():
     # func2: rolled, phi_roll(x)
     phi_roll_t_grid = gauss_to_grid(x_grid, X_center_stationary, alpha_2)
 
+    plot1d(x_grid, [
+        (d2phi_stat_ana_grid, rf'Stationary $-1/2 d^2/dx^2 \phi_{{stat}}(x)$ ($\alpha_1={alpha_1}$)', 'g-', 0.7),
+        (phi_roll_t_grid,     rf'Initial $\phi_{{roll}}(x)$ ($\alpha_2=${alpha_2}$)', 'm:', 1.0)
+        ], title='Initial Functions for Kinetic Energy Test', xlabel='x (Bohr)', ylabel='Amplitude'
+    )
+
+
     d_t, num_t_vals = num_int_vs_dist(x_grid, d2phi_stat_ana_grid, phi_roll_t_grid, max_shift_idx)
 
     ana_t_vals = np.zeros_like(d_t, dtype=float)
@@ -238,11 +249,8 @@ def test_kinetic_energy():
     
     plot_integral_vs_distance(
         d_t, ana_t_vals, num_t_vals,
-        x_grid, d2phi_stat_ana_grid, phi_roll_t_grid,
         title=rf'Kinetic Integral T(d) for $\alpha_{{stat}}={alpha_1}$, $\alpha_{{roll}}={alpha_2}$',
-        int_lbl='T(d)',
-        f1_lbl=rf'Stationary $-1/2 d^2/dx^2 \phi_{{stat}}(x)$ ($\alpha_1={alpha_1}$)',
-        f2_lbl=rf'Initial $\phi_{{roll}}(x)$ ($\alpha_2={alpha_2}$)')
+        int_lbl='T(d)')
 
 def test_coulomb_integral():
     print("\n--- Testing Coulomb Integral V(d) ---")
@@ -272,6 +280,12 @@ def test_coulomb_integral():
     # For the integral test, func2 is the analytical product Gaussian
     phi_P_int_grid = phi_P_ana_grid 
 
+    plot1d(x_grid, [
+        (V_smear_grid,   rf'Smeared Potential ($\alpha_{{nuc}}={a_nuc_smear}$, Z={Z_nuc})', 'g-', 0.7),
+        (phi_P_int_grid, r'Initial Product Gaussian $\phi_P(x)$', 'm:', 1.0)
+        ], title='Initial Functions for Coulomb Integral Test', xlabel='x (Bohr)', ylabel='Amplitude'
+    )
+
     d_v, num_v_vals = num_int_vs_dist(x_grid, V_smear_grid, phi_P_int_grid, max_shift_idx)
 
     # Analytical calculation for interaction of smeared nucleus with electron product Gaussian
@@ -286,16 +300,13 @@ def test_coulomb_integral():
             Q2=Q_el_prod,   a2=p_el_prod,   X2=X_el_prod_c
         )
 
-    print( "V_smear_grid",   V_smear_grid  [:10] )   
-    print( "phi_P_int_grid", phi_P_int_grid[:10] )                  
+    print( "ana_v_vals", ana_v_vals[:10] )   
+    print( "num_v_vals", num_v_vals[:10] )                  
 
     plot_integral_vs_distance(
         d_v, ana_v_vals, num_v_vals,
-        x_grid, V_smear_grid, phi_P_int_grid,
         title=rf'Coulomb Integral V(d) for Smeared Nucleus ($\alpha_{{nuc}}={a_nuc_smear}$) \& Product Gaussian ($\alpha_{{p1}}={ap1}$, $\alpha_{{p2}}={ap2}$)',
-        int_lbl='V(d)', show_diff=True, show_ratio=True, diff_scale=1.0,
-        f1_lbl=rf'Smeared Potential ($\alpha_{{nuc}}={a_nuc_smear}$, Z={Z_nuc})',
-        f2_lbl=r'Initial Product Gaussian $\phi_P(x)$'
+        int_lbl='V(d)', show_diff=True, show_ratio=True, diff_scale=1.0
     )
 
 if __name__ == '__main__':
@@ -316,6 +327,6 @@ if __name__ == '__main__':
     alpha_2 = 0.5  # For Gaussian 2
     X_center_stationary = 0.0 # Stationary function centered at 0
 
-    test_overlap()
-    test_kinetic_energy()
+    #test_overlap()
+    #test_kinetic_energy()
     test_coulomb_integral()
