@@ -28,3 +28,5 @@ cpp/build
 cpp/build-*
 .aider*
 .env
+*.idx
+*.dat
