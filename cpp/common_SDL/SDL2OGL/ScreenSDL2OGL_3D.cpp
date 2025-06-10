@@ -7,7 +7,6 @@
 
 void ScreenSDL2OGL_3D::camera(){
     cam.setZoom(zoom);
-    cam.setAspect(ASPECT_RATIO);
     //Cam::ortho( cam, true );
     //Cam::perspective( cam );
     if (perspective){ Cam::perspective( cam ); }

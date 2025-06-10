@@ -1352,8 +1352,6 @@ void MolGUI::bindMolWorld( MolWorld_sp3* W_ ){
 void MolGUI::draw(){
     GLES::active_camera = &cam;
 
-    glClearColor( 1.0f, 1.0f, 1.0f, 1.0f );
-	glClear( GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT );
     glEnable(GL_BLEND);
     glEnable(GL_DEPTH_TEST);
 
@@ -1617,6 +1615,8 @@ void MolGUI::draw(){
 
     main_framebuffer.end();
 
+    glClearColor( 1.0f, 1.0f, 1.0f, 1.0f );
+	glClear( GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT );
     mergeFramebuffers(main_framebuffer, SSAOshader.out_framebuffer);
 };
 

@@ -29,9 +29,14 @@ void ScreenSDL2OGL::update( ){
 	GL_LOCK = true;
 	//printf( " window[%i] SDL_GL_MakeCurrent \n", id );
     SDL_GL_MakeCurrent(window, glctx);
+	SDL_GL_GetDrawableSize(window, &WIDTH, &HEIGHT);
+	GLES::screen_size = { WIDTH, HEIGHT };
+	glViewport(0, 0, GLES::screen_size.x, GLES::screen_size.y);
+	glScissor (0, 0, GLES::screen_size.x, GLES::screen_size.y);
+	if (GLES::active_camera) GLES::active_camera->update();
 	camera();
 
-	glClearColor(0.2f, 0.5f, 0.8f, 1.0f); // TODO: replace with renderer->clearColor
+	glClearColor(0.2f, 0.5f, 0.8f, 1.0f);
 	glClear( GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT );
 
 	draw();
@@ -160,7 +165,7 @@ void ScreenSDL2OGL::init( int& id_, int WIDTH_, int HEIGHT_, const char* name ){
 	HEIGHT = HEIGHT_;
 	setDefaults();
 	// modified according to : http://forums.libsdl.org/viewtopic.php?p=40286
-	window = SDL_CreateWindow( "Some_Window", SDL_WINDOWPOS_UNDEFINED, SDL_WINDOWPOS_UNDEFINED, WIDTH, HEIGHT, SDL_WINDOW_OPENGL);
+	window = SDL_CreateWindow( "Some_Window", SDL_WINDOWPOS_UNDEFINED, SDL_WINDOWPOS_UNDEFINED, WIDTH, HEIGHT, SDL_WINDOW_OPENGL | SDL_WINDOW_RESIZABLE);
 	glctx  = SDL_GL_CreateContext(window);
 
 	if (glctx == NULL) {

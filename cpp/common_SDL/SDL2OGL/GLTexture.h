@@ -102,6 +102,13 @@ class GLTexture{
             }
             SDL_FreeSurface( surf );
         }
+
+        inline void resize(Vec2i sz){
+            if (size == sz) return;
+            size = sz;
+            bind();
+            glTexImage2D(GL_TEXTURE_2D, 0, format, size.x, size.y, 0, format, type, 0);
+        }
 };
 
 #endif // _GL_TEXTURE_H_

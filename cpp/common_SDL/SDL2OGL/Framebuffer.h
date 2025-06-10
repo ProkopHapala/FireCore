@@ -66,6 +66,8 @@ public:
             printf("ERROR: framebuffer is already active\n");
             exit(1);
         }
+        colorBuffer.resize(GLES::screen_size);
+        depthBuffer.resize(GLES::screen_size);
 
         ensure_handle();
         GLES::pushFramebuffer(handle);

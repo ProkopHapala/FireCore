@@ -293,7 +293,6 @@ bool GLView::post_draw(){
 
 void GLView::camera(){
     cam.setZoom(zoom);
-    cam.setAspect(ASPECT_RATIO);
     if (perspective){ Cam::perspective( cam ); }
     else            { Cam::ortho( cam, true ); }
 }

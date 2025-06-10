@@ -18,7 +18,6 @@ private:
     Vec3T<T>  _pos    = (Vec3T<T>){0.0f,0.0f,-50.0f};
     Quat4T<T> _qrot   = (Quat4T<T>)Quat4dIdentity;
     T  _zoom   = 10.0;
-    T  _aspect = 1.0;
     bool   _persp  = true;
 
     bool update_vp_mat = true;
@@ -31,6 +30,8 @@ private:
 public:
     const T  zmin   = -10000.0;
     const T  zmax   = 10000.0;
+
+    inline void update() { update_vp_inv = true; update_vp_mat = true; }
 
     inline Vec3T<T> pos() const {return _pos;};
     inline void setPos( Vec3T<T> p ){ update_vp_mat |= _pos != p; _pos = p; }
@@ -45,8 +46,7 @@ public:
     inline T zoom() const { return _zoom; }
     inline void setZoom( T z ){ update_vp_mat |= z != _zoom; _zoom = z; }
 
-    inline T aspect() const { return _aspect; }
-    inline void setAspect( T a ){ update_vp_mat |= _aspect != a; _aspect = a; }
+    inline T aspect() const { return (T)GLES::screen_size.x/(T)GLES::screen_size.y; }
 
     inline bool persp() const { return _persp; }
     inline void setPersp( bool p ){ _persp = p; update_vp_mat = true; }
@@ -56,7 +56,7 @@ public:
     inline void lookAt( Vec3T<T> p, T R ){ setPos(p + rotMat().c*-R); }
     //inline void lookAt( Vec3T<T> p, T R ){ Vec3T<T> p_; convert(p,p_); lookAt(p_,R); }
 
-    inline T getTgX()const{ return 1.0/(_zoom*_aspect); }
+    inline T getTgX()const{ return 1.0/(_zoom*aspect()); }
     inline T getTgY()const{ return 1.0/(_zoom);            }
 
     inline void pix2rayOrtho( const Vec2f& pix, Vec3T<T>& ro ) const {
@@ -87,7 +87,7 @@ public:
         p.sub(_pos);
         Vec3T<T> c;
         rotMat().dot_to( p, c );
-        T  tgx = c.x*_zoom*_aspect;
+        T  tgx = c.x*_zoom*aspect();
         T  tgy = c.y*_zoom;
         T  cz  = c.z*zmin;
         return (tgx>-cz)&&(tgx<cz) && (tgy>-cz)&&(tgy<cz) && (c.z>zmin)&&(c.z<zmax);
@@ -98,7 +98,7 @@ public:
         Vec3T<T> c;
         rotMat().dot_to( p, c );
         T  my = c.z*zmin/_zoom;
-        T  mx = my/_aspect + R;  my+=R;
+        T  mx = my/aspect() + R;  my+=R;
         return (c.x>-mx)&&(c.x<mx) && (c.y>-my)&&(c.y<my) && ((c.z+R)>zmin)&&((c.z-R)<zmax);
     }
 
@@ -128,9 +128,9 @@ public:
         // projection matrix
         _projMat.setOne();
         if(_persp){
-            _projMat.setPerspective( -_zoom*_aspect, _zoom*_aspect, -_zoom, _zoom, zmin, zmax );
+            _projMat.setPerspective( -_zoom*aspect(), _zoom*aspect(), -_zoom, _zoom, zmin, zmax );
         }else{
-            _projMat.setOrthographic( -_zoom*_aspect, _zoom*_aspect, -_zoom, _zoom, zmin, zmax );
+            _projMat.setOrthographic( -_zoom*aspect(), _zoom*aspect(), -_zoom, _zoom, zmin, zmax );
         }
 
         // view projection matrix
