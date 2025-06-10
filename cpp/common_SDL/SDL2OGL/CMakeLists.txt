@@ -12,6 +12,9 @@ add_library( SDL2OGL      OBJECT AppSDL2OGL_3D.cpp AppSDL2OGL.cpp PlotScreen2D.c
 #$<TARGET_OBJECTS:Mesh> 
 ${COMMON_SRCS}/math/Mesh.cpp
 )
+if (TARGET_WASM)
+	add_dependencies(SDL2OGL wasm_sdl2)
+endif()
 
 #add_library( GLView      OBJECT GLView.cpp Plot2D.cpp Draw.cpp Draw2D.cpp Draw3D.cpp GUI.cpp ${COMMON_SRCS}/math/Mesh.cpp )
 
