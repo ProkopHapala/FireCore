@@ -147,16 +147,15 @@ def relax_scanPlot1D(nscan=1000, span=(0.0,4.0),
     Perform a 1D scan along a specified direction with optional relaxation.
     """
     
-    """
-    Debug version with extensive logging
-    """
-    # print(f"===== DEBUGGING INFO =====")
-    # print(f"Input parameters:")
-    # print(f"  nscan: {nscan}")
-    # print(f"  span: {span}")
-    # print(f"  p0: {p0}")
-    # print(f"  dir: {dir}")
-    # print(f"  bRelax: {bRelax}")
+    # Normalize the direction vector
+    dir_array = np.array(dir, dtype=float)
+    dir_norm = np.linalg.norm(dir_array)
+    if dir_norm > 0:
+        dir_normalized = dir_array / dir_norm
+        print(f"Direction vector normalized: {dir} → {dir_normalized}")
+    else:
+        dir_normalized = np.array([1.0, 0.0, 0.0])  # Default to x-direction if zero vector
+        print("Warning: Zero direction vector provided, defaulting to x-direction")
     
     # Create linspace array for scan direction
     t = np.linspace(span[0], span[1], nscan, endpoint=False)
@@ -164,10 +163,10 @@ def relax_scanPlot1D(nscan=1000, span=(0.0,4.0),
     # Prepare positions array
     poss = np.zeros((nscan, 3))
     
-    # Each scanned position is the starting point plus contribution along direction
-    poss[:, 0] = p0[0] + t*dir[0]
-    poss[:, 1] = p0[1] + t*dir[1]
-    poss[:, 2] = p0[2] + t*dir[2]
+    # Each scanned position is the starting point plus contribution along normalized direction
+    poss[:, 0] = p0[0] + t*dir_normalized[0]
+    poss[:, 1] = p0[1] + t*dir_normalized[1]
+    poss[:, 2] = p0[2] + t*dir_normalized[2]
     
     # print(f"poss: {poss.shape}", poss )
     # Call the scan function using the computed positions

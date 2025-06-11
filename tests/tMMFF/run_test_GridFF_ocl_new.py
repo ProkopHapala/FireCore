@@ -41,10 +41,23 @@ import pyopencl as cl
 # name="NaCl_coulomb.iz0"
 # name="NaCl_8x8_L3_final"
 
+# name="NaCl_perfect_20x20"
+# name="NaCl_45_defect_aligned_20x20"
+# name="NaCl_45_defect_perpendicular_20x20"
+
+# name="NaCl_perfect_16x16"
+# name="NaCl_45_defect_aligned_16x16"
+# name="NaCl_45_defect_perpendicular_16x16"
+
+# name="NaCl_perfect_12x12"                          #real    12m29.343s user    11m43.004s sys     0m42.534s
+# name="NaCl_45_defect_aligned_12x12"               #real    12m47.250s user    11m40.237s sys     0m46.869s
+# name="NaCl_45_defect_perpendicular_12x12"          #real    12m40.327s user    11m45.507s sys     0m45.874s
+
+
 # name="NaCl_1x1_L1"
 # name="Na_0.9_Cl_-0.9"
 # name="new_Na_0.9_Cl_-0.9"
-name="NaCl_old"
+# name="NaCl_old"
 # name ="NaCl_paolo"
 # name ="NaCl.ptcda"
 # name="2_atom_NaCl"
@@ -70,7 +83,7 @@ name="NaCl_old"
 
 # gff.test_gridFF_ocl( fname="data/xyz/"+name+".xyz",Element_Types_name="./data/ElementTypes.dat", save_name="double3", job="Morse" )
 # gff.test_gridFF_ocl( fname="data/xyz/"+name+".xyz",Element_Types_name="./data/ElementTypes.dat", save_name="double3", job="Ewald" )
-gff.test_gridFF_ocl( fname="data/xyz/"+name+".xyz",Element_Types_name="./data/ElementTypes.dat", save_name="double3", job="PLQ")
+gff.test_gridFF_ocl( fname="data/xyz/"+name+".xyz",Element_Types_name="./data/ElementTypes.dat", save_name="double3", job="PLQ", desired_voxel=0.1 )
 
 
 
