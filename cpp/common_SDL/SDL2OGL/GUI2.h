@@ -6,6 +6,7 @@
 #include <vector>
 #include "Draw.h"
 #include "Vec2.h"
+#include "TextRenderer.h"
 
 
 template<class T>
@@ -36,8 +37,6 @@ using GUI2Rect2i = GUI2Rect2T<int>;
 using GUI2Rect2f = GUI2Rect2T<float>;
 #define FULL_RECT GUI2Rect2f(0,0,1,1)
 
-
-extern int GUI2_fontTex;
 
 class GUI2Node{
     public:
@@ -139,6 +138,7 @@ class GUI2Text : public GUI2Node{
 
     private:
         using GUI2Node::addChild;
+        using GUI2Node::removeChild;
 
         std::string text;
         Align align = Align::TOP_LEFT;
@@ -148,6 +148,7 @@ class GUI2Text : public GUI2Node{
         // calculated from the values above
         Vec2i textPos_;
         Vec2i textSize_;
+        TextRenderer textRenderer;
 
         void recalculate_textPos();
         void recalculate_textSize();

@@ -257,17 +257,20 @@ void GUI2Panel::draw_self(){ // TODO: don't need to redraw every frame ?
 
 GUI2Text::GUI2Text( GUI2Rect2f anchors, Vec2i pos, Vec2i size, std::string text ):
     GUI2Node(anchors, pos, size),
-    text(text)
+    text(text),
+    textRenderer(text)
     { update_minSize(); }
 GUI2Text::GUI2Text( GUI2Rect2f anchors, Vec2i pos, Vec2i size, std::string text, uint32_t fontSize, uint32_t fontColor ):
     GUI2Node(anchors, pos, size),
     text(text),
+    textRenderer(text),
     fontSize(fontSize),
     fontColor(fontColor)
     { update_minSize(); }
 GUI2Text::GUI2Text( GUI2Rect2f anchors, Vec2i pos, Vec2i size, std::string text, uint32_t fontSize, uint32_t fontColor, Align align ):
     GUI2Node(anchors, pos, size),
     text(text),
+    textRenderer(text),
     fontSize(fontSize),
     fontColor(fontColor),
     align(align)
@@ -275,6 +278,7 @@ GUI2Text::GUI2Text( GUI2Rect2f anchors, Vec2i pos, Vec2i size, std::string text,
 GUI2Text::GUI2Text( GUI2Rect2f anchors, Vec2i pos, Vec2i size, std::string text, Align align):
     GUI2Node(anchors, pos, size),
     text(text),
+    textRenderer(text),
     align(align)
     { update_minSize(); }
 GUI2Text::GUI2Text( std::string text, Align align ):
@@ -318,6 +322,7 @@ Vec2i GUI2Text::calculate_minSize(){
 void GUI2Text::setText( std::string text_ ){
     text = text_;
     update_minSize();
+    textRenderer.set(text);
 }
 void GUI2Text::setFontSize( uint32_t fontSize_ ){
     fontSize = fontSize_;
@@ -334,8 +339,7 @@ void GUI2Text::on_rect_updated(){
 
 
 void GUI2Text::draw_self(){
-    Draw  ::setRGB( fontColor );
-    Draw2D::drawText( text.c_str(), (Vec2d)textPos_, (Vec2d)textSize_, GUI2_fontTex, fontSize );
+    textRenderer.draw2D({textPos_.x, textPos_.y, 0}, fontSize, COL2VEC(fontColor));
 }
 
 // ==============================
