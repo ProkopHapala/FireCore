@@ -247,8 +247,7 @@ GUI2Panel::GUI2Panel(uint32_t bgColor):
     GUI2Panel(FULL_RECT, {0, 0}, {0, 0}, bgColor){}
 
 void GUI2Panel::draw_self(){ // TODO: don't need to redraw every frame ?
-    Draw  ::setRGB( bgColor );
-    Draw2D::drawRectangle ( rect().xmin, rect().ymin, rect().xmax, rect().ymax, true );
+    Draw2D::drawRectangle ( (Vec2f)rect().min(), (Vec2f)rect().max(), COL2VEC(bgColor), true );
 }
 
 
@@ -1053,9 +1052,7 @@ void GUI2::draw( SDL_Window* window){
     root_node.set_pos((Vec2i){0,0});
     root_node.set_size((Vec2i){width, height});
 
-    glDisable   ( GL_LIGHTING    );
     glDisable   ( GL_DEPTH_TEST  );
-    glShadeModel( GL_FLAT        );
     root_node.draw();
 }
 
