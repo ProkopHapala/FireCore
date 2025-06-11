@@ -28,5 +28,3 @@ cpp/build
 cpp/build-*
 .aider*
 .env
-
-cpp/wasmlib
