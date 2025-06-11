@@ -1,5 +1,6 @@
 #ifndef  integerOps_h
 #define  integerOps_h
+#include <cstdint>
 
 // ========= index poerations and modulo-math ===========
 

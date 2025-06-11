@@ -7,6 +7,7 @@
 #include "Vec3.h"
 
 #include "physics_constants.h"
+#include "quaternion.h"
 
 #define RSAFE   1.0e-4f
 #define R2SAFE  1.0e-8f

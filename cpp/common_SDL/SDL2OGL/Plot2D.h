@@ -10,6 +10,7 @@
 #include "Vec3.h"
 #include "geom2D.h"
 #include "VecN.h"
+#include "Renderer.h"
 
 const int nXTicks_def = 11;
 const int nYTicks_def = 11;
@@ -124,7 +125,7 @@ class Plot2D{ public:
     void drawAxes();
     int  render();
     int  renderFrameworks();
-    int  tryRender(bool bUpdate=true);
+    int  tryRender( bool bUpdate=true);
     void view  (bool bAxes=true);
     void init  ();
     //void xsharingLines(int nl, int np);

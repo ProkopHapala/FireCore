@@ -1,138 +1,71 @@
 
 #include "ScreenSDL2OGL.h" // THE HEADER
+#include "Renderer.h"
+#include <SDL2/SDL_video.h>
+#include <iostream>
+#include <chrono>
 
 //#include "testUtils.h"
 
 // ============== per frame
 
 void setLightingNormal(){
-//float white    [] = { 1.0f, 1.0f,  1.0f,  1.0f };
-	float ambient  []{ 1.0f, 1.0f, 1.0f, 1.0f };
-	float diffuse  []{ 2.0f, 1.0f, 1.0f, 1.0f };
-	float specular []{ 1.0f, 1.0f, 1.0f, 1.0f };
-	float shininess[]{ 128, 1.0f }; // exponent for specular
-	float emission []{ 0.0f, 0.0f, 0.0f, 1.0f }; // as light source
-
-	glEnable     ( GL_COLOR_MATERIAL    );
-    glMaterialfv( GL_FRONT_AND_BACK, GL_AMBIENT,   ambient   );
-	glMaterialfv( GL_FRONT_AND_BACK, GL_DIFFUSE,   diffuse   );
-	glMaterialfv( GL_FRONT_AND_BACK, GL_SPECULAR,  specular  );
-	glMaterialfv( GL_FRONT_AND_BACK, GL_SHININESS, shininess );
-	glMaterialfv( GL_FRONT_AND_BACK, GL_EMISSION,  emission  );
-
-    float lightPos   []{ 1.0f, -1.0f, 1.0f, 0.0f  };
-    glLightfv    ( GL_LIGHT0, GL_POSITION,  lightPos );
-    //float l_ambient  []{ 0.1f*0, 0.15f*0, 0.2f*0,  1.0f };
-    float l_ambient  []{ 0.15f, 0.20f, 0.25f,  1.0f };
-    //float l_ambient  []{ 0.2f, 0.2f, 0.2f,  1.0f };
-	float l_diffuse  []{ 0.9f, 0.85f, 0.8f,  1.0f };
-	float l_specular []{ 1.0f, 1.0f,  1.0f,  1.0f };
-    glLightfv    ( GL_LIGHT0, GL_AMBIENT,   l_ambient  );
-	glLightfv    ( GL_LIGHT0, GL_DIFFUSE,   l_diffuse  );
-	glLightfv    ( GL_LIGHT0, GL_SPECULAR,  l_specular );
-
-	glLightModeli( GL_LIGHT_MODEL_LOCAL_VIEWER, 1 );
-
-	//float ambient_lm  []{ 0.15f, 0.2f, 0.25f, 1.0f };
-	float ambient_lm  []{ 0.2f, 0.2f, 0.2f, 1.0f };
-	glLightModelfv( GL_LIGHT_MODEL_AMBIENT, ambient_lm );
-
-	glEnable     ( GL_LIGHTING         );
-	glEnable     ( GL_LIGHT0           );
-	glEnable     ( GL_NORMALIZE        );
-
-	glEnable     ( GL_DEPTH_TEST       );
-	glHint       ( GL_LINE_SMOOTH_HINT, GL_NICEST );
-	glShadeModel ( GL_SMOOTH           );
-	glPolygonMode( GL_FRONT_AND_BACK, GL_FILL );
-    //glLightModeli( GL_LIGHT_MODEL_TWO_SIDE, 1 );
+	opengl1renderer.enable     ( GL_DEPTH_TEST       );
+	opengl1renderer.polygonMode( GL_FRONT_AND_BACK, GL_FILL );
 }
 
 void setLightingRGB(){
-//float white    [] = { 1.0f, 1.0f,  1.0f,  1.0f };
-	float ambient  []{ 1.0f, 1.0f, 1.0f, 1.0f };
-	float diffuse  []{ 2.0f, 1.0f, 1.0f, 1.0f };
-	float specular []{ 1.0f, 1.0f, 1.0f, 1.0f };
-	float shininess[]{ 128, 1.0f }; // exponent for specular
-	float emission []{ 0.0f, 0.0f, 0.0f, 1.0f }; // as light source
-
-	glEnable     ( GL_COLOR_MATERIAL    );
-    glMaterialfv( GL_FRONT_AND_BACK, GL_AMBIENT,   ambient   );
-	glMaterialfv( GL_FRONT_AND_BACK, GL_DIFFUSE,   diffuse   );
-	glMaterialfv( GL_FRONT_AND_BACK, GL_SPECULAR,  specular  );
-	glMaterialfv( GL_FRONT_AND_BACK, GL_SHININESS, shininess );
-	glMaterialfv( GL_FRONT_AND_BACK, GL_EMISSION,  emission  );
-
-    float lightPos_r   []{ -1.0f,  0.0f,  0.0f, 0.0f  };
-    float lightPos_g   []{  0.0f, -1.0f,  0.0f, 0.0f  };
-    float lightPos_b   []{  0.0f,  0.0f, -1.0f, 0.0f  };
-
-	glEnable     ( GL_LIGHTING         );
-
-	glEnable     ( GL_NORMALIZE        );
-	glEnable     ( GL_LIGHT0           );
-    glEnable     ( GL_LIGHT1           );
-    glEnable     ( GL_LIGHT2           );
-
-    glLightfv    ( GL_LIGHT0, GL_POSITION,  lightPos_r );
-    glLightfv    ( GL_LIGHT1, GL_POSITION,  lightPos_g );
-    glLightfv    ( GL_LIGHT2, GL_POSITION,  lightPos_b );
-
-    float l_ambient  []{ 0.1f, 0.1f, 0.1f,  1.0f };
-	float l_specular []{ 1.0f, 1.0f,  1.0f,  1.0f };
-
-	float r_diffuse  []{ 0.8f, 0.2f, 0.2f,  1.0f };
-	float g_diffuse  []{ 0.2f, 0.8f, 0.2f,  1.0f };
-	float b_diffuse  []{ 0.2f, 0.2f, 0.8f,  1.0f };
-    glLightfv    ( GL_LIGHT0, GL_AMBIENT,   l_ambient  );
-	glLightfv    ( GL_LIGHT0, GL_DIFFUSE,   r_diffuse  );
-	glLightfv    ( GL_LIGHT0, GL_SPECULAR,  l_specular );
-
-    glLightfv    ( GL_LIGHT1, GL_AMBIENT,   l_ambient  );
-	glLightfv    ( GL_LIGHT1, GL_DIFFUSE,   g_diffuse );
-	glLightfv    ( GL_LIGHT1, GL_SPECULAR,  l_specular );
-
-    glLightfv    ( GL_LIGHT2, GL_AMBIENT,   l_ambient  );
-	glLightfv    ( GL_LIGHT2, GL_DIFFUSE,   b_diffuse  );
-	glLightfv    ( GL_LIGHT2, GL_SPECULAR,  l_specular );
-
-	glLightModeli( GL_LIGHT_MODEL_LOCAL_VIEWER, 1 );
-
-	//float ambient_lm  []{ 0.15f, 0.2f, 0.25f, 1.0f };
-	float ambient_lm  []{ 0.2f, 0.2f, 0.2f, 1.0f };
-	glLightModelfv( GL_LIGHT_MODEL_AMBIENT, ambient_lm );
-
-	glEnable     ( GL_DEPTH_TEST       );
-	glHint       ( GL_LINE_SMOOTH_HINT, GL_NICEST );
-	glShadeModel ( GL_SMOOTH           );
-	glPolygonMode( GL_FRONT_AND_BACK, GL_FILL );
-    //glLightModeli( GL_LIGHT_MODEL_TWO_SIDE, 1 );
+	opengl1renderer.enable     ( GL_DEPTH_TEST       );
+	opengl1renderer.polygonMode( GL_FRONT_AND_BACK, GL_FILL );
 }
 
+std::chrono::duration<long, std::ratio<1, 1000>> durationTotal;
+int durationCount = 0;
+
 void ScreenSDL2OGL::update( ){
-	//SDL_RenderPresent(renderer);
-	//glPushMatrix();
+	auto start = std::chrono::high_resolution_clock::now();
+
 	if( GL_LOCK ){ printf("ScreenSDL2OGL::update GL_LOCK\n"); return; }
 	GL_LOCK = true;
 	//printf( " window[%i] SDL_GL_MakeCurrent \n", id );
     SDL_GL_MakeCurrent(window, glctx);
+	SDL_GL_GetDrawableSize(window, &WIDTH, &HEIGHT);
+	GLES::screen_size = { WIDTH, HEIGHT };
+	glViewport(0, 0, GLES::screen_size.x, GLES::screen_size.y);
+	glScissor (0, 0, GLES::screen_size.x, GLES::screen_size.y);
+	if (GLES::active_camera) GLES::active_camera->update();
 	camera();
+
+	glClearColor(0.2f, 0.5f, 0.8f, 1.0f);
+	glClear( GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT );
+
 	draw();
 	cameraHUD();
 	drawHUD();
-	//glPopMatrix();
-	//glFlush();
-	//SDL_RenderPresent(renderer);
+	
+	//opengl1renderer.popMatrix();
+	//opengl1renderer.flush();
+	//SDL_RenderPresent( );
 	frameCount++;
     SDL_GL_SwapWindow(window);
     //printf( " window[%i] SDL_GL_SwapWindow \n", id );
     GL_LOCK = false;
+
+	auto stop = std::chrono::high_resolution_clock::now();
+    auto duration = duration_cast<std::chrono::milliseconds>(stop - start);
+
+	durationTotal += duration;
+	durationCount++;
+
+	if (durationCount == 100){
+		auto ms = durationTotal.count()/(float)durationCount;
+		std::cout << "update() took " << ms << " milliseconds (last "<<durationCount<<" avg) -> fps = "<<1000.0/ms<<"\n";
+		durationCount = 0;
+		durationTotal = std::chrono::duration<long, std::ratio<1, 1000>>::zero();
+	}
 };
 
-void ScreenSDL2OGL::draw   (){
-    glClearColor( 0.5f, 0.5f, 0.5f, 0.0f );
-	glClear( GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT );
-};
+void ScreenSDL2OGL::draw(){}; // virtual function, meant to be overriden
 
 void ScreenSDL2OGL::drawHUD(){ };
 
@@ -183,19 +116,19 @@ void ScreenSDL2OGL::mouseHandling( ){
 
 
 void ScreenSDL2OGL::camera(){
-    glMatrixMode( GL_PROJECTION );
-    glLoadIdentity();
-	glOrtho ( -zoom*ASPECT_RATIO, zoom*ASPECT_RATIO, -zoom, zoom, -VIEW_DEPTH, +VIEW_DEPTH );
-	glTranslatef( -camX0, -camY0, 0.0f );
-	glMatrixMode (GL_MODELVIEW);
+    opengl1renderer.matrixMode( GL_PROJECTION );
+    opengl1renderer.loadIdentity();
+	opengl1renderer.ortho ( -zoom*ASPECT_RATIO, zoom*ASPECT_RATIO, -zoom, zoom, -VIEW_DEPTH, +VIEW_DEPTH );
+	opengl1renderer.translatef( -camX0, -camY0, 0.0f );
+	opengl1renderer.matrixMode (GL_MODELVIEW);
 }
 
 void ScreenSDL2OGL::cameraHUD(){
-    glMatrixMode( GL_PROJECTION );
-    glLoadIdentity();
-	glOrtho ( 0, WIDTH, 0, HEIGHT, -VIEW_DEPTH, +VIEW_DEPTH );
-	glMatrixMode (GL_MODELVIEW);
-	glLoadIdentity();
+    opengl1renderer.matrixMode( GL_PROJECTION );
+    opengl1renderer.loadIdentity();
+	opengl1renderer.ortho ( 0, WIDTH, 0, HEIGHT, -VIEW_DEPTH, +VIEW_DEPTH );
+	opengl1renderer.matrixMode (GL_MODELVIEW);
+	opengl1renderer.loadIdentity();
 }
 
 //void ScreenSDL2OGL::updateMousePos ( int x, int y ){
@@ -232,8 +165,16 @@ void ScreenSDL2OGL::init( int& id_, int WIDTH_, int HEIGHT_, const char* name ){
 	HEIGHT = HEIGHT_;
 	setDefaults();
 	// modified according to : http://forums.libsdl.org/viewtopic.php?p=40286
-	window = SDL_CreateWindow( "Some_Window", SDL_WINDOWPOS_UNDEFINED, SDL_WINDOWPOS_UNDEFINED, WIDTH, HEIGHT, SDL_WINDOW_OPENGL);
+	window = SDL_CreateWindow( "Some_Window", SDL_WINDOWPOS_UNDEFINED, SDL_WINDOWPOS_UNDEFINED, WIDTH, HEIGHT, SDL_WINDOW_OPENGL | SDL_WINDOW_RESIZABLE);
 	glctx  = SDL_GL_CreateContext(window);
+
+	if (glctx == NULL) {
+        printf("Failed to create GL context: %s\n", SDL_GetError());
+
+        exit(-1);
+    }
+
+	
     //SDL_CreateWindowAndRenderer(WIDTH, HEIGHT, SDL_WINDOW_OPENGL, &window, &renderer);
     if(name==0){
         id = SDL_GetWindowID(window); printf( " win id %i \n", id );
@@ -243,6 +184,7 @@ void ScreenSDL2OGL::init( int& id_, int WIDTH_, int HEIGHT_, const char* name ){
     }else{
         SDL_SetWindowTitle( window, name );
     }
+
 	//setupRenderer();
 	//setupOpenGLglobals();
 	setLightingNormal();

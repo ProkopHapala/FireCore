@@ -12,7 +12,7 @@
 #include "testUtils.h"
 
 #include <SDL2/SDL.h>
-#include <SDL2/SDL_opengl.h>
+
 #include "Draw3D.h"
 #include "SDL_utils.h"
 #include "Solids.h"
@@ -50,9 +50,9 @@ void plotSurfPlane( Vec3d normal, double c0, Vec2d d, Vec2i n ){
     normal.getSomeOrtho( da,db );
     da.mul( d.a/da.norm() );
     db.mul( d.b/db.norm() );
-    //glColor3f(1.0f,0.0f,0.0f); Draw3D::drawVecInPos(normal, {0.0,0.0,0.0} );
-    //glColor3f(0.0f,1.0f,0.0f); Draw3D::drawVecInPos(da*10, {0.0,0.0,0.0} );
-    //glColor3f(0.0f,0.0f,1.0f); Draw3D::drawVecInPos(db*10, {0.0,0.0,0.0} );
+    //opengl1renderer.color3f(1.0f,0.0f,0.0f); Draw3D::drawVecInPos(normal, {0.0,0.0,0.0} );
+    //opengl1renderer.color3f(0.0f,1.0f,0.0f); Draw3D::drawVecInPos(da*10, {0.0,0.0,0.0} );
+    //opengl1renderer.color3f(0.0f,0.0f,1.0f); Draw3D::drawVecInPos(db*10, {0.0,0.0,0.0} );
     Draw3D::drawRectGridLines( n*2, (da*-n.a)+(db*-n.b) + normal*c0, da, db );
 }
 
@@ -171,7 +171,7 @@ inline double evalTorq(Vec3d& ha,Vec3d& hb,Vec3d& hab,   Vec3d& fa, Vec3d& fb, V
 
     if(bPrint){
 
-        double d=0.001d;
+        double d=0.001;
         double dcaE  =( cos_func(ca+d,cb  ,cab  ) - cos_func(ca-d,cb  ,cab  ) )/(2*d);
         double dcbE  =( cos_func(ca  ,cb+d,cab  ) - cos_func(ca  ,cb-d,cab  ) )/(2*d);
         double dcabE =( cos_func(ca  ,cb  ,cab+d) - cos_func(ca  ,cb  ,cab-d) )/(2*d);
@@ -229,9 +229,9 @@ void doChecks(){
     auto getEF_ab = [&](Vec3d p,Vec3d& f)->double{ return evalTorq( ha,hb,p,   fa,fb,f  ); };
 
     Vec3d f,fE;
-    printf("ha  "); checkDeriv3d(getEF_a , ha, 0.001d,  fE, f );
-    printf("hb  "); checkDeriv3d(getEF_b , hb, 0.001d,  fE, f );
-    printf("hab "); checkDeriv3d(getEF_ab, hab,0.001d,  fE, f );
+    printf("ha  "); checkDeriv3d(getEF_a , ha, 0.001,  fE, f );
+    printf("hb  "); checkDeriv3d(getEF_b , hb, 0.001,  fE, f );
+    printf("hab "); checkDeriv3d(getEF_ab, hab,0.001,  fE, f );
 
     //exit(0);
     /*
@@ -296,7 +296,6 @@ class TestAppMMFFmini : public AppSDL2OGL_3D { public:
     bool bRunRelax  = false;
 
     int     fontTex;
-    int     ogl_sph=0;
     int     ogl_mol=0;
 
     char str[256];
@@ -347,7 +346,7 @@ int pickBond( const MMFFmini& ff, const Vec3d& ro, const Vec3d& rd, double R ){
 
 void TestAppMMFFmini::selectRect( const Vec3d& p0, const Vec3d& p1 ){
     Vec3d Tp0,Tp1,Tp;
-    Mat3d rot = (Mat3d)cam.rot;
+    Mat3d rot = (Mat3d)cam.rotMat();
     rot.dot_to(p0,Tp0);
     rot.dot_to(p1,Tp1);
     _order(Tp0.x,Tp1.x);
@@ -446,7 +445,7 @@ int TestAppMMFFmini::loadMoleculeMol( const char* fname, bool bAutoH, bool bLoad
         params.assignREs( mol.natoms, mol.atomType, mol.REQs );
         mol.autoAngles(true);
         Vec3d cog = mol.getCOG_av();
-        mol.addToPos( cog*-1.0d );
+        mol.addToPos( cog*-1.0 );
         builder.insertMolecule(&mol, Vec3dZero, Mat3dIdentity, false );
         builder.toMMFFmini( ff, &params );
     }
@@ -475,13 +474,6 @@ int TestAppMMFFmini::loadMoleculeMol( const char* fname, bool bAutoH, bool bLoad
     builder.toMMFFmini( ff, &params );
 
     //Draw3D::shapeInPoss( ogl_sph, ff.natoms, ff.apos, 0 );
-
-    /*
-    ogl_mol = glGenLists(1);
-    glNewList( ogl_mol, GL_COMPILE );
-        Draw3D::drawLines( mol.nbonds, (int*)mol.bond2atom, mol.pos );
-    glEndList();
-    */
 
     return nheavy;
 }
@@ -718,14 +710,11 @@ TestAppMMFFmini::TestAppMMFFmini( int& id, int WIDTH_, int HEIGHT_ ) : AppSDL2OG
     printf("TestAppMMFFmini.init() DONE \n");
     //exit(0);
 
-    //Draw3D::makeSphereOgl( ogl_sph, 3, 1.0 );
-    Draw3D::makeSphereOgl( ogl_sph, 5, 1.0 );
-
     //float l_diffuse  []{ 0.9f, 0.85f, 0.8f,  1.0f };
 	float l_specular []{ 0.0f, 0.0f,  0.0f,  1.0f };
-    //glLightfv    ( GL_LIGHT0, GL_AMBIENT,   l_ambient  );
-	//glLightfv    ( GL_LIGHT0, GL_DIFFUSE,   l_diffuse  );
-	glLightfv    ( GL_LIGHT0, GL_SPECULAR,  l_specular );
+    //opengl1renderer.lightfv    ( GL_LIGHT0, GL_AMBIENT,   l_ambient  );
+	//opengl1renderer.lightfv    ( GL_LIGHT0, GL_DIFFUSE,   l_diffuse  );
+	opengl1renderer.lightfv    ( GL_LIGHT0, GL_SPECULAR,  l_specular );
 
     //selection.insert( selection.end(), {12, 16, 14, 6, 2, 3,   20,18,31,25,26} );
     //selection.insert( selection.end(), {13,29,30} );
@@ -739,18 +728,18 @@ TestAppMMFFmini::TestAppMMFFmini( int& id, int WIDTH_, int HEIGHT_ ) : AppSDL2OG
 }
 
 void TestAppMMFFmini::drawSystem( Vec3i ixyz ){
-    //glColor3f(0.0f,0.0f,0.0f); Draw3D::drawLines ( ff.nbonds, (int*)ff.bond2atom, ff.apos );
-    //glColor3f(0.0f,0.0f,0.0f); Draw3D::bondsPBC  ( ff.nbonds, ff.bond2atom, ff.apos, &builder.bondPBC[0], builder.lvec ); 
+    //opengl1renderer.color3f(0.0f,0.0f,0.0f); Draw3D::drawLines ( ff.nbonds, (int*)ff.bond2atom, ff.apos );
+    //opengl1renderer.color3f(0.0f,0.0f,0.0f); Draw3D::bondsPBC  ( ff.nbonds, ff.bond2atom, ff.apos, &builder.bondPBC[0], builder.lvec ); 
     //printf( "TestAppMMFFmini::drawSystem ff.bond2atom=%li ff.apos=%li ff.pbcShifts=%li \n", ff.bond2atom, ff.apos, ff.pbcShifts );
-    glColor3f(0.0f,0.0f,0.0f); Draw3D::bondsPBC  ( ff.nbonds, ff.bond2atom, ff.apos, ff.pbcShifts  ); 
-    //glColor3f(0.5f,0.0f,0.0f); Draw3D::atomLabels( ff.natoms, ff.apos, fontTex                     );
-    //glColor3f(0.0f,0.0f,1.0f); Draw3D::bondLabels( ff.nbonds, ff.bond2atom, ff.apos, fontTex, 0.02 );          
-    //glColor3f(0.0f,0.0f,1.0f); Draw3D::atomPropertyLabel( ff.natoms, (double*)nff.REQs, ff.apos, 3,2, fontTex, 0.02, "%4.2f\0" );
-    //glColor3f(1.0f,0.0f,0.0f); Draw3D::vecsInPoss( ff.natoms, ff.aforce, ff.apos, 300.0              );
+    Draw3D::bondsPBC  ( ff.nbonds, ff.bond2atom, ff.apos, ff.pbcShifts, COLOR_BLACK ); 
+    //opengl1renderer.color3f(0.5f,0.0f,0.0f); Draw3D::atomLabels( ff.natoms, ff.apos, fontTex                     );
+    //opengl1renderer.color3f(0.0f,0.0f,1.0f); Draw3D::bondLabels( ff.nbonds, ff.bond2atom, ff.apos, fontTex, 0.02 );          
+    //opengl1renderer.color3f(0.0f,0.0f,1.0f); Draw3D::atomPropertyLabel( ff.natoms, (double*)nff.REQs, ff.apos, 3,2, fontTex, 0.02, "%4.2f\0" );
+    //opengl1renderer.color3f(1.0f,0.0f,0.0f); Draw3D::vecsInPoss( ff.natoms, ff.aforce, ff.apos, 300.0              );
     //Draw3D::atomsREQ  ( ff.natoms, ff.apos,   nff.REQs, ogl_sph, 1.0, 0.25, 1.0 );
     //Draw3D::atoms( ff.natoms, ff.apos, atypes, params, ogl_sph, 1.0, 1.0, 1.0 );       
     //Draw3D::atoms( ff.natoms, ff.apos, atypes, params, ogl_sph, 1.0, 0.5, 1.0 );    
-    Draw3D::atoms( ff.natoms, ff.apos, atypes, params, ogl_sph, 1.0, 0.25, 1.0 );     
+    Draw3D::atoms( ff.natoms, ff.apos, atypes, params, 1.0, 0.25, 1.0 );     
 }
 
 
@@ -760,10 +749,10 @@ void TestAppMMFFmini::saveScreenshot( int i, const char* fname ){
         sprintf( str, fname, i );          
         printf( "save to %s \n", str );
         unsigned int *screenPixels = new unsigned int[WIDTH*HEIGHT*4];
-        glFlush();                                                      
-        glFinish();                                                    
-        //glReadPixels(0, 0, WIDTH, HEIGHT, GL_RGB, GL_UNSIGNED_INT, screenPixels);
-        glReadPixels(0, 0, WIDTH, HEIGHT, GL_RGBA, GL_UNSIGNED_BYTE, screenPixels);
+        opengl1renderer.flush();                                                      
+        opengl1renderer.finish();                                                    
+        //opengl1renderer.readPixels(0, 0, WIDTH, HEIGHT, GL_RGB, GL_UNSIGNED_INT, screenPixels);
+        opengl1renderer.readPixels(0, 0, WIDTH, HEIGHT, GL_RGBA, GL_UNSIGNED_BYTE, screenPixels);
         //SDL_Surface *bitmap = SDL_CreateRGBSurfaceFrom(screenPixels, WIDTH, HEIGHT, 32, WIDTH*4, 0xff000000, 0x00ff0000, 0x0000ff00, 0x000000ff );
         SDL_Surface *bitmap = SDL_CreateRGBSurfaceFrom(screenPixels, WIDTH, HEIGHT, 32, WIDTH*4, 0x000000ff, 0x0000ff00, 0x00ff0000, 0xff000000 ); 
         SDL_SaveBMP(bitmap, str);  
@@ -773,9 +762,9 @@ void TestAppMMFFmini::saveScreenshot( int i, const char* fname ){
         //SDL_Window* window = this->child_windows[0]->window;
         SDL_Window* window = this->window;
         printf( "window @ptr %li \n", window );
-        SDL_Renderer* renderer = SDL_GetRenderer(window);
+        SDL_enderer = SDL_GetRenderer(window);
         SDL_Surface *sshot = SDL_CreateRGBSurface(0, WIDTH, HEIGHT, 32, 0x00ff0000, 0x0000ff00, 0x000000ff, 0xff000000);
-        SDL_RenderReadPixels( renderer, NULL, SDL_PIXELFORMAT_ARGB8888, sshot->pixels, sshot->pitch);
+        SDL_RenderReadPixels( NULL, SDL_PIXELFORMAT_ARGB8888, sshot->pixels, sshot->pitch);
         
         SDL_SaveBMP(sshot, str );
         SDL_FreeSurface(sshot);
@@ -783,16 +772,15 @@ void TestAppMMFFmini::saveScreenshot( int i, const char* fname ){
 }
 
 void TestAppMMFFmini::draw(){
-    //glClearColor( 0.5f, 0.5f, 0.5f, 1.0f );
-    glClearColor( 1.0f, 1.0f, 1.0f, 1.0f );
-	glClear( GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT );
+    //opengl1renderer.clearColor( 0.5f, 0.5f, 0.5f, 1.0f );
+    opengl1renderer.clearColor( 1.0f, 1.0f, 1.0f, 1.0f );
+	opengl1renderer.clear( GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT );
 
     //printf( "====== Frame # %i \n", frameCount );
 
     //cam.qrot.rotate(M_PI*0.01,Vec3fX);
     
     if(frameCount==1){
-        qCamera.pitch( M_PI );
         ff.printAtomPos();
         ff.printBondParams();
         ff.printAngleParams();
@@ -804,16 +792,16 @@ void TestAppMMFFmini::draw(){
     //Draw3D::drawAxis(  10. );
 
 	if( ogl_mol ){
-        glCallList( ogl_mol );
+        opengl1renderer.callList( ogl_mol );
         return;
         //exit(0);
     }
 
 	//ibpicked = world.pickBond( ray0, camMat.c , 0.5 );
-    ray0 = (Vec3d)(cam.rot.a*mouse_begin_x + cam.rot.b*mouse_begin_y);
+    ray0 = (Vec3d)(cam.rotMat().a*mouse_begin_x + cam.rotMat().b*mouse_begin_y);
     Draw3D::drawPointCross( ray0, 0.1 );
     //Draw3D::drawVecInPos( camMat.c, ray0 );
-    if(ipicked>=0) Draw3D::drawLine( ff.apos[ipicked], ray0);
+    if(ipicked>=0) Draw3D::drawLine( ff.apos[ipicked], ray0, COLOR_BLACK);
 
     double Ftol = 1e-6;
     //double Ftol = 1e-2;
@@ -883,7 +871,7 @@ void TestAppMMFFmini::draw(){
             
             //exit(0);
             if(ipicked>=0){
-                Vec3d f = getForceSpringRay( ff.apos[ipicked], (Vec3d)cam.rot.c, ray0, -1.0 );
+                Vec3d f = getForceSpringRay( ff.apos[ipicked], (Vec3d)cam.rotMat().c, ray0, -1.0 );
                 //printf( "f (%g,%g,%g)\n", f.x, f.y, f.z );
                 ff.aforce[ipicked].add( f );
             };
@@ -936,11 +924,11 @@ void TestAppMMFFmini::draw(){
         }
     }
     
-    if(bDragging)Draw3D::drawTriclinicBox(cam.rot.transposed(), (Vec3f)ray0_start, (Vec3f)ray0 );
+    if(bDragging)Draw3D::drawTriclinicBox(cam.rotMat().transposed(), (Vec3f)ray0_start, (Vec3f)ray0 );
     //Draw3D::drawTriclinicBox(builder.lvec, Vec3dZero, Vec3dOne );
-    glColor3f(0.0f,0.0f,0.0f); Draw3D::drawTriclinicBox(builder.lvec.transposed(), Vec3dZero, Vec3dOne );
-    //glColor3f(0.6f,0.6f,0.6f); Draw3D::plotSurfPlane( Vec3d{0.0,0.0,1.0}, -3.0, {3.0,3.0}, {20,20} );
-    //glColor3f(0.95f,0.95f,0.95f); Draw3D::plotSurfPlane( Vec3d{0.0,0.0,1.0}, -3.0, {3.0,3.0}, {20,20} );
+    opengl1renderer.color3f(0.0f,0.0f,0.0f); Draw3D::drawTriclinicBox(builder.lvec.transposed(), Vec3dZero, Vec3dOne );
+    //opengl1renderer.color3f(0.6f,0.6f,0.6f); Draw3D::plotSurfPlane( Vec3d{0.0,0.0,1.0}, -3.0, {3.0,3.0}, {20,20} );
+    //opengl1renderer.color3f(0.95f,0.95f,0.95f); Draw3D::plotSurfPlane( Vec3d{0.0,0.0,1.0}, -3.0, {3.0,3.0}, {20,20} );
     
     if(builder.bPBC){
         //printf( "draw PBC \n" );
@@ -953,12 +941,12 @@ void TestAppMMFFmini::draw(){
     
     for(int i=0; i<selection.size(); i++){
         int ia = selection[i];
-        glColor3f( 0.f,1.f,0.f );
+        opengl1renderer.color3f( 0.f,1.f,0.f );
         Draw3D::drawSphereOctLines( 8, 0.3, ff.apos[ia] );
     }
     
     if(iangPicked>=0){
-        glColor3f(0.,1.,0.);
+        opengl1renderer.color3f(0.,1.,0.);
         Draw3D::angle( ff.ang2atom[iangPicked], ff.ang_cs0[iangPicked], ff.apos, fontTex );
     }
     
@@ -1017,8 +1005,8 @@ void TestAppMMFFmini::eventHandling ( const SDL_Event& event  ){
                 case SDLK_KP_6: builder.lvec.a.z-=xstep; break;
 
                 case SDLK_f:
-                    //selectShorterSegment( (Vec3d)(cam.rot.a*mouse_begin_x + cam.rot.b*mouse_begin_y + cam.rot.c*-1000.0), (Vec3d)cam.rot.c );
-                    selectShorterSegment( ray0, (Vec3d)cam.rot.c );
+                    //selectShorterSegment( (Vec3d)(cam.rotMat().a*mouse_begin_x + cam.rotMat().b*mouse_begin_y + cam.rotMat().c*-1000.0), (Vec3d)cam.rotMat().c );
+                    selectShorterSegment( ray0, (Vec3d)cam.rotMat().c );
                     //selection.erase();
                     //for(int i:builder.selection){ selection.insert(i); };
                     break;
@@ -1043,7 +1031,7 @@ void TestAppMMFFmini::eventHandling ( const SDL_Event& event  ){
             switch( event.button.button ){
                 case SDL_BUTTON_LEFT:
                     /*
-                    ipicked = pickParticle( ray0, (Vec3d)cam.rot.c, 0.5, ff.natoms, ff.apos );
+                    ipicked = pickParticle( ray0, (Vec3d)cam.rotMat().c, 0.5, ff.natoms, ff.apos );
                     selection.clear();
                     if(ipicked>=0){ selection.push_back(ipicked); };
                     printf( "picked atom %i \n", ipicked );
@@ -1052,7 +1040,7 @@ void TestAppMMFFmini::eventHandling ( const SDL_Event& event  ){
                     bDragging = true;
                     break;
                 case SDL_BUTTON_RIGHT:
-                    //ibpicked = ff.pickBond( ray0, (Vec3d)cam.rot.c , 0.5 );
+                    //ibpicked = ff.pickBond( ray0, (Vec3d)cam.rotMat().c , 0.5 );
                     //printf("ibpicked %i \n", ibpicked);
                     break;
             }
@@ -1063,7 +1051,7 @@ void TestAppMMFFmini::eventHandling ( const SDL_Event& event  ){
                     //ipicked = -1;
                     //ray0_start
                     if( ray0.dist2(ray0_start)<0.1 ){
-                        ipicked = pickParticle( ray0, (Vec3d)cam.rot.c, 0.5, ff.natoms, ff.apos );
+                        ipicked = pickParticle( ray0, (Vec3d)cam.rotMat().c, 0.5, ff.natoms, ff.apos );
                         selection.clear();
                         if(ipicked>=0){ selection.push_back(ipicked); };
                         printf( "picked atom %i \n", ipicked );
@@ -1083,7 +1071,7 @@ void TestAppMMFFmini::eventHandling ( const SDL_Event& event  ){
 }
 
 void TestAppMMFFmini::drawHUD(){
-    glDisable ( GL_LIGHTING );
+    opengl1renderer.disable ( GL_LIGHTING );
 
 }
 

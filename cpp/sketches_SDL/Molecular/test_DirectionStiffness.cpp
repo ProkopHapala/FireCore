@@ -11,7 +11,7 @@
 #include "testUtils.h"
 
 #include <SDL2/SDL.h>
-#include <SDL2/SDL_opengl.h>
+
 #include "Draw3D.h"
 #include "SDL_utils.h"
 #include "Solids.h"
@@ -121,7 +121,6 @@ class TestAppDirectionStiffness : public AppSDL2OGL_3D { public:
     bool bRunRelax  = false;
 
     int     fontTex;
-    int     ogl_sph=0;
     int     ogl_mol=0;
 
     char str[256];
@@ -246,14 +245,12 @@ TestAppDirectionStiffness::TestAppDirectionStiffness( int& id, int WIDTH_, int H
     printf("TestAppDirectionStiffness.init() DONE \n");
     //exit(0);
 
-    //Draw3D::makeSphereOgl( ogl_sph, 3, 1.0 );
-    Draw3D::makeSphereOgl( ogl_sph, 5, 1.0 );
 
     //float l_diffuse  []{ 0.9f, 0.85f, 0.8f,  1.0f };
 	float l_specular []{ 0.0f, 0.0f,  0.0f,  1.0f };
-    //glLightfv    ( GL_LIGHT0, GL_AMBIENT,   l_ambient  );
-	//glLightfv    ( GL_LIGHT0, GL_DIFFUSE,   l_diffuse  );
-	glLightfv    ( GL_LIGHT0, GL_SPECULAR,  l_specular );
+    //opengl1renderer.lightfv    ( GL_LIGHT0, GL_AMBIENT,   l_ambient  );
+	//opengl1renderer.lightfv    ( GL_LIGHT0, GL_DIFFUSE,   l_diffuse  );
+	opengl1renderer.lightfv    ( GL_LIGHT0, GL_SPECULAR,  l_specular );
 
     //selection.insert( selection.end(), {12, 16, 14, 6, 2, 3,   20,18,31,25,26} );
     //selection.insert( selection.end(), {13,29,30} );
@@ -294,7 +291,7 @@ void TestAppDirectionStiffness::MDloop(  ){
                 E += nff.evalLJQ_pbc( builder.lvec, {1,1,1} );
             }
             if(ipicked>=0){
-                Vec3d f = getForceSpringRay( ff.apos[ipicked], (Vec3d)cam.rot.c, ray0, -1.0 );
+                Vec3d f = getForceSpringRay( ff.apos[ipicked], (Vec3d)cam.rotMat().c, ray0, -1.0 );
                 //printf( "f (%g,%g,%g)\n", f.x, f.y, f.z );
                 ff.aforce[ipicked].add( f );
             };
@@ -320,14 +317,12 @@ void TestAppDirectionStiffness::MDloop(  ){
 
 
 void TestAppDirectionStiffness::draw(){
-    //glClearColor( 0.5f, 0.5f, 0.5f, 1.0f );
-    glClearColor( 1.0f, 1.0f, 1.0f, 1.0f );
-	glClear( GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT );
-	glEnable(GL_DEPTH_TEST);
+    //opengl1renderer.clearColor( 0.5f, 0.5f, 0.5f, 1.0f );
+    opengl1renderer.clearColor( 1.0f, 1.0f, 1.0f, 1.0f );
+	opengl1renderer.clear( GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT );
+	opengl1renderer.enable(GL_DEPTH_TEST);
 
     if(frameCount==1){
-
-        qCamera.pitch( M_PI );
         ff.printAtomPos();
         ff.printBondParams();
         ff.printAngleParams();
@@ -338,15 +333,15 @@ void TestAppDirectionStiffness::draw(){
     }
 
 	if( ogl_mol ){
-        glCallList( ogl_mol );
+        opengl1renderer.callList( ogl_mol );
         return;
         //exit(0);
     }
 
-    ray0 = (Vec3d)(cam.rot.a*mouse_begin_x + cam.rot.b*mouse_begin_y);
+    ray0 = (Vec3d)(cam.rotMat().a*mouse_begin_x + cam.rotMat().b*mouse_begin_y);
     Draw3D::drawPointCross( ray0, 0.1 );
     //Draw3D::drawVecInPos( camMat.c, ray0 );
-    if(ipicked>=0) Draw3D::drawLine( ff.apos[ipicked], ray0);
+    if(ipicked>=0) Draw3D::drawLine( ff.apos[ipicked], ray0, COLOR_BLACK);
 
 
 
@@ -357,30 +352,29 @@ void TestAppDirectionStiffness::draw(){
 
 
     drawSystem();
-    glColor3f(0.,1.,0.); for(int i=0; i<deformer.npick; i++){  int ia=deformer.picks[i]; Draw3D::drawVecInPos(deformer.aforce[ia]*15.0,deformer.apos[ia]); }
+    for(int i=0; i<deformer.npick; i++){  int ia=deformer.picks[i]; Draw3D::drawVecInPos( deformer.aforce[ia]*15.0,deformer.apos[ia], COLOR_GREEN); }
 
-    glDisable(GL_DEPTH_TEST);
-    glColor3f(0.,1.,1.);
+    opengl1renderer.disable(GL_DEPTH_TEST);
     for(const Vec2i& b : graph2->found ){
-        Draw3D::drawLine( ff.apos[b.a], ff.apos[b.b] );
+        Draw3D::drawLine( ff.apos[b.a], ff.apos[b.b], {0, 1, 1} );
     }
 
 };
 
 void TestAppDirectionStiffness::drawSystem( ){
-    glColor3f(1.0f,0.0f,0.0f); Draw3D::vecsInPos( ff.natoms, ff.aforce,  ff.apos, 10.0 );
-    //glColor3f(0.0f,0.0f,0.0f); Draw3D::drawLines ( ff.nbonds, (int*)ff.bond2atom, ff.apos );
-    //glColor3f(0.0f,0.0f,0.0f); Draw3D::bondsPBC ( ff.nbonds, ff.bond2atom, ff.apos, &builder.bondPBC[0], builder.lvec ); // DEBUG
-    glColor3f(0.0f,0.0f,0.0f); Draw3D::bondsPBC ( ff.nbonds, ff.bond2atom, ff.apos, ff.pbcShifts  ); // DEBUG
-    //glColor3f(0.5f,0.0f,0.0f); Draw3D::atomLabels( ff.natoms, ff.apos, fontTex                     );                     //DEBUG
-    //glColor3f(0.0f,0.0f,1.0f); Draw3D::bondLabels( ff.nbonds, ff.bond2atom, ff.apos, fontTex, 0.02 );                     //DEBUG
-    //glColor3f(0.0f,0.0f,1.0f); Draw3D::atomPropertyLabel( ff.natoms, (double*)nff.REQs, ff.apos, 3,2, fontTex, 0.02, "%4.2f\0" );
+    opengl1renderer.color3f(1.0f,0.0f,0.0f); Draw3D::vecsInPos( ff.natoms, ff.aforce,  ff.apos, 10.0 );
+    //opengl1renderer.color3f(0.0f,0.0f,0.0f); Draw3D::drawLines ( ff.nbonds, (int*)ff.bond2atom, ff.apos );
+    //opengl1renderer.color3f(0.0f,0.0f,0.0f); Draw3D::bondsPBC ( ff.nbonds, ff.bond2atom, ff.apos, &builder.bondPBC[0], builder.lvec ); // DEBUG
+    Draw3D::bondsPBC ( ff.nbonds, ff.bond2atom, ff.apos, ff.pbcShifts, COLOR_BLACK ); // DEBUG
+    //opengl1renderer.color3f(0.5f,0.0f,0.0f); Draw3D::atomLabels( ff.natoms, ff.apos, fontTex                     );                     //DEBUG
+    //opengl1renderer.color3f(0.0f,0.0f,1.0f); Draw3D::bondLabels( ff.nbonds, ff.bond2atom, ff.apos, fontTex, 0.02 );                     //DEBUG
+    //opengl1renderer.color3f(0.0f,0.0f,1.0f); Draw3D::atomPropertyLabel( ff.natoms, (double*)nff.REQs, ff.apos, 3,2, fontTex, 0.02, "%4.2f\0" );
 
-    //glColor3f(1.0f,0.0f,0.0f); Draw3D::vecsInPoss( ff.natoms, ff.aforce, ff.apos, 300.0              );
+    //opengl1renderer.color3f(1.0f,0.0f,0.0f); Draw3D::vecsInPoss( ff.natoms, ff.aforce, ff.apos, 300.0              );
     //Draw3D::atomsREQ  ( ff.natoms, ff.apos,   nff.REQs, ogl_sph, 1.0, 0.25, 1.0 );
     //Draw3D::atoms( ff.natoms, ff.apos, atypes, params, ogl_sph, 1.0, 1.0, 1.0 );       //DEBUG
     //Draw3D::atoms( ff.natoms, ff.apos, atypes, params, ogl_sph, 1.0, 0.5, 1.0 );       //DEBUG
-    Draw3D::atoms( ff.natoms, ff.apos, atypes, params, ogl_sph, 1.0, 0.25, 1.0 );       //DEBUG
+    Draw3D::atoms( ff.natoms, ff.apos, atypes, params, 1.0, 0.25, 1.0 );       //DEBUG
 }
 
 int TestAppDirectionStiffness::loadMoleculeXYZ( const char* fname, const char* fnameLvs, bool bAutoH ){
@@ -449,7 +443,7 @@ int TestAppDirectionStiffness::loadMoleculeMol( const char* fname, bool bAutoH, 
         params.assignREs( mol.natoms, mol.atomType, mol.REQs );
         mol.autoAngles(true);
         Vec3d cog = mol.getCOG_av();
-        mol.addToPos( cog*-1.0d );
+        mol.addToPos( cog*-1.0 );
         builder.insertMolecule(&mol, Vec3dZero, Mat3dIdentity, false );
         builder.toMMFFmini( ff, &params );
     }
@@ -478,13 +472,6 @@ int TestAppDirectionStiffness::loadMoleculeMol( const char* fname, bool bAutoH, 
     builder.toMMFFmini( ff, &params );
 
     //Draw3D::shapeInPoss( ogl_sph, ff.natoms, ff.apos, 0 );
-
-    /*
-    ogl_mol = glGenLists(1);
-    glNewList( ogl_mol, GL_COMPILE );
-        Draw3D::drawLines( mol.nbonds, (int*)mol.bond2atom, mol.pos );
-    glEndList();
-    */
 
     return nheavy;
 }
@@ -616,10 +603,10 @@ void TestAppDirectionStiffness::saveScreenshot( int i, const char* fname ){
         sprintf( str, fname, i );               // DEBUG
         printf( "save to %s \n", str );
         unsigned int *screenPixels = new unsigned int[WIDTH*HEIGHT*4];  //DEBUG
-        glFlush();                                                      //DEBUG
-        glFinish();                                                     //DEBUG
-        //glReadPixels(0, 0, WIDTH, HEIGHT, GL_RGB, GL_UNSIGNED_INT, screenPixels);
-        glReadPixels(0, 0, WIDTH, HEIGHT, GL_RGBA, GL_UNSIGNED_BYTE, screenPixels);   //DEBUG
+        opengl1renderer.flush();                                                      //DEBUG
+        opengl1renderer.finish();                                                     //DEBUG
+        //opengl1renderer.readPixels(0, 0, WIDTH, HEIGHT, GL_RGB, GL_UNSIGNED_INT, screenPixels);
+        opengl1renderer.readPixels(0, 0, WIDTH, HEIGHT, GL_RGBA, GL_UNSIGNED_BYTE, screenPixels);   //DEBUG
         //SDL_Surface *bitmap = SDL_CreateRGBSurfaceFrom(screenPixels, WIDTH, HEIGHT, 32, WIDTH*4, 0xff000000, 0x00ff0000, 0x0000ff00, 0x000000ff );   //DEBUG
         SDL_Surface *bitmap = SDL_CreateRGBSurfaceFrom(screenPixels, WIDTH, HEIGHT, 32, WIDTH*4, 0x000000ff, 0x0000ff00, 0x00ff0000, 0xff000000 );   //DEBUG
         SDL_SaveBMP(bitmap, str);    //DEBUG
@@ -667,8 +654,8 @@ void TestAppDirectionStiffness::eventHandling ( const SDL_Event& event  ){
                 case SDLK_RETURN:{ ndeform=deform_Nsteps; deformer.genKs(1); }break;
 
                 case SDLK_f:
-                    //selectShorterSegment( (Vec3d)(cam.rot.a*mouse_begin_x + cam.rot.b*mouse_begin_y + cam.rot.c*-1000.0), (Vec3d)cam.rot.c );
-                    //selectShorterSegment( ray0, (Vec3d)cam.rot.c );
+                    //selectShorterSegment( (Vec3d)(cam.rotMat().a*mouse_begin_x + cam.rotMat().b*mouse_begin_y + cam.rotMat().c*-1000.0), (Vec3d)cam.rotMat().c );
+                    //selectShorterSegment( ray0, (Vec3d)cam.rotMat().c );
                     //selection.erase();
                     //for(int i:builder.selection){ selection.insert(i); };
                     break;
@@ -693,7 +680,7 @@ void TestAppDirectionStiffness::eventHandling ( const SDL_Event& event  ){
             switch( event.button.button ){
                 case SDL_BUTTON_LEFT:
                     /*
-                    ipicked = pickParticle( ray0, (Vec3d)cam.rot.c, 0.5, ff.natoms, ff.apos );
+                    ipicked = pickParticle( ray0, (Vec3d)cam.rotMat().c, 0.5, ff.natoms, ff.apos );
                     selection.clear();
                     if(ipicked>=0){ selection.push_back(ipicked); };
                     printf( "picked atom %i \n", ipicked );
@@ -702,7 +689,7 @@ void TestAppDirectionStiffness::eventHandling ( const SDL_Event& event  ){
                     bDragging = true;
                     break;
                 case SDL_BUTTON_RIGHT:
-                    //ibpicked = ff.pickBond( ray0, (Vec3d)cam.rot.c , 0.5 );
+                    //ibpicked = ff.pickBond( ray0, (Vec3d)cam.rotMat().c , 0.5 );
                     //printf("ibpicked %i \n", ibpicked);
                     break;
             }
@@ -713,7 +700,7 @@ void TestAppDirectionStiffness::eventHandling ( const SDL_Event& event  ){
                     //ipicked = -1;
                     //ray0_start
                     if( ray0.dist2(ray0_start)<0.1 ){
-                        ipicked = pickParticle( ray0, (Vec3d)cam.rot.c, 0.5, ff.natoms, ff.apos );
+                        ipicked = pickParticle( ray0, (Vec3d)cam.rotMat().c, 0.5, ff.natoms, ff.apos );
                         selection.clear();
                         if(ipicked>=0){ selection.push_back(ipicked); };
                         printf( "picked atom %i \n", ipicked );
@@ -733,7 +720,7 @@ void TestAppDirectionStiffness::eventHandling ( const SDL_Event& event  ){
 }
 
 void TestAppDirectionStiffness::drawHUD(){
-    glDisable ( GL_LIGHTING );
+    opengl1renderer.disable ( GL_LIGHTING );
 
 }
 

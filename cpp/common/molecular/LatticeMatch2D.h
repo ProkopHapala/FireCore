@@ -115,7 +115,7 @@ class LatticeMatch2D{ public:
             int ia0 = (int)(-k*ib);
             for(int ia=ia0-na-1; ia<ia0+na+2; ia++ ){
                 Vec2d p = vb + lat0[0]*ia;
-                //glColor3f(0.5,0.5,0.5); Draw3D::drawPointCross( {p.x,p.y,0.0}, 0.1 );
+                //opengl1renderer.color3f(0.5,0.5,0.5); Draw3D::drawPointCross( {p.x,p.y,0.0}, 0.1 );
                 double rab = p.normalize();
                 if(rab>Rmax)         continue;
                 if((ia==0)&&(ib==0)) continue;
@@ -132,10 +132,10 @@ class LatticeMatch2D{ public:
         //for( int i=0;i<match_u.size();i++ ){ printf( "match_u[%i] n,a,b(%i|%i,%i) d %g[%] alpha %g[/pi] \n", i, match_u[i].n, match_u[i].ia, match_u[i].ib, match_u[i].d*100, match_u[i].alpha/M_PI ); }
         //for( int i=0;i<match_v.size();i++ ){ printf( "match_v[%i] n,a,b(%i|%i,%i) d %g[%] alpha %g[/pi] \n", i, match_v[i].n, match_v[i].ia, match_v[i].ib, match_v[i].d*100, match_v[i].alpha/M_PI ); }
 
-        //int nu = ((int)Rmax/lu0); glColor3f(1.0,0.0,0.0); 
-        //int nv = ((int)Rmax/lv0); glColor3f(0.0,0.0,1.0); 
-        //glColor3f(1.0,0.9,0.8); for( const Latmiss& l: match_u ){ Vec2d p = lat0[0]*l.ia + lat0[1]*l.ib; Draw3D::drawPointCross( {p.x,p.y,0.0}, 0.2 ); } for(int i=0;i<(nu+1);i++){ Draw3D::drawCircleAxis(100,Vec3dZero, Vec3dX, Vec3dZ, lu0*i  ); }
-        //glColor3f(0.8,0.9,1.0); for( const Latmiss& l: match_v ){ Vec2d p = lat0[0]*l.ia + lat0[1]*l.ib; Draw3D::drawPointCross( {p.x,p.y,0.0}, 0.2 ); } for(int i=0;i<(nv+1);i++){ Draw3D::drawCircleAxis(100,Vec3dZero, Vec3dX, Vec3dZ, lv0*i  ); }
+        //int nu = ((int)Rmax/lu0); opengl1renderer.color3f(1.0,0.0,0.0); 
+        //int nv = ((int)Rmax/lv0); opengl1renderer.color3f(0.0,0.0,1.0); 
+        //opengl1renderer.color3f(1.0,0.9,0.8); for( const Latmiss& l: match_u ){ Vec2d p = lat0[0]*l.ia + lat0[1]*l.ib; Draw3D::drawPointCross( {p.x,p.y,0.0}, 0.2 ); } for(int i=0;i<(nu+1);i++){ Draw3D::drawCircleAxis(100,Vec3dZero, Vec3dX, Vec3dZ, lu0*i  ); }
+        //opengl1renderer.color3f(0.8,0.9,1.0); for( const Latmiss& l: match_v ){ Vec2d p = lat0[0]*l.ia + lat0[1]*l.ib; Draw3D::drawPointCross( {p.x,p.y,0.0}, 0.2 ); } for(int i=0;i<(nv+1);i++){ Draw3D::drawCircleAxis(100,Vec3dZero, Vec3dX, Vec3dZ, lv0*i  ); }
         printf( " walk2D nu %i nv %i Rmax %g dmax %g \n", match_u.size(), match_v.size(), Rmax, dmax );
         printf( " walk2D lat0 [(%g,%g)  (%g,%g)] \n", lat0[0].x,lat0[0].y,  lat0[1].x,lat0[1].y );
         printf( " walk2D lat1 [(%g,%g)  (%g,%g)] \n", lat1[0].x,lat1[0].y,  lat1[1].x,lat1[1].y );

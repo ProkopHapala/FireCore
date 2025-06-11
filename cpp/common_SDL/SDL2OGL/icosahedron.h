@@ -3,12 +3,12 @@
 #define Z .850650808352039932
 
 void drawtriangle(float *v1, float *v2, float *v3){
-  glBegin(GL_TRIANGLES);
-    glNormal3fv(v1);    glVertex3fv(v1);
-    glNormal3fv(v2);    glVertex3fv(v2);
-    glNormal3fv(v3);    glVertex3fv(v3);
-    glFrontFace(GL_CW);
-  glEnd();
+  opengl1renderer.begin(GL_TRIANGLES);
+    opengl1renderer.normal3fv(v1);    opengl1renderer.vertex3fv(v1);
+    opengl1renderer.normal3fv(v2);    opengl1renderer.vertex3fv(v2);
+    opengl1renderer.normal3fv(v3);    opengl1renderer.vertex3fv(v3);
+    opengl1renderer.frontFace(GL_CW);
+  opengl1renderer.end();
 }
 
 void normalize(float v[3]){
@@ -62,17 +62,17 @@ void drawIcosaSphere( int level ){
     {10,1,6}, {11,0,9}, {2,11,9}, {5,2,9},  {11,2,7},   
   };
   float d1[3], d2[3], norm[3];
-  glBegin(GL_TRIANGLES);
+  opengl1renderer.begin(GL_TRIANGLES);
   for(int i=0; i<20; i++){
     for( int j=0; j<3; j++){
       d1[j] = vdata[tindices[i][0]][j] - vdata[tindices[i][1]][j];
       d2[j] = vdata[tindices[i][1]][j] - vdata[tindices[i][2]][j];
     }
     normcrossprod(d1, d2, norm);
-    glNormal3fv(norm);
+    opengl1renderer.normal3fv(norm);
     subdivide(&vdata[tindices[i][0]][0], &vdata[tindices[i][1]][0], &vdata[tindices[i][2]][0],  level  );
   }
-  glEnd();
+  opengl1renderer.end();
 
 }
 

@@ -6,108 +6,167 @@
 #include <cstdlib>
 #include <stdint.h>
 
-#include "fastmath.h"
+#include "GLES.h"
 #include "Vec3.h"
 #include "Mat3.h"
+#include "Mat4.h"
 #include "quaternion.h"
 
 template<typename T>
-class CameraT{ public:
-    Vec3T<T>  pos    = (Vec3T<T>){0.0f,0.0f,-50.0f};
-    Mat3T<T>  rot    = (Mat3T<T>)Mat3dIdentity;
-    T zoom    = 10.0;
-    T  aspect = 1.0;
-    T  zmin   = 10.0;
-    T  zmax   = 10000.0;
-    bool   persp  = true;
+class CameraT{ 
+private:
+    Vec3T<T>  _pos    = (Vec3T<T>){0.0f,0.0f,-50.0f};
+    Quat4T<T> _qrot   = (Quat4T<T>)Quat4dIdentity;
+    T  _zoom   = 10.0;
+    bool   _persp  = true;
 
-    inline void lookAt( Vec3T<T> p, T R ){ pos = p + rot.c*-R; }
+    bool update_vp_mat = true;
+    bool update_vp_inv = true;
+    Mat4T<T> _viewMatrix;
+    Mat4T<T> _projMat;
+    Mat4T<T> _viewProjMatrix;
+    Mat4T<T> _viewProjInv;
+
+public:
+    const T  zmin   = -10000.0;
+    const T  zmax   = 10000.0;
+
+    inline void update() { update_vp_inv = true; update_vp_mat = true; }
+
+    inline Vec3T<T> pos() const {return _pos;};
+    inline void setPos( Vec3T<T> p ){ update_vp_mat |= _pos != p; _pos = p; }
+    inline void shift( Vec3T<T> p ) { update_vp_mat |= p != Vec3fZero; _pos += p; }
+
+    inline Quat4T<T> qrot() const { return _qrot; }
+    inline void setQrot( Quat4T<T> q ){ update_vp_mat |= q != _qrot; _qrot = q; }
+    inline void dyaw( T a ){ _qrot.dyaw(a); update_vp_mat = true; }
+    inline void dpitch( T a ){ _qrot.dpitch(a); update_vp_mat = true; }
+    inline void qrotQmul_T( Quat4T<T> q ){ _qrot.qmul_T(q); update_vp_mat = true; }
+
+    inline T zoom() const { return _zoom; }
+    inline void setZoom( T z ){ update_vp_mat |= z != _zoom; _zoom = z; }
+
+    inline T aspect() const { return (T)GLES::screen_size.x/(T)GLES::screen_size.y; }
+
+    inline bool persp() const { return _persp; }
+    inline void setPersp( bool p ){ _persp = p; update_vp_mat = true; }
+
+    inline const Mat3T<T> rotMat() const { Mat3T<T>m; _qrot.toMatrix(m); return m; }
+    
+    inline void lookAt( Vec3T<T> p, T R ){ setPos(p + rotMat().c*-R); }
     //inline void lookAt( Vec3T<T> p, T R ){ Vec3T<T> p_; convert(p,p_); lookAt(p_,R); }
 
-    inline T getTgX()const{ return 1.0/(zoom*aspect); }
-    inline T getTgY()const{ return 1.0/(zoom);            }
-
-    inline void word2screenOrtho( const Vec3T<T>& pWord, Vec3T<T>& pScreen ) const {
-        Vec3T<T> p; p.set_sub(pWord,pos);
-        rot.dot_to( p, p );
-        pScreen.x = p.x/(2*zoom*aspect);
-        pScreen.y = p.y/(2*zoom);
-        pScreen.z = (p.z-zmin)/(zmax-zmin);
-    }
-
-    inline Vec2T<T> word2pixOrtho( const Vec3T<T>& pWord, const Vec2f& resolution ) const {
-        Vec3T<T> p; p.set_sub(pWord,pos);
-        rot.dot_to( p, p );
-        return Vec2f{ resolution.x*(0.5+p.x/(2*zoom*aspect)),
-                      resolution.y*(0.5+p.y/(2*zoom)) };
-    }
-
-    inline void word2screenPersp( const Vec3T<T>& pWord, Vec3T<T>& pScreen ) const {
-        Vec3T<T> p; p.set_sub(pWord,pos);
-        rot.dot_to( p, p );
-        T  resc = zmin/(2*p.z*zoom);
-        pScreen.x = p.x*resc/aspect;
-        pScreen.y = p.y*resc;
-        //pScreen.z = p.z/zmin;        // cz
-        //(2*zmin)/w      0       0              0            0
-        //0          (2*zmin)/h   0              0            0
-        //0               0       (zmax+zmin)/(zmax-zmin)    (2*zmin*zmax)/(zmax-zmin)
-        //0               0       0               0           -1
-        //------
-        //x_  =  ((2*zmin)/w)  * x
-        //y_  =  ((2*zmin)/h ) * y
-    }
-
-    inline Vec2T<T> word2pixPersp( const Vec3T<T>& pWord, const Vec2f& resolution ) const {
-        Vec3T<T> p; p.set_sub(pWord,pos);
-        rot.dot_to( p, p );
-        T  resc = zmin/(2*p.z*zoom);
-        return (Vec2f){
-            resolution.x*( 0.5 + p.x*resc/aspect ),
-            resolution.y*( 0.5 + p.y*resc        ) };
-    }
+    inline T getTgX()const{ return 1.0/(_zoom*aspect()); }
+    inline T getTgY()const{ return 1.0/(_zoom);            }
 
     inline void pix2rayOrtho( const Vec2f& pix, Vec3T<T>& ro ) const {
         //T  resc = 1/zoom;
-        T  resc = zoom;
+        T  resc = _zoom;
         //printf( "Camera::pix2rayOrtho() pix(%g,%g) rsc %g b(%g,%g,%g) a(%g,%g,%g)\n", pix.a,pix.b, resc,  rot.a.x,rot.a.y,rot.a.z,  rot.b.x,rot.b.y,rot.b.z );
-        ro = rot.a*(pix.a*resc) + rot.b*(pix.b*resc);
+        ro = rotMat().a*(pix.a*resc) + rotMat().b*(pix.b*resc);
     }
 
     inline void pix2rayPersp( const Vec2f& pix, Vec3T<T>& rd ) const {
-        T  resc = 1/zoom;
-        rd = rot.a*(pix.a*resc) + rot.b*(pix.b*resc);
+        T  resc = 1/_zoom;
+        rd = rotMat().a*(pix.a*resc) + rotMat().b*(pix.b*resc);
     }
 
     //inline Vec3T<T> pix2ray( const Vec2f& pix, Vec3T<T>& rd, Vec3T<T>& ro ){
     inline void pix2ray( const Vec2f& pix, Vec3T<T>& rd, Vec3T<T>& ro ){
         //printf(  "Camera::pix2ray() persp %i \n", persp);
-        if(persp){
-            ro = pos;
+        if(_persp){
+            ro = _pos;
             pix2rayPersp( pix, rd );
         }else{
-            rd = rot.c;
+            rd = rotMat().c;
             pix2rayOrtho( pix, ro );
         }
     }
 
     inline bool pointInFrustrum( Vec3T<T> p ) const {
-        p.sub(pos);
+        p.sub(_pos);
         Vec3T<T> c;
-        rot.dot_to( p, c );
-        T  tgx = c.x*zoom*aspect;
-        T  tgy = c.y*zoom;
+        rotMat().dot_to( p, c );
+        T  tgx = c.x*_zoom*aspect();
+        T  tgy = c.y*_zoom;
         T  cz  = c.z*zmin;
         return (tgx>-cz)&&(tgx<cz) && (tgy>-cz)&&(tgy<cz) && (c.z>zmin)&&(c.z<zmax);
     }
 
     inline bool sphereInFrustrum( Vec3T<T> p, T  R ) const {
-        p.sub(pos);
+        p.sub(_pos);
         Vec3T<T> c;
-        rot.dot_to( p, c );
-        T  my = c.z*zmin/zoom;
-        T  mx = my/aspect + R;  my+=R;
+        rotMat().dot_to( p, c );
+        T  my = c.z*zmin/_zoom;
+        T  mx = my/aspect() + R;  my+=R;
         return (c.x>-mx)&&(c.x<mx) && (c.y>-my)&&(c.y<my) && ((c.z+R)>zmin)&&((c.z-R)<zmax);
+    }
+
+    Vec3T<T> world2Screen( Vec3T<T> pos ){
+        recalculate_vpMat();
+
+        Vec3T<T> screen_pos = _viewProjMatrix.dotT({pos.x, pos.y, pos.z, 1}).xyz();
+        screen_pos += {1, 1, 0};
+        screen_pos *= {0.5, 0.5, 1};
+        screen_pos *= {GLES::screen_size.x, GLES::screen_size.y, 1};
+
+        return screen_pos;
+    }
+
+    void recalculate_vpMat() {
+        if (!update_vp_mat) return;
+        
+        Mat4T<T> translateMat; translateMat.setOne();
+        translateMat.setPos(-_pos);
+
+        // view matrix
+        _viewMatrix.setOne();
+        Mat3T<T> mrot; _qrot.toMatrix_T(mrot);
+        _viewMatrix.setRot( mrot );
+        _viewMatrix.mmulR(translateMat);
+
+        // projection matrix
+        _projMat.setOne();
+        if(_persp){
+            _projMat.setPerspective( -_zoom*aspect(), _zoom*aspect(), -_zoom, _zoom, zmin, zmax );
+        }else{
+            _projMat.setOrthographic( -_zoom*aspect(), _zoom*aspect(), -_zoom, _zoom, zmin, zmax );
+        }
+
+        // view projection matrix
+        _viewProjMatrix = _viewMatrix;
+        _viewProjMatrix.mmulL(_projMat);
+
+        update_vp_mat = false;
+        update_vp_inv = true;
+    }
+
+    void recalculate_invvpMat() {
+        recalculate_vpMat();
+        if (!update_vp_inv) return;
+        
+        _viewProjInv = _viewProjMatrix.inverse();
+        update_vp_inv = false;
+    }
+
+    Mat4T<T> projectionMatrix() {
+        recalculate_vpMat();
+        return _projMat;
+    }
+
+    Mat4T<T> viewMatrix() {
+        recalculate_vpMat();
+        return _viewMatrix;
+    }
+
+    Mat4T<T> viewProjectionMatrix() {
+        recalculate_vpMat();
+        return _viewProjMatrix;
+    }
+
+    Mat4T<T> inverseViewProjectionMatrix() {
+        recalculate_invvpMat();
+        return _viewProjInv;
     }
 
 };

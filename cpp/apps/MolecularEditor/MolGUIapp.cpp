@@ -23,11 +23,40 @@ Mat3d prelat_dlvec;
 #include "MolGUIapp_Lua.h"
 #endif // WITH_LUA
 
+#ifdef __EMSCRIPTEN__
+void main_loop(){
+    if (app->GL_LOCK) return;
+    app->loop(1);
+}
+#endif
+
 int main(int argc, char *argv[]){
+#ifdef __EMSCRIPTEN__
+    argc = 5;
+    char* new_argv[5];
+    argv = new_argv;
+    argv[0] = "./MolGUIapp";
+    argv[1] = "-x";
+    argv[2] = "common_resources/xyz/PTCDA";
+    argv[3] = "-g";
+    argv[4] = "common_resources/xyz/NaCl_1x1_L3";
+#endif
+
 	SDL_Init(SDL_INIT_VIDEO);
+
+    // === GLES 3 setup ===
+    SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_ES);
+    SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 3);
+    SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 0);
+    //SDL_GL_SetAttribute(SDL_GL_RED_SIZE, 8);
+    //SDL_GL_SetAttribute(SDL_GL_GREEN_SIZE, 8);
+    //SDL_GL_SetAttribute(SDL_GL_BLUE_SIZE, 8);
+    //SDL_GL_SetAttribute(SDL_GL_ALPHA_SIZE, 8);
+    //SDL_GL_SetAttribute(SDL_GL_DEPTH_SIZE, 16);
+    //SDL_GL_SetAttribute(SDL_GL_DOUBLEBUFFER, 1);
+
 	SDL_GL_SetAttribute(SDL_GL_SHARE_WITH_CURRENT_CONTEXT, 1);
     SDL_GL_SetAttribute(SDL_GL_MULTISAMPLESAMPLES, 8);
-    glEnable(GL_MULTISAMPLE);
 	//SDL_SetRelativeMouseMode( SDL_TRUE );
 	int junk;
     SDL_DisplayMode DM;
@@ -89,7 +118,11 @@ int main(int argc, char *argv[]){
     
     if(prelat_nstep>0)W->change_lvec_relax( prelat_nstep, prelat_nItrMax, 1e-3, prelat_dlvec );
     W->pre_loop();
-    app->loop( 1000000 );
+    #ifdef __EMSCRIPTEN__
+        emscripten_set_main_loop(main_loop, 0, 1);
+    #else
+        app->loop( 1000000 );
+    #endif
 
     W->clear( true, true );
 #ifdef DEBUG_ALLOCATOR

@@ -1,0 +1,10 @@
+
+LLVM_ROOT = '/usr/bin' # directory
+BINARYEN_ROOT = '/usr' # directory
+NODE_JS = '/usr/bin/node' # executable
+JAVA = 'java' # executable
+CLOSURE_COMPILER = 'closure-compiler'
+LLVM_ADD_VERSION = '14'
+CLANG_ADD_VERSION = '14'
+
+FROZEN_CACHE = False

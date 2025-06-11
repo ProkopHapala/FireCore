@@ -1,10 +1,9 @@
 #include <stdlib.h>
 #include <stdio.h>
 
-#include <GL/glew.h>
+//#include <GL/glew.h>
 //#define GL3_PROTOTYPES 1
 //#define GL_GLEXT_PROTOTYPES
-//#include <GL/gl.h>
 #include <SDL2/SDL.h>
 
 #include "fastmath.h"
@@ -152,11 +151,11 @@ void setup(){
 }
 
 void draw(){
-    //glDisable( GL_DEPTH_TEST );
+    //opengl1renderer.disable( GL_DEPTH_TEST );
     //glColorMask (GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE);
     //glDepthMask (GL_TRUE);
-    glClearColor(1.0, 1.0, 1.0, 1.0);
-    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT  );
+    opengl1renderer.clearColor(1.0, 1.0, 1.0, 1.0);
+    opengl1renderer.clear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT  );
 
     double E = eff.eval();
     //float F2 = eff.moveGD(dt);
@@ -167,13 +166,13 @@ void draw(){
     bool bAlphaBlend = true;
     //bool bAlphaBlend = false;
     if(bAlphaBlend){
-        glDisable( GL_DEPTH_TEST );
-        glEnable(GL_BLEND);
-        glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+        opengl1renderer.disable( GL_DEPTH_TEST );
+        opengl1renderer.enable(GL_BLEND);
+        opengl1renderer.blendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
     }else{
-        //glDisable( GL_DEPTH_TEST );
-        glEnable( GL_DEPTH_TEST );
-        glDepthFunc( GL_LESS );
+        //opengl1renderer.disable( GL_DEPTH_TEST );
+        opengl1renderer.enable( GL_DEPTH_TEST );
+        opengl1renderer.depthFunc( GL_LESS );
     }
     Mat3f mouseMat;
     qCamera.toMatrix(mouseMat);
@@ -208,7 +207,7 @@ void draw(){
     }
     glUniform4fv(uloc_atoms, natoms, (float*)atoms );
     glUniform4fv(uloc_coefs, natoms, (float*)coefs );
-    glEnableVertexAttribArray(0);
+    opengl1renderer.enableVertexAttribArray(0);
     object1->draw();
     }
 
@@ -249,7 +248,7 @@ void draw(){
         }
         glUniform4fv(uloc_atoms, natoms, (float*)atoms );
         glUniform4fv(uloc_coefs, natoms, (float*)coefs );
-        glEnableVertexAttribArray(0);
+        opengl1renderer.enableVertexAttribArray(0);
         object1->draw();
     }
     }
@@ -343,7 +342,7 @@ void init(){
     SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 3); // Opengl 3.2
     SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 2); // Opengl 3.2
     SDL_GL_SetAttribute(SDL_GL_DOUBLEBUFFER, 1);
-    //SDL_GL_SetAttribute(SDL_GL_DOUBLEBUFFER, 0); // Helps with glClear()
+    //SDL_GL_SetAttribute(SDL_GL_DOUBLEBUFFER, 0); // Helps with opengl1renderer.clear()
     SDL_GL_SetAttribute(SDL_GL_DEPTH_SIZE, 24);
     window = SDL_CreateWindow("Tutorial2", SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, WIDTH, HEIGHT, SDL_WINDOW_OPENGL | SDL_WINDOW_SHOWN);
     if ( !window ) die("Unable to create window");

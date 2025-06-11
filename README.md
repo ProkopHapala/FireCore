@@ -86,6 +86,25 @@ Only Fortran module is Fireball-DFT program. Its installation is optional. It is
     * Make sure that `Fdata_HC_minimal` is present, otherwise download it here: https://fireball-qmd.github.io/
     * got to `tests/t01_H2` and run `./run.sh`
 
+## Compiling to WebAssembly
+
+You will need to install the `emscripten` dependency:
+```
+sudo apt-get install --no-install-recommends emscripten
+```
+Then compile with:
+```
+mkdir Build
+cd Build
+emcmake cmake .. -DWITH_SDL=ON -DTARGET_WASM=ON -DRELEASE=ON
+emmake make MolGUIapp
+```
+The easiest way to test is to run a local http server with python:
+```
+cd Build/apps/MolecularEditor
+python3 -m http.server 8080
+```
+
 ## Python API Binding
 
 Python provides API to both Fireball-DFT as well as classical forcefieds implemented in C++ and OpenCL. It also provides some additional utilities for manipulating, post-processing and plotting molecular structures. All these modules are in `pyBall` package. No instalation is required. It is only recomanded to set python path evironment variable. 

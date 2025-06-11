@@ -1,5 +1,5 @@
 
-#include <SDL2/SDL_opengl.h>
+
 
 #include <stdio.h>
 
@@ -38,22 +38,22 @@ void DataLine2D::draw(){
     if(lineStyle =='-')Draw2D::plot( n, xs, ys );
     switch(pointStyle){
         case '.': Draw2D::plot_dots ( n, xs, ys ); break;
-        case '+': Draw2D::plot_cross( n, xs, ys, pointSize    ); break;
-        case 'x': Draw2D::plot_X    ( n, xs, ys, pointSize    ); break;
-        case '3': Draw2D::plot_O    ( n, xs, ys, pointSize, 3 ); break;
-        case '4': Draw2D::plot_O    ( n, xs, ys, pointSize, 4 ); break;
-        case 'o': Draw2D::plot_O    ( n, xs, ys, pointSize, 8 ); break;
+        case '+': Draw2D::plot_cross( n, xs, ys, pointSize ); break;
+        case 'x': Draw2D::plot_X    ( n, xs, ys, pointSize ); break;
+        case '3': Draw2D::plot_O    ( n, xs, ys, pointSize ); break;
+        case '4': Draw2D::plot_O    ( n, xs, ys, pointSize ); break;
+        case 'o': Draw2D::plot_O    ( n, xs, ys, pointSize ); break;
     }
 }
 
 int DataLine2D::render(){
     //printf( "DalaLine2D::render() \n" );
-    if( glObj ) glDeleteLists(glObj,1);
-    glObj = glGenLists(1);
+    if( glObj ) opengl1renderer.deleteLists(glObj,1);
+    glObj = opengl1renderer.genLists(1);
     //printf( " 1 DataLine2D::render() %i \n", glObj  );
-    glNewList(glObj, GL_COMPILE);
+    opengl1renderer.newList(glObj, GL_COMPILE);
     draw();
-    glEndList( );
+    opengl1renderer.endList( );
     //printf( " 2 DataLine2D::render() %i \n", glObj  );
     return glObj;
 };
@@ -70,7 +70,7 @@ void DataLine2D::view(){
     if(bView){
         Draw::setRGBA(clr);
         //printf( "DEBUG DataLine2D::view() %i \n", glObj  );
-        glCallList( glObj );
+        opengl1renderer.callList( glObj );
         //printf("%i\n", glObj);
     }
 };
@@ -78,7 +78,7 @@ void DataLine2D::view(){
 DataLine2D::~DataLine2D(){
     if(xs &&(!bSharedX) ) delete [] xs;
     if(ys) delete [] ys;
-    if( glObj ) glDeleteLists(glObj,1);
+    if( glObj ) opengl1renderer.deleteLists(glObj,1);
 }
 
 /////////////////////////////////
@@ -175,12 +175,12 @@ void Plot2D::drawAxes(){
 }
 
 int Plot2D::renderFrameworks(){
-    if( glObj ) glDeleteLists(glObj,1);
-    glObj = glGenLists(1);
-    glNewList(glObj, GL_COMPILE);
-    if( (clrBg&0xFF000000) ){ Draw::setRGBA( clrBg ); Draw2D::drawRectangle_d( axBounds.a, axBounds.b, true ); }
+    if( glObj ) opengl1renderer.deleteLists(glObj,1);
+    glObj = opengl1renderer.genLists(1);
+    opengl1renderer.newList(glObj, GL_COMPILE);
+    if( (clrBg&0xFF000000) ){ Draw2D::drawRectangle( (Vec2f)axBounds.a, (Vec2f)axBounds.b, COL2VEC(clrBg) ); }
     drawAxes();
-    glEndList( );
+    opengl1renderer.endList( );
     redraw=false;
     return glObj;
 }
@@ -191,7 +191,7 @@ int Plot2D::render(){
     return renderFrameworks();
 }
 
-int Plot2D::tryRender(bool bUpdate){
+int Plot2D::tryRender( bool bUpdate){
     for( DataLine2D* line : lines ){ line->tryRender(); }
     if(redraw){
         if(bUpdate) update();
@@ -201,18 +201,18 @@ int Plot2D::tryRender(bool bUpdate){
     return glObj;
 }
 
-void Plot2D::drawHline ( double y ){ Draw2D::drawLine_d( {axBounds.x0, y}, {axBounds.x1, y} ); };
-void Plot2D::drawVline ( double x ){ Draw2D::drawLine_d( {x, axBounds.y0}, {x, axBounds.y1} ); };
+void Plot2D::drawHline ( double y ){ Draw2D::drawLine( {axBounds.x0, y}, {axBounds.x1, y} ); };
+void Plot2D::drawVline ( double x ){ Draw2D::drawLine( {x, axBounds.y0}, {x, axBounds.y1} ); };
 //void Plot2D::drawCursor( Vec2d p, double sz ){Draw2D::drawPointCross_d(p); };
 
 void Plot2D::view(bool bAxes){
-    glPushMatrix();
-    glTranslatef(shift.x,shift.y,0.0);
-    glScalef    (scaling.x,scaling.y,1.0);
-    if (bAxes) glCallList( glObj );
+    opengl1renderer.pushMatrix();
+    opengl1renderer.translatef(shift.x,shift.y,0.0);
+    opengl1renderer.scalef    (scaling.x,scaling.y,1.0);
+    if (bAxes) opengl1renderer.callList( glObj );
     for( DataLine2D* line : lines ){ line->view(); }
     // printf( "%i \n", glObj);
-    glPopMatrix();
+    opengl1renderer.popMatrix();
     if(fontTex){ drawTexts(); }
 }
 
@@ -316,30 +316,30 @@ void QuePlot2D::draw( bool xoff, bool yoff ){
     //printf( "nvalid %i \n", nvalid );
     double t0  = ts[i0];
     for(int iline=0; iline<nlines; iline++){
-        glBegin(GL_LINE_STRIP);
+        opengl1renderer.begin(GL_LINE_STRIP);
         Draw::setRGBA(lColors[iline]);
         double * dline = data[iline];
         double y0 = dline[i0];
         for(int ii=ii0; ii<nsamp; ii++){
             int i = wrap_index( ii );
-            glVertex3f( ts[i]-t0, dline[i]-y0, 0.0);
+            opengl1renderer.vertex3f( ts[i]-t0, dline[i]-y0, 0.0);
         }
-        glEnd();
+        opengl1renderer.end();
     }
 }
 
 void QuePlot2D::drawTrj3D( Vec3i which ){
     int ii0 = nsamp-n+1; if (ii0<0) ii0=0;
     int i0  = wrap_index( ii0 );
-    glBegin(GL_LINE_STRIP);
+    opengl1renderer.begin(GL_LINE_STRIP);
     double * xs = data[which.x];
     double * ys = data[which.y];
     double * zs = data[which.z];
     for(int ii=ii0; ii<nsamp; ii++){
         int i = wrap_index( ii );
-        glVertex3f( xs[i], ys[i], zs[i] );
+        opengl1renderer.vertex3f( xs[i], ys[i], zs[i] );
     }
-    glEnd();
+    opengl1renderer.end();
 }
 
 void QuePlot2D::drawTrj3DPoints( Vec3i which, double pointSize ){
@@ -355,12 +355,12 @@ void QuePlot2D::drawTrj3DPoints( Vec3i which, double pointSize ){
             Draw3D::drawPointCross( {xs[i], ys[i], zs[i]}, pointSize );
         }
     }else{
-        glBegin(GL_POINTS);
+        opengl1renderer.begin(GL_POINTS);
         for(int ii=ii0; ii<nsamp; ii++){
             int i = wrap_index( ii );
-            glVertex3f( xs[i], ys[i], zs[i] );
+            opengl1renderer.vertex3f( xs[i], ys[i], zs[i] );
         }
-        glEnd();
+        opengl1renderer.end();
     }
 }
 

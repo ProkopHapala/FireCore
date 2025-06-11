@@ -9,7 +9,7 @@
 #include "testUtils.h"
 
 //#include <SDL2/SDL.h>
-//#include <SDL2/SDL_opengl.h>
+//
 //#include "Draw.h"
 //#include "Draw3D.h"
 //#include "SDL_utils.h"

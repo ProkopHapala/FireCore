@@ -426,7 +426,7 @@ double evalEE(){
             //DEBUG_fa_aa[j].sub(f);
             //DEBUG_fa_aa[i].add(f);
             //if( (i==DEBUG_i)&&(j==DEBUG_j) ){
-            //    glColor3f(1.0,0.0,0.0);
+            //    opengl1renderer.color3f(1.0,0.0,0.0);
             //    Draw3D::drawVecInPos( f*-1., epos[j] );
             //    Draw3D::drawVecInPos( f   , pi      );
             //}
@@ -491,9 +491,9 @@ double evalAE(){
             //DEBUG_fe_ae[j].sub(f);
             //DEBUG_fa_ae[i].add(f);
             //if( (i==DEBUG_i)&&(j==DEBUG_j) ){
-            //    glColor3f(1.0,1.0,1.0); Draw3D::drawLine    ( pi, epos[j]    );
-            //    glColor3f(0.0,1.0,0.0); Draw3D::drawVecInPos( f*-1., epos[j] );
-            //    glColor3f(1.0,0.0,1.0); Draw3D::drawVecInPos( f    , pi      );
+            //    opengl1renderer.color3f(1.0,1.0,1.0); Draw3D::drawLine    ( pi, epos[j]    );
+            //    opengl1renderer.color3f(0.0,1.0,0.0); Draw3D::drawVecInPos( f*-1., epos[j] );
+            //    opengl1renderer.color3f(1.0,0.0,1.0); Draw3D::drawVecInPos( f    , pi      );
             //}
         }
     }
@@ -540,7 +540,7 @@ double evalAA(){
             //DEBUG_fa_aa[j].sub(f);
             //DEBUG_fa_aa[i].add(f);
             //if( (i==DEBUG_i)&&(j==DEBUG_j) ){
-            //    glColor3f(1.0,0.0,0.0);
+            //    opengl1renderer.color3f(1.0,0.0,0.0);
             //    //Draw3D::drawVecInPos( dR*-1., apos[j] );
             //    //Draw3D::drawVecInPos( dR    , pi      );
             //    Draw3D::drawVecInPos( f*-1., apos[j] );

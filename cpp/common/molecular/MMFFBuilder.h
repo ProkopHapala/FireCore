@@ -3491,7 +3491,7 @@ void assignTorsions( bool bNonPi=false, bool bNO=true ){
     int selectRect( const Vec3d& p0, const Vec3d& p1, const Mat3d& rot ){
         printf( "Builder::selectRect() p0(%g,%g,%g) p1(%g,%g,%g) \n", p0.x,p0.y,p0.z, p1.x,p1.y,p1.z );
         Vec3d Tp0,Tp1,Tp;
-        //Mat3d rot = (Mat3d)cam.rot;
+        //Mat3d rot = (Mat3d)cam.rotMat();
         rot.dot_to(p0,Tp0);
         rot.dot_to(p1,Tp1);
         _order(Tp0.x,Tp1.x);
@@ -4019,7 +4019,7 @@ void updatePBC( Vec3d* pbcShifts, Mat3d* M=0 ){
 
                 //if( (conf.nbond==2) && (conf.npi==1) ){ printf( "atom[%i](nb=%i,npi=%i,ne=%i) angles(%g,%g,%g)\n", ia, conf.nbond,conf.npi,conf.ne, hs[3].getAngle(hs[0])/M_PI, hs[3].getAngle(hs[1])/M_PI, hs[3].getAngle(hs[2])/M_PI ); }
                 //for(int k=0; k<N_NEIGH_MAX; k++){
-                //    if((N_NEIGH_MAX-k)<=conf.npi){ glColor3f(1.,0.,0.); }else{ glColor3f(1.,0.,0.); }
+                //    if((N_NEIGH_MAX-k)<=conf.npi){ opengl1renderer.color3f(1.,0.,0.); }else{ opengl1renderer.color3f(1.,0.,0.); }
                 //    Draw3D::drawVecInPos( hs[k], atoms[ia].pos );
                 //}
                 // pi-bonds
@@ -4300,9 +4300,9 @@ void assignAnglesMMFFsp3( MMFFsp3_loc& ff, bool bUFF=false ){
                 if(jng<0) break; 
                 int jt = ff.atypes[jng];
                 double ang0;
-                double k;
+                double k = 0;
                 if(bUFF){
-                    double ang0    = atyp.Ass*deg2rad;
+                    ang0    = atyp.Ass*deg2rad;
                     double Kss_uff = params->assignAngleParamUFF( iat, it, jt, bL[i], bL[j] );
                 }else{
                     AngleType* ang = params->getAngleType( it, iat, jt, true, true );

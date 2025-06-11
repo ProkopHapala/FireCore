@@ -6,7 +6,7 @@
 #include <math.h>
 
 #include <SDL2/SDL.h>
-#include <SDL2/SDL_opengl.h>
+
 #include "Draw.h"
 #include "Draw3D.h"
 #include "Solids.h"
@@ -117,8 +117,8 @@ TestAppMultipoles::TestAppMultipoles( int& id, int WIDTH_, int HEIGHT_ ) : AppSD
 
 void TestAppMultipoles::draw(){
     printf( " ==== frame %i \n", frameCount );
-    glClearColor( 0.5f, 0.5f, 0.5f, 1.0f );
-	glClear( GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT );
+    opengl1renderer.clearColor( 0.5f, 0.5f, 0.5f, 1.0f );
+	opengl1renderer.clear( GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT );
 
 	/*
 	for(int i=0; i<nbodies; i++){
@@ -133,8 +133,8 @@ void TestAppMultipoles::draw(){
 	}
 	*/
 
-	//glColor3f(0.0,0.0,1.0); Draw3D::drawTriclinicBox(system1.lvec, {0.0,0.0,0.0}, {1.0,1.0,1.0} );
-	//glColor3f(1.0,0.0,0.0); Draw3D::drawTriclinicBox(system1.ilvec, {0.0,0.0,0.0}, {1.0,1.0,1.0} );
+	//opengl1renderer.color3f(0.0,0.0,1.0); Draw3D::drawTriclinicBox(system1.lvec, {0.0,0.0,0.0}, {1.0,1.0,1.0} );
+	//opengl1renderer.color3f(1.0,0.0,0.0); Draw3D::drawTriclinicBox(system1.ilvec, {0.0,0.0,0.0}, {1.0,1.0,1.0} );
 
 
 	/*
@@ -144,24 +144,24 @@ void TestAppMultipoles::draw(){
 
 	triclinicBounds( system1.ilvec, pmin, pmax, cmin, cmax );
 
-	glColor3f(0.0,0.0,1.0); Draw3D::drawBBox( pmin, pmax );
-	glColor3f(1.0,0.0,0.0); Draw3D::drawTriclinicBox(system1.ilvec, cmin, cmax );
+	opengl1renderer.color3f(0.0,0.0,1.0); Draw3D::drawBBox( pmin, pmax );
+	opengl1renderer.color3f(1.0,0.0,0.0); Draw3D::drawTriclinicBox(system1.ilvec, cmin, cmax );
 	*/
 
-	glColor3f(1.0,1.0,1.0);
+	opengl1renderer.color3f(1.0,1.0,1.0);
 	for(int i=0; i<system1.natoms; i++){
         Draw3D::drawPointCross( system1.pos[i] ,0.1);
 	}
 
 	/*
-	glColor3f(0.0,0.0,0.0);
+	opengl1renderer.color3f(0.0,0.0,0.0);
     for(int i=0; i<system1.nAtomPBC; i++){
         Draw3D::drawPointCross( system1.pbc_pos[i], 0.1 );
 	};
 	*/
 
 	/*
-	glColor3f(0.3,0.3,0.3);
+	opengl1renderer.color3f(0.3,0.3,0.3);
 	for(int ia=system1.pbc0.a; ia<system1.pbc1.a; ia++){
         for(int ib=system1.pbc0.b; ib<system1.pbc1.b; ib++){
             for(int ic=system1.pbc0.c; ic<system1.pbc1.c; ic++){
@@ -189,8 +189,8 @@ void TestAppMultipoles::draw(){
         Draw3D::drawBBox( p, p+Vec3d{d,d,d} );
     }
 
-	glColor3f(0.0,0.0,1.0); Draw3D::drawBBox( system1.ruler.pos0, system1.ruler.pmax );
-	glColor3f(1.0,0.0,0.0); Draw3D::drawTriclinicBox(system1.lvec, system1.cmin, system1.cmax );
+	opengl1renderer.color3f(0.0,0.0,1.0); Draw3D::drawBBox( system1.ruler.pos0, system1.ruler.pmax );
+	opengl1renderer.color3f(1.0,0.0,0.0); Draw3D::drawTriclinicBox(system1.lvec, system1.cmin, system1.cmax );
 
 
 };
@@ -211,7 +211,7 @@ void TestAppMultipoles::eventHandling ( const SDL_Event& event  ){
 }
 
 void TestAppMultipoles::drawHUD(){
-    glDisable ( GL_LIGHTING );
+    opengl1renderer.disable ( GL_LIGHTING );
 }
 
 // ===================== MAIN

@@ -43,7 +43,7 @@ inline void setColorInt32( uint32_t clr ) {
 	uint8_t g = ( ( clr >> 8  ) & 0xFF );
 	uint8_t r = ( ( clr >> 16 ) & 0xFF );
 	uint8_t a = (   clr >> 24          );
-	glColor4f( i255*r, i255*g, i255*b, i255*a );
+	opengl1renderer.color4f( i255*r, i255*g, i255*b, i255*a );
 	//printf( " r %i g %i b %i a %i     %f %f %f %f  \n", r, g, b, a,  i255*r, i255*g, i255*b, i255*a   );
 }
 

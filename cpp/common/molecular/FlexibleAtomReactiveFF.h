@@ -22,6 +22,7 @@ Flexible Atom sp-hybridization forcefield
 #include "Vec2.h"
 #include "Vec3.h"
 #include "SMat3.h"
+#include "Draw3D.h"
 //#include "quaternion.h"
 #include "Forces.h"
 
@@ -557,8 +558,8 @@ void transferOrbRecoil(){
         Vec3d f = oforce[i]*-1;
         aforce[ia].add( f );
 
-        //glColor3f(1,1,0); Draw3D::drawVecInPos( oforce[i], apos[ia] );
-        if((ia==0)&&(i-(ia<<2)==0) ){ glColor3f(1,1,0); Draw3D::drawVecInPos( f, apos[ia] ); }
+        //opengl1renderer.color3f(1,1,0); Draw3D::drawVecInPos( oforce[i], apos[ia] );
+        if((ia==0)&&(i-(ia<<2)==0) ){ Draw3D::drawVecInPos( f, apos[ia], {1,1,0} ); }
     }
 }
 
@@ -642,7 +643,7 @@ void evalAtom(int ia){
                 fi   .add(d);
                 fs[j].sub(d);
 
-                //glColor3f(1.0,0.0,0.0); Draw3D::drawVecInPos( fja*0.5,apos[ia]+hj*0.5 );
+                //opengl1renderer.color3f(1.0,0.0,0.0); Draw3D::drawVecInPos( fja*0.5,apos[ia]+hj*0.5 );
 
             }
 
@@ -675,7 +676,7 @@ void evalAtom(int ia){
                     //fja.set(1.0,0.0,0.0);
                     //printf( "%i(%i,%i) (%g,%g,%g) (%g,%g,%g) \n", ia, i,j, fia.x,fia.y,fia.z, fja.x,fja.y,fja.z );
 
-                    //glColor3f(1.0,0.0,0.0); Draw3D::drawVecInPos( fja*0.5,apos[ia]+hj*0.5 );
+                    //opengl1renderer.color3f(1.0,0.0,0.0); Draw3D::drawVecInPos( fja*0.5,apos[ia]+hj*0.5 );
 
                     fi.add(fia); fs[j].add(fja);
                     fa.sub(fia); //fa   .sub(fja);
@@ -726,7 +727,7 @@ void evalAtom(int ia){
 
     aforce[ia].add(fa);
 
-    //glColor3f(1.0,0.0,0.0); Draw3D::drawVecInPos( aforce[ia], pa );
+    //opengl1renderer.color3f(1.0,0.0,0.0); Draw3D::drawVecInPos( aforce[ia], pa );
 
     //aforce[ia].set(0.); // DEBUG
 
@@ -923,9 +924,9 @@ double evalPair( int ia, int ja, FlexiblePairType& type){
             force.add(force_);
             //if((ia==0)&&(ja==1)){
             if(ia==0){
-                glColor3f(1,0,0);
+                opengl1renderer.color3f(1,0,0);
                 Draw3D::drawVecInPos( force_, apos[ia] );
-                glColor3f(1,0,1);
+                opengl1renderer.color3f(1,0,1);
                 Draw3D::drawVecInPos( fi_, apos[ia]+hi );
                 Draw3D::drawVecInPos( fj_, apos[ja]+hj );
                 //Draw3D::drawVecInPos( hij*(-cj*deEbcij) + hj*(deEbcicj), apos[ia]+hi );

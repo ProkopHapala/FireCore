@@ -227,10 +227,10 @@ struct TorsionConstr : public ForcedDriver{ public:
         // {
         //     const Vec3d p1 = apos[ijkl.x]; 
         //     const Vec3d p4 = apos[ijkl.w];
-        //     glColor3f(0.0,0.0,1.0);
+        //     opengl1renderer.color3f(0.0,0.0,1.0);
         //     Draw3D::drawVecInPos( n123, p2 );
         //     Draw3D::drawVecInPos( n234, p3 );
-        //     glColor3f(1.0,0.0,0.0);
+        //     opengl1renderer.color3f(1.0,0.0,0.0);
         //     Draw3D::drawVecInPos( fp1, p1 );
         //     Draw3D::drawVecInPos( fp4, p4 );
         //     Draw3D::drawVecInPos( fp2, p2 );

@@ -12,7 +12,7 @@
 #include "Draw3D.h"
 
 #include <SDL2/SDL.h>
-#include <SDL2/SDL_opengl.h>
+
 
 // FROM : https://www.angelfire.com/linux/myp/MC/index.html
 //
@@ -337,12 +337,12 @@ int MarchingCubesCross( const GridShape& gs, double minValue, double* data, int 
 	//go through all the points
     int ind=-1;
     gs.printCell();
-    //if(bLines){ glBegin( GL_LINES ); }else{ glBegin( GL_TRIANGLES ); }
-    if     (renderType==0) { glBegin( GL_POINTS );    }
-    else if(renderType==1) { glBegin( GL_LINES  );    }
-    else                   { glBegin( GL_TRIANGLES ); }
-    //glBegin( GL_LINES );
-    //glBegin( GL_POINTS );
+    //if(bLines){ opengl1renderer.begin( GL_LINES ); }else{ opengl1renderer.begin( GL_TRIANGLES ); }
+    if     (renderType==0) { opengl1renderer.begin( GL_POINTS );    }
+    else if(renderType==1) { opengl1renderer.begin( GL_LINES  );    }
+    else                   { opengl1renderer.begin( GL_TRIANGLES ); }
+    //opengl1renderer.begin( GL_LINES );
+    //opengl1renderer.begin( GL_POINTS );
     int ntris=0;
     double vmin=+1e+300;
     double vmax=-1e+300;
@@ -426,7 +426,7 @@ int MarchingCubesCross( const GridShape& gs, double minValue, double* data, int 
 			}	
 		}	
 	}	
-    glEnd();
+    opengl1renderer.end();
     printf( "MarchingCubesCross vmin, vmax %g %g \n", vmin, vmax );
 	#undef IND
     return ntris;
@@ -435,7 +435,7 @@ int MarchingCubesCross( const GridShape& gs, double minValue, double* data, int 
 int Grid2Points( const GridShape& gs, double minValue, double* data ){
 	int nxy = gs.n.y*gs.n.x;	//for little extra speed
     int ind=-1;
-    glBegin( GL_POINTS );
+    opengl1renderer.begin( GL_POINTS );
     int ntris=0;
     double vmin=+1e+300;
     double vmax=-1e+300;
@@ -448,8 +448,8 @@ int Grid2Points( const GridShape& gs, double minValue, double* data ){
                 vmax=fmax(vmax,val);
                 vmin=fmin(vmin,val);
                 bool b=false;
-                if     ( val>  minValue ){ glColor3f( 0.,0.,1. ); b=true; }
-                else if( val< -minValue ){ glColor3f( 1.,0.,0. ); b=true; };
+                if     ( val>  minValue ){ opengl1renderer.color3f( 0.,0.,1. ); b=true; }
+                else if( val< -minValue ){ opengl1renderer.color3f( 1.,0.,0. ); b=true; };
                 if(b){
                     Vec3d p0 = gs.dCell.a*ix + gs.dCell.b*iy + gs.dCell.c*iz;
                     vertex(p0);
@@ -458,7 +458,7 @@ int Grid2Points( const GridShape& gs, double minValue, double* data ){
 			}	
 		}	
 	}	
-    glEnd();
+    opengl1renderer.end();
     printf( "MarchingCubesCross vmin, vmax %g %g \n", vmin, vmax );
     return ntris;
 }

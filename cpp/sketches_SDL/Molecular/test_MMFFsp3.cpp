@@ -12,7 +12,7 @@
 #include "testUtils.h"
 
 #include <SDL2/SDL.h>
-#include <SDL2/SDL_opengl.h>
+
 #include "Draw3D.h"
 #include "SDL_utils.h"
 #include "Solids.h"
@@ -82,7 +82,6 @@ class TestAppMMFFsp3 : public AppSDL2OGL_3D { public:
     bool bRunRelax  = false;
 
     int     fontTex;
-    int     ogl_sph=0;
     int     ogl_mol=0;
 
     char str[256];
@@ -120,7 +119,7 @@ class TestAppMMFFsp3 : public AppSDL2OGL_3D { public:
 
 void TestAppMMFFsp3::selectRect( const Vec3d& p0, const Vec3d& p1 ){
     Vec3d Tp0,Tp1,Tp;
-    Mat3d rot = (Mat3d)cam.rot;
+    Mat3d rot = (Mat3d)cam.rotMat();
     rot.dot_to(p0,Tp0);
     rot.dot_to(p1,Tp1);
     _order(Tp0.x,Tp1.x);
@@ -246,15 +245,11 @@ TestAppMMFFsp3::TestAppMMFFsp3( int& id, int WIDTH_, int HEIGHT_ ) : AppSDL2OGL_
     double E = ff.eval(true); printf( "ff.eval() E = %g \n", E );
     ff.bDEBUG_plot=true;
 
-    //exit(0);
-    //Draw3D::makeSphereOgl( ogl_sph, 3, 1.0 );
-    Draw3D::makeSphereOgl( ogl_sph, 5, 1.0 );
-
     //float l_diffuse  []{ 0.9f, 0.85f, 0.8f,  1.0f };
 	float l_specular []{ 0.0f, 0.0f,  0.0f,  1.0f };
-    //glLightfv    ( GL_LIGHT0, GL_AMBIENT,   l_ambient  );
-	//glLightfv    ( GL_LIGHT0, GL_DIFFUSE,   l_diffuse  );
-	glLightfv    ( GL_LIGHT0, GL_SPECULAR,  l_specular );
+    //opengl1renderer.lightfv    ( GL_LIGHT0, GL_AMBIENT,   l_ambient  );
+	//opengl1renderer.lightfv    ( GL_LIGHT0, GL_DIFFUSE,   l_diffuse  );
+	opengl1renderer.lightfv    ( GL_LIGHT0, GL_SPECULAR,  l_specular );
 
     //selection.insert( selection.end(), {12, 16, 14, 6, 2, 3,   20,18,31,25,26} );
     //selection.insert( selection.end(), {13,29,30} );
@@ -269,19 +264,19 @@ TestAppMMFFsp3::TestAppMMFFsp3( int& id, int WIDTH_, int HEIGHT_ ) : AppSDL2OGL_
 
 void TestAppMMFFsp3::drawSystem( bool bAtoms, bool bBonds, bool bForces, float texSize ){
     if(bBonds){
-        //glColor3f(0.0f,0.0f,0.0f); Draw3D::drawLines ( ff.nbonds, (int*)ff.bond2atom, ff.apos );
-        //glColor3f(0.0f,0.0f,0.0f); Draw3D::bondsPBC  ( ff.nbonds, ff.bond2atom, ff.apos, &builder.bondPBC[0], builder.lvec );
-        //glColor3f(0.0f,0.0f,0.0f); Draw3D::bondsPBC  ( ff.nbonds, ff.bond2atom, ff.apos, ff.pbcShifts );
-        glColor3f(0.0f,0.0f,0.0f);Draw3D::bonds( ff.nbonds, ff.bond2atom, ff.apos ); 
-        //glColor3f(0.0f,0.0f,1.0f); Draw3D::bondLabels( ff.nbonds, ff.bond2atom, ff.apos, fontTex, 0.02 );                     
-        if(bondLenghts) glColor3f(0.0f,0.0f,1.0f); Draw3D::bondPropertyLabel( ff.nbonds, bondLenghts, ff.bond2atom, ff.apos, 1,0, fontTex, texSize, "%4.2f\0" );
+        //opengl1renderer.color3f(0.0f,0.0f,0.0f); Draw3D::drawLines ( ff.nbonds, (int*)ff.bond2atom, ff.apos );
+        //opengl1renderer.color3f(0.0f,0.0f,0.0f); Draw3D::bondsPBC  ( ff.nbonds, ff.bond2atom, ff.apos, &builder.bondPBC[0], builder.lvec );
+        //opengl1renderer.color3f(0.0f,0.0f,0.0f); Draw3D::bondsPBC  ( ff.nbonds, ff.bond2atom, ff.apos, ff.pbcShifts );
+        opengl1renderer.color3f(0.0f,0.0f,0.0f);Draw3D::bonds( ff.nbonds, ff.bond2atom, ff.apos ); 
+        //opengl1renderer.color3f(0.0f,0.0f,1.0f); Draw3D::bondLabels( ff.nbonds, ff.bond2atom, ff.apos, fontTex, 0.02 );                     
+        if(bondLenghts) opengl1renderer.color3f(0.0f,0.0f,1.0f); Draw3D::bondPropertyLabel( ff.nbonds, bondLenghts, ff.bond2atom, ff.apos, 1,0, fontTex, texSize, "%4.2f\0" );
     }
-    if(bForces){ glColor3f(1.0f,0.0f,0.0f); Draw3D::vecsInPoss( ff.natoms, ff.fapos, ff.apos, 300.0              ); }
+    if(bForces){ Draw3D::vecsInPoss( ff.natoms, ff.fapos, ff.apos, 300.0, COLOR_RED); }
     if(bAtoms){
-        //glColor3f(0.0f,0.0f,1.0f); Draw3D::atomPropertyLabel( ff.natoms, (double*)nff.REQs, ff.apos, 3,2, fontTex, 0.02, "%4.2f\0" );
-        glColor3f(0.5f,0.0f,0.0f); Draw3D::atomLabels( ff.natoms, ff.apos, fontTex, texSize                     );                     
+        //opengl1renderer.color3f(0.0f,0.0f,1.0f); Draw3D::atomPropertyLabel( ff.natoms, (double*)nff.REQs, ff.apos, 3,2, fontTex, 0.02, "%4.2f\0" );
+        opengl1renderer.color3f(0.5f,0.0f,0.0f); Draw3D::atomLabels( ff.natoms, ff.apos, fontTex, texSize                     );                     
         //if(bSpheres)Draw3D::atomsREQ  ( ff.natoms, ff.apos,   nff.REQs, ogl_sph, 1.0, 0.25, 1.0 );
-        if(bAtomsSpheres)Draw3D::atoms( ff.natoms, ff.apos, atypes, params, ogl_sph, 1.0, mm_Rsc, mm_Rsub );  
+        if(bAtomsSpheres)Draw3D::atoms( ff.natoms, ff.apos, atypes, params, 1.0, mm_Rsc, mm_Rsub );  
         //Draw3D::atoms( ff.natoms, ff.apos, atypes, params, ogl_sph, 1.0, 1.0, 1.0 );      
         //Draw3D::atoms( ff.natoms, ff.apos, atypes, params, ogl_sph, 1.0, 0.5, 1.0 );       
         //Draw3D::atoms( ff.natoms, ff.apos, atypes, params, ogl_sph, 1.0, 0.25, 1.0 );       
@@ -289,20 +284,19 @@ void TestAppMMFFsp3::drawSystem( bool bAtoms, bool bBonds, bool bForces, float t
 }
 
 void TestAppMMFFsp3::draw(){
-    //glClearColor( 0.5f, 0.5f, 0.5f, 1.0f );
-    glClearColor( 1.0f, 1.0f, 1.0f, 1.0f );
-	glClear( GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT );
+    //opengl1renderer.clearColor( 0.5f, 0.5f, 0.5f, 1.0f );
+    opengl1renderer.clearColor( 1.0f, 1.0f, 1.0f, 1.0f );
+	opengl1renderer.clear( GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT );
 
     //printf( "====== Frame # %i \n", frameCount );
     //cam.qrot.rotate(M_PI*0.01,Vec3fX);
 
-    //glColor3f(0.,0.,0.); drawBonds( builder );
-    //glColor3f(0.,0.,0.); drawNeighs( builder );
+    //opengl1renderer.color3f(0.,0.,0.); drawBonds( builder );
+    //opengl1renderer.color3f(0.,0.,0.); drawNeighs( builder );
     //drawNeighs( ff );
     //builder.toMMFFsp3( ff, false );
 
     if(frameCount==1){
-        qCamera.pitch( M_PI );
         //ff.printAtomPos();
         //ff.printBondParams();
         //ff.printAngleParams();
@@ -320,10 +314,10 @@ void TestAppMMFFsp3::draw(){
     //Draw3D::drawAxis(  10. );
 
 	//ibpicked = world.pickBond( ray0, camMat.c , 0.5 );
-    ray0 = (Vec3d)(cam.rot.a*mouse_begin_x + cam.rot.b*mouse_begin_y);
+    ray0 = (Vec3d)(cam.rotMat().a*mouse_begin_x + cam.rotMat().b*mouse_begin_y);
     Draw3D::drawPointCross( ray0, 0.1 );
     //Draw3D::drawVecInPos( camMat.c, ray0 );
-    if(ipicked>=0) Draw3D::drawLine( ff.apos[ipicked], ray0);
+    if(ipicked>=0) Draw3D::drawLine( ff.apos[ipicked], ray0, COLOR_BLACK);
 
     //perFrame = 1;
     //perFrame = 100;
@@ -342,7 +336,7 @@ void TestAppMMFFsp3::draw(){
 
             //if(bNonBonded){ E += nff.evalLJQ_pbc( builder.lvec, {1,1,1} ); }
             //for(int i=0; i<ff.natoms; i++){ ff.fapos[i].add( getForceMorsePlane( ff.apos[i], {0.0,0.0,1.0}, -5.0, 0.0, 0.01 ) ); }
-            if(ipicked>=0){ Vec3d f = getForceSpringRay( ff.apos[ipicked], (Vec3d)cam.rot.c, ray0, -1.0 ); ff.fapos[ipicked].add( f ); };
+            if(ipicked>=0){ Vec3d f = getForceSpringRay( ff.apos[ipicked], (Vec3d)cam.rotMat().c, ray0, -1.0 ); ff.fapos[ipicked].add( f ); };
             
             cog  = average( ff.natoms, ff.apos  );
             vcog = sum    ( ff.natoms, (Vec3d*)opt.vel  );
@@ -370,20 +364,20 @@ void TestAppMMFFsp3::draw(){
     //printf( "neval Ang %i nevalPiSigma %i PiPiT %i PiPiI %i v_av %g \n", ff.nevalAngles, ff.nevalPiSigma, ff.nevalPiPiT, ff.nevalPiPiI, v_av );
 
     //drawSystem();
-    //glColor3f(0.,0.,0.); drawBonds( ff );
+    //opengl1renderer.color3f(0.,0.,0.); drawBonds( ff );
     drawSystem(true,true,false);
     Draw3D::drawNeighs( ff, 0.0 );
 
-    //glColor3f(0.,0.,0.); drawBonds( builder );
-    //glColor3f(0.,0.,0.); drawNeighs( builder );
+    //opengl1renderer.color3f(0.,0.,0.); drawBonds( builder );
+    //opengl1renderer.color3f(0.,0.,0.); drawNeighs( builder );
     //drawNeighs( ff );
 
     /*
-    if(bDragging)Draw3D::drawTriclinicBox(cam.rot.transposed(), (Vec3f)ray0_start, (Vec3f)ray0 );
+    if(bDragging)Draw3D::drawTriclinicBox(cam.rotMat().transposed(), (Vec3f)ray0_start, (Vec3f)ray0 );
     //Draw3D::drawTriclinicBox(builder.lvec, Vec3dZero, Vec3dOne );
-    glColor3f(0.0f,0.0f,0.0f); Draw3D::drawTriclinicBox(builder.lvec.transposed(), Vec3dZero, Vec3dOne );
-    //glColor3f(0.6f,0.6f,0.6f); Draw3D::plotSurfPlane( Vec3d{0.0,0.0,1.0}, -3.0, {3.0,3.0}, {20,20} );
-    //glColor3f(0.95f,0.95f,0.95f); Draw3D::plotSurfPlane( Vec3d{0.0,0.0,1.0}, -3.0, {3.0,3.0}, {20,20} );
+    opengl1renderer.color3f(0.0f,0.0f,0.0f); Draw3D::drawTriclinicBox(builder.lvec.transposed(), Vec3dZero, Vec3dOne );
+    //opengl1renderer.color3f(0.6f,0.6f,0.6f); Draw3D::plotSurfPlane( Vec3d{0.0,0.0,1.0}, -3.0, {3.0,3.0}, {20,20} );
+    //opengl1renderer.color3f(0.95f,0.95f,0.95f); Draw3D::plotSurfPlane( Vec3d{0.0,0.0,1.0}, -3.0, {3.0,3.0}, {20,20} );
     if(builder.bPBC){
         //printf( "draw PBC \n" );
         //Draw3D::drawPBC( (Vec3i){1,1,0}, builder.lvec, [&](){drawSystem();} );
@@ -393,7 +387,7 @@ void TestAppMMFFsp3::draw(){
     }
     for(int i=0; i<selection.size(); i++){
         int ia = selection[i];
-        glColor3f( 0.f,1.f,0.f );
+        opengl1renderer.color3f( 0.f,1.f,0.f );
         Draw3D::drawSphereOctLines( 8, 0.3, ff.apos[ia] );
     }
     if(makeScreenshot){
@@ -424,8 +418,8 @@ void TestAppMMFFsp3::eventHandling ( const SDL_Event& event  ){
                 case SDLK_KP_4: ff.iDEBUG_pick--; if(ff.iDEBUG_pick<0           )ff.iDEBUG_pick=ff.iDEBUG_n-1; break;
 
                 case SDLK_f:
-                    //selectShorterSegment( (Vec3d)(cam.rot.a*mouse_begin_x + cam.rot.b*mouse_begin_y + cam.rot.c*-1000.0), (Vec3d)cam.rot.c );
-                    selectShorterSegment( ray0, (Vec3d)cam.rot.c );
+                    //selectShorterSegment( (Vec3d)(cam.rotMat().a*mouse_begin_x + cam.rotMat().b*mouse_begin_y + cam.rotMat().c*-1000.0), (Vec3d)cam.rotMat().c );
+                    selectShorterSegment( ray0, (Vec3d)cam.rotMat().c );
                     //selection.erase();
                     //for(int i:builder.selection){ selection.insert(i); };
                     break;
@@ -442,11 +436,11 @@ void TestAppMMFFsp3::eventHandling ( const SDL_Event& event  ){
         case SDL_MOUSEBUTTONDOWN:
             switch( event.button.button ){
                 case SDL_BUTTON_LEFT:
-                    ipicked = pickParticle( ray0, (Vec3d)cam.rot.c, 0.5, ff.natoms, ff.apos );
+                    ipicked = pickParticle( ray0, (Vec3d)cam.rotMat().c, 0.5, ff.natoms, ff.apos );
                     ff.iDEBUG_pick=ipicked;
                     printf( "ipicked %i \n", ipicked );
                     /*
-                    ipicked = pickParticle( ray0, (Vec3d)cam.rot.c, 0.5, ff.natoms, ff.apos );
+                    ipicked = pickParticle( ray0, (Vec3d)cam.rotMat().c, 0.5, ff.natoms, ff.apos );
                     selection.clear();
                     if(ipicked>=0){ selection.push_back(ipicked); };
                     printf( "picked atom %i \n", ipicked );
@@ -455,7 +449,7 @@ void TestAppMMFFsp3::eventHandling ( const SDL_Event& event  ){
                     bDragging = true;
                     break;
                 case SDL_BUTTON_RIGHT:
-                    //ibpicked = ff.pickBond( ray0, (Vec3d)cam.rot.c , 0.5 );
+                    //ibpicked = ff.pickBond( ray0, (Vec3d)cam.rotMat().c , 0.5 );
                     //printf("ibpicked %i \n", ibpicked);
                     break;
             }
@@ -466,7 +460,7 @@ void TestAppMMFFsp3::eventHandling ( const SDL_Event& event  ){
                     //ipicked = -1;
                     //ray0_start
                     if( ray0.dist2(ray0_start)<0.1 ){
-                        ipicked = pickParticle( ray0, (Vec3d)cam.rot.c, 0.5, ff.natoms, ff.apos );
+                        ipicked = pickParticle( ray0, (Vec3d)cam.rotMat().c, 0.5, ff.natoms, ff.apos );
                         selection.clear();
                         if(ipicked>=0){ selection.push_back(ipicked); };
                         printf( "picked atom %i \n", ipicked );
@@ -486,10 +480,10 @@ void TestAppMMFFsp3::eventHandling ( const SDL_Event& event  ){
 }
 
 void TestAppMMFFsp3::drawHUD(){
-    glDisable ( GL_LIGHTING );
+    opengl1renderer.disable ( GL_LIGHTING );
 
-    glTranslatef( 10.0,HEIGHT-20.0,0.0 );
-	glColor3f(0.5,0.0,0.3);
+    opengl1renderer.translatef( 10.0,HEIGHT-20.0,0.0 );
+	opengl1renderer.color3f(0.5,0.0,0.3);
 	char* s=str;
     //printf( "(%i|%i,%i,%i) cog(%g,%g,%g) vcog(%g,%g,%g) fcog(%g,%g,%g) torq (%g,%g,%g)\n", ff.nevalAngles>0, ff.nevalPiSigma>0, ff.nevalPiPiT>0, ff.nevalPiPiI>0,  cog.x,cog.y,cog.z, vcog.x,vcog.y,vcog.z, fcog.x,fcog.y,fcog.z, tq.x,tq.y,tq.z );
     //printf( "neval Ang %i nevalPiSigma %i PiPiT %i PiPiI %i v_av %g \n", ff.nevalAngles, ff.nevalPiSigma, ff.nevalPiPiT, ff.nevalPiPiI, v_av );
@@ -498,7 +492,7 @@ void TestAppMMFFsp3::drawHUD(){
     s += sprintf(s, "vcog(%15.5e,%15.5e,%15.5e)\n", vcog.x,vcog.y,vcog.z);
     s += sprintf(s, "fcog(%15.5e,%15.5e,%15.5e)\n", fcog.x,fcog.y,fcog.z);
     s += sprintf(s, "torq(%15.5e,%15.5e,%15.5e)\n", tq  .x,tq  .y,tq  .z);
-    Draw::drawText( str, fontTex, fontSizeDef, {100,20} );
+    Draw::drawText( str, {10 ,HEIGHT-20}, fontSizeDef, {100,20} );
 
 }
 

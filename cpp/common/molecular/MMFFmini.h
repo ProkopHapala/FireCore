@@ -6,6 +6,7 @@
 #include "Vec2.h"
 #include "Vec3.h"
 #include "SMat3.h"
+#include "molecular_utils.h"
 #include "quaternion.h"
 
 //#include "integerOps.h"
@@ -195,7 +196,7 @@ inline void setAngleParam(int i, double a0, double k){
 inline void setBondParam(int i, double l0, double k){ bond_l0[i] = l0; bond_k[i]  = k; };
 inline void setTorsParam(int i, int     n, double k){ tors_n [i] =  n; tors_k[i]  = k; };
 
-inline void readSignedBond(int& i, Vec3d& h){ if(i&SIGN_MASK){ i&=0xFFFF; h = hbond[i]; h.mul(-1.0d); }else{ h = hbond[i]; }; };
+inline void readSignedBond(int& i, Vec3d& h){ if(i&SIGN_MASK){ i&=0xFFFF; h = hbond[i]; h.mul(-1.0); }else{ h = hbond[i]; }; };
 
 void cleanAtomForce(){ for(int i=0; i<natoms; i++){ aforce[i].set(0.0); } }
 
@@ -301,19 +302,19 @@ double eval_angle(int ig){
 
         //printf( "ang[%i] (%i,%i)  (%i,%i)%i  (%i,%i)%i   \n", ig,   ib_.j, ib_.j,   b1.i,b1.j,flip1,    b2.i,b2.j,flip2  );
         //printf( "ang[%i] cs(%g,%g)%g  rcs(%g,%g)%g    %g %g %g \n",  c,s, atan2(s,c)*180/M_PI, cs.x,cs.y,atan2(cs.y,cs.x)*180/M_PI,  fr/k, E, k );
-        glColor3f(1.0,0.0,0.0); double fsc=100.0;
+        opengl1renderer.color3f(1.0,0.0,0.0); double fsc=100.0;
         Draw3D::drawVecInPos( fa*fsc, apos[ia.x] );
         Draw3D::drawVecInPos( fb*fsc, apos[ia.z] );
         //Draw3D::drawVecInPos( (fa+fb)*-fsc, apos[ia.y] );
         Draw3D::drawVecInPos( fa*-fsc, apos[ia.y] );
         Draw3D::drawVecInPos( fb*-fsc, apos[ia.y] );
-        glColor3f(0.0,1.0,0.0);
+        opengl1renderer.color3f(0.0,1.0,0.0);
         Draw3D::drawArrow( apos[ia.x],apos[ia.y], 0.1 );
         Draw3D::drawArrow( apos[ia.y],apos[ia.z], 0.1 );
 
-        glColor3f(0.0,1.0,0.0); Draw3D::drawArrow( apos[ia.b],apos[ia.b]+h, 0.1 );
-        glColor3f(1.0,0.0,0.0); Draw3D::drawArrow( apos[ia.b],apos[ia.b]+ha, 0.1 );
-        glColor3f(0.0,0.0,1.0); Draw3D::drawArrow( apos[ia.b],apos[ia.b]+hb, 0.1 );
+        opengl1renderer.color3f(0.0,1.0,0.0); Draw3D::drawArrow( apos[ia.b],apos[ia.b]+h, 0.1 );
+        opengl1renderer.color3f(1.0,0.0,0.0); Draw3D::drawArrow( apos[ia.b],apos[ia.b]+ha, 0.1 );
+        opengl1renderer.color3f(0.0,0.0,1.0); Draw3D::drawArrow( apos[ia.b],apos[ia.b]+hb, 0.1 );
 
         //Draw3D::drawArrow( apos[ia.x],apos[ia.y], 0.1 );
         //Draw3D::drawArrow( apos[ia.y],apos[ia.z], 0.1 );
@@ -418,12 +419,12 @@ double eval_torsion(int it){
     /*
     {
         double fsc = 100.0;
-        glColor3f(1.0,0.0,1.0);  Draw3D::drawVecInPos(hab.normalized()*E, apos[ia.x]);
-        glColor3f(1.0,1.0,1.0);  Draw3D::drawVecInPos(ha.normalized()*E, apos[ia.x]);
-        glColor3f(1.0,0.0,0.0);  Draw3D::drawVecInPos(fa*fsc, apos[ia.x]);
-        glColor3f(1.0,0.0,0.0);  Draw3D::drawVecInPos(fa*fsc*-1, apos[ia.y]);
-        glColor3f(1.0,0.0,0.0);  Draw3D::drawVecInPos(fb*fsc*-1, apos[ia.z]);
-        glColor3f(1.0,0.0,0.0);  Draw3D::drawVecInPos(fb*fsc, apos[ia.w]);
+        opengl1renderer.color3f(1.0,0.0,1.0);  Draw3D::drawVecInPos(hab.normalized()*E, apos[ia.x]);
+        opengl1renderer.color3f(1.0,1.0,1.0);  Draw3D::drawVecInPos(ha.normalized()*E, apos[ia.x]);
+        opengl1renderer.color3f(1.0,0.0,0.0);  Draw3D::drawVecInPos(fa*fsc, apos[ia.x]);
+        opengl1renderer.color3f(1.0,0.0,0.0);  Draw3D::drawVecInPos(fa*fsc*-1, apos[ia.y]);
+        opengl1renderer.color3f(1.0,0.0,0.0);  Draw3D::drawVecInPos(fb*fsc*-1, apos[ia.z]);
+        opengl1renderer.color3f(1.0,0.0,0.0);  Draw3D::drawVecInPos(fb*fsc, apos[ia.w]);
 
     }
     */
@@ -453,7 +454,7 @@ double _bak_eval_torsion(int it){
     fa.set_cross( ha, hab );  //fa.mul( 1/fa.norm2() );
     fb.set_cross( hb, hab );  //fb.mul( 1/fb.norm2() );
 
-    //glColor3f(1.0,0.0,0.0);
+    //opengl1renderer.color3f(1.0,0.0,0.0);
     //Draw3D::drawVecInPos(fa, apos[ia.x] );
     //Draw3D::drawVecInPos(fb, apos[ia.w] );
 
@@ -464,7 +465,7 @@ double _bak_eval_torsion(int it){
     fb.mul(irb);
 
     Vec3d u; u.set_cross(fa,fb);
-    //glColor3f(1.0,0.0,1.0); Draw3D::drawVecInPos(u, apos[ia.x]);
+    //opengl1renderer.color3f(1.0,0.0,1.0); Draw3D::drawVecInPos(u, apos[ia.x]);
     Vec2d cs{
         fa.dot(fb ), // cos(a) = <a|b>
         u .dot(hab), // sin(a) = |a,b|
@@ -485,12 +486,12 @@ double _bak_eval_torsion(int it){
     fb.mul(fr*irb);
     /*
     float fsc = 1000.0;
-    glColor3f(1.0,0.0,1.0);  Draw3D::drawVecInPos(hab.normalized()*E, apos[ia.x]);
-    glColor3f(1.0,1.0,1.0);  Draw3D::drawVecInPos(ha.normalized()*E, apos[ia.x]);
-    glColor3f(1.0,0.0,0.0);  Draw3D::drawVecInPos(fa*fsc, apos[ia.x]);
-    glColor3f(1.0,0.0,0.0);  Draw3D::drawVecInPos(fa*fsc*-1, apos[ia.y]);
-    glColor3f(1.0,0.0,0.0);  Draw3D::drawVecInPos(fb*fsc*-1, apos[ia.z]);
-    glColor3f(1.0,0.0,0.0);  Draw3D::drawVecInPos(fb*fsc, apos[ia.w]);
+    opengl1renderer.color3f(1.0,0.0,1.0);  Draw3D::drawVecInPos(hab.normalized()*E, apos[ia.x]);
+    opengl1renderer.color3f(1.0,1.0,1.0);  Draw3D::drawVecInPos(ha.normalized()*E, apos[ia.x]);
+    opengl1renderer.color3f(1.0,0.0,0.0);  Draw3D::drawVecInPos(fa*fsc, apos[ia.x]);
+    opengl1renderer.color3f(1.0,0.0,0.0);  Draw3D::drawVecInPos(fa*fsc*-1, apos[ia.y]);
+    opengl1renderer.color3f(1.0,0.0,0.0);  Draw3D::drawVecInPos(fb*fsc*-1, apos[ia.z]);
+    opengl1renderer.color3f(1.0,0.0,0.0);  Draw3D::drawVecInPos(fb*fsc, apos[ia.w]);
     //printf("tors[%i] (%i,%i,%i,%i)\n", it, ia.x, ia.y, ia.z, ia.w );
     */
     /*

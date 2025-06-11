@@ -7,7 +7,6 @@
 // https://www.cs.cmu.edu/~baraff/sigcourse/notesd1.pdf
 
 //#include <SDL2/SDL.h>
-#include <SDL2/SDL_opengl.h>
 
 //#include "Draw3D.h"
 
@@ -66,12 +65,12 @@ void RigidBody::from_mass_points( int n, double* amass, Vec3d* apos ){
 
 /*
 void RigidBody::render(){
-	glPushMatrix();
+	opengl1renderer.pushMatrix();
 	float glmat[16];
 	Draw3D::toGLMat( pos, rotMat, glmat );
-	glMultMatrixf( glmat );
-	glCallList( shape );
-	glPopMatrix();
+	opengl1renderer.multMatrixf( glmat );
+	opengl1renderer.callList( shape );
+	opengl1renderer.popMatrix();
 };
 */
 

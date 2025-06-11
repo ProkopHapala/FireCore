@@ -61,6 +61,8 @@ class Quat4T {
 		T array[4];
 	};
 
+    inline bool operator==(const QUAT& q)const{ return (x==q.x)&&(y==q.y)&&(z==q.z)&&(w==q.w); }
+
     constexpr inline explicit operator Quat4T<double>()const{ return (Quat4T<double>){ (double)x, (double)y, (double)z, (double)w }; }
     constexpr inline explicit operator Quat4T<float> ()const{ return (Quat4T<float>) { (float )x, (float )y, (float )z, (float )w }; }
     constexpr inline explicit operator Quat4T<int>   ()const{ return (Quat4T<int>)   { (int   )x, (int   )y, (int   )z, (int   )w }; }
@@ -96,6 +98,8 @@ class Quat4T {
     inline VEC2 wx() const { return {w,x}; };
     inline VEC2 wy() const { return {w,y}; };
     inline VEC2 wz() const { return {w,z}; };
+
+    inline VEC xyz() const { return {x,y,z}; };
 
 
 
@@ -827,6 +831,8 @@ constexpr inline Quat4T<T2> cast(const Quat4T<T1>& i){ return Quat4T<T2>{ (T2)i.
 using Quat4i = Quat4T< int>;
 using Quat4f = Quat4T< float>;
 using Quat4d = Quat4T< double >;
+template<typename T>
+using Vec4T = Quat4T<T>;
 
 static constexpr Quat4i Quat4iZero      {0,0,0,0};
 static constexpr Quat4i Quat4iOnes      {1,1,1,1};

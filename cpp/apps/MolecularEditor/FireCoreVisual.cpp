@@ -9,11 +9,11 @@
 #include <vector>
 #include <math.h>
 
+#include "quaternion.h"
 #include "testUtils.h"
 #include "IO_utils.h"
 
 #include <SDL2/SDL.h>
-#include <SDL2/SDL_opengl.h>
 #include "Draw3D.h"
 #include "SDL_utils.h"
 #include "Solids.h"
@@ -136,7 +136,6 @@ class TestAppFireCoreVisual : public AppSDL2OGL_3D { public:
 
     // ---- Graphics objects
     int  fontTex,fontTex3D;
-    int  ogl_sph=0;
     int  ogl_mol=0;
     int  ogl_isosurf=0;
     int  ogl_MO = 0;
@@ -271,19 +270,18 @@ void TestAppFireCoreVisual::initGUI(){
         ->addItem("Right")
         ->setCommand( [&](GUIAbstractPanel* me_){ 
             DropDownList& me = *(DropDownList*)me_;
-            printf( "old qCamera(%g,%g,%g,%g) -> %s \n", qCamera.x,qCamera.y,qCamera.z,qCamera.w, me.labels[me.iSelected].c_str()  );
+            printf( "old cam.qrot(%g,%g,%g,%g) -> %s \n", cam.qrot().x,cam.qrot().y,cam.qrot().z,cam.qrot().w, me.labels[me.iSelected].c_str()  );
             switch(me.iSelected){
-                case 0: qCamera=qTop;    break;
-                case 1: qCamera=qBottom; break;
-                case 2: qCamera=qFront;  break;
-                case 3: qCamera=qBack;   break;
-                case 4: qCamera=qLeft;   break;
-                case 5: qCamera=qRight;  break;
+                case 0: cam.setQrot(qTop);    break;
+                case 1: cam.setQrot(qBottom); break;
+                case 2: cam.setQrot(qFront);  break;
+                case 3: cam.setQrot(qBack);   break;
+                case 4: cam.setQrot(qLeft);   break;
+                case 5: cam.setQrot(qRight);  break;
             }
-            printf( "->new qCamera(%g,%g,%g,%g) \n", qCamera.x,qCamera.y,qCamera.z,qCamera.w );
-            qCamera.toMatrix(cam.rot);
-            printf( "cam: aspect %g zoom %g \n", cam.aspect, cam.zoom);
-            printMat((Mat3d)cam.rot);
+            printf( "->new cam.qrot(%g,%g,%g,%g) \n", cam.qrot().x,cam.qrot().y,cam.qrot().z,cam.qrot().w );
+            printf( "cam: aspect %g zoom %g \n", cam.aspect(), cam.zoom());
+            printMat((Mat3d)cam.rotMat());
             }
         );
 }
@@ -336,15 +334,14 @@ TestAppFireCoreVisual::TestAppFireCoreVisual( int& id, int WIDTH_, int HEIGHT_ )
     picked_lvec = &builder.lvec.a;
 
     // ---- Graphics setup
-    Draw3D::makeSphereOgl( ogl_sph, 5, 1.0 );
     //float l_diffuse  []{ 0.9f, 0.85f, 0.8f,  1.0f };
 	float l_specular []{ 0.0f, 0.0f,  0.0f,  1.0f };
-    //glLightfv    ( GL_LIGHT0, GL_AMBIENT,   l_ambient  );
-	//glLightfv    ( GL_LIGHT0, GL_DIFFUSE,   l_diffuse  );
-	glLightfv    ( GL_LIGHT0, GL_SPECULAR,  l_specular );
+    //opengl1renderer.lightfv    ( GL_LIGHT0, GL_AMBIENT,   l_ambient  );
+	//opengl1renderer.lightfv    ( GL_LIGHT0, GL_DIFFUSE,   l_diffuse  );
+	opengl1renderer.lightfv    ( GL_LIGHT0, GL_SPECULAR,  l_specular );
 
     // ========== Gizmo
-    cam.persp = false;
+    cam.setPersp(false);
     gizmo.cam = &cam;
     gizmo.bindPoints(ff.natoms, ff.apos      );
     gizmo.bindEdges (ff.nbonds, ff.bond2atom );
@@ -360,35 +357,35 @@ TestAppFireCoreVisual::TestAppFireCoreVisual( int& id, int WIDTH_, int HEIGHT_ )
 
 void TestAppFireCoreVisual::renderOrbital(int iMO, double iso ){
     printf( "TestAppFireCoreVisual::renderOrbital() \n" );
-    if(ogl_MO){ glDeleteLists(ogl_MO,1); }
+    if(ogl_MO){ opengl1renderer.deleteLists(ogl_MO,1); }
     qmmm.evalQM( ff.apos, ff.aforce );
     int ntot = MOgrid.n.x*MOgrid.n.y*MOgrid.n.z;
     double* ewfaux = new double[ ntot ];
     fireCore.getGridMO( iMO, ewfaux );
-    ogl_MO  = glGenLists(1);
+    ogl_MO  = opengl1renderer.genLists(1);
     Vec3d p=Vec3d{0.4,2.5,0.0};
-    glNewList(ogl_MO, GL_COMPILE);
-    glTranslatef( p.x, p.y, p.z );
+    opengl1renderer.newList(ogl_MO, GL_COMPILE);
+    opengl1renderer.translatef( p.x, p.y, p.z );
     int ntris=0;  
-    glColor3f(0.0,0.0,1.0); ntris += Draw3D::MarchingCubesCross( MOgrid,  iso, ewfaux, isoSurfRenderType);
-    glColor3f(1.0,0.0,0.0); ntris += Draw3D::MarchingCubesCross( MOgrid, -iso, ewfaux, isoSurfRenderType);
-    glColor3f(0.0f,0.0f,0.0f); Draw3D::drawTriclinicBox(builder.lvec.transposed(), Vec3dZero, Vec3dOne );
-    glTranslatef( -p.x, -p.y, -p.z );
-    glEndList();
+    opengl1renderer.color3f(0.0,0.0,1.0); ntris += Draw3D::MarchingCubesCross( MOgrid,  iso, ewfaux, isoSurfRenderType);
+    opengl1renderer.color3f(1.0,0.0,0.0); ntris += Draw3D::MarchingCubesCross( MOgrid, -iso, ewfaux, isoSurfRenderType);
+    opengl1renderer.color3f(0.0f,0.0f,0.0f); Draw3D::drawTriclinicBox(builder.lvec.transposed(), Vec3dZero, Vec3dOne );
+    opengl1renderer.translatef( -p.x, -p.y, -p.z );
+    opengl1renderer.endList();
     delete [] ewfaux;
 }
 
 void TestAppFireCoreVisual::renderDensity(double iso){
-    if(ogl_MO){ glDeleteLists(ogl_MO,1); }
+    if(ogl_MO){ opengl1renderer.deleteLists(ogl_MO,1); }
     qmmm.evalQM( ff.apos, ff.aforce );
     int ntot = MOgrid.n.x*MOgrid.n.y*MOgrid.n.z;
     double* ewfaux = new double[ ntot ];
     fireCore.getGridDens( 0, 0, ewfaux );
-    ogl_MO  = glGenLists(1);
-    glNewList(ogl_MO, GL_COMPILE);
+    ogl_MO  = opengl1renderer.genLists(1);
+    opengl1renderer.newList(ogl_MO, GL_COMPILE);
     int ntris = Draw3D::MarchingCubesCross( MOgrid, iso, ewfaux, isoSurfRenderType  );
     //printf( "renderOrbital() ntris %i \n", ntris );
-    glEndList();
+    opengl1renderer.endList();
     delete [] ewfaux;
 }
 
@@ -417,7 +414,7 @@ void TestAppFireCoreVisual::MDloop(){
         }
         if(ipicked>=0){
             float K = -2.0;
-            Vec3d f = getForceSpringRay( ff.apos[ipicked], (Vec3d)cam.rot.c, ray0, K );
+            Vec3d f = getForceSpringRay( ff.apos[ipicked], (Vec3d)cam.rotMat().c, ray0, K );
             ff.aforce[ipicked].add( f );
         };
         ff.aforce[  10 ].set(0.0); // This is Hack to stop molecule from moving
@@ -437,67 +434,67 @@ void TestAppFireCoreVisual::MDloop(){
 //=================================================
 
 void TestAppFireCoreVisual::draw(){
-    //glClearColor( 0.5f, 0.5f, 0.5f, 1.0f );
-    glClearColor( 1.0f, 1.0f, 1.0f, 1.0f );
-	glClear( GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT );
+    //opengl1renderer.clearColor( 0.5f, 0.5f, 0.5f, 1.0f );
+    opengl1renderer.clearColor( 1.0f, 1.0f, 1.0f, 1.0f );
+	opengl1renderer.clear( GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT );
     // Smooth lines : https://vitaliburkov.wordpress.com/2016/09/17/simple-and-fast-high-quality-antialiased-lines-with-opengl/
-    //glEnable(GL_LINE_SMOOTH);
-    glEnable(GL_BLEND);
-    glEnable(GL_LIGHTING );
-    glEnable(GL_DEPTH_TEST);
+    //opengl1renderer.enable(GL_LINE_SMOOTH);
+    opengl1renderer.enable(GL_BLEND);
+    opengl1renderer.enable(GL_LIGHTING );
+    opengl1renderer.enable(GL_DEPTH_TEST);
 
-    if(frameCount==1){ qCamera.pitch( M_PI );  qCamera0=qCamera; }
+    if(frameCount==1){ qCamera0=cam.qrot(); }
     if(bRunRelax){ MDloop(); }
 
     // --- Mouse Interaction / Visualization
-	ray0 = (Vec3d)(cam.rot.a*mouse_begin_x + cam.rot.b*mouse_begin_y );
+	ray0 = (Vec3d)(cam.rotMat().a*mouse_begin_x + cam.rotMat().b*mouse_begin_y );
     Draw3D::drawPointCross( ray0, 0.1 );        // Mouse Cursor 
-    if(ipicked>=0) Draw3D::drawLine( ff.apos[ipicked], ray0); // Mouse Dragging Visualization
+    if(ipicked>=0) Draw3D::drawLine( ff.apos[ipicked], ray0, COLOR_BLACK); // Mouse Dragging Visualization
     Vec3d ray0_ = ray0;            ray0_.y=-ray0_.y;
     Vec3d ray0_start_=ray0_start;  ray0_start_.y=-ray0_start_.y;
-    if(bDragging)Draw3D::drawTriclinicBoxT(cam.rot, (Vec3f)ray0_start_, (Vec3f)ray0_ );   // Mouse Selection Box
+    if(bDragging)Draw3D::drawTriclinicBoxT(cam.rotMat(), (Vec3f)ray0_start_, (Vec3f)ray0_ );   // Mouse Selection Box
 
     if(ogl_MO){ 
-        glPushMatrix();
+        opengl1renderer.pushMatrix();
         Vec3d c = builder.lvec.a*-0.5 + builder.lvec.b*-0.5 + builder.lvec.c*-0.5;
-        glTranslatef( c.x, c.y, c.z );
-            glColor3f(1.0,1.0,1.0); 
-            glCallList(ogl_MO); 
-        glPopMatrix();
+        opengl1renderer.translatef( c.x, c.y, c.z );
+            opengl1renderer.color3f(1.0,1.0,1.0); 
+            opengl1renderer.callList(ogl_MO); 
+        opengl1renderer.popMatrix();
     }
     if(ogl_isosurf)viewSubstrate( 2, 2, ogl_isosurf, gridFF.grid.cell.a, gridFF.grid.cell.b, gridFF.shift0 );
     if(bDoQM)drawSystemQMMM();
     if(bDoMM)if(builder.bPBC){ Draw3D::drawPBC( (Vec3i){2,2,0}, builder.lvec, [&](Vec3d ixyz){drawSystem(ixyz);} ); } else { drawSystem({0,0,0}); }
     for(int i=0; i<selection.size(); i++){ int ia = selection[i];
-        glColor3f( 0.f,1.f,0.f ); Draw3D::drawSphereOctLines( 8, 0.3, ff.apos[ia] );     }
+        opengl1renderer.color3f( 0.f,1.f,0.f ); Draw3D::drawSphereOctLines( 8, 0.3, ff.apos[ia] );     }
     if(iangPicked>=0){
-        glColor3f(0.,1.,0.);      Draw3D::angle( ff.ang2atom[iangPicked], ff.ang_cs0[iangPicked], ff.apos, fontTex3D );
+        opengl1renderer.color3f(0.,1.,0.);      Draw3D::angle( ff.ang2atom[iangPicked], ff.ang_cs0[iangPicked], ff.apos, fontTex3D );
     }
 
     if(useGizmo){
-        gizmo.draw();
+        gizmo.draw( );
     }
     if(bHexDrawing)drawingHex(5.0);
 };
 
 void TestAppFireCoreVisual::drawHUD(){
-    glDisable ( GL_LIGHTING );
-    gui.draw();
+    opengl1renderer.disable ( GL_LIGHTING );
+    gui.draw( );
 }
 
 void TestAppFireCoreVisual::drawingHex(double z0){
     Vec2i ip; Vec2d dp;
-    Vec3d p3 = rayPlane_hit( ray0, (Vec3d)cam.rot.c, {0.0,0.0,1.0}, {0.0,0.0,z0} );
+    Vec3d p3 = rayPlane_hit( ray0, (Vec3d)cam.rotMat().c, {0.0,0.0,1.0}, {0.0,0.0,z0} );
     Vec2d p{p3.x,p3.y};
     double off=1000.0;
     bool s = ruler.simplexIndex( p+(Vec2d){off,off}, ip, dp );
-    //ruler.nodePoint( ip, p );    glColor3f(1.,1.,1.); Draw3D::drawPointCross(  {p.x,p.y, 5.0}, 0.5 );
-    if(s){glColor3f(1.,0.2,1.);}else{glColor3f(0.2,1.0,1.);}
-    ruler.tilePoint( ip, s, p ); Draw3D::drawPointCross(  {p.x-off,p.y-off, z0}, 0.2 );
+    //ruler.nodePoint( ip, p );    opengl1renderer.color3f(1.,1.,1.); Draw3D::drawPointCross( {p.x,p.y, 5.0}, 0.5 );
+    if(s){opengl1renderer.color3f(1.,0.2,1.);}else{opengl1renderer.color3f(0.2,1.0,1.);}
+    ruler.tilePoint( ip, s, p ); Draw3D::drawPointCross( {p.x-off,p.y-off, z0}, 0.2 );
     
     bool bLine=true;
     if(bDrawHexGrid){
-        if(bLine){glBegin(GL_LINES);}else{glBegin(GL_POINTS);}
+        if(bLine){opengl1renderer.begin(GL_LINES);}else{opengl1renderer.begin(GL_POINTS);}
         ruler.simplexIndex( (Vec2d){off,off}, ip, dp );
         double sc = ruler.step/sqrt(3.0);
         for(int ix=0;ix<10;ix++ ){
@@ -506,24 +503,24 @@ void TestAppFireCoreVisual::drawingHex(double z0){
                 ruler.tilePoint( ip_, true,  p ); 
                 p.sub(off,off);
                 if(bLine){
-                    glColor3f(1.0,0.2,1.0); 
+                    opengl1renderer.color3f(1.0,0.2,1.0); 
                     Vec2d p2;
                     Draw3D::vertex(Vec3f{p.x,p.y,z0}); p2=p+ruler.lvecs[0]*sc; Draw3D::vertex(Vec3f{p2.x,p2.y,z0});
                     Draw3D::vertex(Vec3f{p.x,p.y,z0}); p2=p+ruler.lvecs[1]*sc; Draw3D::vertex(Vec3f{p2.x,p2.y,z0});
                     Draw3D::vertex(Vec3f{p.x,p.y,z0}); p2=p+ruler.lvecs[2]*sc; Draw3D::vertex(Vec3f{p2.x,p2.y,z0});
                 }else{
-                    glColor3f(1.0,0.2,1.0); Draw3D::vertex(Vec3f{p.x,p.y,z0}); ruler.tilePoint( ip_, false, p );  p.add(off,off);
-                    glColor3f(0.2,1.0,1.0); Draw3D::vertex(Vec3f{p.x,p.y,z0});
+                    opengl1renderer.color3f(1.0,0.2,1.0); Draw3D::vertex(Vec3f{p.x,p.y,z0}); ruler.tilePoint( ip_, false, p );  p.add(off,off);
+                    opengl1renderer.color3f(0.2,1.0,1.0); Draw3D::vertex(Vec3f{p.x,p.y,z0});
                 }
             }
         }
-        glEnd();
+        opengl1renderer.end();
     }
 }
 
 void TestAppFireCoreVisual::selectRect( const Vec3d& p0, const Vec3d& p1 ){
     Vec3d Tp0,Tp1,Tp;
-    Mat3d rot = (Mat3d)cam.rot;
+    Mat3d rot = (Mat3d)cam.rotMat();
     rot.dot_to(p0,Tp0);
     rot.dot_to(p1,Tp1);
     _order(Tp0.x,Tp1.x);
@@ -573,30 +570,30 @@ void TestAppFireCoreVisual::makeGridFF( bool recalcFF, bool bRenderGridFF ) {
         Quat4f * FFtot = new Quat4f[ gridFF.grid.getNtot() ];
         gridFF.evalCombindGridFF            ( testREQ, FFtot );
         if(idebug>1)  gridFF.grid.saveXSF<float>( "FFtot_z.xsf", (float*)FFtot, 4,3, gridFF.natoms, gridFF.atypes, gridFF.apos );
-        ogl_isosurf = glGenLists(1);
-        glNewList(ogl_isosurf, GL_COMPILE);
-        glShadeModel( GL_SMOOTH );
-        glEnable(GL_LIGHTING);
-        glEnable(GL_DEPTH_TEST);
+        ogl_isosurf = opengl1renderer.genLists(1);
+        opengl1renderer.newList(ogl_isosurf, GL_COMPILE);
+        opengl1renderer.shadeModel( GL_SMOOTH );
+        opengl1renderer.enable(GL_LIGHTING);
+        opengl1renderer.enable(GL_DEPTH_TEST);
         renderSubstrate_( gridFF.grid, FFtot, gridFF.FFelec, 0.01, true, 0.1);
         Draw3D::drawAxis(1.0);
-        glEndList();
+        opengl1renderer.endList();
         delete [] FFtot;
     }
 }
 
 void TestAppFireCoreVisual::drawSystem( Vec3d ixyz ){
     bool bOrig = (ixyz.x==0)&&(ixyz.y==0)&&(ixyz.z==0);
-    //glColor3f(0.0f,0.0f,0.0f); Draw3D::bondsPBC  ( ff.nbonds, ff.bond2atom, ff.apos, &builder.bondPBC[0], builder.lvec ); // DEBUG
-    glColor3f(0.0f,0.0f,0.0f); Draw3D::bondsPBC  ( ff.nbonds, ff.bond2atom, ff.apos, ff.pbcShifts ); // DEBUG
-    if(bOrig&&mm_bAtoms){ glColor3f(0.0f,0.0f,0.0f); Draw3D::atomLabels( ff.natoms, ff.apos, fontTex3D                     ); }                     //DEBUG
-    Draw3D::atoms( ff.natoms, ff.apos, atypes, params, ogl_sph, 1.0, mm_Rsc, mm_Rsub );       //DEBUG
+    //opengl1renderer.color3f(0.0f,0.0f,0.0f); Draw3D::bondsPBC  ( ff.nbonds, ff.bond2atom, ff.apos, &builder.bondPBC[0], builder.lvec ); // DEBUG
+    Draw3D::bondsPBC  ( ff.nbonds, ff.bond2atom, ff.apos, ff.pbcShifts, COLOR_BLACK ); // DEBUG
+    if(bOrig&&mm_bAtoms){ opengl1renderer.color3f(0.0f,0.0f,0.0f); Draw3D::atomLabels( ff.natoms, ff.apos, fontTex3D                     ); }                     //DEBUG
+    Draw3D::atoms( ff.natoms, ff.apos, atypes, params, 1.0, mm_Rsc, mm_Rsub );       //DEBUG
 }
 
 void TestAppFireCoreVisual::drawSystemQMMM(){
-    glEnable(GL_LIGHTING);
-    glEnable(GL_DEPTH_TEST);
-    glShadeModel(GL_SMOOTH);
+    opengl1renderer.enable(GL_LIGHTING);
+    opengl1renderer.enable(GL_DEPTH_TEST);
+    opengl1renderer.shadeModel(GL_SMOOTH);
     double Rsub = 1.0; 
     double Rsc  = 0.5;
     for(int i=0; i<qmmm.nqm; i++){
@@ -604,9 +601,10 @@ void TestAppFireCoreVisual::drawSystemQMMM(){
         int ityp = qmmm.isCap[i]? 0 : 1;
         const AtomType& atyp = params.atypes[ ityp ];
         Draw::setRGB( atyp.color );
-        Draw3D::drawShape( ogl_sph, ff.apos[im], Mat3dIdentity*((atyp.RvdW-Rsub)*Rsc) );
+        float sz = (atyp.RvdW-Rsub)*Rsc;
+        Draw3D::drawSphere( (Vec3f)ff.apos[im], sz );
     }
-    glColor3f(0.5f,0.0f,0.0f); 
+    opengl1renderer.color3f(0.5f,0.0f,0.0f); 
     Draw3D::atomPropertyLabel( qmmm.nqm, qmmm.charges, qmmm.apos, 1,0, fontTex3D );
 
 }
@@ -616,10 +614,10 @@ void TestAppFireCoreVisual::saveScreenshot( int i, const char* fname ){
     sprintf( str, fname, i );               // DEBUG
     printf( "save to %s \n", str );
     unsigned int *screenPixels = new unsigned int[WIDTH*HEIGHT*4];  //DEBUG
-    glFlush();                                                      //DEBUG
-    glFinish();                                                     //DEBUG
-    //glReadPixels(0, 0, WIDTH, HEIGHT, GL_RGB, GL_UNSIGNED_INT, screenPixels);
-    glReadPixels(0, 0, WIDTH, HEIGHT, GL_RGBA, GL_UNSIGNED_BYTE, screenPixels);   //DEBUG
+    opengl1renderer.flush();                                                      //DEBUG
+    opengl1renderer.finish();                                                     //DEBUG
+    //opengl1renderer.readPixels(0, 0, WIDTH, HEIGHT, GL_RGB, GL_UNSIGNED_INT, screenPixels);
+    opengl1renderer.readPixels(0, 0, WIDTH, HEIGHT, GL_RGBA, GL_UNSIGNED_BYTE, screenPixels);   //DEBUG
     //SDL_Surface *bitmap = SDL_CreateRGBSurfaceFrom(screenPixels, WIDTH, HEIGHT, 32, WIDTH*4, 0xff000000, 0x00ff0000, 0x0000ff00, 0x000000ff );   //DEBUG
     SDL_Surface *bitmap = SDL_CreateRGBSurfaceFrom(screenPixels, WIDTH, HEIGHT, 32, WIDTH*4, 0x000000ff, 0x0000ff00, 0x00ff0000, 0xff000000 );   //DEBUG
     SDL_SaveBMP(bitmap, str);    //DEBUG
@@ -673,7 +671,7 @@ void TestAppFireCoreVisual::eventHandling ( const SDL_Event& event  ){
                 case SDLK_KP_9: picked_lvec->z+=xstep; break;
                 case SDLK_KP_6: picked_lvec->z-=xstep; break;
 
-                case SDLK_KP_0: qCamera = qCamera0; break;
+                case SDLK_KP_0: cam.setQrot(qCamera0); break;
 
                 case SDLK_COMMA:  which_MO--; printf("which_MO %i \n", which_MO ); break;
                 case SDLK_PERIOD: which_MO++; printf("which_MO %i \n", which_MO ); break;
@@ -686,8 +684,8 @@ void TestAppFireCoreVisual::eventHandling ( const SDL_Event& event  ){
 
                 case SDLK_g: useGizmo=!useGizmo; break;
                 case SDLK_f:
-                    //selectShorterSegment( (Vec3d)(cam.rot.a*mouse_begin_x + cam.rot.b*mouse_begin_y + cam.rot.c*-1000.0), (Vec3d)cam.rot.c );
-                    selectShorterSegment( ray0, (Vec3d)cam.rot.c );
+                    //selectShorterSegment( (Vec3d)(cam.rotMat().a*mouse_begin_x + cam.rotMat().b*mouse_begin_y + cam.rotMat().c*-1000.0), (Vec3d)cam.rotMat().c );
+                    selectShorterSegment( ray0, (Vec3d)cam.rotMat().c );
                     //selection.erase();
                     //for(int i:builder.selection){ selection.insert(i); };
                     break;
@@ -703,10 +701,9 @@ void TestAppFireCoreVisual::eventHandling ( const SDL_Event& event  ){
 
                 case SDLK_d: {
                     printf( "DEBUG Camera Matrix\n");
-                    printf( "DEBUG qCamera(%g,%g,%g,%g) \n", qCamera.x,qCamera.y,qCamera.z,qCamera.w );
-                    qCamera.toMatrix(cam.rot);
-                    printf( "DEBUG cam aspect %g zoom %g \n", cam.aspect, cam.zoom);
-                    printMat((Mat3d)cam.rot);
+                    printf( "DEBUG cam.qrot(%g,%g,%g,%g) \n", cam.qrot().x,cam.qrot().y,cam.qrot().z,cam.qrot().w );
+                    printf( "DEBUG cam aspect %g zoom %g \n", cam.aspect(), cam.zoom());
+                    printMat((Mat3d)cam.rotMat());
                 } break;
 
                 //case SDLK_g: iangPicked=(iangPicked+1)%ff.nang;
@@ -720,7 +717,7 @@ void TestAppFireCoreVisual::eventHandling ( const SDL_Event& event  ){
             switch( event.button.button ){
                 case SDL_BUTTON_LEFT:
                     
-                    ipicked = pickParticle( ray0, (Vec3d)cam.rot.c, 0.5, ff.natoms, ff.apos );
+                    ipicked = pickParticle( ray0, (Vec3d)cam.rotMat().c, 0.5, ff.natoms, ff.apos );
                     selection.clear();
                     if(ipicked>=0){ selection.push_back(ipicked); };
                     printf( "picked atom %i \n", ipicked );
@@ -729,7 +726,7 @@ void TestAppFireCoreVisual::eventHandling ( const SDL_Event& event  ){
                     bDragging = true;
                     break;
                 case SDL_BUTTON_RIGHT:
-                    //ibpicked = ff.pickBond( ray0, (Vec3d)cam.rot.c , 0.5 );
+                    //ibpicked = ff.pickBond( ray0, (Vec3d)cam.rotMat().c , 0.5 );
                     //printf("ibpicked %i \n", ibpicked);
                     break;
             }
@@ -740,7 +737,7 @@ void TestAppFireCoreVisual::eventHandling ( const SDL_Event& event  ){
                     //ipicked = -1;
                     //ray0_start
                     if( ray0.dist2(ray0_start)<0.1 ){
-                        ipicked = pickParticle( ray0, (Vec3d)cam.rot.c, 0.5, ff.natoms, ff.apos );
+                        ipicked = pickParticle( ray0, (Vec3d)cam.rotMat().c, 0.5, ff.natoms, ff.apos );
                         selection.clear();
                         if(ipicked>=0){ selection.push_back(ipicked); };
                         printf( "picked atom %i \n", ipicked );
@@ -771,16 +768,16 @@ void  TestAppFireCoreVisual::keyStateHandling( const Uint8 *keys ){
 	//if( keys[ SDL_SCANCODE_RIGHT ] ){ qCamera.dyaw  ( -keyRotSpeed ); }
 	//if( keys[ SDL_SCANCODE_UP    ] ){ qCamera.dpitch(  keyRotSpeed ); }
 	//if( keys[ SDL_SCANCODE_DOWN  ] ){ qCamera.dpitch( -keyRotSpeed ); }
-    //if( keys[ SDL_SCANCODE_A ] ){ cam.pos.add_mul( cam.rot.a, -cameraMoveSpeed ); }
-	//if( keys[ SDL_SCANCODE_D ] ){ cam.pos.add_mul( cam.rot.a,  cameraMoveSpeed ); }
-    //if( keys[ SDL_SCANCODE_W ] ){ cam.pos.add_mul( cam.rot.b,  cameraMoveSpeed ); }
-	//if( keys[ SDL_SCANCODE_S ] ){ cam.pos.add_mul( cam.rot.b, -cameraMoveSpeed ); }
-    //if( keys[ SDL_SCANCODE_Q ] ){ cam.pos.add_mul( cam.rot.c, -cameraMoveSpeed ); }
-	//if( keys[ SDL_SCANCODE_E ] ){ cam.pos.add_mul( cam.rot.c,  cameraMoveSpeed ); }
-    if( keys[ SDL_SCANCODE_LEFT  ] ){ cam.pos.add_mul( cam.rot.a, -cameraMoveSpeed ); }
-	if( keys[ SDL_SCANCODE_RIGHT ] ){ cam.pos.add_mul( cam.rot.a,  cameraMoveSpeed ); }
-    if( keys[ SDL_SCANCODE_UP    ] ){ cam.pos.add_mul( cam.rot.b,  cameraMoveSpeed ); }
-	if( keys[ SDL_SCANCODE_DOWN  ] ){ cam.pos.add_mul( cam.rot.b, -cameraMoveSpeed ); }
+    //if( keys[ SDL_SCANCODE_A ] ){ cam.pos.add_mul( cam.rotMat().a, -cameraMoveSpeed ); }
+	//if( keys[ SDL_SCANCODE_D ] ){ cam.pos.add_mul( cam.rotMat().a,  cameraMoveSpeed ); }
+    //if( keys[ SDL_SCANCODE_W ] ){ cam.pos.add_mul( cam.rotMat().b,  cameraMoveSpeed ); }
+	//if( keys[ SDL_SCANCODE_S ] ){ cam.pos.add_mul( cam.rotMat().b, -cameraMoveSpeed ); }
+    //if( keys[ SDL_SCANCODE_Q ] ){ cam.pos.add_mul( cam.rotMat().c, -cameraMoveSpeed ); }
+	//if( keys[ SDL_SCANCODE_E ] ){ cam.pos.add_mul( cam.rotMat().c,  cameraMoveSpeed ); }
+    if( keys[ SDL_SCANCODE_LEFT  ] ){ cam.shift( cam.rotMat().a * -cameraMoveSpeed ); }
+	if( keys[ SDL_SCANCODE_RIGHT ] ){ cam.shift( cam.rotMat().a *  cameraMoveSpeed ); }
+    if( keys[ SDL_SCANCODE_UP    ] ){ cam.shift( cam.rotMat().b *  cameraMoveSpeed ); }
+	if( keys[ SDL_SCANCODE_DOWN  ] ){ cam.shift( cam.rotMat().b * -cameraMoveSpeed ); }
     //AppSDL2OGL_3D::keyStateHandling( keys );
 };
 

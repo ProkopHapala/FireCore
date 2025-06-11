@@ -13,7 +13,7 @@
 #include "Draw3D.h"
 
 //#include <SDL2/SDL.h>
-//#include <SDL2/SDL_opengl.h>
+//
 
 //#include "GLView.h"  // THE HEADER
 #include "GLView.hpp"  // THE HEADER
@@ -21,34 +21,34 @@
 namespace Cam{
 
 inline void ortho( const Camera& cam, bool zsym ){
-    glMatrixMode( GL_PROJECTION );
-    glLoadIdentity();
+    opengl1renderer.matrixMode( GL_PROJECTION );
+    opengl1renderer.loadIdentity();
     float zmin = cam.zmin; if(zsym) zmin=-cam.zmax;
-	glOrtho( -cam.zoom*cam.aspect, cam.zoom*cam.aspect, -cam.zoom, cam.zoom, zmin, cam.zmax );
+	opengl1renderer.ortho( -cam.zoom()*cam.aspect(), cam.zoom()*cam.aspect(), -cam.zoom(), cam.zoom(), zmin, cam.zmax );
 	float glMat[16];
-	Draw3D::toGLMatCam( { 0.0f, 0.0f, 0.0f}, cam.rot, glMat );
-	glMultMatrixf( glMat );
+	Draw3D::toGLMatCam( { 0.0f, 0.0f, 0.0f}, cam.rotMat(), glMat );
+	opengl1renderer.multMatrixf( glMat );
 
-	glMatrixMode ( GL_MODELVIEW );
-	glLoadIdentity();
-	glTranslatef(-cam.pos.x,-cam.pos.y,-cam.pos.z);
+	opengl1renderer.matrixMode ( GL_MODELVIEW );
+	opengl1renderer.loadIdentity();
+	opengl1renderer.translatef(-cam.pos().x,-cam.pos().y,-cam.pos().z);
 }
 
 inline void perspective( const Camera& cam ){
-    glMatrixMode( GL_PROJECTION );
-    glLoadIdentity();
-    //glFrustum( -ASPECT_RATIO, ASPECT_RATIO, -1, 1, camDist/zoom, VIEW_DEPTH );
-    glFrustum( -cam.aspect*cam.zoom, cam.aspect*cam.zoom, -cam.zoom, cam.zoom, cam.zmin, cam.zmax );
-    //glFrustum( -cam.zoom*cam.aspect, cam.zoom*cam.aspect, -cam.zoom, cam.zoom, cam.zmin, cam.zmax );
+    opengl1renderer.matrixMode( GL_PROJECTION );
+    opengl1renderer.loadIdentity();
+    //opengl1renderer.frustum( -ASPECT_RATIO, ASPECT_RATIO, -1, 1, camDist/zoom, VIEW_DEPTH );
+    opengl1renderer.frustum( -cam.aspect()*cam.zoom(), cam.aspect()*cam.zoom(), -cam.zoom(), cam.zoom(), cam.zmin, cam.zmax );
+    //opengl1renderer.frustum( -cam.zoom*cam.aspect, cam.zoom*cam.aspect, -cam.zoom, cam.zoom, cam.zmin, cam.zmax );
 	float glMat[16];
-	Draw3D::toGLMatCam( { 0.0f, 0.0f, 0.0f}, cam.rot, glMat );
-	glMultMatrixf( glMat );
+	Draw3D::toGLMatCam( { 0.0f, 0.0f, 0.0f}, cam.rotMat(), glMat );
+	opengl1renderer.multMatrixf( glMat );
 
-	glMatrixMode ( GL_MODELVIEW );
-	glLoadIdentity();
-	glTranslatef(-cam.pos.x,-cam.pos.y,-cam.pos.z);
-    //glTranslatef ( -camPos.x+camMat.cx*camDist, -camPos.y+camMat.cy*camDist, -camPos.z+camMat.cz*camDist );
-    //glTranslatef ( -cam.pos.x+camMat.cx*camDist, -camPos.y+camMat.cy*camDist, -camPos.z+camMat.cz*camDist );
+	opengl1renderer.matrixMode ( GL_MODELVIEW );
+	opengl1renderer.loadIdentity();
+	opengl1renderer.translatef(-cam.pos().x,-cam.pos().y,-cam.pos().z);
+    //opengl1renderer.translatef ( -camPos.x+camMat.cx*camDist, -camPos.y+camMat.cy*camDist, -camPos.z+camMat.cz*camDist );
+    //opengl1renderer.translatef ( -cam.pos.x+camMat.cx*camDist, -camPos.y+camMat.cy*camDist, -camPos.z+camMat.cz*camDist );
 }
 
 }; // namespace Cam
@@ -57,18 +57,11 @@ inline void perspective( const Camera& cam ){
 
 void default_draw(){
     //printf( "default_draw \n" );
-    glClearColor( 0.5f, 0.5f, 0.5f, 1.0f );
-    glClear( GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT );
-
-    glEnable    ( GL_LIGHTING );
-    glShadeModel( GL_FLAT     );
+    opengl1renderer.clearColor( 0.5f, 0.5f, 0.5f, 1.0f );
+    opengl1renderer.clear( GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT );
 
     Draw3D::drawBox       ( -1.0f, 1.0f, -1.0f, 1.0f, -1.0f, 1.0f, 0.8f, 0.8f, 0.8f );
-
-    glShadeModel( GL_SMOOTH     );
-    Draw3D::drawSphere_oct( 5, 1.0f, Vec3f{3.0,3.0,3.0} );
-
-    glDisable ( GL_LIGHTING );
+    Draw3D::drawSphere( Vec3f{3.0,3.0,3.0}, 1 );
     Draw3D::drawAxis ( 3.0f );
 }
 
@@ -169,7 +162,7 @@ class GLView{ public:
     void  startSpining ( float x, float y              ){ mouse_spinning = true; mouse_begin_x  = x; mouse_begin_y  = y;	}
     void  endSpining   (                               ){ mouse_spinning = false;	                                    }
     //void  projectMouse ( float mX, float mY, Vec3d& mp ){ mp.set_lincomb( mouseRight(mX), camRight,  mouseUp(mY), camUp ); };
-    void  projectMouse ( float mX, float mY, Vec3f& mp ){ mp.set_lincomb( mouseRight(mX), cam.rot.a,  mouseUp(mY), cam.rot.b ); };
+    void  projectMouse ( float mX, float mY, Vec3f& mp ){ mp.set_lincomb( mouseRight(mX), cam.rotMat().a,  mouseUp(mY), cam.rotMat().b ); };
     void drawCrosshair( float sz );
 
     // ---- Camera
@@ -200,34 +193,8 @@ class GLView{ public:
 
 
 void GLView::setupRenderer(){
-    //float white    [] = { 1.0f, 1.0f,  1.0f,  1.0f };
-    float ambient  [] = { 0.1f, 0.15f, 0.25f, 1.0f };
-    float diffuse  [] = { 0.9f, 0.8f,  0.7f,  1.0f };
-    float specular [] = { 1.0f, 1.0f,  1.0f,  1.0f };
-    float shininess[] = { 80.0f                    };
-    float lightPos [] = { 1.0f, -1.0f, 1.0f, 0.0f  };
-
-    //glMaterialfv ( GL_FRONT_AND_BACK, GL_AMBIENT,   ambient);
-    //glMaterialfv ( GL_FRONT_AND_BACK, GL_DIFFUSE,   diffuse);
-    glMaterialfv ( GL_FRONT_AND_BACK, GL_SPECULAR,  specular);
-    glMaterialfv ( GL_FRONT_AND_BACK, GL_SHININESS, shininess);
-
-    glEnable     ( GL_COLOR_MATERIAL    );
-    glLightfv    ( GL_LIGHT0, GL_POSITION,  lightPos );
-    glLightfv    ( GL_LIGHT0, GL_DIFFUSE,   diffuse  );
-    glLightfv    ( GL_LIGHT0, GL_AMBIENT,   ambient  );
-    glLightfv    ( GL_LIGHT0, GL_SPECULAR,  specular );
-    //glLightfv    ( GL_LIGHT0, GL_AMBIENT,  ambient  );
-    glEnable     ( GL_LIGHTING         );
-    glEnable     ( GL_LIGHT0           );
-    glEnable     ( GL_NORMALIZE        );
-
-    //glLightModeli( GL_LIGHT_MODEL_TWO_SIDE, 1 );
-
-    glEnable     ( GL_DEPTH_TEST       );
-    glHint       ( GL_LINE_SMOOTH_HINT, GL_NICEST );
-    glShadeModel ( GL_SMOOTH           );
-    glPolygonMode( GL_FRONT_AND_BACK, GL_FILL );
+    opengl1renderer.enable     ( GL_DEPTH_TEST       );
+    opengl1renderer.polygonMode( GL_FRONT_AND_BACK, GL_FILL );
 }
 
 void GLView::setDefaults(){
@@ -255,13 +222,10 @@ void GLView::init( int& id, int WIDTH_, int HEIGHT_ ){
 
 GLView::GLView( int& id, int WIDTH_, int HEIGHT_ ){
     init(id,WIDTH_,HEIGHT_);
-    qCamera.setOne();
-    qCamera.toMatrix_unitary( cam.rot );
-    cam.pos.set(0.0);
     GLbyte* s;
     // http://stackoverflow.com/questions/40444046/c-how-to-detect-graphics-card-model
-    printf( "GL_VENDOR  : %s \n", glGetString(GL_VENDOR)  );
-    printf( "GL_VERSION : %s \n", glGetString(GL_VERSION) );
+    printf( "GL_VENDOR  : %s \n", opengl1renderer.getString(GL_VENDOR)  );
+    printf( "GL_VERSION : %s \n", opengl1renderer.getString(GL_VERSION) );
 }
 
 // ===================== UPDATE & DRAW
@@ -269,15 +233,15 @@ GLView::GLView( int& id, int WIDTH_, int HEIGHT_ ){
 /*
 bool GLView::update( ){
     //SDL_RenderPresent(renderer);
-    //glPushMatrix();
+    //opengl1renderer.pushMatrix();
     if( GL_LOCK ){ printf("ScreenSDL2OGL::update GL_LOCK\n"); return; }
     GL_LOCK = true;
     camera();
     draw();
     cameraHUD();
     drawHUD();
-    //glPopMatrix();
-    //glFlush();
+    //opengl1renderer.popMatrix();
+    //opengl1renderer.flush();
     SDL_RenderPresent(renderer);
     GL_LOCK = false;
 }
@@ -301,11 +265,11 @@ bool GLView::pre_draw(){
     GL_LOCK = true;
     camera();
 
-    glClearColor( 0.5f, 0.5f, 0.5f, 1.0f );
-	glClear( GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT );
+    opengl1renderer.clearColor( 0.5f, 0.5f, 0.5f, 1.0f );
+	opengl1renderer.clear( GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT );
 
-	glEnable    ( GL_LIGHTING );
-	glShadeModel( GL_FLAT     );
+	opengl1renderer.enable    ( GL_LIGHTING );
+	opengl1renderer.shadeModel( GL_FLAT     );
 
     //printf( "DEBUG pre_draw[fame=%i] \n", frameCount );
     return GL_LOCK;
@@ -320,27 +284,25 @@ bool GLView::post_draw(){
 }
 
 // void GLView::camera(){
-//     glMatrixMode( GL_PROJECTION );
-//     glLoadIdentity();
-//     glOrtho ( -zoom*ASPECT_RATIO, zoom*ASPECT_RATIO, -zoom, zoom, -VIEW_DEPTH, +VIEW_DEPTH );
-//     glTranslatef( -camX0, -camY0, 0.0f );
-//     glMatrixMode (GL_MODELVIEW);
+//     opengl1renderer.matrixMode( GL_PROJECTION );
+//     opengl1renderer.loadIdentity();
+//     opengl1renderer.ortho ( -zoom*ASPECT_RATIO, zoom*ASPECT_RATIO, -zoom, zoom, -VIEW_DEPTH, +VIEW_DEPTH );
+//     opengl1renderer.translatef( -camX0, -camY0, 0.0f );
+//     opengl1renderer.matrixMode (GL_MODELVIEW);
 // }
 
 void GLView::camera(){
-    ((Quat4f)qCamera).toMatrix(cam.rot);
-    cam.zoom   = zoom;
-    cam.aspect = ASPECT_RATIO;
+    cam.setZoom(zoom);
     if (perspective){ Cam::perspective( cam ); }
     else            { Cam::ortho( cam, true ); }
 }
 
 void GLView::cameraHUD(){
-    glMatrixMode( GL_PROJECTION );
-    glLoadIdentity();
-    glOrtho ( 0, WIDTH, 0, HEIGHT, -VIEW_DEPTH, +VIEW_DEPTH );
-    glMatrixMode (GL_MODELVIEW);
-    glLoadIdentity();
+    opengl1renderer.matrixMode( GL_PROJECTION );
+    opengl1renderer.loadIdentity();
+    opengl1renderer.ortho ( 0, WIDTH, 0, HEIGHT, -VIEW_DEPTH, +VIEW_DEPTH );
+    opengl1renderer.matrixMode (GL_MODELVIEW);
+    opengl1renderer.loadIdentity();
 }
 
 void GLView::updateMousePos ( int x, int y ){
@@ -349,8 +311,8 @@ void GLView::updateMousePos ( int x, int y ){
 }
 
 //void GLView::draw   (){
-//    glClearColor( 0.5f, 0.5f, 0.5f, 0.0f );
-//    glClear( GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT );
+//    opengl1renderer.clearColor( 0.5f, 0.5f, 0.5f, 0.0f );
+//    opengl1renderer.clear( GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT );
 //}
 
 void GLView::drawHUD(){
@@ -427,16 +389,17 @@ void GLView::eventHandling ( const SDL_Event& event  ){
 }
 
 void GLView::keyStateHandling( const Uint8 *keys ){
-    if( keys[ SDL_SCANCODE_LEFT  ] ){ qCamera.dyaw  (  keyRotSpeed ); }
-    if( keys[ SDL_SCANCODE_RIGHT ] ){ qCamera.dyaw  ( -keyRotSpeed ); }
-    if( keys[ SDL_SCANCODE_UP    ] ){ qCamera.dpitch(  keyRotSpeed ); }
-    if( keys[ SDL_SCANCODE_DOWN  ] ){ qCamera.dpitch( -keyRotSpeed ); }
-    if( keys[ SDL_SCANCODE_A ] ){ cam.pos.add_mul( cam.rot.a, -cameraMoveSpeed ); }
-    if( keys[ SDL_SCANCODE_D ] ){ cam.pos.add_mul( cam.rot.a,  cameraMoveSpeed ); }
-    if( keys[ SDL_SCANCODE_W ] ){ cam.pos.add_mul( cam.rot.b,  cameraMoveSpeed ); }
-    if( keys[ SDL_SCANCODE_S ] ){ cam.pos.add_mul( cam.rot.b, -cameraMoveSpeed ); }
-    if( keys[ SDL_SCANCODE_Q ] ){ cam.pos.add_mul( cam.rot.c, -cameraMoveSpeed ); }
-    if( keys[ SDL_SCANCODE_E ] ){ cam.pos.add_mul( cam.rot.c,  cameraMoveSpeed ); }
+    if( keys[ SDL_SCANCODE_LEFT  ] ){ cam.dyaw  (  keyRotSpeed ); }
+    if( keys[ SDL_SCANCODE_RIGHT ] ){ cam.dyaw  ( -keyRotSpeed ); }
+    if( keys[ SDL_SCANCODE_UP    ] ){ cam.dpitch(  keyRotSpeed ); }
+    if( keys[ SDL_SCANCODE_DOWN  ] ){ cam.dpitch( -keyRotSpeed ); }
+
+    if( keys[ SDL_SCANCODE_A ] ){ cam.shift( cam.rotMat().a * -cameraMoveSpeed ); }
+    if( keys[ SDL_SCANCODE_D ] ){ cam.shift( cam.rotMat().a *  cameraMoveSpeed ); }
+    if( keys[ SDL_SCANCODE_W ] ){ cam.shift( cam.rotMat().b *  cameraMoveSpeed ); }
+    if( keys[ SDL_SCANCODE_S ] ){ cam.shift( cam.rotMat().b * -cameraMoveSpeed ); }
+    if( keys[ SDL_SCANCODE_Q ] ){ cam.shift( cam.rotMat().c * -cameraMoveSpeed ); }
+    if( keys[ SDL_SCANCODE_E ] ){ cam.shift( cam.rotMat().c *  cameraMoveSpeed ); }
     //printf( "frame %i keyStateHandling cam.pos (%g,%g,%g) \n", frameCount, cam.pos.x, cam.pos.y, cam.pos.z );
 }
 
@@ -449,18 +412,18 @@ void GLView::mouseHandling( ){
     //printf( " %i %i \n", mx,my );
     if ( buttons & SDL_BUTTON(SDL_BUTTON_RIGHT)) {
         Quat4f q; q.fromTrackball( 0, 0, -mx*mouseRotSpeed, my*mouseRotSpeed );
-        qCamera.qmul_T( q );
+        cam.qrotQmul_T(q);
     }
     //qCamera.qmul( q );
 }
 
 void GLView::drawCrosshair( float sz ){
-    glBegin( GL_LINES );
+    opengl1renderer.begin( GL_LINES );
     float whalf = WIDTH *0.5;
     float hhalf = HEIGHT*0.5;
-    glVertex3f( whalf-10,hhalf, 0 ); glVertex3f( whalf+10,hhalf, 0 );
-    glVertex3f( whalf,hhalf-10, 0 ); glVertex3f( whalf,hhalf+10, 0 );
-    glEnd();
+    opengl1renderer.vertex3f( whalf-10,hhalf, 0 ); opengl1renderer.vertex3f( whalf+10,hhalf, 0 );
+    opengl1renderer.vertex3f( whalf,hhalf-10, 0 ); opengl1renderer.vertex3f( whalf,hhalf+10, 0 );
+    opengl1renderer.end();
 }
 
 

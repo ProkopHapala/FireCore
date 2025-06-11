@@ -302,9 +302,9 @@ void integrateSK( int nrf, int order, int nint, double dz, double Rmax, double f
     //             ii=ir*nz+iz;
     //             float f = f1[ii];
     //             //float c = 1/(1+exp(f));
-    //             //glColor3f(f,f*5,f*25);
-    //             //glColor3f(f,f*0.1,f*10);
-    //             glColor3f(tanh(f*5),tanh(f),tanh(f*25));
+    //             //opengl1renderer.color3f(f,f*5,f*25);
+    //             //opengl1renderer.color3f(f,f*0.1,f*10);
+    //             opengl1renderer.color3f(tanh(f*5),tanh(f),tanh(f*25));
     //             Draw2D::drawRectangle_d( {x-dz*0.5,y-dr*0.5},{x+dz*0.5,y+dr*0.5} , true);
     //         }
     //     }

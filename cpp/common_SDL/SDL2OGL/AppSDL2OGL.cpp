@@ -1,6 +1,6 @@
 
 #include <SDL2/SDL.h>
-#include <SDL2/SDL_opengl.h>
+
 
 #include "AppSDL2OGL.h" // THE HEADER
 
@@ -20,6 +20,7 @@ void AppSDL2OGL::wait(int ms){
 void AppSDL2OGL::loop( int n ){
 	loopEnd = false;
 	for( int iframe=0; iframe<n; iframe++ ){
+        GLES::context = true;
 		inputHanding();
 		//if(!STOP){update();} // DEPRECATED: usually we want to stop physics, not drawing
 		update();

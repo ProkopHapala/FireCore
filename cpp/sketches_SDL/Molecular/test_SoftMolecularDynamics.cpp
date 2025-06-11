@@ -14,7 +14,7 @@
 #include <fcntl.h>
 
 #include <SDL2/SDL.h>
-#include <SDL2/SDL_opengl.h>
+
 #include "Draw3D.h"
 
 #include "SDL_utils.h"
@@ -37,6 +37,7 @@
 
 #include "repl.h"
 #include "commandTree.h"
+#include "GLMesh.h"
 
 /*
 
@@ -68,7 +69,6 @@ class TestAppSoftMolDyn : public AppSDL2OGL_3D {
     DynamicOpt  opt;
 
     int     fontTex=0,fontTexPix=0;
-    int     ogl_sph=0;
 
     char str[256];
 
@@ -152,9 +152,6 @@ TestAppSoftMolDyn::TestAppSoftMolDyn( int& id, int WIDTH_, int HEIGHT_ ) : AppSD
         //world.ang2atom [i] = (Vec3i){ world.bond2atom[ib.x].y, world.bond2atom[ib.y].y, world.bond2atom[ib.y].x };
     }
 
-    //Draw3D::makeSphereOgl( ogl_sph, 2, 0.25 );
-    Draw3D::makeSphereOgl( ogl_sph, 2, 1.0 );
-
 
     commands.root.func=[]{};
     //commands.root.leafs.insert( { "h", []{printf("Hey!\n")} }  );
@@ -174,8 +171,8 @@ TestAppSoftMolDyn::TestAppSoftMolDyn( int& id, int WIDTH_, int HEIGHT_ ) : AppSD
 
 
 void TestAppSoftMolDyn::draw(){
-    glClearColor( 0.5f, 0.5f, 0.5f, 1.0f );
-	glClear( GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT );
+    opengl1renderer.clearColor( 0.5f, 0.5f, 0.5f, 1.0f );
+	opengl1renderer.clear( GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT );
 
     /*
 	// Non-Blocking terminal input : see https://stackoverflow.com/questions/6055702/using-fgets-as-non-blocking-function-c
@@ -192,12 +189,12 @@ void TestAppSoftMolDyn::draw(){
     repl.eval();
 
     ray0 = (Vec3d)mouseRay0(); Draw3D::drawPointCross( ray0, 0.1 ); //Draw3D::drawVecInPos( camMat.c, ray0 );
-    if(ipicked>=0) Draw3D::drawLine( world.apos[ipicked], ray0);
+    if(ipicked>=0) Draw3D::drawLine( world.apos[ipicked], ray0, COLOR_BLACK);
 
 	double F2;
 	for(int itr=0; itr<perFrame; itr++){
 
-        for(int i=0; i<world.natoms; i++){ world.aforce[i].set(0.0d); }
+        for(int i=0; i<world.natoms; i++){ world.aforce[i].set(0.0); }
 
         //printf( "DEBUG x.1 \n" );
         world.eval_bonds(true);     // with    eval_LJq_On2
@@ -210,7 +207,7 @@ void TestAppSoftMolDyn::draw(){
 
         //exit(0);
         if(ipicked>=0){
-            Vec3d f = getForceSpringRay( world.apos[ipicked], (Vec3d)cam.rot.c, ray0, -1.0 );
+            Vec3d f = getForceSpringRay( world.apos[ipicked], (Vec3d)cam.rotMat().c, ray0, -1.0 );
             //printf( "f (%g,%g,%g)\n", f.x, f.y, f.z );
             world.aforce[ipicked].add( f );
         };
@@ -233,13 +230,12 @@ void TestAppSoftMolDyn::draw(){
 
     }
 
-    glColor3f(0.6f,0.6f,0.6f); Draw3D::plotSurfPlane( Vec3d{0.0,0.0,1.0}, -3.0, {3.0,3.0}, {20,20} );
-    glColor3f(0.0f,0.0f,0.0f);
+    opengl1renderer.color3f(0.6f,0.6f,0.6f); Draw3D::plotSurfPlane( Vec3d{0.0,0.0,1.0}, -3.0, {3.0,3.0}, {20,20} );
+    opengl1renderer.color3f(0.0f,0.0f,0.0f);
     Draw3D::drawLines ( world.nbonds, (int*)world.bond2atom, world.apos );
     Draw3D::bondLabels( world.nbonds,       world.bond2atom, world.apos, fontTex, 0.02 );
-    glColor3f(1.0f,0.0f,0.0f);
-    Draw3D::vecsInPoss( world.natoms, world.aforce, world.apos, 300.0              );
-    Draw3D::atomsREQ  ( world.natoms, world.apos,   world.REQ, ogl_sph, 1.0, 0.25 );
+    Draw3D::vecsInPoss( world.natoms, world.aforce, world.apos, 300.0, COLOR_RED);
+    Draw3D::atomsREQ  ( world.natoms, world.apos,   world.REQ, 1.0, 0.25 );
 
     //printf("==========\n");
     //for(int i=0; i<world.natoms; i++){
@@ -282,10 +278,10 @@ void TestAppSoftMolDyn::eventHandling ( const SDL_Event& event  ){
         case SDL_MOUSEBUTTONDOWN:
             switch( event.button.button ){
                 case SDL_BUTTON_LEFT:
-                    ipicked = pickParticle( ray0, (Vec3d)cam.rot.c , 0.5, world.natoms, world.apos );
+                    ipicked = pickParticle( ray0, (Vec3d)cam.rotMat().c , 0.5, world.natoms, world.apos );
                     break;
                 case SDL_BUTTON_RIGHT:
-                    ibpicked = world.pickBond( ray0, (Vec3d)cam.rot.c , 0.5 );
+                    ibpicked = world.pickBond( ray0, (Vec3d)cam.rotMat().c , 0.5 );
                     printf("ibpicked %i \n", ibpicked);
                     break;
             }
@@ -305,14 +301,13 @@ void TestAppSoftMolDyn::eventHandling ( const SDL_Event& event  ){
 }
 
 void TestAppSoftMolDyn::drawHUD(){
-    glDisable ( GL_LIGHTING );
+    opengl1renderer.disable ( GL_LIGHTING );
     char str[1024];
     commands.curInfo( str );
     //sprintf( str, );
     //Draw3D::drawText( str, Vec3f{10.,10.,0.0}, fontTexPix, 20, 0 );
-    glTranslatef( 10 ,HEIGHT-20 ,0 );
-    Draw::drawText( str, fontTexPix, 7, {100,50} );
-
+    opengl1renderer.translatef( 10 ,HEIGHT-20 ,0 );
+    Draw::drawText( str, {10 ,HEIGHT-20}, 7, {100,50} );
 }
 
 // ===================== MAIN

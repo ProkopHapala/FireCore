@@ -2,8 +2,9 @@
 #ifndef  ScreenSDL2OGL_h
 #define  ScreenSDL2OGL_h
 
+#include "Renderer.h"
 #include <SDL2/SDL.h>
-#include <SDL2/SDL_opengl.h>
+
 
 const float	VIEW_ZOOM_STEP     = 1.2f;
 const float	VIEW_ZOOM_DEFAULT  = 10.0f;
@@ -48,7 +49,6 @@ class ScreenSDL2OGL{ public:
 	Uint32         wflags;
 	SDL_Window*    window;
 	SDL_GLContext  glctx;
-	//SDL_Renderer*    renderer;
 
 // ============ function declarations
 

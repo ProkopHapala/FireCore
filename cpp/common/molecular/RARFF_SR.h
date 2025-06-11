@@ -618,7 +618,7 @@ class RARFF_SR{ public:
                         int ja = neighs[j];
                         pairType.combine( typei, *types[ja] );                           // evaluate interaction parameters form the two atom types 
                         E += pairEF( ia, ja, typei.nbond, types[ja]->nbond, pairType );  // Interact
-                        //glColor3f(0,0,0); Draw3D::drawLine( apos[ia], apos[ja] );
+                        //opengl1renderer.color3f(0,0,0); Draw3D::drawLine( apos[ia], apos[ja] );
                     }
                     //printf( "Other Cells\n");
                     // -- with neighbor cells
@@ -627,7 +627,7 @@ class RARFF_SR{ public:
                         if( ia==ja ) continue; // this should not happen !!!! ( but for some reason it is happening )
                         pairType.combine( typei, *types[ja] );                           // evaluate interaction parameters form the two atom types 
                         E += pairEF( ia, ja, typei.nbond, types[ja]->nbond, pairType );  // Interact
-                        //if( ic==31 ){ glColor3f(0,0,0); Draw3D::drawLine( apos[ia], apos[ja] ); }
+                        //if( ic==31 ){ opengl1renderer.color3f(0,0,0); Draw3D::drawLine( apos[ia], apos[ja] ); }
                     }
                 }
             }

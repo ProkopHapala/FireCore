@@ -1,5 +1,9 @@
 
 #include "GUI.h" // THE HEADER
+#include "Draw2D.h"
+#include "Draw3D.h"
+#include <cstdint>
+#include <sys/types.h>
 
 //Vec2i GUI_mouse_old_pos = (Vec2i){0,0};
 //GUIAbstractPanel* GUI_mouse_panel = 0;
@@ -24,30 +28,26 @@ void GUITextInput::applyVal( float f ){
     num_op = 0;
 }
 
-void GUITextInput::view3D( const Vec3d& pos, int fontTex, float textSize ){
-    //Draw3D::drawText( inputText.c_str(), pos, fontTex, textSize, 0, 0 );
-    glDisable    ( GL_LIGHTING   );
-    glDisable    ( GL_DEPTH_TEST );
-    glShadeModel ( GL_FLAT       );
-    glPushMatrix();
-        glTranslatef( pos.x, pos.y, pos.z );
+void GUITextInput::view3D( const Vec3d& pos, int fontTex, float textSize ){ // TODO: use Draw3D::drawTextBillboard() ??
+    opengl1renderer.disable    ( GL_DEPTH_TEST );
+    opengl1renderer.pushMatrix();
+        opengl1renderer.translatef( pos.x, pos.y, pos.z );
         Draw::billboardCam( );
-        //Draw::drawText( inputText.c_str(), fontTex, textSize, 0, 0 );
-        Draw::drawText( inputText.c_str(), fontTex, textSize, 0 );
-        Draw3D::drawLine( Vec3f{curPos*textSize,0.0,0.0}, Vec3f{curPos*textSize,textSize*2,0.0} );
-    glPopMatrix();
+        textRenderer.set(inputText);
+        textRenderer.draw2D((Vec3f)pos, textSize);
+        Draw3D::drawLine( Vec3f{curPos*textSize,0.0,0.0}, Vec3f{curPos*textSize,textSize*2,0.0}, COLOR_BLACK );
+    opengl1renderer.popMatrix();
 }
 
-void GUITextInput::viewHUD( const Vec2i& pos, int fontTex, bool bBack ){
-    glPushMatrix();
-        glTranslatef( pos.x, pos.y, 0.0 );
-        //Draw::billboardCam();
-        //Draw::drawText( inputText.c_str(), fontTex, textSize, 0, 0 );
+void GUITextInput::viewHUD( const Vec2i& pos, int fontTex, bool bBack ){ // TODO: use Draw3D::drawTextBillboard() ??
+    opengl1renderer.pushMatrix();
+        opengl1renderer.translatef( pos.x, pos.y, 0.0 );
         int nl = inputText.size();
-        if(bBack)Draw2D::drawRectangle( (Vec2f){pos.x,pos.y}, (Vec2f){pos.x+nl*fontSizeDef, pos.y+fontSizeDef*2}, true );
-        Draw::drawText( inputText.c_str(), fontTex, fontSizeDef, 0 );
-        Draw3D::drawLine( Vec3f{curPos*fontSizeDef,0.0,0.0}, Vec3f{curPos*fontSizeDef,fontSizeDef*2,0.0} );
-    glPopMatrix();
+        if(bBack)Draw2D::drawRectangle( (Vec2f){pos.x,pos.y}, (Vec2f){pos.x+nl*fontSizeDef, pos.y+fontSizeDef*2}, COL2VEC(0xA0A0A0) );
+        textRenderer.set(inputText);
+        textRenderer.draw2D({pos.x, pos.y, 0}, fontSizeDef);
+        Draw3D::drawLine( Vec3f{curPos*fontSizeDef,0.0,0.0}, Vec3f{curPos*fontSizeDef,fontSizeDef*2,0.0}, COLOR_BLACK );
+    opengl1renderer.popMatrix();
 }
 
 void GUITextInput::onKeyDown( SDL_Event e ){
@@ -110,58 +110,28 @@ void GUITextInput::onText( SDL_Event e ){
 //    class GUIAbstractPanel
 // ==============================
 
-void GUIAbstractPanel::view  ( ){
-    // Draw2D::drawPointCross({xmin,ymax},5);
-    glCallList( gllist );
-}
-
 void GUIAbstractPanel::moveBy(int dx, int dy){
     xmin += dx; ymin += dy;
     xmax += dx; ymax += dy;
-    redraw=true; //tryRender();
 }
 
 void GUIAbstractPanel::moveTo(int x, int y){
     moveBy(x-xmin,y-ymin);
-    //xmax = x+(xmax-xmin);
-    //ymax = y+(ymax-ymin);
-    //xmin = x;
-    //ymin = y;
-    //redraw=true; tryRender();
 }
 
 void GUIAbstractPanel::render(){
     //printf( "GUIAbstractPanel::render() p0(%i,%i) p2(%i,%i) \n", xmin, ymin, xmax, ymax );
-    glDisable   ( GL_LIGHTING    );
-    glDisable   ( GL_DEPTH_TEST  );
-    glShadeModel( GL_FLAT        );
-    Draw  ::setRGB( bgColor );
-    Draw2D::drawRectangle ( xmin, ymin, xmax, ymax, true );
+    opengl1renderer.disable   ( GL_DEPTH_TEST  );
+    Draw2D::drawRectangle( xmin, ymin, xmax, ymax, COL2VEC(bgColor) );
     if(caption.length()>0) {
-        Draw  ::setRGB( textColor );
-        //int nchr = strlen(caption);
-        //Draw2D::drawText( caption, nchr, {xmin, ymax-fontSizeDef*2},  0.0, GUI_fontTex, fontSizeDef );
-        Draw2D::drawText( caption.c_str(), caption.length(), {xmin, ymax-fontSizeDef*2},  0.0, GUI_fontTex, fontSizeDef );
+        captionRenderer.set(caption);
+        captionRenderer.draw2D({xmin, ymax-fontSizeDef*2}, fontSizeDef, COL2VEC(textColor));
     }
-    redraw=false;
-}
-
-void GUIAbstractPanel::tryRender(){
-    if(!redraw) return;
-    if(gllist)glDeleteLists(gllist,1);
-    gllist=glGenLists(1);
-    glNewList( gllist, GL_COMPILE );
-    render();
-    glEndList();
-    redraw=false;
 }
 
 void GUIAbstractPanel::initPanel( const std::string& caption_, int xmin_, int ymin_, int xmax_, int ymax_ ){
-    //printf( "GUIAbstractPanel::initPanel(%s,pmin(%i,%i),pmax(%i,%i)) \n", caption_.c_str(), xmin_, ymin_, xmax_, ymax_ );
     caption=caption_;
     xmin=xmin_,ymin=ymin_,xmax=xmax_,ymax=ymax_;
-    redraw = true;
-    //val_text = new char[nCharMax];
 }
 
 GUIAbstractPanel* GUIAbstractPanel::onMouse( int x, int y, const SDL_Event& event, GUI& gui ){ if( check(x,y) ){return this; }else{ return NULL; } };
@@ -187,48 +157,32 @@ bool GUIPanel::checkValue(bool bExit, bool bWarn){
     return ret;
 }
 
-void GUIPanel::view ( ){
-    //tryRender();
-    //Draw2D::drawPointCross({xmin,ymax},5);
-    glCallList( gllist );
-    int nch0 = caption.length();
-    int xcur = xmin + (nch0+curPos)*fontSizeDef;
-    Draw2D::drawLine   ( {xcur, ymin}, {xcur, ymin+fontSizeDef*2} );
-}
-
 void GUIPanel::render(){
-    //printf( "GUIPanel(%s)::render() this(%li) p0(%i,%i) p2(%i,%i) isSlider(%i) isButton(%i) \n", caption.c_str(), (long)this, ymin, xmax, ymax, isSlider, isButton );
     if(isInt){ value=getIntVal(); }
-    glDisable( GL_LIGHTING   );
-    glDisable( GL_DEPTH_TEST );
-    glShadeModel( GL_FLAT    );
-    Draw  ::setRGB( bgColor );
-    Draw2D::drawRectangle ( xmin, ymin, xmax, ymax, true );
+    opengl1renderer.disable( GL_DEPTH_TEST );
+    Draw2D::drawRectangle( xmin, ymin, xmax, ymax, COL2VEC(bgColor) );
 
     // Border ?
-    //Draw  ::setRGB( textColor ); Draw2D::drawRectangle ( xmin, ymin, xmax, ymax, false );
+    //Draw  ::setRGB( textColor ); Draw2D::drawRectangle( xmin, ymin, xmax, ymax, false );
 
     if(isSlider){
-        Draw::setRGB(barColor);
         float dx = val2x(value);
         if( (dx<0)||(dx>(xmax-xmin)) ){ printf( "GUIPanel()::render() va(%f) out of range(0,%g) \n", caption.c_str(), dx, (xmax-xmin) ); }
-        Draw2D::drawRectangle ( xmin, ymin, xmin+dx, ymax, true );
-        //Draw2D::drawRectangle ( xmin, ymax-2*fontSizeDef, xmin+val2x(value), ymax, true );
-        //Draw2D::drawRectangle ( xmin, ymin, xmin+val2x(value), ymax-2*fontSizeDef, true );
+        Draw2D::drawRectangle( xmin, ymin, xmin+dx, ymax, COL2VEC(barColor) );
     }
     Draw  ::setRGB( textColor );
     int nch0 = caption.length();
-    //Draw2D::drawText( caption, nch, {xmin, ymin+fontSizeDef*2,}, 0.0,  GUI_fontTex, fontSizeDef );
-    Draw2D::drawText( caption.c_str(), caption.length(), {xmin, ymax-fontSizeDef*2}, 0.0,  GUI_fontTex, fontSizeDef );
+    captionRenderer.set(caption);
+    captionRenderer.draw2D({xmin, ymax-fontSizeDef*2}, fontSizeDef);
     if(viewVal){ val2text(); }
     int nch = inputText.length();
     if( nch > 0 ){
-        //Draw  ::setRGB( 0xFFFFFFFF );
-        //Draw2D::drawRectangle( xmin+nch0*fontSizeDef, ymax-2*fontSizeDef, xmax, ymax, true );
-        Draw  ::setRGB( textColor );
-        Draw2D::drawText( inputText.c_str(), nch, {xmin+fontSizeDef*nch0, ymin}, 0.0, GUI_fontTex, fontSizeDef );
+        inputTextRenderer.set(inputText);
+        inputTextRenderer.draw2D({xmin+fontSizeDef*nch0, ymin}, fontSizeDef, COL2VEC(textColor));
     }
-    redraw=false;
+
+    int xcur = xmin + (nch0+curPos)*fontSizeDef;
+    Draw2D::drawLine( {xcur, ymin}, {xcur, ymin+fontSizeDef*2} );
 }
 
 void GUIPanel::onKeyDown( const SDL_Event&  e, GUI& gui  ){
@@ -238,16 +192,16 @@ void GUIPanel::onKeyDown( const SDL_Event&  e, GUI& gui  ){
     if ( SDL_GetModState() & KMOD_CTRL ){
         switch (e.key.keysym.sym ){
             case SDLK_v:
-                inputText = SDL_GetClipboardText(); redraw = true; break;
+                inputText = SDL_GetClipboardText(); break;
             case SDLK_c:
-                SDL_SetClipboardText( inputText.c_str() ); redraw = true; break;
+                SDL_SetClipboardText( inputText.c_str() ); break;
         }
     }else{
         switch (e.key.keysym.sym ){
             case SDLK_BACKSPACE:
-                if ( (inputText.length() > 0) && (curPos>0) ){ inputText.erase(curPos-1,1); curPos--; redraw = true;} break;
+                if ( (inputText.length() > 0) && (curPos>0) ){ inputText.erase(curPos-1,1); curPos--; } break;
             case SDLK_DELETE:
-                if ( (inputText.length() > 0) && (curPos<inputText.length()) ){ inputText.erase(curPos,1); redraw = true;} break;
+                if ( (inputText.length() > 0) && (curPos<inputText.length()) ){ inputText.erase(curPos,1); } break;
             case SDLK_LEFT:
                 if(curPos>0) curPos--; break;
             case SDLK_RIGHT:
@@ -256,10 +210,9 @@ void GUIPanel::onKeyDown( const SDL_Event&  e, GUI& gui  ){
             case SDLK_KP_ENTER: doIt = true; [[fallthrough]];
             case SDLK_TAB:
                 try{
-                    float f;
+                    float f=0.0;
                     if(isInt){ f=getIntVal(); }else{ std::stof( inputText.c_str() ); }
                     value=f;
-                    redraw=true;
                 }catch(std::exception const &exc){  
                     //printf("exception:%s\n", exc.what() ); 
                     printf("GUIPanel(%s)::onKeyDown() problem convert inputText(%s) to value(%g) | exception:%s\n", caption.c_str(), inputText.c_str(), value, exc.what() );
@@ -281,7 +234,6 @@ void GUIPanel::onText( const SDL_Event&  e, GUI& gui ){
     //val_text[curPos] = ch;
     //inputText.push_back(ch);
     inputText.insert(curPos,e.text.text); curPos++;
-    redraw = true;
 }
 
 GUIAbstractPanel* GUIPanel::onMouse( int x, int y, const SDL_Event& event, GUI& gui ){
@@ -301,7 +253,6 @@ GUIAbstractPanel* GUIPanel::onMouse( int x, int y, const SDL_Event& event, GUI& 
                 if(bCmdOnSlider) command(this);
                 //sprintf(val_text, "%3.3f", value );
                 //inputText = std::to_string(value);
-                redraw=true;
             }
             if(isButton && (event.button.button==SDL_BUTTON_LEFT ) ){
                 executed=true;
@@ -340,13 +291,11 @@ void MultiPanel::initMulti( const std::string& caption_, int xmin_, int ymin_, i
         subs[i] = new GUIPanel( buf, xmin,yi,xmax,yi+dy, isSlider, isButton,isInt, viewVal, bCmdOnSlider );
         yi-=dy;
     }
-    redraw = true;
 }
 
 void MultiPanel::moveBy(int dx, int dy){
     xmin+=dx; xmax+=dx;
     ymin+=dy; ymax+=dy;
-    redraw=true; //tryRender();
     for(int i=0;i<nsubs;i++){
         subs[i]->moveBy(dx,dy);
     }
@@ -355,13 +304,11 @@ void MultiPanel::moveBy(int dx, int dy){
 void MultiPanel::open(){
     opened = true;
     ymin = ymax - fontSizeDef*2 - dy*nsubs;
-    redraw=true; //tryRender();
 }
 
 void MultiPanel::close(){
     opened = false;
     ymin = ymax - fontSizeDef*2;
-    redraw=true; //tryRender();
 }
 
 void MultiPanel::toggleOpen(){
@@ -369,22 +316,7 @@ void MultiPanel::toggleOpen(){
     //printf( "opened %i \n", opened );
 }
 
-void MultiPanel::view( ){
-    //printf( "MultiPanel::view() opened %i \n", opened );
-    glCallList( gllist );
-    // --- NOTE: we do not need to call view() for subs, because they are already baked into gllist ( see MultiPanel::render() )
-    if(opened){ for(int i=0; i<nsubs; i++){ redraw |= subs[i]->redraw;} }
-    // if(opened){
-    //     for(int i=0; i<nsubs; i++){
-    //         subs[i]->tryRender();
-    //         //subs[i]->view();
-    //     }
-    // }
-    //printf( "MultiPanel::view() END \n" );
-}
-
-void MultiPanel::render( ){
-    //printf( "MultiPanel::render() opened=%i \n", opened );
+void MultiPanel::render(){
     nsubs = subs.size();
     GUIAbstractPanel::render();
     if(opened){
@@ -392,7 +324,6 @@ void MultiPanel::render( ){
             subs[i]->render();
         }
     }
-    //printf( "MultiPanel::render() END\n" );
 }
 
 GUIAbstractPanel* MultiPanel::onMouse  ( int x, int y, const SDL_Event& event, GUI& gui ){
@@ -403,7 +334,6 @@ GUIAbstractPanel* MultiPanel::onMouse  ( int x, int y, const SDL_Event& event, G
             nsubs = subs.size();
             for(int i=0; i<nsubs; i++){
                 active = subs[i]->onMouse ( x, y, event, gui );
-                if(subs[i]->redraw) redraw = true;
                 if(active) return active;
             }
         }
@@ -427,24 +357,6 @@ GUIAbstractPanel* MultiPanel::onMouse  ( int x, int y, const SDL_Event& event, G
 
 void CheckBoxList::initCheckBoxList( int xmin_, int ymin_, int xmax_, int dy_){
     xmin=xmin_,ymin=ymin_,xmax=xmax_, dy=dy_; //fontTex=fontTex_;
-    //ymax=ymin + dy*boxes.s + fontSizeDef*2;
-    //int yi = ymax-dy-fontSizeDef*2;
-    redraw = true;
-}
-
-/*
-void CheckBoxList::moveBy(int dx, int dy){
-    xmin+=dx; xmax+=dx;
-    ymin+=dy; ymax+=dy;
-    redraw=true; //tryRender();
-    for(int i=0;i<nsubs;i++){
-        subs[i]->moveBy(dx,dy);
-    }
-};
-*/
-
-void CheckBoxList::view( ){
-    glCallList( gllist );
 }
 
 void CheckBoxList::update(){
@@ -452,23 +364,21 @@ void CheckBoxList::update(){
     syncRead();
 }
 
-void CheckBoxList::render( ){
-    glDisable( GL_LIGHTING );
-    glDisable( GL_DEPTH_TEST);
-    glShadeModel( GL_FLAT );
+void CheckBoxList::render(){
+    opengl1renderer.disable( GL_DEPTH_TEST);
     update();
 
     int y0 = ymin+boxes.size()*dy;
-    Draw  ::setRGB( bgColor );
-    Draw2D::drawRectangle ( xmin, y0, xmax, y0+dy, true );
+    Draw2D::drawRectangle( xmin, y0, xmax, y0+dy, COL2VEC(bgColor) );
     Draw  ::setRGB( textColor );
-    Draw2D::drawText( caption.c_str(), caption.length(), {xmin, ymax-fontSizeDef*2}, 0.0,  GUI_fontTex, fontSizeDef );
-    //Draw2D::drawText( caption.c_str(), 0, {xmin, y0}, 0.0, GUI_fontTex, fontSizeDef );
+    captionRenderer.set(caption);
+    captionRenderer.draw2D({xmin, ymax-fontSizeDef*2}, fontSizeDef);
     for(int i=0; i<boxes.size(); i++){
         const CheckBox& box = boxes[i];
-        if(box.val){ Draw::setRGB(checkColor); }else{ Draw::setRGB(bgColor); }
+        uint32_t col;
+        if(box.val){ col = checkColor; }else{ col = bgColor; }
         int y=ymin+i*dy;
-        Draw2D::drawRectangle ( xmin, y, xmax, y+dy, true );
+        Draw2D::drawRectangle( xmin, y, xmax, y+dy, COL2VEC(col) );
         Draw  ::setRGB( textColor );
         Draw2D::drawText( box.label.c_str(), 0, {xmin, y}, 0.0, GUI_fontTex, fontSizeDef );
     }
@@ -484,7 +394,6 @@ GUIAbstractPanel* CheckBoxList::onMouse  ( int x, int y, const SDL_Event& event,
                 int ibox = (y-ymin)/dy;
                 if( ibox<boxes.size()){
                     boxes[ibox].flip();
-                    redraw=true;
                     ivalchanged=ibox;
                     return active;
                 }
@@ -502,40 +411,22 @@ GUIAbstractPanel* CheckBoxList::onMouse  ( int x, int y, const SDL_Event& event,
 
 void ScisorBox::initScisor( const std::string& caption_, int xmin_, int ymin_, int xmax_, int ymax_ ){
     caption=caption_;
-    //xmin=xmin_,ymin=ymin_,xmax=xmax_,ymax=ymax_; fontTex=fontTex_;
-    xmin=xmin_,ymin=ymin_,xmax=xmax_, ymax=ymax_; //fontTex=fontTex_;
-    redraw = true;
+    xmin=xmin_,ymin=ymin_,xmax=xmax_, ymax=ymax_;
 }
 
 void ScisorBox::apply( ){
-    glEnable(GL_SCISSOR_TEST);
-    glScissor(xmin,ymin,xmax-xmin,ymax-ymin);
+    opengl1renderer.enable(GL_SCISSOR_TEST);
+    opengl1renderer.scissor(xmin,ymin,xmax-xmin,ymax-ymin);
 }
 
-void ScisorBox::render( ){
-    glDisable   ( GL_LIGHTING    );
-    glDisable   ( GL_DEPTH_TEST  );
-    glShadeModel( GL_FLAT        );
-    Draw  ::setRGB( textColor );
-    Draw2D::drawRectangle ( xmin, ymin, xmax, ymax, false );
+void ScisorBox::render(){
+    opengl1renderer.disable   ( GL_DEPTH_TEST  );
+    Draw2D::drawRectangle( xmin, ymin, xmax, ymax, COL2VEC(textColor) );
     if(caption.length()>0) {
-        //Draw  ::setRGB( textColor );
-        //int nchr = strlen(caption);
-        //Draw2D::drawText( caption, nchr, {xmin, ymax-fontSizeDef*2},  0.0, GUI_fontTex, fontSizeDef );
-        Draw2D::drawText( caption.c_str(), caption.length(), {xmin, ymax-fontSizeDef*2},  0.0, GUI_fontTex, fontSizeDef );
+        captionRenderer.set(caption);
+        captionRenderer.draw2D({xmin, ymax-fontSizeDef*2}, fontSizeDef);
     }
 }
-
-/*
-void ScisorBox::tryRender( ){
-    if(!redraw) return;
-    gllist=glGenLists(1);
-    glNewList( gllist, GL_COMPILE );
-    render();
-    glEndList();
-    redraw=false;
-};
-*/
 
 GUIAbstractPanel* ScisorBox::onMouse( int x, int y, const SDL_Event&  event, GUI& gui){
     GUIAbstractPanel* active = NULL;
@@ -556,11 +447,6 @@ GUIAbstractPanel* ScisorBox::onMouse( int x, int y, const SDL_Event&  event, GUI
 
 void CommandList::initCommandList( int xmin_, int ymin_, int xmax_, int dy_){
     xmin=xmin_,ymin=ymin_,xmax=xmax_, dy=dy_; //fontTex=fontTex_;
-    redraw = true;
-}
-
-void CommandList::view( ){
-    glCallList( gllist );
 }
 
 void CommandList::update(){
@@ -569,15 +455,13 @@ void CommandList::update(){
 
 bool CommandList::getKeyb(int key){
     bool doit = (icmdbind !=-1);
-    if( doit ){ commands->rebind( icmdbind, key ); redraw = true; }
+    if( doit ){ commands->rebind( icmdbind, key ); }
     icmdbind = -1;
     return doit;
 }
 
-void CommandList::render( ){
-    glDisable( GL_LIGHTING );
-    glDisable( GL_DEPTH_TEST);
-    glShadeModel( GL_FLAT );
+void CommandList::render(){
+    opengl1renderer.disable( GL_DEPTH_TEST);
     update();
     auto& cmds = commands->commands;
     char stmp[256];
@@ -585,12 +469,14 @@ void CommandList::render( ){
         const Command& cmd = cmds[i];
         //if(box.val){ Draw::setRGB(checkColor); }else{ Draw::setRGB(bgColor); }
         int y=ymin+i*dy;
-        if(i==icmdbind){ Draw::setRGB( modColor ); }else{ Draw::setRGB( bgColor ); };
-        Draw2D::drawRectangle ( xmin, y, xmax, y+dy, true );
+        uint32_t col;
+        if(i==icmdbind){ col=modColor; }else{ col=bgColor; };
+        Draw2D::drawRectangle( xmin, y, xmax, y+dy, COL2VEC(col) );
         Draw  ::setRGB( textColor );
         if( (cmd.key>=32)&&(cmd.key<128) ){ sprintf( stmp, " '%c' %s" , (char)cmd.key, cmd.name.c_str() ); }
         else                              { sprintf( stmp, "#%03i %s",       cmd.key, cmd.name.c_str() ); }
-        Draw2D::drawText( stmp, 0, {xmin, y}, 0.0, GUI_fontTex, fontSizeDef );
+        captionRenderer.set(stmp);
+        captionRenderer.draw2D({xmin, y}, fontSizeDef);
     }
 }
 
@@ -615,7 +501,6 @@ GUIAbstractPanel* CommandList::onMouse  ( int x, int y, const SDL_Event& event, 
                 auto& cmds = commands->commands;
                 if( ibox<cmds.size()){
                     icmdbind = ibox;
-                    redraw = true;
                     // ToDo : modify keys
                     // Proble:  we need to capture next key
                 }
@@ -636,17 +521,12 @@ void DropDownList::initList( const std::string& caption_, int xmin_, int ymin_, 
     caption=caption_;
     nSlots=nSlots_,xmin=xmin_,ymin=ymin_,xmax=xmax_;//ymax=ymin+2*fontSizeDef*(nSlots+1);
     ymax=ymin+2*fontSizeDef;
-    redraw = true;
 }
 
 int DropDownList::selectedToStr(char* str){
     //printf( "DropDownList::selectedToStr  %i '%s' \n", iSelected, labels[iSelected].c_str()  );
     return sprintf(str,"%s", labels[iSelected].c_str() );
 }
-
-//void DropDownList ::view ( ){
-//    glCallList( gllist );
-//}
 
 DropDownList* DropDownList::addItem(const std::string& label){
     labels.push_back(label);
@@ -656,31 +536,26 @@ DropDownList* DropDownList::addItem(const std::string& label){
 void DropDownList::open(){
     bOpened = true;
     ymin = ymax - fontSizeDef*2*(nSlots+1);
-    redraw=true; //tryRender();
 }
 
 void DropDownList::close(){
     bOpened = false;
     ymin = ymax - fontSizeDef*2;
-    redraw=true; //tryRender();
 }
 
 void DropDownList ::render(){
-    glDisable   ( GL_LIGHTING    );
-    glDisable   ( GL_DEPTH_TEST  );
-    glShadeModel( GL_FLAT        );
-    Draw  ::setRGB( bgColor );
-    Draw2D::drawRectangle ( xmin, ymin, xmax, ymax, true );
+    opengl1renderer.disable   ( GL_DEPTH_TEST  );
+    Draw2D::drawRectangle( xmin, ymin, xmax, ymax, COL2VEC(bgColor) );
     Draw  ::setRGB( textColor );
     //bOpened = false;
     //bOpened = true;
     if(bOpened){
-        Draw  ::setRGB( 0x00FF00 );
         int icur = iSelected-iItem0;
-        if((icur>=0)&&(icur<nSlots)) Draw2D::drawRectangle ( xmin, ymax-(icur+2)*(fontSizeDef*2), xmax, ymax-(icur+1)*(fontSizeDef*2), true );
+        if((icur>=0)&&(icur<nSlots)) Draw2D::drawRectangle( xmin, ymax-(icur+2)*(fontSizeDef*2), xmax, ymax-(icur+1)*(fontSizeDef*2), COLOR_GREEN );
         Draw  ::setRGB( textColor );
         if(caption.length()>0) {
-            Draw2D::drawText( caption.c_str(), caption.length(), {xmin, ymax-fontSizeDef*2},  0.0, GUI_fontTex, fontSizeDef );
+            captionRenderer.set(caption);
+            captionRenderer.draw2D({xmin, ymax-fontSizeDef*2}, fontSizeDef);
         }
         for(int i=0; i<nSlots; i++){
             int iItem = i+iItem0;
@@ -691,23 +566,10 @@ void DropDownList ::render(){
             }
         }
     }else{
-        //if( iSelected<nItems ){
-        //int nch = strlen(caption);
-        Draw2D::drawText( labels[iSelected].c_str(), labels[iSelected].length(), {xmin, ymin}, 0.0, GUI_fontTex, fontSizeDef );
-        //}
+        captionRenderer.set(labels[iSelected]);
+        captionRenderer.draw2D({xmin, ymin}, fontSizeDef);
     }
 }
-
-/*
-void DropDownList ::tryRender( ){
-    if(!redraw) return;
-    gllist=glGenLists(1);
-    glNewList( gllist, GL_COMPILE );
-    render();
-    glEndList();
-    redraw=false;
-};
-*/
 
 GUIAbstractPanel* DropDownList::onMouse ( int x, int y, const SDL_Event& event, GUI& gui ){
     //printf( "DropDownList::onMouse x,y, %i(%i..%i) %i(%i..%i) \n", x,xmin,xmax,  y,ymin,ymax );
@@ -733,13 +595,11 @@ GUIAbstractPanel* DropDownList::onMouse ( int x, int y, const SDL_Event& event, 
                 }else{
                     open();
                 }
-                redraw = true;
             }
         }else if( event.type == SDL_MOUSEWHEEL ){
             //printf( " SDL_MOUSEWHEEL \n" );
             if     (event.wheel.y < 0){ iItem0 = _min( iItem0+1, (int)labels.size()-nSlots ); }
             else if(event.wheel.y > 0){ iItem0 = _max( iItem0-1, 0                    ); }
-            redraw = true;
         }
         return this;
     }
@@ -751,20 +611,12 @@ GUIAbstractPanel* DropDownList::onMouse ( int x, int y, const SDL_Event& event, 
 //     class  TreeView
 // ==============================
 
-
-void TreeView::view( ){
-    glCallList( gllist );
-    Draw  ::setRGB( 0x00FF00 );
-    Draw2D::drawRectangle ( xmin+1, ymax-(iSelected+2)*(fontSizeDef*2), xmax-1, ymax-(iSelected+1)*(fontSizeDef*2), false );
-}
-
 void TreeView::initTreeView( const std::string& caption_, int xmin_, int ymin_, int xmax_, int nSlots_ ){
     caption=caption_;
     nSlots=nSlots_,xmin=xmin_,ymin=ymin_,xmax=xmax_,ymax=ymin+2*fontSizeDef*(nSlots+1);
-    redraw = true;
 }
 
-void TreeView::render( ){
+void TreeView::render(){
     //if(content.open){
         updateLines();
         ymax=ymin+2*fontSizeDef*(nSlots+1);
@@ -772,17 +624,18 @@ void TreeView::render( ){
     //    ymax=ymin+2*fontSizeDef;
     //}
     GUIAbstractPanel::render();
-    //glColor3f(0.0,0.0,1.0); Draw2D::drawPointCross({xmax,ymax},5);
-    //glColor3f(1.0,0.0,0.0); Draw2D::drawPointCross({xmin,ymin},5);
+    //opengl1renderer.color3f(0.0,0.0,1.0); Draw2D::drawPointCross({xmax,ymax},5);
+    //opengl1renderer.color3f(1.0,0.0,0.0); Draw2D::drawPointCross({xmin,ymin},5);
     Draw  ::setRGB( textColor );
     int yoff = ymax - 4*fontSizeDef;
-    glDisable(GL_DEPTH_TEST);
+    opengl1renderer.disable(GL_DEPTH_TEST);
     for( TreeViewTree* tr : lines ){
         if(yoff<=ymin) break;
         std::string& str = tr->content.caption;
         Draw2D::drawText( str.c_str(), str.length(), {xmin+2*fontSizeDef*tr->content.level, yoff}, 0.0, GUI_fontTex, fontSizeDef );
         yoff-=2*fontSizeDef;
     }
+    Draw2D::drawRectangle( xmin+1, ymax-(iSelected+2)*(fontSizeDef*2), xmax-1, ymax-(iSelected+1)*(fontSizeDef*2), COLOR_GREEN );
 }
 
 void TreeView::updateLines( TreeViewTree& node, int level ){
@@ -812,7 +665,6 @@ GUIAbstractPanel* TreeView::onMouse( int x, int y, const SDL_Event& event, GUI& 
                 if(event.button.clicks > 1 ){ // double click
                     if(iSelected<lines.size()){
                         lines[iSelected]->content.open^=true;
-                        redraw=true;
                     }
                 }
                 gui.dragged = this;
@@ -843,33 +695,24 @@ void TableView::initTableView( Table* table_, const std::string& caption_, int x
     for(int i=0; i<nchs.size(); i++){ nchs[i]=nch; x+=nchpix; xs[i+1]=x; }
     xmax = xmin + nchpix       *(jmax-j0);
     ymax = ymin + fontSizeDef*2*(imax-i0);
-    //printf( " i (%i,%i) j (%i,%i) \n", i0, imax,    j0, jmax   );
-    //printf( " x (%i,%i) y (%i,%i) \n", xmin, xmax,  ymin, ymax );
-    redraw = true;
 }
 
 void TableView::render(){
-    glDisable( GL_LIGHTING );
-    glDisable( GL_DEPTH_TEST);
-    glShadeModel( GL_FLAT );
-    Draw  ::setRGB( bgColor );
-    Draw2D::drawRectangle( xmin, ymin, xmax, ymax, true );
+    opengl1renderer.disable( GL_DEPTH_TEST);
+    Draw2D::drawRectangle( xmin, ymin, xmax, ymax, COL2VEC(bgColor) );
     //int ncol = table->columns.size();
     //int ncol=jmax-j0;
     // ==== lines
-    glBegin(GL_LINES);
-    glColor3f(0,0,0);
+    opengl1renderer.begin(GL_LINES);
+    opengl1renderer.color3f(0,0,0);
     int t=0;
     //printf(  "TableView Render %i %i %i %i \n", i0, j0, imax, jmax );
-    t=ymin; for(int i=i0; i<imax;i++){ glVertex3f(xmin,t,0); glVertex3f(xmax,t,0); t+=fontSizeDef*2; }
-    t=xmin; for(int j=j0; j<jmax;j++){ glVertex3f(t,ymin,0); glVertex3f(t,ymax,0); t+=fontSizeDef*nchs[j-j0]; }
-    glEnd();
+    t=ymin; for(int i=i0; i<imax;i++){ opengl1renderer.vertex3f(xmin,t,0); opengl1renderer.vertex3f(xmax,t,0); t+=fontSizeDef*2; }
+    t=xmin; for(int j=j0; j<jmax;j++){ opengl1renderer.vertex3f(t,ymin,0); opengl1renderer.vertex3f(t,ymax,0); t+=fontSizeDef*nchs[j-j0]; }
+    opengl1renderer.end();
     //
-    glColor3f(0,1.0,0);
-    //int x=fontSizeDef*2;
-    //int y=fontSizeDef*2;
     if( (i>=i0)&&(i<imax)&&(j>=j0)&&(j<jmax) ){
-        Draw2D::drawRectangle( xmin+xs[j]-xs[j0], ymax+(i0-i)*2*fontSizeDef, xmin+xs[j+1]-xs[j0], ymax+(i0-i-1)*2*fontSizeDef, false );
+        Draw2D::drawRectangle( xmin+xs[j]-xs[j0], ymax+(i0-i)*2*fontSizeDef, xmin+xs[j+1]-xs[j0], ymax+(i0-i-1)*2*fontSizeDef, COLOR_GREEN );
     }
     // ==== text
     Draw  ::setRGB( textColor );
@@ -913,7 +756,6 @@ GUIAbstractPanel* TableView::onMouse( int x, int y, const SDL_Event& event, GUI&
                 //printf( "TableView mouse select i,j %i %i\n", i, j );
                 gui.bKeyEvents = false;
                 SDL_StartTextInput();
-                redraw = true;
             }
         }else if( event.type == SDL_MOUSEWHEEL ){
             //printf( " SDL_MOUSEWHEEL \n" );
@@ -921,7 +763,6 @@ GUIAbstractPanel* TableView::onMouse( int x, int y, const SDL_Event& event, GUI&
             if     (event.wheel.y < 0){ i0 = _min( i0+1, table->n-ni ); }
             else if(event.wheel.y > 0){ i0 = _max( i0-1, 0           ); }
             imax=i0+ni;
-            redraw = true;
         }
         return this;
     }
@@ -978,19 +819,14 @@ GUIAbstractPanel* GUI::onEvent( int mouseX, int mouseY, const SDL_Event& event )
 }
 
 void GUI::draw(){
-    //printf( "GUI::draw() npanels=%i \n", panels.size() );
-    //glLineWidth(1.0);
-    //glLineWidth(0.5);
-    glDisable(GL_LINE_SMOOTH);
-    glDisable(GL_LIGHTING);
-    glDisable(GL_DEPTH_TEST);
+    opengl1renderer.disable(GL_DEPTH_TEST);
     for(GUIAbstractPanel* panel: panels){ if(focused!=panel)panel->draw(); }
     if(focused){
         focused->draw();
-        if(bTextEvents){ glColor3f(1.0f,0.0f,0.0f); }else{Draw::setRGB(focused->textColor); }
-        Draw2D::drawRectangle(focused->xmin,focused->ymin,focused->xmax,focused->ymax,false);
+        Vec3f col;
+        if(bTextEvents){ col=COLOR_RED; }else{col = COL2VEC(focused->textColor); }
+        Draw2D::drawRectangle( focused->xmin,focused->ymin,focused->xmax,focused->ymax,col, false);
     }
-    //printf( "GUI::draw() END \n" );
 }
 
 void GUI::layoutRow( int xmin, int ymin, int xspace ){

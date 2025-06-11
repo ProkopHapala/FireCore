@@ -110,10 +110,10 @@ double evalLJQ_sortedMask( const Vec3d& shift=Vec3dZero ){
             /*
             if(E>100.0){
                 //printf( "%i %i  %g \n", i, j, E );
-                glColor3f(0.0,1.0,0.0); Draw3D::drawLine( apos[j],pi);
+                opengl1renderer.color3f(0.0,1.0,0.0); Draw3D::drawLine( apos[j],pi);
                 //printf("%i %i %g \n", i, j, fij.norm());
-                glColor3f(1.0,0.0,0.0); Draw3D::drawVecInPos( fij*-1000,apos[j]);
-                glColor3f(1.0,0.0,0.0); Draw3D::drawVecInPos( fij*1000 ,apos[i]);
+                opengl1renderer.color3f(1.0,0.0,0.0); Draw3D::drawVecInPos( fij*-1000,apos[j]);
+                opengl1renderer.color3f(1.0,0.0,0.0); Draw3D::drawVecInPos( fij*1000 ,apos[i]);
             }
             */
 

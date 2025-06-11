@@ -203,7 +203,7 @@ void evalBond(int ibond){
     //f.add_mul(hforce[b.i],0.5); f.add_mul(hforce[b.j],0.5);
     hforce[b.i].set(0.); hforce[b.j].set(0.); // DEBUG : should not affect anything
 
-    glColor3f(0.0,0.0,1.0); Draw3D::drawVecInPos( f, hdir[b.i] );
+    opengl1renderer.color3f(0.0,0.0,1.0); Draw3D::drawVecInPos( f, hdir[b.i] );
 
     /*
     if( substract_LJq ){
@@ -279,7 +279,7 @@ void evalAtom(int ia){
                 fi   .add(d);
                 fs[j].sub(d);
 
-                //glColor3f(1.0,0.0,0.0); Draw3D::drawVecInPos( fja*0.5,apos[ia]+hj*0.5 );
+                //opengl1renderer.color3f(1.0,0.0,0.0); Draw3D::drawVecInPos( fja*0.5,apos[ia]+hj*0.5 );
 
             }
 /*
@@ -307,14 +307,14 @@ void evalAtom(int ia){
                     //fia.set_mul(hj,dfc);
                     //fja.set_mul(hi,dfc);
 
-                    //glColor3f(1.0,0.0,0.0); Draw3D::drawVecInPos( fja*0.5,apos[ia]+hj*0.5 );
+                    //opengl1renderer.color3f(1.0,0.0,0.0); Draw3D::drawVecInPos( fja*0.5,apos[ia]+hj*0.5 );
 
                     //fi.add(fia); fs[j].add(fja);
                     //fa.sub(fia); fa   .sub(fja);
                 }
             }
 */
-            if(i>=conf.c){ glColor3f(1.0,0.0,0.0); Draw3D::drawVecInPos( fi, pi ); }
+            if(i>=conf.c){ opengl1renderer.color3f(1.0,0.0,0.0); Draw3D::drawVecInPos( fi, pi ); }
         }else{           // pi
 /*
             double c,dfc;
@@ -338,7 +338,7 @@ void evalAtom(int ia){
 
     aforce[ia].add(fa);
 
-    glColor3f(1.0,0.0,0.0); Draw3D::drawVecInPos( aforce[ia], pa );
+    opengl1renderer.color3f(1.0,0.0,0.0); Draw3D::drawVecInPos( aforce[ia], pa );
 
     //aforce[ia].set(0.); // DEBUG
 
@@ -589,8 +589,8 @@ void evalAtom(int ia){
                     fja.set_mul(hi,dfc);
 
 
-                    //glColor3f(1.0,0.0,0.0); Draw3D::drawVecInPos( fia*0.5,apos[ia]+hi*0.5 );
-                    glColor3f(1.0,0.0,0.0); Draw3D::drawVecInPos( fja*0.5,apos[ia]+hj*0.5 );
+                    //opengl1renderer.color3f(1.0,0.0,0.0); Draw3D::drawVecInPos( fia*0.5,apos[ia]+hi*0.5 );
+                    opengl1renderer.color3f(1.0,0.0,0.0); Draw3D::drawVecInPos( fja*0.5,apos[ia]+hj*0.5 );
 
                 }else{           // epair-epair
                     dfc = Kee/sqrt((1-c)*0.5);
@@ -599,8 +599,8 @@ void evalAtom(int ia){
                     fia.set_mul(hj,dfc);
                     fja.set_mul(hi,dfc);
 
-                    glColor3f(0.0,0.0,1.0); Draw3D::drawVecInPos( fia*0.5,apos[ia]+hi*0.5 );
-                    glColor3f(0.0,0.0,1.0); Draw3D::drawVecInPos( fja*0.5,apos[ia]+hj*0.5 );
+                    opengl1renderer.color3f(0.0,0.0,1.0); Draw3D::drawVecInPos( fia*0.5,apos[ia]+hi*0.5 );
+                    opengl1renderer.color3f(0.0,0.0,1.0); Draw3D::drawVecInPos( fja*0.5,apos[ia]+hj*0.5 );
 
                 }
             }else{  // pi   - make orthogonal   =>   E = Kp * (<hi,hj>)^2
@@ -620,13 +620,13 @@ void evalAtom(int ia){
 
             }
 
-            //glColor3f(1.0,0.0,1.0); Draw3D::drawVecInPos( fj*0.5,apos[ia]+hj*0.5 );
+            //opengl1renderer.color3f(1.0,0.0,1.0); Draw3D::drawVecInPos( fj*0.5,apos[ia]+hj*0.5 );
 
             fi.add(fia); fj.add(fja);
             fa.sub(fia); fa.sub(fja);
         }
 
-        glColor3f(1.0,0.0,1.0); Draw3D::drawVecInPos( fi*0.5,apos[ia]+hi*0.5 );
+        opengl1renderer.color3f(1.0,0.0,1.0); Draw3D::drawVecInPos( fi*0.5,apos[ia]+hi*0.5 );
     }
 
     //aforce[ia].add(fa);

@@ -10,7 +10,7 @@
 #include <math.h>
 
 #include <SDL2/SDL.h>
-#include <SDL2/SDL_opengl.h>
+
 #include "Draw.h"
 #include "Draw3D.h"
 #include "Solids.h"
@@ -30,14 +30,14 @@
 #include "BondAdaptedMesh.h"
 
 void drawTetrahedron(const Tetrahedron& t){
-    glBegin(GL_LINES);
+    opengl1renderer.begin(GL_LINES);
     Draw3D::vertex(t.a); Draw3D::vertex(t.b);
     Draw3D::vertex(t.a); Draw3D::vertex(t.c);
     Draw3D::vertex(t.a); Draw3D::vertex(t.d);
     Draw3D::vertex(t.b); Draw3D::vertex(t.c);
     Draw3D::vertex(t.c); Draw3D::vertex(t.d);
     Draw3D::vertex(t.d); Draw3D::vertex(t.b);
-    glEnd();
+    opengl1renderer.end();
 }
 
 // ======= THE CLASS
@@ -123,13 +123,12 @@ TestAppRARFF::TestAppRARFF( int& id, int WIDTH_, int HEIGHT_ ) : AppSDL2OGL_3D( 
 
 void TestAppRARFF::draw(){
     //printf( " ==== frame %i \n", frameCount );
-    glClearColor( 0.5f, 0.5f, 0.5f, 1.0f );
-    glClear( GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT );
-    glEnable(GL_DEPTH_TEST);
+    opengl1renderer.clearColor( 0.5f, 0.5f, 0.5f, 1.0f );
+    opengl1renderer.clear( GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT );
+    opengl1renderer.enable(GL_DEPTH_TEST);
 
 
     double fsc = 1.0;
-    glColor3f(0.0,0.0,0.0);
     for(int i=0; i<mol.natoms; i++){
         //printf( "apos[%i] (%g,%g,%g)\n", i, ff.apos[i].x, ff.apos[i].y, ff.apos[i].z );
         Draw3D::drawPointCross( mol.pos  [i] , 0.2 );
@@ -139,27 +138,26 @@ void TestAppRARFF::draw(){
     }
 
     for(int i=0; i<mol.nbonds; i++){
-        Draw3D::drawLine( mol.pos[mol.bond2atom[i].i], mol.pos[mol.bond2atom[i].j] );
+        Draw3D::drawLine( mol.pos[mol.bond2atom[i].i], mol.pos[mol.bond2atom[i].j], COLOR_BLACK );
     }
 
 
-    glColor3f(0.0,0.0,1.0);
     for( MeshEdge& edge: agrid.mesh.edges ){
         Vec3d& a =  agrid.mesh.points[ edge.verts.a ];
         Vec3d& b =  agrid.mesh.points[ edge.verts.b ];
         //Draw3D::drawPointCross( l12.p0, 0.1 ); Draw3D::drawVecInPos( l12.hdir, l12.p0 );
         //printf( "edge %i(%g,%g,%g) %i(%g,%g,%g) \n", edge.verts.a, a.x,a.y,a.z,   edge.verts.b, b.x,b.y,b.z );
-        Draw3D::drawLine( a, b );
+        Draw3D::drawLine( a, b, COLOR_BLACK );
     }
 
-    glColor3f(0.0,1.0,0.0);
+    opengl1renderer.color3f(0.0,1.0,0.0);
     for(int i=0; i<agrid.tetrahedrons.size(); i++){
         drawTetrahedron(agrid.tetrahedrons[i]);
     }
     //exit(0);
 
     for( Vec3d& p: agrid.mesh.points ){
-        glEnable(GL_DEPTH_TEST);
+        opengl1renderer.enable(GL_DEPTH_TEST);
         Draw3D::drawPointCross( p, 0.1 );
     }
 
@@ -167,12 +165,12 @@ void TestAppRARFF::draw(){
     int i=0;
     for( Polygon* pl: agrid.mesh.polygons ){
         Draw::color_of_hash(i*4456464+54844); i++;
-        glBegin(GL_TRIANGLE_FAN);
+        opengl1renderer.begin(GL_TRIANGLE_FAN);
         for( int i : pl->ipoints ){
             Vec3d& v = agrid.mesh.points[i];
-            glVertex3f( v.x,v.y,v.z  );
+            opengl1renderer.vertex3f( v.x,v.y,v.z  );
         }
-        glEnd();
+        opengl1renderer.end();
     }
     */
 
@@ -182,8 +180,8 @@ void TestAppRARFF::draw(){
 void TestAppRARFF::drawHUD(){
 
 
-	glTranslatef( 100.0,100.0,0.0 );
-	glScalef    ( 10.0,10.00,1.0  );
+	opengl1renderer.translatef( 100.0,100.0,0.0 );
+	opengl1renderer.scalef    ( 10.0,10.00,1.0  );
 	//plot1.view();
 
 }
@@ -212,14 +210,14 @@ void TestAppRARFF::eventHandling ( const SDL_Event& event  ){
         case SDL_MOUSEBUTTONDOWN:
             switch( event.button.button ){
                 case SDL_BUTTON_LEFT:
-                    //ipicked = pickParticle( ff.natoms, ff.apos, ray0, (Vec3d)cam.rot.c , 0.5 );
+                    //ipicked = pickParticle( ff.natoms, ff.apos, ray0, (Vec3d)cam.rotMat().c , 0.5 );
                 break;
             }
             break;
         case SDL_MOUSEBUTTONUP:
             switch( event.button.button ){
                 case SDL_BUTTON_LEFT:
-                    //ibpicked = pickParticle( ff.natoms, ff.apos, ray0, (Vec3d)cam.rot.c , 0.5 );
+                    //ibpicked = pickParticle( ff.natoms, ff.apos, ray0, (Vec3d)cam.rotMat().c , 0.5 );
                     //printf( "dist %i %i = ", ipicked, ibpicked );
                     break;
             }

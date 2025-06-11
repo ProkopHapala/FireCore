@@ -6,7 +6,7 @@
 #include <math.h>
 
 #include <SDL2/SDL.h>
-#include <SDL2/SDL_opengl.h>
+
 #include "Draw.h"
 #include "Draw3D.h"
 #include "Solids.h"
@@ -22,6 +22,7 @@
 #include "Plot2D.h"
 
 #include "Draw3D_Molecular.h"
+#include "GLMesh.h"
 
 //#include "MMFF.h"
 
@@ -45,7 +46,6 @@ class TestAppFARFF: public AppSDL2OGL_3D { public:
 
     Plot2D plot1;
 
-    int ogl_sph=0;
     int ipicked = -1;
     Vec3d ray0;
     Vec3d mouse_p0;
@@ -163,21 +163,14 @@ TestAppFARFF::TestAppFARFF( int& id, int WIDTH_, int HEIGHT_ ) : AppSDL2OGL_3D( 
     //opt.initOpt( 0.05, 0.2 );
     opt.initOpt( 0.01, 0.1 );
 
-    //exit(0);
-    Draw3D::makeSphereOgl( ogl_sph, 3, 0.25 );
-    printf( "ogl_sph %li \n", (long)ogl_sph );
-
     ff.printAtoms();
-
-    printf( "ogl_sph %li \n", (long)ogl_sph );
-    //exit(0);
 }
 
 void TestAppFARFF::draw(){
 
-    glClearColor( 0.5f, 0.5f, 0.5f, 1.0f );
-    glClear( GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT );
-    glEnable(GL_DEPTH_TEST);
+    opengl1renderer.clearColor( 0.5f, 0.5f, 0.5f, 1.0f );
+    opengl1renderer.clear( GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT );
+    opengl1renderer.enable(GL_DEPTH_TEST);
 
     if( ff.tryResize( ) ){
         // ToDo : We should properly convert velocities
@@ -196,7 +189,7 @@ void TestAppFARFF::draw(){
             //ff.apos[0].set(.0);
 
             if(ipicked>=0){
-                Vec3d f = getForceSpringRay( ff.apos[ipicked], (Vec3d)cam.rot.c, ray0, -1.0 );
+                Vec3d f = getForceSpringRay( ff.apos[ipicked], (Vec3d)cam.rotMat().c, ray0, -1.0 );
                 //printf( "f (%g,%g,%g)\n", f.x, f.y, f.z );
                 ff.aforce[ipicked].add( f );
             };
@@ -213,11 +206,11 @@ void TestAppFARFF::draw(){
     //atom1.moveRotGD(0.8);
     //printf( "qrot (%g,%g,%g,%g)\n", atom1.qrot.x, atom1.qrot.y, atom1.qrot.z, atom1.qrot.w );
 
-    ray0 = (Vec3d)(cam.rot.a*mouse_begin_x + cam.rot.b*mouse_begin_y);
+    ray0 = (Vec3d)(cam.rotMat().a*mouse_begin_x + cam.rotMat().b*mouse_begin_y);
     Draw3D::drawPointCross( ray0, 0.1 );
-    if(ipicked>=0) Draw3D::drawLine( ff.apos[ipicked], ray0);
+    if(ipicked>=0) Draw3D::drawLine( ff.apos[ipicked], ray0, COLOR_BLACK);
 
-    glColor3f(1.0,1.0,1.0);
+    opengl1renderer.color3f(1.0,1.0,1.0);
     //drawRigidAtom( atom1 );
 
     double fsc = 0.1;
@@ -226,26 +219,26 @@ void TestAppFARFF::draw(){
         if(ff.ignoreAtoms[i]) continue;
         //if(!ff.ignoreAtoms[i]) {
         //printf( "atom[%i] \n", i );
-        if(ff.aconf[i].a==4){ glColor3f(0.5,0.5,0.5); }else{ glColor3f(1.0,1.0,1.0); };
-        Draw3D::drawShape( ogl_sph, ff.apos[i], Mat3dIdentity, false );
-        glColor3f(0.0,0.0,0.0); Draw3D::drawPointCross(ff.apos[i], 0.1 );
-        //glColor3f(1.0,0.0,0.0); Draw3D::drawVecInPos( ff.aforce[i]*fsc, ff.apos[i]  );
+        if(ff.aconf[i].a==4){ opengl1renderer.color3f(0.5,0.5,0.5); }else{ opengl1renderer.color3f(1.0,1.0,1.0); };
+        Draw3D::drawSphere( (Vec3f)ff.apos[i], 1 );
+        opengl1renderer.color3f(0.0,0.0,0.0); Draw3D::drawPointCross( ff.apos[i], 0.1 );
+        //opengl1renderer.color3f(1.0,0.0,0.0); Draw3D::drawVecInPos( ff.aforce[i]*fsc, ff.apos[i]  );
         for(int j=0;j<N_BOND_MAX; j++){
             int io = j + i*N_BOND_MAX;
             if( j<ff.aconf[i].a ){
-                glColor3f(0.0,0.0,0.0); Draw3D::drawVecInPos( ff.opos[io],   ff.apos[i] );
-                //glColor3f(1.0,0.0,0.0); Draw3D::drawVecInPos( ff.oforce[io], ff.apos[i]+ff.opos[io] );
+                Draw3D::drawVecInPos( ff.opos[io],   ff.apos[i], {0.0,0.0,0.0} );
+                //opengl1renderer.color3f(1.0,0.0,0.0); Draw3D::drawVecInPos( ff.oforce[io], ff.apos[i]+ff.opos[io] );
             }else{
-                glColor3f(0.0,0.5,0.0); Draw3D::drawLine    ( ff.apos[i]+ff.opos[io]*0.5, ff.apos[i]-ff.opos[io]*0.5 );
+                Draw3D::drawLine    ( ff.apos[i]+ff.opos[io]*0.5, ff.apos[i]-ff.opos[io]*0.5, {0.0,0.5,0.0} );
             }
         }
         //}
-        //glColor3f(0.0,0.0,1.0); Draw3D::drawVecInPos( ff.atoms[i].torq*tsc,  ff.atoms[i].pos  );
+        //opengl1renderer.color3f(0.0,0.0,1.0); Draw3D::drawVecInPos( ff.atoms[i].torq*tsc,  ff.atoms[i].pos  );
     };
 
     //Draw3D::atoms( ff.natoms, ff.apos, atypes, params, ogl_sph, 1.0, 0.25, 1.0 );
     //Draw3D::shapeInPoss( ogl_sph, ff.natom, ff.apos, ff.aenergy );
-    //glColor3f(1.0,1.0,1.0);
+    //opengl1renderer.color3f(1.0,1.0,1.0);
     //Draw3D::shapeInPoss( ogl_sph, ff.natom, ff.apos, 0 );
 
     //Draw3D::drawAxis( 1.0);
@@ -257,18 +250,18 @@ void TestAppFARFF::draw(){
 
 void TestAppFARFF::drawHUD(){
 /*
-    glColor3f(1.0,1.0,1.0);
+    opengl1renderer.color3f(1.0,1.0,1.0);
     txt.viewHUD( {100,220}, fontTex );
 
 	gui.draw();
 
-	glTranslatef( 10.0,300.0,0.0 );
-	glColor3f(0.5,0.0,0.3);
+	opengl1renderer.translatef( 10.0,300.0,0.0 );
+	opengl1renderer.color3f(0.5,0.0,0.3);
     Draw::drawText( "abcdefghijklmnopqrstuvwxyz \n0123456789 \nABCDEFGHIJKLMNOPQRTSTUVWXYZ \nxvfgfgdfgdfgdfgdfgdfg", fontTex, fontSizeDef, {10,5} );
 */
 
-	glTranslatef( 100.0,100.0,0.0 );
-	glScalef    ( 10.0,10.00,1.0  );
+	opengl1renderer.translatef( 100.0,100.0,0.0 );
+	opengl1renderer.scalef    ( 10.0,10.00,1.0  );
 	plot1.view();
 
 }
@@ -290,12 +283,12 @@ void TestAppFARFF::eventHandling ( const SDL_Event& event  ){
         case SDL_MOUSEBUTTONDOWN:
             switch( event.button.button ){
                 case SDL_BUTTON_LEFT:{
-                    ipicked = pickParticle( ray0, (Vec3d)cam.rot.c, 0.5, ff.natom, ff.apos, ff.ignoreAtoms );
-                    mouse_p0 = (Vec3d)( cam.rot.a*mouse_begin_x + cam.rot.b*mouse_begin_y );
+                    ipicked = pickParticle( ray0, (Vec3d)cam.rotMat().c, 0.5, ff.natom, ff.apos, ff.ignoreAtoms );
+                    mouse_p0 = (Vec3d)( cam.rotMat().a*mouse_begin_x + cam.rotMat().b*mouse_begin_y );
                     printf( "picked atom %i \n", ipicked );
                     }break;
                 case SDL_BUTTON_RIGHT:{
-                    ipicked = pickParticle( ray0, (Vec3d)cam.rot.c, 0.5, ff.natom, ff.apos, ff.ignoreAtoms );
+                    ipicked = pickParticle( ray0, (Vec3d)cam.rotMat().c, 0.5, ff.natom, ff.apos, ff.ignoreAtoms );
                     printf( "remove atom %i \n", ipicked );
                     ff.ignoreAtoms[ ipicked ] = true;
                 }break;
@@ -304,9 +297,9 @@ void TestAppFARFF::eventHandling ( const SDL_Event& event  ){
             switch( event.button.button ){
                 case SDL_BUTTON_LEFT:
                     if( (ipicked==-1) && nbBrush!=0 ){
-                        Vec3d mouse_p = (Vec3d)( cam.rot.a*mouse_begin_x + cam.rot.b*mouse_begin_y );
+                        Vec3d mouse_p = (Vec3d)( cam.rotMat().a*mouse_begin_x + cam.rotMat().b*mouse_begin_y );
                         Vec3d dir = mouse_p-mouse_p0;
-                        ff.inserAtom( {nbBrush,4,4}, mouse_p0, dir, (Vec3d)cam.rot.b );
+                        ff.inserAtom( {nbBrush,4,4}, mouse_p0, dir, (Vec3d)cam.rotMat().b );
                     }
                     ipicked = -1;
                     break;

@@ -6,7 +6,7 @@
 #include "Camera.h"
 
 #include <SDL2/SDL.h>
-#include <SDL2/SDL_opengl.h>
+
 
 #include "GLView.h" 
 
@@ -38,10 +38,6 @@ class GLView{ public:
     float  mouseRotSpeed   = 0.001;
     float  keyRotSpeed     = 0.01;
     float  cameraMoveSpeed = 0.2f;
-
-    Quat4f qCamera    = Quat4fIdentity;
-    Quat4f qCameraOld = Quat4fIdentity;
-    //Mat3f  camMat     = Mat3fIdentity;
 
     bool  mouse_spinning    = false;
 
@@ -102,7 +98,7 @@ class GLView{ public:
     void  startSpining ( float x, float y              ){ mouse_spinning = true; mouse_begin_x  = x; mouse_begin_y  = y;	}
     void  endSpining   (                               ){ mouse_spinning = false;	                                    }
     //void  projectMouse ( float mX, float mY, Vec3d& mp ){ mp.set_lincomb( mouseRight(mX), camRight,  mouseUp(mY), camUp ); };
-    void  projectMouse ( float mX, float mY, Vec3f& mp ){ mp.set_lincomb( mouseRight(mX), cam.rot.a,  mouseUp(mY), cam.rot.b ); };
+    void  projectMouse ( float mX, float mY, Vec3f& mp ){ mp.set_lincomb( mouseRight(mX), cam.rotMat().a,  mouseUp(mY), cam.rotMat().b ); };
     void drawCrosshair( float sz );
 
     // ---- Camera

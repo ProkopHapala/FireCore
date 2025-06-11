@@ -38,10 +38,16 @@ class Mat4T{
 		T    arr2d[4][4];
 	};
 
+    inline bool operator==(const MAT& m) const {return (a==m.a) && (b==m.b) && (c==m.c) && (d==m.d); }
+    inline explicit operator Mat4T<double>()const{ return Mat4T<double>{ (double)xx,(double)xy,(double)xz,(double)xw, (double)yx,(double)yy,(double)yz,(double)yw, (double)zx,(double)zy,(double)zz,(double)zw, (double)wx,(double)wy,(double)wz,(double)ww }; }
+    inline explicit operator Mat4T<float >()const{ return Mat4T<float >{ (float )xx,(float )xy,(float )xz,(float )xw, (float )yx,(float )yy,(float )yz,(float )yw, (float )zx,(float )zy,(float )zz,(float )zw, (float )wx,(float )wy,(float )wz,(float )ww }; }
+    inline explicit operator Mat4T<int   >()const{ return Mat4T<int   >{ (int   )xx,(int   )xy,(int   )xz,(int   )xw, (int   )yx,(int   )yy,(int   )yz,(int   )yw, (int   )zx,(int   )zy,(int   )zz,(int   )zw, (int   )wx,(int   )wy,(int   )wz,(int   )ww }; }
+
 // ====== initialization
 
 	inline void setOne(     ){ xx=yy=zz=ww=1; xy=xz=xw=yx=yz=yw=zx=zy=zw=wx=wy=wz=0; };
 	inline void set   ( T f ){ xx=yy=zz=ww=f; xy=xz=xw=yx=yz=yw=zx=zy=zw=wx=wy=wz=0; };
+    inline void setDiag( T x, T y, T z, T w ){ xx=x; yy=y; zz=z; ww=w; xy=xz=xw=yx=yz=yw=zx=zy=zw=wx=wy=wz=0; };
 
 	inline void set_outer  ( const VEC& a, const VEC& b ){
 		xx=a.x*b.x; xy=a.x*b.y; xz=a.x*b.z; xw=a.x*b.w;
@@ -63,9 +69,9 @@ class Mat4T{
     inline void  colw_to( VEC& out){ out.x = xw; out.y = yw; out.z = zw; out.w = ww; };
 
 	inline void  setColx( const VEC v ){ xx = v.x; yx = v.y; zx = v.z; wx = v.w; };
-	inline void  setColy( const VEC v ){ xy = v.x; yy = v.y; zy = v.z; wx = v.w; };
-	inline void  setColz( const VEC v ){ xz = v.x; yz = v.y; zz = v.z; wx = v.w; };
-	inline void  setColw( const VEC v ){ xw = v.x; yw = v.y; zw = v.z; wx = v.w; };
+	inline void  setColy( const VEC v ){ xy = v.x; yy = v.y; zy = v.z; wy = v.w; };
+	inline void  setColz( const VEC v ){ xz = v.x; yz = v.y; zz = v.z; wz = v.w; };
+	inline void  setColw( const VEC v ){ xw = v.x; yw = v.y; zw = v.z; ww = v.w; };
 
     inline void setTranspose( MAT& m ){ setColx(m.a); setColy(m.b); setColz(m.c); setColw(m.d); };
     inline MAT   transposed(){ MAT M; M.setColx(a); M.setColy(b); M.setColz(c); M.setColw(d); return M; };
@@ -105,49 +111,47 @@ class Mat4T{
 
 // ====== matrix multiplication
 
-	inline void set_mmul( const MAT& A, const MAT& B ){ for(int i=0; i<4; i++){ for(int j=0; j<4; j++){
+	inline void set_mmul( const MAT A, const MAT B ){
+        for(int i=0; i<4; i++){ for(int j=0; j<4; j++){
             arr2d[i][j] = A.arr2d[i][0]*B.arr2d[0][j] + A.arr2d[i][1]*B.arr2d[1][j] + A.arr2d[i][2]*B.arr2d[2][j] + A.arr2d[i][3]*B.arr2d[3][j];
         }}
 	};
 
-    inline void set_mmul_NT( const MAT& A, const MAT& B ){
+    inline void set_mmul_NT( const MAT A, const MAT B ){
         for(int i=0; i<4; i++){ for(int j=0; j<4; j++){
             arr2d[i][j] = A.arr2d[i][0]*B.arr2d[j][0] + A.arr2d[i][1]*B.arr2d[j][1] + A.arr2d[i][2]*B.arr2d[j][2] + A.arr2d[i][3]*B.arr2d[j][3];
         }}
 	};
 
-    inline void set_mmul_TN( const MAT& A, const MAT& B ){
+    inline void set_mmul_TN( const MAT A, const MAT B ){
         for(int i=0; i<4; i++){ for(int j=0; j<4; j++){
             arr2d[i][j] = A.arr2d[0][i]*B.arr2d[0][j] + A.arr2d[1][i]*B.arr2d[1][j] + A.arr2d[2][i]*B.arr2d[2][j] + A.arr2d[3][i]*B.arr2d[3][j];
         }}
 	};
 
-    inline void set_mmul_TT( const MAT& A, const MAT& B ){
+    inline void set_mmul_TT( const MAT A, const MAT B ){
         for(int i=0; i<4; i++){ for(int j=0; j<4; j++){
             arr2d[i][j] = A.arr2d[0][i]*B.arr2d[j][0] + A.arr2d[1][i]*B.arr2d[j][1] + A.arr2d[2][i]*B.arr2d[j][2] + A.arr2d[3][i]*B.arr2d[j][3];
         }}
 	};
 
-	void mmulL( const MAT& A ){ MAT& M=*this; set_mmul( M, A); }
-	void mmulR( const MAT& A ){ MAT& M=*this; set_mmul( A, M); }
+	void mmulL( const MAT& A ){ set_mmul( *this, A); }
+	void mmulR( const MAT& A ){ set_mmul( A, *this); }
 
-    void mmulLT( const MAT& A ){ MAT& M=*this; set_mmul_NT( M, A); }
-	void mmulRT( const MAT& A ){ MAT& M=*this; set_mmul_TN( A, M); }
+    void mmulLT( const MAT& A ){ set_mmul_NT( *this, A); }
+	void mmulRT( const MAT& A ){ set_mmul_TN( A, *this); }
 
-	//   http://www.songho.ca/opengl/gl_projectionmatrix.html
-    void setPerspective( T xmin, T xmax, T ymin, T ymax, T zmin, T zmax ){
-        //T invdx = xmax-xmin; T invdy = ymax-ymin; T invdz = zmax-zmin; // WARRNING : THIS IS WRONG
-        T invdx = 1/(xmax-xmin); T invdy = 1/(ymax-ymin); T invdz = 1/(zmax-zmin);
-        array[0 ]  = 2*zmin*invdx; array[1 ] = 0;            array[2 ] =  (xmax+xmin)*invdx;  array[3 ] = 0;
-        array[4 ]  = 0;            array[5 ] = 2*zmin*invdy; array[6 ] =  (ymax+ymin)*invdy;  array[7 ] = 0;
-        array[8 ]  = 0;            array[9 ] = 0;            array[10] = -(zmax+zmin)*invdz;  array[11] = -2*zmax*zmin*invdz;
-        array[12]  = 0;            array[13] = 0;            array[14] = -1;                  array[15] = 0;
-        /*
-        array[0 ]  = 2*zmin*invdx; array[1 ] = 0;            array[2 ] =  (xmax+xmin)*invdx;  array[3 ] = 0;
-        array[4 ]  = 0;            array[5 ] = 2*zmin*invdy; array[6 ] =  (ymax+ymin)*invdy;  array[7 ] = 0;
-        array[8 ]  = 0;            array[9 ] = 0;            array[10] = -(zmax+zmin)*invdz;  array[11] = zmax*zmin*invdz;
-        array[12]  = 0;            array[13] = 0;            array[14] = -1;                  array[15] = 0;
-        */
+	//   https://registry.khronos.org/OpenGL-Refpages/gl2.1/xhtml/glFrustum.xml
+    void setPerspective( T left, T right, T bottom, T top, T zmin, T zmax ){
+        setOne();
+        xx = 2*zmin/(right-left);
+        yy = 2*zmin/(top-bottom);
+        zz = -(zmax+zmin)/(zmax-zmin);
+        zx = (right+left)/(right-left);
+        zy = (top+bottom)/(top-bottom);
+        zw = -1;
+        wz = -2*(zmax*zmin)/(zmax-zmin);
+        ww = 0;
     }
 
     //   https://www.khronos.org/registry/OpenGL-Refpages/gl2.1/xhtml/gluPerspective.xml
@@ -160,19 +164,13 @@ class Mat4T{
         // WARNING - Should be probably transposed !!!!!!
     }
 
-    // http://www.songho.ca/opengl/gl_projectionmatrix.html
-    void setOrthographic( T W, T H, T zmin, T zmax ){
-        T invdz = 1/(zmax-zmin);
-        /*
-        array[0 ]  = 1/W; array[1 ] = 0;   array[2 ] =  0;       array[3 ] = 0;
-        array[4 ]  = 0;   array[5 ] = 1/H; array[6 ] =  0;       array[7 ] = 0;
-        array[8 ]  = 0;   array[9 ] = 0;   array[10] = 2*invdz;  array[11] = (zmax+zmin)*invdz;
-        array[12]  = 0;   array[13] = 0;   array[14] =  0;       array[15] = 1;
-        */
-        array[0 ]  = 1/W; array[1 ] = 0;   array[2 ] =  0;                  array[3 ] = 0;
-        array[4 ]  = 0;   array[5 ] = 1/H; array[6 ] =  0;                  array[7 ] = 0;
-        array[8 ]  = 0;   array[9 ] = 0;   array[10] = 2*invdz;             array[11] = 0;
-        array[12]  = 0;   array[13] = 0;   array[14] =  (zmax+zmin)*invdz;  array[15] = 1;
+    // https://registry.khronos.org/OpenGL-Refpages/gl2.1/xhtml/glOrtho.xml
+    // with a slight change: array[11] is inverted. No idea why it needs to be there, but it doesn't work otherwise.
+    void setOrthographic( T left, T right, T bottom, T top, T zmin, T zmax ){
+        array[ 0] = 2/(right-left);  array[ 4] = 0;               array[ 8] = 0;              array[12] = -(right+left)/(right-left);
+        array[ 1] = 0;               array[ 5] = 2/(top-bottom);  array[ 9] = 0;              array[13] = -(top+bottom)/(top-bottom);
+        array[ 2] = 0;               array[ 6] = 0;               array[10] = 2/(zmax-zmin);  array[14] = -(zmax+zmin) /(zmax-zmin) ;
+        array[ 3] = 0;               array[ 7] = 0;               array[11] = 0;              array[15] = 1;
     }
 
     void setRot( Mat3T<T> M ){
@@ -194,6 +192,54 @@ class Mat4T{
     }
 
     void normalize(){ for(int i=0;i<4;i++)vecs[i].normalize(); };
+
+    MAT inverse() const {
+        MAT adj;
+
+        adj.xx =  ((Mat3T<T>){yy, yz, yw, zy, zz, zw, wy, wz, ww}.determinant());
+        adj.yx = -((Mat3T<T>){yx, yz, yw, zx, zz, zw, wx, wz, ww}.determinant());
+        adj.zx =  ((Mat3T<T>){yx, yy, yw, zx, zy, zw, wx, wy, ww}.determinant());
+        adj.wx = -((Mat3T<T>){yx, yy, yz, zx, zy, zz, wx, wy, wz}.determinant());
+        
+        adj.xy = -((Mat3T<T>){xy, xz, xw, zy, zz, zw, wy, wz, ww}.determinant());
+        adj.yy =  ((Mat3T<T>){xx, xz, xw, zx, zz, zw, wx, wz, ww}.determinant());
+        adj.zy = -((Mat3T<T>){xx, xy, xw, zx, zy, zw, wx, wy, ww}.determinant());
+        adj.wy =  ((Mat3T<T>){xx, xy, xz, zx, zy, zz, wx, wy, wz}.determinant());
+        
+        adj.xz =  ((Mat3T<T>){xy, xz, xw, yy, yz, yw, wy, wz, ww}.determinant());
+        adj.yz = -((Mat3T<T>){xx, xz, xw, yx, yz, yw, wx, wz, ww}.determinant());
+        adj.zz =  ((Mat3T<T>){xx, xy, xw, yx, yy, yw, wx, wy, ww}.determinant());
+        adj.wz = -((Mat3T<T>){xx, xy, xz, yx, yy, yz, wx, wy, wz}.determinant());
+        
+        adj.xw = -((Mat3T<T>){xy, xz, xw, yy, yz, yw, zy, zz, zw}.determinant());
+        adj.yw =  ((Mat3T<T>){xx, xz, xw, yx, yz, yw, zx, zz, zw}.determinant());
+        adj.zw = -((Mat3T<T>){xx, xy, xw, yx, yy, yw, zx, zy, zw}.determinant());
+        adj.ww =  ((Mat3T<T>){xx, xy, xz, yx, yy, yz, zx, zy, zz}.determinant());
+
+        // Calculate the determinant using the first row of the original matrix
+        // and the first column of the adjugate matrix.
+        T det = xx * adj.xx + xy * adj.yx + xz * adj.zx + xw * adj.wx;
+
+        // --- Check for singular matrix ---
+        if (det == T(0)) {
+            printf("ERROR: Failed to invert matrix!\n");
+            return MAT();
+        }
+
+        MAT inv; // The final inverse matrix
+        for (int i = 0; i < 16; ++i) {
+            inv.array[i] = adj.array[i] / det;
+        }
+
+        // test validity of the inverse
+        //MAT test;
+        //test.set_mmul( inv, *this );
+        //printf("Test:\n");
+        //test.printGL();
+        // TODO: test is only almost an identity matrix: up to 1e-7 error for floats and 1e-16 for doubles
+
+        return inv;
+    }
 
     inline T getOrthoForces(MAT& f){
         T c2sum=0;
@@ -226,10 +272,10 @@ class Mat4T{
             err2=0;
             f.set((T)0);
             //for(int i=0;i<4;i++){ err2+=vecs[i].normalize_taylor3(); }
-            for(int i=0;i<4;i++){ err2+=sq( vecs[i].normalize_hybrid( 0.04d+err2conv ) ); }
+            for(int i=0;i<4;i++){ err2+=sq( vecs[i].normalize_hybrid( 0.04+err2conv ) ); }
             err2+=getOrthoForces(f);
             //for(int i=0;i<4;i++){ vecs[i].add_mul( f.vecs[i], 0.5d ); }
-            add_mul( f, 0.5d );
+            add_mul( f, 0.5 );
             //printf( "orthoRun[%i] %g\n", itr, err2 );
             if(err2<err2conv) break;
         }
@@ -248,11 +294,21 @@ class Mat4T{
         printf( " %f %f %f %f \n", dx, dy, dz, dw );
     }
 
+    void printGL(){ // print transposed
+        printf( "%g %g %g %g \n", ax, bx, cx, dx );
+        printf( "%g %g %g %g \n", ay, by, cy, dy );
+        printf( "%g %g %g %g \n", az, bz, cz, dz );
+        printf( "%g %g %g %g \n", aw, bw, cw, dw );
+    }
+
 };
 
 using Mat4i = Mat4T< int   >;
 using Mat4f = Mat4T< float >;
 using Mat4d = Mat4T< double>;
+
+#define Mat4fIdentity ((Mat4f){ 1,0,0,0, 0,1,0,0, 0,0,1,0, 0,0,0,1 })
+#define Mat4dIdentity ((Mat4d){ 1,0,0,0, 0,1,0,0, 0,0,1,0, 0,0,0,1 })
 
 //inline void convert( const Mat3f& from, Mat3d& to ){ convert( from.a, to.a ); convert( from.b, to.b ); convert( from.c, to.c ); };
 //inline void convert( const Mat3d& from, Mat3f& to ){ convert( from.a, to.a ); convert( from.b, to.b ); convert( from.c, to.c ); };

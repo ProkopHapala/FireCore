@@ -81,11 +81,11 @@ void initRigidSubstrate(){
     world.gridFF.evalCombindGridFF( testREQ, FFtot );
     world.gridFF.grid.saveXSF<float>( "FFtot_z.xsf", (float*)FFtot, 4,3, world.gridFF.natoms, world.gridFF.atypes,  world.gridFF.apos );
 
-    //isoOgl = glGenLists(1);
-    //glNewList(isoOgl, GL_COMPILE);
+    //isoOgl = opengl1renderer.genLists(1);
+    //opengl1renderer.newList(isoOgl, GL_COMPILE);
     //    renderSubstrate_( world.gridFF.grid, FFtot, world.gridFF.FFelec, 0.01, true );
     //    Draw3D::drawAxis(1.0);
-    //glEndList();
+    //opengl1renderer.endList();
     //cam.pos.z = +5.0;
 }
 
