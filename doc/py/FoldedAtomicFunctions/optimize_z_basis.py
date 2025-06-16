@@ -306,6 +306,9 @@ def create_library_basis(
           where my_func(z_array, index, num_functions, params) returns a 1D basis array.
         {'type': 'list_of_funcs', 'functions': [f1, f2, ...]}
           where fi(z_array) returns a 1D basis array.
+        {'type': 'cutoff_polynomial', 'z_cut': float, 'num_functions': int, 'scale_z': bool}
+          f_k(z) = (z_cut - z)^(2k) for z < z_cut, 0 otherwise.
+          k = 1, ..., num_functions.
 
     Returns:
     --------
@@ -354,6 +357,31 @@ def create_library_basis(
         for i, func in enumerate(custom_functions):
             Phi_list.append(func(z_coords_to_use)) # Pass scaled z if scale_z was true
             basis_labels.append(f"provided_func_{i}")
+    elif basis_type == 'cutoff_polynomial':
+        # f_k(z) = (z_cut - z)^(2k) for z < z_cut, 0 otherwise. k = 1, ..., K_max.
+        # This is generated iteratively:
+        # Let h(z') = (z'_{cut} - z')^2 for z' < z'_{cut} and 0 otherwise (z' can be scaled).
+        # Then f_1(z') = h(z'), f_2(z') = h(z')^2, ..., f_K_max(z') = h(z')^K_max.
+        z_cut_orig = config['z_cut']
+        K_max = config['num_functions']
+        
+        z_cut_eff = z_cut_orig
+        z_var_name = "z"
+        if z_scale_info:
+            z_min, z_range = z_scale_info
+            if abs(z_range) > 1e-9:
+                z_cut_eff = (z_cut_orig - z_min) / z_range
+            z_var_name = "z_scaled"
+
+        base_for_powers = np.zeros_like(z_coords_to_use)
+        mask_below_cut = z_coords_to_use < z_cut_eff
+        base_for_powers[mask_below_cut] = (z_cut_eff - z_coords_to_use[mask_below_cut])**2
+        
+        current_phi_k = np.ones_like(z_coords_to_use) # Start with power 0, then multiply
+        for k_val in range(1, K_max + 1):
+            current_phi_k = current_phi_k * base_for_powers if k_val > 1 else np.copy(base_for_powers) # for k=1, it's base_for_powers itself
+            Phi_list.append(np.copy(current_phi_k))
+            basis_labels.append(f"({z_cut_orig:.2f}-{z_var_name})^{2*k_val}")
     else:
         raise ValueError(f"Unknown basis type: {basis_type}")
 
@@ -531,119 +559,6 @@ def find_optimal_analytical_basis_svd(
     return B_opt_T, U_k_coeffs, s_vals_svd
 
 
-# --- 5. Plotting & Analysis Utilities ---
-
-def plot_1d_profiles(
-    zs: np.ndarray,
-    profiles_T: np.ndarray, # (num_profiles, Nz)
-    title: str,
-    max_plot: int = 10,
-    ws: np.ndarray = None,
-    filename: str = None
-):
-    """Plots 1D profiles."""
-    if profiles_T.size == 0:
-        print(f"No profiles to plot for: {title}")
-        return
-        
-    num_profiles = profiles_T.shape[0]
-    plt.figure(figsize=(10, 6))
-    for i in range(min(num_profiles, max_plot)):
-        plt.plot(zs, profiles_T[i, :], label=f'Profile {i+1}', alpha=0.7)
-    
-    if ws is not None:
-        # Scale weights to fit nicely on the plot
-        ax2 = plt.gca().twinx()
-        min_prof = np.min(profiles_T) if profiles_T.size > 0 else 0
-        max_prof = np.max(profiles_T) if profiles_T.size > 0 else 1
-        # Plot weights such that they are visible, e.g., in top 20% of y-axis range
-        plot_ws = min_prof + 0.8 * (max_prof - min_prof) + 0.2 * (max_prof - min_prof) * (ws / np.max(ws) if np.max(ws) > 0 else ws)
-        ax2.plot(zs, ws, 'k--', label='Weights (scaled)', alpha=0.5, linewidth=1)
-        ax2.set_ylabel('Weights (scaled)')
-        ax2.tick_params(axis='y')
-        # plt.gca().legend(loc='upper left') # Combine legends if possible or adjust
-        # ax2.legend(loc='upper right')
-
-
-    plt.title(title)
-    plt.xlabel('z (Å)')
-    plt.ylabel('Potential / Value')
-    if num_profiles > 0 : plt.legend()
-    plt.grid(True)
-    if filename:
-        plt.savefig(filename)
-        print(f"Plot saved to {filename}")
-    plt.show()
-
-def plot_singular_values(s_vals, K_opt, filename: str = None):
-    """Plots singular values."""
-    if s_vals.size == 0:
-        print("No singular values to plot.")
-        return
-    plt.figure(figsize=(8, 5))
-    plt.plot(range(1, len(s_vals) + 1), s_vals, 'o-')
-    plt.title('Singular Values from SVD of Sample Coefficients Matrix (S)')
-    plt.xlabel('Component Number')
-    plt.ylabel('Singular Value')
-    if K_opt > 0 and K_opt <= len(s_vals):
-      plt.axvline(K_opt, color='r', linestyle='--', label=f'Selected K={K_opt}')
-      plt.legend()
-    plt.grid(True)
-    plt.yscale('log')
-    if filename:
-        plt.savefig(filename)
-        print(f"Plot saved to {filename}")
-    plt.show()
-
-def print_analytical_form_polynomial(
-    U_k_coeffs: np.ndarray, # (P, K)
-    z_scale_info: tuple, # (z_min, z_range)
-    basis_labels: list = None, # Labels for the original Phi_T basis
-    K_to_print: int = -1
-):
-    """Prints analytical form if original basis was polynomial and scaled."""
-    if U_k_coeffs.size == 0: return
-
-    P, K_actual = U_k_coeffs.shape
-    if K_to_print < 0 or K_to_print > K_actual:
-        K_to_print = K_actual
-
-    print("\n--- Analytical Expressions for Optimal Basis Functions ---")
-    if z_scale_info:
-        z_min, z_range = z_scale_info
-        if abs(z_range) < 1e-9:
-             print(f"Note: z_scaled = (z - {z_min:.3f}) / (near_zero_range) => effectively z_scaled is const or z itself if z_min is also near zero")
-        else:
-             print(f"Note: z_scaled = (z - {z_min:.3f}) / {z_range:.3f}")
-    else:
-        print("Note: Original z-coordinates were used (no scaling).")
-
-    for k_idx in range(K_to_print):
-        expr_parts = []
-        for p_idx in range(P):
-            coeff_val = U_k_coeffs[p_idx, k_idx]
-            if abs(coeff_val) > 1e-6: # Only include significant terms
-                term_label = f"phi_{p_idx}"
-                if basis_labels and p_idx < len(basis_labels):
-                    term_label = basis_labels[p_idx]
-                
-                # Check if term_label implies polynomial for z_scaled
-                is_poly_term = "z^" in term_label and ("_scaled" in term_label or not z_scale_info)
-
-                if is_poly_term:
-                    if "z^0" in term_label: # Constant term
-                         expr_parts.append(f"{coeff_val:.3e}")
-                    elif "z^1" in term_label and ("_scaled" in term_label or not z_scale_info): # Linear term
-                         expr_parts.append(f"({coeff_val:.3e} * {'z_scaled' if z_scale_info else 'z'})")
-                    else: # Higher order term
-                        power = term_label.split('^')[-1].replace("_scaled","")
-                        expr_parts.append(f"({coeff_val:.3e} * {'z_scaled' if z_scale_info else 'z'}^{power})")
-                else: # General term from basis_labels
-                    expr_parts.append(f"({coeff_val:.3e} * {term_label})")
-
-        print(f"B_opt_{k_idx+1}({'z_scaled' if z_scale_info else 'z'}) = {' + '.join(expr_parts) if expr_parts else '0.0'}")
-
-
 # --- Main Pipeline Function ---
 def run_optimization_pipeline(
     # Z-coordinates
@@ -719,7 +634,11 @@ def run_optimization_pipeline(
         raise ValueError(f"Y_T shape {_Y_T.shape} inconsistent with common_z_coords (Nz={Nz})")
 
     if do_plots:
-        plot_1d_profiles(zs, _Y_T, "Sample Functions (Y_T)", ws=ws, filename=f"{plot_filename_prefix}sample_functions.png" if plot_filename_prefix else None)
+        plot_1d_profiles(zs, _Y_T, "Sample Functions (Y_T)",
+                         ws=ws,
+                         filename=f"{plot_filename_prefix}sample_functions.png" if plot_filename_prefix else None,
+                         # potential_plot_yscale_factor will be used if applicable
+                        )
 
     # 2. Generate/Load Library Basis Phi_T (P, Nz)
     _Phi_T = Phi_T_library
@@ -887,6 +806,29 @@ if __name__ == "__main__":
             plot_filename_prefix="example_simple_"
         )
         print(f"\nSimple example completed. Optimal basis shape: {B_opt_T_simple.shape}")
+
+    # --- Option C: Example with cutoff polynomials ---
+    print("\n--- Example: Cutoff Polynomial Basis ---")
+    zs_cutoff_example = np.linspace(0.0, 10.0, 150)
+    # Use the same simple Morse potentials as Option B for Y_T
+    num_simple_samples_cutoff = 10
+    Y_T_simple_cutoff = np.zeros((num_simple_samples_cutoff, len(zs_cutoff_example)))
+    a_vals_cutoff = np.linspace(0.8, 2.0, num_simple_samples_cutoff)
+    D_val_cutoff, r0_val_cutoff = 0.1, 2.5 # Morse min around 2.5
+    for i in range(num_simple_samples_cutoff):
+        exp_term = np.exp(-a_vals_cutoff[i] * (zs_cutoff_example - r0_val_cutoff))
+        Y_T_simple_cutoff[i,:] = D_val_cutoff * (exp_term**2 - 2 * exp_term)
+
+    cutoff_lib_basis_config = {'type': 'cutoff_polynomial', 'z_cut': 5.0, 'num_functions': 4, 'scale_z': False}
+    B_opt_T_cutoff, _, _, _, _, _ = run_optimization_pipeline(
+        common_z_coords=zs_cutoff_example,
+        Y_T=Y_T_simple_cutoff,
+        library_basis_config=cutoff_lib_basis_config,
+        num_optimal_K=3,
+        do_plots=True,
+        plot_filename_prefix="example_cutoffpoly_"
+    )
+    print(f"\nCutoff polynomial example completed. Optimal basis shape: {B_opt_T_cutoff.shape}")
 
     # --- Example of providing everything manually ---
     print("\n--- Example: Manual specification of Y_T and Phi_T ---")
