@@ -175,6 +175,18 @@ def generate_1d_potential_profiles(
         L_x = sys_def['L_x']
         atoms_specs = sys_def['atoms_specs']
 
+        # Determine if x_slice_coords are fractional or absolute for the current L_x
+        # Heuristic: if all original x_slice_coords are in [0,1), assume fractional.
+        # A more robust method might involve an explicit flag.
+        current_x_slices_absolute = []
+        if x_slice_coords: # Ensure x_slice_coords is not None
+            is_fractional_heuristic = all(0 <= x_val_orig < 1.0 for x_val_orig in x_slice_coords)
+            if is_fractional_heuristic:
+                current_x_slices_absolute = [x_val_orig * L_x for x_val_orig in x_slice_coords]
+            else:
+                current_x_slices_absolute = list(x_slice_coords) # Use as is (absolute)
+
+
         # Setup GridManager for 2D potential calculation
         # cell_z and z_offset are set to precisely cover the common_z_coords range
         gm = GridManager(cell_x=L_x,
@@ -198,7 +210,7 @@ def generate_1d_potential_profiles(
             V_2D += pc.calculate_coulomb_periodic(n_images=num_periodic_images)
         
         # Extract 1D slices and interpolate
-        for x_val in x_slice_coords:
+        for x_val in current_x_slices_absolute:
             # Find closest x-index in the GridManager's x_coords
             # gm.x_coords are cell centers, X meshgrid is fine
             x_idx = np.argmin(np.abs(gm.x_coords - x_val))
@@ -642,7 +654,8 @@ def run_optimization_pipeline(
     num_systems_to_generate: int = 0,
     system_generation_config: dict = None,
     x_slice_coords_for_generation: list = None,
-    potential_type_for_generation: str = 'morse',
+    # x_slice_coords_for_generation: list, e.g. [0.5] for fractional, or [5.0] for absolute for L_x=10
+    potential_type_for_generation: str = 'morse', # 
     potential_calc_grid_step: float = 0.1,
     num_periodic_images_for_generation: int = 5,
     # Library basis: Provide Phi_T directly OR generate it
@@ -795,19 +808,28 @@ if __name__ == "__main__":
         # Define system generation parameters
         example_sys_gen_config = {
             'L_x': (9.0, 11.0),
-            'num_atom_types': 1, # Simplified: one type of atom, vary its 'a'
+            # To make generated potentials look like simple 1D Morse:
+            # Use fixed L_x, one atom type, specific R and E, and slice at atom's x.
+            # 'L_x': (10.0, 10.0), # Fixed L_x for predictable atom x-position
+            'num_atom_types': 1, 
             'atom_params': [
-                {'R': (2.0, 2.0), 'E': (0.01, 0.01), 'a': (1.2, 2.0), 'q': (0.0,0.0)},
+                # Parameters to match the "simple analytical" example for comparison:
+                # R (r0) = 2.5, E (D) = 0.1. Vary 'a'.
+                {'R': (2.5, 2.5), 'E': (0.1, 0.1), 'a': (1.2, 2.0), 'q': (0.0,0.0)},
             ],
-            'atoms_per_cell_pattern': [[0], [0,0]] # Single atom, or two identical atoms
+            'atoms_per_cell_pattern': [[0]] # Always a single atom in the cell (at L_x/2)
         }
         example_num_systems = 5 # Will create 5 system definitions
-        example_x_slices = [0.25, 0.75] # x/L_x, 2 slices per system
-        # Total samples M = 5 * 2 = 10
+        
+        # If L_x is e.g. 10.0, atom is at x=5.0. Slice there for dx=0.
+        # Pass fractional 0.5; generate_1d_potential_profiles will convert to L_x/2.
+        example_x_slices_fractional = [0.5] 
+        # To get a "pure" Morse from a single atom, set num_periodic_images to 0.
+        example_num_periodic_images = 0 
 
         # Define z-weights (optional, to damp repulsion)
-        # Let potential minimum be roughly around z0=2.5 A
-        example_z0_weights = 2.5
+        # For R=2.5, minimum is at z=2.5.
+        example_z0_weights = 2.5 
         example_z_decay_width = 1.0 # weight becomes 0 at z0 - decay_width = 1.5 A
 
         # Define library basis (polynomials)
@@ -819,10 +841,11 @@ if __name__ == "__main__":
             # Sample generation
             num_systems_to_generate=example_num_systems,
             system_generation_config=example_sys_gen_config,
-            x_slice_coords_for_generation=example_x_slices, # Will be interpreted as fractions of L_x if not absolute
+            x_slice_coords_for_generation=example_x_slices_fractional,
             potential_type_for_generation='morse',
+            num_periodic_images_for_generation=example_num_periodic_images,
             # Weights
-            z_weight_z0=example_z0_weights,
+            z_weight_z0=example_z0_weights, 
             z_weight_decay_width=example_z_decay_width,
             # Library basis
             library_basis_config=example_lib_basis_config,
@@ -896,4 +919,3 @@ if __name__ == "__main__":
         # print_analytical_form_polynomial(U_k_man, None, manual_labels, K_to_print=manual_K) # Already called inside if conditions met
     except Exception as e:
         print(f"Error in manual example: {e}")
-
