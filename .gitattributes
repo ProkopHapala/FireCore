@@ -1,0 +1,2 @@
+*.dat filter=lfs diff=lfs merge=lfs -text
+*.npy_gpu filter=lfs diff=lfs merge=lfs -text
