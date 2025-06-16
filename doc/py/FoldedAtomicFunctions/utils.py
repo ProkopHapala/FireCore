@@ -112,3 +112,42 @@ def print_analytical_form_polynomial(
             label = basis_labels[p] if basis_labels and p < len(basis_labels) else f"phi_{p}"
             parts.append(f"({c:+.3e} * {label})")
         print(f"B_opt_{k+1}(z) = " + " ".join(parts))
+
+def plotFunctionApprox( xs, y_ref, ys_approx, bError=False, colors=None, errMax=1.0e-3 ):
+    fig, ax1 = plt.subplots(figsize=(12, 7))
+    n_approx = len(ys_approx)
+    if colors is None:
+        colors = plt.cm.jet(np.linspace(0, 1, n_approx))
+    # Setup secondary axis for errors
+    if bError:
+        ax2 = ax1.twinx()
+        #ax2.set_ylabel(f'Error * {scErr:.0f}', color='gray')
+        ax2.set_ylabel(f'Error *', color='r')
+        ax2.tick_params(axis='y', labelcolor='gray')
+        ax2.axhline(0, color='gray', linestyle=':', linewidth=0.5)
+    for i in range(n_approx):
+        #poly_approx, z_cut_n = eval_poly_at_z0(zs, k0, n_val, z0_approx)
+        y_app, z_cut_n, label = ys_approx[i]
+        ax1.plot(xs, y_app, label=label+f' z_cut={z_cut_n:.3f}', ls='-', lw=1.0, c=colors[i])
+        # Mark z_cut if it's within the plot range
+        ax1.axvline(z_cut_n, c=colors[i], ls=':', lw=0.8, ymax=0.7)
+        # Plot error for this approximation
+        if bError:
+            error = (y_ref - y_app) #* scErr
+            ax2.plot(xs, error, color=colors[i], linestyle='-.', lw=0.8, label=f'Err {label}')
+            if bError: ax2.set_ylim(-errMax, errMax)
+    ax1.axhline(0, color='k', linestyle='--', linewidth=0.5)
+    ax1.plot(xs, y_ref,':k', label=f'Target', lw=2.0)
+    ax1.set_xlabel('z')
+    ax1.set_ylabel('Value')
+    ax1.set_ylim(-0.1, 1.2)
+    ax1.set_xlim(xs[0], xs[-1])
+    ax1.grid(True, linestyle=':', alpha=0.7)
+    lines, labels = ax1.get_legend_handles_labels()
+    if bError:
+        lines2, labels2 = ax2.get_legend_handles_labels()
+    ax2.legend(lines + lines2, labels + labels2, loc='center right')
+    fig.tight_layout()
+    #plt.savefig("exp_kz_approximation_sequence.png")
+    #plt.show()
+    return ax1, ax2
