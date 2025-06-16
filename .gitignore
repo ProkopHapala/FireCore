@@ -35,3 +35,6 @@ tests/tMMFF/E_yz_scan_C.dat
 *.npy_cpu
 *.npy_gpu
 tests/tMMFF/E_yz_scan_C.dat
+*.npy*
+*.dat
+tests/tMMFF/E_yz_scan_C.dat
