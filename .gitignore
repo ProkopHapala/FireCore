@@ -28,3 +28,10 @@ cpp/build
 cpp/build-*
 .aider*
 .env
+*.dat
+*.npy_cpu
+*.npy_gpu
+tests/tMMFF/E_yz_scan_C.dat
+*.npy_cpu
+*.npy_gpu
+tests/tMMFF/E_yz_scan_C.dat
