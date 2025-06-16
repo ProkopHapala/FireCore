@@ -49,10 +49,11 @@ import pyopencl as cl
 # name="NaCl_45_defect_aligned_16x16"
 # name="NaCl_45_defect_perpendicular_16x16"
 
-# name="NaCl_perfect_12x12"                          #real    12m29.343s user    11m43.004s sys     0m42.534s
+name="NaCl_perfect_12x12"                          #real    12m29.343s user    11m43.004s sys     0m42.534s
 # name="NaCl_45_defect_aligned_12x12"               #real    12m47.250s user    11m40.237s sys     0m46.869s
 # name="NaCl_45_defect_perpendicular_12x12"          #real    12m40.327s user    11m45.507s sys     0m45.874s
-
+# name="NaCl_210_defect_aligned_12x12"
+# name="NaCl_210_defect_perpendicular_12x12"
 
 # name="NaCl_1x1_L1"
 # name="Na_0.9_Cl_-0.9"

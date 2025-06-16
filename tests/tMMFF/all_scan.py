@@ -206,50 +206,56 @@ def relax_scanPlot1D(nscan=1000, span=(0.0,4.0),
     # Create the figure first
     fig = plt.figure(figsize=(18, 10))
     
+    plt.plot(t, Es)
+    plt.title(f"{label} - Energy Profile")
+    plt.xlabel(f"Scan parameter along ({dir[0]:.3f}_{dir[1]:.3f}_{dir[2]:.3f}) direction")
+    plt.ylabel("Energy (eV)")
+    plt.grid(True)
+    
     # Energy plot
-    ax1 = fig.add_subplot(311)
-    ax1.plot(t, Es)
-    ax1.set_title(f"{label} - Energy Profile")
-    ax1.set_xlabel(f"Scan parameter along ({dir[0]:.3f}_{dir[1]:.3f}_{dir[2]:.3f}) direction")
-    ax1.set_ylabel("Energy (eV)")
-    ax1.grid(True)
+    # ax1 = fig.add_subplot(311)
+    # ax1.plot(t, Es)
+    # ax1.set_title(f"{label} - Energy Profile")
+    # ax1.set_xlabel(f"Scan parameter along ({dir[0]:.3f}_{dir[1]:.3f}_{dir[2]:.3f}) direction")
+    # ax1.set_ylabel("Energy (eV)")
+    # ax1.grid(True)
     
     # Position plot for both atoms
-    ax2 = fig.add_subplot(312)
+    # ax2 = fig.add_subplot(312)
     
-    # Plot the first atom coordinates
-    if Ps.shape[1] >= 1:
-        ax2.plot(t, Ps[:, 26, 0], 'r-', label="Atom 26 x")
-        ax2.plot(t, Ps[:, 26, 1], 'g-', label="Atom 26 y")
-        ax2.plot(t, Ps[:, 26, 2], 'b-', label="Atom 26 z")
+    # # Plot the first atom coordinates
+    # if Ps.shape[1] >= 1:
+    #     ax2.plot(t, Ps[:, 26, 0], 'r-', label="Atom 26 x")
+    #     ax2.plot(t, Ps[:, 26, 1], 'g-', label="Atom 26 y")
+    #     ax2.plot(t, Ps[:, 26, 2], 'b-', label="Atom 26 z")
     
-    # Plot the second atom coordinates
-    if Ps.shape[1] >= 2:
-        ax2.plot(t, Ps[:, 29, 0], 'r--', label="Atom 29 x")
-        ax2.plot(t, Ps[:, 29, 1], 'g--', label="Atom 29 y")
-        ax2.plot(t, Ps[:, 29, 2], 'b--', label="Atom 29 z")
+    # # Plot the second atom coordinates
+    # if Ps.shape[1] >= 2:
+    #     ax2.plot(t, Ps[:, 29, 0], 'r--', label="Atom 29 x")
+    #     ax2.plot(t, Ps[:, 29, 1], 'g--', label="Atom 29 y")
+    #     ax2.plot(t, Ps[:, 29, 2], 'b--', label="Atom 29 z")
     
-    ax2.set_title("Atom Positions During Scan")
-    ax2.set_xlabel("Scan parameter")
-    ax2.set_ylabel("Position (Å)")
-    ax2.legend()
-    ax2.grid(True)
+    # ax2.set_title("Atom Positions During Scan")
+    # ax2.set_xlabel("Scan parameter")
+    # ax2.set_ylabel("Position (Å)")
+    # ax2.legend()
+    # ax2.grid(True)
 
 
-    ax3 = fig.add_subplot(313)
+    # ax3 = fig.add_subplot(313)
     
-    # Plot the first atom coordinates
-    for i in range(Ps.shape[1]):
-        ax3.plot(t, Ps[:, i, 0], 'r-', label=f"Atom {i} x")
-        ax3.plot(t, Ps[:, i, 1], 'g-', label=f"Atom {i} y")
-        ax3.plot(t, Ps[:, i, 2], 'b-', label=f"Atom {i} z")
+    # # Plot the first atom coordinates
+    # for i in range(Ps.shape[1]):
+    #     ax3.plot(t, Ps[:, i, 0], 'r-', label=f"Atom {i} x")
+    #     ax3.plot(t, Ps[:, i, 1], 'g-', label=f"Atom {i} y")
+    #     ax3.plot(t, Ps[:, i, 2], 'b-', label=f"Atom {i} z")
 
       
-    ax3.set_title("Atom Positions During Scan")
-    ax3.set_xlabel("Scan parameter")
-    ax3.set_ylabel("Position (Å)")
-    ax3.legend()
-    ax3.grid(True)
+    # ax3.set_title("Atom Positions During Scan")
+    # ax3.set_xlabel("Scan parameter")
+    # ax3.set_ylabel("Position (Å)")
+    # ax3.legend()
+    # ax3.grid(True)
 
     plt.tight_layout()
     
@@ -262,13 +268,16 @@ def relax_scanPlot1D(nscan=1000, span=(0.0,4.0),
         
         # Save energy data separately
         energy_file = f"{base_name}.dat"
+        energy_file_raw = f"{base_name}_raw.dat"
         
         Es_end = Es[-1]
         # Es_end = 0
         energy_data = np.column_stack((t, Es-Es_end))
+        energy_data_raw = np.column_stack((t, Es))
         # energy_data = np.column_stack((t, Es_end-Es))
         energy_header = f"# Scan along dir: {dir}\n# t\tEnergy(eV)"
         np.savetxt(energy_file, energy_data, header=energy_header, comments='')
+        np.savetxt(energy_file_raw, energy_data_raw, header=energy_header, comments='')
         
          # Get atom type information for molecule
         atom_types = []

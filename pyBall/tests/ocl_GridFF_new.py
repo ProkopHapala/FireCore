@@ -248,7 +248,7 @@ def plotTrjs( trjs, names ):
     plt.xlabel('iteration')
     plt.yscale('log')
     plt.title( "GridFF Bspline fitting error" )
-    plt.show()
+    # plt.show()
 
 
 def test_gridFF_ocl( fname="./data/xyz/NaCl_1x1_L1.xyz", Element_Types_name="./data/ElementTypes.dat", job="PLQ", b2D=False, bSymetrize=False, bFit=True, save_name=None, z0=np.nan, 
@@ -516,7 +516,7 @@ def test_gridFF_ocl( fname="./data/xyz/NaCl_1x1_L1.xyz", Element_Types_name="./d
         plt.plot( minCoul, label="V_Coul.min" )
         plt.plot( maxCoul, label="V_Coul.max" )
         plt.legend()
-        plt.show()
+        # plt.show()
 
 
         # V_Paul = V_Paul.max(axis=0)
@@ -598,7 +598,7 @@ def test_gridFF_ocl( fname="./data/xyz/NaCl_1x1_L1.xyz", Element_Types_name="./d
         # print( "V_Before[:10,0,0] \n", V[::-1,-1,-1][:10] )
         # print( "V_after[:10,0,0] \n", Vcoul[:10,0,0] )
 
-        plt.show()
+        # plt.show()
         #exit(0)
         # Set up a common grid for both calculations
         # g0 = (-grid.Ls[0]*0.5, -grid.Ls[1]*0.5, z0)
