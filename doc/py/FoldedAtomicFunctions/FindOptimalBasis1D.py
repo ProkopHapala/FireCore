@@ -135,8 +135,8 @@ if __name__ == "__main__":
     plt.ylabel('y')
     plt.legend()
     plt.grid(True)
-    plt.savefig("sample_functions.png")
-    plt.show()
+    #plt.savefig("sample_functions.png")
+    #plt.show()
 
     # 3. Choose the number of basis functions to find
     num_optimal_basis = 3
@@ -159,8 +159,8 @@ if __name__ == "__main__":
     plt.legend()
     plt.grid(True)
     plt.yscale('log')
-    plt.savefig("singular_values.png")
-    plt.show()
+    #plt.savefig("singular_values.png")
+    #plt.show()
     
     # Plot the derived optimal basis functions
     plt.figure(figsize=(10, 6))
@@ -171,8 +171,8 @@ if __name__ == "__main__":
     plt.ylabel('Basis Function Value')
     plt.legend()
     plt.grid(True)
-    plt.savefig("optimal_basis_functions.png")
-    plt.show()
+    #plt.savefig("optimal_basis_functions.png")
+    #plt.show()
 
     # 5. Reconstruct the sample functions using the optimal basis
     print(f"\nReconstructing sample functions using the {num_optimal_basis} optimal basis functions...")
@@ -201,7 +201,7 @@ if __name__ == "__main__":
     print(f"Average RMSE for the first {num_to_plot_comparison} plotted reconstructions: {avg_rmse:.4f}")
 
     plt.tight_layout()
-    plt.savefig("reconstruction_comparison.png")
+    #plt.savefig("reconstruction_comparison.png")
     plt.show()
 
     print("\n--- Method Demonstration Completed ---")

@@ -44,8 +44,8 @@ plt.ylabel("Function Value")
 plt.title("Orthogonalized Exponential Functions")
 plt.legend()
 plt.grid(True)
-plt.savefig("orthogonal_exponentials.png")
-plt.show()
+#plt.savefig("orthogonal_exponentials.png")
+#plt.show()
 
 # --- 2) Test Functions ---
 print("\n--- 2) Test Functions ---")
@@ -62,8 +62,8 @@ plt.ylabel("Function Value")
 plt.title("Test Exponential Functions")
 plt.legend()
 plt.grid(True)
-plt.savefig("test_exponentials.png")
-plt.show()
+#plt.savefig("test_exponentials.png")
+#plt.show()
 
 # --- 3) Fitting Morse Potentials ---
 print("\n--- 3) Fitting Morse Potentials ---")
@@ -163,7 +163,7 @@ for i, V_morse in enumerate(morse_potentials):
     plt.grid(True)
 
 plt.tight_layout()  # Adjusts subplot params so that the subplot(s) fits in to the figure area.
-plt.savefig("morse_potential_fitting_weighted.png")
+#plt.savefig("morse_potential_fitting_weighted.png")
 plt.show()
 
 print("\n--- Script Completed ---")

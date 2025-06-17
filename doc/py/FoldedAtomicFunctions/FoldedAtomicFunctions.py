@@ -413,8 +413,7 @@ class Visualizer:
         """Initialize visualizer."""
         self.grid = grid_manager
     
-    def plot_potential_comparison(self, original, fitted, title="Potential Comparison", 
-                                  filename="potential_comparison.png"):
+    def plot_potential_comparison(self, original, fitted, title="Potential Comparison"):
         """
         Plot original vs fitted potential side by side.
         
@@ -424,8 +423,6 @@ class Visualizer:
             2D potential grids to compare
         title : str
             Plot title
-        filename : str
-            Filename to save the plot.
         """
         fig, axes = plt.subplots(1, 3, figsize=(15, 4))
         
@@ -463,12 +460,11 @@ class Visualizer:
         
         plt.suptitle(title)
         plt.tight_layout()
-        plt.savefig(filename)
-        print(f"Potential comparison plot saved to {filename}")
-        plt.show()
+        #plt.savefig(filename)
+        #print(f"Potential comparison plot saved to {filename}")
+        #plt.show()
     
-    def plot_basis_functions(self, basis_object, coefficients=None, 
-                             filename="basis_functions.png"):
+    def plot_basis_functions(self, basis_object, coefficients=None):
         """
         Plot all generated basis functions in a grid.
         Rows correspond to z-functions, columns to x-functions.
@@ -479,8 +475,6 @@ class Visualizer:
             The BasisFunctions instance containing the generated basis.
         coefficients : np.ndarray, optional
             Fitted coefficients. If provided, they are added to the titles.
-        filename : str
-            Filename to save the plot.
         """
         num_x_funcs = basis_object.n_harmonics_gen + 1  # n=0 to n_harmonics_gen
         num_z_funcs = basis_object.n_z_functions_gen
@@ -489,9 +483,7 @@ class Visualizer:
             print("No basis functions to plot.")
             return
 
-        fig, axes = plt.subplots(num_z_funcs, num_x_funcs, 
-                                 figsize=(3 * num_x_funcs, 2.8 * num_z_funcs), 
-                                 squeeze=False) # squeeze=False ensures axes is always 2D
+        fig, axes = plt.subplots(num_z_funcs, num_x_funcs,  figsize=(3 * num_x_funcs, 2.8 * num_z_funcs), squeeze=False)
         
         for k, basis_grid in enumerate(basis_object.basis_grids):
             # Order of generation: outer loop x (n), inner loop z (decay_rate)
@@ -515,13 +507,11 @@ class Visualizer:
             
         plt.suptitle('Basis Functions (Rows: Z-decay, Cols: X-harmonic [n=0 to max])')
         plt.tight_layout(rect=[0, 0.02, 1, 0.96]) # Adjust for suptitle and labels
-        plt.savefig(filename)
-        print(f"Basis functions plot saved to {filename}")
-        plt.show()
+        #plt.savefig(filename)
+        #print(f"Basis functions plot saved to {filename}")
+        #plt.show()
 
-    def plot_potential_with_atoms(self, potential_grid, all_atom_images,
-                                  title="Potential with Atom Images",
-                                  filename="potential_with_atoms.png"):
+    def plot_potential_with_atoms(self, potential_grid, all_atom_images,  title="Potential with Atom Images"):
         """
         Plots the 2D potential grid with all atom images (original and periodic) overlaid.
 
@@ -533,16 +523,13 @@ class Visualizer:
             List of atom image specifications, from PotentialCalculator.get_all_atom_images().
         title : str
             Plot title.
-        filename : str
-            Filename to save the plot.
         """
         fig, ax = plt.subplots(figsize=(15, 4)) # Elongated aspect ratio, e.g., 15 width, 4 height
 
         # Plot potential using imshow
         # The extent should match the unit cell for the potential grid
         im = ax.imshow(potential_grid.T, origin='lower', aspect='auto',
-                       extent=[0, self.grid.cell_x,
-                               self.grid.z_offset, self.grid.z_offset + self.grid.cell_z],
+                       extent=[0, self.grid.cell_x, self.grid.z_offset, self.grid.z_offset + self.grid.cell_z],
                        cmap='RdBu_r', interpolation='bicubic',
                        vmin=np.min(potential_grid), vmax=np.max(potential_grid))
         plt.colorbar(im, ax=ax, label="Potential (eV)", shrink=0.8)
@@ -575,10 +562,10 @@ class Visualizer:
         ax.set_xlabel("x (Å)")
         ax.set_ylabel("z (Å)")
         ax.set_title(title, fontsize=10)
-        plt.tight_layout()
-        plt.savefig(filename)
-        print(f"Potential with atoms plot saved to {filename}")
-        plt.show()
+        #plt.tight_layout()
+        #plt.savefig(filename)
+        #print(f"Potential with atoms plot saved to {filename}")
+        #plt.show()
 
 def plot_1d_morse_debug(atom_params_list, title="1D Morse Potential Debug"):
     """
@@ -596,18 +583,15 @@ def plot_1d_morse_debug(atom_params_list, title="1D Morse Potential Debug"):
 
     max_D_abs = 0.0
     for params in atom_params_list:
-        D = params['morse_D']
-        a = params['morse_a']
+        D  = params['morse_D']
+        a  = params['morse_a']
         r0 = params['morse_r0']
         label = params.get('label', f'D={D:.2f}, a={a:.1f}, r0={r0:.1f}')
-
         exp_term = np.exp(-a * (r_values - r0))
         morse_V = D * (exp_term**2 - 2 * exp_term)
-        
         plt.plot(r_values, morse_V, label=label)
         if D > 0: # D is depth, should be positive
             max_D_abs = max(max_D_abs, D)
-
     plt.ylim(-1.1 * max_D_abs, 1.5 * max_D_abs if max_D_abs > 0 else 0.1) # Ensure well and repulsive part are visible
     plt.axhline(0, color='gray', linestyle='--', linewidth=0.8)
     plt.xlabel("Distance r (Å)")
@@ -615,9 +599,16 @@ def plot_1d_morse_debug(atom_params_list, title="1D Morse Potential Debug"):
     plt.title(title)
     plt.legend()
     plt.grid(True)
-    plt.show()
+    #plt.show()
 
 def main_example():
+
+    
+    print("\nExample completed successfully!")
+    return grid, calc, basis, fitter, viz
+
+
+if __name__ == "__main__":
     """Example usage of the surface potential fitting framework."""
     
     print("Surface Potential Fitting Framework")
@@ -695,21 +686,8 @@ def main_example():
     # 7. Visualize results
     print("\n6. Visualizing results...")
     viz = Visualizer(grid)
+    viz.plot_potential_with_atoms(total_potential_to_fit, all_atom_images_for_plot, title=f"Morse Potential with Atom Images (n_images={n_images_for_calc_and_plot})")
+    viz.plot_potential_comparison(total_potential_to_fit, fitted_potential,title="Morse Potential Fitting (Charges = 0)")
+    viz.plot_basis_functions(basis, coefficients=coefficients )
 
-    viz.plot_potential_with_atoms(total_potential_to_fit, all_atom_images_for_plot,
-                                  title=f"Morse Potential with Atom Images (n_images={n_images_for_calc_and_plot})",
-                                  filename="morse_potential_with_all_atoms.png")
-
-    viz.plot_potential_comparison(total_potential_to_fit, fitted_potential,
-                                 title="Morse Potential Fitting (Charges = 0)",
-                                 filename="morse_potential_comparison.png")
-    viz.plot_basis_functions(basis, coefficients=coefficients,
-                             filename="morse_basis_functions.png")
-    
-    print("\nExample completed successfully!")
-    return grid, calc, basis, fitter, viz
-
-
-if __name__ == "__main__":
-    # Run example
-    grid, calc, basis, fitter, viz = main_example()
+    plt.show()

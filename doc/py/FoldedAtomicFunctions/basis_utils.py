@@ -12,7 +12,7 @@ def morse_potential(z, D, a, r0):
     e = np.exp(-a * (z - r0))
     return D * (e**2 - 2 * e)
 
-def gen_morse_prms(n_s, a_rng, r0_rng, D_val):
+def gen_morse_prms(n_s, a_rng = (0.8, 2.5), r0_rng = (2.5, 4.0), D_val=0.1):
     """Generates a list of Morse potential parameters."""
     prms_list = []
     a_vals = np.random.uniform(a_rng[0], a_rng[1], n_s)

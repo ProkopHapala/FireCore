@@ -97,7 +97,7 @@ if __name__ == "__main__":
     plot_vmax = 1.5 * D_m
     ax1_morse.set_ylim(plot_vmin, plot_vmax)
         
-    plt.savefig("morse_potential_polynomial_approx.png")
+    #plt.savefig("morse_potential_polynomial_approx.png")
     plt.show()
 
     print("\nScript completed. Check generated PNG files.")

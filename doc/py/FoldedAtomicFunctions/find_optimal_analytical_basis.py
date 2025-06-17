@@ -167,8 +167,8 @@ if __name__ == "__main__":
     plt.ylabel('Potential (eV)')
     plt.legend()
     plt.grid(True)
-    plt.savefig("sample_morse_potentials_analytical.png")
-    plt.show()
+    #plt.savefig("sample_morse_potentials_analytical.png")
+    #plt.show()
 
     # 3. Define parameters for the analytical basis
     polynomial_library_degree = 8  # P-1, so P = 9 library functions (z^0 to z^8)
@@ -196,8 +196,8 @@ if __name__ == "__main__":
     plt.legend()
     plt.grid(True)
     plt.yscale('log') # Usually a wide range of values
-    plt.savefig("singular_values_S_coeffs_analytical.png")
-    plt.show()
+    #plt.savefig("singular_values_S_coeffs_analytical.png")
+    #plt.show()
 
     # Plot the derived optimal analytical basis functions
     plt.figure(figsize=(12, 7))
@@ -208,8 +208,8 @@ if __name__ == "__main__":
     plt.ylabel('Basis Function Value')
     plt.legend()
     plt.grid(True)
-    plt.savefig("optimal_analytical_basis_functions.png")
-    plt.show()
+    #plt.savefig("optimal_analytical_basis_functions.png")
+    #plt.show()
 
     # Print the analytical expressions for the new basis functions
     print("\n--- Analytical Expressions for the Optimal Basis Functions ---")
@@ -257,7 +257,7 @@ if __name__ == "__main__":
     print(f"Average RMSE for the first {num_to_plot_comparison} plotted reconstructions: {avg_rmse:.4e}")
 
     plt.tight_layout()
-    plt.savefig("reconstruction_comparison_analytical.png")
+    #plt.savefig("reconstruction_comparison_analytical.png")
     plt.show()
 
     print("\n--- Optimal Analytical Basis Demonstration Completed ---")

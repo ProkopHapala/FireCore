@@ -16,24 +16,14 @@ def plot1D(
     if ys_.size == 0:
         print(f"No profiles to plot for: {title}")
         return
-        
     n = ys_.shape[0]
     plt.figure(figsize=(10, 6))
-    
     ys = ys_[:min(n, max_plot), :]
     for i in range(ys.shape[0]):
         plt.plot(xs, ys[i, :], label=f'Profile {i+1}', alpha=0.7)
-    
     if ws is not None:
         # Scale weights to fit nicely on the plot
         ax2 = plt.gca().twinx()
-        # ymin = np.min(ys) if ys.size > 0 else 0
-        # ymax = np.max(ys) if ys.size > 0 else 1
-        # # Plot weights such that they are visible, e.g., in top 20% of y-axis range
-        # # Ensure plot_ws is calculated robustly even if ymax == ymin
-        # range_prof_disp = ymax - ymin
-        # if range_prof_disp < 1e-9 : range_prof_disp = 1.0 # Avoid division by zero or tiny range
-        #plot_ws = ymin + 0.8 * range_prof_disp + 0.2 * range_prof_disp * (ws / np.max(ws) if np.max(ws) > 1e-9 else ws)
         ax2.plot(xs, ws, 'k--', label='Weights (scaled)', alpha=0.5, linewidth=1)
         ax2.set_ylabel('Weights (scaled)')
         ax2.tick_params(axis='y')
@@ -49,9 +39,7 @@ def plot1D(
     plt.ylabel('Potential / Value')
     if ys.shape[0] > 0 : plt.legend() # Legend for main plot
     plt.grid(True)
-    #if filename:
-    #    plt.savefig(filename)
-    #    print(f"Plot saved to {filename}")
+    #if filename: plt.savefig(filename)
     #plt.show()
 
 def plot_SV(s_vals, K_opt):
@@ -69,9 +57,7 @@ def plot_SV(s_vals, K_opt):
       plt.legend()
     plt.grid(True)
     plt.yscale('log')
-    # if filename:
-    #     plt.savefig(filename)
-    #     print(f"Plot saved to {filename}")
+    # if filename: plt.savefig(filename)
     # plt.show()
 
 def plotFunctionApprox( xs, y_ref, ys_approx, bError=False, colors=None, errMax=1.0e-3 ):
@@ -118,7 +104,7 @@ def plotFunctionApprox( xs, y_ref, ys_approx, bError=False, colors=None, errMax=
 # 2-D plotting – compact helpers (imshow based)
 # =====================================================================
 
-def imshow_grid(grid, extent, title="", atoms=None, cmap="RdBu_r", fname=None):
+def imshow_grid(grid, extent, title="", atoms=None, cmap="RdBu_r"):
     """Quick imshow of a 2-D grid with optional atom markers.
 
     Parameters
@@ -135,14 +121,13 @@ def imshow_grid(grid, extent, title="", atoms=None, cmap="RdBu_r", fname=None):
         for a in atoms:
             sz = (a.get("r0", 1.0) * 7) ** 2
             ax.scatter(a["x"], a["z"], s=sz, c=a.get("color", "k"), edgecolors="w", linewidths=0.5)
-
     ax.set_xlabel("x (Å)"); ax.set_ylabel("z (Å)")
     ax.set_title(title)
-    if fname:
-        plt.savefig(fname); print("saved", fname)
-    plt.tight_layout(); plt.show(); return ax
+    #if fname: plt.savefig(fname); print("saved", fname)
+    #plt.tight_layout(); plt.show(); 
+    return ax
 
-def plot2Dapprox(ref, fit, extent, title="Fit vs Ref", cmap="RdBu_r", fname=None):
+def plot2Dapprox(ref, fit, extent, title="Fit vs Ref", cmap="RdBu_r"):
     """Show reference, fit and error in one row of imshows."""
     err = fit - ref
     data = [ref, fit, err]
@@ -156,11 +141,11 @@ def plot2Dapprox(ref, fit, extent, title="Fit vs Ref", cmap="RdBu_r", fname=None
         ax.set_axis_off()
     plt.colorbar(im, ax=axs.ravel().tolist(), shrink=0.7)
     fig.suptitle(title)
-    if fname:
-        plt.savefig(fname); print("saved", fname)
-    plt.tight_layout(); plt.show(); return axs
+    #if fname:   plt.savefig(fname); print("saved", fname)
+    #plt.tight_layout(); plt.show(); 
+    return axs
 
-def plot2Dbasis(rows, shape, extent, coeffs=None, labels=None, ncol=4, cmap="RdBu_r", fname=None):
+def plot2Dbasis(rows, shape, extent, coeffs=None, labels=None, ncol=4, cmap="RdBu_r"):
     """Grid of imshows for basis rows (each row flattened)."""
     K = rows.shape[0]
     ncol = min(ncol, K)
@@ -176,9 +161,9 @@ def plot2Dbasis(rows, shape, extent, coeffs=None, labels=None, ncol=4, cmap="RdB
         ax.set_title(t, fontsize=7); ax.set_axis_off()
     for ax in axes.ravel()[K:]: ax.set_visible(False)
     fig.suptitle("Basis functions")
-    if fname:
-        plt.savefig(fname); print("saved", fname)
-    plt.tight_layout(); plt.show(); return axes
+    #if fname: plt.savefig(fname); print("saved", fname)
+    #plt.tight_layout(); plt.show(); 
+    return axes
 
 
 
