@@ -11,7 +11,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 
 # project helpers -------------------------------------------------------------
-from basis_utils import cutoff_poly_basis, gen_morse_prms, gen_morse_curves, calc_fit_svd, eval_multi_basis_recon_err
+from basis_utils import cutoff_poly_basis, gen_morse_prms, gen_morse_curves, calc_fit_svd, eval_multi_basis_recon_err, calc_svd_reconstruction_errors
 from optimize import fit_coefficients  # functional least-squares helper
 from plot_utils import plot1D, plotFunctionApprox  # custom plotting helpers
 

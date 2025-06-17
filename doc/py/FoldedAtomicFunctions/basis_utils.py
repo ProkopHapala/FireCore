@@ -2,7 +2,7 @@ from __future__ import annotations
 from scipy.linalg import qr
 # --- 5. Plotting & Analysis Utilities ---
 
-import numpy as np
+import numpy as np # type: ignore
 #import matplotlib.pyplot as plt
 from numpy import newaxis
 from optimize import fit_coefficients # Assuming optimize.py is in the same path or accessible
@@ -290,6 +290,31 @@ def get_taylor_approx_data_for_plot(zs, k, z0, order_seq):
         # For Taylor, there isn't a direct equivalent. We can pass z0 or None.
         ys_approx_taylor.append((taylor_approx_values, z0, f'Taylor O({order_val})'))
     return ys_approx_taylor
+
+################################################################################
+# SVD Error Calculation
+################################################################################
+
+def calc_svd_reconstruction_errors(Y_samples: np.ndarray) -> np.ndarray:
+    """Calculates relative reconstruction error of Y_samples vs number of SVD components.
+
+    Performs SVD on Y_samples.T to find optimal basis for rows of Y_samples.
+    Returns array of errors for k=1 to min(M,Nz) components.
+    """
+    if Y_samples.ndim != 2 or Y_samples.shape[0] == 0 or Y_samples.shape[1] == 0:
+        return np.array([])
+        
+    # SVD on Y.T to get singular values for reconstructing rows of Y (the functions)
+    # U_cols_are_eigenfunctions, s_vals, Vh_rows_are_coeffs_in_U
+    _, s_vals, _ = np.linalg.svd(Y_samples.T, full_matrices=False)
+    
+    #total_sq = np.sum(s_vals**2)
+    #if total_sq < 1e-12: # Handle case where all singular values are zero
+    #    return np.zeros_like(s_vals)
+    # Cumulative sum of squared singular values from the tail
+    cumsum_sq_tail = np.cumsum(s_vals[::-1]**2)[::-1]
+    # Relative error for keeping k components is sqrt(sum_sq_tail[k]) / sqrt(total_sq)
+    return np.sqrt(cumsum_sq_tail) #/ np.sqrt(total_sq)
 
 ################################################################################
 # Basis Set Analysis Utilities
