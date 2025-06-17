@@ -110,13 +110,13 @@ export LD_PRELOAD
 #   --scan-mode 1d \
 #   --scan-dir1 "0.894427190999916,0.447213595499958,0.0" \
 #   --scan-origin "0.0,0.0,2.8" \
-#   --output-dir PTCDA_data_trial_1d_relax_line \
+#   --output-dir trial_20_1d_relax_angle \
 #   --lammps-1d-dir /home/indranil/Documents/Project_1/Lammps/4-relaxed_linescan \
-#   --nscan 357 \
+#   --nscan (2*448) \
 #   --span-min 0.0 \
-#   --span-max 35.7 \
-#   --molecule data/xyz/old_mol_old_sub_PTCDA \
-#   --substrate data/xyz/Na_0.9_Cl_-0.9 \
+#   --span-max (2*44.778640450004204) \
+#   --molecule data/xyz/PTCDA_20x20_26 \
+#   --substrate data/xyz/NaCl_perfect_20x20 \
 #   --relaxed \
 #   --niter-max 100000 \
 #   --dt 0.02 \
@@ -185,23 +185,31 @@ export LD_PRELOAD
 
 ### Multiple scans with loops for all configurations
 
-# Define arrays for all variables
-SUBSTRATES=("NaCl_perfect_12x12" "NaCl_45_defect_aligned_12x12" "NaCl_45_defect_perpendicular_12x12" "NaCl_210_defect_aligned_12x12" "NaCl_210_defect_perpendicular_12x12")
-# SUBSTRATES=("NaCl_perfect_12x12")
+#    Change this single line to switch between 12x12, 20x20, 32x32 …
+# SUB_SIZE="12x12"             # e.g. "20x20"
+SUB_SIZE="20x20"             # e.g. "20x20"
+SIZE_X=${SUB_SIZE%x*}         # first number (12, 20, 32 …)
+LATTICE_UNIT=4               # Å per repeat of NaCl (4 × SIZE_X)
+BASE_SUBS=("NaCl_perfect" \
+           "NaCl_45_defect_aligned" "NaCl_45_defect_perpendicular" \
+           "NaCl_210_defect_aligned" "NaCl_210_defect_perpendicular")
+
+SUBSTRATES=()
+for b in "${BASE_SUBS[@]}"; do
+  SUBSTRATES+=("${b}_${SUB_SIZE}")
+done
+
 CONS_ATOMS=("26" "24")
 DIRECTIONS=("1.0,1.0,0.0" "2.0,1.0,0.0")
 
-# Define lattice constants for each substrate type (in Angstroms)
-# These are the x-dimension sizes of the substrate unit cells
-declare -A LATTICE_X
-LATTICE_X["NaCl_perfect_12x12"]=48
-LATTICE_X["NaCl_45_defect_aligned_12x12"]=48
-LATTICE_X["NaCl_45_defect_perpendicular_12x12"]=48
-LATTICE_X["NaCl_210_defect_aligned_12x12"]=48
-LATTICE_X["NaCl_210_defect_perpendicular_12x12"]=48
-
 # Step size for scan (in Angstroms)
 STEP_SIZE=0.1
+
+function get_lattice_x() {
+  local size=${1##*_}        # “…_20x20” -> “20x20”
+  local nx=${size%x*}        # “20”
+  echo "$(bc <<< "$nx * $LATTICE_UNIT")"
+}
 
 # Base parameters that stay the same (without span and nscan which will be calculated)
 BASE_PARAMS="--scan-types total \
@@ -215,18 +223,22 @@ BASE_PARAMS="--scan-types total \
 # Loop through constraint atoms and directions first
 for cons_atom in "${CONS_ATOMS[@]}"; do
   # Set molecule based on cons_atom
-  molecule="data/xyz/PTCDA_12x12_${cons_atom}"
+  molecule="data/xyz/PTCDA_${SUB_SIZE}_${cons_atom}"
   
   for direction in "${DIRECTIONS[@]}"; do
-    # Select appropriate substrate based on direction
-    if [[ "$direction" == "1.0,1.0,0.0" ]]; then
-      # For 110 direction, use 45° defect substrates
-      direction_substrates=("NaCl_perfect_12x12" "NaCl_45_defect_aligned_12x12" "NaCl_45_defect_perpendicular_12x12")
-    elif [[ "$direction" == "2.0,1.0,0.0" ]]; then
-      # For 210 direction, use 210° defect substrates
-      direction_substrates=("NaCl_perfect_12x12" "NaCl_210_defect_aligned_12x12" "NaCl_210_defect_perpendicular_12x12")
-    fi
-    
+    # Determine which defect substrates to use based on direction
+    case "$direction" in
+      "1.0,1.0,0.0") defect_tag="45"  ;;   # 110
+      "2.0,1.0,0.0") defect_tag="210" ;;   # 210
+      *) echo "Unknown direction $direction"; exit 1 ;;
+    esac
+
+    direction_substrates=(
+      "NaCl_perfect_${SUB_SIZE}"
+      "NaCl_${defect_tag}_defect_aligned_${SUB_SIZE}"
+      "NaCl_${defect_tag}_defect_perpendicular_${SUB_SIZE}"
+    )
+
     # Loop through the appropriate substrates for this direction
     for substrate in "${direction_substrates[@]}"; do
       # Skip if this substrate is not in the main SUBSTRATES array
@@ -247,8 +259,7 @@ for cons_atom in "${CONS_ATOMS[@]}"; do
       # Parse the direction vector components
       IFS=',' read -r x_comp y_comp z_comp <<< "$direction"
       
-      # Calculate the angle between direction vector and x-axis (1,0,0)
-      # First, normalize the direction vector
+      # Calculate the angle between direction vector and x-axis (1,0,0) # First, normalize the direction vector
       magnitude=$(echo "sqrt($x_comp^2 + $y_comp^2 + $z_comp^2)" | bc -l)
       x_norm=$(echo "$x_comp / $magnitude" | bc -l)
       
@@ -256,10 +267,9 @@ for cons_atom in "${CONS_ATOMS[@]}"; do
       cosine_angle=$x_norm
       
       # Get the lattice constant for this substrate
-      lattice_x=${LATTICE_X[$substrate]}
+      lattice_x=$(get_lattice_x "$substrate")
       
-      # Calculate span-max: lattice_x / cos(angle)
-      # Handle the case where cosine is very small to avoid division by zero
+      # Calculate span-max: lattice_x / cos(angle) # Handle the case where cosine is very small to avoid division by zero
       if (( $(echo "$cosine_angle < 0.01" | bc -l) )); then
         cosine_angle=0.01
       fi

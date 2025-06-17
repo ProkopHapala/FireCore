@@ -194,7 +194,12 @@ class GridFF_cl:
     def try_make_buff( self, buff_name, sz):
         if hasattr(self,buff_name): 
             buff = getattr(self, buff_name)
-            if not ( buff is None or buff.size != sz ):
+            # If the buffer exists but its size is different, release it first to free GPU memory
+            if buff is not None and buff.size != sz:
+                print(f"Releasing outdated buffer {buff_name} (size {buff.size}) -> realloc {sz}")
+                buff.release()
+            # If after the potential release the buffer already has the right size, we can reuse it
+            if buff is not None and buff.size == sz:
                 return
         print( "try_make_buff(",buff_name,") reallocate to [bytes]: ", sz )
         buff = cl.Buffer(self.ctx, cl.mem_flags.READ_WRITE, sz )
@@ -635,72 +640,72 @@ class GridFF_cl:
         self.V_Coul_buff = cl.Buffer(self.ctx, cl.mem_flags.WRITE_ONLY, size=nxyz*bytePerFloat )
 
 
-    def make_MorseFF(self, atoms, REQs, nPBC=(4, 4, 0), dg=None, ng=None, lvec=None, g0=None, GFFParams=(0.1, 1.5, 0.0, 0.0), bTime=True, bReturn=True ):
+    # def make_MorseFF(self, atoms, REQs, nPBC=(4, 4, 0), dg=None, ng=None, lvec=None, g0=None, GFFParams=(0.1, 1.5, 0.0, 0.0), bTime=True, bReturn=True ):
 
-        T00 = time.perf_counter()
+    #     T00 = time.perf_counter()
 
-        # Only create a new grid if one doesn't exist or if parameters are explicitly provided
-        # if self.gsh is None or dg is not None or ng is not None or lvec is not None or g0 is not None:
-        #     # Use existing grid parameters if not explicitly provided
-        #     if dg is None and hasattr(self, 'gsh'):
-        #         dg = self.gsh.dg
-        #         print(f"Using existing grid step size: {dg}")
-        #     if lvec is None and hasattr(self, 'gsh') and self.gsh.lvec is not None:
-        #         lvec = self.gsh.lvec
-        #         print(f"Using existing lattice vectors: {lvec}")
-        #     if g0 is None and hasattr(self, 'gsh'):
-        #         g0 = self.gsh.g0
-        #         print(f"Using existing grid origin: {g0}")
+    #     # Only create a new grid if one doesn't exist or if parameters are explicitly provided
+    #     # if self.gsh is None or dg is not None or ng is not None or lvec is not None or g0 is not None:
+    #     #     # Use existing grid parameters if not explicitly provided
+    #     #     if dg is None and hasattr(self, 'gsh'):
+    #     #         dg = self.gsh.dg
+    #     #         print(f"Using existing grid step size: {dg}")
+    #     #     if lvec is None and hasattr(self, 'gsh') and self.gsh.lvec is not None:
+    #     #         lvec = self.gsh.lvec
+    #     #         print(f"Using existing lattice vectors: {lvec}")
+    #     #     if g0 is None and hasattr(self, 'gsh'):
+    #     #         g0 = self.gsh.g0
+    #     #         print(f"Using existing grid origin: {g0}")
             
-        #     grid = GridShape(ns=ng, dg=dg, lvec=lvec, g0=g0)
-        #     print(f"Creating grid with: ns={grid.ns}, dg={grid.dg}, lvec={lvec}")
-        #     self.set_grid(grid)
+    #     #     grid = GridShape(ns=ng, dg=dg, lvec=lvec, g0=g0)
+    #     #     print(f"Creating grid with: ns={grid.ns}, dg={grid.dg}, lvec={lvec}")
+    #     #     self.set_grid(grid)
         
-        # atoms.apos = xyzq[:,:3]
-        # print("New_Atoms:",atoms.shape)
-        # print("xyzq[:,:3] =", atoms[:,:3])
-        print("GridFF_cl::make_MorseFF() dg = ",dg)
+    #     # atoms.apos = xyzq[:,:3]
+    #     # print("New_Atoms:",atoms.shape)
+    #     # print("xyzq[:,:3] =", atoms[:,:3])
+    #     print("GridFF_cl::make_MorseFF() dg = ",dg)
 
 
-        na   = len(atoms)
-        nxyz = self.gcl.nxyz
+    #     na   = len(atoms)
+    #     nxyz = self.gcl.nxyz
 
-        buff_names={'atoms','REQs','V_Paul','V_Lond'}
-        self.try_make_buffs(buff_names, na, nxyz)
+    #     buff_names={'atoms','REQs','V_Paul','V_Lond'}
+    #     self.try_make_buffs(buff_names, na, nxyz)
 
-        atoms_np = np.asarray(atoms, dtype=np.float32)
-        reqs_np  = np.asarray(REQs, dtype=np.float32)
-        cl.enqueue_copy(self.queue, self.atoms_buff, atoms_np)
-        cl.enqueue_copy(self.queue, self.REQs_buff, reqs_np)
+    #     atoms_np = np.asarray(atoms, dtype=np.float32)
+    #     reqs_np  = np.asarray(REQs, dtype=np.float32)
+    #     cl.enqueue_copy(self.queue, self.atoms_buff, atoms_np)
+    #     cl.enqueue_copy(self.queue, self.REQs_buff, reqs_np)
 
-        na_cl        = np.int32(na)
-        nPBC_cl      = np.array(nPBC+(0,), dtype=np.int32   )
-        GFFParams_cl = np.array(GFFParams, dtype=np.float32 )
+    #     na_cl        = np.int32(na)
+    #     nPBC_cl      = np.array(nPBC+(0,), dtype=np.int32   )
+    #     GFFParams_cl = np.array(GFFParams, dtype=np.float32 )
 
-        nL = self.nloc
-        nG = clu.roundup_global_size(nxyz, nL)
+    #     nL = self.nloc
+    #     nG = clu.roundup_global_size(nxyz, nL)
 
-        T0 = time.perf_counter()
-        self.prg.make_MorseFF(self.queue, (nG,), (nL,),
-                            na_cl, self.atoms_buff, self.REQs_buff, self.V_Paul_buff, self.V_Lond_buff,
-                            nPBC_cl, self.gcl.ns, self.gcl.a,self.gcl.b,self.gcl.c, self.gcl.g0, GFFParams_cl)
+    #     T0 = time.perf_counter()
+    #     self.prg.make_MorseFF(self.queue, (nG,), (nL,),
+    #                         na_cl, self.atoms_buff, self.REQs_buff, self.V_Paul_buff, self.V_Lond_buff,
+    #                         nPBC_cl, self.gcl.ns, self.gcl.a,self.gcl.b,self.gcl.c, self.gcl.g0, GFFParams_cl)
     
-        if bTime:
-            self.queue.finish()
-            dT=time.perf_counter()-T0
-            npbc = float((nPBC[0]*2+1)*(nPBC[1]*2+1)*(nPBC[2]*2+1))
-            nops = float(na_cl) * float(nxyz) * npbc
-            print( "GridFF_cl::make_MorseFF() time[s] ", dT,   "  preparation[s]  ", T0-T00, "[s] nGOPs: ", nops*1e-9," speed[GOPs/s]: ", (nops*1e-9)/dT , " na,nxyz,npbc ", na_cl, nxyz, npbc  )
+    #     if bTime:
+    #         self.queue.finish()
+    #         dT=time.perf_counter()-T0
+    #         npbc = float((nPBC[0]*2+1)*(nPBC[1]*2+1)*(nPBC[2]*2+1))
+    #         nops = float(na_cl) * float(nxyz) * npbc
+    #         print( "GridFF_cl::make_MorseFF() time[s] ", dT,   "  preparation[s]  ", T0-T00, "[s] nGOPs: ", nops*1e-9," speed[GOPs/s]: ", (nops*1e-9)/dT , " na,nxyz,npbc ", na_cl, nxyz, npbc  )
 
-        if bReturn:
-            sh = self.gsh.ns[::-1]
-            V_Paul = np.zeros( sh, dtype=np.float32)
-            V_Lond = np.zeros( sh, dtype=np.float32)
-            cl.enqueue_copy(self.queue, V_Paul, self.V_Paul_buff)
-            cl.enqueue_copy(self.queue, V_Lond, self.V_Lond_buff)
-            # print( "V_Lond.min,max ", V_Lond.min(), V_Lond.max() )
-            # print( "V_Paul.min,max ", V_Paul.min(), V_Paul.max() )
-            return V_Paul, V_Lond
+    #     if bReturn:
+    #         sh = self.gsh.ns[::-1]
+    #         V_Paul = np.zeros( sh, dtype=np.float32)
+    #         V_Lond = np.zeros( sh, dtype=np.float32)
+    #         cl.enqueue_copy(self.queue, V_Paul, self.V_Paul_buff)
+    #         cl.enqueue_copy(self.queue, V_Lond, self.V_Lond_buff)
+    #         # print( "V_Lond.min,max ", V_Lond.min(), V_Lond.max() )
+    #         # print( "V_Paul.min,max ", V_Paul.min(), V_Paul.max() )
+    #         return V_Paul, V_Lond
     
     def make_MorseFF_f4(self, atoms, REQs, nPBC=(4, 4, 0), dg=(0.1, 0.1, 0.1), ng=None,            lvec=[[20.0, 0.0, 0.0], [0.0, 20.0, 0.0], [0.0, 0.0, 20.0]],                     g0=(0.0, 0.0, 0.0), GFFParams=(0.1, 1.5, 0.0, 0.0), bTime=True, bReturn=True ):
 
@@ -880,7 +885,7 @@ class GridFF_cl:
     def poisson_old(self, bReturn=True, sh=None, dV=None ):
 
         clu.try_load_clFFT()
-        if sh is None: sh=self.gsh.ns[::-1] 
+        if sh is None: sh=self.gsh.ns[::-1]
         nxyz = np.int32( sh[0]*sh[1]*sh[2] )
 
         if dV is None: dV = self.gsh.dV
@@ -1390,3 +1395,92 @@ class GridFF_cl:
         return V_after_slab
 
 
+
+    def release_unused_buffs(self, keep_names=set()):
+        """Release all OpenCL buffers except for those whose *base* names are in
+        *keep_names* (a set of strings like {'atoms', 'REQs'}). This is useful
+        to free GPU memory between logically separate operations (e.g. after
+        finishing Coulomb grids but before building Morse grids)."""
+        for attr, val in list(self.__dict__.items()):
+            if not attr.endswith('_buff'):
+                continue
+            base = attr[:-5]  # strip '_buff'
+            if base in keep_names:
+                continue
+            if val is not None:
+                print(f"Releasing buffer {attr} to free GPU memory")
+                try:
+                    val.release()
+                except Exception as e:
+                    print(f"Warning: failed to release {attr}: {e}")
+            setattr(self, attr, None)
+
+    def make_MorseFF(self, atoms, REQs, nPBC=(4, 4, 0), dg=None, ng=None, lvec=None, g0=None, GFFParams=(0.1, 1.5, 0.0, 0.0), bTime=True, bReturn=True ):
+
+        T00 = time.perf_counter()
+
+        # Only create a new grid if one doesn't exist or if parameters are explicitly provided
+        # if self.gsh is None or dg is not None or ng is not None or lvec is not None or g0 is not None:
+        #     # Use existing grid parameters if not explicitly provided
+        #     if dg is None and hasattr(self, 'gsh'):
+        #         dg = self.gsh.dg
+        #         print(f"Using existing grid step size: {dg}")
+        #     if lvec is None and hasattr(self, 'gsh') and self.gsh.lvec is not None:
+        #         lvec = self.gsh.lvec
+        #         print(f"Using existing lattice vectors: {lvec}")
+        #     if g0 is None and hasattr(self, 'gsh'):
+        #         g0 = self.gsh.g0
+        #         print(f"Using existing grid origin: {g0}")
+            
+        #     grid = GridShape(ns=ng, dg=dg, lvec=lvec, g0=g0)
+        #     print(f"Creating grid with: ns={grid.ns}, dg={grid.dg}, lvec={lvec}")
+        #     self.set_grid(grid)
+        
+        # atoms.apos = xyzq[:,:3]
+        # print("New_Atoms:",atoms.shape)
+        # print("xyzq[:,:3] =", atoms[:,:3])
+        print("GridFF_cl::make_MorseFF() dg = ",dg)
+
+
+        na   = len(atoms)
+        nxyz = self.gcl.nxyz
+
+        buff_names={'atoms','REQs','V_Paul','V_Lond'}
+        self.try_make_buffs(buff_names, na, nxyz)
+
+        # Free large buffers that are no longer needed to prevent GPU out-of-memory
+        self.release_unused_buffs({"atoms", "REQs", "V_Paul", "V_Lond"})
+
+        atoms_np = np.asarray(atoms, dtype=np.float32)
+        reqs_np  = np.asarray(REQs, dtype=np.float32)
+        cl.enqueue_copy(self.queue, self.atoms_buff, atoms_np)
+        cl.enqueue_copy(self.queue, self.REQs_buff, reqs_np)
+
+        na_cl        = np.int32(na)
+        nPBC_cl      = np.array(nPBC+(0,), dtype=np.int32   )
+        GFFParams_cl = np.array(GFFParams, dtype=np.float32 )
+
+        nL = self.nloc
+        nG = clu.roundup_global_size(nxyz, nL)
+
+        T0 = time.perf_counter()
+        self.prg.make_MorseFF(self.queue, (nG,), (nL,),
+                            na_cl, self.atoms_buff, self.REQs_buff, self.V_Paul_buff, self.V_Lond_buff,
+                            nPBC_cl, self.gcl.ns, self.gcl.a,self.gcl.b,self.gcl.c, self.gcl.g0, GFFParams_cl)
+    
+        if bTime:
+            self.queue.finish()
+            dT=time.perf_counter()-T0
+            npbc = float((nPBC[0]*2+1)*(nPBC[1]*2+1)*(nPBC[2]*2+1))
+            nops = float(na_cl) * float(nxyz) * npbc
+            print( "GridFF_cl::make_MorseFF() time[s] ", dT,   "  preparation[s]  ", T0-T00, "[s] nGOPs: ", nops*1e-9," speed[GOPs/s]: ", (nops*1e-9)/dT , " na,nxyz,npbc ", na_cl, nxyz, npbc  )
+
+        if bReturn:
+            sh = self.gsh.ns[::-1]
+            V_Paul = np.zeros( sh, dtype=np.float32)
+            V_Lond = np.zeros( sh, dtype=np.float32)
+            cl.enqueue_copy(self.queue, V_Paul, self.V_Paul_buff)
+            cl.enqueue_copy(self.queue, V_Lond, self.V_Lond_buff)
+            # print( "V_Lond.min,max ", V_Lond.min(), V_Lond.max() )
+            # print( "V_Paul.min,max ", V_Paul.min(), V_Paul.max() )
+            return V_Paul, V_Lond
