@@ -1,215 +1,105 @@
 #!/usr/bin/env python3
 import numpy as np
 import matplotlib.pyplot as plt
+# Import plotting utilities
+from utils import plot_singular_values, plot_1d_profiles, plotFunctionApprox, morse_potential, gen_morse_prms, gen_morse_curves
 
-def find_optimal_basis_svd(xs, list_of_ys, num_basis_functions):
-    """
-    Finds an optimal set of 1D basis functions for a given set of sample functions
-    using Singular Value Decomposition (SVD).
-
-    The basis functions are chosen to capture the maximum variance in the sample
-    functions, thus minimizing the reconstruction error in a least-squares sense
-    when approximating the original functions with this basis. The resulting
-    basis functions are orthonormal.
-
-    Parameters:
-    -----------
-    xs : np.ndarray
-        1D array of x-coordinates, common to all sample functions.
-    list_of_ys : list of np.ndarray
-        A list where each element is a 1D numpy array representing a sample
-        function (y-values). All y-arrays must have the same length as xs.
-    num_basis_functions : int
-        The desired number of optimal basis functions to extract.
-
-    Returns:
-    --------
-    optimal_basis : np.ndarray
-        A 2D numpy array of shape (len(xs), num_basis_functions) where each
-        column is an optimal basis function.
-    singular_values : np.ndarray
-        The singular values corresponding to all components, ordered by importance.
-        These indicate how much variance each component captures.
-    U_full : np.ndarray
-        The full U matrix from SVD (data_matrix = U_full @ np.diag(s) @ Vh_full).
-        Its columns are all possible orthonormal basis functions for the provided samples.
-    """
-    if not list_of_ys:
-        raise ValueError("list_of_ys cannot be empty.")
+def find_optimal_basis_svd(x, ys_list, n_basis):
+    """Find optimal 1D basis functions using SVD.
     
-    num_x_points = len(xs)
-    num_samples = len(list_of_ys)
-
-    if any(len(ys) != num_x_points for ys in list_of_ys):
-        raise ValueError("All sample functions in list_of_ys must have the same length as xs.")
-
-    # 1. Construct the data matrix D
-    # Each column in D is a sample function ys. Shape: (num_x_points, num_samples)
-    data_matrix = np.array(list_of_ys).T  # Transpose to make functions columns
-
-    # 2. Perform Singular Value Decomposition
-    # data_matrix = U @ np.diag(s) @ Vh
-    # Columns of U are the principal components (optimal basis functions for the y-space)
-    # s contains singular values in descending order
-    U_full, singular_values, Vh_full = np.linalg.svd(data_matrix, full_matrices=False)
-    # full_matrices=False is more efficient and U_full will have shape (num_x_points, min(num_x_points, num_samples))
-
-    if num_basis_functions > U_full.shape[1]:
-        print(f"Warning: num_basis_functions ({num_basis_functions}) is greater than the number of "
-              f"available non-zero singular value components ({U_full.shape[1]}). "
-              f"Returning all {U_full.shape[1]} available components.")
-        num_basis_functions = U_full.shape[1]
-
-    # 3. Select the top num_basis_functions from U_full
-    # These are the directions of greatest variance in the data.
-    optimal_basis = U_full[:, :num_basis_functions]
-
-    return optimal_basis, singular_values, U_full
-
-def reconstruct_functions(original_ys_list, optimal_basis):
-    """
-    Reconstructs functions using the provided optimal basis.
-
-    Parameters:
-    -----------
-    original_ys_list : list of np.ndarray
-        The list of original y-values for each function.
-    optimal_basis : np.ndarray
-        The basis functions (columns are orthonormal basis vectors).
-
+    Args:
+        x: Common x-coordinates (1D array)
+        ys_list: List of sample functions (1D arrays)
+        n_basis: Number of basis functions to extract
+    
     Returns:
-    --------
-    reconstructed_ys_list : list of np.ndarray
-        List of reconstructed y-values.
-    coefficients_list : list of np.ndarray
-        List of coefficients used for reconstruction for each function.
+        basis: Optimal basis functions (columns)
+        s: Singular values
+        U: Full U matrix from SVD
     """
-    reconstructed_ys_list = []
-    coefficients_list = []
-    for ys_original in original_ys_list:
-        # Project ys_original onto the basis: coeffs = optimal_basis.T @ ys_original
-        # This works because columns of optimal_basis (from U of SVD) are orthonormal.
-        coeffs = optimal_basis.T @ ys_original
-        
-        # Reconstruct: reconstructed_ys = optimal_basis @ coeffs
-        reconstructed_ys = optimal_basis @ coeffs
-        
-        reconstructed_ys_list.append(reconstructed_ys)
-        coefficients_list.append(coeffs)
-    return reconstructed_ys_list, coefficients_list
+    if not ys_list:
+        raise ValueError("Empty ys_list")
+    nx = len(x)
+    if any(len(y) != nx for y in ys_list):
+        raise ValueError("All y must match x length")
+    D = np.array(ys_list).T
+    U, s, Vh = np.linalg.svd(D, full_matrices=False)
+    if n_basis > U.shape[1]:
+        print(f"Warning: Reducing n_basis from {n_basis} to {U.shape[1]}")
+        n_basis = U.shape[1]
+    
+    return U[:, :n_basis], s, U
 
-# --- Morse Potential Function (from Fit1D.py) ---
-def morse_potential(z, D, a, r0):
-    """Defines the Morse potential function."""
-    exp_term = np.exp(-a * (z - r0))
-    return D * (exp_term**2 - 2 * exp_term)
+def reconstruct_functions(ys_list, basis):
+    """Reconstruct functions using basis.
+    
+    Args:
+        ys_list: Original functions
+        basis: Basis functions (columns)
+    
+    Returns:
+        rec_ys: Reconstructed functions
+        coeffs: Coefficients for each function
+    """
+    rec_ys = []
+    coeffs = []
+    for y in ys_list:
+        c = basis.T @ y
+        rec_ys.append(basis @ c)
+        coeffs.append(c)
+    return rec_ys, coeffs
 
 # --- Example Usage ---
 if __name__ == "__main__":
     print("--- Finding Optimal Basis Functions for Morse Potentials using SVD ---")
 
     # 1. Define common x-coordinates
-    # Using z_values similar to Fit1D.py for consistency
-    z_values = np.linspace(1.0, 10.0, 200) # Z range for functions
+    z_values = np.linspace(1.0, 10.0, 200) 
 
     # 2. Generate a set of sample functions
-    num_samples = 16 # Number of Morse potentials to generate
-    sample_functions_ys = []
-    np.random.seed(42) # for reproducibility
+    n_s = 16 
+    np.random.seed(42) 
 
-    # Morse parameters (can be adjusted)
-    D_morse = 0.1  # Morse depth (eV), kept constant for this example
-    r0_morse = 3.0 # Equilibrium distance (Å), kept constant
+    D_val = 0.1  
+    a_rng = (0.8, 2.5)
+    r0_rng = (2.5, 4.0) # Vary r0 as well
 
-    # Vary the 'a' parameter for different Morse potentials
-    # Let's sample 'a' from a range, e.g., similar to Fit1D.py or a bit wider
-    a_min_sample = 0.8
-    a_max_sample = 2.5
-    a_values_sample = np.linspace(a_min_sample, a_max_sample, num_samples)
-
-    print(f"\nGenerating {num_samples} Morse potential samples...")
-    for i in range(num_samples):
-        a_current = a_values_sample[i]
-        ys = morse_potential(z_values, D_morse, a_current, r0_morse)
-        # No noise is added, functions will be smooth
-        sample_functions_ys.append(ys)
-        print(f"  Generated Morse sample {i+1}: D={D_morse:.2f}, a={a_current:.2f}, r0={r0_morse:.2f}")
+    print(f"\nGenerating {n_s} Morse potential samples...")
+    # Generate parameters first, then curves
+    prms_list = gen_morse_prms(n_s, a_rng, r0_rng, D_val)
+    sample_functions_ys, _ = gen_morse_curves(z_values, prms=prms_list)
+    for i, p in enumerate(prms_list):
+        print(f"  Generated Morse sample {i+1}: D={p['D']:.2f}, a={p['a']:.2f}, r0={p['r0']:.2f}")
 
     # Plot some of the sample functions
-    plt.figure(figsize=(10, 6))
-    for i in range(min(5, num_samples)): # Plot first 5 samples
-        plt.plot(z_values, sample_functions_ys[i], label=f'Morse Sample {i+1} (a={a_values_sample[i]:.2f})', alpha=0.7)
-    plt.title('A Few Original Morse Potential Samples')
-    plt.xlabel('z (Å)')
-    plt.ylabel('Potential (eV)')
-    plt.legend()
-    plt.grid(True)
-    plt.savefig("sample_functions.png")
-    plt.show()
+    plot_1d_profiles(z_values, np.array(sample_functions_ys), title='A Few Original Morse Potential Samples', max_plot=5, filename="sample_functions.png")
 
     # 3. Choose the number of basis functions to find
-    num_optimal_basis = 4 # As requested
+    num_optimal_basis = 4 
     print(f"\nAttempting to find {num_optimal_basis} optimal basis functions...")
 
     # 4. Find the optimal basis
-    optimal_basis, singular_values, U_full = find_optimal_basis_svd(
-        z_values, sample_functions_ys, num_optimal_basis
-    )
-    print(f"Shape of optimal_basis matrix: {optimal_basis.shape}")
-    print(f"Singular values (indicate importance): {singular_values[:num_optimal_basis*2]}") # Show a few more
+    optimal_basis_cols, singular_values, U_full = find_optimal_basis_svd(  z_values, sample_functions_ys, num_optimal_basis )
+    print(f"Shape of optimal_basis matrix (functions as columns): {optimal_basis_cols.shape}")
+    print(f"Singular values (indicate importance): {singular_values[:num_optimal_basis*2]}") 
+    plot_singular_values(singular_values, K_opt=num_optimal_basis, filename="singular_values.png")
+    plot_1d_profiles(z_values, optimal_basis_cols.T, title=f'{num_optimal_basis} Optimal Basis Functions Derived by SVD', filename="optimal_basis_functions.png" )
 
-    # Plot the singular values (scree plot)
-    plt.figure(figsize=(8, 5))
-    plt.plot(range(1, len(singular_values) + 1), singular_values, 'o-')
-    plt.title('Singular Values (Scree Plot)')
-    plt.xlabel('Component Number')
-    plt.ylabel('Singular Value')
-    plt.axvline(num_optimal_basis, color='r', linestyle='--', label=f'Selected: {num_optimal_basis}')
-    plt.legend()
-    plt.grid(True)
-    plt.yscale('log')
-    plt.savefig("singular_values.png")
-    plt.show()
-    
-    # Plot the derived optimal basis functions
-    plt.figure(figsize=(10, 6))
-    for i in range(optimal_basis.shape[1]):
-        plt.plot(z_values, optimal_basis[:, i], label=f'Optimal Basis {i+1}')
-    plt.title(f'{num_optimal_basis} Optimal Basis Functions Derived by SVD')
-    plt.xlabel('z (Å)')
-    plt.ylabel('Basis Function Value (Arbitrary Units)')
-    plt.legend()
-    plt.grid(True)
-    plt.savefig("optimal_basis_functions.png")
-    plt.show()
+    # 5. Reconstruct functions
+    print(f"\nReconstructing sample functions using {num_optimal_basis} basis functions...")
+    rec_ys, coeffs = reconstruct_functions(sample_functions_ys, optimal_basis_cols)
 
-    # 5. Reconstruct the sample functions using the optimal basis
-    print(f"\nReconstructing sample functions using the {num_optimal_basis} optimal basis functions...")
-    reconstructed_ys_list, coefficients_list = reconstruct_functions(sample_functions_ys, optimal_basis)
-
-    # Plot a comparison for a few sample functions
-    num_to_plot_comparison = 3
-    plt.figure(figsize=(12, num_to_plot_comparison * 4))
+    # Prepare data for plotFunctionApprox
+    nplt = min(5, len(sample_functions_ys))
+    ys_approx = []
     total_rmse = 0
-    for i in range(num_to_plot_comparison):
-        original = sample_functions_ys[i]
-        reconstructed = reconstructed_ys_list[i]
-        rmse = np.sqrt(np.mean((original - reconstructed)**2))
+    for i in range(nplt):
+        rmse = np.sqrt(np.mean((sample_functions_ys[i] - rec_ys[i])**2))
         total_rmse += rmse
-        
-        plt.subplot(num_to_plot_comparison, 1, i + 1)
-        plt.plot(z_values, original, label=f'Original Morse (a={a_values_sample[i]:.2f})', color='blue', alpha=0.8)
-        plt.plot(z_values, reconstructed, label=f'Reconstructed (RMSE: {rmse:.4e})', color='red', linestyle='--')
-        plt.title(f'Morse Sample {i+1}: Original vs. Reconstructed with {num_optimal_basis} Basis Functions')
-        plt.xlabel('z (Å)')
-        plt.ylabel('Potential (eV)')
-        plt.legend()
-        plt.grid(True)
-    
-    avg_rmse = total_rmse / num_to_plot_comparison
-    print(f"Average RMSE for the first {num_to_plot_comparison} plotted reconstructions: {avg_rmse:.4f}")
-
-    plt.tight_layout()
+        ys_approx.append((rec_ys[i], 0, f'Recon {i+1} (RMSE: {rmse:.1e})'))
+    # Plot all comparisons in one figure
+    ax1_recon, ax2_recon = plotFunctionApprox( z_values, sample_functions_ys[0], ys_approx, bError=True, errMax=0.1 )
+    ax1_recon.set_title(f'Morse Potential Reconstruction (n_basis={num_optimal_basis})')
     plt.savefig("reconstruction_comparison.png")
     plt.show()
 

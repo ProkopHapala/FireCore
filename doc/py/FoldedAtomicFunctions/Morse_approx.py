@@ -2,129 +2,12 @@ import numpy as np
 import matplotlib.pyplot as plt
 # Assuming potentials.py is in the same directory or accessible via PYTHONPATH
 from potentials import morse_potential
-from utils import plotFunctionApprox
+from plot_utils import plotFunctionApprox
+from basis_utils import eval_poly_exp_native_form, eval_poly_at_z0, get_taylor_approx_data_for_plot
 
 # infinite numpy line length
 np.set_printoptions(linewidth=np.inf)
 
-
-def get_base_zero_arg(k: float, n: int) -> float:
-    """
-    Calculates the value of z_arg where the base (1 - k*z_arg/(2n)) becomes zero.
-    This is the "natural" cutoff for the (1 - k*z_arg/(2n))**(2n) form.
-    """
-    if k <= 0: raise ValueError("k must be positive.")
-    if n <= 0: raise ValueError("n must be a positive integer.")
-    return (2.0 * n) / k
-
-def get_zcut(k: float, n: int, z0_approx_point: float) -> float:
-    """Calculates z_cut for polynomial (z_cut - z)^(2n) to match exp(-kz) decay at z0_approx_point."""
-    if k <= 0: raise ValueError("k must be positive.")
-    if n <= 0: raise ValueError("n must be a positive integer.")
-    return z0_approx_point + get_base_zero_arg(k, n)
-
-def eval_poly_exp_native_form(z_arg: np.ndarray | float, k: float, n: int) -> tuple[np.ndarray | float, float]:
-    """
-    Calculates the polynomial approximation term (max(0, 1 - k_decay*z_arg/(2*n_factor)))**(2*n_factor).
-    This approximates exp(-k_decay*z_arg).
-
-    # Parameters:
-    z_arg : np.ndarray    Argument of the exponential decay (e.g., 'z' or 'z-r0').
-    k : float             The decay constant 'k'.
-    n : int               The 'n' in the polynomial (1 - kz/(2n))**(2n).
-
-    # Returns:
-    approx_values : The polynomial approximation.
-    z_cut_arg :  The value of z_arg where the base (1 - k*z_arg/(2n)) becomes zero.         z_cut_arg = (2 * n_factor) / k_decay.
-    """
-    if k <= 0: raise ValueError("k must be positive.")
-    if n <= 0: raise ValueError("n must be a positive integer.")
-    term_base = 1.0 - (k * z_arg) / (2.0 * n)
-    approx_values = np.maximum(0, term_base)**(2 * n)
-    z_cut_arg = get_base_zero_arg(k, n) # Natural cutoff for this form's argument
-    return approx_values, z_cut_arg
-
-def eval_poly_at_z0(zs: np.ndarray, k: float, n: int, z0_approx_point: float) -> tuple[np.ndarray | float, float]:
-    """
-    Evaluates polynomial C*(z_cut - z)^(2n) to approximate exp(-kz) optimally at z0_approx_point.
-
-    Parameters:
-    -----------
-    zs : np.ndarray
-        Array of z-coordinates for evaluation.
-    k : float
-        Decay constant in exp(-kz).
-    n : int
-        Power factor 'n' in (z_cut - z)^(2n).
-    z0_approx_point : float
-        The z-coordinate around which the approximation is optimized.
-
-    Returns:
-    --------
-    poly_values : np.ndarray
-        Values of the polynomial approximation.
-    z_cut : float
-        The calculated z_cut for the polynomial.
-    """
-    z_cut = get_zcut(k, n, z0_approx_point)
-    
-    # C = exp(-k*z0) / (z_cut - z0)^(2n) = exp(-k*z0) / ( (2n)/k )**(2n)
-    C_coeff = np.exp(-k * z0_approx_point) / (get_base_zero_arg(k, n)**(2 * n))
-    
-    poly_values = C_coeff * (np.maximum(0, z_cut - zs)**(2 * n))
-    return poly_values, z_cut
-
-def get_taylor_coeffs(k: float, z0: float, order: int) -> np.ndarray:
-    """
-    Calculates Taylor expansion coefficients for exp(-kz) around z0 up to a given order.
-    The polynomial is in terms of (z-z0).
-    Coefficient c_i corresponds to the term (z-z0)^i / i!
-    So, c_i = f^(i)(z0) = (-k)^i * exp(-kz0)
-    The full term is (c_i / i!) * (z-z0)^i.
-    This function returns coeffs_for_poly1d = [c_order/order!, c_{order-1}/(order-1)!, ..., c_1/1!, c_0/0!]
-    for np.poly1d, which expects coefficients from highest power to lowest.
-    """
-    if order < 0: raise ValueError("Order must be non-negative.")
-    exp_kz0 = np.exp(-k * z0)
-    # Coefficients for P(x) = a_n x^n + ... + a_1 x + a_0
-    # where x = (z-z0)
-    coeffs_for_poly1d = [((-k)**i * exp_kz0) / np.math.factorial(i) for i in range(order)]
-    return np.array(coeffs_for_poly1d)
-
-def eval_taylor_exp_approx(zs: np.ndarray, k: float, z0: float, order: int) -> np.ndarray:
-    """
-    Evaluates Taylor expansion of exp(-kz) around z0 up to a given order.
-    f(z) approx sum_{i=0 to order} [ f^(i)(z0) * (z-z0)^i / i! ]
-    f^(i)(z0) = (-k)^i * exp(-kz0)
-    """
-    if order < 0: raise ValueError("Order must be non-negative.")
-    
-    # Get coefficients for polynomial in (z-z0)
-    # coeffs are [c_order, c_{order-1}, ..., c_0] where c_i is for (z-z0)^i
-    taylor_coeffs = get_taylor_coeffs(k, z0, order)
-    print(f"Taylor O({order}) at z0={z0:.1f}: Coeffs (for (z-z0)^i terms): {taylor_coeffs}")
-    poly = np.poly1d(taylor_coeffs[::-1])
-    return poly(zs - z0)
-
-def get_taylor_approx_data_for_plot(zs, k, z0, order_seq):
-    """
-    Helper to generate data for plotFunctionApprox for Taylor series.
-    The 'z_cut' equivalent for Taylor isn't a sharp cutoff, so we pass z0
-    as a reference point if the plotting function needs a coordinate.
-    """
-    ys_approx_taylor = []
-    for order_val in order_seq:
-        taylor_approx_values = eval_taylor_exp_approx(zs, k, z0, order_val)
-        # Get and print coefficients for inspection
-        coeffs = get_taylor_coeffs(k, z0, order_val)
-        # print(f"Taylor O({order_val}) at z0={z0:.1f}:")
-        # print(f"  Coeffs (for (z-z0)^i terms, highest power first): {coeffs}")
-        # print(f"  Evaluated: {taylor_approx_values[:3]}...") # Print a few values
-        # For plotFunctionApprox, the second element in the tuple is z_cut.
-        # For Taylor, there isn't a direct equivalent. We can pass z0 or None.
-        # Let's pass z0 as it's the expansion point.
-        ys_approx_taylor.append((taylor_approx_values, z0, f'Taylor O({order_val})'))
-    return ys_approx_taylor
 
 if __name__ == "__main__":
     # --- General Parameters ---
@@ -166,7 +49,7 @@ if __name__ == "__main__":
     
     y_exp = np.exp(-k0 * zs)
     
-    n_seq = [1, 8, 10, 20 ] # Sequence of n for (1-kz/(2n))^(2n)
+    n_seq = [1,2,4,8,16] # Sequence of n for (1-kz/(2n))^(2n)
     #z0_approx = 3.0 # Point where we want the approximation to be good
     z0_approx = r0_eq
 
@@ -189,7 +72,7 @@ if __name__ == "__main__":
     V_m = morse_potential(zs, D_m, alpha_m, r0_eq)
 
     # Use a sequence of n values for Morse approximation
-    n_seq_morse = [1, 5, 10, 20] # Different n values for Morse
+    n_seq_morse = [1, 2, 4, 8, 16] # Different n values for Morse
     morse_approx_data = []
 
     print(f"\nApproximating Morse potential using V_app = D*(X_app^2 - 2*X_app):")

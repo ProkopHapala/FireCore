@@ -83,7 +83,7 @@ def cutoff_poly_basis(
         scale_info = (z_min, z_range)
         scale_suffix = "_scaled"
 
-    rows = []
+    rows   = []
     labels = []
     
     # Base term: (z_cut_eff - z_eff) for z_eff < z_cut_eff, 0 otherwise

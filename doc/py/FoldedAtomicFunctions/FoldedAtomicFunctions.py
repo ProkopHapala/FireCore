@@ -638,17 +638,17 @@ def main_example():
     calc.add_atom(x=grid.cell_x / 2.0, z=0.0, charge=0.0, vdw_radius=2.3, vdw_depth=0.01, morse_a=1.6)
 
     # --- 1D Morse Potential Debug Plot ---
-    print("\n--- Plotting 1D Morse Potentials for Debugging ---")
-    debug_atom_params = []
-    atom_labels = ["Na-like (r0=1.6Å, D=0.01eV)", "Cl-like (r0=2.3Å, D=0.01eV)"] 
-    for i, atom_p in enumerate(calc.atoms):
-        debug_atom_params.append({
-            'label': atom_labels[i] if i < len(atom_labels) else f"Atom {i+1}",
-            'morse_D': atom_p['morse_D'],
-            'morse_a': atom_p['morse_a'],
-            'morse_r0': atom_p['morse_r0']
-        })
-    plot_1d_morse_debug(debug_atom_params, title="1D Morse Potentials (Individual Atom Parameters)")
+    # print("\n--- Plotting 1D Morse Potentials for Debugging ---")
+    # debug_atom_params = []
+    # atom_labels = ["Na-like (r0=1.6Å, D=0.01eV)", "Cl-like (r0=2.3Å, D=0.01eV)"] 
+    # for i, atom_p in enumerate(calc.atoms):
+    #     debug_atom_params.append({
+    #         'label': atom_labels[i] if i < len(atom_labels) else f"Atom {i+1}",
+    #         'morse_D': atom_p['morse_D'],
+    #         'morse_a': atom_p['morse_a'],
+    #         'morse_r0': atom_p['morse_r0']
+    #     })
+    # plot_1d_morse_debug(debug_atom_params, title="1D Morse Potentials (Individual Atom Parameters)")
     # --- End of 1D Morse Potential Debug Plot ---
 
     
