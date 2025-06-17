@@ -1,5 +1,6 @@
 from __future__ import annotations
 from scipy.linalg import qr
+import warnings
 # --- 5. Plotting & Analysis Utilities ---
 
 import numpy as np # type: ignore
@@ -99,20 +100,58 @@ def poly_basis( z: np.ndarray, degree: int, *, scale: bool = True,) -> Tuple[np.
 # Cutoff Polynomial basis
 ################################################################################
 
-def cutoff_poly_basis( z: np.ndarray,  z_cut: float,   max_power_factor: int, *, scale: bool = False ) -> Tuple[np.ndarray, Tuple[float, float], List[str]]:
+def cutoff_poly_basis( z: np.ndarray,  z_cut: float, power_factors_n: list[int]|int) -> Tuple[np.ndarray, List[str]]:
     """
-    Return matrix ``Phi`` with rows (z_cut - z)^(2*n) for z < z_cut, 0 otherwise.
-    Returns (Phi, (z_min, z_range), labels)
+    Return matrix ``Phi`` with rows (z_cut - z)^(2*n_factor) for z < z_cut, 0 otherwise,
+    for each n_factor in power_factors_n.
+
+    Parameters:
+    -----------
+    z : np.ndarray
+        The z-coordinates.
+    z_cut : float
+        The cutoff distance.
+    power_factors_n : list[int]
+        A list of integers 'n' to generate powers (z_cut - z)^(2*n).
+        Each n must be > 0.
+
+    Returns:
+    --------
+    Phi_rows : np.ndarray
+        Matrix where each row is a basis function. Shape (len(valid_power_factors_n), len(z)).
+    labels : list[str]
+        Labels for each basis function.
     """
     rows   = []
     labels = []
     # Base term: (z_cut - z) for z < z_cut, 0 otherwise
     base_term = np.maximum(0, z_cut - z)
-    for n_factor in range(1, max_power_factor + 1):
+    if isinstance(power_factors_n, int):
+        power_factors_n = range(1, power_factors_n + 1)
+    for n_factor in power_factors_n:
+        if not isinstance(n_factor, int) or n_factor <= 0:
+            warnings.warn(f"Warning: Non-positive or non-integer power factor {n_factor} for z_cut={z_cut} skipped.")
+            continue
         rows.append(base_term**(2 * n_factor))
         labels.append(f"({z_cut:.2f}-z)^{2*n_factor}")
-    return np.vstack(rows) if rows else np.array([]).reshape(0, len(z)), labels
+    if not rows:
+        return np.array([]).reshape(0, len(z)), []
+    return np.vstack(rows), labels
 
+def construct_composite_cutoff_basis(
+    z: np.ndarray,
+    basis_definitions: list[tuple[float, list[int]]]
+) -> Tuple[np.ndarray, List[str]]:
+    """Constructs a composite basis by merging several cutoff_poly_basis sets."""
+    all_phi_rows, all_labels = [], []
+    for z_c, p_factors in basis_definitions:
+        phi_curr, labels_curr = cutoff_poly_basis(z, z_c, p_factors)
+        if phi_curr.size > 0:
+            all_phi_rows.append(phi_curr)
+            all_labels.extend(labels_curr)
+    if not all_phi_rows:
+        return np.array([]).reshape(0, len(z)), []
+    return np.vstack(all_phi_rows), all_labels
 ################################################################################
 # Orthogonalisation
 ################################################################################
@@ -295,20 +334,33 @@ def get_taylor_approx_data_for_plot(zs, k, z0, order_seq):
 # SVD Error Calculation
 ################################################################################
 
-def calc_svd_reconstruction_errors(Y_samples: np.ndarray) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
-    """Calculates SVD of Y.T and relative reconstruction error of Y_samples.
+def calc_svd_reconstruction_errors(Y_samples: np.ndarray, weights: np.ndarray | None = None) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """Calculates SVD of Y.T and absolute SVD reconstruction error of Y_samples.
 
     Performs SVD on Y_samples.T to find optimal basis for rows of Y_samples.
+    If weights are provided, SVD is performed on weighted Y_samples.
     Returns (eigenfunctions_U, singular_values_s, errors_vs_k).
     eigenfunctions_U columns are the principal components of Y_samples.
+    errors_vs_k is sqrt(sum of squares of neglected singular values), an absolute error measure.
     """
     if Y_samples.ndim != 2 or Y_samples.shape[0] == 0 or Y_samples.shape[1] == 0:
         return np.array([]), np.array([]), np.array([])
-        
-    # SVD on Y.T to get singular values for reconstructing rows of Y (the functions)
-    # U_cols_are_eigenfunctions, s_vals, Vh_rows_are_coeffs_in_U
-    U_eigenfuncs, s_vals, _Vh_coeffs = np.linalg.svd(Y_samples.T, full_matrices=False)
-    
+
+    if weights is not None:
+        if weights.ndim == 1 and weights.shape[0] == Y_samples.shape[1]: # (Nz)
+            W_sqrt = np.sqrt(weights)
+            Y_w = Y_samples * W_sqrt[np.newaxis, :]
+        elif weights.ndim == 2 and weights.shape == Y_samples.shape: # (M, Nz)
+            W_sqrt = np.sqrt(weights)
+            Y_w = Y_samples * W_sqrt
+        else:
+            raise ValueError("Weights must be 1D (Nz) or 2D (M,Nz) matching Y_samples dimensions.")
+        U_eigenfuncs, s_vals, _Vh_coeffs = np.linalg.svd(Y_w.T, full_matrices=False)
+    else:
+        # SVD on Y.T to get singular values for reconstructing rows of Y (the functions)
+        # U_cols_are_eigenfunctions, s_vals, Vh_rows_are_coeffs_in_U
+        U_eigenfuncs, s_vals, _Vh_coeffs = np.linalg.svd(Y_samples.T, full_matrices=False)
+
     #total_sq = np.sum(s_vals**2)
     #if total_sq < 1e-12: # Handle case where all singular values are zero
     #    return U_eigenfuncs, s_vals, np.zeros_like(s_vals)
@@ -321,36 +373,48 @@ def calc_svd_reconstruction_errors(Y_samples: np.ndarray) -> tuple[np.ndarray, n
 # Basis Set Analysis Utilities
 ################################################################################
 
-def calc_fit_svd(Y: np.ndarray, phi: np.ndarray) -> tuple[np.ndarray, np.ndarray, np.ndarray, float]:
+def calc_fit_svd(Y: np.ndarray, phi: np.ndarray, weights: np.ndarray | None = None) -> tuple[np.ndarray, np.ndarray, np.ndarray, float]:
     """Calc fit coeffs S for Y ~ S.T @ phi, their SVD (U_S, s_vals_S), & initial fit error.
 
     Parameters:
     -----------
     Y : np.ndarray (M, Nz) Sample functions.
     phi : np.ndarray (P, Nz) Basis functions.
+    weights : np.ndarray (Nz), optional. Weights for the z-points.
 
     Returns:
     --------
     S : Coefficient matrix (P, M).
     U_S : Left singular vectors of S (P, min(P,M)).
     s_vals_S : Singular values of S.
-    initial_err : Relative error of fitting Y with full phi.
+    initial_err : Absolute weighted error of fitting Y with full phi.
     """
-    S                    = fit_coefficients(Y, phi)
+    S                    = fit_coefficients(Y, phi, weights=weights)
     U_S, s_vals_S, _     = np.linalg.svd(S, full_matrices=False)
     Y_reconstructed_full = (S.T @ phi)
-    initial_err          = np.linalg.norm(Y - Y_reconstructed_full)
+
+    if weights is not None:
+        # W_sqrt is calculated based on weights' dimensions
+        if weights.ndim == 1: # (Nz)
+            W_sqrt = np.sqrt(weights)
+            initial_err = np.linalg.norm((Y - Y_reconstructed_full) * W_sqrt[np.newaxis, :])
+        elif weights.ndim == 2: # (M, Nz)
+            W_sqrt = np.sqrt(weights)
+            initial_err = np.linalg.norm((Y - Y_reconstructed_full) * W_sqrt)
+        # else: error would have been raised by fit_coefficients
+    else:
+        initial_err = np.linalg.norm(Y - Y_reconstructed_full)
     return S, U_S, s_vals_S, initial_err
 
-def eval_multi_basis_recon_err( Y: np.ndarray, phi_list: list[np.ndarray],  k_vals: list[int] ) -> tuple[list[float], dict[int, list[float]]]:
+def eval_multi_basis_recon_err( Y: np.ndarray, phi_list: list[np.ndarray],  k_vals: list[int], weights: np.ndarray | None = None ) -> tuple[list[float], dict[int, list[float]]]:
     """Eval initial fit & k-component recon errors for a list of bases."""
     err_full = []
     err_k    = {k: [] for k in k_vals}
-    
+
     for phi_current in phi_list:
         # S_loop and s_vals_loop are not directly used for error accumulation here,
         # but U_S_loop and initial_err_loop are.
-        _S_loop, U_S_loop, _s_vals_loop, initial_err_loop = calc_fit_svd(Y, phi_current)
+        _S_loop, U_S_loop, _s_vals_loop, initial_err_loop = calc_fit_svd(Y, phi_current, weights=weights)
         err_full.append(initial_err_loop)
 
         for k in k_vals:
@@ -358,9 +422,23 @@ def eval_multi_basis_recon_err( Y: np.ndarray, phi_list: list[np.ndarray],  k_va
             if k > 0 and k <= U_S_loop.shape[1]: # k must be positive and within available components
                 U_k_loop        = U_S_loop[:, :k]
                 B_opt_rows      = (U_k_loop.T @ phi_current)
+                # The coefficients for Y in B_opt should ideally also be found via weighted lstsq
+                # if B_opt_rows itself is not considered "final" but an intermediate.
+                # However, B_opt_rows is derived from SVD of S, which came from weighted fit.
+                # So, B_opt_rows is already "optimized" for the weighted data.
+                # Using unweighted lstsq here to project Y onto B_opt_rows is a common simplification.
                 coeffs_Y_in_B_opt = np.linalg.lstsq(B_opt_rows.T, Y.T, rcond=None)[0]
                 Y_reconstructed_k = (coeffs_Y_in_B_opt.T @ B_opt_rows)
-                recon_err_k = np.linalg.norm(Y - Y_reconstructed_k)
+                if weights is not None:
+                    if weights.ndim == 1: # (Nz)
+                        W_sqrt = np.sqrt(weights)
+                        recon_err_k = np.linalg.norm((Y - Y_reconstructed_k) * W_sqrt[np.newaxis, :])
+                    elif weights.ndim == 2: # (M, Nz)
+                        W_sqrt = np.sqrt(weights)
+                        recon_err_k = np.linalg.norm((Y - Y_reconstructed_k) * W_sqrt)
+                    # else: error would have been raised by calc_fit_svd
+                else:
+                    recon_err_k = np.linalg.norm(Y - Y_reconstructed_k)
             err_k[k].append(recon_err_k)
-            
+
     return err_full, err_k

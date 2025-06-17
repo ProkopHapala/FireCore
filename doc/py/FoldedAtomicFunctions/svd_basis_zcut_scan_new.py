@@ -11,9 +11,9 @@ import numpy as np
 import matplotlib.pyplot as plt
 
 # project helpers -------------------------------------------------------------
-from basis_utils import cutoff_poly_basis, gen_morse_prms, gen_morse_curves, calc_fit_svd, eval_multi_basis_recon_err, calc_svd_reconstruction_errors
-from optimize import fit_coefficients  # functional least-squares helper
-from plot_utils import plot1D, plotFunctionApprox  # custom plotting helpers
+from basis_utils import gen_morse_prms, gen_morse_curves, construct_composite_cutoff_basis
+from optimize import fit_coefficients
+import plot_utils  # custom plotting helpers
 
 # ----------------------------------------------------------------------------
 # 0. Parameters
@@ -23,91 +23,88 @@ from plot_utils import plot1D, plotFunctionApprox  # custom plotting helpers
 z = np.linspace(1.5, 12.0, 250)
 
 # Morse sample family  – vary both r0 and a
-n_samples = 100
+n_samples = 20
 rng = np.random.default_rng(0)
 prms_list = gen_morse_prms(n_samples, (1.0, 2.0), (2.0, 4.0), 1.0)
 samples, _ = gen_morse_curves(z, prms=prms_list)
 
-# cutoff-poly basis parameters
-max_n       = 8                # highest n in (z_cut - z)^(2 n)
-zcut_values = np.linspace(4.0, 16.0, 25)
+# Composite cutoff-poly basis parameters
+# Each tuple is (z_cut, list_of_n_factors)
+# where n_factor corresponds to (z_cut - z)^(2*n_factor)
+# basis_definitions_custom = [
+#     (8.0, [2, 3, 4]),    # 3 functions with z_cut=8.0 and powers 4, 6, 8
+#     (6.0, [1, 2]),       # 2 functions with z_cut=6.0 and powers 2, 4
+#     (10.0, [3, 5])       # 2 functions with z_cut=10.0 and powers 6, 10
+# ]
+
+basis_definitions_custom = [
+    #(10.0, [1,2,3,4,5,6,7,8]),  
+    #(10.0, [2,3,4,5,6,7,8]),  
+    #(10.0, [4,6,8]),  
+    #(12.0, [4,5,6,7,8]),  
+    #(6.0, [1,2,3,4])   
+    (6.0, [1,2,3,4])   
+    #(4.0, [1,2])      
+]
+
 
 # ----------------------------------------------------------------------------
 # 1. Generate reference sample functions (columns of Y)
 # ----------------------------------------------------------------------------
 
 Y = np.vstack(samples)  # (M, Nz)
-plot1D(z, Y, "Example Morse samples")
+# plot1D(z, Y, "Example Morse samples") # Optional: plot original samples
+
+# Define per-sample mask: 1.0 for relevant regions, 0.0 for ignored regions
+V_repulsive_thresh = 0.5   # eV, values AT or ABOVE this threshold are ignored for each sample
+
+# weights_Y_mask will be (M, Nz), with 1.0 where Y < V_repulsive_thresh, and 0.0 otherwise.
+weights_Y_mask = (Y < V_repulsive_thresh).astype(float)
 
 # ----------------------------------------------------------------------------
-# 1.1. SVD of the sample functions Y themselves
+# 2. Construct the composite basis and evaluate its error
 # ----------------------------------------------------------------------------
-nSampComp = 4
-M, Nz_grid = Y.shape # Renamed Nz to Nz_grid to avoid conflict with parameter Nz
-U_Y, s_vals_Y, svd_err = calc_svd_reconstruction_errors(Y)
-plot1D(np.arange(1, len(svd_err) + 1), svd_err[np.newaxis, :], f'Relative SVD Reconstruction Error of Samples Y (M={M})', bLogY=True, ls='.-')
-#nSampComp = min(10, U_Y.shape[1]) # Plot up to 10 components, or fewer if not available
-plot1D(z, U_Y[:, :nSampComp].T, f'First {nSampComp} Principal Components of Y Samples')
+print(f"Constructing composite basis from definitions: {basis_definitions_custom}")
+Phi_composite, composite_labels = construct_composite_cutoff_basis(z, basis_definitions_custom)
 
-# ----------------------------------------------------------------------------
-# 2. Prepare list of basis sets and evaluate errors
-# ----------------------------------------------------------------------------
+if Phi_composite.shape[0] == 0:
+    print("Error: The defined custom basis is empty. Exiting.")
+    exit()
 
-phi_list_scan = []
-for zc in zcut_values:
-    Phi, *_ = cutoff_poly_basis(z, zc, max_n, scale=False)
-    phi_list_scan.append(Phi)
+print(f"Constructed composite basis with {Phi_composite.shape[0]} functions.")
+print("Labels of composite basis functions:")
+for i, label in enumerate(composite_labels):
+    print(f"  {i}: {label}")
 
-ks_to_plot = [1,2,3,4,5,6] 
+# Fit coefficients using the composite basis and per-sample masked regions
+S_composite = fit_coefficients(Y, Phi_composite, weights=weights_Y_mask)
 
-err_full, err_ks = eval_multi_basis_recon_err(Y, phi_list_scan, ks_to_plot)
+# Reconstruct using the composite basis
+Y_reconstructed_composite = S_composite.T @ Phi_composite
 
-print(f"Initial full basis fit errors for max_n={max_n} vs z_cut (relative): {['%.2e' % e for e in err_full]}")
+# Calculate total error for the composite basis
+total_masked_error_composite = np.linalg.norm((Y - Y_reconstructed_composite) * weights_Y_mask)
 
-# ----------------------------------------------------------------------------
-# 3. Plot error vs z_cut for several nBasisOpt values
-# ----------------------------------------------------------------------------
-err_k = np.array([err_ks[k] for k in ks_to_plot])
-
-fig, ax = plt.subplots(figsize=(10, 6))
-ax.plot(zcut_values, err_full, 'o:', lw=1.5, color='black', label='Rel. Initial Full Basis Fit Error')
-for i, k in enumerate(ks_to_plot):
-    ax.plot(zcut_values, err_k[i], '.-', lw=0.5, label=f'Actual Recon Error k={k}')
-ax.set_yscale('log')
-ax.set_xlabel('z_cut (Å)')
-ax.set_ylabel('Relative Error')
-ax.set_title( f'Error vs z_cut: Initial Fit and SVD Compression (max_n={max_n})')
-ax.legend()
-ax.grid(True, which="both", ls=":")
+print(f"\nTotal masked error for the composite basis: {total_masked_error_composite:.2e}")
 
 # ----------------------------------------------------------------------------
-# 4. Choose optimal z_cut for chosen nBasisOpt and show fits
+# 3. Show fits for example samples using the composite basis
 # ----------------------------------------------------------------------------
-nBasisOpt = 6  # user-selected principal components
-errors_k_actual_recon = err_ks[nBasisOpt]
-zc_best_idx = int(np.argmin(errors_k_actual_recon))
-zc_best = zcut_values[zc_best_idx]
-
-print(f"Best z_cut for k={nBasisOpt} (Actual Recon Error): {zc_best:.2f} Å (Actual Recon rel. error {min(errors_k_actual_recon):.2e})")
-print(f"Initial full basis fit rel. error at z_cut={zc_best:.2f}: {err_full[zc_best_idx]:.2e}")
-
-Phi_best = phi_list_scan[zc_best_idx]
-S_best, U_S_best, _, _ = calc_fit_svd(Y, Phi_best) # s_vals and initial_err not needed here
-U          = U_S_best                              # This is U from SVD of S_best
-B_opt_rows = (U[:, :nBasisOpt].T @ Phi_best)       # shape (k, Nz)
-
 rng_plot        = np.random.default_rng(1)
-idx_samples_plot = rng_plot.choice(Y.shape[0], size=1, replace=False)
-ys_approx_plot   = []
+idx_samples_plot = rng_plot.choice(Y.shape[0], size=min(5, Y.shape[0]), replace=False)
+
+data_pairs_plot = []
 for idx in idx_samples_plot:
     y_samp = Y[idx]
-    coeffs_samp = np.linalg.lstsq(B_opt_rows.T, y_samp, rcond=None)[0]
-    y_fit_samp  = coeffs_samp @ B_opt_rows
-    error_samp  = np.linalg.norm(y_samp - y_fit_samp)
-    print(f"Reconstruction error for sample {idx} using {nBasisOpt} optimal funcs from zc_best={zc_best:.2f}: {error_samp:.2e}")
-    ys_approx_plot.append((y_fit_samp, zc_best, f'sample {idx}'))
+    # For individual sample fitting, use its specific coefficients from S_composite
+    y_fit_samp  = S_composite[:, idx].T @ Phi_composite
 
-plotFunctionApprox(z, Y[idx_samples_plot[0]], ys_approx_plot, bError=True, errMax=0.01, scMin=1.1)
-plt.title(f"Reconstruction Error for Sample {idx_samples_plot[0]} using {nBasisOpt} Optimal Funcs from zc_best={zc_best:.2f}")
+    # Error for this specific sample, considering its mask
+    error_samp_masked  = np.linalg.norm((y_samp - y_fit_samp) * weights_Y_mask[idx, :])
+    print(f"Absolute masked reconstruction error for sample {idx} using composite basis: {error_samp_masked:.2e}")
+    data_pairs_plot.append((y_samp, y_fit_samp))
+
+# Use the new function to plot multiple samples and their approximations
+plot_utils.plotMultiFunctionApprox(z, data_pairs_plot, bError=False, errMax=0.01, scMin=1.1, title=f"Reconstruction using Composite Basis ({Phi_composite.shape[0]} functions)")
 
 plt.show()

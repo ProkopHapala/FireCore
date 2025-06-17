@@ -5,7 +5,7 @@ import matplotlib.pyplot as plt
 
 def plot1D(
     xs: np.ndarray,
-    ys: np.ndarray, # (n, Nz)
+    ys: np.ndarray, 
     title: str,
     scMin: float = 1.5,
     bLogY: bool = False,
@@ -38,7 +38,7 @@ def plot1D(
     #plt.show()
     return ax
 
-# def makeTwin(ax, xs, ys, label=None, ls=':', lw=0.5, c='k'):
+# def makeTwin(ax, xs, ys, label=None, ls=':', lw=0.5, c='k'): # Keep existing function
 #     ax2 = ax.twinx()
 #     ax2.plot(xs, ys, ls, c=c, label=label, lw=lw)
 #     ax2.set_ylabel(label)
@@ -62,6 +62,55 @@ def plot_SV(s_vals, K_opt):
     plt.yscale('log')
     # if filename: plt.savefig(filename)
     # plt.show()
+
+def plotMultiFunctionApprox(xs, data_pairs, bError=False, colors=None, errMax=None, scMin=None, title='Function Approximation'):
+    """
+    Plots multiple reference functions and their approximations.
+
+    Parameters
+    ----------
+    xs : np.ndarray
+        The x-coordinates (z-values).
+    data_pairs : list of tuples (y_ref, y_approx)
+        List where each tuple contains a reference function and its approximation.
+    bError : bool, default: False
+        Whether to plot the error (difference) on a secondary y-axis.
+    colors : list of colors, optional
+        List of colors to cycle through for each pair of ref/approx.
+    errMax : float, optional
+        Maximum absolute value for the error y-axis limits.
+    scMin : float, optional
+        Scaling factor for the main y-axis limits based on the minimum reference value.
+    title : str, default: 'Function Approximation'
+        Title for the main plot.
+
+    Returns
+    -------
+    fig : matplotlib.figure.Figure
+        The figure object.
+    axes : tuple of matplotlib.axes.Axes
+        A tuple containing the main axis and the error axis (if bError is True).
+    """
+    fig, ax1 = plt.subplots(figsize=(12, 7))
+    ax2 = None
+    if bError:
+        ax2 = ax1.twinx()
+        ax2.set_ylabel('Error', color='r')
+        ax2.tick_params(axis='y', labelcolor='r')
+        ax2.axhline(0, color='gray', linestyle=':', linewidth=0.5)
+    n_pairs = len(data_pairs)
+    if colors is None: colors = plt.cm.get_cmap('tab10', n_pairs)
+    for i, (y_ref, y_app) in enumerate(data_pairs):
+        color = colors(i) if callable(colors) else colors[i % len(colors)]
+        ax1.plot(xs, y_ref, label=f'Sample {i+1}', ls=':', lw=1.5, c=color)
+        ax1.plot(xs, y_app, label=f'Sample {i+1} Approx', ls='-', lw=1.0, c=color)
+        if bError: ax2.plot(xs, y_ref - y_app, color=color, linestyle='--', lw=0.8, label=f'Err Sample {i+1}')
+    ax1.set_xlabel('z (Å)'); ax1.set_ylabel('Value'); ax1.set_title(title); ax1.grid(True, linestyle=':', alpha=0.7)
+    if scMin is not None: vmin = np.min(np.concatenate([pair[0] for pair in data_pairs])); ax1.set_ylim(vmin * scMin, -vmin * scMin)
+    if bError and errMax is not None: ax2.set_ylim(-errMax, errMax)
+    lines1, labels1 = ax1.get_legend_handles_labels(); lines2, labels2 = ax2.get_legend_handles_labels() if bError else ([], [])
+    ax1.legend(lines1 + lines2, labels1 + labels2, loc='best'); fig.tight_layout()
+    return fig, (ax1, ax2) if bError else (ax1,)
 
 def plotFunctionApprox( xs, y_ref, ys_approx, bError=False, colors=None, errMax=1.0e-3, scMin=1.5 ):
     fig, ax1 = plt.subplots(figsize=(12, 7))
@@ -105,7 +154,7 @@ def plotFunctionApprox( xs, y_ref, ys_approx, bError=False, colors=None, errMax=
     return fig,(ax1,ax2) 
 
 
-# =====================================================================
+# ===================================================================== # Keep existing function
 # 2-D plotting – compact helpers (imshow based)
 # =====================================================================
 
@@ -169,9 +218,3 @@ def plot2Dbasis(rows, shape, extent, coeffs=None, labels=None, ncol=4, cmap="RdB
     #if fname: plt.savefig(fname); print("saved", fname)
     #plt.tight_layout(); plt.show(); 
     return axes
-
-
-
-
-
-
