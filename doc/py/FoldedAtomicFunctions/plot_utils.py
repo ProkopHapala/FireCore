@@ -4,60 +4,57 @@ import numpy as np
 import matplotlib.pyplot as plt
 
 def plot1D(
-    zs: np.ndarray,
-    profiles_T: np.ndarray, # (num_profiles, Nz)
+    xs: np.ndarray,
+    ys_: np.ndarray, # (n, Nz)
     title: str,
     max_plot: int = 10,
     ws: np.ndarray = None,
-    potential_plot_yscale_factor: float = 1.5,
-    filename: str = None
+    scMin: float = 1.5,
+    #filename: str = None
 ):
     """Plots 1D profiles."""
-    if profiles_T.size == 0:
+    if ys_.size == 0:
         print(f"No profiles to plot for: {title}")
         return
         
-    num_profiles = profiles_T.shape[0]
+    n = ys_.shape[0]
     plt.figure(figsize=(10, 6))
     
-    actual_profiles_to_plot = profiles_T[:min(num_profiles, max_plot), :]
-    for i in range(actual_profiles_to_plot.shape[0]):
-        plt.plot(zs, actual_profiles_to_plot[i, :], label=f'Profile {i+1}', alpha=0.7)
+    ys = ys_[:min(n, max_plot), :]
+    for i in range(ys.shape[0]):
+        plt.plot(xs, ys[i, :], label=f'Profile {i+1}', alpha=0.7)
     
     if ws is not None:
         # Scale weights to fit nicely on the plot
         ax2 = plt.gca().twinx()
-        min_prof_disp = np.min(actual_profiles_to_plot) if actual_profiles_to_plot.size > 0 else 0
-        max_prof_disp = np.max(actual_profiles_to_plot) if actual_profiles_to_plot.size > 0 else 1
-        # Plot weights such that they are visible, e.g., in top 20% of y-axis range
-        # Ensure plot_ws is calculated robustly even if max_prof_disp == min_prof_disp
-        range_prof_disp = max_prof_disp - min_prof_disp
-        if range_prof_disp < 1e-9 : range_prof_disp = 1.0 # Avoid division by zero or tiny range
-
-        plot_ws = min_prof_disp + 0.8 * range_prof_disp + 0.2 * range_prof_disp * (ws / np.max(ws) if np.max(ws) > 1e-9 else ws)
-        ax2.plot(zs, ws, 'k--', label='Weights (scaled)', alpha=0.5, linewidth=1)
+        # ymin = np.min(ys) if ys.size > 0 else 0
+        # ymax = np.max(ys) if ys.size > 0 else 1
+        # # Plot weights such that they are visible, e.g., in top 20% of y-axis range
+        # # Ensure plot_ws is calculated robustly even if ymax == ymin
+        # range_prof_disp = ymax - ymin
+        # if range_prof_disp < 1e-9 : range_prof_disp = 1.0 # Avoid division by zero or tiny range
+        #plot_ws = ymin + 0.8 * range_prof_disp + 0.2 * range_prof_disp * (ws / np.max(ws) if np.max(ws) > 1e-9 else ws)
+        ax2.plot(xs, ws, 'k--', label='Weights (scaled)', alpha=0.5, linewidth=1)
         ax2.set_ylabel('Weights (scaled)')
         ax2.tick_params(axis='y')
-
     # Y-axis scaling for potentials
-    if actual_profiles_to_plot.size > 0:
-        overall_min_val = np.min(actual_profiles_to_plot)
-        if overall_min_val < -1e-9: # If there's a negative minimum (potential well)
-            plot_vmin = overall_min_val * potential_plot_yscale_factor
+    if ys.size > 0:
+        ymin = np.min(ys)
+        if ymin < -1e-9: # If there's a negative minimum (potential well)
+            plot_vmin = ymin * scMin
             plot_vmax = -plot_vmin
             plt.ylim(plot_vmin, plot_vmax)
-
     plt.title(title)
     plt.xlabel('z (Å)')
     plt.ylabel('Potential / Value')
-    if actual_profiles_to_plot.shape[0] > 0 : plt.legend() # Legend for main plot
+    if ys.shape[0] > 0 : plt.legend() # Legend for main plot
     plt.grid(True)
-    if filename:
-        plt.savefig(filename)
-        print(f"Plot saved to {filename}")
-    plt.show()
+    #if filename:
+    #    plt.savefig(filename)
+    #    print(f"Plot saved to {filename}")
+    #plt.show()
 
-def plot_SV(s_vals, K_opt, filename: str = None):
+def plot_SV(s_vals, K_opt):
     """Plots singular values."""
     if s_vals.size == 0:
         print("No singular values to plot.")
@@ -72,10 +69,10 @@ def plot_SV(s_vals, K_opt, filename: str = None):
       plt.legend()
     plt.grid(True)
     plt.yscale('log')
-    if filename:
-        plt.savefig(filename)
-        print(f"Plot saved to {filename}")
-    plt.show()
+    # if filename:
+    #     plt.savefig(filename)
+    #     print(f"Plot saved to {filename}")
+    # plt.show()
 
 def plotFunctionApprox( xs, y_ref, ys_approx, bError=False, colors=None, errMax=1.0e-3 ):
     fig, ax1 = plt.subplots(figsize=(12, 7))
@@ -90,7 +87,7 @@ def plotFunctionApprox( xs, y_ref, ys_approx, bError=False, colors=None, errMax=
         ax2.tick_params(axis='y', labelcolor='gray')
         ax2.axhline(0, color='gray', linestyle=':', linewidth=0.5)
     for i in range(n_approx):
-        #poly_approx, z_cut_n = eval_poly_at_z0(zs, k0, n_val, z0_approx)
+        #poly_approx, z_cut_n = eval_poly_at_z0(xs, k0, n_val, z0_approx)
         y_app, z_cut_n, label = ys_approx[i]
         ax1.plot(xs, y_app, label=label+f' z_cut={z_cut_n:.3f}', ls='-', lw=1.0, c=colors[i])
         # Mark z_cut if it's within the plot range

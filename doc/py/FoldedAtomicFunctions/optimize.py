@@ -65,10 +65,10 @@ if __name__ == "__main__":
     rng = np.random.default_rng(0)
     coeffs = rng.normal(size=(Phi.shape[0], 3))
     Y = (coeffs.T @ Phi) + 0.05 * rng.normal(size=(3, z.size))
-
     S = fit_coefficients(Y, Phi)
     B_opt, U_k, s = optimal_basis(S, Phi, K=2)
-    from utils import plot_1d_profiles, plot_singular_values
-
-    plot_1d_profiles(z, B_opt, "Optimal basis")
-    plot_singular_values(s, 2)
+    from plot_utils import plot1D, plot_SV
+    import matplotlib.pyplot as plt
+    plot1D(z, B_opt, "Optimal basis")
+    plot_SV(s, 2)
+    plt.show()

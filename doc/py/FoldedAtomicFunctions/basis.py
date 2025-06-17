@@ -138,9 +138,10 @@ if __name__ == "__main__":
     print("Labels:", labels)
     print("Scale Info:", scale_info)
 
-    from utils import plot_1d_profiles
-    plot_1d_profiles(z, Phi, "Raw polynomial basis")
-    plot_1d_profiles(z, Q, "Orthogonalised basis")
+    from matplotlib import pyplot as plt
+    from plot_utils import plot1D
+    plot1D(z, Phi, "Raw polynomial basis")
+    plot1D(z, Q, "Orthogonalised basis")
 
     print("\n--- Cutoff Polynomial Basis Test ---")
     z_cut_test = 3.0
@@ -150,5 +151,8 @@ if __name__ == "__main__":
     print("Phi_cutoff shape", Phi_cutoff.shape)
     print("Scale Info:", scale_info_cutoff)
     print("Labels:", labels_cutoff)
-    plot_1d_profiles(z, Phi_cutoff, f"Cutoff polynomial basis (z_cut={z_cut_test}, max_2n={2*max_n_test})")
-    plot_1d_profiles(z, Q_cutoff, f"Orthogonalised cutoff polynomial basis (z_cut={z_cut_test}, max_2n={2*max_n_test})")
+    plot1D(z, Phi_cutoff, f"Cutoff polynomial basis (z_cut={z_cut_test}, max_2n={2*max_n_test})")
+    plot1D(z, Q_cutoff, f"Orthogonalised cutoff polynomial basis (z_cut={z_cut_test}, max_2n={2*max_n_test})")
+    
+    plt.show()
+
