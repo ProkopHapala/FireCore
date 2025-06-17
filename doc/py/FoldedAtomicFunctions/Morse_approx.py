@@ -34,7 +34,7 @@ if __name__ == "__main__":
     
     ys_approx_taylor_data = get_taylor_approx_data_for_plot(zs, k0_taylor, z0_taylor_approx, order_seq_taylor)
     
-    ax1_taylor, ax2_taylor = plotFunctionApprox(zs, y_exp_taylor, ys_approx_taylor_data, True, errMax=0.1) # errMax can be adjusted
+    fig_taylor, (ax1_taylor, ax2_taylor) = plotFunctionApprox(zs, y_exp_taylor, ys_approx_taylor_data, True, errMax=0.1) # errMax can be adjusted
     ax1_taylor.axvline(z0_taylor_approx, color='magenta', linestyle='--', linewidth=1.5, label=f'z0_expansion={z0_taylor_approx:.1f}')
     ax1_taylor.set_title(f'Taylor Approx of exp(-{k0_taylor:.1f}z) around z0={z0_taylor_approx:.1f}')
     ax1_taylor.set_ylim(-0.2, 1.5) # Adjust ylim for Taylor plot visibility
@@ -57,7 +57,7 @@ if __name__ == "__main__":
     print("  where z_cut = z0 + 2n/k")
 
     ys_approx = [ (eval_poly_at_z0(zs, k0, n_val, z0_approx)) + (f'Approx n={n_val}',) for n_val in n_seq ]
-    ax1,ax2 = plotFunctionApprox(zs, y_exp, ys_approx, True)
+    fig_exp, (ax1, ax2) = plotFunctionApprox(zs, y_exp, ys_approx, True)
     ax1.axvline(z0_approx, color='magenta', linestyle='--', linewidth=1.5, label=f'z0_approx={z0_approx:.1f}')
     ax1.set_title(f'Approximation of exp(-{k0:.1f}z) around z0={z0_approx:.1f}')
     #plt.savefig("exp_kz_approximation_sequence.png")
@@ -85,8 +85,8 @@ if __name__ == "__main__":
         V_m_app_n          = D_m * (X_app**2 - 2 * X_app)
         morse_approx_data.append( (V_m_app_n, z_cut_for_X_abs, f'Approx n={n_val_morse}'))
         print(f"  n={n_val_morse}: z_cut for X_app at z={z_cut_for_X_abs:.3f} Å")
-
-    ax1_morse, ax2_morse = plotFunctionApprox(zs, V_m, morse_approx_data, True, errMax=0.1*D_m if D_m > 0 else 0.01)
+    
+    fig_morse, (ax1_morse, ax2_morse) = plotFunctionApprox(zs, V_m, morse_approx_data, True, errMax=0.1*D_m if D_m > 0 else 0.01)
     ax1_morse.set_title(f'Morse Approx (D={D_m}, α={alpha_m}, r0={r0_eq})')
     ax1_morse.set_xlabel('z (Å)')
     ax1_morse.set_ylabel('Potential (eV)')

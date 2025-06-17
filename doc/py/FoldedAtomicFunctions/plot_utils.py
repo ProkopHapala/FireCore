@@ -5,46 +5,45 @@ import matplotlib.pyplot as plt
 
 def plot1D(
     xs: np.ndarray,
-    ys_: np.ndarray, # (n, Nz)
+    ys: np.ndarray, # (n, Nz)
     title: str,
-    max_plot: int = 10,
-    ws: np.ndarray = None,
     scMin: float = 1.5,
     bLogY: bool = False,
     ls='-',lw=0.5,
-    #filename: str = None
+    ax=None,
+    labels=None,
 ):
     """Plots 1D profiles."""
-    if ys_.size == 0:
-        print(f"No profiles to plot for: {title}")
-        return
-    n = ys_.shape[0]
-    plt.figure(figsize=(10, 6))
-    ys = ys_[:min(n, max_plot), :]
-    for i in range(ys.shape[0]):
-        plt.plot(xs, ys[i, :], ls, label=f'Profile {i+1}', lw=lw, alpha=1.0)
-    if ws is not None:
-        # Scale weights to fit nicely on the plot
-        ax2 = plt.gca().twinx()
-        ax2.plot(xs, ws, 'k--', label='Weights (scaled)', ls=':', lw=0.5, alpha=1.0)
-        ax2.set_ylabel('Weights (scaled)')
-        ax2.tick_params(axis='y')
-    # Y-axis scaling for potentials
-    if ys.size > 0:
-        ymin = np.min(ys)
-        if ymin < -1e-9: # If there's a negative minimum (potential well)
-            plot_vmin = ymin * scMin
-            plot_vmax = -plot_vmin
-            plt.ylim(plot_vmin, plot_vmax)
+    n = len(ys)
+    if ax is None: 
+        fig, ax = plt.subplots(figsize=(12, 7))
+    ymin=1e+300
+    for i in range(n):
+        label = labels[i] if labels is not None else f'{i+1}'
+        ax.plot(xs, ys[i], ls, label=label, lw=lw, alpha=1.0)
+        ymini = np.min(ys[i])
+        if ymini < ymin: ymin = ymini
+
     if bLogY:
-        plt.yscale('log')
-    plt.title(title)
-    plt.xlabel('z (Å)')
-    plt.ylabel('Potential / Value')
-    if ys.shape[0] > 0 : plt.legend() # Legend for main plot
-    plt.grid(True)
+        ax.set_yscale('log')
+    elif scMin is not None:
+        vmin=ymin * scMin
+        ax.set_ylim(vmin, -vmin)
+    ax.set_title(title)
+    ax.set_xlabel('z (Å)')
+    ax.set_ylabel('Potential / Value')
+    ax.legend() # Legend for main plot
+    ax.grid(True)
     #if filename: plt.savefig(filename)
     #plt.show()
+    return ax
+
+# def makeTwin(ax, xs, ys, label=None, ls=':', lw=0.5, c='k'):
+#     ax2 = ax.twinx()
+#     ax2.plot(xs, ys, ls, c=c, label=label, lw=lw)
+#     ax2.set_ylabel(label)
+#     ax2.tick_params(axis='y')
+#     return ax2
 
 def plot_SV(s_vals, K_opt):
     """Plots singular values."""

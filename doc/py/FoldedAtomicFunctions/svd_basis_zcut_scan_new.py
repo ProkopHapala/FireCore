@@ -37,8 +37,17 @@ zcut_values = np.linspace(4.0, 16.0, 25)
 # ----------------------------------------------------------------------------
 
 Y = np.vstack(samples)  # (M, Nz)
+plot1D(z, Y, "Example Morse samples")
 
-# plot1D(z, np.array(samples)[:5], "Example Morse samples (first 5)")
+# ----------------------------------------------------------------------------
+# 1.1. SVD of the sample functions Y themselves
+# ----------------------------------------------------------------------------
+nSampComp = 4
+M, Nz_grid = Y.shape # Renamed Nz to Nz_grid to avoid conflict with parameter Nz
+U_Y, s_vals_Y, svd_err = calc_svd_reconstruction_errors(Y)
+plot1D(np.arange(1, len(svd_err) + 1), svd_err[np.newaxis, :], f'Relative SVD Reconstruction Error of Samples Y (M={M})', bLogY=True, ls='.-')
+#nSampComp = min(10, U_Y.shape[1]) # Plot up to 10 components, or fewer if not available
+plot1D(z, U_Y[:, :nSampComp].T, f'First {nSampComp} Principal Components of Y Samples')
 
 # ----------------------------------------------------------------------------
 # 2. Prepare list of basis sets and evaluate errors

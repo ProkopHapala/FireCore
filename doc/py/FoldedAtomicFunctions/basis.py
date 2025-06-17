@@ -27,13 +27,12 @@ if __name__ == "__main__":
     print("\n--- Cutoff Polynomial Basis Test ---")
     z_cut_test = 3.0
     max_n_test = 3
-    Phi_cutoff, scale_info_cutoff, labels_cutoff = cutoff_poly_basis(z, z_cut_test, max_n_test)
+    Phi_cutoff, labels_cutoff = cutoff_poly_basis(z, z_cut_test, max_n_test)
     Q_cutoff = gram_schmidt_weighted(Phi_cutoff)
     print("Phi_cutoff shape", Phi_cutoff.shape)
-    print("Scale Info:", scale_info_cutoff)
+    # print("Scale Info:", scale_info_cutoff) # No scale info from cutoff_poly_basis
     print("Labels:", labels_cutoff)
     plot1D(z, Phi_cutoff, f"Cutoff polynomial basis (z_cut={z_cut_test}, max_2n={2*max_n_test})")
     plot1D(z, Q_cutoff, f"Orthogonalised cutoff polynomial basis (z_cut={z_cut_test}, max_2n={2*max_n_test})")
     
     plt.show()
-

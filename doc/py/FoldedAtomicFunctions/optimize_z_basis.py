@@ -43,7 +43,7 @@ from scipy.linalg import lstsq, svd
 from scipy.interpolate import interp1d
 import random
 
-from plot_utils import plot1D, plot_SV
+from plot_utils import plot1D, plot_SV #, makeTwin
 from basis_utils import print_analytical_form_polynomial
 # 
 
@@ -637,8 +637,9 @@ def run_optimization_pipeline(
     if _Y_T.shape[1] != Nz:
         raise ValueError(f"Y_T shape {_Y_T.shape} inconsistent with common_z_coords (Nz={Nz})")
 
-    if do_plots:
-        plot1D(zs, _Y_T, "Sample Functions (Y_T)",ws=ws )
+    if do_plots: 
+        ax = plot1D(zs, _Y_T, "Sample Functions (Y_T)" )
+        if ws is not None: plot1D(zs, [ws], "Weights (scaled)", ax=ax)
 
     # 2. Generate/Load Library Basis Phi_T (P, Nz)
     _Phi_T = Phi_T_library
@@ -678,7 +679,7 @@ def run_optimization_pipeline(
 
 
     if do_plots:
-        plot1D(zs, _Phi_T, "Library Basis Functions (Phi_T)", max_plot=P_lib)
+        plot1D(zs, _Phi_T, "Library Basis Functions (Phi_T)" )
 
     # 3. Compute Coefficients S (P, M)
     print("Computing coefficients S of samples in library basis...")
@@ -695,7 +696,7 @@ def run_optimization_pipeline(
 
     if do_plots:
         plot_SV(s_vals_svd, num_optimal_K )
-        plot1D(zs, B_opt_T, f"{num_optimal_K} Optimal Basis Functions (B_opt_T)", max_plot=num_optimal_K)
+        plot1D(zs, B_opt_T, f"{num_optimal_K} Optimal Basis Functions (B_opt_T)" )
 
     # Print analytical form if applicable
     # This is most meaningful if Phi_T was polynomials and z_scale_info is available

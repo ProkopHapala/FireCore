@@ -295,26 +295,27 @@ def get_taylor_approx_data_for_plot(zs, k, z0, order_seq):
 # SVD Error Calculation
 ################################################################################
 
-def calc_svd_reconstruction_errors(Y_samples: np.ndarray) -> np.ndarray:
-    """Calculates relative reconstruction error of Y_samples vs number of SVD components.
+def calc_svd_reconstruction_errors(Y_samples: np.ndarray) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """Calculates SVD of Y.T and relative reconstruction error of Y_samples.
 
     Performs SVD on Y_samples.T to find optimal basis for rows of Y_samples.
-    Returns array of errors for k=1 to min(M,Nz) components.
+    Returns (eigenfunctions_U, singular_values_s, errors_vs_k).
+    eigenfunctions_U columns are the principal components of Y_samples.
     """
     if Y_samples.ndim != 2 or Y_samples.shape[0] == 0 or Y_samples.shape[1] == 0:
-        return np.array([])
+        return np.array([]), np.array([]), np.array([])
         
     # SVD on Y.T to get singular values for reconstructing rows of Y (the functions)
     # U_cols_are_eigenfunctions, s_vals, Vh_rows_are_coeffs_in_U
-    _, s_vals, _ = np.linalg.svd(Y_samples.T, full_matrices=False)
+    U_eigenfuncs, s_vals, _Vh_coeffs = np.linalg.svd(Y_samples.T, full_matrices=False)
     
     #total_sq = np.sum(s_vals**2)
     #if total_sq < 1e-12: # Handle case where all singular values are zero
-    #    return np.zeros_like(s_vals)
+    #    return U_eigenfuncs, s_vals, np.zeros_like(s_vals)
     # Cumulative sum of squared singular values from the tail
     cumsum_sq_tail = np.cumsum(s_vals[::-1]**2)[::-1]
     # Relative error for keeping k components is sqrt(sum_sq_tail[k]) / sqrt(total_sq)
-    return np.sqrt(cumsum_sq_tail) #/ np.sqrt(total_sq)
+    return U_eigenfuncs, s_vals, np.sqrt(cumsum_sq_tail) # error is not relative yet, just sqrt of sum of squares of neglected s_vals
 
 ################################################################################
 # Basis Set Analysis Utilities

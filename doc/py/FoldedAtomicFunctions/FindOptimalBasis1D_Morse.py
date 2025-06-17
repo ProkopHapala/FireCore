@@ -69,7 +69,7 @@ if __name__ == "__main__":
         print(f"  Generated Morse sample {i+1}: D={p['D']:.2f}, a={p['a']:.2f}, r0={p['r0']:.2f}")
 
     # Plot some of the sample functions
-    plot1D(z_values, np.array(sample_functions_ys), title='A Few Original Morse Potential Samples', max_plot=5)
+    plot1D(z_values, sample_functions_ys, title='A Few Original Morse Potential Samples')
 
     # 3. Choose the number of basis functions to find
     num_optimal_basis = 4 
@@ -95,7 +95,7 @@ if __name__ == "__main__":
         total_rmse += rmse
         ys_approx.append((rec_ys[i], 0, f'Recon {i+1} (RMSE: {rmse:.1e})'))
     # Plot all comparisons in one figure
-    ax1_recon, ax2_recon = plotFunctionApprox( z_values, sample_functions_ys[0], ys_approx, bError=True, errMax=0.1 )
+    fig_recon, (ax1_recon, ax2_recon) = plotFunctionApprox( z_values, sample_functions_ys[0], ys_approx, bError=True, errMax=0.1 )
     ax1_recon.set_title(f'Morse Potential Reconstruction (n_basis={num_optimal_basis})')
     #plt.savefig("reconstruction_comparison.png")
 
