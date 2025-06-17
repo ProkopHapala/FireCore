@@ -1,8 +1,12 @@
+from __future__ import annotations
+from scipy.linalg import qr
 # --- 5. Plotting & Analysis Utilities ---
 
 import numpy as np
 #import matplotlib.pyplot as plt
 from numpy import newaxis
+from optimize import fit_coefficients # Assuming optimize.py is in the same path or accessible
+
 
 xyz_imgs = lambda xs, n, Lx: np.concatenate([xs + i * Lx for i in range(-n, n + 1)])
 
@@ -59,6 +63,86 @@ def cos_exp_basis(X: np.ndarray, Z: np.ndarray, nx: int, nz: int, a0: float = 0.
         for j in range(1, nz + 1)
     ]
     return np.vstack([r.ravel() for r in rows])  # (P, N)
+
+################################################################################
+# Polynomial basis
+################################################################################
+
+def poly_basis( z: np.ndarray, degree: int, *, scale: bool = True,) -> Tuple[np.ndarray, Tuple[float, float], List[str]]:
+    """Return matrix ``Phi`` with rows z^n (n=0..degree) and optional scaling.
+
+    Returns (Phi, (z_min, z_range), labels)
+    """
+    if scale:
+        z_min, z_range = float(z.min()), float(z.max() - z.min())
+        if z_range == 0.0:
+            # fall back to unscaled
+            z_scaled = z.copy()
+            z_min, z_range = 0.0, 1.0
+        else:
+            z_scaled = (z - z_min) / z_range
+    else:
+        z_scaled = z
+        z_min, z_range = 0.0, 0.0  # signifies *no* scaling
+
+    rows = [np.ones_like(z_scaled)]
+    labels = ["1"]
+    for n in range(1, degree + 1):
+        rows.append(z_scaled ** n)
+        term = f"z^{n}_scaled" if scale else f"z^{n}"
+        labels.append(term)
+
+    Phi = np.vstack(rows)
+    return Phi, (z_min, z_range), labels
+
+################################################################################
+# Cutoff Polynomial basis
+################################################################################
+
+def cutoff_poly_basis( z: np.ndarray,  z_cut: float,   max_power_factor: int, *, scale: bool = False ) -> Tuple[np.ndarray, Tuple[float, float], List[str]]:
+    """
+    Return matrix ``Phi`` with rows (z_cut - z)^(2*n) for z < z_cut, 0 otherwise.
+    Returns (Phi, (z_min, z_range), labels)
+    """
+    rows   = []
+    labels = []
+    # Base term: (z_cut - z) for z < z_cut, 0 otherwise
+    base_term = np.maximum(0, z_cut - z)
+    for n_factor in range(1, max_power_factor + 1):
+        rows.append(base_term**(2 * n_factor))
+        labels.append(f"({z_cut:.2f}-z)^{2*n_factor}")
+    return np.vstack(rows) if rows else np.array([]).reshape(0, len(z)), labels
+
+################################################################################
+# Orthogonalisation
+################################################################################
+
+def gram_schmidt_weighted( Phi: np.ndarray, ws: np.ndarray | None = None) -> np.ndarray:
+    """Return orthonormal basis Q with respect to the weights *ws*.
+
+    If *ws* is ``None`` it reduces to QR with column pivoting.
+    """
+    if ws is None:
+        # simple QR (rows = basis functions)
+        Q, _ = qr(Phi.T, mode="economic")
+        return Q.T
+
+    # weighted Gram–Schmidt
+    Q = []
+    W = np.sqrt(ws)
+    for v in Phi:
+        v = v * W  # weight
+        for q in Q:
+            v = v - np.dot(q, v) * q
+        norm = np.linalg.norm(v)
+        if norm < 1e-12:
+            continue
+        Q.append(v / norm)
+    return np.vstack(Q) / W  # bring back to unweighted representation
+
+################################################################################
+# Quick self-test
+################################################################################
 
 def print_analytical_form_polynomial(
     U_k_coeffs: np.ndarray,  # (P, K)
@@ -204,6 +288,53 @@ def get_taylor_approx_data_for_plot(zs, k, z0, order_seq):
         # print(f"  Evaluated: {taylor_approx_values[:3]}...") # Print a few values
         # For plotFunctionApprox, the second element in the tuple is z_cut.
         # For Taylor, there isn't a direct equivalent. We can pass z0 or None.
-        # Let's pass z0 as it's the expansion point.
         ys_approx_taylor.append((taylor_approx_values, z0, f'Taylor O({order_val})'))
     return ys_approx_taylor
+
+################################################################################
+# Basis Set Analysis Utilities
+################################################################################
+
+def calc_fit_svd(Y: np.ndarray, phi: np.ndarray) -> tuple[np.ndarray, np.ndarray, np.ndarray, float]:
+    """Calc fit coeffs S for Y ~ S.T @ phi, their SVD (U_S, s_vals_S), & initial fit error.
+
+    Parameters:
+    -----------
+    Y : np.ndarray (M, Nz) Sample functions.
+    phi : np.ndarray (P, Nz) Basis functions.
+
+    Returns:
+    --------
+    S : Coefficient matrix (P, M).
+    U_S : Left singular vectors of S (P, min(P,M)).
+    s_vals_S : Singular values of S.
+    initial_err : Relative error of fitting Y with full phi.
+    """
+    S                    = fit_coefficients(Y, phi)
+    U_S, s_vals_S, _     = np.linalg.svd(S, full_matrices=False)
+    Y_reconstructed_full = (S.T @ phi)
+    initial_err          = np.linalg.norm(Y - Y_reconstructed_full)
+    return S, U_S, s_vals_S, initial_err
+
+def eval_multi_basis_recon_err( Y: np.ndarray, phi_list: list[np.ndarray],  k_vals: list[int] ) -> tuple[list[float], dict[int, list[float]]]:
+    """Eval initial fit & k-component recon errors for a list of bases."""
+    err_full = []
+    err_k    = {k: [] for k in k_vals}
+    
+    for phi_current in phi_list:
+        # S_loop and s_vals_loop are not directly used for error accumulation here,
+        # but U_S_loop and initial_err_loop are.
+        _S_loop, U_S_loop, _s_vals_loop, initial_err_loop = calc_fit_svd(Y, phi_current)
+        err_full.append(initial_err_loop)
+
+        for k in k_vals:
+            recon_err_k = np.inf
+            if k > 0 and k <= U_S_loop.shape[1]: # k must be positive and within available components
+                U_k_loop        = U_S_loop[:, :k]
+                B_opt_rows      = (U_k_loop.T @ phi_current)
+                coeffs_Y_in_B_opt = np.linalg.lstsq(B_opt_rows.T, Y.T, rcond=None)[0]
+                Y_reconstructed_k = (coeffs_Y_in_B_opt.T @ B_opt_rows)
+                recon_err_k = np.linalg.norm(Y - Y_reconstructed_k)
+            err_k[k].append(recon_err_k)
+            
+    return err_full, err_k

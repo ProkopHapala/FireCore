@@ -10,6 +10,8 @@ def plot1D(
     max_plot: int = 10,
     ws: np.ndarray = None,
     scMin: float = 1.5,
+    bLogY: bool = False,
+    ls='-',lw=0.5,
     #filename: str = None
 ):
     """Plots 1D profiles."""
@@ -20,11 +22,11 @@ def plot1D(
     plt.figure(figsize=(10, 6))
     ys = ys_[:min(n, max_plot), :]
     for i in range(ys.shape[0]):
-        plt.plot(xs, ys[i, :], label=f'Profile {i+1}', alpha=0.7)
+        plt.plot(xs, ys[i, :], ls, label=f'Profile {i+1}', lw=lw, alpha=1.0)
     if ws is not None:
         # Scale weights to fit nicely on the plot
         ax2 = plt.gca().twinx()
-        ax2.plot(xs, ws, 'k--', label='Weights (scaled)', alpha=0.5, linewidth=1)
+        ax2.plot(xs, ws, 'k--', label='Weights (scaled)', ls=':', lw=0.5, alpha=1.0)
         ax2.set_ylabel('Weights (scaled)')
         ax2.tick_params(axis='y')
     # Y-axis scaling for potentials
@@ -34,6 +36,8 @@ def plot1D(
             plot_vmin = ymin * scMin
             plot_vmax = -plot_vmin
             plt.ylim(plot_vmin, plot_vmax)
+    if bLogY:
+        plt.yscale('log')
     plt.title(title)
     plt.xlabel('z (Å)')
     plt.ylabel('Potential / Value')
@@ -60,7 +64,7 @@ def plot_SV(s_vals, K_opt):
     # if filename: plt.savefig(filename)
     # plt.show()
 
-def plotFunctionApprox( xs, y_ref, ys_approx, bError=False, colors=None, errMax=1.0e-3 ):
+def plotFunctionApprox( xs, y_ref, ys_approx, bError=False, colors=None, errMax=1.0e-3, scMin=1.5 ):
     fig, ax1 = plt.subplots(figsize=(12, 7))
     n_approx = len(ys_approx)
     if colors is None:
@@ -87,7 +91,9 @@ def plotFunctionApprox( xs, y_ref, ys_approx, bError=False, colors=None, errMax=
     ax1.plot(xs, y_ref,':k', label=f'Target', lw=2.0)
     ax1.set_xlabel('z')
     ax1.set_ylabel('Value')
-    ax1.set_ylim(-0.1, 1.2)
+    if scMin is not None:
+        vmin = np.min(y_ref)
+        ax1.set_ylim(vmin * scMin, -vmin * scMin)
     ax1.set_xlim(xs[0], xs[-1])
     ax1.grid(True, linestyle=':', alpha=0.7)
     lines, labels = ax1.get_legend_handles_labels()
@@ -97,7 +103,7 @@ def plotFunctionApprox( xs, y_ref, ys_approx, bError=False, colors=None, errMax=
     fig.tight_layout()
     #plt.savefig("exp_kz_approximation_sequence.png")
     #plt.show()
-    return ax1, ax2
+    return fig,(ax1,ax2) 
 
 
 # =====================================================================
