@@ -38,12 +38,8 @@ fit_ls   = lambda V, phi: np.linalg.lstsq(phi.T, V.ravel(), rcond=None)[0]
 reco     = lambda c, phi, shp: (c @ phi).reshape(shp)
 rmse     = lambda A, B: float(np.sqrt(((A - B) ** 2).mean()))
 
-# -----------------------------------------------------------------------------
-# 1. Main driver                                                                
-# -----------------------------------------------------------------------------
-
-def main():
-    # parameters (kept very short names)
+if __name__ == "__main__":
+     # parameters (kept very short names)
     Lx, Lz, dx, z0 = 10.0, 10.0, 0.2, 2.0
     n_img = 3  # ± images in x
 
@@ -66,7 +62,7 @@ def main():
     # plot reference potential with atoms
     colors = ["blue", "red"]
     atoms_vis = [ {"x": at["x"], "z": at["z"], "r0": at["r0"], "color": colors[i % len(colors)]} for i, at in enumerate(ats) ]
-    imshow_grid(V, extent, "Reference Morse potential", atoms=atoms_vis, fname="ref_potential.png")
+    imshow_grid(V, extent, "Reference Morse potential", atoms=atoms_vis)
 
     # basis + fit (plane waves × exp)
     nx_h, nz_f = 3, 4
@@ -75,21 +71,19 @@ def main():
     V_fit = reco(coeffs, phi, X.shape)
 
     # compare fit vs ref
-    plot2Dapprox(V, V_fit, extent, fname="fit_vs_ref.png")
+    plot2Dapprox(V, V_fit, extent)
 
     # singular values of phi (library only)
     plot_SV(np.linalg.svd(phi, compute_uv=False), K_opt=0)
 
     # visualise basis rows (with coefficients)
     labels = [f"cos({k})*e^-{j}z" for k in range(nx_h + 1) for j in range(1, nz_f + 1)]
-    plot2Dbasis(phi, X.shape, extent, coeffs=coeffs, labels=labels, fname="basis_set.png")
+    plot2Dbasis(phi, X.shape, extent, coeffs=coeffs, labels=labels)
 
     # 1-D central slice quick check
     ix = X.shape[0] // 2
     plot1D(zs, np.vstack((V[ix], V_fit[ix])), "Central slice ref vs fit")
 
     print("RMSE (eV):", rmse(V, V_fit))
-    return dict(grid=(xs, zs), V=V, V_fit=V_fit, coeffs=coeffs)
 
-if __name__ == "__main__":
-    main()
+    plt.show()

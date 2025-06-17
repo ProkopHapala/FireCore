@@ -261,5 +261,3 @@ if __name__ == "__main__":
     plt.show()
 
     print("\n--- Optimal Analytical Basis Demonstration Completed ---")
-
-ls

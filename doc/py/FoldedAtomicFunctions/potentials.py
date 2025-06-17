@@ -98,19 +98,11 @@ def cut_2d_potential_profiles(
 
 if __name__ == "__main__":
     # Demonstration of 1-D Morse generation
-    zs = np.linspace(0.0, 6.0, 200)
-    rng = np.random.default_rng(0)
-    params = [
-        {"D": 0.1,
-         "a": rng.uniform(0.8, 2.0),
-         "r0": rng.uniform(2.0, 3.0)}
-        for _ in range(6)
-    ]  # scatter in a and r0
-    Y = generate_morse_samples(zs, params)
-    from utils import plot_1d_profiles
-
-    plot_1d_profiles(zs, Y, "Morse samples")
-
-    if _FAF_AVAILABLE:
-        # Placeholder: user should supply proper system_definition; we just demonstrate signature.
-        print("FAF available – skipping automatic 2-D cut demo (needs real system definition).")
+    zs     = np.linspace(0.0, 10.0, 200)
+    rng    = np.random.default_rng(0)
+    params = [ {"D": 1.0,  "a": rng.uniform(1.5, 1.8),  "r0": rng.uniform(2.5, 4.0)} for _ in range(6) ]  # scatter in a and r0
+    Y      = generate_morse_samples(zs, params)
+    import matplotlib.pyplot as plt
+    from plot_utils import plot1D
+    plot1D(zs, Y, "Morse samples", scMin=1.2)
+    plt.show()

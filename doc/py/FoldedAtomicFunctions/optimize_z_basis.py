@@ -43,6 +43,10 @@ from scipy.linalg import lstsq, svd
 from scipy.interpolate import interp1d
 import random
 
+from plot_utils import plot1D, plot_SV
+from basis_utils import print_analytical_form_polynomial
+# 
+
 # Attempt to import from FoldedAtomicFunctions for sample generation
 try:
     from FoldedAtomicFunctions import GridManager, PotentialCalculator
@@ -634,11 +638,7 @@ def run_optimization_pipeline(
         raise ValueError(f"Y_T shape {_Y_T.shape} inconsistent with common_z_coords (Nz={Nz})")
 
     if do_plots:
-        plot_1d_profiles(zs, _Y_T, "Sample Functions (Y_T)",
-                         ws=ws,
-                         filename=f"{plot_filename_prefix}sample_functions.png" if plot_filename_prefix else None,
-                         # potential_plot_yscale_factor will be used if applicable
-                        )
+        plot1D(zs, _Y_T, "Sample Functions (Y_T)",ws=ws )
 
     # 2. Generate/Load Library Basis Phi_T (P, Nz)
     _Phi_T = Phi_T_library
@@ -678,7 +678,7 @@ def run_optimization_pipeline(
 
 
     if do_plots:
-        plot_1d_profiles(zs, _Phi_T, "Library Basis Functions (Phi_T)", max_plot=P_lib, filename=f"{plot_filename_prefix}library_basis.png" if plot_filename_prefix else None)
+        plot1D(zs, _Phi_T, "Library Basis Functions (Phi_T)", max_plot=P_lib)
 
     # 3. Compute Coefficients S (P, M)
     print("Computing coefficients S of samples in library basis...")
@@ -694,8 +694,8 @@ def run_optimization_pipeline(
     print(f"Coefficients U_k for new basis (in terms of Phi_T) shape: {U_k_coeffs.shape}")
 
     if do_plots:
-        plot_singular_values(s_vals_svd, num_optimal_K, filename=f"{plot_filename_prefix}singular_values.png" if plot_filename_prefix else None)
-        plot_1d_profiles(zs, B_opt_T, f"{num_optimal_K} Optimal Basis Functions (B_opt_T)", max_plot=num_optimal_K, filename=f"{plot_filename_prefix}optimal_basis.png" if plot_filename_prefix else None)
+        plot_SV(s_vals_svd, num_optimal_K )
+        plot1D(zs, B_opt_T, f"{num_optimal_K} Optimal Basis Functions (B_opt_T)", max_plot=num_optimal_K)
 
     # Print analytical form if applicable
     # This is most meaningful if Phi_T was polynomials and z_scale_info is available
@@ -861,3 +861,5 @@ if __name__ == "__main__":
         # print_analytical_form_polynomial(U_k_man, None, manual_labels, K_to_print=manual_K) # Already called inside if conditions met
     except Exception as e:
         print(f"Error in manual example: {e}")
+    
+    plt.show()

@@ -72,19 +72,14 @@ def print_analytical_form_polynomial(
     """
     if U_k_coeffs.size == 0:
         return
-
     P, K_actual = U_k_coeffs.shape
     if K_to_print < 0 or K_to_print > K_actual:
         K_to_print = K_actual
-
     if z_scale_info:
         z_min, z_range = z_scale_info
-        print(
-            f"Note: z_scaled = (z − {z_min:.3f}) / {z_range:.3f} (used in original basis)"
-        )
+        print( f"Note: z_scaled = (z − {z_min:.3f}) / {z_range:.3f} (used in original basis)" )
     else:
         print("Note: original z-coordinates used (no scaling).")
-
     for k in range(K_to_print):
         parts: list[str] = []
         for p in range(P):
