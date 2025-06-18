@@ -100,58 +100,88 @@ def poly_basis( z: np.ndarray, degree: int, *, scale: bool = True,) -> Tuple[np.
 # Cutoff Polynomial basis
 ################################################################################
 
-def cutoff_poly_basis( z: np.ndarray,  z_cut: float, power_factors_n: list[int]|int) -> Tuple[np.ndarray, List[str]]:
+def cutoff_poly_basis( z: np.ndarray,  z_cut: float, ns: list[int]|int,  z0: float=0.0, bLabels: bool = True) -> Tuple[np.ndarray, List[str]]:
     """
     Return matrix ``Phi`` with rows (z_cut - z)^(2*n_factor) for z < z_cut, 0 otherwise,
-    for each n_factor in power_factors_n.
+    for each n_factor in n.
 
     Parameters:
     -----------
-    z : np.ndarray
-        The z-coordinates.
-    z_cut : float
-        The cutoff distance.
-    power_factors_n : list[int]
-        A list of integers 'n' to generate powers (z_cut - z)^(2*n).
-        Each n must be > 0.
+    z : np.ndarray  The z-coordinates.
+    z_cut : float   The cutoff distance.
+    n : list[int]  A list of integers 'n' to generate powers (z_cut - z)^n.
+    bLabels : bool  If True, return labels for each basis function. 
 
     Returns:
     --------
     Phi_rows : np.ndarray
-        Matrix where each row is a basis function. Shape (len(valid_power_factors_n), len(z)).
-    labels : list[str]
-        Labels for each basis function.
+        Matrix where each row is a basis function. Shape (len(valid_n), len(z)).
+    labels : list[str]  Labels for each basis function.
     """
     rows   = []
-    labels = []
+    labels = [] if bLabels else None
     # Base term: (z_cut - z) for z < z_cut, 0 otherwise
-    base_term = np.maximum(0, z_cut - z)
-    if isinstance(power_factors_n, int):
-        power_factors_n = range(1, power_factors_n + 1)
-    for n_factor in power_factors_n:
-        if not isinstance(n_factor, int) or n_factor <= 0:
-            warnings.warn(f"Warning: Non-positive or non-integer power factor {n_factor} for z_cut={z_cut} skipped.")
-            continue
-        rows.append(base_term**(2 * n_factor))
-        labels.append(f"({z_cut:.2f}-z)^{2*n_factor}")
-    if not rows:
-        return np.array([]).reshape(0, len(z)), []
-    return np.vstack(rows), labels
+    z_span = z_cut - z0
+    base_term = np.maximum(0, 1-(z-z0)/z_span)
+    if isinstance(ns, int): ns = range(1, ns + 1)
+    for n in ns:
+        rows  .append(base_term**n)
+        if bLabels: labels.append(f"({z_cut:.2f}-z)^{n}")
+    return np.array(np.vstack(rows)), labels
 
-def construct_composite_cutoff_basis(
-    z: np.ndarray,
-    basis_definitions: list[tuple[float, list[int]]]
-) -> Tuple[np.ndarray, List[str]]:
+def construct_composite_cutoff_basis( z: np.ndarray,  basis_definitions: list[tuple[float, list[int]]], z0: float=0.0 ) -> Tuple[np.ndarray, List[str]]:
     """Constructs a composite basis by merging several cutoff_poly_basis sets."""
     all_phi_rows, all_labels = [], []
     for z_c, p_factors in basis_definitions:
-        phi_curr, labels_curr = cutoff_poly_basis(z, z_c, p_factors)
+        phi_curr, labels_curr = cutoff_poly_basis(z, z_c, p_factors, z0=z0)
         if phi_curr.size > 0:
             all_phi_rows.append(phi_curr)
             all_labels.extend(labels_curr)
     if not all_phi_rows:
-        return np.array([]).reshape(0, len(z)), []
+        return np.array([]).reshape(0, z.shape[0] if z is not None and hasattr(z, "shape") else 0), []
     return np.vstack(all_phi_rows), all_labels
+
+def get_basis_func_map(basis_definitions: list[tuple[float, list[int]]]) -> list[tuple[int, int]]:
+    """
+    Generates a map from a flat index of a composite basis function to its origin.
+
+    Parameters:
+    -----------
+    basis_definitions : list[tuple[float, list[int]]]
+        The definition of the composite basis, e.g., [(z_cut1, [pow1, pow2]), (z_cut2, [pow3])].
+
+    Returns:
+    --------
+    func_map : list[tuple[int, int]]
+        A list where func_map[k] = (izcut, ipow_idx_in_zcut_list).
+        `izcut` is the index of the (z_cut, [powers]) tuple in basis_definitions.
+        `ipow_idx_in_zcut_list` is the index of the specific power within that z_cut's power list.
+    """
+    func_map = []
+    for izcut, (_, pows) in enumerate(basis_definitions):
+        for ipow_idx_in_zcut_list in range(len(pows)):
+            func_map.append((izcut, ipow_idx_in_zcut_list))
+    return func_map
+
+def remove_basis_func_by_flat_index(
+    basis_definitions: list[tuple[float, list[int]]],
+    flat_idx_to_remove: int,
+    func_map: list[tuple[int, int]]
+) -> list[tuple[float, list[int]]]:
+    """
+    Removes a basis function from a copy of basis_definitions based on its flat index.
+    The original basis_definitions is not modified.
+    """
+    if flat_idx_to_remove < 0 or flat_idx_to_remove >= len(func_map):
+        raise IndexError("flat_idx_to_remove is out of bounds for the provided func_map.")
+
+    new_bd = [list(item) for item in basis_definitions] # Make mutable copy
+    new_bd = [(item[0], list(item[1])) for item in new_bd] # Make power lists mutable
+
+    izcut_to_modify, ipow_idx_to_remove = func_map[flat_idx_to_remove]
+    new_bd[izcut_to_modify][1].pop(ipow_idx_to_remove)
+    # The cleanup_bd function (called by the mutation handler) will remove empty z_cut entries.
+    return new_bd
 ################################################################################
 # Orthogonalisation
 ################################################################################

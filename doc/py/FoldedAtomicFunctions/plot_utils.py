@@ -7,6 +7,7 @@ def plot1D(
     xs: np.ndarray,
     ys: np.ndarray, 
     title: str,
+    ylims: tuple = None,
     scMin: float = 1.5,
     bLogY: bool = False,
     ls='-',lw=0.5,
@@ -26,6 +27,8 @@ def plot1D(
 
     if bLogY:
         ax.set_yscale('log')
+    elif ylims is not None:
+        ax.set_ylim(ylims)
     elif scMin is not None:
         vmin=ymin * scMin
         ax.set_ylim(vmin, -vmin)
@@ -103,8 +106,8 @@ def plotMultiFunctionApprox(xs, data_pairs, bError=False, colors=None, errMax=No
     for i, (y_ref, y_app) in enumerate(data_pairs):
         color = colors(i) if callable(colors) else colors[i % len(colors)]
         ax1.plot(xs, y_ref, label=f'Sample {i+1}', ls=':', lw=1.5, c=color)
-        ax1.plot(xs, y_app, label=f'Sample {i+1} Approx', ls='-', lw=1.0, c=color)
-        if bError: ax2.plot(xs, y_ref - y_app, color=color, linestyle='--', lw=0.8, label=f'Err Sample {i+1}')
+        ax1.plot(xs, y_app, label=f'Approx {i+1}', ls='-', lw=1.0, c=color)
+        if bError: ax2.plot(xs, y_ref - y_app, color=color, linestyle='--', lw=0.8, label=f'Err {i+1}')
     ax1.set_xlabel('z (Å)'); ax1.set_ylabel('Value'); ax1.set_title(title); ax1.grid(True, linestyle=':', alpha=0.7)
     if scMin is not None: vmin = np.min(np.concatenate([pair[0] for pair in data_pairs])); ax1.set_ylim(vmin * scMin, -vmin * scMin)
     if bError and errMax is not None: ax2.set_ylim(-errMax, errMax)

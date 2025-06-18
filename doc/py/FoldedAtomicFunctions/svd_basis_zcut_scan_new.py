@@ -13,19 +13,19 @@ import matplotlib.pyplot as plt
 # project helpers -------------------------------------------------------------
 from basis_utils import gen_morse_prms, gen_morse_curves, construct_composite_cutoff_basis
 from optimize import fit_coefficients
-import plot_utils  # custom plotting helpers
+import plot_utils as pu # custom plotting helpers
 
 # ----------------------------------------------------------------------------
 # 0. Parameters
 # ----------------------------------------------------------------------------
 
 # z grid
-z = np.linspace(1.5, 12.0, 250)
+z = np.linspace(0.0, 12.0, 250)
 
 # Morse sample family  – vary both r0 and a
 n_samples = 20
 rng = np.random.default_rng(0)
-prms_list = gen_morse_prms(n_samples, (1.0, 2.0), (2.0, 4.0), 1.0)
+prms_list = gen_morse_prms(n_samples, (1.5, 2.0), (2.0, 4.0), 1.0)
 samples, _ = gen_morse_curves(z, prms=prms_list)
 
 # Composite cutoff-poly basis parameters
@@ -43,7 +43,8 @@ basis_definitions_custom = [
     #(10.0, [4,6,8]),  
     #(12.0, [4,5,6,7,8]),  
     #(6.0, [1,2,3,4])   
-    (6.0, [1,2,3,4])   
+    #(8.0, [2,3,4,5])   
+    (8.0, [2,4,6,8])   
     #(4.0, [1,2])      
 ]
 
@@ -65,7 +66,7 @@ weights_Y_mask = (Y < V_repulsive_thresh).astype(float)
 # 2. Construct the composite basis and evaluate its error
 # ----------------------------------------------------------------------------
 print(f"Constructing composite basis from definitions: {basis_definitions_custom}")
-Phi_composite, composite_labels = construct_composite_cutoff_basis(z, basis_definitions_custom)
+Phi_composite, composite_labels = construct_composite_cutoff_basis(z, basis_definitions_custom, z0=z.min())
 
 if Phi_composite.shape[0] == 0:
     print("Error: The defined custom basis is empty. Exiting.")
@@ -75,6 +76,9 @@ print(f"Constructed composite basis with {Phi_composite.shape[0]} functions.")
 print("Labels of composite basis functions:")
 for i, label in enumerate(composite_labels):
     print(f"  {i}: {label}")
+
+# Plot the constructed basis functions
+pu.plot1D(z, Phi_composite, title=f"Constructed Composite Basis ({Phi_composite.shape[0]} functions)", labels=composite_labels, ylims=(0,1.0))
 
 # Fit coefficients using the composite basis and per-sample masked regions
 S_composite = fit_coefficients(Y, Phi_composite, weights=weights_Y_mask)
@@ -105,6 +109,6 @@ for idx in idx_samples_plot:
     data_pairs_plot.append((y_samp, y_fit_samp))
 
 # Use the new function to plot multiple samples and their approximations
-plot_utils.plotMultiFunctionApprox(z, data_pairs_plot, bError=False, errMax=0.01, scMin=1.1, title=f"Reconstruction using Composite Basis ({Phi_composite.shape[0]} functions)")
+pu.plotMultiFunctionApprox(z, data_pairs_plot, bError=False, errMax=0.01, scMin=1.1, title=f"Reconstruction using Composite Basis ({Phi_composite.shape[0]} functions)")
 
 plt.show()
