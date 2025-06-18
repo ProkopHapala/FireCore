@@ -85,3 +85,29 @@ class ResultsDB:
     def filter(self, predicate: Callable[[str, JsonDict], bool]) -> Dict[str, JsonDict]:
         """Return new dict with records matching *predicate*."""
         return {k: v for k, v in self if predicate(k, v)}
+
+    # ------------------------------------------------------------------
+    # Pareto front utility (2-D minimisation)
+    # ------------------------------------------------------------------
+    def pareto_front(self, metric_fn: Callable[[str, JsonDict], tuple[float, float]]):
+        """Return list of keys on the Pareto front according to *metric_fn*.
+
+        *metric_fn(key, rec) -> (x, y)* where both dimensions are to be
+        minimised (e.g. (nBasis, RMSE)).
+        """
+        pts = []  # (key, x, y)
+        for k, rec in self.items():
+            try:
+                x, y = metric_fn(k, rec)
+            except Exception:
+                continue
+            pts.append((k, x, y))
+        # sort by x ascending
+        pts.sort(key=lambda t: t[1])
+        pareto_keys = []
+        best_y = float('inf')
+        for k, x, y in pts:
+            if y < best_y:
+                pareto_keys.append(k)
+                best_y = y
+        return pareto_keys
