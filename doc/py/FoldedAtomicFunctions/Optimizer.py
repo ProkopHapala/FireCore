@@ -14,7 +14,7 @@ class Optimizer:
                  mutation_callbacks: list[callable],
                  mutation_cumulative_probs: np.ndarray,
                  max_iterations: int = 1000,
-                 pre_eval_range_checker: callable = None, # Args: (solution) -> tuple[bool, dict]
+                 pre_eval_checker: callable = None, # Args: (solution) -> tuple[bool, str]
                  temperature_initial: float = 1.0,
                  temperature_decay: float = 0.995,
                  verbose: bool = True):
@@ -32,7 +32,7 @@ class Optimizer:
             A list of functions, where each function takes a solution and returns a new, mutated solution.
         mutation_cumulative_probs : np.ndarray
             A 1D NumPy array of cumulative probabilities corresponding to mutation_callbacks.
-        pre_eval_range_checker : callable, optional # Args: (solution) -> tuple[bool, str]
+        pre_eval_checker : callable, optional # Args: (solution) -> tuple[bool, str]
             A function that takes a solution and returns (is_valid, details_string) for pre-evaluation checks.
         max_iterations : int
             The maximum number of iterations to run.
@@ -48,7 +48,7 @@ class Optimizer:
         self.mutation_callbacks = mutation_callbacks
         self.mutation_cumulative_probs = mutation_cumulative_probs
         self.max_iterations = max_iterations
-        self.pre_eval_range_checker = pre_eval_range_checker
+        self.pre_eval_checker = pre_eval_checker
         self.temperature = temperature_initial
         self.temperature_decay = temperature_decay
         self.verbose = verbose
@@ -77,21 +77,29 @@ class Optimizer:
         """
         Runs the optimization loop.
         """
-        for i in range(self.max_iterations):
+        i = 0 # Current successful iteration count
+        attempt_count = 0 # Total attempts including pre-eval rejections
+        max_total_attempts = self.max_iterations * 5 # Safety break for too many rejections
+
+        while i < self.max_iterations:
+            if attempt_count > max_total_attempts:
+                print(f"Warning: Exceeded max total attempts ({max_total_attempts}). Stopping optimization.")
+                break
+            attempt_count += 1
+
             new_solution_candidate = self._apply_mutation(self.current_solution)
             
             new_fitness = float('inf')
-            new_details_str = "Rejected (pre-eval)"
+            new_details_str = "N/A" # Default details if pre-check fails early
 
-            passed_pre_eval = True
-            if self.pre_eval_range_checker:
-                is_valid_pre, pre_eval_details_str = self.pre_eval_range_checker(new_solution_candidate)
-                new_details_str = pre_eval_details_str # Store details string even if rejected
+            if self.pre_eval_checker:
+                is_valid_pre, new_details_str = self.pre_eval_checker(new_solution_candidate)
                 if not is_valid_pre:
-                    passed_pre_eval = False
-            
-            if passed_pre_eval:
-                new_fitness, new_details_str = self.evaluate_fitness(new_solution_candidate)
+                    if self.verbose:
+                        # Use attempt_count for this print to show activity
+                        print(f"Attempt {attempt_count:5d} (Iter {i:5d}): Pre-eval failed: {new_details_str}")
+                    continue
+            new_fitness, new_details_str = self.evaluate_fitness(new_solution_candidate)
 
             if new_fitness < self.current_fitness:
                 self.current_solution = new_solution_candidate
@@ -110,8 +118,10 @@ class Optimizer:
             self.temperature *= self.temperature_decay
             self.history.append((i, self.current_fitness, self.current_details_str, self.temperature))
 
-            if self.verbose and (i % (self.max_iterations // 20) == 0 or i == self.max_iterations -1) :
+            if self.verbose and (i % (self.max_iterations // 20) == 0 or i == self.max_iterations - 1):
                 print(f"Iter {i:5d}: BestFit={self.best_fitness:.3e} ({self.best_details_str}), CurrFit={self.current_fitness:.3e} ({self.current_details_str}), Temp={self.temperature:.2e}")
+            
+            i += 1 # Increment successful iteration count
         
         if self.verbose:
             print(f"\nOptimization finished. Best fitness: {self.best_fitness:.4e} ({self.best_details_str})")

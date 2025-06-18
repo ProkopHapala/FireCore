@@ -472,3 +472,96 @@ def eval_multi_basis_recon_err( Y: np.ndarray, phi_list: list[np.ndarray],  k_va
             err_k[k].append(recon_err_k)
 
     return err_full, err_k
+
+################################################################################
+# Linear dependency / similarity utilities
+################################################################################
+
+def cosine_sim_sq_matrix(rows: np.ndarray) -> np.ndarray:
+    """Return matrix of squared cosine similarities between *rows*.
+
+    The input ``rows`` is expected to have shape (P, N) where each row is a
+    basis function sampled on grid.  Using squared cosine similarity avoids an
+    expensive square-root.
+    """
+    G = rows @ rows.T                          # Gram matrix (⟨f_i|f_j⟩)
+    norms_sq = np.diag(G).astype(float)
+    # Guard against divide-by-zero – zero-norm rows should not appear, but keep safe
+    denom = np.outer(norms_sq, norms_sq) + 1e-30
+    return (G**2) / denom
+
+def calc_ld_metrics(rows: np.ndarray) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """Return (ld_sum, ld_max, csm) in one shot.
+    - ld_sum: Σ_j cos²
+    - ld_max: max_j cos²
+    - csm   : full squared-cosine matrix (diagonal zeroed)
+    """
+    csm = cosine_sim_sq_matrix(rows)
+    np.fill_diagonal(csm, 0.0)
+    ld_sum = csm.sum(axis=1)
+    ld_max = csm.max(axis=1)
+    return ld_sum, ld_max, csm
+
+# def linear_dependency_scores(rows: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+#     """
+#     Calculates linear dependency scores for each row (basis function).
+
+#     Returns:
+#     --------
+#     ld_sum_scores : np.ndarray
+#         For each row i, LD_sum_i = Σ_{j≠i} cos²(f_i,f_j).
+#         A higher value means row i is more expressible by others.
+#     ld_max_pair_scores : np.ndarray
+#         For each row i, LD_max_pair_i = max_{j≠i} cos²(f_i,f_j).
+#         Indicates the strongest pairwise collinearity for row i.
+#     """
+#     ld_sum, ld_max, _ = calc_ld_metrics(rows)
+#     return ld_sum, ld_max
+
+################################################################################
+# Generic utility functions (added during refactor)
+################################################################################
+
+def weighted_rmse(y_true: np.ndarray, y_pred: np.ndarray, weights: np.ndarray | None = None) -> float:
+    """Compute Root Mean Square Error with optional weighting.
+
+    Parameters
+    ----------
+    y_true, y_pred : np.ndarray
+        Arrays of the same shape containing reference and predicted values.
+    weights : np.ndarray | None
+        If given, must be broadcastable to *y_true* and *y_pred*; each element
+        scales the corresponding squared error. A value of zero excludes that
+        point.
+
+    Returns
+    -------
+    float
+        The weighted RMSE (always positive, +1e-12 safety added).
+    """
+    diff_sq = (y_true - y_pred) ** 2
+    if weights is not None:
+        diff_sq = diff_sq * weights
+        denom = float(np.sum(weights))
+        if denom == 0.0:
+            return float('inf')
+    else:
+        denom = diff_sq.size
+    return float(np.sqrt(np.sum(diff_sq) / denom) + 1e-12)
+
+
+def get_basis_metrics(basis_def: list[tuple[float, list[int]]]) -> tuple[int, int, int, int]:
+    """Return nBasis, nZcut, nMax, nSum for a given *basis_def*.
+
+    Notes
+    -----
+    * *basis_def* is a list of tuples ``(z_cut, [powers])``.
+    """
+    n_basis = sum(len(pows) for _, pows in basis_def)
+    n_zcut = len(basis_def)
+    all_pows = [p for _, pows in basis_def for p in pows]
+    if not all_pows:
+        return 0, n_zcut, 0, 0
+    n_max = max(all_pows)
+    n_sum = sum(all_pows)
+    return n_basis, n_zcut, n_max, n_sum

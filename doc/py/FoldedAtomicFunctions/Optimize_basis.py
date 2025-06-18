@@ -6,7 +6,11 @@ import matplotlib.pyplot as plt
 import functools
 
 from Optimizer import Optimizer
-from basis_utils import gen_morse_prms, gen_morse_curves, construct_composite_cutoff_basis, get_basis_func_map, remove_basis_func_by_flat_index
+from basis_utils import (
+    gen_morse_prms, gen_morse_curves, construct_composite_cutoff_basis,
+    get_basis_func_map, remove_basis_func_by_flat_index,
+    weighted_rmse, get_basis_metrics, calc_ld_metrics,
+)
 from optimize import fit_coefficients
 import plot_utils as pu # For additional plotting
 
@@ -32,12 +36,46 @@ xRMSE_2   = 1e-2
 K_logRMSE = 30.0   # Cost for the RMSE term
 K_RMSE_2  = 100.0   # Cost if RMSE is above 1e-2 (special penalty if RMSE is above 1e-2)
 
-LD_DROP_TRASHOLD = 0.8
+LD_DROP_TRASHOLD = 0.7  # probabilistic drop
+LD_DROP_ALWAYS   = 0.99 # strict linear-dependency guard
 # D_ZCUT: Increment for shifting z_cut in mut_shift_zc.
 # For fine-tuning/local optimization, use a small D_ZCUT (e.g., 0.05-0.25).
 # For coarse/global optimization with discrete z_cuts, D_ZCUT might be set
 # to match the step in Z_CUTS, or mut_shift_zc might be disabled (prob=0).
 D_ZCUT = 0.1
+
+# --- Helper for selecting which basis function to drop in LD pair ---
+
+def _select_ld_drop_idx(bd, ld_sum, csm):
+    """Return flat index of basis function to drop based on strongest LD pair.
+
+    Algorithm (simple):
+    1. Find pair (i,j) with highest cos² similarity.
+    2. Prefer dropping the one with higher power.
+    3. If equal powers, drop the one whose z_cut has fewer powers.
+    4. If still equal, drop the one with larger LD_sum.
+    """
+    # Get strongest pair from csm (already diagonal-zeroed)
+    idx_flat = int(np.argmax(csm))
+    i_max, j_max = divmod(idx_flat, csm.shape[1])
+    func_map = get_basis_func_map(bd)
+
+    def _meta(idx):
+        izc, ipow_idx = func_map[idx]
+        zc, pow_list = bd[izc]
+        power = pow_list[ipow_idx]
+        n_pows_same_zc = len(pow_list)
+        return power, n_pows_same_zc, ld_sum[idx]
+
+    power_i, npi_i, lds_i = _meta(i_max)
+    power_j, npi_j, lds_j = _meta(j_max)
+
+    # Decision tree
+    if power_i != power_j:
+        return i_max if power_i > power_j else j_max
+    if npi_i != npi_j:
+        return i_max if npi_i < npi_j else j_max  # drop one with fewer mates
+    return i_max if lds_i > lds_j else j_max
 
 
 # --- Algorithm must respect following ranges, if the trial-solution is outside of these ranges, it is immediately rejected. Some ranges can be evaluated directly in mutation-phase (pre_eval=True), some need to evaluate full fitness function (pre_eval=False)
@@ -55,9 +93,9 @@ RANGES = [
 #   we may use list of callbacsk (functions or lamba function) which are called for each mutation event type, this list of functions is given to Optimizer
 PROBS=[
 ("ADD_POW",     0.35), # Add power to existing z_cut
-("REM_POW",     0.35), # Remove power from existing z_cut
+("REM_POW",     0.15), # Remove power from existing z_cut
 ("ADD_ZCUT",    0.15 ), # Add new z_cut
-("REM_ZCUT",    0.15 ), # Remove z_cut
+("REM_ZCUT",    0.05 ), # Remove z_cut
 ("DROP_LD",     0.20 ), # drop most linearly dependet basis function
 ("SHIFT_ZCUT",  0.10), # Adjust probability based on optimization phase
 ]
@@ -87,22 +125,19 @@ def evaluate_fitness_basis(bd: list[tuple[float, list[int]]]) -> tuple[float, st
 
     phi_c, _ = construct_composite_cutoff_basis(z_grid, bd, z0=z0basis)
     nb = phi_c.shape[0]
-
     if nb == 0:
+        # Empty basis – immediately reject
         return float('inf'), f"RMSE=inf, nBasis=0, nZcut={len(bd)}, nMax=0, nSum=0"
 
-    s_fit = fit_coefficients(Y_SAMPLES_GLOBAL, phi_c, weights=WEIGHTS_Y_MASK_GLOBAL)
+    # Fit sample curves and compute reconstruction
+    s_fit  = fit_coefficients(Y_SAMPLES_GLOBAL, phi_c, weights=WEIGHTS_Y_MASK_GLOBAL)
     y_recon = s_fit.T @ phi_c
-    
-    rmse = float('inf')
-    if TOTAL_MASKED_POINTS_GLOBAL > 0:
-        sum_sq_err = np.sum(((Y_SAMPLES_GLOBAL - y_recon) * WEIGHTS_Y_MASK_GLOBAL)**2)
-        rmse = np.sqrt(sum_sq_err / TOTAL_MASKED_POINTS_GLOBAL) + 1e-12 
-    
-    n_zc = len(bd)
-    all_pows = [p for _, pows in bd for p in pows]
-    n_max = max(all_pows) if all_pows else 0
-    n_sum = sum(all_pows) if all_pows else 0
+
+    # Weighted RMSE using the shared utility
+    rmse = weighted_rmse(Y_SAMPLES_GLOBAL, y_recon, weights=WEIGHTS_Y_MASK_GLOBAL)
+
+    # Collect simple basis metrics via helper
+    nb, n_zc, n_max, n_sum = get_basis_metrics(bd)
 
     cost = (K_logRMSE * np.log10(rmse) +
             K_RMSE_2 * max(0, np.log10(rmse / xRMSE_2)) +
@@ -196,20 +231,15 @@ def mut_drop_ld(bd: list[tuple[float, list[int]]]) -> list[tuple[float, list[int
 
     if n_funcs < 2: return cleanup_bd(new_bd) # Need at least 2 functions to compare
 
-    # Calculate dot products and norms squared
-    dot_products = phi_c @ phi_c.T  # Gram matrix: G_ij = <f_i|f_j>
-    norms_sq = np.diag(dot_products) # |f_i|^2
-
-    # Avoid division by zero for zero-norm functions (should ideally not happen with good basis defs)
-    norms_sq_safe = np.where(norms_sq < 1e-12, 1e-12, norms_sq)
-    
-    # Squared cosine similarities: cos_sim_sq_ij = <f_i|f_j>^2 / (|f_i|^2 * |f_j|^2)
-    # gram_normalized_sq_ij = G_ij^2 / (norms_sq_i * norms_sq_j)
-    gram_normalized_sq = dot_products**2 / (norms_sq_safe[:, np.newaxis] * norms_sq_safe[np.newaxis, :])
-    
-    # LD_i = sum_j (cos_sim_sq_ij) for j != i
-    np.fill_diagonal(gram_normalized_sq, 0) # Exclude self-similarity from sum
-    ld_values = np.sum(gram_normalized_sq, axis=1)
+    # Determine which basis function to drop based on pairwise LD_max
+    idx_to_drop = None
+    ld_sum_scores, ld_max_scores, csm = calc_ld_metrics(phi_c)
+    if ld_max_scores.size > 0 and np.max(ld_max_scores) > LD_DROP_TRASHOLD:
+        idx_to_drop = _select_ld_drop_idx(new_bd, ld_sum_scores, csm)
+    if idx_to_drop is not None:
+        func_map = get_basis_func_map(new_bd)
+        new_bd = remove_basis_func_by_flat_index(new_bd, idx_to_drop, func_map)
+    return cleanup_bd(new_bd)
 
     idx_to_drop = np.argmax(ld_values)
     if ld_values[idx_to_drop] > LD_DROP_TRASHOLD:
@@ -218,23 +248,29 @@ def mut_drop_ld(bd: list[tuple[float, list[int]]]) -> list[tuple[float, list[int
     return cleanup_bd(new_bd)
 
 # --- Pre-evaluation Range Checker ---
-def check_ranges(bd: list[tuple[float, list[int]]]) -> tuple[bool, str]:
+def pre_eval_check(bd: list[tuple[float, list[int]]]) -> tuple[bool, str]:
     """Checks if basis_definition bd is within pre-defined RANGES."""
-    # RANGES is global
-    details_parts = []
     n_zc = len(bd)
-    details_parts.append(f"nZcut={n_zc}")
     min_zc_cfg, max_zc_cfg = next(item[1] for item in RANGES if item[0] == "nZcut")
     if not (min_zc_cfg <= n_zc <= max_zc_cfg):
-        return False, f"Rejected (pre-eval: {', '.join(details_parts)})"
+        return False, f"Rejected (pre-eval: nZcut={n_zc} out of range [{min_zc_cfg},{max_zc_cfg}])"
 
     min_nb_cfg, max_nb_cfg = next(item[1] for item in RANGES if item[0] == "nBasis")
     nb = sum(len(pows) for _, pows in bd) if bd else 0
-    details_parts.append(f"nBasis={nb}")
     if not (min_nb_cfg <= nb <= max_nb_cfg):
-        # print(f"check_ranges: REJECTED nBasis {nb} not in ({min_nb_cfg}, {max_nb_cfg}) for {bd}") # Debug print
-        return False, f"Rejected (pre-eval: {', '.join(details_parts)})"
-    return True, f"Pre-eval OK ({', '.join(details_parts)})"
+        return False, f"Rejected (pre-eval: nBasis={nb} out of range [{min_nb_cfg},{max_nb_cfg}])"
+
+    # Strict linear-dependency check (fast) – always enforce
+    max_ld_val = 0.0
+    if bd:
+        phi_c_check, _ = construct_composite_cutoff_basis(z_grid, bd, z0=z0basis)
+        if phi_c_check.shape[0] >= 2:
+            _ld_sum, _ld_max, _ = calc_ld_metrics(phi_c_check)
+            max_ld_val = float(np.max(_ld_max))
+            if max_ld_val > LD_DROP_ALWAYS:
+                return False, f"Rejected (pre-eval: LDmax={max_ld_val:.2f} > {LD_DROP_ALWAYS})"
+
+    return True, f"Pre-eval OK (nZcut={n_zc}, nBasis={nb}, LD={max_ld_val:.2f})"
 
 def parse_details_str(s: str) -> dict:
     """ Parses the details string back into a dictionary for plotting. """
@@ -262,7 +298,7 @@ if __name__ == "__main__":
 
     init_guess = cleanup_bd(init_guess)
     
-    is_init_valid, _ = check_ranges(init_guess)
+    is_init_valid, _ = pre_eval_check(init_guess)
     if not is_init_valid:
         print("Warning: Initial guess invalid. Using simplest valid guess.")
         init_guess = [(Z_CUTS[0], [N_POWS[0]])] 
@@ -274,8 +310,8 @@ if __name__ == "__main__":
     opt = Optimizer(
         initial_solution=init_guess, evaluate_fitness=evaluate_fitness_basis,
         mutation_callbacks=mut_cb_list, mutation_cumulative_probs=probs_cum,
-        pre_eval_range_checker=check_ranges, max_iterations=2500, # Restored iterations
-        temperature_initial=10.0, temperature_decay=0.997, verbose=True)
+        pre_eval_checker=pre_eval_check, max_iterations=1000, # Restored iterations
+        temperature_initial=10.0, temperature_decay=0.995, verbose=True)
 
     best_bd, best_fit, hist = opt.run()
 
