@@ -18,15 +18,18 @@ meaning the key itself serves as a unique hash of z0basis and the canonical
 basis-definition string.
 """
 from __future__ import annotations
-import argparse, json, random, pathlib, datetime, sys
+import argparse, json, random, pathlib, datetime, sys, os
 from typing import List, Tuple
 import numpy as np
 
 # Project imports
-sys.path.append(str(pathlib.Path(__file__).parent))  # ensure local import works
-auto = __import__
-ob = auto("Optimize_basis")               # main optimisation module
-from basis_utils import gen_morse_curves, gen_morse_prms  # utilities
+#sys.path.append(str(pathlib.Path(__file__).parent))  # ensure local import works
+#auto = __import__
+#ob = auto("Optimize_basis")               # main optimisation module
+
+import Optimize_basis as ob  # main optimisation module
+from results_db import ResultsDB
+from basis_utils import gen_morse_prms, gen_morse_curves, load_morse_samples_json  # utilities
 
 ###############################################################################
 # Helper utilities
@@ -47,23 +50,9 @@ def random_initial_basis(rng: random.Random, max_groups: int = 2) -> List[Tuple[
         bd.append((float(zc), sorted(powers)))
     return ob.cleanup_bd(bd)
 
-def load_samples_json(path: str):
-    with open(path, "r", encoding="utf-8") as f:
-        data = json.load(f)
-    z0 = float(data.get("z0basis", 1.0))
-    # z_grid can be full list or dict spec
-    zg_spec = data["z_grid"]
-    if isinstance(zg_spec, dict):
-        z_grid = np.linspace(zg_spec["start"], zg_spec["stop"], zg_spec["num"])
-    else:
-        z_grid = np.array(zg_spec, dtype=float)
-    morse_params_raw = data["morse_params"]
-    prms_dicts = [{"D": p[0], "a": p[1], "r0": p[2]} for p in morse_params_raw]
-    Y_samples, _ = gen_morse_curves(z_grid, prms=prms_dicts)
-    Y_samples = np.vstack(Y_samples)
-    # masking weights (reuse same heuristic as optimiser)
-    v_thresh = float(data.get("v_repulsive_thresh", 0.5))
-    weights_mask = (Y_samples < v_thresh).astype(float)
+def load_samples_json(filename: str) -> Tuple[float, np.ndarray, np.ndarray, np.ndarray]:
+    """Load sample data from JSON file using shared utility."""
+    z0, z_grid, Y_samples, weights_mask, _ = load_morse_samples_json(filename)
     return z0, z_grid, Y_samples, weights_mask
 
 def append_jsonl(path: str, obj: dict):
@@ -84,14 +73,34 @@ def load_existing_keys(path: str):
                     continue
     return keys
 
+def gen_sample_json_morse(filename: str, params: dict):
+    """Generate and save Morse potential samples to JSON file."""
+    from basis_utils import gen_morse_prms, gen_morse_curves
+    
+    # Generate parameters in dictionary format
+    a_vals  = np.random.uniform(params['a_rng'][0], params['a_rng'][1], params['n_samples'])
+    r0_vals = np.random.uniform(params['r0_rng'][0], params['r0_rng'][1], params['n_samples'])
+    prms = [{'a': a, 'r0': r0, 'D': params['D_val']} for a, r0 in zip(a_vals, r0_vals)]
+    
+    z_grid = np.linspace(params['z0basis'], params['z_max'], params['nz'])
+    curves, _ = gen_morse_curves(z_grid, prms=prms)
+    
+    data = {
+        "z0basis": params['z0basis'],
+        "z_grid": {"start": params['z0basis'], "stop": params['z_max'], "num": params['nz']},
+        "v_repulsive_thresh": params['V_REPULSIVE_THRESH_GLOBAL'],
+        "morse_params": prms
+    }
+    with open(filename, 'w') as f:
+        json.dump(data, f, indent=2)
+
 ###############################################################################
 # Main batch logic
 ###############################################################################
 
 def run_optimizer(init_bd, max_iter=500, verbose=False):
     # Optimiser parameters mirror defaults in Optimize_basis
-    mut_cb_list = [ob.mut_add_pow, ob.mut_rem_pow, ob.mut_add_zc,
-                   ob.mut_rem_zc, ob.mut_drop_ld, ob.mut_shift_zc]
+    mut_cb_list = [ob.mut_add_pow, ob.mut_rem_pow, ob.mut_add_zc, ob.mut_rem_zc, ob.mut_drop_ld, ob.mut_shift_zc]
     probs_raw = np.array([p[1] for p in ob.PROBS])
     probs_cum = np.cumsum(probs_raw / np.sum(probs_raw))
 
@@ -142,6 +151,7 @@ def plot_rmse_vs_nbasis(db_items: Dict[str, dict], *, show=True, ax=None):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Batch optimiser runner")
+    parser.add_argument("--nsamp", type=int, default=10)
     parser.add_argument("--samples", default="Morse1.json")
     parser.add_argument("--results", default="results.jsonl")
     parser.add_argument("--runs", type=int, default=10)
@@ -149,6 +159,21 @@ if __name__ == "__main__":
     parser.add_argument("--max_iter", type=int, default=500)
     parser.add_argument("--no_plot", action="store_true", help="Skip plotting at end")
     args = parser.parse_args()
+
+    # Generate samples if file doesn't exist
+    if not os.path.exists(args.samples):
+        print(f"Sample file {args.samples} not found - generating new samples")
+        morse_params = {
+            'z0basis': ob.z0basis,
+            'V_REPULSIVE_THRESH_GLOBAL': ob.V_REPULSIVE_THRESH_GLOBAL,
+            'z_max': ob.z_max,
+            'nz': ob.nz,
+            'n_samples': args.nsamp,
+            'a_rng': ob.a_rng,
+            'r0_rng': ob.r0_rng,
+            'D_val': ob.D_val
+        }
+        gen_sample_json_morse(args.samples, params=morse_params)
 
     # Load sample data
     z0, z_grid, Y_samples, weights_mask = load_samples_json(args.samples)

@@ -108,13 +108,20 @@ N_POWS=[2,3,4,5,6,7,8,9,10,11,12,13,14,15,16]               # Available power fa
 
 # --- Load or Generate Sample Data ---
 z0basis = 1.0 # z0 for basis construction
-z_grid = np.linspace(z0basis, 12.0, 250)
-n_samples = 20
+V_REPULSIVE_THRESH_GLOBAL = 2.0
+z_max=12.0
+nz = 250
+n_samples = 50
+a_rng=(1.0, 2.0)
+r0_rng=(2.0, 4.0)
+D_val=1.0
+
+z_grid = np.linspace(z0basis, z_max, nz)
 np.random.seed(0)
-prms_list = gen_morse_prms(n_samples, (1.0, 2.0), (2.0, 4.0), 1.0)
+prms_list  = gen_morse_prms(n_samples, a_rng=a_rng, r0_rng=r0_rng, D_val=D_val)
+
 samples, _ = gen_morse_curves(z_grid, prms=prms_list)
 Y_SAMPLES_GLOBAL = np.vstack(samples)
-V_REPULSIVE_THRESH_GLOBAL = 0.5
 WEIGHTS_Y_MASK_GLOBAL = (Y_SAMPLES_GLOBAL < V_REPULSIVE_THRESH_GLOBAL).astype(float)
 TOTAL_MASKED_POINTS_GLOBAL = np.sum(WEIGHTS_Y_MASK_GLOBAL)
 
@@ -253,12 +260,12 @@ def pre_eval_check(bd: list[tuple[float, list[int]]]) -> tuple[bool, str]:
     n_zc = len(bd)
     min_zc_cfg, max_zc_cfg = next(item[1] for item in RANGES if item[0] == "nZcut")
     if not (min_zc_cfg <= n_zc <= max_zc_cfg):
-        return False, f"Rejected (pre-eval: nZcut={n_zc} out of range [{min_zc_cfg},{max_zc_cfg}])"
+        return False, f"pre-eval: nZcut={n_zc} out of range [{min_zc_cfg},{max_zc_cfg}]"
 
     min_nb_cfg, max_nb_cfg = next(item[1] for item in RANGES if item[0] == "nBasis")
     nb = sum(len(pows) for _, pows in bd) if bd else 0
     if not (min_nb_cfg <= nb <= max_nb_cfg):
-        return False, f"Rejected (pre-eval: nBasis={nb} out of range [{min_nb_cfg},{max_nb_cfg}])"
+        return False, f"pre-eval: nBasis={nb} out of range [{min_nb_cfg},{max_nb_cfg}]"
 
     # Strict linear-dependency check (fast) – always enforce
     max_ld_val = 0.0
@@ -268,9 +275,9 @@ def pre_eval_check(bd: list[tuple[float, list[int]]]) -> tuple[bool, str]:
             _ld_sum, _ld_max, _ = calc_ld_metrics(phi_c_check)
             max_ld_val = float(np.max(_ld_max))
             if max_ld_val > LD_DROP_ALWAYS:
-                return False, f"Rejected (pre-eval: LDmax={max_ld_val:.2f} > {LD_DROP_ALWAYS})"
+                return False, f"pre-eval: LDmax={max_ld_val:.5f} > {LD_DROP_ALWAYS:.5f}"
 
-    return True, f"Pre-eval OK (nZcut={n_zc}, nBasis={nb}, LD={max_ld_val:.2f})"
+    return True, f"pre-eval OK (nZcut={n_zc}, nBasis={nb}, LD={max_ld_val:.5f})"
 
 def parse_details_str(s: str) -> dict:
     """ Parses the details string back into a dictionary for plotting. """
@@ -362,9 +369,17 @@ if __name__ == "__main__":
         n_plot = min(5, Y_SAMPLES_GLOBAL.shape[0])
         idx_plot = rng_plot.choice(Y_SAMPLES_GLOBAL.shape[0], size=n_plot, replace=False)
         plot_pairs = []
+        label_pairs = []
         for idx in idx_plot:
             y_orig = Y_SAMPLES_GLOBAL[idx]
-            y_recon = s_best[:, idx].T @ phi_best
+            coeff_vec = s_best[:, idx]
+            y_recon = coeff_vec.T @ phi_best
             plot_pairs.append((y_orig, y_recon))
-        pu.plotMultiFunctionApprox(z_grid, plot_pairs, bError=True, errMax=0.05, scMin=1.2, title=f"Sample Approximations with Best Basis ({phi_best.shape[0]} functions)")
+            # Construct labels
+            prm = prms_list[idx]
+            ref_label = f"Morse[r0={prm['r0']:.2f},a={prm['a']:.2f}]"
+            coeff_label = '[' + ', '.join(f"{c:.3f}" for c in coeff_vec) + ']'
+            app_label = f"Coeff {coeff_label}"
+            label_pairs.append((ref_label, app_label))
+        pu.plotMultiFunctionApprox(z_grid, plot_pairs, bError=True, errMax=0.05, scMin=1.2, title=f"Sample Approximations with Best Basis ({phi_best.shape[0]} functions)", label_pairs=label_pairs)
     plt.show()

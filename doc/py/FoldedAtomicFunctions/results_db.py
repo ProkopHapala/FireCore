@@ -89,11 +89,22 @@ class ResultsDB:
     # ------------------------------------------------------------------
     # Pareto front utility (2-D minimisation)
     # ------------------------------------------------------------------
-    def pareto_front(self, metric_fn: Callable[[str, JsonDict], tuple[float, float]]):
-        """Return list of keys on the Pareto front according to *metric_fn*.
+    def pareto_front(
+        self,
+        metric_fn: Callable[[str, JsonDict], tuple[float, float]],
+        *,
+        unique_x: bool = False,
+    ) -> list[str]:
+        """Return list of keys on the 2-D Pareto front.
 
-        *metric_fn(key, rec) -> (x, y)* where both dimensions are to be
-        minimised (e.g. (nBasis, RMSE)).
+        Parameters
+        ----------
+        metric_fn : callable
+            Maps (key, record) → (x, y) where both axes are to be minimised.
+        unique_x : bool, optional
+            If True, keep only the record with minimal *y* for each distinct *x*
+            **before** computing the Pareto front (e.g. ensure one solution per
+            nBasis bucket).
         """
         pts = []  # (key, x, y)
         for k, rec in self.items():
@@ -102,11 +113,20 @@ class ResultsDB:
             except Exception:
                 continue
             pts.append((k, x, y))
+
+        if unique_x:
+            best_for_x = {}
+            for k, x, y in pts:
+                if (x not in best_for_x) or (y < best_for_x[x][2]):
+                    best_for_x[x] = (k, x, y)
+            pts = list(best_for_x.values())
+
         # sort by x ascending
         pts.sort(key=lambda t: t[1])
-        pareto_keys = []
-        best_y = float('inf')
-        for k, x, y in pts:
+
+        pareto_keys: list[str] = []
+        best_y = float("inf")
+        for k, _x, y in pts:
             if y < best_y:
                 pareto_keys.append(k)
                 best_y = y

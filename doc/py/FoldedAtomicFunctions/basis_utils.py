@@ -1,6 +1,7 @@
 from __future__ import annotations
 from scipy.linalg import qr
 import warnings
+import json
 # --- 5. Plotting & Analysis Utilities ---
 
 import numpy as np # type: ignore
@@ -565,3 +566,32 @@ def get_basis_metrics(basis_def: list[tuple[float, list[int]]]) -> tuple[int, in
     n_max = max(all_pows)
     n_sum = sum(all_pows)
     return n_basis, n_zcut, n_max, n_sum
+
+def load_morse_samples_json(filename: str) -> Tuple[float, np.ndarray, np.ndarray, np.ndarray, List[dict]]:
+    """
+    Load Morse sample data from JSON file with consistent format handling.
+    Returns:
+        z0: float - minimum z coordinate
+        z_grid: np.ndarray - z grid points
+        Y_samples: np.ndarray - sample curves (2D array)
+        weights_mask: np.ndarray - weights for fitting
+        morse_params: List[dict] - Morse parameters in dict format
+    """
+    with open(filename, 'r', encoding='utf-8') as f:
+        data = json.load(f)
+    
+    z0 = float(data['z0basis'])
+    z_grid = np.linspace(data['z_grid']['start'], data['z_grid']['stop'], int(data['z_grid']['num']))
+    
+    # Handle both list and dict formats for Morse parameters
+    morse_params_raw = data['morse_params']
+    if isinstance(morse_params_raw[0], dict):
+        morse_params = morse_params_raw  # Already in correct format
+    else:
+        morse_params = [{'a': p[0], 'r0': p[1], 'D': p[2]} for p in morse_params_raw]
+    
+    Y_samples, _ = gen_morse_curves(z_grid, prms=morse_params)
+    Y_samples = np.vstack(Y_samples)  # Ensure 2D array
+    weights_mask = (Y_samples < data['v_repulsive_thresh']).astype(float)
+    
+    return z0, z_grid, Y_samples, weights_mask, morse_params

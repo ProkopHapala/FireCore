@@ -66,7 +66,7 @@ def plot_SV(s_vals, K_opt):
     # if filename: plt.savefig(filename)
     # plt.show()
 
-def plotMultiFunctionApprox(xs, data_pairs, bError=False, colors=None, errMax=None, scMin=None, title='Function Approximation'):
+def plotMultiFunctionApprox(xs, data_pairs, bError=False, colors=None, errMax=None, scMin=None, title='Function Approximation', label_pairs=None, ax1=None):
     """
     Plots multiple reference functions and their approximations.
 
@@ -87,6 +87,12 @@ def plotMultiFunctionApprox(xs, data_pairs, bError=False, colors=None, errMax=No
     title : str, default: 'Function Approximation'
         Title for the main plot.
 
+    label_pairs : list[tuple[str, str]] | None
+        Optional list of (ref_label, approx_label) tuples matching the order in *data_pairs*.
+
+    ax1 : matplotlib.axes.Axes, optional
+        Axis to plot on. If None, a new figure & axis are created.
+
     Returns
     -------
     fig : matplotlib.figure.Figure
@@ -94,7 +100,11 @@ def plotMultiFunctionApprox(xs, data_pairs, bError=False, colors=None, errMax=No
     axes : tuple of matplotlib.axes.Axes
         A tuple containing the main axis and the error axis (if bError is True).
     """
-    fig, ax1 = plt.subplots(figsize=(12, 7))
+    if ax1 is None:
+        fig, ax1 = plt.subplots(figsize=(10,6))
+    else:
+        fig = ax1.figure
+    # Secondary axis for error if requested
     ax2 = None
     if bError:
         ax2 = ax1.twinx()
@@ -105,18 +115,25 @@ def plotMultiFunctionApprox(xs, data_pairs, bError=False, colors=None, errMax=No
     if colors is None: colors = plt.cm.get_cmap('tab10', n_pairs)
     for i, (y_ref, y_app) in enumerate(data_pairs):
         color = colors(i) if callable(colors) else colors[i % len(colors)]
-        ax1.plot(xs, y_ref, label=f'Sample {i+1}', ls=':', lw=1.5, c=color)
-        ax1.plot(xs, y_app, label=f'Approx {i+1}', ls='-', lw=1.0, c=color)
-        if bError: ax2.plot(xs, y_ref - y_app, color=color, linestyle='--', lw=0.8, label=f'Err {i+1}')
+        # Custom labels if provided
+        if label_pairs and i < len(label_pairs):
+            ref_lab, app_lab = label_pairs[i]
+        else:
+            ref_lab, app_lab = f'Sample {i+1}', f'Approx {i+1}'
+        ax1.plot(xs, y_ref, label=ref_lab, ls=':', lw=1.5, c=color)
+        ax1.plot(xs, y_app, label=app_lab, ls='-', lw=1.0, c=color)
+        if bError:
+            err_label = f'Err {i+1}' if not (label_pairs and i < len(label_pairs)) else f'Err {i+1}'
+            ax2.plot(xs, y_ref - y_app, color=color, linestyle='--', lw=0.8, label=err_label)
     ax1.set_xlabel('z (Å)'); ax1.set_ylabel('Value'); ax1.set_title(title); ax1.grid(True, linestyle=':', alpha=0.7)
     if scMin is not None: vmin = np.min(np.concatenate([pair[0] for pair in data_pairs])); ax1.set_ylim(vmin * scMin, -vmin * scMin)
     if bError and errMax is not None: ax2.set_ylim(-errMax, errMax)
-    lines1, labels1 = ax1.get_legend_handles_labels(); lines2, labels2 = ax2.get_legend_handles_labels() if bError else ([], [])
-    ax1.legend(lines1 + lines2, labels1 + labels2, loc='best'); fig.tight_layout()
+    lines1, labels1 = ax1.get_legend_handles_labels(); lines2, labels2 = ax2.get_legend_handles_labels() if (bError and ax2 is not None) else ([], [])
+    ax1.legend(lines1 + lines2, labels1 + labels2, loc='best', fontsize=8); fig.tight_layout()
     return fig, (ax1, ax2) if bError else (ax1,)
 
 def plotFunctionApprox( xs, y_ref, ys_approx, bError=False, colors=None, errMax=1.0e-3, scMin=1.5 ):
-    fig, ax1 = plt.subplots(figsize=(12, 7))
+    fig, ax1 = plt.subplots(figsize=(12,6))
     n_approx = len(ys_approx)
     if colors is None:
         colors = plt.cm.jet(np.linspace(0, 1, n_approx))
@@ -150,7 +167,7 @@ def plotFunctionApprox( xs, y_ref, ys_approx, bError=False, colors=None, errMax=
     lines, labels = ax1.get_legend_handles_labels()
     if bError:
         lines2, labels2 = ax2.get_legend_handles_labels()
-    ax2.legend(lines + lines2, labels + labels2, loc='center right')
+    ax2.legend(lines + lines2, labels + labels2, loc='center right', fontsize=8)
     fig.tight_layout()
     #plt.savefig("exp_kz_approximation_sequence.png")
     #plt.show()
