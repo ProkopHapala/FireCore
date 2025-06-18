@@ -20,7 +20,6 @@ basis-definition string.
 from __future__ import annotations
 import argparse, json, random, pathlib, datetime, sys
 from typing import List, Tuple
-
 import numpy as np
 
 # Project imports
@@ -117,13 +116,38 @@ def run_optimizer(init_bd, max_iter=500, verbose=False):
     rmse = ob.weighted_rmse(ob.Y_SAMPLES_GLOBAL, y_recon, weights=ob.WEIGHTS_Y_MASK_GLOBAL)
     return best_bd, rmse
 
-def main():
+def plot_rmse_vs_nbasis(db_items: Dict[str, dict], *, show=True, ax=None):
+    db = ResultsDB(args.results)
+    all_dict = dict(db.items())
+    # Prepare scatter data
+    def xy_from_items(items):
+        xs, ys = [], []
+        for k, rec in items.items():
+            rmse = rec.get("rmse")
+            if rmse is None: continue
+            _z0, bd = basis_key_to_struct(k)
+            nb, *_ = get_basis_metrics(bd)
+            xs.append(nb); ys.append(rmse)
+        return xs, ys
+    x_all, y_all = xy_from_items(all_dict)
+    x_new, y_new = xy_from_items({k: all_dict[k] for k in new_keys}) if new_keys else ([], [])
+
+    fig, ax = plt.subplots(figsize=(6,4))
+    ax.scatter(x_all, y_all, c='k', marker='.', s=20, label='All runs')
+    if x_new:
+        ax.scatter(x_new, y_new, c='r', marker='o', s=40, label='This batch')
+    ax.set_xlabel('nBasis'); ax.set_ylabel('RMSE'); ax.set_yscale('log'); ax.grid(True, linestyle=':')
+    ax.legend()
+    plt.tight_layout()
+
+if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Batch optimiser runner")
     parser.add_argument("--samples", default="Morse1.json")
     parser.add_argument("--results", default="results.jsonl")
     parser.add_argument("--runs", type=int, default=10)
     parser.add_argument("--seed", type=int, default=0)
     parser.add_argument("--max_iter", type=int, default=500)
+    parser.add_argument("--no_plot", action="store_true", help="Skip plotting at end")
     args = parser.parse_args()
 
     # Load sample data
@@ -141,6 +165,7 @@ def main():
 
     existing_keys = load_existing_keys(args.results)
     print(f"Loaded {len(existing_keys)} existing result keys from {args.results}")
+    new_keys = []  # track new records this session
 
     for run_idx in range(args.runs):
         init_bd = random_initial_basis(rng_py)
@@ -153,9 +178,18 @@ def main():
         record = {key: {"rmse": rmse, "timestamp": ts, "samples": args.samples}}
         append_jsonl(args.results, record)
         existing_keys.add(key)
+        new_keys.append(key)
         print(f"[{run_idx+1}/{args.runs}] Added result: RMSE={rmse:.2e} | key={key}")
 
     print("Batch finished. Total unique results now:", len(existing_keys))
 
-if __name__ == "__main__":
-    main()
+    # ------------------------------------------------------ Plot summary
+    if not args.no_plot and existing_keys:
+        import matplotlib.pyplot as plt
+        from results_db import ResultsDB
+        from plot_db_utils import basis_key_to_struct
+        from basis_utils import get_basis_metrics
+        plot_rmse_vs_nbasis(existing_keys, show=True)
+        plt.show()
+        #plt.savefig('rmse_vs_nbasis_batch.png')
+        #print('Plot saved to rmse_vs_nbasis_batch.png')
