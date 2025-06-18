@@ -63,8 +63,15 @@ The optimizer explores the solution space by applying various mutation strategie
     - The new $z_{cut}$ value is rounded (e.g., to 2 decimal places) and can be continuous (not restricted to `Z_CUTS`).
     - This is useful for fine-tuning $z_{cut}$ values.
 6.  **`mut_drop_ld`**:
-    - Calculates the linear dependency (LD) for each basis function $f_i$: $LD_i = \sum_{j \neq i} \frac{\langle f_i | f_j \rangle^2}{\|f_i\|^2 \|f_j\|^2}$.
-    - If the highest $LD_i$ exceeds `LD_DROP_TRASHOLD`, the corresponding basis function $f_i$ is removed from the basis definition. This helps to create a more orthogonal set.
+    - Uses squared cosine similarity matrix to detect linear dependencies between basis functions.
+    - For each basis function $f_i$, computes:
+      - $LD_{sum} = \sum_{j \neq i} \cos^2(f_i,f_j)$ (total linear dependence)
+      - $LD_{max} = \max_{j \neq i} \cos^2(f_i,f_j)$ (strongest pairwise collinearity)
+    - If the highest $LD_{max}$ exceeds `LD_DROP_TRASHOLD` (currently 0.7), drops one function from the most collinear pair using a deterministic heuristic:
+      1. Prefers higher polynomial power (more complex basis function)
+      2. If powers equal, prefers function with fewer powers at same $z_{cut}$ (to encourage shared $z_{cut}$)
+      3. If still equal, prefers higher $LD_{sum}$ (more redundant function)
+    - Also used in pre-evaluation checks with stricter threshold `LD_DROP_ALWAYS` (0.99) to reject degenerate bases early.
 
 After each mutation, `cleanup_bd` is called to:
 - Sort $z_{cut}$ groups by their $z_{cut}$ value.
@@ -87,23 +94,33 @@ A common strategy for problems like this involves two phases:
 
 The `D_ZCUT` parameter and the probabilities in `PROBS` should be configured according to the desired optimization phase.
 
-### 4.2. Parameter Pools (`Z_CUTS`, `N_POWS`) and `z0basis`
+### 4.2. Linear Dependence Thresholds
+
+Two key thresholds control basis pruning:
+1. **`LD_DROP_TRASHOLD` (0.7)**: During mutation, probabilistically drops basis functions when $LD_{max}$ exceeds this value.
+2. **`LD_DROP_ALWAYS` (0.99)**: During pre-evaluation, strictly rejects any basis set where $LD_{max}$ exceeds this threshold.
+
+These thresholds balance:
+- **Orthogonality**: Lower thresholds produce more orthogonal bases but may be too aggressive.
+- **Flexibility**: Higher thresholds allow more similar basis functions when needed for accuracy.
+
+### 4.3. Parameter Pools (`Z_CUTS`, `N_POWS`) and `z0basis`
 
 - `Z_CUTS`: Provides a discrete set of `z_cut` values primarily for the `mut_add_zc` strategy. `mut_shift_zc` can explore values outside this list.
 - `N_POWS`: Provides a discrete set of powers `n` for `mut_add_pow` and initializing new `z_cut` groups.
 
-### 4.3. Pre-evaluation Range Checking (`check_ranges`)
+### 4.4. Pre-evaluation Range Checking (`check_ranges`)
 
 - The `check_ranges` function quickly validates a candidate basis definition against constraints defined in `RANGES` (e.g., min/max `nZcut`, min/max `nBasis`).
 - This is a "cheap" check performed *before* the more computationally expensive fitness evaluation.
 - If a candidate fails this check, it's immediately rejected with infinite cost, saving computation.
 
-### 4.4. `cleanup_bd` Function
+### 4.5. `cleanup_bd` Function
 
 - This utility is crucial for maintaining a canonical and valid representation of the `basis_definition` after mutations.
 - It handles sorting, removal of empty groups, and merging of identical `z_cut` groups (especially important when `mut_shift_zc` is active and `z_cut` values are rounded).
 
-### 4.5. Weighted Fitting and Masking
+### 4.6. Weighted Fitting and Masking
 
 - To focus the fitting process on physically relevant regions of the potential energy curves (typically the attractive well and not the highly repulsive core), a weighting scheme is employed.
 - In `Optimize_basis_new.py`, this is handled by `WEIGHTS_Y_MASK_GLOBAL`. This mask is generated based on a threshold `V_REPULSIVE_THRESH_GLOBAL`.
@@ -113,7 +130,7 @@ The `D_ZCUT` parameter and the probabilities in `PROBS` should be configured acc
   ```
 - This `WEIGHTS_Y_MASK_GLOBAL` is then passed to the `fit_coefficients` function (from `optimize.py`), which performs a weighted least-squares fit. This ensures that the RMSE calculation in `evaluate_fitness_basis` primarily reflects the error in the regions of interest.
 
-### 4.6. `z0basis` Parameter
+### 4.7. `z0basis` Parameter
 
 - The `z0basis` parameter (e.g., `1.0`) is used in `construct_composite_cutoff_basis` and `cutoff_poly_basis`. It defines the origin for the term $(z-z_0)$ in the basis function construction $(1-(z-z_0)/z_{span})^n$.
 - Consistent use of `z0basis` is important for the definition and behavior of the basis functions.
