@@ -86,7 +86,7 @@ def cos_exp_basis(X: np.ndarray, Z: np.ndarray, nx: int, nz: int, a0: float = 0.
         for k in range(0, nz):
             fx = np.cos(2 * np.pi * k * X / Lx)
             basis.append( (fx*fz).flatten() )
-            labels.append(f"cos(2π{k})*exp(-{a0*j:.1f}z")
+            labels.append(f"exp(-{a0*j:.1f}z)*cos({2*k}π/L)")
     return np.array(basis), labels
 
 ################################################################################
