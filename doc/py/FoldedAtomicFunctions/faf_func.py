@@ -17,73 +17,82 @@ from __future__ import annotations
 import numpy as np
 import matplotlib.pyplot as plt
 
-from plot_utils import (
-    plot1D,
-    plot_SV,
-    imshow_grid,
-    plot2Dapprox,
-    plot2Dbasis,
-)
-from basis_utils import (
-    coulomb2D,
-    morse2D,
-    cos_exp_basis,
-)
+from plot_utils import plot1D, plot_SV, imshow_grid, plot_atoms, plot2Dapprox, plot2Dbasis
+
+from basis_utils import cos_exp_basis, mult_atoms, getMorseQ
 
 # -----------------------------------------------------------------------------
 # 0. Tiny helper functions (mostly one-liners)                                  
 # -----------------------------------------------------------------------------
-mk_grid  = lambda Lx, Lz, dx, z0: (np.arange(0, Lx, dx), z0 + np.arange(0, Lz, dx))
-fit_ls   = lambda V, phi: np.linalg.lstsq(phi.T, V.ravel(), rcond=None)[0]
-reco     = lambda c, phi, shp: (c @ phi).reshape(shp)
-rmse     = lambda A, B: float(np.sqrt(((A - B) ** 2).mean()))
+#mk_grid  = lambda Lx, Lz, dx, z0 : (np.arange(0, Lx, dx), z0 + np.arange(0, Lz, dx))
+#fit_ls   = lambda V, phi         :  np.linalg.lstsq(phi.T, V.ravel(), rcond=None)[0]
+#reco     = lambda c, phi, shp    : (c @ phi).reshape(shp)
+#rmse     = lambda A, B           : float(np.sqrt(((A - B) ** 2).mean()))
+
+
+def makePotentialXZ( apos, apars, X, Z, apar=(1.4,0.01,0.1,1.6) ):
+    apars = apars.copy()
+    apars[:,0] =          apars[:,0] + apar[0]
+    apars[:,1] = np.sqrt( apars[:,1] * apar[1] )
+    apars[:,2] =          apars[:,2] * apar[2]
+    apars[:,3] = np.sqrt( apars[:,3] * apar[3] )
+    #print( "xs ", xs)
+    # print("apos:\n",   apos)
+    # print("apars:\n",  apars)
+    # print("colors:\n", colors)
+    # print("X.shape:", X.shape)
+    V = getMorseQ(apos, apars, X, Z)
+    V0 = np.average(V[:,-1]); V-=V0; print("V0:", V0)
+    return V, extent, X, Z
+
 
 if __name__ == "__main__":
      # parameters (kept very short names)
-    Lx, Lz, dx, z0 = 10.0, 10.0, 0.2, 2.0
-    n_img = 3  # ± images in x
+    Lx, Lz, dx, z0 = 5.0, 10.0, 0.1, 1.5
+    npbc = 2  # ± images in x
 
     # atoms (two examples, charges zero – coulomb part will be zero)
-    ats = [
-        dict(x=0.0, y=0.0, z=0.0, q=0.0, r0=1.6, D=0.01, a=1.6),
-        dict(x=Lx / 2, y=0.0, z=0.0, q=0.0, r0=2.3, D=0.01, a=1.6),
+    Q = 1.0
+    atoms = [
+    #   (x,y,z)      (R0, E0, Q, aMorse)    color    
+        ((0.0 , 0.0, 0.0), (1.4, 0.01, +Q, 1.6), "m" ),  # Na
+        ((Lx/2, 0.0, 0.0), (2.2, 0.01, -Q, 1.6), "g" ),  # Cl
+        ((0.0 , 0.0,-2.5), (1.4, 0.01, -Q, 1.6), "g" ),
+        ((Lx/2, 0.0,-2.5), (2.2, 0.01, +Q, 1.6), "m" ),
     ]
+    apos   = np.array([at[0] for at in atoms])
+    apars  = np.array([at[1] for at in atoms])
+    colors = [at[2] for at in atoms]
 
-    xs, zs = mk_grid(Lx, Lz, dx, z0)
-    X, Z = np.meshgrid(xs, zs, indexing="ij")
+    apos, apars, colors = mult_atoms(apos, apars, colors, nPBC=(npbc,0,0), Ls=(Lx,1.,1.), corners={1,3} )
+    extent = [-Lx/2, Lx/2, z0, z0 + Lz]   ;print("extent:", extent)
+    xs, zs = np.arange(extent[0], extent[1], dx), np.arange(extent[2], extent[3], dx)
+    X, Z   = np.meshgrid(xs, zs, indexing="ij")
 
-    Vc = coulomb2D(X, Z, ats, n_img)
-    Vm = morse2D(X, Z, ats, n_img)
-    V = Vc + Vm  # reference potential within one unit cell
+    #nbx, nbz, a0 = 8, 3, 0.3
 
-    # extent for imshow helpers
-    extent = [0, Lx, z0, z0 + Lz]
+    nbx, nbz, a0 = 8,5,0.5
 
-    # plot reference potential with atoms
-    colors = ["blue", "red"]
-    atoms_vis = [ {"x": at["x"], "z": at["z"], "r0": at["r0"], "color": colors[i % len(colors)]} for i, at in enumerate(ats) ]
-    imshow_grid(V, extent, "Reference Morse potential", atoms=atoms_vis)
+    phi, labels    = cos_exp_basis(X, Z, nbx, nbz, a0=a0, Lx=Lx)
 
-    # basis + fit (plane waves × exp)
-    nx_h, nz_f = 3, 4
-    phi = cos_exp_basis(X, Z, nx=nx_h, nz=nz_f)
-    coeffs = fit_ls(V, phi)
-    V_fit = reco(coeffs, phi, X.shape)
+    Qs = [0.0,-0.1,0.1] 
+    #Qs = [-0.0,-0.1] 
+    #Qs = [-0.1] 
+    #Qs = [+0.1] 
+    for Qsond in Qs:
+        V, extent, X, Z = makePotentialXZ( apos, apars, X, Z, apar=(1.4,0.01,Qsond,1.6))
+        
+        #ax = imshow_grid(V, extent=extent, title="Reference Morse potential", figsize=(20,6))
+        #plot_atoms(apos, colors, sz=100, ax=ax, bEqual=True)
 
-    # compare fit vs ref
-    plot2Dapprox(V, V_fit, extent)
+        #plt.show()
+       
+        coeffs = np.linalg.lstsq(phi.T, V.ravel(), rcond=None)[0]     ;print("coeffs.shape:", coeffs.shape)
+        V_fit = (coeffs @ phi).reshape(X.shape)                       ;print("V_fit.shape:", V_fit.shape)
 
-    # singular values of phi (library only)
-    plot_SV(np.linalg.svd(phi, compute_uv=False), K_opt=0)
+        err = V - V_fit; err[Z<2.0] = np.nan
+        plot2Dapprox(V, V_fit, err=err, extent=extent, scErr=0.001, title=f"Fit vs Ref Q={Qsond}")
 
-    # visualise basis rows (with coefficients)
-    labels = [f"cos({k})*e^-{j}z" for k in range(nx_h + 1) for j in range(1, nz_f + 1)]
-    plot2Dbasis(phi, X.shape, extent, coeffs=coeffs, labels=labels)
-
-    # 1-D central slice quick check
-    ix = X.shape[0] // 2
-    plot1D(zs, np.vstack((V[ix], V_fit[ix])), "Central slice ref vs fit")
-
-    print("RMSE (eV):", rmse(V, V_fit))
+        #plot2Dbasis(phi, X.shape, extent, coeffs=coeffs, labels=labels, nrow=nbz)
 
     plt.show()

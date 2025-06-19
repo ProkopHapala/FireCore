@@ -12,6 +12,7 @@ from optimize import fit_coefficients # Assuming optimize.py is in the same path
 
 xyz_imgs = lambda xs, n, Lx: np.concatenate([xs + i * Lx for i in range(-n, n + 1)])
 
+COULOMB_CONST = 14.399644  # [eV*A]
 
 def morse_potential(z, D, a, r0):
     """Morse potential function V(z) = D[(1 − e^{−a(z−r0)})^2 − 1]."""
@@ -33,38 +34,60 @@ def gen_morse_curves(zs, prms=None, n_s_def=10, a_rng_def=(0.8, 2.5), r0_rng_def
     ys_list = [morse_potential(zs, p['D'], p['a'], p['r0']) for p in prms]
     return ys_list, prms
 
-def coulomb2D(X: np.ndarray, Z: np.ndarray, atoms: list[dict], n: int) -> np.ndarray:
+def mult_atoms(apos, apars=None, colors=None, nPBC=(1,0,0), Ls=(1.,1.,1.), corners={}):
+    """Multiplies atomic positions by periodic replicas."""
+    if apars is None: apars = []
+    if colors is None: colors = []
+    na = len(apos)
+    apos_new = []
+    apars_new = []
+    colors_new = []
+    nx,ny,nz = nPBC
+    print("nPBC:", nPBC, "corners", corners)
+    for ix in range(-nx, nx + 1):
+        for iy in range(-ny, ny + 1):
+            for iz in range(-nz, nz + 1):
+                for ia in range(na):
+                    pa = apos[ia]
+                    #print( "ia, ix, iy, iz", ia, ix, iy, iz )
+                    if (ia in corners) and ( ix == nx ): 
+                        print( "Skipping corner atom", ia, ix, iy, iz )
+                        continue
+                    apos_new.append([pa[0] + ix * Ls[0], pa[1] + iy * Ls[1], pa[2] + iz * Ls[2]])
+                    apars_new.append(apars[ia])
+                    colors_new.append(colors[ia])
+    return np.array(apos_new), np.array(apars_new), colors_new
+    
+def getMorseQ(apos: np.ndarray, apars: np.ndarray, X: np.ndarray, Z: np.ndarray|float=0.0, Y: np.ndarray|float=0.0) -> np.ndarray:
     """Periodic 1/r summed over ±n images in x (vectorised)."""
     V = np.zeros_like(X)
-    Lx = X.max()
-    for at in atoms:
-        if abs(at.get("q", 0.0)) < 1e-12:  continue
-        xs_img = xyz_imgs(np.array([at["x"]]), n, Lx)
-        R = np.hypot(X[..., newaxis] - xs_img, Z[..., newaxis] - at["z"])
-        V += (at["q"] / np.where(R < 1e-8, 1e-8, R)).sum(-1)
+    na = len(apos)
+    if isinstance(Z, float): Z = np.full_like(X,Z)
+    if isinstance(Y, float): Y = np.full_like(X,Y)
+    for ia in range(na):
+        R0 = apars[ia,0]
+        E0 = apars[ia,1]
+        Q  = apars[ia,2]
+        aMorse = apars[ia,3]
+        dX = X - apos[ia][0]
+        dZ = Z - apos[ia][2]
+        dY = Y - apos[ia][1]
+        R = np.sqrt( dX**2 + dZ**2 + dY**2 )
+        e = np.exp(-aMorse*(R-R0))
+        V += COULOMB_CONST * Q/R   + E0*(e**2 - 2.*e)
     return V
-
-def morse2D(X: np.ndarray, Z: np.ndarray, atoms: list[dict], n: int) -> np.ndarray:
-    """Periodic Morse sum over images."""
-    V = np.zeros_like(X)
-    Lx = X.max()
-    for at in atoms:
-        D, a, r0 = at["D"], at["a"], at["r0"]
-        xs_img = xyz_imgs(np.array([at["x"]]), n, Lx)
-        R = np.hypot(X[..., newaxis] - xs_img, Z[..., newaxis] - at["z"])
-        e = np.exp(-a * (R - r0))
-        V += (D * (e ** 2 - 2 * e)).sum(-1)
-    return V
-
-def cos_exp_basis(X: np.ndarray, Z: np.ndarray, nx: int, nz: int, a0: float = 0.4) -> np.ndarray:
+    
+def cos_exp_basis(X: np.ndarray, Z: np.ndarray, nx: int, nz: int, a0: float = 0.4, Lx: float = 5.0) -> np.ndarray:
     """Return Φ with rows cos(2πk x/Lx)·exp(-a0 j z)."""
-    Lx = X.max()
-    rows = [
-        np.cos(2 * np.pi * k * X / Lx) * np.exp(-a0 * j * Z)
-        for k in range(nx + 1)
-        for j in range(1, nz + 1)
-    ]
-    return np.vstack([r.ravel() for r in rows])  # (P, N)
+    basis  = [] 
+    labels = []
+    for j in range(nx + 1):
+        fz = np.exp(-a0 * j * Z)
+        for k in range(0, nz):
+            fx = np.cos(2 * np.pi * k * X / Lx)
+            basis.append( (fx*fz).flatten() )
+            labels.append(f"cos(2π{k})*exp(-{a0*j:.1f}z")
+    return np.array(basis), labels
 
 ################################################################################
 # Polynomial basis

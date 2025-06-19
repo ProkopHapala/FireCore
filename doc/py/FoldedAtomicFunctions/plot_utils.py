@@ -173,52 +173,85 @@ def plotFunctionApprox( xs, y_ref, ys_approx, bError=False, colors=None, errMax=
     #plt.show()
     return fig,(ax1,ax2) 
 
+diverging_cmaps = {'PiYG', 'PRGn', 'BrBG', 'PuOr', 'RdGy', 'RdBu', 'RdYlBu','RdYlGn', 'Spectral', 'coolwarm', 'bwr', 'seismic','berlin', 'managua', 'vanimo' }
+
+
+def is_diverging_cmap(cmap_name):
+    cmap = cmap_name.split('_')[0]
+    return cmap in diverging_cmaps
+
 
 # ===================================================================== # Keep existing function
 # 2-D plotting – compact helpers (imshow based)
 # =====================================================================
 
-def imshow_grid(grid, extent, title="", atoms=None, cmap="RdBu_r"):
-    """Quick imshow of a 2-D grid with optional atom markers.
-
-    Parameters
-    ----------
-    grid    : 2-D ndarray (shape (Nx, Nz)).
-    extent  : [xmin, xmax, zmin, zmax] for imshow.
-    atoms   : iterable of dicts with keys `x`, `z`, optional `r0` (size) & `color`.
-    """
-    fig, ax = plt.subplots(figsize=(10, 4))
-    im = ax.imshow(grid.T, origin="lower", aspect="auto", extent=extent, cmap=cmap)
+def imshow_grid(grid, extent=None, cmap="seismic", ax=None, figsize=(10, 4),title=None):
+    if ax is None: fig, ax = plt.subplots(figsize=figsize)
+    if is_diverging_cmap(cmap):
+        vmin = np.nanmin(grid); vmax = -vmin; print("imshow_grid() vmin, vmax:", vmin, vmax, title)
+    im = ax.imshow(grid.T, origin="lower", aspect="auto", extent=extent, cmap=cmap, vmin=vmin, vmax=vmax)
     plt.colorbar(im, ax=ax, shrink=0.8)
-
-    if atoms is not None:
-        for a in atoms:
-            sz = (a.get("r0", 1.0) * 7) ** 2
-            ax.scatter(a["x"], a["z"], s=sz, c=a.get("color", "k"), edgecolors="w", linewidths=0.5)
     ax.set_xlabel("x (Å)"); ax.set_ylabel("z (Å)")
-    ax.set_title(title)
+    if title is not None: ax.set_title(title)
+    fig.tight_layout()
     #if fname: plt.savefig(fname); print("saved", fname)
     #plt.tight_layout(); plt.show(); 
     return ax
 
-def plot2Dapprox(ref, fit, extent, title="Fit vs Ref", cmap="RdBu_r"):
+def plot_atoms( apos, colors, sz=10, ax=None, bEqual=True, axes=(0,2), figsize=(10,4) ):
+    if ax is None: fig, ax = plt.subplots(figsize=figsize)
+    ax.scatter(apos[:,axes[0]], apos[:,axes[1]], s=sz, c=colors, edgecolors="w", linewidths=0.5)
+    ax.set_xlabel("x (Å)"); ax.set_ylabel("z (Å)") 
+    if bEqual: ax.set_aspect("equal")
+    #fig.tight_layout()
+    #if fname: plt.savefig(fname); print("saved", fname)
+    return ax
+
+def plot2Dapprox(ref, fit, err=None, extent=None, title="Fit vs Ref", cmap="seismic", scErr=None):
     """Show reference, fit and error in one row of imshows."""
-    err = fit - ref
-    data = [ref, fit, err]
-    lbls = ["Reference", "Fit", "Error"]
-    vmin = min(ref.min(), fit.min())
-    vmax = max(ref.max(), fit.max())
+    if err is None: err = fit - ref
     fig, axs = plt.subplots(1, 3, figsize=(14, 4))
-    for ax, d, l in zip(axs, data, lbls):
-        im = ax.imshow(d.T, origin="lower", aspect="auto", extent=extent, cmap=cmap, vmin=vmin, vmax=vmax)
-        ax.set_title(l)
-        ax.set_axis_off()
-    plt.colorbar(im, ax=axs.ravel().tolist(), shrink=0.7)
+    if is_diverging_cmap(cmap):
+        vmin = min(np.nanmin(ref),np.nanmin(fit)); vmax = -vmin; # print("imshow_grid() vmin, vmax:", vmin, vmax, title)
+    im_ref = axs[0].imshow(ref.T, origin="lower", aspect="auto", extent=extent, cmap=cmap, vmin=vmin, vmax=vmax)
+    im_fit = axs[1].imshow(fit.T, origin="lower", aspect="auto", extent=extent, cmap=cmap, vmin=vmin, vmax=vmax)
+    if scErr is None: 
+        scErr = max(-np.nanmin(err),np.nanmax(err));
+    im_err = axs[2].imshow(err.T, origin="lower", aspect="auto", extent=extent, cmap="seismic", vmin=scErr, vmax=-scErr)
+    axs[0].set_title("Reference")
+    axs[1].set_title("Fit")
+    axs[2].set_title("Error")
+    # This colorbar is for error plot
+    plt.colorbar(im_ref, ax=axs[0], shrink=0.7)
+    plt.colorbar(im_fit, ax=axs[1], shrink=0.7)
+    plt.colorbar(im_err, ax=axs[2], shrink=0.7)  
     fig.suptitle(title)
     #if fname:   plt.savefig(fname); print("saved", fname)
     #plt.tight_layout(); plt.show(); 
     return axs
 
+def plot2Dbasis(cols, shape, extent, coeffs=None, labels=None, nrow=4, cmap="RdBu_r"):
+    """Grid of imshows for basis columns (each column flattened)."""
+    K = cols.shape[0]
+    nrow = min(nrow, K)
+    ncol = (K + nrow - 1) // nrow
+    fig, axes = plt.subplots(nrow, ncol, figsize=(3*ncol, 3*nrow))
+    axes = np.atleast_2d(axes)
+    for k in range(K):
+        ax = axes[k % nrow, k // nrow]
+        im = ax.imshow(cols[k].reshape(shape).T, origin="lower", aspect="auto", extent=extent, cmap=cmap)
+        t = labels[k] if labels else f"ϕ{k}"
+        if coeffs is not None and k < len(coeffs):
+            t += f"\nC={coeffs[k]:.1e}"
+        ax.set_title(t, fontsize=7); ax.set_axis_off()
+    for ax in axes.ravel()[K:]: ax.set_visible(False)
+    fig.suptitle("Basis functions")
+    #if fname: plt.savefig(fname); print("saved", fname)
+    #plt.tight_layout(); plt.show(); 
+    return axes
+
+
+'''
 def plot2Dbasis(rows, shape, extent, coeffs=None, labels=None, ncol=4, cmap="RdBu_r"):
     """Grid of imshows for basis rows (each row flattened)."""
     K = rows.shape[0]
@@ -238,3 +271,4 @@ def plot2Dbasis(rows, shape, extent, coeffs=None, labels=None, ncol=4, cmap="RdB
     #if fname: plt.savefig(fname); print("saved", fname)
     #plt.tight_layout(); plt.show(); 
     return axes
+'''
