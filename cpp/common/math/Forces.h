@@ -28,23 +28,23 @@ inline bool clampForce( Vec3d& f, const double f2max ){
 
 // ================= Trashold functions
 
-double smoothstep_up(double x_, double xmin, double xmax) {
+inline double smoothstep_up(double x_, double xmin, double xmax) {
     if      (x_<xmin){ return 0; }
     else if (x_>xmax){ return 1; }
     double x = (x_-xmin)/(xmax-xmin);
     return x*x*(3-2*x);
 }
 
-double smoothstep_down(double x_, double xmin, double xmax) {
+inline double smoothstep_down(double x_, double xmin, double xmax) {
     if      (x_<xmin){ return 1; }
     else if (x_>xmax){ return 0; }
     double x = (x_-xmin)/(xmax-xmin);
     return 1-x*x*(3-2*x);
 }
 
-double R4blob(double r2) { r2=1-r2; return r2*r2; }   // simplest and fastest cutoff function which depends only on r2 (i.e. eliminate need for sqrt)
+inline double R4blob(double r2) { r2=1-r2; return r2*r2; }   // simplest and fastest cutoff function which depends only on r2 (i.e. eliminate need for sqrt)
 
-double R8func(double r2, double R, double Rnod ){
+inline double R8func(double r2, double R, double Rnod ){
     //This functions should is C1-continuous smoothstep function which is use only r2 (i.e. eliminate need for sqrt), it can be used in 3 ways:
     //  1) smoothstep from 0.0 to 1.0 at interval [Rnod,R] if Rnod<R
     //  2) smoothstep from 1.0 to 0.0 at interval [R,Rnod] if Rnod>R
@@ -57,7 +57,7 @@ double R8func(double r2, double R, double Rnod ){
     return y2*y2;                   // 1 mul .... in total cost 5 mul, 3 add, 1 div
 }
 
-double R8down(double r2, double R, double Rnod ){
+inline double R8down(double r2, double R, double Rnod ){
     //This functions should is C1-continuous smoothstep function which is use only r2 (i.e. eliminate need for sqrt), it can be used in 3 ways:
     //  1) smoothstep from 0.0 to 1.0 at interval [Rnod,R] if Rnod<R
     double R2   = R*R;             
@@ -70,13 +70,13 @@ double R8down(double r2, double R, double Rnod ){
     return y2*y2;   
 }
 
-double finiteLorenz( double r2, double w2, double R2cut ){
+inline double finiteLorenz( double r2, double w2, double R2cut ){
     if( r2>R2cut ) return 0;
     double fcut = (R2cut-r2);
     return fcut*fcut/(R2cut*R2cut*(r2+w2));
 }
 
-double repulsion_R4( Vec3d d, Vec3d& f, double R, double Rcut, double A ){
+inline double repulsion_R4( Vec3d d, Vec3d& f, double R, double Rcut, double A ){
     // we use R4blob(r) = A * (1-r^2)^2
     // such that at distance r=R we have force f = fmax
     // f = -dR4blob/dr = 4*A*r*(1-r^2) = fmax
@@ -429,7 +429,7 @@ inline double getSR_x2_smooth(const Vec3d& dp, Vec3d& f, double E_min, double R_
 //   R_cut2 : outer cutoff (potential and force vanish for r >= R_cut2),
 // this function computes the inner cutoff R_cut and smoothing stiffness k2
 // such that energy and force match at R_cut.
-Vec2d computeMatchingParams(double k1, double E_min, double R_min, double R_cut2 ) {
+inline Vec2d computeMatchingParams(double k1, double E_min, double R_min, double R_cut2 ) {
     // Consistency requires R_min < R_cut2.
     //assert(R_cut2 > R_min);
     // Compute the total distance between R_min and R_cut2.

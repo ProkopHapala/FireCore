@@ -22,7 +22,7 @@
 #include <unordered_set> // Do we really need it here ? used only in initBBsFromGroups(){  std::unordered_set<int> uniqueGroups; }
 
 
-void fitAABB( Vec6d& bb, int n, int* c2o, Vec3d* ps ){
+inline void fitAABB( Vec6d& bb, int n, int* c2o, Vec3d* ps ){
     //Quat8d bb;
     //bb.lo = bb.lo = ps[c2o[0]];
     //printf( "fitAABB() n %i @c2o=%p @ps=%p \n", n, c2o, ps );
@@ -41,7 +41,7 @@ void fitAABB( Vec6d& bb, int n, int* c2o, Vec3d* ps ){
     //return bb;
 }
 
-int makePBCshifts_( Vec3i nPBC, const Mat3d& lvec, Vec3d*& shifts ){
+inline int makePBCshifts_( Vec3i nPBC, const Mat3d& lvec, Vec3d*& shifts ){
     const int npbc = (nPBC.x*2+1)*(nPBC.y*2+1)*(nPBC.z*2+1);
     //printf( "makePBCshifts_() npbc=%i nPBC{%i,%i,%i}\n", npbc, nPBC.x,nPBC.y,nPBC.z );
     if(shifts==0)_realloc(shifts,npbc);
@@ -60,7 +60,7 @@ int makePBCshifts_( Vec3i nPBC, const Mat3d& lvec, Vec3d*& shifts ){
 
 __attribute__((pure))
 __attribute__((hot))
-Quat4d evalPointCoulPBC( Vec3d pos, int npbc, const Vec3d* shifts, int natoms, const Vec3d * apos, const double* Qs, double Rdamp ){
+inline Quat4d evalPointCoulPBC( Vec3d pos, int npbc, const Vec3d* shifts, int natoms, const Vec3d * apos, const double* Qs, double Rdamp ){
     const double R2damp=Rdamp*Rdamp;    
     //const double K=-alphaMorse;
     Quat4d qe     = Quat4dZero;
@@ -81,7 +81,7 @@ Quat4d evalPointCoulPBC( Vec3d pos, int npbc, const Vec3d* shifts, int natoms, c
 }
 
 
-void sampleCoulombPBC( int nps, const Vec3d* ps, Quat4d* fe, int natom,  Vec3d* apos, double* Qs, Mat3d lvec, Vec3i nPBC, double Rdamp ){
+inline void sampleCoulombPBC( int nps, const Vec3d* ps, Quat4d* fe, int natom,  Vec3d* apos, double* Qs, Mat3d lvec, Vec3i nPBC, double Rdamp ){
     Vec3d * shifts =0;
     int npbc = makePBCshifts_( nPBC, lvec, shifts );
     //printf( "sampleCoulombPBC() npbc=%i nPBC{%i,%i,%i} nps=%i natom=%i \n", npbc, nPBC.x,nPBC.y,nPBC.z, nps, natom );

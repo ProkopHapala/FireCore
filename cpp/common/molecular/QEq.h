@@ -11,7 +11,7 @@
 // https://pubs.acs.org/doi/pdf/10.1021/j100161a070
 // AnthonyK.Rappe, William A.Goddard, Phys.Chem.1991,95,3358-3363
 
-void makeCoulombMatrix(int n, Vec3d* ps, double* J){
+static void makeCoulombMatrix(int n, Vec3d* ps, double* J){
     //double Jmax = 0.0;
     for(int i=0; i<n; i++){
         Vec3d pi = ps[i];

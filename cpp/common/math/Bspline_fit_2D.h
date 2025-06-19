@@ -68,7 +68,7 @@ inline double assembleBound2D_pbc( const double B00, const double B01, const dou
 
 
 __attribute__((hot)) 
-double getVariations2D( const Vec2i ns, double* Gs,  const double* Es, double* Ws, double* fs, double* ps ){
+inline double getVariations2D( const Vec2i ns, double* Gs,  const double* Es, double* Ws, double* fs, double* ps ){
     constexpr double B0=2.0/3.0;
     constexpr double B1=1.0/6.0;
     constexpr double B00=B0*B0;
@@ -110,7 +110,7 @@ double getVariations2D( const Vec2i ns, double* Gs,  const double* Es, double* W
 }
 
 __attribute__((hot)) 
-double getVariations2D_pbc( const Vec2i ns, double* Gs,  const double* Es, double* Ws, double* fs, double* ps ){
+inline double getVariations2D_pbc( const Vec2i ns, double* Gs,  const double* Es, double* Ws, double* fs, double* ps ){
     //printf("getVariations2D_pbc()\n");
     constexpr double B0=2.0/3.0;
     constexpr double B1=1.0/6.0;
@@ -234,7 +234,7 @@ inline double regularizationForceMidpoint_2D( Vec2d p, int ndi, Vec2i* dis, cons
 }
 
 __attribute__((hot)) 
-double getVariations2D_regForce( const Vec2i ns, double* Gs,  const double* Es, double* Ws, double* fs, double* ps,    int ndi, Vec3i* dis, const Quat4i* xqis, const Quat4i* yqis ){
+inline double getVariations2D_regForce( const Vec2i ns, double* Gs,  const double* Es, double* Ws, double* fs, double* ps,    int ndi, Vec3i* dis, const Quat4i* xqis, const Quat4i* yqis ){
     //printf("getVariations2D_pbc()\n");
     constexpr double B0=2.0/3.0;
     constexpr double B1=1.0/6.0;
@@ -277,7 +277,7 @@ double getVariations2D_regForce( const Vec2i ns, double* Gs,  const double* Es, 
 }
 
 __attribute__((hot)) 
-int fit2D( const Vec2i ns, double* Gs, const double* Es, double* Ws, double Ftol, int nmaxiter=100, double dt=0.1, bool bPBC=false, bool bRegForce=false ){
+inline int fit2D( const Vec2i ns, double* Gs, const double* Es, double* Ws, double Ftol, int nmaxiter=100, double dt=0.1, bool bPBC=false, bool bRegForce=false ){
     //if(verbosity>1)
     printf( "Bspline::fit2D() ns(%i,%i) Ftol=%g dt=%g nmaxiter=%i bPBC=%i \n", ns.x,ns.y, Ftol, dt, nmaxiter, bPBC );
     const double F2max = Ftol*Ftol;

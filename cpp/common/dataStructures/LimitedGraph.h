@@ -5,6 +5,7 @@
 #include <vector>
 #include <array>
 
+#include "Vec2.h"
 #include "macroUtils.h"
 
 
@@ -134,7 +135,7 @@ void print(){
 }; // ---- end class LimitedGraph
 
 
-bool test_LimitedGraph_findBridge(){   // Driver program to test above function
+static bool test_LimitedGraph_findBridge(){   // Driver program to test above function
 	// Create graphs given in above diagrams
 	printf( "\nBridges in first graph \n" );
 	LimitedGraph<4> g1(5);

@@ -11,7 +11,7 @@
 
 
 //char charCheck[] = "                                 !"#$%&'()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[\]^_`abcdefghijklmnopqrstuvwxyz{|}~";
-char charTypes[]   = "                                 -'B---'()--,B--0000000000---B---AAAAAAAAAAAAAAAAAAAAAAAAAA(-)--'aaaaaaaaaaaaaaaaaaaaaaaaaa(-)-";
+static char charTypes[]   = "                                 -'B---'()--,B--0000000000---B---AAAAAAAAAAAAAAAAAAAAAAAAAA(-)--'aaaaaaaaaaaaaaaaaaaaaaaaaa(-)-";
 
 class SMILESparser{ public:
     //std::vector<ParserItem> items;

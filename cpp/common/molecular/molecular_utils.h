@@ -8,10 +8,10 @@
 #include "Vec3.h"
 #include "quaternion.h"
 
-bool isnan(Vec3d&  v){ return (isnan(v.x)||isnan(v.y)||isnan(v.z)); }
-bool isnan(Vec3f&  v){ return (isnan(v.x)||isnan(v.y)||isnan(v.z)); }
-bool isnan(Quat4d& v){ return (isnan(v.x)||isnan(v.y)||isnan(v.z)||isnan(v.w)); }
-bool isnan(Quat4f& v){ return (isnan(v.x)||isnan(v.y)||isnan(v.z)||isnan(v.w)); }
+inline bool isnan(Vec3d&  v){ return (isnan(v.x)||isnan(v.y)||isnan(v.z)); }
+inline bool isnan(Vec3f&  v){ return (isnan(v.x)||isnan(v.y)||isnan(v.z)); }
+inline bool isnan(Quat4d& v){ return (isnan(v.x)||isnan(v.y)||isnan(v.z)||isnan(v.w)); }
+inline bool isnan(Quat4f& v){ return (isnan(v.x)||isnan(v.y)||isnan(v.z)||isnan(v.w)); }
 
 #define _printIfNan(var)    if(isnan(var)){printf("_printIfNan(%s)= ",#var);print(var);puts("");} 
 
@@ -72,7 +72,7 @@ bool ckeckRange(int n, int m, T* xs, T min, T max, const char* pre, bool bPrint=
     return ret;
 }
 
-bool ckeckNaN_d(int n, int m, double* xs, const char* pre, bool bPrint=true ){
+inline bool ckeckNaN_d(int n, int m, double* xs, const char* pre, bool bPrint=true ){
     bool ret = false;
     for(int i=0; i<n;i++){
         bool b=false;
@@ -94,7 +94,7 @@ bool ckeckNaN_d(int n, int m, double* xs, const char* pre, bool bPrint=true ){
     return ret;
 }
 
-int whereNaN_d(int n, int m, double* xs, const char* pre ){
+inline int whereNaN_d(int n, int m, double* xs, const char* pre ){
     for(int i=0; i<n;i++){
         bool b=false;
         for(int j=0; j<m;j++){
@@ -107,7 +107,7 @@ int whereNaN_d(int n, int m, double* xs, const char* pre ){
     return -1;
 }
 
-bool ckeckNaN_f(int n, int m, float* xs, const char* pre, bool bPrint=true ){
+inline bool ckeckNaN_f(int n, int m, float* xs, const char* pre, bool bPrint=true ){
     bool ret = false;
     for(int i=0; i<n;i++){
         bool b=false;
@@ -129,18 +129,18 @@ bool ckeckNaN_f(int n, int m, float* xs, const char* pre, bool bPrint=true ){
     return ret;
 }
 
-void nameList( std::vector<std::string>& names, const std::string& s ){
+inline void nameList( std::vector<std::string>& names, const std::string& s ){
     size_t pos = 0;
     while ( (pos = s.find(' ', pos) ) != std::string::npos ){
         names.push_back(  s.substr(0, pos) );
     }
 }
 
-void listToMap( const std::vector<std::string>& names, std::unordered_map<std::string,int>& dct ){
+inline void listToMap( const std::vector<std::string>& names, std::unordered_map<std::string,int>& dct ){
     for( int i=0; i<names.size(); i++ ){  dct[ names[i] ]=i; }
 }
 
-void countingDict( int i0, std::unordered_map<std::string,int>& dct, const std::string& s ){
+inline void countingDict( int i0, std::unordered_map<std::string,int>& dct, const std::string& s ){
     size_t pos = 0;
     int i=i0;
     while ( (pos = s.find(' ', pos) ) != std::string::npos ){
@@ -149,7 +149,7 @@ void countingDict( int i0, std::unordered_map<std::string,int>& dct, const std::
     }
 }
 
-void makeDefaultAtomTypeDict( std::vector<std::string>& names, std::unordered_map<std::string,int>& dct ){
+inline void makeDefaultAtomTypeDict( std::vector<std::string>& names, std::unordered_map<std::string,int>& dct ){
     nameList( names,
         "H He "
         "Li Be B C N O F Ne "
@@ -161,7 +161,7 @@ void makeDefaultAtomTypeDict( std::vector<std::string>& names, std::unordered_ma
     );
     listToMap( names, dct );
 }
-void makeDefaultAtomTypeDict( std::vector<std::string>*& names, std::unordered_map<std::string,int>*& dct ){
+inline void makeDefaultAtomTypeDict( std::vector<std::string>*& names, std::unordered_map<std::string,int>*& dct ){
     if(names==0) names = new std::vector       <std::string>    ();
     if(dct==0)   dct   = new std::unordered_map<std::string,int>();
     makeDefaultAtomTypeDict( *names, *dct );

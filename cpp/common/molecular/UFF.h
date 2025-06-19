@@ -27,7 +27,7 @@
 //    This is an implementation of Universal Force Field. It was made using MMFFsp3_loc as a template.
 //
 
-bool checkVec3Match( Vec3d f, Vec3d f_, const char* label, int iPrint=1 ){
+static bool checkVec3Match( Vec3d f, Vec3d f_, const char* label, int iPrint=1 ){
     double l  = f.norm();
     double l_ = f_.norm();
     double r = l/l_;
@@ -40,7 +40,7 @@ bool checkVec3Match( Vec3d f, Vec3d f_, const char* label, int iPrint=1 ){
     return  ( fabs(c-1)<1e-6 ) && ( fabs(r-1)<1e-6 );
 }
 
-bool checkVec3Matches( int n, Vec3d* v, Vec3d* v_, const char* label, int iPrint=1 ){
+static bool checkVec3Matches( int n, Vec3d* v, Vec3d* v_, const char* label, int iPrint=1 ){
     char strbuf[256];
     bool bMatch = true;
     for(int i=0; i<n; i++){ 

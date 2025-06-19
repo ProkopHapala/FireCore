@@ -24,7 +24,7 @@
 // ================= CONSTANTS
 
 
-int nearPow2(int i){ return ceil( log(i)/log(2) ); }
+static int nearPow2(int i){ return ceil( log(i)/log(2) ); }
 
 // ================================
 // ======== class GridShape
@@ -546,11 +546,11 @@ void interateGrid3D( const GridShape& grid, FUNC func ){
 // ================================
 
 
-char* DEBUG_saveFile1="temp/f1.xsf";
-char* DEBUG_saveFile2="temp/f2.xsf";
-char* DEBUG_saveFile12="temp/prod_f1_f2.xsf";
-double* DEBUG_f1=0;
-double* DEBUG_f2=0;
+static char* DEBUG_saveFile1="temp/f1.xsf";
+static char* DEBUG_saveFile2="temp/f2.xsf";
+static char* DEBUG_saveFile12="temp/prod_f1_f2.xsf";
+static double* DEBUG_f1=0;
+static double* DEBUG_f2=0;
 
 template<typename Func1, typename Func2>
 void gridNumIntegral( int nint, double gStep, double Rmax, double Lmax, double* ys, Func1 func1, Func2 func2, bool bDebugXsf = false ){
@@ -614,7 +614,7 @@ void gridNumIntegral( int nint, double gStep, double Rmax, double Lmax, double* 
     delete [] f2;
 }
 
-void getIsovalPoints_a( const GridShape& grid, double isoval, Vec3d  *FF, std::vector<Vec3d>& points ){
+static void getIsovalPoints_a( const GridShape& grid, double isoval, Vec3d  *FF, std::vector<Vec3d>& points ){
     int nx  = grid.n.x; 	int ny  = grid.n.y; 	int nz  = grid.n.z; int nxy = ny * nx;
     int ii = 0;
     for ( int ic=0; ic<(nz-1); ic++ ){
@@ -638,7 +638,7 @@ void getIsovalPoints_a( const GridShape& grid, double isoval, Vec3d  *FF, std::v
     }
 }
 
-void getIsoSurfZ( const GridShape& grid, double isoval, bool sign, Quat4f  *FF, Vec3d *pos, Vec3d * normal ){
+static void getIsoSurfZ( const GridShape& grid, double isoval, bool sign, Quat4f  *FF, Vec3d *pos, Vec3d * normal ){
     int nx  = grid.n.x; 	int ny  = grid.n.y; 	int nz  = grid.n.z; int nxy = ny * nx;
     int ii = 0;
     //printf("%i %i %i \n", nx,ny,nxy );
@@ -679,7 +679,7 @@ void getIsoSurfZ( const GridShape& grid, double isoval, bool sign, Quat4f  *FF, 
     }
 }
 
-void getIsoSurfZ( const GridShape& grid, double isoval, bool sign, Quat4f  *FF, double *Zs ){
+static void getIsoSurfZ( const GridShape& grid, double isoval, bool sign, Quat4f  *FF, double *Zs ){
     int nx  = grid.n.x; 	int ny  = grid.n.y; 	int nz  = grid.n.z; int nxy = ny * nx;
     int ii = 0;
     //printf("%i %i %i \n", nx,ny,nxy );

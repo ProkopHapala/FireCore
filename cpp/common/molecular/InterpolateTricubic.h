@@ -243,7 +243,7 @@ inline Vec2d fe2d_deriv( const double tx, const double ty, const Vec2i i, const 
 
 __attribute__((pure))
 __attribute__((hot)) 
-Quat4d fe3d_deriv( const Vec3d u, const Vec3i n, const Quat4d* FEs, const Quat4d* dFs  ){
+inline Quat4d fe3d_deriv( const Vec3d u, const Vec3i n, const Quat4d* FEs, const Quat4d* dFs  ){
     // We assume there are boundary added to simplify the index calculations
 	const int    ix = (int)u.x  ,  iy = (int)u.y  ,  iz = (int)u.z  ;
     const double tx = u.x - ix  ,  ty = u.y - iy  ,  tz = u.z - iz  ;
@@ -426,7 +426,7 @@ inline Vec3d fe2d_v3( const Quat4d bx, const Quat4d dx, const Quat4d by, const Q
 
 __attribute__((pure))
 __attribute__((hot)) 
-Vec3f fe2f( const float tx, const float ty, const Quat4i i, const float* Es ){
+inline Vec3f fe2f( const float tx, const float ty, const Quat4i i, const float* Es ){
     alignas(32) Quat4f e,fx;
     {
         const Quat4f bx =  basis_val( tx );
@@ -463,7 +463,7 @@ Vec3f fe2f( const float tx, const float ty, const Quat4i i, const float* Es ){
 
 __attribute__((pure))
 __attribute__((hot)) 
-Quat4d fe3d_v2( const Vec3d u, const Vec3i n, const double* Es ){
+inline Quat4d fe3d_v2( const Vec3d u, const Vec3i n, const double* Es ){
     // We assume there are boundary added to simplify the index calculations
 	const int    ix = (int)u.x  ,  iy = (int)u.y  ,  iz = (int)u.z  ;
     const double tx = u.x - ix  ,  ty = u.y - iy  ,  tz = u.z - iz  ;
@@ -500,7 +500,7 @@ Quat4d fe3d_v2( const Vec3d u, const Vec3i n, const double* Es ){
 
 __attribute__((pure))
 __attribute__((hot)) 
-Quat4d fe3d( const Vec3d u, const Vec3i n, const double* Es ){
+inline Quat4d fe3d( const Vec3d u, const Vec3i n, const double* Es ){
     // We assume there are boundary added to simplify the index calculations
 	const int    ix = (int)u.x  ,  iy = (int)u.y  ,  iz = (int)u.z  ;
     const double tx = u.x - ix  ,  ty = u.y - iy  ,  tz = u.z - iz  ;
@@ -535,7 +535,7 @@ Quat4d fe3d( const Vec3d u, const Vec3i n, const double* Es ){
 
 __attribute__((pure))
 __attribute__((hot)) 
-Quat4d fe3d_v4( const Quat4d PLQH, const Vec3d u, const Vec3i n, const Quat4d* V ){
+inline Quat4d fe3d_v4( const Quat4d PLQH, const Vec3d u, const Vec3i n, const Quat4d* V ){
     // We assume there are boundary added to simplify the index calculations
 	const int    ix = (int)u.x  ,  iy = (int)u.y  ,  iz = (int)u.z  ;
     const double tx = u.x - ix  ,  ty = u.y - iy  ,  tz = u.z - iz  ;
@@ -563,7 +563,7 @@ Quat4d fe3d_v4( const Quat4d PLQH, const Vec3d u, const Vec3i n, const Quat4d* V
 
 __attribute__((pure))
 __attribute__((hot)) 
-Quat4f fe3f( const Vec3f u, const Vec3i n, const float* Es ){
+inline Quat4f fe3f( const Vec3f u, const Vec3i n, const float* Es ){
     // We assume there are boundary added to simplify the index calculations
 	const int    ix = (int)u.x  ,  iy = (int)u.y  ,  iz = (int)u.z  ;
     const float tx = u.x - ix  ,  ty = u.y - iy  ,  tz = u.z - iz  ;
@@ -729,7 +729,7 @@ inline Quat4d fe3d_comb3( const Vec3d& t, const Vec3i i, const Vec3i n, const Ve
 //#endif WITH_AVX
 
 __attribute__((hot)) 
-void sample1D( const double g0, const double dg, const int ng, const double* Eg, const int n, const double* xs, Vec2d* FEs ){
+inline void sample1D( const double g0, const double dg, const int ng, const double* Eg, const int n, const double* xs, Vec2d* FEs ){
     const double inv_dg = 1/dg;
     for(int i=0; i<n; i++ ){
         const double t = ((xs[i]-g0)*inv_dg);
@@ -747,7 +747,7 @@ void sample1D( const double g0, const double dg, const int ng, const double* Eg,
 
 
 __attribute__((hot)) 
-void sample2D( const Vec2d g0, const Vec2d dg, const Vec2i ng, const double* Eg, const int n, const Vec2d* ps, Vec3d* fes ){
+inline void sample2D( const Vec2d g0, const Vec2d dg, const Vec2i ng, const double* Eg, const int n, const Vec2d* ps, Vec3d* fes ){
     printf( "sample2D() g0=(%g,%g) dg=(%g,%g) ng=(%i,%i) n=%i \n", g0.x,g0.y, dg.x,dg.y, ng.x,ng.y, n );
     Vec2d inv_dg; inv_dg.set_inv(dg); 
     for(int i=0; i<n; i++ ){
@@ -779,7 +779,7 @@ void sample2D( const Vec2d g0, const Vec2d dg, const Vec2i ng, const double* Eg,
 }
 
 __attribute__((hot)) 
-void sample3D( const Vec3d g0, const Vec3d dg, const Vec3i ng, const double* Eg, const int n, const Vec3d* ps, Quat4d* fes ){
+inline void sample3D( const Vec3d g0, const Vec3d dg, const Vec3i ng, const double* Eg, const int n, const Vec3d* ps, Quat4d* fes ){
     Vec3d inv_dg; inv_dg.set_inv(dg); 
     for(int i=0; i<n; i++ ){
         Quat4d fe = fe3d( (ps[i]-g0)*inv_dg, ng, Eg );        // sample3D(n=10000) time=2009.44[kTick] 200.944[tick/point]
@@ -790,7 +790,7 @@ void sample3D( const Vec3d g0, const Vec3d dg, const Vec3i ng, const double* Eg,
 }
 
 __attribute__((hot)) 
-void sample2D_deriv( const Vec2d g0, const Vec2d dg, const Vec2i ng, const Quat4d* Eg, const Quat4d* dEg, const int n, const Vec2d* ps, Quat4d* fes ){
+inline void sample2D_deriv( const Vec2d g0, const Vec2d dg, const Vec2i ng, const Quat4d* Eg, const Quat4d* dEg, const int n, const Vec2d* ps, Quat4d* fes ){
     Vec2d inv_dg; inv_dg.set_inv(dg); 
     for(int i=0; i<n; i++ ){
         const Vec2d t  = (ps[i] - g0)*inv_dg; 
@@ -809,7 +809,7 @@ void sample2D_deriv( const Vec2d g0, const Vec2d dg, const Vec2i ng, const Quat4
 }
 
 __attribute__((hot)) 
-void sample3D_deriv( const Vec3d g0, const Vec3d dg, const Vec3i ng, const Quat4d* Eg, const Quat4d* dEg, const int n, const Vec3d* ps, Quat4d* fes ){
+inline void sample3D_deriv( const Vec3d g0, const Vec3d dg, const Vec3i ng, const Quat4d* Eg, const Quat4d* dEg, const int n, const Vec3d* ps, Quat4d* fes ){
     Vec3d inv_dg; inv_dg.set_inv(dg); 
     for(int i=0; i<n; i++ ){
         Quat4d fe = fe3d_deriv( (ps[i]-g0)*inv_dg, ng, Eg, dEg );        // sample3D(n=10000) time=2009.44[kTick] 200.944[tick/point]
@@ -820,7 +820,7 @@ void sample3D_deriv( const Vec3d g0, const Vec3d dg, const Vec3i ng, const Quat4
 }
 
 __attribute__((hot)) 
-void sample3D( const Vec3f g0, const Vec3f dg, const Vec3i ng, const float* Eg, const int n, const Vec3f* ps, Quat4f* fes ){
+inline void sample3D( const Vec3f g0, const Vec3f dg, const Vec3i ng, const float* Eg, const int n, const Vec3f* ps, Quat4f* fes ){
     Vec3f inv_dg; inv_dg.set_inv(dg); 
     for(int i=0; i<n; i++ ){
         Quat4f fe = fe3f( (ps[i]-g0)*inv_dg, ng, Eg );
@@ -830,7 +830,7 @@ void sample3D( const Vec3f g0, const Vec3f dg, const Vec3i ng, const float* Eg, 
 }
 
 //__attribute__((hot)) 
-void sample1D_deriv( const double g0, const double dg, const int ng, const Vec2d* FE, const int n, const double* ps, Vec2d* fes ){
+inline void sample1D_deriv( const double g0, const double dg, const int ng, const Vec2d* FE, const int n, const double* ps, Vec2d* fes ){
     const double inv_dg = 1/dg; 
     for(int i=0; i<n; i++ ){
         const double x = (ps[i] - g0)*inv_dg;  
@@ -858,7 +858,7 @@ void sample1D_deriv( const double g0, const double dg, const int ng, const Vec2d
 
 
 __attribute__((hot)) 
-void sample3D_deriv_comb3( const Vec3d g0, const Vec3d dg, const Vec3i ng, const Vec2d* FEg, const int n, const Vec3d* ps, Quat4d* fes, Vec3d C ){
+inline void sample3D_deriv_comb3( const Vec3d g0, const Vec3d dg, const Vec3i ng, const Vec2d* FEg, const int n, const Vec3d* ps, Quat4d* fes, Vec3d C ){
     //printf( "sample3D_deriv_comb3() g0=(%g,%g,%g) dg=(%g,%g,%g) ng=(%i,%i,%i) n=%i C(%g,%g,%g)\n", g0.x,g0.y,g0.z, dg.x,dg.y,dg.z, ng.x,ng.y,ng.z, n, C.x,C.y,C.z );
     Vec3d inv_dg; inv_dg.set_inv(dg); 
     Vec3d inv_dg2=inv_dg; inv_dg2.mul(-1);
@@ -894,7 +894,7 @@ void sample3D_deriv_comb3( const Vec3d g0, const Vec3d dg, const Vec3i ng, const
 }
 
 
-void sample1D_deriv_comb2( const double g0, const double dg, const int ng, const Quat4d* FE, const int n, const double* ps, Vec2d* fes, Vec2d C  ){
+inline void sample1D_deriv_comb2( const double g0, const double dg, const int ng, const Quat4d* FE, const int n, const double* ps, Vec2d* fes, Vec2d C  ){
     const double inv_dg = 1/dg; 
     for(int i=0; i<n; i++ ){
         const double x = (ps[i] - g0)*inv_dg;  
@@ -909,7 +909,7 @@ void sample1D_deriv_comb2( const double g0, const double dg, const int ng, const
 }
 
 __attribute__((hot)) 
-void sample2D_deriv_comb( const Vec2d g0, const Vec2d dg, const Vec2i ng, const Quat4d* FEg, const int n, const Vec2d* ps, Vec3d* fes, Vec2d C ){
+inline void sample2D_deriv_comb( const Vec2d g0, const Vec2d dg, const Vec2i ng, const Quat4d* FEg, const int n, const Vec2d* ps, Vec3d* fes, Vec2d C ){
     printf( "sample2D_deriv_comb() g0=(%g,%g) dg=(%g,%g) ng=(%i,%i) n=%i C(%g,%g)\n", g0.x,g0.y, dg.x,dg.y, ng.x,ng.y, n, C.x,C.y );
     Vec2d inv_dg; inv_dg.set_inv(dg); 
     for(int i=0; i<n; i++ ){
@@ -1030,7 +1030,7 @@ inline void evalHermiteBasis_avx2( const int n, const double* ts, __m256d* bs, _
 }
 
 __attribute__((hot)) 
-Vec3d fe2d_avx( const __m256d mbx, const __m256d mdx, const Quat4d by, const Quat4d dy, const Quat4i i, const double* Eg ){
+inline Vec3d fe2d_avx( const __m256d mbx, const __m256d mdx, const Quat4d by, const Quat4d dy, const Quat4i i, const double* Eg ){
     // --- read data from global memory ( 4 doubles at a time along x-axis )
     // --- aligned load
     //const __m256d e1 = _mm256_load_pd( Eg+i.x );
@@ -1064,7 +1064,7 @@ Vec3d fe2d_avx( const __m256d mbx, const __m256d mdx, const Quat4d by, const Qua
 }
 
 __attribute__((hot)) 
-Quat4d fe3d_avx( const Vec3d u, const Vec3i n, const double* Es ){
+inline Quat4d fe3d_avx( const Vec3d u, const Vec3i n, const double* Es ){
     // We assume there are boundary added to simplify the index calculations
 	const int   ix = (int)u.x  ,  iy = (int)u.y  ,  iz = (int)u.z  ;
     const Vec3d dt{ u.x - ix  ,  u.y - iy  ,  u.z - iz  };
@@ -1100,7 +1100,7 @@ Quat4d fe3d_avx( const Vec3d u, const Vec3i n, const double* Es ){
 } 
 
 __attribute__((hot)) 
-void sample2D_avx( const Vec2d g0, const Vec2d dg, const Vec2i ng, const double* Eg, const int n, const Vec2d* ps, Vec3d* fes ){
+inline void sample2D_avx( const Vec2d g0, const Vec2d dg, const Vec2i ng, const double* Eg, const int n, const Vec2d* ps, Vec3d* fes ){
     Vec2d inv_dg; inv_dg.set_inv(dg); 
     bool err = false;
     for(int i=0; i<n; i++ ){
@@ -1169,7 +1169,7 @@ void sample2D_avx( const Vec2d g0, const Vec2d dg, const Vec2i ng, const double*
 }
 
 __attribute__((hot)) 
-void sample3D_avx( const Vec3d g0, const Vec3d dg, const Vec3i ng, const double* Eg, const int n, const Vec3d* ps, Quat4d* fes ){
+inline void sample3D_avx( const Vec3d g0, const Vec3d dg, const Vec3i ng, const double* Eg, const int n, const Vec3d* ps, Quat4d* fes ){
     Vec3d inv_dg; inv_dg.set_inv(dg); 
     for(int i=0; i<n; i++ ){
         Quat4d fe = fe3d_avx( (ps[i]-g0)*inv_dg, ng, Eg );

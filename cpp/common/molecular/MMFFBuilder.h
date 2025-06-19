@@ -334,7 +334,7 @@ struct Fragment{
 // ============================
 
 //int splitGraphs( int nb, Vec2i* bonds, int a0, int b0 ){
-int splitGraphs( int nb, Vec2i* bonds, int b0, std::unordered_set<int>& innodes ){
+static int splitGraphs( int nb, Vec2i* bonds, int b0, std::unordered_set<int>& innodes ){
     //printf( "# ======== splitGraphs() \n" );
     std::unordered_set<int> exbonds; // excluded bonds
     exbonds.insert(b0);
@@ -360,7 +360,7 @@ int splitGraphs( int nb, Vec2i* bonds, int b0, std::unordered_set<int>& innodes 
     return innodes.size();
 }
 #include  "globals.h"
-int splitByBond( int ib, int nb, Vec2i* bond2atom, Vec3d* apos, int* selection, Vec3d& ax, Vec3d& p0 ){
+static int splitByBond( int ib, int nb, Vec2i* bond2atom, Vec3d* apos, int* selection, Vec3d& ax, Vec3d& p0 ){
     const Vec2i& b = bond2atom[ib];
     ax = (apos[b.b]-apos[b.a]).normalized();
     std::unordered_set<int> innodes1; innodes1.insert( b.a );  std::unordered_set<int>* sel1;

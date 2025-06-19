@@ -32,7 +32,7 @@ inline Vec2d valDval(double x){
 }
 
 __attribute__((hot)) 
-Vec3d move( double dt, int n, double* gs, double* fs, double* vs ){
+inline Vec3d move( double dt, int n, double* gs, double* fs, double* vs ){
     //constexpr const int m = 2;
     // --- eval velocity-to-force projection 
     double vf = 0.0;
@@ -57,7 +57,7 @@ Vec3d move( double dt, int n, double* gs, double* fs, double* vs ){
 }
 
 __attribute__((hot)) 
-Vec3d move_GD( double dt, int n, double* gs, double* fs ){
+inline Vec3d move_GD( double dt, int n, double* gs, double* fs ){
     double ff = 0.0;
     for(int i=0; i<n; i++){
         double f = fs[i];
@@ -69,7 +69,7 @@ Vec3d move_GD( double dt, int n, double* gs, double* fs ){
 
 
 __attribute__((hot)) 
-int fit1D_old( const int n, double* Gs,  double* Es, double* Ws, double Ftol, int nmaxiter=100, double dt=0.1 ){
+inline int fit1D_old( const int n, double* Gs,  double* Es, double* Ws, double Ftol, int nmaxiter=100, double dt=0.1 ){
     if(verbosity>1)printf("Bspline::fit1D_old() \n");
     const double F2max = Ftol*Ftol;
     double* ps = new double[n];
@@ -125,7 +125,7 @@ int fit1D_old( const int n, double* Gs,  double* Es, double* Ws, double Ftol, in
 }
 
 __attribute__((hot)) 
-double getVariations1D( const int n, const double* Gs, const double* Es, const double* Ws, double* fs, double* ps ){
+inline double getVariations1D( const int n, const double* Gs, const double* Es, const double* Ws, double* fs, double* ps ){
     constexpr double B0=2.0/3.0;
     constexpr double B1=1.0/6.0;
     // --- evaluate current spline
@@ -153,7 +153,7 @@ double getVariations1D( const int n, const double* Gs, const double* Es, const d
 }
 
 __attribute__((hot)) 
-double getVariations1D_half( const int n, const double* Gs, const double* Es, const double* Ws, double* fs, double* ers ){
+inline double getVariations1D_half( const int n, const double* Gs, const double* Es, const double* Ws, double* fs, double* ers ){
     constexpr double B00 =2.0/3.0;   // 0.66666666666666666666666666666667
     constexpr double B05 =23.0/48.0; // 0.47916666666666666666666666666667
     constexpr double B10 =1.0/6.0;   // 0.16666666666666666666666666666667
@@ -199,7 +199,7 @@ double getVariations1D_half( const int n, const double* Gs, const double* Es, co
 }
 
 __attribute__((hot)) 
-double getVariations1D_pbc( const int n, const double* Gs, const double* Es, const double* Ws, double* fs, double* ps ){
+inline double getVariations1D_pbc( const int n, const double* Gs, const double* Es, const double* Ws, double* fs, double* ps ){
     constexpr double B0=2.0/3.0;
     constexpr double B1=1.0/6.0;
     // --- evaluate current spline
@@ -321,7 +321,7 @@ inline double regularizationForceMidpoint_1D_sub( int n, int nsub, const double*
 
 
 __attribute__((hot)) 
-int fit1D( const int n, double* Gs,  double* Es, double* Ws, double Ftol, int nmaxiter=100, double dt=0.1, double Kreg=-1.0, bool bPBC=false ){
+inline int fit1D( const int n, double* Gs,  double* Es, double* Ws, double Ftol, int nmaxiter=100, double dt=0.1, double Kreg=-1.0, bool bPBC=false ){
     //if(verbosity>1)
     printf("Bspline::fit1D() bPBC=%i Kreg=%g Ftol=%g nmaxiter=%i dt=%g \n", bPBC, Kreg, Ftol, nmaxiter, dt );
     const double F2max = Ftol*Ftol;
@@ -376,7 +376,7 @@ int fit1D( const int n, double* Gs,  double* Es, double* Ws, double Ftol, int nm
 
 
 __attribute__((hot)) 
-int fit1D_old2( const int n, double* Gs,  double* Es, double* Ws, double Ftol, int nmaxiter=100, double dt=0.1, bool bHalf=false ){
+inline int fit1D_old2( const int n, double* Gs,  double* Es, double* Ws, double Ftol, int nmaxiter=100, double dt=0.1, bool bHalf=false ){
     if(verbosity>1)printf("Bspline::fit1D_old2() !!!!!!\n");
     const double F2max = Ftol*Ftol;
     int n2=n; if(bHalf){ n2=2*n; }
@@ -403,7 +403,7 @@ int fit1D_old2( const int n, double* Gs,  double* Es, double* Ws, double Ftol, i
 }
 
 __attribute__((hot)) 
-int fit1D_EF( const double dg, const int n, double* Gs,  Vec2d* fes, Vec2d* Ws, double Ftol, int nmaxiter=1000, double dt=0.1 ){
+inline int fit1D_EF( const double dg, const int n, double* Gs,  Vec2d* fes, Vec2d* Ws, double Ftol, int nmaxiter=1000, double dt=0.1 ){
     if(verbosity>1)printf("Bspline::fit1D_EF() \n");
     const double inv_dg = 1/dg;
     const double F2max = Ftol*Ftol;

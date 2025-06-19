@@ -16,7 +16,8 @@
 #endif
 
 #include "IO_utils.h"
-
+#include "testUtils.h"
+    
 //#include "testUtils.h"
 #include "fastmath.h"
 #include "Vec3.h"

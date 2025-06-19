@@ -2,6 +2,7 @@
 #ifndef  Bspline_fit_3D_h
 #define  Bspline_fit_3D_h
 
+#include "Bspline_fit_2D.h"
 #include "Vec3.h"
 #include "quaternion.h"
 //#include "CG.h"
@@ -9,11 +10,12 @@
 
 #include "Bspline.h"
 #include "Bspline_fit.h"
+#include "testUtils.h"
 
 namespace Bspline{
 
     __attribute__((hot)) 
-double error_iz( int iz, const Vec3i ns, const double* Gs, const double* Es, const double* Ws, double* ps, const double Esafe=-1.0 ){
+inline double error_iz( int iz, const Vec3i ns, const double* Gs, const double* Es, const double* Ws, double* ps, const double Esafe=-1.0 ){
     constexpr double B0=2.0/3.0;
     constexpr double B1=1.0/6.0;
     constexpr double B000=B0*B0*B0;
@@ -51,7 +53,7 @@ double error_iz( int iz, const Vec3i ns, const double* Gs, const double* Es, con
 }
 
 __attribute__((hot)) 
-void force_iz( int iz, const Vec3i ns, const double* ps, double* fs ){
+inline void force_iz( int iz, const Vec3i ns, const double* ps, double* fs ){
     constexpr double B0=2.0/3.0;
     constexpr double B1=1.0/6.0;
     constexpr double B000=B0*B0*B0;
@@ -92,7 +94,7 @@ void force_iz( int iz, const Vec3i ns, const double* ps, double* fs ){
 /// @param Esafe A small value added to the denominator to avoid division by zero (optional).
 /// @return The total sum of square error for the z-slice.
 __attribute__((hot)) 
-double error_iz_pbc( int iz, const Vec3i ns, const double* Gs, const double* Es, double* Ws, double* ps, const double Esafe=-1.0 ){
+inline double error_iz_pbc( int iz, const Vec3i ns, const double* Gs, const double* Es, double* Ws, double* ps, const double Esafe=-1.0 ){
     //printf("error_iz_pbc(iz=%i) \n");
     constexpr double B0=2.0/3.0; // value of cubic B-spline basis at x= 0.0
     constexpr double B1=1.0/6.0; // value of cubic B-spline basis at x=-1.0 or 1.0
@@ -156,7 +158,7 @@ double error_iz_pbc( int iz, const Vec3i ns, const double* Gs, const double* Es,
  * @param fs The output variational derivatives (3D array). i.e. derivative of MSE with respect to Gs 
  */
 __attribute__((hot)) 
-void force_iz_pbc( int iz, const Vec3i ns, const double* ps, double* fs ){
+inline void force_iz_pbc( int iz, const Vec3i ns, const double* ps, double* fs ){
     //printf("force_iz_pbc(iz=%i) \n");
     constexpr double B0=2.0/3.0;
     constexpr double B1=1.0/6.0;
@@ -279,7 +281,7 @@ inline double regularizationForceMidpoint( Vec3d p, int ndi, Vec3i* dis, const d
  * @param yqis The array of 4 index offsets to efficiently evaluate periodic boundary conditions along the y-axis.
  */
 __attribute__((hot)) 
-void force_iz_pbc_regForce( int iz, const Vec3i ns, const double* ps, double* fs,      int ndi, Vec3i* dis, double* Gs, const Quat4i* xqis, const Quat4i* yqis ){
+inline void force_iz_pbc_regForce( int iz, const Vec3i ns, const double* ps, double* fs,      int ndi, Vec3i* dis, double* Gs, const Quat4i* xqis, const Quat4i* yqis ){
     //printf("force_iz_pbc(iz=%i) \n");
     constexpr double B0=2.0/3.0;
     constexpr double B1=1.0/6.0;
@@ -337,7 +339,7 @@ void force_iz_pbc_regForce( int iz, const Vec3i ns, const double* ps, double* fs
  * @param Esafe A safety value to avoid division by zero. If Esafe>0 we use relative error metric err/=(fabs(Ei)+Esafe) instead of absolute error to calculate RMS.
  * @return The sum of the squared approximation errors.
  */
-double getVariations3D( const Vec3i ns, const double* Gs, const double* Es, double* Ws, double* fs, double* ps, bool bPBC, const double Esafe=-1.0 ){
+static double getVariations3D( const Vec3i ns, const double* Gs, const double* Es, double* Ws, double* fs, double* ps, bool bPBC, const double Esafe=-1.0 ){
     /*
     We calculate the variational derivatives of the error of the Bspline fit of the refferentce (Es) with respect to spline coefficiet on the grid (Gs)
     */
@@ -370,7 +372,7 @@ double getVariations3D( const Vec3i ns, const double* Gs, const double* Es, doub
 }
 
 __attribute__((hot)) 
-int fit3D( const Vec3i ns, double* Gs, const double* Es, double* Ws, double Ftol, int nmaxiter=100, double dt=0.1, bool bPBC=false, bool bInitGE=false, const double Esafe=-1.0 ){
+inline int fit3D( const Vec3i ns, double* Gs, const double* Es, double* Ws, double Ftol, int nmaxiter=100, double dt=0.1, bool bPBC=false, bool bInitGE=false, const double Esafe=-1.0 ){
     long t0 = getCPUticks();
     //if(verbosity>1)
     printf( "Bspline::fit3D() ns(%i,%i,%i)  Ftol=%g dt=%g nmaxiter=%i bPBC=%i \n", ns.x,ns.y,ns.z, Ftol, dt, nmaxiter, bPBC  );
@@ -408,7 +410,7 @@ int fit3D( const Vec3i ns, double* Gs, const double* Es, double* Ws, double Ftol
 }
 
 __attribute__((hot)) 
-int fit3D_omp( const Vec3i ns, double* Gs, const double* Es, double* Ws, double Ftol, int nmaxiter=100, double dt=0.3, double damp=0.0, bool bPBC=false, bool bInitGE=false, const double Esafe=-1.0 ){
+inline int fit3D_omp( const Vec3i ns, double* Gs, const double* Es, double* Ws, double Ftol, int nmaxiter=100, double dt=0.3, double damp=0.0, bool bPBC=false, bool bInitGE=false, const double Esafe=-1.0 ){
     //if(verbosity>1)
     //printf( "Bspline::fit3D_omp() ns(%i,%i,%i) bPBC=%i dt=%g damp=%g Ftol=%g nmaxiter=%i bInitGE=%i \n", ns.x,ns.y,ns.z, bPBC, dt, damp, Ftol, nmaxiter, bInitGE );
     const int nxy  = ns.x*ns.y;

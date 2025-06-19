@@ -15,7 +15,7 @@
 
 
 // check if "vals" are within limits "vmin","vmax"
-bool checkLimits( int n, int m, const double* vals, const double* vmin, const double* vmax, const char* message, bool bPrint=true ){
+static bool checkLimits( int n, int m, const double* vals, const double* vmin, const double* vmax, const char* message, bool bPrint=true ){
     //for(int j=0; j<m; j++){ printf( "checkLimits[%i] [%g,%g]\n", j, vmin[j], vmax[j] ); }
     bool b=false;
     for(int i=0; i<n; i++){

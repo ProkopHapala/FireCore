@@ -29,14 +29,14 @@ inline int atomName2int(char ch ){
     return i;
 }
 
-void cpstr( const char* str, char* tmp, int i0, int n ){
+inline void cpstr( const char* str, char* tmp, int i0, int n ){
     tmp[n]='\0';
     for(int i=0; i<n; i++){
         tmp[i]=str[i0+i];
     }
 }
 
-double getDouble(const char* str, int i0, int i1 ){
+inline double getDouble(const char* str, int i0, int i1 ){
     const int n=i1-i0;
     char  tmp[n+1];
     cpstr( str, tmp, i0, n );
@@ -44,7 +44,7 @@ double getDouble(const char* str, int i0, int i1 ){
     return atof(tmp);
 }
 
-double getInt(const char* str, int i0, int i1 ){
+inline double getInt(const char* str, int i0, int i1 ){
     const int n=i1-i0;
     char  tmp[n+1];
     cpstr( str, tmp, i0, n );

@@ -36,7 +36,7 @@ inline double fourier_eval( double ca, double sa, int n, double * coefs ){
 	return result;
 }
 
-void genSinCosArray( int n, double * phis, double * ca, double * sa ){
+static void genSinCosArray( int n, double * phis, double * ca, double * sa ){
 	for( int i=0; i<n; i++ ){
 		double phi = phis[i];
 		ca[i]  = cos(phi);
@@ -44,14 +44,14 @@ void genSinCosArray( int n, double * phis, double * ca, double * sa ){
 	}
 }
 
-void fourier_coef_array( int n, double * ca, double * sa, double * vals, int m, double * coefs ){
+static void fourier_coef_array( int n, double * ca, double * sa, double * vals, int m, double * coefs ){
 	for( int i=0; i<m; i++ ){ coefs[i]=0; }
 	for( int i=0; i<n; i++ ){
 		fourier_coef( ca[i], sa[i], vals[i], m, coefs );
 	}
 }
 
-void fourier_eval_array( int n, double * ca, double * sa, double * vals, int m, double * coefs ){
+static void fourier_eval_array( int n, double * ca, double * sa, double * vals, int m, double * coefs ){
 	for( int i=0; i<n; i++ ){ vals[i] = fourier_eval( ca[i], sa[i], m, coefs ); }
 }
 
@@ -60,7 +60,7 @@ void fourier_eval_array( int n, double * ca, double * sa, double * vals, int m, 
 // data[2*i ]=Re data[2*i+1]=Im;   nn=2^pow;
 
 
-int FFT(double * data, int nn, int isign){
+static int FFT(double * data, int nn, int isign){
     //int n, mmax, m, j, istep, i;
     //double wtemp, wr, wpr, wpi, wi, theta;
     //double tempr, tempi;
@@ -114,7 +114,7 @@ int FFT(double * data, int nn, int isign){
 	return ops;
 }
 
-void FFT_2D(int nx, int ny, double * data, int isign){
+static void FFT_2D(int nx, int ny, double * data, int isign){
     double* tmp = new double[nx*ny];
     for(int iy=0; iy<ny; iy++)                          { FFT(data+iy*nx, nx, 0);         }  // FFT along x-axis
     for(int ix=0; ix<nx; ix++)for(int iy=0; iy<ny; iy++){ tmp[ix*ny+iy] = data[iy*nx+ix]; }  // transpose data
@@ -123,7 +123,7 @@ void FFT_2D(int nx, int ny, double * data, int isign){
     delete [] tmp;
 }
 
-void FFT_3D(int nx, int ny, int nz, double * data, int isign){
+static void FFT_3D(int nx, int ny, int nz, double * data, int isign){
     int nxy=nx*ny;
     int nxz=nx*nz;
     int nyz=ny*nz;

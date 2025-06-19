@@ -36,7 +36,7 @@ inline int biwrap( int i, int n ){ return (i<=0    )? n-1 : -1; }
 inline int diwrap( int i, int n ){ return (i>=(n-1))? 1-n :  1; }
 
 
-void make_inds_pbc( const int n, Quat4i* iqs ){
+inline void make_inds_pbc( const int n, Quat4i* iqs ){
     iqs[0]={0,1  ,2  ,3  };
     iqs[1]={0,1  ,2  ,3-n};
     iqs[2]={0,1  ,2-n,3-n};
@@ -62,7 +62,7 @@ inline Quat4i choose_inds_pbc_3( const int i, const int n, const Quat4i* iqs ){
     return Quat4i{ i, i+1, i+2, i+3 };
 }
 
-void make_inds_pbc_5(const int n, Vec6i* iqs) {
+inline void make_inds_pbc_5(const int n, Vec6i* iqs) {
     iqs[0] = {0, 1,   2,   3,   4,   5  };
     iqs[1] = {0, 1,   2,   3,   4,   5-n};
     iqs[2] = {0, 1,   2,   3,   4-n, 5-n};
@@ -327,7 +327,7 @@ inline double project1D_quintic( double w, double x, double x0, double dx, int n
     return sum;
 }
 
-void project2D_cubic( double w, const Vec2d pi, const Vec2d g0, const Vec2d inv_dg, const Vec2i n, double* ys, Quat4i* xqs, Quat4i* yqs ){
+static void project2D_cubic( double w, const Vec2d pi, const Vec2d g0, const Vec2d inv_dg, const Vec2i n, double* ys, Quat4i* xqs, Quat4i* yqs ){
     Vec2d gp = (pi-g0)*inv_dg;
     int ix = (int) gp.x;     if(gp.x<0) ix--;
     int iy = (int) gp.y;     if(gp.y<0) iy--;
@@ -421,7 +421,7 @@ inline Vec2d fe1d_pbc_macro( double x, int n, const double* Es, const Quat4i* xq
 // }
 
 __attribute__((hot)) 
-void sample1D( const double g0, const double dg, const int ng, const double* Gs, const int n, const double* ps, Vec2d* fes ){
+inline void sample1D( const double g0, const double dg, const int ng, const double* Gs, const int n, const double* ps, Vec2d* fes ){
     const double inv_dg = 1/dg; 
     for(int i=0; i<n; i++ ){
         const double x  = (ps[i] - g0)*inv_dg;  
@@ -444,7 +444,7 @@ void sample1D( const double g0, const double dg, const int ng, const double* Gs,
 
 
 __attribute__((hot)) 
-void sample1D_pbc( const double g0, const double dg, const int ng, const double* Gs, const int n, const double* ps, Vec2d* fes ){
+inline void sample1D_pbc( const double g0, const double dg, const int ng, const double* Gs, const int n, const double* ps, Vec2d* fes ){
     const double inv_dg = 1/dg; 
     Quat4i xqis[4];
     make_inds_pbc( ng, xqis );
@@ -456,7 +456,7 @@ void sample1D_pbc( const double g0, const double dg, const int ng, const double*
 }
 
 __attribute__((hot)) 
-void sample1D_o5( const double g0, const double dg, const int ng, const double* Gs, const int n, const double* ps, Vec2d* fes ){
+inline void sample1D_o5( const double g0, const double dg, const int ng, const double* Gs, const int n, const double* ps, Vec2d* fes ){
     const double inv_dg = 1/dg; 
     for(int i=0; i<n; i++ ){
         const double x  = (ps[i] - g0)*inv_dg;  
@@ -574,7 +574,7 @@ inline Vec3d fe2d( const Vec2d u, const Vec2i n, const double* Es ){
 } 
 
 __attribute__((hot)) 
-void sample2D( const Vec2d g0, const Vec2d dg, const Vec2i ng, const double* Eg, const int n, const Vec2d* ps, Vec3d* fes ){
+inline void sample2D( const Vec2d g0, const Vec2d dg, const Vec2i ng, const double* Eg, const int n, const Vec2d* ps, Vec3d* fes ){
     printf( "Bspline::sample2D() ng[%i,%i] dg(%g,%g) g0(%g,%g)\n",   ng.x,ng.y, dg.x,dg.y,   g0.x,g0.y   );
     printf( "Bspline::sample2D() ps[0](%g,%g) ps[%i](%g,%g)\n",   ps[0].x,ps[0].y,  n-1,  ps[n-1].x,ps[n-1].y );
     Vec2d inv_dg; inv_dg.set_inv(dg); 
@@ -588,7 +588,7 @@ void sample2D( const Vec2d g0, const Vec2d dg, const Vec2i ng, const double* Eg,
 
 __attribute__((pure))
 __attribute__((hot)) 
-Quat4d fe3d( const Vec3d u, const Vec3i n, const double* Es ){
+inline Quat4d fe3d( const Vec3d u, const Vec3i n, const double* Es ){
     // We assume there are boundary added to simplify the index calculations
 	const int    ix = (int)u.x  ,  iy = (int)u.y  ,  iz = (int)u.z  ;
     const double tx = u.x - ix  ,  ty = u.y - iy  ,  tz = u.z - iz  ;
@@ -626,7 +626,7 @@ Quat4d fe3d( const Vec3d u, const Vec3i n, const double* Es ){
 
 __attribute__((pure))
 __attribute__((hot)) 
-Quat4d fe3d_pbc( const Vec3d u, const Vec3i n, const double* Es, const Quat4i* xqis, const Quat4i* yqis ){
+inline Quat4d fe3d_pbc( const Vec3d u, const Vec3i n, const double* Es, const Quat4i* xqis, const Quat4i* yqis ){
 	int          ix = (int)u.x  ,  iy = (int)u.y  ,  iz = (int)u.z  ;
     if(u.x<0) ix--;
     if(u.y<0) iy--;
@@ -679,7 +679,7 @@ Quat4d fe3d_pbc( const Vec3d u, const Vec3i n, const double* Es, const Quat4i* x
 
 __attribute__((pure))
 __attribute__((hot)) 
-Vec3d fe2d_pbc_macro( const Vec2d u, const Vec2i n, const double* Es, const Quat4i* xqis, const Quat4i* yqis ){
+inline Vec3d fe2d_pbc_macro( const Vec2d u, const Vec2i n, const double* Es, const Quat4i* xqis, const Quat4i* yqis ){
 	int          ix = (int)u.x  ,  iy = (int)u.y;
     if(u.x<0) ix--;
     if(u.y<0) iy--;
@@ -704,7 +704,7 @@ Vec3d fe2d_pbc_macro( const Vec2d u, const Vec2i n, const double* Es, const Quat
 
 __attribute__((pure))
 __attribute__((hot)) 
-Vec3d fe2d_pbc_comb3( const Vec2d u, const Vec2i n, const Vec3d* Es, const Vec3d PLQ, const Quat4i* yqs ){
+inline Vec3d fe2d_pbc_comb3( const Vec2d u, const Vec2i n, const Vec3d* Es, const Vec3d PLQ, const Quat4i* yqs ){
 	int          ix = (int)u.x  ,  iy = (int)u.y  ;
     if(u.y<0) iy--;
     const double tx = u.x - ix  ,  ty = u.y - iy  ;
@@ -739,7 +739,7 @@ Vec3d fe2d_pbc_comb3( const Vec2d u, const Vec2i n, const Vec3d* Es, const Vec3d
 
 __attribute__((pure))
 __attribute__((hot)) 
-Quat4d fe3d_pbc_comb3( const Vec3d u, const Vec3i n, const Vec3d* Es, const Vec3d PLQ, const Quat4i* xqis, const Quat4i* yqis ){
+inline Quat4d fe3d_pbc_comb3( const Vec3d u, const Vec3i n, const Vec3d* Es, const Vec3d PLQ, const Quat4i* xqis, const Quat4i* yqis ){
     // We assume there are boundary added to simplify the index calculations
 	int          ix = (int)u.x  ,  iy = (int)u.y  ,  iz = (int)u.z  ;
     if(u.x<0) ix--;
@@ -809,7 +809,7 @@ Quat4d fe3d_pbc_comb3( const Vec3d u, const Vec3i n, const Vec3d* Es, const Vec3
 } 
 
 __attribute__((hot)) 
-void sample2D_comb3( const Vec2d g0, const Vec2d dg, const Vec2i ng, const Vec3d* Eg, const int n, const Vec2d* ps, Vec3d* fes, Vec3d C ){
+inline void sample2D_comb3( const Vec2d g0, const Vec2d dg, const Vec2i ng, const Vec3d* Eg, const int n, const Vec2d* ps, Vec3d* fes, Vec3d C ){
     printf( "Bspline::sample2D_comb3() ng[%i,%i] dg(%g,%g) g0(%g,%g) C(%g,%g,%g) n=%i \n",   ng.x,ng.y,   dg.x,dg.y,   g0.x,g0.y,   C.x,C.y,C.z, n  );
     Vec2d inv_dg; inv_dg.set_inv(dg); 
     Quat4i yqs[4];
@@ -824,7 +824,7 @@ void sample2D_comb3( const Vec2d g0, const Vec2d dg, const Vec2i ng, const Vec3d
 }
 
 __attribute__((hot)) 
-void sample3D_comb3( const Vec3d g0, const Vec3d dg, const Vec3i ng, const Vec3d* Eg, const int n, const Vec3d* ps, Quat4d* fes, Vec3d C ){
+inline void sample3D_comb3( const Vec3d g0, const Vec3d dg, const Vec3i ng, const Vec3d* Eg, const int n, const Vec3d* ps, Quat4d* fes, Vec3d C ){
     printf( "Bspline::sample3D_comb3() ng[%i,%i,%i] dg(%g,%g,%g) g0(%g,%g,%g) C(%g,%g,%g) n=%i \n",   ng.x,ng.y,ng.z,   dg.x,dg.y,dg.z,   g0.x,g0.y,g0.z,   C.x,C.y,C.z, n  );
     Vec3d inv_dg; inv_dg.set_inv(dg); 
     Quat4i xqs[4]; make_inds_pbc( ng.x, xqs );
@@ -838,7 +838,7 @@ void sample3D_comb3( const Vec3d g0, const Vec3d dg, const Vec3i ng, const Vec3d
 }
 
 __attribute__((hot)) 
-void sample3D( const Vec3d g0, const Vec3d dg, const Vec3i ng, const double* Eg, const int n, const Vec3d* ps, Quat4d* fes ){
+inline void sample3D( const Vec3d g0, const Vec3d dg, const Vec3i ng, const double* Eg, const int n, const Vec3d* ps, Quat4d* fes ){
     printf( "Bspline::sample3D() ng[%i,%i,%i] dg(%g,%g,%g) g0(%g,%g,%g)\n",   ng.x,ng.y,ng.z, dg.x,dg.y,dg.z,   g0.x,g0.y,g0.z   );
     printf( "Bspline::sample3D() ps[0](%g,%g,%g) ps[%i](%g,%g,%g)\n",   ps[0].x,ps[0].y,ps[0].z,  n-1,  ps[n-1].x,ps[n-1].y,ps[n-1].z );
     Vec3d inv_dg; inv_dg.set_inv(dg); 

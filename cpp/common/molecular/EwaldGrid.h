@@ -18,7 +18,7 @@
 #include <fftw3.h>
 
 __attribute__((hot))
-void array2fftc( int n, const double* in, fftw_complex* out){
+inline void array2fftc( int n, const double* in, fftw_complex* out){
     for (int i=0; i<n; i++ ) {
         out[i][0] = in[i];
         out[i][1] = 0.0;
@@ -26,12 +26,12 @@ void array2fftc( int n, const double* in, fftw_complex* out){
 }
 
 __attribute__((hot))
-void fftc2array( int n,  const fftw_complex* in, double* out) {
+inline void fftc2array( int n,  const fftw_complex* in, double* out) {
     for (int i=0; i<n; i++ ) { out[i] = in[i][0];}
 }
 
 __attribute__((hot))
-void fftc2array_mul( int n, const fftw_complex* in, double* out, double f) {
+inline void fftc2array_mul( int n, const fftw_complex* in, double* out, double f) {
     for (int i=0; i<n; i++ ) { out[i] = in[i][0] * f;}
 }
 

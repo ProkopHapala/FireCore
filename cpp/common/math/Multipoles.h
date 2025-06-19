@@ -75,7 +75,7 @@ inline double Coulomb( const Vec3d& d, double qq, Vec3d* f=0 ){
 }
 
 __attribute__((hot)) 
-double EF_brute( const Vec3d& p, double Q, Vec3d* f,  int n, Vec3d * ps, double * Qs ){
+inline double EF_brute( const Vec3d& p, double Q, Vec3d* f,  int n, Vec3d * ps, double * Qs ){
     double E = 0;
     for( int i=0; i<n; i++){
         E += Coulomb( ps[i]-p, Q*Qs[i], f );
@@ -101,7 +101,7 @@ inline void project( const Vec3d& d, const double Q, const int order, double * c
 
 
 __attribute__((hot)) 
-Vec3d center( int n, const Vec3d * ps, const double * Qs ){
+inline Vec3d center( int n, const Vec3d * ps, const double * Qs ){
     Vec3d c = Vec3dZero;
     double Q = 0;
     for( int i=0; i<n; i++){
@@ -114,7 +114,7 @@ Vec3d center( int n, const Vec3d * ps, const double * Qs ){
 }
 
 __attribute__((hot)) 
-Vec3d project( const Vec3d* p0_, int n, const Vec3d * ps, const double * Qs, int order, double * cs, bool bClear=true ){
+inline Vec3d project( const Vec3d* p0_, int n, const Vec3d * ps, const double * Qs, int order, double * cs, bool bClear=true ){
     Vec3d p0;
     if(p0_){ p0=*p0_; }else{ p0=center(n, ps, Qs); }
     if(bClear) for( int i=0; i<10; i++ ) cs[i]=0;
@@ -126,7 +126,7 @@ Vec3d project( const Vec3d* p0_, int n, const Vec3d * ps, const double * Qs, int
     return p0;
 }
 
-double Emultipole( const Vec3d& d, int order, double * cs ){
+inline double Emultipole( const Vec3d& d, int order, double * cs ){
     //double r   = dR.norm();
     //double ir  = 1 / r;
     //double ir2 = ir*ir;
@@ -194,7 +194,7 @@ Fq_z  : -3*(   r^2*(3*Q_zz + Q_xx + Q_yy)*z      -5*z*Qd2 + (r^2-5*z^2)*( Q_xz*x
 
 
 */
-double EFmultipole( const Vec3d& d, Vec3d& f, double * cs, int order=2 ){
+static double EFmultipole( const Vec3d& d, Vec3d& f, double * cs, int order=2 ){
     //double r   = dR.norm();
     //double ir  = 1 / r;
     //double ir2 = ir*ir;

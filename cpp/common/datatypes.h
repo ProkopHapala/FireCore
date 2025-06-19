@@ -2,6 +2,9 @@
 #ifndef datatypes_h
 #define datatypes_h
 
+#include <cmath>
+#include <cstddef>
+
 //======= int
 
 struct int2   { int x,y; };
