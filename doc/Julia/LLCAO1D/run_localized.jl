@@ -41,3 +41,36 @@ foreach(e->println("  ",e), energies)
 S_MO = C' * S * C
 max_off = maximum(abs.(S_MO .- Diagonal(diag(S_MO))))
 println("Max off–diagonal MO overlap: ", max_off)
+
+
+
+using Plots
+# ---------------- Plotting -----------------------
+num_plot = min(4, num_mos)
+x_min = minimum(centers) - 5
+x_max = maximum(centers) + 5
+x_grid = range(x_min, x_max, length=1000)
+
+# quick closures for basis evaluation
+α(w) = 1.0 / w^2
+norm(a) = (2a/π)^0.25
+function gaussian_val(x,X,w)
+    a = α(w); return norm(a)*exp.(-a .* (x .- X).^2)
+end
+
+function mo_wavefunction(idx)
+    psi = zero.(x_grid)
+    for μ in eachindex(centers)
+        psi .+= C[μ,idx] .* gaussian_val.(x_grid, centers[μ], widths[μ])
+    end
+    return psi
+end
+
+default(titlefont=font(12), guidefont=font(10))
+plt = plot(x_grid, mo_wavefunction(1) .+ energies[1], label="MO1")
+for i in 2:num_plot
+    plot!(plt, x_grid, mo_wavefunction(i) .+ energies[i], label="MO$i")
+end
+xlabel!(plt, "x (Bohr)"); ylabel!(plt, "ψ(x)  +  energy")
+plot!(plt, legend=:bottomright, title="First $num_plot Localized Orbitals (shifted by energy)")
+display(plt)
