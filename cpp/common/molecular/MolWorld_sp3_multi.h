@@ -344,7 +344,7 @@ virtual void init() override {
     //iParalel=3;
     //iParalel=iParalelMax;
 
-    if(database)bSaveToDatabase=true;
+    if(database)bSaveToDatabase=false;
     
     printf( "uploadPopName @ %li\n", uploadPopName );
     if( uploadPopName ){   printf( "!!!!!!!!!!!!\n UPLOADING POPULATION FROM FILE (%s)\n", uploadPopName );  upload_pop( uploadPopName ); }
@@ -496,7 +496,7 @@ virtual void pre_loop() override {
         }
     }
     //spread_replicas_grid(10,10, 5, 5 );
-    spread_replicas_random(5, 5 );
+    //spread_replicas_random(5, 5 );
     //printConstrains();
     // for(int ic : constrain_list ){
     //     for(int isys=0; isys<nSystems; isys++){
@@ -862,7 +862,7 @@ double evalVFs( double Fconv=1e-6 ){
             isSystemRelaxed[isys]=true;
 
 
-            if(bMILAN){
+            if(bSaveToDatabase){
                 int sameMember = database->addIfNewDescriptor(&ffls[isys]);
                 if(sameMember==-1){
                     std::vector<double> theta;
@@ -2290,7 +2290,7 @@ virtual void MDloop( int nIter, double Ftol = -1 ) override {
     bChargeUpdated=false;
 
 
-    if( bMILAN /*&& bSaveToDatabase  */){ // Milan
+    if( verbosity>=0){ // Milan
         FILE* file = fopen("minima.dat", "a"); 
         if((icurIter%1000==0 || icurIter%1000 < 200) && !written_in_this_frame){
             written_in_this_frame=true;
@@ -2328,6 +2328,7 @@ virtual void MDloop( int nIter, double Ftol = -1 ) override {
                 nStepExplorSum/((double)nExploring),
                 (nStepConvSum+nStepNonConvSum+nStepExplorSum));
             if((getCPUticks()-zeroT)*tick2second > 9.5){
+                fclose(file);
                 exit(0);
             }
         }

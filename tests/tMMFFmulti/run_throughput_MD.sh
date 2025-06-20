@@ -28,7 +28,7 @@ mkdir -p results/all
 
 # Setup parameters
 dovdW=1
-doSurfAtoms=1
+doSurfAtoms=-1
 bGridFF=-6   # 1 for linear, 5or6 for bSpline=1 (works only 6)
 if (( bGridFF == 1 )); then
     bSpline=0
@@ -56,19 +56,19 @@ flags_bitnum=$(( (dovdW_bit << 4) | (doSurfAtoms_bit << 3) | (bGridFF_bit << 2) 
 Fconv=1e-4
 
 # Arrays of parameter values to test
-replicas=(5000) # (1000 2000 3000 4000 5000)
-perframes=(500) # (100 500)
-perVF=(50) # (50 100)
+replicas=(1000 5000) # (1000 2000 3000 4000 5000)
+perframes=(20 500) # (100 500)
+perVF=(20 50) # (50 100)
 
 # Arrays of local memory parameters to test
 nlocMMFFs=(32)
 nlocmoves=(32)
-nlocNBFFs=(32) # (1 2 4 8 16 32 64 128)
-nlocSurfs=(32) # (1 2 4 8 16 32 64 128)
+nlocNBFFs=("--") # (1 2 4 8 16 32 64 128)
+nlocSurfs=("--") # (1 2 4 8 16 32 64 128)
 nlocGridFFs=("--")
 nlocGridFFbSplines=("--")
 
-nPBC=("(1,1,0)" "(2,2,0)" "(3,3,0)" "(4,4,0)" "(5,5,0)")
+nPBC=("--") # ("(1,1,0)") # ("(1,1,0)" "(2,2,0)" "(3,3,0)" "(4,4,0)" "(5,5,0)")
 
 
 # Initialize best result tracking
@@ -115,9 +115,9 @@ for nPBC in "${nPBC[@]}"; do
                                             rm -f minima.dat gopt.xyz
                                             touch minima.dat
                                             
-                                            Ns=(1) #(1 2 3 4 5 6 7 8 9 10 11 12)
+                                            Ns=(16) # (1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16)
                                             for N in "${Ns[@]}"; do
-                                                surf_name="data/xyz/NaCl_${N}x${N}_L3"
+                                                surf_name="data/xyz/surfaces_for_throughput/NaCl_${N}x${N}_L3"
                                                 python3 run_throughput_MD.py \
                                                     --nSys "$nSys" \
                                                     --xyz_name "$xyz_name" \
@@ -128,7 +128,7 @@ for nPBC in "${nPBC[@]}"; do
                                                     --Fconv "$Fconv" \
                                                     --perframe "$perframe" \
                                                     --perVF "$pvf" \
-                                                    --nPBC "$nPBC"
+                                                    --gridnPBC "$nPBC"
                                                             
                                                 # Generate name for the result file
                                                 name="minima__$(printf '%04d' $(echo "obase=2;$flags_bitnum" | bc))_surf:_NaCl_${N}x${N}_nPBC_${nPBC}_nloc:_MMFF_${nlocMMFF}_move_${nlocmove}_NBFF_${nlocNBFF}_surf_${nlocSurf}_gridFF_${nlocGridFF}_gridFFbSpline_${nlocGridFFbSpline}___replica:_${nSys}_perframe:_${perframe}_perVF:_${pvf}"
@@ -177,7 +177,7 @@ for nPBC in "${nPBC[@]}"; do
                                                 --perVF "$pvf"
                                                         
                                             # Generate name for the result file
-                                            name="minima__$(printf '%04d' $(echo "obase=2;$flags_bitnum" | bc))_surf:_NaCl_${N}x${N}_nloc:_MMFF_${nlocMMFF}_move_${nlocmove}_NBFF_${nlocNBFF}_surf_${nlocSurf}_gridFF_${nlocGridFF}_gridFFbSpline_${nlocGridFFbSpline}___replica:_${nSys}_perframe:_${perframe}_perVF:_${pvf}"
+                                            name="minima__$(printf '%04d' $(echo "obase=2;$flags_bitnum" | bc))_surf:_NaCl_${N}x${N}_nPBC_${nPBC}_nloc:_MMFF_${nlocMMFF}_move_${nlocmove}_NBFF_${nlocNBFF}_surf_${nlocSurf}_gridFF_${nlocGridFF}_gridFFbSpline_${nlocGridFFbSpline}___replica:_${nSys}_perframe:_${perframe}_perVF:_${pvf}"
                                             
                                             # Move minima file to results/all directory
                                             mv minima.dat results/all/${name}.dat

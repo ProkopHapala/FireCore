@@ -1994,8 +1994,8 @@ __kernel void getNonBond_GridFF(
     const float4   grid_p0          // 14 // origin of the grid
     //__global cl_Mat3* bboxes      // 15 // bounding box (xmin,ymin,zmin)(xmax,ymax,zmax)(kx,ky,kz)
 ){
-    __local float4 LATOMS[32];         // local memory chumk of positions of atoms 
-    __local float4 LCLJS [32];         // local memory chumk of atom parameters
+    __local float4 LATOMS[16];         // local memory chumk of positions of atoms 
+    __local float4 LCLJS [16];         // local memory chumk of atom parameters
     const int iG = get_global_id  (0); // index of atom in the system
     const int iS = get_global_id  (1); // index of system
     const int iL = get_local_id   (0); // index of atom in the local memory chunk
