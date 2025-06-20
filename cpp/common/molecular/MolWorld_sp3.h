@@ -1,4 +1,4 @@
-
+﻿
 #ifndef MolWorld_sp3_h
 #define MolWorld_sp3_h
 /// @file MolWorld_sp3.h @brief contains MolWorld_sp3 class, which is a comprehensive class storing the state of a molecular simulation including bonding,non-bodning of molecules and molecules with substrate
@@ -325,7 +325,7 @@ class MolWorld_sp3 : public SolverInterface { public:
             printf( "MolWorld_sp3::init() bMMFF %i bUFF %i bRigid %i\n", bMMFF, bUFF, bRigid );
         }
         if(surf_name ){
-            bGridFF = true;
+//            bGridFF = false; //TODO: fix it with nagridFF
             //double z0 = 0.0;   // This is how we have it in python API i.e. MMFF.py
             double z0 = NAN;   // This makes inconsistency with python API i.e. MMFF.py
             loadSurf( surf_name, bGridFF, idebug>0, z0 );
@@ -1055,7 +1055,11 @@ void printPBCshifts(){
         bSurfAtoms=true;
         if(bGrid){
             bool bSymmetrize=true;
-            initGridFF( name,z0,cel0, bSymmetrize );
+            initGridFF( name,z0,cel0, bSymmetrize);
+        }
+        else{
+            bool bSymmetrize=true;
+            initGridFF( name,z0,cel0, bSymmetrize, false);    
         }
         return true;
     }

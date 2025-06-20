@@ -1,7 +1,5 @@
 import sys
 import numpy as np
-import os
-import time
 import matplotlib.pyplot as plt
 
 sys.path.append("../../")
@@ -20,7 +18,7 @@ parser.add_argument("--GridFF", type=int, default=1, help="GridFF flag")
 parser.add_argument("--Fconv", type=float, default=1e-5, help="Force convergence")
 parser.add_argument("--perframe", type=int, default=100, help="Per frame")
 parser.add_argument("--perVF", type=int, default=100, help="Per VF")
-parser.add_argument("--nPBC", type=str, default="(1,1,0)", help="nPBC")
+parser.add_argument("--gridnPBC", type=str, default="(1,1,0)", help="gridnPBC")
 args = parser.parse_args()
 
 nSys = args.nSys
@@ -31,7 +29,9 @@ dovdW = args.dovdW
 Fconv = args.Fconv
 perframe = args.perframe
 perVF = args.perVF
-nPBC = tuple(map(int, args.nPBC.strip('()').split(',')))
+gridnPBC = tuple(map(int, args.gridnPBC.strip('()').split(',')))
+
+
 mmff.setVerbosity(0)
 print("Surface name:")
 if(surf_name is None):
@@ -39,7 +39,7 @@ if(surf_name is None):
 else:
     print("Surface file: ", surf_name)
 
-mmff.init(nSys_=nSys, xyz_name=xyz_name, surf_name=surf_name, T=300, gamma=0.1, nExplore=1000, nRelax=100000, pos_kick=0.25, vel_kick=1.0, GridFF=GridFF, nPBC=nPBC)
+mmff.init(nSys_=nSys, xyz_name=xyz_name, surf_name=surf_name, T=300, gamma=0.1, nExplore=1000, nRelax=100000, pos_kick=0.25, vel_kick=1.0, GridFF=GridFF, gridnPBC=gridnPBC)
 mmff.setSwitches( dovdW=dovdW)
 for i in range(10000):
     mmff.MDloop( perframe=perframe, Ftol=Fconv, iParalel=3, perVF=perVF )

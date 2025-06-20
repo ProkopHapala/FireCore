@@ -282,6 +282,7 @@ lib.init.argtypes = [
     c_bool,       # bMMFF
     c_bool,       # bEpairs
     array1i,      # nPBC
+    array1i,      # grid_nPBC
     c_double,     # gridStep
     c_char_p,     # sElementTypes
     c_char_p,     # sAtomTypes
@@ -305,7 +306,7 @@ def init(
         sAtomTypes = "data/AtomTypes.dat",
         sBondTypes = "data/BondTypes.dat",
         sAngleTypes= "data/AngleTypes.dat",
-        bMMFF=True, bEpairs=False, nPBC=(1,1,0), gridStep=0.1,
+        bMMFF=True, bEpairs=False, nPBC=(1,1,0), gridnPBC=(1,1,0), gridStep=0.1,
         T = -1, gamma = -1,
         nExplore=0, nRelax=0, pos_kick=0.0, vel_kick=0.0,
         GridFF=5
@@ -313,8 +314,10 @@ def init(
     global glob_bMMFF, nSys
     nSys=nSys_
     glob_bMMFF = bMMFF
-    nPBC=np.array(nPBC,dtype=np.int32)
-    return lib.init( nSys, cstr(xyz_name), cstr(surf_name), cstr(smile_name), bMMFF, bEpairs, nPBC, gridStep, cstr(sElementTypes), cstr(sAtomTypes), cstr(sBondTypes), cstr(sAngleTypes), T, gamma, nExplore, nRelax, pos_kick, vel_kick, GridFF )
+    # Convert integer tuples to numpy arrays for C compatibility
+    nPBC = np.array(nPBC, dtype=np.int32)
+    gridnPBC = np.array(gridnPBC, dtype=np.int32)
+    return lib.init( nSys, cstr(xyz_name), cstr(surf_name), cstr(smile_name), bMMFF, bEpairs, nPBC, gridnPBC, gridStep, cstr(sElementTypes), cstr(sAtomTypes), cstr(sBondTypes), cstr(sAngleTypes), T, gamma, nExplore, nRelax, pos_kick, vel_kick, GridFF )
 
 def tryInit():
     if not isInitialized:
