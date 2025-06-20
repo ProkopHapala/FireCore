@@ -3,6 +3,7 @@
 import numpy as np
 import matplotlib.pyplot as plt
 # Import from the new file
+#from quantum_solver_1D import (
 from quantum_solver_1D import (
     QuantumSolver1D,
     gaussian_overlap_wrapper,
@@ -36,7 +37,7 @@ def plot_results(solver, energies, coefficients, num_mos_to_plot=4):
 
 
 def main():
-    num_atoms = 4
+    num_atoms = 8
     spacing = 2.0
     
     nuclear_positions = np.linspace(-(num_atoms - 1) * spacing / 2, (num_atoms - 1) * spacing / 2, num_atoms)
@@ -74,7 +75,7 @@ def main():
     np.set_printoptions(precision=4, suppress=True)
     print(coefficients)
 
-    plot_results(solver, energies, coefficients, num_mos_to_plot=min(4, num_atoms))
+    plot_results(solver, energies, coefficients, num_mos_to_plot=num_atoms )
 
 if __name__ == '__main__':
     main()

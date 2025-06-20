@@ -24,6 +24,31 @@ If we enforce normalization $\langle \psi_i | \psi_i \rangle = 1$, the objective
 $$ E_i = \sum_\mu \sum_\nu c_{i,\mu}^* c_{i,\nu} H_{\mu\nu} $$
 subject to the constraint $\sum_\mu \sum_\nu c_{i,\mu}^* c_{i,\nu} S_{\mu\nu} = 1$.
 
+## Localization potential vs. hard cutoff
+
+In the implementation we use *both*:
+
+1. A smooth quadratic localization potential
+
+   $V_{\text{loc}}(\mathbf{r})=\alpha_{\text{loc}} (|\mathbf{r}-\mathbf{x}_i|)^2$
+
+   which enters the orbital‐energy functional and therefore its gradient.  The
+   force on the coefficients becomes
+   $2\,\alpha_{\text{loc}}(\mathbf{R}_\mu-\mathbf{x}_i)^2\,c_{i\mu}$ and is
+   evaluated every outer iteration.
+
+2. A *hard* cutoff $R_{\text{loc}}$ applied **after each gradient/orthogonal-
+   ization step**.  Any coefficient $c_{i\mu}$ whose basis function lies farther
+   than $R_{\text{loc}}$ from the intended centre is zeroed, followed by
+   re-normalisation.  When the quadratic potential is chosen sufficiently
+   strong the discarded coefficients are already tiny so this operation only
+   makes a minor perturbation.
+
+The two mechanisms together ensure rapid localisation while keeping the energy
+surface smooth and the optimisation stable.
+
+---
+
 ## Constraints
 
 We impose the following constraints on the orbitals:
