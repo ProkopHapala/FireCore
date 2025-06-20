@@ -760,3 +760,126 @@ def print_qgrid_boundary_slices(qgrid_cpu, qgrid_gpu, num_edge_slices=5, num_lin
 # --- Example of how to use it in your test script ---
 # print_qgrid_boundary_slices(qgrid_cpu_test, qgrid_gpu_test, num_edge_slices=3, num_line_elements=5, title_prefix="Test ")
 
+def visualize_molecular_trajectory(t, Ps, sample_indices=None):
+    """
+    Visualize the molecular trajectory during a scan.
+    
+    Parameters:
+    - t: scan parameter values
+    - Ps: position array with shape (n_scan_points, n_atoms, 3)
+    - sample_indices: indices to plot (default: 5 evenly spaced points)
+    """
+    if sample_indices is None:
+        # Choose 5 evenly spaced indices by default
+        sample_indices = np.linspace(0, len(t)-1, 5, dtype=int)
+    
+    # Determine the shape
+    n_scan_points, n_atoms, n_coords = Ps.shape
+    
+    # Create 3D plot
+    fig = plt.figure(figsize=(12, 10))
+    ax = fig.add_subplot(111, projection='3d')
+    
+    # Plot molecular structure at each sampled point
+    cmap = plt.cm.jet
+    colors = [cmap(i) for i in np.linspace(0, 1, len(sample_indices))]
+    
+    for idx, sample_idx in enumerate(sample_indices):
+        # Plot atoms for this scan point with proper color
+        c = colors[idx]
+        ax.scatter(Ps[sample_idx, :, 0], 
+                  Ps[sample_idx, :, 1], 
+                  Ps[sample_idx, :, 2],
+                  color=c, s=50, label=f"t={t[sample_idx]:.2f}")
+        
+        # Connect atoms with lines to show molecular structure
+        for i in range(n_atoms):
+            for j in range(i+1, n_atoms):
+                ax.plot([Ps[sample_idx, i, 0], Ps[sample_idx, j, 0]],
+                       [Ps[sample_idx, i, 1], Ps[sample_idx, j, 1]],
+                       [Ps[sample_idx, i, 2], Ps[sample_idx, j, 2]],
+                       color=c, alpha=0.5)
+    
+    # Also plot the trajectory of each atom across all scan points
+    for atom_idx in range(n_atoms):
+        ax.plot(Ps[:, atom_idx, 0], 
+               Ps[:, atom_idx, 1], 
+               Ps[:, atom_idx, 2], 
+               'k-', alpha=0.2)
+    
+    ax.set_xlabel('X')
+    ax.set_ylabel('Y')
+    ax.set_zlabel('Z')
+    ax.legend()
+    plt.title("Molecular structure at different scan points")
+    
+    plt.tight_layout()
+    plt.show()
+
+def visualize_relaxed_structures(t, Ps, n_structures=None, bond_length_threshold=2.0):
+    """
+    Visualize the final relaxed molecular structures at different scan points.
+    
+    Parameters:
+    - t: scan parameter values
+    - Ps: position array with shape (n_scan_points, n_atoms, 3)
+    - n_structures: number of structures to visualize (default: all structures)
+    - bond_length_threshold: maximum distance to consider atoms as bonded (in Angstroms)
+    """
+    n_scan_points = Ps.shape[0]
+    
+    if n_structures is None:
+        # If not specified, show all structures
+        n_structures = n_scan_points
+        indices = np.arange(n_scan_points)
+    else:
+        # Create evenly spaced indices based on desired number of structures
+        indices = np.linspace(0, n_scan_points-1, n_structures, dtype=int)
+    
+    # Create 3D plot
+    fig = plt.figure(figsize=(12, 10))
+    ax = fig.add_subplot(111, projection='3d')
+    
+    # Plot molecular structure at each sampled point
+    cmap = plt.cm.jet
+    colors = [cmap(i) for i in np.linspace(0, 1, len(indices))]
+    
+    for idx, scan_idx in enumerate(indices):
+        # Plot atoms for this scan point with proper color
+        c = colors[idx]
+        positions = Ps[scan_idx]
+        
+        # Plot atoms
+        ax.scatter(positions[:, 0], 
+                  positions[:, 1], 
+                  positions[:, 2],
+                  color=c, s=1, label=f"z = {t[scan_idx]:.2f} Å")
+        
+        # Connect atoms to all their first nearest neighbors
+        for i in range(positions.shape[0]):
+            # Calculate distances to all other atoms
+            distances = np.sqrt(np.sum((positions - positions[i])**2, axis=1))
+            distances[i] = np.inf  # Exclude self
+            
+            # Find all neighbors within the threshold distance
+            neighbors = np.where(distances < bond_length_threshold)[0]
+            
+            # Draw bonds to all nearest neighbors
+            for neighbor in neighbors:
+                if i < neighbor:  # Avoid double drawing
+                    ax.plot([positions[i, 0], positions[neighbor, 0]],
+                           [positions[i, 1], positions[neighbor, 1]],
+                           [positions[i, 2], positions[neighbor, 2]],
+                           color=c, alpha=0.5)
+    
+    ax.set_xlabel('X (Å)')
+    ax.set_ylabel('Y (Å)')
+    ax.set_zlabel('Z (Å)')
+    ax.legend()
+    plt.title("Final relaxed structures at different scan points")
+    
+    # Set equal aspect ratio
+    ax.set_box_aspect([1,1,1])
+    
+    plt.tight_layout()
+    plt.show()

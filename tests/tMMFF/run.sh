@@ -185,9 +185,10 @@ export LD_PRELOAD
 
 ### Multiple scans with loops for all configurations
 
-#    Change this single line to switch between 12x12, 20x20, 32x32 …
-# SUB_SIZE="12x12"             # e.g. "20x20"
-SUB_SIZE="20x20"             # e.g. "20x20"
+SUB_SIZES=("20x20" "16x16" "12x12" "8x8")   #
+
+for SUB_SIZE in "${SUB_SIZES[@]}"; do
+
 SIZE_X=${SUB_SIZE%x*}         # first number (12, 20, 32 …)
 LATTICE_UNIT=4               # Å per repeat of NaCl (4 × SIZE_X)
 BASE_SUBS=("NaCl_perfect" \
@@ -293,7 +294,9 @@ for cons_atom in "${CONS_ATOMS[@]}"; do
       echo "Calculated span_max: $span_max"
       echo "Calculated nscan: $nscan"
       
+      log_file="timings.dat"
       # Run the command
+      SECONDS=0
       python3 generate_scans.py \
         $BASE_PARAMS \
         --scan-dir1 "$direction" \
@@ -306,11 +309,15 @@ for cons_atom in "${CONS_ATOMS[@]}"; do
         --span-max "$span_max" \
         --nscan "$nscan" \
         --scan-origin "0.0,0.0,2.8"
-      
+      elapsed=$SECONDS
+      echo "⏱  run time: ${elapsed}s"
+      # ----- append to log -----
+      printf "%(%F %T)T,%s,%s,%s,%s,%s,%s,%s\n" -1 "$SUB_SIZE" "$substrate" "$direction" "$cons_atom" "$span_max" "$nscan" "$elapsed" >> "$log_file"
       # Optional: add a small delay between runs
       sleep 10
     done
   done
+done
 done
 
 

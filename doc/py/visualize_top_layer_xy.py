@@ -30,6 +30,7 @@ from typing import Iterable, Sequence
 
 import matplotlib.pyplot as plt
 import numpy as np
+import matplotlib as mpl
 
 # Re-use the generic visualiser that already exists in FireCore
 from plot_utils import MoleculeTrajectoryVisualizer
@@ -105,7 +106,7 @@ def _plot_single_projection(
         )
 
     # --- molecule snapshots --------------------------------------------------
-    cmap = plt.cm.get_cmap("jet")
+    cmap = mpl.colormaps.get_cmap("rainbow")
     snap_colors = [cmap(i) for i in np.linspace(0, 1, len(frame_sel))]
     for c, fr in zip(snap_colors, frame_sel):
         pos = vis.atom_positions[fr, molecule_indices][:, [ix, iy]]
@@ -230,20 +231,26 @@ def plot_top_layer_projections(
 
     # common legend (take from first axis)
     handles, labels = axes[0].get_legend_handles_labels()
-    fig.legend(handles, labels, loc="upper right")
+    uniq = {}
+    for h, l in zip(handles, labels):
+        if l not in uniq:
+            uniq[l] = h
+    fig.legend(uniq.values(), uniq.keys(), loc="upper left")
+
     fig.tight_layout()
 
     # save if requested
     if out_png is not None:
-        fig.savefig(out_png, dpi=300)
+        fig.savefig(out_png, dpi=300, bbox_inches='tight')
         print(f"Saved figure to {out_png}")
 
     if show:
         plt.show()
     plt.close(fig)
+# end plot_top_layer_projections
     element_colors = {
-        "Na": "orange",
         "Cl": "cyan",
+        "Na": "orange",
     }
     # fall-back colour
     default_sub_col = "lightgray"
@@ -260,11 +267,11 @@ def plot_top_layer_projections(
             linewidths=0.5,
             label=f"{elem} (top layer)" if elem in element_colors else "Substrate atom",
             zorder=0,
-            alpha=0.4,
+            alpha=0.3,
         )
 
     # --- full-molecule snapshots
-    cmap = plt.cm.get_cmap("jet")
+    cmap = mpl.colormaps.get_cmap("rainbow")
     snap_colors = [cmap(i) for i in np.linspace(0, 1, len(frame_sel))]
 
     for c, fr in zip(snap_colors, frame_sel):
@@ -299,7 +306,6 @@ def plot_top_layer_projections(
     ax.set_xlabel("X (Å)")
     ax.set_ylabel("Y (Å)")
     ax.set_aspect("equal", adjustable="box")
-    ax.legend()
 
     title = f"XY trajectory (fixed atom {fixed_atom_idx})"
     ax.set_title(title)
@@ -386,8 +392,11 @@ if __name__ == "__main__":
 '''
  python /home/indranil/git/FireCore/doc/py/visualize_top_layer_xy.py  --traj dir_2.0_1.0_0.0/cons_26/PTCDA_20x20_26_total_trajectory.xyz --fixed 26 --opposite 29  
 
-For all the projections plot (xy, xz, yz) can also be done for any individual and the pairs
+###For all the projections plot (xy, xz, yz) can also be done for any individual and the pairs
  python /home/indranil/git/FireCore/doc/py/visualize_top_layer_xy.py  --traj dir_2.0_1.0_0.0/cons_26/PTCDA_20x20_26_total_trajectory.xyz --fixed 26 --opposite 29 --projections xy,xz,yz
+
+python /home/indranil/git/FireCore/doc/py/visualize_top_layer_xy.py  --traj dir_2.0_1.0_0.0/cons_26/PTCDA_20x20_26_total_trajectory.xyz --fixed 26 --opposite 29 --projections xy,xz,yz
+
 
 
 '''
