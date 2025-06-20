@@ -4,6 +4,10 @@ import numpy as np
 import matplotlib.pyplot as plt
 from scipy.special import erf # For the analytical erf function in Coulomb interaction
 
+# trun of line-brakes when printing numpy arrays
+np.set_printoptions(linewidth=1000)
+
+
 from quantum_solver_1D import (
     gauss_to_grid,
     boys_function_F0,
