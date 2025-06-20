@@ -77,6 +77,19 @@ def main():
         basis_eval_fn=gaussian_basis_eval_wrapper
     )
 
+    # --- Localized-solver parameter setup ---
+    # Adjust these knobs from the script without touching the library
+    solver.loc_step_size   = 0.02       # gradient step
+    solver.ortho_damp      = 0.5        # orthogonalisation damping
+    solver.ortho_iter      = 5
+    solver.loc_max_iter    = 1000
+    solver.loc_coeff_tol   = 1e-7
+    solver.loc_overlap_tol = 1e-5
+
+    # localisation controls
+    solver.alpha_loc         = 0.05      # quadratic potential strength (0 → none)
+    solver.apply_hard_cutoff = False    # disable hard cutoff for delocalised test
+
     # --- Running Localized Solver ---
     print("\n--- Running Localized Solver ---")
     
@@ -91,13 +104,7 @@ def main():
 
     localized_energies, localized_coefficients = solver.solve_localized(
         localization_centers=localization_centers,
-        localization_cutoff=localization_cutoff,
-        max_loc_iter=20, # Reduce maximum iterations
-        loc_coeff_tol=1e-7, # Tighten tolerance slightly
-        loc_overlap_tol=1e-5,  # Tighten orthogonality tolerance slightly
-        loc_step_size=0.01, # Smaller step size for stability
-        ortho_damp=0.1,   # More damping for stability
-        ortho_iter=5      # Fewer internal ortho iterations for speed
+        localization_cutoff=localization_cutoff
     )
 
     if localized_energies is not None and localized_coefficients is not None:

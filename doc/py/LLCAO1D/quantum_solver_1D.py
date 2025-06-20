@@ -156,9 +156,21 @@ class QuantumSolver1D:
         self.energies = None
         self.coefficients = None
 
-        # Parameters for localized solver
-        self.localization_centers = None
-        self.localization_cutoff = None
+        # --- Localized-solver configuration (can be overwritten from scripts) ---
+        self.localization_centers   = None   # centres for quadratic potential & cutoff (defaults to basis_centers)
+        self.localization_cutoff    = None   # hard cutoff radius; None ⇒ no cutoff
+        self.apply_hard_cutoff      = True   # master switch for hard cutoff
+
+        # optimisation parameters
+        self.loc_max_iter    = 200
+        self.loc_energy_tol  = 1e-6
+        self.loc_coeff_tol   = 1e-6
+        self.loc_overlap_tol = 1e-6
+        self.loc_step_size   = 0.1
+        self.ortho_damp      = 0.5
+        self.ortho_iter      = 5
+        self.use_lagrange    = False
+        self.alpha_loc       = 0.0
 
         # Results for localized solver
         self.localized_energies = None
@@ -253,7 +265,7 @@ class QuantumSolver1D:
 
     # --- Modular steps for the localized solver optimization loop ---
 
-    def _initialize_localized_coefficients(self, num_mos, localization_centers, localization_cutoff):
+    def _initialize_localized_coefficients(self, num_mos, localization_centers, localization_cutoff=np.inf):
         """
         Initializes localized coefficients, applies cutoff, and normalizes.
         Assumes one MO per basis function, centered at the basis function's position.
@@ -263,7 +275,7 @@ class QuantumSolver1D:
         for i in range(num_mos):
             # Apply localization cutoff
             for mu in range(self.num_basis_functions):
-                if np.linalg.norm(self.basis_centers[mu] - localization_centers[i]) > localization_cutoff:
+                if localization_cutoff is not None and np.linalg.norm(self.basis_centers[mu] - localization_centers[i]) > localization_cutoff:
                     C[mu, i] = 0.0
             # Normalize
             norm_sq = self._calculate_orbital_norm_sq(C[:, i])
@@ -275,12 +287,14 @@ class QuantumSolver1D:
         return C
 
     def _apply_localization_cutoff(self, C, localization_centers, localization_cutoff):
-        """ Applies the hard localization cutoff to the coefficient matrix C. """
+        """Applies the hard localization cutoff to C if enabled."""
+        if (not self.apply_hard_cutoff) or (localization_cutoff is None):
+            return C  # nothing to do
         num_mos = C.shape[1]
         for i in range(num_mos):
             for mu in range(self.num_basis_functions):
-                 if np.linalg.norm(self.basis_centers[mu] - localization_centers[i]) > localization_cutoff:
-                     C[mu, i] = 0.0
+                if abs(self.basis_centers[mu] - localization_centers[i]) > localization_cutoff:
+                    C[mu, i] = 0.0
         return C
 
     def _calculate_energy_gradient_update(self, C, loc_step_size, use_lagrange=False, alpha_loc=0.0, localization_centers=None):
@@ -364,10 +378,7 @@ class QuantumSolver1D:
 
     # --- Main localized solver method ---
 
-    def solve_localized(self, localization_centers, localization_cutoff,
-                        max_loc_iter=200, loc_energy_tol=1e-6, loc_coeff_tol=1e-6, loc_overlap_tol=1e-6,
-                        loc_step_size=0.1, ortho_damp=0.5, ortho_iter=5,
-                        use_lagrange=False, alpha_loc=0.0):
+    def solve_localized(self, localization_centers=None, localization_cutoff=None):
         """
         Solves for localized molecular orbitals using iterative energy minimization
         with normalization, orthogonalization, and localization constraints.
@@ -388,31 +399,37 @@ class QuantumSolver1D:
         Returns:
             tuple: (localized_energies, localized_coefficients)
         """
-        self._calculate_matrices() # Ensure H and S are computed
+        self._calculate_matrices()  # Ensure H and S are computed
+
+        # --- Default values ---
+        if localization_centers is None:
+            localization_centers = self.basis_centers.copy()
+        if localization_cutoff is None:
+            localization_cutoff = np.inf  # No cutoff by default
 
         num_mos = len(localization_centers) # Number of localized MOs
         if num_mos > self.num_basis_functions:
-             raise ValueError("Number of localized orbitals cannot exceed number of basis functions.")
-        # Enforce the assumption that localization centers match basis centers for this simple implementation
+            raise ValueError("Number of localized orbitals cannot exceed number of basis functions.")
         if len(localization_centers) != self.num_basis_functions or not np.allclose(localization_centers, self.basis_centers):
-             raise NotImplementedError("Current localized solver requires localization_centers to match basis_centers.")
+            raise NotImplementedError("Current localized solver requires localization_centers to match basis_centers.")
 
+        # store for later use / subsequent calls
         self.localization_centers = localization_centers
-        self.localization_cutoff = localization_cutoff
+        self.localization_cutoff  = localization_cutoff
 
         # --- Initialization ---
         C = self._initialize_localized_coefficients(num_mos, localization_centers, localization_cutoff)
 
-        print(f"Starting localized solver with R_loc={localization_cutoff}, max_iter={max_loc_iter}, step_size={loc_step_size}, ortho_damp={ortho_damp}, ortho_iter={ortho_iter}")
+        print(f"Starting localized solver with R_loc={localization_cutoff}, max_iter={self.loc_max_iter}, step_size={self.loc_step_size}, ortho_damp={self.ortho_damp}, ortho_iter={self.ortho_iter}, alpha_loc={self.alpha_loc}, hard_cutoff={self.apply_hard_cutoff}")
 
         # Optimization loop
-        for iter in range(max_loc_iter):
+        for iter in range(self.loc_max_iter):
             C_old = C.copy()
 
             # --- Optimization Steps ---
-            gradient_update_matrix = self._calculate_energy_gradient_update(C, loc_step_size, use_lagrange=use_lagrange, alpha_loc=alpha_loc, localization_centers=localization_centers)
+            gradient_update_matrix = self._calculate_energy_gradient_update(C, self.loc_step_size, use_lagrange=self.use_lagrange, alpha_loc=self.alpha_loc, localization_centers=localization_centers)
             C += gradient_update_matrix
-            C, max_off_diag_S = self._perform_iterative_orthogonalization(C, ortho_damp, ortho_iter)
+            C, max_off_diag_S = self._perform_iterative_orthogonalization(C, self.ortho_damp, self.ortho_iter)
             C = self._normalize_coefficients(C)
             C = self._apply_localization_cutoff(C, localization_centers, localization_cutoff)
             C = self._normalize_coefficients(C) # Re-normalize after cutoff
@@ -433,12 +450,12 @@ class QuantumSolver1D:
 
             # Calculate norm of optimization forces (gradient G = H C, before scaling by step_size)
             # The gradient_update_matrix is -loc_step_size * G, so G = -gradient_update_matrix / loc_step_size
-            G_matrix = -gradient_update_matrix / loc_step_size if loc_step_size != 0 else np.zeros_like(gradient_update_matrix)
+            G_matrix = -gradient_update_matrix / self.loc_step_size if self.loc_step_size != 0 else np.zeros_like(gradient_update_matrix)
             norm_of_forces = np.linalg.norm(G_matrix)
 
-            print(f"Iter {iter}: E_tot = {total_energy:.6f}, |Forces| = {norm_of_forces:.6f}, Max Coeff Chg = {coeff_change:.6f}, Max S_MO_offdiag = {max_off_diag_S_final:.6f}")
+            print(f"Iter {iter}: E_tot = {total_energy:.6f}, |F| = {norm_of_forces:.3e}, ΔC = {coeff_change:.3e}, S_off = {max_off_diag_S_final:.3e}")
 
-            if coeff_change < loc_coeff_tol and max_off_diag_S_final < loc_overlap_tol: # Add energy_change < loc_energy_tol if tracked
+            if coeff_change < self.loc_coeff_tol and max_off_diag_S_final < self.loc_overlap_tol:
                  print("Localized solver converged.")
                  break
 
