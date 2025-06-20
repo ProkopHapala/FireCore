@@ -1519,8 +1519,8 @@ void initGridFF( const char * name, double z0=NAN, bool bAutoNPBC=true, bool bSy
     bool bGridDouble = (mode == GridFFmod::LinearDouble) || (mode == GridFFmod::HermiteDouble) || (mode == GridFFmod::BsplineDouble); 
     allocateFFs( bGridDouble );
     //gridFF.tryLoad( "FFelec.bin", "FFPaul.bin", "FFLond.bin", false, {1,1,0}, bSaveDebugXSFs );
-    nPBC=Vec3i{1,1,0};
-    if(bAutoNPBC){ autoNPBC( grid.cell, nPBC, 20.0 ); }   //printf( "GridFF::initGridFF() nPBC(%i,%i,%i)\n", nPBC.x, nPBC.y, nPBC.z );
+//    nPBC=Vec3i{1,1,0};
+    if(bAutoNPBC){ autoNPBC( grid.cell, nPBC, 20.0 ); }   printf( "GridFF::initGridFF() nPBC(%i,%i,%i)\n", nPBC.x, nPBC.y, nPBC.z );
     lvec = grid.cell;     // ToDo: We should unify this
     makePBCshifts( nPBC, lvec );
     if(bSymetrize)setAtomsSymetrized( natoms, atypes, apos, REQs, 0.1 );
