@@ -34,6 +34,7 @@ import matplotlib as mpl
 
 # Re-use the generic visualiser that already exists in FireCore
 from plot_utils import MoleculeTrajectoryVisualizer
+from scipy.spatial import ConvexHull
 
 
 # -----------------------------------------------------------------------------
@@ -84,6 +85,7 @@ def _plot_single_projection(
     frame_sel: np.ndarray,
     n_sample_structures: int,
     bond_length_thresh: float,
+    num_mol_snapshots: int = 2,
 ):
     """Low-level helper that draws one 2-D projection (XY, XZ, or YZ)."""
 
@@ -98,17 +100,43 @@ def _plot_single_projection(
             xy[:, 1],
             s=60,
             color=element_colors.get(elem, default_sub_col),
-            edgecolors="k",
+            edgecolors="none",
             linewidths=0.5,
             label=f"{elem} (top layer)" if elem in element_colors else "Substrate atom",
             zorder=0,
             alpha=0.3,
         )
-
-    # --- molecule snapshots --------------------------------------------------
+    
+    
+    # --- molecule convex hulls --------------------------------------------------
     cmap = mpl.colormaps.get_cmap("rainbow")
     snap_colors = [cmap(i) for i in np.linspace(0, 1, len(frame_sel))]
     for c, fr in zip(snap_colors, frame_sel):
+        pos = vis.atom_positions[fr, molecule_indices][:, [ix, iy]]
+        
+        # Calculate convex hull of molecule atoms
+        hull = ConvexHull(pos)
+        
+        # Draw convex hull polygon
+        hull_poly = plt.Polygon(
+            pos[hull.vertices], 
+            closed=True,
+            linewidth=0.8,
+            edgecolor='red',
+            facecolor='none',
+            linestyle='-',
+            alpha=0.6,
+            zorder=1
+        )
+        ax.add_patch(hull_poly)
+    
+    ##--- molecule snapshots --------------------------------------------------
+    # cmap = mpl.colormaps.get_cmap("rainbow")
+    # snap_colors = [cmap(i) for i in np.linspace(0, 1, len(frame_sel))]
+    snapshot_frames = np.linspace(0, vis.num_frames-1, num_mol_snapshots, dtype=int)
+    cmap_snapshot = mpl.colormaps.get_cmap("viridis")
+    snapshot_colors = [cmap_snapshot(i) for i in np.linspace(0, 1, len(snapshot_frames))]
+    for c, fr in zip(snapshot_colors, snapshot_frames):
         pos = vis.atom_positions[fr, molecule_indices][:, [ix, iy]]
         ax.scatter(pos[:, 0], pos[:, 1], s=10, color=c, alpha=0.4, zorder=1)
         # bonds in 2-D projection
@@ -132,7 +160,7 @@ def _plot_single_projection(
         (opposite_atom_idx, "blue", f"Opposite atom {opposite_atom_idx}"),
     ):
         traj = vis.atom_positions[:, idx][:, [ix, iy]]
-        ax.plot(traj[:, 0], traj[:, 1], color=col, lw=2, label=lab, zorder=3)
+        ax.plot(traj[:, 0], traj[:, 1], color=col, marker="o", ms=1,lw=0.5, label=lab, zorder=3)
         ax.scatter(traj[0, 0], traj[0, 1], color=col, marker="o", s=60, zorder=4)
         ax.scatter(traj[-1, 0], traj[-1, 1], color=col, marker="s", s=60, zorder=4)
 
@@ -155,6 +183,7 @@ def plot_top_layer_projections(
     figsize_per_plot: int = 6,
     out_png: Path | None = None,
     show: bool = True,
+    num_mol_snapshots: int = 2,
 ):
     """Generate 2-D projection plots (xy, xz, yz) of the trajectory."""
 
@@ -226,6 +255,7 @@ def plot_top_layer_projections(
             frame_sel,
             n_sample_structures,
             bond_length_thresh,
+            num_mol_snapshots,
         )
         ax.set_title(proj.upper())
 
@@ -241,7 +271,7 @@ def plot_top_layer_projections(
 
     # save if requested
     if out_png is not None:
-        fig.savefig(out_png, dpi=300, bbox_inches='tight')
+        # fig.savefig(out_png, dpi=300, bbox_inches='tight')
         print(f"Saved figure to {out_png}")
 
     if show:
@@ -313,7 +343,7 @@ def plot_top_layer_projections(
 
     if out_png is None:
         out_png = traj_path.with_name(traj_path.stem + "_plot_xy.png")
-    fig.savefig(out_png, dpi=300)
+    # fig.savefig(out_png, dpi=300)
     print(f"Saved figure to {out_png}")
 
     if show:
@@ -340,13 +370,19 @@ def _parse_arguments() -> argparse.Namespace:
     p.add_argument(
         "--samples",
         type=int,
-        default=6,
-        help="Number of molecule snapshots to display along trajectory (default: 6)",
+        default=8,
+        help="Number of molecule snapshots to display along trajectory (default: 8)",
     )
     p.add_argument(
         "--projections",
         default="xy",
         help="Comma-separated list of 2D projections to show: xy,xz,yz (default: xy)",
+    )
+    p.add_argument(
+        "--num-mol-snapshots",
+        type=int,
+        default=2,
+        help="Number of molecule snapshots to show. Default: 2",
     )
     # Mutually exclusive show / no-show flags
     p.add_argument(
@@ -382,6 +418,7 @@ def main() -> None:
         substrate_types=[s.strip() for s in args.substrate_types.split(',') if s.strip()],
         show=args.show,
         out_png=args.out,
+        num_mol_snapshots=args.num_mol_snapshots,
     )
 
 
@@ -390,13 +427,14 @@ if __name__ == "__main__":
 
 
 '''
- python /home/indranil/git/FireCore/doc/py/visualize_top_layer_xy.py  --traj dir_2.0_1.0_0.0/cons_26/PTCDA_20x20_26_total_trajectory.xyz --fixed 26 --opposite 29  
+
 
 ###For all the projections plot (xy, xz, yz) can also be done for any individual and the pairs
  python /home/indranil/git/FireCore/doc/py/visualize_top_layer_xy.py  --traj dir_2.0_1.0_0.0/cons_26/PTCDA_20x20_26_total_trajectory.xyz --fixed 26 --opposite 29 --projections xy,xz,yz
 
-python /home/indranil/git/FireCore/doc/py/visualize_top_layer_xy.py  --traj dir_2.0_1.0_0.0/cons_26/PTCDA_20x20_26_total_trajectory.xyz --fixed 26 --opposite 29 --projections xy,xz,yz
 
+## For one projection
+python /home/indranil/git/FireCore/doc/py/visualize_top_layer_xy.py  --traj relax_defect_aligned_line/dir_1.0_1.0_0.0/cons_26/PTCDA_20x20_26_total_trajectory.xyz --fixed 26 --opposite 29 --samples 6 --num-mol-snapshots 6
 
 
 '''
