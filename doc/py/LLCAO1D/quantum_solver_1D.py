@@ -157,7 +157,7 @@ class QuantumSolver1D:
         self.energies = None
         self.coefficients = None
         
-    def _calculate_matrices(self):
+    def _calculate_matrices(self, bDoOverlap=True, bDoKinetic=True, bDoPotential=True):
         """
         Calculates the Overlap (S), Kinetic (T), and Potential (V) matrices using callbacks.
         """
@@ -165,27 +165,36 @@ class QuantumSolver1D:
 
         for i in range(n):
             w_i, X_i = self.basis_widths[i], self.basis_centers[i]
-            for j in range(n):
+            for j in range(i+1):
                 w_j, X_j = self.basis_widths[j], self.basis_centers[j]
 
                 # --- Overlap Integral S_ij ---
-                s_ij = self.overlap_fn(w_i, X_i, w_j, X_j)
-                self.s_matrix[i, j] = s_ij
+                if bDoOverlap:
+                    s_ij = self.overlap_fn(w_i, X_i, w_j, X_j)
+                    self.s_matrix[i, j] = s_ij
+                    self.s_matrix[j, i] = s_ij
+
 
                 # --- Kinetic Energy Integral T_ij ---
                 # The s_ij passed to kinetic_fn should be the normalized overlap,
                 # which our overlap_fn already returns for normalized Gaussians.
-                self.t_matrix[i, j] = self.kinetic_fn(w_i, X_i, w_j, X_j, s_ij)
+                if bDoKinetic:
+                    t_ij = self.kinetic_fn(w_i, X_i, w_j, X_j, s_ij)
+                    self.t_matrix[i, j] = t_ij
+                    self.t_matrix[j, i] = t_ij
 
-                # --- Nuclear Attraction Integral V_ij ---
-                v_ij_sum = 0
-                for k_nuc in range(len(self.nuclear_charges)):
-                    Z_nuc_k = self.nuclear_charges[k_nuc]
-                    X_nuc_k_pos = self.nuclear_positions[k_nuc]
+                if bDoPotential:
+                    # --- Nuclear Attraction Integral V_ij ---
+                    v_ij = 0
+                    for k_nuc in range(len(self.nuclear_charges)):
+                        Z_nuc_k = self.nuclear_charges[k_nuc]
+                        X_nuc_k_pos = self.nuclear_positions[k_nuc]
+                        
+                        v_ij_k = self.coulomb_fn( w_i, X_i, w_j, X_j, Z_nuc_k, X_nuc_k_pos )
+                        v_ij += v_ij_k
                     
-                    v_ij_k = self.coulomb_fn( w_i, X_i, w_j, X_j, Z_nuc_k, X_nuc_k_pos )
-                    v_ij_sum += v_ij_k
-                self.v_matrix[i, j] = v_ij_sum
+                    self.v_matrix[i, j] = v_ij
+                    self.v_matrix[j, i] = v_ij
 
         self.h_matrix = self.t_matrix + self.v_matrix
 
