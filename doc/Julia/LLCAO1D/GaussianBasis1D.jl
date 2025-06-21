@@ -6,17 +6,8 @@ basis-function geometry and analytical integrals.  No localisation
 logic is present here.
 """
 
+using SpecialFunctions
 export GaussBasis1D, overlap, kinetic, coulomb, make_HS
-
-using LinearAlgebra
-# minimal erf approximation to avoid external deps
-@inline function _erf(x::Float64)
-    # Abramowitz & Stegun 7.1.26 approximation (good to 1e-7)
-    t = 1.0 / (1.0 + 0.3275911*abs(x))
-    τ = (((((1.061405429 * t) - 1.453152027)*t) + 1.421413741)*t - 0.284496736)*t + 0.254829592
-    y = 1.0 - τ * exp(-x*x)
-    return copysign(y, x)
-end
 
 # ---------------------------- Data container -----------------------------
 
@@ -37,7 +28,7 @@ const π = Base.MathConstants.pi
 normfactor(a) = (2a/π)^0.25  # 1-D normalisation of Gaussian with exponent α
 
 # Boys F₀ for 1-D attraction integral (simple implementation)
-F0(t) = t < 1e-10 ? 1.0 : 0.5 * sqrt(π / t) * _erf(sqrt(t))
+F0(t) = t < 1e-10 ? 1.0 : 0.5 * sqrt(π / t) * erf(sqrt(t))
 
 # --------------------------- Integral kernels ----------------------------
 
