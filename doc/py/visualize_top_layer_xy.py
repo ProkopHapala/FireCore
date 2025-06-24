@@ -31,10 +31,66 @@ from typing import Iterable, Sequence
 import matplotlib.pyplot as plt
 import numpy as np
 import matplotlib as mpl
+from matplotlib.colors import LightSource
 
 # Re-use the generic visualiser that already exists in FireCore
 from plot_utils import MoleculeTrajectoryVisualizer
 from scipy.spatial import ConvexHull
+import matplotlib as mpl
+from matplotlib import font_manager
+import os
+
+# 2. Register all Times New Roman variants explicitly
+font_files = [
+    '/usr/share/fonts/truetype/msttcorefonts/Times_New_Roman.ttf',
+    '/usr/share/fonts/truetype/msttcorefonts/Times_New_Roman_Bold.ttf',
+    '/usr/share/fonts/truetype/msttcorefonts/Times_New_Roman_Italic.ttf',
+    '/usr/share/fonts/truetype/msttcorefonts/Times_New_Roman_Bold_Italic.ttf'
+]
+
+for font_file in font_files:
+    if os.path.exists(font_file):
+        font_manager.fontManager.addfont(font_file)
+    else:
+        print(f"Warning: Font file not found - {font_file}")
+
+mpl.rcParams['font.family'] = 'Times New Roman'
+
+l_w=2.5
+f_s=25
+# Adjusting Matplotlib's default settings
+mpl.rcParams.update({
+    'axes.linewidth': l_w,          # Thickness of the axix lines
+    'xtick.major.width': l_w,       # Thickness of major ticks on x-axis
+    'ytick.major.width': l_w,       # Thickness of major ticks on y-axis
+    'xtick.minor.width': 1.5,       # Thickness of minor ticks on x-axis
+    'ytick.minor.width': 1.5,       # Thickness of minor ticks on y-axis
+    'xtick.major.size': 6,          # Length of major ticks on x-axis
+    'ytick.major.size': 6,          # Length of major ticks on y-axis
+    'xtick.minor.size': 4,          # Length of minor ticks on x-axis
+    'ytick.minor.size': 4,          # Length of minor ticks on y-axis
+    'xtick.labelsize': f_s,         # Font Size of x-axis tick labels
+    'ytick.labelsize': f_s,         # Font Size of y-axis tick labels
+    'axes.labelsize': f_s,          # Font Size of axis labels
+    'legend.fontsize': f_s,         # Font Size of legend
+    'axes.titlesize': f_s,          # Font Size of axis titles
+    'figure.titlesize': f_s,        # Font Size of figure titles
+    'xtick.direction': 'in',        # X-axis ticks point inward
+    'ytick.direction': 'in',        # Y-axis ticks point inward
+    'xtick.top': True,              # Show ticks on top axis
+    'xtick.bottom': True,           # Show ticks on bottom axis (default)
+    'ytick.left': True,             # Show ticks on left axis (default)
+    'ytick.right': True,            # Show ticks on right axis
+    'axes.grid.which': 'both',      # Grid lines at both major and minor ticks
+    'xtick.major.size': 4,          # # Optional: control tick length for inward ticks Slightly longer major ticks
+    'xtick.minor.size': 2,          # Minor ticks
+    # 'ytick.major.size': 8,
+    # 'ytick.minor.size': 4
+    # 'axes.titlepad': 20,
+    # 'axes.labelpad': 20,
+    
+    
+})
 
 
 # -----------------------------------------------------------------------------
@@ -92,6 +148,7 @@ def _plot_single_projection(
     # --- substrate top layer (colour-coded) ---------------------------------
     element_colors = {"Na": "orange", "Cl": "cyan"}
     default_sub_col = "lightgray"
+
     for elem in np.unique([vis.atom_types[i] for i in top_layer_sub]):
         elem_indices = top_layer_sub[[vis.atom_types[i] == elem for i in top_layer_sub]]
         xy = vis.atom_positions[0, elem_indices][:, [ix, iy]]
@@ -106,39 +163,112 @@ def _plot_single_projection(
             zorder=0,
             alpha=0.3,
         )
-    
+    # #####
+    # """Low-level helper that draws one 2-D projection (XY, XZ, or YZ)."""
+
+    # # --- substrate top layer (glossy, colour-coded spheres) -----------------
+    # # Define element-specific radii (in Angstroms).
+    # # Common ionic radii (Pauling): Na+ ~0.95-1.02 A, Cl- ~1.81 A. Adjust as needed.
+    # element_radii = {"Na": 1.00, "Cl": 1.80}
+    # default_sub_radius = 0.8  # Default radius for unlisted substrate atoms
+
+    # light_source = LightSource(azdeg=315, altdeg=45)  # Light from top-right
+    # sphere_res = 64  # Increased resolution for smoother spheres (e.g., 64x64 pixels)
+
+    # element_colors = {"Na": "orange", "Cl": "cyan"}
+    # default_sub_col = "lightgray"
+
+    # for elem in np.unique([vis.atom_types[i] for i in top_layer_sub]):
+    #     elem_indices_in_top_layer = top_layer_sub[[vis.atom_types[i] == elem for i in top_layer_sub]]
+        
+    #     current_atom_radius = element_radii.get(elem, default_sub_radius)
+
+    #     base_color_name = element_colors.get(elem, default_sub_col)
+    #     base_rgb = mpl.colors.to_rgb(base_color_name)
+
+    #     # Create sphere height-map data FOR THIS ELEMENT based on its radius
+    #     # These grids define the shape of the sphere to be shaded
+    #     x_grid_elem, y_grid_elem = np.mgrid[
+    #         -current_atom_radius:current_atom_radius:sphere_res*1j,
+    #         -current_atom_radius:current_atom_radius:sphere_res*1j
+    #     ]
+    #     # z_grid_elem represents the height of a hemisphere for this element
+    #     z_grid_elem = np.sqrt(np.maximum(0, current_atom_radius**2 - (x_grid_elem**2 + y_grid_elem**2)))
+
+
+    #     # Create a custom colormap for shading this element's spheres
+    #     # Glossy effect: Dark shadow -> base color -> brighter highlight -> specular whiteish highlight
+    #     base_rgb_dark = np.clip(np.array(base_rgb) * 0.15, 0, 1)
+    #     base_rgb_highlight = np.clip(np.array(base_rgb) * 1.2 + 0.4, 0, 1) # Brighter version of base
+    #     specular_highlight_color = np.array([0.95, 0.95, 0.95]) # Near-white specular
+
+    #     cmap_colors = [
+    #         (0.0,  base_rgb_dark),             # Deep shadow
+    #         (0.5,  base_rgb),                  # Main color (mid-point of the surface)
+    #         (0.85, base_rgb_highlight),        # General highlight
+    #         (1.0,  specular_highlight_color)   # Sharp specular highlight
+    #     ]
+    #     # Ensure alpha is 1 for opaque parts of the colormap itself
+    #     current_cmap_list = [(val, tuple(list(col_rgb) + [1.0])) for val, col_rgb in cmap_colors]
+    #     current_cmap = mpl.colors.LinearSegmentedColormap.from_list(f"{elem}_shade", current_cmap_list)
+
+    #     for atom_abs_idx in elem_indices_in_top_layer:
+    #         center_x = vis.atom_positions[0, atom_abs_idx, ix]
+    #         center_y = vis.atom_positions[0, atom_abs_idx, iy]
+
+    #         # Shade the sphere data using the light source and custom colormap
+    #         # Increased vert_exag for more pronounced 3D effect.
+    #         rgb_shaded = light_source.shade(z_grid_elem, cmap=current_cmap, vert_exag=0.8, blend_mode='hsv')
+
+    #         # Make parts outside the sphere transparent
+    #         mask_outside_sphere = z_grid_elem <= 1e-6  # Pixels at or very near zero height
+    #         rgb_shaded[mask_outside_sphere, 3] = 0.0  # Set alpha to 0 (transparent)
+
+    #         ax.imshow(
+    #             rgb_shaded,
+    #             origin='lower', # Match mgrid definition
+    #             extent=(center_x - current_atom_radius, center_x + current_atom_radius,
+    #                     center_y - current_atom_radius, center_y + current_atom_radius),
+    #             zorder=0,  # Keep substrate behind molecule elements
+    #             interpolation='lanczos', # Higher quality interpolation for smoother image
+    #             alpha=1.0  # Fully opaque spheres for a more solid look
+    #         )
+
+    # #####
     
     # --- molecule convex hulls --------------------------------------------------
     cmap = mpl.colormaps.get_cmap("rainbow")
     snap_colors = [cmap(i) for i in np.linspace(0, 1, len(frame_sel))]
     for c, fr in zip(snap_colors, frame_sel):
         pos = vis.atom_positions[fr, molecule_indices][:, [ix, iy]]
-        
-        # Calculate convex hull of molecule atoms
         hull = ConvexHull(pos)
+        
+        fixed_atom_idx_in_mol = molecule_indices[fixed_atom_idx]
+        fixed_atom_pos = vis.atom_positions[fr, fixed_atom_idx_in_mol, [ix, iy]]
+        opposite_atom_idx_in_mol = molecule_indices[opposite_atom_idx]
+        opposite_atom_pos = vis.atom_positions[fr, opposite_atom_idx_in_mol, [ix, iy]]
+        
+        ax.scatter(fixed_atom_pos[0], fixed_atom_pos[1], color='r', marker="o", s=10, zorder=4)
+        ax.scatter(opposite_atom_pos[0], opposite_atom_pos[1], color='b', marker="o", s=10, zorder=4)
         
         # Draw convex hull polygon
         hull_poly = plt.Polygon(
             pos[hull.vertices], 
             closed=True,
             linewidth=0.8,
-            edgecolor='red',
-            facecolor='none',
+            edgecolor='k',
+            facecolor='k',
+            alpha=0.2,
             linestyle='-',
-            alpha=0.6,
             zorder=1
         )
         ax.add_patch(hull_poly)
     
     ##--- molecule snapshots --------------------------------------------------
-    # cmap = mpl.colormaps.get_cmap("rainbow")
-    # snap_colors = [cmap(i) for i in np.linspace(0, 1, len(frame_sel))]
     snapshot_frames = np.linspace(0, vis.num_frames-1, num_mol_snapshots, dtype=int)
-    cmap_snapshot = mpl.colormaps.get_cmap("viridis")
-    snapshot_colors = [cmap_snapshot(i) for i in np.linspace(0, 1, len(snapshot_frames))]
-    for c, fr in zip(snapshot_colors, snapshot_frames):
+    for fr in snapshot_frames:
         pos = vis.atom_positions[fr, molecule_indices][:, [ix, iy]]
-        ax.scatter(pos[:, 0], pos[:, 1], s=10, color=c, alpha=0.4, zorder=1)
+        ax.scatter(pos[:, 0], pos[:, 1], s=10, color='k', alpha=0.4, zorder=1)
         # bonds in 2-D projection
         for i in range(pos.shape[0]):
             d2 = np.sum((pos - pos[i]) ** 2, axis=1)
@@ -148,7 +278,7 @@ def _plot_single_projection(
                     ax.plot(
                         (pos[i, 0], pos[j, 0]),
                         (pos[i, 1], pos[j, 1]),
-                        color=c,
+                        color='k',
                         alpha=0.8,
                         linewidth=0.8,
                         zorder=1,
@@ -160,12 +290,14 @@ def _plot_single_projection(
         (opposite_atom_idx, "blue", f"Opposite atom {opposite_atom_idx}"),
     ):
         traj = vis.atom_positions[:, idx][:, [ix, iy]]
-        ax.plot(traj[:, 0], traj[:, 1], color=col, marker="o", ms=1,lw=0.5, label=lab, zorder=3)
+        ax.plot(traj[:, 0], traj[:, 1], color=col, marker="o", ms=0.2,lw=0.2, label=lab, zorder=3)
         ax.scatter(traj[0, 0], traj[0, 1], color=col, marker="o", s=60, zorder=4)
         ax.scatter(traj[-1, 0], traj[-1, 1], color=col, marker="s", s=60, zorder=4)
 
-    ax.set_xlabel(f"{coord_labels[0]} (Å)")
-    ax.set_ylabel(f"{coord_labels[1]} (Å)")
+    ax.set_xlabel(f"{coord_labels[0]} (Å)", fontsize=f_s)
+    ax.set_ylabel(f"{coord_labels[1]} (Å)", fontsize=f_s)
+    ax.set_xticks(np.arange(0, 81, 20))  # 0, 20, 40, 60, 80
+    ax.set_yticks(np.arange(0, 81, 20))  # Keep existing y-ticks
     ax.set_aspect("equal", adjustable="box")
     # ax.grid(True)
 
@@ -257,7 +389,7 @@ def plot_top_layer_projections(
             bond_length_thresh,
             num_mol_snapshots,
         )
-        ax.set_title(proj.upper())
+        # ax.set_title(proj.upper())
 
     # common legend (take from first axis)
     handles, labels = axes[0].get_legend_handles_labels()
@@ -265,90 +397,19 @@ def plot_top_layer_projections(
     for h, l in zip(handles, labels):
         if l not in uniq:
             uniq[l] = h
-    fig.legend(uniq.values(), uniq.keys(), loc="upper left")
+    # fig.legend(uniq.values(), uniq.keys(), loc="upper left", frameon=False, ncol=2, handletextpad=0.3, columnspacing=0.8, labelspacing=0.3)
 
     fig.tight_layout()
 
     # save if requested
     if out_png is not None:
-        # fig.savefig(out_png, dpi=300, bbox_inches='tight')
+        fig.savefig(out_png, dpi=300, bbox_inches='tight')
         print(f"Saved figure to {out_png}")
 
     if show:
         plt.show()
     plt.close(fig)
 # end plot_top_layer_projections
-    element_colors = {
-        "Cl": "cyan",
-        "Na": "orange",
-    }
-    # fall-back colour
-    default_sub_col = "lightgray"
-
-    for elem in np.unique([vis.atom_types[i] for i in top_layer_sub]):
-        elem_indices = top_layer_sub[[vis.atom_types[i] == elem for i in top_layer_sub]]
-        xy = vis.atom_positions[0, elem_indices, :2]
-        ax.scatter(
-            xy[:, 0],
-            xy[:, 1],
-            s=60,
-            color=element_colors.get(elem, default_sub_col),
-            edgecolors="k",
-            linewidths=0.5,
-            label=f"{elem} (top layer)" if elem in element_colors else "Substrate atom",
-            zorder=0,
-            alpha=0.3,
-        )
-
-    # --- full-molecule snapshots
-    cmap = mpl.colormaps.get_cmap("rainbow")
-    snap_colors = [cmap(i) for i in np.linspace(0, 1, len(frame_sel))]
-
-    for c, fr in zip(snap_colors, frame_sel):
-        pos = vis.atom_positions[fr, molecule_indices]
-        # scatter
-        ax.scatter(pos[:, 0], pos[:, 1], s=10, color=c, alpha=0.4, zorder=1)
-        # simple bonding within threshold (2-D projection)
-        for i in range(pos.shape[0]):
-            d2 = np.sum((pos - pos[i]) ** 2, axis=1)
-            neigh = np.where((d2 < bond_length_thresh**2) & (d2 > 0))[0]
-            for j in neigh:
-                if i < j:
-                    ax.plot(
-                        (pos[i, 0], pos[j, 0]),
-                        (pos[i, 1], pos[j, 1]),
-                        color=c,
-                        alpha=0.4,
-                        linewidth=0.8,
-                        zorder=1,
-                    )
-
-    # --- trajectories of the two special atoms
-    for idx, col, lab in (
-        (fixed_atom_idx, "red", f"Fixed atom {fixed_atom_idx}"),
-        (opposite_atom_idx, "blue", f"Opposite atom {opposite_atom_idx}"),
-    ):
-        traj_xy = vis.atom_positions[:, idx, :2]
-        ax.plot(traj_xy[:, 0], traj_xy[:, 1], color=col, lw=2, label=lab, zorder=3)
-        ax.scatter(traj_xy[0, 0], traj_xy[0, 1], color=col, marker="o", s=60, zorder=4)
-        ax.scatter(traj_xy[-1, 0], traj_xy[-1, 1], color=col, marker="s", s=60, zorder=4)
-
-    ax.set_xlabel("X (Å)")
-    ax.set_ylabel("Y (Å)")
-    ax.set_aspect("equal", adjustable="box")
-
-    title = f"XY trajectory (fixed atom {fixed_atom_idx})"
-    ax.set_title(title)
-    fig.tight_layout()
-
-    if out_png is None:
-        out_png = traj_path.with_name(traj_path.stem + "_plot_xy.png")
-    # fig.savefig(out_png, dpi=300)
-    print(f"Saved figure to {out_png}")
-
-    if show:
-        plt.show()
-    plt.close(fig)
 
 
 # -----------------------------------------------------------------------------
@@ -434,7 +495,7 @@ if __name__ == "__main__":
 
 
 ## For one projection
-python /home/indranil/git/FireCore/doc/py/visualize_top_layer_xy.py  --traj relax_defect_aligned_line/dir_1.0_1.0_0.0/cons_26/PTCDA_20x20_26_total_trajectory.xyz --fixed 26 --opposite 29 --samples 6 --num-mol-snapshots 6
+python /home/indranil/git/FireCore/doc/py/visualize_top_layer_xy.py  --traj relax_defect_aligned_line/dir_1.0_1.0_0.0/cons_26/PTCDA_20x20_26_total_trajectory.xyz --fixed 26 --opposite 29 --samples 6 --num-mol-snapshots 6 --out PTCDA_defect_aligned_20x20_26_trajectory_xy.png
 
 
 '''

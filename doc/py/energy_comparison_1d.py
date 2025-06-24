@@ -37,7 +37,7 @@ def plot_comparison(lammps_file, firecore_file, title, out_file, x_range=None, y
     if x_range: ax1.set_xlim(x_range)
     
     ax2 = ax1.twinx()
-    ax2.plot(x_f_rel, difference_data_rel, linestyle='--', color='r', label='FireCore - LAMMPS')
+    ax2.plot(x_f_rel, difference_data_rel, linestyle='-', color='r', label='FireCore - LAMMPS')
     ax2.set_ylabel('Difference (eV)', fontsize=14, color='red')
     ax2.tick_params(axis='y', labelcolor='red')
     if error_range: ax2.set_ylim(error_range)
@@ -51,6 +51,7 @@ def plot_comparison(lammps_file, firecore_file, title, out_file, x_range=None, y
     plt.tight_layout()
     
     plt.savefig(out_file, dpi=300)
+    plt.show()
     plt.close(fig)
     print(f"Saved plot to {out_file}")
 
@@ -60,13 +61,19 @@ def main():
     parser.add_argument("--firecore", required=True, help="Path to FireCore data file.")
     parser.add_argument("--title", default="Energy Comparison", help="Plot title.")
     parser.add_argument("--out", required=True, help="Path to save the output PNG plot.")
+    parser.add_argument("--error-range", type=float, nargs=2, help="Y-axis range for the error plot.")
+    parser.add_argument("--x-range", type=float, nargs=2, help="X-axis range for the plot.")
+    parser.add_argument("--y-range", type=float, nargs=2, help="Y-axis range for the plot.")
     args = parser.parse_args()
 
     plot_comparison(
         lammps_file=args.lammps,
         firecore_file=args.firecore,
         title=args.title,
-        out_file=args.out
+        out_file=args.out,
+        error_range=args.error_range,
+        x_range=args.x_range,
+        y_range=args.y_range,
     )
 
 if __name__ == "__main__":
@@ -79,6 +86,12 @@ python /home/indranil/git/FireCore/doc/py/energy_comparison_1d.py \
 --lammps /home/indranil/Documents/Project_1/Lammps/4-relaxed_linescan/angle26.565051177078/fixedatom27/nx20/total.dat \
 --firecore /home/indranil/git/FireCore/tests/tMMFF/relax_perfect_line/dir_2.0_1.0_0.0/cons_26/PTCDA_20x20_26_total.dat \
 --title "Energy Comparison" --out /home/indranil/git/FireCore/tests/tMMFF/relax_perfect_line/dir_2.0_1.0_0.0/cons_26/trial.png
+
+
+python /home/indranil/git/FireCore/doc/py/energy_comparison_1d.py \
+--lammps /home/indranil/Documents/Project_1/Lammps/4-relaxed_linescan/angle45/fixedatom27/nx20/total.dat \
+--firecore /home/indranil/git/FireCore/tests/tMMFF/relax_perfect_line/dir_1.0_1.0_0.0/cons_26/PTCDA_20x20_26_total.dat \
+--title "Energy Comparison" --out trial.png --error-range -0.01 0.01 --x-range 0 10 --y-range -0.01 0.01
 
 
 
