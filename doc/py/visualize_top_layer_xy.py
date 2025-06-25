@@ -316,20 +316,18 @@ def plot_top_layer_projections(
     out_png: Path | None = None,
     show: bool = True,
     num_mol_snapshots: int = 2,
+    ax=None,  # New parameter for external axis
 ):
     """Generate 2-D projection plots (xy, xz, yz) of the trajectory."""
-
     traj_path = Path(trajectory_file)
     if not traj_path.is_file():
         raise FileNotFoundError(traj_path)
 
-    # ---------------------------------------------------------------------
     # Load trajectory
-    # ---------------------------------------------------------------------
     vis = MoleculeTrajectoryVisualizer()
     vis.read_xyz_trajectory(str(traj_path))
 
-    # Identify substrate atoms via their element symbols and grab the top layer.
+    # Identify substrate and molecule atoms
     if substrate_types is None:
         substrate_indices = _detect_substrate_indices(vis.atom_types)
     else:
@@ -343,27 +341,31 @@ def plot_top_layer_projections(
     top_layer_sub = _top_layer_indices(
         vis.atom_positions[0], substrate_indices, tol=top_layer_tol
     )
-
-    # Molecule atoms = everything that is *not* substrate
     molecule_indices = np.setdiff1d(np.arange(vis.num_atoms), substrate_indices)
 
     # Frames to draw full molecule structures
     n_sample_structures = max(2, n_sample_structures)
     frame_sel = np.linspace(0, vis.num_frames - 1, n_sample_structures, dtype=int)
 
-    # ---------------------------------------------------------------------
-    # Plotting for requested projections
-    # ---------------------------------------------------------------------
-    n_plots = len(projections)
-    fig, axes = plt.subplots(
-        1,
-        n_plots,
-        figsize=(figsize_per_plot * n_plots, figsize_per_plot),
-        squeeze=False,
-    )
-    axes = axes[0]  # 1D list
+    # Handle plotting - either create new figure or use provided axis
+    if ax is None:
+        # Original behavior - create new figure
+        n_plots = len(projections)
+        fig, axes = plt.subplots(
+            1,
+            n_plots,
+            figsize=(figsize_per_plot * n_plots, figsize_per_plot),
+            squeeze=False,
+        )
+        axes = axes[0]
+    else:
+        # Use provided axis for single projection
+        if len(projections) > 1:
+            raise ValueError("Cannot plot multiple projections when ax is provided")
+        axes = [ax]
+        fig = ax.figure
 
-    # mapping of projection string to coordinate indices and labels
+    # Plot each projection
     proj_map = {
         "xy": (0, 1, ("X", "Y")),
         "xz": (0, 2, ("X", "Z")),
@@ -389,26 +391,24 @@ def plot_top_layer_projections(
             bond_length_thresh,
             num_mol_snapshots,
         )
-        # ax.set_title(proj.upper())
 
-    # common legend (take from first axis)
-    handles, labels = axes[0].get_legend_handles_labels()
-    uniq = {}
-    for h, l in zip(handles, labels):
-        if l not in uniq:
-            uniq[l] = h
-    # fig.legend(uniq.values(), uniq.keys(), loc="upper left", frameon=False, ncol=2, handletextpad=0.3, columnspacing=0.8, labelspacing=0.3)
+    # Only add legend if creating new figure
+    if ax is None:
+        handles, labels = axes[0].get_legend_handles_labels()
+        uniq = {}
+        for h, l in zip(handles, labels):
+            if l not in uniq:
+                uniq[l] = h
+        fig.tight_layout()
 
-    fig.tight_layout()
-
-    # save if requested
     if out_png is not None:
-        fig.savefig(out_png, dpi=300, bbox_inches='tight')
+        fig.savefig(out_png, dpi=600, bbox_inches='tight')
         print(f"Saved figure to {out_png}")
 
-    if show:
+    if show and ax is None:  # Only show if we created the figure
         plt.show()
-    plt.close(fig)
+    if ax is None:  # Only close if we created the figure
+        plt.close(fig)
 # end plot_top_layer_projections
 
 
