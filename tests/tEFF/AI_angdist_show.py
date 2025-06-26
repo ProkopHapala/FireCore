@@ -4,12 +4,14 @@ import numpy as np
 import os
 import matplotlib.pyplot as plt
 import time
+import argparse
 
 sys.path.append("../../")
 from pyBall import eFF as eff
 elementPath = "export/scan_data/angdistscan_CH4.xyz"
 fileToReadPath = "results/AI/result_3.txt"
 maxBars = 20
+
 def plot_energy_landscape( Xs, Ys, Es, Espan=None):
     """Plot energy landscape from XYZ file using imshow (simple and robust)."""
     #params, nrec = extract_blocks(xyz_file)
@@ -65,9 +67,37 @@ def read_simulation(fileToReadPath):
 
     return angleArr, distArr, flexVar, variance, allEtot
 
+def extract_blocks(xyz_file):
+    """Extract parameters from XYZ file comments (lines starting with #)
+    Returns:
+        dict: Dictionary of extracted parameters with NaNs for missing values
+        (e.g. {'ang': [...], 'dist': [...], 'Etot': [...]})
+    """
+    all_keys = set()
+    records = []
+    # First pass: collect all keys and raw records
+    with open(xyz_file) as f:
+        for line in f:
+            if line.startswith('#'):
+                parts = line[1:].strip().split()
+                record = {}
+                for i in range(0, len(parts)-1, 2):
+                    key = parts[i]
+                    val = float(parts[i+1])
+                    record[key] = val
+                    all_keys.add(key)
+                records.append(record)
+    # Initialize params with NaN-filled arrays
+    nrec= len(records)
+    params = {key: np.full(nrec, np.nan) for key in all_keys}
+    # Second pass: fill values
+    for i, record in enumerate(records):
+        for key, val in record.items():
+            params[key][i] = val
+    return params, nrec
 
-if __name__ == "__main__":
-    print("#=========== RUN /home/gabriel/git/FireCore/tests/tEFF/AI_angdist_show.py")
+def allVal():
+    print("#=========== RUN /home/gabriel/git/FireCore/tests/tEFF/AI_angdist_show.py, all values")
     print(f"Loading from file {fileToReadPath}")
     angleArr, distArr, flexVar, variance, allEtot = read_simulation(fileToReadPath)
     print(flexVar)
@@ -88,3 +118,70 @@ if __name__ == "__main__":
     print("#=========== DONE /home/gabriel/git/FireCore/tests/tEFF/AI_angdist_show.py")
     plt.show()
 
+
+def minVal():
+    print("#=========== RUN /home/gabriel/git/FireCore/tests/tEFF/AI_angdist_show.py, all values")
+    print(f"Loading from file {fileToReadPath}")
+    angleArr, distArr, flexVar, variance, allEtot = read_simulation(fileToReadPath)
+    print(flexVar)
+    variance = [x[0] for x in variance]
+    index = variance.index(min(variance))
+    KSrho = flexVar[index]
+
+    eff.setVerbosity(1,0)
+    print("verbos")
+    atomParams = np.array([
+    #  Q   sQ   sP   cP
+    [ 0.,  1.0, 1.00, 0.0 ], # 0
+    [ 1.,  0.0, 0.00, 0.0 ], # 1 H
+    [ 0.,  1.0, 1.00, 1.0 ], # 2 He
+    [ 1.,  0.0, 0.10, 1.0 ], # 3 Li
+    [ 2.,  0.0, 0.10, 1.0 ], # 4 Be
+    [ 3.,  0.0, 0.10, 1.0 ], # 5 B
+    [ 4.,  0.0, 0.10, 1.0 ], # 6 C
+    [ 5.,  0.0, 0.10, 1.0 ], # 7 N
+    [ 6.,  0.0, 0.2, 1.0 ], # 8 O
+    [ 7.,  0.0, 0.10, 1.0 ], # 9 F
+    ], dtype=np.float64)
+    eff.setAtomParams( atomParams )
+    print("set atom par")
+    params, nrec = extract_blocks("export/scan_data/angdistscan_CH4.xyz")
+    plot_energy_landscape( params['ang'], params['dist'], params['Etot'], Espan=5.0 )
+    plt.title("Before relaxetion")
+    plt.savefig("map2D_referece.png")
+
+    outEs = np.zeros((nrec,5))
+    # apos = np.zeros((nrec,,3))
+    # epos = np.zeros((nrec,4))
+
+    with open("processXYZ.xyz", "w") as f: f.write("")
+    #eff.processXYZ( "export/scan_data/distscan_H2O.xyz", bOutXYZ=True, outEs );
+
+    eff.initOpt( dt=0.005, damping=0.005, f_limit=1000.0)
+
+    bCoreElectrons = False
+    eff.setSwitches( coreCoul=1 )
+    #eff.setSwitches( coreCoul=0 )
+    eff.preAllocateXYZ("export/scan_data/angdistscan_CH4.xyz", Rfac=-1.35, bCoreElectrons=bCoreElectrons )
+    eff.getBuffs()
+    eff.info()
+    #eff.aPars[0,2]=1
+    eff.esize[:]=0.7
+    eff.processXYZ( "export/scan_data/angdistscan_CH4.xyz", bOutXYZ=True, outEs=outEs, bCoreElectrons=bCoreElectrons, bChangeCore=False, bChangeEsize=True, nstepMax=10000, dt=0.005, Fconv=1e-3, ialg=2 , KRSrho=KSrho )
+    plot_energy_landscape( params['ang'], params['dist'], outEs[:,0] )
+    plt.title("After relaxetion")
+    plt.savefig("map2d_eFF.png")
+
+    print("#=========== DONE /home/gabriel/git/FireCore/tests/tEFF/AI_angdist_show.py, all values")
+    plt.show()
+
+
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--variant', choices=['all', 'min'], required=True)
+    args = parser.parse_args()
+
+    if args.variant == 'all':
+        allVal()
+    else:
+        minVal()    

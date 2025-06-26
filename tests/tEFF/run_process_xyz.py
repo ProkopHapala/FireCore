@@ -83,7 +83,9 @@ def plot_energy_landscape( Xs, Ys, Es, Espan=None):
 
 if __name__ == "__main__":
     print("#=========== RUN /home/prokophapala/git/FireCore/tests/tEFF/run_process_xyz.py")
-
+    theta0 = np.array([1.125, 0.9, -0.2])
+    # theta0 = np.array([ 1.160836,  0.874741, -0.044889])
+    # theta0 = np.array([ 1.153868 , 0.871132, -0.042265])
     eff.setVerbosity(1,0)
     print("verbos")
     atomParams = np.array([
@@ -101,7 +103,7 @@ if __name__ == "__main__":
     ], dtype=np.float64)
     eff.setAtomParams( atomParams )
     print("set atom par")
-    params, nrec = extract_blocks("export/scan_data/angdistscan_H2O.xyz")
+    params, nrec = extract_blocks("export/scan_data/angdistscan_CH4.xyz")
     plot_energy_landscape( params['ang'], params['dist'], params['Etot'], Espan=5.0 )
     plt.title("Before relaxetion")
     plt.savefig("map2D_referece.png")
@@ -120,7 +122,7 @@ if __name__ == "__main__":
     bCoreElectrons = False
     eff.setSwitches( coreCoul=1 )
     #eff.setSwitches( coreCoul=0 )
-    eff.preAllocateXYZ("export/scan_data/angdistscan_H2O.xyz", Rfac=-1.35, bCoreElectrons=bCoreElectrons )
+    eff.preAllocateXYZ("export/scan_data/angdistscan_CH4.xyz", Rfac=-1.35, bCoreElectrons=bCoreElectrons )
     eff.getBuffs()
     eff.info()
     #eff.aPars[0,2]=1
@@ -129,7 +131,8 @@ if __name__ == "__main__":
     #eff.processXYZ( "export/scan_data/angdistscan_H2O.xyz", bOutXYZ=True, outEs=outEs, bCoreElectrons=False );
     #eff.processXYZ( "export/scan_data/angdistscan_H2O.xyz", bOutXYZ=True, outEs=outEs, bCoreElectrons=True, nstepMax=1000, dt=0.001, Fconv=1e-3, ialg=2 );
     #eff.processXYZ( "export/scan_data/angdistscan_H2O.xyz", bOutXYZ=True, outEs=outEs, bCoreElectrons=bCoreElectrons, bChangeCore=False, bChangeEsize=False, nstepMax=0 );
-    eff.processXYZ( "export/scan_data/angdistscan_H2O.xyz", bOutXYZ=True, outEs=outEs, bCoreElectrons=bCoreElectrons, bChangeCore=False, bChangeEsize=True, nstepMax=10000, dt=0.005, Fconv=1e-3, ialg=2 );
+    eff.processXYZ( "export/scan_data/angdistscan_CH4.xyz", bOutXYZ=True, outEs=outEs, bCoreElectrons=bCoreElectrons, bChangeCore=False, bChangeEsize=True, nstepMax=10000, dt=0.005, Fconv=1e-3, ialg=2 , KRSrho=theta0 )
+
     #print(outEs)
     plot_energy_landscape( params['ang'], params['dist'], outEs[:,0] )
     plt.title("After relaxetion")

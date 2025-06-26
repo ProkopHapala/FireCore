@@ -106,7 +106,7 @@ def save_simulation(angleArr, distArr, allEtot, flexVar, variance, fileToSavePat
             f.write(" ".join(f"{val:.6f}" for val in etot_row) + "\n")
             f.write("\n")  # blank line between each block
 
-def get_variance(theta):
+def get_variance(theta): #Function we need to minimize
     outEs = np.zeros((nrec,5))
     eff.processXYZ(elementPath, bOutXYZ=True, outEs=outEs, bCoreElectrons=bCoreElectrons, bChangeCore=False, bChangeEsize=True, nstepMax=10000, dt=0.005, Fconv=1e-3, ialg=2, KRSrho=theta )
     outEsdiff = np.zeros((nrec,5))
