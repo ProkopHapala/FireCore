@@ -24,6 +24,10 @@ Mat3d prelat_dlvec;
 #endif // WITH_LUA
 
 int main(int argc, char *argv[]){
+
+    //  checking new _assert macro from globals.h
+    //_assert(0>1, double a=2; printf("HELLO a(%g)+2= %g \n", a, a+2 ); exit(0); );
+
 	SDL_Init(SDL_INIT_VIDEO);
 	SDL_GL_SetAttribute(SDL_GL_SHARE_WITH_CURRENT_CONTEXT, 1);
     SDL_GL_SetAttribute(SDL_GL_MULTISAMPLESAMPLES, 8);

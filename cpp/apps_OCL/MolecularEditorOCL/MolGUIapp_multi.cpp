@@ -30,17 +30,24 @@ int main(int argc, char *argv[]){
     app  = new MolGUI( junk, DM.w-100, DM.h-100, W );
 
     #include "MolGUIapp_argv.h"
+    DEBUG
     funcs["-m"]={1,[&](const char** ss){ sscanf( ss[0], "%i", &W->nSystems ); }}; // number of systems
+    DEBUG
+    funcs["-tex"]={1,[&](const char** ss){ int i; sscanf( ss[0], "%i", &i ); printf("ARG -tex=%i \n", i); W->ocl.bUseTexture=i; printf("W->ocl.bUseTexture=%i \n", W->ocl.bUseTexture); }}; // use texture for gridFF, boolean
+    DEBUG
 
 #ifdef WITH_LUA
     theLua = initMyLua();
     initMyLua_multi( theLua );
     funcs["-lua0"]={1,[&](const char** ss){ if( Lua::dofile(theLua,ss[0]) ){ printf( "ERROR in funcs[-lua0] dofile(%s) => exit()\n", ss[0] ); exit(0); }; }};
 #endif // WITH_LUA
-
+    
+    DEBUG
 	process_args( argc, argv, funcs );
+    DEBUG   
     //W->go.constrs.printSizes();
     W->init();
+    DEBUG
     //W->go.constrs.printSizes();
     app->bindMolWorld( W );
     //W->go.constrs.printSizes();

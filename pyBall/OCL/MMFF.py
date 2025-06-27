@@ -1,87 +1,37 @@
 import numpy as np
-
-import numpy as np
 import math
+import os
+from . import MMparams
 
 # Constants (Define these based on your simulation requirements)
 Lepair = 1.5    # Example bond length for electron pairs
 Kepair = 100.0  # Example bond stiffness for electron pairs
-deg2rad = math.pi / 180.0
+deg2rad = np.pi / 180.0
 
-class AtomType:
+verbosity = 0
+
+def initAtomProperties(mol, atom_types, capping_atoms={'H'}):
+    """Initialize atom properties (npi, nep, isNode) based on atom types.
+    
+    Args:
+        mol: AtomicSystem object
+        atom_types: Dictionary of AtomType objects
+        capping_atoms: Set of element symbols for capping atoms (default: {'H'})
     """
-    Represents the parameters for each atom type.
-    """
-    def __init__(self, name, Kss, Asp, Ksp, Kpp, npi=0, ne=0):
-        """
-        Initializes the AtomType.
-
-        Parameters:
-        - name (str): Name of the atom type (e.g., 'C', 'H').
-        - Kss (float): Stiffness for sigma-sigma interactions.
-        - Asp (float): Angle parameter in degrees.
-        - Ksp (float): Stiffness for pi-sigma interactions.
-        - Kpp (float): Stiffness for pi-pi interactions.
-        - npi (int): Number of pi-orbitals.
-        - ne (int): Number of electron pairs.
-        """
-        self.name = name
-        self.Kss = Kss
-        self.Asp = Asp
-        self.Ksp = Ksp
-        self.Kpp = Kpp
-        self.npi = npi
-        self.ne = ne
-
-class Bond:
-    """
-    Represents a bond between two atoms.
-    """
-    def __init__(self, i, j, l0, k):
-        """
-        Initializes the Bond.
-
-        Parameters:
-        - i (int): Index of the first atom.
-        - j (int): Index of the second atom.
-        - l0 (float): Equilibrium bond length.
-        - k (float): Bond stiffness.
-        """
-        self.i = i
-        self.j = j
-        self.l0 = l0
-        self.k = k
-
-    def get_neighbor_atom(self, atom_index):
-        """
-        Given one atom index, returns the index of the other atom in the bond.
-
-        Parameters:
-        - atom_index (int): Index of one atom in the bond.
-
-        Returns:
-        - int: Index of the other atom.
-        """
-        return self.j if atom_index == self.i else self.i
-
-class Dihedral:
-    """
-    Represents a dihedral (torsion) between four atoms.
-    """
-    def __init__(self, atoms, a0, k, n):
-        """
-        Initializes the Dihedral.
-
-        Parameters:
-        - atoms (tuple of int): Tuple of four atom indices defining the dihedral.
-        - a0 (float): Equilibrium dihedral angle in radians.
-        - k (float): Dihedral stiffness.
-        - n (int): Periodicity of the dihedral.
-        """
-        self.atoms = atoms  # Tuple of four atom indices
-        self.a0 = a0        # Equilibrium angle in radians
-        self.k = k          # Stiffness
-        self.n = n          # Periodicity
+    natoms = mol.natoms
+    npi_list = np.zeros(natoms, dtype=np.int32)
+    nep_list = np.zeros(natoms, dtype=np.int32)
+    isNode   = np.ones(natoms,  dtype=np.int32)  # Default to node
+    for i in range(natoms):
+        atom_name = mol.enames[i]
+        if atom_name in atom_types:
+            at = atom_types[atom_name]
+            npi_list[i] = at.npi
+            nep_list[i] = at.nepair
+            # Mark as capping if element is in capping set
+            if at.element_name in capping_atoms:
+                isNode[i] = 0
+    return npi_list, nep_list, isNode
 
 class MMFF:
     """
@@ -96,7 +46,6 @@ class MMFF:
         - verbosity (int): Level of verbosity for logging.
         """
         self.bTorsion = bTorsion
-        self.verbosity = verbosity
         self.natoms = 0
         self.nnode  = 0
         self.ncap   = 0
@@ -104,9 +53,16 @@ class MMFF:
         self.ntors  = 0
         self.nDOFs  = 0
 
+        # Load element_types and atom_types if needed for UFF calculations
+        if not hasattr(self, 'element_types') or not hasattr(self, 'atom_types'):
+            base_path = os.path.dirname(os.path.abspath(__file__))
+            data_path = os.path.join(base_path, "../../cpp/common_resources/")
+            self.element_types = MMparams.read_element_types(os.path.join(data_path, 'ElementTypes.dat'))
+            self.atom_types = MMparams.read_atom_types(os.path.join(data_path, 'AtomTypes.dat'), self.element_types)
+
         # Initialize arrays
-        self.apos = None          # [nvecs,  3 ] Positions
-        self.fapos = None         # [nvecs,  3 ] Forces
+        self.apos = None          # [nvecs,  4 ] Positions
+        self.fapos = None         # [nvecs,  4 ] Forces
         self.atypes = None        # [natoms    ]  Atom types 
         self.neighs = None        # [natoms, 4 ]  Neighbor indices 
         self.neighCell = None     # [natoms, 4 ] Neighbor cell indices
@@ -123,11 +79,19 @@ class MMFF:
         # self.constrK = None       # [natoms, 4   ] Constraint stiffness
         self.invLvec = None       # [nSystems, 9 ] Inverse lattice vectors
         self.pbc_shifts = None    # [nSystems, 3 ] PBC shifts
+        self.nPBC = None
+        self.npbc = None
+
+        self.capping_atoms = {'H'}
+        
+        self.dt     = 0.01
+        self.damp   = 0.1
+        self.Flimit = 10.0
 
         # Pi-orbitals and electron pairs
         self.pipos = None         # [natoms, 3] Pi-orbital orientations
 
-    def realloc(self, nnode, ncap, ntors=0):
+    def realloc(self, nnode, ncap, ntors=0, nPBC=(0,0,0) ):
         """
         Reallocates memory for MMFF parameters based on the system size.
 
@@ -136,6 +100,8 @@ class MMFF:
         - ncap (int): Number of capping atoms.
         - ntors (int): Number of torsions.
         """
+        self.npbc = (nPBC[0]*2+1)*(nPBC[1]*2+1)*(nPBC[2]*2+1)
+        self.nPBC = nPBC
         self.nnode  = nnode
         self.ncap   = ncap
         self.natoms = nnode + ncap
@@ -143,12 +109,15 @@ class MMFF:
         self.ntors  = ntors
         self.nDOFs  = self.nvecs * 3
 
+        if verbosity > 0:
+            print(f"MMFF::realloc() natoms {self.natoms} nnode {self.nnode} ncap {self.ncap} nvecs {self.nvecs} ntors {self.ntors} nDOFs {self.nDOFs} nPBC {self.nPBC} npbc {self.npbc}")
+
         # Initialize arrays with default values
-        self.apos       = np.full((self.nvecs, 3), 0.0, dtype=np.float32)
-        self.fapos      = np.full((self.nvecs, 3), 0.0, dtype=np.float32)
-        self.atypes     = np.full( self.natoms,    -1, dtype=np.int32)
+        self.apos       = np.full((self.nvecs, 4), 0.0, dtype=np.float32)
+        self.fapos      = np.full((self.nvecs, 4), 0.0, dtype=np.float32)
+        self.atypes     = np.full( self.natoms,    -1,  dtype=np.int32)
         self.neighs     = np.full((self.natoms,4), -1,  dtype=np.int32)
-        self.neighCell  = np.full((self.natoms,4), -1,  dtype=np.int32)
+        self.neighCell  = np.full((self.natoms,4),  0,  dtype=np.int32)
         self.REQs       = np.full((self.natoms,4), 0.0, dtype=np.float32)
         self.apars      = np.full((self.nnode, 4), 0.0, dtype=np.float32)
         self.bLs        = np.full((self.nnode, 4), 0.0, dtype=np.float32)
@@ -160,23 +129,9 @@ class MMFF:
         # self.torsParams = np.full((self.ntors, 4),  0.0, dtype=np.float32)
         # self.constr     = np.full((self.natoms, 4), 0.0, dtype=np.float32)
         # self.constrK    = np.full((self.natoms, 4), 0.0, dtype=np.float32)
-        self.invLvec    = np.full((1, 9), 0.0,  dtype=np.float32)  # Assuming single system; modify as needed
-        self.pbc_shifts = np.full((1, 3), 0.0,  dtype=np.float32)
+        self.invLvec    = np.full((3,3), 0.0,  dtype=np.float32)  # Assuming single system; modify as needed
+        self.pbc_shifts = np.full((self.npbc, 3), 0.0,  dtype=np.float32)
         self.pipos = np.zeros((self.natoms, 3), dtype=np.float32)
-
-    def countPiE(self, atomic_system):
-        """
-        Counts the total number of pi-orbitals and electron pairs.
-
-        Parameters:
-        - atomic_system (AtomicSystem): The atomic system.
-
-        Returns:
-        - (int, int): Tuple of total pi-orbitals and electron pairs.
-        """
-        npi = sum(atomic_system.npi_list) if hasattr(atomic_system, 'npi_list') else 0
-        ne = sum(atomic_system.nep_list) if hasattr(atomic_system, 'nep_list') else 0
-        return npi, ne
 
     def make_back_neighs(self):
         """
@@ -192,52 +147,69 @@ class MMFF:
                             self.back_neighs[ia, k] = ib
                             break
 
-    def toMMFFsp3_loc(self, atomic_system, AtomTypeDict, bRealloc=True, bEPairs=True, bUFF=False):
+    def toMMFFsp3_loc(self, mol, atom_types, bRealloc=True, bEPairs=False, bUFF=False):
         """
         Converts an AtomicSystem to the MMFFsp3_loc representation.
 
         Parameters:
-        - atomic_system (AtomicSystem): The atomic system containing all data.
-        - AtomTypeDict (dict): Dictionary mapping atom names to AtomType instances.
+        - mol (AtomicSystem): The atomic system containing all data.
+        - atom_types (dict): Dictionary mapping atom names to AtomType instances.
         - bRealloc (bool): Flag to indicate if reallocation is needed.
         - bEPairs (bool): Flag to include electron pairs.
         - bUFF (bool): Flag to use UFF parameters.
         """
-        ang0s = [109.5 * math.pi / 180.0, 120.0 * math.pi / 180.0, 180.0 * math.pi / 180.0]  # in radians
+        ang0s = [109.5 * np.pi / 180.0, 120.0 * np.pi / 180.0, 180.0 * np.pi / 180.0]  # in radians
 
-        nAmax = len(atomic_system.apos)
-        nCmax = len(atomic_system.ngs)  # Assuming 'ngs' is a list of neighbor lists per atom
-        npi_total, ne_total = self.countPiE(atomic_system)
+        npi_list = getattr(mol, 'npi_list', [atom_types[name].npi for name in mol.enames    ])
+        nep_list = getattr(mol, 'nep_list', [atom_types[name].nepair for name in mol.enames ]) 
+        isNode   = getattr(mol, 'isNode', [0 if atom_types[name].element_name in self.capping_atoms else 1 for name in mol.enames])
+        REQs     = getattr(mol, 'REQs', MMparams.generate_REQs_from_atom_types(mol, atom_types))
+        #self.REQs[:,:] = REQs[:,:] # self.REQs not yet allocated
+
+        natom  = len(mol.apos)
+        nCmax  = len(mol.ngs)  # Assuming 'ngs' is a list of neighbor lists per atom
+        ngs    = mol.ngs
+        nngs   = np.zeros(len(ngs), dtype=np.int32)
+        
+        if isinstance(ngs[0], dict):
+            if verbosity > 0:
+                print( "!!!!!!!!!!! CONVERT FROM DICT TO ARRAY !!!!!!!!!!!!" )
+            ngs_ = np.empty((nCmax,4), dtype=np.int32)
+            ngbs = np.empty((nCmax,4), dtype=np.int32)
+            ngs_[:,:]=-1
+            for ia, ng in enumerate(ngs):
+                i = 0
+                nngs[ia] = len(ng)
+                for k, v in ng.items():
+                    ngbs[ia,i] = v # neigh bond
+                    ngs_[ia,i] = k # neigh atom
+                    i += 1
+            ngs = ngs_
+
+        
+        npi_total = sum(npi_list) 
+        ne_total  = sum(nep_list) 
         if not bEPairs:
             ne_total = 0
-        nconf = nCmax
-        ncap = nAmax - nconf
-        nb = len(atomic_system.bonds)
+        
+        # count isNode > 0
+        nnode = isNode.count(1)
+        ncap  = natom - nnode
+        nb    = len(mol.bonds)
+        
+        if verbosity > 0:
+            print(f"MMFF::toMMFFsp3_loc() natom {natom} nnode {nnode} ncap {ncap} nb {nb} npi {npi_total} ne {ne_total}")
 
-        if self.verbosity > 0:
-            print(f"MM::Builder::toMMFFsp3_loc() nconf {nconf} ncap {ncap} npi {npi_total} ne {ne_total}")
-
-        ntors = len(atomic_system.dihedrals) if self.bTorsion else 0
+        ntors = 0
         if bRealloc:
-            self.realloc(nnode=nconf, ncap=ncap + ne_total, ntors=ntors)
-
-        if self.bTorsion:
-            for i in range(self.ntors):
-                dih = atomic_system.dihedrals[i]
-                # Assuming dih.atoms is a tuple/list of four atom indices
-                # Store the first atom index for tors2atom as per C++ code
-                self.tors2atom[i] = dih.atoms[0]
-                self.torsParams[i] = np.array([
-                    math.cos(dih.a0),
-                    math.sin(dih.a0),
-                    dih.k,
-                    float(dih.n)
-                ], dtype=np.float32)
+            self.realloc(nnode=nnode, ncap=ncap + ne_total, ntors=ntors)
+            self.REQs[:,:] = REQs[:,:]
 
         # Assign atom types and positions
-        etyp = AtomTypeDict.get("E", None)
+        etyp = atom_types.get("E", None)
         if etyp is None:
-            raise ValueError("AtomTypeDict does not contain key 'E'.")
+            raise ValueError("atom_types does not contain key 'E'.")
+
 
         # Initialize neighbors
         self.neighs[:] = -1  # Set all neighbors to -1
@@ -247,54 +219,61 @@ class MMFF:
         self.Kpp[:] = 0.0
 
         # Assign positions and types
-        for ia in range(nAmax):
-            A_pos = atomic_system.apos[ia]
-            A_type_index = atomic_system.atypes[ia]
-            A_ename = atomic_system.enames[ia]
-            atom_type = AtomTypeDict.get(A_ename, None)
+        for ia in range(natom):
+            A_pos        = mol.apos[ia]
+            A_type_index = mol.atypes[ia]
+            A_ename      = mol.enames[ia]
+            atom_type    = atom_types.get(A_ename, None)
             if atom_type is None:
-                raise ValueError(f"Atom type '{A_ename}' not found in AtomTypeDict.")
+                raise ValueError(f"Atom type '{A_ename}' not found in atom_types.")
 
-            self.apos[ia] = A_pos.astype(np.float32)
-            self.atypes[ia] = A_type_index
+            self.apos  [ia,:3] = A_pos.astype(np.float32)
+            self.atypes[ia]    = A_type_index
 
-            if atomic_system.iconf[ia] >= 0:
+            ngi   = ngs[ia]
+            nbond = nngs[ia]
+
+            if isNode[ia] <= 0:
+                self.neighs[ia,:] =  ngi
+            else:
                 # Assign parameters
-                conf_index = atomic_system.iconf[ia]
-                # Assuming 'ngs' is a list of neighbor indices per atom
-                conf_nbond = len(atomic_system.ngs[ia])
+                conf_index = 0  # Default configuration index, no longer using iconf
+                # Try to get neighbors for this atom, if available
                 conf_npi = atom_type.npi
-                conf_ne = atom_type.ne
+                conf_ne  = atom_type.nepair
 
                 if conf_npi > 2:
                     print(f"ERROR in MM::Builder::toMMFFsp3_loc(): atom[{ia}].conf.npi({conf_npi}) > 2 => exit()")
-                    self.printAtomConf(ia, atomic_system)
+                    self.printAtomConf(ia, mol)
                     exit(0)
 
                 # Angle parameters
-                ang0 = atom_type.Asp * deg2rad
+                ang0 = atom_type.Ass * deg2rad
                 ang0 *= 0.5
-                self.apars[ia, 0] = math.cos(ang0)    # ssC0
-                self.apars[ia, 1] = math.sin(ang0)    # ssC1
+                self.apars[ia, 0] = np.cos(ang0)    # ssC0
+                self.apars[ia, 1] = np.sin(ang0)    # ssC1
                 self.apars[ia, 2] = atom_type.Kss * 4.0  # ssK
-                self.apars[ia, 3] = math.sin(atom_type.Asp * deg2rad)  # piC0
+                self.apars[ia, 3] = np.sin(atom_type.Ass * deg2rad)  # piC0
 
-                # Setup neighbors
-                ngs = atomic_system.ngs[ia]  # Neighbor list for atom ia
+
+                if verbosity > 0: print( "nbond", nbond )
+                # Setup neighbors - ngs is already populated above
                 hs = np.zeros((4, 3), dtype=np.float32)
-                for k in range(conf_nbond):
-                    if k >= len(ngs):
-                        break
-                    ib = ngs[k]
-                    if ib < 0 or ib >= nAmax:
+                for k in range(nbond):
+                    ja = ngi[k]  # ja is the atom index of the neighbor
+                    if verbosity > 2: print( "ia,ja", ia,ja )
+                    if ja < 0 or ja >= natom:
                         continue
-                    bond = atomic_system.bonds[ib]
-                    ja = bond.get_neighbor_atom(ia)
-                    Aj = atomic_system.apos[ja]
-                    jtyp_ename = atomic_system.enames[ja]
-                    jtyp = AtomTypeDict.get(jtyp_ename, None)
+                        
+                    # Find the bond between atoms ia and ja
+                    bond_index = ngbs[ia][k]
+
+                    bond = mol.bonds[bond_index]
+                    Aj = mol.apos[ja]
+                    jtyp_ename = mol.enames[ja]
+                    jtyp = atom_types.get(jtyp_ename, None)
                     if jtyp is None:
-                        raise ValueError(f"Atom type '{jtyp_ename}' not found in AtomTypeDict.")
+                        raise ValueError(f"Atom type '{jtyp_ename}' not found in atom_types.")
 
                     hs_k = Aj - A_pos
                     norm = np.linalg.norm(hs_k)
@@ -307,14 +286,13 @@ class MMFF:
                     # Assign neighbor
                     self.neighs[ia, k] = ja
 
-                    # Assign bond parameters
-                    rij, kij = self.assignBondParamsUFF(ib, atomic_system, AtomTypeDict)
-                    self.bLs[ia, k] = rij
-                    self.bKs[ia, k] = kij
-
                     if bUFF:
                         # Assign bond parameters using UFF
-                        rij, kij = self.assignBondParamsUFF(ib, atomic_system, AtomTypeDict)
+                        rij, kij = self.assignBondParamsUFF(ibond_index, ia, ja, mol, atom_types)
+                        self.bLs[ia, k] = rij
+                        self.bKs[ia, k] = kij
+                    else:
+                        rij, kij = self.assignBondParamsSimple(ia, ja, mol, atom_types)
                         self.bLs[ia, k] = rij
                         self.bKs[ia, k] = kij
 
@@ -325,35 +303,36 @@ class MMFF:
                         self.Ksp[ia, k] = 0.0
 
                     # Assign Kpp
-                    nej = self.getAtom_ne(ja, atomic_system)
-                    npij = self.getAtom_npi(ja, atomic_system)
+                    #nej  = nep_list[ja]
+                    #npij = npi_list[ja]
                     if atom_type.Kpp > 0 and jtyp.Kpp > 0:
-                        self.Kpp[ia, k] = math.sqrt(atom_type.Kpp * jtyp.Kpp)
+                        self.Kpp[ia, k] = np.sqrt(atom_type.Kpp * jtyp.Kpp)
                     else:
                         self.Kpp[ia, k] = 0.0
 
                 # Setup configuration geometry based on bonds
-                hs_filled = self.makeConfGeom(nb=conf_nbond, npi=conf_npi)
+                
+                hs_filled = self.makeConfGeom(nb=nbond, npi=conf_npi)
                 # hs_filled is a (4,3) array; assign pi-orbital orientations
-                if conf_nbond < 4:
+                if nbond < 4:
                     # Fill remaining hs with existing directions
-                    for idx in range(conf_nbond, 4):
+                    for idx in range(nbond, 4):
                         hs_filled[idx] = hs[idx]  # Existing bond directions or zeros
                 self.pipos[ia] = hs_filled[3]  # Assign the fourth direction as pi orientation
 
                 if bEPairs:
                     # Generate electron pairs
-                    for k in range(conf_nbond, conf_nbond + conf_ne):
+                    for k in range(nbond, nbond + conf_ne):
                         if k >= 4:
-                            print(f"WARNING: Atom {ia} has more than 4 neighbors; additional electron pairs are ignored.")
-                            break
-                        ie = nconf + ncap + k - conf_nbond
+                            print(f"ERROR: Atom {ia} has more than 4 neighbors; additional electron pairs are ignored.")
+                            exit(0)
+                        ie = nnode + ncap + k - nbond
                         if ie >= self.nvecs:
                             print(f"ERROR: Electron pair index {ie} exceeds nvecs {self.nvecs}.")
-                            continue
+                            exit(0)
                         self.neighs[ia, k] = ie
-                        self.apos[ie] = self.apos[ia] + hs_filled[k - conf_nbond] * Lepair
-                        self.atypes[ie] = AtomTypeDict["E"].name  # Assuming 'E' is the type index for electron pairs
+                        self.apos[ie] = self.apos[ia] + hs_filled[k - nbond] * Lepair
+                        self.atypes[ie] = atom_types["E"].name  # Assuming 'E' is the type index for electron pairs
                         self.bKs[ia, k] = Kepair
                         self.bLs[ia, k] = Lepair
                         if conf_npi > 0:
@@ -361,59 +340,102 @@ class MMFF:
                         else:
                             self.Ksp[ia, k] = 0.0
    
-    def assignBondParamsUFF(self, ib, atomic_system, AtomTypeDict):
-        """
-        Assigns bond parameters using UFF (Universal Force Field).
+    def assignBondParamsSimple(self, ia, ja, mol, atom_types ):
+        ti = atom_types[mol.enames[ia]]
+        tj = atom_types[mol.enames[ja]]
+        rij = ti.Ruff + tj.Ruff
+        kij = np.sqrt( tj.Kss * ti.Kss )
+        return rij, kij
+        
 
-        Parameters:
-        - ib (int): Index of the bond in the atomic system's bond list.
-        - atomic_system (AtomicSystem): The atomic system containing all data.
-        - AtomTypeDict (dict): Dictionary mapping atom names to AtomType instances.
+    def assignBondParamsUFF(self, ib, ai, aj, mol, atom_types):
+        """
+        Calculate bond parameters for a bond in the molecule using UFF.
+
+        Args:
+        - ib (int): Bond index.
+        - ai (int): Index of the first atom in the bond.
+        - aj (int): Index of the second atom in the bond.
+        - mol (AtomicSystem): Molecular system.
+        - atom_types (dict): Dictionary of atom types.
 
         Returns:
         - (float, float): Tuple of bond length (rij) and bond stiffness (kij).
         """
-        bond = atomic_system.bonds[ib]
-        ai = bond.i
-        aj = bond.j
-        if atomic_system.iconf[ai] >= 0:
-            npi = atomic_system.npi_list[ai]
+        bond = mol.bonds[ib]
+        
+        # Load element types if not already loaded
+        if not hasattr(self, 'element_types'):
+            base_path = os.path.dirname(os.path.abspath(__file__))
+            data_path = os.path.join(base_path, "../../cpp/common_resources/")
+            self.element_types = MMparams.read_element_types(os.path.join(data_path, 'ElementTypes.dat'))
+        
+        # Use getattr to get isNode or create it if not exist
+        capping_atoms = ['H', 'F', 'Cl', 'Br', 'I']
+        isNode = getattr(mol, 'isNode', 
+                         np.array([0 if atom_types[e].element_name in capping_atoms else 1 
+                                  for e in mol.enames]))
+        
+        # Use getattr to get npi_list or create it if not exist
+        npi_list = getattr(mol, 'npi_list', 
+                          np.array([atom_types[e].npi for e in mol.enames]))
+        
+        # Get the number of pi electrons for each atom in the bond
+        if isNode[ai]:
+            npi = npi_list[ai]
         else:
             npi = 0
-        if atomic_system.iconf[aj] >= 0:
-            npj = atomic_system.npi_list[aj]
+        if isNode[aj]:
+            npj = npi_list[aj]
         else:
             npj = 0
 
-        ti = AtomTypeDict[atomic_system.enames[ai]]
-        tj = AtomTypeDict[atomic_system.enames[aj]]
-        # Assuming ElementType is not needed; use Eaff directly
-        Ei = abs(0.0)  # Replace with actual Eaff if available
-        Ej = abs(0.0)  # Replace with actual Eaff if available
-        Qi = 0.0         # Replace with actual Quff if available
-        Qj = 0.0         # Replace with actual Quff if available
+        # Get atom types for both atoms
+        ti = atom_types[mol.enames[ai]]
+        tj = atom_types[mol.enames[aj]]
+        
+        # Get element properties
+        element_i = self.element_types[ti.element_name]
+        element_j = self.element_types[tj.element_name]
+        
+        # Get electronegativities from ElementType
+        Ei = element_i.Eaff  # Electronegativity
+        Ej = element_j.Eaff  # Electronegativity
+        
+        # Use Qbase from AtomType for charges
+        Qi = ti.Qbase
+        Qj = tj.Qbase
 
+        # Bond order calculation
         BO = 1 + min(npi, npj)
-        ri = getattr(ti, 'Ruff', 1.5)  # Replace with actual Ruff if available
-        rj = getattr(tj, 'Ruff', 1.5)  # Replace with actual Ruff if available
+        
+        # UFF natural bond radius from AtomType
+        ri = ti.Ruff
+        rj = tj.Ruff
 
-        # Compute rBO and rEN
+        # Compute rBO (bond order correction) and rEN (electronegativity correction)
         if BO > 0:
-            rBO = -0.1332 * (ri + rj) * math.log(BO)
+            rBO = -0.1332 * (ri + rj) * np.log(BO)
         else:
             rBO = 0.0
+            
         denominator = Ei * ri + Ej * rj
-        if denominator != 0:
-            rEN = ri * rj * (math.sqrt(Ei) - math.sqrt(Ej))**2 / denominator
+        if denominator != 0.0 and Ei >= 0 and Ej >= 0:
+            rEN = ri * rj * ((np.sqrt(Ei) - np.sqrt(Ej))**2) / denominator
         else:
+            # Default to zero if we can't calculate properly
             rEN = 0.0
+
+        # Calculate the natural bond length
         rij = ri + rj + rBO - rEN
 
-        # Compute kij
-        kij = 28.79898 * Qi * Qj / (rij**3)  # Adjust constants as needed
+        # Calculate force constant in kcal/(mol*Angstrom^2)
+        Zi = Qi  # Formal charge
+        Zj = Qj  # Formal charge
+        kij = 664.12 * ((Zi * Zj) / (rij**3)) * ri * rj
 
-        if self.verbosity > 1:
-            print(f"bondUFF[{ti.name},{tj.name},{BO}] r={rij}({ri},{rj}|{rBO},{rEN}) k={kij}({Qi},{Qj}) E=({Ei},{Ej}) {ti.name} {tj.name} {getattr(ti, 'element', 'N/A')} {getattr(tj, 'element', 'N/A')}")
+        # Debug information (commented out)
+        # print(f"bondUFF[{ti.name},{tj.name},{BO}] kij={kij} rij={rij}({ri},{rj}|{rBO},{rEN}) k={kij}({Qi},{Qj}) E=({Ei},{Ej}) {ti.name} {tj.name}")
 
         return (rij, kij)
 
@@ -573,22 +595,30 @@ class MMFF:
                 hs[0] = c  # Assuming hs[0] is the original bond direction
         return hs
 
-    def printAtomConf(self, ia, atomic_system):
+    def printAtomConf(self, ia, mol):
         """
         Prints the configuration of a specific atom for debugging.
 
         Parameters:
         - ia (int): Index of the atom.
-        - atomic_system (AtomicSystem): The atomic system containing all data.
+        - mol (AtomicSystem): The atomic system containing all data.
         """
-        print(f"Atom {ia} configuration:")
-        print(f"Neighbors: {self.neighs[ia]}")
-        print(f"apars: {self.apars[ia]}")
-        print(f"bLs: {self.bLs[ia]}")
-        print(f"bKs: {self.bKs[ia]}")
-        print(f"Ksp: {self.Ksp[ia]}")
-        print(f"Kpp: {self.Kpp[ia]}")
-        print(f"pipos: {self.pipos[ia]}")
+        print(f"printAtomConf({ia}) neighs: {self.neighs[ia]}", end="")
+        if ia < self.nnode:
+            print(f" apars: {self.apars[ia]} bLs: {self.bLs[ia]} bKs: {self.bKs[ia]} Ksp: {self.Ksp[ia]} Kpp: {self.Kpp[ia]} pipos: {self.pipos[ia]}")
+        else:
+            print()
+
+    def printArrays(self):
+        print("MMFF::printArrays(): natoms: {self.natoms}  nvecs: {self.nvecs}  nnode: {self.nnode}  ncap: {self.ncap}  ntors: {self.ntors}")
+        print("apos",   self.apos )
+        print("REQs",   self.REQs )
+        print("neighs", self.neighs )
+        print("bLs",    self.bLs )
+        print("bKs",    self.bKs )
+        print("apars",  self.apars )
+        print("Ksp",    self.Ksp )
+        print("Kpp",    self.Kpp )
 
 # IF MAIN
 if __name__ == "__main__":
@@ -596,14 +626,14 @@ if __name__ == "__main__":
     from ..atomicUtils import AtomicSystem
 
     # Define AtomType instances with npi and ne
-    AtomTypeDict = {
+    atom_types = {
         "C": AtomType(name="C", Kss=300.0, Asp=109.5, Ksp=100.0, Kpp=150.0, npi=0, ne=0),
-        "H": AtomType(name="H", Kss=200.0, Asp=109.5, Ksp=50.0, Kpp=75.0, npi=0, ne=0),
+        "H": AtomType(name="H", Kss=200.0, Asp=109.5, Ksp=50.0,  Kpp=75.0,  npi=0, ne=0),
         "O": AtomType(name="O", Kss=350.0, Asp=109.5, Ksp=120.0, Kpp=180.0, npi=0, ne=0),
-        "E": AtomType(name="E", Kss=0.0, Asp=0.0, Ksp=0.0, Kpp=0.0, npi=0, ne=1)  # Electron pairs
+        "E": AtomType(name="E", Kss=0.0,   Asp=0.0,   Ksp=0.0,   Kpp=0.0,   npi=0, ne=1)  # Electron pairs
     }
 
-    atomic_system = AtomicSystem(
+    mol = AtomicSystem(
         apos=np.array([[0.0, 0.0, 0.0],
                     [1.0, 0.0, 0.0],
                     [0.0, 1.0, 0.0],
@@ -633,12 +663,12 @@ if __name__ == "__main__":
 
     # Convert AtomicSystem to MMFFsp3_loc representation
     mmff.toMMFFsp3_loc(
-        atomic_system=atomic_system,
-        AtomTypeDict=AtomTypeDict,
+        mol=mol,
+        atom_types=atom_types,
         bRealloc=True,
         bEPairs=True,
         bUFF=False
     )
 
     # Optionally, print atom configurations for debugging
-    mmff.printAtomConf(0, atomic_system)  # Replace 0 with desired atom index
+    mmff.printAtomConf(0, mol)  # Replace 0 with desired atom index

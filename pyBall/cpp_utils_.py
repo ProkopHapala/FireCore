@@ -1,4 +1,3 @@
-
 import os
 import ctypes
 
@@ -13,7 +12,11 @@ def work_dir( v__file__ ):
     return os.path.dirname( os.path.realpath( v__file__ ) )
 
 PACKAGE_PATH = work_dir( __file__ )
-BUILD_PATH   = os.path.normpath( PACKAGE_PATH + '../../../cpp/Build/libs/CombatModels' )
+
+# Base root path (FireCore repository root)
+BASE_PATH = os.path.normpath(os.path.join(PACKAGE_PATH, '../'))
+# Default library path
+BUILD_PATH = os.path.normpath(os.path.join(BASE_PATH, 'cpp/Build/libs/'))
 
 #print (" PACKAGE_PATH : ", PACKAGE_PATH)
 #print (" BUILD_PATH   : ", BUILD_PATH)
@@ -27,16 +30,18 @@ def set_args_dict( lib, argDict):
 
 def compile_lib( name,
         #FFLAGS = "-std=c++11 -Og -g -Wall",
-        FFLAGS = "-std=c++11 -O3 -ftree-vectorize -unroll-loops -ffast-math",
+        #FFLAGS = "-std=c++11 -O3 -ftree-vectorize -unroll-loops -ffast-math",
+        FFLAGS = "-std=c++11 -Ofast",
         LFLAGS = "-I/usr/local/include/SDL2 -lSDL2",
         path   = BUILD_PATH,
         clean  = True,
+        is_cuda=False
     ):
     lib_name = name+lib_ext
     print (" COMPILATION OF : "+name)
     if path is not None:
         dir_bak = os.getcwd()
-        os.chdir( path );
+        os.chdir( path )
     print (os.getcwd())
     if clean:
         try:
@@ -44,8 +49,36 @@ def compile_lib( name,
             os.remove( name+".o" ) 
         except:
             pass 
-    os.system("g++ "+FFLAGS+" -c -fPIC "+name+".cpp -o "+name+".o "+LFLAGS )
-    os.system("g++ "+FFLAGS+" -shared -Wl,-soname,"+lib_name+" -o "+lib_name+" "+name+".o "+LFLAGS)
+
+    if is_cuda:
+        # Allow unsupported compiler versions and add header include paths
+        cpp_root = os.path.normpath(os.path.dirname(path) + "/../..")
+        include_paths = f"-I. -I{path} -I{cpp_root} -I{cpp_root}/common -I{cpp_root}/common/dataStructures"
+        cuda_flags = f"-allow-unsupported-compiler {include_paths} -x cu -std=c++11"
+        linker_flags = "--linker-options -lstdc++,-rpath,$ORIGIN"
+        
+        print(f"CPP root path: {cpp_root}")
+        print(f"Include paths: {include_paths}")
+        print(f"CUDA flags: {cuda_flags}")
+        
+        # Compile step with detailed output
+        compile_cmd = f"nvcc {cuda_flags} -Xcompiler \"-fPIC -fvisibility=default\" -c {name}.cpp -o {name}.o"
+        print(f"Compile command: {compile_cmd}")
+        compile_result = os.system(compile_cmd)
+        if compile_result != 0:
+            print(f"Error: Compilation failed with code {compile_result}")
+        
+        # Link step with more aggressive C++ standard library linking
+        link_cmd = f"nvcc -shared {linker_flags} -o {lib_name} {name}.o -lcudart -lstdc++"
+        print(f"Link command: {link_cmd}")
+        link_result = os.system(link_cmd)
+        if link_result != 0:
+            print(f"Error: Linking failed with code {link_result}")
+    else:
+        # Regular C++ compilation
+        os.system(f"g++ {FFLAGS} -c -fPIC {name}.cpp -o {name}.o {LFLAGS}")
+        os.system(f"g++ {FFLAGS} -shared -Wl,-soname,{lib_name} -o {lib_name} {name}.o -lstdc++ {LFLAGS}")
+
     if path is not None:
         os.chdir( dir_bak )
 
@@ -58,10 +91,33 @@ def make( what="" ):
     os.system( "make "+what      )
     os.chdir ( current_directory )
 
-def loadLib( cpp_name, recompile=True, mode=ctypes.RTLD_LOCAL ):
+def loadLib( cpp_name, recompile=True, mode=ctypes.RTLD_LOCAL, is_cuda=False, path=None ):
     if recompile and recompile_glob:  
-        make(cpp_name)
-    lib_path = BUILD_PATH + "/lib" + cpp_name + lib_ext
+        if is_cuda:
+            compile_lib(cpp_name, is_cuda=True, path=path)
+        else:
+            make(cpp_name)
+    # If path is None, use the default BUILD_PATH
+    if path is None:
+        path = BUILD_PATH
+        
+    # First try the provided path
+    lib_path = os.path.join(path, "lib" + cpp_name + lib_ext)
+    
+    # If file doesn't exist, try to find it in common locations
+    if not os.path.exists(lib_path):
+        # Try Molecular subdirectory
+        molecular_path = os.path.join(path, 'Molecular')
+        molecular_lib_path = os.path.join(molecular_path, "lib" + cpp_name + lib_ext)
+        
+        if os.path.exists(molecular_lib_path):
+            lib_path = molecular_lib_path
+        else:
+            # Try using absolute path from BASE_PATH
+            base_lib_path = os.path.join(BASE_PATH, 'cpp/Build/libs/Molecular', "lib" + cpp_name + lib_ext)
+            if os.path.exists(base_lib_path):
+                lib_path = base_lib_path
+    print(f"Loading library from: {lib_path}")
     if lib_path in loaded_libs: 
         unload_lib_by_path(lib_path)  # Unload if already loaded
     lib = ctypes.CDLL(lib_path, mode) #nacita c knihovnu
@@ -166,9 +222,3 @@ def writeFuncInterfaces( func_headers, debug=False ):
         print ("\n# ", s)
         #print (sgen,"\n\n")
         print (sgen)
-
-
-
-
-
-

@@ -5,6 +5,85 @@ import matplotlib.pyplot as plt
 
 COULOMB_CONST  =    14.3996448915 
 
+
+def create_3d_grid_sampling( ns, sizes=None, dtype=np.float32 ):
+    nx, ny, nz = ns
+    if sizes is not None:
+        Lx, Ly, Lz = sizes
+    else:
+        Lx, Ly, Lz = nx, ny, nz
+    
+    grid = np.zeros((nx, ny, nz, 4), dtype=dtype)
+    # Generate normalized coordinates in [-1,1] range
+    x = np.linspace(0, Lx, nx)
+    y = np.linspace(0, Ly, ny)
+    z = np.linspace(0, Lz, nz)
+    # Create coordinate grids
+    #Xs, Ys, Zs = np.meshgrid(x, y, z, indexing='xy')
+    Xs, Ys, Zs = np.meshgrid(x, y, z, indexing='ij' )
+    return Xs, Ys, Zs
+
+def create_linear_texture(ns, sizes=None, dtype=np.float32):
+    """
+    Create a debug texture with clear coordinate patterns in each channel.
+    
+    Args:
+        ns (tuple): Grid dimensions
+        sizes (tuple): Grid sizes
+        dtype (np.dtype): Data type of the texture
+        
+    Returns:
+        np.ndarray: 4-channel texture array with shape (nz,ny,nx,4)
+        Channels: [x,y,z,x²+y²+z²]
+    """
+    Xs, Ys, Zs = create_3d_grid_sampling(ns, sizes, dtype)
+
+    # Fill texture channels
+    grid[:, :, :, 0] = Xs  # X coordinate
+    grid[:, :, :, 1] = Ys  # Y coordinate
+    grid[:, :, :, 2] = Zs  # Z coordinate
+    grid[:, :, :, 3] = (Xs**2 + Ys**2 + Zs**2)  # Squared distance
+    return grid
+
+def plot_1d_fe(x, fe, mask=(1,1,1,1), ax=None, title=None):
+    # Plot the force components
+    if ax is None: fig,ax = plt.subplots(figsize=(5,5))
+    #print("plot_1d_fe() fe = ", fe)
+    #print( x.shape, fe.shape)
+    if mask[0]: ax.plot(x, fe[:,0], 'b-', label='Fx')
+    if mask[1]: ax.plot(x, fe[:,1], 'g-', label='Fy')
+    if mask[2]: ax.plot(x, fe[:,2], 'r-', label='Fz')
+    if mask[3]: ax.plot(x, fe[:,3], 'k-', label='E')
+    ax.set_xlabel('position')
+    ax.set_ylabel('force / energy')
+    if title is not None: ax.set_title(title)
+    ax.legend()
+    ax.grid(True, alpha=0.3)
+    #ax.tight_layout()
+
+    #plt.savefig('gridff_force_scan.png')
+    #print("Saved force scan plot to gridff_force_scan.png")
+
+
+def plot_2d_fe(fe, mask=(1,1,1,1), ax=None, title=None):
+    nsub=sum(mask)
+    if ax is None: fig,axs = plt.subplots(1, nsub, figsize=(3*nsub,3))
+    isub=0
+    if mask[0]: ax=axs[isub]; ax.imshow(fe[:, :, 0], origin='lower'); ax.set_title('Fx'); ax.figure.colorbar(ax.images[0]); isub+=1
+    if mask[1]: ax=axs[isub]; ax.imshow(fe[:, :, 1], origin='lower'); ax.set_title('Fy'); ax.figure.colorbar(ax.images[0]); isub+=1
+    if mask[2]: ax=axs[isub]; ax.imshow(fe[:, :, 2], origin='lower'); ax.set_title('Fz'); ax.figure.colorbar(ax.images[0]); isub+=1
+    if mask[3]: ax=axs[isub]; ax.imshow(fe[:, :, 3], origin='lower'); ax.set_title('E');  ax.figure.colorbar(ax.images[0]); isub+=1
+    plt.tight_layout()
+    if title is not None: plt.title(title)
+    plt.savefig('gridff_force_scan.png')
+    #plt.show()
+
+def create_linear_func( func, ns, sizes=None, dtype=np.float32):
+    Xs, Ys, Zs = create_3d_grid_sampling(ns, sizes, dtype)
+    fe = np.zeros(Xs.shape + (4,), dtype=dtype)
+    func(Xs, Ys, Zs, fe)
+    return fe
+
 def getPLQH( R0, E0, a, Q, H ):
     
     e  = np.exp(a*R0);

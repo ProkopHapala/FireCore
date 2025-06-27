@@ -36,7 +36,6 @@ const char* prefix = "#Epiece";
 #include "DynamicOpt.h"
 #include "Vec3Utils.h"
 
-
 #define WITH_BUILDER 1
 #if WITH_BUILDER
 #include "MMFFparams.h"
@@ -192,6 +191,8 @@ void initOpt( double dt, double damping, double f_limit, bool bMass ){
     opt.setDamping  (damping);
     opt.f_limit = f_limit;
     opt_initialized=true;
+    opt.fixmask = ff.fixmask;
+    opt.bfixmask=true;
 };
 
 //int run( int nstepMax, double dt, double Fconv=1e-6, int ialg=0, double* outE, double* outF ){ 
@@ -205,27 +206,26 @@ int run( int nstepMax, double dt, double Fconv, int ialg, double* outE, double* 
     //printf( "verbosity %i nstepMax %i Fconv %g dt %g \n", verbosity, nstepMax, Fconv, dt );
     //printf( "trj_fname %s \n", trj_fname );
     if(ialg>0){
-        if(verbosity>0)printf("run() opt.vel %p\n", opt.vel); 
+        //printf("run() opt.vel %p\n", opt.vel); 
         opt.cleanVel( ); 
     }
     bool bConv=false;
-    if(ff.nfix>0){ ff.apply_hard_fix(); }
+    //if(ff.nfix>0){ ff.apply_hard_fix(); }
     for(itr=0; itr<nstepMax; itr++ ){
         ff.clearForce();
         Etot = ff.eval();
         if( ff.bNegativeSizes & (verbosity>0) ){ printf( "negative electron sizes in step #%i => perhaps decrease relaxation time step dt=%g[fs]? \n", itr, opt.dt ); }
-
-        if(ff.nfix>0){ if(ialg>0){ ff.clear_fixed_dynamics(); }else{ ff.clear_fixed_force(); } }
+        //if(ff.nfix>0){ if(ialg>0){ ff.clear_fixed_dynamics(); }else{ ff.clear_fixed_force(); } }
         switch(ialg){
             case  0: F2 = ff .move_GD      (dt);      break;
             case -1: F2 = opt.move_LeapFrog(dt);      break;
             case  1: F2 = opt.move_MD (dt,opt.damping); break;
             case  2: F2 = opt.move_FIRE();       break;
         }
-        if(ff.nfix>0){ ff.apply_hard_fix(); }
+        //if(ff.nfix>0){ ff.apply_hard_fix(); }
         if(outE){ outE[itr]=Etot;     }
         if(outF){ outF[itr]=sqrt(F2); }
-        if(verbosity>1){ printf("itr: %6i Etot[eV] %16.8f |F|[eV/A] %16.8f \n", itr, Etot, sqrt(F2) ); };
+        if(verbosity>2){ printf("itr: %6i Etot[eV] %16.8f |F|[eV/A] %16.8f \n", itr, Etot, sqrt(F2) ); };
         if(F2<F2conv){
             if(verbosity>0){ printf("eFF_lib.cpp::run() Converged in %i iteration Etot %g[eV] |F| %g[eV/A] <(Fconv=%g) \n", itr, Etot, sqrt(F2), Fconv ); };
             //if(verbosity>0){ printf("Converged in %i iteration Etot %g[eV] |F| %g[eV/A] <(Fconv=%g) \n", itr, Etot, sqrt(F2), Fconv ); };
@@ -234,7 +234,7 @@ int run( int nstepMax, double dt, double Fconv, int ialg, double* outE, double* 
         }
         if( (trj_fname) && (itr%savePerNsteps==0) )  ff.save_xyz( trj_fname, "a" );
     }
-    if(verbosity>0){ printf("%s in %6i iterations Etot[eV] %16.8f |F|[eV/A] %16.8f (Fconv=%g) \n", bConv ? "    CONVERGED" : "NOT-CONVERGED", itr, Etot, sqrt(F2), Fconv ); };
+    if(verbosity>1){ printf("run() %s in %6i iterations Etot[eV] %16.8f |F|[eV/A] %16.8f (Fconv=%g) \n", bConv ? "    CONVERGED" : "NOT-CONVERGED", itr, Etot, sqrt(F2), Fconv ); };
     //printShortestBondLengths();
     return itr;
 }
@@ -244,11 +244,22 @@ void set_constrains( int nfix, Quat4d* fixed_poss, Vec2i* fixed_inds, bool bReal
     // int nfix=0;
     // Quat4d* fixed_poss=0; // [nfix], {x,y,z,w} position of fixed particles
     // Vec2i*  fixed_inds=0; // [nfix]  {ia/-ie, bitmask{x|y|z|w}}, ia/-ie is index of atom/ or negative index of electron, bitmax indicate which component is fixed
+    
     if(bRealloc) ff.realloc_fixed(nfix);
     for(int i=0; i<nfix; i++){
         ff.fixed_poss[i] = fixed_poss[i];
         ff.fixed_inds[i] = fixed_inds[i];
     }
+
+    // for(int i=0; i<nfix; i++){
+    //     Quat4i ip = fixed_poss[i];
+    //     if(fixed_inds[i].x>=0){
+    //         ff.apos_fix[i] = ip.f;
+    //     }else{
+    //         ff.epos_fix [i].x = ip.f;
+    //         ff.esize_fix[i] = fixed_inds[i].e;
+    //     }
+    // }
 }
 
 void relaxed_scan( int nconf, int nfix, double* fixed_poss, int* fixed_inds_, double* outEs, double* apos_, double* epos_, int nstepMax, double dt, double Fconv, int ialg, char* scan_trj_name ){
@@ -394,14 +405,43 @@ void setSwitches( int bEvalKinetic, int bEvalCoulomb, int  bEvalPauli, int bEval
 #undef _setbool
 }
 
-void setAtomParams( int n, const double* params_, bool bCopy=true ){ 
-    Quat4d* params = (Quat4d*)params_;
+void setup( int isetup ){
+    switch(isetup){
+        case 0:
+            ff.bEvalAECoulomb = true;
+            ff.bEvalAEPauli   = true;
+            ff.iECPmodel      = 0;
+            ff.iPauliModel    = 0;
+            break;
+        case 1:
+            ff.bEvalAECoulomb = true;
+            ff.bEvalAEPauli   = true;
+            ff.iECPmodel      = 1;
+            ff.iPauliModel    = 0;
+            break;
+        default:
+            ff.bEvalAECoulomb = true;
+            ff.bEvalAEPauli   = true;
+            ff.iECPmodel      = 2;
+            ff.iPauliModel    = 0;
+            break;
+    }
+}
+
+void setAtomParams( int n, const double* params, bool bCopy=true, int mode=1 ){ 
     if(bCopy){ // if we worry that the source pointer may be deleted
-        Quat4d* atom_params = new Quat4d[n];
-        for(int i=0; i<n; i++){ atom_params[i] = params[i]; }
-        ff.atom_params = atom_params;
+        if(mode==1){
+            Quat4d* atom_params = new Quat4d[n];
+            for(int i=0; i<n; i++){ atom_params[i] = ((Quat4d*)params)[i]; }
+            ff.atom_params = atom_params;
+        }else if(mode==2){
+            double8* atom_params = new double8[n];
+            for(int i=0; i<n; i++){ atom_params[i] = ((double8*)params)[i]; }
+            ff.atom_params2 = atom_params;
+        }
     }else{
-        ff.atom_params = (Quat4d*)params; 
+        if     (mode==1){ ff.atom_params  = (Quat4d* )params; }
+        else if(mode==2){ ff.atom_params2 = (double8*)params; }
     }
 }
 
@@ -579,13 +619,16 @@ int preAllocateXYZ(const char* fname, double Rfac=-0.5, bool bCoreElectrons=true
     return 1;
 }
 
-int processXYZ( const char* fname, double Rfac=-0.5, double* outEs=0, double* apos_=0, double* epos_=0, int nstepMax=1000, double dt=0.001, double Fconv=1e-3, int ialg=2, bool bAddEpairs=false, bool bCoreElectrons=true, bool bChangeCore=true, bool bChangeEsize=true, bool bOutXYZ=false, bool bOutFGO=false, double* KRSrho_=0 ){
-    Vec3d KRSrho =*(Vec3d*)KRSrho_;
-
-    ff.setKRSrho( KRSrho );
-    
-    setvbuf(stdout, NULL, _IONBF, 0);
-    printf( "processXYZ(%s) bAddEpairs=%i bOutXYZ=%i Rfac %g\n", fname, bAddEpairs, bOutXYZ, Rfac );
+int processXYZ( const char* fname, double Rfac=-0.5, double* outEs=0, double* apos_=0, double* epos_=0, int nstepMax=1000, double dt=0.001, double Fconv=1e-3, int ialg=2, bool bAddEpairs=false, bool bCoreElectrons=true, bool bChangeCore=true, bool bChangeEsize=true, const char* xyz_out="processXYZ.xyz", const char* fgo_out="processXYZ.fgo" ){
+    setvbuf(stdout, NULL, _IONBF, 0);    
+    // printf("KRSrho %g %g %g \n", KRSrho.x, KRSrho.y, KRSrho.z);
+    // ff.setKRSrho( KRSrho );
+    printf("ff set\n");
+    printf( "processXYZ(%s) \n", fname );
+    printf( "processXYZ(%p) @xyz_out=%p @fgo_out=%p \n", fname, xyz_out, fgo_out );
+    printf( "processXYZ() fgo_out %s \n", fgo_out );
+    printf( "processXYZ() xyz_out %s \n", xyz_out );
+    printf( "processXYZ(%s) bAddEpairs=%i Rfac %g xyz_out=%s fgo_out=%s \n", fname, bAddEpairs, Rfac, xyz_out, fgo_out );
 
     if(params.atypes.size()==0){
         const char* sElementTypes  = "common_resources/ElementTypes.dat";
@@ -600,7 +643,8 @@ int processXYZ( const char* fname, double Rfac=-0.5, double* outEs=0, double* ap
     FILE* fin = fopen( fname, "r" );
     if(fin==0){ printf("cannot open '%s' \n", fname ); exit(0);}
     const int nline=1024;
-    char line[1024];
+    char line[nline];
+    char comment[nline];
     char at_name[8];
     // --- Open output file
     int il   = 0;
@@ -619,7 +663,9 @@ int processXYZ( const char* fname, double Rfac=-0.5, double* outEs=0, double* ap
             }
             }else{ printf( "ERROR in FitREQ::loadXYZ() Suspicious number of atoms (%i) while reading `%s`  => Exit() \n", na, fname ); exit(0); }
         }else if( il==1 ){               // --- Read comment line ( read reference energy )
-            sscanf( line, "%*s %*s %i %*s %lf ", &(atoms->n0), &(atoms->Energy) );
+            //printf("comment_line=%s\n",line);
+            sscanf( line, "%*s %i %*s %lf ", &(atoms->n0), &(atoms->Energy) );
+            sprintf(comment,"%s",line);
         }else if( il<atoms->natoms+2 ){  // --- Road atom line (type, position, charge)
             double x,y,z,q;
             int nret = sscanf( line, "%s %lf %lf %lf %lf", at_name, &x, &y, &z, &q );
@@ -637,7 +683,7 @@ int processXYZ( const char* fname, double Rfac=-0.5, double* outEs=0, double* ap
                 builder.printAtomConfs();
                 builder.autoBonds( Rfac ); 
                 int ne = builder2EFFstatic( 0, builder, bCoreElectrons, bChangeCore, bChangeEsize );
-                if(verbosity>0)printf("processXYZ() iconf=%i natoms=%i builder.atoms.size()=%i builder.bonds.size()=%i\n", iconf, atoms->natoms, builder.atoms.size(), builder.bonds.size() );
+                if(verbosity>0)printf("processXYZ() iconf=%i natoms=%i ne=%i builder.atoms.size()=%i builder.bonds.size()=%i\n", iconf, atoms->natoms, ne, builder.atoms.size(), builder.bonds.size() );
                 ff.realloc( atoms->natoms, ne, true );
                 opt.bindOrAlloc( ff.nDOFs, ff.pDOFs, ff.vDOFs, ff.fDOFs, ff.invMasses );
             }
@@ -662,27 +708,16 @@ int processXYZ( const char* fname, double Rfac=-0.5, double* outEs=0, double* ap
                 run( nstepMax, dt, Fconv, ialg, 0, 0 );
             }
             ff.eval();
-            if(verbosity>0)printf("processXYZ() iconf=%i natoms=%i na=%i ne=%i | Etot(%g)=T(%g)+ee(%g)+ea(%g)+aa(%g) \n", iconf, atoms->natoms, ff.na, ff.ne, ff.Etot, ff.Ek, ff.Eee, ff.Eae, ff.Eaa );
-            if(bOutXYZ)ff.save_xyz( "processXYZ.xyz", "a" );
-            if(bOutFGO)ff.writeTo_fgo( "processXYZ.fgo", false, "a", iconf );
-            if(apos_){
-                Vec3d*  apos = ((Vec3d* )apos_)+iconf*ff.na;
-                for(int j=0; j<ff.na; j++){ apos[j]   = ff.apos[j]; }
+            //snprintf(comment, nline, "na,ne %i %i Etot(%.3f)=T(%.2f)+ee(%.3f)+ea(%.3f)+aa(%.3f)", ff.na, ff.ne, ff.Etot, ff.Ek, ff.Eee, ff.Eae, ff.Eaa);
+            if(verbosity>0){
+                //printf("processXYZ() iconf=%i natoms=%i | %s \n", iconf, atoms->natoms, comment);
+                printf("processXYZ() iconf=%i na: %i ne: %i Etot(%.3f)=T(%.2f)+ee(%.3f)+ea(%.3f)+aa(%.3f)\n", iconf, ff.na, ff.ne, ff.Etot, ff.Ek, ff.Eee, ff.Eae, ff.Eaa );
             }
-            if(epos_){
-                Quat4d* epos = ((Quat4d*)epos_)+iconf*ff.ne;
-                for(int j=0; j<ff.ne; j++){ epos[j].f = ff.epos[j]; epos[j].w = ff.esize[j]; }
-            }
-            if(outEs){
-                int nEperConf=5;
-                // fprintf( pFile, "na,ne %i %i Etot(%g)=T(%g)+ee(%g)+ea(%g)+aa(%g) \n", na,ne, Etot, Ek, Eee, Eae, Eaa );
-                double* outEi = outEs+iconf*nEperConf;
-                outEi[0] = ff.Etot;
-                outEi[1] = ff.Ek;
-                outEi[2] = ff.Eee;
-                outEi[3] = ff.Eae;
-                outEi[4] = ff.Eaa;
-            }
+            if(xyz_out)ff.save_xyz(xyz_out, "a", comment);
+            if(fgo_out)ff.writeTo_fgo(fgo_out, false, "a", iconf);
+            ff.copyEnergies         (outEs, iconf);
+            ff.copyAtomPositions    ((Vec3d*)apos_, iconf);
+            ff.copyElectronPositions((Quat4d*)epos_, iconf);
             il=0;
             iconf++;
         }
@@ -693,6 +728,60 @@ int processXYZ( const char* fname, double Rfac=-0.5, double* outEs=0, double* ap
 }
 
 
+
+// This functions takes .xyz file with full electron description
+int processXYZ_e( const char* fname, double* outEs=0, double* apos_=0, double* epos_=0, int nstepMax=1000, double dt=0.001, double Fconv=1e-3, int optAlg=2, const char* xyz_out="processXYZ.xyz", const char* fgo_out="processXYZ.fgo" ){
+    printf("processXYZ_e(%s)\n", fname);
+    //double8* apars = ff.atom_params2;
+    FILE* fin = fopen(fname, "r");
+    if(!fin){ printf("Cannot open '%s'\n", fname); exit(0); }
+    char line[1024];
+    int il = 0, iconf = 0;
+    int ie=0,ia=0;
+    int nae=0,na=0,ne=0;
+    while(fgets(line, sizeof(line), fin)){
+        if      (il == 0){
+            sscanf(line, "%d", &nae);
+        }else if(il == 1){
+            char coreMode;
+            sscanf(line, "na,ne,core %i %i %c ", &na, &ne, &coreMode );
+            ff.setCoreMode(coreMode);
+            //na=nae-ne;
+            if(nae!=na+ne){ printf("ERROR in processXYZ_e() nae(%i) != na(%i) + ne(%i) while reading `%s`  => Exit() \n", nae, na, ne, fname ); exit(0); }
+            if(iconf == 0){
+                ff.realloc(na, ne, true);
+                //opt.bindOrAlloc(ff.nDOFs, ff.pDOFs, ff.vDOFs, ff.fDOFs, ff.invMasses);
+                initOpt( dt, 0.1, 100.0, false );
+            }
+        }else{
+            //printf( "particle_line[%i]: %s ", il, line );
+            char type = ff.from_xyz_line(line, ie, ia);
+        }
+        il++;
+        if (il>=nae+2){
+            printf( "----- conf: %i \n", iconf );
+            ff.info();
+            if(nstepMax > 0) run(nstepMax, dt, Fconv, optAlg, 0, 0);   
+            ff.eval();
+            ff.copyEnergies         (         outEs, iconf );
+            ff.copyAtomPositions    ((Vec3d* )apos_, iconf );
+            ff.copyElectronPositions((Quat4d*)epos_, iconf );
+            if(verbosity>0) printf(" processXYZ_e() iconf: %3i na: %3i ne: %3i Etot: %16.8f\n", iconf, na, ne, ff.Etot);
+            if(xyz_out) ff.save_xyz(xyz_out, "a", line);
+            il = 0;
+            ia = 0;
+            ie = 0;
+            iconf++;
+        }        
+    }
+    fclose(fin);
+    return iconf;
+}
+
+void setKRSrho(double* _KRSrho){
+    Vec3d KRSrho =*(Vec3d*)_KRSrho;
+    ff.setKRSrho( KRSrho );
+}
 
 
 // void eval_xyz_movie(){

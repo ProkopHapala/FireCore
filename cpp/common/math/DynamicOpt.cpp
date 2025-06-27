@@ -10,9 +10,11 @@
 
 double DynamicOpt::move_LeapFrog(double dt_loc){
     //double dt_ = dt*fscale_safe;
+    //printf("DynamicOpt::move_LeapFrog() dt %g \n", dt_loc);
     double f2sum=0;
     for ( int i=0; i<n; i++ ){
-        //printf( "i %i v %g f %g p %g iM %g \n", i, vel[i],force[i],pos[i],invMasses[i]  );
+        if(bfixmask){ if(fixmask[i])continue; }
+        //printf( "%3i %c v %12.5e f %12.5e p %12.5e iM %12.5e \n", i, (fixmask[i])?'.':' ', vel[i],force[i],pos[i],invMasses[i]  );
         double f = force[i];
         double v = vel[i];
         f2sum+=f*f;
@@ -50,6 +52,7 @@ double DynamicOpt::move_GD(double dt_loc){
     //double dt_ = dt*fscale_safe;
     double f2sum=0;
     for ( int i=0; i<n; i++ ){
+        if(bfixmask){ if(fixmask[i])continue; }
         double f = force[i];
         double v = vel[i];
         f2sum+=f*f;
@@ -79,6 +82,7 @@ double DynamicOpt::move_MD(double dt_loc,double damp){
     //printf( "DynamicOpt::move_MD() cdamp %g \n", cdamp );
     double f2sum=0;
     for ( int i=0; i<n; i++ ){
+        if(bfixmask){ if(fixmask[i])continue; }
         double f = force[i];
         double v = vel[i];
         f2sum+=f*f;
@@ -98,6 +102,7 @@ double DynamicOpt::move_VSpread(double dt_loc,double damp, double beta ){
     //   damping should be higher when     Sum_i{ |v_i|^2 } >> |Sum{v_i}|^2 
     double f2sum=0;
     for ( int i=0; i<n; i++ ){
+        if(bfixmask){ if(fixmask[i])continue; }
         double f = force[i];
         double v = vel  [i];
         f2sum+=f*f;
@@ -142,6 +147,7 @@ double DynamicOpt::move_FIRE_bak(){
 		//double cf     =     damping * sqrt(vv/ff);
 		double cv     = 1 - damping;
 		for(int i=0; i<n; i++){
+            if(bfixmask){ if(fixmask[i])continue; }
             //vel[i]    = cv * vel[i]  + cf * force[i];
 			vel[i]    = cv * vel[i]  + cf * force[i]*invMasses[i];
 		}
@@ -236,7 +242,10 @@ double DynamicOpt::move_FIRE_smooth(){
     eval_cos_vf();
 	double cv;
     double cf  = renorm_vf * damp_func( cos_vf, cv );
-    for(int i=0; i<n; i++){ vel[i]  = vel[i]*cv  + force[i]*invMasses[i]*cf;  }
+    for(int i=0; i<n; i++){ 
+        if(bfixmask){ if(fixmask[i])continue; }
+        vel[i]  = vel[i]*cv  + force[i]*invMasses[i]*cf;  
+    }
 	if( cos_vf < 0.0 ){
         dt       = fmax( dt * fdec, dt_min );
 		lastNeg  = 0;
@@ -281,7 +290,11 @@ double DynamicOpt::move_FIRE(){
     eval_cos_vf();
 	double cv;
     double cf  = renorm_vf * damp_func_FIRE( cos_vf, cv );
-    for(int i=0; i<n; i++){ vel[i]  = vel[i]*cv  + force[i]*invMasses[i]*cf;  }
+    for(int i=0; i<n; i++){ 
+        //printf( "DynamicOpt::move_FIRE() [%i] fix %i \n", i, fixmask[i] );
+        if(bfixmask){ if(fixmask[i])continue; }
+        vel[i]  = vel[i]*cv  + force[i]*invMasses[i]*cf;  
+    }
 	if( cos_vf < 0.0 ){
         dt       = fmax( dt * fdec, dt_min );
 		lastNeg  = 0;
@@ -328,6 +341,7 @@ bool DynamicOpt::optimize( double convF, int nMaxSteps ){
 double DynamicOpt::getFmaxAbs( ){
     double fmax = 0;
     for(int i=0; i<n; i++){
+        if(bfixmask){ if(fixmask[i])continue; }
         double fi = fabs( force[i] );
         fmax=(fi>fmax)?fi:fmax;
     }
@@ -337,6 +351,7 @@ double DynamicOpt::getFmaxAbs( ){
 double DynamicOpt::getFsqSum( ){
     double ff = 0;
     for(int i=0; i<n; i++){
+        if(bfixmask){ if(fixmask[i])continue; }
         double fi = force[i];
         ff += fi*fi;
     }

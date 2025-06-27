@@ -1500,7 +1500,7 @@ def readLammpsTrj(fname=None, fin=None, bReadN=False, nmax=100, selection=None )
 
 def loadAtoms( name ):
     f = open(name,"r")
-    n=0;
+    n=0
     l = f.readline()
     try:
         n=int(l)
@@ -1510,7 +1510,7 @@ def loadAtoms( name ):
     if (n>0):
         n=int(l)
         e=[];x=[];y=[]; z=[]; q=[]
-        i = 0;
+        i = 0
         for line in f:
             words=line.split()
             nw = len( words)
@@ -1530,28 +1530,71 @@ def loadAtoms( name ):
     f.close()
     return [ e,x,y,z,q ]
 
-
 def load_xyz_movie( fname ):
     f = open(fname,"r")
     il=0
-    imgs=[]
+    trj=[]
+    comment=None
     while True:
-        line = f.readline()
         if il==0:
+            line = f.readline()
+            if not line: break
+            #print("line(1st)",line)
             n=int(line.split()[0]) 
+            comment=f.readline()
+            #print("line(comment)",comment)
+            il+=1
         else:
-            apos=np.array((n,3))
-            es  =[]
+            es  = [] 
+            apos=np.zeros((n,3))
+            qs  =np.zeros(n)
+            rs  =np.full(n,np.nan)
             for i in range(n):
                 line = f.readline()
+                #print("line(atoms)", i,line,)
                 words=line.split()
                 es.append( words[0] )
                 apos[i,0] = float(words[1])
-                apos[i,1] = float(words[1])
-                apos[i,2] = float(words[1])
+                apos[i,1] = float(words[2])
+                apos[i,2] = float(words[3])
+                if len(words)>4:
+                    qs[i] = float(words[4])
+                if len(words)>5:
+                    rs[i] = float(words[5])
                 il+=1
-            imgs.append( (apos,es) )
-    return imgs
+            il=0
+            trj.append( (es,apos,qs,rs,comment) )
+    return trj
+
+def trj_to_ename(trj):
+    for i in range(len(trj)):
+        es,apos,qs,rs,comment = trj[i]
+        for j in range(len(es)):
+            e = es[j]
+            try:
+                iZ=int(e)
+                ename = elements.ELEMENTS[iZ-1][1]
+            except:
+                ename = e
+            es[j] = ename
+        trj[i] = (es,apos,qs,rs,comment)
+    return trj
+
+def trj_fill_radius(trj, bOnlyNAN=True, rFactor=1.0, bVdw=False, rmin=0.1 ):
+    if bVdw:
+        index_R = elements.index_Rvdw
+    else:
+        index_R = elements.index_Rcov
+    for i in range(len(trj)):
+        es,apos,qs,rs,comment = trj[i]
+        for j in range(len(es)):
+            typ = elements.ELEMENT_DICT[es[j]]
+            if bOnlyNAN and not np.isnan(rs[j]): continue
+            r = typ[index_R]
+            #print( "trj_fill_radius", es[j], r, rs[j] )
+            rs[j] = max(r*rFactor, rmin)
+        trj[i] = (es,apos,qs,rs,comment)
+    return trj
 
 #def loadCoefs( characters=['s','px','py','pz'] ):
 def loadCoefs( characters=['s'] ):

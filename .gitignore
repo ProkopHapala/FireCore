@@ -28,3 +28,6 @@ cpp/build
 cpp/build-*
 .aider*
 .env
+tests/tEFF/processXYZ.xyz
+tests/tEFF/processXYZ.fgo
+tests/tEFF/relaxation.xyz

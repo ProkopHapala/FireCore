@@ -1,7 +1,8 @@
 import sys
 import os
 import numpy as np
-import ctypes
+import re
+
 import pyopencl as cl
 import pyopencl.array as cl_array
 import pyopencl.cltypes as cltypes
@@ -10,6 +11,9 @@ import time
 
 from . import clUtils as clu
 from .MMFF import MMFF
+from .OpenCLBase import OpenCLBase
+
+REQ_DEFAULT = np.array([1.7, 0.1, 0.0, 0.0], dtype=np.float32)  # R, E, Q, padding
 
 verbose=False
 
@@ -46,419 +50,437 @@ def vec3_to_cl(vec3_np):
     """
     return np.append(vec3_np, 0.0).astype(np.float32)
 
-
-class MolecularDynamics:
-
-    def __init__(self, nloc=32 ):
-        self.nloc  = nloc
-        self.ctx   = cl.create_some_context()
-        self.queue = cl.CommandQueue(self.ctx)
-
-        self.grid  = None   # instance of GridShape, if initialized
-        self.gcl   = None   # instance of GridCL, if initialized
- 
-        clu.get_cl_info( self.ctx.devices[0] )
-
-        local_size = 64
-        #print( " local_memory_per_workgroup() size=", local_size, " __local []  ", clu.local_memory_per_workgroup( self.ctx.devices[0], local_size=32, sp_per_cu=128 ), " Byte " );
-        print( " local_memory_per_workgroup() size=", local_size, " __local []  ", clu.local_memory_float_per_workgroup( self.ctx.devices[0], local_size=32, sp_per_cu=128 ), " float32 " );
-
-        try:
-            with open('../../cpp/common_resources/cl/splines.cl', 'r') as f:
-                self.prg = cl.Program(self.ctx, f.read()).build()
-        except Exception as e:
-            print( "MolecularDynamics() called from path=", os.getcwd() )
-            print(f"Error compiling OpenCL program: {e}")
-            exit(0)
-
-    def __init__(self, nloc=32 ):
-        self.ctx   = cl.create_some_context()
-        self.queue = cl.CommandQueue(self.ctx)
-        clu.get_cl_info( self.ctx.devices[0] )
-
-        # Initialize OpenCL context and queue
-        # platforms = cl.get_platforms()
-        # if not platforms:                 raise RuntimeError("No OpenCL platforms found.")
-        # if platform_id >= len(platforms): raise ValueError("Invalid platform ID.")
-        # platform = platforms[platform_id]
-        # devices = platform.get_devices()
-        # if not devices:                raise RuntimeError("No OpenCL devices found on the selected platform.")
-        # if device_id >= len(devices):  raise ValueError("Invalid device ID.")
-        # device = devices[device_id]
-        # self.context = cl.Context([device])
-        # self.queue = cl.CommandQueue(self.context, device)
-
-        try:
-            with open('../../cpp/common_resources/cl/relax_multi.cl', 'r') as f:
-                self.prg = cl.Program(self.ctx, f.read()).build()
-        except Exception as e:
-            print(f"Error compiling OpenCL program: {e}")
-            print( "MolecularDynamics() called from path=", os.getcwd() )
-            exit(0)
-
-        self.nloc  = nloc
-        self.grid  = None   # instance of GridShape, if initialized
-        self.gcl   = None   # instance of GridCL, if initialized
-
-        # Initialize OpenCL program
-        self.program = self.build_program()
-
-        # Initialize other attributes
+class MolecularDynamics(OpenCLBase):
+    """
+    Class for molecular dynamics simulations using OpenCL.
+    
+    This class inherits from OpenCLBase and implements specific functionality
+    for molecular dynamics simulations using the relax_multi_mini.cl kernel.
+    """
+    
+    def __init__(self, nloc=32, perBatch=10):
+        # Initialize the base class
+        super().__init__(nloc=nloc, device_index=0)
+        
+        # Load the OpenCL program
+        base_path = os.path.dirname(os.path.abspath(__file__))
+        rel_path = "../../cpp/common_resources/cl/relax_multi_mini.cl"
+        if not self.load_program(rel_path=rel_path, base_path=base_path, bPrint=False):
+            exit(1)
+        
+        # Initialize other attributes that will be set in realloc
         self.nSystems = 0
-        self.mmff_instances = []
-        self.buffer_dict = {}
+        self.mmff_list = []
+        self.MD_event_batch = None
+        self.perBatch = perBatch
+        self.nstep = 1
 
-
-    def build_program(self):
-        """
-        Compiles the OpenCL kernels.
-        """
-        # Load OpenCL kernel code from file or string
-        kernel_file = "kernels.cl"  # Replace with your actual kernel file path
-        if not os.path.exists(kernel_file):
-            raise FileNotFoundError(f"OpenCL kernel file '{kernel_file}' not found.")
-
-        with open(kernel_file, 'r') as f:
-            kernel_source = f.read()
-
-        try:
-            program = cl.Program(self.context, kernel_source).build()
-            if verbose: print("OpenCL program built successfully.")
-            return program
-        except Exception as e:
-            if verbose:
-                print("Error building OpenCL program:")
-                print(e)
-            raise e
-
-    def realloc(self, nSystems, mmff):
+    def realloc(self, mmff, nSystems=1 ):
         """
         Reallocate buffers for the given number of systems based on the MMFF template.
         """
+        # Store dimensions explicitly to avoid reference issues
+        print(f"MolecularDynamics::realloc() natoms={mmff.natoms}, nvecs={mmff.nvecs}, nnode={mmff.nnode}")
         self.nSystems = nSystems
-        self.mmff_instances = [ MMFF() for _ in range(nSystems)]
-
-        # Example: Assuming mmff_template is an instance of MMFF with predefined parameters
-        for mmff in self.mmff_instances:
-            mmff.realloc(mmff.nnode, mmff.ncap, mmff.ntors)
-
-        # Allocate OpenCL buffers
+        self.mmff_list = [mmff] * nSystems  # Assuming all systems use the same MMFF parameters
         self.allocate_cl_buffers(mmff)
-        self.allocate_host_buffers(mmff)
+        self.allocate_host_buffers()
 
-    def allocate_host_buffers(self, mmff ):
-        self.atoms  = np.empty(self.nSystems * mmff.nvecs * 4, dtype=np.float32)
-        self.forces = np.empty(self.nSystems * mmff.nvecs * 4, dtype=np.float32)
+    def allocate_host_buffers(self):
+        self.atoms  = np.zeros((self.nSystems, self.nvecs, 4), dtype=np.float32)
+        self.aforce = np.zeros((self.nSystems, self.nvecs, 4), dtype=np.float32)
 
-    def allocate_cl_buffers(self, mmff ):
+    def allocate_cl_buffers(self, mmff):
         """
         Allocates OpenCL buffers based on the MMFF template and number of systems.
+        Includes all buffers required by the runMD kernel.
         """
-        # Determine buffer sizes
-        nvecs  = mmff.nvecs
-        natoms = mmff.natoms
-        nnode  = mmff.nnode
-        ntors  = mmff.ntors
-        nbkng  = nnode * 4 * 2  # As per C++ code
-        npbc = 1  # Adjust based on your requirements
         nSystems = self.nSystems
+        natoms = mmff.natoms
+        nvecs  = mmff.nvecs
+        nnode  = mmff.nnode
+        ncap   = mmff.ncap
+        ntors  = mmff.ntors
+        nbkng  = nvecs
+        nPBC   = mmff.nPBC
+        npbc   = mmff.npbc
 
-        # Example buffer allocations
+        self.nDOFs = (natoms,nnode)
+
+        self.natoms = natoms
+        self.nvecs  = nvecs
+        self.nnode  = nnode
+        self.ncap   = ncap
+        self.ntors  = ntors
+        self.nbkng  = nbkng
+        self.nPBC   = nPBC
+        self.npbc   = npbc
+        
+        print(f"MolecularDynamics::allocate_cl_buffers(): nSystems: {nSystems}  natoms: {natoms}  nvecs: {nvecs} nnode: {nnode} ncap: {ncap}  ntors: {ntors}  nbkng: {nbkng}")
+        
+        if nSystems <= 0 or natoms <= 0 or nvecs <= 0 or nnode <= 0:
+            raise ValueError(f"Invalid dimensions for buffer allocation: nSystems={nSystems}, natoms={natoms}, nvecs={nvecs}, nnode={nnode}")
+        
+        float_size = np.float32().itemsize
+        int_size = np.int32().itemsize
+        mat3_size = 3 * 4 * float_size  # 3x3 matrix
+        
         mf = cl.mem_flags
-        self.buffer_dict['atoms']        = cl.Buffer(self.context, mf.READ_WRITE, size=nSystems * nvecs * 3 * np.float32().itemsize)
-        self.buffer_dict['aforces']      = cl.Buffer(self.context, mf.READ_WRITE, size=nSystems * nvecs * 3 * np.float32().itemsize)
-        self.buffer_dict['REQs']         = cl.Buffer(self.context, mf.READ_ONLY, size=nSystems * natoms * 4 * np.float32().itemsize)
-        self.buffer_dict['neighs']       = cl.Buffer(self.context, mf.READ_ONLY, size=nSystems * natoms * 4 * np.int32().itemsize)
-        self.buffer_dict['neighCell']    = cl.Buffer(self.context, mf.READ_ONLY, size=nSystems * natoms * 4 * np.int32().itemsize)
-        self.buffer_dict['bkNeighs']     = cl.Buffer(self.context, mf.READ_ONLY, size=nSystems * nvecs * 4 * np.int32().itemsize)
-        self.buffer_dict['bkNeighs_new'] = cl.Buffer(self.context, mf.READ_ONLY, size=nSystems * nvecs * 4 * np.int32().itemsize)
-        self.buffer_dict['avel']         = cl.Buffer(self.context, mf.READ_WRITE, size=nSystems * nvecs * 3 * np.float32().itemsize)
-        self.buffer_dict['cvf']          = cl.Buffer(self.context, mf.READ_WRITE, size=nSystems * nvecs * 3 * np.float32().itemsize)
-        self.buffer_dict['fneigh']       = cl.Buffer(self.context, mf.READ_WRITE, size=nSystems * nbkng * 3 * np.float32().itemsize)
-        self.buffer_dict['fneighpi']     = cl.Buffer(self.context, mf.READ_WRITE, size=nSystems * nbkng * 3 * np.float32().itemsize)
-        self.buffer_dict['apars']        = cl.Buffer(self.context, mf.READ_ONLY, size=nSystems * nnode * 4 * np.float32().itemsize)
-        self.buffer_dict['bLs']          = cl.Buffer(self.context, mf.READ_ONLY, size=nSystems * nnode * 4 * np.float32().itemsize)
-        self.buffer_dict['bKs']          = cl.Buffer(self.context, mf.READ_ONLY, size=nSystems * nnode * 4 * np.float32().itemsize)
-        self.buffer_dict['Ksp']          = cl.Buffer(self.context, mf.READ_ONLY, size=nSystems * nnode * 4 * np.float32().itemsize)
-        self.buffer_dict['Kpp']          = cl.Buffer(self.context, mf.READ_ONLY, size=nSystems * nnode * 4 * np.float32().itemsize)
-        #self.buffer_dict['tors2atom']    = cl.Buffer(self.context, mf.READ_ONLY, size=nSystems * ntors * np.int32().itemsize)
-        #self.buffer_dict['torsParams']   = cl.Buffer(self.context, mf.READ_ONLY, size=nSystems * ntors * 4 * np.float32().itemsize)
-        #self.buffer_dict['constr']       = cl.Buffer(self.context, mf.READ_WRITE, size=nSystems * natoms * 4 * np.float32().itemsize)
-        #self.buffer_dict['constrK']      = cl.Buffer(self.context, mf.READ_WRITE, size=nSystems * natoms * 4 * np.float32().itemsize)
-        self.buffer_dict['invLvec']      = cl.Buffer(self.context, mf.READ_ONLY, size=nSystems * 9 * np.float32().itemsize)  # 3x3 matrix
-
-        # Additional buffers as per your C++ code
-        # ...
-
-    def pack_system(self, iSys, system, params, bParams=False, bForces=False, bVel=False, blvec=True, l_rnd=-1):
-        """
-        Packs data from an AtomicSystem into the OpenCL buffers for the specified system index.
-        """
-        mmff = self.mmff_instances[iSys]
-        mmff.assign_force_field_parameters(system, params, bParams=bParams, bEPairs=True, bUFF=False)
-        mmff.make_back_neighs()
-
-        # Example: Pack atomic positions
-        atoms_flat = mmff.apos.flatten().astype(np.float32)
-        cl.enqueue_copy(self.queue, self.buffer_dict['atoms'], atoms_flat, byte_offset=iSys * mmff.nvecs * 3 * 4)
-
-        # Pack forces if required
-        if bForces:
-            forces_flat = mmff.fapos.flatten().astype(np.float32)
-            cl.enqueue_copy(self.queue, self.buffer_dict['aforces'], forces_flat, byte_offset=iSys * mmff.nvecs * 3 * 4)
-
-        # Pack parameters if required
-        if bParams:
-            neighs_flat = mmff.neighs.flatten().astype(np.int32)
-            cl.enqueue_copy(self.queue, self.buffer_dict['neighs'], neighs_flat, byte_offset=iSys * mmff.natoms * 4 * 4)
-
-            REQs_flat = mmff.REQs.flatten().astype(np.float32)
-            cl.enqueue_copy(self.queue, self.buffer_dict['REQs'], REQs_flat, byte_offset=iSys * mmff.natoms * 4 * 4)
-
-            # Pack other parameters similarly
-            # ...
-
-        # Synchronize the queue to ensure data is copied
-        self.queue.finish()
-
-    def upload_sys(self, iSys, bParams=False, bForces=False, bVel=True, blvec=True):
-        """
-        Uploads system data from host to device.
-        """
-        # Since data is already packed into buffers using enqueue_copy with byte offsets,
-        # this function can remain empty or handle additional synchronization if needed
-        pass
-
-    def setup_kernels(self):
-        """
-        Sets up OpenCL kernels with their respective arguments.
-        """
-        # Example: Setting up getNonBond kernel
-        self.getNonBond_kernel = self.program.getNonBond
-        self.getNonBond_kernel.set_arg(0, self.buffer_dict['atoms'])
-        self.getNonBond_kernel.set_arg(1, self.buffer_dict['forces'])
-        self.getNonBond_kernel.set_arg(2, self.buffer_dict['REQs'])
-        self.getNonBond_kernel.set_arg(3, self.buffer_dict['neighs'])
-        self.getNonBond_kernel.set_arg(4, self.buffer_dict['neighCell'])
-        self.getNonBond_kernel.set_arg(5, self.buffer_dict['lvecs'])
-        self.getNonBond_kernel.set_arg(6, self.buffer_dict['ilvecs'])
-        self.getNonBond_kernel.set_arg(7, self.buffer_dict['pbc_shifts'])
-
-        # Similarly set up other kernels like getMMFFf4, updateAtomsMMFFf4, etc.
-        # ...
-
-    def toGPU(self, buf_name, host_data, byte_offset=0):
-        """Uploads data to GPU buffer."""
-        cl.enqueue_copy(self.queue, self.buffer_dict[buf_name], host_data, device_offset=byte_offset)
-
-    def bufflist(self, names):
-        """Returns a list of buffers based on the provided names."""
-        return [self.buffer_dict[name] for name in names]
+        
+        # Dynamical variables
+        self.create_buffer('apos',     nSystems * nvecs * 4 * float_size, mf.READ_WRITE)
+        self.create_buffer('aforce',   nSystems * nvecs * 4 * float_size, mf.READ_WRITE)
+        self.create_buffer('avel',     nSystems * nvecs * 4 * float_size, mf.READ_WRITE)
+        self.create_buffer('fneigh',   nSystems * nnode * 4 * 2 * float_size, mf.READ_WRITE)
+        self.create_buffer('cvf',      nSystems * nvecs * 4 * float_size, mf.READ_WRITE)
+        
+        # Neighbor lists
+        self.create_buffer('neighs',    nSystems * natoms * 4 * int_size, mf.READ_ONLY)
+        self.create_buffer('neighCell', nSystems * natoms * 4 * int_size, mf.READ_ONLY)
+        self.create_buffer('bkNeighs',  nSystems * nbkng * 4 * int_size, mf.READ_ONLY)
+        
+        # Force field parameters
+        self.create_buffer('REQs',     nSystems * natoms * 4 * float_size, mf.READ_ONLY)
+        self.create_buffer('apars',    nSystems * nnode * 4 * float_size, mf.READ_ONLY)
+        self.create_buffer('bLs',      nSystems * nnode * 4 * float_size, mf.READ_ONLY)
+        self.create_buffer('bKs',      nSystems * nnode * 4 * float_size, mf.READ_ONLY)
+        self.create_buffer('Ksp',      nSystems * nnode * 4 * float_size, mf.READ_ONLY)
+        self.create_buffer('Kpp',      nSystems * nnode * 4 * float_size, mf.READ_ONLY)
+        
+        # System parameters
+        self.create_buffer('lvecs',    nSystems * mat3_size, mf.READ_ONLY)
+        self.create_buffer('ilvecs',   nSystems * mat3_size, mf.READ_ONLY)
+        self.create_buffer('pbc_shifts', nSystems * npbc * 4 * float_size, mf.READ_ONLY)
+        
+        # MD parameters and constraints
+        self.create_buffer('constr',   nSystems * natoms * 4 * float_size, mf.READ_WRITE)
+        self.create_buffer('constrK',  nSystems * natoms * 4 * float_size, mf.READ_WRITE)
+        self.create_buffer('MDparams', nSystems * 4 * float_size, mf.READ_ONLY)
+        self.create_buffer('TDrives',  nSystems * 4 * float_size, mf.READ_ONLY)
+        
+        # System interactions
+        self.create_buffer('bboxes',   nSystems * mat3_size, mf.READ_ONLY)
+        self.create_buffer('sysneighs',nSystems * int_size, mf.READ_ONLY)
+        self.create_buffer('sysbonds', nSystems * 4 * float_size, mf.READ_ONLY)
+        
+        # Grid force field parameters (scalar)
+        # self.kernel_params['GFFParams'] = np.zeros(4, dtype=np.float32)
+        # self.kernel_params['bSubtractVdW'] = np.int32(0)
 
     def pack_system(self, iSys, mmff):
         """Packs data from an MMFF instance into GPU buffers for a specific system index."""
-        nvecs = mmff.nvecs
-        natoms = mmff.natoms
-        nnode = mmff.nnode
+        #print("pack_system() iSys=%d" % iSys)
+        nvecs   = mmff.nvecs
+        natoms  = mmff.natoms
+        nnode   = mmff.nnode
         float4_size = 4 * np.float32().itemsize
-        int4_size = 4 * np.int32().itemsize
+        int4_size   = 4 * np.int32().itemsize
 
         offset_atoms = iSys * nvecs * float4_size
-        self.toGPU('atoms', mmff.apos.astype(np.float32).flatten(), byte_offset=offset_atoms)
-        self.toGPU('aforces', mmff.fapos.astype(np.float32).flatten(), byte_offset=offset_atoms)
+        self.toGPU('apos',      mmff.apos.astype(np.float32).flatten(), byte_offset=offset_atoms)
+        self.toGPU('aforce',    mmff.fapos.astype(np.float32).flatten(), byte_offset=offset_atoms)
 
         offset_REQs = iSys * natoms * float4_size
-        self.toGPU('REQs', mmff.REQs.astype(np.float32).flatten(), byte_offset=offset_REQs)
-
+        self.toGPU('REQs',      mmff.REQs.astype(np.float32).flatten(), byte_offset=offset_REQs)
+        
         offset_neighs = iSys * natoms * int4_size
-        self.toGPU('neighs', mmff.neighs.astype(np.int32).flatten(), byte_offset=offset_neighs)
+        self.toGPU('neighs',    mmff.neighs.astype(np.int32).flatten(), byte_offset=offset_neighs)
         self.toGPU('neighCell', mmff.neighCell.astype(np.int32).flatten(), byte_offset=offset_neighs)
-
+        
         offset_apars = iSys * nnode * float4_size
-        self.toGPU('apars', mmff.apars.astype(np.float32).flatten(), byte_offset=offset_apars)
-        self.toGPU('bLs', mmff.bLs.astype(np.float32).flatten(), byte_offset=offset_apars)
-        self.toGPU('bKs', mmff.bKs.astype(np.float32).flatten(), byte_offset=offset_apars)
-        self.toGPU('Ksp', mmff.Ksp.astype(np.float32).flatten(), byte_offset=offset_apars)
-        self.toGPU('Kpp', mmff.Kpp.astype(np.float32).flatten(), byte_offset=offset_apars)
-        # Continue for other buffers as needed...
+        self.toGPU('apars',     mmff.apars.astype(np.float32).flatten(), byte_offset=offset_apars)
+        self.toGPU('bLs',       mmff.bLs.astype(np.float32).flatten(), byte_offset=offset_apars)
+        self.toGPU('bKs',       mmff.bKs.astype(np.float32).flatten(), byte_offset=offset_apars)
+        self.toGPU('Ksp',       mmff.Ksp.astype(np.float32).flatten(), byte_offset=offset_apars)
+        self.toGPU('Kpp',       mmff.Kpp.astype(np.float32).flatten(), byte_offset=offset_apars)
+        #print("pack_system() iSys=%d" % iSys, "offset_atoms=%d" % offset_atoms, "offset_REQs=%d" % offset_REQs, "offset_neighs=%d" % offset_neighs, "offset_apars=%d" % offset_apars)
+        #print("pack_system() iSys=%d" % iSys, "atoms.nbytes=%d" % mmff.apos.nbytes, "REQs.nbytes=%d" % mmff.REQs.nbytes, "neighs.nbytes=%d" % mmff.neighs.nbytes, "apars.nbytes=%d" % mmff.apars.nbytes)
+        self.toGPU('MDparams',  np.array([mmff.dt, mmff.damp, mmff.Flimit], dtype=np.float32), byte_offset=iSys*float4_size)
+
+
+    def init_with_atoms(self, na=None, atoms=None, REQs=None, REQ_default=REQ_DEFAULT):
+        """
+        Initialize MolecularDynamics directly with atom positions and REQ parameters,
+        without using MMFF object.
+        
+        Args:
+            atoms: numpy array of shape (na, 3) with atom positions
+            REQs: numpy array of shape (na, 4) with REQ parameters or None for defaults
+            nSystems: number of systems
+            nloc: local workgroup size
+            
+        Returns:
+            Initialized MolecularDynamics instance
+        """
+        float_size = np.float32().itemsize
+
+        if na is None:
+            na = len(atoms)
+        mf = cl.mem_flags
+
+        # Initialize necessary attributes
+        self.nSystems = 1
+        self.natoms   = na
+        self.nvecs    = na   # We don't have nodes or pi-orbitals, just atoms
+        self.nnode    = 0         # No node atoms
+        self.nDOFs    = (na, 0)  # (natoms, nnode)
+        
+        # Additional required attributes for initGridFF
+        self.nPBC  = (0, 0, 0)  # No periodic boundary conditions
+        self.npbc  = 0
+        self.nbkng = na
+        self.ncap  = 0
+        self.ntors = 0
+        # Convert atoms to float32 if needed
+        
+        if atoms is None:
+            self.atoms = np.zeros((na, 4), dtype=np.float32)
+        else:
+            self.atoms = np.asarray(atoms, dtype=np.float32)
+        if REQs is None:
+            self.REQs    = np.zeros((na, 4), dtype=np.float32)
+            self.REQs[:, 0] = REQ_default[0]
+            self.REQs[:, 1] = REQ_default[1]
+            self.REQs[:, 2] = REQ_default[2]
+            self.REQs[:, 3] = REQ_default[3]
+        else:
+            self.REQs    = np.asarray(REQs, dtype=np.float32)
+        self.aforce = np.zeros((na, 4), dtype=np.float32)
+
+        self.create_buffer('apos',   na * 4 * float_size, mf.READ_WRITE)
+        self.create_buffer('aforce', na * 4 * float_size, mf.READ_WRITE)
+        self.create_buffer('REQs',   na * 4 * float_size, mf.READ_ONLY)
+
+        self.toGPU('apos',   self.atoms  )
+        self.toGPU('aforce', self.aforce )
+        self.toGPU('REQs',   self.REQs   )
+        self.queue.finish()
+
+    def setup_kernels(self):
+        """
+        Prepares the kernel arguments for all kernels by parsing their headers.
+        Also sets up the work sizes for each kernel.
+        """
+        print("MolecularDynamics::setup_kernels()")
+        # Get all work sizes at once
+        self.get_work_sizes()
+        self.init_kernel_params()
+                
+        # Generate kernel arguments
+        self.kernel_args_getMMFFf4         = self.generate_kernel_args("getMMFFf4")
+        self.kernel_args_getNonBond        = self.generate_kernel_args("getNonBond")
+        # --- NOTE: grid-kernels are intialized in initGridFF()
+        #self.kernel_args_getNonBond_GridFF_Bspline = self.generate_kernel_args("getNonBond_GridFF_Bspline")
+        #self.kernel_args_getNonBond_GridFF_Bspline_tex = self.generate_kernel_args("getNonBond_GridFF_Bspline_tex")
+        self.kernel_args_updateAtomsMMFFf4 = self.generate_kernel_args("updateAtomsMMFFf4")
+        self.kernel_args_cleanForceMMFFf4  = self.generate_kernel_args("cleanForceMMFFf4")
+        self.kernel_args_runMD             = self.generate_kernel_args("runMD")
+
+    def init_kernel_params(self):
+        """
+        Initialize a dictionary of standard kernel parameters.
+        This provides default values for common parameters used in kernels.
+        """
+        print("MolecularDynamics::init_kernel_params()")
+        # Create a dictionary to store kernel parameters
+        self.kernel_params = {
+            # Common dimension parameters
+            'nDOFs':        np.array([self.natoms, self.nnode, 0, self.perBatch], dtype=np.int32),
+            'mask':         np.array([1, 1, 1, 1],         dtype=np.int32),
+            'nPBC':         np.array(self.nPBC+(0,),       dtype=np.int32),
+            'GFFParams':    np.array([0.0, 0.0,  0.0, 0.0], dtype=np.float32),
+            'MDparams':     np.array([0.1, 0.05, 0.0, 0.0], dtype=np.float32),
+            # Common scalar parameters
+            'npbc':         np.int32(self.npbc),
+            'bSubtractVdW': np.int32(0),
+            'grid_ns':      np.array([0,0,0,0], dtype=np.int32),
+            'grid_invStep': np.array([0.0,0.0,0.0,0.0], dtype=np.float32),
+            'grid_p0':      np.array([0.0,0.0,0.0,0.0], dtype=np.float32),
+        }
+        
+    def get_work_sizes(self):
+        """
+        Generate standard work sizes based on current system dimensions.
+        
+        Returns:
+            dict: Dictionary containing sz_na, sz_node, sz_nvec, sz_loc
+        """
+        # Default to the standard work size parameters
+        self.sz_loc = (self.nloc, 1)
+        self.sz_na   = (clu.roundup_global_size(self.natoms, self.nloc), self.nSystems)
+        self.sz_node = (clu.roundup_global_size(self.nnode,  self.nloc), self.nSystems)
+        self.sz_nvec = (clu.roundup_global_size(self.nvecs,  self.nloc), self.nSystems)
+        
+        # Return all sizes, let the caller decide which to use
+        return {
+            'sz_na':   self.sz_na,
+            'sz_node': self.sz_node,
+            'sz_nvec': self.sz_nvec,
+            'sz_loc':  self.sz_loc
+        }
 
     def upload_all_systems(self):
         """Uploads data for all systems to the GPU."""
         for sys_idx in range(self.nSystems):
-            self.pack_system(sys_idx, self.mmff_instances[sys_idx])
-        if self.verbose:
-            print("All systems uploaded to GPU.")
+            self.pack_system(sys_idx, self.mmff_list[sys_idx])
+        #print("MolecularDynamics::upload_all_systems() DONE")
 
-    def setup_kernels(self):
-        self.getMMFFf4         = self.program.getMMFFf4
-        self.getNonBond        = self.program.getNonBond
-        self.updateAtomsMMFFf4 = self.program.updateAtomsMMFFf4
-        self.cleanForceMMFFf4  = self.program.cleanForceMMFFf4
-        if self.verbose:
-            print("Kernels set up.")
+    def run_getNonBond(self):
+        self.prg.getNonBond(self.queue, self.sz_na, self.sz_loc, *self.kernel_args_getNonBond)
+        self.queue.finish()
+    
+    def run_getNonBond_GridFF_Bspline(self):
+        self.prg.getNonBond_GridFF_Bspline(self.queue, self.sz_na, self.sz_loc,  *self.kernel_args_getNonBond_GridFF_Bspline)
+        self.queue.finish()
 
-    def setup_run_ocl_opt(self):
-        mmff = self.mmff_instances[0]  # Assuming all instances are identical
-        sz_loc    = (self.nloc, 1 )
-        sz_na   = ( clu.roundup_global_size( self.mmff.natoms, self.nloc), self.nSystems )
-        sz_node = ( clu.roundup_global_size( self.mmff.nnode,  self.nloc), self.nSystems )
-        sz_nvec = ( clu.roundup_global_size( self.mmff.nvecs,  self.nloc), self.nSystems )
+    def run_getNonBond_GridFF_Bspline_tex(self):
+        self.prg.getNonBond_GridFF_Bspline_tex(self.queue, self.sz_na, self.sz_loc,  *self.kernel_args_getNonBond_GridFF_Bspline_tex)
+        self.queue.finish()
 
-        """
-        // ======================================================================
-        //                          getMMFFf4()
-        // ======================================================================
-        // 1.  getMMFFf4() - computes bonding interactions between atoms and nodes and its neighbors (max. 4 neighbors allowed), the resulting forces on atoms are stored "fapos" array and recoil forces on neighbors are stored in "fneigh" array
-        //                   kernel run over all atoms and all systems in parallel to exploit GPU parallelism
-        //__attribute__((reqd_work_group_size(1,1,1)))
-        __kernel void getMMFFf4(
-            const int4 nDOFs,               // 1   (nAtoms,nnode) dimensions of the system
-            // Dynamical
-            __global float4*  apos,         // 2  [natoms]     positions of atoms (including node atoms [0:nnode] and capping atoms [nnode:natoms] and pi-orbitals [natoms:natoms+nnode] )
-            __global float4*  fapos,        // 3  [natoms]     forces on    atoms (just node atoms are evaluated)
-            __global float4*  fneigh,       // 4  [nnode*4*2]  recoil forces on neighbors (and pi-orbitals)
-            // parameters
-            __global int4*    neighs,       // 5  [nnode]  neighboring atoms
-            __global int4*    neighCell,    // 5  [nnode]  neighboring atom  cell index
-            __global float4*  REQKs,        // 6  [natoms] non-boding parametes {R0,E0,Q} i.e. R0: van der Waals radii, E0: well depth and partial charge, Q: partial charge 
-            __global float4*  apars,        // 7  [nnode]  per atom forcefield parametrs {c0ss,Kss,c0sp}, i.e. c0ss: cos(equlibrium angle/2) for sigma-sigma; Kss: stiffness of sigma-sigma angle; c0sp: is cos(equlibrium angle) for sigma-pi
-            __global float4*  bLs,          // 8  [nnode]  bond length    between node and each neighbor
-            __global float4*  bKs,          // 9  [nnode]  bond stiffness between node and each neighbor
-            __global float4*  Ksp,          // 10 [nnode]  stiffness of pi-alignment for each neighbor     (only node atoms have pi-pi alignemnt interaction)
-            __global float4*  Kpp,          // 11 [nnode]  stiffness of pi-planarization for each neighbor (only node atoms have pi-pi alignemnt interaction)
-            __global cl_Mat3* lvecs,        // 12 lattice vectors         for each system
-            __global cl_Mat3* ilvecs,       // 13 inverse lattice vectors for each system
-            __global float4*  pbc_shifts,   // 14 shifts of pbc images
-            const int npbc,
-            const int bSubtractVdW
-        ){
-        """
-        global_size_mmff = (self.nSystems * mmff.nnode,)
-        local_size_mmff = None  # Let OpenCL decide
-        self.kernel_args_getMMFFf4 = [
-            sz_node,
-            (1,1), #sz_loc,
-            np.int32(mmff.nDOFs),
-            *self.bufflist([
-                'atoms', 'aforces', 'fneigh', 'neighs', 'neighCell', 'REQs', 'apars',
-                'bLs', 'bKs', 'Ksp', 'Kpp',
-                #'angles', 'tors2atom','torsParams', 'constr', 'constrK', 'invLvec', 'pbc_shifts'
-            ]),
-            np.int32(1),  # npbc
-            np.int32(0)   # bSubtractVdW
-        ]
+    def run_getMMFFf4(self):
+        self.prg.getMMFFf4(self.queue, self.sz_node, self.sz_loc, *self.kernel_args_getMMFFf4)
+        self.queue.finish()
+    
+    def run_updateAtomsMMFFf4(self):
+        self.prg.updateAtomsMMFFf4(self.queue, self.sz_nvec, self.sz_loc, *self.kernel_args_updateAtomsMMFFf4)
+        self.queue.finish()
+    
+    def run_cleanForceMMFFf4(self):
+        self.prg.cleanForceMMFFf4(self.queue, self.sz_na, self.sz_loc, *self.kernel_args_cleanForceMMFFf4)
+        self.queue.finish()
+    
+    def run_runMD(self):
+        self.prg.runMD(self.queue, self.sz_nvec, self.sz_loc, *self.kernel_args_runMD)
+        self.queue.finish()
+    
+    def run_sampleGrid_tex(self, apos=None, bUseTexture=False):
+        if apos is not None:
+            self.toGPU('apos', apos)
+        if bUseTexture:
+            self.prg.sampleGrid_tex(self.queue, self.sz_na, self.sz_loc, *self.kernel_args_sampleGrid_tex)
+        else:
+            self.prg.sampleGrid(self.queue, self.sz_na, self.sz_loc, *self.kernel_args_sampleGrid)
+        self.fromGPU('aforce', self.aforce)
+        self.queue.finish()
+        return self.aforce.reshape(-1, 4).copy()
 
-        """
-        // ======================================================================
-        //                           getNonBond()
-        // ======================================================================
-        // Calculate non-bonded forces on atoms (icluding both node atoms and capping atoms), cosidering periodic boundary conditions
-        // It calculate Lenard-Jones, Coulomb and Hydrogen-bond forces between all atoms in the system
-        // it can be run in parallel for multiple systems, in order to efficiently use number of GPU cores (for small systems with <100 this is essential to get good performance)
-        // This is the most time consuming part of the forcefield evaluation, especially for large systems when nPBC>1
-        __attribute__((reqd_work_group_size(32,1,1)))
-        __kernel void getNonBond(
-            const int4 ns,                  // 1 // (natoms,nnode) dimensions of the system
-            // Dynamical
-            __global float4*  atoms,        // 2 // positions of atoms  (including node atoms [0:nnode] and capping atoms [nnode:natoms] and pi-orbitals [natoms:natoms+nnode] )
-            __global float4*  forces,       // 3 // forces on atoms
-            // Parameters
-            __global float4*  REQKs,        // 4 // non-bonded parameters (RvdW,EvdW,QvdW,Hbond)
-            __global int4*    neighs,       // 5 // neighbors indices      ( to ignore interactions between bonded atoms )
-            __global int4*    neighCell,    // 6 // neighbors cell indices ( to know which PBC image should be ignored  due to bond )
-            __global cl_Mat3* lvecs,        // 7 // lattice vectors for each system
-            const int4        nPBC,         // 8 // number of PBC images in each direction (x,y,z)
-            const float4      GFFParams     // 9 // Grid-Force-Field parameters
-        );
-        """
-        global_size_nonbond = (self.nSystems * mmff.natoms,)
-        local_size_nonbond = None
-        self.kernel_args_getNonBond = [
-            sz_na,
-            sz_loc,
-            np.array([mmff.natoms, mmff.nnode, 0, 0], dtype=np.int32),
-            *self.bufflist(['atoms', 'aforces', 'REQs', 'neighs', 'neighCell', 'invLvec'])
-        ]
-
-        """
-        // Assemble recoil forces from neighbors and  update atoms positions and velocities 
-        //__attribute__((reqd_work_group_size(1,1,1)))
-        __kernel void updateAtomsMMFFf4(
-            const int4        n,            // 1 // (natoms,nnode) dimensions of the system
-            __global float4*  apos,         // 2 // positions of atoms  (including node atoms [0:nnode] and capping atoms [nnode:natoms] and pi-orbitals [natoms:natoms+nnode] )
-            __global float4*  avel,         // 3 // velocities of atoms 
-            __global float4*  aforce,       // 4 // forces on atoms
-            __global float4*  cvf,          // 5 // damping coefficients for velocity and force
-            __global float4*  fneigh,       // 6 // recoil forces on neighbors (and pi-orbitals)
-            __global int4*    bkNeighs,     // 7 // back neighbors indices (for recoil forces)
-            __global float4*  constr,       // 8 // constraints (x,y,z,K) for each atom
-            __global float4*  constrK,      // 9 // constraints stiffness (kx,ky,kz,?) for each atom
-            __global float4*  MDparams,     // 10 // MD parameters (dt,damp,Flimit)
-            __global float4*  TDrives,      // 11 // Thermal driving (T,gamma_damp,seed,?)
-            __global cl_Mat3* bboxes,       // 12 // bounding box (xmin,ymin,zmin)(xmax,ymax,zmax)(kx,ky,kz)
-            __global int*     sysneighs,    // 13 // // for each system contains array int[nMaxSysNeighs] of nearby other systems
-            __global float4*  sysbonds      // 14 // // contains parameters of bonds (constrains) with neighbor systems   {Lmin,Lmax,Kpres,Ktens}
-        )
-        """
-        global_size_update = (self.nSystems * mmff.nvecs,)
-        local_size_update  = self.nloc
-        self.kernel_args_updateAtomsMMFFf4 = [
-            sz_na,
-            sz_loc,
-            *self.bufflist([
-                'atoms', 'avel', 'aforces', 'cvf', 'fneigh', 'bkNeighs',
-                'constr', 'constrK', 'MDpars', 'TDrives', 'bboxes',
-                'sysneighs', 'sysbonds'
-            ])
-        ]
-
-        """
-        __kernel void cleanForceMMFFf4(
-            const int4        n,           // 2
-            __global float4*  aforce,      // 5
-            __global float4*  fneigh       // 6
-        ){
-        """
-        global_size_clean = (self.nSystems * mmff.natoms,)
-        local_size_clean = None
-        self.kernel_args_cleanForceMMFFf4 = [
-            sz_nvec,
-            sz_loc,
-            *self.bufflist(['aforces', 'fneigh'])
-        ]
-
-        if self.verbose:
-            print("Kernel arguments prepared for optimization.")
-
-    def run_ocl_opt(self, niter, Fconv=1e-6, nPerVFs=10):
-        F2conv = Fconv ** 2
-        niterdone = 0
-        #mmff = self.mmff_instances[0]  # Assuming all instances are identical
-        for _ in range(niter):
-            self.getNonBond       (*self.kernel_args_getNonBond)
-            self.getMMFFf4        (*self.kernel_args_getMMFFf4)
-            self.updateAtomsMMFFf4(*self.kernel_args_updateAtomsMMFFf4)
-            niterdone += 1
-            if niterdone % nPerVFs == 0:
-                # Read back forces to check convergence
-                #aforces = np.empty(self.nSystems * mmff.nvecs * 4, dtype=np.float32)
-                cl.enqueue_copy(self.queue, self.aforces, self.buffer_dict['aforces'])
-                F2max = np.max(np.sum( self.aforces**2, axis=1))
-                if self.verbose: print(f"Iteration {niterdone}: Max |F|^2 = {F2max}")
-                if F2max < F2conv:
-                    if self.verbose: print(f"Converged after {niterdone} iterations.")
-                    break
-        if self.verbose and F2max >= F2conv: print(f"Did not converge after {niterdone} iterations. Final |F|^2 = {F2max}")
-        return niterdone
+    def run_MD_py(self, nsteps, use_gridff=False):
+        """Run molecular dynamics simulation..."""
+        for i in range(nsteps):
+            if use_gridff and self.has_gridff:
+                if self.use_texture:
+                    self.prg.getNonBond_GridFF_Bspline_tex(self.queue, self.sz_na, self.sz_loc, *self.kernel_args_getNonBond_GridFF_Bspline_tex)
+                else:
+                    self.prg.getNonBond_GridFF_Bspline(self.queue, self.sz_na, self.sz_loc, *self.kernel_args_getNonBond_GridFF_Bspline)
+            else:
+                self.prg.getNonBond       (self.queue, self.sz_na, self.sz_loc,*self.kernel_args_getNonBond)
+            self.prg.getMMFFf4        (self.queue, self.sz_node, self.sz_loc, *self.kernel_args_getMMFFf4)
+            self.prg.updateAtomsMMFFf4(self.queue, self.sz_nvec, self.sz_loc, *self.kernel_args_updateAtomsMMFFf4)
+        self.fromGPU('apos',   self.atoms)
+        self.fromGPU('aforce', self.aforce)
+        self.queue.finish()
+        return self.atoms.reshape(-1, 4), self.aforce.reshape(-1, 4)
 
     def download_results(self):
-        mmff   = self.mmff_instances[0]
-        cl.enqueue_copy(self.queue, self.atoms,  self.buffer_dict['atoms'])
-        cl.enqueue_copy(self.queue, self.forces, self.buffer_dict['aforces'])
-        self.queue.finish()
-        #if self.verbose: print("Downloaded results from GPU.")
-        return self.atoms.reshape(self.nSystems, mmff.nvecs, 4), self.forces.reshape(self.nSystems, mmff.nvecs, 4)
+        self.fromGPU('apos',   self.atoms)
+        self.fromGPU('aforce', self.aforce)
+        return self.atoms.reshape(-1, 4), self.aforce.reshape(-1, 4)
+    
+    def initGridFF(self, grid_shape, bspline_data, grid_p0, grid_step, use_texture=False, r_damp=0.0, alpha_morse=0.0, bKernels=True):
+        """Initialize GridFF with B-spline data"""
+        
+        #grid_shape = grid_shape[::-1] #.copy()
 
-    def clean_forces(self):
-        self.cleanForceMMFFf4(*self.kernel_args_cleanForceMMFFf4)
-        #if self.verbose:  print("Forces cleaned using cleanForceMMFFf4 kernel.")
+        print("MolecularDynamics::initGridFF() grid_shape: ", grid_shape)
+        self.has_gridff = True
+        self.use_texture = use_texture
+        
+        # 1. Ensure kernel_params exists
+        if not hasattr(self, 'kernel_params'):
+            self.init_kernel_params()
+            
+        # 2. Set grid parameters
+        self.kernel_params.update({
+            'grid_ns':      np.array([*grid_shape ,0],                   dtype=np.int32),
+            'grid_invStep': np.array([1.0/s for s in grid_step] + [0.0], dtype=np.float32),
+            'grid_p0':      np.array([*grid_p0   ,0.0],                  dtype=np.float32),
+            'GFFParams':    np.array([r_damp, alpha_morse, 0.0, 0.0],    dtype=np.float32),
+            'nstep':        np.int32(self.nstep),
+        })
+        
+        # 3. Create buffers BEFORE generating kernel args
+        if use_texture:
+            print(f"MolecularDynamics::initGridFF() use_texture=True grid_shape={grid_shape} bspline_data.shape={bspline_data.shape} bspline_data.dtype={bspline_data.dtype}")
+            print("Original bspline_data dimensions:", bspline_data.ndim)
+
+            #bspline_data = bspline_data.transpose(2,1,0,3).copy(); grid_shape = (40,40,200)   # better 
+            #bspline_data = bspline_data.transpose(2,1,0,3).copy(); grid_shape = ( grid_shape[2], grid_shape[1], grid_shape[0] )   # better 
+            bspline_data = bspline_data.transpose(2,1,0,3).copy(); grid_shape = ( grid_shape[0], grid_shape[1], grid_shape[2] )   # better 
+            print("!!!!! grid_shape: ", grid_shape)
+
+            fmt = cl.ImageFormat(cl.channel_order.RGBA, cl.channel_type.FLOAT)
+            tex = cl.Image(self.ctx, cl.mem_flags.READ_ONLY, fmt, shape=tuple(grid_shape))
+            
+            #tex = cl.Image(self.ctx, cl.mem_flags.READ_ONLY, fmt, shape=tuple(grid_shape[::-1]))
+
+            cl.enqueue_copy(self.queue, tex, bspline_data,  origin=(0, 0, 0), region=grid_shape)
+            #cl.enqueue_copy(self.queue, tex, bspline_data,  origin=(0, 0, 0), region=bspline_data.shape[:3])
+            self.buffer_dict['BsplinePLQH_tex'] = tex
+            if bKernels:
+                self.kernel_args_getNonBond_GridFF_Bspline_tex = self.generate_kernel_args("getNonBond_GridFF_Bspline_tex", bPrint=False)            
+        else:
+            print("MolecularDynamics::initGridFF() use_texture=False")
+
+            #bspline_data = bspline_data.transpose(2,1,0,3).copy(); # grid_shape = ( grid_shape[2], grid_shape[1], grid_shape[0] )   # better 
+
+            print("!!!!! grid_shape: ", grid_shape)
+
+            buf = cl.Buffer(self.ctx, cl.mem_flags.READ_ONLY|cl.mem_flags.COPY_HOST_PTR, hostbuf=bspline_data)
+            self.buffer_dict['BsplinePLQH'] = buf
+            if bKernels:
+                self.kernel_args_getNonBond_GridFF_Bspline = self.generate_kernel_args("getNonBond_GridFF_Bspline", bPrint=False)
+        print("MolecularDynamics::initGridFF() DONE")
+
+    def scan_1D( self, nsteps=100, d=[0.1,0.0,0.0], p0=[0.0,0.0,0.0], use_texture=False, mmff=None ):
+        if mmff is None: mmff = self.mmff_list[0]
+        # Initialize position and force grid_dataays
+        pos    = np.zeros((nsteps,4), dtype=np.float32)
+        forces = np.zeros((nsteps,4), dtype=np.float32)
+        print("Running 1D force scan...")
+        d  = np.array(d, dtype=np.float32)
+        p0 = np.array(p0,  dtype=np.float32)
+        for i in range(nsteps):
+            # Update atom position along x-axis
+            mmff.apos[0,:3] = p0 + d*i
+            self.upload_all_systems()
+            if use_texture:
+                self.run_getNonBond_GridFF_Bspline_tex()
+            else:
+                self.run_getNonBond_GridFF_Bspline()
+            pos_i, force_i = self.download_results()
+            forces[i] = force_i[0]  # Get force on first (and only) atom
+            pos[i] = pos_i[0]  # Store position for reference
+            #if i % 10 == 0:  print(f"Step {i+1}/{nsteps}: x = {x[i]:.2f} Å, F = ({forces[i,0]:.3f}, {forces[i,1]:.3f}, {forces[i,2]:.3f}) kJ/mol/Å")
+        return pos, forces
+
+    def scan_2D( self, ns=(50,50), du=[0.1,0.0,0.0], dv=[0.0,0.1,0.0],  p0=[0.0,0.0,0.0], use_texture=False, mmff=None ):
+        if mmff is None: mmff = self.mmff_list[0]
+        pos    = np.zeros((ns[0],ns[1],4), dtype=np.float32)
+        forces = np.zeros((ns[0],ns[1],4), dtype=np.float32)
+        du = np.array(du, dtype=np.float32)
+        dv = np.array(dv, dtype=np.float32)
+        p0 = np.array(p0,  dtype=np.float32)
+        print("Running 2D force scan...")
+        for ix in range(ns[0]):
+            for iy in range(ns[1]):
+                p = p0 + du*ix + dv*iy
+                mmff.apos[0,:3] = p
+                self.upload_all_systems()
+                if use_texture:
+                    self.run_getNonBond_GridFF_Bspline_tex()
+                else:
+                    self.run_getNonBond_GridFF_Bspline()
+                pos_i, force_i = self.download_results()
+                forces[ix, iy,:] = force_i[0,: ]  # Get force on first (and only) atom
+                pos   [ix, iy,:] = pos_i  [0,: ]  # Store position for reference
+        return pos, forces

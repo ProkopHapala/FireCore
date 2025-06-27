@@ -112,7 +112,9 @@ touch minima.dat
 
 #./$name -m 1 -x common_resources/xyz/PTCDA         -g common_resources/xyz/NaCl_1x1_L2 -iParalel 3  -verb 4 -perframe 1
 #./$name -m 1 -x common_resources/xyz/PTCDA         -g common_resources/xyz/NaCl_1x1_L2 -iParalel 3  -verb 4
-#./$name -m 1 -x common_resources/xyz/PTCDA         -g common_resources/xyz/NaCl_1x1_L2 -iParalel 3 
+#./$name -m 1 -x common_resources/xyz/PTCDA         -g common_resources/xyz/NaCl_1x1_L2 -iParalel 3
+./$name -m 1 -x common_resources/xyz/PTCDA         -g common_resources/xyz/NaCl_1x1_L2 -iParalel 3 -tex 1
+
 #./$name -m 1 -x common_resources/xyz/PTCDA         -g common_resources/xyz/NaCl_1x1_L2 -iParalel -1
 #./$name -m 1 -x common_resources/xyz/PTCDA         -g common_resources/xyz/NaCl_1x1_L2 -iParalel 0 -verb 3
 

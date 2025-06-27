@@ -49,6 +49,10 @@ header_strings = [
 "void firecore_getpsi( int in1, int issh, int n, double x0, double dx, double ys )",
 "void firecore_MOtoXSF( int iMO )",
 "void firecore_orb2points( int iband, int ikpoint, int npoints, double* points, double* ewfaux )",
+"void firecore_get_HS_dims( int* natoms_out, int* norbitals_out, int* nspecies_out, int* neigh_max_out, int* numorb_max_out, int* nsh_max_out, int* ME2c_max_out, int* max_mu_dim1_out, int* max_mu_dim2_out, int* max_mu_dim3_out, int* mbeta_max_out, int* nspecies_fdata_out)",
+"void firecore_get_HS_sparse( double* h_mat_out, double* s_mat_out, int* num_orb_out, int* degelec_out, int* iatyp_out, int* lssh_out, int* mu_out, int* nu_out, int* mvalue_out, int* nssh_out, int* nzx_out, int* neighn_out, int* neigh_j_out, int* neigh_b_out, double* xl_out )",
+"void firecore_get_HS_k( double* kpoint_vec, void* Hk_out, void* Sk_out )",
+"void firecore_get_nspecies( int* nspecies_out )",
 ]
 #cpp_utils.writeFuncInterfaces( header_strings );        exit()     #   uncomment this to re-generate C-python interfaces
 
@@ -86,6 +90,9 @@ array2i  = np.ctypeslib.ndpointer(dtype=np.int32,  ndim=2, flags='CONTIGUOUS')
 array1d  = np.ctypeslib.ndpointer(dtype=np.double, ndim=1, flags='CONTIGUOUS')
 array2d  = np.ctypeslib.ndpointer(dtype=np.double, ndim=2, flags='CONTIGUOUS')
 array3d  = np.ctypeslib.ndpointer(dtype=np.double, ndim=3, flags='CONTIGUOUS')
+array3i  = np.ctypeslib.ndpointer(dtype=np.int32,  ndim=3, flags='CONTIGUOUS')
+array4d  = np.ctypeslib.ndpointer(dtype=np.double, ndim=4, flags='CONTIGUOUS')
+array2cd = np.ctypeslib.ndpointer(dtype=np.complex128, ndim=2, flags='CONTIGUOUS') # 
 # ========= C functions
 
 
@@ -314,7 +321,118 @@ def orb2points( poss, ys=None, iMO=1,  ikpoint=1 ):
     lib.firecore_orb2points( iMO, ikpoint, n, poss, ys )
     return ys
 
+# subroutine firecore_dens2points(npoints, points, f_den, f_den0, ewfaux_out) bind(c, name='firecore_dens2points')
+argDict["firecore_dens2points"]=( None, [c_int, array2d, c_double, c_double, array1d ] )
+def dens2points( points, f_den=1.0, f_den0=0.0, ewfaux_out=None ):
+    n = len(points)
+    if ewfaux_out is None:
+        ewfaux_out = np.zeros(n)
+    lib.firecore_dens2points( n, points, f_den, f_den0, ewfaux_out )
+    return ewfaux_out
 
+# --- Export H and S matrices ---
+
+# Define classes to hold the structured data
+class FireballDims:
+    def __init__(self, natoms, norbitals, nspecies, neigh_max, numorb_max, nsh_max, ME2c_max,
+                 max_mu_dim1, max_mu_dim2, max_mu_dim3, mbeta_max, nspecies_fdata):
+        self.natoms = natoms
+        self.norbitals = norbitals
+        self.nspecies = nspecies  # Distinct species in current calculation
+        self.neigh_max = neigh_max
+        self.numorb_max = numorb_max
+        self.nsh_max = nsh_max
+        self.ME2c_max = ME2c_max
+        self.max_mu_dim1 = max_mu_dim1
+        self.max_mu_dim2 = max_mu_dim2
+        self.max_mu_dim3 = max_mu_dim3
+        self.mbeta_max = mbeta_max
+        self.nspecies_fdata = nspecies_fdata # Total species in info.dat
+
+class FireballData:
+    def __init__(self, dims: FireballDims):
+        if not isinstance(dims, FireballDims):
+            raise TypeError("dims argument must be an instance of FireballDims")
+
+        # Fortran: h_mat(imu, inu, ineigh, iatom)
+        # Python: h_mat[iatom, ineigh, inu, imu]
+        self.h_mat   = np.zeros((dims.natoms, dims.neigh_max, dims.numorb_max, dims.numorb_max), dtype=np.float64)
+        self.s_mat   = np.zeros((dims.natoms, dims.neigh_max, dims.numorb_max, dims.numorb_max), dtype=np.float64)
+        self.num_orb = np.zeros(dims.nspecies, dtype=np.int32)
+        self.degelec = np.zeros(dims.natoms, dtype=np.int32)
+        self.iatyp   = np.zeros(dims.natoms, dtype=np.int32)
+        # Fortran: lssh(nsh_max, nspecies) -> Python: lssh[nspecies, nsh_max]
+        self.lssh    = np.zeros((dims.nspecies, dims.nsh_max), dtype=np.int32)
+        # Fortran: mu(d1,d2,d3) -> Python: mu[d3,d2,d1]
+        self.mu      = np.zeros((dims.max_mu_dim3, dims.max_mu_dim2, dims.max_mu_dim1), dtype=np.int32)
+        self.nu      = np.zeros((dims.max_mu_dim3, dims.max_mu_dim2, dims.max_mu_dim1), dtype=np.int32)
+        self.mvalue  = np.zeros((dims.max_mu_dim3, dims.max_mu_dim2, dims.max_mu_dim1), dtype=np.int32)
+        self.nssh    = np.zeros(dims.nspecies, dtype=np.int32)
+        self.nzx     = np.zeros(dims.nspecies_fdata, dtype=np.int32)
+        self.neighn  = np.zeros(dims.natoms, dtype=np.int32)
+        # Fortran: neigh_j(neigh_max, natoms) -> Python: neigh_j[natoms, neigh_max]
+        self.neigh_j = np.zeros((dims.natoms, dims.neigh_max), dtype=np.int32)
+        self.neigh_b = np.zeros((dims.natoms, dims.neigh_max), dtype=np.int32)
+        # Fortran: xl(3, mbeta_max) -> Python: xl[mbeta_max, 3]
+        self.xl      = np.zeros((dims.mbeta_max, 3), dtype=np.float64)
+
+# void firecore_get_HS_dims( int* natoms_out, int* norbitals_out, int* nspecies_out, int* neigh_max_out, int* numorb_max_out, int* nsh_max_out, int* ME2c_max_out, int* max_mu_dim1_out, int* max_mu_dim2_out, int* max_mu_dim3_out, int* mbeta_max_out, int* nspecies_fdata_out)
+argDict["firecore_get_HS_dims"]=( None, [c_int_p, c_int_p, c_int_p, c_int_p, c_int_p, c_int_p, c_int_p, c_int_p, c_int_p, c_int_p, c_int_p, c_int_p] ) # Matches 12 args
+def get_HS_dims():
+    natoms_c         = ct.c_int()
+    norbitals_c      = ct.c_int()
+    nspecies_c       = ct.c_int()
+    neigh_max_c      = ct.c_int()
+    numorb_max_c     = ct.c_int()
+    nsh_max_c        = ct.c_int()
+    ME2c_max_c       = ct.c_int()
+    max_mu_dim1_c    = ct.c_int()
+    max_mu_dim2_c    = ct.c_int()
+    max_mu_dim3_c    = ct.c_int()
+    mbeta_max_c      = ct.c_int()
+    nspecies_fdata_c = ct.c_int()
+    lib.firecore_get_HS_dims(
+        ct.byref(natoms_c), ct.byref(norbitals_c), ct.byref(nspecies_c),
+        ct.byref(neigh_max_c), ct.byref(numorb_max_c),
+        ct.byref(nsh_max_c), ct.byref(ME2c_max_c),
+        ct.byref(max_mu_dim1_c), ct.byref(max_mu_dim2_c), ct.byref(max_mu_dim3_c),
+        ct.byref(mbeta_max_c), ct.byref(nspecies_fdata_c)
+    )
+    return FireballDims(
+        natoms_c.value, norbitals_c.value,
+        nspecies_c.value,
+        neigh_max_c.value, numorb_max_c.value,
+        nsh_max_c.value, ME2c_max_c.value,
+        max_mu_dim1_c.value, max_mu_dim2_c.value, max_mu_dim3_c.value,
+        mbeta_max_c.value, nspecies_fdata_c.value
+    )
+
+# void firecore_get_HS_sparse( double* h_mat_out, double* s_mat_out, int* num_orb_out, int* degelec_out, int* iatyp_out, int* lssh_out, int* mu_out, int* nu_out, int* mvalue_out, int* nssh_out, int* nzx_out, int* neighn_out, int* neigh_j_out, int* neigh_b_out, double* xl_out )
+argDict["firecore_get_HS_sparse"]=( None, [array4d, array4d, array1i, array1i, array1i, array2i, array3i, array3i, array3i, array1i, array1i, array1i, array2i, array2i, array2d] )
+def get_HS_sparse(dims):
+    # Ensure dims is a FireballDims object
+    if not isinstance(dims, FireballDims):
+        raise TypeError("dims argument must be an instance of FireballDims")
+
+    # Create FireballData instance; arrays are allocated in its constructor
+    data = FireballData(dims)
+
+    lib.firecore_get_HS_sparse(
+        data.h_mat, data.s_mat,
+        data.num_orb, data.degelec, data.iatyp,
+        data.lssh, data.mu, data.nu, data.mvalue, data.nssh, data.nzx,
+        data.neighn, data.neigh_j, data.neigh_b, data.xl
+    )
+    return data
+
+# void firecore_get_HS_k( double* kpoint_vec, void* Hk_out, void* Sk_out ) # Using void* for complex arrays
+argDict["firecore_get_HS_k"]=( None, [array1d, array2cd, array2cd] ) # array2cd for complex double
+def get_HS_k(kpoint_vec, norbitals):
+    Hk_out = np.zeros((norbitals, norbitals), dtype=np.complex128)
+    Sk_out = np.zeros((norbitals, norbitals), dtype=np.complex128)
+    kpoint_vec_np = np.array(kpoint_vec, dtype=np.float64)
+    lib.firecore_get_HS_k(kpoint_vec_np, Hk_out, Sk_out)
+    return Hk_out, Sk_out
 
 cpp_utils.set_args_dict(lib, argDict)
 
@@ -330,12 +448,14 @@ def run_nonSCF( atomType, atomPos ):
     sigma=updateCharges(); #print( sigma )
     return norb, sigma
 
-def initialize( atomType=None, atomPos=None, verbosity=0 ):
+def initialize( atomType=None, atomPos=None, verbosity=1 ):
     global norb
-    setVerbosity(verbosity=verbosity)
+    #if verbosity is not None: 
+    setVerbosity(verbosity=verbosity)  # NOTE: verbosity must be set here, because previous values would be overwritten by preinit()
     preinit()
     norb = init( atomType, atomPos )
     return norb
+
 
 #===================================
 # ========= Main
@@ -403,4 +523,17 @@ if __name__ == "__main__":
     #forces = evalForce(atomPos, nmax_scf=100)
     #print( "Python: Forces", forces.transpose() )
     
+    # Test new HS export functions
+    print("\nTesting HS export functions:")
+    dims = get_HS_dims()
+    print("Dimensions retrieved (type):", type(dims))
+    if dims.natoms > 0 and dims.norbitals > 0 : # Ensure system is initialized
+        sparse_data = get_HS_sparse(dims)
+        print("iatyp:", sparse_data.iatyp)
+        print("h_mat shape:", sparse_data.h_mat.shape)
+        print("s_mat shape:", sparse_data.s_mat.shape)
 
+        kvec = [0.0, 0.0, 0.0]
+        Hk, Sk = get_HS_k(kvec, dims.norbitals)
+        print("Hk shape:", Hk.shape)
+        print("Sk shape:", Sk.shape)

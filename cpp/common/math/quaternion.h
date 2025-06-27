@@ -827,6 +827,11 @@ constexpr inline Quat4T<T2> cast(const Quat4T<T1>& i){ return Quat4T<T2>{ (T2)i.
 using Quat4i = Quat4T< int>;
 using Quat4f = Quat4T< float>;
 using Quat4d = Quat4T< double >;
+using Quat4b = Quat4T< bool>;
+
+
+static constexpr Quat4b Quat4bAll { true, true, true, true  };
+static constexpr Quat4b Quat4bNone{ false,false,false,false };
 
 static constexpr Quat4i Quat4iZero      {0,0,0,0};
 static constexpr Quat4i Quat4iOnes      {1,1,1,1};

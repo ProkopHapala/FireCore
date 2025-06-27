@@ -126,9 +126,9 @@ def minVal():
     print(flexVar)
     variance = [x[0] for x in variance]
     index = variance.index(min(variance))
-    KSrho = flexVar[index]
+    KRSrho = flexVar[index]
 
-    eff.setVerbosity(1,0)
+    eff.setVerbosity(0,0)
     print("verbos")
     atomParams = np.array([
     #  Q   sQ   sP   cP
@@ -149,25 +149,32 @@ def minVal():
     plot_energy_landscape( params['ang'], params['dist'], params['Etot'], Espan=5.0 )
     plt.title("Before relaxetion")
     plt.savefig("map2D_referece.png")
-
+    print("plt.savefig")
     outEs = np.zeros((nrec,5))
     # apos = np.zeros((nrec,,3))
     # epos = np.zeros((nrec,4))
-
+    print("============================================================================")
     with open("processXYZ.xyz", "w") as f: f.write("")
     #eff.processXYZ( "export/scan_data/distscan_H2O.xyz", bOutXYZ=True, outEs );
-
+    print("opend process XYZ")
     eff.initOpt( dt=0.005, damping=0.005, f_limit=1000.0)
 
     bCoreElectrons = False
     eff.setSwitches( coreCoul=1 )
     #eff.setSwitches( coreCoul=0 )
     eff.preAllocateXYZ("export/scan_data/angdistscan_CH4.xyz", Rfac=-1.35, bCoreElectrons=bCoreElectrons )
+    print("preallocate")
     eff.getBuffs()
     eff.info()
+    print("get buffs")
     #eff.aPars[0,2]=1
     eff.esize[:]=0.7
-    eff.processXYZ( "export/scan_data/angdistscan_CH4.xyz", bOutXYZ=True, outEs=outEs, bCoreElectrons=bCoreElectrons, bChangeCore=False, bChangeEsize=True, nstepMax=10000, dt=0.005, Fconv=1e-3, ialg=2 , KRSrho=KSrho )
+    print("kRSrho: ", KRSrho)
+    eff.setKRSrho(KRSrho)
+    # eff.processXYZ( "export/scan_data/angdistscan_CH4.xyz", outEs=outEs, bCoreElectrons=bCoreElectrons, bChangeCore=False, bChangeEsize=True, nstepMax=0, dt=0.005, Fconv=1e-3, ialg=2 ) #, KRSrho=KRSrho 
+    eff.processXYZ_e( "export/scan_data/angdistscan_CH4_e2.xyz", outEs=outEs, nstepMax=10000, dt=0.005, Fconv=1e-3) #, KRSrho=KRSrho 
+    print("processXYZ")
+
     plot_energy_landscape( params['ang'], params['dist'], outEs[:,0] )
     plt.title("After relaxetion")
     plt.savefig("map2d_eFF.png")

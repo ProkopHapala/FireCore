@@ -93,8 +93,11 @@ eff.setVerbosity(1)
 #outE=eff.relax_mol("H2O_noe2_", dt=0.03, outE=True,  bFixNuclei=True)   ;exit()
 
 #outE=eff.relax_mol("H2O_noe1", dt=0.03, outE=True)   ;exit()
-outE=eff.relax_mol("H2O_noe2_", dt=0.03, outE=True)  #;exit()
-# print(outE)
+outE=eff.relax_mol("H2O_noe2_", dt=0.03, outE=True)  ;exit()
+
+
+
+
 #plt.plot(outE-outE[-1]); plt.yscale('log'); plt.grid(); plt.show(); exit()
 
 # ==================== Scan Dependence of bond-lenght in CH4, NH3, H2O on core size (with fized core electrons) 

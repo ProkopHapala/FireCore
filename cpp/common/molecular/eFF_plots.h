@@ -276,8 +276,8 @@ void makePlots( Plot2D& plot, EFF& ff ){
     double si = 1.0;
     double sj = 1.0;
     l=plot.lines[0]; l->clr=0xFFFF0000; l->label="EDens"; evalLine( *l, [&](double x){ double fsi=0,fsj=0,E; Vec3d f; E=addDensOverlapGauss_S( {0,0,x}, si, sj, 1.0, f, fsi, fsj );                     return E; } );
-    l=plot.lines[1]; l->clr=0xFF0000FF; l->label="EPaul"; evalLine( *l, [&](double x){ double fsi=0,fsj=0,E; Vec3d f; E=addPauliGauss        ( {0,0,x}, si, sj,      f, fsi, fsj, true,  EFF::KRSrho ); return E; } );
-    l=plot.lines[2]; l->clr=0xFF0080FF; l->label="EPaul"; evalLine( *l, [&](double x){ double fsi=0,fsj=0,E; Vec3d f; E=addPauliGauss        ( {0,0,x}, si, sj,      f, fsi, fsj, false, EFF::KRSrho ); return E; } );
+    l=plot.lines[1]; l->clr=0xFF0000FF; l->label="EPaul"; evalLine( *l, [&](double x){ double fsi=0,fsj=0,E; Vec3d f; E=addPauliGauss        ( {0,0,x}, si, sj,      f, fsi, fsj, true,  ff.KRSrho ); return E; } );
+    l=plot.lines[2]; l->clr=0xFF0080FF; l->label="EPaul"; evalLine( *l, [&](double x){ double fsi=0,fsj=0,E; Vec3d f; E=addPauliGauss        ( {0,0,x}, si, sj,      f, fsi, fsj, false, ff.KRSrho ); return E; } );
 
 
     /*
