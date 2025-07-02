@@ -221,6 +221,9 @@ def _plot_single_projection(
     num_mol_snapshots: int = 2,
     custom_mol_frames: list[int] | None = None,
     mol_colors: list[str] | None = None,
+    custom_sub: bool = False,
+    xlim: tuple[float, float] | None = None,
+    ylim: tuple[float, float] | None = None,
 ):
     """Low-level helper that draws one 2-D projection (XY, XZ, or YZ)."""
 
@@ -250,6 +253,65 @@ def _plot_single_projection(
 
             if len(layer_indices) > 0:
                 xy = vis.atom_positions[0, layer_indices][:, [ix, iy]]
+
+                if custom_sub and (xlim is not None or ylim is not None):
+                    # Extend substrate across the entire axis range(s)
+                    original_xy = xy.copy()
+
+                    # Find the substrate pattern periods in both directions
+                    x_coords = original_xy[:, 0]
+                    y_coords = original_xy[:, 1]
+                    x_min_orig = np.min(x_coords)
+                    x_max_orig = np.max(x_coords)
+                    y_min_orig = np.min(y_coords)
+                    y_max_orig = np.max(y_coords)
+                    x_period = x_max_orig - x_min_orig
+                    y_period = y_max_orig - y_min_orig
+
+                    # Create extended substrate positions
+                    extended_xy = []
+
+                    # Determine extension ranges
+                    if xlim is not None:
+                        x_target_min, x_target_max = xlim
+                        if x_period > 0:
+                            n_periods_x_left = int(np.ceil((x_min_orig - x_target_min) / x_period))
+                            n_periods_x_right = int(np.ceil((x_target_max - x_max_orig) / x_period))
+                        else:
+                            n_periods_x_left = n_periods_x_right = 0
+                    else:
+                        x_target_min, x_target_max = x_min_orig, x_max_orig
+                        n_periods_x_left = n_periods_x_right = 0
+
+                    if ylim is not None:
+                        y_target_min, y_target_max = ylim
+                        if y_period > 0:
+                            n_periods_y_left = int(np.ceil((y_min_orig - y_target_min) / y_period))
+                            n_periods_y_right = int(np.ceil((y_target_max - y_max_orig) / y_period))
+                        else:
+                            n_periods_y_left = n_periods_y_right = 0
+                    else:
+                        y_target_min, y_target_max = y_min_orig, y_max_orig
+                        n_periods_y_left = n_periods_y_right = 0
+
+                    # Create periodic copies in both x and y directions
+                    for nx in range(-n_periods_x_left, n_periods_x_right + 1):
+                        for ny in range(-n_periods_y_left, n_periods_y_right + 1):
+                            shifted_xy = original_xy.copy()
+                            if x_period > 0:
+                                shifted_xy[:, 0] += nx * x_period
+                            if y_period > 0:
+                                shifted_xy[:, 1] += ny * y_period
+                            extended_xy.append(shifted_xy)
+
+                    # Combine all positions
+                    xy = np.vstack(extended_xy)
+
+                    # Filter to only show atoms within the target ranges
+                    mask = ((xy[:, 0] >= x_target_min) & (xy[:, 0] <= x_target_max) &
+                            (xy[:, 1] >= y_target_min) & (xy[:, 1] <= y_target_max))
+                    xy = xy[mask]
+
                 ax.scatter(
                     xy[:, 0],
                     xy[:, 1],
@@ -369,14 +431,7 @@ def _plot_single_projection(
             neigh = np.where((d2_3d < bond_length_thresh**2) & (d2_3d > 0))[0]
             for j in neigh:
                 if i < j:
-                    ax.plot(
-                        (pos_2d[i, 0], pos_2d[j, 0]),
-                        (pos_2d[i, 1], pos_2d[j, 1]),
-                        color=mol_color,
-                        alpha=0.8,
-                        linewidth=0.8,
-                        zorder=1,
-                    )
+                    ax.plot((pos_2d[i, 0], pos_2d[j, 0]),(pos_2d[i, 1], pos_2d[j, 1]),color=mol_color,alpha=0.8,linewidth=1.5, zorder=1,)
 
     # --- two special atom trajectories --------------------------------------
     for idx, col, lab in (
@@ -413,6 +468,7 @@ def plot_top_layer_projections(
     mol_colors: list[str] | None = None,  # Colors for molecule snapshots
     xlim: tuple[float, float] | None = None,  # X-axis limits
     ylim: tuple[float, float] | None = None,  # Y-axis limits
+    custom_sub: bool = False,  # Enable extended substrate display
 ):
     """Generate 2-D projection plots (xy, xz, yz) of the trajectory."""
     traj_path = Path(trajectory_file)
@@ -512,6 +568,9 @@ def plot_top_layer_projections(
             num_mol_snapshots,
             custom_mol_frames,
             mol_colors,
+            custom_sub,
+            xlim,
+            ylim,
         )
 
         # Apply axis limits - use custom limits if provided, otherwise use common limits
@@ -607,6 +666,11 @@ def _parse_arguments() -> argparse.Namespace:
         default=None,
         help="Y-axis limits as 'min,max' (e.g., '-10,10'). If not provided, automatic limits are used.",
     )
+    p.add_argument(
+        "--custom-sub",
+        action="store_true",
+        help="Extend substrate atoms across the entire x-axis range specified by --xlim. Creates periodic substrate pattern.",
+    )
     # Mutually exclusive show / no-show flags
     p.add_argument(
         "--show",
@@ -685,6 +749,7 @@ def main() -> None:
         mol_colors=mol_colors,
         xlim=xlim,
         ylim=ylim,
+        custom_sub=args.custom_sub,
     )
 
 
@@ -717,5 +782,11 @@ python /home/indranil/git/FireCore/doc/py/visualize_top_layer_xy.py  --traj PTCD
 
 
 python /home/indranil/git/FireCore/doc/py/visualise_trajectory_atoms.py  --traj PTCDA_data_trial_1d_relax_z/old_mol_old_sub_PTCDA_total_trajectory.xyz --fixed 26 --opposite 29 --custom-frames "28,84,101,127,200" --custom-mol-frames "28,84,101,127,200" --out test_custom_colors.png --projections xz --mol-colors "auto" --xlim="-15,10" --ylim="-0.5,30"
+
+
+
+python /home/indranil/git/FireCore/doc/py/visualise_trajectory_atoms.py  --traj PTCDA_data_trial_1d_relax_z/old_mol_old_sub_PTCDA_total_trajectory.xyz --fixed 26 --opposite 29 --custom-frames "28,84,101,127,200" --custom-mol-frames "28,84,101,127,200" --out test_custom_colors.png --projections xz --mol-colors "auto" --xlim="-12,10" --ylim="-0.6,30" --custom-sub
+
+
 
 '''
