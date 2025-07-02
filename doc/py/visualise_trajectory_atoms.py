@@ -287,22 +287,19 @@ def _plot_single_projection(
             ax.scatter(fixed_atom_pos[0], fixed_atom_pos[1], color='r', marker="o", s=10, zorder=4)
             ax.scatter(opposite_atom_pos[0], opposite_atom_pos[1], color='b', marker="o", s=10, zorder=4)
 
-            # Add numbered labels on anchor points
+            # Add numbered labels only on fixed atoms
             label_text = str(frame_idx + 1)  # 1-based numbering
             ax.annotate(label_text, (fixed_atom_pos[0], fixed_atom_pos[1]),
                        xytext=(5, 5), textcoords='offset points',
                        fontsize=12, fontweight='bold', color=anchor_color, zorder=5)
-            ax.annotate(label_text, (opposite_atom_pos[0], opposite_atom_pos[1]),
-                       xytext=(5, 5), textcoords='offset points',
-                       fontsize=12, fontweight='bold', color=anchor_color, zorder=5)
 
-            # Draw convex hull polygon
+            # Draw convex hull polygon with same color scheme as molecules
             hull_poly = plt.Polygon(
                 pos[hull.vertices],
                 closed=True,
                 linewidth=0.8,
-                edgecolor='k',
-                facecolor='k',
+                edgecolor=anchor_color,
+                facecolor=anchor_color,
                 alpha=0.2,
                 linestyle='-',
                 zorder=1
@@ -330,12 +327,9 @@ def _plot_single_projection(
                 ax.scatter(fixed_atom_pos[0], fixed_atom_pos[1], color='r', marker="o", s=10, zorder=4)
                 ax.scatter(opposite_atom_pos[0], opposite_atom_pos[1], color='b', marker="o", s=10, zorder=4)
 
-                # Add numbered labels on anchor points
+                # Add numbered labels only on fixed atoms
                 label_text = str(frame_idx + 1)  # 1-based numbering
                 ax.annotate(label_text, (fixed_atom_pos[0], fixed_atom_pos[1]),
-                           xytext=(5, 5), textcoords='offset points',
-                           fontsize=12, fontweight='bold', color=anchor_color, zorder=5)
-                ax.annotate(label_text, (opposite_atom_pos[0], opposite_atom_pos[1]),
                            xytext=(5, 5), textcoords='offset points',
                            fontsize=12, fontweight='bold', color=anchor_color, zorder=5)
 
@@ -720,5 +714,8 @@ python /home/indranil/git/FireCore/doc/py/visualize_top_layer_xy.py  --traj PTCD
 ## For same color
 python /home/indranil/git/FireCore/doc/py/visualize_top_layer_xy.py  --traj PTCDA_data_trial_1d_relax_z/old_mol_old_sub_PTCDA_total_trajectory.xyz --fixed 26 --opposite 29 --custom-frames "0,5,10,15" --custom-mol-frames "2,8" --out test_same_color.png --projections xy,xz,yz --mol-colors "same"
 
+
+
+python /home/indranil/git/FireCore/doc/py/visualise_trajectory_atoms.py  --traj PTCDA_data_trial_1d_relax_z/old_mol_old_sub_PTCDA_total_trajectory.xyz --fixed 26 --opposite 29 --custom-frames "28,84,101,127,200" --custom-mol-frames "28,84,101,127,200" --out test_custom_colors.png --projections xz --mol-colors "auto" --xlim="-15,10" --ylim="-0.5,30"
 
 '''
