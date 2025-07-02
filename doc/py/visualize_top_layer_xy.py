@@ -31,12 +31,10 @@ from typing import Iterable, Sequence
 import matplotlib.pyplot as plt
 import numpy as np
 import matplotlib as mpl
-from matplotlib.colors import LightSource
 
 # Re-use the generic visualiser that already exists in FireCore
 from plot_utils import MoleculeTrajectoryVisualizer
 from scipy.spatial import ConvexHull
-import matplotlib as mpl
 from matplotlib import font_manager
 import os
 
@@ -88,8 +86,8 @@ mpl.rcParams.update({
     # 'ytick.minor.size': 4
     # 'axes.titlepad': 20,
     # 'axes.labelpad': 20,
-    
-    
+
+
 })
 
 
@@ -124,6 +122,85 @@ def _top_layer_indices(positions: np.ndarray, indices: np.ndarray, tol: float = 
     return indices[zs >= z_max - tol]
 
 
+def _multi_layer_indices(positions: np.ndarray, indices: np.ndarray, num_layers: int = 3, tol: float = 0.35) -> np.ndarray:
+    """Return subset of *indices* that belong to the top *num_layers* z-layers.
+
+    Parameters
+    ----------
+    positions
+        ``(N, 3)`` array for *one* frame.
+    indices
+        1-D array with indices of atoms to consider (typically substrate).
+    num_layers
+        Number of top layers to include.
+    tol
+        Thickness (Å) regarded as one layer.
+    """
+    zs = positions[indices, 2]
+
+    # Find distinct z-layers by clustering z-coordinates
+    z_sorted = np.sort(zs)[::-1]  # Sort in descending order
+    layer_z_values = [z_sorted[0]]  # Start with the highest z
+
+    for z in z_sorted[1:]:
+        # If this z is significantly different from the last layer, it's a new layer
+        if layer_z_values[-1] - z > tol:
+            layer_z_values.append(z)
+            if len(layer_z_values) >= num_layers:
+                break
+
+    # Include atoms from the identified layers
+    selected_indices = []
+    for layer_z in layer_z_values:
+        layer_mask = np.abs(zs - layer_z) <= tol/2  # Half tolerance for layer membership
+        selected_indices.extend(indices[layer_mask])
+
+    return np.array(selected_indices, dtype=int)
+
+
+def _calculate_common_limits(vis: MoleculeTrajectoryVisualizer, substrate_indices: np.ndarray, molecule_indices: np.ndarray) -> dict:
+    """Calculate common axis limits for consistent subplot dimensions.
+
+    Parameters
+    ----------
+    vis
+        MoleculeTrajectoryVisualizer instance
+    substrate_indices
+        Indices of substrate atoms
+    molecule_indices
+        Indices of molecule atoms
+
+    Returns
+    -------
+    dict
+        Dictionary with 'x', 'y', 'z' keys containing (min, max) tuples
+    """
+    # Get all positions (substrate + molecule) across all frames
+    all_indices = np.concatenate([substrate_indices, molecule_indices])
+    all_positions = vis.atom_positions[:, all_indices, :]
+
+    # Calculate limits for each dimension with some padding
+    padding = 2.0  # Angstroms
+    limits = {}
+    ranges = {}
+
+    for i, coord in enumerate(['x', 'y', 'z']):
+        coord_min = np.min(all_positions[:, :, i]) - padding
+        coord_max = np.max(all_positions[:, :, i]) + padding
+        limits[coord] = (coord_min, coord_max)
+        ranges[coord] = coord_max - coord_min
+
+    # Make all ranges equal to the maximum range for square subplots
+    max_range = max(ranges.values())
+
+    for coord in ['x', 'y', 'z']:
+        current_center = (limits[coord][0] + limits[coord][1]) / 2
+        half_max_range = max_range / 2
+        limits[coord] = (current_center - half_max_range, current_center + half_max_range)
+
+    return limits
+
+
 # -----------------------------------------------------------------------------
 # Core plotting routine
 # -----------------------------------------------------------------------------
@@ -142,27 +219,48 @@ def _plot_single_projection(
     n_sample_structures: int,
     bond_length_thresh: float,
     num_mol_snapshots: int = 2,
+    custom_mol_frames: list[int] | None = None,
+    mol_colors: list[str] | None = None,
 ):
     """Low-level helper that draws one 2-D projection (XY, XZ, or YZ)."""
 
-    # --- substrate top layer (colour-coded) ---------------------------------
+    # --- substrate layer(s) (colour-coded) ---------------------------------
     element_colors = {"Na": "orange", "Cl": "cyan"}
     default_sub_col = "lightgray"
 
-    for elem in np.unique([vis.atom_types[i] for i in top_layer_sub]):
+    # Create different alpha values for different layers to show depth
+    unique_elements = np.unique([vis.atom_types[i] for i in top_layer_sub])
+
+    for elem in unique_elements:
         elem_indices = top_layer_sub[[vis.atom_types[i] == elem for i in top_layer_sub]]
-        xy = vis.atom_positions[0, elem_indices][:, [ix, iy]]
-        ax.scatter(
-            xy[:, 0],
-            xy[:, 1],
-            s=60,
-            color=element_colors.get(elem, default_sub_col),
-            edgecolors="none",
-            linewidths=0.5,
-            label=f"{elem} (top layer)" if elem in element_colors else "Substrate atom",
-            zorder=0,
-            alpha=0.3,
-        )
+        if len(elem_indices) == 0:
+            continue
+
+        # Get z-coordinates to distinguish layers
+        elem_positions = vis.atom_positions[0, elem_indices]
+        z_coords = elem_positions[:, 2]
+
+        # Group atoms by z-layers for different alpha values
+        z_unique = np.unique(z_coords)
+        layer_alphas = np.linspace(0.6, 0.2, len(z_unique))  # Higher layers more opaque
+
+        for i, z_val in enumerate(z_unique):
+            layer_mask = np.abs(z_coords - z_val) < 0.1  # Tolerance for same layer
+            layer_indices = elem_indices[layer_mask]
+
+            if len(layer_indices) > 0:
+                xy = vis.atom_positions[0, layer_indices][:, [ix, iy]]
+                ax.scatter(
+                    xy[:, 0],
+                    xy[:, 1],
+                    s=60,
+                    color=element_colors.get(elem, default_sub_col),
+                    edgecolors="none",
+                    linewidths=0.5,
+                    label=f"{elem} (layer {i+1})" if i == 0 and elem in element_colors else None,
+                    zorder=0,
+                    alpha=layer_alphas[i],
+                )
     # #####
     # """Low-level helper that draws one 2-D projection (XY, XZ, or YZ)."""
 
@@ -180,7 +278,7 @@ def _plot_single_projection(
 
     # for elem in np.unique([vis.atom_types[i] for i in top_layer_sub]):
     #     elem_indices_in_top_layer = top_layer_sub[[vis.atom_types[i] == elem for i in top_layer_sub]]
-        
+
     #     current_atom_radius = element_radii.get(elem, default_sub_radius)
 
     #     base_color_name = element_colors.get(elem, default_sub_col)
@@ -235,50 +333,75 @@ def _plot_single_projection(
     #         )
 
     # #####
-    
+
     # --- molecule convex hulls --------------------------------------------------
-    cmap = mpl.colormaps.get_cmap("rainbow")
-    snap_colors = [cmap(i) for i in np.linspace(0, 1, len(frame_sel))]
-    for c, fr in zip(snap_colors, frame_sel):
-        pos = vis.atom_positions[fr, molecule_indices][:, [ix, iy]]
-        hull = ConvexHull(pos)
-        
-        fixed_atom_idx_in_mol = molecule_indices[fixed_atom_idx]
-        fixed_atom_pos = vis.atom_positions[fr, fixed_atom_idx_in_mol, [ix, iy]]
-        opposite_atom_idx_in_mol = molecule_indices[opposite_atom_idx]
-        opposite_atom_pos = vis.atom_positions[fr, opposite_atom_idx_in_mol, [ix, iy]]
-        
-        ax.scatter(fixed_atom_pos[0], fixed_atom_pos[1], color='r', marker="o", s=10, zorder=4)
-        ax.scatter(opposite_atom_pos[0], opposite_atom_pos[1], color='b', marker="o", s=10, zorder=4)
-        
-        # Draw convex hull polygon
-        hull_poly = plt.Polygon(
-            pos[hull.vertices], 
-            closed=True,
-            linewidth=0.8,
-            edgecolor='k',
-            facecolor='k',
-            alpha=0.2,
-            linestyle='-',
-            zorder=1
-        )
-        ax.add_patch(hull_poly)
-    
+    # Only draw polygons if n_sample_structures > 0
+    if n_sample_structures > 0:
+        for fr in frame_sel:
+            pos = vis.atom_positions[fr, molecule_indices][:, [ix, iy]]
+            hull = ConvexHull(pos)
+
+            fixed_atom_idx_in_mol = molecule_indices[fixed_atom_idx]
+            fixed_atom_pos = vis.atom_positions[fr, fixed_atom_idx_in_mol, [ix, iy]]
+            opposite_atom_idx_in_mol = molecule_indices[opposite_atom_idx]
+            opposite_atom_pos = vis.atom_positions[fr, opposite_atom_idx_in_mol, [ix, iy]]
+
+            ax.scatter(fixed_atom_pos[0], fixed_atom_pos[1], color='r', marker="o", s=10, zorder=4)
+            ax.scatter(opposite_atom_pos[0], opposite_atom_pos[1], color='b', marker="o", s=10, zorder=4)
+
+            # Draw convex hull polygon
+            hull_poly = plt.Polygon(
+                pos[hull.vertices],
+                closed=True,
+                linewidth=0.8,
+                edgecolor='k',
+                facecolor='k',
+                alpha=0.2,
+                linestyle='-',
+                zorder=1
+            )
+            ax.add_patch(hull_poly)
+
     ##--- molecule snapshots --------------------------------------------------
-    snapshot_frames = np.linspace(0, vis.num_frames-1, num_mol_snapshots, dtype=int)
-    for fr in snapshot_frames:
-        pos = vis.atom_positions[fr, molecule_indices][:, [ix, iy]]
-        ax.scatter(pos[:, 0], pos[:, 1], s=10, color='k', alpha=0.4, zorder=1)
-        # bonds in 2-D projection
-        for i in range(pos.shape[0]):
-            d2 = np.sum((pos - pos[i]) ** 2, axis=1)
-            neigh = np.where((d2 < bond_length_thresh**2) & (d2 > 0))[0]
+    if custom_mol_frames is not None:
+        # Use custom molecule snapshot frames if provided
+        snapshot_frames = np.array(custom_mol_frames, dtype=int)
+        # Validate frame indices
+        if np.any(snapshot_frames >= vis.num_frames) or np.any(snapshot_frames < 0):
+            raise ValueError(f"Custom molecule frame indices must be between 0 and {vis.num_frames-1}")
+    else:
+        # Use default evenly spaced frames
+        snapshot_frames = np.linspace(0, vis.num_frames-1, num_mol_snapshots, dtype=int)
+
+    for frame_idx, fr in enumerate(snapshot_frames):
+        pos_3d = vis.atom_positions[fr, molecule_indices]  # Keep 3D positions for bond calculation
+        pos_2d = pos_3d[:, [ix, iy]]  # 2D projection for plotting
+
+        # Determine color for this frame
+        if mol_colors is None or len(mol_colors) == 0:
+            # Default: all black
+            mol_color = 'k'
+        elif len(mol_colors) == 1:
+            # Single color for all frames
+            mol_color = mol_colors[0]
+        else:
+            # Cycle through provided colors
+            mol_color = mol_colors[frame_idx % len(mol_colors)]
+
+        ax.scatter(pos_2d[:, 0], pos_2d[:, 1], s=10, color=mol_color, alpha=0.4, zorder=1)
+
+        # bonds in 2-D projection - use 3D distances but plot in 2D
+        # This prevents false bonds that appear close in 2D but are far in 3D
+        for i in range(pos_3d.shape[0]):
+            # Calculate 3D distances to avoid false bonds in projections
+            d2_3d = np.sum((pos_3d - pos_3d[i]) ** 2, axis=1)
+            neigh = np.where((d2_3d < bond_length_thresh**2) & (d2_3d > 0))[0]
             for j in neigh:
                 if i < j:
                     ax.plot(
-                        (pos[i, 0], pos[j, 0]),
-                        (pos[i, 1], pos[j, 1]),
-                        color='k',
+                        (pos_2d[i, 0], pos_2d[j, 0]),
+                        (pos_2d[i, 1], pos_2d[j, 1]),
+                        color=mol_color,
                         alpha=0.8,
                         linewidth=0.8,
                         zorder=1,
@@ -296,10 +419,7 @@ def _plot_single_projection(
 
     ax.set_xlabel(f"{coord_labels[0]} (Å)", fontsize=f_s)
     ax.set_ylabel(f"{coord_labels[1]} (Å)", fontsize=f_s)
-    ax.set_xticks(np.arange(0, 81, 20))  # 0, 20, 40, 60, 80
-    ax.set_yticks(np.arange(0, 81, 20))  # Keep existing y-ticks
     ax.set_aspect("equal", adjustable="box")
-    # ax.grid(True)
 
 
 def plot_top_layer_projections(
@@ -317,6 +437,9 @@ def plot_top_layer_projections(
     show: bool = True,
     num_mol_snapshots: int = 2,
     ax=None,  # New parameter for external axis
+    custom_frames: list[int] | None = None,  # Custom frame indices for polygons
+    custom_mol_frames: list[int] | None = None,  # Custom frame indices for molecule snapshots
+    mol_colors: list[str] | None = None,  # Colors for molecule snapshots
 ):
     """Generate 2-D projection plots (xy, xz, yz) of the trajectory."""
     traj_path = Path(trajectory_file)
@@ -338,14 +461,25 @@ def plot_top_layer_projections(
             "Could not detect any substrate atoms – please specify --substrate-types."
         )
 
-    top_layer_sub = _top_layer_indices(
-        vis.atom_positions[0], substrate_indices, tol=top_layer_tol
-    )
     molecule_indices = np.setdiff1d(np.arange(vis.num_atoms), substrate_indices)
 
-    # Frames to draw full molecule structures
-    n_sample_structures = max(2, n_sample_structures)
-    frame_sel = np.linspace(0, vis.num_frames - 1, n_sample_structures, dtype=int)
+    # Calculate common limits for consistent subplot dimensions
+    common_limits = _calculate_common_limits(vis, substrate_indices, molecule_indices)
+
+    # Frames to draw full molecule structures (polygons)
+    if custom_frames is not None:
+        # Use custom frame indices if provided
+        frame_sel = np.array(custom_frames, dtype=int)
+        # Validate frame indices
+        if np.any(frame_sel >= vis.num_frames) or np.any(frame_sel < 0):
+            raise ValueError(f"Custom frame indices must be between 0 and {vis.num_frames-1}")
+        n_sample_structures = len(frame_sel)
+    elif n_sample_structures > 0:
+        n_sample_structures = max(2, n_sample_structures)
+        frame_sel = np.linspace(0, vis.num_frames - 1, n_sample_structures, dtype=int)
+    else:
+        frame_sel = np.array([], dtype=int)
+        n_sample_structures = 0
 
     # Handle plotting - either create new figure or use provided axis
     if ax is None:
@@ -376,13 +510,26 @@ def plot_top_layer_projections(
         if proj not in proj_map:
             raise ValueError(f"Unknown projection '{proj}'. Choose from xy,xz,yz.")
         ix, iy, labels = proj_map[proj]
+
+        # Use appropriate substrate layers based on projection
+        if proj == "xy":
+            # For XY projection, use only top layer
+            substrate_layer = _top_layer_indices(
+                vis.atom_positions[0], substrate_indices, tol=top_layer_tol
+            )
+        else:
+            # For XZ and YZ projections, use multiple layers to show 3D structure
+            substrate_layer = _multi_layer_indices(
+                vis.atom_positions[0], substrate_indices, num_layers=3, tol=top_layer_tol
+            )
+
         _plot_single_projection(
             ax,
             vis,
             ix,
             iy,
             labels,
-            top_layer_sub,
+            substrate_layer,
             molecule_indices,
             fixed_atom_idx,
             opposite_atom_idx,
@@ -390,7 +537,16 @@ def plot_top_layer_projections(
             n_sample_structures,
             bond_length_thresh,
             num_mol_snapshots,
+            custom_mol_frames,
+            mol_colors,
         )
+
+        # Apply consistent axis limits for uniform subplot dimensions
+        coord_names = ['x', 'y', 'z']
+        x_coord = coord_names[ix]
+        y_coord = coord_names[iy]
+        ax.set_xlim(common_limits[x_coord])
+        ax.set_ylim(common_limits[y_coord])
 
     # Only add legend if creating new figure
     if ax is None:
@@ -445,6 +601,21 @@ def _parse_arguments() -> argparse.Namespace:
         default=2,
         help="Number of molecule snapshots to show. Default: 2",
     )
+    p.add_argument(
+        "--custom-frames",
+        default=None,
+        help="Comma-separated list of specific frame indices for polygons/snapshots (e.g., '0,10,20,30'). Overrides --samples if provided.",
+    )
+    p.add_argument(
+        "--custom-mol-frames",
+        default=None,
+        help="Comma-separated list of specific frame indices for molecule snapshots (e.g., '5,15'). Overrides --num-mol-snapshots if provided.",
+    )
+    p.add_argument(
+        "--mol-colors",
+        default="auto",
+        help="Color scheme for molecule snapshots: 'auto' (different colors per frame), 'same' (all black), or comma-separated color list (e.g., 'red,blue,green')",
+    )
     # Mutually exclusive show / no-show flags
     p.add_argument(
         "--show",
@@ -470,6 +641,29 @@ def _parse_arguments() -> argparse.Namespace:
 def main() -> None:
     args = _parse_arguments()
     projections = [p.strip() for p in args.projections.split(',') if p.strip()]
+
+    # Parse custom frame indices if provided
+    custom_frames = None
+    if args.custom_frames:
+        custom_frames = [int(f.strip()) for f in args.custom_frames.split(',') if f.strip()]
+
+    custom_mol_frames = None
+    if args.custom_mol_frames:
+        custom_mol_frames = [int(f.strip()) for f in args.custom_mol_frames.split(',') if f.strip()]
+
+    # Parse molecule colors
+    mol_colors = None
+    if args.mol_colors == "auto":
+        # Generate different colors automatically
+        import matplotlib.pyplot as plt
+        cmap = plt.cm.tab10
+        mol_colors = [cmap(i) for i in range(10)]  # Use first 10 colors from tab10
+    elif args.mol_colors == "same":
+        mol_colors = ['k']  # All black
+    elif args.mol_colors != "auto":
+        # Custom color list
+        mol_colors = [c.strip() for c in args.mol_colors.split(',') if c.strip()]
+
     plot_top_layer_projections(
         trajectory_file=args.traj,
         fixed_atom_idx=args.fixed,
@@ -480,6 +674,9 @@ def main() -> None:
         show=args.show,
         out_png=args.out,
         num_mol_snapshots=args.num_mol_snapshots,
+        custom_frames=custom_frames,
+        custom_mol_frames=custom_mol_frames,
+        mol_colors=mol_colors,
     )
 
 
@@ -496,6 +693,18 @@ if __name__ == "__main__":
 
 ## For one projection
 python /home/indranil/git/FireCore/doc/py/visualize_top_layer_xy.py  --traj relax_defect_aligned_line/dir_1.0_1.0_0.0/cons_26/PTCDA_20x20_26_total_trajectory.xyz --fixed 26 --opposite 29 --samples 6 --num-mol-snapshots 6 --out PTCDA_defect_aligned_20x20_26_trajectory_xy.png
+
+
+## For custom frames
+python /home/indranil/git/FireCore/doc/py/visualize_top_layer_xy.py  --traj PTCDA_data_trial_1d_relax_z/old_mol_old_sub_PTCDA_total_trajectory.xyz --fixed 26 --opposite 29 --custom-frames "0,5,10,15" --custom-mol-frames "2,8" --out test_custom_frames.png --projections xy,xz,yz
+
+
+## For custom colors
+python /home/indranil/git/FireCore/doc/py/visualize_top_layer_xy.py  --traj PTCDA_data_trial_1d_relax_z/old_mol_old_sub_PTCDA_total_trajectory.xyz --fixed 26 --opposite 29 --custom-frames "0,5,10,15" --custom-mol-frames "2,8" --out test_custom_colors.png --projections xy,xz,yz --mol-colors "auto"
+
+
+## For same color
+python /home/indranil/git/FireCore/doc/py/visualize_top_layer_xy.py  --traj PTCDA_data_trial_1d_relax_z/old_mol_old_sub_PTCDA_total_trajectory.xyz --fixed 26 --opposite 29 --custom-frames "0,5,10,15" --custom-mol-frames "2,8" --out test_same_color.png --projections xy,xz,yz --mol-colors "same"
 
 
 '''
