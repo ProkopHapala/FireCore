@@ -224,8 +224,27 @@ def _plot_single_projection(
     custom_sub: bool = False,
     xlim: tuple[float, float] | None = None,
     ylim: tuple[float, float] | None = None,
+    rotate_angle: float = 0.0,
 ):
     """Low-level helper that draws one 2-D projection (XY, XZ, or YZ)."""
+
+    def rotate_around_z_axis(points_3d, angle_deg):
+        """Rotate 3D points around z-axis by angle_deg degrees. Z coordinates remain unchanged."""
+        if angle_deg == 0.0:
+            return points_3d
+        angle_rad = np.radians(angle_deg)
+        cos_a = np.cos(angle_rad)
+        sin_a = np.sin(angle_rad)
+
+        # Create 3D rotation matrix for rotation around z-axis
+        rotation_matrix = np.array([
+            [cos_a, -sin_a, 0],
+            [sin_a,  cos_a, 0],
+            [0,      0,     1]
+        ])
+
+        # Apply rotation
+        return points_3d @ rotation_matrix.T
 
     # --- substrate layer(s) (colour-coded) ---------------------------------
     element_colors = {"Na": "orange", "Cl": "cyan"}
@@ -329,13 +348,21 @@ def _plot_single_projection(
     # Only draw polygons if n_sample_structures > 0
     if n_sample_structures > 0:
         for frame_idx, fr in enumerate(frame_sel):
-            pos = vis.atom_positions[fr, molecule_indices][:, [ix, iy]]
+            # Get 3D positions and apply rotation around z-axis
+            pos_3d = vis.atom_positions[fr, molecule_indices]
+            pos_3d_rotated = rotate_around_z_axis(pos_3d, rotate_angle)
+            pos = pos_3d_rotated[:, [ix, iy]]  # Project to 2D after rotation
             hull = ConvexHull(pos)
 
             fixed_atom_idx_in_mol = molecule_indices[fixed_atom_idx]
-            fixed_atom_pos = vis.atom_positions[fr, fixed_atom_idx_in_mol, [ix, iy]]
+            fixed_atom_pos_3d = vis.atom_positions[fr, fixed_atom_idx_in_mol]
+            fixed_atom_pos_3d_rotated = rotate_around_z_axis(fixed_atom_pos_3d.reshape(1, -1), rotate_angle)[0]
+            fixed_atom_pos = fixed_atom_pos_3d_rotated[[ix, iy]]
+
             opposite_atom_idx_in_mol = molecule_indices[opposite_atom_idx]
-            opposite_atom_pos = vis.atom_positions[fr, opposite_atom_idx_in_mol, [ix, iy]]
+            opposite_atom_pos_3d = vis.atom_positions[fr, opposite_atom_idx_in_mol]
+            opposite_atom_pos_3d_rotated = rotate_around_z_axis(opposite_atom_pos_3d.reshape(1, -1), rotate_angle)[0]
+            opposite_atom_pos = opposite_atom_pos_3d_rotated[[ix, iy]]
 
             # Determine color for this frame to match molecule colors
             if mol_colors is None or len(mol_colors) == 0:
@@ -408,7 +435,9 @@ def _plot_single_projection(
 
     for frame_idx, fr in enumerate(snapshot_frames):
         pos_3d = vis.atom_positions[fr, molecule_indices]  # Keep 3D positions for bond calculation
-        pos_2d = pos_3d[:, [ix, iy]]  # 2D projection for plotting
+        # Apply rotation around z-axis to 3D positions
+        pos_3d_rotated = rotate_around_z_axis(pos_3d, rotate_angle)
+        pos_2d = pos_3d_rotated[:, [ix, iy]]  # 2D projection for plotting after rotation
 
         # Determine color for this frame
         if mol_colors is None or len(mol_colors) == 0:
@@ -425,20 +454,23 @@ def _plot_single_projection(
 
         # bonds in 2-D projection - use 3D distances but plot in 2D
         # This prevents false bonds that appear close in 2D but are far in 3D
-        for i in range(pos_3d.shape[0]):
-            # Calculate 3D distances to avoid false bonds in projections
-            d2_3d = np.sum((pos_3d - pos_3d[i]) ** 2, axis=1)
+        for i in range(pos_3d_rotated.shape[0]):
+            # Calculate 3D distances to avoid false bonds in projections (use rotated positions)
+            d2_3d = np.sum((pos_3d_rotated - pos_3d_rotated[i]) ** 2, axis=1)
             neigh = np.where((d2_3d < bond_length_thresh**2) & (d2_3d > 0))[0]
             for j in neigh:
                 if i < j:
-                    ax.plot((pos_2d[i, 0], pos_2d[j, 0]),(pos_2d[i, 1], pos_2d[j, 1]),color=mol_color,alpha=0.8,linewidth=1.5, zorder=1,)
+                    ax.plot((pos_2d[i, 0], pos_2d[j, 0]),(pos_2d[i, 1], pos_2d[j, 1]),color=mol_color,alpha=0.6,linewidth=1.5, zorder=1,)
 
     # --- two special atom trajectories --------------------------------------
     for idx, col, lab in (
         (fixed_atom_idx, "red", f"Fixed atom {fixed_atom_idx}"),
         (opposite_atom_idx, "blue", f"Opposite atom {opposite_atom_idx}"),
     ):
-        traj = vis.atom_positions[:, idx][:, [ix, iy]]
+        traj_3d = vis.atom_positions[:, idx]  # Get full 3D trajectory
+        # Apply rotation around z-axis to 3D trajectory
+        traj_3d_rotated = rotate_around_z_axis(traj_3d, rotate_angle)
+        traj = traj_3d_rotated[:, [ix, iy]]  # Project to 2D after rotation
         ax.plot(traj[:, 0], traj[:, 1], color=col, marker="o", ms=0.5,lw=0.2, label=lab, zorder=3)
         ax.scatter(traj[0, 0], traj[0, 1], color=col, marker="o", s=10, zorder=4)
         ax.scatter(traj[-1, 0], traj[-1, 1], color=col, marker="s", s=10, zorder=4)
@@ -469,6 +501,7 @@ def plot_top_layer_projections(
     xlim: tuple[float, float] | None = None,  # X-axis limits
     ylim: tuple[float, float] | None = None,  # Y-axis limits
     custom_sub: bool = False,  # Enable extended substrate display
+    rotate_angle: float = 0.0,  # Rotation angle in degrees for molecules/trajectories
 ):
     """Generate 2-D projection plots (xy, xz, yz) of the trajectory."""
     traj_path = Path(trajectory_file)
@@ -571,6 +604,7 @@ def plot_top_layer_projections(
             custom_sub,
             xlim,
             ylim,
+            rotate_angle,
         )
 
         # Apply axis limits - use custom limits if provided, otherwise use common limits
@@ -671,6 +705,12 @@ def _parse_arguments() -> argparse.Namespace:
         action="store_true",
         help="Extend substrate atoms across the entire x-axis range specified by --xlim. Creates periodic substrate pattern.",
     )
+    p.add_argument(
+        "--rotate",
+        type=float,
+        default=0.0,
+        help="Rotation angle in degrees around z-axis for molecules and trajectories (substrate remains fixed, z-coordinates unchanged). Default: 0.0",
+    )
     # Mutually exclusive show / no-show flags
     p.add_argument(
         "--show",
@@ -750,6 +790,7 @@ def main() -> None:
         xlim=xlim,
         ylim=ylim,
         custom_sub=args.custom_sub,
+        rotate_angle=args.rotate,
     )
 
 
