@@ -31,3 +31,6 @@ cpp/build-*
 tests/tEFF/processXYZ.xyz
 tests/tEFF/processXYZ.fgo
 tests/tEFF/relaxation.xyz
+tests/tEFF/ERR
+tests/tEFF/OUT
+tests/tEFF/results/AI/*
