@@ -9,7 +9,7 @@ import argparse
 sys.path.append("../../")
 from pyBall import eFF as eff
 elementPath = "export/scan_data/angdistscan_CH4.xyz"
-fileToReadPath = "results/AI/result_3.txt"
+fileToReadPath = "results/AI/result_dual_anneal.txt"
 maxBars = 20
 
 def plot_energy_landscape( Xs, Ys, Es, Espan=None):
@@ -35,6 +35,12 @@ def plot_energy_landscape( Xs, Ys, Es, Espan=None):
     plt.ylabel('Angle (rad)')
     #plt.title('Potential Energy Surface')     
 
+def read_min_theta(fileToReadPath):
+    with open(fileToReadPath, "r") as f:
+        lines = f.readlines()
+    minTheta = np.array([float(x) for x in lines[0].split()])
+    return minTheta
+
 
 def read_simulation(fileToReadPath):
     with open(fileToReadPath, "r") as f:
@@ -44,8 +50,9 @@ def read_simulation(fileToReadPath):
     lines = [line.strip() for line in lines if line.strip() != ""]
 
     # Read angleArr and distArr
-    angleArr = np.array([float(x) for x in lines[0].split()])
-    distArr = np.array([float(x) for x in lines[1].split()])
+    minTheta = np.array([float(x) for x in lines[0].split()])
+    angleArr = np.array([float(x) for x in lines[1].split()])
+    distArr = np.array([float(x) for x in lines[2].split()])
 
     # The rest are blocks of 3 lines each: flexVar, variance, allEtot
     flexVar = []
@@ -53,7 +60,7 @@ def read_simulation(fileToReadPath):
     allEtot = []
 
     # Start after angle and dist (which were at line 0 and 1)
-    i = 2
+    i = 3
     while i < len(lines):
         flex_line = np.array([float(x) for x in lines[i].split()])
         var_line = np.array([float(x) for x in lines[i + 1].split()])
@@ -65,7 +72,7 @@ def read_simulation(fileToReadPath):
 
         i += 3  # advance by 3 lines per block
 
-    return angleArr, distArr, flexVar, variance, allEtot
+    return angleArr, distArr, flexVar, variance, allEtot, minTheta
 
 def extract_blocks(xyz_file):
     """Extract parameters from XYZ file comments (lines starting with #)
@@ -99,7 +106,7 @@ def extract_blocks(xyz_file):
 def allVal():
     print("#=========== RUN /home/gabriel/git/FireCore/tests/tEFF/AI_angdist_show.py, all values")
     print(f"Loading from file {fileToReadPath}")
-    angleArr, distArr, flexVar, variance, allEtot = read_simulation(fileToReadPath)
+    angleArr, distArr, flexVar, variance, allEtot, minTheta = read_simulation(fileToReadPath)
     print(flexVar)
     variance = [x[0] for x in variance]
     labels = [f"({v[0]:.3f}, {v[1]:.3f}, {v[2]:.3f})" for v in flexVar]
@@ -122,11 +129,8 @@ def allVal():
 def minVal():
     print("#=========== RUN /home/gabriel/git/FireCore/tests/tEFF/AI_angdist_show.py, all values")
     print(f"Loading from file {fileToReadPath}")
-    angleArr, distArr, flexVar, variance, allEtot = read_simulation(fileToReadPath)
-    print(flexVar)
-    variance = [x[0] for x in variance]
-    index = variance.index(min(variance))
-    KRSrho = flexVar[index]
+    KRSrho = read_min_theta(fileToReadPath) 
+    print(KRSrho) # KRSrho is also min theta
 
     eff.setVerbosity(0,0)
     print("verbos")
@@ -154,7 +158,7 @@ def minVal():
     # apos = np.zeros((nrec,,3))
     # epos = np.zeros((nrec,4))
     print("============================================================================")
-    with open("processXYZ.xyz", "w") as f: f.write("")
+    # with open("processXYZ.xyz", "w") as f: f.write("")
     #eff.processXYZ( "export/scan_data/distscan_H2O.xyz", bOutXYZ=True, outEs );
     print("opend process XYZ")
     eff.initOpt( dt=0.005, damping=0.005, f_limit=1000.0)

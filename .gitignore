@@ -34,3 +34,4 @@ tests/tEFF/relaxation.xyz
 tests/tEFF/ERR
 tests/tEFF/OUT
 tests/tEFF/results/AI/*
+tests/tEFF/map2d_eFF.png

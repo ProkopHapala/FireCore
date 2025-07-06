@@ -183,7 +183,7 @@ int*    getDimPointer   (){ return &ff.ne; }
 
 void initOpt( double dt, double damping, double f_limit, bool bMass ){
     if(ff.vDOFs){ if(bMass){ff.makeMasses(ff.invMasses);}else{ff.makeMasses(ff.invMasses,1.0);} }
-    printf("initOpt()  ff.nDOFs %i, ff.pDOFs %p, ff.vDOFs %p, ff.fDOFs %p, ff.invMasses %p\n", ff.nDOFs, ff.pDOFs, ff.vDOFs, ff.fDOFs, ff.invMasses ); 
+    if(verbosity>0) printf("initOpt()  ff.nDOFs %i, ff.pDOFs %p, ff.vDOFs %p, ff.fDOFs %p, ff.invMasses %p\n", ff.nDOFs, ff.pDOFs, ff.vDOFs, ff.fDOFs, ff.invMasses ); 
     opt.bindOrAlloc( ff.nDOFs, ff.pDOFs, ff.vDOFs, ff.fDOFs, ff.invMasses );
     //opt.cleanVel( ); // this is already inside initOpt
     //opt.initOpt( dt, damping );
@@ -759,8 +759,8 @@ int processXYZ_e( const char* fname, double* outEs=0, double* apos_=0, double* e
         }
         il++;
         if (il>=nae+2){
-            printf( "----- conf: %i \n", iconf );
-            ff.info();
+            if(verbosity>0) printf( "----- conf: %i \n", iconf );
+            if(verbosity>0) ff.info();
             if(nstepMax > 0) run(nstepMax, dt, Fconv, optAlg, 0, 0);   
             ff.eval();
             ff.copyEnergies         (         outEs, iconf );
