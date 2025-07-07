@@ -346,8 +346,8 @@ def _plot_single_projection(
             opposite_atom_idx_in_mol = molecule_indices[opposite_atom_idx]
             opposite_atom_pos = vis.atom_positions[fr, opposite_atom_idx_in_mol, [ix, iy]]
 
-            ax.scatter(fixed_atom_pos[0], fixed_atom_pos[1], color='r', marker="o", s=10, zorder=4)
-            ax.scatter(opposite_atom_pos[0], opposite_atom_pos[1], color='b', marker="o", s=10, zorder=4)
+            ax.scatter(fixed_atom_pos[0], fixed_atom_pos[1], color='r', marker="o", s=20, zorder=4)
+            ax.scatter(opposite_atom_pos[0], opposite_atom_pos[1], color='b', marker="o", s=20, zorder=4)
 
             # Draw convex hull polygon
             hull_poly = plt.Polygon(
@@ -413,13 +413,17 @@ def _plot_single_projection(
         (opposite_atom_idx, "blue", f"Opposite atom {opposite_atom_idx}"),
     ):
         traj = vis.atom_positions[:, idx][:, [ix, iy]]
-        ax.plot(traj[:, 0], traj[:, 1], color=col, marker="o", ms=0.2,lw=0.2, label=lab, zorder=3)
+        ax.plot(traj[:, 0], traj[:, 1], color=col, marker="o", ms=0.8,lw=0.8, label=lab, zorder=3)
         ax.scatter(traj[0, 0], traj[0, 1], color=col, marker="o", s=60, zorder=4)
         ax.scatter(traj[-1, 0], traj[-1, 1], color=col, marker="s", s=60, zorder=4)
 
     ax.set_xlabel(f"{coord_labels[0]} (Å)", fontsize=f_s)
     ax.set_ylabel(f"{coord_labels[1]} (Å)", fontsize=f_s)
     ax.set_aspect("equal", adjustable="box")
+    tick_spacing = 20
+    ax.xaxis.set_major_locator(plt.MultipleLocator(tick_spacing))
+    ax.yaxis.set_major_locator(plt.MultipleLocator(tick_spacing))
+    ax.tick_params(axis='both', which='major', labelsize=f_s)
 
 
 def plot_top_layer_projections(
@@ -546,6 +550,7 @@ def plot_top_layer_projections(
         x_coord = coord_names[ix]
         y_coord = coord_names[iy]
         ax.set_xlim(common_limits[x_coord])
+        # ax.set_xlim(-10, 90)
         ax.set_ylim(common_limits[y_coord])
 
     # Only add legend if creating new figure

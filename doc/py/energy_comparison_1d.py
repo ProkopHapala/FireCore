@@ -93,24 +93,24 @@ def plot_comparison(lammps_file, firecore_file, title=None, out_file=None, x_ran
         fig = ax.figure
         ax1 = ax
     
-    ax1.plot(x_l_rel, y_l_rel, linewidth=2, label='LAMMPS')
-    ax1.plot(x_f_rel, y_f_rel, linestyle='--', linewidth=2, label='FireCore')
+    ax1.plot(x_f_rel, y_f_rel, '-k', lw=1.5, label='FireCore') 
+    ax1.plot(x_l_rel, y_l_rel, ':k', lw=3.0, label='LAMMPS')
     
-    ax1.set_xlabel(r'Along Scan direction ($\mathrm{\AA}$)', fontsize=f_s)
+    ax1.set_xlabel(r'Along Scan direction (Å)', fontsize=f_s) #
     ax1.set_ylabel('Energy (eV)', fontsize=f_s)
     ax1.set_title(title, fontsize=f_s)
     if y_range: ax1.set_ylim(y_range)
     if x_range: ax1.set_xlim(x_range)
     
     ax2 = ax1.twinx()
-    ax2.plot(x_f_rel, difference_data_rel, linestyle='-', color='r', label='FireCore - LAMMPS')
-    ax2.set_ylabel('Difference (eV)', fontsize=f_s, color='red')
+    ax2.plot(x_f_rel, difference_data_rel*1000, linestyle='-', color='r')
+    ax2.set_ylabel('Energy difference (meV)', fontsize=f_s, color='red')
     ax2.tick_params(axis='y', labelcolor='red')
     if error_range: ax2.set_ylim(error_range)
     
     lines1, labels1 = ax1.get_legend_handles_labels()
     lines2, labels2 = ax2.get_legend_handles_labels()
-    ax1.legend(lines1 + lines2, labels1 + labels2, frameon=False,fontsize=f_s-5, loc='upper left',ncol=2,columnspacing=0.5,handletextpad=0.3)
+    ax1.legend(lines1 + lines2, labels1 + labels2, frameon=False,fontsize=f_s-5, loc='upper left',ncol=1,columnspacing=0.5,handletextpad=0.3)
 
     
     ax1.tick_params(axis='both', labelsize=f_s)
@@ -161,6 +161,8 @@ python /home/indranil/git/FireCore/doc/py/energy_comparison_1d.py \
 --lammps /home/indranil/Documents/Project_1/Lammps/4-relaxed_linescan/angle45/fixedatom27/nx20/total.dat \
 --firecore /home/indranil/git/FireCore/tests/tMMFF/relax_perfect_line/dir_1.0_1.0_0.0/cons_26/PTCDA_20x20_26_total.dat \
 --title "Energy Comparison" --out trial.png --error-range -0.01 0.01 --x-range 0 10 --y-range -0.01 0.01
+
+python /home/indranil/git/FireCore/doc/py/energy_comparison_1d.py --lammps /home/indranil/Documents/Project_1/Lammps/5-relaxed_linescan_defect/angle45/defect_aligned/fixedatom27/nx20/total.dat --firecore /home/indranil/git/FireCore/tests/tMMFF/relax_defect_aligned_line/dir_1.0_1.0_0.0/cons_26/PTCDA_20x20_26_total.dat  --out defect_trial.png --error-range -1 4 --x-range 5 20 --y-range 0.2 0.4
 
 
 

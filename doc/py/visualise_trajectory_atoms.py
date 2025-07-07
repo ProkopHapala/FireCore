@@ -373,26 +373,17 @@ def _plot_single_projection(
                 anchor_color = mol_colors[frame_idx % len(mol_colors)]
 
             # Draw anchor points with matching colors and labels
-            ax.scatter(fixed_atom_pos[0], fixed_atom_pos[1], color='r', marker="o", s=10, zorder=4)
-            ax.scatter(opposite_atom_pos[0], opposite_atom_pos[1], color='b', marker="o", s=10, zorder=4)
+            ax.scatter(fixed_atom_pos[0], fixed_atom_pos[1], color=anchor_color, marker="o", s=10, zorder=5)
+            ax.scatter(opposite_atom_pos[0], opposite_atom_pos[1], color=anchor_color, marker="o", s=10, zorder=5)
 
-            # Add numbered labels only on fixed atoms
+            # Add numbered labels only on fixed atoms - positioned closer to the atom
             label_text = str(frame_idx + 1)  # 1-based numbering
-            ax.annotate(label_text, (fixed_atom_pos[0], fixed_atom_pos[1]),
-                       xytext=(5, 5), textcoords='offset points',
-                       fontsize=12, fontweight='bold', color=anchor_color, zorder=5)
+            # ax.annotate(label_text, (fixed_atom_pos[0], fixed_atom_pos[1]),xytext=(15, 0), textcoords='offset points',fontsize=15, fontweight='bold', color=anchor_color, zorder=5)
+            ax.annotate(label_text, (opposite_atom_pos[0], opposite_atom_pos[1]),xytext=(-5, -20), textcoords='offset points',fontsize=f_s, fontweight='bold', color=anchor_color, zorder=5)
 
-            # Draw convex hull polygon with same color scheme as molecules
-            hull_poly = plt.Polygon(
-                pos[hull.vertices],
-                closed=True,
-                linewidth=0.8,
-                edgecolor=anchor_color,
-                facecolor=anchor_color,
-                alpha=0.2,
-                linestyle='-',
-                zorder=1
-            )
+            # Draw convex hull polygon with improved visual styling
+            hull_poly = plt.Polygon(pos[hull.vertices], closed=True,facecolor=anchor_color,alpha=0.15,zorder=0.5 )
+            # hull_poly = plt.Polygon(pos[hull.vertices], closed=True,linewidth=1.2, edgecolor=anchor_color,facecolor=anchor_color,alpha=0.15, linestyle='-',zorder=0.5 )
             ax.add_patch(hull_poly)
     else:
         # When --samples 0, still show anchor points on custom molecule frames
@@ -400,9 +391,14 @@ def _plot_single_projection(
             snapshot_frames = np.array(custom_mol_frames, dtype=int)
             for frame_idx, fr in enumerate(snapshot_frames):
                 fixed_atom_idx_in_mol = molecule_indices[fixed_atom_idx]
-                fixed_atom_pos = vis.atom_positions[fr, fixed_atom_idx_in_mol, [ix, iy]]
+                fixed_atom_pos_3d = vis.atom_positions[fr, fixed_atom_idx_in_mol]
+                fixed_atom_pos_3d_rotated = rotate_around_z_axis(fixed_atom_pos_3d.reshape(1, -1), rotate_angle)[0]
+                fixed_atom_pos = fixed_atom_pos_3d_rotated[[ix, iy]]
+
                 opposite_atom_idx_in_mol = molecule_indices[opposite_atom_idx]
-                opposite_atom_pos = vis.atom_positions[fr, opposite_atom_idx_in_mol, [ix, iy]]
+                opposite_atom_pos_3d = vis.atom_positions[fr, opposite_atom_idx_in_mol]
+                opposite_atom_pos_3d_rotated = rotate_around_z_axis(opposite_atom_pos_3d.reshape(1, -1), rotate_angle)[0]
+                opposite_atom_pos = opposite_atom_pos_3d_rotated[[ix, iy]]
 
                 # Determine color for this frame to match molecule colors
                 if mol_colors is None or len(mol_colors) == 0:
@@ -413,14 +409,12 @@ def _plot_single_projection(
                     anchor_color = mol_colors[frame_idx % len(mol_colors)]
 
                 # Draw anchor points with matching colors and labels
-                ax.scatter(fixed_atom_pos[0], fixed_atom_pos[1], color='r', marker="o", s=10, zorder=4)
-                ax.scatter(opposite_atom_pos[0], opposite_atom_pos[1], color='b', marker="o", s=10, zorder=4)
+                ax.scatter(fixed_atom_pos[0], fixed_atom_pos[1], color='r', marker="o", s=10, zorder=5)
+                ax.scatter(opposite_atom_pos[0], opposite_atom_pos[1], color='b', marker="o", s=10, zorder=5)
 
-                # Add numbered labels only on fixed atoms
+                # Add numbered labels only on fixed atoms - positioned closer to the atom
                 label_text = str(frame_idx + 1)  # 1-based numbering
-                ax.annotate(label_text, (fixed_atom_pos[0], fixed_atom_pos[1]),
-                           xytext=(5, 5), textcoords='offset points',
-                           fontsize=12, fontweight='bold', color=anchor_color, zorder=5)
+                ax.annotate(label_text, (fixed_atom_pos[0], fixed_atom_pos[1]),xytext=(5, 2), textcoords='offset points',fontsize=f_s, fontweight='bold', color=anchor_color, zorder=5)
 
     ##--- molecule snapshots --------------------------------------------------
     if custom_mol_frames is not None:
@@ -460,7 +454,8 @@ def _plot_single_projection(
             neigh = np.where((d2_3d < bond_length_thresh**2) & (d2_3d > 0))[0]
             for j in neigh:
                 if i < j:
-                    ax.plot((pos_2d[i, 0], pos_2d[j, 0]),(pos_2d[i, 1], pos_2d[j, 1]),color=mol_color,alpha=0.6,linewidth=1.5, zorder=1,)
+                    # Draw bonds with improved styling - slightly thicker and more opaque than hull
+                    ax.plot((pos_2d[i, 0], pos_2d[j, 0]),(pos_2d[i, 1], pos_2d[j, 1]),color=mol_color, alpha=0.6, linewidth=1.5, zorder=2,solid_capstyle='round')
 
     # --- two special atom trajectories --------------------------------------
     for idx, col, lab in (
@@ -471,12 +466,14 @@ def _plot_single_projection(
         # Apply rotation around z-axis to 3D trajectory
         traj_3d_rotated = rotate_around_z_axis(traj_3d, rotate_angle)
         traj = traj_3d_rotated[:, [ix, iy]]  # Project to 2D after rotation
-        ax.plot(traj[:, 0], traj[:, 1], color=col, marker="o", ms=0.5,lw=0.2, label=lab, zorder=3)
-        ax.scatter(traj[0, 0], traj[0, 1], color=col, marker="o", s=10, zorder=4)
-        ax.scatter(traj[-1, 0], traj[-1, 1], color=col, marker="s", s=10, zorder=4)
+        # Draw trajectory with improved styling
+        ax.plot(traj[:, 0], traj[:, 1], color=col, marker="o", ms=2, lw=0.9,label=lab, zorder=4,  solid_capstyle='round')
+        # Start and end markers with better visibility
+        ax.scatter(traj[0, 0], traj[0, 1], color=col, marker="o", s=15, zorder=4)
+        ax.scatter(traj[-1, 0], traj[-1, 1], color=col, marker="s", s=15, zorder=4)
 
-    ax.set_xlabel(f"{coord_labels[0]} (Å)", fontsize=f_s)
-    ax.set_ylabel(f"{coord_labels[1]} (Å)", fontsize=f_s)
+    ax.set_xlabel(f"{coord_labels[0]}(Å)", fontsize=f_s) #r'Z ($\AA$)'
+    ax.set_ylabel(f"{coord_labels[1]}(Å)", fontsize=f_s)
     ax.set_aspect("equal", adjustable="box")
 
 
@@ -750,7 +747,6 @@ def main() -> None:
     mol_colors = None
     if args.mol_colors == "auto":
         # Generate different colors automatically
-        import matplotlib.pyplot as plt
         cmap = plt.cm.tab10
         mol_colors = [cmap(i) for i in range(10)]  # Use first 10 colors from tab10
     elif args.mol_colors == "same":
@@ -821,13 +817,18 @@ python /home/indranil/git/FireCore/doc/py/visualize_top_layer_xy.py  --traj PTCD
 python /home/indranil/git/FireCore/doc/py/visualize_top_layer_xy.py  --traj PTCDA_data_trial_1d_relax_z/old_mol_old_sub_PTCDA_total_trajectory.xyz --fixed 26 --opposite 29 --custom-frames "0,5,10,15" --custom-mol-frames "2,8" --out test_same_color.png --projections xy,xz,yz --mol-colors "same"
 
 
-
+# For xz projection
 python /home/indranil/git/FireCore/doc/py/visualise_trajectory_atoms.py  --traj PTCDA_data_trial_1d_relax_z/old_mol_old_sub_PTCDA_total_trajectory.xyz --fixed 26 --opposite 29 --custom-frames "28,84,101,127,200" --custom-mol-frames "28,84,101,127,200" --out test_custom_colors.png --projections xz --mol-colors "auto" --xlim="-15,10" --ylim="-0.5,30"
 
 
-
+# For custom sub
 python /home/indranil/git/FireCore/doc/py/visualise_trajectory_atoms.py  --traj PTCDA_data_trial_1d_relax_z/old_mol_old_sub_PTCDA_total_trajectory.xyz --fixed 26 --opposite 29 --custom-frames "28,84,101,127,200" --custom-mol-frames "28,84,101,127,200" --out test_custom_colors.png --projections xz --mol-colors "auto" --xlim="-12,10" --ylim="-0.6,30" --custom-sub
 
+# For rotation
+python /home/indranil/git/FireCore/doc/py/visualise_trajectory_atoms.py --traj PTCDA_data_trial_1d_relax_z/old_mol_old_sub_PTCDA_total_trajectory.xyz --fixed 26 --opposite 29 --custom-frames "28,84,101,127,200" --custom-mol-frames "28,84,101,127,200" --out test_z_rotate_xy_60.png --projections xz --mol-colors "auto" --xlim="-15,15" --ylim="-0.6,30" --custom-sub --rotate 300
+
+
+python /home/indranil/git/FireCore/doc/py/visualise_trajectory_atoms.py  --traj PTCDA_data_trial_1d_relax_z/old_mol_old_sub_PTCDA_total_trajectory.xyz --fixed 26 --opposite 29 --custom-frames "15,72,88,114,115,200" --custom-mol-frames "15,72,88,114,115,200" --out test_custom_colors.png --projections xz --mol-colors "auto" --xlim="-12,2" --ylim="5,28" --custom-sub
 
 
 '''
