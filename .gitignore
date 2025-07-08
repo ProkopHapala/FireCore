@@ -33,6 +33,7 @@ cpp/build-*
 
 EFF_Unity/.utmp/
 EFF_Unity/[Ll]ibrary/
+EFF_Unity/[Ll]ibrary__/
 EFF_Unity/[Tt]emp/
 EFF_Unity/[Oo]bj/
 EFF_Unity/[Bb]uild/

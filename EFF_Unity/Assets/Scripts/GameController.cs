@@ -1,8 +1,9 @@
 using System;
-using System.Diagnostics;
+using System.Collections;
 using System.Linq;
 using System.Runtime.InteropServices;
 using TMPro;
+using Unity.VisualScripting;
 using UnityEngine;
 using UnityEngine.InputSystem.iOS;
 
@@ -19,7 +20,8 @@ public class GameController : MonoBehaviour
     public GameObject infoBoxPrefab_e;
     public GameObject infoBoxPrefab_a;
     public GameObject infoBoxAnchor;
-    public GameObject[] particles;
+    public Electron[] electrons;
+    public Atom[] atoms;
     public TextMeshProUGUI runningStatusText;
     public CameraControl cameraControl;
     public GameObject keybinds;
@@ -62,9 +64,23 @@ public static extern void cleanupInitData(IntPtr data);
 
     public bool isRunning = false;
 
-    public Vector3[] positions { get; private set; }
-    public float[] sizes { get; private set; }
-    public int[] espins { get; private set; }
+    private Vector3[] positions;
+    private float[] sizes;
+    private int[] espins;
+
+
+    public IParticle GetParticle(int id) {
+        if(id >= electronCount) {
+            return atoms[id - electronCount];
+        }
+        return electrons[id];
+    }
+    public IParticle GetParticle(int id, ObjectType type) {
+        if(type == ObjectType.ATOM) {
+            return atoms[id];
+        }
+        return electrons[id];
+    }
 
     private (Vector3[] positions, float[] sizes) GetPositionsFromNative()
     {
@@ -118,19 +134,29 @@ public static extern void cleanupInitData(IntPtr data);
     // Start is called once before the first execution of Update after the MonoBehaviour is created
     void Start()
     {
-        particles = new GameObject[atomCount + electronCount];
+        electrons = new Electron[electronCount];
+        atoms = new Atom[atomCount];
+        //particles = new GameObject[atomCount + electronCount];
 
         for (int i = 0; i < electronCount; i++) {
-            particles[i] = espins[i] == 1 ? Instantiate(electronPrefabPlusSpin, new Vector3(0, 0, 0), Quaternion.identity) : Instantiate(electronPrefabMinusSpin, new Vector3(0, 0, 0), Quaternion.identity);
-
+            // electrons[i] = 
+            // (
+            //     espins[i] == 1 ? 
+            //     Instantiate(electronPrefabPlusSpin, new Vector3(0, 0, 0), Quaternion.identity) : 
+            //     Instantiate(electronPrefabMinusSpin, new Vector3(0, 0, 0), Quaternion.identity)
+            // ).GetComponent<Electron>();
+            // Debug.Log(string.Join(", ", espins));
+            electrons[i] = Electron.CreateNew(espins[i]);
 
             // var info = Instantiate(infoBoxPrefab_e, infoBoxAnchor.transform);
             // info.GetComponent<InfoBox>().SetConnector(i, i, ObjectType.ELECTRON);
             // info.GetComponent<RectTransform>().anchoredPosition = new Vector2(0, -63 * i);
         }
         for (int i = 0; i < atomCount; i++) {
-            particles[electronCount + i] = Instantiate(atomPrefab, new Vector3(0, 0, 0), Quaternion.identity);
+            // particles[electronCount + i] = Instantiate(atomPrefab, new Vector3(0, 0, 0), Quaternion.identity);
 
+            atoms[i] = Atom.CreateNew();
+            Debug.Log(atoms[i]);
             // var info = Instantiate(infoBoxPrefab_a, infoBoxAnchor.transform);
             // info.GetComponent<InfoBox>().SetConnector(i, electronCount + i, ObjectType.ATOM);
             // info.GetComponent<RectTransform>().anchoredPosition = new Vector2(0, (-63 * electronCount) + (-50 * i));
@@ -149,7 +175,7 @@ public static extern void cleanupInitData(IntPtr data);
         float worldHeight = Camera.main.orthographicSize * 2;
         for (int i = 0; i < electronCount; i++) {
             var info = Instantiate(infoBoxPrefab_e, infoBoxAnchor.transform);
-            info.GetComponent<InfoBox>().SetConnector(i, i, ObjectType.ELECTRON);
+            info.GetComponent<InfoBox>().SetConnector(i, ObjectType.ELECTRON);
             info.GetComponent<RectTransform>().anchoredPosition = new Vector2(340 * column, -63 * row);
     
             row++;
@@ -162,7 +188,7 @@ public static extern void cleanupInitData(IntPtr data);
         int offsetRows = row;
         for (int i = 0; i < atomCount; i++) {
             var info = Instantiate(infoBoxPrefab_a, infoBoxAnchor.transform);
-            info.GetComponent<InfoBox>().SetConnector(i, electronCount + i, ObjectType.ATOM);
+            info.GetComponent<InfoBox>().SetConnector(i, ObjectType.ATOM);
             info.GetComponent<RectTransform>().anchoredPosition = new Vector2(340 * column, (-50 * (row - offsetRows)) + (-63 * offsetRows));
             
             row++;
@@ -208,14 +234,25 @@ public static extern void cleanupInitData(IntPtr data);
         positions = data.positions;
         sizes = data.sizes;
 
-        for (int i = 0; i < particles.Length; i++) {
-            particles[i].transform.position = positions[i];
-            if(i < electronCount){
-                particles[i].transform.localScale = new Vector3(sizes[i], sizes[i], sizes[i]);
-                //UnityEngine.Debug.Log(sizes[i]);
-            }
-            //UnityEngine.Debug.Log(positions[i].x + " " + positions[i].y + " " + positions[i].z);
+        // for (int i = 0; i < atomCount + electronCount; i++) {
+        //     GetParticle(i).Position = positions[i];
+        //     if(i < electronCount){
+        //         GetParticle(i).GetComponent<Electron>().SetSize(sizes[i]);
+        //         //UnityEngine.Debug.Log(sizes[i]);
+        //     }
+        //     //UnityEngine.Debug.Log(positions[i].x + " " + positions[i].y + " " + positions[i].z);
 
+        // }
+
+        for (int i = 0; i < atomCount; i++) {
+            // Debug.Log("{" + string.Join(" ", atoms.ConvertTo<string[]>()) + "}");
+            // Debug.Log("length: " + atoms.Count() + ", na: " + atomCount);
+            //Array.ForEach(atoms, a => Debug.Log(a.ToString()));
+            atoms[i].Position = positions[i];
+        }
+        for (int i = 0; i < electronCount; i++) {
+            electrons[i].Position = positions[i];
+            electrons[i].Size = sizes[i];
         }
     }
 
@@ -241,14 +278,14 @@ public static extern void cleanupInitData(IntPtr data);
         return positions[type == ObjectType.ELECTRON ? displayId : displayId + electronCount];
     }
 
-    public void SetParticlePosition(ObjectType type, int id, Vector3 pos, float size) {
+    public void SetParticlePosition(ObjectType type, IParticle particle, Vector3 pos, float size) {
         try {
+            particle.Position = pos;
             if(type == ObjectType.ELECTRON) {
-                unitySetElectronPosition(id, pos.x, pos.y, pos.z, size);
-                particles[id].transform.position = pos;
+                unitySetElectronPosition(particle.Id, pos.x, pos.y, pos.z, size);
+                ((Electron)particle).Size = size;
             } else {
-                unitySetAtomPosition(id, pos.x, pos.y, pos.z);
-                particles[id + electronCount].transform.localScale = new Vector3(size, size, size);
+                unitySetAtomPosition(particle.Id, pos.x, pos.y, pos.z);
             }
         } catch (Exception e) {
             UnityEngine.Debug.LogError($"Exception in SetParticlePosition: {e.GetType()} : {e.Message}\n{e.StackTrace}");

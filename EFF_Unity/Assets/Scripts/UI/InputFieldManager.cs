@@ -10,8 +10,8 @@ public class InputFieldManager : MonoBehaviour
 {
     public GameObject[] fieldObjects;
     private TMP_InputField[] fields;
-    private int currentParticle;
-    private ObjectType currentParticleType;
+    private IParticle particle;
+    private ObjectType particleType;
 
     void Awake() {
         fields = Array.ConvertAll(fieldObjects, o => o.GetComponent<TMP_InputField>());
@@ -39,8 +39,8 @@ public class InputFieldManager : MonoBehaviour
     public void SetPositions(string input, int fieldId) {
         try {
             float value = float.Parse(input);
-            Vector3 pos = GameController.main.GetPosition(currentParticleType, currentParticle);
-            float size = currentParticleType == ObjectType.ELECTRON ? GameController.main.sizes[currentParticle] : 0;
+            Vector3 pos = particle.Position;
+            float size = particleType == ObjectType.ELECTRON ? ((Electron)particle).Size : 0;
             
             // Update the appropriate field
             switch(fieldId) {
@@ -62,17 +62,17 @@ public class InputFieldManager : MonoBehaviour
             }
 
             // Apply the changes
-            UnityEngine.Debug.Log($"Setting {currentParticleType} {currentParticle} position to {pos}, size: {size}");
-            GameController.main.SetParticlePosition(currentParticleType, currentParticle, pos, size);
+            UnityEngine.Debug.Log($"Setting {particleType} {particle.Id} position to {pos}, size: {size}");
+            GameController.main.SetParticlePosition(particleType, particle, pos, size);
         }
         catch (Exception e) {
             UnityEngine.Debug.LogError($"Error in SetPositions: {e.Message}\n{e.StackTrace}");
         }
     }
 
-    public void Spawn(ObjectType type, int objId, Vector2 posUI) {
-        this.currentParticle = objId;
-        this.currentParticleType = type;
+    public void Spawn(ObjectType type, IParticle particle, Vector2 posUI) {
+        this.particleType = type;
+        this.particle = particle;
         GetComponent<RectTransform>().anchoredPosition = posUI;
 
         Array.ForEach(fieldObjects, o => o.SetActive(false));

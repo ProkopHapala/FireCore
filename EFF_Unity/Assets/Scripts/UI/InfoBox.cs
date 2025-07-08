@@ -1,14 +1,14 @@
 using System;
 using System.Linq;
 using System.Security;
+using NUnit.Framework;
 using TMPro;
 using Unity.PlasticSCM.Editor.WebApi;
 using UnityEngine;
 using UnityEngine.EventSystems;
 using UnityEngine.UI;
 
-public class InfoBox : MonoBehaviour
-{
+public class InfoBox : MonoBehaviour {
     public GameObject button;
     public TextMeshProUGUI objText;
     public TextMeshProUGUI posText;
@@ -21,10 +21,9 @@ public class InfoBox : MonoBehaviour
     public InputFieldManager inputFields;
 
     //private GameController connector;
-    private int posId;
     private int id;
-    private GameObject particle;
-    private Outline particleOutline;
+    private IParticle particle;
+    // private Outline particleOutline;
     private CameraControl cameraControl;
     private delegate void del();
     private del SetStats;
@@ -89,7 +88,7 @@ public class InfoBox : MonoBehaviour
             }
 
             if(Input.GetKeyDown(KeyCode.F) && !Input.GetKey(KeyCode.LeftShift)) {
-                GameController.main.cameraControl.FollowParticle(particle);
+                GameController.main.cameraControl.FollowParticle(((MonoBehaviour)particle).gameObject);
             }
 
             if(!GameController.main.isRunning) {
@@ -111,26 +110,24 @@ public class InfoBox : MonoBehaviour
 
     // id: to be displayed
     // posId: index in positions to read from
-    public void SetConnector(int id, int posId, ObjectType type) {
+    public void SetConnector(int id, ObjectType type) {
         inputFields = GameController.main.inputFields;
 
-        objText.SetText($"{(type == ObjectType.ATOM ? "ATOM" : "ELECTRON")} {id} {(GameController.main.espins[id] == 1 ? "(+1/2)" : "(-1/2)")}");
-        this.posId = posId;
+        objText.SetText($"{(type == ObjectType.ATOM ? "ATOM" : "ELECTRON")} {id} {(GameController.main.electrons[id].Spin == 1 ? "(+1/2)" : "(-1/2)")}");
         this.id = id;
         Type = type;
-        particle = GameController.main.particles[posId];
-        particleOutline = particle.GetComponent<Outline>();
-
+        particle = GameController.main.GetParticle(id, type);
         if(type == ObjectType.ELECTRON){
+            
             SetStats = () => {
-                var pos = GameController.main.positions[posId];
+                var pos = particle.Position;
                 posText.SetText($"pos: x {pos.x:F3} | y {pos.y:F3} | z {pos.z:F3}");
-                sizeText.SetText($"siz: {GameController.main.sizes[id]:F5}");
+                sizeText.SetText($"siz: {(particle as Electron).Size:F5}");
             };
         }
         else {
             SetStats = () => {
-                var pos = GameController.main.positions[posId];
+                var pos = particle.Position;
                 posText.SetText($"pos: x {pos.x:F3} | y {pos.y:F3} | z {pos.z:F3}");
             };
         }
@@ -144,30 +141,30 @@ public class InfoBox : MonoBehaviour
     }
 
     public void OnButtonClick() {
-        cameraControl.SetPivot(particle.transform.position);
+        cameraControl.SetPivot(particle.Position);
     }
     public void OnButtonRightClick() {
         // inputFieldAnchor.GetComponent<RectTransform>().anchoredPosition = GetComponent<RectTransform>().anchoredPosition + new Vector2(-50, 0);
         // inputFieldAnchor.SetActive(true);
         if(Type == ObjectType.ATOM){
-            inputFields.SetDefault(GameController.main.positions[posId]);
+            inputFields.SetDefault(particle.Position);
         }
         else {
-            inputFields.SetDefault(GameController.main.positions[posId], GameController.main.sizes[posId]);
+            inputFields.SetDefault(particle.Position, (particle as Electron).Size);
         }
-        inputFields.Spawn(Type, id, GetComponent<RectTransform>().anchoredPosition + new Vector2(350, 0));
+        inputFields.Spawn(Type, particle, GetComponent<RectTransform>().anchoredPosition + new Vector2(350, 0));
 
     }
 
     public void OnPointerEnter(PointerEventData eventData)
     {
-        particleOutline.OutlineMode = Outline.Mode.OutlineAndSilhouette;
+        particle.SetOutline(true);
         cursorOn = true;
     }
 
     public void OnPointerExit(PointerEventData eventData)
     {
-        particleOutline.OutlineMode = Outline.Mode.OutlineHidden;
+        particle.SetOutline(false);
         cursorOn = false;
     }
 
