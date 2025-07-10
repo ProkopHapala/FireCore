@@ -278,7 +278,8 @@ def get_variance_wrapper(theta):
 
 if __name__ == "__main__":
     print("#=========== RUN /home/gabriel/git/FireCore/tests/tEFF/AI_rough.py")
-    os.remove(fileToSaveProcess) # deleting useless information
+    if os.path.exists(fileToSaveProcess):
+        os.remove(fileToSaveProcess) # deleting useless information
     eff.setVerbosity(0,0)
     atomParams = np.array([
     #  Q   sQ   sP   cP
@@ -332,7 +333,7 @@ if __name__ == "__main__":
     theta = tf.Variable(theta0, dtype=tf.float64)
     optimizer = tf.keras.optimizers.Adam(learning_rate=0.01)
 
-    for step in range(200):
+    for step in range(1000):
         with tf.GradientTape() as tape:
             # Call the wrapper function which has the custom gradient defined
             loss = get_variance_wrapper(theta)

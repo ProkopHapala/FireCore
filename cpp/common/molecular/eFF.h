@@ -1064,7 +1064,7 @@ char* orbs2str(char* str0){
 
 void to_xyz( FILE* pFile, const char* comment=0 ){
     
-    bool bOnlyPairs = true;
+    bool bOnlyPairs = false;
     int ne_=ne;
     if(bOnlyPairs){
         ne_=0;
@@ -1078,7 +1078,7 @@ void to_xyz( FILE* pFile, const char* comment=0 ){
     if(comment!=0){ 
         fprintf( pFile, "na,ne,core %i %i f | Etot(%g)=T(%g)+ee(%g)+ea(%g)+aa(%g) | %s ", na,ne_, Etot, Ek, Eee, Eae, Eaa, comment ); 
     }else{ 
-        fprintf( pFile, "na,ne,core %i %i f | Etot(%g)=T(%g)+ee(%g)+ea(%g)+aa(%g) \n", na,ne_, Etot, Ek, Eee, Eae, Eaa ); 
+        fprintf( pFile, "na,ne,core %i %i f | Etot(%g)=T(%g)+ee(%g)+ea(%g)+aa(%g) \n", na,ne_, Etot, Ek, Eee, Eae, Eaa );
     }
     for (int i=0; i<na; i++){
         int iZ = (int)(aPars[i].x+0.5);
@@ -1091,7 +1091,6 @@ void to_xyz( FILE* pFile, const char* comment=0 ){
         fprintf( pFile, "%s %10.6f %10.6f %10.6f \n", aname, apos[i].x, apos[i].y, apos[i].z );
     }
     bool bE2name = true;
-    
     if(bE2name){
         for (int i=0; i<ne; i++){
             int e = espin[i];
@@ -1156,8 +1155,8 @@ char from_xyz_line( const char* line, int& ie, int& ia ){
     if( ename[0]=='.' ){ fixed = true; ename++; }
     if( ename[0]=='e' ){
         int spin=0;
-        if( Q<1.5 ){ if( Q>0.0 ){ spin=1; }else{ spin=-1; } }
-        //char cspin = ename[1]; if(cspin=='+'){spin=1;}else if(cspin=='-'){spin=-1;}else{spin=0;}
+        // if( Q<1.5 ){ if( Q>0.0 ){ spin=1; }else{ spin=-1; } }
+        char cspin = ename[1]; if(cspin=='+'){spin=1;}else if(cspin=='-'){spin=-1;}else{spin=0;}
         if(verbosity>2)printf( "elec[%i]: %s %lf %lf %lf %lf %lf\n", ie, ename, x, y, z, Q, size );
         epos   [ie].set(x,y,z);
         espin  [ie] = spin;
