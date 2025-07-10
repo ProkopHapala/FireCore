@@ -767,7 +767,7 @@ int processXYZ_e( const char* fname, double* outEs=0, double* apos_=0, double* e
             ff.copyAtomPositions    ((Vec3d* )apos_, iconf );
             ff.copyElectronPositions((Quat4d*)epos_, iconf );
             if(verbosity>0) printf(" processXYZ_e() iconf: %3i na: %3i ne: %3i Etot: %16.8f\n", iconf, na, ne, ff.Etot);
-            if(xyz_out) ff.save_xyz(xyz_out, "a", line);
+            if(xyz_out) ff.save_xyz(xyz_out, "a");
             il = 0;
             ia = 0;
             ie = 0;
