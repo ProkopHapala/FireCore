@@ -87,9 +87,5 @@ if __name__ == "__main__":
     #eff.aPars[0,2]=1
     eff.esize[:]=0.7
     # eff.processXYZ( "export/scan_data/angdistscan_CH4.xyz", outEs=outEs, bCoreElectrons=bCoreElectrons, bChangeCore=False, bChangeEsize=True, nstepMax=0, dt=0.005, Fconv=1e-3, ialg=2 ) #, KRSrho=KRSrho 
-    for i in range(100):
-        eff.processXYZ_e( elementPath_e, outEs=outEs, nstepMax=i, dt=0.005, Fconv=1e-3) #, KRSrho=KRSrho 
-        print("Progress: ", i)
-    print("processXYZ")
-    # eff.processXYZ_e( elementPath_e, outEs=outEs, nstepMax=100, dt=0.005, Fconv=1e-3) #, KRSrho=KRSrho 
+    eff.processXYZ_e( elementPath_e, outEs=outEs, nstepMax=100, dt=0.005, Fconv=1e-3) #, KRSrho=KRSrho 
     print("#=========== DONE /home/gabriel/git/FireCore/tests/tEFF/Single_relax.py, all values")
