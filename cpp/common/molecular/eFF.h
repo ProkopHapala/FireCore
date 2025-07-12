@@ -1095,15 +1095,16 @@ void to_xyz( FILE* pFile, const char* comment=0 ){
         for (int i=0; i<ne; i++){
             int e = espin[i];
             char* ename=0;
+            int q = 0;
             if(bOnlyPairs){
-                if     (e==0){ ename="e2"; }
-                else if(e==1){ ename="e2"; }
+                if     (e==0){ ename="e2"; q=-2; }
+                else if(e==1){ ename="e2"; q=-2; }
             }else{
-                if     (e== 0){ ename="e2"; }
-                else if(e== 1){ ename="e+"; }
-                else if(e==-1){ ename="e-"; }
+                if     (e== 0){ ename="e2"; q=-2; }
+                else if(e== 1){ ename="e+"; q=-1; }
+                else if(e==-1){ ename="e-"; q=-1; }
             } 
-            if(ename) fprintf( pFile, "%3s %10.6f %10.6f %10.6f 0 %10.6f \n", ename, epos[i].x, epos[i].y, epos[i].z,  esize[i] );
+            if(ename) fprintf( pFile, "%3s %10.6f %10.6f %10.6f %2i %10.6f \n", ename, epos[i].x, epos[i].y, epos[i].z, q, esize[i] );
         }
     }else{
         for (int i=0; i<ne; i++){

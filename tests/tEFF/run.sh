@@ -35,15 +35,19 @@ echo "#=========== RUN"
 #python3 AI_angdist_sim.py
 
 #python3 -u run_process_xyz_1d.py 2>ERR | tee OUT
-#python3 -u run_process_xyz.py 2>ERR | tee OUT
+# python3 -u run_process_xyz_e.py 2>ERR | tee OUT
 
 # python3 -u run_process_xyz.py
-# python3 -u run_scan_Oe_ECP.py #2>ERR | tee OUT\
+# python3 -u run_scan_Oe_ECP.py #2>ERR | tee OUT
 
-# python3 -u AI_angdist_sim.py
-python3 -u AI_angdist_show.py --variant min 2>ERR | tee OUT
+# python3 -u AI_angdist_sim.py 2>ERR | tee OUT
+# python3 -u AI_angdist_show.py --variant min 2>ERR | tee OUT
+python3 -u Single_relax.py 2>ERR | tee OUT
+
 
 # python3 -u xyz_view_new.py -f ./H2O_spins.xyz 2>ERR | tee OUT
+# python3 -u xyz_view_new.py -f ./export/scan_data/angdistscan_CH4_e2.xyz 2>ERR | tee OUT
+python3 -u xyz_view_new.py -f ./processXYZ.xyz 2>ERR | tee OUT
 
 #python3 run_energyToBondlength_Gabriel.py 2>ERR | tee OUT
 

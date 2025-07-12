@@ -44,8 +44,13 @@ def extract_blocks(xyz_file):
 
 if __name__ == "__main__":
     print("#=========== RUN /home/gabriel/git/FireCore/tests/tEFF/Single_relax.py, all values")
+    eff.setTrjName(fileToSaveProcess, savePerNsteps=1)
     if os.path.exists(fileToSaveProcess):
         os.remove(fileToSaveProcess) # deleting useless information
+
+    KRSrho = np.array( [ 1.66487924,  1.61387271, -2.22015201])
+    KRSrho = np.array([1.125, 0.9, -0.2])
+    eff.setKRSrho(KRSrho)
 
     eff.setVerbosity(0,0)
     print("verbos")
@@ -87,5 +92,5 @@ if __name__ == "__main__":
     #eff.aPars[0,2]=1
     eff.esize[:]=0.7
     # eff.processXYZ( "export/scan_data/angdistscan_CH4.xyz", outEs=outEs, bCoreElectrons=bCoreElectrons, bChangeCore=False, bChangeEsize=True, nstepMax=0, dt=0.005, Fconv=1e-3, ialg=2 ) #, KRSrho=KRSrho 
-    eff.processXYZ_e( elementPath_e, outEs=outEs, nstepMax=100, dt=0.005, Fconv=1e-3) #, KRSrho=KRSrho 
+    eff.processXYZ_e( elementPath_e, outEs=outEs, nstepMax=10000, dt=0.005, Fconv=1e-3) #, KRSrho=KRSrho 
     print("#=========== DONE /home/gabriel/git/FireCore/tests/tEFF/Single_relax.py, all values")

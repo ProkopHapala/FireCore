@@ -10,6 +10,7 @@ sys.path.append("../../")
 from pyBall import eFF as eff
 elementPath = "export/scan_data/angdistscan_CH4.xyz"
 fileToReadPath = "results/AI/result_dual_anneal.txt"
+fileToSaveProcess = "processXYZ.xyz"
 maxBars = 20
 
 def plot_energy_landscape( Xs, Ys, Es, Espan=None):
@@ -130,8 +131,13 @@ def minVal():
     print("#=========== RUN /home/gabriel/git/FireCore/tests/tEFF/AI_angdist_show.py, all values")
     print(f"Loading from file {fileToReadPath}")
     KRSrho = read_min_theta(fileToReadPath) 
+    if os.path.exists(fileToSaveProcess):
+        os.remove(fileToSaveProcess) # deleting useless information
+    
+    KRSrho = np.array([1.125, 0.9, -0.2])
     print(KRSrho) # KRSrho is also min theta
 
+    eff.setTrjName(fileToSaveProcess, savePerNsteps=1)
     eff.setVerbosity(0,0)
     print("verbos")
     atomParams = np.array([
@@ -176,7 +182,7 @@ def minVal():
     print("kRSrho: ", KRSrho)
     eff.setKRSrho(KRSrho)
     # eff.processXYZ( "export/scan_data/angdistscan_CH4.xyz", outEs=outEs, bCoreElectrons=bCoreElectrons, bChangeCore=False, bChangeEsize=True, nstepMax=0, dt=0.005, Fconv=1e-3, ialg=2 ) #, KRSrho=KRSrho 
-    eff.processXYZ_e( "export/scan_data/angdistscan_CH4_e2.xyz", outEs=outEs, nstepMax=10000, dt=0.005, Fconv=1e-3) #, KRSrho=KRSrho 
+    eff.processXYZ_e( "export/scan_data/angdistscan_CH4_e4.xyz", outEs=outEs, nstepMax=1, dt=0.005, Fconv=1e-3) #, KRSrho=KRSrho 
     print("processXYZ")
 
     plot_energy_landscape( params['ang'], params['dist'], outEs[:,0] )

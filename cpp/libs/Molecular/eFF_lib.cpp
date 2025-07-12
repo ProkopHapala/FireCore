@@ -53,7 +53,7 @@ DynamicOpt opt;
 
 bool opt_initialized=false;
 
-char* trj_fname = "processXYZ.xyz";
+char* trj_fname = 0;
 int   savePerNsteps = 1;
 
 bool isPreAllocated=false;
