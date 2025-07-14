@@ -39,8 +39,8 @@
 
 float Vtip( float3 pSite, float3 pTip, float Vbias, float Rtip ){
     // Tip potential V_i = Vbias * (R_tip / |r_i - r_tip|)
-    float3 d   = pSite - pTip;
-    float  r   = length(d);
+    const float3 d   = pSite - pTip;
+    const float  r   = length(d);
     return  Vbias * (Rtip/r); // Tip potential V_i = Vbias * (R_tip / |r_i - r_tip|)
 }
 
@@ -51,10 +51,18 @@ float get_Wij( float3 pi, float3 pj ){
     // Replace the simple 1/r model below with your actual formula.
     // For dipole-dipole interaction, it might be proportional to 1/r^3.
     // For a simple screened Coulomb interaction, it could be: prefactor * exp(-dist / lambda) / dist.
-    float3  d = pi - pj;
-    float   r = length(d);
+    const float3  d = pi - pj;
+    const float   r = length(d);
     return  COULOMB_CONST/r;
 }
+
+float get_Wij_mirror( float3 pi, float3 pj, float zMirror ){
+    const float3 pj_mirror = (float3)(pj.x, pj.y, 2.0f * zMirror - pj.z);
+    const float  r_rr      = distance(pi, pj);
+    const float  r_ri      = distance(pi, pj_mirror);
+    return 2.0f * COULOMB_CONST * ( (1.0f / r_rr) - (1.0f / r_ri) );
+}
+
 
 int get_W_idx(int i, int j, int n) {
     // This formula is derived from the sum of an arithmetic series for the preceding rows.
@@ -81,6 +89,39 @@ int get_W_idx(int i, int j, int n) {
  * - Local Size   = workgroup_size
  */
 
+
+__kernel void eval_coupling_matrix(
+    const int nSingle,
+    __global const float4* posE,
+    __global float*  Rij,
+    __global float*  Wij,
+    const float zMirror
+){
+    const int gid    = get_global_id(0);
+    //cnst int lid    = get_local_id(0);
+    //const int local_size = get_local_size(0);
+
+    if (gid >= nSingle*nSingle ) return;
+    //if (lid >= nSingle         ) return;
+
+    const int i = gid / nSingle;
+    const int j = gid % nSingle;
+
+    if (i == j) {
+        Rij[gid] = 0.0f;
+        Wij[gid] = 0.0f;
+        return;
+    }
+
+    const float4 site  = posE[i];
+    const float4 site2 = posE[j];
+    const float3 d     = site.xyz - site2.xyz;
+    const float  r     = length(d);
+    Rij[gid] = r;
+    Wij[gid] = get_Wij_mirror(site.xyz, site2.xyz, zMirror);
+}
+
+
 __kernel void solve_minBrute_fly(
     const int nSingle,
     __global const float4* posE,
@@ -88,6 +129,8 @@ __kernel void solve_minBrute_fly(
     __global const float4* pTips,
     const float tipDecay,
     const float tipRadius,
+    const float zMirror,
+    const float Wcouple,
     __global float*  Emin,
     __global int*    iMin,
     __global float2* Itot
@@ -95,22 +138,30 @@ __kernel void solve_minBrute_fly(
     //=========================================================================
     // 1. Initialization and ID setup
     //=========================================================================
-    const int tip_idx    = get_group_id(0);
+    const int iTip       = get_group_id(0);
     const int lid        = get_local_id(0);
+    const int gid        = get_global_id(0);
     const int local_size = get_local_size(0);
 
-    if (tip_idx >= nTips) return;
-    if (nSingle > MAX_SITES) { if (lid == 0) Emin[tip_idx] = 1e10f; return; }
+    if (iTip >= nTips) return;
+    if (nSingle > MAX_SITES) { if (lid == 0) Emin[iTip] = 1e10f; return; }
+
+    bool bNoCrossCoupling = false;
+    if( fabs(Wcouple)<1e-9 ) bNoCrossCoupling = true;
 
     // Shared memory for this work-group. Note the absence of the large 'W' matrix.
     __local float4 Lsites[MAX_SITES];
     //__local float4 Tsite [MAX_SITES];
 
+    #define iDBG 0
+
+    //if (iDBG==gid){  for (int i = 0; i < nSingle; ++i) { printf("GPU posE %4i E: %12.8f  pos( %12.8f , %12.8f , %12.8f ) \n", i, posE[i].w, posE[i].x, posE[i].y, posE[i].z);  } }
+
     //=========================================================================
     // 2. Collaborative Pre-calculation in Local Memory
     //=========================================================================
     // All threads in the workgroup collaborate to fill the shared arrays.
-    const float4 tip = pTips[tip_idx];
+    const float4 tip = pTips[iTip];
     for (int i = lid; i < nSingle; i += local_size) {
         Lsites[i].xyz = posE[i].xyz;
         Lsites[i].w   = posE[i].w + Vtip(Lsites[i].xyz, tip.xyz, tip.w, tipRadius);
@@ -119,66 +170,74 @@ __kernel void solve_minBrute_fly(
     // Synchronize to ensure all shared arrays are fully computed.
     barrier(CLK_LOCAL_MEM_FENCE);
 
+    //if (iDBG==gid){  for (int i = 0; i < nSingle; ++i) { printf("GPU Lsite %4i E: %12.8f  pos( %12.8f , %12.8f , %12.8f ) \n", i, Lsites[i].w, Lsites[i].x, Lsites[i].y, Lsites[i].z); } }
+
     //=========================================================================
     // 3. Parallel Brute-Force Minimization with On-the-Fly W_ij
     //=========================================================================
     const uint nMany = 1 << nSingle;
     
-    float local_min_E   = 1e10f;
-    uint  local_min_idx = 0;
+    float lEmin = 1e10f;
+    uint  liMin = 0;
 
     for (uint iMany = lid; iMany < nMany; iMany += local_size) {
         float E = 0.0f;
         for (int i = 0; i < nSingle; ++i) {  // On-site and interaction energy calculation
             if ((iMany >> i) & 1) {          // If site 'i' is occupied...
-                float4 site = Lsites[i];
-                E         += site.w;               // Add its on-site energy
-                float3 pi  = site.xyz;
+                const float4 site = Lsites[i];             // Add its on-site energy
+                E += site.w;
+                if(bNoCrossCoupling) continue;
                 for (int j = i + 1; j < nSingle; ++j) { // ...calculate interaction with other occupied sites j > i
-                    if ((iMany >> j) & 1) {  E += get_Wij(pi, Lsites[j].xyz); }
+                    if ((iMany >> j) & 1) {  E += get_Wij_mirror(site.xyz, Lsites[j].xyz, zMirror ) * Wcouple; }
                 }
             }
         }
-        if (E < local_min_E) {
-            local_min_E = E;
-            local_min_idx = iMany;
+        //printf("GPU Emany %4i lid %2i  E: %12.8f  lEmin %12.8f \n", iMany, lid, E, lEmin);
+        if (E < lEmin) {
+            //printf("GPU Emany-min %4i  lid %2i E: %12.8f ->  lEmin %12.8f \n", iMany, lid, E, lEmin);
+            lEmin = E;
+            liMin = iMany;
         }
     }
 
     //=========================================================================
     // 4. Work-group Reduction to find the final minimum
     //=========================================================================
-    __local float reduction_E  [MAX_WORKGROUP_SIZE];
-    __local uint  reduction_idx[MAX_WORKGROUP_SIZE];
+    __local float LEmins[MAX_WORKGROUP_SIZE];
+    __local uint  LImins[MAX_WORKGROUP_SIZE];
 
-    reduction_E[lid]   = local_min_E;
-    reduction_idx[lid] = local_min_idx;
+    LEmins[lid] = lEmin;
+    LImins[lid] = liMin;
     barrier(CLK_LOCAL_MEM_FENCE);
 
     // Thread 0 performs the final reduction and writes the result.
     if (lid == 0) {
-        float final_min_E   = reduction_E[0];
-        uint  final_min_idx = reduction_idx[0];
-        for (int i = 1; i < local_size; ++i) {
-            if (reduction_E[i] < final_min_E) {
-                final_min_E   = reduction_E[i];
-                final_min_idx = reduction_idx[i];
+        float gEmin = 1e10f;
+        uint  gimin = -1;
+        int nred = (nMany<MAX_WORKGROUP_SIZE) ? nMany : MAX_WORKGROUP_SIZE;
+        for (int i=0; i<nred; ++i) {
+            const float LEmin = LEmins[i];
+            //if (iDBG==gid){ printf("GPU gMin %4i i %2i LEmin: %12.8f imin: %i \n", iTip, i, LEmin, LImins[i]); }
+            if (LEmin<gEmin) {
+                gEmin = LEmin;
+                gimin = LImins[i];
             }
         }
         //=====================================================================
         // 5. Final Calculations & Output (done only by thread 0)
         //=====================================================================
-        Emin[tip_idx] = final_min_E;
-        iMin[tip_idx] = (int)final_min_idx;
+        //if (iDBG==gid){ printf("GPU final gMin %4i Emin: %12.8f imin: %i \n", iTip, gEmin, gimin); }
+        Emin[iTip] = gEmin;
+        iMin[iTip] = (int)gimin;
 
         float I_occ  = 0.0f;
         float I_unoc = 0.0f;
         for (int i=0; i<nSingle; ++i) {  // Check occupancy in the found ground state (min_idx)
             float r = distance(tip.xyz, Lsites[i].xyz);
             float T = exp(-tipDecay * r);
-            if ((final_min_idx >> i) & 1){ I_occ += T; }else{ I_unoc += T; }
+            if ((gimin >> i) & 1){ I_occ += T; }else{ I_unoc += T; }
         }
-        Itot[tip_idx] = (float2)(I_occ, I_unoc);
+        Itot[iTip] = (float2)(I_occ, I_unoc);
     }
 }
 
@@ -208,7 +267,9 @@ __kernel void solve_minBrute_boltzmann(
     __global const float4* pTips,
     const float tipDecay,
     const float tipRadius,
-    const float kT, // Thermal energy (k_B * T) in eV
+    const float zMirror,
+    const float Wcouple,
+    const float bBoltzmann, // 1/kT [1/eV]
     __global float*  Emin,
     __global int*    iMin,
     __global float2* Itot
@@ -222,6 +283,9 @@ __kernel void solve_minBrute_boltzmann(
 
     if (tip_idx >= nTips) return;
     if (nSingle > MAX_SITES) { if (lid == 0) Emin[tip_idx] = 1e10f; return; }
+
+    bool bNoCrossCoupling = false;
+    if( fabs(Wcouple)<1e-9 ) bNoCrossCoupling = true;
 
     // Shared memory for this work-group. Note the absence of the large 'W' matrix.
     __local float4 Lsites[MAX_SITES];
@@ -247,12 +311,11 @@ __kernel void solve_minBrute_boltzmann(
     const uint nMany = 1u << nSingle;
     
     // Each thread finds the minimum and sums in its own subset of states
-    float local_Emin  = 1e10f;
-    uint  local_imin  = 0;
-    float local_Z     = 0.0f;
-    float local_Iocc  = 0.0f;
-    float local_Iunoc = 0.0f;
-    const float inv_kT = (kT > 1e-9f) ? 1.0f / kT : 1e9f;
+    float local_Emin   = 1e10f;
+    uint  local_imin   = 0;
+    float local_Z      = 0.0f;
+    float local_Iocc   = 0.0f;
+    float local_Iunoc  = 0.0f;
 
     for (uint iMany = lid; iMany < nMany; iMany += local_size) {
         float E = 0.0f;
@@ -265,14 +328,15 @@ __kernel void solve_minBrute_boltzmann(
                 float4 site = Lsites[i];
                 E += site.w;
                 i_occ_state +=  T;
+                if(bNoCrossCoupling) continue;
                 for (int j = i + 1; j < nSingle; ++j) {
-                    if ((iMany >> j) & 1) { E += get_Wij(site.xyz, Lsites[j].xyz); }
+                    if ((iMany >> j) & 1) {  E += get_Wij_mirror(site.xyz, Lsites[j].xyz, zMirror ) * Wcouple; }
                 }
             } else { i_unoc_state += T; }
         }
 
         // boltzmann-weighted average
-        float w = exp((local_Emin - E) * inv_kT);
+        float w = exp( - E * bBoltzmann );
         local_Z         *= w;
         local_Iocc      *= w;
         local_Iunoc     *= w;

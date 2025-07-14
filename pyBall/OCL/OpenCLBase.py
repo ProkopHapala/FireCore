@@ -202,7 +202,7 @@ class OpenCLBase:
             buff = getattr(self, buff_name)
             if not ( buff is None or buff.size != sz ):
                 return
-        print( "try_make_buff(",buff_name,") reallocate to [bytes]: ", sz )
+        #print( "try_make_buff(",buff_name,") reallocate to [bytes]: ", sz )
         buff = cl.Buffer(self.ctx, cl.mem_flags.READ_WRITE, sz )
         setattr(self, buff_name, buff )
         return buff
