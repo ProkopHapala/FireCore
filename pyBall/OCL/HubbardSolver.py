@@ -233,19 +233,88 @@ class HubbardSolver(OpenCLBase):
         
         return Rij.reshape(nSingle, nSingle), Wij.reshape(nSingle, nSingle)
 
+    def setup_eval_oriented_hopping(self, nSingle, nTips):
+        """Prepare arguments for eval_Oriented_Hopping kernel."""
+        kernel = self.prg.eval_Oriented_Hopping
+        args = (
+            np.int32(nSingle),
+            np.int32(nTips),
+            self.posE_buff,
+            self.rots_buff,
+            self.orbs_buff,
+            self.pTips_buff,
+            self.Tout_buff
+        )
+        return args, kernel
+
+    def eval_oriented_hopping(self, posE: np.ndarray, rots: np.ndarray, orbs: np.ndarray, pTips: np.ndarray, bRealloc: bool = True):
+        """Evaluate tunneling amplitudes for each site-tip pair.
+        
+        Args:
+            posE:       (nSingle,4) array of site positions and energies
+            rots:       (nSingle,2)  array of unit rotation (cos,sin) per site
+            orbs:       (nSingle,4)  array of orbital params (C_s, C_px, C_py, decay)
+            pTips:      (nTips,4)    array of tip positions
+            bRealloc:   whether to reallocate buffers
+        Returns:
+            Tout:       (nSingle, nTips) tunneling amplitudes
+        """
+        nSingle = posE.shape[0]
+        nTips   = pTips.shape[0]
+        total   = nSingle * nTips
+        print("HubbardSolver::eval_oriented_hopping() nSingle: ", nSingle, " nTips: ", nTips, " total: ", total)
+
+        if bRealloc:
+            self.try_make_buff("posE_buff",  posE.nbytes)
+            self.try_make_buff("rots_buff",  rots.nbytes)
+            self.try_make_buff("orbs_buff",  orbs.nbytes)
+            self.try_make_buff("pTips_buff", pTips.nbytes)
+            self.try_make_buff("Tout_buff",  total * 4)
+
+        # Upload data
+        self.toGPU_(self.posE_buff,  posE)
+        self.toGPU_(self.rots_buff,  rots)
+        self.toGPU_(self.orbs_buff,  orbs)
+        self.toGPU_(self.pTips_buff, pTips)
+
+        global_size = (total,)
+        args, kernel = self.setup_eval_oriented_hopping(nSingle, nTips)
+        kernel(self.queue, global_size, None, *args)
+        self.queue.finish()
+
+        Tout = np.empty((nTips,nSingle), dtype=np.float32)
+        self.fromGPU_(self.Tout_buff, Tout)
+        return Tout
+
 # -----------------------------------------------------------------------------
 # Utility helpers (stand-alone, not bound to the class) -------------------------
 # -----------------------------------------------------------------------------
 
-def make_site_ring( n, R, E0=-0.1, ang0=0.0 ):
+def make_site_ring( n, R, E0=-0.1, ang0=0.0, z=0.0 ):
     """Make a ring of n sites at radius R and energy E0."""
     pos = np.zeros((n,4), dtype=np.float32)
     ang = np.linspace(0, 2*np.pi, n, endpoint=False, dtype=np.float32) + ang0
     pos[:,0] = R * np.cos(ang)
     pos[:,1] = R * np.sin(ang)
-    pos[:,2] = 0.0
+    pos[:,2] = z
     pos[:,3] = E0
     return pos
+
+def make_grid_sites( nxy=(4,4),  avec=(1.0,0.0), bvec=(0.0,1.0), z=0.0, E0=-0.1, bCenter=True ):
+    """Make a grid of n sites at radius R and energy E0."""
+    ntot = np.prod(nxy)
+    pos = np.zeros((ntot,4), dtype=np.float32)
+    nx,ny = nxy
+    for ix in range(ny):
+        for jy in range(nx):
+            pos[ix*nx+jy,0] = avec[0]*ix + bvec[0]*jy
+            pos[ix*nx+jy,1] = avec[1]*ix + bvec[1]*jy
+            pos[ix*nx+jy,2] = z
+            pos[ix*nx+jy,3] = E0
+    if bCenter:
+        pos[:,:2] -= np.mean(pos, axis=0)[:2]
+    return pos
+
 
 def save_sites_to_txt(path: str, posE: np.ndarray):
     with open(path, "w") as f:
@@ -351,59 +420,100 @@ def plot_sites(posE, ax=None, c="r", ms=2.0):
 def plot2d( data, extent=None, title=None, ax=None, cmap=None, ps=None):
     if ax is None:
         ax = plt.gca()
-    im0 = ax.imshow(data, extent=extent, cmap=cmap);        
-    fig.colorbar(im0, ax=ax); 
+    im0 = ax.imshow(data, extent=extent, cmap=cmap, origin="lower");        
+    ax.figure.colorbar(im0, ax=ax) 
     plot_sites(ps,ax); 
     ax.set_title(title);
 
+def solve_hopping_scan(solver: HubbardSolver, posE: np.ndarray, rots: np.ndarray, orbs: np.ndarray, extent, nxy=(10,10), params=default_params):
+    """Run oriented hopping scan over XY grid and sum amplitudes over sites."""
+    pTips = generate_xy_scan(extent, nxy, zTip=params["zTip"], Vbias=params["Vbias"])
+    nSingle = posE.shape[0]
+    Tout = solver.eval_oriented_hopping(posE, rots, orbs, pTips, bRealloc=True)
+    return Tout.reshape(nxy+(nSingle,))
+
 if __name__ == "__main__":
     import matplotlib.pyplot as plt
-    params={ 
-        "tipDecay"  : 0.3,
-        "tipRadius" : 3.0,
-        "zTip"      : 5.0,
-        "zMirror"   : -0.5,
-        "Wcouple"   : 1.0,
-        "E0"        : -0.1,
-        #"Vbias"     : +0.2,
-        #"Vbias"     : -0.45,
-        "Vbias"     : -0.55,
-        "nSingle"   : 3,
-        "nTips"     : 1,
-    }
 
 
     # trimer
     #posE = make_site_ring(3, 5.0, E0=params["E0"] )
     #save_sites_to_txt("trimer.txt", posE)
 
-    # # hexamer
-    outer = make_site_ring(3, 5.0, -0.1        )
-    inner = make_site_ring(3, 3.0, -0.1, np.pi )
+    # hexamer
+    params={ 
+        "tipDecay"  : 0.3,
+        "tipRadius" : 3.0,
+        "zTip"      : 5.0,
+        "zMirror"   : -0.5,
+        "Wcouple"   : 1.0,
+        "E0"        : -0.10,
+        #"Vbias"     : +0.3,
+        #"Vbias"     : +0.2,
+        "Vbias"     : +0.1,
+        #"Vbias"     : -0.45,    
+        #"Vbias"     : -0.55,
+    }
+    outer = make_site_ring(3, 5.0, E0=params["E0"], ang0=np.pi*0.5 )
+    inner = make_site_ring(3, 3.0, E0=params["E0"], ang0=np.pi*1.5 )
+    #outer = make_site_ring(3, 5.0, E0=params["E0"], ang0=0.0 )
+    #inner = make_site_ring(3, 3.0, E0=params["E0"], ang0=np.pi )
     posE  = np.vstack([outer, inner])
     save_sites_to_txt("hexamer.txt", posE)
 
-    solver = HubbardSolver()
+    # # ---- grid
+    # params={ 
+    #     "tipDecay"  : 0.3,
+    #     "tipRadius" : 3.0,
+    #     "zTip"      : 1.0,
+    #     "zMirror"   : -0.5,
+    #     "Wcouple"   : 1.0,
+    #     "E0"        : -0.15,
+    #     "Vbias"     : 0.2,
+    # }
+    # posE = make_grid_sites( nxy=(4,4), avec=(7.0,0.0), bvec=(0.0,5.0), E0=params["E0"] )
+    # print("posE:\n", posE)
+    # save_sites_to_txt("grid.txt", posE)
 
+    solver = HubbardSolver()
     #solve_pSites(params, posE, solver)
 
     Rij, Wij = solver.eval_coupling_matrix(posE, params["zMirror"])
-    print("Rij:\n", Rij)
-    print("Wij:\n", Wij)
+    #print("Rij:\n", Rij)
+    #print("Wij:\n", Wij)
 
     extent=[-10.0,10.0,-10.0,10.0]
     # #posE = load_sites_from_txt("hexamer.txt")
-    Emin, iMin, Itot = solve_xy_scan(solver, posE, extent=extent, nxy=(200,200), params=params)
+    # Oriented hopping demo
+    # Create random site rotations and orbitals for demonstration
+    nSingle = posE.shape[0]
+    # Simple rots: all zeros (no rotation)
+    phis = np.zeros(nSingle)
+    rots = np.vstack([np.cos(phis), np.sin(phis)]).T.astype(np.float32)
+    # Simple orbitals: s-wave only with decay=1.0
+    orbs = np.zeros((nSingle,4), dtype=np.float32)
+    orbs[:,0] = 1.0  # C_s
+    orbs[:,3] = 0.2  # decay
+    Tsites = solve_hopping_scan(solver, posE, rots, orbs, extent=extent, nxy=(10,10), params=params)
+    print("Tsites: shape: ", Tsites.shape, " min: ", Tsites.min(), " max: ", Tsites.max())
+    # Plot hopping amplitude scan
     
-
+    fig2, axs = plt.subplots( 1,nSingle, figsize=(nSingle*4,4) )
+    for i in range(nSingle):
+        plot2d(Tsites[i], extent=extent, title="Total Hopping Amplitude", ax=axs[i], cmap="inferno", ps=posE)
+    # Also run XY scan for comparison plots
+    
+    plt.show(); exit()
+    
+    Emin, iMin, Itot = solve_xy_scan(solver, posE, extent=extent, nxy=(200,200), params=params)
     fig,axs = plt.subplots(2,2)
     # im0 = axs[0,0].imshow(Emin,        extent=extent);        fig.colorbar(im0, ax=axs[0,0]); plot_sites(posE,axs[0,0]); axs[0,0].set_title("Emin");
     # im1 = axs[0,1].imshow(iMin,        extent=extent);        fig.colorbar(im1, ax=axs[0,1]); plot_sites(posE,axs[0,1]); axs[0,1].set_title("iMin");
     # im2 = axs[1,0].imshow(Itot[:,:,0], extent=extent); fig.colorbar(im2, ax=axs[1,0]); plot_sites(posE,axs[1,0]); axs[1,0].set_title("I_occ");
     # im3 = axs[1,1].imshow(Itot[:,:,1], extent=extent); fig.colorbar(im3, ax=axs[1,1]); plot_sites(posE,axs[1,1]); axs[1,1].set_title("I_unocc");
-    plot2d(Emin.T,        extent=extent, title="Emin", ax=axs[0,0], cmap="viridis", ps=posE);
-    plot2d(iMin.T,        extent=extent, title="iMin", ax=axs[0,1], cmap="viridis", ps=posE);
-    plot2d(Itot[:,:,0].T, extent=extent, title="I_occ", ax=axs[1,0], cmap="viridis", ps=posE);
+    plot2d(Emin.T,        extent=extent, title="Emin",    ax=axs[0,0], cmap="viridis", ps=posE);
+    plot2d(iMin.T,        extent=extent, title="iMin",    ax=axs[0,1], cmap="viridis", ps=posE);
+    plot2d(Itot[:,:,0].T, extent=extent, title="I_occ",   ax=axs[1,0], cmap="viridis", ps=posE);
     plot2d(Itot[:,:,1].T, extent=extent, title="I_unocc", ax=axs[1,1], cmap="viridis", ps=posE);
     plt.tight_layout()
     plt.show()

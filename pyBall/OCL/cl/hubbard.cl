@@ -121,6 +121,33 @@ __kernel void eval_coupling_matrix(
     Wij[gid] = get_Wij_mirror(site.xyz, site2.xyz, zMirror);
 }
 
+__kernel void eval_Oriented_Hopping(
+    const int nSingle,
+    const int nTips,
+    __global const float4* posE,   // [nSingle] {x,y,z,?}        site positions
+    __global float2*       rots,    // [nSingle] {cos, sin}       site rotation as unit complex number
+    __global float4*       orbs, // [nSingle] {s,px,py,decay}  tip wavefunctions
+    __global const float4* pTips,  // [nTips]   {x,y,z,?}        tip positions
+    __global float*        Tout   // [nTips*nSingle]            output tunneling amplitudes
+){
+    const int gid    = get_global_id(0);
+    if (gid >= nTips*nSingle ) return;
+    const int iTip   = gid / nSingle;
+    const int iSite  = gid % nSingle;
+    const float3 d = pTips[iTip].xyz - posE[iSite].xyz;
+    const float  r = sqrt( dot(d,d) + 1e-9f );
+    const float2 rot   = rots[iSite];      // {cos(a), sin(a)}
+    const float da =  d.x * rot.x + d.y * rot.y;
+    const float db = -d.x * rot.y + d.y * rot.x;
+    const float inv_r = 1.0f / r;
+    const float4 orb   = orbs[iSite];   // {C_s, C_px, C_py, decay_const}
+    const float wfa =
+          orb.x              // s-wave part (isotropic)
+        + orb.y * da * inv_r // px'-wave part
+        + orb.z * db * inv_r;// py'-wave part
+    const float wfr = exp(-orb.w * r);
+    Tout[gid] = wfr * wfa;
+}
 
 __kernel void solve_minBrute_fly(
     const int nSingle,
