@@ -23,5 +23,11 @@ static double tick2second=1e-9;
 #define _assert( cond, action )
 #endif
 
+#define DEBUG   printf( "DEBUG #l %i %s \n",    __LINE__, __FUNCTION__ );
+#define DEBUGF  printf( "DEBUG #l %i %s %s \n", __LINE__, __FUNCTION__, __FILE__ );
+
+//void dbg(char* s){ printf("DEBUG (%s) \n", s); };
+
+#define DBG(format,args...) { printf("DEBUG "); printf(format,## args); }
 
 //#endif

@@ -12,6 +12,8 @@
 #include "DrawIso.h"
 #include "Solids.h"
 
+#include "globals.h"
+
 #include "fastmath.h"
 #include "Vec3.h"
 #include "quaternion.h"
