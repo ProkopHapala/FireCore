@@ -175,7 +175,6 @@ class OpenCLBase:
         self.buffer_dict[name] = buffer
         return buffer
     
-
     def check_buf(self, name, required_size, flags=cl.mem_flags.READ_WRITE):
         """ Helper to create or resize a buffer if needed. """
         current_buf = self.buffer_dict.get(name)
@@ -198,7 +197,24 @@ class OpenCLBase:
             print(f"Re-Allocating buffer '{name}' with size {required_size} bytes")
             self.buffer_dict[name] = cl.Buffer(self.ctx, flags, size=required_size)
 
+    def try_make_buff( self, buff_name, sz):
+        if hasattr(self,buff_name): 
+            buff = getattr(self, buff_name)
+            if not ( buff is None or buff.size != sz ):
+                return
+        #print( "try_make_buff(",buff_name,") reallocate to [bytes]: ", sz )
+        buff = cl.Buffer(self.ctx, cl.mem_flags.READ_WRITE, sz )
+        setattr(self, buff_name, buff )
+        return buff
 
+    def try_buff(self, name, names, sz ):
+        if name in names: self.try_make_buff( name+"_buff" , sz)
+
+    def toGPU_(self, buf, host_data, byte_offset=0 ):
+        cl.enqueue_copy(self.queue, buf, host_data, device_offset=byte_offset)
+
+    def fromGPU_(self, buf, host_data, byte_offset=0 ):
+        cl.enqueue_copy(self.queue, host_data, buf, device_offset=byte_offset)
 
     def toGPU(self, buf_name, host_data, byte_offset=0):
         """
