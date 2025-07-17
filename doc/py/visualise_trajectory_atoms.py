@@ -487,7 +487,7 @@ def plot_top_layer_projections(
     substrate_types: Iterable[str] | None = None,
     top_layer_tol: float = 0.35,
     bond_length_thresh: float = 2.0,
-    figsize_per_plot: int = 6,
+    figsize_per_plot: int = 6.5,
     out_png: Path | None = None,
     show: bool = True,
     num_mol_snapshots: int = 2,

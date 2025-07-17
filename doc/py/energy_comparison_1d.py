@@ -162,8 +162,10 @@ python /home/indranil/git/FireCore/doc/py/energy_comparison_1d.py \
 --firecore /home/indranil/git/FireCore/tests/tMMFF/relax_perfect_line/dir_1.0_1.0_0.0/cons_26/PTCDA_20x20_26_total.dat \
 --title "Energy Comparison" --out trial.png --error-range -0.01 0.01 --x-range 0 10 --y-range -0.01 0.01
 
-python /home/indranil/git/FireCore/doc/py/energy_comparison_1d.py --lammps /home/indranil/Documents/Project_1/Lammps/5-relaxed_linescan_defect/angle45/defect_aligned/fixedatom27/nx20/total.dat --firecore /home/indranil/git/FireCore/tests/tMMFF/relax_defect_aligned_line/dir_1.0_1.0_0.0/cons_26/PTCDA_20x20_26_total.dat  --out defect_trial.png --error-range -1 4 --x-range 5 20 --y-range 0.2 0.4
+python /home/indranil/git/FireCore/doc/py/energy_comparison_1d.py --lammps /home/indranil/Documents/Project_1/Lammps/5-relaxed_linescan_defect/angle45/defect_aligned/fixedatom27/nx20/total.dat --firecore /home/indranil/git/FireCore/tests/tMMFF/relax_defect_aligned_line/dir_1.0_1.0_0.0/cons_26/PTCDA_20x20_26_total.dat  --out defect_trial.png --error-range -1 4 --x-range 5 115 --y-range -0.15 0.7
 
+python /home/indranil/git/FireCore/doc/py/energy_comparison_1d.py --lammps /home/indranil/Documents/Project_1/Lammps/4-relaxed_linescan/angle45/fixedatom27/nx20/total.dat --firecore /home/indranil/git/FireCore/tests/tMMFF/relax_perfect_line/dir_1.0_1.0_0.0/cons_26/PTCDA_20x20_26_total.dat  --out perfect_trial.png --error-range -1 4 --x-range 5 20 --y-range 0.2 0.4 
 
-
+python /home/indranil/git/FireCore/doc/py/energy_comparison_1d.py --lammps /home/indranil/Documents/Project_1/Lammps/5-relaxed_linescan_defect/angle45/defect_aligned/fixedatom27/nx20/total.dat --firecore /home/indranil/git/FireCore/tests/tMMFF/relax_defect_aligned_line/dir_1.0_1.0_0.0/cons_26/PTCDA_20x20_26_total.dat  --out defect_trial.pdf --error-range -1 5 --x-range 5 113 --y-range -0.15 0.65
+Saved plot to defect_trial.pdf
 '''
