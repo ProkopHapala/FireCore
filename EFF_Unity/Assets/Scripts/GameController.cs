@@ -25,6 +25,7 @@ public class GameController : MonoBehaviour
     public TextMeshProUGUI runningStatusText;
     public CameraControl cameraControl;
     public GameObject keybinds;
+    public GameObject canvas;
 
     public InputFieldManager inputFields;
 
@@ -155,7 +156,7 @@ public static extern void cleanupInitData(IntPtr data);
         for (int i = 0; i < atomCount; i++) {
             // particles[electronCount + i] = Instantiate(atomPrefab, new Vector3(0, 0, 0), Quaternion.identity);
 
-            atoms[i] = Atom.CreateNew();
+            Atom.CreateNew();
             Debug.Log(atoms[i]);
             // var info = Instantiate(infoBoxPrefab_a, infoBoxAnchor.transform);
             // info.GetComponent<InfoBox>().SetConnector(i, electronCount + i, ObjectType.ATOM);

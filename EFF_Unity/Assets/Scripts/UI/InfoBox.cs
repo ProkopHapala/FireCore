@@ -113,7 +113,7 @@ public class InfoBox : MonoBehaviour {
     public void SetConnector(int id, ObjectType type) {
         inputFields = GameController.main.inputFields;
 
-        objText.SetText($"{(type == ObjectType.ATOM ? "ATOM" : "ELECTRON")} {id} {(GameController.main.electrons[id].Spin == 1 ? "(+1/2)" : "(-1/2)")}");
+        objText.SetText($"{(type == ObjectType.ATOM ? "ATOM" : "ELECTRON")} {id} {(type == ObjectType.ELECTRON ? (GameController.main.electrons[id].Spin == 1 ? "(+1/2)" : "(-1/2)") : "")}");
         this.id = id;
         Type = type;
         particle = GameController.main.GetParticle(id, type);

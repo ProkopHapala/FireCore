@@ -13,11 +13,13 @@ public class CameraControl : MonoBehaviour
     [SerializeField] private float zoomSpeed;
     [SerializeField] private float moveSpeed;
 
-    private Vector2 rotation = new Vector2(90, 0);
+    private Vector2 rotation = new Vector2(HALF_PI, 0);
     private float distanceToPivot = 30;
 
     private GameObject trackingObject;
     private bool isFollowing = false;
+
+    private const float HALF_PI = (float)Math.PI / 2;
 
     void Awake() {
         camera = GetComponent<Camera>();
@@ -96,12 +98,20 @@ public class CameraControl : MonoBehaviour
             camera.fieldOfView -= zoomSpeed * Time.deltaTime;
         }
 
+        Array.ForEach(GameController.main.atoms, a => a.UpdateSpritePositions());
         UpdateRotation();
     }
 
     private void UpdateRotation() {
         // transform.rotation = Quaternion.Euler(rotation.x, rotation.y, 0);
         //float distanceToPivot = Vector3.Distance(transform.position, pivotPoint);
+        if(rotation.y < -HALF_PI) {
+            rotation.y = -HALF_PI + 0.001f;
+        }
+        if(rotation.y > HALF_PI) {
+            rotation.y = HALF_PI - 0.001f;
+        }
+
         transform.position = pivotPoint + new Vector3(
             (distanceToPivot * (float)Math.Cos(rotation.x)) * (float)Math.Cos(rotation.y), 
             distanceToPivot * (float)Math.Sin(rotation.y), 
