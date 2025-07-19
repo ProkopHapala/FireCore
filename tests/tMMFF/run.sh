@@ -41,7 +41,7 @@ export LSAN_OPTIONS=detect_leaks=0
 #python3 run_propandiol.py
 #python3 run_sample.py
 #python3 run_Hbonds.py
-python3 run_sample_func.py
+#python3 run_sample_func.py
 #python3 run_sample_Bsplines.py
 #python3 run_sample_Hermite.py
 #python3 run_test_ewald.py
@@ -59,6 +59,6 @@ python3 run_sample_func.py
 #python3 run_collision_damp_scan.py
 #python3 run_test_clear.py
 
-#python3 run_opt_poly.py BB.HNH-hh.NHO-hp
+python3 run_opt_poly.py BB.HNH-hh.NHO-hp
 #python3 run_opt_poly.py BB.HNH-hp.OHO-h_1,BB.HNH-hh.NHO-hp
 

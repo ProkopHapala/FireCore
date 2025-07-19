@@ -103,6 +103,14 @@ inline int sscan(char* sbuff, Quat4i& v){ int n; sscanf(sbuff, "%i %i %i %i%n", 
 #define _toDict( mp, tok ){ mp[#tok] = tok; }
 #define _fromDict( mp, tok ){ tok = mp[#tok]; }
 
+
+// make file empty
+inline void clearFile( const char* fname ){
+    FILE *file = fopen(fname, "w");
+    fprintf(file, "");
+    fclose(file);
+}
+
 inline bool file_exist(const char* fname) { if (FILE *file = fopen(fname, "r")) { fclose(file); return true; } else { return false; } }
 
 inline char * fgetsNonComment(char * str, int num, FILE * stream, char commentChar, int nMaxTry = 100 ){

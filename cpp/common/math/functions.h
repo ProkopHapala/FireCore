@@ -68,6 +68,10 @@ inline double x2period( double x, double& dfdx ){
 	}
 }
 
+inline double sign( double x ){
+	if(x<0.0){ return -1.0; }
+	return 1.0;
+}
 // ==== functions 2D
 
 /*

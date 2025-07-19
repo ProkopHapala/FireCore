@@ -772,6 +772,17 @@ class MMFFparams{ public:
     void printAtomTypeDict   ()const{for(int i=0; i<atomTypeNames.size(); i++){ printf( "AtomType[%i] %s %i\n", i, atypes[i].name, atomTypeDict.find(atypes[i].name)->second );         };}
     void printElementTypeDict()const{for(int i=0; i<atomTypeNames.size(); i++){ printf( "ElementType[%i] %s %i\n", i,  etypes[i].name, elementTypeDict.find(etypes[i].name)->second );  };}
 
+
+    void printTypesOfAtoms(int n, int* itypes, bool bNameOnly=true, bool bParams=true) const{
+        printf("MMFFparams::printTypesOfAtoms(%i) @itypes=%li \n", n, itypes );
+        for(int i=0; i<n; i++){
+            int ityp = itypes[i];
+            if(bNameOnly){ printf( "atom %3i t: %3i %-8s\n", i, ityp, atypes[ityp].name ); }
+            else         { atypes[ityp].print(ityp, bParams); }
+        }
+
+    }
+
     bool cellFromString( char* s, Mat3d& lvec )const{
         char c[3]; Mat3d M;
         int n = sscanf( s, "%c%c%c %lf %lf %lf   %lf %lf %lf   %lf %lf %lf", c,c+1,c+2, &(M.a.x),&(M.a.y),&(M.a.z),   &(M.b.x),&(M.b.y),&(M.b.z),   &(M.c.x),&(M.c.y),&(M.c.z) );

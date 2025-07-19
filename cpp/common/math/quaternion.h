@@ -844,8 +844,8 @@ static constexpr Quat4d Quat4dW    {0.0,0.0,0.0,1.0};
 static constexpr Quat4d Quat4dX    {1.0,0.0,0.0,0.0};
 static constexpr Quat4d Quat4dY    {0.0,1.0,0.0,0.0};
 static constexpr Quat4d Quat4dZ    {0.0,0.0,1.0,0.0};
-static constexpr Quat4d Quat4dmin  {-1.e-300,-1.e-300,-1.e-300,-1.e-300};
-static constexpr Quat4d Quat4dmax  {+1.e-300,+1.e-300,+1.e-300,+1.e-300};
+static constexpr Quat4d Quat4dmin  {-1.e+300,-1.e+300,-1.e+300,-1.e+300};
+static constexpr Quat4d Quat4dmax  {+1.e+300,+1.e+300,+1.e+300,+1.e+300};
 
 static constexpr Quat4f Quat4fNAN  {NAN,NAN,NAN,NAN};
 static constexpr Quat4f Quat4fZero {0.0f,0.0f,0.0f,0.0f};

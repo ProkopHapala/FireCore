@@ -32,22 +32,27 @@ class Atoms{ public:
     // --- for global optimization
     Mat3d * lvec   =0;  // ToDo: should this be pointer or full array ?
     double Energy  =0;
-    long   id      =0;
+    long   id      =-1;
     int    n0      =0; // number of atoms in the first part of the system (e.g. ligand) 
+    double* charge =0; // [natoms] array of atom charges
+    //int   * rootatom =0;  // [natoms] array of atom ids to which the electron pair is attached 
+    //Vec3d * rootdir  __attribute__((aligned(64))) =0;   // [natoms] vector connecting the electron pair to the atom to which the electron pair is attached (X->E_X)
 
-    MetaData* metaData=0;
-
-    void realloc ( int n, bool bAtypes=true ){ natoms=n;  _realloc(apos,natoms); if(bAtypes)_realloc(atypes,natoms); }
-    void allocNew( int n, bool bAtypes=true ){ natoms=n;  _alloc(apos,natoms);   if(bAtypes)_alloc(atypes,natoms);   }
-    void dealloc (        bool bAtypes=true ){            _dealloc(apos);        if(bAtypes)_dealloc(atypes);        }
+    void* userData = 0;
+    void realloc ( int n, bool bAtypes=true, bool bCharge=true  ){ natoms=n;  _realloc(apos,natoms); if(bCharge)_realloc(charge,natoms); if(bAtypes)_realloc(atypes,natoms); }
+    void allocNew( int n, bool bAtypes=true, bool bCharge=true  ){ natoms=n;  _alloc(apos,natoms);   if(bCharge)_alloc(charge,natoms);   if(bAtypes)_alloc(atypes,natoms);  }
+    void dealloc (        bool bAtypes=true, bool bCharge=true  ){            _dealloc(apos);        if(bCharge)_dealloc(charge);        if(bAtypes)_dealloc(atypes);    }
     void bind    ( int n, int* atypes_, Vec3d* apos_ ){ natoms=n; atypes=atypes_; apos=apos_; }
 
     //void bindOrRealloc(){}
     void copyOf(const Atoms& p){
+        Energy  = p.Energy;
+        n0      = p.n0; 
         if(natoms!=p.natoms)realloc(p.natoms);
         if(lvec  !=p.lvec  ){ lvec=new Mat3d; *lvec=*(p.lvec); }
         memcpy( atypes, p.atypes, sizeof(int)  *natoms );
         memcpy( apos,   p.apos,   sizeof(Vec3d)*natoms );
+        if(charge){ memcpy( charge, p.charge, sizeof(double)*natoms ); }
         
     }
 
@@ -113,9 +118,9 @@ class Atoms{ public:
         return 0;
     }
 
-    void atomsToXYZ(FILE* file, bool bN=false, bool bComment=false, Vec3i nPBC=Vec3i{1,1,1}, const char* comment="", bool bEnergy=true ){
-        printf( "Atoms::atomsToXYZ() natoms=%i @file=%li @atypes=%li @apos=%li @lvec=%li\n", natoms, (long)file, (long)atypes, (long)apos, (long)lvec );
-        if( (file==0)||(atypes==0)||(apos==0)||(lvec==0) ){   printf( "ERROR Atoms::atomsToXYZ() encountered NULL pointer @file=%li @atypes=%li @apos=%li @lvec=%li\n", (long)file, (long)atypes, (long)apos, (long)lvec );    }
+    void atomsToXYZ(FILE* file, bool bN=false, bool bComment=false, Vec3i nPBC=Vec3i{1,1,1}, const char* comment="", bool bEnergy=true )const{
+        //printf( "Atoms::atomsToXYZ() natoms=%i @file=%li @atypes=%li @apos=%li @lvec=%li\n", natoms, (long)file, (long)atypes, (long)apos, (long)lvec );
+        if( (file==0)||(atypes==0)||(apos==0)){   printf( "ERROR Atoms::atomsToXYZ() encountered NULL pointer @file=%p @atypes=%p @apos=%p \n", file, atypes, apos );    }
         int npbc=nPBC.totprod();
         //printf( "atomsToXYZ() atypes=%li   natoms=%i npbc=%i natoms*npbc=%i \n", (long)atypes, natoms, npbc, natoms*npbc );
         if(bN      )fprintf( file, "%i\n", natoms*npbc );
@@ -137,7 +142,12 @@ class Atoms{ public:
         }}};
     }
 
-    
+    void saveXYZ( const char* fname, const char* mode="w", bool bN=false, bool bComment=false, Vec3i nPBC=Vec3i{1,1,1}, const char* comment="", bool bEnergy=true )const{
+        FILE* fout = fopen(fname, mode );
+        atomsToXYZ( fout, bN, bComment, nPBC, comment, bEnergy );
+        fclose(fout);
+    }
+
 
     void toNewLattice( const Mat3d& lvec_new, Atoms* source=0 ){
         Vec3d* apos_  =apos;
@@ -157,6 +167,18 @@ class Atoms{ public:
             atypes[i] = atypes_[i];
         }
         *(lvec) = lvec_new;
+    }
+
+    int checkTypeInRange( int it_max=1000, int it_min=1, bool bPrint=true ){
+        int nbad = 0;
+        for(int i=0; i<natoms; i++){
+            int it = atypes[i];
+            if( (it<it_min)||(it>it_max) ){ 
+                nbad++;
+                if(bPrint){   printf("Atoms::checkTypeInRange() atype[%3i]=%3i is out of range ( it_min: %3i , it_max: %3i ) \n", i, atypes[i], it_min, it_max ); }
+            }
+        }
+        return nbad;
     }
 
     inline double measureBondLegth(int ia, int ib){

@@ -92,8 +92,10 @@ struct AtomConf{
 
     //AtomConf() = default;
 
+    inline int sum_bonds()const{ return nbond+npi+ne+nH; }
+
     // compute the number of pi bonds
-    inline int fillIn_npi_sp3(){ npi=4-nbond-ne-nH; n=4; return npi; };
+    inline int fillIn_npi_sp3(){ npi=4-nbond-ne-nH; npi=(npi>2)?2:npi; n=4; return npi; };
 
     // cleanup
     inline int clean_pi_sp3  (){ npi=0; n=nbond+ne+nH;   return n;   };
@@ -112,7 +114,8 @@ struct AtomConf{
 
     // add a bond (or pi bond, or electron pair, or capping atom) into an atom neighbor list
     inline bool addNeigh(int ib, uint8_t& ninc ){
-        if(n>=N_NEIGH_MAX)return false;
+        n=sum_bonds();
+        if(n>=N_NEIGH_MAX){ return false; }
         if(ib>=0){ neighs[nbond]=ib; }else{ neighs[N_NEIGH_MAX-(n-nbond)-1]=ib; };
         ninc++;
         n++;
@@ -789,7 +792,9 @@ class Builder{  public:
                 printBondsOfAtom( ia );
                 int it1 = atoms[bonds[ib].atoms.a].type;
                 int it2 = atoms[bonds[ib].atoms.b].type;
-                printf( "bond(%i-%i) %s-%s \n", bonds[ib].atoms.a, bonds[ib].atoms.b, params->atypes[it1].name, params->atypes[it2].name );
+                int it  = atoms[ia].type;
+                printf("ia %i t %i %-8s ic %i", ia, it, params->atypes[it].name ); confs[ic].print();
+                printf("\nbond(%i-%i) %s-%s \n", bonds[ib].atoms.a, bonds[ib].atoms.b, params->atypes[it1].name, params->atypes[it2].name );
                 printBonds();
                 exit(0); 
             }
@@ -923,6 +928,9 @@ class Builder{  public:
         if(params){ 
             int ityp = atoms[ia].type;
             capAtom.type = params->atypes[ityp].ePairType; 
+            if( capAtom.type<itype_min ){ 
+                printf("ERROR: in MM::Builder::addEpair(ia=%i) type %i %8-s : capAtom.type(%i) < itype_min(%i) \n", ia, ityp, params->atypes[ityp].name, capAtom.type, itype_min );
+            }
             if(l<0)l=params->atypes[capAtom.type].Ruff;  // NOTE: we use Ruff as default length for epair, this is questionable, but this parameter has no other use for epair
         }else{ l=-l; }
         //printf( "addEpair[%i] type %i |h|=%g l=%g\n", ja, capAtom.type,   hdir.norm(), l );
@@ -1545,7 +1553,9 @@ class Builder{  public:
         //printf("-> "); println(conf);
     }
 
+
     Atoms* buildBondsAndEpairs( Atoms* mol, bool bPBC, double Rfac=-0.5, bool bDummyEpair=true, bool bAddPi=true, bool bAddECaps=true ){
+
         clear();
         if(mol->lvec){ lvec = *(mol->lvec); bPBC=true; }
         insertAtoms(*mol);
@@ -1562,6 +1572,7 @@ class Builder{  public:
         }
         //builder.printAtomConfs(false, true );
         checkNumberOfBonds( true, true );
+
         if(bDummyEpair){
             bDummyEpair = true;
             autoAllConfEPi( ); 
@@ -1578,7 +1589,6 @@ class Builder{  public:
     void exportElectrons(){
 
     }
-
 
 
 /*
@@ -1676,6 +1686,7 @@ class Builder{  public:
         //params->assignRE( ityp, REQ );
         AtomConf& conf = confs[ic];
         int ne = params->atypes[ityp].nepair;
+        if(conf.npi>2){ printf( "ERROR int autoConfEPi(ia=%i).1 np(%i)>2 => Exit() \n", ia, conf.npi, N_NEIGH_MAX ); exit(0); }
         if  ( (conf.nbond+conf.nH+ne)>N_NEIGH_MAX  ){ printf( "ERROR int autoConfEPi(ia=%i) ne(%i)+nb(%i)+nH(%i)>N_NEIGH_MAX(%i) => Exit() \n", ia, ne, conf.nbond, conf.nH, N_NEIGH_MAX ); exit(0);}
         else{ conf.ne=ne; }
         conf.fillIn_npi_sp3();
@@ -1686,12 +1697,16 @@ class Builder{  public:
             conf.npi = _min( conf.npi, el->piMax );
         }
 
+        if(conf.npi>2){ printf( "ERROR int autoConfEPi(ia=%i).2 np(%i)>2 => Exit() \n", ia, conf.npi, N_NEIGH_MAX ); exit(0); }
+
         int nb = conf.nbond;
         if(nb>=2){ // for less than 2 neighbors makeConfGeom does not make sense
             Vec3d hs[4];
             //AtomConf* conf = tryGetNeighDirs( ia, hs );
             loadNeighbors( ia, conf.nbond, conf.neighs, hs );
             makeConfGeom (     conf.nbond, conf.npi,    hs );
+
+            
 
             // { // Debug
             //     sprintf( tmpstr, "atom%03i_hs.xyz", ia );
@@ -1716,6 +1731,7 @@ class Builder{  public:
                 }
             }
         }
+        if(conf.npi>2){ printf( "ERROR int autoConfEPi(ia=%i).3 np(%i)>2 => Exit() \n", ia, conf.npi, N_NEIGH_MAX ); exit(0); }
         return true;
     }
     int autoAllConfEPi( int ia0=0, int imax=-1 ){
@@ -1729,10 +1745,15 @@ class Builder{  public:
     }
 
     int addEpairsByPi(int ia, double l=-0.5, Vec3d* epos=0, bool byPi=true ){
+        /// Add electron-pair (i.e. positively charge dummy atom) to all node atoms
         //printf( "addEpairsByPi[%i] \n", ia  );
         int ic=atoms[ia].iconf;
-        if(ic<0)return 0;
-        //int ityp=atoms[ia].type;
+        if(ic<0)return false;
+
+        int ityp=atoms[ia].type;
+        if( params->atypes[ityp].ePairType<itype_min )return false;
+        //printf( "addEpairsByPi[%i] l=%g t: %i %-8s \n", ia, l, ityp, params->atypes[ityp].name  );
+
         AtomConf& conf = confs[ic];
         int ne = conf.ne;
         //if( (ne<1)||(conf.nbond<2)||(conf.npi>2) )return 0;
@@ -1774,10 +1795,16 @@ class Builder{  public:
         }
         return ne;
     }
-    int addAllEpairsByPi( int ia0=0, int imax=-1, bool byPi=true ){
+    int addAllEpairsByPi( int ia0=0, int imax=-1, bool byPi=true, bool bUseParams=true, double Lep=-0.5 ){
+        //printf( "addEpairsByPi[%i] l=%g\n", ia, l  );
         int n=0;
         if(imax<0){ imax=atoms.size(); }
         for(int ia=ia0;ia<imax;ia++){
+            double l = Lep;
+            if(bUseParams){
+                int ityp=atoms[ia].type;
+                l = params->atypes[ityp].Hb;
+            }
             if( addEpairsByPi(ia ) ){n++;}
         }
         return n;
@@ -1879,8 +1906,11 @@ class Builder{  public:
             bs  [i] = _bs  [i];
             dirs[i] = _dirs[i];
         }
+//exit(0);
         return nfound;
     }
+
+
 
     bool tryMakeSPConf(int ia, bool bAutoEPi=false){
         const AtomConf* conf = getAtomConf(ia);
@@ -2201,7 +2231,7 @@ void assignTorsions( bool bNonPi=false, bool bNO=true ){
     // ToDo:  R=0.5 worsk for hydrocarbons (HCNOF), R=0.65 works for silicon (SiH), we should assign it according to the bond types maybe ?
     int autoBonds( double R=-1.20, int i0=0, int imax=-1 ){
         //printf( "MM::Builder::autoBonds() \n" );
-        if(verbosity>0){ printf( "MM::Builder::autoBonds() \n" ); }
+        //if(verbosity>0){ printf( "MM::Builder::autoBonds() \n" ); }
         if(imax<0)imax=atoms.size();
         bool byParams = (R<0);
         double Rfac   = -R;
@@ -2235,7 +2265,7 @@ void assignTorsions( bool bNonPi=false, bool bNO=true ){
     int autoBondsPBC( double R=-1.35, int i0=0, int imax=-1, Vec3i npbc=Vec3iOne ){
         //printf( "MM::Builder::autoBondsPBC() \n" );
         //if(verbosity>0){ printf( "MM::Builder::autoBondsPBC() \n" );                             }
-        if(verbosity>1){ printf( "MM::Builder::autoBondsPBC() builder.lvec: \n" ); lvec.print(); };
+        //if(verbosity>1){ printf( "MM::Builder::autoBondsPBC() builder.lvec: \n" ); lvec.print(); };
         if(imax<0)imax=atoms.size();
         bool byParams = (R<0);
         double Rfac   = -R;
@@ -2806,6 +2836,11 @@ void assignTorsions( bool bNonPi=false, bool bNO=true ){
             }
             puts("");
         }
+    }
+
+    void printCappingTypes()const{
+        printf(" # MM::Builder.printCappingTypes(nc=%i) \n", capping_types.size() );
+        for(int it: capping_types ){ printf("capping_types[%3i] %8s \n", it, params->atypes[it].name ); }
     }
 
     void chargeByNeighbors( bool bClean, double factor=0.05, int niters=1, double damp=0.5 ){

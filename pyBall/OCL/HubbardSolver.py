@@ -290,7 +290,7 @@ class HubbardSolver(OpenCLBase):
 # Utility helpers (stand-alone, not bound to the class) -------------------------
 # -----------------------------------------------------------------------------
 
-def make_site_ring( n, R, E0=-0.1, ang0=0.0, z=0.0 ):
+def make_site_ring( n, R, E0=-0.1, ang0=0.0, z=0.0, ang2=0.0 ):
     """Make a ring of n sites at radius R and energy E0."""
     pos = np.zeros((n,4), dtype=np.float32)
     ang = np.linspace(0, 2*np.pi, n, endpoint=False, dtype=np.float32) + ang0
@@ -298,7 +298,7 @@ def make_site_ring( n, R, E0=-0.1, ang0=0.0, z=0.0 ):
     pos[:,1] = R * np.sin(ang)
     pos[:,2] = z
     pos[:,3] = E0
-    return pos
+    return pos, ang+ang2
 
 def make_grid_sites( nxy=(4,4),  avec=(1.0,0.0), bvec=(0.0,1.0), z=0.0, E0=-0.1, bCenter=True ):
     """Make a grid of n sites at radius R and energy E0."""
@@ -319,7 +319,8 @@ def make_grid_sites( nxy=(4,4),  avec=(1.0,0.0), bvec=(0.0,1.0), z=0.0, E0=-0.1,
 def save_sites_to_txt(path: str, posE: np.ndarray):
     with open(path, "w") as f:
         for p in posE: 
-            l=f"{p[0]:12.6f} {p[1]:12.6f} {p[2]:12.6f} {p[3]:12.6f}\n"
+            #l=f"{p[0]:12.6f} {p[1]:12.6f} {p[2]:12.6f} {p[3]:12.6f}\n"
+            l = " ".join([f"{x:12.6f}" for x in p]) + "\n"
             print(l,end="")
             f.write(l)
 
@@ -410,10 +411,12 @@ def solve_pSites(params, posE: np.ndarray, solver: HubbardSolver,  ):
         print(f"Site {i}: Emin={Emin[i]:.6f}, iMin={iMin[i]:b}, Itot={Itot[i]} pTips={pTips[i]}")
     return Emin, iMin, Itot
 
-def plot_sites(posE, ax=None, c="r", ms=2.0):
+def plot_sites(posE, ax=None, c="r", ms=2.0,angles=None):
     if ax is None:
         ax = plt.gca()
     ax.plot(posE[:,0], posE[:,1], '.', color=c, markersize=ms)
+    if angles is not None: # with  quiver
+        ax.quiver(posE[:,0], posE[:,1], np.cos(angles), np.sin(angles), color=c)
     ax.set_aspect('equal')
     return ax
 
@@ -454,12 +457,31 @@ if __name__ == "__main__":
         #"Vbias"     : -0.45,    
         #"Vbias"     : -0.55,
     }
-    outer = make_site_ring(3, 5.0, E0=params["E0"], ang0=np.pi*0.5 )
-    inner = make_site_ring(3, 3.0, E0=params["E0"], ang0=np.pi*1.5 )
+    #outer,a1 = make_site_ring(3, 8.0, E0=params["E0"], ang0=np.pi*0.5 )
+    #inner,a2 = make_site_ring(3, 5.2, E0=params["E0"], ang0=np.pi*1.5 )
+
+    outer,a1 = make_site_ring(3, 0.86602540378*(2.0/3.0)*20.0, E0=params["E0"], ang0=np.pi*0.5 )
+    inner,a2 = make_site_ring(3, 0.86602540378*(2.0/3.0)*10.0, E0=params["E0"], ang0=np.pi*1.5 )
+
+    print( "|p1-p0| ",  np.sqrt( ((inner[0,:]-inner[1,:])**2).sum() ) )
+
     #outer = make_site_ring(3, 5.0, E0=params["E0"], ang0=0.0 )
     #inner = make_site_ring(3, 3.0, E0=params["E0"], ang0=np.pi )
     posE  = np.vstack([outer, inner])
-    save_sites_to_txt("hexamer.txt", posE)
+    angles = np.hstack([a1,a2])
+    print("posE.shape", posE.shape)
+    #save_sites_to_txt("hexamer.txt", posE)
+    #np.savetxt("hexamer.txt", posE)
+    xya      = posE.copy()
+    xya[:,2] = angles
+    save_sites_to_txt("hexamer.txt", xya)
+    #np.savetxt("hexamer.txt", xya)
+
+    plot_sites(posE, angles=angles)
+    #plt.show(); exit(0)
+    
+
+
 
     # # ---- grid
     # params={ 
