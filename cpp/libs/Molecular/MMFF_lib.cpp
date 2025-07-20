@@ -1,4 +1,4 @@
-﻿
+
 #include  "globals.h"
 
 #include "testUtils.h"
@@ -185,6 +185,78 @@ void  scan( int nconf, double* poss, double* rots, double* Es, double* aforces, 
     }
 }
 
+// In MMFF_lib.cpp before extern "C" closing
+void scan_atoms_rigid(int nscan, int nsel, int* inds, double* scan_pos, double* out_forces, double* out_Es){
+    int N = W.nbmol.natoms;
+    Vec3d* orig = new Vec3d[N]; 
+    memcpy(orig, W.nbmol.apos, N*sizeof(Vec3d));
+    
+    for(int i=0; i<nscan; i++){
+        // Set positions for this scan point
+        for(int j=0; j<nsel; j++){
+            int idx = inds[j];
+            memcpy(&W.nbmol.apos[idx], &scan_pos[i*nsel*3 + j*3], sizeof(Vec3d));
+        }
+        
+        // Evaluate forces/energy
+        out_Es[i] = eval();
+        memcpy(&out_forces[i*nsel*3], &W.nbmol.fapos[inds[0]], nsel*3*sizeof(double));
+    }
+    
+    memcpy(W.nbmol.apos, orig, N*sizeof(Vec3d));
+    delete[] orig;
+}
+
+// Hessian: independent 3×3 blocks for selected atoms
+void getHessian3x3( int n, int* inds, double* out_hessians, double dx ){
+    int na=W.nbmol.natoms;
+    std::vector<Vec3d> orig(n);
+    // save original positions
+    for(int i=0;i<n;i++){ int ia=inds[i]; orig[i]=W.nbmol.apos[ia]; }
+    double denom = 1.0/(2*dx);
+    for(int i=0;i<n;i++){
+        int ia=inds[i];
+        Vec3d  p0=orig[ia];
+        Vec3d& p=W.nbmol.apos[ia];
+        double* H = out_hessians+i*9;
+        for(int k=0;k<3;k++){
+            Vec3d fp,fm;
+            p.array[k]=p0.array[k]+dx; eval(); fp=W.nbmol.fapos[ia];
+            p.array[k]=p0.array[k]-dx; eval(); fm=W.nbmol.fapos[ia];
+            p.array[k]=p0.array[k];
+            for(int l=0;l<3;l++) H[l*3+k]=(fp.array[l]-fm.array[l])*denom;
+        }
+    }
+    // restore original positions
+    for(int i=0;i<n;i++){ int ia=inds[i]; W.nbmol.apos[ia]=orig[i]; }
+}
+
+// Hessian: full 3N×3N for selected atoms
+void getHessian3Nx3N(int n,int* inds,double* out_hessian,double dx){
+    std::vector<Vec3d> orig(n);
+    // save original positions
+    for(int i=0;i<n;i++){ int ia=inds[i]; orig[i]=W.nbmol.apos[ia]; }
+    for(int p=0;p<n;p++){
+        int ip=inds[p];
+        Vec3d fp,fm;
+        for(int k=0;k<3;k++){
+            double v=orig[ip].array[k];
+            W.nbmol.apos[ip].array[k]=v+dx; eval(); fp=W.nbmol.fapos[ip];
+            W.nbmol.apos[ip].array[k]=v-dx; eval(); fm=W.nbmol.fapos[ip];
+            W.nbmol.apos[ip].array[k]=v;
+            int col=p*3+k;
+            for(int o=0;o<n;o++){
+                int io=inds[o];
+                for(int l=0;l<3;l++){
+                    int row=o*3+l;
+                    //out_hessian_full[row*dim+col]=(fp[io].array[l]-fm[io].array[l])/(2*dx);
+                }
+            }
+        }
+    }
+    // restore original positions
+    for(int i=0;i<n;i++){ int ia=inds[i]; W.nbmol.apos[ia]=orig[i]; }
+}
 
 void setSwitches2( int CheckInvariants, int PBC, int NonBonded, int NonBondNeighs,  int SurfAtoms, int GridFF, int MMFF, int Angles, int PiSigma, int PiPiI ){
     #define _setbool(b,i) { if(i>0){b=true;}else if(i<0){b=false;} }
@@ -556,4 +628,8 @@ void computeDistance(int i, int j, double* dist){
     *dist = W.computeDistance(i,j);
 }
 
+
+
+
 } // extern "C"
+

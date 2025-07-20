@@ -36,6 +36,8 @@ export LD_PRELOAD
 export LSAN_OPTIONS=detect_leaks=0
 
 #python3 run.py
+python3 run_hessian.py
+
 #python3 run_gui.py
 #python3 run_surf_lattice.py
 #python3 run_propandiol.py
@@ -59,6 +61,6 @@ export LSAN_OPTIONS=detect_leaks=0
 #python3 run_collision_damp_scan.py
 #python3 run_test_clear.py
 
-python3 run_opt_poly.py BB.HNH-hh.NHO-hp
+#python3 run_opt_poly.py BB.HNH-hh.NHO-hp
 #python3 run_opt_poly.py BB.HNH-hp.OHO-h_1,BB.HNH-hh.NHO-hp
 

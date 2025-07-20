@@ -933,8 +933,9 @@ class Builder{  public:
             }
             if(l<0)l=params->atypes[capAtom.type].Ruff;  // NOTE: we use Ruff as default length for epair, this is questionable, but this parameter has no other use for epair
         }else{ l=-l; }
-        //printf( "addEpair[%i] type %i |h|=%g l=%g\n", ja, capAtom.type,   hdir.norm(), l );
+        
         capAtom.pos = atoms[ia].pos + hdir*l;
+        printf( "MMFFBuilder::addEpair() [%i] type %i |h|=%g l=%g hdir(%g,%g,%g)  pBas(%g,%g,%g) pCap(%g,%g,%g) \n", ja, capAtom.type, hdir.norm(), l, hdir.x,hdir.y,hdir.z, atoms[ia].pos.x,atoms[ia].pos.y,atoms[ia].pos.z, capAtom.pos.x, capAtom.pos.y, capAtom.pos.z );
         if(bInsertAtoms)insertAtom(capAtom);
         if(bInsertBond){
             capBond.atoms.set(ia,ja);
@@ -1763,8 +1764,20 @@ class Builder{  public:
         int nb = conf.nbond;
         Vec3d hs[4];
         loadNeighbors ( ia, nb,       conf.neighs, hs );
-        if(byPi){ makeConfGeomPi( nb, conf.npi, conf.pi_dir, hs ); }
-        else    { makeConfGeom( nb, conf.npi, hs ); }
+        //if(byPi){ makeConfGeomPi( nb, conf.npi, conf.pi_dir, hs ); }
+        //else    { makeConfGeom( nb, conf.npi, hs ); } 
+        printf( "DEBUG: addEpairsByPi[%i] AFTER loadNeighbors: nb=%i npi=%i\n", ia, nb, conf.npi );
+        for(int k=0; k<4; ++k) { printf("  hs[%i]=(%g,%g,%g)\n", k, hs[k].x, hs[k].y, hs[k].z); }
+        if(byPi){
+            printf( "DEBUG: addEpairsByPi[%i] CALLING makeConfGeomPi(nb=%i, npi=%i, pi_dir=(%g,%g,%g))\n", ia, nb, conf.npi, conf.pi_dir.x, conf.pi_dir.y, conf.pi_dir.z );
+            makeConfGeomPi( nb, conf.npi, conf.pi_dir, hs );
+        } else {
+            printf( "DEBUG: addEpairsByPi[%i] CALLING makeConfGeom(nb=%i, npi=%i)\n", ia, nb, conf.npi );
+            makeConfGeom( nb, conf.npi, hs );
+        }
+        printf( "DEBUG: addEpairsByPi[%i] AFTER makeConfGeom/Pi: nb=%i npi=%i\n", ia, nb, conf.npi );
+        for(int k=0; k<4; ++k) { printf("  hs[%i]=(%g,%g,%g)\n", k, hs[k].x, hs[k].y, hs[k].z); }
+        
         //if(byPi){ makeConfGeomPi( nb, conf.npi, conf.pi_dir, hs ); } // NOTE: we need to asign pi_dir before calling makeConfGeomPi(), this is however necessary for atoms like =O which do not have other bonds direction of e-pair is not defined if pi-plane is not defined
         //else    { makeConfGeom  ( nb, conf.npi,              hs ); }  
         //printf( "addEpairsByPi[%i, typ=%i=%s] npi=%i hs[0](%6.3f,%6.3f,%6.3f) hs[1](%6.3f,%6.3f,%6.3f) hs[2](%6.3f,%6.3f,%6.3f) hs[3](%6.3f,%6.3f,%6.3f) \n", ia, ityp, params->atypes[ityp].name,  hs[0].x,hs[0].y,hs[0].z,   hs[1].x,hs[1].y,hs[1].z,   hs[2].x,hs[2].y,hs[2].z, hs[3].x,hs[3].y,hs[3].z );
@@ -1786,12 +1799,10 @@ class Builder{  public:
         for( int i=0; i<ne; i++ ){
             int ib=nb+i;
             //printf( "addEpairsToAtoms[%i] i=%i ib=%i |h|=%g |hb|=%g |hpi|=%g  l=%g \n", ia, i, ib, hs[ib].norm(), hs[0].norm(), conf.pi_dir.norm(), l );
-            if(bIns){
-                conf.ne=0;
-                addEpair(ia,hs[ib], l, bIns, bIns );
-            }else{
-                epos[i] = addEpair(ia,hs[ib], l, bIns, bIns );
-            }
+            if(bIns){ conf.ne=0; }
+            Vec3d pe = addEpair(ia,hs[ib], l, bIns, bIns );
+            printf( "MMFFBuilder::addEpairsByPi() [%i] i=%i ib=%i |h|=%g |hb|=%g |hpi|=%g  l=%g pe(%g,%g,%g)\n", ia, i, ib, hs[ib].norm(), hs[0].norm(), conf.pi_dir.norm(), l, pe.x,pe.y,pe.z );
+            if (!bIns){ epos[i] = pe; }
         }
         return ne;
     }
