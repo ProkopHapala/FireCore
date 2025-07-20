@@ -1709,7 +1709,7 @@ virtual void clear( bool bParams=true, bool bSurf=false ){
         //printf("lvec: ");printMat(builder.lvec);
         if(bMMFF){ 
             if(bUFF){ E += ffu.eval(); }
-            else{ E += ffl.eval(); }
+            else    { E += ffl.eval(); }
             
         }else{ VecN::set( nbmol.natoms*3, 0.0, (double*)nbmol.fapos );  }      
         //bPBC=false;
@@ -1720,7 +1720,7 @@ virtual void clear( bool bParams=true, bool bSurf=false ){
             if(bMMFF){    
                 if  (bPBC){ E += nbmol.evalLJQs_ng4_PBC( ffl.neighs, ffl.neighCell, npbc, pbc_shifts, gridFF.Rdamp ); }   // atoms outside cell
                 else      { E += nbmol.evalLJQs_ng4    ( ffl.neighs );                                   }   // atoms in cell ignoring bondede neighbors       
-                //else      { E += nbmol.evalLJQs_ng4_omp( ffl.neighs );                                   }   // atoms in cell ignoring bondede neighbors  
+                //else    { E += nbmol.evalLJQs_ng4_omp( ffl.neighs );                                   }   // atoms in cell ignoring bondede neighbors  
             }else{
                 if  (bPBC){ E += nbmol.evalLJQs_PBC    ( ff.lvec, {1,1,0} ); }   // atoms outside cell
                 else      { E += nbmol.evalLJQs        ( );                  }   // atoms in cell ignoring bondede neighbors    
@@ -2063,11 +2063,7 @@ double eval_no_omp(){
     for(int ia=0; ia<ffl.natoms; ia++){ 
         {                 ffl.fapos[ia           ] = Vec3dZero; } // atom pos force
         if(ia<ffl.nnode){ ffl.fapos[ia+ffl.natoms] = Vec3dZero; } // atom pi  force
-        if(bMMFF)[[likely]]{
-            if(ia<ffl.nnode){ E+=ffl.eval_atom(ia); }
-        }
-        //printf( "debug.1 E[%i]=%g\n", ia, E );
-        // ----- Error is HERE
+        if(bMMFF)[[likely]]{  if(ia<ffl.nnode){ E+=ffl.eval_atom(ia); }   }
         if(bNonBonded){
             if(bNonBondNeighs)[[likely]]{
                 if(bPBC)[[likely]]{ E+=ffl.evalLJQs_ng4_PBC_atom_omp( ia ); }
@@ -2077,7 +2073,6 @@ double eval_no_omp(){
                 else              { E+=ffl.evalLJQs_atom_omp    ( ia, F2max ); } 
             }
         }
-        //printf( "debug.2 E[%i]=%g\n", ia, E );
         if(bSurfAtoms)[[likely]]{ 
             if(bGridFF)[[likely]]{  // with gridFF
                 E += gridFF.addAtom( ffl.apos[ia], ffl.PLQd[ia], ffl.fapos[ia] );
@@ -2087,25 +2082,13 @@ double eval_no_omp(){
                 { E+= gridFF.evalMorsePBC_sym( ffl.apos[ia], ffl.REQs[ia],  ffl.fapos[ia] );   }
             }
         }
-        //printf( "debug.3 E[%i]=%g\n", ia, E );
-        if(bConstrZ){
-            E+=springbound( ffl.apos[ia].z-ConstrZ_xmin, ConstrZ_l, ConstrZ_k, ffl.fapos[ia].z );
-        }
-        //printf( "debug.4 E[%i]=%g\n", ia, E );
+        if(bConstrZ){ E+=springbound( ffl.apos[ia].z-ConstrZ_xmin, ConstrZ_l, ConstrZ_k, ffl.fapos[ia].z );  }
     }
     // ---- assembling
-    for(int ia=0; ia<ffl.natoms; ia++){
-        ffl.assemble_atom( ia );
-    } 
-    if(bConstrains){
-        E += constrs.apply( ffl.apos, ffl.fapos, &ffl.lvec );
-    }
-    //printf( "debug.5 E=%g\n", E );
-    if( go.bExploring){
-        E += go.constrs.apply( ffl.apos, ffl.fapos, &(ffl.lvec) );
-    }
-    //printf( "debug.6 E=%g\n", E );
-    if(bGroups){ groups.applyAllForces(0.0, 0.2*sin(nloop*0.02) ); }
+    for(int ia=0; ia<ffl.natoms; ia++){  ffl.assemble_atom( ia ); } 
+    if(bConstrains   ){ E += constrs   .apply( ffl.apos, ffl.fapos, &ffl.lvec );   }
+    if(go.bExploring ){ E += go.constrs.apply( ffl.apos, ffl.fapos, &(ffl.lvec) ); }
+    if(bGroups       ){ groups         .applyAllForces(0.0, 0.2*sin(nloop*0.02) ); }
     return E;
 }
 

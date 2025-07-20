@@ -208,25 +208,51 @@ void scan_atoms_rigid(int nscan, int nsel, int* inds, double* scan_pos, double* 
 }
 
 // Hessian: independent 3×3 blocks for selected atoms
-void getHessian3x3( int n, int* inds, double* out_hessians, double dx ){
+void getHessian3x3( int n, int* inds, double* Hess_, double dx, bool bDiag ){
     int na=W.nbmol.natoms;
-    std::vector<Vec3d> orig(n);
+    printf("getHessian3x3(n=%i) na=%i dx=%g    bMMFF=%i bNonBonded=%i bSurfAtoms=%i bGridFF=%i bPBC=%i bNonBondNeighs=%i \n", n, na, dx, W.bMMFF, W.bNonBonded, W.bSurfAtoms, W.bGridFF, W.bPBC, W.bNonBondNeighs);
     // save original positions
+    DEBUG
+    std::vector<Vec3d> orig(n);
     for(int i=0;i<n;i++){ int ia=inds[i]; orig[i]=W.nbmol.apos[ia]; }
     double denom = 1.0/(2*dx);
+    DEBUG
+    W.saveXYZ("getHessian3x3.xyz");
+    DEBUG
+    Mat3d H, U;
+    Vec3d Ks;
     for(int i=0;i<n;i++){
+        printf( "getHessian3x3() i=%i \n", i );
         int ia=inds[i];
-        Vec3d  p0=orig[ia];
+        printf( "getHessian3x3() i=%i ia=%i  \n", i, ia );
+        Vec3d  p0=orig[i];
         Vec3d& p=W.nbmol.apos[ia];
-        double* H = out_hessians+i*9;
+        //double* H = out_hessians+i*9;
+        //Vec3d* Hess = ((Vec3d*)out_hessians)+(i*3); 
+        printf( "getHessian3x3() ia=%i p=(%g,%g,%g)\n", ia, p.x,p.y,p.z );
         for(int k=0;k<3;k++){
-            Vec3d fp,fm;
-            p.array[k]=p0.array[k]+dx; eval(); fp=W.nbmol.fapos[ia];
-            p.array[k]=p0.array[k]-dx; eval(); fm=W.nbmol.fapos[ia];
-            p.array[k]=p0.array[k];
-            for(int l=0;l<3;l++) H[l*3+k]=(fp.array[l]-fm.array[l])*denom;
+            p.array[k]=p0.array[k]+dx; W.eval_no_omp(); Vec3d df=W.nbmol.fapos[ia];
+            p.array[k]=p0.array[k]-dx; W.eval_no_omp(); df.sub(  W.nbmol.fapos[ia] );
+            p.array[k]=p0.array[k];                     df.mul(denom);
+            printf( "getHessian3x3() ia=%i k=%i p=(%g,%g,%g) df=(%g,%g,%g)\n", ia, k, p.x,p.y,p.z, df.x,df.y,df.z );
+            //Hess[k]=df;
+            H.vecs[k]=df;
+            //for(int l=0;l<3;l++) H[l*3+k]=(fp.array[l]-fm.array[l])*denom;
+        }
+        if(bDiag){
+            H.eigenvals(Ks);
+            printf( "getHessian3x3() ia=%i Ks=(%g,%g,%g)\n", ia, Ks.x,Ks.y,Ks.z );
+            H.eigenvec(Ks.x,U.a);
+            H.eigenvec(Ks.y,U.b);
+            H.eigenvec(Ks.z,U.c);
+            printf( "getHessian3x3() ia=%i u1(%g,%g,%g) u2(%g,%g,%g) u3(%g,%g,%g)\n", ia, U.a.x,U.a.y,U.a.z,   U.b.x,U.b.y,U.b.z,   U.c.x,U.c.y,U.c.z );
+            *((Mat3d*)(Hess_ + i*12   ))=U;
+            *((Vec3d*)(Hess_ + i*12 +9))=Ks;
+        }else{
+            *((Mat3d*)(Hess_ + i*12))=H;
         }
     }
+    DEBUG
     // restore original positions
     for(int i=0;i<n;i++){ int ia=inds[i]; W.nbmol.apos[ia]=orig[i]; }
 }
@@ -241,8 +267,8 @@ void getHessian3Nx3N(int n,int* inds,double* out_hessian,double dx){
         Vec3d fp,fm;
         for(int k=0;k<3;k++){
             double v=orig[ip].array[k];
-            W.nbmol.apos[ip].array[k]=v+dx; eval(); fp=W.nbmol.fapos[ip];
-            W.nbmol.apos[ip].array[k]=v-dx; eval(); fm=W.nbmol.fapos[ip];
+            W.nbmol.apos[ip].array[k]=v+dx; W.eval_no_omp(); fp=W.nbmol.fapos[ip];
+            W.nbmol.apos[ip].array[k]=v-dx; W.eval_no_omp(); fm=W.nbmol.fapos[ip];
             W.nbmol.apos[ip].array[k]=v;
             int col=p*3+k;
             for(int o=0;o<n;o++){

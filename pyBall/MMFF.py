@@ -1079,19 +1079,14 @@ def scan(poss, rots=None, Es=None, aforces=None, aposs=None,  bF=False,bP=False,
     lib.scan( nconf, _np_as(poss,c_double_p), _np_as(rots,c_double_p), _np_as(Es,c_double_p), _np_as(aforces,c_double_p), _np_as(aposs,c_double_p), omp, bRelax, niter_max, dt, Fconv, Flim )
     return Es, aforces, aposs 
 
-# int getHessian3x3( int n_atoms, int* inds, double* out_hessians, double dx )
-lib.getHessian3x3.argtypes = [c_int, c_int_p, c_double_p, c_double]
+# int getHessian3x3( int n_atoms, int* inds, double* out_hessians, double dx, bool bDiag )
+lib.getHessian3x3.argtypes = [c_int, c_int_p, c_double_p, c_double, c_bool]
 lib.getHessian3x3.restype  = None
-def getHessian3x3(inds, dx=1e-4):
+def getHessian3x3(inds, dx=1e-4, bDiag=True):
     n = len(inds)
     inds_c = np.ascontiguousarray(inds, dtype=np.int32)
-    out    = np.zeros((n,3,3), dtype=np.float64)
-    lib.getHessian3x3(
-        n,
-        _np_as(inds_c, c_int_p),
-        _np_as(out,    c_double_p),
-        dx
-    )
+    out    = np.zeros((n,4,3), dtype=np.float64)
+    lib.getHessian3x3( n, _np_as(inds_c, c_int_p), _np_as(out,    c_double_p), dx, bDiag )
     return out
 
 # int getHessian3Nx3N_selected( int n_atoms, int* inds, double* out_hessian_full, double dx )
@@ -1102,40 +1097,20 @@ def getHessian3Nx3N(inds, dx=1e-4):
     inds_c = np.array(inds, dtype=np.int32)
     dim    = 3 * n
     out    = np.zeros((dim,dim), dtype=np.float64)
-    lib.getHessian3Nx3N(
-        n,
-        _np_as(inds_c, c_int_p),
-        _np_as(out,    c_double_p),
-        dx
-    )
+    lib.getHessian3Nx3N( n, _np_as(inds_c, c_int_p), _np_as(out,    c_double_p), dx )
     return out
 
 
 lib.scan_atoms_rigid.argtypes = [ c_int, c_int, c_int_p,  c_double_p, c_double_p, c_double_p]
 lib.scan_atoms_rigid.restype = None
 def scan_atoms_rigid(inds, scan_positions):
-    """
-    Rigid scan of selected atoms.
-    Args:
-        inds: (nsel,) array of atom indices
-        scan_positions: (nscan,nsel,3) array of positions
-    Returns:
-        forces: (nscan,nsel,3) array of forces
-        Es: (nscan,) array of energies
-    """
     nscan = len(scan_positions)
     nsel = len(inds)
     inds_c = np.ascontiguousarray(inds, dtype=np.int32)
     pos_c  = np.ascontiguousarray(scan_positions, dtype=np.float64)
     forces = np.zeros((nscan,nsel,3), dtype=np.float64)
     Es     = np.zeros(nscan, dtype=np.float64)
-    lib.scan_atoms_rigid(
-        nscan, nsel,
-        _np_as(inds_c, c_int_p),
-        _np_as(pos_c, c_double_p),
-        _np_as(forces, c_double_p),
-        _np_as(Es, c_double_p)
-    )
+    lib.scan_atoms_rigid( nscan, nsel, _np_as(inds_c, c_int_p), _np_as(pos_c, c_double_p), _np_as(forces, c_double_p), _np_as(Es, c_double_p) )
     return forces, Es
 
 # ========= Lattice Optimization

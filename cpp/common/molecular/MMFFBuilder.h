@@ -1766,17 +1766,17 @@ class Builder{  public:
         loadNeighbors ( ia, nb,       conf.neighs, hs );
         //if(byPi){ makeConfGeomPi( nb, conf.npi, conf.pi_dir, hs ); }
         //else    { makeConfGeom( nb, conf.npi, hs ); } 
-        printf( "DEBUG: addEpairsByPi[%i] AFTER loadNeighbors: nb=%i npi=%i\n", ia, nb, conf.npi );
-        for(int k=0; k<4; ++k) { printf("  hs[%i]=(%g,%g,%g)\n", k, hs[k].x, hs[k].y, hs[k].z); }
+        if(byPi){  if(  conf.pi_dir.norm2() < 0.1 ){ byPi=false; }   }
+        //printf( "DEBUG: addEpairsByPi[%i] BEFORE makeConfGeom/Pi: byPi=%i  nb=%i npi=%i\n", ia, byPi, nb, conf.npi ); for(int k=0; k<4; ++k) { printf("  hs[%i]=(%g,%g,%g)\n", k, hs[k].x, hs[k].y, hs[k].z); }
         if(byPi){
-            printf( "DEBUG: addEpairsByPi[%i] CALLING makeConfGeomPi(nb=%i, npi=%i, pi_dir=(%g,%g,%g))\n", ia, nb, conf.npi, conf.pi_dir.x, conf.pi_dir.y, conf.pi_dir.z );
+            //printf( "DEBUG: addEpairsByPi[%i] CALLING makeConfGeomPi(nb=%i, npi=%i, pi_dir=(%g,%g,%g))\n", ia, nb, conf.npi, conf.pi_dir.x, conf.pi_dir.y, conf.pi_dir.z );
             makeConfGeomPi( nb, conf.npi, conf.pi_dir, hs );
         } else {
-            printf( "DEBUG: addEpairsByPi[%i] CALLING makeConfGeom(nb=%i, npi=%i)\n", ia, nb, conf.npi );
+            //printf( "DEBUG: addEpairsByPi[%i] CALLING makeConfGeom(nb=%i, npi=%i)\n", ia, nb, conf.npi );
             makeConfGeom( nb, conf.npi, hs );
         }
-        printf( "DEBUG: addEpairsByPi[%i] AFTER makeConfGeom/Pi: nb=%i npi=%i\n", ia, nb, conf.npi );
-        for(int k=0; k<4; ++k) { printf("  hs[%i]=(%g,%g,%g)\n", k, hs[k].x, hs[k].y, hs[k].z); }
+        //printf( "DEBUG: addEpairsByPi[%i] AFTER makeConfGeom/Pi: nb=%i npi=%i\n", ia, nb, conf.npi );
+        //for(int k=0; k<4; ++k) { printf("  hs[%i]=(%g,%g,%g)\n", k, hs[k].x, hs[k].y, hs[k].z); }
         
         //if(byPi){ makeConfGeomPi( nb, conf.npi, conf.pi_dir, hs ); } // NOTE: we need to asign pi_dir before calling makeConfGeomPi(), this is however necessary for atoms like =O which do not have other bonds direction of e-pair is not defined if pi-plane is not defined
         //else    { makeConfGeom  ( nb, conf.npi,              hs ); }  
