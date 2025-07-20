@@ -186,25 +186,22 @@ void  scan( int nconf, double* poss, double* rots, double* Es, double* aforces, 
 }
 
 // In MMFF_lib.cpp before extern "C" closing
-void scan_atoms_rigid(int nscan, int nsel, int* inds, double* scan_pos, double* out_forces, double* out_Es){
-    int N = W.nbmol.natoms;
-    Vec3d* orig = new Vec3d[N]; 
-    memcpy(orig, W.nbmol.apos, N*sizeof(Vec3d));
-    
+void scan_atoms_rigid(int nscan, int nsel, int* inds, double* scan_pos, double* out_forces, double* out_Es, bool bRelative ){
+    int na = W.nbmol.natoms;
+    std::vector<Vec3d> orig(na);
+    for(int i=0; i<na; i++){ orig[i] = W.nbmol.apos[i]; }
     for(int i=0; i<nscan; i++){
-        // Set positions for this scan point
-        for(int j=0; j<nsel; j++){
-            int idx = inds[j];
-            memcpy(&W.nbmol.apos[idx], &scan_pos[i*nsel*3 + j*3], sizeof(Vec3d));
+        Vec3d* ps = (Vec3d*)(scan_pos+i*nsel*3);
+        for(int j=0; j<nsel; j++){ 
+            int ia = inds[j];  
+            Vec3d p = ps[j]; 
+            if(bRelative){ p.add(orig[ia]); }
+            W.nbmol.apos[ia] = p; 
         }
-        
-        // Evaluate forces/energy
-        out_Es[i] = eval();
-        memcpy(&out_forces[i*nsel*3], &W.nbmol.fapos[inds[0]], nsel*3*sizeof(double));
+        if(out_Es){ out_Es[i] = W.eval_no_omp(); }
+        if(out_forces){ for(int j=0; j<nsel; j++){ int ia = inds[j];  out_forces[i*nsel*3 + j*3] = W.nbmol.fapos[ia].x; } }
     }
-    
-    memcpy(W.nbmol.apos, orig, N*sizeof(Vec3d));
-    delete[] orig;
+    for(int j=0; j<nsel; j++){ int ia = inds[j];  W.nbmol.apos[ia] = orig[ia]; }
 }
 
 // Hessian: independent 3×3 blocks for selected atoms
