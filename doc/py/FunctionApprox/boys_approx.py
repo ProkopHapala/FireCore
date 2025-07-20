@@ -44,19 +44,6 @@ def boys_function(r):
     
     return E, F
 
-# def boys_function_derivative(r):
-#     """
-#     Evaluates the analytical derivative of the Boys function B'(r).
-#     Handles the singularity at r=0 by returning the limit value.
-#     """
-#     if r == 0:
-#         return 0.0  # Limit of B'(r) as r -> 0 is 0
-#     # Using quotient rule: d/dr (erf(r)/r) = (r * d/dr(erf(r)) - erf(r) * 1) / r^2
-#     # d/dr(erf(r)) = (2/sqrt(pi)) * exp(-r^2)
-#     return 
-
-# --- Piecewise Parabolic Approximation and its Analytical Derivative ---
-
 def piecewise_approximation(r):
     """
     Evaluates the piecewise approximation and its derivative.
@@ -78,23 +65,6 @@ def piecewise_approximation(r):
     
     return E, F
 
-# def piecewise_approximation_derivative(r):
-#     """
-#     Evaluates the analytical derivative of the piecewise parabolic approximation f'(r).
-#     f'(r) = 2 * A_APPROX * r for |r| < R_MIN
-#     f'(r) = -1 / r^2 * sign(r) for |r| >= R_MIN (or just -1/r^2 for r > 0)
-#     Handles r=0 case.
-#     """
-#     if r == 0:
-#         return 0.0 # Derivative of parabola at x=0 is 0
-#     if abs(r) < R_MIN:
-#         return 2 * A_APPROX * r
-#     # For |r| >= R_MIN, the derivative of 1/|r| is -1/(r^2) * sign(r)
-#     # which is equivalent to -1/r^2 for r > 0 and 1/r^2 for r < 0.
-#     # We need to handle the sign correctly for the derivative of 1/|x|.
-#     # d/dx (1/|x|) = -1/x^2 if x > 0
-#     # d/dx (1/(-x)) = 1/x^2 if x < 0
-#     return -1 / (r**2) if r > 0 else 1 / (r**2)
 
 # --- Numerical Derivative Function ---
 
@@ -120,15 +90,7 @@ def plot_with_deriv(ax1, ax2, x, y, y_deriv, label, color, linestyle='-'):
 
 def plot_comparison():
     # Generate x values
-    r_values = np.linspace(-3.5, 3.5, 1000)
-
-    # # Evaluate Boys function and approximation
-    # boys_vals   = np.array([boys_function(r) for r in r_values])
-    # approx_vals = np.array([piecewise_approximation(r) for r in r_values])
-
-    # # Evaluate analytical derivatives
-    # boys_deriv_vals   = np.array([boys_function_derivative(r) for r in r_values])
-    # approx_deriv_vals = np.array([piecewise_approximation_derivative(r) for r in r_values])
+    r_values = np.linspace(0.0, 5.0, 1000)
 
     boys_vals, boys_deriv_vals     = boys_function(r_values)
     approx_vals, approx_deriv_vals = piecewise_approximation(r_values)
@@ -144,7 +106,7 @@ def plot_comparison():
 
     # Add vertical lines at R_MIN
     ax1.axvline( R_MIN,  color='gray',  linestyle=':', label=f'r_min = {R_MIN:.3f}')
-    ax1.axvline(-R_MIN, color='gray', linestyle=':')
+    #ax1.axvline(-R_MIN, color='gray', linestyle=':')
 
     # Customize axes
     ax1.set_ylabel('Function Value (Energy)',  fontsize=12)
@@ -161,4 +123,5 @@ def plot_comparison():
     plt.show()
 
 if __name__ == "__main__":
+
     plot_comparison()
