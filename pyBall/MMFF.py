@@ -1103,7 +1103,7 @@ def getHessian3Nx3N(inds, dx=1e-4):
 # void scan_atoms_rigid(int nscan, int nsel, int* inds, double* scan_pos, double* out_forces, double* out_Es, bool bRelative){
 lib.scan_atoms_rigid.argtypes = [ c_int, c_int, c_int_p,  c_double_p, c_double_p, c_double_p, c_bool]
 lib.scan_atoms_rigid.restype = None
-def scan_atoms_rigid(inds, poss, out_forces=None, out_Es=None, bRelative=True, bForce=True ):
+def scan_atoms_rigid(inds, poss, out_forces=None, out_Es=None, bRelative=True, bForce=True, bEnergy=True ):
     nscan = len(poss)
     nsel  = len(inds)
     if (out_forces is None) and bForce:  out_forces = np.zeros((nscan,nsel,3), dtype=np.float64)

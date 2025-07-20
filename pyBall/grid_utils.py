@@ -38,9 +38,12 @@ def cut1d_xyz( dat, f=[0.8,0.5,0.5],n=2, iaxs=[0,1,2], label=""):
 
 
 def makeGrid2D( extent, nxy=[100,100], endpoint=False, dpix=0.5 ):
-    dx = extent[1]-extent[0]
-    dy = extent[3]-extent[2]
+    dx = (extent[1]-extent[0])/nxy[0]
+    dy = (extent[3]-extent[2])/nxy[1]
     x = np.linspace( extent[0], extent[1], nxy[0], endpoint=endpoint ) + dx*dpix
     y = np.linspace( extent[2], extent[3], nxy[1], endpoint=endpoint ) + dy*dpix
+    #print("extent: ", extent)
+    #print("x: ", x)
+    #print("y: ", y)
     X, Y = np.meshgrid( x, y )
     return X, Y
