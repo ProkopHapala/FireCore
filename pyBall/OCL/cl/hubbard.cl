@@ -421,3 +421,182 @@ __kernel void solve_minBrute_boltzmann(
     }
 }
 
+
+
+
+/**
+ * @file parallel_local_update_solver.cl
+ * @brief Advanced solver using work-group collaboration and bitmasked state
+ *        for large-scale Monte Carlo simulations.
+ *
+ * This kernel assigns an entire work-group to a single tip position to accelerate
+ * the search for a low-energy state. It is highly memory-efficient due to bitmasking.
+ *
+ * Parallel Strategy (per work-group):
+ * 1. The current state is stored in a __local bitmask array, shared by all threads.
+ * 2. In each iteration, all threads in parallel propose a random site-flip.
+ * 3. Each thread calculates the energy change (dE) for its proposed flip.
+ * 4. A parallel reduction finds the "best" move among all proposals (the one with the
+ *    lowest dE).
+ * 5. One thread updates the shared state with this single best move.
+ * 6. Barriers are used to synchronize the work-group between steps.
+ * This massively parallelizes the "search" phase of the Monte Carlo step.
+ */
+
+#define MAX_SITES_BIG 256
+#define MAX_NEIGHBORS 16
+//#define MAX_WORKGROUP_SIZE 256 // For sizing reduction arrays
+
+// --- Bitmask Helper Macros ---
+// Calculates the value of the i-th bit in the uchar array 'mask'
+#define GET_OCC(i, mask) (((mask)[(i) >> 3] >> ((i) & 7)) & 1)
+
+// Flips the i-th bit in the uchar array 'mask' using XOR
+#define FLIP_OCC(i, mask) ((mask)[(i) >> 3] ^= (1 << ((i) & 7)))
+
+// --- RNG Helper Functions ---
+uint wang_hash(uint seed) {
+    seed = (seed ^ 61u) ^ (seed >> 16u); seed *= 9u;
+    seed = seed ^ (seed >> 4u); seed *= 0x27d4eb2du;
+    seed = seed ^ (seed >> 15u); return seed;
+}
+
+float wang_hash_float(uint* seed) {
+    *seed = wang_hash(*seed);
+    return (float)(*seed) / (float)(UINT_MAX);
+}
+
+__kernel void solve_local_updates_parallel(
+    const int nSite, 
+    const int nTips, 
+    const float4 solver_params,
+    __global const float2* Esite_Thop,
+    __global const float*  W_val, 
+    __global const int*    W_idx, 
+    __global const int*    nNeigh,
+    __global ulong*        state_out, 
+    __global float*        E_out, 
+    __global float2*       Itot_out
+) {
+    //=========================================================================
+    // 1. Initialization and ID setup
+    //=========================================================================
+    const int tip_idx    = get_group_id(0);
+    const int lid        = get_local_id(0);
+    const int local_size = get_local_size(0);
+
+    if (tip_idx >= nTips) return;
+    if (nSite > 64 || local_size > MAX_WORKGROUP_SIZE) return;
+
+    // Unpack solver parameters
+    const float kT    = solver_params.x;
+    const int   nIter = (int)solver_params.y;
+    const int   mode  = (int)solver_params.z;
+    uint rng_state = (uint)solver_params.w + tip_idx * local_size + lid; // Unique seed per thread
+
+    // --- Shared memory for the work-group ---
+    // State is stored as a bitmask to save memory
+    __local uchar occ_mask[MAX_SITES / 8 + 1];
+    // Reduction arrays to find the best move
+    __local float reduction_dE  [MAX_WORKGROUP_SIZE];
+    __local int   reduction_site[MAX_WORKGROUP_SIZE];
+
+    // Thread 0 initializes the state to all zeros
+    if (lid == 0) {
+        for (int i = 0; i < (nSite / 8 + 1); ++i) {
+            occ_mask[i] = 0;
+        }
+    }
+    barrier(CLK_LOCAL_MEM_FENCE); // Ensure all threads see the initialized state
+
+    // Offset for accessing tip-specific global data
+    const int tip_offset = tip_idx * nSite;
+
+    //=========================================================================
+    // 2. Main Collaborative Monte Carlo Loop
+    //=========================================================================
+    for (int iter = 0; iter < nIter; ++iter) {
+        // --- Step A: Each thread proposes a move in parallel ---
+        int i_site;
+        if (mode == 0) { // Deterministic sweep across threads
+            i_site = (iter * local_size + lid) % nSite;
+        } else { // Stochastic proposal
+            i_site = wang_hash(&rng_state) % nSite;
+        }
+
+        const uchar n_i = GET_OCC(i_site, occ_mask);
+
+        float h_local          = Esite_Thop[tip_offset + i_site].x;
+        const int w_row_offset = i_site * MAX_NEIGHBORS;
+        for (int k = 0; k < nNeigh[i_site]; ++k) {
+            h_local += (float)GET_OCC(W_idx[w_row_offset + k], occ_mask) * W_val[w_row_offset + k];
+        }
+
+        reduction_dE[lid] = (1.0f - 2.0f * (float)n_i) * h_local;
+        reduction_site[lid] = i_site;
+
+        barrier(CLK_LOCAL_MEM_FENCE); // Wait for all proposals to be calculated
+
+        // --- Step B: Thread 0 finds the best move and decides ---
+        if (lid == 0) {
+            float best_dE = 1e10f; // Start with a high energy
+            int   best_site_to_flip = -1;
+
+            // Find the move with the minimum dE among all threads
+            for (int i = 0; i < local_size; ++i) {
+                if (reduction_dE[i] < best_dE) {
+                    best_dE           = reduction_dE[i];
+                    best_site_to_flip = reduction_site[i];
+                }
+            }
+
+            bool accept_move = false;
+            if (best_dE < 0.0f) {
+                accept_move = true;
+            } else if (mode == 2 && kT > 1e-9f) { // Simulated Annealing
+                if (wang_hash_float(&rng_state) < exp(-best_dE / kT)) {
+                    accept_move = true;
+                }
+            }
+            
+            // If accepted, flip the bit in the shared state mask
+            if (accept_move && best_site_to_flip != -1) {
+                FLIP_OCC(best_site_to_flip, occ_mask);
+            }
+        }
+        
+        barrier(CLK_LOCAL_MEM_FENCE); // Wait for state update before next iteration
+    }
+
+    //=========================================================================
+    // 3. Post-Loop: Thread 0 calculates final properties and writes output
+    //=========================================================================
+    if (lid == 0) {
+        float final_E = 0.0f;
+        float final_Iocc = 0.0f;
+        float final_Iunoc = 0.0f;
+        ulong final_state_mask = 0;
+
+        for (int i = 0; i < nSite; ++i) {
+            if (GET_OCC(i, occ_mask)) {
+                final_state_mask |= (1UL << i);
+                final_E += Esite_Thop[tip_offset + i].x;
+                final_Iocc += Esite_Thop[tip_offset + i].y;
+
+                const int w_row_offset = i * MAX_NEIGHBORS;
+                for (int k = 0; k < nNeigh[i]; ++k) {
+                    const int j = W_idx[w_row_offset + k];
+                    if (i < j && GET_OCC(j, occ_mask)) {
+                        final_E += W_val[w_row_offset + k];
+                    }
+                }
+            } else {
+                final_Iunoc += Esite_Thop[tip_offset + i].y;
+            }
+        }
+
+        state_out[tip_idx] = final_state_mask;
+        E_out[tip_idx]     = final_E;
+        Itot_out[tip_idx]  = (float2)(final_Iocc, final_Iunoc);
+    }
+}

@@ -1,3 +1,7 @@
+
+# run it like this:
+#   python -u -m pyBall.OCL.HubbardSolver | tee OUT
+
 import os
 import numpy as np
 import pyopencl as cl
@@ -77,6 +81,28 @@ class HubbardSolver(OpenCLBase):
                 if handle.size != sz:
                     handle = self.try_make_buff(buffname, sz)
             buff_info[0] = handle
+
+
+        # NEW: A dedicated realloc function for the new local update solver's buffers
+    def realloc_local_update_buffers(self, nSingle: int, nTips: int, nMaxNeigh: int):
+        """(Re-)allocate GPU buffers specifically for the local update solver."""
+        sz_f  = 4
+        # Reuse output buffers from brute-force where possible (E_out, Itot_out)
+        buffs = {
+            "Esite_Thop_buff": (nTips * nSingle * sz_f * 2, None),
+            "W_val_buff":      (nSingle * nMaxNeigh * sz_f * 1, None),
+            "W_idx_buff":      (nSingle * nMaxNeigh * sz_f * 1, None),
+            "nNeigh_buff":     (nSingle * sz_f * 1, None),
+            # Re-purpose brute-force outputs
+            "E_out_buff":      (nTips * sz_f * 1, "Emin_buff"),
+            "state_out_buff":  (nTips * 8, "iMin_buff"), # ulong is 8 bytes. Repurpose iMin
+            "Itot_out_buff":   (nTips * sz_f * 2, "Itot_buff"),
+        }
+        for buffname, (sz, alias) in buffs.items():
+            final_name = alias if alias else buffname
+            if getattr(self, final_name, None) is None or getattr(self, final_name).size != sz:
+                self.try_make_buff(final_name, sz)
+
     # ---------------------------------------------------------------------
     # Public API
     # ---------------------------------------------------------------------
@@ -115,6 +141,83 @@ class HubbardSolver(OpenCLBase):
             self.Itot_buff,
         )
         return args, kernel
+
+    def setup_solve_local_updates_parallel(self, nSite, nTips, params):
+        """Prepare arguments for the solve_local_updates_parallel kernel."""
+        kernel = self.prg.solve_local_updates_parallel
+        
+        solver_params = np.array([
+            params.get("kT", 0.001),
+            params.get("nIter", 10000),
+            params.get("solverMode", 2),
+            params.get("seed", np.random.randint(0, 2**31))
+        ], dtype=np.float32)
+
+        args = (
+            np.int32(nSite),
+            np.int32(nTips),
+            solver_params,
+            self.Esite_Thop_buff,
+            self.W_val_buff,
+            self.W_idx_buff,
+            self.nNeigh_buff,
+            self.iMin_buff, # Re-purposed for state_out (ulong)
+            self.Emin_buff, # Re-purposed for E_out (float)
+            self.Itot_buff  # Re-purposed for Itot_out (float2)
+        )
+        return args, kernel
+
+
+    # NEW: High-level public API for the local update solver
+    def solve_local_updates(self, Esite_Thop, W_sparse, params=default_params):
+        """
+        Run the local-update Monte Carlo solver.
+
+        Args:
+            Esite_Thop (np.ndarray): Shape (nTips, nSingle, 2), float32.
+                                     Contains {Esite, Thop} for each tip-site pair.
+            W_sparse (tuple): A tuple (W_val, W_idx, nNeigh) representing the sparse
+                              interaction matrix, typically from `make_sparse_W`.
+            params (dict): Dictionary with solver parameters like kT, nIter, etc.
+
+        Returns:
+            E_out (np.ndarray): (nTips,) float32 - final energy for each simulation.
+            state_out (np.ndarray): (nTips,) uint64 - final state bitmask.
+            Itot_out (np.ndarray): (nTips, 2) float32 - final currents {I_occ, I_unoc}.
+        """
+        nTips, nSite, _ = Esite_Thop.shape
+        W_val, W_idx, nNeigh = W_sparse
+        nMaxNeigh = W_val.shape[1]
+
+        if nSite > 64:
+            raise ValueError("[HubbardSolver] nSite > 64 exceeds ulong bitmask limit.")
+
+        # Reallocate buffers and upload data
+        self.realloc_local_update_buffers(nSite, nTips, nMaxNeigh)
+        self.toGPU_(self.Esite_Thop_buff, Esite_Thop.reshape(-1, 2)) # Reshape to (nTips*nSingle, 2)
+        self.toGPU_(self.W_val_buff, W_val)
+        self.toGPU_(self.W_idx_buff, W_idx)
+        self.toGPU_(self.nNeigh_buff, nNeigh)
+
+        # Kernel launch
+        global_size = (nTips * self.nloc,)
+        local_size = (self.nloc,)
+        args, kernel = self.setup_solve_local_updates_parallel(nSite, nTips, params)
+        kernel(self.queue, global_size, local_size, *args)
+        
+        # Download results
+        state_out = np.empty(nTips, dtype=np.uint64)
+        E_out = np.empty(nTips, dtype=np.float32)
+        Itot_out = np.empty((nTips, 2), dtype=np.float32)
+        
+        self.fromGPU_(self.iMin_buff, state_out) # Re-purposed
+        self.fromGPU_(self.Emin_buff, E_out)     # Re-purposed
+        self.fromGPU_(self.Itot_buff, Itot_out)  # Re-purposed
+
+        self.queue.finish()
+        return E_out, state_out, Itot_out
+    
+
 
     def solve(
         self,
@@ -290,6 +393,47 @@ class HubbardSolver(OpenCLBase):
 # Utility helpers (stand-alone, not bound to the class) -------------------------
 # -----------------------------------------------------------------------------
 
+
+# NEW: Helper function to create the sparse interaction matrix from a dense one.
+def make_sparse_W(Wij_dense, nMaxNeigh=16):
+    """
+    Converts a dense (nSite, nSite) interaction matrix to the sparse format
+    required by the local_updates kernel.
+
+    Args:
+        Wij_dense (np.ndarray): The full, dense interaction matrix.
+        nMaxNeigh (int): The maximum number of neighbors to store per site.
+
+    Returns:
+        tuple: (W_val, W_idx, nNeigh) ready for GPU upload.
+            - W_val (np.ndarray): (nSite, nMaxNeigh) float32, interaction values.
+            - W_idx (np.ndarray): (nSite, nMaxNeigh) int32, neighbor indices.
+            - nNeigh (np.ndarray): (nSite,) int32, number of actual neighbors.
+    """
+    nSite = Wij_dense.shape[0]
+    
+    # Use argsort to find the indices of the largest couplings for each site
+    # We negate the matrix because argsort sorts in ascending order.
+    sorted_indices = np.argsort(-np.abs(Wij_dense), axis=1)
+
+    # Initialize output arrays
+    W_val  = np.zeros((nSite, nMaxNeigh), dtype=np.float32)
+    W_idx  = np.zeros((nSite, nMaxNeigh), dtype=np.int32)
+    nNeigh = np.zeros(nSite, dtype=np.int32)
+
+    for i in range(nSite):
+        count = 0
+        for j_idx in sorted_indices[i]:
+            if i == j_idx or count >= nMaxNeigh:
+                continue # Skip self-interaction and excess neighbors
+            
+            W_idx[i, count] = j_idx
+            W_val[i, count] = Wij_dense[i, j_idx]
+            count += 1
+        nNeigh[i] = count
+        
+    return W_val, W_idx, nNeigh
+
 def make_site_ring( n, R, E0=-0.1, ang0=0.0, z=0.0, ang2=0.0 ):
     """Make a ring of n sites at radius R and energy E0."""
     pos = np.zeros((n,4), dtype=np.float32)
@@ -412,7 +556,7 @@ def solve_pSites(params, posE: np.ndarray, solver: HubbardSolver,  ):
     return Emin, iMin, Itot
 
 def plot_sites(posE, ax=None, c="r", ms=2.0,angles=None):
-    if ax is None:
+    if ax is None: 
         ax = plt.gca()
     ax.plot(posE[:,0], posE[:,1], '.', color=c, markersize=ms)
     if angles is not None: # with  quiver
@@ -435,10 +579,8 @@ def solve_hopping_scan(solver: HubbardSolver, posE: np.ndarray, rots: np.ndarray
     Tout = solver.eval_oriented_hopping(posE, rots, orbs, pTips, bRealloc=True)
     return Tout.reshape(nxy+(nSingle,))
 
-if __name__ == "__main__":
-    import matplotlib.pyplot as plt
 
-
+def test_brute_force_solver():
     # trimer
     #posE = make_site_ring(3, 5.0, E0=params["E0"] )
     #save_sites_to_txt("trimer.txt", posE)
@@ -539,3 +681,62 @@ if __name__ == "__main__":
     plot2d(Itot[:,:,1].T, extent=extent, title="I_unocc", ax=axs[1,1], cmap="viridis", ps=posE);
     plt.tight_layout()
     plt.show()
+
+def test_local_update_solver():
+    # --- Example Usage for the new Local Update Solver ---
+    
+    # 1. Setup a larger system
+    posE  = make_grid_sites(nxy=(8, 8), avec=(5.0, 0.0), bvec=(0.0, 5.0), E0=-0.15)
+    nSite = posE.shape[0]
+    print(f"Created a large system with {nSite} sites.")
+
+    solver = HubbardSolver()
+
+    # 2. Pre-calculate the dense interaction matrix
+    _, Wij_dense = solver.eval_coupling_matrix(posE, zMirror=-0.5)
+
+    # 3. Convert the dense matrix to the required sparse format
+    nMaxNeigh = 16
+    W_sparse = make_sparse_W(Wij_dense, nMaxNeigh=nMaxNeigh)
+    print(f"Converted dense Wij to sparse format with nMaxNeigh={nMaxNeigh}.")
+
+    # 4. Pre-calculate Esite and Thop for a few tip positions
+    pTips = generate_xy_scan(extent=[-5, 5, -5, 5], nxy=(3, 1), zTip=3.0, Vbias=0.2)
+    nTips = pTips.shape[0]
+
+    # This part would typically involve a more complex physical model,
+    # but for demonstration, we'll construct it manually.
+    Esite_Thop = np.zeros((nTips, nSite, 2), dtype=np.float32)
+    for i in range(nTips):
+        tip_pos = pTips[i, :3]
+        tip_vbias = pTips[i, 3]
+        for j in range(nSite):
+            dist = np.linalg.norm(tip_pos - posE[j, :3])
+            # Simplified model for Esite and Thop
+            Esite_Thop[i, j, 0] = posE[j, 3] + tip_vbias * (3.0 / dist) # On-site energy
+            Esite_Thop[i, j, 1] = np.exp(-0.3 * dist)                 # Hopping
+    
+    # 5. Run the local update solver
+    print("Running the parallel local update solver...")
+    solver_params = {
+        "kT": 0.001,
+        "nIter": 20000,
+        "solverMode": 2, # Annealing
+        "seed": 42
+    }
+    E_out, state_out, Itot_out = solver.solve_local_updates(Esite_Thop, W_sparse, params=solver_params)
+    
+    # 6. Print results
+    for i in range(nTips):
+        print(f"--- Tip {i} ---")
+        print(f"  Final Energy: {E_out[i]:.6f}")
+        print(f"  Final State Mask: {state_out[i]:0{nSite}b}") # Print as binary string
+        print(f"  Final Currents: {Itot_out[i]}")
+
+if __name__ == "__main__":
+    import matplotlib.pyplot as plt
+    #test_brute_force_solver()
+    test_local_update_solver()
+
+    
+
