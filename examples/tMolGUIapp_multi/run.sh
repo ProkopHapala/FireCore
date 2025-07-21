@@ -32,7 +32,7 @@ touch minima.dat
 
 # ====== Small Molecules
 
-#./$name      -m 10    -x common_resources/H2O
+#./$name      -m 10    -x common_resources/xyz/H2O
 #./$name -t 2 -m 10    -x common_resources/xyz/pyridine
 #./$name -t 1 -m 10    -x common_resources/xyz/pyridine
 #./$name -t 1 -m $nsys -x common_resources/xyz/pyridine
@@ -51,8 +51,8 @@ touch minima.dat
 #./$name       -x common_resources/xyz/nHexadecan_dicarboxylic  -T 100 0.01
 #./$name       -x common_resources/xyz/nHexadecan_dicarboxylic -b nHexadecan_dicarboxylic.cons -T 100 0.01
 #./$name       -x common_resources/xyz/nHexadecan_dicarboxylic -b nHexadecan_dicarboxylic.cons -perframe 1000 -gopt 1000,1000 0.25,1.0
-#./$name -m 10 -x common_resources/xyz/nHexadecan_dicarboxylic -drive nHexadecan_dicarboxylic.cons -iParalel 1 -perframe 1000 -gopt 1000,1000 0.25,1.0
-#./$name -m 30 -x common_resources/xyz/nHexadecan_dicarboxylic -drive nHexadecan_dicarboxylic.cons -iParalel 1 -perframe 1000 -gopt 1000,1000 0.25,1.0 -verb 0  -T 1000 0.02
+#./$name -m 300 -x common_resources/xyz/butandiol-2 -iParalel 3 -perframe 10 -gopt 100,1000 0.25,1.0 -verb 0  -T 1000 0.02 -Ftol 1e-4
+#./$name -m 30 -x common_resources/xyz/nHexadecan_dicarboxylic -drive nHexadecan_dicarboxylic.cons -iParalel 1 -perframe 100 -gopt 1000,1000 0.25,1.0 -verb 0  -T 1000 0.02
 
 #./$name -m 60  -x common_resources/xyz/nHexadecan_dicarboxylic -drive nHexadecan_dicarboxylic.cons -iParalel 1 -perframe 100 -gopt 1000,1000 0.25,1.0 -verb 0  -T 1000 0.02
 #./$name -m 120 -x common_resources/xyz/nHexadecan_dicarboxylic -drive nHexadecan_dicarboxylic.cons -iParalel 2 -perframe 100 -gopt 1000,1000 0.25,1.0 -verb 0  -T 1000 0.02
@@ -112,7 +112,7 @@ touch minima.dat
 
 #./$name -m 1 -x common_resources/xyz/PTCDA         -g common_resources/xyz/NaCl_1x1_L2 -iParalel 3  -verb 4 -perframe 1
 #./$name -m 1 -x common_resources/xyz/PTCDA         -g common_resources/xyz/NaCl_1x1_L2 -iParalel 3  -verb 4
-./$name -m 1 -x common_resources/xyz/PTCDA         -g common_resources/xyz/NaCl_1x1_L2 -iParalel 3 
+#./$name -m 1 -x common_resources/xyz/PTCDA         -g common_resources/xyz/NaCl_1x1_L2 -iParalel 3 
 #./$name -m 1 -x common_resources/xyz/PTCDA         -g common_resources/xyz/NaCl_1x1_L2 -iParalel -1
 #./$name -m 1 -x common_resources/xyz/PTCDA         -g common_resources/xyz/NaCl_1x1_L2 -iParalel 0 -verb 3
 
@@ -170,7 +170,7 @@ touch minima.dat
 
 
 #./$name -m 5    -x common_resources/xyz/polymer-2_new                  -g common_resources/xyz/NaCl_1x1_L2    -Ftol 1e-12   -perframe 100  -iParalel 3    -group 0 0,1,9,17,15,7,21,27,28,25,26,36 -group 1 2,3,6,12,14,16,18,24,30,29,35
-#./$name -m 1000 -x common_resources/xyz/polymer-2_new                  -g common_resources/xyz/NaCl_1x1_L2    -Ftol 1e-12   -perframe 200  -iParalel 3
+#./$name -m 100 -x common_resources/xyz/polymer-2_new                  -g common_resources/xyz/NaCl_1x1_L2    -Ftol 1e-12   -perframe 200  -iParalel 3 -T 300 0.2 -gopt 1000,100000 0.25,1.0 -verb 0 -perframe 100
 #./$name -m 200  -x common_resources/xyz/polymer-2_new                  -g common_resources/xyz/NaCl_1x1_L2    -Ftol 1e-12   -perframe 100  -iParalel 3
 #./$name -m 200  -x common_resources/xyz/polymer-2_new                  -g common_resources/xyz/NaCl_1x1_L2    -Ftol 1e-12   -perframe 100  -iParalel 3
 #./$name -m 200  -x common_resources/xyz/polymer-2_new                  -g common_resources/xyz/NaCl_1x1_L2    -Ftol 1e-12   -perframe 100  -iParalel 2
@@ -186,3 +186,26 @@ touch minima.dat
 
 
 #grep GPU_GFF_z out.log | cut -c 11-  > GPU_makeGridFF.log
+
+# GPU global optimization
+#./$name -m 400  -x common_resources/xyz/deoxyglucose          -g common_resources/xyz/NaCl_8x8_L3_step -iParalel 3 -T 300 0.2   -gopt 1000,100000 0.25,1.0 -verb 0 -perframe 100
+#./$name -m 400  -x common_resources/xyz/1,20-eicosanediol     -g common_resources/xyz/NaCl_8x8_L3_step -iParalel 3 -T 1000 0.2  -gopt 1000,100000 0.25,1.0 -verb 0 -perframe 100
+#./$name -m 600  -x common_resources/xyz/deoxyglucose          -g common_resources/xyz/NaCl_8x8_L3      -iParalel 3 -T 300 0.2   -gopt 1000,100000 0.25,1.0 -verb 0 -perframe 100
+#./$name -m 400  -x common_resources/xyz/1,20-eicosanediol     -g common_resources/xyz/NaCl_8x8_L3      -iParalel 3 -T 300 0.2   -gopt 1000,100000 0.25,1.0 -verb 0 -perframe 100
+#./$name -m 1000    -x common_resources/xyz/xylitol_for_gridFF               -g common_resources/xyz/NaCl_8x8_L3      -iParalel 3 -T 300 0.2   -gopt 1000,100000 0.25,1.0 -verb 0 -perframe 100
+#./$name -m 1000    -x common_resources/xyz/xylitol_for_gridFF                                                        -iParalel 3 -T 300 0.2   -gopt 1000,100000 0.25,1.0 -verb 0 -perframe 100
+#./$name -m 1000    -x common_resources/xyz/xylitol_WO_gridFF              -g common_resources/xyz/NaCl_8x8_L3      -iParalel 3 -T 300 0.2   -gopt 1000,100000 0.25,1.0 -verb 0 -perframe 100 -nogridff
+#./$name -m 1000    -x common_resources/xyz/xylitol               -g common_resources/xyz/NaCl_8x8_L3      -iParalel 3 -T 300 0.2   -gopt 1000,100000 0.25,1.0 -verb 0 -perframe 100
+# ./$name -m 100 -x common_resources/xyz/xylitol               -g common_resources/xyz/NaCl_8x8_L3      -iParalel 3 -T 300 0.2   -gopt 1000,100000 0.25,1.0 -verb 0 -perframe 100
+#./$name -m 20 -x common_resources/xyz/xylitol               -g common_resources/xyz/NaCl_8x8_L3_step      -iParalel 3 -T 300 0.2   -gopt 1000,100000 0.25,1.0 -verb 0 -perframe 100
+#./$name -m 200 -x common_resources/xyz/xylitol               -g common_resources/xyz/NaCl_8x8_L3_NaClHole      -iParalel 3 -T 300 0.2   -gopt 1000,100000 0.25,1.0 -verb 0 -perframe 100
+#./$name -m 25 -x common_resources/xyz/xylitol               -g common_resources/xyz/NaCl_8x8_L3_ClHole      -iParalel 3 -T 150 0.2   -gopt 1000,100000 0.25,1.0 -verb 0 -perframe 100
+#./$name -m 150  -x common_resources/xyz/xylitol_THREE         -g common_resources/xyz/NaCl_8x8_L3      -iParalel 3 -T 300 0.2   -gopt 1000,100000 0.25,1.0 -verb 0 -perframe 100
+#./$name -m 1500 -x common_resources/xyz/deoxyribose           -g common_resources/xyz/NaCl_8x8_L3      -iParalel 3 -T 300 0.2   -gopt 1000,100000 0.25,1.0 -verb 0 -perframe 100
+#./$name -m 1000 -x common_resources/xyz/PTCDA_SAM             -g common_resources/xyz/NaCl_8x8_L3      -iParalel 3 -T 1000 0.2  -gopt 500,10000 0.25,1.0   -verb 0 -perframe 100
+#./$name -m 1500 -x common_resources/xyz/pyridine              -g common_resources/xyz/NaCl_8x8_L3      -iParalel 3 -T 1000 0.2  -gopt 1000,100000 0.25,1.0 -verb 0 -perframe 100
+#./$name -m 300   -x common_resources/xyz/nHexadecan_dicarboxylic -g common_resources/xyz/NaCl_8x8_L3    -iParalel 3 -T 1000 0.02 -gopt 1000,1000 0.25,1.0   -verb 0 -perframe 100 
+
+
+./$name -m 2000    -x common_resources/xyz/xylitol_WO_gridFF       -g common_resources/xyz/NaCl_3x3_L3            -iParalel 3 -T 300 0.2   -gopt 1000,100000 0.25,1.0 -verb 0 -perframe 100 -grid_nPBC 2,2,0 # -nogridff
+#./$name -m 2000    -x common_resources/xyz/xylitol_WO_gridFF                 -iParalel 3 -T 300 0.2   -gopt 1000,100000 0.25,1.0 -verb 0 -perframe 100 -grid_nPBC 2,2,0 # -nogridff

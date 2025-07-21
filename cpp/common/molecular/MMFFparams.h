@@ -179,13 +179,14 @@ class MMFFparams{ public:
 
 
     double default_bond_length      = 2.0;
-    double default_bond_stiffness   = 1.0;
+    double default_bond_stiffness   = 10.0;
     //Quat4d  default_REQ           = {1.487, 0.0006808, 0.0, 0.};  // Hydrogen (RvdW, EvdW, Q, Hb)
     Quat4d  default_REQ             = {1.500, 0.0005000, 0.0, 0.};  // Hydrogen (RvdW, EvdW, Q, Hb)
 
     bool echoTry        =true;
     bool reportIfMissing=true;
-    bool exitIfMissing  =true;
+    //bool exitIfMissing  =true;
+    bool exitIfMissing  =false;
 
     // ==================================================================================
     //    LOAD TABLES WITH ELEMENT, ATOM, BOND, ANGLE AND DIHEDRAL TYPE SPECIFICATIONS 
@@ -552,20 +553,20 @@ class MMFFparams{ public:
         auto it       = bonds_.find(id);
         if( it != bonds_.end() ){ return it->second; } 
         if(bParrents==0){
-            if(reportIfMissing){ printf("WARNING getBondParams(ityp=%i,jtyp=%i,order=%i) missing, trying find by parents(%i,%i) \n", ityp, jtyp, order,   atypes[ityp].parrent, atypes[jtyp].parrent ); };
+            if(reportIfMissing){ printf("WARNING getBondType(ityp=%i=%s,jtyp=%i=%s,order=%i) missing, trying find by parents(%i,%i) \n", ityp, atypes[ityp].name, jtyp,  atypes[jtyp].name, order,   atypes[ityp].parrent, atypes[jtyp].parrent ); };
             id  = BondType::getId( atypes[ityp].parrent,        jtyp,          order ); it = bonds_.find(id); if(it!=bonds_.end()){ return it->second; } 
             id  = BondType::getId(        ityp,          atypes[jtyp].parrent, order ); it = bonds_.find(id); if(it!=bonds_.end()){ return it->second; } 
             id  = BondType::getId( atypes[ityp].parrent, atypes[jtyp].parrent, order ); it = bonds_.find(id); if(it!=bonds_.end()){ return it->second; } 
         }
         if(bElem){
-            if(reportIfMissing){ printf("WARNING getBondParams(ityp=%i,jtyp=%i,order=%i) missing, trying find by elements(%i,%i) \n", ityp, jtyp, order, atypes[ityp].iZ, atypes[jtyp].iZ  ); };
+            if(reportIfMissing){ printf("WARNING getBondType(ityp=%i=%s,jtyp=%i=%s,order=%i) missing, trying find by elements(%i,%i) \n", ityp, atypes[ityp].name, jtyp,  atypes[jtyp].name, order, atypes[ityp].iZ, atypes[jtyp].iZ  ); };
             int i0 = atomTypeDict.find( elementOfAtomType(ityp)->name )->second;
             int j0 = atomTypeDict.find( elementOfAtomType(jtyp)->name )->second; 
             id  = BondType::getId( i0, j0, order ); 
             it = bonds_.find(id); 
             if( it!=bonds_.end()){ return it->second; }
         }
-        if(reportIfMissing){ printf("WARNING getBondParams(ityp=%i,jtyp=%i,order=%i) missing => defaults: l0 %g k %g \n", ityp, jtyp, order, default_bond_length, default_bond_stiffness ); };
+        if(reportIfMissing){ printf("WARNING getBondType(ityp=%i=%s,jtyp=%i=%s,order=%i) missing => defaults: l0 %g k %g \n", ityp, atypes[ityp].name, jtyp,  atypes[jtyp].name, order, default_bond_length, default_bond_stiffness ); };
         if(exitIfMissing){ printf("=> exit(0)\n");exit(0); };  
         return 0;
     }
@@ -696,7 +697,7 @@ class MMFFparams{ public:
     bool getBondParams( int ityp, int jtyp, int order,  double& l0, double& k, bool bParrents=true, bool bElem=true )const{
         //printf( "MMFFBuilder::getBondParams() types(%i,%i) order=%i bParrents=%i bElem=%i \n",  ityp, jtyp, order, bParrents, bElem );
         BondType* bp = getBondType( ityp, jtyp, order, bParrents, bElem );
-        if( bp==0 ){ l0=bp->length; k=bp->stiffness; return false; }else{ l0=bp->length; k=bp->stiffness; return true; }
+        if( bp==0 ){ l0=default_bond_length; k=default_bond_stiffness; return false; }else{ l0=bp->length; k=bp->stiffness; return true; }
     }
 
     void fillBondParams( int nbonds, Vec2i * bond2atom, int * bondOrder, int * atomType, double * bond_0, double * bond_k ){
@@ -733,13 +734,14 @@ class MMFFparams{ public:
         //if(bHB) REQ.w = atypes[ityp].Hb; // Hbond Correction
     }
 
-    void assignREs( int n, int * itypes, Quat4d * REQs, bool bSqrtE=true, bool bQ0=false )const{
+    void assignREs( int n, int * itypes, Quat4d * REQs, bool bSqrtE=true, bool bQ0=false, bool bHB0=true )const{
         printf( "MMFFparams::assignREs(%i) @itypes=%li \n", n, (long)itypes );
         for(int i=0; i<n; i++){
             const int ityp = itypes[i];
             //printf( " assignREs[%i] %i RE(%g,%g) name=%s\n", i, ityp, atypes[ityp].RvdW, atypes[ityp].EvdW, atypes[ityp].name );
             assignRE( ityp, REQs[i], bSqrtE );
-            if(bQ0) REQs[i].z=0;
+            if(bQ0 ) REQs[i].z=0;
+            if(bHB0) REQs[i].w=0;
         }
     }
 
@@ -851,9 +853,9 @@ class MMFFparams{ public:
         //printf( "MMFFparams::writeXYZ() n=%i REQs=%li just_Element=%i\n", n, (long)REQs, just_Element );
         int npbc = nPBC.totprod();
         if(bHead){
-        fprintf(pfile, "%i\n", (n+npi)*npbc );
-        // TBD print lattice vectors
-        fprintf(pfile, "%s \n", comment );
+            fprintf(pfile, "%i\n", (n+npi)*npbc );
+            // TBD print lattice vectors
+            fprintf(pfile, "%s \n", comment );
         }
         //printf( "MM::Params::writeXYZ() nPBC={%i,%i,%i}\n", nPBC.x,nPBC.y,nPBC.z );
         for(int ic=0;ic<nPBC.z;ic++){ for(int ib=0;ib<nPBC.y;ib++){ for(int ia=0;ia<nPBC.x;ia++){

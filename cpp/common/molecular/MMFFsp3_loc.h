@@ -153,9 +153,10 @@ void realloc( int nnode_, int ncap_, int ntors_=0 ){
     _realloc0( fneighpi, nnode*4, Vec3dNAN );
     // ----- Params [natom]
     _realloc0( atypes    , natoms, -1 );
+    _realloc0( REQs      , natoms, Quat4dZero      );
     _realloc0( neighs    , natoms, Quat4iMinusOnes );
     _realloc0( neighCell , natoms, Quat4iMinusOnes );
-    _realloc0( bkneighs  , natoms, Quat4iMinusOnes);
+    _realloc0( bkneighs  , natoms, Quat4iMinusOnes );
     _realloc0( apars     , nnode, Quat4dNAN );
     _realloc0( bLs       , nnode, Quat4dNAN );
     _realloc0( bKs       , nnode, Quat4dNAN );
@@ -1632,16 +1633,20 @@ void rotateNodes(int n, int* sel, Vec3d p0, Vec3d ax, double phi ){
 
 // redistribute charges from atom to capping electron pair
 void chargeToEpairs( Quat4d* REQs, int* atypes, double cQ=-0.2, int etyp=-1 ){
-    printf( "MMFFsp3_loc::chargeToEpairs() cQ %g etyp %i \n", cQ, etyp );
+    if( (atypes==0)||(REQs==0) ){ printf( "MMFFsp3_loc::chargeToEpairs() ERROR: atypes=%p REQs=%p \n", atypes, REQs ); exit(0); }
+    printf( "MMFFsp3_loc::chargeToEpairs() na %i nnode %i cQ %g etyp %i @atypes=%p @REQs=%p \n", natoms, nnode, cQ, etyp,  atypes, REQs );
     // ToDo: we should operate on element-type not atom-type basis ( ielem = params.atypes[ityp].element ),   this is because we can have multiple electron-pair-types (depending on the atom-type to which they are attached)
     for( int ia=0; ia<nnode; ia++ ){
         int* ngs=neighs[ia].array; 
+        printf( "MMFFsp3_loc::chargeToEpairs() atom[%i] ngs{%i,%i,%i,%i} \n", ia, ngs[0], ngs[1], ngs[2], ngs[3] );
         for( int j=0; j<4; j++ ){
             int ja = ngs[j]; 
             if(ja<0) continue;
+            printf( "MMFFsp3_loc::chargeToEpairs() atom[%i] ngh[%i|%i] tj=%i Qi=%g Qj=%g \n", ia, j, ja, atypes[ja], REQs[ia].z, REQs[ja].z );
             if( atypes[ja]==etyp ){ REQs[ja].z+=cQ; REQs[ia].z-=cQ; };
         }
     }
+    printf( "MMFFsp3_loc::chargeToEpairs() DONE \n" );
 }
 void chargeToEpairs( double cQ=-0.2, int etyp=-1 ){ chargeToEpairs( REQs, atypes, cQ, etyp ); }
 

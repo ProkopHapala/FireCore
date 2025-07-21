@@ -66,6 +66,7 @@ void atomsREQ( int n, Vec3d* ps, Quat4d* REQs, int ogl_sph, float qsc=1, float R
     for(int i=0; i<n; i++){
         float q = (float)REQs[i].z*qsc;
         glColor3f(1-fmax(0,-q),1-fmax(q,-q),1-fmax(0,+q));
+        //printf( "Draw3D atomsREQ() %i Q=%g R=%g pos(%16.8f %16.8f %16.8f)  \n", i, q, REQs[i].x, ps[i].x, ps[i].y, ps[i].z );
         if(bPointCross){
             Draw3D::drawPointCross( ps[i]+pos0, (REQs[i].x-Rsub)*Rsc );
         }else{
@@ -381,6 +382,22 @@ void atoms( int n, Vec3d* ps, int* atypes, const MMFFparams& params, int ogl_sph
         const AtomType& atyp = params.atypes[atypes[i]];
         Draw::setRGB( atyp.color );
         Draw3D::drawShape( ogl_sph, ps[i], Mat3dIdentity*((atyp.RvdW-Rsub)*Rsc) );
+    }
+}
+
+void atoms( int n, Quat4f* ps, int* atypes, const MMFFparams& params, int ogl_sph, float qsc=1, float Rsc=1, float Rsub=0 ){
+    glEnable(GL_LIGHTING);
+    glEnable(GL_DEPTH_TEST);
+    glEnable(GL_BLEND);
+    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+    glShadeModel(GL_SMOOTH);
+    for(int i=0; i<n; i++){
+        const AtomType& atyp = params.atypes[atypes[i]];
+        float r = ((atyp.color >> 16) & 0xFF) / 255.0f;
+        float g = ((atyp.color >> 8) & 0xFF) / 255.0f;
+        float b = (atyp.color & 0xFF) / 255.0f;
+        glColor4f(r, g, b, qsc);
+        Draw3D::drawShape( ogl_sph, (Vec3d)(ps[i].f), Mat3dIdentity*((atyp.RvdW-Rsub)*Rsc) );
     }
 }
 #endif

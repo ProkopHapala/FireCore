@@ -10,7 +10,7 @@ from pyBall.tests import ocl_Bsplines as bsp
 os.environ['PYOPENCL_CTX'] = '0'
 clgff = GridFF_cl()
 
-def test_fit_Bspline( fname="debug_VCoul.npy", path="./common_resources/NaCl_1x1_L2/" ):
+def test_fit_Bspline( fname="VCoul.npy", path="./common_resources/NaCl_1x1_L2/" ):
     E_ref = np.load( path+fname )
     Gs,conv = clgff.fit3D( E_ref=E_ref, nmaxiter=3000, dt=0.3, Ftol=1e-8, cdamp=0.95, bAlloc=True, nPerStep=10, bConvTrj=True )
     print( "Gs.min(),Gs.max() ", Gs.min(),Gs.max() )

@@ -1,4 +1,3 @@
-﻿
 #ifndef GlobalOptimizer_h
 #define GlobalOptimizer_h
 

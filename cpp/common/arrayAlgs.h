@@ -21,6 +21,49 @@ inline int insertN( int i0, int len, TYPE * x, TYPE * x ){
 }
 */
 
+template<typename T>
+int countNonZero( int n, const T* v, T tol ){
+    int count=0;
+    for(int i=0; i<n; i++){ if( fabs(v[i])>tol ){ count++; }; }
+    return count;
+}
+
+template<typename T>
+int exportNonZero( int n, const T* v, T tol, T* vals=0, int* inds=0 ){
+    int count=0;
+    for(int i=0; i<n; i++){
+        const T vi = v[i];
+        if( fabs(vi)>tol ){
+            if(vals) vals[count]=vi;
+            if(inds) inds[count]=i;
+            count++;
+        };
+    }
+    return count;
+}
+
+__attribute__((hot)) 
+inline int binarySearch_ignor( int j, int end, const int* inds, int ignore=-1) {
+    int start=0;
+    while (start < end) {
+        int mid = start + (end - start) / 2;
+        if ( inds[mid] == ignore || inds[mid] > j) {
+            end = mid;
+        } else if (inds[mid] < j) {
+            start = mid + 1;
+        } else {
+            return mid;
+        }
+    }
+    return start;  // Return the position where j should be inserted
+}
+
+template<typename T>
+void insertElement( T x, int i, int n, T* arr ) {
+    for(int k=n-1; k>i; --k) { arr[k]=arr[k-1]; }
+    arr[i] = x;
+}
+
 template< typename T, typename CondFunc >
 inline int prune( int n, T* arr, CondFunc cond ){
     if(n==1){ if( cond( arr[0] ) ) {return 0;} else {return 1; } };
@@ -94,15 +137,34 @@ inline int objects2cells( int nobj, int ncell, int* obj2cell, I0n* cells, int* p
     return nmax;
 }
 
+// template<typename T>
+// int insertSort( int n, T* data ){
+//     //https://en.wikipedia.org/wiki/Insertion_sort
+//     int niter=0;
+//     int i=1;
+//     for(int i=1; i<n; i++){
+//         const T x = data[i];
+//         int j=i-1;
+//         while( data[j] > x.val && (j>=0) ){
+//             data[j+1] = data[j];
+//             j=j-1; // backward iteration is not that great, but we already have it in cache
+//             niter++;
+//         }
+//         niter++;
+//         data[j+1] = x;
+//     }
+//     return niter;
+// }
+
 template<typename T>
 int insertSort( int n, T* data ){
     //https://en.wikipedia.org/wiki/Insertion_sort
     int niter=0;
     int i=1;
     for(int i=1; i<n; i++){
-        const T x = data[i];
+        T x = data[i];
         int j=i-1;
-        while( data[j] > x.val && (j>=0) ){
+        while( data[j] > x && (j>=0) ){
             data[j+1] = data[j];
             j=j-1; // backward iteration is not that great, but we already have it in cache
             niter++;
@@ -112,6 +174,7 @@ int insertSort( int n, T* data ){
     }
     return niter;
 }
+
 
 template<typename T>
 int insertSort( int n, int* permut, T* data ){
@@ -151,6 +214,17 @@ int insertSort_reverse( int n, int* permut, T* data ){
         permut[j+1] = ix;
     }
     return niter;
+}
+
+inline int sortNeighs( int n, int m, int* neighs){
+    //int permut[m];
+    for(int i=0; i<n;i++){
+        int* ngi=neighs+i*m;
+        int m_=0;
+        for(int j=0; j<m;j++){ if(ngi[j]<0)break; m_++; };
+        insertSort<int>( m_, ngi );
+    }
+    return 0;
 }
 
 

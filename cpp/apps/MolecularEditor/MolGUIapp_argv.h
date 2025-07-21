@@ -66,8 +66,11 @@
     funcs["-gridffmode"]={1,[&](const char** ss){ sscanf( ss[0],"%i", (int*)&(W->gridFF.mode) );   printf( "-griffmode=%i ss(%s) \n", (int)W->gridFF.mode  );    }};
     funcs["-nogridff"]={0,[&](const char** ss){ W->bGridFF=false; }}; // AutoCharge
     funcs["-group"]={3,[&](const char** ss){  }};
+    funcs["-shift"]={1,[&](const char** ss){ }};
 
-    funcs["-nPBC"]={1,[&](const char** ss){ sscanf( ss[0],"%lf,%lf,%lf", &(W->nPBC.x),&(W->nPBC.y),&(W->nPBC.z) ); }};
+    funcs["-nPBC"]={1,[&](const char** ss){ sscanf( ss[0],"%i,%i,%i", &(W->nPBC.x),&(W->nPBC.y),&(W->nPBC.z) );}};
+    funcs["-grid_nPBC"]={1,[&](const char** ss){ sscanf( ss[0],"%i,%i,%i", &(W->gridFF.nPBC.x),&(W->gridFF.nPBC.y),&(W->gridFF.nPBC.z) ); }};
+    
     
 
     // ==== funcs2 are executed after initialization MolWorld_sp3 ( therefore may have no effect on initialization process )
@@ -109,6 +112,8 @@
         for(int i=0; i<ng;i++){ W->atom2group[a2g[i]]=ig;}   
         //exit(0);
     }}; // AutoCharge
+
+    funcs2["-shift"]={1,[&](const char** ss){ Vec3d v; sscanf( ss[0],"%lf,%lf,%lf", &v.x,&v.y,&v.z); W->shift_atoms(v); }};
     
 
 
