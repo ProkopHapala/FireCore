@@ -4,6 +4,10 @@ import numpy as np
 import pyopencl as cl
 from .OpenCLBase import OpenCLBase
 
+# Runi It like this
+#    /git/FireCore$ python -u -m pyBall.OCL.eFF_ocl | tee OUT
+
+
 class EFF_OCL(OpenCLBase):
     """
     PyOpenCL interface for running Electron Force Field (eFF) relaxations.
@@ -59,17 +63,22 @@ class EFF_OCL(OpenCLBase):
                 for line in lines[i+2 : i+2+ntot]:
                     parts = line.split()
                     name, pos = parts[0], np.array(parts[1:4], dtype=np.float32)
-                    if name in self.ELEMENT_Z: ions.append({'name': name, 'pos': pos})
+                    if name in self.ELEMENT_Z: ions.append( (name, pos)  )
                     elif name.startswith('e'):
                         size = float(parts[5]) if len(parts) > 5 else 1.0
-                        if name == 'e2':
-                            electrons.extend([{'pos': pos, 'size': size, 'spin': 1}, {'pos': pos, 'size': size, 'spin': -1}])
-                        elif name == 'e+': electrons.append({'pos': pos, 'size': size, 'spin': 1})
-                        elif name == 'e-': electrons.append({'pos': pos, 'size': size, 'spin': -1})
-                if core_mode == 'f':
-                    for ion in ions:
-                        electrons.extend([{'pos': ion['pos'], 'size': frozen_core_size, 'spin': 1}, {'pos': ion['pos'], 'size': frozen_core_size, 'spin': -1}])
+                        if name == 'e2':   
+                            electrons.append( ((pos[0],pos[1],pos[2],size),-1) )
+                            electrons.append( ((pos[0],pos[1],pos[2],size),+1) )
+                        elif name == 'e+': 
+                            electrons.append( ( (pos[0],pos[1],pos[2],size),  1) )
+                        elif name == 'e-': 
+                            electrons.append( ( (pos[0],pos[1],pos[2],size), -1) )
+                # if core_mode == 'f':
+                #     for ion in ions:
+                #         electrons.append( ( (ion[1][0],ion[1][1],ion[1][2],frozen_core_size),  1) )
+                #         electrons.append( ( (ion[1][0],ion[1][1],ion[1][2],frozen_core_size), -1) )
                 system_def = {'na': len(ions), 'ne': len(electrons), 'ions': ions, 'electrons': electrons, 'core_mode': core_mode}
+                #print(system_def)
                 if (system_def['na'] + system_def['ne']) > self.nloc:
                     print(f"Warning: System {sys_count} with {system_def['na']}+{system_def['ne']} particles exceeds workgroup size {self.nloc}. Skipping.")
                 else:
@@ -80,104 +89,133 @@ class EFF_OCL(OpenCLBase):
                 print(f"Warning: Parsing error at line {i}. Stopping. Error: {e}"); 
                 print("line: ", lines[i])
                 break
-        
         print(f"--- Successfully loaded and processed {len(self.systems)} systems.")
 
+    def get_sizes(self):
+        ntot=0
+        ntot_a=0
+        ntot_e=0
+        for sys in self.systems:
+            na = sys['na']
+            ne = sys['ne']
+            ntot   += na + ne
+            ntot_a += na
+            ntot_e += ne
+        self.ntot   = ntot
+        self.ntot_a = ntot_a
+        self.ntot_e = ntot_e
+        return ntot, ntot_a, ntot_e
+
     def realloc_buffers(self):
-        """
-        (Re-)allocates GPU buffers based on the number of loaded systems.
-        This separates allocation from data uploading.
-        """
-        if not self.systems:
-            print("No systems loaded. Cannot allocate buffers."); return
-
-        n_systems = len(self.systems)
-        total_slots = n_systems * self.nloc
-        
-        print(f"Reallocating buffers for {n_systems} systems ({total_slots} total particle slots).")
-
+        nsys        = len(self.systems)
         # Define buffers and their element sizes in bytes
         # (float4=16, float8=32, signed char=1)
+        sz_f4 = 16
+        sz_f8 = 32
+        sz_s1 = 1
+        ntot, ntot_a, ntot_e = self.get_sizes()
+        print(f"Reallocating buffers for {nsys} systems Ptot={ntot}, Ptot_a={ntot_a}, Ptot_e={ntot_e}")
         buffer_specs = {
-            'g_pos_in': 16, 'g_vel_in': 16,
-            'g_aparams': 32, 'g_spins': 1,
-            'g_pos_out': 16, 'g_vel_out': 16,
+            'sysinds': sz_f4*nsys,
+            'pos':     sz_f4*ntot,  
+            'vel':     sz_f4*ntot,
+            'aparams': sz_f8*ntot_a, 
+            'espins':  sz_s1*ntot,
         }
-        
         for name, element_size in buffer_specs.items():
-            self.try_make_buff(f"{name}_buff", total_slots * element_size)
-            
+            self.try_make_buff(f"{name}_buff", element_size)   
         print("--- GPU buffers allocated.")
 
     def upload_data(self):
-        """
-        Populates host arrays with system data and uploads them to the GPU.
-        Assumes realloc_buffers() has already been called.
-        """
-        if not self.systems:
-            print("No systems loaded. Cannot upload data."); return
-        
-        n_systems = len(self.systems)
-        total_slots = n_systems * self.nloc
+        #nmax_atoms = 8
+        #nmax_tot   = self.nloc
+        nsys = len(self.systems)
+        self.sysinds_h = np.zeros((nsys, 4), dtype=np.int32)
 
-        self.pos_h     = np.zeros((total_slots, 4), dtype=np.float32)
-        self.vel_h     = np.zeros_like(self.pos_h)
-        self.aparams_h = np.zeros((total_slots, 8), dtype=np.float32)
-        self.spins_h   = np.zeros(total_slots, dtype=np.int8)
+        print(f"upload_data() n_systems {nsys}, ntot {self.ntot}, ntot_a {self.ntot_a}, ntot_e {self.ntot_e}")
         
+        self.pos_h     = np.zeros((self.ntot,   4), dtype=np.float32)
+        self.vel_h     = np.zeros((self.ntot,   4), dtype=np.float32)
+        self.aparams_h = np.zeros((self.ntot_a, 8), dtype=np.float32)
+        self.spins_h   = np.zeros( self.ntot,       dtype=np.int8)
+        
+        i0a =0
+        i0  = 0
         for i, sys in enumerate(self.systems):
-            offset = i * self.nloc
+            na = sys['na']
+            ne = sys['ne']
+            print("upload_data() sys ", i)
+            self.sysinds_h[i, :4] = (na,ne,i0,i0a)
             for j, ion in enumerate(sys['ions']):
-                idx = offset + j
-                self.pos_h[idx, :3] = ion['pos']
-                self.aparams_h[idx, :] = self.ATOM_PARAMS[ion['name']]
-                if sys['core_mode'] == 'a': self.aparams_h[idx, 1:] = 0.0
-
+                name, pos = ion
+                self.pos_h    [i0 +j, :3] = pos
+                self.aparams_h[i0a+j, : ] = self.ATOM_PARAMS[name]
+                print(f"ion {j:3} i {i0+j} {name} pos {pos}")
+            i0e = i0+na
             for j, ele in enumerate(sys['electrons']):
-                idx = offset + sys['na'] + j
-                self.pos_h[idx, :3] = ele['pos']
-                self.pos_h[idx, 3]  = ele['size']
-                self.spins_h[idx]   = ele['spin']
-
-        self.toGPU_(self.g_pos_in_buff, self.pos_h)
-        self.toGPU_(self.g_vel_in_buff, self.vel_h)
-        self.toGPU_(self.g_aparams_buff, self.aparams_h)
-        self.toGPU_(self.g_spins_buff, self.spins_h)
+                pos, spin = ele
+                self.pos_h    [i0e+j, :4] = pos
+                self.spins_h  [i0e+j    ] = spin
+                print(f"electron {j:3} i {i0e+j} {pos} {spin}")
+            i0a += na
+            i0  += na + ne
+        
+        print( f"upload_data() sys {i} i0 {i0} i0a {i0a} i0e {i0e} pos_h \n", self.pos_h )
+            
+        self.toGPU_(self.sysinds_buff, self.sysinds_h)
+        self.toGPU_(self.pos_buff,     self.pos_h)
+        self.toGPU_(self.vel_buff,     self.vel_h)
+        self.toGPU_(self.aparams_buff, self.aparams_h)
+        self.toGPU_(self.espins_buff,  self.spins_h)
         self.queue.finish()
-        print("--- Host data uploaded to GPU.")
+        print(f"upload_data() DONE")
 
-    def relax_systems(self, n_steps=100, dt=0.1, damping=0.5):
+    def relax_systems(self, n_steps=1, dt=0.1, damping=0.5, bFrozenCore=False):
         """
         Executes the eFF relaxation kernel on the GPU for all loaded systems.
         """
-        na = np.int32(self.systems[0]['na'])
-        ne = np.int32(self.systems[0]['ne'])
+        nsys = np.int32(len(self.systems))
         
         kernel = self.prg.localMD
         krsrho = np.array([1.125, 0.9, -0.2, 1.0], dtype=np.float32)
 
+
+        # __kernel void localMD(
+        #     __global       int4*        sysinds, // [nsys]   {na,ne,i0p,i0a} size and initial index for each atom
+        #     __global       float4*      pos,     // [ntot]   {x,y,z,w} positions (and size) of ions and electrons
+        #     __global       float4*      vel,     // [ntot]   {vx,vy,vz,dw/dt} velocities of ions and electrons (including change of size)
+        #     __global const float8*      aParams, // [ntot_a] parameters of ions { Z_nuc, R_eff, Zcore_eff,   PA,        PB,        PC,        PD }
+        #     __global const signed char* espins,  // [ntot]   {spin} 
+        #     const int    nsys,
+        #     const int    nsteps,
+        #     const float  dt,
+        #     const float  damping,
+        #     const float4 KRSrho
+        # ) {
+
         kernel.set_args(
-            self.g_pos_in_buff,  
-            self.g_vel_in_buff, 
-            self.g_aparams_buff, 
-            self.g_spins_buff,
-            self.g_pos_out_buff, 
-            self.g_vel_out_buff,
-            na, ne, np.int32(n_steps), 
+            self.sysinds_buff, 
+            self.pos_buff,  
+            self.vel_buff, 
+            self.aparams_buff, 
+            self.espins_buff,
+            np.int32(nsys), 
+            np.int32(n_steps), 
             np.float32(dt), 
             np.float32(damping), 
-            krsrho
+            krsrho,
+            np.int32(bFrozenCore)
         )
 
         global_size = (len(self.systems) * self.nloc,)
         local_size = (self.nloc,)
         
-        print(f"--- Running relaxation for {n_steps} steps...")
+        print(f"relax_systems() enque kernel localMD for {n_steps} steps")
         cl.enqueue_nd_range_kernel(self.queue, kernel, global_size, local_size).wait()
         #print("--- Relaxation finished.")
 
         pos_out = np.empty_like(self.pos_h)
-        self.fromGPU_(self.g_pos_out_buff, pos_out)
+        self.fromGPU_(self.pos_buff, pos_out)
         self.queue.finish()
         return pos_out
 
@@ -198,7 +236,6 @@ na,ne,core 3 4 f | A water molecule with frozen core oxygen
 na,ne,core 2 3 a | An all-electron system (H2+)
   H   0.0   0.0   0.0
   H   0.8   0.0   0.0
-  e+  0.4   0.0   0.0   1.0  1.2
   e+  0.4   0.5   0.0   1.0  1.2
   e-  0.4  -0.5   0.0  -1.0  1.2
 """
@@ -218,9 +255,9 @@ na,ne,core 2 3 a | An all-electron system (H2+)
     eff.upload_data()
     
     # 5. Run the relaxation
-    pos_out = eff.relax_systems(n_steps=500, dt=0.05, damping=0.2)
+    pos_out = eff.relax_systems(n_steps=1, dt=0.05, damping=0.2)
 
-    print( "pos_out ", pos_out )
+    print( "pos_out: \n", pos_out )
     
     # 6. Get results
     #final_geometries = eff_runner.get_results()
