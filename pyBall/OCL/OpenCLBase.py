@@ -201,14 +201,22 @@ class OpenCLBase:
         if hasattr(self,buff_name): 
             buff = getattr(self, buff_name)
             if not ( buff is None or buff.size != sz ):
-                return
+                return buff, False
         #print( "try_make_buff(",buff_name,") reallocate to [bytes]: ", sz )
         buff = cl.Buffer(self.ctx, cl.mem_flags.READ_WRITE, sz )
         setattr(self, buff_name, buff )
-        return buff
+        return buff, True
 
-    def try_buff(self, name, names, sz ):
-        if name in names: self.try_make_buff( name+"_buff" , sz)
+    def try_buff(self, name, names, sz, suffix="_buff" ):
+        if name in names: self.try_make_buff( name+suffix , sz)
+
+    def try_make_buffers( self, buffs, suffix="_buff" ):
+        for name, sz in buffs.items():
+            #final_name = alias if alias else buffname
+            buff_name = name + suffix
+            # if getattr(self, buff_name, None) is None or getattr(self, buff_name).size != sz:
+            #     self.try_make_buff(buff_name, sz)
+            buff,new = self.try_make_buff( buff_name, sz)
 
     def toGPU_(self, buf, host_data, byte_offset=0 ):
         cl.enqueue_copy(self.queue, buf, host_data, device_offset=byte_offset)

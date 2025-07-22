@@ -470,11 +470,12 @@ __kernel void solve_local_updates_parallel(
     const int nSite, 
     const int nTips, 
     const float4 solver_params,
-    __global const float2* Esite_Thop,
+    __global const float*  Esite,
+    __global const float*  Tsite,
     __global const float*  W_val, 
     __global const int*    W_idx, 
     __global const int*    nNeigh,
-    __global ulong*        state_out, 
+    __global uchar*        occ_out, 
     __global float*        E_out, 
     __global float2*       Itot_out
 ) {
@@ -526,13 +527,13 @@ __kernel void solve_local_updates_parallel(
 
         const uchar n_i = GET_OCC(i_site, occ_mask);
 
-        float h_local          = Esite_Thop[tip_offset + i_site].x;
+        float h_local          = Esite[tip_offset + i_site];
         const int w_row_offset = i_site * MAX_NEIGHBORS;
         for (int k = 0; k < nNeigh[i_site]; ++k) {
             h_local += (float)GET_OCC(W_idx[w_row_offset + k], occ_mask) * W_val[w_row_offset + k];
         }
 
-        reduction_dE[lid] = (1.0f - 2.0f * (float)n_i) * h_local;
+        reduction_dE  [lid] = (1.0f - 2.0f * (float)n_i) * h_local;
         reduction_site[lid] = i_site;
 
         barrier(CLK_LOCAL_MEM_FENCE); // Wait for all proposals to be calculated
@@ -578,11 +579,11 @@ __kernel void solve_local_updates_parallel(
         ulong final_state_mask = 0;
 
         for (int i = 0; i < nSite; ++i) {
+            for (int j = 0; j < MAX_SITES / 8 + 1; ++j) { occ_out[tip_idx * nSite + i] = occ_mask[j]; }
             if (GET_OCC(i, occ_mask)) {
-                final_state_mask |= (1UL << i);
-                final_E += Esite_Thop[tip_offset + i].x;
-                final_Iocc += Esite_Thop[tip_offset + i].y;
-
+                //final_state_mask |= (1UL << i);
+                final_E    += Esite[tip_offset + i];
+                final_Iocc += Tsite[tip_offset + i];
                 const int w_row_offset = i * MAX_NEIGHBORS;
                 for (int k = 0; k < nNeigh[i]; ++k) {
                     const int j = W_idx[w_row_offset + k];
@@ -591,12 +592,161 @@ __kernel void solve_local_updates_parallel(
                     }
                 }
             } else {
-                final_Iunoc += Esite_Thop[tip_offset + i].y;
+                final_Iunoc += Tsite[tip_offset + i];
             }
         }
-
-        state_out[tip_idx] = final_state_mask;
-        E_out[tip_idx]     = final_E;
+        E_out   [tip_idx]     = final_E;
         Itot_out[tip_idx]  = (float2)(final_Iocc, final_Iunoc);
     }
+}
+
+
+
+
+/**
+ * @file precalc_esite_thop.cl
+ * @brief OpenCL kernel to pre-calculate on-site energies and hopping amplitudes.
+ *
+ * This kernel implements a sophisticated physical model including:
+ * - Multipole interactions (up to quadrupole order) between the tip and sample sites.
+ * - An electrostatic mirror charge effect from a conductive substrate.
+ * - An optional linear potential ramp to model a flat capacitor field.
+ * - Optional rotation of the sample site's local coordinate frame.
+ *
+ * It is designed to generate the input `Esite_Thop` array required by the
+ * local update Monte Carlo solvers.
+ *
+ * Parallelism:
+ * - Each work-item computes the energy and hopping for one unique (tip, site) pair.
+ * - Global work size should be (nTips * nSingle).
+ */
+
+
+// --- Type Definitions ---
+typedef struct __attribute__ ((packed)) { float4 a; float4 b; float4 c; } cl_Mat3;
+
+// --- Helper Functions ---
+float3 mat3_dot_vec3(cl_Mat3 m, float3 v) {  return (float3)( dot(m.a.xyz, v), dot(m.b.xyz, v), dot(m.c.xyz, v) ); }
+
+/**
+ * @brief Computes multipole interaction energy.
+ * MODIFIED: Now takes a private pointer to coefficients.
+ */
+float Emultipole(__private const float* cs, float3 d, int nMulti) {
+    float ir2 = 1.0f / dot(d, d);    
+    float E = cs[0];  // Assumes cs[0] always exists
+    if (nMulti >= 1) {   // Dipole term (requires at least 4 coefficients: c0, px, py, pz)
+        E += ir2 * ( cs[1] * d.x + 
+                     cs[2] * d.y + 
+                     cs[3] * d.z );  }  
+    if (nMulti >= 4) {   // diagonal Quadrupole term
+        E += ir2 * ir2 * ( cs[4] * d.x*d.x +
+                           cs[5] * d.y*d.y +
+                           cs[6] * d.z*d.z ); }  
+    if (nMulti >= 7) {  // off-diagonal Quadrupole term
+        E += ir2 * ir2 * (  cs[7] * d.y*d.z +
+                            cs[8] * d.z*d.x +
+                            cs[9] * d.x*d.y ); }
+    return sqrt(ir2) * E;
+}
+
+// --- Main Kernel ---
+__kernel void precalc_Esite_Thop(
+    // --- System & Tip Configuration
+    const int nSingle,
+    const int nTips,
+    __global const float4*  posE,
+    __global const cl_Mat3* rotSite,
+    __global const float4*  pTips,
+
+    // --- Physical Model Parameters
+    const float  Rtip,
+    const float2 zV,
+    // MODIFIED: Multipole coefficients are now a site-dependent global array
+    __global const float* multipoleCoefs,
+    const int    nMulti,             // Max number of multipole coeffs per site
+    const int    bMirror,
+    const int    bRamp,
+    const float  Thop_decay,
+    const float  Thop_amp,
+
+    // --- Output Array
+    __global float* Esite,
+    __global float* Tsite
+    
+) {
+    // 1. ID setup
+    const int gid = get_global_id(0);
+    if (gid >= (nTips * nSingle)) return;
+    const int iTip  = gid / nSingle;
+    const int iSite = gid % nSingle;
+
+    // 2. Load Data
+    const float4 tip_data  = pTips[iTip];
+    const float4 site_data = posE[iSite];
+
+    if( (iTip==0)&&(iSite==0) ) {
+        printf("GPU: Tip( %12.8f , %12.8f , %12.8f | %12.8f ) Site( %12.8f , %12.8f , %12.8f | %12.8f ) \n", tip_data.x, tip_data.y, tip_data.z, tip_data.w, site_data.x, site_data.y, site_data.z, site_data.w );
+        // print site rotation
+        if(rotSite) {
+            cl_Mat3 rot = rotSite[iSite];
+            printf("GPU: Site %i rotation: \n", iSite);
+            printf("GPU: %12.8f %12.8f %12.8f %12.8f \n", rot.a.x, rot.a.y, rot.a.z, rot.a.w);
+            printf("GPU: %12.8f %12.8f %12.8f %12.8f \n", rot.b.x, rot.b.y, rot.b.z, rot.b.w);
+            printf("GPU: %12.8f %12.8f %12.8f %12.8f \n", rot.c.x, rot.c.y, rot.c.z, rot.c.w);
+        } 
+
+    }
+
+    float3       pTip      = tip_data.xyz;
+    const float  VBias     = tip_data.w;
+    const float3 pSite     = site_data.xyz;
+    const float  E0        = site_data.w;
+
+    // 3. On-Site Energy (Esite) Calculation
+    const float zV0   = zV.x;
+    const float zV1   = pTip.z + zV.y;
+    float3 pTipMirror = pTip;
+    pTipMirror.z      = 2.0f * zV0 - pTip.z;
+    pTip             -= pSite;
+    pTipMirror       -= pSite;
+
+    // if (rotSite) {
+    //     cl_Mat3 rot = rotSite[iSite];
+    //     pTip       = mat3_dot_vec3(rot, pTip);
+    //     pTipMirror = mat3_dot_vec3(rot, pTipMirror);
+    // }
+
+    // MODIFIED: Copy this site's coefficients from global to private memory. This makes access within Emultipole much faster.
+    __private float cs[16]; // Max supported multipole coeffs
+    const int nMulti_ = min(nMulti, 16);
+    for(int i = 0; i < nMulti_; ++i){  cs[i] = multipoleCoefs[iSite * nMulti + i];  }
+
+
+    
+    float E                 = Emultipole(cs, pTip, nMulti);
+    //if (bMirror != 0) {  E -= Emultipole(cs, pTipMirror, nMulti); }
+    E *= (VBias * Rtip);
+
+    if( (iTip==0)&&(iSite==0) ) {
+        printf("GPU: VBias %12.8f    Rtip %12.8f  zV1 %12.8f  zV0 %12.8f \n", VBias, Rtip, zV1, zV0 );
+        printf("GPU: E %12.8f pTip %12.8f %12.8f %12.8f    cs:   ", E, pTip.x, pTip.y, pTip.z);
+        for(int i = 0; i < nMulti_; ++i){  printf("%12.8f ", cs[i]);  }
+        printf("\n");
+    }
+
+    if (bRamp != 0 && (zV1 - zV0) != 0.0f) {
+        float ramp = clamp((pSite.z - zV0) / (zV1 - zV0), 0.0f, 1.0f);
+        // Ramp term only interacts with the monopole component (cs[0])
+        if(nMulti > 0) E += (cs[0] * VBias * ramp);
+    }
+    const float final_Esite = E + E0;
+
+    // 4. Hopping Amplitude (Thop) Calculation
+    const float r          = distance(tip_data.xyz, site_data.xyz);
+    const float final_Thop = Thop_amp * exp(-Thop_decay * r);
+
+    // 5. Store Results
+    Esite[gid] = final_Esite;
+    Tsite[gid] = final_Thop;
 }
