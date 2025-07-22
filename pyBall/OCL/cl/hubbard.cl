@@ -443,9 +443,12 @@ __kernel void solve_minBrute_boltzmann(
  * This massively parallelizes the "search" phase of the Monte Carlo step.
  */
 
+
+#define MAX_WORKGROUP_SIZE_BIG 16
 #define MAX_SITES_BIG 256
-#define OCC_BYTES     (MAX_SITES_BIG / 8 + 1)
-#define MAX_NEIGHBORS 16
+#define OCC_BYTES     32
+//#define MAX_NEIGHBORS 8
+
 //#define MAX_WORKGROUP_SIZE 256 // For sizing reduction arrays
 
 // --- Bitmask Helper Macros ---
@@ -481,17 +484,20 @@ __kernel void solve_local_updates(
     __global uchar*        occ_out, 
     __global float*        E_out, 
     __global float2*       Itot_out,
-    const int              initMode
+    const int              max_neighs,
+    int                    initMode
 ) {
     //=========================================================================
     // 1. Initialization and ID setup
     //=========================================================================
-    const int itip    = get_group_id(0);
-    const int lid     = get_local_id(0);
+    const int itip       = get_group_id(0);
+    const int lid        = get_local_id(0);
     const int local_size = get_local_size(0);
 
+    const int gid  = get_global_id(0);
+    
     if (itip >= nTips) return;
-    if (nSite > 64 || local_size > MAX_WORKGROUP_SIZE) return;
+    if (nSite > MAX_SITES_BIG || local_size > MAX_WORKGROUP_SIZE_BIG) return;
 
     // Unpack solver parameters
     const float kT    = solver_params.x;
@@ -500,23 +506,47 @@ __kernel void solve_local_updates(
     uint rng_state    = (uint)solver_params.w + itip * local_size + lid; // Unique seed per thread
     rng_state=wang_hash(rng_state);
 
+
     // --- Shared memory for the work-group ---
     // State is stored as a bitmask to save memory
-    const int occ_bytes = OCC_BYTES;
-    __local uchar occ_mask[OCC_BYTES];
-    // Reduction arrays to find the best move
-    __local float reduction_dE  [MAX_WORKGROUP_SIZE];
-    __local int   reduction_site[MAX_WORKGROUP_SIZE];
-
+    const int occ_bytes        = min( nSite/8, OCC_BYTES );
+    __local uchar occ_mask      [OCC_BYTES];
+    __local float reduction_dE  [MAX_WORKGROUP_SIZE_BIG];
+    __local int   reduction_site[MAX_WORKGROUP_SIZE_BIG];
     
     const int tip_offset = itip * nSite;   // Offset for accessing tip-specific global data
 
+    if(gid==0){ 
+        int nG = get_global_size(0);
+        printf("GPU solve_local_updates() nSite: %i nTips: %i mode %i initMode %i local_size: %i global_size %i  occ_bytes %i\n", nSite, nTips, mode, initMode, local_size, nG, occ_bytes ); 
+
+        // printf("GPU Esite: ");
+        // for( int is=0; is<nSite; ++is){
+        //     printf("GPU is %3i Esite %f Tsite %f\n", is, Esite[tip_offset + is], Tsite[tip_offset + is] );
+        // }
+
+        printf("GPU W_val: ");
+        for( int is=0; is<nSite; ++is){
+            int nng = nNeigh[is];
+            printf("GPU site %3i nng %i Wij: ", is, nng );
+            for( int j=0; j<nng; ++j){
+                int iw = is * max_neighs + j;
+                printf(" %i:%.2f ", W_idx[iw], W_val[iw] );
+            }
+            printf("\n");
+        }
+    }
+
+
     // Thread 0 initializes the state to all zeros
     if (lid == 0) {
-        if     (initMode == 0 ){ for (int i = 0; i < (nSite / 8 + 1); ++i) { occ_mask[i] = 0;    } } 
-        else if(initMode == 1 ){ for (int i = 0; i < (nSite / 8 + 1); ++i) { occ_mask[i] = 0xFF; } } 
-        else if(initMode == 2 ){ for (int i = 0; i < (nSite / 8 + 1); ++i) { occ_mask[i] = occ_out[ itip*occ_bytes + i]; } } 
-        else if(initMode == 3 ){ for (int i = 0; i < (nSite / 8 + 1); ++i) { occ_mask[i] = wang_hash_uint(&rng_state)&0xFF; } }
+        initMode = 1;
+        if     (initMode == 0 ){ for (int i=0;i<occ_bytes;++i) { occ_mask[i] = 0;    } } 
+        else if(initMode == 1 ){ for (int i=0;i<occ_bytes;++i) { occ_mask[i] = 0xFF; } } 
+        else if(initMode == 2 ){ for (int i=0;i<occ_bytes;++i) { occ_mask[i] = occ_out[ itip*OCC_BYTES + i]; } } 
+        else if(initMode == 3 ){ for (int i=0;i<occ_bytes;++i) { occ_mask[i] = wang_hash_uint(&rng_state)&0xFF; } }
+
+        if(itip==0){ printf("GPU itip %3i occ: ", itip ); for(int i=0;i<occ_bytes;++i){ printf("%02x", occ_mask[i]); } printf("\n"); }
     }
     barrier(CLK_LOCAL_MEM_FENCE); // Ensure all threads see the initialized state
 
@@ -531,7 +561,7 @@ __kernel void solve_local_updates(
 
         const uchar n_i  = GET_OCC(i_site, occ_mask);     // site occupancy
         float      Ei    = Esite[tip_offset + i_site];    // on-site energy
-        const int  iw0   = i_site * MAX_NEIGHBORS;
+        const int  iw0   = i_site * max_neighs;
         for (int k = 0; k < nNeigh[i_site]; ++k) {        // coulomb interactions with neighbors
             const int iw    = iw0 + k;
             const int jsite = W_idx[iw];
@@ -575,18 +605,19 @@ __kernel void solve_local_updates(
             if (GET_OCC(i, occ_mask)) {
                 Iocc += Tsite[tip_offset + i];          // on-site current
                 E    += Esite[tip_offset + i];          // on-site energy
-                const int iw0 = i * MAX_NEIGHBORS;
-                for (int k = 0; k < nNeigh[i]; ++k) {  // coulomb interactions with neighbors
-                    const int iw = iw0 + k;
-                    const int j  = W_idx[iw];
-                    if (i < j && GET_OCC(j, occ_mask)) {  E += W_val[iw]; }
-                }
+
+                // const int iw0 = i * MAX_NEIGHBORS;
+                // for (int k = 0; k < nNeigh[i]; ++k) {  // coulomb interactions with neighbors
+                //     const int iw = iw0 + k;
+                //     const int j  = W_idx[iw];
+                //     if (i < j && GET_OCC(j, occ_mask)) {  E += W_val[iw]; }
+                // }
             } else {
                 Iunoc += Tsite[tip_offset + i];          // on-site current
             }
         }
-        for (int j = 0; j < MAX_SITES / 8 + 1; ++j) { occ_out[itip*occ_bytes + j] = occ_mask[j]; } // store optimized state configuration
-        E_out   [itip]     = E;                        // store energy of optimized state
+        for (int j = 0; j < occ_bytes; ++j) { occ_out[itip*OCC_BYTES + j] = occ_mask[j]; } // store optimized state configuration
+        E_out   [itip]     = E;                  // store energy of optimized state
         Itot_out[itip]  = (float2)(Iocc, Iunoc); // store current of optimized state
     }
 }

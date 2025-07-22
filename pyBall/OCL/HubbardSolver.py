@@ -1,15 +1,20 @@
-
 # run it like this:
 #   python -u -m pyBall.OCL.HubbardSolver | tee OUT
 
 import os
 import numpy as np
 import pyopencl as cl
+import matplotlib.pyplot as plt
 
 from .OpenCLBase import OpenCLBase
 
 COULOMB_CONST = 14.399644730092272   # eV*Angstrom
 kBoltzmann    = 8.61733326214511e-5  # eV/K
+
+# unlimited line length
+#np.set_printoptions(threshold=np.inf)
+np.set_printoptions(linewidth=np.inf)
+#np.set_printoptions(suppress=True)
 
 
 def screened_coulomb(r, screening_length=10.0):
@@ -44,6 +49,10 @@ class HubbardSolver(OpenCLBase):
     management & kernel argument setting) to stay transparent while still
     hiding repetitive boiler-plate from the user.
     """
+
+    #occ_bytes = ((nSingle + 7) // 8)  # Ceiling division for number of bytes needed
+    occ_bytes  = 32
+    max_neighs = 8
 
     # ---- names used in buffer_dict / as object attributes
     # buf_pose  = "posE_buff"      #   nSingle  * sizeof(float4)
@@ -94,12 +103,12 @@ class HubbardSolver(OpenCLBase):
         buffs = {
             "Esite":   (sz_f*1 * nTips   * nSingle   ),
             "Tsite":   (sz_f*1 * nTips   * nSingle   ),
-            "Wval":    (sz_f*1 * nSingle * nMaxNeigh ),
-            "Widx":    (sz_f*1 * nSingle * nMaxNeigh ),
+            "Wval":    (sz_f*1 * nSingle * self.max_neighs ),
+            "Widx":    (sz_f*1 * nSingle * self.max_neighs ),
             "WnNeigh": (sz_f*1 * nSingle  ),
             # Re-purpose brute-force outputs
             "Emin":    (sz_f*1 * nTips  ),
-            "occ":     ( 32    * nTips  ), 
+            "occ":     (self.occ_bytes * nTips  ), 
             "Itot":    (sz_f*2 * nTips  ),
         }
         self.try_make_buffers(buffs)
@@ -162,15 +171,15 @@ class HubbardSolver(OpenCLBase):
         )
         return args, kernel
 
-    def setup_solve_local_updates(self, nSite, nTips, params, initMode=3, T=3.0, nIter=100, solverMode=0 ):
+    def setup_solve_local_updates(self, nSite, nTips, params={}, initMode=3, T=3.0, nIter=100, solverMode=0 ):
         """Prepare arguments for the solve_local_updates kernel."""
         kernel = self.prg.solve_local_updates
         
         solver_params = np.array([
-            params.get("kT", kBoltzmann*T ),
-            params.get("nIter", nIter),
+            params.get("kT",         kBoltzmann*T ),
+            params.get("nIter",      nIter),
             params.get("solverMode", solverMode),
-            params.get("seed", np.random.randint(0, 2**31))
+            params.get("seed",       np.random.randint(0, 2**31))
         ], dtype=np.float32)
 
         args = (
@@ -185,6 +194,7 @@ class HubbardSolver(OpenCLBase):
             self.occ_buff,  
             self.Emin_buff, 
             self.Itot_buff, 
+            np.int32(self.max_neighs),
             np.int32(initMode),
         )
         return args, kernel
@@ -279,7 +289,7 @@ class HubbardSolver(OpenCLBase):
 
 
     # NEW: High-level public API for the local update solver
-    def solve_local_updates(self, Esite, Tsite, W_sparse, params=default_params):
+    def solve_local_updates(self, W_sparse=None, Esite=None, Tsite=None, nTips=None, nSite=None, nMaxNeigh=None,  params=default_params, nWorkGroup=16, bRealloc=True ):
         """
         Run the local-update Monte Carlo solver.
 
@@ -293,38 +303,40 @@ class HubbardSolver(OpenCLBase):
             state_out (np.ndarray): (nTips,) uint64 - final state bitmask.
             Itot_out (np.ndarray): (nTips, 2) float32 - final currents {I_occ, I_unoc}.
         """
-        nTips, nSite, _ = Esite.shape
-        W_val, W_idx, nNeigh = W_sparse
-        nMaxNeigh = W_val.shape[1]
 
-        if nSite > 64:
-            raise ValueError("[HubbardSolver] nSite > 64 exceeds ulong bitmask limit.")
+        if nSite > 64: raise ValueError("[HubbardSolver] nSite > 64 exceeds ulong bitmask limit.")
 
         # Reallocate buffers and upload data
-        self.realloc_local_update_buffers(nSite, nTips, nMaxNeigh)
-        self.toGPU_(self.Esite_buff, Esite)
-        self.toGPU_(self.Tsite_buff, Tsite)
-        self.toGPU_(self.W_val_buff, W_val)
-        self.toGPU_(self.W_idx_buff, W_idx)
-        self.toGPU_(self.nNeigh_buff, nNeigh)
+        if bRealloc:
+            if nSite     is None: nSite = Esite.shape[0]
+            if nTips     is None: nTips = Esite.shape[1]
+            if nMaxNeigh is None: nMaxNeigh = len(W_sparse[2])
+            self.realloc_local_update_buffers(nSite, nTips, nMaxNeigh)
+        if Esite is not None: self.toGPU_(self.Esite_buff, Esite)
+        if Tsite is not None: self.toGPU_(self.Tsite_buff, Tsite)
+        if W_sparse is not None:
+            Wval, Widx, WnNeigh = W_sparse
+            self.toGPU_(self.Wval_buff,  Wval)
+            self.toGPU_(self.Widx_buff,  Widx)
+            self.toGPU_(self.WnNeigh_buff, WnNeigh)
 
         # Kernel launch
-        global_size = (nTips * self.nloc,)
-        local_size = (self.nloc,)
-        args, kernel = self.setup_solve_local_updates_parallel(nSite, nTips, params)
+        global_size  = (nTips * nWorkGroup,)
+        local_size   = (nWorkGroup,)
+        args, kernel = self.setup_solve_local_updates(nSite, nTips, params)
         kernel(self.queue, global_size, local_size, *args)
         
         # Download results
-        state_out = np.empty(nTips, dtype=np.uint64)
-        E_out = np.empty(nTips, dtype=np.float32)
-        Itot_out = np.empty((nTips, 2), dtype=np.float32)
+        occ_out   = np.empty(nTips*self.occ_bytes, dtype=np.uint8)
+        E_out     = np.empty(nTips, dtype=np.float32)
+        Itot_out  = np.empty((nTips, 2), dtype=np.float32)
         
-        self.fromGPU_(self.iMin_buff, state_out) # Re-purposed
+        self.fromGPU_(self.occ_buff,  occ_out)  # Re-purposed
         self.fromGPU_(self.Emin_buff, E_out)     # Re-purposed
         self.fromGPU_(self.Itot_buff, Itot_out)  # Re-purposed
 
         self.queue.finish()
-        return E_out, state_out, Itot_out
+        return E_out, Itot_out, occ_out
     
 
 
@@ -899,25 +911,26 @@ def test_local_update_solver():
 
     # This part would typically involve a more complex physical model,
     # but for demonstration, we'll construct it manually.
-    Esite_Thop = np.zeros((nTips, nSite, 2), dtype=np.float32)
+    Esite = np.zeros((nTips, nSite), dtype=np.float32)
+    Tsite = np.zeros((nTips, nSite), dtype=np.float32)
     for i in range(nTips):
-        tip_pos = pTips[i, :3]
+        tip_pos   = pTips[i, :3]
         tip_vbias = pTips[i, 3]
         for j in range(nSite):
             dist = np.linalg.norm(tip_pos - posE[j, :3])
             # Simplified model for Esite and Thop
-            Esite_Thop[i, j, 0] = posE[j, 3] + tip_vbias * (3.0 / dist) # On-site energy
-            Esite_Thop[i, j, 1] = np.exp(-0.3 * dist)                 # Hopping
+            Esite[i, j] = posE[j, 3] + tip_vbias * (3.0 / dist) # On-site energy
+            Tsite[i, j] = np.exp(-0.3 * dist)                 # Hopping
     
     # 5. Run the local update solver
     print("Running the parallel local update solver...")
-    solver_params = {
-        "kT": 0.001,
-        "nIter": 20000,
-        "solverMode": 2, # Annealing
-        "seed": 42
-    }
-    E_out, state_out, Itot_out = solver.solve_local_updates(Esite_Thop, W_sparse, params=solver_params)
+    # solver_params = {
+    #     "kT": 0.001,
+    #     "nIter": 20000,
+    #     "solverMode": 2, # Annealing
+    #     "seed": 42
+    # }
+    E_out, state_out, Itot_out = solver.solve_local_updates(Esite, Tsite, W_sparse )
     
     # 6. Print results
     for i in range(nTips):
@@ -974,14 +987,14 @@ def demo_precalc_scan(solver: HubbardSolver=None, nxy_sites=(6, 6), nxy_scan=(10
     print("--- Running pre-calculation scan demo ---")
 
     # 1. Define the system of sites
-    posE = make_grid_sites(nxy=nxy_sites, avec=(5.0, 0.0), bvec=(0.0, 5.0), E0=-0.15)
+    posE    = make_grid_sites(nxy=nxy_sites, avec=(5.0, 0.0), bvec=(0.0, 5.0), E0=-0.15)
     nSingle = posE.shape[0]
     print(f"Created a {nxy_sites[0]}x{nxy_sites[1]} grid of {nSingle} sites.")
 
     # 2. Define the 2D grid of tip positions for the scan
     extent = [-15.0, 15.0, -15.0, 15.0]
-    pTips = generate_xy_scan(extent, nxy=nxy_scan, zTip=3.0, Vbias=Vbias)
-    nTips = pTips.shape[0]
+    pTips  = generate_xy_scan(extent, nxy=nxy_scan, zTip=3.0, Vbias=Vbias)
+    nTips  = pTips.shape[0]
     print(f"Generated a {nxy_scan[0]}x{nxy_scan[1]} grid of {nTips} tip positions.")
 
     # 3. Define the physical model parameters (e.g., simple monopole)
@@ -1025,7 +1038,92 @@ def demo_precalc_scan(solver: HubbardSolver=None, nxy_sites=(6, 6), nxy_scan=(10
     plt.tight_layout(rect=[0, 0, 1, 0.96])
     plt.show()
 
-def demo_local_update(solver: HubbardSolver=None, nxy_sites=(4, 4), nxy_scan=(20, 20), Vbias=0.1, cutoff=8.0, W_amplitude=1.0, T=0.001, nIter=100):
+def plot_occupancy_slice(occupation, nxy_scan, occ_bytes, slice_idx, axis='x'):
+    """
+    Plots a 1D slice of the occupancy array as a binary image.
+
+    Args:
+        occupation (np.ndarray): The 1D array of site occupancies (nTips * occ_bytes).
+        nxy_scan (tuple): The (nx, ny) dimensions of the tip scan grid.
+        occ_bytes (int): The number of bytes per tip position for occupancy.
+        slice_idx (int): The index for the slice (e.g., ix if axis='x', iy if axis='y').
+        axis (str): The axis along which to take the slice ('x' or 'y').
+    """
+    nx, ny = nxy_scan
+    nTips  = nx * ny
+    nSites = occ_bytes * 8
+
+    # Reshape occupation to (ny, nx, occ_bytes) for easier slicing
+    # Note: The order here depends on how the scan grid is flattened to nTips
+    # Assuming row-major (y then x) for indexing pTips
+    occupancy_2d_bytes = occupation.reshape(ny, nx, occ_bytes)
+
+    if axis == 'x':
+        # Slice along y-axis at fixed x_idx
+        if not (0 <= slice_idx < nx):
+            print(f"Error: slice_idx {slice_idx} out of bounds for nx={nx}")
+            return
+        slice_data_bytes = occupancy_2d_bytes[:, slice_idx, :]
+        title_suffix = f" (x_idx={slice_idx})"
+    elif axis == 'y':
+        # Slice along x-axis at fixed y_idx
+        if not (0 <= slice_idx < ny):
+            print(f"Error: slice_idx {slice_idx} out of bounds for ny={ny}")
+            return
+        slice_data_bytes = occupancy_2d_bytes[slice_idx, :, :]
+        title_suffix = f" (y_idx={slice_idx})"
+    else:
+        print("Error: axis must be 'x' or 'y'")
+        return
+
+    # Convert bytes to bits
+    # Each row in slice_data_bytes is (occ_bytes,)
+    # We want to convert each byte into 8 bits and concatenate them horizontally
+    binary_image_data = np.zeros((slice_data_bytes.shape[0], nSites), dtype=np.uint8)
+    for i, byte_row in enumerate(slice_data_bytes):
+        bits = np.unpackbits(byte_row)
+        binary_image_data[i, :] = bits
+
+    plt.figure(figsize=(10, 5))
+    plt.imshow(binary_image_data, cmap='gray', aspect='auto', interpolation='nearest')
+    plt.title(f"Site Occupancy Slice{title_suffix}")
+    plt.xlabel("Site Index (0 to nSites-1)")
+    plt.ylabel(f"Tip Position Index along {'Y' if axis=='x' else 'X'} axis")
+    plt.colorbar(label="Occupancy (0=empty, 1=occupied)")
+    plt.show()
+
+def plot_occupancy_line(occupation, nSingle ):
+    #binary_image_data = np.zeros((slice_data_bytes.shape[0], nSites), dtype=np.uint8)
+    # for i, byte_row in enumerate(slice_data_bytes):
+    #     bits = np.unpackbits(byte_row)
+    #     binary_image_data[i, :] = bits
+    nbyte = nSingle//8
+    bits = np.unpackbits(occupation, axis=1)
+    print( "plot_occupancy_line() bits.shape = ", bits.shape, nSingle, nbyte)
+    bits = bits[:,:nSingle]
+    plt.figure(figsize=(10, 5))
+    plt.imshow(bits, cmap='gray', aspect='auto', interpolation='nearest')
+    plt.title(f"Site Occupancy Slice")
+    plt.xlabel("Site Index (0 to nSites-1)")
+    plt.ylabel(f"Tip Position Index ")
+    plt.colorbar(label="Occupancy (0=empty, 1=occupied)")
+    #plt.show()
+
+def print_occupancy(occupation, nSingle, bHex=False ):
+    occ_bytes = nSingle//8
+    nTips = occupation.shape[0]
+    for i in range(nTips):
+        #print(f"Tip {i}: E={energy[i]:.3f}, I_occ={current[i,0]:.3f}, I_unocc={current[i,1]:.3f}")
+        #i0 = i*nByteMax
+        print(f"CPU iTip {i:3} occ: ", end="")
+        for j in range(occ_bytes):
+            if bHex:
+                print(f"{occupation[i,j]:02x}", end="")
+            else:
+                print(f"{occupation[i,j]:08b}", end="")
+        print()
+
+def demo_local_update(solver: HubbardSolver=None, nxy_sites=(4, 4), nxy_scan=(50, 50), Vbias=0.1, cutoff=8.0, W_amplitude=1.0, T=0.001, nIter=100):
     """
     Demonstrates the usage of the solve_local_updates kernel by running a 2D scan with Monte Carlo optimization.
     
@@ -1052,7 +1150,7 @@ def demo_local_update(solver: HubbardSolver=None, nxy_sites=(4, 4), nxy_scan=(20
     print("--- Running local update Monte Carlo solver demo ---")
 
     # 1. Define the system of sites
-    posE = make_grid_sites(nxy=nxy_sites, avec=(5.0, 0.0), bvec=(0.0, 5.0), E0=-0.15)
+    posE    = make_grid_sites(nxy=nxy_sites, avec=(5.0, 0.0), bvec=(0.0, 5.0), E0=-0.15)
     nSingle = posE.shape[0]
     print(f"Created a {nxy_sites[0]}x{nxy_sites[1]} grid of {nSingle} sites.")
 
@@ -1092,13 +1190,15 @@ def demo_local_update(solver: HubbardSolver=None, nxy_sites=(4, 4), nxy_scan=(20
     pos_xyz = posE[:, :3]  # Only take x, y, z components, not the energy E0
     W_val, W_idx, nNeigh = make_sparse_W_pbc(pos_xyz, lvs_pbc, cutoff, W_func=screened_coulomb, nMaxNeigh=nMaxNeigh)
     print(f"Created sparse W matrix with cutoff {cutoff} and max {nMaxNeigh} neighbors per site.")
+    print("GPU W_val: \n", W_val)
+    print("GPU W_idx: \n", W_idx)
     
     # 3d. Local update solver parameters
     params_solver = {
-        "kT": kBoltzmann * T,  # Temperature in energy units
+        "kT":    kBoltzmann * T,  # Temperature in energy units
         "nIter": nIter,      # Number of Monte Carlo iterations
         "solverMode": 2,     # Use Metropolis algorithm (0=deterministic, 2=simulated annealing)
-        "seed": np.random.randint(0, 2**31)  # Random seed
+        "seed":  np.random.randint(0, 2**31)  # Random seed
     }
 
     # 4. Call the pre-calculation kernel
@@ -1114,56 +1214,43 @@ def demo_local_update(solver: HubbardSolver=None, nxy_sites=(4, 4), nxy_scan=(20
     # Allocate buffers for the solver
     solver.realloc_local_update_buffers(nSingle, nTips, nMaxNeigh)
     
-    # Upload Esite and Tsite to GPU
-    solver.toGPU_(solver.Esite_buff, Esite.reshape(-1))
-    solver.toGPU_(solver.Tsite_buff, Tsite.reshape(-1))
-    
-    # Upload W matrix to GPU
-    solver.toGPU_(solver.Wval_buff, W_val)
-    solver.toGPU_(solver.Widx_buff, W_idx)
-    solver.toGPU_(solver.WnNeigh_buff, nNeigh)
-    
-    # Initialize the solver with appropriate work group size
-    global_size = (nTips,)
-    # Make the local_size a power of 2 that divides evenly into the global size (or is smaller)
-    # Using a smaller work group size (16) may help avoid INVALID_WORK_GROUP_SIZE errors
-    local_size = (16,)
-    
-    # Setup and run the kernel
-    args, kernel = solver.setup_solve_local_updates(nSingle, nTips, params_solver, initMode=3)
-    kernel(solver.queue, global_size, local_size, *args)
-    
-    # Download results
-    energy = np.empty(nTips, dtype=np.float32)
-    current = np.empty((nTips, 2), dtype=np.float32)
-    occ_bytes = ((nSingle + 7) // 8)  # Ceiling division for number of bytes needed
-    occupation = np.empty(nTips * occ_bytes, dtype=np.uint8)
-    
-    solver.fromGPU_(solver.Emin_buff, energy)
-    solver.fromGPU_(solver.Itot_buff, current)
-    solver.fromGPU_(solver.occ_buff, occupation)
+    energy, current, occupation = solver.solve_local_updates( W_sparse=(W_val, W_idx, nNeigh), nTips=nTips, nSite=nSingle, nMaxNeigh=nMaxNeigh )
+
+    # occ_bytes = nSingle//8
+    # for i in range(nTips):
+    #     #print(f"Tip {i}: E={energy[i]:.3f}, I_occ={current[i,0]:.3f}, I_unocc={current[i,1]:.3f}")
+    #     print(f"CPU iTip {i:3} occ: ", end="")
+    #     for j in range(occ_bytes):
+    #         #print(f"{occupation[i*solver.occ_bytes+j]:02x}", end="")
+    #         print(f"{occupation[i*solver.occ_bytes+j]:08b}", end="")
+    #     print()
+
+    occ_slice = occupation.reshape( nxy_scan[0], nxy_scan[1], -1 )[:, nxy_scan[1]//2,:]
+
+    #print_occupancy(occupation.reshape(nTips,-1), nSingle, bHex=False)
+
+    print_occupancy(occ_slice, nSingle, bHex=False)
+
+
+    # Plot occupancy slice
+    # For demonstration, let's plot a slice along x-axis at y_idx = ny // 2
+    # Or along y-axis at x_idx = nx // 2
+
+    plot_occupancy_line( occ_slice, nSingle )
+    #plot_occupancy_slice(occupation, nxy_scan, solver.occ_bytes, slice_idx=nxy_scan[0] // 2, axis='x')
     
     # Calculate total charge for each tip position (count bits set to 1)
-    total_charge = np.zeros(nTips, dtype=np.int32)
-    occupation_reshaped = occupation.reshape(nTips, occ_bytes)
-    
-    for i in range(nTips):
-        # Count the number of '1' bits in the occupation bit mask
-        for j in range(occ_bytes):
-            byte = occupation_reshaped[i, j]
-            # Count bits using Brian Kernighan's algorithm
-            count = 0
-            while byte:
-                byte &= (byte - 1)
-                count += 1
-            total_charge[i] += count
+    total_charge        = np.zeros(nTips, dtype=np.int32)
+    occupation_reshaped = occupation.reshape(nTips, solver.occ_bytes)
+    bits = np.unpackbits(occupation_reshaped, axis=1)   # shape (nTips, 8*occ_bytes)
+    total_charge = bits.sum(axis=1)                     # shape (nTips,)
     
     # Reshape results into 2D maps
     nx, ny = nxy_scan
-    energy_map = energy.reshape((nx, ny))
-    current_map_occ = current[:, 0].reshape((nx, ny))   # Occupied sites current
+    energy_map       = energy.reshape((nx, ny))
+    current_map_occ  = current[:, 0].reshape((nx, ny))   # Occupied sites current
     current_map_unoc = current[:, 1].reshape((nx, ny))  # Unoccupied sites current
-    charge_map = total_charge.reshape((nx, ny))
+    charge_map       = total_charge.reshape((nx, ny))
     
     print(f"Energy range: {np.min(energy):.3f} to {np.max(energy):.3f}")
     print(f"Charge range: {np.min(total_charge)} to {np.max(total_charge)} sites")
@@ -1173,9 +1260,9 @@ def demo_local_update(solver: HubbardSolver=None, nxy_sites=(4, 4), nxy_scan=(20
     fig, axs = plt.subplots(2, 2, figsize=(12, 10))
     fig.suptitle(f"Monte Carlo Optimization Results (T={T}K, nIter={nIter}, W={W_amplitude})", fontsize=16)
     
-    plot2d(energy_map.T, extent=extent, title="Energy (optimized)", ax=axs[0, 0], cmap="viridis", ps=posE)
-    plot2d(charge_map.T, extent=extent, title="Total Charge (# occupied sites)", ax=axs[0, 1], cmap="plasma", ps=posE)
-    plot2d(current_map_occ.T, extent=extent, title="Current (occupied sites)", ax=axs[1, 0], cmap="inferno", ps=posE)
+    plot2d(energy_map.T,       extent=extent, title="Energy (optimized)", ax=axs[0, 0], cmap="viridis", ps=posE)
+    plot2d(charge_map.T,       extent=extent, title="Total Charge (# occupied sites)", ax=axs[0, 1], cmap="plasma", ps=posE)
+    plot2d(current_map_occ.T,  extent=extent, title="Current (occupied sites)", ax=axs[1, 0], cmap="inferno", ps=posE)
     plot2d(current_map_unoc.T, extent=extent, title="Current (unoccupied sites)", ax=axs[1, 1], cmap="magma", ps=posE)
     
     plt.tight_layout(rect=[0, 0, 1, 0.95])
