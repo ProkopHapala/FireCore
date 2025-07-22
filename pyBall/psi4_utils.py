@@ -44,8 +44,12 @@ default_psi4_options = {
 
 def load_res():
     global resp
+    global psi4
     if resp is None:
         import resp
+    if psi4 is None:
+        import psi4
+
 
 # ============ Functions
 
@@ -152,8 +156,6 @@ def relax( geom=None, params=None, fname=None ):
 
 def psi4resp( name, bRelax=True, indir="./input/", outdir="./output/", method='scf', basis='/STO-3G', resp_options=default_resp_options, psi4_options=default_psi4_options ):
     load_res()
-    if resp is None:
-        import resp
     method_basis = method+"/"+basis;    #print( method_basis )
     # ------ load geometry
     geom  = xyz2str( indir+name+".xyz")     #;print("geom>>%s<<" %geom )
