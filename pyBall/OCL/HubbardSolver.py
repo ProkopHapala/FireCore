@@ -25,6 +25,10 @@ default_params = {
 }
 
 
+# -----------------------------------------------------------------------------
+#                  class  HubbardSolver 
+# -----------------------------------------------------------------------------
+
 class HubbardSolver(OpenCLBase):
     """Convenient wrapper around the `solve_minBrute_fly` kernel in `cl/hubbard.cl`.
 
@@ -64,67 +68,10 @@ class HubbardSolver(OpenCLBase):
         if not self.load_program(rel_path=rel_path, base_path=base_path):
             raise RuntimeError("[HubbardSolver] Failed to load/compile hubbard.cl")
 
+
     # ---------------------------------------------------------------------
-    # Internal helpers
+    #  HubbardSolver  :   Buffer Management 
     # ---------------------------------------------------------------------
-    # def realloc_buffers(self, nSingle: int, nTips: int):
-    #     """(Re-)allocate GPU buffers as needed for the given problem size."""
-    #     print("HubbardSolver::realloc_buffers() dir(self):")
-    #     sz_f  = 4
-    #     #sz_f4  = 16  # bytes
-    #     #sz_f2  = 8
-    #     buffs = {
-    #         #  name     handle, size 
-    #         "posE":  [ None, nSingle * sz_f*4 ],
-    #         "pTips": [ None, nTips   * sz_f*4 ],
-    #         "Emin":  [ None, nTips   * sz_f*1 ],
-    #         "iMin":  [ None, nTips   * sz_f*1 ],
-    #         "Itot":  [ None, nTips   * sz_f*2 ],
-    #     }
-    #     for name, buff_info  in buffs.items():
-    #         handle = buff_info[0]
-    #         sz     = buff_info[1]
-    #         #print("  ",name, sz)
-    #         buffname = name + "_buff"
-    #         if handle is None:  
-    #             handle = self.try_make_buff(buffname, sz)
-    #         else:
-    #             if handle.size != sz:
-    #                 handle = self.try_make_buff(buffname, sz)
-    #         buff_info[0] = handle
-
-    # # NEW: A dedicated realloc function for the new local update solver's buffers
-    # def realloc_local_update_buffers(self, nSingle: int, nTips: int, nMaxNeigh: int):
-    #     """(Re-)allocate GPU buffers specifically for the local update solver."""
-    #     sz_f  = 4
-    #     # Reuse output buffers from brute-force where possible (E_out, Itot_out)
-    #     buffs = {
-    #         "Esite_Thop_buff": (sz_f*2 * nTips   * nSingle   *  ),
-    #         "W_val_buff":      (sz_f*1 * nSingle * nMaxNeigh *  ),
-    #         "W_idx_buff":      (sz_f*1 * nSingle * nMaxNeigh *  ),
-    #         "nNeigh_buff":     (sz_f*1 * nSingle *  ),
-    #         # Re-purpose brute-force outputs
-    #         "Emin_buff":       (sz_f*1 * nTips *  ),
-    #         "iMin_buff":       (sz_f*8 * nTips *  ), # ulong is 8 bytes. Repurpose iMin
-    #         "Itot_buff":       (sz_f*2 * nTips *  ),
-    #     }
-    #     for buffname, (sz, alias) in buffs.items():
-    #         final_name = alias if alias else buffname
-    #         if getattr(self, final_name, None) is None or getattr(self, final_name).size != sz:
-    #             self.try_make_buff(final_name, sz)
-
-    # def realloc_precalc_buffers(self, nSingle: int, nTips: int, nMulti: int):
-    #     sz_f  = 4
-    #     """(Re-)allocate GPU buffers needed for the precalc_esite_thop kernel."""
-    #     # Site positions and initial energies
-    #     self.try_make_buff("posE_buff",   nSingle * sz_f * 4)                 # Tip positions and bias
-    #     self.try_make_buff("pTips_buff",  nTips * sz_f * 4)                  
-    #     self.try_make_buff("multipoleCoefs_buff", nSingle * nMulti * sz_f * 4)  # Multipole coefficients per site
-    #     self.try_make_buff("rotSite_buff", nSingle * self.cl_mat3_dtype.itemsize)  # Rotation matrices per site (cl_Mat3 dtype)
-    #     self.try_make_buff("Esite_Thop_buff", nTips * nSingle * 2 * 4)   # Output buffer for site energies and hopping amplitudes
-
-
-
 
     def realloc_buffers(self, nSingle: int, nTips: int):
         """(Re-)allocate GPU buffers as needed for the given problem size."""
@@ -152,7 +99,7 @@ class HubbardSolver(OpenCLBase):
             "WnNeigh": (sz_f*1 * nSingle  ),
             # Re-purpose brute-force outputs
             "Emin":    (sz_f*1 * nTips  ),
-            "iMin":    (sz_f*8 * nTips  ), # ulong is 8 bytes. Repurpose iMin
+            "occ":     ( 32    * nTips  ), 
             "Itot":    (sz_f*2 * nTips  ),
         }
         self.try_make_buffers(buffs)
@@ -176,11 +123,8 @@ class HubbardSolver(OpenCLBase):
         }
         self.try_make_buffers(buffs)
 
-
-
-
     # ---------------------------------------------------------------------
-    # Public API
+    #  HubbardSolver  :   Setup Kernels
     # ---------------------------------------------------------------------
     
     def setup_solve_minBrute_fly(self, nSingle, nTips, tipDecay, tipRadius, zMirror, Wcouple):
@@ -218,14 +162,14 @@ class HubbardSolver(OpenCLBase):
         )
         return args, kernel
 
-    def setup_solve_local_updates_parallel(self, nSite, nTips, params):
-        """Prepare arguments for the solve_local_updates_parallel kernel."""
-        kernel = self.prg.solve_local_updates_parallel
+    def setup_solve_local_updates(self, nSite, nTips, params, initMode=3, T=3.0, nIter=100, solverMode=0 ):
+        """Prepare arguments for the solve_local_updates kernel."""
+        kernel = self.prg.solve_local_updates
         
         solver_params = np.array([
-            params.get("kT", 0.001),
-            params.get("nIter", 10000),
-            params.get("solverMode", 2),
+            params.get("kT", kBoltzmann*T ),
+            params.get("nIter", nIter),
+            params.get("solverMode", solverMode),
             params.get("seed", np.random.randint(0, 2**31))
         ], dtype=np.float32)
 
@@ -235,12 +179,13 @@ class HubbardSolver(OpenCLBase):
             solver_params,
             self.Esite_buff,
             self.Tsite_buff,
-            self.W_val_buff,
-            self.W_idx_buff,
-            self.nNeigh_buff,
-            self.iMin_buff, # Re-purposed for state_out (ulong)
-            self.Emin_buff, # Re-purposed for E_out (float)
-            self.Itot_buff  # Re-purposed for Itot_out (float2)
+            self.Wval_buff,
+            self.Widx_buff,
+            self.WnNeigh_buff,
+            self.occ_buff,  
+            self.Emin_buff, 
+            self.Itot_buff, 
+            np.int32(initMode),
         )
         return args, kernel
 
@@ -267,7 +212,11 @@ class HubbardSolver(OpenCLBase):
         )
         return args, kernel
 
-    # MODIFIED: Updated high-level public API
+    # ---------------------------------------------------------------------
+    #  HubbardSolver  :   Run Kernels
+    # ---------------------------------------------------------------------
+
+
     def precalc_esite_thop(self, posE, pTips, rots=None, multipoleCoefs=None, bMirror=True, bRamp=True, params=default_params):
         """
         Runs the pre-calculation kernel to generate on-site energies and hoppings.
@@ -550,9 +499,8 @@ class HubbardSolver(OpenCLBase):
         return Tout
 
 # -----------------------------------------------------------------------------
-# Utility helpers (stand-alone, not bound to the class) -------------------------
+#                             Utility helpers 
 # -----------------------------------------------------------------------------
-
 
 # NEW: Helper function to create the sparse interaction matrix from a dense one.
 def make_sparse_W(Wij_dense, nMaxNeigh=16):
@@ -765,7 +713,7 @@ def generate_xV_scan(p1, p2, Vrange=(0.0,1.0), nxV=(10,10)) -> np.ndarray:
     return pts.astype(np.float32)
 
 # -----------------------------------------------------------------------------
-# High-level convenience wrappers ----------------------------------------------
+#                     High-level convenience functions 
 # -----------------------------------------------------------------------------
 
 def solve_xy_scan(solver: HubbardSolver, posE: np.ndarray, extent, nxy=(10,10), params = default_params):
@@ -824,6 +772,9 @@ def solve_hopping_scan(solver: HubbardSolver, posE: np.ndarray, rots: np.ndarray
     Tout = solver.eval_oriented_hopping(posE, rots, orbs, pTips, bRealloc=True)
     return Tout.reshape(nxy+(nSingle,))
 
+# -----------------------------------------------------------------------------
+#                            Tests  and Demos 
+# -----------------------------------------------------------------------------
 
 def test_brute_force_solver():
     # trimer
@@ -975,39 +926,6 @@ def test_local_update_solver():
         print(f"  Final State Mask: {state_out[i]:0{nSite}b}") # Print as binary string
         print(f"  Final Currents: {Itot_out[i]}")
 
-
-def test_local_update_solver_2():
-    # --- Example Usage for the new Pre-calculation Kernel ---
-    solver = HubbardSolver()
-    
-    # 1. Define a system
-    posE = make_grid_sites(nxy=(4, 4), avec=(5.0, 0.0), bvec=(0.0, 5.0), E0=-0.15)
-    nSingle = posE.shape[0]
-
-    # 2. Define tip positions
-    pTips = generate_xy_scan(extent=[-10, 10, -10, 10], nxy=(5, 5), zTip=3.0, Vbias=0.1)
-
-    # 3. Define site-dependent multipole coefficients
-    # Example: sites on the left have a pz dipole, sites on the right have a px dipole
-    nMulti = 4 # c0, px, py, pz
-    multipoleCoefs = np.zeros((nSingle, nMulti), dtype=np.float32)
-    multipoleCoefs[:, 0] = 1.0 # All sites have monopole=1
-    for i in range(nSingle):
-        if posE[i, 0] < 0:
-            multipoleCoefs[i, 3] = -0.5 # pz = -0.5 for left sites
-        else:
-            multipoleCoefs[i, 1] = 0.5  # px = +0.5 for right sites
-
-    # 4. Call the new pre-calculation function
-    print("Running pre-calculation kernel with site-dependent multipoles...")
-    params = {"Rtip": 3.0, "zMirror": -0.5, "Thop_decay": 0.3}
-    Esite_Thop = solver.precalc_esite_thop(posE, pTips, multipoleCoefs=multipoleCoefs, params=params)
-
-    print(f"Successfully calculated Esite_Thop array of shape: {Esite.shape}")
-    print("Example output for tip 0, site 0:", Esite[0, 0])
-    print("Example output for tip 0, site 15:", Esite[0, 15])
-
-
 def make_site_lattice( lvecs, nxy=(6,6), p0=(0.0,0.0,0.0) ):
     nx, ny = nxy
     nSite = nx * ny
@@ -1107,15 +1025,169 @@ def demo_precalc_scan(solver: HubbardSolver=None, nxy_sites=(6, 6), nxy_scan=(10
     plt.tight_layout(rect=[0, 0, 1, 0.96])
     plt.show()
 
+def demo_local_update(solver: HubbardSolver=None, nxy_sites=(4, 4), nxy_scan=(20, 20), Vbias=0.1, cutoff=8.0, W_amplitude=1.0, T=0.001, nIter=100):
+    """
+    Demonstrates the usage of the solve_local_updates kernel by running a 2D scan with Monte Carlo optimization.
+    
+    This function extends demo_precalc_scan by adding the many-body effects through Monte Carlo optimization.
+    It calculates site energies and hoppings, then runs the local update solver for each tip position.
+    The function plots maps of:
+    - The minimum energy after Monte Carlo optimization
+    - The maximum hopping amplitude after optimization
+    - The total charge (number of occupied sites) for each tip position
+    
+    Args:
+        solver (HubbardSolver): An instance of your solver class.
+        nxy_sites (tuple): The (nx, ny) dimensions of the grid of sample sites.
+        nxy_scan (tuple): The (nx, ny) resolution of the tip scan.
+        Vbias (float): The bias voltage to apply to the tip.
+        cutoff (float): Cutoff distance for site-site interactions.
+        W_amplitude (float): Strength of the Coulomb interaction between sites.
+        T (float): Temperature for the Monte Carlo simulation in Kelvin.
+        nIter (int): Number of Monte Carlo iterations.
+    """
+    if solver is None:
+        solver = HubbardSolver()
+
+    print("--- Running local update Monte Carlo solver demo ---")
+
+    # 1. Define the system of sites
+    posE = make_grid_sites(nxy=nxy_sites, avec=(5.0, 0.0), bvec=(0.0, 5.0), E0=-0.15)
+    nSingle = posE.shape[0]
+    print(f"Created a {nxy_sites[0]}x{nxy_sites[1]} grid of {nSingle} sites.")
+
+    # 2. Define the 2D grid of tip positions for the scan
+    extent = [-15.0, 15.0, -15.0, 15.0]
+    pTips = generate_xy_scan(extent, nxy=nxy_scan, zTip=3.0, Vbias=Vbias)
+    nTips = pTips.shape[0]
+    print(f"Generated a {nxy_scan[0]}x{nxy_scan[1]} grid of {nTips} tip positions.")
+
+    # 3. Define the physical model parameters
+    # 3a. Multipole coefficients (simple monopole)
+    multipoleCoefs = np.zeros((nSingle, 1), dtype=np.float32)
+    multipoleCoefs[:, 0] = 1.0  # All sites are simple monopoles
+    
+    # 3b. Pre-calculation kernel parameters
+    params_precalc = {
+        "Rtip": 3.0,
+        "zMirror": -0.5,
+        "Thop_decay": 0.5, # A higher decay for more localized hopping
+        "Thop_amp": 1.0
+    }
+    
+    # 3c. Generate site-site interactions (W matrix)
+    # Periodic boundary conditions for the lattice
+    lvs = np.array([[5.0, 0.0, 0.0], [0.0, 5.0, 0.0]], dtype=np.float32)
+    lvs_pbc = lvs.copy()
+    lvs_pbc[0,:] *= nxy_sites[0]
+    lvs_pbc[1,:] *= nxy_sites[1]
+    
+    # Function to calculate Coulomb interaction with screening
+    def screened_coulomb(r):
+        return W_amplitude * np.exp(-r/cutoff) / (r + 0.1)
+    
+    # Create sparse W matrix with periodic boundary conditions
+    nMaxNeigh = 8  # Maximum number of neighbors per site
+    # Extract only the position components (x,y,z) from posE for the PBC calculation
+    pos_xyz = posE[:, :3]  # Only take x, y, z components, not the energy E0
+    W_val, W_idx, nNeigh = make_sparse_W_pbc(pos_xyz, lvs_pbc, cutoff, W_func=screened_coulomb, nMaxNeigh=nMaxNeigh)
+    print(f"Created sparse W matrix with cutoff {cutoff} and max {nMaxNeigh} neighbors per site.")
+    
+    # 3d. Local update solver parameters
+    params_solver = {
+        "kT": kBoltzmann * T,  # Temperature in energy units
+        "nIter": nIter,      # Number of Monte Carlo iterations
+        "solverMode": 2,     # Use Metropolis algorithm (0=deterministic, 2=simulated annealing)
+        "seed": np.random.randint(0, 2**31)  # Random seed
+    }
+
+    # 4. Call the pre-calculation kernel
+    print("Calling precalc_esite_thop kernel...")
+    Esite, Tsite = solver.precalc_esite_thop(posE, pTips, multipoleCoefs=multipoleCoefs, params=params_precalc)
+    print(f"Kernel finished. Sites: {nSingle}, Tips: {nTips}")
+    print(f"Esite shape: {Esite.shape}, min/max: {np.min(Esite):.3f}/{np.max(Esite):.3f}")
+    print(f"Tsite shape: {Tsite.shape}, min/max: {np.min(Tsite):.3f}/{np.max(Tsite):.3f}")
+
+    # 5. Run the local update Monte Carlo solver
+    print(f"Running local update solver with T={T}K, nIter={nIter}...")
+    
+    # Allocate buffers for the solver
+    solver.realloc_local_update_buffers(nSingle, nTips, nMaxNeigh)
+    
+    # Upload Esite and Tsite to GPU
+    solver.toGPU_(solver.Esite_buff, Esite.reshape(-1))
+    solver.toGPU_(solver.Tsite_buff, Tsite.reshape(-1))
+    
+    # Upload W matrix to GPU
+    solver.toGPU_(solver.Wval_buff, W_val)
+    solver.toGPU_(solver.Widx_buff, W_idx)
+    solver.toGPU_(solver.WnNeigh_buff, nNeigh)
+    
+    # Initialize the solver with appropriate work group size
+    global_size = (nTips,)
+    # Make the local_size a power of 2 that divides evenly into the global size (or is smaller)
+    # Using a smaller work group size (16) may help avoid INVALID_WORK_GROUP_SIZE errors
+    local_size = (16,)
+    
+    # Setup and run the kernel
+    args, kernel = solver.setup_solve_local_updates(nSingle, nTips, params_solver, initMode=3)
+    kernel(solver.queue, global_size, local_size, *args)
+    
+    # Download results
+    energy = np.empty(nTips, dtype=np.float32)
+    current = np.empty((nTips, 2), dtype=np.float32)
+    occ_bytes = ((nSingle + 7) // 8)  # Ceiling division for number of bytes needed
+    occupation = np.empty(nTips * occ_bytes, dtype=np.uint8)
+    
+    solver.fromGPU_(solver.Emin_buff, energy)
+    solver.fromGPU_(solver.Itot_buff, current)
+    solver.fromGPU_(solver.occ_buff, occupation)
+    
+    # Calculate total charge for each tip position (count bits set to 1)
+    total_charge = np.zeros(nTips, dtype=np.int32)
+    occupation_reshaped = occupation.reshape(nTips, occ_bytes)
+    
+    for i in range(nTips):
+        # Count the number of '1' bits in the occupation bit mask
+        for j in range(occ_bytes):
+            byte = occupation_reshaped[i, j]
+            # Count bits using Brian Kernighan's algorithm
+            count = 0
+            while byte:
+                byte &= (byte - 1)
+                count += 1
+            total_charge[i] += count
+    
+    # Reshape results into 2D maps
+    nx, ny = nxy_scan
+    energy_map = energy.reshape((nx, ny))
+    current_map_occ = current[:, 0].reshape((nx, ny))   # Occupied sites current
+    current_map_unoc = current[:, 1].reshape((nx, ny))  # Unoccupied sites current
+    charge_map = total_charge.reshape((nx, ny))
+    
+    print(f"Energy range: {np.min(energy):.3f} to {np.max(energy):.3f}")
+    print(f"Charge range: {np.min(total_charge)} to {np.max(total_charge)} sites")
+    print(f"Current (occupied) range: {np.min(current[:, 0]):.3f} to {np.max(current[:, 0]):.3f}")
+    
+    # 6. Plot the results
+    fig, axs = plt.subplots(2, 2, figsize=(12, 10))
+    fig.suptitle(f"Monte Carlo Optimization Results (T={T}K, nIter={nIter}, W={W_amplitude})", fontsize=16)
+    
+    plot2d(energy_map.T, extent=extent, title="Energy (optimized)", ax=axs[0, 0], cmap="viridis", ps=posE)
+    plot2d(charge_map.T, extent=extent, title="Total Charge (# occupied sites)", ax=axs[0, 1], cmap="plasma", ps=posE)
+    plot2d(current_map_occ.T, extent=extent, title="Current (occupied sites)", ax=axs[1, 0], cmap="inferno", ps=posE)
+    plot2d(current_map_unoc.T, extent=extent, title="Current (unoccupied sites)", ax=axs[1, 1], cmap="magma", ps=posE)
+    
+    plt.tight_layout(rect=[0, 0, 1, 0.95])
+    plt.show()
+
+
 if __name__ == "__main__":
     import matplotlib.pyplot as plt
     #test_brute_force_solver()
-    #test_local_update_solver()
-    #test_local_update_solver_2()
     #test_site_coupling()
-
-
-    demo_precalc_scan()
+    #demo_precalc_scan()
+    demo_local_update()
 
     
 
