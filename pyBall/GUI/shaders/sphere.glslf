@@ -3,7 +3,7 @@ out vec4 FragColor;
 
 in vec4 sphere_obj_world; // Sphere center (xyz) and radius (w) in world space
 in vec3 fpos_world;       // Fragment position on the bounding mesh in world space
-in vec4 atomColor_out;    // Color from vertex shader
+in vec4 fColor;           // Color from vertex shader
 
 // Uniforms from BaseGLWidget
 uniform vec3 viewPos;      // Camera position in world space
@@ -68,8 +68,8 @@ void main()
         float spec_intensity = pow(max(dot(V, R), 0.0), shininess_factor);
         vec3 specular = specular_strength_factor * spec_intensity * lightColor;
 
-        vec3 result_rgb = (ambient + diffuse + specular) * atomColor_out.rgb;
-        FragColor = vec4(result_rgb, atomColor_out.a);
+        vec3 result_rgb = (ambient + diffuse + specular) * fColor.rgb;
+        FragColor = vec4(result_rgb, fColor.a);
 
         // Calculate gl_FragDepth
         vec4 clip_space_pos = projection * view * vec4(P_intersect_world, 1.0);

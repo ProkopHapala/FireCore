@@ -16,8 +16,10 @@ import psi4
 import resp
 
 sys.path.append("../../")
-from pyBall import psi4_utils as psi4u
-from pyBall  import atomicUtils as au
+from pyBall import psi4_utils  as psi4u
+from pyBall import atomicUtils as au
+
+
 
 # ========= Setup
 
@@ -35,7 +37,13 @@ indir="./input/"
 #names = [ "H2O",  "HCN",  "HCOOH",  "NH3",  "OCH2" ]
 #names = [ "CHONH2" ]
 #names = [ "H2O" ]
-names = [ "HCN" ]
+#names = [ "HCN" ]
+#names = [ "HCN", "HF" ]
+#names = [ "HF", "HCN" ]
+
+names = [ sys.argv[1] ]
+
+#names = [ "HF" ]
 #names = [ "NH3" ]
 #names = [ "HCOOH" ]
 #names = [ "OCH2" ]

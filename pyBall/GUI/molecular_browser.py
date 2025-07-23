@@ -21,16 +21,37 @@ class ThumbnailRenderer:
         
         script_dir = os.path.dirname(__file__)
         shader_folder = os.path.join(script_dir, "shaders")
-        with open(f"{shader_folder}/instances.glslv") as f: vert_shader = f.read()
+        with open(f"{shader_folder}/instances2.glslv") as f: vert_shader = f.read()
         with open(f"{shader_folder}/sphere.glslf") as f: frag_atom_shader = f.read()
         with open(f"{shader_folder}/cylinder.glslf") as f: frag_bond_shader = f.read()
 
         self.atom_prog = self.ctx.program(vertex_shader=vert_shader, fragment_shader=frag_atom_shader)
         self.bond_prog = self.ctx.program(vertex_shader=vert_shader, fragment_shader=frag_bond_shader)
 
+        # Debug: Print all exposed attributes
+        print("=== ATOM PROGRAM ATTRIBUTES ===")
+        for attr_name in ['aPos', 'aNormal', 'instancePosition_model', 'instanceActualSphereRadius', 'instanceColor', 'instanceMatrix']:
+            try:
+                loc = self.atom_prog[attr_name].location
+                print(f"{attr_name}: location {loc}")
+            except KeyError:
+                print(f"{attr_name}: NOT FOUND")
+        
+        print("=== BOND PROGRAM ATTRIBUTES ===")
+        for attr_name in ['aPos', 'aNormal', 'instancePosition_model', 'instanceActualSphereRadius', 'instanceColor', 'instanceMatrix']:
+            try:
+                loc = self.bond_prog[attr_name].location
+                print(f"{attr_name}: location {loc}")
+            except KeyError:
+                print(f"{attr_name}: NOT FOUND")
+
+
+
         # Geometry
         sphere_v, sphere_n = octahedron_sphere_mesh(radius=1.3, nsub=2)
+        print(f"sphere_v.shape: {sphere_v.shape}, sphere_n.shape: {sphere_n.shape}")
         cyl_v, cyl_n = create_cylinder_mesh(radius=0.15, length=1.0)
+        print(f"cyl_v.shape: {cyl_v.shape}, cyl_n.shape: {cyl_n.shape}")
 
         self.sphere_vbo_vert = self.ctx.buffer(sphere_v.tobytes())
         self.sphere_vbo_norm = self.ctx.buffer(sphere_n.tobytes())
@@ -44,6 +65,7 @@ class ThumbnailRenderer:
         )
 
     def render_system(self, system: AtomicSystem):
+        print( "render_system() na=", len(system.enames) )
         self.fbo.use()
         self.ctx.clear(0.95, 0.95, 0.95)
         self.ctx.enable(moderngl.DEPTH_TEST)
@@ -54,7 +76,8 @@ class ThumbnailRenderer:
         n_atoms = len(system.apos)
         atom_pos = system.apos.astype(np.float32)
         atom_radii = np.array([elements.ELEMENT_DICT[e][6] for e in system.enames], dtype=np.float32)
-        atom_colors = np.array([elements.hex_to_float_rgb(elements.ELEMENT_DICT[e][7]) + (1.0,) for e in system.enames], dtype=np.float32)
+        #print( "elements.ELEMENT_DICT['H'][7] ", elements.ELEMENT_DICT["H"][8] )
+        atom_colors = np.array([elements.hex_to_float_rgb(elements.ELEMENT_DICT[e][8]) + (1.0,) for e in system.enames], dtype=np.float32)
         atom_matrices = np.array([np.eye(4, dtype=np.float32) for _ in range(n_atoms)])
 
         vbo_apos = self.ctx.buffer(atom_pos.tobytes())
@@ -62,10 +85,13 @@ class ThumbnailRenderer:
         vbo_acol = self.ctx.buffer(atom_colors.tobytes())
         vbo_amat = self.ctx.buffer(atom_matrices.tobytes())
         
+        # Sphere shader doesn't use aNormal (uses ray-tracing) but needs instanceColor for fColor
         vao_content_atoms = [
-            (self.sphere_vbo_vert, '3f', 'aPos'), (self.sphere_vbo_norm, '3f', 'aNormal'),
-            (vbo_apos, '3f /i', 'instancePosition_model'), (vbo_arad, '1f /i', 'instanceActualSphereRadius'),
-            (vbo_acol, '4f /i', 'instanceColor'), (vbo_amat, '16f /i', 'instanceMatrix')
+            (self.sphere_vbo_vert, '3f', 'aPos'),
+            (vbo_apos, '3f /i', 'instancePosition_model'),
+            (vbo_arad, '1f /i', 'instanceActualSphereRadius'),
+            (vbo_acol, '4f /i', 'instanceColor'),
+            (vbo_amat, '16f /i', 'instanceMatrix')
         ]
         vao_atoms = self.ctx.vertex_array(self.atom_prog, vao_content_atoms)
 
@@ -80,31 +106,60 @@ class ThumbnailRenderer:
                 p1, p2 = system.apos[i_a], system.apos[i_b]
                 midpoint, vec, length = (p1 + p2) / 2, p2 - p1, np.linalg.norm(p2 - p1)
                 bond_pos[i], bond_colors[i] = midpoint, (atom_colors[i_a] + atom_colors[i_b]) / 2
-                bond_matrices[i] = makeRotMat(vec, np.array([0.,0.,1.])) @ np.diag([1.,1.,length,1.])
+                # Create 4x4 rotation matrix from 3x3
+                rot_mat_3x3 = makeRotMat(vec, np.array([0.,0.,1.]))
+                rot_mat_4x4 = np.eye(4, dtype=np.float32)
+                rot_mat_4x4[:3, :3] = rot_mat_3x3
+                # Apply scaling
+                scale_mat = np.diag([1., 1., length, 1.]).astype(np.float32)
+                bond_matrices[i] = rot_mat_4x4 @ scale_mat
 
             vbo_bpos = self.ctx.buffer(bond_pos.tobytes())
             vbo_bcol = self.ctx.buffer(bond_colors.tobytes())
             vbo_bmat = self.ctx.buffer(bond_matrices.tobytes())
             vbo_brad = self.ctx.buffer(np.zeros(n_bonds, dtype=np.float32).tobytes()) # Dummy data
 
+            # Cylinder shader uses aNormal and instanceColor but not instanceActualSphereRadius
             vao_content_bonds = [
-                (self.cyl_vbo_vert, '3f', 'aPos'), (self.cyl_vbo_norm, '3f', 'aNormal'),
-                (vbo_bpos, '3f /i', 'instancePosition_model'), (vbo_brad, '1f /i', 'instanceActualSphereRadius'),
-                (vbo_bcol, '4f /i', 'instanceColor'), (vbo_bmat, '16f /i', 'instanceMatrix')
+                (self.cyl_vbo_vert, '3f', 'aPos'),
+                (self.cyl_vbo_norm, '3f', 'aNormal'),
+                (vbo_bpos, '3f /i', 'instancePosition_model'),
+                (vbo_bcol, '4f /i', 'instanceColor'),
+                (vbo_bmat, '16f /i', 'instanceMatrix')
             ]
             vao_bonds = self.ctx.vertex_array(self.bond_prog, vao_content_bonds)
 
         # Camera
         max_dim = np.max(np.ptp(system.apos, axis=0)) if n_atoms > 0 else 10.0
         cam_dist = max_dim * 2.0
-        projection = moderngl.Matrix44.perspective_projection(45.0, 1.0, 0.1, cam_dist * 2)
-        look_at = moderngl.Matrix44.look_at(eye=(0, 0, cam_dist), target=(0, 0, 0), up=(0, 1, 0))
+        
+        # Create perspective projection matrix
+        fov, aspect, near, far = 45.0, 1.0, 0.1, cam_dist * 2
+        f = 1.0 / np.tan(np.radians(fov) / 2.0)
+        projection = np.array([
+            [f/aspect, 0, 0, 0],
+            [0, f, 0, 0],
+            [0, 0, (far+near)/(near-far), (2*far*near)/(near-far)],
+            [0, 0, -1, 0]
+        ], dtype=np.float32)
+        
+        # Create look-at matrix
+        eye, target, up = np.array([0, 0, cam_dist]), np.array([0, 0, 0]), np.array([0, 1, 0])
+        f = (target - eye) / np.linalg.norm(target - eye)
+        s = np.cross(f, up) / np.linalg.norm(np.cross(f, up))
+        u = np.cross(s, f)
+        look_at = np.array([
+            [s[0], u[0], -f[0], -np.dot(s, eye)],
+            [s[1], u[1], -f[1], -np.dot(u, eye)],
+            [s[2], u[2], -f[2], np.dot(f, eye)],
+            [0, 0, 0, 1]
+        ], dtype=np.float32)
         
         # Set uniforms and render
         for prog in [self.atom_prog, self.bond_prog]:
-            prog['projection'].write(projection.astype('f4'))
-            prog['view'].write(look_at.astype('f4'))
-            prog['model'].write(np.eye(4, dtype='f4'))
+            prog['projection'].write(projection.tobytes())
+            prog['view'].write(look_at.tobytes())
+            prog['model'].write(np.eye(4, dtype=np.float32).tobytes())
             prog['lightPos'].value = (cam_dist, cam_dist, cam_dist)
             prog['viewPos'].value = (0, 0, cam_dist)
 

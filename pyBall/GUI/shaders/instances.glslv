@@ -11,7 +11,7 @@ layout (location = 4) in vec4 instanceColor;    // Color (RGBA) of the sphere in
 // Outputs to Fragment Shader
 out vec3 fpos_world;        // Fragment position on the bounding mesh in world space
 out vec4 sphere_obj_world;  // Sphere center (xyz) and radius (w) in world space
-out vec4 atomColor_out;     // Pass through atom color
+out vec4 fColor;             // Pass through atom color
 
 uniform mat4 projection;
 uniform mat4 view;
@@ -36,6 +36,6 @@ void main()
     vec3 scaled_aPos = aPos * instanceActualSphereRadius;
 
     fpos_world = vec3(finalBoundingBoxModelMatrix * vec4(scaled_aPos, 1.0));
-    atomColor_out = instanceColor;
+    fColor = instanceColor;
     gl_Position = projection * view * finalBoundingBoxModelMatrix * vec4(scaled_aPos, 1.0);
 }

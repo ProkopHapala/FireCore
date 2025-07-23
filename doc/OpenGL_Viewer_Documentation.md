@@ -108,14 +108,14 @@ The viewer utilizes several GLSL shaders for rendering, demonstrating different 
 - **Outputs (to Fragment Shader):**
     - `fpos_world`: World-space position of the fragment on the bounding mesh.
     - `sphere_obj_world`: `vec4(sphere_center_world.xyz, sphere_radius_world.w)` - the actual sphere data for intersection tests.
-    - `atomColor_out`: Pass-through instance color.
+    - `fColor`: Pass-through instance color.
 - **Key Operations:** Calculates world-space sphere center and radius, scales base mesh vertices, and computes `gl_Position` for the bounding box.
 
 ### 3.2. `pyBall/GUI/shaders/sphere_max.glslf` (Fragment Shader - Volumetric)
 
 - **Purpose:** Renders spheres with a soft, volumetric appearance, suitable for visualizing electron density or other continuous distributions. It uses a ray-marching like approach to determine fragment opacity.
 - **Inputs:**
-    - `sphere_obj_world`, `fpos_world`, `atomColor_out`: From vertex shader.
+    - `sphere_obj_world`, `fpos_world`, `fColor`: From vertex shader.
     - `uniform vec3 viewPos`: Camera position.
     - `uniform mat4 projection`, `view`: For `gl_FragDepth` calculation.
 - **Output:** `FragColor` (RGBA).
@@ -123,7 +123,7 @@ The viewer utilizes several GLSL shaders for rendering, demonstrating different 
     - Defines a ray from `viewPos` to `fpos_world`.
     - Uses `rayPointDist` to find the closest approach of the ray to the sphere's center.
     - If the ray intersects the sphere, calculates a `density` based on the normalized distance from the sphere's center (exponential fall-off).
-    - Sets fragment `alpha` as `density * atomColor_out.a`.
+    - Sets fragment `alpha` as `density * fColor.a`.
     - `discard`s fragments that miss the sphere.
     - Explicitly sets `gl_FragDepth` for correct transparency rendering.
 
@@ -131,7 +131,7 @@ The viewer utilizes several GLSL shaders for rendering, demonstrating different 
 
 - **Purpose:** Renders spheres with a solid, shiny appearance using ray-sphere intersection and Phong lighting model (ambient, diffuse, specular).
 - **Inputs:**
-    - `sphere_obj_world`, `fpos_world`, `atomColor_out`: From vertex shader.
+    - `sphere_obj_world`, `fpos_world`, `fColor`: From vertex shader.
     - `uniform vec3 viewPos`, `lightPos`, `lightColor`.
     - `uniform mat4 projection`, `view`: For `gl_FragDepth` calculation.
 - **Output:** `FragColor` (RGBA).
@@ -141,7 +141,7 @@ The viewer utilizes several GLSL shaders for rendering, demonstrating different 
     - `discard`s fragments that miss the sphere or are behind the camera.
     - Calculates surface normal (`sphereNormal`) at the intersection point.
     - Applies Phong lighting: ambient, diffuse (based on `dot(N, L)`), and specular (based on `pow(dot(V, R), shininess)`).
-    - Sets `FragColor` with the calculated lighting and `atomColor_out.a`.
+    - Sets `FragColor` with the calculated lighting and `fColor.a`.
     - Explicitly sets `gl_FragDepth` for correct depth buffering.
 
 ## 4. Building New OpenGL Applications

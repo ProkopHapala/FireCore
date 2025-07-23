@@ -128,7 +128,9 @@ class MolViewerWidget(BaseGLWidget):
 
     def update_instance_data(self):
         elecs = self.frames_elecs[self.current_frame_index]
-        elecs[2][:,3] = self.opacity
+        #print( "update_instance_data() elecs.shape", elecs.shape )
+        print( "update_instance_data() elecs:\n", elecs )
+        #elecs[2][:,3] = self.opacity
         self.atom_instances.update_list( self.frames_atoms[self.current_frame_index] )
         self.elec_instances.update_list( elecs )
         # self.atom_instances     .update( {
