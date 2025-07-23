@@ -43,11 +43,13 @@ class DetailedGLWidget(BaseGLWidget):
         self.bond_instances = None
         self.cylinder_mesh = None
 
+
     @property
     def all_shader_programs(self):
         return [prog for prog in [self.atom_shader, self.bond_shader] if prog]
 
     def initializeGL(self):
+        print( "DetailedGLWidget.initializeGL()" )
         import os
         script_dir = os.path.dirname(__file__)
         shader_folder = os.path.join(script_dir, "shaders")
@@ -76,8 +78,12 @@ class DetailedGLWidget(BaseGLWidget):
         self.bond_instances = InstancedData(base_attrib_location=2)
         self.bond_instances.associate_mesh(self.cylinder_mesh)
         self.bond_instances.setup_instance_vbos(inst_attribs)
+        if hasattr(self, '_pending_system'):
+            self.set_molecule(self._pending_system)
+            del self._pending_system
 
     def set_molecule(self, system: AtomicSystem):
+        print( "DetailedGLWidget.set_molecule()" )
         if system.bonds is None:
             system.findBonds()
 
@@ -85,7 +91,7 @@ class DetailedGLWidget(BaseGLWidget):
         n_atoms = len(system.apos)
         atom_pos = system.apos.astype(np.float32)
         atom_radii = np.array([elements.ELEMENT_DICT[e][6] for e in system.enames], dtype=np.float32)
-        atom_colors = np.array([elements.hex_to_float_rgb(elements.ELEMENT_DICT[e][7]) + (1.0,) for e in system.enames], dtype=np.float32)
+        atom_colors = np.array([elements.hex_to_float_rgb(elements.ELEMENT_DICT[e][8]) + (1.0,) for e in system.enames], dtype=np.float32)
         atom_matrices = np.array([np.eye(4, dtype=np.float32) for _ in range(n_atoms)])
 
         self.atom_instances.update({
@@ -149,6 +155,7 @@ class DetailedViewerWindow(QMainWindow):
         layout = QVBoxLayout(central_widget)
         
         self.gl_widget = DetailedGLWidget()
+        self.gl_widget._pending_system = system
         layout.addWidget(self.gl_widget)
         
-        self.gl_widget.set_molecule(system)
+        

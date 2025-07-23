@@ -504,12 +504,13 @@ def rotation_matrix(axis, angle):
 #          [-axis[1],  axis[0],  0     ]])
 #     return ca * np.eye(3) + (1 - ca) * np.outer(axis, axis) + sa * K    
 
-def makeRotMat( fw, up ):    
+def makeRotMat( fw, up=None ):    
     fw   = fw/np.linalg.norm(fw)
+    if up is None: up = np.array([0.,0.,1.])
     up   = up - fw*np.dot(up,fw)
     ru   = np.linalg.norm(up)
     if ru<1e-4:  # if colinear
-        print("WARRNING: makeRotMat() up,fw are colinear => randomize up ")
+        #print(f"WARRNING: makeRotMat() up{up},fw{fw} are colinear => randomize up ")
         up = np.random.rand(3)
         up = up - fw*np.dot(up,fw)
         ru = np.linalg.norm(up)
@@ -523,7 +524,7 @@ def makeRotMatAng2( fw, up, ang ):
     up   = up - fw*np.dot(up,fw)
     ru   = np.linalg.norm(up)
     if ru<1e-4:  # if colinear
-        print("WARRNING: makeRotMat() up,fw are colinear => randomize up ")
+        #print(f"WARRNING: makeRotMat() up{up},fw{fw} are colinear => randomize up ")
         up = np.random.rand(3)
         up = up - fw*np.dot(up,fw)
         ru = np.linalg.norm(up)

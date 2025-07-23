@@ -65,7 +65,7 @@ class ThumbnailRenderer:
         )
 
     def render_system(self, system: AtomicSystem):
-        print( "render_system() na=", len(system.enames) )
+        #print( "render_system() na=", len(system.enames) )
         self.fbo.use()
         self.ctx.clear(0.95, 0.95, 0.95)
         self.ctx.enable(moderngl.DEPTH_TEST)
@@ -107,6 +107,7 @@ class ThumbnailRenderer:
                 midpoint, vec, length = (p1 + p2) / 2, p2 - p1, np.linalg.norm(p2 - p1)
                 bond_pos[i], bond_colors[i] = midpoint, (atom_colors[i_a] + atom_colors[i_b]) / 2
                 # Create 4x4 rotation matrix from 3x3
+                #print(f"i_a: {i_a}, i_b: {i_b}, vec: {vec}")
                 rot_mat_3x3 = makeRotMat(vec, np.array([0.,0.,1.]))
                 rot_mat_4x4 = np.eye(4, dtype=np.float32)
                 rot_mat_4x4[:3, :3] = rot_mat_3x3
