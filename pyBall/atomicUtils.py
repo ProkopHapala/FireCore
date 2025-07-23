@@ -203,6 +203,7 @@ def makeKinkAtomSamples( neighs, apos, where=[-0.6, +0.6 ] ):
 def getAtomRadius( atypes, eparams=elements.ELEMENTS, icol=6 ):
     # icol=7 RvdW, icol=6 covalent radius
     #print( eparams[ 6 ][7], eparams[ 6 ] )
+
     return [ eparams[ ei ][icol] for ei in atypes ]
 
 def getAtomRadiusNP( atypes, eparams=elements.ELEMENTS ):

@@ -35,6 +35,7 @@ class AtomicSystem( ):
                 self.apos,self.atypes,self.enames,self.qs,self.bonds, self.lvec = au.loadMol2(fname=fname, bReadN=bReadN )
             elif ( 'xyz' == ext ):
                 self.apos,self.atypes,self.enames,self.qs, comment = au.load_xyz(fname=fname, bReadN=bReadN )
+
                 if comment is not None:
                     if comment[:3] == 'lvs':      
                         self.lvec = au.string_to_matrix( comment, nx=3,ny=3, bExactSize=False )

@@ -18,6 +18,7 @@ class ThumbnailRenderer:
     def __init__(self, size=(256, 256)):
         self.size = size
         self.ctx = moderngl.create_context(standalone=True, backend='egl')
+        print(f"ThumbnailRenderer: Created moderngl context EGL: {self.ctx}, Context info: {self.ctx.info}")
         
         script_dir = os.path.dirname(__file__)
         shader_folder = os.path.join(script_dir, "shaders")
@@ -65,6 +66,7 @@ class ThumbnailRenderer:
         )
 
     def render_system(self, system: AtomicSystem):
+        print(f"ThumbnailRenderer: render_system start for {system.fname if hasattr(system,'fname') else system}.")
         #print( "render_system() na=", len(system.enames) )
         self.fbo.use()
         self.ctx.clear(0.95, 0.95, 0.95)
@@ -306,6 +308,12 @@ class MoleculeBrowserApp(AppWindow):
             self.open_viewers.append(viewer)
 
 if __name__ == '__main__':
+    from PyQt5.QtGui import QSurfaceFormat
+    fmt = QSurfaceFormat()
+    fmt.setVersion(3, 3)
+    fmt.setProfile(QSurfaceFormat.CoreProfile)
+    QSurfaceFormat.setDefaultFormat(fmt)
+    print('Set default QSurfaceFormat to OpenGL 3.3 Core')
 
     # Run Like this:
     #   python -m pyBall.GUI.molecular_browser
@@ -313,6 +321,7 @@ if __name__ == '__main__':
     # relative path to the directory with the molecules
     # /home/prokop/git/FireCore/cpp/common_resources/xyz/
     dir_path = "../../cpp/common_resources/xyz/"
+    dir_path = "../../cpp/common_resources/xyz_mini/"
     this_path = os.path.dirname(os.path.abspath(__file__))
     # resolve the full absolute path
     dir_path = os.path.abspath(os.path.join(this_path, dir_path))

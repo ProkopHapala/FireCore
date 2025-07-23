@@ -343,6 +343,14 @@ class BaseGLWidget(QOpenGLWidget):
         self.camera_pos        = QVector3D( 0  ,  0  , self.zoom_factor) # Will be updated by zoom
         self.current_shader_program_id = None # To be set by derived class if it manages shaders
 
+    # Qt will call paintGL(); delegate to our internal method
+    def paintGL(self):
+        from PyQt5.QtGui import QOpenGLContext
+        ctx=QOpenGLContext.currentContext()
+        print(f"BaseGLWidget.paintGL called, currentContext valid: {ctx is not None}")
+        # Note: paintGL is called frequently; keep prints minimal
+        self.paintGL_base()
+
     def initializeGL_base(self, vertex_shader_src, fragment_shader_src, bPrint=False):
         # Modern OpenGL context should be requested via QSurfaceFormat in main
         if bPrint:

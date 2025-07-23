@@ -4,9 +4,12 @@ layout (location = 0) in vec3 aPos;      // Vertex position of the base sphere m
 layout (location = 1) in vec3 aNormal;   // Vertex normal of the base sphere mesh (not used by raytracer directly)
 
 // Per-instance attributes
-layout (location = 2) in vec3 instancePosition_model; // Center of the sphere instance (model space)
-layout (location = 3) in float instanceActualSphereRadius;  // Actual radius of the sphere to ray-trace
-layout (location = 4) in vec4 instanceColor;    // Color (RGBA) of the sphere instance
+layout (location = 2) in vec4 instanceMatrix_row0;
+layout (location = 3) in vec4 instanceMatrix_row1;
+layout (location = 4) in vec4 instanceMatrix_row2;
+layout (location = 5) in vec4 instanceMatrix_row3;
+layout (location = 6) in float instanceActualSphereRadius;  // Actual radius of the sphere to ray-trace
+layout (location = 7) in vec4 instanceColor;    // Color (RGBA) of the sphere instance
 
 // Outputs to Fragment Shader
 out vec3 fpos_world;        // Fragment position on the bounding mesh in world space
@@ -19,23 +22,24 @@ uniform mat4 model; // Overall model orientation (trackball)
 
 void main()
 {
+    mat4 instanceMatrix = mat4(
+        instanceMatrix_row0,
+        instanceMatrix_row1,
+        instanceMatrix_row2,
+        instanceMatrix_row3
+    );
+
+    // Apply instance matrix to the vertex position
+    vec3 instanced_pos = vec3(instanceMatrix * vec4(aPos, 1.0));
+
     // World space center and radius for the sphere to be ray-traced by the fragment shader.
-    // instanceActualSphereRadius is the small radius (e.g., 0.005 for an atom).
-    vec3 actualSphereCenter_world_space = vec3(model * vec4(instancePosition_model, 1.0));
+    vec3 actualSphereCenter_world_space = vec3(model * instanceMatrix[3]); // Use the translation part of the instance matrix
     sphere_obj_world = vec4(actualSphereCenter_world_space, instanceActualSphereRadius);
 
-    // Create a model matrix for the bounding box mesh (whose vertices are in aPos).
-    // aPos comes from a mesh already defined with its bounding box radius (e.g., 1.5 in octahedron_sphere_mesh).
-    // This matrix only translates the bounding box to the instancePosition_model.
-    // The overall 'model' matrix (from trackball) will handle rotation.
-    mat4 boundingBoxTransformMatrix = mat4(1.0);
-    boundingBoxTransformMatrix[3] = vec4(instancePosition_model, 1.0); // Translate
-    mat4 finalBoundingBoxModelMatrix = model * boundingBoxTransformMatrix;
-
     // Scale the base mesh vertices by the instance's actual radius
-    vec3 scaled_aPos = aPos * instanceActualSphereRadius;
+    vec3 scaled_aPos = instanced_pos * instanceActualSphereRadius;
 
-    fpos_world = vec3(finalBoundingBoxModelMatrix * vec4(scaled_aPos, 1.0));
+    fpos_world = vec3(model * vec4(scaled_aPos, 1.0));
     fColor = instanceColor;
-    gl_Position = projection * view * finalBoundingBoxModelMatrix * vec4(scaled_aPos, 1.0);
+    gl_Position = projection * view * model * vec4(scaled_aPos, 1.0);
 }
