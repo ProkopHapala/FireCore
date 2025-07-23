@@ -288,9 +288,7 @@ class MolWorld_sp3 : public SolverInterface { public:
     int nSystems    = 1;
     int iSystemCur  = 0;    // currently selected system replica
 
-    MolecularDatabase* database = 0;
     bool bRelax=false;
-
     MolecularDatabase* database = 0;
     bool bFreeEnergyCalc = false;
     bool bMoving = true;            // in run_omp if do not want to move with the molecule automaticaly
@@ -4016,7 +4014,7 @@ double entropic_spring_JE(double lamda1, double lamda2, int n, int *dc, int nbPr
             Ref[L] = Ref[L - 1] + 0.5 * constant * (lamda[L] + lamda[L - 1]) * d_lamda;
         }
 
-        store_TI("results/TI_plot_ES.dat", lamda, TI, sigmaTI, Ref);
+        //store_TI("results/TI_plot_ES.dat", lamda, TI, sigmaTI, Ref);
 
         return TI[nbStep - 1];
     }

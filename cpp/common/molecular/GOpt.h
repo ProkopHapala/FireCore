@@ -49,7 +49,7 @@ struct GOpt{
         istep += perVF;
         if(bExploring){
             if(istep>=nExplore){ 
-                printf( "GOpt::update() stop exploring istep(%i)>nExplore(%i) \n" );
+                //printf( "GOpt::update() stop exploring istep(%i)>nExplore(%i) \n" );
                 bExploring=false; istep=0; return true; 
             }
         }
