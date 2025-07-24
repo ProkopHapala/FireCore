@@ -1,9 +1,9 @@
 #version 330 core
 out vec4 FragColor;
 
-in vec4 sphere_obj_world; // Sphere center (xyz) and radius (w) in world space
-in vec3 fpos_world;       // Fragment position on the bounding mesh in world space (ray endpoint)
-in vec4 fColor;           // Color from vertex shader
+in vec4 opos;      // Sphere center (xyz) and radius (w) in world space
+in vec3 fpos;      // Fragment position on the bounding mesh in world space (ray endpoint)
+in vec4 fcol;      // Color from vertex shader
 
 // Uniforms
 uniform vec3 viewPos;      // Camera position in world space (ray origin)
@@ -23,9 +23,9 @@ vec2 rayPointDist( vec3 ray_origin, vec3 ray_direction_normalized, vec3 point ){
 void main()
 {
     vec3 ray_origin    = viewPos;
-    vec3 ray_direction = normalize(fpos_world - viewPos);
-    vec3  sphere_center_w = sphere_obj_world.xyz;
-    float sphere_radius_w = sphere_obj_world.w;
+    vec3 ray_direction = normalize(fpos - viewPos);
+    vec3  sphere_center_w = opos.xyz;
+    float sphere_radius_w = opos.w;
 
     // res.x = t_closest_approach (distance along ray to point of closest approach)
     // res.y = distance_from_ray_to_sphere_center (shortest distance)
@@ -41,9 +41,9 @@ void main()
         //float density = exp(-4.*r_w*r_w);
         float density = exp(-2.*r_w*r_w);
 
-        float alpha = density * fColor.a;
+        float alpha = density * fcol.a;
 
-        FragColor = vec4(fColor.rgb, alpha);
+        FragColor = vec4(fcol.rgb, alpha);
 
         // Depth: Use the depth of the point on the ray closest to the sphere center,
         // but only if it's within the sphere.

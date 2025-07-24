@@ -1,9 +1,9 @@
 #version 330 core
 out vec4 FragColor;
 
-in vec4 sphere_obj_world; // Sphere center (xyz) and radius (w) in world space
-in vec3 fpos_world;       // Fragment position on the bounding mesh in world space
-in vec4 atomColor_out;    // Color from vertex shader
+in vec4 opos; // Sphere center (xyz) and radius (w) in world space
+in vec3 fpos; // Fragment position on the bounding mesh in world space
+in vec4 col;  // Color from vertex shader
 
 // Uniforms from BaseGLWidget
 uniform vec3 viewPos;      // Camera position in world space
@@ -42,11 +42,11 @@ vec3 sphereNormal( float t, vec3 ray0, vec3 hRay, vec3 center ){
 void main()
 {
     vec3 ray_origin = viewPos; 
-    vec3 ray_direction = normalize(fpos_world - viewPos); 
+    vec3 ray_direction = normalize(fpos - viewPos); 
 
-    vec3 sphere_center_w = sphere_obj_world.xyz;
+    vec3 sphere_center_w = opos.xyz;
     // sphere_radius_w will be the small radius (e.g., 0.05) from instanceActualSphereRadius
-    float sphere_radius_w = sphere_obj_world.w; 
+    float sphere_radius_w = opos.w; 
 
     float t = raySphere( ray_origin, ray_direction, sphere_center_w, sphere_radius_w );
 
@@ -68,8 +68,8 @@ void main()
         float spec_intensity = pow(max(dot(V, R), 0.0), shininess_factor);
         vec3 specular = specular_strength_factor * spec_intensity * lightColor;
 
-        vec3 result_rgb = (ambient + diffuse + specular) * atomColor_out.rgb;
-        FragColor = vec4(result_rgb, atomColor_out.a);
+        vec3 result_rgb = (ambient + diffuse + specular) * col.rgb;
+        FragColor = vec4(result_rgb, col.a);
 
         // Calculate gl_FragDepth
         vec4 clip_space_pos = projection * view * vec4(P_intersect_world, 1.0);
