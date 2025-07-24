@@ -826,7 +826,7 @@ def print_occupancy(occupation, nSingle, bHex=False):
     occ_bytes = nSingle//8
     nTips = occupation.shape[0]
     for i in range(nTips):
-        print(f"CPU iTip {i:3} occ: ", end="")
+        print(f"iTip {i:3} occ: ", end="")
         for j in range(occ_bytes):
             if bHex:
                 print(f"{occupation[i,j]:02x}", end="")
@@ -1274,11 +1274,17 @@ def demo_local_update(solver: HubbardSolver=None, nxy_sites=(4, 4), nxy_scan=(50
 
     plot_site_occupancy( posE, occupation[site_tip_indices], energy[site_tip_indices],  nxy_sites, nSingle )
 
+    for ii,i in enumerate(site_tip_indices):
+        print(f"#Site  {ii}  pix {i}  E={energy[i]:.3f}, I_occ={current[i,0]:.3f}, I_unocc={current[i,1]:.3f}")
+
     # Calculate total charge for each tip position (count bits set to 1)
     total_charge        = np.zeros(nTips, dtype=np.int32)
     occupation_reshaped = occupation.reshape(nTips, solver.occ_bytes)
     bits = np.unpackbits(occupation_reshaped, axis=1)   # shape (nTips, 8*occ_bytes)
     total_charge = bits.sum(axis=1)                     # shape (nTips,)
+
+
+    total_charge[site_tip_indices] =  0 # DEBUG - just to see 
     
     # Reshape results into 2D maps
     nx, ny = nxy_scan
