@@ -415,10 +415,8 @@ class BaseGLWidget(QOpenGLWidget):
 
     def set_default_uniforms(self):
         if self.current_shader_program_id is not None:
-            projection_matrix = self.camera.get_projection_matrix()
-            view_matrix = self.camera.get_view_matrix()
-            glUniformMatrix4fv(glGetUniformLocation(self.current_shader_program_id, "projection"), 1, GL_FALSE, projection_matrix)
-            glUniformMatrix4fv(glGetUniformLocation(self.current_shader_program_id, "view"), 1, GL_FALSE, view_matrix)
+            glUniformMatrix4fv(glGetUniformLocation(self.current_shader_program_id, "projection"), 1, GL_FALSE, self.projection_matrix.data())
+            glUniformMatrix4fv(glGetUniformLocation(self.current_shader_program_id, "view"), 1, GL_FALSE, self.view_matrix.data())
 
     def paintGL_base(self):
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT)

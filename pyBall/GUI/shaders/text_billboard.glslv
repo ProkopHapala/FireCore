@@ -22,4 +22,6 @@ void main() {
     vec3 finalWorldPos = aPos3D + (cameraRight * aLocalOffset.x * labelScale) + (cameraUp * aLocalOffset.y * labelScale);
 
     gl_Position = projection * view * vec4(finalWorldPos, 1.0);
+
+    //gl_Position = vec4( aPos3D + vec3( aLocalOffset.xyx ), 1.0 );
 }

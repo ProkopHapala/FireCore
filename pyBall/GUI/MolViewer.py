@@ -12,10 +12,10 @@ from pyBall.GUI.GLGUI import BaseGLWidget, AppWindow, InstancedData, set_ogl_ble
 
 from OpenGL.GL import (
     glUseProgram, glGenVertexArrays, glBindVertexArray, glGenBuffers, glBindBuffer,
-    glBufferData, glVertexAttribPointer, glEnableVertexAttribArray, glDrawArrays,
-    GL_FLOAT, GL_FALSE, GL_DYNAMIC_DRAW, GL_STATIC_DRAW, GL_QUADS,
+    glBufferData, glVertexAttribPointer, glEnableVertexAttribArray, glDrawArrays, glDrawElements,
+    GL_FLOAT, GL_FALSE, GL_DYNAMIC_DRAW, GL_STATIC_DRAW, GL_TRIANGLES, GL_UNSIGNED_INT,
     glDeleteVertexArrays, glDeleteBuffers, glUniformMatrix4fv, glGetUniformLocation,
-    glUniform1f, glUniform4f, GL_ARRAY_BUFFER
+    glUniform1f, glUniform4f, GL_ARRAY_BUFFER, GL_ELEMENT_ARRAY_BUFFER
 )
 import json
 import ctypes
@@ -23,6 +23,7 @@ import ctypes
 class MolViewerWidget(BaseGLWidget):
     def __init__(self, parent=None):
         super().__init__(parent)
+
         self.trj = []
         self.current_frame_index = 0
         self.opacity      = 0.5
@@ -43,6 +44,7 @@ class MolViewerWidget(BaseGLWidget):
         self.text_vao = None
         self.text_pos_vbo = None
         self.text_quad_data_vbo = None
+        self.text_ebo = None
         self.font_atlas_tex = None
         self.font_atlas_data = None
         self.num_label_verts = 0
@@ -127,6 +129,9 @@ class MolViewerWidget(BaseGLWidget):
         glEnableVertexAttribArray(2) # aTexCoord
         glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, stride, ctypes.c_void_p(2 * 4))
 
+        self.text_ebo = glGenBuffers(1)
+        glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, self.text_ebo)
+
         glBindVertexArray(0)
     
     def update_atom_labels_data(self):
@@ -184,8 +189,17 @@ class MolViewerWidget(BaseGLWidget):
                 for j in range(4):
                     all_char_quad_data.append(np.concatenate((local_offsets[j], uvs[j])))
 
-        self.num_label_verts = len(all_char_base_positions_3d)
+        self.num_label_verts = len(all_char_quad_data)
         if self.num_label_verts > 0:
+            # Generate and upload index data for the EBO
+            num_quads = self.num_label_verts // 4
+            indices = np.zeros(num_quads * 6, dtype=np.uint32)
+            for i in range(num_quads):
+                base = i * 4
+                indices[i*6:i*6+6] = [base, base + 1, base + 2, base, base + 2, base + 3]
+            
+            glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, self.text_ebo)
+            glBufferData(GL_ELEMENT_ARRAY_BUFFER, indices.nbytes, indices, GL_DYNAMIC_DRAW)
             positions_data = np.array(all_char_base_positions_3d, dtype=np.float32)
             quad_data = np.array(all_char_quad_data, dtype=np.float32)
 
@@ -203,6 +217,7 @@ class MolViewerWidget(BaseGLWidget):
         if self.text_vao: glDeleteVertexArrays(1, [self.text_vao])
         if self.text_pos_vbo: glDeleteBuffers(1, [self.text_pos_vbo])
         if self.text_quad_data_vbo: glDeleteBuffers(1, [self.text_quad_data_vbo])
+        if self.text_ebo: glDeleteBuffers(1, [self.text_ebo])
         if self.font_atlas_tex: glDeleteTextures(1, [self.font_atlas_tex])
         if self.shader_program_sphere_raytrace:
             glDeleteProgram(self.shader_program_sphere_raytrace)
@@ -301,7 +316,8 @@ class MolViewerWidget(BaseGLWidget):
             glUniform4f(glGetUniformLocation(self.text_shader, "textColor"), 1.0, 1.0, 1.0, 1.0) # White
 
             glBindVertexArray(self.text_vao)
-            glDrawArrays(GL_QUADS, 0, self.num_label_verts)
+            num_indices = (self.num_label_verts // 4) * 6
+            glDrawElements(GL_TRIANGLES, num_indices, GL_UNSIGNED_INT, None)
             glBindVertexArray(0)
             disable_blend()
         
@@ -330,7 +346,7 @@ class MolViewerWidget(BaseGLWidget):
 
 
 class MolViewer(AppWindow):
-    def __init__(self, trj):
+    def __init__(self, trj=None):
         super().__init__()
         self.setWindowTitle("Modern OpenGL Molecular Viewer")
         self.setGeometry(100, 100, 800, 600)
@@ -409,6 +425,3 @@ if __name__ == '__main__':
     #trj = au.trj_fill_radius(trj, bVdw=False, rFactor=1.0)
     print( "trj.enames", trj[0])
     MolViewer.launch(trj=trj)
-
-    #main_window = MolViewer( trj=trj)
-    #sys.exit(app.exec_())
