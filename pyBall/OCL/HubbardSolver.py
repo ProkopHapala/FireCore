@@ -724,6 +724,116 @@ def generate_xV_scan(p1, p2, Vrange=(0.0,1.0), nxV=(10,10)) -> np.ndarray:
     pts = np.hstack([line_rep, V_rep])                     # (nx*nV,4)
     return pts.astype(np.float32)
 
+# New helper functions for demo_local_update
+def find_closest_pTip(posE, pTips, nxy_scan):
+    """Find the closest tip position index for each site."""
+    nx, ny = nxy_scan
+    # Reshape tip positions (x,y) into grid
+    grid_xy = pTips[:, :2].reshape((nx, ny, 2))
+    indices = []
+    for x_site, y_site, *_ in posE:
+        dx = grid_xy[:, :, 0] - x_site
+        dy = grid_xy[:, :, 1] - y_site
+        idx_flat = np.argmin(dx*dx + dy*dy)
+        ix, iy = np.unravel_index(idx_flat, (nx, ny))
+        indices.append(ix*ny + iy)
+    return np.array(indices, dtype=int)
+
+def plot_site_occupancy(pos,  occupation, energy, nxy_sites, nSingle, sz=300, thisSites=None,):
+
+    print( "plot_site_occupancy() occupation.shape ", occupation.shape)
+
+    if thisSites is None:
+        thisSites = pos.copy()
+
+    #bits_all = np.unpackbits(occupation.reshape(nTips, solver.occ_bytes), axis=1)[:, :nSingle].astype(bool)
+    bits_all = np.unpackbits(occupation, axis=1)[:, :nSingle].astype(bool)
+
+    fig, axs = plt.subplots(nxy_sites[1], nxy_sites[0], figsize=(nxy_sites[0]*3, nxy_sites[1]*3))
+    #plt.subplots_adjust(wspace=0.3, hspace=0.3)
+    for s in range(nSingle):
+        ix = s // nxy_sites[0]
+        jy = s % nxy_sites[0]
+        ax = axs[ix, jy]
+        for spine in ax.spines.values():
+            spine.set_visible(True)
+            spine.set_color('black')
+            spine.set_linewidth(2)
+        occ_config = bits_all[s].astype(bool)
+        ax.plot( thisSites[s,0], thisSites[s,1], 'o', color='red', markersize=10 )
+        ax.scatter(pos[:, 0][~occ_config], pos[:, 1][~occ_config], s=sz, facecolors='none', edgecolors='black', linewidths=2)
+        ax.scatter(pos[:, 0][occ_config],  pos[:, 1][occ_config],  s=sz, color='black')
+        ax.set_title(f"E={energy[s]:.3f}")
+        ax.set_aspect('equal')
+        #ax.axis('off')
+    #plt.tight_layout()
+    #plt.show()
+
+def plot_occupancy_slice(occupation, nxy_scan, occ_bytes, slice_idx, axis='x'):
+    """
+    Plots a 1D slice of the occupancy array as a binary image.
+
+    Args:
+        occupation (np.ndarray): The 1D array of site occupancies (nTips * occ_bytes).
+        nxy_scan (tuple): The (nx, ny) dimensions of the tip scan grid.
+        occ_bytes (int): The number of bytes per tip position for occupancy.
+        slice_idx (int): The index for the slice (e.g., ix if axis='x', iy if axis='y').
+        axis (str): The axis along which to take the slice ('x' or 'y').
+    """
+    nx, ny = nxy_scan
+    nTips  = nx * ny
+    nSites = occ_bytes * 8
+    
+    occupancy_2d_bytes = occupation.reshape(ny, nx, occ_bytes)
+    
+    if axis == 'x':
+        slice_data_bytes = occupancy_2d_bytes[:, slice_idx, :]
+        title_suffix = f" (x_idx={slice_idx})"
+    elif axis == 'y':
+        slice_data_bytes = occupancy_2d_bytes[slice_idx, :, :]
+        title_suffix = f" (y_idx={slice_idx})"
+    else:
+        print("Error: axis must be 'x' or 'y'")
+        return
+
+    binary_image_data = np.zeros((slice_data_bytes.shape[0], nSites), dtype=np.uint8)
+    for i, byte_row in enumerate(slice_data_bytes):
+        bits = np.unpackbits(byte_row)
+        binary_image_data[i, :] = bits
+
+    plt.figure(figsize=(10, 5))
+    plt.imshow(binary_image_data, cmap='gray', aspect='auto', interpolation='nearest')
+    plt.title(f"Site Occupancy Slice{title_suffix}")
+    plt.xlabel("Site Index (0 to nSites-1)")
+    plt.ylabel(f"Tip Position Index along {'Y' if axis=='x' else 'X'} axis")
+    plt.colorbar(label="Occupancy (0=empty, 1=occupied)")
+    #plt.show()
+
+def plot_occupancy_line(occupation, nSingle):
+    nbyte = nSingle//8
+    bits = np.unpackbits(occupation, axis=1)
+    print("plot_occupancy_line() bits.shape = ", bits.shape, nSingle, nbyte)
+    bits = bits[:,:nSingle]
+    plt.figure(figsize=(10, 5))
+    plt.imshow(bits, cmap='gray', aspect='auto', interpolation='nearest')
+    plt.title(f"Site Occupancy Slice")
+    plt.xlabel("Site Index (0 to nSites-1)")
+    plt.ylabel(f"Tip Position Index ")
+    plt.colorbar(label="Occupancy (0=empty, 1=occupied)")
+    #plt.show()
+
+def print_occupancy(occupation, nSingle, bHex=False):
+    occ_bytes = nSingle//8
+    nTips = occupation.shape[0]
+    for i in range(nTips):
+        print(f"CPU iTip {i:3} occ: ", end="")
+        for j in range(occ_bytes):
+            if bHex:
+                print(f"{occupation[i,j]:02x}", end="")
+            else:
+                print(f"{occupation[i,j]:08b}", end="")
+        print()
+
 # -----------------------------------------------------------------------------
 #                     High-level convenience functions 
 # -----------------------------------------------------------------------------
@@ -777,6 +887,7 @@ def plot2d( data, extent=None, title=None, ax=None, cmap=None, ps=None):
     plot_sites(ps,ax); 
     ax.set_title(title);
 
+# New helper functions for demo_local_update
 def solve_hopping_scan(solver: HubbardSolver, posE: np.ndarray, rots: np.ndarray, orbs: np.ndarray, extent, nxy=(10,10), params=default_params):
     """Run oriented hopping scan over XY grid and sum amplitudes over sites."""
     pTips = generate_xy_scan(extent, nxy, zTip=params["zTip"], Vbias=params["Vbias"])
@@ -1038,91 +1149,6 @@ def demo_precalc_scan(solver: HubbardSolver=None, nxy_sites=(6, 6), nxy_scan=(10
     plt.tight_layout(rect=[0, 0, 1, 0.96])
     plt.show()
 
-def plot_occupancy_slice(occupation, nxy_scan, occ_bytes, slice_idx, axis='x'):
-    """
-    Plots a 1D slice of the occupancy array as a binary image.
-
-    Args:
-        occupation (np.ndarray): The 1D array of site occupancies (nTips * occ_bytes).
-        nxy_scan (tuple): The (nx, ny) dimensions of the tip scan grid.
-        occ_bytes (int): The number of bytes per tip position for occupancy.
-        slice_idx (int): The index for the slice (e.g., ix if axis='x', iy if axis='y').
-        axis (str): The axis along which to take the slice ('x' or 'y').
-    """
-    nx, ny = nxy_scan
-    nTips  = nx * ny
-    nSites = occ_bytes * 8
-
-    # Reshape occupation to (ny, nx, occ_bytes) for easier slicing
-    # Note: The order here depends on how the scan grid is flattened to nTips
-    # Assuming row-major (y then x) for indexing pTips
-    occupancy_2d_bytes = occupation.reshape(ny, nx, occ_bytes)
-
-    if axis == 'x':
-        # Slice along y-axis at fixed x_idx
-        if not (0 <= slice_idx < nx):
-            print(f"Error: slice_idx {slice_idx} out of bounds for nx={nx}")
-            return
-        slice_data_bytes = occupancy_2d_bytes[:, slice_idx, :]
-        title_suffix = f" (x_idx={slice_idx})"
-    elif axis == 'y':
-        # Slice along x-axis at fixed y_idx
-        if not (0 <= slice_idx < ny):
-            print(f"Error: slice_idx {slice_idx} out of bounds for ny={ny}")
-            return
-        slice_data_bytes = occupancy_2d_bytes[slice_idx, :, :]
-        title_suffix = f" (y_idx={slice_idx})"
-    else:
-        print("Error: axis must be 'x' or 'y'")
-        return
-
-    # Convert bytes to bits
-    # Each row in slice_data_bytes is (occ_bytes,)
-    # We want to convert each byte into 8 bits and concatenate them horizontally
-    binary_image_data = np.zeros((slice_data_bytes.shape[0], nSites), dtype=np.uint8)
-    for i, byte_row in enumerate(slice_data_bytes):
-        bits = np.unpackbits(byte_row)
-        binary_image_data[i, :] = bits
-
-    plt.figure(figsize=(10, 5))
-    plt.imshow(binary_image_data, cmap='gray', aspect='auto', interpolation='nearest')
-    plt.title(f"Site Occupancy Slice{title_suffix}")
-    plt.xlabel("Site Index (0 to nSites-1)")
-    plt.ylabel(f"Tip Position Index along {'Y' if axis=='x' else 'X'} axis")
-    plt.colorbar(label="Occupancy (0=empty, 1=occupied)")
-    plt.show()
-
-def plot_occupancy_line(occupation, nSingle ):
-    #binary_image_data = np.zeros((slice_data_bytes.shape[0], nSites), dtype=np.uint8)
-    # for i, byte_row in enumerate(slice_data_bytes):
-    #     bits = np.unpackbits(byte_row)
-    #     binary_image_data[i, :] = bits
-    nbyte = nSingle//8
-    bits = np.unpackbits(occupation, axis=1)
-    print( "plot_occupancy_line() bits.shape = ", bits.shape, nSingle, nbyte)
-    bits = bits[:,:nSingle]
-    plt.figure(figsize=(10, 5))
-    plt.imshow(bits, cmap='gray', aspect='auto', interpolation='nearest')
-    plt.title(f"Site Occupancy Slice")
-    plt.xlabel("Site Index (0 to nSites-1)")
-    plt.ylabel(f"Tip Position Index ")
-    plt.colorbar(label="Occupancy (0=empty, 1=occupied)")
-    #plt.show()
-
-def print_occupancy(occupation, nSingle, bHex=False ):
-    occ_bytes = nSingle//8
-    nTips = occupation.shape[0]
-    for i in range(nTips):
-        #print(f"Tip {i}: E={energy[i]:.3f}, I_occ={current[i,0]:.3f}, I_unocc={current[i,1]:.3f}")
-        #i0 = i*nByteMax
-        print(f"CPU iTip {i:3} occ: ", end="")
-        for j in range(occ_bytes):
-            if bHex:
-                print(f"{occupation[i,j]:02x}", end="")
-            else:
-                print(f"{occupation[i,j]:08b}", end="")
-        print()
-
 def demo_local_update(solver: HubbardSolver=None, nxy_sites=(4, 4), nxy_scan=(50, 50), Vbias=0.1, cutoff=8.0, W_amplitude=1.0, T=0.001, nIter=100):
     """
     Demonstrates the usage of the solve_local_updates kernel by running a 2D scan with Monte Carlo optimization.
@@ -1225,7 +1251,10 @@ def demo_local_update(solver: HubbardSolver=None, nxy_sites=(4, 4), nxy_scan=(50
     #         print(f"{occupation[i*solver.occ_bytes+j]:08b}", end="")
     #     print()
 
-    occ_slice = occupation.reshape( nxy_scan[0], nxy_scan[1], -1 )[:, nxy_scan[1]//2,:]
+    occupation_2d = occupation.reshape( nxy_scan[0], nxy_scan[1], -1 )
+    occupation    = occupation.reshape( nxy_scan[0]*nxy_scan[1], -1 )
+
+    occ_slice = occupation_2d[:, nxy_scan[1]//2,:]
 
     #print_occupancy(occupation.reshape(nTips,-1), nSingle, bHex=False)
 
@@ -1237,8 +1266,14 @@ def demo_local_update(solver: HubbardSolver=None, nxy_sites=(4, 4), nxy_scan=(50
     # Or along y-axis at x_idx = nx // 2
 
     plot_occupancy_line( occ_slice, nSingle )
-    #plot_occupancy_slice(occupation, nxy_scan, solver.occ_bytes, slice_idx=nxy_scan[0] // 2, axis='x')
-    
+    # Plot occupancy configurations for each site when tip is closest to them
+    site_tip_indices = find_closest_pTip(posE, pTips, nxy_scan)
+
+    print( " occupation.shape ", occupation.shape)
+
+
+    plot_site_occupancy( posE, occupation[site_tip_indices], energy[site_tip_indices],  nxy_sites, nSingle )
+
     # Calculate total charge for each tip position (count bits set to 1)
     total_charge        = np.zeros(nTips, dtype=np.int32)
     occupation_reshaped = occupation.reshape(nTips, solver.occ_bytes)
@@ -1247,10 +1282,10 @@ def demo_local_update(solver: HubbardSolver=None, nxy_sites=(4, 4), nxy_scan=(50
     
     # Reshape results into 2D maps
     nx, ny = nxy_scan
-    energy_map       = energy.reshape((nx, ny))
+    energy_map       = energy       .reshape((nx, ny))
     current_map_occ  = current[:, 0].reshape((nx, ny))   # Occupied sites current
     current_map_unoc = current[:, 1].reshape((nx, ny))  # Unoccupied sites current
-    charge_map       = total_charge.reshape((nx, ny))
+    charge_map       = total_charge .reshape((nx, ny))
     
     print(f"Energy range: {np.min(energy):.3f} to {np.max(energy):.3f}")
     print(f"Charge range: {np.min(total_charge)} to {np.max(total_charge)} sites")
@@ -1260,16 +1295,20 @@ def demo_local_update(solver: HubbardSolver=None, nxy_sites=(4, 4), nxy_scan=(50
     fig, axs = plt.subplots(2, 2, figsize=(12, 10))
     fig.suptitle(f"Monte Carlo Optimization Results (T={T}K, nIter={nIter}, W={W_amplitude})", fontsize=16)
     
-    plot2d(energy_map.T,       extent=extent, title="Energy (optimized)", ax=axs[0, 0], cmap="viridis", ps=posE)
-    plot2d(charge_map.T,       extent=extent, title="Total Charge (# occupied sites)", ax=axs[0, 1], cmap="plasma", ps=posE)
-    plot2d(current_map_occ.T,  extent=extent, title="Current (occupied sites)", ax=axs[1, 0], cmap="inferno", ps=posE)
-    plot2d(current_map_unoc.T, extent=extent, title="Current (unoccupied sites)", ax=axs[1, 1], cmap="magma", ps=posE)
+    plot2d(energy_map.T,       extent=extent, title="Energy (optimized)",              ax=axs[0, 0], cmap="viridis", ps=posE )
+    plot2d(charge_map.T,       extent=extent, title="Total Charge (# occupied sites)", ax=axs[0, 1], cmap="plasma",  ps=posE )
+    plot2d(current_map_occ.T,  extent=extent, title="Current (occupied sites)",        ax=axs[1, 0], cmap="inferno", ps=posE )
+    plot2d(current_map_unoc.T, extent=extent, title="Current (unoccupied sites)",      ax=axs[1, 1], cmap="magma",   ps=posE )
     
     plt.tight_layout(rect=[0, 0, 1, 0.95])
     plt.show()
 
 
 if __name__ == "__main__":
+
+    # run it like this:
+    #   python -u -m pyBall.OCL.HubbardSolver | tee OUT
+
     import matplotlib.pyplot as plt
     #test_brute_force_solver()
     #test_site_coupling()
@@ -1277,4 +1316,3 @@ if __name__ == "__main__":
     demo_local_update()
 
     
-
