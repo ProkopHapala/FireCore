@@ -1,0 +1,25 @@
+#version 330 core
+
+layout (location = 0) in vec3 aPos3D;       // 3D base position of the character quad (per instance)
+layout (location = 1) in vec2 aLocalOffset; // Local 2D offset within the character quad (-0.5 to 0.5)
+layout (location = 2) in vec2 aTexCoord;    // UV coordinates for texture sampling
+
+uniform mat4 projection;
+uniform mat4 view;
+uniform float labelScale; // Global scale for all labels
+
+out vec2 v_texCoord;
+
+void main() {
+    v_texCoord = aTexCoord;
+
+    // To create a billboard, we transform the local offset by the inverse of the view matrix's rotation part.
+    // This aligns the quad with the camera's view plane.
+    vec3 cameraRight = vec3(view[0][0], view[1][0], view[2][0]);
+    vec3 cameraUp    = vec3(view[0][1], view[1][1], view[2][1]);
+    
+    // Calculate the final world position for the vertex
+    vec3 finalWorldPos = aPos3D + (cameraRight * aLocalOffset.x * labelScale) + (cameraUp * aLocalOffset.y * labelScale);
+
+    gl_Position = projection * view * vec4(finalWorldPos, 1.0);
+}

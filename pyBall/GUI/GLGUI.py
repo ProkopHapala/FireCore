@@ -2,6 +2,7 @@ import sys
 import numpy as np
 from scipy.spatial.transform import Rotation as R
 import argparse
+from PIL import Image
 
 from PyQt5.QtWidgets import ( QOpenGLWidget)
 from PyQt5.QtCore import Qt
@@ -11,7 +12,23 @@ from PyQt5.QtWidgets import (QMainWindow)
 from PyQt5.QtGui import QSurfaceFormat
 from PyQt5.QtWidgets import QApplication
 
-from OpenGL.GL import *
+from OpenGL.GL import (
+    glUseProgram, glClear, glClearColor, GL_COLOR_BUFFER_BIT, GL_DEPTH_BUFFER_BIT, 
+    glEnable, glDepthFunc, GL_LESS, GL_DEPTH_TEST, glViewport, glCreateProgram, 
+    glShaderSource, glCompileShader, glAttachShader, glLinkProgram, glGetProgramiv, 
+    GL_LINK_STATUS, glGetShaderiv, GL_COMPILE_STATUS, glGetProgramInfoLog, glGetShaderInfoLog, 
+    glDeleteShader, glGetUniformLocation, glUniformMatrix4fv, GL_TRUE, glUniform3fv, GL_VERTEX_SHADER, GL_FRAGMENT_SHADER, 
+    glUniform1f, glUniform4f, glUniform1i, glGenBuffers, glBindBuffer, glBufferData, 
+    GL_ARRAY_BUFFER, GL_STATIC_DRAW, GL_DYNAMIC_DRAW, glVertexAttribPointer, glEnableVertexAttribArray, 
+    glDrawArrays, GL_TRIANGLES, glDeleteBuffers, glGenVertexArrays, glBindVertexArray, glVertexAttribDivisor, 
+    glDeleteVertexArrays, GL_FLOAT, GL_FALSE, glDrawArraysInstanced, glBlendFunc, 
+    glBlendEquation, GL_BLEND, GL_FUNC_ADD, GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA, 
+    glBlendEquationSeparate, glBlendFuncSeparate, GL_MIN, GL_MAX, GL_FUNC_SUBTRACT, 
+    GL_FUNC_REVERSE_SUBTRACT, GL_ONE, glActiveTexture, GL_TEXTURE0, glBindTexture, GL_TEXTURE_2D,
+    glGenTextures, glTexParameteri, GL_TEXTURE_WRAP_S, GL_TEXTURE_WRAP_T, GL_REPEAT, 
+    GL_TEXTURE_MIN_FILTER, GL_TEXTURE_MAG_FILTER, GL_LINEAR, GL_RGBA, GL_UNSIGNED_BYTE, 
+    glPixelStorei, GL_UNPACK_ALIGNMENT, GL_CULL_FACE, glTexImage2D, glDisable
+)
 from OpenGL.GL.shaders import compileProgram, compileShader
 
 # It's good practice to keep shaders in separate files or as multi-line strings
@@ -396,6 +413,13 @@ class BaseGLWidget(QOpenGLWidget):
         if self.default_sphere_mesh:
             self.default_sphere_mesh.cleanup()
 
+    def set_default_uniforms(self):
+        if self.current_shader_program_id is not None:
+            projection_matrix = self.camera.get_projection_matrix()
+            view_matrix = self.camera.get_view_matrix()
+            glUniformMatrix4fv(glGetUniformLocation(self.current_shader_program_id, "projection"), 1, GL_FALSE, projection_matrix)
+            glUniformMatrix4fv(glGetUniformLocation(self.current_shader_program_id, "view"), 1, GL_FALSE, view_matrix)
+
     def paintGL_base(self):
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT)
         
@@ -501,6 +525,30 @@ class BaseGLWidget(QOpenGLWidget):
         # It is called after common uniforms and transformations are set.
         # The shader program is already in use.
         pass
+
+    def load_texture(self, filepath):
+        try:
+            img = Image.open(filepath).convert("RGBA")
+        except FileNotFoundError:
+            print(f"Error: Texture file not found at {filepath}")
+            return 0
+
+        img_data = np.array(list(img.getdata()), np.uint8)
+
+        tex_id = glGenTextures(1)
+        glBindTexture(GL_TEXTURE_2D, tex_id)
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR)
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR)
+        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, img.width, img.height, 0, GL_RGBA, GL_UNSIGNED_BYTE, img_data)
+        glBindTexture(GL_TEXTURE_2D, 0)
+        return tex_id
+
+    def bind_texture(self, uniform_name, tex_id, texture_unit):
+        loc = glGetUniformLocation(self.current_shader_program_id, uniform_name)
+        if loc != -1:
+            glActiveTexture(GL_TEXTURE0 + texture_unit)
+            glBindTexture(GL_TEXTURE_2D, tex_id)
+            glUniform1i(loc, texture_unit)
 
 class AppWindow(QMainWindow):
     def __init__(self, parent=None, **kwargs ): # Accept kwargs to pass to QMainWindow if needed

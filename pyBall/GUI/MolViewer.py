@@ -10,7 +10,15 @@ sys.path.append("../../") # To find pyBall
 from pyBall import elements
 from pyBall.GUI.GLGUI import BaseGLWidget, AppWindow, InstancedData, set_ogl_blend_mode, disable_blend, alpha_blend_modes
 
-from OpenGL.GL import glUseProgram
+from OpenGL.GL import (
+    glUseProgram, glGenVertexArrays, glBindVertexArray, glGenBuffers, glBindBuffer,
+    glBufferData, glVertexAttribPointer, glEnableVertexAttribArray, glDrawArrays,
+    GL_FLOAT, GL_FALSE, GL_DYNAMIC_DRAW, GL_STATIC_DRAW, GL_QUADS,
+    glDeleteVertexArrays, glDeleteBuffers, glUniformMatrix4fv, glGetUniformLocation,
+    glUniform1f, glUniform4f, GL_ARRAY_BUFFER
+)
+import json
+import ctypes
 
 class MolViewerWidget(BaseGLWidget):
     def __init__(self, parent=None):
@@ -20,6 +28,8 @@ class MolViewerWidget(BaseGLWidget):
         self.opacity      = 0.5
         self.frames_atoms = []
         self.frames_elecs = []
+        self.atom_instances = InstancedData(base_attrib_location=1)
+        self.elec_instances = InstancedData(base_attrib_location=1)
         # self.blend_mode = alpha_blend_modes["standard"] # Replaced by render_modes
         self.shader_program_sphere_raytrace = None
         self.shader_program_sphere_max_vol = None
@@ -28,11 +38,22 @@ class MolViewerWidget(BaseGLWidget):
         self.render_modes = {}
         self.current_render_mode_key = None
 
+        # --- Attributes for Text Rendering
+        self.text_shader = None
+        self.text_vao = None
+        self.text_pos_vbo = None
+        self.text_quad_data_vbo = None
+        self.font_atlas_tex = None
+        self.font_atlas_data = None
+        self.num_label_verts = 0
+        self.label_data_dirty = True
+
     @property
     def all_shader_programs(self):
         programs = []
         if self.shader_program_sphere_raytrace: programs.append(self.shader_program_sphere_raytrace)
         if self.shader_program_sphere_max_vol:  programs.append(self.shader_program_sphere_max_vol)
+        if self.text_shader: programs.append(self.text_shader)
         return programs
 
     def initializeGL(self):
@@ -80,9 +101,109 @@ class MolViewerWidget(BaseGLWidget):
         self.elec_instances = InstancedData(base_attrib_location=2) # Same attrib locations
         self.elec_instances.associate_mesh(sphere_mesh)
         self.elec_instances.setup_instance_vbos(atribs)
+
+        # --- Text Rendering Setup ---
+        vert_text = open(shader_folder + "/text_billboard.glslv").read()
+        frag_text = open(shader_folder + "/text_billboard.glslf").read()
+        self.text_shader = self.compile_shader_program(vert_text, frag_text)
+
+        self.font_atlas_tex = self.load_texture(shader_folder + "/font_atlas.png")
+        with open(shader_folder + "/font_atlas.json") as f:
+            self.font_atlas_data = json.load(f)
+
+        self.text_vao = glGenVertexArrays(1)
+        glBindVertexArray(self.text_vao)
+
+        self.text_pos_vbo = glGenBuffers(1)
+        glBindBuffer(GL_ARRAY_BUFFER, self.text_pos_vbo)
+        glEnableVertexAttribArray(0) # aPos3D
+        glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 0, None)
+
+        self.text_quad_data_vbo = glGenBuffers(1)
+        glBindBuffer(GL_ARRAY_BUFFER, self.text_quad_data_vbo)
+        stride = 4 * 4 # 4 floats (pos.xy, uv.xy)
+        glEnableVertexAttribArray(1) # aLocalOffset
+        glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, stride, ctypes.c_void_p(0))
+        glEnableVertexAttribArray(2) # aTexCoord
+        glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, stride, ctypes.c_void_p(2 * 4))
+
+        glBindVertexArray(0)
     
+    def update_atom_labels_data(self):
+        if not self.trj or self.font_atlas_data is None:
+            self.num_label_verts = 0
+            return
+
+        frame_atoms_data = self.frames_atoms[self.current_frame_index]
+        atom_positions, _, _ = frame_atoms_data # Unpack [positions, radii, colors]
+
+        if atom_positions.shape[0] == 0:
+            self.num_label_verts = 0
+            return
+        atom_enames = self.trj[self.current_frame_index][2]
+
+        all_char_base_positions_3d = []
+        all_char_quad_data = []
+        label_scale = 0.3  # World-space size of the label quad
+        label_y_offset = 0.4 # Offset above the atom
+
+        num_atoms = len(atom_positions)
+        for i in range(num_atoms):
+            pos_3d = atom_positions[i]
+            element_symbol = atom_enames[i].decode('utf-8') if isinstance(atom_enames[i], bytes) else str(atom_enames[i])
+            
+            # Simple centering based on number of characters
+            label_world_width = len(element_symbol) * label_scale * 0.5
+            cursor_x_start = -label_world_width / 2.0
+
+            for i_char, char in enumerate(element_symbol):
+                if char not in self.font_atlas_data['chars']: continue
+                cd = self.font_atlas_data['chars'][char]
+
+                # Calculate offset for this specific character
+                cursor_x_offset = cursor_x_start + i_char * (label_scale * 0.5)
+
+                # Base 3D position for this character's quad
+                char_base_pos = pos_3d + np.array([cursor_x_offset, label_y_offset, 0.0], dtype=np.float32)
+                all_char_base_positions_3d.extend([char_base_pos] * 4) # 4 vertices for the quad
+
+                # Local quad offsets (from character's base position)
+                local_offsets = np.array([
+                    [-0.5, -0.5], [0.5, -0.5], [0.5, 0.5], [-0.5, 0.5]
+                ], dtype=np.float32)
+
+                # UVs for the character (Y is often flipped in atlases)
+                uvs = np.array([
+                    [cd['norm_x'], cd['norm_y'] + cd['norm_h']],
+                    [cd['norm_x'] + cd['norm_w'], cd['norm_y'] + cd['norm_h']],
+                    [cd['norm_x'] + cd['norm_w'], cd['norm_y']],
+                    [cd['norm_x'], cd['norm_y']]
+                ], dtype=np.float32)
+
+                # Interleave local_offset and uv for each vertex
+                for j in range(4):
+                    all_char_quad_data.append(np.concatenate((local_offsets[j], uvs[j])))
+
+        self.num_label_verts = len(all_char_base_positions_3d)
+        if self.num_label_verts > 0:
+            positions_data = np.array(all_char_base_positions_3d, dtype=np.float32)
+            quad_data = np.array(all_char_quad_data, dtype=np.float32)
+
+            glBindBuffer(GL_ARRAY_BUFFER, self.text_pos_vbo)
+            glBufferData(GL_ARRAY_BUFFER, positions_data.nbytes, positions_data, GL_DYNAMIC_DRAW)
+
+            glBindBuffer(GL_ARRAY_BUFFER, self.text_quad_data_vbo)
+            glBufferData(GL_ARRAY_BUFFER, quad_data.nbytes, quad_data, GL_STATIC_DRAW)
+
+        self.label_data_dirty = False
+
     def cleanupGL(self):
-        # super().cleanupGL_base() # BaseGLWidget.shader_program will be one of these
+        super().cleanupGL()
+        if self.text_shader: glDeleteProgram(self.text_shader)
+        if self.text_vao: glDeleteVertexArrays(1, [self.text_vao])
+        if self.text_pos_vbo: glDeleteBuffers(1, [self.text_pos_vbo])
+        if self.text_quad_data_vbo: glDeleteBuffers(1, [self.text_quad_data_vbo])
+        if self.font_atlas_tex: glDeleteTextures(1, [self.font_atlas_tex])
         if self.shader_program_sphere_raytrace:
             glDeleteProgram(self.shader_program_sphere_raytrace)
             self.shader_program_sphere_raytrace = None
@@ -166,6 +287,23 @@ class MolViewerWidget(BaseGLWidget):
         self.use_shader(shader_id_electrons)
         set_ogl_blend_mode(blend_params_electrons, depth_test)
         self.elec_instances.draw()
+
+        # --- Render Atom Labels ---
+        if self.label_data_dirty:
+            self.update_atom_labels_data()
+
+        if self.num_label_verts > 0:
+            self.use_shader(self.text_shader)
+            self.set_default_uniforms() # Set camera matrices
+            self.bind_texture('fontAtlas', self.font_atlas_tex, 0)
+            set_ogl_blend_mode(alpha_blend_modes["standard"], True)
+            glUniform1f(glGetUniformLocation(self.text_shader, "labelScale"), 0.3) # Adjust scale as needed
+            glUniform4f(glGetUniformLocation(self.text_shader, "textColor"), 1.0, 1.0, 1.0, 1.0) # White
+
+            glBindVertexArray(self.text_vao)
+            glDrawArrays(GL_QUADS, 0, self.num_label_verts)
+            glBindVertexArray(0)
+            disable_blend()
         
     def use_shader(self, shader_prog_id):
         glUseProgram(shader_prog_id)
@@ -175,6 +313,7 @@ class MolViewerWidget(BaseGLWidget):
         if 0 <= frame_idx < len(self.trj):
             self.current_frame_index = frame_idx
             self.instance_data_dirty = True
+            self.label_data_dirty    = True
             self.update()
 
     def set_opacity(self, opacity_percent):
