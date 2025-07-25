@@ -9,7 +9,7 @@ out vec4 FragColor;
 void main() {
     // DEBUG: output the raw texture color so we can see if the atlas is bound
     vec4 tex = texture(fontAtlas, v_texCoord);
-    FragColor = tex;
-    //FragColor = vec4(textColor.rgb, 1.0);
+    //FragColor = tex;
+    FragColor = vec4(textColor.rgb*tex.a, tex.a);
     //FragColor = vec4(1.,0.,0.,1.);
 }

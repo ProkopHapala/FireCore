@@ -137,68 +137,43 @@ class MolViewerWidget(BaseGLWidget):
         GL.glBindVertexArray(0)
     
     def update_atom_labels_data(self):
-        # if not self.trj or self.font_atlas_data is None:
-        #     self.num_label_verts = 0
-        #     return
+        if not self.trj or self.font_atlas_data is None:
+            self.num_label_verts = 0
+            return
 
         frame_atoms_data = self.frames_atoms[self.current_frame_index]
-        atom_positions, _, _ = frame_atoms_data # Unpack [positions, radii, colors]
-
-        # if atom_positions.shape[0] == 0:
-        #     self.num_label_verts = 0
-        #     return
+        atom_positions, _, _ = frame_atoms_data
         atom_enames = self.trj[self.current_frame_index][2]
 
+        tile_w = self.font_atlas_data['tile_w']
+        tile_h = self.font_atlas_data['tile_h']
+        tex_w  = self.font_atlas_data['tex_w']
+
         all_vertex_data = []
-        label_scale = 0.3  # World-space size of the label quad
-        label_y_offset = 0.4 # Offset above the atom
+        label_scale = 0.3
+        label_y_offset = 0.4
 
-        tex_w = self.font_atlas_data['tex_w']
-        tex_h = self.font_atlas_data['tex_h']
-
-        num_atoms = len(atom_positions)
-        for i in range(num_atoms):
-            pos_3d = atom_positions[i]
-            element_symbol = atom_enames[i].decode('utf-8') if isinstance(atom_enames[i], bytes) else str(atom_enames[i])
-            
-            # Simple centering based on number of characters
-            label_world_width = len(element_symbol) * label_scale * 0.5
+        for pos_3d, ename in zip(atom_positions, atom_enames):
+            symbol = ename.decode('utf-8') if isinstance(ename, bytes) else str(ename)
+            label_world_width = len(symbol) * label_scale * 0.5
             cursor_x_start = -label_world_width / 2.0
 
-            for i_char, char in enumerate(element_symbol):
-                #if char not in self.font_atlas_data['chars']: continue
-                cd = self.font_atlas_data['chars'][char]
+            for i_char, char in enumerate(symbol):
+                code = ord(char)
+                if code < 32 or code > 126:  # Skip non-printable
+                    continue
 
-                # Calculate offset for this specific character
+                # 1D atlas: u = (code-32)*tile_w/tex_w, v = 0 (full height)
+                u0 = (code - 32) * tile_w / tex_w
+                u1 = u0 + tile_w / tex_w
+                v0 = 0.0
+                v1 = 1.0
+
                 cursor_x_offset = cursor_x_start + i_char * (label_scale * 0.5)
-
-                # Base 3D position for this character's quad
-                char_base_pos = pos_3d + np.array([cursor_x_offset, label_y_offset, 0.0], dtype=np.float32)
-                # Local quad offsets (from character's base position)
+                char_base_pos = pos_3d + np.array([cursor_x_offset, label_y_offset, 0.0])
                 local_offsets = np.array([[-0.5, -0.5], [0.5, -0.5], [0.5, 0.5], [-0.5, 0.5]], dtype=np.float32)
-
-                # uvs = np.array([
-                #     [cd['norm_x']               , cd['norm_y'] + cd['norm_h']],
-                #     [cd['norm_x'] + cd['norm_w'], cd['norm_y'] + cd['norm_h']],
-                #     [cd['norm_x'] + cd['norm_w'], cd['norm_y']               ],
-                #     [cd['norm_x']               , cd['norm_y']               ]
-                # ], dtype=np.float32)
-                
-                # UVs for the character (computed from pixel coords, flipping Y)
-
-                x0  = cd['x'] 
-                y0  = cd['y'] 
-                w0  = cd['w'] 
-                h0  = cd['h']
-                u0  = x0 / tex_w; 
-                v0  = 1.0 - (y0 + h0) / tex_h
-                u1  = (x0 + w0) / tex_w; 
-                v1  = 1.0 - y0 / tex_h
                 uvs = np.array([[u0, v0], [u1, v0], [u1, v1], [u0, v1]], dtype=np.float32)
 
-                #print(f"i {i} i_char {i_char} char {char} uvs: \n", uvs)
-
-                # Interleave all attributes for each vertex
                 for j in range(4):
                     vertex_data = np.concatenate((char_base_pos, local_offsets[j], uvs[j]))
                     all_vertex_data.append(vertex_data)
