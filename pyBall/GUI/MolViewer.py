@@ -1,7 +1,7 @@
 from re import S
 import sys
 import numpy as np
-from PyQt5.QtWidgets import (QApplication, QVBoxLayout, QWidget, QSlider, QLabel, QComboBox)
+from PyQt5.QtWidgets import (QApplication, QVBoxLayout, QHBoxLayout, QWidget, QSlider, QLabel, QComboBox)
 from PyQt5.QtCore    import Qt
 import argparse
 import os
@@ -284,39 +284,35 @@ class MolViewer(BaseGUI):
         super().__init__("Modern OpenGL Molecular Viewer")
         self.setGeometry(100, 100, 800, 600)
 
-        layout = QVBoxLayout(self.main_widget)
+        main_layout = QHBoxLayout(self.main_widget)
+        main_layout.setContentsMargins(0, 0, 0, 0)
+        main_layout.setSpacing(0)
 
         self.gl_widget = MolViewerWidget()
-        layout.addWidget(self.gl_widget, 1) # <-- Add stretch factor here
+        main_layout.addWidget(self.gl_widget, 1)
 
-        self.frame_slider = QSlider(Qt.Horizontal)
-        self.frame_slider.valueChanged.connect(self.gl_widget.set_frame)
-        layout.addWidget(QLabel("Frame:"))
-        layout.addWidget(self.frame_slider)
-
-        self.opacity_slider = QSlider(Qt.Horizontal)
-        self.opacity_slider.setMinimum(0)
-        self.opacity_slider.setMaximum(100)
-        self.opacity_slider.setValue(int(self.gl_widget.opacity * 100))
-        self.opacity_slider.valueChanged.connect(self.gl_widget.set_opacity)
-        layout.addWidget(QLabel("Opacity:"))
-        layout.addWidget(self.opacity_slider)
+        self.controls_panel = QWidget()
+        self.controls_layout = QVBoxLayout(self.controls_panel)
+        self.controls_layout.setContentsMargins(0, 0, 0, 0)
+        self.controls_layout.setSpacing(0)
+        main_layout.addWidget(self.controls_panel, 0)
 
         self.gl_widget.trj = trj
         self.gl_widget.update()
         if self.gl_widget.trj:
-            self.frame_slider.setMinimum(0)
-            self.frame_slider.setMaximum(len(self.gl_widget.trj) - 1)
+            # The slider range needs to be set after trj is loaded and its length is known
+            self.frame_slider = self.slider(0, 1, 100, 0, len(self.gl_widget.trj) - 1, layout=self.controls_layout, label="Frame", callback=self.gl_widget.set_frame)
+        else:
+            self.frame_slider = self.slider(0, 1, 100, 0, 100, layout=self.controls_layout, label="Frame", callback=self.gl_widget.set_frame) # Default range
+        self.opacity_slider = self.slider(50, 1, 100, 0, 100, layout=self.controls_layout, label="Opacity", callback=self.gl_widget.set_opacity)
         self.gl_widget.precalculate_frames_data()
         self.gl_widget.update()
-
-        self.render_mode_combo = QComboBox()
-        
         self.gl_widget.main_window = self
+        self.render_mode_combo = self.comboBox(items=self.gl_widget.render_modes.keys(), callback=self.on_render_mode_changed, layout=self.controls_layout)
 
-        self.render_mode_combo.currentTextChanged.connect(self.on_render_mode_changed)
-        layout.addWidget(QLabel("Electron Render Mode:"))
-        layout.addWidget(self.render_mode_combo)
+        # Add Quit button
+        self.button("Quit", callback=self.close, layout=self.controls_layout)
+        self.controls_layout.addStretch(1)
 
         # self.gl_widget.initializeGL()
         # self.render_mode_combo.addItems(self.gl_widget.render_modes.keys())
