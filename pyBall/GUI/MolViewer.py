@@ -59,12 +59,6 @@ class MolViewerWidget(BaseGLWidget):
         self.render_modes = {}
         self.current_render_mode_key = None
 
-        # --- Attributes for Text Rendering
-
-        #self.text_vao = None
-        #self.text_vbo = None
-        #self.text_ebo = None
-
         self.atom_labels = None
         #self.atom_labels = GLobject()
 
