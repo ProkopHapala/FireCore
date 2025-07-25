@@ -1,3 +1,4 @@
+import os
 import sys
 import numpy as np
 from scipy.spatial.transform import Rotation as R
@@ -30,6 +31,8 @@ from OpenGL.GL import (
     glPixelStorei, GL_UNPACK_ALIGNMENT, GL_CULL_FACE, glTexImage2D, glDisable
 )
 from OpenGL.GL.shaders import compileProgram, compileShader
+import OpenGL.GL as GL
+import ctypes
 
 # It's good practice to keep shaders in separate files or as multi-line strings
 # For simplicity here, they are embedded as strings.
@@ -86,6 +89,42 @@ def setup_ebo(indices):
     glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, ebo)
     glBufferData(GL_ELEMENT_ARRAY_BUFFER, indices.nbytes, indices, GL_STATIC_DRAW)
     return ebo
+
+class GLobject:
+
+    def alloc_vao_vbo_ebo(self, components):
+        self.vao = GL.glGenVertexArrays(1);  GL.glBindVertexArray(self.vao)
+        self.vbo = GL.glGenBuffers(1)
+        GL.glBindBuffer(GL.GL_ARRAY_BUFFER, self.vbo)
+        self.ebo = GL.glGenBuffers(1)
+        GL.glBindBuffer(GL.GL_ELEMENT_ARRAY_BUFFER, self.ebo)
+
+        total_stride = sum(components) * ctypes.sizeof(GL.GLfloat) # Calculate total stride in bytes
+        offset = 0
+        for i, n_comp in enumerate(components):
+            GL.glEnableVertexAttribArray(i)
+            GL.glVertexAttribPointer(i, n_comp, GL.GL_FLOAT, GL.GL_FALSE, total_stride, ctypes.c_void_p(offset))
+            offset += n_comp * ctypes.sizeof(GL.GLfloat) # Increment offset by size of current attribute
+        GL.glBindVertexArray(0)
+        GL.glBindBuffer(GL.GL_ARRAY_BUFFER, 0)
+        GL.glBindBuffer(GL.GL_ELEMENT_ARRAY_BUFFER, 0)
+        return self.vao, self.vbo, self.ebo
+
+    def __init__(self, vao=None, vbo=None, ebo=None, dirty=True, nelements=0, components=None, mode=GL_TRIANGLES ):
+        if vao is not None: self.vao = vao
+        if vbo is not None: self.vbo = vbo
+        if ebo is not None: self.ebo = ebo
+        self.dirty = True
+        if components is not None: self.alloc_vao_vbo_ebo(components)
+        self.nelements = nelements
+        self.mode = mode
+
+    def draw(self, n=-1 ):
+        GL.glBindVertexArray(self.vao)
+        if n == -1: n= self.nelements
+        GL.glDrawElements(self.mode, n, GL.GL_UNSIGNED_INT, None)
+        GL.glBindVertexArray(0)
+
 
 class Mesh:
     def __init__(self, vertices, normals=None, indices=None):
@@ -346,6 +385,12 @@ class BaseGLWidget(QOpenGLWidget):
     def __init__(self, parent=None):
         super().__init__(parent)
 
+        self.shader_folder=os.path.dirname(os.path.abspath(__file__)) + "/shaders"
+
+        self.text_shader     = None
+        self.font_atlas_tex  = None
+        self.font_atlas_data = None
+
         self.zoom_factor    = 10.0  # Initial zoom
         self.orientation    = R.identity()
         self.last_mouse_pos = None
@@ -361,6 +406,8 @@ class BaseGLWidget(QOpenGLWidget):
         self.camera_pos        = QVector3D( 0  ,  0  , self.zoom_factor) # Will be updated by zoom
         self.current_shader_program_id = None # To be set by derived class if it manages shaders
 
+        self.all_shader_programs = []
+
 
     # Qt will call paintGL(); delegate to our internal method
     def paintGL(self):
@@ -368,9 +415,6 @@ class BaseGLWidget(QOpenGLWidget):
         ctx=QOpenGLContext.currentContext()
         print(f"BaseGLWidget.paintGL called, currentContext valid: {ctx is not None}")
         # Note: paintGL is called frequently; keep prints minimal
-        
-        
-        
         self.paintGL_base()
 
     def initializeGL_base(self, vertex_shader_src, fragment_shader_src, bPrint=False):
@@ -385,7 +429,7 @@ class BaseGLWidget(QOpenGLWidget):
         glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA)
         glEnable(GL_CULL_FACE) # Cull back faces
 
-        ret = self.simple_shader = self.compile_shader_program(
+        self.simple_shader = self.compile_shader_program(
             """
             #version 330 core
             layout(location = 0) in vec3 position;
@@ -407,12 +451,17 @@ class BaseGLWidget(QOpenGLWidget):
             }
             """
         )
-        print("ret self.simple_shader = self.compile_shader_program ", ret)
-        # Add simple_shader to the list of shaders that get matrix updates
-        if hasattr(self, 'all_shader_programs'):
-            self.all_shader_programs.append(self.simple_shader)
-            print(f"Added simple_shader {self.simple_shader} to all_shader_programs")
+        self.all_shader_programs.append(self.simple_shader)
+        print(f"Added simple_shader {self.simple_shader} to all_shader_programs")
         
+        # # --- Text Rendering Setup ---
+        vert_text = open(self.shader_folder + "/text_billboard.glslv").read()
+        frag_text = open(self.shader_folder + "/text_billboard.glslf").read()
+        self.text_shader = self.compile_shader_program(vert_text, frag_text)
+        self.all_shader_programs.append(self.text_shader)
+        print(f"Added text_shader {self.text_shader} to all_shader_programs")
+
+
         # Compile shaders if sources are provided
         # if vertex_shader_src and fragment_shader_src:
         #     self.shader_program = self.compile_shader_program(vertex_shader_src, fragment_shader_src)
@@ -429,21 +478,17 @@ class BaseGLWidget(QOpenGLWidget):
         self.default_sphere_mesh.setup_buffers()
 
     def compile_shader_program(self, vertex_shader_src, fragment_shader_src):
-        try:
-            return compileProgram(
-                compileShader(vertex_shader_src,   GL_VERTEX_SHADER),
-                compileShader(fragment_shader_src, GL_FRAGMENT_SHADER)
-            )
-        except RuntimeError as e:
-            print(f"Shader Compilation Error: {e}")
-            sys.exit(1)
+        return compileProgram(
+            compileShader(vertex_shader_src,   GL_VERTEX_SHADER),
+            compileShader(fragment_shader_src, GL_FRAGMENT_SHADER)
+        )
 
     def cleanupGL_base(self):
-        if self.shader_program:
-            glDeleteProgram(self.shader_program)
+        if self.shader_program: glDeleteProgram(self.shader_program)
         self.shader_program = None
-        if self.default_sphere_mesh:
-            self.default_sphere_mesh.cleanup()
+        if self.default_sphere_mesh: self.default_sphere_mesh.cleanup()
+        if self.text_shader:    glDeleteProgram(self.text_shader)
+        if self.font_atlas_tex: glDeleteTextures(1, [self.font_atlas_tex])
 
     def set_default_uniforms(self):
         if self.current_shader_program_id is None: print("BaseGLWidget.set_default_uniforms: current_shader_program_id is None") 
@@ -453,7 +498,7 @@ class BaseGLWidget(QOpenGLWidget):
         glUniformMatrix4fv(glGetUniformLocation(self.current_shader_program_id, "model"),      1, GL_FALSE, self.model_matrix)              # model_matrix is numpy array
 
     def paintGL_base(self):
-        print("BaseGLWidget.paintGL_base()")
+        #print("BaseGLWidget.paintGL_base()")
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT)
         
         # Camera / View transformation
@@ -486,6 +531,85 @@ class BaseGLWidget(QOpenGLWidget):
         self.draw_scene() # Call specific drawing method of derived class
 
         glUseProgram(0) # Unbind shader after this widget's drawing pass is complete
+
+    def make_labels(self, points, labels ):
+        text_object = GLobject( components=[3,2,2] )
+        #if not self.trj or self.font_atlas_data is None:
+        #    self.num_label_verts = 0
+        #    return
+        #atom_positions, _, _, atom_enames = self.frames_data[self.current_frame_index].atoms
+        #print("atom_enames", atom_enames)
+        tile_w = self.font_atlas_data['tile_w']  # width of one character tile in atlas
+        tile_h = self.font_atlas_data['tile_h']  # height of one character tile in atlas
+        tex_w  = self.font_atlas_data['tex_w']   # full atlas texture width
+        all_vertex_data = []
+        szx  = 1.0  # width of one character quad in world units
+        szy  = 2.0*0.5  # height of one character quad in world units
+        yoff = 0.0
+        margin_lx = 0.1
+        margin_rx = 0.7
+        margin_y  = 0.0
+        space     = 0.0
+        conde_min = 32
+        conde_max = 126
+        for pos_3d, label in zip(points, labels):
+            #ename += "_Hey"  # debug longer text
+            symbol = label.decode('utf-8') if isinstance(label, bytes) else str(label) 
+            #xoff     = -len(symbol)* szx / 2.0 # centered text
+            xoff     = 0 # left aligned text
+            for i_char, char in enumerate(symbol):
+                code = ord(char)
+                if code < conde_min or code > conde_max: continue
+                # 1D atlas UVs  - using normalized coordinates
+                u0 = (code - conde_min + margin_lx ) * tile_w / tex_w
+                u1 = (code - conde_min + margin_rx ) * tile_w / tex_w
+                #u1 = u0               + tile_w*(1-margin_x) / tex_w
+                v1 = 0.0 + margin_y
+                v0 = 1.0 - margin_y
+                # Same 3D position for every character in this label
+                base_3d = pos_3d + np.array([0.0, 0.0, 0.0])
+                # Local screen-space offset for this character
+                x = xoff + i_char * (szx*(1.0+space))
+                local_offsets = np.array([
+                    [ x       , yoff-szy ],
+                    [ x + szx , yoff-szy ],
+                    [ x + szx , yoff+szy ],
+                    [ x       , yoff+szy ]
+                ], dtype=np.float32)
+                uvs = np.array([[u0, v0], [u1, v0], [u1, v1], [u0, v1]], dtype=np.float32)
+                for j in range(4):
+                    vertex_data = np.concatenate((base_3d, local_offsets[j], uvs[j]))
+                    all_vertex_data.append(vertex_data)
+        num_label_verts = len(all_vertex_data)
+        #print(f"DEBUG: update_atom_labels_data created {self.num_label_verts} vertices.")
+        if num_label_verts > 0:
+            # Generate and upload index data for the EBO
+            num_quads = num_label_verts // 4
+            indices = np.zeros(num_quads * 6, dtype=np.uint32)
+            for i in range(num_quads):
+                base = i * 4
+                indices[i*6:i*6+6] = [base, base + 1, base + 2, base, base + 2, base + 3]
+            vertex_data_np = np.array(all_vertex_data, dtype=np.float32)
+            #print("vertex_data_np #legend:  pos(x,y,z)   local_offset(x,y)   uv(x,y)\n", vertex_data_np)
+            #print("indices: ", indices)
+            GL.glBindBuffer(GL.GL_ARRAY_BUFFER, text_object.vbo)
+            GL.glBufferData(GL.GL_ARRAY_BUFFER, vertex_data_np.nbytes, vertex_data_np, GL.GL_DYNAMIC_DRAW)
+            GL.glBindBuffer(GL.GL_ELEMENT_ARRAY_BUFFER, text_object.ebo)
+            GL.glBufferData(GL.GL_ELEMENT_ARRAY_BUFFER, indices.nbytes, indices, GL.GL_DYNAMIC_DRAW)
+            text_object.nelements = num_quads*6
+        text_object.dirty = False
+        return text_object
+
+    def use_text_shader(self, labelScale=0.25, textColor=(1.0, 0.0, 0.0, 1.0), offset=(0.5, 0.0)):
+        self.use_shader(self.text_shader)
+        self.set_default_uniforms() # Set camera matrices
+        self.bind_texture('fontAtlas', self.font_atlas_tex, 0)
+        GL.glDisable(GL.GL_DEPTH_TEST)
+        GL.glEnable(GL.GL_BLEND)
+        GL.glBlendFunc(GL.GL_SRC_ALPHA, GL.GL_ONE_MINUS_SRC_ALPHA)
+        GL.glUniform1f(GL.glGetUniformLocation(self.text_shader, "labelScale"), labelScale * self.zoom_factor )
+        GL.glUniform4f(GL.glGetUniformLocation(self.text_shader, "textColor"),  textColor[0], textColor[1], textColor[2], textColor[3] )
+        GL.glUniform2f(GL.glGetUniformLocation(self.text_shader, "offset"),     offset[0], offset[1] ) 
 
     def resizeGL(self, width, height):
         glViewport(0, 0, width, height)

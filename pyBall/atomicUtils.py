@@ -209,7 +209,7 @@ def getAtomRadius( atypes, eparams=elements.ELEMENTS, icol=6 ):
 def getAtomRadiusNP( atypes, eparams=elements.ELEMENTS ):
     return np.array( getAtomRadius( atypes, eparams ) ) 
 
-def findBondsNP( apos, atypes=None, Rcut=3.0, RvdwCut=1.5, RvdWs=None, byRvdW=True ):
+def findBondsNP( apos, atypes=None, Rcut=3.0, RvdwCut=0.5, RvdWs=None, byRvdW=True ):
     bonds  = []
     rbs    = []
     iatoms = np.arange( len(apos), dtype=int )

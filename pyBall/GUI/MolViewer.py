@@ -8,7 +8,7 @@ import os
 
 sys.path.append("../../") # To find pyBall
 from pyBall import elements
-from pyBall.GUI.GLGUI import BaseGLWidget, AppWindow, InstancedData, set_ogl_blend_mode, disable_blend, alpha_blend_modes
+from pyBall.GUI.GLGUI import BaseGLWidget, AppWindow, InstancedData, set_ogl_blend_mode, disable_blend, alpha_blend_modes, GLobject
 from pyBall.atomicUtils import findAllBonds, findBondsNP
 
 import OpenGL.GL as GL
@@ -29,18 +29,14 @@ class FrameData:
         """Compute bonds using findAllBonds"""
         if self.atoms is None:
             return
-        
-        # # Prepare atoms array for findAllBonds
-        # atom_data = np.column_stack([
-        #     [elements.ELEMENT_DICT[e] for e in self.atoms[3]],  # atomic numbers
-        #     self.atoms[0]  # positions
-        # ])
         print("self.atoms[0] ", self.atoms[0])
         print("self.atoms[1] ", self.atoms[1])
         RvdWs = np.array( [ elements.ELEMENT_DICT[e][7] for e in self.atoms[3] ])
         print("RvdWs ", RvdWs)
         #bonds, bond_vecs = findAllBonds(self.atoms[0], self.atoms[1] )
-        bonds, bond_vecs = findBondsNP(self.atoms[0], RvdWs=RvdWs )
+        bonds, bond_vecs = findBondsNP(self.atoms[0], RvdWs=RvdWs,  )
+        print("bonds ", bonds)
+        
         self.bonds     = bonds
         self.bond_vecs = bond_vecs
 
@@ -64,12 +60,14 @@ class MolViewerWidget(BaseGLWidget):
         self.current_render_mode_key = None
 
         # --- Attributes for Text Rendering
-        self.text_shader = None
-        self.text_vao = None
-        self.text_vbo = None
-        self.text_ebo = None
-        self.font_atlas_tex = None
-        self.font_atlas_data = None
+
+        #self.text_vao = None
+        #self.text_vbo = None
+        #self.text_ebo = None
+
+        self.atom_labels = None
+        #self.atom_labels = GLobject()
+
         self.num_label_verts = 0
         self.label_data_dirty = True
 
@@ -81,20 +79,10 @@ class MolViewerWidget(BaseGLWidget):
         self.frames_bonds = []  # Store bonds for each frame
         self.bond_data_dirty = True
 
-    @property
-    def all_shader_programs(self):
-        programs = []
-        if self.shader_program_sphere_raytrace: programs.append(self.shader_program_sphere_raytrace)
-        if self.shader_program_sphere_max_vol:  programs.append(self.shader_program_sphere_max_vol)
-        if self.text_shader: programs.append(self.text_shader)
-        if self.bond_shader: programs.append(self.bond_shader)
-        if self.simple_shader: programs.append(self.simple_shader)  # Add simple shader for bond rendering
-        return programs
-
     def initializeGL(self):
         #print("MolViewerWidget.initializeGL()")
         # Call base class initialization for shaders, basic GL setup
-        shader_folder=os.path.dirname(os.path.abspath(__file__)) + "/shaders"
+        shader_folder=self.shader_folder
         print("shader_folder", shader_folder)
         vert_instances   = open(shader_folder + "/instances.glslv").read()
         frag_ray_sphere  = open(shader_folder + "/sphere.glslf").read()
@@ -105,14 +93,18 @@ class MolViewerWidget(BaseGLWidget):
 
         # Set the default shader program for BaseGLWidget's uniform setup
         self.shader_program = self.shader_program_sphere_raytrace
-        if not self.shader_program: # Fallback if primary fails
-            self.shader_program = self.shader_program_sphere_max_vol
+        if not self.shader_program: self.shader_program = self.shader_program_sphere_max_vol
+        
+        self.all_shader_programs.append(self.shader_program_sphere_raytrace)
+        self.all_shader_programs.append(self.shader_program_sphere_max_vol)
             
         # Initialize bond rendering
         vert_bond = open(shader_folder + "/cylinder.glslv").read()
         frag_bond = open(shader_folder + "/cylinder.glslf").read()
         self.bond_shader = self.compile_shader_program(vert_bond, frag_bond)
-        
+
+        self.all_shader_programs.append(self.bond_shader)
+
         # Create VAO, VBO and EBO for bonds
         self.bonds_vao = GL.glGenVertexArrays(1)
         self.bonds_vbo = GL.glGenBuffers(1)
@@ -156,147 +148,35 @@ class MolViewerWidget(BaseGLWidget):
         self.elec_instances.associate_mesh(sphere_mesh)
         self.elec_instances.setup_instance_vbos(atribs)
 
-        # --- Text Rendering Setup ---
-        vert_text = open(shader_folder + "/text_billboard.glslv").read()
-        frag_text = open(shader_folder + "/text_billboard.glslf").read()
-        self.text_shader = self.compile_shader_program(vert_text, frag_text)
+        # # --- Text Rendering Setup ---
+        # vert_text = open(shader_folder + "/text_billboard.glslv").read()
+        # frag_text = open(shader_folder + "/text_billboard.glslf").read()
+        # self.text_shader = self.compile_shader_program(vert_text, frag_text)
 
         self.font_atlas_tex = self.load_texture(shader_folder + "/font_atlas.png")
+        print(f"DEBUG: font_atlas_tex loaded: {self.font_atlas_tex}")
         with open(shader_folder + "/font_atlas.json") as f:
             self.font_atlas_data = json.load(f)
-
-        self.text_vao = GL.glGenVertexArrays(1)
-        GL.glBindVertexArray(self.text_vao)
-
-        self.text_vbo = GL.glGenBuffers(1)
-        GL.glBindBuffer(GL.GL_ARRAY_BUFFER, self.text_vbo)
-
-        # All attributes are now in a single interleaved VBO
-        # Stride = (3_pos + 2_offset + 2_uv) * sizeof(float)
-        stride = (3 + 2 + 2) * 4
-
-        # aPos3D
-        GL.glEnableVertexAttribArray(0)
-        GL.glVertexAttribPointer(0, 3, GL.GL_FLOAT, GL.GL_FALSE, stride, ctypes.c_void_p(0))
-
-        # aLocalOffset
-        GL.glEnableVertexAttribArray(1)
-        GL.glVertexAttribPointer(1, 2, GL.GL_FLOAT, GL.GL_FALSE, stride, ctypes.c_void_p(3 * 4))
-
-        # aTexCoord
-        GL.glEnableVertexAttribArray(2)
-        GL.glVertexAttribPointer(2, 2, GL.GL_FLOAT, GL.GL_FALSE, stride, ctypes.c_void_p((3 + 2) * 4))
-
-        self.text_ebo = GL.glGenBuffers(1)
-        GL.glBindBuffer(GL.GL_ELEMENT_ARRAY_BUFFER, self.text_ebo)
-
-        GL.glBindVertexArray(0)
-    
-    def update_atom_labels_data(self):
-        if not self.trj or self.font_atlas_data is None:
-            self.num_label_verts = 0
-            return
-
-        atom_positions, _, _, atom_enames = self.frames_data[self.current_frame_index].atoms
-
-        print("atom_enames", atom_enames)
-
-        tile_w = self.font_atlas_data['tile_w']  # width of one character tile in atlas
-        tile_h = self.font_atlas_data['tile_h']  # height of one character tile in atlas
-        tex_w  = self.font_atlas_data['tex_w']   # full atlas texture width
-
-        all_vertex_data = []
-        szx  = 1.0  # width of one character quad in world units
-        szy  = 2.0*0.5  # height of one character quad in world units
-        yoff = 0.0
-
-        margin_lx = 0.1
-        margin_rx = 0.7
-        margin_y  = 0.0
-        space     = 0.0
-
-        conde_min = 32
-        conde_max = 126
-
-        for pos_3d, ename in zip(atom_positions, atom_enames):
-            #ename += "_Hey"  # debug longer text
-            symbol = ename.decode('utf-8') if isinstance(ename, bytes) else str(ename) 
-            #xoff     = -len(symbol)* szx / 2.0 # centered text
-            xoff     = 0 # left aligned text
-
-            for i_char, char in enumerate(symbol):
-                code = ord(char)
-                if code < conde_min or code > conde_max: continue
-
-                # 1D atlas UVs  - using normalized coordinates
-                u0 = (code - conde_min + margin_lx ) * tile_w / tex_w
-                u1 = (code - conde_min + margin_rx ) * tile_w / tex_w
-                #u1 = u0               + tile_w*(1-margin_x) / tex_w
-                v1 = 0.0 + margin_y
-                v0 = 1.0 - margin_y
-
-                # Same 3D position for every character in this label
-                base_3d = pos_3d + np.array([0.0, 0.0, 0.0])
-
-                # Local screen-space offset for this character
-                x = xoff + i_char * (szx*(1.0+space))
-                local_offsets = np.array([
-                    [ x       , yoff-szy ],
-                    [ x + szx , yoff-szy ],
-                    [ x + szx , yoff+szy ],
-                    [ x       , yoff+szy ]
-                ], dtype=np.float32)
-                uvs = np.array([[u0, v0], [u1, v0], [u1, v1], [u0, v1]], dtype=np.float32)
-
-                for j in range(4):
-                    vertex_data = np.concatenate((base_3d, local_offsets[j], uvs[j]))
-                    all_vertex_data.append(vertex_data)
-
-        self.num_label_verts = len(all_vertex_data)
-        #print(f"DEBUG: update_atom_labels_data created {self.num_label_verts} vertices.")
-        
-        if self.num_label_verts > 0:
-            # Generate and upload index data for the EBO
-            num_quads = self.num_label_verts // 4
-            indices = np.zeros(num_quads * 6, dtype=np.uint32)
-            for i in range(num_quads):
-                base = i * 4
-                indices[i*6:i*6+6] = [base, base + 1, base + 2, base, base + 2, base + 3]
-            
-            vertex_data_np = np.array(all_vertex_data, dtype=np.float32)
-
-            #print("vertex_data_np #legend:  pos(x,y,z)   local_offset(x,y)   uv(x,y)\n", vertex_data_np)
-            #print("indices: ", indices)
-            
-            GL.glBindBuffer(GL.GL_ARRAY_BUFFER, self.text_vbo)
-            GL.glBufferData(GL.GL_ARRAY_BUFFER, vertex_data_np.nbytes, vertex_data_np, GL.GL_DYNAMIC_DRAW)
-
-            GL.glBindBuffer(GL.GL_ELEMENT_ARRAY_BUFFER, self.text_ebo)
-            GL.glBufferData(GL.GL_ELEMENT_ARRAY_BUFFER, indices.nbytes, indices, GL.GL_DYNAMIC_DRAW)
-
-        self.label_data_dirty = False
+        print(f"DEBUG: font_atlas_data loaded: {self.font_atlas_data}")
 
     def cleanupGL(self):
         super().cleanupGL()
         if self.text_shader: GL.glDeleteProgram(self.text_shader)
-        if self.text_vao: GL.glDeleteVertexArrays(1, [self.text_vao])
-        if self.text_vbo: GL.glDeleteBuffers(1, [self.text_vbo])
-        if self.text_ebo: GL.glDeleteBuffers(1, [self.text_ebo])
-        if self.font_atlas_tex: GL.glDeleteTextures(1, [self.font_atlas_tex])
-        if self.shader_program_sphere_raytrace:
-            GL.glDeleteProgram(self.shader_program_sphere_raytrace)
-            self.shader_program_sphere_raytrace = None
-        if self.shader_program_sphere_max_vol:
-            GL.glDeleteProgram(self.shader_program_sphere_max_vol)
-            self.shader_program_sphere_max_vol = None
-        if self.atom_instances:
-            self.atom_instances.cleanup()
-        if self.elec_instances:
-            self.elec_instances.cleanup()
-        if self.bonds_vao: GL.glDeleteVertexArrays(1, [self.bonds_vao])
-        if self.bonds_vbo: GL.glDeleteBuffers(1, [self.bonds_vbo])
-        if self.bonds_ebo: GL.glDeleteBuffers(1, [self.bonds_ebo])
-        if self.bond_shader: GL.glDeleteProgram(self.bond_shader)
+        #if self.text_vao: GL.glDeleteVertexArrays(1, [self.text_vao])
+        #if self.text_vbo: GL.glDeleteBuffers(1, [self.text_vbo])
+        #if self.text_ebo: GL.glDeleteBuffers(1, [self.text_ebo])
+        if self.atom_labels: self.atom_labels.cleanup()
+        #if self.font_atlas_tex: GL.glDeleteTextures(1, [self.font_atlas_tex])
+        if self.shader_program_sphere_raytrace: GL.glDeleteProgram(self.shader_program_sphere_raytrace)
+        if self.shader_program_sphere_max_vol: GL.glDeleteProgram(self.shader_program_sphere_max_vol)
+        self.shader_program_sphere_raytrace = None
+        self.shader_program_sphere_max_vol = None
+        if self.atom_instances:  self.atom_instances.cleanup()
+        if self.elec_instances:  self.elec_instances.cleanup()
+        if self.bonds_vao:       GL.glDeleteVertexArrays(1, [self.bonds_vao])
+        if self.bonds_vbo:       GL.glDeleteBuffers(1, [self.bonds_vbo])
+        if self.bonds_ebo:       GL.glDeleteBuffers(1, [self.bonds_ebo])
+        if self.bond_shader:     GL.glDeleteProgram(self.bond_shader)
 
     def hex2rgb(self, hex_color_str):
         return [int(hex_color_str[i:i+2], 16) / 255.0 for i in (0, 2, 4)]
@@ -306,14 +186,11 @@ class MolViewerWidget(BaseGLWidget):
         #index_color = elements.index_color
         for frame_idx in range(len(self.trj)):
             frame_data = FrameData()
-            
             es = self.trj[frame_idx][0]
             na = len(es)
             ps = self.trj[frame_idx][1]
-            
             apos,arad,acol,aname=[],[],[],[]
             epos,erad,ecol,ename=[],[],[],[]
-            
             if na > 0:
                 for i in range(na):
                     atom_symbol = es[i]
@@ -332,12 +209,9 @@ class MolViewerWidget(BaseGLWidget):
                         arad.append(current_radius)
                         acol.append([r_col, g_col, b_col, self.opacity])
                         aname.append(atom_symbol)
-            
-            # Store unified data
             frame_data.atoms = [np.array(apos,dtype=dtype), np.array(arad,dtype=dtype), np.array(acol,dtype=dtype), aname]
             frame_data.electrons = [np.array(epos,dtype=dtype), np.array(erad,dtype=dtype), np.array(ecol,dtype=dtype), ename]
             frame_data.compute_bonds()
-            
             self.frames_data.append(frame_data)
 
     def update_instance_data(self):
@@ -368,7 +242,7 @@ class MolViewerWidget(BaseGLWidget):
         GL.glBindVertexArray(0)
 
     def render_bonds_simple(self):
-        print("render_bonds_simple()")
+        #print("render_bonds_simple()")
         frame_data = self.frames_data[self.current_frame_index]
         bonds      = frame_data.bonds
         self.use_shader(self.simple_shader)
@@ -398,10 +272,10 @@ class MolViewerWidget(BaseGLWidget):
         GL.glDrawElements(GL.GL_LINES, len(bond_indices), GL.GL_UNSIGNED_INT, None)
 
     def draw_scene(self):
+        #print("!!!!!!! -self.current_render_mode_key", self.current_render_mode_key)
+        if self.current_render_mode_key is None: return
         shader, blend_mode, use_depth_mask = self.render_modes[self.current_render_mode_key]
-
-        if self.instance_data_dirty:
-            self.update_instance_data()
+        if self.instance_data_dirty:  self.update_instance_data()
         GL.glUseProgram(self.shader_program_sphere_raytrace)
         GL.glDisable(GL.GL_BLEND) # Opaque objects don't need blending
         self.atom_instances.draw()
@@ -417,36 +291,22 @@ class MolViewerWidget(BaseGLWidget):
         self.render_bonds_simple()
 
         # --- Render Atom Labels ---
-        if self.label_data_dirty:
-            self.update_atom_labels_data()
+        if (self.atom_labels is None) or (self.atom_labels.dirty):
+            atom_positions, _, _, atom_enames = self.frames_data[self.current_frame_index].atoms
+            self.atom_labels = self.make_labels( atom_positions, atom_enames )
 
-        if self.num_label_verts > 0:
-            #print(f"DEBUG: draw_scene attempting to draw {(self.num_label_verts // 4) * 4} vertices for {(self.num_label_verts // 4)} quads.")
-            self.use_shader(self.text_shader)
-            self.set_default_uniforms() # Set camera matrices
-
-            self.bind_texture('fontAtlas', self.font_atlas_tex, 0)
-            GL.glDisable(GL.GL_DEPTH_TEST) # <<< DEBUG: Disable depth test
-            #set_ogl_blend_mode(alpha_blend_modes["standard"], True)
-            GL.glEnable(GL.GL_BLEND)
-            GL.glBlendFunc(GL.GL_SRC_ALPHA, GL.GL_ONE_MINUS_SRC_ALPHA)
-            GL.glUniform1f(GL.glGetUniformLocation(self.text_shader, "labelScale"), 0.25*self.zoom_factor ) # Adjust scale as needed
-            GL.glUniform4f(GL.glGetUniformLocation(self.text_shader, "textColor"), 1.0, 0.0, 0.0, 1.0) # purple
-            GL.glUniform2f(GL.glGetUniformLocation(self.text_shader, "offset"), 0.5, 0.0) # purple
+        if self.atom_labels.nelements > 0:
 
             # --- DEBUG: Force GL state to a known-good configuration ---
             GL.glDisable(GL.GL_CULL_FACE)
             GL.glDisable(GL.GL_SCISSOR_TEST)
             GL.glColorMask(GL.GL_TRUE, GL.GL_TRUE, GL.GL_TRUE, GL.GL_TRUE)
-            # -----------------------------------------------------------
+            GL.glDisable(GL.GL_DEPTH_TEST)
 
-            GL.glDisable(GL.GL_DEPTH_TEST) # <<< DEBUG: Disable depth test
-            GL.glBindVertexArray(self.text_vao)
-            num_indices = (self.num_label_verts // 4) * 6
-            GL.glDrawElements(GL.GL_TRIANGLES, num_indices, GL.GL_UNSIGNED_INT, None)
-            GL.glBindVertexArray(0)
+            self.use_text_shader()
+            self.atom_labels.draw()
+
             GL.glEnable(GL.GL_DEPTH_TEST) # <<< DEBUG: Re-enable depth test
-            #print(f"DEBUG: text_shader={self.text_shader}, fontAtlas uniform loc={GL.glGetUniformLocation(self.text_shader, 'fontAtlas')}, tex_id={self.font_atlas_tex}")
             GL.glDisable(GL.GL_BLEND)
 
     def use_shader(self, shader_prog_id):
@@ -515,9 +375,9 @@ class MolViewer(AppWindow):
         layout.addWidget(QLabel("Electron Render Mode:"))
         layout.addWidget(self.render_mode_combo)
 
-        #self.gl_widget.initializeGL()
-        #self.render_mode_combo.addItems(self.gl_widget.render_modes.keys())
-        #self.render_mode_combo.setCurrentText(self.gl_widget.current_render_mode_key)
+        # self.gl_widget.initializeGL()
+        # self.render_mode_combo.addItems(self.gl_widget.render_modes.keys())
+        # self.render_mode_combo.setCurrentText(self.gl_widget.current_render_mode_key)
 
         self.show()
 
@@ -532,7 +392,14 @@ if __name__ == '__main__':
     from .. import atomicUtils as au
 
     # Run Like this:
-    #   python -m pyBall.GUI.MolViewer -f /tests/tEFF/H2O_relaxation.xyz | tee OUT
+    #   python -u -m pyBall.GUI.MolViewer -f ./tests/tEFF/H2O_relaxation.xyz | tee OUT
+    #   python -u -m pyBall.GUI.MolViewer -f ./cpp/common_resources/xyz/uracil.xyz | tee OUT
+    #   python -u -m pyBall.GUI.MolViewer -f ./cpp/common_resources/xyz/thymine.xyz | tee OUT
+    #   python -u -m pyBall.GUI.MolViewer -f ./cpp/common_resources/xyz/adenine.xyz | tee OUT
+    #   python -u -m pyBall.GUI.MolViewer -f ./cpp/common_resources/xyz/citosine.xyz | tee OUT
+    #   python -u -m pyBall.GUI.MolViewer -f ./cpp/common_resources/xyz/guanine.xyz | tee OUT
+    #   python -u -m pyBall.GUI.MolViewer -f ./cpp/common_resources/xyz/CG.xyz | tee OUT
+    #   python -u -m pyBall.GUI.MolViewer -f ./cpp/common_resources/xyz/PTCDA.xyz | tee OUT
 
     # relative path to the directory with the molecules
     # /home/prokop/git/FireCore/cpp/common_resources/xyz/
