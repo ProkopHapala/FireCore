@@ -46,7 +46,7 @@ alpha_blend_modes={
     #"minimum2"    :(GL_MIN,      GL_SRC_ALPHA, GL_ONE),
     #"minimum3"    :(GL_MIN,      GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA),
     #"minimum4"    :(GL_MIN,GL_ONE, GL_ONE,   GL_FUNC_ADD,GL_SRC_ALPHA,GL_ONE_MINUS_SRC_ALPHA ),
-    #"additive"   :(GL_FUNC_ADD, GL_SRC_ALPHA, GL_ONE),
+    "additive"   :(GL_FUNC_ADD, GL_SRC_ALPHA, GL_ONE),
     "subtractive" :(GL_FUNC_REVERSE_SUBTRACT, GL_SRC_ALPHA, GL_ONE),
     #"subtractive2" :(GL_FUNC_REVERSE_SUBTRACT, GL_ONE, GL_ONE),
     #"subtractive2" :(GL_FUNC_REVERSE_SUBTRACT, GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA),
@@ -405,6 +405,75 @@ def octahedron_sphere_mesh(radius=1.0, nsub=2):
     # print("final_vertices.shape", final_vertices.shape ) #, final_vertices ) # Debug: too verbose
     # print("final_normals.shape",  final_normals.shape ) #, final_normals )  # Debug: too verbose
     return final_vertices, final_normals
+
+def make_labels(points, labels, font_atlas_data, text_object=None ):
+    if text_object is None:
+        text_object = GLobject( components=[3,2,2] )
+    #if not self.trj or self.font_atlas_data is None:
+    #    self.num_label_verts = 0
+    #    return
+    #atom_positions, _, _, atom_enames = self.frames_data[self.current_frame_index].atoms
+    #print("atom_enames", atom_enames)
+    tile_w = font_atlas_data['tile_w']  # width of one character tile in atlas
+    tile_h = font_atlas_data['tile_h']  # height of one character tile in atlas
+    tex_w  = font_atlas_data['tex_w']   # full atlas texture width
+    all_vertex_data = []
+    szx  = 1.0  # width of one character quad in world units
+    szy  = 2.0*0.5  # height of one character quad in world units
+    yoff = 0.0
+    margin_lx = 0.1
+    margin_rx = 0.7
+    margin_y  = 0.0
+    space     = 0.0
+    conde_min = 32
+    conde_max = 126
+    for pos_3d, label in zip(points, labels):
+        #ename += "_Hey"  # debug longer text
+        symbol = label.decode('utf-8') if isinstance(label, bytes) else str(label) 
+        #xoff     = -len(symbol)* szx / 2.0 # centered text
+        xoff     = 0 # left aligned text
+        for i_char, char in enumerate(symbol):
+            code = ord(char)
+            if code < conde_min or code > conde_max: continue
+            # 1D atlas UVs  - using normalized coordinates
+            u0 = (code - conde_min + margin_lx ) * tile_w / tex_w
+            u1 = (code - conde_min + margin_rx ) * tile_w / tex_w
+            #u1 = u0               + tile_w*(1-margin_x) / tex_w
+            v1 = 0.0 + margin_y
+            v0 = 1.0 - margin_y
+            # Same 3D position for every character in this label
+            base_3d = pos_3d + np.array([0.0, 0.0, 0.0])
+            # Local screen-space offset for this character
+            x = xoff + i_char * (szx*(1.0+space))
+            local_offsets = np.array([
+                [ x       , yoff-szy ],
+                [ x + szx , yoff-szy ],
+                [ x + szx , yoff+szy ],
+                [ x       , yoff+szy ]
+            ], dtype=np.float32)
+            uvs = np.array([[u0, v0], [u1, v0], [u1, v1], [u0, v1]], dtype=np.float32)
+            for j in range(4):
+                vertex_data = np.concatenate((base_3d, local_offsets[j], uvs[j]))
+                all_vertex_data.append(vertex_data)
+    num_label_verts = len(all_vertex_data)
+    #print(f"DEBUG: update_atom_labels_data created {self.num_label_verts} vertices.")
+    if num_label_verts > 0:
+        # Generate and upload index data for the EBO
+        num_quads = num_label_verts // 4
+        indices = np.zeros(num_quads * 6, dtype=np.uint32)
+        for i in range(num_quads):
+            base = i * 4
+            indices[i*6:i*6+6] = [base, base + 1, base + 2, base, base + 2, base + 3]
+        vertex_data_np = np.array(all_vertex_data, dtype=np.float32)
+        #print("vertex_data_np #legend:  pos(x,y,z)   local_offset(x,y)   uv(x,y)\n", vertex_data_np)
+        #print("indices: ", indices)
+        GL.glBindBuffer(GL.GL_ARRAY_BUFFER, text_object.vbo)
+        GL.glBufferData(GL.GL_ARRAY_BUFFER, vertex_data_np.nbytes, vertex_data_np, GL.GL_DYNAMIC_DRAW)
+        GL.glBindBuffer(GL.GL_ELEMENT_ARRAY_BUFFER, text_object.ebo)
+        GL.glBufferData(GL.GL_ELEMENT_ARRAY_BUFFER, indices.nbytes, indices, GL.GL_DYNAMIC_DRAW)
+        text_object.nelements = num_quads*6
+    text_object.dirty = False
+    return text_object
 
 class BaseGLWidget(QOpenGLWidget):
     def __init__(self, parent=None):

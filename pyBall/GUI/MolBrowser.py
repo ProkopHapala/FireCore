@@ -41,7 +41,7 @@ class FrameData:
         self.bonds     = bonds
         self.bond_vecs = bond_vecs
 
-class MolViewerWidget(BaseGLWidget):
+class MolBrowserWidget(BaseGLWidget):
     def __init__(self, parent=None):
         super().__init__(parent)
 
@@ -60,10 +60,19 @@ class MolViewerWidget(BaseGLWidget):
         self.current_render_mode_key = None
 
         self.atom_labels = None
+        self.bonds       = None
         #self.atom_labels = GLobject()
 
         self.num_label_verts = 0
         self.label_data_dirty = True
+
+        # # Bond rendering setup
+        # self.bonds_vao = None
+        # self.bonds_vbo = None
+        # self.bonds_ebo = None
+        # self.bond_shader = None
+        # self.frames_bonds = []  # Store bonds for each frame
+        # self.bond_data_dirty = True
 
         # FBO related attributes
         self.fbo_id = None
@@ -195,6 +204,10 @@ class MolViewerWidget(BaseGLWidget):
         return [int(hex_color_str[i:i+2], 16) / 255.0 for i in (0, 2, 4)]
 
     def precalculate_frames_data(self, dtype=np.float32):
+        if not self.trj:
+            self.frames_data = []
+            return
+
         self.frames_data = []
         #index_color = elements.index_color
         for frame_idx in range(len(self.trj)):
@@ -228,6 +241,8 @@ class MolViewerWidget(BaseGLWidget):
             self.frames_data.append(frame_data)
 
     def update_instance_data(self):
+        if not self.frames_data:
+            return
         atoms = self.frames_data[self.current_frame_index].atoms
         elecs = self.frames_data[self.current_frame_index].electrons
         self.atom_instances.update_list( atoms[:3] )
@@ -255,6 +270,8 @@ class MolViewerWidget(BaseGLWidget):
         GL.glBindVertexArray(0)
 
     def draw_scene(self):
+        if not self.frames_data:
+            return
         #print("!!!!!!! -self.current_render_mode_key", self.current_render_mode_key)
         if self.current_render_mode_key is None: return
         shader, blend_mode, use_depth_mask = self.render_modes[self.current_render_mode_key]
@@ -365,16 +382,16 @@ class MolViewerWidget(BaseGLWidget):
             print(f"Warning: Render mode '{mode_key}' not found.")
 
 
-class MolViewer(BaseGUI):
+class MolBrowser(BaseGUI):
     def __init__(self, trj=None):
-        super().__init__("Modern OpenGL Molecular Viewer")
+        super().__init__("Molecular Browser")
         self.setGeometry(100, 100, 800, 600)
 
         main_layout = QHBoxLayout(self.main_widget)
         main_layout.setContentsMargins(0, 0, 0, 0)
         main_layout.setSpacing(0)
 
-        self.gl_widget = MolViewerWidget()
+        self.gl_widget = MolBrowserWidget()
         main_layout.addWidget(self.gl_widget, 1)
 
         self.controls_panel = QWidget()
@@ -391,8 +408,9 @@ class MolViewer(BaseGUI):
         else:
             self.frame_slider = self.slider(0, 1, 100, 0, 100, layout=self.controls_layout, label="Frame", callback=self.gl_widget.set_frame) # Default range
         self.opacity_slider = self.slider(50, 1, 100, 0, 100, layout=self.controls_layout, label="Opacity", callback=self.gl_widget.set_opacity)
-        self.gl_widget.precalculate_frames_data()
-        self.gl_widget.update()
+        if trj:
+            self.gl_widget.precalculate_frames_data()
+            self.gl_widget.update()
         self.gl_widget.main_window = self
         self.render_mode_combo = self.comboBox(items=self.gl_widget.render_modes.keys(), callback=self.on_render_mode_changed, layout=self.controls_layout)
 
@@ -409,6 +427,46 @@ class MolViewer(BaseGUI):
 
     def on_render_mode_changed(self, text):
         self.gl_widget.set_render_mode(text)
+
+    def render_directory_to_images(self, directory_path, output_dir=None):
+        from .. import atomicUtils as au
+        if not os.path.isdir(directory_path):
+            print(f"Error: Provided path '{directory_path}' is not a directory.")
+            return
+
+        if output_dir is None:
+            output_dir = directory_path
+        os.makedirs(output_dir, exist_ok=True)
+
+        print(f"Scanning for .xyz files in: {directory_path}")
+        xyz_files = [f for f in os.listdir(directory_path) if f.endswith('.xyz')]
+        print(f"Found {len(xyz_files)} .xyz files to render.")
+
+        for filename in xyz_files:
+            filepath = os.path.join(directory_path, filename)
+            print(f"--- Processing: {filepath} ---")
+
+            # Load and process molecule data
+            trj = au.load_xyz_movie(filepath)
+            if not trj:
+                print(f"Warning: Could not load trajectory from {filepath}")
+                continue
+            trj = au.trj_to_ename(trj)
+            trj = au.trj_fill_radius(trj, bVdw=True, rFactor=0.001, rmin=0.05)
+
+            # Update the GL widget with the new trajectory
+            self.gl_widget.trj = trj
+            self.gl_widget.precalculate_frames_data()
+            self.gl_widget.update_instance_data() # Ensure buffers are updated
+
+            # Define output path
+            base_name = os.path.splitext(filename)[0]
+            output_filename = os.path.join(output_dir, f"{base_name}.png")
+
+            # Render and save
+            self.gl_widget.save_gl_frame_to_image(output_filename)
+
+        print("--- Batch rendering finished ---")
 
 
 if __name__ == '__main__':
@@ -435,17 +493,27 @@ if __name__ == '__main__':
     # resolve the full absolute path
     dir_path = os.path.abspath(os.path.join(this_path, dir_path))
     
-    parser = argparse.ArgumentParser(description="Modern OpenGL Molecular Viewer")
-    parser.add_argument("-f", "--file", type=str, help="Path to the XYZ trajectory file", default=None) # Default to None
+    parser = argparse.ArgumentParser(description="Molecular Browser")
+    parser.add_argument("-i", "--input", type=str, help="Path to an XYZ file or a directory of XYZ files", required=True)
     args = parser.parse_args()
 
-    trj = au.load_xyz_movie(args.file)
-    trj = au.trj_to_ename(trj)
-    trj = au.trj_fill_radius(trj, bVdw=True, rFactor=0.001, rmin=0.05) # Adjusted rFactor for visibility
-    #trj = au.trj_fill_radius(trj, bVdw=False, rFactor=1.0)
-    print( "trj[0]: ", trj[0])
-
     app = QApplication(sys.argv)
-    viewer = MolViewer(trj=trj)
-    viewer.show()
-    sys.exit(app.exec_())
+
+    if os.path.isdir(args.input):
+        # Batch mode: Render all .xyz files in the directory
+        viewer = MolBrowser()
+        viewer.render_directory_to_images(args.input)
+        # No need to show GUI or run app.exec_() for batch mode
+        sys.exit(0)
+    elif os.path.isfile(args.input) and args.input.endswith('.xyz'):
+        # Interactive mode: Load and view a single file
+        trj = au.load_xyz_movie(args.input)
+        trj = au.trj_to_ename(trj)
+        trj = au.trj_fill_radius(trj, bVdw=True, rFactor=0.001, rmin=0.05)
+        print("trj[0]: ", trj[0])
+        viewer = MolBrowser(trj=trj)
+        viewer.show()
+        sys.exit(app.exec_())
+    else:
+        print(f"Error: The provided path '{args.input}' is not a valid .xyz file or directory.")
+        sys.exit(1)

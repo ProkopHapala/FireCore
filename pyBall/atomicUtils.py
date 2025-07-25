@@ -1541,8 +1541,14 @@ def load_xyz_movie( fname ):
         if il==0:
             line = f.readline()
             if not line: break
-            #print("line(1st)",line)
-            n=int(line.split()[0]) 
+            parts = line.split()
+            if not parts:
+                continue # Skip empty lines
+            try:
+                n = int(parts[0])
+            except (ValueError, IndexError):
+                print(f"Warning: Could not parse atom count from line: '{line.strip()}' in {fname}. Skipping frame.")
+                continue 
             comment=f.readline()
             #print("line(comment)",comment)
             il+=1
