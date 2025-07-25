@@ -7,10 +7,9 @@ uniform vec4 textColor; // New uniform for text color
 out vec4 FragColor;
 
 void main() {
-    // Sample the font atlas texture
-    float alpha = texture(fontAtlas, v_texCoord).r; // Assuming a single-channel (red) texture for the font atlas
-    //if (alpha < 0.1) discard;
-    // Use the alpha channel for transparency, and apply the uniform text color
-    //FragColor = vec4(textColor.rgb, alpha * textColor.a);
-    FragColor = vec4(1.,0.,1.,1.);
+    // DEBUG: output the raw texture color so we can see if the atlas is bound
+    vec4 tex = texture(fontAtlas, v_texCoord);
+    FragColor = tex;
+    //FragColor = vec4(textColor.rgb, 1.0);
+    //FragColor = vec4(1.,0.,0.,1.);
 }

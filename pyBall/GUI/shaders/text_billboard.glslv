@@ -6,6 +6,7 @@ layout (location = 2) in vec2 aTexCoord;    // UV coordinates for texture sampli
 
 uniform mat4  projection;
 uniform mat4  view;
+uniform mat4  model;
 uniform float labelScale; // Global scale for all labels
 
 out vec2 v_texCoord;
@@ -19,7 +20,7 @@ void main() {
     vec3 cameraUp    = vec3(view[0][1], view[1][1], view[2][1])*0.1;
     
     // Calculate the final world position for the vertex
-    vec3 finalWorldPos = aPos3D + (cameraRight * aLocalOffset.x * labelScale) + (cameraUp * aLocalOffset.y * labelScale);
+    vec3 finalWorldPos = (model * vec4(aPos3D, 1.0)).xyz + (cameraRight * aLocalOffset.x * labelScale) + (cameraUp * aLocalOffset.y * labelScale);
 
     gl_Position = projection * view * vec4(finalWorldPos, 1.0);
 
