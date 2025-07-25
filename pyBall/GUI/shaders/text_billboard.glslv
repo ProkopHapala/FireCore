@@ -4,8 +4,8 @@ layout (location = 0) in vec3 aPos3D;       // 3D base position of the character
 layout (location = 1) in vec2 aLocalOffset; // Local 2D offset within the character quad (-0.5 to 0.5)
 layout (location = 2) in vec2 aTexCoord;    // UV coordinates for texture sampling
 
-uniform mat4 projection;
-uniform mat4 view;
+uniform mat4  projection;
+uniform mat4  view;
 uniform float labelScale; // Global scale for all labels
 
 out vec2 v_texCoord;
@@ -21,7 +21,7 @@ void main() {
     // Calculate the final world position for the vertex
     vec3 finalWorldPos = aPos3D + (cameraRight * aLocalOffset.x * labelScale) + (cameraUp * aLocalOffset.y * labelScale);
 
-    gl_Position = projection * view * vec4(finalWorldPos, 1.0);
+    gl_Position = projection * view * vec4(finalWorldPos*0.1, 1.0);
 
     //gl_Position = vec4(aLocalOffset*10.0, 0.0, 1.0);
 

@@ -311,7 +311,25 @@ class MolViewerWidget(BaseGLWidget):
         if self.num_label_verts > 0:
             #print(f"DEBUG: draw_scene attempting to draw {(self.num_label_verts // 4) * 4} vertices for {(self.num_label_verts // 4)} quads.")
             self.use_shader(self.text_shader)
-            self.set_default_uniforms() # Set camera matrices
+
+            # === DEBUG: Check if matrix uniforms are correctly bound ===
+            # proj_loc = GL.glGetUniformLocation(self.text_shader, "projection")
+            # view_loc = GL.glGetUniformLocation(self.text_shader, "view")
+            # print(f"DEBUG: Uniform locations - projection: {proj_loc}, view: {view_loc}")
+            
+            # # Show a sample of the matrices to verify they look reasonable
+            # if hasattr(self, 'projection_matrix') and hasattr(self, 'view_matrix'):
+            #     print(f"DEBUG: First row of projection matrix: {self.projection_matrix.row(0).x()}, {self.projection_matrix.row(0).y()}, {self.projection_matrix.row(0).z()}, {self.projection_matrix.row(0).w()}")
+            #     print(f"DEBUG: First row of view matrix: {self.view_matrix.row(0).x()}, {self.view_matrix.row(0).y()}, {self.view_matrix.row(0).z()}, {self.view_matrix.row(0).w()}")
+            
+            # self.set_default_uniforms() # Set camera matrices
+            
+            # # Check for OpenGL errors after setting uniforms
+            # error = GL.glGetError()
+            # if error != GL.GL_NO_ERROR:
+            #     print(f"DEBUG: OpenGL error after setting uniforms: {error}")
+
+
             self.bind_texture('fontAtlas', self.font_atlas_tex, 0)
             GL.glDisable(GL.GL_DEPTH_TEST) # <<< DEBUG: Disable depth test
             #set_ogl_blend_mode(alpha_blend_modes["standard"], True)
