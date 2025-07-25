@@ -137,49 +137,67 @@ class MolViewerWidget(BaseGLWidget):
         GL.glBindVertexArray(0)
     
     def update_atom_labels_data(self):
-        if not self.trj or self.font_atlas_data is None:
-            self.num_label_verts = 0
-            return
+        # if not self.trj or self.font_atlas_data is None:
+        #     self.num_label_verts = 0
+        #     return
 
-        frame_atoms_data = self.frames_atoms[self.current_frame_index]
-        atom_positions, _, _ = frame_atoms_data
-        atom_enames = self.trj[self.current_frame_index][2]
+        atom_positions, _, _, atom_enames = self.frames_atoms[self.current_frame_index]
 
-        tile_w = self.font_atlas_data['tile_w']
-        tile_h = self.font_atlas_data['tile_h']
-        tex_w  = self.font_atlas_data['tex_w']
+        print("atom_enames", atom_enames)
+
+        tile_w = self.font_atlas_data['tile_w']  # width of one character tile in atlas
+        tile_h = self.font_atlas_data['tile_h']  # height of one character tile in atlas
+        tex_w  = self.font_atlas_data['tex_w']   # full atlas texture width
 
         all_vertex_data = []
-        label_scale = 0.3
-        label_y_offset = 0.4
+        szx  = 1.0  # width of one character quad in world units
+        szy  = 2.0*0.5  # height of one character quad in world units
+        yoff = 0.0
+
+        margin_lx = 0.1
+        margin_rx = 0.7
+        margin_y  = 0.0
+        space     = 0.0
+
+        conde_min = 32
+        conde_max = 126
 
         for pos_3d, ename in zip(atom_positions, atom_enames):
-            symbol = ename.decode('utf-8') if isinstance(ename, bytes) else str(ename)
-            label_world_width = len(symbol) * label_scale * 0.5
-            cursor_x_start = -label_world_width / 2.0
+            #ename += "_Hey"  # debug longer text
+            symbol = ename.decode('utf-8') if isinstance(ename, bytes) else str(ename) 
+            #xoff     = -len(symbol)* szx / 2.0 # centered text
+            xoff     = 0 # left aligned text
 
             for i_char, char in enumerate(symbol):
                 code = ord(char)
-                if code < 32 or code > 126:  # Skip non-printable
-                    continue
+                if code < conde_min or code > conde_max: continue
 
-                # 1D atlas: u = (code-32)*tile_w/tex_w, v = 0 (full height)
-                u0 = (code - 32) * tile_w / tex_w
-                u1 = u0 + tile_w / tex_w
-                v0 = 0.0
-                v1 = 1.0
+                # 1D atlas UVs  - using normalized coordinates
+                u0 = (code - conde_min + margin_lx ) * tile_w / tex_w
+                u1 = (code - conde_min + margin_rx ) * tile_w / tex_w
+                #u1 = u0               + tile_w*(1-margin_x) / tex_w
+                v1 = 0.0 + margin_y
+                v0 = 1.0 - margin_y
 
-                cursor_x_offset = cursor_x_start + i_char * (label_scale * 0.5)
-                char_base_pos = pos_3d + np.array([cursor_x_offset, label_y_offset, 0.0])
-                local_offsets = np.array([[-0.5, -0.5], [0.5, -0.5], [0.5, 0.5], [-0.5, 0.5]], dtype=np.float32)
+                # Same 3D position for every character in this label
+                base_3d = pos_3d + np.array([0.0, 0.0, 0.0])
+
+                # Local screen-space offset for this character
+                x = xoff + i_char * (szx*(1.0+space))
+                local_offsets = np.array([
+                    [ x       , yoff-szy ],
+                    [ x + szx , yoff-szy ],
+                    [ x + szx , yoff+szy ],
+                    [ x       , yoff+szy ]
+                ], dtype=np.float32)
                 uvs = np.array([[u0, v0], [u1, v0], [u1, v1], [u0, v1]], dtype=np.float32)
 
                 for j in range(4):
-                    vertex_data = np.concatenate((char_base_pos, local_offsets[j], uvs[j]))
+                    vertex_data = np.concatenate((base_3d, local_offsets[j], uvs[j]))
                     all_vertex_data.append(vertex_data)
 
         self.num_label_verts = len(all_vertex_data)
-        print(f"DEBUG: update_atom_labels_data created {self.num_label_verts} vertices.")
+        #print(f"DEBUG: update_atom_labels_data created {self.num_label_verts} vertices.")
         
         if self.num_label_verts > 0:
             # Generate and upload index data for the EBO
@@ -191,8 +209,8 @@ class MolViewerWidget(BaseGLWidget):
             
             vertex_data_np = np.array(all_vertex_data, dtype=np.float32)
 
-            print("vertex_data_np #legend:  pos(x,y,z)   local_offset(x,y)   uv(x,y)\n", vertex_data_np)
-            print("indices: ", indices)
+            #print("vertex_data_np #legend:  pos(x,y,z)   local_offset(x,y)   uv(x,y)\n", vertex_data_np)
+            #print("indices: ", indices)
             
             GL.glBindBuffer(GL.GL_ARRAY_BUFFER, self.text_vbo)
             GL.glBufferData(GL.GL_ARRAY_BUFFER, vertex_data_np.nbytes, vertex_data_np, GL.GL_DYNAMIC_DRAW)
@@ -227,8 +245,8 @@ class MolViewerWidget(BaseGLWidget):
             GL.glDisable(GL.GL_BLEND)
             # atoms = SphereInstancesData()
             # elecs = SphereInstancesData()
-            apos,arad,acol=[],[],[]
-            epos,erad,ecol=[],[],[]
+            apos,arad,acol,aname=[],[],[],[]
+            epos,erad,ecol,ename=[],[],[],[]
             if na > 0:
                 for i in range(na):
                     atom_symbol = es[i]
@@ -240,38 +258,21 @@ class MolViewerWidget(BaseGLWidget):
                         epos.append(ps[i])
                         erad.append(current_radius)
                         ecol.append([r_col, g_col, b_col, self.opacity])
+                        ename.append(atom_symbol)
                     else: 
                         apos.append(ps[i])
                         arad.append(current_radius)
                         acol.append([r_col, g_col, b_col, 1.0])
+                        aname.append(atom_symbol)
             
-            self.frames_atoms.append( [np.array(apos,dtype=dtype), np.array(arad,dtype=dtype), np.array(acol,dtype=dtype)] )
-            self.frames_elecs.append( [np.array(epos,dtype=dtype), np.array(erad,dtype=dtype), np.array(ecol,dtype=dtype)] )
-            # if frame_idx == 0:
-            #     print("arad",   self.frames_atoms[-1][1])
-            #     print("apos\n", self.frames_atoms[-1][0])
-            #     print("acol\n", self.frames_atoms[-1][2])
-            #     print("erad",   self.frames_elecs[-1][1])
-            #     print("epos\n", self.frames_elecs[-1][0])
-            #     print("ecol\n", self.frames_elecs[-1][2])
+            self.frames_atoms.append( [np.array(apos,dtype=dtype), np.array(arad,dtype=dtype), np.array(acol,dtype=dtype), aname] )
+            self.frames_elecs.append( [np.array(epos,dtype=dtype), np.array(erad,dtype=dtype), np.array(ecol,dtype=dtype), ename] )
 
     def update_instance_data(self):
-        elecs = self.frames_elecs[self.current_frame_index]
-        #print( "update_instance_data() elecs.shape", elecs.shape )
-        print( "update_instance_data() elecs:\n", elecs )
-        #elecs[2][:,3] = self.opacity
-        self.atom_instances.update_list( self.frames_atoms[self.current_frame_index] )
+        atoms = self.frames_atoms[self.current_frame_index][:3]
+        elecs = self.frames_elecs[self.current_frame_index][:3]
+        self.atom_instances.update_list( atoms )
         self.elec_instances.update_list( elecs )
-        # self.atom_instances     .update( {
-        #     "positions": self.frames_atoms[self.current_frame_index][0],
-        #     "radii":     self.frames_atoms[self.current_frame_index][1],
-        #     "colors":    self.frames_atoms[self.current_frame_index][2]
-        #     })
-        # self.elec_instances.update( {
-        #     "positions": self.frames_elecs[self.current_frame_index][0],
-        #     "radii":     self.frames_elecs[self.current_frame_index][1],
-        #     "colors":    self.frames_elecs[self.current_frame_index][2]
-        #     })
         self.instance_data_dirty = False
 
     def paintGL(self):
@@ -301,32 +302,16 @@ class MolViewerWidget(BaseGLWidget):
         if self.num_label_verts > 0:
             #print(f"DEBUG: draw_scene attempting to draw {(self.num_label_verts // 4) * 4} vertices for {(self.num_label_verts // 4)} quads.")
             self.use_shader(self.text_shader)
-
-            # === DEBUG: Check if matrix uniforms are correctly bound ===
-            # proj_loc = GL.glGetUniformLocation(self.text_shader, "projection")
-            # view_loc = GL.glGetUniformLocation(self.text_shader, "view")
-            # print(f"DEBUG: Uniform locations - projection: {proj_loc}, view: {view_loc}")
-            
-            # # Show a sample of the matrices to verify they look reasonable
-            # if hasattr(self, 'projection_matrix') and hasattr(self, 'view_matrix'):
-            #     print(f"DEBUG: First row of projection matrix: {self.projection_matrix.row(0).x()}, {self.projection_matrix.row(0).y()}, {self.projection_matrix.row(0).z()}, {self.projection_matrix.row(0).w()}")
-            #     print(f"DEBUG: First row of view matrix: {self.view_matrix.row(0).x()}, {self.view_matrix.row(0).y()}, {self.view_matrix.row(0).z()}, {self.view_matrix.row(0).w()}")
-            
             self.set_default_uniforms() # Set camera matrices
-            
-            # # Check for OpenGL errors after setting uniforms
-            # error = GL.glGetError()
-            # if error != GL.GL_NO_ERROR:
-            #     print(f"DEBUG: OpenGL error after setting uniforms: {error}")
-
 
             self.bind_texture('fontAtlas', self.font_atlas_tex, 0)
             GL.glDisable(GL.GL_DEPTH_TEST) # <<< DEBUG: Disable depth test
             #set_ogl_blend_mode(alpha_blend_modes["standard"], True)
             GL.glEnable(GL.GL_BLEND)
             GL.glBlendFunc(GL.GL_SRC_ALPHA, GL.GL_ONE_MINUS_SRC_ALPHA)
-            GL.glUniform1f(GL.glGetUniformLocation(self.text_shader, "labelScale"), 3.0 ) # Adjust scale as needed
+            GL.glUniform1f(GL.glGetUniformLocation(self.text_shader, "labelScale"), 0.25*self.zoom_factor ) # Adjust scale as needed
             GL.glUniform4f(GL.glGetUniformLocation(self.text_shader, "textColor"), 1.0, 0.0, 0.0, 1.0) # purple
+            GL.glUniform2f(GL.glGetUniformLocation(self.text_shader, "offset"), 0.5, 0.0) # purple
 
             # --- DEBUG: Force GL state to a known-good configuration ---
             GL.glDisable(GL.GL_CULL_FACE)

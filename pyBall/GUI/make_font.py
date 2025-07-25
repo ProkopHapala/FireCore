@@ -3,7 +3,7 @@ from PIL import Image, ImageDraw, ImageFont
 import os
 
 # Configuration
-FONT_FILE   = "C:/Windows/Fonts/consola.ttf"  # Or a path to any monospace font
+FONT_FILE   = "/usr/share/fonts/truetype/dejavu/DejaVuSansMono.ttf"  # Ubuntu path
 FONT_SIZE   = 32
 TILE_W      = 32  # Fixed width per character tile
 TILE_H      = 48  # Fixed height per character tile

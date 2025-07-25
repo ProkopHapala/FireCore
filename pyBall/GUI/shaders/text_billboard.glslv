@@ -8,6 +8,7 @@ uniform mat4  projection;
 uniform mat4  view;
 uniform mat4  model;
 uniform float labelScale; // Global scale for all labels
+uniform vec2  offset; 
 
 out vec2 v_texCoord;
 
@@ -18,9 +19,11 @@ void main() {
     // This aligns the quad with the camera's view plane.
     vec3 cameraRight = vec3(view[0][0], view[1][0], view[2][0])*0.1;
     vec3 cameraUp    = vec3(view[0][1], view[1][1], view[2][1])*0.1;
+
+    vec2 off = (offset + aLocalOffset)*labelScale;
     
     // Calculate the final world position for the vertex
-    vec3 finalWorldPos = (model * vec4(aPos3D, 1.0)).xyz + (cameraRight * aLocalOffset.x * labelScale) + (cameraUp * aLocalOffset.y * labelScale);
+    vec3 finalWorldPos = (model * vec4(aPos3D, 1.0)).xyz + (cameraRight * off.x) + (cameraUp * off.y);
 
     gl_Position = projection * view * vec4(finalWorldPos, 1.0);
 
