@@ -1,14 +1,15 @@
 from re import S
 import sys
 import numpy as np
-from PyQt5.QtWidgets import (QVBoxLayout, QWidget, QSlider, QLabel, QComboBox)
+from PyQt5.QtWidgets import (QApplication, QVBoxLayout, QWidget, QSlider, QLabel, QComboBox)
 from PyQt5.QtCore    import Qt
 import argparse
 import os
 
 sys.path.append("../../") # To find pyBall
 from pyBall import elements
-from pyBall.GUI.GLGUI import BaseGLWidget, AppWindow, InstancedData, set_ogl_blend_mode, disable_blend, alpha_blend_modes, GLobject, rotation_to_gl_matrix
+from pyBall.GUI.GLGUI import BaseGLWidget, InstancedData, set_ogl_blend_mode, disable_blend, alpha_blend_modes, GLobject, rotation_to_gl_matrix
+from pyBall.OGL.BaseGUI import BaseGUI
 from pyBall.atomicUtils import findAllBonds, findBondsNP
 
 import OpenGL.GL as GL
@@ -278,15 +279,12 @@ class MolViewerWidget(BaseGLWidget):
             print(f"Warning: Render mode '{mode_key}' not found.")
 
 
-class MolViewer(AppWindow):
+class MolViewer(BaseGUI):
     def __init__(self, trj=None):
-        super().__init__()
-        self.setWindowTitle("Modern OpenGL Molecular Viewer")
+        super().__init__("Modern OpenGL Molecular Viewer")
         self.setGeometry(100, 100, 800, 600)
 
-        central_widget = QWidget()
-        self.setCentralWidget(central_widget)
-        layout = QVBoxLayout(central_widget)
+        layout = QVBoxLayout(self.main_widget)
 
         self.gl_widget = MolViewerWidget()
         layout.addWidget(self.gl_widget, 1) # <-- Add stretch factor here
@@ -354,7 +352,6 @@ if __name__ == '__main__':
     # resolve the full absolute path
     dir_path = os.path.abspath(os.path.join(this_path, dir_path))
     
-    #app = QApplication(sys.argv)
     parser = argparse.ArgumentParser(description="Modern OpenGL Molecular Viewer")
     parser.add_argument("-f", "--file", type=str, help="Path to the XYZ trajectory file", default=None) # Default to None
     args = parser.parse_args()
@@ -364,4 +361,8 @@ if __name__ == '__main__':
     trj = au.trj_fill_radius(trj, bVdw=True, rFactor=0.001, rmin=0.05) # Adjusted rFactor for visibility
     #trj = au.trj_fill_radius(trj, bVdw=False, rFactor=1.0)
     print( "trj[0]: ", trj[0])
-    MolViewer.launch(trj=trj)
+
+    app = QApplication(sys.argv)
+    viewer = MolViewer(trj=trj)
+    viewer.show()
+    sys.exit(app.exec_())
