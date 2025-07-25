@@ -15,13 +15,13 @@ void main() {
 
     // To create a billboard, we transform the local offset by the inverse of the view matrix's rotation part.
     // This aligns the quad with the camera's view plane.
-    vec3 cameraRight = vec3(view[0][0], view[1][0], view[2][0]);
-    vec3 cameraUp    = vec3(view[0][1], view[1][1], view[2][1]);
+    vec3 cameraRight = vec3(view[0][0], view[1][0], view[2][0])*0.1;
+    vec3 cameraUp    = vec3(view[0][1], view[1][1], view[2][1])*0.1;
     
     // Calculate the final world position for the vertex
     vec3 finalWorldPos = aPos3D + (cameraRight * aLocalOffset.x * labelScale) + (cameraUp * aLocalOffset.y * labelScale);
 
-    gl_Position = projection * view * vec4(finalWorldPos*0.1, 1.0);
+    gl_Position = projection * view * vec4(finalWorldPos, 1.0);
 
     //gl_Position = vec4(aLocalOffset*10.0, 0.0, 1.0);
 
