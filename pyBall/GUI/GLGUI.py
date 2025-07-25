@@ -519,8 +519,13 @@ class BaseGLWidget(QOpenGLWidget):
         if self.current_shader_program_id is None: print("BaseGLWidget.set_default_uniforms: current_shader_program_id is None") 
         glUniformMatrix4fv(glGetUniformLocation(self.current_shader_program_id, "projection" ), 1, GL_FALSE, self.projection_matrix.data()) # projection_matrix is QMatrix4x4
         glUniformMatrix4fv(glGetUniformLocation(self.current_shader_program_id, "view"       ), 1, GL_FALSE, self.view_matrix.data())       # view_matrix is QMatrix4x4
-        #glUniformMatrix4fv(glGetUniformLocation(self.current_shader_program_id, "model"      ), 1, GL_FALSE, self.model_matrix.data())
-        glUniformMatrix4fv(glGetUniformLocation(self.current_shader_program_id, "model"),      1, GL_FALSE, self.model_matrix)              # model_matrix is numpy array
+        # Ensure model_matrix is a numpy array before passing to OpenGL
+        if isinstance(self.model_matrix, np.ndarray):
+            glUniformMatrix4fv(glGetUniformLocation(self.current_shader_program_id, "model"), 1, GL_FALSE, self.model_matrix)
+        else:
+            # Handle QMatrix4x4 or other types by converting to numpy
+            model_array = np.array(self.model_matrix.data(), dtype=np.float32)
+            glUniformMatrix4fv(glGetUniformLocation(self.current_shader_program_id, "model"), 1, GL_FALSE, model_array)
 
     def paintGL_base(self):
         #print("BaseGLWidget.paintGL_base()")

@@ -15,6 +15,7 @@ from pyBall.atomicUtils import findAllBonds, findBondsNP
 import OpenGL.GL as GL
 import json
 import ctypes
+from PIL import Image
 
 np.set_printoptions(linewidth=np.inf)
 
@@ -71,6 +72,13 @@ class MolViewerWidget(BaseGLWidget):
         self.bond_shader = None
         self.frames_bonds = []  # Store bonds for each frame
         self.bond_data_dirty = True
+
+        # FBO related attributes
+        self.fbo_id = None
+        self.fbo_texture_id = None
+        self.fbo_depth_buffer_id = None
+        self.fbo_width = 0
+        self.fbo_height = 0
 
     def initializeGL(self):
         #print("MolViewerWidget.initializeGL()")
@@ -142,10 +150,54 @@ class MolViewerWidget(BaseGLWidget):
         self.shader_program_sphere_max_vol = None
         if self.atom_instances:  self.atom_instances.cleanup()
         if self.elec_instances:  self.elec_instances.cleanup()
+        self._deinit_fbo()
         # if self.bonds_vao:       GL.glDeleteVertexArrays(1, [self.bonds_vao])
         # if self.bonds_vbo:       GL.glDeleteBuffers(1, [self.bonds_vbo])
         # if self.bonds_ebo:       GL.glDeleteBuffers(1, [self.bonds_ebo])
         #if self.bond_shader:     GL.glDeleteProgram(self.bond_shader)
+
+    def _init_fbo(self, width, height):
+        # De-initialize existing FBO first to avoid resource leaks
+        self._deinit_fbo()
+
+        self.fbo_width = width
+        self.fbo_height = height
+
+        # Create FBO
+        self.fbo_id = GL.glGenFramebuffers(1)
+        GL.glBindFramebuffer(GL.GL_FRAMEBUFFER, self.fbo_id)
+
+        # Create texture to render to
+        self.fbo_texture_id = GL.glGenTextures(1)
+        GL.glBindTexture(GL.GL_TEXTURE_2D, self.fbo_texture_id)
+        GL.glTexImage2D(GL.GL_TEXTURE_2D, 0, GL.GL_RGBA, self.fbo_width, self.fbo_height, 0, GL.GL_RGBA, GL.GL_UNSIGNED_BYTE, None)
+        GL.glTexParameteri(GL.GL_TEXTURE_2D, GL.GL_TEXTURE_MIN_FILTER, GL.GL_LINEAR)
+        GL.glTexParameteri(GL.GL_TEXTURE_2D, GL.GL_TEXTURE_MAG_FILTER, GL.GL_LINEAR)
+        GL.glFramebufferTexture2D(GL.GL_FRAMEBUFFER, GL.GL_COLOR_ATTACHMENT0, GL.GL_TEXTURE_2D, self.fbo_texture_id, 0)
+
+        # Create depth buffer
+        self.fbo_depth_buffer_id = GL.glGenRenderbuffers(1)
+        GL.glBindRenderbuffer(GL.GL_RENDERBUFFER, self.fbo_depth_buffer_id)
+        GL.glRenderbufferStorage(GL.GL_RENDERBUFFER, GL.GL_DEPTH_COMPONENT24, self.fbo_width, self.fbo_height)
+        GL.glFramebufferRenderbuffer(GL.GL_FRAMEBUFFER, GL.GL_DEPTH_ATTACHMENT, GL.GL_RENDERBUFFER, self.fbo_depth_buffer_id)
+
+        # Check if FBO is complete
+        if GL.glCheckFramebufferStatus(GL.GL_FRAMEBUFFER) != GL.GL_FRAMEBUFFER_COMPLETE:
+            print("Error: Framebuffer is not complete!")
+
+        # Unbind FBO to return to default framebuffer
+        GL.glBindFramebuffer(GL.GL_FRAMEBUFFER, 0)
+
+    def _deinit_fbo(self):
+        if self.fbo_id:
+            GL.glDeleteFramebuffers(1, [self.fbo_id])
+            self.fbo_id = None
+        if self.fbo_texture_id:
+            GL.glDeleteTextures(1, [self.fbo_texture_id])
+            self.fbo_texture_id = None
+        if self.fbo_depth_buffer_id:
+            GL.glDeleteRenderbuffers(1, [self.fbo_depth_buffer_id])
+            self.fbo_depth_buffer_id = None
 
     def hex2rgb(self, hex_color_str):
         return [int(hex_color_str[i:i+2], 16) / 255.0 for i in (0, 2, 4)]
@@ -271,6 +323,48 @@ class MolViewerWidget(BaseGLWidget):
         self.instance_data_dirty = True # Need to update colors VBO
         self.update()
 
+    def save_gl_frame_to_image(self, filename="molviewer_output.png"):
+        """Renders the current scene to an offscreen FBO and saves it as a PNG image."""
+        
+        self.makeCurrent()
+
+        # Ensure FBO is initialized and sized correctly for the current viewport
+        if self.fbo_id is None or self.fbo_width != self.width() or self.fbo_height != self.height():
+            self._init_fbo(self.width(), self.height())
+
+        # Bind the FBO for offscreen rendering
+        GL.glBindFramebuffer(GL.GL_FRAMEBUFFER, self.fbo_id)
+        GL.glViewport(0, 0, self.fbo_width, self.fbo_height)
+
+        # Clear the FBO's color and depth buffers
+        GL.glClear(GL.GL_COLOR_BUFFER_BIT | GL.GL_DEPTH_BUFFER_BIT)
+
+        # Render the scene to the FBO
+        self.draw_scene()
+
+        # Read pixels from the FBO's color attachment
+        pixels = GL.glReadPixels(0, 0, self.fbo_width, self.fbo_height, GL.GL_RGBA, GL.GL_UNSIGNED_BYTE)
+
+        # Unbind the FBO and restore the default viewport
+        GL.glBindFramebuffer(GL.GL_FRAMEBUFFER, 0)
+        GL.glViewport(0, 0, self.width(), self.height())
+
+        self.doneCurrent()
+
+        # Create a PIL Image from the pixel data
+        image = Image.frombytes("RGBA", (self.fbo_width, self.fbo_height), pixels)
+
+        # OpenGL's glReadPixels reads from bottom-left, so flip the image vertically
+        image = image.transpose(Image.FLIP_TOP_BOTTOM)
+
+        # Save the image
+        image.save(filename)
+        print(f"Saved OpenGL frame to {filename}")
+
+        # Trigger a repaint to ensure the screen is updated after FBO operations,
+        # as some GL state might have been altered.
+        self.update()
+
     def set_render_mode(self, mode_key):
         if mode_key in self.render_modes:
             self.current_render_mode_key = mode_key
@@ -310,7 +404,8 @@ class MolViewer(BaseGUI):
         self.gl_widget.main_window = self
         self.render_mode_combo = self.comboBox(items=self.gl_widget.render_modes.keys(), callback=self.on_render_mode_changed, layout=self.controls_layout)
 
-        # Add Quit button
+        # Add Save Image and Quit buttons
+        self.button("Save Image", callback=lambda: self.gl_widget.save_gl_frame_to_image(), layout=self.controls_layout)
         self.button("Quit", callback=self.close, layout=self.controls_layout)
         self.controls_layout.addStretch(1)
 
