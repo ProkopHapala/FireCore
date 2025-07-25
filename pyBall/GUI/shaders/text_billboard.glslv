@@ -23,5 +23,7 @@ void main() {
 
     gl_Position = projection * view * vec4(finalWorldPos, 1.0);
 
+    //gl_Position = vec4(aLocalOffset*10.0, 0.0, 1.0);
+
     //gl_Position = vec4( aPos3D + vec3( aLocalOffset.xyx ), 1.0 );
 }
