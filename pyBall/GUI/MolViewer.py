@@ -9,12 +9,40 @@ import os
 sys.path.append("../../") # To find pyBall
 from pyBall import elements
 from pyBall.GUI.GLGUI import BaseGLWidget, AppWindow, InstancedData, set_ogl_blend_mode, disable_blend, alpha_blend_modes
+from pyBall.atomicUtils import findAllBonds, findBondsNP
 
 import OpenGL.GL as GL
 import json
 import ctypes
 
 np.set_printoptions(linewidth=np.inf)
+
+class FrameData:
+    """Unified container for all rendering data for a single frame"""
+    def __init__(self):
+        self.atoms = None      # [positions, radii, colors, names]
+        self.electrons = None  # [positions, radii, colors, names]
+        self.bonds = None      # list of (i,j) pairs
+        self.bond_vecs = None  # list of (length, direction) tuples
+        
+    def compute_bonds(self, Rcut=3.0, RvdwCut=0.7):
+        """Compute bonds using findAllBonds"""
+        if self.atoms is None:
+            return
+        
+        # # Prepare atoms array for findAllBonds
+        # atom_data = np.column_stack([
+        #     [elements.ELEMENT_DICT[e] for e in self.atoms[3]],  # atomic numbers
+        #     self.atoms[0]  # positions
+        # ])
+        print("self.atoms[0] ", self.atoms[0])
+        print("self.atoms[1] ", self.atoms[1])
+        RvdWs = np.array( [ elements.ELEMENT_DICT[e][7] for e in self.atoms[3] ])
+        print("RvdWs ", RvdWs)
+        #bonds, bond_vecs = findAllBonds(self.atoms[0], self.atoms[1] )
+        bonds, bond_vecs = findBondsNP(self.atoms[0], RvdWs=RvdWs )
+        self.bonds     = bonds
+        self.bond_vecs = bond_vecs
 
 
 class MolViewerWidget(BaseGLWidget):
@@ -24,8 +52,7 @@ class MolViewerWidget(BaseGLWidget):
         self.trj = []
         self.current_frame_index = 0
         self.opacity      = 0.5
-        self.frames_atoms = []
-        self.frames_elecs = []
+        self.frames_data = []  # List of FrameData objects
         self.atom_instances = InstancedData(base_attrib_location=1)
         self.elec_instances = InstancedData(base_attrib_location=1)
         # self.blend_mode = alpha_blend_modes["standard"] # Replaced by render_modes
@@ -46,12 +73,22 @@ class MolViewerWidget(BaseGLWidget):
         self.num_label_verts = 0
         self.label_data_dirty = True
 
+        # Bond rendering setup
+        self.bonds_vao = None
+        self.bonds_vbo = None
+        self.bonds_ebo = None
+        self.bond_shader = None
+        self.frames_bonds = []  # Store bonds for each frame
+        self.bond_data_dirty = True
+
     @property
     def all_shader_programs(self):
         programs = []
         if self.shader_program_sphere_raytrace: programs.append(self.shader_program_sphere_raytrace)
         if self.shader_program_sphere_max_vol:  programs.append(self.shader_program_sphere_max_vol)
         if self.text_shader: programs.append(self.text_shader)
+        if self.bond_shader: programs.append(self.bond_shader)
+        if self.simple_shader: programs.append(self.simple_shader)  # Add simple shader for bond rendering
         return programs
 
     def initializeGL(self):
@@ -70,16 +107,35 @@ class MolViewerWidget(BaseGLWidget):
         self.shader_program = self.shader_program_sphere_raytrace
         if not self.shader_program: # Fallback if primary fails
             self.shader_program = self.shader_program_sphere_max_vol
+            
+        # Initialize bond rendering
+        vert_bond = open(shader_folder + "/cylinder.glslv").read()
+        frag_bond = open(shader_folder + "/cylinder.glslf").read()
+        self.bond_shader = self.compile_shader_program(vert_bond, frag_bond)
+        
+        # Create VAO, VBO and EBO for bonds
+        self.bonds_vao = GL.glGenVertexArrays(1)
+        self.bonds_vbo = GL.glGenBuffers(1)
+        self.bonds_ebo = GL.glGenBuffers(1)
+        
+        GL.glBindVertexArray(self.bonds_vao)
+        
+        # VBO will be filled with atom positions later
+        GL.glBindBuffer(GL.GL_ARRAY_BUFFER, self.bonds_vbo)
+        GL.glEnableVertexAttribArray(0)
+        GL.glVertexAttribPointer(0, 3, GL.GL_FLOAT, GL.GL_FALSE, 0, None)
+        
+        # EBO will be filled with bond indices later
+        GL.glBindBuffer(GL.GL_ELEMENT_ARRAY_BUFFER, self.bonds_ebo)
+        
+        GL.glBindVertexArray(0)
         
         # Define render modes after shaders are compiled
         self.render_modes = {
-            "Shiny"      : (self.shader_program_sphere_raytrace, alpha_blend_modes["standard"],    True  ),
-            "Shiny2"     : (self.shader_program_sphere_raytrace, alpha_blend_modes["standard"],    False ),
-            "Volumetric" : (self.shader_program_sphere_max_vol,  alpha_blend_modes["standard"],    True  ), # Example
-            "Volumetric2": (self.shader_program_sphere_max_vol,  alpha_blend_modes["subtractive"], True  ),
+            "raytrace": (self.shader_program_sphere_raytrace, alpha_blend_modes["standard"], True),
+            "max_vol":  (self.shader_program_sphere_max_vol,  alpha_blend_modes["standard"], False)
         }
-        # Set a default render mode
-        self.current_render_mode_key = "Shiny" 
+        self.current_render_mode_key = "raytrace"  # Set default render mode
 
         self.main_window.render_mode_combo.addItems(self.render_modes.keys())
         self.main_window.render_mode_combo.setCurrentText(self.current_render_mode_key)
@@ -137,11 +193,11 @@ class MolViewerWidget(BaseGLWidget):
         GL.glBindVertexArray(0)
     
     def update_atom_labels_data(self):
-        # if not self.trj or self.font_atlas_data is None:
-        #     self.num_label_verts = 0
-        #     return
+        if not self.trj or self.font_atlas_data is None:
+            self.num_label_verts = 0
+            return
 
-        atom_positions, _, _, atom_enames = self.frames_atoms[self.current_frame_index]
+        atom_positions, _, _, atom_enames = self.frames_data[self.current_frame_index].atoms
 
         print("atom_enames", atom_enames)
 
@@ -237,24 +293,36 @@ class MolViewerWidget(BaseGLWidget):
             self.atom_instances.cleanup()
         if self.elec_instances:
             self.elec_instances.cleanup()
+        if self.bonds_vao: GL.glDeleteVertexArrays(1, [self.bonds_vao])
+        if self.bonds_vbo: GL.glDeleteBuffers(1, [self.bonds_vbo])
+        if self.bonds_ebo: GL.glDeleteBuffers(1, [self.bonds_ebo])
+        if self.bond_shader: GL.glDeleteProgram(self.bond_shader)
+
+    def hex2rgb(self, hex_color_str):
+        return [int(hex_color_str[i:i+2], 16) / 255.0 for i in (0, 2, 4)]
 
     def precalculate_frames_data(self, dtype=np.float32):
+        self.frames_data = []
+        #index_color = elements.index_color
         for frame_idx in range(len(self.trj)):
-            es,ps,qs, rs, comment = self.trj[frame_idx]
+            frame_data = FrameData()
+            
+            es = self.trj[frame_idx][0]
             na = len(es)
-            GL.glDisable(GL.GL_BLEND)
-            # atoms = SphereInstancesData()
-            # elecs = SphereInstancesData()
+            ps = self.trj[frame_idx][1]
+            
             apos,arad,acol,aname=[],[],[],[]
             epos,erad,ecol,ename=[],[],[],[]
+            
             if na > 0:
                 for i in range(na):
                     atom_symbol = es[i]
-                    current_radius = rs[i]
-                    element_data = elements.ELEMENT_DICT[atom_symbol]
-                    hex_color_str = element_data[elements.index_color]
-                    r_col, g_col, b_col = elements.hex_to_float_rgb(hex_color_str)
-                    if atom_symbol in self.electron_names: # Electron or transparent particle
+                    print(f"i: {i}, atom_symbol: {atom_symbol}")
+                    current_radius = self.trj[frame_idx][3][i]
+                    rec = elements.ELEMENT_DICT[atom_symbol]
+                    #r_col, g_col, b_col = elements.ELEMENTS[ elements.ELEMENT_DICT[atom_symbol] ][1][:3]
+                    r_col, g_col, b_col = self.hex2rgb(rec[elements.index_color][1:])
+                    if atom_symbol == "e":
                         epos.append(ps[i])
                         erad.append(current_radius)
                         ecol.append([r_col, g_col, b_col, self.opacity])
@@ -262,22 +330,72 @@ class MolViewerWidget(BaseGLWidget):
                     else: 
                         apos.append(ps[i])
                         arad.append(current_radius)
-                        acol.append([r_col, g_col, b_col, 1.0])
+                        acol.append([r_col, g_col, b_col, self.opacity])
                         aname.append(atom_symbol)
             
-            self.frames_atoms.append( [np.array(apos,dtype=dtype), np.array(arad,dtype=dtype), np.array(acol,dtype=dtype), aname] )
-            self.frames_elecs.append( [np.array(epos,dtype=dtype), np.array(erad,dtype=dtype), np.array(ecol,dtype=dtype), ename] )
+            # Store unified data
+            frame_data.atoms = [np.array(apos,dtype=dtype), np.array(arad,dtype=dtype), np.array(acol,dtype=dtype), aname]
+            frame_data.electrons = [np.array(epos,dtype=dtype), np.array(erad,dtype=dtype), np.array(ecol,dtype=dtype), ename]
+            frame_data.compute_bonds()
+            
+            self.frames_data.append(frame_data)
 
     def update_instance_data(self):
-        atoms = self.frames_atoms[self.current_frame_index][:3]
-        elecs = self.frames_elecs[self.current_frame_index][:3]
-        self.atom_instances.update_list( atoms )
-        self.elec_instances.update_list( elecs )
+        atoms = self.frames_data[self.current_frame_index].atoms
+        elecs = self.frames_data[self.current_frame_index].electrons
+        self.atom_instances.update_list( atoms[:3] )
+        self.elec_instances.update_list( elecs[:3] )
         self.instance_data_dirty = False
 
     def paintGL(self):
         # Calls paintGL_base, which in turn calls draw_scene
         super().paintGL_base() 
+
+    def render_bonds_shader(self):
+        print("render_bonds_shader()")
+
+        frame_data = self.frames_data[self.current_frame_index]
+        bonds = frame_data.bonds
+        self.use_shader(self.bond_shader)
+        self.set_default_uniforms()
+                
+        # Upload bond indices (point pairs)
+        bond_indices = np.array(bonds, dtype=np.uint32).flatten()
+        
+        # Draw bonds
+        GL.glBindVertexArray(self.bonds_vao)
+        GL.glDrawElements(GL.GL_LINES, len(bond_indices), GL.GL_UNSIGNED_INT, None)
+        GL.glBindVertexArray(0)
+
+    def render_bonds_simple(self):
+        print("render_bonds_simple()")
+        frame_data = self.frames_data[self.current_frame_index]
+        bonds      = frame_data.bonds
+        self.use_shader(self.simple_shader)
+        self.set_default_uniforms()
+        
+        # Set color (white by default)
+        color_loc = GL.glGetUniformLocation(self.simple_shader, "color")
+        GL.glUniform4f(color_loc, 1.0, 0.0, 1.0, 1.0)
+
+        GL.glBindVertexArray(self.bonds_vao)
+        
+        # Upload bond indices (point pairs)
+        bond_indices = np.array(bonds, dtype=np.uint32).flatten()
+        GL.glBindBuffer(GL.GL_ELEMENT_ARRAY_BUFFER, self.bonds_ebo)
+        GL.glBufferData(GL.GL_ELEMENT_ARRAY_BUFFER, bond_indices.nbytes, bond_indices, GL.GL_DYNAMIC_DRAW)
+        
+        # Use atom positions as vertex buffer
+        atom_positions = frame_data.atoms[0]
+        GL.glBindBuffer(GL.GL_ARRAY_BUFFER, self.bonds_vbo)
+        GL.glBufferData(GL.GL_ARRAY_BUFFER, atom_positions.nbytes, atom_positions, GL.GL_DYNAMIC_DRAW)
+        
+        # Set up vertex attributes (positions only)
+        GL.glEnableVertexAttribArray(0)
+        GL.glVertexAttribPointer(0, 3, GL.GL_FLOAT, GL.GL_FALSE, 0, None)
+        
+        # Draw bonds as lines
+        GL.glDrawElements(GL.GL_LINES, len(bond_indices), GL.GL_UNSIGNED_INT, None)
 
     def draw_scene(self):
         shader, blend_mode, use_depth_mask = self.render_modes[self.current_render_mode_key]
@@ -294,6 +412,9 @@ class MolViewerWidget(BaseGLWidget):
         GL.glBlendEquation(blend_mode[0])
         GL.glBlendFunc(blend_mode[1], blend_mode[2])
         self.elec_instances.draw()
+
+        #self.render_bonds_shader()
+        self.render_bonds_simple()
 
         # --- Render Atom Labels ---
         if self.label_data_dirty:
@@ -319,7 +440,7 @@ class MolViewerWidget(BaseGLWidget):
             GL.glColorMask(GL.GL_TRUE, GL.GL_TRUE, GL.GL_TRUE, GL.GL_TRUE)
             # -----------------------------------------------------------
 
-            GL.glDisable(GL.GL_DEPTH_TEST) # --- DEBUG: Disable depth test
+            GL.glDisable(GL.GL_DEPTH_TEST) # <<< DEBUG: Disable depth test
             GL.glBindVertexArray(self.text_vao)
             num_indices = (self.num_label_verts // 4) * 6
             GL.glDrawElements(GL.GL_TRIANGLES, num_indices, GL.GL_UNSIGNED_INT, None)
@@ -430,5 +551,5 @@ if __name__ == '__main__':
     trj = au.trj_to_ename(trj)
     trj = au.trj_fill_radius(trj, bVdw=True, rFactor=0.001, rmin=0.05) # Adjusted rFactor for visibility
     #trj = au.trj_fill_radius(trj, bVdw=False, rFactor=1.0)
-    print( "trj.enames", trj[0])
+    print( "trj[0]: ", trj[0])
     MolViewer.launch(trj=trj)

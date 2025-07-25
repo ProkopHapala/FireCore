@@ -355,10 +355,12 @@ class BaseGLWidget(QOpenGLWidget):
         # Camera and light
         self.view_matrix       = QMatrix4x4()
         self.projection_matrix = QMatrix4x4()
+        self.model_matrix      = QMatrix4x4()
         self.light_pos         = QVector3D(15.0, 15.0, 30.0)
         self.light_color       = QVector3D( 1.0,  1.0,  1.0)
         self.camera_pos        = QVector3D( 0  ,  0  , self.zoom_factor) # Will be updated by zoom
         self.current_shader_program_id = None # To be set by derived class if it manages shaders
+
 
     # Qt will call paintGL(); delegate to our internal method
     def paintGL(self):
@@ -366,6 +368,9 @@ class BaseGLWidget(QOpenGLWidget):
         ctx=QOpenGLContext.currentContext()
         print(f"BaseGLWidget.paintGL called, currentContext valid: {ctx is not None}")
         # Note: paintGL is called frequently; keep prints minimal
+        
+        
+        
         self.paintGL_base()
 
     def initializeGL_base(self, vertex_shader_src, fragment_shader_src, bPrint=False):
@@ -380,12 +385,39 @@ class BaseGLWidget(QOpenGLWidget):
         glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA)
         glEnable(GL_CULL_FACE) # Cull back faces
 
-
+        ret = self.simple_shader = self.compile_shader_program(
+            """
+            #version 330 core
+            layout(location = 0) in vec3 position;
+            uniform mat4 projection;
+            uniform mat4 view;
+            uniform mat4 model;
+            
+            void main() {
+                gl_Position = projection * view * model * vec4(position, 1.0);
+            }
+            """,
+            """
+            #version 330 core
+            out vec4 FragColor;
+            uniform vec4 color;
+            
+            void main() {
+                FragColor = color;
+            }
+            """
+        )
+        print("ret self.simple_shader = self.compile_shader_program ", ret)
+        # Add simple_shader to the list of shaders that get matrix updates
+        if hasattr(self, 'all_shader_programs'):
+            self.all_shader_programs.append(self.simple_shader)
+            print(f"Added simple_shader {self.simple_shader} to all_shader_programs")
+        
         # Compile shaders if sources are provided
-        if vertex_shader_src and fragment_shader_src:
-            self.shader_program = self.compile_shader_program(vertex_shader_src, fragment_shader_src)
-        elif not hasattr(self, 'shader_program') or not self.shader_program:
-             print("BaseGLWidget: No shader sources provided and no shader_program pre-set.")
+        # if vertex_shader_src and fragment_shader_src:
+        #     self.shader_program = self.compile_shader_program(vertex_shader_src, fragment_shader_src)
+        # elif not hasattr(self, 'shader_program') or not self.shader_program:
+        #      print("BaseGLWidget: No shader sources provided and no shader_program pre-set.")
              # self.shader_program should be set by derived class if sources are None
 
         # Initialize a default sphere mesh
@@ -414,22 +446,21 @@ class BaseGLWidget(QOpenGLWidget):
             self.default_sphere_mesh.cleanup()
 
     def set_default_uniforms(self):
-        if self.current_shader_program_id is not None:
-            glUniformMatrix4fv(glGetUniformLocation(self.current_shader_program_id, "projection"), 1, GL_FALSE, self.projection_matrix.data())
-            glUniformMatrix4fv(glGetUniformLocation(self.current_shader_program_id, "view"), 1, GL_FALSE, self.view_matrix.data())
+        if self.current_shader_program_id is None: print("BaseGLWidget.set_default_uniforms: current_shader_program_id is None") 
+        glUniformMatrix4fv(glGetUniformLocation(self.current_shader_program_id, "projection" ), 1, GL_FALSE, self.projection_matrix.data()) # projection_matrix is QMatrix4x4
+        glUniformMatrix4fv(glGetUniformLocation(self.current_shader_program_id, "view"       ), 1, GL_FALSE, self.view_matrix.data())       # view_matrix is QMatrix4x4
+        #glUniformMatrix4fv(glGetUniformLocation(self.current_shader_program_id, "model"      ), 1, GL_FALSE, self.model_matrix.data())
+        glUniformMatrix4fv(glGetUniformLocation(self.current_shader_program_id, "model"),      1, GL_FALSE, self.model_matrix)              # model_matrix is numpy array
 
     def paintGL_base(self):
+        print("BaseGLWidget.paintGL_base()")
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT)
         
-
         # Camera / View transformation
         self.camera_pos = QVector3D(0, 0, self.zoom_factor)
         self.view_matrix.setToIdentity()
         self.view_matrix.lookAt(self.camera_pos, QVector3D(0, 0, 0), QVector3D(0, 1, 0))
-
-        # Model transformation (from trackball)
-        model_matrix_np = self._rotation_to_gl_matrix(self.orientation)
-        model_qmatrix = QMatrix4x4(model_matrix_np.reshape(4,4).T.flatten().tolist())
+        self.model_matrix = self._rotation_to_gl_matrix(self.orientation)
 
         programs_to_update = self.all_shader_programs
         
@@ -446,7 +477,7 @@ class BaseGLWidget(QOpenGLWidget):
             # It's good to check locations, though if a shader doesn't use a uniform, glGetUniformLocation returns -1, and glUniform* with -1 is a no-op.
             glUniformMatrix4fv(glGetUniformLocation(prog_id, "projection"), 1, GL_FALSE, self.projection_matrix.data()) # pyArgs: (location, count, transpose, value_ptr)
             glUniformMatrix4fv(glGetUniformLocation(prog_id, "view"),       1, GL_FALSE, self.view_matrix.data())
-            glUniformMatrix4fv(glGetUniformLocation(prog_id, "model"),      1, GL_FALSE, model_qmatrix.data())
+            glUniformMatrix4fv(glGetUniformLocation(prog_id, "model"),      1, GL_FALSE, self.model_matrix)
             
             glUniform3fv(glGetUniformLocation(prog_id, "lightPos"),   1, [self.light_pos.x(),   self.light_pos.y(),   self.light_pos.z()])
             glUniform3fv(glGetUniformLocation(prog_id, "viewPos"),    1, [self.camera_pos.x(),  self.camera_pos.y(),  self.camera_pos.z()])
@@ -516,7 +547,8 @@ class BaseGLWidget(QOpenGLWidget):
         mat3x3 = rotation_obj.as_matrix()
         mat4x4 = np.eye(4, dtype=np.float32)
         mat4x4[:3, :3] = mat3x3
-        return mat4x4.flatten(order='F')
+        #return mat4x4.flatten(order='F').copy()
+        return mat4x4.copy()
 
     def draw_scene(self):
         # This method MUST be overridden by derived classes to perform actual drawing.
@@ -547,6 +579,16 @@ class BaseGLWidget(QOpenGLWidget):
             glActiveTexture(GL_TEXTURE0 + texture_unit)
             glBindTexture(GL_TEXTURE_2D, tex_id)
             glUniform1i(loc, texture_unit)
+
+# class GLGUI(BaseGLWidget):
+#     def __init__(self, parent=None):
+#         super().__init__(parent)
+#         self.simple_shader = None  # Will hold our default shader program
+
+#     def initializeGL(self):
+#         super().initializeGL_base(None, None)
+#         # Initialize simple shader
+
 
 class AppWindow(QMainWindow):
     def __init__(self, parent=None, **kwargs ): # Accept kwargs to pass to QMainWindow if needed
