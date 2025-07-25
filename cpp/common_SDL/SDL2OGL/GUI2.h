@@ -8,6 +8,7 @@
 #include "Vec2.h"
 #include "TextRenderer.h"
 
+class GUI2;
 
 template<class T>
 class GUI2Rect2T{ // switch to Rect2d already implemented in geom2D.h ?
@@ -63,6 +64,7 @@ class GUI2Node{
         GUI2Node* _parent = nullptr;
 
         bool _active = true;
+        GUI2* _root;
 
         void set_minSize( Vec2i minSize );
         void update_rect(); // call parent->update_child_rect(this)
@@ -87,6 +89,8 @@ class GUI2Node{
 
         virtual void draw_self();
 
+        virtual void on_lose_focus(){};
+
     public:
         bool is_mouse_over();
         bool is_mouse_down();
@@ -104,6 +108,7 @@ class GUI2Node{
         Vec2i minSize();
         GUI2Rect2i rect();
         GUI2Node* parent();
+        GUI2* root();
         bool active();
         ExpandMode expandMode();
 
@@ -113,12 +118,16 @@ class GUI2Node{
         void set_size( Vec2i size );
         void set_active( bool active );
         void set_expandMode( ExpandMode expandMode );
+        void set_root( GUI2* root );
 
         // other
         GUI2Node* addChild( GUI2Node* node );
         void removeChild( GUI2Node* node );
-        void draw();
+        virtual void draw();
         virtual bool onEvent( const SDL_Event& event );
+        bool is_focused();
+        void grab_focus();
+        void release_focus();
 };
 
 class GUI2Panel : public GUI2Node{
@@ -167,6 +176,8 @@ class GUI2Text : public GUI2Node{
         GUI2Text( GUI2Rect2f anchors, Vec2i pos, Vec2i size, std::string text, Align align);
         GUI2Text( std::string text, Align align );
 
+        uint32_t FontSize() {return fontSize;};
+        GUI2Rect2f get_character_rect( size_t i );
         void setText( std::string text );
         void setFontSize( uint32_t fontSize );
         void setAlign( Align align );
@@ -490,6 +501,23 @@ class GUI2Toolbar : public GUI2Node {
         bool onEvent( const SDL_Event& event ) override;
 };
 
+class GUI2TextInput : public GUI2Node {
+    private:
+        GUI2Panel* bg_panel = new GUI2Panel( FULL_RECT, Vec2iZero, Vec2iZero );
+        GUI2Text*  text     = new GUI2Text ( FULL_RECT, Vec2iZero, Vec2iZero, "");
+        std::string text_value = "";
+        int cursor_position = 0;
+
+    protected:
+        void on_mouse_click() override;
+        
+    public:
+        virtual bool onEvent( const SDL_Event& event ) override;
+        void draw() override;
+
+        GUI2TextInput ( GUI2Rect2f anchors, Vec2i pos, Vec2i size, uint32_t bgColor = 0xA0A0A0 );
+};
+
 class GUI2 {public:
     private:
         GUI2Node root_node;
@@ -497,6 +525,7 @@ class GUI2 {public:
     public:
         GUI2();
 
+        GUI2Node* focused_node = nullptr;
         GUI2Node* addNode( GUI2Node* node );
         void draw( SDL_Window* window );
         bool onEvent( SDL_Event event, SDL_Window* window );

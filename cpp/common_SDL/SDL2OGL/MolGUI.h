@@ -4,6 +4,7 @@
 #include "Camera.h"
 #include "Draw.h"
 #include "GLMesh.h"
+#include "InputManager.h"
 #include "Renderer.h"
 #include "Vec3.h"
 #include "globals.h"
@@ -299,7 +300,7 @@ class MolGUI : public AppSDL2OGL_3D { public:
     std::vector<Quat4d> particles2;
     std::vector<int>    particlePivots; // index of atom to which the particle is attached
 
-
+    InputManager default_input_manager;
     Dict<Action> panelActions;   // used for binding GUI actions using Lua scripts 
 
     // this is used for binding to Lua and to GUI
@@ -443,7 +444,7 @@ class MolGUI : public AppSDL2OGL_3D { public:
 	virtual void drawHUD() override;
 	//virtual void mouseHandling( ) override;
 	virtual void eventHandling   ( const SDL_Event& event  ) override;
-	virtual void keyStateHandling( const Uint8 *keys )       override;
+	virtual void keyStateHandling( const Uint8 *keys )       override {};
 
     void eventMode_default( const SDL_Event& event );
     void eventMode_scan   ( const SDL_Event& event );
@@ -611,16 +612,6 @@ void MolGUI::initCommands(){
 void MolGUI::initWiggets(){
     printf( "MolGUI::initWiggets() \n" );
 
-    GUI2Toolbar* tb = (GUI2Toolbar*)gui2.addNode(new GUI2Toolbar());
-    GUI2FloatingMenu* fileTab = tb->addTab("File");
-        fileTab->add_button("save to: out.mol", "", [&](){ const char* fname = "out.mol"; W->updateBuilderFromFF(); W->builder.saveMol(fname); });
-        fileTab->add_button("save to: out.xyz", "", [&](){ const char* fname = "out.xyz"; if(bViewBuilder){ W->builder.save2xyz(fname);}else{W->saveXYZ(fname);} } );
-    GUI2FloatingMenu* viewTab = tb->addTab("View");
-        viewTab->add_button("toggle atom labels",  "[L]", [&](){ bViewAtomLabels ^= 1; }); // TODO: these would be better as ToggleButtons
-        viewTab->add_button("toggle atom spheres", "[A]", [&](){ bViewAtomSpheres ^= 1; });
-        viewTab->add_button("toggle atom types",   "[T]", [&](){ bViewAtomTypes ^= 1; });
-        viewTab->add_button("toggle bond labels",  "[B]", [&](){ bViewBondLabels ^= 1; });
-
 
     // TODO: adding GUI widgets would be better witth LUA for fast experimentation
     GUI_stepper ylay(1,2 );
@@ -633,6 +624,9 @@ void MolGUI::initWiggets(){
     //     //->command = [&](GUIAbstractPanel* p){ zoom = ((GUIPanel *)p)->value; return 0; };
     //       ->setCommand( [&](GUIAbstractPanel* p){ W->nbmol.REQs[W->ipicked].z = ((GUIPanel *)p)->value; return 0; } );
     // (GUIPanel*)gui.addPanel( Qpanel );
+
+    GUI2TextInput* input = new GUI2TextInput({0.5, 0.5, 0.5, 0.5}, {0, 0}, {100, 20});
+    gui2.addNode(input);
 
     // ------ Table(   Lattice Vectros )
 
@@ -747,30 +741,6 @@ void MolGUI::initWiggets(){
     ylay.step( 2 );
 
 
-    // ------ MultiPanel(   BondLenghs   )
-
-    // ==== bond length calculation
-    auto blFunc = [&](GUIAbstractPanel* p){
-        //printf("MolGUI::[]blFunc() %s\n", BondLengh_types->inputText.c_str() );
-        Vec2d lrange{ BondLengh_min->value, BondLengh_max->value };
-        Vec2i typs = W->params.parseBondAtomTypes( BondLengh_types->inputText.c_str(), true );
-        makeBondColoring( typs, lrange, bL0s, true );
-        bViewBuilder     = false;
-        bViewBondLenghts = true;
-        bViewBondLabels  = false;
-        bViewAtomLabels  = false;
-    };
-
-    mp= new MultiPanel( "BondLenghs", gx.x0, ylay.x0, gx.x1, 0,-3); gui.addPanel( mp );
-    p=mp->addPanel( "types:",  {1.0,3.0,1.5 },  0,1,0,0,0 );p->command=blFunc; BondLengh_types=p; p->inputText="Si-Si";
-    //p=mp->addPanel( "min.BL:", {2.2,2.6,2.30},  1,1,0,1,1 );p->command=blFunc; BondLengh_min=p;
-    //p=mp->addPanel( "max.BL:", {2.2,2.6,2.40},  1,1,0,1,1 );p->command=blFunc; BondLengh_max=p;
-    p=mp->addPanel( "min.BL:", {2.2,2.6,2.32},  1,1,0,1,1 );p->command=blFunc; BondLengh_min=p;
-    p=mp->addPanel( "max.BL:", {2.2,2.6,2.43},  1,1,0,1,1 );p->command=blFunc; BondLengh_max=p;
-    printf( "MolGUI::initWiggets() WorldVersion=%i \n", W->getMolWorldVersion() );
-     ylay.step((mp->nsubs+1)*2);
-    //exit(0);
-
     // ------ GUIPanel(   Mol. Orb.   )
 
     if( W->getMolWorldVersion() & (int)MolWorldVersion::QM ){ 
@@ -800,6 +770,17 @@ void MolGUI::initWiggets(){
             makeAFM( afm_iz );
         return 0; });
     }
+
+    GUI2Toolbar* tb = (GUI2Toolbar*)gui2.addNode(new GUI2Toolbar());
+    GUI2FloatingMenu* fileTab = tb->addTab("File");
+        fileTab->add_button("save to: out.mol", "", [&](){ const char* fname = "out.mol"; W->updateBuilderFromFF(); W->builder.saveMol(fname); });
+        fileTab->add_button("save to: out.xyz", "", [&](){ const char* fname = "out.xyz"; if(bViewBuilder){ W->builder.save2xyz(fname);}else{W->saveXYZ(fname);} } );
+    GUI2FloatingMenu* viewTab = tb->addTab("View");
+        viewTab->add_button("toggle atom labels",  "[L]", [&](){ bViewAtomLabels ^= 1; }); // TODO: these would be better as ToggleButtons
+        viewTab->add_button("toggle atom spheres", "[A]", [&](){ bViewAtomSpheres ^= 1; });
+        viewTab->add_button("toggle atom types",   "[T]", [&](){ bViewAtomTypes ^= 1; });
+        viewTab->add_button("toggle show charges", "[Q]", [&](){ bViewMolCharges ^= 1; });
+        viewTab->add_button("toggle bond labels",  "[B]", [&](){ bViewBondLabels ^= 1; });
 
     MolGUI::nonBondGUI();
 }
@@ -1179,6 +1160,18 @@ MolGUI::MolGUI( int& id, int WIDTH_, int HEIGHT_, MolWorld_sp3* W_ ) : AppSDL2OG
     fontTex3D = makeTexture    ( "common_resources/dejvu_sans_mono_RGBA_inv.bmp" );
     actions.vec.resize( 256 );
     initGUI();
+
+    default_input_manager.addEventHandler([&](const SDL_Event& event){
+        if (event.type == SDL_WINDOWEVENT && event.window.event == SDL_WINDOWEVENT_CLOSE) {quit(); return true;}
+        return false;
+    });
+    default_input_manager.addEventHandler([&](const SDL_Event& event){
+        return gui2.onEvent(event, window);
+    });
+    default_input_manager.addEventHandler([&](const SDL_Event& event){
+        gui.onEvent( mouseX, mouseY, event ); return false;
+    });
+    default_input_manager.addEventHandler([&](const SDL_Event& event){eventMode_default(event); return false;});
 }
 
 void MolGUI::initGUI(){
@@ -1337,6 +1330,19 @@ void MolGUI::bindMolWorld( MolWorld_sp3* W_ ){
 //=================================================
 
 void MolGUI::draw(){
+    if(!bConsole && !gui.bTextEvents){
+        if( default_input_manager.isKeyPressed( SDL_SCANCODE_KP_4  ) ){ W->nbmol.shift( {-0.1,0.,0.} ); }
+        if( default_input_manager.isKeyPressed( SDL_SCANCODE_KP_6  ) ){ W->nbmol.shift( {+0.1,0.,0.} ); }
+        if( default_input_manager.isKeyPressed( SDL_SCANCODE_KP_8  ) ){ W->nbmol.shift( {0.,+0.1,0.} ); }
+        if( default_input_manager.isKeyPressed( SDL_SCANCODE_KP_2  ) ){ W->nbmol.shift( {0.,-0.1,0.} ); }
+        if( default_input_manager.isKeyPressed( SDL_SCANCODE_KP_7  ) ){ W->nbmol.shift( {0.,0.,+0.1} ); }
+        if( default_input_manager.isKeyPressed( SDL_SCANCODE_KP_9  ) ){ W->nbmol.shift( {0.,0.,-0.1} ); }
+        if( default_input_manager.isKeyPressed( SDL_SCANCODE_LEFT  ) ){ cam.shift( cam.rotMat().a* -cameraMoveSpeed ); }
+        if( default_input_manager.isKeyPressed( SDL_SCANCODE_RIGHT ) ){ cam.shift( cam.rotMat().a*  cameraMoveSpeed ); }
+        if( default_input_manager.isKeyPressed( SDL_SCANCODE_UP    ) ){ cam.shift( cam.rotMat().b*  cameraMoveSpeed ); }
+        if( default_input_manager.isKeyPressed( SDL_SCANCODE_DOWN  ) ){ cam.shift( cam.rotMat().b* -cameraMoveSpeed ); }
+    }
+
     GLES::active_camera = &cam;
 
     glEnable(GL_BLEND);
@@ -2669,59 +2675,14 @@ void MolGUI::eventMode_default( const SDL_Event& event ){
 }
 
 void MolGUI::eventHandling ( const SDL_Event& event  ){
-    if (event.type == SDL_WINDOWEVENT && event.window.event == SDL_WINDOWEVENT_CLOSE) {quit(); return;}
+    if (default_input_manager.eventHandling(event)) return;
 
-    if ( gui2.onEvent(event, window) ) return;
-
-    //printf( "NonInert_seats::eventHandling() \n" );
-    float xstep = 0.2;
-    if( gui.onEvent( mouseX, mouseY, event ) )return;
-
-    switch (gui_mode){
-        case  Gui_Mode::edit: eventMode_edit(event); break;
-        case  Gui_Mode::scan: eventMode_scan(event); break;
-        case  Gui_Mode::base: 
-        default:              eventMode_default(event); break;   
-    }
-    //AppSDL2OGL::eventHandling( event );
-    //STOP = false;
+    //switch (gui_mode){
+    //    case  Gui_Mode::edit: eventMode_edit(event); break;
+    //    case  Gui_Mode::scan: eventMode_scan(event); break;
+    //    case  Gui_Mode::base: 
+    //    default:              eventMode_default(event); break;   
+    //}
 }
-
-void MolGUI::keyStateHandling( const Uint8 *keys ){
-    if(bConsole){ return; }
-    if(gui.bTextEvents){return;}
-    double dstep=0.025;
-    switch (gui_mode){
-        case Gui_Mode::edit: 
-        case Gui_Mode::scan: 
-        case Gui_Mode::base:
-        default:{
-            //if( keys[ SDL_SCANCODE_X ] ){ cam.pos.z +=0.1; }
-            //if( keys[ SDL_SCANCODE_Z ] ){ cam.pos.z -=0.1; }
-            //if( keys[ SDL_SCANCODE_LEFT  ] ){ qCamera.dyaw  (  keyRotSpeed ); }
-            //if( keys[ SDL_SCANCODE_RIGHT ] ){ qCamera.dyaw  ( -keyRotSpeed ); }
-            //if( keys[ SDL_SCANCODE_UP    ] ){ qCamera.dpitch(  keyRotSpeed ); }
-            //if( keys[ SDL_SCANCODE_DOWN  ] ){ qCamera.dpitch( -keyRotSpeed ); }
-            //if( keys[ SDL_SCANCODE_A ] ){ cam.pos.add_mul( cam.rotMat().a, -cameraMoveSpeed ); }
-            //if( keys[ SDL_SCANCODE_D ] ){ cam.pos.add_mul( cam.rotMat().a,  cameraMoveSpeed ); }
-            //if( keys[ SDL_SCANCODE_W ] ){ cam.pos.add_mul( cam.rotMat().b,  cameraMoveSpeed ); }
-            //if( keys[ SDL_SCANCODE_S ] ){ cam.pos.add_mul( cam.rotMat().b, -cameraMoveSpeed ); }
-            //if( keys[ SDL_SCANCODE_Q ] ){ cam.pos.add_mul( cam.rotMat().c, -cameraMoveSpeed ); }
-            //if( keys[ SDL_SCANCODE_E ] ){ cam.pos.add_mul( cam.rotMat().c,  cameraMoveSpeed ); }
-            if( keys[ SDL_SCANCODE_KP_4 ] ){ W->nbmol.shift( {-0.1,0.,0.} ); }
-            if( keys[ SDL_SCANCODE_KP_6 ] ){ W->nbmol.shift( {+0.1,0.,0.} ); }
-            if( keys[ SDL_SCANCODE_KP_8 ] ){ W->nbmol.shift( {0.,+0.1,0.} ); }
-            if( keys[ SDL_SCANCODE_KP_2 ] ){ W->nbmol.shift( {0.,-0.1,0.} ); }
-            if( keys[ SDL_SCANCODE_KP_7 ] ){ W->nbmol.shift( {0.,0.,+0.1} ); }
-            if( keys[ SDL_SCANCODE_KP_9 ] ){ W->nbmol.shift( {0.,0.,-0.1} ); }
-            if( keys[ SDL_SCANCODE_LEFT  ] ){ cam.shift( cam.rotMat().a* -cameraMoveSpeed ); }
-            if( keys[ SDL_SCANCODE_RIGHT ] ){ cam.shift( cam.rotMat().a*  cameraMoveSpeed ); }
-            if( keys[ SDL_SCANCODE_UP    ] ){ cam.shift( cam.rotMat().b*  cameraMoveSpeed ); }
-            if( keys[ SDL_SCANCODE_DOWN  ] ){ cam.shift( cam.rotMat().b* -cameraMoveSpeed ); }
-            //AppSDL2OGL_3D::keyStateHandling( keys );
-        } break;   
-    }
-};
-
 
 #endif

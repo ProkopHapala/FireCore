@@ -35,6 +35,7 @@ Vec2i GUI2Node::size(){return _size;}
 Vec2i GUI2Node::minSize(){return _minSize;}
 GUI2Rect2i GUI2Node::rect(){return _rect;}
 GUI2Node* GUI2Node::parent(){return _parent;}
+GUI2* GUI2Node::root(){return _root;}
 GUI2Node::ExpandMode GUI2Node::expandMode(){return _expandMode;}
 bool GUI2Node::active(){return _active;}
 bool GUI2Node::is_mouse_over(){return mouse_over;}
@@ -157,6 +158,7 @@ GUI2Node* GUI2Node::addChild(GUI2Node* node){
 
     children.push_back(node);
     node->_parent = this;
+    node->set_root(_root);
     update_minSize();
     update_child_rect(node);
 
@@ -168,16 +170,39 @@ void GUI2Node::removeChild(GUI2Node* node){
         return;
     }
     node->_parent = nullptr;
+    node->set_root(nullptr);
     children.erase(std::find(children.begin(), children.end(), node));
 
     update_minSize();
+}
+void GUI2Node::set_root( GUI2* root ){
+    _root = root;
+    for (auto& c:children) c->set_root(root);
+}
+
+bool GUI2Node::is_focused(){
+    if (!_root) return false;
+    //printf("focused node %p, we are %p\n", _root->focused_node, this);
+    return _root->focused_node == this;
+}
+void GUI2Node::grab_focus(){
+    if (!_root) puts("no root!");
+    if (!_root) return;
+    if (_root->focused_node) _root->focused_node->on_lose_focus();
+    _root->focused_node = this;
+    //printf("focused node %p\n", _root->focused_node);
+}
+void GUI2Node::release_focus(){
+    if (!is_focused()) return;
+    on_lose_focus();
+    _root->focused_node = nullptr;
 }
 
 bool GUI2Node::onEvent(const SDL_Event& event){
     if (!_active) return false;
 
-    for(auto& c:children){
-        if (c->onEvent(event)) return true;
+    for(auto c = children.rbegin(); c != children.rend(); c++){
+        if ((*c)->onEvent(event)) return true;
     }
 
     if (!process_input) return false;
@@ -337,6 +362,16 @@ void GUI2Text::on_rect_updated(){
     recalculate_textPos();
 }
 
+GUI2Rect2f GUI2Text::get_character_rect( size_t i ){
+    unsigned int lineCount = 0;
+    unsigned int lineLength = 0;
+    for (int j=0; j < std::min(i, text.length()); j++){
+        if (text[j] == '\n') {lineCount++; lineLength=0; }
+        else lineLength++;
+    }
+    Vec2f char_rect_min = (Vec2f)textPos_ + (Vec2f){lineLength*fontSize, -(float)lineCount*fontSize*2};
+    return {char_rect_min, char_rect_min + (Vec2f){fontSize, 2*fontSize}};
+}
 
 void GUI2Text::draw_self(){
     textRenderer.draw2D({textPos_.x, textPos_.y, 0}, fontSize, COL2VEC(fontColor));
@@ -1040,11 +1075,83 @@ void GUI2Toolbar::update_children_rects(){
 }
 
 // ==============================
+//    class GUI2TextInput
+// ==============================
+
+GUI2TextInput::GUI2TextInput( GUI2Rect2f anchors, Vec2i pos, Vec2i size, uint32_t bgColor  )
+    : GUI2Node(anchors, pos, size, true)
+    {
+        bg_panel->bgColor = bgColor;
+        addChild(bg_panel);
+        addChild(text);
+    }
+
+void GUI2TextInput::draw(){
+    GUI2Node::draw();
+
+    if (!is_focused()) return;
+
+    GUI2Rect2f r = text->get_character_rect(cursor_position);
+    Draw2D::drawRectangle(r.min(), {r.min().x+1, r.max().y}, COLOR_BLACK);
+}
+
+void GUI2TextInput::on_mouse_click(){
+    puts("click");
+    grab_focus();
+}
+
+bool GUI2TextInput::onEvent( const SDL_Event& event ){
+    if (!is_focused()) {
+        return GUI2Node::onEvent(event);
+    }
+
+    if (event.type == SDL_KEYDOWN){
+        if (event.key.keysym.sym == SDLK_BACKSPACE && text_value.size() > 0 && cursor_position > 0){
+            cursor_position--;
+            text_value.erase(cursor_position, 1);
+            text->setText(text_value);
+        }
+        if (event.key.keysym.sym == SDLK_DELETE && text_value.size() > 0 && cursor_position < text_value.size()){
+            text_value.erase(cursor_position, 1);
+            text->setText(text_value);
+        }
+        if (event.key.keysym.sym == SDLK_LEFT && cursor_position > 0){
+            cursor_position--;
+        }
+        if (event.key.keysym.sym == SDLK_RIGHT && cursor_position < text_value.size()){
+            cursor_position++;
+        }
+        if (event.key.keysym.sym == SDLK_HOME){
+            cursor_position = 0;
+        }
+        if (event.key.keysym.sym == SDLK_END){
+            cursor_position = text_value.size();
+        }
+        if (event.key.keysym.sym == SDLK_RETURN || event.key.keysym.sym == SDLK_ESCAPE){
+            release_focus();
+        }
+        return true;
+    }
+    if (event.type == SDL_TEXTINPUT){
+        text_value.insert(cursor_position, event.text.text);
+        cursor_position += strlen(event.text.text);
+        text->setText(text_value);
+        return true;
+    }
+    if (event.type == SDL_MOUSEBUTTONDOWN){
+        if (!rect().contains({event.button.x, event.button.y})) release_focus();
+    }
+
+    return GUI2Node::onEvent(event);
+}
+
+
+// ==============================
 //    class GUI2
 // ==============================
 
 GUI2::GUI2():
-    root_node(GUI2Node( GUI2Rect2f(0,0,1,1), (Vec2i){0,0}, (Vec2i){0,0} )) {}
+    root_node(GUI2Node( FULL_RECT, Vec2iZero, Vec2iZero )) {root_node.set_root(this);}
 
 GUI2Node* GUI2::addNode(GUI2Node* node){
     return root_node.addChild(node);
@@ -1075,5 +1182,6 @@ bool GUI2::onEvent( SDL_Event event, SDL_Window* window ){
             break;
     }
 
+    if (focused_node) if (focused_node->onEvent(event)) return true;
     return root_node.onEvent(event);
 }
