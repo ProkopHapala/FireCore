@@ -8,7 +8,7 @@ import os
 
 sys.path.append("../../") # To find pyBall
 from pyBall import elements
-from pyBall.GUI.GLGUI import BaseGLWidget, AppWindow, InstancedData, set_ogl_blend_mode, disable_blend, alpha_blend_modes, GLobject
+from pyBall.GUI.GLGUI import BaseGLWidget, AppWindow, InstancedData, set_ogl_blend_mode, disable_blend, alpha_blend_modes, GLobject, rotation_to_gl_matrix
 from pyBall.atomicUtils import findAllBonds, findBondsNP
 
 import OpenGL.GL as GL
@@ -29,17 +29,15 @@ class FrameData:
         """Compute bonds using findAllBonds"""
         if self.atoms is None:
             return
-        print("self.atoms[0] ", self.atoms[0])
-        print("self.atoms[1] ", self.atoms[1])
+        #print("self.atoms[0] ", self.atoms[0])
+        #print("self.atoms[1] ", self.atoms[1])
         RvdWs = np.array( [ elements.ELEMENT_DICT[e][7] for e in self.atoms[3] ])
-        print("RvdWs ", RvdWs)
+        #print("RvdWs ", RvdWs)
         #bonds, bond_vecs = findAllBonds(self.atoms[0], self.atoms[1] )
         bonds, bond_vecs = findBondsNP(self.atoms[0], RvdWs=RvdWs,  )
-        print("bonds ", bonds)
-        
+        #print("bonds ", bonds)
         self.bonds     = bonds
         self.bond_vecs = bond_vecs
-
 
 class MolViewerWidget(BaseGLWidget):
     def __init__(self, parent=None):
@@ -99,22 +97,7 @@ class MolViewerWidget(BaseGLWidget):
 
         self.all_shader_programs.append(self.bond_shader)
 
-        # Create VAO, VBO and EBO for bonds
-        self.bonds_vao = GL.glGenVertexArrays(1)
-        self.bonds_vbo = GL.glGenBuffers(1)
-        self.bonds_ebo = GL.glGenBuffers(1)
-        
-        GL.glBindVertexArray(self.bonds_vao)
-        
-        # VBO will be filled with atom positions later
-        GL.glBindBuffer(GL.GL_ARRAY_BUFFER, self.bonds_vbo)
-        GL.glEnableVertexAttribArray(0)
-        GL.glVertexAttribPointer(0, 3, GL.GL_FLOAT, GL.GL_FALSE, 0, None)
-        
-        # EBO will be filled with bond indices later
-        GL.glBindBuffer(GL.GL_ELEMENT_ARRAY_BUFFER, self.bonds_ebo)
-        
-        GL.glBindVertexArray(0)
+        self.bonds = GLobject(components=[3], mode=GL.GL_LINES)
         
         # Define render modes after shaders are compiled
         self.render_modes = {
@@ -142,11 +125,6 @@ class MolViewerWidget(BaseGLWidget):
         self.elec_instances.associate_mesh(sphere_mesh)
         self.elec_instances.setup_instance_vbos(atribs)
 
-        # # --- Text Rendering Setup ---
-        # vert_text = open(shader_folder + "/text_billboard.glslv").read()
-        # frag_text = open(shader_folder + "/text_billboard.glslf").read()
-        # self.text_shader = self.compile_shader_program(vert_text, frag_text)
-
         self.font_atlas_tex = self.load_texture(shader_folder + "/font_atlas.png")
         print(f"DEBUG: font_atlas_tex loaded: {self.font_atlas_tex}")
         with open(shader_folder + "/font_atlas.json") as f:
@@ -156,21 +134,17 @@ class MolViewerWidget(BaseGLWidget):
     def cleanupGL(self):
         super().cleanupGL()
         if self.text_shader: GL.glDeleteProgram(self.text_shader)
-        #if self.text_vao: GL.glDeleteVertexArrays(1, [self.text_vao])
-        #if self.text_vbo: GL.glDeleteBuffers(1, [self.text_vbo])
-        #if self.text_ebo: GL.glDeleteBuffers(1, [self.text_ebo])
         if self.atom_labels: self.atom_labels.cleanup()
-        #if self.font_atlas_tex: GL.glDeleteTextures(1, [self.font_atlas_tex])
         if self.shader_program_sphere_raytrace: GL.glDeleteProgram(self.shader_program_sphere_raytrace)
         if self.shader_program_sphere_max_vol: GL.glDeleteProgram(self.shader_program_sphere_max_vol)
         self.shader_program_sphere_raytrace = None
         self.shader_program_sphere_max_vol = None
         if self.atom_instances:  self.atom_instances.cleanup()
         if self.elec_instances:  self.elec_instances.cleanup()
-        if self.bonds_vao:       GL.glDeleteVertexArrays(1, [self.bonds_vao])
-        if self.bonds_vbo:       GL.glDeleteBuffers(1, [self.bonds_vbo])
-        if self.bonds_ebo:       GL.glDeleteBuffers(1, [self.bonds_ebo])
-        if self.bond_shader:     GL.glDeleteProgram(self.bond_shader)
+        # if self.bonds_vao:       GL.glDeleteVertexArrays(1, [self.bonds_vao])
+        # if self.bonds_vbo:       GL.glDeleteBuffers(1, [self.bonds_vbo])
+        # if self.bonds_ebo:       GL.glDeleteBuffers(1, [self.bonds_ebo])
+        #if self.bond_shader:     GL.glDeleteProgram(self.bond_shader)
 
     def hex2rgb(self, hex_color_str):
         return [int(hex_color_str[i:i+2], 16) / 255.0 for i in (0, 2, 4)]
@@ -235,36 +209,6 @@ class MolViewerWidget(BaseGLWidget):
         GL.glDrawElements(GL.GL_LINES, len(bond_indices), GL.GL_UNSIGNED_INT, None)
         GL.glBindVertexArray(0)
 
-    def render_bonds_simple(self):
-        #print("render_bonds_simple()")
-        frame_data = self.frames_data[self.current_frame_index]
-        bonds      = frame_data.bonds
-        self.use_shader(self.simple_shader)
-        self.set_default_uniforms()
-        
-        # Set color (white by default)
-        color_loc = GL.glGetUniformLocation(self.simple_shader, "color")
-        GL.glUniform4f(color_loc, 1.0, 0.0, 1.0, 1.0)
-
-        GL.glBindVertexArray(self.bonds_vao)
-        
-        # Upload bond indices (point pairs)
-        bond_indices = np.array(bonds, dtype=np.uint32).flatten()
-        GL.glBindBuffer(GL.GL_ELEMENT_ARRAY_BUFFER, self.bonds_ebo)
-        GL.glBufferData(GL.GL_ELEMENT_ARRAY_BUFFER, bond_indices.nbytes, bond_indices, GL.GL_DYNAMIC_DRAW)
-        
-        # Use atom positions as vertex buffer
-        atom_positions = frame_data.atoms[0]
-        GL.glBindBuffer(GL.GL_ARRAY_BUFFER, self.bonds_vbo)
-        GL.glBufferData(GL.GL_ARRAY_BUFFER, atom_positions.nbytes, atom_positions, GL.GL_DYNAMIC_DRAW)
-        
-        # Set up vertex attributes (positions only)
-        GL.glEnableVertexAttribArray(0)
-        GL.glVertexAttribPointer(0, 3, GL.GL_FLOAT, GL.GL_FALSE, 0, None)
-        
-        # Draw bonds as lines
-        GL.glDrawElements(GL.GL_LINES, len(bond_indices), GL.GL_UNSIGNED_INT, None)
-
     def draw_scene(self):
         #print("!!!!!!! -self.current_render_mode_key", self.current_render_mode_key)
         if self.current_render_mode_key is None: return
@@ -282,7 +226,14 @@ class MolViewerWidget(BaseGLWidget):
         self.elec_instances.draw()
 
         #self.render_bonds_shader()
-        self.render_bonds_simple()
+        #self.render_bonds_simple()
+
+        if (self.bonds is None) or (self.bonds.dirty):
+            frame = self.frames_data[self.current_frame_index]
+            bonds      = np.array(frame.bonds, dtype=np.uint32)
+            self.bonds.upload_vbo_ebo( bonds, frame.atoms[0] )
+        self.use_simple_shader()
+        self.bonds.draw()
 
         # --- Render Atom Labels ---
         if (self.atom_labels is None) or (self.atom_labels.dirty):
@@ -386,14 +337,14 @@ if __name__ == '__main__':
     from .. import atomicUtils as au
 
     # Run Like this:
-    #   python -u -m pyBall.GUI.MolViewer -f ./tests/tEFF/H2O_relaxation.xyz | tee OUT
-    #   python -u -m pyBall.GUI.MolViewer -f ./cpp/common_resources/xyz/uracil.xyz | tee OUT
-    #   python -u -m pyBall.GUI.MolViewer -f ./cpp/common_resources/xyz/thymine.xyz | tee OUT
-    #   python -u -m pyBall.GUI.MolViewer -f ./cpp/common_resources/xyz/adenine.xyz | tee OUT
+    #   python -u -m pyBall.GUI.MolViewer -f ./tests/tEFF/H2O_relaxation.xyz         | tee OUT
+    #   python -u -m pyBall.GUI.MolViewer -f ./cpp/common_resources/xyz/uracil.xyz   | tee OUT
+    #   python -u -m pyBall.GUI.MolViewer -f ./cpp/common_resources/xyz/thymine.xyz  | tee OUT
+    #   python -u -m pyBall.GUI.MolViewer -f ./cpp/common_resources/xyz/adenine.xyz  | tee OUT
     #   python -u -m pyBall.GUI.MolViewer -f ./cpp/common_resources/xyz/citosine.xyz | tee OUT
-    #   python -u -m pyBall.GUI.MolViewer -f ./cpp/common_resources/xyz/guanine.xyz | tee OUT
-    #   python -u -m pyBall.GUI.MolViewer -f ./cpp/common_resources/xyz/CG.xyz | tee OUT
-    #   python -u -m pyBall.GUI.MolViewer -f ./cpp/common_resources/xyz/PTCDA.xyz | tee OUT
+    #   python -u -m pyBall.GUI.MolViewer -f ./cpp/common_resources/xyz/guanine.xyz  | tee OUT
+    #   python -u -m pyBall.GUI.MolViewer -f ./cpp/common_resources/xyz/CG.xyz       | tee OUT
+    #   python -u -m pyBall.GUI.MolViewer -f ./cpp/common_resources/xyz/PTCDA.xyz    | tee OUT
 
     # relative path to the directory with the molecules
     # /home/prokop/git/FireCore/cpp/common_resources/xyz/

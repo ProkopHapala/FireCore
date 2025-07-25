@@ -55,6 +55,13 @@ alpha_blend_modes={
     #"maximum"    :(GL_MAX, GL_ONE, GL_ONE)
 }
 
+def rotation_to_gl_matrix( rotation_obj):
+    mat3x3 = rotation_obj.as_matrix()
+    mat4x4 = np.eye(4, dtype=np.float32)
+    mat4x4[:3, :3] = mat3x3
+    #return mat4x4.flatten(order='F').copy()
+    return mat4x4.copy()
+
 def set_ogl_blend_mode(mode, depth_test=True):
     #print("set_ogl_blend_mode", mode)
     glEnable(GL_BLEND)
@@ -94,17 +101,18 @@ class GLobject:
 
     def alloc_vao_vbo_ebo(self, components):
         self.vao = GL.glGenVertexArrays(1);  GL.glBindVertexArray(self.vao)
-        self.vbo = GL.glGenBuffers(1)
-        GL.glBindBuffer(GL.GL_ARRAY_BUFFER, self.vbo)
-        self.ebo = GL.glGenBuffers(1)
-        GL.glBindBuffer(GL.GL_ELEMENT_ARRAY_BUFFER, self.ebo)
-
-        total_stride = sum(components) * ctypes.sizeof(GL.GLfloat) # Calculate total stride in bytes
-        offset = 0
-        for i, n_comp in enumerate(components):
-            GL.glEnableVertexAttribArray(i)
-            GL.glVertexAttribPointer(i, n_comp, GL.GL_FLOAT, GL.GL_FALSE, total_stride, ctypes.c_void_p(offset))
-            offset += n_comp * ctypes.sizeof(GL.GLfloat) # Increment offset by size of current attribute
+        self.vbo = GL.glGenBuffers(1);       GL.glBindBuffer(GL.GL_ARRAY_BUFFER, self.vbo)
+        self.ebo = GL.glGenBuffers(1);       GL.glBindBuffer(GL.GL_ELEMENT_ARRAY_BUFFER, self.ebo)
+        if len(components) == 1:
+            GL.glEnableVertexAttribArray(0)
+            GL.glVertexAttribPointer(0, components[0], GL.GL_FLOAT, GL.GL_FALSE, 0, None)
+        else:
+            total_stride = sum(components) * ctypes.sizeof(GL.GLfloat) # Calculate total stride in bytes
+            offset = 0
+            for i, n_comp in enumerate(components):
+                GL.glEnableVertexAttribArray(i)
+                GL.glVertexAttribPointer(i, n_comp, GL.GL_FLOAT, GL.GL_FALSE, total_stride, ctypes.c_void_p(offset))
+                offset += n_comp * ctypes.sizeof(GL.GLfloat) # Increment offset by size of current attribute
         GL.glBindVertexArray(0)
         GL.glBindBuffer(GL.GL_ARRAY_BUFFER, 0)
         GL.glBindBuffer(GL.GL_ELEMENT_ARRAY_BUFFER, 0)
@@ -121,11 +129,28 @@ class GLobject:
 
     def draw(self, n=-1 ):
         GL.glBindVertexArray(self.vao)
+        GL.glEnableVertexAttribArray(0) # Ensure attribute 0 is enabled for drawing
         if n == -1: n= self.nelements
         GL.glDrawElements(self.mode, n, GL.GL_UNSIGNED_INT, None)
         GL.glBindVertexArray(0)
 
+    def upload_ebo(self, indices):
+        GL.glBindBuffer(GL.GL_ELEMENT_ARRAY_BUFFER, self.ebo)
+        #print("indices", indices.shape, indices.nbytes)
+        GL.glBufferData(GL.GL_ELEMENT_ARRAY_BUFFER, indices.nbytes, indices, GL.GL_DYNAMIC_DRAW)
+        GL.glBindBuffer(GL.GL_ELEMENT_ARRAY_BUFFER, 0)
 
+    def upload_vbo(self, vertices):
+        GL.glBindBuffer(GL.GL_ARRAY_BUFFER, self.vbo)
+        #print("vertices", vertices.shape, vertices.nbytes)
+        GL.glBufferData(GL.GL_ARRAY_BUFFER, vertices.nbytes, vertices, GL.GL_DYNAMIC_DRAW)
+        GL.glBindBuffer(GL.GL_ARRAY_BUFFER, 0)
+
+    def upload_vbo_ebo(self, indices, vertices ):
+        self.upload_ebo(indices)
+        self.upload_vbo(vertices)
+        self.nelements = indices.size
+        #print("self.nelements", self.nelements)
 class Mesh:
     def __init__(self, vertices, normals=None, indices=None):
         self.vertices = vertices
@@ -505,7 +530,7 @@ class BaseGLWidget(QOpenGLWidget):
         self.camera_pos = QVector3D(0, 0, self.zoom_factor)
         self.view_matrix.setToIdentity()
         self.view_matrix.lookAt(self.camera_pos, QVector3D(0, 0, 0), QVector3D(0, 1, 0))
-        self.model_matrix = self._rotation_to_gl_matrix(self.orientation)
+        self.model_matrix = rotation_to_gl_matrix(self.orientation)
 
         programs_to_update = self.all_shader_programs
         
@@ -611,6 +636,12 @@ class BaseGLWidget(QOpenGLWidget):
         GL.glUniform4f(GL.glGetUniformLocation(self.text_shader, "textColor"),  textColor[0], textColor[1], textColor[2], textColor[3] )
         GL.glUniform2f(GL.glGetUniformLocation(self.text_shader, "offset"),     offset[0], offset[1] ) 
 
+    def use_simple_shader(self, color=(1.0, 0.0, 1.0, 1.0)):
+        self.use_shader(self.simple_shader)
+        self.set_default_uniforms()
+        color_loc = GL.glGetUniformLocation(self.simple_shader, "color")
+        GL.glUniform4f(color_loc, color[0], color[1], color[2], color[3])
+
     def resizeGL(self, width, height):
         glViewport(0, 0, width, height)
         self.projection_matrix.setToIdentity()
@@ -666,13 +697,6 @@ class BaseGLWidget(QOpenGLWidget):
         p = np.array([vx, vy, vz])
         norm_p = np.linalg.norm(p)
         return p / norm_p if norm_p > 1e-6 else np.array([0.0, 0.0, 1.0])
-
-    def _rotation_to_gl_matrix(self, rotation_obj):
-        mat3x3 = rotation_obj.as_matrix()
-        mat4x4 = np.eye(4, dtype=np.float32)
-        mat4x4[:3, :3] = mat3x3
-        #return mat4x4.flatten(order='F').copy()
-        return mat4x4.copy()
 
     def draw_scene(self):
         # This method MUST be overridden by derived classes to perform actual drawing.

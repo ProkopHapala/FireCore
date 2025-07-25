@@ -52,7 +52,7 @@ class GLWidget(QOpenGLWidget):
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT)
         glLoadIdentity()
         glTranslatef(0.0, 0.0, self.zoom)
-        glMultMatrixf(self._rotation_to_gl_matrix(self.orientation))
+        glMultMatrixf(rotation_to_gl_matrix(self.orientation))
         self._draw_scene()
     def resizeGL(self, width, height):
         glViewport(0, 0, width, height)
