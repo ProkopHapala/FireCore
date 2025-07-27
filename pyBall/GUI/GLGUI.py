@@ -97,6 +97,12 @@ def setup_ebo(indices):
     glBufferData(GL_ELEMENT_ARRAY_BUFFER, indices.nbytes, indices, GL_STATIC_DRAW)
     return ebo
 
+def upload_buffer( index, buffer_id, data, mode=GL_DYNAMIC_DRAW):
+    glBindBuffer    (GL_SHADER_STORAGE_BUFFER, buffer_id)
+    glBufferData    (GL_SHADER_STORAGE_BUFFER, data.nbytes, data, mode)
+    glBindBufferBase(GL_SHADER_STORAGE_BUFFER, index, buffer_id)
+    glBindBuffer    (GL_SHADER_STORAGE_BUFFER, 0)
+
 class GLobject:
 
     def alloc_vao_vbo_ebo(self, components):

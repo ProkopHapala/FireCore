@@ -9,6 +9,15 @@ from PyQt5.QtWidgets import QApplication, QMainWindow, QOpenGLWidget
 from PyQt5.QtCore import QTimer
 from PyQt5.QtGui import QSurfaceFormat, QMatrix4x4, QVector3D
 
+#from .GLGUI import upload_buffer
+
+def upload_buffer( index, buffer_id, data, mode=GL_DYNAMIC_DRAW):
+    glBindBuffer    (GL_SHADER_STORAGE_BUFFER, buffer_id)
+    glBufferData    (GL_SHADER_STORAGE_BUFFER, data.nbytes, data, mode)
+    glBindBufferBase(GL_SHADER_STORAGE_BUFFER, index, buffer_id)
+    glBindBuffer    (GL_SHADER_STORAGE_BUFFER, 0)
+
+
 # --- Compute Shader GLSL Code ---
 COMPUTE_SHADER_SOURCE = """
 #version 430 core
@@ -143,24 +152,16 @@ class MyOpenGLWidget(QOpenGLWidget):
         self.velocity_ssbo = glGenBuffers(1)
         self.mass_ssbo     = glGenBuffers(1)
         
-        # Positions buffer
-        glBindBuffer(GL_SHADER_STORAGE_BUFFER, self.position_ssbo)
-        glBufferData(GL_SHADER_STORAGE_BUFFER, self.positions.nbytes, self.positions, GL_DYNAMIC_DRAW)
-        glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 0, self.position_ssbo)
-        
-        # Velocities buffer
-        glBindBuffer(GL_SHADER_STORAGE_BUFFER, self.velocity_ssbo)
-        glBufferData(GL_SHADER_STORAGE_BUFFER, self.velocities.nbytes, self.velocities, GL_DYNAMIC_DRAW)
-        glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 1, self.velocity_ssbo)
-        
-        # Masses buffer
-        glBindBuffer(GL_SHADER_STORAGE_BUFFER, self.mass_ssbo)
-        glBufferData(GL_SHADER_STORAGE_BUFFER, self.masses.nbytes, self.masses, GL_DYNAMIC_DRAW)
-        glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 2, self.mass_ssbo)
+        upload_buffer(0, self.position_ssbo, self.positions)
+        upload_buffer(1, self.velocity_ssbo, self.velocities)
+        upload_buffer(2, self.mass_ssbo, self.masses)
         
         glBindBuffer(GL_SHADER_STORAGE_BUFFER, 0)
         
         self.ssbo_ids = [self.position_ssbo, self.velocity_ssbo, self.mass_ssbo]
+
+        self.setup_compute_shader()
+        
         return self.ssbo_ids
         
     def init_render_pipeline(self):
@@ -184,12 +185,11 @@ class MyOpenGLWidget(QOpenGLWidget):
         # Setup MVP matrix
         self.setup_projection()
 
-    def perform_compute_operation(self):
-        #print(f"perform_compute_operation() particle_count={self.particle_count}")
+    def setup_compute_shader(self):
         self.makeCurrent()
         glUseProgram(self.compute_program)
         
-        # Set uniforms
+        # --- Set uniforms
         dt_loc = glGetUniformLocation(self.compute_program, "dt")
         if dt_loc != -1: glUniform1f(dt_loc, self.dt)
         
@@ -198,10 +198,15 @@ class MyOpenGLWidget(QOpenGLWidget):
         
         count_loc = glGetUniformLocation(self.compute_program, "particleCount")
         if count_loc != -1: glUniform1i(count_loc, self.particle_count)
-        
-        glDispatchCompute(int(np.ceil(self.particle_count/32)), 1, 1)
-        glMemoryBarrier(GL_SHADER_STORAGE_BARRIER_BIT)
 
+        glUseProgram(0)
+
+    def perform_compute_operation(self):
+        #print(f"perform_compute_operation() particle_count={self.particle_count}")
+        self.makeCurrent()
+        glUseProgram(self.compute_program)        
+        glDispatchCompute(int(np.ceil(self.particle_count/32)), 1, 1)  # run compute shader
+        glMemoryBarrier(GL_SHADER_STORAGE_BARRIER_BIT)                 # Ensure compute shader has finished
         glUseProgram(0) # Deactivate the compute program
 
     def update_mvp_matrix(self):
