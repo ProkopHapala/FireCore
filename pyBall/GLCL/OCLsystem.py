@@ -56,6 +56,7 @@ class OCLSystem:
             name (str): A unique name for this program.
             kernel_filepath (str): Absolute path to the kernel file.
         """
+        print(f"OCLSystem::load_program() Loading kernel '{name}' from: {kernel_filepath}")
         if not os.path.exists(kernel_filepath):
             print(f"OCLSystem::load_program() ERROR: Kernel file not found at: {kernel_filepath}")
             return False

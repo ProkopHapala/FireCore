@@ -41,8 +41,19 @@ Develop a flexible simulation environment that integrates OpenGL and OpenCL, con
 
 ### 4. `GLCLGUI.py` (New File)
 *   **Purpose**: To integrate `OGLsystem.py` and `OCLsystem.py` within a PyQt `QOpenGLWidget`. This file will define the core `GLCLWidget` that handles the rendering loop, simulation updates, and manages the OpenGL and OpenCL resources for a specific simulation. It should primarily focus on the OpenGL rendering and OpenCL computation, with minimal direct GUI elements.
+*   **Current Status/Progress**:
+    *   **OpenGL Uniform and VBO Handling**: Fixed `GLError: invalid operation` by ensuring `glUseProgram` is called before `glGetUniformLocation` and `glUniform4fv` in `initializeGL`. Corrected `TypeError` in `glBindBuffer` by ensuring `glGenBuffers` and `glGenVertexArrays` are called only once within `initializeGL` (by initializing `self.gl_vbo` and `self.vao` to `0` and checking against `0`). Added a check in `update_particle_vbo` to only update if `self.gl_vbo` is valid.
+    *   **Code Clean-up**: Removed redundant local OpenGL imports within methods to ensure consistent global imports.
+    *   **Deferred OpenGL Initialization**: Moved `setup_particle_vbo()` calls from `set_particle_data()` to `initializeGL()`. This ensures OpenGL functions are called only after the OpenGL context is properly set up, resolving `OpenGL.error.Error: Attempt to retrieve context when no valid context`.
+    *   **Particle Data Handling**: `set_particle_data()` now primarily stores data and triggers a repaint, with the actual VBO setup occurring in `initializeGL`.
 *   **Inspiration/Code to Copy**: 
     *   From `/home/prokophapala/git/FireCore/pyBall/GUI/GLGUI.py`:
+
+### 5. `GLCLBrowser.py` and `GLCLBrowser_bak.py` (New Files)
+*   **Purpose**: Main application entry point and GUI for the GLCL simulation framework. Manages the overall application flow, including loading simulation configurations (JSON), setting up the `GLCLWidget`, and handling user interactions. `GLCLBrowser_bak.py` is the currently active development version.
+*   **Current Status/Progress**:
+    *   **Shader Source Loading Timing**: Resolved the "Warning: Shader sources not provided to GLCLWidget." by ensuring `apply_simulation_config` is called early in the `__init__` method, before `GLCLWidget.initializeGL` is triggered, to provide shader sources in time.
+    *   **GUI Initialization Order**: Resolved `AttributeError` by ensuring GUI layout components (e.g., `self.params_layout`) are initialized before being accessed by `apply_simulation_config`.
         *   The structure of `class GLView(QOpenGLWidget)` and its methods like `initializeGL`, `paintGL`, `resizeGL`. This will be the base for our `GLCLWidget`.
         *   Event handling methods (e.g., `mousePressEvent`, `mouseMoveEvent`) can be adapted if needed for interaction within the GL widget.
 *   **Key Components**: 

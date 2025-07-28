@@ -4,8 +4,13 @@ import numpy as np
 from PyQt5.QtWidgets import QOpenGLWidget
 from PyQt5.QtCore import Qt
 from PyQt5.QtGui import QMatrix4x4, QVector3D
-
-from OpenGL.GL import glClear, glClearColor, GL_COLOR_BUFFER_BIT, GL_DEPTH_BUFFER_BIT, glEnable, GL_DEPTH_TEST, glViewport, glUseProgram, glGetUniformLocation, glUniformMatrix4fv, GL_FALSE
+from OpenGL.GL import (
+    glClear, glClearColor, GL_COLOR_BUFFER_BIT, GL_DEPTH_BUFFER_BIT, glEnable, GL_DEPTH_TEST, glViewport,
+    glUseProgram, glGetUniformLocation, glUniform4fv, glUniformMatrix4fv, GL_FALSE,
+    glGenBuffers, glBindBuffer, glBufferData, GL_ARRAY_BUFFER, GL_DYNAMIC_DRAW,
+    glGenVertexArrays, glBindVertexArray, glVertexAttribPointer, glEnableVertexAttribArray, GL_FLOAT,
+    glBufferSubData, glDrawArrays, GL_POINTS, GL_PROGRAM_POINT_SIZE
+)
 
 from .OGLsystem import GLobject, Mesh, InstancedData, compile_shader_program, create_sphere_mesh # Import necessary OpenGL utilities
 from .OCLsystem import OCLSystem # Import OpenCL system
@@ -24,10 +29,15 @@ class GLCLWidget(QOpenGLWidget):
         self.light_color = QVector3D(1.0, 1.0, 1.0)
 
         self.setFocusPolicy(Qt.StrongFocus)
-        self.gl_vbo = None
-        self.vao = None
+        self.gl_vbo = 0
+        self.vao = 0
         self.particle_count = 0
         self.positions = None
+
+        self.color_loc = None
+        self.model_loc = None
+        self.view_loc  = None
+        self.proj_loc  = None
 
     def set_shader_sources(self, name, vertex_src, fragment_src):
         self.shader_name = name
@@ -40,17 +50,15 @@ class GLCLWidget(QOpenGLWidget):
     def set_particle_data(self, positions, particle_count):
         self.positions = positions
         self.particle_count = particle_count
-        self.update() # Trigger a repaint, setup_particle_vbo will be called in initializeGL or paintGL for updates
+        self.update() # Trigger a repaint, VBO setup will happen in initializeGL or update_particle_vbo
 
     def setup_particle_vbo(self):
-        from OpenGL.GL import glGenBuffers, glBindBuffer, glBufferData, GL_ARRAY_BUFFER, GL_DYNAMIC_DRAW, glGenVertexArrays, glBindVertexArray, glVertexAttribPointer, glEnableVertexAttribArray, GL_FLOAT, GL_FALSE
-
-        if self.gl_vbo is None:
+        if self.gl_vbo == 0:
             self.gl_vbo = glGenBuffers(1)
         glBindBuffer(GL_ARRAY_BUFFER, self.gl_vbo)
         glBufferData(GL_ARRAY_BUFFER, self.positions.nbytes, self.positions, GL_DYNAMIC_DRAW)
 
-        if self.vao is None:
+        if self.vao == 0:
             self.vao = glGenVertexArrays(1)
         glBindVertexArray(self.vao)
         glBindBuffer(GL_ARRAY_BUFFER, self.gl_vbo)
@@ -59,14 +67,13 @@ class GLCLWidget(QOpenGLWidget):
         glBindVertexArray(0)
 
     def update_particle_vbo(self, new_positions):
-        from OpenGL.GL import glBindBuffer, glBufferSubData, GL_ARRAY_BUFFER
         self.positions = new_positions
-        glBindBuffer(GL_ARRAY_BUFFER, self.gl_vbo)
-        glBufferSubData(GL_ARRAY_BUFFER, 0, self.positions.nbytes, self.positions)
-        glBindBuffer(GL_ARRAY_BUFFER, 0)
+        if self.gl_vbo != 0: # Only update if VBO is valid
+            glBindBuffer(GL_ARRAY_BUFFER, self.gl_vbo)
+            glBufferSubData(GL_ARRAY_BUFFER, 0, self.positions.nbytes, self.positions)
+            glBindBuffer(GL_ARRAY_BUFFER, 0)
 
     def initializeGL(self):
-        from OpenGL.GL import glClearColor, glEnable, GL_DEPTH_TEST
         glClearColor(0.1, 0.1, 0.1, 1.0)
         glEnable(GL_DEPTH_TEST)
 
@@ -82,6 +89,10 @@ class GLCLWidget(QOpenGLWidget):
             print(f"Loading shader: {self.shader_name}")
             self.ogl_system.load_shader_program(self.shader_name, self.vertex_shader_src, self.fragment_shader_src)
             self.shader_program = self.ogl_system.get_shader_program(self.shader_name)
+            # Ensure shader program is used before setting uniforms and getting locations
+            if self.shader_program:
+                glUseProgram(self.shader_program)
+                self.get_default_uniform_locations(self.shader_program)
         else:
             print("Warning: Shader sources not provided to GLCLWidget.")
 
@@ -93,8 +104,6 @@ class GLCLWidget(QOpenGLWidget):
             self.setup_particle_vbo()
 
     def paintGL(self):
-        from OpenGL.GL import glClear, GL_COLOR_BUFFER_BIT, GL_DEPTH_BUFFER_BIT, glUseProgram, glBindVertexArray, glEnable, GL_PROGRAM_POINT_SIZE, glDrawArrays, GL_POINTS
-
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT)
 
         if self.shader_program and self.vao and self.particle_count > 0:
@@ -106,14 +115,16 @@ class GLCLWidget(QOpenGLWidget):
             glBindVertexArray(0)
 
     def resizeGL(self, width, height):
-        from OpenGL.GL import glViewport
         glViewport(0, 0, width, height)
         self.update_matrices()
 
-    def update_matrices(self):
-        from PyQt5.QtGui import QMatrix4x4, QVector3D
-        from OpenGL.GL import glGetUniformLocation, glUniformMatrix4fv, GL_FALSE
+    def get_default_uniform_locations(self, shader_program):
+        self.color_loc = glGetUniformLocation(shader_program, "u_color")
+        self.model_loc = glGetUniformLocation(shader_program, "model")
+        self.view_loc  = glGetUniformLocation(shader_program, "view")
+        self.proj_loc  = glGetUniformLocation(shader_program, "projection")
 
+    def update_matrices(self):
         # Model matrix (identity for now, or set by simulation)
         self.model_matrix.setToIdentity()
 
@@ -126,14 +137,18 @@ class GLCLWidget(QOpenGLWidget):
         aspect_ratio = self.width() / self.height()
         self.projection_matrix.perspective(45.0, aspect_ratio, 0.1, 100.0)
 
-        if self.shader_program:
-            model_loc = glGetUniformLocation(self.shader_program, "model")
-            view_loc = glGetUniformLocation(self.shader_program, "view")
-            proj_loc = glGetUniformLocation(self.shader_program, "projection")
+        self.color = np.array([1.0, 1.0, 1.0, 1.0], dtype=np.float32)
 
-            if model_loc != -1: glUniformMatrix4fv(model_loc, 1, GL_FALSE, self.model_matrix.data())
-            if view_loc != -1: glUniformMatrix4fv(view_loc, 1, GL_FALSE, self.view_matrix.data())
-            if proj_loc != -1: glUniformMatrix4fv(proj_loc, 1, GL_FALSE, self.projection_matrix.data())
+        if self.shader_program:
+
+            if self.color_loc is None:
+                self.get_default_uniform_locations(self.shader_program)
+
+            #if self.color_loc != -1: glUniform4f(self.color_loc, 1.0, 1.0, 1.0, 1.0)
+            if self.color_loc != -1: glUniform4fv(self.color_loc, 1, self.color)
+            if self.model_loc != -1: glUniformMatrix4fv(self.model_loc, 1, GL_FALSE, self.model_matrix.data())
+            if self.view_loc  != -1: glUniformMatrix4fv(self.view_loc, 1, GL_FALSE,  self.view_matrix.data())
+            if self.proj_loc  != -1: glUniformMatrix4fv(self.proj_loc, 1, GL_FALSE,  self.projection_matrix.data())
 
     def set_systems(self, ogl_system, ocl_system):
         self.ogl_system = ogl_system

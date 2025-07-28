@@ -5,10 +5,10 @@ from PyQt5 import QtWidgets
 from PyQt5.QtCore import QTimer
 from PyQt5.QtCore import Qt
 
-from .OGL.BaseGUI import BaseGUI
-from .GLCLGUI import GLCLWidget
-from .OCLsystem import OCLSystem
-from .OGLsystem import OGLSystem
+from ..OGL.BaseGUI import BaseGUI
+from .GLCLGUI      import GLCLWidget
+from .OCLsystem    import OCLSystem
+from .OGLsystem    import OGLSystem
 import numpy as np
 import pyopencl as cl
 import os
@@ -24,6 +24,16 @@ class GLCLBrowser(BaseGUI):
 
         self.glcl_widget = GLCLWidget(self)
         self.glcl_widget.set_systems(self.ogl_system, self.ocl_system)
+
+        # Auto-load nbody_simulation.json if path is provided or default exists
+        if json_filepath is None:
+            json_filepath = os.path.join(os.path.dirname(__file__), "nbody_simulation.json")
+
+        if os.path.exists(json_filepath):
+            with open(json_filepath, 'r') as f:
+                config = json.load(f)
+            self.apply_simulation_config(config, filepath=json_filepath)
+            print(f"Auto-loaded simulation config from: {json_filepath}")
 
         main_layout = QHBoxLayout()
         self.main_widget.setLayout(main_layout)
@@ -44,16 +54,6 @@ class GLCLBrowser(BaseGUI):
 
         main_layout.addWidget(self.glcl_widget, 1) # GLCLWidget takes most space
         main_layout.addWidget(control_panel) # Control panel on the right
-
-        # Auto-load nbody_simulation.json if path is provided or default exists
-        if json_filepath is None:
-            json_filepath = os.path.join(os.path.dirname(__file__), "nbody_simulation.json")
-
-        if os.path.exists(json_filepath):
-            with open(json_filepath, 'r') as f:
-                config = json.load(f)
-            self.apply_simulation_config(config, filepath=json_filepath)
-            print(f"Auto-loaded simulation config from: {json_filepath}")
 
     def load_simulation_json(self):
         file_dialog = QFileDialog()
