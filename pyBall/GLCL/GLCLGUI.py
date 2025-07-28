@@ -4,9 +4,10 @@ import numpy as np
 from PyQt5.QtWidgets import QOpenGLWidget
 from PyQt5.QtCore import Qt
 from PyQt5.QtGui import QMatrix4x4, QVector3D
-from OpenGL.GL import (
-    glClear, glClearColor, GL_COLOR_BUFFER_BIT, GL_DEPTH_BUFFER_BIT, glEnable, GL_DEPTH_TEST, glViewport,
-    glUseProgram, glGetUniformLocation, glUniform4fv, glUniformMatrix4fv, GL_FALSE,
+from OpenGL.GL import (GL_FLOAT, GL_FALSE, GL_TRIANGLES, GL_POINTS, GL_ARRAY_BUFFER,
+                      glClearColor, glEnable, glViewport, glDrawArrays, glUseProgram, glBindVertexArray,
+                      GL_DEPTH_TEST, GL_PROGRAM_POINT_SIZE, glGetUniformLocation, 
+                      glUniform4fv, glUniformMatrix4fv, glGetIntegerv, GL_CURRENT_PROGRAM, GL_FALSE,
     glGenBuffers, glBindBuffer, glBufferData, GL_ARRAY_BUFFER, GL_DYNAMIC_DRAW,
     glGenVertexArrays, glBindVertexArray, glVertexAttribPointer, glEnableVertexAttribArray, GL_FLOAT,
     glBufferSubData, glDrawArrays, GL_POINTS, GL_PROGRAM_POINT_SIZE
@@ -197,6 +198,11 @@ class GLCLWidget(QOpenGLWidget):
             if self.shader_program:
                 glUseProgram(self.shader_program)
                 self.get_default_uniform_locations(self.shader_program)
+                
+                # Now that OpenGL context is ready and shader is compiled, bake render objects
+                if hasattr(self, 'buffer_data') and hasattr(self, 'render_pipeline_info'):
+                    print("GLCLWidget::initializeGL() Re-baking render objects after OpenGL context is ready")
+                    self.bake_render_objects()
         else:
             print("Warning: Shader sources not provided to GLCLWidget.")
 
@@ -248,6 +254,12 @@ class GLCLWidget(QOpenGLWidget):
         self.color = np.array([1.0, 1.0, 1.0, 1.0], dtype=np.float32)
 
         if self.shader_program:
+            # Ensure shader program is active before setting uniforms
+            current_program = glGetIntegerv(GL_CURRENT_PROGRAM)
+            need_to_bind = current_program != self.shader_program
+            if need_to_bind:
+                print(f"GLCLWidget::update_matrices() Binding shader program {self.shader_program} before setting uniforms")
+                glUseProgram(self.shader_program)
 
             if self.color_loc is None:
                 self.get_default_uniform_locations(self.shader_program)
@@ -257,6 +269,10 @@ class GLCLWidget(QOpenGLWidget):
             if self.model_loc != -1: glUniformMatrix4fv(self.model_loc, 1, GL_FALSE, self.model_matrix.data())
             if self.view_loc  != -1: glUniformMatrix4fv(self.view_loc, 1, GL_FALSE,  self.view_matrix.data())
             if self.proj_loc  != -1: glUniformMatrix4fv(self.proj_loc, 1, GL_FALSE,  self.projection_matrix.data())
+            
+            # Restore previous program if we changed it
+            if need_to_bind and current_program != 0:
+                glUseProgram(current_program)
 
     def set_systems(self, ogl_system, ocl_system):
         self.ogl_system = ogl_system
