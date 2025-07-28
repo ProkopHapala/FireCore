@@ -1,3 +1,16 @@
+# Mission: A "Shadertoy" for Scientific Simulation
+
+The primary goal of the GLCL project is to create a powerful, yet easy-to-use browser for developing and visualizing scientific simulations. Inspired by Shadertoy, this framework aims to eliminate boilerplate code related to GUI, OpenGL/OpenCL context management, and data handling.
+
+This allows users—researchers, students, and hobbyists—to focus purely on their core algorithms, expressed through:
+1.  **OpenCL kernels** for computation.
+2.  **GLSL shaders** for visualization.
+3.  A simple **Python configuration script** to wire everything together.
+
+The browser dynamically loads and executes these user-provided components, providing an interactive environment for rapid prototyping and exploration of complex physical systems.
+
+---
+
 # GLCL Simulation Framework - Detailed Plan
 
 ## Goal
@@ -78,39 +91,61 @@ Develop a flexible simulation environment that integrates OpenGL and OpenCL, con
         *   Calls `populate_params_from_json` to create GUI controls for simulation parameters.
         *   Provides mechanisms to load different simulations.
 
-### 6. JSON Configuration Structure (Example: NBody Simulation)
-*   **Purpose**: To define the simulation's OpenCL kernels, OpenGL shaders, buffers, and parameters in a declarative way.
+### 6. Python Script Configuration Structure (Example: NBody Simulation)
+*   **Purpose**: To define the simulation's OpenCL kernels, OpenGL shaders, buffers, and parameters, as well as initial data, using a Python script.
 *   **Proposed Structure**:
-    ```json
-    {
-        "name": "NBody Simulation",
-        "description": "A simple N-body simulation using OpenCL for physics and OpenGL for rendering.",
+    A Python script (e.g., `nbody.py`) will define a `config` dictionary and an `init()` function.
+    The `config` dictionary will contain:
+    *   `simulation_name`: Name of the simulation.
+    *   `description`: Description of the simulation.
+    *   `parameters`: Dictionary of simulation parameters (e.g., `dt`, `particle_count`). Each parameter can specify its value, type, and step for GUI controls.
+    *   `buffers`: Dictionary defining the buffers, including their size, stride, and type.
+    *   `opencl_source`: List of OpenCL kernel source files.
+    *   `kernels`: Dictionary mapping kernel names to their local size, global size, associated buffers, and parameters.
+    *   `kernel_pipeline`: List defining the sequence of OpenCL kernels to be executed per frame.
+    *   `opengl_shaders`: Dictionary mapping shader program names to their vertex and fragment shader files, and a list of uniforms.
+    *   `render_pipeline`: List defining the sequence of OpenGL render operations (draw calls), specifying the shader, element count, vertex buffer, and optional index buffer.
+
+    The `init()` function will be a callback that returns a dictionary of initial data for the buffers. This allows for arbitrary initialization logic.
+
+*   **Example (`nbody.py` simplified structure)**:
+    ```python
+    import numpy as np
+
+    config = {
+        "simulation_name":  "NBody Simulation",
+        "description":      "NBody simulation using OpenCL for computation and OpenGL for rendering.",
         "parameters": {
-            "dt": ["float", 0.01, 0.001, 0.1], 
-            "damping": ["float", 0.99, 0.9, 1.0],
-            "num_particles": ["int", 1024]
+            "particle_count": (2048,  "int" , 1      ),
+            "dt":             (0.001, "float", 0.0001 )
         },
-        "buffers": {
-            "positions": {"size": "num_particles * 4 * 4", "type": "float", "usage": "read_write"},
-            "velocities": {"size": "num_particles * 4 * 4", "type": "float", "usage": "read_write"}
+        "buffers":{
+            "positions":  (2048, 4, "f4"),
+            "velocities": (2048, 4, "f4")
         },
-        "opencl_kernels": [
-            {"name": "update_positions", "file": "nbody_update.cl", "entry_point": "update_positions_kernel", "args": ["positions", "velocities", "dt"]},
-            {"name": "calculate_forces", "file": "nbody_forces.cl", "entry_point": "calculate_forces_kernel", "args": ["positions", "velocities", "damping"]}
-        ],
-        "opengl_shaders": [
-            {"name": "particle_render", "vertex_file": "particle.vert", "fragment_file": "particle.frag", "uniforms": ["positions", "view_matrix", "projection_matrix"]},
-            {"name": "debug_lines", "vertex_file": "line.vert", "fragment_file": "line.frag", "uniforms": ["positions", "view_matrix", "projection_matrix"]}
-        ],
-        "pipeline": [
-            {"type": "opencl", "kernel": "calculate_forces", "global_size": "num_particles"},
-            {"type": "opencl", "kernel": "update_positions", "global_size": "num_particles"},
-            {"type": "opengl", "shader": "particle_render", "draw_mode": "points", "count": "num_particles"},
-            {"type": "opengl", "shader": "debug_lines", "draw_mode": "lines", "count": "num_particles"}
+        "opencl_source": ["nbody_sim.cl"],
+        "kernels": {
+            "nbody_sim" : ( (32,), ("particle_count"), ["positions", "velocities"], ["dt"] )
+        },
+        "kernel_pipeline": ["nbody_sim"],
+        "opengl_shaders": {
+            "nbody_render" : ("points.glslv", "monocolor.glslf", ["positions"])
+        },
+        "render_pipeline":   [
+            ( "nbody_render", "particle_count", "positions",     None ),
         ]
     }
+
+    def init():
+        particle_count = config["particle_count"]
+        positions      = np.random.rand(particle_count, 4) * 2 - 1
+        velocities     = np.random.rand(particle_count, 4) * 0.1
+        return {
+            "positions":  positions.astype(np.float32),
+            "velocities": velocities.astype(np.float32)
+        }
     ```
-*   **Note**: The `size` in buffers and `global_size` in kernels can reference `parameters` for dynamic sizing.
+*   **Note**: This approach provides maximum generality, allowing for complex initialization logic and dynamic definition of simulation components without hardcoding names or structures.
 
 ### 7. NBody Test Case (JSON, Shaders, Kernels)
 *   **Purpose**: To demonstrate the new framework with a concrete example.

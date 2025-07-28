@@ -1,202 +1,407 @@
 import sys
-import json
-from PyQt5.QtWidgets import QApplication, QHBoxLayout, QWidget, QFileDialog
-from PyQt5 import QtWidgets
-from PyQt5.QtCore import QTimer
-from PyQt5.QtCore import Qt
-
-from ..OGL.BaseGUI import BaseGUI
-from .GLCLGUI      import GLCLWidget
-from .OCLsystem    import OCLSystem
-from .OGLsystem    import OGLSystem
+import os
+import importlib.util
 import numpy as np
 import pyopencl as cl
-import os
+
+from PyQt5.QtWidgets import QApplication, QHBoxLayout, QWidget, QFileDialog, QVBoxLayout, QGroupBox
+from PyQt5 import QtWidgets
+from PyQt5.QtCore import QTimer, Qt
+
+from ..OGL.BaseGUI import BaseGUI
+from .GLCLGUI import GLCLWidget
+from .OCLsystem import OCLSystem
+from .OGLsystem import OGLSystem
+
+class BakedKernelCall:
+    """Encapsulates a pre-baked OpenCL kernel call with all parameters resolved."""
+    
+    def __init__(self, ocl_system, kernel_name, kernel_obj, global_size_resolver, local_size, arg_infos):
+        self.ocl_system = ocl_system
+        self.kernel_name = kernel_name
+        self.kernel_obj = kernel_obj
+        self.global_size_resolver = global_size_resolver
+        self.local_size = local_size
+        self.arg_infos = arg_infos  # List of (param_name, is_buffer, type_hint)
+
+    def execute(self):
+        """Execute the kernel with current parameters."""
+        try:
+            global_size = self.global_size_resolver()
+            
+            # Prepare arguments for kernel execution
+            kernel_args = []
+            for param_name, is_buffer, type_hint in self.arg_infos:
+                if is_buffer:
+                    kernel_args.append(self.ocl_system.get_buffer(param_name))
+                else:
+                    param_value = self.ocl_system.get_kernel_param(param_name)
+                    # Type conversion based on hint
+                    if type_hint == 'int':
+                        kernel_args.append(np.int32(param_value))
+                    elif type_hint == 'float':
+                        kernel_args.append(np.float32(param_value))
+                    else:
+                        kernel_args.append(param_value)
+
+            self.ocl_system.execute_kernel_with_args(
+                self.kernel_obj, global_size, self.local_size, kernel_args
+            )
+        except Exception as e:
+            print(f"Error executing kernel {self.kernel_name}: {e}")
+            raise
+
 
 class GLCLBrowser(BaseGUI):
-    def __init__(self, json_filepath=None):
+    """Main browser class for loading and executing scientific simulation scripts."""
+    
+    def __init__(self, python_script_path=None):
         super().__init__()
-        self.setWindowTitle("GLCL Browser")
-        self.setGeometry(100, 100, 1600, 900) # Increased window size
+        self.setWindowTitle("GLCL Browser - Scientific Simulation Framework")
+        self.setGeometry(100, 100, 1600, 900)
 
+        # Core systems
         self.ogl_system = OGLSystem()
         self.ocl_system = OCLSystem()
-
+        
+        # Runtime state
+        self.current_script = None
+        self.current_config = None
+        self.baked_kernel_calls = []
+        self.sim_params = {}
+        self.param_widgets = {}
+        
+        # Create main widget and layout
+        self.main_widget = QWidget()
+        self.setCentralWidget(self.main_widget)
+        
+        # Setup GLCL widget
         self.glcl_widget = GLCLWidget(self)
         self.glcl_widget.set_systems(self.ogl_system, self.ocl_system)
 
-        # Auto-load nbody_simulation.json if path is provided or default exists
-        if json_filepath is None:
-            json_filepath = os.path.join(os.path.dirname(__file__), "nbody_simulation.json")
-
-        if os.path.exists(json_filepath):
-            with open(json_filepath, 'r') as f:
-                config = json.load(f)
-            self.apply_simulation_config(config, filepath=json_filepath)
-            print(f"Auto-loaded simulation config from: {json_filepath}")
-
+        # Build UI
+        self._build_ui()
+        
+        # Load initial script if provided
+        if python_script_path is not None:
+            self.load_and_apply_script(python_script_path)
+            
+    def _build_ui(self):
+        """Build the main user interface."""
         main_layout = QHBoxLayout()
         self.main_widget.setLayout(main_layout)
 
-        self.param_widgets = {} # Initialize param_widgets
-
-        control_panel  = QtWidgets.QWidget()
-        control_layout = QtWidgets.QVBoxLayout()
+        # Left panel - Controls
+        control_panel = QWidget()
+        control_layout = QVBoxLayout()
         control_panel.setLayout(control_layout)
-        control_layout.setAlignment(Qt.AlignTop)
-        control_panel.setMaximumWidth(300) # Narrow right column
+        control_panel.setMaximumWidth(300)
+        
+        # File operations group
+        file_group = QGroupBox("Simulation Script")
+        file_layout = QVBoxLayout()
+        file_group.setLayout(file_layout)
+        
+        self.button("Load Script", self.load_simulation_script, layout=file_layout)
+        self.button("Reload Current", self.reload_current_script, layout=file_layout)
+        
+        if hasattr(self, 'script_label'):
+            file_layout.addWidget(self.script_label)
+        
+        control_layout.addWidget(file_group)
+        
+        # Parameters group
+        params_group = QGroupBox("Simulation Parameters")
+        self.params_layout = QVBoxLayout()
+        params_group.setLayout(self.params_layout)
+        control_layout.addWidget(params_group)
+        
+        # Simulation controls group
+        sim_group = QGroupBox("Simulation Control")
+        sim_layout = QVBoxLayout()
+        sim_group.setLayout(sim_layout)
+        
+        self.button("Start/Pause", self.toggle_simulation, layout=sim_layout)
+        self.button("Reset", self.reset_simulation, layout=sim_layout)
+        
+        control_layout.addWidget(sim_group)
+        control_layout.addStretch()
 
-        # Add a button to load JSON config
-        self.button("Load Simulation JSON", self.load_simulation_json, layout=control_layout)
+        # Add widgets to main layout
+        main_layout.addWidget(self.glcl_widget, 1)
+        main_layout.addWidget(control_panel)
+        
+        # Timer for simulation updates
+        self.sim_timer = QTimer()
+        self.sim_timer.timeout.connect(self.update_simulation)
+        self.simulation_running = False
 
-        # Parameters section (will be populated dynamically)
-        self.params_layout = self.add_form_layout(control_layout) # BaseGUI method
-
-        main_layout.addWidget(self.glcl_widget, 1) # GLCLWidget takes most space
-        main_layout.addWidget(control_panel) # Control panel on the right
-
-    def load_simulation_json(self):
-        file_dialog = QFileDialog()
-        filepath, _ = file_dialog.getOpenFileName(self, "Load Simulation JSON", "", "JSON Files (*.json)")
-        if filepath:
-            with open(filepath, 'r') as f:
-                config = json.load(f)
-            self.apply_simulation_config(config, filepath=filepath)
-            print(f"Loaded simulation config from: {filepath}")
-
-    def apply_simulation_config(self, config, filepath=None):
-        # This method will parse the JSON and configure OGLSystem, OCLSystem, and GLCLWidget
-        # For now, let's just populate parameters in the GUI
-        if "parameters" in config:
-            # The structure of 'parameters' in JSON should match what populate_params_from_json expects
-            # e.g., {"param_name": ["type", [default_value], step]}
-            # For now, let's assume a simple structure for testing:
-            # {"param_name": [default_value, step]}
-            # We need to convert it to the format expected by BaseGUI's populate_params_from_json
-            # BaseGUI expects: {"name": (typ, defaults, step)}
-            # Let's assume for now that 'typ' is always 'scalar' and 'defaults' is a list of one item for single values
+    def load_and_apply_script(self, script_path):
+        """Load and apply a simulation script."""
+        try:
+            # Clear previous state
+            self.baked_kernel_calls.clear()
+            self.sim_params.clear()
+            self.param_widgets.clear()
             
-            # Example expected JSON 'parameters' format:
-            # "parameters": {
-            #     "gravity": {"value": 9.81, "step": 0.1, "type": "float"},
-            #     "num_particles": {"value": 1000, "step": 1, "type": "int"}
-            # }
+            # Load the module
+            spec = importlib.util.spec_from_file_location("simulation_script", script_path)
+            module = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(module)
+            
+            # Extract configuration
+            config = getattr(module, 'config', None)
+            init_func = getattr(module, 'init', None)
 
-            # Convert to BaseGUI format: {"name": ("type", [default_value], step)}
-            params_for_gui = {}
-            for name, p_config in config["parameters"].items():
-                value = p_config.get("value")
-                step = p_config.get("step", 0.1) # Default step if not provided
-                param_type = p_config.get("type", "float") # Default type
+            if config is None:
+                raise ValueError(f"Python script '{script_path}' must define a 'config' dictionary.")
+
+            self.current_script = script_path
+            self.current_config = config
+            
+            self.apply_simulation_config(config, init_func=init_func, script_path=script_path)
+            print(f"Successfully loaded simulation script: {script_path}")
+            
+        except Exception as e:
+            print(f"Error loading script {script_path}: {e}")
+            import traceback
+            traceback.print_exc()
+            print(f"Error loading simulation script {script_path}: {e}")
+
+    def load_simulation_script(self):
+        """Load a simulation script via file dialog."""
+        file_path, _ = QFileDialog.getOpenFileName(
+            self, "Load Simulation Script", "", "Python Files (*.py)"
+        )
+        if file_path:
+            self.load_and_apply_script(file_path)
+
+    def reload_current_script(self):
+        """Reload the current simulation script."""
+        if self.current_script:
+            self.load_and_apply_script(self.current_script)
+
+    def apply_simulation_config(self, config, init_func=None, script_path=None):
+        """Apply the simulation configuration to both OpenCL and OpenGL systems."""
+        print("Applying simulation configuration...")
+        self.current_config = config
+        
+        # Clear previous state
+        self.baked_kernel_calls.clear()
+        self.ocl_system.clear_buffers()
+        
+        # Setup parameter controls
+        self.create_parameter_controls(config)
+        
+        # Determine script directory for relative paths
+        script_dir = os.path.dirname(script_path) if script_path else os.getcwd()
+        
+        # Initialize simulation data
+        self.init_simulation_data(config, init_func, script_dir)
+        
+        # Setup OpenCL system
+        self.setup_opencl_system(config, script_dir)
+        
+        # Setup OpenGL system
+        self.setup_opengl_system(config, script_dir)
+        
+        # Bake kernels for execution
+        self.bake_kernels(config)
+        
+        # Configure GLCL widget
+        self.glcl_widget.set_config(config)
+        
+        # Start simulation if not already running
+        if not self.simulation_running:
+            self.toggle_simulation()
+
+    def init_simulation_data(self, config, init_func=None, script_dir="."):
+        """Initialize simulation data using init function or defaults."""
+        parameters = config.get("parameters", {})
+        buffers_config = config.get("buffers", {})
+        
+        # Initialize buffers
+        for buffer_name, buffer_info in buffers_config.items():
+            size_expr, stride, dtype_str = buffer_info
+            
+            # Resolve size expression
+            if isinstance(size_expr, str) and size_expr in parameters:
+                size = parameters[size_expr][0]
+            else:
+                size = int(size_expr)
+            
+            # Create numpy array
+            if dtype_str == "f4":
+                data = np.zeros((size, stride), dtype=np.float32)
+            elif dtype_str == "f8":
+                data = np.zeros((size, stride), dtype=np.float64)
+            elif dtype_str == "i4":
+                data = np.zeros((size, stride), dtype=np.int32)
+            else:
+                data = np.zeros((size, stride), dtype=np.float32)
+            
+            # Use init function data if available
+            if init_func:
+                init_data = init_func()
+                if buffer_name in init_data:
+                    data = init_data[buffer_name]
+            
+            # Create OpenCL buffer
+            self.ocl_system.create_buffer(buffer_name, data)
+
+    def setup_opencl_system(self, config, script_dir="."):
+        """Setup OpenCL system based on configuration."""
+        # Load OpenCL programs
+        opencl_sources = config.get("opencl_source", [])
+        for source_file in opencl_sources:
+            filepath = os.path.join(script_dir, source_file)
+            if os.path.exists(filepath):
+                program_name = os.path.splitext(os.path.basename(source_file))[0]
+                self.ocl_system.load_program(program_name, filepath)
+            else:
+                print(f"Warning: OpenCL source file not found: {filepath}")
+
+    def setup_opengl_system(self, config, script_dir="."):
+        """Setup OpenGL system based on configuration."""
+        shaders_config = config.get("opengl_shaders", {})
+        for shader_name, shader_info in shaders_config.items():
+            vertex_file, fragment_file, uniforms = shader_info
+            
+            vertex_path = os.path.join(script_dir, vertex_file)
+            fragment_path = os.path.join(script_dir, fragment_file)
+            
+            if os.path.exists(vertex_path) and os.path.exists(fragment_path):
+                with open(vertex_path, 'r') as f:
+                    vertex_src = f.read()
+                with open(fragment_path, 'r') as f:
+                    fragment_src = f.read()
                 
-                # BaseGUI's populate_params_from_json expects 'defaults' as a list
-                if isinstance(value, list):
-                    defaults = value
+                self.ogl_system.load_shader_program(
+                    shader_name, vertex_path, fragment_path, uniforms
+                )
+            else:
+                print(f"Warning: Shader files not found: {vertex_path}, {fragment_path}")
+
+    def bake_kernels(self, config):
+        """Bake OpenCL kernels for efficient execution."""
+        kernels_config = config.get("kernels", {})
+        pipeline = config.get("kernel_pipeline", [])
+        parameters = config.get("parameters", {})
+        
+        self.baked_kernel_calls.clear()
+        
+        for kernel_name in pipeline:
+            if kernel_name in kernels_config:
+                kernel_info = kernels_config[kernel_name]
+                local_size, global_size_expr, buffer_names, param_names = kernel_info
+                
+                # Get kernel object
+                kernel_obj = self.ocl_system.get_kernel(kernel_name)
+                if kernel_obj is None:
+                    print(f"Warning: Kernel '{kernel_name}' not found")
+                    continue
+                
+                # Build argument information
+                arg_infos = []
+                for buf_name in buffer_names:
+                    arg_infos.append((buf_name, True, None))
+                for param_name in param_names:
+                    param_info = parameters.get(param_name, [None, "float", 0])
+                    arg_infos.append((param_name, False, param_info[1]))
+                
+                # Create global size resolver
+                def make_global_resolver(expr):
+                    return lambda: self._resolve_global_size(expr, parameters)
+                
+                baked_call = BakedKernelCall(
+                    self.ocl_system, kernel_name, kernel_obj,
+                    make_global_resolver(global_size_expr), local_size, arg_infos
+                )
+                
+                self.baked_kernel_calls.append(baked_call)
+
+    def _resolve_global_size(self, size_expr, parameters):
+        """Resolve global size expression to actual integer."""
+        if isinstance(size_expr, (list, tuple)):
+            resolved = []
+            for item in size_expr:
+                if isinstance(item, str) and item in parameters:
+                    resolved.append(parameters[item][0])
                 else:
-                    defaults = [value]
-                
-                params_for_gui[name] = (param_type, defaults, step)
-            
-            self.populate_params_from_json(params_for_gui, callback_func=self.update_sim_uniforms)
+                    resolved.append(int(item))
+            return tuple(resolved)
+        elif isinstance(size_expr, str) and size_expr in parameters:
+            return parameters[size_expr][0]
+        else:
+            return int(size_expr)
 
-        # Configure OCLSystem and OGLSystem based on JSON
-        if "opencl_kernels" in config:
-            for kernel_info in config["opencl_kernels"]:
-                name = kernel_info["name"]
-                filepath = os.path.join(os.path.dirname(filepath), kernel_info["filepath"]) # Adjust path
-                self.ocl_system.load_program(name, filepath)
+    def toggle_simulation(self):
+        """Toggle simulation running state."""
+        self.simulation_running = not self.simulation_running
+        if self.simulation_running:
+            self.sim_timer.start(16)  # ~60 FPS
+            print("Simulation started")
+        else:
+            self.sim_timer.stop()
+            print("Simulation paused")
 
-        if "opengl_shaders" in config:
-            for shader_info in config["opengl_shaders"]:
-                name = shader_info["name"]
-                vertex_filepath = os.path.join(os.path.dirname(filepath), shader_info["vertex_filepath"]) # Adjust path
-                fragment_filepath = os.path.join(os.path.dirname(filepath), shader_info["fragment_filepath"]) # Adjust path
-                
-                with open(vertex_filepath, 'r') as f: vertex_src = f.read()
-                with open(fragment_filepath, 'r') as f: fragment_src = f.read()
-                
-                # Store shader sources in the widget for deferred loading
-                self.glcl_widget.set_shader_sources(name, vertex_src, fragment_src)
-
-        # Initialize particle data and buffers
-        particle_count = int(self.param_widgets["particle_count"].value()) if "particle_count" in self.param_widgets else 2048
-        dt = float(self.param_widgets["dt"].value()) if "dt" in self.param_widgets else 0.001
-
-        # Initial particle positions and velocities
-        positions = (np.random.rand(particle_count, 4) * 2 - 1).astype(np.float32)
-        positions[:, 2] = 0.0; positions[:, 3] = 1.0 # Set z to 0 and w to 1
-        velocities = (np.random.rand(particle_count, 4) * 0.1).astype(np.float32)
-
-        # Create OpenCL buffers
-        self.ocl_system.create_buffer("positions", positions.nbytes, cl.mem_flags.READ_WRITE | cl.mem_flags.COPY_HOST_PTR)
-        self.ocl_system.toGPU("positions", positions)
-        self.ocl_system.create_buffer("velocities", velocities.nbytes, cl.mem_flags.READ_WRITE | cl.mem_flags.COPY_HOST_PTR)
-        self.ocl_system.toGPU("velocities", velocities)
-
-        # Set kernel parameters
-        self.ocl_system.set_kernel_param("dt", np.float32(dt))
-        self.ocl_system.set_kernel_param("particle_count", np.int32(particle_count))
-
-        # Pass initial data to GLCLWidget for OpenGL setup
-        self.glcl_widget.set_particle_data(positions, particle_count)
-
-        # Start simulation timer
-        if not hasattr(self, 'sim_timer'):
-            self.sim_timer = QTimer(self)
-            self.sim_timer.timeout.connect(self.update_simulation)
-        self.sim_timer.start(16) # ~60 FPS
+    def reset_simulation(self):
+        """Reset simulation to initial state."""
+        if self.current_script and self.current_config:
+            print("Resetting simulation...")
+            self.load_and_apply_script(self.current_script)
 
     def update_simulation(self):
+        """Main simulation update loop."""
         try:
-            # Acquire GL buffer if sharing (not yet implemented, will use copy for now)
-            # Execute OpenCL kernel
-            self.ocl_system.execute_kernel("nbody_sim", "nbody_sim", (self.glcl_widget.particle_count,), local_size=None)
-
-            # Copy results back to host or GL buffer
-            # For now, copy to host and then update GL buffer
-            updated_positions = np.empty_like(self.glcl_widget.positions)
-            self.ocl_system.fromGPU("positions", updated_positions)
-            self.glcl_widget.update_particle_vbo(updated_positions)
+            # Update parameters from GUI
+            self.update_sim_uniforms()
+            
+            # Execute baked kernel calls
+            for kernel_call in self.baked_kernel_calls:
+                kernel_call.execute()
+                
+            # Update OpenGL visualization
             self.glcl_widget.update()
+            
         except Exception as e:
-            print("GLCLBrowser: Exception in update_simulation(), stopping timer.")
-            self.sim_timer.stop()
-            raise e
+            print(f"Simulation error: {e}")
+            import traceback
+            traceback.print_exc()
+            self.simulation_running = False
 
     def update_sim_uniforms(self):
-        # This method is called by BaseGUI when parameters are changed
-        # Update OpenCL kernel arguments based on current GUI parameter values
-        if "dt" in self.param_widgets:
-            dt = self.param_widgets["dt"].value()
-            self.ocl_system.set_kernel_param("dt", np.float32(dt))
-        if "particle_count" in self.param_widgets:
-            particle_count = self.param_widgets["particle_count"].value()
-            self.ocl_system.set_kernel_param("particle_count", np.int32(particle_count))
-            # If particle count changes, re-initialize positions and velocities
-            # This is a simplified approach; a more robust solution might handle resizing buffers.
-            # For now, we'll just re-create them if the count changes significantly.
-            if particle_count != self.glcl_widget.particle_count:
-                # Ensure particle_count is an integer for numpy array creation
-                particle_count_int = int(particle_count)
-                positions = (np.random.rand(particle_count_int, 4) * 2 - 1).astype(np.float32)
-                positions[:, 2] = 0.0; positions[:, 3] = 1.0
-                velocities = (np.random.rand(particle_count_int, 4) * 0.1).astype(np.float32)
-                self.ocl_system.create_buffer("positions", positions.nbytes, cl.mem_flags.READ_WRITE | cl.mem_flags.COPY_HOST_PTR, hostbuf=positions)
-                self.ocl_system.create_buffer("velocities", velocities.nbytes, cl.mem_flags.READ_WRITE | cl.mem_flags.COPY_HOST_PTR, hostbuf=velocities)
-                self.glcl_widget.set_particle_data(positions, particle_count)
+        """Update simulation uniforms based on current parameters."""
+        if not self.current_config:
+            return
+            
+        parameters = self.current_config.get("parameters", {})
+        
+        # Update kernel parameters from GUI
+        for param_name, widget in self.param_widgets.items():
+            if param_name in parameters:
+                param_info = parameters[param_name]
+                type_str = param_info[1]
+                value = widget.value()
+                
+                if type_str == "int":
+                    self.ocl_system.set_kernel_param(param_name, np.int32(value))
+                elif type_str == "float":
+                    self.ocl_system.set_kernel_param(param_name, np.float32(value))
 
 
 
-
+    
     # Main entry point for the application
 if __name__ == '__main__':
-
-    # run like this:
-    #  python -u -m pyBall.GLCLBrowser
-    #  __NV_PRIME_RENDER_OFFLOAD=1 __GLX_VENDOR_LIBRARY_NAME=nvidia python -u -m pyBall.GLCLBrowser
-    
     app = QApplication(sys.argv)
-    json_path = os.path.join(os.path.dirname(__file__), "nbody_simulation.json")
-    viewer = GLCLBrowser(json_filepath=json_path)
-    viewer.show()
+    
+    # Determine default script path
+    current_dir = os.path.dirname(os.path.abspath(__file__))
+    default_script = os.path.join(current_dir, "scripts", "nbody.py")
+    
+    # Create and show browser
+    browser = GLCLBrowser(python_script_path=default_script)
+    browser.show()
+    
     sys.exit(app.exec_())

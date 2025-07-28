@@ -218,6 +218,24 @@ class OCLSystem:
         """
         self.kernel_params[name] = value
 
+    def get_kernel_param(self, name):
+        """
+        Get a scalar parameter by name.
+        """
+        return self.kernel_params.get(name)
+
+    def execute_kernel_with_args(self, kernel_obj, global_size, local_size, args):
+        """
+        Execute an OpenCL kernel with pre-prepared arguments.
+        Args:
+            kernel_obj (pyopencl.Kernel): The actual PyOpenCL kernel object.
+            global_size (tuple or int): Global work size.
+            local_size (tuple or int, optional): Local work size. Defaults to None.
+            args (list): List of arguments for the kernel.
+        """
+        kernel_obj(self.queue, global_size, local_size, *args)
+        self.queue.finish()
+
     def execute_kernel(self, program_name, kernel_name, global_size, local_size=None, args=None):
         """
         Execute an OpenCL kernel.
@@ -242,3 +260,12 @@ class OCLSystem:
 
         kernel(self.queue, global_size, local_size, *args)
         self.queue.finish()
+
+    def clear_buffers(self):
+        """
+        Clear all allocated buffers and kernel parameters.
+        """
+        self.buffers.clear()
+        self.kernel_params.clear()
+        self.kernels.clear()
+        self.programs.clear()
