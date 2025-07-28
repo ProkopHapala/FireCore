@@ -92,7 +92,7 @@ class GLCLBrowser(BaseGUI):
         
         # Setup GLCL widget
         self.glcl_widget = GLCLWidget(self)
-        self.glcl_widget.set_systems(self.ogl_system, self.ocl_system)
+        self.glcl_widget.set_systems(self.ogl_system, self.ocl_system, self)
 
         # Build UI
         self._build_ui()
@@ -231,30 +231,17 @@ class GLCLBrowser(BaseGUI):
             print(f"  {kc.kernel_name}: global_size={kc.global_size}, local_size={kc.local_size}")
         print("=====================")
 
-        # Configure GLCL widget - use available methods
-        if "opengl_shaders" in config:
-            shaders_config = config["opengl_shaders"]
-            for shader_name, shader_info in shaders_config.items():
-                vertex_file, fragment_file, uniforms = shader_info
-                vertex_path = os.path.join(script_dir, vertex_file)
-                fragment_path = os.path.join(script_dir, fragment_file)
-                
-                if os.path.exists(vertex_path) and os.path.exists(fragment_path):
-                    with open(vertex_path, 'r') as f:
-                        vertex_src = f.read()
-                    with open(fragment_path, 'r') as f:
-                        fragment_src = f.read()
-                    
-                    self.glcl_widget.set_shader_sources(shader_name, vertex_src, fragment_src)
-                    print(f"Loaded shader: {shader_name}")
-                else:
-                    print(f"Warning: Shader files not found: {vertex_path}, {fragment_path}")
+        # Shaders are now handled in setup_opengl_system method
+        pass
         
         # Create dynamic buffer registry from user script data
         self._create_dynamic_buffer_registry()
         
-        # Now that shaders are loaded, trigger baking of render objects
-        self.glcl_widget.bake_render_objects()
+        # Bake OpenCL kernels for efficient execution
+        self.bake_kernels(config)
+        
+        # Don't compile shaders here - wait until OpenGL context is ready
+        # Shaders will be compiled in GLCLWidget.initializeGL()
         
         # Start simulation if not already running
         if not self.simulation_running:
@@ -360,13 +347,28 @@ class GLCLBrowser(BaseGUI):
                 print(f"GLCLBrowser::setup_opencl_system() Current directory contents: {os.listdir(script_dir)}")
 
     def setup_opengl_system(self, config, script_dir="."):
-        """Setup OpenGL system based on configuration."""
+        """Setup OpenGL system with all shaders from config."""
+        # Store shader information for later compilation when OpenGL context is available
         shaders_config = config.get("opengl_shaders", {})
-        for shader_name, shader_info in shaders_config.items():
+        self.shader_configs = shaders_config
+        self.script_dir = script_dir
+        print(f"GLCLBrowser::setup_opengl_system() Stored shader configs for later compilation: {list(shaders_config.keys())}")
+        
+    def compile_shaders(self):
+        """Compile stored shaders now that OpenGL context is available."""
+        if not hasattr(self, 'shader_configs'):
+            print("GLCLBrowser::compile_shaders() No shader configs stored")
+            return
+            
+        # Dictionary to store compiled shader programs
+        self.shader_programs = {}
+        
+        # Compile all stored shaders
+        for shader_name, shader_info in self.shader_configs.items():
             vertex_file, fragment_file, uniforms = shader_info
             
-            vertex_path = os.path.join(script_dir, vertex_file)
-            fragment_path = os.path.join(script_dir, fragment_file)
+            vertex_path = os.path.join(self.script_dir, vertex_file)
+            fragment_path = os.path.join(self.script_dir, fragment_file)
             
             try:
                 if os.path.exists(vertex_path) and os.path.exists(fragment_path):
@@ -374,14 +376,30 @@ class GLCLBrowser(BaseGUI):
                         vertex_src = f.read()
                     with open(fragment_path, 'r') as f:
                         fragment_src = f.read()
-                    # Defer shader compilation until the OpenGL context is ready (handled in GLCLWidget.initializeGL)
-                    # Simply cache the sources here in the GLCLWidget – they will be compiled once the context exists.
-                    self.glcl_widget.set_shader_sources(shader_name, vertex_src, fragment_src)
-                    print(f"Cached shader sources for: {shader_name}")
+                    
+                    # Load shader program into OGLSystem now that context is available
+                    success = self.ogl_system.load_shader_program(shader_name, vertex_src, fragment_src)
+                    shader_program = self.ogl_system.get_shader_program(shader_name)
+                    
+                    if success and shader_program:
+                        self.shader_programs[shader_name] = shader_program
+                        print(f"GLCLBrowser::compile_shaders() Loaded and compiled shader: {shader_name} (program ID: {shader_program})")
+                        
+                        # Set default uniforms if specified
+                        if uniforms:
+                            print(f"GLCLBrowser::compile_shaders() Setting default uniforms for shader {shader_name}: {uniforms}")
+                    else:
+                        print(f"GLCLBrowser::compile_shaders() Warning: Failed to compile shader program: {shader_name}")
                 else:
-                    print(f"Warning: Shader files not found: {vertex_path}, {fragment_path}")
+                    print(f"GLCLBrowser::compile_shaders() Warning: Shader files not found: {vertex_path}, {fragment_path}")
             except Exception as e:
-                self.on_exception(e)
+                print(f"GLCLBrowser::compile_shaders() Error loading shader {shader_name}: {e}")
+                import traceback
+                traceback.print_exc()
+        
+        # Pass compiled shaders to GLCLWidget
+        if hasattr(self, 'glcl_widget'):
+            self.glcl_widget.set_shader_programs(self.shader_programs)
 
     def bake_kernels(self, config):
         """Bake OpenCL kernels for efficient execution."""
@@ -506,13 +524,9 @@ class GLCLBrowser(BaseGUI):
             # Connect value changes
             if hasattr(widget, 'valueChanged'):
                 if type_str == "int":
-                    widget.valueChanged.connect(
-                        lambda v, p=param_name: self.ocl_system.set_kernel_param(p, np.int32(v))
-                    )
+                    widget.valueChanged.connect(lambda v, p=param_name: self.ocl_system.set_kernel_param(p, np.int32(v)))
                 elif type_str == "float":
-                    widget.valueChanged.connect(
-                        lambda v, p=param_name: self.ocl_system.set_kernel_param(p, np.float32(v))
-                    )
+                    widget.valueChanged.connect(lambda v, p=param_name: self.ocl_system.set_kernel_param(p, np.float32(v)))
 
     def toggle_simulation(self):
         """Toggle simulation running state."""
@@ -554,13 +568,11 @@ class GLCLBrowser(BaseGUI):
             if self.debug_frame_counter >= self.nDebugFrames:
                 self.simulation_running = False
                 self.sim_timer.stop()
-                print("debug_frame_counter reached nDebugFrames: {self.nDebugFrames}")
-                exit()
+                print("GLCLBrowser::update_simulation() STOP! debug_frame_counter reached nDebugFrames: {self.nDebugFrames}")
+                #exit()
 
         except Exception as e:
             self.on_exception(e)
-
-
 
     def on_exception(self, e):
         print(f"Simulation error: {e}")
@@ -572,8 +584,8 @@ class GLCLBrowser(BaseGUI):
 
     def update_sim_uniforms(self):
         """Update simulation uniforms based on current parameters."""
-        if not self.current_config:
-            return
+        #if not self.current_config:
+        #    return
             
         parameters = self.current_config.get("parameters", {})
         
@@ -590,64 +602,58 @@ class GLCLBrowser(BaseGUI):
                     self.ocl_system.set_kernel_param(param_name, np.float32(value))
 
     def _create_dynamic_buffer_registry(self):
-        """Create dynamic buffer registry from user script data."""
-        if not self.current_config:
-            return
+        """Create dynamic buffer registry from user script data according to the pipeline approach."""
+        #if not self.current_config:
+        #    return
             
-        print("Creating dynamic buffer registry...")
+        print("Creating dynamic buffer registry using pipeline approach...")
         
         # Clear existing registry
         self.gl_objects.clear()
         self.render_pipeline_info.clear()
+        self.buffer_data.clear()
         
-        # Collect all buffer names from user script
+        # 1. Get all buffer names used in render pipeline (both index buffers and vertex buffers)
+        # to make sure we create only one buffer per unique name
         buffer_names = set()
-        
-        # 1. Get buffer names from buffers configuration
-        buffers_config = self.current_config.get('buffers', {})
-        buffer_names.update(buffers_config.keys())
-        
-        # 2. Get buffer names from render pipeline
         render_pipeline = self.current_config.get('render_pipeline', [])
+        
         for render_pass in render_pipeline:
+            # render_pass format: (shader_name, element_count_name, vertex_buffer_name, index_buffer_name)
             if len(render_pass) >= 3:
                 shader_name, element_count_name, vertex_buffer_name, index_buffer_name = render_pass
                 if vertex_buffer_name:
                     buffer_names.add(vertex_buffer_name)
                 if index_buffer_name:
                     buffer_names.add(index_buffer_name)
-                self.render_pipeline_info.append(render_pass)
         
-        # 3. Get buffer names from init_data
-        if hasattr(self, 'init_data') and self.init_data:
-            buffer_names.update(self.init_data.keys())
+        print(f"Found buffer names used in render pipeline: {list(buffer_names)}")
         
-        print(f"Found buffer names: {list(buffer_names)}")
-        
-        # Create GLobject for each buffer
+        # 2. Create all buffers in this set using the parameters from "buffers" 
+        buffers_config = self.current_config.get('buffers', {})
         from .OGLsystem import GLobject
         
         for buffer_name in buffer_names:
-            # Get data for this buffer
-            data = None
-            if hasattr(self, 'init_data') and self.init_data:
+            # Only create buffers that are actually used in render pipeline
+            if buffer_name in buffers_config and hasattr(self, 'init_data') and self.init_data:
                 data = self.init_data.get(buffer_name)
-            
-                # Store buffer data for later GLobject creation
-            if data is not None:
-                print(f"Storing buffer data for '{buffer_name}': shape={data.shape}")
-                self.buffer_data[buffer_name] = {
-                    'data': data.astype(np.float32),
-                    'nelements': len(data),
-                    'components': 1 if data.ndim == 1 else data.shape[1]
-                }
-            else:
-                self.buffer_data[buffer_name] = {'data': None, 'nelements': 0, 'components': 3}
+                if data is not None:
+                    print(f"Creating buffer '{buffer_name}' with shape {data.shape}")
+                    self.buffer_data[buffer_name] = {
+                        'data': data.astype(np.float32),
+                        'nelements': len(data),
+                        'components': 1 if data.ndim == 1 else data.shape[1]
+                    }
+                else:
+                    self.buffer_data[buffer_name] = {'data': None, 'nelements': 0, 'components': 3}
         
-        # Pass buffer data to GLCLWidget for deferred GLobject creation
+        # 3. Store render pipeline information for later use
+        self.render_pipeline_info = render_pipeline
+        
+        # 4. Pass buffer data and render pipeline to GLCLWidget for deferred GLobject creation
         self.glcl_widget.set_buffer_data(self.buffer_data, self.render_pipeline_info)
         
-        print(f"Dynamic buffer registry created with {len(self.gl_objects)} buffers")
+        print(f"Dynamic buffer registry created with {len(self.buffer_data)} buffers")
 
     
     # Main entry point for the application
@@ -660,7 +666,7 @@ if __name__ == '__main__':
     
     # Create and show browser
     #browser = GLCLBrowser(python_script_path=default_script, bDebugCL=False, bDebugGL=True, nDebugFrames=5)
-    browser = GLCLBrowser(python_script_path=default_script, nDebugFrames=10000 )
+    browser = GLCLBrowser(python_script_path=default_script, nDebugFrames=3 )
     browser.show()
     
     sys.exit(app.exec_())

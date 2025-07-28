@@ -153,8 +153,23 @@ def compile_shader_program(vertex_shader_src, fragment_shader_src):
     check_gl_error("Before shader compilation")  # Check for pre-existing errors
     
     print(f"Compiling vertex shader:\n{vertex_shader_src}\n")
+    
+    # Validate vertex shader source
+    if not vertex_shader_src or not isinstance(vertex_shader_src, str):
+        print(f"ERROR: Invalid vertex shader source. Type: {type(vertex_shader_src)}, Value: {vertex_shader_src}")
+        return 0
+    
+    print(f"Vertex shader source length: {len(vertex_shader_src)} characters")
     vertex_shader = glCreateShader(GL_VERTEX_SHADER)
+    print(f"glCreateShader for vertex returned: {vertex_shader}")
     check_gl_error("After glCreateShader(GL_VERTEX_SHADER)")
+    
+    if not vertex_shader:
+        print("ERROR: Failed to create vertex shader object (returned 0)")
+        return 0
+    elif vertex_shader < 0:
+        print(f"ERROR: Failed to create vertex shader object (returned negative value: {vertex_shader})")
+        return 0
     
     # Set the source code
     glShaderSource(vertex_shader, vertex_shader_src)
@@ -177,14 +192,31 @@ def compile_shader_program(vertex_shader_src, fragment_shader_src):
     print("Vertex shader compilation SUCCESSFUL")
 
     # Compile fragment shader
+    print(f"Attempting to create fragment shader object...")
     fragment_shader = glCreateShader(GL_FRAGMENT_SHADER)
+    print(f"glCreateShader returned: {fragment_shader}")
+    check_gl_error("After glCreateShader(GL_FRAGMENT_SHADER)")
+    
     if not fragment_shader:
-        print("ERROR: Failed to create fragment shader object")
-        check_gl_error("After glCreateShader(GL_FRAGMENT_SHADER)")
+        print("ERROR: Failed to create fragment shader object (returned 0)")
+        glDeleteShader(vertex_shader)
+        return 0
+    elif fragment_shader < 0:
+        print(f"ERROR: Failed to create fragment shader object (returned negative value: {fragment_shader})")
         glDeleteShader(vertex_shader)
         return 0
         
     print(f"Created fragment shader object: {fragment_shader}")
+    
+    # Validate fragment shader source
+    if not fragment_shader_src or not isinstance(fragment_shader_src, str):
+        print(f"ERROR: Invalid fragment shader source. Type: {type(fragment_shader_src)}, Value: {fragment_shader_src}")
+        glDeleteShader(vertex_shader)
+        glDeleteShader(fragment_shader)
+        return 0
+    
+    print(f"Fragment shader source length: {len(fragment_shader_src)} characters")
+    print(f"Fragment shader source:\n{fragment_shader_src}")
     
     # Set the source code
     glShaderSource(fragment_shader, fragment_shader_src)
@@ -235,7 +267,7 @@ def compile_shader_program(vertex_shader_src, fragment_shader_src):
     log = glGetProgramInfoLog(program)
     if log:
         print(f"Program linking log: {log.decode('utf-8') if isinstance(log, bytes) else log}")
-        print(f"Link status: {link_status}")
+        print(f"Link status: {result}")
         print(f"Log: '{log}'")
         print(f"Log type: {type(log)}")
         print(f"Log length: {len(log)}")
