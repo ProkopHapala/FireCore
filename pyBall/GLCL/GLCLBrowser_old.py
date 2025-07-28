@@ -6,9 +6,9 @@ from PyQt5.QtCore import QTimer
 from PyQt5.QtCore import Qt
 
 from ..OGL.BaseGUI import BaseGUI
-from .GLCLGUI import GLCLWidget
+from .GLCLGUI_old import GLCLWidget
 from .OCLsystem import OCLSystem
-from .OGLsystem import OGLSystem
+from .OGLsystem_old import OGLSystem
 import numpy as np
 import pyopencl as cl
 import os

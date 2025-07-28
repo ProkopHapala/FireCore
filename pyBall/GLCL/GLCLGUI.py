@@ -11,9 +11,13 @@ from OpenGL.GL import (
     glGenVertexArrays, glBindVertexArray, glVertexAttribPointer, glEnableVertexAttribArray, GL_FLOAT,
     glBufferSubData, glDrawArrays, GL_POINTS, GL_PROGRAM_POINT_SIZE
 )
+import OpenGL.GL as GL
 
 from .OGLsystem import GLobject, Mesh, InstancedData, compile_shader_program, create_sphere_mesh # Import necessary OpenGL utilities
 from .OCLsystem import OCLSystem # Import OpenCL system
+
+#print("GL_VERSION =",   GL.glGetString(GL.GL_VERSION).decode())
+#print("GLSL_VERSION =", GL.glGetString(GL.GL_SHADING_LANGUAGE_VERSION).decode())
 
 class GLCLWidget(QOpenGLWidget):
     def __init__(self, parent=None):
@@ -31,8 +35,11 @@ class GLCLWidget(QOpenGLWidget):
         self.setFocusPolicy(Qt.StrongFocus)
         self.gl_vbo = 0
         self.vao = 0
-        self.particle_count = 0
-        self.positions = None
+        # Dynamic buffer registry
+        self.gl_objects = {}  # Dictionary mapping buffer names to GLobject instances
+        self.render_pipeline_info = []  # List of render pass configurations
+        self.buffer_data = {}  # Buffer data for deferred GLobject creation
+        self.current_element_count = 0
 
         self.color_loc = None
         self.model_loc = None
@@ -47,42 +54,101 @@ class GLCLWidget(QOpenGLWidget):
     def set_shader_program(self, program):
         self.shader_program = program
 
-    def set_particle_data(self, positions, particle_count):
-        self.positions = positions
-        self.particle_count = particle_count
-        self.update() # Trigger a repaint, VBO setup will happen in initializeGL or update_particle_vbo
+    def set_buffer_data(self, buffer_data, render_pipeline_info):
+        """Set buffer data and render pipeline for baking GLobjects."""
+        self.buffer_data = buffer_data
+        self.render_pipeline_info = render_pipeline_info
+        # GLobjects will be baked in initializeGL
 
-    def setup_particle_vbo(self):
-        if self.gl_vbo == 0:
-            self.gl_vbo = glGenBuffers(1)
-        glBindBuffer(GL_ARRAY_BUFFER, self.gl_vbo)
-        glBufferData(GL_ARRAY_BUFFER, self.positions.nbytes, self.positions, GL_DYNAMIC_DRAW)
+    def bake_render_objects(self):
+        """Bake GLobjects for each render pass during setup."""
+        print("GLCLWidget::bake_render_objects() Starting baking process...")
+        print(f"GLCLWidget::bake_render_objects() render_pipeline_info: {self.render_pipeline_info}")
+        print(f"GLCLWidget::bake_render_objects() buffer_data keys: {list(self.buffer_data.keys())}")
+        
+        self.render_objects = []  # Pre-baked GLobjects ready for drawing
+        
+        if not self.render_pipeline_info:
+            print("GLCLWidget::bake_render_objects() ERROR: No render_pipeline_info available")
+            return
+            
+        print(f"GLCLWidget::bake_render_objects() Number of render passes: {len(self.render_pipeline_info)}")
+        
+        for i, render_pass in enumerate(self.render_pipeline_info):
+            print(f"GLCLWidget::bake_render_objects() Processing render pass {i}: {render_pass}")
+            
+            if len(render_pass) < 3:
+                print(f"GLCLWidget::bake_render_objects() ERROR: Invalid render pass format: {render_pass}")
+                continue
+                
+            shader_name, element_count_name, vertex_buffer_name, index_buffer_name = render_pass
+            
+            print(f"GLCLWidget::bake_render_objects() shader_name: {shader_name}")
+            print(f"GLCLWidget::bake_render_objects() vertex_buffer_name: {vertex_buffer_name}")
+            
+            # Load shader if sources are available but not loaded yet
+            shader_program = self.ogl_system.get_shader_program(shader_name)
+            if not shader_program and hasattr(self, 'vertex_shader_src') and hasattr(self, 'fragment_shader_src'):
+                print(f"GLCLWidget::bake_render_objects() Loading shader '{shader_name}' into OGLSystem...")
+                self.ogl_system.load_shader_program(shader_name, self.vertex_shader_src, self.fragment_shader_src)
+                shader_program = self.ogl_system.get_shader_program(shader_name)
+            
+            if not shader_program:
+                print(f"GLCLWidget::bake_render_objects() ERROR: Shader program '{shader_name}' not found")
+                print(f"GLCLWidget::bake_render_objects() Available shaders: {list(self.ogl_system.shader_programs.keys())}")
+                continue
+                
+            print(f"GLCLWidget::bake_render_objects() Found shader program: {shader_program}")
+            
+            # Get vertex buffer data
+            if vertex_buffer_name not in self.buffer_data:
+                print(f"GLCLWidget::bake_render_objects() ERROR: Vertex buffer '{vertex_buffer_name}' not found")
+                print(f"GLCLWidget::bake_render_objects() Available buffers: {list(self.buffer_data.keys())}")
+                continue
+                
+            buffer_info = self.buffer_data[vertex_buffer_name]
+            if buffer_info['data'] is None:
+                print(f"GLCLWidget::bake_render_objects() ERROR: Vertex buffer '{vertex_buffer_name}' has no data")
+                continue
+            
+            print(f"GLCLWidget::bake_render_objects() Creating GLobject for buffer '{vertex_buffer_name}' with {buffer_info['nelements']} elements")
+            
+            # Create pre-configured GLobject
+            components = [buffer_info['components']]
+            gl_obj = GLobject(
+                components=components,
+                nelements=buffer_info['nelements'],
+                mode=GL_POINTS
+            )
+            
+            # Upload data and set up VAO/VBO
+            gl_obj.upload_vbo(buffer_info['data'])
+            gl_obj.alloc_vao_vbo_ebo(components)
+            
+            # Store shader program for drawing
+            gl_obj.shader_program = shader_program
+            
+            self.render_objects.append(gl_obj)
+            print(f"GLCLWidget::bake_render_objects() SUCCESS: Baked GLobject #{len(self.render_objects)} for render pass '{shader_name}' with {buffer_info['nelements']} elements")
 
-        if self.vao == 0:
-            self.vao = glGenVertexArrays(1)
-        glBindVertexArray(self.vao)
-        glBindBuffer(GL_ARRAY_BUFFER, self.gl_vbo)
-        glVertexAttribPointer(0, 4, GL_FLOAT, GL_FALSE, 0, None)
-        glEnableVertexAttribArray(0)
-        glBindVertexArray(0)
-
-    def update_particle_vbo(self, new_positions):
-        self.positions = new_positions
-        if self.gl_vbo != 0: # Only update if VBO is valid
-            glBindBuffer(GL_ARRAY_BUFFER, self.gl_vbo)
-            glBufferSubData(GL_ARRAY_BUFFER, 0, self.positions.nbytes, self.positions)
-            glBindBuffer(GL_ARRAY_BUFFER, 0)
+    def update_buffer_data(self, buffer_name, new_data):
+        """Update buffer data for a specific buffer."""
+        if buffer_name in self.gl_objects and new_data is not None:
+            gl_obj = self.gl_objects[buffer_name]
+            gl_obj.upload_vbo(new_data.astype(np.float32))
+            gl_obj.nelements = len(new_data)
+            if new_data.ndim > 1:
+                gl_obj.components = new_data.shape[1]
+            else:
+                gl_obj.components = 1
 
     def initializeGL(self):
         glClearColor(0.1, 0.1, 0.1, 1.0)
         glEnable(GL_DEPTH_TEST)
-
-        # Initialize OGLSystem and OCLSystem here or pass them in
-        if self.ogl_system is None:
-            print("Warning: OGLSystem not provided. Some functionality may be limited.")
+        glEnable(GL_PROGRAM_POINT_SIZE)
         
-        if self.ocl_system is None:
-            print("Warning: OCLSystem not provided. Some functionality may be limited.")
+        # Initial camera and projection setup
+        self.update_matrices()
 
         # Load shaders after OpenGL context is ready
         if hasattr(self, 'vertex_shader_src') and hasattr(self, 'fragment_shader_src'):
@@ -99,20 +165,22 @@ class GLCLWidget(QOpenGLWidget):
         # Initial camera and projection setup
         self.update_matrices()
 
-        # Setup particle VBO here, after OpenGL context is ready
-        if self.positions is not None and self.particle_count > 0:
-            self.setup_particle_vbo()
-
     def paintGL(self):
-        glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT)
-
-        if self.shader_program and self.vao and self.particle_count > 0:
-            glUseProgram(self.shader_program)
-            self.update_matrices()
-            glBindVertexArray(self.vao)
-            glEnable(GL_PROGRAM_POINT_SIZE)
-            glDrawArrays(GL_POINTS, 0, self.particle_count)
-            glBindVertexArray(0)
+        """Render the scene using pre-baked GLobjects."""
+        if not self.render_objects:
+            print("GLCLWidget::paintGL() No pre-baked render objects available")
+            return
+        print(f"GLCLWidget::paintGL() Drawing {len(self.render_objects)} pre-baked GLobjects")
+        
+        # Simple iteration over pre-baked GLobjects
+        for gl_obj in self.render_objects:
+            if gl_obj.nelements > 0:
+                # Use pre-baked configuration
+                glUseProgram(gl_obj.shader_program)
+                glBindVertexArray(gl_obj.vao)
+                glDrawArrays(GL_POINTS, 0, gl_obj.nelements)
+                glBindVertexArray(0)
+                glUseProgram(0)
 
     def resizeGL(self, width, height):
         glViewport(0, 0, width, height)

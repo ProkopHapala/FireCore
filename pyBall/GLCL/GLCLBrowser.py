@@ -16,18 +16,18 @@ from .OGLsystem import OGLSystem
 class BakedKernelCall:
     """Encapsulates a pre-baked OpenCL kernel call with all parameters resolved."""
     
-    def __init__(self, ocl_system, kernel_name, kernel_obj, global_size_resolver, local_size, arg_infos):
+    def __init__(self, ocl_system, kernel_name, kernel_obj, global_size, local_size, arg_infos):
         self.ocl_system = ocl_system
         self.kernel_name = kernel_name
         self.kernel_obj = kernel_obj
-        self.global_size_resolver = global_size_resolver
+        self.global_size = global_size  # Already-resolved tuple
         self.local_size = local_size
         self.arg_infos = arg_infos  # List of (param_name, is_buffer, type_hint)
 
     def execute(self):
         """Execute the kernel with current parameters."""
         try:
-            global_size = self.global_size_resolver()
+            global_size = self.global_size
             
             # Prepare arguments for kernel execution
             kernel_args = []
@@ -44,18 +44,21 @@ class BakedKernelCall:
                     else:
                         kernel_args.append(param_value)
 
-            self.ocl_system.execute_kernel_with_args(
-                self.kernel_obj, global_size, self.local_size, kernel_args
+            # Use OCLSystem's execute_kernel method with correct program name
+            # Program name is derived from source file name (without extension)
+            program_name = "nbody"  # This matches the actual .cl file name
+            self.ocl_system.execute_kernel(
+                program_name, self.kernel_name, global_size, self.local_size, kernel_args
             )
         except Exception as e:
             print(f"Error executing kernel {self.kernel_name}: {e}")
-            raise
+            self.on_exception(e)
 
 
 class GLCLBrowser(BaseGUI):
     """Main browser class for loading and executing scientific simulation scripts."""
     
-    def __init__(self, python_script_path=None):
+    def __init__(self, python_script_path=None, bDebugCL=False, bDebugGL=False, nDebugFrames=5):
         super().__init__()
         self.setWindowTitle("GLCL Browser - Scientific Simulation Framework")
         self.setGeometry(100, 100, 1600, 900)
@@ -64,12 +67,24 @@ class GLCLBrowser(BaseGUI):
         self.ogl_system = OGLSystem()
         self.ocl_system = OCLSystem()
         
+        # Debug flags
+        self.bDebugCL = bDebugCL
+        self.bDebugGL = bDebugGL
+        self.nDebugFrames = nDebugFrames
+        self.debug_frame_counter = 0
+
         # Runtime state
         self.current_script = None
         self.current_config = None
         self.baked_kernel_calls = []
         self.sim_params = {}
         self.param_widgets = {}
+        self.buffer_shapes = {}
+        
+        # Dynamic buffer management
+        self.gl_objects = {}  # Dictionary mapping buffer names to GLobject instances
+        self.render_pipeline_info = []  # List of (shader_name, element_count_name, vertex_buffer_name, index_buffer_name)
+        self.buffer_data = {}  # Dictionary storing buffer data for deferred GLobject creation
         
         # Create main widget and layout
         self.main_widget = QWidget()
@@ -160,13 +175,11 @@ class GLCLBrowser(BaseGUI):
             self.current_config = config
             
             self.apply_simulation_config(config, init_func=init_func, script_path=script_path)
-            print(f"Successfully loaded simulation script: {script_path}")
+            print(f"GLCLBrowser::load_and_apply_script() Successfully loaded simulation script: {script_path}")
             
         except Exception as e:
-            print(f"Error loading script {script_path}: {e}")
-            import traceback
-            traceback.print_exc()
-            print(f"Error loading simulation script {script_path}: {e}")
+            print(f"GLCLBrowser::load_and_apply_script() Error loading script {script_path}: {e}")
+            self.on_exception(e)
 
     def load_simulation_script(self):
         """Load a simulation script via file dialog."""
@@ -189,6 +202,7 @@ class GLCLBrowser(BaseGUI):
         # Clear previous state
         self.baked_kernel_calls.clear()
         self.ocl_system.clear_buffers()
+        self.param_widgets.clear()
         
         # Setup parameter controls
         self.create_parameter_controls(config)
@@ -208,8 +222,39 @@ class GLCLBrowser(BaseGUI):
         # Bake kernels for execution
         self.bake_kernels(config)
         
-        # Configure GLCL widget
-        self.glcl_widget.set_config(config)
+        # Print summary of baked kernels and buffers before starting runtime loop
+        print("GLCLBrowser::apply_simulation_config() Buffers:")
+        for b, shp in self.buffer_shapes.items():
+            print(f"  {b}: shape {shp}")
+        print("GLCLBrowser::apply_simulation_config() Baked Kernels:")
+        for kc in self.baked_kernel_calls:
+            print(f"  {kc.kernel_name}: global_size={kc.global_size}, local_size={kc.local_size}")
+        print("=====================")
+
+        # Configure GLCL widget - use available methods
+        if "opengl_shaders" in config:
+            shaders_config = config["opengl_shaders"]
+            for shader_name, shader_info in shaders_config.items():
+                vertex_file, fragment_file, uniforms = shader_info
+                vertex_path = os.path.join(script_dir, vertex_file)
+                fragment_path = os.path.join(script_dir, fragment_file)
+                
+                if os.path.exists(vertex_path) and os.path.exists(fragment_path):
+                    with open(vertex_path, 'r') as f:
+                        vertex_src = f.read()
+                    with open(fragment_path, 'r') as f:
+                        fragment_src = f.read()
+                    
+                    self.glcl_widget.set_shader_sources(shader_name, vertex_src, fragment_src)
+                    print(f"Loaded shader: {shader_name}")
+                else:
+                    print(f"Warning: Shader files not found: {vertex_path}, {fragment_path}")
+        
+        # Create dynamic buffer registry from user script data
+        self._create_dynamic_buffer_registry()
+        
+        # Now that shaders are loaded, trigger baking of render objects
+        self.glcl_widget.bake_render_objects()
         
         # Start simulation if not already running
         if not self.simulation_running:
@@ -217,49 +262,104 @@ class GLCLBrowser(BaseGUI):
 
     def init_simulation_data(self, config, init_func=None, script_dir="."):
         """Initialize simulation data using init function or defaults."""
-        parameters = config.get("parameters", {})
-        buffers_config = config.get("buffers", {})
+        print("=== init_simulation_data called ===")
+        print(f"config type: {type(config)}")
+        print(f"config keys: {list(config.keys())}")
+        print(f"full config: {config}")
         
-        # Initialize buffers
-        for buffer_name, buffer_info in buffers_config.items():
-            size_expr, stride, dtype_str = buffer_info
-            
-            # Resolve size expression
-            if isinstance(size_expr, str) and size_expr in parameters:
-                size = parameters[size_expr][0]
-            else:
-                size = int(size_expr)
-            
-            # Create numpy array
-            if dtype_str == "f4":
-                data = np.zeros((size, stride), dtype=np.float32)
-            elif dtype_str == "f8":
-                data = np.zeros((size, stride), dtype=np.float64)
-            elif dtype_str == "i4":
-                data = np.zeros((size, stride), dtype=np.int32)
-            else:
-                data = np.zeros((size, stride), dtype=np.float32)
-            
-            # Use init function data if available
-            if init_func:
+        # Get buffer configuration
+        buffers_config = config.get("buffers", {})
+        parameters = config.get("parameters", {})
+        
+        print(f"GLCLBrowser::init_simulation_data() buffers_config: {buffers_config}")
+        print(f"GLCLBrowser::init_simulation_data() parameters: {parameters}")
+        print(f"GLCLBrowser::init_simulation_data() parameters type: {type(parameters)}")
+        
+        # Initialize data dictionary
+        data = {}
+        self.init_data = {}  # Store for later use
+        
+        # Call init function if provided
+        if init_func is not None:
+            try:
+                print("Calling init function...")
                 init_data = init_func()
-                if buffer_name in init_data:
-                    data = init_data[buffer_name]
-            
-            # Create OpenCL buffer
-            self.ocl_system.create_buffer(buffer_name, data)
+                print(f"init_data returned: {type(init_data)} {init_data}")
+                if init_data:
+                    data.update(init_data)
+                    self.init_data.update(init_data)  # Store for GLCLWidget
+            except Exception as e:
+                self.on_exception(e)
+        
+        # Create buffers based on configuration
+        for buffer_name, buffer_info in buffers_config.items():
+            print(f"GLCLBrowser::init_simulation_data() Processing buffer {buffer_name}: {buffer_info}")
+            if len(buffer_info) == 3:
+                size_expr, stride, dtype = buffer_info
+                
+                print(f"GLCLBrowser::init_simulation_data() size_expr: {size_expr} (type: {type(size_expr)})")
+                print(f"GLCLBrowser::init_simulation_data() parameters accessible: {list(parameters.keys())}")
+                
+                # Resolve size expression
+                if isinstance(size_expr, str):
+                    if size_expr in parameters:
+                        param_value = parameters[size_expr]
+                        print(f"Found parameter {size_expr}: {param_value} (type: {type(param_value)})")
+                        if isinstance(param_value, tuple) and len(param_value) >= 1:
+                            size = param_value[0]
+                        else:
+                            size = param_value
+                    else:
+                        print(f"GLCLBrowser::init_simulation_data() ERROR: Parameter {size_expr} not found in parameters")
+                        raise KeyError(f"Parameter {size_expr} not found")
+                else:
+                    size = int(size_expr)
+                
+                print(f"GLCLBrowser::init_simulation_data() Resolved size: {size} (type: {type(size)})")
+                
+                # Create buffer data
+                if buffer_name not in data:
+                    if dtype == "f4":
+                        data[buffer_name] = np.zeros((size, stride), dtype=np.float32)
+                    elif dtype == "f8":
+                        data[buffer_name] = np.zeros((size, stride), dtype=np.float64)
+                    else:
+                        data[buffer_name] = np.zeros((size, stride), dtype=np.float32)
+                
+                print(f"GLCLBrowser::init_simulation_data() Creating buffer {buffer_name} with shape {data[buffer_name].shape}")
+                
+                # Create buffer and upload data to OpenCL
+                buffer_size = data[buffer_name].nbytes
+                print(f"GLCLBrowser::init_simulation_data() Buffer size in bytes: {buffer_size}")
+                self.ocl_system.create_buffer(buffer_name, buffer_size)
+                self.ocl_system.toGPU(buffer_name, data[buffer_name])
+                
+                print(f"GLCLBrowser::init_simulation_data() Successfully created buffer {buffer_name}: {data[buffer_name].shape}")
+                self.buffer_shapes[buffer_name] = data[buffer_name].shape
+                
+                # Store data for potential GLCLWidget use
+                if buffer_name not in self.init_data:
+                    self.init_data[buffer_name] = data[buffer_name]
 
     def setup_opencl_system(self, config, script_dir="."):
         """Setup OpenCL system based on configuration."""
         # Load OpenCL programs
         opencl_sources = config.get("opencl_source", [])
+        print(f"GLCLBrowser::setup_opencl_system() OpenCL sources: {opencl_sources}")
+        print(f"GLCLBrowser::setup_opencl_system() Script directory: {script_dir}")
+        
         for source_file in opencl_sources:
             filepath = os.path.join(script_dir, source_file)
+            print(f"GLCLBrowser::setup_opencl_system() Loading OpenCL program from: {filepath}")
+            
             if os.path.exists(filepath):
                 program_name = os.path.splitext(os.path.basename(source_file))[0]
+                print(f"GLCLBrowser::setup_opencl_system() Loading program '{program_name}' from {filepath}")
                 self.ocl_system.load_program(program_name, filepath)
+                print(f"GLCLBrowser::setup_opencl_system() Programs now loaded: {list(self.ocl_system.programs.keys())}")
             else:
                 print(f"Warning: OpenCL source file not found: {filepath}")
+                print(f"GLCLBrowser::setup_opencl_system() Current directory contents: {os.listdir(script_dir)}")
 
     def setup_opengl_system(self, config, script_dir="."):
         """Setup OpenGL system based on configuration."""
@@ -270,17 +370,20 @@ class GLCLBrowser(BaseGUI):
             vertex_path = os.path.join(script_dir, vertex_file)
             fragment_path = os.path.join(script_dir, fragment_file)
             
-            if os.path.exists(vertex_path) and os.path.exists(fragment_path):
-                with open(vertex_path, 'r') as f:
-                    vertex_src = f.read()
-                with open(fragment_path, 'r') as f:
-                    fragment_src = f.read()
-                
-                self.ogl_system.load_shader_program(
-                    shader_name, vertex_path, fragment_path, uniforms
-                )
-            else:
-                print(f"Warning: Shader files not found: {vertex_path}, {fragment_path}")
+            try:
+                if os.path.exists(vertex_path) and os.path.exists(fragment_path):
+                    with open(vertex_path, 'r') as f:
+                        vertex_src = f.read()
+                    with open(fragment_path, 'r') as f:
+                        fragment_src = f.read()
+                    # Defer shader compilation until the OpenGL context is ready (handled in GLCLWidget.initializeGL)
+                    # Simply cache the sources here in the GLCLWidget – they will be compiled once the context exists.
+                    self.glcl_widget.set_shader_sources(shader_name, vertex_src, fragment_src)
+                    print(f"Cached shader sources for: {shader_name}")
+                else:
+                    print(f"Warning: Shader files not found: {vertex_path}, {fragment_path}")
+            except Exception as e:
+                self.on_exception(e)
 
     def bake_kernels(self, config):
         """Bake OpenCL kernels for efficient execution."""
@@ -288,40 +391,44 @@ class GLCLBrowser(BaseGUI):
         pipeline = config.get("kernel_pipeline", [])
         parameters = config.get("parameters", {})
         
+        print(f"GLCLBrowser::bake_kernels() Baking kernels with config: {config}")
+        print(f"GLCLBrowser::bake_kernels() Parameters: {parameters}")
+        print(f"GLCLBrowser::bake_kernels() Kernels: {kernels_config}")
+        print(f"GLCLBrowser::bake_kernels() Pipeline: {pipeline}")
+        
         self.baked_kernel_calls.clear()
         
         for kernel_name in pipeline:
             if kernel_name in kernels_config:
                 kernel_info = kernels_config[kernel_name]
+                print(f"GLCLBrowser::bake_kernels() Processing kernel {kernel_name} with info: {kernel_info}")
                 local_size, global_size_expr, buffer_names, param_names = kernel_info
-                
-                # Get kernel object
-                kernel_obj = self.ocl_system.get_kernel(kernel_name)
-                if kernel_obj is None:
-                    print(f"Warning: Kernel '{kernel_name}' not found")
-                    continue
                 
                 # Build argument information
                 arg_infos = []
                 for buf_name in buffer_names:
                     arg_infos.append((buf_name, True, None))
                 for param_name in param_names:
-                    param_info = parameters.get(param_name, [None, "float", 0])
-                    arg_infos.append((param_name, False, param_info[1]))
+                    if param_name in parameters:
+                        param_info = parameters[param_name]
+                        arg_infos.append((param_name, False, param_info[1]))
+                    else:
+                        print(f"Warning: Parameter '{param_name}' not found, using float")
+                        arg_infos.append((param_name, False, "float"))
                 
                 # Create global size resolver
-                def make_global_resolver(expr):
-                    return lambda: self._resolve_global_size(expr, parameters)
-                
+                # Resolve global size once during baking
+                resolved_gs = self._resolve_global_size(global_size_expr, parameters)
                 baked_call = BakedKernelCall(
-                    self.ocl_system, kernel_name, kernel_obj,
-                    make_global_resolver(global_size_expr), local_size, arg_infos
+                    self.ocl_system, kernel_name, kernel_name,
+                    resolved_gs, local_size, arg_infos
                 )
                 
                 self.baked_kernel_calls.append(baked_call)
 
     def _resolve_global_size(self, size_expr, parameters):
         """Resolve global size expression to actual integer."""
+        print(f"GLCLBrowser::_resolve_global_size() Resolving global size '{size_expr}' with parameters: {parameters}")
         if isinstance(size_expr, (list, tuple)):
             resolved = []
             for item in size_expr:
@@ -329,21 +436,95 @@ class GLCLBrowser(BaseGUI):
                     resolved.append(parameters[item][0])
                 else:
                     resolved.append(int(item))
-            return tuple(resolved)
+            result = tuple(resolved)
+            print(f"GLCLBrowser::_resolve_global_size() Resolved global size {size_expr} -> {result}")
+            return result
         elif isinstance(size_expr, str) and size_expr in parameters:
-            return parameters[size_expr][0]
+            result_val = parameters[size_expr][0]
+            result = (result_val,) if isinstance(result_val, int) else tuple(result_val)
+            print(f"GLCLBrowser::_resolve_global_size() Resolved global size {size_expr} -> {result}")
+            return result
         else:
-            return int(size_expr)
+            result_val = int(size_expr)
+            result = (result_val,)
+            print(f"GLCLBrowser::_resolve_global_size() Resolved global size {size_expr} -> {result}")
+            return result
+
+    def create_parameter_controls(self, config):
+        """Create GUI controls for simulation parameters."""
+        # Clear existing controls
+        for i in reversed(range(self.params_layout.count())):
+            item = self.params_layout.itemAt(i)
+            if item.widget():
+                item.widget().setParent(None)
+        self.param_widgets.clear()
+        
+        parameters = config.get("parameters", {})
+        for param_name, param_info in parameters.items():
+            if len(param_info) == 3:
+                value, type_str, step = param_info
+            else:
+                continue
+                
+            if type_str == "int":
+                # Create integer input
+                from PyQt5.QtWidgets import QSpinBox, QLabel, QHBoxLayout, QWidget
+                container = QWidget()
+                layout = QHBoxLayout(container)
+                layout.setContentsMargins(0, 0, 0, 0)
+                
+                label = QLabel(param_name)
+                widget = QSpinBox()
+                widget.setRange(-1000000, 1000000)
+                widget.setValue(int(value))
+                widget.setSingleStep(int(step))
+                
+                layout.addWidget(label)
+                layout.addWidget(widget)
+                self.params_layout.addWidget(container)
+                
+            elif type_str == "float":
+                # Create float input
+                from PyQt5.QtWidgets import QDoubleSpinBox, QLabel, QHBoxLayout, QWidget
+                container = QWidget()
+                layout = QHBoxLayout(container)
+                layout.setContentsMargins(0, 0, 0, 0)
+                
+                label = QLabel(param_name)
+                widget = QDoubleSpinBox()
+                widget.setRange(-1000000.0, 1000000.0)
+                widget.setValue(float(value))
+                widget.setSingleStep(float(step))
+                widget.setDecimals(4)
+                
+                layout.addWidget(label)
+                layout.addWidget(widget)
+                self.params_layout.addWidget(container)
+            else:
+                continue
+                
+            self.param_widgets[param_name] = widget
+            
+            # Connect value changes
+            if hasattr(widget, 'valueChanged'):
+                if type_str == "int":
+                    widget.valueChanged.connect(
+                        lambda v, p=param_name: self.ocl_system.set_kernel_param(p, np.int32(v))
+                    )
+                elif type_str == "float":
+                    widget.valueChanged.connect(
+                        lambda v, p=param_name: self.ocl_system.set_kernel_param(p, np.float32(v))
+                    )
 
     def toggle_simulation(self):
         """Toggle simulation running state."""
         self.simulation_running = not self.simulation_running
         if self.simulation_running:
             self.sim_timer.start(16)  # ~60 FPS
-            print("Simulation started")
+            print("GLCLBrowser::toggle_simulation() Simulation started")
         else:
             self.sim_timer.stop()
-            print("Simulation paused")
+            print("GLCLBrowser::toggle_simulation() Simulation paused")
 
     def reset_simulation(self):
         """Reset simulation to initial state."""
@@ -353,22 +534,43 @@ class GLCLBrowser(BaseGUI):
 
     def update_simulation(self):
         """Main simulation update loop."""
+        self.debug_frame_counter += 1
         try:
             # Update parameters from GUI
             self.update_sim_uniforms()
-            
-            # Execute baked kernel calls
-            for kernel_call in self.baked_kernel_calls:
-                kernel_call.execute()
+            # Execute baked kernel calls unless GL debugging is on
+            if not self.bDebugGL:
+                for kernel_call in self.baked_kernel_calls:
+                    kernel_call.execute()
+                    # If CL debugging, print buffer snapshots
+                    if self.bDebugCL:
+                        for buf_name in self.buffer_shapes.keys():
+                            host = np.empty(self.buffer_shapes[buf_name], dtype=np.float32)
+                            self.ocl_system.fromGPU(buf_name, host)
+                            print(f"[Frame {self.debug_frame_counter}] Buffer '{buf_name}':\n{host[:5] if host.size>20 else host}")
                 
-            # Update OpenGL visualization
-            self.glcl_widget.update()
+            # Update OpenGL visualization if not CL-only debug
+            if not self.bDebugCL:
+                self.glcl_widget.update()
             
+            if self.debug_frame_counter >= self.nDebugFrames:
+                self.simulation_running = False
+                self.sim_timer.stop()
+                print("debug_frame_counter reached nDebugFrames: {self.nDebugFrames}")
+                exit()
+
         except Exception as e:
-            print(f"Simulation error: {e}")
-            import traceback
-            traceback.print_exc()
-            self.simulation_running = False
+            self.on_exception(e)
+
+
+
+    def on_exception(self, e):
+        print(f"Simulation error: {e}")
+        import traceback
+        traceback.print_exc()
+        self.simulation_running = False
+        self.sim_timer.stop()
+        os._exit(1)  # Forcefully terminate to avoid PyQt swallowing exceptions
 
     def update_sim_uniforms(self):
         """Update simulation uniforms based on current parameters."""
@@ -389,7 +591,65 @@ class GLCLBrowser(BaseGUI):
                 elif type_str == "float":
                     self.ocl_system.set_kernel_param(param_name, np.float32(value))
 
-
+    def _create_dynamic_buffer_registry(self):
+        """Create dynamic buffer registry from user script data."""
+        if not self.current_config:
+            return
+            
+        print("Creating dynamic buffer registry...")
+        
+        # Clear existing registry
+        self.gl_objects.clear()
+        self.render_pipeline_info.clear()
+        
+        # Collect all buffer names from user script
+        buffer_names = set()
+        
+        # 1. Get buffer names from buffers configuration
+        buffers_config = self.current_config.get('buffers', {})
+        buffer_names.update(buffers_config.keys())
+        
+        # 2. Get buffer names from render pipeline
+        render_pipeline = self.current_config.get('render_pipeline', [])
+        for render_pass in render_pipeline:
+            if len(render_pass) >= 3:
+                shader_name, element_count_name, vertex_buffer_name, index_buffer_name = render_pass
+                if vertex_buffer_name:
+                    buffer_names.add(vertex_buffer_name)
+                if index_buffer_name:
+                    buffer_names.add(index_buffer_name)
+                self.render_pipeline_info.append(render_pass)
+        
+        # 3. Get buffer names from init_data
+        if hasattr(self, 'init_data') and self.init_data:
+            buffer_names.update(self.init_data.keys())
+        
+        print(f"Found buffer names: {list(buffer_names)}")
+        
+        # Create GLobject for each buffer
+        from .OGLsystem import GLobject
+        
+        for buffer_name in buffer_names:
+            # Get data for this buffer
+            data = None
+            if hasattr(self, 'init_data') and self.init_data:
+                data = self.init_data.get(buffer_name)
+            
+                # Store buffer data for later GLobject creation
+            if data is not None:
+                print(f"Storing buffer data for '{buffer_name}': shape={data.shape}")
+                self.buffer_data[buffer_name] = {
+                    'data': data.astype(np.float32),
+                    'nelements': len(data),
+                    'components': 1 if data.ndim == 1 else data.shape[1]
+                }
+            else:
+                self.buffer_data[buffer_name] = {'data': None, 'nelements': 0, 'components': 3}
+        
+        # Pass buffer data to GLCLWidget for deferred GLobject creation
+        self.glcl_widget.set_buffer_data(self.buffer_data, self.render_pipeline_info)
+        
+        print(f"Dynamic buffer registry created with {len(self.gl_objects)} buffers")
 
     
     # Main entry point for the application
@@ -401,7 +661,8 @@ if __name__ == '__main__':
     default_script = os.path.join(current_dir, "scripts", "nbody.py")
     
     # Create and show browser
-    browser = GLCLBrowser(python_script_path=default_script)
+    #browser = GLCLBrowser(python_script_path=default_script, bDebugCL=False, bDebugGL=True, nDebugFrames=5)
+    browser = GLCLBrowser(python_script_path=default_script, nDebugFrames=3 )
     browser.show()
     
     sys.exit(app.exec_())

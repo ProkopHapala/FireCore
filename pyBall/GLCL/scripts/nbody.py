@@ -14,15 +14,15 @@ config = {
         "velocities": ( "particle_count", 4, "f4")
     },
     # --- simulation (OpenCL)
-    "opencl_source": ["nbody_sim.cl"],
+    "opencl_source": ["../cl/nbody.cl"],
     "kernels": {
         #               local_size, global_size     buffers                    parameters
-        "nbody_sim" : ( (32,), ("particle_count"), ["positions", "velocities"], ["dt"] ) 
+        "nbody_sim" : ( (32,), ("particle_count"), ["positions", "velocities"], ["dt", "particle_count"] ) 
     },
     "kernel_pipeline": ["nbody_sim"],
     "opengl_shaders": {
-        #               vertex,            fragment           uniforms
-        "nbody_render" : ("points.glslv", "monocolor.glslf", ["positions"])
+        #                           vertex,                   fragment              uniforms              
+        "nbody_render" : ("../shaders/points.glslv", "../shaders/monocolor.glslf",  ["color"])
     }, 
     # --- rendering (OpenGL)
     "render_pipeline":   [
@@ -32,9 +32,9 @@ config = {
 }
 
 def init():
-    particle_count = config["particle_count"]
+    particle_count = config["parameters"]["particle_count"][0]  # Get actual value from tuple
     positions      = np.random.rand(particle_count, 4) * 2 - 1
-    velocities     = np.random.rand(particle_count, 4) * 0.1
+    velocities     = np.random.rand(particle_count, 4) * 0.0
     return {
         "positions":  positions.astype(np.float32),
         "velocities": velocities.astype(np.float32)
