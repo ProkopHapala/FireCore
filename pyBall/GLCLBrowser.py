@@ -30,7 +30,7 @@ class GLCLBrowser(BaseGUI):
 
         self.param_widgets = {} # Initialize param_widgets
 
-        control_panel = QtWidgets.QWidget()
+        control_panel  = QtWidgets.QWidget()
         control_layout = QtWidgets.QVBoxLayout()
         control_panel.setLayout(control_layout)
         control_layout.setAlignment(Qt.AlignTop)
@@ -115,8 +115,8 @@ class GLCLBrowser(BaseGUI):
                 with open(vertex_filepath, 'r') as f: vertex_src = f.read()
                 with open(fragment_filepath, 'r') as f: fragment_src = f.read()
                 
-                self.ogl_system.load_shader_program(name, vertex_src, fragment_src)
-                self.glcl_widget.set_shader_program(self.ogl_system.get_shader_program(name)) # Pass the program to the widget
+                # Store shader sources in the widget for deferred loading
+                self.glcl_widget.set_shader_sources(name, vertex_src, fragment_src)
 
         # Initialize particle data and buffers
         particle_count = int(self.param_widgets["particle_count"].value()) if "particle_count" in self.param_widgets else 2048
@@ -192,8 +192,8 @@ class GLCLBrowser(BaseGUI):
 if __name__ == '__main__':
 
     # run like this:
-    #  python -u -m pyBall.GUI.GLCLBrowser
-    #  __NV_PRIME_RENDER_OFFLOAD=1 __GLX_VENDOR_LIBRARY_NAME=nvidia python -u -m pyBall.GUI.GLCLBrowser
+    #  python -u -m pyBall.GLCLBrowser
+    #  __NV_PRIME_RENDER_OFFLOAD=1 __GLX_VENDOR_LIBRARY_NAME=nvidia python -u -m pyBall.GLCLBrowser
     
     app = QApplication(sys.argv)
     json_path = os.path.join(os.path.dirname(__file__), "nbody_simulation.json")

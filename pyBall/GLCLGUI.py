@@ -29,6 +29,11 @@ class GLCLWidget(QOpenGLWidget):
         self.particle_count = 0
         self.positions = None
 
+    def set_shader_sources(self, name, vertex_src, fragment_src):
+        self.shader_name = name
+        self.vertex_shader_src = vertex_src
+        self.fragment_shader_src = fragment_src
+
     def set_shader_program(self, program):
         self.shader_program = program
 
@@ -71,6 +76,14 @@ class GLCLWidget(QOpenGLWidget):
         
         if self.ocl_system is None:
             print("Warning: OCLSystem not provided. Some functionality may be limited.")
+
+        # Load shaders after OpenGL context is ready
+        if hasattr(self, 'vertex_shader_src') and hasattr(self, 'fragment_shader_src'):
+            print(f"Loading shader: {self.shader_name}")
+            self.ogl_system.load_shader_program(self.shader_name, self.vertex_shader_src, self.fragment_shader_src)
+            self.shader_program = self.ogl_system.get_shader_program(self.shader_name)
+        else:
+            print("Warning: Shader sources not provided to GLCLWidget.")
 
         # Initial camera and projection setup
         self.update_matrices()

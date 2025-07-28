@@ -45,6 +45,7 @@ class OCLSystem:
         self.queue = cl.CommandQueue(self.ctx)
         self.programs = {}
         self.buffers = {}
+        self.kernels = {} # Cache for kernel objects
         self.kernel_headers = {}
         self.kernel_params = {}
 
@@ -230,7 +231,10 @@ class OCLSystem:
             raise ValueError(f"Program '{program_name}' not loaded.")
         
         prg = self.programs[program_name]
-        kernel = getattr(prg, kernel_name)
+        # Retrieve kernel from cache or create if not exists
+        if kernel_name not in self.kernels:
+            self.kernels[kernel_name] = getattr(prg, kernel_name)
+        kernel = self.kernels[kernel_name]
 
         if args is None:
             args = self.get_kernel_args(program_name, kernel_name)
