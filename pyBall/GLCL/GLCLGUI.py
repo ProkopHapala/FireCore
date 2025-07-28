@@ -190,8 +190,8 @@ class GLCLWidget(QOpenGLWidget):
         
         # Debug: Print matrix details
         view_translation = self.view_matrix.column(3)
-        print(f"View matrix translation: ({view_translation.x()}, {view_translation.y()}, {view_translation.z()})")
-        print(f"Projection matrix near: {self.projection_matrix[3,2]}")
+        #print(f"View matrix translation: ({view_translation.x()}, {view_translation.y()}, {view_translation.z()})")
+        #print(f"Projection matrix near: {self.projection_matrix[3,2]}")
         
         # Check OpenGL errors before drawing
         err = glGetError()
@@ -200,13 +200,13 @@ class GLCLWidget(QOpenGLWidget):
         
         if hasattr(self, 'render_objects') and self.render_objects:
             for i, (gl_obj, shader_program) in enumerate(self.render_objects):
-                print(f"RenderObject {i} has {gl_obj.nelements} elements in VBO {gl_obj.vbo}")
+                #print(f"RenderObject {i} has {gl_obj.nelements} elements in VBO {gl_obj.vbo}")
                 
                 glUseProgram(shader_program)
                 # Set large point size and red color
                 point_size_loc = glGetUniformLocation(shader_program, "point_size")
                 color_loc = glGetUniformLocation(shader_program, "color")
-                print(f"Shader uniforms - point_size: {point_size_loc}, color: {color_loc}")
+                #print(f"Shader uniforms - point_size: {point_size_loc}, color: {color_loc}")
                 
                 glUniform1f(point_size_loc, 4.0)  # Very large points
                 glUniform4f(color_loc, 1.0, 0.0, 0.0, 1.0)
@@ -223,7 +223,7 @@ class GLCLWidget(QOpenGLWidget):
                 
                 glEnable(GL_DEPTH_TEST)
                 glUseProgram(0)
-                print(f"Drew {gl_obj.nelements} elements with size 25px")
+                #print(f"Drew {gl_obj.nelements} elements with size 25px")
         else:
             print("WARNING: No render objects to draw")
 

@@ -666,7 +666,7 @@ if __name__ == '__main__':
     
     # Create and show browser
     #browser = GLCLBrowser(python_script_path=default_script, bDebugCL=False, bDebugGL=True, nDebugFrames=5)
-    browser = GLCLBrowser(python_script_path=default_script, nDebugFrames=3 )
+    browser = GLCLBrowser(python_script_path=default_script, nDebugFrames=1000 )
     browser.show()
     
     sys.exit(app.exec_())
