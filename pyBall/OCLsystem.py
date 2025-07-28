@@ -83,23 +83,22 @@ class OCLSystem:
                 i += 1
                 continue
             if line.startswith('__kernel'):
-                kernel_start = i
                 kernel_name = line.split()[2].split('(')[0]
-                while '(' not in line and i < len(lines):
+                
+                kernel_signature_lines = []
+                # Collect lines until the opening curly brace '{' is found
+                while i < len(lines):
+                    current_line = lines[i]
+                    kernel_signature_lines.append(current_line)
+                    if '{' in current_line and not current_line.strip().startswith('//'): # Ensure it's not a commented out brace
+                        break
                     i += 1
-                    line = lines[i].strip()
-                paren_level = 1
-                i += 1
-                while i < len(lines) and paren_level > 0:
-                    line = lines[i].strip()
-                    if not line.startswith('//'):
-                        paren_level += line.count('(')
-                        paren_level -= line.count(')')
-                    i += 1
-                header = '\n'.join(lines[kernel_start:i])
-                headers[kernel_name] = header
-            else:
-                i += 1
+                
+                # Join the collected lines and remove the part after the first '{'
+                full_signature_with_body_start = "\n".join(kernel_signature_lines)
+                kernel_signature = full_signature_with_body_start.split('{', 1)[0].strip() # Get only the part before the first '{'
+                headers[kernel_name] = kernel_signature
+            i += 1 # Move to the next line
         return headers
 
     def create_buffer(self, name, size, flags=cl.mem_flags.READ_WRITE, hostbuf=None):
@@ -156,46 +155,28 @@ class OCLSystem:
         Parse a kernel header to extract buffer and parameter information.
         """
         param_block = header_string[header_string.find('(') + 1:header_string.rfind(')')]
-        param_lines = []
-        for line in param_block.split('\n'):
-            line = line.strip()
-            if not line or line.startswith('//'):
-                continue
-            if '//' in line:
-                line = line.split('//')[0].strip()
-            if line:
-                param_lines.append(line)
-        
-        params = []
-        current_param = ''
-        for line in param_lines:
-            current_param += ' ' + line if current_param else line
-            if line.endswith(','):
-                params.append(current_param[:-1].strip())
-                current_param = ''
-        if current_param:
-            params.append(current_param.strip())
+        # Consolidate multi-line parameter block into a single line for easier parsing
+        single_line_params = ' '.join(param_block.splitlines()).strip()
+        # Split the consolidated string into individual parameter declarations
+        params = [p.strip() for p in single_line_params.split(',') if p.strip()]
         
         args = []
         for param in params:
             if not param:
                 continue
-            if '__read_only' in param and 'image' in param:
-                parts = param.split()
-                for i, part in enumerate(parts):
-                    if part.startswith('image'):
-                        param_name = parts[i+1].replace(',', '').strip()
-                        args.append((param_name, 'image'))
-                        break
-                continue
+            # Determine argument type based on keywords
             if '__global' in param:
-                parts = param.split()
-                param_name = parts[-1].replace('*', '').strip()
+                # This is a buffer argument
+                param_name = param.split('*')[-1].replace(',', '').strip()
                 args.append((param_name, 'buffer'))
-                continue
-            parts = param.split()
-            param_name = parts[-1].replace(',', '').strip()
-            args.append((param_name, 'scalar'))
+            elif 'image' in param and ('__read_only' in param or '__write_only' in param):
+                # This is an image argument
+                param_name = param.split()[-1].replace(',', '').strip()
+                args.append((param_name, 'image'))
+            else:
+                # Assume it's a scalar argument
+                param_name = param.split()[-1].replace(',', '').strip()
+                args.append((param_name, 'scalar'))
         return args
 
     def get_kernel_args(self, program_name, kernel_name):

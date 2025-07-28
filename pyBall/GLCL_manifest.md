@@ -110,10 +110,64 @@ Develop a flexible simulation environment that integrates OpenGL and OpenCL, con
 *   **Inspiration**: `/home/prokophapala/git/FireCore/pyBall/GUI/NBody_glcl.py` will be the source for the actual physics and rendering logic to be translated into OpenCL kernels and OpenGL shaders.
 
 ## Development Steps:
-1.  Create `GLCL_manifest.md` (this file) and write this plan into it.
-2.  Implement `OGLsystem.py` with basic shader/program/buffer management.
-3.  Implement `OCLsystem.py` with basic context/queue/kernel/buffer management.
-4.  Implement `GLCLGUI.py` defining `GLCLWidget` that integrates `OGLsystem` and `OCLsystem`.
-5.  Implement `GLCLBrowser.py` inheriting from `BaseGUI`, loading JSON, and managing the `GLCLWidget` and dynamic controls.
-6.  Create the `nbody.json` configuration file.
-7.  Translate the NBody logic from `/home/prokophapala/git/FireCore/pyBall/GUI/NBody_glcl.py` into OpenCL kernels and OpenGL shaders, placing them in the `cl/nbody` and `shaders/nbody` directories.
+1.  Create `GLCL_manifest.md` (this file) and write this plan into it. **(Completed)**
+2.  Implement `OGLsystem.py` with basic shader/program/buffer management. **(Completed - Basic implementation for NBody)**
+3.  Implement `OCLsystem.py` with basic context/queue/kernel/buffer management. **(Completed - Significant bug fixes in argument parsing)**
+4.  Implement `GLCLGUI.py` defining `GLCLWidget` that integrates `OGLsystem` and `OCLsystem`. **(Completed - Fixed OpenGL context initialization)**
+5.  Implement `GLCLBrowser.py` inheriting from `BaseGUI`, loading JSON, and managing the `GLCLWidget` and dynamic controls. **(Completed - Automatic JSON loading, GUI parameter binding)**
+6.  Create the `nbody.json` configuration file. **(Completed - `nbody_simulation.json` created)**
+7.  Translate the NBody logic from `/home/prokophapala/git/FireCore/pyBall/GUI/NBody_glcl.py` into OpenCL kernels and OpenGL shaders, placing them in the `cl/nbody` and `shaders/nbody` directories. **(Completed - `nbody_sim.cl`, `nbody_vertex.glsl`, `nbody_fragment.glsl` created and integrated)**
+
+## Current Status and Progress Summary
+
+We have made significant progress in integrating the NBody simulation into the PyOpenCL-OpenGL framework with a PyQt5 GUI. The application now launches without immediate console errors, and the core components are in place.
+
+### Key Changes and Rationale:
+
+1.  **`GLCLBrowser.py` Refinements:**
+    *   **Automatic JSON Loading:** Modified to accept a JSON filepath argument, enabling automatic loading of `nbody_simulation.json` on startup. This streamlines testing and configuration.
+    *   **Improved GUI Layout:** Redesigned the main window to feature a large OpenGL viewport and a narrow control panel, enhancing usability.
+    *   **Dynamic Parameter Binding:** Implemented `update_sim_uniforms` to dynamically link GUI spin box values (e.g., `dt`, `particle_count`) to OpenCL kernel parameters, allowing real-time simulation control.
+    *   **Robust Error Handling:** Removed silent `try-except` blocks during JSON loading and initialization to ensure errors propagate, aiding debugging.
+
+2.  **`BaseGUI.py` Adjustments:**
+    *   **`populate_params_from_json` Fixes:** Corrected a critical bug where `populate_params_from_json` passed a list instead of a scalar float to `QDoubleSpinBox.setValue`, resolving `setValue` errors.
+    *   **Layout Correction:** Fixed improper `QFormLayout` usage by ensuring widgets are added with `addRow` instead of `addLayout`.
+
+3.  **`GLCLGUI.py` OpenGL Context Fixes:**
+    *   **Deferred OpenGL Initialization:** Moved `setup_particle_vbo()` calls from `set_particle_data()` to `initializeGL()`. This ensures OpenGL functions are called only after the OpenGL context is properly set up, resolving `OpenGL.error.Error: Attempt to retrieve context when no valid context`.
+    *   **Particle Data Handling:** `set_particle_data()` now primarily stores data and triggers a repaint, with the actual VBO setup occurring in `initializeGL`.
+
+4.  **`OCLsystem.py` Robustness Improvements:**
+    *   **`create_buffer` Enhancement:** Modified `create_buffer` to accept an optional `hostbuf` argument, allowing direct copying of host data to the OpenCL buffer during creation, resolving `INVALID_HOST_PTR` errors.
+    *   **Kernel Argument Parsing Fixes:**
+        *   Refined `_extract_kernel_headers` to accurately extract only the kernel signature (up to the first `{`), preventing the parser from misinterpreting kernel body code as arguments.
+        *   Improved `_parse_kernel_header` to robustly distinguish between `__global` pointers (buffers) and scalar arguments, resolving the `ValueError: Required buffer 'particle_count' for kernel 'nbody_sim' is not allocated or is zero-sized.`
+
+### Known Issues / Next Steps:
+
+*   **Visual Verification:** The application launches without console errors, but visual confirmation of the NBody simulation rendering and dynamic parameter updates is still required.
+*   **OpenCL-OpenGL Interoperability:** Implement proper OpenCL-OpenGL buffer sharing for performance optimization (currently, data is copied).
+*   **Further Refinement:** Continue modularizing and documenting the framework for easier extension and maintenance.
+
+## Progress in Current Session
+
+This session focused on debugging the persistent shader compilation and linking issues:
+
+1.  **Shader Compilation Error Resolution:**
+    *   **Missing OpenGL Imports**: Resolved `NameError: name 'glGetShaderiv' is not defined` by adding `glGetShaderiv`, `GL_COMPILE_STATUS`, and `glDetachShader` to imports in `OGLsystem.py`.
+    *   **Error Log Decoding**: Corrected `AttributeError: 'str' object has no attribute 'decode'` by removing erroneous `.decode('utf-8')` calls, as PyOpenGL's info logs are already strings.
+    *   **Improved Error Reporting**: Enhanced `OGLsystem.py` to explicitly print shader and program info logs before raising `RuntimeError` to ensure any available error messages are visible.
+
+2.  **Diagnosis of Empty Shader Logs:**
+    *   Despite valid shader source files (`nbody_vertex.glsl`, `nbody_fragment.glsl` confirmed via `cat`), shader linking continued to fail silently with empty error logs.
+    *   This strongly indicates that the OpenGL context was not active or properly initialized when shader compilation/linking was attempted.
+    *   The `load_shader_program` call in `GLCLBrowser.py`'s `__init__` method likely executes *before* `GLCLWidget`'s OpenGL context is ready (i.e., before `initializeGL()` is called).
+
+3.  **Locating `GLCLWidget`:**
+    *   Initial attempts to locate `GLCLWidget.py` or `GLCLGUI.py` were unsuccessful due to incorrect file paths.
+    *   `list_dir` confirmed that `GLGUI.py` in `/home/prokophapala/git/FireCore/pyBall/GUI` is the most probable file containing the `GLCLWidget` class.
+
+### Next Steps (Identified during this session):
+
+*   **Defer Shader Compilation**: The primary task is to move the `ogl_system.load_shader_program` call from `GLCLBrowser.py`'s `__init__` to `GLCLWidget`'s `initializeGL()` method (or a method called from it) to ensure a valid OpenGL context is active during shader compilation.

@@ -147,16 +147,21 @@ class GLCLBrowser(BaseGUI):
         self.sim_timer.start(16) # ~60 FPS
 
     def update_simulation(self):
-        # Acquire GL buffer if sharing (not yet implemented, will use copy for now)
-        # Execute OpenCL kernel
-        self.ocl_system.execute_kernel("nbody_sim", "nbody_sim", (self.glcl_widget.particle_count,), local_size=None)
+        try:
+            # Acquire GL buffer if sharing (not yet implemented, will use copy for now)
+            # Execute OpenCL kernel
+            self.ocl_system.execute_kernel("nbody_sim", "nbody_sim", (self.glcl_widget.particle_count,), local_size=None)
 
-        # Copy results back to host or GL buffer
-        # For now, copy to host and then update GL buffer
-        updated_positions = np.empty_like(self.glcl_widget.positions)
-        self.ocl_system.fromGPU("positions", updated_positions)
-        self.glcl_widget.update_particle_vbo(updated_positions)
-        self.glcl_widget.update()
+            # Copy results back to host or GL buffer
+            # For now, copy to host and then update GL buffer
+            updated_positions = np.empty_like(self.glcl_widget.positions)
+            self.ocl_system.fromGPU("positions", updated_positions)
+            self.glcl_widget.update_particle_vbo(updated_positions)
+            self.glcl_widget.update()
+        except Exception as e:
+            print("GLCLBrowser: Exception in update_simulation(), stopping timer.")
+            self.sim_timer.stop()
+            raise e
 
     def update_sim_uniforms(self):
         # This method is called by BaseGUI when parameters are changed

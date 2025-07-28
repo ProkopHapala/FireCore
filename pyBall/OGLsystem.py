@@ -7,8 +7,8 @@ from OpenGL.GL import (
     glClear, glClearColor, GL_COLOR_BUFFER_BIT, GL_DEPTH_BUFFER_BIT,
     glEnable, glDepthFunc, GL_LESS, GL_DEPTH_TEST, glViewport, glCreateProgram,
     glShaderSource, glCompileShader, glAttachShader, glLinkProgram, glGetProgramiv,
-    GL_LINK_STATUS, glGetShaderiv, GL_COMPILE_STATUS, glGetProgramInfoLog, glGetShaderInfoLog,
-    glDeleteShader, glGetUniformLocation, glUniformMatrix4fv, GL_TRUE, glUniform3fv, GL_VERTEX_SHADER, GL_FRAGMENT_SHADER,
+    GL_LINK_STATUS, glGetShaderiv, GL_COMPILE_STATUS, glGetProgramInfoLog, glGetShaderInfoLog, glDetachShader,
+    glDeleteShader, glGetUniformLocation, glUniformMatrix4fv, GL_TRUE, glUniform3fv, GL_VERTEX_SHADER, GL_FRAGMENT_SHADER, glCreateShader,
     glUniform1f, glUniform4f, glUniform1i, glGenBuffers, glBindBuffer, glBufferData,
     GL_ARRAY_BUFFER, GL_STATIC_DRAW, GL_DYNAMIC_DRAW, glVertexAttribPointer, glEnableVertexAttribArray,
     glDrawArrays, GL_TRIANGLES, glDeleteBuffers, glGenVertexArrays, glBindVertexArray, glVertexAttribDivisor,
@@ -21,7 +21,7 @@ from OpenGL.GL import (
     glPixelStorei, GL_UNPACK_ALIGNMENT, GL_CULL_FACE, glTexImage2D, glDisable,
     GL_SHADER_STORAGE_BUFFER, glBindBufferBase
 )
-from OpenGL.GL.shaders import compileProgram, compileShader
+
 import OpenGL.GL as GL
 import ctypes
 
@@ -75,15 +75,52 @@ def upload_buffer( index, buffer_id, data, mode=GL_DYNAMIC_DRAW):
     glBindBuffer    (GL_SHADER_STORAGE_BUFFER, 0)
 
 def compile_shader_program(vertex_shader_src, fragment_shader_src):
-    try:
-        program = compileProgram(
-            compileShader(vertex_shader_src, GL_VERTEX_SHADER),
-            compileShader(fragment_shader_src, GL_FRAGMENT_SHADER)
-        )
-        return program
-    except Exception as e:
-        print(f"Shader compilation/linking error: {e}")
-        return None
+    # Create shader objects
+    vertex_shader = glCreateShader(GL_VERTEX_SHADER)
+    fragment_shader = glCreateShader(GL_FRAGMENT_SHADER)
+
+    # Provide the shader source
+    glShaderSource(vertex_shader, vertex_shader_src)
+    glShaderSource(fragment_shader, fragment_shader_src)
+
+    # Compile the shaders
+    glCompileShader(vertex_shader)
+    if glGetShaderiv(vertex_shader, GL_COMPILE_STATUS) != GL_TRUE:
+        log = glGetShaderInfoLog(vertex_shader)
+        print("--- VERTEX SHADER COMPILATION ERROR ---")
+        print(log)
+        print("-----------------------------------------")
+        raise RuntimeError(f"Vertex shader compilation failed: {log}")
+
+    glCompileShader(fragment_shader)
+    if glGetShaderiv(fragment_shader, GL_COMPILE_STATUS) != GL_TRUE:
+        log = glGetShaderInfoLog(fragment_shader)
+        print("--- FRAGMENT SHADER COMPILATION ERROR ---")
+        print(log)
+        print("-------------------------------------------")
+        raise RuntimeError(f"Fragment shader compilation failed: {log}")
+
+    # Create a program and attach the shaders
+    program = glCreateProgram()
+    glAttachShader(program, vertex_shader)
+    glAttachShader(program, fragment_shader)
+
+    # Link the program
+    glLinkProgram(program)
+    if glGetProgramiv(program, GL_LINK_STATUS) != GL_TRUE:
+        log = glGetProgramInfoLog(program)
+        print("--- SHADER LINKING ERROR ---")
+        print(log)
+        print("--------------------------")
+        raise RuntimeError(f"Shader linking failed: {log}")
+
+    # Detach and delete shaders as they are no longer needed
+    glDetachShader(program, vertex_shader)
+    glDetachShader(program, fragment_shader)
+    glDeleteShader(vertex_shader)
+    glDeleteShader(fragment_shader)
+
+    return program
 
 class GLobject:
 
