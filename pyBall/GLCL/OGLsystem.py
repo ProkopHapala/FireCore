@@ -18,6 +18,9 @@ from OpenGL.GL import (
     GL_FUNC_REVERSE_SUBTRACT, GL_ONE, glActiveTexture, GL_TEXTURE0, glBindTexture, GL_TEXTURE_2D,
     glGenTextures, glTexParameteri, GL_TEXTURE_WRAP_S, GL_TEXTURE_WRAP_T, GL_REPEAT,
     GL_TEXTURE_MIN_FILTER, GL_TEXTURE_MAG_FILTER, GL_LINEAR, GL_RGBA, GL_UNSIGNED_BYTE,
+    glGetString, GL_VENDOR, GL_RENDERER, GL_VERSION, GL_SHADING_LANGUAGE_VERSION,
+    glGetError, GL_NO_ERROR, GL_INVALID_ENUM, GL_INVALID_VALUE, GL_INVALID_OPERATION, GL_OUT_OF_MEMORY,
+    GL_ACTIVE_ATTRIBUTES, GL_ACTIVE_UNIFORMS, glGetActiveUniform, GL_POINTS, GL_ELEMENT_ARRAY_BUFFER,
     glPixelStorei, GL_UNPACK_ALIGNMENT, GL_CULL_FACE, glTexImage2D, glDisable,
     GL_SHADER_STORAGE_BUFFER, glBindBufferBase
 )
@@ -74,51 +77,212 @@ def upload_buffer( index, buffer_id, data, mode=GL_DYNAMIC_DRAW):
     glBindBufferBase(GL_SHADER_STORAGE_BUFFER, index, buffer_id)
     glBindBuffer    (GL_SHADER_STORAGE_BUFFER, 0)
 
+def check_gl_error(msg="", raise_on_critical=False):
+    """Check for OpenGL errors and print them if any.
+    Args:
+        msg: Context message to include in the error
+        raise_on_critical: If True, raise an exception on critical errors like OUT_OF_MEMORY
+    Returns:
+        True if error was detected, False otherwise
+    """
+    err = glGetError()
+    if err != GL_NO_ERROR:
+        error_str = ""
+        critical = False
+        
+        if err == GL_INVALID_ENUM: 
+            error_str = "GL_INVALID_ENUM"
+        elif err == GL_INVALID_VALUE: 
+            error_str = "GL_INVALID_VALUE"
+        elif err == GL_INVALID_OPERATION: 
+            error_str = "GL_INVALID_OPERATION"
+        elif err == GL_OUT_OF_MEMORY: 
+            error_str = "GL_OUT_OF_MEMORY"
+            critical = True  # This is always critical
+        else: 
+            error_str = f"Unknown error code {err}"
+            critical = True  # Unknown errors are treated as critical
+            
+        print(f"OpenGL Error @ {msg}: {error_str}")
+        
+        # Keep checking for additional errors
+        next_err = glGetError()
+        while next_err != GL_NO_ERROR:
+            if next_err == GL_INVALID_ENUM: next_error_str = "GL_INVALID_ENUM"
+            elif next_err == GL_INVALID_VALUE: next_error_str = "GL_INVALID_VALUE"
+            elif next_err == GL_INVALID_OPERATION: next_error_str = "GL_INVALID_OPERATION"
+            elif next_err == GL_OUT_OF_MEMORY: 
+                next_error_str = "GL_OUT_OF_MEMORY"
+                critical = True
+            else: 
+                next_error_str = f"Unknown error code {next_err}"
+                critical = True
+            print(f"Additional OpenGL Error: {next_error_str}")
+            next_err = glGetError()
+            
+        # For critical errors like OUT_OF_MEMORY, raise exception if requested
+        if critical and raise_on_critical:
+            raise RuntimeError(f"Critical OpenGL error at {msg}: {error_str}")
+            
+        return True
+    return False
+
+def get_opengl_info():
+    """Get OpenGL context information safely."""
+    try:
+        vendor_raw = glGetString(GL_VENDOR)
+        renderer_raw = glGetString(GL_RENDERER)
+        version_raw = glGetString(GL_VERSION)
+        glsl_version_raw = glGetString(GL_SHADING_LANGUAGE_VERSION)
+        
+        # Handle potential None values
+        vendor = vendor_raw.decode('utf-8') if vendor_raw else "Unknown"
+        renderer = renderer_raw.decode('utf-8') if renderer_raw else "Unknown"
+        version = version_raw.decode('utf-8') if version_raw else "Unknown"
+        glsl_version = glsl_version_raw.decode('utf-8') if glsl_version_raw else "Unknown"
+        
+        print(f"OpenGL Info: Vendor={vendor}, Renderer={renderer}, Version={version}, GLSL={glsl_version}")
+        return vendor, renderer, version, glsl_version
+    except Exception as e:
+        print(f"WARNING: Could not retrieve OpenGL information: {e}")
+        print("This usually happens when OpenGL context is not fully initialized.")
+        return "Unknown", "Unknown", "Unknown", "Unknown"
+
 def compile_shader_program(vertex_shader_src, fragment_shader_src):
-    # Create shader objects
+    get_opengl_info()  # Print OpenGL info for debugging
+    check_gl_error("Before shader compilation")  # Check for pre-existing errors
+    
+    print(f"Compiling vertex shader:\n{vertex_shader_src}\n")
     vertex_shader = glCreateShader(GL_VERTEX_SHADER)
-    fragment_shader = glCreateShader(GL_FRAGMENT_SHADER)
-
-    # Provide the shader source
+    check_gl_error("After glCreateShader(GL_VERTEX_SHADER)")
+    
+    # Set the source code
     glShaderSource(vertex_shader, vertex_shader_src)
-    glShaderSource(fragment_shader, fragment_shader_src)
-
-    # Compile the shaders
+    check_gl_error("After glShaderSource for vertex shader")
+    
+    # Compile the shader
     glCompileShader(vertex_shader)
-    if glGetShaderiv(vertex_shader, GL_COMPILE_STATUS) != GL_TRUE:
-        log = glGetShaderInfoLog(vertex_shader)
-        print("--- VERTEX SHADER COMPILATION ERROR ---")
-        print(log)
-        print("-----------------------------------------")
-        raise RuntimeError(f"Vertex shader compilation failed: {log}")
+    check_gl_error("After glCompileShader for vertex shader")
+    
+    # Check vertex shader compilation
+    result = glGetShaderiv(vertex_shader, GL_COMPILE_STATUS)
+    log = glGetShaderInfoLog(vertex_shader)
+    if log:
+        print(f"Vertex shader compilation log: {log.decode('utf-8') if isinstance(log, bytes) else log}")
+        
+    if not result:
+        print("VERTEX SHADER COMPILATION FAILED")
+        glDeleteShader(vertex_shader)
+        return 0
+    print("Vertex shader compilation SUCCESSFUL")
 
+    # Compile fragment shader
+    fragment_shader = glCreateShader(GL_FRAGMENT_SHADER)
+    if not fragment_shader:
+        print("ERROR: Failed to create fragment shader object")
+        check_gl_error("After glCreateShader(GL_FRAGMENT_SHADER)")
+        glDeleteShader(vertex_shader)
+        return 0
+        
+    print(f"Created fragment shader object: {fragment_shader}")
+    
+    # Set the source code
+    glShaderSource(fragment_shader, fragment_shader_src)
+    check_gl_error("After glShaderSource for fragment shader")
+    
+    # Compile the shader
     glCompileShader(fragment_shader)
-    if glGetShaderiv(fragment_shader, GL_COMPILE_STATUS) != GL_TRUE:
-        log = glGetShaderInfoLog(fragment_shader)
-        print("--- FRAGMENT SHADER COMPILATION ERROR ---")
-        print(log)
-        print("-------------------------------------------")
-        raise RuntimeError(f"Fragment shader compilation failed: {log}")
+    check_gl_error("After glCompileShader for fragment shader")
+    
+    # Check fragment shader compilation
+    result = glGetShaderiv(fragment_shader, GL_COMPILE_STATUS)
+    log = glGetShaderInfoLog(fragment_shader)
+    if log:
+        print(f"Fragment shader compilation log: {log.decode('utf-8') if isinstance(log, bytes) else log}")
+        
+    if not result:
+        print("FRAGMENT SHADER COMPILATION FAILED")
+        glDeleteShader(vertex_shader)
+        glDeleteShader(fragment_shader)
+        return 0
+    print("Fragment shader compilation SUCCESSFUL")
 
-    # Create a program and attach the shaders
+    # Create program and link shaders
     program = glCreateProgram()
+    if not program:
+        print("ERROR: Failed to create program object")
+        check_gl_error("After glCreateProgram")
+        glDeleteShader(vertex_shader)
+        glDeleteShader(fragment_shader)
+        return 0
+        
+    print(f"Created program object: {program}")
+    
+    # Attach shaders to the program
     glAttachShader(program, vertex_shader)
+    check_gl_error("After attaching vertex shader")
+    
     glAttachShader(program, fragment_shader)
-
+    check_gl_error("After attaching fragment shader")
+    
     # Link the program
+    print("Linking shader program...")
     glLinkProgram(program)
-    if glGetProgramiv(program, GL_LINK_STATUS) != GL_TRUE:
-        log = glGetProgramInfoLog(program)
-        print("--- SHADER LINKING ERROR ---")
-        print(log)
+    check_gl_error("After linking program")
+    
+    # Check program linking
+    result = glGetProgramiv(program, GL_LINK_STATUS)
+    log = glGetProgramInfoLog(program)
+    if log:
+        print(f"Program linking log: {log.decode('utf-8') if isinstance(log, bytes) else log}")
+        print(f"Link status: {link_status}")
+        print(f"Log: '{log}'")
+        print(f"Log type: {type(log)}")
+        print(f"Log length: {len(log)}")
+        print(f"Vertex shader source:\n{vertex_shader_src}")
+        print(f"Fragment shader source:\n{fragment_shader_src}")
         print("--------------------------")
+        
+        # Try to diagnose the issue
+        print("Checking active attributes and uniforms (if any)")
+        try:
+            # This might fail if linking failed severely
+            num_attrs = glGetProgramiv(program, GL_ACTIVE_ATTRIBUTES)
+            print(f"Program has {num_attrs} active attributes")
+            
+            num_unis = glGetProgramiv(program, GL_ACTIVE_UNIFORMS)
+            print(f"Program has {num_unis} active uniforms")
+        except:
+            print("Could not query program attributes/uniforms")
+            
         raise RuntimeError(f"Shader linking failed: {log}")
-
-    # Detach and delete shaders as they are no longer needed
+    else:
+        print("Shader program linked successfully")
+        # Get info on active attributes and uniforms
+        num_attrs = glGetProgramiv(program, GL_ACTIVE_ATTRIBUTES)
+        print(f"Program has {num_attrs} active attributes")
+        
+        num_unis = glGetProgramiv(program, GL_ACTIVE_UNIFORMS)
+        print(f"Program has {num_unis} active uniforms")
+        if num_unis > 0:
+            print("Active uniforms:")
+            for i in range(num_unis):
+                name_buf = glGetActiveUniform(program, i)
+                name = name_buf[0]
+                print(f"  {i}: {name}")
+    
+    # Clean up
     glDetachShader(program, vertex_shader)
+    check_gl_error("After glDetachShader(vertex_shader)")
+    
     glDetachShader(program, fragment_shader)
+    check_gl_error("After glDetachShader(fragment_shader)")
+    
     glDeleteShader(vertex_shader)
+    check_gl_error("After glDeleteShader(vertex_shader)")
+    
     glDeleteShader(fragment_shader)
+    check_gl_error("After glDeleteShader(fragment_shader)")
 
     return program
 

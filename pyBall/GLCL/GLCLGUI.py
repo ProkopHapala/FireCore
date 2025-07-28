@@ -16,8 +16,9 @@ import OpenGL.GL as GL
 from .OGLsystem import GLobject, Mesh, InstancedData, compile_shader_program, create_sphere_mesh # Import necessary OpenGL utilities
 from .OCLsystem import OCLSystem # Import OpenCL system
 
-#print("GL_VERSION =",   GL.glGetString(GL.GL_VERSION).decode())
-#print("GLSL_VERSION =", GL.glGetString(GL.GL_SHADING_LANGUAGE_VERSION).decode())
+# These calls will fail at module load time - moved to initializeGL
+# print("GL_VERSION =",   GL.glGetString(GL.GL_VERSION).decode())
+# print("GLSL_VERSION =", GL.glGetString(GL.GL_SHADING_LANGUAGE_VERSION).decode())
 
 class GLCLWidget(QOpenGLWidget):
     def __init__(self, parent=None):
@@ -39,6 +40,7 @@ class GLCLWidget(QOpenGLWidget):
         self.gl_objects = {}  # Dictionary mapping buffer names to GLobject instances
         self.render_pipeline_info = []  # List of render pass configurations
         self.buffer_data = {}  # Buffer data for deferred GLobject creation
+        self.render_objects = []  # List of pre-baked GLobjects for rendering
         self.current_element_count = 0
 
         self.color_loc = None
@@ -61,44 +63,49 @@ class GLCLWidget(QOpenGLWidget):
         # GLobjects will be baked in initializeGL
 
     def bake_render_objects(self):
-        """Bake GLobjects for each render pass during setup."""
+        """Bake render objects once OpenGL context is ready."""
         print("GLCLWidget::bake_render_objects() Starting baking process...")
         print(f"GLCLWidget::bake_render_objects() render_pipeline_info: {self.render_pipeline_info}")
         print(f"GLCLWidget::bake_render_objects() buffer_data keys: {list(self.buffer_data.keys())}")
         
-        self.render_objects = []  # Pre-baked GLobjects ready for drawing
-        
         if not self.render_pipeline_info:
-            print("GLCLWidget::bake_render_objects() ERROR: No render_pipeline_info available")
+            print("GLCLWidget::bake_render_objects() No render pipeline defined")
             return
             
         print(f"GLCLWidget::bake_render_objects() Number of render passes: {len(self.render_pipeline_info)}")
         
+        # Force OpenGL context to be current
+        self.makeCurrent()
+        
+        # Check OpenGL version
+        try:
+            from OpenGL.GL import glGetString, GL_VERSION
+            version = glGetString(GL_VERSION)
+            print(f"OpenGL version: {version.decode('utf-8') if version else 'Unknown'}")
+        except Exception as e:
+            print(f"Could not get OpenGL version: {e}")
+        
         for i, render_pass in enumerate(self.render_pipeline_info):
+            shader_name, count_expr, vertex_buffer_name, uniforms = render_pass
             print(f"GLCLWidget::bake_render_objects() Processing render pass {i}: {render_pass}")
-            
-            if len(render_pass) < 3:
-                print(f"GLCLWidget::bake_render_objects() ERROR: Invalid render pass format: {render_pass}")
-                continue
-                
-            shader_name, element_count_name, vertex_buffer_name, index_buffer_name = render_pass
-            
             print(f"GLCLWidget::bake_render_objects() shader_name: {shader_name}")
             print(f"GLCLWidget::bake_render_objects() vertex_buffer_name: {vertex_buffer_name}")
             
-            # Load shader if sources are available but not loaded yet
-            shader_program = self.ogl_system.get_shader_program(shader_name)
-            if not shader_program and hasattr(self, 'vertex_shader_src') and hasattr(self, 'fragment_shader_src'):
-                print(f"GLCLWidget::bake_render_objects() Loading shader '{shader_name}' into OGLSystem...")
-                self.ogl_system.load_shader_program(shader_name, self.vertex_shader_src, self.fragment_shader_src)
-                shader_program = self.ogl_system.get_shader_program(shader_name)
-            
-            if not shader_program:
-                print(f"GLCLWidget::bake_render_objects() ERROR: Shader program '{shader_name}' not found")
-                print(f"GLCLWidget::bake_render_objects() Available shaders: {list(self.ogl_system.shader_programs.keys())}")
+            # First ensure we have the shader source
+            if not hasattr(self, 'vertex_shader_src') or not hasattr(self, 'fragment_shader_src'):
+                print("GLCLWidget::bake_render_objects() ERROR: No shader sources available")
                 continue
                 
-            print(f"GLCLWidget::bake_render_objects() Found shader program: {shader_program}")
+            # Ensure shader program is compiled and linked
+            print(f"GLCLWidget::bake_render_objects() Loading shader '{shader_name}' into OGLSystem...")
+            self.ogl_system.load_shader_program(shader_name, self.vertex_shader_src, self.fragment_shader_src)
+            shader_program = self.ogl_system.get_shader_program(shader_name)
+            
+            if not shader_program:
+                print(f"GLCLWidget::bake_render_objects() ERROR: Failed to create shader program '{shader_name}'")
+                continue
+                
+            print(f"GLCLWidget::bake_render_objects() Successfully created shader program: {shader_program}")
             
             # Get vertex buffer data
             if vertex_buffer_name not in self.buffer_data:
@@ -113,20 +120,51 @@ class GLCLWidget(QOpenGLWidget):
             
             print(f"GLCLWidget::bake_render_objects() Creating GLobject for buffer '{vertex_buffer_name}' with {buffer_info['nelements']} elements")
             
-            # Create pre-configured GLobject
-            components = [buffer_info['components']]
+            # Create simple GLobject with no initial setup
             gl_obj = GLobject(
-                components=components,
                 nelements=buffer_info['nelements'],
                 mode=GL_POINTS
             )
             
-            # Upload data and set up VAO/VBO
-            gl_obj.upload_vbo(buffer_info['data'])
-            gl_obj.alloc_vao_vbo_ebo(components)
+            # Create VAO
+            gl_obj.vao = GL.glGenVertexArrays(1)
+            print(f"Created VAO: {gl_obj.vao}")
+            
+            # Create VBO
+            gl_obj.vbo = GL.glGenBuffers(1)
+            print(f"Created VBO: {gl_obj.vbo}")
+            
+            # Binding sequence is important:
+            # 1. Bind VAO first
+            GL.glBindVertexArray(gl_obj.vao)
+            print("Bound VAO")
+            
+            # 2. Bind VBO and upload data
+            GL.glBindBuffer(GL.GL_ARRAY_BUFFER, gl_obj.vbo)
+            GL.glBufferData(GL.GL_ARRAY_BUFFER, buffer_info['data'].nbytes, buffer_info['data'], GL.GL_DYNAMIC_DRAW)
+            print(f"Uploaded {buffer_info['data'].nbytes} bytes to VBO")
+            
+            # 3. Configure vertex attributes WHILE VAO is bound
+            GL.glEnableVertexAttribArray(0)  # Position attribute at layout location 0
+            GL.glVertexAttribPointer(0, buffer_info['components'], GL.GL_FLOAT, GL.GL_FALSE, 0, None)
+            print(f"Configured vertex attribute: components={buffer_info['components']}")
+            
+            # 4. Unbind VAO and VBO when done
+            GL.glBindVertexArray(0)
+            GL.glBindBuffer(GL.GL_ARRAY_BUFFER, 0)
             
             # Store shader program for drawing
             gl_obj.shader_program = shader_program
+            print(f"Associated shader program {shader_program} with GLobject")
+            
+            # Test the shader by temporarily using it
+            GL.glUseProgram(shader_program)
+            color_loc = GL.glGetUniformLocation(shader_program, "color")
+            print(f"Color uniform location: {color_loc}")
+            if color_loc >= 0:
+                # Set a default color if the uniform exists
+                GL.glUniform4f(color_loc, 1.0, 0.0, 0.0, 1.0)  # Red color
+            GL.glUseProgram(0)
             
             self.render_objects.append(gl_obj)
             print(f"GLCLWidget::bake_render_objects() SUCCESS: Baked GLobject #{len(self.render_objects)} for render pass '{shader_name}' with {buffer_info['nelements']} elements")
@@ -187,7 +225,9 @@ class GLCLWidget(QOpenGLWidget):
         self.update_matrices()
 
     def get_default_uniform_locations(self, shader_program):
-        self.color_loc = glGetUniformLocation(shader_program, "u_color")
+        print("GLCLWidget::get_default_uniform_locations() Getting uniform locations")
+        self.color_loc = glGetUniformLocation(shader_program, "color")
+        print(f"GLCLWidget::get_default_uniform_locations() color_loc: {self.color_loc}")
         self.model_loc = glGetUniformLocation(shader_program, "model")
         self.view_loc  = glGetUniformLocation(shader_program, "view")
         self.proj_loc  = glGetUniformLocation(shader_program, "projection")

@@ -271,9 +271,7 @@ class GLCLBrowser(BaseGUI):
         buffers_config = config.get("buffers", {})
         parameters = config.get("parameters", {})
         
-        print(f"GLCLBrowser::init_simulation_data() buffers_config: {buffers_config}")
-        print(f"GLCLBrowser::init_simulation_data() parameters: {parameters}")
-        print(f"GLCLBrowser::init_simulation_data() parameters type: {type(parameters)}")
+        print(f"GLCLBrowser::init_simulation_data() buffers_config:{buffers_config} parameters:{parameters} of type:{type(parameters)}")
         
         # Initialize data dictionary
         data = {}

@@ -115,12 +115,12 @@ class OCLSystem:
         # Release old buffer if it exists and needs resizing
         if name in self.buffers and self.buffers[name] is not None:
             if self.buffers[name].size != size:
-                print(f"Re-allocating buffer '{name}' with new size {size} bytes (old size {self.buffers[name].size} bytes)")
+                print(f"OCLSystem::create_buffer() Re-allocating buffer '{name}' with new size {size} bytes (old size {self.buffers[name].size} bytes)")
                 self.buffers[name].release()
                 self.buffers[name] = cl.Buffer(self.ctx, flags, size=size, hostbuf=hostbuf)
             # else: buffer already exists with correct size, do nothing
         else:
-            print(f"Allocating buffer '{name}' with size {size} bytes")
+            print(f"OCLSystem::create_buffer() Allocating buffer '{name}' with size {size} bytes")
             self.buffers[name] = cl.Buffer(self.ctx, flags, size=size, hostbuf=hostbuf)
         return self.buffers[name]
 

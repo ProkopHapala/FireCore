@@ -181,10 +181,10 @@ class OpenCLBase:
         if current_buf is None or current_buf.size < required_size:
             if current_buf: current_buf.release() # Release old buffer if resizing
             if required_size > 0:
-                print(f"Allocating buffer '{name}' with size {required_size} bytes")
+                print(f"OpenCLBase::check_buf() Allocating buffer '{name}' with size {required_size} bytes")
                 self.buffer_dict[name] = cl.Buffer(self.ctx, flags, size=required_size)
             else:
-                print(f"Warning: Buffer '{name}' has zero size, skipping allocation.")
+                print(f"OpenCLBase::check_buf() Warning: Buffer '{name}' has zero size, skipping allocation.")
                 self.buffer_dict[name] = None # Handle zero-size case
         # Ensure the buffer exists if size > 0
         elif required_size == 0 and current_buf is not None:
@@ -194,7 +194,7 @@ class OpenCLBase:
             self.buffer_dict[name] = None
         elif self.buffer_dict.get(name) is None and required_size > 0:
             # This case shouldn't happen if the initial check works, but as safety:
-            print(f"Re-Allocating buffer '{name}' with size {required_size} bytes")
+            print(f"OpenCLBase::check_buf() Re-Allocating buffer '{name}' with size {required_size} bytes")
             self.buffer_dict[name] = cl.Buffer(self.ctx, flags, size=required_size)
 
     def try_make_buff( self, buff_name, sz):
