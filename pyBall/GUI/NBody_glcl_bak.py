@@ -193,6 +193,9 @@ class MainWindow(QMainWindow):
         self.setCentralWidget(self.gl_widget)
 
 if __name__ == "__main__":
+    # Run Like this:
+    #   python -u -m pyBall.GUI.NBody_glcl_bak
+    
     app = QApplication(sys.argv)
     window = MainWindow()
     window.show()
