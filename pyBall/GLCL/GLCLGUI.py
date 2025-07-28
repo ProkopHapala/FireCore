@@ -199,6 +199,10 @@ class GLCLWidget(QOpenGLWidget):
             print(f"OpenGL error before draw: {err}")
         
         if hasattr(self, 'render_objects') and self.render_objects:
+            # Debug print OpenGL buffer data before rendering
+            if hasattr(self.parent(), 'bDebugGL') and self.parent().bDebugGL:
+                print(f"=== OpenGL Rendering Debug ===")
+            
             for i, (gl_obj, shader_program) in enumerate(self.render_objects):
                 #print(f"RenderObject {i} has {gl_obj.nelements} elements in VBO {gl_obj.vbo}")
                 
@@ -211,6 +215,19 @@ class GLCLWidget(QOpenGLWidget):
                 glUniform1f(point_size_loc, 4.0)  # Very large points
                 glUniform4f(color_loc, 1.0, 0.0, 0.0, 1.0)
                 glDisable(GL_DEPTH_TEST)
+                
+                # Debug print buffer data being rendered
+                if hasattr(self.parent(), 'bDebugGL') and self.parent().bDebugGL:
+                    print(f"Rendering object with {gl_obj.nelements} vertices")
+                    if gl_obj.vbo is not None:
+                        # Read back buffer data for debugging
+                        glBindBuffer(GL_ARRAY_BUFFER, gl_obj.vbo)
+                        buffer_size = glGetBufferParameteriv(GL_ARRAY_BUFFER, GL_BUFFER_SIZE)
+                        if buffer_size > 0:
+                            data = glGetBufferSubData(GL_ARRAY_BUFFER, 0, min(buffer_size, 64))
+                            import numpy as np
+                            float_data = np.frombuffer(data, dtype=np.float32)
+                            print(f"  First 4 vertex values: {float_data[:4]}")
                 
                 glBindVertexArray(gl_obj.vao)
                 glDrawArrays(GL_POINTS, 0, gl_obj.nelements)

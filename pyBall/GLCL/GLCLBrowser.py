@@ -14,45 +14,27 @@ from .OCLsystem import OCLSystem
 from .OGLsystem import OGLSystem
 
 class BakedKernelCall:
-    """Encapsulates a pre-baked OpenCL kernel call with all parameters resolved."""
+    """Simplified pre-baked kernel execution class."""
     
-    def __init__(self, ocl_system, kernel_name, kernel_obj, global_size, local_size, arg_infos):
+    def __init__(self, ocl_system, program_name, kernel_name, global_size, local_size, args_tuple):
         self.ocl_system = ocl_system
+        self.program_name = program_name
         self.kernel_name = kernel_name
-        self.kernel_obj = kernel_obj
-        self.global_size = global_size  # Already-resolved tuple
+        self.global_size = global_size
         self.local_size = local_size
-        self.arg_infos = arg_infos  # List of (param_name, is_buffer, type_hint)
-
+        self.args_tuple = args_tuple
+    
     def execute(self):
-        """Execute the kernel with current parameters."""
+        """Execute the kernel with pre-computed arguments."""
         try:
-            global_size = self.global_size
-            
-            # Prepare arguments for kernel execution
-            kernel_args = []
-            for param_name, is_buffer, type_hint in self.arg_infos:
-                if is_buffer:
-                    kernel_args.append(self.ocl_system.get_buffer(param_name))
-                else:
-                    param_value = self.ocl_system.get_kernel_param(param_name)
-                    # Type conversion based on hint
-                    if type_hint == 'int':
-                        kernel_args.append(np.int32(param_value))
-                    elif type_hint == 'float':
-                        kernel_args.append(np.float32(param_value))
-                    else:
-                        kernel_args.append(param_value)
-
-            # Use OCLSystem's execute_kernel method with correct program name
-            # Program name is derived from source file name (without extension)
-            program_name = "nbody"  # This matches the actual .cl file name
             self.ocl_system.execute_kernel(
-                program_name, self.kernel_name, global_size, self.local_size, kernel_args
+                self.program_name, self.kernel_name, self.global_size, self.local_size, self.args_tuple
             )
         except Exception as e:
             print(f"Error executing kernel {self.kernel_name}: {e}")
-            self.on_exception(e)
+            import traceback
+            traceback.print_exc()
+            raise
 
 
 class GLCLBrowser(BaseGUI):
@@ -171,6 +153,12 @@ class GLCLBrowser(BaseGUI):
             if config is None:
                 raise ValueError(f"Python script '{script_path}' must define a 'config' dictionary.")
 
+            # Debug: Print config parameters right after loading
+            print("GLCLBrowser::load_and_apply_script() Config loaded from script:")
+            params = config.get("parameters", {})
+            for name, info in params.items():
+                print(f"  {name}: {info}")
+
             self.current_script = script_path
             self.current_config = config
             
@@ -197,30 +185,36 @@ class GLCLBrowser(BaseGUI):
     def apply_simulation_config(self, config, init_func=None, script_path=None):
         """Apply the simulation configuration to both OpenCL and OpenGL systems."""
         print("Applying simulation configuration...")
-        self.current_config = config
+        print("GLCLBrowser::apply_simulation_config() Original config parameters:")
+        params = config.get("parameters", {})
+        for name, info in params.items():
+            print(f"  {name}: {info}")
         
-        # Clear previous state
+        # Create a deep copy of the config to prevent in-place modification
+        import copy
+        self.current_config = copy.deepcopy(config)
+        
         self.baked_kernel_calls.clear()
         self.ocl_system.clear_buffers()
         self.param_widgets.clear()
         
-        # Setup parameter controls
-        self.create_parameter_controls(config)
-        
-        # Determine script directory for relative paths
-        script_dir = os.path.dirname(script_path) if script_path else os.getcwd()
+        # Create parameter controls
+        self.create_parameter_controls(self.current_config)
         
         # Initialize simulation data
-        self.init_simulation_data(config, init_func, script_dir)
+        self.init_simulation_data(self.current_config, init_func=init_func, script_dir=os.path.dirname(script_path) if script_path else ".")
         
-        # Setup OpenCL system
-        self.setup_opencl_system(config, script_dir)
+        # Setup OpenCL and OpenGL systems
+        self.setup_opencl_system(self.current_config, script_dir=os.path.dirname(script_path) if script_path else ".")
+        self.setup_opengl_system(self.current_config, script_dir=os.path.dirname(script_path) if script_path else ".")
         
-        # Setup OpenGL system
-        self.setup_opengl_system(config, script_dir)
+        # Bake kernels for execution - use original config values
+        self.bake_kernels(self.current_config)
         
-        # Bake kernels for execution
-        self.bake_kernels(config)
+        # Set initial kernel parameters from config
+        self.set_initial_kernel_params()
+        
+        print("Simulation configuration applied successfully.")
         
         # Print summary of baked kernels and buffers before starting runtime loop
         print("GLCLBrowser::apply_simulation_config() Buffers:")
@@ -229,6 +223,7 @@ class GLCLBrowser(BaseGUI):
         print("GLCLBrowser::apply_simulation_config() Baked Kernels:")
         for kc in self.baked_kernel_calls:
             print(f"  {kc.kernel_name}: global_size={kc.global_size}, local_size={kc.local_size}")
+        
         print("=====================")
 
         # Shaders are now handled in setup_opengl_system method
@@ -236,9 +231,6 @@ class GLCLBrowser(BaseGUI):
         
         # Create dynamic buffer registry from user script data
         self._create_dynamic_buffer_registry()
-        
-        # Bake OpenCL kernels for efficient execution
-        self.bake_kernels(config)
         
         # Don't compile shaders here - wait until OpenGL context is ready
         # Shaders will be compiled in GLCLWidget.initializeGL()
@@ -403,44 +395,95 @@ class GLCLBrowser(BaseGUI):
 
     def bake_kernels(self, config):
         """Bake OpenCL kernels for efficient execution."""
+        print("GLCLBrowser::bake_kernels() Baking kernels with config:", config)
+        
         kernels_config = config.get("kernels", {})
         pipeline = config.get("kernel_pipeline", [])
         parameters = config.get("parameters", {})
         
-        print(f"GLCLBrowser::bake_kernels() Baking kernels with config: {config}")
-        print(f"GLCLBrowser::bake_kernels() Parameters: {parameters}")
-        print(f"GLCLBrowser::bake_kernels() Kernels: {kernels_config}")
-        print(f"GLCLBrowser::bake_kernels() Pipeline: {pipeline}")
+        print("GLCLBrowser::bake_kernels() Parameters:")
+        for name, info in parameters.items():
+            print(f"  {name}: {info}")
         
         self.baked_kernel_calls.clear()
         
+        # Use parameter values directly from config, not from widgets
         for kernel_name in pipeline:
             if kernel_name in kernels_config:
                 kernel_info = kernels_config[kernel_name]
                 print(f"GLCLBrowser::bake_kernels() Processing kernel {kernel_name} with info: {kernel_info}")
                 local_size, global_size_expr, buffer_names, param_names = kernel_info
                 
-                # Build argument information
-                arg_infos = []
+                # Resolve global size once during baking
+                global_size = self._resolve_global_size(global_size_expr, parameters)
+                
+                # Build pre-computed arguments tuple
+                args_list = []
+                
+                # Add buffer arguments
                 for buf_name in buffer_names:
-                    arg_infos.append((buf_name, True, None))
+                    buffer_obj = self.ocl_system.get_buffer(buf_name)
+                    args_list.append(buffer_obj)
+                
+                # Add scalar arguments with pre-computed type conversion
                 for param_name in param_names:
                     if param_name in parameters:
-                        param_info = parameters[param_name]
-                        arg_infos.append((param_name, False, param_info[1]))
+                        value, type_str, step = parameters[param_name]
+                        print(f"  Using parameter '{param_name}' = {value} ({type_str})")
+                        if type_str == "int":
+                            args_list.append(np.int32(value))
+                        elif type_str == "float":
+                            args_list.append(np.float32(value))
+                        else:
+                            args_list.append(value)
                     else:
-                        print(f"Warning: Parameter '{param_name}' not found, using float")
-                        arg_infos.append((param_name, False, "float"))
+                        print(f"Warning: Parameter '{param_name}' not found, using 0.0f")
+                        args_list.append(np.float32(0.0))
                 
-                # Create global size resolver
-                # Resolve global size once during baking
-                resolved_gs = self._resolve_global_size(global_size_expr, parameters)
+                args_tuple = tuple(args_list)
+                
+                # Create baked kernel call with pre-computed arguments
                 baked_call = BakedKernelCall(
-                    self.ocl_system, kernel_name, kernel_name,
-                    resolved_gs, local_size, arg_infos
+                    self.ocl_system, "nbody", kernel_name, global_size, local_size, args_tuple
                 )
-                
                 self.baked_kernel_calls.append(baked_call)
+                
+                print(f"GLCLBrowser::bake_kernels() Successfully baked kernel {kernel_name} with {len(args_tuple)} arguments")
+                for i, arg in enumerate(args_tuple):
+                    if hasattr(arg, 'dtype') and arg.dtype.kind == 'f':
+                        print(f"    arg[{i}] = {arg} (float)")
+                    elif hasattr(arg, 'dtype') and arg.dtype.kind == 'i':
+                        print(f"    arg[{i}] = {arg} (int)")
+                    else:
+                        print(f"    arg[{i}] = {arg}")
+
+    def setup_kernel_params_from_config(self, parameters):
+        """Initialize all kernel parameters from the config dictionary."""
+        print("GLCLBrowser::setup_kernel_params_from_config() Initializing kernel parameters...")
+        for param_name, param_info in parameters.items():
+            value, type_str, step = param_info
+            print(f"  Setting parameter '{param_name}' = {value} ({type_str})")
+            if type_str == "int":
+                self.ocl_system.set_kernel_param(param_name, np.int32(value))
+            elif type_str == "float":
+                self.ocl_system.set_kernel_param(param_name, np.float32(value))
+            else:
+                self.ocl_system.set_kernel_param(param_name, value)
+
+    def setup_kernel_params(self, parameters):
+        """Initialize all kernel parameters from configuration."""
+        print("GLCLBrowser::setup_kernel_params() Initializing kernel parameters...")
+        
+        for param_name, param_info in parameters.items():
+            value, type_str, step = param_info
+            print(f"  Setting parameter '{param_name}' = {value} ({type_str})")
+            
+            if type_str == "int":
+                self.ocl_system.set_kernel_param(param_name, np.int32(value))
+            elif type_str == "float":
+                self.ocl_system.set_kernel_param(param_name, np.float32(value))
+            else:
+                self.ocl_system.set_kernel_param(param_name, value)
 
     def _resolve_global_size(self, size_expr, parameters):
         """Resolve global size expression to actual integer."""
@@ -468,6 +511,12 @@ class GLCLBrowser(BaseGUI):
 
     def create_parameter_controls(self, config):
         """Create GUI controls for simulation parameters."""
+        # Debug: Print parameters when creating controls
+        print("GLCLBrowser::create_parameter_controls() Creating controls with parameters:")
+        params = config.get("parameters", {})
+        for name, info in params.items():
+            print(f"  {name}: {info}")
+            
         # Clear existing controls
         for i in reversed(range(self.params_layout.count())):
             item = self.params_layout.itemAt(i)
@@ -482,6 +531,8 @@ class GLCLBrowser(BaseGUI):
             else:
                 continue
                 
+            print(f"  Creating control for {param_name}: {param_info}")
+                
             if type_str == "int":
                 # Create integer input
                 from PyQt5.QtWidgets import QSpinBox, QLabel, QHBoxLayout, QWidget
@@ -492,7 +543,10 @@ class GLCLBrowser(BaseGUI):
                 label = QLabel(param_name)
                 widget = QSpinBox()
                 widget.setRange(-1000000, 1000000)
-                widget.setValue(int(value))
+                
+                # Block signals BEFORE setting value to prevent immediate updates
+                widget.blockSignals(True)
+                widget.setValue(int(value))  # Initialize with config value
                 widget.setSingleStep(int(step))
                 
                 layout.addWidget(label)
@@ -509,7 +563,11 @@ class GLCLBrowser(BaseGUI):
                 label = QLabel(param_name)
                 widget = QDoubleSpinBox()
                 widget.setRange(-1000000.0, 1000000.0)
-                widget.setValue(float(value))
+                widget.setDecimals(6)  # Increased precision for small values
+                
+                # Block signals BEFORE setting value to prevent immediate updates
+                widget.blockSignals(True)
+                widget.setValue(float(value))  # Initialize with config value
                 widget.setSingleStep(float(step))
                 widget.setDecimals(4)
                 
@@ -521,12 +579,18 @@ class GLCLBrowser(BaseGUI):
                 
             self.param_widgets[param_name] = widget
             
-            # Connect value changes
+            # Store the original value to prevent reset
+            widget.setProperty("original_value", float(value))
+            
+            # Connect value changes to update config and re-bake kernels
             if hasattr(widget, 'valueChanged'):
                 if type_str == "int":
-                    widget.valueChanged.connect(lambda v, p=param_name: self.ocl_system.set_kernel_param(p, np.int32(v)))
+                    widget.valueChanged.connect(lambda v, p=param_name: self.update_parameter_from_widget(p, v, "int"))
                 elif type_str == "float":
-                    widget.valueChanged.connect(lambda v, p=param_name: self.ocl_system.set_kernel_param(p, np.float32(v)))
+                    widget.valueChanged.connect(lambda v, p=param_name: self.update_parameter_from_widget(p, v, "float"))
+            
+            # Unblock signals after setup
+            widget.blockSignals(False)
 
     def toggle_simulation(self):
         """Toggle simulation running state."""
@@ -548,8 +612,8 @@ class GLCLBrowser(BaseGUI):
         """Main simulation update loop."""
         self.debug_frame_counter += 1
         try:
-            # Update parameters from GUI
-            self.update_sim_uniforms()
+            # Update parameters from GUI controls
+            self.update_uniforms_from_controls()
             # Execute baked kernel calls unless GL debugging is on
             if not self.bDebugGL:
                 for kernel_call in self.baked_kernel_calls:
@@ -582,24 +646,90 @@ class GLCLBrowser(BaseGUI):
         self.sim_timer.stop()
         os._exit(1)  # Forcefully terminate to avoid PyQt swallowing exceptions
 
-    def update_sim_uniforms(self):
-        """Update simulation uniforms based on current parameters."""
-        #if not self.current_config:
-        #    return
+    def update_parameter_from_widget(self, param_name, new_value, type_str):
+        """Update parameter value from GUI widget."""
+        print(f"GLCLBrowser::update_parameter_from_widget() {param_name} = {new_value} ({type_str})")
+        
+        if self.current_config is None:
+            return
             
         parameters = self.current_config.get("parameters", {})
+        if param_name in parameters:
+            old_value, old_type, step = parameters[param_name]
+            print(f"  Old value: {old_value}, New value: {new_value}")
+            parameters[param_name] = (new_value, old_type, step)
+            
+            # Update OpenCL kernel parameter
+            if type_str == "int":
+                self.ocl_system.set_kernel_param(param_name, np.int32(new_value))
+            elif type_str == "float":
+                self.ocl_system.set_kernel_param(param_name, np.float32(new_value))
+            
+            # Re-bake kernels with updated parameters
+            self.bake_kernels(self.current_config)
+            
+            # Update simulation uniforms from controls
+            self.update_uniforms_from_controls()
+            
+            print(f"Parameter '{param_name}' updated to {new_value} ({type_str})")
+
+    def set_initial_kernel_params(self):
+        """Set initial kernel parameters from config without reading widgets."""
+        if not self.current_config:
+            return
+            
+        parameters = self.current_config.get("parameters", {})
+        for param_name, param_info in parameters.items():
+            value, type_str, step = param_info
+            
+            if type_str == "int":
+                self.ocl_system.set_kernel_param(param_name, np.int32(value))
+            elif type_str == "float":
+                self.ocl_system.set_kernel_param(param_name, np.float32(value))
         
-        # Update kernel parameters from GUI
+        # Re-bake kernels with current parameters
+        if self.current_config:
+            self.bake_kernels(self.current_config)
+
+    def update_uniforms_from_controls(self):
+        """Update parameters from widget controls (original purpose)."""
+        if not self.current_config:
+            return
+            
+        parameters = self.current_config.get("parameters", {})
         for param_name, widget in self.param_widgets.items():
             if param_name in parameters:
                 param_info = parameters[param_name]
-                type_str = param_info[1]
-                value = widget.value()
+                value, type_str, step = param_info
+                new_value = widget.value()
+                parameters[param_name] = (new_value, type_str, step)
                 
                 if type_str == "int":
-                    self.ocl_system.set_kernel_param(param_name, np.int32(value))
+                    self.ocl_system.set_kernel_param(param_name, np.int32(new_value))
                 elif type_str == "float":
-                    self.ocl_system.set_kernel_param(param_name, np.float32(value))
+                    self.ocl_system.set_kernel_param(param_name, np.float32(new_value))
+        
+        # Re-bake kernels with updated parameters
+        if self.current_config:
+            self.bake_kernels(self.current_config)
+
+    def update_sim_uniforms(self):
+        """Update simulation uniforms based on current parameters."""
+        if not self.current_config:
+            return
+            
+        parameters = self.current_config.get("parameters", {})
+        for param_name, param_info in parameters.items():
+            value, type_str, step = param_info
+            
+            if type_str == "int":
+                self.ocl_system.set_kernel_param(param_name, np.int32(value))
+            elif type_str == "float":
+                self.ocl_system.set_kernel_param(param_name, np.float32(value))
+        
+        # Re-bake kernels with current parameters
+        if self.current_config:
+            self.bake_kernels(self.current_config)
 
     def _create_dynamic_buffer_registry(self):
         """Create dynamic buffer registry from user script data according to the pipeline approach."""
@@ -664,9 +794,27 @@ if __name__ == '__main__':
     current_dir = os.path.dirname(os.path.abspath(__file__))
     default_script = os.path.join(current_dir, "scripts", "nbody.py")
     
+    print(f"GLCLBrowser::__main__() Default script path: {default_script}")
+    print(f"GLCLBrowser::__main__() Current directory: {current_dir}")
+    print(f"GLCLBrowser::__main__() Script exists: {os.path.exists(default_script)}")
+    
+    # Check if script exists and print its parameters
+    if os.path.exists(default_script):
+        import importlib.util
+        spec = importlib.util.spec_from_file_location("simulation_script", default_script)
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        
+        config = getattr(module, 'config', None)
+        if config:
+            print("GLCLBrowser::__main__() Script config parameters:")
+            params = config.get("parameters", {})
+            for name, info in params.items():
+                print(f"  {name}: {info}")
+    
     # Create and show browser
     #browser = GLCLBrowser(python_script_path=default_script, bDebugCL=False, bDebugGL=True, nDebugFrames=5)
-    browser = GLCLBrowser(python_script_path=default_script, nDebugFrames=1000 )
+    browser = GLCLBrowser(python_script_path=default_script, nDebugFrames=3 )
     browser.show()
     
     sys.exit(app.exec_())

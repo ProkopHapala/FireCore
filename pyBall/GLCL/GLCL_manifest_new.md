@@ -130,7 +130,15 @@ The `paintGL` method will then simply iterate through `self.baked_render_pipelin
 
 The problematic `update_sim_uniforms` method will be removed. Instead, during the initial baking process, a `param_update_map` will be constructed. This map will link GUI parameter names directly to the specific attributes or closures within the `BakedKernelCall` and `BakedRenderPass` objects that need to be updated.
 
-When a GUI parameter changes, a simple `update_parameter(param_name, new_value)` function will use this map to directly and efficiently update the relevant values in the baked objects, without any runtime loops or string comparisons.
+**Current Issue**: Parameter values from config are being reset to 0.0 during initialization instead of using the correct values from the simulation script.
+
+**Root Cause**: The parameter dictionary is being modified somewhere between config loading and kernel baking. The expected flow should be:
+1. Config dictionary contains original values (e.g., dt=0.001)
+2. Controls are initialized FROM the config dictionary
+3. Only when user changes controls, the config dictionary should update
+4. Kernel baking should always use the original config values directly.
+
+**Fix Required**: Ensure create_parameter_controls() only reads from config, never modifies it, and that bake_kernels() uses the original config values directly.
 
 ### 4.5 Benefits
 
@@ -231,7 +239,34 @@ Each GLobject is created with all necessary state:
 - True generic browser capability
 - Eliminates need for browser updates when user scripts use different buffer names
 
-### 5.6 Critical: OpenGL Initialization Timing
+### 5.6 Kernel Baking System
+
+**Problem**: Current kernel execution has runtime overhead - parameters are looked up and type-converted every frame.
+
+**Solution**: Implement true kernel baking that pre-computes everything at setup time.
+
+**Design Pattern**:
+```python
+# Kernel description format
+"kernel_name" : ( (local_size,), "global_size_expr", [buffer_args], [scalar_args] )
+
+# Baked result: (kernel_func, global_size, local_size, args_tuple)
+# Execution: kernel_func(queue, global_size, local_size, *args_tuple)
+```
+
+**Implementation**:
+1. `bake_kernel()` - creates pre-computed (kernel, global_size, local_size, args) tuple
+2. `execute_baked()` - simple unpacking and execution
+3. `setup_kernel_params()` - initializes all parameters immediately after baking
+
+**Benefits**:
+- Zero runtime overhead
+- Simple execution: `kernel(*args)`
+- Pre-computed global size resolution
+- Pre-converted parameter types
+- Immediate parameter initialization
+
+### 5.7 Critical: OpenGL Initialization Timing
 
 **IMPORTANT**: When working with OpenGL, certain operations must be deferred until after the OpenGL context is fully initialized:
 
