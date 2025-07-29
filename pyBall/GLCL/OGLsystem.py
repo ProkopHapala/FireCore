@@ -488,7 +488,8 @@ class GLobject:
     def alloc_vao_vbo_ebo(self, components):
         self.vao = GL.glGenVertexArrays(1);  GL.glBindVertexArray(self.vao)
         self.vbo = GL.glGenBuffers(1);       GL.glBindBuffer(GL.GL_ARRAY_BUFFER, self.vbo)
-        self.ebo = GL.glGenBuffers(1);       GL.glBindBuffer(GL.GL_ELEMENT_ARRAY_BUFFER, self.ebo)
+        # Only create EBO if we actually need it for indexed drawing
+        self.ebo = None  # Default to no EBO for array-based drawing
         if len(components) == 1:
             GL.glEnableVertexAttribArray(0)
             GL.glVertexAttribPointer(0, components[0], GL.GL_FLOAT, GL.GL_FALSE, 0, None)
@@ -513,11 +514,18 @@ class GLobject:
         self.nelements = nelements
         self.mode = mode
 
-    def draw(self, n=-1 ):
+    def draw_elements(self, n=-1 ):
         GL.glBindVertexArray(self.vao)
         GL.glEnableVertexAttribArray(0) # Ensure attribute 0 is enabled for drawing
         if n == -1: n= self.nelements
         GL.glDrawElements(self.mode, n, GL.GL_UNSIGNED_INT, None)
+        GL.glBindVertexArray(0)
+
+    def draw_arrays(self, n=-1 ):
+        GL.glBindVertexArray(self.vao)
+        GL.glEnableVertexAttribArray(0) # Ensure attribute 0 is enabled for drawing
+        if n == -1: n= self.nelements
+        GL.glDrawArrays(self.mode, 0, n)
         GL.glBindVertexArray(0)
 
     def upload_ebo(self, indices):

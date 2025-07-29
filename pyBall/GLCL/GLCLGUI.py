@@ -93,7 +93,7 @@ class GLCLWidget(QOpenGLWidget):
             print("GLCLWidget::bake_render_objects() No shader programs available")
             return
         
-        # 2. For each render pass, get the compiled shader program handle from GLCLBrowser
+        # For each render pass, create GLobject using modular functions
         for i, render_pass in enumerate(self.render_pipeline_info):
             shader_name, element_count_name, vertex_buffer_name = render_pass[0], render_pass[1], render_pass[2]
             index_buffer_name = render_pass[3] if len(render_pass) > 3 else None
@@ -105,44 +105,26 @@ class GLCLWidget(QOpenGLWidget):
             if not shader_program:
                 shader_program = self.ogl_system.get_shader_program(shader_name)
                 if not shader_program:
-                    #print(f"GLCLWidget::bake_render_objects() ERROR: Shader program '{shader_name}' not found")
                     raise Exception(f"GLCLWidget::bake_render_objects() ERROR: Shader program '{shader_name}' not found")
             
-            # 3. Create GLobject with VAO/VBO for the buffer data
+            # Get buffer data
             buffer_info = self.buffer_data.get(vertex_buffer_name)
             if buffer_info is None or buffer_info['data'] is None:
-                #print(f"GLCLWidget::bake_render_objects() ERROR: Buffer data for '{vertex_buffer_name}' not found")
                 raise Exception(f"GLCLWidget::bake_render_objects() ERROR: Buffer data for '{vertex_buffer_name}' not found")
             
+            # Create GLobject using modular constructor
             gl_obj = GLobject(nelements=buffer_info['nelements'], mode=GL_POINTS)
-            gl_obj.vao = GL.glGenVertexArrays(1)
-            # Create VBO
-            gl_obj.vbo = GL.glGenBuffers(1)
-            print(f"Created VBO: {gl_obj.vbo}")
             
-            # Binding sequence is important:
-            # 1. Bind VAO first
-            GL.glBindVertexArray(gl_obj.vao)
-            print("Bound VAO")
+            # Use GLobject methods for buffer management
+            components = [buffer_info['components']]  # GLobject expects list of components
+            gl_obj.alloc_vao_vbo_ebo(components)
             
-            # 2. Bind VBO and upload data
-            GL.glBindBuffer(GL.GL_ARRAY_BUFFER, gl_obj.vbo)
-            GL.glBufferData(GL.GL_ARRAY_BUFFER, buffer_info['data'].nbytes, buffer_info['data'], GL.GL_DYNAMIC_DRAW)
-            print(f"Uploaded {buffer_info['data'].nbytes} bytes to VBO")
-            
-            # 3. Configure vertex attributes WHILE VAO is bound
-            GL.glEnableVertexAttribArray(0)  # Position attribute at layout location 0
-            GL.glVertexAttribPointer(0, buffer_info['components'], GL.GL_FLOAT, GL.GL_FALSE, 0, None)
-            print(f"Configured vertex attribute: components={buffer_info['components']}")
-            
-            # 4. Unbind VAO and VBO when done
-            GL.glBindVertexArray(0)
-            GL.glBindBuffer(GL.GL_ARRAY_BUFFER, 0)
+            # Upload data using GLobject method
+            gl_obj.upload_vbo(buffer_info['data'].astype(np.float32))
             
             # Store shader program for drawing
             gl_obj.shader_program = shader_program
-            gl_obj.shader_name = shader_name  # Store shader name for debugging
-            print(f"Associated shader program {shader_program} with GLobject")
+            gl_obj.shader_name = shader_name
             
             # Store the GL object in the dictionary by buffer name
             self.gl_objects[vertex_buffer_name] = gl_obj
@@ -193,59 +175,31 @@ class GLCLWidget(QOpenGLWidget):
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT)
         glClearColor(0.2, 0.2, 0.2, 1.0)
         
-        # Debug: Print matrix details
-        view_translation = self.view_matrix.column(3)
-        #print(f"View matrix translation: ({view_translation.x()}, {view_translation.y()}, {view_translation.z()})")
-        #print(f"Projection matrix near: {self.projection_matrix[3,2]}")
-        
         # Check OpenGL errors before drawing
         err = glGetError()
         if err != GL_NO_ERROR:
             print(f"OpenGL error before draw: {err}")
         
         if hasattr(self, 'gl_objects') and self.gl_objects:
-            # Debug print OpenGL buffer data before rendering
-            #if hasattr(self.parent(), 'bDebugGL') and self.parent().bDebugGL: print(f"=== OpenGL Rendering Debug ===")
-            
             for buffer_name, gl_obj in self.gl_objects.items():
                 shader_program = gl_obj.shader_program
-                #print(f"RenderObject {i} has {gl_obj.nelements} elements in VBO {gl_obj.vbo}")
                 
+                # Use GLobject for drawing
                 glUseProgram(shader_program)
-                # Set large point size and red color
-                point_size_loc = glGetUniformLocation(shader_program, "point_size")
-                color_loc = glGetUniformLocation(shader_program, "color")
-                #print(f"Shader uniforms - point_size: {point_size_loc}, color: {color_loc}")
                 
-                glUniform1f(point_size_loc, 4.0)  # Very large points
-                glUniform4f(color_loc, 1.0, 0.0, 0.0, 1.0)
+                # Set uniforms using GLobject's shader program
+                point_size_loc     = glGetUniformLocation(shader_program, "point_size")
+                color_loc          = glGetUniformLocation(shader_program, "color")
+                if point_size_loc != -1: glUniform1f(point_size_loc, 4.0)
+                if color_loc      != -1: glUniform4f(color_loc, 1.0, 0.0, 0.0, 1.0)
+                
+                # Use GLobject's draw method
                 glDisable(GL_DEPTH_TEST)
-                
-                # Debug print buffer data being rendered
-                # if hasattr(self.parent(), 'bDebugGL') and self.parent().bDebugGL:
-                #     print(f"Rendering object with {gl_obj.nelements} vertices")
-                #     if gl_obj.vbo is not None:
-                #         # Read back buffer data for debugging
-                #         glBindBuffer(GL_ARRAY_BUFFER, gl_obj.vbo)
-                #         buffer_size = glGetBufferParameteriv(GL_ARRAY_BUFFER, GL_BUFFER_SIZE)
-                #         if buffer_size > 0:
-                #             data = glGetBufferSubData(GL_ARRAY_BUFFER, 0, min(buffer_size, 64))
-                #             import numpy as np
-                #             float_data = np.frombuffer(data, dtype=np.float32)
-                #             print(f"  First 4 vertex values: {float_data[:4]}")
-                
-                glBindVertexArray(gl_obj.vao)
-                glDrawArrays(GL_POINTS, 0, gl_obj.nelements)
-                glBindVertexArray(0)
-                
-                # Check OpenGL errors after drawing
-                err = glGetError()
-                if err != GL_NO_ERROR:
-                    print(f"OpenGL error after draw: {err}")
-                
+                #gl_obj.draw_elements(gl_obj.nelements)
+                gl_obj.draw_arrays(gl_obj.nelements)
                 glEnable(GL_DEPTH_TEST)
+                
                 glUseProgram(0)
-                #print(f"Drew {gl_obj.nelements} elements with size 25px")
         else:
             print("WARNING: No render objects to draw")
 
