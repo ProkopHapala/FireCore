@@ -205,8 +205,7 @@ class GLCLWidget(QOpenGLWidget):
         
         if hasattr(self, 'gl_objects') and self.gl_objects:
             # Debug print OpenGL buffer data before rendering
-            if hasattr(self.parent(), 'bDebugGL') and self.parent().bDebugGL:
-                print(f"=== OpenGL Rendering Debug ===")
+            #if hasattr(self.parent(), 'bDebugGL') and self.parent().bDebugGL: print(f"=== OpenGL Rendering Debug ===")
             
             for buffer_name, gl_obj in self.gl_objects.items():
                 shader_program = gl_obj.shader_program
@@ -223,17 +222,17 @@ class GLCLWidget(QOpenGLWidget):
                 glDisable(GL_DEPTH_TEST)
                 
                 # Debug print buffer data being rendered
-                if hasattr(self.parent(), 'bDebugGL') and self.parent().bDebugGL:
-                    print(f"Rendering object with {gl_obj.nelements} vertices")
-                    if gl_obj.vbo is not None:
-                        # Read back buffer data for debugging
-                        glBindBuffer(GL_ARRAY_BUFFER, gl_obj.vbo)
-                        buffer_size = glGetBufferParameteriv(GL_ARRAY_BUFFER, GL_BUFFER_SIZE)
-                        if buffer_size > 0:
-                            data = glGetBufferSubData(GL_ARRAY_BUFFER, 0, min(buffer_size, 64))
-                            import numpy as np
-                            float_data = np.frombuffer(data, dtype=np.float32)
-                            print(f"  First 4 vertex values: {float_data[:4]}")
+                # if hasattr(self.parent(), 'bDebugGL') and self.parent().bDebugGL:
+                #     print(f"Rendering object with {gl_obj.nelements} vertices")
+                #     if gl_obj.vbo is not None:
+                #         # Read back buffer data for debugging
+                #         glBindBuffer(GL_ARRAY_BUFFER, gl_obj.vbo)
+                #         buffer_size = glGetBufferParameteriv(GL_ARRAY_BUFFER, GL_BUFFER_SIZE)
+                #         if buffer_size > 0:
+                #             data = glGetBufferSubData(GL_ARRAY_BUFFER, 0, min(buffer_size, 64))
+                #             import numpy as np
+                #             float_data = np.frombuffer(data, dtype=np.float32)
+                #             print(f"  First 4 vertex values: {float_data[:4]}")
                 
                 glBindVertexArray(gl_obj.vao)
                 glDrawArrays(GL_POINTS, 0, gl_obj.nelements)
