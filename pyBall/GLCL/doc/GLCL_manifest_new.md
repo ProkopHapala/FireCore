@@ -130,6 +130,17 @@ The `paintGL` method will then simply iterate through `self.baked_render_pipelin
 
 The problematic `update_sim_uniforms` method will be removed. Instead, during the initial baking process, a `param_update_map` will be constructed. This map will link GUI parameter names directly to the specific attributes or closures within the `BakedKernelCall` and `BakedRenderPass` objects that need to be updated.
 
+### 4.5 Pre-baked Buffer Management
+
+The inefficient on-the-fly buffer searching in `update_simulation` will be eliminated. Instead, during initialization, we will:
+
+1. **Pre-compute buffer synchronization list**: Identify the common subset of buffer names that appear in both "render_pipeline" and "kernels" during the baking phase
+2. **Store as simple list/set**: Maintain a pre-baked list `buffers_to_sync` containing only buffer names that need GPU→CPU→GPU transfer
+3. **Simplify update_simulation**: Replace complex logic with simple loop over pre-computed `buffers_to_sync` list
+4. **No runtime searching**: Eliminate all set intersections and buffer name lookups from the update loop
+
+The complex logic of finding common buffer names between render pipeline and kernels should be done once at initialization, not every frame during update_simulation.
+
 **Current Issue**: Parameter values from config are being reset to 0.0 during initialization instead of using the correct values from the simulation script.
 
 **Root Cause**: The parameter dictionary is being modified somewhere between config loading and kernel baking. The expected flow should be:

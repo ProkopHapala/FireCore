@@ -70,6 +70,9 @@ class GLCLBrowser(BaseGUI):
         self.render_pipeline_info = []  # List of (shader_name, element_count_name, vertex_buffer_name, index_buffer_name)
         self.buffer_data = {}  # Dictionary storing buffer data for deferred GLobject creation
         
+        # Pre-baked buffer synchronization
+        self.buffers_to_sync = []  # Pre-computed list of buffer names for GPU→CPU→GPU transfer
+        
         # Create main widget and layout
         self.main_widget = QWidget()
         self.setCentralWidget(self.main_widget)
@@ -233,6 +236,10 @@ class GLCLBrowser(BaseGUI):
         
         # Create dynamic buffer registry from user script data
         self._create_dynamic_buffer_registry()
+        
+        # Now that dynamic buffer registry is created, precompute buffer sync list
+        # This must happen after render_pipeline_info is populated
+        self._precompute_buffer_sync_list(self.current_config)
         
         # Don't compile shaders here - wait until OpenGL context is ready
         # Shaders will be compiled in GLCLWidget.initializeGL()
@@ -407,6 +414,7 @@ class GLCLBrowser(BaseGUI):
         
         self.baked_kernel_calls.clear()
         
+        # Note: Buffer sync precomputation moved to after dynamic buffer registry creation
         # Use parameter values directly from config, not from widgets
         for kernel_name in pipeline:
             if kernel_name in kernels_config:
@@ -610,64 +618,42 @@ class GLCLBrowser(BaseGUI):
             self.load_and_apply_script(self.current_script)
 
     def update_simulation(self):
-        """Main simulation update loop."""
+        """Main simulation update loop - simplified with pre-baked buffer management."""
         self.debug_frame_counter += 1
         try:
-            # Update parameters from GUI controls
-            #self.update_uniforms_from_controls()
             # Execute baked kernel calls unless GL debugging is on
             if not self.bDebugGL:
+                # Execute all pre-baked kernel calls
                 for kernel_call in self.baked_kernel_calls:
                     kernel_call.execute()
                 
-                # Identify buffers that appear in both render pipeline and kernel arguments
-                buffers_to_update = set()
-                
-                # Get buffers from render pipeline
-                render_buffers = set()
-                for render_pass in self.render_pipeline_info:
-                    if len(render_pass) >= 3 and render_pass[2]:  # vertex_buffer_name
-                        render_buffers.add(render_pass[2])
-                
-                # Get buffers from current config
-                if self.current_config and "buffers" in self.current_config:
-                    all_buffers = set(self.current_config["buffers"].keys())
-                    # Update buffers that are in both render pipeline and config
-                    buffers_to_update = render_buffers.intersection(all_buffers)
-                
-                if self.bDebugCL:
-                    print(f"[Frame {self.debug_frame_counter}] Buffers to update: {list(buffers_to_update)}")
-                
-                print(f"buffers_to_update {buffers_to_update}, self.buffer_shapes {self.buffer_shapes}, self.glcl_widget.gl_objects {self.glcl_widget.gl_objects}")   
-                # Download from OpenCL and upload to OpenGL
-                for buf_name in buffers_to_update:
-                    if buf_name in self.buffer_shapes and buf_name in self.glcl_widget.gl_objects:
-                        # Download from OpenCL
-                        host_data = np.empty(self.buffer_shapes[buf_name], dtype=np.float32)
-                        self.ocl_system.fromGPU(buf_name, host_data)
-                        
-                        # Upload to OpenGL
-                        gl_obj = self.glcl_widget.gl_objects[buf_name]
-                        GL.glBindBuffer(GL.GL_ARRAY_BUFFER, gl_obj.vbo)
-                        GL.glBufferSubData(GL.GL_ARRAY_BUFFER, 0, host_data.nbytes, host_data)
-                        print( f"buf_name {host_data.nbytes }" )
-                        
-                        if self.bDebugCL:
-                            print(f"[Frame {self.debug_frame_counter}] Updated OpenGL buffer '{buf_name}' with OpenCL data")
+                # Simple loop over pre-computed buffer sync list - no runtime checks needed
+                for buf_name in self.buffers_to_sync:
+                    # Download from OpenCL
+                    host_data = np.empty(self.buffer_shapes[buf_name], dtype=np.float32)
+                    self.ocl_system.fromGPU(buf_name, host_data)
+                    
+                    # Upload to OpenGL
+                    gl_obj = self.glcl_widget.gl_objects[buf_name]
+                    GL.glBindBuffer(GL.GL_ARRAY_BUFFER, gl_obj.vbo)
+                    GL.glBufferSubData(GL.GL_ARRAY_BUFFER, 0, host_data.nbytes, host_data)
+                    
+                    if self.bDebugCL:
+                        print(f"[Frame {self.debug_frame_counter}] Updated OpenGL buffer '{buf_name}' with OpenCL data")
                 
                 # Print buffer snapshots for debugging
                 if self.bDebugCL:
                     for buf_name in self.buffer_shapes.keys():
                         host = np.empty(self.buffer_shapes[buf_name], dtype=np.float32)
                         self.ocl_system.fromGPU(buf_name, host)
-                        print(f"[Frame {self.debug_frame_counter}] Buffer '{buf_name}': 1st {host[:1]} last {host[-1]}")
+                        print(f"[Frame {self.debug_frame_counter}] Buffer '{buf_name}': 1st {host[:1]} last {host[-1:]}")
                 
             self.glcl_widget.update()
             
             if self.debug_frame_counter >= self.nDebugFrames:
                 self.simulation_running = False
                 self.sim_timer.stop()
-                print("GLCLBrowser::update_simulation() STOP! debug_frame_counter reached nDebugFrames: {self.nDebugFrames}")
+                print(f"GLCLBrowser::update_simulation() STOP! debug_frame_counter reached nDebugFrames: {self.nDebugFrames}")
                 #exit()
 
         except Exception as e:
@@ -820,6 +806,43 @@ class GLCLBrowser(BaseGUI):
         
         print(f"Dynamic buffer registry created with {len(self.buffer_data)} buffers")
 
+    def _precompute_buffer_sync_list(self, config):
+        """Pre-compute the list of buffer names that need GPU→CPU→GPU transfer.
+        
+        This method identifies the common subset of buffer names that appear in both
+        the render pipeline and the kernel arguments. The complex logic is performed
+        once during initialization, not every frame.
+        """
+        print(">>>> GLCLBrowser::_precompute_buffer_sync_list() Pre-computing buffer sync list...")
+        
+        # Reset the pre-computed list
+        self.buffers_to_sync = []
+        
+        # Get buffers from render pipeline
+        render_buffers = set()
+        for render_pass in self.render_pipeline_info:
+            if len(render_pass) >= 3 and render_pass[2]:  # vertex_buffer_name
+                render_buffers.add(render_pass[2])
+        
+        # Get buffers from kernel arguments
+        kernel_buffers = set()
+        kernels_config = config.get("kernels", {})
+        for kernel_name, kernel_info in kernels_config.items():
+            if len(kernel_info) >= 3:  # local_size, global_size_expr, buffer_names, param_names
+                buffer_names = kernel_info[2]
+                kernel_buffers.update(buffer_names)
+        
+        # Find intersection - buffers that need sync
+        buffers_to_sync = render_buffers.intersection(kernel_buffers)
+        
+        # Store as pre-computed list
+        self.buffers_to_sync = list(buffers_to_sync)
+        
+        print(f"  Render pipeline buffers: {list(render_buffers)}")
+        print(f"  Kernel buffers: {list(kernel_buffers)}")
+        print(f"  Buffers to sync: {self.buffers_to_sync}")
+        print("<<<< GLCLBrowser::_precompute_buffer_sync_list() DONE.")
+
     
     # Main entry point for the application
 if __name__ == '__main__':
@@ -834,7 +857,7 @@ if __name__ == '__main__':
     parser.add_argument('--script', type=str, help='Path to simulation script')
     parser.add_argument('--debug-cl', action='store_true', help='Enable OpenCL debugging')
     parser.add_argument('--debug-gl', action='store_true', help='Enable OpenGL debugging')
-    parser.add_argument('--debug-frames', type=int, default=3, help='Number of debug frames to capture')
+    parser.add_argument('--debug-frames', type=int, default=1000000000, help='Number of debug frames to capture')
     
     args = parser.parse_args()
     
@@ -847,8 +870,8 @@ if __name__ == '__main__':
     script_path = args.script or default_script
 
     ## Temporary hack for easier debugging
-    args.debug_cl = True
-    args.debug_frames = 10000
+    #args.debug_cl = True
+    #args.debug_frames = 10
 
     
     print(f"GLCLBrowser::__main__() Script path: {script_path}")
