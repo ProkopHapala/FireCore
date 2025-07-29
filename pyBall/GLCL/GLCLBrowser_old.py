@@ -7,6 +7,7 @@ from PyQt5.QtCore import Qt
 
 from ..OGL.BaseGUI import BaseGUI
 from .GLCLGUI_old import GLCLWidget
+#from .GLCLGUI import GLCLWidget      # AttributeError: 'GLCLWidget' object has no attribute 'particle_count'
 from .OCLsystem import OCLSystem
 from .OGLsystem_old import OGLSystem
 import numpy as np
