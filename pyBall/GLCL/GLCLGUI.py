@@ -144,10 +144,9 @@ class GLCLWidget(QOpenGLWidget):
             gl_obj.shader_name = shader_name  # Store shader name for debugging
             print(f"Associated shader program {shader_program} with GLobject")
             
-            # Store the baked render object as (GLobject, shader_program) tuple
-            # Note: these are handles (values) not names (keys)
-            self.render_objects.append((gl_obj, shader_program))
-            print(f"GLCLWidget::bake_render_objects() SUCCESS: Baked render object #{len(self.render_objects)} for render pass '{shader_name}' with {buffer_info['nelements']} elements")
+            # Store the GL object in the dictionary by buffer name
+            self.gl_objects[vertex_buffer_name] = gl_obj
+            print(f"GLCLWidget::bake_render_objects() SUCCESS: Baked render object for buffer '{vertex_buffer_name}' with {buffer_info['nelements']} elements")
 
     def update_buffer_data(self, buffer_name, new_data):
         """Update buffer data for a specific buffer."""
@@ -204,12 +203,13 @@ class GLCLWidget(QOpenGLWidget):
         if err != GL_NO_ERROR:
             print(f"OpenGL error before draw: {err}")
         
-        if hasattr(self, 'render_objects') and self.render_objects:
+        if hasattr(self, 'gl_objects') and self.gl_objects:
             # Debug print OpenGL buffer data before rendering
             if hasattr(self.parent(), 'bDebugGL') and self.parent().bDebugGL:
                 print(f"=== OpenGL Rendering Debug ===")
             
-            for i, (gl_obj, shader_program) in enumerate(self.render_objects):
+            for buffer_name, gl_obj in self.gl_objects.items():
+                shader_program = gl_obj.shader_program
                 #print(f"RenderObject {i} has {gl_obj.nelements} elements in VBO {gl_obj.vbo}")
                 
                 glUseProgram(shader_program)
@@ -284,15 +284,8 @@ class GLCLWidget(QOpenGLWidget):
             if need_to_bind:
                 print(f"GLCLWidget::update_matrices() Binding shader program {self.shader_program} before setting uniforms")
                 glUseProgram(self.shader_program)
-
-            if self.color_loc is None:
-                self.get_default_uniform_locations(self.shader_program)
-
-            #if self.color_loc != -1: glUniform4f(self.color_loc, 1.0, 1.0, 1.0, 1.0)
-            if self.color_loc != -1: glUniform4fv(self.color_loc, 1, self.color)
-            if self.model_loc != -1: glUniformMatrix4fv(self.model_loc, 1, GL_FALSE, self.model_matrix.data())
-            if self.view_loc  != -1: glUniformMatrix4fv(self.view_loc, 1, GL_FALSE,  self.view_matrix.data())
-            if self.proj_loc  != -1: glUniformMatrix4fv(self.proj_loc, 1, GL_FALSE,  self.projection_matrix.data())
+                if self.view_loc  != -1: glUniformMatrix4fv(self.view_loc, 1, GL_FALSE,  self.view_matrix.data())
+                if self.proj_loc  != -1: glUniformMatrix4fv(self.proj_loc, 1, GL_FALSE,  self.projection_matrix.data())
 
             # Restore previous program if we changed it
             if need_to_bind and current_program != 0:

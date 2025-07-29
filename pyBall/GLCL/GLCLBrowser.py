@@ -8,6 +8,8 @@ from PyQt5.QtWidgets import QApplication, QHBoxLayout, QWidget, QFileDialog, QVB
 from PyQt5 import QtWidgets
 from PyQt5.QtCore import QTimer, Qt
 
+import OpenGL.GL as GL
+
 from ..OGL.BaseGUI import BaseGUI
 from .GLCLGUI import GLCLWidget
 from .OCLsystem import OCLSystem
@@ -395,12 +397,10 @@ class GLCLBrowser(BaseGUI):
 
     def bake_kernels(self, config):
         """Bake OpenCL kernels for efficient execution."""
-        print("GLCLBrowser::bake_kernels() Baking kernels with config:", config)
-        
+        print(">>>> GLCLBrowser::bake_kernels() Baking kernels with config:", config)
         kernels_config = config.get("kernels", {})
         pipeline = config.get("kernel_pipeline", [])
         parameters = config.get("parameters", {})
-        
         print("GLCLBrowser::bake_kernels() Parameters:")
         for name, info in parameters.items():
             print(f"  {name}: {info}")
@@ -456,6 +456,7 @@ class GLCLBrowser(BaseGUI):
                         print(f"    arg[{i}] = {arg} (int)")
                     else:
                         print(f"    arg[{i}] = {arg}")
+        print("<<<< GLCLBrowser::bake_kernels() DONE.")
 
     def setup_kernel_params_from_config(self, parameters):
         """Initialize all kernel parameters from the config dictionary."""
@@ -613,21 +614,55 @@ class GLCLBrowser(BaseGUI):
         self.debug_frame_counter += 1
         try:
             # Update parameters from GUI controls
-            self.update_uniforms_from_controls()
+            #self.update_uniforms_from_controls()
             # Execute baked kernel calls unless GL debugging is on
             if not self.bDebugGL:
                 for kernel_call in self.baked_kernel_calls:
                     kernel_call.execute()
-                    # If CL debugging, print buffer snapshots
-                    if self.bDebugCL:
-                        for buf_name in self.buffer_shapes.keys():
-                            host = np.empty(self.buffer_shapes[buf_name], dtype=np.float32)
-                            self.ocl_system.fromGPU(buf_name, host)
-                            print(f"[Frame {self.debug_frame_counter}] Buffer '{buf_name}':\n{host[:5] if host.size>20 else host}")
                 
-            # Update OpenGL visualization if not CL-only debug
-            if not self.bDebugCL:
-                self.glcl_widget.update()
+                # Identify buffers that appear in both render pipeline and kernel arguments
+                buffers_to_update = set()
+                
+                # Get buffers from render pipeline
+                render_buffers = set()
+                for render_pass in self.render_pipeline_info:
+                    if len(render_pass) >= 3 and render_pass[2]:  # vertex_buffer_name
+                        render_buffers.add(render_pass[2])
+                
+                # Get buffers from current config
+                if self.current_config and "buffers" in self.current_config:
+                    all_buffers = set(self.current_config["buffers"].keys())
+                    # Update buffers that are in both render pipeline and config
+                    buffers_to_update = render_buffers.intersection(all_buffers)
+                
+                if self.bDebugCL:
+                    print(f"[Frame {self.debug_frame_counter}] Buffers to update: {list(buffers_to_update)}")
+                
+                print(f"buffers_to_update {buffers_to_update}, self.buffer_shapes {self.buffer_shapes}, self.glcl_widget.gl_objects {self.glcl_widget.gl_objects}")   
+                # Download from OpenCL and upload to OpenGL
+                for buf_name in buffers_to_update:
+                    if buf_name in self.buffer_shapes and buf_name in self.glcl_widget.gl_objects:
+                        # Download from OpenCL
+                        host_data = np.empty(self.buffer_shapes[buf_name], dtype=np.float32)
+                        self.ocl_system.fromGPU(buf_name, host_data)
+                        
+                        # Upload to OpenGL
+                        gl_obj = self.glcl_widget.gl_objects[buf_name]
+                        GL.glBindBuffer(GL.GL_ARRAY_BUFFER, gl_obj.vbo)
+                        GL.glBufferSubData(GL.GL_ARRAY_BUFFER, 0, host_data.nbytes, host_data)
+                        print( f"buf_name {host_data.nbytes }" )
+                        
+                        if self.bDebugCL:
+                            print(f"[Frame {self.debug_frame_counter}] Updated OpenGL buffer '{buf_name}' with OpenCL data")
+                
+                # Print buffer snapshots for debugging
+                if self.bDebugCL:
+                    for buf_name in self.buffer_shapes.keys():
+                        host = np.empty(self.buffer_shapes[buf_name], dtype=np.float32)
+                        self.ocl_system.fromGPU(buf_name, host)
+                        print(f"[Frame {self.debug_frame_counter}] Buffer '{buf_name}': 1st {host[:1]} last {host[-1]}")
+                
+            self.glcl_widget.update()
             
             if self.debug_frame_counter >= self.nDebugFrames:
                 self.simulation_running = False
@@ -810,6 +845,11 @@ if __name__ == '__main__':
     default_script = os.path.join(current_dir, "scripts", "nbody.py")
     
     script_path = args.script or default_script
+
+    ## Temporary hack for easier debugging
+    args.debug_cl = True
+    args.debug_frames = 10000
+
     
     print(f"GLCLBrowser::__main__() Script path: {script_path}")
     print(f"GLCLBrowser::__main__() Current directory: {current_dir}")
