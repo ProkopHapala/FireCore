@@ -17,7 +17,7 @@ from .OCLsystem import OCLSystem # Import OpenCL system
 # print("GLSL_VERSION =", GL.glGetString(GL.GL_SHADING_LANGUAGE_VERSION).decode())
 
 class GLCLWidget(QOpenGLWidget):
-    def __init__(self, parent=None):
+    def __init__(self, parent=None, enable_opengl_debug=False):
         super().__init__(parent)
         self.ogl_system = None # Will be initialized later, or passed in
         self.ocl_system = None # Will be initialized later, or passed in
@@ -28,6 +28,7 @@ class GLCLWidget(QOpenGLWidget):
         self.camera_pos = QVector3D(0, 0, 10)
         self.light_pos = QVector3D(15.0, 15.0, 30.0)
         self.light_color = QVector3D(1.0, 1.0, 1.0)
+        self.enable_opengl_debug = enable_opengl_debug
 
         self.setFocusPolicy(Qt.StrongFocus)
         self.gl_vbo = 0
@@ -163,6 +164,11 @@ class GLCLWidget(QOpenGLWidget):
         glClearColor(0.1, 0.1, 0.1, 1.0)
         glEnable(GL_DEPTH_TEST)
         glEnable(GL_PROGRAM_POINT_SIZE)
+        
+        # Setup OpenGL debug output if requested
+        if hasattr(self, 'enable_opengl_debug') and self.enable_opengl_debug:
+            from .OGLsystem import setup_opengl_debug
+            setup_opengl_debug(enable=True, synchronous=True)
         
         # Initial camera and projection setup
         self.update_matrices()

@@ -73,7 +73,7 @@ class GLCLBrowser(BaseGUI):
         self.setCentralWidget(self.main_widget)
         
         # Setup GLCL widget
-        self.glcl_widget = GLCLWidget(self)
+        self.glcl_widget = GLCLWidget(self, enable_opengl_debug=self.bDebugGL)
         self.glcl_widget.set_systems(self.ogl_system, self.ocl_system, self)
 
         # Build UI
@@ -788,20 +788,40 @@ class GLCLBrowser(BaseGUI):
     
     # Main entry point for the application
 if __name__ == '__main__':
+    import argparse
+    
+    # run like this:
+    # __NV_PRIME_RENDER_OFFLOAD=1 __GLX_VENDOR_LIBRARY_NAME=nvidia python -u -m pyBall.GLCL.GLCLBrowser
+    # Enable OpenGL debug:
+    # __NV_PRIME_RENDER_OFFLOAD=1 __GLX_VENDOR_LIBRARY_NAME=nvidia python -u -m pyBall.GLCL.GLCLBrowser --debug-gl
+
+    parser = argparse.ArgumentParser(description='GLCL Browser - Scientific Simulation Framework')
+    parser.add_argument('--script', type=str, help='Path to simulation script')
+    parser.add_argument('--debug-cl', action='store_true', help='Enable OpenCL debugging')
+    parser.add_argument('--debug-gl', action='store_true', help='Enable OpenGL debugging')
+    parser.add_argument('--debug-frames', type=int, default=3, help='Number of debug frames to capture')
+    
+    args = parser.parse_args()
+    
     app = QApplication(sys.argv)
     
     # Determine default script path
     current_dir = os.path.dirname(os.path.abspath(__file__))
     default_script = os.path.join(current_dir, "scripts", "nbody.py")
     
-    print(f"GLCLBrowser::__main__() Default script path: {default_script}")
+    script_path = args.script or default_script
+    
+    print(f"GLCLBrowser::__main__() Script path: {script_path}")
     print(f"GLCLBrowser::__main__() Current directory: {current_dir}")
-    print(f"GLCLBrowser::__main__() Script exists: {os.path.exists(default_script)}")
+    print(f"GLCLBrowser::__main__() Script exists: {os.path.exists(script_path)}")
+    print(f"GLCLBrowser::__main__() OpenCL Debug: {args.debug_cl}")
+    print(f"GLCLBrowser::__main__() OpenGL Debug: {args.debug_gl}")
+    print(f"GLCLBrowser::__main__() Debug Frames: {args.debug_frames}")
     
     # Check if script exists and print its parameters
-    if os.path.exists(default_script):
+    if os.path.exists(script_path):
         import importlib.util
-        spec = importlib.util.spec_from_file_location("simulation_script", default_script)
+        spec = importlib.util.spec_from_file_location("simulation_script", script_path)
         module = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(module)
         
@@ -813,8 +833,12 @@ if __name__ == '__main__':
                 print(f"  {name}: {info}")
     
     # Create and show browser
-    #browser = GLCLBrowser(python_script_path=default_script, bDebugCL=False, bDebugGL=True, nDebugFrames=5)
-    browser = GLCLBrowser(python_script_path=default_script, nDebugFrames=3 )
+    browser = GLCLBrowser(
+        python_script_path=script_path, 
+        bDebugCL=args.debug_cl, 
+        bDebugGL=args.debug_gl, 
+        nDebugFrames=args.debug_frames
+    )
     browser.show()
     
     sys.exit(app.exec_())

@@ -22,11 +22,39 @@ from OpenGL.GL import (
     glGetError, GL_NO_ERROR, GL_INVALID_ENUM, GL_INVALID_VALUE, GL_INVALID_OPERATION, GL_OUT_OF_MEMORY,
     GL_ACTIVE_ATTRIBUTES, GL_ACTIVE_UNIFORMS, glGetActiveUniform, GL_POINTS, GL_ELEMENT_ARRAY_BUFFER,
     glPixelStorei, GL_UNPACK_ALIGNMENT, GL_CULL_FACE, glTexImage2D, glDisable,
-    GL_SHADER_STORAGE_BUFFER, glBindBufferBase
+    GL_SHADER_STORAGE_BUFFER, glBindBufferBase,
+    # Debug functionality imports
+    glDebugMessageCallback, glDebugMessageControl, glEnable, glDisable,
+    GL_DEBUG_OUTPUT, GL_DEBUG_OUTPUT_SYNCHRONOUS
 )
 
 import OpenGL.GL as GL
 import ctypes
+
+# Import additional OpenGL debug constants
+from OpenGL.GL import GL_DONT_CARE
+from OpenGL.GL.VERSION.GL_4_3 import (
+    GL_DEBUG_SOURCE_API,
+    GL_DEBUG_SOURCE_WINDOW_SYSTEM,
+    GL_DEBUG_SOURCE_SHADER_COMPILER,
+    GL_DEBUG_SOURCE_THIRD_PARTY,
+    GL_DEBUG_SOURCE_APPLICATION,
+    GL_DEBUG_SOURCE_OTHER,
+    GL_DEBUG_TYPE_ERROR,
+    GL_DEBUG_TYPE_DEPRECATED_BEHAVIOR,
+    GL_DEBUG_TYPE_UNDEFINED_BEHAVIOR,
+    GL_DEBUG_TYPE_PORTABILITY,
+    GL_DEBUG_TYPE_PERFORMANCE,
+    GL_DEBUG_TYPE_MARKER,
+    GL_DEBUG_TYPE_PUSH_GROUP,
+    GL_DEBUG_TYPE_POP_GROUP,
+    GL_DEBUG_TYPE_OTHER,
+    GL_DEBUG_SEVERITY_HIGH,
+    GL_DEBUG_SEVERITY_MEDIUM,
+    GL_DEBUG_SEVERITY_LOW,
+    GL_DEBUG_SEVERITY_NOTIFICATION,
+    GLDEBUGPROC
+)
 
 alpha_blend_modes={
     "standard"    :(GL_FUNC_ADD, GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA),
@@ -147,6 +175,143 @@ def get_opengl_info():
         print(f"WARNING: Could not retrieve OpenGL information: {e}")
         print("This usually happens when OpenGL context is not fully initialized.")
         return "Unknown", "Unknown", "Unknown", "Unknown"
+
+# OpenGL Debug Callback and Setup Functions
+def opengl_debug_callback(source, type, id, severity, length, message, userParam):
+    """OpenGL debug message callback function.
+    
+    This function is called by OpenGL when debug messages are generated.
+    It prints detailed information about OpenGL errors and warnings.
+    
+    Args:
+        source: The source of the debug message (OpenGL, Window System, Shader Compiler, etc.)
+        type: The type of debug message (Error, Deprecated Behavior, Undefined Behavior, etc.)
+        id: The ID of the debug message
+        severity: The severity level of the debug message (High, Medium, Low, Notification)
+        length: The length of the message string
+        message: The debug message string
+        userParam: User-defined parameter passed to the callback
+    """
+    try:
+        msg = ctypes.string_at(message, length).decode('utf-8')
+        
+        # Map source to readable string
+        source_map = {
+            GL_DEBUG_SOURCE_API: "API",
+            GL_DEBUG_SOURCE_WINDOW_SYSTEM: "Window System", 
+            GL_DEBUG_SOURCE_SHADER_COMPILER: "Shader Compiler",
+            GL_DEBUG_SOURCE_THIRD_PARTY: "Third Party",
+            GL_DEBUG_SOURCE_APPLICATION: "Application",
+            GL_DEBUG_SOURCE_OTHER: "Other"
+        }
+        source_str = source_map.get(source, f"Unknown({source})")
+        
+        # Map type to readable string
+        type_map = {
+            GL_DEBUG_TYPE_ERROR: "Error",
+            GL_DEBUG_TYPE_DEPRECATED_BEHAVIOR: "Deprecated Behavior",
+            GL_DEBUG_TYPE_UNDEFINED_BEHAVIOR: "Undefined Behavior", 
+            GL_DEBUG_TYPE_PORTABILITY: "Portability",
+            GL_DEBUG_TYPE_PERFORMANCE: "Performance",
+            GL_DEBUG_TYPE_MARKER: "Marker",
+            GL_DEBUG_TYPE_PUSH_GROUP: "Push Group",
+            GL_DEBUG_TYPE_POP_GROUP: "Pop Group",
+            GL_DEBUG_TYPE_OTHER: "Other"
+        }
+        type_str = type_map.get(type, f"Unknown({type})")
+        
+        # Map severity to readable string
+        severity_map = {
+            GL_DEBUG_SEVERITY_HIGH: "HIGH",
+            GL_DEBUG_SEVERITY_MEDIUM: "MEDIUM", 
+            GL_DEBUG_SEVERITY_LOW: "LOW",
+            GL_DEBUG_SEVERITY_NOTIFICATION: "NOTIFICATION"
+        }
+        severity_str = severity_map.get(severity, f"Unknown({severity})")
+        
+        print(f"OpenGL Debug [{severity_str}]:")
+        print(f"  Source: {source_str}")
+        print(f"  Type: {type_str}")
+        print(f"  ID: {id}")
+        print(f"  Message: {msg}")
+        print()
+        
+    except Exception as e:
+        print(f"Error in OpenGL debug callback: {e}")
+
+def setup_opengl_debug(enable=True, synchronous=True):
+    """Setup OpenGL debug output.
+    
+    This function enables or disables OpenGL debug output.
+    It should be called after OpenGL context is created and initialized.
+    
+    Args:
+        enable: Whether to enable debug output (True/False)
+        synchronous: Whether debug messages should be synchronous (True/False)
+    
+    Returns:
+        True if debug output was successfully enabled, False otherwise
+    """
+    if not enable:
+        print("OpenGL debug output disabled")
+        return False
+        
+    try:
+        # First check if we have a valid OpenGL context
+        version_string = glGetString(GL_VERSION)
+        if not version_string:
+            print("No OpenGL context available for debug setup")
+            return False
+            
+        version_str = version_string.decode('utf-8') if isinstance(version_string, bytes) else str(version_string)
+        print(f"OpenGL context available: {version_str}")
+        
+        # Check OpenGL version (debug output requires 4.3+)
+        try:
+            # Try to get major/minor version
+            from OpenGL.GL.VERSION.GL_4_3 import glGetIntegerv, GL_MAJOR_VERSION, GL_MINOR_VERSION
+            major = glGetIntegerv(GL_MAJOR_VERSION)
+            minor = glGetIntegerv(GL_MINOR_VERSION)
+            version = major * 10 + minor
+            if version < 43:
+                print(f"OpenGL version {major}.{minor} < 4.3, debug output not supported")
+                return False
+        except:
+            # Fallback: parse version string
+            version_parts = version_str.split('.')
+            if len(version_parts) >= 2:
+                try:
+                    major = int(version_parts[0])
+                    minor = int(version_parts[1])
+                    if major < 4 or (major == 4 and minor < 3):
+                        print(f"OpenGL version {major}.{minor} < 4.3, debug output not supported")
+                        return False
+                except:
+                    pass
+        
+        # Enable debug output
+        glEnable(GL_DEBUG_OUTPUT)
+        if synchronous:
+            glEnable(GL_DEBUG_OUTPUT_SYNCHRONOUS)
+        
+        # Register debug callback
+        callback_type = GLDEBUGPROC(opengl_debug_callback)
+        glDebugMessageCallback(callback_type, None)
+        
+        # Enable all debug messages
+        glDebugMessageControl(GL_DONT_CARE, GL_DONT_CARE, GL_DONT_CARE, 0, None, GL_TRUE)
+        
+        print("OpenGL debug output enabled successfully")
+        print("Debug messages will be printed for all OpenGL operations")
+        return True
+        
+    except Exception as e:
+        print(f"Failed to enable OpenGL debug output: {e}")
+        print("This might be because:")
+        print("  - OpenGL context is not available")
+        print("  - OpenGL version < 4.3 (debug output requires 4.3+)")
+        print("  - Debug context was not requested")
+        return False
 
 def compile_shader_program(vertex_shader_src, fragment_shader_src):
     get_opengl_info()  # Print OpenGL info for debugging
