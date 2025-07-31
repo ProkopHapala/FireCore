@@ -516,27 +516,27 @@ __kernel void solve_local_updates(
     
     const int tip_offset = itip * nSite;   // Offset for accessing tip-specific global data
 
-    #define iDBG 612
+    //#define iDBG 612
+    // for shape(200,200)  30100 = 200*200*(0.75) + 200/2
+    #define iDBG 30100  
 
     if((itip==iDBG)&&(lid==0)){ 
         int nG = get_global_size(0);
         printf("GPU solve_local_updates() iDBG %i  nSite: %i nTips: %i nIter %i max_neighs %i mode %i initMode %i local_size: %i global_size %i  occ_bytes %i\n", iDBG, nSite, nTips, nIter, max_neighs, mode, initMode, local_size, nG, occ_bytes ); 
 
         printf("GPU isite,Esite, Tsite: \n");
-        for( int is=0; is<nSite; ++is){
-            printf("GPU isite %3i Esite %16.8f Tsite %16.8f\n", is, Esite[tip_offset + is], Tsite[tip_offset + is] );
-        }
+        for( int is=0; is<nSite; ++is){ printf("GPU isite %3i Esite %16.8f Tsite %16.8f\n", is, Esite[tip_offset + is], Tsite[tip_offset + is] ); }
 
-        // printf("GPU Wij (sparse inter-site couplings): \n");
-        // for( int is=0; is<nSite; ++is){
-        //     int nng = nNeigh[is];
-        //     printf("GPU site %3i nng %i Wij: ", is, nng );
-        //     for( int j=0; j<nng; ++j){
-        //         int iw = is * max_neighs + j;
-        //         printf(" %i:%.2f ", W_idx[iw], W_val[iw] );
-        //     }
-        //     printf("\n");
-        // }
+        printf("GPU Wij (sparse inter-site couplings): \n");
+        for( int is=0; is<nSite; ++is){
+            int nng = nNeigh[is];
+            printf("GPU site %3i nng %i Wij: ", is, nng );
+            for( int j=0; j<nng; ++j){
+                int iw = is * max_neighs + j;
+                printf(" %3i:%10.6f ", W_idx[iw], W_val[iw] );
+            }
+            printf("\n");
+        }
     }
 
 
@@ -547,8 +547,7 @@ __kernel void solve_local_updates(
         else if(initMode == 1 ){ for (int i=0;i<occ_bytes;++i) { occ_mask[i] = 0xFF; } } 
         else if(initMode == 2 ){ for (int i=0;i<occ_bytes;++i) { occ_mask[i] = occ_out[ itip*OCC_BYTES + i]; } } 
         else if(initMode == 3 ){ for (int i=0;i<occ_bytes;++i) { occ_mask[i] = wang_hash_uint(&rng_state)&0xFF; } }
-
-        if(itip==0){ printf("GPU itip %3i occ: ", itip ); for(int i=0;i<occ_bytes;++i){ printf("%02x", occ_mask[i]); } printf("\n"); }
+        //if(itip==iDBG){ printf("GPU itip %3i occ: ", itip ); for(int i=0;i<occ_bytes;++i){ printf("%02x", occ_mask[i]); } printf("\n"); }
     }
     barrier(CLK_LOCAL_MEM_FENCE); // Ensure all threads see the initialized state
 
@@ -592,7 +591,7 @@ __kernel void solve_local_updates(
             float dEmin = 1e10f; // Start with a high energy
             int   imin  = -1;
             for (int il = 0; il < local_size; ++il) {  // Find the move with the minimum dE among all threads
-                if(itip==iDBG){  printf("GPU ibest? iter %3i itip %3i lid %3i i_site %3i dE %16.8f \n", iter, itip, il, reduction_site[il], reduction_dE[il] ); }
+                //if(itip==iDBG){  printf("GPU ibest? iter %3i itip %3i lid %3i i_site %3i dE %16.8f \n", iter, itip, il, reduction_site[il], reduction_dE[il] ); }
                 if (reduction_dE[il] < dEmin) {
                     dEmin = reduction_dE[il];
                     imin  = reduction_site[il];
@@ -604,7 +603,7 @@ __kernel void solve_local_updates(
             else if ( mode == 2  ) { // Simulated Annealing
                 if (wang_hash_float(&rng_state) < exp(-dEmin / kT)) { bDo = true; }
             }
-            if(itip==iDBG){  printf("GPU flip? iter %3i itip %3i i_site %3i dE %16.8f bDo %i\n", iter, itip, imin, dEmin, bDo ); }
+            //if(itip==iDBG){  printf("GPU flip? iter %3i itip %3i i_site %3i dE %16.8f bDo %i\n", iter, itip, imin, dEmin, bDo ); }
             if (bDo){ FLIP_OCC(imin, occ_mask); }
         }
         barrier(CLK_LOCAL_MEM_FENCE); // Wait for state update before next iteration
@@ -633,10 +632,10 @@ __kernel void solve_local_updates(
                 Iunoc += Tsite[tip_offset + i];          // on-site current
             }
         }
-        if(itip==iDBG){  
-            printf("GPU final itip %3i E %16.8f Iocc %16.8f Iunoc %16.8f \n", itip, E, Iocc, Iunoc ); 
-            for(int i=0;i<nSite;++i){ printf("GPU occ[%3i] %3i E %16.8f \n", i, GET_OCC(i, occ_mask), Esite[tip_offset + i] ); }
-        }
+        // if(itip==iDBG){  
+        //     printf("GPU final itip %3i E %16.8f Iocc %16.8f Iunoc %16.8f \n", itip, E, Iocc, Iunoc ); 
+        //     for(int i=0;i<nSite;++i){ printf("GPU occ[%3i] %3i E %16.8f \n", i, GET_OCC(i, occ_mask), Esite[tip_offset + i] ); }
+        // }
 
         for (int j = 0; j < occ_bytes; ++j) { occ_out[itip*OCC_BYTES + j] = occ_mask[j]; } // store optimized state configuration
         E_out   [itip]     = E;                  // store energy of optimized state

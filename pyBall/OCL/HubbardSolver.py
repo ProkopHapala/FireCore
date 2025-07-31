@@ -103,8 +103,8 @@ class HubbardSolver(OpenCLBase):
         buffs = {
             "Esite":   (sz_f*1 * nTips   * nSingle   ),
             "Tsite":   (sz_f*1 * nTips   * nSingle   ),
-            "Wval":    (sz_f*1 * nSingle * self.max_neighs ),
-            "Widx":    (sz_f*1 * nSingle * self.max_neighs ),
+            "Wval":    (sz_f*1 * nSingle * nMaxNeigh ),
+            "Widx":    (sz_f*1 * nSingle * nMaxNeigh ),
             "WnNeigh": (sz_f*1 * nSingle  ),
             # Re-purpose brute-force outputs
             "Emin":    (sz_f*1 * nTips  ),
@@ -171,7 +171,7 @@ class HubbardSolver(OpenCLBase):
         )
         return args, kernel
 
-    def setup_solve_local_updates(self, nSite, nTips, params={}, initMode=3, T=3.0, nIter=100, solverMode=0, bNoCoupling=False ):
+    def setup_solve_local_updates(self, nSite, nTips, params={}, initMode=3, T=3.0, nIter=100, solverMode=0, bNoCoupling=False, max_neighs=None ):
         """Prepare arguments for the solve_local_updates kernel."""
         kernel = self.prg.solve_local_updates
         
@@ -182,8 +182,8 @@ class HubbardSolver(OpenCLBase):
             params.get("seed",       np.random.randint(0, 2**31))
         ], dtype=np.float32)
 
-        max_neighs = self.max_neighs
-        if bNoCoupling: max_neighs = 0
+        if max_neighs is None: max_neighs = self.max_neighs
+        if bNoCoupling:        max_neighs = 0
         
         args = (
             np.int32(nSite),
@@ -199,6 +199,7 @@ class HubbardSolver(OpenCLBase):
             self.Itot_buff, 
             np.int32(max_neighs),
             np.int32(initMode),
+
         )
         return args, kernel
 
@@ -311,9 +312,12 @@ class HubbardSolver(OpenCLBase):
 
         # Reallocate buffers and upload data
         if bRealloc:
-            if nSite     is None: nSite = Esite.shape[0]
-            if nTips     is None: nTips = Esite.shape[1]
-            if nMaxNeigh is None: nMaxNeigh = len(W_sparse[2])
+            if Esite is not None:
+                if nTips is None: nTips = Esite.shape[0]
+                if nSite is None: nSite = Esite.shape[1]
+            if nMaxNeigh is None:
+                if W_sparse is not None: nMaxNeigh = W_sparse[0].shape[1]
+                else:                    nMaxNeigh = 0
             self.realloc_local_update_buffers(nSite, nTips, nMaxNeigh)
         if Esite is not None: 
             iDBG = 612
@@ -331,7 +335,7 @@ class HubbardSolver(OpenCLBase):
         # Kernel launch
         global_size  = (nTips * nWorkGroup,)
         local_size   = (nWorkGroup,)
-        args, kernel = self.setup_solve_local_updates(nSite, nTips, params, initMode=initMode, bNoCoupling=bNoCoupling)
+        args, kernel = self.setup_solve_local_updates(nSite, nTips, params, initMode=initMode, bNoCoupling=bNoCoupling, max_neighs=nMaxNeigh)
         kernel(self.queue, global_size, local_size, *args)
         
         # Download results
@@ -831,12 +835,12 @@ def plot_sites(posE, ax=None, c="r", ms=2.0,angles=None):
     ax.set_aspect('equal')
     return ax
 
-def plot2d( data, extent=None, title=None, ax=None, cmap=None, ps=None):
+def plot2d( data, extent=None, title=None, ax=None, cmap=None, ps=None, c='g', ms=1):
     if ax is None:
         ax = plt.gca()
     im0 = ax.imshow(data, extent=extent, cmap=cmap, origin="lower");        
     ax.figure.colorbar(im0, ax=ax) 
-    plot_sites(ps,ax); 
+    plot_sites(ps,ax, c=c, ms=ms); 
     ax.set_title(title);
 
 def plot_site_maps_imshow(Esite_map, Tsite_map, occ_map, posE, tip_pos=None, title="", sz=3, axs=None, titles=["Esite", "Tsite", "Occupancy"]):
@@ -1307,7 +1311,7 @@ def demo_precalc_scan(solver: HubbardSolver=None, nxy_sites=(6, 6), nxy_scan=(10
     plt.tight_layout(rect=[0, 0, 1, 0.96])
     plt.show()
 
-def demo_local_update(solver: HubbardSolver=None, nxy_sites=(4, 4), nxy_scan=(50, 50), Vbias=0.1, cutoff=8.0, W_amplitude=1.0, T=0.001, nIter=20, solverMode=0, Efermi=0.09):
+def demo_local_update(solver: HubbardSolver=None, nxy_sites=(8,8), nxy_scan=(200, 200), Vbias=0.1, cutoff=8.0, W_amplitude=1.0, T=0.001, nIter=100, solverMode=0, Efermi=0.09):
     """
     Demonstrates the usage of the solve_local_updates kernel by running a 2D scan with Monte Carlo optimization.
     
@@ -1374,8 +1378,10 @@ def demo_local_update(solver: HubbardSolver=None, nxy_sites=(4, 4), nxy_scan=(50
     pos_xyz = posE[:, :3]  # Only take x, y, z components, not the energy E0
     W_val, W_idx, nNeigh = make_sparse_W_pbc(pos_xyz, lvs_pbc, cutoff, W_func=screened_coulomb, nMaxNeigh=nMaxNeigh)
     print(f"demo_local_update() Created sparse W matrix with cutoff {cutoff} and max {nMaxNeigh} neighbors per site.")
-    print("demo_local_update() W_val: \n", W_val)
-    print("demo_local_update() W_idx: \n", W_idx)
+
+
+    plt.imshow(W_val)
+    
     
     # 3d. Local update solver parameters
     params_solver = {
@@ -1387,10 +1393,16 @@ def demo_local_update(solver: HubbardSolver=None, nxy_sites=(4, 4), nxy_scan=(50
 
     # 4. Call the pre-calculation kernel
     print("demo_local_update() Calling precalc_esite_thop kernel...")
+    multipoleCoefs[:, 0] = 1.0 
     Esite, Tsite = solver.precalc_esite_thop(posE, pTips, multipoleCoefs=multipoleCoefs, params=params_precalc)
 
-
+    #W_val *=0.05
+    #W_val *=0.1
+    W_val *=0.01
     Esite += Efermi
+
+    print("demo_local_update() W_val: \n", W_val)
+    print("demo_local_update() W_idx: \n", W_idx)
 
     print(f"demo_local_update() Kernel finished. Sites: {nSingle}, Tips: {nTips}")
     print(f"demo_local_update() Esite shape: {Esite.shape}, min/max: {np.min(Esite):.3f}/{np.max(Esite):.3f}")
@@ -1402,7 +1414,8 @@ def demo_local_update(solver: HubbardSolver=None, nxy_sites=(4, 4), nxy_scan=(50
     # Allocate buffers for the solver
     solver.realloc_local_update_buffers(nSingle, nTips, nMaxNeigh)
 
-    bNoCoupling = True
+    #bNoCoupling = True
+    bNoCoupling = False
 
     energy, current, occupation = solver.solve_local_updates( W_sparse=(W_val, W_idx, nNeigh), Esite=Esite, Tsite=Tsite, nTips=nTips, nSite=nSingle, nMaxNeigh=nMaxNeigh, params=params_solver, initMode=0, bNoCoupling=bNoCoupling )
     print( "demo_local_update() energy.shape: ", energy.shape )
@@ -1414,7 +1427,14 @@ def demo_local_update(solver: HubbardSolver=None, nxy_sites=(4, 4), nxy_scan=(50
     # Reshape occupation array for easier indexing
     occupation_reshaped = occupation.reshape(nTips, solver.occ_bytes)
 
-    site_tip_indices = find_closest_pTip(posE, pTips, nxy_scan)
+    #site_tip_indices = find_closest_pTip(posE, pTips, nxy_scan)
+
+    nSpec = 5
+    spec_tips = np.zeros((nSpec,4))
+    spec_tips[:,0] = np.linspace(-10.0, 10.0, nSpec, endpoint=True)
+    spec_inds = find_closest_pTip( spec_tips, pTips, nxy_scan)
+    
+    
 
 
     # # 1. Plot occupancy, energy and tunneling patterns for tips closest to each site (original scatter plot)
@@ -1439,23 +1459,22 @@ def demo_local_update(solver: HubbardSolver=None, nxy_sites=(4, 4), nxy_scan=(50
 
     bits = np.unpackbits(occupation_reshaped, axis=1, bitorder='little')   # shape (nTips, 8*occ_bytes)
 
-    isite0 = 0
-    itip0  = site_tip_indices[isite0]
+    #isite0 = 0
+    #itip0  = site_tip_indices[isite0]
     # print_site_maps(Esite_map, Tsite_map, occ_map, total_energy, total_current, title=""):
-    print_site_maps( Esite[itip0], Tsite[itip0], bits[itip0], total_energy=energy[itip0], total_current=current[itip0], title=f"Site Maps for iTip# {itip0} near site# {isite0} at pos({pTips[itip0][0]:.2f}, {pTips[itip0][1]:.2f})" )
+    itip0 = spec_inds[0]
+    #print_site_maps( Esite[itip0], Tsite[itip0], bits[itip0], total_energy=energy[itip0], total_current=current[itip0], title=f"Site Maps for iTip# {itip0} near site# {isite0} at pos({pTips[itip0][0]:.2f}, {pTips[itip0][1]:.2f})" )
+    print_site_maps( Esite[itip0], Tsite[itip0], bits[itip0], total_energy=energy[itip0], total_current=current[itip0], title=f"Site Maps for iTip# {itip0} at pos({ pTips[itip0][0]:.2f}, {pTips[itip0][1]:.2f})" )
 
 
     # 4. Plot detailed maps for a subset of tip-on-site configurations using imshow
     print("Plotting detailed maps for a subset of tip-on-site configurations...")
-    tip_indices_subset = site_tip_indices[:min(5, len(site_tip_indices))] # Take first 5 for example
-    plot_sites_maps_imshow(  Esite, Tsite, bits, tip_indices=tip_indices_subset, pTips=pTips, posE=posE, nxy_sites=nxy_sites, nSingle=nSingle )
+
+    plot_sites_maps_imshow(  Esite, Tsite, bits, tip_indices=spec_inds, pTips=pTips, posE=posE, nxy_sites=nxy_sites, nSingle=nSingle )
     plt.suptitle("Property maps for 5 closest tip-on-site configurations")
 
-    # Calculate total charge for each tip position (count bits set to 1)
-    total_charge        = np.zeros(nTips, dtype=np.int32)
-    occupation_reshaped = occupation.reshape(nTips, solver.occ_bytes)
-    
-    total_charge = bits.sum(axis=1)                     # shape (nTips,)
+    # Calculate total charge for each tip position by summing only the relevant bits
+    total_charge = bits[:, :nSingle].sum(axis=1)
 
     # Reshape results into 2D maps
     nx, ny = nxy_scan
@@ -1472,10 +1491,11 @@ def demo_local_update(solver: HubbardSolver=None, nxy_sites=(4, 4), nxy_scan=(50
     fig, axs = plt.subplots(2, 2, figsize=(12, 10))
     fig.suptitle(f"Monte Carlo Optimization Results (T={T}K, nIter={nIter}, W={W_amplitude})", fontsize=16)
     
-    plot2d(energy_map.T,       extent=extent, title="Energy (optimized)",              ax=axs[0, 0], cmap="viridis", ps=posE )
-    plot2d(charge_map.T,       extent=extent, title="Total Charge (# occupied sites)", ax=axs[0, 1], cmap="plasma",  ps=posE )
-    plot2d(current_map_occ.T,  extent=extent, title="Current (occupied sites)",        ax=axs[1, 0], cmap="inferno", ps=posE )
-    plot2d(current_map_unoc.T, extent=extent, title="Current (unoccupied sites)",      ax=axs[1, 1], cmap="magma",   ps=posE )
+    cmap='plasma'
+    plot2d(energy_map.T,       extent=extent, title="Energy (optimized)",              ax=axs[0, 0], cmap=cmap, ps=posE )
+    plot2d(charge_map.T,       extent=extent, title="Total Charge (# occupied sites)", ax=axs[0, 1], cmap=cmap, ps=posE )
+    plot2d(current_map_occ.T,  extent=extent, title="Current (occupied sites)",        ax=axs[1, 0], cmap=cmap, ps=posE )
+    plot2d(current_map_unoc.T, extent=extent, title="Current (unoccupied sites)",      ax=axs[1, 1], cmap=cmap, ps=posE )
     
     plt.tight_layout(rect=[0, 0, 1, 0.95])
     plt.show()
