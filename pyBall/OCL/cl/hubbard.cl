@@ -500,10 +500,10 @@ __kernel void solve_local_updates(
     if (nSite > MAX_SITES_BIG || local_size > MAX_WORKGROUP_SIZE_BIG) return;
 
     // Unpack solver parameters
-    const float kT    = solver_params.x;
-    const int   nIter = (int)(solver_params.y+0.5);
-    const int   mode  = (int)(solver_params.z+0.5);
-    uint rng_state    = (uint)solver_params.w + itip * local_size + lid; // Unique seed per thread
+    const float kT         = solver_params.x;
+    const int   nIter      = (int)(solver_params.y+0.5);
+    const int   solverMode = (int)(solver_params.z+0.5);
+    uint rng_state         = (uint)solver_params.w + itip * local_size + lid; // Unique seed per thread
     rng_state=wang_hash(rng_state);
 
 
@@ -522,21 +522,21 @@ __kernel void solve_local_updates(
 
     if((itip==iDBG)&&(lid==0)){ 
         int nG = get_global_size(0);
-        printf("GPU solve_local_updates() iDBG %i  nSite: %i nTips: %i nIter %i max_neighs %i mode %i initMode %i local_size: %i global_size %i  occ_bytes %i\n", iDBG, nSite, nTips, nIter, max_neighs, mode, initMode, local_size, nG, occ_bytes ); 
+        printf("GPU solve_local_updates() iDBG %i  nSite: %i nTips: %i nIter %i max_neighs %i solverMode %i kT %8.4e initMode %i local_size: %i global_size %i  occ_bytes %i\n", iDBG, nSite, nTips, nIter, max_neighs, solverMode, kT, initMode, local_size, nG, occ_bytes ); 
 
-        printf("GPU isite,Esite, Tsite: \n");
-        for( int is=0; is<nSite; ++is){ printf("GPU isite %3i Esite %16.8f Tsite %16.8f\n", is, Esite[tip_offset + is], Tsite[tip_offset + is] ); }
+        // printf("GPU isite,Esite, Tsite: \n");
+        // for( int is=0; is<nSite; ++is){ printf("GPU isite %3i Esite %16.8f Tsite %16.8f\n", is, Esite[tip_offset + is], Tsite[tip_offset + is] ); }
 
-        printf("GPU Wij (sparse inter-site couplings): \n");
-        for( int is=0; is<nSite; ++is){
-            int nng = nNeigh[is];
-            printf("GPU site %3i nng %i Wij: ", is, nng );
-            for( int j=0; j<nng; ++j){
-                int iw = is * max_neighs + j;
-                printf(" %3i:%10.6f ", W_idx[iw], W_val[iw] );
-            }
-            printf("\n");
-        }
+        // printf("GPU Wij (sparse inter-site couplings): \n");
+        // for( int is=0; is<nSite; ++is){
+        //     int nng = nNeigh[is];
+        //     printf("GPU site %3i nng %i Wij: ", is, nng );
+        //     for( int j=0; j<nng; ++j){
+        //         int iw = is * max_neighs + j;
+        //         printf(" %3i:%10.6f ", W_idx[iw], W_val[iw] );
+        //     }
+        //     printf("\n");
+        // }
     }
 
 
@@ -557,10 +557,8 @@ __kernel void solve_local_updates(
     for (int iter = 0; iter < nIter; ++iter) {
         // --- Step A: Each thread proposes a move in parallel ---
         int i_site;
-        if (mode == 0) { i_site = (iter * local_size + lid ) % nSite; } // Deterministic sweep across threads
-        else           { i_site = wang_hash_uint(&rng_state) % nSite; } // Stochastic proposal
-
-
+        if (solverMode == 0){ i_site = (iter * local_size + lid ) % nSite; } // Deterministic sweep across threads
+        else                { i_site = wang_hash_uint(&rng_state) % nSite; } // Stochastic proposal
 
         const uchar n_i  = GET_OCC(i_site, occ_mask);     // site occupancy
         float      Ei    = Esite[tip_offset + i_site];    // on-site energy
@@ -600,8 +598,8 @@ __kernel void solve_local_updates(
             if(imin < 0){ continue; }
             bool bDo = false;
             if      (dEmin < 0.0f) { bDo = true; } 
-            else if ( mode == 2  ) { // Simulated Annealing
-                if (wang_hash_float(&rng_state) < exp(-dEmin / kT)) { bDo = true; }
+            else if ( solverMode == 2  ) { // Simulated Annealing
+                //if (wang_hash_float(&rng_state) < exp(-dEmin / kT)) { bDo = true; }
             }
             //if(itip==iDBG){  printf("GPU flip? iter %3i itip %3i i_site %3i dE %16.8f bDo %i\n", iter, itip, imin, dEmin, bDo ); }
             if (bDo){ FLIP_OCC(imin, occ_mask); }

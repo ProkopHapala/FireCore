@@ -171,7 +171,7 @@ class HubbardSolver(OpenCLBase):
         )
         return args, kernel
 
-    def setup_solve_local_updates(self, nSite, nTips, params={}, initMode=3, T=3.0, nIter=100, solverMode=0, bNoCoupling=False, max_neighs=None ):
+    def setup_solve_local_updates(self, nSite, nTips, params={}, initMode=3, solverMode=0, T=3.0, nIter=100, bNoCoupling=False, max_neighs=None ):
         """Prepare arguments for the solve_local_updates kernel."""
         kernel = self.prg.solve_local_updates
         
@@ -321,8 +321,8 @@ class HubbardSolver(OpenCLBase):
             self.realloc_local_update_buffers(nSite, nTips, nMaxNeigh)
         if Esite is not None: 
             iDBG = 612
-            print("solve_local_updates() Esite.toGPU_ shape() ", Esite.shape )
-            print(f"solve_local_updates() Esite[{iDBG}] \n", Esite[iDBG] )
+            #print("solve_local_updates() Esite.toGPU_ shape() ", Esite.shape )
+            #print(f"solve_local_updates() Esite[{iDBG}] \n", Esite[iDBG] )
             #print("solve_local_updates() Esite.toGPU_ \n", Esite )
             self.toGPU_(self.Esite_buff, Esite)
         if Tsite is not None: self.toGPU_(self.Tsite_buff, Tsite)
@@ -872,7 +872,7 @@ def plot_site_maps_imshow(Esite_map, Tsite_map, occ_map, posE, tip_pos=None, tit
     if title:
         fig.suptitle(title)
     # Plot Esite
-    im0 = axs[0].imshow(Esite_map.T, cmap='viridis', origin='lower', interpolation='nearest', extent=extent)
+    im0 = axs[0].imshow(Esite_map.T, cmap='magma', origin='lower', interpolation='nearest', extent=extent)
     if titles[0] is not None: axs[0].set_title(titles[0])
     fig.colorbar(im0, ax=axs[0])
 
@@ -888,7 +888,7 @@ def plot_site_maps_imshow(Esite_map, Tsite_map, occ_map, posE, tip_pos=None, tit
 
     # Mark tip position and site positions on all subplots
     for ax in axs:
-        ax.plot(posE[:, 0], posE[:, 1], '.w', markersize=1, alpha=1.0)
+        ax.plot(posE[:, 0], posE[:, 1], '.g', markersize=1, alpha=1.0)
         if tip_pos is not None: ax.plot(tip_pos[0], tip_pos[1], 'r+', markersize=8, markeredgewidth=1.5)
         #ax.set_xlabel("X (Angstrom)")
         #ax.set_ylabel("Y (Angstrom)")
@@ -1311,7 +1311,7 @@ def demo_precalc_scan(solver: HubbardSolver=None, nxy_sites=(6, 6), nxy_scan=(10
     plt.tight_layout(rect=[0, 0, 1, 0.96])
     plt.show()
 
-def demo_local_update(solver: HubbardSolver=None, nxy_sites=(8,8), nxy_scan=(200, 200), Vbias=0.1, cutoff=8.0, W_amplitude=1.0, T=0.001, nIter=100, solverMode=0, Efermi=0.09):
+def demo_local_update(solver: HubbardSolver=None, nxy_sites=(8,8), nxy_scan=(200, 200), Vbias=0.1, cutoff=8.0, W_amplitude=1.0, T=0.001, nIter=10000, solverMode=2, Efermi=0.09):
     """
     Demonstrates the usage of the solve_local_updates kernel by running a 2D scan with Monte Carlo optimization.
     
@@ -1382,7 +1382,6 @@ def demo_local_update(solver: HubbardSolver=None, nxy_sites=(8,8), nxy_scan=(200
 
     plt.imshow(W_val)
     
-    
     # 3d. Local update solver parameters
     params_solver = {
         "kT":    kBoltzmann * T,  # Temperature in energy units
@@ -1397,12 +1396,16 @@ def demo_local_update(solver: HubbardSolver=None, nxy_sites=(8,8), nxy_scan=(200
     Esite, Tsite = solver.precalc_esite_thop(posE, pTips, multipoleCoefs=multipoleCoefs, params=params_precalc)
 
     #W_val *=0.05
+    #W_val *=1.0
     #W_val *=0.1
-    W_val *=0.01
+    W_val *=0.05
+    #W_val *=0.03
+    #W_val *=0.02
+    #W_val *=0.01
     Esite += Efermi
 
-    print("demo_local_update() W_val: \n", W_val)
-    print("demo_local_update() W_idx: \n", W_idx)
+    #print("demo_local_update() W_val: \n", W_val)
+    #print("demo_local_update() W_idx: \n", W_idx)
 
     print(f"demo_local_update() Kernel finished. Sites: {nSingle}, Tips: {nTips}")
     print(f"demo_local_update() Esite shape: {Esite.shape}, min/max: {np.min(Esite):.3f}/{np.max(Esite):.3f}")
@@ -1419,8 +1422,8 @@ def demo_local_update(solver: HubbardSolver=None, nxy_sites=(8,8), nxy_scan=(200
 
     energy, current, occupation = solver.solve_local_updates( W_sparse=(W_val, W_idx, nNeigh), Esite=Esite, Tsite=Tsite, nTips=nTips, nSite=nSingle, nMaxNeigh=nMaxNeigh, params=params_solver, initMode=0, bNoCoupling=bNoCoupling )
     print( "demo_local_update() energy.shape: ", energy.shape )
-    print( "demo_local_update() current.shape: ", current.shape )
-    print( "demo_local_update() occupation.shape: ", occupation.shape, solver.occ_bytes )
+    #print( "demo_local_update() current.shape: ", current.shape )
+    #print( "demo_local_update() occupation.shape: ", occupation.shape, solver.occ_bytes )
 
     # --- Plotting ---
 
@@ -1430,12 +1433,15 @@ def demo_local_update(solver: HubbardSolver=None, nxy_sites=(8,8), nxy_scan=(200
     #site_tip_indices = find_closest_pTip(posE, pTips, nxy_scan)
 
     nSpec = 5
-    spec_tips = np.zeros((nSpec,4))
-    spec_tips[:,0] = np.linspace(-10.0, 10.0, nSpec, endpoint=True)
-    spec_inds = find_closest_pTip( spec_tips, pTips, nxy_scan)
-    
-    
+    #spec_tips = np.zeros((nSpec,4))
+    #spec_tips[:,0] = np.linspace(-10.0, 10.0, nSpec, endpoint=True)
 
+    n0 = nxy_sites[0]*nxy_sites[1]//2
+    n0 = nxy_sites[0]*nxy_sites[1]//2
+    spec_tips = posE[::nxy_sites[0], : ]
+
+
+    spec_inds = find_closest_pTip( spec_tips, pTips, nxy_scan)
 
     # # 1. Plot occupancy, energy and tunneling patterns for tips closest to each site (original scatter plot)
     # print("Plotting occupancy patterns for tip-on-site configurations...")
@@ -1464,13 +1470,13 @@ def demo_local_update(solver: HubbardSolver=None, nxy_sites=(8,8), nxy_scan=(200
     # print_site_maps(Esite_map, Tsite_map, occ_map, total_energy, total_current, title=""):
     itip0 = spec_inds[0]
     #print_site_maps( Esite[itip0], Tsite[itip0], bits[itip0], total_energy=energy[itip0], total_current=current[itip0], title=f"Site Maps for iTip# {itip0} near site# {isite0} at pos({pTips[itip0][0]:.2f}, {pTips[itip0][1]:.2f})" )
-    print_site_maps( Esite[itip0], Tsite[itip0], bits[itip0], total_energy=energy[itip0], total_current=current[itip0], title=f"Site Maps for iTip# {itip0} at pos({ pTips[itip0][0]:.2f}, {pTips[itip0][1]:.2f})" )
+    #print_site_maps( Esite[itip0], Tsite[itip0], bits[itip0], total_energy=energy[itip0], total_current=current[itip0], title=f"Site Maps for iTip# {itip0} at pos({ pTips[itip0][0]:.2f}, {pTips[itip0][1]:.2f})" )
 
 
     # 4. Plot detailed maps for a subset of tip-on-site configurations using imshow
     print("Plotting detailed maps for a subset of tip-on-site configurations...")
 
-    plot_sites_maps_imshow(  Esite, Tsite, bits, tip_indices=spec_inds, pTips=pTips, posE=posE, nxy_sites=nxy_sites, nSingle=nSingle )
+    plot_sites_maps_imshow( Esite, Tsite, bits, tip_indices=spec_inds, pTips=pTips, posE=posE, nxy_sites=nxy_sites, nSingle=nSingle )
     plt.suptitle("Property maps for 5 closest tip-on-site configurations")
 
     # Calculate total charge for each tip position by summing only the relevant bits
