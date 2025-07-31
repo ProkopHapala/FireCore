@@ -599,7 +599,7 @@ __kernel void solve_local_updates(
             bool bDo = false;
             if      (dEmin < 0.0f) { bDo = true; } 
             else if ( solverMode == 2  ) { // Simulated Annealing
-                //if (wang_hash_float(&rng_state) < exp(-dEmin / kT)) { bDo = true; }
+                if (wang_hash_float(&rng_state) < exp(-dEmin / kT)) { bDo = true; }
             }
             //if(itip==iDBG){  printf("GPU flip? iter %3i itip %3i i_site %3i dE %16.8f bDo %i\n", iter, itip, imin, dEmin, bDo ); }
             if (bDo){ FLIP_OCC(imin, occ_mask); }
