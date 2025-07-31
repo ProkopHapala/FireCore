@@ -223,14 +223,14 @@ class HubbardSolver(OpenCLBase):
         )
         return args, kernel
 
-    def setup_solve_mc(self, nSite, nTips, params, nLocalIter, randConfigProb, nRelaxSteps, initMode, max_neighs=None):
+    def setup_solve_mc(self, nSite, nTips, params, nLocalIter, prob_params, nRelaxSteps, initMode, max_neighs):
         """Prepare arguments for the solve_MC kernel."""
         kernel = self.prg.solve_MC
         
         solver_params = np.array([
-            params.get("kT", 300.0 * 8.617333262e-5), # Default kT for 300K
-            params.get("nIter", 1000),               # Total iterations
-            params.get("solverMode", 2),             # Default to simulated annealing
+            params.get("kT", 300.0 * 8.617333262e-5),
+            params.get("nIter", 1000),
+            params.get("solverMode", 1), # Default to random site selection
             params.get("seed", np.random.randint(0, 2**31))
         ], dtype=np.float32)
 
@@ -238,21 +238,17 @@ class HubbardSolver(OpenCLBase):
             np.int32(nSite),
             np.int32(nTips),
             solver_params,
-            # --- New global exploration parameters ---
             np.int32(nLocalIter),
-            np.float32(randConfigProb),
+            np.array(prob_params, dtype=np.float32),  # Pass the probability vector as a float4 argument
             np.int32(nRelaxSteps),
-            # --- Global Data Buffers ---
             self.Esite_buff,
             self.Tsite_buff,
             self.W_val_buff,
             self.W_idx_buff,
             self.nNeigh_buff,
-            # --- Input/Output Buffers for Best State ---
             self.occ_best_buff,
             self.E_best_buff,
             self.Itot_out_buff,
-            # --- Configuration ---
             np.int32(max_neighs),
             np.int32(initMode),
         )
@@ -410,6 +406,7 @@ class HubbardSolver(OpenCLBase):
     def solve_mc(self, W_sparse, Esite, Tsite, nTips, nSite,
                  params={}, 
                  nLocalIter=100,
+                 prob_params=(0.05, 0.45, 0.50, 0.0), # (keep, reload_best, random_reset, unused)
                  randConfigProb=0.05,
                  nRelaxSteps=50,
                  nWorkGroup=32,
@@ -455,22 +452,31 @@ class HubbardSolver(OpenCLBase):
         # so any calculated energy will be lower and accepted as the first "best".
         if initMode != 2:
             E_best_init = np.full(nTips, np.inf, dtype=np.float32)
-            self.toGPU(self.E_best_buff, E_best_init)
+            # Directly upload to buffer object
+            self.toGPU_(self.E_best_buff, E_best_init)
+            # Initialize best configuration to zeros
+            occ_init = np.zeros((nTips, self.occ_bytes), dtype=np.uint8)
+            self.toGPU_(self.occ_best_buff, occ_init)
 
-        self.toGPU(self.Esite_buff, Esite)
-        self.toGPU(self.Tsite_buff, Tsite)
+        # Directly upload Esite
+        self.toGPU_(self.Esite_buff, Esite)
+        # Directly upload Tsite
+        self.toGPU_(self.Tsite_buff, Tsite)
         if W_sparse is not None:
             W_val, W_idx, nNeigh = W_sparse
-            self.toGPU(self.W_val_buff, W_val)
-            self.toGPU(self.W_idx_buff, W_idx)
-            self.toGPU(self.nNeigh_buff, nNeigh)
+            # Directly upload W_val
+            self.toGPU_(self.W_val_buff, W_val)
+            # Directly upload W_idx
+            self.toGPU_(self.W_idx_buff, W_idx)
+            # Directly upload nNeigh
+            self.toGPU_(self.nNeigh_buff, nNeigh)
 
         # --- 2. Prepare and Launch Kernel ---
         global_size = (nTips * nWorkGroup,)
         local_size = (nWorkGroup,)
         
         args, kernel = self.setup_solve_mc(
-            nSite, nTips, params, nLocalIter, randConfigProb,
+            nSite, nTips, params, nLocalIter, prob_params, # Pass new arg
             nRelaxSteps, initMode, nMaxNeigh
         )
         kernel(self.queue, global_size, local_size, *args)
@@ -480,9 +486,12 @@ class HubbardSolver(OpenCLBase):
         E_out    = np.empty(nTips,                   dtype=np.float32)
         Itot_out = np.empty((nTips, 2),              dtype=np.float32)
         
-        self.fromGPU(self.occ_best_buff, occ_out  )
-        self.fromGPU(self.E_best_buff,   E_out    )
-        self.fromGPU(self.Itot_out_buff, Itot_out )
+        # Directly download occ_best
+        self.fromGPU_(self.occ_best_buff, occ_out  )
+        # Directly download E_best
+        self.fromGPU_(self.E_best_buff,   E_out    )
+        # Directly download Itot_out
+        self.fromGPU_(self.Itot_out_buff, Itot_out )
 
         self.queue.finish()
         
@@ -1558,15 +1567,7 @@ def demo_local_update(solver: HubbardSolver=None, nxy_sites=(8,8), nxy_scan=(200
     bNoCoupling = False
 
     energy, current, occupation = solver.solve_local_updates( W_sparse=(W_val, W_idx, nNeigh), Esite=Esite, Tsite=Tsite, nTips=nTips, nSite=nSingle, nMaxNeigh=nMaxNeigh, params=params_solver, initMode=0, bNoCoupling=bNoCoupling )
-
-    # energy, current, occupation = solver.solve_mc(W_sparse=(W_val, W_idx, nNeigh), Esite=Esite, Tsite=Tsite, nTips=nTips, nSite=nSingle,
-    #              params=params_solver, 
-    #              nLocalIter=10,
-    #              randConfigProb=0.05,
-    #              nRelaxSteps=50,
-    #              nWorkGroup=32,
-    #              bRealloc=True,
-    #              initMode=3)
+    #energy, current, occupation = solver.solve_mc(W_sparse=(W_val, W_idx, nNeigh), Esite=Esite, Tsite=Tsite, nTips=nTips, nSite=nSingle, params=params_solver, nLocalIter=10, randConfigProb=0.05, nRelaxSteps=50, nWorkGroup=32, bRealloc=True, initMode=3)
 
     print( "demo_local_update() energy.shape: ", energy.shape )
     #print( "demo_local_update() current.shape: ", current.shape )

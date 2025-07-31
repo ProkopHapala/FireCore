@@ -728,9 +728,165 @@ static float calculate_total_energy_parallel(
     return reduction_buffer[0];
 }
 
-
-
 __kernel void solve_MC(
+    const int nSite,
+    const int nTips,
+    const float4 solver_params,
+    const int nLocalIter,
+    const float4 prob_params, // NEW: Probabilities {p_keep, p_reload_best, p_random_reset, unused}
+    const int nRelaxSteps, // Unused
+    __global const float*  Esite,
+    __global const float*  Tsite,
+    __global const float*  W_val,
+    __global const int*    W_idx,
+    __global const int*    nNeigh,
+    __global uchar*        occ_best,
+    __global float*        E_best,
+    __global float2*       Itot_out,
+    const int              max_neighs,
+    int                    initMode
+) {
+    //=========================================================================
+    // 1. Initialization and ID setup
+    //=========================================================================
+    const int itip       = get_group_id(0);
+    const int lid        = get_local_id(0);
+    const int local_size = get_local_size(0);
+
+    if (itip >= nTips) return;
+
+    const int nIterTotal   = (int)(solver_params.y + 0.5);
+    //const int nIterTotal     = 10000;
+    const int solverMode     = (int)(solver_params.z + 0.5);
+    const int occ_bytes      = min((nSite + 7) / 8, OCC_BYTES);
+    const int tip_offset     = itip * nSite;
+    const int tip_occ_offset = itip * OCC_BYTES;
+
+    __local uchar occ_mask         [OCC_BYTES];
+    __local float reduction_buffer [MAX_WORKGROUP_SIZE_BIG];
+    __local int   reduction_site   [MAX_WORKGROUP_SIZE_BIG];
+
+    float E_best_cached;
+    const int nGlobalSteps = max(1, nIterTotal / nLocalIter);
+
+    uint rng_state = (uint)solver_params.w + get_global_id(0);
+    rng_state = wang_hash(rng_state);
+
+    if ((itip == iDBG) && (lid == 0)) {
+        printf("GPU kernel solve_MC() nSite: %i, nLocalIter: %i, nIterTotal: %i iDBG %i solverMode %i initMode %i OCC_BYTES %i MAX_WORKGROUP_SIZE_BIG %i\n", nSite, nLocalIter, nIterTotal, iDBG, solverMode, initMode, OCC_BYTES, MAX_WORKGROUP_SIZE_BIG);
+        printf("GPU kernel solve_MC() Probabilities: Keep=%.2f, Reload=%.2f, Random=%.2f\n", prob_params.x, prob_params.y, prob_params.z);
+    }
+
+    //=========================================================================
+    // 2. Initialize State
+    //=========================================================================
+    if (lid == 0) {
+        E_best_cached = E_best[itip];
+        if (initMode == 2) {
+            if (itip == iDBG) printf("iDBG: InitMode 2 - Loading from global occ_best.\n");
+            for (int i = 0; i < occ_bytes; ++i) occ_mask[i] = occ_best[tip_occ_offset + i];
+        } else {
+            if (itip == iDBG) printf("iDBG: InitMode %i - Generating new configuration.\n", initMode);
+            if (initMode == 0) { for (int i = 0; i < occ_bytes; ++i) occ_mask[i] = 0; }
+            else if (initMode == 1) { for (int i = 0; i < occ_bytes; ++i) occ_mask[i] = 0xFF; }
+            else { for (int i = 0; i < occ_bytes; ++i) occ_mask[i] = wang_hash_uint(&rng_state) & 0xFF; }
+        }
+    }
+    barrier(CLK_LOCAL_MEM_FENCE);
+    return;
+
+    //=========================================================================
+    // 3. Main Hybrid Optimization Loop
+    //=========================================================================
+    
+    for (int iGlobal = 0; iGlobal < nGlobalSteps; ++iGlobal) {
+        if ((itip == iDBG) && (lid == 0)) {  printf("\n--- iDBG: Global Step %i/%i, E_best_cached = %e ---\n", iGlobal, nGlobalSteps, E_best_cached); }
+
+        // --- A: Perform a batch of greedy local updates ---
+        for (int iLocal = 0; iLocal < nLocalIter; ++iLocal) {
+            int i_site = (solverMode == 0) ? ((iGlobal * nLocalIter + iLocal) * local_size + lid) % nSite : (wang_hash_uint(&rng_state) % nSite);
+            uchar n_i = GET_OCC(i_site, occ_mask);
+            float Ei = Esite[tip_offset + i_site];
+            if(max_neighs > 0){
+                const int iw0 = i_site * max_neighs;
+                for (int k = 0; k < nNeigh[i_site]; ++k) {
+                    Ei += (float)GET_OCC(W_idx[iw0 + k], occ_mask) * W_val[iw0 + k];
+                }
+            }
+            reduction_buffer[lid] = (n_i > 0) ? -Ei : Ei; // Use reduction_buffer for dE
+            reduction_site[lid] = i_site;
+            barrier(CLK_LOCAL_MEM_FENCE);
+
+            if (lid == 0) {
+                float dEmin = 1e10f;
+                int imin = -1;
+                for (int il = 0; il < local_size; ++il) {
+                    if (reduction_buffer[il] < dEmin) {
+                        dEmin = reduction_buffer[il];
+                        imin = reduction_site[il];
+                    }
+                }
+                if (imin >= 0 && dEmin < 0.0f) {
+                    FLIP_OCC(imin, occ_mask);
+                }
+            }
+            barrier(CLK_LOCAL_MEM_FENCE);
+        }
+
+        // // --- B: Evaluate, Compare, and Decide Next Step ---
+        float E_current = calculate_total_energy_parallel(occ_mask, nSite, Esite, W_val, W_idx, nNeigh, max_neighs, tip_offset, reduction_buffer);
+        // // TODO: we may elimiate this calculate_total_energy_parallel if we accumulate all the updates of energy in some local variable (not need to be private)
+
+        if (lid == 0) {
+            if ((itip == iDBG)) { printf("iDBG: Local optimization finished. E_current = %e, E_best_cached = %e\n", E_current, E_best_cached); }
+            if (E_current < E_best_cached) {
+                if (itip == iDBG) printf("iDBG: *** NEW BEST FOUND! *** (%e < %e)\n", E_current, E_best_cached);
+                E_best_cached = E_current;
+                E_best[itip] = E_current;
+                for (int i = 0; i < occ_bytes; ++i) {
+                    occ_best[tip_occ_offset + i] = occ_mask[i];
+                }
+            } else {
+                if (itip == iDBG) printf("iDBG: No improvement. Deciding next action...\n");
+                float r = wang_hash_float(&rng_state);
+                if (r < prob_params.x) { // Option 1: Keep current state
+                    if (itip == iDBG) printf("iDBG: Action -> KEEP current config (r=%.2f < p=%.2f)\n", r, prob_params.x);
+                    // Do nothing, continue with current occ_mask
+                } else if (r < prob_params.x + prob_params.y) { // Option 2: Reload global best
+                    if (itip == iDBG) printf("iDBG: Action -> RELOAD global best (r=%.2f < p=%.2f)\n", r, prob_params.x + prob_params.y);
+                    for (int i = 0; i < occ_bytes; ++i) {
+                        occ_mask[i] = occ_best[tip_occ_offset + i];
+                    }
+                } else { // Option 3: Random reset
+                    if (itip == iDBG) printf("iDBG: Action -> RANDOM reset\n");
+                    for (int i = 0; i < occ_bytes; ++i) {
+                        occ_mask[i] = wang_hash_uint(&rng_state) & 0xFF;
+                    }
+                }
+            }
+        }
+        barrier(CLK_LOCAL_MEM_FENCE);
+    }
+
+    //=========================================================================
+    // 4. Finalization: Calculate currents for the best state
+    //=========================================================================
+    if (lid == 0) {
+        if ((itip == iDBG)) printf("====== KERNEL FINISH (iDBG=%i) ======\n\n", iDBG);
+        float Iocc = 0.0f, Iunoc = 0.0f;
+        for (int j = 0; j < occ_bytes; ++j) {
+            occ_mask[j] = occ_best[tip_occ_offset + j];
+        }
+        for (int i = 0; i < nSite; ++i) {
+            if (GET_OCC(i, occ_mask)) Iocc += Tsite[tip_offset + i];
+            else Iunoc += Tsite[tip_offset + i];
+        }
+        Itot_out[itip] = (float2)(Iocc, Iunoc);
+    }
+}
+
+
+__kernel void solve_MC_bak(
     const int nSite,
     const int nTips,
     const float4 solver_params,
@@ -776,7 +932,7 @@ __kernel void solve_MC(
     __local uchar occ_mask[OCC_BYTES];      // Current working configuration
     __local uchar occ_best_l[OCC_BYTES];    // Best configuration found in this run
     __local float reduction_dE[MAX_WORKGROUP_SIZE_BIG];
-    __local int reduction_site[MAX_WORKGROUP_SIZE_BIG];
+    __local int   reduction_site[MAX_WORKGROUP_SIZE_BIG];
 
     float E_best_l; // Best energy found in this run
 
@@ -784,15 +940,12 @@ __kernel void solve_MC(
     // 2. Initialize State
     //=========================================================================
     if (lid == 0) {
-        // Mode 2 (continue) or if a valid previous state exists (E < large_number)
-        // initialize with the best known global state. Otherwise, start fresh.
-        if (initMode == 2 || E_best[itip] < 1e9f) {
-            for (int i = 0; i < occ_bytes; ++i) occ_mask[i] = occ_best[tip_occ_offset + i];
-        } else {
-            if (initMode == 0) { for (int i=0; i<occ_bytes; ++i) occ_mask[i] = 0; } // All zero
-            else if (initMode == 1) { for (int i=0; i<occ_bytes; ++i) occ_mask[i] = 0xFF; } // All one
-            else { for (int i=0; i<occ_bytes; ++i) occ_mask[i] = wang_hash_uint(&rng_state) & 0xFF; } // Random
-        }
+        //initMode = 1; // DEBUG - override initMode
+        if     (initMode == 0 ){ for (int i=0;i<occ_bytes;++i) { occ_mask[i] = 0;    } } 
+        else if(initMode == 1 ){ for (int i=0;i<occ_bytes;++i) { occ_mask[i] = 0xFF; } } 
+        else if(initMode == 2 ){ for (int i=0;i<occ_bytes;++i) { occ_mask[i] = occ_best[ itip*OCC_BYTES + i]; } } 
+        else if(initMode == 3 ){ for (int i=0;i<occ_bytes;++i) { occ_mask[i] = wang_hash_uint(&rng_state)&0xFF; } }
+        //if(itip==iDBG){ printf("GPU itip %3i occ: ", itip ); for(int i=0;i<occ_bytes;++i){ printf("%02x", occ_mask[i]); } printf("\n"); }
     }
     barrier(CLK_LOCAL_MEM_FENCE);
 

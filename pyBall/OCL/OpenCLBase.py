@@ -217,6 +217,9 @@ class OpenCLBase:
             # if getattr(self, buff_name, None) is None or getattr(self, buff_name).size != sz:
             #     self.try_make_buff(buff_name, sz)
             buff,new = self.try_make_buff( buff_name, sz)
+            # Ensure the buffer is also in the buffer_dict for toGPU/fromGPU
+            if new:  # Only add if it was newly created
+                self.buffer_dict[buff_name] = buff
 
     def toGPU_(self, buf, host_data, byte_offset=0 ):
         cl.enqueue_copy(self.queue, buf, host_data, device_offset=byte_offset)
