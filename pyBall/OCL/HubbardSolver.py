@@ -171,7 +171,7 @@ class HubbardSolver(OpenCLBase):
         )
         return args, kernel
 
-    def setup_solve_local_updates(self, nSite, nTips, params={}, initMode=3, T=3.0, nIter=100, solverMode=0 ):
+    def setup_solve_local_updates(self, nSite, nTips, params={}, initMode=3, T=3.0, nIter=100, solverMode=0, bNoCoupling=False ):
         """Prepare arguments for the solve_local_updates kernel."""
         kernel = self.prg.solve_local_updates
         
@@ -182,6 +182,9 @@ class HubbardSolver(OpenCLBase):
             params.get("seed",       np.random.randint(0, 2**31))
         ], dtype=np.float32)
 
+        max_neighs = self.max_neighs
+        if bNoCoupling: max_neighs = 0
+        
         args = (
             np.int32(nSite),
             np.int32(nTips),
@@ -194,7 +197,7 @@ class HubbardSolver(OpenCLBase):
             self.occ_buff,  
             self.Emin_buff, 
             self.Itot_buff, 
-            np.int32(self.max_neighs),
+            np.int32(max_neighs),
             np.int32(initMode),
         )
         return args, kernel
@@ -289,7 +292,7 @@ class HubbardSolver(OpenCLBase):
 
 
     # NEW: High-level public API for the local update solver
-    def solve_local_updates(self, W_sparse=None, Esite=None, Tsite=None, nTips=None, nSite=None, nMaxNeigh=None,  params=default_params, nWorkGroup=16, bRealloc=True ):
+    def solve_local_updates(self, W_sparse=None, Esite=None, Tsite=None, nTips=None, nSite=None, nMaxNeigh=None,  params=default_params, nWorkGroup=16, bRealloc=True, initMode=3, bNoCoupling=False ):
         """
         Run the local-update Monte Carlo solver.
 
@@ -312,7 +315,12 @@ class HubbardSolver(OpenCLBase):
             if nTips     is None: nTips = Esite.shape[1]
             if nMaxNeigh is None: nMaxNeigh = len(W_sparse[2])
             self.realloc_local_update_buffers(nSite, nTips, nMaxNeigh)
-        if Esite is not None: self.toGPU_(self.Esite_buff, Esite)
+        if Esite is not None: 
+            iDBG = 612
+            print("solve_local_updates() Esite.toGPU_ shape() ", Esite.shape )
+            print(f"solve_local_updates() Esite[{iDBG}] \n", Esite[iDBG] )
+            #print("solve_local_updates() Esite.toGPU_ \n", Esite )
+            self.toGPU_(self.Esite_buff, Esite)
         if Tsite is not None: self.toGPU_(self.Tsite_buff, Tsite)
         if W_sparse is not None:
             Wval, Widx, WnNeigh = W_sparse
@@ -323,7 +331,7 @@ class HubbardSolver(OpenCLBase):
         # Kernel launch
         global_size  = (nTips * nWorkGroup,)
         local_size   = (nWorkGroup,)
-        args, kernel = self.setup_solve_local_updates(nSite, nTips, params)
+        args, kernel = self.setup_solve_local_updates(nSite, nTips, params, initMode=initMode, bNoCoupling=bNoCoupling)
         kernel(self.queue, global_size, local_size, *args)
         
         # Download results
@@ -1298,7 +1306,7 @@ def demo_precalc_scan(solver: HubbardSolver=None, nxy_sites=(6, 6), nxy_scan=(10
     plt.tight_layout(rect=[0, 0, 1, 0.96])
     plt.show()
 
-def demo_local_update(solver: HubbardSolver=None, nxy_sites=(4, 4), nxy_scan=(50, 50), Vbias=0.1, cutoff=8.0, W_amplitude=1.0, T=0.001, nIter=100):
+def demo_local_update(solver: HubbardSolver=None, nxy_sites=(4, 4), nxy_scan=(50, 50), Vbias=0.1, cutoff=8.0, W_amplitude=1.0, T=0.001, nIter=1000, solverMode=0):
     """
     Demonstrates the usage of the solve_local_updates kernel by running a 2D scan with Monte Carlo optimization.
     
@@ -1364,32 +1372,38 @@ def demo_local_update(solver: HubbardSolver=None, nxy_sites=(4, 4), nxy_scan=(50
     # Extract only the position components (x,y,z) from posE for the PBC calculation
     pos_xyz = posE[:, :3]  # Only take x, y, z components, not the energy E0
     W_val, W_idx, nNeigh = make_sparse_W_pbc(pos_xyz, lvs_pbc, cutoff, W_func=screened_coulomb, nMaxNeigh=nMaxNeigh)
-    print(f"Created sparse W matrix with cutoff {cutoff} and max {nMaxNeigh} neighbors per site.")
-    print("GPU W_val: \n", W_val)
-    print("GPU W_idx: \n", W_idx)
+    print(f"demo_local_update() Created sparse W matrix with cutoff {cutoff} and max {nMaxNeigh} neighbors per site.")
+    print("demo_local_update() W_val: \n", W_val)
+    print("demo_local_update() W_idx: \n", W_idx)
     
     # 3d. Local update solver parameters
     params_solver = {
         "kT":    kBoltzmann * T,  # Temperature in energy units
         "nIter": nIter,      # Number of Monte Carlo iterations
-        "solverMode": 2,     # Use Metropolis algorithm (0=deterministic, 2=simulated annealing)
+        "solverMode": solverMode,     # Use Metropolis algorithm (0=deterministic, 2=simulated annealing)
         "seed":  np.random.randint(0, 2**31)  # Random seed
     }
 
     # 4. Call the pre-calculation kernel
-    print("Calling precalc_esite_thop kernel...")
+    print("demo_local_update() Calling precalc_esite_thop kernel...")
     Esite, Tsite = solver.precalc_esite_thop(posE, pTips, multipoleCoefs=multipoleCoefs, params=params_precalc)
-    print(f"Kernel finished. Sites: {nSingle}, Tips: {nTips}")
-    print(f"Esite shape: {Esite.shape}, min/max: {np.min(Esite):.3f}/{np.max(Esite):.3f}")
-    print(f"Tsite shape: {Tsite.shape}, min/max: {np.min(Tsite):.3f}/{np.max(Tsite):.3f}")
+
+
+    Esite += 0.1
+
+    print(f"demo_local_update() Kernel finished. Sites: {nSingle}, Tips: {nTips}")
+    print(f"demo_local_update() Esite shape: {Esite.shape}, min/max: {np.min(Esite):.3f}/{np.max(Esite):.3f}")
+    print(f"demo_local_update() Tsite shape: {Tsite.shape}, min/max: {np.min(Tsite):.3f}/{np.max(Tsite):.3f}")
 
     # 5. Run the local update Monte Carlo solver
-    print(f"Running local update solver with T={T}K, nIter={nIter}...")
+    print(f"demo_local_update() Running local update solver with T={T}K, nIter={nIter}...")
     
     # Allocate buffers for the solver
     solver.realloc_local_update_buffers(nSingle, nTips, nMaxNeigh)
 
-    energy, current, occupation = solver.solve_local_updates( W_sparse=(W_val, W_idx, nNeigh), nTips=nTips, nSite=nSingle, nMaxNeigh=nMaxNeigh )
+    bNoCoupling = True
+
+    energy, current, occupation = solver.solve_local_updates( W_sparse=(W_val, W_idx, nNeigh), Esite=Esite, Tsite=Tsite, nTips=nTips, nSite=nSingle, nMaxNeigh=nMaxNeigh, params=params_solver, initMode=0, bNoCoupling=bNoCoupling )
 
     # --- Plotting ---
 

@@ -516,31 +516,33 @@ __kernel void solve_local_updates(
     
     const int tip_offset = itip * nSite;   // Offset for accessing tip-specific global data
 
-    if(gid==0){ 
+    #define iDBG 612
+
+    if((itip==iDBG)&&(lid==0)){ 
         int nG = get_global_size(0);
-        printf("GPU solve_local_updates() nSite: %i nTips: %i mode %i initMode %i local_size: %i global_size %i  occ_bytes %i\n", nSite, nTips, mode, initMode, local_size, nG, occ_bytes ); 
+        printf("GPU solve_local_updates() iDBG %i  nSite: %i nTips: %i nIter %i max_neighs %i mode %i initMode %i local_size: %i global_size %i  occ_bytes %i\n", iDBG, nSite, nTips, nIter, max_neighs, mode, initMode, local_size, nG, occ_bytes ); 
 
-        // printf("GPU Esite: ");
-        // for( int is=0; is<nSite; ++is){
-        //     printf("GPU is %3i Esite %f Tsite %f\n", is, Esite[tip_offset + is], Tsite[tip_offset + is] );
-        // }
-
-        printf("GPU W_val: ");
+        printf("GPU isite,Esite, Tsite: ");
         for( int is=0; is<nSite; ++is){
-            int nng = nNeigh[is];
-            printf("GPU site %3i nng %i Wij: ", is, nng );
-            for( int j=0; j<nng; ++j){
-                int iw = is * max_neighs + j;
-                printf(" %i:%.2f ", W_idx[iw], W_val[iw] );
-            }
-            printf("\n");
+            printf("GPU isite %3i Esite %16.8f Tsite %16.8f\n", is, Esite[tip_offset + is], Tsite[tip_offset + is] );
         }
+
+        // printf("GPU Wij (sparse inter-site couplings): \n");
+        // for( int is=0; is<nSite; ++is){
+        //     int nng = nNeigh[is];
+        //     printf("GPU site %3i nng %i Wij: ", is, nng );
+        //     for( int j=0; j<nng; ++j){
+        //         int iw = is * max_neighs + j;
+        //         printf(" %i:%.2f ", W_idx[iw], W_val[iw] );
+        //     }
+        //     printf("\n");
+        // }
     }
 
 
     // Thread 0 initializes the state to all zeros
     if (lid == 0) {
-        initMode = 1;
+        //initMode = 1; // DEBUG - override initMode
         if     (initMode == 0 ){ for (int i=0;i<occ_bytes;++i) { occ_mask[i] = 0;    } } 
         else if(initMode == 1 ){ for (int i=0;i<occ_bytes;++i) { occ_mask[i] = 0xFF; } } 
         else if(initMode == 2 ){ for (int i=0;i<occ_bytes;++i) { occ_mask[i] = occ_out[ itip*OCC_BYTES + i]; } } 
@@ -561,13 +563,17 @@ __kernel void solve_local_updates(
 
         const uchar n_i  = GET_OCC(i_site, occ_mask);     // site occupancy
         float      Ei    = Esite[tip_offset + i_site];    // on-site energy
-        const int  iw0   = i_site * max_neighs;
-        for (int k = 0; k < nNeigh[i_site]; ++k) {        // coulomb interactions with neighbors
-            const int iw    = iw0 + k;
-            const int jsite = W_idx[iw];
-            float occ_k  = (float)GET_OCC(jsite, occ_mask); // neighbor occupation
-            Ei          += occ_k * W_val[iw];
+        
+        if(max_neighs>0){ // inter-site coupling - only if there are neighbors
+            const int  iw0   = i_site * max_neighs;
+            for (int k = 0; k < nNeigh[i_site]; ++k) {        // coulomb interactions with neighbors
+                const int iw    = iw0 + k;
+                const int jsite = W_idx[iw];
+                float occ_k  = (float)GET_OCC(jsite, occ_mask); // neighbor occupation
+                Ei          += occ_k * W_val[iw];
+            }
         }
+
         reduction_dE  [lid] = (1.0f - 2.0f * (float)n_i) * Ei; // energy change if flip
         reduction_site[lid] = i_site;
 
@@ -606,12 +612,14 @@ __kernel void solve_local_updates(
                 Iocc += Tsite[tip_offset + i];          // on-site current
                 E    += Esite[tip_offset + i];          // on-site energy
 
-                // const int iw0 = i * MAX_NEIGHBORS;
-                // for (int k = 0; k < nNeigh[i]; ++k) {  // coulomb interactions with neighbors
-                //     const int iw = iw0 + k;
-                //     const int j  = W_idx[iw];
-                //     if (i < j && GET_OCC(j, occ_mask)) {  E += W_val[iw]; }
-                // }
+                if(max_neighs>0){ // inter-site coupling - only if there are neighbors
+                    const int iw0 = i * max_neighs;
+                    for (int k = 0; k < nNeigh[i]; ++k) {  // coulomb interactions with neighbors
+                        const int iw = iw0 + k;
+                        const int j  = W_idx[iw];
+                        if (i < j && GET_OCC(j, occ_mask)) {  E += W_val[iw]; }
+                    }
+                }
             } else {
                 Iunoc += Tsite[tip_offset + i];          // on-site current
             }
