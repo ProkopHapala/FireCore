@@ -1306,7 +1306,7 @@ def demo_precalc_scan(solver: HubbardSolver=None, nxy_sites=(6, 6), nxy_scan=(10
     plt.tight_layout(rect=[0, 0, 1, 0.96])
     plt.show()
 
-def demo_local_update(solver: HubbardSolver=None, nxy_sites=(4, 4), nxy_scan=(50, 50), Vbias=0.1, cutoff=8.0, W_amplitude=1.0, T=0.001, nIter=1000, solverMode=0):
+def demo_local_update(solver: HubbardSolver=None, nxy_sites=(4, 4), nxy_scan=(50, 50), Vbias=0.1, cutoff=8.0, W_amplitude=1.0, T=0.001, nIter=10, solverMode=0):
     """
     Demonstrates the usage of the solve_local_updates kernel by running a 2D scan with Monte Carlo optimization.
     

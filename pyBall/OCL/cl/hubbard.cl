@@ -522,7 +522,7 @@ __kernel void solve_local_updates(
         int nG = get_global_size(0);
         printf("GPU solve_local_updates() iDBG %i  nSite: %i nTips: %i nIter %i max_neighs %i mode %i initMode %i local_size: %i global_size %i  occ_bytes %i\n", iDBG, nSite, nTips, nIter, max_neighs, mode, initMode, local_size, nG, occ_bytes ); 
 
-        printf("GPU isite,Esite, Tsite: ");
+        printf("GPU isite,Esite, Tsite: \n");
         for( int is=0; is<nSite; ++is){
             printf("GPU isite %3i Esite %16.8f Tsite %16.8f\n", is, Esite[tip_offset + is], Tsite[tip_offset + is] );
         }
@@ -561,6 +561,8 @@ __kernel void solve_local_updates(
         if (mode == 0) { i_site = (iter * local_size + lid ) % nSite; } // Deterministic sweep across threads
         else           { i_site = wang_hash_uint(&rng_state) % nSite; } // Stochastic proposal
 
+
+
         const uchar n_i  = GET_OCC(i_site, occ_mask);     // site occupancy
         float      Ei    = Esite[tip_offset + i_site];    // on-site energy
         
@@ -574,7 +576,13 @@ __kernel void solve_local_updates(
             }
         }
 
-        reduction_dE  [lid] = (1.0f - 2.0f * (float)n_i) * Ei; // energy change if flip
+        //reduction_dE  [lid] = (2.0f * (float)n_i - 1.0f) * Ei; // Corrected energy change
+        if( n_i>0){ reduction_dE[lid] = -Ei; } // if occupied, we make it unoccupied, so we substrat site energy from total sum
+        else      { reduction_dE[lid] = +Ei; } // if unoccupied, we make it occupied, so we add site energy to total sum
+
+
+        // if((itip==iDBG)&&(lid==0)){   printf("GPU itip %3i iter %3i i_site %3i n_i %i Ei %16.8f dE %16.8f \n", itip, iter, i_site, n_i, Ei, reduction_dE[lid] ); }
+
         reduction_site[lid] = i_site;
 
         barrier(CLK_LOCAL_MEM_FENCE); // Wait for all proposals to be calculated
@@ -584,6 +592,9 @@ __kernel void solve_local_updates(
             float dEmin = 1e10f; // Start with a high energy
             int   imin  = -1;
             for (int i = 0; i < local_size; ++i) {  // Find the move with the minimum dE among all threads
+
+                if(itip==iDBG){  printf("GPU iter %3i itip %3i lid %3i i_site %3i dE %16.8f \n", iter, itip, lid, reduction_site[i], reduction_dE[i] ); }
+
                 if (reduction_dE[i] < dEmin) {
                     dEmin = reduction_dE[i];
                     imin  = reduction_site[i];
