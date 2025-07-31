@@ -887,6 +887,112 @@ def plot2d( data, extent=None, title=None, ax=None, cmap=None, ps=None):
     plot_sites(ps,ax); 
     ax.set_title(title);
 
+def plot_site_maps_imshow(Esite_map, Tsite_map, occ_map, posE, tip_pos=None, title=""):
+    """
+    Plots Esite, Tsite, and occupancy for a single tip configuration on a grid using imshow.
+
+    Args:
+        Esite_map (np.ndarray): 2D array of on-site energies.
+        Tsite_map (np.ndarray): 2D array of hopping amplitudes.
+        occ_map (np.ndarray): 2D array of unpacked occupancies (0 or 1).
+        posE (np.ndarray): The (N, 4) array of site positions to determine plot extent.
+        tip_pos (np.ndarray, optional): The (x, y, z, V) position of the tip to mark on the plot.
+        title (str, optional): A title for the figure.
+    """
+    # Determine the real-space extent of the site grid for imshow
+    # Add half a grid cell to each side for better visualization of corner sites
+    dx = (np.max(posE[:, 0]) - np.min(posE[:, 0])) / (Esite_map.shape[0] - 1) if Esite_map.shape[0] > 1 else 0
+    dy = (np.max(posE[:, 1]) - np.min(posE[:, 1])) / (Esite_map.shape[1] - 1) if Esite_map.shape[1] > 1 else 0
+    extent = [
+        np.min(posE[:, 0]) - dx/2, np.max(posE[:, 0]) + dx/2,
+        np.min(posE[:, 1]) - dy/2, np.max(posE[:, 1]) + dy/2
+    ]
+
+    fig, axs = plt.subplots(1, 3, figsize=(18, 5))
+    if title:
+        fig.suptitle(title, fontsize=16)
+
+    # Plot Esite
+    im0 = axs[0].imshow(Esite_map.T, cmap='viridis', origin='lower', interpolation='nearest', extent=extent)
+    axs[0].set_title("On-site Energies (Esite)")
+    fig.colorbar(im0, ax=axs[0])
+
+    # Plot Tsite
+    im1 = axs[1].imshow(Tsite_map.T, cmap='magma', origin='lower', interpolation='nearest', extent=extent)
+    axs[1].set_title("Hopping Amplitudes (Tsite)")
+    fig.colorbar(im1, ax=axs[1])
+
+    # Plot Occupancy
+    im2 = axs[2].imshow(occ_map.T, cmap='gray', origin='lower', interpolation='nearest', extent=extent)
+    axs[2].set_title("Occupancy")
+    fig.colorbar(im2, ax=axs[2])
+
+    # Mark tip position and site positions on all subplots
+    for ax in axs:
+        ax.plot(posE[:, 0], posE[:, 1], '.w', markersize=2, alpha=0.5)
+        if tip_pos is not None:
+            ax.plot(tip_pos[0], tip_pos[1], 'o', color='red', markersize=8, markeredgecolor='white')
+        ax.set_xlabel("X (Angstrom)")
+        ax.set_ylabel("Y (Angstrom)")
+        ax.set_aspect('equal')
+
+    plt.tight_layout(rect=[0, 0, 1, 0.96])
+
+def plot_site_property(pos, prop_values, energy=None, nxy_sites=None, sz=300, thisSites=None, title_prefix="", cmap='viridis'):
+    """
+    Plots a floating-point property for each site at its specific location.
+    This is a general version of plot_site_occupancy for continuous properties.
+    For each configuration (e.g., tip position), it creates a subplot showing the
+    property values for all sites using a color map.
+
+    Args:
+        pos (np.ndarray): The (N, 3) or (N, 4) array of site positions.
+        prop_values (np.ndarray): A 2D array (n_configs, n_sites) of the property to plot.
+        energy (np.ndarray, optional): 1D array of energies for each configuration to display in the title.
+        nxy_sites (tuple): The (nx, ny) dimensions of the subplot grid.
+        sz (int): Marker size for the scatter plot.
+        thisSites (np.ndarray, optional): The (n_configs, 3) or (n_configs, 4) array of tip positions.
+        title_prefix (str): A prefix for the subplot titles.
+        cmap (str): Colormap for the scatter plot.
+    """
+    n_configs, n_sites = prop_values.shape
+    nx, ny = nxy_sites
+
+    if n_configs != (nx * ny):
+        print(f"Warning: Number of configurations ({n_configs}) does not match grid size ({nx*ny}). Truncating.")
+        n_configs = min(n_configs, nx * ny)
+
+    fig, axs = plt.subplots(ny, nx, figsize=(nx * 3, ny * 3))
+    # Handle case where axs is not a 2D array (e.g., nx=1 or ny=1)
+    if n_configs == 1:
+        axs = np.array([axs])
+    axs = axs.flatten() # Make it easier to iterate
+
+    # Find global min/max for consistent color scale
+    vmin = np.min(prop_values)
+    vmax = np.max(prop_values)
+
+    for s in range(n_configs):
+        ax = axs[s]
+        
+        # Mark the tip position for this configuration
+        if thisSites is not None:
+            ax.plot(thisSites[s, 0], thisSites[s, 1], 'o', color='red', markersize=10, zorder=10)
+
+        # Plot the property values for all sites
+        sc = ax.scatter(pos[:, 0], pos[:, 1], c=prop_values[s, :], s=sz, cmap=cmap, vmin=vmin, vmax=vmax, edgecolors='black', linewidths=1)
+
+        title = f"{title_prefix}"
+        if energy is not None:
+            title += f" E={energy[s]:.3f}"
+        ax.set_title(title)
+        ax.set_aspect('equal')
+        ax.axis('off')
+
+    # Add a single colorbar for the entire figure
+    fig.colorbar(sc, ax=axs.ravel().tolist(), orientation='vertical', fraction=0.02, pad=0.04)
+    plt.tight_layout()
+
 # New helper functions for demo_local_update
 def solve_hopping_scan(solver: HubbardSolver, posE: np.ndarray, rots: np.ndarray, orbs: np.ndarray, extent, nxy=(10,10), params=default_params):
     """Run oriented hopping scan over XY grid and sum amplitudes over sites."""
@@ -1242,40 +1348,37 @@ def demo_local_update(solver: HubbardSolver=None, nxy_sites=(4, 4), nxy_scan=(50
     
     energy, current, occupation = solver.solve_local_updates( W_sparse=(W_val, W_idx, nNeigh), nTips=nTips, nSite=nSingle, nMaxNeigh=nMaxNeigh )
 
-    # occ_bytes = nSingle//8
-    # for i in range(nTips):
-    #     #print(f"Tip {i}: E={energy[i]:.3f}, I_occ={current[i,0]:.3f}, I_unocc={current[i,1]:.3f}")
-    #     print(f"CPU iTip {i:3} occ: ", end="")
-    #     for j in range(occ_bytes):
-    #         #print(f"{occupation[i*solver.occ_bytes+j]:02x}", end="")
-    #         print(f"{occupation[i*solver.occ_bytes+j]:08b}", end="")
-    #     print()
+    # --- Plotting ---
 
-    occupation_2d = occupation.reshape( nxy_scan[0], nxy_scan[1], -1 )
-    occupation    = occupation.reshape( nxy_scan[0]*nxy_scan[1], -1 )
+    # Reshape occupation array for easier indexing
+    occupation_reshaped = occupation.reshape(nTips, solver.occ_bytes)
 
-    occ_slice = occupation_2d[:, nxy_scan[1]//2,:]
-
-    #print_occupancy(occupation.reshape(nTips,-1), nSingle, bHex=False)
-
-    print_occupancy(occ_slice, nSingle, bHex=False)
-
-
-    # Plot occupancy slice
-    # For demonstration, let's plot a slice along x-axis at y_idx = ny // 2
-    # Or along y-axis at x_idx = nx // 2
-
-    plot_occupancy_line( occ_slice, nSingle )
-    # Plot occupancy configurations for each site when tip is closest to them
+    # 1. Plot occupancy patterns for tips closest to each site (original scatter plot)
     site_tip_indices = find_closest_pTip(posE, pTips, nxy_scan)
+    print("Plotting occupancy patterns for tip-on-site configurations...")
+    plot_site_occupancy(posE, occupation_reshaped[site_tip_indices], energy[site_tip_indices], nxy_sites, nSingle)
+    plt.suptitle("Occupancy Patterns (Tip Closest to Each Site)", y=1.02)
+    
+    # 2. Plot on-site energy property for the same tip-on-site configurations
+    print("Plotting on-site energy property for tip-on-site configurations...")
+    Esite_on_sites = Esite[site_tip_indices, :]
+    plot_site_property(posE, Esite_on_sites, energy=energy[site_tip_indices], nxy_sites=nxy_sites, title_prefix="Esite", cmap='coolwarm')
+    plt.suptitle("On-Site Energy (Esite) Landscapes (Tip Closest to Each Site)", y=1.02)
 
-    print( " occupation.shape ", occupation.shape)
-
-
-    plot_site_occupancy( posE, occupation[site_tip_indices], energy[site_tip_indices],  nxy_sites, nSingle )
-
-    for ii,i in enumerate(site_tip_indices):
-        print(f"#Site  {ii}  pix {i}  E={energy[i]:.3f}, I_occ={current[i,0]:.3f}, I_unocc={current[i,1]:.3f}")
+    # 3. Plot detailed maps for a single, central tip position using imshow
+    i_tip_center = nTips // 2
+    tip_pos_center = pTips[i_tip_center]
+    Esite_map_center = Esite[i_tip_center, :].reshape(nxy_sites)
+    Tsite_map_center = Tsite[i_tip_center, :].reshape(nxy_sites)
+    occ_bytes_center = occupation_reshaped[i_tip_center]
+    occ_map_center = np.unpackbits(occ_bytes_center)[:nSingle].reshape(nxy_sites)
+    
+    print(f"Plotting detailed maps for central tip position index {i_tip_center}...")
+    plot_site_maps_imshow(
+        Esite_map_center, Tsite_map_center, occ_map_center,
+        posE=posE, tip_pos=tip_pos_center,
+        title=f"Site Maps for Tip at ({tip_pos_center[0]:.2f}, {tip_pos_center[1]:.2f})"
+    )
 
     # Calculate total charge for each tip position (count bits set to 1)
     total_charge        = np.zeros(nTips, dtype=np.int32)
@@ -1283,9 +1386,6 @@ def demo_local_update(solver: HubbardSolver=None, nxy_sites=(4, 4), nxy_scan=(50
     bits = np.unpackbits(occupation_reshaped, axis=1)   # shape (nTips, 8*occ_bytes)
     total_charge = bits.sum(axis=1)                     # shape (nTips,)
 
-
-    total_charge[site_tip_indices] =  0 # DEBUG - just to see 
-    
     # Reshape results into 2D maps
     nx, ny = nxy_scan
     energy_map       = energy       .reshape((nx, ny))
@@ -1297,7 +1397,7 @@ def demo_local_update(solver: HubbardSolver=None, nxy_sites=(4, 4), nxy_scan=(50
     print(f"Charge range: {np.min(total_charge)} to {np.max(total_charge)} sites")
     print(f"Current (occupied) range: {np.min(current[:, 0]):.3f} to {np.max(current[:, 0]):.3f}")
     
-    # 6. Plot the results
+    # 4. Plot final summary maps (energy, charge, etc.)
     fig, axs = plt.subplots(2, 2, figsize=(12, 10))
     fig.suptitle(f"Monte Carlo Optimization Results (T={T}K, nIter={nIter}, W={W_amplitude})", fontsize=16)
     
