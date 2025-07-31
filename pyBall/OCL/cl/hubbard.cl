@@ -509,7 +509,7 @@ __kernel void solve_local_updates(
 
     // --- Shared memory for the work-group ---
     // State is stored as a bitmask to save memory
-    const int occ_bytes        = min( nSite/8, OCC_BYTES );
+    const int occ_bytes        = min( (nSite+7)/8, OCC_BYTES );
     __local uchar occ_mask      [OCC_BYTES];
     __local float reduction_dE  [MAX_WORKGROUP_SIZE_BIG];
     __local int   reduction_site[MAX_WORKGROUP_SIZE_BIG];
@@ -591,13 +591,11 @@ __kernel void solve_local_updates(
         if (lid == 0) {
             float dEmin = 1e10f; // Start with a high energy
             int   imin  = -1;
-            for (int i = 0; i < local_size; ++i) {  // Find the move with the minimum dE among all threads
-
-                if(itip==iDBG){  printf("GPU iter %3i itip %3i lid %3i i_site %3i dE %16.8f \n", iter, itip, lid, reduction_site[i], reduction_dE[i] ); }
-
-                if (reduction_dE[i] < dEmin) {
-                    dEmin = reduction_dE[i];
-                    imin  = reduction_site[i];
+            for (int il = 0; il < local_size; ++il) {  // Find the move with the minimum dE among all threads
+                if(itip==iDBG){  printf("GPU ibest? iter %3i itip %3i lid %3i i_site %3i dE %16.8f \n", iter, itip, il, reduction_site[il], reduction_dE[il] ); }
+                if (reduction_dE[il] < dEmin) {
+                    dEmin = reduction_dE[il];
+                    imin  = reduction_site[il];
                 }
             }
             if(imin < 0){ continue; }
@@ -606,6 +604,7 @@ __kernel void solve_local_updates(
             else if ( mode == 2  ) { // Simulated Annealing
                 if (wang_hash_float(&rng_state) < exp(-dEmin / kT)) { bDo = true; }
             }
+            if(itip==iDBG){  printf("GPU flip? iter %3i itip %3i i_site %3i dE %16.8f bDo %i\n", iter, itip, imin, dEmin, bDo ); }
             if (bDo){ FLIP_OCC(imin, occ_mask); }
         }
         barrier(CLK_LOCAL_MEM_FENCE); // Wait for state update before next iteration
@@ -622,7 +621,6 @@ __kernel void solve_local_updates(
             if (GET_OCC(i, occ_mask)) {
                 Iocc += Tsite[tip_offset + i];          // on-site current
                 E    += Esite[tip_offset + i];          // on-site energy
-
                 if(max_neighs>0){ // inter-site coupling - only if there are neighbors
                     const int iw0 = i * max_neighs;
                     for (int k = 0; k < nNeigh[i]; ++k) {  // coulomb interactions with neighbors
@@ -635,6 +633,11 @@ __kernel void solve_local_updates(
                 Iunoc += Tsite[tip_offset + i];          // on-site current
             }
         }
+        if(itip==iDBG){  
+            printf("GPU final itip %3i E %16.8f Iocc %16.8f Iunoc %16.8f \n", itip, E, Iocc, Iunoc ); 
+            for(int i=0;i<nSite;++i){ printf("GPU occ[%3i] %3i E %16.8f \n", i, GET_OCC(i, occ_mask), Esite[tip_offset + i] ); }
+        }
+
         for (int j = 0; j < occ_bytes; ++j) { occ_out[itip*OCC_BYTES + j] = occ_mask[j]; } // store optimized state configuration
         E_out   [itip]     = E;                  // store energy of optimized state
         Itot_out[itip]  = (float2)(Iocc, Iunoc); // store current of optimized state

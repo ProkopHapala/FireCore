@@ -335,7 +335,7 @@ class HubbardSolver(OpenCLBase):
         kernel(self.queue, global_size, local_size, *args)
         
         # Download results
-        occ_out   = np.empty(nTips*self.occ_bytes, dtype=np.uint8)
+        occ_out   = np.empty((nTips,self.occ_bytes), dtype=np.uint8)
         E_out     = np.empty(nTips, dtype=np.float32)
         Itot_out  = np.empty((nTips, 2), dtype=np.float32)
         
@@ -892,15 +892,16 @@ def plot_site_maps_imshow(Esite_map, Tsite_map, occ_map, posE, tip_pos=None, tit
 
     plt.tight_layout(rect=[0, 0, 1, 0.96])
 
-def plot_sites_maps_imshow(Esite, Tsite, occupation, tip_indices, pTips, posE, nxy_sites, nSingle, sz=2 ):
+def plot_sites_maps_imshow(Esite, Tsite, occ_bits, tip_indices, pTips, posE, nxy_sites, nSingle, sz=2 ):
     n_configs = len(tip_indices)
     fig, axs = plt.subplots(3, n_configs, figsize=(n_configs * (sz+.5), 3*sz), squeeze=False)
     for j, i_tip in enumerate(tip_indices):
         tip_pos = pTips[i_tip]
         Esite_map = Esite[i_tip, :].reshape(nxy_sites)
         Tsite_map = Tsite[i_tip, :].reshape(nxy_sites)
-        occ_bytes = occupation[i_tip]
-        occ_map = np.unpackbits(occ_bytes)[:nSingle].reshape(nxy_sites)
+        #occ_bytes = occupation[i_tip]
+        #occ_map = np.unpackbits(occ_bytes, bitorder='little')[:nSingle].reshape(nxy_sites)
+        occ_map = occ_bits[i_tip][:nSingle].reshape(nxy_sites)
         titles = [f"Tip {i_tip}", None, None]
         plot_site_maps_imshow(Esite_map, Tsite_map, occ_map, posE, tip_pos, title=f"Tip {i_tip}", sz=sz, axs=axs[:, j], titles=titles)
     
@@ -1020,7 +1021,7 @@ def plot_occupancy_slice(occupation, nxy_scan, occ_bytes, slice_idx, axis='x'):
 
     binary_image_data = np.zeros((slice_data_bytes.shape[0], nSites), dtype=np.uint8)
     for i, byte_row in enumerate(slice_data_bytes):
-        bits = np.unpackbits(byte_row)
+        bits = np.unpackbits(byte_row, bitorder='little')
         binary_image_data[i, :] = bits
 
     plt.figure(figsize=(10, 5))
@@ -1033,7 +1034,7 @@ def plot_occupancy_slice(occupation, nxy_scan, occ_bytes, slice_idx, axis='x'):
 
 def plot_occupancy_line(occupation, nSingle):
     nbyte = nSingle//8
-    bits = np.unpackbits(occupation, axis=1)
+    bits = np.unpackbits(occupation, axis=1, bitorder='little')
     print("plot_occupancy_line() bits.shape = ", bits.shape, nSingle, nbyte)
     bits = bits[:,:nSingle]
     plt.figure(figsize=(10, 5))
@@ -1306,7 +1307,7 @@ def demo_precalc_scan(solver: HubbardSolver=None, nxy_sites=(6, 6), nxy_scan=(10
     plt.tight_layout(rect=[0, 0, 1, 0.96])
     plt.show()
 
-def demo_local_update(solver: HubbardSolver=None, nxy_sites=(4, 4), nxy_scan=(50, 50), Vbias=0.1, cutoff=8.0, W_amplitude=1.0, T=0.001, nIter=10, solverMode=0):
+def demo_local_update(solver: HubbardSolver=None, nxy_sites=(4, 4), nxy_scan=(50, 50), Vbias=0.1, cutoff=8.0, W_amplitude=1.0, T=0.001, nIter=20, solverMode=0, Efermi=0.09):
     """
     Demonstrates the usage of the solve_local_updates kernel by running a 2D scan with Monte Carlo optimization.
     
@@ -1389,7 +1390,7 @@ def demo_local_update(solver: HubbardSolver=None, nxy_sites=(4, 4), nxy_scan=(50
     Esite, Tsite = solver.precalc_esite_thop(posE, pTips, multipoleCoefs=multipoleCoefs, params=params_precalc)
 
 
-    Esite += 0.1
+    Esite += Efermi
 
     print(f"demo_local_update() Kernel finished. Sites: {nSingle}, Tips: {nTips}")
     print(f"demo_local_update() Esite shape: {Esite.shape}, min/max: {np.min(Esite):.3f}/{np.max(Esite):.3f}")
@@ -1404,6 +1405,9 @@ def demo_local_update(solver: HubbardSolver=None, nxy_sites=(4, 4), nxy_scan=(50
     bNoCoupling = True
 
     energy, current, occupation = solver.solve_local_updates( W_sparse=(W_val, W_idx, nNeigh), Esite=Esite, Tsite=Tsite, nTips=nTips, nSite=nSingle, nMaxNeigh=nMaxNeigh, params=params_solver, initMode=0, bNoCoupling=bNoCoupling )
+    print( "demo_local_update() energy.shape: ", energy.shape )
+    print( "demo_local_update() current.shape: ", current.shape )
+    print( "demo_local_update() occupation.shape: ", occupation.shape, solver.occ_bytes )
 
     # --- Plotting ---
 
@@ -1433,7 +1437,7 @@ def demo_local_update(solver: HubbardSolver=None, nxy_sites=(4, 4), nxy_scan=(50
     # plot_site_maps_imshow(  Esite_map_center, Tsite_map_center, occ_map_center, posE=posE, tip_pos=tip_pos_center, title=f"Site Maps for Tip at ({tip_pos_center[0]:.2f}, {tip_pos_center[1]:.2f})" )
 
 
-    bits = np.unpackbits(occupation_reshaped, axis=1)   # shape (nTips, 8*occ_bytes)
+    bits = np.unpackbits(occupation_reshaped, axis=1, bitorder='little')   # shape (nTips, 8*occ_bytes)
 
     isite0 = 0
     itip0  = site_tip_indices[isite0]
@@ -1444,7 +1448,7 @@ def demo_local_update(solver: HubbardSolver=None, nxy_sites=(4, 4), nxy_scan=(50
     # 4. Plot detailed maps for a subset of tip-on-site configurations using imshow
     print("Plotting detailed maps for a subset of tip-on-site configurations...")
     tip_indices_subset = site_tip_indices[:min(5, len(site_tip_indices))] # Take first 5 for example
-    plot_sites_maps_imshow(  Esite, Tsite, occupation_reshaped, tip_indices=tip_indices_subset, pTips=pTips, posE=posE, nxy_sites=nxy_sites, nSingle=nSingle )
+    plot_sites_maps_imshow(  Esite, Tsite, bits, tip_indices=tip_indices_subset, pTips=pTips, posE=posE, nxy_sites=nxy_sites, nSingle=nSingle )
     plt.suptitle("Property maps for 5 closest tip-on-site configurations")
 
     # Calculate total charge for each tip position (count bits set to 1)
