@@ -606,7 +606,7 @@ void orient( const char* fname, int fw1,int fw2,  int up1,int up2,  int i0,  int
 
 //
 
-void setSwitches( int CheckInvariants, int PBC, int NonBonded, int MMFF, int Angles, int PiSigma, int PiPiI ){
+void setSwitches( int CheckInvariants, int PBC, int NonBonded, int MMFF, int Angles, int PiSigma, int PiPiI, int bSaveToDatabase ){
     #define _setbool(b,i) { if(i>0){b=true;}else if(i<0){b=false;} }
     _setbool( W.bCheckInvariants, CheckInvariants  );
     _setbool( W.bPBC         , PBC       );
@@ -615,6 +615,7 @@ void setSwitches( int CheckInvariants, int PBC, int NonBonded, int MMFF, int Ang
     _setbool( W.ffl.doAngles , Angles    );
     _setbool( W.ffl.doPiSigma, PiSigma   );
     _setbool( W.ffl.doPiPiI  , PiPiI     );
+    _setbool( W.bSaveToDatabase, bSaveToDatabase );
     W.ffl.bSubtractAngleNonBond = W.bNonBonded;
     #undef _setbool
 }

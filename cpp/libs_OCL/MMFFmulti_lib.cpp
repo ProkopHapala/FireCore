@@ -313,7 +313,7 @@ void  scan( int nconf, double* poss, double* rots, double* dirs, double* Es, dou
     W.scan_relaxed( nconf, (Vec3d*)poss, (Mat3d*)rots, (Vec3d*)dirs, Es, (Vec3d*)aforces, (Vec3d*)aposs, omp, niter_max, dt, Fconv, Flim );
 }
 
-void setSwitches_multi( int CheckInvariants, int PBC, int NonBonded, int MMFF, int Angles, int PiSigma, int PiPiI, int dovdW){
+void setSwitches_multi( int CheckInvariants, int PBC, int NonBonded, int MMFF, int Angles, int PiSigma, int PiPiI, int dovdW, int bSaveToDatabase ){
     #define _setbool(b,i) { if(i>0){b=true;}else if(i<0){b=false;} }
     _setbool( W.bCheckInvariants, CheckInvariants  );
     _setbool( W.bPBC         , PBC       );
@@ -323,6 +323,7 @@ void setSwitches_multi( int CheckInvariants, int PBC, int NonBonded, int MMFF, i
     _setbool( W.ffl.doPiSigma, PiSigma   );
     _setbool( W.ffl.doPiPiI  , PiPiI     );
     _setbool( W.dovdW, dovdW );
+    _setbool( W.bSaveToDatabase, bSaveToDatabase );
     W.ffl.bSubtractAngleNonBond = W.bNonBonded;
     #undef _setbool
 }

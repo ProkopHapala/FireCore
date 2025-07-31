@@ -1,0 +1,35 @@
+# Parameters for simulations with surface and with GridFF
+# These parameters generate data for molecules with surface interaction and with Grid Force Field
+
+# Basic Parameters
+dovdW=1
+doSurfAtoms=1
+bGridFF=6
+bTex=0
+bSaveToDatabase=-1
+xyz_name=data/xyz/xylitol_for_gridFF
+surf_name=data/xyz/surfaces_for_throughput/NaCl_${N}x${N}_Cl_hole
+Fconv=1e-4
+
+# Advanced Parameters
+replicas=1000,5000
+perframes=20,500
+perVF=20,50
+nPBC=(1,1,0)
+Ns=3-16
+
+# Local Memory Parameters
+nlocMMFFs=32
+nlocmoves=32
+nlocNBFFs=--
+nlocSurfs=--
+nlocGridFFs=--
+nlocGridFFbSplines=32
+
+# Description
+# These parameters are designed for simulations of molecules with surface interaction and with Grid Force Field.
+# doSurfAtoms=1 enables surface atoms
+# bGridFF=6 enables Grid Force Field with bSpline interpolation
+# nPBC=(1,1,0),(2,2,0),(3,3,0) enables testing multiple periodic boundary conditions
+# Ns=1-16 tests range of surface sizes from 1x1 to 16x16
+# GridFF provides faster and more accurate calculation of surface interactions
