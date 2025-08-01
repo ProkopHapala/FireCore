@@ -61,8 +61,10 @@ class HubbardSolver(OpenCLBase):
     # buf_iMin  = "iMin_buff"      #   nTips    * sizeof(int  )
     # buf_Itot  = "Itot_buff"      #   nTips    * sizeof(float2)
 
-    def __init__(self, nloc: int = 32, device_index: int = 0):
+    def __init__(self, nloc:int= 32, nloc_MC=16, device_index: int=0 ):
         super().__init__(nloc=nloc, device_index=device_index)
+
+        self.nloc_MC = nloc_MC
 
         # Define numpy dtype matching OpenCL struct `cl_Mat3 { float4 a; float4 b; float4 c; };`
         self.cl_mat3_dtype = np.dtype([
@@ -254,6 +256,43 @@ class HubbardSolver(OpenCLBase):
         )
         return args, kernel
 
+
+    def setup_solve_mc_neigh(self, nSite, nTips, params={}, nLocalIter=10, prob_params=(0.05, 0.45, 0.50, 0.0), nx=None, initMode=3, max_neighs=16):
+        """Prepare arguments for the solve_MC kernel."""
+        kernel = self.prg.solve_MC_neigh
+        
+        solver_params = np.array([
+            params.get("kT", 300.0 * 8.617333262e-5), # kT is unused, but kept for signature
+            params.get("nIter", 1000),
+            params.get("solverMode", 1), 
+            params.get("seed", np.random.randint(0, 2**31))
+        ], dtype=np.float32)
+
+        # Make sure prob_params is a float4
+        prob_params_vec = np.array(list(prob_params) + [0.0] * (4 - len(prob_params)), dtype=np.float32)
+
+        args = (
+            np.int32(nSite),
+            np.int32(nTips),
+            solver_params,
+            np.int32(nLocalIter),
+            prob_params_vec,                       # Pass the new probability vector
+            np.int32(nx),                          # Pass the image width
+            self.Esite_buff,
+            self.Tsite_buff,
+            self.W_val_buff,
+            self.W_idx_buff,
+            self.nNeigh_buff,
+            self.occ_best_buff,
+            self.E_best_buff,
+            self.Itot_out_buff,
+            np.int32(max_neighs),
+            np.int32(initMode),
+        )
+        return args, kernel
+
+
+
     # MODIFIED: Updated setup method for the pre-calculation kernel
     def setup_precalc_esite_thop(self, nSingle, nTips, nMulti, params, bMirror, bRamp):
         """Prepare arguments for the precalc_Esite_Thop kernel."""
@@ -346,7 +385,7 @@ class HubbardSolver(OpenCLBase):
 
 
     # NEW: High-level public API for the local update solver
-    def solve_local_updates(self, W_sparse=None, Esite=None, Tsite=None, nTips=None, nSite=None, nMaxNeigh=None,  params=default_params, nWorkGroup=16, bRealloc=True, initMode=3, bNoCoupling=False ):
+    def solve_local_updates(self, W_sparse=None, Esite=None, Tsite=None, nTips=None, nSite=None, nMaxNeigh=None,  params=default_params, bRealloc=True, initMode=3, bNoCoupling=False ):
         """
         Run the local-update Monte Carlo solver.
 
@@ -386,8 +425,8 @@ class HubbardSolver(OpenCLBase):
             self.toGPU_(self.WnNeigh_buff, WnNeigh)
 
         # Kernel launch
-        global_size  = (nTips * nWorkGroup,)
-        local_size   = (nWorkGroup,)
+        global_size  = (nTips * self.nloc_MC,)
+        local_size   = (self.nloc_MC,)
         args, kernel = self.setup_solve_local_updates(nSite, nTips, params, initMode=initMode, bNoCoupling=bNoCoupling, max_neighs=nMaxNeigh)
         kernel(self.queue, global_size, local_size, *args)
         
@@ -406,12 +445,13 @@ class HubbardSolver(OpenCLBase):
     def solve_mc(self, W_sparse, Esite, Tsite, nTips, nSite,
                  params={}, 
                  nLocalIter=100,
-                 prob_params=(0.05, 0.45, 0.50, 0.0), # (keep, reload_best, random_reset, unused)
-                 randConfigProb=0.05,
+                 #prob_params=(0.05, 0.45, 0.50, 0.0), #  MC_neigh:{p_load_best, p_random_reset, p_load_neighbor, unused}   MC:(keep, reload_best, random_reset, unused)
+                 prob_params=(0.0, 0.5, 0.5, 0.0),
                  nRelaxSteps=50,
-                 nWorkGroup=32,
                  bRealloc=True,
-                 initMode=3):
+                 initMode=3,
+                 nxy_scan=None
+                 ):
         """
         Run the hybrid Monte Carlo solver with global exploration.
 
@@ -448,37 +488,26 @@ class HubbardSolver(OpenCLBase):
         if bRealloc:
             self.realloc_mc_buffers(nSite, nTips, nMaxNeigh)
 
-        # On the first run (or if not continuing), initialize E_best with infinity
-        # so any calculated energy will be lower and accepted as the first "best".
         if initMode != 2:
             E_best_init = np.full(nTips, np.inf, dtype=np.float32)
-            # Directly upload to buffer object
             self.toGPU_(self.E_best_buff, E_best_init)
-            # Initialize best configuration to zeros
             occ_init = np.zeros((nTips, self.occ_bytes), dtype=np.uint8)
             self.toGPU_(self.occ_best_buff, occ_init)
 
-        # Directly upload Esite
         self.toGPU_(self.Esite_buff, Esite)
-        # Directly upload Tsite
         self.toGPU_(self.Tsite_buff, Tsite)
         if W_sparse is not None:
             W_val, W_idx, nNeigh = W_sparse
-            # Directly upload W_val
             self.toGPU_(self.W_val_buff, W_val)
-            # Directly upload W_idx
             self.toGPU_(self.W_idx_buff, W_idx)
-            # Directly upload nNeigh
             self.toGPU_(self.nNeigh_buff, nNeigh)
 
         # --- 2. Prepare and Launch Kernel ---
-        global_size = (nTips * nWorkGroup,)
-        local_size = (nWorkGroup,)
+        global_size  = (nTips * self.nloc_MC,)
+        local_size   = (self.nloc_MC,)
         
-        args, kernel = self.setup_solve_mc(
-            nSite, nTips, params, nLocalIter, prob_params, # Pass new arg
-            nRelaxSteps, initMode, nMaxNeigh
-        )
+        #args, kernel = self.setup_solve_mc( nSite, nTips, params, nLocalIter, prob_params, nRelaxSteps, initMode, nMaxNeigh )
+        args, kernel = self.setup_solve_mc_neigh( nSite, nTips, params, nLocalIter=nLocalIter, prob_params=prob_params, nx=nxy_scan[0], initMode=initMode, max_neighs=nMaxNeigh )
         kernel(self.queue, global_size, local_size, *args)
         
         # --- 3. Download Results ---
@@ -486,11 +515,8 @@ class HubbardSolver(OpenCLBase):
         E_out    = np.empty(nTips,                   dtype=np.float32)
         Itot_out = np.empty((nTips, 2),              dtype=np.float32)
         
-        # Directly download occ_best
         self.fromGPU_(self.occ_best_buff, occ_out  )
-        # Directly download E_best
         self.fromGPU_(self.E_best_buff,   E_out    )
-        # Directly download Itot_out
         self.fromGPU_(self.Itot_out_buff, Itot_out )
 
         self.queue.finish()
@@ -1456,7 +1482,7 @@ def demo_precalc_scan(solver: HubbardSolver=None, nxy_sites=(6, 6), nxy_scan=(10
     plt.tight_layout(rect=[0, 0, 1, 0.96])
     plt.show()
 
-def demo_local_update(solver: HubbardSolver=None, nxy_sites=(8,8), nxy_scan=(200, 200), Vbias=0.1, cutoff=8.0, W_amplitude=1.0, T=1.0, nIter=10000, solverMode=2, Efermi=0.09):
+def demo_local_update(solver: HubbardSolver=None, nxy_sites=(8,8), nxy_scan=(200, 200), Vbias=0.1, cutoff=8.0, W_amplitude=1.0, T=1.0, nIter=100000, solverMode=2, Efermi=0.09):
     """
     Demonstrates the usage of the solve_local_updates kernel by running a 2D scan with Monte Carlo optimization.
     
@@ -1566,8 +1592,8 @@ def demo_local_update(solver: HubbardSolver=None, nxy_sites=(8,8), nxy_scan=(200
     #bNoCoupling = True
     bNoCoupling = False
 
-    energy, current, occupation = solver.solve_local_updates( W_sparse=(W_val, W_idx, nNeigh), Esite=Esite, Tsite=Tsite, nTips=nTips, nSite=nSingle, nMaxNeigh=nMaxNeigh, params=params_solver, initMode=0, bNoCoupling=bNoCoupling )
-    #energy, current, occupation = solver.solve_mc(W_sparse=(W_val, W_idx, nNeigh), Esite=Esite, Tsite=Tsite, nTips=nTips, nSite=nSingle, params=params_solver, nLocalIter=10, randConfigProb=0.05, nRelaxSteps=50, nWorkGroup=32, bRealloc=True, initMode=3)
+    #energy, current, occupation = solver.solve_local_updates( W_sparse=(W_val, W_idx, nNeigh), Esite=Esite, Tsite=Tsite, nTips=nTips, nSite=nSingle, nMaxNeigh=nMaxNeigh, params=params_solver, initMode=0, bNoCoupling=bNoCoupling )
+    energy, current, occupation = solver.solve_mc(W_sparse=(W_val, W_idx, nNeigh), Esite=Esite, Tsite=Tsite, nTips=nTips, nSite=nSingle, params=params_solver, bRealloc=True, initMode=3, nxy_scan=nxy_scan )
 
     print( "demo_local_update() energy.shape: ", energy.shape )
     #print( "demo_local_update() current.shape: ", current.shape )

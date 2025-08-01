@@ -728,6 +728,186 @@ static float calculate_total_energy_parallel(
     return reduction_buffer[0];
 }
 
+/**
+ * @brief Helper function to find the 1D tip_id of a random neighbor in the 2D grid.
+ * @param current_tip_id The 1D index of the current tip/pixel.
+ * @param nx The width of the 2D image grid.
+ * @param nTips The total number of tips/pixels.
+ * @param rng_state Pointer to the thread's random number generator state.
+ * @return The 1D index of a valid random neighbor, or the current_tip_id if no valid neighbor is found.
+ */
+static int get_neighbor_tip_id(int current_tip_id, int nx, int nTips, uint* rng_state) {
+    // This assumes nTips is a multiple of nx.
+    const int ny = nTips / nx;
+
+    // Convert 1D tip_id to 2D coordinates
+    const int ix = current_tip_id % nx;
+    const int iy = current_tip_id / nx;
+
+    // Choose one of the 8 neighbors randomly (0..7)
+    const int neighbor_idx = wang_hash_uint(rng_state) % 8;
+
+    // Offsets for the 8 neighbors: (-1,-1), (0,-1), (1,-1), (-1,0), (1,0), (-1,1), (0,1), (1,1)
+    const int dx[8] = { -1, 0, 1, -1, 1, -1, 0, 1 };
+    const int dy[8] = { -1, -1, -1, 0, 0, 1, 1, 1 };
+
+    const int neighbor_x = ix + dx[neighbor_idx];
+    const int neighbor_y = iy + dy[neighbor_idx];
+
+    // Boundary check: ensure the neighbor is within the image grid
+    if (neighbor_x >= 0 && neighbor_x < nx && neighbor_y >= 0 && neighbor_y < ny) {
+        return neighbor_y * nx + neighbor_x;
+    } else {
+        // If the chosen neighbor is out of bounds (e.g., for a pixel at the edge),
+        // just return the current tip_id as a safe fallback.
+        return current_tip_id;
+    }
+}
+
+__kernel void solve_MC_neigh(
+    const int nSite,
+    const int nTips,
+    const float4 solver_params,
+    const int nLocalIter,
+    const float4 prob_params,    // Probabilities {p_load_best, p_random_reset, p_load_neighbor, unused}
+    const int nx,                // NEW: Width of the image for neighbor logic
+    __global const float*  Esite,
+    __global const float*  Tsite,
+    __global const float*  W_val,
+    __global const int*    W_idx,
+    __global const int*    nNeigh,
+    __global uchar*        occ_best,
+    __global float*        E_best,
+    __global float2*       Itot_out,
+    const int              max_neighs,
+    int                    initMode
+) {
+    //=========================================================================
+    // 1. Initialization and ID setup
+    //=========================================================================
+    const int itip       = get_group_id(0);
+    const int lid        = get_local_id(0);
+    const int local_size = get_local_size(0);
+
+    if (itip >= nTips) return;
+
+    const int nIterTotal = (int)(solver_params.y + 0.5);
+    const int solverMode = (int)(solver_params.z + 0.5);
+    uint rng_state = (uint)solver_params.w + get_global_id(0);
+    rng_state = wang_hash(rng_state);
+
+    const int occ_bytes = min((nSite + 7) / 8, OCC_BYTES);
+    const int tip_offset = itip * nSite;
+    const int tip_occ_offset = itip * OCC_BYTES;
+
+    __local uchar occ_mask[OCC_BYTES];
+    __local float reduction_buffer[MAX_WORKGROUP_SIZE_BIG];
+    __local int   reduction_site[MAX_WORKGROUP_SIZE_BIG];
+
+    float E_best_cached;
+
+    //=========================================================================
+    // 2. Initial Setup by Thread 0
+    //=========================================================================
+    if (lid == 0) {
+        E_best_cached = E_best[itip]; // Cache the best known energy from global memory
+        if (itip == iDBG) {
+            //printf("====== KERNEL START (iDBG=%i) ======\n", iDBG);
+            //printf("nSite: %i, nx: %i, nLocalIter: %i, E_best_initial: %e\n", nSite, nx, nLocalIter, E_best_cached);
+            //printf("Probabilities: LoadBest=%.2f, Random=%.2f, Neighbor=%.2f\n", prob_params.x, prob_params.y, prob_params.z);
+            printf("GPU kernel solve_MC() nSite: %i, nLocalIter: %i, nIterTotal: %i iDBG %i solverMode %i initMode %i OCC_BYTES %i MAX_WORKGROUP_SIZE_BIG %i nx %i\n", nSite, nLocalIter, nIterTotal, iDBG, solverMode, initMode, OCC_BYTES, MAX_WORKGROUP_SIZE_BIG, nx);
+            printf("GPU kernel solve_MC() Probabilities: Keep=%.2f, Reload=%.2f, Random=%.2f\n", prob_params.x, prob_params.y, prob_params.z);
+        }
+    }
+    
+    // Ensure all threads have the correct E_best_cached (though only lid 0 uses it)
+    barrier(CLK_GLOBAL_MEM_FENCE | CLK_LOCAL_MEM_FENCE);
+
+    //=========================================================================
+    // 3. Main Optimization Loop
+    //=========================================================================
+    const int nGlobalSteps = max(1, nIterTotal / nLocalIter);
+    for (int iGlobal = 0; iGlobal < nGlobalSteps; ++iGlobal) {
+        
+        // --- Step A: Generate a Trial Configuration using a Global Mutation Strategy ---
+        if (lid == 0) {
+            //if (itip == iDBG) printf("\n--- iDBG: Global Step %i/%i ---\n", iGlobal + 1, nGlobalSteps);
+            float r = wang_hash_float(&rng_state);
+            // Cumulative probabilities
+            float p1 = prob_params.x;
+            float p2 = prob_params.x + prob_params.y;
+            if (r < p1) { // Strategy 1: Load Best
+                //if (itip == iDBG) printf("iDBG: Global Move -> LOAD BEST\n");
+                for (int i = 0; i < occ_bytes; ++i) occ_mask[i] = occ_best[tip_occ_offset + i];
+            } else if (r < p2) { // Strategy 2: Random Reset
+                //if (itip == iDBG) printf("iDBG: Global Move -> RANDOM RESET\n");
+                for (int i = 0; i < occ_bytes; ++i) occ_mask[i] = wang_hash_uint(&rng_state) & 0xFF;
+            } else { // Strategy 3: Load Neighbor Best
+                //if (itip == iDBG) printf("iDBG: Global Move -> LOAD NEIGHBOR BEST\n");
+                int neighbor_id = get_neighbor_tip_id(itip, nx, nTips, &rng_state);
+                //if (itip == iDBG) printf("   (selected neighbor tip: %i)\n", neighbor_id);
+                int neighbor_offset = neighbor_id * OCC_BYTES;
+                for (int i = 0; i < occ_bytes; ++i) occ_mask[i] = occ_best[neighbor_offset + i];
+            }
+        }
+        barrier(CLK_LOCAL_MEM_FENCE); // Ensure all threads see the new trial configuration
+
+        // --- Step B: Inner Loop for Local Descent ---
+        for (int iLocal = 0; iLocal < nLocalIter; ++iLocal) {
+            // int i_site = (solverMode == 0) 
+            //     ?  ((iGlobal*nLocalIter + iLocal)*local_size + lid) % nSite   // deterministic
+            //     :  (wang_hash_uint(&rng_state) % nSite);                      // random
+            //int i_site = ((iGlobal*nLocalIter + iLocal)*local_size + lid) % nSite;   // deterministic
+            int i_site = wang_hash_uint(&rng_state) % nSite;                      // random 
+            uchar n_i = GET_OCC(i_site, occ_mask);
+            float Ei = Esite[tip_offset + i_site];
+            if(max_neighs > 0){
+                const int iw0 = i_site * max_neighs;
+                for (int k = 0; k < nNeigh[i_site]; ++k) Ei += (float)GET_OCC(W_idx[iw0 + k], occ_mask) * W_val[iw0 + k];
+            }
+            reduction_buffer[lid] = (n_i > 0) ? -Ei : Ei;
+            reduction_site  [lid] = i_site;
+            barrier(CLK_LOCAL_MEM_FENCE);
+            if (lid == 0) {
+                float dEmin = 1e10f; int imin = -1;
+                for (int il = 0; il < local_size; ++il) if (reduction_buffer[il] < dEmin) { dEmin = reduction_buffer[il]; imin = reduction_site[il]; }
+                if (imin >= 0 && dEmin < 0.0f) FLIP_OCC(imin, occ_mask);
+            }
+            barrier(CLK_LOCAL_MEM_FENCE);
+        }
+
+        // --- Step C: Evaluate Relaxed Configuration and Compare with Global Best ---
+        float E_current = calculate_total_energy_parallel(occ_mask, nSite, Esite, W_val, W_idx, nNeigh, max_neighs, tip_offset, reduction_buffer);
+
+        if (lid == 0) {
+            //if (itip == iDBG) printf("iDBG: Local descent finished. E_relaxed = %e.  (E_best_cached = %e)\n", E_current, E_best_cached);
+            if (E_current < E_best_cached) {
+                //if (itip == iDBG) printf("iDBG: *** NEW GLOBAL BEST FOUND! *** (%e < %e). Updating global memory.\n", E_current, E_best_cached);
+                E_best_cached = E_current;
+                E_best[itip] = E_current;
+                for (int i = 0; i < occ_bytes; ++i) occ_best[tip_occ_offset + i] = occ_mask[i];
+            } else {
+                // if (itip == iDBG) printf("iDBG: No improvement.\n");
+            }
+        }
+        barrier(CLK_GLOBAL_MEM_FENCE | CLK_LOCAL_MEM_FENCE); // Ensure global writes are visible before next step
+    }
+
+    //=========================================================================
+    // 4. Finalization
+    //=========================================================================
+    if (lid == 0) {
+        if (itip == iDBG) printf("====== KERNEL FINISH (iDBG=%i) ======\n\n", iDBG);
+        float Iocc = 0.0f, Iunoc = 0.0f;
+        // Read final best state from global mem to calculate current
+        for (int j = 0; j < occ_bytes; ++j) occ_mask[j] = occ_best[tip_occ_offset + j];
+        for (int i = 0; i < nSite; ++i) if (GET_OCC(i, occ_mask)) Iocc += Tsite[tip_offset + i]; else Iunoc += Tsite[tip_offset + i];
+        Itot_out[itip] = (float2)(Iocc, Iunoc);
+    }
+}
+
+
+
 __kernel void solve_MC(
     const int nSite,
     const int nTips,
