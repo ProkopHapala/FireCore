@@ -643,8 +643,14 @@ def demo_local_update(solver: HubbardSolver=None, nxy_sites=(8,8), nxy_scan=(200
     bNoCoupling = False
 
     #energy, current, occupation = solver.solve_local_updates( W_sparse=(W_val, W_idx, nNeigh), Esite=Esite, Tsite=Tsite, nTips=nTips, nSite=nSingle, nMaxNeigh=nMaxNeigh, params=params_solver, initMode=0, bNoCoupling=bNoCoupling )
-    energy, current, occupation = solver.solve_mc(W_sparse=(W_val, W_idx, nNeigh), Esite=Esite, Tsite=Tsite, nTips=nTips, nSite=nSingle, params=params_solver, bRealloc=True, initMode=3,  nxy_scan=nxy_scan,                  
-        nLocalIter=200, prob_params=( 0.1, 0.0, 0.5, 0.0) )
+    # energy, current, occupation = solver.solve_mc(W_sparse=(W_val, W_idx, nNeigh), Esite=Esite, Tsite=Tsite, nTips=nTips, nSite=nSingle, params=params_solver, bRealloc=True, initMode=3,  nxy_scan=nxy_scan,                  
+    #     nLocalIter=200, prob_params=( 0.1, 0.0, 0.5, 0.0) )
+
+    # solve_mc_2phase(self, W_sparse, Esite, Tsite, nTips, nSite, nx, nGlobalSteps=100, nLocalIter=100, prob_params=(0.1, 0.6, 0.3), # (p_best, p_neighbor, p_random), bAlloc=True, bFinalize=True):
+    # phase 1 - exploration
+    solver                              .solve_mc_2phase(W_sparse=(W_val, W_idx, nNeigh), Esite=Esite, Tsite=Tsite, nTips=nTips, nSite=nSingle, nx=nxy_scan[0], nGlobalSteps=100, nLocalIter=50,  prob_params=( 0.1, 0.0, 0.9, 0.0), bAlloc=True, bFinalize=True )
+    # phase 2 - exploitation
+    energy, current, occupation = solver.solve_mc_2phase(W_sparse=(W_val, W_idx, nNeigh), Esite=Esite, Tsite=Tsite, nTips=nTips, nSite=nSingle, nx=nxy_scan[0], nGlobalSteps=100, nLocalIter=150, prob_params=( 0.1, 0.5, 0.5, 0.0), bAlloc=True, bFinalize=True )
 
     print( "demo_local_update() energy.shape: ", energy.shape )
     #print( "demo_local_update() current.shape: ", current.shape )

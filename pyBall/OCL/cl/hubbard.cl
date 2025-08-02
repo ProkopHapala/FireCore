@@ -788,24 +788,24 @@ static int get_neighbor_tip_id(int current_tip_id, int nx, int nTips, uint* rng_
 
 __kernel void solve_MC_2phase(
     // --- Optimization Parameters ---
-    const int nSite, 
-    const int nTips, 
-    const int nLocalIter, 
-    const float4 prob_params, 
-    const int nx,
+    const int nSite,                  // 1 : Number of sites
+    const int nTips,                  // 2 : Number of tips
+    const int nLocalIter,             // 3 : Number of local iterations
+    const float4 prob_params,         // 4 : cummulative mutation probability (load best, load neighbor, random reset)
+    const int nx,                     // 5 : Number of tips per row (for neighbor pixel selection)
     // --- Ping-Pong State Buffers ---
-    __global const uchar* occ_in,
-    __global const float* E_in,
-    __global uchar*       occ_out,
-    __global float*       E_out,
+    __global const uchar* occ_in,     // 6 : [nTips,OCC_BYTES] Input occupancy buffer
+    __global const float* E_in,       // 7 : [nTips] Input energy buffer
+    __global uchar*       occ_out,    // 8 : [nTips,OCC_BYTES] Output occupancy buffer
+    __global float*       E_out,      // 9 : [nTips] Output energy buffer
     // --- System Data (Energy-Related Only) ---
-    __global const float* Esite,
-    __global const float* W_val,
-    __global const int*   W_idx,
-    __global const int*   nNeigh,
-    __global const uint*  rng_seeds,
-    const int max_neighs,
-    const uint glob_seed
+    __global const float* Esite,      // 10 : [nTips,nSite] Site energies
+    const int max_neighs,             // 11 : Maximum number of neighbors per site in couling matrix Wij
+    __global const int*   nNeigh,     // 12 : [nSite] Number of neighbors for each site in couling matrix Wij
+    __global const float* W_val,      // 13 : [nSite,max_neighs] Coulomb interaction strengths     (Wij), sparse matrix, only max_neighs
+    __global const int*   W_idx,      // 14 : [nSite,max_neighs] indexes of neighbor sites  j for  (Wij), sparse matrix
+    __global const uint*  rng_seeds,  // 15 : [nTips] Random number generator seeds for each tip position (image pixel)
+    const uint glob_seed              // 16 : Global random seed ( to xor with rng_seeds)
 ) {
     // --- Initialization ---
     const int itip       = get_group_id(0);
@@ -1020,29 +1020,25 @@ __kernel void solve_MC_neigh(
 }
 
 __kernel void calculate_currents(
-    const int nSite,
-    const int nTips,
-    __global const uchar*  occ_final,  // The final optimized configurations
-    __global const float*  Tsite,      // The tunneling data
-    __global float2*       Itot_out    // The final output buffer for currents
+    const int nSite,                 // 1 : Number of sites
+    const int nTips,                 // 2 : Number of tips
+    __global const uchar*  occ,      // 3 : [nTips,OCC_BYTES] The final optimized configurations
+    __global const float*  Tsite,    // 4 : [nTips,nSite] The tunneling data
+    __global float2*       Itot_out  // 5 : [nTips,2] The final output buffer for currents
 ) {
     const int itip = get_global_id(0);
     if (itip >= nTips) return;
-    
     const int tip_offset = itip * nSite;
     const int occ_offset = itip * OCC_BYTES;
-
     float Iocc = 0.0f;
     float Iunoc = 0.0f;
-
     for (int i = 0; i < nSite; ++i) {
-        if (GET_OCC(i, &occ_final[occ_offset])) {
+        if (GET_OCC(i, &occ[occ_offset])) {
             Iocc += Tsite[tip_offset + i];
         } else {
             Iunoc += Tsite[tip_offset + i];
         }
     }
-    
     Itot_out[itip] = (float2)(Iocc, Iunoc);
 }
 

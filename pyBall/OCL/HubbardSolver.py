@@ -289,45 +289,68 @@ class HubbardSolver(OpenCLBase):
         )
         return args, kernel
 
-    def setup_solve_mc_2phase(self, nSite, nTips, nLocalIter, nGlobalSteps, prob_params, nx):
+    def setup_solve_mc_2phase(self, nSite, nTips, nLocalIter, nGlobalSteps, prob_params, nx, in_buffs, out_buffs ):
         """Pre-assembles arguments for the main optimization kernel."""
         kernel = self.prg.solve_MC_2phase
-        
-        prob_params_vec = np.array(np.cumsum(prob_params)[:3], dtype=np.float32)
-
-        # We create two argument tuples, one for each ping-pong direction.
-        # This is extremely fast as it avoids re-creating objects in a loop.
-        base_args = (
-            np.int32(nSite), 
-            np.int32(nTips), 
-            np.array((0,0,0,0), 
-            dtype=np.float32), # Dummy solver_params
-            np.int32(nLocalIter), 
-            np.int32(nGlobalSteps),
-            prob_params_vec, 
-            np.int32(nx)
-        )
+        prob_params_vec = np.array(np.cumsum(prob_params), dtype=np.float32)
+        # // --- Optimization Parameters ---
+        # const int nSite,                  // 1 : Number of sites
+        # const int nTips,                  // 2 : Number of tips
+        # const int nLocalIter,             // 3 : Number of local iterations
+        # const float4 prob_params,         // 4 : cummulative mutation probability (load best, load neighbor, random reset)
+        # const int nx,                     // 5 : Number of tips per row (for neighbor pixel selection)
+        # // --- Ping-Pong State Buffers ---
+        # __global const uchar* occ_in,     // 6 : [nTips,OCC_BYTES] Input occupancy buffer
+        # __global const float* E_in,       // 7 : [nTips] Input energy buffer
+        # __global uchar*       occ_out,    // 8 : [nTips,OCC_BYTES] Output occupancy buffer
+        # __global float*       E_out,      // 9 : [nTips] Output energy buffer
+        # // --- System Data (Energy-Related Only) ---
+        # __global const float* Esite,      // 10 : [nTips,nSite] Site energies
+        # const int max_neighs,             // 11 : Maximum number of neighbors per site in couling matrix Wij
+        # __global const int*   nNeigh,     // 12 : [nSite] Number of neighbors for each site in couling matrix Wij
+        # __global const float* W_val,      // 13 : [nSite,max_neighs] Coulomb interaction strengths     (Wij), sparse matrix, only max_neighs
+        # __global const int*   W_idx,      // 14 : [nSite,max_neighs] indexes of neighbor sites  j for  (Wij), sparse matrix
+        # __global const uint*  rng_seeds,  // 15 : [nTips] Random number generator seeds for each tip position (image pixel)
+        # const uint glob_seed              // 16 : Global random seed ( to xor with rng_seeds)
         # Append buffer handles
-        kernel_args = base_args + (
-            self.occ_best_A_buff, 
-            self.E_best_A_buff,
-            self.occ_best_B_buff, 
-            self.E_best_B_buff,
-            self.Esite_buff, 
-            self.W_val_buff, 
-            self.W_idx_buff, 
-            self.nNeigh_buff,
-            self.rng_seeds_buff, 
-            np.int32(self.max_neighs)
+        kernel_args = (
+            np.int32(nSite),          # 1
+            np.int32(nTips),          # 2
+            np.int32(nLocalIter),     # 3
+            prob_params_vec,          # 4
+            np.int32(nx),             # 5
+            #---
+            in_buffs[0],              # 6 occ_in
+            in_buffs[1],              # 7 E_in
+            out_buffs[0],             # 8 occ_out
+            out_buffs[1],             # 9 E_out
+            # ---
+            self.Esite_buff,          # 10 Esite
+            np.int32(self.max_neighs),# 11 max_neighs
+            self.nNeigh_buff,         # 12 nNeigh
+            self.W_val_buff,          # 13 W_val
+            self.W_idx_buff,          # 14 W_idx
+            self.rng_seeds_buff,      # 15 rng_seeds
+            # np.int32(gseed),        # 16 --- missing, add when run kernel 
         )
         return kernel_args, kernel
 
     def setup_calculate_currents(self, nSite, nTips, final_occ_buff):
         """Pre-assembles arguments for the final current calculation kernel."""
+        # __kernel void calculate_currents(
+        #     const int nSite,                 // 1 : Number of sites
+        #     const int nTips,                 // 2 : Number of tips
+        #     __global const uchar*  occ,      // 3 : [nTips,OCC_BYTES] The final optimized configurations
+        #     __global const float*  Tsite,    // 4 : [nTips,nSite] The tunneling data
+        #     __global float2*       Itot_out  // 5 : [nTips,2] The final output buffer for currents
+        # ) {
         kernel = self.prg.calculate_currents
         kernel_args = (
-            np.int32(nSite), np.int32(nTips),
-            final_occ_buff, self.Tsite_buff, self.Itot_out_buff
+            np.int32(nSite),    # 1
+            np.int32(nTips),    # 2
+            final_occ_buff,     # 3
+            self.Tsite_buff,    # 4
+            self.Itot_out_buff  # 5
         )
         return kernel_args, kernel
 
@@ -570,23 +593,30 @@ class HubbardSolver(OpenCLBase):
         
         return E_out, Itot_out, occ_out
 
-    def solve_mc_2phase(self, W_sparse, Esite, Tsite, nTips, nSite, nx,
-                        params={}, 
-                        nLocalIter=100,
-                        prob_params=(0.1, 0.6, 0.3), # (p_best, p_neighbor, p_random)
-                        bAlloc=True,
-                        bFinalize=True):
+    def solve_mc_2phase(self, 
+            W_sparse, 
+            Esite, 
+            Tsite, 
+            nTips, 
+            nSite, 
+            nx,
+            nGlobalSteps=100,
+            nLocalIter=100,
+            prob_params=(0.1, 0.6, 0.3), # (p_best, p_neighbor, p_random)
+            bAlloc=True,
+            bFinalize=True,
+            printsPerStep=10
+        ):
         """
         Drives the 2-phase MC optimization with a fast Python loop.
         Call this once per phase.
         """
-        nGlobalSteps = params.get("nIter", 1000) // nLocalIter
         nMaxNeigh = W_sparse[0].shape[1] if W_sparse is not None else 0
-        self.nloc_MC = 16 # Fixed workgroup size
+        #self.nloc_MC = 16 # Fixed workgroup size
 
         # --- Phase 1: Allocation and Initial Data Upload ---
         if bAlloc:
-            print("--- Allocating buffers and uploading initial data...")
+            print("solve_mc_2phase().alloc")
             self.realloc_mc_buffers(nSite, nTips, nMaxNeigh)
             
             E_best_init = np.full(nTips, np.inf, dtype=np.float32)
@@ -607,11 +637,15 @@ class HubbardSolver(OpenCLBase):
             self.toGPU_(self.rng_seeds_buff, seeds)
 
         # --- Pre-computation for the Fast Loop ---
-        print(f"--- Preparing for {nGlobalSteps} steps...")
+        print(f"solve_mc_2phase().setup_kernels")
         
+        # setup_solve_mc_2phase(self, nSite, nTips, nLocalIter, nGlobalSteps, prob_params, nx, in_buffs, out_buffs ):
         # Pre-assemble both sets of arguments (A->B and B->A)
-        args1, kernel = self.setup_solve_mc_step( nSite, nTips, nLocalIter, prob_params, nx, self.occ_best_A_buff, self.E_best_A_buff, self.occ_best_B_buff, self.E_best_B_buff )
-        args2, _      = self.setup_solve_mc_step( nSite, nTips, nLocalIter, prob_params, nx, self.occ_best_B_buff, self.E_best_B_buff, self.occ_best_A_buff, self.E_best_A_buff )
+        args1, kernel = self.setup_solve_mc_2phase( nSite, nTips, nLocalIter, nGlobalSteps, prob_params, nx, (self.occ_best_A_buff, self.E_best_A_buff), (self.occ_best_B_buff, self.E_best_B_buff) )
+        args2, _      = self.setup_solve_mc_2phase( nSite, nTips, nLocalIter, nGlobalSteps, prob_params, nx, (self.occ_best_B_buff, self.E_best_B_buff), (self.occ_best_A_buff, self.E_best_A_buff) )
+
+        print(f"args from setup_solve_mc_2phase() {len(args1)}:"); 
+        for i,arg in enumerate( args1 ): print(f"arg #{i}: {arg}")
         
         loo_seeds = np.random.randint(0, 2**32, size=nGlobalSteps, dtype=np.uint32)
 
@@ -619,39 +653,45 @@ class HubbardSolver(OpenCLBase):
         local_size  = (self.nloc_MC,)
         
         # --- The Fast Python Loop ---
-        print("solve_mc_2phase() loop nGlobalSteps", nGlobalSteps)
+        print("solve_mc_2phase().loop nGlobalSteps", nGlobalSteps)
         for i_global in range(nGlobalSteps):
             gseed = loo_seeds[i_global]                                  # Update the global_seed for this iteration. This is a very fast operation.
             kernel(self.queue, global_size, local_size, *args1, gseed )  # Launch the kernel with the current set of arguments
             args1, args2 = args2, args1
-            self.queue.finish()
-            if (i_global + 1) % 100 == 0: print(f"    ...step {i_global + 1}/{nGlobalSteps} complete.")
+            #print(f"solve_mc_2phase().loop step # {i_global}/{nGlobalSteps}")
+            if (i_global + 1) % printsPerStep == 0: 
+                self.queue.finish()
+                print(f"    ...step {i_global + 1}/{nGlobalSteps} complete.")
         
         # --- Finalization and Data Download ---
         if bFinalize:
-            print("--- Finalizing run and downloading results...")
-            self.queue.finish() # Ensure the very last kernel launch is complete
-            # The final result is in the buffer set we were about to write TO.
-            # After the last swap, `args1` holds the arguments for the NEXT step,
-            # so its input buffers are the ones that were just written to.
-            final_occ_buff = args1[8]  # Index of occ_in_buf
-            final_E_buff = args_1[9]  # Index of E_in_buf
+            print("solve_mc_2phase().finalize")
+            bEven = (nGlobalSteps%2==0)
+            if bEven:
+                final_occ_buff = self.occ_best_A_buff
+                final_E_buff   = self.E_best_A_buff
+            else:
+                final_occ_buff = self.occ_best_B_buff
+                final_E_buff   = self.E_best_B_buff
             # Launch the current calculation kernel
             current_args, current_kernel = self.setup_calculate_currents(nSite, nTips, final_occ_buff)
-            cl.enqueue_nd_range_kernel(self.queue, current_kernel, (nTips,), None, *current_args)
+            print(f"args from setup_calculate_currents() {len(current_args)}:")
+            for i,arg in enumerate( current_args ): print(f"arg #{i}: {arg}")
+            current_kernel(self.queue, (nTips,), None, *current_args)
+            self.queue.finish() # Ensure the very last kernel launch is complete
             # Download all results
-            E_out = np.empty(nTips, dtype=np.float32)
-            occ_out = np.empty((nTips, self.occ_bytes), dtype=np.uint8)
+            E_out    = np.empty(nTips, dtype=np.float32)
+            occ_out  = np.empty((nTips, self.occ_bytes), dtype=np.uint8)
             Itot_out = np.empty((nTips, 2), dtype=np.float32)
-            self.fromGPU_(final_E_buff, E_out)
-            self.fromGPU_(final_occ_buff, occ_out)
+            self.fromGPU_(final_E_buff      , E_out)
+            self.fromGPU_(final_occ_buff    , occ_out)
             self.fromGPU_(self.Itot_out_buff, Itot_out)
             self.queue.finish()
             return E_out, Itot_out, occ_out
         
         # If not finalizing, just finish the kernel queue and return
         self.queue.finish()
-        print("--- MC Phase finished.")
+        print("solve_mc_2phase() DONE")
         return None
 
 
