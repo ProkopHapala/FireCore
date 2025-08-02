@@ -78,8 +78,8 @@ def plot_site_maps_imshow(Esite_map, Tsite_map, occ_map, posE, tip_pos=None, tit
     """
     # Determine the real-space extent of the site grid for imshow
     # Add half a grid cell to each side for better visualization of corner sites
-    dx = (np.max(posE[:, 0]) - np.min(posE[:, 0])) / (Esite_map.shape[0] - 1) if Esite_map.shape[0] > 1 else 0
-    dy = (np.max(posE[:, 1]) - np.min(posE[:, 1])) / (Esite_map.shape[1] - 1) if Esite_map.shape[1] > 1 else 0
+    dx = (np.max(posE[:, 0]) - np.min(posE[:, 0])) / (Esite_map.shape[0] - 1)
+    dy = (np.max(posE[:, 1]) - np.min(posE[:, 1])) / (Esite_map.shape[1] - 1)
     extent = [
         np.min(posE[:, 0]) - dx/2, np.max(posE[:, 0]) + dx/2,
         np.min(posE[:, 1]) - dy/2, np.max(posE[:, 1]) + dy/2
@@ -93,17 +93,17 @@ def plot_site_maps_imshow(Esite_map, Tsite_map, occ_map, posE, tip_pos=None, tit
     if title:
         fig.suptitle(title)
     # Plot Esite
-    im0 = axs[0].imshow(Esite_map.T, cmap='magma', origin='lower', interpolation='nearest', extent=extent)
+    im0 = axs[0].imshow(Esite_map, cmap='magma', origin='lower', interpolation='nearest', extent=extent)
     if titles[0] is not None: axs[0].set_title(titles[0])
     fig.colorbar(im0, ax=axs[0])
 
     # Plot Tsite
-    im1 = axs[1].imshow(Tsite_map.T, cmap='magma', origin='lower', interpolation='nearest', extent=extent)
+    im1 = axs[1].imshow(Tsite_map, cmap='magma', origin='lower', interpolation='nearest', extent=extent)
     if titles[1] is not None: axs[1].set_title(titles[1])
     fig.colorbar(im1, ax=axs[1])
 
     # Plot Occupancy
-    im2 = axs[2].imshow(occ_map.T, cmap='gray', origin='lower', interpolation='nearest', extent=extent)
+    im2 = axs[2].imshow(occ_map, cmap='gray', origin='lower', interpolation='nearest', extent=extent)
     if titles[2] is not None: axs[2].set_title(titles[2])
     fig.colorbar(im2, ax=axs[2])
 
@@ -129,6 +129,7 @@ def plot_sites_maps_imshow(Esite, Tsite, occ_bits, tip_indices, pTips, posE, nxy
         occ_map = occ_bits[i_tip][:nSingle].reshape(nxy_sites)
         titles = [f"Tip {i_tip}", None, None]
         plot_site_maps_imshow(Esite_map, Tsite_map, occ_map, posE, tip_pos, title=f"Tip {i_tip}", sz=sz, axs=axs[:, j], titles=titles)
+    return axs
     
 def plot_site_property(pos, prop_values, titles=None, nxy_sites=None, ms=500, sz=2, thisSites=None, cmap='viridis'):
     """
@@ -374,10 +375,10 @@ def test_brute_force_solver():
     # im1 = axs[0,1].imshow(iMin,        extent=extent);        fig.colorbar(im1, ax=axs[0,1]); plot_sites(posE,axs[0,1]); axs[0,1].set_title("iMin");
     # im2 = axs[1,0].imshow(Itot[:,:,0], extent=extent); fig.colorbar(im2, ax=axs[1,0]); plot_sites(posE,axs[1,0]); axs[1,0].set_title("I_occ");
     # im3 = axs[1,1].imshow(Itot[:,:,1], extent=extent); fig.colorbar(im3, ax=axs[1,1]); plot_sites(posE,axs[1,1]); axs[1,1].set_title("I_unocc");
-    plot2d(Emin.T,        extent=extent, title="Emin",    ax=axs[0,0], cmap="viridis", ps=posE);
-    plot2d(iMin.T,        extent=extent, title="iMin",    ax=axs[0,1], cmap="viridis", ps=posE);
-    plot2d(Itot[:,:,0].T, extent=extent, title="I_occ",   ax=axs[1,0], cmap="viridis", ps=posE);
-    plot2d(Itot[:,:,1].T, extent=extent, title="I_unocc", ax=axs[1,1], cmap="viridis", ps=posE);
+    plot2d(Emin,        extent=extent, title="Emin",    ax=axs[0,0], cmap="viridis", ps=posE);
+    plot2d(iMin,        extent=extent, title="iMin",    ax=axs[0,1], cmap="viridis", ps=posE);
+    plot2d(Itot[:,:,0], extent=extent, title="I_occ",   ax=axs[1,0], cmap="viridis", ps=posE);
+    plot2d(Itot[:,:,1], extent=extent, title="I_unocc", ax=axs[1,1], cmap="viridis", ps=posE);
     plt.tight_layout()
     plt.show()
 
@@ -525,29 +526,34 @@ def demo_precalc_scan(solver: HubbardSolver=None, nxy_sites=(6, 6), nxy_scan=(10
     fig, axs = plt.subplots(1, 3, figsize=(18, 5))
     fig.suptitle(f"Tip-Site Interaction Maps (Vbias = {Vbias:.2f} V)")
 
-    plot2d(min_E_map.T,    extent=extent, title="Minimum Site Energy (E_min)", ax=axs[0], cmap="viridis", ps=posE)
-    plot2d(max_E_map.T,    extent=extent, title="Maximum Site Energy (E_max)", ax=axs[1], cmap="magma",   ps=posE)
-    plot2d(max_Thop_map.T, extent=extent, title="Maximum Hopping (T_max)",     ax=axs[2], cmap="inferno", ps=posE)
+    plot2d(min_E_map,    extent=extent, title="Minimum Site Energy (E_min)", ax=axs[0], cmap="viridis", ps=posE)
+    plot2d(max_E_map,    extent=extent, title="Maximum Site Energy (E_max)", ax=axs[1], cmap="magma",   ps=posE)
+    plot2d(max_Thop_map, extent=extent, title="Maximum Hopping (T_max)",     ax=axs[2], cmap="inferno", ps=posE)
            
     plt.tight_layout(rect=[0, 0, 1, 0.96])
     plt.show()
 
 def demo_local_update(
-    solver: HubbardSolver=None, 
-    nxy_sites =(8,8), 
-    avec      =(15.04, 0.0), 
-    bvec      =(0.0, 11.57), 
-    nxy_scan  =(200, 200), 
-    extent =[-15.0, 15.0, -15.0, 15.0], 
-    E0=    -0.15, 
-    zTip=3.0, 
-    Vbias=0.1, 
-    cutoff=8.0, 
-    W_amplitude=1.0, 
-    T=1.0, 
-    nIter=100000, 
-    solverMode=2, 
-    Efermi=0.09):
+        solver: HubbardSolver=None, 
+        nxy_sites =(8,8), 
+        avec      =(15.04, 0.0), 
+        bvec      =(0.0, 11.57), 
+        #avec      =(5.0, 0.0), 
+        #bvec      =(0.0, 5.0), 
+        nxy_scan  =(200, 200), 
+        extent    =[-20.0, 20.0, -20.0, 20.0], 
+        E0=    -0.15, 
+        zTip=3.0, 
+        Vbias=0.5, 
+        cutoff=20.0, 
+        W_amplitude=0.5, 
+        T=1.0, 
+        nIter=100000, 
+        solverMode=2, 
+        Efermi=0.0,
+        #fig_dir=None,
+        fig_dir="./figs",
+    ):
     """
     Demonstrates the usage of the solve_local_updates kernel by running a 2D scan with Monte Carlo optimization.
     
@@ -580,26 +586,26 @@ def demo_local_update(
 
     # 2. Define the 2D grid of tip positions for the scan
     #extent = [-15.0, 15.0, -15.0, 15.0]
-    pTips = generate_xy_scan(extent, nxy=nxy_scan, zTip=zTip, Vbias=Vbias)
+    pTips = generate_xy_scan(extent=extent, nxy=nxy_scan, zTip=zTip, Vbias=Vbias)
     nTips = pTips.shape[0]
     print(f"Generated a {nxy_scan[0]}x{nxy_scan[1]} grid of {nTips} tip positions.")
 
     # 3. Define the physical model parameters
     # 3a. Multipole coefficients (simple monopole)
     multipoleCoefs = np.zeros((nSingle, 1), dtype=np.float32)
-    multipoleCoefs[:, 0] = 1.0  # All sites are simple monopoles
+    multipoleCoefs[:, 0] = 1.0 # All sites are simple monopoles
     
     # 3b. Pre-calculation kernel parameters
     params_precalc = {
         "Rtip": 3.0,
         "zMirror": -0.5,
-        "Thop_decay": 0.5, # A higher decay for more localized hopping
-        "Thop_amp": 1.0
+        "Thop_decay": 0.1, # A higher decay for more localized hopping
+        "Thop_amp":   1.0
     }
     
     # 3c. Generate site-site interactions (W matrix)
     # Periodic boundary conditions for the lattice
-    lvs = np.array([[5.0, 0.0, 0.0], [0.0, 5.0, 0.0]], dtype=np.float32)
+    lvs = np.array([[avec[0], avec[1], 0.0], [bvec[0], bvec[1], 0.0]], dtype=np.float32)
     lvs_pbc = lvs.copy()
     lvs_pbc[0,:] *= nxy_sites[0]
     lvs_pbc[1,:] *= nxy_sites[1]
@@ -626,14 +632,18 @@ def demo_local_update(
         "seed":  np.random.randint(0, 2**31)  # Random seed
     }
 
+    # Create figure directory if it doesn't exist
+    os.makedirs(fig_dir, exist_ok=True)
+    print(f"Saving figures to: {os.path.abspath(fig_dir)}")
+
     # 4. Call the pre-calculation kernel
     print("demo_local_update() Calling precalc_esite_thop kernel...")
-    multipoleCoefs[:, 0] = 1.0 
     Esite, Tsite = solver.precalc_esite_thop(posE, pTips, multipoleCoefs=multipoleCoefs, params=params_precalc)
 
     #W_val *=0.05
     #W_val *=1.0
-    W_val *=0.1
+    #W_val *=0.5
+    #W_val *=0.1
     #W_val *=0.05
     #W_val *=0.03
     #W_val *=0.02
@@ -661,11 +671,13 @@ def demo_local_update(
     # energy, current, occupation = solver.solve_mc(W_sparse=(W_val, W_idx, nNeigh), Esite=Esite, Tsite=Tsite, nTips=nTips, nSite=nSingle, params=params_solver, bRealloc=True, initMode=3,  nxy_scan=nxy_scan,                  
     #     nLocalIter=200, prob_params=( 0.1, 0.0, 0.5, 0.0) )
 
+    nGlobalSteps = 100
+
     # solve_mc_2phase(self, W_sparse, Esite, Tsite, nTips, nSite, nx, nGlobalSteps=100, nLocalIter=100, prob_params=(0.1, 0.6, 0.3), # (p_best, p_neighbor, p_random), bAlloc=True, bFinalize=True):
     # phase 1 - exploration
-    solver                              .solve_mc_2phase(W_sparse=(W_val, W_idx, nNeigh), Esite=Esite, Tsite=Tsite, nTips=nTips, nSite=nSingle, nx=nxy_scan[0], nGlobalSteps=100, nLocalIter=50,  prob_params=( 0.1, 0.0, 0.9, 0.0), bAlloc=True, bFinalize=True )
+    solver                              .solve_mc_2phase(W_sparse=(W_val, W_idx, nNeigh), Esite=Esite, Tsite=Tsite, nTips=nTips, nSite=nSingle, nx=nxy_scan[0], nGlobalSteps=nGlobalSteps, nLocalIter=50,  prob_params=( 0.1, 0.0, 0.9, 0.0), bAlloc=True, bFinalize=False )
     # phase 2 - exploitation
-    energy, current, occupation = solver.solve_mc_2phase(W_sparse=(W_val, W_idx, nNeigh), Esite=Esite, Tsite=Tsite, nTips=nTips, nSite=nSingle, nx=nxy_scan[0], nGlobalSteps=100, nLocalIter=150, prob_params=( 0.1, 0.5, 0.5, 0.0), bAlloc=True, bFinalize=True )
+    energy, current, occupation = solver.solve_mc_2phase(W_sparse=(W_val, W_idx, nNeigh), Esite=Esite, Tsite=Tsite, nTips=nTips, nSite=nSingle, nx=nxy_scan[0], nGlobalSteps=nGlobalSteps, nLocalIter=150, prob_params=( 0.1, 0.5, 0.5, 0.0), bAlloc=False, bFinalize=True )
 
     print( "demo_local_update() energy.shape: ", energy.shape )
     #print( "demo_local_update() current.shape: ", current.shape )
@@ -678,16 +690,18 @@ def demo_local_update(
 
     #site_tip_indices = find_closest_pTip(posE, pTips, nxy_scan)
 
-    nSpec = 5
+    #nSpec = 5
     #spec_tips = np.zeros((nSpec,4))
     #spec_tips[:,0] = np.linspace(-10.0, 10.0, nSpec, endpoint=True)
 
-    n0 = nxy_sites[0]*nxy_sites[1]//2
-    n0 = nxy_sites[0]*nxy_sites[1]//2
-    spec_tips = posE[::nxy_sites[0], : ]
-
-
-    spec_inds = find_closest_pTip( spec_tips, pTips, nxy_scan)
+    bRow = True
+    if bRow:
+        middle_row = nxy_sites[1] // 2  # Integer division to get middle row index
+        spec_sites = posE[middle_row*nxy_sites[0]:(middle_row+1)*nxy_sites[0], :]
+    else:
+        middle_col = nxy_sites[0] // 2  # Integer division to get middle column index
+        spec_sites = posE[middle_col::nxy_sites[0], :]  # Step by row length to get column
+    spec_inds = find_closest_pTip( spec_sites, pTips)
 
     # # 1. Plot occupancy, energy and tunneling patterns for tips closest to each site (original scatter plot)
     # print("Plotting occupancy patterns for tip-on-site configurations...")
@@ -722,8 +736,11 @@ def demo_local_update(
     # 4. Plot detailed maps for a subset of tip-on-site configurations using imshow
     print("Plotting detailed maps for a subset of tip-on-site configurations...")
 
-    plot_sites_maps_imshow( Esite, Tsite, bits, tip_indices=spec_inds, pTips=pTips, posE=posE, nxy_sites=nxy_sites, nSingle=nSingle )
+    axs = plot_sites_maps_imshow( Esite, Tsite, bits, tip_indices=spec_inds, pTips=pTips, posE=posE, nxy_sites=nxy_sites, nSingle=nSingle )
+    axs[0,0].plot( spec_sites[:,0], spec_sites[:,1], '+g', ms=10 )
     plt.suptitle("Property maps for 5 closest tip-on-site configurations")
+    plt.savefig(os.path.join(fig_dir, f"site_maps_imshow_V{Vbias:.2f}.png"))
+    #plt.close()
 
     # Calculate total charge for each tip position by summing only the relevant bits
     total_charge = bits[:, :nSingle].sum(axis=1)
@@ -750,6 +767,9 @@ def demo_local_update(
     plot2d(current_map_unoc.T, extent=extent, title="Current (unoccupied sites)",      ax=axs[1, 1], cmap=cmap, ps=posE )
     
     plt.tight_layout(rect=[0, 0, 1, 0.95])
+    plt.savefig(os.path.join(fig_dir, f"monte_carlo_results_V{Vbias:.2f}.png"))
+    #plt.close()
+
     plt.show()
 
 

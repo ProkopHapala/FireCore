@@ -644,8 +644,8 @@ class HubbardSolver(OpenCLBase):
         args1, kernel = self.setup_solve_mc_2phase( nSite, nTips, nLocalIter, nGlobalSteps, prob_params, nx, (self.occ_best_A_buff, self.E_best_A_buff), (self.occ_best_B_buff, self.E_best_B_buff) )
         args2, _      = self.setup_solve_mc_2phase( nSite, nTips, nLocalIter, nGlobalSteps, prob_params, nx, (self.occ_best_B_buff, self.E_best_B_buff), (self.occ_best_A_buff, self.E_best_A_buff) )
 
-        print(f"args from setup_solve_mc_2phase() {len(args1)}:"); 
-        for i,arg in enumerate( args1 ): print(f"arg #{i}: {arg}")
+        # print(f"args from setup_solve_mc_2phase() {len(args1)}:"); 
+        # for i,arg in enumerate( args1 ): print(f"arg #{i}: {arg}")
         
         loo_seeds = np.random.randint(0, 2**32, size=nGlobalSteps, dtype=np.uint32)
 
@@ -675,8 +675,8 @@ class HubbardSolver(OpenCLBase):
                 final_E_buff   = self.E_best_B_buff
             # Launch the current calculation kernel
             current_args, current_kernel = self.setup_calculate_currents(nSite, nTips, final_occ_buff)
-            print(f"args from setup_calculate_currents() {len(current_args)}:")
-            for i,arg in enumerate( current_args ): print(f"arg #{i}: {arg}")
+            # print(f"args from setup_calculate_currents() {len(current_args)}:")
+            # for i,arg in enumerate( current_args ): print(f"arg #{i}: {arg}")
             current_kernel(self.queue, (nTips,), None, *current_args)
             self.queue.finish() # Ensure the very last kernel launch is complete
             # Download all results
@@ -937,6 +937,8 @@ def make_sparse_W_pbc(pos, lvecs, Rcut, W_func, nMaxNeigh=16):
     """
     nSite     = pos.shape[0]
     R2cut     = Rcut * Rcut
+
+    print("make_sparse_W_pbc() nSite: ", nSite, " R2cut: ", R2cut, " nMaxNeigh: ", nMaxNeigh, " lvecs: ", lvecs)
     
     # Store found neighbors temporarily in a list of lists.
     # Each entry will be a tuple: (interaction_strength, neighbor_index)
@@ -1007,12 +1009,13 @@ def make_grid_sites( nxy=(4,4),  avec=(1.0,0.0), bvec=(0.0,1.0), z=0.0, E0=-0.1,
     ntot = np.prod(nxy)
     pos = np.zeros((ntot,4), dtype=np.float32)
     nx,ny = nxy
-    for ix in range(ny):
-        for jy in range(nx):
-            pos[ix*nx+jy,0] = avec[0]*ix + bvec[0]*jy
-            pos[ix*nx+jy,1] = avec[1]*ix + bvec[1]*jy
-            pos[ix*nx+jy,2] = z
-            pos[ix*nx+jy,3] = E0
+    for iy in range(ny):
+        for ix in range(nx):
+            idx = iy*nx + ix
+            pos[idx,0] = avec[0]*ix + bvec[0]*iy
+            pos[idx,1] = avec[1]*ix + bvec[1]*iy
+            pos[idx,2] = z
+            pos[idx,3] = E0
     if bCenter:
         pos[:,:2] -= np.mean(pos, axis=0)[:2]
     return pos
@@ -1049,6 +1052,8 @@ def generate_xy_scan(extent, nxy=(10,10), zTip=5.0, Vbias=0.0) -> np.ndarray:
     xs = np.linspace(xmin, xmax, nx, dtype=np.float32)
     ys = np.linspace(ymin, ymax, ny, dtype=np.float32)
     X, Y = np.meshgrid(xs, ys, indexing='ij')
+    #X, Y = np.meshgrid(xs, ys, indexing='xy')
+    #X, Y = np.meshgrid(xs, ys, indexing='yx' )
     #pts = np.stack([X.ravel(), Y.ravel(), np.full(X.size, z, np.float32), np.full(X.size, Vbias, np.float32)], axis=1)
     pts = np.empty( (nx*ny,4), dtype=np.float32)
     pts[:,0] = X.flat
@@ -1077,21 +1082,20 @@ def generate_xV_scan(p1, p2, Vrange=(0.0,1.0), nxV=(10,10)) -> np.ndarray:
     pts = np.hstack([line_rep, V_rep])                     # (nx*nV,4)
     return pts.astype(np.float32)
 
-# New helper functions for demo_local_update
-def find_closest_pTip(posE, pTips, nxy_scan):
-    """Find the closest tip position index for each site."""
-    nx, ny = nxy_scan
-    # Reshape tip positions (x,y) into grid
-    grid_xy = pTips[:, :2].reshape((nx, ny, 2))
-    indices = []
-    for x_site, y_site, *_ in posE:
-        dx = grid_xy[:, :, 0] - x_site
-        dy = grid_xy[:, :, 1] - y_site
-        idx_flat = np.argmin(dx*dx + dy*dy)
-        ix, iy = np.unravel_index(idx_flat, (nx, ny))
-        indices.append(ix*ny + iy)
-    return np.array(indices, dtype=int)
-
+def find_closest_pTip(posE, pTips, bCheckBounds=True):
+    if bCheckBounds:
+        x_min, x_max = np.min(pTips[:,0]), np.max(pTips[:,0])
+        y_min, y_max = np.min(pTips[:,1]), np.max(pTips[:,1])
+        # Mask sites within tip-scan extent
+        mask = (posE[:,0] >= x_min) & (posE[:,0] <= x_max) & \
+               (posE[:,1] >= y_min) & (posE[:,1] <= y_max)
+        posE = posE[mask]
+    #if not mask.all():  print(f"find_closest_pTip: {np.sum(~mask)} site(s) outside tip scan region, assigning -1")
+    inds = np.empty(len(posE), dtype=np.int32)
+    for i,p in enumerate(posE):
+        r2s = np.hypot(pTips[:,None,0] - p[None,0], pTips[:,None,1] - p[None,1])     
+        inds[i] = np.argmin(r2s)
+    return inds
 
 def print_occupancy(occupation, nSingle, bHex=False):
     occ_bytes = nSingle//8
