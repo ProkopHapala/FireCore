@@ -94,6 +94,59 @@ This document provides an overview of the OpenCL kernels defined in `cl/hubbard.
 *   After `nIter` iterations, `lid == 0` calculates the final total energy, occupied current, and unoccupied current for the optimized configuration.
 *   The optimized `occ_mask`, total energy, and currents are written back to global memory (`occ_out`, `E_out`, `Itot_out`).
 
+### 6. `solve_MC_neigh`
+**Description:** Implements a hybrid Monte Carlo (MC) algorithm for finding low-energy configurations, incorporating global mutation strategies (load best, random reset, load neighbor's best) followed by local greedy descent. This kernel is designed for a single phase of the MC process.
+
+**Parallelization Strategy:**
+*   Each work-group (identified by `get_group_id(0)`) is assigned to a unique STM tip position (`itip`).
+*   Threads (`get_local_id(0)`) within a work-group collaborate on the optimization for that single tip.
+
+**Configuration Storage:**
+*   Site occupancies (`nSite`) are stored as a bitmask in `__local uchar occ_mask[OCC_BYTES]`. This is memory-efficient, with each bit representing the occupancy (0 or 1) of a site.
+
+**Local Memory Usage:**
+*   `occ_mask`: Stores the current configuration being optimized.
+*   `reduction_buffer`, `reduction_site`: Used for work-group-wide reduction to find the best proposed local move.
+
+**Iterative Optimization Loop (`for (int iGlobal = 0; iGlobal < nGlobalSteps; ++iGlobal)`):**
+1.  **Step A: Generate a Trial Configuration (Global Mutation):**
+    *   Only `lid == 0` selects a global mutation strategy based on `prob_params` (probabilities for loading the best known configuration, random reset, or loading a neighbor's best configuration).
+    *   The `occ_mask` is updated with the chosen trial configuration.
+    *   A `barrier(CLK_LOCAL_MEM_FENCE)` ensures all threads see the new `occ_mask`.
+2.  **Step B: Inner Loop for Local Descent (`for (int iLocal = 0; iLocal < nLocalIter; ++iLocal)`):**
+    *   All threads collaborate to perform `nLocalIter` steps of greedy local updates, similar to `solve_local_updates`.
+    *   Each thread proposes a site flip, and `lid == 0` executes the best move.
+3.  **Step C: Evaluate Relaxed Configuration and Compare with Global Best:**
+    *   The total energy of the relaxed configuration (`E_current`) is calculated using `calculate_total_energy_parallel`.
+    *   If `E_current` is better than the `E_best_cached` (best energy found so far for this tip), `E_best` and `occ_best` in global memory are updated.
+    *   A `barrier(CLK_GLOBAL_MEM_FENCE | CLK_LOCAL_MEM_FENCE)` ensures global writes are visible.
+
+**Finalization:**
+*   After all global steps, `lid == 0` reads the final best state from global memory (`occ_best`) and calculates the total tunneling currents (`Itot_out`).
+
+### 7. `solve_MC_2phase`
+**Description:** This kernel implements a two-phase Monte Carlo optimization strategy, using a ping-pong buffering approach to alternate between two sets of best-known configurations (`occ_best_A`/`E_best_A` and `occ_best_B`/`E_best_B`). This allows for continuous optimization without overwriting the current best state until a better one is found.
+
+**Parallelization Strategy:**
+*   Each work-group (`get_group_id(0)`) is assigned to a unique STM tip position (`itip`).
+*   Threads (`get_local_id(0)`) within a work-group collaborate on the optimization for that single tip.
+
+**Configuration Storage:**
+*   Site occupancies (`nSite`) are stored as a bitmask in `__local uchar occ_mask[OCC_BYTES]`.
+
+**Local Memory Usage:**
+*   `occ_mask`: Stores the current configuration being optimized.
+*   `reduction_buffer`, `reduction_site`: Used for work-group-wide reduction to find the best proposed local move.
+
+**Iterative Optimization Loop (`for (int iGlobal = 0; iGlobal < nGlobalSteps; ++iGlobal)`):**
+*   This kernel is very similar in structure to `solve_MC_neigh`, but it explicitly manages two sets of global buffers for the best configurations (A and B). In each global step, it reads from one set (e.g., A) as `occ_in`/`E_in` and writes to the other set (e.g., B) as `occ_out`/`E_out`.
+*   The `prob_params` are used for global mutation strategies (load best from `occ_in`/`E_in`, load neighbor's best from `occ_in`/`E_in`, or random reset).
+*   An inner loop performs `nLocalIter` steps of greedy local descent.
+*   The relaxed configuration's energy is compared to the `E_best_current` (read from `E_in`), and if better, the new configuration and energy are written to `occ_out`/`E_out`.
+
+**Finalization:**
+*   This kernel does not calculate final currents directly. It is expected that a separate kernel (e.g., `calculate_currents`) will be called after `solve_MC_2phase` completes all its global steps, using the final best configuration from either `occ_best_A` or `occ_best_B`.
+
 
 ---
 
@@ -141,11 +194,13 @@ The choice of the perturbation operator is critical for the algorithm's success.
 
 The choice between these three strategies is controlled by a probability vector `(p_load_best, p_random_reset, p_load_neighbor)`.
 
-### 3. OpenCL Kernel Implementation: `solve_MC`
+### 3. OpenCL Kernel Implementation: `solve_MC_neigh` and `solve_MC_2phase`
 
-The algorithm is implemented in the `solve_MC` OpenCL kernel.
+The advanced Monte Carlo algorithm is now implemented using two primary OpenCL kernels: `solve_MC_neigh` and `solve_MC_2phase`. These kernels work in conjunction to provide a robust and efficient search for ground states, particularly suitable for large-scale simulations and those requiring a multi-phase optimization approach.
 
-#### 3.1. Kernel Signature & Parameters
+`solve_MC_neigh` implements the core hybrid Monte Carlo step, performing global mutations followed by local descent. `solve_MC_2phase` extends this by enabling a ping-pong buffering strategy, allowing for continuous optimization over many iterations while maintaining the best-found configurations.
+
+#### 3.1. `solve_MC_neigh` Kernel Signature & Parameters
 
 | Parameter | Type | Description |
 | :--- | :--- | :--- |
@@ -153,12 +208,83 @@ The algorithm is implemented in the `solve_MC` OpenCL kernel.
 | `nTips` | `int` | Total number of tip positions (i.e., independent simulations). |
 | `solver_params` | `float4` | Vector of general solver parameters: `{kT, nIter, solverMode, seed}`. `kT` is unused but kept for compatibility. |
 | `nLocalIter` | `int` | The number of greedy local descent steps to perform after each global mutation. |
-| `prob_params` | `float4` | **Crucial:** Probabilities for global moves: `{p_load_best, p_random_reset, p_load_neighbor, unused}`. |
+| `prob_params` | `float4` | **Crucial:** Probabilities for global moves: `{p_load_best, p_load_neighbor, p_random_reset, unused}`. Note the order is `p_load_best`, `p_load_neighbor`, `p_random_reset` after cumulative sum. |
 | `nx` | `int` | **Crucial:** The width of the 2D simulation grid, required for the "Load Neighbor's Best" strategy. |
 | `Esite`, `Tsite`, ... | `__global` | Pointers to global memory buffers containing system parameters (energies, couplings, etc.). |
 | `occ_best` | `__global uchar*`| **State:** Global buffer storing the bitmask of the best configuration found for each tip. |
 | `E_best` | `__global float*` | **State:** Global buffer storing the energy of the best configuration for each tip. |
 | `Itot_out` | `__global float2*`| Output buffer for final calculated currents. |
+| `rng_seeds` | `__global const uint*` | Buffer containing initial random number generator seeds for each work-group. |
+| `max_neighs` | `int` | Maximum number of neighbors considered for interaction. |
+| `initMode` | `int` | Initialization mode for site occupancies. |
+
+#### 3.2. `solve_MC_2phase` Kernel Signature & Parameters
+
+| Parameter | Type | Description |
+| :--- | :--- | :--- |
+| `nSite` | `int` | Number of sites in the Hubbard model. |
+| `nTips` | `int` | Total number of tip positions. |
+| `solver_params` | `float4` | Dummy parameter for compatibility. |
+| `nLocalIter` | `int` | Number of greedy local descent steps. |
+| `nGlobalSteps` | `int` | Number of global mutation steps in this phase. |
+| `prob_params` | `float4` | Probabilities for global moves (cumulative sum). |
+| `nx` | `int` | Width of the 2D simulation grid. |
+| `occ_in`, `E_in` | `__global` | Input buffers for current best configurations and energies (from previous phase). |
+| `occ_out`, `E_out` | `__global` | Output buffers for updated best configurations and energies (for next phase). |
+| `Esite`, `W_val`, `W_idx`, `nNeigh` | `__global` | System parameters. |
+| `rng_seeds` | `__global const uint*` | Random number generator seeds. |
+| `max_neighs` | `int` | Maximum number of neighbors. |
+
+#### 3.3. Parallelization and Memory
+*   **Work-Group:** Each work-group, identified by `get_group_id(0)`, is assigned to a single, unique tip position (`itip`).
+*   **Work-Item:** Threads within a work-group, identified by `get_local_id(0)`, collaborate on the optimization for that single tip.
+*   **Local Memory:** To maximize the number of sites (`nSite`) the kernel can handle, local memory usage is minimized. Only a single working copy of the configuration (`__local uchar occ_mask[]`) is stored per work-group. This is a deliberate design choice that prioritizes problem size over minimizing global memory latency, although some operation could be faster if we keep multiple copies of configuration in shared memory (e.g. the best). To minimize local memory footprint, the occupancy of pixels is stored as bitmask (each bit represents the occupancy of a site) and we use `GET_OCC` and `FLIP_OCC` macros for efficient bitwise access and modification of `occ_mask`.
+
+#### 3.4. Execution Flow
+
+Both `solve_MC_neigh` and `solve_MC_2phase` follow a similar iterative structure for each work-group:
+
+1.  **Initialization:** The first thread (`lid == 0`) loads the best-known energy for its assigned tip (`E_best[itip]` or `E_in[itip]`) into a private register for fast access.
+2.  **Outer Loop (`nGlobalSteps`):**
+    a.  **Global Mutation (`lid == 0`):** A random number is generated to select one of the three mutation strategies based on `prob_params`. The `occ_mask` in local memory is overwritten with the chosen trial configuration (from global best, random, or neighbor's best).
+    b.  **Synchronization:** A local memory barrier ensures all threads in the work-group see the new trial `occ_mask`.
+    c.  **Inner Loop (Local Descent):** All threads collaborate for `nLocalIter` steps. In each step, every thread proposes flipping a single site, and the `lid == 0` thread identifies and executes the move with the greatest energy decrease (the most "greedy" move).
+    d.  **Evaluation:** After local descent, all threads collaborate to calculate the total energy of the relaxed configuration in `occ_mask` using a parallel reduction.
+    e.  **Selection (`lid == 0`):** The newly calculated energy is compared to the cached best energy. If it's better, the global `E_best` and `occ_best` buffers (for `solve_MC_neigh`) or `E_out` and `occ_out` (for `solve_MC_2phase`) are updated.
+3.  **Finalization:**
+    *   For `solve_MC_neigh`, after all global steps are complete, `lid == 0` calculates the final tunnelling currents corresponding to the definitive best configuration stored in `occ_best` and writes them to the output buffer.
+    *   For `solve_MC_2phase`, finalization involves writing the best configuration to the output buffers (`occ_out`, `E_out`). The calculation of currents is typically handled by a separate kernel (`calculate_currents`) after the multi-phase optimization is complete.
+
+### 4. Python Routines for Monte Carlo Solvers
+
+The `HubbardSolver.py` module provides Python wrappers and utility functions to manage the OpenCL kernels, handle buffer allocation, and orchestrate the Monte Carlo simulation. These routines simplify the interaction with the low-level OpenCL API.
+
+#### 4.1. Buffer Management: `realloc_mc_buffers`
+
+*   **Function:** `HubbardSolver.realloc_mc_buffers(nSite: int, nTips: int, nMaxNeigh: int)`
+*   **Description:** This method is responsible for (re-)allocating the necessary GPU buffers for the Monte Carlo solvers. It sets up buffers for system data (`Esite`, `Tsite`, `W_val`, `W_idx`, `nNeigh`), random number generator seeds (`rng_seeds`), and crucially, the ping-pong state buffers (`E_best_A`, `occ_best_A`, `E_best_B`, `occ_best_B`) for the two-phase approach. It also allocates the final output buffer for currents (`Itot_out`).
+
+#### 4.2. Kernel Setup: `setup_solve_mc_neigh` and `setup_solve_mc_2phase`
+
+*   **Function:** `HubbardSolver.setup_solve_mc_neigh(...)`
+    *   **Description:** Prepares the arguments for the `solve_MC_neigh` OpenCL kernel. It takes parameters such as `nSite`, `nTips`, `nLocalIter`, `prob_params` (probabilities for global moves), `nx` (grid width for neighbor logic), and various system buffers. It returns the kernel arguments and the kernel object, ready for execution.
+
+*   **Function:** `HubbardSolver.setup_solve_mc_2phase(...)`
+    *   **Description:** Pre-assembles the arguments for the `solve_MC_2phase` OpenCL kernel. This function is designed to set up the ping-pong buffering, taking `nLocalIter`, `nGlobalSteps`, `prob_params`, `nx`, and the `_A` and `_B` buffer pairs as input. It returns the kernel arguments and the kernel object.
+
+#### 4.3. Execution Orchestration: `solve_mc` and `solve_mc_2phase`
+
+*   **Function:** `HubbardSolver.solve_mc(posE, pTips, W_val, W_idx, nNeigh, params={})`
+    *   **Description:** This is the high-level Python method that orchestrates the execution of the `solve_MC_neigh` kernel. It handles the initial allocation of buffers using `realloc_mc_buffers`, uploads input data (site positions, tip positions, sparse interaction matrix), sets up the kernel using `setup_solve_mc_neigh`, executes the kernel on the GPU, and downloads the results (`E_best`, `occ_best`, `Itot_out`). This function is suitable for single-phase Monte Carlo runs.
+
+*   **Function:** `HubbardSolver.solve_mc_2phase(posE, pTips, W_val, W_idx, nNeigh, params={})`
+    *   **Description:** This method orchestrates the multi-phase Monte Carlo optimization using the `solve_MC_2phase` kernel. It manages the ping-pong buffer swapping, iteratively calling the `solve_MC_2phase` kernel multiple times (controlled by `n_phases` in `params`) to refine the solution. After all phases are complete, it calls the `calculate_currents` kernel to compute the final currents based on the best configuration found across all phases. This function is designed for more complex, long-running optimizations.
+
+#### 4.4. Demo Function: `demo_local_update`
+
+*   **Function:** `run_Hubbard.demo_local_update()`
+*   **Description:** Located in `run_Hubbard.py`, this function serves as a comprehensive demonstration of how to use the local update and Monte Carlo solvers. It sets up a system (e.g., a grid of sites), pre-calculates the sparse interaction matrix, and then calls `solver.solve_mc` or `solver.solve_mc_2phase` to run the simulation. It often includes plotting and analysis of the results, showcasing the capabilities of the HubbardSolver. This is the primary entry point for users to experiment with and understand the Monte Carlo framework.
+
 
 #### 3.2. Parallelization and Memory
 *   **Work-Group:** Each work-group, identified by `get_group_id(0)`, is assigned to a single, unique tip position (`itip`).
