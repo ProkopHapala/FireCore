@@ -532,7 +532,22 @@ def demo_precalc_scan(solver: HubbardSolver=None, nxy_sites=(6, 6), nxy_scan=(10
     plt.tight_layout(rect=[0, 0, 1, 0.96])
     plt.show()
 
-def demo_local_update(solver: HubbardSolver=None, nxy_sites=(8,8), nxy_scan=(200, 200), Vbias=0.1, cutoff=8.0, W_amplitude=1.0, T=1.0, nIter=100000, solverMode=2, Efermi=0.09):
+def demo_local_update(
+    solver: HubbardSolver=None, 
+    nxy_sites =(8,8), 
+    avec      =(15.04, 0.0), 
+    bvec      =(0.0, 11.57), 
+    nxy_scan  =(200, 200), 
+    extent =[-15.0, 15.0, -15.0, 15.0], 
+    E0=    -0.15, 
+    zTip=3.0, 
+    Vbias=0.1, 
+    cutoff=8.0, 
+    W_amplitude=1.0, 
+    T=1.0, 
+    nIter=100000, 
+    solverMode=2, 
+    Efermi=0.09):
     """
     Demonstrates the usage of the solve_local_updates kernel by running a 2D scan with Monte Carlo optimization.
     
@@ -559,13 +574,13 @@ def demo_local_update(solver: HubbardSolver=None, nxy_sites=(8,8), nxy_scan=(200
     print("--- Running local update Monte Carlo solver demo ---")
 
     # 1. Define the system of sites
-    posE    = make_grid_sites(nxy=nxy_sites, avec=(5.0, 0.0), bvec=(0.0, 5.0), E0=-0.15)
+    posE    = make_grid_sites(nxy=nxy_sites, avec=avec, bvec=bvec, E0=E0)
     nSingle = posE.shape[0]
     print(f"Created a {nxy_sites[0]}x{nxy_sites[1]} grid of {nSingle} sites.")
 
     # 2. Define the 2D grid of tip positions for the scan
-    extent = [-15.0, 15.0, -15.0, 15.0]
-    pTips = generate_xy_scan(extent, nxy=nxy_scan, zTip=3.0, Vbias=Vbias)
+    #extent = [-15.0, 15.0, -15.0, 15.0]
+    pTips = generate_xy_scan(extent, nxy=nxy_scan, zTip=zTip, Vbias=Vbias)
     nTips = pTips.shape[0]
     print(f"Generated a {nxy_scan[0]}x{nxy_scan[1]} grid of {nTips} tip positions.")
 
