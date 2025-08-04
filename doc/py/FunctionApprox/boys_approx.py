@@ -83,7 +83,7 @@ def numDeriv(x, y):
 # --- Modular Plotting Functions ---
 
 def plot_with_deriv(ax1, ax2, x, y, y_deriv, label, color, linestyle='-'):
-    ax1.plot(x, y, label=label, color=color, linestyle=linestyle)
+    ax1.plot(x, y,       label=label, color=color, linestyle=linestyle)
     ax2.plot(x, y_deriv, label=label, color=color, linestyle=linestyle)
 
 # --- Plotting ---

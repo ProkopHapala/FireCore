@@ -1,5 +1,6 @@
 import numpy as np
 import matplotlib.pyplot as plt
+import sympy as sp
 
 def numDeriv(x, y):
     """Numerical derivative using central difference"""
@@ -8,7 +9,12 @@ def numDeriv(x, y):
     x_ = x[1:-1]
     return -dy/dx, x_
 
-def plot1d(x, ys, derivs=None, labels=None, colors=None, bNumDeriv=True, linestyle='-', linewidth=2, ax1=None, ax2=None ):
+# --- Modular Plotting Functions ---
+def plot_with_deriv(ax1, ax2, x, y, y_deriv, label, color, linestyle='-'):
+    ax1.plot(x, y,       label=label, color=color, linestyle=linestyle)
+    ax2.plot(x, y_deriv, label=label, color=color, linestyle=linestyle)
+
+def plot1d(x, ys, derivs=None, labels=None, colors=None, bNumDeriv=True, linestyle='-', linewidth=2, ax1=None, ax2=None, bGrid=True, bLegend=True ):
     """
     Plots a function and its derivative on given axes
     
@@ -32,6 +38,8 @@ def plot1d(x, ys, derivs=None, labels=None, colors=None, bNumDeriv=True, linesty
         if labels is not None: label = labels[i]
         if colors is not None: color = colors[i]
         ax1.plot(x, y, label=label, color=color, linestyle=linestyle, linewidth=linewidth)
+        if bGrid: ax1.grid(True)
+        if bLegend: ax1.legend()
     if derivs is not None:
         for i,dy in enumerate(derivs):
             if labels is not None: label = labels[i]
@@ -40,7 +48,17 @@ def plot1d(x, ys, derivs=None, labels=None, colors=None, bNumDeriv=True, linesty
             if bNumDeriv:
                 num_deriv, num_x = numDeriv(x, y)
                 ax2.plot(num_x, num_deriv, label=f'{label} (numerical)', color=color, linestyle=':', linewidth=1.5, alpha=0.7)
+            if bGrid: ax2.grid(True)
+            if bLegend: ax2.legend()
     return fig, (ax1, ax2)
+
+def plot1d_zip(funcs):
+    ys,dys,labels = [],[],[]
+    for func in funcs:
+        ys.append    (func[1][0])
+        dys.append   (func[1][1])
+        labels.append(func[0])
+    return plot1d(x, ys, derivs=dys, labels=labels)
 
 # Example usage:
 """
@@ -75,7 +93,7 @@ plt.show()
 # Additional generic utilities (added by Cascade on 2025-07-20)
 # =====================================================================
 
-import sympy as _sp
+
 
 __all__ = ['numDeriv', 'plot1d', 'plot_func', 'match_poly_at_point']
 
@@ -115,47 +133,33 @@ def plot_func(func, xs, params=None, axs=None, labels=('E','F','S'), colors=None
     -------
     fig, axs : (matplotlib.figure.Figure, list(matplotlib.axes.Axes))
     """
-    import numpy as _np
-    import matplotlib.pyplot as _plt
-
     if params is None:
         params = {}
-
-    xs = _np.asarray(xs)
+    xs = np.asarray(xs)
     out = func(xs, **params)
-    if len(out) < 2:
-        raise ValueError('func must return at least (E, F).')
-
-    E, F = out[:2]
-    S = out[2] if len(out) > 2 else None
-
-    # Generate axes if not provided
+    if len(out) < 2:  raise ValueError('func must return at least (E, F).')
+    y,dy = out[:2]
+    dyy = out[2] if len(out) > 2 else None
     if axs is None:
-        fig, (axE, axF, axS) = _plt.subplots(3, 1, sharex=True, figsize=(6, 9))
+        fig, (axY, axDY, axDYY) = plt.subplots(3, 1, sharex=True, figsize=(6, 9))
     else:
-        axE, axF, axS = axs
-        fig = axE.figure
-
-    if colors is None:
-        colors = (None, None, None)
-
-    axE.plot(xs, E, color=colors[0], **plot_kwargs)
-    axF.plot(xs, F, color=colors[1], **plot_kwargs)
-    if S is not None:
-        axS.plot(xs, S, color=colors[2], **plot_kwargs)
-
-    for ax, ylabel in zip((axE, axF, axS), labels):
+        axY, axDY, axDYY = axs
+        fig = axY.figure
+    if colors is None: colors = (None, None, None)
+    axY                      .plot(xs, y,   color=colors[0], label=labels[0], **plot_kwargs); axY.legend()
+    axDY                     .plot(xs, dy,  color=colors[1], label=labels[1], **plot_kwargs); axDY.legend()
+    if dyy is not None: axDYY.plot(xs, dyy, color=colors[2], label=labels[2], **plot_kwargs); axDYY.legend()
+    for ax, ylabel in zip((axY, axDY, axDYY), labels):
         ax.set_ylabel(ylabel)
         ax.grid(True)
-
-    axS.set_xlabel('r')
-    return fig, (axE, axF, axS)
+    axDYY.set_xlabel('r')
+    return fig, (axY, axDY, axDYY)
 
 # ---------------------------------------------------------------------
 # 2) match_poly_at_point : symbolic polynomial matching utility
 # ---------------------------------------------------------------------
 
-def match_poly_at_point(f_expr, r_sym, r0, powers, continuity_order, extra_conditions=None):
+def match_poly_at_point(f_expr, r_sym, r0, powers, order, conds=None):
     """Construct a polynomial that matches *f_expr* up to the given derivative order.
 
     A polynomial ``P(r) = Σ c_i r**powers[i]`` is built and the unknown
@@ -165,36 +169,26 @@ def match_poly_at_point(f_expr, r_sym, r0, powers, continuity_order, extra_condi
 
     Parameters
     ----------
-    f_expr : sympy.Expr
-        Symbolic expression of the target function.
-    r_sym : sympy.Symbol
-        Differentiation variable.
-    r0 : float | sympy.Symbol
-        Matching point.
-    powers : Sequence[int]
-        Exponents used in the polynomial.
-    continuity_order : int
-        Highest derivative order to be matched (C^order continuity).
-    extra_conditions : list[sympy.Eq], optional
-        Additional constraints (e.g. symmetry conditions).
+    f_expr : sympy.Expr  Symbolic expression of the target function.
+    r_sym  : sympy.Symbol Differentiation variable.
+    r0     : float | sympy.Symbol Matching point.
+    powers : Sequence[int] Exponents used in the polynomial.
+    order  : int Highest derivative order to be matched (C^order continuity).
+    conds  : list[sympy.Eq], optional Additional constraints (e.g. symmetry conditions).
 
     Returns
     -------
     dict
         Mapping *coeff_symbol → value* for the solved coefficients.
     """
-
-    coeffs = _sp.symbols(f'c0:{len(powers)}')
+    coeffs = sp.symbols(f'c0:{len(powers)}')
     poly = sum(c * r_sym**p for c, p in zip(coeffs, powers))
-
-    eqs = [ _sp.Eq(_sp.diff(poly, r_sym, k).subs(r_sym, r0),
-                   _sp.diff(f_expr,  r_sym, k).subs(r_sym, r0))
-             for k in range(continuity_order+1) ]
-
-    if extra_conditions:
-        eqs.extend(extra_conditions)
-
-    sol = _sp.solve(eqs, coeffs, dict=True)
-    if not sol:
-        raise ValueError('Polynomial matching system has no solution.')
+    eqs = [ sp.Eq(
+                sp.diff( poly,   r_sym, k).subs(r_sym, r0),  
+                sp.diff( f_expr, r_sym, k).subs(r_sym, r0)
+            ) for k in range(order+1)  
+    ]
+    if conds: eqs.extend(conds)
+    sol = sp.solve(eqs, coeffs, dict=True)
+    if not sol: raise ValueError('Polynomial matching system has no solution.')
     return sol[0]
