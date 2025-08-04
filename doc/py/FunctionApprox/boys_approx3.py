@@ -24,7 +24,7 @@ from typing import Sequence
 import numpy as np
 from scipy.special import erf
 import matplotlib.pyplot as plt
-import sympy as _sp
+import sympy as sp
 
 # Local helpers ----------------------------------------------------------------
 from func_utils import plot_func, match_poly_at_point  # relative import to doc/py folder package context
@@ -71,18 +71,16 @@ def boys_function(r: np.ndarray):
 # ------------------------------------------------------------------------------
 # 2) Symbolic helper – obtain polynomial coefficients for a given configuration
 # ------------------------------------------------------------------------------
-
-_r      = _sp.Symbol('r', positive=True)  # global sympy symbol
-_f_expr = 1/_r                        # Boys tail expression (same for all fits)
-
-def _poly_coeffs(r_min: float, powers: Sequence[int], cont_order: int):
+def poly_coeffs(r_min: float, powers: Sequence[int], cont_order: int):
     """Return *numeric* polynomial coefficients matching 1/r at *r_min*."""
     # Build extra conditions: fix constant term c_i for power 0 to BOYS_R0
+    _r      = sp.Symbol('r', positive=True)  # global sympy symbol
+    _f_expr = 1/_r                           # Boys tail expression (same for all fits)
     extra = None
     if 0 in powers:
-        _cs = _sp.symbols(f'c0:{len(powers)}')
+        cs   = sp.symbols(f'c0:{len(powers)}')
         idx0 = powers.index(0)
-        extra = [_sp.Eq(_cs[idx0], BOYS_R0)]
+        extra = [sp.Eq(cs[idx0], BOYS_R0)]
     sol = match_poly_at_point(_f_expr, _r, r_min, powers, cont_order, extra)
     print(f"[_poly_coeffs] symbolic solution: {sol}")
     coeffs = []
@@ -96,37 +94,54 @@ def _poly_coeffs(r_min: float, powers: Sequence[int], cont_order: int):
 # ------------------------------------------------------------------------------
 # 3) Factory for a polynomial Boys approximation
 # ------------------------------------------------------------------------------
-
 def make_boys_poly_approx(r_min: float, powers: Sequence[int], cont_order: int):
     """Create a callable *approx(r_values) → (E,F,S)*.
 
     Inside *r < r_min* a polynomial with given *powers* is used.  Outside the
     exact Boys tail (1/r) is returned.
     """
-    coeffs = _poly_coeffs(r_min, powers, cont_order)
+    coeffs = poly_coeffs(r_min, powers, cont_order)
 
-    # Pre-compute derivative coefficients -------------------------------------
-    # P(r) = Σ c_i r^p_i
-    # P'(r) = Σ c_i p_i r^(p_i-1)
-    # P''(r)= Σ c_i p_i (p_i-1) r^(p_i-2)
+    # Pre-compute derivative coefficients
     p_arr = np.array(powers)
     c_arr = np.array(coeffs)
-
     d1_c = c_arr * p_arr
-    d2_c = d1_c * (p_arr - 1)
+    d2_c = d1_c  * (p_arr - 1)
 
     def _eval(r_vals: np.ndarray):
         r_vals = np.asarray(r_vals)
-        E = np.where(r_vals >= r_min,  1.0 / np.where(r_vals==0, np.inf, r_vals),    0.0)
-        F = np.where(r_vals >= r_min, -1.0 / np.where(r_vals==0, np.inf, r_vals)**2, 0.0)
-        S = np.where(r_vals >= r_min,  2.0 / np.where(r_vals==0, np.inf, r_vals)**3, 0.0)
-        mask_inner = (r_vals < r_min)
-        r_in = r_vals[mask_inner]
-        if r_in.size:
-            E[mask_inner] = (c_arr * r_in[:,None]**p_arr).sum(axis=1)
-            F[mask_inner] = (d1_c * r_in[:,None]**(p_arr-1)).sum(axis=1)
-            S[mask_inner] = (d2_c * r_in[:,None]**(p_arr-2)).sum(axis=1)
-        return E, F, S
+
+        # 1. Initialize output arrays to the correct shape and type
+        y   = np.zeros_like(r_vals, dtype=float)
+        dy  = np.zeros_like(r_vals, dtype=float)
+        ddy = np.zeros_like(r_vals, dtype=float)
+
+        # 2. Create boolean masks for the two regions
+        mask_outer = r_vals >= r_min
+        mask_inner = ~mask_outer
+
+        # 3. Handle outer region (r >= r_min) using the asymptotic 1/r form
+        if np.any(mask_outer):
+            r_out = r_vals[mask_outer]
+            # Since r_min > 0, r_out will be positive, so no division by zero occurs.
+            y[mask_outer]   =  1.0 / r_out
+            dy[mask_outer]  = -1.0 / r_out**2
+            ddy[mask_outer] =  2.0 / r_out**3
+
+        # 4. Handle inner region (r < r_min) using the polynomial approximation
+        if np.any(mask_inner):
+            r_in = r_vals[mask_inner]
+            
+            rpows_y   = np.power(r_in[:, None], p_arr)
+            rpows_dy  = np.power(r_in[:, None], p_arr - 1)
+            rpows_ddy = np.power(r_in[:, None], p_arr - 2)
+        
+            y  [mask_inner] = np.dot( rpows_y   , c_arr )
+            dy [mask_inner] = np.dot( rpows_dy  , d1_c  )
+            ddy[mask_inner] = np.dot( rpows_ddy , d2_c  )
+
+        return y, dy, ddy
+
     _eval.__name__ = f'boys_poly_deg{max(powers)}_C{cont_order}'
     return _eval
 
@@ -138,14 +153,9 @@ if __name__ == '__main__':
 
     r_min = float(sys.argv[1]) if len(sys.argv) > 1 else 1.5
 
-    # Two sample approximations ------------------------------------------------
-    # cfgs = [
-    #     dict(powers=[4,2,0],   C=1, color='tab:blue',  label='C1 quartic'),
-    #     dict(powers=[6,4,2,0], C=2, color='tab:orange',label='C2 sextic'),
-    # ]
-
     cfgs = [
         # powers    C-order   color    label
+        ([3,2,1,0],    2,      'g', 'C2 cubic'  ),  # this does not work
         ([4,2,0],      1,      'b', 'C1 quartic'),
         ([6,4,2,0],    2,      'r', 'C2 sextic' ),
     ]
@@ -154,11 +164,7 @@ if __name__ == '__main__':
 
     # Plot exact Boys function first -----------------------------------------
     fig, axs = plot_func(boys_function, xs, labels=('Boys E','Boys F','Boys S'), colors=('k','k','k'))
-
-    # for cfg in cfgs:
-    #     approx_fun = make_boys_poly_approx(r_min, cfg['powers'], cfg['C'])
-    #     fig, (axY, axDY, axDYY) = plot_func(approx_fun, xs, axs=axs, labels=(cfg['label'],None,None), colors=(cfg['color'],cfg['color'],cfg['color']), lw=1.5, linestyle='--')
-
+    
     # Add approximations ------------------------------------------------------
     for cfg in cfgs:
         powers, C, color, label = cfg

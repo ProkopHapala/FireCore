@@ -1,6 +1,7 @@
 import numpy as np
 import matplotlib.pyplot as plt
 import sympy as sp
+from typing import Sequence, List, Any, Callable, Tuple, Dict
 
 def numDeriv(x, y):
     """Numerical derivative using central difference"""
@@ -101,7 +102,7 @@ __all__ = ['numDeriv', 'plot1d', 'plot_func', 'match_poly_at_point']
 # 1) plot_func : evaluate *func* on a grid and visualise E, F, S
 # ---------------------------------------------------------------------
 
-def plot_func(func, xs, params=None, axs=None, labels=('E','F','S'), colors=None, **plot_kwargs):
+def plot_func(func, xs, params=None, axs=None, labels=('E','F','S'), colors=None, figsize=(6,9), **plot_kwargs):
     """Visualise a scalar function together with its derivatives.
 
     The *func* callable must support the signature::
@@ -141,7 +142,7 @@ def plot_func(func, xs, params=None, axs=None, labels=('E','F','S'), colors=None
     y,dy = out[:2]
     dyy = out[2] if len(out) > 2 else None
     if axs is None:
-        fig, (axY, axDY, axDYY) = plt.subplots(3, 1, sharex=True, figsize=(6, 9))
+        fig, (axY, axDY, axDYY) = plt.subplots(3, 1, sharex=True, figsize=figsize)
     else:
         axY, axDY, axDYY = axs
         fig = axY.figure
@@ -192,3 +193,79 @@ def match_poly_at_point(f_expr, r_sym, r0, powers, order, conds=None):
     sol = sp.solve(eqs, coeffs, dict=True)
     if not sol: raise ValueError('Polynomial matching system has no solution.')
     return sol[0]
+
+def solve_poly_coeffs(powers: Sequence[int], r_sym: sp.Symbol, equations: List[sp.Eq]) -> Tuple[List[float], List[int]]:
+    """General symbolic solver for polynomial coefficients."""
+    coeffs_sym = sp.symbols(f'c0:{len(powers)}')
+    if len(equations) != len(coeffs_sym): raise ValueError(f"Number of equations ({len(equations)}) must match number of coefficients ({len(coeffs_sym)})")
+    sol = sp.solve(equations, coeffs_sym)
+    if not sol:raise RuntimeError(f"Symbolic solver could not find a solution for powers {powers}")
+    print(f"\n--- Solving for powers {powers} ---")
+    coeffs_ordered = sol
+    if isinstance(sol, dict): coeffs_ordered = [sol[c] for c in coeffs_sym]        
+    coeffs_num = [float(v.evalf()) for v in coeffs_ordered]
+    print(f"Symbolic solution: {sol}")
+    print(f"Numeric coeffs:    {coeffs_num}")
+    return coeffs_num, powers
+
+# def get_coeffs_from_recipe(r_sym: sp.Symbol, r_min_val: float, powers: Sequence[int], conditions_template: List) -> Tuple[List[float], List[int]]:
+#     """Builds and solves a system of equations from a user-specified recipe."""
+#     cs = sp.symbols(f'c0:{len(powers)}')
+#     poly = sum(c * r_sym**p for c, p in zip(cs, powers))
+#     eqs = []
+#     for deriv_order, deriv_conds in enumerate(conditions_template):
+#         poly_d_n = sp.diff(poly, r_sym, deriv_order)
+#         for x_sym, rhs_sym in deriv_conds:
+#             x_val     = x_sym   .subs(rmin, r_min_val) if hasattr(x_sym, 'subs')     else x_sym
+#             rhs_temp  = rhs_sym .subs(rmin, r_min_val) if hasattr(rhs_sym, 'subs')   else rhs_sym
+#             rhs_final = rhs_temp.subs(r_sym, x_val)    if hasattr(rhs_temp, 'subs')  else rhs_temp
+#             eqs.append(sp.Eq(poly_d_n.subs(r_sym, x_val), rhs_final))
+#     return solve_poly_coeffs(powers, r_sym, eqs)
+
+def get_poly(x: sp.Symbol, powers: Sequence[int]):
+    cs = sp.symbols(f'c0:{len(powers)}')
+    return sum(c * x**p for c, p in zip(cs, powers))
+
+def subs_conds( expr, x_sym, conditions: List ):
+    """Builds and solves a system of equations from a recipe and a general substitution map."""
+    eqs = []
+    for x_val, rhs in conditions:
+        eq = sp.Eq( expr.subs(x_sym,x_val), rhs )
+        eqs.append(eq)
+    return eqs
+
+def get_polynom_approx(x_sym: sp.Symbol, powers: Sequence[int], conditions: List ):
+    poly = get_poly(x_sym, powers)
+    eqs = []
+    for deriv_order, deriv_conds in enumerate(conditions):
+        poly_d_n = sp.diff(poly, x_sym, deriv_order)
+        eqs.extend( subs_conds(poly_d_n, x_sym, deriv_conds) )
+    return solve_poly_coeffs(powers, x_sym, eqs)
+
+def make_poly_approx(ref_F: Tuple[np.ndarray, ...], poly_mask: np.ndarray, coeffs: List[float], powers: List[int], label: str):
+    """Create a callable approx(r) -> (E,F,S) using pre-computed data."""
+    y_ref, dy_ref, ddy_ref = ref_F
+    p_arr = np.array(powers)
+    c_arr = np.array(coeffs)
+    d1_c  = c_arr * p_arr
+    d2_c  = c_arr * p_arr * (p_arr - 1)
+
+    def _eval(x: np.ndarray):
+        y, dy, ddy = np.zeros_like(x), np.zeros_like(x), np.zeros_like(x)
+        outer_mask = ~poly_mask
+        if np.any(outer_mask):
+            y  [outer_mask] = y_ref  [outer_mask] 
+            dy [outer_mask] = dy_ref [outer_mask] 
+            ddy[outer_mask] = ddy_ref[outer_mask] 
+        if np.any(poly_mask):
+            x_in = x[poly_mask]
+            with np.errstate(divide='ignore'):
+                rpows_y   = np.power(x_in[:, None], p_arr)
+                rpows_dy  = np.power(x_in[:, None], p_arr - 1)
+                rpows_ddy = np.power(x_in[:, None], p_arr - 2)
+            y  [poly_mask] = np.dot(rpows_y,   c_arr)
+            dy [poly_mask] = np.nan_to_num(np.dot(rpows_dy,  d1_c))
+            ddy[poly_mask] = np.nan_to_num(np.dot(rpows_ddy, d2_c))
+        return y, dy, ddy
+    _eval.__name__ = label
+    return _eval    
