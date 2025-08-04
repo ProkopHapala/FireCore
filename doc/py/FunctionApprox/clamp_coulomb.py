@@ -1,6 +1,6 @@
 import numpy as np
 import matplotlib.pyplot as plt
-from func_utils import plot1d, plot_with_deriv
+from func_utils import plot1d, plot_with_deriv, plot1d_zip
 
 # Coulomb potential function
 def getCoulomb(r, Q):
@@ -55,14 +55,6 @@ def smooth_clamp_neg(x, y1, y2):
     dy[mask] = dy[mask] * (1 + 2 * z) * denom**2
     return y, dy
 
-def plot1d_zip(funcs):
-    ys,dys,labels = [],[],[]
-    for func in funcs:
-        ys.append    (func[1][0])
-        dys.append   (func[1][1])
-        labels.append(func[0])
-    return plot1d(x, ys, derivs=dys, labels=labels)
-
 # Example usage
 if __name__ == "__main__":
     x      = np.linspace(0.0001, 4.0, 1000)
@@ -70,7 +62,7 @@ if __name__ == "__main__":
     y1, y2 = 1.0, 2.0
     ylim, dylim = 3.0, 4.0
             
-    fig, (ax1, ax2) = plot1d_zip([
+    fig, (ax1, ax2) = plot1d_zip(x, [
         ( "Coulomb"      , getCoulomb  (x, 1.0   )  ),
         ( "soft_clamp"   , soft_clamp  (x, y1, y2)  ),
         ( "smooth_clamp" , smooth_clamp(x, y1, y2)  ),
@@ -78,7 +70,7 @@ if __name__ == "__main__":
     ax1.set_ylim(0.0, ylim  )
     ax2.set_ylim(0.0, dylim )
 
-    fig, (ax1, ax2) = plot1d_zip([
+    fig, (ax1, ax2) = plot1d_zip(x, [
         ( "Coulomb"          , getCoulomb       ( x,  -1.0      ) ),
         ( "soft_clamp_neg"   , soft_clamp_neg    (x, -y1, -y2) ),
         ( "smooth_clamp_neg" , smooth_clamp_neg  (x, -y1, -y2) ),

@@ -19,9 +19,6 @@ def R8fast( r2,  R, Rnod ):
     y2  *= R2/( R2 + R2n )
     return y2*y2;
 
-
-
-
 def R8func_down( r2, Rpeak, Rnod ):
     y = R8func( r2, Rpeak, Rnod )
     y[ r2<(Rpeak*Rpeak) ]=1

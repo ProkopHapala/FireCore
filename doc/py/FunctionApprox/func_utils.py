@@ -17,19 +17,19 @@ def plot_with_deriv(ax1, ax2, x, y, y_deriv, label, color, linestyle='-'):
 
 def plot1d(x, ys, derivs=None, labels=None, colors=None, bNumDeriv=True, linestyle='-', linewidth=2, ax1=None, ax2=None, bGrid=True, bLegend=True ):
     """
-    Plots a function and its derivative on given axes
+    Plots one or more functions and their derivatives on given axes.
     
     Args:
-        ax_func: axis for function plot
-        ax_deriv: axis for derivative plot
+        ax1: axis for function plot.
+        ax2: axis for derivative plot.
         x: x values
-        y: y values (function)
-        deriv: analytical derivative values (optional)
-        label: legend label
-        color: plot color
-        show_num_deriv: whether to show numerical derivative
-        linestyle: line style
-        linewidth: line width
+        ys: list of y-value arrays (functions).
+        derivs: list of analytical derivative arrays (optional).
+        labels: list of legend labels.
+        colors: list of plot colors.
+        bNumDeriv: whether to show numerical derivative.
+        linestyle: line style.
+        linewidth: line width.
     """
     if ax1 is None:
         fig,(ax1,ax2) = plt.subplots(2,1)
@@ -47,13 +47,13 @@ def plot1d(x, ys, derivs=None, labels=None, colors=None, bNumDeriv=True, linesty
             if colors is not None: color = colors[i]
             ax2.plot(x, dy, label=f'{label} (analytical)',  color=color, linestyle=linestyle, linewidth=linewidth)
             if bNumDeriv:
-                num_deriv, num_x = numDeriv(x, y)
+                num_deriv, num_x = numDeriv(x, ys[i])
                 ax2.plot(num_x, num_deriv, label=f'{label} (numerical)', color=color, linestyle=':', linewidth=1.5, alpha=0.7)
             if bGrid: ax2.grid(True)
             if bLegend: ax2.legend()
     return fig, (ax1, ax2)
 
-def plot1d_zip(funcs):
+def plot1d_zip(x, funcs):
     ys,dys,labels = [],[],[]
     for func in funcs:
         ys.append    (func[1][0])
@@ -134,13 +134,12 @@ def plot_func(func, xs, params=None, axs=None, labels=('E','F','S'), colors=None
     -------
     fig, axs : (matplotlib.figure.Figure, list(matplotlib.axes.Axes))
     """
-    if params is None:
-        params = {}
-    xs = np.asarray(xs)
+    if params is None: params = {}
+    xs  = np.asarray(xs)
     out = func(xs, **params)
     if len(out) < 2:  raise ValueError('func must return at least (E, F).')
     y,dy = out[:2]
-    dyy = out[2] if len(out) > 2 else None
+    dyy  = out[2] if len(out) > 2 else None
     if axs is None:
         fig, (axY, axDY, axDYY) = plt.subplots(3, 1, sharex=True, figsize=figsize)
     else:
@@ -155,6 +154,75 @@ def plot_func(func, xs, params=None, axs=None, labels=('E','F','S'), colors=None
         ax.grid(True)
     axDYY.set_xlabel('r')
     return fig, (axY, axDY, axDYY)
+
+
+def plot_funcs(funcs, xs, bNum=False, nderivs=1, bError=False, errScale=100.0, figsize=(6,9), axs=None, titles=['Function', 'Derivative', 'Second Derivative'],   **plot_kwargs):
+    """
+    Plot multiple functions and their derivatives, broadcasting scalars.
+
+    Parameters:
+    -----------
+    funcs : list of tuples (label, func, color, params)
+        Each tuple defines a function to plot, its label, color, and parameters dict.
+    xs : array-like
+        Points at which to evaluate the functions.
+    bNum : bool
+        Whether to include numerical derivatives.
+    figsize : tuple
+        Figure size for the subplots.
+    axs : list of matplotlib.axes.Axes, optional
+        Existing axes to plot on; if None, new figure and axes are created.
+    titles : list of str
+        Titles for the subplots: [function, first derivative, second derivative].
+    **plot_kwargs : dict
+        Additional keyword arguments forwarded to Axes.plot.
+
+    Returns:
+    -------
+    fig : matplotlib.figure.Figure
+    axs : list of matplotlib.axes.Axes
+    """
+    xs = np.asarray(xs)
+    if axs is None:
+        fig, axs = plt.subplots(1+nderivs, 1, sharex=True, figsize=figsize)
+    else:
+        fig = axs[0].figure
+    for label, func, c, params, ref in funcs:
+        out  = func(xs, **params)
+        nout = len(out)
+        # Primary output
+        y = np.asarray(out[0])
+        if y.ndim == 0 or y.shape != xs.shape: y = np.full(xs.shape, y)
+        axs[0].plot(xs, y, color=c, label=label, lw=1.0, **plot_kwargs)
+        if bError and ref is not None:
+            axs[0].plot(xs, (y -ref[0])*errScale, color=c, label=f'{label} error*{errScale}', lw=1.0, ls='--', **plot_kwargs)
+            
+        # First derivative or force
+        if nderivs > 0 and nout > 1:
+            dy = np.asarray(out[1])
+            if dy.ndim == 0 or dy.shape != xs.shape:
+                dy = np.full(xs.shape, dy)
+            axs[1].plot(xs, dy, color=c, label=label, lw=1.0, **plot_kwargs)
+            if bNum:
+                dy_num, num_x = numDeriv(xs, out[0])
+                axs[1].plot(num_x, dy_num, label=f'{label} num', color=c, linestyle=':', linewidth=1.5, alpha=0.7)
+        # Second derivative if present
+        if nderivs > 1 and nout > 2 and out[2] is not None:
+            d2 = np.asarray(out[2])
+            if d2.ndim == 0 or d2.shape != xs.shape:
+                d2 = np.full(xs.shape, d2)
+            axs[2].plot(xs, d2, color=c, label=label, lw=1.0, **plot_kwargs)
+            if bNum:
+                d2_num, num_x2 = numDeriv(xs, out[1])
+                axs[2].plot(num_x2, d2_num, label=f'{label} num', color=c, linestyle=':', linewidth=1.5, alpha=0.7)
+
+    # Set titles, legends, and grid
+    for idx, ax in enumerate(axs):
+        ax.set_title(titles[idx])
+        ax.legend()
+        ax.grid(True)
+    return fig, axs
+
 
 # ---------------------------------------------------------------------
 # 2) match_poly_at_point : symbolic polynomial matching utility
