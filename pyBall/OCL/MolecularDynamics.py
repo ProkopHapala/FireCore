@@ -506,14 +506,15 @@ class MolecularDynamics(OpenCLBase):
         self.queue.finish()
         return result
 
-    def scanNonBond2(self, pos, force, apos, REQs, n, na, REQH0, ffpar, bRealloc=True):
-        if bRealloc:
-            self.realloc_scan(n, na=len(REQs))
+    def scanNonBond2(self, pos, force, apos, aREQs, REQH0, ffpar, bRealloc=True, name=""):
+        n  = len(pos)
+        na = len(apos)
+        if bRealloc:  self.realloc_scan(n, na=na)
         # Upload data to GPU
-        self.toGPU('scan2_pos',   pos)
-        self.toGPU('scan2_force', force)
-        self.toGPU('scan2_apos',  apos)
-        self.toGPU('scan2_REQs',  REQs)  
+        self.toGPU_( self.poss_buff,   pos)
+        self.toGPU_( self.forces_buff, force)
+        self.toGPU_( self.apos_buff,   apos)
+        self.toGPU_( self.aREQs_buff,  aREQs)  
         # Get kernel
         kernel = self.prg.scanNonBond2
         
@@ -521,20 +522,21 @@ class MolecularDynamics(OpenCLBase):
         kernel.set_args(
             np.int32(n),
             cl_array.vec.make_float4(*REQH0),
-            self.buffers['scan2_pos'],
-            self.buffers['scan2_force'],
+            self.poss_buff,
+            self.forces_buff,
             np.int32(na),
-            self.buffers['scan2_apos'],
-            self.buffers['scan2_REQs'],
+            self.apos_buff,
+            self.aREQs_buff,
             cl_array.vec.make_float8(*ffpar)
-        )
-        
-        # Run kernel with work group size 32
-        
-        local_size  = (32,)
-        global_size = roundup_global_size(n, local_size)
+        )        
+        nloc=32
+        local_size  = (nloc,)
+        global_size = (clu.roundup_global_size(n, nloc),)
+        T0 = time.time()
         cl.enqueue_nd_range_kernel(self.queue, kernel, global_size, local_size)
+        self.queue.finish()
+        print(f"scanNonBond2() {name:<15} n: {n:<6} na: {na:<6} time: {time.time() - T0} [s]")
         
         # Download results
-        result = self.fromGPU_('scan2_force', shape=(n, 4))
+        result = self.fromGPU_( self.forces_buff, shape=(n, 4))
         return result

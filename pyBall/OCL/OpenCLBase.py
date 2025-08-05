@@ -386,7 +386,7 @@ class OpenCLBase:
 
         return args
 
-    def preprocess_opencl_source(self, source_path, substitutions=None, output_path=None):
+    def preprocess_opencl_source(self, source_path, substitutions=None, output_path=None, bPrint=False):
         """
         Preprocess OpenCL source code with file/function/macro substitutions.
         
@@ -428,7 +428,7 @@ class OpenCLBase:
         if output_path:
             os.makedirs(os.path.dirname(output_path), exist_ok=True)
             with open(output_path, 'w') as f: f.write(source)
-            print(f"preprocess_opencl_source() preprocessed source {source_path} saved to: {output_path}")
+            if bPrint: print(f"preprocess_opencl_source() preprocessed source {source_path} saved to: {output_path}")
 
         return source
 

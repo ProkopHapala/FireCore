@@ -85,52 +85,21 @@ def eval_Morse_exact(rs, R0, E0, b):
     F =  2 * b *  E0*p*(p - 1.0)
     return E, F
 
-def test_scan_kernels():
-    """Test scanNonBond and scanNonBond2 kernels with improved workflow."""
-    
-    print("=== Testing scanNonBond and scanNonBond2 kernels ===")
-    
-    # Import after setting up paths
-
-    
-    # Initialize MolecularDynamics
+def test_potential_scans( n=100, xmin=0.0, xmax=10.0, R0=3.0, E0=1.0, bMorse=1.6):
     md = MolecularDynamics(nloc=32)
     
     # Define file paths
     base_path   = os.path.dirname(os.path.abspath(__file__))
     forces_path = os.path.join(base_path, '../../tests/tmp/data/cl/Forces.cl')
     kernel_path = os.path.join(base_path, '../../tests/tmp/data/cl/relax_multi_mini.cl')
-    
-    # Test parameters
-    n  = 100  # number of test points
-    na = 50  # number of atoms
-    
-    # Create test data
-    np.random.seed(42)
-    
-    # Test positions (random points in 3D space)
-    rs  = np.linspace(0.0, 10.0, n)
+    rs  = np.linspace(xmin, xmax, n)
     pos = np.zeros((n, 4), dtype=np.float32)
     pos[:, 0] = rs
     
-    # Atom positions
-    apos = np.random.randn(na, 4).astype(np.float32)
-    apos[:,0] = 0.0
-    
     # Test atom parameters (REQH)
-    REQH = np.array([3.0, 1.0, 0.0, 0.0], dtype=np.float32)  # R, E, Q, H
+    REQH = np.array([R0, E0, 0.0, 0.0], dtype=np.float32)   # R, E, Q, H
     #REQH = np.array([3.0, 1.0, 1.0, 0.0], dtype=np.float32)  # R, E, Q, H
-    
-    # Atom parameters
-    REQs = np.random.rand(na, 4).astype(np.float32)
-    REQs[:, 0] *= 2.0  # R values between 0-2
-    REQs[:, 1] *= 0.5  # E values between 0-0.5
-    REQs[:, 2] = 0.0   # Q values (neutral)
-    REQs[:, 3] = 0.0   # H values
-    
-    # Force field parameters
-    ffpar = np.array([0.1, 1.0, 0.0, 0.0], dtype=np.float32)  # R2damp, K, unused, unused
-    
+            
     # Parse Forces.cl to extract force functions
     print("\n=== Parsing Forces.cl ===")
     force_defs = md.parse_forces_cl(forces_path)
@@ -146,9 +115,7 @@ def test_scan_kernels():
     print("\n##################################")
     print("1. scanNonBond with getLJQH      ")
     print("##################################")
-    
-    R2damp = 1e-4
-    bMorse = 1.6
+
     #Rc, morse_pcub = exp_pow_cubic(bMorse, 5, 3.0, 5.0)
     Rc, morse_pcub = exp_pow_cubic(bMorse, 5, 0.0, 2.0);   Rc+=3.0 
 
@@ -195,7 +162,7 @@ def test_scan_kernels():
     energies = []
     forces   = []
     for name,(ffpar, code) in potentials.items():
-        print(f"{name}: {ffpar}")
+        #print(f"{name}: {ffpar}")
         output_path   = os.path.join(base_path, f"tests/tmp/cl/tmp_{name}.cl")
         substitutions = { "macros": { "GET_FORCE_NONBOND": code } }
         md.preprocess_opencl_source(kernel_path, substitutions, output_path)
@@ -206,9 +173,9 @@ def test_scan_kernels():
         energies .append(fes[:,3])
         forces   .append(fes[:,0])
         
-        print(f"   scanNonBond ({name}) completed cl_file={output_path}")
+        #print(f"   scanNonBond ({name}) completed cl_file={output_path}")
         #print(f"   Result forces: \n", forces)
-        print(f"   result forces.shape {fes.shape} range: [{fes.min():.3f}, {fes.max():.3f}]")
+        #print(f"   result forces.shape {fes.shape} range: [{fes.min():.3f}, {fes.max():.3f}]")
 
     fig, (ax1, ax2) = plot1d( rs, energies, forces, labels=names, colors=['k', 'b','c','g',   'r'], figsize=(10,15) )
     ax1.set_ylim(-1,1)
@@ -217,163 +184,96 @@ def test_scan_kernels():
     ax1.axvline( Rc,   c='g', ls='--')
     plt.show()
 
-    # plt.
-    # for name, forces in results.items():
-    #     rs = pos[:,0]
-    #     plt.plot(rs, forces[:,0],label=name+" F")
-    #     plt.plot(rs, forces[:,1],label=name+" E")
-    #     plt.ylim(-1,1)
-    #     plt.grid(alpha=0.2)
-    #     plt.legend()
+
+def test_speed( n=1000, na=1000, bMorse=1.6, Rc=5.0 ):
+
+    # Initialize MolecularDynamics
+    md = MolecularDynamics(nloc=32)
+    
+    # Define file paths
+    base_path   = os.path.dirname(os.path.abspath(__file__))
+    forces_path = os.path.join(base_path, '../../tests/tmp/data/cl/Forces.cl')
+    kernel_path = os.path.join(base_path, '../../tests/tmp/data/cl/relax_multi_mini.cl')
+        
+    # Create test data
+    np.random.seed(42)
+    
+    # Test positions (random points in 3D space)
+    rs  = np.linspace(0.0, 10.0, n)
+    pos = np.zeros((n, 4), dtype=np.float32)
+    pos[:, 0] = rs
+    
+    # Atom positions
+    apos = np.random.randn(na, 4).astype(np.float32)
+    apos[:,0] = 0.0
+    
+    # Test atom parameters (REQH)
+    REQH = np.array([3.0, 1.0, 0.0, 0.0], dtype=np.float32)  # R, E, Q, H
+    #REQH = np.array([3.0, 1.0, 1.0, 0.0], dtype=np.float32)  # R, E, Q, H
+    
+    # Atom parameters
+    aREQs = np.zeros((na, 4), dtype=np.float32)
+    aREQs[:, 0]  = 1.4 +       np.random.rand(na)*0.6    # R values between 0-2
+    aREQs[:, 1]  = 0.1 * ( 1 + np.random.rand(na)*1.0 )  # E values between 0-0.5
+    aREQs[:, 2]  = 0.0  # Q values (neutral)
+    aREQs[:, 3]  = 0.0  # H values
+        
+    # Parse Forces.cl to extract force functions
+    #print("\n=== Parsing Forces.cl ===")
+    #force_defs = md.parse_forces_cl(forces_path)
+    #print(f"Found {len(force_defs['functions'])} functions and {len(force_defs['macros'])} macros")
+    
+    force = np.zeros((n, 4), dtype=np.float32)
+    
+    #Rc, morse_pcub = exp_pow_cubic(bMorse, 5, 3.0, 5.0)
+    Rc, morse_pcub = exp_pow_cubic(bMorse, 5, 0.0, 2.0);   Rc+=3.0 
+    
+    morse_pcub_ = morse_pcub[::-1]
+
+    # inline float4 getMorse_lin5( float3 dp, float R0, float E0, float b ){
+    potentials={
+        #  name    ffpar             code                             
+        "invR2"      :  ( [],                  "fij = invR2      ( dp );"  ),
+        "R2gauss"    :  ( [],                  "fij = R2gauss    ( dp );"  ),
+        "Morse_lin5" :  ( [ bMorse ],          "fij = getMorse_lin5 ( dp, REQH.x, REQH.y, ffpar.x );"  ),
+        "Morse_lin9" :  ( [ bMorse ],          "fij = getMorse_lin9 ( dp, REQH.x, REQH.y, ffpar.x );"  ),
+        "Morse_lin17":  ( [ bMorse ],          "fij = getMorse_lin17( dp, REQH.x, REQH.y, ffpar.x );"  ),
+        "Morse_cub5" :  ( [ *morse_pcub_, Rc], "fij = getMorse_cub5 ( dp, REQH.x, REQH.y, ffpar.lo,ffpar.hi.x );"  ),
+        "Morse"      :  ( [ bMorse ],          "fij = getMorse      ( dp, REQH.x, REQH.y, ffpar.x );"  ),
+    }
+
+    names    = []
+    energies = []
+    forces   = []
+    for name,(ffpar, code) in potentials.items():
+        #print(f"{name}: {ffpar}")
+        output_path   = os.path.join(base_path, f"tests/tmp/cl/tmp_{name}.cl")
+        substitutions = { "macros": { "GET_FORCE_NONBOND": code } }
+        md.preprocess_opencl_source(kernel_path, substitutions, output_path)
+        md.load_program(kernel_path=output_path)
+        fes = md.scanNonBond2( pos=pos, force=force, apos=apos, aREQs=aREQs, REQH0=REQH, ffpar=ffpar, name=name )
+
+        names    .append(name)
+        energies .append(fes[:,3])
+        forces   .append(fes[:,0])
+
+        #print(f"   scanNonBond ({name}) completed cl_file={output_path}")
+        #print(f"   Result forces: \n", forces)
+        #print(f"   result forces.shape {fes.shape} range: [{fes.min():.3f}, {fes.max():.3f}]")
+
+    # fig, (ax1, ax2) = plot1d( rs, energies, forces, labels=names, colors=['k', 'b','c','g',   'r'], figsize=(10,15) )
+    # ax1.set_ylim(-1,1)
+    # ax2.set_ylim(-1,1)
+    # ax1.axvline( Rcl5, c='r', ls='--')
+    # ax1.axvline( Rc,   c='g', ls='--')
     # plt.show()
 
-
-    exit() # KEEP this until it works, then we can proceed
-    
-    print("\n##################################")
-    print("2. scanNonBond with getMorseQH")
-    print("##################################")
-    
-    output_path_morse = os.path.join(base_path, 'tests/tmp/data/cl/scanNonBond_getMorseQH.cl')
-    
-    substitutions_morse = {
-        'macros': {
-            'GET_FORCE_NONBOND': 'fij = getMorseQH(pos[i], REQH, ffpar);'
-        }
-    }
-    
-    md.load_preprocessed_program(kernel_path, substitutions_morse, output_path_morse)
-    
-    result_morse = md.scanNonBond(
-        pos=pos,
-        force=force,
-        REQs=np.array([REQH] * n, dtype=np.float32),
-        n=n,
-        REQH=REQH,
-        ffpar=ffpar,
-        force_function='getMorseQH'
-    )
-    
-    print(f"   scanNonBond (MorseQH) completed")
-    print(f"   Result range: [{result_morse.min():.3f}, {result_morse.max():.3f}]")
-    print(f"   Preprocessed file saved to: {output_path_morse}")
-    
-
-
-    print("\n##################################")
-    print("3. scanNonBond2 with getLJQH")
-    print("##################################")
-
-    force2 = np.zeros((n, 4), dtype=np.float32)
-    
-
-    output_path2_ljqh = os.path.join(base_path, 'tests/tmp/data/cl/scanNonBond2_getLJQH.cl')
-    
-    # Variables match kernel context: p, lPos[j], lPar[j], REQH0, ffpar
-    substitutions2_ljqh = {
-        'macros': {
-            'GET_FORCE_NONBOND': '''
-                float3 dp = lPos[j].xyz - p;
-                float4 REQH = lPar[j];
-                REQH.x += REQH0.x;
-                REQH.yzw *= REQH0.yzw;
-                fij = getLJQH(dp, REQH, ffpar.x);
-            '''
-        }
-    }
-    
-    md.load_preprocessed_program(kernel_path, substitutions2_ljqh, output_path2_ljqh)
-    
-    result2_ljqh = md.scanNonBond2(
-        pos=pos,
-        force=force2,
-        apos=apos,
-        REQs=REQs,
-        n=n,
-        na=na,
-        REQH0=REQH,
-        ffpar=ffpar,
-        force_function='getLJQH'
-    )
-    
-    print(f"   scanNonBond2 (LJQH) completed")
-    print(f"   Result shape: {result2_ljqh.shape}")
-    print(f"   Result range: [{result2_ljqh.min():.3f}, {result2_ljqh.max():.3f}]")
-    print(f"   Preprocessed file saved to: {output_path2_ljqh}")
-    
-
-    print("\n##################################")
-    print("4. scanNonBond2 with getMorseQH")
-    print("##################################")
-    
-    output_path2_morse = os.path.join(base_path, 'tests/tmp/data/cl/scanNonBond2_getMorseQH.cl')
-    
-    # Variables match kernel context: p, lPos[j], lPar[j], REQH0, ffpar
-    substitutions2_morse = {
-        'macros': {
-            'GET_FORCE_NONBOND': '''
-                float3 dp = lPos[j].xyz - p;
-                float4 REQH = lPar[j];
-                REQH.x += REQH0.x;
-                REQH.yzw *= REQH0.yzw;
-                fij = getMorseQH(dp, REQH, ffpar.y, ffpar.x);
-            '''
-        }
-    }
-    
-    md.load_preprocessed_program(kernel_path, substitutions2_morse, output_path2_morse)
-    
-    result2_morse = md.scanNonBond2(
-        pos=pos,
-        force=force2,
-        apos=apos,
-        REQs=REQs,
-        n=n,
-        na=na,
-        REQH0=REQH,
-        ffpar=ffpar,
-        force_function='getMorseQH'
-    )
-    
-    print(f"   scanNonBond2 (MorseQH) completed")
-    print(f"   Result range: [{result2_morse.min():.3f}, {result2_morse.max():.3f}]")
-    print(f"   Preprocessed file saved to: {output_path2_morse}")
-    
-    # Performance comparison
-    print("\n=== Performance Test ===")
-    import time
-    
-    # Time scanNonBond
-    start = time.time()
-    for _ in range(10):
-        md.scanNonBond(
-            pos=pos, force=force, REQs=np.array([REQH] * n, dtype=np.float32),
-            n=n, REQH=REQH, ffpar=ffpar, force_function='getLJQH'
-        )
-    time1 = (time.time() - start) / 10
-    
-    # Time scanNonBond2
-    start = time.time()
-    for _ in range(10):
-        md.scanNonBond2(
-            pos=pos, force=force2, apos=apos, REQs=REQs,
-            n=n, na=na, REQH0=REQH, ffpar=ffpar, force_function='getLJQH'
-        )
-    time2 = (time.time() - start) / 10
-    
-    print(f"scanNonBond average time: {time1*1000:.2f} ms")
-    print(f"scanNonBond2 average time: {time2*1000:.2f} ms")
-    print(f"Speedup: {time1/time2:.2f}x")
-    
-    print("\n=== All tests completed successfully! ===")
-    print("\nPreprocessed files are available for debugging:")
-    print(f"  - {output_path_ljqh}")
-    print(f"  - {output_path_morse}")
-    print(f"  - {output_path2_ljqh}")
-    print(f"  - {output_path2_morse}")
 
 if __name__ == "__main__":
     # run it like this:
     #   python -u -m pyBall.OCL.run_scanNonBond | tee OUT-scanNonBond
 
-    test_scan_kernels()
+    #test_potential_scans()
+
+    
+    test_speed( n=10000, na=1000000 )

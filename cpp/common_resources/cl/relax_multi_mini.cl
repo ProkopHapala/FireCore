@@ -155,6 +155,21 @@ inline float evalBond( float3 h, float dl, float k, __private float3* f ){
 }
 
 // evaluate non-covalent interaction force and energy for Lennard-Jones (Q) and Coulomb interactions of charges (Q) and hydrogen bond correction (pseudo-charges H), damping R2damp is used to avoid singularity at r=0
+inline float4 invR2( float3 dp ){
+    const float ir2 = 1.f/(dot(dp,dp));
+    const float E   = ir2;
+    return  (float4){ dp*ir2*ir2, E };
+}
+
+inline float4 R2gauss( float3 dp ){
+    const float r2 = dot(dp,dp);
+    if(r2>1.0){ return (float4){0.f,0.f,0.f,0.f}; }
+    float p = 1 - r2;
+    return  (float4){ dp*p, p*p }; // dp*r2 = |dp|
+}
+
+
+// evaluate non-covalent interaction force and energy for Lennard-Jones (Q) and Coulomb interactions of charges (Q) and hydrogen bond correction (pseudo-charges H), damping R2damp is used to avoid singularity at r=0
 inline float4 exp_r( float3 dp, float b ){
     const float r = length(dp);
     const float E = exp(-b*r);
