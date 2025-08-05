@@ -946,7 +946,7 @@ __kernel void solve_MC_neigh(
             //if (itip == iDBG) printf("\n--- iDBG: Global Step %i/%i ---\n", iGlobal + 1, nGlobalSteps);
             float r = rnd_float(&rng_state);
             //float r = wang_hash_float(&rng_state);
-            if       (r < prob_params.x) { // Strategy 1: Load Best
+            if        (r < prob_params.x) { // Strategy 1: Load Best
                 //if (itip == iDBG) printf("iDBG: Global Move -> LOAD BEST\n");
                 for (int i = 0; i < occ_bytes; ++i) occ_mask[i] = occ_best[tip_occ_offset + i];
             } else if (r < prob_params.y) { // Strategy 3: Load Neighbor Best

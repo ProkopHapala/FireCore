@@ -4,6 +4,7 @@ import numpy as np
 import re
 
 import pyopencl as cl
+# from . import clUtils as clu
 import pyopencl.array as cl_array
 import pyopencl.cltypes as cltypes
 import matplotlib.pyplot as plt
@@ -18,36 +19,19 @@ REQ_DEFAULT = np.array([1.7, 0.1, 0.0, 0.0], dtype=np.float32)  # R, E, Q, paddi
 verbose=False
 
 def pack(iSys, source_array, target_buffer, queue):
-    """
-    Packs data from a source NumPy array into a target OpenCL buffer at the specified system index.
-    """
-    # Calculate the offset
     offset = iSys * source_array.size * source_array.dtype.itemsize
     cl.enqueue_copy(queue, target_buffer, source_array, offset=offset)
 
 def copy(source, target, queue, iSys):
-    """
-    Copies data from source array to target OpenCL buffer.
-    """
     pack(iSys, source, target, queue)
 
 def copy_add(source, source_add, target, offset, queue):
-    """
-    Copies data from source array and adds source_add array to the target buffer.
-    """
-    # This function needs to be implemented based on specific requirements
     pass
 
 def mat3_to_cl(mat3_np):
-    """
-    Converts a 3x3 NumPy matrix to a format suitable for OpenCL.
-    """
     return mat3_np.flatten().astype(np.float32)
 
 def vec3_to_cl(vec3_np):
-    """
-    Converts a 3-component vector to a 4-component format for OpenCL.
-    """
     return np.append(vec3_np, 0.0).astype(np.float32)
 
 class MolecularDynamics(OpenCLBase):
@@ -69,11 +53,11 @@ class MolecularDynamics(OpenCLBase):
             exit(1)
         
         # Initialize other attributes that will be set in realloc
-        self.nSystems = 0
-        self.mmff_list = []
+        self.nSystems       = 0
+        self.mmff_list      = []
         self.MD_event_batch = None
-        self.perBatch = perBatch
-        self.nstep = 1
+        self.perBatch       = perBatch
+        self.nstep          = 1
 
     def realloc(self, mmff, nSystems=1 ):
         """
@@ -484,3 +468,73 @@ class MolecularDynamics(OpenCLBase):
                 forces[ix, iy,:] = force_i[0,: ]  # Get force on first (and only) atom
                 pos   [ix, iy,:] = pos_i  [0,: ]  # Store position for reference
         return pos, forces
+
+    def realloc_scan(self, n, na=-1):
+        sz_f  = 4
+        buffs = {
+            "poss":    (sz_f*4 * n),
+            "forces":  (sz_f*4 * n),
+        }
+        if na>0:
+            buffs.update({
+                "apos":   (sz_f*4 * na),
+                "aREQs":  (sz_f*4 * na),
+            })
+        self.try_make_buffers(buffs)
+
+    def scanNonBond(self, pos, force, REQH, ffpar, bRealloc=True ):
+        n = len(pos)
+        if bRealloc:  self.realloc_scan(n)
+        # Upload data to GPU
+        self.toGPU_( self.poss_buff,   pos)
+        self.toGPU_( self.forces_buff, force)
+        # Get kernel
+        kernel = self.prg.scanNonBond
+        # Set arguments
+        kernel.set_args(
+            np.int32(n),
+            cl_array.vec.make_float4(*REQH),
+            self.poss_buff,
+            self.forces_buff,
+            cl_array.vec.make_float8(*ffpar)
+        )
+        # Run kernel
+        global_size = (n,)
+        local_size = None
+        cl.enqueue_nd_range_kernel(self.queue, kernel, global_size, local_size)
+        result = self.fromGPU_( self.forces_buff, shape=(n, 4))
+        self.queue.finish()
+        return result
+
+    def scanNonBond2(self, pos, force, apos, REQs, n, na, REQH0, ffpar, bRealloc=True):
+        if bRealloc:
+            self.realloc_scan(n, na=len(REQs))
+        # Upload data to GPU
+        self.toGPU('scan2_pos',   pos)
+        self.toGPU('scan2_force', force)
+        self.toGPU('scan2_apos',  apos)
+        self.toGPU('scan2_REQs',  REQs)  
+        # Get kernel
+        kernel = self.prg.scanNonBond2
+        
+        # Set arguments
+        kernel.set_args(
+            np.int32(n),
+            cl_array.vec.make_float4(*REQH0),
+            self.buffers['scan2_pos'],
+            self.buffers['scan2_force'],
+            np.int32(na),
+            self.buffers['scan2_apos'],
+            self.buffers['scan2_REQs'],
+            cl_array.vec.make_float8(*ffpar)
+        )
+        
+        # Run kernel with work group size 32
+        
+        local_size  = (32,)
+        global_size = roundup_global_size(n, local_size)
+        cl.enqueue_nd_range_kernel(self.queue, kernel, global_size, local_size)
+        
+        # Download results
+        result = self.fromGPU_('scan2_force', shape=(n, 4))
+        return result

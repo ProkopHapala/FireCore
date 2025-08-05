@@ -66,7 +66,7 @@ class OpenCLBase:
         self.kernelheaders = {}
         self.prg = None
     
-    def load_program(self, kernel_path=None, rel_path=None, base_path=None, bPrint=False):
+    def load_program(self, kernel_path=None, rel_path=None, base_path=None, bPrint=False, bMakeHeaders=True):
         """
         Load and compile an OpenCL program.
         
@@ -82,24 +82,27 @@ class OpenCLBase:
             if base_path is None:
                 base_path = os.path.dirname(os.path.abspath(__file__))
             kernel_path = os.path.abspath(os.path.join(base_path, rel_path))
-        
         if not os.path.exists(kernel_path):
             print(f"OpenCLBase::load_program() ERROR: Kernel file not found at: {kernel_path}")
             return False
-            
         with open(kernel_path, 'r') as f:
-            kernel_source = f.read()
-            self.prg = cl.Program(self.ctx, kernel_source).build()
-            # Extract kernel headers automatically
-            self.kernelheaders = self.extract_kernel_headers(kernel_source)
-
-            if bPrint:
-                for kernel_name, kernel_header in self.kernelheaders.items():
-                    print(f"OpenCLBase::extract_kernel_headers() Kernel name:: {kernel_name} \n {kernel_header}")
-                
+            try:
+                kernel_source = f.read()
+                self.prg = cl.Program(self.ctx, kernel_source).build()
+                # Extract kernel headers automatically
+                if bMakeHeaders:
+                    self.kernelheaders = self.extract_kernel_headers(kernel_source)
+                    if bPrint:
+                        for kernel_name, kernel_header in self.kernelheaders.items():
+                            print(f"OpenCLBase::extract_kernel_headers() Kernel name:: {kernel_name} \n {kernel_header}")
+                        print(f"Extracted headers for kernels: {list(self.kernelheaders.keys())}")
+            except Exception as e:
+                print(f"OpenCLBase::load_program() ERROR: Failed to build kernel: {kernel_path}")
+                #print(f"Kernel source:\n {kernel_source}")
+                print(f"Error: {str(e)}")
+                raise e
         if bPrint:
             print(f"OpenCLBase::load_program() Successfully loaded kernel from: {kernel_path}")
-            print(f"Extracted headers for kernels: {list(self.kernelheaders.keys())}")
         return True
     
     def extract_kernel_headers(self, source_code):
@@ -224,9 +227,11 @@ class OpenCLBase:
     def toGPU_(self, buf, host_data, byte_offset=0 ):
         cl.enqueue_copy(self.queue, buf, host_data, device_offset=byte_offset)
 
-    def fromGPU_(self, buf, host_data, byte_offset=0 ):
+    def fromGPU_(self, buf, host_data=None, byte_offset=0, shape=None, dtype='f4' ):
+        if host_data is None: host_data = np.empty(shape, dtype=dtype)
         cl.enqueue_copy(self.queue, host_data, buf, device_offset=byte_offset)
-
+        return host_data
+        
     def toGPU(self, buf_name, host_data, byte_offset=0):
         """
         Upload data to a GPU buffer.
@@ -380,3 +385,117 @@ class OpenCLBase:
             for i,arg in enumerate(args): print("    ", i, arg)
 
         return args
+
+    def preprocess_opencl_source(self, source_path, substitutions=None, output_path=None):
+        """
+        Preprocess OpenCL source code with file/function/macro substitutions.
+        
+        Args:
+            source_path (str): Path to the source .cl file
+            substitutions (dict): Dictionary with:
+                - 'files': dict mapping file markers to file paths
+                - 'functions': dict mapping function markers to function names
+                - 'macros': dict mapping macro markers to macro definitions
+        
+        Returns:
+            str: Preprocessed source code
+        """
+        if substitutions is None:
+            substitutions = {}
+            
+        with open(source_path, 'r') as f:
+            source = f.read()
+        
+        # Process file inclusions
+        if 'files' in substitutions:
+            for marker, file_path in substitutions['files'].items():
+                if os.path.exists(file_path):
+                    with open(file_path, 'r') as f:
+                        file_content = f.read()
+                    source = source.replace(f"//<<<file {marker}", file_content)
+        
+        # Process function substitutions
+        if 'functions' in substitutions:
+            for marker, func_name in substitutions['functions'].items():
+                source = source.replace(f"//<<<function {marker}", func_name)
+        
+        # Process macro substitutions
+        if 'macros' in substitutions:
+            for marker, macro_def in substitutions['macros'].items():
+                source = source.replace(f"//<<<{marker}", macro_def)
+        
+        # Save to file if output_path specified
+        if output_path:
+            os.makedirs(os.path.dirname(output_path), exist_ok=True)
+            with open(output_path, 'w') as f: f.write(source)
+            print(f"preprocess_opencl_source() preprocessed source {source_path} saved to: {output_path}")
+
+        return source
+
+    def parse_forces_cl(self, forces_path):
+        """
+        Parse Forces.cl file to extract functions and macros.
+        
+        Args:
+            forces_path (str): Path to Forces.cl file
+            
+        Returns:
+            dict: Dictionary with 'functions' and 'macros' extracted from Forces.cl
+        """
+        functions = {}
+        macros = {}
+        
+        with open(forces_path, 'r') as f:
+            content = f.read()
+        
+        # Parse functions marked with //>>>
+        lines = content.split('\n')
+        current_section = None
+        current_content = []
+        
+        for line in lines:
+            line = line.strip()
+            
+            if line.startswith('//>>>'):
+                # Save previous section
+                if current_section and current_content:
+                    if current_section.startswith('function'):
+                        func_name = current_section.replace('function', '').strip()
+                        functions[func_name] = '\n'.join(current_content)
+                    else:
+                        macros[current_section] = '\n'.join(current_content)
+                
+                # Start new section
+                current_section = line.replace('//>>>', '').strip()
+                current_content = []
+            else:
+                if current_section:
+                    current_content.append(line)
+        
+        # Save last section
+        if current_section and current_content:
+            if current_section.startswith('function'):
+                func_name = current_section.replace('function', '').strip()
+                functions[func_name] = '\n'.join(current_content)
+            else:
+                macros[current_section] = '\n'.join(current_content)
+        
+        return {'functions': functions, 'macros': macros}
+
+    # def load_preprocessed_program(self, source_path, substitutions=None, output_path=None):
+    #     """
+    #     Load and compile preprocessed OpenCL source with substitutions.
+        
+    #     Args:
+    #         source_path: Path to the original .cl file
+    #         substitutions: Dictionary with file/function/macro substitutions
+    #         output_path: Optional path to save the preprocessed file
+    #     """
+    #     if substitutions is None:
+    #         substitutions = {}
+    #     # Preprocess the source
+    #     preprocessed_source = self.preprocess_opencl_source(source_path, substitutions)
+    #     # Compile the preprocessed source
+    #     self.prg = cl.Program(self.ctx, preprocessed_source).build()
+    #     self.kernelheaders = self.extract_kernel_headers(preprocessed_source)
+    #     return self.prg
