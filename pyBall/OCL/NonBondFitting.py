@@ -33,12 +33,41 @@ class FittingDriver(OpenCLBase):
         self.dof_definitions = []
         self.tREQHs_base = None  
 
+
+    def load_atom_types(self, atom_types_file):
+        """
+        Loads default non-bonded parameters from an AtomTypes.dat file.
+        Stores them in a dictionary for later lookup.
+        """
+        print(f"Loading base atom type parameters from {atom_types_file}...")
+        self.base_params = {}
+        with open(atom_types_file, 'r') as f:
+            for line in f:
+                if line.startswith('#') or not line.strip():
+                    continue
+                
+                parts = line.strip().split()
+                if len(parts) < 11: continue # Skip malformed lines
+
+                type_name = parts[0]
+                # REQH components from the file
+                # RvdW is column 10, EvdW is column 11 (1-based index)
+                # We assume Q (charge) and H (H-bond) defaults are 0 for now,
+                # as they are typically derived or fitted.
+                RvdW = float(parts[9])
+                EvdW = float(parts[10])
+                
+                self.base_params[type_name] = {'R': RvdW, 'E': EvdW, 'Q': 0.0, 'H': 0.0}
+        print(f"Loaded base parameters for {len(self.base_params)} atom types.")
+
+
     def load_data(self, xyz_file):
         """Loads molecular geometries from a concatenated XYZ file."""
         print(f"Loading data from {xyz_file}...")
         atoms_list, atypes_list, ranges_list = [], [], []
         ia = 0
 
+        type_names = []
         ErefW = []
         system_params = []
         isys = 0
@@ -67,6 +96,7 @@ class FittingDriver(OpenCLBase):
                     if type_name not in self.atom_type_map:
                         self.atom_type_map[type_name] = len(self.atom_type_names)
                         self.atom_type_names.append(type_name)
+                    type_names.append(type_name)
                     atypes_list.append(self.atom_type_map[type_name])
                     atoms_list .append([float(p) for p in parts[1:5]])
                 ia += natoms
@@ -82,7 +112,7 @@ class FittingDriver(OpenCLBase):
         print(f"Loaded {self.n_samples} samples, {self.n_atoms_total} atoms total.")
 
         print("Atoms:")
-        for i in range(len(self.host_atoms)): print(f"{i}: {self.host_atypes[i]} {self.host_atoms[i]}")
+        for i in range(len(self.host_atoms)): print(f"{i}: {type_names[i]} {self.host_atypes[i]} {self.host_atoms[i]}")
 
         print("Atom types:")
         for i in range(len(self.atom_type_names)): print(f"{i}: {self.atom_type_names[i]} {self.atom_type_map[self.atom_type_names[i]]} ")
@@ -110,41 +140,6 @@ class FittingDriver(OpenCLBase):
         self.n_dofs = len(self.dof_definitions)
         print(f"Loaded {self.n_dofs} degrees of freedom.")
 
-    # def prepare_host_data(self, REQH=default_REQH):
-    #     """Prepares all host-side numpy arrays needed for the kernels."""
-    #     n_types = len(self.atom_type_names)
-    #     print("prepare_host_data().1 ", n_types)
-    #     self.tREQHs_base = np.tile(np.array(REQH, dtype=np.float32), (n_types, 1))
-    #     for dof in self.dof_definitions:
-    #         it  = self.atom_type_map[dof['typename']]
-    #         self.tREQHs_base[it, dof['comp']] = dof['xstart']
-    #     print("prepare_host_data().2 ")
-    #     # --- Build mapping arrays for the assembly kernel ---
-    #     # NOTE: This implementation assumes that for any given atom type, a specific
-    #     # component (R, E, Q, or H) can only be part of ONE degree of freedom.
-    #     # This is a limitation of the provided `assembleDOFderivatives` kernel design.
-    #     dof_to_atom_list = []
-    #     dof_nis_list     = []
-    #     dof_coeffs_arr   = np.zeros((self.n_atoms_total, 4), dtype=np.float32)
-
-    #     for dof in self.dof_definitions:
-    #         typename     = dof['typename']
-    #         it           = self.atom_type_map[typename]
-    #         atom_indices = np.where(self.host_atypes == it)[0]
-    #         if len(atom_indices) == 0: continue
-
-    #         dof_nis_list.append((len(dof_to_atom_list), len(atom_indices)))
-    #         dof_to_atom_list.extend(atom_indices)
-            
-    #         coeff_vec = np.zeros(4, dtype=np.float32)
-    #         coeff_vec[dof['comp']] = 1.0
-    #         for ia in atom_indices:
-    #             dof_coeffs_arr[ia] = coeff_vec
-        
-    #     self.host_dof_nis     = np.array(dof_nis_list, dtype=np.int32)
-    #     self.host_dof_to_atom = np.array(dof_to_atom_list, dtype=np.int32)
-    #     self.host_dof_coeffs  = dof_coeffs_arr
-
     def prepare_host_data(self, REQH=default_REQH):
         """
         Prepares all host-side numpy arrays needed for the kernels.
@@ -153,6 +148,32 @@ class FittingDriver(OpenCLBase):
         # --- Build initial REQH parameter matrix ---
         n_types = len(self.atom_type_names)
         self.tREQHs_base = np.tile(np.array(REQH, dtype=np.float32), (n_types, 1))
+
+
+        # --- Build initial REQH parameter matrix ---
+        n_types_in_data = len(self.atom_type_names)
+        self.tREQHs_base = np.zeros((n_types_in_data, 4), dtype=np.float32)
+
+        # 1. Initialize from AtomTypes.dat defaults
+        for i, type_name in enumerate(self.atom_type_names):
+            # Look up the base parameters for the type name found in the XYZ data
+            params = self.base_params.get(type_name)
+            if params:
+                self.tREQHs_base[i, 0] = params['R']
+                self.tREQHs_base[i, 1] = params['E']
+                self.tREQHs_base[i, 2] = params['Q']
+                self.tREQHs_base[i, 3] = params['H']
+            else:
+                print(f"Warning: Atom type '{type_name}' from XYZ data not found in AtomTypes.dat. Using zeros.")
+
+        # 2. Override with 'xstart' values for the parameters being optimized (DOFs)
+        for dof in self.dof_definitions:
+            type_idx = self.atom_type_map.get(dof['typename'])
+            if type_idx is None:
+                # This safeguard is still important
+                continue
+            # Override the default value with the starting value for the optimization
+            self.tREQHs_base[type_idx, dof['comp']] = dof['xstart']
 
         # This loop populates the initial values from the 'xstart' column
         for dof in self.dof_definitions:
@@ -242,12 +263,13 @@ class FittingDriver(OpenCLBase):
         self.try_make_buffers(buffs)
         
         # Upload all static data to the GPU
-        self.toGPU_(self.ranges_buff, self.host_ranges)
-        self.toGPU_(self.atypes_buff, self.host_atypes)
-        self.toGPU_(self.ieps_buff, self.host_ieps)
-        self.toGPU_(self.atoms_buff, self.host_atoms)
-        self.toGPU_(self.ErefW_buff, self.host_ErefW)
-        self.toGPU_(self.DOFnis_buff, self.host_dof_nis)
+        self.toGPU_(self.ranges_buff,    self.host_ranges)
+        self.toGPU_(self.atypes_buff,    self.host_atypes)
+        self.toGPU_(self.ieps_buff,      self.host_ieps)
+        self.toGPU_(self.atoms_buff,     self.host_atoms)
+        self.toGPU_(self.tREQHs_buff,    self.tREQHs_base)
+        self.toGPU_(self.ErefW_buff,     self.host_ErefW)
+        self.toGPU_(self.DOFnis_buff,    self.host_dof_nis)
         self.toGPU_(self.DOFtoAtom_buff, self.host_dof_to_atom)
         self.toGPU_(self.DOFcofefs_buff, self.host_dof_coeffs)
         self.toGPU_(self.regParams_buff, self.host_regParams)
@@ -299,7 +321,7 @@ class FittingDriver(OpenCLBase):
         )
         print("Kernel arguments pre-set.")
 
-    def get_forces(self, dofs_vec):
+    def get_forces(self, dofs_vec, bCheck=True):
         """Calculates the total force (physical + regularization) for a given DOF vector."""
         dofs_vec_f32 = dofs_vec.astype(np.float32)
         
@@ -323,7 +345,17 @@ class FittingDriver(OpenCLBase):
         # 5. Download final forces from the GPU
         forces = self.fromGPU_(self.fDOFs_buff, shape=(self.n_dofs,))
         self.queue.finish()
-        
+
+        if bCheck:
+            vmin=np.min(forces); 
+            vmax=np.max(forces);
+            # check NaN, inf etc
+            if(vmin!=vmin or vmax!=vmax or vmin==0 or vmax==0):
+                print("ERROR: get_forces() forces are not valid:", vmin, vmax)
+                exit(1)
+            print("get_forces(): Forces are OK: min", vmin, "max", vmax)
+            exit(0)
+
         return forces
 
 def optimizer_FIRE(driver, initial_dofs, max_steps=1000, dt_start=0.01, fmax=1e-4):
@@ -380,6 +412,7 @@ if __name__ == '__main__':
     # python -u -m pyBall.OCL.NonBondFitting
 
     driver = FittingDriver()
+    driver.load_atom_types("/home/prokop/git/FireCore/cpp/common_resources/AtomTypes.dat")
     driver.load_data("/home/prokop/git/FireCore/tests/tFitREQ/input_example.xyz")
     driver.load_dofs("/home/prokop/git/FireCore/tests/tFitREQ/dofSelection_MorseSR.dat")
     driver.init_and_upload()

@@ -5,6 +5,8 @@
 #define R2SAFE          1e-4f
 #define COULOMB_CONST   14.3996448915f  // [eV*Ang/e^2]
 
+#define iDBG 0
+
 __attribute__((reqd_work_group_size(32,1,1)))
 __kernel void evalSampleDerivatives(
     //const int4 ns,                  
@@ -19,7 +21,7 @@ __kernel void evalSampleDerivatives(
 ){
     __local float4 LATOMS[32];   // local buffer for atom positions
     __local float4 LREQKS[32];   // local buffer for REQ parameters
-    __local float  LdE;          // local variable to store energy difference
+    __local float  LdE;          // shared energy diff across workgroup          // local variable to store energy difference
 
     const int iS = get_group_id   (0); // index of system
     const int iG = get_global_id  (0); // index of atom in fragment 1
@@ -33,6 +35,12 @@ __kernel void evalSampleDerivatives(
     const int nj   = nsi.w;  // number of atoms in fragment 2
     
     if( iG-i0 >= ni) return;
+
+    if( iG == iDBG ){
+        printf("GPU: OCL evalSampleDerivatives() iG %i i0,ni %3i,%3i j0,nj %3i,%3i ErefW %g %g\n", iG, i0,ni, j0,nj, ErefW[iS].x, ErefW[iS].y);
+        for(int i=0; i<ni; i++){ int ia=i0+i; int it=atypes[ia]; printf("GPU: atom i %3i it %3i pos %16.8f %16.8f %16.8f %16.8f  REQH %16.8f %16.8f %16.8f %16.8f \n", ia, it, atoms[ia].x, atoms[ia].y, atoms[ia].z, atoms[ia].w, tREQHs[it].x, tREQHs[it].y, tREQHs[it].z, tREQHs[it].w); }
+        for(int i=0; i<nj; i++){ int ia=j0+i; int it=atypes[ia]; printf("GPU: atom j %3i it %3i pos %16.8f %16.8f %16.8f %16.8f  REQH %16.8f %16.8f %16.8f %16.8f \n", ia, it, atoms[ia].x, atoms[ia].y, atoms[ia].z, atoms[ia].w, tREQHs[it].x, tREQHs[it].y, tREQHs[it].z, tREQHs[it].w); }
+    }
     
     const int    ti    = atypes[iG];
     const float4 atomi = atoms [iG];
@@ -42,15 +50,14 @@ __kernel void evalSampleDerivatives(
     if( iep.x >= 0 ){ REQi.z -= tREQHs[iep.x].z; } // subtract charge of electron pair 1
     if( iep.y >= 0 ){ REQi.z -= tREQHs[iep.y].z; } // subtract charge of electron pair 2
     float4 fREQi = float4Zero;
-
     float Ei=0;
     // Process fragment 2 atoms in chunks of workgroup size
-    for(int j0=0; j0<nj; j0+=nL){
-        const int j = j0+iL;
+    for(int off=0; off<nj; off+=nL){
+        const int local_j = off + iL;
         
         // Load chunk of fragment 2 atoms to local memory
-        if(j<nj){
-            const int jj       = j0+j;
+        if(local_j<nj){
+            const int jj       = j0 + local_j;
             const int    tj    = atypes[jj];
             const float4 atomj = atoms [jj];
                   float4 REQj  = tREQHs[tj];
@@ -65,11 +72,15 @@ __kernel void evalSampleDerivatives(
 
         // Process atoms in local memory
         for(int jl=0; jl<nL; jl++){
-            const int j = j0+jl;
-            if(j < nj){
+            const int local_j2 = off + jl;
+            const int jj2 = j0 + local_j2;
+            if(local_j2 < nj){
                 // Load atom j data from local memory
                 const float4 REQj  = LREQKS[jl];
                 const float4 atomj = LATOMS[jl];
+
+                //if( iG == iDBG ){  printf("GPU: j %2i  pi( %16.8f %16.8f %16.8f ) pj( %16.8f %16.8f %16.8f )\n", jl, atomi.x, atomi.y, atomi.z, atomj.x, atomj.y, atomj.z); }
+                //printf("GPU: iG %2i iS %2i iL %2i j %2i pi( %16.8f %16.8f %16.8f ) pj( %16.8f %16.8f %16.8f )\n", iG, iS, iL, jj2, atomi.x, atomi.y, atomi.z, atomi.w, atomj.x, atomj.y, atomj.z, atomj.w); 
 
                 // Compute LJQH2 derivatives
                 float3 dij = atomj.xyz - atomi.xyz;
@@ -107,10 +118,16 @@ __kernel void evalSampleDerivatives(
                 //atomic_add_float4(&dEdREQs[n1+j], fREQj);
 
                 Ei += ELJ + Eel;
+
+                
+
+                //if( iG == iDBG ){  printf("GPU: j %2i ELJ %16.8e Eel %16.8e r %16.8e    \n", jl, ELJ, Eel, r); }
+                printf("GPU: iG %2i iS %2i iL %2i j %2i ELJ %16.8e Eel %16.8e r %16.8e  R0 %16.8e E0 %16.8e Q %16.8e H2 %16.8e     dE_dR0 %16.8e dE_dE0 %16.8e dE_dQ %16.8e dE_dH2 %16.8e \n", iG, iS, iL, jl, ELJ, Eel, r,  R0, E0, Q, H2, dE_dR0, dE_dE0, dE_dQ, dE_dH2); 
             }
         }
         barrier(CLK_LOCAL_MEM_FENCE);
     }
+    printf("GPU: iG %2i iS %2i iL %2i Ei %16.8e fREQi( %16.8e %16.8e %16.8e %16.8e )\n", iG, iS, iL, Ei, fREQi.x, fREQi.y, fREQi.z, fREQi.w);
     barrier(CLK_LOCAL_MEM_FENCE); // all local threads must finish loop above so we reuse  LATOMS
 
     LATOMS[iL].x = Ei;
@@ -120,11 +137,14 @@ __kernel void evalSampleDerivatives(
         float Emol = 0.0f;
         for(int i=0; i<ni; i++){ Emol += LATOMS[i].x; }  // sum total energy from atomic
         float2 EW = ErefW[iS];
-        LdE = (Emol - EW.x)*EW.y;
+        LdE = (Emol - EW.x)*EW.y;  // thread 0 writes shared value
+        if( iG == iDBG ){  printf("GPU: Emol %16.8e Eref %16.8e LdE %16.8e\n", Emol, EW.x, LdE); }
     } 
     barrier(CLK_LOCAL_MEM_FENCE);
 
     if (iL < ni) {
+        //if( iG == iDBG ){  printf("GPU: fREQi %16.8e LdE %16.8e\n", fREQi, LdE); }
+        printf("GPU: iG %2i iS %2i iL %2i dE %16.8e fREQi( %16.8e %16.8e %16.8e %16.8e )\n", iG, iS, iL, LdE, fREQi.x, fREQi.y, fREQi.z, fREQi.w);
         dEdREQs[i0 + iL] = fREQi * LdE;
     }
 }
