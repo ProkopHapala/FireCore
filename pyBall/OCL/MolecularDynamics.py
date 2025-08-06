@@ -506,7 +506,7 @@ class MolecularDynamics(OpenCLBase):
         self.queue.finish()
         return result
 
-    def scanNonBond2(self, pos, force, apos, aREQs, REQH0, ffpar, bRealloc=True, name=""):
+    def scanNonBond2(self, pos, force, apos, aREQs, REQH0, ffpar, bRealloc=True, nPBC=None, lvec=None, name=""):
         n  = len(pos)
         na = len(apos)
         if bRealloc:  self.realloc_scan(n, na=na)
@@ -516,27 +516,57 @@ class MolecularDynamics(OpenCLBase):
         self.toGPU_( self.apos_buff,   apos)
         self.toGPU_( self.aREQs_buff,  aREQs)  
         # Get kernel
-        kernel = self.prg.scanNonBond2
-        
-        # Set arguments
-        kernel.set_args(
-            np.int32(n),
-            cl_array.vec.make_float4(*REQH0),
-            self.poss_buff,
-            self.forces_buff,
-            np.int32(na),
-            self.apos_buff,
-            self.aREQs_buff,
-            cl_array.vec.make_float8(*ffpar)
-        )        
+
+        if nPBC is not None:
+            # Convert lvec to cl_Mat3 structure (3 float4 vectors)
+            lvec_cl = np.zeros((3,4), dtype=np.float32)
+            lvec_cl[:,:3] = lvec
+            npbc_cl = np.zeros((4), dtype=np.int32)
+            npbc_cl[:3] = nPBC
+            #kernel = self.prg.scanNonBond2PBC
+            kernel = self.prg.scanNonBond2PBC_2
+            kernel.set_args(
+                np.int32(n),
+                cl_array.vec.make_float4(*REQH0),
+                self.poss_buff,
+                self.forces_buff,
+                np.int32(na),
+                self.apos_buff,
+                self.aREQs_buff,
+                cl_array.vec.make_float8(*ffpar),
+                lvec_cl,
+                npbc_cl,
+            )
+        else:
+            kernel = self.prg.scanNonBond2        
+            kernel.set_args(
+                np.int32(n),
+                cl_array.vec.make_float4(*REQH0),
+                self.poss_buff,
+                self.forces_buff,
+                np.int32(na),
+                self.apos_buff,
+                self.aREQs_buff,
+                cl_array.vec.make_float8(*ffpar)
+            )        
         nloc=32
         local_size  = (nloc,)
         global_size = (clu.roundup_global_size(n, nloc),)
         T0 = time.time()
         cl.enqueue_nd_range_kernel(self.queue, kernel, global_size, local_size)
         self.queue.finish()
-        print(f"scanNonBond2() {name:<15} n: {n:<6} na: {na:<6} time: {time.time() - T0} [s]")
-        
+        T = time.time() - T0
+
+        if nPBC is not None:
+            npbc=(nPBC[0]*2+1)*(nPBC[1]*2+1)*(nPBC[2]*2+1)
+            ntot = n*na*npbc
+            #print(f"scanNonBond2() {name:<15} | {(T*1.e+9/ntot):>2.6f} [ns/op] {(T*1.e+12/ntot):>4.6f} [TOPS] | ntot: {ntot:<12}  np: {n:<6} na: {na:<6} nPBC({npbc:<6},{nPBC}) time: {T:3.6f} [s]")
+            print(f"scanNonBond2PBC() {name:<15} | {T*1.e+9/ntot:>8.4f} [ns/op] {(ntot/(T*1.e+9)):>8.4f} [GOPS] | ntot: {ntot:>12} np: {n:>6} na: {na:>6} nPBC({npbc:>6},{nPBC}) time: {T:>8.4f} [s]")
+        else:
+            ntot = n*na
+            #print(f"scanNonBond2() {name:<15} | {(T*1.e+9/ntot):>2.6f} [ns/op] {(T*1.e+12/ntot):>4.6f} [TOPS] | ntot: {ntot:<12}  np: {n:<6} na: {na:<6} nPBC({npbc:<6},{nPBC}) time: {T:3.6f} [s]")
+            print(f"scanNonBond2() {name:<15} | {T*1.e+9/ntot:>8.4f} [ns/op] {(ntot/(T*1.e+9)):>8.4f} [GOPS] | ntot: {ntot:>12} np: {n:>6} na: {na:>6} time: {T:>8.4f} [s]")
+
         # Download results
         result = self.fromGPU_( self.forces_buff, shape=(n, 4))
         return result

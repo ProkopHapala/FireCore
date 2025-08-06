@@ -1030,6 +1030,121 @@ __kernel void scanNonBond2(
     }
 }
 
+__kernel void scanNonBond2PBC( 
+    const int         n,      // 1  number of points
+    const float4      REQH0,  // 2  non-bonded parameters of test atom (RvdW,EvdW,QvdW,Hbond)
+    __global float4*  pos,    // 3  [n] positions of points
+    __global float4*  force,  // 4  [n] forces on points
+    const int         na,     // 5  number of atoms
+    __global float4*  apos,   // 6  [na] postions of atoms
+    __global float4*  REQs,   // 7  [na] non-bonded parameters of atoms (RvdW,EvdW,QvdW,Hbond)
+    const float8      ffpar,  // 8  parameters specific to the potential function used
+    const cl_Mat3     lvec,   // 9  lattice vectors for each system
+    const int4        nPBC    // 10 number of PBC images in each direction (x,y,z)
+){
+    __local float4 lPos[WG_scanNonBond2];          // cached atom positions
+    __local float4 lPar[WG_scanNonBond2];          // cached atom parameters
+    const int    lid = get_local_id(0);  // 0 … WG-1
+    const int    gid = get_global_id(0); // 0 … n-1
+    const float3 p   = pos[gid].xyz;     // position of the test point
+    float4       f   = (float4)(0.0f);
+    // tile atoms through shared memory
+    for(int il0=0; il0<na; il0+=WG_scanNonBond2){
+        int ia=il0+lid;      // global atom index
+        if(ia<na){
+            lPos[lid]=apos[ia];
+            lPar[lid]=REQs[ia];
+        }
+        barrier(CLK_LOCAL_MEM_FENCE);
+        // loop over the current tile
+        #pragma unroll           // optional
+        for (int j=0; j<WG_scanNonBond2; ++j) {
+            int ja=il0+j;
+            if(ia<na){
+                const float3 dp0  = lPos[j].xyz-p;
+                float4 REQH      = lPar[j];
+                REQH.x  +=REQH0.x;
+                REQH.yzw*=REQH0.yzw;
+                for(int ix=-nPBC.x; ix<=nPBC.x; ix++){
+                    const float3 dp0x = dp0 + lvec.b.xyz*ix;
+                    for(int iy=-nPBC.y; iy<=nPBC.y; iy++){
+                        const float3 dp0y = dp0x + lvec.c.xyz*iy;
+                        for(int iz=-nPBC.z; iz<=nPBC.z; iz++){
+                            const float3 dp = dp0y + lvec.a.xyz*iz;
+                            float4 fij;
+                            //fij=getForce(dp,REQH,ffpar.x);
+                            //<<<GET_FORCE_NONBOND   // this line will be replaced python pre-processor
+                            f+=fij;
+                        }
+                    }
+                }
+            }
+        }
+        barrier(CLK_LOCAL_MEM_FENCE);
+    }
+    if(gid<n){
+        force[gid]=f;
+    }
+}
+
+__kernel void scanNonBond2PBC_2( 
+    const int         n,      // 1  number of points
+    const float4      REQH0,  // 2  non-bonded parameters of test atom (RvdW,EvdW,QvdW,Hbond)
+    __global float4*  pos,    // 3  [n] positions of points
+    __global float4*  force,  // 4  [n] forces on points
+    const int         na,     // 5  number of atoms
+    __global float4*  apos,   // 6  [na] postions of atoms
+    __global float4*  REQs,   // 7  [na] non-bonded parameters of atoms (RvdW,EvdW,QvdW,Hbond)
+    const float8      ffpar,  // 8  parameters specific to the potential function used
+    const cl_Mat3     lvec,   // 9  lattice vectors for each system
+    const int4        nPBC    // 10 number of PBC images in each direction (x,y,z)
+){
+    __local float4 lPos[WG_scanNonBond2];          // cached atom positions
+    __local float4 lPar[WG_scanNonBond2];          // cached atom parameters
+    const int    lid = get_local_id(0);  // 0 … WG-1
+    const int    gid = get_global_id(0); // 0 … n-1
+    const float3 p   = pos[gid].xyz;     // position of the test point
+    float4       f   = (float4)(0.0f);
+    // tile atoms through shared memory
+    for(int il0=0; il0<na; il0+=WG_scanNonBond2){
+        int ia=il0+lid;      // global atom index
+        if(ia<na){
+            lPos[lid]=apos[ia];
+            lPar[lid]=REQs[ia];
+        }
+        barrier(CLK_LOCAL_MEM_FENCE);
+        // loop over the current tile
+        for(int ix=-nPBC.x; ix<=nPBC.x; ix++){
+            const float3 p0x = p + lvec.b.xyz*ix;
+            for(int iy=-nPBC.y; iy<=nPBC.y; iy++){
+                const float3 p0y = p0x + lvec.c.xyz*iy;
+                for(int iz=-nPBC.z; iz<=nPBC.z; iz++){
+                    const float3 p0 = p0y + lvec.a.xyz*iz;
+                    #pragma unroll           // optional
+                    for (int j=0; j<WG_scanNonBond2; ++j) {
+                        int ja=il0+j;
+                        if(ia<na){
+                            const float3 dp  = lPos[j].xyz-p0;
+                            float4 REQH      = lPar[j];
+                            REQH.x  +=REQH0.x;
+                            REQH.yzw*=REQH0.yzw;
+                            float4 fij;
+                            //fij=getForce(dp,REQH,ffpar.x);
+                            //<<<GET_FORCE_NONBOND   // this line will be replaced python pre-processor
+                            f+=fij;
+                        }
+                    }
+                }
+            }
+        }
+        barrier(CLK_LOCAL_MEM_FENCE);
+    }
+    if(gid<n){
+        force[gid]=f;
+    }
+}
+
+
 
 __kernel void getNonBond_template(
     const int4        nDOFs,        // 1 // (natoms,nnode) dimensions of the system

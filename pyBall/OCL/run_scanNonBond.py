@@ -185,7 +185,7 @@ def test_potential_scans( n=100, xmin=0.0, xmax=10.0, R0=3.0, E0=1.0, bMorse=1.6
     plt.show()
 
 
-def test_speed( n=1000, na=1000, bMorse=1.6, Rc=5.0 ):
+def test_speed( n=1000, na=1000, bMorse=1.6, Rc=5.0, nPBC=None, lvec=[[1.0,0.0,0.0],[0.0,1.0,0.0],[0.0,0.0,1.0]] ):
 
     # Initialize MolecularDynamics
     md = MolecularDynamics(nloc=32)
@@ -251,7 +251,7 @@ def test_speed( n=1000, na=1000, bMorse=1.6, Rc=5.0 ):
         substitutions = { "macros": { "GET_FORCE_NONBOND": code } }
         md.preprocess_opencl_source(kernel_path, substitutions, output_path)
         md.load_program(kernel_path=output_path)
-        fes = md.scanNonBond2( pos=pos, force=force, apos=apos, aREQs=aREQs, REQH0=REQH, ffpar=ffpar, name=name )
+        fes = md.scanNonBond2( pos=pos, force=force, apos=apos, aREQs=aREQs, REQH0=REQH, ffpar=ffpar, name=name, nPBC=nPBC, lvec=lvec )
 
         names    .append(name)
         energies .append(fes[:,3])
@@ -273,7 +273,10 @@ if __name__ == "__main__":
     # run it like this:
     #   python -u -m pyBall.OCL.run_scanNonBond | tee OUT-scanNonBond
 
-    #test_potential_scans()
+    test_potential_scans()
 
     
-    test_speed( n=10000, na=1000000 )
+    #test_speed( n=10000, na=1000000 )
+    #test_speed( n=100000, na=1000000 )
+    #test_speed( n=1000000, na=1000000 )
+    #test_speed( n=1000, na=1000, nPBC=[20,20,20]   )
