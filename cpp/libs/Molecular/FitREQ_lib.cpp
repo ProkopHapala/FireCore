@@ -1,4 +1,4 @@
-﻿
+
 
 #include "globals.h"
 
@@ -125,6 +125,18 @@ double run( int ialg, int iparallel, int nstep, double Fmax, double dt, double m
     double T = (getCPUticks()-t0);
     printf( "Time: run(nstep=%6i,nsamp=%6i,iparallel=%i) T= %8.3f [MTicks] %8.3f [ticks/conf]\n", nstep, W.samples.size(), iparallel, T*1e-6, T/(W.samples.size()*nstep) );
     return Err;
+}
+
+extern "C" void FitREQ_exportSampleToXYZ(int i, const char* fname){
+    if(W.samples.size() > i && i >= 0) {
+        W.exportSampleToXYZ(i, fname);
+    } else {
+        printf("ERROR in FitREQ_exportSampleToXYZ: sample index %d is out of range.\n", i);
+    }
+}
+
+extern "C" void FitREQ_exportAllSamplesToXYZ(const char* fname){
+    W.exportAllSamplesToXYZ(fname);
 }
 
 static double evalFitError( int n, double * Xs ){

@@ -2484,6 +2484,13 @@ void printDOFs() const {
     //printf("\n");
 }
 
+void exportSampleToXYZ(int iSample, const char* filename);
+void exportAllSamplesToXYZ(const char* filename);
+
+private:
+void writeSampleToFile(FILE* fout, int iSample);
+
+public:
 void printDOFregularization(){
     printf( "printDOFregularization()\n" );
     //printf("DOF  Type      Comp  Current       Position(min,x0,max)           Stiffness(min,k0,max)\n");
@@ -2498,6 +2505,48 @@ void printDOFregularization(){
 }
 
 }; // class FitREQ
+
+void FitREQ::writeSampleToFile(FILE* fout, int iSample){
+    Atoms* atoms = samples[iSample];
+    fprintf(fout, "%d\n", atoms->natoms);
+    fprintf(fout, "# sample %d, E_ref = %g\n", iSample, atoms->Energy);
+
+    Vec3d  apos_tmp[atoms->natoms];
+    double Qs_tmp  [atoms->natoms];
+    fillTempArrays(atoms, apos_tmp, Qs_tmp);
+
+    for(int i=0; i<atoms->natoms; i++){
+        int ityp = atoms->atypes[i];
+        const char* aname = params->atypes[ityp].name;
+        fprintf(fout, "%s %8.4f %8.4f %8.4f %8.4f\n", aname, apos_tmp[i].x, apos_tmp[i].y, apos_tmp[i].z, Qs_tmp[i]);
+    }
+}
+
+void FitREQ::exportSampleToXYZ(int iSample, const char* filename){
+    if(iSample < 0 || iSample >= samples.size()){
+        printf("ERROR in FitREQ::exportSampleToXYZ: iSample=%d is out of range [0..%ld-1]\n", iSample, samples.size());
+        return;
+    }
+    FILE* fout = fopen(filename, "w");
+    if(fout == NULL){
+        printf("ERROR in FitREQ::exportSampleToXYZ: Cannot open file '%s' for writing.\n", filename);
+        return;
+    }
+    writeSampleToFile(fout, iSample);
+    fclose(fout);
+}
+
+void FitREQ::exportAllSamplesToXYZ(const char* filename){
+    FILE* fout = fopen(filename, "w");
+    if(fout == NULL){
+        printf("ERROR in FitREQ::exportAllSamplesToXYZ: Cannot open file '%s' for writing.\n", filename);
+        return;
+    }
+    for(int i=0; i<samples.size(); i++){
+        writeSampleToFile(fout, i);
+    }
+    fclose(fout);
+}
 
 #endif
 

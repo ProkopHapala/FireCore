@@ -201,9 +201,11 @@ Allows assigning different weights to individual training samples, giving more i
 
 ### 7.2. Dummy Atom Implementation Details
 
-*   The `ne` (electron pairs) and `nH` (capping hydrogens) fields in `MM::AtomConf` are key. When `bAddEpairs` is true during `loadXYZ`, `MMFFBuilder` analyzes the bonding environment of atoms and adds these "virtual" neighbors.
+*   The `ne` (electron pairs) and `nH` (capping hydrogens) fields in `MM::AtomConf` are key. When `bAddEpairs` is true during `loadXYZ`, `MMFFBuilder` analyzes the bonding environment of atoms and adds these "virtual" neighbors. The `loadXYZ` function calls `addAndReorderEpairs` to manage the creation and reordering of these dummy atoms.
 *   These dummy atoms are then assigned their own `REQH` parameters (or use default ones) and are included in the energy calculations, even though they don't correspond to explicit atoms in the original `.xyz` file.
-*   The `AddedData` struct in `FitREQ` is used to store the specific information about these added features (e.g., their relative positions, host atom).
+*   The `AddedData` struct in `FitREQ` is used to store the specific information about these added features (e.g., their relative positions, host atom). Their positions are initialized using `initFittedAdata`.
+*   In the end, a database is created in the form of a list of `Atoms` objects (from `Atoms.h`), with an added pointer to `void* userData = 0;`. The instances of the `Atoms` class representing each training sample are then stored in the `samples<Atoms*>` vector.
+*   The `FitREQ` class extends the `MolecularDatabase` class (from `MolecularDatabase.h`) to efficiently work with this `userData`.
 
 ### 7.3. Parallelization
 
@@ -224,3 +226,61 @@ FitREQ is particularly useful for:
 *   **Teaching and Research:** Providing a flexible platform for students and researchers to explore force field development and molecular simulation.
 
 This documentation aims to serve as a comprehensive guide for both users seeking to apply FitREQ to their problems and developers looking to extend or maintain the library.
+
+---
+
+## Development / ToDo
+
+### Exporting Pre-processed Training Samples with Dummy Atoms
+
+**Goal:** Create a function to export the `Atoms` objects (training samples) from `FitREQ`, including the dummy atoms added during `loadXYZ` and `addAndReorderEpairs`, into a standard `.xyz` file format. This will facilitate testing and comparison with the OpenCL implementation.
+
+**Location:** The new function should ideally be added to `FitREQ.h` as a method of the `FitREQ` class, as it directly interacts with the internal `samples` vector and `AddedData` structures. A corresponding C-interface function can be added to `FitREQ_lib.cpp` for Python binding.
+
+**Function Signature (proposed for `FitREQ.h`):**
+
+```cpp
+// In FitREQ.h
+void exportSampleToXYZ( int iSample, const char* filename );
+```
+
+**Detailed Steps:**
+
+1.  **Understand `Atoms` and `AddedData` Structure:**
+    *   Recall that each training sample is an `Atoms` object within the `samples` vector.
+    *   Each `Atoms` object has a `void* userData` pointer, which `FitREQ` uses to store an instance of `AddedData`.
+    *   The `AddedData` struct contains information about the dummy atoms (e.g., `nAdded`, `addedAtomType`, `addedAtomPos`, `addedAtomCharge`).
+    *   The `Atoms` object itself contains the original atom positions (`pos`), types (`atypes`), and charges (`qs`).
+
+2.  **Accessing Sample Data:**
+    *   Inside `exportSampleToXYZ`, retrieve the `iSample`-th `Atoms` object from the `samples` vector.
+    *   Cast the `userData` pointer back to `AddedData*` to access dummy atom information.
+
+3.  **Constructing Output Data:**
+    *   For the specified `iSample`:
+        *   Get the number of original atoms (`samples[iSample]->natoms`).
+        *   Get the number of added dummy atoms (`((AddedData*)samples[iSample]->userData)->nAdded`).
+        *   The total number of atoms to write will be `samples[iSample]->natoms + ((AddedData*)samples[iSample]->userData)->nAdded`.
+        *   Iterate through the original atoms: write their type, x, y, z coordinates, and charge.
+        *   Iterate through the dummy atoms: write their type (e.g., "X" or "EP" for electron pair, "H" for capping hydrogen, based on `addedAtomType`), x, y, z coordinates, and charge. We need to decide on a naming convention for dummy atom types (e.g., `EP` for electron pairs, `CH` for capping hydrogens).
+
+4.  **File Writing:**
+    *   Open the `filename` in write mode.
+    *   Write the total number of atoms (original + dummy) on the first line.
+    *   Write a comment line (e.g., including sample index, energy if available, and any other relevant metadata from the `FitREQ` sample). Try to replicate the comment line format from `input_example.xyz`: `# n0 3 Etot 3.46679898796992282901 x0 01.40 z -90 H2O-D1_H2O-A1`.
+    *   For each atom (original and dummy): write `AtomType X Y Z Charge` on a new line, separated by spaces. Ensure proper floating-point precision for coordinates and charges.
+
+5.  **Error Handling:**
+    *   Check if the `filename` can be opened for writing.
+    *   Check if `iSample` is within valid bounds.
+    *   Handle cases where `userData` might be null or not of type `AddedData*`.
+
+**Testing:**
+*   Create a simple test case in Python that:
+    1.  Loads an XYZ file into `FitREQ`.
+    2.  Calls the new `exportSampleToXYZ` function.
+    3.  Compares the generated XYZ file with a reference file or visually inspects it.
+
+**Integration with `FitREQ_lib.cpp` and `pyBall/FitREQ.py`:**
+*   Add a C-interface function in `FitREQ_lib.cpp` (e.g., `_exportSampleToXYZ`) that calls the `FitREQ::exportSampleToXYZ` method.
+*   Add a corresponding Python wrapper function in `pyBall/FitREQ.py` that calls the C-interface function.
