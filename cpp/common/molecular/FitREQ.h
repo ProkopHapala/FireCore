@@ -145,12 +145,12 @@ struct AddedData{
 
     void fill_host(){
         // Debug: rebuild host from bs and print mapping
-        if(host){ for(int i=0;i<HBna;i++){ /*HBna may be 0; ignore*/ } }
-        if(bs==0 || host==0){ printf("AddedData::fill_host(): bs or host is null (bs=%p host=%p) nep=%d\n", (void*)bs, (void*)host, nep ); return; }
-        printf("AddedData::fill_host(): nep=%d\n", nep);
+        //if(host){ for(int i=0;i<HBna;i++){ /*HBna may be 0; ignore*/ } }
+        //if(bs==0 || host==0){ printf("AddedData::fill_host(): bs or host is null (bs=%p host=%p) nep=%d\n", (void*)bs, (void*)host, nep ); return; }
+        //printf("AddedData::fill_host(): nep=%d\n", nep);
         for(int i=0; i<nep; i++){
             Vec2i b = bs[i];
-            printf("  bs[%d] host=%d epair=%d\n", i, b.x, b.y);
+            //printf("  bs[%d] host=%d epair=%d\n", i, b.x, b.y);
             host[b.y] = b.x;
         }
     }
@@ -670,7 +670,7 @@ void addAndReorderEpairs(Atoms*& atoms) {
         dirs[i].normalize();
         bsbak  .push_back(bs  [i]);
         dirsbak.push_back(dirs[i]);
-        printf("  initial bs[%d]: host=%d epair=%d\n", i, bs[i].x, bs[i].y);
+        //printf("  initial bs[%d]: host=%d epair=%d\n", i, bs[i].x, bs[i].y);
     }
     // Initialize array marking which atoms are electron pairs
     // Start with all zeros; we will mark only final placed epair slots as 1
@@ -691,20 +691,16 @@ void addAndReorderEpairs(Atoms*& atoms) {
                 atoms->apos[j]   = bak2.apos[k];
                 atoms->atypes[j] = bak2.atypes[k];
                 atoms->charge[j] = bak2.charge[k];
-                printf("    mol1 place epair at j=%d from old k=%d type(new)=%s type(old)=%s\n", j, k, params->atypes[atoms->atypes[j]].name, params->atypes[bak2.atypes[k]].name);
-                
                 // Sanity: the placed epair index j should be of dummy type 'E'
-                if(params->atomTypeNames[ atoms->atypes[j] ][0] != 'E'){
-                    printf("WARNING mol1 epair placement: j=%d has non-E type=%s (old k=%d type(old)=%s)\n",
-                           j, params->atypes[atoms->atypes[j]].name, k, params->atypes[bak2.atypes[k]].name);
-                }
+                //printf("    mol1 place epair at j=%d from old k=%d type(new)=%s type(old)=%s\n", j, k, params->atypes[atoms->atypes[j]].name, params->atypes[bak2.atypes[k]].name);
+                if(params->atomTypeNames[ atoms->atypes[j] ][0] != 'E'){ printf("WARNING mol1 epair placement: j=%d has non-E type=%s (old k=%d type(old)=%s)\n", j, params->atypes[atoms->atypes[j]].name, k, params->atypes[bak2.atypes[k]].name);  }
                 // Update bond and direction information
                 if(nE0 < nep_found) {  // Bounds check
                     bs[nE0].x = bsbak[i].x;  // Root atom index stays same
                     bs[nE0].y = j;           // Update epair's new position
                     dirs[nE0] = dirsbak[i];
                     isep[j] = 1;
-                    printf("  mol1 map: i=%d oldE=%d -> newE=%d host=%d\n", i, k, j, bs[nE0].x);
+                    //printf("  mol1 map: i=%d oldE=%d -> newE=%d host=%d\n", i, k, j, bs[nE0].x);
                     nE0++;
                 }
             }
@@ -738,17 +734,14 @@ void addAndReorderEpairs(Atoms*& atoms) {
                 atoms->atypes[j] = bak2.atypes[k];
                 atoms->charge[j] = bak2.charge[k];
                 // Sanity: the placed epair index j should be of dummy type 'E'
-                if(params->atomTypeNames[ atoms->atypes[j] ][0] != 'E'){
-                    printf("WARNING mol2 epair placement: j=%d has non-E type=%s (old k=%d type(old)=%s)\n",
-                           j, params->atypes[atoms->atypes[j]].name, k, params->atypes[bak2.atypes[k]].name);
-                }
+                if(params->atomTypeNames[ atoms->atypes[j] ][0] != 'E'){ printf("WARNING mol2 epair placement: j=%d has non-E type=%s (old k=%d type(old)=%s)\n", j, params->atypes[atoms->atypes[j]].name, k, params->atypes[bak2.atypes[k]].name);  }
                 
                 // Update bond and direction information
                 bs  [nE0+iE].x = bsbak[i].x + nE0;  // Adjust root atom index
                 bs  [nE0+iE].y = j;
                 dirs[nE0+iE]   = dirsbak[i];
                 isep[j] = 1;
-                printf("    mol2 place epair at j=%d from old k=%d type(new)=%s type(old)=%s\n", j, k, params->atypes[atoms->atypes[j]].name, params->atypes[bak2.atypes[k]].name);
+                //printf("    mol2 place epair at j=%d from old k=%d type(new)=%s type(old)=%s\n", j, k, params->atypes[atoms->atypes[j]].name, params->atypes[bak2.atypes[k]].name);
             }
         }
     }
@@ -788,14 +781,10 @@ void addAndReorderEpairs(Atoms*& atoms) {
     _realloc0( data->host, atoms->natoms, -1 );
     for(int i=0; i<nep_found; i++){
         data->host[bs[i].y] = bs[i].x;
-        printf("  store bs[%d]: host=%d epair(new)=%d -> host[epair]=%d\n", i, bs[i].x, bs[i].y, data->host[bs[i].y]);
+        //printf("  store bs[%d]: host=%d epair(new)=%d -> host[epair]=%d\n", i, bs[i].x, bs[i].y, data->host[bs[i].y]);
     }
     // Print a quick summary of which indices are epairs and their host
-    for(int i=0; i<atoms->natoms; i++){
-        if(isep[i]){
-            printf("    epair index %d host=%d\n", i, data->host[i]);
-        }
-    }
+    // for(int i=0; i<atoms->natoms; i++){ if(isep[i]){printf("    epair index %d host=%d\n", i, data->host[i]);}}
     //data->isep      = isep;
     if(bEvalOnlyCorrections){
         int naFit = initFittedAdata( atoms, 0 );  // first pass just count the number of fitted atoms
@@ -2569,7 +2558,8 @@ void writeSampleToFile(FILE* fout, int iSample, const char* commentRest, bool bO
         double q = atoms->charge ? atoms->charge[i] : 0.0;
         int host = (ad && ad->host) ? ad->host[i] : -1;
 
-        if(bOneLetter){ aname[1] = '\0'; }
+        // Only truncate to one-letter for core atoms; keep full dummy names (e.g., E_h)
+        if(bOneLetter && host<0){ aname[1] = '\0'; }
         if(host<0){ fprintf(fout, "%s   %15.10f   %15.10f   %15.10f   %12.6f \n",     aname.c_str(), p.x, p.y, p.z, q); }
         else      { fprintf(fout, "%s   %15.10f   %15.10f   %15.10f   %12.6f   0.50%i\n", aname.c_str(), p.x, p.y, p.z, q, host); }
         //if(host>=0){ printf("  atom %d type=%s is DUMMY host=%d\n", i, aname, host); }

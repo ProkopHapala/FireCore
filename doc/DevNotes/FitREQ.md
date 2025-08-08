@@ -275,6 +275,37 @@ Notes:
 * The original `.xyz` second-line comment is preserved after the energy and `n0` metadata so that fragment/source info remains intact.
 * If desired, a consumer can easily reconstruct the set of dummy atoms via `{ i | host[i] >= 0 }` and the mapping to hosts via `host[i]`.
 
+#### 7.2.3 Sigma holes (E_h): typing and export
+
+Recent updates introduce a dedicated sigma‑hole dummy type `E_h` and ensure it propagates through building and export:
+
+* __Type definition__: Add `E_h` to `AtomTypes.dat` alongside `E` with appropriate parameters (see `tests/tFitREQ/data/AtomTypes.dat`).
+* __Binding__: `MMFFBuilder::bindParams()` tries to resolve `E_h` via `params->atomTypeDict`. If not found, it logs a note and falls back to generic `E`.
+* __Lazy init__: `MMFFBuilder::addSigmaHole()` now lazily initializes `E_h` from `params->atomTypeDict` if `bindParams()` was not called beforehand, guaranteeing `E_h` usage when available.
+* __Export fidelity__: `FitREQ::writeSampleToFile()` preserves full dummy atom names. The optional one‑letter truncation is applied only to core atoms (`host<0`), so sigma holes appear explicitly as `E_h` in `<fname>_Epairs.xyz`.
+
+This makes sigma holes distinguishable end‑to‑end and simplifies downstream analysis and visualization.
+
+#### 7.2.4 Geometry robustness for electron pairs
+
+To avoid overlapping dummy atoms and ill‑defined directions:
+
+* __Pi‑geometry guard__: `MMFFBuilder::addEpairsByPi()` only uses pi‑based geometry when a valid pi system and direction exist; otherwise it falls back to non‑pi geometry.
+* __Zero‑direction warning__: `MMFFBuilder::addEpair()` detects `|h|≈0` and emits a warning: dummy would be placed on host. This surfaces problematic cases early and prevents silent failures. A future improvement can add a final placement fallback when this occurs.
+
+#### 7.2.5 Debug logging defaults
+
+Verbose tracing remains available but is muted by default to reduce noise in normal runs. The following prints are commented out (search for `printf` in the listed functions to toggle):
+
+* `MMFFBuilder::addEpair()` detailed placement line
+* `MMFFBuilder::addEpairsByPi()` per‑atom vector dump
+* `MMFFBuilder::addSigmaHole()` placement line (lazy `E_h` discovery remains noted in code, also commented by default)
+* `MMFFBuilder::listEpairBonds()` per‑bond dump
+* `FitREQ::addAndReorderEpairs()` remapping prints (sanity warnings preserved)
+* `AddedData::fill_host()` per‑entry dump
+
+Keep the sanity checks enabled (e.g., type checks for epair slots) to fail fast on inconsistencies.
+
 ### 7.3. Parallelization
 
 *   `FitREQ` supports parallel gradient accumulation (e.g., via OpenMP) to speed up the optimization process, especially for large training sets. The `iparallel` flag in `run()` controls this.

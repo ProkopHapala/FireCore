@@ -54,8 +54,8 @@ fname = 'all.xyz'
 
 fit.loadTypes()
 
-fname = "input_example_1.xyz"
-#fname = "input_example.xyz"
+#fname = "input_example_1.xyz"
+fname = "input_example.xyz"
 bOutXYZ = True
 bAddEpairs = True
 print(f"Reading data from {fname}")

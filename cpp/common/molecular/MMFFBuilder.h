@@ -446,6 +446,7 @@ class Builder{  public:
 
     int itypHcap  =-1;
     int itypEpair =-1;
+    int itypSigmaHole = -1;  // optional dedicated sigma-hole dummy type (e.g., E_h)
     int itype_min = 1; // type 0 is * (not valid type)
 
     Atom capAtom      = Atom{ (int)NeighType::H,     -1,-1, {0,0,0}, Atom::HcapREQ };
@@ -650,6 +651,10 @@ class Builder{  public:
         atomTypeDict  = &params->atomTypeDict;
         itypHcap  = params->atomTypeDict.at("H");
         itypEpair = params->atomTypeDict.at("E");
+        // Optional sigma-hole type (won't fail if absent)
+        auto it = atomTypeDict->find("E_h");
+        if(it!=atomTypeDict->end()){ itypSigmaHole = it->second; printf("MM::Builder.bindParams(): found E_h type index=%d\n", itypSigmaHole); }
+        else{ itypSigmaHole = -1; printf("MM::Builder.bindParams(): E_h not found; sigma holes will use generic E\n"); }
     }
 
     void initDefaultAtomTypeDict(){
@@ -925,19 +930,25 @@ class Builder{  public:
     }
 
     //void addCap(int ia,Vec3d& hdir, Atom* atomj, int btype){
-    Vec3d addEpair(int ia, const Vec3d& hdir, double l=-0.5, bool bInsertBond=true, bool bInsertAtoms=true ){
+    Vec3d addEpair(int ia, const Vec3d& hdir, double l=-0.5, bool bInsertBond=true, bool bInsertAtoms=true, bool bUseCurrentType=false ){
         //printf( "addEpairsByPi[%i] h(%g,%g,%g) bInsertBond=%i bInsertAtoms=%i\n", ia, hdir.x,hdir.y,hdir.z, bInsertBond, bInsertAtoms );
         int ja=atoms.size();
-        capAtom.type = itypEpair;
-        if(params){ 
-            int ityp = atoms[ia].type;
-            capAtom.type = params->atypes[ityp].ePairType; 
-            //if( capAtom.type<itype_min ){ printf("ERROR: in MM::Builder::addEpair(ia=%i) type %i %8-s : capAtom.type(%i) < itype_min(%i) \n", ia, ityp, params->atypes[ityp].name, capAtom.type, itype_min );}
-            if(l<0)l=params->atypes[capAtom.type].Ruff;  // NOTE: we use Ruff as default length for epair, this is questionable, but this parameter has no other use for epair
-        }else{ l=-l; }
+        if(!bUseCurrentType){
+            capAtom.type = itypEpair;
+            if(params){ 
+                int ityp = atoms[ia].type;
+                capAtom.type = params->atypes[ityp].ePairType; 
+            }
+        }else{
+            if(capAtom.type<itype_min){ capAtom.type = itypEpair; }
+        }
+        if(params){ if(l<0) l=params->atypes[capAtom.type].Ruff; }else{ l=-l; }
         
         capAtom.pos = atoms[ia].pos + hdir*l;
-        //printf( "MMFFBuilder::addEpair() [%i] type %i |h|=%g l=%g hdir(%g,%g,%g)  pBas(%g,%g,%g) pCap(%g,%g,%g) \n", ja, capAtom.type, hdir.norm(), l, hdir.x,hdir.y,hdir.z, atoms[ia].pos.x,atoms[ia].pos.y,atoms[ia].pos.z, capAtom.pos.x, capAtom.pos.y, capAtom.pos.z );
+        double hn = hdir.norm();
+        //if(params) { printf("MMFFBuilder::addEpair ia=%d hostT=%s capT=%s |h|=%g l=%g pos=(%g,%g,%g) host=(%g,%g,%g)\n", ia, params->atypes[atoms[ia].type].name, params->atypes[capAtom.type].name, hn, l, capAtom.pos.x,capAtom.pos.y,capAtom.pos.z, atoms[ia].pos.x,atoms[ia].pos.y,atoms[ia].pos.z); }
+        //else       { printf("MMFFBuilder::addEpair ia=%d |h|=%g l=%g\n", ia, hn, l);}
+        if(hn<1e-8){ printf("WARNING addEpair(): zero direction for ia=%d -> dummy placed on host!\n", ia); }
         if(bInsertAtoms)insertAtom(capAtom);
         if(bInsertBond){
             capBond.atoms.set(ia,ja);
@@ -1755,14 +1766,12 @@ class Builder{  public:
     int addEpairsByPi(int ia, double l=-0.5, Vec3d* epos=0, bool byPi=true ){
         /// Add electron-pair (i.e. positively charge dummy atom) to all node atoms
         //printf( "addEpairsByPi[%i] \n", ia  );
-        int ic=atoms[ia].iconf;
-        if(ic<0)return false;
-
+        // int ne=0;  // removed duplicate; we use ne from conf below
         int ityp=atoms[ia].type;
-        if( params->atypes[ityp].ePairType<itype_min )return false;
+        if( params->atypes[ityp].ePairType<itype_min )return 0;
         //printf( "addEpairsByPi[%i] l=%g t: %i %-8s \n", ia, l, ityp, params->atypes[ityp].name  );
 
-        AtomConf& conf = confs[ic];
+        AtomConf& conf = confs[atoms[ia].iconf];
         int ne = conf.ne;
         //if( (ne<1)||(conf.nbond<2)||(conf.npi>2) )return 0;
         if( (ne<1) )return 0;
@@ -1771,11 +1780,10 @@ class Builder{  public:
         int nb = conf.nbond;
         Vec3d hs[4];
         loadNeighbors ( ia, nb,       conf.neighs, hs );
-        //if(byPi){ makeConfGeomPi( nb, conf.npi, conf.pi_dir, hs ); }
-        //else    { makeConfGeom( nb, conf.npi, hs ); } 
-        if(byPi){  if(  conf.pi_dir.norm2() < 0.1 ){ byPi=false; }   }
-        //printf( "DEBUG: addEpairsByPi[%i] BEFORE makeConfGeom/Pi: byPi=%i  nb=%i npi=%i\n", ia, byPi, nb, conf.npi ); for(int k=0; k<4; ++k) { printf("  hs[%i]=(%g,%g,%g)\n", k, hs[k].x, hs[k].y, hs[k].z); }
-        if(byPi){
+        // Prefer pi-based geometry only if a pi system exists and pi_dir is defined
+        bool usePi = byPi && (conf.npi>0) && (conf.pi_dir.norm2()>=0.1);
+        //printf( "DEBUG: addEpairsByPi[%i] BEFORE makeConfGeom/Pi: usePi=%i  nb=%i npi=%i\n", ia, usePi, nb, conf.npi ); for(int k=0; k<4; ++k) { printf("  hs[%i]=(%g,%g,%g)\n", k, hs[k].x, hs[k].y, hs[k].z); }
+        if(usePi){
             //printf( "DEBUG: addEpairsByPi[%i] CALLING makeConfGeomPi(nb=%i, npi=%i, pi_dir=(%g,%g,%g))\n", ia, nb, conf.npi, conf.pi_dir.x, conf.pi_dir.y, conf.pi_dir.z );
             makeConfGeomPi( nb, conf.npi, conf.pi_dir, hs );
         } else {
@@ -1787,7 +1795,13 @@ class Builder{  public:
         
         //if(byPi){ makeConfGeomPi( nb, conf.npi, conf.pi_dir, hs ); } // NOTE: we need to asign pi_dir before calling makeConfGeomPi(), this is however necessary for atoms like =O which do not have other bonds direction of e-pair is not defined if pi-plane is not defined
         //else    { makeConfGeom  ( nb, conf.npi,              hs ); }  
-        //printf( "addEpairsByPi[%i, typ=%i=%s] npi=%i hs[0](%6.3f,%6.3f,%6.3f) hs[1](%6.3f,%6.3f,%6.3f) hs[2](%6.3f,%6.3f,%6.3f) hs[3](%6.3f,%6.3f,%6.3f) \n", ia, ityp, params->atypes[ityp].name,  hs[0].x,hs[0].y,hs[0].z,   hs[1].x,hs[1].y,hs[1].z,   hs[2].x,hs[2].y,hs[2].z, hs[3].x,hs[3].y,hs[3].z );
+        
+        // printf( "addEpairsByPi[%i typ=%s] nb=%i npi=%i hs0=(%6.3f,%6.3f,%6.3f)|%g hs1=(%6.3f,%6.3f,%6.3f)|%g hs2=(%6.3f,%6.3f,%6.3f)|%g hs3=(%6.3f,%6.3f,%6.3f)|%g l=%g usePi=%i\n",
+        //         ia, params->atypes[ityp].name, nb, conf.npi,
+        //         hs[0].x,hs[0].y,hs[0].z, hs[0].norm(),
+        //         hs[1].x,hs[1].y,hs[1].z, hs[1].norm(),
+        //         hs[2].x,hs[2].y,hs[2].z, hs[2].norm(),
+        //         hs[3].x,hs[3].y,hs[3].z, hs[3].norm(), l, usePi );
 
         // { // Debug
         //     sprintf( tmpstr, "atom%03i_hs.xyz", ia );
@@ -1808,6 +1822,7 @@ class Builder{  public:
             //printf( "addEpairsToAtoms[%i] i=%i ib=%i |h|=%g |hb|=%g |hpi|=%g  l=%g \n", ia, i, ib, hs[ib].norm(), hs[0].norm(), conf.pi_dir.norm(), l );
             if(bIns){ conf.ne=0; }
             Vec3d pe = addEpair(ia,hs[ib], l, bIns, bIns );
+            if(hs[ib].norm()<1e-8){ printf("WARNING addEpairsByPi(): zero hs for ia=%d ib=%d -> epair on host\n", ia, ib); }
             //printf( "MMFFBuilder::addEpairsByPi() [%i] i=%i ib=%i |h|=%g |hb|=%g |hpi|=%g  l=%g pe(%g,%g,%g)\n", ia, i, ib, hs[ib].norm(), hs[0].norm(), conf.pi_dir.norm(), l, pe.x,pe.y,pe.z );
             if (!bIns){ epos[i] = pe; }
         }
@@ -1875,7 +1890,17 @@ class Builder{  public:
         int iab = bonds[ib].getNeighborAtom(ia);
         Vec3d h = atoms[ia].pos - atoms[iab].pos;
         h.normalize();
-        addEpair(ia,h,l);
+        // Prefer dedicated sigma-hole type if available; lazy-init if not bound
+        if(itypSigmaHole<itype_min && params){
+            auto it = params->atomTypeDict.find("E_h");
+            if(it!=params->atomTypeDict.end()){
+                itypSigmaHole = it->second;
+                //printf("MM::Builder.addSigmaHole(): lazily found E_h type index=%d\n", itypSigmaHole);
+            }
+        }
+        if(itypSigmaHole>=itype_min){ capAtom.type = itypSigmaHole; }
+        Vec3d pos = addEpair(ia,h,l, true, true, itypSigmaHole>=itype_min );
+        //if(params){ printf("addSigmaHole ia=%d hostT=%s capT=%s dir=(%g,%g,%g) pos=(%g,%g,%g)\n", ia, params->atypes[ityp].name, params->atypes[capAtom.type].name, h.x,h.y,h.z, pos.x,pos.y,pos.z ); }
         return true;
     }
     int addSigmaHoles( int ia0=0, int imax=-1, bool bUseParams=true, double Lep=-0.5  ){
@@ -1911,8 +1936,9 @@ class Builder{  public:
                     if( params->atypes[it].name[0]=='E' ){
                         //printf("listEpairBonds[%i](%i,%i) types(%s,%s) \n", nfound, ia, ja, params->atypes[atoms[ia].type].name, params->atypes[it].name  );
                         _bs  .push_back( (Vec2i){ia,ja} );   //   ia = Host_atom_index ja= Electron_Pair_Index
-                        _dirs.push_back( atoms[ja].pos - atoms[ia].pos );
-                        //printf("listEpairBonds[%i](%i,%i) types(%s,%s) dir(%g,%g,%g)\n", nfound, ia, ja, params->atypes[atoms[ia].type].name, params->atypes[it].name, _dirs.back().x,_dirs.back().y,_dirs.back().z  );
+                        Vec3d d = atoms[ja].pos - atoms[ia].pos;
+                        _dirs.push_back( d );
+                        //printf("listEpairBonds[%i]: host=%d(%s) ep=%d(%s) dir=(%g,%g,%g)|%g\n", nfound, ia, params->atypes[atoms[ia].type].name, ja, params->atypes[it].name, d.x,d.y,d.z, d.norm() );
                         nfound++;   
                     };
                 }
