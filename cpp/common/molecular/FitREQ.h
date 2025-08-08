@@ -143,6 +143,18 @@ struct AddedData{
 
     }
 
+    void fill_host(){
+        // Debug: rebuild host from bs and print mapping
+        if(host){ for(int i=0;i<HBna;i++){ /*HBna may be 0; ignore*/ } }
+        if(bs==0 || host==0){ printf("AddedData::fill_host(): bs or host is null (bs=%p host=%p) nep=%d\n", (void*)bs, (void*)host, nep ); return; }
+        printf("AddedData::fill_host(): nep=%d\n", nep);
+        for(int i=0; i<nep; i++){
+            Vec2i b = bs[i];
+            printf("  bs[%d] host=%d epair=%d\n", i, b.x, b.y);
+            host[b.y] = b.x;
+        }
+    }
+
     //~AddedData() {dealloc();}
 
 };
@@ -358,9 +370,13 @@ void reduce_sample_fdofs(){
 
 void printTypeParams( bool bOnlyPresent=true ){
     printf("printTypeParams():\n");
-    int ntype = params->atypes.size();
+    int needNtype = params->atypes.size();
+    if( (typeREQs==nullptr) || (ntype < needNtype) ){
+        printf("  WARNING: typeREQs not initialized (ntype=%d < need=%d). Skipping.\n", ntype, needNtype);
+        return;
+    }
     bool bCounted = typesPresent.size() > 0;
-    for(int i=0; i<ntype; i++){
+    for(int i=0; i<needNtype; i++){
         int ncount = -1;
         if(bCounted){
             ncount = typesPresent[i];
@@ -517,18 +533,22 @@ int loadDOFSelection( const char* fname ){
 //     return builder.exportAtoms(); 
 // }
 
+
+
+
 int initFittedAdata( Atoms* atoms, AddedData* adata, bool byType=true ) {
     //printf("initFittedAdata() isamp=%3i: ntypes=%3i natoms=%3i \n", samples.size(), fittedTypes.size(), atoms->natoms );
     int nfound  =  0;
     int nfound0 = -1;
     //for(int i=0; i<fittedTypes.size(); i++){ printf("initFittedAdata(): fittedTypes[%i]: %i %s \n", i, fittedTypes[i], params->atypes[i].name ); }
-    if( adata ){
-        //printf("initFittedAdata(): nepairs=%i \n", adata->nep );
-        for(int i=0; i<adata->nep; i++){ 
-            //printf("initFittedAdata(): adata->bs[%i]: %i %i \n", i, adata->bs[i].x, adata->bs[i].y );
-            Vec2i b=adata->bs[i]; adata->host[b.y] = b.x; 
-        } // (host_atom_index, epair_index)
-    }
+    // if( adata ){
+    //     //printf("initFittedAdata(): nepairs=%i \n", adata->nep );
+    //     for(int i=0; i<adata->nep; i++){ 
+    //         //printf("initFittedAdata(): adata->bs[%i]: %i %i \n", i, adata->bs[i].x, adata->bs[i].y );
+    //         Vec2i b=adata->bs[i]; adata->host[b.y] = b.x; 
+    //     } // (host_atom_index, epair_index)
+    // }
+    if( adata ){ adata->fill_host(); }
     for(int ia=0; ia<atoms->natoms; ia++ ) {
         int ityp   = atoms->atypes[ia];
         Quat4d REQ = typeREQs[ ityp ];
@@ -611,33 +631,36 @@ void printSampleFitSplit(int isamp){
  * @param fout Optional file pointer to write XYZ output (can be null)
  * @return void, but modifies atoms in place
  */
-void addAndReorderEpairs(Atoms*& atoms, FILE* fout=nullptr) {
+void addAndReorderEpairs(Atoms*& atoms) {
     //printf( "addAndReorderEpairs() samples.size()=%i \n", samples.size() );
     // Store original system information
     Atoms* bak = atoms;
     int n0bak  = bak->n0;        // Number of atoms in first molecule
     int natbak = bak->natoms;    // Total number of atoms before adding epairs
     int n1bak  = natbak - n0bak; // Number of atoms in second molecule
+    double Ebak = bak->Energy;
 
     // Add electron pairs to the system
+    // Ensure metadata is set before builder runs
+    //atoms->n0     = bak->n0;
+    //atoms->Energy = bak->Energy;
     //atoms = addEpairs(atoms);      // This modifies the builder's state
     builder.params = params;
-    atoms = builder.buildBondsAndEpairs(atoms, false );
-
-    atoms->n0 = bak->n0;
-    atoms->Energy = bak->Energy;
+    //printf("addAndReorderEpairs(): before buildBondsAndEpairs nat=%d n0=%d\n", atoms->natoms, atoms->n0);
+    //atoms = builder.buildBondsAndEpairs(atoms, false, -1.35, false ); // by Ruff
+    atoms = builder.buildBondsAndEpairs(atoms, false, -0.5,  true  );   // by Rvdw
+    atoms->Energy = Ebak;
+    //printf("addAndReorderEpairs(): after buildBondsAndEpairs nat=%d n0=%d\n", atoms->natoms, atoms->n0);
+    //builder.checkNumberOfBonds(true, false);
     for(int i=0; i<natbak; i++){ atoms->charge[i] = bak->charge[i]; }
-    
-
     // Get electron pair information from builder
     Vec2i* bs   =nullptr;    // electron pair bond { ia= Host_atom_index,  ja=Electron_Pair_Index }
     Vec3d* dirs =nullptr;    // direction of electron pair bond  (Builder will allocate bs,dirs internally )
     int nep_found = builder.listEpairBonds(bs, dirs);  // This uses builder's state from addEpairs
+    printf("addAndReorderEpairs(): natbak=%d n0bak=%d atoms->natoms=%d nep_found=%d\n", natbak, n0bak, atoms->natoms, nep_found);
     if(nep_found <= 0) { printf("Warning: No electron pairs found\n"); return;  }
-
     //int ntypesTot = params->atypes.size();
     //bool fittedTypes[ ntypesTot ];
-
     // Store original bonds and directions before any reordering
     std::vector<Vec2i> bsbak;
     std::vector<Vec3d> dirsbak;
@@ -647,19 +670,17 @@ void addAndReorderEpairs(Atoms*& atoms, FILE* fout=nullptr) {
         dirs[i].normalize();
         bsbak  .push_back(bs  [i]);
         dirsbak.push_back(dirs[i]);
+        printf("  initial bs[%d]: host=%d epair=%d\n", i, bs[i].x, bs[i].y);
     }
-
     // Initialize array marking which atoms are electron pairs
+    // Start with all zeros; we will mark only final placed epair slots as 1
     int* isep = new int[atoms->natoms];
-    for(int i=0; i < natbak; i++){ isep[i]=0; }         // Original atoms
-    for(int i=natbak; i < atoms->natoms; i++){ isep[i]=1; } // New epairs
-
+    for(int i=0; i < atoms->natoms; i++){ isep[i]=0; }
     // Make temporary copy for reordering
     Atoms bak2;
     bak2.copyOf(*atoms);
-
     // Process electron pairs for first molecule (mol1)
-    int nE0 = 0;  // Number of epairs in first molecule
+    int nE0 = 0;  // Number of epairs in first molecule (to be placed right after mol1 cores)
     for(int i=0; i<nep_found; i++) {
         if(bsbak[i].x < n0bak) {  // Check if root atom is in first molecule
             int j = n0bak + nE0;   // Target position for this epair
@@ -670,35 +691,39 @@ void addAndReorderEpairs(Atoms*& atoms, FILE* fout=nullptr) {
                 atoms->apos[j]   = bak2.apos[k];
                 atoms->atypes[j] = bak2.atypes[k];
                 atoms->charge[j] = bak2.charge[k];
-                atoms->n0++;
+                printf("    mol1 place epair at j=%d from old k=%d type(new)=%s type(old)=%s\n", j, k, params->atypes[atoms->atypes[j]].name, params->atypes[bak2.atypes[k]].name);
                 
+                // Sanity: the placed epair index j should be of dummy type 'E'
+                if(params->atomTypeNames[ atoms->atypes[j] ][0] != 'E'){
+                    printf("WARNING mol1 epair placement: j=%d has non-E type=%s (old k=%d type(old)=%s)\n",
+                           j, params->atypes[atoms->atypes[j]].name, k, params->atypes[bak2.atypes[k]].name);
+                }
                 // Update bond and direction information
                 if(nE0 < nep_found) {  // Bounds check
                     bs[nE0].x = bsbak[i].x;  // Root atom index stays same
                     bs[nE0].y = j;           // Update epair's new position
                     dirs[nE0] = dirsbak[i];
                     isep[j] = 1;
+                    printf("  mol1 map: i=%d oldE=%d -> newE=%d host=%d\n", i, k, j, bs[nE0].x);
                     nE0++;
                 }
             }
         }
     }
-
+    // Now set the split between mol1 and mol2: after core(mol1) + epairs(mol1)
+    atoms->n0 = n0bak + nE0;
     int nE1 = atoms->natoms - natbak - nE0;  // Number of epairs in second molecule
-
-    // Copy atoms from second molecule (mol2)
-    for(int i=0; i<n1bak && (atoms->n0 + i) < atoms->natoms; i++) {
-        int j = atoms->n0 + i;     // Target position
-        int k = n0bak + i;         // Source position
-        
-        if(k < bak2.natoms) {  // Bounds check
+    // Copy atoms from second molecule (mol2) right after mol1 epairs
+    for(int i=0; i<n1bak; i++) {
+        int j = atoms->n0 + i;     // Target position (after mol1 core + epairs)
+        int k = n0bak + i;         // Source position (original mol2 core)
+        if(j < atoms->natoms && k < bak2.natoms) {  // Bounds check
             atoms->apos[j]   = bak2.apos[k];
             atoms->atypes[j] = bak2.atypes[k];
             atoms->charge[j] = bak2.charge[k];
-            isep[j] = 0;
+            isep[j] = 0; // core atoms are not epairs
         }
     }
-
     // Process electron pairs for second molecule (mol2)
     int iE = -1;
     for(int i=0; i<nep_found; i++) {
@@ -712,12 +737,18 @@ void addAndReorderEpairs(Atoms*& atoms, FILE* fout=nullptr) {
                 atoms->apos[j]   = bak2.apos[k];
                 atoms->atypes[j] = bak2.atypes[k];
                 atoms->charge[j] = bak2.charge[k];
+                // Sanity: the placed epair index j should be of dummy type 'E'
+                if(params->atomTypeNames[ atoms->atypes[j] ][0] != 'E'){
+                    printf("WARNING mol2 epair placement: j=%d has non-E type=%s (old k=%d type(old)=%s)\n",
+                           j, params->atypes[atoms->atypes[j]].name, k, params->atypes[bak2.atypes[k]].name);
+                }
                 
                 // Update bond and direction information
                 bs  [nE0+iE].x = bsbak[i].x + nE0;  // Adjust root atom index
                 bs  [nE0+iE].y = j;
                 dirs[nE0+iE]   = dirsbak[i];
                 isep[j] = 1;
+                printf("    mol2 place epair at j=%d from old k=%d type(new)=%s type(old)=%s\n", j, k, params->atypes[atoms->atypes[j]].name, params->atypes[bak2.atypes[k]].name);
             }
         }
     }
@@ -734,28 +765,45 @@ void addAndReorderEpairs(Atoms*& atoms, FILE* fout=nullptr) {
     delete bak;
 
     // // Store electron pair relationships in AddedData
+    // Debug dump: isep and types
+    printf("  isep/type dump: ");
+    for(int i=0;i<atoms->natoms;i++){
+        if(isep[i]){ printf(" [i=%d %s]", i, params->atypes[atoms->atypes[i]].name); }
+    }
+    printf("\n");
+    // Sanity: any isep[i]==1 must have type starting with 'E'
+    for(int i=0;i<atoms->natoms;i++){
+        if(isep[i]){
+            if(params->atomTypeNames[ atoms->atypes[i] ][0] != 'E'){
+                printf("WARNING: isep[%d]=1 but type=%s is not E\n", i, params->atypes[atoms->atypes[i]].name);
+            }
+        }
+    }
+
     AddedData* data = new AddedData();
     atoms->userData = data;
     data->nep       = nep_found;
-    data->bs        = bs;       //  bs[i].x is epair index, bs[i].y is host atom index
+    data->bs        = bs;
     data->dirs      = dirs;   
     _realloc0( data->host, atoms->natoms, -1 );
-    for(int i=0; i<nep_found; i++){ data->host[bs[i].y] = bs[i].x; } // bs[i].x is host atom index, bs[i].y is epair index
+    for(int i=0; i<nep_found; i++){
+        data->host[bs[i].y] = bs[i].x;
+        printf("  store bs[%d]: host=%d epair(new)=%d -> host[epair]=%d\n", i, bs[i].x, bs[i].y, data->host[bs[i].y]);
+    }
+    // Print a quick summary of which indices are epairs and their host
+    for(int i=0; i<atoms->natoms; i++){
+        if(isep[i]){
+            printf("    epair index %d host=%d\n", i, data->host[i]);
+        }
+    }
     //data->isep      = isep;
-
     if(bEvalOnlyCorrections){
         int naFit = initFittedAdata( atoms, 0 );  // first pass just count the number of fitted atoms
         data->reallocHB( atoms->natoms, naFit );  // then we can allocate the arrays
         initFittedAdata( atoms, data );           // second pass store the fitted atoms
     }
-    
-    // Write output if requested
-    if(fout) {
-        char line[1024];
-        sprintf(line, "#	n0 %i E_tot %g", atoms->n0, atoms->Energy);
-        params->writeXYZ(fout, atoms, line, 0, true);
-    }
     //printf( "addAndReorderEpairs() DONE \n" );
+    //return atoms;
 }
 
 /**
@@ -769,10 +817,17 @@ void addAndReorderEpairs(Atoms*& atoms, FILE* fout=nullptr) {
  */
 int loadXYZ( const char* fname, bool bAddEpairs=false, bool bOutXYZ=false ){
     printf( "FitREQ::loadXYZ(%s) bAddEpairs=%i bOutXYZ=%i\n", fname, bAddEpairs, bOutXYZ );
+    printf( "FitREQ::loadXYZ params=%p\n", (void*)params );
+    if(params==nullptr){
+        printf("ERROR in FitREQ::loadXYZ: params==nullptr. Did you call loadTypes() before loadXYZ()?\n");
+        fflush(stdout);
+        exit(0);
+    }
     FILE* fin = fopen( fname, "r" );
     if(fin==0){ printf("cannot open '%s' \n", fname ); exit(0);}
     const int nline=1024;
     char line[1024];
+    char str_bak[1024];
     char at_name[8];
     // --- Open output file
     FILE* fout=0;
@@ -791,7 +846,10 @@ int loadXYZ( const char* fname, bool bAddEpairs=false, bool bOutXYZ=false ){
                 atoms = new Atoms(na);
             }else{ printf( "ERROR in FitREQ::loadXYZ() Suspicious number of atoms (%i) while reading `%s`  => Exit() \n", na, fname ); exit(0); }
         }else if( il==1 ){               // --- Read comment line ( read reference energy )
-            sscanf( line, "%*s %*s %i %*s %lf ", &(atoms->n0), &(atoms->Energy) );
+            int offset=0;
+            sscanf( line, "%*s %*s %i %*s %lf %n", &(atoms->n0), &(atoms->Energy), &offset );
+            strcpy(str_bak, line + offset);
+            printf("sscanf comment %s | n:  %i E: %lf | %s\n", line, atoms->n0, atoms->Energy, str_bak);
         }else if( il<atoms->natoms+2 ){  // --- Road atom line (type, position, charge)
             double x,y,z,q;
             int nret = sscanf( line, "%s %lf %lf %lf %lf", at_name, &x, &y, &z, &q );
@@ -805,7 +863,7 @@ int loadXYZ( const char* fname, bool bAddEpairs=false, bool bOutXYZ=false ){
         il++;
         if( il >= atoms->natoms+2 ){    // ---- store sample atoms to batch
             if(bAddEpairs){ 
-                addAndReorderEpairs(atoms, fout); 
+                addAndReorderEpairs(atoms);
             }else{
                 AddedData* data = new AddedData();
                 _realloc0( data->host, atoms->natoms, -1 );
@@ -818,6 +876,9 @@ int loadXYZ( const char* fname, bool bAddEpairs=false, bool bOutXYZ=false ){
                 exit(0); 
             }
             samples.push_back( atoms );
+            //if(fout){ writeSampleToFile(fout, (int)samples.size()-1, str_bak); }     // ouput for NonBondFitting.py on GPU
+            if(fout){ writeSampleToFile(fout, (int)samples.size()-1, str_bak, true); } // Debug with Jmol
+            
             //if(bEvalOnlyCorrections){ printFittedAdata( samples.size()-1 ); }
             il=0; nbatch++;
         }
@@ -2484,13 +2545,66 @@ void printDOFs() const {
     //printf("\n");
 }
 
-void exportSampleToXYZ(int iSample, const char* filename);
-void exportAllSamplesToXYZ(const char* filename);
+void writeSampleToFile(FILE* fout, int iSample, const char* commentRest, bool bOneLetter=false){
+    Atoms* atoms = samples[iSample];
+    // Header with n0, energy, and optional remainder of original comment
+    fprintf(fout, "%d\n", atoms->natoms);
+    if(commentRest && commentRest[0]!='\0'){
+        fprintf(fout, "# n0 %d E_tot %g %s", atoms->n0, atoms->Energy, commentRest);
+    }else{
+        fprintf(fout, "# n0 %d E_tot %g\n", atoms->n0, atoms->Energy);
+    }
 
-private:
-void writeSampleToFile(FILE* fout, int iSample);
+    // Use raw atoms data to avoid dependency on typToREQ/DOFs during early loadXYZ phase
+    AddedData* ad = (AddedData*)atoms->userData;
+    if(ad){ ad->fill_host(); }
+    printf("writeSampleToFile(iSample=%d): natoms=%d n0=%d nep=%d\n", iSample, atoms->natoms, atoms->n0, ad?ad->nep:-1);
+    int ndummy=0; for(int i=0;i<atoms->natoms;i++){ if(ad && ad->host && ad->host[i]>=0) ndummy++; }
+    //printf("  host-detected dummy count: %d\n", ndummy);
+    std::string aname;
+    for(int i=0; i<atoms->natoms; i++){
+        int ityp = atoms->atypes[i];
+        aname = params->atomTypeNames[ityp];
+        const Vec3d& p = atoms->apos[i];
+        double q = atoms->charge ? atoms->charge[i] : 0.0;
+        int host = (ad && ad->host) ? ad->host[i] : -1;
 
-public:
+        if(bOneLetter){ aname[1] = '\0'; }
+        if(host<0){ fprintf(fout, "%s   %15.10f   %15.10f   %15.10f   %12.6f \n",     aname.c_str(), p.x, p.y, p.z, q); }
+        else      { fprintf(fout, "%s   %15.10f   %15.10f   %15.10f   %12.6f   0.50%i\n", aname.c_str(), p.x, p.y, p.z, q, host); }
+        //if(host>=0){ printf("  atom %d type=%s is DUMMY host=%d\n", i, aname, host); }
+        //fprintf(fout, "%s   %15.10f   %15.10f   %15.10f   %12.6f   -%i\n", aname, p.x, p.y, p.z, q, host);
+    }
+}
+
+void exportSampleToXYZ(int iSample, const char* filename){
+    if(iSample < 0 || iSample >= samples.size()){
+        printf("ERROR in FitREQ::exportSampleToXYZ: iSample=%d is out of range [0..%ld-1]\n", iSample, samples.size());
+        return;
+    }
+    FILE* fout = fopen(filename, "w");
+    if(fout == NULL){
+        printf("ERROR in FitREQ::exportSampleToXYZ: Cannot open file '%s' for writing.\n", filename);
+        return;
+    }
+    writeSampleToFile(fout, iSample, nullptr);
+    fclose(fout);
+}
+
+void exportAllSamplesToXYZ(const char* filename){
+    printf("FitREQ::exportAllSamplesToXYZ(%s) samples.size()=%ld\n", filename, samples.size());
+    FILE* fout = fopen(filename, "w");
+    if(fout == NULL){
+        printf("ERROR in FitREQ::exportAllSamplesToXYZ: Cannot open file '%s' for writing.\n", filename);
+        return;
+    }
+    for(int i=0; i<samples.size(); i++){
+        writeSampleToFile(fout, i, nullptr);
+    }
+    fclose(fout);
+}
+
+
 void printDOFregularization(){
     printf( "printDOFregularization()\n" );
     //printf("DOF  Type      Comp  Current       Position(min,x0,max)           Stiffness(min,k0,max)\n");
@@ -2506,47 +2620,7 @@ void printDOFregularization(){
 
 }; // class FitREQ
 
-void FitREQ::writeSampleToFile(FILE* fout, int iSample){
-    Atoms* atoms = samples[iSample];
-    fprintf(fout, "%d\n", atoms->natoms);
-    fprintf(fout, "# sample %d, E_ref = %g\n", iSample, atoms->Energy);
 
-    Vec3d  apos_tmp[atoms->natoms];
-    double Qs_tmp  [atoms->natoms];
-    fillTempArrays(atoms, apos_tmp, Qs_tmp);
-
-    for(int i=0; i<atoms->natoms; i++){
-        int ityp = atoms->atypes[i];
-        const char* aname = params->atypes[ityp].name;
-        fprintf(fout, "%s %8.4f %8.4f %8.4f %8.4f\n", aname, apos_tmp[i].x, apos_tmp[i].y, apos_tmp[i].z, Qs_tmp[i]);
-    }
-}
-
-void FitREQ::exportSampleToXYZ(int iSample, const char* filename){
-    if(iSample < 0 || iSample >= samples.size()){
-        printf("ERROR in FitREQ::exportSampleToXYZ: iSample=%d is out of range [0..%ld-1]\n", iSample, samples.size());
-        return;
-    }
-    FILE* fout = fopen(filename, "w");
-    if(fout == NULL){
-        printf("ERROR in FitREQ::exportSampleToXYZ: Cannot open file '%s' for writing.\n", filename);
-        return;
-    }
-    writeSampleToFile(fout, iSample);
-    fclose(fout);
-}
-
-void FitREQ::exportAllSamplesToXYZ(const char* filename){
-    FILE* fout = fopen(filename, "w");
-    if(fout == NULL){
-        printf("ERROR in FitREQ::exportAllSamplesToXYZ: Cannot open file '%s' for writing.\n", filename);
-        return;
-    }
-    for(int i=0; i<samples.size(); i++){
-        writeSampleToFile(fout, i);
-    }
-    fclose(fout);
-}
 
 #endif
 

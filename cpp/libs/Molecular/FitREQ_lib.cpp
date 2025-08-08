@@ -127,15 +127,15 @@ double run( int ialg, int iparallel, int nstep, double Fmax, double dt, double m
     return Err;
 }
 
-extern "C" void FitREQ_exportSampleToXYZ(int i, const char* fname){
+void exportSampleToXYZ(int i, const char* fname){
     if(W.samples.size() > i && i >= 0) {
         W.exportSampleToXYZ(i, fname);
     } else {
-        printf("ERROR in FitREQ_exportSampleToXYZ: sample index %d is out of range.\n", i);
+        printf("ERROR in exportSampleToXYZ: sample index %d is out of range.\n", i);
     }
 }
 
-extern "C" void FitREQ_exportAllSamplesToXYZ(const char* fname){
+void exportAllSamplesToXYZ(const char* fname){
     W.exportAllSamplesToXYZ(fname);
 }
 

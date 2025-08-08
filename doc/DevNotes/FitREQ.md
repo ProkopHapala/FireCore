@@ -207,6 +207,74 @@ Allows assigning different weights to individual training samples, giving more i
 *   In the end, a database is created in the form of a list of `Atoms` objects (from `Atoms.h`), with an added pointer to `void* userData = 0;`. The instances of the `Atoms` class representing each training sample are then stored in the `samples<Atoms*>` vector.
 *   The `FitREQ` class extends the `MolecularDatabase` class (from `MolecularDatabase.h`) to efficiently work with this `userData`.
 
+#### 7.2.1 Mapping dummy atoms to their hosts (critical)
+
+Location of code:
+
+* `MMFFBuilder::buildBondsAndEpairs()` in `cpp/common/molecular/MMFFBuilder.h`
+* `MMFFBuilder::listEpairBonds(Vec2i*& bs, Vec3d*& dirs)` in `cpp/common/molecular/MMFFBuilder.h`
+* `FitREQ::addAndReorderEpairs(Atoms*& atoms)` in `cpp/common/molecular/FitREQ.h`
+
+Flow and data structures (final, correct behavior):
+
+* __Build & detect__: After auto-bonding and adding dummy atoms, `buildBondsAndEpairs()` finalizes the molecular graph. Dummy atoms (electron pairs) are capping atoms (usually `iconf == -1`).
+* __List attachments (`bs`, `dirs`)__:
+  * `listEpairBonds(bs, dirs)` produces arrays of length `nep` with entries
+    `bs[k] = { ia_host, je_old }` and `dirs[k]` the attachment direction (unit vector from host to e‑pair).
+* __Reordering and indexing policy__ (`addAndReorderEpairs`):
+  * Final atom ordering inside one sample is enforced as
+    `[mol1 core (0..n0bak-1)] [mol1 epairs (n0bak..n0bak+nE0-1)] [mol2 core] [mol2 epairs]`.
+  * `nE0` = number of epairs whose host is in fragment 1 (`ia_host < n0bak`).
+  * We copy e‑pairs explicitly into the target slots; only those final slots are marked as epairs.
+  * After placing mol1 epairs we set `atoms->n0 = n0bak + nE0`. Mol2 core is copied starting at `atoms->n0`, ensuring it never overwrites mol1 epairs.
+* __Updated `bs` (new indices)__:
+  * For mol1 e‑pairs, we remap to the final epair index `j = n0bak + iE0` and keep the host as the original index in fragment 1:
+    `bs_new[idx0].x = ia_host;  bs_new[idx0].y = j`.
+  * For mol2 e‑pairs, host indices must be shifted by `nE0` because mol2 core is moved after mol1 epairs:
+    `bs_new[idx1].x = ia_host + nE0;  bs_new[idx1].y = j_final`.
+* __Dense host array__:
+  * We fill `AddedData.host` of size `atoms->natoms` with `-1` and set
+    `host[ bs_new[i].y ] = bs_new[i].x`.
+  * Core (non‑dummy) atoms retain `-1`.
+
+Invariants (checked with debug prints):
+
+* If an index `i` is an epair slot, `params->atomTypeNames[ atypes[i] ][0] == 'E'`.
+* Every e‑pair index present in `bs` has a defined host (`host[i] >= 0`).
+* No core atom has a host (`host[i] == -1`).
+
+This mapping and ordering are used downstream for forces/energy attribution and are mirrored in the extended XYZ export.
+
+#### 7.2.2 Extended XYZ export with dummy-atom annotations
+
+When `FitREQ::loadXYZ(fname, bAddEpairs=true, bOutXYZ=true)` is used, FitREQ writes an auxiliary file `<fname>_Epairs.xyz` containing the processed system with dummy atoms. The format has been extended to make debugging and data exchange explicit:
+
+Header:
+
+```
+<natoms>
+# n0 <split_index> E_tot <energy> <rest_of_original_comment>
+```
+
+Body (one line per atom):
+
+```
+<atype_name>  <x>  <y>  <z>  <q>  <host>
+```
+
+Where:
+
+* __atype_name__: Full atom type name from `MMFFparams::atomTypeNames[atype]` (not just element symbol), so you can differentiate dummy types (e.g., lone-pair type, sigma-hole type) from real atoms.
+* __x, y, z__: Cartesian coordinates (Angstrom).
+* __q__: Charge of the atom as stored in `Atoms::charge[i]` (0 if the charge array is not allocated).
+* __host__: Index of the host atom for dummy atoms, taken from `AddedData.host[i]`. For real atoms, this is `-1`.
+
+Notes:
+
+* The `host` column encodes attachment for both electron pairs and sigma holes (any capping dummy) because the detection traverses all capping neighbors.
+* The original `.xyz` second-line comment is preserved after the energy and `n0` metadata so that fragment/source info remains intact.
+* If desired, a consumer can easily reconstruct the set of dummy atoms via `{ i | host[i] >= 0 }` and the mapping to hosts via `host[i]`.
+
 ### 7.3. Parallelization
 
 *   `FitREQ` supports parallel gradient accumulation (e.g., via OpenMP) to speed up the optimization process, especially for large training sets. The `iparallel` flag in `run()` controls this.
@@ -284,3 +352,25 @@ void exportSampleToXYZ( int iSample, const char* filename );
 **Integration with `FitREQ_lib.cpp` and `pyBall/FitREQ.py`:**
 *   Add a C-interface function in `FitREQ_lib.cpp` (e.g., `_exportSampleToXYZ`) that calls the `FitREQ::exportSampleToXYZ` method.
 *   Add a corresponding Python wrapper function in `pyBall/FitREQ.py` that calls the C-interface function.
+
+
+---
+
+# DEBUGGING (Resolved):
+
+We observed incorrect epair ordering and bogus host assignments in `tests/tFitREQ/input_example_1.xyz_Epairs.xyz` caused by overwriting of mol1 e‑pair slots when copying mol2 core.
+
+__Root cause__
+* `addAndReorderEpairs()` incremented `atoms->n0` while placing mol1 e‑pairs, then copied mol2 core starting at the evolving `n0`, which overwrote some epair slots. `isep` flags and `bs` became inconsistent with `atypes`.
+
+__Fix implemented__ (in `cpp/common/molecular/FitREQ.h`):
+* Initialize `isep` to zeros and only mark final epair slots.
+* Do not change `n0` during epair placement; after placing mol1 e‑pairs, set `atoms->n0 = n0bak + nE0` once.
+* Copy mol2 core starting at this final `atoms->n0`.
+* Keep `bs` consistent: mol2 host indices are shifted by `nE0`.
+* Add invariant checks warning if any `isep[i]==1` is non‑`E`.
+
+__Current guarantees__
+* Final layout: `[mol1 core][mol1 E][mol2 core][mol2 E]`.
+* Every `E` line has a valid host (`>=0`); core atoms print host `-1`.
+* `AddedData.host` is filled from `bs` and is authoritative for export/debug.

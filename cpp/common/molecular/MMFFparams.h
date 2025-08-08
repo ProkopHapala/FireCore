@@ -5,6 +5,76 @@
 /// @addtogroup Classical_Molecular_Mechanics
 /// @{
 
+/*
+================================================================================
+File format reference for parameter tables
+================================================================================
+
+Two ASCII data files define elements and atom types. Columns are whitespace-
+separated. Lines starting with '#' are comments and ignored.
+
+1) ElementTypes.dat (preferred/full schema)
+   Columns:
+   1  name       (string, e.g. H, C, O)
+   2  iZ         (int, atomic number)
+   3  ne         (int, number of valence electrons)
+   4  nv         (int, default valence / sum of bond orders)
+   5  npi        (int, maximum number of pi bonds)
+   6  color      (hex, e.g. 0xFF0000)
+   7  Rcov       (double, covalent radius [Ang])
+   8  RvdW       (double, van der Waals radius/parameter [Ang])
+   9  EvdW       (double, LJ epsilon [eV])
+   10 Quff       (double, UFF effective charge [e])
+   11 Uuff       (double, UFF energy scale [eV])
+   12 Vuff       (double, UFF energy scale [eV])
+   13 Eaff       (double, QEq electronegativity [eV])   (optional)
+   14 Ehard      (double, QEq hardness [eV])            (optional)
+   15 Ra         (double, QEq atomic size [Ang])        (optional)
+   16 eta        (double, QEq valence exponent [a.u.])  (optional)
+
+   Example (full):
+     #name  iZ ne nv npi color    Rcov  RvdW   EvdW        Quff  Uuff Vuff   Eaff  Ehard  Ra    eta
+     O      8  6  2  1   0xFF0D0D 0.658 1.7500 0.00260185 2.300  0.0867 0.00078  -8.741 13.364 0.669 0.9745
+
+Legacy/short schema (accepted by parser as fallback):
+   1  name, 2 iZ, 3 ne, 4 nv, 5 color, 6 RvdW, 7 EvdW, 8 Quff, 9 Uuff, 10 Vuff,
+   [optionally QEq: Eaff, Ehard, Ra, eta]
+   In this legacy form, npi and Rcov are not provided; the parser sets npi=0 and
+   estimates Rcov ≈ 0.6*RvdW (heuristic) and prints a debug note if verbosity>0.
+
+2) AtomTypes.dat
+   Columns:
+   1  name       (string, type label, e.g. C_3, O_3, H_OH)
+   2  parent     (string, parent type name or '*')
+   3  element    (string, element symbol mapped via ElementTypes, e.g. C, O)
+   4  epair      (string, lone-pair type name or '*')
+   5  nv         (int, valence / sum of bond orders)
+   6  ne         (int, number of electron pairs)
+   7  npi        (int, number of pi orbitals)
+   8  sym        (int, geometry code: sp3=0, sp2=1, sp1=2, ...)
+   9  Ruff       (double, UFF natural bond radius)
+   10 RvdW       (double, LJ distance parameter [Ang])
+   11 EvdW       (double, LJ energy parameter [eV])
+   12 Qbase      (double, base partial charge [e])
+   13 Hb         (double, H-bond correction)
+   14 Ass        (double, angle eq. sigma-sigma)        (optional)
+   15 Asp        (double, angle eq. sigma-pi)           (optional)
+   16 Kss        (double, force constant sigma-sigma)   (optional)
+   17 Ksp        (double, force constant sigma-pi)      (optional)
+   18 Kep        (double, force constant pi-lp)         (optional)
+   19 Kpp        (double, force constant lp-lp)         (optional)
+
+   Example:
+     #name  parent element epair nv ne npi sym Ruff   RvdW    EvdW        Qbase Hb   Ass    Asp    Kss  Ksp Kep Kpp
+     C_3    C      C       E     4  0   0   0   0.757  1.9255  0.00455323  0.0   0.0  109.47 -19.47 6.32 1.6 1.0 0.0
+
+Paths used in tests:
+ - The test driver `tests/tFitREQ/run.sh` runs from `tests/tFitREQ/` and loads
+   data from `data/ElementTypes.dat` and `data/AtomTypes.dat` unless overridden
+   by the Python side. Ensure the column order matches the schemas above.
+================================================================================
+*/
+
 #include  "globals.h"
 
 #include "fastmath.h"
@@ -211,7 +281,30 @@ class MMFFparams{ public:
         int nret = sscanf( str, "%s         %i        %i           %i             %i              %x         %lf          %lf         %lf         %lf         %lf         %lf         %lf         %lf          %lf       %lf", 
                                  etyp.name, &etyp.iZ, &etyp.neval, &etyp.valence, &etyp.piMax,  &etyp.color, &etyp.Rcov,  &etyp.RvdW, &etyp.EvdW, &etyp.Quff, &etyp.Uuff, &etyp.Vuff, &etyp.Eaff, &etyp.Ehard, &etyp.Ra, &etyp.eta );
         const int nretmin=12;
-        if(nret<nretmin){ printf( "ERROR in MMFFparams::string2ElementType: ElementType(iZ=%i,%s) is not complete (nret(%i)<nretmin(%i)) => Exit()\n", etyp.iZ, etyp.name, nret, nretmin ); printf("%s\n", str ); exit(0); }
+        if(nret<nretmin){
+            // Fallback: legacy/short schema without npi and Rcov
+            // Format: name iZ ne nv color RvdW EvdW Quff Uuff Vuff [Eaff Ehard Ra eta]
+            char  name_[8]; int iZ_, ne_, nv_; unsigned int color_; double RvdW_, EvdW_, Quff_, Uuff_, Vuff_;
+            double Eaff_=0, Ehard_=0, Ra_=0, eta_=0; int nret2=0;
+            nret2 = sscanf( str, "%7s %i %i %i %x %lf %lf %lf %lf %lf %lf %lf %lf %lf", name_, &iZ_, &ne_, &nv_, &color_, &RvdW_, &EvdW_, &Quff_, &Uuff_, &Vuff_, &Eaff_, &Ehard_, &Ra_, &eta_ );
+            if(nret2>=10){
+                // assign parsed values
+                strncpy(etyp.name, name_, sizeof(etyp.name)); etyp.name[sizeof(etyp.name)-1]='\0';
+                etyp.iZ=iZ_; etyp.neval=ne_; etyp.valence=nv_;
+                etyp.piMax=0; etyp.color=color_;
+                etyp.RvdW=RvdW_; etyp.EvdW=EvdW_; etyp.Quff=Quff_; etyp.Uuff=Uuff_; etyp.Vuff=Vuff_;
+                // estimate missing fields
+                etyp.Rcov = 0.6*etyp.RvdW; // heuristic
+                if(nret2>=14){ etyp.bQEq=true; etyp.Eaff=Eaff_; etyp.Ehard=Ehard_; etyp.Ra=Ra_; etyp.eta=eta_; }
+                else         { etyp.bQEq=false; etyp.Eaff=0;    etyp.Ehard=0;     etyp.Ra=0;   etyp.eta=0;   }
+                if(verbosity>0){ printf("MMFFparams::string2ElementType: legacy format parsed for '%s' (nret2=%i). Set piMax=0, Rcov≈0.6*RvdW=%.3f\n", etyp.name, nret2, etyp.Rcov ); }
+                return;
+            }
+            // If both parsers fail, report and exit to fail fast
+            printf( "ERROR in MMFFparams::string2ElementType: ElementType line is not complete or unrecognized. FullParse nret=%i, LegacyParse nret=%i. => Exit()\n", nret, nret2 );
+            printf("%s\n", str );
+            exit(0);
+        }
         if(nret<16     ){ etyp.bQEq=false; etyp.Eaff=0; etyp.Ehard=0; etyp.Ra=0; etyp.eta=0; }else{ etyp.bQEq=true; }
     }
     

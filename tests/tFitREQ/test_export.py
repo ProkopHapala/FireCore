@@ -8,6 +8,8 @@ sys.path.append("../../")
 from pyBall import FitREQ as fit
 from pyBall.FitREQ import exportAllSamplesToXYZ
 
+
+'''
 ref_path = "/home/prokop/Desktop/CARBSIS/PEOPLE/Paolo/FitREQ/DFT_2D/"
 #ref_path = "/home/prokophapala/Desktop/CARBSIS/DFT_ref_2D/"
 #name = "H2O-D1_H2O-A1"
@@ -36,12 +38,11 @@ acceptors = [
 ]
 
 #ref_dirs = fit.combine_fragments( donors, acceptors, path=ref_path, ext=".xyz" )  ;print( "ref_dirs:\n", ref_dirs )
-ref_dirs = fit.combine_fragments( donors, acceptors, path=ref_path )               ;print( "ref_dirs:\n", ref_dirs )
+#ref_dirs = fit.combine_fragments( donors, acceptors, path=ref_path )               ;print( "ref_dirs:\n", ref_dirs )
 
 
-marks    = fit.concatenate_xyz_files( directories=ref_dirs, base_path=ref_path, fname='all.xyz', output_file='all.xyz' )
+#marks    = fit.concatenate_xyz_files( directories=ref_dirs, base_path=ref_path, fname='all.xyz', output_file='all.xyz' )
 #marks    = fit.concatenate_xyz_files_flat( names=ref_dirs, base_path=ref_path, output_file='all.xyz' )
-
 print( "marks:\n", marks )
 
 #fname = "input_single.xyz"
@@ -49,37 +50,19 @@ print( "marks:\n", marks )
 #fname = ref_path +"/"+ "/concatenated_all.xyz"
 fname = 'all.xyz'
 #fname = "input_2CH2NH.xyz"
+'''
 
-
-
-
-
-
-
-
-fname = "input_example.xyz"
-print(f"Reading data from {fname}")
-Erefs, x0s = fit.read_xyz_data(fname)
-print(f"Read {len(Erefs)} energy entries")
-
-
-# --- load types using default resources
 fit.loadTypes()
 
-
-# # --- load samples into C++
-# nsamp = fit.loadXYZ(fname)
-# print(f"Loaded {nsamp} samples into C++")
-
-# --- export all samples via C++
-output_fname = "test_export_output.xyz"
-print(f"Exporting all samples to {output_fname}")
-#fit.exportAllSamplesToXYZ(output_fname)
-
-exportAllSamplesToXYZ(output_fname)
+fname = "input_example_1.xyz"
+#fname = "input_example.xyz"
+bOutXYZ = True
+bAddEpairs = True
+print(f"Reading data from {fname}")
+nbatch = fit.loadXYZ( fname, bAddEpairs, bOutXYZ )  
+print(f"Read {nbatch} samples")
 
 
-print(f"Exported all samples to {output_fname}")
 
-print("TEST PASSED")
+print("tFitREQ/test_export.py FINISEHD")
 

@@ -178,17 +178,17 @@ def loadXYZ(fname, bAddEpairs=False, bOutXYZ=False, bEvalOnlyCorrections=False )
     nbatch = lib.loadXYZ(cstr(fname), bAddEpairs, bOutXYZ, bEvalOnlyCorrections)
     return nbatch
 
-# void FitREQ_exportSampleToXYZ(int i, const char* fname)
-lib.FitREQ_exportSampleToXYZ.argtypes = [c_int, c_char_p]
-lib.FitREQ_exportSampleToXYZ.restype  = None
+# void exportSampleToXYZ(int i, const char* fname)
+lib.exportSampleToXYZ.argtypes = [c_int, c_char_p]
+lib.exportSampleToXYZ.restype  = None
 def exportSampleToXYZ(i, fname):
-    return lib.FitREQ_exportSampleToXYZ(i, cstr(fname))
+    return lib.exportSampleToXYZ(i, cstr(fname))
 
-# void FitREQ_exportAllSamplesToXYZ(const char* fname)
-lib.FitREQ_exportAllSamplesToXYZ.argtypes = [c_char_p]
-lib.FitREQ_exportAllSamplesToXYZ.restype  = None
+# void exportAllSamplesToXYZ(const char* fname)
+lib.exportAllSamplesToXYZ.argtypes = [c_char_p]
+lib.exportAllSamplesToXYZ.restype  = None
 def exportAllSamplesToXYZ(fname):
-    return lib.FitREQ_exportAllSamplesToXYZ(cstr(fname))
+    return lib.exportAllSamplesToXYZ(cstr(fname))
 
 #  void setTypeToDOFs(int i, double* REQ )
 lib.setTypeToDOFs.argtypes  = [c_int, c_double_p] 

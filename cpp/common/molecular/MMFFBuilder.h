@@ -459,6 +459,10 @@ class Builder{  public:
     bool bAddCaps    = true;
     bool bAddECaps   = false;
 
+    bool bondByRvdW = false;
+    //double Rfac     = 1.35;
+    //double Rfac     = 0.5;
+
     // =================== Functions =====================
 
     void randomFragmentCollors(){
@@ -928,14 +932,12 @@ class Builder{  public:
         if(params){ 
             int ityp = atoms[ia].type;
             capAtom.type = params->atypes[ityp].ePairType; 
-            if( capAtom.type<itype_min ){ 
-                printf("ERROR: in MM::Builder::addEpair(ia=%i) type %i %8-s : capAtom.type(%i) < itype_min(%i) \n", ia, ityp, params->atypes[ityp].name, capAtom.type, itype_min );
-            }
+            //if( capAtom.type<itype_min ){ printf("ERROR: in MM::Builder::addEpair(ia=%i) type %i %8-s : capAtom.type(%i) < itype_min(%i) \n", ia, ityp, params->atypes[ityp].name, capAtom.type, itype_min );}
             if(l<0)l=params->atypes[capAtom.type].Ruff;  // NOTE: we use Ruff as default length for epair, this is questionable, but this parameter has no other use for epair
         }else{ l=-l; }
         
         capAtom.pos = atoms[ia].pos + hdir*l;
-        printf( "MMFFBuilder::addEpair() [%i] type %i |h|=%g l=%g hdir(%g,%g,%g)  pBas(%g,%g,%g) pCap(%g,%g,%g) \n", ja, capAtom.type, hdir.norm(), l, hdir.x,hdir.y,hdir.z, atoms[ia].pos.x,atoms[ia].pos.y,atoms[ia].pos.z, capAtom.pos.x, capAtom.pos.y, capAtom.pos.z );
+        //printf( "MMFFBuilder::addEpair() [%i] type %i |h|=%g l=%g hdir(%g,%g,%g)  pBas(%g,%g,%g) pCap(%g,%g,%g) \n", ja, capAtom.type, hdir.norm(), l, hdir.x,hdir.y,hdir.z, atoms[ia].pos.x,atoms[ia].pos.y,atoms[ia].pos.z, capAtom.pos.x, capAtom.pos.y, capAtom.pos.z );
         if(bInsertAtoms)insertAtom(capAtom);
         if(bInsertBond){
             capBond.atoms.set(ia,ja);
@@ -1555,7 +1557,9 @@ class Builder{  public:
     }
 
 
-    Atoms* buildBondsAndEpairs( Atoms* mol, bool bPBC, double Rfac=-0.5, bool bDummyEpair=true, bool bAddPi=true, bool bAddECaps=true ){
+    Atoms* buildBondsAndEpairs( Atoms* mol, bool bPBC, double Rfac=-1.35, bool bByRvdw=false, bool bDummyEpair=true, bool bAddPi=true, bool bAddECaps=true ){
+
+        bondByRvdW = bByRvdw;
 
         clear();
         if(mol->lvec){ lvec = *(mol->lvec); bPBC=true; }
@@ -1571,9 +1575,12 @@ class Builder{  public:
             autoBonds( Rfac,  0      , mol->n0     ); // we should not add bonds between rigid and flexible parts
             autoBonds( Rfac,  mol->n0, mol->natoms ); 
         }
+        if(bonds.size()<atoms.size()*0.5){ printf("ERROR in buildBondsAndEpairs(Rfac=%g) there is les bonds than atoms !  bonds.size(%i) < (atoms.size()/2)=(%i) => exit() \n", Rfac, bonds.size(), atoms.size()*0.5); exit(0); }
+        //printBonds();
         //builder.printAtomConfs(false, true );
+        //printf( "buildBondsAndEpairs() >>> checkNumberOfBonds( true, true );\n" );
         checkNumberOfBonds( true, true );
-
+        //printf( "buildBondsAndEpairs() <<< checkNumberOfBonds( true, true );\n" );
         if(bDummyEpair){
             bDummyEpair = true;
             autoAllConfEPi( ); 
@@ -1801,7 +1808,7 @@ class Builder{  public:
             //printf( "addEpairsToAtoms[%i] i=%i ib=%i |h|=%g |hb|=%g |hpi|=%g  l=%g \n", ia, i, ib, hs[ib].norm(), hs[0].norm(), conf.pi_dir.norm(), l );
             if(bIns){ conf.ne=0; }
             Vec3d pe = addEpair(ia,hs[ib], l, bIns, bIns );
-            printf( "MMFFBuilder::addEpairsByPi() [%i] i=%i ib=%i |h|=%g |hb|=%g |hpi|=%g  l=%g pe(%g,%g,%g)\n", ia, i, ib, hs[ib].norm(), hs[0].norm(), conf.pi_dir.norm(), l, pe.x,pe.y,pe.z );
+            //printf( "MMFFBuilder::addEpairsByPi() [%i] i=%i ib=%i |h|=%g |hb|=%g |hpi|=%g  l=%g pe(%g,%g,%g)\n", ia, i, ib, hs[ib].norm(), hs[0].norm(), conf.pi_dir.norm(), l, pe.x,pe.y,pe.z );
             if (!bIns){ epos[i] = pe; }
         }
         return ne;
@@ -2222,14 +2229,19 @@ void assignTorsions( bool bNonPi=false, bool bNO=true ){
         }
     }
 
+    inline double getTypeRadius( int type ){
+        if(bondByRvdW){ return params->atypes[type].RvdW; }
+        else          { return params->atypes[type].Ruff; }
+    }
+
     void touchingAtoms( int i0, int imax, const Vec3d& p, double R0, double Rfac, std::vector<int>& found ){
         for(int i=i0; i<imax; i++){  // for pbc we need all atom pairs
             const Atom& A = atoms[i];
             Vec3d dp = A.pos - p; // pbc here
-            double Rj = params->atypes[A.type].Ruff;
+            double Rj = getTypeRadius(A.type);
             //double Rj = (R0 + A.REQ.x)*Rfac;    // Using RvdW
             double R = (Rj+R0)*Rfac;
-            //printf( "touchingAtoms[%i] R=%g Ri+j=%g Ri=%g Rj=%g \n", i, R, R0+Rj, R0, Rj );
+            //printf( "touchingAtoms[%i] r=%16.6f <? R(%12.6f) | Ri+j=%16.6f Ri=%16.6f Rj=%16.6f Rfac=%g \n", i, dp.norm(), R, R0+Rj, R0, Rj, Rfac );
             if(  dp.norm2() < (R*R) ){
                 //if(verbosity>2) 
                 //printf( "bond[%i,%i] r %g R %g(%g,%g) \n", i0-1, i,    dp.norm(), R, R0, Rj );
@@ -2240,8 +2252,8 @@ void assignTorsions( bool bNonPi=false, bool bNO=true ){
     }
 
     // ToDo:  R=0.5 worsk for hydrocarbons (HCNOF), R=0.65 works for silicon (SiH), we should assign it according to the bond types maybe ?
-    int autoBonds( double R=-1.20, int i0=0, int imax=-1 ){
-        //printf( "MM::Builder::autoBonds() \n" );
+    int autoBonds( double R=-1.35, int i0=0, int imax=-1 ){
+        //printf( "MM::Builder::autoBonds() R=%g bondByRvdW=%i \n", R, bondByRvdW );
         //if(verbosity>0){ printf( "MM::Builder::autoBonds() \n" ); }
         if(imax<0)imax=atoms.size();
         bool byParams = (R<0);
@@ -2254,7 +2266,7 @@ void assignTorsions( bool bNonPi=false, bool bNO=true ){
             const Atom& A = atoms[i];
             bool bCap_i = capping_types.count( A.type ) > 0; 
             //double Ri = A.REQ.x;   // Using RvdW
-            double Ri = params->atypes[A.type].Ruff;   
+            double Ri = getTypeRadius(A.type);   
             found.clear();
             touchingAtoms( i+1, imax, A.pos, Ri, Rfac, found );
             for(int j:found){
@@ -2287,7 +2299,7 @@ void assignTorsions( bool bNonPi=false, bool bNO=true ){
             const Atom& A = atoms[i];
             bool bCap_i = capping_types.count( A.type ) > 0; 
             //double Ri = A.REQ.x;  // Using RvdW
-            double Ri = params->atypes[A.type].Ruff;
+            double Ri = getTypeRadius(A.type);
             int ipbc=0;
             //if(verbosity>1)
             //printf( "autoBondsPBC() Atom[%i] R %g \n", i, R );
@@ -2363,6 +2375,7 @@ void assignTorsions( bool bNonPi=false, bool bNO=true ){
     }
 
     bool checkNumberOfBonds( bool bPrint=true, bool bExitOnError=true, bool bAllAtomsBonded=true ){
+        //printf("checkNumberOfBonds() bPrint=%i bExitOnError=%i bAllAtomsBonded=%i \n", bPrint, bExitOnError, bAllAtomsBonded );
         const int na = atoms.size();
         std::vector<int> nbonds(na,0); 
         //for(int ia=0; ia<na; ia++){ printf( "checkNumberOfBonds nbonds[%i]=%i\n", ia, nbonds[ia] ); };
@@ -2381,14 +2394,20 @@ void assignTorsions( bool bNonPi=false, bool bNO=true ){
             if(A.iconf>=0){
                 const AtomConf& c = confs[A.iconf];
                 int nb = nbonds[ia];
-                if( nb>N_NEIGH_MAX){ err|=true; if( bPrint ){ printf( "WARNING checkNumberOfBonds[%i] `%s` nbonds(%i)>N_NEIGH_MAX (%i)\n", ia, t.name, nb, N_NEIGH_MAX ); } }
-                if( nb>t.valence  ){ err|=true; if( bPrint ){ printf( "WARNING checkNumberOfBonds[%i] `%s` nbonds(%i)>valence     (%i)\n", ia, t.name, nb, t.valence   ); } }
-                if( nb!=c.nbond   ){ err|=true; if( bPrint ){ printf( "WARNING checkNumberOfBonds[%i] `%s` nbonds(%i)!=conf.nbond (%i)\n", ia, t.name, nb, c.nbond     ); } } 
+                if( nb>N_NEIGH_MAX){ err|=true; if( bPrint ){ printf( "WARNING checkNumberOfBonds[%i] `%s` nbonds(%i)>N_NEIGH_MAX(%i)\n", ia, t.name, nb, N_NEIGH_MAX ); } }
+                if( nb>t.valence  ){ err|=true; if( bPrint ){ printf( "WARNING checkNumberOfBonds[%i] `%s` nbonds(%i)>valence(%i)\n",     ia, t.name, nb, t.valence   ); } }
+                if( nb!=c.nbond   ){ err|=true; if( bPrint ){ printf( "WARNING checkNumberOfBonds[%i] `%s` nbonds(%i)!=conf.nbond(%i)\n", ia, t.name, nb, c.nbond     ); } } 
             }else{
                 if( nbonds[ia]>1  ){ err|=true; if( bPrint ){ printf( "WARNING checkNumberOfBonds[%i] `%s` capping atom has %i>1 bonds\n", ia, t.name, nbonds[ia] ); } }
             }
         }
-        if( err && bExitOnError ){ printf("ERROR in checkNumberOfBonds() => Exit()\n"); exit(0); }
+        //printf("checkNumberOfBonds() bExitOnError=%i err=%i \n", bExitOnError, err );
+        if( err && bExitOnError ){ 
+            printf("ERROR in checkNumberOfBonds() => Exit()\n");
+            printAtoms();
+            printBonds();
+            exit(0); 
+        }
         return err;
     }
 
