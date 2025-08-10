@@ -76,3 +76,26 @@ Interactive transform tool for point sets.
 - Motion uses screen-plane projection along camera ray for intuitive dragging, filtered by selected axes.
 - Selection map stores both point index and group id to enable grouped transforms.
 - Rotation mode is stubbed and can be extended to accumulate rotations around filtered axis.
+
+---
+
+## Mouse controls
+
+- Left mouse button (LMB) down: begin drag (`mouseStart()`), axis may be auto-selected if `bSelectAxis`.
+- LMB up or during drag: apply step via `mouseEnd()`; if `bDragUpdate` is true, updates continuously on motion.
+- Right mouse button (RMB): pick/select under cursor via `mousePick()` using current `mPick` and `mPickLogic`.
+
+---
+
+## Pick logic
+
+- `mPickLogic = '+'` — set/assign selection to `groupBrush` (OR).
+- `mPickLogic = '-'` — remove from selection.
+- `mPickLogic = '~'` — toggle membership (XOR) via `xorToSelection()`.
+
+---
+
+## See also
+
+- Source header: `cpp/common_SDL/SDL2OGL/EditorGizmo.h`
+- Related docs: [MolGUI.h.md](MolGUI.h.md), [Draw3D_Molecular.h.md](Draw3D_Molecular.h.md), [MolecularDraw.h.md](MolecularDraw.h.md)

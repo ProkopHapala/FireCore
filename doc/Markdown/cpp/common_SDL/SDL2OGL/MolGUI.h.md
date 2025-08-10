@@ -121,3 +121,58 @@ High-level 3D molecular GUI application. Inherits from `AppSDL2OGL_3D` to get ca
 - Many booleans gate visualization features (labels, charges, ESP, AFM). GUI panels toggle these at runtime.
 - Non-bond probing supports energy vs. force views, 2D maps, and relaxation of attached probe particles.
 - AFM tools support generating df/Fz maps and visualizing tip trajectories.
+
+---
+
+## Event modes
+
+- `eventMode_default(const SDL_Event&)` — Basic camera and selection behavior.
+- `eventMode_scan(const SDL_Event&)` — Interactions specialized for AFM/scan operations.
+- `eventMode_edit(const SDL_Event&)` — Editing with `EditorGizmo` (translate/scale/rotate selected points).
+- `mouse_default(const SDL_Event&)` — Default mouse handling when no specialized mode is active.
+
+The active mode is tracked by `gui_mode` (`Gui_Mode::{base,edit,scan}`) and may switch via GUI commands or key handling in `eventHandling()`.
+
+---
+
+## View toggles (selected)
+
+- Atoms/bonds: `mm_bAtoms`, `bViewBonds`, `bViewAtomSpheres`, `bViewBondLenghts`.
+- Labels/props: `bViewAtomLabels`, `bViewAtomTypes`, `bViewMolCharges`, `bViewHBondCharges`, `textSize`.
+- Forces/helpers: `bViewAtomForces`, `ForceViewScale`, `bViewGroupBoxes`, `bViewAxis`, `bViewCell`.
+- Advanced: `bViewPis`, `bViewSubstrate`, `isoSurfRenderType`, `bDebug_scanSurfFF`.
+
+These toggles are commonly exposed via `panel_Edit`, `panel_NonBondPlot`, and related GUI panels.
+
+---
+
+## Non-bonded probing workflow
+
+1. Configure probe parameters: `particle_REQ`, `particle_REQ2`, `particle_Lbond`. Attach to atoms via `particlePivots` if needed.
+2. Open non-bond GUI (`nonBondGUI()` builds `panel_NonBondPlot`) and enable desired plots: `bDrawNonBondLines`, `bDrawNonBondGrid`, `bDrawParticles`.
+3. Initialize/update with `tryPlotNonBond()`.
+4. Line plots: call `plotNonBondLines()`; internally uses `plotNonBondLine()` helper over segments.
+5. 2D grid: call `plotNonBondGrid()` (with optional `plotNonBondGridAxis()` for guides); evaluation uses `evalNonBondGrid2D()`.
+6. Relax attached particles: `relaxNonBondParticles(double dt=0.2, double Fconv=1e-6, int niter=1000)`; visualize with `drawParticles()`.
+
+Tip: Use `hideEp` to suppress electrostatic overlays when focusing on LJ-only behavior.
+
+---
+
+## AFM and ESP rendering
+
+- Grid isosurfaces: `renderGridFF(isoVal, isoSurfRenderType, colorScale)` or `renderGridFF_new(isoVal, isoSurfRenderType, colorScale, REQ)` where `REQ` defines probe size/charge; `colorScale` tunes coloring intensity.
+- ESP shells: `renderESP(REQ)` samples points on shells and colors by electrostatic potential.
+- AFM synthesis: `makeAFM(int iz=-1)` prepares force slices; `Fz2df()` converts Fz to df; `renderAFM(iz, offset)` and `renderAFM_trjs(di)` display images and tip trajectories.
+
+Parameter hints:
+- `isoVal` — isosurface value (typ. small positive).
+- `isoSurfRenderType` — selects shading/style (implementation-specific).
+- `colorScale` — scales color mapping magnitude.
+
+---
+
+## See also
+
+- Source header: `cpp/common_SDL/SDL2OGL/MolGUI.h`
+- Related docs: [EditorGizmo.h.md](EditorGizmo.h.md), [Draw3D_Molecular.h.md](Draw3D_Molecular.h.md), [MolecularDraw.h.md](MolecularDraw.h.md)

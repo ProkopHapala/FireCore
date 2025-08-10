@@ -51,3 +51,10 @@ Utility drawing helpers for molecular visualization and field-based rendering us
 - Immediate-mode OpenGL is used for clarity; heavy meshes should be precompiled into display lists (see `viewSubstrate`).
 - `GridFF` methods supply interpolation, force accumulation, and iso-finding; these helpers focus on visualization.
 - Neighbor visualization assumes `FastAtomicMetric` exposes `ruler`, `pos`, `Rcut`, and neighbor search API.
+
+---
+
+## See also
+
+- Source header: `cpp/common_SDL/SDL2OGL/MolecularDraw.h`
+- Related docs: [MolGUI.h.md](MolGUI.h.md), [EditorGizmo.h.md](EditorGizmo.h.md), [Draw3D_Molecular.h.md](Draw3D_Molecular.h.md)
