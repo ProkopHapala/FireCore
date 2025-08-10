@@ -157,6 +157,70 @@ void Builder::move_selection(const Vec3d& d){
 gizmo.onTranslateSelection = [&](const Vec3d& d){ if(!bRunRelax) { W->builder.move_selection(d); bBuilderChanged=true; } };
 ```
 
+## Findings from Code Review (2025-08-10)
+
+- __Builder selection implementation__
+  - `MM::Builder::selection` is `std::unordered_set<int>` of atom indices; `selectRect(p0,p1,rot)` clears and fills it. It projects positions by `rot` and uses an infinite Z slab (good for 2D box select in view space). It logs selection bounds; keep for debug.
+  - `move_atoms(Vec3d d, int i0=0, int imax=-1)` already exists and loops contiguous ranges. We only need thin wrappers `move_selection(...)`, `rotate_selection(...)` to iterate `selection` (sparse indices).
+  - Fragments are tracked both as per-atom `Atom.frag` and as `Builder::frags` with `atomRange`, `bondRange`, `confRange`, etc., plus `pos`/`rot` metadata and a `color`. Ranges are half-open `[a,b)`.
+  - Helper `startFragment()/finishFragment()` maintain ranges; many builder utilities already assume contiguous fragments. For selection extension, using `Atom.frag` is simplest and robust against reordering.
+
+- __MolGUI selection routing__
+  - `MolGUI::selectRect(p0,p1)` routes to `W->builder.selectRect(...)` when `bViewBuilder` and then mirrors `builder.selection` into `W->selection` vector for rendering. This sync point is ideal; no extra plumbing needed to display selection in builder view.
+  - Flags `bRunRelax`, `bViewBuilder`, `bBuilderChanged` are already respected in the main loop; when `bBuilderChanged` becomes true, `W->updateFromBuilder()` is called (observed in code paths around GUI apply buttons/operations). We should set this flag on any builder-side transform via gizmo.
+
+- __Gizmo data binding and callbacks__
+  - `updateGUI()` binds gizmo targets via `gizmo.bindPoints(natoms, apos)` and `gizmo.bindEdges(nbonds, bond2atom)` depending on current view. We must ensure that in edit/builder mode the bound `apos` pointer references builder atom array used for display; otherwise, after builder transforms, the redraw must pull updated positions from builder.
+  - We added `EditorGizmo::onTranslateSelection` (optional callback). `applyTranslation()` now calls this when provided instead of writing into `points` directly. This preserves existing behavior for modes where callback is not set.
+  - Rotation is not finalized; scaling exists but is non-physical—keep it disabled by default. Plan to add `onRotateSelection` and optionally `onScaleSelection` with neutral defaults.
+
+- __Fragment selection UX__
+  - There is no `bSelectFrag` toggle yet. Add a GUI checkbox and keybinding (e.g., `F`) that, when enabled, extends any atom selection to full fragments using `extendSelection_toFragments()`.
+  - `panel_Frags` already selects by fragment via world helper; in builder view we can mimic that by scanning `Atom.frag` in builder.
+
+- __Cross-fragment constraints__
+  - Rigid moving a subset of a cross-linked graph will strain bonds. Consider auto-extending selection across bonds when any selected atom is bonded to an unselected atom, or warn and block. Keep behavior explicit for now (auto-extend by frag only; leave cross-fragment bonds to user discretion).
+
+## Detailed Implementation Plan (actionable)
+
+- __EditorGizmo (cpp/common_SDL/SDL2OGL/EditorGizmo.h)__
+  - [x] Add member: `std::function<void(const Vec3d& d)> onTranslateSelection;` and in `applyTranslation()` call it when set.
+  - [ ] Add members: `std::function<void(const Vec3d& axis, double phi, const Vec3d& origin)> onRotateSelection;`, `std::function<void(const Vec3d& scale, const Vec3d& origin)> onScaleSelection;` with no-ops by default.
+  - [ ] Ensure drag pipeline invokes callbacks on incremental drag deltas; keep internal `points` update only as visual fallback when callbacks are not bound.
+
+- __MM::Builder (cpp/common/molecular/MMFFBuilder.h)__
+  - [ ] Add: `int extendSelection_toFragments();`
+    - Collect `frag` ids of current `selection`; include all atoms whose `Atom.frag` belongs to that set; return new size.
+  - [ ] Add: `void move_selection(const Vec3d& d);`
+    - Iterate `selection`; `atoms[i].pos.add(d);`
+  - [ ] Add: `void rotate_selection(double ang, const Vec3d& axis, const Vec3d& origin);`
+    - For each `i` in `selection`, rotate `atoms[i].pos-origin` by axis-angle and re-add origin.
+  - [ ] Optional perf: `void transform_fragment(int ifrag, const Mat3d& M, const Vec3d& orig_old, const Vec3d& orig_new);` applying over `[frags[ifrag].atomRange)`.
+
+- __MolGUI (cpp/common_SDL/SDL2OGL/MolGUI.h)__
+  - [ ] Add `bool bSelectFrag=false;` and expose in GUI (checkbox in Edit panel) + keybinding `F`.
+  - [ ] In selection handlers (click/box), when `bViewBuilder && bSelectFrag`, call `W->builder.extendSelection_toFragments();` after basic selection.
+  - [ ] In `updateGUI()` or initialization of edit mode, wire gizmo callbacks when `!bRunRelax && bViewBuilder`:
+    - `gizmo.onTranslateSelection = [&](const Vec3d& d){ W->builder.move_selection(d); bBuilderChanged=true; };`
+    - Later, `gizmo.onRotateSelection = [&](const Vec3d& ax, double phi, const Vec3d& org){ W->builder.rotate_selection(phi, ax, org); bBuilderChanged=true; };`
+  - [ ] Ensure gizmo binds to the same position buffer that draw paths use for builder view, or force redraw paths to read positions from builder after each transform.
+
+- __MolWorld_sp3 (cpp/common/molecular/MolWorld_sp3.h)__
+  - [ ] No changes required except ensuring `updateFromBuilder()` is called when `bBuilderChanged` becomes true (already present in run loop paths). Keep contract intact.
+
+- __Testing & Debug__
+  - [ ] Small system with 2–3 fragments; verify box select + fragment toggle extends selection.
+  - [ ] Translate selection via gizmo; confirm only selected fragment moves and display updates.
+  - [ ] Rotate selection (after implementing callback); verify around gizmo origin.
+  - [ ] Toggle `bRunRelax` on/off: edits only allowed when off; when turning on, ensure builder changes propagate (`updateFromBuilder`).
+  - [ ] Edge: cross-fragment bonds—document current behavior; optional assertion/warning.
+
+## Wiring Map (who calls whom)
+
+- `MolGUI::selectRect(...)` → `Builder::selectRect(...)` → optionally `Builder::extendSelection_toFragments()` → mirror to `W->selection` for rendering.
+- `EditorGizmo::onTranslateSelection(d)` → `MolGUI` lambda → `Builder::move_selection(d)` → set `bBuilderChanged=true` → main loop triggers `W->updateFromBuilder()` when needed.
+- Rotation/scaling follow the same path once callbacks are added.
+
 ## Open Questions
 
 - Which object is bound to `natoms, apos` in `updateGUI()` under all view modes? Ensure it matches builder in edit mode.

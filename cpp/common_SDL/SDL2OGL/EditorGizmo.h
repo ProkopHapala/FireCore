@@ -30,6 +30,7 @@
 #include <SDL2/SDL.h>
 #include <SDL2/SDL_opengl.h>
 
+#include <functional>
 #include "Draw.h"
 #include "Draw2D.h"
 #include "Draw3D.h"
@@ -147,6 +148,10 @@ class EditorGizmo{ public:
     std::unordered_map<int,int> selection; //   point_index -> group
     //std::unordered_set<int> selection;
 
+    // Optional callbacks to forward transforms externally (e.g., to a Builder)
+    // If not set, gizmo will modify bound points directly (default behavior).
+    std::function<void(const Vec3d&)> onTranslateSelection = nullptr;
+
     /*
     void applyTransform(){
         int nsel=selection.size();
@@ -187,6 +192,8 @@ class EditorGizmo{ public:
    }
 
     void applyTranslation(const Vec3d& shift  ){
+        // If an external handler is provided, forward the translation rather than editing bound points.
+        if(onTranslateSelection){ onTranslateSelection(shift); return; }
         int nsel=selection.size();
         int sel     [nsel];
         int selgroup[nsel];
