@@ -685,6 +685,36 @@ void MolGUI::initWiggets(){
     mp->addPanel( "SurfFF_scan", {-0.01,1.01,0}, 1,1,1,1,1 )->command = lamb_scanSurf;   // 14
     ylay.step( (mp->nsubs+1)*2 ); ylay.step( 2 );
 
+    // ------ MultiPanel(   Gizmo Control   )
+    mp = new MultiPanel( "Gizmo", gx.x0, ylay.x0, gx.x1, 0, -5 ); gui.addPanel( mp );
+    // Toggle Gizmo On/Off
+    mp->addPanel( "On/Off", {0.0,1.0,0.0}, 0,1,0,0,0 )->command = [&](GUIAbstractPanel* p){ useGizmo = !useGizmo; return 0; };
+    // Switch modes
+    mp->addPanel( "Mode:Trans", {0.0,1.0,0.0}, 0,1,0,0,0 )->command = [&](GUIAbstractPanel* p){ gizmo.mTrans='m'; return 0; };
+    mp->addPanel( "Mode:Rot",   {0.0,1.0,0.0}, 0,1,0,0,0 )->command = [&](GUIAbstractPanel* p){ gizmo.mTrans='r'; return 0; };
+    // Set Gizmo position to center of current selection (COG)
+    mp->addPanel( "Pos=SelCOG", {0.0,1.0,0.0}, 0,1,0,0,0 )->command = [&](GUIAbstractPanel* p){
+        if(bViewBuilder){ W->selectionFromBuilder(); }
+        int n = (int)W->selection.size();
+        if(n<=0) return 0;
+        Vec3d c = W->center(false);
+        gizmo.pose.pos = c;
+        return 0;
+    };
+    // Select all atoms in fragment of picked atom
+    mp->addPanel( "SelFragOfPick", {0.0,1.0,0.0}, 0,1,0,0,0 )->command = [&](GUIAbstractPanel* p){
+        int ia = W->ipicked; if(ia<0) return 0;
+        if( ia >= (int)W->builder.atoms.size() ) return 0;
+        int ifrag = W->builder.atoms[ia].frag; if(ifrag<0) return 0;
+        W->selectFragment( ifrag );
+        if(bViewBuilder){
+            W->builder.selection.clear();
+            for(int i=0; i<(int)W->builder.atoms.size(); i++) if(W->builder.atoms[i].frag==ifrag) W->builder.selection.insert(i);
+        }
+        return 0;
+    };
+    ylay.step( (mp->nsubs+1)*2 ); ylay.step( 2 );
+
     // mp= new MultiPanel( "Run", gx.x0, ylay.x0, gx.x1, 0,-2); gui.addPanel( mp ); //panel_NonBondPlot=mp;
     // mp->addPanel( "NonBond"  , {-3.0,3.0,0.0},  0,1,0,0,0 )->command = [&](GUIAbstractPanel* p){ W->bNonBonded=!W->bNonBonded;         return 0; };
     // mp->addPanel( "NonBondNG", {-3.0,3.0,0.0},  0,1,0,0,0 )->command = [&](GUIAbstractPanel* p){ W->bNonBondNeighs=!W->bNonBondNeighs; return 0; };
@@ -2650,7 +2680,7 @@ void MolGUI::eventMode_default( const SDL_Event& event ){
                 //case SDLK_LEFTBRACKET:  myAngle-=0.1; printf( "myAngle %g \n", myAngle ); break;
                 //case SDLK_RIGHTBRACKET: myAngle+=0.1; printf( "myAngle %g \n", myAngle );  break;
 
-                //case SDLK_g: useGizmo=!useGizmo; break;
+                case SDLK_g: useGizmo=!useGizmo; break;
                 //case SDLK_g: W->bGridFF=!W->bGridFF; break;
                 //case SDLK_g: W->swith_gridFF(); break;
                 case SDLK_c: W->autoCharges(); break;
@@ -2679,7 +2709,6 @@ void MolGUI::eventMode_default( const SDL_Event& event ){
                 case SDLK_k: bViewColorFrag ^= 1; break;
                 case SDLK_j: bViewBuilder   ^= 1; break;
 
-                case SDLK_g: W->bGridFF=!W->bGridFF; break;
                 //case SDLK_c: W->bOcl=!W->bOcl;       break;
                 case SDLK_m: W->swith_method();      break;
                 //case SDLK_h: W->ff4.bAngleCosHalf = W->ffl.bAngleCosHalf = !W->ffl.bAngleCosHalf; break;
