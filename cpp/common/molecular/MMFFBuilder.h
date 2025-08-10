@@ -58,7 +58,7 @@ struct Atom{
     Quat4d REQ;  /// non-covaloent interaction parameters {RvdW,EvdW,Q}              constexpr Vec3d{1.7,sqrt(0.0037292524),0}
     //Atom() = default;
 
-    void print()const{ printf( " Atom{id %i t %i c %i f %i REQ(%g,%g,%g,%g) pos(%g,%g,%g)}", id, type, iconf, frag, REQ.x, REQ.y, REQ.z,REQ.w, pos.x,pos.y,pos.z ); }
+    void print()const{ printf( "Atom{id %i t %i c %i f %i REQ(%g,%g,%g,%g) pos(%g,%g,%g)}", id, type, iconf, frag, REQ.x, REQ.y, REQ.z,REQ.w, pos.x,pos.y,pos.z ); }
 
     Atom() = default;
     Atom(const Vec3d& pos_):type{0},frag{-1},iconf{-1},REQ{defaultREQ},pos{pos_}{};
@@ -362,7 +362,7 @@ int splitGraphs( int nb, Vec2i* bonds, int b0, std::unordered_set<int>& innodes 
     }while( innodes.size()>n0 ); // as long as new nodes are added
     return innodes.size();
 }
-#include  "globals.h"
+
 int splitByBond( int ib, int nb, Vec2i* bond2atom, Vec3d* apos, int* selection, Vec3d& ax, Vec3d& p0 ){
     const Vec2i& b = bond2atom[ib];
     ax = (apos[b.b]-apos[b.a]).normalized();
@@ -692,6 +692,76 @@ class Builder{  public:
         ib = getBondToNeighbor( i, j ); if( ib>=0 ) return ib;
         ib = getBondToNeighbor( j, i ); if( ib>=0 ) return ib;
         return -1;
+    }
+
+    // Assign connected components of pi-conjugated sub-systems.
+    // Two atoms belong to the same component if:
+    //  - both have AtomConf with npi > 0 (i.e., have pi-orbital available)
+    //  - they are connected by a bond (sigma framework)
+    // The function sets Atom.frag to a non-negative fragment ID for pi-atoms,
+    // leaving non-pi atoms as -1. Returns number of discovered pi-fragments.
+    int assignPiFragments( bool bEpLikePi=true, bool reset=true ){
+        const int n = atoms.size();
+        if(reset){ for(Atom& a: atoms){ a.frag = -1; } }
+        int nfrag = 0;
+        std::vector<int> stack; stack.reserve(n);
+        for(int i=0; i<n; i++){
+            int ic = atoms[i].iconf; if(ic<0) continue;                    // must have conf
+            int npi = confs[ic].npi;  if(bEpLikePi){ npi += confs[ic].ne; }
+            if(npi<=0) continue;                                 // must have pi-orbital
+            if(atoms[i].frag>=0) continue;                                 // already colored
+            const int fid = nfrag++;
+            atoms[i].frag = fid;
+            stack.clear(); stack.push_back(i);
+            while(!stack.empty()){
+                int ia = stack.back(); stack.pop_back();
+                int ica = atoms[ia].iconf; if(ica<0) continue;
+                const AtomConf& ca = confs[ica];
+                // traverse sigma-bond neighbors only (first nbond entries are bonds)
+                for(int k=0; k<ca.nbond; k++){
+                    int ib = ca.neighs[k]; if(ib<0) continue;
+                    int ja = bonds[ib].getNeighborAtom(ia); if(ja<0) continue;
+                    int icj = atoms[ja].iconf; if(icj<0) continue;
+                    int npij = confs[icj].npi; if(bEpLikePi){ npij += confs[icj].ne; }
+                    if(npij<=0) continue;                        // neighbor must also have pi
+                    if(atoms[ja].frag>=0) continue;                         // already assigned
+                    atoms[ja].frag = fid;
+                    stack.push_back(ja);
+                }
+            }
+        }
+        return nfrag;
+    }
+
+    // Add capping atoms to existing fragments.
+    // A capping atom is one that is directly bonded to a fragment atom and either:
+    //  - has no AtomConf (iconf < 0), or
+    //  - has AtomConf but no other bond than the one to the fragment (nbond <= 1).
+    // Only immediate neighbors (one bond away) are considered. Existing frag labels are not overwritten.
+    // Returns number of atoms newly assigned to some fragment as caps.
+    int addCappingNeighborsToFragments(){
+        int added = 0;
+        const int n = atoms.size();
+        for(int i=0; i<n; i++){
+            int fid = atoms[i].frag; if(fid<0) continue;                  // only from existing fragment atoms
+            int ica = atoms[i].iconf; if(ica<0) continue;                  // need neighbors list
+            const AtomConf& ca = confs[ica];
+            for(int k=0; k<ca.nbond; k++){
+                int ib = ca.neighs[k]; if(ib<0) continue;
+                int ja = bonds[ib].getNeighborAtom(i); if(ja<0) continue;
+                if(atoms[ja].frag>=0) continue;                            // do not overwrite existing assignment
+                bool cap = false;
+                int icj = atoms[ja].iconf;
+                if(icj<0){
+                    cap = true;                                           // no conf => consider as cap
+                }else{
+                    const AtomConf& cj = confs[icj];
+                    if(cj.nbond<=1) cap = true;                           // pendant (no other bond)
+                }
+                if(cap){ atoms[ja].frag = fid; added++; }
+            }
+        }
+        return added;
     }
 
     AtomConf* addConfToAtom( int ia, const AtomConf* conf=0 ){

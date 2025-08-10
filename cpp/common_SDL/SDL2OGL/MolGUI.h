@@ -45,6 +45,29 @@
 //using Action  = std::function<void(double val)>; 
 //using CommandDict = std::unordered_map<std::string,>;
 
+// void drawBuilderAtoms( const MM::Builder& builder, char* id_ptr, float sz, uint32_t* colors=0){
+//     int offset= (int)((char*)id_ptr-(char*)&(builder.atoms[0]));
+//     //printf( "offset %i \n", offset );
+//     for(int i=0; i<builder.atoms.size(); i++){
+//         int id = *(int*)( (char*)&(builder.atoms[i]) + offset );
+//         if(id<0) continue;
+//         if(colors){ Draw::setRGB(colors[id]); }
+//         else       { Draw::color_of_hash(id); }
+//         Draw3D::drawPointCross( builder.atoms[i].pos, sz );
+//     }
+// }
+
+// Safer overload using pointer-to-member; avoids pointer arithmetic.
+inline void drawBuilderAtoms( const MM::Builder& builder, int MM::Atom::* field, float sz, uint32_t* colors=0 ){
+    for(int i=0; i<builder.atoms.size(); i++){
+        int id = builder.atoms[i].*field;
+        if(id<0) continue;
+        if(colors){ Draw::setRGB(colors[id]); }
+        else      { Draw::color_of_hash(id);  }
+        Draw3D::drawPointCross( builder.atoms[i].pos, sz );
+    }
+}
+
 void plotNonBondLine( const NBFF& ff, Quat4d REQi, double Rdamp, Vec3d p1, Vec3d p2, int n, Vec3d up=Vec3dZ, bool bForce=false ){
     Vec3d d = (p2-p1)*(1.0/n);
     Vec3d p = p1;
@@ -609,7 +632,12 @@ void MolGUI::initWiggets(){
     //     else            { std::unordered_set<int> s(W->selection.begin(),        W->selection.end());         W->selection.clear();         for(int i=0; i<W->nbmol.natoms;         i++) if( !s.contains(i) )W->selection.push_back(i);       return 0;  }
     // };
 
-    mp->addPanel( "print.nonB",  {0.0,1.0, 0.0},  0,1,0,0,0 )->command = [&](GUIAbstractPanel* p){ W->ffl.print_nonbonded();   return 0; };   // 1
+    mp->addPanel( "print.builder.atoms",  {0.0,1.0, 0.0},  0,1,0,0,0 )->command = [&](GUIAbstractPanel* p){ 
+        W->builder.assignPiFragments();    
+        W->builder.addCappingNeighborsToFragments();
+        W->builder.printAtoms();    return 0; 
+    };   // 1
+    mp->addPanel( "print.nonB",  {0.0,1.0, 0.0},  0,1,0,0,0 )->command = [&](GUIAbstractPanel* p){ W->ffl.print_nonbonded();    return 0; };   // 1
     mp->addPanel( "print.Aconf", {0.0,1.0, 0.0},  0,1,0,0,0 )->command = [&](GUIAbstractPanel* p){ W->builder.printAtomConfs(); return 0; };  // 2
     mp->addPanel( "Sel.All", {0.0,1.0, 0.0},  0,1,0,0,0 )->command = [&](GUIAbstractPanel* p){ if(bViewBuilder){ W->builder.selectAll();     }else{ W->selectAll();    } return 0; };  // 3
     mp->addPanel( "Sel.Inv", {0.0,1.0, 0.0},  0,1,0,0,0 )->command = [&](GUIAbstractPanel* p){ if(bViewBuilder){ W->builder.selectInverse(); }else{ W->selectInverse();} return 0; };  // 4
@@ -1562,8 +1590,15 @@ void MolGUI::draw(){
         debug_scanSurfFF( ny, p0-b+a*0.5, p0+b*2.+a*0.5 );
     }
 
-    if(bViewBuilder){ glColor3f( 0.f,1.f,0.f ); for(int ia : W->builder.selection ){ Draw3D::drawSphereOctLines( 8, 0.5, W->builder.atoms[ia].pos ); } }
-    else            { glColor3f( 0.f,1.f,0.f ); for(int ia : W->selection         ){ Draw3D::drawSphereOctLines( 8, 0.5, W->nbmol.apos[ia]        ); } }
+    //printf( "bViewBuilder %i \n", bViewBuilder );
+    if(bViewBuilder){ 
+        glColor3f( 0.f,1.f,0.f ); 
+        for(int ia : W->builder.selection ){ Draw3D::drawSphereOctLines( 8, 0.5, W->builder.atoms[ia].pos ); } 
+        drawBuilderAtoms( W->builder, &MM::Atom::frag, 0.5 ); 
+    }else{ 
+        glColor3f( 0.f,1.f,0.f ); 
+        for(int ia : W->selection         ){ Draw3D::drawSphereOctLines( 8, 0.5, W->nbmol.apos[ia]        ); } 
+    }
 
     // --- Drawing Population of geometies overlay
     if(frameCount>=1){ 
