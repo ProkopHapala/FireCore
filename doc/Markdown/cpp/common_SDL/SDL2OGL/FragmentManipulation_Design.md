@@ -13,7 +13,8 @@ See also:
 
 ## Goals
 
-- Enable selecting entire fragments by click or box select in edit mode.
+- Enable selecting entire fragments by click.
+- Assignment of atoms to fragment or creation of new fragments from selection in edit mode.
 - Use `EditorGizmo` to move/rotate selected fragments as rigid bodies.
 - Apply transforms to `MM::Builder` data when `bRunRelax == false` (simulation off).
 - Reuse `startFragment()`/`finishFragment()` and existing selection/transform APIs.

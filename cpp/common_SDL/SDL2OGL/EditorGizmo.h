@@ -151,6 +151,7 @@ class EditorGizmo{ public:
     // Optional callbacks to forward transforms externally (e.g., to a Builder)
     // If not set, gizmo will modify bound points directly (default behavior).
     std::function<void(const Vec3d&)> onTranslateSelection = nullptr;
+    std::function<void(const Vec3d&, double)> onRotateSelection = nullptr; // axis, angle
 
     /*
     void applyTransform(){
@@ -227,6 +228,8 @@ class EditorGizmo{ public:
     };
 
     void clearAxMask(){ axmask[0]=0; axmask[1]=0; axmask[2]=0; }
+
+    inline int activeAxis() const{ for(int i=0;i<3;i++){ if(axmask[i]) return i; } return -1; }
 
     bool selectAxis(){
         //printf( "selectAxis() \n" );
@@ -305,8 +308,19 @@ class EditorGizmo{ public:
                 axPos=axPos_;
                 }break;
             case 'r':{
-                // -- ToDo: Not sure how to do rotations yet
-                //void applyRotation(const Vec3d& uaxis, double phi );
+                Vec3d axPos_;
+                projectToGizmo( axPos_ );
+                Vec3d d = axPos_ - axPos; // screen-plane delta
+                int iax = activeAxis();
+                if(iax>=0){
+                    // Simple mapping: rotate by magnitude of drag in screen-plane around selected axis
+                    double phi = d.norm();
+                    const Vec3d& uaxis = pose.rot.vecs[iax];
+                    if(onRotateSelection){ onRotateSelection(uaxis, phi); }
+                }else{
+                    // No axis selected, ignore
+                }
+                axPos = axPos_;
                 }break;
         }
     }

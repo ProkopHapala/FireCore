@@ -534,6 +534,62 @@ class Builder{  public:
     void rotate_atoms   ( double angle, Vec3d axis=Vec3dZ, Vec3d orig_old=Vec3dZero, Vec3d orig_new=Vec3dZero, int i0=0, int imax=-1 ){ Mat3d M; M.fromRotation(angle,axis);    transform_atoms( M,orig_old,orig_new,i0,imax); }
     void orient_atoms   ( Vec3d fw, Vec3d up,              Vec3d orig_old=Vec3dZero, Vec3d orig_new=Vec3dZero, int i0=0, int imax=-1 ){ Mat3d M; M.fromDirUp(fw,up); transform_atoms( M,orig_old,orig_new,i0,imax); }
 
+    // ---- Selection-based transforms and helpers
+    inline void extendSelection_toFragments(){
+        // Expand current atom selection to include all atoms in fragments of the selected atoms
+        const size_t n0 = selection.size();
+        std::unordered_set<int> frsel;
+        for(const int ia : selection){ int ifrag = atoms[ia].frag; if(ifrag>=0) frsel.insert(ifrag); }
+        if(!frsel.empty()){
+            printf("extendSelection_toFragments(): selAtoms0=%zu selFrags=%zu ->", n0, frsel.size());
+        }else{
+            printf("extendSelection_toFragments(): selAtoms0=%zu selFrags=0 ->", n0);
+        }
+        for(const int ifrag : frsel){
+            if((ifrag<0)||(ifrag>=(int)frags.size())){ printf(" [WARN ifrag=%i out of range]", ifrag); continue; }
+            const Vec2i& ar = frags[ifrag].atomRange;
+            for(int i=ar.a; i<ar.b; i++){ selection.insert(i); }
+        }
+        printf(" selAtoms1=%zu\n", selection.size());
+    }
+
+    inline void move_selection( const Vec3d& d ){
+        for(const int ia : selection){ atoms[ia].pos.add(d); }
+    }
+
+    inline void rotate_selection( double angle, Vec3d axis=Vec3dZ, Vec3d origin=Vec3dZero ){
+        Mat3d M; M.fromRotation(angle,axis);
+        for(const int ia : selection){ Vec3d p; M.dot_to( atoms[ia].pos - origin, p ); atoms[ia].pos = p + origin; }
+    }
+
+    inline void printFragmentsSummary() const{
+        printf("Builder: frags=%d atoms=%d bonds=%d confs=%d ang=%d dih=%d\n",
+               (int)frags.size(), (int)atoms.size(), (int)bonds.size(), (int)confs.size(), (int)angles.size(), (int)dihedrals.size());
+        for(int i=0; i<(int)frags.size(); i++){
+            const Fragment& f = frags[i];
+            const int na = f.atomRange.b - f.atomRange.a;
+            const int nb = f.bondRange.b - f.bondRange.a;
+            printf("  frag[%d]: atoms[%d,%d) nA=%d  bonds[%d,%d) nB=%d  confs[%d,%d)  ang[%d,%d)  dih[%d,%d)\n",
+                   i,
+                   f.atomRange.a, f.atomRange.b, na,
+                   f.bondRange.a, f.bondRange.b, nb,
+                   f.confRange.a, f.confRange.b,
+                   f.angRange.a,  f.angRange.b,
+                   f.dihRange.a,  f.dihRange.b);
+        }
+        // quick validation of atom->frag tags for first/last atom of each fragment
+        for(int i=0; i<(int)frags.size(); i++){
+            const Fragment& f = frags[i];
+            if(f.atomRange.a < f.atomRange.b){
+                int ia0 = f.atomRange.a;
+                int ia1 = f.atomRange.b - 1;
+                int fa0 = (ia0<(int)atoms.size()) ? atoms[ia0].frag : -2;
+                int fa1 = (ia1<(int)atoms.size()) ? atoms[ia1].frag : -2;
+                printf("    tags: atoms[%d].frag=%d atoms[%d].frag=%d\n", ia0, fa0, ia1, fa1);
+            }
+        }
+    }
+
     void changeCell( const Mat3d& lvs, Vec3d orig_old=Vec3dZero, Vec3d orig_new=Vec3dZero, int i0=0, int n=-1 ){
         Mat3d M,MM; 
         //lvec.invert_to(M); 

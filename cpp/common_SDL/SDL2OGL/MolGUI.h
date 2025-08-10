@@ -244,6 +244,7 @@ class MolGUI : public AppSDL2OGL_3D { public:
 
     bool   bViewBuilder      = false;
     //bool   bViewBuilder      = true;
+    bool   bSelectFrag       = false; // extend atom selection to whole fragments in builder view
     bool   bViewAxis         = false;
     bool   bViewCell         = true;
 
@@ -278,6 +279,9 @@ class MolGUI : public AppSDL2OGL_3D { public:
     Vec2i* bond2atom = 0; 
     Vec3d* pbcShifts = 0; 
     Vec3d* apos      = 0;
+    // Temporary buffers to bind gizmo to builder data (since builder atoms/bonds are not laid out as Vec3d*/Vec2i*)
+    std::vector<Vec3d> gizmo_builder_points;
+    std::vector<Vec2i> gizmo_builder_edges;
     Vec3d* fapos     = 0;
     Vec3d* pipos     = 0;
     Vec3d* fpipos    = 0;
@@ -625,6 +629,26 @@ void MolGUI::initWiggets(){
     mp->addPanel( "toPCAxy", {-3.0,3.0,0.0},  0,1,0,0,0 )->command = [&](GUIAbstractPanel* p){ if(bViewBuilder){W->selectionFromBuilder();} W->alignToAxis({2,1,0}); if(bViewBuilder){W->updateBuilderFromFF();} return 0; }; // 5
     p=mp->addPanel( "save.xyz",{-3.0,3.0,0.0},  0,1,0,0,0 );p->command = [&](GUIAbstractPanel* p){ const char* fname = ((GUIPanel*)p)->inputText.c_str(); if(bViewBuilder){ W->builder.save2xyz(fname);}else{W->saveXYZ(fname);} return 0; }; p->inputText="out.xyz";  // 9
     p=mp->addPanel( "save.mol:",{-3.0,3.0,0.0},  0,1,0,0,0 );p->command = [&](GUIAbstractPanel* p){ const char* fname = ((GUIPanel*)p)->inputText.c_str(); W->updateBuilderFromFF(); W->builder.saveMol(fname); return 0; }; p->inputText="out.mol";  // 10
+
+    // ------ MultiPanel(    "Builder"   )
+    ylay.step( 2 );
+    MultiPanel* mpB = new MultiPanel( "Builder", gx.x0, ylay.x0, gx.x1, 0,-6 ); gui.addPanel( mpB );
+    mpB->addPanel( "ViewBld", {0.0,1.0,0.0}, 0,1,0,0,0 )->command = [&](GUIAbstractPanel* p){
+        bViewBuilder ^= 1; if(bViewBuilder) useGizmo = true; updateGUI(); gizmo.selection.clear();
+        if(bViewBuilder){ for(int ia: W->builder.selection){ gizmo.selection[ia]=1; } }
+        else            { for(int ia: W->selection        ){ gizmo.selection[ia]=1; } }
+        return 0;
+    };
+    mpB->addPanel( "FragSel", {0.0,1.0,0.0}, 0,1,0,0,0 )->command = [&](GUIAbstractPanel* p){
+        bSelectFrag ^= 1;
+        if(bViewBuilder && bSelectFrag && !W->builder.selection.empty()){
+            W->builder.extendSelection_toFragments(); W->selection.clear(); gizmo.selection.clear();
+            for(int ia: W->builder.selection){ W->selection.push_back(ia); gizmo.selection[ia]=1; }
+            useGizmo = true;
+        }
+        return 0;
+    };
+    mpB->addPanel( "Gizmo",   {0.0,1.0,0.0}, 0,1,0,0,0 )->command = [&](GUIAbstractPanel* p){ useGizmo = !useGizmo; return 0; };
 
     //mp->addPanel( "VdwRim", {1.0,3.0,1.5},  0,1,0,0,0 )->command = [&](GUIAbstractPanel* p){  double R=((GUIPanel*)p)->value; dipoleMap.points_along_rim( R, {5.0,0.0,0.0}, Vec2d{0.0,0.1} );  bDipoleMap=true;  return 0; };
     //mp->addPanel( "VdwRim", {1.0,3.0,1.5},  0,1,0,0,0 )->command = [&](GUIAbstractPanel* p){  double R=((GUIPanel*)p)->value; dipoleMap.prepareRim( 5, {1.0,2.0}, {0.4,0.6}, {0.0,-7.0,0.0}, {1.0,0.0} );  bDipoleMap=true;  return 0; };
@@ -1140,8 +1164,42 @@ void MolGUI::initGUI(){
 }
 
 void MolGUI::updateGUI(){
-    gizmo.bindPoints( natoms, apos      );
-    gizmo.bindEdges ( nbonds, bond2atom );
+    if(bViewBuilder){
+        // Bind gizmo to Builder data
+        int na = W->builder.atoms.size();
+        int nb = W->builder.bonds.size();
+        gizmo_builder_points.resize(na);
+        for(int i=0;i<na;i++){ gizmo_builder_points[i]=W->builder.atoms[i].pos; }
+        gizmo_builder_edges.resize(nb);
+        for(int i=0;i<nb;i++){ gizmo_builder_edges[i]=W->builder.bonds[i].atoms; }
+        gizmo.bindPoints( na, gizmo_builder_points.data() );
+        gizmo.bindEdges ( nb, gizmo_builder_edges.data() );
+        // Forward translations to builder and keep gizmo points in sync for live feedback
+        gizmo.onTranslateSelection = [this](const Vec3d& d){
+            for(const auto& kv : gizmo.selection){ int ia = kv.first; if((ia>=0)&&(ia<(int)W->builder.atoms.size())){ W->builder.atoms[ia].pos.add(d); if(ia<(int)gizmo_builder_points.size()) gizmo_builder_points[ia].add(d); } }
+            bBuilderChanged = true;
+        };
+        // Forward rotations to builder and keep gizmo points in sync for live feedback
+        gizmo.onRotateSelection = [this](const Vec3d& axis, double angle){
+            Mat3d M; M.fromRotation(angle, axis);
+            Vec3d o = gizmo.pose.pos;
+            for(const auto& kv : gizmo.selection){
+                int ia = kv.first;
+                if((ia>=0)&&(ia<(int)W->builder.atoms.size())){
+                    // rotate in Builder
+                    Vec3d p = W->builder.atoms[ia].pos - o; Vec3d pr; M.dot_to(p, pr); W->builder.atoms[ia].pos = pr + o;
+                    // rotate in Gizmo-bound points for visual feedback
+                    if(ia<(int)gizmo_builder_points.size()){ Vec3d pg = gizmo_builder_points[ia] - o; Vec3d pgr; M.dot_to(pg, pgr); gizmo_builder_points[ia] = pgr + o; }
+                }
+            }
+            bBuilderChanged = true;
+        };
+    }else{
+        gizmo.bindPoints( natoms, apos      );
+        gizmo.bindEdges ( nbonds, bond2atom );
+        gizmo.onTranslateSelection = nullptr;
+        gizmo.onRotateSelection    = nullptr;
+    }
     if(panel_Frags){
         panel_Frags->labels.clear();
         for(int i=0; i<W->builder.frags.size(); i++){
@@ -1562,8 +1620,8 @@ void MolGUI::draw(){
         debug_scanSurfFF( ny, p0-b+a*0.5, p0+b*2.+a*0.5 );
     }
 
-    if(bViewBuilder){ glColor3f( 0.f,1.f,0.f ); for(int ia : W->builder.selection ){ Draw3D::drawSphereOctLines( 8, 0.5, W->builder.atoms[ia].pos ); } }
-    else            { glColor3f( 0.f,1.f,0.f ); for(int ia : W->selection         ){ Draw3D::drawSphereOctLines( 8, 0.5, W->nbmol.apos[ia]        ); } }
+    if(bViewBuilder){ glColor3f( 0.f,1.f,0.f ); for(int ia : W->builder.selection ){ Draw3D::drawSphereOctLines( 8, 0.8, W->builder.atoms[ia].pos ); } }
+    else            { glColor3f( 0.f,1.f,0.f ); for(int ia : W->selection         ){ Draw3D::drawSphereOctLines( 8, 0.8, W->nbmol.apos[ia]        ); } }
 
     // --- Drawing Population of geometies overlay
     if(frameCount>=1){ 
@@ -1806,12 +1864,12 @@ void MolGUI::drawingHex(double z0){
 
 void MolGUI::selectRect( const Vec3d& p0, const Vec3d& p1 ){ 
     if(bViewBuilder){
-        W->builder.selectRect( p0, p1, (Mat3d)cam.rot ); 
+        W->builder.selectRect( p0, p1, (Mat3d)cam.rot );
+        if(bSelectFrag){ W->builder.extendSelection_toFragments(); }
+        // mirror to world-side vector for drawing and to gizmo selection for manipulation
         W->selection.clear();
-        for( int i : W->builder.selection){ W->selection.push_back(i); }
-        { // Debug
-           printf("selection: "); for( int i : W->selection){ printf("%i ", i); } printf("\n");
-        }
+        gizmo.selection.clear();
+        for( int ia : W->builder.selection){ W->selection.push_back(ia); gizmo.selection[ia]=1; }
     }else{ W->selectRect( p0, p1, (Mat3d)cam.rot ); }
     
 }
@@ -2201,11 +2259,20 @@ void MolGUI::drawBuilder( Vec3i ixyz ){
     }
     if( bViewBonds ){
         glDisable(GL_LIGHTING);
-        glColor3f(0.0f,0.0f,0.0f);
+        if(!bViewColorFrag){ glColor3f(0.0f,0.0f,0.0f); }
         glLineWidth(3.0f);
         glBegin(GL_LINES);
         for(int ib=0; ib<B.bonds.size(); ib++){
             Vec2i b  = B.bonds[ib].atoms;
+            if(bViewColorFrag){
+                int fa = (b.a>=0 && b.a<(int)B.atoms.size()) ? B.atoms[b.a].frag : -1;
+                int fb = (b.b>=0 && b.b<(int)B.atoms.size()) ? B.atoms[b.b].frag : -1;
+                if( fa>=0 && fa<(int)B.frags.size() && fa==fb ){
+                    Draw::setRGB( B.frags[fa].color );
+                }else{
+                    glColor3f(0.0f,0.0f,0.0f);
+                }
+            }
             Draw3D::vertex(B.atoms[b.a].pos); 
             Draw3D::vertex(B.atoms[b.b].pos);
         }
@@ -2642,7 +2709,27 @@ void MolGUI::eventMode_default( const SDL_Event& event ){
                 //case SDLK_k: relaxNonuniformGrid(); break;
 
                 case SDLK_k: bViewColorFrag ^= 1; break;
-                case SDLK_j: bViewBuilder   ^= 1; break;
+                case SDLK_j: {
+                    bViewBuilder   ^= 1;
+                    // auto-enable gizmo in builder view for visibility
+                    if(bViewBuilder) useGizmo = true;
+                    // rebind gizmo to the current view and sync selection
+                    updateGUI();
+                    gizmo.selection.clear();
+                    if(bViewBuilder){ for(int ia: W->builder.selection){ gizmo.selection[ia]=1; } }
+                    else            { for(int ia: W->selection        ){ gizmo.selection[ia]=1; } }
+                } break;
+                case SDLK_y: {
+                    bSelectFrag    ^= 1; // toggle fragment selection extension
+                    if(bViewBuilder && bSelectFrag && !W->builder.selection.empty()){
+                        W->builder.extendSelection_toFragments();
+                        // mirror to world and gizmo
+                        W->selection.clear(); gizmo.selection.clear();
+                        for(int ia: W->builder.selection){ W->selection.push_back(ia); gizmo.selection[ia]=1; }
+                        useGizmo = true;
+                    }
+                } break;
+                case SDLK_F6: useGizmo = !useGizmo; break; // gizmo visibility toggle (use F6 to avoid clashes)
 
                 case SDLK_g: W->bGridFF=!W->bGridFF; break;
                 //case SDLK_c: W->bOcl=!W->bOcl;       break;
