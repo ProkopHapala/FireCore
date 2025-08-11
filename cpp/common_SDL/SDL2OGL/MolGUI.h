@@ -174,6 +174,7 @@ class MolGUI : public AppSDL2OGL_3D { public:
     double cameraMoveSpeed = 1.0;
     //bool useGizmo=true;
     bool useGizmo=false;
+    bool gizmoAutoPivotCOG = false; // auto-place gizmo at COG of current selection (builder)
     bool bDrawHexGrid=true;
     bool bHexDrawing=false; 
 
@@ -698,6 +699,10 @@ void MolGUI::initWiggets(){
     // Switch modes
     mp->addPanel( "Mode:Trans", {0.0,1.0,0.0}, 0,1,0,0,0 )->command = [&](GUIAbstractPanel* p){ gizmo.mTrans='m'; return 0; };
     mp->addPanel( "Mode:Rot",   {0.0,1.0,0.0}, 0,1,0,0,0 )->command = [&](GUIAbstractPanel* p){ gizmo.mTrans='r'; return 0; };
+    // Auto pivot to COG toggle
+    mp->addPanel( "AutoCOG", {0.0,1.0,0.0}, 0,1,0,0,0 )->command = [&](GUIAbstractPanel* p){ gizmoAutoPivotCOG = !gizmoAutoPivotCOG; printf("Gizmo AutoCOG = %d\n", (int)gizmoAutoPivotCOG); return 0; };
+    // Adjust rotation annulus inner fraction for picking (0.5..0.95)
+    mp->addPanel( "ArcPick rmin", {0.5,0.95,0.0}, 1,1,1,1,1 )->command = [&](GUIAbstractPanel* p){ gizmo.rotPickRminFrac = ((GUIPanel*)p)->value; printf("Gizmo rotPickRminFrac=%.3f\n", gizmo.rotPickRminFrac); return 0; };
     // Set Gizmo position to center of current selection (COG)
     mp->addPanel( "Pos=SelCOG", {0.0,1.0,0.0}, 0,1,0,0,0 )->command = [&](GUIAbstractPanel* p){
         if(bViewBuilder){ W->selectionFromBuilder(); }
@@ -2593,12 +2598,34 @@ void MolGUI::eventMode_scan( const SDL_Event& event  ){
 void MolGUI::eventMode_default( const SDL_Event& event ){
     // Only use gizmo in builder view for this feature; and never modify selection while interacting
     if(useGizmo && bViewBuilder){
+        // Middle mouse: set pivot to nearest builder atom under cursor
+        if(event.type == SDL_MOUSEBUTTONDOWN && event.button.button == SDL_BUTTON_MIDDLE){
+            Vec3d ro = (Vec3d)mouseRay0();
+            Vec3d rd = (Vec3d)cam.rot.c;
+            int    imin = -1; double dmin = 1e+300; double tmin = 0;
+            for(size_t ia=0; ia<W->builder.atoms.size(); ++ia){
+                double t;
+                double d2 = rayPointDistance2( ro, rd, W->builder.atoms[ia].pos, t );
+                if(d2 < dmin){ dmin = d2; tmin = t; imin = (int)ia; }
+            }
+            if(imin>=0 && dmin < 0.25){ // radius ~0.5
+                gizmo.pose.pos = W->builder.atoms[imin].pos;
+                if(verbosity>0) printf("MolGUI: Pivot set to atom %d at (%.3f,%.3f,%.3f) d=%.3f t=%.3f\n", imin, gizmo.pose.pos.x, gizmo.pose.pos.y, gizmo.pose.pos.z, sqrt(dmin), tmin);
+                return; // consume the event
+            }
+        }
         if(gizmo.mTrans=='r'){
             if(event.type == SDL_MOUSEBUTTONDOWN && event.button.button == SDL_BUTTON_LEFT){
                 // Mirror builder selection to gizmo; do NOT change builder selection and do NOT move gizmo
                 gizmo.selection.clear();
                 for(int ia : W->builder.selection){ gizmo.selection[ia] = 0; }
                 if(verbosity>0) printf("MolGUI: mirrored %zu builder selections to gizmo on LMB down\n", gizmo.selection.size());
+                // Auto-pivot to selection COG if enabled
+                if(gizmoAutoPivotCOG && !W->builder.selection.empty()){
+                    Vec3d c{0,0,0}; int n=0;
+                    for(int ia : W->builder.selection){ c.add( W->builder.atoms[ia].pos ); n++; }
+                    if(n>0){ c.mul(1.0/n); gizmo.pose.pos = c; if(verbosity>0) printf("MolGUI: AutoCOG pivot=(%.3f,%.3f,%.3f)\n", c.x,c.y,c.z); }
+                }
             }
         }
         gizmo.onEvent( mouse_pix, event );

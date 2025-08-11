@@ -105,7 +105,7 @@ struct Pose3d{
 };
 
 class EditorGizmo{ public:
-    int iDebug = 0;
+    int iDebug = 1;
     //enum class MPick :char{ vertex='v', edge='e'               };
     //enum class MTrans:char{ move='m', rotate='r', scale='s';   };
     //enum class MOrig :char{ global='g', cluster='c', local='l' };
@@ -113,6 +113,8 @@ class EditorGizmo{ public:
     int oglSphere=0;
     float Rhandle=0.1;  // size of handle
     float Rgizmo =1.0;  // size of gizmo
+    // Wider annulus for rotation-wheel picking; inner radius = rotPickRminFrac * Rgizmo (default 0.8)
+    double rotPickRminFrac = 0.8;
     //MPick  mPick;    // vertex, edge | polygon
     //MTrans mTransform;  // move, rotate, scale
     //MOrig  mOrigin;  // global, group
@@ -157,7 +159,7 @@ class EditorGizmo{ public:
 
     // Optional callbacks to forward transforms externally (e.g., to a Builder)
     // If not set, gizmo will modify bound points directly (default behavior).
-    std::function<void(const Vec3d&)> onTranslateSelection = nullptr;
+    std::function<void(const Vec3d&)>                       onTranslateSelection = nullptr;
     std::function<void(const Vec3d&, double, const Vec3d&)> onRotateSelection = nullptr; // (axis, dphi, pivot)
 
     /*
@@ -264,28 +266,51 @@ class EditorGizmo{ public:
         clearAxMask();
         iAxisRot = -1; phiRot = 0.0;
         double tmin = 1e+300;
-        const double rmin = Rgizmo - Rhandle;
-        const double rmax = Rgizmo;
+        // Make the annulus thicker for easier picking. Use smaller of (Rgizmo-Rhandle) and (rotPickRminFrac*Rgizmo)
+        const double rmax = (double)Rgizmo;
+        //double rmin     = (double)Rgizmo - (double)Rhandle;
+        //double rmin_opt = rotPickRminFrac * (double)Rgizmo;
+        //if(rmin > rmin_opt) rmin = rmin_opt;
+        
+        double rmin=0.5*rmax;
+        // Shift ray origin far back along -rd so that plane-intersection t is positive for both halves (esp. in ortho)
+        const double back = (double)Rgizmo * 1000.0;  // large enough relative to gizmo size
+        Vec3d roEff = ro - rd*back;
+        if(iDebug>0) printf("EditorGizmo::selectAxisRotate(): ro(%g,%g,%g) pose.pos(%g,%g,%g) ax: ", ro.x, ro.y, ro.z, pose.pos.x, pose.pos.y, pose.pos.z);
         for(int i=0;i<3;i++){
             const Vec3d& n = pose.rot.vecs[i];
-            double t = rayCircleRange( ro, rd, n, pose.pos, rmin, rmax );
-            if( (t>0) && (t<tmin) ){
-                tmin = t;
-                iAxisRot = i;
-            }
+            double t = rayCircleRange( roEff, rd, n, pose.pos, rmin, rmax );
+            if(iDebug>0)  printf("(%i %10.2g)",i, t);
+            if( (t>0) && (t<tmin) ){ tmin = t; iAxisRot = i; }
         }
-        if(iAxisRot<0){ if(iDebug>0) printf("Gizmo selectAxisRotate: no rotation wheel hit (r=[%.3f,%.3f])\n", rmin, rmax); return false; }
-        axmask[0]=axmask[1]=axmask[2]=false; axmask[iAxisRot]=true;
-        const Vec3d& n = pose.rot.vecs[iAxisRot];
+        if(iDebug>0)  printf("\n");
+        if(iAxisRot<0){ 
+            if(iDebug>0) printf("EditorGizmo::selectAxisRotate(): no rotation wheel hit (r=[%.3f,%.3f])\n", rmin, rmax); 
+            return false; 
+        }else{
+            if(iDebug>0) printf( "EditorGizmo::selectAxisRotate(): axis %i\n", iAxisRot );
+        }
+        axmask[0]=axmask[1]=axmask[2]=false; 
+        axmask[iAxisRot]=true;
+        const Vec3d& n  = pose.rot.vecs[iAxisRot];
         const Vec3d& e0 = pose.rot.vecs[(iAxisRot+1)%3];
         const Vec3d& e1 = pose.rot.vecs[(iAxisRot+2)%3];
-        double nh = n.dot(rd);
+        double nh       = n.dot(rd);
         if(fabs(nh) < 1e-300){ phiRot = 0.0; return true; }
-        double t = ( n.dot(pose.pos) - n.dot(ro) )/nh;
-        Vec3d hit = ro + rd*t; Vec3d v = hit - pose.pos;
+        double t = ( n.dot(pose.pos) - n.dot(roEff) )/nh;
+        Vec3d hit = roEff + rd*t; Vec3d v = hit - pose.pos;
         double x = e0.dot(v); double y = e1.dot(v);
         phiRot = atan2( y, x );
-        if(iDebug>0) printf("Gizmo selectAxisRotate: axis=%d phi0=%.3f rad (%.1f deg) t=%.3g nh=%.3g\n", iAxisRot, phiRot, phiRot*180.0/M_PI, t, nh);
+        if(iDebug>0){
+            printf("Gizmo selectAxisRotate: axis=%d phi0=%.3f rad (%.1f deg) t=%.3g nh=%.3g rmin=%.3f rmax=%.3f\n", iAxisRot, phiRot, phiRot*180.0/M_PI, t, nh, rmin, rmax);
+            // Sanity: ensure pose.rot.vecs[] matches pose.rot.{a,b,c}
+            double d0 = fabs( pose.rot.vecs[0].dot(pose.rot.a) ) - 1.0;
+            double d1 = fabs( pose.rot.vecs[1].dot(pose.rot.b) ) - 1.0;
+            double d2 = fabs( pose.rot.vecs[2].dot(pose.rot.c) ) - 1.0;
+            if( (fabs(d0)>1e-6) || (fabs(d1)>1e-6) || (fabs(d2)>1e-6) ){
+                printf("[WARN] Gizmo rot basis mismatch: d0=%g d1=%g d2=%g (possible transpose?)\n", d0, d1, d2);
+            }
+        }
         return true;
     }
 
@@ -530,7 +555,7 @@ class EditorGizmo{ public:
                     // Text label in degrees near gizmo center
                     char buf[64];
                     sprintf(buf, "%.1f deg", dphi*180.0/M_PI );
-                    Draw3D::drawText( buf, (Vec3f)(pose.pos + n*(Rgizmo*0.2)), 0, 0.12, 0 );
+                    Draw3D::drawText( buf, (Vec3f)(pose.pos + n*(Rgizmo*0.2)), GUI_fontTex, 0.02 );
                     glEnable(GL_DEPTH_TEST);
                 }
                 } break;
