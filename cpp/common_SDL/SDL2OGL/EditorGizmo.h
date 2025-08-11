@@ -31,6 +31,8 @@
 #include <SDL2/SDL_opengl.h>
 
 #include <functional>
+#include <algorithm>
+#include <cmath>
 #include "Draw.h"
 #include "Draw2D.h"
 #include "Draw3D.h"
@@ -135,6 +137,11 @@ class EditorGizmo{ public:
     Vec3d rd,ro;
     Vec2f pix;
 
+    // Rotation state
+    int    iAxisRot = -1;   // active rotation axis index (0=a,1=b,2=c), -1 if none
+    double phiRot   = 0.0;  // last angle around active axis (for incremental dragging)
+    double phiRot0  = 0.0;  // angle at drag start (for visual indicator)
+
     double pointSize = 0.1;
 
     int npoint;
@@ -151,6 +158,7 @@ class EditorGizmo{ public:
     // Optional callbacks to forward transforms externally (e.g., to a Builder)
     // If not set, gizmo will modify bound points directly (default behavior).
     std::function<void(const Vec3d&)> onTranslateSelection = nullptr;
+    std::function<void(const Vec3d&, double, const Vec3d&)> onRotateSelection = nullptr; // (axis, dphi, pivot)
 
     /*
     void applyTransform(){
@@ -223,7 +231,9 @@ class EditorGizmo{ public:
         int sel     [nsel];
         int selgroup[nsel];
         int i=0; for( auto& s : selection ){ sel[i]=s.first; sel[i]=s.second; i++; }
-        // ToDo - not sure how to do rotation now
+        // Global origin rotation around pose.pos for selected points
+        if(nsel<=0) return;
+        rotate( nsel, sel, points, pose.pos, uaxis, phi );
     };
 
     void clearAxMask(){ axmask[0]=0; axmask[1]=0; axmask[2]=0; }
@@ -247,6 +257,36 @@ class EditorGizmo{ public:
             }
         }
         return b;
+    }
+
+    // Rotation-axis picking by intersecting ray with annulus (wheel) in plane perpendicular to each axis.
+    bool selectAxisRotate(){
+        clearAxMask();
+        iAxisRot = -1; phiRot = 0.0;
+        double tmin = 1e+300;
+        const double rmin = Rgizmo - Rhandle;
+        const double rmax = Rgizmo;
+        for(int i=0;i<3;i++){
+            const Vec3d& n = pose.rot.vecs[i];
+            double t = rayCircleRange( ro, rd, n, pose.pos, rmin, rmax );
+            if( (t>0) && (t<tmin) ){
+                tmin = t;
+                iAxisRot = i;
+            }
+        }
+        if(iAxisRot<0){ if(iDebug>0) printf("Gizmo selectAxisRotate: no rotation wheel hit (r=[%.3f,%.3f])\n", rmin, rmax); return false; }
+        axmask[0]=axmask[1]=axmask[2]=false; axmask[iAxisRot]=true;
+        const Vec3d& n = pose.rot.vecs[iAxisRot];
+        const Vec3d& e0 = pose.rot.vecs[(iAxisRot+1)%3];
+        const Vec3d& e1 = pose.rot.vecs[(iAxisRot+2)%3];
+        double nh = n.dot(rd);
+        if(fabs(nh) < 1e-300){ phiRot = 0.0; return true; }
+        double t = ( n.dot(pose.pos) - n.dot(ro) )/nh;
+        Vec3d hit = ro + rd*t; Vec3d v = hit - pose.pos;
+        double x = e0.dot(v); double y = e1.dot(v);
+        phiRot = atan2( y, x );
+        if(iDebug>0) printf("Gizmo selectAxisRotate: axis=%d phi0=%.3f rad (%.1f deg) t=%.3g nh=%.3g\n", iAxisRot, phiRot, phiRot*180.0/M_PI, t, nh);
+        return true;
     }
 
     void filterByAxis(Vec3d& v){
@@ -274,11 +314,16 @@ class EditorGizmo{ public:
 
     void mouseStart( ){
         //printf( "mouseStart() \n" );
-        if(bSelectAxis)selectAxis();
+        if(bSelectAxis){
+            if(mTrans=='r'){ selectAxisRotate(); }
+            else{ selectAxis(); }
+        }
         //printf( "axMask XYZ %i %i %i \n", axmask[0], axmask[1], axmask[2] );
         //Vec2f cxy = cam->ray2screen( (Vec3f)rd, (Vec3f)pose.pos ); // TodDo : shoudl we use double instead of float?
         projectToGizmo( axStart );
         axPos=axStart;
+        if(mTrans=='r' && iAxisRot>=0){ phiRot0 = phiRot; }
+        if(iDebug>0){ printf("Gizmo mouseStart: mTrans=%c iAxisRot=%d phiRot0=%.3f rad\n", mTrans, iAxisRot, phiRot0); }
         //shift.set(0.0);
         //axStart = ray2screen( pose.pos-cam->pos, rd );
         //printf( "axStart (%g,%g,%g) \n", axStart.x,axStart.y,axStart.z );
@@ -305,8 +350,25 @@ class EditorGizmo{ public:
                 axPos=axPos_;
                 }break;
             case 'r':{
-                // -- ToDo: Not sure how to do rotations yet
-                //void applyRotation(const Vec3d& uaxis, double phi );
+                if(iAxisRot>=0){
+                    const Vec3d& n  = pose.rot.vecs[iAxisRot];
+                    const Vec3d& e0 = pose.rot.vecs[(iAxisRot+1)%3];
+                    const Vec3d& e1 = pose.rot.vecs[(iAxisRot+2)%3];
+                    double nh = n.dot(rd);
+                    if(fabs(nh) >= 1e-300){
+                        double t = ( n.dot(pose.pos) - n.dot(ro) )/nh;
+                        Vec3d hit = ro + rd*t; Vec3d v = hit - pose.pos;
+                        double x = e0.dot(v); double y = e1.dot(v);
+                        double phi = atan2( y, x );
+                        // robust unwrap across branch cut
+                        double d = phi - phiRot;
+                        double dphi = atan2( sin(d), cos(d) );
+                        if(onRotateSelection){ onRotateSelection(n, dphi, pose.pos); }
+                        else                   { applyRotation( n, dphi ); }
+                        phiRot = phi;
+                        if(iDebug>0){ printf("Gizmo mouseEnd/drag: axis=%d dphi=%.3f rad (%.1f deg) phi=%.3f\n", iAxisRot, dphi, dphi*180.0/M_PI, phiRot); }
+                    }
+                }
                 }break;
         }
     }
@@ -325,9 +387,9 @@ class EditorGizmo{ public:
                 //if(iDebug>1)printf("EditorGizmo::mousePick() ipick %i \n", ipick );
                 if(ipick<0) break;
                 //printf( " %i   // mouse pick vertex \n", ipick );
-                if     (mPickLogic='~'){ xorToSelection( ipick, groupBrush); } // Xor
-                else if(mPickLogic='+'){ selection[ipick]=groupBrush; } // set   (Or)
-                else if(mPickLogic='-'){ selection.erase(ipick); } // unset ()
+                if     (mPickLogic=='~'){ xorToSelection( ipick, groupBrush); } // Xor
+                else if(mPickLogic=='+'){ selection[ipick]=groupBrush; }      // set (Or)
+                else if(mPickLogic=='-'){ selection.erase(ipick); }           // unset
                 }break;
             case 'r':{
                 printf("!!! WARRNING !!! EditorGizmo::mousePick(): mode='r' edge picking not impelented Yet \n");
@@ -379,7 +441,12 @@ class EditorGizmo{ public:
                 switch( event.button.button ){
                     case SDL_BUTTON_LEFT:
                         mouseStart();
-                        dragged = 1;
+                        if(mTrans=='r'){
+                            dragged = (iAxisRot>=0);
+                            if(iDebug>0) printf("Gizmo LMB down: rotate mode, iAxisRot=%d -> dragged=%d\n", iAxisRot, dragged);
+                        }else{
+                            dragged = 1;
+                        }
                         break;
                     case SDL_BUTTON_RIGHT:
                         mousePick();
@@ -390,22 +457,18 @@ class EditorGizmo{ public:
                     case SDL_BUTTON_LEFT:
                         mouseEnd();
                         dragged = 0;
+                        if(iDebug>0) printf("Gizmo LMB up: end rotate, clear axis (was %d)\n", iAxisRot);
+                        iAxisRot = -1; // allow other handlers (e.g., selection box) on next events
                         break;
                     case SDL_BUTTON_RIGHT:
                         break;
                 }; break;
-            case SDL_MOUSEMOTION:
-                switch( event.button.button ){
-                    case SDL_BUTTON_LEFT:
-                        if(dragged && bDragUpdate){
-                            mouseEnd();
-                            //SDL_MouseMotionEvent* event_ = (SDL_MouseMotionEvent*)&event;
-                            //dragged->moveBy( event_->xrel, -event_->yrel );
-                        }
-                        break;
-                    case SDL_BUTTON_RIGHT:
-                        break;
-                }; break;
+            case SDL_MOUSEMOTION: {
+                bool leftHeld = (event.motion.state & SDL_BUTTON_LMASK);
+                if(leftHeld && dragged && bDragUpdate){
+                    mouseEnd();
+                }
+                } break;
         }
         //return active;
     }
@@ -440,7 +503,37 @@ class EditorGizmo{ public:
                 glColor3f(0,1,0); Draw3D::drawConeFan( 4, Rhandle, pose.pos + pose.rot.b*Rgizmo, pose.pos+pose.rot.b*(Rgizmo-Rhandle) );
                 glColor3f(0,0,1); Draw3D::drawConeFan( 4, Rhandle, pose.pos + pose.rot.c*Rgizmo, pose.pos+pose.rot.c*(Rgizmo-Rhandle) );
                 break;
-            case 'r': Draw3D::drawSphereOctLines ( 32, Rgizmo, pose.pos, pose.rot, true ); break;
+            case 'r': {
+                Draw3D::drawSphereOctLines ( 32, Rgizmo, pose.pos, pose.rot, true );
+                // Visual angle indicator when rotating
+                if( (iAxisRot>=0) && dragged ){
+                    const Vec3d& n  = pose.rot.vecs[iAxisRot];
+                    const Vec3d& e0 = pose.rot.vecs[(iAxisRot+1)%3];
+                    const Vec3d& e1 = pose.rot.vecs[(iAxisRot+2)%3];
+                    double d = phiRot - phiRot0;
+                    double dphi = atan2( sin(d), cos(d) );
+                    int    m = std::max(2, (int)round(fabs(dphi)/(2*M_PI)*64));
+                    double step = dphi/(double)m;
+                    double ca = cos(step), sa = sin(step);
+                    Vec3d v; v.set_lincomb( cos(phiRot0), e0, sin(phiRot0), e1 );
+                    glColor3f(1.0,1.0,0.0);
+                    glDisable(GL_DEPTH_TEST);
+                    glLineWidth(2.0f);
+                    glBegin(GL_LINE_STRIP);
+                    for(int i=0;i<=m;i++){
+                        Vec3d p = pose.pos + v*Rgizmo;
+                        glVertex3f(p.x,p.y,p.z);
+                        v.rotate_csa(ca,sa,n);
+                    }
+                    glEnd();
+                    glLineWidth(1.0f);
+                    // Text label in degrees near gizmo center
+                    char buf[64];
+                    sprintf(buf, "%.1f deg", dphi*180.0/M_PI );
+                    Draw3D::drawText( buf, (Vec3f)(pose.pos + n*(Rgizmo*0.2)), 0, 0.12, 0 );
+                    glEnable(GL_DEPTH_TEST);
+                }
+                } break;
         }
     }
 

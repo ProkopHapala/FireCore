@@ -57,6 +57,9 @@
 //     }
 // }
 
+namespace SelectionKind{ enum{ Atom=1, Bond=2, Angle=3, Torsion=4, Fragment=5 }; }
+namespace Gui_Mode     { enum{ base=0, edit=1, scan=2 }; }
+
 // Safer overload using pointer-to-member; avoids pointer arithmetic.
 inline void drawBuilderAtoms( const MM::Builder& builder, int MM::Atom::* field, float sz, uint32_t* colors=0 ){
     for(int i=0; i<builder.atoms.size(); i++){
@@ -197,9 +200,12 @@ class MolGUI : public AppSDL2OGL_3D { public:
     GUIPanel*    Qpanel=0;
     EditorGizmo  gizmo;
     SimplexRuler ruler; // Helps paiting organic molecules
-    enum class Gui_Mode { base, edit, scan };
-    Gui_Mode  gui_mode = Gui_Mode::base;
+    //enum class Gui_Mode { base, edit, scan };
+    //Gui_Mode  gui_mode = Gui_Mode::base;
     //int gui_mode = Gui_Mode::edit;
+    int gui_mode = Gui_Mode::base;
+    int selection_mode = SelectionKind::Atom;
+    
     DropDownList* panel_Frags=0;
     GUIPanel*     panel_iMO  =0;
     GUIPanel*     panel_AFM  =0;
@@ -1192,7 +1198,7 @@ void MolGUI::initGUI(){
     //gizmo.bindPoints(W->ff.natoms, W->ff.apos      );
     //gizmo.bindEdges (W->ff.nbonds, W->ff.bond2atom );
     gizmo.pointSize = 0.5;
-    //gizmo.iDebug    = 2;
+    gizmo.iDebug    = 2; // enable gizmo debug logs
     ruler.setStep( 1.5 * sqrt(3) );
 
 }
@@ -1200,6 +1206,13 @@ void MolGUI::initGUI(){
 void MolGUI::updateGUI(){
     gizmo.bindPoints( natoms, apos      );
     gizmo.bindEdges ( nbonds, bond2atom );
+    // Route rotation updates to Builder when in builder view
+    gizmo.onRotateSelection = [this](const Vec3d& axis, double dphi, const Vec3d& pivot){
+        if(!bViewBuilder) return; // only act in builder mode per request
+        double ca = cos(dphi), sa = sin(dphi);
+        for(int ia : W->builder.selection){ W->builder.atoms[ia].pos.rotate_csa( ca, sa, axis, pivot ); }
+        bBuilderChanged = true;
+    };
     if(panel_Frags){
         panel_Frags->labels.clear();
         for(int i=0; i<W->builder.frags.size(); i++){
@@ -2578,7 +2591,30 @@ void MolGUI::eventMode_scan( const SDL_Event& event  ){
 }
 
 void MolGUI::eventMode_default( const SDL_Event& event ){
-    if(useGizmo)gizmo.onEvent( mouse_pix, event );
+    // Only use gizmo in builder view for this feature; and never modify selection while interacting
+    if(useGizmo && bViewBuilder){
+        if(gizmo.mTrans=='r'){
+            if(event.type == SDL_MOUSEBUTTONDOWN && event.button.button == SDL_BUTTON_LEFT){
+                // Mirror builder selection to gizmo; do NOT change builder selection and do NOT move gizmo
+                gizmo.selection.clear();
+                for(int ia : W->builder.selection){ gizmo.selection[ia] = 0; }
+                if(verbosity>0) printf("MolGUI: mirrored %zu builder selections to gizmo on LMB down\n", gizmo.selection.size());
+            }
+        }
+        gizmo.onEvent( mouse_pix, event );
+        // If gizmo is engaged with left button (down/move/up), consume event to prevent deselection
+        bool leftEngaged = false;
+        switch(event.type){
+            case SDL_MOUSEBUTTONDOWN:
+            case SDL_MOUSEBUTTONUP:   leftEngaged = (event.button.button == SDL_BUTTON_LEFT); break;
+            case SDL_MOUSEMOTION:     leftEngaged = (event.motion.state & SDL_BUTTON_LMASK); break;
+            default: break;
+        }
+        if( gizmo.mTrans=='r' && leftEngaged && (gizmo.dragged || gizmo.iAxisRot>=0) ){
+            if(verbosity>0) printf("MolGUI: consume event (rotate): leftEngaged=%d dragged=%d iAxisRot=%d\n", (int)leftEngaged, (int)gizmo.dragged, gizmo.iAxisRot);
+            return;
+        }
+    }
     //printf( "MolGUI::eventMode_default() bConsole=%i \n", bConsole );
     switch( event.type ){
         case SDL_MOUSEWHEEL:{
