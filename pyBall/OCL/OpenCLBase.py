@@ -432,6 +432,74 @@ class OpenCLBase:
 
         return source
 
+    def parse_cl_lib(self, cl_path):
+        """
+        Parse an OpenCL source file to extract functions and macros marked by //>>> sections.
+        Sections should start with one of:
+          //>>>function <name and optional signature>
+          //>>>macro    <name>
+
+        Returns a dict with:
+          { 'functions': { name: body_str }, 'macros': { name: body_str } }
+        """
+        functions = {}
+        macros = {}
+
+        with open(cl_path, 'r') as f:
+            content = f.read()
+
+        lines = content.split('\n')
+        current_kind = None   # 'function' | 'macro'
+        current_name = None
+        current_content = []
+
+        for line in lines:
+            raw = line
+            line = line.strip()
+
+            if line.startswith('//>>>'):
+                # Save previous section
+                if current_kind and current_name and current_content:
+                    body = '\n'.join(current_content)
+                    if current_kind == 'function':
+                        functions[current_name] = body
+                    elif current_kind == 'macro':
+                        macros[current_name] = body
+
+                # Start new section
+                header = line[len('//>>>'):].strip()
+                # Expect format: "function NAME..." or "macro NAME"
+                if header.startswith('function'):
+                    current_kind = 'function'
+                    name_part = header[len('function'):].strip()
+                    # Use the token before first '(' as canonical function key
+                    fname = name_part.split('(')[0].strip() if '(' in name_part else name_part
+                    current_name = fname
+                elif header.startswith('macro'):
+                    current_kind = 'macro'
+                    name_part = header[len('macro'):].strip()
+                    # Macro key is the next token
+                    mname = name_part.split()[0] if name_part else ''
+                    current_name = mname
+                else:
+                    # Unknown header kind; treat as macro with whole header as name
+                    current_kind = 'macro'
+                    current_name = header
+                current_content = []
+            else:
+                if current_kind:
+                    current_content.append(raw)
+
+        # Save last section
+        if current_kind and current_name and current_content:
+            body = '\n'.join(current_content)
+            if current_kind == 'function':
+                functions[current_name] = body
+            elif current_kind == 'macro':
+                macros[current_name] = body
+
+        return {'functions': functions, 'macros': macros}
+
     def parse_forces_cl(self, forces_path):
         """
         Parse Forces.cl file to extract functions and macros.
@@ -442,45 +510,8 @@ class OpenCLBase:
         Returns:
             dict: Dictionary with 'functions' and 'macros' extracted from Forces.cl
         """
-        functions = {}
-        macros = {}
-        
-        with open(forces_path, 'r') as f:
-            content = f.read()
-        
-        # Parse functions marked with //>>>
-        lines = content.split('\n')
-        current_section = None
-        current_content = []
-        
-        for line in lines:
-            line = line.strip()
-            
-            if line.startswith('//>>>'):
-                # Save previous section
-                if current_section and current_content:
-                    if current_section.startswith('function'):
-                        func_name = current_section.replace('function', '').strip()
-                        functions[func_name] = '\n'.join(current_content)
-                    else:
-                        macros[current_section] = '\n'.join(current_content)
-                
-                # Start new section
-                current_section = line.replace('//>>>', '').strip()
-                current_content = []
-            else:
-                if current_section:
-                    current_content.append(line)
-        
-        # Save last section
-        if current_section and current_content:
-            if current_section.startswith('function'):
-                func_name = current_section.replace('function', '').strip()
-                functions[func_name] = '\n'.join(current_content)
-            else:
-                macros[current_section] = '\n'.join(current_content)
-        
-        return {'functions': functions, 'macros': macros}
+        # Keep for backward compatibility; delegate to generic parser
+        return self.parse_cl_lib(forces_path)
 
     # def load_preprocessed_program(self, source_path, substitutions=None, output_path=None):
     #     """

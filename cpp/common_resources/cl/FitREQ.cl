@@ -149,11 +149,111 @@ __kernel void evalSampleDerivatives(
     }
 }
 
+// -----------------------------------------------------------------------------
+// Template variant of evalSampleDerivatives.
+// The pairwise model code is injected at the marker line:
+//     //<<<MODEL_PAIR_ACCUMULATION
+// from Python via OpenCLBase.preprocess_opencl_source(macros={"MODEL_PAIR_ACCUMULATION": code}).
+// The injected code runs inside the i–j pair loop and is expected to update:
+//   - fREQi (float4): per-atom-i derivatives (dE/dR_i, dE/dE_i, dE/dQ_i, dE/dH_i)
+//   - Ei    (float ): accumulated pair energy for atom i
+// using the following in-scope variables:
+//   atomi, atomj (float4), REQi, REQj (float4), dij (float3), r (float), ir (float)
+// -----------------------------------------------------------------------------
+__attribute__((reqd_work_group_size(32,1,1)))
+__kernel void evalSampleDerivatives_template(
+    __global int4*    ranges,
+    __global float4*  tREQHs,
+    __global int*     atypes,
+    __global int2*    ieps,
+    __global float4*  atoms,
+    __global float4*  dEdREQs,
+    __global float2*  ErefW
+){
+    __local float4 LATOMS[32];
+    __local float4 LREQKS[32];
+    __local float  LdE;
+
+    const int iS = get_group_id   (0);
+    const int iG = get_global_id  (0);
+    const int iL = get_local_id   (0);
+    const int nL = get_local_size (0);
+
+    const int4 nsi = ranges[iS];
+    const int i0   = nsi.x;
+    const int ni   = nsi.z;
+    const int j0   = nsi.y;
+    const int nj   = nsi.w;
+
+    if( iG - i0 >= ni ) return;
+
+    const int    ti    = atypes[iG];
+    const float4 atomi = atoms [iG];
+          float4 REQi  = tREQHs[ti];
+    REQi.z = atomi.w;
+    const int2   iep   = ieps  [iG];
+    if( iep.x >= 0 ){ REQi.z -= tREQHs[iep.x].z; }
+    if( iep.y >= 0 ){ REQi.z -= tREQHs[iep.y].z; }
+
+    float4 fREQi = float4Zero;
+    float  Ei    = 0.0f;
+
+    for(int off=0; off<nj; off+=nL){
+        const int local_j = off + iL;
+        if(local_j<nj){
+            const int jj       = j0 + local_j;
+            const int    tj    = atypes[jj];
+            const float4 atomj = atoms [jj];
+                  float4 REQj  = tREQHs[tj];
+            REQj.z = atomj.w;
+            const int2   jep  = ieps[jj];
+            if( jep.x >= 0 ){ REQj.z -= tREQHs[jep.x].z; }
+            if( jep.y >= 0 ){ REQj.z -= tREQHs[jep.y].z; }
+            LATOMS[iL]  = atomj;
+            LREQKS[iL]  = REQj;
+        }
+        barrier(CLK_LOCAL_MEM_FENCE);
+
+        for(int jl=0; jl<nL; jl++){
+            const int local_j2 = off + jl;
+            if(local_j2 < nj){
+                const float4 atomj = LATOMS[jl];
+                const float4 REQj  = LREQKS[jl];
+
+                float3 dij = atomj.xyz - atomi.xyz;
+                float  r   = length(dij);
+                float  ir  = 1.f/r;
+
+                //<<<MODEL_PAIR_ACCUMULATION
+            }
+        }
+        barrier(CLK_LOCAL_MEM_FENCE);
+    }
+
+    barrier(CLK_LOCAL_MEM_FENCE);
+    LATOMS[iL].x = Ei;
+    barrier(CLK_LOCAL_MEM_FENCE);
+
+    if (iL == 0) {
+        float Emol = 0.0f;
+        for(int i=0; i<ni; i++){ Emol += LATOMS[i].x; }
+        float2 EW = ErefW[iS];
+        LdE = (Emol - EW.x)*EW.y;
+    }
+    barrier(CLK_LOCAL_MEM_FENCE);
+
+    if (iL < ni) {
+        dEdREQs[i0 + iL] = fREQi * LdE;
+    }
+}
+
+// -----------------------------------------------------------------------------
+// Rest of the code remains the same
+// -----------------------------------------------------------------------------
 
 #define NLOC_assembleDOFderivatives  128
 
 __attribute__((reqd_work_group_size(NLOC_assembleDOFderivatives,1,1)))
-// __kernel void assembleDOFderivatives(
 //     int nDOFs,         
 //     __global float*   fDOFs,      // [nDOFs]    derivatives of REQH parameters
 //     __global int2*    DOFnis,     // [nDOFs]    (i0,ni) star and number of atoms in fragments 1,2    

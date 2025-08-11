@@ -316,6 +316,101 @@ Keep the sanity checks enabled (e.g., type checks for epair slots) to fail fast 
 *   The current OpenCL-based implementation (`FitREQ_ocl.md`) does not yet handle dummy atoms. The detailed documentation of dummy atom handling in this C++/Python version is crucial for guiding future re-implementation in the OpenCL version to ensure feature parity and performance.
 *   The modular design (C++ core, C-interface, Python bindings) facilitates independent development and testing of each layer.
 
+## Appendix: REQH energy models and variational derivatives
+
+This appendix summarizes the exact energy expressions and variational derivatives implemented in `cpp/common/molecular/FitREQ.h` for the example evaluators `evalExampleDerivs_*`. It is intended to enable reimplementation in other languages.
+
+Notation (per atom i):
+
+$$\mathrm{REQH}_i=(R_i,\,\varepsilon_i,\,q_i,\,h_i),\quad E_0=\varepsilon_i\varepsilon_j$$
+
+For a pair i–j:
+
+$$R_0=R_i+R_j,\quad H_{ij}=\begin{cases}h_i h_j,& h_i h_j<0\\0,& \text{otherwise}\end{cases},\quad r=\lVert\mathbf r_j-\mathbf r_i\rVert,\quad u=\frac{R_0}{r}$$
+
+Coulomb: $k=\mathrm{COULOMB\_CONST}$ and
+
+$$E_{el}=\frac{k\,q_i q_j}{r}$$
+
+Unless noted, $E_{ij}=E_{el}+E_{vdW}$.
+
+1) LJQH2 (12–6, H gates the 12-term):
+
+$$E_{vdW}=E_0\left[ (1+H_{ij})\,u^{12}-2\,u^{6}\right]$$
+
+Derivatives (intermediates in code):
+
+$$\frac{\partial E}{\partial E_0}=u^{6}\big[(1+H_{ij})u^{6}-2\big],\quad \frac{\partial E}{\partial R_0}=12\,\frac{E_0}{R_0}\,u^{6}\big[(1+H_{ij})u^{6}-1\big],\quad \frac{\partial E}{\partial H}=-E_0 u^{12}$$
+
+$$\frac{\partial E}{\partial q_i}=\frac{k q_j}{r},\quad \frac{\partial E}{\partial q_j}=\frac{k q_i}{r}$$
+
+Per-atom accumulation (`evalExampleDerivs_LJQH2_SR`):
+
+$$\begin{aligned}
+\frac{\partial E}{\partial R_i}&=-\frac{\partial E}{\partial R_0},\quad &\frac{\partial E}{\partial \varepsilon_i}&=-\tfrac{1}{2}\,\varepsilon_j\,\frac{\partial E}{\partial E_0},\\
+\frac{\partial E}{\partial q_i}&=-\frac{k q_j}{r},\quad &\frac{\partial E}{\partial h_i}&=\;h_j\,s_H\,\frac{\partial E}{\partial H}
+\end{aligned}$$
+
+Symmetric contributions are added for atom j; see `evalExampleDerivs_LJQH2_SR()` for exact accumulation.
+
+2) LJr8QH2 (8–6, H gates the r^8 term):
+
+$$E_{vdW}=E_0\left[3(1+H_{ij})u^{8}-4u^{6}\right]$$
+
+Let $u^2\equiv u_2$ and $u_2'=(1+H_{ij})u_2$. Then
+
+$$\frac{\partial E}{\partial E_0}=u^{6}(3u_2'-4),\quad \frac{\partial E}{\partial R_0}=24\,\frac{E_0}{R_0}u^{6}(u_2'-1),\quad \frac{\partial E}{\partial H}=-3E_0 u^{8}$$
+
+Coulomb and per-atom accumulation as in LJQH2.
+
+3) MorseQ_SR (Morse, H gates the $e^{-2\alpha\Delta}$ term):
+
+Let $\Delta=r-R_0$, $e=\exp(-\alpha\Delta)$, $e^2=e^2$.
+
+$$E_{vdW}=E_0\big[(1+H_{ij})e^{2}-2e\big]$$
+
+$$\frac{\partial E}{\partial E_0}=(1+H_{ij})e^{2}-2e,\quad \frac{\partial E}{\partial R_0}=2\alpha E_0\big[(1+H_{ij})e^{2}-e\big],\quad \frac{\partial E}{\partial H}=-E_0 e^{2}$$
+
+Coulomb and per-atom accumulation as in LJQH2.
+
+4) Short-range SR terms for electron pairs (replace vdW if i or j is an epair):
+
+If `host[idx] >= 0` for either partner, vdW is replaced by SR:
+
+- Gaussian form used in `*_SR` (code `getSR2`), with $w$ taken from the epair partner’s radius:
+
+  $$E_{SR}=H_{ij}\,e^{-(r/w)^2},\quad \frac{\partial E}{\partial H}=e^{-(r/w)^2},\quad \frac{\partial E}{\partial w}=2H_{ij}\,e^{-(r/w)^2}\,\frac{r^{2}}{w^{3}}$$
+
+- Exponential form in older `_uncorr` (code `getSR`):
+
+  $$E_{SR}=H_{ij}\,e^{-r/w}$$
+
+Accumulation: if i is an epair, `w = R_i` and the R-derivative is added to i; if j is an epair, `w = R_j` and the R-derivative is added to j. The code flips signs to match its negative-gradient convention (see `evalExampleDerivs_*_SR()`).
+
+5) Electron-pair charge conservation (host balancing):
+
+Charges for an epair are taken from its host atom, enforcing `q_host + q_epair = const`. After per-atom accumulation into `fREQs`, `acumHostDerivs()` subtracts the host’s charge derivative from the epair DOF:
+
+- For each epair–host link `(host=h, epair=e)`: the host’s `fREQs[h].z` is subtracted into the DOF index of the epair type, ensuring the constraint in gradient space.
+
+5b) Mapping per-atom derivatives to DOFs:
+
+Per-atom gradients `dEdREQs[i] = (∂E/∂R_i, ∂E/∂ε_i, ∂E/∂q_i, ∂E/∂h_i)` are reduced to the global DOF vector via the type map `typToREQ` in `acumDerivs()`:
+
+* For atom i of type t, each component k∈{x,y,z,w} is added into DOF index `typToREQ[t].k` (if non-negative).
+* After this, `acumHostDerivs()` applies the charge-balance correction described above to epair/host links.
+
+5c) Sign convention in code vs formulas here:
+
+The code accumulates negative energy derivatives into `fREQs` (e.g., `fREQi.x += -dE_dR0`). All formulas in this appendix are written as plain partial derivatives `∂E/∂(·)`. When comparing to code, account for the minus sign used to form a descent direction.
+
+6) corr vs uncorr evaluators:
+
+- `_uncorr` (e.g., `evalExampleDerivs_LJQH2_uncorr`): computes energies only for pairs where neither atom is fitted; skips derivatives and fitted atoms entirely. Used to keep a static background energy.
+- `_corr` / `_SR` (e.g., `evalExampleDerivs_LJQH2_corr`, `*_SR`): computes energies and accumulates variational derivatives for selected/fitted atoms; includes SR treatment for epairs and gates H via `s_H`. The flag `bCheckAddJ` prevents double counting when both partners are fitted by zeroing `Eij` on the second pass.
+
+Implementation references: `getSR`/`getSR2`, `evalExampleDerivs_LJQH2_SR`, `evalExampleDerivs_LJr8QH2_SR`, `evalExampleDerivs_MorseQ_SR`, and host balancing in `acumHostDerivs`.
+
 ## 8. Practical Examples and Use Cases
 
 FitREQ is particularly useful for:

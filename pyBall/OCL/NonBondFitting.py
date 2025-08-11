@@ -291,7 +291,11 @@ class FittingDriver(OpenCLBase):
         #     __global float4*  dEdREQs,   // 6: [natomTot] output derivatives of type REQH parameters
         #     __global float2*  ErefW      // 7: [nsamp]   {E,W} reference energies and weights for each sample (molecule,system)
         # ){
-        self.eval_kern = self.prg.evalSampleDerivatives
+        # Prefer original kernel by default; use templated kernel only when explicitly compiled
+        if getattr(self, 'use_template', False) and 'evalSampleDerivatives_template' in getattr(self, 'kernelheaders', {}):
+            self.eval_kern = self.prg.evalSampleDerivatives_template
+        else:
+            self.eval_kern = self.prg.evalSampleDerivatives
         self.eval_kern.set_args(
             self.ranges_buff, self.tREQHs_buff, self.atypes_buff, self.ieps_buff,
             self.atoms_buff, self.dEdREQs_buff, self.ErefW_buff
@@ -320,6 +324,51 @@ class FittingDriver(OpenCLBase):
             self.regParams_buff
         )
         print("Kernel arguments pre-set.")
+
+    def compile_with_model(self, macros=None, output_path=None, bPrint=False):
+        """
+        Build the OpenCL program with a model-specific pair accumulation snippet injected
+        into the templated kernel `evalSampleDerivatives_template`.
+
+        The snippet should be passed via the 'macros' dict with key 'MODEL_PAIR_ACCUMULATION',
+        e.g. macros={ 'MODEL_PAIR_ACCUMULATION': "/* code updating fREQi and Ei */" }.
+
+        Variables in scope for the snippet inside the i–j loop:
+          atomi, atomj (float4); REQi, REQj (float4); dij (float3); r (float); ir (float)
+          fREQi (float4 accumulator of derivatives for atom i); Ei (float energy accumulator)
+        """
+        if macros is None:
+            macros = {}
+        base_path = os.path.dirname(os.path.abspath(__file__))
+        rel_path = "../../cpp/common_resources/cl/FitREQ.cl"
+        source_path = os.path.abspath(os.path.join(base_path, rel_path))
+
+        # Preprocess source with macro substitution for the template marker
+        pre_src = self.preprocess_opencl_source(
+            source_path,
+            substitutions={ 'macros': macros },
+            output_path=output_path,
+            bPrint=bPrint
+        )
+
+        # Build program from preprocessed source and refresh kernel headers
+        self.prg = cl.Program(self.ctx, pre_src).build()
+        self.kernelheaders = self.extract_kernel_headers(pre_src)
+        self.use_template = True
+        if bPrint:
+            print(f"compile_with_model(): kernels available: {list(self.kernelheaders.keys())}")
+        # Reset args to ensure we bind to the (possibly new) eval kernel object
+        # Only if buffers are already allocated; otherwise let init_and_upload() call set_kernel_args()
+        needed = [
+            'ranges_buff','tREQHs_buff','atypes_buff','ieps_buff',
+            'atoms_buff','dEdREQs_buff','ErefW_buff',
+            'fDOFs_buff','DOFnis_buff','DOFtoAtom_buff','DOFcofefs_buff','DOFs_buff','regParams_buff'
+        ]
+        if all(hasattr(self, n) for n in needed):
+            self.set_kernel_args()
+        else:
+            if bPrint:
+                print("compile_with_model(): Buffers not yet allocated; kernel args will be set later.")
 
     def get_forces(self, dofs_vec, bCheck=True):
         """Calculates the total force (physical + regularization) for a given DOF vector."""
