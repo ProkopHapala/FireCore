@@ -421,8 +421,18 @@ class OpenCLBase:
         
         # Process macro substitutions
         if 'macros' in substitutions:
-            for marker, macro_def in substitutions['macros'].items():
-                source = source.replace(f"//<<<{marker}", macro_def)
+            # Replace only exact sentinel lines to avoid replacing occurrences inside comments/docs
+            # We match lines whose stripped content is exactly `//<<<{marker}`
+            lines = source.split('\n')
+            for idx, line in enumerate(lines):
+                stripped = line.strip()
+                for marker, macro_def in substitutions['macros'].items():
+                    if stripped == f"//<<<{marker}":
+                        # Insert macro definition in place of the marker line
+                        # Ensure we keep surrounding code structure; macro_def may contain newlines
+                        lines[idx] = macro_def
+                        break
+            source = '\n'.join(lines)
         
         # Save to file if output_path specified
         if output_path:

@@ -455,11 +455,68 @@ def optimizer_FIRE(driver, initial_dofs, max_steps=1000, dt_start=0.01, fmax=1e-
 
     return dofs
 
-# --- Example Usage ---
-if __name__ == '__main__':
-    # run like
-    # python -u -m pyBall.OCL.NonBondFitting
+def extract_macro_block(file_path, macro_name):
+    """Extracts a macro code block from Forces.cl delimited by
+    a line '//>>>macro <macro_name>' followed by a brace-balanced block.
+    Returns the block including the surrounding braces, suitable for injection.
+    """
+    with open(file_path, 'r') as f:
+        s = f.read()
+    tag = f"//>>>macro {macro_name}"
+    i = s.find(tag)
+    if i < 0:
+        raise ValueError(f"Macro tag not found: {tag}")
+    j = s.find('{', i)
+    if j < 0:
+        raise ValueError(f"Opening '{{' not found for macro: {macro_name}")
+    depth = 0
+    k = j
+    while k < len(s):
+        c = s[k]
+        if c == '{': depth += 1
+        elif c == '}':
+            depth -= 1
+            if depth == 0:
+                k += 1
+                break
+        k += 1
+    if depth != 0:
+        raise ValueError(f"Unbalanced braces while parsing macro: {macro_name}")
+    return s[j:k]
 
+def run_templated_example(model_name='MODEL_MorseQ_PAIR',
+                          atom_types_file="/home/prokop/git/FireCore/cpp/common_resources/AtomTypes.dat",
+                          xyz_file="/home/prokop/git/FireCore/tests/tFitREQ/input_example.xyz",
+                          dof_file="/home/prokop/git/FireCore/tests/tFitREQ/dofSelection_MorseSR.dat"):
+    """Demo: compile and run the templated kernel with a selected model macro.
+    Keeps the original baseline runnable separately.
+    """
+    print("\n--- Running templated fitting demo ---")
+    drv = FittingDriver()
+    drv.load_atom_types(atom_types_file)
+    drv.load_data(xyz_file)
+    drv.load_dofs(dof_file)
+    drv.init_and_upload()
+
+    # Load macro snippet from Forces.cl and compile templated kernel
+    base_path = os.path.dirname(os.path.abspath(__file__))
+    forces_path = os.path.abspath(os.path.join(base_path, "../../cpp/common_resources/cl/Forces.cl"))
+    macro_code = extract_macro_block(forces_path, model_name)
+    macros = { 'MODEL_PAIR_ACCUMULATION': macro_code }
+    drv.compile_with_model(macros=macros, bPrint=True)
+
+    x0 = np.array([d['xstart'] for d in drv.dof_definitions])
+    x_final = optimizer_FIRE(drv, x0)
+
+    print("\n" + "="*40)
+    print(f"Templated model: {model_name}")
+    print("Final Optimized DOF values:")
+    print(x_final)
+    return x_final
+
+def run_baseline_example():
+    """Wraps the existing baseline example into a function."""
+    print("\n--- Running baseline example ---")
     driver = FittingDriver()
     driver.load_atom_types("/home/prokop/git/FireCore/cpp/common_resources/AtomTypes.dat")
     driver.load_data("/home/prokop/git/FireCore/tests/tFitREQ/input_example.xyz")
@@ -467,10 +524,22 @@ if __name__ == '__main__':
     driver.init_and_upload()
 
     initial_dofs = np.array([d['xstart'] for d in driver.dof_definitions])
-
     final_dofs_fire = optimizer_FIRE(driver, initial_dofs)
-    
     print("\n" + "="*40)
     print("Final Optimized DOF values:")
     print(final_dofs_fire)
+    return final_dofs_fire
+
+# --- Example Usage ---
+if __name__ == '__main__':
+    # run like
+    # python -u -m pyBall.OCL.NonBondFitting
+
+    # Default: baseline example (kept intact)
+    #run_baseline_example()
+
+    # To run the templated-kernel demo with a selected model macro, uncomment one:
+    #run_templated_example('MODEL_LJQH2_PAIR')
+    # run_templated_example('MODEL_LJr8QH2_PAIR')
+    run_templated_example('MODEL_MorseQ_PAIR')
     print("="*40)
