@@ -237,7 +237,16 @@ def reshape_to_grid(vals, r, a, rows):
         n = e - s
         V[iy, :n] = vals[s:e]
         R[iy, :n] = r[s:e]
-        A[iy] = np.nanmean(a[s:e])
+        # Use angle measured at the maximum radius within the row to minimize
+        # sensitivity to atom-picking errors. Fallback to mean if needed.
+        try:
+            if n > 0:
+                irel = int(np.nanargmax(r[s:e]))
+                A[iy] = a[s + irel]
+            else:
+                A[iy] = np.nan
+        except Exception:
+            A[iy] = np.nanmean(a[s:e])
         if iy == 0:
             rv[:n] = r[s:e]
     return V, R, A, rv
@@ -270,7 +279,7 @@ def compute_shift_from_grid(V):
 # Plotting
 # ----------------------------
 
-def plot_imshow(V, rv, A, emin=None, vmax=None, title=None, cmap='bwr', kcal=False, ax=None, bColorbar=True):
+def plot_imshow(V, rv, A, emin=None, vmax=None, title=None, cmap='bwr', kcal=False, ax=None, bColorbar=True, rtick_step=5):
     fac = 23.060548 if kcal else 1.0
     Z = V * fac
     # Build extent from finite rv/A; avoid identical y-limits
@@ -313,6 +322,25 @@ def plot_imshow(V, rv, A, emin=None, vmax=None, title=None, cmap='bwr', kcal=Fal
     im = ax.imshow(Z.T, origin='lower', aspect='auto', extent=extent, vmin=vmin, vmax=vmax, cmap=cmap)
     ax.set_xlabel(x_label)
     ax.set_ylabel(y_label)
+    # Custom y ticks for non-uniform rv sampling: label every Nth sample at row centers
+    try:
+        if (rtick_step is not None) and (rtick_step > 0) and (rv is not None) and (rv.size > 0):
+            M = int(rv.size)
+            mask = np.isfinite(rv)
+            valid = np.nonzero(mask)[0]
+            if valid.size > 0:
+                sel = valid[::int(rtick_step)]
+                if extent is None:
+                    y0, y1 = 0.0, float(M)
+                else:
+                    y0, y1 = float(extent[2]), float(extent[3])
+                dy = (y1 - y0) / float(M)
+                yticks = y0 + (sel + 0.5) * dy
+                ylabels = [f"{rv[i]:.2f}" for i in sel]
+                ax.set_yticks(yticks)
+                ax.set_yticklabels(ylabels)
+    except Exception:
+        pass
     if bColorbar:
         cbar = plt.colorbar(im, ax=ax)
         cbar.set_label('E [kcal/mol]' if kcal else 'E [eV]')
@@ -375,6 +403,84 @@ def plot_polar(V, rv, A, emin=None, vmax=None, title=None, cmap='bwr', kcal=Fals
     if title:
         ax.set_title(title)
     return cs
+
+def plot_profiles(V, rv, A, R=None, rmax=None, kcal=False, ax=None, title=None, vmin=None, vmax=None):
+    """Plot multiple 1D profiles on a single axes for given 2D grid V[r, a].
+    Plots:
+    - Radial profiles at selected angles (nearest to -90 deg and 0 deg)
+    - Angular profile at radius of the global energy minimum
+    - Per-angle minimum energy (min over r for each angle)
+
+    Overlays angular profiles using theta in radians in [0, 2π) so they can share
+    the same x-axis with r if typical rmax ~ 6-7.
+    """
+    fac = 23.060548 if kcal else 1.0
+    if ax is None:
+        fig, ax = plt.subplots(1, 1, figsize=(6, 4))
+    # Sort by angle for consistent ordering
+    order = np.argsort(A)
+    A = A[order]
+    V = V[order, :]
+    if R is not None:
+        R = R[order, :]
+    # Helper: pick nearest angle index
+    def nearest_angle_idx(target_deg):
+        return int(np.nanargmin(np.abs(A - target_deg)))
+    # Radial profiles at -90 and 0 deg (use nearest available)
+    idxs = []
+    for tdeg in (-90.0, 0.0):
+        try:
+            idxs.append(nearest_angle_idx(tdeg))
+        except Exception:
+            pass
+    # Deduplicate
+    idxs = sorted(set(idxs))
+    colors = ['tab:blue', 'tab:red']
+    for j, irow in enumerate(idxs):
+        rr = (R[irow, :] if R is not None else rv).astype(float)
+        ee = (V[irow, :] * fac).astype(float)
+        if (vmin is not None) and (vmax is not None):
+            ee = np.clip(ee, vmin, vmax)
+        if rmax is not None:
+            m = rr <= float(rmax)
+            rr = rr[m]; ee = ee[m]
+        ax.plot(rr, ee, '-', lw=2, color=colors[j % len(colors)], label=f"radial @{A[irow]:.0f}°")
+    # Angular profile at global energy minimum (pick column index of global min)
+    try:
+        iy, ix = np.unravel_index(np.nanargmin(V), V.shape)
+        theta = np.radians(A)
+        theta = np.mod(theta, 2*np.pi)  # wrap to [0, 2π)
+        srt = np.argsort(theta)
+        theta = theta[srt]
+        e_ang = (V[:, ix] * fac)[srt]
+        if (vmin is not None) and (vmax is not None):
+            e_ang = np.clip(e_ang, vmin, vmax)
+        ax.plot(theta, e_ang, '--', lw=2, color='k', label=f"angular @ r≈{(rv[ix] if rv is not None else (R[iy, ix] if R is not None else np.nan)):.2f}")
+    except Exception:
+        pass
+    # Per-angle minima (min over r for each angle)
+    try:
+        e_min_ang = np.nanmin(V, axis=1) * fac
+        if (vmin is not None) and (vmax is not None):
+            e_min_ang = np.clip(e_min_ang, vmin, vmax)
+        theta = np.radians(A)
+        theta = np.mod(theta, 2*np.pi)
+        srt = np.argsort(theta)
+        ax.plot(theta[srt], e_min_ang[srt], '-', lw=1.5, color='tab:green', label='min over r per angle')
+    except Exception:
+        pass
+    # Cosmetics
+    if rmax is not None:
+        ax.set_xlim(0.0, float(rmax))
+    if (vmin is not None) and (vmax is not None):
+        ax.set_ylim(float(vmin), float(vmax))
+    ax.grid(True, ls=':')
+    ax.set_xlabel('r [Å] / θ [rad]')
+    ax.set_ylabel('E [kcal/mol]' if kcal else 'E [eV]')
+    if title:
+        ax.set_title(title)
+    ax.legend(loc='best', fontsize=8)
+    return ax
 
 def parse_panel_list(list_path):
     """
@@ -461,9 +567,10 @@ def compute_panel_data(xyz, natoms=None, debug=False, unsigned_angle=False):
             pass
     return V, rv, A, shift, R
 
-def plot_list(list_path, emin=None, emax=None, sym=False, kcal=False, cmap='bwr', bColorbar=True, natoms=None, debug=False, unsigned_angle=False, transpose=False, polar=False, rmax=None, half='right'):
+def plot_list(list_path, emin=None, emax=None, sym=False, kcal=False, cmap='bwr', bColorbar=True, natoms=None, debug=False, unsigned_angle=False, transpose=False, polar=False, rmax=None, half='right', lines=False, rtick_step=5):
     nrows, ncols, entries = parse_panel_list(list_path)
-    subplot_kw = {'projection':'polar'} if polar else None
+    # For line mode we want normal Cartesian axes; ignore polar projection
+    subplot_kw = {'projection':'polar'} if (polar and not lines) else None
     if transpose:
         # swap rows/cols for layout
         fig, axs = plt.subplots(ncols, nrows, figsize=(3.0*nrows, 2.6*ncols), squeeze=False, subplot_kw=subplot_kw)
@@ -496,10 +603,12 @@ def plot_list(list_path, emin=None, emax=None, sym=False, kcal=False, cmap='bwr'
         else:
             vmin_plot = emin  # may be None
             vmax_plot = None
-        if polar:
+        if lines:
+            plot_profiles(V, rv, A, R=R, rmax=rmax, kcal=kcal, ax=ax, title=title, vmin=vmin_plot, vmax=vmax_plot)
+        elif polar:
             plot_polar(V, rv, A, emin=vmin_plot, vmax=vmax_plot, title=title, cmap=cmap, kcal=kcal, ax=ax, bColorbar=bColorbar, rmax=rmax, half=half, R=R)
         else:
-            plot_imshow(V, rv, A, emin=vmin_plot, vmax=vmax_plot, title=title, cmap=cmap, kcal=kcal, ax=ax, bColorbar=bColorbar)
+            plot_imshow(V, rv, A, emin=vmin_plot, vmax=vmax_plot, title=title, cmap=cmap, kcal=kcal, ax=ax, bColorbar=bColorbar, rtick_step=rtick_step)
     fig.tight_layout()
     return fig
 
@@ -517,6 +626,7 @@ if __name__ == '__main__':
     ap.add_argument('--natoms', type=int, default=None, help='atoms per block (default: auto/infer)')
     ap.add_argument('--kcal',   action='store_true', help='plot energies in kcal/mol')
     ap.add_argument('--polar',  action='store_true', help='use polar plots (contourf) instead of rectangular imshow')
+    ap.add_argument('--lines',  action='store_true', help='plot 1D profiles (radial at selected angles, angular at global r_min, and per-angle minima)')
     ap.add_argument('--rmax',   type=float, default=None, help='max radius for polar plots (clip outer radius to focus on short-range)')
     ap.add_argument('--half',   type=str, default='right', choices=['right','left'], help='half-circle to show in polar plots: right (-90..+90) or left (90..270)')
     ap.add_argument('--unsigned-angle', action='store_true', help='use unsigned angle in [0,180] deg (default uses signed angle)')
@@ -525,6 +635,7 @@ if __name__ == '__main__':
     ap.add_argument('--emax',   type=float, default=None, help='per-image range width above its global minimum: vmin=Emin_image, vmax=Emin_image+emax (in displayed units)')
     ap.add_argument('--cmap',   type=str, default='bwr', help='matplotlib colormap')
     ap.add_argument('--no-cbar',action='store_true', help='disable colorbar')
+    ap.add_argument('--rtick-step', type=int, default=5, help='label every N-th radial sample on imshow y-axis (default: 5)')
     ap.add_argument('--transpose', action='store_true', help='swap rows and columns of the subplot grid')
     ap.add_argument('--show',   action='store_true', help='show plot (otherwise just save)')
     ap.add_argument('--out',    type=str, default=None, help='output image file (.png)')
@@ -547,10 +658,17 @@ if __name__ == '__main__':
             polar=args.polar,
             rmax=args.rmax,
             half=args.half,
+            lines=args.lines,
+            rtick_step=args.rtick_step,
         )
         if args.out is None:
             base = Path(args.list).with_suffix("")
-            args.out = f"{base}_grid.png"
+            if args.lines:
+                args.out = f"{base}_lines.png"
+            elif args.polar:
+                args.out = f"{base}_polar.png"
+            else:
+                args.out = f"{base}_grid.png"
         plt.savefig(args.out, dpi=160)
         if args.show:
             plt.show()
@@ -596,13 +714,20 @@ if __name__ == '__main__':
         else:
             vmin_plot = args.emin  # may be None
             vmax_plot = None
-        if args.polar:
+        if args.lines:
+            plot_profiles(V, rv, A, R=R, rmax=args.rmax, kcal=args.kcal, title=title, vmin=vmin_plot, vmax=vmax_plot)
+        elif args.polar:
             plot_polar(V, rv, A, emin=vmin_plot, vmax=vmax_plot, title=title, kcal=args.kcal, cmap=args.cmap, bColorbar=(not args.no_cbar), rmax=args.rmax, half=args.half, R=R)
         else:
-            plot_imshow(V, rv, A, emin=vmin_plot, vmax=vmax_plot, title=title, kcal=args.kcal, cmap=args.cmap, bColorbar=(not args.no_cbar))
+            plot_imshow(V, rv, A, emin=vmin_plot, vmax=vmax_plot, title=title, kcal=args.kcal, cmap=args.cmap, bColorbar=(not args.no_cbar), rtick_step=args.rtick_step)
         if args.out is None:
             base = Path(args.xyz).with_suffix("")
-            args.out = f"{base}_imshow.png"
+            if args.lines:
+                args.out = f"{base}_lines.png"
+            elif args.polar:
+                args.out = f"{base}_polar.png"
+            else:
+                args.out = f"{base}_imshow.png"
         plt.savefig(args.out, dpi=160)
         if args.show:
             plt.show()
