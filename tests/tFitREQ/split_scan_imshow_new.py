@@ -21,8 +21,8 @@ except Exception:
 def parse_xyz_blocks(fname, natoms=None):
     """
     Parse a packed XYZ where blocks appear as:
-      [optional natoms line]\n
-      # E = <energy> eV\n
+      [optional natoms line] \n
+      # E = <energy> eV \n
       <natoms lines of 'Sym x y z'>\n
     Some files repeat a single integer line (natoms) between blocks. We ignore
     such lines and rely on the comment + natoms atom lines pattern.
@@ -689,6 +689,9 @@ def plot_list(list_path, emin=None, emax=None, sym=False, kcal=False, cmap='bwr'
 
 if __name__ == '__main__':
     '''
+    expected comment line is like:
+    # n0 2 Etot -82594.964479 x0 02.16 z 161 HBr-A1_HCl-D1
+    
     How to Run:
     with imshow:
         python split_scan_imshow.py --show --list ./HHalogens/toplot.txt --cmap bwr --sym --transpose
