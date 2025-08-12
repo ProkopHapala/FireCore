@@ -316,7 +316,11 @@ def compute_shift_from_grid(V):
 
 def plot_imshow(V, rv, A, emin=None, vmax=None, title=None, cmap='bwr', kcal=False, ax=None, bColorbar=True, rtick_step=5):
     fac = 23.060548 if kcal else 1.0
+    
+    print(f"plot_imshow title({title}) V.shape", V.shape)
     Z = V * fac
+
+
     # Build extent from finite rv/A; avoid identical y-limits
     extent = None
     x_label = 'angle a [deg]'

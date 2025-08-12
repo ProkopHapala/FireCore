@@ -248,6 +248,109 @@ __kernel void evalSampleDerivatives_template(
 }
 
 // -----------------------------------------------------------------------------
+// Energy-only template variant.
+// Inject model-specific pair energy at the marker:
+//     //<<<MODEL_PAIR_ENERGY
+// The injected code should only accumulate into Ei using in-scope variables:
+//   atomi, atomj (float4), REQi, REQj (float4), dij (float3), r (float), ir (float)
+// and should NOT reference derivatives.
+// Produces one scalar energy per sample (work-group) in Emols[iS].
+// -----------------------------------------------------------------------------
+__attribute__((reqd_work_group_size(32,1,1)))
+__kernel void evalSampleEnergy_template(
+    __global int4*    ranges,    // (i0, j0, ni, nj) but stored as (x=i0, y=j0, z=ni, w=nj)
+    __global float4*  tREQHs,    // [ntypes] REQH parameters
+    __global int*     atypes,    // [nAtomTot]
+    __global int2*    ieps,      // [nAtomTot]
+    __global float4*  atoms,     // [nAtomTot]
+    __global float*   Emols      // [nSamples] output molecular energies
+){
+    __local float4 LATOMS[32];
+    __local float4 LREQKS[32];
+
+    const int iS = get_group_id   (0);
+    const int iG = get_global_id  (0);
+    const int iL = get_local_id   (0);
+    const int nL = get_local_size (0);
+
+    const int4 nsi = ranges[iS];
+    const int i0   = nsi.x;
+    const int ni   = nsi.z;
+    const int j0   = nsi.y;
+    const int nj   = nsi.w;
+
+    // Each work-item handles one atom i within fragment 1 of the current sample.
+    // Use local index within the work-group to cover [i0, i0+ni). Avoid early returns to keep barriers safe.
+    const int    i     = i0 + iL;
+    const int    active = (iL < ni);
+    int    ti    = 0;
+    float4 atomi = (float4)(0.0f,0.0f,0.0f,0.0f);
+    float4 REQi  = (float4)(0.0f,0.0f,0.0f,0.0f);
+    if(active){
+        ti    = atypes[i];
+        atomi = atoms [i];
+        REQi  = tREQHs[ti];
+        REQi.z = atomi.w;
+        const int2   iep   = ieps  [i];
+        if( iep.x >= 0 ){ REQi.z -= tREQHs[iep.x].z; }
+        if( iep.y >= 0 ){ REQi.z -= tREQHs[iep.y].z; }
+    }
+
+    float  Ei    = 0.0f;
+
+    // --- Debug: print config for a chosen sample and few lanes ---
+    if(iS == iDBG && iL < 4){
+        printf("[evalSampleEnergy_template] iS=%d iG=%d iL=%d nL=%d | i0=%d ni=%d j0=%d nj=%d | i=%d ti=%d\n",
+               iS, iG, iL, nL, i0, ni, j0, nj, i, ti);
+    }
+
+    for(int off=0; off<nj; off+=nL){
+        const int local_j = off + iL;
+        if(local_j<nj){
+            const int jj       = j0 + local_j;
+            const int    tj    = atypes[jj];
+            const float4 atomj = atoms [jj];
+                  float4 REQj  = tREQHs[tj];
+            REQj.z = atomj.w;
+            const int2   jep  = ieps[jj];
+            if( jep.x >= 0 ){ REQj.z -= tREQHs[jep.x].z; }
+            if( jep.y >= 0 ){ REQj.z -= tREQHs[jep.y].z; }
+            LATOMS[iL]  = atomj;
+            LREQKS[iL]  = REQj;
+        }
+        barrier(CLK_LOCAL_MEM_FENCE);
+
+        for(int jl=0; jl<nL; jl++){
+            const int local_j2 = off + jl;
+            if(local_j2 < nj){
+                const float4 atomj = LATOMS[jl];
+                const float4 REQj  = LREQKS[jl];
+
+                float3 dij = atomj.xyz - atomi.xyz;
+                float  r   = length(dij);
+                float  ir  = 1.f/r;
+
+                if(active){
+                    //<<<MODEL_PAIR_ENERGY
+                }
+            }
+        }
+        barrier(CLK_LOCAL_MEM_FENCE);
+    }
+
+    barrier(CLK_LOCAL_MEM_FENCE);
+    LATOMS[iL].x = active ? Ei : 0.0f;
+    barrier(CLK_LOCAL_MEM_FENCE);
+
+    if (iL == 0) {
+        float Emol = 0.0f;
+        for(int i=0; i<ni; i++){ Emol += LATOMS[i].x; }
+        Emols[iS] = Emol;
+        if(iS == iDBG){ printf("[evalSampleEnergy_template] iS=%d Emol=%g\n", iS, Emol); }
+    }
+}
+
+// -----------------------------------------------------------------------------
 // Rest of the code remains the same
 // -----------------------------------------------------------------------------
 

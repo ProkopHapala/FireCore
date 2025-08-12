@@ -2,6 +2,7 @@
 from operator import iand
 import sys
 import os
+import re
 import numpy as np
 import pyopencl as cl
 from sympy.ntheory import is_abundant
@@ -18,7 +19,7 @@ class FittingDriver(OpenCLBase):
     #     self.dof_definitions = []
     #     self.tREQHs_base = None
 
-    def __init__(self, nloc=32, perBatch=10):
+    def __init__(self, nloc=32, perBatch=10, verbose=0):
         # Initialize the base class
         super().__init__(nloc=nloc, device_index=0)
         
@@ -32,6 +33,7 @@ class FittingDriver(OpenCLBase):
         self.atom_type_names = []
         self.dof_definitions = []
         self.tREQHs_base = None  
+        self.verbose = int(verbose)
 
 
     def load_atom_types(self, atom_types_file):
@@ -39,7 +41,8 @@ class FittingDriver(OpenCLBase):
         Loads default non-bonded parameters from an AtomTypes.dat file.
         Stores them in a dictionary for later lookup.
         """
-        print(f"Loading base atom type parameters from {atom_types_file}...")
+        if self.verbose>0:
+            print(f"Loading base atom type parameters from {atom_types_file}...")
         self.base_params = {}
         with open(atom_types_file, 'r') as f:
             for line in f:
@@ -58,69 +61,106 @@ class FittingDriver(OpenCLBase):
                 EvdW = float(parts[10])
                 
                 self.base_params[type_name] = {'R': RvdW, 'E': EvdW, 'Q': 0.0, 'H': 0.0}
-        print(f"Loaded base parameters for {len(self.base_params)} atom types.")
+        if self.verbose>0:
+            print(f"Loaded base parameters for {len(self.base_params)} atom types.")
 
 
     def load_data(self, xyz_file):
-        """Loads molecular geometries from a concatenated XYZ file."""
-        print(f"Loading data from {xyz_file}...")
+        """Loads molecular geometries from a concatenated XYZ file.
+        Supports comment formats:
+          - "# E = <eV> eV"
+          - "... n0 <int> Etot <eV> x0 <r> z <deg> <name>"
+        If n0 is missing, defaults to natoms//2.
+        """
+        if self.verbose>0:
+            print(f"Loading data from {xyz_file}...")
         atoms_list, atypes_list, ranges_list = [], [], []
         ia = 0
 
         type_names = []
         ErefW = []
         system_params = []
-        isys = 0
-        
+
+        # Regex for robust parsing
+        reE  = re.compile(r"(?:#\s*E\s*=\s*|\bEtot\s+)([+-]?(?:\d*\.\d+|\d+)(?:[Ee][+-]?\d+)?)")
+        reN0 = re.compile(r"\bn0\s+(\d+)")
+        reX  = re.compile(r"\bx0\s+([+-]?(?:\d*\.\d+|\d+)(?:[Ee][+-]?\d+)?)")
+        reZ  = re.compile(r"\bz\s+([+-]?(?:\d*\.\d+|\d+)(?:[Ee][+-]?\d+)?)")
+
         with open(xyz_file, 'r') as f:
             while True:
-                line    = f.readline()
-                if not line: break
-                natoms  = int(line.strip())
+                line = f.readline()
+                if not line:
+                    break
+                line_s = line.strip()
+                if line_s == '' or not line_s.isdigit():
+                    # Skip stray lines until a natoms line is found
+                    continue
+                natoms = int(line_s)
                 comment = f.readline()
                 ws = comment.split()
-                print( f"load_data() isys: {len(ranges_list)} comment: ", ws)
-                n0      = int(ws[2])
-                #  see comment like: # n0 3 Etot 3.46679898796992282901 x0 01.40 z -90 H2O-D1_H2O-A1
-                Etot    = float(ws[4])
-                x      = float(ws[6])
-                y      = float(ws[8])
-                molname = ws[9]
-                system_params.append((molname,(x, y), Etot))
+                if self.verbose>1:
+                    print(f"load_data() isys: {len(ranges_list)} comment: ", ws)
+
+                mE = reE.search(comment)
+                Etot = float(mE.group(1)) if mE else float('nan')
+                mN = reN0.search(comment)
+                n0 = int(mN.group(1)) if mN else natoms // 2
+                mX = reX.search(comment); mZ = reZ.search(comment)
+                x = float(mX.group(1)) if mX else float('nan')
+                z = float(mZ.group(1)) if mZ else float('nan')
+                molname = ws[-1] if len(ws) > 0 and not ws[-1].startswith('eV') else ''
+
+                system_params.append((molname, (x, z), Etot))
                 ranges_list.append((ia, ia + n0, n0, natoms - n0))
-                # Store reference energies for later use
                 ErefW.append(Etot)
+
                 for _ in range(natoms):
                     parts = f.readline().strip().split()
+                    if len(parts) < 4:
+                        continue
                     type_name = parts[0]
                     if type_name not in self.atom_type_map:
                         self.atom_type_map[type_name] = len(self.atom_type_names)
                         self.atom_type_names.append(type_name)
                     type_names.append(type_name)
                     atypes_list.append(self.atom_type_map[type_name])
-                    atoms_list .append([float(p) for p in parts[1:5]])
+                    # Expect up to 4 floats; pad if missing to keep float4 layout
+                    floats = [float(p) for p in parts[1:5]]
+                    if len(floats) < 4:
+                        floats += [0.0] * (4 - len(floats))
+                    atoms_list.append(floats)
                 ia += natoms
+
         self.host_ErefW = np.array(ErefW, dtype=np.float32)
-        self.atom_types_set = set(self.atom_type_names); print( "load_data() atom_types_set: ", self.atom_types_set)
+        self.atom_types_set = set(self.atom_type_names)
+        if self.verbose>0:
+            print("load_data() atom_types_set: ", self.atom_types_set)
         self.host_atoms    = np.array(atoms_list,  dtype=np.float32)
         self.host_atypes   = np.array(atypes_list, dtype=np.int32)
         self.host_ranges   = np.array(ranges_list, dtype=np.int32)
         self.n_atoms_total = len(self.host_atoms)
         self.n_samples     = len(self.host_ranges)
         self.host_ieps     = np.full((self.n_atoms_total, 2), -1, dtype=np.int32)
-        self.system_params=system_params
-        print(f"Loaded {self.n_samples} samples, {self.n_atoms_total} atoms total.")
+        self.system_params = system_params
+        if self.verbose>0:
+            print(f"Loaded {self.n_samples} samples, {self.n_atoms_total} atoms total.")
 
-        print("Atoms:")
-        for i in range(len(self.host_atoms)): print(f"{i}: {type_names[i]} {self.host_atypes[i]} {self.host_atoms[i]}")
+        if self.verbose>2:
+            print("Atoms:")
+            for i in range(len(self.host_atoms)):
+                print(f"{i}: {type_names[i]} {self.host_atypes[i]} {self.host_atoms[i]}")
 
-        print("Atom types:")
-        for i in range(len(self.atom_type_names)): print(f"{i}: {self.atom_type_names[i]} {self.atom_type_map[self.atom_type_names[i]]} ")
+            print("Atom types:")
+            for i in range(len(self.atom_type_names)):
+                if self.verbose>2:
+                    print(f"{i}: {self.atom_type_names[i]} {self.atom_type_map[self.atom_type_names[i]]} ")
 
 
     def load_dofs(self, dof_file):
         """Loads the definitions of the degrees of freedom (DOFs)."""
-        print(f"Loading DOFs from {dof_file}...")
+        if self.verbose>0:
+            print(f"Loading DOFs from {dof_file}...")
         with open(dof_file, 'r') as f:
             for line in f:
                 if line.startswith('#') or not line.strip(): continue
@@ -138,7 +178,8 @@ class FittingDriver(OpenCLBase):
                     'xstart': float(parts[9])
                 })
         self.n_dofs = len(self.dof_definitions)
-        print(f"Loaded {self.n_dofs} degrees of freedom.")
+        if self.verbose>0:
+            print(f"Loaded {self.n_dofs} degrees of freedom.")
 
     def prepare_host_data(self, REQH=default_REQH):
         """
@@ -275,7 +316,8 @@ class FittingDriver(OpenCLBase):
         self.toGPU_(self.regParams_buff, self.host_regParams)
         
         self.set_kernel_args()
-        print("GPU buffers allocated and static data uploaded.")
+        if self.verbose>0:
+            print("GPU buffers allocated and static data uploaded.")
 
     def set_kernel_args(self):
         """Sets arguments for the final two kernels."""
@@ -323,7 +365,8 @@ class FittingDriver(OpenCLBase):
             self.DOFs_buff,
             self.regParams_buff
         )
-        print("Kernel arguments pre-set.")
+        if self.verbose>0:
+            print("Kernel arguments pre-set.")
 
     def compile_with_model(self, macros=None, output_path=None, bPrint=False):
         """
@@ -369,6 +412,83 @@ class FittingDriver(OpenCLBase):
         else:
             if bPrint:
                 print("compile_with_model(): Buffers not yet allocated; kernel args will be set later.")
+
+    def compile_energy_with_model(self, macros=None, output_path=None, bPrint=False):
+        """
+        Build the OpenCL program with a model-specific pair ENERGY snippet injected
+        into the templated kernel `evalSampleEnergy_template` at marker
+            //<<<MODEL_PAIR_ENERGY
+
+        Pass snippet via macros={'MODEL_PAIR_ENERGY': code}.
+        """
+        if macros is None:
+            macros = {}
+        base_path = os.path.dirname(os.path.abspath(__file__))
+        rel_path = "../../cpp/common_resources/cl/FitREQ.cl"
+        source_path = os.path.abspath(os.path.join(base_path, rel_path))
+
+        pre_src = self.preprocess_opencl_source(
+            source_path,
+            substitutions={ 'macros': macros },
+            output_path=output_path,
+            bPrint=bPrint
+        )
+
+        self.prg = cl.Program(self.ctx, pre_src).build()
+        self.kernelheaders = self.extract_kernel_headers(pre_src)
+        if bPrint:
+            print(f"compile_energy_with_model(): kernels available: {list(self.kernelheaders.keys())}")
+        # No args set here; energy-only path uses dedicated setters
+
+    def prepare_host_data_energy_only(self):
+        """Prepare only what's needed for energy evaluation (no DOFs, no derivatives)."""
+        # Build REQH table from known atom types and base_params
+        n_types_in_data = len(self.atom_type_names)
+        self.tREQHs_base = np.zeros((n_types_in_data, 4), dtype=np.float32)
+        for i, type_name in enumerate(self.atom_type_names):
+            params = self.base_params.get(type_name)
+            if params:
+                self.tREQHs_base[i, 0] = params['R']
+                self.tREQHs_base[i, 1] = params['E']
+                self.tREQHs_base[i, 2] = params['Q']
+                self.tREQHs_base[i, 3] = params['H']
+            else:
+                print(f"Warning: Atom type '{type_name}' from XYZ data not found in AtomTypes.dat. Using zeros.")
+
+    def init_and_upload_energy_only(self):
+        """Allocate and upload minimal buffers for energy evaluation."""
+        self.prepare_host_data_energy_only()
+        buffs = {
+            "ranges": self.host_ranges.nbytes,
+            "tREQHs": self.tREQHs_base.nbytes,
+            "atypes": self.host_atypes.nbytes,
+            "ieps":   self.host_ieps.nbytes,
+            "atoms":  self.host_atoms.nbytes,
+            "Emols":  self.n_samples*4,
+        }
+        self.try_make_buffers(buffs)
+        self.toGPU_(self.ranges_buff, self.host_ranges)
+        self.toGPU_(self.atypes_buff, self.host_atypes)
+        self.toGPU_(self.ieps_buff,   self.host_ieps)
+        self.toGPU_(self.atoms_buff,  self.host_atoms)
+        self.toGPU_(self.tREQHs_buff, self.tREQHs_base)
+
+    def set_energy_kernel_args(self):
+        """Bind args for evalSampleEnergy_template."""
+        if 'evalSampleEnergy_template' not in getattr(self, 'kernelheaders', {}):
+            raise RuntimeError("Energy kernel not available. Call compile_energy_with_model() first.")
+        self.energy_kern = self.prg.evalSampleEnergy_template
+        self.energy_kern.set_args(
+            self.ranges_buff, self.tREQHs_buff, self.atypes_buff, self.ieps_buff,
+            self.atoms_buff, self.Emols_buff
+        )
+
+    def evaluate_energies(self, workgroup_size=32):
+        """Run energy kernel and return per-sample energies as np.float32 array."""
+        cl.enqueue_nd_range_kernel(self.queue, self.energy_kern, (self.n_samples*workgroup_size,), (workgroup_size,))
+        Emols = self.fromGPU_(self.Emols_buff, shape=(self.n_samples,), dtype='f4')
+        self.queue.finish()
+        return Emols
 
     def get_forces(self, dofs_vec, bCheck=True):
         """Calculates the total force (physical + regularization) for a given DOF vector."""
@@ -484,6 +604,108 @@ def extract_macro_block(file_path, macro_name):
         raise ValueError(f"Unbalanced braces while parsing macro: {macro_name}")
     return s[j:k]
 
+def run_energy_imshow(model_name='ENERGY_MorseQ_PAIR',
+                      xyz_file="/home/prokop/git/FireCore/tests/tFitREQ/HHalogens/HBr-D1_HBr-A1.xyz",
+                      atom_types_file="/home/prokop/git/FireCore/cpp/common_resources/AtomTypes.dat",
+                      kcal=False, sym=True, Emin=2.0, bColorbar=True,
+                      verbose=0, show=True, save=None):
+    """Evaluate energy-only kernel on a packed XYZ and show 3-panel imshow:
+    Reference, Model, Difference. Uses helper functions from tests/tFitREQ/split_scan_imshow_new.py
+    to parse headers, detect rows, reshape to grid, and plot.
+    """
+    import matplotlib.pyplot as plt
+    from tests.tFitREQ.split_scan_imshow_new import (
+        parse_headers_ra, read_scan_atomicutils, parse_xyz_blocks,
+        compute_ra_vec, detect_rows_by_r, reshape_to_grid,
+        plot_imshow, compute_shift_from_grid
+    )
+
+    # 1) Extract reference energies and geometry (r, a) from headers
+    Eh, Rh, Ah = parse_headers_ra(xyz_file)
+    if Eh.size == 0:
+        raise RuntimeError(f"No reference energies parsed from headers: {xyz_file}")
+
+    # 2) Evaluate model energies in the same order
+    drv = FittingDriver(verbose=verbose)
+    drv.load_atom_types(atom_types_file)
+    drv.load_data(xyz_file)
+    drv.init_and_upload_energy_only()
+    base_path = os.path.dirname(os.path.abspath(__file__))
+    forces_path = os.path.abspath(os.path.join(base_path, "../../cpp/common_resources/cl/Forces.cl"))
+    macro_code = extract_macro_block(forces_path, model_name)
+    macros = { 'MODEL_PAIR_ENERGY': macro_code }
+    drv.compile_energy_with_model(macros=macros, bPrint=False)
+    drv.set_energy_kernel_args()
+    Em = drv.evaluate_energies()
+    if verbose:
+        print(f"Model energies: min={np.nanmin(Em):.6e} max={np.nanmax(Em):.6e}")
+
+    if Em.shape[0] != Eh.shape[0]:
+        print(f"Warning: Em(n={Em.shape[0]}) != Eh(n={Eh.shape[0]}). Proceeding with min length.")
+        n = min(Em.shape[0], Eh.shape[0])
+        Em = Em[:n]
+        Eh = Eh[:n]
+        Rh = Rh[:n]
+        Ah = Ah[:n]
+
+    # 3) Derive geometry r/a from atomic positions with header overrides; then row detection
+    Es_geo, Ps = read_scan_atomicutils(xyz_file)
+    if Es_geo.size == 0:
+        # Fallback to local parser for positions if atomicUtils isn't available
+        _, _, Ps = parse_xyz_blocks(xyz_file, natoms=None)
+    r, a = compute_ra_vec(Ps, signed=True)
+    if Rh.size == r.size and np.any(np.isfinite(Rh)):
+        r = np.where(np.isfinite(Rh), Rh, r)
+    if Ah.size == a.size and np.any(np.isfinite(Ah)):
+        a = np.where(np.isfinite(Ah), Ah, a)
+    rows, _ = detect_rows_by_r(r)
+    Vref, Rg, Arow, rv = reshape_to_grid(Eh, r, a, rows)
+    Vmod, _,   _,   _  = reshape_to_grid(Em, r, a, rows)
+    if verbose:
+        print(f"Grids: Vref shape={Vref.shape}, Vmod shape={Vmod.shape}")
+
+    # 4) Reference alignment: subtract a common reference (asymptotic min at max r col)
+    sref = compute_shift_from_grid(Vref)
+    Vref_ = Vref - sref
+    Vmod_ = Vmod #- sref
+    Vdif  = Vmod_ - Vref_
+
+
+    print("Vref_[:,0]", Vref_[:,0])
+    print("Vref_[0,:]", Vref_[0,:])
+    print("Vmod_[:,0]", Vmod_[:,0])
+    print("Vmod_[0,:]", Vmod_[0,:])
+
+    print("Vref_.shape , min, max", Vref_.shape, Vref_.min(), Vref_.max())
+    print("Vmod_.shape , min, max", Vmod_.shape, Vmod_.min(), Vmod_.max())
+
+    # 5) Plot 3 panels
+    fig, axs = plt.subplots(1, 3, figsize=(14, 4))
+    vmax = None
+    emin = -abs(Emin) if sym else None
+    vmax = +abs(Emin) if sym else None
+    # Reference
+    plot_imshow(Vref_, rv, Arow, emin=emin, vmax=vmax, title='Reference', kcal=kcal, ax=axs[0], bColorbar=bColorbar)
+    # Model
+    plot_imshow(Vmod_, rv, Arow, emin=emin, vmax=vmax, title=f'Model {model_name}', kcal=kcal, ax=axs[1], bColorbar=bColorbar)
+    # Difference (auto symmetric around 0)
+    vmax_d = np.nanmax(np.abs(Vdif))
+    plot_imshow(Vdif, rv, Arow, emin=-vmax_d, vmax=+vmax_d, title='Difference', kcal=kcal, ax=axs[2], bColorbar=bColorbar)
+    plt.tight_layout()
+    if save is not None:
+        try:
+            os.makedirs(os.path.dirname(save), exist_ok=True)
+        except Exception:
+            pass
+        plt.savefig(save, dpi=150)
+        if verbose:
+            print(f"Saved figure to: {save}")
+    if show:
+        plt.show()
+    else:
+        plt.close(fig)
+    return Vref_, Vmod_, Vdif, rv, Arow
+
 def run_templated_example(model_name='MODEL_MorseQ_PAIR',
                           atom_types_file="/home/prokop/git/FireCore/cpp/common_resources/AtomTypes.dat",
                           xyz_file="/home/prokop/git/FireCore/tests/tFitREQ/input_example.xyz",
@@ -514,6 +736,36 @@ def run_templated_example(model_name='MODEL_MorseQ_PAIR',
     print(x_final)
     return x_final
 
+def run_energy_example(model_name='ENERGY_MorseQ_PAIR',
+                       atom_types_file="/home/prokop/git/FireCore/cpp/common_resources/AtomTypes.dat",
+                       xyz_file="/home/prokop/git/FireCore/tests/tFitREQ/HHalogens/HBr-D1_HBr-A1.xyz"):
+    """Compile and run the energy-only templated kernel on provided XYZ file.
+    model_name: one of ENERGY_LJQH2_PAIR, ENERGY_LJr8QH2_PAIR, ENERGY_MorseQ_PAIR
+    """
+    print("\n--- Running energy-only evaluation ---")
+    drv = FittingDriver()
+    drv.load_atom_types(atom_types_file)
+    drv.load_data(xyz_file)
+
+    # Build and upload minimal buffers
+    drv.init_and_upload_energy_only()
+
+    # Load energy-only macro and compile energy template
+    base_path = os.path.dirname(os.path.abspath(__file__))
+    forces_path = os.path.abspath(os.path.join(base_path, "../../cpp/common_resources/cl/Forces.cl"))
+    macro_code = extract_macro_block(forces_path, model_name)
+    macros = { 'MODEL_PAIR_ENERGY': macro_code }
+    drv.compile_energy_with_model(macros=macros, bPrint=True)
+    drv.set_energy_kernel_args()
+
+    Emols = drv.evaluate_energies()
+    print("\n" + "="*40)
+    print(f"Energy model: {model_name}")
+    for i, E in enumerate(Emols):
+        ref = drv.host_ErefW[i] if hasattr(drv, 'host_ErefW') and len(drv.host_ErefW)>i else np.nan
+        print(f"Sample {i}: E = {E:.6f}  (Eref = {ref:.6f})")
+    return Emols
+
 def run_baseline_example():
     """Wraps the existing baseline example into a function."""
     print("\n--- Running baseline example ---")
@@ -541,5 +793,7 @@ if __name__ == '__main__':
     # To run the templated-kernel demo with a selected model macro, uncomment one:
     #run_templated_example('MODEL_LJQH2_PAIR')
     # run_templated_example('MODEL_LJr8QH2_PAIR')
-    run_templated_example('MODEL_MorseQ_PAIR')
-    print("="*40)
+    #run_templated_example('MODEL_MorseQ_PAIR')
+
+    run_energy_imshow('ENERGY_MorseQ_PAIR')
+    #print("="*40)
