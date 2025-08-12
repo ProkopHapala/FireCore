@@ -1,0 +1,501 @@
+#!/usr/bin/env python3
+import numpy as np
+import matplotlib.pyplot as plt
+import argparse
+import re
+from pathlib import Path
+import sys
+# Ensure project root is on sys.path for `pyBall` imports when run as a script
+_ROOT = Path(__file__).resolve().parents[2]
+if str(_ROOT) not in sys.path:
+    sys.path.insert(0, str(_ROOT))
+try:
+    from pyBall.atomicUtils import scan_xyz
+except Exception:
+    scan_xyz = None
+
+# ----------------------------
+# Parsing packed XYZ scan file
+# ----------------------------
+
+def parse_xyz_blocks(fname, natoms=None):
+    """
+    Parse a packed XYZ where blocks appear as:
+      [optional natoms line]\n
+      # E = <energy> eV\n
+      <natoms lines of 'Sym x y z'>\n
+    Some files repeat a single integer line (natoms) between blocks. We ignore
+    such lines and rely on the comment + natoms atom lines pattern.
+
+    Returns arrays: Es [n], types [n, natoms], pos [n, natoms, 3]
+    """
+    Es   = []
+    Ts   = []
+    Ps   = []
+
+    energy_re = re.compile(r"#\s*E\s*=\s*([\-0-9\.Ee+]+)")
+    with open(fname, 'r') as f: lines = f.readlines()
+    i = 0
+    nline = len(lines)
+
+    # If natoms not specified, try to infer from the first block
+    def try_peek_natoms(k):
+        # Find the next non-empty, non-comment line that is integer
+        while k < nline and lines[k].strip() == "": k += 1
+        if k < nline and lines[k].strip().isdigit(): return int(lines[k].strip()), k+1
+        return None, k
+
+    # Advance to first comment line with energy
+    while i < nline and not lines[i].lstrip().startswith('#'): i += 1
+
+    # Try infer natoms if not provided
+    if natoms is None:
+        # Look back one line for natoms if possible, otherwise forward search
+        n_guess = None
+        if i-1 >= 0 and lines[i-1].strip().isdigit():
+            n_guess = int(lines[i-1].strip())
+        else:
+            n_guess, _ = try_peek_natoms(i+1)
+        if n_guess is None:  n_guess = 4  # Fallback: expect 4 atoms per the H–halogen dimers case
+        natoms = n_guess
+
+    while i < nline:
+        s = lines[i].lstrip()
+        if not s.startswith('#'):
+            i += 1
+            continue
+        m = energy_re.search(s)
+        if not m:
+            i += 1
+            continue
+        E = float(m.group(1))
+        i += 1
+        # Skip any natoms integer lines or empty lines between comment and atoms
+        taken = 0
+        types = []
+        pos   = []
+        while i < nline and taken < natoms:
+            t = lines[i].strip()
+            if t == "" or t.isdigit():
+                i += 1
+                continue
+            parts = t.split()
+            if len(parts) < 4:
+                # Not an atom line; skip
+                i += 1
+                continue
+            sym = parts[0]
+            try:
+                x, y, z = map(float, parts[1:4])
+            except ValueError:
+                # Malformed numeric line, skip
+                i += 1
+                continue
+            types.append(sym)
+            pos.append((x, y, z))
+            taken += 1
+            i += 1
+        if taken == natoms:
+            Es.append(E)
+            Ts.append(types)
+            Ps.append(pos)
+        # else: incomplete block at EOF; stop
+
+        # Optionally skip trailing natoms line after atom block
+        while i < nline and (lines[i].strip() == "" or lines[i].strip().isdigit()):
+            i += 1
+
+    Es = np.array(Es)
+    Ps = np.array(Ps, dtype=float)  # shape [n, natoms, 3]
+    return Es, Ts, Ps
+
+def read_scan_atomicutils(fname):
+    """
+    Read a packed XYZ using pyBall.atomicUtils.scan_xyz() and extract
+    energies from the comment lines. Returns (Es [n], Ps [n,nat,3]).
+    """
+    energy_re = re.compile(r"#\s*E\s*=\s*([\-0-9\.Ee+]+)")
+
+    def _cb(block, id=None, comment=None):
+        apos, _es = block  # _es is element names list from load_xyz
+        E = np.nan
+        if comment:
+            m = energy_re.search(comment)
+            if m:
+                E = float(m.group(1))
+        return (E, np.array(apos, dtype=float))
+
+    if scan_xyz is None:
+        return np.empty((0,)), np.empty((0, 0, 3))
+    res = scan_xyz(fname, callback=_cb)
+    if len(res) == 0:
+        return np.empty((0,)), np.empty((0, 0, 3))
+    Es, Plist = zip(*res)
+    Es = np.array(Es, dtype=float)
+    nat = Plist[0].shape[0]
+    Ps = np.stack(Plist, axis=0).reshape(len(Plist), nat, 3)
+    return Es, Ps
+
+# ----------------------------
+# Geometry-derived scan params
+# ----------------------------
+
+def derive_ra_from_block(P):
+    """
+    Given a 4-atom H–halogen dimer block with ordering:
+      mol A: atoms 0,1
+      mol B: atoms 2,3
+    compute:
+      r = |COM_B - COM_A|
+      a = angle(axis_B, COM_B - COM_A) in degrees
+    This should be stable across angles and dimers. If natoms != 4, it still
+    uses first half vs second half atoms as the two fragments.
+    """
+    nat = P.shape[0]
+    h = nat // 2
+    A = P[:h, :]
+    B = P[h:, :]
+    cA = A.mean(axis=0)
+    cB = B.mean(axis=0)
+    R  = cB - cA
+    r  = np.linalg.norm(R)
+    if r < 1e-12:
+        a = np.nan
+    else:
+        # Axis of B: use first two atoms of B (index h and h+1); if more, use PCA? here simple vector
+        vB = B[-1] - B[0]
+        nb = np.linalg.norm(vB)
+        if nb < 1e-12:
+            a = np.nan
+        else:
+            cosang = np.dot(vB, R) / (nb * r)
+            cosang = np.clip(cosang, -1.0, 1.0)
+            a = np.degrees(np.arccos(cosang))
+    return r, a
+
+
+def compute_ra_vec(P, signed=True):
+    """Vectorized r and angle for array P [n, nat, 3].
+    If signed=True, return signed angle in degrees using atan2(|vB×R|, vB·R) with sign from (vB×R)_z.
+    """
+    n, nat, _ = P.shape
+    h = nat // 2
+    A = P[:, :h, :]
+    B = P[:, h:, :]
+    cA = A.mean(axis=1)
+    cB = B.mean(axis=1)
+    R = cB - cA
+    r = np.linalg.norm(R, axis=1)
+    vB = B[:, -1, :] - B[:, 0, :]
+    nb = np.linalg.norm(vB, axis=1)
+    # Avoid division by zero
+    mask = (r > 1e-12) & (nb > 1e-12)
+    ang = np.full((n,), np.nan)
+    if np.any(mask):
+        vBd = vB[mask]
+        Rd  = R[mask]
+        dot = np.einsum('ij,ij->i', vBd, Rd)
+        crs = np.cross(vBd, Rd)
+        sn  = np.linalg.norm(crs, axis=1)
+        a0  = np.degrees(np.arctan2(sn, dot))  # [0,180]
+        if signed:
+            sgn = np.sign(crs[:, 2])  # sign from z-component (assuming scans mostly in XY plane)
+            a0  = a0 * sgn  # -> [-180,180]
+        ang[mask] = a0
+    return r, ang
+
+# ----------------------------
+# Row detection and reshaping
+# ----------------------------
+
+def detect_rows_by_r(r, tol=None):
+    """
+    Find indices where a new angular scanline starts. The faster index is r.
+    We detect row starts where dr = r[i] - r[i-1] is a negative jump larger
+    in magnitude than half the typical step.
+    Returns list of (start, end) slices covering the whole sequence.
+    """
+    dr = np.diff(r)
+    pos = dr[dr > 0]
+    if len(pos) == 0:
+        step = np.median(np.abs(dr)) if len(dr) > 0 else 1.0
+    else:
+        step = np.median(pos)
+    if tol is None:
+        tol = 0.5 * step
+    # Row breaks where dr < -tol
+    brk = np.where(dr < -tol)[0] + 1
+    splits = np.concatenate(([0], brk, [len(r)]))
+    rows = [(int(splits[i]), int(splits[i+1])) for i in range(len(splits)-1)]
+    return rows, step
+
+
+def reshape_to_grid(vals, r, a, rows):
+    """
+    Pad rows to a rectangular grid. Returns:
+      V [ny, nx], R [ny, nx], A [ny] (row-mean angle), rv [nx] (first row r)
+    Missing points are filled with NaN.
+    """
+    ny = len(rows)
+    nx = max(e - s for s, e in rows)
+    V = np.full((ny, nx), np.nan)
+    R = np.full((ny, nx), np.nan)
+    A = np.full((ny,), np.nan)
+    rv = np.full((nx,), np.nan)
+    for iy, (s, e) in enumerate(rows):
+        n = e - s
+        V[iy, :n] = vals[s:e]
+        R[iy, :n] = r[s:e]
+        A[iy] = np.nanmean(a[s:e])
+        if iy == 0:
+            rv[:n] = r[s:e]
+    return V, R, A, rv
+
+# ----------------------------
+# Referencing / shifting energy
+# ----------------------------
+
+def compute_ref_shift(Es, r, rows):
+    """
+    Reference shift: choose, for each row, the energy at its maximum r, then
+    return the minimum among those as the asymptotic reference.
+    """
+    refs = []
+    for s, e in rows:
+        if e > s:
+            irel = np.argmax(r[s:e])
+            refs.append(Es[s + irel])
+    if len(refs) == 0:
+        return 0.0
+    return float(np.nanmin(refs))
+
+def compute_shift_from_grid(V):
+    """Simpler reference: take nan-min of the last column (max distance) across rows."""
+    if V.size == 0:
+        return 0.0
+    return float(np.nanmin(V[:, -1]))
+
+# ----------------------------
+# Plotting
+# ----------------------------
+
+def plot_imshow(V, rv, A, emin=None, vmax=None, title=None, cmap='bwr', kcal=False, ax=None, bColorbar=True):
+    fac = 23.060548 if kcal else 1.0
+    Z = V * fac
+    # Build extent from finite rv/A; avoid identical y-limits
+    extent = None
+    x_label = 'angle a [deg]'
+    y_label = 'r'
+    # Invert axes compared to previous: x <- A (angles), y <- rv (distance)
+    xr = A[np.isfinite(A)]   if A  is not None else np.array([])
+    yr = rv[np.isfinite(rv)] if rv is not None else np.array([])
+    if xr.size >= 1 and yr.size >= 2:
+        # Use min/max to avoid inverted ranges if rows are not angle-sorted
+        x0 = np.nanmin(xr)
+        x1 = np.nanmax(xr)
+        y0 = np.nanmin(yr)
+        y1 = np.nanmax(yr)
+        if np.isfinite(x0) and np.isfinite(x1) and np.isfinite(y0) and np.isfinite(y1):
+            # pad if needed to avoid singular transform
+            if abs(x1 - x0) < 1e-9:
+                padx = 0.5 if x0 != 0 else 1.0
+                x0, x1 = x0 - padx, x0 + padx
+            if abs(y1 - y0) < 1e-9:
+                pady = 0.5 if y0 != 0 else 1.0
+                y0, y1 = y0 - pady, y0 + pady
+            extent = [x0, x1, y0, y1]
+    # Color scale handling
+    vmin = None
+    if vmax is None and emin is not None:
+        # Interpret `emin` as symmetric magnitude
+        vmag = abs(emin)
+        vmin = -vmag
+        vmax = +vmag
+    else:
+        vmin = emin if emin is not None else np.nanmin(Z)
+    if vmax is None:
+        vmax = np.nanmax(Z)
+    if ax is None:
+        fig = plt.figure(figsize=(7, 5))
+        ax = plt.gca()
+    # Transpose so that x (width) corresponds to angles (A), y (height) to distances (rv)
+    im = ax.imshow(Z.T, origin='lower', aspect='auto', extent=extent, vmin=vmin, vmax=vmax, cmap=cmap)
+    ax.set_xlabel(x_label)
+    ax.set_ylabel(y_label)
+    if bColorbar:
+        cbar = plt.colorbar(im, ax=ax)
+        cbar.set_label('E [kcal/mol]' if kcal else 'E [eV]')
+    if title:
+        ax.set_title(title)
+    return im
+
+def parse_panel_list(list_path):
+    """
+    Parse a panel list file with format:
+      Nrows Ncols\n
+      --- (row separator)\n
+      filename.xyz or #comment to skip.
+    Returns (nrows, ncols, entries) where entries is a flat list of either
+    absolute file paths or None for skipped panels.
+    Paths are resolved relative to the list file directory.
+    """
+    p = Path(list_path)
+    base = p.parent
+    with open(p, 'r') as f:
+        lines = [ln.strip() for ln in f if ln.strip() != '']
+    # First non-empty line must have two ints
+    rc = lines[0].split()
+    nrows, ncols = int(rc[0]), int(rc[1])
+    entries = []
+    r = 0
+    c = 0
+    for ln in lines[1:]:
+        if ln.startswith('---'):
+            # start next row
+            if c != 0 and c != ncols:
+                # pad incomplete row
+                while c < ncols:
+                    entries.append(None); c += 1
+            r += 1
+            c = 0
+            continue
+        if ln.startswith('#'):
+            entries.append(None)
+        else:
+            entries.append(str((base / ln).resolve()))
+        c += 1
+        if c == ncols:
+            c = 0
+    # Ensure size nrows*ncols
+    if len(entries) < nrows * ncols:
+        entries += [None] * (nrows * ncols - len(entries))
+    else:
+        entries = entries[: nrows * ncols]
+    return nrows, ncols, entries
+
+# ----------------------------
+# Main
+# ----------------------------
+
+def compute_panel_data(xyz, natoms=None, debug=False, unsigned_angle=False):
+    Es, Ps = read_scan_atomicutils(xyz)
+    if Es.size == 0:
+        print(f"WARNING: atomicUtils.scan_xyz() failed to parse {xyz} => fallback to local parse_xyz_blocks()")
+        _, _, Ps_local = parse_xyz_blocks(xyz, natoms=natoms)
+        Es = np.full((Ps_local.shape[0],), np.nan)
+        Ps = Ps_local
+    if debug:
+        print(f"Parsed {len(Es)} blocks, natoms={Ps.shape[1]} from {Path(xyz).name}")
+    r, a = compute_ra_vec(Ps, signed=(not unsigned_angle))
+    rows, step = detect_rows_by_r(r)
+    if debug:
+        print(f"Detected {len(rows)} rows; typical dr={step:.6f}")
+    Vraw, R, A, rv = reshape_to_grid(Es, r, a, rows)
+    shift = compute_shift_from_grid(Vraw)
+    V = Vraw - shift
+    return V, rv, A, shift
+
+def plot_list(list_path, emin=None, emax=None, sym=False, kcal=False, cmap='bwr', bColorbar=True, natoms=None, debug=False, unsigned_angle=False, transpose=False):
+    nrows, ncols, entries = parse_panel_list(list_path)
+    if transpose:
+        # swap rows/cols for layout
+        fig, axs = plt.subplots(ncols, nrows, figsize=(3.0*nrows, 2.6*ncols), squeeze=False)
+    else:
+        fig, axs = plt.subplots(nrows, ncols, figsize=(3.0*ncols, 2.6*nrows), squeeze=False)
+    # Draw each panel independently, with its own colorbar and autoscaled range
+    for idx, fp in enumerate(entries):
+        r = idx // ncols
+        c = idx % ncols
+        ax = axs[c, r] if transpose else axs[r, c]
+        if fp is None:
+            ax.set_axis_off()
+            continue
+        try:
+            V, rv, A, shift = compute_panel_data(fp, natoms=natoms, debug=debug, unsigned_angle=unsigned_angle)
+        except Exception as e:
+            print(f"ERROR processing {fp}: {e}")
+            ax.set_axis_off(); continue
+        title = Path(fp).stem
+        # Determine vmin/vmax per image according to options precedence: sym > emax > emin/autoscale
+        fac = 23.060548 if kcal else 1.0
+        if sym:
+            emin_img = float(np.nanmin(V)) * fac
+            vmag = abs(emin_img)
+            vmin_plot = -vmag
+            vmax_plot = +vmag
+        elif emax is not None and emax > 0:
+            vmin_plot = float(np.nanmin(V)) * fac
+            vmax_plot = vmin_plot + emax
+        else:
+            vmin_plot = None
+            vmax_plot = None
+        plot_imshow(V, rv, A, emin=vmin_plot, vmax=vmax_plot, title=title, cmap=cmap, kcal=kcal, ax=ax, bColorbar=bColorbar)
+    fig.tight_layout()
+    return fig
+
+if __name__ == '__main__':
+    ap = argparse.ArgumentParser(description='Split packed 2D dimer scan and plot with imshow')
+    ap.add_argument('--xyz',    type=str, help='input packed .xyz file', default="./HHalogens/HBr-A1_HBr-D1.xyz")
+    ap.add_argument('--list',   type=str, help='panel list file (N M on first line, rows separated by ---)')
+    ap.add_argument('--natoms', type=int, default=None, help='atoms per block (default: auto/infer)')
+    ap.add_argument('--kcal',   action='store_true', help='plot energies in kcal/mol')
+    ap.add_argument('--sym',    action='store_true', help='per-image symmetric color scale around E_far=0 (vmin=-|Emin|, vmax=+|Emin|)')
+    ap.add_argument('--emin',   type=float, default=None, help='override lower bound for color scale (in displayed units); if only --emin is given (and no --emax), a symmetric scale [-emin, +emin] is used')
+    ap.add_argument('--emax',   type=float, default=None, help='per-image range width above its global minimum: vmin=Emin_image, vmax=Emin_image+emax (in displayed units)')
+    ap.add_argument('--cmap',   type=str, default='bwr', help='matplotlib colormap')
+    ap.add_argument('--no-cbar',action='store_true', help='disable colorbar')
+    ap.add_argument('--transpose', action='store_true', help='swap rows and columns of the subplot grid')
+    ap.add_argument('--show',   action='store_true', help='show plot (otherwise just save)')
+    ap.add_argument('--out',    type=str, default=None, help='output image file (.png)')
+    ap.add_argument('--debug',  action='store_true')
+    args = ap.parse_args()
+
+    if args.list:
+        fig = plot_list(args.list, emin=args.emin, emax=args.emax, sym=args.sym, kcal=args.kcal, cmap=args.cmap, bColorbar=(not args.no_cbar), natoms=args.natoms, debug=args.debug, transpose=args.transpose)
+        if args.out is None:
+            base = Path(args.list).with_suffix("")
+            args.out = f"{base}_grid.png"
+        plt.savefig(args.out, dpi=160)
+        if args.show:
+            plt.show()
+    else:
+        # Single file path
+        Es, Ps = read_scan_atomicutils(args.xyz)
+        if Es.size == 0:
+            print(f"WARNING: atomicUtils.scan_xyz() failed to parse {args.xyz} => fallback to local parse_xyz_blocks()")
+            _, _, Ps_local = parse_xyz_blocks(args.xyz, natoms=args.natoms)
+            Es = np.full((Ps_local.shape[0],), np.nan)
+            Ps = Ps_local
+        if args.debug:
+            print(f"Parsed {len(Es)} blocks, natoms={Ps.shape[1]}")
+        r, a = compute_ra_vec(Ps)
+        rows, step = detect_rows_by_r(r)
+        if args.debug:
+            print(f"Detected {len(rows)} rows; typical dr={step:.6f}")
+            for k, (s, e) in enumerate(rows[:5]):
+                rr = r[s:e]
+                print(f" row {k}: n={e-s}, r[{s}:{e}] ~ {rr[0]:.3f}..{rr[-1]:.3f}, a~{np.nanmean(a[s:e]):.2f}")
+        Vraw, R, A, rv = reshape_to_grid(Es, r, a, rows)
+        shift = compute_shift_from_grid(Vraw)
+        V = Vraw - shift
+        title = Path(args.xyz).name
+        # Compute vmin/vmax based on requested options (precedence: sym > emax > emin)
+        fac = 23.060548 if args.kcal else 1.0
+        if args.sym:
+            emin_img = float(np.nanmin(V)) * fac
+            vmag = abs(emin_img)
+            vmin_plot = -vmag
+            vmax_plot = +vmag
+        elif args.emax is not None and args.emax > 0:
+            vmin_plot = float(np.nanmin(V)) * fac
+            vmax_plot = vmin_plot + args.emax
+        else:
+            vmin_plot = args.emin  # may be None
+            vmax_plot = None
+        plot_imshow(V, rv, A, emin=vmin_plot, vmax=vmax_plot, title=title, kcal=args.kcal, cmap=args.cmap, bColorbar=(not args.no_cbar))
+        if args.out is None:
+            base = Path(args.xyz).with_suffix("")
+            args.out = f"{base}_imshow.png"
+        plt.savefig(args.out, dpi=160)
+        if args.show:
+            plt.show()
