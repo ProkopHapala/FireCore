@@ -4,9 +4,11 @@ import sys
 import os
 import argparse
 
+sys.path.append("../../")
+
 # Assuming 'AtomiSystem.py', 'elements.py', and 'atomicUtils.py' are in the Python path
-from AtomicSystem import AtomicSystem
-import elements
+from pyBall import AtomicSystem
+from pyBall import elements
 
 def setup_render_engine():
     """
@@ -135,19 +137,20 @@ if __name__ == "__main__":
     """
     # Blender's Python API requires parsing args passed after '--'
     argv = sys.argv
-    if "--" not in argv:
-        argv = []
-    else:
-        argv = argv[argv.index("--") + 1:]
+    # if "--" not in argv:
+    #     argv = []
+    # else:
+    #     argv = argv[argv.index("--") + 1:]
 
     parser = argparse.ArgumentParser(description="Render a molecule from an .xyz file using Blender.")
-    parser.add_argument("-i", "--input", required=True, help="Path to the input .xyz file.")
-    parser.add_argument("-o", "--output", required=True, help="Path for the output render image.")
+    parser.add_argument("-i", "--input",  default="../../cpp/common_resources/xyz/H2O.xyz", help="Path to the input .xyz file.")
+    parser.add_argument("-o", "--output", default="out.png",  help="Path for the output render image.")
     args = parser.parse_args(argv)
 
     # Load the molecule using your AtomiSystem class
     print(f"Loading molecule from: {args.input}")
     molecule_system = AtomiSystem(fname=args.input)
+    print(args.input)
 
     # Render the molecule
     render_molecule(molecule_system, args.output)

@@ -175,34 +175,25 @@ def derive_ra_from_block(P):
 
 
 def compute_ra_vec(P, signed=True):
-    """Vectorized r and angle for array P [n, nat, 3].
-    If signed=True, return signed angle in degrees using atan2(|vB×R|, vB·R) with sign from (vB×R)_z.
+    """Compute r and a from the moving molecule's first atom in the XZ plane.
+    Convention:
+    - Pivot is the first atom of molecule A (index 0).
+    - Moving point is the first atom of molecule B (index h).
+    - r = sqrt((x_B0-x_A0)^2 + (z_B0-z_A0)^2)
+    - a = atan2(z_B0-x_A0, x_B0-x_A0) in degrees; signed in [-180,180], or |a| if unsigned.
     """
     n, nat, _ = P.shape
     h = nat // 2
-    A = P[:, :h, :]
-    B = P[:, h:, :]
-    cA = A.mean(axis=1)
-    cB = B.mean(axis=1)
-    R = cB - cA
-    r = np.linalg.norm(R, axis=1)
-    vB = B[:, -1, :] - B[:, 0, :]
-    nb = np.linalg.norm(vB, axis=1)
-    # Avoid division by zero
-    mask = (r > 1e-12) & (nb > 1e-12)
-    ang = np.full((n,), np.nan)
-    if np.any(mask):
-        vBd = vB[mask]
-        Rd  = R[mask]
-        dot = np.einsum('ij,ij->i', vBd, Rd)
-        crs = np.cross(vBd, Rd)
-        sn  = np.linalg.norm(crs, axis=1)
-        a0  = np.degrees(np.arctan2(sn, dot))  # [0,180]
-        if signed:
-            sgn = np.sign(crs[:, 2])  # sign from z-component (assuming scans mostly in XY plane)
-            a0  = a0 * sgn  # -> [-180,180]
-        ang[mask] = a0
-    return r, ang
+    A0 = P[:, 0, :]
+    B0 = P[:, h + 0, :]
+    V  = B0 - A0
+    x = V[:, 0]
+    z = V[:, 2]
+    r = np.sqrt(x*x + z*z)
+    a = np.degrees(np.arctan2(z, x))
+    if not signed:
+        a = np.abs(a)
+    return r, a
 
 # ----------------------------
 # Row detection and reshaping
@@ -329,6 +320,62 @@ def plot_imshow(V, rv, A, emin=None, vmax=None, title=None, cmap='bwr', kcal=Fal
         ax.set_title(title)
     return im
 
+def plot_polar(V, rv, A, emin=None, vmax=None, title=None, cmap='bwr', kcal=False, ax=None, bColorbar=True, rmax=None, half='right', R=None):
+    """Polar plot using angles A (deg) and distances rv. V is [ny,nx].
+    half: 'right' shows -90..+90 deg, 'left' shows 90..270 deg.
+    """
+    fac = 23.060548 if kcal else 1.0
+    # Sort rows by angle to make contours well-behaved
+    order = np.argsort(A)
+    A = A[order]
+    V = V[order, :]
+    if R is not None:
+        R = R[order, :]
+    Z = V * fac
+    # Build theta (radians), apply shift like in reference scripts to show -90..+90 within 90..270 window
+    thetas = np.radians(A)
+    if half == 'right':
+        thetas = thetas - np.pi
+    # Build coordinate grids matching V's shape. Prefer per-row R if provided.
+    ny, nx = V.shape
+    if R is None:
+        Rg, Tg = np.meshgrid(rv, thetas)
+    else:
+        Rg = R
+        Tg = np.repeat(thetas[:, None], nx, axis=1)
+    Zt = np.ma.masked_invalid(Z)
+    # Color scale
+    vmin = None
+    if vmax is None and emin is not None:
+        vmag = abs(emin)
+        vmin = -vmag
+        vmax = +vmag
+    else:
+        vmin = emin
+    if ax is None:
+        ax = plt.subplot(111, projection='polar')
+    # Plot
+    # For contourf, generate levels within [vmin, vmax] and clamp data to avoid outliers skewing levels
+    if (vmin is not None) and (vmax is not None):
+        levels = np.linspace(vmin, vmax, 100)
+        Zp = np.clip(Zt, vmin, vmax)
+    else:
+        levels = 100
+        Zp = Zt
+    cs = ax.contourf(Tg, Rg, Zp, levels=levels, cmap=cmap, vmin=vmin, vmax=vmax)
+    # Half circle setup: always use 90..270 window; for 'right' we shifted by -pi above
+    ax.set_thetamin(90)
+    ax.set_thetamax(270)
+    # Radial limits: include center to show blank area below smallest sampled radius
+    rmax_eff = rmax if (rmax is not None) else float(np.nanmax(R if R is not None else rv))
+    ax.set_ylim(0.0, rmax_eff)
+    if bColorbar:
+        cbar = plt.colorbar(cs, ax=ax)
+        cbar.set_label('E [kcal/mol]' if kcal else 'E [eV]')
+    if title:
+        ax.set_title(title)
+    return cs
+
 def parse_panel_list(list_path):
     """
     Parse a panel list file with format:
@@ -390,18 +437,38 @@ def compute_panel_data(xyz, natoms=None, debug=False, unsigned_angle=False):
     rows, step = detect_rows_by_r(r)
     if debug:
         print(f"Detected {len(rows)} rows; typical dr={step:.6f}")
+        try:
+            #print(f"  r[min,max] {np.nanmin(r):.3f}, {np.nanmax(r):.3f} r[:]: ", np.array2string(r, precision=3) )
+            #print(f"  a[min,max] {np.nanmin(a):.1f}, {np.nanmax(a):.1f} a[:]: ", np.array2string(a, precision=1))
+            print(f"  r[min,max] {np.nanmin(r):.3f}, {np.nanmax(r):.3f}")
+            print(f"  a[min,max] {np.nanmin(a):.1f}, {np.nanmax(a):.1f}")
+        except Exception:
+            pass
     Vraw, R, A, rv = reshape_to_grid(Es, r, a, rows)
     shift = compute_shift_from_grid(Vraw)
     V = Vraw - shift
-    return V, rv, A, shift
+    if debug:
+        try:
+            ny, nx = V.shape
+            rv_f = rv[np.isfinite(rv)] if rv is not None else np.array([])
+            A_f  = A[np.isfinite(A)]   if A  is not None else np.array([])
+            print(f"  Grid shape: ny={ny}, nx={nx}")
+            if rv_f.size:
+                print(f"  rv[len={rv_f.size}] min,max = {np.nanmin(rv_f):.3f}, {np.nanmax(rv_f):.3f}   rv[:] = ", np.array2string(rv_f, precision=3))
+            if A_f.size:
+                print(f"  A[len={A_f.size}] min,max  = {np.nanmin(A_f):.1f}, {np.nanmax(A_f):.1f}   A[:]  = ", np.array2string(A_f, precision=1))
+        except Exception:
+            pass
+    return V, rv, A, shift, R
 
-def plot_list(list_path, emin=None, emax=None, sym=False, kcal=False, cmap='bwr', bColorbar=True, natoms=None, debug=False, unsigned_angle=False, transpose=False):
+def plot_list(list_path, emin=None, emax=None, sym=False, kcal=False, cmap='bwr', bColorbar=True, natoms=None, debug=False, unsigned_angle=False, transpose=False, polar=False, rmax=None, half='right'):
     nrows, ncols, entries = parse_panel_list(list_path)
+    subplot_kw = {'projection':'polar'} if polar else None
     if transpose:
         # swap rows/cols for layout
-        fig, axs = plt.subplots(ncols, nrows, figsize=(3.0*nrows, 2.6*ncols), squeeze=False)
+        fig, axs = plt.subplots(ncols, nrows, figsize=(3.0*nrows, 2.6*ncols), squeeze=False, subplot_kw=subplot_kw)
     else:
-        fig, axs = plt.subplots(nrows, ncols, figsize=(3.0*ncols, 2.6*nrows), squeeze=False)
+        fig, axs = plt.subplots(nrows, ncols, figsize=(3.0*ncols, 2.6*nrows), squeeze=False, subplot_kw=subplot_kw)
     # Draw each panel independently, with its own colorbar and autoscaled range
     for idx, fp in enumerate(entries):
         r = idx // ncols
@@ -411,11 +478,11 @@ def plot_list(list_path, emin=None, emax=None, sym=False, kcal=False, cmap='bwr'
             ax.set_axis_off()
             continue
         try:
-            V, rv, A, shift = compute_panel_data(fp, natoms=natoms, debug=debug, unsigned_angle=unsigned_angle)
+            V, rv, A, shift, R = compute_panel_data(fp, natoms=natoms, debug=debug, unsigned_angle=unsigned_angle)
         except Exception as e:
             print(f"ERROR processing {fp}: {e}")
             ax.set_axis_off(); continue
-        title = Path(fp).stem
+        title = Path(fp).name
         # Determine vmin/vmax per image according to options precedence: sym > emax > emin/autoscale
         fac = 23.060548 if kcal else 1.0
         if sym:
@@ -427,18 +494,32 @@ def plot_list(list_path, emin=None, emax=None, sym=False, kcal=False, cmap='bwr'
             vmin_plot = float(np.nanmin(V)) * fac
             vmax_plot = vmin_plot + emax
         else:
-            vmin_plot = None
+            vmin_plot = emin  # may be None
             vmax_plot = None
-        plot_imshow(V, rv, A, emin=vmin_plot, vmax=vmax_plot, title=title, cmap=cmap, kcal=kcal, ax=ax, bColorbar=bColorbar)
+        if polar:
+            plot_polar(V, rv, A, emin=vmin_plot, vmax=vmax_plot, title=title, cmap=cmap, kcal=kcal, ax=ax, bColorbar=bColorbar, rmax=rmax, half=half, R=R)
+        else:
+            plot_imshow(V, rv, A, emin=vmin_plot, vmax=vmax_plot, title=title, cmap=cmap, kcal=kcal, ax=ax, bColorbar=bColorbar)
     fig.tight_layout()
     return fig
 
 if __name__ == '__main__':
+    '''
+    How to Run:
+    with imshow:
+        python split_scan_imshow.py --show --list ./HHalogens/toplot.txt --cmap bwr --sym --transpose
+    polar:
+        python split_scan_imshow.py --show --list ./HHalogens/toplot.txt --cmap bwr --sym  --polar --rmax 7.0 --half right --debug --transpose
+    '''
     ap = argparse.ArgumentParser(description='Split packed 2D dimer scan and plot with imshow')
     ap.add_argument('--xyz',    type=str, help='input packed .xyz file', default="./HHalogens/HBr-A1_HBr-D1.xyz")
     ap.add_argument('--list',   type=str, help='panel list file (N M on first line, rows separated by ---)')
     ap.add_argument('--natoms', type=int, default=None, help='atoms per block (default: auto/infer)')
     ap.add_argument('--kcal',   action='store_true', help='plot energies in kcal/mol')
+    ap.add_argument('--polar',  action='store_true', help='use polar plots (contourf) instead of rectangular imshow')
+    ap.add_argument('--rmax',   type=float, default=None, help='max radius for polar plots (clip outer radius to focus on short-range)')
+    ap.add_argument('--half',   type=str, default='right', choices=['right','left'], help='half-circle to show in polar plots: right (-90..+90) or left (90..270)')
+    ap.add_argument('--unsigned-angle', action='store_true', help='use unsigned angle in [0,180] deg (default uses signed angle)')
     ap.add_argument('--sym',    action='store_true', help='per-image symmetric color scale around E_far=0 (vmin=-|Emin|, vmax=+|Emin|)')
     ap.add_argument('--emin',   type=float, default=None, help='override lower bound for color scale (in displayed units); if only --emin is given (and no --emax), a symmetric scale [-emin, +emin] is used')
     ap.add_argument('--emax',   type=float, default=None, help='per-image range width above its global minimum: vmin=Emin_image, vmax=Emin_image+emax (in displayed units)')
@@ -451,7 +532,22 @@ if __name__ == '__main__':
     args = ap.parse_args()
 
     if args.list:
-        fig = plot_list(args.list, emin=args.emin, emax=args.emax, sym=args.sym, kcal=args.kcal, cmap=args.cmap, bColorbar=(not args.no_cbar), natoms=args.natoms, debug=args.debug, transpose=args.transpose)
+        fig = plot_list(
+            args.list,
+            emin=args.emin,
+            emax=args.emax,
+            sym=args.sym,
+            kcal=args.kcal,
+            cmap=args.cmap,
+            bColorbar=(not args.no_cbar),
+            natoms=args.natoms,
+            debug=args.debug,
+            unsigned_angle=args.unsigned_angle,
+            transpose=args.transpose,
+            polar=args.polar,
+            rmax=args.rmax,
+            half=args.half,
+        )
         if args.out is None:
             base = Path(args.list).with_suffix("")
             args.out = f"{base}_grid.png"
@@ -468,7 +564,7 @@ if __name__ == '__main__':
             Ps = Ps_local
         if args.debug:
             print(f"Parsed {len(Es)} blocks, natoms={Ps.shape[1]}")
-        r, a = compute_ra_vec(Ps)
+        r, a = compute_ra_vec(Ps, signed=(not args.unsigned_angle))
         rows, step = detect_rows_by_r(r)
         if args.debug:
             print(f"Detected {len(rows)} rows; typical dr={step:.6f}")
@@ -479,6 +575,14 @@ if __name__ == '__main__':
         shift = compute_shift_from_grid(Vraw)
         V = Vraw - shift
         title = Path(args.xyz).name
+        if args.debug:
+            try:
+                rv_f = rv[np.isfinite(rv)] if rv is not None else np.array([])
+                A_f  = A[np.isfinite(A)]   if A  is not None else np.array([])
+                print(f"  rv[len={rv_f.size}] min,max = {np.nanmin(rv_f):.3f}, {np.nanmax(rv_f):.3f}   rv[:] = ", np.array2string(rv_f, precision=3))
+                print(f"  A[len={A_f.size}] min,max  = {np.nanmin(A_f):.1f}, {np.nanmax(A_f):.1f}   A[:]  = ", np.array2string(A_f, precision=1))
+            except Exception:
+                pass
         # Compute vmin/vmax based on requested options (precedence: sym > emax > emin)
         fac = 23.060548 if args.kcal else 1.0
         if args.sym:
@@ -492,7 +596,10 @@ if __name__ == '__main__':
         else:
             vmin_plot = args.emin  # may be None
             vmax_plot = None
-        plot_imshow(V, rv, A, emin=vmin_plot, vmax=vmax_plot, title=title, kcal=args.kcal, cmap=args.cmap, bColorbar=(not args.no_cbar))
+        if args.polar:
+            plot_polar(V, rv, A, emin=vmin_plot, vmax=vmax_plot, title=title, kcal=args.kcal, cmap=args.cmap, bColorbar=(not args.no_cbar), rmax=args.rmax, half=args.half, R=R)
+        else:
+            plot_imshow(V, rv, A, emin=vmin_plot, vmax=vmax_plot, title=title, kcal=args.kcal, cmap=args.cmap, bColorbar=(not args.no_cbar))
         if args.out is None:
             base = Path(args.xyz).with_suffix("")
             args.out = f"{base}_imshow.png"
