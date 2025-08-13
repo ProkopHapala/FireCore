@@ -746,104 +746,73 @@ def plot_energy_panels(Vref_, Vmod_, Vdif, rv, Arow, model_name,
     return emin_ref, vmax_ref, emin_mod, vmax_mod, fig, axs
 
 
-def plot_energy_profiles(Vref_, Vmod_, rv, Arow, rmax=8.0, kcal=False, ymin=None, ymax=None):
-    """Thin wrapper that composes a list of curve specs and delegates plotting.
-    It overlays ref (ls='.:', lw=2) vs mod (ls='.-', lw=1) for:
-    - Radials at rows [0, mid]
-    - Angular at radius of global minimum of Reference
-    - Per-angle minima over r
+def plot_energy_profile(ax, V, rv, Arow, rows, srt, theta_s, ix_ang,
+                        ls, lw, labels, marker='.', ms=3.0,
+                        rmax=None, ymin=None, ymax=None, fac=1.0,
+                        row_colors=('k','r'), ang_color='g', min_color='b', name=''):
+    """Plot 4 concise profiles for a single dataset V onto ax.
+    Curves order and styling mapping:
+      0 -> radial @ rows[0]
+      1 -> radial @ rows[1]
+      2 -> angular @ ix_ang (θ-sorted 0..π)
+      3 -> min over r per angle (θ-sorted)
     """
-    ny = Vref_.shape[0]
-    if ny <= 0:
-        return
-    rows = sorted({i for i in (0, ny//2) if 0 <= i < ny})
-    specs = []
-    # colors per curve kind
-    colors = ['k', 'r']
+    rr = rv.astype(float)
+    # Radial rows
     for j, irow in enumerate(rows):
-        col = colors[j if j < len(colors) else -1]
-        specs += [
-            dict(src='ref', kind='radial', row=irow, color=col, style=dict(ls=':', marker='.', lw=2.0), label=f"ref radial @{Arow[irow]:.0f}°"),
-            dict(src='mod', kind='radial', row=irow, color=col, style=dict(ls='-', marker='.', lw=1.0), label=f"mod radial @{Arow[irow]:.0f}°"),
-        ]
-    specs += [
-        dict(src='ref', kind='angular', ix='min_ref', color='g', style=dict(ls=':', marker='.', lw=2.0)),
-        dict(src='mod', kind='angular', ix='min_ref', color='g', style=dict(ls='-', marker='.', lw=1.0)),
-        dict(src='ref', kind='min_over_r', color='b', style=dict(ls=':', lw=2.0)),
-        dict(src='mod', kind='min_over_r', color='b', style=dict(ls='-', lw=1.0)),
-    ]
-    plot_profiles_from_specs(Vref_, Vmod_, rv, Arow, specs, rmax=rmax, kcal=kcal, ymin=ymin, ymax=ymax)
+        ee = (V[irow, :] * fac).astype(float)
+        m = np.isfinite(rr) & np.isfinite(ee)
+        if rmax is not None: m &= (rr <= float(rmax))
+        if not np.any(m): continue
+        yy = ee[m]
+        if (ymin is not None) and (ymax is not None): yy = np.clip(yy, float(ymin), float(ymax))
+        col = row_colors[j if j < len(row_colors) else -1]
+        ax.plot(rr[m], yy, color=col, ls=ls[j], lw=lw[j], marker=marker, ms=ms, label=f"{name} {labels[j]} @{Arow[irow]:.0f}°")
+    # Angular @ ix_ang
+    if ix_ang is not None:
+        e_ang = (V[:, int(ix_ang)] * fac)
+        yy = e_ang[srt]
+        if (ymin is not None) and (ymax is not None): yy = np.clip(yy, float(ymin), float(ymax))
+        lab_r = rv[int(ix_ang)] if rv is not None else np.nan
+        ax.plot(theta_s, yy, color=ang_color, ls=ls[2], lw=lw[2], marker=marker, ms=ms, label=f"{name} {labels[2]} @ r≈{lab_r:.2f}")
+    # Min over r per angle
+    try:
+        e_min = np.nanmin(V, axis=1) * fac
+        yy = e_min[srt]
+        if (ymin is not None) and (ymax is not None): yy = np.clip(yy, float(ymin), float(ymax))
+        ax.plot(theta_s, yy, color=min_color, ls=ls[3], lw=lw[3], marker=marker,
+                label=f"{name} {labels[3]}")
+    except Exception:
+        pass
 
 
-def plot_profiles_from_specs(Vref_, Vmod_, rv, Arow, specs, rmax=None, kcal=False, ymin=None, ymax=None):
-    """Generic profile plotter. specs is a list of dicts with keys:
-    - src: 'ref'|'mod'
-    - kind: 'radial'|'angular'|'min_over_r'
-    - row (for radial), ix (for angular) which may be 'min_ref'
-    - color, style (matplotlib kwargs), label (optional)
+def plot_energy_profiles(Vref_, Vmod_, rv, Arow, rmax=8.0, kcal=False, ymin=None, ymax=None):
+    """Overlay 4 profiles for ref and mod by calling a single drawer per dataset:
+    - Radial at first and middle angle rows
+    - Angular at radius index of global minimum of REFERENCE (shared ix)
+    - Per-angle minima over r
     """
     import matplotlib.pyplot as plt
     fac = 23.060548 if kcal else 1.0
-    fig, ax = plt.subplots(1, 1, figsize=(7, 4))
-
-    # Precompute helpers
-    rr = rv.astype(float)
+    ny = Vref_.shape[0]
+    if ny <= 0:
+        return
+    # Rows to show (unique and valid)
+    rows = sorted({i for i in (0, ny//2) if 0 <= i < ny})
+    # Shared angle mapping and sorting (0..π)
     theta = np.radians(Arow)
     theta = (theta + (np.pi/2.0)) % np.pi
     srt = np.argsort(theta)
     theta_s = theta[srt]
-    ix_ref = None
-    if any((sp.get('kind') == 'angular' and sp.get('ix') == 'min_ref') for sp in specs):
-        try:
-            _, ix_ref = np.unravel_index(np.nanargmin(Vref_), Vref_.shape)
-        except Exception:
-            ix_ref = None
+    # Shared angular radius column from REFERENCE minimum
+    try:
+        _, ix_ref = np.unravel_index(np.nanargmin(Vref_), Vref_.shape)
+    except Exception:
+        ix_ref = None
 
-    def get_V(src):
-        return Vref_ if src == 'ref' else Vmod_
-
-    # Build and draw curves
-    for sp in specs:
-        V = get_V(sp.get('src', 'ref'))
-        kind = sp.get('kind')
-        color = sp.get('color')
-        style = sp.get('style', {})
-        label = sp.get('label')
-        if kind == 'radial':
-            irow = int(sp['row'])
-            if irow < 0 or irow >= V.shape[0]:
-                continue
-            ee = (V[irow, :] * fac).astype(float)
-            m = np.isfinite(rr) & np.isfinite(ee)
-            if rmax is not None:
-                m &= (rr <= float(rmax))
-            if not np.any(m):
-                continue
-            yy = ee[m]
-            if (ymin is not None) and (ymax is not None):
-                yy = np.clip(yy, float(ymin), float(ymax))
-            ax.plot(rr[m], yy, color=color, label=label or f"{sp['src']} radial @{Arow[irow]:.0f}°", **style)
-        elif kind == 'angular':
-            ix = sp.get('ix')
-            if ix == 'min_ref':
-                ix = ix_ref
-            if ix is None:
-                continue
-            e_ang = (V[:, int(ix)] * fac)
-            yy = e_ang[srt]
-            if (ymin is not None) and (ymax is not None):
-                yy = np.clip(yy, float(ymin), float(ymax))
-            lab_r = rv[int(ix)] if rv is not None else np.nan
-            ax.plot(theta_s, yy, color=color, label=label or f"{sp['src']} angular @ r≈{lab_r:.2f}", **style)
-        elif kind == 'min_over_r':
-            try:
-                e_min = np.nanmin(V, axis=1) * fac
-                yy = e_min[srt]
-                if (ymin is not None) and (ymax is not None):
-                    yy = np.clip(yy, float(ymin), float(ymax))
-                ax.plot(theta_s, yy, color=color, label=label or f"{sp['src']} min over r per angle", **style)
-            except Exception:
-                continue
+    fig, ax = plt.subplots(1, 1, figsize=(7, 4))
+    plot_energy_profile(ax, Vref_, rv, Arow, rows, srt, theta_s, ix_ref, [':', ':', ':', ':'], [1.5, 1.5, 1.5, 1.5], ['radial', 'radial', 'angular', 'min over r per angle'], marker='.', rmax=rmax, ymin=ymin, ymax=ymax, fac=fac, name='ref')
+    plot_energy_profile(ax, Vmod_, rv, Arow, rows, srt, theta_s, ix_ref, ['-', '-', '-', '-'], [0.5, 0.5, 0.5, 0.5], ['radial', 'radial', 'angular', 'min over r per angle'], marker='.', rmax=rmax, ymin=ymin, ymax=ymax, fac=fac, name='mod')
 
     # Axes
     if (ymin is not None) and (ymax is not None) and np.isfinite(ymin) and np.isfinite(ymax):
