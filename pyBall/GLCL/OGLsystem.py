@@ -1,8 +1,6 @@
 import numpy as np
 from scipy.spatial.transform import Rotation as R
 
-from PyQt5.QtGui import QMatrix4x4, QVector3D # These are used for convenience, can be replaced by numpy if strict PyQt independence is needed for math types
-
 from OpenGL.GL import (
     glClear, glClearColor, GL_COLOR_BUFFER_BIT, GL_DEPTH_BUFFER_BIT,
     glEnable, glDepthFunc, GL_LESS, GL_DEPTH_TEST, glViewport, glCreateProgram,
