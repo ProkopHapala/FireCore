@@ -608,7 +608,8 @@ def run_energy_imshow(model_name='ENERGY_MorseQ_PAIR',
                       xyz_file="/home/prokop/git/FireCore/tests/tFitREQ/HHalogens/HBr-D1_HBr-A1.xyz",
                       atom_types_file="/home/prokop/git/FireCore/cpp/common_resources/AtomTypes.dat",
                       kcal=False, sym=True, Emin=2.0, bColorbar=True,
-                      verbose=0, show=True, save=None):
+                      verbose=0, show=True, save=None, cmap='bwr', lines=False,
+                      rmax=8.0):
     """Evaluate energy-only kernel on a packed XYZ and show 3-panel imshow:
     Reference, Model, Difference. Uses helper functions from tests/tFitREQ/split_scan_imshow_new.py
     to parse headers, detect rows, reshape to grid, and plot.
@@ -667,31 +668,23 @@ def run_energy_imshow(model_name='ENERGY_MorseQ_PAIR',
     # 4) Reference alignment: subtract a common reference (asymptotic min at max r col)
     sref = compute_shift_from_grid(Vref)
     Vref_ = Vref - sref
-    Vmod_ = Vmod #- sref
+    Vmod_ = Vmod         # We should not substract anything here !!!
     Vdif  = Vmod_ - Vref_
 
+    #if verbose and verbose > 1:
 
     print("Vref_[:,0]", Vref_[:,0])
     print("Vref_[0,:]", Vref_[0,:])
     print("Vmod_[:,0]", Vmod_[:,0])
     print("Vmod_[0,:]", Vmod_[0,:])
+    print("Vref_.shape , min, max", Vref_.shape, np.nanmin(Vref_), np.nanmax(Vref_))
+    print("Vmod_.shape , min, max", Vmod_.shape, np.nanmin(Vmod_), np.nanmax(Vmod_))
 
-    print("Vref_.shape , min, max", Vref_.shape, Vref_.min(), Vref_.max())
-    print("Vmod_.shape , min, max", Vmod_.shape, Vmod_.min(), Vmod_.max())
-
-    # 5) Plot 3 panels
-    fig, axs = plt.subplots(1, 3, figsize=(14, 4))
-    vmax = None
-    emin = -abs(Emin) if sym else None
-    vmax = +abs(Emin) if sym else None
-    # Reference
-    plot_imshow(Vref_, rv, Arow, emin=emin, vmax=vmax, title='Reference', kcal=kcal, ax=axs[0], bColorbar=bColorbar)
-    # Model
-    plot_imshow(Vmod_, rv, Arow, emin=emin, vmax=vmax, title=f'Model {model_name}', kcal=kcal, ax=axs[1], bColorbar=bColorbar)
-    # Difference (auto symmetric around 0)
-    vmax_d = np.nanmax(np.abs(Vdif))
-    plot_imshow(Vdif, rv, Arow, emin=-vmax_d, vmax=+vmax_d, title='Difference', kcal=kcal, ax=axs[2], bColorbar=bColorbar)
-    plt.tight_layout()
+    # 5) Plot 3 panels via helper
+    emin_ref, vmax_ref, emin_mod, vmax_mod, fig, axs = plot_energy_panels(
+        Vref_, Vmod_, Vdif, rv, Arow, model_name,
+        kcal=kcal, sym=sym, cmap=cmap, bColorbar=bColorbar
+    )
     if save is not None:
         try:
             os.makedirs(os.path.dirname(save), exist_ok=True)
@@ -700,11 +693,173 @@ def run_energy_imshow(model_name='ENERGY_MorseQ_PAIR',
         plt.savefig(save, dpi=150)
         if verbose:
             print(f"Saved figure to: {save}")
+    # 6) Optional line profiles via helper (y-limits from reference panel symmetric range)
+    if lines:
+        plot_energy_profiles(Vref_, Vmod_, rv, Arow, rmax=rmax, kcal=kcal, ymin=(emin_ref if sym else None), ymax=(vmax_ref if sym else None))
+
     if show:
         plt.show()
     else:
         plt.close(fig)
     return Vref_, Vmod_, Vdif, rv, Arow
+
+# ----------------------------
+# Modular plotting helpers
+# ----------------------------
+
+def plot_energy_panels(Vref_, Vmod_, Vdif, rv, Arow, model_name,
+                       kcal=False, sym=True, cmap='bwr', bColorbar=True):
+    """Plot 3-panel imshow (Reference, Model, Difference).
+    Returns (emin_ref, vmax_ref, emin_mod, vmax_mod, fig, axs).
+    Limits are in displayed units (kcal if requested).
+    """
+    import matplotlib.pyplot as plt
+    from tests.tFitREQ.split_scan_imshow_new import plot_imshow
+    fac = 23.060548 if kcal else 1.0
+    fig, axs = plt.subplots(1, 3, figsize=(14, 4))
+    if sym:
+        # Use the smaller absolute extremum to define a tight symmetric range around 0
+        if Vref_.size:
+            vmin_ref_u = float(np.nanmin(Vref_)) * fac
+            vmax_ref_u = float(np.nanmax(Vref_)) * fac
+            vmag_ref = min(abs(vmin_ref_u), abs(vmax_ref_u))
+        else:
+            vmag_ref = 0.0
+        if Vmod_.size:
+            vmin_mod_u = float(np.nanmin(Vmod_)) * fac
+            vmax_mod_u = float(np.nanmax(Vmod_)) * fac
+            vmag_mod = min(abs(vmin_mod_u), abs(vmax_mod_u))
+        else:
+            vmag_mod = 0.0
+        emin_ref, vmax_ref = -vmag_ref, +vmag_ref
+        emin_mod, vmax_mod = -vmag_mod, +vmag_mod
+    else:
+        emin_ref = vmax_ref = emin_mod = vmax_mod = None
+    # Reference
+    plot_imshow(Vref_, rv, Arow, emin=emin_ref, vmax=vmax_ref, title='Reference', kcal=kcal, ax=axs[0], bColorbar=bColorbar, cmap=cmap)
+    # Model
+    plot_imshow(Vmod_, rv, Arow, emin=emin_mod, vmax=vmax_mod, title=f'Model {model_name}', kcal=kcal, ax=axs[1], bColorbar=bColorbar, cmap=cmap)
+    # Difference
+    vmax_d = float(np.nanmax(np.abs(Vdif))) * fac if Vdif.size else 0.0
+    plot_imshow(Vdif, rv, Arow, emin=-vmax_d, vmax=+vmax_d, title='Difference', kcal=kcal, ax=axs[2], bColorbar=bColorbar, cmap=cmap)
+    plt.tight_layout()
+    return emin_ref, vmax_ref, emin_mod, vmax_mod, fig, axs
+
+
+def plot_energy_profiles(Vref_, Vmod_, rv, Arow, rmax=8.0, kcal=False, ymin=None, ymax=None):
+    """Thin wrapper that composes a list of curve specs and delegates plotting.
+    It overlays ref (ls='.:', lw=2) vs mod (ls='.-', lw=1) for:
+    - Radials at rows [0, mid]
+    - Angular at radius of global minimum of Reference
+    - Per-angle minima over r
+    """
+    ny = Vref_.shape[0]
+    if ny <= 0:
+        return
+    rows = sorted({i for i in (0, ny//2) if 0 <= i < ny})
+    specs = []
+    # colors per curve kind
+    colors = ['k', 'r']
+    for j, irow in enumerate(rows):
+        col = colors[j if j < len(colors) else -1]
+        specs += [
+            dict(src='ref', kind='radial', row=irow, color=col, style=dict(ls=':', marker='.', lw=2.0), label=f"ref radial @{Arow[irow]:.0f}°"),
+            dict(src='mod', kind='radial', row=irow, color=col, style=dict(ls='-', marker='.', lw=1.0), label=f"mod radial @{Arow[irow]:.0f}°"),
+        ]
+    specs += [
+        dict(src='ref', kind='angular', ix='min_ref', color='g', style=dict(ls=':', marker='.', lw=2.0)),
+        dict(src='mod', kind='angular', ix='min_ref', color='g', style=dict(ls='-', marker='.', lw=1.0)),
+        dict(src='ref', kind='min_over_r', color='b', style=dict(ls=':', lw=2.0)),
+        dict(src='mod', kind='min_over_r', color='b', style=dict(ls='-', lw=1.0)),
+    ]
+    plot_profiles_from_specs(Vref_, Vmod_, rv, Arow, specs, rmax=rmax, kcal=kcal, ymin=ymin, ymax=ymax)
+
+
+def plot_profiles_from_specs(Vref_, Vmod_, rv, Arow, specs, rmax=None, kcal=False, ymin=None, ymax=None):
+    """Generic profile plotter. specs is a list of dicts with keys:
+    - src: 'ref'|'mod'
+    - kind: 'radial'|'angular'|'min_over_r'
+    - row (for radial), ix (for angular) which may be 'min_ref'
+    - color, style (matplotlib kwargs), label (optional)
+    """
+    import matplotlib.pyplot as plt
+    fac = 23.060548 if kcal else 1.0
+    fig, ax = plt.subplots(1, 1, figsize=(7, 4))
+
+    # Precompute helpers
+    rr = rv.astype(float)
+    theta = np.radians(Arow)
+    theta = (theta + (np.pi/2.0)) % np.pi
+    srt = np.argsort(theta)
+    theta_s = theta[srt]
+    ix_ref = None
+    if any((sp.get('kind') == 'angular' and sp.get('ix') == 'min_ref') for sp in specs):
+        try:
+            _, ix_ref = np.unravel_index(np.nanargmin(Vref_), Vref_.shape)
+        except Exception:
+            ix_ref = None
+
+    def get_V(src):
+        return Vref_ if src == 'ref' else Vmod_
+
+    # Build and draw curves
+    for sp in specs:
+        V = get_V(sp.get('src', 'ref'))
+        kind = sp.get('kind')
+        color = sp.get('color')
+        style = sp.get('style', {})
+        label = sp.get('label')
+        if kind == 'radial':
+            irow = int(sp['row'])
+            if irow < 0 or irow >= V.shape[0]:
+                continue
+            ee = (V[irow, :] * fac).astype(float)
+            m = np.isfinite(rr) & np.isfinite(ee)
+            if rmax is not None:
+                m &= (rr <= float(rmax))
+            if not np.any(m):
+                continue
+            yy = ee[m]
+            if (ymin is not None) and (ymax is not None):
+                yy = np.clip(yy, float(ymin), float(ymax))
+            ax.plot(rr[m], yy, color=color, label=label or f"{sp['src']} radial @{Arow[irow]:.0f}°", **style)
+        elif kind == 'angular':
+            ix = sp.get('ix')
+            if ix == 'min_ref':
+                ix = ix_ref
+            if ix is None:
+                continue
+            e_ang = (V[:, int(ix)] * fac)
+            yy = e_ang[srt]
+            if (ymin is not None) and (ymax is not None):
+                yy = np.clip(yy, float(ymin), float(ymax))
+            lab_r = rv[int(ix)] if rv is not None else np.nan
+            ax.plot(theta_s, yy, color=color, label=label or f"{sp['src']} angular @ r≈{lab_r:.2f}", **style)
+        elif kind == 'min_over_r':
+            try:
+                e_min = np.nanmin(V, axis=1) * fac
+                yy = e_min[srt]
+                if (ymin is not None) and (ymax is not None):
+                    yy = np.clip(yy, float(ymin), float(ymax))
+                ax.plot(theta_s, yy, color=color, label=label or f"{sp['src']} min over r per angle", **style)
+            except Exception:
+                continue
+
+    # Axes
+    if (ymin is not None) and (ymax is not None) and np.isfinite(ymin) and np.isfinite(ymax):
+        ax.set_ylim(float(ymin), float(ymax))
+    else:
+        vmag = float(np.nanmax(np.abs(Vref_))) * fac if Vref_.size else 0.0
+        ax.set_ylim(-vmag, +vmag)
+    if rmax is not None:
+        ax.set_xlim(0.0, float(rmax))
+
+    ax.grid(True, ls=':')
+    ax.set_xlabel('r [Å] / θ [rad]')
+    ax.set_ylabel('E [kcal/mol]' if kcal else 'E [eV]')
+    ax.legend(loc='best', fontsize=8)
+    ax.set_title('Profiles: ref (:) vs model (-)')
+    plt.tight_layout()
 
 def run_templated_example(model_name='MODEL_MorseQ_PAIR',
                           atom_types_file="/home/prokop/git/FireCore/cpp/common_resources/AtomTypes.dat",

@@ -220,9 +220,16 @@ __kernel void evalSampleDerivatives_template(
                 const float4 atomj = LATOMS[jl];
                 const float4 REQj  = LREQKS[jl];
 
-                float3 dij = atomj.xyz - atomi.xyz;
-                float  r   = length(dij);
-                float  ir  = 1.f/r;
+                float3 dij  = atomj.xyz - atomi.xyz;
+                float r    = length(dij);
+                float inv_r = 1.f/fmax(r, R2SAFE);
+                float R0 = REQi.x + REQj.x;
+                float E0 = REQi.y * REQj.y;
+                float Q  = REQi.z * REQj.z;
+                float H  = REQi.w * REQj.w;
+                // Mixing rules and hydrogen-bond gating
+                float sH = (H < 0.f) ? 1.f : 0.f; // only apply H2 when negative
+                H *= sH;
 
                 //<<<MODEL_PAIR_ACCUMULATION
             }
@@ -299,10 +306,7 @@ __kernel void evalSampleEnergy_template(
     float  Ei    = 0.0f;
 
     // --- Debug: print config for a chosen sample and few lanes ---
-    if(iS == iDBG && iL < 4){
-        printf("[evalSampleEnergy_template] iS=%d iG=%d iL=%d nL=%d | i0=%d ni=%d j0=%d nj=%d | i=%d ti=%d\n",
-               iS, iG, iL, nL, i0, ni, j0, nj, i, ti);
-    }
+    if(iS==iDBG && iL < 0){ printf("GPU: OCL evalSampleEnergy_template() nG %7i nL %2i nS %6i | i0=%d ni=%d j0=%d nj=%d | i=%d ti=%d\n", get_global_size(0), get_local_size(0), get_num_groups(0), i0, ni, j0, nj, i, ti); }
 
     for(int off=0; off<nj; off+=nL){
         const int local_j = off + iL;
@@ -326,9 +330,17 @@ __kernel void evalSampleEnergy_template(
                 const float4 atomj = LATOMS[jl];
                 const float4 REQj  = LREQKS[jl];
 
-                float3 dij = atomj.xyz - atomi.xyz;
-                float  r   = length(dij);
-                float  ir  = 1.f/r;
+                float3 dij  = atomj.xyz - atomi.xyz;
+                float r     = length(dij);
+                float inv_r = 1.f/fmax(r, R2SAFE);
+
+                float R0 = REQi.x + REQj.x;
+                float E0 = REQi.y * REQj.y;
+                float Q  = REQi.z * REQj.z;
+                float H  = REQi.w * REQj.w;
+                // Mixing rules and hydrogen-bond gating
+                float sH = (H < 0.f) ? 1.f : 0.f; // only apply H2 when negative
+                H *= sH;
 
                 if(active){
                     //<<<MODEL_PAIR_ENERGY
@@ -346,7 +358,7 @@ __kernel void evalSampleEnergy_template(
         float Emol = 0.0f;
         for(int i=0; i<ni; i++){ Emol += LATOMS[i].x; }
         Emols[iS] = Emol;
-        if(iS == iDBG){ printf("[evalSampleEnergy_template] iS=%d Emol=%g\n", iS, Emol); }
+        if(iS == iDBG){ printf("GPU: iS=%d Emol=%g\n", iS, Emol); }
     }
 }
 

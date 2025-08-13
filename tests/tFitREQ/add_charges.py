@@ -6,11 +6,17 @@ charges={
 
 import os
 import sys
-from typing import List
+from typing import List, Optional, Tuple
 import re
+import argparse
 
 
-def append_charges_to_xyz_lines(lines: List[str], system_name: str) -> List[str]:
+def append_charges_to_xyz_lines(
+    lines: List[str],
+    system_name: str,
+    angle_atom: Optional[int] = 3,
+    angle_pair: Optional[Tuple[int, int]] = None,
+) -> List[str]:
     """Append RESP charges (from `charges`) to each atom line of every XYZ frame.
 
     Assumes frames of the form (repeated):
@@ -87,34 +93,32 @@ def append_charges_to_xyz_lines(lines: List[str], system_name: str) -> List[str]
             mod_atom_lines.append(f"{sym}  {parts[1]}  {parts[2]}  {parts[3]}  {q:.8f}\n")
 
         # Compute r and angle from coords
-        # Using first half vs second half as fragments
+        # Radial separation r := distance between COMs of first and second halves
         h = nat // 2
         import math
         cA = [sum(p[d] for p in coords[:h]) / h for d in range(3)]
         cB = [sum(p[d] for p in coords[h:]) / (nat - h) for d in range(3)]
         R = [cB[d] - cA[d] for d in range(3)]
         r = math.sqrt(R[0] * R[0] + R[1] * R[1] + R[2] * R[2])
-        vB = [coords[nat - 1][d] - coords[h][d] for d in range(3)]  # axis of B: last - first in second half
-        # angle between vB and R
-        def dot(a, b):
-            return a[0]*b[0] + a[1]*b[1] + a[2]*b[2]
-        def norm(a):
-            return math.sqrt(dot(a, a))
-        nb = norm(vB)
-        if r < 1e-12 or nb < 1e-12:
+        # Angle definition
+        # Priority: angle_pair (j - i) in xz-plane -> atan2(dx, dz); else angle_atom -> atan2(x, z)
+        ang = float('nan')
+        try:
+            if angle_pair is not None:
+                i0, i1 = angle_pair
+                if not (0 <= i0 < nat and 0 <= i1 < nat):  raise IndexError("angle_pair indices out of range")
+                vx = coords[i1][0] - coords[i0][0]
+                vz = coords[i1][2] - coords[i0][2]
+                ang = math.degrees(math.atan2(vx, vz))
+            else:
+                ia = angle_atom if angle_atom is not None else 3
+                if not (0 <= ia < nat):
+                    # Fallback to last atom if default is invalid
+                    ia = nat - 1
+                x, z = coords[ia][0], coords[ia][2]
+                ang = math.degrees(math.atan2(x, z))
+        except Exception:
             ang = float('nan')
-        else:
-            # Signed angle: atan2(|vB×R|, vB·R) with sign from (vB×R)_z
-            dotvr = dot(vB, R)
-            cx = vB[1]*R[2] - vB[2]*R[1]
-            cy = vB[2]*R[0] - vB[0]*R[2]
-            cz = vB[0]*R[1] - vB[1]*R[0]
-            sn = math.sqrt(cx*cx + cy*cy + cz*cz)
-            a0 = math.degrees(math.atan2(sn, dotvr))  # [0,180]
-            ang = math.copysign(a0, cz)               # [-180,180]
-        # Format fields
-        r_str = f"{r:05.2f}"
-        ang_str = str(int(round(ang))) if math.isfinite(ang) else "nan"
         n0 = h
         # Extract Etot numeric from old comment if present (pattern: '# E = <number> [units]')
         m = re.search(r"E\s*=\s*([+-]?(?:\d*\.\d+|\d+)(?:[Ee][+-]?\d+)?)", old_comment)
@@ -127,7 +131,7 @@ def append_charges_to_xyz_lines(lines: List[str], system_name: str) -> List[str]
                     Etot_str = v
         if Etot_str is None:
             Etot_str = "nan"
-        new_comment = f"# n0 {n0} Etot {Etot_str} x0 {r_str} z {ang_str} {system_name}\n"
+        new_comment = f"# n0 {n0} Etot {Etot_str} x0 {r:5.2f} z {ang:5.2f} {system_name}\n"
         out.append(new_comment)
 
         # Append modified atom lines
@@ -138,35 +142,52 @@ def append_charges_to_xyz_lines(lines: List[str], system_name: str) -> List[str]
     return out
 
 
-def process_xyz_file(path: str) -> None:
-    with open(path, "r") as f:
+def process_xyz_file(
+    in_path: str,
+    out_path: str,
+    angle_atom: Optional[int] = 3,
+    angle_pair: Optional[Tuple[int, int]] = None,
+) -> None:
+    with open(in_path, "r") as f:
         lines = f.readlines()
-    system_name = os.path.splitext(os.path.basename(path))[0]
-    new_lines = append_charges_to_xyz_lines(lines, system_name)
-    with open(path, "w") as f:
+    system_name = os.path.splitext(os.path.basename(in_path))[0]
+    new_lines = append_charges_to_xyz_lines(lines, system_name, angle_atom=angle_atom, angle_pair=angle_pair)
+    with open(out_path, "w") as f:
         f.writelines(new_lines)
 
 
-def process_dir(dirpath: str) -> None:
+def process_dir(
+    in_dir: str,
+    out_dir: Optional[str] = None,
+    angle_atom: Optional[int] = 3,
+    angle_pair: Optional[Tuple[int, int]] = None,
+) -> None:
+    if out_dir is None:
+        out_dir = os.path.join(in_dir, "porcessed")  # keep historical name
+    os.makedirs(out_dir, exist_ok=True)
     files = [
-        os.path.join(dirpath, fn)
-        for fn in sorted(os.listdir(dirpath))
+        os.path.join(in_dir, fn)
+        for fn in sorted(os.listdir(in_dir))
         if fn.lower().endswith(".xyz")
     ]
     if not files:
-        print(f"No .xyz files found in {dirpath}")
+        print(f"No .xyz files found in {in_dir}")
         return
-    for fp in files:
-        process_xyz_file(fp)
-        print(f"Updated: {fp}")
+    for in_fp in files:
+        out_fp = os.path.join(out_dir, os.path.basename(in_fp))
+        process_xyz_file(in_fp, out_fp, angle_atom=angle_atom, angle_pair=angle_pair)
+        print(f"Wrote: {out_fp}")
 
 
 if __name__ == "__main__":
-    if len(sys.argv) > 1:
-        target_dir = sys.argv[1]
-        if not os.path.isabs(target_dir):
-            target_dir = os.path.abspath(target_dir)
-    else:
-        # Default to HHalogens/ next to this script
-        target_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "HHalogens"))
-    process_dir(target_dir)
+    parser = argparse.ArgumentParser(description="Append RESP charges to XYZ files and add r/angle metadata.")
+    parser.add_argument("input_dir", nargs="?", help="Directory with input .xyz files", default=os.path.abspath(os.path.join(os.path.dirname(__file__), "HHalogens")))
+    parser.add_argument("--out", "--output-dir", dest="out_dir", default=None, help="Output directory (default: <input_dir>/porcessed)")
+    parser.add_argument("--angle-atom", dest="angle_atom", type=int, default=3, help="Atom index (0-based) to define angle as atan2(x,z); default=3")
+    parser.add_argument("--angle-pair", dest="angle_pair", type=int, nargs=2, default=None,  help="Two atom indices i j (0-based) to define angle from vector r_j - r_i in xz-plane")
+    args = parser.parse_args()
+
+    in_dir = args.input_dir
+    if not os.path.isabs(in_dir):
+        in_dir = os.path.abspath(in_dir)
+    process_dir(in_dir, out_dir=args.out_dir, angle_atom=args.angle_atom, angle_pair=tuple(args.angle_pair) if args.angle_pair else None)
