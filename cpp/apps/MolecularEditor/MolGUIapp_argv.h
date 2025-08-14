@@ -70,7 +70,7 @@
 
     funcs["-nPBC"]={1,[&](const char** ss){ sscanf( ss[0],"%i,%i,%i", &(W->nPBC.x),&(W->nPBC.y),&(W->nPBC.z) );}};
     funcs["-grid_nPBC"]={1,[&](const char** ss){ sscanf( ss[0],"%i,%i,%i", &(W->gridFF.nPBC.x),&(W->gridFF.nPBC.y),&(W->gridFF.nPBC.z) ); }};
-    
+    funcs["-database"]={0,[&](const char** ss){ W->bSaveToDatabase=true; }};
     
 
     // ==== funcs2 are executed after initialization MolWorld_sp3 ( therefore may have no effect on initialization process )
