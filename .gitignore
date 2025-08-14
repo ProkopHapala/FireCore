@@ -30,3 +30,9 @@ cpp/build
 cpp/build-*
 .aider*
 .env
+
+*.pdf
+*.png
+*.html
+*.svg
+*.csv

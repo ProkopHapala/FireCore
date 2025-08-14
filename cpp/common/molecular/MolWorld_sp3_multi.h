@@ -2288,7 +2288,7 @@ virtual void MDloop( int nIter, double Ftol = -1 ) override {
     bChargeUpdated=false;
 
 
-    if( verbosity>=0){ // Milan
+    if( verbosity>=0 && bSaveToDatabase){ // Milan
         FILE* file = fopen("minima.dat", "a"); 
         if((icurIter%1000==0 || icurIter%1000 < 200) && !written_in_this_frame){
             written_in_this_frame=true;
