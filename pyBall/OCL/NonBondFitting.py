@@ -201,7 +201,8 @@ class FittingDriver(OpenCLBase):
             params = self.base_params.get(type_name)
             if params:
                 self.tREQHs_base[i, 0] = params['R']
-                self.tREQHs_base[i, 1] = params['E']
+                # Store sqrt(EvdW) to realize geometric mixing Eij = sqrt(Eii*Ejj) via product in kernel
+                self.tREQHs_base[i, 1] = np.sqrt(params['E'])
                 self.tREQHs_base[i, 2] = params['Q']
                 self.tREQHs_base[i, 3] = params['H']
             else:
@@ -214,7 +215,9 @@ class FittingDriver(OpenCLBase):
                 # This safeguard is still important
                 continue
             # Override the default value with the starting value for the optimization
-            self.tREQHs_base[type_idx, dof['comp']] = dof['xstart']
+            x = dof['xstart']
+            if dof['comp'] == 1: x = np.sqrt(x)  # comp 1 = EvdW -> store sqrt(E)
+            self.tREQHs_base[type_idx, dof['comp']] = x
 
         # This loop populates the initial values from the 'xstart' column
         for dof in self.dof_definitions:
@@ -225,7 +228,9 @@ class FittingDriver(OpenCLBase):
             if type_idx is None:
                 continue
                 
-            self.tREQHs_base[type_idx, dof['comp']] = dof['xstart']
+            x = dof['xstart']
+            if dof['comp'] == 1: x = np.sqrt(x)  # comp 1 = EvdW -> store sqrt(E)
+            self.tREQHs_base[type_idx, dof['comp']] = x
 
         # --- Build mapping arrays for the assembly kernel ---
         dof_to_atom_list = []
@@ -449,7 +454,8 @@ class FittingDriver(OpenCLBase):
             params = self.base_params.get(type_name)
             if params:
                 self.tREQHs_base[i, 0] = params['R']
-                self.tREQHs_base[i, 1] = params['E']
+                # Store sqrt(EvdW) to realize geometric mixing via product in kernel
+                self.tREQHs_base[i, 1] = np.sqrt(params['E'])
                 self.tREQHs_base[i, 2] = params['Q']
                 self.tREQHs_base[i, 3] = params['H']
             else:
@@ -607,8 +613,8 @@ def extract_macro_block(file_path, macro_name):
 def run_energy_imshow(model_name='ENERGY_MorseQ_PAIR',
                       xyz_file="/home/prokop/git/FireCore/tests/tFitREQ/HHalogens/HBr-D1_HBr-A1.xyz",
                       atom_types_file="/home/prokop/git/FireCore/cpp/common_resources/AtomTypes.dat",
-                      kcal=False, sym=True, Emin=2.0, bColorbar=True,
-                      verbose=0, show=True, save=None, cmap='bwr', lines=False,
+                      kcal=False, sym=True, bColorbar=True,
+                      verbose=0, show=True, save=None, cmap='bwr', lines=True,
                       rmax=8.0):
     """Evaluate energy-only kernel on a packed XYZ and show 3-panel imshow:
     Reference, Model, Difference. Uses helper functions from tests/tFitREQ/split_scan_imshow_new.py
@@ -626,6 +632,8 @@ def run_energy_imshow(model_name='ENERGY_MorseQ_PAIR',
     if Eh.size == 0:
         raise RuntimeError(f"No reference energies parsed from headers: {xyz_file}")
 
+    title=os.path.basename(xyz_file)
+
     # 2) Evaluate model energies in the same order
     drv = FittingDriver(verbose=verbose)
     drv.load_atom_types(atom_types_file)
@@ -638,8 +646,7 @@ def run_energy_imshow(model_name='ENERGY_MorseQ_PAIR',
     drv.compile_energy_with_model(macros=macros, bPrint=False)
     drv.set_energy_kernel_args()
     Em = drv.evaluate_energies()
-    if verbose:
-        print(f"Model energies: min={np.nanmin(Em):.6e} max={np.nanmax(Em):.6e}")
+    if verbose>0: print(f"Model energies: min={np.nanmin(Em):.6e} max={np.nanmax(Em):.6e}")
 
     if Em.shape[0] != Eh.shape[0]:
         print(f"Warning: Em(n={Em.shape[0]}) != Eh(n={Eh.shape[0]}). Proceeding with min length.")
@@ -662,29 +669,25 @@ def run_energy_imshow(model_name='ENERGY_MorseQ_PAIR',
     rows, _ = detect_rows_by_r(r)
     Vref, Rg, Arow, rv = reshape_to_grid(Eh, r, a, rows)
     Vmod, _,   _,   _  = reshape_to_grid(Em, r, a, rows)
-    if verbose:
-        print(f"Grids: Vref shape={Vref.shape}, Vmod shape={Vmod.shape}")
+    if verbose>0: print(f"Grids: Vref shape={Vref.shape}, Vmod shape={Vmod.shape}")
 
     # 4) Reference alignment: subtract a common reference (asymptotic min at max r col)
     sref = compute_shift_from_grid(Vref)
-    Vref_ = Vref - sref
-    Vmod_ = Vmod         # We should not substract anything here !!!
-    Vdif  = Vmod_ - Vref_
+    print("sref", sref)
+    Vref -= sref    # shift just reference, not model!
+    Vdif  = Vmod - Vref
 
-    #if verbose and verbose > 1:
-
-    print("Vref_[:,0]", Vref_[:,0])
-    print("Vref_[0,:]", Vref_[0,:])
-    print("Vmod_[:,0]", Vmod_[:,0])
-    print("Vmod_[0,:]", Vmod_[0,:])
-    print("Vref_.shape , min, max", Vref_.shape, np.nanmin(Vref_), np.nanmax(Vref_))
-    print("Vmod_.shape , min, max", Vmod_.shape, np.nanmin(Vmod_), np.nanmax(Vmod_))
+    if verbose>0:
+        print("Vref[:,0]", Vref[:,0])
+        print("Vref[0,:]", Vref[0,:])
+        print("Vmod[:,0]", Vmod[:,0])
+        print("Vmod[0,:]", Vmod[0,:])
+        print("Vref.shape , min, max", Vref.shape, np.nanmin(Vref), np.nanmax(Vref))
+        print("Vmod.shape , min, max", Vmod.shape, np.nanmin(Vmod), np.nanmax(Vmod))
 
     # 5) Plot 3 panels via helper
-    emin_ref, vmax_ref, emin_mod, vmax_mod, fig, axs = plot_energy_panels(
-        Vref_, Vmod_, Vdif, rv, Arow, model_name,
-        kcal=kcal, sym=sym, cmap=cmap, bColorbar=bColorbar
-    )
+    emin_ref, vmax_ref, emin_mod, vmax_mod, fig, axs = plot_energy_panels( Vref, Vmod, Vdif, rv, Arow, model_name, kcal=kcal, sym=sym, cmap=cmap, bColorbar=bColorbar, title=title )
+
     if save is not None:
         try:
             os.makedirs(os.path.dirname(save), exist_ok=True)
@@ -695,20 +698,19 @@ def run_energy_imshow(model_name='ENERGY_MorseQ_PAIR',
             print(f"Saved figure to: {save}")
     # 6) Optional line profiles via helper (y-limits from reference panel symmetric range)
     if lines:
-        plot_energy_profiles(Vref_, Vmod_, rv, Arow, rmax=rmax, kcal=kcal, ymin=(emin_ref if sym else None), ymax=(vmax_ref if sym else None))
+        plot_energy_profiles(Vref, Vmod, rv, Arow, rmax=rmax, kcal=kcal, ymin=(emin_ref if sym else None), ymax=(vmax_ref if sym else None))
 
     if show:
         plt.show()
     else:
         plt.close(fig)
-    return Vref_, Vmod_, Vdif, rv, Arow
+    return Vref, Vmod, Vdif, rv, Arow
 
 # ----------------------------
 # Modular plotting helpers
 # ----------------------------
 
-def plot_energy_panels(Vref_, Vmod_, Vdif, rv, Arow, model_name,
-                       kcal=False, sym=True, cmap='bwr', bColorbar=True):
+def plot_energy_panels(Vref, Vmod, Vdif, rv, Arow, model_name, title=None, kcal=False, sym=True, cmap='bwr', bColorbar=True):
     """Plot 3-panel imshow (Reference, Model, Difference).
     Returns (emin_ref, vmax_ref, emin_mod, vmax_mod, fig, axs).
     Limits are in displayed units (kcal if requested).
@@ -719,15 +721,15 @@ def plot_energy_panels(Vref_, Vmod_, Vdif, rv, Arow, model_name,
     fig, axs = plt.subplots(1, 3, figsize=(14, 4))
     if sym:
         # Use the smaller absolute extremum to define a tight symmetric range around 0
-        if Vref_.size:
-            vmin_ref_u = float(np.nanmin(Vref_)) * fac
-            vmax_ref_u = float(np.nanmax(Vref_)) * fac
+        if Vref.size:
+            vmin_ref_u = float(np.nanmin(Vref)) * fac
+            vmax_ref_u = float(np.nanmax(Vref)) * fac
             vmag_ref = min(abs(vmin_ref_u), abs(vmax_ref_u))
         else:
             vmag_ref = 0.0
-        if Vmod_.size:
-            vmin_mod_u = float(np.nanmin(Vmod_)) * fac
-            vmax_mod_u = float(np.nanmax(Vmod_)) * fac
+        if Vmod.size:
+            vmin_mod_u = float(np.nanmin(Vmod)) * fac
+            vmax_mod_u = float(np.nanmax(Vmod)) * fac
             vmag_mod = min(abs(vmin_mod_u), abs(vmax_mod_u))
         else:
             vmag_mod = 0.0
@@ -736,20 +738,18 @@ def plot_energy_panels(Vref_, Vmod_, Vdif, rv, Arow, model_name,
     else:
         emin_ref = vmax_ref = emin_mod = vmax_mod = None
     # Reference
-    plot_imshow(Vref_, rv, Arow, emin=emin_ref, vmax=vmax_ref, title='Reference', kcal=kcal, ax=axs[0], bColorbar=bColorbar, cmap=cmap)
+    plot_imshow(Vref, rv, Arow, emin=emin_ref, vmax=vmax_ref, title='Reference', kcal=kcal, ax=axs[0], bColorbar=bColorbar, cmap=cmap)
     # Model
-    plot_imshow(Vmod_, rv, Arow, emin=emin_mod, vmax=vmax_mod, title=f'Model {model_name}', kcal=kcal, ax=axs[1], bColorbar=bColorbar, cmap=cmap)
+    plot_imshow(Vmod, rv, Arow, emin=emin_mod, vmax=vmax_mod, title=f'Model {model_name}', kcal=kcal, ax=axs[1], bColorbar=bColorbar, cmap=cmap)
     # Difference
     vmax_d = float(np.nanmax(np.abs(Vdif))) * fac if Vdif.size else 0.0
     plot_imshow(Vdif, rv, Arow, emin=-vmax_d, vmax=+vmax_d, title='Difference', kcal=kcal, ax=axs[2], bColorbar=bColorbar, cmap=cmap)
+    if title is not None: fig.suptitle(title)
     plt.tight_layout()
     return emin_ref, vmax_ref, emin_mod, vmax_mod, fig, axs
 
 
-def plot_energy_profile(ax, V, rv, Arow, rows, srt, theta_s, ix_ang,
-                        ls, lw, labels, marker='.', ms=3.0,
-                        rmax=None, ymin=None, ymax=None, fac=1.0,
-                        row_colors=('k','r'), ang_color='g', min_color='b', name=''):
+def plot_energy_profile(ax, V, rv, Arow, rows, srt, theta_s, ix_ang, ls, lw, labels, marker='.', ms=3.0, rmax=None, ymin=None, ymax=None, fac=1.0, row_colors=('k','r'), ang_color='g', min_color='b', name=''):
     """Plot 4 concise profiles for a single dataset V onto ax.
     Curves order and styling mapping:
       0 -> radial @ rows[0]
@@ -786,7 +786,7 @@ def plot_energy_profile(ax, V, rv, Arow, rows, srt, theta_s, ix_ang,
         pass
 
 
-def plot_energy_profiles(Vref_, Vmod_, rv, Arow, rmax=8.0, kcal=False, ymin=None, ymax=None):
+def plot_energy_profiles(Vref, Vmod, rv, Arow, rmax=8.0, kcal=False, ymin=None, ymax=None, title=None):
     """Overlay 4 profiles for ref and mod by calling a single drawer per dataset:
     - Radial at first and middle angle rows
     - Angular at radius index of global minimum of REFERENCE (shared ix)
@@ -794,7 +794,7 @@ def plot_energy_profiles(Vref_, Vmod_, rv, Arow, rmax=8.0, kcal=False, ymin=None
     """
     import matplotlib.pyplot as plt
     fac = 23.060548 if kcal else 1.0
-    ny = Vref_.shape[0]
+    ny = Vref.shape[0]
     if ny <= 0:
         return
     # Rows to show (unique and valid)
@@ -806,23 +806,25 @@ def plot_energy_profiles(Vref_, Vmod_, rv, Arow, rmax=8.0, kcal=False, ymin=None
     theta_s = theta[srt]
     # Shared angular radius column from REFERENCE minimum
     try:
-        _, ix_ref = np.unravel_index(np.nanargmin(Vref_), Vref_.shape)
+        _, ix_ref = np.unravel_index(np.nanargmin(Vref), Vref.shape)
     except Exception:
         ix_ref = None
 
     fig, ax = plt.subplots(1, 1, figsize=(7, 4))
-    plot_energy_profile(ax, Vref_, rv, Arow, rows, srt, theta_s, ix_ref, [':', ':', ':', ':'], [1.5, 1.5, 1.5, 1.5], ['radial', 'radial', 'angular', 'min over r per angle'], marker='.', rmax=rmax, ymin=ymin, ymax=ymax, fac=fac, name='ref')
-    plot_energy_profile(ax, Vmod_, rv, Arow, rows, srt, theta_s, ix_ref, ['-', '-', '-', '-'], [0.5, 0.5, 0.5, 0.5], ['radial', 'radial', 'angular', 'min over r per angle'], marker='.', rmax=rmax, ymin=ymin, ymax=ymax, fac=fac, name='mod')
+    plot_energy_profile(ax, Vref, rv, Arow, rows, srt, theta_s, ix_ref, [':', ':', ':', ':'], [1.5, 1.5, 1.5, 1.5], ['radial', 'radial', 'angular', 'min over r per angle'], marker='.', rmax=rmax, ymin=ymin, ymax=ymax, fac=fac, name='ref')
+    plot_energy_profile(ax, Vmod, rv, Arow, rows, srt, theta_s, ix_ref, ['-', '-', '-', '-'], [0.5, 0.5, 0.5, 0.5], ['radial', 'radial', 'angular', 'min over r per angle'], marker='.', rmax=rmax, ymin=ymin, ymax=ymax, fac=fac, name='mod')
 
     # Axes
     if (ymin is not None) and (ymax is not None) and np.isfinite(ymin) and np.isfinite(ymax):
         ax.set_ylim(float(ymin), float(ymax))
     else:
-        vmag = float(np.nanmax(np.abs(Vref_))) * fac if Vref_.size else 0.0
+        vmag = float(np.nanmax(np.abs(Vref))) * fac if Vref.size else 0.0
         ax.set_ylim(-vmag, +vmag)
     if rmax is not None:
         ax.set_xlim(0.0, float(rmax))
 
+    #suptitle
+    if title is not None: fig.suptitle(title)
     ax.grid(True, ls=':')
     ax.set_xlabel('r [Å] / θ [rad]')
     ax.set_ylabel('E [kcal/mol]' if kcal else 'E [eV]')
