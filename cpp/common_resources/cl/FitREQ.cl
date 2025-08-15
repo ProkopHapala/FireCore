@@ -168,7 +168,8 @@ __kernel void evalSampleDerivatives_template(
     __global int2*    ieps,
     __global float4*  atoms,
     __global float4*  dEdREQs,
-    __global float2*  ErefW
+    __global float2*  ErefW,
+    float4   globParams  // {alpha,?,?,?} global parameters (min,max, xlo,xhi, Klo,Khi, K0,x0)
 ){
     __local float4 LATOMS[32];
     __local float4 LREQKS[32];
@@ -270,7 +271,8 @@ __kernel void evalSampleEnergy_template(
     __global int*     atypes,    // [nAtomTot]
     __global int2*    ieps,      // [nAtomTot]
     __global float4*  atoms,     // [nAtomTot]
-    __global float*   Emols      // [nSamples] output molecular energies
+    __global float*   Emols,      // [nSamples] output molecular energies
+    float4   globParams  // {alpha,?,?,?} global parameters (min,max, xlo,xhi, Klo,Khi, K0,x0)
 ){
     __local float4 LATOMS[32];
     __local float4 LREQKS[32];
@@ -304,6 +306,8 @@ __kernel void evalSampleEnergy_template(
     }
 
     float  Ei    = 0.0f;
+
+    float alpha = globParams.x;
 
     // --- Debug: print config for a chosen sample and few lanes ---
     if((iS==iDBG) && (iL==0)){ 

@@ -2,9 +2,11 @@
 import argparse
 from pathlib import Path
 import sys
+import os
 
 sys.path.append("../../")
-from pyBall.OCL.NonBondFitting import run_energy_imshow
+from pyBall.OCL.NonBondFitting import run_energy_imshow, setup_driver
+
 
 ROOT = Path(__file__).parent.parent.parent
 
@@ -25,10 +27,29 @@ p.add_argument('-v', '--verbose',default=0,  action='count',  help='Increase ver
 
 args = p.parse_args()
 
+
+os.environ['PYOPENCL_COMPILER_OUTPUT'] = '1'
+os.environ['PYOPENCL_CTX'] = '0'
+
+
+drv = setup_driver(model_name=args.model, atom_types_file=args.atypes, verbose=args.verbose)
+
+data_path=ROOT / 'tests/tFitREQ/HHalogens/porcessed/'
+
+
+#xyz_path=data_path/"HBr-D1_HBr-A1.xyz"; drv.load_data(xyz_path); drv.type_set=[('H' ,'H',0.85),('Br','H',-0.85)]; drv.alphaMorse = 1.8; q=0.25;drv.set_charges_for_sample_atoms([ (0,-q),(1,q), (2,-q),(3,q) ])
+#xyz_path=data_path/"HCl-D1_HCl-A1.xyz"; drv.load_data(xyz_path); drv.type_set=[('H' ,'H',0.90),('Cl','H',-0.90)]; drv.alphaMorse = 1.8; q=0.2;drv.set_charges_for_sample_atoms([ (0,-q),(1,q), (2,-q),(3,q) ])
+#xyz_path=data_path/"HF-D1_HF-A1.xyz";   drv.load_data(xyz_path); drv.type_set=[('H' ,'H',0.85),('F' ,'H',-0.80)]; drv.alphaMorse = 1.8; # q=0.2;drv.set_charges_for_sample_atoms([ (0,-q),(1,q), (2,-q),(3,q) ])
+
+#xyz_path=data_path/"HBr-A1_HBr-D1.xyz";  drv.load_data(xyz_path); drv.type_set= [('H' ,'H',0.85),('Br','H',-0.85)]; drv.alphaMorse = 1.8; q=0.25; drv.set_charges_for_sample_atoms([ (0,-q),(1,q), (2,-q),(3,q) ])
+#xyz_path=data_path/"HCl-A1_HCl-D1.xyz"; drv.load_data(xyz_path); drv.type_set= [('H' ,'H',0.90),('Cl','H',-0.90)]; drv.alphaMorse = 1.8; q=0.2;drv.set_charges_for_sample_atoms([ (0,-q),(1,q), (2,-q),(3,q) ])
+xyz_path=data_path/"HF-A1_HF-D1.xyz";   drv.load_data(xyz_path); drv.type_set= [('H' ,'H',0.85),('F' ,'H',-0.80)]; drv.alphaMorse = 1.8; # q=0.2;drv.set_charges_for_sample_atoms([ (0,-q),(1,q), (2,-q),(3,q) ])
+
 run_energy_imshow(
-    model_name=args.model,
-    xyz_file=args.xyz,
-    atom_types_file=args.atypes,
+    drv=drv,
+    #model_name=args.model,
+    xyz_file=xyz_path,
+    #atom_types_file=args.atypes,
     #kcal=args.kcal,
     #sym=args.sym,
     #Emin=args.emin,

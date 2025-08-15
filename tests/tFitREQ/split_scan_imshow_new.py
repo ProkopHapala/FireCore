@@ -314,7 +314,7 @@ def compute_shift_from_grid(V):
 # Plotting
 # ----------------------------
 
-def plot_imshow(V, rv, A, emin=None, vmax=None, title=None, cmap='bwr', kcal=False, ax=None, bColorbar=True, rtick_step=5):
+def plot_imshow(V, rv, A, emin=None, vmax=None, title=None, cmap='bwr', kcal=False, ax=None, bColorbar=True, rtick_step=5, bSym=False, bByMin=False):
     fac = 23.060548 if kcal else 1.0
     
     print(f"plot_imshow title({title}) V.shape", V.shape)
@@ -353,15 +353,14 @@ def plot_imshow(V, rv, A, emin=None, vmax=None, title=None, cmap='bwr', kcal=Fal
         return None
     # Color scale handling
     vmin = None
-    if vmax is None and emin is not None:
-        # Interpret `emin` as symmetric magnitude
-        vmag = abs(emin)
-        vmin = -vmag
-        vmax = +vmag
-    else:
-        vmin = emin if emin is not None else np.nanmin(Z)
     if vmax is None:
-        vmax = np.nanmax(Z)
+        if bSym:
+            if bByMin:
+                vmin = np.nanmin(V)
+                vmax = -vmin
+            else:
+                vmax = np.nanmax(np.abs(V))
+                vmin = -vmax
     if ax is None:
         fig = plt.figure(figsize=(7, 5))
         ax = plt.gca()
