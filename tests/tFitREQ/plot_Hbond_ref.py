@@ -433,6 +433,100 @@ def run_metric_sweep_softclamp(args, use, files_map):
         for m in methods_eval: print(f"{m}: {agg[m]:.4f}")
     sys.exit(0)
 
+def run_metric_aggregate_all(args, use, files_map):
+    outdir = args.root / args.outdir
+    counts = [len(files_map[m]) for m in use if m in files_map]
+    if not counts:
+        print("No files to plot in selected methods."); sys.exit(1)
+    max_i = min(counts) if args.multi <= 0 else min(min(counts), args.multi)
+    methods_eval = [m for m in use if m != args.ref_method]
+    if not methods_eval:
+        print("No evaluation methods (only reference present?)."); sys.exit(1)
+    # per metric per method -> list of per-sample errors
+    metrics = {
+        'softclamp': {m: [] for m in methods_eval},
+        'emin':      {m: [] for m in methods_eval},
+        'rmin':      {m: [] for m in methods_eval},
+    }
+    for i in range(max_i):
+        filemap = { m: files_map[m][i] for m in use if len(files_map[m]) > i }
+        loaded, _ = load_shifted(list(filemap.items()), cache=args.cache)
+        name2grid = {name: g for (name, a, d, g, mloc) in loaded}
+        name2ad   = {name: (a, d) for (name, a, d, g, mloc) in loaded}
+        if args.ref_method not in name2grid:
+            for m in methods_eval:
+                metrics['softclamp'][m].append(np.nan)
+                metrics['emin'][m].append(np.nan)
+                metrics['rmin'][m].append(np.nan)
+            continue
+        gref = name2grid[args.ref_method]
+        aR, dR = name2ad.get(args.ref_method, (None, None))
+        rmin_ref, emin_ref = extract_min_curves(aR, dR, gref, rmax=None)
+        mcol = None
+        if (args.min_rmax is not None) and np.isfinite(args.min_rmax):
+            mcol = np.isfinite(rmin_ref) & (rmin_ref > args.min_rmax)
+            if np.any(mcol):
+                # mask columns (2D) and points (1D on reference axis)
+                gref = gref.copy(); gref[:, mcol] = np.nan
+                if emin_ref is not None and emin_ref.size == aR.size:
+                    emin_ref = emin_ref.copy(); emin_ref[mcol] = np.nan
+                if rmin_ref is not None and rmin_ref.size == aR.size:
+                    rmin_ref = rmin_ref.copy(); rmin_ref[mcol] = np.nan
+        for m in methods_eval:
+            g = name2grid.get(m, None)
+            aM, dM = name2ad.get(m, (None, None))
+            if g is None or aM is None or dM is None:
+                metrics['softclamp'][m].append(np.nan)
+                metrics['emin'][m].append(np.nan)
+                metrics['rmin'][m].append(np.nan)
+                continue
+            gm = g.copy(); gr = gref
+            if (mcol is not None) and np.any(mcol):
+                gm[:, mcol] = np.nan
+            # softclamp 2D
+            sc = softclamp_rmse(gm, gr, args.clamp_start, args.clamp_limit)
+            # 1D curves
+            rmin_m, emin_m = extract_min_curves(aM, dM, gm, rmax=None)
+            e_err = align_and_rmse(aR, emin_ref, aM, emin_m)
+            r_err = align_and_rmse(aR, rmin_ref, aM, rmin_m)
+            metrics['softclamp'][m].append(sc)
+            metrics['emin'][m].append(e_err)
+            metrics['rmin'][m].append(r_err)
+    # aggregate across samples
+    agg_modes = {
+        'average': lambda v: float(np.nanmean(v)) if len(v)>0 else np.nan,
+        'minimum': lambda v: float(np.nanmin(v)) if len(v)>0 else np.nan,
+        'maximum': lambda v: float(np.nanmax(v)) if len(v)>0 else np.nan,
+    }
+    methods = list(methods_eval)
+    fig, axes = plt.subplots(1, 3, figsize=(max(9, 0.5*len(methods)), 3.5), constrained_layout=True)
+    metric_keys = [('softclamp','SoftClamp'), ('emin','E_min'), ('rmin','R_min')]
+    colors = {'softclamp':'C0', 'emin':'C1', 'rmin':'C2'}
+    for k, (mode_name, reducer) in enumerate(agg_modes.items()):
+        ax = axes[k]
+        xs = np.arange(len(methods))
+        for mk, mlabel in metric_keys:
+            series = [reducer(metrics[mk][m]) for m in methods]
+            ax.plot(xs, series, '-o', label=mlabel, color=colors[mk])
+        ax.set_xticks(xs); ax.set_xticklabels(methods, rotation=90)
+        ax.set_title(mode_name)
+        ax.grid(True, linestyle='--', alpha=0.4)
+    axes[0].set_ylabel('Error')
+    axes[-1].legend(fontsize=8)
+    outdir.mkdir(parents=True, exist_ok=True)
+    pfig = outdir / f"metrics_aggregate_all.png"
+    fig.savefig(pfig, dpi=150, bbox_inches='tight'); print(f"Saved: {pfig}")
+    if args.metric_show: plt.show()
+    else: plt.close(fig)
+    if args.print_metrics:
+        print("Aggregate (mode, metric):")
+        for mode_name, reducer in agg_modes.items():
+            print(f"{mode_name}:")
+            for mk, mlabel in metric_keys:
+                vals = [reducer(metrics[mk][m]) for m in methods]
+                print(mlabel, '->', ', '.join(f"{v:.4f}" if np.isfinite(v) else 'nan' for v in vals))
+    sys.exit(0)
+
 def run_multi(args, use, files_map, pan, lim, common):
     outdir = args.root / args.outdir
     counts = [len(files_map[m]) for m in use if m in files_map]
@@ -548,7 +642,7 @@ if __name__ == "__main__":
     p.add_argument('--print-metrics', action='store_true', help='Print metrics vs reference (2D soft-clamp RMSE or 1D RMSEs)')
     p.add_argument('--min-rmax', type=float, default=None, help='Max r allowed for minima; if r_min>this, set to NaN (filter repulsive angles)')
     p.add_argument('--rmin-max', dest='min_rmax', type=float, help='Alias of --min-rmax')
-    p.add_argument('--metric-plot', '--metric_plot', type=str, default=None, help='Compute and plot metric across first --multi systems (e.g., softclamp/softclam)')
+    p.add_argument('--metric-plot', '--metric_plot', type=str, default=None, help='Compute and plot metric across first --multi systems (softclamp|aggregate)')
     p.add_argument('--metric-show', action='store_true', help='Show metric figures interactively (in addition to saving)')
     p.add_argument('--cache', type=str, choices=['off','auto','rebuild'], default='auto', help='Per-file NPZ cache: off|auto|rebuild')
     args = p.parse_args()
@@ -566,6 +660,8 @@ if __name__ == "__main__":
         metric = (args.metric_plot or '').lower()
         if metric in ('softclamp','softclam'):
             run_metric_sweep_softclamp(args, use, files_map)
+        elif metric in ('aggregate','aggall','all','agg'):
+            run_metric_aggregate_all(args, use, files_map)
         run_multi(args, use, files_map, pan, lim, common)
     run_single(args, use, files_map, pan, lim, common)
 
