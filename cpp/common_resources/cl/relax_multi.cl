@@ -2402,6 +2402,7 @@ __kernel void getNonBond_GridFF_Bspline(
             if( (ja!=iG) && (ja<natoms) ){ // atom should not interact with himself, and should be in the system ( j0*nL+iL may be out of range of natoms )   
                 const float4 aj   = LATOMS[jl]; // position of the atom
                 float4       REQK = LCLJS [jl]; // parameters of the atom
+// if((iG==iG_DBG)&&(iS==iS_DBG))printf("REQK[%i].z=%g\n", jl, REQK.z );
                 float3 dp   = aj.xyz - posi;    // vector between atoms
                 REQK.x  +=REQKi.x;              // mixing of RvdW radii
                 REQK.yz *=REQKi.yz;             // mixing of EvdW and Q
@@ -2811,7 +2812,7 @@ __kernel void getSurfMorse(
 
     const float3 pos  = atoms[iav].xyz - pos0.xyz +  lvec.a.xyz*-nPBC.x + lvec .b.xyz*-nPBC.y + lvec.c.xyz*-nPBC.z;  // most negative PBC-cell
     const float4 REQi = REQs [iaa];
-
+// if((iaa<22)&&(iS==0)) printf("REQi[%i].z = %f\n", iaa, REQi.z);
     // ToDo: perhaps it is efficient to share surface along isys direction ( all system operate with the same surface atoms )
     // for (int j0 = 0; j0 < na_surf; j0 ++) {
     //     LATOMS[j0   ] = atoms_s[j0];
