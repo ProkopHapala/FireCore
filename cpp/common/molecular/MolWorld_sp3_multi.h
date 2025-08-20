@@ -494,7 +494,7 @@ virtual void pre_loop() override {
         }
     }
     //spread_replicas_grid(10,10, 5, 5 );
-    //spread_replicas_random(5, 5 );
+    spread_replicas_random(5, 5 );
     //printConstrains();
     // for(int ic : constrain_list ){
     //     for(int isys=0; isys<nSystems; isys++){

@@ -28,10 +28,10 @@ ln -s $dir/$name .
 fi
 
 
-# ------- asan (Memory Sanitizer)
-LD_PRELOAD=$(g++ -print-file-name=libasan.so)
-echo   $LD_PRELOAD
-export LD_PRELOAD
+# # ------- asan (Memory Sanitizer)
+# LD_PRELOAD=$(g++ -print-file-name=libasan.so)
+# echo   $LD_PRELOAD
+# export LD_PRELOAD
 
 
 # ---- Run
@@ -192,7 +192,7 @@ export LD_PRELOAD
 #./$name -x common_resources/xyz/uracil -g common_resources/xyz/NaCl_8x8_L3_step -e -perframe 100
 #./$name -x common_resources/xyz/uracil -g common_resources/xyz/NaCl_8x8_L3_step -e -perframe 500 -iParalel 0
 #./$name -x common_resources/xyz/CG -g common_resources/xyz/NaCl_8x8_L3_step -e -perframe 500 -iParalel 0
-./$name -x common_resources/xyz/CG -g common_resources/xyz/NaCl_8x8_L3_step -perframe 500 -iParalel 0
+#./$name -x common_resources/xyz/CG -g common_resources/xyz/NaCl_8x8_L3_step -perframe 500 -iParalel 0
 
 
 
@@ -208,7 +208,7 @@ export LD_PRELOAD
 
 
 
-#./$name -x common_resources/xyz/PTCDA -g common_resources/xyz/NaCl_1x1_L3          -nPBC 0,0,0
+./$name -x common_resources/xyz/PTCDA -g common_resources/xyz/NaCl_1x1_L3          -nPBC 0,0,0
 #./$name -x common_resources/xyz/PTCDA -g common_resources/xyz/NaCl_8x8_L3          -nPBC 0,0,0 
 #./$name -x common_resources/xyz/PTCDA -g common_resources/xyz/NaCl_8x8_L3          -nPBC 0,0,0
 #./$name -x common_resources/xyz/PTCDA -g common_resources/xyz/NaCl_8x8_L3_NaHole   -nPBC 0,0,0 -e -nPBC 2,2,0
