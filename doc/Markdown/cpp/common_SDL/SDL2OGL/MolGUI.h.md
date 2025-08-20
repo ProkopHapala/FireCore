@@ -144,16 +144,241 @@ The active mode is tracked by `gui_mode` (`Gui_Mode::{base,edit,scan}`) and may 
 
 These toggles are commonly exposed via `panel_Edit`, `panel_NonBondPlot`, and related GUI panels.
 
+### Full view toggle list (from source)
+
+- Builder and scene framing: `bViewBuilder`, `bViewAxis`, `bViewCell`.
+- Atoms/bonds core: `mm_bAtoms`, `bViewBonds`, `bViewAtomSpheres`.
+- Labels/annotations: `bViewAtomLabels`, `bViewBondLabels`, `bViewAtomTypes`.
+- Charges and properties: `bViewMolCharges`, `bViewHBondCharges`.
+- Forces/diagnostics: `bViewAtomForces`, `bViewGroupBoxes`.
+- Advanced visuals: `bViewPis`, `bViewSubstrate`.
+- Isosurface/scan flags: `isoSurfRenderType`, `bDebug_scanSurfFF`.
+
+Note: some visuals (e.g., isosurfaces, AFM/ESP) are gated by runtime data presence in `W` and grid flags like `W->bGridFF`.
+
+---
+
+## GUI panels and controls
+
+The following panels are created in `initWiggets()` and `nonBondGUI()` in `cpp/common_SDL/SDL2OGL/MolGUI.h`.
+
+### Top controls
+
+- `TableView("lattice")` — editable 3x3 matrix bound to `W->builder.lvec.{a,b,c}`; supports inline numeric edits via `GUITextInput`.
+- `GUIPanel("Zoom:")` — slider in [5, 50]; updates `zoom`.
+- `DropDownList("Pick Mode:")` — entries: `pick_atoms`, `pick_bonds`, `pick_angles` (affects selection mode).
+- `DropDownList("Fragments:")` — selects fragment; command: `W->selectFragment(i)`.
+- `DropDownList("View Side")` — entries: `Top/Bottom/Front/Back/Left/Right`; sets `qCamera` to pre-defined quaternions and updates `cam.rot`.
+
+### Panel: Edit
+
+- `print.builder.atoms` — `W->builder.assignPiFragments()`, `addCappingNeighborsToFragments()`, `printAtoms()`.
+- `print.nonB` — `W->ffl.print_nonbonded()`.
+- `print.Aconf` — `W->builder.printAtomConfs()`.
+- `Sel.All` / `Sel.Inv` — select all/invert in builder or world (depending on `bViewBuilder`).
+- `Sel.Cap` — `W->builder.selectCaping()` and merges into `W->selection`.
+- `Add.CapHs` — `builder.addAllCapsByPi(H)`; sets `bBuilderChanged` if atoms added.
+- `toCOG` — centers selection (`W->center(true)`); syncs builder if active.
+- `toPCAxy` — aligns selection to PCA axes in XY; syncs builder if active.
+- `save.xyz` — saves as `.xyz` (default `out.xyz`); builder or world based on `bViewBuilder`.
+- `save.mol:` — `W->updateBuilderFromFF()` then `builder.saveMol` (default `out.mol`).
+- `VdwRim` — generates/samples `dipoleMap`, calls `W->hideEPairs()`, saves `dipoleMap.xyz`, sets `bDipoleMap=true`.
+- `scanSurfFF` / `SurfFF_view` / `SurfFF_scan` — invokes `scanSurfFF(...)` for a picked atom with parameters read from this panel (view, scan index, scaling).
+
+### Panel: Gizmo
+
+- `On/Off` — toggles `useGizmo`.
+- `Mode:Trans` — `gizmo.mTrans = 'm'` (translate).
+- `Mode:Rot` — `gizmo.mTrans = 'r'` (rotate).
+- `AutoCOG` — toggles `gizmoAutoPivotCOG`.
+- `ArcPick rmin` — sets `gizmo.rotPickRminFrac` in [0.5, 0.95] (rotation annulus inner fraction).
+- `Pos=SelCOG` — sets `gizmo.pose.pos = W->center(false)` for current selection (uses builder selection when `bViewBuilder`).
+- `SelFragOfPick` — selects fragment of the picked atom in world and updates builder selection if active.
+
+### Panel: Run (CheckBoxList)
+
+- `NonBond` → `W->bNonBonded`.
+- `NonBondNG` → `W->bNonBondNeighs`.
+- `GridFF` → `W->bGridFF`.
+- `tricubic` → `W->bTricubic`.
+
+### Panel: NBPlot (CheckBoxList)
+
+- `minima` → `bDrawParticles`.
+- `lines` → `bDrawNonBondLines`.
+- `gridXY` → `bDrawNonBondGrid`.
+- `hideEp` → `hideEp` (temporarily hides electron-pair pseudo-atoms while evaluating grids).
+
+### Panel: PlotNonBond (MultiPanel)
+
+- `Mode` — integer mode selector (0..2).
+- `Ezoom` — energy zoom; effective scale uses `pow(10., value)`.
+- `Rplot` — line length for 1D scans.
+- `dstep` — sampling step for 1D scans.
+- `Rdamp` — damping/ramping of REQ blending.
+- `Rcut` — cutoff.
+- `findHb` — button; runs `W->findHbonds_PBC(Rc, 0.01, 30°)` with slider `Rc`.
+
+### Panel: GridXY (MultiPanel)
+
+- `n` — grid resolution per axis.
+- `size` — half-extent; area spans `[-size, +size]` in X and Y.
+- `vmin` — log10 of value cap for visualization (used to derive `vmax`).
+- `z_cut` — extra Z offset or slice parameter for display.
+
+### Panel: BondLenghs (MultiPanel)
+
+- `types:` — text input (e.g., `Si-Si`); parsed by `params.parseBondAtomTypes()`.
+- `min.BL:` — minimum bond length for coloring threshold; triggers recalculation.
+- `max.BL:` — maximum bond length for coloring threshold; triggers recalculation.
+
+Action: updates bond coloring via `makeBondColoring(types, {min,max}, bL0s, true)` and sets
+`bViewBuilder=false`, `bViewBondLenghts=true`, `bViewBondLabels=false`, `bViewAtomLabels=false`.
+
+### Panel: TestType (probe REQ) and PickedType (picked atom REQ)
+
+- `RvdW` — van der Waals radius.
+- `EvdW` — van der Waals epsilon.
+- `Charge` — point charge.
+- `Hbond` — hydrogen-bond scaling; internally combined as `w *= sqrt(EvdW)`.
+
+### Panel: Mol. Orb. and AFM
+
+- `Mol. Orb.` — slider `which_MO` in [-5, 5]; calls `renderOrbital(HOMO + which_MO)`.
+- `AFM iz` (only if GPU world) — integer `afm_iz` in [0, 20]; calls `makeAFM(afm_iz)`.
+
+---
+
+## Continuous key-state controls
+
+Handled in `keyStateHandling(const Uint8* keys)`; disabled when `bConsole` or `gui.bTextEvents` are true.
+
+- Camera translation (world-relative):
+  - `Left/Right` arrows → `cam.pos += cam.rot.a * (±cameraMoveSpeed)`.
+  - `Up/Down` arrows → `cam.pos += cam.rot.b * (±cameraMoveSpeed)`.
+- Molecule shift (numeric keypad):
+  - `KP_4/KP_6` → `W->nbmol.shift({∓0.1, 0, 0})`.
+  - `KP_8/KP_2` → `W->nbmol.shift({0, ±0.1, 0})`.
+  - `KP_7/KP_9` → `W->nbmol.shift({0, 0, ±0.1})`.
+
+Notes:
+- Commented scancode handlers for `WASD/QE` and camera pitch/yaw exist in code as reference but are currently inactive.
+- These continuous controls apply in all GUI modes (`base`, `edit`, `scan`).
+
+---
+
+## Discrete keybindings by mode
+
+All modes: mouse wheel zooms in/out.
+
+### Default mode (`eventMode_default`)
+
+__Console__
+- `` ` `` Toggle console
+
+__Selection__
+- `Delete` Delete selected atoms and clear selections
+
+__Lattice vectors__
+- `,` Add `dlvec`
+- `.` Subtract `dlvec`
+- `0` Add `dlvec2`
+- `9` Subtract `dlvec2`
+
+__AFM slice index__
+- `;` Increment `afm_iz` and call `renderAFM()`
+- `'` Decrement `afm_iz` and call `renderAFM()`
+- `KP_MULTIPLY` Increment `afm_iz` and call `renderAFM()`
+- `KP_DIVIDE` Decrement `afm_iz` and call `renderAFM()`
+- `(` Increment `afm_iz` and call `renderAFM()`
+- `)` Decrement `afm_iz` and call `renderAFM()`
+
+__Save/Export__
+- `s` Save `snapshot.xyz` (with atomic numbers)
+- `p` Save PNG screenshot, SVGs, and tiled XYZs
+
+__Charges/AFM__
+- `c` Auto-assign charges via `W->autoCharges()`
+- `v` Build AFM via `makeAFM()` (GPU world only)
+
+__Replica/system__
+- `[` Switch to previous system replica
+- `]` Switch to next system replica
+
+__Gizmo__
+- `g` Toggle `useGizmo`
+
+__View toggles__
+- `a` Toggle atom spheres
+- `l` Toggle atom labels
+- `t` Toggle atom types
+- `b` Toggle bond labels
+- `q` Toggle molecule charges
+- `h` Toggle H-bond charges
+- `f` Toggle atom forces
+- `w` Toggle substrate
+- `i` Toggle bond-length coloring
+- `j` Toggle builder view
+- `k` Toggle fragment coloring
+
+__Camera__
+- `KP_0` Reset camera orientation to `qCamera0`
+
+__Method__
+- `m` Switch computational method
+
+__Run/relax__
+- `Space` Toggle `bRunRelax`; sync builder/FF as needed; re-render MO when stopping
+
+__Actions__
+- any other key Dispatch via `actions.actionDispatch(this, key)`
+
+__Utilities__
+- `o` Run `lattice_scan(20,20, …)` (heavy; debug/analysis)
+- `u` Upload population from `population.xyz`
+
+Mouse (with gizmo, builder view only):
+- MMB sets gizmo pivot to nearest builder atom under cursor.
+- When rotating with LMB and gizmo engaged, events are consumed to avoid deselection.
+
+### Scan mode (`eventMode_scan`)
+
+__Lattice vectors__
+- `,` Add `dlvec`
+- `.` Subtract `dlvec`
+
+__Probe rotation__
+- `a` Rotate tip around +Z
+- `d` Rotate tip around −Z
+
+__Probe scale__
+- `w` Scale tip vector up
+- `s` Scale tip vector down
+
+__Scan height__
+- `KP_PLUS` Increase `z0_scan`
+- `KP_MINUS` Decrease `z0_scan`
+
+__Run/relax__
+- `Space` Toggle `bRunRelax`
+
+### Edit mode (`eventMode_edit`)
+
+__Lattice transform__
+- `t` Apply `affineTransform(ff.apos, builder.lvec -> new_lvec)`, update builder PBC, then swap `lvec`/`new_lvec`
+
+__Selection helper__
+- `i` Call `selectShorterSegment(ray0, cam.rot.c)`
+
 ---
 
 ## Non-bonded probing workflow
 
-1. Configure probe parameters: `particle_REQ`, `particle_REQ2`, `particle_Lbond`. Attach to atoms via `particlePivots` if needed.
-2. Open non-bond GUI (`nonBondGUI()` builds `panel_NonBondPlot`) and enable desired plots: `bDrawNonBondLines`, `bDrawNonBondGrid`, `bDrawParticles`.
-3. Initialize/update with `tryPlotNonBond()`.
-4. Line plots: call `plotNonBondLines()`; internally uses `plotNonBondLine()` helper over segments.
-5. 2D grid: call `plotNonBondGrid()` (with optional `plotNonBondGridAxis()` for guides); evaluation uses `evalNonBondGrid2D()`.
-6. Relax attached particles: `relaxNonBondParticles(double dt=0.2, double Fconv=1e-6, int niter=1000)`; visualize with `drawParticles()`.
+1. Open non-bond GUI: `nonBondGUI()` builds `panel_NBPlot`, `panel_PlotNonBond`, and `panel_GridXY`. Enable desired plots (`bDrawNonBondLines`, `bDrawNonBondGrid`, `bDrawParticles`) and set parameters (Mode, Ezoom, Rplot, dstep, n, size, vmin, z_cut). Configure probe REQ in `TestType`/`PickedType` panels if needed.
+2. Initialize/update plots with `tryPlotNonBond()`.
+3. Line plots: call `plotNonBondLines()`; internally uses `plotNonBondLine()` helper over segments.
+4. 2D grid: call `plotNonBondGrid()` (use `plotNonBondGridAxis()` for guides); evaluation uses `evalNonBondGrid2D()`.
+5. Relax attached particles: `relaxNonBondParticles(double dt=0.2, double Fconv=1e-6, int niter=1000)`; visualize with `drawParticles()`.
 
 Tip: Use `hideEp` to suppress electrostatic overlays when focusing on LJ-only behavior.
 

@@ -41,8 +41,10 @@ Directory structure like this:
 METHODS = [
     'DFT-b3lyp', 'DFT-wb97m',
     'dftbp',
-    'gfn0-xtb', 'gfn1-xtb', 'gfn2-xtb', 'gfn-ff',
-    'pm6', 'pm6-d3', 'pm6-d3h4', 'pm6-dh2', 'pm6-dhp', 'pm6-ml', 'pm7',
+    'g-xtb', 'gfn0-xtb', 'gfn1-xtb', 'gfn2-xtb', 'gfn-ff',
+    'pm6', 'pm6-d3', 'pm6-d3h4', 'pm6-d3h4x', 'pm6-dh2', 'pm6-dh2x', 'pm6-dhp', 'pm6-ml', 'pm7',
+
+
 ]
 
 # map folder names to display names
