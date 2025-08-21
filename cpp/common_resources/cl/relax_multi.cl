@@ -892,7 +892,8 @@ unsigned int hash_wang(unsigned int bits) {
 
 float hashf_wang( float val, float xmin, float xmax) {
     //return ( (float)(bits)*(2147483647.0f );
-    return (((float)( hash_wang(  __float_as_int(val) ) )) * 4.6566129e-10 )  *(xmax-xmin)+ xmin;
+    //return (((float)( hash_wang(  __float_as_int(val) ) )) * 4.6566129e-10 )  *(xmax-xmin)+ xmin; // NVIDIA specific
+    return (((float)( hash_wang(  as_int(val) ) )) * 4.6566129e-10 )  *(xmax-xmin)+ xmin; // avoid vendor-specific syntax
 }
 
 // Assemble recoil forces from neighbors and  update atoms positions and velocities 
