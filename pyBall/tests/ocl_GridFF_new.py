@@ -273,9 +273,19 @@ def test_gridFF_ocl( fname="./data/xyz/NaCl_1x1_L1.xyz", Element_Types_name="./d
 
     # Use a consistent method to determine z0 based on the topmost atom
     # The grid should start from the highest z-coordinate (topmost atom)
-    if np.isnan(z0): 
-        z0 = xyzq[:,2].max()  # Use maximum z-value of all atoms
-        print(f"Setting z0 to maximum z-value of all atoms (topmost): {z0}")
+    if np.isnan(z0):
+        # Group atoms by their z-coordinate and find the most populated z-plane
+        z_coords = xyzq[:, 2]
+        unique_zs, counts = np.unique(z_coords, return_counts=True)
+        
+        # Find the maximum count
+        max_count = counts.max()
+        
+        # Get all z-planes with that maximum count
+        most_frequent_zs = unique_zs[counts == max_count]
+        
+        # From those, choose the one with the highest z-value
+        z0 = most_frequent_zs.max()
     print( "test_gridFF_ocl() z0= ", z0 )
 
     # grid = GridShape( dg=(0.1,0.1,0.1),  lvec=atoms.lvec)
