@@ -949,7 +949,7 @@ void fillTempArrays( const Atoms* atoms, Vec3d* apos, double* Qs  )const{
         //{ // for types with fitted charges update charge from DOFs
             int ityp = atoms->atypes[j];
             Quat4i tt = typToREQ[ityp];
-            if( tt.z>=0 ){ Qs[j] = DOFs[tt.z]; };
+            if( tt.z>=0 && tt.z<nDOFs ){ Qs[j] = DOFs[tt.z]; };
         //}
         //isEp[j] = 0;
         //printf( "FillTempArrays()[ia=%3i] t %3i %-8s iDOF=%3i Q=%12.3e \n", j, ityp, params->atypes[ityp].name,  tt.z, Qs[j] );
@@ -962,13 +962,20 @@ void fillTempArrays( const Atoms* atoms, Vec3d* apos, double* Qs  )const{
         for(int j=0; j<ad->nep; j++){
             int    iX  = bs[j].x; // index of the host atom
             int    iE  = bs[j].y; // index of the electron pair
+            if( (iX<0) || (iE<0) || (iX>=atoms->natoms) || (iE>=atoms->natoms) ){
+                printf("ERROR in fillTempArrays(): bs[%d]={%d,%d} out of range (natoms=%d)\n", j, iX, iE, atoms->natoms);
+                exit(0);
+            }
             //Quat4d REQ = typeREQs[atoms->atypes[iE]];
             //printf( "FillTempArrays()[iap=%i] iE=%i iX=%i  name=%8s REQ(%12.3e,%12.3e,%12.3e,%12.3e) \n", j, iE, iX, params->atypes[atoms->atypes[iE]].name, REQ.x,REQ.y,REQ.z,REQ.w );
             //double Qep = REQ.z; // charge of the electron pair
             
             int ityp = atoms->atypes[iE];
             Quat4i tt = typToREQ[ityp];
-            double Qep = DOFs[tt.z];
+            double Qep = typeREQs[ityp].z; // default to type charge
+            if( tt.z>=0 && tt.z<nDOFs ){
+                Qep = DOFs[tt.z];
+            }
             //printf( "FillTempArrays()[iap=%3i] iE=%3i iX=%3i  t %3i %-8s iDOF=%3i Qep=%12.3e \n", j, iE, iX, ityp, params->atypes[ityp].name,  tt.z, Qep );
 
             Qs[iE]     = Qep;
@@ -979,7 +986,7 @@ void fillTempArrays( const Atoms* atoms, Vec3d* apos, double* Qs  )const{
 //     if(  (fabs(Qs[iX])>1e+10) || (fabs(Qs[iE])>1e+10) ){ printf( "fillTempArrays() j=%i Qs[iX]=%12.3e Qs[iE]=%12.3e Qep=%12.3e \n", j, Qs[iX], Qs[iE], Qep ); exit(0); }
 // #endif
             double lep = Lepairs;
-            if( bEpairDistByType ){ typeREQs[atoms->atypes[iE]].w; }
+            if( bEpairDistByType ){ lep = typeREQs[atoms->atypes[iE]].w; }
             apos[iE] = apos[iX] + ad->dirs[j] * lep;  // We move the electron pair to proper distance from the atom
             //isEp[iE] = 1;
         }

@@ -5,6 +5,7 @@ import os
 import re
 import numpy as np
 import pyopencl as cl
+import time
 from sympy.ntheory import is_abundant
 from .OpenCLBase import OpenCLBase
 
@@ -272,7 +273,11 @@ class FittingDriver(OpenCLBase):
                     atoms_list.append(floats)
                 ia += natoms
 
-        self.host_ErefW = np.array(ErefW, dtype=np.float32)
+        # Pack reference energies and weights into float2 array: [Eref, W]
+        # Default weight W=1.0 unless provided elsewhere
+        self.host_ErefW = np.zeros((len(ErefW), 2), dtype=np.float32)
+        self.host_ErefW[:, 0] = np.asarray(ErefW, dtype=np.float32)
+        self.host_ErefW[:, 1] = 1.0
         self.atom_types_set = set(self.atom_type_names)
         if self.verbose>0:
             print("load_data() atom_types_set: ", self.atom_types_set)
@@ -486,15 +491,21 @@ class FittingDriver(OpenCLBase):
         #     __global float2*  ErefW      // 7: [nsamp]   {E,W} reference energies and weights for each sample (molecule,system)
         # ){
         # Prefer original kernel by default; use templated kernel only when explicitly compiled
-        if getattr(self, 'use_template', False) and 'evalSampleDerivatives_template' in getattr(self, 'kernelheaders', {}):
+        use_templated = getattr(self, 'use_template', False) and \
+                        ('evalSampleDerivatives_template' in getattr(self, 'kernelheaders', {}))
+        if use_templated:
             self.eval_kern = self.prg.evalSampleDerivatives_template
+            globParams = np.array([self.alphaMorse, 0.0, 0.0, 0.0], dtype=np.float32)
+            self.eval_kern.set_args(
+                self.ranges_buff, self.tREQHs_buff, self.atypes_buff, self.ieps_buff,
+                self.atoms_buff, self.dEdREQs_buff, self.ErefW_buff, globParams
+            )
         else:
             self.eval_kern = self.prg.evalSampleDerivatives
-        globParams = np.array( [self.alphaMose,0.0,0.0,0.0], dtype=np.float32)
-        self.eval_kern.set_args(
-            self.ranges_buff, self.tREQHs_buff, self.atypes_buff, self.ieps_buff,
-            self.atoms_buff, self.dEdREQs_buff, self.ErefW_buff, globParams
-        )
+            self.eval_kern.set_args(
+                self.ranges_buff, self.tREQHs_buff, self.atypes_buff, self.ieps_buff,
+                self.atoms_buff, self.dEdREQs_buff, self.ErefW_buff
+            )
 
         # __kernel void assembleAndRegularize(
         #     int nDOFs,                       // 1: number of DOFs
@@ -639,6 +650,9 @@ class FittingDriver(OpenCLBase):
             raise RuntimeError("Energy kernel not available. Call compile_energy_with_model() first.")
         self.energy_kern = self.prg.evalSampleEnergy_template
         globParams = np.array( [self.alphaMorse,0.0,0.0,0.0], dtype=np.float32)
+        # Ensure Emols buffer exists for the full init path as well (not only energy-only path)
+        if not hasattr(self, 'Emols_buff'):
+            self.try_make_buffers({"Emols": self.n_samples*4})
         self.energy_kern.set_args(
             self.ranges_buff, self.tREQHs_buff, self.atypes_buff, self.ieps_buff,
             self.atoms_buff, self.Emols_buff, globParams
@@ -646,47 +660,168 @@ class FittingDriver(OpenCLBase):
 
     def evaluate_energies(self, workgroup_size=32):
         """Run energy kernel and return per-sample energies as np.float32 array."""
+        # Lazily allocate Emols buffer and bind args if needed (when using full init path)
+        if not hasattr(self, 'Emols_buff'):
+            self.try_make_buffers({"Emols": self.n_samples*4})
+            self.set_energy_kernel_args()
         cl.enqueue_nd_range_kernel(self.queue, self.energy_kern, (self.n_samples*workgroup_size,), (workgroup_size,))
         Emols = self.fromGPU_(self.Emols_buff, shape=(self.n_samples,), dtype='f4')
         self.queue.finish()
         return Emols
 
-    def get_forces(self, dofs_vec, bCheck=True):
+    def update_tREQHs_from_dofs(self, dofs_vec):
+        """Return a fresh tREQHs array updated from DOF vector.
+        DOF order follows `self.dof_definitions`. Comp 1 (EvdW) is stored as sqrt(E).
+        """
+        T = np.array(self.tREQHs_base, copy=True)
+        for i, dof in enumerate(self.dof_definitions):
+            ti = self.atom_type_map.get(dof['typename'])
+            if ti is None: continue
+            ci = int(dof['comp'])
+            x  = float(dofs_vec[i])
+            if ci == 1: x = float(np.sqrt(max(x, 0.0)))
+            T[ti, ci] = x
+        return T.astype(np.float32, copy=False)
+
+    def get_forces(self, dofs_vec, bCheck=False):
         """Calculates the total force (physical + regularization) for a given DOF vector."""
         dofs_vec_f32 = dofs_vec.astype(np.float32)
-        
-        # 1. Upload current DOF values (needed by assembleAndRegularize)
+        # 1) Upload DOFs (used by regularization)
         self.toGPU_(self.DOFs_buff, dofs_vec_f32)
-        
-        # 2. Update the main REQH parameter table (needed by evalAndScalePerSample)
-        #current_tREQHs = self.update_tREQHs_from_dofs(dofs_vec_f32)
-        #self.toGPU_(self.tREQHs_buff, current_tREQHs)
-
-        # --- Launch Kernels ---
+        # 2) Refresh and upload tREQHs (used by per-sample eval)
+        current_tREQHs = self.update_tREQHs_from_dofs(dofs_vec_f32)
+        self.toGPU_(self.tREQHs_buff, current_tREQHs)
+        # 3) Kernels
         workgroup_size_eval = 32
         workgroup_size_assemble = 128
-        
-        # 3. Launch evaluation kernel
-        cl.enqueue_nd_range_kernel(self.queue, self.eval_kern,      (self.n_samples * workgroup_size_eval,), (workgroup_size_eval,))
-        
-        # 4. Launch assembly and regularization kernel
-        cl.enqueue_nd_range_kernel(self.queue, self.assemble_kern,  (self.n_dofs * workgroup_size_assemble,), (workgroup_size_assemble,))
-
-        # 5. Download final forces from the GPU
+        t0 = time.perf_counter() if self.verbose>0 else 0.0
+        cl.enqueue_nd_range_kernel(self.queue, self.eval_kern, (self.n_samples * workgroup_size_eval,), (workgroup_size_eval,))
+        if self.verbose>0:
+            self.queue.finish(); t1 = time.perf_counter()
+        cl.enqueue_nd_range_kernel(self.queue, self.assemble_kern, (self.n_dofs * workgroup_size_assemble,), (workgroup_size_assemble,))
+        if self.verbose>0:
+            self.queue.finish(); t2 = time.perf_counter()
+        # 4) Download
         forces = self.fromGPU_(self.fDOFs_buff, shape=(self.n_dofs,))
         self.queue.finish()
-
+        if self.verbose>0:
+            t3 = time.perf_counter()
+            print(f"get_forces(): dt_eval={t1-t0:.4e}s dt_assemble={t2-t1:.4e}s dt_download={t3-t2:.4e}s")
         if bCheck:
-            vmin=np.min(forces); 
-            vmax=np.max(forces);
-            # check NaN, inf etc
-            if(vmin!=vmin or vmax!=vmax or vmin==0 or vmax==0):
+            vmin = float(np.min(forces)); vmax = float(np.max(forces))
+            if (vmin!=vmin) or (vmax!=vmax) or (vmin==0) or (vmax==0):
                 print("ERROR: get_forces() forces are not valid:", vmin, vmax)
                 exit(1)
-            print("get_forces(): Forces are OK: min", vmin, "max", vmax)
-            exit(0)
-
+            if self.verbose>0:
+                print("get_forces(): Forces are OK: min", vmin, "max", vmax)
         return forces
+
+    def evaluate_objective(self, dofs_vec):
+        """Scalar objective consistent with derivative kernel + regularization.
+
+        J(dofs) = 0.5 * sum_s W_s * (Emol_s(dofs) - Eref_s)^2  -  E_reg(dofs)
+
+        where E_reg uses the same parameters and clamping as the OpenCL
+        assembleAndRegularize kernel:
+            x  = clamp(x, [min,max])
+            E_reg_i = 0.5*K0*(x-x0)^2 + 0.5*Klo*max(0, xlo-x)^2 + 0.5*Khi*max(0, x-xhi)^2
+
+        Note: the minus sign on E_reg matches the current kernel which subtracts
+        the regularization gradient contributions. This ensures analytic and
+        numerical derivatives agree for the derivative test.
+        """
+        # Upload DOFs (for regularization kernel path) and update type params
+        x = np.asarray(dofs_vec, dtype=np.float32)
+        if hasattr(self, 'DOFs_buff'):
+            self.toGPU_(self.DOFs_buff, x)
+        T = self.update_tREQHs_from_dofs(x)
+        self.toGPU_(self.tREQHs_buff, T)
+
+        # Per-sample energies from energy kernel
+        Em = self.evaluate_energies().astype(np.float64)
+        EW = self.host_ErefW
+        if EW.ndim == 1:
+            Eref = EW.astype(np.float64)
+            Wv   = np.ones_like(Em, dtype=np.float64)
+        else:
+            Eref = EW[:, 0].astype(np.float64)
+            Wv   = EW[:, 1].astype(np.float64)
+
+        d = Em - Eref
+        J_phys = 0.5 * np.dot(Wv, d*d)
+
+        # Regularization energy to mirror assembleAndRegularize (with clamping)
+        J_reg = 0.0
+        if hasattr(self, 'host_regParams') and self.host_regParams is not None and self.host_regParams.size > 0:
+            p = self.host_regParams.astype(np.float64)
+            xmin, xmax = p[:, 0], p[:, 1]
+            xlo,  xhi  = p[:, 2], p[:, 3]
+            Klo,  Khi  = p[:, 4], p[:, 5]
+            K0,   x0   = p[:, 6], p[:, 7]
+            xc = np.clip(x.astype(np.float64), xmin, xmax)
+            J_reg = 0.5*np.sum(K0*(xc - x0)**2) \
+                  + 0.5*np.sum(Klo*np.maximum(0.0, xlo - xc)**2) \
+                  + 0.5*np.sum(Khi*np.maximum(0.0, xc - xhi)**2)
+
+        # Match kernel sign convention (kernel subtracts reg gradient)
+        return float(J_phys - J_reg)
+
+    def evaluate_grad_fd(self, x, eps=1e-4, scheme='central'):
+        """Finite-difference gradient of objective using energy kernel."""
+        x0 = np.asarray(x, dtype=np.float32)
+        n = x0.size
+        g = np.zeros_like(x0)
+        if scheme != 'central':
+            scheme = 'central'
+        for i in range(n):
+            xp = x0.copy(); xp[i] += eps
+            xm = x0.copy(); xm[i] -= eps
+            Jp = self.evaluate_objective(xp)
+            Jm = self.evaluate_objective(xm)
+            g[i] = (Jp - Jm) / (2.0*eps)
+        return g
+
+def run_derivative_test(
+    model_name='MODEL_MorseQ_PAIR',
+    energy_model_name='ENERGY_MorseQ_PAIR',
+    atom_types_file="/home/prokop/git/FireCore/cpp/common_resources/AtomTypes.dat",
+    xyz_file="/home/prokop/git/FireCore/tests/tFitREQ/HHalogens/porcessed/HF-A1_HF-D1.xyz",
+    dof_file="/home/prokop/git/FireCore/tests/tFitREQ/dofSelection_MorseSR.dat",
+    eps=1e-4,
+    verbose=0,
+):
+    """Compile templated derivative and energy kernels, then compare analytical
+    gradient from get_forces() with finite-difference gradient from evaluate_objective()."""
+    print("\n--- Running derivative test ---")
+    drv = FittingDriver(verbose=verbose)
+    drv.load_atom_types(atom_types_file)
+    drv.load_data(xyz_file)
+    drv.load_dofs(dof_file)
+    drv.init_and_upload()
+
+    # Inject both derivative and energy snippets in one build
+    base_path = os.path.dirname(os.path.abspath(__file__))
+    forces_path = os.path.abspath(os.path.join(base_path, "../../cpp/common_resources/cl/Forces.cl"))
+    macro_der = extract_macro_block(forces_path, model_name)
+    macro_en  = extract_macro_block(forces_path, energy_model_name)
+    macros = { 'MODEL_PAIR_ACCUMULATION': macro_der, 'MODEL_PAIR_ENERGY': macro_en }
+    drv.compile_with_model(macros=macros, bPrint=False)
+    # Bind energy kernel args (derivative kernel args are bound in set_kernel_args() during init/compile)
+    drv.set_energy_kernel_args()
+
+    x0 = np.array([d['xstart'] for d in drv.dof_definitions], dtype=np.float32)
+    g_an = drv.get_forces(x0)
+    g_fd = drv.evaluate_grad_fd(x0, eps=eps)
+
+    diff = g_an - g_fd
+    nrm2 = float(np.linalg.norm(diff))
+    linf = float(np.max(np.abs(diff))) if diff.size>0 else 0.0
+    rel  = nrm2 / (float(np.linalg.norm(g_fd)) + 1e-12)
+    print(f"Derivative test: L2={nrm2:.3e} Linf={linf:.3e} Rel={rel:.3e}")
+    if verbose>0:
+        print("g_an[:8]", g_an[:8])
+        print("g_fd[:8]", g_fd[:8])
+    return g_an, g_fd
 
 def optimizer_FIRE(driver, initial_dofs, max_steps=1000, dt_start=0.01, fmax=1e-4):
     """

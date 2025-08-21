@@ -3,10 +3,13 @@ import argparse
 from pathlib import Path
 import sys
 import os
+import numpy as np
+import matplotlib.pyplot as plt
 
 sys.path.append("../../")
 from pyBall.OCL.NonBondFitting import run_energy_imshow, setup_driver
 
+np.set_printoptions(linewidth=200)
 
 ROOT = Path(__file__).parent.parent.parent
 

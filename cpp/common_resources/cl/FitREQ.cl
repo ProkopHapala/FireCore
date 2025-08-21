@@ -310,31 +310,31 @@ __kernel void evalSampleEnergy_template(
     float alpha = globParams.x;
 
     // --- Debug: print config for a chosen sample and few lanes ---
-    if((iS==iDBG) && (iL==0)){ 
-        printf("GPU: evalSampleEnergy_template() nG %7i nL %2i nS %6i | i0=%d ni=%d j0=%d nj=%d | i=%d ti=%d\n", get_global_size(0), get_local_size(0), get_num_groups(0), i0, ni, j0, nj, i, ti); 
-        for(int i=0; i<ni; i++){
-            int ia=i0+i;
-            int ti=atypes[ia];
-            float4 atomi = atoms [ia];
-            float4 REQi  = tREQHs[ti];
-            REQi.z = atomi.w;
-            const int2   iep   = ieps  [ia];
-            if( iep.x >= 0 ){ REQi.z -= tREQHs[iep.x].z; }
-            if( iep.y >= 0 ){ REQi.z -= tREQHs[iep.y].z; }
-            printf("GPU: frag1 atom i %3i it %3i pos %16.8f %16.8f %16.8f %16.8f  REQH %16.8f %16.8f %16.8f %16.8f \n", ia, ti, atomi.x, atomi.y, atomi.z, atomi.w, REQi.x, REQi.y, REQi.z, REQi.w);
-        }
-        for(int i=0; i<nj; i++){
-            int ia=j0+i;
-            int ti=atypes[ia];
-            float4 atomi = atoms [ia];
-            float4 REQi  = tREQHs[ti];
-            REQi.z = atomi.w;
-            const int2   iep   = ieps  [ia];
-            if( iep.x >= 0 ){ REQi.z -= tREQHs[iep.x].z; }
-            if( iep.y >= 0 ){ REQi.z -= tREQHs[iep.y].z; }
-            printf("GPU: frag2 atom i %3i it %3i pos %16.8f %16.8f %16.8f %16.8f  REQH %16.8f %16.8f %16.8f %16.8f \n", ia, ti, atomi.x, atomi.y, atomi.z, atomi.w, REQi.x, REQi.y, REQi.z, REQi.w);
-        }
-    }
+    // if((iS==iDBG) && (iL==0)){ 
+    //     printf("GPU: evalSampleEnergy_template() nG %7i nL %2i nS %6i | i0=%d ni=%d j0=%d nj=%d | i=%d ti=%d\n", get_global_size(0), get_local_size(0), get_num_groups(0), i0, ni, j0, nj, i, ti); 
+    //     for(int i=0; i<ni; i++){
+    //         int ia=i0+i;
+    //         int ti=atypes[ia];
+    //         float4 atomi = atoms [ia];
+    //         float4 REQi  = tREQHs[ti];
+    //         REQi.z = atomi.w;
+    //         const int2   iep   = ieps  [ia];
+    //         if( iep.x >= 0 ){ REQi.z -= tREQHs[iep.x].z; }
+    //         if( iep.y >= 0 ){ REQi.z -= tREQHs[iep.y].z; }
+    //         printf("GPU: frag1 atom i %3i it %3i pos %16.8f %16.8f %16.8f %16.8f  REQH %16.8f %16.8f %16.8f %16.8f \n", ia, ti, atomi.x, atomi.y, atomi.z, atomi.w, REQi.x, REQi.y, REQi.z, REQi.w);
+    //     }
+    //     for(int i=0; i<nj; i++){
+    //         int ia=j0+i;
+    //         int ti=atypes[ia];
+    //         float4 atomi = atoms [ia];
+    //         float4 REQi  = tREQHs[ti];
+    //         REQi.z = atomi.w;
+    //         const int2   iep   = ieps  [ia];
+    //         if( iep.x >= 0 ){ REQi.z -= tREQHs[iep.x].z; }
+    //         if( iep.y >= 0 ){ REQi.z -= tREQHs[iep.y].z; }
+    //         printf("GPU: frag2 atom i %3i it %3i pos %16.8f %16.8f %16.8f %16.8f  REQH %16.8f %16.8f %16.8f %16.8f \n", ia, ti, atomi.x, atomi.y, atomi.z, atomi.w, REQi.x, REQi.y, REQi.z, REQi.w);
+    //     }
+    // }
 
     for(int off=0; off<nj; off+=nL){
         const int local_j = off + iL;
@@ -370,9 +370,7 @@ __kernel void evalSampleEnergy_template(
                 float sH = (H < 0.f) ? 1.f : 0.f; // only apply H2 when negative
                 H *= sH;
 
-                if((iS==iDBG) && (iL==0)){ 
-                    printf("GPU: evalSampleEnergy_template() ia,ja (%3i,%3i) R0 %16.8f E0 %16.8f Q %16.8f H %16.8f\n", i, jl+j0, R0, E0, Q, H);
-                }
+                //if((iS==iDBG) && (iL==0)){  printf("GPU: evalSampleEnergy_template() ia,ja (%3i,%3i) R0 %16.8f E0 %16.8f Q %16.8f H %16.8f\n", i, jl+j0, R0, E0, Q, H);}
 
                 if(active){
                     //<<<MODEL_PAIR_ENERGY
