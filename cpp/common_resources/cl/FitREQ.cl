@@ -32,6 +32,7 @@ __kernel void evalSampleDerivatives(
 ){
     __local float4 LATOMS[32];   // local buffer for atom positions
     __local float4 LREQKS[32];   // local buffer for REQ parameters
+    __local int    LTYPES[32];   // local buffer for type indices (tj) to avoid global reads in inner loop
     __local float  LdE;          // shared energy diff across workgroup          // local variable to store energy difference
 
     const int iS = get_group_id   (0); // index of system
@@ -78,6 +79,7 @@ __kernel void evalSampleDerivatives(
             if( jep.y >= 0 ){ REQj.z -= tREQHs[jep.y].z; } // subtract charge of electron pair 2
             LATOMS[iL]  = atomj;
             LREQKS[iL]  = REQj;
+            LTYPES[iL]  = tj;
         }
         barrier(CLK_LOCAL_MEM_FENCE);
 
@@ -123,7 +125,12 @@ __kernel void evalSampleDerivatives(
 
                 // Accumulate derivatives for atom i
                 fREQi.x += dE_dR0;
-                fREQi.y += dE_dE0 *        REQj.y;
+                // If atom types are identical across fragments, scaling by 2 accounts for both sides sharing the same type
+                {
+                    int tj = LTYPES[jl];
+                    float eScale = (ti == tj) ? 2.f : 1.f;
+                    fREQi.y += eScale * dE_dE0 * REQj.y;
+                }
                 fREQi.z += dE_dQ  *        REQj.z;
                 fREQi.w += dE_dH2 *        REQj.w * sH;
                 //atomic_add_float4(&dEdREQs[n1+j], fREQj);
@@ -133,12 +140,16 @@ __kernel void evalSampleDerivatives(
                 
 
                 //if( iG == iDBG ){  printf("GPU: j %2i ELJ %16.8e Eel %16.8e r %16.8e    \n", jl, ELJ, Eel, r); }
-                printf("GPU: iG %2i iS %2i iL %2i j %2i ELJ %16.8e Eel %16.8e r %16.8e  R0 %16.8e E0 %16.8e Q %16.8e H2 %16.8e     dE_dR0 %16.8e dE_dE0 %16.8e dE_dQ %16.8e dE_dH2 %16.8e \n", iG, iS, iL, jl, ELJ, Eel, r,  R0, E0, Q, H2, dE_dR0, dE_dE0, dE_dQ, dE_dH2); 
+                if( iG == iDBG ){
+                    printf("GPU: iG %2i iS %2i iL %2i j %2i ELJ %16.8e Eel %16.8e r %16.8e  R0 %16.8e E0 %16.8e Q %16.8e H2 %16.8e     dE_dR0 %16.8e dE_dE0 %16.8e dE_dQ %16.8e dE_dH2 %16.8e \n", iG, iS, iL, jl, ELJ, Eel, r,  R0, E0, Q, H2, dE_dR0, dE_dE0, dE_dQ, dE_dH2);
+                }
             }
         }
         barrier(CLK_LOCAL_MEM_FENCE);
     }
-    printf("GPU: iG %2i iS %2i iL %2i Ei %16.8e fREQi( %16.8e %16.8e %16.8e %16.8e )\n", iG, iS, iL, Ei, fREQi.x, fREQi.y, fREQi.z, fREQi.w);
+    if( iG == iDBG ){
+        printf("GPU: iG %2i iS %2i iL %2i Ei %16.8e fREQi( %16.8e %16.8e %16.8e %16.8e )\n", iG, iS, iL, Ei, fREQi.x, fREQi.y, fREQi.z, fREQi.w);
+    }
     barrier(CLK_LOCAL_MEM_FENCE); // all local threads must finish loop above so we reuse  LATOMS
 
     LATOMS[iL].x = Ei;
@@ -155,7 +166,9 @@ __kernel void evalSampleDerivatives(
 
     if (iL < ni) {
         //if( iG == iDBG ){  printf("GPU: fREQi %16.8e LdE %16.8e\n", fREQi, LdE); }
-        printf("GPU: iG %2i iS %2i iL %2i dE %16.8e fREQi( %16.8e %16.8e %16.8e %16.8e )\n", iG, iS, iL, LdE, fREQi.x, fREQi.y, fREQi.z, fREQi.w);
+        if( iG == iDBG ){
+            printf("GPU: iG %2i iS %2i iL %2i dE %16.8e fREQi( %16.8e %16.8e %16.8e %16.8e )\n", iG, iS, iL, LdE, fREQi.x, fREQi.y, fREQi.z, fREQi.w);
+        }
         dEdREQs[i0 + iL] = fREQi * LdE;
     }
 }
@@ -185,6 +198,7 @@ __kernel void evalSampleDerivatives_template(
 ){
     __local float4 LATOMS[32];
     __local float4 LREQKS[32];
+    __local int    LTYPES[32];
     __local float  LdE;
 
     const int iS = get_group_id   (0);
@@ -229,6 +243,7 @@ __kernel void evalSampleDerivatives_template(
             if( jep.y >= 0 ){ REQj.z -= tREQHs[jep.y].z; }
             LATOMS[iL]  = atomj;
             LREQKS[iL]  = REQj;
+            LTYPES[iL]  = tj;
         }
         barrier(CLK_LOCAL_MEM_FENCE);
 
@@ -250,7 +265,15 @@ __kernel void evalSampleDerivatives_template(
                 H = APPLY_H_GATE(H);
                 cH += (sH > 0.f);
 
+                // Capture pre-update EvdW-Y component so we can post-scale this pair's contribution when ti==tj
+                float y0_pair = fREQi.y;
                 //<<<MODEL_PAIR_ACCUMULATION
+                // Post-scale only the incremental EvdW derivative (y) from this i–j pair if atom types match
+                {
+                    int tj = LTYPES[jl];
+                    float dy = fREQi.y - y0_pair;
+                    if(ti == tj){ fREQi.y = y0_pair + 2.f*dy; }
+                }
             }
         }
         barrier(CLK_LOCAL_MEM_FENCE);

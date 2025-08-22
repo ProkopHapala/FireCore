@@ -426,4 +426,30 @@ If you added the optional comp=1 (E) DOFs, run the same command pointing to your
   - DOF mapping includes fragment-2 atoms while derivative kernel writes only fragment-1 (single-pass). Use frag-1-only mapping (default) or `dual_pass=True`.
   - `HBOND_GATE`: Only gates H-term; does not zero EvdW. For sanity, try `--hb_gate 0`.
 
+### 3.5.1 Identical-type pairs (ti==tj): factor-of-two in dE/dsqrt(E)
+
+When parameters store EvdW as `sqrt(E)` and the mixing rule is `E0 = Ei * Ej` with `Ei = sqrt(Eii)`, then for identical types (`ti == tj`) we have `Ei == Ej` and `E0 = Ei^2`. The derivative with respect to the stored variable `Ei = sqrt(E)` therefore doubles compared to the generic case:
+
+- Generic: `∂E/∂Ei = (∂E/∂E0) * (∂E0/∂Ei) = dE_dE0 * Ej`
+- Identical types (`ti==tj`): `Ej == Ei` and `E0 = Ei^2` ⇒ `∂E0/∂Ei = 2*Ei` ⇒ `∂E/∂Ei` is larger by a factor of 2
+
+Implementation in OpenCL kernels:
+
+- Non-templated `evalSampleDerivatives` in `cpp/common_resources/cl/FitREQ.cl`:
+  - Caches `tj` per local tile in `LTYPES[32]`.
+  - Accumulates E-component as `fREQi.y += (ti==tj ? 2.f : 1.f) * dE_dE0 * REQj.y;`
+  - Heavy printf debugging is guarded by `if(iG==iDBG)` to avoid excessive output.
+
+- Templated `evalSampleDerivatives_template` in `cpp/common_resources/cl/FitREQ.cl`:
+  - Leaves injected model code unchanged for portability.
+  - Before the injected block, stores `float y0_pair = fREQi.y;` and after it, post-scales only this pair's incremental E-component: `dy = fREQi.y - y0_pair; if(ti==tj) fREQi.y = y0_pair + 2.f*dy;`
+  - Uses a local `LTYPES[32]` buffer to access `tj` without extra global reads.
+
+Notes:
+
+- CPU reference (`cpp/common/molecular/FitREQ.h`) is intentionally left unchanged as a stable baseline; the ti==tj doubling is an OpenCL-side correction only.
+- The ti==tj doubling is independent of whether you run single-pass or dual-pass over fragments; dual-pass remains the recommended way to populate `dEdREQs` for both fragments when needed.
+
 This plan keeps the investigation strictly within MorseQ, isolates the LdE scaling from the pairwise derivatives, and verifies host-side DOF mapping so we can eliminate the zero-derivatives failure mode.
+
+NOTE: but is this really a problem? Because anyway we accumulate this derivative 2x (?) if we accumulate derivatives from both atoms (both fragments) ????
