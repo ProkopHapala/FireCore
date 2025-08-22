@@ -9,6 +9,14 @@ import time
 from sympy.ntheory import is_abundant
 from .OpenCLBase import OpenCLBase
 
+
+def checkSizeAndStop( var, bStop=True, name="" ):
+    if len(var) == 0:
+        print( name+".shape: ", var.shape, "is empty" )
+        if bStop: 
+            print(" => exit()")
+            exit()
+
 class FittingDriver(OpenCLBase):
 
     default_REQH=(1.7, 0.1, 0.0, 0.0)
@@ -414,9 +422,28 @@ class FittingDriver(OpenCLBase):
             dof_coeffs_list.extend([coeff_vec] * len(atom_indices))
             dof_nis_list.append((start_idx, len(atom_indices)))
 
-        self.host_dof_nis = np.array(dof_nis_list, dtype=np.int32)
+        if len(dof_to_atom_list) == 0:
+            print("prepare_host_data() ERROR: len(dof_to_atom_list)==0 => Exiting.")
+            # Diagnostics: show mismatch between XYZ atom types and DOF selection types
+            try:
+                types_xyz = sorted(set(self.atom_type_names))
+            except Exception:
+                types_xyz = []
+            types_dof = [d.get('typename', '') for d in self.dof_definitions]
+            print("# Atom types found in XYZ ({}): {}".format(len(types_xyz), ", ".join(types_xyz)))
+            print("# Types requested by DOFs ({}): {}".format(len(types_dof), ", ".join(types_dof)))
+            try:
+                missing = sorted(set(types_dof) - set(types_xyz))
+                if missing:
+                    print("# DOF types not present in XYZ ({}): {}".format(len(missing), ", ".join(missing)))
+            except Exception:
+                pass
+            exit(1)
+            
+
+        self.host_dof_nis     = np.array(dof_nis_list,     dtype=np.int32)
         self.host_dof_to_atom = np.array(dof_to_atom_list, dtype=np.int32)
-        self.host_dof_coeffs = np.array(dof_coeffs_list, dtype=np.float32)
+        self.host_dof_coeffs  = np.array(dof_coeffs_list,  dtype=np.float32)
         
         # Convert reference energies to numpy array
         self.host_ErefW = np.array(self.host_ErefW, dtype=np.float32)
@@ -440,22 +467,34 @@ class FittingDriver(OpenCLBase):
             for d in self.dof_definitions: print(d)
             raise e
 
-        # Define all required buffers
-        buffs = {
-            "ranges":           self.host_ranges.nbytes,
-            "tREQHs":           self.tREQHs_base.nbytes,
-            "atypes":           self.host_atypes.nbytes,
-            "ieps":             self.host_ieps.nbytes,
-            "atoms":            self.host_atoms.nbytes,
-            "ErefW":            self.host_ErefW.nbytes,
-            "dEdREQs":          self.host_atoms.nbytes,
-            "fDOFs":            self.n_dofs*4,
-            "DOFnis":           self.host_dof_nis.nbytes,
-            "DOFtoAtom":        self.host_dof_to_atom.nbytes,
-            "DOFcofefs":        self.host_dof_coeffs.nbytes,
-            "DOFs":             self.n_dofs*4,
-            "regParams":        self.host_regParams.nbytes
+        # checkSizeAndStop(self.host_dof_nis,     name="host_dof_nis")
+        # checkSizeAndStop(self.host_dof_to_atom, name="host_dof_to_atom")
+        # checkSizeAndStop(self.host_dof_coeffs,  name="host_dof_coeffs")
+        # checkSizeAndStop(self.host_regParams,   name="host_regParams")
+        # checkSizeAndStop(self.host_ranges,      name="host_ranges")
+        # checkSizeAndStop(self.tREQHs_base,      name="tREQHs_base")
+        # checkSizeAndStop(self.host_atypes,      name="host_atypes")
+        # checkSizeAndStop(self.host_ieps,        name="host_ieps")
+        # checkSizeAndStop(self.host_atoms,       name="host_atoms")
+        # checkSizeAndStop(self.host_ErefW,       name="host_ErefW")
+        # checkSizeAndStop(self.host_dEdREQs,     name="host_dEdREQs")
+
+        buffs_ = {
+            "ranges":           self.host_ranges,
+            "tREQHs":           self.tREQHs_base,
+            "atypes":           self.host_atypes,
+            "ieps":             self.host_ieps,
+            "atoms":            self.host_atoms,
+            "ErefW":            self.host_ErefW,
+            "dEdREQs":          self.host_dEdREQs,
+            "DOFnis":           self.host_dof_nis,
+            "DOFtoAtom":        self.host_dof_to_atom,
+            "DOFcofefs":        self.host_dof_coeffs,
+            "regParams":        self.host_regParams
         }
+        for k,v in buffs_.items(): checkSizeAndStop( v, name=k)
+        buffs = { k: v.nbytes for k,v in buffs_.items() }
+        buffs.update( { "fDOFs":self.n_dofs*4, "DOFs":self.n_dofs*4,   })
         self.try_make_buffers(buffs)
         
         # Upload all static data to the GPU

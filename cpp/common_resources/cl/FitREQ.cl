@@ -251,6 +251,9 @@ __kernel void evalSampleDerivatives_template(
     barrier(CLK_LOCAL_MEM_FENCE);
 
     if (iL < ni) {
+        //if( iG == iDBG ){  printf("GPU: fREQi %16.8e LdE %16.8e\n", fREQi, LdE); }
+        if( iG == iDBG ){ printf("GPU: iG %2i iS %2i iL %2i dE %16.8e fREQi( %16.8e %16.8e %16.8e %16.8e )\n", iG, iS, iL, LdE, fREQi.x, fREQi.y, fREQi.z, fREQi.w); }
+        //printf("GPU: iG %2i iS %2i iL %2i dE %16.8e fREQi( %16.8e %16.8e %16.8e %16.8e )\n", iG, iS, iL, LdE, fREQi.x, fREQi.y, fREQi.z, fREQi.w);
         dEdREQs[i0 + iL] = fREQi * LdE;
     }
 }

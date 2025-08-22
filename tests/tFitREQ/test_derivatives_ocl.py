@@ -42,7 +42,7 @@ def num_deriv(xs, Es):
 
 if __name__ == '__main__':
     # run like this:
-    #   python3 test_derivatives_ocl.py --xyz HHalogens/porcessed/HF-A1_HF-D1.xyz --dof dofSelection_MorseSR.dat   --points 50 --tol 1e-6 
+    #   python3 test_derivatives_ocl.py --xyz HHalogens/porcessed/HF-A1_HF-D1.xyz --dof dofSelection_MorseSR_Halogens.dat   --points 50 --tol 1e-6  --show --regularize 0
     #   python3 test_derivatives_ocl.py --xyz all.xyz --dof dofSelection_MorseSR.dat --model MODEL_MorseQ_PAIR --energy_model ENERGY_MorseQ_PAIR --points 100 --eps 1e-6 --tol 1e-6 --save out_  --show --regularize 0 
 
     
