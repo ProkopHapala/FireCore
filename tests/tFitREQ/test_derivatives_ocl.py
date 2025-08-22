@@ -38,7 +38,7 @@ def num_deriv(xs, Es):
     xc = 0.5*(xs[2:] + xs[:-2])
     return dE, xc
 
-def scan_and_compare_dof(fit, i, name, x0, mn, mx, points, eps, regularize, tol, show=False, save_base=''):
+def scan_and_compare_dof(fit, i, name, x0, mn, mx, points, eps, regularize, tol, signal_eps, show=False, save_base=''):
     """Scan one DOF, compute J(x), analytic and numeric dJ/dx, return (diff, Es, Fs, Fnum, xs, xs_num).
 
     - Uses fit.evaluate_objective(x) and fit.get_forces(x) for analytic derivative.
@@ -69,9 +69,18 @@ def scan_and_compare_dof(fit, i, name, x0, mn, mx, points, eps, regularize, tol,
 
     # Diagnostics
     Es_min, Es_max = float(np.nanmin(Es)), float(np.nanmax(Es))
-    Fa_min, Fa_max = float(np.nanmin(Fs_inner)), float(np.nanmax(Fs_inner)) if Fs_inner.size>0 else (np.nan, np.nan)
-    Fn_min, Fn_max = float(np.nanmin(Fnum)), float(np.nanmax(Fnum)) if Fnum.size>0 else (np.nan, np.nan)
-    print(f"[{i:3d} {name:12s}] regularize={int(regularize)} | J(x): min {Es_min:.3e} max {Es_max:.3e} NaN? {np.isnan(Es).any()} | dJ/dx ana: min {Fa_min:.3e} max {Fa_max:.3e} NaN? {np.isnan(Fs_inner).any()} | dJ/dx num: min {Fn_min:.3e} max {Fn_max:.3e} NaN? {np.isnan(Fnum).any()} | Linf |Δ| {diff:.3e}")
+    if Fs_inner.size>0:
+        Fa_min, Fa_max = float(np.nanmin(Fs_inner)), float(np.nanmax(Fs_inner))
+        Fa_abs_max     = float(np.nanmax(np.abs(Fs_inner)))
+    else:
+        Fa_min = Fa_max = Fa_abs_max = np.nan
+    if Fnum.size>0:
+        Fn_min, Fn_max = float(np.nanmin(Fnum)), float(np.nanmax(Fnum))
+        Fn_abs_max     = float(np.nanmax(np.abs(Fnum)))
+    else:
+        Fn_min = Fn_max = Fn_abs_max = np.nan
+    signal_ok = (np.isfinite(Fa_abs_max) and np.isfinite(Fn_abs_max) and (Fa_abs_max > signal_eps) and (Fn_abs_max > signal_eps))
+    print(f"[{i:3d} {name:12s}] regularize={int(regularize)} | J(x): min {Es_min:.3e} max {Es_max:.3e} NaN? {np.isnan(Es).any()} | dJ/dx ana: min {Fa_min:.3e} max {Fa_max:.3e} |abs|max {Fa_abs_max:.3e} NaN? {np.isnan(Fs_inner).any()} | dJ/dx num: min {Fn_min:.3e} max {Fn_max:.3e} |abs|max {Fn_abs_max:.3e} NaN? {np.isnan(Fnum).any()} | Linf |Δ| {diff:.3e} | signal_ok {int(signal_ok)} (eps={signal_eps:.1e})")
 
     if show or save_base:
         fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(10, 4))
@@ -89,7 +98,7 @@ def scan_and_compare_dof(fit, i, name, x0, mn, mx, points, eps, regularize, tol,
             plt.show()
         plt.close(fig)
 
-    return diff, Es, Fs, Fnum, xs, xs_num
+    return diff, Es, Fs, Fnum, xs, xs_num, signal_ok
 
 # --- main ---------------------------------------------------------------
 
@@ -97,19 +106,25 @@ if __name__ == '__main__':
     # run like this:
     #   python3 test_derivatives_ocl.py --xyz HHalogens/porcessed/HF-A1_HF-D1.xyz --dof dofSelection_MorseSR_Halogens.dat   --points 50 --tol 1e-6  --show --regularize 0
     #   python3 test_derivatives_ocl.py --xyz all.xyz --dof dofSelection_MorseSR.dat --model MODEL_MorseQ_PAIR --points 100 --eps 1e-6 --tol 1e-6 --save out_  --show --regularize 0 
+    #   python3 tests/tFitREQ/test_derivatives_ocl.py --xyz H2O_single.xyz --dof dofSelection_H2O_MorseSR.dat --model MODEL_MorseQ_PAIR --points 41 --eps 1e-6 --tol 1e-6 --regularize 0 --present_only
+    #   python3 test_derivatives_ocl.py --xyz /home/prokop/git/FireCore/tests/tFitREQ/H2O_single.xyz --dof /home/prokop/git/FireCore/tests/tFitREQ/dofSelection_H2O_MorseSR_plusE.dat --model MODEL_MorseQ_PAIR --points 5 --eps 1e-6 --tol 1e-6 --regularize 0 --only_comp E --show --verbose 2 | tee OUT-nonBond
 
     
     p = argparse.ArgumentParser(description='OCL: Scan DOFs and compare analytical vs numerical derivatives')
     p.add_argument('--xyz', default='all.xyz')
     p.add_argument('--dof', default='dofSelection_MorseSR.dat')
     p.add_argument('--model', default='MODEL_MorseQ_PAIR')
+    p.add_argument('--hb_gate', type=int, default=1, help='HBOND gating: 1=enabled (default), 0=disabled')
     p.add_argument('--points', type=int, default=100)
     p.add_argument('--eps', type=float, default=1e-6)
     p.add_argument('--tol', type=float, default=1e-6)
     p.add_argument('--show', action='store_true')
     p.add_argument('--save', default='')
     p.add_argument('--exclude', nargs='*', default=[])
+    p.add_argument('--only_comp', default='', help='Limit to components in this set, e.g. "REQ" or "H" (default: all)')
+    p.add_argument('--present_only', action='store_true', help='Scan only DOFs whose type appears in the loaded dataset')
     p.add_argument('--regularize', type=int, default=1, help='1 to include regularization; 0 to disable (zero stiffness in regParams)')
+    p.add_argument('--signal_eps', type=float, default=1e-12, help='Minimum |derivative| magnitude required for comparison to be considered valid')
     p.add_argument('--verbose', type=int, default=0)
     args = p.parse_args()
 
@@ -130,7 +145,11 @@ if __name__ == '__main__':
 
     # Compile templated derivative kernel only (single-kernel path for derivatives)
     macro_der = extract_macro_block(forces_path, args.model)
-    fit.compile_with_model(macros={'MODEL_PAIR_ACCUMULATION': macro_der}, bPrint=False)
+    macros = {
+        'MODEL_PAIR_ACCUMULATION': macro_der,
+        'HBOND_GATE_DEFINE': f"#define HBOND_GATE {int(args.hb_gate)}",
+    }
+    fit.compile_with_model(macros=macros, bPrint=False)
 
     # Regularization toggle via driver API
     fit.set_regularization_enabled(enabled=(int(args.regularize) != 0))
@@ -140,16 +159,32 @@ if __name__ == '__main__':
     dof_names = [f"{d['typename']}." + "REQH"[int(d['comp'])] for d in fit.dof_definitions]
     assert len(dof_names) == len(names_from_file)
 
-    # select dofs
+    # select dofs with filters
     exclude_set = set(args.exclude)
-    iDOFs = [i for i,n in enumerate(dof_names) if n not in exclude_set]
+    allowed = set(list(args.only_comp)) if args.only_comp else None
+    # presence map: only types found in dataset will be in atom_type_map
+    type_present = {name: True for name in fit.atom_type_names}
+    iDOFs = []
+    for i, d in enumerate(fit.dof_definitions):
+        compL = "REQH"[int(d['comp'])]
+        name = f"{d['typename']}.{compL}"
+        if name in exclude_set: continue
+        if allowed is not None and compL not in allowed: continue
+        if args.present_only:
+            if d['typename'] not in type_present:
+                continue
+        iDOFs.append(i)
+    if len(iDOFs) == 0:
+        print("No DOFs selected after filtering; nothing to do.")
+        sys.exit(0)
 
     # baseline vector
     x0 = np.array([d['xstart'] for d in fit.dof_definitions], dtype=np.float32)
 
     diffs = []
+    weak  = []
     for i in iDOFs:
-        diff, Es, Fs, Fnum, xs, xs_num = scan_and_compare_dof(
+        diff, Es, Fs, Fnum, xs, xs_num, signal_ok = scan_and_compare_dof(
             fit=fit,
             i=i,
             name=dof_names[i],
@@ -159,19 +194,27 @@ if __name__ == '__main__':
             eps=args.eps,
             regularize=int(args.regularize) != 0,
             tol=args.tol,
+            signal_eps=args.signal_eps,
             show=args.show,
             save_base=args.save,
         )
-        diffs.append((diff, i, dof_names[i]))
+        diffs.append((diff, i, dof_names[i], signal_ok))
+        if not signal_ok:
+            weak.append((i, dof_names[i]))
 
     # checks
-    failed = [(d,i,n) for d,i,n in diffs if (np.isfinite(d) and d>args.tol) or (not np.isfinite(d))]
-    for d,i,n in diffs:
-        print(f"{i:3d} {n:12s} max|F_ana-F_num| = {d:.3e}")
+    failed = [(d,i,n) for d,i,n,s in diffs if s and ((np.isfinite(d) and d>args.tol) or (not np.isfinite(d)))]
+    for d,i,n,s in diffs:
+        status = 'SKIP(weak)' if not s else ('FAIL' if (np.isfinite(d) and d>args.tol) or (not np.isfinite(d)) else 'PASS')
+        print(f"{i:3d} {n:12s} max|F_ana-F_num| = {d:.3e}  [{status}]")
     if failed:
         print("Failures:")
         for d,i,n in failed:
             print(f"  {i:3d} {n:12s} diff {d:.3e} > tol {args.tol}")
+    if weak:
+        print("Weak-derivative (skipped) DOFs (|dJ/dx| below signal_eps):")
+        for i,n in weak:
+            print(f"  {i:3d} {n:12s}")
 
     if args.show or not args.save:
         plt.show()

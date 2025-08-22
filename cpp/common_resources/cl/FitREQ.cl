@@ -6,6 +6,17 @@
 #define COULOMB_CONST   14.3996448915f  // [eV*Ang/e^2]
 
 #define iDBG 0
+//<<<HBOND_GATE_DEFINE
+#ifndef HBOND_GATE
+#define HBOND_GATE 1
+#endif
+#if HBOND_GATE
+#define APPLY_H_GATE(Hval) ((Hval) < 0.f ? (Hval) : 0.f)
+#define S_H(Hval)          ((Hval) < 0.f ? 1.f     : 0.f)
+#else
+#define APPLY_H_GATE(Hval) (Hval)
+#define S_H(Hval)          (1.f)
+#endif
 
 __attribute__((reqd_work_group_size(32,1,1)))
 __kernel void evalSampleDerivatives(
@@ -112,7 +123,7 @@ __kernel void evalSampleDerivatives(
 
                 // Accumulate derivatives for atom i
                 fREQi.x += dE_dR0;
-                fREQi.y += dE_dE0 * 0.5f * REQj.y;
+                fREQi.y += dE_dE0 *        REQj.y;
                 fREQi.z += dE_dQ  *        REQj.z;
                 fREQi.w += dE_dH2 *        REQj.w * sH;
                 //atomic_add_float4(&dEdREQs[n1+j], fREQj);
@@ -187,6 +198,10 @@ __kernel void evalSampleDerivatives_template(
     const int j0   = nsi.y;
     const int nj   = nsi.w;
 
+    if((iS==iDBG) && (iL==0)){ 
+        printf("GPU: evalSampleDerivatives_template() nG %7i nL %2i nS %6i | i0=%d ni=%d j0=%d nj=%d \n", get_global_size(0), get_local_size(0), get_num_groups(0), i0, ni, j0, nj);
+    }
+
     if( iG - i0 >= ni ) return;
 
     const int    ti    = atypes[iG];
@@ -199,6 +214,7 @@ __kernel void evalSampleDerivatives_template(
 
     float4 fREQi = float4Zero;
     float  Ei    = 0.0f;
+    int    cH    = 0;              // count how many j-pairs pass H-gate
 
     for(int off=0; off<nj; off+=nL){
         const int local_j = off + iL;
@@ -229,9 +245,10 @@ __kernel void evalSampleDerivatives_template(
                 float E0 = REQi.y * REQj.y;
                 float Q  = REQi.z * REQj.z;
                 float H  = REQi.w * REQj.w;
-                // Mixing rules and hydrogen-bond gating
-                float sH = (H < 0.f) ? 1.f : 0.f; // only apply H2 when negative
-                H *= sH;
+                // Mixing rules and hydrogen-bond gating (compile-time switch)
+                float sH = S_H(H);
+                H = APPLY_H_GATE(H);
+                cH += (sH > 0.f);
 
                 //<<<MODEL_PAIR_ACCUMULATION
             }
@@ -256,9 +273,14 @@ __kernel void evalSampleDerivatives_template(
 
     if (iL < ni) {
         //if( iG == iDBG ){  printf("GPU: fREQi %16.8e LdE %16.8e\n", fREQi, LdE); }
-        if( iG == iDBG ){ printf("GPU: iG %2i iS %2i iL %2i dE %16.8e fREQi( %16.8e %16.8e %16.8e %16.8e )\n", iG, iS, iL, LdE, fREQi.x, fREQi.y, fREQi.z, fREQi.w); }
+        if( iG == iDBG ){ printf("GPU: iG %2i iS %2i iL %2i dE %16.8e fREQi( %16.8e %16.8e %16.8e %16.8e )  cH %d HBOND_GATE %d\n", iG, iS, iL, LdE, fREQi.x, fREQi.y, fREQi.z, fREQi.w, cH, HBOND_GATE); }
         //printf("GPU: iG %2i iS %2i iL %2i dE %16.8e fREQi( %16.8e %16.8e %16.8e %16.8e )\n", iG, iS, iL, LdE, fREQi.x, fREQi.y, fREQi.z, fREQi.w);
         dEdREQs[i0 + iL] = fREQi * LdE;
+        // Debug: dump a few resulting dEdREQs entries for the debug sample
+        if( (iS==iDBG) && (iL < 4) ){
+            float4 v = dEdREQs[i0 + iL];
+            printf("GPU: iS %2i lane %2i write dEdREQs[%3d] = ( %16.8e %16.8e %16.8e %16.8e )\n", iS, iL, i0+iL, v.x, v.y, v.z, v.w);
+        }
     }
 }
 
@@ -373,9 +395,9 @@ __kernel void evalSampleEnergy_template(
                 float E0 = REQi.y * REQj.y;
                 float Q  = REQi.z * REQj.z;
                 float H  = REQi.w * REQj.w;
-                // Mixing rules and hydrogen-bond gating
-                float sH = (H < 0.f) ? 1.f : 0.f; // only apply H2 when negative
-                H *= sH;
+                // Mixing rules and hydrogen-bond gating (compile-time switch)
+                float sH = S_H(H);
+                H = APPLY_H_GATE(H);
 
                 //if((iS==iDBG) && (iL==0)){  printf("GPU: evalSampleEnergy_template() ia,ja (%3i,%3i) R0 %16.8f E0 %16.8f Q %16.8f H %16.8f\n", i, jl+j0, R0, E0, Q, H);}
 
@@ -462,10 +484,15 @@ __kernel void assembleAndRegularize(
     const int iL   = get_local_id(0);
     const int nL   = get_local_size(0);
 
-    if( get_global_id(0) == iDBG ){ 
-        printf("GPU assembleAndRegularize() iG %2i iDOF %2i / nDOFs %2i iL %2i nL %2i\n", get_global_id(0), iDOF, nDOFs, iL, nL); 
+    if( (iDOF==iDBG) && (iL==0) ){ 
+        printf("GPU assembleAndRegularize().1 iDOF %2i / nDOFs %2i iL %2i nL %2i\n", iDOF, nDOFs, iL, nL); 
         for(int i=0; i<nDOFs; i++){
-            printf("GPU DOFnis %2i %2i\n", DOFnis[i].x, DOFnis[i].y);
+            printf("GPU assembleAndRegularize().2 DOFnis %2i %2i\n", DOFnis[i].x, DOFnis[i].y);
+            int nsi = DOFnis[i].y; if(nsi>5){ nsi=5; }
+            for(int jj=0; jj<nsi; jj++){
+                int j = DOFnis[i].x + jj;
+                printf("GPU assembleAndRegularize().3 DOF %2i j %2i DOFtoAtom %2i (%16.8f, %16.8f, %16.8f, %16.8f)\n", i,j, DOFtoAtom[j], DOFcofefs[j].x, DOFcofefs[j].y, DOFcofefs[j].z, DOFcofefs[j].w);
+            }
         }
     }
 
@@ -476,6 +503,7 @@ __kernel void assembleAndRegularize(
         int j   = i + nsi.x;
         int ia  = DOFtoAtom[j];
         fl     += dot(DOFcofefs[j], dEdREQs[ia]);
+        if( (iDOF==iDBG) && (iL==0) ){ printf("GPU assembleAndRegularize().4 iDOF %2i iL %2i ia %2i fl %16.8f dEdREQs(%16.8f, %16.8f, %16.8f, %16.8f) DOFcofefs(%16.8f, %16.8f, %16.8f, %16.8f)\n", iDOF, iL, ia, fl, dEdREQs[ia].x,dEdREQs[ia].y,dEdREQs[ia].z,dEdREQs[ia].w, DOFcofefs[j].x, DOFcofefs[j].y, DOFcofefs[j].z, DOFcofefs[j].w); }
     }
     LfDOFi[iL] = fl;
     barrier(CLK_LOCAL_MEM_FENCE);

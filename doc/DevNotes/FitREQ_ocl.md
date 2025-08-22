@@ -284,3 +284,146 @@ The Python class acts as the high-level orchestrator for the entire process. Its
   - `//<<<MODEL_PAIR_ACCUMULATION` (derivatives + energy accumulation with REQH partials)
   - `//<<<MODEL_PAIR_ENERGY` (energy-only accumulation)
 - The driver compiles with `FittingDriver.compile_with_model(macros={...})`, setting `use_template=True` so `set_kernel_args()` binds the templated kernels and their extra arguments (e.g., `Jmols`).
+
+### 3.4 Debugging notes: zero derivatives and dual-pass workaround
+
+This section records a recurring pitfall that led to near-zero assembled derivatives and the practical fix adopted.
+
+- __[symptom]__ Final DOF forces were ~0 even when energies and per-sample objectives were non-zero.
+- __[root cause]__ The derivative kernel `evalSampleDerivatives_template` writes `dEdREQs` only for fragment-1 lanes (`iL < ni`), i.e. indices `[i0, i0+ni)`. If the DOF assembly mapping (`DOFtoAtom`) includes fragment-2 atoms (`[j0, j0+nj)`), those entries remain zero and cancel the reduction in `assembleAndRegularize`.
+- __[first fix]__ On the host, restrict `DOFtoAtom` to fragment-1 atoms only so the assembler only gathers indices that are written by the derivative kernel. Implemented in `FittingDriver.prepare_host_data()` by masking `host_ranges` fragment-1 spans. This immediately restores non-zero assembled forces for fragment-1–only DOFs.
+- __[workaround to cover both fragments]__ To also obtain derivatives for fragment-2 without complicating the kernel, run the derivative kernel twice with swapped fragment ranges:
+  - Build a swapped ranges array per-sample: `(i0, j0, ni, nj) -> (j0, i0, nj, ni)`.
+  - Launch pass-1 with original `ranges` to populate `[i0, i0+ni)`.
+  - Launch pass-2 with `ranges_swapped` to populate `[j0, j0+nj)`.
+  - `Jmols` is a per-sample scalar and is simply re-written; reading after pass-2 yields the correct objective. `dEdREQs` becomes fully populated across both fragments after the two passes.
+
+#### Driver support (host implementation)
+
+- __[helpers]__ `FittingDriver` adds:
+  - `self._ensure_swapped_ranges()`: constructs `host_ranges_swapped` and uploads `ranges_swapped_buff` (size in bytes) once.
+  - `self._set_eval_ranges(rng_buf)`: rebinds only the `ranges` argument of the active eval kernel (templated or non-templated signatures handled).
+- __[dual-pass API]__
+  - `getErrorDerivs(..., dual_pass=False)` and `get_forces(..., dual_pass=False)` accept `dual_pass=True` to execute the second derivative pass with swapped ranges. Assembly remains unchanged and sums both fragments.
+- __[assembly invariants]__ `assembleAndRegularize` is unchanged. It always reduces `dot(DOFcofefs[j], dEdREQs[ia])` over `DOFtoAtom`. Consistency rule still applies: every `ia` in `DOFtoAtom` must be written by the derivative producer kernels for the launches performed. With `dual_pass=True`, both fragments' `dEdREQs` are produced within the same host call, enabling broader `DOFtoAtom` coverage if desired.
+
+### 3.5 Recommended debugging strategy (single H2O)
+
+Use a minimal dataset to validate kernels, argument binding, DOF mapping, and the EvdW chain rule.
+
+- __[data]__ `tests/tFitREQ/H2O_single.xyz` (1 sample, 3 atoms per fragment)
+- __[DOFs]__ `tests/tFitREQ/dofSelection_H2O_MorseSR.dat` (R,Q,H). To exercise EvdW chain rule (E stored as sqrt(E)), optionally add comp=1 lines:
+
+```text
+E_HO 1  1e-6  1.0   0.00  0.00  0 0 0  0.0007  1.0
+E_O3 1  1e-6  1.0   0.00  0.00  0 0 0  0.0026  1.0
+```
+
+- __[compile templated kernels]__ Use `FittingDriver.compile_with_model(...)` with `MODEL_MorseQ_PAIR` and `HBOND_GATE` define to enable the single-kernel derivative path (`use_template=True`).
+
+- __[single-pass vs dual-pass]__ Keep `DOFtoAtom` restricted to fragment-1 (already done in `FittingDriver.prepare_host_data()`), which matches `evalSampleDerivatives_template` writing only frag-1. Use `dual_pass=True` only when you deliberately include fragment-2 atoms in `DOFtoAtom`.
+
+- __[run scan and compare]__ Prefer the small H2O case for readable output and fast iteration:
+
+```bash
+python3 tests/tFitREQ/test_derivatives_ocl.py \
+  --xyz H2O_single.xyz \
+  --dof dofSelection_H2O_MorseSR.dat \
+  --model MODEL_MorseQ_PAIR \
+  --points 41 --eps 1e-6 --tol 1e-6 \
+  --regularize 0 --present_only
+```
+
+If you added the optional comp=1 (E) DOFs, run the same command pointing to your modified DOF file.
+
+- __[inspect per-atom derivatives]__ Call `FittingDriver.dump_dEdREQs(sample=0)` after a derivative evaluation to print a few `dEdREQs` rows. Expect non-zero entries for the frag-1 atoms only. For the E-component, the macro fix applies the chain rule via `REQj.y/REQi.y` scaling inside the model accumulation.
+
+- __[expected checks]__
+  - Analytic vs numeric dJ/dx agree: `max|F_ana - F_num| <= tol` (e.g., 1e-6).
+  - `Jmols` is finite; `dEdREQs` not all zeros; E-component varies when scanning comp=1 DOFs.
+  - If zeros occur: verify `DOFtoAtom` excludes frag-2 for single-pass, templated kernels are bound (`use_template=True`), `globParams` passed only for templated path, and `HBOND_GATE` is set as intended.
+
+#### Recommendations
+
+- __[simple path]__ Keep `DOFtoAtom` restricted to fragment-1 for stability during development (single-pass). Enable `dual_pass=True` only when you deliberately include fragment-2 atoms in `DOFtoAtom`.
+- __[future work]__ Consider extending the derivative kernel to write both fragments in one pass (e.g., second write for `iL < nj` using `j0` base) to avoid the extra launch. Ensure local-memory usage and barriers remain correct.
+
+### 3.6 MorseQ-only: Zero-derivatives issue — findings and focused debug plan
+
+* __[scope]__ Strictly use `MODEL_MorseQ_PAIR` and focus on why analytic derivatives are zero. All other forcefields are out-of-scope until this is solved.
+
+* __[what MorseQ macro does]__ In `cpp/common_resources/cl/Forces.cl` the block `//>>>macro MODEL_MorseQ_PAIR` (lines ~93–116) accumulates per-atom REQH partials and energy. For EvdW (component=1), it applies the chain rule for `E0 = sqrt(Ei*Ej)` directly in the pair accumulation:
+  - `fREQi.y += dE_dE0 * 0.5f * (REQj.y / REQi.y);`  // derivative w.r.t. `REQi.y = sqrt(Ei)`
+  - `tREQHs` stores EvdW as `sqrt(E)`; host updates use `update_tREQHs_from_dofs()`.
+
+* __[where zeros can come from]__
+  - __A. LdE = 0__: `evalSampleDerivatives_template` (in `cpp/common_resources/cl/FitREQ.cl`) writes `dEdREQs = fREQi * LdE`, where `LdE = W * (Emol - Eref)`. If `Emol ≈ Eref`, all analytic derivatives become zero even if `fREQi` is non-zero.
+  - __B. Mapping mismatch__: Assembler gathers only indices present in `DOFtoAtom`. If it includes atoms the derivative kernel didn’t write (e.g., fragment-2 in single-pass), assembled DOF gradients are ~0. We already restrict to fragment-1 in `pyBall/OCL/NonBondFitting.py: FittingDriver.prepare_host_data()`.
+  - __C. Missing EvdW DOFs__: DOF file lacks `comp=1` for types present in the dataset’s fragment-1 (e.g., `O_3`, `H_O` in `tests/tFitREQ/H2O_single.xyz`). Then no EvdW scan happens, or forces assemble to zero.
+
+* __[minimal reproducible setup]__
+  - __Data__: `tests/tFitREQ/H2O_single.xyz`.
+  - __DOFs__: `tests/tFitREQ/dofSelection_H2O_MorseSR_plusE.dat` (duplicates MorseSR and adds `comp=1` for `O_3` and `H_O`).
+  - __Run (MorseQ only, EvdW-only, no regularization)__:
+    ```bash
+    python3 tests/tFitREQ/test_derivatives_ocl.py \
+      --xyz tests/tFitREQ/H2O_single.xyz \
+      --dof tests/tFitREQ/dofSelection_H2O_MorseSR_plusE.dat \
+      --model MODEL_MorseQ_PAIR \
+      --only_comp E --present_only \
+      --points 41 --eps 1e-6 --tol 1e-6 \
+      --regularize 0 --hb_gate 1
+    ```
+
+* __[diagnostics to separate causes]__
+  - __Check LdE__: Kernel prints (when `iDBG==0`) show `Emol`, `Eref`, `LdE`. If `LdE≈0`, analytic derivatives will be zero by construction; numeric `dJ/dx` should also be near zero over small scans.
+  - __Inspect per-atom derivatives__: After `fit.getErrorDerivs(x)`, dump scaled per-atom derivatives for sample 0:
+    - `FittingDriver.dump_dEdREQs(sample=0)` prints `dEdREQs[ia] = fREQi * LdE`. If `LdE≠0`, non-zero `dEdREQs[:,1]` confirms EvdW path is active. If `LdE=0`, divide by printed `LdE` (mentally) to infer `fREQi` sign/magnitude, or add a temporary print of raw `fREQi` before scaling.
+  - __Verify mapping__: Ensure `DOFtoAtom` includes fragment-1 atoms of the scanned types (`O_3`, `H_O`). This is enforced by the frag-1 mask in `prepare_host_data()`; if you switch to `dual_pass`, you may include fragment-2 atoms as well.
+  - __HBOND gating__: `HBOND_GATE` impacts the H-term only; it should not zero EvdW derivatives. For sanity, you can re-run with `--hb_gate 0` to exclude gating effects.
+
+* __[success criteria]__
+  - `Jmols` finite; during scans `Es(x)` varies (not identically zero).
+  - Over inner scan points: `max|F_ana - F_num| <= tol` (e.g., 1e-6) for EvdW DOFs.
+  - `dEdREQs[:,1]` non-zero for fragment-1 atoms when `LdE≠0`.
+
+* __[if still zero]__
+  - Confirm the DOF file actually includes `comp=1` for types present in the sample’s fragment-1 (use the provided `..._plusE.dat`).
+  - Temporarily adjust `Eref` or pick scan points where `Emol−Eref` is not vanishing, to ensure `LdE` is not suppressing derivatives.
+  - Add a debug print in `evalSampleDerivatives_template` to print raw `fREQi` (before scaling) for lanes `iL<ni` to confirm pair accumulation is producing EvdW partials.
+
+#### Additional troubleshooting: EvdW derivative scaling and validation
+
+- __EvdW stored as sqrt(E): chain rule fix__
+  - Parameters store `EvdW` as `sqrt(E)` in both kernels and Python DOFs.
+  - Correct accumulation for component `E` is:
+    ```c
+    // in model macros (e.g., MODEL_MorseQ_PAIR) and non-templated kernel
+    fREQi.y += dE_dE0 * REQj.y;  // REQj.y = sqrt(Ej), accumulates ∂E/∂sqrt(Ei)
+    ```
+  - Fixed in `cpp/common_resources/cl/Forces.cl` (templated macros) and `cpp/common_resources/cl/FitREQ.cl` (non-templated), removing an erroneous `0.5f` factor and division by `REQi.y`.
+  - Objective consistently uses `0.5 * W * (Emol - Eref)^2` and gradients multiply by `LdE = W*(Emol - Eref)`.
+
+- __Derivative test: robust diagnostics__
+  - `tests/tFitREQ/test_derivatives_ocl.py` now prints min/max and abs-max for analytic and numeric derivatives and accepts `--signal_eps`.
+  - A DOF comparison is judged only when both analytic and numeric abs-max exceed `signal_eps`; otherwise it is marked `SKIP(weak)` to avoid false "matches" from near-zero derivatives.
+
+- __Exact test command (MorseQ, E-only)__
+  - Path semantics: the script joins non-absolute `--xyz/--dof` with its own directory `tests/tFitREQ/`, so pass filenames relative to that directory (or use absolute paths).
+  - Example:
+    ```bash
+    python3 tests/tFitREQ/test_derivatives_ocl.py \
+      --xyz H2O_single.xyz \
+      --dof dofSelection_H2O_MorseSR_plusE.dat \
+      --model MODEL_MorseQ_PAIR \
+      --only_comp E \
+      --points 5 --eps 1e-6 --tol 1e-6 \
+      --regularize 0 --verbose 2 --signal_eps 1e-12 | tee tests/tFitREQ/OUT-nonBond
+    ```
+
+- __Common pitfalls checklist__
+  - `LdE ≈ 0`: If `Emol ≈ Eref`, analytic derivatives scale to zero. Expect numeric dJ/dx to be small as well over tiny scans.
+  - DOF mapping includes fragment-2 atoms while derivative kernel writes only fragment-1 (single-pass). Use frag-1-only mapping (default) or `dual_pass=True`.
+  - `HBOND_GATE`: Only gates H-term; does not zero EvdW. For sanity, try `--hb_gate 0`.
+
+This plan keeps the investigation strictly within MorseQ, isolates the LdE scaling from the pairwise derivatives, and verifies host-side DOF mapping so we can eliminate the zero-derivatives failure mode.

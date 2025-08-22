@@ -396,22 +396,27 @@ class FittingDriver(OpenCLBase):
         dof_coeffs_list = []
         dof_nis_list = []
 
+        # IMPORTANT: The derivative kernel writes dEdREQs only for fragment-1 atoms (i in [i0, i0+ni)).
+        # Therefore, assemble DOF mappings must reference only fragment-1 atoms; otherwise contributions
+        # from fragment-2 would read zeros and can null the assembled forces. Build a boolean mask of
+        # fragment-1 atoms across all samples and use it to filter indices below.
+        mask_frag1 = np.zeros(self.n_atoms_total, dtype=bool)
+        for (i0, j0, ni, nj) in self.host_ranges:
+            mask_frag1[i0:i0+ni] = True
+        if self.verbose > 1:
+            n_f1 = int(mask_frag1.sum())
+            print(f"prepare_host_data(): restricting DOF mapping to frag-1 atoms only (count={n_f1}/{self.n_atoms_total})")
+
         for dof in self.dof_definitions:
             # SAFEGUARD 2: Perform the same check for the main assembly logic.
             # This is where the original crash occurred.
             type_idx = self.atom_type_map.get(dof['typename'])
 
             if type_idx is None:
-                # The type name from dofSelection.dat was not found in any of the
-                # loaded XYZ files. Print a warning and skip this DOF.
-                print(f"Warning: DOF typename '{dof['typename']}' not found in input data. Skipping.")
-                continue # Move to the next DOF in the list
+                continue
 
-            # Find all atoms across all samples that this DOF applies to
-            atom_indices = np.where(self.host_atypes == type_idx)[0]
-            
-            # It's also possible the type exists in principle, but no atoms of that
-            # type are in this specific dataset. In that case, we also skip.
+            # Restrict to FRAGMENT-1 atoms only, matching derivative coverage.
+            atom_indices = np.where((self.host_atypes == type_idx) & mask_frag1)[0]
             if len(atom_indices) == 0:
                 continue
 
@@ -520,9 +525,10 @@ class FittingDriver(OpenCLBase):
         self.toGPU_(self.DOFcofefs_buff, self.host_dof_coeffs)
         self.toGPU_(self.regParams_buff, self.host_regParams)
         
-        self.set_kernel_args()
+        # Defer binding kernel arguments until after compile_with_model() injects the model.
+        # compile_with_model() will call set_kernel_args() once the program is (re)built.
         if self.verbose>0:
-            print("GPU buffers allocated and static data uploaded.")
+            print("GPU buffers allocated and static data uploaded. Waiting for compile_with_model() to bind kernels.")
 
     def set_regularization_enabled(self, enabled=True):
         """Enable/disable regularization by zeroing/restoring stiffness terms.
@@ -553,50 +559,21 @@ class FittingDriver(OpenCLBase):
         self.set_regularization_enabled(True)
 
     def set_kernel_args(self):
-        """Sets arguments for the final two kernels."""
-        
-        # __kernel void evalSampleDerivatives(
-        #     //const int4 ns,                  
-        #     __global int4*    ranges,    // 1: [nsample]  (i0,ni, j0,nj) star and number of atoms in fragments 1,2 
-        #     __global float4*  tREQHs,    // 2: [ntypes]   non-bonded parameters (RvdW,EvdW,QvdW,Hbond)
-        #     __global int*     atypes,    // 3: [natomTot] atom types
-        #     //__global int*     hosts,   // [natomTot] index of host atoms (it electron pair), -1 if it is not electron pair
-        #     __global int2*    ieps,      // 4: [natomTot] {iep1,iep2} index of electron pair type ( used to subtract  charge)
-        #     __global float4*  atoms,     // 5: [natomTot] positions and REPS charge of each atom (x,y,z,Q) 
-        #     __global float4*  dEdREQs,   // 6: [natomTot] output derivatives of type REQH parameters
-        #     __global float2*  ErefW      // 7: [nsamp]   {E,W} reference energies and weights for each sample (molecule,system)
-        # ){
-        # Prefer original kernel by default; use templated kernel only when explicitly compiled
-        use_templated = getattr(self, 'use_template', False) and \
-                        ('evalSampleDerivatives_template' in getattr(self, 'kernelheaders', {}))
-        if use_templated:
-            self.eval_kern = self.prg.evalSampleDerivatives_template
-            globParams = np.array([self.alphaMorse, 0.0, 0.0, 0.0], dtype=np.float32)
-            # Ensure Jmols buffer exists for templated path (per-sample objective contributions)
-            if not hasattr(self, 'Jmols_buff'):
-                self.try_make_buffers({"Jmols": self.n_samples*4})
-            self.eval_kern.set_args(
-                self.ranges_buff, self.tREQHs_buff, self.atypes_buff, self.ieps_buff,
-                self.atoms_buff, self.dEdREQs_buff, self.ErefW_buff, self.Jmols_buff, globParams
-            )
-        else:
-            self.eval_kern = self.prg.evalSampleDerivatives
-            self.eval_kern.set_args(
-                self.ranges_buff, self.tREQHs_buff, self.atypes_buff, self.ieps_buff,
-                self.atoms_buff, self.dEdREQs_buff, self.ErefW_buff
-            )
+        """Bind arguments for templated derivative and assembly kernels. No fallback."""
+        if 'evalSampleDerivatives_template' not in getattr(self, 'kernelheaders', {}):
+            raise RuntimeError("Templated kernels not available. Call compile_with_model(macros=...) before binding args.")
 
-        # __kernel void assembleAndRegularize(
-        #     int nDOFs,                       // 1: number of DOFs
-        #     __global float*   fDOFs,         // 2: [nDOFs]    derivatives of REQH parameters
-        #     __global int2*    DOFnis,        // 3: [nDOFs]    (i0,ni) star and number of atoms in fragments 1,2    
-        #     __global int*     DOFtoAtom,     // 4: [nInds]    list of atom indexes relevant for each DOF (non-uniform ranges indexed by DOFnis)
-        #     __global float4*  DOFcofefs,     // 5: [nInds]    factors for update of each DOF from the atom dEdREQH parameters   fDOFi = dot( DOFcofefs[i], dEdREQH[i] )
-        #     __global float4*  dEdREQs,       // 6: [nAtomTot] derivatives of REQH parameters
-        #     __global const float*   DOFs,     // 7: [nDOFs]    current values of DOFs (need only for regularization)
-        #     __global const float8*  regParams // 8: [nDOFs]   {min,max, xlo,xhi, Klo,Khi, K0,x0}
-        # ){
-        # This kernel assembles physical forces and adds regularization
+        # Derivative kernel (templated)
+        self.eval_kern = self.prg.evalSampleDerivatives_template
+        globParams = np.array([self.alphaMorse, 0.0, 0.0, 0.0], dtype=np.float32)
+        if not hasattr(self, 'Jmols_buff'):
+            self.try_make_buffers({"Jmols": self.n_samples*4})
+        self.eval_kern.set_args(
+            self.ranges_buff, self.tREQHs_buff, self.atypes_buff, self.ieps_buff,
+            self.atoms_buff, self.dEdREQs_buff, self.ErefW_buff, self.Jmols_buff, globParams
+        )
+
+        # Assembly + regularization kernel
         self.assemble_kern = self.prg.assembleAndRegularize
         self.assemble_kern.set_args(
             np.int32(self.n_dofs),
@@ -609,7 +586,39 @@ class FittingDriver(OpenCLBase):
             self.regParams_buff
         )
         if self.verbose>0:
-            print("Kernel arguments pre-set.")
+            print("Templated kernel arguments bound.")
+
+    # --- Helpers for dual-pass derivative evaluation ---
+    def _ensure_swapped_ranges(self):
+        """Create and upload a swapped copy of ranges: (i0,j0,ni,nj) -> (j0,i0,nj,ni)."""
+        if not hasattr(self, 'host_ranges'):
+            raise RuntimeError("_ensure_swapped_ranges(): host_ranges not initialized; call load_data() first.")
+        if not hasattr(self, 'host_ranges_swapped'):
+            hr = np.asarray(self.host_ranges, dtype=np.int32)
+            hrs = hr.copy()
+            # swap frag1 and frag2 fields: x<->y, z<->w
+            hrs[:, 0] = hr[:, 1]
+            hrs[:, 1] = hr[:, 0]
+            hrs[:, 2] = hr[:, 3]
+            hrs[:, 3] = hr[:, 2]
+            self.host_ranges_swapped = hrs
+            # allocate buffer and upload
+            self.try_make_buffers({"ranges_swapped": int(self.host_ranges_swapped.nbytes)})
+            self.toGPU_(self.ranges_swapped_buff, self.host_ranges_swapped)
+        elif not hasattr(self, 'ranges_swapped_buff'):
+            # Buffer missing but host copy exists
+            self.try_make_buffers({"ranges_swapped": int(self.host_ranges_swapped.nbytes)})
+            self.toGPU_(self.ranges_swapped_buff, self.host_ranges_swapped)
+
+    def _set_eval_ranges(self, rng_buf):
+        """Rebind only the ranges argument of the templated eval kernel."""
+        globParams = np.array([self.alphaMorse, 0.0, 0.0, 0.0], dtype=np.float32)
+        if not hasattr(self, 'Jmols_buff'):
+            self.try_make_buffers({"Jmols": self.n_samples*4})
+        self.eval_kern.set_args(
+            rng_buf, self.tREQHs_buff, self.atypes_buff, self.ieps_buff,
+            self.atoms_buff, self.dEdREQs_buff, self.ErefW_buff, self.Jmols_buff, globParams
+        )
 
     def compile_with_model(self, macros=None, output_path=None, bPrint=False):
         """
@@ -641,8 +650,24 @@ class FittingDriver(OpenCLBase):
         self.prg = cl.Program(self.ctx, pre_src).build()
         self.kernelheaders = self.extract_kernel_headers(pre_src)
         self.use_template = True
+        # Bind kernel args now that the program is built
+        self.set_kernel_args()
         if bPrint:
             print(f"compile_with_model(): kernels available: {list(self.kernelheaders.keys())}")
+
+    def dump_dEdREQs(self, max_rows=8, sample=0):
+        """Debug helper: download and print a small slice of dEdREQs for the given sample's frag-1.
+        Intended for small tests only.
+        """
+        hr = np.asarray(self.host_ranges)
+        if sample < 0 or sample >= hr.shape[0]:
+            sample = 0
+        i0, j0, ni, nj = hr[sample]
+        arr = self.fromGPU_(self.dEdREQs_buff, shape=(self.n_atoms_total, 4), dtype='f4')
+        rows = arr[i0:i0+min(ni, max_rows), :]
+        print(f"dEdREQs[sample={sample}] first {rows.shape[0]} frag-1 atoms:")
+        for k, v in enumerate(rows):
+            print(f"  {i0+k:4d}: {v[0]:12.6e} {v[1]:12.6e} {v[2]:12.6e} {v[3]:12.6e}")
         # Reset args to ensure we bind to the (possibly new) eval kernel object
         # Only if buffers are already allocated; otherwise let init_and_upload() call set_kernel_args()
         needed = [
@@ -762,7 +787,7 @@ class FittingDriver(OpenCLBase):
             T[ti, ci] = x
         return T.astype(np.float32, copy=False)
 
-    def get_forces(self, dofs_vec, bCheck=False):
+    def get_forces(self, dofs_vec, bCheck=False, dual_pass=False):
         """Calculates the total force (physical + regularization) for a given DOF vector."""
         dofs_vec_f32 = dofs_vec.astype(np.float32)
         # 1) Upload DOFs (used by regularization)
@@ -774,7 +799,16 @@ class FittingDriver(OpenCLBase):
         workgroup_size_eval = 32
         workgroup_size_assemble = 128
         t0 = time.perf_counter() if self.verbose>0 else 0.0
+        # Pass 1: fragment-1 as writer (default ranges)
         cl.enqueue_nd_range_kernel(self.queue, self.eval_kern, (self.n_samples * workgroup_size_eval,), (workgroup_size_eval,))
+        # Optional Pass 2: swap fragments to write fragment-2 derivatives
+        if dual_pass:
+            self._ensure_swapped_ranges()
+            # Temporarily bind swapped ranges and launch
+            self._set_eval_ranges(self.ranges_swapped_buff)
+            cl.enqueue_nd_range_kernel(self.queue, self.eval_kern, (self.n_samples * workgroup_size_eval,), (workgroup_size_eval,))
+            # Restore original ranges binding for subsequent calls
+            self._set_eval_ranges(self.ranges_buff)
         if self.verbose>0:
             self.queue.finish(); t1 = time.perf_counter()
         cl.enqueue_nd_range_kernel(self.queue, self.assemble_kern, (self.n_dofs * workgroup_size_assemble,), (workgroup_size_assemble,))
@@ -815,7 +849,7 @@ class FittingDriver(OpenCLBase):
         d = Em - Eref
         return float(0.5 * np.dot(Wv, d*d))
 
-    def getErrorDerivs(self, dofs_vec, wg_eval=32, wg_assemble=128):
+    def getErrorDerivs(self, dofs_vec, wg_eval=32, wg_assemble=128, dual_pass=False):
         """Return (J_total, forces) using derivative + assemble kernels only.
 
         J_total(dofs) = J_phys(dofs) - J_reg(dofs)
@@ -834,9 +868,17 @@ class FittingDriver(OpenCLBase):
             self.try_make_buffers({"Jmols": self.n_samples*4})
             self.set_kernel_args()
 
-        # 1) Derivative kernel -> fills dEdREQs and Jmols
+        # 1) Derivative kernel pass(es) -> fill dEdREQs and Jmols
+        # Pass 1: default ranges
         cl.enqueue_nd_range_kernel(self.queue, self.eval_kern, (self.n_samples*wg_eval,), (wg_eval,))
-        # 2) Read Jmols and compute J_phys
+        # Optional Pass 2: swapped ranges to cover fragment-2
+        if dual_pass:
+            self._ensure_swapped_ranges()
+            self._set_eval_ranges(self.ranges_swapped_buff)
+            cl.enqueue_nd_range_kernel(self.queue, self.eval_kern, (self.n_samples*wg_eval,), (wg_eval,))
+            # Restore original binding
+            self._set_eval_ranges(self.ranges_buff)
+        # 2) Read Jmols and compute J_phys (value is consistent across passes)
         Jm = self.fromGPU_(self.Jmols_buff, shape=(self.n_samples,), dtype='f4').astype(np.float64)
         self.queue.finish()
         J_phys = float(np.sum(Jm))
