@@ -162,14 +162,15 @@ __kernel void evalSampleDerivatives(
 // -----------------------------------------------------------------------------
 __attribute__((reqd_work_group_size(32,1,1)))
 __kernel void evalSampleDerivatives_template(
-    __global int4*    ranges,
-    __global float4*  tREQHs,
-    __global int*     atypes,
-    __global int2*    ieps,
-    __global float4*  atoms,
-    __global float4*  dEdREQs,
-    __global float2*  ErefW,
-    float4   globParams  // {alpha,?,?,?} global parameters (min,max, xlo,xhi, Klo,Khi, K0,x0)
+    __global int4*    ranges,  // 1: [nsample] (i0, j0, ni, nj) but stored as (x=i0, y=j0, z=ni, w=nj)
+    __global float4*  tREQHs,  // 2: [ntypes] REQH parameters
+    __global int*     atypes,  // 3: [nAtomTot] atom types
+    __global int2*    ieps,    // 4: [nAtomTot] {iep1,iep2} index of electron pair type ( used to subtract  charge)
+    __global float4*  atoms,   // 5: [nAtomTot] positions and REPS charge of each atom (x,y,z,Q) 
+    __global float4*  dEdREQs, // 6: [nAtomTot] output derivatives of type REQH parameters
+    __global float2*  ErefW,   // 7: [nsamp] {E,W} reference energies and weights for each sample (molecule,system)
+    __global float*   Jmols,   // [nSamples] per-sample objective contributions: 0.5*(Emol - Eref)*LdE
+    float4   globParams        // {alpha,?,?,?} global parameters (min,max, xlo,xhi, Klo,Khi, K0,x0)
 ){
     __local float4 LATOMS[32];
     __local float4 LREQKS[32];
@@ -246,7 +247,10 @@ __kernel void evalSampleDerivatives_template(
         float Emol = 0.0f;
         for(int i=0; i<ni; i++){ Emol += LATOMS[i].x; }
         float2 EW = ErefW[iS];
-        LdE = (Emol - EW.x)*EW.y;
+        float d    = (Emol - EW.x);
+        LdE        = d * EW.y;                // W*(Emol - Eref)
+        float Jmol = 0.5f * d * LdE;          // 0.5 * W * (Emol - Eref)^2
+        Jmols[iS]  = Jmol;
     }
     barrier(CLK_LOCAL_MEM_FENCE);
 
@@ -313,8 +317,8 @@ __kernel void evalSampleEnergy_template(
     float alpha = globParams.x;
 
     // --- Debug: print config for a chosen sample and few lanes ---
-    // if((iS==iDBG) && (iL==0)){ 
-    //     printf("GPU: evalSampleEnergy_template() nG %7i nL %2i nS %6i | i0=%d ni=%d j0=%d nj=%d | i=%d ti=%d\n", get_global_size(0), get_local_size(0), get_num_groups(0), i0, ni, j0, nj, i, ti); 
+    if((iS==iDBG) && (iL==0)){ 
+         printf("GPU: evalSampleEnergy_template() nG %7i nL %2i nS %6i | i0=%d ni=%d j0=%d nj=%d | i=%d ti=%d\n", get_global_size(0), get_local_size(0), get_num_groups(0), i0, ni, j0, nj, i, ti); 
     //     for(int i=0; i<ni; i++){
     //         int ia=i0+i;
     //         int ti=atypes[ia];
@@ -337,7 +341,7 @@ __kernel void evalSampleEnergy_template(
     //         if( iep.y >= 0 ){ REQi.z -= tREQHs[iep.y].z; }
     //         printf("GPU: frag2 atom i %3i it %3i pos %16.8f %16.8f %16.8f %16.8f  REQH %16.8f %16.8f %16.8f %16.8f \n", ia, ti, atomi.x, atomi.y, atomi.z, atomi.w, REQi.x, REQi.y, REQi.z, REQi.w);
     //     }
-    // }
+    }
 
     for(int off=0; off<nj; off+=nL){
         const int local_j = off + iL;
@@ -444,7 +448,7 @@ __attribute__((reqd_work_group_size(NLOC_assembleDOFderivatives,1,1)))
 __kernel void assembleAndRegularize(
      int nDOFs,                       // 1: number of DOFs
      __global float*   fDOFs,         // 2: [nDOFs]    derivatives of REQH parameters
-     __global int2*    DOFnis,        // 3: [nDOFs]    (i0,ni) star and number of atoms in fragments 1,2    
+     __global int2*    DOFnis,        // 3: [nDOFs]    (i0,ni) star and number of eleemnts in block of DOFtoAtom corresponding to given DOF
      __global int*     DOFtoAtom,     // 4: [nInds]    list of atom indexes relevant for each DOF (non-uniform ranges indexed by DOFnis)
      __global float4*  DOFcofefs,     // 5: [nInds]    factors for update of each DOF from the atom dEdREQH parameters   fDOFi = dot( DOFcofefs[i], dEdREQH[i] )
      __global float4*  dEdREQs,       // 6: [nAtomTot] derivatives of REQH parameters
@@ -453,9 +457,17 @@ __kernel void assembleAndRegularize(
 ){
     __local float LfDOFi[NLOC_assembleDOFderivatives];
 
+
     const int iDOF = get_group_id(0);
     const int iL   = get_local_id(0);
     const int nL   = get_local_size(0);
+
+    if( get_global_id(0) == iDBG ){ 
+        printf("GPU assembleAndRegularize() iG %2i iDOF %2i / nDOFs %2i iL %2i nL %2i\n", get_global_id(0), iDOF, nDOFs, iL, nL); 
+        for(int i=0; i<nDOFs; i++){
+            printf("GPU DOFnis %2i %2i\n", DOFnis[i].x, DOFnis[i].y);
+        }
+    }
 
     // --- Part 1: Assemble Physical Forces (same as before) ---
     const int2 nsi = DOFnis[iDOF];

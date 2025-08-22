@@ -44,6 +44,9 @@ class FittingDriver(OpenCLBase):
         self.dof_definitions = []
         self.tREQHs_base = None  
         self.verbose = int(verbose)
+        # Regularization control
+        self.regularize_enabled = True
+        self.host_regParams_base = None
 
         # --- Lightweight user hack hooks (non-invasive) ---
         # Type-level edits applied after reading AtomTypes.dat and before DOFs:
@@ -467,6 +470,12 @@ class FittingDriver(OpenCLBase):
             for d in self.dof_definitions: print(d)
             raise e
 
+        # Keep a pristine copy to allow toggling regularization on/off
+        self.host_regParams_base = self.host_regParams.copy()
+        if not self.regularize_enabled:
+            rp = self.host_regParams.copy(); rp[:, 4:7] = 0.0  # zero Klo,Khi,K0
+            self.host_regParams = rp
+
         # checkSizeAndStop(self.host_dof_nis,     name="host_dof_nis")
         # checkSizeAndStop(self.host_dof_to_atom, name="host_dof_to_atom")
         # checkSizeAndStop(self.host_dof_coeffs,  name="host_dof_coeffs")
@@ -515,6 +524,34 @@ class FittingDriver(OpenCLBase):
         if self.verbose>0:
             print("GPU buffers allocated and static data uploaded.")
 
+    def set_regularization_enabled(self, enabled=True):
+        """Enable/disable regularization by zeroing/restoring stiffness terms.
+
+        Effects:
+        - Updates self.host_regParams (Klo,Khi,K0 columns) and uploads to GPU if buffer exists.
+        - Stores an immutable copy in self.host_regParams_base on first call (if not already set).
+        """
+        self.regularize_enabled = bool(enabled)
+        if self.host_regParams is None:
+            return
+        if self.host_regParams_base is None:
+            self.host_regParams_base = self.host_regParams.copy()
+        if self.regularize_enabled:
+            self.host_regParams = self.host_regParams_base.copy()
+        else:
+            rp = self.host_regParams_base.copy(); rp[:, 4:7] = 0.0
+            self.host_regParams = rp
+        if hasattr(self, 'regParams_buff'):
+            self.toGPU_(self.regParams_buff, self.host_regParams)
+        if self.verbose>0:
+            print(f"Regularization {'ENABLED' if self.regularize_enabled else 'DISABLED'}")
+
+    def disable_regularization(self):
+        self.set_regularization_enabled(False)
+
+    def enable_regularization(self):
+        self.set_regularization_enabled(True)
+
     def set_kernel_args(self):
         """Sets arguments for the final two kernels."""
         
@@ -535,9 +572,12 @@ class FittingDriver(OpenCLBase):
         if use_templated:
             self.eval_kern = self.prg.evalSampleDerivatives_template
             globParams = np.array([self.alphaMorse, 0.0, 0.0, 0.0], dtype=np.float32)
+            # Ensure Jmols buffer exists for templated path (per-sample objective contributions)
+            if not hasattr(self, 'Jmols_buff'):
+                self.try_make_buffers({"Jmols": self.n_samples*4})
             self.eval_kern.set_args(
                 self.ranges_buff, self.tREQHs_buff, self.atypes_buff, self.ieps_buff,
-                self.atoms_buff, self.dEdREQs_buff, self.ErefW_buff, globParams
+                self.atoms_buff, self.dEdREQs_buff, self.ErefW_buff, self.Jmols_buff, globParams
             )
         else:
             self.eval_kern = self.prg.evalSampleDerivatives
@@ -755,41 +795,57 @@ class FittingDriver(OpenCLBase):
                 print("get_forces(): Forces are OK: min", vmin, "max", vmax)
         return forces
 
-    def evaluate_objective(self, dofs_vec):
-        """Scalar objective consistent with derivative kernel + regularization.
+    def getError(self, dofs_vec=None, workgroup_size=32):
+        """Return physical objective J_phys using the energy-only kernel.
 
-        J(dofs) = 0.5 * sum_s W_s * (Emol_s(dofs) - Eref_s)^2  -  E_reg(dofs)
+        J_phys(dofs) = 0.5 * sum_s W_s * (Emol_s(dofs) - Eref_s)^2
 
-        where E_reg uses the same parameters and clamping as the OpenCL
-        assembleAndRegularize kernel:
-            x  = clamp(x, [min,max])
-            E_reg_i = 0.5*K0*(x-x0)^2 + 0.5*Klo*max(0, xlo-x)^2 + 0.5*Khi*max(0, x-xhi)^2
-
-        Note: the minus sign on E_reg matches the current kernel which subtracts
-        the regularization gradient contributions. This ensures analytic and
-        numerical derivatives agree for the derivative test.
+        Does NOT include regularization. Useful for plotting/energy-only tasks.
         """
-        # Upload DOFs (for regularization kernel path) and update type params
+        if dofs_vec is not None:
+            # Update tREQHs from provided DOFs
+            T = self.update_tREQHs_from_dofs(np.asarray(dofs_vec, dtype=np.float32))
+            self.toGPU_(self.tREQHs_buff, T)
+        Em = self.evaluate_energies(workgroup_size=workgroup_size).astype(np.float64)
+        EW = self.host_ErefW
+        if EW.ndim == 1:
+            Eref = EW.astype(np.float64); Wv = np.ones_like(Em, dtype=np.float64)
+        else:
+            Eref = EW[:, 0].astype(np.float64); Wv = EW[:, 1].astype(np.float64)
+        d = Em - Eref
+        return float(0.5 * np.dot(Wv, d*d))
+
+    def getErrorDerivs(self, dofs_vec, wg_eval=32, wg_assemble=128):
+        """Return (J_total, forces) using derivative + assemble kernels only.
+
+        J_total(dofs) = J_phys(dofs) - J_reg(dofs)
+        - J_phys read from Jmols written by evalSampleDerivatives_template
+        - forces computed by assembleAndRegularize
+        """
         x = np.asarray(dofs_vec, dtype=np.float32)
+        # Upload DOFs for regularization and update tREQHs
         if hasattr(self, 'DOFs_buff'):
             self.toGPU_(self.DOFs_buff, x)
         T = self.update_tREQHs_from_dofs(x)
         self.toGPU_(self.tREQHs_buff, T)
 
-        # Per-sample energies from energy kernel
-        Em = self.evaluate_energies().astype(np.float64)
-        EW = self.host_ErefW
-        if EW.ndim == 1:
-            Eref = EW.astype(np.float64)
-            Wv   = np.ones_like(Em, dtype=np.float64)
-        else:
-            Eref = EW[:, 0].astype(np.float64)
-            Wv   = EW[:, 1].astype(np.float64)
+        # Ensure Jmols exists and args are set
+        if not hasattr(self, 'Jmols_buff'):
+            self.try_make_buffers({"Jmols": self.n_samples*4})
+            self.set_kernel_args()
 
-        d = Em - Eref
-        J_phys = 0.5 * np.dot(Wv, d*d)
+        # 1) Derivative kernel -> fills dEdREQs and Jmols
+        cl.enqueue_nd_range_kernel(self.queue, self.eval_kern, (self.n_samples*wg_eval,), (wg_eval,))
+        # 2) Read Jmols and compute J_phys
+        Jm = self.fromGPU_(self.Jmols_buff, shape=(self.n_samples,), dtype='f4').astype(np.float64)
+        self.queue.finish()
+        J_phys = float(np.sum(Jm))
+        # 3) Assemble forces (adds regularization gradient internally)
+        cl.enqueue_nd_range_kernel(self.queue, self.assemble_kern, (self.n_dofs*wg_assemble,), (wg_assemble,))
+        forces = self.fromGPU_(self.fDOFs_buff, shape=(self.n_dofs,))
+        self.queue.finish()
 
-        # Regularization energy to mirror assembleAndRegularize (with clamping)
+        # 4) Host-side regularization energy
         J_reg = 0.0
         if hasattr(self, 'host_regParams') and self.host_regParams is not None and self.host_regParams.size > 0:
             p = self.host_regParams.astype(np.float64)
@@ -802,8 +858,12 @@ class FittingDriver(OpenCLBase):
                   + 0.5*np.sum(Klo*np.maximum(0.0, xlo - xc)**2) \
                   + 0.5*np.sum(Khi*np.maximum(0.0, xc - xhi)**2)
 
-        # Match kernel sign convention (kernel subtracts reg gradient)
-        return float(J_phys - J_reg)
+        return float(J_phys - J_reg), forces
+
+    def evaluate_objective(self, dofs_vec):
+        """Deprecated: use getErrorDerivs(dofs_vec)[0] instead."""
+        J, _ = self.getErrorDerivs(dofs_vec)
+        return J
 
     def evaluate_grad_fd(self, x, eps=1e-4, scheme='central'):
         """Finite-difference gradient of objective using energy kernel."""

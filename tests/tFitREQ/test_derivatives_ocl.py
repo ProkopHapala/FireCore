@@ -38,19 +38,71 @@ def num_deriv(xs, Es):
     xc = 0.5*(xs[2:] + xs[:-2])
     return dE, xc
 
+def scan_and_compare_dof(fit, i, name, x0, mn, mx, points, eps, regularize, tol, show=False, save_base=''):
+    """Scan one DOF, compute J(x), analytic and numeric dJ/dx, return (diff, Es, Fs, Fnum, xs, xs_num).
+
+    - Uses fit.evaluate_objective(x) and fit.get_forces(x) for analytic derivative.
+    - Respects regularization setting already applied on the driver.
+    - Optionally plots and saves figures.
+    """
+    print(f"# ------ DOF [{i:3d} {name:12s}] regularize={int(regularize)}")
+    # Shrink range only if it's safely larger than 2*eps
+    mna, mxa = mn + eps, mx - eps
+    if not np.isfinite(mna) or not np.isfinite(mxa) or (mxa - mna) <= 0.0 or (mx - mn) <= 2.0*eps:
+        print(f"  range [{mn:.6g},{mx:.6g}] too small for eps={eps:.3g} -> using unshrunken range")
+        mna, mxa = mn, mx
+    if not np.isfinite(mna) or not np.isfinite(mxa) or mna == mxa:
+        print(f"  degenerate range after adjustment: [{mna:.6g},{mxa:.6g}] -> skipping")
+        return (np.nan, None, None, None, None, None)
+    xs = np.linspace(mna, mxa, points)
+    print(f"  scan xs in [{xs[0]:.6g},{xs[-1]:.6g}] (points={points})")
+    Es = np.zeros_like(xs)
+    Fs = np.zeros_like(xs)
+    for j, x in enumerate(xs):
+        xv = x0.copy(); xv[i] = x
+        J, g = fit.getErrorDerivs(xv)
+        Es[j] = J
+        Fs[j] = g[i]
+    Fnum, xs_num = num_deriv(xs, Es)
+    Fs_inner = Fs[1:-1]
+    diff = float(np.max(np.abs(Fs_inner - Fnum))) if Fnum.size > 0 else np.nan
+
+    # Diagnostics
+    Es_min, Es_max = float(np.nanmin(Es)), float(np.nanmax(Es))
+    Fa_min, Fa_max = float(np.nanmin(Fs_inner)), float(np.nanmax(Fs_inner)) if Fs_inner.size>0 else (np.nan, np.nan)
+    Fn_min, Fn_max = float(np.nanmin(Fnum)), float(np.nanmax(Fnum)) if Fnum.size>0 else (np.nan, np.nan)
+    print(f"[{i:3d} {name:12s}] regularize={int(regularize)} | J(x): min {Es_min:.3e} max {Es_max:.3e} NaN? {np.isnan(Es).any()} | dJ/dx ana: min {Fa_min:.3e} max {Fa_max:.3e} NaN? {np.isnan(Fs_inner).any()} | dJ/dx num: min {Fn_min:.3e} max {Fn_max:.3e} NaN? {np.isnan(Fnum).any()} | Linf |Δ| {diff:.3e}")
+
+    if show or save_base:
+        fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(10, 4))
+        ax1.plot(xs, Es, '-', lw=1.2)
+        ax1.set_xlabel('DOF value'); ax1.set_ylabel('J(x)'); ax1.grid(True)
+        ax2.plot(xs_num, Fs_inner, '-', lw=1.0, label='analytic')
+        ax2.plot(xs_num, Fnum,     ':', lw=1.5, label='numeric')
+        ax2.set_xlabel('DOF value'); ax2.set_ylabel('dJ/dx'); ax2.grid(True); ax2.legend(fontsize=8)
+        fig.suptitle(f"{name} | regularize={int(regularize)}")
+        if save_base:
+            base = save_base if save_base.endswith('.') else (save_base+'_' if save_base else 'test_derivatives_ocl_')
+            safe_name = name.replace('/', '_').replace(' ', '_')
+            fig.savefig(f"{base}{i:03d}_{safe_name}.png", dpi=150, bbox_inches='tight')
+        if show and not save_base:
+            plt.show()
+        plt.close(fig)
+
+    return diff, Es, Fs, Fnum, xs, xs_num
+
 # --- main ---------------------------------------------------------------
 
 if __name__ == '__main__':
     # run like this:
     #   python3 test_derivatives_ocl.py --xyz HHalogens/porcessed/HF-A1_HF-D1.xyz --dof dofSelection_MorseSR_Halogens.dat   --points 50 --tol 1e-6  --show --regularize 0
-    #   python3 test_derivatives_ocl.py --xyz all.xyz --dof dofSelection_MorseSR.dat --model MODEL_MorseQ_PAIR --energy_model ENERGY_MorseQ_PAIR --points 100 --eps 1e-6 --tol 1e-6 --save out_  --show --regularize 0 
+    #   python3 test_derivatives_ocl.py --xyz all.xyz --dof dofSelection_MorseSR.dat --model MODEL_MorseQ_PAIR --points 100 --eps 1e-6 --tol 1e-6 --save out_  --show --regularize 0 
 
     
     p = argparse.ArgumentParser(description='OCL: Scan DOFs and compare analytical vs numerical derivatives')
     p.add_argument('--xyz', default='all.xyz')
     p.add_argument('--dof', default='dofSelection_MorseSR.dat')
     p.add_argument('--model', default='MODEL_MorseQ_PAIR')
-    p.add_argument('--energy_model', default='ENERGY_MorseQ_PAIR')
     p.add_argument('--points', type=int, default=100)
     p.add_argument('--eps', type=float, default=1e-6)
     p.add_argument('--tol', type=float, default=1e-6)
@@ -61,6 +113,8 @@ if __name__ == '__main__':
     p.add_argument('--verbose', type=int, default=0)
     args = p.parse_args()
 
+    os.environ['PYOPENCL_COMPILER_OUTPUT'] = '1'
+
     # Resolve project root to locate common resources
     this_dir = os.path.dirname(os.path.abspath(__file__))
     repo_root = os.path.abspath(os.path.join(this_dir, '..', '..'))
@@ -68,31 +122,22 @@ if __name__ == '__main__':
     forces_path = os.path.join(repo_root, 'cpp', 'common_resources', 'cl', 'Forces.cl')
 
     # Setup driver
-    drv = FittingDriver(verbose=args.verbose)
-    drv.load_atom_types(atom_types_file)
-    drv.load_data(os.path.join(this_dir, args.xyz) if not os.path.isabs(args.xyz) else args.xyz)
-    drv.load_dofs(os.path.join(this_dir, args.dof) if not os.path.isabs(args.dof) else args.dof)
-    drv.init_and_upload()
+    fit = FittingDriver(verbose=args.verbose)
+    fit.load_atom_types(atom_types_file)
+    fit.load_data(os.path.join(this_dir, args.xyz) if not os.path.isabs(args.xyz) else args.xyz)
+    fit.load_dofs(os.path.join(this_dir, args.dof) if not os.path.isabs(args.dof) else args.dof)
+    fit.init_and_upload()
 
-    # Compile templated derivative and energy kernels
+    # Compile templated derivative kernel only (single-kernel path for derivatives)
     macro_der = extract_macro_block(forces_path, args.model)
-    macro_en  = extract_macro_block(forces_path, args.energy_model)
-    drv.compile_with_model(macros={'MODEL_PAIR_ACCUMULATION': macro_der,
-                                   'MODEL_PAIR_ENERGY':       macro_en}, bPrint=False)
-    drv.set_energy_kernel_args()
+    fit.compile_with_model(macros={'MODEL_PAIR_ACCUMULATION': macro_der}, bPrint=False)
 
-    # Optionally disable regularization by zeroing stiffness terms and re-uploading
-    if int(args.regularize) == 0 and hasattr(drv, 'host_regParams'):
-        # Columns: [min,max, xlo,xhi, Klo,Khi, K0,x0] -> zero Klo,Khi,K0
-        rp = drv.host_regParams.copy()
-        rp[:, 4:7] = 0.0
-        drv.host_regParams = rp
-        if hasattr(drv, 'regParams_buff'):
-            drv.toGPU_(drv.regParams_buff, drv.host_regParams)
+    # Regularization toggle via driver API
+    fit.set_regularization_enabled(enabled=(int(args.regularize) != 0))
 
     # DOF names and ranges
     mins, maxs, names_from_file = parse_dof_minmax(os.path.join(this_dir, args.dof) if not os.path.isabs(args.dof) else args.dof)
-    dof_names = [f"{d['typename']}." + "REQH"[int(d['comp'])] for d in drv.dof_definitions]
+    dof_names = [f"{d['typename']}." + "REQH"[int(d['comp'])] for d in fit.dof_definitions]
     assert len(dof_names) == len(names_from_file)
 
     # select dofs
@@ -100,51 +145,24 @@ if __name__ == '__main__':
     iDOFs = [i for i,n in enumerate(dof_names) if n not in exclude_set]
 
     # baseline vector
-    x0 = np.array([d['xstart'] for d in drv.dof_definitions], dtype=np.float32)
+    x0 = np.array([d['xstart'] for d in fit.dof_definitions], dtype=np.float32)
 
     diffs = []
     for i in iDOFs:
-        mn, mx = mins[i]+args.eps, maxs[i]-args.eps
-        if not np.isfinite(mn) or not np.isfinite(mx) or mn==mx:
-            continue
-        xs = np.linspace(mn, mx, args.points)
-        Es = np.zeros_like(xs)  # J(x)
-        Fs = np.zeros_like(xs)
-        for j, x in enumerate(xs):
-            xv = x0.copy(); xv[i] = x
-            Es[j] = drv.evaluate_objective(xv)  # scalar objective J
-            g = drv.get_forces(xv)
-            Fs[j] = g[i]  # analytic dJ/dx
-        Fnum, xs_num = num_deriv(xs, Es)
-        # Compare analytic dJ/dx to numerical dJ/dx
-        Fs_inner = Fs[1:-1]
-        diff = float(np.max(np.abs(Fs_inner - Fnum))) if Fnum.size>0 else np.nan
+        diff, Es, Fs, Fnum, xs, xs_num = scan_and_compare_dof(
+            fit=fit,
+            i=i,
+            name=dof_names[i],
+            x0=x0,
+            mn=mins[i], mx=maxs[i],
+            points=args.points,
+            eps=args.eps,
+            regularize=int(args.regularize) != 0,
+            tol=args.tol,
+            show=args.show,
+            save_base=args.save,
+        )
         diffs.append((diff, i, dof_names[i]))
-
-        # Text diagnostics per DOF
-        Es_min, Es_max = float(np.nanmin(Es)), float(np.nanmax(Es))
-        Fa_min, Fa_max = float(np.nanmin(Fs_inner)), float(np.nanmax(Fs_inner)) if Fs_inner.size>0 else (np.nan, np.nan)
-        Fn_min, Fn_max = float(np.nanmin(Fnum)), float(np.nanmax(Fnum)) if Fnum.size>0 else (np.nan, np.nan)
-        print(f"[{i:3d} {dof_names[i]:12s}] regularize={int(args.regularize)} | J(x): min {Es_min:.3e} max {Es_max:.3e} NaN? {np.isnan(Es).any()} | dJ/dx ana: min {Fa_min:.3e} max {Fa_max:.3e} NaN? {np.isnan(Fs_inner).any()} | dJ/dx num: min {Fn_min:.3e} max {Fn_max:.3e} NaN? {np.isnan(Fnum).any()} | Linf |Δ| {diff:.3e}")
-
-        # Plots per DOF: (1) J(x), (2) dJ/dx analytic vs numerical
-        fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(10, 4))
-        ax1.plot(xs, Es, '-', lw=1.2)
-        ax1.set_xlabel('DOF value')
-        ax1.set_ylabel('J(x)')
-        ax1.grid(True)
-        ax2.plot(xs_num, Fs_inner, '-', lw=1.0, label='analytic')
-        ax2.plot(xs_num, Fnum,     ':', lw=1.5, label='numeric')
-        ax2.set_xlabel('DOF value')
-        ax2.set_ylabel('dJ/dx')
-        ax2.grid(True)
-        ax2.legend(fontsize=8)
-        fig.suptitle(f"{dof_names[i]} | regularize={int(args.regularize)}")
-
-        if args.save:
-            base = args.save if args.save.endswith('.') else (args.save+'_' if args.save else 'test_derivatives_ocl_')
-            safe_name = dof_names[i].replace('/', '_').replace(' ', '_')
-            fig.savefig(f"{base}{i:03d}_{safe_name}.png", dpi=150, bbox_inches='tight')
 
     # checks
     failed = [(d,i,n) for d,i,n in diffs if (np.isfinite(d) and d>args.tol) or (not np.isfinite(d))]

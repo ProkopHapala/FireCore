@@ -178,18 +178,90 @@ The core design principle is the **Work-Group-Per-Sample Strategy**. Instead of 
 1.  **Data Locality:** All data for a sample can be loaded and processed, maximizing cache hits.
 2.  **Efficient Reductions:** As shown below, this allows for the summation of values (like energy) across a sample to be done using ultra-fast `__local` memory and parallel reduction algorithms, completely avoiding slow global atomic operations.
 
-### 3.2 OpenCL Kernel Breakdown
+### 3.2 OpenCL Kernel Breakdown (current implementation)
 
-The program relies on two main, highly optimized OpenCL kernels:
+We use three kernels that separate concerns cleanly and allow a single-kernel path for derivative testing/optimization.
 
-1.  **`evalAndScalePerSample`**: This is the primary workhorse kernel. It performs a three-stage process in a single pass for each sample:
-    *   **Evaluate:** Each thread in the work-group calculates the per-atom energy contribution and the raw (unscaled) parameter derivatives (`∂E_model/∂p`) for its assigned atom.
-    *   **Reduce:** The threads perform a **parallel reduction** using `__local` memory to efficiently sum all per-atom energy contributions into a single, total `E_model` for the sample. This is vastly superior to a serial loop or global atomics.
-    *   **Scale:** The first thread in the work-group calculates the final error scaling factor `dEw = -2 * w * (E_model - E_ref)`. This single float value is broadcast to all other threads via `__local` memory. Each thread then multiplies its private, raw derivatives by this common `dEw` factor and writes the final, scaled derivative to global memory.
+1)  **`evalSampleDerivatives_template`** (per-sample evaluation + error scaling)
 
-2.  **`assembleAndRegularize`**: This kernel takes the final scaled derivatives and calculates the total force on each DOF.
-    *   **Assemble:** Each work-group is assigned a single DOF. It performs another parallel reduction, looping through all atoms that are affected by its assigned DOF and summing their contributions to get the total physical force on that DOF.
-    *   **Regularize:** After the physical force is calculated, the first thread of the work-group reads the current value of the DOF and applies the regularization forces based on the soft/hard limits and tethering potentials defined in `dofSelection.dat`. The final result (physical force + regularization force) is written to global memory.
+   - __Role__: For each sample (one work-group), compute the sample energy Emol and the per-atom REQH derivatives of Emol. Compute the error scale `LdE = W*(Emol - Eref)`. Write:
+     - Scaled per-atom derivatives into `dEdREQs`.
+     - Per-sample objective contribution into `Jmols[iS] = 0.5*(Emol - Eref)*LdE`.
+
+   - __Inputs__:
+     - `ranges [nSamples] (int4)`: `(i0, j0, ni, nj)` indices into `atoms`/`atypes` for fragment-1 and fragment-2 of sample iS.
+     - `tREQHs [nTypes] (float4)`: REQH parameters; column 1 stores `sqrt(E)`.
+     - `atypes [nAtomTot] (int)`: type index per atom.
+     - `ieps   [nAtomTot] (int2)`: pair indices to subtract charges (electron-pair handling). If `>=0`, subtract corresponding `tREQHs[iep].z` from `Q`.
+     - `atoms  [nAtomTot] (float4)`: `(x,y,z,q)` positions + charges; `q` is used as the actual atomic charge.
+     - `ErefW  [nSamples] (float2)`: `(Eref, W)` per sample.
+     - `globParams (float4)`: currently `{alphaMorse,0,0,0}`.
+
+   - __Outputs__:
+     - `dEdREQs [nAtomTot] (float4)`: for each atom `ia` in the sample, stores the vector `∂Emol/∂REQH(ia)` scaled by `LdE`. In code: `dEdREQs[i0 + iL] = fREQi * LdE` for lanes `iL<ni` (fragment-1).  See notes below on coverage of both fragments.
+     - `Jmols   [nSamples] (float)`: per-sample objective term `0.5 * W * (Emol - Eref)^2`.
+
+   - __Work sizes__: one work-group per sample; typical `local_size = 32`.
+
+   - __Model injection__: uses a macro marker `//<<<MODEL_PAIR_ACCUMULATION` where model-specific pair energy and its REQH-derivatives are accumulated.
+
+   - __Important semantics__:
+     - `dEdREQs` written by this kernel are already scaled by the error factor `LdE`. This makes assembly a pure linear gather/reduction.
+     - Intended coverage is per-atom for the whole sample (both fragments). The present implementation writes for lanes `iL<ni` (fragment-1 atoms). If DOFs involve atoms from fragment-2, either (a) also populate those entries, or (b) ensure `DOFtoAtom` excludes fragment-2 atoms for the corresponding DOFs. Mismatch here can lead to near-zero assembled derivatives.
+
+2)  **`evalSampleEnergy_template`** (energy-only)
+
+   - __Role__: For each sample (one work-group), compute the sample energy `Emol` only. Used by visualization or energy-only scoring.
+
+   - __Inputs__: same structural inputs as above; uses model code injected at `//<<<MODEL_PAIR_ENERGY`.
+
+   - __Output__:
+     - `Emols [nSamples] (float)`: per-sample energies.
+
+3)  **`assembleAndRegularize`** (gather per-atom derivatives into DOF forces; add regularization)
+
+   - __Role__: Each work-group handles one DOF. It reduces over the atoms contributing to that DOF using the mapping arrays and produces the total force on the DOF. Then it adds regularization forces based on per-DOF constraints and current DOF values.
+
+   - __Inputs__:
+     - `nDOFs (int)`
+     - `DOFnis [nDOFs] (int2)`: for DOF k, `DOFnis[k] = (i0, ni)` indexes its block in `DOFtoAtom`/`DOFcofefs`.
+     - `DOFtoAtom [nInds] (int)`: flattened list of global atom indices `ia` that contribute to each DOF; blocks are laid out back-to-back.
+     - `DOFcofefs [nInds] (float4)`: coefficients to linearly map an atom's REQH derivative vector into the scalar contribution for this DOF. The kernel uses `dot(DOFcofefs[j], dEdREQs[ia])`.
+     - `dEdREQs   [nAtomTot] (float4)`: scaled per-atom derivatives written by `evalSampleDerivatives_template`.
+     - `DOFs      [nDOFs] (float)`: current DOF values (needed for regularization only).
+     - `regParams [nDOFs] (float8)`: `{min,max, xlo,xhi, Klo,Khi, K0,x0}` per DOF.
+
+   - __Output__:
+     - `fDOFs [nDOFs] (float)`: total forces per DOF (physical assembly + regularization).
+
+   - __Work sizes__: one work-group per DOF; typical `local_size = NLOC_assembleDOFderivatives` (e.g., 128).
+
+#### 3.2.1 Objective composition and buffers
+
+- __Per-sample objective__: `Jmols[iS] = 0.5 * W * (Emol - Eref)^2` written by `evalSampleDerivatives_template`.
+- __Global objective__: host sums `J_phys = Σ_s Jmols[s]`. Regularization energy `J_reg` is computed on host (clamped to `[min,max]` then soft-walls and tether) and the total objective used in optimization is `J = J_phys - J_reg` to match the sign convention of the kernel that subtracts regularization gradients.
+- __Scaled per-atom derivatives__: `dEdREQs[ia]` holds `LdE * ∂Emol/∂REQH(ia)`; assembly uses a pure sum of linear projections.
+
+#### 3.2.2 DOF indexing: `DOFnis`, `DOFtoAtom`, `DOFcofefs` (must be consistent)
+
+- __Global atom indices__: The atom indices stored in `DOFtoAtom` are global indices into `atoms`/`atypes`/`dEdREQs` (not sample-local). They refer to the same `ia` indices used by the kernels.
+
+- __Block structure__:
+  - For DOF k: `DOFnis[k].x = i0` (start in flattened arrays), `DOFnis[k].y = ni` (number of contributing atoms).
+  - The contributing atoms for k are `ia_j = DOFtoAtom[i0 + j]` for `j=0..ni-1`.
+  - The mapping coefficients for these atoms are `cof_j = DOFcofefs[i0 + j]`.
+
+- __Assembly formula__ (what the kernel computes):
+  - Physical part per DOF k: `f_phys[k] = Σ_{j=0..ni-1} dot( DOFcofefs[i0+j], dEdREQs[ DOFtoAtom[i0+j] ] )`.
+  - Then regularization contributions are added inside the kernel based on `DOFs[k]` and `regParams[k]`.
+
+- __Construction rule-of-thumb__:
+  - For a DOF that tweaks component `c ∈ {R,E,Q,H}` of a given atom type T, include all atoms of type T in `DOFtoAtom` and set `DOFcofefs` to select the `c`-component, optionally premultiplied by the chain-rule factors coming from mixing rules (e.g., derivatives of `R0`, `E0`, `Q` with respect to the underlying per-atom REQH values). Keep signs consistent with model definitions.
+
+- __Consistency requirement (important to avoid zero forces)__:
+  - For every `ia` present in `DOFtoAtom`, the producer kernel must have written a valid `dEdREQs[ia]` for the current launch. If the derivative kernel writes only fragment-1 atoms for a sample, do not include fragment-2 atoms in `DOFtoAtom` (or extend the kernel to also populate those entries). Otherwise, assembled forces for such DOFs can be spuriously zero.
+
+### 3.3 The Python Driver (`FittingDriver`)
 
 ### 3.3 The Python Driver (`FittingDriver`)
 
@@ -201,4 +273,14 @@ The Python class acts as the high-level orchestrator for the entire process. Its
     *   Creating the crucial mapping arrays (`DOFnis`, `DOFtoAtom`, `DOFcofefs`) that tell the `assembleAndRegularize` kernel how to gather scattered derivative contributions for each DOF.
 *   **Buffer Management:** Allocating OpenCL memory buffers on the GPU and managing data transfers.
 *   **Kernel Execution:** Launching the OpenCL kernels with the correct global and local work sizes.
-*   **Optimization Loop:** Providing a `get_forces(dofs)` method that encapsulates the entire GPU-side calculation. This method can be plugged into any external, Python-based optimizer. The default implementation uses the **FIRE (Fast Inertial Relaxation Engine)** algorithm, a robust and efficient choice for force-based energy minimization.
+*   **Optimization Loop / API:**
+    - `getError(dofs)` runs the energy-only kernel to return `J_phys` built from `Emols` and `ErefW`. No regularization.
+    - `getErrorDerivs(dofs)` runs `evalSampleDerivatives_template` and `assembleAndRegularize`, reads `Jmols` and `fDOFs`, and returns `(J_total, forces)` with `J_total = Σ Jmols - J_reg`.
+    - `get_forces(dofs)` is available for force-only use; for derivative testing and optimization, prefer `getErrorDerivs()` to keep the single-kernel semantics.
+
+#### 3.3.1 Template compilation and model injection
+
+- The derivative and energy kernels support model injection via markers:
+  - `//<<<MODEL_PAIR_ACCUMULATION` (derivatives + energy accumulation with REQH partials)
+  - `//<<<MODEL_PAIR_ENERGY` (energy-only accumulation)
+- The driver compiles with `FittingDriver.compile_with_model(macros={...})`, setting `use_template=True` so `set_kernel_args()` binds the templated kernels and their extra arguments (e.g., `Jmols`).
