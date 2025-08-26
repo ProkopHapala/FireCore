@@ -316,6 +316,35 @@ Keep the sanity checks enabled (e.g., type checks for epair slots) to fail fast 
 *   The current OpenCL-based implementation (`FitREQ_ocl.md`) does not yet handle dummy atoms. The detailed documentation of dummy atom handling in this C++/Python version is crucial for guiding future re-implementation in the OpenCL version to ensure feature parity and performance.
 *   The modular design (C++ core, C-interface, Python bindings) facilitates independent development and testing of each layer.
 
+### 7.5. DOF testing workflow and Python utilities
+
+* __Script location__: `tests/tFitREQ/opt_check_derivs.py` drives DOF scans/derivative checks.
+* __Typical flow__ (see the script):
+  * `fit.loadTypes()` → `fit.loadDOFSelection(dof_fname)` → `fit.loadXYZ(...)` → `fit.setup(...)` → `fit.setWeights(...)` → `fit.getBuffs()`.
+  * For scans, the script iterates DOFs and calls `fit.plotDOFscan_one(...)` (or `fit.plotDOFscans(...)`).
+* __Reload DOFs before each scan__ (scan independence): the script explicitly calls `fit.loadDOFSelection(dof_fname)` inside the per‑DOF loop to restore all DOFs to their initial selection values before every scan. This avoids subtle state coupling between scans even though `plotDOFscan_one()` backs up and restores the scanned DOF locally.
+  * Reference: `opt_check_derivs.py` lines where `fit.loadDOFSelection(dof_fname)` is called right before `fit.plotDOFscan_one(...)`.
+* __Python helpers__ in `pyBall/FitREQ.py`:
+  * `loadDOFnames(fname, comps="REQH", return_specs=False)`: parses DOF selection and, if requested, returns per‑DOF specs (min/max, regularization). Useful to set scan ranges/labels.
+  * `plotDOFscan_one(iDOF, ...)`: scans one DOF, plots energy and optionally force; internally backs up/restores the single DOF value.
+  * `plotDOFscans(iDOFs, xs, DOFnames, ...)`: multi‑DOF overlay using `plotDOFscan_one()`.
+
+### 7.6. Mixing rules and internal sqrt(E) convention
+
+FitREQ uses Lorentz–Berthelot‑style mixing, however, we store Ei=sqrt(Eii) to avoid extra sqrt at runtime.
+
+* __Internal storage__ (`FitREQ::initAllTypes()` in `cpp/common/molecular/FitREQ.h`):
+  * `typeREQs[i] = ( R_i, E_i=sqrt(E_ii), Q_i, H_i )` where `R_i` is vdW radius, `E_ii` is vdW well-depth, `Q_i = base charge`, `H_i = H‑bond flag/strength`.
+  * Code reference: `initAllTypes()` constructs `Quat4d{ RvdW, sqrt(EvdW), Qbase, Hb }`.
+* __Pairwise mixing__ in evaluators (`evalExampleDerivs_*` in `FitREQ.h`):
+  * Radii: `R_ij = R_i + R_j` (arithmetic sum).
+  * At runtime, we compute `E_ij = E_i * E_j` without an extra sqrt ( because we store sqrt of well-depth E_i=sqrt(E_ii) not well depth E_ii ).
+  * Charges: electrostatics use `Qij = q_i q_j` 
+  * H‑correction: `H_ij = h_i h_j` is applied only if `H_ij<0` (via a sign gate `sH`); for epairs, vdW is replaced by a short‑range term.
+* __Why sqrt(E)__: Pre‑storing `sqrt(E)` makes Lorentz–Berthelot `epsilon_ij = sqrt( epsilon_i epsilon_j )` a single multiply per pair (`E0 = y_i y_j`). This reduces cost and simplifies derivatives (e.g., `∂E/∂y_i ∝ y_j`). The appendix formulas use `E_0 = ε_i ε_j` with `ε_i ≡ sqrt(E_i)` to match the implementation.
+* __Electron pairs (SR replacement)__: If either partner is a dummy epair (`host[idx]>=0`), vdW is replaced by a short‑range attraction `getSR2()` (Gaussian). The SR width `w` is taken from the epair partner’s radius component (`R`), and the derivative `∂E/∂w` is accumulated to that epair’s `R` DOF.
+
+
 ## Appendix: REQH energy models and variational derivatives
 
 This appendix summarizes the exact energy expressions and variational derivatives implemented in `cpp/common/molecular/FitREQ.h` for the example evaluators `evalExampleDerivs_*`. It is intended to enable reimplementation in other languages.
