@@ -493,15 +493,52 @@ def read_xyz_data(fname="input_all.xyz"):
             #    f.readline()
     return np.array(Erefs), np.array(x0s)
 
-def loadDOFnames( fname="dofSelection.dat", comps="REQH" ):
+def loadDOFnames( fname="dofSelection.dat", comps="REQH", return_specs=False ):
+    """Load DOF names from a selection file.
+
+    If return_specs=True, also parse and return specification dicts per DOF with keys:
+      name, comp, comp_char, min, max, xlo, xhi, Klo, Khi, K0, xstart
+
+    Notes:
+    - Lines starting with '#' or empty after stripping inline comments are skipped
+    - Inline comments after '#' are ignored
+    - Missing numeric fields are returned as None
+    """
     names = []
+    specs = []
     with open(fname, 'r') as f:
         for line in f:
-            if line.startswith('#'):
+            # Strip inline comments and whitespace
+            line_clean = line.split('#', 1)[0].strip()
+            if not line_clean:
                 continue
-            parts = line.split()
+            parts = line_clean.split()
+            if len(parts) < 2:
+                continue
+            typename = parts[0]
             icomp = int(parts[1])
-            names.append( parts[0]+"."+ comps[icomp] )
+            comp_char = comps[icomp] if (0 <= icomp < len(comps)) else str(icomp)
+            names.append(f"{typename}.{comp_char}")
+            if return_specs:
+                # Safely parse remaining numeric fields if present
+                def fget(i):
+                    return float(parts[i]) if len(parts) > i else None
+                spec = {
+                    'name': typename,
+                    'comp': icomp,
+                    'comp_char': comp_char,
+                    'min': fget(2),
+                    'max': fget(3),
+                    'xlo': fget(4),
+                    'xhi': fget(5),
+                    'Klo': fget(6),
+                    'Khi': fget(7),
+                    'K0':  fget(8),
+                    'xstart': fget(9),
+                }
+                specs.append(spec)
+    if return_specs:
+        return names, specs
     return names
 
 def mark_molecule_blocks(lines, ):
@@ -652,50 +689,79 @@ def numDeriv( x, y):
     xs = x[1:-1]
     return dy/dx, xs
 
-def plotDOFscans( iDOFs, xs, DOFnames, bEs=True, bFs=False,  title="plotDOFscans", bEvalSamples=True, bPrint=False ):
+def plotDOFscan_one(iDOF, xs=None, DOFname=None, bEs=True, bFs=False, bEvalSamples=True, axE=None, axF=None, color=None, verb=1, npts=100, xrange=(0.0,1.0) ):
+    """Plot a single DOF scan.
+
+    - If axE/axF are provided, plot into them; else create a new 2x1 figure.
+    - If xs is None and dof_spec has 'min'/'max', use that range with npts samples.
+    - Returns (xs, Es, Fs, Fs_num, xs_num)
+    """
+    if plt is None:
+        raise RuntimeError("Matplotlib handle 'plt' not set. Assign fit.plt = plt in the caller.")
+    make_fig = (axE is None) or (axF is None)
+    if make_fig:
+        fig = plt.figure(figsize=(8,10.0))
+        axE = plt.subplot(2,1,1)
+        axF = plt.subplot(2,1,2)
+    # Determine xs if not provided
+    if xs is None: xs = np.linspace(xrange[0]+1e-6, xrange[1]-1e-6, npts)
+    # Backup and scan
+    y_backup = DOFs[iDOF]
+    Es, Fs = scanParam(iDOF, xs, bEvalSamples=bEvalSamples)
+    DOFs[iDOF] = y_backup
+    # Choose color
+    label = ("E "+DOFname) if DOFname else f"E DOF {iDOF}"
+    if bEs:
+        axE.plot(xs, Es, '-', lw=0.5, color=color, label=label)
+    xs_num = None
+    Fs_num = None
+    if bFs:
+        Fs_num, xs_num = numDeriv(xs, Es)
+        Fs_num = -Fs_num  # F = -dE/dx
+        labF = ("F "+DOFname) if DOFname else f"F DOF {iDOF}"
+        axF.plot(xs,     Fs,     '-', lw=0.5, color=color, label=labF+"_ana")
+        axF.plot(xs_num, Fs_num, ':', lw=1.5, color=color, label=labF+"_num")
+        if verb > 0:
+            Eminmax = (np.min(Es), np.max(Es))
+            Fminmax = (np.min(Fs), np.max(Fs))
+            Fnumminmax = (np.min(Fs_num), np.max(Fs_num)) if Fs_num is not None else (None, None)
+            Ferr = Fs[1:-1] + (-Fs_num) if Fs_num is not None else None
+            Ferrmax = (np.min(Ferr), np.max(Ferr)) if Ferr is not None else (None, None)
+            relFerrmax = np.max(np.abs(Ferr)/(np.max(Fs)+1e-8))
+            nm = DOFname if DOFname else f"{iDOF}"
+            print(f"plotDOFscan_one(iDOF={iDOF} : {nm})  relFerrmax: {relFerrmax}  (F_ana-F_num)[min,max]: {Ferrmax}  |  E[min,max]: {Eminmax} F_ana[min,max]: {Fminmax} F_num[min,max]: {Fnumminmax}  ")
+    if make_fig:
+        axE.legend(); axE.set_xlabel("DOF value"); axE.set_ylabel("E [kcal/mol]");   axE.grid( alpha=0.2)
+        axF.legend(); axF.set_xlabel("DOF value"); axF.set_ylabel("F [kcal/mol/A]"); axF.grid( alpha=0.2)
+    return xs, Es, Fs, Fs_num, xs_num
+
+def plotDOFscans( iDOFs, xs, DOFnames, bEs=True, bFs=False,  title="plotDOFscans", bEvalSamples=True, verb=1 ):
     plt.figure(figsize=(8,10.0))
+    axE = plt.subplot(2,1,1)
+    axF = plt.subplot(2,1,2)
     color_cycle = plt.rcParams['axes.prop_cycle'].by_key()['color']
     ncol = len(color_cycle)
     for iDOF in iDOFs:
-        y = DOFs[iDOF]    # store backup value of this DOF
-        #print( f"#======= DOF[{iDOF}]: {xs}" )
-        Es,Fs = scanParam( iDOF, xs, bEvalSamples=bEvalSamples )   # do 1D scan
-        #print( f"#======= fDOF[{iDOF}]: {Efs}" )
-        #print( "iDOF", iDOF, DOFnames[iDOF], "Es", Es )
-        # take color from standard matplotlib color cycle
         c = color_cycle[iDOF % ncol]
-        if bEs: 
-            plt.subplot(2,1,1); plt.plot(xs,Es, '-', color=c, label="E "+DOFnames[iDOF] )       # plot 1D scan
-        if bFs: 
-            Fs_num, xs_num = numDeriv(xs,Es)
-            plt.subplot(2,1,2); plt.plot(xs,Fs,    '-', lw=1.0, color=c, label="F "+DOFnames[iDOF] )       # This is error in the E_O3 charge derivative
-            plt.subplot(2,1,2); plt.plot(xs_num,-Fs_num, ':', lw=1.5, color=c, label="F "+DOFnames[iDOF] ) 
-            if bPrint:
-                print ( "# plotDOFscans DOF ", iDOF, DOFnames[iDOF], " dx= ", xs[1]-xs[0] ); 
-                print ( "#  i          x              E            F_ana=-dE/dDOF     F_num          F_ana-F_num          // F_num=-(E[i+1]-E[i-1])/(x[i+1]-x[i-1])" ); 
-                for i in range(1, len(xs)-1 ): print( " %3i %15.5f %15.5f %15.5f %15.5f %15.5f"%(i, xs[i], Es[i], Fs[i], -Fs_num[i-1], Fs[i]+Fs_num[i-1]) )
-        DOFs[iDOF] = y    # restore
+        plotDOFscan_one(iDOF, xs=xs, DOFname=DOFnames[iDOF], bEs=bEs, bFs=bFs, bEvalSamples=bEvalSamples, axE=axE, axF=axF, color=c, verb=verb)
+    axE.legend(); axE.set_xlabel("DOF value"); axE.set_ylabel("E [kcal/mol]"); axE.grid( alpha=0.2)
+    axF.set_xlabel("DOF value"); axF.set_ylabel("F [kcal/mol/A]"); axF.grid( alpha=0.2)
+    plt.suptitle(title)
+    # plt.show()  # Let caller decide
 
-    plt.subplot(2,1,1);
-    plt.legend()
-    plt.xlabel("DOF value")
-    plt.ylabel("E [kcal/mol]")   
-    plt.grid()
-
-    plt.subplot(2,1,2);
-    plt.xlabel("DOF value")
-    plt.ylabel("F [kcal/mol/A]")   
-    plt.grid()
-
-    plt.suptitle( title )
-    
-    #plt.show()
-
-def checkDOFderiv( iDOF, x0=0.5, d=0.001, bEvalSamples=True ):
-        xs = np.array([x0-d,x0,x0+d])
-        Es,Fs = scanParam( iDOF, xs, bEvalSamples=bEvalSamples )   # do 1D scan
-        F_num = numDeriv(xs,Es)[0][0]
-        print( f"checkDOFderiv(iDOF={iDOF}) x={x0} d={d} F_ana=-dE/dx={Fs[1]} F_num=-(E(x+d)-E(x-d))/(2d)={-F_num} F_ana-F_num={Fs[1]+F_num}" )
+def checkDOFderiv( iDOF, x0=0.5, d=0.001, bEvalSamples=True, dof_names=None ):
+    xs = np.array([x0-d,x0,x0+d])
+    Es, Fs = scanParam( iDOF, xs, bEvalSamples=bEvalSamples )   # do 1D scan
+    F_num, xs_num = numDeriv(xs, Es)
+    F_num = -F_num  # F = -dE/dx
+    if dof_names is not None:
+        Eminmax=(np.min(Es),np.max(Es))
+        Fminmax=(np.min(Fs),np.max(Fs))
+        Fnumminmax=(np.min(F_num),np.max(F_num))
+        Ferr = Fs[1:-1]-F_num  # analytic minus numeric
+        Ferrmax=(np.min(Ferr),np.max(Ferr))
+        print( f"checkDOFderiv(iDOF={iDOF} : {dof_names[iDOF]}) x={x0} d={d} E[min,max]={Eminmax} F_ana[min,max]={Fminmax} F_num[min,max]={Fnumminmax} (F_ana-F_num)[min,max]={Ferrmax}" )
+    return Es, Fs, F_num
 
 def plot_Epanels(Eplots, ref_dirs, bColorbar=True, Emin=-5.0, bKcal=False ):
     E_units = 1.0

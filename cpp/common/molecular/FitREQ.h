@@ -320,7 +320,7 @@ void initTypeParamsFromDOFs() {
         int comp = rt.y;
         typToREQ[ityp].array[comp] = iDOF;
         double xstart = DOFregX[iDOF].y;
-        printf("ityp=%i comp=%i iDOF=%i xstart=%g\n", ityp, comp, iDOF, xstart);
+        if(verbosity>0) printf("ityp=%i comp=%i iDOF=%i xstart=%g\n", ityp, comp, iDOF, xstart);
         typeREQs      [ityp].array[comp] = xstart;  // Initialize with xstart
         typeREQs0     [ityp].array[comp] = xstart;
         typeREQsMin   [ityp].array[comp] = DOFlimits[iDOF].x;
@@ -334,7 +334,7 @@ void initTypeParamsFromDOFs() {
 
 int initAllTypes(){
     ntype = params->atypes.size();
-    printf( "FitREQ::initAllTypes() ntype=%i \n", ntype );
+    if(verbosity>0)printf( "FitREQ::initAllTypes() ntype=%i \n", ntype );
     reallocTypeParams(ntype);
     for(int i=0; i<ntype; i++){
         Quat4d tREQH = Quat4d{ params->atypes[i].RvdW, sqrt(params->atypes[i].EvdW), params->atypes[i].Qbase, params->atypes[i].Hb };
@@ -451,7 +451,7 @@ int loadWeights( const char* fname ){
  */
 int loadDOFSelection( const char* fname ){
     initAllTypes();
-    printf("loadDOFSelection() fname=%s\n", fname);
+    if(verbosity>0) printf("loadDOFSelection() fname=%s\n", fname);
     FILE* fin = fopen( fname, "r" );
     if(fin==0){ printf("cannot open '%s' \n", fname ); exit(0);}
     const int nline=1024;
@@ -486,7 +486,7 @@ int loadDOFSelection( const char* fname ){
         DOFregK  .push_back( {klo, K0,     khi} );
         DOFlimits.push_back( {xmin, xmax}       );
         DOFinvMass.push_back( invMass           );
-        //if(verbosity>0)
+        if(verbosity>0)
             printf( "DOF[%3i] %3i|%i %-8s %c  range(%g,%g) reg(x0=(%g,%g),K=(%g,%g)) xstart=%g invMass=%g\n",  iDOF, ityp,comp,  at_name, "REQH"[comp], xmin, xmax, xlo, xhi, klo, khi, xstart, invMass );
         iDOF++;
     }

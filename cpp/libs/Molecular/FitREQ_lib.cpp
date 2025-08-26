@@ -185,7 +185,7 @@ double getEs( double* Es, double* Fs, bool bOmp, bool bDOFtoTypes, char* xyz_nam
 void scanParam( int iDOF, int n, double* xs,  double* Es, double* Fs, bool bEvalSamples ){
     //W.bRegularize=bRegularize;
     bool bOmp = W.iparallel>0;
-    printf( "scanParam() iDOF: %i imodel: %i n: %i bOmp: %i\n", iDOF, W.imodel, n, bOmp );
+    //printf( "scanParam() iDOF: %i imodel: %i n: %i bOmp: %i\n", iDOF, W.imodel, n, bOmp );
     W.clear_fDOFbounds();
     if(bOmp){ W.bBroadcastFDOFs=true; W.realloc_sample_fdofs();  }
     for(int i=0; i<n; i++){

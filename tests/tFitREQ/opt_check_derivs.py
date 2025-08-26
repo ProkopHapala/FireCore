@@ -7,7 +7,9 @@ import matplotlib.pyplot as plt
 import time
 
 #sys.path.append("/home/niko/work/FIRECORE/FireCore/")
-sys.path.append("/home/prokop/git/FireCore-fitREQH")
+#sys.path.append("/home/prokop/git/FireCore-fitREQH")
+
+sys.path.append("../../")
 from pyBall import FitREQ as fit
 from pyBall import atomicUtils as au
 
@@ -36,8 +38,8 @@ bAddEpairs  = bEpairs
 bOutXYZ     = False
 verbosity   = 2    # Added to enable debug printing
 
-bMorse = False   # Lenard-Jones
-#bMorse = True   # Morse
+#bMorse = False   # Lenard-Jones
+bMorse = True   # Morse
 
 # ============== Setup
 
@@ -112,7 +114,7 @@ else:
     #dof_fname="dofSelection_H2O_LJ.dat" 
     dof_fname="dofSelection_H2O_LJSR.dat" 
 fit.loadDOFSelection( dof_fname)
-dof_names = fit.loadDOFnames( dof_fname )
+dof_names, dof_specs = fit.loadDOFnames( dof_fname, return_specs=True )
 
 nbatch = fit.loadXYZ( fname, bAddEpairs, bOutXYZ )     # load reference geometry
 #nbatch = fit.loadXYZ( fname, bAddEpairs=False, bOutXYZ=bOutXYZ )     # load reference geometry
@@ -134,7 +136,8 @@ else:
     #imodel = 1
     imodel = 3
     weights0, lens = fit.split_and_weight_curves( Erefs, x0s, n_before_min=2, weight_func=lambda E: fit.exp_weight_func(E,a=1.0, alpha=4.0) )
-fit.setup( imodel=imodel, EvalJ=1, WriteJ=1, Regularize=1 )
+#fit.setup( imodel=imodel, EvalJ=1, WriteJ=1, Regularize=1 )
+fit.setup( imodel=imodel, EvalJ=1, WriteJ=1, Regularize=-1 )
 # plotEWs( Erefs=Erefs, weights0=weights0, Emin=-1.5 ); plt.title( "Weighting" )
 # plt.show(); exit()
 
@@ -168,13 +171,23 @@ print( "iDOFs_      ", iDOFs_ )
 print( "len(dof_names)", len(dof_names), dof_names )
 fit.setup( imodel=imodel, Regularize=-1 )
 #fit.plotDOFscans( list(range(len(dof_names))), np.linspace( -1.0+1e-6,  1.0-1e-6,  100 ), dof_names, title="DOF scan 1D" , bFs=True , bEvalSamples=True  )
-
+# ---- plot on common range
+#test_range=(0.0,1.5)
+#xs = np.linspace( test_range[0]+1e-6, test_range[1]-1e-6,  100 )
 #fit.plotDOFscans( list(range(len(dof_names))), np.linspace( -1.0+1e-6,  1.0-1e-6,  5 ), dof_names, title="DOF scan 1D" , bFs=True , bEvalSamples=True  )
 #fit.plotDOFscans( iDOFs_, np.linspace( -1.0+1e-6,  1.0-1e-6,  100 ), dof_names, title="DOF scan 1D" , bFs=True , bEvalSamples=True  )
-fit.plotDOFscans( iDOFs_, np.linspace( 0.0+1e-6,      1.0-1e-6,  100 ), dof_names, title="DOF scan 1D" , bFs=True , bEvalSamples=True  )
+#fit.plotDOFscans( iDOFs_, xs, dof_names, title="DOF scan 1D" , bFs=True , bEvalSamples=True, verb=1  )
 
-for i in range(len(dof_names)):
-    fit.checkDOFderiv( i, x0=0.5, d=0.001, bEvalSamples=True )
+
+fit.setVerbosity(0)
+for i in iDOFs_:  
+    fit.loadDOFSelection( dof_fname)
+    fit.plotDOFscan_one(i, DOFname=dof_names[i], bEs=True, bFs=True, bEvalSamples=True, verb=1, xrange=(dof_specs[i]['min'],dof_specs[i]['max']))
+
+#for i in range(len(dof_names)):
+#    fit.checkDOFderiv( i, x0=0.5, d=0.001, bEvalSamples=True, dof_names=dof_names )
+
+
 #fit.checkDOFderiv( 0, x0=0.5, d=0.001, bEvalSamples=True )
 #fit.checkDOFderiv( 1, x0=0.5, d=0.001, bEvalSamples=True )
 

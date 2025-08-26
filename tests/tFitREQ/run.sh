@@ -35,14 +35,14 @@ echo "#=========== RUN"
 #python3 -u opt_mini.py 2> asan.log | tee OUT
 #python3 -u opt_2D.py 
 #python3 -u opt_check_derivs.py
-#python3 -u opt_check_derivs.py 2> asan.log | tee OUT
+python3 -u opt_check_derivs.py 2> asan.log | tee OUT-FitREQ-check_derivs
 #python3 opt_2D.py
 
 #echo "Current PATH: $PATH"
 #echo "LD_LIBRARY_PATH: $LD_LIBRARY_PATH"
 
 #echo "#=========== RUNNING EXPORT TEST"
-python3 -u test_export.py 2> asan.log | tee OUT-FitREQ
+#python3 -u test_export.py 2> asan.log | tee OUT-FitREQ
 
 #python3.12 -u opt_2D.py  2> asan.log | tee OUT
 
