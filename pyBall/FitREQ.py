@@ -689,11 +689,13 @@ def numDeriv( x, y):
     xs = x[1:-1]
     return dy/dx, xs
 
-def plotDOFscan_one(iDOF, xs=None, DOFname=None, bEs=True, bFs=False, bEvalSamples=True, axE=None, axF=None, color=None, verb=1, npts=100, xrange=(0.0,1.0) ):
+def plotDOFscan_one(iDOF, xs=None, DOFname=None, bEs=True, bFs=False, bEvalSamples=True, axE=None, axF=None, color=None, verb=1, npts=100, xrange=(0.0,1.0), data=None ):
     """Plot a single DOF scan.
 
     - If axE/axF are provided, plot into them; else create a new 2x1 figure.
     - If xs is None and dof_spec has 'min'/'max', use that range with npts samples.
+    - If data is provided, it must be either a dict with keys 'xs','Es','Fs' or a tuple (xs,Es,Fs);
+      in that case, values are plotted directly without calling scanParam().
     - Returns (xs, Es, Fs, Fs_num, xs_num)
     """
     if plt is None:
@@ -703,12 +705,26 @@ def plotDOFscan_one(iDOF, xs=None, DOFname=None, bEs=True, bFs=False, bEvalSampl
         fig = plt.figure(figsize=(8,10.0))
         axE = plt.subplot(2,1,1)
         axF = plt.subplot(2,1,2)
-    # Determine xs if not provided
-    if xs is None: xs = np.linspace(xrange[0]+1e-6, xrange[1]-1e-6, npts)
-    # Backup and scan
-    y_backup = DOFs[iDOF]
-    Es, Fs = scanParam(iDOF, xs, bEvalSamples=bEvalSamples)
-    DOFs[iDOF] = y_backup
+    # Prepare data (either provided or computed)
+    if data is not None:
+        # Accept dict with keys or a tuple
+        if isinstance(data, dict):
+            xs = data.get('xs', xs)
+            Es = data.get('Es', None)
+            Fs = data.get('Fs', None)
+        else:
+            try:
+                xs, Es, Fs = data
+            except Exception as e:
+                raise ValueError("data must be dict with keys 'xs','Es','Fs' or tuple (xs,Es,Fs)") from e
+        if (xs is None) or (Es is None) or (Fs is None):
+            raise ValueError("plotDOFscan_one(): incomplete data provided; require xs, Es, Fs")
+    else:
+        # Determine xs if not provided, then compute by CPU scan
+        if xs is None: xs = np.linspace(xrange[0]+1e-6, xrange[1]-1e-6, npts)
+        y_backup = DOFs[iDOF]
+        Es, Fs = scanParam(iDOF, xs, bEvalSamples=bEvalSamples)
+        DOFs[iDOF] = y_backup
     # Choose color
     label = ("E "+DOFname) if DOFname else f"E DOF {iDOF}"
     if bEs:

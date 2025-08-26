@@ -14,9 +14,9 @@ make -j4 FitREQ_lib
 cd $wd
 
 # ------- asan (Memory Sanitizer)
-LD_PRELOAD=$(g++ -print-file-name=libasan.so)
-echo   $LD_PRELOAD
-export LD_PRELOAD
+#LD_PRELOAD=$(g++ -print-file-name=libasan.so)
+#echo   $LD_PRELOAD
+#export LD_PRELOAD
 
 #> FitREQ_debug.xyz
 #python3 run.py
@@ -35,7 +35,8 @@ echo "#=========== RUN"
 #python3 -u opt_mini.py 2> asan.log | tee OUT
 #python3 -u opt_2D.py 
 #python3 -u opt_check_derivs.py
-python3 -u opt_check_derivs.py 2> asan.log | tee OUT-FitREQ-check_derivs
+#python3 -u opt_check_derivs.py 2> asan.log | tee OUT-FitREQ-check_derivs
+python3 -u opt_check_derivs_gpu.py # 2> asan.log | tee OUT-FitREQ-check_derivs
 #python3 opt_2D.py
 
 #echo "Current PATH: $PATH"

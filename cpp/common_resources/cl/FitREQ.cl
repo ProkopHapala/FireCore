@@ -48,11 +48,11 @@ __kernel void evalSampleDerivatives(
     
     if( iG-i0 >= ni) return;
 
-    if( iG == iDBG ){
-        printf("GPU: OCL evalSampleDerivatives() iG %i i0,ni %3i,%3i j0,nj %3i,%3i ErefW %g %g\n", iG, i0,ni, j0,nj, ErefW[iS].x, ErefW[iS].y);
-        for(int i=0; i<ni; i++){ int ia=i0+i; int it=atypes[ia]; printf("GPU: atom i %3i it %3i pos %16.8f %16.8f %16.8f %16.8f  REQH %16.8f %16.8f %16.8f %16.8f \n", ia, it, atoms[ia].x, atoms[ia].y, atoms[ia].z, atoms[ia].w, tREQHs[it].x, tREQHs[it].y, tREQHs[it].z, tREQHs[it].w); }
-        for(int i=0; i<nj; i++){ int ia=j0+i; int it=atypes[ia]; printf("GPU: atom j %3i it %3i pos %16.8f %16.8f %16.8f %16.8f  REQH %16.8f %16.8f %16.8f %16.8f \n", ia, it, atoms[ia].x, atoms[ia].y, atoms[ia].z, atoms[ia].w, tREQHs[it].x, tREQHs[it].y, tREQHs[it].z, tREQHs[it].w); }
-    }
+    // if( iG == iDBG ){
+    //     printf("GPU: OCL evalSampleDerivatives() iG %i i0,ni %3i,%3i j0,nj %3i,%3i ErefW %g %g\n", iG, i0,ni, j0,nj, ErefW[iS].x, ErefW[iS].y);
+    //     for(int i=0; i<ni; i++){ int ia=i0+i; int it=atypes[ia]; printf("GPU: atom i %3i it %3i pos %16.8f %16.8f %16.8f %16.8f  REQH %16.8f %16.8f %16.8f %16.8f \n", ia, it, atoms[ia].x, atoms[ia].y, atoms[ia].z, atoms[ia].w, tREQHs[it].x, tREQHs[it].y, tREQHs[it].z, tREQHs[it].w); }
+    //     for(int i=0; i<nj; i++){ int ia=j0+i; int it=atypes[ia]; printf("GPU: atom j %3i it %3i pos %16.8f %16.8f %16.8f %16.8f  REQH %16.8f %16.8f %16.8f %16.8f \n", ia, it, atoms[ia].x, atoms[ia].y, atoms[ia].z, atoms[ia].w, tREQHs[it].x, tREQHs[it].y, tREQHs[it].z, tREQHs[it].w); }
+    // }
     
     const int    ti    = atypes[iG];
     const float4 atomi = atoms [iG];
@@ -137,19 +137,13 @@ __kernel void evalSampleDerivatives(
 
                 Ei += ELJ + Eel;
 
-                
-
                 //if( iG == iDBG ){  printf("GPU: j %2i ELJ %16.8e Eel %16.8e r %16.8e    \n", jl, ELJ, Eel, r); }
-                if( iG == iDBG ){
-                    printf("GPU: iG %2i iS %2i iL %2i j %2i ELJ %16.8e Eel %16.8e r %16.8e  R0 %16.8e E0 %16.8e Q %16.8e H2 %16.8e     dE_dR0 %16.8e dE_dE0 %16.8e dE_dQ %16.8e dE_dH2 %16.8e \n", iG, iS, iL, jl, ELJ, Eel, r,  R0, E0, Q, H2, dE_dR0, dE_dE0, dE_dQ, dE_dH2);
-                }
+                //if( iG == iDBG ){  printf("GPU: iG %2i iS %2i iL %2i j %2i ELJ %16.8e Eel %16.8e r %16.8e  R0 %16.8e E0 %16.8e Q %16.8e H2 %16.8e     dE_dR0 %16.8e dE_dE0 %16.8e dE_dQ %16.8e dE_dH2 %16.8e \n", iG, iS, iL, jl, ELJ, Eel, r,  R0, E0, Q, H2, dE_dR0, dE_dE0, dE_dQ, dE_dH2);}
             }
         }
         barrier(CLK_LOCAL_MEM_FENCE);
     }
-    if( iG == iDBG ){
-        printf("GPU: iG %2i iS %2i iL %2i Ei %16.8e fREQi( %16.8e %16.8e %16.8e %16.8e )\n", iG, iS, iL, Ei, fREQi.x, fREQi.y, fREQi.z, fREQi.w);
-    }
+    //if( iG == iDBG ){ printf("GPU: iG %2i iS %2i iL %2i Ei %16.8e fREQi( %16.8e %16.8e %16.8e %16.8e )\n", iG, iS, iL, Ei, fREQi.x, fREQi.y, fREQi.z, fREQi.w);}
     barrier(CLK_LOCAL_MEM_FENCE); // all local threads must finish loop above so we reuse  LATOMS
 
     LATOMS[iL].x = Ei;
@@ -166,9 +160,7 @@ __kernel void evalSampleDerivatives(
 
     if (iL < ni) {
         //if( iG == iDBG ){  printf("GPU: fREQi %16.8e LdE %16.8e\n", fREQi, LdE); }
-        if( iG == iDBG ){
-            printf("GPU: iG %2i iS %2i iL %2i dE %16.8e fREQi( %16.8e %16.8e %16.8e %16.8e )\n", iG, iS, iL, LdE, fREQi.x, fREQi.y, fREQi.z, fREQi.w);
-        }
+        //if( iG == iDBG ){      printf("GPU: iG %2i iS %2i iL %2i dE %16.8e fREQi( %16.8e %16.8e %16.8e %16.8e )\n", iG, iS, iL, LdE, fREQi.x, fREQi.y, fREQi.z, fREQi.w); }
         dEdREQs[i0 + iL] = fREQi * LdE;
     }
 }
@@ -212,9 +204,7 @@ __kernel void evalSampleDerivatives_template(
     const int j0   = nsi.y;
     const int nj   = nsi.w;
 
-    if((iS==iDBG) && (iL==0)){ 
-        printf("GPU: evalSampleDerivatives_template() nG %7i nL %2i nS %6i | i0=%d ni=%d j0=%d nj=%d \n", get_global_size(0), get_local_size(0), get_num_groups(0), i0, ni, j0, nj);
-    }
+    //if((iS==iDBG) && (iL==0)){  printf("GPU: evalSampleDerivatives_template() nG %7i nL %2i nS %6i | i0=%d ni=%d j0=%d nj=%d \n", get_global_size(0), get_local_size(0), get_num_groups(0), i0, ni, j0, nj);}
 
     if( iG - i0 >= ni ) return;
 
@@ -296,14 +286,11 @@ __kernel void evalSampleDerivatives_template(
 
     if (iL < ni) {
         //if( iG == iDBG ){  printf("GPU: fREQi %16.8e LdE %16.8e\n", fREQi, LdE); }
-        if( iG == iDBG ){ printf("GPU: iG %2i iS %2i iL %2i dE %16.8e fREQi( %16.8e %16.8e %16.8e %16.8e )  cH %d HBOND_GATE %d\n", iG, iS, iL, LdE, fREQi.x, fREQi.y, fREQi.z, fREQi.w, cH, HBOND_GATE); }
+        //if( iG == iDBG ){ printf("GPU: iG %2i iS %2i iL %2i dE %16.8e fREQi( %16.8e %16.8e %16.8e %16.8e )  cH %d HBOND_GATE %d\n", iG, iS, iL, LdE, fREQi.x, fREQi.y, fREQi.z, fREQi.w, cH, HBOND_GATE); }
         //printf("GPU: iG %2i iS %2i iL %2i dE %16.8e fREQi( %16.8e %16.8e %16.8e %16.8e )\n", iG, iS, iL, LdE, fREQi.x, fREQi.y, fREQi.z, fREQi.w);
         dEdREQs[i0 + iL] = fREQi * LdE;
         // Debug: dump a few resulting dEdREQs entries for the debug sample
-        if( (iS==iDBG) && (iL < 4) ){
-            float4 v = dEdREQs[i0 + iL];
-            printf("GPU: iS %2i lane %2i write dEdREQs[%3d] = ( %16.8e %16.8e %16.8e %16.8e )\n", iS, iL, i0+iL, v.x, v.y, v.z, v.w);
-        }
+        //if( (iS==iDBG) && (iL < 4) ){float4 v = dEdREQs[i0 + iL]; printf("GPU: iS %2i lane %2i write dEdREQs[%3d] = ( %16.8e %16.8e %16.8e %16.8e )\n", iS, iL, i0+iL, v.x, v.y, v.z, v.w);}
     }
 }
 
@@ -362,8 +349,8 @@ __kernel void evalSampleEnergy_template(
     float alpha = globParams.x;
 
     // --- Debug: print config for a chosen sample and few lanes ---
-    if((iS==iDBG) && (iL==0)){ 
-         printf("GPU: evalSampleEnergy_template() nG %7i nL %2i nS %6i | i0=%d ni=%d j0=%d nj=%d | i=%d ti=%d\n", get_global_size(0), get_local_size(0), get_num_groups(0), i0, ni, j0, nj, i, ti); 
+    //if((iS==iDBG) && (iL==0)){ 
+    //     printf("GPU: evalSampleEnergy_template() nG %7i nL %2i nS %6i | i0=%d ni=%d j0=%d nj=%d | i=%d ti=%d\n", get_global_size(0), get_local_size(0), get_num_groups(0), i0, ni, j0, nj, i, ti); 
     //     for(int i=0; i<ni; i++){
     //         int ia=i0+i;
     //         int ti=atypes[ia];
@@ -386,7 +373,7 @@ __kernel void evalSampleEnergy_template(
     //         if( iep.y >= 0 ){ REQi.z -= tREQHs[iep.y].z; }
     //         printf("GPU: frag2 atom i %3i it %3i pos %16.8f %16.8f %16.8f %16.8f  REQH %16.8f %16.8f %16.8f %16.8f \n", ia, ti, atomi.x, atomi.y, atomi.z, atomi.w, REQi.x, REQi.y, REQi.z, REQi.w);
     //     }
-    }
+    //}
 
     for(int off=0; off<nj; off+=nL){
         const int local_j = off + iL;
@@ -507,17 +494,17 @@ __kernel void assembleAndRegularize(
     const int iL   = get_local_id(0);
     const int nL   = get_local_size(0);
 
-    if( (iDOF==iDBG) && (iL==0) ){ 
-        printf("GPU assembleAndRegularize().1 iDOF %2i / nDOFs %2i iL %2i nL %2i\n", iDOF, nDOFs, iL, nL); 
-        for(int i=0; i<nDOFs; i++){
-            printf("GPU assembleAndRegularize().2 DOFnis %2i %2i\n", DOFnis[i].x, DOFnis[i].y);
-            int nsi = DOFnis[i].y; if(nsi>5){ nsi=5; }
-            for(int jj=0; jj<nsi; jj++){
-                int j = DOFnis[i].x + jj;
-                printf("GPU assembleAndRegularize().3 DOF %2i j %2i DOFtoAtom %2i (%16.8f, %16.8f, %16.8f, %16.8f)\n", i,j, DOFtoAtom[j], DOFcofefs[j].x, DOFcofefs[j].y, DOFcofefs[j].z, DOFcofefs[j].w);
-            }
-        }
-    }
+    // if( (iDOF==iDBG) && (iL==0) ){ 
+    //     printf("GPU assembleAndRegularize().1 iDOF %2i / nDOFs %2i iL %2i nL %2i\n", iDOF, nDOFs, iL, nL); 
+    //     for(int i=0; i<nDOFs; i++){
+    //         printf("GPU assembleAndRegularize().2 DOFnis %2i %2i\n", DOFnis[i].x, DOFnis[i].y);
+    //         int nsi = DOFnis[i].y; if(nsi>5){ nsi=5; }
+    //         for(int jj=0; jj<nsi; jj++){
+    //             int j = DOFnis[i].x + jj;
+    //             printf("GPU assembleAndRegularize().3 DOF %2i j %2i DOFtoAtom %2i (%16.8f, %16.8f, %16.8f, %16.8f)\n", i,j, DOFtoAtom[j], DOFcofefs[j].x, DOFcofefs[j].y, DOFcofefs[j].z, DOFcofefs[j].w);
+    //         }
+    //     }
+    // }
 
     // --- Part 1: Assemble Physical Forces (same as before) ---
     const int2 nsi = DOFnis[iDOF];
@@ -526,7 +513,7 @@ __kernel void assembleAndRegularize(
         int j   = i + nsi.x;
         int ia  = DOFtoAtom[j];
         fl     += dot(DOFcofefs[j], dEdREQs[ia]);
-        if( (iDOF==iDBG) && (iL==0) ){ printf("GPU assembleAndRegularize().4 iDOF %2i iL %2i ia %2i fl %16.8f dEdREQs(%16.8f, %16.8f, %16.8f, %16.8f) DOFcofefs(%16.8f, %16.8f, %16.8f, %16.8f)\n", iDOF, iL, ia, fl, dEdREQs[ia].x,dEdREQs[ia].y,dEdREQs[ia].z,dEdREQs[ia].w, DOFcofefs[j].x, DOFcofefs[j].y, DOFcofefs[j].z, DOFcofefs[j].w); }
+        //if( (iDOF==iDBG) && (iL==0) ){ printf("GPU assembleAndRegularize().4 iDOF %2i iL %2i ia %2i fl %16.8f dEdREQs(%16.8f, %16.8f, %16.8f, %16.8f) DOFcofefs(%16.8f, %16.8f, %16.8f, %16.8f)\n", iDOF, iL, ia, fl, dEdREQs[ia].x,dEdREQs[ia].y,dEdREQs[ia].z,dEdREQs[ia].w, DOFcofefs[j].x, DOFcofefs[j].y, DOFcofefs[j].z, DOFcofefs[j].w); }
     }
     LfDOFi[iL] = fl;
     barrier(CLK_LOCAL_MEM_FENCE);
