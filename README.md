@@ -11,9 +11,44 @@ To achieve a favorable balance between speed and accuracy the code use combinati
 
 ![Schematic illustration of different aspects of on-surface chemistry simulations, and methods used for their efficient description.](Software_Schematic.png?raw=true "Schematic illustration of different aspects of on-surface chemistry simulations, and methods used for their efficient description.")
 
-# Structure of the package
+## Global Coding Rules
+See [Global Coding Rules](doc/Global_Coding_Rules.md). These baseline rules apply across all languages and take precedence over per-file or older style notes (e.g., in `AGENT.md`) if there's a conflict.
 
-FireCore consists of high-performance simulation modules written in Fortran, C/C++ & OpenCL integrated using a common Python3 interface. 
+# Project Structure and Organization
+
+FireCore is **NOT a single build target** but a repository of multiple interconnected subprojects, programs, and test scripts for computational chemistry and physics. The project consists of high-performance simulation modules written in Fortran, C/C++ & OpenCL integrated using a common Python3 interface.
+
+## Directory Structure Overview
+
+```
+FireCore/
+├── cpp/                    # Core C++ implementation (computational core)
+│   ├── common/            # Algorithms, data structures, math libraries
+│   ├── common_SDL/        # SDL-based GUI and visualization
+│   ├── apps/              # Interactive applications (SDL-based)
+│   ├── apps_OCL/          # OpenCL accelerated applications
+│   ├── apps_CUDA/         # CUDA accelerated applications
+│   ├── libs/              # Core libraries (Molecular mechanics, etc.)
+│   └── common_resources/  # Shared data (force field parameters, molecules)
+├── fortran/               # Fireball DFTB implementation (optional)
+├── fortran2/              # Reorganized Fortran code (work in progress)
+├── pyBall/                # Python interface to C++ and Fortran
+│   ├── OCL/              # Pure pyOpenCL implementations
+│   ├── DFT/              # DFT utilities and interfaces
+│   └── GUI/              # Python GUI components
+├── pyOCL/                 # Standalone pyOpenCL implementations
+├── tests/                 # Examples and test scripts (START HERE!)
+│   ├── Fireball/         # Fireball DFT tests
+│   ├── tMMFF*/           # Molecular mechanics tests
+│   ├── tMolGUIapp*/      # GUI application tests
+│   └── ...               # Many other test categories
+└── doc/                   # Documentation and development notes
+    ├── Markdown/         # Technical documentation
+    ├── DevNotes/         # Development notes and TODOs
+    └── py/               # Python sketches and demonstrations
+```
+
+**📁 For detailed information about each directory, see the README.md files in the respective subdirectories** and [Project Structure](doc/Project_Structure.md).
 
 ## 1. Quantum solution of electronic & geometric structure of molecules
 
@@ -93,7 +128,41 @@ Python provides API to both Fireball-DFT as well as classical forcefieds impleme
 * Set environement variable, e.g. `export PYTHONPATH=/home/prokop/git/FireCore/:PYTHONPATH`
 * Try classical forcefield library `MMFFsp3` go tp `FireCore/tests/tMMFF` and run `./run.sh`
 * Try Fireball-DFT in `FireCore/tests/FitFF` by running `./run.sh`
-    
+
+## Getting Started
+
+1. Explore functionality: browse `tests/` to see what's implemented
+2. Run examples: use `run.sh` scripts in test directories
+3. Check documentation: see `doc/` for technical details
+4. Follow the rules: use provided build scripts; avoid manual ad-hoc builds
+5. Test changes: write small tests and run them to verify correctness
+
+## Development Workflow
+
+- Prefer `tests/*/run.sh` to build and run; scripts handle recompilation, paths, and args
+- For Fortran (Fireball): run `make.sh` once, then use `tests/Fireball/*/run.sh`; ensure `Fdata_HC_minimal` is available
+- For Python: set `PYTHONPATH` to the repo root and run examples via `run.sh`
+
+Example:
+```bash
+# Molecular mechanics
+cd tests/tMMFF && ./run.sh
+
+# GUI application
+cd tests/tMolGUIapp && ./run.sh
+
+# Fireball DFT
+cd tests/Fireball/t02_CH4 && ./run.sh
+```
+
+## Key Integration Points
+
+- QM/MM: Fireball DFT + C++ classical force fields
+- GPU Acceleration: OpenCL/CUDA implementations of force fields
+- Python Bindings: Access to both C++ and Fortran components
+- Visualization: SDL-based interactive applications
+- Force Field Fitting: Tools to parameterize classical potentials against QM data
+
 # WARNING: FireCore is Work-in-progress stage of development
 
 This scientific software is still under active development and has not undergone comprehensive testing for bugs and stability. We have chosen to share it on GitHub in its current work-in-progress state to uphold the principles of transparency and open-source development, especially for software funded by public research organizations. However, it is not yet suitable for general use in scientific production without consulting the developers first.
