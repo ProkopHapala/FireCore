@@ -126,6 +126,7 @@ if __name__ == '__main__':
     p.add_argument('--regularize', type=int, default=1, help='1 to include regularization; 0 to disable (zero stiffness in regParams)')
     p.add_argument('--signal_eps', type=float, default=1e-12, help='Minimum |derivative| magnitude required for comparison to be considered valid')
     p.add_argument('--verbose', type=int, default=0)
+    p.add_argument('--use_type_charges', type=int, default=0, help='Runtime charge source: 0=per-atom atoms.w, 1=type-based tREQHs.z')
     args = p.parse_args()
 
     os.environ['PYOPENCL_COMPILER_OUTPUT'] = '1'
@@ -137,7 +138,7 @@ if __name__ == '__main__':
     forces_path = os.path.join(repo_root, 'cpp', 'common_resources', 'cl', 'Forces.cl')
 
     # Setup driver
-    fit = FittingDriver(verbose=args.verbose)
+    fit = FittingDriver(verbose=args.verbose, use_type_charges=bool(args.use_type_charges))
     fit.load_atom_types(atom_types_file)
     fit.load_data(os.path.join(this_dir, args.xyz) if not os.path.isabs(args.xyz) else args.xyz)
     fit.load_dofs(os.path.join(this_dir, args.dof) if not os.path.isabs(args.dof) else args.dof)

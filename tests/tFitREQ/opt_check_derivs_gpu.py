@@ -9,6 +9,10 @@ import time
 #sys.path.append("/home/niko/work/FIRECORE/FireCore/")
 #sys.path.append("/home/prokop/git/FireCore-fitREQH")
 
+# not line limit for numpy, not text wrap
+np.set_printoptions(linewidth=1000, threshold=np.inf)
+
+
 sys.path.append("../../")
 from pyBall import FitREQ as fit
 from pyBall.OCL.NonBondFitting import FittingDriver, extract_macro_block
@@ -16,7 +20,6 @@ from pyBall import atomicUtils as au
 
 fit.plt = plt
 
-np.set_printoptions(linewidth=200)
 
 ref_path = "/home/prokop/Desktop/CARBSIS/PEOPLE/Paolo/FitREQ/DFT_2D/"
 #name = "H2O-D1_H2O-A1"
@@ -38,6 +41,8 @@ bEpairs     = True
 bAddEpairs  = bEpairs
 bOutXYZ     = False
 verbosity   = 2    # Added to enable debug printing
+# Charge source for GPU kernels: False = per-atom charges (atoms.w), True = type-based charges (tREQHs[:,2])
+use_type_charges = True
 
 #bMorse = False   # Lenard-Jones
 bMorse = True   # Morse
@@ -179,14 +184,16 @@ fit.setup( imodel=imodel, Regularize=-1 )
 # GPU comparison section
 # =====================
 
-def setup_gpu_driver(xyz_file, dof_file, model_macro, hb_gate=1, regularize=False, verbose=0):
-    """Create and initialize the OpenCL fitting driver with a selected model macro."""
+def setup_gpu_driver(xyz_file, dof_file, model_macro, hb_gate=1, regularize=False, verbose=0, charge_from_type=False):
+    """Create and initialize the OpenCL fitting driver with a selected model macro.
+    charge_from_type selects runtime charge source (False=atoms.w, True=tREQHs[:,2]).
+    """
     this_dir   = os.path.dirname(os.path.abspath(__file__))
     repo_root  = os.path.abspath(os.path.join(this_dir, '..', '..'))
     atom_types_file = os.path.join(repo_root, 'cpp', 'common_resources', 'AtomTypes.dat')
     forces_path     = os.path.join(repo_root, 'cpp', 'common_resources', 'cl', 'Forces.cl')
 
-    fit_ocl = FittingDriver(verbose=verbose)
+    fit_ocl = FittingDriver(verbose=verbose, use_type_charges=bool(charge_from_type))
     fit_ocl.load_atom_types(atom_types_file)
     fit_ocl.load_data(xyz_file if os.path.isabs(xyz_file) else os.path.join(this_dir, xyz_file))
     fit_ocl.load_dofs(dof_file if os.path.isabs(dof_file) else os.path.join(this_dir, dof_file))
@@ -204,15 +211,60 @@ def setup_gpu_driver(xyz_file, dof_file, model_macro, hb_gate=1, regularize=Fals
 # TODO/DEBUG: Old GPU plotting helper kept for reference; superseded by unified plotting via fit.plotDOFscan_one(data=...)
 # def gpu_plotDOFscan_one(...): pass
 
-def gpu_scan_dof(fit_ocl, iDOF, xs):
+def gpu_scan_dof(fit_ocl, iDOF, xs, debug=False, print_every=0, dof_names=None):
     """Compute (Es, Fs) on GPU for a given DOF over grid xs without plotting.
     Returns a dict {'xs': xs, 'Es': Es, 'Fs': Fs} suitable for fit.plotDOFscan_one(data=...).
+
+    If debug=True, at selected steps prints:
+      - DOF value being scanned
+      - Expected tREQHs row for the affected atom type based on DOFs
+      - Actual tREQHs row read back from GPU buffer (after upload)
     """
     x0 = np.array([d['xstart'] for d in fit_ocl.dof_definitions], dtype=np.float32)
     Es = np.zeros_like(xs, dtype=np.float64)
     Fs = np.zeros_like(xs, dtype=np.float64)
+
+    # Identify affected atom type and component for this DOF (for debug prints)
+    dof_def = fit_ocl.dof_definitions[iDOF]
+    typename = dof_def.get('typename', None)
+    comp     = int(dof_def.get('comp', -1))
+    ti = fit_ocl.atom_type_map.get(typename, None) if (typename is not None) else None
+
+    ntypes = fit_ocl.tREQHs_base.shape[0] if hasattr(fit_ocl, 'tREQHs_base') else None
+
+    def should_print(j):
+        if not debug:  return False
+        if print_every and (j % int(print_every) == 0):  return True
+        return (j == 0) or (j == len(xs)//2) or (j == len(xs)-1)
+
     for j, x in enumerate(xs):
         xv = x0.copy(); xv[iDOF] = float(x)
+
+        # Explicitly upload DOFs and refreshed tREQHs prior to kernel call (for diagnostics)
+        print( "---gpu_scan_dof( iDOF={iDOF}, dof_name={dof_names[iDOF]}, x={x:.6g}) j={j}) " )
+        print( "xv", xv )
+        try:
+            fit_ocl.toGPU_(fit_ocl.DOFs_buff, xv.astype(np.float32))
+        except Exception:
+            pass  # DOFs_buff may be set by getErrorDerivs() path only
+        T_expected = fit_ocl.update_tREQHs_from_dofs(xv.astype(np.float32))
+        # Force single-line print of the full matrix (avoid NumPy row newlines)
+        arr = np.asarray(T_expected, dtype=float)
+        s = np.array2string(arr, max_line_width=10**9, threshold=arr.size, separator=' ')
+        print(" T_expected", s.replace('\n', ' '))
+        fit_ocl.toGPU_(fit_ocl.tREQHs_buff, T_expected)
+
+        # Optionally verify GPU-side buffer matches expectation for the affected type
+        if should_print(j):
+            if (ti is not None) and (ntypes is not None) and (0 <= ti < ntypes):
+                T_gpu = fit_ocl.fromGPU_(fit_ocl.tREQHs_buff, shape=fit_ocl.tREQHs_base.shape, dtype='f4')
+                print(f"[GPU-SCAN] iDOF={iDOF} name={typename}.{comp}  x={x:.6g}")
+                print("  tREQHs_expected[ti] =", T_expected[ti].astype(float))
+                print("  tREQHs_on_gpu [ti] =", T_gpu[ti].astype(float))
+            else:
+                print(f"[GPU-SCAN] iDOF={iDOF} x={x:.6g} (no type mapping available for debug)")
+
+        # Now run the regular path (also uploads internally) and record energy/force
         J, g = fit_ocl.getErrorDerivs(xv)
         Es[j] = J
         Fs[j] = g[iDOF]
@@ -223,7 +275,15 @@ this_dir = os.path.dirname(os.path.abspath(__file__))
 xyz_abs = fname if os.path.isabs(fname) else os.path.join(this_dir, fname)
 dof_abs = dof_fname if os.path.isabs(dof_fname) else os.path.join(this_dir, dof_fname)
 model_macro = 'MODEL_MorseQ_PAIR' if bMorse else 'MODEL_LJQH2_PAIR'
-fit_ocl = setup_gpu_driver(xyz_abs, dof_abs, model_macro=model_macro, hb_gate=1, regularize=False, verbose=0)
+fit_ocl = setup_gpu_driver(
+    xyz_abs,
+    dof_abs,
+    model_macro=model_macro,
+    hb_gate=1,
+    regularize=False,
+    verbose=0,
+    charge_from_type=bool(use_type_charges)
+)
 
 ############################################
 # Precompute scans: first CPU for all DOFs #
@@ -236,7 +296,7 @@ def cpu_scan_dof(iDOF, xs, bEvalSamples=True):
     return {'xs': xs, 'Es': Es, 'Fs': Fs}
 
 fit.setVerbosity(0)
-npts = 100
+npts = 50
 scans_cpu = {}
 for i in iDOFs_:
     fit.loadDOFSelection(dof_fname)
@@ -252,7 +312,8 @@ for i in iDOFs_:
 scans_gpu = {}
 for i in iDOFs_:
     xs = scans_cpu[i]['xs']
-    scans_gpu[i] = gpu_scan_dof(fit_ocl, iDOF=i, xs=xs)
+    pe = max(1, len(xs)//2)  # print first/mid/last
+    scans_gpu[i] = gpu_scan_dof(fit_ocl, iDOF=i, xs=xs, debug=True, print_every=pe, dof_names=dof_names )
 
 ########################
 # Plot overlays per DOF #
@@ -262,11 +323,13 @@ for i in iDOFs_:
     fig = plt.figure(figsize=(8,10.0))
     axE = plt.subplot(2,1,1)
     axF = plt.subplot(2,1,2)
+    print("-- DOF", i, dof_names[i])
     fit.plotDOFscan_one(i, DOFname=f"{dof_names[i]} [CPU]", bEs=True, bFs=True, verb=1, axE=axE, axF=axF, color='C0', data=scans_cpu[i])
     fit.plotDOFscan_one(i, DOFname=f"{dof_names[i]} [GPU]", bEs=True, bFs=True, verb=1, axE=axE, axF=axF, color='C1', data=scans_gpu[i])
     axE.legend(); axE.set_xlabel("DOF value"); axE.set_ylabel("E [kcal/mol]");   axE.grid( alpha=0.2)
     axF.legend(); axF.set_xlabel("DOF value"); axF.set_ylabel("F [kcal/mol/A]"); axF.grid( alpha=0.2)
     plt.suptitle(f"DOF scan: {dof_names[i]}")
+    
 
 plt.show()
 

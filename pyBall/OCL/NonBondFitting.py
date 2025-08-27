@@ -29,7 +29,7 @@ class FittingDriver(OpenCLBase):
     #     self.dof_definitions = []
     #     self.tREQHs_base = None
 
-    def __init__(self, nloc=32, perBatch=10, verbose=0):
+    def __init__(self, nloc=32, perBatch=10, verbose=0, use_type_charges=False):
         # Initialize the base class
         super().__init__(nloc=nloc, device_index=0)
         
@@ -44,6 +44,8 @@ class FittingDriver(OpenCLBase):
         self.dof_definitions = []
         self.tREQHs_base = None  
         self.verbose = int(verbose)
+        # Runtime charge source switch: 0=use per-atom atoms.w, 1=use type-based REQH.z
+        self.use_type_charges = int(bool(use_type_charges))
         # Regularization control
         self.regularize_enabled = True
         self.host_regParams_base = None
@@ -570,7 +572,8 @@ class FittingDriver(OpenCLBase):
             self.try_make_buffers({"Jmols": self.n_samples*4})
         self.eval_kern.set_args(
             self.ranges_buff, self.tREQHs_buff, self.atypes_buff, self.ieps_buff,
-            self.atoms_buff, self.dEdREQs_buff, self.ErefW_buff, self.Jmols_buff, globParams
+            self.atoms_buff, self.dEdREQs_buff, self.ErefW_buff, self.Jmols_buff,
+            np.int32(self.use_type_charges), globParams
         )
 
         # Assembly + regularization kernel
@@ -617,7 +620,8 @@ class FittingDriver(OpenCLBase):
             self.try_make_buffers({"Jmols": self.n_samples*4})
         self.eval_kern.set_args(
             rng_buf, self.tREQHs_buff, self.atypes_buff, self.ieps_buff,
-            self.atoms_buff, self.dEdREQs_buff, self.ErefW_buff, self.Jmols_buff, globParams
+            self.atoms_buff, self.dEdREQs_buff, self.ErefW_buff, self.Jmols_buff,
+            np.int32(self.use_type_charges), globParams
         )
 
     def compile_with_model(self, macros=None, output_path=None, bPrint=False):
@@ -759,8 +763,20 @@ class FittingDriver(OpenCLBase):
             self.try_make_buffers({"Emols": self.n_samples*4})
         self.energy_kern.set_args(
             self.ranges_buff, self.tREQHs_buff, self.atypes_buff, self.ieps_buff,
-            self.atoms_buff, self.Emols_buff, globParams
+            self.atoms_buff, self.Emols_buff,
+            np.int32(self.use_type_charges), globParams
         )
+
+    def set_charge_source(self, use_type_charges=False):
+        """Set runtime charge source switch and rebind kernel args next time they're set.
+        This affects both derivative and energy templated kernels.
+        """
+        self.use_type_charges = int(bool(use_type_charges))
+        # If kernels already exist, rebind with updated arg
+        if hasattr(self, 'eval_kern') and hasattr(self, 'ranges_buff'):
+            self._set_eval_ranges(self.ranges_buff)
+        if hasattr(self, 'energy_kern') and hasattr(self, 'ranges_buff'):
+            self.set_energy_kernel_args()
 
     def evaluate_energies(self, workgroup_size=32):
         """Run energy kernel and return per-sample energies as np.float32 array."""

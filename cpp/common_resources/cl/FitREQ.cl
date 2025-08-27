@@ -18,6 +18,19 @@
 #define S_H(Hval)          (1.f)
 #endif
 
+//<<<CHARGE_SOURCE_DEFINE
+// Runtime charge-source switch: useTypeQ kernel arg selects between atom.w and type.z
+// Old compile-time option kept for reference (disabled):
+// #ifndef USE_CHARGE_FROM_TYPE
+// #define USE_CHARGE_FROM_TYPE 0
+// #endif
+// #if USE_CHARGE_FROM_TYPE
+// #define ASSIGN_Q_FROM_SOURCE(REQ, atom, REQtype) (REQ).z = (REQtype).z
+// #else
+// #define ASSIGN_Q_FROM_SOURCE(REQ, atom, REQtype) (REQ).z = (atom).w
+// #endif
+#define ASSIGN_Q_FROM_SOURCE(REQ, atom, REQtype, useTypeQ) (REQ).z = ((useTypeQ) ? (REQtype).z : (atom).w)
+
 __attribute__((reqd_work_group_size(32,1,1)))
 __kernel void evalSampleDerivatives(
     //const int4 ns,                  
@@ -28,7 +41,8 @@ __kernel void evalSampleDerivatives(
     __global int2*    ieps,      // 4: [natomTot] {iep1,iep2} index of electron pair type ( used to subtract  charge)
     __global float4*  atoms,     // 5: [natomTot] positions and REPS charge of each atom (x,y,z,Q) 
     __global float4*  dEdREQs,   // 6: [natomTot] output derivatives of type REQH parameters
-    __global float2*  ErefW      // 7: [nsamp]   {E,W} reference energies and weights for each sample (molecule,system)
+    __global float2*  ErefW,     // 7: [nsamp]   {E,W} reference energies and weights for each sample (molecule,system)
+    int useTypeQ                 // 8: runtime switch: 0=per-atom atoms.w, 1=type-based REQH.z
 ){
     __local float4 LATOMS[32];   // local buffer for atom positions
     __local float4 LREQKS[32];   // local buffer for REQ parameters
@@ -57,7 +71,7 @@ __kernel void evalSampleDerivatives(
     const int    ti    = atypes[iG];
     const float4 atomi = atoms [iG];
           float4 REQi  = tREQHs[ti];
-    REQi.z = atomi.w;
+    ASSIGN_Q_FROM_SOURCE(REQi, atomi, REQi, useTypeQ);
     const int2   iep   = ieps  [iG];
     if( iep.x >= 0 ){ REQi.z -= tREQHs[iep.x].z; } // subtract charge of electron pair 1
     if( iep.y >= 0 ){ REQi.z -= tREQHs[iep.y].z; } // subtract charge of electron pair 2
@@ -73,7 +87,7 @@ __kernel void evalSampleDerivatives(
             const int    tj    = atypes[jj];
             const float4 atomj = atoms [jj];
                   float4 REQj  = tREQHs[tj];
-            REQj.z = atomj.w;
+            ASSIGN_Q_FROM_SOURCE(REQj, atomj, REQj, useTypeQ);
             const int2   jep  = ieps[jj];
             if( jep.x >= 0 ){ REQj.z -= tREQHs[jep.x].z; } // subtract charge of electron pair 1
             if( jep.y >= 0 ){ REQj.z -= tREQHs[jep.y].z; } // subtract charge of electron pair 2
@@ -186,6 +200,7 @@ __kernel void evalSampleDerivatives_template(
     __global float4*  dEdREQs, // 6: [nAtomTot] output derivatives of type REQH parameters
     __global float2*  ErefW,   // 7: [nsamp] {E,W} reference energies and weights for each sample (molecule,system)
     __global float*   Jmols,   // [nSamples] per-sample objective contributions: 0.5*(Emol - Eref)*LdE
+    int      useTypeQ,         // runtime switch: 0=per-atom atoms.w, 1=type-based REQH.z
     float4   globParams        // {alpha,?,?,?} global parameters (min,max, xlo,xhi, Klo,Khi, K0,x0)
 ){
     __local float4 LATOMS[32];
@@ -204,14 +219,18 @@ __kernel void evalSampleDerivatives_template(
     const int j0   = nsi.y;
     const int nj   = nsi.w;
 
-    //if((iS==iDBG) && (iL==0)){  printf("GPU: evalSampleDerivatives_template() nG %7i nL %2i nS %6i | i0=%d ni=%d j0=%d nj=%d \n", get_global_size(0), get_local_size(0), get_num_groups(0), i0, ni, j0, nj);}
+    if((iS==iDBG) && (iL==0)){  
+        printf("GPU: evalSampleDerivatives_template() nG %7i nL %2i nS %6i | i0=%d ni=%d j0=%d nj=%d \n", get_global_size(0), get_local_size(0), get_num_groups(0), i0, ni, j0, nj);
+        for(int i=0; i<ni; i++){ int ia=i0+i; int it=atypes[ia]; printf("GPU: atom i %3i it %3i pos %16.8f %16.8f %16.8f %16.8f  REQH %16.8f %16.8f %16.8f %16.8f \n", ia, it, atoms[ia].x, atoms[ia].y, atoms[ia].z, atoms[ia].w, tREQHs[it].x, tREQHs[it].y, tREQHs[it].z, tREQHs[it].w); }
+        for(int i=0; i<nj; i++){ int ia=j0+i; int it=atypes[ia]; printf("GPU: atom j %3i it %3i pos %16.8f %16.8f %16.8f %16.8f  REQH %16.8f %16.8f %16.8f %16.8f \n", ia, it, atoms[ia].x, atoms[ia].y, atoms[ia].z, atoms[ia].w, tREQHs[it].x, tREQHs[it].y, tREQHs[it].z, tREQHs[it].w); }
+    }
 
     if( iG - i0 >= ni ) return;
 
     const int    ti    = atypes[iG];
     const float4 atomi = atoms [iG];
           float4 REQi  = tREQHs[ti];
-    REQi.z = atomi.w;
+    ASSIGN_Q_FROM_SOURCE(REQi, atomi, REQi, useTypeQ);
     const int2   iep   = ieps  [iG];
     if( iep.x >= 0 ){ REQi.z -= tREQHs[iep.x].z; }
     if( iep.y >= 0 ){ REQi.z -= tREQHs[iep.y].z; }
@@ -227,7 +246,7 @@ __kernel void evalSampleDerivatives_template(
             const int    tj    = atypes[jj];
             const float4 atomj = atoms [jj];
                   float4 REQj  = tREQHs[tj];
-            REQj.z = atomj.w;
+            ASSIGN_Q_FROM_SOURCE(REQj, atomj, REQj, useTypeQ);
             const int2   jep  = ieps[jj];
             if( jep.x >= 0 ){ REQj.z -= tREQHs[jep.x].z; }
             if( jep.y >= 0 ){ REQj.z -= tREQHs[jep.y].z; }
@@ -277,10 +296,11 @@ __kernel void evalSampleDerivatives_template(
         float Emol = 0.0f;
         for(int i=0; i<ni; i++){ Emol += LATOMS[i].x; }
         float2 EW = ErefW[iS];
-        float d    = (Emol - EW.x);
-        LdE        = d * EW.y;                // W*(Emol - Eref)
-        float Jmol = 0.5f * d * LdE;          // 0.5 * W * (Emol - Eref)^2
+        float dE  = (Emol - EW.x);
+        LdE        = dE * EW.y;                // W*(Emol - Eref)
+        float Jmol = 0.5f * dE * LdE;          // 0.5 * W * (Emol - Eref)^2
         Jmols[iS]  = Jmol;
+        if( (iS==iDBG) ){ printf("GPU: iS %2i Emol %16.8e Eref %16.8e dE %16.8e LdE %16.8e Jmol %16.8e\n", iS, Emol, EW.x, dE, LdE, Jmol);}
     }
     barrier(CLK_LOCAL_MEM_FENCE);
 
@@ -311,6 +331,7 @@ __kernel void evalSampleEnergy_template(
     __global int2*    ieps,      // [nAtomTot]
     __global float4*  atoms,     // [nAtomTot]
     __global float*   Emols,      // [nSamples] output molecular energies
+    int      useTypeQ,           // runtime switch: 0=per-atom atoms.w, 1=type-based REQH.z
     float4   globParams  // {alpha,?,?,?} global parameters (min,max, xlo,xhi, Klo,Khi, K0,x0)
 ){
     __local float4 LATOMS[32];
@@ -338,7 +359,7 @@ __kernel void evalSampleEnergy_template(
         ti    = atypes[i];
         atomi = atoms [i];
         REQi  = tREQHs[ti];
-        REQi.z = atomi.w;
+        ASSIGN_Q_FROM_SOURCE(REQi, atomi, REQi, useTypeQ);
         const int2   iep   = ieps  [i];
         if( iep.x >= 0 ){ REQi.z -= tREQHs[iep.x].z; }
         if( iep.y >= 0 ){ REQi.z -= tREQHs[iep.y].z; }
@@ -382,7 +403,7 @@ __kernel void evalSampleEnergy_template(
             const int    tj    = atypes[jj];
             const float4 atomj = atoms [jj];
                   float4 REQj  = tREQHs[tj];
-            REQj.z = atomj.w;
+            ASSIGN_Q_FROM_SOURCE(REQj, atomj, REQj, useTypeQ);
             const int2   jep  = ieps[jj];
             if( jep.x >= 0 ){ REQj.z -= tREQHs[jep.x].z; }
             if( jep.y >= 0 ){ REQj.z -= tREQHs[jep.y].z; }

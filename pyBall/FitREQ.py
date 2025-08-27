@@ -745,7 +745,8 @@ def plotDOFscan_one(iDOF, xs=None, DOFname=None, bEs=True, bFs=False, bEvalSampl
             Ferrmax = (np.min(Ferr), np.max(Ferr)) if Ferr is not None else (None, None)
             relFerrmax = np.max(np.abs(Ferr)/(np.max(Fs)+1e-8))
             nm = DOFname if DOFname else f"{iDOF}"
-            print(f"plotDOFscan_one(iDOF={iDOF} : {nm})  relFerrmax: {relFerrmax}  (F_ana-F_num)[min,max]: {Ferrmax}  |  E[min,max]: {Eminmax} F_ana[min,max]: {Fminmax} F_num[min,max]: {Fnumminmax}  ")
+            fmt="+8.2e"
+            print(f"plotDOFscan_one(iDOF={iDOF} : {nm})  relFerrmax: {relFerrmax:{fmt}}  (F_ana-F_num)[min,max]: {Ferrmax[0]:{fmt}}, {Ferrmax[1]:{fmt}}  |  E[min,max]: {Eminmax[0]:{fmt}}, {Eminmax[1]:{fmt}} F_ana[min,max]: {Fminmax[0]:{fmt}}, {Fminmax[1]:{fmt}} F_num[min,max]: {Fnumminmax[0]:{fmt}}, {Fnumminmax[1]:{fmt}}  ")
     if make_fig:
         axE.legend(); axE.set_xlabel("DOF value"); axE.set_ylabel("E [kcal/mol]");   axE.grid( alpha=0.2)
         axF.legend(); axF.set_xlabel("DOF value"); axF.set_ylabel("F [kcal/mol/A]"); axF.grid( alpha=0.2)
