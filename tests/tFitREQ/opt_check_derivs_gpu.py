@@ -20,169 +20,39 @@ from pyBall import atomicUtils as au
 
 fit.plt = plt
 
-
-ref_path = "/home/prokop/Desktop/CARBSIS/PEOPLE/Paolo/FitREQ/DFT_2D/"
-#name = "H2O-D1_H2O-A1"
-#name = "H2O-D1_H2O-A1"
-name = "HCOOH-D1_HCOOH-A1"
-
-# ============== Setup
-imodel      = 1    
-isampmode   = 2    
-ialg        = 2         
-#nstep       = 10
-nstep       = 1
-dt          = 0.01
-ErrMax      = 1e-8
-bRegularize = True
-bClamp      = False
-max_step    = 0.01
-bEpairs     = True
-bAddEpairs  = bEpairs
-bOutXYZ     = False
-verbosity   = 2    # Added to enable debug printing
-# Charge source for GPU kernels: False = per-atom charges (atoms.w), True = type-based charges (tREQHs[:,2])
-use_type_charges = True
-
-#bMorse = False   # Lenard-Jones
-bMorse = True   # Morse
-
-# ============== Setup
-
-#ref_path = "/home/prokop/Desktop/CARBSIS/PEOPLE/Paolo/FitREQ/DFT_2D/"
-
-#ref_dirs = fit.find_all_dirs( ref_path ); #print(ref_dirs)
-#frags1, frags2 = fit.extract_fragment_names( base_path=ref_path ); print( "donors:\n", frags1, "\nacceptors:\n", frags2 )
-
-#donors    = ['C4H3NO2-D1', 'C4H5N-D1', 'CH2NH-D1',            'H2O-D1', 'HCONH2-D1', 'HCOOH-D1',             'NH3-D1'] 
-#acceptors = ['C4H3NO2-A1', 'C5H5N-A1', 'CH2NH-A1', 'CH2O-A1', 'H2O-A1', 'HCONH2-A1', 'HCOOH-A1', 'HCOOH-A2', 'NH3-A1']
-
-donors    = [
-# 'C4H3NO2-D1', 
-# 'C4H5N-D1', 
-# 'CH2NH-D1',            
-'H2O-D1', 
-# 'HCONH2-D1', 
-# 'HCOOH-D1',             
-# 'NH3-D1'
-] 
-acceptors = [
-# 'C4H3NO2-A1', 
-# 'C5H5N-A1', 
-# 'CH2NH-A1', 
-#'CH2O-A1', 
-'H2O-A1', 
-# 'HCONH2-A1', 
-# 'HCOOH-A1', 
-# 'HCOOH-A2', 
-#'NH3-A1', 
-]
-ref_dirs = fit.combine_fragments( donors, acceptors )  ;print( "ref_dirs:\n", ref_dirs )
-marks    = fit.concatenate_xyz_files( directories=ref_dirs, base_path=ref_path, fname='all.xyz', output_file='all.xyz' )
-
-#fname = "input_single.xyz"
-#fname = ref_path +"/"+ name + "/all.xyz"
-#fname = ref_path +"/"+ "/concatenated_all.xyz"
-#fname = 'all.xyz'
-#fname = "input_2CH2NH.xyz"
-#fname="H2O_1D.xyz"
-fname="H2O_single.xyz"
-#fname="just_Epair_2x2.xyz"
-#fname="just_Epair_1x1_ee.xyz"
-#fname="just_Epair_1x1_eh.xyz"
-
-# comments          = fit.read_file_comments(fname) #;print( "comments:\n", comments )
-type_names,comments = fit.extract_comments_and_types(fname)
-marks, angle_data   = fit.mark_molecule_blocks( comments )
-# print( "marks:\n", marks )
-# print( "angle_data:\n", angle_data )
-
-# Erefs, x0s = fit.read_xyz_data(fname)  #;print( "x0s:\n", x0s )
-# Eplots = fit.slice_and_reshape(Erefs, marks, angle_data)
-
-# fit.plot_Epanels(Eplots, ref_dirs, bColorbar=True)
-# plt.show()
-# exit()
-
-
-# ------ load stuff
-#fit.setVerbosity(1)
-fit.setVerbosity(verbosity, PrintDOFs=1, PrintfDOFs=1, PrintBeforReg=-1, PrintAfterReg=-1 )
-#fit.setVerbosity(verbosity, PrintDOFs=1, PrintfDOFs=1, PrintBeforReg=-1, PrintAfterReg=1 )
-fit.loadTypes( )     # load atom types
-
-dof_fname = "dofSelection.dat"
-if bMorse:
-    #dof_fname="dofSelection_Morse.dat"
-    dof_fname = "dofSelection_H2O_Morse.dat" 
-else:
-    #dof_fname="dofSelection_LJ.dat" 
-    #dof_fname="dofSelection_H2O_LJ.dat" 
-    dof_fname="dofSelection_H2O_LJSR.dat" 
-fit.loadDOFSelection( dof_fname)
-dof_names, dof_specs = fit.loadDOFnames( dof_fname, return_specs=True )
-
-nbatch = fit.loadXYZ( fname, bAddEpairs, bOutXYZ )     # load reference geometry
-#nbatch = fit.loadXYZ( fname, bAddEpairs=False, bOutXYZ=bOutXYZ )     # load reference geometry
-
-Erefs, x0s = fit.read_xyz_data(fname)  #;print( "x0s:\n", x0s )
-#weights = split_and_weight_curves(Erefs, x0s, n_before_min=4)
-
-EminPlot = np.min(Erefs)*fit.ev2kcal
-EminRef = np.min(Erefs)
-#EminPlot = -0.5
-
-weights0 = np.ones( len(Erefs) )*0.5
-
-fit.setGlobalParams( kMorse=1.8, Lepairs=0.7 )
-if bMorse:
-    imodel = 2
-    weights0, lens = fit.split_and_weight_curves( Erefs, x0s, n_before_min=100, weight_func=lambda E: fit.exp_weight_func(E,a=1.0, alpha=4.0) )
-else:
-    #imodel = 1
-    imodel = 3
-    weights0, lens = fit.split_and_weight_curves( Erefs, x0s, n_before_min=2, weight_func=lambda E: fit.exp_weight_func(E,a=1.0, alpha=4.0) )
-#fit.setup( imodel=imodel, EvalJ=1, WriteJ=1, Regularize=1 )
-fit.setup( imodel=imodel, EvalJ=1, WriteJ=1, Regularize=-1 )
-# plotEWs( Erefs=Erefs, weights0=weights0, Emin=-1.5 ); plt.title( "Weighting" )
-# plt.show(); exit()
-
-fit.setWeights( weights0 )
-fit.getBuffs()
-
-
-#fit.setFilter( EmodelCutStart=0.0, EmodelCut=0.5, iWeightModel=2, PrintOverRepulsive=1, DiscardOverRepulsive=1, SaveOverRepulsive=-1, ListOverRepulsive=1 )
-#fit.setFilter( EmodelCutStart=0.0, EmodelCut=0.5, iWeightModel=2, PrintOverRepulsive=-1, DiscardOverRepulsive=1, SaveOverRepulsive=1, ListOverRepulsive=-1 )
-fit.setFilter( EmodelCutStart=0.0, EmodelCut=0.5, PrintOverRepulsive=-1, DiscardOverRepulsive=-1, SaveOverRepulsive=-1, ListOverRepulsive=-1 )
-#fit.setFilter( EmodelCutStart=0.0, EmodelCut=0.5, iWeightModel=2, PrintOverRepulsive=-1, DiscardOverRepulsive=1, SaveOverRepulsive=1, ListOverRepulsive=-1 )
-#fit.setFilter( EmodelCutStart=0.0, EmodelCut=0.5, PrintOverRepulsive=-1, DiscardOverRepulsive=-1, SaveOverRepulsive=-1, ListOverRepulsive=-1 )
-
-#E,Es,Fs = fit.getEs( bOmp=False, bDOFtoTypes=False, bEs=True, bFs=False, xyz_name="all_out_debug.xyz" )
-#fit.plotEWs( Erefs=Erefs, Emodel=Es, weights=fit.weights, weights0=weights0,  Emin=EminPlot ); plt.title( "BEFORE OPTIMIZATION" )
-#plt.show(); #exit()
-
-#exclude = set(["E_O3.Q", "E_HO.Q", "E_O3.H", "E_HO.H", "O_3.H", "H_O.H"])
-#exclude = set(["E_O3.R", "E_HO.R", "O_3.H", "H_O.H"])
-#exclude = set(["E_O3.R", "E_HO.R" ])
-exclude = set([])
-iDOFs = list(range(len(dof_names)))
-dof_names_ = [ dof_names[i] for i in iDOFs if dof_names[i] not in exclude ]
-iDOFs_     = [ iDOFs[i]     for i in iDOFs if dof_names[i] not in exclude ]
-print( "dof_fnames  ", dof_names )
-print( "dof_fnames_ ", dof_names_ )
-print( "iDOFs_      ", iDOFs_ )
-#exit()
-
-# ------ Plot 1D parameter scans
-print( "len(dof_names)", len(dof_names), dof_names )
-fit.setup( imodel=imodel, Regularize=-1 )
-#fit.plotDOFscans( list(range(len(dof_names))), np.linspace( -1.0+1e-6,  1.0-1e-6,  100 ), dof_names, title="DOF scan 1D" , bFs=True , bEvalSamples=True  )
-# ---- plot on common range
-#fit.checkDOFderiv( 1, x0=0.5, d=0.001, bEvalSamples=True )
-
 # =====================
-# GPU comparison section
+#      Functions
 # =====================
+
+def setup_cpu_fit(xyz_file, dof_file, morse=1, verbosity=1):
+    """Initialize CPU-side FitREQ, load data, set weights, and return essentials."""
+    fit.setVerbosity(verbosity, PrintDOFs=1, PrintfDOFs=1, PrintBeforReg=-1, PrintAfterReg=-1)
+    fit.loadTypes()
+    fit.loadDOFSelection(dof_file)
+    dof_names, dof_specs = fit.loadDOFnames(dof_file, return_specs=True)
+    nbatch = fit.loadXYZ(xyz_file, bAddEpairs=True, bOutXYZ=False)
+    Erefs, x0s = fit.read_xyz_data(xyz_file)
+    fit.setGlobalParams(kMorse=1.8, Lepairs=0.7)
+    if morse:
+        imodel = 2
+        weights0, lens = fit.split_and_weight_curves(Erefs, x0s, n_before_min=100, weight_func=lambda E: fit.exp_weight_func(E, a=1.0, alpha=4.0))
+    else:
+        imodel = 3
+        weights0, lens = fit.split_and_weight_curves(Erefs, x0s, n_before_min=2, weight_func=lambda E: fit.exp_weight_func(E, a=1.0, alpha=4.0))
+    fit.setup(imodel=imodel, EvalJ=1, WriteJ=1, Regularize=-1)
+    fit.setWeights(weights0)
+    fit.getBuffs()
+    fit.setFilter(EmodelCutStart=0.0, EmodelCut=0.5, PrintOverRepulsive=-1, DiscardOverRepulsive=-1, SaveOverRepulsive=-1, ListOverRepulsive=-1)
+    # All DOFs by default
+    exclude = set([])
+    iDOFs = list(range(len(dof_names)))
+    iDOFs_ = [i for i in iDOFs if dof_names[i] not in exclude]
+    return {
+        'imodel': imodel,
+        'dof_names': dof_names,
+        'dof_specs': dof_specs,
+        'iDOFs': iDOFs_,
+    }
 
 def setup_gpu_driver(xyz_file, dof_file, model_macro, hb_gate=1, regularize=False, verbose=0, charge_from_type=False):
     """Create and initialize the OpenCL fitting driver with a selected model macro.
@@ -208,145 +78,90 @@ def setup_gpu_driver(xyz_file, dof_file, model_macro, hb_gate=1, regularize=Fals
     fit_ocl.set_regularization_enabled(enabled=bool(regularize))
     return fit_ocl
 
-# TODO/DEBUG: Old GPU plotting helper kept for reference; superseded by unified plotting via fit.plotDOFscan_one(data=...)
-# def gpu_plotDOFscan_one(...): pass
+def build_xs_for_dof(i, dof_specs, npts):
+    dspec = dof_specs[i]
+    xmin = dspec['min'] if dspec['min'] is not None else 0.0
+    xmax = dspec['max'] if dspec['max'] is not None else 1.0
+    return np.linspace(xmin+1e-6, xmax-1e-6, npts)
 
-def gpu_scan_dof(fit_ocl, iDOF, xs, debug=False, print_every=0, dof_names=None):
-    """Compute (Es, Fs) on GPU for a given DOF over grid xs without plotting.
-    Returns a dict {'xs': xs, 'Es': Es, 'Fs': Fs} suitable for fit.plotDOFscan_one(data=...).
-
-    If debug=True, at selected steps prints:
-      - DOF value being scanned
-      - Expected tREQHs row for the affected atom type based on DOFs
-      - Actual tREQHs row read back from GPU buffer (after upload)
+def scan_dof(backend, iDOF, xs, dof_names=None, fit_ocl=None, debug=False, print_every=0):
+    """Unified DOF scan for both CPU and GPU backends.
+    Returns {'xs','Es','Fs'}.
     """
-    x0 = np.array([d['xstart'] for d in fit_ocl.dof_definitions], dtype=np.float32)
     Es = np.zeros_like(xs, dtype=np.float64)
     Fs = np.zeros_like(xs, dtype=np.float64)
-
-    # Identify affected atom type and component for this DOF (for debug prints)
-    dof_def = fit_ocl.dof_definitions[iDOF]
-    typename = dof_def.get('typename', None)
-    comp     = int(dof_def.get('comp', -1))
-    ti = fit_ocl.atom_type_map.get(typename, None) if (typename is not None) else None
-
-    ntypes = fit_ocl.tREQHs_base.shape[0] if hasattr(fit_ocl, 'tREQHs_base') else None
-
-    def should_print(j):
-        if not debug:  return False
-        if print_every and (j % int(print_every) == 0):  return True
-        return (j == 0) or (j == len(xs)//2) or (j == len(xs)-1)
-
+    if backend == 'cpu':
+        y_backup = fit.DOFs[iDOF]
+        Es[:], Fs[:] = fit.scanParam(iDOF, xs, bEvalSamples=True)
+        fit.DOFs[iDOF] = y_backup
+        return {'xs': xs, 'Es': Es, 'Fs': Fs}
+    # GPU path
+    assert fit_ocl is not None, 'fit_ocl is required for GPU backend'
+    x0 = np.array([d['xstart'] for d in fit_ocl.dof_definitions], dtype=np.float32)
     for j, x in enumerate(xs):
         xv = x0.copy(); xv[iDOF] = float(x)
-
-        # Explicitly upload DOFs and refreshed tREQHs prior to kernel call (for diagnostics)
-        print( "---gpu_scan_dof( iDOF={iDOF}, dof_name={dof_names[iDOF]}, x={x:.6g}) j={j}) " )
-        print( "xv", xv )
-        try:
-            fit_ocl.toGPU_(fit_ocl.DOFs_buff, xv.astype(np.float32))
-        except Exception:
-            pass  # DOFs_buff may be set by getErrorDerivs() path only
-        T_expected = fit_ocl.update_tREQHs_from_dofs(xv.astype(np.float32))
-        # Force single-line print of the full matrix (avoid NumPy row newlines)
-        arr = np.asarray(T_expected, dtype=float)
-        s = np.array2string(arr, max_line_width=10**9, threshold=arr.size, separator=' ')
-        print(" T_expected", s.replace('\n', ' '))
-        fit_ocl.toGPU_(fit_ocl.tREQHs_buff, T_expected)
-
-        # Optionally verify GPU-side buffer matches expectation for the affected type
-        if should_print(j):
-            if (ti is not None) and (ntypes is not None) and (0 <= ti < ntypes):
-                T_gpu = fit_ocl.fromGPU_(fit_ocl.tREQHs_buff, shape=fit_ocl.tREQHs_base.shape, dtype='f4')
-                print(f"[GPU-SCAN] iDOF={iDOF} name={typename}.{comp}  x={x:.6g}")
-                print("  tREQHs_expected[ti] =", T_expected[ti].astype(float))
-                print("  tREQHs_on_gpu [ti] =", T_gpu[ti].astype(float))
-            else:
-                print(f"[GPU-SCAN] iDOF={iDOF} x={x:.6g} (no type mapping available for debug)")
-
-        # Now run the regular path (also uploads internally) and record energy/force
+        if debug and (j == 0 or j == len(xs)//2 or j == len(xs)-1 or (print_every and (j % int(print_every) == 0))):
+            print(f"[GPU] scan iDOF={iDOF} name={dof_names[iDOF] if dof_names else iDOF} x={x:.6g}")
         J, g = fit_ocl.getErrorDerivs(xv)
         Es[j] = J
         Fs[j] = g[iDOF]
     return {'xs': xs, 'Es': Es, 'Fs': Fs}
 
-# Build GPU driver once
-this_dir = os.path.dirname(os.path.abspath(__file__))
-xyz_abs = fname if os.path.isabs(fname) else os.path.join(this_dir, fname)
-dof_abs = dof_fname if os.path.isabs(dof_fname) else os.path.join(this_dir, dof_fname)
-model_macro = 'MODEL_MorseQ_PAIR' if bMorse else 'MODEL_LJQH2_PAIR'
-fit_ocl = setup_gpu_driver(
-    xyz_abs,
-    dof_abs,
-    model_macro=model_macro,
-    hb_gate=1,
-    regularize=False,
-    verbose=0,
-    charge_from_type=bool(use_type_charges)
-)
+def run_scans_cpu(iDOFs, dof_specs, npts):
+    scans = {}
+    for i in iDOFs:
+        xs = build_xs_for_dof(i, dof_specs, npts)
+        scans[i] = scan_dof('cpu', iDOF=i, xs=xs)
+    return scans
 
-############################################
-# Precompute scans: first CPU for all DOFs #
-############################################
+def run_scans_gpu(iDOFs, dof_specs, npts, fit_ocl, dof_names, debug=False):
+    scans = {}
+    for i in iDOFs:
+        xs = build_xs_for_dof(i, dof_specs, npts)
+        pe = max(1, len(xs)//2)
+        scans[i] = scan_dof('gpu', iDOF=i, xs=xs, dof_names=dof_names, fit_ocl=fit_ocl, debug=debug, print_every=pe)
+    return scans
 
-def cpu_scan_dof(iDOF, xs, bEvalSamples=True):
-    y_backup = fit.DOFs[iDOF]
-    Es, Fs = fit.scanParam(iDOF, xs, bEvalSamples=bEvalSamples)
-    fit.DOFs[iDOF] = y_backup
-    return {'xs': xs, 'Es': Es, 'Fs': Fs}
+def plot_overlays(scans_cpu, scans_gpu, dof_names, iDOFs):
+    for i in iDOFs:
+        fig = plt.figure(figsize=(8,10.0))
+        axE = plt.subplot(2,1,1)
+        axF = plt.subplot(2,1,2)
+        print('-- DOF', i, dof_names[i])
+        fit.plotDOFscan_one(i, DOFname=f"{dof_names[i]} [CPU]", bEs=True, bFs=True, verb=1, axE=axE, axF=axF, color='C0', data=scans_cpu[i])
+        fit.plotDOFscan_one(i, DOFname=f"{dof_names[i]} [GPU]", bEs=True, bFs=True, verb=1, axE=axE, axF=axF, color='C1', data=scans_gpu[i])
+        axE.legend(); axE.set_xlabel('DOF value'); axE.set_ylabel('E [kcal/mol]');   axE.grid(alpha=0.2)
+        axF.legend(); axF.set_xlabel('DOF value'); axF.set_ylabel('F [kcal/mol/A]'); axF.grid(alpha=0.2)
+        plt.suptitle(f"DOF scan: {dof_names[i]}")
 
-fit.setVerbosity(0)
-npts = 50
-scans_cpu = {}
-for i in iDOFs_:
-    fit.loadDOFSelection(dof_fname)
-    xmin = dof_specs[i]['min'] if dof_specs[i]['min'] is not None else 0.0
-    xmax = dof_specs[i]['max'] if dof_specs[i]['max'] is not None else 1.0
-    xs = np.linspace(xmin+1e-6, xmax-1e-6, npts)
-    scans_cpu[i] = cpu_scan_dof(i, xs, bEvalSamples=True)
+if __name__ == '__main__':
 
-###########################################
-# Then GPU scans for all DOFs (same order) #
-###########################################
+    import argparse
+    p = argparse.ArgumentParser(description='Compare CPU vs GPU DOF scans for FitREQ with optional runtime charge source switch')
+    p.add_argument('--xyz', default='H2O_single.xyz')
+    p.add_argument('--dof', default='dofSelection_H2O_Morse.dat')
+    p.add_argument('--morse', type=int, default=1, help='1=Morse model, 0=LJ model')
+    p.add_argument('--use_type_charges', type=int, default=1, help='GPU runtime charge source: 0=per-atom atoms.w, 1=type-based tREQHs[:,2]')
+    p.add_argument('--npts', type=int, default=50)
+    p.add_argument('--hb_gate', type=int, default=1)
+    p.add_argument('--regularize', type=int, default=0)
+    p.add_argument('--verbose', type=int, default=0)
+    p.add_argument('--debug', action='store_true')
+    args = p.parse_args()
 
-scans_gpu = {}
-for i in iDOFs_:
-    xs = scans_cpu[i]['xs']
-    pe = max(1, len(xs)//2)  # print first/mid/last
-    scans_gpu[i] = gpu_scan_dof(fit_ocl, iDOF=i, xs=xs, debug=True, print_every=pe, dof_names=dof_names )
+    this_dir = os.path.dirname(os.path.abspath(__file__))
+    xyz_abs = args.xyz if os.path.isabs(args.xyz) else os.path.join(this_dir, args.xyz)
+    dof_abs = args.dof if os.path.isabs(args.dof) else os.path.join(this_dir, args.dof)
+    # CPU
+    cpu = setup_cpu_fit(xyz_abs, dof_abs, morse=int(args.morse), verbosity=args.verbose)
+    # GPU
+    model_macro = 'MODEL_MorseQ_PAIR' if int(args.morse) else 'MODEL_LJQH2_PAIR'
+    fit_ocl = setup_gpu_driver(xyz_abs, dof_abs, model_macro=model_macro, hb_gate=int(args.hb_gate), regularize=bool(args.regularize), verbose=int(args.verbose), charge_from_type=bool(args.use_type_charges))
+    # Scans
+    fit.setVerbosity(0)
+    scans_cpu = run_scans_cpu(cpu['iDOFs'], cpu['dof_specs'], int(args.npts))
+    scans_gpu = run_scans_gpu(cpu['iDOFs'], cpu['dof_specs'], int(args.npts), fit_ocl, cpu['dof_names'], debug=bool(args.debug))
+    # Plot
+    plot_overlays(scans_cpu, scans_gpu, cpu['dof_names'], cpu['iDOFs'])
+    plt.show()
 
-########################
-# Plot overlays per DOF #
-########################
-
-for i in iDOFs_:
-    fig = plt.figure(figsize=(8,10.0))
-    axE = plt.subplot(2,1,1)
-    axF = plt.subplot(2,1,2)
-    print("-- DOF", i, dof_names[i])
-    fit.plotDOFscan_one(i, DOFname=f"{dof_names[i]} [CPU]", bEs=True, bFs=True, verb=1, axE=axE, axF=axF, color='C0', data=scans_cpu[i])
-    fit.plotDOFscan_one(i, DOFname=f"{dof_names[i]} [GPU]", bEs=True, bFs=True, verb=1, axE=axE, axF=axF, color='C1', data=scans_gpu[i])
-    axE.legend(); axE.set_xlabel("DOF value"); axE.set_ylabel("E [kcal/mol]");   axE.grid( alpha=0.2)
-    axF.legend(); axF.set_xlabel("DOF value"); axF.set_ylabel("F [kcal/mol/A]"); axF.grid( alpha=0.2)
-    plt.suptitle(f"DOF scan: {dof_names[i]}")
-    
-
-plt.show()
-
-# ------ write unoptimized results
-#def getEs(imodel=0, Es=None, Fs=None, bOmp=False, bDOFtoTypes=False, bEs=True, bFs=False ):
-
-# # ------ optimize parameters (fit)
-#fit.setSwitches(EvalJ=0, WriteJ=0, CheckRepulsion=0, Regularize=0, Epairs=0)
-# nstep = 5000
-# fit.setSwitches(EvalJ=1, WriteJ=1  ); Err = fit.run( nstep=nstep, Fmax=1e-300, dt=0.0, imodel=imodel, iparallel=0, ialg=0, bClamp=bClamp )
-# fit.setSwitches(EvalJ=1, WriteJ=-1 ); Err = fit.run( nstep=nstep, Fmax=1e-300, dt=0.0, imodel=imodel, iparallel=0, ialg=0, bClamp=bClamp )
-
-
-
-
-# # ------ write optimized results
-# Es = fit.getEs( imodel=imodel, isampmode=isampmode, bEpairs=bEpairs )
-# np.savetxt("firecore.dat", Es )
-
-#plot_dofs_fdofs(output_file="OUT", figsize=(12, 8))
