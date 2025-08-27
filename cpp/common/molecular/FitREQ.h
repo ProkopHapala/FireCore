@@ -995,6 +995,7 @@ void fillTempArrays( const Atoms* atoms, Vec3d* apos, double* Qs  )const{
 
 __attribute__((hot)) 
 double evalSample( int isamp, const Atoms* atoms, double wi, Quat4d* fREQs ) const {
+    printf( "evalSample() isamp: %i imodel: %i \n", isamp, imodel );
     //double wi   = (weights)? weights[isamp] : 1.0; 
     const AddedData* adata = (const AddedData*)(atoms->userData);
     alignas(32) double Qs  [atoms->natoms];
@@ -2046,7 +2047,11 @@ double evalExampleDerivs_MorseQH2( int i0, int ni, int j0, int nj, int* __restri
             //if(bCheckRepulsion)[[unlikely]]{ checkSampleRepulsion( ELJ, i,j, ti,tj, r, true, true ); }
             // --- Energy and forces
             Etot    +=  ELJ + Eel;
-            //printf( "evalExampleDerivs_MorseQH2()[%3i,%3i] (%8s,%8s) ELJ:  %20.10f   Eel: %20.10f \n", i,j, params->atypes[ti].name, params->atypes[tj].name , ELJ,Eel  );
+            //if(verbosity>3)
+            {
+                printf("CPU: evalExampleDerivs_MorseQH2()[%3i,%3i] (%8s,%8s) r %10.6f R0 %10.6f E0 %12.6e Q %12.6e H %12.6e | ELJ %12.6e Eel %12.6e | dEdR0 %12.6e dEdE0 %12.6e dEdQ %12.6e dEdH %12.6e\n",
+                    i,j, params->atypes[ti].name, params->atypes[tj].name, r, R0, E0, Q, H, ELJ, Eel, -dE_dR0, -dE_dE0*REQj.y, -dE_dQ*Qj, dE_dH*REQj.w*sH);
+            }
             //{ int itypPrint=4; if( (ti==itypPrint) || (tj==itypPrint) ){ printf( "evalExampleDerivs_LJQH2()[%3i,%3i] (%8s,%8s) ELJ,Eel: %12.3e,%12.3e Q(%12.3e|%12.3e,%12.3e) dEdREQH(%12.3e,%12.3e,%12.3e,%12.3e)\n", i,j, params->atypes[ti].name, params->atypes[tj].name , ELJ,Eel, Q,Qi,Qj,  dE_dR0, dE_deps, dE_dQ, dE_dH2  ); } }
             fREQi.x +=  -dE_dR0;                   // dEtot/dR0_i
             fREQi.y +=  -dE_dE0 * REQj.y;          // dEtot/dE0_i

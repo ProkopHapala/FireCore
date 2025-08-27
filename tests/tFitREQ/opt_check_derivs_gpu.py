@@ -14,35 +14,35 @@ np.set_printoptions(linewidth=1000, threshold=np.inf)
 
 
 sys.path.append("../../")
-from pyBall import FitREQ as fit
+from pyBall import FitREQ as fit_cpp
 from pyBall.OCL.NonBondFitting import FittingDriver, extract_macro_block
 from pyBall import atomicUtils as au
 
-fit.plt = plt
+fit_cpp.plt = plt
 
 # =====================
 #      Functions
 # =====================
 
-def setup_cpu_fit(xyz_file, dof_file, morse=1, verbosity=1):
+def setup_cpu_fit(xyz_file, dof_file, morse=1, verbosity=1, bAddEpairs=False):
     """Initialize CPU-side FitREQ, load data, set weights, and return essentials."""
-    fit.setVerbosity(verbosity, PrintDOFs=1, PrintfDOFs=1, PrintBeforReg=-1, PrintAfterReg=-1)
-    fit.loadTypes()
-    fit.loadDOFSelection(dof_file)
-    dof_names, dof_specs = fit.loadDOFnames(dof_file, return_specs=True)
-    nbatch = fit.loadXYZ(xyz_file, bAddEpairs=True, bOutXYZ=False)
-    Erefs, x0s = fit.read_xyz_data(xyz_file)
-    fit.setGlobalParams(kMorse=1.8, Lepairs=0.7)
+    fit_cpp.setVerbosity(verbosity, PrintDOFs=1, PrintfDOFs=1, PrintBeforReg=-1, PrintAfterReg=-1)
+    fit_cpp.loadTypes()
+    fit_cpp.loadDOFSelection(dof_file)
+    dof_names, dof_specs = fit_cpp.loadDOFnames(dof_file, return_specs=True)
+    nbatch = fit_cpp.loadXYZ(xyz_file, bAddEpairs=bool(bAddEpairs), bOutXYZ=False)
+    Erefs, x0s = fit_cpp.read_xyz_data(xyz_file)
+    fit_cpp.setGlobalParams(kMorse=1.8, Lepairs=0.7)
     if morse:
         imodel = 2
-        weights0, lens = fit.split_and_weight_curves(Erefs, x0s, n_before_min=100, weight_func=lambda E: fit.exp_weight_func(E, a=1.0, alpha=4.0))
+        weights0, lens = fit_cpp.split_and_weight_curves(Erefs, x0s, n_before_min=100, weight_func=lambda E: fit_cpp.exp_weight_func(E, a=1.0, alpha=4.0))
     else:
         imodel = 3
-        weights0, lens = fit.split_and_weight_curves(Erefs, x0s, n_before_min=2, weight_func=lambda E: fit.exp_weight_func(E, a=1.0, alpha=4.0))
-    fit.setup(imodel=imodel, EvalJ=1, WriteJ=1, Regularize=-1)
-    fit.setWeights(weights0)
-    fit.getBuffs()
-    fit.setFilter(EmodelCutStart=0.0, EmodelCut=0.5, PrintOverRepulsive=-1, DiscardOverRepulsive=-1, SaveOverRepulsive=-1, ListOverRepulsive=-1)
+        weights0, lens = fit_cpp.split_and_weight_curves(Erefs, x0s, n_before_min=2, weight_func=lambda E: fit_cpp.exp_weight_func(E, a=1.0, alpha=4.0))
+    fit_cpp.setup(imodel=imodel, EvalJ=1, WriteJ=1, Regularize=-1)
+    fit_cpp.setWeights(weights0)
+    fit_cpp.getBuffs()
+    fit_cpp.setFilter(EmodelCutStart=0.0, EmodelCut=0.5, PrintOverRepulsive=-1, DiscardOverRepulsive=-1, SaveOverRepulsive=-1, ListOverRepulsive=-1)
     # All DOFs by default
     exclude = set([])
     iDOFs = list(range(len(dof_names)))
@@ -91,9 +91,9 @@ def scan_dof(backend, iDOF, xs, dof_names=None, fit_ocl=None, debug=False, print
     Es = np.zeros_like(xs, dtype=np.float64)
     Fs = np.zeros_like(xs, dtype=np.float64)
     if backend == 'cpu':
-        y_backup = fit.DOFs[iDOF]
-        Es[:], Fs[:] = fit.scanParam(iDOF, xs, bEvalSamples=True)
-        fit.DOFs[iDOF] = y_backup
+        y_backup = fit_cpp.DOFs[iDOF]
+        Es[:], Fs[:] = fit_cpp.scanParam(iDOF, xs, bEvalSamples=True)
+        fit_cpp.DOFs[iDOF] = y_backup
         return {'xs': xs, 'Es': Es, 'Fs': Fs}
     # GPU path
     assert fit_ocl is not None, 'fit_ocl is required for GPU backend'
@@ -128,8 +128,8 @@ def plot_overlays(scans_cpu, scans_gpu, dof_names, iDOFs):
         axE = plt.subplot(2,1,1)
         axF = plt.subplot(2,1,2)
         print('-- DOF', i, dof_names[i])
-        fit.plotDOFscan_one(i, DOFname=f"{dof_names[i]} [CPU]", bEs=True, bFs=True, verb=1, axE=axE, axF=axF, color='C0', data=scans_cpu[i])
-        fit.plotDOFscan_one(i, DOFname=f"{dof_names[i]} [GPU]", bEs=True, bFs=True, verb=1, axE=axE, axF=axF, color='C1', data=scans_gpu[i])
+        fit_cpp.plotDOFscan_one(i, DOFname=f"{dof_names[i]} [CPU]", bEs=True, bFs=True, verb=1, axE=axE, axF=axF, color='C0', data=scans_cpu[i])
+        fit_cpp.plotDOFscan_one(i, DOFname=f"{dof_names[i]} [GPU]", bEs=True, bFs=True, verb=1, axE=axE, axF=axF, color='C1', data=scans_gpu[i])
         axE.legend(); axE.set_xlabel('DOF value'); axE.set_ylabel('E [kcal/mol]');   axE.grid(alpha=0.2)
         axF.legend(); axF.set_xlabel('DOF value'); axF.set_ylabel('F [kcal/mol/A]'); axF.grid(alpha=0.2)
         plt.suptitle(f"DOF scan: {dof_names[i]}")
@@ -145,6 +145,7 @@ if __name__ == '__main__':
     p.add_argument('--npts', type=int, default=5)
     p.add_argument('--hb_gate', type=int, default=0)
     p.add_argument('--regularize', type=int, default=0)
+    p.add_argument('--epairs', type=int, default=0)
     p.add_argument('--verbose', type=int, default=0)
     p.add_argument('--debug', action='store_true')
     args = p.parse_args()
@@ -153,12 +154,12 @@ if __name__ == '__main__':
     xyz_abs = args.xyz if os.path.isabs(args.xyz) else os.path.join(this_dir, args.xyz)
     dof_abs = args.dof if os.path.isabs(args.dof) else os.path.join(this_dir, args.dof)
     # CPU
-    cpu = setup_cpu_fit(xyz_abs, dof_abs, morse=int(args.morse), verbosity=args.verbose)
+    cpu = setup_cpu_fit(xyz_abs, dof_abs, morse=int(args.morse), verbosity=args.verbose, bAddEpairs=bool(args.epairs))
     # GPU
     model_macro = 'MODEL_MorseQ_PAIR' if int(args.morse) else 'MODEL_LJQH2_PAIR'
     fit_ocl = setup_gpu_driver(xyz_abs, dof_abs, model_macro=model_macro, hb_gate=int(args.hb_gate), regularize=bool(args.regularize), verbose=int(args.verbose), charge_from_type=bool(args.use_type_charges))
     # Scans
-    fit.setVerbosity(0)
+    fit_cpp.setVerbosity(0)
     scans_cpu = run_scans_cpu(cpu['iDOFs'], cpu['dof_specs'], int(args.npts))
     scans_gpu = run_scans_gpu(cpu['iDOFs'], cpu['dof_specs'], int(args.npts), fit_ocl, cpu['dof_names'], debug=bool(args.debug))
     # Plot

@@ -274,6 +274,9 @@ __kernel void evalSampleDerivatives_template(
                 H = APPLY_H_GATE(H);
                 cH += (sH > 0.f);
 
+                // Capture pre-update state to compute per-pair deltas for debug
+                float  Ei0      = Ei;
+                float4 f0       = fREQi;
                 // Capture pre-update EvdW-Y component so we can post-scale this pair's contribution when ti==tj
                 float y0_pair = fREQi.y;
                 //<<<MODEL_PAIR_ACCUMULATION
@@ -282,6 +285,13 @@ __kernel void evalSampleDerivatives_template(
                     int tj = LTYPES[jl];
                     float dy = fREQi.y - y0_pair;
                     if(ti == tj){ fREQi.y = y0_pair + 2.f*dy; }
+                }
+                // --- Debug: print per-pair contributions (delta Ei and delta fREQi)
+                if( iS==iDBG ){
+                    float  dEi = Ei - Ei0;
+                    float4 df  = (float4)(fREQi.x - f0.x, fREQi.y - f0.y, fREQi.z - f0.z, fREQi.w - f0.w);
+                    printf("GPU: pair i %3d j %3d r %10.6f R0 %10.6f E0 %12.6e Q %12.6e H %12.6e | dE %12.6e | d/dR0 %12.6e d/dE0 %12.6e d/dQ %12.6e d/dH %12.6e\n",
+                        iG, j0+local_j2, r, R0, E0, Q, H, dEi, df.x, df.y, df.z, df.w);
                 }
             }
         }
