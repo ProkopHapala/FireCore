@@ -1,3 +1,5 @@
+[![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/ProkopHapala/FireCore)
+
 # FireCore
 
 FireCore is an integrated simulation environment dedicated to on-surface chemistry and scanning-probe microscopy (SPM). The code aims to streamline high-throughput screening of molecular configurations and processes on the surface of inorganic crystals, including:
