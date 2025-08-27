@@ -4,6 +4,30 @@
 
 This document analyzes the differences between the CPU/C++ implementation and GPU/OpenCL implementation of the FitREQ molecular fitting system. The analysis focuses on identifying why the two implementations might produce different energies and fitting errors.
 
+## Relevant Files
+
+The following files are relevant to this analysis and were modified during the debugging process:
+
+### 1. CPU Implementation Files
+- **`cpp/common/molecular/FitREQ.h`** - CPU C++ solver class with core functions (`evalExampleDerivs_MorseQH2`, etc.)
+- **`cpp/libs/Molecular/FitREQ_lib.cpp`** - CPU library interface eporting pure C functions (to avoid C++ name mangling)
+- **`pyBall/FitREQ.py`** - Python module binding to the C/C++ library via `ctypes`
+
+### 2. GPU Implementation Files  
+- **`cpp/common_resources/cl/FitREQ.cl`** - GPU OpenCL kernel implementation (`evalSampleDerivatives_template`)
+- **`pyBall/OCL/NonBondFitting.py`** - python pyOpenCL class (`FittingDriver`) which prepates the data and provides the interface to the OpenCL kernels 
+
+### 3. Test Scripts and Input Files
+- **`tests/tFitREQ/opt_check_derivs_gpu.py`** - Main Python test script for comparing CPU vs GPU implementations
+- **`H2O_single.xyz`** - Test XYZ file with water dimer configuration
+- **`dofSelection_H2O_Morse.dat`** - DOF selection file defining parameters to fit
+
+### Key Functions/Methods
+- **Python**: `setup_cpu_fit()`, `scan_dof()`, `plot_overlays()`
+- **CPU C++**: `evalExampleDerivs_MorseQH2()`, `evalSample()`
+- **GPU OpenCL**: `evalSampleDerivatives_template` kernel
+- **GPU Python**: `FittingDriver.getErrorDerivs()`
+
 ## Test Script Flow
 
 The main test script `opt_check_derivs_gpu.py` follows this high-level flow:
