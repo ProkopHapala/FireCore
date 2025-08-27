@@ -114,7 +114,7 @@ This file contains all the reference molecular geometries and their correspondin
         *   `atom_type   x   y   z   charge`
             *   `atom_type`: The name of the atom type, which must correspond to names in `AtomTypes.dat` and `dofSelection.dat`.
             *   `x, y, z`: Cartesian coordinates of the atom.
-            *   `charge`: The initial partial charge of the atom. This value is used by the `Q` component of the REQH model.
+            *   `charge`: The initial partial charge of the atom. This value is used by the `Q` component of the REQH model. The charge parameter Q can come from two sources: the initial partial charge from the XYZ file (`atoms.w`) or from the type-based parameter matrix (`tREQHs[:,2]`). The choice is controlled by a runtime flag `use_type_charges` in the `FittingDriver` constructor. If `use_type_charges=True`, charges are taken from `tREQHs[:,2]`; otherwise from `atoms.w`. This allows switching between per-atom and type-based charges without recompilation.
 
 **Example (`input.xyz` containing two samples):**
 ```
@@ -260,8 +260,6 @@ We use three kernels that separate concerns cleanly and allow a single-kernel pa
 
 - __Consistency requirement (important to avoid zero forces)__:
   - For every `ia` present in `DOFtoAtom`, the producer kernel must have written a valid `dEdREQs[ia]` for the current launch. If the derivative kernel writes only fragment-1 atoms for a sample, do not include fragment-2 atoms in `DOFtoAtom` (or extend the kernel to also populate those entries). Otherwise, assembled forces for such DOFs can be spuriously zero.
-
-### 3.3 The Python Driver (`FittingDriver`)
 
 ### 3.3 The Python Driver (`FittingDriver`)
 
