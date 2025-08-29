@@ -553,6 +553,17 @@ double evalEE(){
             const double qq  = (spini==0)&&(spinj==0)? 2.0 : 1.0;
 
             double dEee=0,dEpaul=0;
+            Vec3d f_before_coul = f; double fsi_before_coul = fsi; double fsj_before_coul = fsj;
+            if(bEvalCoulomb){
+                dEee = addCoulombGauss( dR, si, sj, f, fsi, fsj, qij );
+            }
+            if(verbosity>3){
+                Vec3d f_coul = f - f_before_coul;
+                printf("CPU EE(%i,%i) Coul: (%g,%g,%g) | %g,%g\n", i, j, f_coul.x, f_coul.y, f_coul.z, fsi - fsi_before_coul, fsj - fsj_before_coul);
+            }
+
+            Vec3d f_before_paul = f; double fsi_before_paul = fsi; double fsj_before_paul = fsj;
+
             if(bEvalCoulomb){
                 dEee = addCoulombGauss( dR, si, sj, f, fsi, fsj, qij );
                 //dEee = addCoulombGauss( dR, si*M_SQRT2, sj*M_SQRT2, f, fsi, fsj, qq );
@@ -567,6 +578,10 @@ double evalEE(){
                         //dEpaul = addPauliGauss  ( dR, si, sj, f, fsi, fsj, spini!=espin[j], KRSrho );
                         //dEpaul = addPauliGauss_New  ( dR, si, sj, f, fsi, fsj, spini!=espin[j], KRSrho );
                         dEpaul = addPauliGauss_New  ( dR, si, sj, f, fsi, fsj, spinij, KRSrho, qq );
+                        if(verbosity>3){
+                            Vec3d f_paul = f - f_before_paul;
+                            printf("CPU EE(%i,%i) Paul: (%g,%g,%g) | %g,%g\n", i, j, f_paul.x, f_paul.y, f_paul.z, fsi - fsi_before_paul, fsj - fsj_before_paul);
+                        }
                         //printf( "EeePaul[%i,%i]= %g \n", i, j, dEpaul );
                     //}
                 }else if( iPauliModel == 2 ){ // iPauliModel==0 Pauli repulasion from Valence-Bond theory
@@ -640,14 +655,33 @@ double evalAE(){
             double dEae=0,dEaePaul=0,dEee=0;
             if(bEvalAECoulomb){
                 double qCore = bCoreCoul ? aPar.x : (aPar.x-aPar.z);
+                Vec3d f_before = f; double fsj_before = fsj;
                 dEae  = addCoulombGauss( dR, aPar.y, sj, f, fs_junk, fsj, qCore*-qj );
+                if(verbosity>3){
+                    Vec3d f_coul = f - f_before;
+                    printf("CPU AE(%i,%i) Coul: (%g,%g,%g) | %g,%g\n", i, j, f_coul.x, f_coul.y, f_coul.z, 0.0, fsj - fsj_before);
+                }
             }
             if( aPar.z>1e-8 ){ // is there a core electron?
                 //if(qqi<-1.00001) EaePaul += addDensOverlapGauss_S( dR,sj, abwi.z, abwi.a, f, fsj, fs_junk );     // correct
                 //double dEaePaul = addPauliGauss      ( dR, sj, abwi.z, f, fsj, fs_junk, false, KRSrho );     // correct
                 //double dEaePaul = addDensOverlapGauss_S( dR, sj, aPar.z, aPar.w, f, fsj, fs_junk );     // correct
-                if(bEvalAEPauli){ dEaePaul = addPauliGauss_New( dR, aPar.y, sj, f, fsj, fs_junk, 0, KRSrho, qj*aPar.z*0.5 ); } // spin=0 means both -1 and +1  
-                if(bCoreCoul   ){ dEee     = addCoulombGauss  ( dR, aPar.y, sj, f, fsj, fs_junk,            qj*aPar.z     ); }
+                if(bEvalAEPauli){ 
+                    Vec3d f_before = f; double fsj_before = fsj;
+                    dEaePaul = addPauliGauss_New( dR, aPar.y, sj, f, fsj, fs_junk, 0, KRSrho, qj*aPar.z*0.5 );
+                    if(verbosity>3){
+                        Vec3d f_paul = f - f_before;
+                        printf("CPU AE(%i,%i) Paul: (%g,%g,%g) | %g,%g\n", i, j, f_paul.x, f_paul.y, f_paul.z, 0.0, fsj - fsj_before);
+                    }
+                } // spin=0 means both -1 and +1  
+                if(bCoreCoul   ){ 
+                    Vec3d f_before = f; double fsj_before = fsj;
+                    dEee     = addCoulombGauss  ( dR, aPar.y, sj, f, fsj, fs_junk,            qj*aPar.z     );
+                    if(verbosity>3){
+                        Vec3d f_coul = f - f_before;
+                        printf("CPU AE(%i,%i) Core: (%g,%g,%g) | %g,%g\n", i, j, f_coul.x, f_coul.y, f_coul.z, 0.0, fsj - fsj_before);
+                    }
+                }
                 //printf( "EaePaul[%i,%i] E %g r %g s %g abw(%g,%g) \n", i, j, dEaePaul, dR.norm(), sj, abwi.z, abwi.a );
             }
             //if( i_DEBUG>0 ) printf( "evalAE[%i,%i] dR(%g,%g,%g) s %g q %g  ->   f(%g,%g,%g) fs %g \n", i,j, dR.x,dR.y,dR.z, sj, qqi,   f.x,f.y,f.z, fsj );

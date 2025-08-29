@@ -16,8 +16,8 @@ __constant static const float const_El_eVA = const_El_SI/( const_eV_SI*const_Ang
 __constant static const float const_K_eVA  = const_K_SI /( const_eV_SI*const_Angstroem_SI*const_Angstroem_SI );
 __constant static const float const_Ke_eVA = const_K_eVA*1.5;
 __constant static const float au_Me           = 1822.88973073;
-__constant static const float eV_MeAfs        = 17.5882001106;   // [ Me*A^2/fs^2] 
-__constant static const float const_Coulomb_eVA = 14.3996448915;  
+__constant static const float eV_MeAfs        = 17.5882001106;   // [ Me*A^2/fs^2]
+__constant static const float const_Coulomb_eVA = 14.3996448915;
 __constant static const float const_Bohr_Radius = 0.529177210903;
 
 float2 erfx_e6( float x_, float k ){
@@ -103,7 +103,7 @@ float4 getPauliGauss_New( float3 dR, float si, float sj, int spin, const float4 
     const float Hartree2eV = 27.211386245988;
     const float A2bohr     = 1/const_Bohr_Radius;
 
-    const float KR=A2bohr*KRSrho.x; 
+    const float KR=A2bohr*KRSrho.x;
     const float KR2=KR*KR;
     const float KS =A2bohr*KRSrho.y;
     si*=KS; sj*=KS; r2*=KR2;
@@ -115,11 +115,11 @@ float4 getPauliGauss_New( float3 dR, float si, float sj, int spin, const float4 
     float invsi2sj22 = invsi2sj2*invsi2sj2;
     float invsi2sj23 = invsi2sj2*invsi2sj22;
     float denom_sij  = si*sj*invsi2sj2;
-    float si4sj4     = si2*si2 - sj2*sj2; 
+    float si4sj4     = si2*si2 - sj2*sj2;
     float invsj      = 1/sj;
-    float invsi      = 1/si; 
+    float invsi      = 1/si;
     float invsj2     = invsj*invsj;
-    float invsi2     = invsi*invsi; 
+    float invsi2     = invsi*invsi;
 
     float r2_4   =  4*r2;
 
@@ -127,13 +127,13 @@ float4 getPauliGauss_New( float3 dR, float si, float sj, int spin, const float4 
     float DT      = 1.5*si2sj2*invsi2*invsj2 -      (6*si2sj2 - r2_4)*invsi2sj22;
     float dDT_dsi =  -3*invsi2*invsi         + 4*si*(3*si2sj2 - r2_4)*invsi2sj23;
     float dDT_dsj =  -3*invsj2*invsj         + 4*sj*(3*si2sj2 - r2_4)*invsi2sj23;
-    float dDT_dr  =   8*invsi2sj22;      // missing 'r' it is in |dR|             
+    float dDT_dr  =   8*invsi2sj22;      // missing 'r' it is in |dR|
 
     // ------- Overlap  ..... actually S22 = 2*S**2
-    float S22      = 8*denom_sij*denom_sij*denom_sij*exp(-2*r2*invsi2sj2);         
-    float dS22_dsi = S22*( -3*si4sj4 + r2_4*si2 )*invsi2sj22*invsi;         
-    float dS22_dsj = S22*( +3*si4sj4 + r2_4*sj2 )*invsi2sj22*invsj;     
-    float dS22_dr  = -4*S22*invsi2sj2;   // missing 'r' it is in |dR| 
+    float S22      = 8*denom_sij*denom_sij*denom_sij*exp(-2*r2*invsi2sj2);
+    float dS22_dsi = S22*( -3*si4sj4 + r2_4*si2 )*invsi2sj22*invsi;
+    float dS22_dsj = S22*( +3*si4sj4 + r2_4*sj2 )*invsi2sj22*invsj;
+    float dS22_dr  = -4*S22*invsi2sj2;   // missing 'r' it is in |dR|
 
     float rho = KRSrho.z;
 
@@ -187,7 +187,8 @@ __kernel void localMD(
     __global       float4*      pos,     // [ntot]   {x,y,z,w} positions (and size) of ions and electrons
     __global       float4*      vel,     // [ntot]   {vx,vy,vz,dw/dt} velocities of ions and electrons (including change of size)
     __global const float8*      aParams, // [ntot_a] parameters of ions { Z_nuc, R_eff, Zcore_eff,   PA,        PB,        PC,        PD }
-    __global const signed char* espins,  // [ntot]   {spin} 
+    __global const signed char* espins,  // [ntot]   {spin}
+    __global       float4*      fout,    // [ntot]   {fx,fy,fz,fw} output force buffer
     const int    nsys,
     const int    nsteps,
     const float  dt,
@@ -203,8 +204,8 @@ __kernel void localMD(
     const int ne    = inds.y;
     const int ntot  = inds.x + inds.y;
 
-    if (get_global_id(0) == idDBG){ 
-        int nSys = get_num_groups(0); 
+    if (get_global_id(0) == idDBG){
+        int nSys = get_num_groups(0);
         int nL   = get_local_size(0);
         printf("GPU: nSys=%d nL=%d na=%d ne=%d ntot=%d   nsteps=%d dt=%f damping=%f\n", nSys, nL, na, ne, ntot, nsteps, dt, damping);
         for(int isys=0; isys<nSys; isys++){
@@ -217,7 +218,7 @@ __kernel void localMD(
                 if(i<na){
                     float8 api = aParams[i];
                     printf(" Atom params(%12.8f,%12.8f,%12.8f,%12.8f,%12.8f,%12.8f,%12.8f,%12.8f)\n", api.s0, api.s1, api.s2, api.s3, api.s4, api.s5, api.s6, api.s7 );
-                }else{ 
+                }else{
                     printf(" Electron \n");
                 }
             }
@@ -236,19 +237,19 @@ __kernel void localMD(
     float4 veli = vel[ip];
 
     l_pos[lid] = posi;
-    if (lid < inds.x){ l_aparams[lid       ] = aParams[inds.w+lid];   } 
+    if (lid < inds.x){ l_aparams[lid       ] = aParams[inds.w+lid];   }
     else             { l_spins  [lid-inds.x] = espins[ip]; }
 
     barrier(CLK_LOCAL_MEM_FENCE);
 
     for (int i_step = 0; i_step < nsteps; ++i_step) {
-        
+
         float4 forcei = (float4)(0.0f);
         const bool i_am_ion = (lid < na);
 
         // --- PART 1: FORCE CALCULATION ---
-        
-        if (i_am_ion) {  // =============   I am an ION thread 
+
+        if (i_am_ion) {  // =============   I am an ION thread
             const float8 pari    = l_aparams[lid];
             const float  Qi      = pari.s0 - pari.s2;
             const float  Ri      = pari.s1;
@@ -261,22 +262,24 @@ __kernel void localMD(
                 const float8 parj          = l_aparams[j];
                 const float  Qj            = parj.s0 - parj.s2;
                 //const float  Rj            = parj.s1;
-                float4 fij = getCoulomb(dR, Qi * Qj); forcei += fij; 
-                if (get_global_id(0) == idDBG){   printf("Ion-Ion %3i %3i Qi %12.8e Qj %12.8e |dR| %12.8e fij(%12.8e,%12.8e,%12.8e,%12.8e) \n", lid, j, Qi, Qj, length(dR), fij.x, fij.y, fij.z, fij.w ); }
+                float4 fij = getCoulomb(dR, Qi * Qj);
+                if (get_global_id(0) == idDBG){ printf("GPU AA(%i,%i) Coul: (%g,%g,%g)\n", lid, j, fij.x,fij.y,fij.z); }
+                forcei.xyz += fij.xyz;
             }
             // --- Ion-Electron Interactions ---
             for (int j = na; j < ntot; ++j) {
                 const float4 pj = l_pos[j];
                 const float3 dR = pj.xyz - posi.xyz;
-                float4 fg = getCoulombGauss  (dR, Ri, pj.w, Qi ); forcei += fg;
-                if (get_global_id(0) == idDBG){   printf("Ion-Elec %3i %3i Qi %12.8e pj.w %12.8e |dR| %12.8e fg(%12.8e,%12.8f,%12.8f,%12.8f,%12.8f) \n", lid, j, Qi, pj.w, length(dR), fg.x, fg.y, fg.z, fg.w );}
+                float4 fg = getCoulombGauss (dR, Ri, pj.w, Qi );
+                forcei.xyz += dR * fg.y;
+                forcei.w   += fg.w;
                 if( bFrozenCore ){
                     //float4 fp = getPauliGauss_New(dR, Ri, pj.w, 0, KRSrho);
                 }
             }
         } else {  // =========== I am an ELECTRON thread
             const int spini = l_spins[lid - na];
-            
+
             // --- Kinetic Force ---
             float2 fk = addKineticGauss_eFF(posi.w);
             forcei.w += fk.y;
@@ -287,8 +290,9 @@ __kernel void localMD(
                 const float3 dR   = parj.s0 - posi.xyz;
                 const float Qj    = parj.s0 - parj.s2;
                 const float Rj    = parj.s1;
-                float4 fg = getCoulombGauss  (dR, posi.w, Rj, -1.0f * Qj); forcei += fg;
-                if (get_global_id(0) == idDBG){   printf("Elec-Ion %3i %3i posi.w %12.8e Qj %12.8e |dR| %12.8e fg(%12.8e,%12.8e,%12.8e,%12.8e) \n", lid, j, posi.w, Qj, length(dR), fg.x, fg.y, fg.z, fg.w );}
+                float4 fg = getCoulombGauss  (dR, posi.w, Rj, -1.0f * Qj);
+                forcei.xyz -= dR * fg.y;
+                forcei.w   += fg.z;
                 if( bFrozenCore ){
                     //float4 fp = getPauliGauss_New(dR, posi.w, Rj, 0, KRSrho);
                 }
@@ -302,17 +306,20 @@ __kernel void localMD(
                 const signed char spinj   = l_spins[j - na];
                 float4 fg = getCoulombGauss  (dR, posi.w, pj.w, 1.0f);
                 float4 fp = getPauliGauss_New(dR, posi.w, pj.w, spinj * spini, KRSrho);
-                if (get_global_id(0) == idDBG){   printf("Elec-Elec %3i %3i posi.w %12.8e pj.w %12.8e |dR| %12.8e fg(%12.8e,%12.8e,%12.8e,%12.8e) \n", lid, j, posi.w, pj.w, length(dR), fg.x, fg.y, fg.z, fg.w );}
-                forcei += fg + fp;
+                forcei.xyz += dR * (fg.y + fp.y);
+                forcei.w   += fg.z + fp.z; // f_si
+                // TODO: How to handle fsj ? The C++ version adds it to the other particle.
             }
         }
-        
+
         barrier(CLK_LOCAL_MEM_FENCE);
 
         // --- PART 2: INTEGRATION STEP ---
-    
+
         //if (get_global_id(0) == idDBG)
         { printf("update iter %4i il %4i pos(%12.8e,%12.8e,%12.8e,%12.8e) vel(%12.8e,%12.8e,%12.8e,%12.8e) force(%12.8e,%12.8e,%12.8e,%12.8e)\n", i_step, lid, posi.x,posi.y,posi.z,posi.w, veli.x,veli.y,veli.z,veli.w, forcei.x,forcei.y,forcei.z,forcei.w );}
+
+        fout[ip] = forcei;
 
         veli *= damping;
         veli += forcei * dt;
@@ -325,7 +332,7 @@ __kernel void localMD(
 
         barrier(CLK_LOCAL_MEM_FENCE);
     }
-    
+
     // --- Write final state back to Global Memory ---
     pos[ip] = posi;
     vel[ip] = veli;
@@ -464,4 +471,3 @@ __kernel void eval_electrons(
 
     eforce[gid] = fi;
 }
-
