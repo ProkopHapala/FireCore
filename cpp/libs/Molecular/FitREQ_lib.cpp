@@ -187,11 +187,17 @@ void scanParam( int iDOF, int n, double* xs,  double* Es, double* Fs, bool bEval
     //W.bRegularize=bRegularize;
     bool bOmp = W.iparallel>0;
     printf( "scanParam() iDOF: %i imodel: %i n: %i bOmp: %i\n", iDOF, W.imodel, n, bOmp );
+    {// Add DOF name and component info
+        int typ = W.DOFtoTyp[iDOF].x;
+        int comp = W.DOFtoTyp[iDOF].y;
+        char compName[5] = "REQH";
+        printf( "scanParam() DOF[%i]: type %i (%s) component %i (%c) xstart: %g\n", iDOF, typ, W.params->atypes[typ].name, comp, compName[comp], W.DOFs[iDOF] );
+    }
     W.clear_fDOFbounds();
     if(bOmp){ W.bBroadcastFDOFs=true; W.realloc_sample_fdofs();  }
     for(int i=0; i<n; i++){
         W.DOFs[iDOF] = xs[i];
-        //printf( "\n##### scanParam()[%3i] W.DOFs[%3i]: %20.10f      %8s.%c \n", i, iDOF,     W.DOFs[iDOF],    W.params->atypes[W.DOFtoTyp[iDOF].x].name,  "REQH"[W.DOFtoTyp[iDOF].y]  );
+        printf( "\n##### scanParam()[%3i] W.DOFs[%3i]: %20.10f      %8s.%c \n", i, iDOF,     W.DOFs[iDOF],    W.params->atypes[W.DOFtoTyp[iDOF].x].name,  "REQH"[W.DOFtoTyp[iDOF].y]  );
         double E = W.evalFitError( i, bOmp, bEvalSamples );
         if(Fs)Es[i] = E;
         if(Fs)Fs[i] = W.fDOFs[iDOF];

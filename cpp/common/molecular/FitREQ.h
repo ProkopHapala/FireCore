@@ -2031,8 +2031,8 @@ void printFragAtoms(
         const Vec3d&  pi = ps[ia];
         const Quat4d& REQi = typeREQs[ti];
         double Qi = Qs[ia];
-        printf("CPU: atom i %3d it %3d pos %16.8f %16.8f %16.8f %16.8f  REQH %16.8f %16.8f %16.8f %16.8f \n",
-               ia, ti, pi.x, pi.y, pi.z, Qi, REQi.x, REQi.y, 0.0, REQi.w);
+            printf("CPU: atom i %3d it %3d pos %16.8f %16.8f %16.8f %16.8f  REQH %16.8f %16.8f %16.8f %16.8f \n",
+                   ia, ti, pi.x, pi.y, pi.z, Qi, REQi.x, REQi.y, REQi.z, REQi.w);
     }
 }
 

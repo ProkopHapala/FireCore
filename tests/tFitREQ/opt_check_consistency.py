@@ -23,58 +23,81 @@ fit_cpp.plt = None  # Disable plotting
 #      Functions
 # =====================
 
-def setup_cpu_fit(xyz_file, dof_file, morse=1, verbosity=0, bAddEpairs=False):
-    """Initialize CPU-side FitREQ, load data, set weights, and return essentials."""
-    fit_cpp.setVerbosity(verbosity, PrintDOFs=1, PrintfDOFs=1, PrintBeforReg=-1, PrintAfterReg=-1)
+def setup_cpu_fit(args):
+    """Initialize CPU-side FitREQ from argparse args, load data, and return config + handle."""
+    # Resolve paths
+    this_dir = os.path.dirname(os.path.abspath(__file__))
+    xyz_file = args.xyz if os.path.isabs(args.xyz) else os.path.join(this_dir, args.xyz)
+    dof_file = args.dof if os.path.isabs(args.dof) else os.path.join(this_dir, args.dof)
+
+    # Core config
+    fit_cpp.setVerbosity(int(args.verbose), PrintDOFs=1, PrintfDOFs=1, PrintBeforReg=-1, PrintAfterReg=-1)
     fit_cpp.loadTypes()
     fit_cpp.loadDOFSelection(dof_file)
     dof_names, dof_specs = fit_cpp.loadDOFnames(dof_file, return_specs=True)
-    nbatch = fit_cpp.loadXYZ(xyz_file, bAddEpairs=bool(bAddEpairs), bOutXYZ=False)
+    nbatch = fit_cpp.loadXYZ(xyz_file, bAddEpairs=False, bOutXYZ=False)
     Erefs, x0s = fit_cpp.read_xyz_data(xyz_file)
     fit_cpp.setGlobalParams(kMorse=1.8, Lepairs=0.7)
+
+    # Model and weights
+    morse = int(args.morse)
     if morse:
         imodel = 2
         weights0, lens = fit_cpp.split_and_weight_curves(Erefs, x0s, n_before_min=100, weight_func=lambda E: fit_cpp.exp_weight_func(E, a=1.0, alpha=4.0))
     else:
         imodel = 3
-        weights0, lens = fit_cpp.split_and_weight_curves(Erefs, x0s, n_before_min=2, weight_func=lambda E: fit_cpp.exp_weight_func(E, a=1.0, alpha=4.0))
+        weights0, lens = fit_cpp.split_and_weight_curves(Erefs, x0s, n_before_min=2,   weight_func=lambda E: fit_cpp.exp_weight_func(E, a=1.0, alpha=4.0))
+
     fit_cpp.setup(imodel=imodel, EvalJ=1, WriteJ=1, Regularize=-1)
     fit_cpp.setWeights(weights0)
     fit_cpp.getBuffs()
     fit_cpp.setFilter(EmodelCutStart=0.0, EmodelCut=0.5, PrintOverRepulsive=-1, DiscardOverRepulsive=-1, SaveOverRepulsive=-1, ListOverRepulsive=-1)
+
+    # Match GPU charge-source option
+    try:
+        fit_cpp.useTypeQ = int(args.use_type_charges)
+    except Exception:
+        pass
+
     # All DOFs by default
     exclude = set([])
     iDOFs = list(range(len(dof_names)))
     iDOFs_ = [i for i in iDOFs if dof_names[i] not in exclude]
     return {
+        'fit_cpp': fit_cpp,
         'imodel': imodel,
         'dof_names': dof_names,
         'dof_specs': dof_specs,
         'iDOFs': iDOFs_,
+        'xyz_file': xyz_file,
+        'dof_file': dof_file,
     }
 
-def setup_gpu_driver(xyz_file, dof_file, model_macro, hb_gate=1, regularize=False, verbose=0, charge_from_type=False):
-    """Create and initialize the OpenCL fitting driver with a selected model macro.
-    charge_from_type selects runtime charge source (False=atoms.w, True=tREQHs[:,2]).
-    """
+def setup_gpu_driver(args):
+    """Create and initialize the OpenCL fitting driver using argparse args."""
+    # Resolve paths
     this_dir   = os.path.dirname(os.path.abspath(__file__))
     repo_root  = os.path.abspath(os.path.join(this_dir, '..', '..'))
+    xyz_file   = args.xyz if os.path.isabs(args.xyz) else os.path.join(this_dir, args.xyz)
+    dof_file   = args.dof if os.path.isabs(args.dof) else os.path.join(this_dir, args.dof)
     atom_types_file = os.path.join(repo_root, 'cpp', 'common_resources', 'AtomTypes.dat')
     forces_path     = os.path.join(repo_root, 'cpp', 'common_resources', 'cl', 'Forces.cl')
 
-    fit_ocl = FittingDriver(verbose=verbose, use_type_charges=bool(charge_from_type))
+    # Driver
+    fit_ocl = FittingDriver(verbose=int(args.verbose), use_type_charges=bool(args.use_type_charges))
     fit_ocl.load_atom_types(atom_types_file)
-    fit_ocl.load_data(xyz_file if os.path.isabs(xyz_file) else os.path.join(this_dir, xyz_file))
-    fit_ocl.load_dofs(dof_file if os.path.isabs(dof_file) else os.path.join(this_dir, dof_file))
+    fit_ocl.load_data(xyz_file)
+    fit_ocl.load_dofs(dof_file)
     fit_ocl.init_and_upload()
 
+    # Model selection
+    model_macro = 'MODEL_MorseQ_PAIR' if int(args.morse) else 'MODEL_LJQH2_PAIR'
     macro_der = extract_macro_block(forces_path, model_macro)
     macros = {
         'MODEL_PAIR_ACCUMULATION': macro_der,
-        'HBOND_GATE_DEFINE': f"#define HBOND_GATE {int(hb_gate)}",
+        'HBOND_GATE_DEFINE': f"#define HBOND_GATE {1}",
     }
     fit_ocl.compile_with_model(macros=macros, bPrint=False)
-    fit_ocl.set_regularization_enabled(enabled=bool(regularize))
     return fit_ocl
 
 def compare_objectives(cpu_fit, gpu_driver, dof_values, verbose=True):
@@ -85,13 +108,11 @@ def compare_objectives(cpu_fit, gpu_driver, dof_values, verbose=True):
         fit_cpp.DOFs[i] = float(val)
     
     # CPU objective: evaluate exactly once
-    # scanParam returns (energies, forces) - we want the first element (energies)
+    # Use scanParam to get the objective (it sets DOFs internally)
     cpu_result = fit_cpp.scanParam(0, np.array([dof_values[0]]), bEvalSamples=True)
     cpu_J = cpu_result[0][0]
     if verbose:
-        print(f"CPU: scanParam returned {len(cpu_result[0])} energy values")
-        print(f"CPU: individual energies: {cpu_result[0][:5]}...")
-        print(f"CPU: J from scanParam: {cpu_J:.8e}")
+        print(f"CPU: evalFitError returned J: {cpu_J:.8e}")
 
     # GPU objective: evaluate exactly once via derivative path (applies DOFs to tREQHs)
     J, g = gpu_driver.getErrorDerivs(dof_values.astype(np.float32))
@@ -133,8 +154,6 @@ if __name__ == '__main__':
     args = p.parse_args()
 
     this_dir = os.path.dirname(os.path.abspath(__file__))
-    xyz_abs = args.xyz if os.path.isabs(args.xyz) else os.path.join(this_dir, args.xyz)
-    dof_abs = args.dof if os.path.isabs(args.dof) else os.path.join(this_dir, args.dof)
 
     print("="*70)
     print("GPU vs CPU Consistency Test for FitREQ")
@@ -148,17 +167,14 @@ if __name__ == '__main__':
     # CPU setup
     print("Setting up CPU implementation...")
     cpu_start = time.time()
-    cpu = setup_cpu_fit(xyz_abs, dof_abs, morse=int(args.morse), verbosity=args.verbose)
+    cpu = setup_cpu_fit(args)
     cpu_time = time.time() - cpu_start
     print(f"CPU setup time: {cpu_time:.3f}s")
 
     # GPU setup
     print("Setting up GPU implementation...")
     gpu_start = time.time()
-    model_macro = 'MODEL_MorseQ_PAIR' if int(args.morse) else 'MODEL_LJQH2_PAIR'
-    fit_ocl = setup_gpu_driver(xyz_abs, dof_abs, model_macro=model_macro,
-                              hb_gate=1, regularize=False, verbose=int(args.verbose),
-                              charge_from_type=bool(args.use_type_charges))
+    fit_ocl = setup_gpu_driver(args)
     gpu_time = time.time() - gpu_start
     print(f"GPU setup time: {gpu_time:.3f}s")
 

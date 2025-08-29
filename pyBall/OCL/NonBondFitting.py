@@ -209,12 +209,13 @@ class FittingDriver(OpenCLBase):
                 type_name = parts[0]
                 # REQH components from the file
                 # RvdW is column 10, EvdW is column 11 (1-based index)
-                # We assume Q (charge) and H (H-bond) defaults are 0 for now,
-                # as they are typically derived or fitted.
+                # Qbase is column 12, Hb is column 13
                 RvdW = float(parts[9])
                 EvdW = float(parts[10])
+                Qbase = float(parts[11]) if len(parts) > 11 else 0.0
+                Hb = float(parts[12]) if len(parts) > 12 else 0.0
                 
-                self.base_params[type_name] = {'R': RvdW, 'E': EvdW, 'Q': 0.0, 'H': 0.0}
+                self.base_params[type_name] = {'R': RvdW, 'E': EvdW, 'Q': Qbase, 'H': Hb}
         if self.verbose>0:
             print(f"Loaded base parameters for {len(self.base_params)} atom types.")
 
@@ -906,6 +907,11 @@ class FittingDriver(OpenCLBase):
         if not hasattr(self, 'Jmols_buff'):
             self.try_make_buffers({"Jmols": self.n_samples*4})
             self.set_kernel_args()
+
+        # Zero dEdREQs and run assemble to update tREQHs from DOFs (like DOFsToTypes)
+        self.toGPU_(self.dEdREQs_buff, np.zeros((self.n_atoms_total, 4), dtype=np.float32))
+        cl.enqueue_nd_range_kernel(self.queue, self.assemble_kern, (self.n_dofs*wg_assemble,), (wg_assemble,))
+        self.queue.finish()
 
         # 1) Derivative kernel pass(es) -> fill dEdREQs and Jmols
         # Pass 1: default ranges

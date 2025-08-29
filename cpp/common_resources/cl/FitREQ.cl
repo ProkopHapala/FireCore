@@ -674,13 +674,13 @@ __kernel void assembleAndRegularize(
         int2 type_comp = DOFtoTypeComp[iDOF];
         int atom_type = type_comp.x;
         int component = type_comp.y;
-        float fitted_value = DOFs[iDOF];
-        
-        // Apply sqrt transformation for EvdW (component 1)
-        if(component == 1) {
-            fitted_value = sqrt(fmax(fitted_value, 0.0f));
-        }
-        
+        float xDOF = DOFs[iDOF];    
+        // Update the corresponding component in tREQHs
+        if     (component == 0) tREQHs[atom_type].x = xDOF; // R
+        else if(component == 1) tREQHs[atom_type].y = xDOF; // E (sqrt)
+        else if(component == 2) tREQHs[atom_type].z = xDOF; // Q
+        else if(component == 3) tREQHs[atom_type].w = xDOF; // H
+
         // DEBUG: Print before update
         if(iDOF == 0) {
             printf("GPU assembleAndRegularize: Updating tREQHs[%d].%c from %.8e to %.8e (DOF value: %.8e)\n", 
@@ -688,13 +688,7 @@ __kernel void assembleAndRegularize(
                    (component==0 ? tREQHs[atom_type].x : 
                     component==1 ? tREQHs[atom_type].y :
                     component==2 ? tREQHs[atom_type].z : tREQHs[atom_type].w),
-                   fitted_value, DOFs[iDOF]);
+                   xDOF, DOFs[iDOF]);
         }
-        
-        // Update the corresponding component in tREQHs
-        if(component == 0) tREQHs[atom_type].x = fitted_value; // R
-        else if(component == 1) tREQHs[atom_type].y = fitted_value; // E (sqrt)
-        else if(component == 2) tREQHs[atom_type].z = fitted_value; // Q
-        else if(component == 3) tREQHs[atom_type].w = fitted_value; // H
     }
 }
