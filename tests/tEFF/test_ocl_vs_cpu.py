@@ -26,6 +26,7 @@ print("--- Comparing CPU and GPU eFF implementations for H2 ---")
 #      CPU Calculation
 # ==========================
 print("\n--- Running CPU Calculation ---")
+eff.setVerbosity(4)
 eff.processXYZ_e(xyz_filename, nstepMax=0)
 eff.getBuffs()
 

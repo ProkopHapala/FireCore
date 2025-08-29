@@ -7,7 +7,6 @@ import matplotlib
 import matplotlib.pyplot as plt
 import tkinter
 import time
-import argparse
 
 
 # import sys
@@ -76,48 +75,7 @@ def extract_min_curves(a, d, g, rmax=None):
                 rmin[j] = np.nan; emin[j] = np.nan
     return rmin, emin
 
-def _ref_shift(grid):
-    """Shift energies by the min of the last row (largest distance) like in plot_Hbond_ref.py.
-    Returns shifted grid and reference value used.
-    """
-    if grid.size == 0:
-        return grid, np.nan
-    try:
-        last = grid[-1, :] if grid.ndim == 2 and grid.shape[0] > 0 else np.array([np.nan])
-        ref = np.nanmin(last[np.isfinite(last)]) if np.any(np.isfinite(last)) else 0.0
-    except Exception:
-        ref = 0.0
-    gs = grid - ref
-    mloc = float(np.nanmin(gs)) if np.any(np.isfinite(gs)) else np.nan
-    if np.isfinite(mloc) and mloc > 0: mloc = 0.0
-    return gs, mloc
-
-def axes_from_X_and_grid(X, g):
-    """Infer angle (a) and distance (d) axes from Xplots entry and grid shape.
-    Prefer reshaping (nR,nA,*) and pick r from [:,0,0], a from [0,:,1].
-    Fallback to flatten reshape if needed. If all fails, return index axes.
-    """
-    nR, nA = g.shape
-    X = np.asarray(X)
-    # Case: already (nR, nA, k)
-    if X.ndim == 3 and X.shape[0] == nR and X.shape[1] == nA:
-        r = X[:, 0, 0] if X.shape[2] > 0 else np.arange(nR)
-        a = X[0, :, 1] if X.shape[2] > 1 else np.arange(nA)
-        return a, r
-    # Case: flat (nR*nA, k)
-    if X.ndim == 2 and X.shape[0] == nR * nA and X.shape[1] >= 2:
-        try:
-            Xr = X[:, 0].reshape(nR, nA)
-            Xa = X[:, 1].reshape(nR, nA)
-            r = Xr[:, 0]
-            a = Xa[0, :]
-            return a, r
-        except Exception:
-            pass
-    # Case: angle_data length mismatch; build axes by length only
-    return np.arange(nA), np.arange(nR)
-
-def plot_min_curves_panels(Eplots_ref, Eplots_mod, Xplots, angle_data, ref_dirs, save_prefix="min_curves_", rmax=None, shift_ref=True):
+def plot_min_curves_panels(Eplots_ref, Eplots_mod, Xplots, angle_data, ref_dirs, save_prefix="min_curves_"):
     # Assuming angle_data is a list of angle arrays, one for each system
     if not isinstance(angle_data, list) or len(angle_data) != len(ref_dirs):
         print(f"Warning: angle_data is not a list or its length does not match the number of systems. Skipping min_curves plot.")
@@ -125,23 +83,14 @@ def plot_min_curves_panels(Eplots_ref, Eplots_mod, Xplots, angle_data, ref_dirs,
         return
 
     for i, name in enumerate(ref_dirs):
-        # energies to kcal and shift by asymptotic reference to make minima meaningful
         g_ref = Eplots_ref[i] * fit.ev2kcal
         g_mod = Eplots_mod[i] * fit.ev2kcal
-        if shift_ref:
-            g_ref, _ = _ref_shift(g_ref)
-            g_mod, _ = _ref_shift(g_mod)
 
-        # derive axes from Xplots and grid shape to avoid mismatches with angle_data
-        try:
-            a, d = axes_from_X_and_grid(Xplots[i], g_ref)
-        except Exception:
-            # fallback to provided angle_data and first column distances
-            a = np.array(angle_data[i])
-            d = np.array(Xplots[i])[:, 0]
+        a = np.array(angle_data[i])
+        d = Xplots[i][:, 0]
 
-        rmin_ref, emin_ref = extract_min_curves(a, d, g_ref, rmax=rmax)
-        rmin_mod, emin_mod = extract_min_curves(a, d, g_mod, rmax=rmax)
+        rmin_ref, emin_ref = extract_min_curves(a, d, g_ref)
+        rmin_mod, emin_mod = extract_min_curves(a, d, g_mod)
 
         fig, (ax_r, ax_e) = plt.subplots(1, 2, figsize=(12, 5))
         fig.suptitle(name)
@@ -172,25 +121,6 @@ def plot_min_curves_panels(Eplots_ref, Eplots_mod, Xplots, angle_data, ref_dirs,
 
 np.set_printoptions(linewidth=300)
 
-
-# Run like this
-#   python3 opt_2D.py --no-show --outdir out_plots --rmin-max 3.2 --niter 100   
-
-# ---- CLI (defaults keep previous behavior)
-parser = argparse.ArgumentParser(description='FitREQ 2D optimization and plotting')
-parser.add_argument('--outdir', type=str, default='', help='Directory to save figures (default: current directory)')
-parser.add_argument('--no-show', action='store_true', help='Do not open interactive figure windows')
-parser.add_argument('--xyz', type=str, default='', help='Optional override of input .xyz file (default: generated all.xyz)')
-parser.add_argument('--morse', type=int, choices=[0,1], default=None, help='1=Morse, 0=LJ; default: keep script default')
-parser.add_argument('--rmin-max', dest='rmin_max', type=float, default=None, help='Omit angles where r_min exceeds this distance threshold (Angstrom)')
-parser.add_argument('--niter', dest='niter', type=int, default=1000, help='Number of iterations')
-args = parser.parse_args()
-
-OUTDIR = args.outdir.strip()
-SHOW = (not args.no_show)
-if OUTDIR:
-    os.makedirs(OUTDIR, exist_ok=True)
-
 ref_path = "/home/prokop/Desktop/CARBSIS/PEOPLE/Paolo/FitREQ/DFT_2D/"
 #ref_path = "/home/prokophapala/Desktop/CARBSIS/DFT_ref_2D/"
 #name = "H2O-D1_H2O-A1"
@@ -216,10 +146,6 @@ verbosity   = 2    # Added to enable debug printing
 #bMorse = False   # Lenard-Jones
 bMorse = True   # Morse
 
-# override by CLI if provided
-if args.morse is not None:
-    bMorse = bool(args.morse)
-
 # ============== Setup
 
 #ref_path = "/home/prokop/Desktop/CARBSIS/PEOPLE/Paolo/FitREQ/DFT_2D/"
@@ -232,20 +158,20 @@ if args.morse is not None:
 
 donors    = [
 'H2O-D1',
-#'NH3-D1',
-#'CH2NH-D1',
-#'HCOOH-D1',
-#'HCONH2-D1',
+'NH3-D1'
+'CH2NH-D1',
+'HCOOH-D1',
+'HCONH2-D1',
 #'C4H3NO2-D1',
 #'C4H5N-D1',
 ]
 acceptors = [
 'H2O-A1',
-#'NH3-A1',
-#'CH2O-A1',
+'NH3-A1',
+'CH2O-A1',
 #'CH2NH-A1',    # This makes it crash
-#'HCOOH-A1',
-#'HCOOH-A2',
+'HCOOH-A1',
+'HCOOH-A2',
 #'HCONH2-A1',
 #'C4H3NO2-A1',
 #'C5H5N-A1',
@@ -265,10 +191,6 @@ print( "marks:\n", marks )
 #fname = ref_path +"/"+ "/concatenated_all.xyz"
 fname = 'all.xyz'
 #fname = "input_2CH2NH.xyz"
-
-# optional override from CLI
-if args.xyz:
-    fname = args.xyz
 
 #comments          = fit.read_file_comments(fname) #;print( "comments:\n", comments )
 type_names,comments = fit.extract_comments_and_types(fname);  fit.add_epair_types(type_names);  print( "type_names:\n", type_names ); #exit()
@@ -290,9 +212,9 @@ fit.setVerbosity(verbosity, PrintDOFs=1, PrintfDOFs=1, PrintBeforReg=-1, PrintAf
 fit.loadTypes( )     # load atom types
 
 if bMorse:
-    fit.loadDOFSelection( fname="dofSelection_Morse.dat" )
+    #fit.loadDOFSelection( fname="dofSelection_Morse.dat" )
     #fit.loadDOFSelection( fname="dofSelection_H2O_Morse.dat" )
-    #fit.loadDOFSelection( fname="dofSelection_MorseSR.dat" )
+    fit.loadDOFSelection( fname="dofSelection_MorseSR.dat" )
     #fit.comment_non_matching_lines( fname_in="dofSelection_Morse.dat"); fit.loadDOFSelection()
     #fit.loadDOFSelection( fname="dofSelection_HCOOH_Morse.dat" )
     #fit.loadDOFSelection( fname="dofSelection_HCOOH_Morse.dat" )
@@ -365,10 +287,10 @@ E,Es,Fs = fit.getEs( bOmp=False, bDOFtoTypes=False, bEs=True, bFs=False )
 
 if bMorse:
     #Err = fit.run( iparallel=0, ialg=0, nstep=1000, Fmax=1e-4, dt=0.1, max_step=-1,  bClamp=True )
-    Err = fit.run( iparallel=0, ialg=1, nstep=args.niter, Fmax=1e-8, dt=0.5, damping=0.1,   max_step=-1,  bClamp=True )
+    Err = fit.run( iparallel=0, ialg=1, nstep=10, Fmax=1e-8, dt=0.5, damping=0.1,   max_step=-1,  bClamp=True )
 else:
     #Err = fit.run( iparallel=0, ialg=0, nstep=1000, Fmax=1e-4, dt=0.01, max_step=-1,  bClamp=True )
-    Err = fit.run( iparallel=0, ialg=1, nstep=args.niter, Fmax=1e-8, dt=0.1, damping=0.05,   max_step=-1,  bClamp=True )
+    Err = fit.run( iparallel=0, ialg=1, nstep=10, Fmax=1e-8, dt=0.1, damping=0.05,   max_step=-1,  bClamp=True )
 
 # ----- Combined hybrid optimization ( start with gradient descent, continue with dynamical descent) )
 #Err = fit.run( iparallel=0, ialg=0, nstep=20,  Fmax=1e-2, dt=0.005, max_step=-1,  bClamp=False )
@@ -383,16 +305,11 @@ E,Es,Fs = fit.getEs( bOmp=False, bDOFtoTypes=False, bEs=True, bFs=False );
 Eplots_ref = fit.slice_and_reshape(Erefs, marks, angle_data); print( "len(plots_ref): ",  len(Eplots_ref) )
 Eplots_mod = fit.slice_and_reshape(Es,    marks, angle_data); print( "len(Eplots_mod): ", len(Eplots_mod) )
 #fig = fit.plot_Epanels_diff(Eplots_mod, Eplots_ref, ref_dirs, Emin=EminRef*fit.ev2kcal, bColorbar=True, bKcal=True)
-save_prefix_panels = os.path.join(OUTDIR, "opt_2D_") if OUTDIR else "opt_2D_"
-fit.plot_Epanels_diff_separate(
-    Eplots_mod, Eplots_ref, ref_dirs,
-    Emin=EminRef*fit.ev2kcal, bColorbar=True, bKcal=True,
-    save_prefix=save_prefix_panels, bClose=True
-)
+fit.plot_Epanels_diff_separate(Eplots_mod, Eplots_ref, ref_dirs, Emin=EminRef*fit.ev2kcal, bColorbar=True, bKcal=True, save_prefix="opt_2D_", bClose=True )
+plt.savefig( "opt_2D.png" )
 
 Xplots = fit.slice_and_reshape(x0s, marks, angle_data)
-save_prefix_lines = os.path.join(OUTDIR, "min_curves_") if OUTDIR else "min_curves_"
-plot_min_curves_panels(Eplots_ref, Eplots_mod, Xplots, angle_data, ref_dirs, save_prefix=save_prefix_lines, rmax=args.rmin_max, shift_ref=True)
+plot_min_curves_panels(Eplots_ref, Eplots_mod, Xplots, angle_data, ref_dirs)
 
 # Eplot     = reformat_and_pad_data(Es   , lens)  # Reformat and pad data
 # Eplot_ref = reformat_and_pad_data(Erefs, lens)
@@ -403,9 +320,7 @@ plot_min_curves_panels(Eplots_ref, Eplots_mod, Xplots, angle_data, ref_dirs, sav
 
 # ======= old plotting in single imshow
 
-if SHOW:
-    plt.show()
-# exit()
+plt.show(); # exit()
 
 #test_getEs_openmp()
 

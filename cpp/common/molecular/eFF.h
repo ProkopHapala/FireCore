@@ -559,7 +559,7 @@ double evalEE(){
             }
             if(verbosity>3){
                 Vec3d f_coul = f - f_before_coul;
-                printf("CPU EE(%i,%i) Coul: (%g,%g,%g) | %g,%g\n", i, j, f_coul.x, f_coul.y, f_coul.z, fsi - fsi_before_coul, fsj - fsj_before_coul);
+                printf("CPU EE(%i,%i) dR(%.3f,%.3f,%.3f) s(%.3f,%.3f) -> Coul:(%.3f,%.3f,%.3f) | %.3f,%.3f\n", i, j, dR.x, dR.y, dR.z, si, sj, f_coul.x, f_coul.y, f_coul.z, fsi - fsi_before_coul, fsj - fsj_before_coul);
             }
 
             Vec3d f_before_paul = f; double fsi_before_paul = fsi; double fsj_before_paul = fsj;
@@ -580,7 +580,7 @@ double evalEE(){
                         dEpaul = addPauliGauss_New  ( dR, si, sj, f, fsi, fsj, spinij, KRSrho, qq );
                         if(verbosity>3){
                             Vec3d f_paul = f - f_before_paul;
-                            printf("CPU EE(%i,%i) Paul: (%g,%g,%g) | %g,%g\n", i, j, f_paul.x, f_paul.y, f_paul.z, fsi - fsi_before_paul, fsj - fsj_before_paul);
+                            printf("CPU EE(%i,%i) dR(%.3f,%.3f,%.3f) s(%.3f,%.3f) -> Paul:(%.3f,%.3f,%.3f) | %.3f,%.3f\n", i, j, dR.x, dR.y, dR.z, si, sj, f_paul.x, f_paul.y, f_paul.z, fsi - fsi_before_paul, fsj - fsj_before_paul);
                         }
                         //printf( "EeePaul[%i,%i]= %g \n", i, j, dEpaul );
                     //}
@@ -659,7 +659,7 @@ double evalAE(){
                 dEae  = addCoulombGauss( dR, aPar.y, sj, f, fs_junk, fsj, qCore*-qj );
                 if(verbosity>3){
                     Vec3d f_coul = f - f_before;
-                    printf("CPU AE(%i,%i) Coul: (%g,%g,%g) | %g,%g\n", i, j, f_coul.x, f_coul.y, f_coul.z, 0.0, fsj - fsj_before);
+                    printf("CPU AE(%i,%i) dR(%.3f,%.3f,%.3f) s(%.3f,%.3f) -> Coul:(%.3f,%.3f,%.3f) | %.3f,%.3f\n", i, j, dR.x, dR.y, dR.z, aPar.y, sj, f_coul.x, f_coul.y, f_coul.z, 0.0, fsj - fsj_before);
                 }
             }
             if( aPar.z>1e-8 ){ // is there a core electron?
@@ -671,7 +671,7 @@ double evalAE(){
                     dEaePaul = addPauliGauss_New( dR, aPar.y, sj, f, fsj, fs_junk, 0, KRSrho, qj*aPar.z*0.5 );
                     if(verbosity>3){
                         Vec3d f_paul = f - f_before;
-                        printf("CPU AE(%i,%i) Paul: (%g,%g,%g) | %g,%g\n", i, j, f_paul.x, f_paul.y, f_paul.z, 0.0, fsj - fsj_before);
+                        printf("CPU AE(%i,%i) dR(%.3f,%.3f,%.3f) s(%.3f,%.3f) -> Paul:(%.3f,%.3f,%.3f) | %.3f,%.3f\n", i, j, dR.x, dR.y, dR.z, aPar.y, sj, f_paul.x, f_paul.y, f_paul.z, 0.0, fsj - fsj_before);
                     }
                 } // spin=0 means both -1 and +1  
                 if(bCoreCoul   ){ 
@@ -1047,10 +1047,20 @@ void printSwitches(){
     printf( "KRSrho %g %g %g \n", KRSrho.x, KRSrho.y, KRSrho.z );
 }
 
+void printAtomParams2(){
+    printf( "EFF::printAtomParams2()\n" );
+    for(int i=0;i<na;i++){
+        const Quat4d& A = aPars[i];   // {Z_nuc, R_eff, Zcore_eff, P}
+        const Quat4d& B = aPars2[i];  // {PA, PB, PC, PD/PE}
+        printf( "a2[%3i ] Z_nuc %g R_eff %g Zcore_eff %g | PA..PE(%g,%g,%g,%g)\n", i, A.x, A.y, A.z, B.x, B.y, B.z, B.w );
+    }
+}
+
 void info(){
     printf( "EFF::info()\n" );
     printSwitches();
     printAtoms();
+    printAtomParams2();
     printElectrons();
 }
 

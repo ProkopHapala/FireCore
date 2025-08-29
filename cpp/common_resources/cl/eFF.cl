@@ -177,10 +177,13 @@ float2 addKineticGauss_eFF( float s ){
 
 // ==============================================================
 //      VERSION 4: High-Performance Kernel with Loop Splitting
-#define idDBG    4 // debug thread index
+#define idDBG    0 // debug thread index
 #define nLocal   32
 #define nIonMax  8
 // ==============================================================
+
+#define bDBGall true
+
 
 __kernel void localMD(
     __global       int4*        sysinds, // [nsys]   {na,ne,i0p,i0a} size and initial index for each atom
@@ -207,7 +210,7 @@ __kernel void localMD(
     if (get_global_id(0) == idDBG){
         int nSys = get_num_groups(0);
         int nL   = get_local_size(0);
-        printf("GPU: nSys=%d nL=%d na=%d ne=%d ntot=%d   nsteps=%d dt=%f damping=%f\n", nSys, nL, na, ne, ntot, nsteps, dt, damping);
+        printf("GPU: nSys=%d nL=%d na=%d ne=%d ntot=%d   nsteps=%d dt=%f damping=%f  | KRSrho(%.6f,%.6f,%.6f,%.6f) bFrozenCore=%d\n", nSys, nL, na, ne, ntot, nsteps, dt, damping, KRSrho.x, KRSrho.y, KRSrho.z, KRSrho.w, bFrozenCore);
         for(int isys=0; isys<nSys; isys++){
             int4 is = sysinds[isys];
             int nt = is.x + is.y;
@@ -219,7 +222,8 @@ __kernel void localMD(
                     float8 api = aParams[i];
                     printf(" Atom params(%12.8f,%12.8f,%12.8f,%12.8f,%12.8f,%12.8f,%12.8f,%12.8f)\n", api.s0, api.s1, api.s2, api.s3, api.s4, api.s5, api.s6, api.s7 );
                 }else{
-                    printf(" Electron \n");
+                    int sp = espins[ is.z + i ];
+                    printf(" Electron sz %12.8f spin %d\n", pi.w, sp);
                 }
             }
         }
@@ -242,6 +246,85 @@ __kernel void localMD(
 
     barrier(CLK_LOCAL_MEM_FENCE);
 
+    // --- VALIDATION PATH: serial pairwise accumulation matching CPU (Newton's 3rd law)
+    // Run only on lid==0. All other work-items return now to avoid executing the parallel path.
+    if (lid != 0) { return; }
+    {
+        float4 F[nLocal];
+        for (int i=0; i<ntot; ++i) { F[i] = (float4)(0.0f); }
+
+        // Kinetic size forces for electrons
+        for (int i=na; i<ntot; ++i) {
+            float2 fk = addKineticGauss_eFF(l_pos[i].w);
+            F[i].w += fk.y;
+        }
+
+        // Ion-Ion (AA)
+        for (int i=0; i<na; ++i) {
+            const float8 pari = l_aparams[i];
+            const float  Qi   = pari.s0 - pari.s2;
+            for (int j=i+1; j<na; ++j) {
+                const float8 parj = l_aparams[j];
+                const float  Qj   = parj.s0 - parj.s2;
+                const float3 dR   = l_pos[j].xyz - l_pos[i].xyz;
+                float4 c = getCoulomb(dR, Qi*Qj);
+                float3 f = c.xyz;
+                F[i].xyz += f;
+                F[j].xyz -= f;
+            }
+        }
+
+        // Ion-Electron (AE)
+        for (int i=0; i<na; ++i) {
+            const float8 pari = l_aparams[i];
+            const float  Qi   = pari.s0 - pari.s2;
+            const float  Ri   = pari.s1;
+            for (int j=na; j<ntot; ++j) {
+                const float4 ej = l_pos[j];
+                const float3 dR = ej.xyz - l_pos[i].xyz;
+                float4 cg = getCoulombGauss(dR, Ri, ej.w, -Qi);
+                float3 f = dR * cg.y;
+                if(bDBGall){ printf("GPU[serial] AE(%i,%i) dR(%.3f,%.3f,%.3f) s(%.3f,%.3f) -> Coul:(%.3f,%.3f,%.3f) | %.3f,%.3f\n", i, j-na, dR.x, dR.y, dR.z, Ri, ej.w, f.x, f.y, f.z, 0.0, cg.w); }
+                F[i].xyz += f;
+                F[j].xyz -= f;
+                F[i].w   += cg.z;   // size force on ion
+                F[j].w   += cg.w;   // size force on electron
+                if (bFrozenCore) {
+                    // Pauli with frozen-core (if used) would go here
+                }
+            }
+        }
+
+        // Electron-Electron (EE): Coulomb + Pauli
+        for (int i=na; i<ntot; ++i) {
+            const float4 ei   = l_pos[i];
+            const int    si   = l_spins[i-na];
+            for (int j=i+1; j<ntot; ++j) {
+                const float4 ej = l_pos[j];
+                const int    sj = l_spins[j-na];
+                const float3 dR = ej.xyz - ei.xyz;
+                float4 cg = getCoulombGauss  (dR, ei.w, ej.w, 1.0f);
+                // CPU scales Pauli by qq = 2 if both spins are 0 (paired), else 1.0
+                float  qq = ((si==0) && (sj==0)) ? 2.0f : 1.0f;
+                float4 KRS = KRSrho; KRS.w *= qq;
+                float4 pg = getPauliGauss_New(dR, ei.w, ej.w, si*sj, KRS);
+                float  fr = cg.y + pg.y;
+                float3 f  = dR * fr;
+                if(bDBGall){ printf("GPU[serial] EE(%i,%i) dR(%.3f,%.3f,%.3f) s(%.3f,%.3f) -> Coul:(%.3f,%.3f,%.3f) | %.3f,%.3f | Paul:(%.3f,%.3f,%.3f) | %.3f,%.3f\n",
+                    i-na, j-na,
+                    dR.x, dR.y, dR.z, ei.w, ej.w,
+                    dR.x*cg.y, dR.y*cg.y, dR.z*cg.y, cg.z, cg.w,
+                    dR.x*pg.y, dR.y*pg.y, dR.z*pg.y, pg.z, pg.w ); }
+                F[i].xyz += f;
+                F[j].xyz -= f;
+                F[i].w   += cg.z + pg.z;   // size force on i
+                F[j].w   += cg.w + pg.w;   // size force on j
+            }
+        }
+        for (int i=0; i<ntot; ++i) { fout[inds.z + i] = F[i]; }
+        return;
+    }
+
     for (int i_step = 0; i_step < nsteps; ++i_step) {
 
         float4 forcei = (float4)(0.0f);
@@ -254,7 +337,8 @@ __kernel void localMD(
             const float  Qi      = pari.s0 - pari.s2;
             const float  Ri      = pari.s1;
 
-            if (get_global_id(0) == idDBG){   printf("Ion %3i Qi %12.8e Ri %12.8e pos(%12.8e,%12.8e,%12.8e,%12.8e)\n", lid, Qi, Ri, posi.x,posi.y,posi.z,posi.w );}
+            //if (get_global_id(0) == idDBG){   printf("Ion %3i Qi %12.8e Ri %12.8e pos(%12.8e,%12.8e,%12.8e,%12.8e)\n", lid, Qi, Ri, posi.x,posi.y,posi.z,posi.w );}
+            if(bDBGall){ printf("Ion %3i Qi %12.8e Ri %12.8e pos(%12.8e,%12.8e,%12.8e,%12.8e)\n", lid, Qi, Ri, posi.x,posi.y,posi.z,posi.w );}
             // --- Ion-Ion Interactions ---
             for (int j = 0; j < na; ++j) {
                 if (lid == j) continue;
@@ -263,7 +347,8 @@ __kernel void localMD(
                 const float  Qj            = parj.s0 - parj.s2;
                 //const float  Rj            = parj.s1;
                 float4 fij = getCoulomb(dR, Qi * Qj);
-                if (get_global_id(0) == idDBG){ printf("GPU AA(%i,%i) Coul: (%g,%g,%g)\n", lid, j, fij.x,fij.y,fij.z); }
+                //if (get_global_id(0) == idDBG){ printf("GPU AA(%i,%i) dR(%.3f,%.3f,%.3f) -> Coul:(%.3f,%.3f,%.3f)\n", lid, j, dR.x, dR.y, dR.z, fij.x,fij.y,fij.z); }
+                if(bDBGall){ printf("GPU AA(%i,%i) dR(%.3f,%.3f,%.3f) -> Coul:(%.3f,%.3f,%.3f)\n", lid, j, dR.x, dR.y, dR.z, fij.x,fij.y,fij.z); }
                 forcei.xyz += fij.xyz;
             }
             // --- Ion-Electron Interactions ---
@@ -271,6 +356,8 @@ __kernel void localMD(
                 const float4 pj = l_pos[j];
                 const float3 dR = pj.xyz - posi.xyz;
                 float4 fg = getCoulombGauss (dR, Ri, pj.w, Qi );
+                //if (get_global_id(0) == idDBG){ printf("GPU AE(%i,%i) dR(%.3f,%.3f,%.3f) s(%.3f,%.3f) -> Coul:(%.3f,%.3f,%.3f) | %.3f,%.3f\n", lid, j-na, dR.x, dR.y, dR.z, Ri, pj.w, dR.x*fg.y, dR.y*fg.y, dR.z*fg.y, 0.0, fg.w); }
+                if(bDBGall){ printf("GPU AE(%i,%i) dR(%.3f,%.3f,%.3f) s(%.3f,%.3f) -> Coul:(%.3f,%.3f,%.3f) | %.3f,%.3f\n", lid, j-na, dR.x, dR.y, dR.z, Ri, pj.w, dR.x*fg.y, dR.y*fg.y, dR.z*fg.y, 0.0, fg.w); }
                 forcei.xyz += dR * fg.y;
                 forcei.w   += fg.w;
                 if( bFrozenCore ){
@@ -287,10 +374,12 @@ __kernel void localMD(
             // --- Electron-Ion Interactions ---
             for (int j = 0; j < na; ++j) {
                 const float8 parj = l_aparams[j];
-                const float3 dR   = parj.s0 - posi.xyz;
+                const float3 dR   = l_pos[j].xyz - posi.xyz;
                 const float Qj    = parj.s0 - parj.s2;
                 const float Rj    = parj.s1;
                 float4 fg = getCoulombGauss  (dR, posi.w, Rj, -1.0f * Qj);
+                //if (get_global_id(0) == idDBG){ printf("GPU AE(%i,%i) dR(%.3f,%.3f,%.3f) s(%.3f,%.3f) -> Coul:(%.3f,%.3f,%.3f) | %.3f,%.3f\n", j, lid-na, dR.x, dR.y, dR.z, posi.w, Rj, dR.x*fg.y, dR.y*fg.y, dR.z*fg.y, fg.z, 0.0); }
+                if(bDBGall){ printf("GPU AE(%i,%i) dR(%.3f,%.3f,%.3f) s(%.3f,%.3f) -> Coul:(%.3f,%.3f,%.3f) | %.3f,%.3f\n", j, lid-na, dR.x, dR.y, dR.z, posi.w, Rj, dR.x*fg.y, dR.y*fg.y, dR.z*fg.y, fg.z, 0.0); }
                 forcei.xyz -= dR * fg.y;
                 forcei.w   += fg.z;
                 if( bFrozenCore ){
@@ -306,6 +395,10 @@ __kernel void localMD(
                 const signed char spinj   = l_spins[j - na];
                 float4 fg = getCoulombGauss  (dR, posi.w, pj.w, 1.0f);
                 float4 fp = getPauliGauss_New(dR, posi.w, pj.w, spinj * spini, KRSrho);
+                //if (get_global_id(0) == idDBG){
+                if(bDBGall){
+                    printf("GPU EE(%i,%i) dR(%g,%g,%g) s(%g,%g)   Coul: (%g,%g,%g) | %g,%g  | Paul: (%g,%g,%g) | %g,%g\n",    lid-na, j-na, dR.x, dR.y, dR.z, posi.w, pj.w, dR.x*fg.y, dR.y*fg.y, dR.z*fg.y, fg.z, dR.x*fp.y, dR.y*fp.y, dR.z*fp.y, fp.z); 
+                }
                 forcei.xyz += dR * (fg.y + fp.y);
                 forcei.w   += fg.z + fp.z; // f_si
                 // TODO: How to handle fsj ? The C++ version adds it to the other particle.
@@ -442,8 +535,10 @@ __kernel void eval_electrons(
             float3 dp = ej.xyz - ei.xyz;
             // coulomb / pauli
             float4 c  = getCoulombGauss(dp, ei.w, ej.w, 1.0f);
-            float4 p  = getPauliGauss_New(dp, ei.w, ej.w, si*sj, KRSrho);
-            fi.xyz += dp*(c.y+c.y);
+            float  qq = ((si==0) && (sj==0)) ? 2.0f : 1.0f; // CPU scales Pauli by qq when both spins are 0
+            float4 KRS = KRSrho; KRS.w *= qq;
+            float4 p  = getPauliGauss_New(dp, ei.w, ej.w, si*sj, KRS);
+            fi.xyz += dp*(c.y + p.y);
             fi.w   += c.z + p.z;
         }
         barrier(CLK_LOCAL_MEM_FENCE);
