@@ -223,6 +223,84 @@ __kernel void evalSampleDerivatives_template(
         printf("GPU: evalSampleDerivatives_template() nG %7i nL %2i nS %6i | i0=%d ni=%d j0=%d nj=%d \n", get_global_size(0), get_local_size(0), get_num_groups(0), i0, ni, j0, nj);
         for(int i=0; i<ni; i++){ int ia=i0+i; int it=atypes[ia]; printf("GPU: atom i %3i it %3i pos %16.8f %16.8f %16.8f %16.8f  REQH %16.8f %16.8f %16.8f %16.8f \n", ia, it, atoms[ia].x, atoms[ia].y, atoms[ia].z, atoms[ia].w, tREQHs[it].x, tREQHs[it].y, tREQHs[it].z, tREQHs[it].w); }
         for(int i=0; i<nj; i++){ int ia=j0+i; int it=atypes[ia]; printf("GPU: atom j %3i it %3i pos %16.8f %16.8f %16.8f %16.8f  REQH %16.8f %16.8f %16.8f %16.8f \n", ia, it, atoms[ia].x, atoms[ia].y, atoms[ia].z, atoms[ia].w, tREQHs[it].x, tREQHs[it].y, tREQHs[it].z, tREQHs[it].w); }
+    
+    { // DEBUG SERIAL LOOP (CPU-like, deterministic order)
+        // This runs only for the debug sample and lane 0, without barriers inside.
+        // It mirrors the CPU structure and reuses the same model code via //<<<MODEL_PAIR_ACCUMULATION
+        // To match CPU order, swap i0<->j0, ni<->nj since ranges may be passed differently
+        int i0s = j0;
+        int j0s = i0;
+        int nis = nj;
+        int njs = ni;
+        float EmolS = 0.0f;
+        for(int ii=0; ii<nis; ii++){
+            int ia = i0s + ii;
+            int ti = atypes[ia];
+            float4 atomi = atoms [ia];
+            float4 REQi  = tREQHs[ti];
+            ASSIGN_Q_FROM_SOURCE(REQi, atomi, REQi, useTypeQ);
+            int2  iep = ieps[ia];
+            if( iep.x >= 0 ){ REQi.z -= tREQHs[iep.x].z; }
+            if( iep.y >= 0 ){ REQi.z -= tREQHs[iep.y].z; }
+
+            float4 fREQi = float4Zero;
+            float  Ei    = 0.0f;
+            int    cH    = 0;
+
+            for(int jj=0; jj<njs; jj++){
+                int ja = j0s + jj;
+                int tj = atypes[ja];
+                float4 atomj = atoms [ja];
+                float4 REQj  = tREQHs[tj];
+                ASSIGN_Q_FROM_SOURCE(REQj, atomj, REQj, useTypeQ);
+                int2  jep = ieps[ja];
+                if( jep.x >= 0 ){ REQj.z -= tREQHs[jep.x].z; }
+                if( jep.y >= 0 ){ REQj.z -= tREQHs[jep.y].z; }
+
+                float3 dij = atomj.xyz - atomi.xyz;
+                float  r   = length(dij);
+                float  inv_r  = 1.f/fmax(r, R2SAFE);
+
+                float R0 = REQi.x + REQj.x;
+                float E0 = REQi.y * REQj.y;
+                float Q  = REQi.z * REQj.z;
+                float H  = REQi.w * REQj.w;
+                float sH = S_H(H);
+                H = APPLY_H_GATE(H);
+                cH += (sH > 0.f);
+
+                // Capture pre-update state to compute per-pair deltas
+                float  Ei0 = Ei;
+                float4 f0  = fREQi;
+
+
+                    // Accumulators are references to serial accumulators
+                    float4 fREQi = fREQi;
+                    float  Ei    = Ei;
+                    //<<<MODEL_PAIR_ACCUMULATION
+                    // Write back accumulators
+                    fREQi = fREQi;
+                    Ei    = Ei;
+                
+
+                // Per-pair delta print in deterministic order
+                float  dEi = Ei - Ei0;
+                float4 df  = (float4)(fREQi.x - f0.x, fREQi.y - f0.y, fREQi.z - f0.z, fREQi.w - f0.w);
+                printf("GPU-serial: [%3i,%3i] tij(%2i,%2i) r %+10.6f REQH(%+10.6f,%+12.6e,%+12.6e,%+12.6e) | dE %+12.6e | dREQH( %+12.6e, %+12.6e, %+12.6e, %+12.6e)\n",
+                       ia, ja, ti, tj, r, R0, E0, Q, H, dEi, df.x, df.y, df.z, df.w);
+            }
+            EmolS += Ei;
+        }
+        float2 EW = ErefW[iS];
+        float dE  = (EmolS - EW.x);
+        float LdEdbg = dE * EW.y;
+        float JmolS  = 0.5f * dE * LdEdbg;
+        printf("GPU-serial: iS %2i Emol %16.8e Eref %16.8e dE %16.8e LdE %16.8e Jmol %16.8e\n", iS, EmolS, EW.x, dE, LdEdbg, JmolS);
+        return;
+    }
+    
+    }else{
+       return;
     }
 
     if( iG - i0 >= ni ) return;
@@ -232,10 +310,7 @@ __kernel void evalSampleDerivatives_template(
           float4 REQi  = tREQHs[ti];
     
     // DEBUG: Print tREQHs values for first atom
-    if(iG == 0) {
-        printf("GPU eval: tREQHs[0] = (%.8e, %.8e, %.8e, %.8e)\n", 
-               REQi.x, REQi.y, REQi.z, REQi.w);
-    }
+    if(iG == 0) { printf("GPU eval: tREQHs[0] = (%.8e, %.8e, %.8e, %.8e)\n",  REQi.x, REQi.y, REQi.z, REQi.w); }
     
     ASSIGN_Q_FROM_SOURCE(REQi, atomi, REQi, useTypeQ);
     const int2   iep   = ieps  [iG];
@@ -287,9 +362,7 @@ __kernel void evalSampleDerivatives_template(
                 // Capture pre-update EvdW-Y component so we can post-scale this pair's contribution when ti==tj
                 float y0_pair = fREQi.y;
                 // DEBUG: Print energy accumulation
-                if(iS == 0 && iL == 0 && jl == 0) {
-                    printf("GPU: Energy before pair: Ei=%.8e\\n", Ei);
-                }
+                //if(iS == 0 && iL == 0 && jl == 0) { printf("GPU: Energy before pair: Ei=%.8e\\n", Ei); }
                 
                 //<<<MODEL_PAIR_ACCUMULATION
                 
@@ -302,15 +375,15 @@ __kernel void evalSampleDerivatives_template(
                 // }
                 
                 // DEBUG: Print energy after pair
-                if(iS == 0 && iL == 0 && jl == 0) {
-                    printf("GPU: Energy after pair: Ei=%.8e, dEi=%.8e\\n", Ei, Ei - Ei0);
-                }
+                //if(iS == 0 && iL == 0 && jl == 0) { printf("GPU: Energy after pair: Ei=%.8e, dEi=%.8e\\n", Ei, Ei - Ei0); }
                 // --- Debug: print per-pair contributions (delta Ei and delta fREQi)
-                if( iS==iDBG ){
+                if( (iS==iDBG) && (iL==0) ){
+                    int tj = LTYPES[jl];
                     float  dEi = Ei - Ei0;
                     float4 df  = (float4)(fREQi.x - f0.x, fREQi.y - f0.y, fREQi.z - f0.z, fREQi.w - f0.w);
-                    printf("GPU: pair i %3d j %3d r %10.6f R0 %10.6f E0 %12.6e Q %12.6e H %12.6e | dE %12.6e | d/dR0 %12.6e d/dE0 %12.6e d/dQ %12.6e d/dH %12.6e\n",
-                        iG, j0+local_j2, r, R0, E0, Q, H, dEi, df.x, df.y, df.z, df.w);
+                    //printf("GPU: [%3i,%3i] tij(%2i,%2d) r %+10.6f REQH(%+10.6f,%+12.6e,%+12.6e,%+12.6e) | dE %+12.6e | dREQH( %+12.6e, %+12.6e, %+12.6e, %+12.6e)\n", 
+                    printf("GPU: [%3i,%3i] tij(%2i,%2i) r %10.6f REQH(%10.6f,%12.6e,%12.6e,%12.6e) | dE %12.6e | dREQH( %12.6e, %12.6e, %12.6e, %12.6e)\n", 
+                        iG, j0+local_j2,  ti,tj, r, R0, E0, Q, H, dEi, df.x, df.y, df.z, df.w);
                 }
             }
         }

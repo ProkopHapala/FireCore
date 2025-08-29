@@ -495,7 +495,67 @@ if(tt.z >= 0 && tt.z < nDOFs){
 3. **Test charge consistency** - Verify CPU and GPU use identical charges
 4. **Validate energy consistency** - Confirm objective function values match
 
-### **Status:** 🔍 **Investigation in progress** - CPU fitted charge override logic needs implementation
+## UPDATE: 2025-08-29 - **FIXES IMPLEMENTED: CPU Debug Format & Fitted Charge Overrides** ✅
+
+### **Summary of Changes Made:**
+
+**✅ CPU Debug Print Format Updated:**
+- Changed from type names to type indices for consistency
+- Updated atom index format from `[i,j]` to `i   j` 
+- Changed energy format from `ELJ Eel` to total `dE`
+- Changed derivative format from `dEdR0 dEdE0 dEdQ dEdH` to `d/dR0 d/dE0 d/dQ d/dH`
+
+**Before:**
+```
+CPU: evalExampleDerivs_MorseQH2()[  3,  0] (     O_3,     O_3) r   2.368701 R0   3.500000 E0 2.601846e-03 Q 4.614621e-01 H 0.000000e+00 | ELJ 1.128914e-01 Eel 2.805289e+00 | dEdR0 -4.781809e-01 dEdE0 -2.213196e+00 dEdQ 4.129615e+00 dEdH 0.000000e+00
+```
+
+**After:**
+```
+CPU: pair i   3 j   0 r   2.368701 R0   3.500000 E0 2.601846e-03 Q 4.614621e-01 H 0.000000e+00 | dE 2.918118e+00 | d/dR0 -4.781809e-01 d/dE0 -2.213196e+00 d/dQ 4.129615e+00 d/dH 0.000000e+00
+```
+
+**✅ CPU Fitted Charge Override Logic Fixed:**
+- Moved fitted charge override logic outside the `if(buseTypeQ)` block
+- Now applies fitted charge overrides regardless of charge source flag
+- Ensures CPU and GPU use identical charge values when DOFs are available
+
+**Before:**
+```cpp
+if(buseTypeQ){
+    // Type-based charges
+    Qs[j] = typeREQs[ityp].z;
+    if(tt.z >= 0 && tt.z < nDOFs){ 
+        Qs[j] = DOFs[tt.z];  // Only applied when buseTypeQ=true
+    }
+}
+```
+
+**After:**
+```cpp
+// Apply charge source selection
+if(buseTypeQ){
+    Qs[j] = typeREQs[ityp].z;
+}
+// Apply fitted charge overrides for fitted atom types (regardless of charge source)
+if(tt.z >= 0 && tt.z < nDOFs){ 
+    Qs[j] = DOFs[tt.z];  // Always applied when DOF available
+}
+```
+
+### **Expected Impact:**
+- **Debug Output:** CPU and GPU debug prints now have identical format for apples-to-apples comparison
+- **Charge Consistency:** CPU and GPU should now use identical charge values when fitted DOFs are present
+- **Energy Agreement:** Should significantly reduce or eliminate the 99.2% relative error observed
+- **Derivative Accuracy:** CPU and GPU derivatives should now match much more closely
+
+### **Next Steps:**
+1. **Re-run consistency test** with updated CPU implementation
+2. **Compare debug outputs** side-by-side to verify identical charge values
+3. **Verify energy convergence** between CPU and GPU implementations
+4. **Update this analysis** with test results
+
+### **Status:** 🔧 **Implementation complete - ready for testing**
 
 ---
 

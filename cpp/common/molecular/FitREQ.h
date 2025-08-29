@@ -941,13 +941,13 @@ void setTypeToDOFs(int i, Quat4d REQ ){ typeREQs[i]=REQ; typeToDOFs(i); }
 
 //void clean_fs(int n){ for(int i=0; i<n; i++){fs[i]=Quat4dZero;} }
 
-__attribute__((hot)) 
+__attribute__((hot))
 void fillTempArrays( const Atoms* atoms, Vec3d* apos, double* Qs  )const{
     //printf( "FillTempArrays() bEpairs=%i \n", bEpairs );
     for(int j=0; j<atoms->natoms; j++){
         Qs[j]   = atoms->charge[j];
         apos[j] = atoms->apos [j];
-        
+
         // Apply charge source selection
         if(buseTypeQ){
             // Type-based charges (GPU default behavior)
@@ -955,11 +955,11 @@ void fillTempArrays( const Atoms* atoms, Vec3d* apos, double* Qs  )const{
             Qs[j] = typeREQs[ityp].z;
         }
         // else: Keep per-atom charges (current CPU behavior)
-        
+
         // Apply fitted charge overrides for fitted atom types
         int ityp = atoms->atypes[j];
         Quat4i tt = typToREQ[ityp];
-        if(tt.z >= 0 && tt.z < nDOFs){ 
+        if(tt.z >= 0 && tt.z < nDOFs){
             Qs[j] = DOFs[tt.z];  // Override with fitted charge
         }
         //isEp[j] = 0;
@@ -2022,11 +2022,31 @@ double evalExampleDerivs_LJQH2( int i0, int ni, int j0, int nj, int* __restrict_
 }
 
 
+void printFragAtoms(
+    int i0, int ni, const int* __restrict__ types, const Vec3d* __restrict__ ps, const Quat4d* __restrict__ typeREQs, const double* __restrict__ Qs
+)const{
+    for(int k=0; k<ni; k++){
+        int ia = i0 + k;
+        int ti = types[ia];
+        const Vec3d&  pi = ps[ia];
+        const Quat4d& REQi = typeREQs[ti];
+        double Qi = Qs[ia];
+        printf("CPU: atom i %3d it %3d pos %16.8f %16.8f %16.8f %16.8f  REQH %16.8f %16.8f %16.8f %16.8f \n",
+               ia, ti, pi.x, pi.y, pi.z, Qi, REQi.x, REQi.y, 0.0, REQi.w);
+    }
+}
+
+
 __attribute__((hot)) 
 double evalExampleDerivs_MorseQH2( int i0, int ni, int j0, int nj, int* __restrict__ types, Vec3d* __restrict__ ps, Quat4d* __restrict__ typeREQs, double* __restrict__ Qs, Quat4d* __restrict__ dEdREQs )const{
     double Etot = 0.0;
     const bool bWJ = bWriteJ&&dEdREQs;
     const double alpha   = kMorse; 
+    // --- Debug block: print atom parameters for fragments i and j (CPU, similar to GPU)
+    if(verbosity>0){
+        printFragAtoms(j0,nj,types,ps,typeREQs,Qs);
+        printFragAtoms(i0,ni,types,ps,typeREQs,Qs);
+    }
     for(int ii=0; ii<ni; ii++){ // loop over all atoms[i] in system
         const int      i    = i0+ii;
         const Vec3d&  pi    = ps      [i ]; 
@@ -2067,8 +2087,9 @@ double evalExampleDerivs_MorseQH2( int i0, int ni, int j0, int nj, int* __restri
             Etot    +=  ELJ + Eel;
             //if(verbosity>3)
             {
-                printf("CPU: evalExampleDerivs_MorseQH2()[%3i,%3i] (%8s,%8s) r %10.6f R0 %10.6f E0 %12.6e Q %12.6e H %12.6e | ELJ %12.6e Eel %12.6e | dEdR0 %12.6e dEdE0 %12.6e dEdQ %12.6e dEdH %12.6e\n",
-                    i,j, params->atypes[ti].name, params->atypes[tj].name, r, R0, E0, Q, H, ELJ, Eel, -dE_dR0, -dE_dE0*REQj.y, -dE_dQ*Qj, dE_dH*REQj.w*sH);
+                double dE_total = ELJ + Eel;
+                printf("CPU: [%3i,%3i] tij(%2i,%2d) r %+10.6f REQH(%+10.6f,%+12.6e,%+12.6e,%+12.6e) | dE %+12.6e | dREQH( %+12.6e, %+12.6e, %+12.6e, %+12.6e)\n",
+                    i, j, ti, tj, r, R0, E0, Q, H, dE_total, -dE_dR0, -dE_dE0*REQj.y, -dE_dQ*Qj, dE_dH*REQj.w*sH );
             }
             //{ int itypPrint=4; if( (ti==itypPrint) || (tj==itypPrint) ){ printf( "evalExampleDerivs_LJQH2()[%3i,%3i] (%8s,%8s) ELJ,Eel: %12.3e,%12.3e Q(%12.3e|%12.3e,%12.3e) dEdREQH(%12.3e,%12.3e,%12.3e,%12.3e)\n", i,j, params->atypes[ti].name, params->atypes[tj].name , ELJ,Eel, Q,Qi,Qj,  dE_dR0, dE_deps, dE_dQ, dE_dH2  ); } }
             fREQi.x +=  -dE_dR0;                   // dEtot/dR0_i

@@ -84,28 +84,20 @@ def compare_objectives(cpu_fit, gpu_driver, dof_values, verbose=True):
     for i, val in enumerate(dof_values):
         fit_cpp.DOFs[i] = float(val)
     
-    # Compute CPU objective using scanParam with single point
+    # CPU objective: evaluate exactly once
     # scanParam returns (energies, forces) - we want the first element (energies)
     cpu_result = fit_cpp.scanParam(0, np.array([dof_values[0]]), bEvalSamples=True)
-    cpu_J = cpu_result[0][0]  # First energy value
-    
-    # Compute GPU objective using the derivative path (which updates DOFs and tREQHs)
-    # This ensures fitted parameters are applied before energy computation
-    J, g = gpu_driver.getErrorDerivs(dof_values.astype(np.float32))
-    gpu_J = J
-    
-    if verbose:
-        print(f"GPU: J={J:.8e}, this should be sum over samples of 0.5*(Emol-Eref)^2")
-    
-    # Compute CPU objective using scanParam with single point
-    # scanParam returns (energies, forces) - we want the first element (energies)
-    cpu_result = fit_cpp.scanParam(0, np.array([dof_values[0]]), bEvalSamples=True)
-    cpu_J = cpu_result[0][0]  # First energy value
-    
+    cpu_J = cpu_result[0][0]
     if verbose:
         print(f"CPU: scanParam returned {len(cpu_result[0])} energy values")
         print(f"CPU: individual energies: {cpu_result[0][:5]}...")
         print(f"CPU: J from scanParam: {cpu_J:.8e}")
+
+    # GPU objective: evaluate exactly once via derivative path (applies DOFs to tREQHs)
+    J, g = gpu_driver.getErrorDerivs(dof_values.astype(np.float32))
+    gpu_J = J
+    if verbose:
+        print(f"GPU: J={J:.8e}, this should be sum over samples of 0.5*(Emol-Eref)^2")
     
     # Compute difference
     diff = abs(cpu_J - gpu_J)
