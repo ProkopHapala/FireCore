@@ -36,7 +36,9 @@ echo "#=========== RUN"
 #python3 -u opt_2D.py 
 #python3 -u opt_check_derivs.py
 #python3 -u opt_check_derivs.py 2> asan.log | tee OUT-FitREQ-check_derivs
-python3 -u opt_check_derivs_gpu.py # 2> asan.log | tee OUT-FitREQ-check_derivs
+#python3 -u opt_check_derivs_gpu.py 2>1 | tee OUT-FitREQ-check_derivs
+python3 -u opt_check_consistency.py 2>1 | tee OUT-check_FitREQ_error_ocl_vs_cpu
+
 #python3 opt_2D.py
 
 #echo "Current PATH: $PATH"

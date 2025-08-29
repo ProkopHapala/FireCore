@@ -95,8 +95,8 @@ inline float4 getMorseQH( float3 dp,  float4 REQH, float K, float R2damp ){
     // Electrostatic
     float dE_dQ = inv_r * COULOMB_CONST;
     float Eel   = Q * dE_dQ;
-    // Morse with simple alpha; set MORSE_ALPHA via compile options if needed
-    const float alpha = 1.5f;
+    // Morse with alpha matching CPU kMorse = 1.8
+    const float alpha = 1.8f;
     float e    = exp( -alpha * ( r - R0 ) );
     float e2   = e * e;
     float e2p  = (1.f + H) * e2;
@@ -145,7 +145,8 @@ inline float4 getMorseQH( float3 dp,  float4 REQH, float K, float R2damp ){
 {
     //float Eel   = Q*2.0 * (inv_r * COULOMB_CONST);
     float Eel   = Q * (inv_r * COULOMB_CONST);
-    //const float alpha = 1.5f;
+    // Morse with alpha matching CPU kMorse = 1.8
+    const float alpha = 1.8f;
     float e    = exp( -alpha * ( r - R0 ) );
     float e2   = e * e;
     float e2p  = (1.f + H) * e2;

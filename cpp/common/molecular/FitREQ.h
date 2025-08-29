@@ -225,6 +225,8 @@ class FitREQ : public MolecularDatabase{ public:
     bool  bClearDOFboundsEpoch = false; // Should we clear fDOFbounds after each epoch ?
     bool  bEvalOnlyCorrections = false;  // Split evaluation and optimization to Emodel0 and Ecorrection (where only Ecorrection is updated every iteration)
 
+    bool  buseTypeQ = false;    // Use type-based charges instead of per-atom charges from XYZ file
+
     // what to do with samples with E>EmodelCut ?
     bool bListOverRepulsive    = true;   // Should we list overrepulsive samples? 
     bool bSaveOverRepulsive    = false;  // Should we save overrepulsive samples to .xyz file?
@@ -946,11 +948,20 @@ void fillTempArrays( const Atoms* atoms, Vec3d* apos, double* Qs  )const{
         Qs[j]   = atoms->charge[j];
         apos[j] = atoms->apos [j];
         
-        //{ // for types with fitted charges update charge from DOFs
+        // Apply charge source selection
+        if(buseTypeQ){
+            // Type-based charges (GPU default behavior)
             int ityp = atoms->atypes[j];
-            Quat4i tt = typToREQ[ityp];
-            if( tt.z>=0 && tt.z<nDOFs ){ Qs[j] = DOFs[tt.z]; };
-        //}
+            Qs[j] = typeREQs[ityp].z;
+        }
+        // else: Keep per-atom charges (current CPU behavior)
+        
+        // Apply fitted charge overrides for fitted atom types
+        int ityp = atoms->atypes[j];
+        Quat4i tt = typToREQ[ityp];
+        if(tt.z >= 0 && tt.z < nDOFs){ 
+            Qs[j] = DOFs[tt.z];  // Override with fitted charge
+        }
         //isEp[j] = 0;
         //printf( "FillTempArrays()[ia=%3i] t %3i %-8s iDOF=%3i Q=%12.3e \n", j, ityp, params->atypes[ityp].name,  tt.z, Qs[j] );
     }
@@ -972,9 +983,16 @@ void fillTempArrays( const Atoms* atoms, Vec3d* apos, double* Qs  )const{
             
             int ityp = atoms->atypes[iE];
             Quat4i tt = typToREQ[ityp];
-            double Qep = typeREQs[ityp].z; // default to type charge
-            if( tt.z>=0 && tt.z<nDOFs ){
-                Qep = DOFs[tt.z];
+            double Qep;
+            if(buseTypeQ){
+                // Type-based baseline, with optional fitted override
+                Qep = typeREQs[ityp].z;
+                if( tt.z>=0 && tt.z<nDOFs ){
+                    Qep = DOFs[tt.z];
+                }
+            }else{
+                // Per-atom baseline, no fitted override
+                Qep = atoms->charge[iE];
             }
             //printf( "FillTempArrays()[iap=%3i] iE=%3i iX=%3i  t %3i %-8s iDOF=%3i Qep=%12.3e \n", j, iE, iX, ityp, params->atypes[ityp].name,  tt.z, Qep );
 

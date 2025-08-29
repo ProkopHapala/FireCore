@@ -197,11 +197,11 @@ __kernel void evalSampleDerivatives_template(
     __global int*     atypes,  // 3: [nAtomTot] atom types
     __global int2*    ieps,    // 4: [nAtomTot] {iep1,iep2} index of electron pair type ( used to subtract  charge)
     __global float4*  atoms,   // 5: [nAtomTot] positions and REPS charge of each atom (x,y,z,Q) 
-    __global float4*  dEdREQs, // 6: [nAtomTot] output derivatives of type REQH parameters
-    __global float2*  ErefW,   // 7: [nsamp] {E,W} reference energies and weights for each sample (molecule,system)
-    __global float*   Jmols,   // [nSamples] per-sample objective contributions: 0.5*(Emol - Eref)*LdE
-    int      useTypeQ,         // runtime switch: 0=per-atom atoms.w, 1=type-based REQH.z
-    float4   globParams        // {alpha,?,?,?} global parameters (min,max, xlo,xhi, Klo,Khi, K0,x0)
+    __global float4*  dEdREQs,       // 5: [nAtomTot] derivatives of REQH parameters
+    __global float2*  ErefW,         // 6: [nsamp] {E,W} reference energies and weights for each sample (molecule,system)
+    __global float*   Jmols,         // 7: [nSamples] per-sample objective contributions: 0.5*(Emol - Eref)*LdE
+    int      useTypeQ,               // 8: runtime switch: 0=per-atom atoms.w, 1=type-based REQH.z
+    float4   globParams              // 9: {alpha,?,?,?} global parameters (min,max, xlo,xhi, Klo,Khi, K0,x0)
 ){
     __local float4 LATOMS[32];
     __local float4 LREQKS[32];
@@ -230,6 +230,13 @@ __kernel void evalSampleDerivatives_template(
     const int    ti    = atypes[iG];
     const float4 atomi = atoms [iG];
           float4 REQi  = tREQHs[ti];
+    
+    // DEBUG: Print tREQHs values for first atom
+    if(iG == 0) {
+        printf("GPU eval: tREQHs[0] = (%.8e, %.8e, %.8e, %.8e)\n", 
+               REQi.x, REQi.y, REQi.z, REQi.w);
+    }
+    
     ASSIGN_Q_FROM_SOURCE(REQi, atomi, REQi, useTypeQ);
     const int2   iep   = ieps  [iG];
     if( iep.x >= 0 ){ REQi.z -= tREQHs[iep.x].z; }
@@ -279,12 +286,24 @@ __kernel void evalSampleDerivatives_template(
                 float4 f0       = fREQi;
                 // Capture pre-update EvdW-Y component so we can post-scale this pair's contribution when ti==tj
                 float y0_pair = fREQi.y;
+                // DEBUG: Print energy accumulation
+                if(iS == 0 && iL == 0 && jl == 0) {
+                    printf("GPU: Energy before pair: Ei=%.8e\\n", Ei);
+                }
+                
                 //<<<MODEL_PAIR_ACCUMULATION
+                
+                
                 // Post-scale only the incremental EvdW derivative (y) from this i–j pair if atom types match
-                {
-                    int tj = LTYPES[jl];
-                    float dy = fREQi.y - y0_pair;
-                    if(ti == tj){ fREQi.y = y0_pair + 2.f*dy; }
+                // {  // what is this shit? do we really need it?
+                //     int tj = LTYPES[jl];
+                //     float dy = fREQi.y - y0_pair;
+                //     if(ti == tj){ fREQi.y = y0_pair + 2.f*dy; }
+                // }
+                
+                // DEBUG: Print energy after pair
+                if(iS == 0 && iL == 0 && jl == 0) {
+                    printf("GPU: Energy after pair: Ei=%.8e, dEi=%.8e\\n", Ei, Ei - Ei0);
                 }
                 // --- Debug: print per-pair contributions (delta Ei and delta fREQi)
                 if( iS==iDBG ){
@@ -369,6 +388,13 @@ __kernel void evalSampleEnergy_template(
         ti    = atypes[i];
         atomi = atoms [i];
         REQi  = tREQHs[ti];
+        
+        // DEBUG: Print tREQHs values for first active work item
+        if(iL == 0 && iS == 0) {
+            printf("GPU energy_eval: tREQHs[%d] = (%.8e, %.8e, %.8e, %.8e)\n", 
+                   ti, REQi.x, REQi.y, REQi.z, REQi.w);
+        }
+        
         ASSIGN_Q_FROM_SOURCE(REQi, atomi, REQi, useTypeQ);
         const int2   iep   = ieps  [i];
         if( iep.x >= 0 ){ REQi.z -= tREQHs[iep.x].z; }
@@ -516,7 +542,9 @@ __kernel void assembleAndRegularize(
      __global float4*  DOFcofefs,     // 5: [nInds]    factors for update of each DOF from the atom dEdREQH parameters   fDOFi = dot( DOFcofefs[i], dEdREQH[i] )
      __global float4*  dEdREQs,       // 6: [nAtomTot] derivatives of REQH parameters
     __global const float*   DOFs,     // 7: [nDOFs]    current values of DOFs (need only for regularization)
-    __global const float8*  regParams // 8: [nDOFs]   {min,max, xlo,xhi, Klo,Khi, K0,x0}
+    __global const float8*  regParams, // 8: [nDOFs]   {min,max, xlo,xhi, Klo,Khi, K0,x0}
+    __global float4*        tREQHs,    // 9: [ntypes]  REQH parameters (to update with fitted values)
+    __global int2*          DOFtoTypeComp // 10: [nDOFs] (atom_type, component) for each DOF
 ){
     __local float LfDOFi[NLOC_assembleDOFderivatives];
 
@@ -568,5 +596,32 @@ __kernel void assembleAndRegularize(
         if(x>p.s3){ fDOF -= p.s5*(x-p.s3); } // Upper soft wall
         // --- Store
         fDOFs[iDOF] = fDOF;
+        
+        // --- Update tREQHs with fitted parameter values ---
+        int2 type_comp = DOFtoTypeComp[iDOF];
+        int atom_type = type_comp.x;
+        int component = type_comp.y;
+        float fitted_value = DOFs[iDOF];
+        
+        // Apply sqrt transformation for EvdW (component 1)
+        if(component == 1) {
+            fitted_value = sqrt(fmax(fitted_value, 0.0f));
+        }
+        
+        // DEBUG: Print before update
+        if(iDOF == 0) {
+            printf("GPU assembleAndRegularize: Updating tREQHs[%d].%c from %.8e to %.8e (DOF value: %.8e)\n", 
+                   atom_type, "REQH"[component], 
+                   (component==0 ? tREQHs[atom_type].x : 
+                    component==1 ? tREQHs[atom_type].y :
+                    component==2 ? tREQHs[atom_type].z : tREQHs[atom_type].w),
+                   fitted_value, DOFs[iDOF]);
+        }
+        
+        // Update the corresponding component in tREQHs
+        if(component == 0) tREQHs[atom_type].x = fitted_value; // R
+        else if(component == 1) tREQHs[atom_type].y = fitted_value; // E (sqrt)
+        else if(component == 2) tREQHs[atom_type].z = fitted_value; // Q
+        else if(component == 3) tREQHs[atom_type].w = fitted_value; // H
     }
 }

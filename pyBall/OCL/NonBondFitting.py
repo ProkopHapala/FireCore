@@ -349,6 +349,25 @@ class FittingDriver(OpenCLBase):
         self.tREQHs_base = np.tile(np.array(REQH, dtype=np.float32), (n_types, 1))
 
 
+        # Prepare host-side data for fitted parameter overrides
+        n_types = len(self.atom_type_names)
+        self.host_typToREQ = np.full((n_types, 4), -1, dtype=np.int32)
+        
+        # Set up mapping from atom types to DOF indices
+        for dof_idx, dof in enumerate(self.dof_definitions):
+            if dof['typename'] in self.atom_type_map:
+                type_idx = self.atom_type_map[dof['typename']]
+                comp = dof['comp']
+                self.host_typToREQ[type_idx, comp] = dof_idx
+
+        # Create inverse mapping: DOF index -> (atom_type, component)
+        self.host_DOFtoTypeComp = np.full((self.n_dofs, 2), -1, dtype=np.int32)
+        for dof_idx, dof in enumerate(self.dof_definitions):
+            if dof['typename'] in self.atom_type_map:
+                type_idx = self.atom_type_map[dof['typename']]
+                comp = dof['comp']
+                self.host_DOFtoTypeComp[dof_idx] = [type_idx, comp]
+
         # --- Build initial REQH parameter matrix ---
         n_types_in_data = len(self.atom_type_names)
         self.tREQHs_base = np.zeros((n_types_in_data, 4), dtype=np.float32)
@@ -506,7 +525,8 @@ class FittingDriver(OpenCLBase):
             "DOFnis":           self.host_dof_nis,
             "DOFtoAtom":        self.host_dof_to_atom,
             "DOFcofefs":        self.host_dof_coeffs,
-            "regParams":        self.host_regParams
+            "regParams":        self.host_regParams,
+            "DOFtoTypeComp":    self.host_DOFtoTypeComp
         }
         for k,v in buffs_.items(): checkSizeAndStop( v, name=k)
         buffs = { k: v.nbytes for k,v in buffs_.items() }
@@ -526,6 +546,7 @@ class FittingDriver(OpenCLBase):
         self.toGPU_(self.DOFtoAtom_buff, self.host_dof_to_atom)
         self.toGPU_(self.DOFcofefs_buff, self.host_dof_coeffs)
         self.toGPU_(self.regParams_buff, self.host_regParams)
+        self.toGPU_(self.DOFtoTypeComp_buff, self.host_DOFtoTypeComp)
         
         # Defer binding kernel arguments until after compile_with_model() injects the model.
         # compile_with_model() will call set_kernel_args() once the program is (re)built.
@@ -586,7 +607,9 @@ class FittingDriver(OpenCLBase):
             self.DOFcofefs_buff,
             self.dEdREQs_buff,
             self.DOFs_buff,
-            self.regParams_buff
+            self.regParams_buff,
+            self.tREQHs_buff,
+            self.DOFtoTypeComp_buff
         )
         if self.verbose>0:
             print("Templated kernel arguments bound.")
@@ -677,7 +700,7 @@ class FittingDriver(OpenCLBase):
         needed = [
             'ranges_buff','tREQHs_buff','atypes_buff','ieps_buff',
             'atoms_buff','dEdREQs_buff','ErefW_buff',
-            'fDOFs_buff','DOFnis_buff','DOFtoAtom_buff','DOFcofefs_buff','DOFs_buff','regParams_buff'
+            'fDOFs_buff','DOFnis_buff','DOFtoAtom_buff','DOFcofefs_buff','DOFs_buff','regParams_buff','DOFtoTypeComp_buff'
         ]
         if all(hasattr(self, n) for n in needed):
             self.set_kernel_args()
