@@ -14,7 +14,7 @@ avoid race conditions, and then assembled in a final step.
 
 #include "OCL.h"
 
-class OCL_UFF : public OCL {
+class OCL_UFF : public OCLsystem {
 public:
     // --- Dimensions
     int nSystems    = 0;
@@ -93,11 +93,18 @@ public:
         buildProgram(srcpath, program); // Assuming 'program' is the member from OCL base class
 
         // Create tasks for each kernel
-        task_evalBonds      = newTask("evalBondsAndHNeigh_UFF", program, 1);
-        task_evalAngles     = newTask("evalAngles_UFF",         program, 1);
-        task_evalDihedrals  = newTask("evalDihedrals_UFF",      program, 1);
-        task_evalInversions = newTask("evalInversions_UFF",     program, 1);
-        task_assemble       = newTask("assembleForces_UFF",     program, 1);
+        newTask("evalBondsAndHNeigh_UFF", program, 1);
+        newTask("evalAngles_UFF",         program, 1);
+        newTask("evalDihedrals_UFF",      program, 1);
+        newTask("evalInversions_UFF",     program, 1);
+        newTask("assembleForces_UFF",     program, 1);
+
+        // Get task pointers
+        task_evalBonds      = getTask("evalBondsAndHNeigh_UFF");
+        task_evalAngles     = getTask("evalAngles_UFF");
+        task_evalDihedrals  = getTask("evalDihedrals_UFF");
+        task_evalInversions = getTask("evalInversions_UFF");
+        task_assemble       = getTask("assembleForces_UFF");
     }
 
     void realloc(int nSystems_, int nAtoms_, int nBonds_, int nAngles_, int nDihedrals_, int nInversions_, int nPBC_, int nA2F_) {

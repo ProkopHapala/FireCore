@@ -1,4 +1,4 @@
-﻿
+
 #ifndef MolWorld_sp3_ocl_h
 #define MolWorld_sp3_ocl_h
 
@@ -9,6 +9,7 @@
 //#include "OCL_DFT.h"
 //#include "OCL_PP.h"
 #include "OCL_MM.h"
+#include "OCL_UFF.h"
 //#include "OCL_EFF.h"
 #include "datatypes_utils.h"
 
@@ -104,6 +105,9 @@ struct FIRE{
 
 class MolWorld_sp3_multi : public MolWorld_sp3, public MultiSolverInterface { public:
     OCL_MM     ocl;
+    OCL_UFF*   uff_ocl = nullptr;
+    bool       bUFF    = false;
+
     FIRE_setup fire_setup{0.1,0.1};
 
     int iParalel_default=3;
@@ -138,6 +142,23 @@ class MolWorld_sp3_multi : public MolWorld_sp3, public MultiSolverInterface { pu
     Quat4f* BKs        =0;
     Quat4f* Ksp        =0;
     Quat4f* Kpp        =0;
+
+    // ---- UFF Host-side parameter arrays
+    std::vector<int2>    host_bon_atoms;
+    std::vector<float2>  host_bon_params;
+    std::vector<int4>    host_ang_atoms;
+    std::vector<int2>    host_ang_ngs;
+    std::vector<float4>  host_ang_params1;
+    std::vector<float>   host_ang_params2_w;
+    std::vector<int4>    host_dih_atoms;
+    std::vector<int4>    host_dih_ngs;
+    std::vector<float4>  host_dih_params;
+    std::vector<int4>    host_inv_atoms;
+    std::vector<int4>    host_inv_ngs;
+    std::vector<float4>  host_inv_params;
+    std::vector<int>     host_a2f_offsets;
+    std::vector<int>     host_a2f_counts;
+    std::vector<int>     host_a2f_indices;
 
 
     // ---- Groups of atoms
@@ -194,6 +215,18 @@ class MolWorld_sp3_multi : public MolWorld_sp3, public MultiSolverInterface { pu
 
     bool bMILAN = false;
     bool bSaveToDatabase=false;
+    
+    // For deferred GridFF initialization
+    bool bGridFF_pending = false;
+    const char* gridFF_name = nullptr;
+    double gridFF_z0 = NAN;
+    Vec3d gridFF_cel0 = {-0.5,-0.5,0.0};
+    bool gridFF_bSymetrize = true;
+    bool gridFF_bAutoNPBC = true;
+    bool gridFF_bCheckEval = true;
+    bool gridFF_bUseEwald = true;
+    bool gridFF_bFit = true;
+    bool gridFF_bRefine = true;
 
     MolecularDatabase* database = 0;
     long nStepConvSum = 0;
@@ -213,44 +246,71 @@ virtual int getMolWorldVersion() const override { return (int)MolWorldVersion::G
 void realloc( int nSystems_ ){
     printf("MolWorld_sp3_multi::realloc() \n");
     nSystems=nSystems_;
-    printf( "MolWorld_sp3_multi::realloc() Systems %i nAtoms %i nnode %i \n", nSystems, ffl.natoms,  ffl.nnode );
-    ocl.initAtomsForces( nSystems, ffl.natoms,  ffl.nnode, npbc+1 );
-    //printf( "MolWorld_sp3_multi::realloc() Systems %i nAtoms %i nnode %i nvecs %i \n", nSystems, ocl.nAtoms, ocl.nnode, ocl.nvecs );
-    // --- dynamical
 
+    if(bUFF){
+        printf( "MolWorld_sp3_multi::realloc() UFF Systems %i nAtoms %i \n", nSystems, ffu.natoms );
+        int nAtoms      = ffu.natoms;
+        int nBonds      = ffu.nbonds;
+        int nAngles     = ffu.nangles;
+        int nDihedrals  = ffu.ndihedrals;
+        int nInversions = ffu.ninversions;
+        // TODO: The UFF class needs to be extended to support the atom-to-force mapping for GPU execution.
+        int nA2F        = 0; //ffu.a2f_indices.size(); // This is per system
+        uff_ocl->realloc( nSystems, nAtoms, nBonds, nAngles, nDihedrals, nInversions, npbc+1, nA2F );
 
-    _realloc ( atoms,     ocl.nvecs*nSystems  );
-    _realloc0( aforces,   ocl.nvecs*nSystems  , Quat4fZero );
-    _realloc0( avel,      ocl.nvecs*nSystems  , Quat4fZero );
-    _realloc0( cvfs,      ocl.nvecs*nSystems  , Quat4fZero );
-    _realloc0( constr,    ocl.nAtoms*nSystems , Quat4fOnes*-1. );
-    _realloc0( constrK,   ocl.nAtoms*nSystems , Quat4fOnes*-1. );
+        // Allocate host-side arrays
+        host_bon_atoms.resize(nSystems * nBonds);
+        host_bon_params.resize(nSystems * nBonds);
+        host_ang_atoms.resize(nSystems * nAngles);
+        host_ang_ngs.resize(nSystems * nAngles);
+        host_ang_params1.resize(nSystems * nAngles);
+        host_ang_params2_w.resize(nSystems * nAngles);
+        host_dih_atoms.resize(nSystems * nDihedrals);
+        host_dih_ngs.resize(nSystems * nDihedrals);
+        host_dih_params.resize(nSystems * nDihedrals);
+        host_inv_atoms.resize(nSystems * nInversions);
+        host_inv_ngs.resize(nSystems * nInversions);
+        host_inv_params.resize(nSystems * nInversions);
+        host_a2f_offsets.resize(nSystems * nAtoms);
+        host_a2f_counts.resize(nSystems * nAtoms);
+        host_a2f_indices.resize(nSystems * nA2F);
+
+        _realloc ( atoms,     uff_ocl->nAtomsTot  );
+        _realloc0( aforces,   uff_ocl->nAtomsTot  , Quat4fZero );
+        _realloc0( avel,      uff_ocl->nAtomsTot  , Quat4fZero );
+        _realloc( REQs,       uff_ocl->nAtomsTot );
+        _realloc( pbcshifts, uff_ocl->nSystems * (npbc+1) ); // npbc is from MolWorld_sp3
+    }else{
+        printf( "MolWorld_sp3_multi::realloc() MMFF Systems %i nAtoms %i nnode %i \n", nSystems, ffl.natoms,  ffl.nnode );
+        ocl.initAtomsForces( nSystems, ffl.natoms,  ffl.nnode, npbc+1 );
+        _realloc ( atoms,     ocl.nvecs*nSystems  );
+        _realloc0( aforces,   ocl.nvecs*nSystems  , Quat4fZero );
+        _realloc0( avel,      ocl.nvecs*nSystems  , Quat4fZero );
+        _realloc0( cvfs,      ocl.nvecs*nSystems  , Quat4fZero );
+        _realloc0( constr,    ocl.nAtoms*nSystems , Quat4fOnes*-1. );
+        _realloc0( constrK,   ocl.nAtoms*nSystems , Quat4fOnes*-1. );
+        _realloc( neighs,    ocl.nAtoms*nSystems );
+        _realloc( neighCell, ocl.nAtoms*nSystems );
+        _realloc( bkNeighs,    ocl.nvecs*nSystems );
+        _realloc( bkNeighs_new,ocl.nvecs*nSystems );
+        _realloc( REQs,      ocl.nAtoms*nSystems );
+        _realloc( MMpars,    ocl.nnode*nSystems  );
+        _realloc( BLs,       ocl.nnode*nSystems  );
+        _realloc( BKs,       ocl.nnode*nSystems  );
+        _realloc( Ksp,       ocl.nnode*nSystems  );
+        _realloc( Kpp,       ocl.nnode*nSystems  );
+        _realloc( pbcshifts, ocl.npbc*nSystems );
+    }
+
+    // Common buffers for both FF
     cl_Mat3 bbox0{cl_float4{-1e+8,-1e+8,-1e+8,-1e+8,},cl_float4{+1e+8,+1e+8,+1e+8,+1e+8,}, cl_float4{-1.,-1.,-1.,-1.} };
     _realloc0( bboxes,   nSystems, bbox0 );
-    // --- params
-    _realloc( neighs,    ocl.nAtoms*nSystems );
-    _realloc( neighCell, ocl.nAtoms*nSystems );
-    _realloc( bkNeighs,    ocl.nvecs*nSystems );
-    _realloc( bkNeighs_new,ocl.nvecs*nSystems );
-    _realloc( REQs,      ocl.nAtoms*nSystems );
-    _realloc( MMpars,    ocl.nnode*nSystems  );
-    _realloc( BLs,       ocl.nnode*nSystems  );
-    _realloc( BKs,       ocl.nnode*nSystems  );
-    _realloc( Ksp,       ocl.nnode*nSystems  );
-    _realloc( Kpp,       ocl.nnode*nSystems  );
-
     _realloc( lvecs,     nSystems  );
     _realloc( ilvecs,    nSystems  );
     _realloc( MDpars,    nSystems  );
     Quat4f TDrive0{0.0,-1.0,0.0,0.0};
     _realloc0( TDrive,   nSystems, TDrive0 );
-
-
-    _realloc( pbcshifts, ocl.npbc*nSystems );
-
     _realloc( fire,      nSystems  );
-
-    // ToDo : it may be good to bind buffer directly in p_cpu buffer inside   OCLsystem::newBuffer()
 }
 
 void initMultiCPU(int nSys){
@@ -297,15 +357,41 @@ virtual void init() override {
     printf("# ========== MolWorld_sp3_multi::init() START\n");
     gopt.msolver = this;
     int i_nvidia = ocl.print_devices(true);
-    ocl.init(i_nvidia);
-    ocl.makeKrenels_MM("common_resources/cl" );
+    
+    // Temporarily set surf_name to null to prevent base class from calling initGridFF
+    const char* original_surf_name = surf_name;
+    surf_name = nullptr;
+    
     MolWorld_sp3::init();
+    
+    // Restore surf_name
+    surf_name = original_surf_name;
 
-    // initialization of ff4 is here because parrent MolWorld_sp3 does not contain ff4 anymore 
-    builder.toMMFFf4( ff4, true, bEpairs );  //ff4.printAtomParams(); ff4.printBKneighs(); 
-    ff4.flipPis( Vec3fOne );
-    ff4.setLvec((Mat3f)builder.lvec);
-    ff4.makeNeighCells  ( nPBC );
+    if(bUFF){
+        printf("MolWorld_sp3_multi::init() for UFF\n");
+        uff_ocl = new OCL_UFF();
+        uff_ocl->init(i_nvidia);
+        uff_ocl->makeKernels("common_resources/cl" );
+        builder.toUFF( ffu, true );
+        ffu.setLvec( builder.lvec);
+        ffu.makePBCshifts( nPBC, true );
+        ffu.mapAtomInteractions();
+    } else {
+        ocl.init(i_nvidia);
+        ocl.makeKrenels_MM("common_resources/cl" );
+        // initialization of ff4 is here because parrent MolWorld_sp3 does not contain ff4 anymore
+        builder.toMMFFf4( ff4, true, bEpairs );  //ff4.printAtomParams(); ff4.printBKneighs();
+        ff4.flipPis( Vec3fOne );
+        ff4.setLvec((Mat3f)builder.lvec);
+        ff4.makeNeighCells  ( nPBC );
+    }
+
+    // Handle surface loading and GridFF initialization if we have a surface
+    if(original_surf_name != nullptr){
+        printf("MolWorld_sp3_multi::init() - Loading surface %s after OpenCL initialization\n", original_surf_name);
+        loadSurf(original_surf_name, true, false, NAN);
+    }
+
     // ----- init systems
     realloc( nSystems );
     //if(bGridFF) evalCheckGridFF_ocl();  // this must be after we make buffers but before we fill them
@@ -313,7 +399,7 @@ virtual void init() override {
 
     fire_setup.setup(opt.dt_max,opt.damp_max);
     for(int i=0; i<nSystems; i++){
-        pack_system( i, ffl, true, false, random_init );
+        if(bUFF) pack_uff_system( i, ffu ); else pack_system( i, ffl, true, false, random_init );
         fire[i].bind_params( &fire_setup );
         fire[i].id=i;
     }
@@ -323,6 +409,11 @@ virtual void init() override {
     //bGridFF=false;
     bOcl   =false;
     //bOcl   =true;
+    
+    // Complete GridFF initialization if it was deferred
+    if(bGridFF_pending){
+        completeGridFFInit();
+    }
     //setup_MMFFf4_ocl();
     int4 mask{1,1,0,0};
     //ocl.printOnGPU( 0,mask );
@@ -466,6 +557,49 @@ virtual void pre_loop() override {
 // ==================================
 //         GPU <-> CPU I/O
 // ==================================
+
+void pack_uff_system( int isys, const UFF& ff ){
+    int nAtoms      = ff.natoms;
+    int nBonds      = ff.nbonds;
+    int nAngles     = ff.nangles;
+    int nDihedrals  = ff.ndihedrals;
+    int nInversions = ff.ninversions;
+    // TODO: The UFF class needs to be extended to support the atom-to-force mapping for GPU execution.
+    int nA2F        = 0; //ff.a2f_indices.size();
+
+    int i0a = isys * nAtoms;
+    int i0b = isys * nBonds;
+    int i0A = isys * nAngles;
+    int i0D = isys * nDihedrals;
+    int i0I = isys * nInversions;
+    int i0F = isys * nA2F;
+
+    // Pack atoms and REQs
+    for(int i=0; i<nAtoms; ++i){
+        atoms[i0a + i] = (Quat4f){(float)ff.apos[i].x, (float)ff.apos[i].y, (float)ff.apos[i].z, 0.f};
+        REQs [i0a + i] = (Quat4f){(float)ff.REQs[i].x, (float)ff.REQs[i].y, (float)ff.REQs[i].z, (float)ff.REQs[i].w};
+    }
+
+    // Pack bonds, angles, dihedrals, inversions
+    for(int i=0; i<nBonds;      ++i){ host_bon_atoms [i0b + i] = (int2){ff.bonAtoms[i].x, ff.bonAtoms[i].y}; host_bon_params[i0b + i] = (float2){(float)ff.bonParams[i].x, (float)ff.bonParams[i].y}; }
+    for(int i=0; i<nAngles;     ++i){ host_ang_atoms [i0A + i] = (int4){ff.angAtoms[i].x, ff.angAtoms[i].y, ff.angAtoms[i].z, 0}; host_ang_ngs[i0A + i] = (int2){ff.angNgs[i].x, ff.angNgs[i].y}; host_ang_params1[i0A + i] = (float4){(float)ff.angParams[i].c0, (float)ff.angParams[i].c1, (float)ff.angParams[i].c2, (float)ff.angParams[i].c3}; host_ang_params2_w[i0A + i] = (float)ff.angParams[i].k; }
+    for(int i=0; i<nDihedrals;  ++i){ host_dih_atoms [i0D + i] = (int4)ff.dihAtoms[i]; host_dih_ngs[i0D + i] = (int4){ff.dihNgs[i].x, ff.dihNgs[i].y, ff.dihNgs[i].z, 0}; host_dih_params[i0D + i] = (float4){(float)ff.dihParams[i].x, (float)ff.dihParams[i].y, (float)ff.dihParams[i].z, 0.f}; }
+    for(int i=0; i<nInversions; ++i){ host_inv_atoms [i0I + i] = (int4)ff.invAtoms[i]; host_inv_ngs[i0I + i] = (int4){ff.invNgs[i].x, ff.invNgs[i].y, ff.invNgs[i].z, 0}; host_inv_params[i0I + i] = (float4){(float)ff.invParams[i].x, (float)ff.invParams[i].y, (float)ff.invParams[i].z, (float)ff.invParams[i].w}; }
+
+    // Pack force assembly map
+    // TODO: The UFF class needs to be extended to support the atom-to-force mapping for GPU execution.
+    // for(int i=0; i<nAtoms; ++i){
+    //     host_a2f_offsets[i0a + i] = ff.a2f_offsets[i];
+    //     host_a2f_counts [i0a + i] = ff.a2f_counts[i];
+    // }
+    // for(int i=0; i<nA2F; ++i){
+    //     host_a2f_indices[i0F + i] = ff.a2f_indices[i];
+    // }
+
+    // Pack PBC
+    Mat3_to_cl( ff.lvec,    lvecs[isys] );
+    Mat3_to_cl( ff.invLvec, ilvecs[isys] );
+}
 
 void pack_system( int isys, MMFFsp3_loc& ff, bool bParams=0, bool bForces=false, bool bVel=false, bool blvec=true, float l_rnd=-1 ){
     //printf("MolWorld_sp3_multi::pack_system(%i) \n", isys);
@@ -618,6 +752,30 @@ void download_sys( int isys, bool bForces=false, bool bVel=false ){
 }
 
 void upload(  bool bParams=false, bool bForces=0, bool bVel=true, bool blvec=true ){
+    if(bUFF){
+        printf("MolWorld_sp3_multi::upload() UFF ...\n");
+        int err=0;
+        err|= uff_ocl->upload( uff_ocl->ibuff_apos,    (float*)atoms );
+        err|= uff_ocl->upload( uff_ocl->ibuff_REQs,     (float*)REQs );
+        if(bForces) err|= uff_ocl->upload( uff_ocl->ibuff_fapos, (float*)aforces );
+        if(blvec)   err|= uff_ocl->upload( uff_ocl->ibuff_lvecs, lvecs );
+        if(bParams){
+            err|= uff_ocl->upload( uff_ocl->ibuff_bonAtoms,   host_bon_atoms.data()   );
+            err|= uff_ocl->upload( uff_ocl->ibuff_bonParams,  host_bon_params.data()  );
+            err|= uff_ocl->upload( uff_ocl->ibuff_angAtoms,   host_ang_atoms.data()   );
+            err|= uff_ocl->upload( uff_ocl->ibuff_angNgs,     host_ang_ngs.data()     );
+            err|= uff_ocl->upload( uff_ocl->ibuff_angParams1, host_ang_params1.data() );
+            err|= uff_ocl->upload( uff_ocl->ibuff_angParams2_w, host_ang_params2_w.data() );
+            err|= uff_ocl->upload( uff_ocl->ibuff_dihAtoms,   host_dih_atoms.data()   );
+            err|= uff_ocl->upload( uff_ocl->ibuff_dihNgs,     host_dih_ngs.data()     );
+            err|= uff_ocl->upload( uff_ocl->ibuff_dihParams,  host_dih_params.data()  );
+            err|= uff_ocl->upload( uff_ocl->ibuff_invAtoms,   host_inv_atoms.data()   );
+            err|= uff_ocl->upload( uff_ocl->ibuff_invNgs,     host_inv_ngs.data()     );
+            err|= uff_ocl->upload( uff_ocl->ibuff_invParams,  host_inv_params.data()  );
+        }
+        err |= uff_ocl->finishRaw(); OCL_checkError(err, "MolWorld_sp3_multi::upload(UFF).finish");
+        return;
+    }
     printf("MolWorld_sp3_multi::upload() nSys %i nAtoms %i nvecs %i bParams %i bForces %i bVel %i blvec %i \n", nSystems, ocl.nAtoms, ocl.nvecs, bParams, bForces, bVel, blvec);
     int err=0;
     err|= ocl.upload( ocl.ibuff_atoms,  atoms  );
@@ -649,6 +807,12 @@ void upload(  bool bParams=false, bool bForces=0, bool bVel=true, bool blvec=tru
 }
 
 void download( bool bForces=false, bool bVel=false ){
+    if(bUFF){
+        uff_ocl->download_results( (float*)aforces, 0 ); // energies not handled yet
+        uff_ocl->download( uff_ocl->ibuff_apos, (float*)atoms );
+        uff_ocl->finishRaw();
+        return;
+    }
     int err=0;
     //printf("MolWorld_sp3_multi::download() \n");
     ocl.download( ocl.ibuff_atoms, atoms );
@@ -1009,9 +1173,23 @@ virtual void setConstrains(bool bClear=true, double Kfix=1.0 ){
 
 virtual int paralel_size( )override{ return nSystems; }
 
+double eval_UFF_ocl( int niter=1 ){
+    if(!bUFF) return 0.0;
+    if(!uff_ocl->task_evalBonds) uff_ocl->setup_kernels(); // setup kernels if not done yet
+    for(int i=0; i<niter; i++){
+        uff_ocl->eval();
+    }
+    uff_ocl->finishRaw();
+    std::vector<float> energies( nSystems * 5 );
+    uff_ocl->download( uff_ocl->ibuff_energies, energies.data() );
+    uff_ocl->finishRaw();
+    return energies[4]; // E_tot for system 0
+}
+
 virtual double solve_multi ( int nmax, double tol )override{
     //return eval_MMFFf4_ocl( nmax, tol );
     //return run_ocl_opt( nmax, tol );
+    if(bUFF){ return eval_UFF_ocl(nmax); }
     int nitrdione;
     switch(iParalel){
         case -1: bOcl=false;  nitrdione = run_multi_serial(nmax,tol);  break; 
@@ -2326,6 +2504,11 @@ bool evalCheckGridFF_ocl( int imin=0, int imax=1, bool bExit=true, bool bPrint=t
 void surf2ocl( Vec3i nPBC ){
     int err=0;
     printf( " MolWorld_sp3_multi::surf2ocl() gridFF.natoms=%i nPBC(%i,%i,%i)\n", gridFF.natoms, nPBC.x,nPBC.y,nPBC.z );
+    // Debug: Check if OpenCL context is initialized
+    printf( "DEBUG: OCL context = %p, commands = %p\n", (void*)ocl.context, (void*)ocl.commands );
+    if(ocl.context == 0){
+        printf( "ERROR: OpenCL context not initialized! This will cause surf2ocl to fail.\n" );
+    }
     //long T0=getCPUticks();
     Quat4f* atoms_surf = new Quat4f[gridFF.natoms];
     Quat4f* REQs_surf  = new Quat4f[gridFF.natoms];
@@ -2342,7 +2525,39 @@ void surf2ocl( Vec3i nPBC ){
     delete [] atoms_surf;
     delete [] REQs_surf;
     bDONE_surf2ocl = true;
-}   
+}
+
+void completeGridFFInit(){
+    if(!bGridFF_pending) return;
+    
+    printf("MolWorld_sp3_multi::completeGridFFInit() - Completing deferred GridFF initialization\n");
+    
+    // First initialize the GridFF properly
+    printf("Initializing GridFF with name: %s\n", gridFF_name);
+    initGridFF(gridFF_name, gridFF_z0, gridFF_cel0, gridFF_bSymetrize);
+    
+    // Now call surf2ocl with the properly initialized GridFF
+    surf2ocl(gridFF.nPBC);
+    
+    bGridFF_pending = false;
+}
+
+// Override loadSurf to handle deferred GridFF initialization
+bool loadSurf(const char* name, bool bGrid=true, bool bSaveDebugXSFs=false, double z0=NAN, Vec3d cel0={-0.5,-0.5,0.0}) {
+    printf("MolWorld_sp3_multi::loadSurf(%s) - deferring GridFF initialization\n", name);
+    
+    // Store parameters for deferred initialization
+    bGridFF_pending = bGrid;
+    gridFF_name = name;
+    gridFF_z0 = z0;
+    gridFF_cel0 = cel0;
+    gridFF_bSymetrize = true; // Default value
+    
+    // Call base class to load the surface but don't initialize GridFF yet
+    bool result = MolWorld_sp3::loadSurf(name, false, bSaveDebugXSFs, z0, cel0);
+    
+    return result;
+}
 
  void make_gridFF_ocl( bool bSaveDebug=false ){
     if(bDONE_surf2ocl==false){ printf("ERROR in MolWorld_sp3_multi::make_gridFF_ocl() call surf2ocl() first \n"); exit(0); };
@@ -2376,6 +2591,18 @@ void surf2ocl( Vec3i nPBC ){
 virtual void initGridFF( const char * name, double z0=NAN, Vec3d cel0={-0.5,-0.5,0.0}, bool bSymetrize=true, bool bAutoNPBC=true, bool bCheckEval=true, bool bUseEwald=true, bool bFit=true, bool bRefine=true ) override {
     int err=0;
     printf( "MolWorld_sp3_multi::initGridFF(%s) bSymetrize=%i bAutoNPBC=%i bCheckEval=%i bUseEwald=%i bFit=%i bRefine=%i ,cel0={%g,%g,%g}) \n", name,  bSymetrize, bAutoNPBC, bCheckEval, bUseEwald, bFit, bRefine, cel0.x,cel0.y,cel0.z );
+    
+    // Call base class implementation first
+    MolWorld_sp3::initGridFF(name, z0, cel0, bSymetrize, bAutoNPBC, bCheckEval, bUseEwald, bFit, bRefine);
+    
+    // Check if OpenCL is initialized before calling surf2ocl
+    if(ocl.context == 0){
+        printf("WARNING: OpenCL context not initialized yet. Deferring surf2ocl call.\n");
+        bGridFF_pending = true;
+    } else {
+        // OpenCL is initialized, call surf2ocl immediately
+        surf2ocl(gridFF.nPBC);
+    }
     // if(verbosity>0)printf("MolWorld_sp3_multi::initGridFF(%s,bGrid=%i,z0=%g,cel0={%g,%g,%g})\n",  name, z0, cel0.x,cel0.y,cel0.z  );
     // if(gridFF.grid.n.anyEqual(0)){ printf("ERROR in MolWorld_sp3_multi::initGridFF() zero grid.n(%i,%i,%i) => Exit() \n", gridFF.grid.n.x,gridFF.grid.n.y,gridFF.grid.n.z ); exit(0); };
     // gridFF.grid.center_cell( cel0 );
