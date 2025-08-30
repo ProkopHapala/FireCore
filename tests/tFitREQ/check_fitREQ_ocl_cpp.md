@@ -12,14 +12,14 @@ cd /home/prokophapala/git/FireCore/tests/tFitREQ
 ./run.sh
 ```
 
-This script runs the `opt_check_consistency.py` test which compares CPU vs GPU objective function values. The script automatically:
+This script runs the `check_fitREQ_ocl_cpp.py` test which compares CPU vs GPU objective function values. The script automatically:
 - Builds the required libraries
 - Runs the consistency test with default parameters
 - Shows setup times and comparison results
 
 **Alternative Manual Testing:**
 ```bash
-python3 opt_check_consistency.py --test_starting --verbose 1
+python3 check_fitREQ_ocl_cpp.py --test_starting --verbose 1
 ```
 
 ## Latest Test Results
@@ -49,10 +49,10 @@ The following files are relevant to this analysis and were modified during the d
 
 ### 2. GPU Implementation Files  
 - **`cpp/common_resources/cl/FitREQ.cl`** - GPU OpenCL kernel implementation (`evalSampleDerivatives_template`)
-- **`pyBall/OCL/NonBondFitting.py`** - python pyOpenCL class (`FittingDriver`) which prepates the data and provides the interface to the OpenCL kernels 
+- **`pyBall/OCL/NonBondFitting.py`** - python pyOpenCL class (`FittingDriver`) which prepares the data and provides the interface to the OpenCL kernels 
 
 ### 3. Test Scripts and Input Files
-- **`tests/tFitREQ/opt_check_derivs_gpu.py`** - Main Python test script for comparing CPU vs GPU implementations
+- **`tests/tFitREQ/check_fitREQ_ocl_cpp_derivs_.py`** - Main Python test script for comparing CPU vs GPU implementations
 - **`H2O_single.xyz`** - Test XYZ file with water dimer configuration
 - **`dofSelection_H2O_Morse.dat`** - DOF selection file defining parameters to fit
 
@@ -64,7 +64,7 @@ The following files are relevant to this analysis and were modified during the d
 
 ## Test Script Flow
 
-The main test script `opt_check_derivs_gpu.py` follows this high-level flow:
+The main test script `check_fitREQ_ocl_cpp_derivs_.py` follows this high-level flow:
 
 1. **Setup Phase:**
    - CPU: `setup_cpu_fit()` - loads types, DOF selection, XYZ data, sets up model
@@ -197,7 +197,7 @@ REQH = (RvdW, sqrt(EvdW), Qcharge, Hcorrection)
 ## Input Files Used
 
 - `H2O_single.xyz`: Single water dimer configuration with reference energy
-- `dofSelection_H2O_MorseSR_plusE.dat`: DOF definitions for O_3 and H_O parameters
+- `dofSelection_H2O_Morse.dat`: DOF definitions for O_3 and H_O parameters
 
 ## Conclusion
 
@@ -651,7 +651,7 @@ Let me know how you’re invoking [FittingDriver](cci:2://file:///home/prokophap
 
 ## Next Steps
 
-- Re-run the consistency test in `opt_check_consistency.py` with `use_type_charges=True` for the GPU driver.
+- Re-run the consistency test in `check_fitREQ_ocl_cpp.py` with `use_type_charges=True` for the GPU driver.
 - Verify the new prints in CPU `scanParam` and GPU kernel debugs.
 - If discrepancies persist, inspect `tREQHs.z` values on GPU to confirm DOF propagation.
 

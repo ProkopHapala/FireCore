@@ -142,11 +142,31 @@ Typical flow used by `opt_mini.py` and `opt_2D.py`:
 
 # Script roles in this folder
 
-* __`test_export.py`__ — basic loader/export sanity-check for types + xyz + optional epairs; prints summary.
-* __`opt_mini.py`__ — minimal single-dataset optimization; demonstrates weights, filters, and GD/MD choices.
-* __`opt_2D.py`__ — multi-system 2D H-bond maps; concatenates xyz across donors/acceptors, slices panels, runs a short optimization, and saves per-pair figures.
-* __`opt_check_derivs.py`__ — derivative checks: scans DOFs, compares analytic vs numeric derivatives, plots forces panels.
-* __`plot_DOF_trj.py`__ — parses logs and plots DOF and fDOF trajectories across optimization steps.
+## Data Preparation and Utilities
+* __`add_charges.py`__ — Appends RESP charges to XYZ trajectory files for halogen diatomics (HF, HCl, HBr), computes separation (r), angle, and metadata.
+* __`Directional_Barrier.py`__ — Plots 2D potential energy surfaces for hydrogen bond directionality using Lennard-Jones or Morse potentials with Gaussian corrections.
+* __`test_export.py`__ — Loads datasets and exports fitted samples to XYZ format for verification.
+
+## Optimization Scripts
+* __`opt_2D_2.py`__ — Older 2D parameter optimization for hydrogen bond fitting using Morse or Lennard-Jones models, with reference data loading and difference plotting.
+* __`opt_2D_bak.py`__ — Backup version of 2D optimization, includes minimum curve plotting functions.
+* __`opt_2D.py`__ — Main 2D optimization script with argument parsing for Morse/LJ models, file overrides, and output handling.
+* __`opt_mini.py`__ — Minimal optimization for CH2NH systems using Lennard-Jones model, with basic before/after plotting.
+
+## Testing/Validation Scripts
+These scripts validate derivatives, energy calculations, and consistency between CPU and GPU (OpenCL) backends.
+
+* __`check_fitREQ_ocl_cpp.py`__ (renamed from opt_check_consistency.py) — Compares CPU vs GPU objective function values for FitREQ, ensuring implementation consistency with starting or custom DOF values.
+* __`check_fitREQ_ocl_cpp_derivs_.py`__ (renamed from opt_check_derivs_gpu.py) — Scans DOF parameters on GPU, compares analytical vs numerical derivatives, with regularization, charge sources, and plotting options.
+* __`check_fitREQ_derivs.py`__ (renamed from opt_check_derivs.py) — CPU version of derivative checking, scans DOFs, plots energies and derivatives, with filters for inclusion/exclusion.
+* __`check_fitREQ_derivs_ocl.py`__ (renamed from test_derivatives_ocl.py) — Tests OpenCL (GPU) derivatives by scanning DOFs, comparing analytic/numeric, generating diagnostic plots.
+* __`check_fitREQ_energy_ocl.py`__ (renamed from test_energy_kernel.py) — Evaluates GPU energy-only kernel against reference data, plotting imshow comparisons for dimer scans.
+
+## Visualization Scripts
+* __`plot_DOF_trj.py`__ — Parses optimization output to plot DOF values and variational forces over steps, with filtering by DOF components.
+* __`plot_Hbond_ref.py`__ — Plots hydrogen bond energy maps from multiple methods (DFT, xtb, pm6) vs reference, with RMSE metrics and minimum curves.
+* __`split_scan_imshow_new.py`__ — Newer version to process packed 2D dimer scans, reshape to grids, plot imshow/polar/line profiles with energy shifting.
+* __`split_scan_imshow.py`__ — Older version of 2D scan processing and plotting, similar to new but less refined.
 
 # Data/config files here
 
