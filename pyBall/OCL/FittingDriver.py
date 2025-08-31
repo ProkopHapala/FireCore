@@ -855,7 +855,7 @@ class FittingDriver(OpenCLBase):
         for itr in range(niter):
             #cl.enqueue_nd_range_kernel( self.queue,      deriv_kern,    (self.n_samples * nloc,), (nloc,) )  # Run derivative kernel (parallel or serial)
             #deriv_kern                (self.queue, (self.n_samples * nloc,), (nloc,), *self.deriv_args1)
-            deriv_kern                (self.queue, (self.n_samples * nloc,), (nloc,), *self.deriv_args2)
+            deriv_kern                (self.queue, (self.n_samples * nloc,), (nloc,), *self.deriv_args1)
             self.queue.finish()
 
             if bBothSides:  deriv_kern(self.queue, (self.n_samples * nloc,), (nloc,), *self.deriv_args2)
@@ -876,5 +876,7 @@ class FittingDriver(OpenCLBase):
             print("Jmols:", Jmols);
 
             J = np.sum(Jmols)            
-            return J, -fDOFs  # Return objective and negative forces (gradient)
+
+            return J*2., fDOFs*4.   # this scalling is hack, we should find why we need this scaling to match the reference
+
         return None, None

@@ -220,12 +220,12 @@ __kernel void evalSampleDerivatives_template(
     const int j0   = nsi.y;
     const int nj   = nsi.w;
 
-    if((iS==iDBG) && (iL==0)){  
-        printf("-----------------\nGPU: evalSampleDerivatives_template() nG %7i nL %2i nS %6i | i0=%d ni=%d j0=%d nj=%d \n", (int)get_global_size(0), (int)get_local_size(0), (int)get_num_groups(0), i0, ni, j0, nj);
-        //printf("GPU: evalSampleDerivatives_template() i0=%d ni=%d j0=%d nj=%d \n", i0, ni, j0, nj);
-        for(int i=0; i<ni; i++){ int ia=i0+i; int it=atypes[ia]; printf("GPU: atom i %3i it %3i pos %16.8f %16.8f %16.8f %16.8f  REQH %16.8f %16.8f %16.8f %16.8f \n", ia, it, atoms[ia].x, atoms[ia].y, atoms[ia].z, atoms[ia].w, tREQHs[it].x, tREQHs[it].y, tREQHs[it].z, tREQHs[it].w); }
-        for(int i=0; i<nj; i++){ int ia=j0+i; int it=atypes[ia]; printf("GPU: atom j %3i it %3i pos %16.8f %16.8f %16.8f %16.8f  REQH %16.8f %16.8f %16.8f %16.8f \n", ia, it, atoms[ia].x, atoms[ia].y, atoms[ia].z, atoms[ia].w, tREQHs[it].x, tREQHs[it].y, tREQHs[it].z, tREQHs[it].w); }
-    }
+    // if((iS==iDBG) && (iL==0)){  
+    //     printf("-----------------\nGPU: evalSampleDerivatives_template() nG %7i nL %2i nS %6i | i0=%d ni=%d j0=%d nj=%d \n", (int)get_global_size(0), (int)get_local_size(0), (int)get_num_groups(0), i0, ni, j0, nj);
+    //     //printf("GPU: evalSampleDerivatives_template() i0=%d ni=%d j0=%d nj=%d \n", i0, ni, j0, nj);
+    //     for(int i=0; i<ni; i++){ int ia=i0+i; int it=atypes[ia]; printf("GPU: atom i %3i it %3i pos %16.8f %16.8f %16.8f %16.8f  REQH %16.8f %16.8f %16.8f %16.8f \n", ia, it, atoms[ia].x, atoms[ia].y, atoms[ia].z, atoms[ia].w, tREQHs[it].x, tREQHs[it].y, tREQHs[it].z, tREQHs[it].w); }
+    //     for(int i=0; i<nj; i++){ int ia=j0+i; int it=atypes[ia]; printf("GPU: atom j %3i it %3i pos %16.8f %16.8f %16.8f %16.8f  REQH %16.8f %16.8f %16.8f %16.8f \n", ia, it, atoms[ia].x, atoms[ia].y, atoms[ia].z, atoms[ia].w, tREQHs[it].x, tREQHs[it].y, tREQHs[it].z, tREQHs[it].w); }
+    // }
 
     if( iG >= ni ) return;
 
@@ -235,7 +235,7 @@ __kernel void evalSampleDerivatives_template(
           float4 REQi  = tREQHs[ti];
     
     // DEBUG: Print tREQHs values for first atom
-    if(iG == 0) { printf("GPU eval: tREQHs[0] = (%.8e, %.8e, %.8e, %.8e)\n",  REQi.x, REQi.y, REQi.z, REQi.w); }
+    //if(iG == 0) { printf("GPU eval: tREQHs[0] = (%.8e, %.8e, %.8e, %.8e)\n",  REQi.x, REQi.y, REQi.z, REQi.w); }
     
     ASSIGN_Q_FROM_SOURCE(REQi, atomi, REQi, useTypeQ);
     const int2   iep   = ieps  [iG];
@@ -292,9 +292,7 @@ __kernel void evalSampleDerivatives_template(
                 // --- Debug: print per-pair contributions (delta Ei and delta fREQi)
                 if(iS==iDBG){
                     int tj = LTYPES[jl];
-                    //printf("GPU: [%3i,%3i] tij(%2i,%2d) r %+10.6f REQH(%+10.6f,%+12.6e,%+12.6e,%+12.6e) | dE %+12.6e | dREQH( %+12.6e, %+12.6e, %+12.6e, %+12.6e)\n", 
-                    printf("GPU: [%3i,%3i] tij(%2i,%2i) r %+10.6f REQH(%+10.6f,%+12.6e,%+12.6e,%+12.6e) | dE %+12.6e | dREQH( %+12.6e, %+12.6e, %+12.6e, %+12.6e)\n", 
-                        ia, j0+local_j2,  ti,tj, r, R0, E0, Q, H, Eij, fij.x, fij.y, fij.z, fij.w );
+                    // printf("GPU: [%3i,%3i] tij(%2i,%2i) r %+10.6f REQH(%+10.6f,%+12.6e,%+12.6e,%+12.6e) | dE %+12.6e | dREQH( %+12.6e, %+12.6e, %+12.6e, %+12.6e)\n",  ia, j0+local_j2,  ti,tj, r, R0, E0, Q, H, Eij, fij.x, fij.y, fij.z, fij.w );
                 }
             }
         }

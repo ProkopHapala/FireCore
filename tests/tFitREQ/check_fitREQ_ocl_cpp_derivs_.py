@@ -15,7 +15,7 @@ np.set_printoptions(linewidth=1000, threshold=np.inf)
 
 sys.path.append("../../")
 from pyBall import FitREQ as fit_cpp
-from pyBall.OCL.NonBondFitting import FittingDriver, extract_macro_block
+from pyBall.OCL.NonBondFitting import FittingDriver
 from pyBall import atomicUtils as au
 
 fit_cpp.plt = plt
@@ -39,7 +39,7 @@ def setup_cpu_fit(xyz_file, dof_file, morse=1, verbosity=1, bAddEpairs=False):
     else:
         imodel = 3
         weights0, lens = fit_cpp.split_and_weight_curves(Erefs, x0s, n_before_min=2, weight_func=lambda E: fit_cpp.exp_weight_func(E, a=1.0, alpha=4.0))
-    fit_cpp.setup(imodel=imodel, EvalJ=1, WriteJ=1, Regularize=-1)
+    fit_cpp.setup(imodel=imodel, EvalJ=1, WriteJ=1, Regularize=-1, useTypeQ=args.use_type_charges*2-1)
     fit_cpp.setWeights(weights0)
     fit_cpp.getBuffs()
     fit_cpp.setFilter(EmodelCutStart=0.0, EmodelCut=0.5, PrintOverRepulsive=-1, DiscardOverRepulsive=-1, SaveOverRepulsive=-1, ListOverRepulsive=-1)
@@ -69,12 +69,29 @@ def setup_gpu_driver(xyz_file, dof_file, model_macro, hb_gate=1, regularize=Fals
     fit_ocl.load_dofs(dof_file if os.path.isabs(dof_file) else os.path.join(this_dir, dof_file))
     fit_ocl.init_and_upload()
 
-    macro_der = extract_macro_block(forces_path, model_macro)
+    # Model selection
+    model_macro   = 'MODEL_MorseQ_PAIR' if int(args.morse) else 'MODEL_LJQH2_PAIR'
+    model_macro_E = 'ENERGY_MorseQ_PAIR' if int(args.morse) else 'ENERGY_LJQH2_PAIR'
+    
+    # Parse CL file to get macros
+    cl_content = fit_ocl.parse_cl_lib(forces_path)
+    macro_der   = cl_content['macros'].get(model_macro)
+    macro_der_E = cl_content['macros'].get(model_macro_E)
+    
+    if macro_der is None or macro_der_E is None:
+        raise RuntimeError(f"Could not find required macros in {forces_path}")
+    
     macros = {
         'MODEL_PAIR_ACCUMULATION': macro_der,
-        'HBOND_GATE_DEFINE': f"#define HBOND_GATE {int(hb_gate)}",
+        'MODEL_PAIR_ENERGY':       macro_der_E,
+        'HBOND_GATE_DEFINE': f"#define HBOND_GATE {1}",
     }
-    fit_ocl.compile_with_model(macros=macros, bPrint=False)
+        
+    # Compile
+    output_path = os.path.join(this_dir, 'FitREQ_preprocessed.cl')
+    fit_ocl.compile_with_model(macros=macros, bPrint=True, output_path=output_path)
+    fit_ocl.load_program(output_path)
+
     fit_ocl.set_regularization_enabled(enabled=bool(regularize))
     return fit_ocl
 
@@ -100,11 +117,11 @@ def scan_dof(backend, iDOF, xs, dof_names=None, fit_ocl=None, debug=False, print
     x0 = np.array([d['xstart'] for d in fit_ocl.dof_definitions], dtype=np.float32)
     for j, x in enumerate(xs):
         xv = x0.copy(); xv[iDOF] = float(x)
-        if debug and (j == 0 or j == len(xs)//2 or j == len(xs)-1 or (print_every and (j % int(print_every) == 0))):
-            print(f"[GPU] scan iDOF={iDOF} name={dof_names[iDOF] if dof_names else iDOF} x={x:.6g}")
-        J, g = fit_ocl.getErrorDerivs(xv)
+        if debug and (j == 0 or j == len(xs)//2 or j == len(xs)-1 or (print_every and (j % int(print_every) == 0))): print(f"[GPU] scan iDOF={iDOF} name={dof_names[iDOF] if dof_names else iDOF} x={x:.6g}")
+        J, F = fit_ocl.getErrorDerivs(xv)
+        print(  f"scan_dof  iDOF {iDOF}  j {j}  J {J} F {F}  " )
         Es[j] = J
-        Fs[j] = g[iDOF]
+        Fs[j] = F[iDOF]
     return {'xs': xs, 'Es': Es, 'Fs': Fs}
 
 def run_scans_cpu(iDOFs, dof_specs, npts):
@@ -140,13 +157,13 @@ if __name__ == '__main__':
     p = argparse.ArgumentParser(description='Compare CPU vs GPU DOF scans for FitREQ with optional runtime charge source switch')
     p.add_argument('--xyz', default='H2O_single.xyz')
     p.add_argument('--dof', default='dofSelection_H2O_Morse.dat')
-    p.add_argument('--morse', type=int, default=1, help='1=Morse model, 0=LJ model')
+    p.add_argument('--morse',     type=int, default=1, help='1=Morse model, 0=LJ model')
     p.add_argument('--use_type_charges', type=int, default=1, help='GPU runtime charge source: 0=per-atom atoms.w, 1=type-based tREQHs[:,2]')
-    p.add_argument('--npts', type=int, default=5)
-    p.add_argument('--hb_gate', type=int, default=0)
-    p.add_argument('--regularize', type=int, default=0)
-    p.add_argument('--epairs', type=int, default=0)
-    p.add_argument('--verbose', type=int, default=0)
+    p.add_argument('--npts',      type=int, default=50)
+    p.add_argument('--hb_gate',   type=int, default=0)
+    p.add_argument('--regularize',type=int, default=0)
+    p.add_argument('--epairs',    type=int, default=0)
+    p.add_argument('--verbose',   type=int, default=0)
     p.add_argument('--debug', action='store_true')
     args = p.parse_args()
 
