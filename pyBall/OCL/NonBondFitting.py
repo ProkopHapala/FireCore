@@ -686,7 +686,6 @@ class FittingDriver(OpenCLBase):
         self.set_kernel_args()
         if bPrint:
             print(f"compile_with_model(): kernels available: {list(self.kernelheaders.keys())}")
-        exit()
 
     def dump_dEdREQs(self, max_rows=8, sample=0):
         """Debug helper: download and print a small slice of dEdREQs for the given sample's frag-1.
@@ -1062,34 +1061,34 @@ def optimizer_FIRE(driver, initial_dofs, max_steps=1000, dt_start=0.01, fmax=1e-
 
     return dofs
 
-def extract_macro_block(file_path, macro_name):
-    """Extracts a macro code block from Forces.cl delimited by
-    a line '//>>>macro <macro_name>' followed by a brace-balanced block.
-    Returns the block including the surrounding braces, suitable for injection.
-    """
-    with open(file_path, 'r') as f:
-        s = f.read()
-    tag = f"//>>>macro {macro_name}"
-    i = s.find(tag)
-    if i < 0:
-        raise ValueError(f"Macro tag not found: {tag}")
-    j = s.find('{', i)
-    if j < 0:
-        raise ValueError(f"Opening '{{' not found for macro: {macro_name}")
-    depth = 0
-    k = j
-    while k < len(s):
-        c = s[k]
-        if c == '{': depth += 1
-        elif c == '}':
-            depth -= 1
-            if depth == 0:
-                k += 1
-                break
-        k += 1
-    if depth != 0:
-        raise ValueError(f"Unbalanced braces while parsing macro: {macro_name}")
-    return s[j:k]
+# def extract_macro_block(file_path, macro_name):
+#     """Extracts a macro code block from Forces.cl delimited by
+#     a line '//>>>macro <macro_name>' followed by a brace-balanced block.
+#     Returns the block including the surrounding braces, suitable for injection.
+#     """
+#     with open(file_path, 'r') as f:
+#         s = f.read()
+#     tag = f"//>>>macro {macro_name}"
+#     i = s.find(tag)
+#     if i < 0:
+#         raise ValueError(f"Macro tag not found: {tag}")
+#     j = s.find('{', i)
+#     if j < 0:
+#         raise ValueError(f"Opening '{{' not found for macro: {macro_name}")
+#     depth = 0
+#     k = j
+#     while k < len(s):
+#         c = s[k]
+#         if c == '{': depth += 1
+#         elif c == '}':
+#             depth -= 1
+#             if depth == 0:
+#                 k += 1
+#                 break
+#         k += 1
+#     if depth != 0:
+#         raise ValueError(f"Unbalanced braces while parsing macro: {macro_name}")
+#     return s[j:k]
 
 def setup_driver(
     model_name='ENERGY_MorseQ_PAIR',
@@ -1301,46 +1300,6 @@ def plot_energy_profile(
     ax.legend(loc='best', fontsize=8)
     return ax
 
-
-
-# def plot_energy_profiles(Vref, Vmod, rv, Arow, rmax=8.0, title=None, ylims=None, ax=None):
-#     """Overlay 4 profiles for ref and mod by calling a single drawer per dataset:
-#     - Radial at first and middle angle rows
-#     - Angular at radius index of global minimum of REFERENCE (shared ix)
-#     - Per-angle minima over r
-#     """
-#     ny = Vref.shape[0]
-#     if ny <= 0:
-#         return
-#     # Rows to show (unique and valid)
-#     rows = sorted({i for i in (0, ny//2) if 0 <= i < ny})
-#     # Shared angle mapping and sorting (0..π)
-#     theta = np.radians(Arow)
-#     theta = (theta + (np.pi/2.0)) % np.pi
-#     srt = np.argsort(theta)
-#     theta_s = theta[srt]
-#     # Shared angular radius column from REFERENCE minimum
-#     try:
-#         _, ix_ref = np.unravel_index(np.nanargmin(Vref), Vref.shape)
-#     except Exception:
-#         ix_ref = None
-
-#     if ax is None:
-#         fig, ax = plt.subplots(1, 1, figsize=(7, 4))
-
-#     plot_energy_profile(ax, Vref, rv, Arow, rows, srt, theta_s, ix_ref, [':', ':', ':', ':'], [1.5, 1.5, 1.5, 1.5], ['radial', 'radial', 'angular', 'min over r per angle'], marker='.', rmax=rmax, ylims=ylims, fac=fac, name='ref')
-#     plot_energy_profile(ax, Vmod, rv, Arow, rows, srt, theta_s, ix_ref, ['-', '-', '-', '-'], [0.5, 0.5, 0.5, 0.5], ['radial', 'radial', 'angular', 'min over r per angle'], marker='.', rmax=rmax, ylims=ylims, fac=fac, name='mod')
-
-#     #suptitle
-#     if title is not None: fig.suptitle(title)
-#     ax.grid(True, ls=':')
-#     ax.set_xlabel('r [Å] / θ [rad]')
-#     ax.set_ylabel('E [kcal/mol]' if kcal else 'E [eV]')
-#     ax.legend(loc='best', fontsize=8)
-#     ax.set_title('Profiles: ref (:) vs model (-)')
-#     plt.tight_layout()
-
-#     return fig, ax
 
 def run_templated_example(model_name='MODEL_MorseQ_PAIR',
                           atom_types_file="/home/prokop/git/FireCore/cpp/common_resources/AtomTypes.dat",

@@ -431,7 +431,7 @@ __kernel void evalSampleDerivatives_template(
 //     //<<<MODEL_PAIR_ACCUMULATION
 // using the same in-scope variables as the templated kernel.
 // -----------------------------------------------------------------------------
-__attribute__((reqd_work_group_size(32,1,1)))
+__attribute__((reqd_work_group_size(1,1,1)))
 __kernel void evalSampleDerivatives_template_serial(
     __global const int4*  ranges,
     __global const float4* tREQHs,
@@ -675,45 +675,6 @@ __kernel void evalSampleEnergy_template(
 // -----------------------------------------------------------------------------
 
 #define NLOC_assembleDOFderivatives  128
-
-__attribute__((reqd_work_group_size(NLOC_assembleDOFderivatives,1,1)))
-//     int nDOFs,         
-//     __global float*   fDOFs,      // [nDOFs]    derivatives of REQH parameters
-//     __global int2*    DOFnis,     // [nDOFs]    (i0,ni) star and number of atoms in fragments 1,2    
-//     __global int*     DOFtoAtom,  // [nInds]    list of atom indexes relevant for each DOF (non-uniform ranges indexed by DOFnis)
-//     __global float4*  DOFcofefs,  // [nInds]    factors for update of each DOF from the atom dEdREQH parameters   fDOFi = dot( DOFcofefs[i], dEdREQH[i] )
-//     __global float4*  dEdREQs     // [nAtomTot] derivatives of REQH parameters
-// ){
-//     __local float LfDOFi[NLOC_assembleDOFderivatives];
-
-//     // this is reduction kernel, we want to use local memory to 
-//     const int iG   = get_global_id  (0); // index of atom in fragment 1
-//     const int iDOF = get_group_id   (0); // index of system
-//     const int iL   = get_local_id   (0); // local thread index
-//     const int nL   = get_local_size (0); // workgroup size (NLOC_assembleDOFderivatives)
-
-//     const int2 nsi = DOFnis[iDOF];
-
-//     // partial reduction to local memory - each 
-//     float fDOFj = 0.0f;
-//     for(int i0=0; i0<nsi.y; i0+=NLOC_assembleDOFderivatives){
-//         int i = iL + i0;
-//         if(i < nsi.y){
-//             int j = DOFtoAtom[i + nsi.x];
-//             fDOFj += dot( DOFcofefs[j], dEdREQs[j] );
-//         }
-//     } 
-//     LfDOFi[iL] = fDOFj;
-//     barrier(CLK_LOCAL_MEM_FENCE);
-
-//     // final reduction from local memory
-//     if(iL == 0){ 
-//         float fDOFi = 0.0f;
-//         for(int jl=0; jl<nL; jl++){  fDOFi += LfDOFi[jl];} 
-//         fDOFs[iDOF] = fDOFi;
-//     }
-
-// }
 
 __attribute__((reqd_work_group_size(NLOC_assembleDOFderivatives,1,1)))
 __kernel void assembleAndRegularize(

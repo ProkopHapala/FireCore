@@ -14,7 +14,8 @@ np.set_printoptions(linewidth=1000, threshold=np.inf)
 
 sys.path.append("../../")
 from pyBall import FitREQ as fit_cpp
-from pyBall.OCL.NonBondFitting import FittingDriver, extract_macro_block
+from pyBall.OCL.NonBondFitting import FittingDriver
+from pyBall.OCL.OpenCLBase import OpenCLBase
 from pyBall import atomicUtils as au
 
 fit_cpp.plt = None  # Disable plotting
@@ -93,8 +94,16 @@ def setup_gpu_driver(args):
     # Model selection
     model_macro   = 'MODEL_MorseQ_PAIR' if int(args.morse) else 'MODEL_LJQH2_PAIR'
     model_macro_E = 'ENERGY_MorseQ_PAIR' if int(args.morse) else 'ENERGY_LJQH2_PAIR'
-    macro_der   = extract_macro_block(forces_path, model_macro)
-    macro_der_E = extract_macro_block(forces_path, model_macro_E)
+    
+    # Parse CL file to get macros
+    cl_parser = OpenCLBase()
+    cl_content = cl_parser.parse_cl_lib(forces_path)
+    macro_der   = cl_content['macros'].get(model_macro)
+    macro_der_E = cl_content['macros'].get(model_macro_E)
+    
+    if macro_der is None or macro_der_E is None:
+        raise RuntimeError(f"Could not find required macros in {forces_path}")
+    
     macros = {
         'MODEL_PAIR_ACCUMULATION': macro_der,
         'MODEL_PAIR_ENERGY':       macro_der_E,

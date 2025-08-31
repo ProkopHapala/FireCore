@@ -34,7 +34,6 @@ inline float4 getMorseQH( float3 dp,  float4 REQH, float K, float R2damp ){
     return  (float4){ dp*fr, EMors+Eel };
 }
 
-#if 0  // Macro snippet blocks below are templates for text substitution; not compiled as-is
 //>>>macro MODEL_LJQH2_PAIR
 {
     // Distance safeguards
@@ -157,4 +156,3 @@ inline float4 getMorseQH( float3 dp,  float4 REQH, float K, float R2damp ){
     float ELJ  =  E0 * ( e2p - 2.f * e );
     Ei += ELJ + Eel;
 }
-#endif // macro snippet templates
