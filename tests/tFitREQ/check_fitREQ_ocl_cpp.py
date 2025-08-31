@@ -91,6 +91,8 @@ def setup_gpu_driver(args):
     fit_ocl.load_data(xyz_file)
     fit_ocl.load_dofs(dof_file)
     fit_ocl.init_and_upload()
+    fit_ocl.serial_mode = (args.parallel == 0)
+
 
     # Model selection
     model_macro   = 'MODEL_MorseQ_PAIR' if int(args.morse) else 'MODEL_LJQH2_PAIR'
@@ -166,6 +168,7 @@ if __name__ == '__main__':
     p.add_argument('--use_type_charges', type=int, default=1, help='GPU runtime charge source: 0=per-atom atoms.w, 1=type-based tREQHs[:,2]')
     p.add_argument('--uniform_weights', action='store_true', help='Use uniform weights (all 1.0) instead of exponential weights')
     p.add_argument('--verbose', type=int, default=1)
+    p.add_argument('--parallel', type=int, default=0, help='Use serial mode (single lane per workgroup)')
     p.add_argument('--test_starting', action='store_true', help='Test using starting DOF values')
     p.add_argument('--test_custom', nargs='+', type=float, help='Test using custom DOF values')
     args = p.parse_args()
@@ -182,18 +185,8 @@ if __name__ == '__main__':
     print("="*70)
 
     # CPU setup
-    print("Setting up CPU implementation...")
-    cpu_start = time.time()
-    cpu = setup_cpu_fit(args)
-    cpu_time = time.time() - cpu_start
-    print(f"CPU setup time: {cpu_time:.3f}s")
-
-    # GPU setup
-    print("Setting up GPU implementation...")
-    gpu_start = time.time()
-    fit_ocl = setup_gpu_driver(args)
-    gpu_time = time.time() - gpu_start
-    print(f"GPU setup time: {gpu_time:.3f}s")
+    job_cpp = setup_cpu_fit(args)
+    job_ocl = setup_gpu_driver(args)
 
     # Determine test DOF values
     if args.test_custom:
@@ -201,11 +194,11 @@ if __name__ == '__main__':
         print(f"Testing custom DOF values: {test_dofs}")
     elif args.test_starting:
         # Get starting values from DOF specs
-        test_dofs = np.array([cpu['dof_specs'][i]['xstart'] for i in cpu['iDOFs']], dtype=np.float64)
+        test_dofs = np.array([job_cpp['dof_specs'][i]['xstart'] for i in job_cpp['iDOFs']], dtype=np.float64)
         print(f"Testing starting DOF values: {test_dofs}")
     else:
         # Test with small random perturbations from starting values
-        start_vals = np.array([cpu['dof_specs'][i]['xstart'] for i in cpu['iDOFs']], dtype=np.float64)
+        start_vals = np.array([job_cpp['dof_specs'][i]['xstart'] for i in job_cpp['iDOFs']], dtype=np.float64)
         np.random.seed(42)  # For reproducible results
         perturbations = np.random.normal(0, 0.1, len(start_vals))
         test_dofs = start_vals + perturbations
@@ -216,7 +209,7 @@ if __name__ == '__main__':
 
     # Run comparison
     print("Computing objective functions...")
-    result = compare_objectives(cpu, fit_ocl, test_dofs, verbose=True)
+    result = compare_objectives(job_cpp, job_ocl, test_dofs, verbose=True)
 
     print("-"*70)
     print("SUMMARY:")
