@@ -28,7 +28,7 @@ class FittingDriver(OpenCLBase):
     #     self.dof_definitions = []
     #     self.tREQHs_base = None
 
-    def __init__(self, nloc=32, perBatch=10, verbose=0, use_type_charges=False, bCompile=False):
+    def __init__(self, nloc=32, perBatch=10, verbose=0, use_type_charges=False, bCompile=False, serial_mode=False):
         print("FittingDriver.__init__(): bCompile = ", bCompile)
         # Initialize the base class
         super().__init__(nloc=nloc, device_index=0)
@@ -47,6 +47,8 @@ class FittingDriver(OpenCLBase):
         self.verbose = int(verbose)
         # Runtime charge source switch: 0=use per-atom atoms.w, 1=use type-based REQH.z
         self.use_type_charges = int(bool(use_type_charges))
+        # Runtime kernel selection: False=parallel kernel, True=serial kernel
+        self.serial_mode = bool(serial_mode)
         # Regularization control
         self.regularize_enabled = True
         self.host_regParams_base = None
@@ -191,7 +193,6 @@ class FittingDriver(OpenCLBase):
         """
         self.set_charges_for_sample_atoms([(i_local, q)])
 
-
     def load_atom_types(self, atom_types_file):
         """
         Loads default non-bonded parameters from an AtomTypes.dat file.
@@ -220,7 +221,6 @@ class FittingDriver(OpenCLBase):
                 self.base_params[type_name] = {'R': RvdW, 'E': EvdW, 'Q': Qbase, 'H': Hb}
         if self.verbose>0:
             print(f"Loaded base parameters for {len(self.base_params)} atom types.")
-
 
     def load_data(self, xyz_file):
         """Loads molecular geometries from a concatenated XYZ file.
@@ -316,7 +316,6 @@ class FittingDriver(OpenCLBase):
             for i in range(len(self.atom_type_names)):
                 if self.verbose>2:
                     print(f"{i}: {self.atom_type_names[i]} {self.atom_type_map[self.atom_type_names[i]]} ")
-
 
     def load_dofs(self, dof_file):
         """Loads the definitions of the degrees of freedom (DOFs)."""
@@ -584,23 +583,51 @@ class FittingDriver(OpenCLBase):
     def enable_regularization(self):
         self.set_regularization_enabled(True)
 
-    def set_kernel_args(self):
-        """Bind arguments for templated derivative and assembly kernels. No fallback."""
-        if 'evalSampleDerivatives_template' not in getattr(self, 'kernelheaders', {}):
+    def setup_derivative_kernel(self):
+        """Setup and configure both derivative kernel variants (parallel and serial)."""
+        if not hasattr(self, 'kernelheaders'):
             raise RuntimeError("Templated kernels not available. Call compile_with_model(macros=...) before binding args.")
-
-        # Derivative kernel (templated)
-        self.eval_kern = self.prg.evalSampleDerivatives_template
+            
+        # Initialize both kernel variants
+        self.kernel_deriv = self.prg.evalSampleDerivatives_template
+        self.kernel_deriv_serial = self.prg.evalSampleDerivatives_template_serial
+        
+        # Common argument binding for both kernels
         globParams = np.array([self.alphaMorse, 0.0, 0.0, 0.0], dtype=np.float32)
         if not hasattr(self, 'Jmols_buff'):
             self.try_make_buffers({"Jmols": self.n_samples*4})
-        self.eval_kern.set_args(
+            
+        args = (
             self.ranges_buff, self.tREQHs_buff, self.atypes_buff, self.ieps_buff,
             self.atoms_buff, self.dEdREQs_buff, self.ErefW_buff, self.Jmols_buff,
             np.int32(self.use_type_charges), globParams
         )
+        
+        self.kernel_deriv.set_args(*args)
+        self.kernel_deriv_serial.set_args(*args)
 
-        # Assembly + regularization kernel
+    def setup_energy_kernel(self):
+        """Setup and configure the energy evaluation kernel.
+        
+        Sets self.energy_kern to evalSampleEnergy_template and binds its arguments.
+        """
+        if 'evalSampleEnergy_template' not in getattr(self, 'kernelheaders', {}):
+            raise RuntimeError("Energy kernel not available. Call compile_energy_with_model() first.")
+        self.energy_kern = self.prg.evalSampleEnergy_template
+        globParams = np.array( [self.alphaMorse,0.0,0.0,0.0], dtype=np.float32)
+        if not hasattr(self, 'Emols_buff'):
+            self.try_make_buffers({"Emols": self.n_samples*4})
+        self.energy_kern.set_args(
+            self.ranges_buff, self.tREQHs_buff, self.atypes_buff, self.ieps_buff,
+            self.atoms_buff, self.Emols_buff,
+            np.int32(self.use_type_charges), globParams
+        )
+
+    def setup_assembly_kernel(self):
+        """Setup and configure the assembly and regularization kernel.
+        
+        Sets self.assemble_kern to assembleAndRegularize and binds its arguments.
+        """
         self.assemble_kern = self.prg.assembleAndRegularize
         self.assemble_kern.set_args(
             np.int32(self.n_dofs),
@@ -614,6 +641,21 @@ class FittingDriver(OpenCLBase):
             self.tREQHs_buff,
             self.DOFtoTypeComp_buff
         )
+
+    def set_kernel_args(self):
+        """Bind arguments for templated derivative and assembly kernels. No fallback."""
+        if 'evalSampleDerivatives_template' not in getattr(self, 'kernelheaders', {}):
+            raise RuntimeError("Templated kernels not available. Call compile_with_model(macros=...) before binding args.")
+
+        # Derivative kernel (templated)
+        self.setup_derivative_kernel()
+
+        # Assembly + regularization kernel
+        self.setup_assembly_kernel()
+        
+        # Energy kernel
+        self.setup_energy_kernel()
+        
         if self.verbose>0:
             print("Templated kernel arguments bound.")
 
@@ -644,7 +686,7 @@ class FittingDriver(OpenCLBase):
         globParams = np.array([self.alphaMorse, 0.0, 0.0, 0.0], dtype=np.float32)
         if not hasattr(self, 'Jmols_buff'):
             self.try_make_buffers({"Jmols": self.n_samples*4})
-        self.eval_kern.set_args(
+        self.kernel_deriv.set_args(
             rng_buf, self.tREQHs_buff, self.atypes_buff, self.ieps_buff,
             self.atoms_buff, self.dEdREQs_buff, self.ErefW_buff, self.Jmols_buff,
             np.int32(self.use_type_charges), globParams
@@ -653,23 +695,15 @@ class FittingDriver(OpenCLBase):
     def compile_with_model(self, macros=None, output_path=None, bPrint=False):
         """
         Build the OpenCL program with a model-specific pair accumulation snippet injected
-        into the templated kernel `evalSampleDerivatives_template`.
-
-        The snippet should be passed via the 'macros' dict with key 'MODEL_PAIR_ACCUMULATION',
-        e.g. macros={ 'MODEL_PAIR_ACCUMULATION': "/* code updating fREQi and Ei */" }.
-
-        Variables in scope for the snippet inside the i–j loop:
-          atomi, atomj (float4); REQi, REQj (float4); dij (float3); r (float); ir (float)
-          fREQi (float4 accumulator of derivatives for atom i); Ei (float energy accumulator)
+        into both templated kernels (parallel and serial variants).
         """
-        #print("compile_with_model(): macros: ", macros)
         if macros is None:
             macros = {}
         base_path = os.path.dirname(os.path.abspath(__file__))
         rel_path = "../../cpp/common_resources/cl/FitREQ.cl"
         source_path = os.path.abspath(os.path.join(base_path, rel_path))
 
-        # Preprocess source with macro substitution for the template marker
+        # Preprocess source with macro substitution for the template markers
         pre_src = self.preprocess_opencl_source(
             source_path,
             substitutions={ 'macros': macros },
@@ -681,6 +715,18 @@ class FittingDriver(OpenCLBase):
         self.prg = cl.Program(self.ctx, pre_src).build()
         self.kernelheaders = self.extract_kernel_headers(pre_src)
         self.use_template = True
+        
+        # Verify both kernel variants are available
+        required_kernels = {
+            'evalSampleDerivatives_template',
+            'evalSampleDerivatives_template_serial',
+            'assembleAndRegularize'
+        }
+        available = set(self.kernelheaders.keys())
+        if not required_kernels.issubset(available):
+            missing = required_kernels - available
+            raise RuntimeError(f"Missing required kernels: {missing}")
+            
         # Bind kernel args now that the program is built
         self.set_kernel_args()
         if bPrint:
@@ -781,18 +827,7 @@ class FittingDriver(OpenCLBase):
 
     def set_energy_kernel_args(self):
         """Bind args for evalSampleEnergy_template."""
-        if 'evalSampleEnergy_template' not in getattr(self, 'kernelheaders', {}):
-            raise RuntimeError("Energy kernel not available. Call compile_energy_with_model() first.")
-        self.energy_kern = self.prg.evalSampleEnergy_template
-        globParams = np.array( [self.alphaMorse,0.0,0.0,0.0], dtype=np.float32)
-        # Ensure Emols buffer exists for the full init path as well (not only energy-only path)
-        if not hasattr(self, 'Emols_buff'):
-            self.try_make_buffers({"Emols": self.n_samples*4})
-        self.energy_kern.set_args(
-            self.ranges_buff, self.tREQHs_buff, self.atypes_buff, self.ieps_buff,
-            self.atoms_buff, self.Emols_buff,
-            np.int32(self.use_type_charges), globParams
-        )
+        self.setup_energy_kernel()
 
     def set_charge_source(self, use_type_charges=False):
         """Set runtime charge source switch and rebind kernel args next time they're set.
@@ -800,7 +835,7 @@ class FittingDriver(OpenCLBase):
         """
         self.use_type_charges = int(bool(use_type_charges))
         # If kernels already exist, rebind with updated arg
-        if hasattr(self, 'eval_kern') and hasattr(self, 'ranges_buff'):
+        if hasattr(self, 'kernel_deriv') and hasattr(self, 'ranges_buff'):
             self._set_eval_ranges(self.ranges_buff)
         if hasattr(self, 'energy_kern') and hasattr(self, 'ranges_buff'):
             self.set_energy_kernel_args()
@@ -839,17 +874,19 @@ class FittingDriver(OpenCLBase):
         current_tREQHs = self.update_tREQHs_from_dofs(dofs_vec_f32)
         self.toGPU_(self.tREQHs_buff, current_tREQHs)
         # 3) Kernels
-        workgroup_size_eval = 32
+        workgroup_size_eval = 1 if self.serial_mode else 32
         workgroup_size_assemble = 128
         t0 = time.perf_counter() if self.verbose>0 else 0.0
+        # Select appropriate kernel based on serial_mode
+        deriv_kern = self.kernel_deriv_serial if self.serial_mode else self.kernel_deriv
         # Pass 1: fragment-1 as writer (default ranges)
-        cl.enqueue_nd_range_kernel(self.queue, self.eval_kern, (self.n_samples * workgroup_size_eval,), (workgroup_size_eval,))
+        cl.enqueue_nd_range_kernel(self.queue, deriv_kern, (self.n_samples * workgroup_size_eval,), (workgroup_size_eval,))
         # Optional Pass 2: swap fragments to write fragment-2 derivatives
         if dual_pass:
             self._ensure_swapped_ranges()
             # Temporarily bind swapped ranges and launch
             self._set_eval_ranges(self.ranges_swapped_buff)
-            cl.enqueue_nd_range_kernel(self.queue, self.eval_kern, (self.n_samples * workgroup_size_eval,), (workgroup_size_eval,))
+            cl.enqueue_nd_range_kernel(self.queue, deriv_kern, (self.n_samples * workgroup_size_eval,), (workgroup_size_eval,))
             # Restore original ranges binding for subsequent calls
             self._set_eval_ranges(self.ranges_buff)
         if self.verbose>0:
@@ -892,64 +929,6 @@ class FittingDriver(OpenCLBase):
         d = Em - Eref
         return float(0.5 * np.dot(Wv, d*d))
 
-    def getErrorDerivs(self, dofs_vec, wg_eval=32, wg_assemble=128, dual_pass=False):
-        """Return (J_total, forces) using derivative + assemble kernels only.
-
-        J_total(dofs) = J_phys(dofs) - J_reg(dofs)
-        - J_phys read from Jmols written by evalSampleDerivatives_template
-        - forces computed by assembleAndRegularize
-        """
-        x = np.asarray(dofs_vec, dtype=np.float32)
-        # Upload DOFs for regularization and update tREQHs
-        if hasattr(self, 'DOFs_buff'):
-            self.toGPU_(self.DOFs_buff, x)
-        T = self.update_tREQHs_from_dofs(x)
-        self.toGPU_(self.tREQHs_buff, T)
-
-        # Ensure Jmols exists and args are set
-        if not hasattr(self, 'Jmols_buff'):
-            self.try_make_buffers({"Jmols": self.n_samples*4})
-            self.set_kernel_args()
-
-        # Zero dEdREQs and run assemble to update tREQHs from DOFs (like DOFsToTypes)
-        self.toGPU_(self.dEdREQs_buff, np.zeros((self.n_atoms_total, 4), dtype=np.float32))
-        cl.enqueue_nd_range_kernel(self.queue, self.assemble_kern, (self.n_dofs*wg_assemble,), (wg_assemble,))
-        self.queue.finish()
-
-        # 1) Derivative kernel pass(es) -> fill dEdREQs and Jmols
-        # Pass 1: default ranges
-        cl.enqueue_nd_range_kernel(self.queue, self.eval_kern, (self.n_samples*wg_eval,), (wg_eval,))
-        # Optional Pass 2: swapped ranges to cover fragment-2
-        if dual_pass:
-            self._ensure_swapped_ranges()
-            self._set_eval_ranges(self.ranges_swapped_buff)
-            cl.enqueue_nd_range_kernel(self.queue, self.eval_kern, (self.n_samples*wg_eval,), (wg_eval,))
-            # Restore original binding
-            self._set_eval_ranges(self.ranges_buff)
-        # 2) Read Jmols and compute J_phys (value is consistent across passes)
-        Jm = self.fromGPU_(self.Jmols_buff, shape=(self.n_samples,), dtype='f4').astype(np.float64)
-        self.queue.finish()
-        J_phys = float(np.sum(Jm))
-        # 3) Assemble forces (adds regularization gradient internally)
-        cl.enqueue_nd_range_kernel(self.queue, self.assemble_kern, (self.n_dofs*wg_assemble,), (wg_assemble,))
-        forces = self.fromGPU_(self.fDOFs_buff, shape=(self.n_dofs,))
-        self.queue.finish()
-
-        # 4) Host-side regularization energy
-        J_reg = 0.0
-        if hasattr(self, 'host_regParams') and self.host_regParams is not None and self.host_regParams.size > 0:
-            p = self.host_regParams.astype(np.float64)
-            xmin, xmax = p[:, 0], p[:, 1]
-            xlo,  xhi  = p[:, 2], p[:, 3]
-            Klo,  Khi  = p[:, 4], p[:, 5]
-            K0,   x0   = p[:, 6], p[:, 7]
-            xc = np.clip(x.astype(np.float64), xmin, xmax)
-            J_reg = 0.5*np.sum(K0*(xc - x0)**2) \
-                  + 0.5*np.sum(Klo*np.maximum(0.0, xlo - xc)**2) \
-                  + 0.5*np.sum(Khi*np.maximum(0.0, xc - xhi)**2)
-
-        return float(J_phys - J_reg), forces
-
     def evaluate_objective(self, dofs_vec):
         """Deprecated: use getErrorDerivs(dofs_vec)[0] instead."""
         J, _ = self.getErrorDerivs(dofs_vec)
@@ -969,3 +948,53 @@ class FittingDriver(OpenCLBase):
             Jm = self.evaluate_objective(xm)
             g[i] = (Jp - Jm) / (2.0*eps)
         return g
+
+    def getErrorDerivs(self, dofs_vec):
+        """Calculate both objective (J) and its derivatives (g) for given DOF vector.
+        
+        This implementation properly sequences kernel execution:
+        1. First runs assembleAndRegularize to update tREQs from DOFs
+        2. Runs evalSampleDerivatives (parallel or serial) to compute sample derivatives
+        3. Runs assembleAndRegularize again to assemble final derivatives
+        
+        Returns:
+            tuple: (J, g) where J is the objective value and g is the gradient vector
+        """
+        # Convert input to float32 and upload DOFs
+        dofs_vec_f32 = np.asarray(dofs_vec, dtype=np.float32)
+        self.toGPU_(self.DOFs_buff, dofs_vec_f32)
+        
+        # First pass: update tREQs from DOFs
+        cl.enqueue_nd_range_kernel(
+            self.queue, 
+            self.assemble_kern, 
+            (self.n_dofs * 128,), 
+            (128,)
+        )
+        
+        # Run derivative kernel (parallel or serial)
+        deriv_kern = self.kernel_deriv_serial if self.serial_mode else self.kernel_deriv
+        workgroup_size = 1 if self.serial_mode else 32
+        cl.enqueue_nd_range_kernel(
+            self.queue, 
+            deriv_kern, 
+            (self.n_samples * workgroup_size,), 
+            (workgroup_size,)
+        )
+        
+        # Second pass: assemble final derivatives
+        cl.enqueue_nd_range_kernel(
+            self.queue, 
+            self.assemble_kern, 
+            (self.n_dofs * 128,), 
+            (128,)
+        )
+        
+        # Download results
+        self.queue.finish()
+        forces = self.fromGPU_(self.fDOFs_buff, shape=(self.n_dofs,))
+        
+        # Calculate objective value
+        J = self.getError(dofs_vec)
+        
+        return J, -forces  # Return objective and negative forces (gradient)
