@@ -91,13 +91,20 @@ def setup_gpu_driver(args):
     fit_ocl.init_and_upload()
 
     # Model selection
-    model_macro = 'MODEL_MorseQ_PAIR' if int(args.morse) else 'MODEL_LJQH2_PAIR'
-    macro_der = extract_macro_block(forces_path, model_macro)
+    model_macro   = 'MODEL_MorseQ_PAIR' if int(args.morse) else 'MODEL_LJQH2_PAIR'
+    model_macro_E = 'ENERGY_MorseQ_PAIR' if int(args.morse) else 'ENERGY_LJQH2_PAIR'
+    macro_der   = extract_macro_block(forces_path, model_macro)
+    macro_der_E = extract_macro_block(forces_path, model_macro_E)
     macros = {
         'MODEL_PAIR_ACCUMULATION': macro_der,
+        'MODEL_PAIR_ENERGY':       macro_der_E,
         'HBOND_GATE_DEFINE': f"#define HBOND_GATE {1}",
     }
-    fit_ocl.compile_with_model(macros=macros, bPrint=False)
+    for k,v in macros.items():  print(f"{k}: {v}")
+    #exit()
+    output_path = os.path.join(this_dir, 'FitREQ_preprocessed.cl')
+    fit_ocl.compile_with_model(macros=macros, bPrint=True, output_path=output_path)
+    fit_ocl.load_program(output_path)
     return fit_ocl
 
 def compare_objectives(cpu_fit, gpu_driver, dof_values, verbose=True):

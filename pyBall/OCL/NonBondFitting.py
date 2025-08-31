@@ -29,15 +29,17 @@ class FittingDriver(OpenCLBase):
     #     self.dof_definitions = []
     #     self.tREQHs_base = None
 
-    def __init__(self, nloc=32, perBatch=10, verbose=0, use_type_charges=False):
+    def __init__(self, nloc=32, perBatch=10, verbose=0, use_type_charges=False, bCompile=False):
+        print("FittingDriver.__init__(): bCompile = ", bCompile)
         # Initialize the base class
         super().__init__(nloc=nloc, device_index=0)
         
-        # Load the OpenCL program
-        base_path = os.path.dirname(os.path.abspath(__file__))
-        rel_path = "../../cpp/common_resources/cl/FitREQ.cl"
-        if not self.load_program(rel_path=rel_path, base_path=base_path, bPrint=False):
-            exit(1)
+        if bCompile:
+            # Load the OpenCL program
+            base_path = os.path.dirname(os.path.abspath(__file__))
+            rel_path = "../../cpp/common_resources/cl/FitREQ.cl"
+            if not self.load_program(rel_path=rel_path, base_path=base_path, bPrint=False):
+                exit(1)
 
         self.atom_type_map = {}
         self.atom_type_names = []
@@ -61,6 +63,7 @@ class FittingDriver(OpenCLBase):
         self.type_scale = []
         self.pair_like_scale = []
         self.charge_overrides = {}
+        print("FittingDriver.__init__(): END")
 
     @staticmethod
     def _comp_index(comp):
@@ -660,6 +663,7 @@ class FittingDriver(OpenCLBase):
           atomi, atomj (float4); REQi, REQj (float4); dij (float3); r (float); ir (float)
           fREQi (float4 accumulator of derivatives for atom i); Ei (float energy accumulator)
         """
+        #print("compile_with_model(): macros: ", macros)
         if macros is None:
             macros = {}
         base_path = os.path.dirname(os.path.abspath(__file__))
@@ -682,6 +686,7 @@ class FittingDriver(OpenCLBase):
         self.set_kernel_args()
         if bPrint:
             print(f"compile_with_model(): kernels available: {list(self.kernelheaders.keys())}")
+        exit()
 
     def dump_dEdREQs(self, max_rows=8, sample=0):
         """Debug helper: download and print a small slice of dEdREQs for the given sample's frag-1.

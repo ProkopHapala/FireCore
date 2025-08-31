@@ -400,6 +400,7 @@ class OpenCLBase:
         Returns:
             str: Preprocessed source code
         """
+        print(f"OpenCLBase::preprocess_opencl_source() source_path: {source_path}")
         if substitutions is None:
             substitutions = {}
             
@@ -433,6 +434,12 @@ class OpenCLBase:
                         lines[idx] = macro_def
                         break
             source = '\n'.join(lines)
+
+        # if bPrint:
+        #     print("================================") 
+        #     print(f"preprocess_opencl_source() preprocess_opencl_source saved to :\n", output_path)
+        #     print(f"preprocess_opencl_source() preprocess_opencl_source :\n", source)
+        #     print("================================") 
         
         # Save to file if output_path specified
         if output_path:

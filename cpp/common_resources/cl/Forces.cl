@@ -102,15 +102,19 @@ inline float4 getMorseQH( float3 dp,  float4 REQH, float K, float R2damp ){
     float e2p  = (1.f + H) * e2;
     float dE_dE0 = e2p - 2.f * e;
     float ELJ    =  E0 * dE_dE0;
-    Ei += ELJ + Eel;
+    Eij = ELJ + Eel;
 
     // Accumulate derivatives for atom i
     float dE_dR0 = 2.f * alpha * E0 * ( e2p - e );
     float dE_dH = - E0 * e2;
-    fREQi.x +=  dE_dR0;
-    fREQi.y +=  dE_dE0 *        REQj.y;
-    fREQi.z +=  dE_dQ  *        REQj.z;
-    fREQi.w +=  dE_dH *        REQj.w * sH;
+    // fREQi.x +=  dE_dR0;
+    // fREQi.y +=  dE_dE0 *        REQj.y;
+    // fREQi.z +=  dE_dQ  *        REQj.z;
+    // fREQi.w +=  dE_dH *        REQj.w * sH;
+    fij.x =  dE_dR0;
+    fij.y =  dE_dE0 * REQj.y;
+    fij.z =  dE_dQ  * REQj.z;
+    fij.w =  dE_dH  * REQj.w * sH;  
     // Accumulate energy
     
 }
