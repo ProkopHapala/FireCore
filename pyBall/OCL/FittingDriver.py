@@ -305,6 +305,9 @@ class FittingDriver(OpenCLBase):
         host_ranges2[:,:] = self.host_ranges[:,[1,0,3,2]] # flip i0,j0 and ni,nj
         self.host_ranges2 = host_ranges2
 
+        print("self.host_ranges:  ", self.host_ranges)
+        print("self.host_ranges2: ", self.host_ranges2)
+
         self.n_atoms_total = len(self.host_atoms)
         self.n_samples     = len(self.host_ranges)
         self.host_ieps     = np.full((self.n_atoms_total, 2), -1, dtype=np.int32)
@@ -831,7 +834,7 @@ class FittingDriver(OpenCLBase):
             T[ti, ci] = x
         return T.astype(np.float32, copy=False)
 
-    def getErrorDerivs(self, dofs_vec, niter=1, bDownload=True, bBothSides=True):
+    def getErrorDerivs(self, dofs_vec, niter=1, bDownload=True, bBothSides=False):
         """Calculate both objective (J) and its derivatives (g) for given DOF vector.
         
         This implementation properly sequences kernel execution:
@@ -851,8 +854,12 @@ class FittingDriver(OpenCLBase):
         cl.    enqueue_nd_range_kernel( self.queue, self.assemble_kern, (self.n_dofs * 128,),     (128,)  )  # First pass: update tREQs from DOFs
         for itr in range(niter):
             #cl.enqueue_nd_range_kernel( self.queue,      deriv_kern,    (self.n_samples * nloc,), (nloc,) )  # Run derivative kernel (parallel or serial)
-            deriv_kern                (self.queue, (self.n_samples * nloc,), (nloc,), *self.deriv_args1)
+            #deriv_kern                (self.queue, (self.n_samples * nloc,), (nloc,), *self.deriv_args1)
+            deriv_kern                (self.queue, (self.n_samples * nloc,), (nloc,), *self.deriv_args2)
+            self.queue.finish()
+
             if bBothSides:  deriv_kern(self.queue, (self.n_samples * nloc,), (nloc,), *self.deriv_args2)
+            self.queue.finish()
             cl.enqueue_nd_range_kernel( self.queue, self.assemble_kern, (self.n_dofs * 128,),     (128,)  )  # Second pass: assemble final derivatives
         
         if bDownload:

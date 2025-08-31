@@ -2054,6 +2054,7 @@ double evalExampleDerivs_MorseQH2( int i0, int ni, int j0, int nj, int* __restri
         const int     ti    = types   [i ];
         const Quat4d& REQi  = typeREQs[ti];
         Quat4d        fREQi = Quat4dZero;
+        double        Ei    = 0;  
         for(int jj=0; jj<nj; jj++){ 
             const int   j        = j0+jj;
             const double     Qj  = Qs[j];
@@ -2084,17 +2085,15 @@ double evalExampleDerivs_MorseQH2( int i0, int ni, int j0, int nj, int* __restri
             double ELJ     =   E0 * dE_dE0;
             //if(bCheckRepulsion)[[unlikely]]{ checkSampleRepulsion( ELJ, i,j, ti,tj, r, true, true ); }
             // --- Energy and forces
-            Etot    +=  ELJ + Eel;
+            Ei    +=  ELJ + Eel;
             //if(verbosity>3)
-            //printf("CPU: [%3i,%3i] tij(%2i,%2d) r %+10.6f REQH(%+10.6f,%+12.6e,%+12.6e,%+12.6e) | dE %+12.6e | dREQH( %+12.6e, %+12.6e, %+12.6e, %+12.6e)\n", i, j, ti, tj, r, R0, E0, Q, H, ELJ+Eel, -dE_dR0, -dE_dE0*REQj.y, -dE_dQ*Qj, dE_dH*REQj.w*sH );
+            printf("CPU: [%3i,%3i] tij(%2i,%2d) r %+10.6f REQH(%+10.6f,%+12.6e,%+12.6e,%+12.6e) | dE %+12.6e | dREQH( %+12.6e, %+12.6e, %+12.6e, %+12.6e)\n", i, j, ti, tj, r, R0, E0, Q, H, ELJ+Eel, -dE_dR0, -dE_dE0*REQj.y, -dE_dQ*Qj, dE_dH*REQj.w*sH );
             
             //{ int itypPrint=4; if( (ti==itypPrint) || (tj==itypPrint) ){ printf( "evalExampleDerivs_LJQH2()[%3i,%3i] (%8s,%8s) ELJ,Eel: %12.3e,%12.3e Q(%12.3e|%12.3e,%12.3e) dEdREQH(%12.3e,%12.3e,%12.3e,%12.3e)\n", i,j, params->atypes[ti].name, params->atypes[tj].name , ELJ,Eel, Q,Qi,Qj,  dE_dR0, dE_deps, dE_dQ, dE_dH2  ); } }
             fREQi.x +=  -dE_dR0;                   // dEtot/dR0_i
             fREQi.y +=  -dE_dE0 * REQj.y;          // dEtot/dE0_i
             fREQi.z +=  -dE_dQ  * Qj;              // dEtot/dQ_i
             fREQi.w +=  dE_dH   * REQj.w * sH;     // dEtot/dH2i
-
-            
 
             if( bWJ ){ dEdREQs[j].add( Quat4d{
                         -dE_dR0,                   // dEtot/dR0_j
@@ -2105,8 +2104,8 @@ double evalExampleDerivs_MorseQH2( int i0, int ni, int j0, int nj, int* __restri
             //printf( "debug i= %i j= %i fsi.x= %g fsi.y= %g fsi.z= %g fsi.w= %g fsj.x= %g fsj.y= %g fsj.z= %g fsj.w= %g\n", i, j, fsi.x, fsi.y, fsi.z, fsi.w, fsj.x, fsj.y, fsj.z, fsj.w );
         }
 
-        printf("CPU: atom i %3i ti %3i fREQi( %+12.6e, %+12.6e, %+12.6e, %+12.6e )\n", i, ti, fREQi.x, fREQi.y, fREQi.z, fREQi.w ); 
-
+        printf("CPU: atom i %3i ti %3i Ei %+12.6e fREQi( %+12.6e, %+12.6e, %+12.6e, %+12.6e )\n", i, ti, Ei,  fREQi.x, fREQi.y, fREQi.z, fREQi.w ); 
+        Etot += Ei;
         if(dEdREQs)dEdREQs[i].add(fREQi);
     }
     //printAtomParamDerivs( ni+nj, dEdREQs, isamp_debug );

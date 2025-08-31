@@ -112,7 +112,7 @@ def setup_gpu_driver(args):
         'MODEL_PAIR_ENERGY':       macro_der_E,
         'HBOND_GATE_DEFINE': f"#define HBOND_GATE {1}",
     }
-    for k,v in macros.items():  print(f"{k}: {v}")
+    #for k,v in macros.items():  print(f"{k}: {v}")
     #exit()
     output_path = os.path.join(this_dir, 'FitREQ_preprocessed.cl')
     fit_ocl.compile_with_model(macros=macros, bPrint=True, output_path=output_path)
@@ -168,7 +168,7 @@ if __name__ == '__main__':
     p.add_argument('--use_type_charges', type=int, default=1, help='GPU runtime charge source: 0=per-atom atoms.w, 1=type-based tREQHs[:,2]')
     p.add_argument('--uniform_weights', action='store_true', help='Use uniform weights (all 1.0) instead of exponential weights')
     p.add_argument('--verbose', type=int, default=1)
-    p.add_argument('--parallel', type=int, default=0, help='Use serial mode (single lane per workgroup)')
+    p.add_argument('--parallel', type=int, default=1, help='Use serial mode (single lane per workgroup)')
     p.add_argument('--test_starting', action='store_true', help='Test using starting DOF values')
     p.add_argument('--test_custom', nargs='+', type=float, help='Test using custom DOF values')
     args = p.parse_args()

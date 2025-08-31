@@ -37,7 +37,7 @@ echo "#=========== RUN"
 #python3 -u check_fitREQ_derivs.py
 #python3 -u check_fitREQ_derivs.py 2> asan.log | tee OUT-FitREQ-check_derivs
 #python3 -u check_fitREQ_ocl_cpp_derivs_.py 2>1 | tee OUT-FitREQ-check_derivs
-python3 -u check_fitREQ_ocl_cpp.py   # 2>1 | tee OUT-check_FitREQ_error_ocl_vs_cpu
+python3 -u check_fitREQ_ocl_cpp.py   2>1 | tee OUT-check_FitREQ_error_ocl_vs_cpu
 
 #python3 opt_2D.py
 
