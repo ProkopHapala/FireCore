@@ -14,7 +14,8 @@ np.set_printoptions(linewidth=1000, threshold=np.inf)
 
 sys.path.append("../../")
 from pyBall import FitREQ as fit_cpp
-from pyBall.OCL.NonBondFitting import FittingDriver
+#from pyBall.OCL.NonBondFitting import FittingDriver
+from pyBall.OCL.FittingDriver import FittingDriver
 from pyBall.OCL.OpenCLBase import OpenCLBase
 from pyBall import atomicUtils as au
 
