@@ -55,9 +55,9 @@ inline float4 getMorseQH( float3 dp,  float4 REQH, float K, float R2damp ){
     // Accumulate derivatives for atom i
     float dE_dR0 = 12.f * (E0/R0) * u6 * (u6p - 1.f);
     float dE_dH  = -E0 * u6 * u6;
-    fREQi.x +=  dE_dR0;
-    fREQi.y +=  dE_dE0 *        REQj.y;
-    fREQi.z +=  dE_dQ  *        REQj.z;
+    fREQi.x +=  -dE_dR0;
+    fREQi.y +=  -dE_dE0 *        REQj.y;
+    fREQi.z +=  -dE_dQ  *        REQj.z;
     fREQi.w +=  dE_dH  *        REQj.w * sH;
 
     // Accumulate energy
@@ -83,9 +83,9 @@ inline float4 getMorseQH( float3 dp,  float4 REQH, float K, float R2damp ){
     // Accumulate derivatives for atom i
     float dE_dR0 = 24.f * (E0/R0) * u6 * (u2p - 1.f);
     float dE_dH  = -3.f * E0 * u6 * u2;
-    fREQi.x +=  dE_dR0;
-    fREQi.y +=  dE_dE0 *        REQj.y;
-    fREQi.z +=  dE_dQ  *        REQj.z;
+    fREQi.x +=  -dE_dR0;
+    fREQi.y +=  -dE_dE0 *        REQj.y;
+    fREQi.z +=  -dE_dQ  *        REQj.z;
     fREQi.w +=  dE_dH  *        REQj.w * sH;
 }
 
@@ -110,10 +110,10 @@ inline float4 getMorseQH( float3 dp,  float4 REQH, float K, float R2damp ){
     // fREQi.y +=  dE_dE0 *        REQj.y;
     // fREQi.z +=  dE_dQ  *        REQj.z;
     // fREQi.w +=  dE_dH *        REQj.w * sH;
-    fij.x =  dE_dR0;
-    fij.y =  dE_dE0 * REQj.y;
-    fij.z =  dE_dQ  * REQj.z;
-    fij.w =  dE_dH  * REQj.w * sH;  
+    fij.x = -dE_dR0;                   // dEtot/dR0_i (match CPU)
+    fij.y = -dE_dE0 * REQj.y;          // dEtot/dE0_i (match CPU)
+    fij.z = -dE_dQ  * REQj.z;          // dEtot/dQi   (match CPU)
+    fij.w =  dE_dH  * REQj.w * sH;     // dEtot/dH2i  (match CPU)
     // Accumulate energy
     
 }

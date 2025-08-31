@@ -63,7 +63,7 @@ __kernel void evalSampleDerivatives(
     if( iG-i0 >= ni) return;
 
     // if( iG == iDBG ){
-    //     printf("GPU: OCL evalSampleDerivatives() iG %i i0,ni %3i,%3i j0,nj %3i,%3i ErefW %g %g\n", iG, i0,ni, j0,nj, ErefW[iS].x, ErefW[iS].y);
+    //     printf("-----------------\nGPU: OCL evalSampleDerivatives() iG %i i0,ni %3i,%3i j0,nj %3i,%3i ErefW %g %g\n", iG, i0,ni, j0,nj, ErefW[iS].x, ErefW[iS].y);
     //     for(int i=0; i<ni; i++){ int ia=i0+i; int it=atypes[ia]; printf("GPU: atom i %3i it %3i pos %16.8f %16.8f %16.8f %16.8f  REQH %16.8f %16.8f %16.8f %16.8f \n", ia, it, atoms[ia].x, atoms[ia].y, atoms[ia].z, atoms[ia].w, tREQHs[it].x, tREQHs[it].y, tREQHs[it].z, tREQHs[it].w); }
     //     for(int i=0; i<nj; i++){ int ia=j0+i; int it=atypes[ia]; printf("GPU: atom j %3i it %3i pos %16.8f %16.8f %16.8f %16.8f  REQH %16.8f %16.8f %16.8f %16.8f \n", ia, it, atoms[ia].x, atoms[ia].y, atoms[ia].z, atoms[ia].w, tREQHs[it].x, tREQHs[it].y, tREQHs[it].z, tREQHs[it].w); }
     // }
@@ -197,11 +197,12 @@ __kernel void evalSampleDerivatives_template(
     __global int*     atypes,  // 3: [nAtomTot] atom types
     __global int2*    ieps,    // 4: [nAtomTot] {iep1,iep2} index of electron pair type ( used to subtract  charge)
     __global float4*  atoms,   // 5: [nAtomTot] positions and REPS charge of each atom (x,y,z,Q) 
-    __global float4*  dEdREQs,       // 5: [nAtomTot] derivatives of REQH parameters
-    __global float2*  ErefW,         // 6: [nsamp] {E,W} reference energies and weights for each sample (molecule,system)
-    __global float*   Jmols,         // 7: [nSamples] per-sample objective contributions: 0.5*(Emol - Eref)*LdE
-    int      useTypeQ,               // 8: runtime switch: 0=per-atom atoms.w, 1=type-based REQH.z
-    float4   globParams              // 9: {alpha,?,?,?} global parameters (min,max, xlo,xhi, Klo,Khi, K0,x0)
+    __global float4*  dEdREQs, // 6: [nAtomTot] derivatives of REQH parameters
+    __global float2*  ErefW,   // 7: [nsamp] {E,W} reference energies and weights for each sample (molecule,system)
+    __global float*   Emols,   // 8: [nsample] per-sample energies
+    __global float*   Jmols,   // 9: [nSamples] per-sample objective contributions: 0.5*(Emol - Eref)*LdE
+    int      useTypeQ,         //10: runtime switch: 0=per-atom atoms.w, 1=type-based REQH.z
+    float4   globParams        //11: {alpha,?,?,?} global parameters (min,max, xlo,xhi, Klo,Khi, K0,x0)
 ){
     __local float4 LATOMS[32];
     __local float4 LREQKS[32];
@@ -220,85 +221,9 @@ __kernel void evalSampleDerivatives_template(
     const int nj   = nsi.w;
 
     if((iS==iDBG) && (iL==0)){  
-        printf("GPU: evalSampleDerivatives_template() nG %7i nL %2i nS %6i | i0=%d ni=%d j0=%d nj=%d \n", get_global_size(0), get_local_size(0), get_num_groups(0), i0, ni, j0, nj);
+        printf("-----------------\nGPU: evalSampleDerivatives_template() nG %7i nL %2i nS %6i | i0=%d ni=%d j0=%d nj=%d \n", get_global_size(0), get_local_size(0), get_num_groups(0), i0, ni, j0, nj);
         for(int i=0; i<ni; i++){ int ia=i0+i; int it=atypes[ia]; printf("GPU: atom i %3i it %3i pos %16.8f %16.8f %16.8f %16.8f  REQH %16.8f %16.8f %16.8f %16.8f \n", ia, it, atoms[ia].x, atoms[ia].y, atoms[ia].z, atoms[ia].w, tREQHs[it].x, tREQHs[it].y, tREQHs[it].z, tREQHs[it].w); }
         for(int i=0; i<nj; i++){ int ia=j0+i; int it=atypes[ia]; printf("GPU: atom j %3i it %3i pos %16.8f %16.8f %16.8f %16.8f  REQH %16.8f %16.8f %16.8f %16.8f \n", ia, it, atoms[ia].x, atoms[ia].y, atoms[ia].z, atoms[ia].w, tREQHs[it].x, tREQHs[it].y, tREQHs[it].z, tREQHs[it].w); }
-    
-    // { // DEBUG SERIAL LOOP (CPU-like, deterministic order)
-    //     // This runs only for the debug sample and lane 0, without barriers inside.
-    //     // It mirrors the CPU structure and reuses the same model code via //<<<MODEL_PAIR_ACCUMULATION
-    //     // To match CPU order, swap i0<->j0, ni<->nj since ranges may be passed differently
-    //     int i0s = j0;
-    //     int j0s = i0;
-    //     int nis = nj;
-    //     int njs = ni;
-    //     float EmolS = 0.0f;
-    //     for(int ii=0; ii<nis; ii++){
-    //         int ia = i0s + ii;
-    //         int ti = atypes[ia];
-    //         float4 atomi = atoms [ia];
-    //         float4 REQi  = tREQHs[ti];
-    //         ASSIGN_Q_FROM_SOURCE(REQi, atomi, REQi, useTypeQ);
-    //         int2  iep = ieps[ia];
-    //         if( iep.x >= 0 ){ REQi.z -= tREQHs[iep.x].z; }
-    //         if( iep.y >= 0 ){ REQi.z -= tREQHs[iep.y].z; }
-
-    //         float4 fREQi = float4Zero;
-    //         float  Ei    = 0.0f;
-    //         int    cH    = 0;
-
-    //         for(int jj=0; jj<njs; jj++){
-    //             int ja = j0s + jj;
-    //             int tj = atypes[ja];
-    //             float4 atomj = atoms [ja];
-    //             float4 REQj  = tREQHs[tj];
-    //             ASSIGN_Q_FROM_SOURCE(REQj, atomj, REQj, useTypeQ);
-    //             int2  jep = ieps[ja];
-    //             if( jep.x >= 0 ){ REQj.z -= tREQHs[jep.x].z; }
-    //             if( jep.y >= 0 ){ REQj.z -= tREQHs[jep.y].z; }
-
-    //             float3 dij = atomj.xyz - atomi.xyz;
-    //             float  r   = length(dij);
-    //             float  inv_r  = 1.f/fmax(r, R2SAFE);
-
-    //             float R0 = REQi.x + REQj.x;
-    //             float E0 = REQi.y * REQj.y;
-    //             float Q  = REQi.z * REQj.z;
-    //             float H  = REQi.w * REQj.w;
-    //             float sH = S_H(H);
-    //             H = APPLY_H_GATE(H);
-    //             cH += (sH > 0.f);
-
-    //             // Capture pre-update state to compute per-pair deltas
-    //             float  Ei0 = Ei;
-    //             float4 f0  = fREQi;
-
-
-    //                 // Accumulators are references to serial accumulators
-    //                 float4 fREQi = fREQi;
-    //                 float  Ei    = Ei;
-    //                 //<<<MODEL_PAIR_ACCUMULATION
-    //                 // Write back accumulators
-    //                 fREQi = fREQi;
-    //                 Ei    = Ei;
-                
-
-    //             // Per-pair delta print in deterministic order
-    //             float  dEi = Ei - Ei0;
-    //             float4 df  = (float4)(fREQi.x - f0.x, fREQi.y - f0.y, fREQi.z - f0.z, fREQi.w - f0.w);
-    //             printf("GPU-serial: [%3i,%3i] tij(%2i,%2i) r %+10.6f REQH(%+10.6f,%+12.6e,%+12.6e,%+12.6e) | dE %+12.6e | dREQH( %+12.6e, %+12.6e, %+12.6e, %+12.6e)\n",
-    //                    ia, ja, ti, tj, r, R0, E0, Q, H, dEi, df.x, df.y, df.z, df.w);
-    //         }
-    //         EmolS += Ei;
-    //     }
-    //     float2 EW = ErefW[iS];
-    //     float dE  = (EmolS - EW.x);
-    //     float LdEdbg = dE * EW.y;
-    //     float JmolS  = 0.5f * dE * LdEdbg;
-    //     printf("GPU-serial: iS %2i Emol %16.8e Eref %16.8e dE %16.8e LdE %16.8e Jmol %16.8e\n", iS, EmolS, EW.x, dE, LdEdbg, JmolS);
-    //     return;
-    // } }else{
-    //    return;
     }
 
     if( iG - i0 >= ni ) return;
@@ -357,25 +282,6 @@ __kernel void evalSampleDerivatives_template(
                 float4 fij; float Eij;
                 //<<<MODEL_PAIR_ACCUMULATION
 
-                // Following will be inserted from Forces.cl:
-                // float dE_dQ = inv_r * COULOMB_CONST;
-                // float Eel   = Q * dE_dQ;
-                // // Morse with alpha matching CPU kMorse = 1.8
-                // const float alpha = 1.8f;
-                // float e    = exp( -alpha * ( r - R0 ) );
-                // float e2   = e * e;
-                // float e2p  = (1.f + H) * e2;
-                // float dE_dE0 = e2p - 2.f * e;
-                // float ELJ    =  E0 * dE_dE0;
-                // Ei += ELJ + Eel;
-                // // Accumulate derivatives for atom i
-                // float dE_dR0 = 2.f * alpha * E0 * ( e2p - e );
-                // float dE_dH = - E0 * e2;
-                // fREQi.x +=  dE_dR0;
-                // fREQi.y +=  dE_dE0 *        REQj.y;
-                // fREQi.z +=  dE_dQ  *        REQj.z;
-                // fREQi.w +=  dE_dH *        REQj.w * sH;        
-
                 Ei+=Eij;
                 fREQi+=fij;        
                 
@@ -400,10 +306,11 @@ __kernel void evalSampleDerivatives_template(
     if (iL == 0) {
         float Emol = 0.0f;
         for(int i=0; i<ni; i++){ Emol += LATOMS[i].x; }
-        float2 EW = ErefW[iS];
-        float dE  = (Emol - EW.x);
+        float2 EW  = ErefW[iS];
+        float dE   = (Emol - EW.x);
         LdE        = dE * EW.y;                // W*(Emol - Eref)
         float Jmol = 0.5f * dE * LdE;          // 0.5 * W * (Emol - Eref)^2
+        Emols[iS]  = Emol;
         Jmols[iS]  = Jmol;
         if( (iS==iDBG) ){ printf("GPU: iS %2i Emol %16.8e Eref %16.8e dE %16.8e LdE %16.8e Jmol %16.8e\n", iS, Emol, EW.x, dE, LdE, Jmol);}
     }
@@ -433,16 +340,17 @@ __kernel void evalSampleDerivatives_template(
 // -----------------------------------------------------------------------------
 __attribute__((reqd_work_group_size(1,1,1)))
 __kernel void evalSampleDerivatives_template_serial(
-    __global const int4*  ranges,
-    __global const float4* tREQHs,
-    __global const int*   atypes,
-    __global const int2*  ieps,
-    __global const float4* atoms,
-    __global float4*      dEdREQs,
-    __global const float2* ErefW,
-    __global float*       Jmols,
-    const int             useTypeQ,
-    const float4          globParams
+    __global const int4*   ranges,    // 1: [nsample] (i0, j0, ni, nj)
+    __global const float4* tREQHs,    // 2: [ntype] (R0, E0, Q, H)
+    __global const int*    atypes,    // 3: [nAtomTot] atom types
+    __global const int2*   ieps,      // 4: [nAtomTot] {iep1,iep2} index of electron pair type ( used to subtract  charge)
+    __global const float4* atoms,     // 5: [nAtomTot] positions and REPS charge of each atom (x,y,z,Q) 
+    __global float4*       dEdREQs,   // 6: [nAtomTot] derivatives of REQH parameters
+    __global const float2* ErefW,     // 7: [nsample] (Eref, W) per-sample reference energy and weight
+    __global float*        Emols,     // 8: [nsample] per-sample energies
+    __global float*        Jmols,     // 9: [nsample] per-sample objective contributions: 0.5*(Emol - Eref)*LdE
+    const int              useTypeQ,  //10: runtime switch: 0=per-atom atoms.w, 1=type-based REQH.z
+    const float4           globParams //11: {alpha,?,?,?} global parameters (min,max, xlo,xhi, Klo,Khi, K0,x0)
 ){
     const int iS = get_global_id(0);
     
@@ -452,9 +360,9 @@ __kernel void evalSampleDerivatives_template_serial(
     const int j0 = nsi.y;
     const int nj = nsi.w;
 
-        printf("GPU: gid %i evalSampleDerivatives_template_serial() nG %7i nL %2i nS %6i | i0=%d ni=%d j0=%d nj=%d \n", get_global_id(0), get_global_size(0), get_local_size(0), get_num_groups(0), i0, ni, j0, nj);
-        for(int i=0; i<ni; i++){ int ia=i0+i; int it=atypes[ia]; printf("GPU: atom i %3i it %3i pos %16.8f %16.8f %16.8f %16.8f  REQH %16.8f %16.8f %16.8f %16.8f \n", ia, it, atoms[ia].x, atoms[ia].y, atoms[ia].z, atoms[ia].w, tREQHs[it].x, tREQHs[it].y, tREQHs[it].z, tREQHs[it].w); }
-        for(int i=0; i<nj; i++){ int ia=j0+i; int it=atypes[ia]; printf("GPU: atom j %3i it %3i pos %16.8f %16.8f %16.8f %16.8f  REQH %16.8f %16.8f %16.8f %16.8f \n", ia, it, atoms[ia].x, atoms[ia].y, atoms[ia].z, atoms[ia].w, tREQHs[it].x, tREQHs[it].y, tREQHs[it].z, tREQHs[it].w); }
+    printf("-----------------\nGPU: evalSampleDerivatives_template_serial() useTypeQ %i iS %i/3i | i0=%i ni=%i j0=%i nj=%i \n", useTypeQ, iS, get_global_size(0), i0, ni, j0, nj);
+    for(int i=0; i<ni; i++){ int ia=i0+i; int it=atypes[ia]; printf("GPU: atom i %3i it %3i pos %16.8f %16.8f %16.8f %16.8f  REQH %16.8f %16.8f %16.8f %16.8f \n", ia, it, atoms[ia].x, atoms[ia].y, atoms[ia].z, atoms[ia].w, tREQHs[it].x, tREQHs[it].y, tREQHs[it].z, tREQHs[it].w); }
+    for(int i=0; i<nj; i++){ int ia=j0+i; int it=atypes[ia]; printf("GPU: atom j %3i it %3i pos %16.8f %16.8f %16.8f %16.8f  REQH %16.8f %16.8f %16.8f %16.8f \n", ia, it, atoms[ia].x, atoms[ia].y, atoms[ia].z, atoms[ia].w, tREQHs[it].x, tREQHs[it].y, tREQHs[it].z, tREQHs[it].w); }
 
 
     float Emol = 0.0f;
@@ -508,27 +416,32 @@ __kernel void evalSampleDerivatives_template_serial(
                 Ei+=Eij;
                 fREQi+=fij;        
                 
-                // DEBUG: Print energy after pair
-                //if(iS == 0 && iL == 0 && jl == 0) { printf("GPU: Energy after pair: Ei=%.8e, dEi=%.8e\\n", Ei, Ei - Ei0); }
-                // --- Debug: print per-pair contributions (delta Ei and delta fREQi)
-                //if( (iS==iDBG) && (iL==0) ){
-                    //printf("GPU: [%3i,%3i] tij(%2i,%2d) r %+10.6f REQH(%+10.6f,%+12.6e,%+12.6e,%+12.6e) | dE %+12.6e | dREQH( %+12.6e, %+12.6e, %+12.6e, %+12.6e)\n", 
-                    printf("GPU: [%3i,%3i] tij(%2i,%2i) r %+10.6f REQH(%+10.6f,%+12.6e,%+12.6e,%+12.6e) | dE %+12.6e | dREQH( %+12.6e, %+12.6e, %+12.6e, %+12.6e)\n", 
-                        ia, ja,  ti,tj, r, R0, E0, Q, H, Eij, fij.x, fij.y, fij.z, fij.w );
-                //}
-           
+                //printf("GPU: [%3i,%3i] tij(%2i,%2i) r %+10.6f REQH(%+10.6f,%+12.6e,%+12.6e,%+12.6e) | dE %+12.6e | dREQH( %+12.6e, %+12.6e, %+12.6e, %+12.6e)\n",  ia, ja,  ti,tj, r, R0, E0, Q, H, Eij, fij.x, fij.y, fij.z, fij.w );
+                
         }
         Emol += Ei;
-        
+        dEdREQs[ia] = fREQi;
+        printf("GPU: atom i %3i ti %3i fREQi( %+12.6e, %+12.6e, %+12.6e, %+12.6e )\n", ia, ti, fREQi.x, fREQi.y, fREQi.z, fREQi.w );        
     }
     
     float2 EW = ErefW[iS];
     float dE  = (Emol - EW.x);
     float LdE = dE * EW.y;
     float Jmol = 0.5f * dE * LdE;
+    Emols[iS] = Emol;
     Jmols[iS] = Jmol;
+    printf("GPU: evalSampleDerivatives_template_serial() iS %2i Emol %16.8e Eref %16.8e dE %16.8e LdE %16.8e Jmol %16.8e\n",  iS, Emol, EW.x, dE, LdE, Jmol);
+
+    for(int ii=0; ii<nis; ii++){
+        int ia = i0s + ii;
+        dEdREQs[ia] *= LdE;
+        int ti = atypes[ia];
+        printf("GPU: atom i %3i ti %3i i0 %i dEdREQs( %+12.6e, %+12.6e, %+12.6e, %+12.6e ) \n", ia, ti, i0s, dEdREQs[ia].x, dEdREQs[ia].y, dEdREQs[ia].z, dEdREQs[ia].w);
+    }
     
-    //printf("GPU-serial: iS %2i Emol %16.8e Eref %16.8e dE %16.8e LdE %16.8e Jmol %16.8e\n",  iS, Emol, EW.x, dE, LdE, Jmol);
+    //printf("GPU: evalSampleDerivatives_template_serial() iS %2i Emol %16.8e Eref %16.8e dE %16.8e LdE %16.8e Jmol %16.8e\n",  iS, Emol, EW.x, dE, LdE, Jmol);
+    //for(int i=0; i<ni; i++){ int ia=i0+i; int it=atypes[ia]; printf("GPU: atom i %3i it %3i REQH %16.8f %16.8f %16.8f %16.8f \n", ia, it, tREQHs[it].x, tREQHs[it].y, tREQHs[it].z, tREQHs[it].w); }
+    //for(int i=0; i<nj; i++){ int ia=j0+i; int it=atypes[ia]; printf("GPU: atom j %3i it %3i REQH %16.8f %16.8f %16.8f %16.8f \n", ia, it, tREQHs[it].x, tREQHs[it].y, tREQHs[it].z, tREQHs[it].w); }
 }
 
 
@@ -579,10 +492,7 @@ __kernel void evalSampleEnergy_template(
         REQi  = tREQHs[ti];
         
         // DEBUG: Print tREQHs values for first active work item
-        if(iL == 0 && iS == 0) {
-            printf("GPU energy_eval: tREQHs[%d] = (%.8e, %.8e, %.8e, %.8e)\n", 
-                   ti, REQi.x, REQi.y, REQi.z, REQi.w);
-        }
+        if(iL == 0 && iS == 0) { printf("GPU energy_eval: tREQHs[%d] = (%.8e, %.8e, %.8e, %.8e)\n",   ti, REQi.x, REQi.y, REQi.z, REQi.w); }
         
         ASSIGN_Q_FROM_SOURCE(REQi, atomi, REQi, useTypeQ);
         const int2   iep   = ieps  [i];
@@ -596,7 +506,7 @@ __kernel void evalSampleEnergy_template(
 
     // --- Debug: print config for a chosen sample and few lanes ---
     //if((iS==iDBG) && (iL==0)){ 
-    //     printf("GPU: evalSampleEnergy_template() nG %7i nL %2i nS %6i | i0=%d ni=%d j0=%d nj=%d | i=%d ti=%d\n", get_global_size(0), get_local_size(0), get_num_groups(0), i0, ni, j0, nj, i, ti); 
+    //     printf("-----------------\n GPU: evalSampleEnergy_template() nG %7i nL %2i nS %6i | i0=%d ni=%d j0=%d nj=%d | i=%d ti=%d\n", get_global_size(0), get_local_size(0), get_num_groups(0), i0, ni, j0, nj, i, ti); 
     //     for(int i=0; i<ni; i++){
     //         int ia=i0+i;
     //         int ti=atypes[ia];
@@ -703,8 +613,8 @@ __kernel void assembleAndRegularize(
     const int iL   = get_local_id(0);
     const int nL   = get_local_size(0);
 
-    // if( (iDOF==iDBG) && (iL==0) ){ 
-    //     printf("GPU assembleAndRegularize().1 iDOF %2i / nDOFs %2i iL %2i nL %2i\n", iDOF, nDOFs, iL, nL); 
+    if( (iDOF==iDBG) && (iL==0) ){ 
+        printf("-----------------\nGPU assembleAndRegularize().1 iDOF %2i / nDOFs %2i iL %2i nL %2i\n", iDOF, nDOFs, iL, nL); 
     //     for(int i=0; i<nDOFs; i++){
     //         printf("GPU assembleAndRegularize().2 DOFnis %2i %2i\n", DOFnis[i].x, DOFnis[i].y);
     //         int nsi = DOFnis[i].y; if(nsi>5){ nsi=5; }
@@ -713,7 +623,7 @@ __kernel void assembleAndRegularize(
     //             printf("GPU assembleAndRegularize().3 DOF %2i j %2i DOFtoAtom %2i (%16.8f, %16.8f, %16.8f, %16.8f)\n", i,j, DOFtoAtom[j], DOFcofefs[j].x, DOFcofefs[j].y, DOFcofefs[j].z, DOFcofefs[j].w);
     //         }
     //     }
-    // }
+    }
 
     // --- Part 1: Assemble Physical Forces (same as before) ---
     const int2 nsi = DOFnis[iDOF];

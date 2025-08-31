@@ -1013,7 +1013,7 @@ void fillTempArrays( const Atoms* atoms, Vec3d* apos, double* Qs  )const{
 
 __attribute__((hot)) 
 double evalSample( int isamp, const Atoms* atoms, double wi, Quat4d* fREQs ) const {
-    printf( "evalSample() isamp: %i imodel: %i \n", isamp, imodel );
+    printf( "evalSample() isamp: %i imodel: %i buseTypeQ: %i \n", isamp, imodel, buseTypeQ );
     //double wi   = (weights)? weights[isamp] : 1.0; 
     const AddedData* adata = (const AddedData*)(atoms->userData);
     alignas(32) double Qs  [atoms->natoms];
@@ -2086,16 +2086,16 @@ double evalExampleDerivs_MorseQH2( int i0, int ni, int j0, int nj, int* __restri
             // --- Energy and forces
             Etot    +=  ELJ + Eel;
             //if(verbosity>3)
-            {
-                double dE_total = ELJ + Eel;
-                printf("CPU: [%3i,%3i] tij(%2i,%2d) r %+10.6f REQH(%+10.6f,%+12.6e,%+12.6e,%+12.6e) | dE %+12.6e | dREQH( %+12.6e, %+12.6e, %+12.6e, %+12.6e)\n",
-                    i, j, ti, tj, r, R0, E0, Q, H, dE_total, -dE_dR0, -dE_dE0*REQj.y, -dE_dQ*Qj, dE_dH*REQj.w*sH );
-            }
+            //printf("CPU: [%3i,%3i] tij(%2i,%2d) r %+10.6f REQH(%+10.6f,%+12.6e,%+12.6e,%+12.6e) | dE %+12.6e | dREQH( %+12.6e, %+12.6e, %+12.6e, %+12.6e)\n", i, j, ti, tj, r, R0, E0, Q, H, ELJ+Eel, -dE_dR0, -dE_dE0*REQj.y, -dE_dQ*Qj, dE_dH*REQj.w*sH );
+            
             //{ int itypPrint=4; if( (ti==itypPrint) || (tj==itypPrint) ){ printf( "evalExampleDerivs_LJQH2()[%3i,%3i] (%8s,%8s) ELJ,Eel: %12.3e,%12.3e Q(%12.3e|%12.3e,%12.3e) dEdREQH(%12.3e,%12.3e,%12.3e,%12.3e)\n", i,j, params->atypes[ti].name, params->atypes[tj].name , ELJ,Eel, Q,Qi,Qj,  dE_dR0, dE_deps, dE_dQ, dE_dH2  ); } }
             fREQi.x +=  -dE_dR0;                   // dEtot/dR0_i
             fREQi.y +=  -dE_dE0 * REQj.y;          // dEtot/dE0_i
             fREQi.z +=  -dE_dQ  * Qj;              // dEtot/dQ_i
             fREQi.w +=  dE_dH   * REQj.w * sH;     // dEtot/dH2i
+
+            
+
             if( bWJ ){ dEdREQs[j].add( Quat4d{
                         -dE_dR0,                   // dEtot/dR0_j
                         -dE_dE0 * REQi.y,          // dEtot/dE0_j
@@ -2104,10 +2104,13 @@ double evalExampleDerivs_MorseQH2( int i0, int ni, int j0, int nj, int* __restri
             }); }
             //printf( "debug i= %i j= %i fsi.x= %g fsi.y= %g fsi.z= %g fsi.w= %g fsj.x= %g fsj.y= %g fsj.z= %g fsj.w= %g\n", i, j, fsi.x, fsi.y, fsi.z, fsi.w, fsj.x, fsj.y, fsj.z, fsj.w );
         }
+
+        printf("CPU: atom i %3i ti %3i fREQi( %+12.6e, %+12.6e, %+12.6e, %+12.6e )\n", i, ti, fREQi.x, fREQi.y, fREQi.z, fREQi.w ); 
+
         if(dEdREQs)dEdREQs[i].add(fREQi);
     }
     //printAtomParamDerivs( ni+nj, dEdREQs, isamp_debug );
-    //printf( "debug Etot= %g\n", Etot );exit(0);    
+    printf( "CPU debug Etot= %g\n", Etot );
     return Etot;
 }
 

@@ -50,7 +50,7 @@ def setup_cpu_fit(args):
         imodel = 3
         weights0, lens = fit_cpp.split_and_weight_curves(Erefs, x0s, n_before_min=2,   weight_func=lambda E: fit_cpp.exp_weight_func(E, a=1.0, alpha=4.0))
 
-    fit_cpp.setup(imodel=imodel, EvalJ=1, WriteJ=1, Regularize=-1)
+    fit_cpp.setup(imodel=imodel, EvalJ=1, WriteJ=1, Regularize=-1, useTypeQ=args.use_type_charges*2-1)
     fit_cpp.setWeights(weights0)
     fit_cpp.getBuffs()
     fit_cpp.setFilter(EmodelCutStart=0.0, EmodelCut=0.5, PrintOverRepulsive=-1, DiscardOverRepulsive=-1, SaveOverRepulsive=-1, ListOverRepulsive=-1)

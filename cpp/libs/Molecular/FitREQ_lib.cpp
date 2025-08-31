@@ -54,6 +54,7 @@ void setup( int imodel, int EvalJ, int WriteJ, int CheckRepulsion, int Regulariz
     _setbool( UdateDOFbounds );
     _setbool( EvalOnlyCorrections );
     _setbool( useTypeQ       );
+    printf("FitREQ::setup() buseTypeQ=%i\n", W.buseTypeQ);
     #undef _setbool
 }
 
