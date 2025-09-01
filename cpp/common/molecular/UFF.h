@@ -654,7 +654,7 @@ class UFF : public NBFF { public:
     }
     __attribute__((hot))  
     double evalBonds(){
-        printf("UFF::evalBonds() \n");
+        //printf("UFF::evalBonds() \n");
         double E=0.0;
         const double R2damp = Rdamp*Rdamp;
         const double Fmax2  = FmaxNonBonded*FmaxNonBonded;
@@ -798,7 +798,7 @@ class UFF : public NBFF { public:
     }
     __attribute__((hot))  
     double evalAngles(){
-        printf("UFF::evalAngles() \n");
+        //printf("UFF::evalAngles() \n");
         double E=0.0;
         const double R2damp = Rdamp*Rdamp;
         const double Fmax2  = FmaxNonBonded*FmaxNonBonded;
@@ -1068,7 +1068,7 @@ class UFF : public NBFF { public:
     }
     __attribute__((hot))  
     double evalDihedrals(){
-        printf("UFF::evalDihedrals() \n");
+        //printf("UFF::evalDihedrals() \n");
         double E=0.0;
         const double R2damp    = Rdamp*Rdamp;
         const double Fmax2     = FmaxNonBonded*FmaxNonBonded;
@@ -1240,7 +1240,7 @@ class UFF : public NBFF { public:
     }
     __attribute__((hot))  
     double evalInversions(){
-        printf("UFF::evalInversions() \n");
+        //printf("UFF::evalInversions() \n");
         double E=0.0;
         for( int ii=0; ii<ninversions; ii++){ 
             E+=evalInversion_Prokop(ii); 
@@ -1355,15 +1355,16 @@ class UFF : public NBFF { public:
 
    // ============== Move atoms in order to minimize energy
     __attribute__((hot))  
-    int run( int niter, double dt, double Fconv, double Flim, double damping=0.1 ){
+    int run( int niter, double dt, double Fconv, double Flim, double damping=0.1, double* outE=0, double* outF=0, double* outV=0, double* outVF=0 ){
+
         //printSizes();
         double F2conv = Fconv*Fconv;
         double E=0,ff=0,vv=0,vf=0;
         //double cdamp = 1-damping; if(cdamp<0)cdamp=0;
         double cdamp = colDamp.update( dt );
         const double Fmax2     = FmaxNonBonded*FmaxNonBonded;
-        //printf( "MMFFsp3_loc::run(bCollisionDamping=%i) niter %i dt %g Fconv %g Flim %g damping %g collisionDamping %g \n", bCollisionDamping, niter, dt, Fconv, Flim, damping, collisionDamping );
-        //printf( "MMFFsp3_loc::run(niter=%i,bCol(B=%i,A=%i,NB=%i)) dt %g damp(cM=%g,cB=%g,cA=%g,cNB=%g)\n", niter, colDamp.bBond, colDamp.bAng, colDamp.bNonB, dt, 1-cdamp, colDamp.cdampB*dt, colDamp.cdampAng*dt, colDamp.cdampNB*dt );
+        printf( "UFF::run() natoms %i niter %i dt %g Fconv %g Flim %g damping %g \n", natoms, niter, dt, Fconv, Flim, damping );
+        //printf( "UFF::run(niter=%i,bCol(B=%i,A=%i,NB=%i)) dt %g damp(cM=%g,cB=%g,cA=%g,cNB=%g)\n", niter, colDamp.bBond, colDamp.bAng, colDamp.bNonB, dt, 1-cdamp, colDamp.cdampB*dt, colDamp.cdampAng*dt, colDamp.cdampNB*dt );
         //setNonBondStrategy();
 
         // --- Non-Bonded using ng4-strategy (i.e. check for neighbors in NBFF) 
@@ -1404,10 +1405,10 @@ class UFF : public NBFF { public:
             // ------ eval UFF
             //if(bClean)
             cleanForce();
-            Eb = evalBonds();
-            Ea = evalAngles();
-            Ed = evalDihedrals();
-            Ei = evalInversions();
+            if( bDoBond      ) Eb = evalBonds();
+            if( bDoAngle     ) Ea = evalAngles();
+            if( bDoDihedral  ) Ed = evalDihedrals();
+            if( bDoInversion ) Ei = evalInversions();
             // ---- assemble (we need to wait when all atoms are evaluated)
             for(int ia=0; ia<natoms; ia++){
                 assembleAtomForce(ia); 
@@ -1432,6 +1433,7 @@ class UFF : public NBFF { public:
                     move_atom_Langevin( i, dt, 10000.0, go->gamma_damp, go->T_target );
                 }else{
                     cvf.add( move_atom_MD( i, dt, Flim, cdamp ) );
+
                 }
                 //move_atom_MD( i, 0.05, 1000.0, 0.9 );
                 //F2 += move_atom_kvaziFIRE( i, dt, Flim );
@@ -1440,6 +1442,17 @@ class UFF : public NBFF { public:
                 break;
             }
             if(cvf.x<0){ cleanVelocity(); };
+            {
+                Etot = Eb + Ea + Ed + Ei;
+                double VF = cvf.x,V2 = cvf.y, F2 = cvf.z;
+                printf( "UFF::run() itr %i / %i Etot %+12.2e Fmax %+12.6e ( Fconv %+12.6e Flim %+16.2e) \n", itr, niter, Etot, sqrt(F2), Fconv, Flim );
+                if(outE )outE [itr]=Etot;
+                if(outF )outF [itr]=sqrt(F2);
+                if(outV )outV [itr]=sqrt(V2);
+                if(outVF)outVF[itr]=VF/sqrt(F2*V2 + 1e-32);
+                // std::function<double(const Vec3d cvf, int itr, int natoms, Vec3d* apos, Vec3d* fapos, Vec3d* vapos)> perStepCallback = nullptr; // this is called for every MDstep of run()
+                if(perStepCallback){ perStepCallback( cvf, itr, natoms, apos, fapos, vapos ); }
+            }
             //itr_DBG++;
         }
         // if( (itr>=(niter-1)) && (verbosity>1) ) [[unlikely]] { 
@@ -1454,7 +1467,8 @@ class UFF : public NBFF { public:
 
     
     template<bool _bExploring, bool _bNonBonded, bool _bNonBondNeighs, bool _bPBC>
-    __attribute__((hot))  int run_t( int niter, double dt, double Fconv, double Flim, double damping=0.1 ){
+    __attribute__((hot))  
+    int run_t( int niter, double dt, double Fconv, double Flim, double damping=0.1 ){
         //printSizes();
         double F2conv = Fconv*Fconv;
         double E=0,ff=0,vv=0,vf=0;
@@ -1529,7 +1543,7 @@ class UFF : public NBFF { public:
 
 
     __attribute__((hot))  
-    int run_omp( int niter, double dt, double Fconv, double Flim, double damping=0.1 ){
+    int run_omp( int niter, double dt, double Fconv, double Flim, double damping=0.1, double* outE=0, double* outF=0, double* outV=0, double* outVF=0 ){
         double F2conv = Fconv*Fconv;
         double Enb=0,ff=0,vv=0,vf=0;
         //double cdamp = 1-damping; if(cdamp<0)cdamp=0;
@@ -1583,6 +1597,15 @@ class UFF : public NBFF { public:
                 Etot = Eb + Ea + Ed + Ei + Enb;
                 cvf.x=ff; cvf.y=vv; cvf.z=vf;
                 if(cvf.x<0){ cleanVelocity(); };
+
+                {
+                    double VF = cvf.x,V2 = cvf.y, F2 = cvf.z;
+                    if(outE )outE [itr]=Etot;
+                    if(outF )outF [itr]=sqrt(F2);
+                    if(outV )outV [itr]=sqrt(V2);
+                    if(outVF)outVF[itr]=VF/sqrt(F2*V2 + 1e-32);
+                }
+
                 //if(cvf.z<F2conv)break;
                 //if(verbosity>2){printf( "step[%i] E %g |F| %g ncpu[%i] \n", itr, Etot, sqrt(ff), omp_get_num_threads() );}
             }

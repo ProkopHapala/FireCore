@@ -152,7 +152,8 @@ class ForceField: public Atoms{ public:
     bool  bSubtractAngleNonBond = true;  // if true we subtract angle energy from non-bonded energy
     bool  bClampNonBonded       = true;  // if true we clamp non-bonded energy to zero
     double  FmaxNonBonded       = 10.0;  // if bClampNonBonded>0 then we clamp non-bonded forces to this value
-    std::function<double(int,const Vec3d,Vec3d&)> atomForceFunc = nullptr;
+    std::function<double(int,const Vec3d,Vec3d&)>                           atomForceFunc   = nullptr; // this is called for every atom in every MDstep of run()
+    std::function<double(const Vec3d cvf, int itr, int natoms, Vec3d* apos, Vec3d* fapos, Vec3d* vapos)> perStepCallback = nullptr; // this is called for every MDstep of run()
     double time_per_iter = 0;
 
     CollisionDamping colDamp;

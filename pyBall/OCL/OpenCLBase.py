@@ -254,6 +254,39 @@ class OpenCLBase:
         """
         cl.enqueue_copy(self.queue, host_data, self.buffer_dict[buf_name], device_offset=byte_offset)
     
+    def download_buf(self, name_or_buf, dtype=None):
+        """Minimal helper to download a full OpenCL buffer to a flat numpy array.
+
+        - Accepts either a buffer name (string key into buffer_dict) or a cl.Buffer
+        - Infers dtype from name to avoid boilerplate (ints for index-like buffers, float otherwise)
+        - Returns a 1D numpy array; caller can reshape as needed
+        """
+        # Resolve buffer object
+        if isinstance(name_or_buf, str):
+            buf = self.buffer_dict.get(name_or_buf)
+            name = name_or_buf
+        else:
+            buf = name_or_buf
+            name = None
+        if buf is None:
+            return None
+
+        # Infer dtype if not provided
+        if dtype is None:
+            int_markers = (
+                'Atoms','Ngs','neigh','atype','indices','counts','offsets','Cell','a2f_'
+            )
+            if isinstance(name_or_buf, str) and any(m in name_or_buf for m in int_markers):
+                dtype = np.int32
+            else:
+                dtype = np.float32
+
+        # Allocate host array and copy
+        n = buf.size // np.dtype(dtype).itemsize
+        host = np.empty(n, dtype=dtype)
+        cl.enqueue_copy(self.queue, host, buf)
+        return host
+    
     def bufflist(self, names):
         """
         Get a list of buffers by name.

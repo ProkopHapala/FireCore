@@ -944,8 +944,8 @@ class MMFFparams{ public:
     }
 
     void writeXYZ( FILE* pfile, int n, const int* atyps, const Vec3d* apos, const char* comment="#comment", const Quat4d* REQs=0, bool just_Element=true, int npi=0, Vec3i nPBC=Vec3i{1,1,1}, Mat3d lvec=Mat3dIdentity, bool bHead=true )const{
-        //printf( "MMFFparams::writeXYZ() n=%i REQs=%li just_Element=%i\n", n, (long)REQs, just_Element );
         int npbc = nPBC.totprod();
+        //printf( "MMFFparams::writeXYZ() n=%i npbc=%i REQs=%li just_Element=%i\n", n, npbc, (long)REQs, just_Element );
         if(bHead){
             fprintf(pfile, "%i\n", (n+npi)*npbc );
             // TBD print lattice vectors

@@ -877,23 +877,22 @@ def getBuffs_UFF( NEIGH_MAX=4 ):
     hneigh    = getBuff ( "hneigh",    (natoms*NEIGH_MAX,4) )
     fint      = getBuff ( "fint",      (nf,3) )
 
+    bonParams = getBuff ( "bonParams", (nbonds,2)      )
+    angParams = getBuff ( "angParams", (nangles,5)     )
+    dihParams = getBuff ( "dihParams", (ndihedrals,3)  )
+    invParams = getBuff ( "invParams", (ninversions,4) )
+
     bonAtoms  = getIBuff( "bonAtoms",  (nbonds,2)      )
     angAtoms  = getIBuff( "angAtoms",  (nangles,3)     )
     dihAtoms  = getIBuff( "dihAtoms",  (ndihedrals,4)  )
     invAtoms  = getIBuff( "invAtoms",  (ninversions,4) )
 
-    neighs    = getIBuff( "neighs",    (natoms,4)      )
-    neighBs   = getIBuff( "neighBs",   (natoms,4)      )
-    bonParams = getBuff ( "bonParams", (nbonds,2)      )
-    angParams = getBuff ( "angParams", (nangles,5)     )
-    dihParams = getBuff ( "dihParams", (ndihedrals,3)  )
-    invParams = getBuff ( "invParams", (ninversions,4) )
     angNgs    = getIBuff( "angNgs",    (nangles,2)     )
     dihNgs    = getIBuff( "dihNgs",    (ndihedrals,3)  )
     invNgs    = getIBuff( "invNgs",    (ninversions,3) )
-    
-    
 
+    neighs    = getIBuff( "neighs",    (natoms,4)      )
+    neighBs   = getIBuff( "neighBs",   (natoms,4)      )
 
     # // Quat4i *  neighBs   __attribute__((aligned(64))) = 0; // [natoms]      bond indices for each neighbor
     # // Vec2i  *  bonAtoms  __attribute__((aligned(64))) = 0; // [nbonds]      bonds atoms

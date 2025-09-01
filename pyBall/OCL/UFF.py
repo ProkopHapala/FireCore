@@ -57,23 +57,11 @@ class UFF_CL(OpenCLBase):
         # Flag to track if kernel arguments are set up
         self.args_setup = False
 
-        self.components = {
-            'bonds': True,
-            'angles': True,
-            'dihedrals': True,
-            'inversions': True,
-            'nonbonded': False,
-        }
-
-    def set_component_flags(self, bBonds=True, bAngles=True, bDihedrals=True, bInversions=True, bNonBonded=False):
-        """
-        Sets flags to enable or disable different UFF components.
-        """
-        self.components['bonds'] = bBonds
-        self.components['angles'] = bAngles
-        self.components['dihedrals'] = bDihedrals
-        self.components['inversions'] = bInversions
-        self.components['nonbonded'] = bNonBonded
+        self.bDoBonds      = True
+        self.bDoAngles     = True
+        self.bDoDihedrals  = True
+        self.bDoInversions = True
+        self.bDoNonBonded  = False
 
     def realloc_buffers(self, natoms, nbonds, nangles, ndihedrals, ninversions, npbc, nSystems=1):
         """
@@ -96,44 +84,64 @@ class UFF_CL(OpenCLBase):
         self.ninversions = ninversions
         self.npbc = npbc
 
-        # Use proper OpenCL memory flags (READ_WRITE) instead of numpy data types
-        self.check_buf("apos",   natoms * nSystems * 4 * f32sz)
-        self.check_buf("fapos",  natoms * nSystems * 4 * f32sz)
-        self.check_buf("fint",   natoms * nSystems * 4 * f32sz)
-        self.check_buf("atype",  natoms * nSystems * i32sz)
-        self.check_buf("REQs",   natoms * nSystems * 4 * f32sz)
+        nA  = natoms     * nSystems
+        nB  = nbonds     * nSystems
+        nAng= nangles    * nSystems
+        nD  = ndihedrals * nSystems
+        nInv= ninversions* nSystems
 
-        # Bond parameters
-        self.check_buf("bonAtoms",      nbonds * nSystems * 2 * i32sz)
-        self.check_buf("bonParams", nbonds * nSystems * 2 * f32sz)
+        # Save totals (keep attribute names but assign correct values)
+        self.na_Tot = nA
+        self.nb_Tot = nB
+        self.nd_Tot = nD
+        self.ni_Tot = nInv
 
-        # Angle parameters
-        self.check_buf("angles",      nangles * nSystems * 3 * i32sz)
-        self.check_buf("angParams1", nangles * nSystems * 4 * f32sz)
-        self.check_buf("angParams2_w", nangles * nSystems * f32sz)
-        self.check_buf("angAtoms",    nangles * nSystems * 4 * i32sz)
-        self.check_buf("angNgs",      nangles * nSystems * 4 * i32sz)
+        # Core per-atom buffers
+        self.check_buf("apos",   nA * 4 * f32sz)
+        self.check_buf("fapos",  nA * 4 * f32sz)
+        self.check_buf("fint",   nA * 4 * f32sz)
+        self.check_buf("atype",  nA     * i32sz)
+        self.check_buf("REQs",   nA * 4 * f32sz)
 
-        # Dihedral parameters
-        self.check_buf("dihedrals",       ndihedrals  * nSystems * 4 * i32sz)
-        self.check_buf("dihParams",  ndihedrals  * nSystems * 3 * f32sz)
-        self.check_buf("dihAtoms",        ndihedrals  * nSystems * 4 * i32sz)
-        self.check_buf("dihNgs",          ndihedrals  * nSystems * 4 * i32sz)
-        self.check_buf("inversions",      ninversions * nSystems * 4 * i32sz)
-        self.check_buf("invParams", ninversions * nSystems * 4 * f32sz)
-        self.check_buf("invAtoms",        ninversions * nSystems * 4 * i32sz)
-        self.check_buf("invNgs",          ninversions * nSystems * 4 * i32sz)
-        self.check_buf("neighs",          natoms      * nSystems * 4 * i32sz)
-        self.check_buf("neighCell",       natoms      * nSystems * 4 * i32sz)
-        self.check_buf("neighBs",         natoms      * nSystems * 4 * i32sz)
-        self.check_buf("hneigh",          natoms      * nSystems * 4 * f32sz)
-        self.check_buf("pbc_shifts",      npbc        * nSystems * 4 * f32sz)
-        self.check_buf("energies",        5           * nSystems * f32sz)
-        self.check_buf("lvec",            9           * nSystems * f32sz)
-        self.check_buf("params",          10                     * i32sz)
-        self.check_buf("Ea_contrib",      nangles     * nSystems * f32sz)
-        self.check_buf("Ed_contrib",      ndihedrals  * nSystems * f32sz)
-        self.check_buf("Ei_contrib",      ninversions * nSystems * f32sz)
+        # Bonds
+        self.check_buf("bonAtoms",  nB * 2 * i32sz)
+        self.check_buf("bonParams", nB * 2 * f32sz)
+
+        # Angles
+        self.check_buf("angles",       nAng * 3 * i32sz)
+        self.check_buf("angParams1",   nAng * 4 * f32sz)
+        self.check_buf("angParams2_w", nAng * f32sz)
+        self.check_buf("angAtoms",     nAng * 4 * i32sz)
+        self.check_buf("angNgs",       nAng * 4 * i32sz)
+
+        # Dihedrals
+        self.check_buf("dihedrals",  nD * 4 * i32sz)
+        self.check_buf("dihParams",  nD * 3 * f32sz)
+        self.check_buf("dihAtoms",   nD * 4 * i32sz)
+        self.check_buf("dihNgs",     nD * 4 * i32sz)
+
+        # Inversions
+        self.check_buf("inversions", nInv * 4 * i32sz)
+        self.check_buf("invParams",  nInv * 4 * f32sz)
+        self.check_buf("invAtoms",   nInv * 4 * i32sz)
+        self.check_buf("invNgs",     nInv * 4 * i32sz)
+
+        # Per-atom neighbor data
+        self.check_buf("neighs",     nA * 4 * i32sz)
+        self.check_buf("neighCell",  nA * 4 * i32sz)
+        self.check_buf("neighBs",    nA * 4 * i32sz)
+        self.check_buf("hneigh",     nA * 4 * f32sz)
+
+        # Misc/system
+        self.check_buf("pbc_shifts", npbc * nSystems * 4 * f32sz)
+        self.check_buf("energies",   5 * nSystems * f32sz)
+        self.check_buf("lvec",       9 * nSystems * f32sz)
+        self.check_buf("params",     10 * i32sz)
+
+        # Energy contributions per interaction type
+        self.check_buf("Ea_contrib", nAng * f32sz)
+        self.check_buf("Ed_contrib", nD   * f32sz)
+        self.check_buf("Ei_contrib", nInv * f32sz)
         self.args_setup = False
 
         print(f"UFF buffers allocated for {nSystems} systems with {natoms} atoms each")
@@ -204,31 +212,31 @@ class UFF_CL(OpenCLBase):
                 data = uff_data[data_key].astype(dtype)
                 cl.enqueue_copy(self.queue, self.buffer_dict[buffer_name], data, device_offset=(offset_elements * element_size))
 
-        _upload_if_present("atype",          "atype",           np.int32,   atom_offset,      i32sz)
-        _upload_if_present("REQs",           "REQs",            np.float32, atom_offset * 4,  f32sz)
-        _upload_if_present("bonAtoms",       "bonAtoms",        np.int32,   bond_offset * 2,  i32sz)
-        _upload_if_present("bonParams",      "bonParams",       np.float32, bond_offset * 2,  f32sz)
-        _upload_if_present("angles",         "angles",          np.int32,   angle_offset * 3, i32sz)
-        _upload_if_present("angParams1",    "angParams1",     np.float32, angle_offset * 4, f32sz)
-        _upload_if_present("angParams2_w",  "angParams2_w",    np.float32, angle_offset,     f32sz)
-        _upload_if_present("dihedrals",      "dihedrals",       np.int32,   dihedral_offset * 4, i32sz)
-        _upload_if_present("dihParams", "dihParams",  np.float32, dihedral_offset * 3, f32sz)
+        _upload_if_present("atype",          "atype",           np.int32,   atom_offset,          i32sz)
+        _upload_if_present("REQs",           "REQs",            np.float32, atom_offset * 4,      f32sz)
+        _upload_if_present("bonAtoms",       "bonAtoms",        np.int32,   bond_offset * 2,      i32sz)
+        _upload_if_present("bonParams",      "bonParams",       np.float32, bond_offset * 2,      f32sz)
+        _upload_if_present("angles",         "angles",          np.int32,   angle_offset * 3,     i32sz)
+        _upload_if_present("angParams1",     "angParams1",      np.float32, angle_offset * 4,     f32sz)
+        _upload_if_present("angParams2_w",   "angParams2_w",    np.float32, angle_offset,         f32sz)
+        _upload_if_present("dihedrals",      "dihedrals",       np.int32,   dihedral_offset * 4,  i32sz)
+        _upload_if_present("dihParams",      "dihParams",       np.float32, dihedral_offset * 3,  f32sz)
         _upload_if_present("inversions",     "inversions",      np.int32,   inversion_offset * 4, i32sz)
-        _upload_if_present("invParams","invParams", np.float32, inversion_offset * 4, f32sz)
-        _upload_if_present("neighs",        "neighs",         np.int32,   atom_offset * 4, i32sz)
-        _upload_if_present("neighBs",       "neighBs",        np.int32,   atom_offset * 4, i32sz)
-        _upload_if_present("lvec",           "lvec",            np.float32, iSys * 9, f32sz)
+        _upload_if_present("invParams",      "invParams",       np.float32, inversion_offset * 4, f32sz)
+        _upload_if_present("neighs",         "neighs",          np.int32,   atom_offset * 4,      i32sz)
+        _upload_if_present("neighBs",        "neighBs",         np.int32,   atom_offset * 4,      i32sz)
+        _upload_if_present("lvec",           "lvec",            np.float32, iSys * 9,             f32sz)
         _upload_if_present("pbc_shifts",     "pbc_shifts",      np.float32, iSys * self.npbc * 4, f32sz)
-        _upload_if_present("angAtoms",       "angAtoms",        np.int32,   angle_offset * 4, i32sz)
-        _upload_if_present("angNgs",         "angNgs",          np.int32,   angle_offset * 4, i32sz)
-        _upload_if_present("dihAtoms",       "dihAtoms",        np.int32,   dihedral_offset * 4, i32sz)
-        _upload_if_present("dihNgs",         "dihNgs",          np.int32,   dihedral_offset * 4, i32sz)
+        _upload_if_present("angAtoms",       "angAtoms",        np.int32,   angle_offset * 4,     i32sz)
+        _upload_if_present("angNgs",         "angNgs",          np.int32,   angle_offset * 4,     i32sz)
+        _upload_if_present("dihAtoms",       "dihAtoms",        np.int32,   dihedral_offset * 4,  i32sz)
+        _upload_if_present("dihNgs",         "dihNgs",          np.int32,   dihedral_offset * 4,  i32sz)
         _upload_if_present("invAtoms",       "invAtoms",        np.int32,   inversion_offset * 4, i32sz)
         _upload_if_present("invNgs",         "invNgs",          np.int32,   inversion_offset * 4, i32sz)
 
         indices_offset = iSys * self.a2f_map_size if hasattr(self, 'a2f_map_size') else 0
-        _upload_if_present("a2f_offsets", "a2f_offsets", np.int32, atom_offset, i32sz)
-        _upload_if_present("a2f_counts",  "a2f_counts",  np.int32, atom_offset, i32sz)
+        _upload_if_present("a2f_offsets", "a2f_offsets", np.int32, atom_offset,    i32sz)
+        _upload_if_present("a2f_counts",  "a2f_counts",  np.int32, atom_offset,    i32sz)
         _upload_if_present("a2f_indices", "a2f_indices", np.int32, indices_offset, i32sz)
 
     def upload_params(self, params):
@@ -281,31 +289,6 @@ class UFF_CL(OpenCLBase):
 
         self.args_setup = True
 
-    # def _extract_kernel_headers(self, source_code):
-    #     """
-    #     Extracts kernel function signatures from OpenCL source code.
-
-    #     Args:
-    #         source_code (str): The entire OpenCL source code as a string.
-
-    #     Returns:
-    #         dict: Dictionary mapping kernel names to their header signatures
-    #     """
-    #     import re
-
-    #     # Regular expression to match kernel function declarations
-    #     kernel_pattern = r'__kernel\s+void\s+(\w+)\s*\((.*?)\)'
-
-    #     # Find all kernel declarations in the source code
-    #     kernel_matches = re.finditer(kernel_pattern, source_code, re.DOTALL)
-
-    #     kernel_headers = {}
-    #     for match in kernel_matches:
-    #         kernel_name = match.group(1)
-    #         kernel_args = match.group(2)
-    #         kernel_headers[kernel_name] = kernel_args
-
-    #     return kernel_headers
 
     def run_eval_step(self, bClearForce=True):
         """
@@ -320,19 +303,13 @@ class UFF_CL(OpenCLBase):
         if not self.args_setup:
             self.prepare_kernel_args()
 
-        # Clear forces if requested
-        if bClearForce:
-            cl.enqueue_fill_buffer(self.queue, self.buffer_dict["fapos"], np.float32(0), 0, self.natoms * self.nSystems * 4 * f32sz)
-        if self.components.get('bonds', True):
-            self.prg.evalBondsAndHNeigh_UFF(self.queue, (self.natoms * self.nSystems,), None,  *self.kernel_args["evalBondsAndHNeigh_UFF"])
-        if self.components.get('angles', True) and self.nangles > 0:
-            self.prg.evalAngles_UFF    (self.queue, (self.nangles * self.nSystems,), None,  *self.kernel_args["evalAngles_UFF"])
-        if self.components.get('dihedrals', True) and self.ndihedrals > 0:
-            self.prg.evalDihedrals_UFF (self.queue, (self.ndihedrals * self.nSystems,), None,  *self.kernel_args["evalDihedrals_UFF"])
-        if self.components.get('inversions', True) and self.ninversions > 0:
-            self.prg.evalInversions_UFF(self.queue, (self.ninversions * self.nSystems,), None, *self.kernel_args["evalInversions_UFF"])
-        if self.components.get('nonbonded', False) and self.kernel_params.get("bNonBonded", False):
-            self.prg.evalNonBonded(self.queue, (self.natoms * self.nSystems,), None,  *self.kernel_args["evalNonBonded"])
+        queue = self.queue
+        if bClearForce: cl.enqueue_fill_buffer                ( queue, self.buffer_dict["fapos"], np.float32(0), 0, self.natoms * self.nSystems * 4 * f32sz)
+        if self.bDoBonds:      self.prg.evalBondsAndHNeigh_UFF( queue, (self.natoms      * self.nSystems,), None,  *self.kernel_args["evalBondsAndHNeigh_UFF"])
+        if self.bDoAngles:     self.prg.evalAngles_UFF        ( queue, (self.nangles     * self.nSystems,), None,  *self.kernel_args["evalAngles_UFF"])
+        if self.bDoDihedrals:  self.prg.evalDihedrals_UFF     ( queue, (self.ndihedrals  * self.nSystems,), None,  *self.kernel_args["evalDihedrals_UFF"])
+        if self.bDoInversions: self.prg.evalInversions_UFF    ( queue, (self.ninversions * self.nSystems,), None,  *self.kernel_args["evalInversions_UFF"])
+        if self.bDoNonBonded:  self.prg.evalNonBonded         ( queue, (self.natoms      * self.nSystems,), None,  *self.kernel_args["evalNonBonded"])
 
         energies = np.zeros(5 * self.nSystems, dtype=np.float32)
         #cl.enqueue_copy(self.queue, energies, self.buffer_dict["energies"]) # TODO: implement energy summation
@@ -658,25 +635,21 @@ class UFF_CL(OpenCLBase):
                 if bond_tuple in bond_map:
                     neighBs[i, j_idx] = bond_map[bond_tuple]
 
-        # Find angles (3 connected atoms)
+        # Find angles (3 connected atoms) using neighbor lists (avoid -1 sentinels)
         for i in range(natoms):
-            for j in neighs[i]:
-                for k in neighs[j]:
-                    if k != i:
-                        # Ensure we don't add the same angle twice
-                        if i < k:
-                            angles.append((i, j, k))
+            for j in neighs_list[i]:
+                for k in neighs_list[j]:
+                    if k != i and i < k:
+                        angles.append((i, j, k))
 
-        # Find dihedrals (4 connected atoms)
+        # Find dihedrals (4 connected atoms) using neighbor lists
         for i in range(natoms):
-            for j in neighs[i]:
-                for k in neighs[j]:
+            for j in neighs_list[i]:
+                for k in neighs_list[j]:
                     if k != i:
-                        for l in neighs[k]:
-                            if l != j:
-                                # Ensure we don't add the same dihedral twice
-                                if i < l:
-                                    dihedrals.append((i, j, k, l))
+                        for l in neighs_list[k]:
+                            if l != j and i < l:
+                                dihedrals.append((i, j, k, l))
 
         # Find inversions (atoms with 3 neighbors)
         for i in range(natoms):

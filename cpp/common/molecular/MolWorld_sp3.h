@@ -1424,6 +1424,19 @@ void printPBCshifts(){
                 return E;
             };
 
+            // std::function<double(const Vec3d cvf, int itr, int natoms, Vec3d* apos, Vec3d* fapos, Vec3d* vapos)> perStepCallback = nullptr; // this is called for every MDstep of run()
+            ffu.perStepCallback = [&]( const Vec3d p, int itr, int natoms, Vec3d* apos, Vec3d* fapos, Vec3d* vapos )->double{    
+                if( (trj_fname) && ( (itr%savePerNsteps==0) ) ){
+                    char str_tmp[1024];
+                    sprintf( str_tmp, "# %i E %g |F| %g", itr, Etot, sqrt(ffu.cvf.z) ); 
+                    //printf( "perStepCallback save %s | natoms %i | %s \n", trj_fname, natoms, str_tmp ); 
+                    return params.saveXYZ( trj_fname, natoms, ffu.atypes, ffu.apos, str_tmp, ffu.REQs, "a", true ); 
+                }
+                return 0.0;
+            };
+
+
+
             if(bOptimizer){ 
                 //setOptimizer( ffu.nDOFs, ffu.DOFs, ffu.fDOFs );
                 setOptimizer( ffu.natoms*3, (double*)ffu.apos, (double*)ffu.fapos );
@@ -2412,7 +2425,12 @@ double eval_no_omp(){
                     vv+=v*v; ff+=f*f; vf+=v*f;
                 }
                 #pragma omp single
-                { opt.vv=vv; opt.ff=ff; opt.vf=vf; F2=ff; opt.FIRE_update_params(); }
+                { opt.vv=vv; opt.ff=ff; opt.vf=vf; F2=ff; opt.FIRE_update_params(); 
+                    if(outE )outE [itr]=E;
+                    if(outF )outF [itr]=sqrt(F2);
+                    if(outV )outV [itr]=sqrt(vv);
+                    if(outVF)outVF[itr]=vf/sqrt(F2*vv + 1e-32);
+                }
 
                 // ------ move
                 #pragma omp for

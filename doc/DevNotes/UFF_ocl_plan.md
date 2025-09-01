@@ -403,3 +403,39 @@ class UFF_multi:
 3. **Integration completeness** - Runtime switching between UFF/MMFF works
 4. **Performance improvement** - GPU implementation faster than CPU for relevant system sizes
 5. **Maintainability** - Code follows established FireCore patterns
+
+## Implementation Log - 2025-09-01
+
+### Recent Debugging Progress
+
+1. **Fixed molecule file path issue** in test script `test_UFF_ocl.py`:
+   - Changed to use absolute path from `data_dir` to `formic_acid.mol2`
+   - Resolved segmentation fault from missing file
+
+2. **Identified buffer mismatches** between CPU and GPU implementations:
+   - Shape mismatches: angle atoms (3 vs 4), inversion atoms
+   - Value mismatches: bond/angle/dihedral parameters, neighbor arrays
+   - Force differences between CPU and GPU results
+
+3. **Examined OpenCL buffer handling** in `pyBall/OCL/UFF.py`:
+   - `realloc_buffers()` allocates shapes (nangles,4) for angles vs CPU (nangles,3)
+   - `upload_topology_params()` uploads with offsets and element sizes
+   - `toUFF()` builds arrays with padding (e.g., angAtoms last element = -1)
+
+4. **Investigated OpenCL kernel requirements** in `UFF.cl`:
+   - Expected buffer layouts for bonds, angles, dihedrals, inversions
+   - Kernel signatures and parameter expectations
+
+5. **Current issues**:
+   - Double free/corruption at test end (memory management)
+   - GPU energy returned as array vs CPU scalar
+   - Numerical discrepancies in forces
+
+### Next Debugging Steps
+
+1. Align buffer shapes between CPU and GPU implementations
+2. Verify parameter array construction in `toUFF()`
+3. Check neighbor baking functions for consistency
+4. Fix GPU energy return type
+5. Add detailed debug prints for value divergence
+6. Investigate memory corruption issues
