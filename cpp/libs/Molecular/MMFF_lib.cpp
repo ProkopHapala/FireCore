@@ -21,9 +21,50 @@ double* grid_data=0;
 
 extern "C"{
 
-void init_buffers(){
-    //printf( "init_buffers() \n" );
+void init_buffers_UFF(){
+    printf( "init_buffers_UFF() \n" );
+    // Common buffers
+    buffers.insert( { "apos",   (double*)W.nbmol.apos  } );
+    buffers.insert( { "fapos",  (double*)W.nbmol.fapos } );
+    buffers.insert( { "REQs",   (double*)W.nbmol.REQs  } );
+    //buffers.insert( { "PLQs",   (double*)W.nbmol.PLQs  } );
+    // UFF-specific buffers
+    if(W.bUFF){ // UFF-specific buffers
+        buffers.insert(  { "hneigh",    (double*)W.ffu.hneigh } );
+        buffers.insert(  { "fint",      (double*)W.ffu.fint   } );
+        buffers.insert(  { "bonParams", (double*)W.ffu.bonParams } );
+        buffers.insert(  { "angParams", (double*)W.ffu.angParams } );
+        buffers.insert(  { "dihParams", (double*)W.ffu.dihParams } );
+        buffers.insert(  { "invParams", (double*)W.ffu.invParams } );
 
+        ibuffers.insert( { "neighs",    (int*)W.ffu.neighs    } );
+        ibuffers.insert( { "neighBs",   (int*)W.ffu.neighBs   } );
+        ibuffers.insert( { "bonAtoms",  (int*)W.ffu.bonAtoms  } );
+        ibuffers.insert( { "angAtoms",  (int*)W.ffu.angAtoms  } );
+        ibuffers.insert( { "dihAtoms",  (int*)W.ffu.dihAtoms  } );
+        ibuffers.insert( { "invAtoms",  (int*)W.ffu.invAtoms  } );
+
+        // neighbor indices for angles, dihedrals, inversions
+        ibuffers.insert( { "angNgs",    (int*)W.ffu.angNgs    } );
+        ibuffers.insert( { "dihNgs",    (int*)W.ffu.dihNgs    } );
+        ibuffers.insert( { "invNgs",    (int*)W.ffu.invNgs    } );
+    }
+    // UFF-specific dimensions
+    if(W.bUFF){
+        ibuffers.insert( { "ndims", &W.ffu._natoms } ); // 
+        buffers.insert ( { "Es",    &W.ffu.Etot    } );
+    }
+    ibuffers.insert( { "selection", W.manipulation_sel  } );
+    bbuffers.insert( { "ffflags",  &W.doBonded  } );
+    // int _natoms, nbonds, nangles, ndihedrals, ninversions, nf; // 5
+    // int i0dih,i0inv,i0ang,i0bon;                               // 4
+    // double Etot, Eb, Ea, Ed, Ei;                               // 5
+    printf( "MMFF_lib.cpp::init_buffers_UFF() ndims{natoms=%i, nbonds=%i, nangles=%i, ndihedrals=%i, ninversions=%i, nf=%i, i0dih=%i,i0inv=%i,i0ang=%i,i0bon=%i, }\n", W.ffu._natoms, W.ffu.nbonds, W.ffu.nangles, W.ffu.ndihedrals, W.ffu.ninversions, W.ffu.nf, W.ffu.i0dih, W.ffu.i0inv, W.ffu.i0ang, W.ffu.i0bon );
+    printf( "MMFF_lib.cpp::init_buffers_UFF() Es{ Etot=%f, Eb=%f, Ea=%f, Ed=%f, Ei=%f, }\n", W.ffu.Etot, W.ffu.Eb, W.ffu.Ea, W.ffu.Ed, W.ffu.Ei );
+}
+
+void init_buffers(){
+    printf( "init_buffers() \n" );
     buffers .insert( { "apos",   (double*)W.nbmol.apos  } );
     buffers .insert( { "fapos",  (double*)W.nbmol.fapos } );
     buffers .insert( { "REQs",   (double*)W.nbmol.REQs  } );
@@ -36,13 +77,13 @@ void init_buffers(){
         if(!W.bUFF){
             buffers .insert( { "pipos",  (double*)W.ffl.pipos   } );
             buffers .insert( { "fpipos", (double*)W.ffl.fpipos } );
-            ibuffers.insert( { "neighs",      (int*)W.ffl.neighs  } );
-        }
+            ibuffers.insert( { "neighs",    (int*)W.ffl.neighs  } );
+        } // else{ // UFF-specific}
     }else{
         W.ff.natoms=W.nbmol.natoms;
     }
     printf( "MMFF_lib.cpp::init_buffers() ndims{nDOFs=%i,natoms=%i,nnode=%i,ncap=%i,npi=%i,nbonds=%i,nvecs=%i,ne=%i,ie0=%i}\n", W.ff.nDOFs, W.ff.natoms, W.ff.nnode, W.ff.ncap, W.ff.npi, W.ff.nbonds, W.ff.nvecs, W.ff.ne, W.ff.ie0 );
-    ibuffers.insert( { "ndims",    &W.ff.nDOFs } );
+        ibuffers.insert( { "ndims",    &W.ff.nDOFs } );
     buffers .insert( { "Es",       &W.ff.Etot  } );
     ibuffers.insert( { "selection", W.manipulation_sel  } );
     bbuffers.insert( { "ffflags", &W.doBonded  } );
@@ -70,6 +111,11 @@ void* init( char* xyz_name, char* surf_name, char* smile_name, bool bMMFF, bool 
     //W.params.init( sElementTypes, sAtomTypes, sBondTypes, sAngleTypes, sDihedralTypes );
     // bring names of atom types into builder (H is capping atom, E is electron pair)
 	//W.builder.bindParams(&W.params);
+
+    // unbuffered printf()
+    setbuf(stdout, NULL);
+    setbuf(stderr, NULL);
+
     W.initParams( sElementTypes, sAtomTypes, sBondTypes, sAngleTypes, sDihedralTypes );
     bool bGrid = gridStep>0;
     // initialize the main
@@ -77,7 +123,7 @@ void* init( char* xyz_name, char* surf_name, char* smile_name, bool bMMFF, bool 
     W.bGridFF=bGrid;
     W.bUFF   =bUFF;
     W.init();
-    init_buffers();
+    //init_buffers();
     return &W;
 }
 
@@ -303,8 +349,19 @@ void setSwitches2( int CheckInvariants, int PBC, int NonBonded, int NonBondNeigh
     #undef _setbool
 }
 
-
-
+void setSwitchesUFF( int DoBond, int DoAngle, int DoDihedral, int DoInversion, int DoAssemble, int SubtractBondNonBond, int ClampNonBonded ){
+    // bool bDoBond=true, bDoAngle=true, bDoDihedral=true, bDoInversion=true; bSubtractBondNonBond, bClampNonBonded
+    #define _setbool(b,i) { if(i>0){b=true;}else if(i<0){b=false;} }
+    _setbool( W.ffu.bDoBond,              DoBond );
+    _setbool( W.ffu.bDoAngle,             DoAngle );
+    _setbool( W.ffu.bDoDihedral,          DoDihedral );
+    _setbool( W.ffu.bDoInversion,         DoInversion );
+    _setbool( W.ffu.bDoAssemble,          DoAssemble );
+    _setbool( W.ffu.bSubtractBondNonBond, SubtractBondNonBond );
+    _setbool( W.ffu.bClampNonBonded,      ClampNonBonded );
+    printf( "setSwitchesUFF() bDoBond=%i bDoAngle=%i bDoDihedral=%i bDoInversion=%i bDoAssemble=%i bSubtractBondNonBond=%i bClampNonBonded=%i \n", W.ffu.bDoBond, W.ffu.bDoAngle, W.ffu.bDoDihedral, W.ffu.bDoInversion, W.ffu.bDoAssemble, W.ffu.bSubtractBondNonBond, W.ffu.bClampNonBonded );
+    #undef _setbool
+}
 
 int substituteMolecule( const char* fname, int ib, double* up, int ipivot, bool bSwapBond ){
     return W.substituteMolecule( fname, ib, *(Vec3d*)up, ipivot, bSwapBond );
@@ -655,4 +712,3 @@ void computeDistance(int i, int j, double* dist){
 
 
 } // extern "C"
-

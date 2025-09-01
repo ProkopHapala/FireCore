@@ -58,9 +58,11 @@ class UFF : public NBFF { public:
     //Quat4i*  neighs =0;    // [natoms] // from NBFF
     //Quat4i*  neighCell=0;  // [natoms] // from NBFF
 
+    bool bDoBond=true, bDoAngle=true, bDoDihedral=true, bDoInversion=true, bDoAssemble=true;
+
     // dimensions of the system
     double Etot, Eb, Ea, Ed, Ei;                          // total, bond, angle, dihedral, inversion energies
-    int    nbonds, nangles, ndihedrals, ninversions, nf; // number of bonds, angles, dihedrals, inversions, number of force pieces
+    int    _natoms, nbonds, nangles, ndihedrals, ninversions, nf; // number of bonds, angles, dihedrals, inversions, number of force pieces
     int i0dih,i0inv,i0ang,i0bon;                         
     //Vec3d * vapos __attribute__((aligned(64))) = 0;      // [natoms] velocities of atoms
 
@@ -112,7 +114,7 @@ class UFF : public NBFF { public:
     // reallocate UFF
     void realloc( int natoms_, int nbonds_, int nangles_, int ndihedrals_, int ninversions_ ){
 
-        natoms=natoms_; 
+        natoms=natoms_;  _natoms=natoms;
         nbonds=nbonds_; 
         nangles=nangles_; 
         ndihedrals=ndihedrals_; 
@@ -124,7 +126,7 @@ class UFF : public NBFF { public:
         i0ang = i0inv + 4*ninversions;
         i0bon = i0ang + 3*nangles;
 
-        //printf( "UFF::realloc natoms %i nbonds %i nangles %i ndihedrals %i ninversions %i \n", natoms, nbonds, nangles, ndihedrals, ninversions );
+        printf( "UFF::realloc natoms %i nbonds %i nangles %i ndihedrals %i ninversions %i \n", natoms, nbonds, nangles, ndihedrals, ninversions );
         printf( "UFF::realloc nf %i i0dihedrals %i i0inv %i i0ang %i i0bon %i \n", nf, i0dih, i0inv, i0ang, i0bon );
 
         //nDOFs = natoms*3;
@@ -474,7 +476,7 @@ class UFF : public NBFF { public:
 
     __attribute__((hot))  
     void assembleForces(){
-        //printf("assembleForces()\n");
+        printf("UFF::assembleForces()\n");
         // NOTE: this is not parallelized ( wee need somethig which loops over atoms otherwise we would need atomic add )
         //printf("assembleForces() bonds %i \n" , nbonds );
         for(int i=0; i<nbonds; i++){
@@ -516,7 +518,7 @@ class UFF : public NBFF { public:
             fapos[ii.z].add( finv[i4+2] );
             fapos[ii.w].add( finv[i4+3] );
         }
-        //printf("assembleForces() DONE\n");
+        printf("UFF::assembleForces() DONE\n");
     }
 
     void printForcePieces(){
@@ -651,6 +653,7 @@ class UFF : public NBFF { public:
     }
     __attribute__((hot))  
     double evalBonds(){
+        printf("UFF::evalBonds() \n");
         double E=0.0;
         const double R2damp = Rdamp*Rdamp;
         const double Fmax2  = FmaxNonBonded*FmaxNonBonded;
@@ -794,6 +797,7 @@ class UFF : public NBFF { public:
     }
     __attribute__((hot))  
     double evalAngles(){
+        printf("UFF::evalAngles() \n");
         double E=0.0;
         const double R2damp = Rdamp*Rdamp;
         const double Fmax2  = FmaxNonBonded*FmaxNonBonded;
@@ -1063,6 +1067,7 @@ class UFF : public NBFF { public:
     }
     __attribute__((hot))  
     double evalDihedrals(){
+        printf("UFF::evalDihedrals() \n");
         double E=0.0;
         const double R2damp    = Rdamp*Rdamp;
         const double Fmax2     = FmaxNonBonded*FmaxNonBonded;
@@ -1234,6 +1239,7 @@ class UFF : public NBFF { public:
     }
     __attribute__((hot))  
     double evalInversions(){
+        printf("UFF::evalInversions() \n");
         double E=0.0;
         for( int ii=0; ii<ninversions; ii++){ 
             E+=evalInversion_Prokop(ii); 
@@ -1256,16 +1262,16 @@ class UFF : public NBFF { public:
     // Full evaluation of UFF intramolecular force-field
     __attribute__((hot))  
     double eval( bool bClean=true ){
-        //printf("UFF::eval() \n");
+        printf("UFF::eval() bClean=%i bDoBond=%i bDoAngle=%i bDoDihedral=%i bDoInversion=%i bDoAssemble=%i \n", bClean, bDoBond, bDoAngle, bDoDihedral, bDoInversion, bDoAssemble );
         Eb=0; Ea=0; Ed=0; Ei=0;
         if(bClean)cleanForce();  
-        Eb = evalBonds();  
-        Ea = evalAngles(); 
-        Ed = evalDihedrals();
-        Ei = evalInversions(); 
+        if(bDoBond     ){Eb = evalBonds();      }
+        if(bDoAngle    ){Ea = evalAngles();     } 
+        if(bDoDihedral ){Ed = evalDihedrals();  }
+        if(bDoInversion){Ei = evalInversions(); }
         Etot = Eb + Ea + Ed + Ei;
         //printForcePieces();
-        assembleForces();
+        if(bDoAssemble ){ assembleForces(); }
         // //Etot = Eb; 
         // //assembleForcesDebug(true,false,false,false);
         // //Etot = Ea; 

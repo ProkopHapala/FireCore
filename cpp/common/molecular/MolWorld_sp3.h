@@ -1693,7 +1693,7 @@ virtual void clear( bool bParams=true, bool bSurf=false ){
 
     __attribute__((hot))  
     double eval( ){
-        if(verbosity>0)[[unlikely]]{ printf( "#### MolWorld_sp3::eval()\n"); }
+        if(verbosity>0)[[unlikely]]{ printf( "#### MolWorld_sp3::eval() bMMFF=%i  bUFF=%i  bNonBonded=%i  bConstrains=%i bSubtractBondNonBond=%i \n", bMMFF, bUFF, bNonBonded, bConstrains, ffu.bSubtractBondNonBond ); }
         //ffl.doBonds       = false;
         //ffl.doPiPiI       = false;
         //ffl.doPiSigma     = false;

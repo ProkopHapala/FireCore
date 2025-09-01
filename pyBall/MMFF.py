@@ -1,4 +1,3 @@
-
 import numpy as np
 from   ctypes import c_int, c_double, c_bool, c_float, c_char_p, c_bool, c_void_p, c_char_p
 import ctypes
@@ -6,7 +5,7 @@ import os
 import sys
 
 #sys.path.append('../')
-#from pyMeta import cpp_utils 
+#from pyMeta import cpp_utils
 from . import cpp_utils_ as cpp_utils
 #import cpp_utils_ as cpp_utils
 
@@ -18,7 +17,7 @@ c_bool_p   = ctypes.POINTER(c_bool)
 def _np_as(arr,atype):
     if arr is None:
         return None
-    else: 
+    else:
         return arr.ctypes.data_as(atype)
 
 cpp_utils.s_numpy_data_as_call = "_np_as(%s,%s)"
@@ -55,7 +54,7 @@ header_strings = [
 #void sample_SplineHermite2D( double* g0, double* dg, int* ng, double* Eg, int n, double* ps, double* fes )
 #void sample_SplineHermite3D( double* g0, double* dg, int* ng, double* Eg, int n, double* ps, double* fes )
 
-# void sample_SplineConstr( double lmin, double lmax, double dx, int n, double* Eps, double* Es, double* Fs ){    
+# void sample_SplineConstr( double lmin, double lmax, double dx, int n, double* Eps, double* Es, double* Fs ){
 #"void sample_DistConstr( double lmin, double lmax, double kmin, double kmax, double flim , int n, double* xs, double* Es, double* Fs ){",
 #"void addDistConstrain(  int i0,int i1, double lmin,double lmax,double kmin,double kmax,double flim, double k ){",
 #"void addAngConstrain(  int i0,int i1,int i2, double ang0, double k ){",
@@ -63,6 +62,9 @@ header_strings = [
 #'void print_debugs( bool bParams, bool bNeighs, bool bShifts ){',
 ]
 #cpp_utils.writeFuncInterfaces( header_strings );        exit()     #   uncomment this to re-generate C-python interfaces
+
+
+
 
 #libSDL = ctypes.CDLL( "/usr/lib/x86_64-linux-gnu/libSDL2.so", ctypes.RTLD_GLOBAL )
 #libGL  = ctypes.CDLL( "/usr/lib/x86_64-linux-gnu/libGL.so",   ctypes.RTLD_GLOBAL )
@@ -74,8 +76,14 @@ header_strings = [
 #LIB_PATH_CPP  = os.path.normpath(LIB_PATH+'../../../'+'/cpp/Build/libs/'+cpp_name )
 #lib = ctypes.CDLL( LIB_PATH_CPP+("/lib%s.so" %cpp_name) )
 
-cpp_utils.BUILD_PATH = os.path.normpath( cpp_utils.PACKAGE_PATH + '../../cpp/Build/libs/Molecular' ) 
+cpp_utils.BUILD_PATH = os.path.normpath( cpp_utils.PACKAGE_PATH + '../../cpp/Build/libs/Molecular' )
 lib = cpp_utils.loadLib('MMFF_lib', recompile=False)
+
+
+
+
+
+
 array1ui = np.ctypeslib.ndpointer(dtype=np.uint32, ndim=1, flags='CONTIGUOUS')
 array1i  = np.ctypeslib.ndpointer(dtype=np.int32,  ndim=1, flags='CONTIGUOUS')
 array2i  = np.ctypeslib.ndpointer(dtype=np.int32,  ndim=2, flags='CONTIGUOUS')
@@ -130,8 +138,10 @@ def getAtomTypes():
 # ========= Globals
 # ====================================
 
-isInitialized = False
-glob_bMMFF    = True
+isInitialized       = False
+glob_bMMFF          = True
+glob_bUFF           = False
+bBuffersInitialized = False
 
 # ====================================
 # ========= C functions
@@ -157,7 +167,7 @@ def projectBspline1D( xs, g0, dg, ng, ys=None, ws=None, order=3 ):
     if ws is None: ws = np.ones( n )
     lib.projectBspline1D( n, _np_as(xs,c_double_p), _np_as(ws,c_double_p), g0, dg, ng, _np_as(ys,c_double_p), order )
     return ys
-                                  
+
 # void projectBspline2D( int nx, double* ps_, double* ws, double* g0_, double* dg_, int* ng_, double* ys, int order ){
 lib.projectBspline2D.argtypes  = [ c_int, c_double_p, c_double_p, c_double_p, c_double_p, c_int_p, c_double_p, c_int ]
 lib.projectBspline2D.restype   =  None
@@ -167,11 +177,11 @@ def projectBspline2D( xs, g0, dg, ng, ys=None, ws=None, order=3 ):
     dg = np.array( dg )
     g0 = np.array( g0 )
     ng = np.array( ng, dtype=np.int32 )
-    if ys is None: 
+    if ys is None:
         ys = np.zeros( ng )
     else:
         ys = np.array( ys )
-    if ws is None: 
+    if ws is None:
         ws = np.ones( n )
     else:
         ws = np.array( ws )
@@ -183,7 +193,7 @@ lib.fit_Bspline.argtypes  = [ c_int, c_double_p, c_double_p, c_double_p, c_doubl
 lib.fit_Bspline.restype   =  None
 def fit_Bspline( Es, Gs=None, Ws=None, Ftol=1e-6, nmaxiter=100, dt=0.1, Kreg=-1.0, bPBC=True, bHalf=False ):
     n = len(Es)
-    if(bHalf): 
+    if(bHalf):
         n = n//2
         if Ws is None: Ws = np.ones( n*2 )
         if Gs is None: Gs = Es[::2].copy()
@@ -210,7 +220,7 @@ def fit2D_Bspline( Es, Gs=None, Ws=None, Ftol=1e-6, nmaxiter=100, dt=0.1, bPBC=F
     ns = Es.shape
     if Ws is None: Ws = np.ones( ns )
     if Gs is None: Gs = Es.copy()
-    ns = np.array( ns[::-1], dtype=np.int32 ) 
+    ns = np.array( ns[::-1], dtype=np.int32 )
     lib.fit2D_Bspline( _np_as(ns,c_int_p) , _np_as(Gs,c_double_p), _np_as(Es,c_double_p), _np_as(Ws,c_double_p), Ftol, nmaxiter, dt, bPBC )
     return Gs, Ws
 
@@ -218,7 +228,7 @@ def fit2D_Bspline( Es, Gs=None, Ws=None, Ftol=1e-6, nmaxiter=100, dt=0.1, bPBC=F
 lib.fit3D_Bspline.argtypes  = [ c_int_p, c_double_p, c_double_p, c_double_p, c_double, c_int, c_double, c_bool, c_bool ]
 lib.fit3D_Bspline.restype   =  None
 def fit3D_Bspline( Es, Gs=None, Ws=None, Ftol=1e-6, nmaxiter=100, dt=0.1, bPBC=False, bOMP=True ):
-    ns = np.array( Es.shape[::-1], dtype=np.int32 ) 
+    ns = np.array( Es.shape[::-1], dtype=np.int32 )
     n  = Es.size
     if Ws is None: Ws = np.ones( ns )
     if Gs is None: Gs = Es[:].copy()
@@ -274,7 +284,7 @@ lib.loadXSF.restype   =  c_double_p
 def loadXSF( name ):
     if name is not None: name=name.encode('utf8')
     cell = np.zeros((3,3))
-    ns   = np.zeros(3, dtype=np.int32 ) 
+    ns   = np.zeros(3, dtype=np.int32 )
     data_ptr = lib.loadXSF( name, _np_as(ns,c_int_p), _np_as(cell,c_double_p)  )
     ff       = np.ctypeslib.as_array(data_ptr, (ns[2],ns[1],ns[0]) )
     return ff, cell
@@ -305,7 +315,6 @@ def makeGridFF( name, mode=1, z0=np.nan, cel0=[-0.5,-0.5,0.0], bSymmetrize=False
     #ff_ = np.ctypeslib.as_array(ff, ffshape )
     #print( "makeGridFF() DONE" )
     #return ff_
-
 
 #double* getArrayPointer( const char* name, int* shape  ){
 lib.getArrayPointer.argtypes  = [ c_char_p, c_int_p ]
@@ -632,7 +641,7 @@ def sample_SplineConstr( xs, Eps, x0=0.0, dx=1.0, Es=None, Fs=None):
     return Es,Fs
 
 #  void sample_DistConstr( double lmin, double lmax, double kmin, double kmax, double flim , int n, double* xs, double* Es, double* Fs ){
-lib.sample_DistConstr.argtypes  = [c_double, c_double, c_double, c_double, c_double, c_int, c_double_p, c_double_p, c_double_p] 
+lib.sample_DistConstr.argtypes  = [c_double, c_double, c_double, c_double, c_double, c_int, c_double_p, c_double_p, c_double_p]
 lib.sample_DistConstr.restype   =  None
 def sample_DistConstr( xs, lmin=1, lmax=1, kmin=1, kmax=1, flim=1e+300, Es=None, Fs=None):
     n = len(xs)
@@ -642,7 +651,7 @@ def sample_DistConstr( xs, lmin=1, lmax=1, kmin=1, kmax=1, flim=1e+300, Es=None,
     return Es,Fs
 
 #  void sample_evalPiAling( double K, double c0, int n, double* angles, double* Es, double* Fs ){
-lib.sample_evalPiAling.argtypes  = [c_double, c_double, c_double, c_double, c_int, c_double_p, c_double_p, c_double_p] 
+lib.sample_evalPiAling.argtypes  = [c_double, c_double, c_double, c_double, c_int, c_double_p, c_double_p, c_double_p]
 lib.sample_evalPiAling.restype   =  None
 def sample_evalPiAling( angles, K=1.0, ang0=0.0, r1=1.,r2=1., Es=None, Fs=None):
     n = len(angles)
@@ -652,7 +661,7 @@ def sample_evalPiAling( angles, K=1.0, ang0=0.0, r1=1.,r2=1., Es=None, Fs=None):
     return Es,Fs
 
 #  void sample_evalAngleCos( double K, double c0, int n, double* angles, double* Es, double* Fs ){
-lib.sample_evalAngleCos.argtypes  = [c_double, c_double, c_double, c_double, c_int, c_double_p, c_double_p, c_double_p] 
+lib.sample_evalAngleCos.argtypes  = [c_double, c_double, c_double, c_double, c_int, c_double_p, c_double_p, c_double_p]
 lib.sample_evalAngleCos.restype   =  None
 def sample_evalAngleCos( angles, K=1.0, ang0=0.0, r1=1.,r2=1., Es=None, Fs=None):
     n = len(angles)
@@ -662,7 +671,7 @@ def sample_evalAngleCos( angles, K=1.0, ang0=0.0, r1=1.,r2=1., Es=None, Fs=None)
     return Es,Fs
 
 #  void sample_evalAngleCosHalf( double K, double c0, int n, double* angles, double* Es, double* Fs ){
-lib.sample_evalAngleCosHalf.argtypes  = [c_double, c_double, c_double, c_double, c_int, c_double_p, c_double_p, c_double_p] 
+lib.sample_evalAngleCosHalf.argtypes  = [c_double, c_double, c_double, c_double, c_int, c_double_p, c_double_p, c_double_p]
 lib.sample_evalAngleCosHalf.restype   =  None
 def sample_evalAngleCosHalf( angles, K=1.0, ang0=0.0, r1=1.,r2=1., Es=None, Fs=None):
     n = len(angles)
@@ -672,7 +681,7 @@ def sample_evalAngleCosHalf( angles, K=1.0, ang0=0.0, r1=1.,r2=1., Es=None, Fs=N
     return Es,Fs
 
 #  void sampleNonBond(int n, double* rs, double* Es, double* fs, int kind, double*REQi_,double*REQj_, double K ){
-lib.sampleNonBond.argtypes  = [c_int, array1d, array1d, array1d, c_int, array1d, array1d, c_double, c_double ] 
+lib.sampleNonBond.argtypes  = [c_int, array1d, array1d, array1d, c_int, array1d, array1d, c_double, c_double ]
 lib.sampleNonBond.restype   =  None
 def sampleNonBond( rs, Es=None, Fs=None, kind=1, REQi=(1.487,0.0006808,0.0), REQj=(1.487,0.0006808,0.0), K=-1.0, Rdamp=1.0 ):
     n =len(rs)
@@ -680,18 +689,18 @@ def sampleNonBond( rs, Es=None, Fs=None, kind=1, REQi=(1.487,0.0006808,0.0), REQ
     if Fs is None: Fs=np.zeros(n)
     rs=np.array(rs)
     REQi=np.array(REQi)
-    REQj=np.array(REQj) 
+    REQj=np.array(REQj)
     lib.sampleNonBond(n, rs, Es, Fs, kind, REQi, REQj, K, Rdamp)
     return Es,Fs
 
 #  int findHbonds( double Rcut, double Hcut, double angMax ){
-lib.findHbonds.argtypes  = [ c_double, c_double, c_double] 
+lib.findHbonds.argtypes  = [ c_double, c_double, c_double]
 lib.findHbonds.restype   =  c_int
 def findHbonds( Rcut=4.0, Hcut=0.0001, angMax=30.0 ):
     return lib.findHbonds( Rcut, Hcut, angMax )
 
 #  int sampleHbond( int ib, int n, double* rs, double* Es, double* fs, int kind, Vec2d mask, double K, double Rdamp ){
-lib.sampleHbond.argtypes  = [c_int,c_int, array1d, array1d, array1d, c_int, c_double, c_double, c_double, c_double, c_double, c_char_p ] 
+lib.sampleHbond.argtypes  = [c_int,c_int, array1d, array1d, array1d, c_int, c_double, c_double, c_double, c_double, c_double, c_char_p ]
 lib.sampleHbond.restype   =  c_int
 def sampleHbond( ib, rs, Es=None, Fs=None, kind=1, maskQ=1.0, maskH=1.0, K=-1.0, Rdamp=1.0, dcomp=1.0 ):
     n =len(rs)
@@ -704,7 +713,7 @@ def sampleHbond( ib, rs, Es=None, Fs=None, kind=1, maskQ=1.0, maskH=1.0, K=-1.0,
     return Es,Fs,s
 
 #void sampleNonBondTypes( int n, double* rs, double* Es, double* fs, int kind, double qH, double qX, double K, double Rdamp, double dcomp, char* type_str ){
-lib.sampleNonBondTypes.argtypes  = [ c_int, array1d, array1d, array1d, c_int, c_double, c_double, c_double, c_double, c_double, c_char_p ] 
+lib.sampleNonBondTypes.argtypes  = [ c_int, array1d, array1d, array1d, c_int, c_double, c_double, c_double, c_double, c_double, c_char_p ]
 lib.sampleNonBondTypes.restype   =  c_int
 def sampleNonBondTypes( type_str, rs, Es=None, Fs=None, kind=1, qH=1.0, qX=1.0, K=-1.0, Rdamp=1.0, dcomp=1.0 ):
     n =len(rs)
@@ -716,7 +725,7 @@ def sampleNonBondTypes( type_str, rs, Es=None, Fs=None, kind=1, qH=1.0, qX=1.0, 
     return Es,Fs
 
 # void sampleSurf(char* name, int n, double* rs, double* Es, double* fs, int kind, double*REQ_, double K, double Rdamp ){
-lib.sampleSurf.argtypes  = [c_char_p, c_int, array1d, array1d, array1d, c_int, c_int, c_double, c_double, c_double, array1d, c_bool] 
+lib.sampleSurf.argtypes  = [c_char_p, c_int, array1d, array1d, array1d, c_int, c_int, c_double, c_double, c_double, array1d, c_bool]
 lib.sampleSurf.restype   =  None
 def sampleSurf( name, rs, Es=None, fs=None, kind=1, atyp=0, Q=0.0, K=-1.0, Rdamp=1.0, pos0=(0.,0.,0.), bSave=False ):
     if name is not None: name=name.encode('utf8')
@@ -728,8 +737,8 @@ def sampleSurf( name, rs, Es=None, fs=None, kind=1, atyp=0, Q=0.0, K=-1.0, Rdamp
     lib.sampleSurf( name, n, rs, Es, fs, kind, atyp, Q, K, Rdamp, pos0, bSave )
     return Es,fs
 
-# void sampleSurf_vecs(int n, double* poss_, double* FEs_, int kind, int ityp, double RvdW, double EvdW, double Q, double K, double RQ, int npbc, bool bSave){  
-lib.sampleSurf_vecs.argtypes  = [ c_int, array2d, array2d, c_int, c_int,  c_double, c_double, c_double, c_double, c_double, c_int, c_bool] 
+# void sampleSurf_vecs(int n, double* poss_, double* FEs_, int kind, int ityp, double RvdW, double EvdW, double Q, double K, double RQ, int npbc, bool bSave){
+lib.sampleSurf_vecs.argtypes  = [ c_int, array2d, array2d, c_int, c_int,  c_double, c_double, c_double, c_double, c_double, c_int, c_bool]
 lib.sampleSurf_vecs.restype   =  None
 def sampleSurf_vecs(ps, FEs=None, kind=1, ityp=-1, RvdW=1.487, EvdW=0.0006808, Q=0.0, K=+1.5, Rdamp=0.1, npbc=1, bSave=False ):
     n =len(ps)
@@ -749,7 +758,7 @@ def sampleSurf_new( ps, PLQH, FEout=None, mode=1, K=-1.0, Rdamp=1.0 ):
     return FEout
 
 # # void sampleSurf_vecs(char* name, int n, double* rs, double* Es, double* fs, int kind, double*REQ_, double K, double Rdamp ){
-# lib.sampleSurf_vecs.argtypes  = [c_char_p, c_int, array2d, array1d, array2d, c_int, c_int, c_double, c_double, c_double, array1d, c_bool] 
+# lib.sampleSurf_vecs.argtypes  = [c_char_p, c_int, array2d, array1d, array2d, c_int, c_int, c_double, c_double, c_double, array1d, c_bool]
 # lib.sampleSurf_vecs.restype   =  None
 # def sampleSurf_vecs( name, poss, Es=None, fs=None, kind=1, atyp=0, Q=0.0, K=-1.0, Rdamp=1.0, pos0=(0.,0.,0.), bSave=False ):
 #     if name is not None: name=name.encode('utf8')
@@ -780,7 +789,7 @@ lib.printBuffNames.restype  = None
 def printBuffNames():
     lib.printBuffNames()
 
-#int* getIBuff(const char* name){ 
+#int* getIBuff(const char* name){
 lib.getIBuff.argtypes = [c_char_p]
 lib.getIBuff.restype  = c_int_p
 def getIBuff(name,sh):
@@ -789,27 +798,30 @@ def getIBuff(name,sh):
     ptr = lib.getIBuff(name)
     return np.ctypeslib.as_array( ptr, shape=sh)
 
-#double* getBuff(const char* name){ 
+#double* getBuff(const char* name){
 lib.getBuff.argtypes = [c_char_p]
-lib.getBuff.restype  = c_double_p 
+lib.getBuff.restype  = c_double_p
 def getBuff(name,sh):
     if not isinstance(sh, tuple): sh=(sh,)
     name=name.encode('utf8')
     ptr = lib.getBuff(name)
+    print("getBuff(): %s ptr=%s" %(name,ptr))
+    if ptr is None: print("getBuff(): %s not found" %name); return None
     return np.ctypeslib.as_array( ptr, shape=sh)
 
-#double* getBuff(const char* name){ 
+#double* getBuff(const char* name){
 lib.getBBuff.argtypes = [c_char_p]
-lib.getBBuff.restype  = c_bool_p 
+lib.getBBuff.restype  = c_bool_p
 def getBBuff(name,sh):
     if not isinstance(sh, tuple): sh=(sh,)
     name=name.encode('utf8')
     ptr = lib.getBBuff(name)
     return np.ctypeslib.as_array( ptr, shape=sh)
-    
+
 #def getBuffs( nnode, npi, ncap, nbond, NEIGH_MAX=4 ):
 def getBuffs( NEIGH_MAX=4 ):
-    #init_buffers()
+    print("getBuffs()")
+    init_buffers( False )
     #natom=nnode+ncap
     #nvecs=natom+npi
     #nDOFs=nvecs*3
@@ -824,35 +836,102 @@ def getBuffs( NEIGH_MAX=4 ):
     Es    = getBuff ( "Es",    (6,) )  # [ Etot,Eb,Ea, Eps,EppT,EppI; ]
     global DOFs,fDOFs,vDOFs,apos,fapos,REQs,PLQs,pipos,fpipos,bond_l0,bond_k, bond2atom,neighs,selection
     #Ebuf     = getEnergyTerms( )
-    
     apos      = getBuff ( "apos",     (natoms,3) )
     fapos     = getBuff ( "fapos",    (natoms,3) )
     REQs      = getBuff ( "REQs",     (natoms,4) )
     PLQs      = getBuff ( "PLQs",     (natoms,4) )
     if glob_bMMFF:
         DOFs      = getBuff ( "DOFs",     (nvecs,3)  )
-        fDOFs     = getBuff ( "fDOFs",    (nvecs,3)  ) 
-        vDOFs     = getBuff ( "vDOFs",    (nvecs,3)  ) 
+        fDOFs     = getBuff ( "fDOFs",    (nvecs,3)  )
+        vDOFs     = getBuff ( "vDOFs",    (nvecs,3)  )
         pipos     = getBuff ( "pipos",    (npi,3)    )
         fpipos    = getBuff ( "fpipos",   (npi,3)    )
         #bond_l0   = getBuff ( "bond_l0",  (nbonds)   )
         #bond_k    = getBuff ( "bond_k",   (nbonds)   )
         #Kneighs   = getBuff ( "Kneighs",  (nnode,NEIGH_MAX) )
         #bond2atom = getIBuff( "bond2atom",(nbonds,2) )
-        neighs   = getIBuff( "neighs",  (nnode,NEIGH_MAX) )
-        selection = getIBuff( "selection",  (natoms) )
+    neighs    = getIBuff( "neighs",  (nnode,NEIGH_MAX) )
+    selection = getIBuff( "selection",  (natoms) )
+    print( "getBuffs DONE" )
+
+def getBuffs_UFF( NEIGH_MAX=4 ):
+    print("getBuffs_UFF()")
+    init_buffers( True )
+    # ndims :  int _natoms, nbonds, nangles, ndihedrals, ninversions, nf; // 5
+    # ndims :  int i0dih,i0inv,i0ang,i0bon;                               // 4
+    # Es: double Etot, Eb, Ea, Ed, Ei;                                    // 5
+    global ffflags
+    ffflags = getBBuff( "ffflags" , (14,) )
+    global ndims,Es
+    ndims = getIBuff( "ndims", (10,) )  # [_natoms, nbonds, nangles, ndihedrals, ninversions, nf, i0dih,i0inv,i0ang,i0bon]
+    global natoms, nbonds, nangles, ndihedrals, ninversions, nf, i0dih,i0inv,i0ang,i0bon
+    natoms=ndims[0]; nbonds=ndims[1]; nangles=ndims[2]; ndihedrals=ndims[3]; ninversions=ndims[4]; nf=ndims[5]; i0dih=ndims[6]; i0inv=ndims[7]; i0ang=ndims[8]; i0bon=ndims[9]
+    print( "getBuffs(): natoms=%i nbonds=%i nangles=%i ndihedrals=%i ninversions=%i nf=%i i0dih=%i i0inv=%i i0ang=%i i0bon=%i " %(natoms,nbonds,nangles,ndihedrals,ninversions,nf,i0dih,i0inv,i0ang,i0bon) )
+    Es    = getBuff ( "Es",    (5,) )  # [ Etot,Eb,Ea,Ed,Ei ]
+    global apos,fapos,REQs,hneigh,fint,bonAtoms,angAtoms,dihAtoms,invAtoms,neighs,neighBs,bonParams,angParams,dihParams,invParams,angNgs,dihNgs,invNgs
+    #Ebuf     = getEnergyTerms( )
+    apos      = getBuff ( "apos",     (natoms,3) )
+    fapos     = getBuff ( "fapos",    (natoms,3) )
+    REQs      = getBuff ( "REQs",     (natoms,4) )
+    # ------ UFF
+    hneigh    = getBuff ( "hneigh",    (natoms*NEIGH_MAX,4) )
+    fint      = getBuff ( "fint",      (nf,3) )
+
+    bonAtoms  = getIBuff( "bonAtoms",  (nbonds,2)      )
+    angAtoms  = getIBuff( "angAtoms",  (nangles,3)     )
+    dihAtoms  = getIBuff( "dihAtoms",  (ndihedrals,4)  )
+    invAtoms  = getIBuff( "invAtoms",  (ninversions,4) )
+
+    neighs    = getIBuff( "neighs",    (natoms,4)      )
+    neighBs   = getIBuff( "neighBs",   (natoms,4)      )
+    bonParams = getBuff ( "bonParams", (nbonds,2)      )
+    angParams = getBuff ( "angParams", (nangles,5)     )
+    dihParams = getBuff ( "dihParams", (ndihedrals,3)  )
+    invParams = getBuff ( "invParams", (ninversions,4) )
+    angNgs    = getIBuff( "angNgs",    (nangles,2)     )
+    dihNgs    = getIBuff( "dihNgs",    (ndihedrals,3)  )
+    invNgs    = getIBuff( "invNgs",    (ninversions,3) )
+    
+    
+
+
+    # // Quat4i *  neighBs   __attribute__((aligned(64))) = 0; // [natoms]      bond indices for each neighbor
+    # // Vec2i  *  bonAtoms  __attribute__((aligned(64))) = 0; // [nbonds]      bonds atoms
+    # // Vec2d  *  bonParams __attribute__((aligned(64))) = 0; // [nbonds]      bonds parameters
+    # // Vec3i  *  angAtoms  __attribute__((aligned(64))) = 0; // [nangles]     angles atoms
+    # // double5*  angParams __attribute__((aligned(64))) = 0; // [nangles]     angles parameters
+    # // Quat4i *  dihAtoms  __attribute__((aligned(64))) = 0; // [ndihedrals]  dihedrals atoms
+    # // Vec3d  *  dihParams __attribute__((aligned(64))) = 0; // [ndihedrals]  dihedrals parameters
+    # // Quat4i *  invAtoms  __attribute__((aligned(64))) = 0; // [ninversions] inversions atoms
+    # // Quat4d *  invParams __attribute__((aligned(64))) = 0; // [ninversions] inversions parameters
+
+    # // Vec2i * angNgs __attribute__((aligned(64))) = 0; // [nangles]     angles neighbor index
+    # // Vec3i * dihNgs __attribute__((aligned(64))) = 0; // [ndihedrals]  dihedrals neighbor index
+    # // Vec3i * invNgs __attribute__((aligned(64))) = 0; // [ninversions] inversions neighbor index
+
+    
+
     print( "getBuffs DONE" )
 
 #  void init_buffers()
 lib.init_buffers.argtypes  = []
 lib.init_buffers.restype   =  None
-def init_buffers():
+def init_buffers( bUFF=False ):
+    global bBuffersInitialized
+    if bBuffersInitialized: 
+        print("init_buffers():Buffers already initialized => return")
+        return
+    bBuffersInitialized = True
     #print( "init_buffers()" )
-    return lib.init_buffers()
+    if bUFF:
+        lib.init_buffers_UFF()
+    else:
+        lib.init_buffers()
+
 
 '''
 #  void init_params(const char* fatomtypes, const char* fbondtypes)
-lib.init_params.argtypes  = [c_char_p, c_char_p, c_char_p] 
+lib.init_params.argtypes  = [c_char_p, c_char_p, c_char_p]
 lib.init_params.restype   =  None
 def init_params(fatomtypes, fbondtypes, fbondangles ):
     fatomtypes = fatomtypes.encode('utf8')
@@ -863,26 +942,26 @@ def init_params(fatomtypes, fbondtypes, fbondangles ):
 
 '''
 #  void init_nonbond()
-lib.init_nonbond.argtypes  = [] 
+lib.init_nonbond.argtypes  = []
 lib.init_nonbond.restype   =  None
 def init_nonbond():
     return lib.init_nonbond()
 '''
 
 #  void print_debugs( bool bParams, bool bNeighs, bool bShifts ){
-lib.print_debugs.argtypes  = [c_bool, c_bool, c_bool] 
+lib.print_debugs.argtypes  = [c_bool, c_bool, c_bool]
 lib.print_debugs.restype   =  None
 def print_debugs(bParams=True, bNeighs=True, bShifts=False):
     return lib.print_debugs(bParams, bNeighs, bShifts)
 
 #  void clear         (                      )
-lib.clear.argtypes  = [] 
+lib.clear.argtypes  = []
 lib.clear.restype   =  None
 def clear():
     return lib.clear()
 
 #  void init_nonbond()
-#lib.init.argtypes  = [] 
+#lib.init.argtypes  = []
 #lib.init.restype   =  None
 #def init():
 #    isInitialized = True
@@ -893,7 +972,7 @@ def cstr( s ):
     return s.encode('utf8')
 
 #  void setVerbosity( int verbosity_, int idebug_ ){
-lib.setVerbosity.argtypes  = [c_int, c_int] 
+lib.setVerbosity.argtypes  = [c_int, c_int]
 lib.setVerbosity.restype   =  None
 def setVerbosity( verbosity=1, idebug=0 ):
     return lib.setVerbosity( verbosity, idebug )
@@ -902,20 +981,20 @@ def setVerbosity( verbosity=1, idebug=0 ):
 
 #void* init( char* xyz_name, char* surf_name, char* smile_name, bool bMMFF, bool bEpairs, bool bUFF, bool b141, bool bSimple, bool bConj, bool bCumulene, int* nPBC, double gridStep, char* sElementTypes, char* sAtomTypes, char* sBondTypes, char* sAngleTypes, char* sDihedralTypes ){
 #lib.init(      cstr(xyz_name), cstr(surf_name), cstr(smile_name),  bMMFF, bEpairs,   bUFF,   b141, bSimple,  bConj, bCumulene,    nPBC, gridStep, cstr(sElementTypes), cstr(sAtomTypes), cstr(sBondTypes), cstr(sAngleTypes), cstr(sDihedralTypes) )
-lib.init.argtypes  = [c_char_p,        c_char_p,         c_char_p, c_bool,  c_bool, c_bool, c_bool,  c_bool, c_bool,    c_bool, array1i, c_double,            c_char_p,         c_char_p,         c_char_p,          c_char_p,             c_char_p] 
+lib.init.argtypes  = [c_char_p,        c_char_p,         c_char_p, c_bool,  c_bool, c_bool, c_bool,  c_bool, c_bool,    c_bool, array1i, c_double,            c_char_p,         c_char_p,         c_char_p,          c_char_p,             c_char_p]
 lib.init.restype   =  c_void_p
 def init(
-        xyz_name  =None, 
-        surf_name =None, 
-        smile_name=None, 
+        xyz_name  =None,
+        surf_name =None,
+        smile_name=None,
         sElementTypes  = "data/ElementTypes.dat",
-        sAtomTypes     = "data/AtomTypes.dat", 
-        sBondTypes     = "data/BondTypes.dat", 
+        sAtomTypes     = "data/AtomTypes.dat",
+        sBondTypes     = "data/BondTypes.dat",
         sAngleTypes    = "data/AngleTypes.dat",
         sDihedralTypes = "data/DihedralTypes.dat",
-        bMMFF=True, 
-        bEpairs=False,  
-        nPBC=(1,3,0), 
+        bMMFF=True,
+        bEpairs=False,
+        nPBC=(1,3,0),
         gridStep=0.1,
         bUFF=False,
         b141=True,
@@ -934,8 +1013,8 @@ lib.initParams.argtypes  = [c_char_p, c_char_p, c_char_p, c_char_p, c_char_p]
 lib.initParams.restype   =  None
 def initParams(
         sElementTypes  = "data/ElementTypes.dat",
-        sAtomTypes     = "data/AtomTypes.dat", 
-        sBondTypes     = "data/BondTypes.dat", 
+        sAtomTypes     = "data/AtomTypes.dat",
+        sBondTypes     = "data/BondTypes.dat",
         sAngleTypes    = "data/AngleTypes.dat",
         sDihedralTypes = "data/DihedralTypes.dat",
     ):
@@ -947,7 +1026,7 @@ def tryInit():
         #getBuffs( NEIGH_MAX=4 )
 
 #  void insertSMILES(char* s)
-lib.insertSMILES.argtypes  = [c_char_p,c_bool] 
+lib.insertSMILES.argtypes  = [c_char_p,c_bool]
 lib.insertSMILES.restype   =  None
 def insertSMILES(s ):
     s = s.encode('utf8')
@@ -955,35 +1034,35 @@ def insertSMILES(s ):
 
 '''
 #  void buildFF( bool bNonBonded_, bool bOptimizer_ )
-lib.buildFF.argtypes  = [c_bool, c_bool] 
+lib.buildFF.argtypes  = [c_bool, c_bool]
 lib.buildFF.restype   =  None
 def buildFF(bNonBonded=True, bOptimizer=True):
     return lib.buildFF(bNonBonded, bOptimizer)
 '''
 
 # #  int loadmol( const char* fname_mol )
-# lib.loadmol.argtypes  = [c_char_p] 
+# lib.loadmol.argtypes  = [c_char_p]
 # lib.loadmol.restype   =  c_int
 # def loadmol(fname_mol):
 #     fname_mol=fname_mol.encode('utf8')
 #     return lib.loadmol(fname_mol)
 
 # #  void initWithMolFile(char* fname_mol, bool bNonBonded_, bool bOptimizer_ )
-# lib.initWithMolFile.argtypes  = [c_char_p, c_bool, c_bool] 
+# lib.initWithMolFile.argtypes  = [c_char_p, c_bool, c_bool]
 # lib.initWithMolFile.restype   =  None
 # def initWithMolFile(fname_mol, bNonBonded=True, bOptimizer=True):
 #     fname_mol = fname_mol.encode('utf8')
 #     return lib.initWithMolFile(fname_mol, bNonBonded, bOptimizer)
 
 # #  void initWithMolFile(char* fname_mol, bool bNonBonded_, bool bOptimizer_ )
-# lib.initWithSMILES.argtypes  = [c_char_p, c_bool, c_bool, c_bool, c_bool] 
+# lib.initWithSMILES.argtypes  = [c_char_p, c_bool, c_bool, c_bool, c_bool]
 # lib.initWithSMILES.restype   =  None
 # def initWithSMILES(fname_mol, bPrint=True, bCap=True, bNonBonded=True, bOptimizer=True):
 #     fname_mol = fname_mol.encode('utf8')
 #     return lib.initWithSMILES(fname_mol, bPrint, bCap, bNonBonded, bOptimizer)
 
 #  void setSwitches( int doAngles, int doPiPiT, int  doPiSigma, int doPiPiI, int doBonded_, int PBC, int CheckInvariants )
-lib.setSwitches.argtypes  = [c_int, c_int, c_int , c_int, c_int, c_int, c_int] 
+lib.setSwitches.argtypes  = [c_int, c_int, c_int , c_int, c_int, c_int, c_int]
 lib.setSwitches.restype   =  None
 def setSwitches(doAngles=0, doPiPiT=0, doPiSigma=0, doPiPiI=0, doBonded=0, PBC=0, CheckInvariants=0):
     return lib.setSwitches(doAngles, doPiPiT, doPiSigma, doPiPiI, doBonded, PBC, CheckInvariants)
@@ -994,32 +1073,38 @@ lib.setSwitches2.restype   =  None
 def setSwitches( CheckInvariants=0, PBC=0, NonBonded=0, NonBondNeighs=0, SurfAtoms=0, GridFF=0, MMFF=0, Angles=0, PiSigma=0, PiPiI=0):
     return lib.setSwitches2(CheckInvariants, PBC, NonBonded, NonBondNeighs, SurfAtoms, GridFF, MMFF, Angles, PiSigma, PiPiI)
 
+# void setSwitchesUFF( int DoBond, int DoAngle, int DoDihedral, int DoInversion, int DoAssemble, int SubtractBondNonBond, int ClampNonBonded )
+lib.setSwitchesUFF.argtypes  = [c_int, c_int, c_int, c_int, c_int, c_int, c_int]
+lib.setSwitchesUFF.restype   =  None
+def setSwitchesUFF( DoBond=0, DoAngle=0, DoDihedral=0, DoInversion=0, DoAssemble=0, SubtractBondNonBond=0, ClampNonBonded=0):
+    return lib.setSwitchesUFF(DoBond, DoAngle, DoDihedral, DoInversion, DoAssemble, SubtractBondNonBond, ClampNonBonded)
+
 #  bool checkInvariants( double maxVcog, double maxFcog, double maxTg )
-lib.checkInvariants.argtypes  = [c_double, c_double, c_double] 
+lib.checkInvariants.argtypes  = [c_double, c_double, c_double]
 lib.checkInvariants.restype   =  c_bool
 def checkInvariants(maxVcog=1e-9, maxFcog=1e-9, maxTg=1e-1):
     return lib.checkInvariants(maxVcog, maxFcog, maxTg)
 
 #  void set_opt( double dt_max,  double dt_min, double damp_max, double finc,    double fdec,   double falpha, int minLastNeg, double cvf_min, double cvf_max){
-lib.set_opt.argtypes  = [c_double, c_double, c_double, c_double, c_double, c_double, c_int, c_double, c_double] 
+lib.set_opt.argtypes  = [c_double, c_double, c_double, c_double, c_double, c_double, c_int, c_double, c_double]
 lib.set_opt.restype   =  None
 def set_opt( dt_max=0.1, dt_min=0.02, damp_max=0.2, finc=1.1, fdec=0.5, falpha=0.8, minLastNeg=5, cvf_min=-0.1, cvf_max=+0.1 ):
     return lib.set_opt(dt_max, dt_min, damp_max, finc, fdec, falpha, minLastNeg, cvf_min, cvf_max)
 
 #  void setOptLog( int n, double* cos, double* f, double* v, double* dt, double* damp ){
-lib.setOptLog.argtypes  = [c_int, c_double_p, c_double_p, c_double_p, c_double_p, c_double_p] 
+lib.setOptLog.argtypes  = [c_int, c_double_p, c_double_p, c_double_p, c_double_p, c_double_p]
 lib.setOptLog.restype   =  None
 def setOptLog( n ):
-    cos  = np.zeros(n) 
-    f    = np.zeros(n) 
-    v    = np.zeros(n) 
-    dt   = np.zeros(n) 
+    cos  = np.zeros(n)
+    f    = np.zeros(n)
+    v    = np.zeros(n)
+    dt   = np.zeros(n)
     damp = np.zeros(n)
     lib.setOptLog(n, _np_as(cos,c_double_p), _np_as(f,c_double_p), _np_as(v,c_double_p), _np_as(dt,c_double_p), _np_as(damp,c_double_p))
     return cos,f,v,dt,damp
 
-#  void setTrjName( char* trj_fname_ ){ 
-lib.setTrjName.argtypes  = [c_char_p, c_int ] 
+#  void setTrjName( char* trj_fname_ ){
+lib.setTrjName.argtypes  = [c_char_p, c_int ]
 lib.setTrjName.restype   =  c_bool
 def setTrjName(trj_fname_="trj.xyz", savePerNsteps=1, bDel=True, nPBC=(1,1,1) ):
     if bDel: open(trj_fname_,"w").close()
@@ -1029,39 +1114,39 @@ def setTrjName(trj_fname_="trj.xyz", savePerNsteps=1, bDel=True, nPBC=(1,1,1) ):
     return lib.setTrjName( trj_fname, savePerNsteps, _np_as(nPBC,c_int_p)  )
 
 #  int saveXYZ( const char* fname, const char* comment)
-lib.saveXYZ.argtypes  = [c_char_p, c_char_p, c_int ] 
+lib.saveXYZ.argtypes  = [c_char_p, c_char_p, c_int ]
 lib.saveXYZ.restype   =  c_int
 def saveXYZ(fname, comment, imod=1 ):
     return lib.saveXYZ( cstr(fname), cstr(comment), imod )
 
 # char* getTypeName( int ia, bool fromFF){
-lib.getTypeName.argtypes  = [c_int, c_bool ] 
+lib.getTypeName.argtypes  = [c_int, c_bool ]
 lib.getTypeName.restype   =  c_char_p
 def getTypeName( ia, fromFF=True ):
     s = lib.getTypeName( ia, fromFF )
     ss = s.decode()
-    return ss 
+    return ss
 
 #double eval()
-lib.eval.argtypes  = [] 
+lib.eval.argtypes  = []
 lib.eval.restype   =  c_double
 def eval():
     return lib.eval()
 
 # #bool relax( int niter, double Ftol )
-# lib.relax.argtypes  = [c_int, c_double, c_bool ] 
+# lib.relax.argtypes  = [c_int, c_double, c_bool ]
 # lib.relax.restype   =  c_bool
 # def relax(niter=100, Ftol=1e-6, bWriteTrj=False ):
 #     return lib.relax(niter, Ftol, bWriteTrj )
 
 # #  int  run( int nstepMax, double dt, double Fconv=1e-6, int ialg=0 ){
-# lib. run.argtypes  = [c_int, c_double, c_double, c_int ] 
+# lib. run.argtypes  = [c_int, c_double, c_double, c_int ]
 # lib. run.restype   =  c_int
 # def  run(nstepMax=1000, dt=-1, Fconv=1e-6, ialg=2 ):
 #     return lib.run(nstepMax, dt, Fconv, ialg )
 
 #  int  run( int nstepMax, double dt, double Fconv=1e-6, int ialg=0 ){
-lib. run.argtypes  = [c_int, c_double, c_double, c_int, c_double, c_double_p, c_double_p, c_double_p, c_double_p, c_bool ] 
+lib. run.argtypes  = [c_int, c_double, c_double, c_int, c_double, c_double_p, c_double_p, c_double_p, c_double_p, c_bool ]
 lib. run.restype   =  c_int
 def run(nstepMax=1000, dt=-1, Fconv=1e-6, ialg=2, damping=-1.0, outE=None, outF=None, outV=None, outVF=None, omp=False):
     return lib.run(nstepMax, dt, Fconv, ialg, damping, _np_as(outE,c_double_p), _np_as(outF,c_double_p), _np_as(outV,c_double_p), _np_as(outVF,c_double_p), omp )
@@ -1077,7 +1162,7 @@ def scan(poss, rots=None, Es=None, aforces=None, aposs=None,  bF=False,bP=False,
     if (aposs is None) and bP:   aposs=np.zeros(   (nconf,natoms,3) )
     #lib.scan(nconf, poss, rots, Es, aforces, aposs, omp, bRelax, niter_max, dt, Fconv, Flim )
     lib.scan( nconf, _np_as(poss,c_double_p), _np_as(rots,c_double_p), _np_as(Es,c_double_p), _np_as(aforces,c_double_p), _np_as(aposs,c_double_p), omp, bRelax, niter_max, dt, Fconv, Flim )
-    return Es, aforces, aposs 
+    return Es, aforces, aposs
 
 # int getHessian3x3( int n_atoms, int* inds, double* out_hessians, double dx, bool bDiag )
 lib.getHessian3x3.argtypes = [c_int, c_int_p, c_double_p, c_double, c_bool]
@@ -1116,14 +1201,14 @@ def scan_atoms_rigid(inds, poss, out_forces=None, out_Es=None, bRelative=True, b
 # ========= Lattice Optimization
 
 #  void change_lvec( double* lvec, bool bAdd, bool  ){
-lib.change_lvec.argtypes  = [c_double_p, c_bool, c_bool] 
+lib.change_lvec.argtypes  = [c_double_p, c_bool, c_bool]
 lib.change_lvec.restype   =  None
 def change_lvec( lvec, bAdd=False, bUpdatePi=False ):
     lvec=np.array( lvec,dtype=np.float64)
     return lib.change_lvec(_np_as(lvec,c_double_p), bAdd, bool)
 
 #  void optimizeLattice_1d( double* dlvec, int n1, int n2, int initMode, double tol ){
-lib.optimizeLattice_1d.argtypes  = [c_double_p, c_int, c_int, c_int, c_double] 
+lib.optimizeLattice_1d.argtypes  = [c_double_p, c_int, c_int, c_int, c_double]
 lib.optimizeLattice_1d.restype   =  None
 def optimizeLattice_1d(dlvec, n1=5, n2=5, initMode=0, tol=1e-6):
     dlvec=np.array( dlvec,dtype=np.float64)
@@ -1133,24 +1218,24 @@ def optimizeLattice_1d(dlvec, n1=5, n2=5, initMode=0, tol=1e-6):
 # ========= Constrains
 
 #  void addDistConstrain(  int i0,int i1, double lmin,double lmax,double kmin,double kmax,double flim, double k, double* shift ){
-lib.addDistConstrain.argtypes  = [c_int, c_int, c_double, c_double, c_double, c_double, c_double, c_double_p ] 
+lib.addDistConstrain.argtypes  = [c_int, c_int, c_double, c_double, c_double, c_double, c_double, c_double_p ]
 lib.addDistConstrain.restype   =  None
 def addDistConstrain( i0, i1, lmin=1, lmax=1, kmin=1, kmax=1, flim=1e+300, l=None, k=None, shift=(0.,0.,0.), bOldIndex=True ):
-    if l is not None: 
+    if l is not None:
         lmin=l; lmax=l
-    if k is not None: 
+    if k is not None:
         kmin=k; kmax=k
     shift=np.array(shift)
     return lib.addDistConstrain(i0, i1, lmin, lmax, kmin, kmax, flim, _np_as(shift,c_double_p) )
 
 #  void addAngConstrain(  int i0,int i1,int i2, double ang0, double k ){
-lib.addAngConstrain.argtypes  = [c_int, c_int, c_int, c_double, c_double] 
+lib.addAngConstrain.argtypes  = [c_int, c_int, c_int, c_double, c_double]
 lib.addAngConstrain.restype   =  None
 def addAngConstrain(i0, i1, i2, ang0=0.0, k=1.0):
     return lib.addAngConstrain(i0, i1, i2, ang0, k)
 
 #  int substituteMolecule( const char* fname, int ib, double* up, int ipivot, bool bSwapBond )
-lib.substituteMolecule.argtypes  = [c_char_p, c_int, c_double_p, c_int, c_bool] 
+lib.substituteMolecule.argtypes  = [c_char_p, c_int, c_double_p, c_int, c_bool]
 lib.substituteMolecule.restype   =  c_int
 def substituteMolecule(fname, ib, ipivot, up=(0,0,1), bSwapBond=False):
     up = np.array(up, np.int23)
@@ -1159,7 +1244,7 @@ def substituteMolecule(fname, ib, ipivot, up=(0,0,1), bSwapBond=False):
 # ============= Manipulation
 
 #void shift_atoms_ax( int n, int* sel, double* d                  )
-lib.shift_atoms_ax.argtypes  = [c_int, c_int_p, c_double_p] 
+lib.shift_atoms_ax.argtypes  = [c_int, c_int_p, c_double_p]
 lib.shift_atoms_ax.restype   =  None
 def shift_atoms_ax(d, sel=None):
     n=0
@@ -1170,7 +1255,7 @@ def shift_atoms_ax(d, sel=None):
     return lib.shift_atoms_ax(n, _np_as(sel,c_int_p), _np_as(d,c_double_p))
 
 #void shift_atoms( int n, int* sel, int ia0, int ia1, double l )
-lib.shift_atoms.argtypes  = [c_int, c_int_p, c_int, c_int, c_double] 
+lib.shift_atoms.argtypes  = [c_int, c_int_p, c_int, c_int, c_double]
 lib.shift_atoms.restype   =  None
 def shift_atoms( ia0, ia1, l, sel=None):
     n=0
@@ -1180,7 +1265,7 @@ def shift_atoms( ia0, ia1, l, sel=None):
     return lib.shift_atoms(n, _np_as(sel,c_int_p), ia0, ia1, l)
 
 #  rotate_atoms_ax( int n, int* sel, double* p0, double* ax, double phi      )
-lib.rotate_atoms_ax.argtypes  = [c_int, c_int_p, c_double_p, c_double_p, c_double] 
+lib.rotate_atoms_ax.argtypes  = [c_int, c_int_p, c_double_p, c_double_p, c_double]
 lib.rotate_atoms_ax.restype   =  None
 def rotate_atoms_ax( phi, sel=None, p0=None, ax=None ):
     n=0
@@ -1192,7 +1277,7 @@ def rotate_atoms_ax( phi, sel=None, p0=None, ax=None ):
     return lib.rotate_atoms_ax(n, _np_as(sel,c_int_p), _np_as(p0,c_double_p), _np_as(ax,c_double_p), phi)
 
 #  rotate_atoms( int n, int* sel, int ia0, int iax0, int iax1, double phi )
-lib.rotate_atoms_ax.argtypes  = [c_int, c_int_p, c_int, c_int, c_int, c_double] 
+lib.rotate_atoms_ax.argtypes  = [c_int, c_int_p, c_int, c_int, c_int, c_double]
 lib.rotate_atoms_ax.restype   =  None
 def rotate_atoms_ax(ia0, iax0, iax1, phi, sel=None):
     n=0
@@ -1202,13 +1287,13 @@ def rotate_atoms_ax(ia0, iax0, iax1, phi, sel=None):
     return lib.rotate_atoms_ax(n, _np_as(sel,c_int_p), ia0, iax0, iax1, phi)
 
 # #  int splitAtBond( int ib, int* sel )
-# lib.splitAtBond.argtypes  = [c_int, c_int_p] 
+# lib.splitAtBond.argtypes  = [c_int, c_int_p]
 # lib.splitAtBond.restype   =  c_int
 # def splitAtBond(ib, sel=None):
 #     return lib.splitAtBond(ib, _np_as(sel,c_int_p))
 
 #  void scanTranslation_ax( int n, int* sel, double* vec, int nstep, double* Es, bool bWriteTrj )
-lib.scanTranslation_ax.argtypes  = [c_int, c_int_p, c_double_p, c_int, c_double_p, c_bool] 
+lib.scanTranslation_ax.argtypes  = [c_int, c_int_p, c_double_p, c_int, c_double_p, c_bool]
 lib.scanTranslation_ax.restype   =  None
 def scanTranslation_ax(nstep, Es, bWriteTrj, sel=None, vec=None, ):
     n=0
@@ -1219,14 +1304,14 @@ def scanTranslation_ax(nstep, Es, bWriteTrj, sel=None, vec=None, ):
     return lib.scanTranslation_ax(n, _np_as(sel,c_int_p), _np_as(vec,c_double_p), nstep, _np_as(Es,c_double_p), bWriteTrj)
 
 #  void scanTranslation( int n, int* sel, int ia0, int ia1, double l, int nstep, double* Es, bool bWriteTrj )
-lib.scanTranslation.argtypes  = [c_int, c_int_p, c_int, c_int, c_double, c_int, c_double_p, c_bool] 
+lib.scanTranslation.argtypes  = [c_int, c_int_p, c_int, c_int, c_double, c_int, c_double_p, c_bool]
 lib.scanTranslation.restype   =  None
 def scanTranslation( ia0, ia1, l, nstep, Es=None, sel=None, bWriteTrj=False):
     if Es is None: Es=np.zeros(nstep)
     return lib.scanTranslation(n, _np_as(sel,c_int_p), ia0, ia1, l, nstep, _np_as(Es,c_double_p), bWriteTrj)
 
 #  void scanRotation_ax( int n, int* sel, double* p0, double* ax, double phi, int nstep, double* Es, bool bWriteTrj ){
-lib.scanRotation_ax.argtypes  = [c_int, c_int_p, c_double_p, c_double_p, c_double, c_int, c_double_p, c_bool] 
+lib.scanRotation_ax.argtypes  = [c_int, c_int_p, c_double_p, c_double_p, c_double, c_int, c_double_p, c_bool]
 lib.scanRotation_ax.restype   =  None
 def scanRotation_ax( phi, nstep, sel=0, p0=None, ax=None,  Es=None, bWriteTrj=False):
     n=0
@@ -1239,7 +1324,7 @@ def scanRotation_ax( phi, nstep, sel=0, p0=None, ax=None,  Es=None, bWriteTrj=Fa
     return Es
 
 #  void scanRotation( int n, int* sel,int ia0, int iax0, int iax1, double phi, int nstep, double* Es, bool bWriteTrj ){
-lib.scanRotation.argtypes  = [c_int, c_int_p, c_int, c_int, c_int, c_double, c_int, c_double_p, c_bool] 
+lib.scanRotation.argtypes  = [c_int, c_int_p, c_int, c_int, c_int, c_double, c_int, c_double_p, c_bool]
 lib.scanRotation.restype   =  None
 def scanRotation( ia0, iax0, iax1, phi, nstep, sel=None, Es=None, bWriteTrj=False, _0=0):
     n=0
@@ -1253,7 +1338,7 @@ def scanRotation( ia0, iax0, iax1, phi, nstep, sel=None, Es=None, bWriteTrj=Fals
     return Es
 
 def scanBondRotation( ib, phi, nstep, Es=None, bWriteTrj=False, bPrintSel=False):
-    nsel = splitAtBond(ib) 
+    nsel = splitAtBond(ib)
     if bPrintSel: print( "split to:\n", selection[:nsel],"\n", selection[nsel:] )
     ias = bond2atom[ib,:]
     return scanRotation( ias[0], ias[0], ias[1], phi, nstep, sel=None, Es=Es, bWriteTrj=bWriteTrj)
@@ -1293,7 +1378,7 @@ def plot(b2as=None,ax1=0,ax2=1,ps=None, fs=None, bForce=False, Fscale=1.0 ):
         ax.add_collection(lc)
 
         for i,p in enumerate(ps):    ax.annotate( "%i"%i , (p[ax1],p[ax2]), color='b' )
-        for i,l in enumerate(lines): 
+        for i,l in enumerate(lines):
             p= ((l[0][0]+l[1][0])*0.5,(l[0][1]+l[1][1])*0.5)
             ax.annotate( "%i"%i , p, color='k')
     plt.axis('equal')
@@ -1328,7 +1413,3 @@ def plot_selection(sel=None,ax1=0,ax2=1,ps=None, s=100):
 # if __name__ == "__main__":
 #     import matplotlib.pyplot as plt
 #     plt.show()
-
-
-
-

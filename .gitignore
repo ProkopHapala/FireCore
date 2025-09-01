@@ -26,5 +26,8 @@ cpp/Build
 cpp/Build-*
 cpp/build
 cpp/build-*
+
+tests/*/common_resources/
+tests/*/data/
 .aider*
 .env

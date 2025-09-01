@@ -1,12 +1,10 @@
 #!/bin/bash
 
-wd=`pwd`
-
 #LD_LIBRARY_PATH=/home/prokop/intel/mkl/lib/intel64:$LD_LIBRARY_PATH
 #LD_LIBRARY_PATH=/usr/lib/gcc/x86_64-linux-gnu/11/:$LD_LIBRARY_PATH
 
-
 #echo "#=========== Compile C++"
+wd=`pwd`
 cd ../../cpp/Build/libs/Molecular/
 pwd
 rm   libFitREQ_lib.so
