@@ -175,191 +175,292 @@ float2 addKineticGauss_eFF( float s ){
     return (float2){ E, fs  };
 }
 
-// =======================================
-// ========   Eval Electrons      ========
-// =======================================
+// ==============================================================
+//      VERSION 4: High-Performance Kernel with Loop Splitting
+#define idDBG    4 // debug thread index
+#define nLocal   32
+#define nIonMax  8
+// ==============================================================
 
-__kernel void eval_electrons(
-    int na,                    // 1 
-    int ne,                    // 2
-    __global float4*  apos,    // 3      
-    __global float4*  aforce,  // 4  
-    __global float4*  aParams, // 5 
-    __global float4*  epos,    // 6     
-    __global float4*  eforce,  // 7
-    __global int*     espin,   // 8
-    float4 KRSrho              // 9
-){
-    __local float4 LATOM[32];   // local buffer for atom positions
-    __local int    LSPIN[32];   // local buffer for atom parameters
-    const int iG = get_global_id  (0); // index of atom
-    const int nG = get_global_size(0); // number of atoms
-    const int iS = get_global_id  (1); // index of system
-    const int nS = get_global_size(1); // number of systems
-    const int iL = get_local_id   (0); // index of atom in local memory
-    const int nL = get_local_size (0); // number of atoms in local memory
-    const int i0e = iS*ne;    // index of first atom in atoms array
-    const int ie  = iG + i0e; // index of atom in atoms array
+__kernel void localMD(
+    __global       int4*        sysinds, // [nsys]   {na,ne,i0p,i0a} size and initial index for each atom
+    __global       float4*      pos,     // [ntot]   {x,y,z,w} positions (and size) of ions and electrons
+    __global       float4*      vel,     // [ntot]   {vx,vy,vz,dw/dt} velocities of ions and electrons (including change of size)
+    __global const float8*      aParams, // [ntot_a] parameters of ions { Z_nuc, R_eff, Zcore_eff,   PA,        PB,        PC,        PD }
+    __global const signed char* espins,  // [ntot]   {spin} 
+    const int    nsys,
+    const int    nsteps,
+    const float  dt,
+    const float  damping,
+    const float4 KRSrho,
+    const int    bFrozenCore
+) {
+    const int isys  = get_group_id(0);
+    const int4 inds = sysinds[isys];
+    const int lid   = get_local_id(0);
+    const int ip    = inds.z + lid;
+    const int na    = inds.x;
+    const int ne    = inds.y;
+    const int ntot  = inds.x + inds.y;
+
+    if (get_global_id(0) == idDBG){ 
+        int nSys = get_num_groups(0); 
+        int nL   = get_local_size(0);
+        printf("GPU: nSys=%d nL=%d na=%d ne=%d ntot=%d   nsteps=%d dt=%f damping=%f\n", nSys, nL, na, ne, ntot, nsteps, dt, damping);
+        for(int isys=0; isys<nSys; isys++){
+            int4 is = sysinds[isys];
+            int nt = is.x + is.y;
+            printf("System %2i na %2i ne %2i ntot %2i  | i0 %4i  i0a %4i \n", isys, is.x, is.y, nt, is.z, is.w );
+            for(int i=0; i<nt; i++){
+                float4 pi = pos[i];
+                printf("sys %2i p# %2i p(%12.8f,%12.8f,%12.8f,%12.8f)", isys, i, pi.x, pi.y, pi.z, pi.w );
+                if(i<na){
+                    float8 api = aParams[i];
+                    printf(" Atom params(%12.8f,%12.8f,%12.8f,%12.8f,%12.8f,%12.8f,%12.8f,%12.8f)\n", api.s0, api.s1, api.s2, api.s3, api.s4, api.s5, api.s6, api.s7 );
+                }else{ 
+                    printf(" Electron \n");
+                }
+            }
+        }
+    }
+
+    if (lid >= ntot) return;
+
+    // --- Local Memory State ---
+    __local float4      l_pos     [nLocal];
+    __local float8      l_aparams [nIonMax];
+    __local signed char l_spins   [nLocal];
+
+    // --- Load initial state from Global to Local memory ---
+    float4 posi = pos[ip];
+    float4 veli = vel[ip];
+
+    l_pos[lid] = posi;
+    if (lid < inds.x){ l_aparams[lid       ] = aParams[inds.w+lid];   } 
+    else             { l_spins  [lid-inds.x] = espins[ip]; }
+
+    barrier(CLK_LOCAL_MEM_FENCE);
+
+    for (int i_step = 0; i_step < nsteps; ++i_step) {
+        
+        float4 forcei = (float4)(0.0f);
+        const bool i_am_ion = (lid < na);
+
+        // --- PART 1: FORCE CALCULATION ---
+        
+        if (i_am_ion) {  // =============   I am an ION thread 
+            const float8 pari    = l_aparams[lid];
+            const float  Qi      = pari.s0 - pari.s2;
+            const float  Ri      = pari.s1;
+
+            if (get_global_id(0) == idDBG){   printf("Ion %3i Qi %12.8e Ri %12.8e pos(%12.8e,%12.8e,%12.8e,%12.8e)\n", lid, Qi, Ri, posi.x,posi.y,posi.z,posi.w );}
+            // --- Ion-Ion Interactions ---
+            for (int j = 0; j < na; ++j) {
+                if (lid == j) continue;
+                const float3 dR            = l_pos[j].xyz - posi.xyz;
+                const float8 parj          = l_aparams[j];
+                const float  Qj            = parj.s0 - parj.s2;
+                //const float  Rj            = parj.s1;
+                float4 fij = getCoulomb(dR, Qi * Qj); forcei += fij; 
+                if (get_global_id(0) == idDBG){   printf("Ion-Ion %3i %3i Qi %12.8e Qj %12.8e |dR| %12.8e fij(%12.8e,%12.8e,%12.8e,%12.8e) \n", lid, j, Qi, Qj, length(dR), fij.x, fij.y, fij.z, fij.w ); }
+            }
+            // --- Ion-Electron Interactions ---
+            for (int j = na; j < ntot; ++j) {
+                const float4 pj = l_pos[j];
+                const float3 dR = pj.xyz - posi.xyz;
+                float4 fg = getCoulombGauss  (dR, Ri, pj.w, Qi ); forcei += fg;
+                if (get_global_id(0) == idDBG){   printf("Ion-Elec %3i %3i Qi %12.8e pj.w %12.8e |dR| %12.8e fg(%12.8e,%12.8f,%12.8f,%12.8f,%12.8f) \n", lid, j, Qi, pj.w, length(dR), fg.x, fg.y, fg.z, fg.w );}
+                if( bFrozenCore ){
+                    //float4 fp = getPauliGauss_New(dR, Ri, pj.w, 0, KRSrho);
+                }
+            }
+        } else {  // =========== I am an ELECTRON thread
+            const int spini = l_spins[lid - na];
+            
+            // --- Kinetic Force ---
+            float2 fk = addKineticGauss_eFF(posi.w);
+            forcei.w += fk.y;
+
+            // --- Electron-Ion Interactions ---
+            for (int j = 0; j < na; ++j) {
+                const float8 parj = l_aparams[j];
+                const float3 dR   = parj.s0 - posi.xyz;
+                const float Qj    = parj.s0 - parj.s2;
+                const float Rj    = parj.s1;
+                float4 fg = getCoulombGauss  (dR, posi.w, Rj, -1.0f * Qj); forcei += fg;
+                if (get_global_id(0) == idDBG){   printf("Elec-Ion %3i %3i posi.w %12.8e Qj %12.8e |dR| %12.8e fg(%12.8e,%12.8e,%12.8e,%12.8e) \n", lid, j, posi.w, Qj, length(dR), fg.x, fg.y, fg.z, fg.w );}
+                if( bFrozenCore ){
+                    //float4 fp = getPauliGauss_New(dR, posi.w, Rj, 0, KRSrho);
+                }
+            }
+
+            // --- Electron-Electron Interactions ---
+            for (int j = na; j < ntot; ++j) {
+                if (lid == j) continue;
+                const float4 pj = l_pos[j];
+                const float3 dR           = pj.xyz - posi.xyz;
+                const signed char spinj   = l_spins[j - na];
+                float4 fg = getCoulombGauss  (dR, posi.w, pj.w, 1.0f);
+                float4 fp = getPauliGauss_New(dR, posi.w, pj.w, spinj * spini, KRSrho);
+                if (get_global_id(0) == idDBG){   printf("Elec-Elec %3i %3i posi.w %12.8e pj.w %12.8e |dR| %12.8e fg(%12.8e,%12.8e,%12.8e,%12.8e) \n", lid, j, posi.w, pj.w, length(dR), fg.x, fg.y, fg.z, fg.w );}
+                forcei += fg + fp;
+            }
+        }
+        
+        barrier(CLK_LOCAL_MEM_FENCE);
+
+        // --- PART 2: INTEGRATION STEP ---
     
-    const float4 ai    = epos [ie];
-    const int    spini = espin[ie];
-    float4 fi          = (float4){0.0f,0.0f,0.0f,0.0f};
-    float  Ei          = 0.0f; 
+        //if (get_global_id(0) == idDBG)
+        { printf("update iter %4i il %4i pos(%12.8e,%12.8e,%12.8e,%12.8e) vel(%12.8e,%12.8e,%12.8e,%12.8e) force(%12.8e,%12.8e,%12.8e,%12.8e)\n", i_step, lid, posi.x,posi.y,posi.z,posi.w, veli.x,veli.y,veli.z,veli.w, forcei.x,forcei.y,forcei.z,forcei.w );}
 
-    if(iG>=ne) return;
+        veli *= damping;
+        veli += forcei * dt;
+        posi += veli   * dt;
+        if (!i_am_ion) { posi.w = fmax(posi.w, 0.001f); } // Electron size cannot be zero or negative
 
-    // ========= Kinetic energy
-    float2 efk = addKineticGauss_eFF( ai.w );
-    fi.w += efk.y;
-    Ei   += efk.x;
+        // Update local memory for the next step
+        //l_pos[lid] = pos;
+        //l_vel[lid] = vel;
 
-    // ========= Electron-Electron  ( N-body problem ), we do it in chunks of size of local memory, in order to reuse data and reduce number of reads from global memory  
-    //barrier(CLK_LOCAL_MEM_FENCE);
-    for (int j0=0; j0<nG; j0+=nL){      
-        const int i=j0+iL;             
-        if(i<ne){                       
-            LATOM[iL] = epos [i+i0e]; 
-            LSPIN[iL] = espin[i+i0e]; 
-        }
-        barrier(CLK_LOCAL_MEM_FENCE);  
-        for (int jl=0; jl<nL; jl++){    
-            const int ja=j0+jl;        
-            if( (ja!=iG) && (ja<ne) ){  
-                const float4 aj     = LATOM[jl];    
-                const int    spinj  = LSPIN[jl];   
-                const float3 dp     = aj.xyz - ai.xyz; // vector between atoms
-                const float4 coul   = getCoulombGauss  ( dp, ai.w, aj.w, 1.0 );
-                const float4 paul   = getPauliGauss_New( dp, ai.w, aj.w, spini*spinj, KRSrho );
-                Ei      +=    (coul.x + paul.x);
-                fi.xyz  += dp*(coul.y+coul.y);
-                fi.w    +=     coul.z+paul.z;
-            }
-        }
-        //barrier(CLK_LOCAL_MEM_FENCE);
+        barrier(CLK_LOCAL_MEM_FENCE);
     }
-
-    // ========= Electron-Core  ( N-body problem ), we do it in chunks of size of local memory, in order to reuse data and reduce number of reads from global memory  
-    for (int j0=0; j0<nG; j0+=nL){      
-        const int i=j0+iL;             
-        if(i<ne){                       
-            LATOM[iL] = epos   [i+i0e]; 
-            LAPAR[iL] = aParams[i+i0e]; 
-        }
-        barrier(CLK_LOCAL_MEM_FENCE);   
-        for (int jl=0; jl<nL; jl++){   
-            const int ja=j0+jl;         
-            if( (ja!=iG) && (ja<ne) ){  
-                const float4 aj  = LATOM[jl];    
-                const float4 Pj  = LAPAR[jl];    // { x=Q,y=sQ,z=sP,w=cP }
-                const float3 dp  = aj.xyz - ei.xyz; 
-
-                const float4 coul  = getCoulombGauss  ( dp, ei.w, Pj.y, Pj.x );
-                //const float4 paul   = getPauliGauss_New( dp, ai.w, aj.w, spini*spinj, KRSrho );
-                const float4 paul  = getPauliGauss_New( dp, ei.w, Pj.z, 0, KRSrho );    
-
-                Ei      +=    (coul.x + paul.x);
-                fi.xyz  += dp*(coul.y+coul.y);
-                fi.w    +=     coul.z+paul.z;
-            }
-        }
-        //barrier(CLK_LOCAL_MEM_FENCE);
-    }
-    eforce[ie] += fi;
-
-    eforce[ie] += fi;
+    
+    // --- Write final state back to Global Memory ---
+    pos[ip] = posi;
+    vel[ip] = veli;
 }
+
+
+
 
 // =======================================
 // ========   Eval Ions           ========
 // =======================================
 
 __kernel void eval_ions(
-    int na,                    // 1
-    int ne,                    // 2
-    __global float4*  apos,    // 3       
-    __global float4*  aforce,  // 4    
-    __global float4*  aParams, // 5  
-    __global float4*  epos,    // 6      
-    __global float4*  eforce,  // 7 
-     float4 KRSrho            // 8
-){
-    __local float4 LATOM[32];   // local buffer for atom positions
-    __local float4 LAPAR[32];   // local buffer for atom parameters
-    const int iG = get_global_id  (0); // index of atom
-    const int nG = get_global_size(0); // number of atoms
-    const int iS = get_global_id  (1); // index of system
-    const int nS = get_global_size(1); // number of systems
-    const int iL = get_local_id   (0); // index of atom in local memory
-    const int nL = get_local_size (0); // number of atoms in local memory
-    const int i0e = iS*ne;    // index of first atom in atoms array
-    const int ie  = iG + i0e; // index of atom in atoms array
-    
-    const float4 ei    = epos   [ie];
-    float4 fi          = (float4){0.0f,0.0f,0.0f,0.0f};
-    float  Ei          = 0.0f; 
+    const int na, const int ne,
+    __global const float4* apos,
+    __global const float4* apar,
+    __global const float4* epos,
+    __global const int   * espin,
+    __global       float4* aforce,
+    const float4 KRSrho)
+{
+    const int gid = get_global_id(0);
+    if (gid >= na) return;
 
-    if(iG>=ne) return;
+    const float4 ai = apos[gid];
+    const float4 pi = apar[gid];
+    float4 fi = (float4)(0.0f);
 
-    // ========= Atom-to-Atom interaction ( N-body problem ), we do it in chunks of size of local memory, in order to reuse data and reduce number of reads from global memory  
-    //barrier(CLK_LOCAL_MEM_FENCE);
-    for (int j0=0; j0<nG; j0+=nL){      
-        const int i=j0+iL;              
-        if(i<na){                      
-            LATOM[iL] = apos [i+i0a];  
+    __local float4 LAPOS[32];
+    __local float4 LAPAR[32];
+
+    // ion–ion interactions
+    for (int base=0; base<na; base+=32) {
+        int lid = get_local_id(0);
+        int j = base + lid;
+        if (j < na) { LAPOS[lid] = apos[j]; LAPAR[lid] = apar[j]; }
+        barrier(CLK_LOCAL_MEM_FENCE);
+        for (int l=0; l<32 && base+l<na; ++l) {
+            if (base+l == gid) continue;
+            float4 aj = LAPOS[l];
+            float4 pj = LAPAR[l];
+            float3 dp = aj.xyz - ai.xyz;
+            float4 c  = getCoulomb(dp, pj.w * pi.w);
+            fi.xyz += c.xyz;
+            fi.w   += c.w;
         }
-        barrier(CLK_LOCAL_MEM_FENCE);   
-        for (int jl=0; jl<nL; jl++){   
-            const int ja=j0+jl;        
-            if( (ja!=iG) && (ja<na) ){  
-                const float4 aj     = LATOM[jl];    
-                const float3 dp     = aj.xyz - ai.xyz; 
-                fe += getCoulomb( dp, aj.w*ai.w );
-                { // ToDo - core electron interaction
-
-                }
-            }
-        }
-        //barrier(CLK_LOCAL_MEM_FENCE);
+        barrier(CLK_LOCAL_MEM_FENCE);
     }
 
-    // ========= Atom-to-Atom interaction ( N-body problem ), we do it in chunks of size of local memory, in order to reuse data and reduce number of reads from global memory  
-    //barrier(CLK_LOCAL_MEM_FENCE);
-    for (int j0=0; j0<nG; j0+=nL){      
-        const int i=j0+iL;             
-        if(i<na){                       
-            LATOM[iL] = apos [i+i0a];  
+    // ion–electron interactions
+    __local float4 LEPOS[32];
+    __local int    LSPIN[32];
+    for (int base=0; base<ne; base+=32) {
+        int lid = get_local_id(0);
+        int j = base + lid;
+        if (j < ne) { LEPOS[lid] = epos[j]; LSPIN[lid] = espin[j]; }
+        barrier(CLK_LOCAL_MEM_FENCE);
+        for (int l=0; l<32 && base+l<ne; ++l) {
+            float4 ej = LEPOS[l];
+            int sj = LSPIN[l];
+            float3 dp = ej.xyz - ai.xyz;
+            float4 c  = getCoulombGauss(dp, ej.w, pi.w, 1.0f);
+            float4 p  = getPauliGauss_New(dp, ej.w, pi.w, sj * 0, KRSrho);
+            fi.xyz += c.xyz;
+            fi.w   += c.w;
         }
-        barrier(CLK_LOCAL_MEM_FENCE);  
-        for (int jl=0; jl<nL; jl++){    
-            const int ja=j0+jl;        
-            if( (ja!=iG) && (ja<na) ){   
-                const float4 aj     = LATOM[jl];    
-                const float3 dp     = aj.xyz - ai.xyz; 
-                fe += getCoulomb( dp, aj.w*ai.w );
-                { // ToDo - core electron interaction
-
-                }
-            }
-        }
-        //barrier(CLK_LOCAL_MEM_FENCE);
+        barrier(CLK_LOCAL_MEM_FENCE);
     }
 
-
-
+    aforce[gid] = fi;
 }
 
+// =======================================
+// ========   Eval Electrons      ========
+// =======================================
 
-/*
-__kernel void eFF_evalAE(
-    int na, int ne,
-    __global float4*  apos,        
-    __global float4*  aforce,      
-    __global float4*  epos,         
-    __global float4*  eforce,       
-    __global int   *  espin         
-){
+__kernel void eval_electrons(
+        const int na, const int ne,
+        __global const float4* apos,
+        __global const float4* apar,
+        __global const float4* epos,
+        __global const int   * espin,
+        __global       float4* eforce,
+        const float4 KRSrho)
+{
+    const int gid = get_global_id(0);          // electron index
+    if (gid >= ne) return;
 
+    const float4 ei   = epos [gid];
+    const int    si   = espin[gid];
+    float4 fi        = (float4)(0.0f);
+
+    __local float4 LEPOS[32];
+    __local int    LSPIN[32];
+
+    // -------- electron–electron ----------
+    for (int base=0; base<ne; base+=32) {
+        const int lid = get_local_id(0);
+        const int j   = base + lid;
+        if (j < ne) { LEPOS[lid] = epos[j];  LSPIN[lid]=espin[j]; }
+        barrier(CLK_LOCAL_MEM_FENCE);
+
+        for (int l=0; l<32 && base+l<ne; ++l) {
+            if (base+l == gid) continue;
+            float4 ej = LEPOS[l];
+            int    sj = LSPIN[l];
+            float3 dp = ej.xyz - ei.xyz;
+            // coulomb / pauli
+            float4 c  = getCoulombGauss(dp, ei.w, ej.w, 1.0f);
+            float4 p  = getPauliGauss_New(dp, ei.w, ej.w, si*sj, KRSrho);
+            fi.xyz += dp*(c.y+c.y);
+            fi.w   += c.z + p.z;
+        }
+        barrier(CLK_LOCAL_MEM_FENCE);
+    }
+
+    // -------- electron–ion ----------
+    __local float4 LAPOS[32];
+    __local float4 LAPAR[32];
+    for (int base=0; base<na; base+=32) {
+        const int lid = get_local_id(0);
+        const int j   = base + lid;
+        if (j < na) { LAPOS[lid]=apos[j];  LAPAR[lid]=apar[j]; }
+        barrier(CLK_LOCAL_MEM_FENCE);
+
+        for (int l=0; l<32 && base+l<na; ++l) {
+            float4 aj = LAPOS[l];
+            float4 pj = LAPAR[l];
+            float3 dp = aj.xyz - ei.xyz;
+            float4 c  = getCoulombGauss(dp, ei.w, pj.y, pj.x);
+            fi.xyz += dp*(c.y+c.y);
+            fi.w   += c.z;
+        }
+        barrier(CLK_LOCAL_MEM_FENCE);
+    }
+
+    eforce[gid] = fi;
 }
-
-*/
-

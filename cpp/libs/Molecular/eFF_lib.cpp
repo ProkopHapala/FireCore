@@ -196,7 +196,7 @@ void initOpt( double dt, double damping, double f_limit, bool bMass ){
 };
 
 //int run( int nstepMax, double dt, double Fconv=1e-6, int ialg=0, double* outE, double* outF ){ 
-int run( int nstepMax, double dt, double Fconv, int ialg, double* outE, double* outF ){ 
+int run( int nstepMax, double dt, double Fconv, int ialg, double* outE, double* outF, bool* bConv=0 ){ 
     double F2conv=Fconv*Fconv;
     double F2 = 1.0;
     double Etot;
@@ -209,7 +209,6 @@ int run( int nstepMax, double dt, double Fconv, int ialg, double* outE, double* 
         //printf("run() opt.vel %p\n", opt.vel); 
         opt.cleanVel( ); 
     }
-    bool bConv=false;
     //if(ff.nfix>0){ ff.apply_hard_fix(); }
     for(itr=0; itr<nstepMax; itr++ ){
         ff.clearForce();
@@ -229,7 +228,7 @@ int run( int nstepMax, double dt, double Fconv, int ialg, double* outE, double* 
         if(F2<F2conv){
             if(verbosity>0){ printf("eFF_lib.cpp::run() Converged in %i iteration Etot %g[eV] |F| %g[eV/A] <(Fconv=%g) \n", itr, Etot, sqrt(F2), Fconv ); };
             //if(verbosity>0){ printf("Converged in %i iteration Etot %g[eV] |F| %g[eV/A] <(Fconv=%g) \n", itr, Etot, sqrt(F2), Fconv ); };
-            bConv=true;
+            *bConv=true;
             break;
         }
         if( (trj_fname) && (itr%savePerNsteps==0) )  ff.save_xyz( trj_fname, "a" );
@@ -730,7 +729,7 @@ int processXYZ( const char* fname, double Rfac=-0.5, double* outEs=0, double* ap
 
 
 // This functions takes .xyz file with full electron description
-int processXYZ_e( const char* fname, double* outEs=0, double* apos_=0, double* epos_=0, int nstepMax=1000, double dt=0.001, double Fconv=1e-3, int optAlg=2, const char* xyz_out="processXYZ.xyz", const char* fgo_out="processXYZ.fgo" ){
+int processXYZ_e( const char* fname, double* outEs=0, double* apos_=0, double* epos_=0, int nstepMax=1000, double dt=0.001, double Fconv=1e-3, int optAlg=2, const char* xyz_out="processXYZ.xyz", const char* fgo_out="processXYZ.fgo", int* convSum=0){
     printf("processXYZ_e(%s)\n", fname);
     //double8* apars = ff.atom_params2;
     FILE* fin = fopen(fname, "r");
@@ -761,7 +760,20 @@ int processXYZ_e( const char* fname, double* outEs=0, double* apos_=0, double* e
         if (il>=nae+2){
             if(verbosity>0) printf( "----- conf: %i \n", iconf );
             if(verbosity>0) ff.info();
-            if(nstepMax > 0) run(nstepMax, dt, Fconv, optAlg, 0, 0);   
+            if( nstepMax>0 ){ //relaxace - zafixovana jadra
+                { // constrain
+                    int nfix=ff.na;
+                    if(iconf==0)ff.realloc_fixed(nfix);
+                    for(int i=0; i<nfix; i++){
+                        ff.fixed_poss[i].f = ff.apos[i];
+                        ff.fixed_inds[i] = Vec2i{i,7};
+                    }
+                }
+                bool bConv = false;
+                run( nstepMax, dt, Fconv, optAlg, 0, 0, &bConv );
+                //printf("processXYZ_e()");
+                if(bConv) {(*convSum)++;}
+            }  
             ff.eval();
             ff.copyEnergies         (         outEs, iconf );
             ff.copyAtomPositions    ((Vec3d* )apos_, iconf );

@@ -12,12 +12,12 @@ sys.path.append("../../")
 from scipy.optimize import dual_annealing
 from pyBall import eFF as eff
 
-elementPath_e = "export/scan_data/angdistscan_CH4_e2.xyz"
+elementPath_e = "export/scan_data/angdistscan_CH4_ee.xyz"
 elementPath = "export/scan_data/angdistscan_CH4.xyz"
 fileToSavePath = "results/AI/result_dual_anneal.txt"
 fileToSaveProcess = "processXYZ.xyz"
-numOfGetVar = 0
-
+numOfFunc = 0
+maxPairedEl = 4
 
 # class Angdist_sim:
 def count_mask_lines( fgo_file, mask='#iconf' ):
@@ -33,10 +33,10 @@ def count_mask_lines( fgo_file, mask='#iconf' ):
 
 def extract_nae( xyz_file ):
     with open(xyz_file) as f:
-        ws = f.readline().strip().split()
-        na= int(ws[0])
-        ne= int(ws[1])
-        return na, ne
+        ws = f.readlines()[1].strip().split() #reads second line
+        na= int(ws[1])
+        ne= int(ws[2])
+    return na, ne
 
 def extract_blocks(xyz_file):
     """Extract parameters from XYZ file comments (lines starting with #)
@@ -121,38 +121,53 @@ def save_simulation(angleArr, distArr, minTheta ,fileToSavePath, allEtot=None, f
                 f.write("\n")  # blank line between each block
 
 def get_variance_from_KRSrho(theta): #Function we need to minimize
-    global numOfGetVar
+    global numOfFunc
     outEs = np.zeros((nrec,5))
-    eff.setKRSrho(theta)
-    eff.processXYZ_e(elementPath_e, outEs=outEs, nstepMax=100, dt=0.005, Fconv=1e-3) # FOR NORMAL PURPOSES USE nstepMax=10000
-    outEsdiff = np.zeros((nrec,5))
-    outEsdiff[:,0] = params["Etot"] - outEs[:,0]
-    outEsdiff[:,0] -= sum(outEsdiff[:,0])/len(outEsdiff[:,0])
-    outEsdiff[:,0][params['dist'] == 0.7] = 0 #getting rid of unwanted valuess 
-    var = np.var(outEsdiff[:,0])
-    numOfGetVar += 1
-    print("Number of get variance", numOfGetVar)
-    print("Flexible variable: ", theta)
-    print("Variance: ", var)
-    print("\n")
-    return var #, outEsdiff[:,0]
+    epos = np.zeros( (nrec, ne, 4) )
+    convSum = [0]
 
-def get_variance_from_KRSrho_tf(theta): #Function we need to minimize
-    global numOfGetVar
-    outEs = np.zeros((nrec,5))
     eff.setKRSrho(theta)
-    eff.processXYZ_e(elementPath_e, outEs=outEs, nstepMax=100, dt=0.005, Fconv=1e-3) # FOR NORMAL PURPOSES USE nstepMax=10000
+    eff.processXYZ_e(elementPath_e, outEs=outEs, epos=epos, nstepMax=10000, dt=0.005, Fconv=1e-3, xyz_out=None, fgo_out=None, convSum=convSum) # FOR NORMAL PURPOSES USE nstepMax=10000
     outEsdiff = np.zeros((nrec,5))
     outEsdiff[:,0] = params["Etot"] - outEs[:,0]
-    outEsdiff[:,0] -= sum(outEsdiff[:,0])/len(outEsdiff[:,0])
+    outEsdiff[:,0] -= sum(outEsdiff[:,0])/len(outEsdiff[:,0])    
     outEsdiff[:,0][params['dist'] == 0.7] = 0 #getting rid of unwanted valuess 
     var = np.var(outEsdiff[:,0])
-    numOfGetVar += 1
-    print("Number of get variance", numOfGetVar)
+    numOfFunc += 1
+
+    print("Number of get variance", numOfFunc)
     print("Flexible variable: ", theta)
     print("Variance: ", var)
+    print("Conv sum: ", convSum)
     print("\n")
-    return var #, outEsdiff[:,0]
+    return var , outEs, epos, convSum[0]
+
+
+
+def get_paired_el(eposAll, maxNPairedEl):
+    delta = 5e-2
+    nPairedElAll = 0
+    for epos in eposAll:
+        nPairedEl = 0
+        for i in range(len(epos)):
+            for j in range(i+1, len(epos)):
+                depos = epos[i] - epos[j]
+                if sum(x**2 for x in depos) < delta:
+                    nPairedEl += 1
+
+        nPairedElAll += abs(nPairedEl - maxNPairedEl)
+
+    return nPairedElAll
+
+
+def loss_function(theta):
+    loss = 0
+    var, outEs, epos, convSum_val = get_variance_from_KRSrho(theta)
+    nPairedEl = get_paired_el(epos, maxPairedEl)
+    print("Conv sum in loss_function: ", convSum_val)
+    # print("eposL: ", epos)
+    loss = var - convSum_val + nPairedEl*10 
+    return loss
 
 def minimizeBySteps(func, x0):
     allEtot = []
@@ -298,13 +313,12 @@ if __name__ == "__main__":
     # print("set atom par")
 
     params, nrec = extract_blocks(elementPath)
+    na, ne = extract_nae(elementPath_e)
     eff.initOpt( dt=0.005, damping=0.005, f_limit=1000.0)
-    # print("init opt")
     bCoreElectrons = False
     eff.setSwitches( coreCoul=1 )
     eff.preAllocateXYZ(elementPath, Rfac=-1.35, bCoreElectrons=bCoreElectrons )
     eff.getBuffs()
-    # print("get buffs")
 
     eff.info()
     eff.esize[:]=0.7
@@ -316,43 +330,49 @@ if __name__ == "__main__":
     # minTheta, steps, var, allEtot, flexVar, variance = minimizeBySteps(get_varianceFromKRSrho, theta0)
 
     # Dual annealing method
-    # bounds = [
-    # (0.1, 10.0),
-    # (0.1, 5.0),
-    # (-5.0, -0.1),]
+    bounds = [
+    (1.0, 1.3),
+    (0.7, 1.0),
+    (-0.3, -0.1)]
 
-    # results = dual_annealing(get_variance_from_KRSrho, bounds=bounds, maxiter=1000000, maxfun=1000)
-    # minTheta = results.x
-    # numOfGetVar = results.nfev
-    # minVar = results.fun
-    # funEval = results.nfev
-    # print("======================================================================================================")
-    # print(results.message)
+    results = dual_annealing(loss_function, bounds=bounds, maxiter=1000000, maxfun=10)
+    minTheta = results.x
+    minLoss = results.fun
+    funEval = results.nfev
+    print("======================================================================================================")
+    print(results.message)
 
     # ADAM optimizer method
-    theta = tf.Variable(theta0, dtype=tf.float64)
-    optimizer = tf.keras.optimizers.Adam(learning_rate=0.01)
+    # theta = tf.Variable(theta0, dtype=tf.float64)
+    # optimizer = tf.keras.optimizers.Adam(learning_rate=0.01)
 
-    for step in range(1000):
-        with tf.GradientTape() as tape:
-            # Call the wrapper function which has the custom gradient defined
-            loss = get_variance_wrapper(theta)
-        grads = tape.gradient(loss, [theta])  # Compute gradients
-        optimizer.apply_gradients(zip(grads, [theta]))  # Apply gradients
+    # for step in range(1000):
+    #     with tf.GradientTape() as tape:
+    #         # Call the wrapper function which has the custom gradient defined
+    #         loss = get_variance_wrapper(theta)
+    #     grads = tape.gradient(loss, [theta])  # Compute gradients
+    #     optimizer.apply_gradients(zip(grads, [theta]))  # Apply gradients
 
-    if step % 10 == 0:
-        print(f"Step {step}: x = {theta.numpy()}, loss = {loss.numpy():.6f}")
-    minTheta = theta.numpy()
-    minVar = loss.numpy()
-    uncertainty = tf.abs(grads[0])
+    # if step % 10 == 0:
+    #     print(f"Step {step}: x = {theta.numpy()}, loss = {loss.numpy():.6f}")
+    # minTheta = theta.numpy()
+    # minVar = loss.numpy()
+    # uncertainty = tf.abs(grads[0])
 
 
-    eps = 1e-6
-    grad = opt.approx_fprime(minTheta, get_variance_from_KRSrho, eps)
-    grad_norm = np.linalg.norm(grad)
+    # eps = 1e-6
+    # grad = opt.approx_fprime(minTheta, get_variance_from_KRSrho, eps)
+    # grad_norm = np.linalg.norm(grad)
+    # print("Grad vector approx: ", grad)
 
     # print("Grad vector: ", uncertainty)
-    print("Grad vector 2: ", grad)
+    
+    # loss_function(theta0)
+    # minTheta = theta0
+    # minLoss = 0
+
+    var = get_variance_from_KRSrho(minTheta)[0]
+    nPairedEl = get_paired_el(get_variance_from_KRSrho(minTheta)[2], maxPairedEl)
 
 
     angleArr = params['ang']
@@ -361,9 +381,10 @@ if __name__ == "__main__":
 
     print("#===========")
     print("Theta final: ", minTheta)
-    # print("Steps final: ", steps)
-    print("Variance final: ", minVar)
-    print("Number of get var: ", numOfGetVar)
+    print("Loss final: ", minLoss)
+    print("Variance final: ", var)
+    print("Paired el. final: ", nPairedEl)
+    print("Number of get var: ", numOfFunc)
     # print("Number of function evaluation", funEval)
-    print("Uncertainty of final variable: ", grad_norm)
+    # print("Uncertainty of final variable: ", grad_norm)
     print("#=========== DONE /home/gabriel/git/FireCore/tests/tEFF/AI_angdist_sim.py")
