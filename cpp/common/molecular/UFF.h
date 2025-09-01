@@ -476,19 +476,20 @@ class UFF : public NBFF { public:
 
     __attribute__((hot))  
     void assembleForces(){
-        printf("UFF::assembleForces()\n");
+        // Deprecated, perhaps not working, not sure why
+        printf("UFF::assembleForces() bDoBond %i bDoAngle %i bDoDihedral %i bDoInversion %i\n", bDoBond, bDoAngle, bDoDihedral, bDoInversion);
         // NOTE: this is not parallelized ( wee need somethig which loops over atoms otherwise we would need atomic add )
         //printf("assembleForces() bonds %i \n" , nbonds );
-        for(int i=0; i<nbonds; i++){
+        if(bDoBond)for(int i=0; i<nbonds; i++){
             //int ia1 = bonAtoms[i].x;
             int ia2 = bonAtoms[i].y;
-            //printf("assembleForces() bonds %i = %i \n", i, i+i0bon );
+            printf("assembleForces() bonds i %i ia2 %i fbon %+12.6e \n", i, ia2, fbon[i] );
             //fapos[ia1].add( fbon[i*2] );  // this is already done in evalAtomBonds()
             fapos[ia2].add( fbon[i] );
         }
         // angles
         //printf("assembleForces() angles %i \n" , nangles );
-        for(int i=0; i<nangles; i++){
+        if(bDoAngle)for(int i=0; i<nangles; i++){
             const int i3 = i*3;
             const Vec3i ii = angAtoms[i];
             //printf("assembleForces() angles %i = %i \n", i, i3+2+i0ang );
@@ -498,7 +499,7 @@ class UFF : public NBFF { public:
         }
         // dihedrals
         //printf("assembleForces() dihedrals %i \n" , ndihedrals );
-        for(int i=0; i<ndihedrals; i++){
+        if(bDoDihedral)for(int i=0; i<ndihedrals; i++){
             const int i4 = i*4;
             const Quat4i ii = dihAtoms[i];
             //printf("assembleForces() dihedrals[%i] = %i \n", i, i4+3+i0dih );
@@ -509,7 +510,7 @@ class UFF : public NBFF { public:
         }
         // inversions
         //printf("assembleForces() inversions %i \n" , ninversions );
-        for(int i=0; i<ninversions; i++){
+        if(bDoInversion)for(int i=0; i<ninversions; i++){
             const int i4 = i*4;
             const Quat4i ii = invAtoms[i];
             //printf("assembleForces() inversions[%i] = %i \n", i, i4+3+i0inv );
@@ -1271,7 +1272,8 @@ class UFF : public NBFF { public:
         if(bDoInversion){Ei = evalInversions(); }
         Etot = Eb + Ea + Ed + Ei;
         //printForcePieces();
-        if(bDoAssemble ){ assembleForces(); }
+        //if(bDoAssemble ){ assembleForces(); } // Deprecated, perhaps not working, not sure why
+        if(bDoAssemble){assembleAtomsForces();}
         // //Etot = Eb; 
         // //assembleForcesDebug(true,false,false,false);
         // //Etot = Ea; 
