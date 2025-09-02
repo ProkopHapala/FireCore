@@ -48,7 +48,7 @@ fi
 #./$name -x tAttach/backbones/napht_pyrol_4x--.mol2
 #./$name -x tAttach/backbones/PNA_sat-poly.mol2
 #./$name -x tAttach/PNA_CG_poly-.mol2
-./$name -x tAttach/PNA_CG_poly-.mol2 -nPBC 1,3,0  -g common_resources/xyz/NaCl_8x8_L3 -shift 0.0,0.0,2.0
+#./$name -x tAttach/PNA_CG_poly-.mol2 -nPBC 1,3,0  -g common_resources/xyz/NaCl_8x8_L3 -shift 0.0,0.0,2.0
 #./$name -x tAttach/DANA_CG_poly.mol2 -nPBC 1,3,0  -g common_resources/xyz/NaCl_8x8_L3 -shift 0.0,0.0,2.0
 #./$name -x tAttach/DANA_CG_poly-.mol2 -nPBC 1,3,0 
 #./$name -x tAttach/DANA_CG_poly-.mol2 -nPBC 1,3,0  -g common_resources/xyz/NaCl_8x8_L3 -shift 0.0,0.0,2.0
@@ -192,7 +192,12 @@ fi
 
 #./$name -x common_resources/xyz/uracil -g common_resources/xyz/NaCl_8x8_L3_step -e
 
+
+
 #./$name -x common_resources/xyz/guanine-cytosine -g common_resources/xyz/NaCl_1x1_L3 -iParalel 0
+./$name -x common_resources/xyz/guanine-cytosine -g common_resources/xyz/NaCl_1x1_L3 -iParalel 0 
+#./$name -x common_resources/xyz/guanine-cytosine -g common_resources/xyz/NaCl_1x1_L3 -iParalel 0 -uff  -dt 0.001
+
 #./$name -x common_resources/xyz/guanine-cytosine -g common_resources/xyz/NaCl_1x1_L3 -iParalel 0 -e
 #./$name -x common_resources/xyz/guanine-cytosine -g common_resources/xyz/NaCl_1x1_L3 -iParalel 0 -e -nPBC 0,0,0
 

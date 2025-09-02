@@ -11,6 +11,8 @@ static char tmpstr[ntmpstr];
 
 static double tick2second=1e-9;
 
+static const double const_eVA2_Nm = 16.02176634;
+
 // depending on debug / optimization leval 
 #ifdef DEBUGBUILD
 #define _assert( cond, action ) \

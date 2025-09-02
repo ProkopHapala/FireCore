@@ -618,8 +618,8 @@ class UFF_CL(OpenCLBase):
         # Build neighbor list
         neighs_list = [[] for _ in range(natoms)]
         for i, (a, b) in enumerate(mol.bonds):
-            neighs_list[a].append(b)
-            neighs_list[b].append(a)
+            neighs_list[a].append(int(b))
+            neighs_list[b].append(int(a))
 
         # Pad neighbor list to be natoms x 4
         neighs = np.full((natoms, 4), -1, dtype=np.int32)
@@ -635,30 +635,41 @@ class UFF_CL(OpenCLBase):
                 if bond_tuple in bond_map:
                     neighBs[i, j_idx] = bond_map[bond_tuple]
 
-        # Find angles (3 connected atoms) using neighbor lists (avoid -1 sentinels)
-        for i in range(natoms):
-            for j in neighs_list[i]:
-                for k in neighs_list[j]:
-                    if k != i and i < k:
+        # Find Angles (i-j-k) where j is the central atom
+        for j in range(natoms):
+            neighbors_of_j = neighs_list[j]
+            if len(neighbors_of_j) < 2:
+                continue
+            # Generate all unique pairs of neighbors
+            for i_idx in range(len(neighbors_of_j)):
+                for k_idx in range(i_idx + 1, len(neighbors_of_j)):
+                    i = neighbors_of_j[i_idx]
+                    k = neighbors_of_j[k_idx]
+                    # Canonical order: i < k
+                    if i < k:
                         angles.append((i, j, k))
+                    else:
+                        angles.append((k, j, i))
 
         # Find dihedrals (4 connected atoms) using neighbor lists
-        for i in range(natoms):
-            for j in neighs_list[i]:
-                for k in neighs_list[j]:
-                    if k != i:
-                        for l in neighs_list[k]:
-                            if l != j and i < l:
-                                dihedrals.append((i, j, k, l))
+        for j_idx, (j, k) in enumerate(mol.bonds):
+            neighbors_of_j = neighs_list[j]
+            neighbors_of_k = neighs_list[k]
+            for i in neighbors_of_j:
+                if i == k: continue
+                for l in neighbors_of_k:
+                    if l == j or l == i: continue
+                    dihedrals.append((i, j, k, l))
 
         # Find inversions (atoms with 3 neighbors)
         # UFF defines 3 inversions for a planar center for symmetry
         for i in range(natoms):
             if len(neighs_list[i]) == 3:
                 j, k, l = neighs_list[i]
-                inversions.append((i, j, k, l))
-                inversions.append((i, k, l, j))
-                inversions.append((i, l, j, k))
+                inversions.append((i, j, k, l)) # Central atom first
+
+        # Remove duplicate dihedrals that might be found
+        dihedrals = sorted(list(set(dihedrals)))
 
         # Allocate buffers if needed
         if bRealloc:
@@ -679,57 +690,53 @@ class UFF_CL(OpenCLBase):
             aREQ[i*4:i*4+4] = self.get_uff_params(uff_type)
 
         # Convert bonds to UFF format
-        bonds = np.zeros(nbonds * 2, dtype=np.int32)
+        bonAtoms = np.array(mol.bonds, dtype=np.int32)
         bonParams = np.zeros(nbonds * 2, dtype=np.float32)
         for i, (a, b) in enumerate(mol.bonds):
-            bonds[i*2:i*2+2]      = [a, b]
             bonParams[i*2:i*2+2] = self.get_bond_params(uff_type)
 
         # Convert angles to UFF format
-        angles = np.array(angles, dtype=np.int32)
-        angleParams = np.zeros((len(angles), 4), dtype=np.float32)
-        angParams2_w = np.zeros(len(angles), dtype=np.float32)
-        for i, (a, b, c) in enumerate(angles):
-            # _get_angle_params returns [angle, force] (shape 2), but we need shape 4
+        nangles = len(angles)
+        angAtoms = np.full((nangles, 4), -1, dtype=np.int32)
+        if nangles > 0: angAtoms[:, :3] = np.array(angles, dtype=np.int32)
+        angleParams = np.zeros((nangles, 4), dtype=np.float32)
+        angParams2_w = np.zeros(nangles, dtype=np.float32)
+        for i, (a, b, c) in enumerate(angles): # Placeholder parameter logic
             angle_params = self._get_angle_params(uff_type)
-            angleParams[i,0]   = angle_params[0]  # equilibrium angle
-            angleParams[i,1] = angle_params[1]  # force constant
-            angleParams[i,2] = 0.0  # Placeholder for any additional parameters
-            angleParams[i,3] = 0.0  # Placeholder for any additional parameters
+            angleParams[i,0] = angle_params[0]
+            angleParams[i,1] = angle_params[1]
 
         # Convert dihedrals to UFF format
-        dihedrals = np.array(dihedrals, dtype=np.int32)
-        dihParams = np.zeros((len(dihedrals), 3), dtype=np.float32)
-        for i, (a, b, c, d) in enumerate(dihedrals):
-            # _get_dihedral_params returns [angle, force] (shape 2), but we need shape 3 for float3
+        ndihedrals = len(dihedrals)
+        dihAtoms = np.array(dihedrals, dtype=np.int32) if ndihedrals > 0 else np.empty((0, 4), dtype=np.int32)
+        dihParams = np.zeros((ndihedrals, 3), dtype=np.float32)
+        for i, (a, b, c, d) in enumerate(dihedrals): # Placeholder parameter logic
             dihedral_params = self._get_dihedral_params(uff_type)
-            dihParams[i,0]   = dihedral_params[0]  # V
-            dihParams[i,1] = dihedral_params[1]  # d=cos(n*phi0)
-            dihParams[i,2] = 2.0 # n - periodicity, default to 2
+            dihParams[i,0] = dihedral_params[0]
+            dihParams[i,1] = dihedral_params[1]
+            dihParams[i,2] = 2.0
 
         # Convert inversions to UFF format
-        inversions = np.array(inversions, dtype=np.int32)
-        invParams = np.zeros((len(inversions), 4), dtype=np.float32)
-        for i, (a, b, c, d) in enumerate(inversions):
-            # _get_inversion_params returns [angle, force] (shape 2), but we need shape 4
+        ninversions = len(inversions)
+        invAtoms = np.array(inversions, dtype=np.int32) if ninversions > 0 else np.empty((0, 4), dtype=np.int32)
+        invParams = np.zeros((ninversions, 4), dtype=np.float32)
+        for i, (a, b, c, d) in enumerate(inversions): # Placeholder parameter logic
             inversion_params = self._get_inversion_params(uff_type)
-            invParams[i,0]   = inversion_params[0]  # equilibrium angle
-            invParams[i,1] = inversion_params[1]  # force constant
-            invParams[i,2] = 0.0  # Placeholder for any additional parameters
-            invParams[i,3] = 0.0  # Placeholder for any additional parameters
+            invParams[i,0] = inversion_params[0]
+            invParams[i,1] = inversion_params[1]
 
         # Create UFF data dictionary
         uff_data = {
             "atype": atype,
             "REQs": aREQ,
-            "bonAtoms": bonds,
+            "bonAtoms": bonAtoms,
             "bonParams": bonParams,
-            "angles": angles,
+            "angAtoms": angAtoms,
             "angParams1": angleParams,
             "angParams2_w": angParams2_w,
-            "dihedrals": dihedrals,
+            "dihAtoms": dihAtoms,
             "dihParams": dihParams,
-            "inversions": inversions,
+            "invAtoms": invAtoms,
             "invParams": invParams,
             "neighs": neighs,
             "neighBs": neighBs,

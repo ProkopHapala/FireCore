@@ -44,6 +44,7 @@ static MMFFparams* params_glob;
 #include "Molecule.h"
 #include "MMFFBuilder.h"
 #include "SMILESparser.h"
+#include "UFFbuilder.h"
 #include "DynamicOpt.h"
 
 #include "MultiSolverInterface.h"
@@ -1329,18 +1330,14 @@ void printPBCshifts(){
         builder.sortConfAtomsFirst();
         builder.checkBondsOrdered( true, false );
 
-        // make assignement of atom types and force field parameters
         if( bUFF ){  // according to UFF
-            builder.assignUFFtypes( 0, bCumulene, true, b141, bSimple, bConj); 
-            builder.assignUFFparams( 0, true );
+            MM::UFFBuilder uff_builder;
+            uff_builder.cloneFrom(builder);
+            uff_builder.assignUFFtypes( 0, bCumulene, true, b141, bSimple, bConj); 
+            uff_builder.assignUFFparams( 0, true );
+            uff_builder.toUFF( ffu, true );
         }else{      // according to MMFF
             builder.assignTypes();
-        }
-
-        // passing them to FFs
-        if ( bUFF ){
-            builder.toUFF( ffu, true );
-        }else{
             if( ffl.bTorsion ){ builder.assignTorsions( true, true ); }  //exit(0);
 
             builder.printAtomConfs();

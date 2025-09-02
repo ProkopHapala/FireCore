@@ -206,6 +206,23 @@ This multi-replica architecture will be directly applicable to the new `OCL_UFF.
 
 This approach ensures that the UFF implementation can leverage the existing high-throughput simulation framework in `FireCore`.
 
+### Data Layout and Padding Strategy (CPU vs. GPU)
+
+A key consideration when comparing CPU and GPU implementations is the difference in data layout strategies. For optimal performance, especially regarding memory access patterns, GPU kernels often require data structures to be padded to align with the hardware's preferred vector sizes (e.g., `float4` or `int4`).
+
+A specific example in this UFF implementation is the `angAtoms` buffer, which stores the indices of the three atoms forming an angle.
+
+-   **CPU Implementation**: The C++ `UFF` class stores this data compactly in an `(N, 3)` integer array, where `N` is the number of angles.
+-   **GPU Implementation**: To ensure coalesced memory access on the GPU, the OpenCL kernels and the `pyBall/OCL/UFF.py` wrapper are designed to work with an `(N, 4)` integer array. The fourth element is unused padding.
+
+**Strategy:**
+
+Instead of forcing the CPU and GPU memory layouts to be identical (which would make the GPU implementation less efficient), the chosen strategy is to **adapt the test script's comparison logic** to account for these differences.
+
+The `test_UFF_ocl.py` script has been updated accordingly:
+-   The `get_cpu_bufs()` function now programmatically pads the CPU `angAtoms` array from `(N, 3)` to `(N, 4)` in memory before the comparison is made.
+-   This ensures that when `compare_bufs()` is called, both the CPU and GPU versions of the buffer have the same shape, allowing for a direct and correct comparison of the relevant data. This approach maintains the performance benefits of the padded GPU layout while still enabling rigorous validation.
+
 ## Missing Components Analysis
 
 ### Critical Missing Components

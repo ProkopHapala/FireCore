@@ -1445,7 +1445,7 @@ class UFF : public NBFF { public:
             {
                 Etot = Eb + Ea + Ed + Ei;
                 double VF = cvf.x,V2 = cvf.y, F2 = cvf.z;
-                printf( "UFF::run() itr %i / %i Etot %+12.2e Fmax %+12.6e ( Fconv %+12.6e Flim %+16.2e) \n", itr, niter, Etot, sqrt(F2), Fconv, Flim );
+                printf( "UFF::run() itr %i / %i Etot %+12.2e Fmax %+12.6e ( Fconv %+6.2e Flim %+6.2e ) dt=%6.4f \n", itr, niter, Etot, sqrt(F2), Fconv, Flim, dt );
                 if(outE )outE [itr]=Etot;
                 if(outF )outF [itr]=sqrt(F2);
                 if(outV )outV [itr]=sqrt(V2);
