@@ -112,6 +112,7 @@ public:
     }
 
     void realloc(int nSystems_, int nAtoms_, int nBonds_, int nAngles_, int nDihedrals_, int nInversions_, int nPBC_, int nA2F_) {
+        printf("DEBUG: OCL_UFF::realloc() START\n");
         nSystems    = nSystems_;
         nAtoms      = nAtoms_;
         nBonds      = nBonds_;
@@ -126,10 +127,15 @@ public:
         int nf_per_system = (nBonds_ * 2) + (nAngles_ * 3) + (nDihedrals_ * 4) + (nInversions_ * 4);
 
         // Allocate buffers on the GPU
+        printf("DEBUG: About to allocate apos buffer\n");
         ibuff_apos        = newBuffer("apos",        nAtomsTot,       sizeof(cl_float4), 0, CL_MEM_READ_WRITE);
+        printf("DEBUG: About to allocate fapos buffer\n");
         ibuff_fapos       = newBuffer("fapos",       nAtomsTot,       sizeof(cl_float4), 0, CL_MEM_READ_WRITE);
+        printf("DEBUG: About to allocate REQs buffer\n");
         ibuff_REQs        = newBuffer("REQs",        nAtomsTot,       sizeof(cl_float4), 0, CL_MEM_READ_ONLY);
+        printf("DEBUG: About to allocate hneigh buffer\n");
         ibuff_hneigh      = newBuffer("hneigh",      nAtomsTot * 4,   sizeof(cl_float4), 0, CL_MEM_READ_WRITE);
+        printf("DEBUG: About to allocate fint buffer\n");
         ibuff_fint        = newBuffer("fint",        nSystems * nf_per_system, sizeof(cl_float4), 0, CL_MEM_READ_WRITE);
 
         ibuff_neighs      = newBuffer("neighs",      nAtomsTot,       sizeof(cl_int4),   0, CL_MEM_READ_ONLY);
@@ -156,7 +162,9 @@ public:
         ibuff_a2f_counts  = newBuffer("a2f_counts",  nAtomsTot,       sizeof(cl_int),    0, CL_MEM_READ_ONLY);
         ibuff_a2f_indices = newBuffer("a2f_indices", nSystems * nA2F_,sizeof(cl_int),    0, CL_MEM_READ_ONLY);
 
-        ibuff_pbcshifts   = newBuffer("pbcshifts",   nSystems * nPBC, sizeof(cl_float4), 0, CL_MEM_READ_ONLY);
+        // Use minimum size of 1 for buffers that could be 0-sized
+        int nPBC_safe = (nPBC > 0) ? nPBC : 1;
+        ibuff_pbcshifts   = newBuffer("pbcshifts",   nSystems * nPBC_safe, sizeof(cl_float4), 0, CL_MEM_READ_ONLY);
         ibuff_lvecs       = newBuffer("lvecs",       nSystems,        sizeof(cl_Mat3),   0, CL_MEM_READ_ONLY);
         ibuff_energies    = newBuffer("energies",    nSystems * 5,    sizeof(cl_float),  0, CL_MEM_WRITE_ONLY); // E_b, E_a, E_d, E_i, E_tot
     }

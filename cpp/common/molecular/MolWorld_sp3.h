@@ -345,7 +345,7 @@ class MolWorld_sp3 : public SolverInterface { public:
             }
         }
         builder.randomFragmentCollors();
-        if(bMMFF){     
+        if(bMMFF || bUFF){     
             makeFFs();
             if(bCheckStuck)apos_bak = new Vec3d[ffl.natoms];
         }

@@ -104,10 +104,13 @@ if __name__ == "__main__":
         sBondTypes=os.path.join(data_dir, "BondTypes.dat"),
         sAngleTypes=os.path.join(data_dir, "AngleTypes.dat"),
         sDihedralTypes=os.path.join(data_dir, "DihedralTypes.dat"),
-        bMMFF=False, # Use UFF
+        bMMFF=True, # to use UFF MMFF should be True!
         bUFF=True
     )
-    uff.setSwitches(NonBonded=-1) # Turn off non-bonded interactions for component tests
+    # NOTE: setSwitches() does not accept the 'NonBonded' keyword; non-bonded handling for UFF
+    # is controlled via setSwitchesUFF (e.g., ClampNonBonded, SubtractBondNonBond). We already
+    # set ClampNonBonded/SubtractBondNonBond inside run_uff(), so we disable this invalid call.  # TODO
+    # uff.setSwitches(NonBonded=-1)
 
     all_components = ['bonds', 'angles', 'dihedrals', 'inversions']
     all_passed = True
