@@ -1265,11 +1265,11 @@ class UFF : public NBFF { public:
     double eval( bool bClean=true ){
         printf("UFF::eval() bClean=%i bDoBond=%i bDoAngle=%i bDoDihedral=%i bDoInversion=%i bDoAssemble=%i \n", bClean, bDoBond, bDoAngle, bDoDihedral, bDoInversion, bDoAssemble );
         Eb=0; Ea=0; Ed=0; Ei=0;
-        if(bClean)cleanForce();  
-        if(bDoBond     ){Eb = evalBonds();      }
-        if(bDoAngle    ){Ea = evalAngles();     } 
-        if(bDoDihedral ){Ed = evalDihedrals();  }
-        if(bDoInversion){Ei = evalInversions(); }
+        if(bClean)cleanForce();
+        if(bDoBond     ){Eb = evalBonds();      } else { for(int i=0; i<nbonds*2;      i++){ fbon[i]=Vec3dZero; } }
+        if(bDoAngle    ){Ea = evalAngles();     } else { for(int i=0; i<nangles*3;     i++){ fang[i]=Vec3dZero; } }
+        if(bDoDihedral ){Ed = evalDihedrals();  } else { for(int i=0; i<ndihedrals*4;  i++){ fdih[i]=Vec3dZero; } }
+        if(bDoInversion){Ei = evalInversions(); } else { for(int i=0; i<ninversions*4; i++){ finv[i]=Vec3dZero; } }
         Etot = Eb + Ea + Ed + Ei;
         //printForcePieces();
         //if(bDoAssemble ){ assembleForces(); } // Deprecated, perhaps not working, not sure why
@@ -1712,4 +1712,3 @@ class UFF : public NBFF { public:
 };
 
 #endif
-

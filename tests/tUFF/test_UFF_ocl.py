@@ -12,7 +12,7 @@ sys.path.append(base_path)
 data_dir = os.path.join(base_path, "cpp/common_resources")
 
 import numpy as np
-from pyBall.AtomicSystem import AtomicSystem 
+from pyBall.AtomicSystem import AtomicSystem
 from pyBall import     MMFF as uff_cpp
 from pyBall.OCL import UFF  as uff_ocl
 
@@ -82,7 +82,7 @@ def get_gpu_bufs(uff_cl, specs):
         gpu_attr = spec.get('gpu_attr', name)
         stride = spec['stride']
         shape = (-1, stride)
-        
+
         if isinstance(gpu_attr, tuple):  # Special case for composed buffers like angParams
             # This part is inherently specific to the composition
             buf1 = uff_cl.download_buf(gpu_attr[0]).reshape(-1, 4)
@@ -97,7 +97,7 @@ def get_gpu_bufs(uff_cl, specs):
                 # Buffer might not exist or have wrong size, which is a valid state to check
                 pass
     return bufs
-    
+
 def compare_bufs(cpu_bufs, gpu_bufs, tol=1e-6, buf_type='Buffers'):
     """
     Compare CPU and GPU buffers for consistency.
@@ -117,7 +117,7 @@ def compare_bufs(cpu_bufs, gpu_bufs, tol=1e-6, buf_type='Buffers'):
 
         cpu = cpu_bufs[name]
         gpu = gpu_bufs[name]
-        
+
         is_error = False
         error_msg = ""
 
@@ -162,7 +162,7 @@ def print_bufs(bufs, title="Buffers"):
         print(f"{name}\n", buf)
 
 
-def run_uff_cpp( args ):        
+def run_uff_cpp( args ):
     uff_cpp.init(
         xyz_name=args.molecule,
         sElementTypes=os.path.join(data_dir, "ElementTypes.dat"),
@@ -189,18 +189,24 @@ def run_uff_cpp( args ):
 
     uff_cpp.setTrjName("trj.xyz", savePerNsteps=1)
     print("-----------\n uff_cpp.run()  ")
-    uff_cpp.run( nstepMax=1000, dt=0.02, Fconv=1e-6, ialg=2, damping=0.1 )
+    #uff_cpp.run( nstepMax=10000, dt=0.02, Fconv=1e-6, ialg=2, damping=0.1 )
     energy = uff_cpp.Es[0]
     forces = uff_cpp.fapos.copy()
     return energy, forces, uff_cpp
 
 def run_uff_ocl(args):
-    mol      = AtomicSystem(fname=args.molecule)
-    uff_cl   = uff_ocl.UFF_CL(nloc=32)
+    mol = AtomicSystem(fname=args.molecule)
 
-    # Use toUFF to get the topology, but we will overwrite the parameters
+    # Initialize the OpenCL runner, which now handles the builder internally
+    uff_cl = uff_ocl.UFF_CL(nloc=32)
+
+    # Build the UFF topology, parameters, and allocate buffers
     uff_data = uff_cl.toUFF(mol)
-    
+
+    # Upload data to the GPU
+    uff_cl.upload_topology_params(uff_data)
+    uff_cl.upload_positions(mol.apos)
+
     # Parse components string into dictionary
     components = {
         'bonds': 'bonds' in args.components,
@@ -208,23 +214,20 @@ def run_uff_ocl(args):
         'dihedrals': 'dihedrals' in args.components,
         'inversions': 'inversions' in args.components
     }
-    
+
     uff_cl.bDoBonds      = components['bonds']
     uff_cl.bDoAngles     = components['angles']
     uff_cl.bDoDihedrals  = components['dihedrals']
     uff_cl.bDoInversions = components['inversions']
-
-    uff_cl.upload_topology_params(uff_data)
-    uff_cl.upload_positions(mol.apos)
 
     print("--- GPU Buffers Before Run ---")
     gpu_topo_bufs = get_gpu_bufs(uff_cl, TOPOLOGY_SPECS)
     print_bufs(gpu_topo_bufs, "GPU Topology Buffers")
     gpu_param_bufs = get_gpu_bufs(uff_cl, PARAMS_SPECS)
     print_bufs(gpu_param_bufs, "GPU Parameter Buffers")
-    
+
     uff_cl.run_eval_step(bClearForce=True)
-    
+
     energy = uff_cl.get_total_energy()
     forces = uff_cl.get_forces()
     return energy, forces, uff_cl
@@ -233,7 +236,7 @@ def compare_results(cpu_energy, cpu_forces, gpu_energy, gpu_forces):
     print(f"CPU Energy: {cpu_energy}")
     print(f"GPU Energy: {gpu_energy}")
     print(f"Energy diff: {abs(cpu_energy - gpu_energy)}")
-    
+
     force_diff = np.linalg.norm(cpu_forces - gpu_forces, axis=1)
     print(f"Max force diff: {np.max(force_diff)}")
     print(f"Mean force diff: {np.mean(force_diff)}")
@@ -284,19 +287,23 @@ if __name__ == "__main__":
     parser.add_argument('-t','--tolerance',     type=float,   default=1e-6,                  help='Energy comparison tolerance' )
     args = parser.parse_args()
 
-    cpu_energy, cpu_forces, uff_cpp = run_uff_cpp(args)
+    # --- we skip this for the moment
+    cpu_energy, cpu_forces, uff_cpp = run_uff_cpp(args)  # DEBUG: uncomment this when GPU runs without error
 
 
-    exit()
-    
+    #exit()
+
     if args.gpu:
         gpu_energy, gpu_forces, uff_cl = run_uff_ocl(args)
+
+
+        #exit() # DEBUG: comment this when GPU runs without error
         compare_results(cpu_energy, cpu_forces, gpu_energy, gpu_forces)
 
         # New two-phase comparison
         cpu_topo_bufs = get_cpu_bufs(uff_cpp, TOPOLOGY_SPECS)
         gpu_topo_bufs = get_gpu_bufs(uff_cl,  TOPOLOGY_SPECS)
-        
+
         # First, compare topology
         if compare_bufs(cpu_topo_bufs, gpu_topo_bufs, buf_type='Topology'):
             # If topology matches, compare parameters

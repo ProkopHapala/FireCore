@@ -25,6 +25,7 @@ public:
     int nInversions = 0;
     int nPBC        = 0;
     int nAtomsTot   = 0;
+    int nA2F        = 0;
 
     // --- Component Flags
     bool bUFF_bonds      = true;
@@ -32,6 +33,7 @@ public:
     bool bUFF_dihedrals  = true;
     bool bUFF_inversions = true;
     bool bSubtractNB     = true; // Subtract 1-3 and 1-4 non-bonded interactions
+    bool bClampNonBonded = true;
 
     // --- OpenCL Buffers (identified by integer index)
     // Particle buffers
@@ -93,11 +95,13 @@ public:
         buildProgram(srcpath, program); // Assuming 'program' is the member from OCL base class
 
         // Create tasks for each kernel
-        newTask("evalBondsAndHNeigh_UFF", program, 1);
-        newTask("evalAngles_UFF",         program, 1);
-        newTask("evalDihedrals_UFF",      program, 1);
-        newTask("evalInversions_UFF",     program, 1);
-        newTask("assembleForces_UFF",     program, 1);
+        // TODO: The local work-group sizes (e.g., 32) are hardcoded for now. They should be tuned for optimal performance based on the device and kernel characteristics.
+        //                                name                  program  nL nG
+        newTask("evalBondsAndHNeigh_UFF", program, 1, (size_t4){0,0,0,0}, (size_t4){32,1,1,1} );
+        newTask("evalAngles_UFF",         program, 1, (size_t4){0,0,0,0}, (size_t4){32,1,1,1} );
+        newTask("evalDihedrals_UFF",      program, 1, (size_t4){0,0,0,0}, (size_t4){32,1,1,1} );
+        newTask("evalInversions_UFF",     program, 1, (size_t4){0,0,0,0}, (size_t4){32,1,1,1} );
+        newTask("assembleForces_UFF",     program, 1, (size_t4){0,0,0,0}, (size_t4){32,1,1,1} );
 
         // Get task pointers
         task_evalBonds      = getTask("evalBondsAndHNeigh_UFF");
@@ -115,6 +119,7 @@ public:
         nDihedrals  = nDihedrals_;
         nInversions = nInversions_;
         nPBC        = nPBC_;
+        nA2F        = nA2F_;
         nAtomsTot   = nSystems * nAtoms;
 
         // Calculate total size of the intermediate force buffer `fint`

@@ -93,8 +93,7 @@ class OpenCLBase:
                 if bMakeHeaders:
                     self.kernelheaders = self.extract_kernel_headers(kernel_source)
                     if bPrint:
-                        for kernel_name, kernel_header in self.kernelheaders.items():
-                            print(f"OpenCLBase::extract_kernel_headers() Kernel name:: {kernel_name} \n {kernel_header}")
+                        for kernel_name, kernel_header in self.kernelheaders.items(): print(f"OpenCLBase::extract_kernel_headers() Kernel name:: {kernel_name} \n {kernel_header}")
                         print(f"Extracted headers for kernels: {list(self.kernelheaders.keys())}")
             except Exception as e:
                 print(f"OpenCLBase::load_program() ERROR: Failed to build kernel: {kernel_path}")

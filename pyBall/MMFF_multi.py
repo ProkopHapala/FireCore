@@ -274,7 +274,7 @@ def setVerbosity( verbosity=1, idebug=0 ):
     return lib.setVerbosity( verbosity, idebug )
 
 #  void init( char* xyz_name, char* surf_name, char* smile_name, bool bMMFF=false, int* nPBC, double gridStep, char* sAtomTypes, char* sBondTypes, char* sAngleTypes ){
-lib.init.argtypes  = [ c_int, c_char_p, c_char_p, c_char_p, c_bool, c_bool, array1i, c_double, c_char_p, c_char_p, c_char_p, c_char_p] 
+lib.init.argtypes  = [ c_int, c_char_p, c_char_p, c_char_p, c_bool, c_bool, c_bool, c_bool, c_bool, c_bool, c_bool, array1i, c_double, c_char_p, c_char_p, c_char_p, c_char_p, c_char_p] 
 lib.init.restype   =  c_void_p
 def init(
         nSys_=10,
@@ -285,13 +285,14 @@ def init(
         sAtomTypes = "data/AtomTypes.dat", 
         sBondTypes = "data/BondTypes.dat", 
         sAngleTypes= "data/AngleTypes.dat",
-        bMMFF=True, bEpairs=False, nPBC=(1,1,0), gridStep=0.1 
+        sDihedralTypes = "data/DihedralTypes.dat",
+        bMMFF=True, bEpairs=False, nPBC=(1,1,0), gridStep=0.1, bUFF=False, b141=True, bSimple=False, bConj=True, bCumulene=True
     ):
     global glob_bMMFF, nSys
     nSys=nSys_
     glob_bMMFF = bMMFF
     nPBC=np.array(nPBC,dtype=np.int32)
-    return lib.init( nSys, cstr(xyz_name), cstr(surf_name), cstr(smile_name), bMMFF, bEpairs, nPBC, gridStep, cstr(sElementTypes),  cstr(sAtomTypes), cstr(sBondTypes), cstr(sAngleTypes) )
+    return lib.init( nSys, cstr(xyz_name), cstr(surf_name), cstr(smile_name), bMMFF, bEpairs, bUFF, b141, bSimple, bConj, bCumulene, nPBC, gridStep, cstr(sElementTypes),  cstr(sAtomTypes), cstr(sBondTypes), cstr(sAngleTypes), cstr(sDihedralTypes) )
 
 def tryInit():
     if not isInitialized:
@@ -310,6 +311,12 @@ lib.setSwitches.argtypes  = [c_int, c_int, c_int , c_int, c_int, c_int, c_int]
 lib.setSwitches.restype   =  None
 def setSwitches(doAngles=0, doPiPiT=0, doPiSigma=0, doPiPiI=0, doBonded=0, PBC=0, CheckInvariants=0):
     return lib.setSwitches(doAngles, doPiPiT, doPiSigma, doPiPiI, doBonded, PBC, CheckInvariants)
+
+# void setSwitchesUFF( int DoBond, int DoAngle, int DoDihedral, int DoInversion, int DoAssemble, int SubtractBondNonBond, int ClampNonBonded )
+lib.setSwitchesUFF.argtypes  = [c_int, c_int, c_int, c_int, c_int, c_int, c_int]
+lib.setSwitchesUFF.restype   =  None
+def setSwitchesUFF( DoBond=0, DoAngle=0, DoDihedral=0, DoInversion=0, DoAssemble=0, SubtractBondNonBond=0, ClampNonBonded=0):
+    return lib.setSwitchesUFF(DoBond, DoAngle, DoDihedral, DoInversion, DoAssemble, SubtractBondNonBond, ClampNonBonded)
 
 #  bool checkInvariants( double maxVcog, double maxFcog, double maxTg )
 lib.checkInvariants.argtypes  = [c_double, c_double, c_double] 

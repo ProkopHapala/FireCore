@@ -1,4 +1,4 @@
-﻿
+
 #include <globals.h>
 
 #include "testUtils.h"
@@ -69,16 +69,17 @@ void init_buffers(){
 
 // int loadmol(char* fname_mol ){ return W.loadmol(fname_mol ); }
 
-void* init( int nSys, char* xyz_name, char* surf_name, char* smile_name, bool bMMFF, bool bEpairs, int* nPBC, double gridStep, char* sAtomTypes, char* sBondTypes, char* sAngleTypes ){
-    printf( "MMFFmulti_lib::init() nSys=%i xyz_name(%s) surf_name(%s) bMMFF=%i bEpairs=%i \n", nSys, xyz_name, surf_name, bMMFF, bEpairs );
+void* init( int nSys, char* xyz_name, char* surf_name, char* smile_name, bool bMMFF, bool bEpairs, bool bUFF, bool b141, bool bSimple, bool bConj, bool bCumulene, int* nPBC, double gridStep, char* sElementTypes, char* sAtomTypes, char* sBondTypes, char* sAngleTypes, char* sDihedralTypes ){
+    printf( "MMFFmulti_lib::init() nSys=%i xyz_name(%s) surf_name(%s) bMMFF=%i bEpairs=%i bUFF=%i \n", nSys, xyz_name, surf_name, bMMFF, bEpairs, bUFF );
 	W.smile_name = smile_name;
 	W.xyz_name   = xyz_name;
 	W.surf_name  = surf_name;
 	W.bMMFF      = bMMFF;
+    W.bUFF       = bUFF;
     W.bEpairs    = bEpairs;
     W.gridStep   = gridStep;
     W.nPBC       = *(Vec3i*)nPBC;
-    W.params.init( sAtomTypes, sBondTypes, sAngleTypes );
+    W.params.init( sElementTypes, sAtomTypes, sBondTypes, sAngleTypes, sDihedralTypes );
 	W.builder.bindParams(&W.params);
     W.nSystems=nSys;
     bool bGrid = gridStep>0;
@@ -88,18 +89,68 @@ void* init( int nSys, char* xyz_name, char* surf_name, char* smile_name, bool bM
     return &W;
 }
 
+void setSwitchesUFF( int DoBond, int DoAngle, int DoDihedral, int DoInversion, int DoAssemble, int SubtractBondNonBond, int ClampNonBonded ){
+    #define _setbool(b,i) { if(i>0){b=true;}else if(i<0){b=false;} }
+    if(W.uff_ocl){
+        _setbool( W.uff_ocl->bUFF_bonds,      DoBond );
+        _setbool( W.uff_ocl->bUFF_angles,     DoAngle );
+        _setbool( W.uff_ocl->bUFF_dihedrals,  DoDihedral );
+        _setbool( W.uff_ocl->bUFF_inversions, DoInversion );
+        _setbool( W.uff_ocl->bSubtractNB,     SubtractBondNonBond );
+        _setbool( W.uff_ocl->bClampNonBonded, ClampNonBonded );
+    }
+    _setbool( W.ffu.bDoBond,              DoBond );
+    _setbool( W.ffu.bDoAngle,             DoAngle );
+    _setbool( W.ffu.bDoDihedral,          DoDihedral );
+    _setbool( W.ffu.bDoInversion,         DoInversion );
+    _setbool( W.ffu.bDoAssemble,          DoAssemble );
+    _setbool( W.ffu.bSubtractBondNonBond, SubtractBondNonBond );
+    _setbool( W.ffu.bClampNonBonded,      ClampNonBonded );
+    #undef _setbool
+}
+
 int run( int nstepMax, double dt, double Fconv, int ialg, double* outE, double* outF, int iParalel ){
     W.bOcl= iParalel > 0;
     Mat3d lvec = W.ffls[0].lvec;
     //printf( "run Fconv=%g lvec{{%6.3f,%6.3f,%6.3f}{%6.3f,%6.3f,%6.3f}{%6.3f,%6.3f,%6.3f}}\n", Fconv, lvec.a.x,lvec.a.y,lvec.a.z, lvec.b.x,lvec.b.y,lvec.b.z, lvec.c.x,lvec.c.y,lvec.c.z );
     int nitrdione=0;
-    switch(iParalel){
-        case -1: nitrdione = W.run_multi_serial( nstepMax, Fconv, 1000.0, 1000 ); break; 
-        case  0:
-        case  1: nitrdione = W.run_omp_ocl     ( nstepMax, Fconv, 1000.0, 1000 ); break; 
-        case  2: nitrdione = W.run_ocl_opt( nstepMax, Fconv    ); break; 
-        case  3: nitrdione = W.run_ocl_loc( nstepMax, Fconv, 1 ); break; 
-        case  4: nitrdione = W.run_ocl_loc( nstepMax, Fconv, 2 ); break; 
+    if(W.bUFF){
+        // UFF branch: CPU (serial/OpenMP) vs GPU (OpenCL) based on iParalel
+        switch(iParalel){
+            // CPU paths (use UFF::run on host)
+            case -1:
+            case  0: {
+                // Run UFF on CPU for system 0 (host-side integrator)
+                // Note: UFF::run updates ffu.apos/fapos internally
+                nitrdione = W.ffu.run( nstepMax, dt, Fconv, 1000.0, 0.1, outE, outF, nullptr, nullptr );
+                // Reflect updated positions/forces into host buffers for system 0
+                W.pack_uff_system( 0, W.ffu, /*bParams=*/false, /*bForces=*/true, /*bVel=*/false, /*blvec=*/false );
+                break;
+            }
+
+            // GPU paths (evaluate UFF via OpenCL kernels)
+            default: {
+                // Sync current UFF state into host-side GPU arrays, then upload
+                W.pack_uff_system( 0, W.ffu, /*bParams=*/true, /*bForces=*/false, /*bVel=*/false, /*blvec=*/true );
+                // Ensure data are uploaded (safe to call multiple times)
+                W.upload( /*bParams=*/true, /*bForces=*/false, /*bVel=*/false, /*blvec=*/true );
+                double Etot = W.eval_UFF_ocl( nstepMax );
+                // Download forces and positions back to host for inspection/use
+                W.download( /*bForces=*/true, /*bVel=*/false );
+                if(outE){ outE[0] = Etot; }
+                nitrdione = nstepMax; // we executed nstepMax evaluation steps on GPU
+                break;
+            }
+        }
+    }else{
+        switch(iParalel){
+            case -1: nitrdione = W.run_multi_serial( nstepMax, Fconv, 1000.0, 1000 ); break; 
+            case  0:
+            case  1: nitrdione = W.run_omp_ocl     ( nstepMax, Fconv, 1000.0, 1000 ); break; 
+            case  2: nitrdione = W.run_ocl_opt( nstepMax, Fconv    ); break; 
+            case  3: nitrdione = W.run_ocl_loc( nstepMax, Fconv, 1 ); break; 
+            case  4: nitrdione = W.run_ocl_loc( nstepMax, Fconv, 2 ); break; 
+        }
     }
     return nitrdione;
     //return W.rum_omp_ocl( nstepMax, dt, Fconv, 1000.0, 1000 ); 
@@ -219,17 +270,17 @@ void sampleSurf_vecs(char* name, int n, double* poss_, double* Es, double* fs_, 
 
 
 void pack_system( int isys, bool bParams, bool bForces, bool bVel, bool blvec ){
-    W.pack_system( isys, W.ffls[isys], bParams, bForces, bVel, blvec );
+    if(W.bUFF) W.pack_uff_system( isys, W.ffu, bParams, bForces, bVel, blvec ); else W.pack_system( isys, W.ffls[isys], bParams, bForces, bVel, blvec );
 }
 void unpack_system( int isys, bool bForces=false, bool bVel=false ){
-    W.unpack_system( isys, W.ffls[isys], bForces, bVel );
+    if(W.bUFF) W.unpack_uff_system( isys, W.ffu, bForces, bVel ); else W.unpack_system( isys, W.ffls[isys], bForces, bVel );
 }
 
 void upload_sys  ( int isys, bool bParams, bool bForces, bool bVel, bool blvec ){
-    W.upload_sys  ( isys, bParams, bForces, bVel, blvec );
+    if(W.bUFF) W.upload_uff_sys( isys, bParams, bForces, bVel, blvec ); else W.upload_sys( isys, bParams, bForces, bVel, blvec );
 }
 void download_sys( int isys, bool bForces, bool bVel ){
-    W.download_sys( isys, bForces, bVel );
+    if(W.bUFF) W.download_uff_sys( isys, bForces, bVel ); else W.download_mmff_sys( isys, bForces, bVel );
 }
 
 void upload(  bool bParams, bool bForces, bool bVel, bool blvec ){

@@ -2,7 +2,9 @@ import os
 import numpy as np
 import pyopencl as cl
 from .OpenCLBase import OpenCLBase
-from . import MMparams
+from .UFFbuilder import UFF_Builder
+#from .MMFF import MMFF
+#from . import MMparams as mmparams    # Do we need it here ? Maybe it is enough to use it in UFFBuilder
 
 # Size constants for better readability
 i32sz = 4  # size of int32 in bytes
@@ -10,72 +12,62 @@ f32sz = 4  # size of float32 in bytes
 
 class UFF_CL(OpenCLBase):
     """
-    PyOpenCL interface for running UFF calculations on GPU,
-    following the structure of the provided C++ reference.
-
-    This class inherits from OpenCLBase and implements specific functionality
-    for Universal Force Field (UFF) calculations.
+    PyOpenCL interface for running UFF calculations on GPU.
+    This class is responsible for managing OpenCL buffers and running kernels.
+    Topology and parameter preparation is delegated to UFF_Builder.
     """
 
-    def __init__(self, nloc=32, kernel_path=None):
-        """
-        Initialize the UFF OpenCL environment.
-
-        Args:
-            nloc (int): Local work group size
-            kernel_path (str, optional): Path to the UFF kernel file. If None, auto-detect.
-        """
-        # Initialize the base class
+    def __init__(self, nloc=32, kernel_path=None, bPrint=False):
         super().__init__(nloc=nloc)
-
-        # Find and load the UFF kernel file
         if kernel_path is None:
             base_path = os.path.dirname(os.path.abspath(__file__))
             rel_path = "../../cpp/common_resources/cl/UFF.cl"
             kernel_path = os.path.join(base_path, rel_path)
-
-        # Load the OpenCL program
-        if not self.load_program(kernel_path=kernel_path, bPrint=True):
+        if not self.load_program(kernel_path=kernel_path, bPrint=bPrint):
             print(f"Failed to load UFF kernels from {kernel_path}")
             return
 
-        # Initialize system parameters
-        self.nSystems    = 0
-        self.natoms      = 0
-        self.nbonds      = 0
-        self.nangles     = 0
-        self.ndihedrals  = 0
+        base_path = os.path.dirname(os.path.abspath(__file__))
+        data_path = os.path.join(base_path, "../../cpp/common_resources/")
+        #self.params        = read_element_types(os.path.join(data_path, 'ElementTypes.dat'), os.path.join(data_path, 'AtomTypes.dat'))
+        #self.element_types = self.params.element_types
+
+        self.nSystems = 0
+        self.natoms = 0
+        self.nbonds = 0
+        self.nangles = 0
+        self.ndihedrals = 0
         self.ninversions = 0
-        self.npbc        = 0
-
-        # Initialize a2f map parameters
+        self.npbc = 0
         self.a2f_map_size = 0
-
-        # Initialize kernel arguments dictionary
         self.kernel_args = {}
-
-        # Flag to track if kernel arguments are set up
         self.args_setup = False
-
-        self.bDoBonds      = True
-        self.bDoAngles     = True
-        self.bDoDihedrals  = True
+        self.bDoBonds = True
+        self.bDoAngles = True
+        self.bDoDihedrals = True
         self.bDoInversions = True
-        self.bDoNonBonded  = False
+        self.bDoNonBonded = False
+
+    def toUFF(self, mol, bRealloc=True, bSimple=True, b141=True, bConj=True, bCumulene=True):
+        builder = UFF_Builder(mol, bSimple=bSimple, b141=b141, bConj=bConj, bCumulene=bCumulene)
+        uff_data = builder.build()
+        if bRealloc:
+            self.realloc_buffers(
+                natoms=len(mol.apos),
+                nbonds=len(uff_data['bonAtoms']),
+                nangles=len(uff_data['angAtoms']),
+                ndihedrals=len(uff_data['dihAtoms']),
+                ninversions=len(uff_data['invAtoms']),
+                npbc=0
+            )
+        a2f_offsets, a2f_counts, a2f_indices = self.mapAtomInteractions(len(mol.apos), uff_data['dihAtoms'], uff_data['invAtoms'], uff_data['angAtoms'])
+        self.set_a2f_map_size(len(a2f_indices))
+        uff_data['a2f_offsets'] = a2f_offsets
+        uff_data['a2f_counts'] = a2f_counts
+        uff_data['a2f_indices'] = a2f_indices
+        return uff_data
 
     def realloc_buffers(self, natoms, nbonds, nangles, ndihedrals, ninversions, npbc, nSystems=1):
-        """
-        Allocates or reallocates all necessary OpenCL buffers for UFF calculations.
-
-        Args:
-            natoms (int): Number of atoms per system
-            nbonds (int): Number of bonds per system
-            nangles (int): Number of angles per system
-            ndihedrals (int): Number of dihedrals per system
-            ninversions (int): Number of inversions per system
-            npbc (int): Number of PBC shift vectors per system
-            nSystems (int): Number of systems to simulate
-        """
         self.nSystems = nSystems
         self.natoms = natoms
         self.nbonds = nbonds
@@ -83,170 +75,114 @@ class UFF_CL(OpenCLBase):
         self.ndihedrals = ndihedrals
         self.ninversions = ninversions
         self.npbc = npbc
-
-        nA  = natoms     * nSystems
-        nB  = nbonds     * nSystems
-        nAng= nangles    * nSystems
-        nD  = ndihedrals * nSystems
-        nInv= ninversions* nSystems
-
-        # Save totals (keep attribute names but assign correct values)
-        self.na_Tot = nA
-        self.nb_Tot = nB
-        self.nd_Tot = nD
-        self.ni_Tot = nInv
-
-        # Core per-atom buffers
-        self.check_buf("apos",   nA * 4 * f32sz)
-        self.check_buf("fapos",  nA * 4 * f32sz)
-        self.check_buf("fint",   nA * 4 * f32sz)
-        self.check_buf("atype",  nA     * i32sz)
-        self.check_buf("REQs",   nA * 4 * f32sz)
-
-        # Bonds
-        self.check_buf("bonAtoms",  nB * 2 * i32sz)
+        nA = natoms * nSystems
+        nB = nbonds * nSystems
+        nAng = nangles * nSystems
+        nD = ndihedrals * nSystems
+        nInv = ninversions * nSystems
+        self.na_Tot, self.nb_Tot, self.nd_Tot, self.ni_Tot = nA, nB, nD, nInv
+        self.check_buf("apos", nA * 4 * f32sz)
+        self.check_buf("fapos", nA * 4 * f32sz)
+        self.check_buf("fint", nA * 4 * f32sz)
+        self.check_buf("atype", nA * i32sz)
+        self.check_buf("REQs", nA * 4 * f32sz)
+        self.check_buf("bonAtoms", nB * 2 * i32sz)
         self.check_buf("bonParams", nB * 2 * f32sz)
-
-        # Angles
-        self.check_buf("angles",       nAng * 3 * i32sz)
-        self.check_buf("angParams1",   nAng * 4 * f32sz)
+        self.check_buf("angles", nAng * 3 * i32sz)
+        self.check_buf("angParams1", nAng * 4 * f32sz)
         self.check_buf("angParams2_w", nAng * f32sz)
-        self.check_buf("angAtoms",     nAng * 4 * i32sz)
-        self.check_buf("angNgs",       nAng * 4 * i32sz)
-
-        # Dihedrals
-        self.check_buf("dihedrals",  nD * 4 * i32sz)
-        self.check_buf("dihParams",  nD * 3 * f32sz)
-        self.check_buf("dihAtoms",   nD * 4 * i32sz)
-        self.check_buf("dihNgs",     nD * 4 * i32sz)
-
-        # Inversions
+        self.check_buf("angAtoms", nAng * 4 * i32sz)
+        self.check_buf("angNgs", nAng * 4 * i32sz)
+        self.check_buf("dihedrals", nD * 4 * i32sz)
+        self.check_buf("dihParams", nD * 3 * f32sz)
+        self.check_buf("dihAtoms", nD * 4 * i32sz)
+        self.check_buf("dihNgs", nD * 4 * i32sz)
         self.check_buf("inversions", nInv * 4 * i32sz)
-        self.check_buf("invParams",  nInv * 4 * f32sz)
-        self.check_buf("invAtoms",   nInv * 4 * i32sz)
-        self.check_buf("invNgs",     nInv * 4 * i32sz)
-
-        # Per-atom neighbor data
-        self.check_buf("neighs",     nA * 4 * i32sz)
-        self.check_buf("neighCell",  nA * 4 * i32sz)
-        self.check_buf("neighBs",    nA * 4 * i32sz)
-        self.check_buf("hneigh",     nA * 4 * f32sz)
-
-        # Misc/system
+        self.check_buf("invParams", nInv * 4 * f32sz)
+        self.check_buf("invAtoms", nInv * 4 * i32sz)
+        self.check_buf("invNgs", nInv * 4 * i32sz)
+        self.check_buf("neighs", nA * 4 * i32sz)
+        self.check_buf("neighCell", nA * 4 * i32sz)
+        self.check_buf("neighBs", nA * 4 * i32sz)
+        self.check_buf("hneigh", nA * 4 * f32sz)
         self.check_buf("pbc_shifts", npbc * nSystems * 4 * f32sz)
-        self.check_buf("energies",   5 * nSystems * f32sz)
-        self.check_buf("lvec",       9 * nSystems * f32sz)
-        self.check_buf("params",     10 * i32sz)
-
-        # Energy contributions per interaction type
+        self.check_buf("energies", 5 * nSystems * f32sz)
+        self.check_buf("lvec", 9 * nSystems * f32sz)
+        self.check_buf("params", 10 * i32sz)
         self.check_buf("Ea_contrib", nAng * f32sz)
-        self.check_buf("Ed_contrib", nD   * f32sz)
+        self.check_buf("Ed_contrib", nD * f32sz)
         self.check_buf("Ei_contrib", nInv * f32sz)
         self.args_setup = False
-
         print(f"UFF buffers allocated for {nSystems} systems with {natoms} atoms each")
 
-    def set_a2f_map_size(self, size):
-        """
-        Sets the size of the atom-to-force map.
-
-        Args:
-            size (int): Total number of references in the a2f map
-        """
-        self.a2f_map_size = size
-
-        # Allocate a2f map buffers
-        self.check_buf("a2f_offsets", self.natoms * self.nSystems * i32sz)
-        self.check_buf("a2f_counts", self.natoms * self.nSystems * i32sz)
-        self.check_buf("a2f_indices", size * i32sz)
-
-        print(f"A2F map size set to {size}")
-
-
     def upload_positions(self, positions, iSys=0):
-        """
-        Uploads atom positions for one system to the GPU.
-
-        Args:
-            positions (np.ndarray): Array of atom positions (natoms x 3)
-            iSys (int): System index
-        """
         if positions.shape[0] != self.natoms:
             raise ValueError(f"Expected {self.natoms} atoms, got {positions.shape[0]}")
-
-        # Convert to float32 if needed
         if positions.dtype != np.float32:
             positions = positions.astype(np.float32)
-
-        # Ensure positions is a 2D array
         if len(positions.shape) == 1:
             positions = positions.reshape(-1, 3)
-
-        # Create a padded array with 4 components per position (xyz + padding)
         padded_positions = np.zeros((self.natoms, 4), dtype=np.float32)
         padded_positions[:, :3] = positions
-
-        # Calculate offset for this system
         offset = iSys * self.natoms * 4
-
-        # Upload to GPU
         cl.enqueue_copy(self.queue, self.buffer_dict["apos"], padded_positions.flatten(), device_offset=offset * f32sz)
 
     def upload_topology_params(self, uff_data, iSys=0):
-        """
-        Uploads static topology and parameter data for one system to the GPU buffers.
-
-        Args:
-            uff_data (dict): Dictionary containing UFF parameter arrays
-            iSys (int): System index
-        """
-        # Calculate offsets for this system
-        atom_offset      = iSys * self.natoms
-        bond_offset      = iSys * self.nbonds
-        angle_offset     = iSys * self.nangles
-        dihedral_offset  = iSys * self.ndihedrals
+        atom_offset = iSys * self.natoms
+        bond_offset = iSys * self.nbonds
+        angle_offset = iSys * self.nangles
+        dihedral_offset = iSys * self.ndihedrals
         inversion_offset = iSys * self.ninversions
-
         def _upload_if_present(buffer_name, data_key, dtype, offset_elements, element_size):
             if data_key in uff_data and uff_data[data_key] is not None and len(uff_data[data_key]) > 0:
                 data = uff_data[data_key].astype(dtype)
                 cl.enqueue_copy(self.queue, self.buffer_dict[buffer_name], data, device_offset=(offset_elements * element_size))
+        _upload_if_present("atype", "atype", np.int32, atom_offset, i32sz)
+        _upload_if_present("REQs", "REQs", np.float32, atom_offset * 4, f32sz)
+        _upload_if_present("bonAtoms", "bonAtoms", np.int32, bond_offset * 2, i32sz)
+        _upload_if_present("bonParams", "bonParams", np.float32, bond_offset * 2, f32sz)
+        _upload_if_present("angAtoms", "angAtoms", np.int32, angle_offset * 4, i32sz)
+        if 'angParams' in uff_data and uff_data['angParams'] is not None and len(uff_data['angParams']) > 0:
+            ang_params = uff_data['angParams'].astype(np.float32)
+            ang_params1 = np.ascontiguousarray(ang_params[:, :4])
+            ang_params2_w = np.ascontiguousarray(ang_params[:, 4])
+            cl.enqueue_copy(self.queue, self.buffer_dict["angParams1"], ang_params1, device_offset=(angle_offset * 4 * f32sz))
+            cl.enqueue_copy(self.queue, self.buffer_dict["angParams2_w"], ang_params2_w, device_offset=(angle_offset * 1 * f32sz))
+        _upload_if_present("dihAtoms", "dihAtoms", np.int32, dihedral_offset * 4, i32sz)
+        _upload_if_present("dihParams", "dihParams", np.float32, dihedral_offset * 3, f32sz)
+        _upload_if_present("invAtoms", "invAtoms", np.int32, inversion_offset * 4, i32sz)
+        _upload_if_present("invParams", "invParams", np.float32, inversion_offset * 4, f32sz)
+        _upload_if_present("neighs", "neighs", np.int32, atom_offset * 4, i32sz)
+        _upload_if_present("neighBs", "neighBs", np.int32, atom_offset * 4, i32sz)
 
-        _upload_if_present("atype",          "atype",           np.int32,   atom_offset,          i32sz)
-        _upload_if_present("REQs",           "REQs",            np.float32, atom_offset * 4,      f32sz)
-        _upload_if_present("bonAtoms",       "bonAtoms",        np.int32,   bond_offset * 2,      i32sz)
-        _upload_if_present("bonParams",      "bonParams",       np.float32, bond_offset * 2,      f32sz)
-        _upload_if_present("angles",         "angles",          np.int32,   angle_offset * 3,     i32sz)
-        _upload_if_present("angParams1",     "angParams1",      np.float32, angle_offset * 4,     f32sz)
-        _upload_if_present("angParams2_w",   "angParams2_w",    np.float32, angle_offset,         f32sz)
-        _upload_if_present("dihedrals",      "dihedrals",       np.int32,   dihedral_offset * 4,  i32sz)
-        _upload_if_present("dihParams",      "dihParams",       np.float32, dihedral_offset * 3,  f32sz)
-        _upload_if_present("inversions",     "inversions",      np.int32,   inversion_offset * 4, i32sz)
-        _upload_if_present("invParams",      "invParams",       np.float32, inversion_offset * 4, f32sz)
-        _upload_if_present("neighs",         "neighs",          np.int32,   atom_offset * 4,      i32sz)
-        _upload_if_present("neighBs",        "neighBs",         np.int32,   atom_offset * 4,      i32sz)
-        _upload_if_present("lvec",           "lvec",            np.float32, iSys * 9,             f32sz)
-        _upload_if_present("pbc_shifts",     "pbc_shifts",      np.float32, iSys * self.npbc * 4, f32sz)
-        _upload_if_present("angAtoms",       "angAtoms",        np.int32,   angle_offset * 4,     i32sz)
-        _upload_if_present("angNgs",         "angNgs",          np.int32,   angle_offset * 4,     i32sz)
-        _upload_if_present("dihAtoms",       "dihAtoms",        np.int32,   dihedral_offset * 4,  i32sz)
-        _upload_if_present("dihNgs",         "dihNgs",          np.int32,   dihedral_offset * 4,  i32sz)
-        _upload_if_present("invAtoms",       "invAtoms",        np.int32,   inversion_offset * 4, i32sz)
-        _upload_if_present("invNgs",         "invNgs",          np.int32,   inversion_offset * 4, i32sz)
+    def run_eval_step(self, bClearForce=True):
+        if not self.args_setup:
+            self.prepare_kernel_args()
+        queue = self.queue
+        if bClearForce: cl.enqueue_fill_buffer(queue, self.buffer_dict["fapos"], np.float32(0), 0, self.natoms * self.nSystems * 4 * f32sz)
+        if self.bDoBonds: self.prg.evalBondsAndHNeigh_UFF(queue, (self.natoms * self.nSystems,), None, *self.kernel_args["evalBondsAndHNeigh_UFF"])
+        if self.bDoAngles: self.prg.evalAngles_UFF(queue, (self.nangles * self.nSystems,), None, *self.kernel_args["evalAngles_UFF"])
+        if self.bDoDihedrals: self.prg.evalDihedrals_UFF(queue, (self.ndihedrals * self.nSystems,), None, *self.kernel_args["evalDihedrals_UFF"])
+        if self.bDoInversions: self.prg.evalInversions_UFF(queue, (self.ninversions * self.nSystems,), None, *self.kernel_args["evalInversions_UFF"])
+        if self.bDoNonBonded: self.prg.evalNonBonded(queue, (self.natoms * self.nSystems,), None, *self.kernel_args["evalNonBonded"])
+        energies = np.zeros(5 * self.nSystems, dtype=np.float32)
+        return energies[4::5]
 
-        indices_offset = iSys * self.a2f_map_size if hasattr(self, 'a2f_map_size') else 0
-        _upload_if_present("a2f_offsets", "a2f_offsets", np.int32, atom_offset,    i32sz)
-        _upload_if_present("a2f_counts",  "a2f_counts",  np.int32, atom_offset,    i32sz)
-        _upload_if_present("a2f_indices", "a2f_indices", np.int32, indices_offset, i32sz)
+    def get_forces(self, iSys=None):
+        if iSys is None:
+            forces = np.zeros(self.natoms * self.nSystems * 4, dtype=np.float32)
+            cl.enqueue_copy(self.queue, forces, self.buffer_dict["fapos"])
+            return forces.reshape(self.nSystems, self.natoms, 4)[:, :, :3]
+        else:
+            forces = np.zeros(self.natoms * 4, dtype=np.float32)
+            offset = iSys * self.natoms * 4
+            cl.enqueue_copy(self.queue, forces, self.buffer_dict["fapos"], device_offset=offset * f32sz)
+            return forces.reshape(self.natoms, 4)[:, :3]
 
-    def upload_params(self, params):
-        """
-        Uploads general parameters to the GPU.
-
-        Args:
-            params (np.ndarray): Array of parameters
-        """
-        cl.enqueue_copy(self.queue, self.buffer_dict["params"], params.astype(np.int32))
+    def get_total_energy(self):
+        energies = np.zeros(5 * self.nSystems, dtype=np.float32)
+        cl.enqueue_copy(self.queue, energies, self.buffer_dict["energies"])
+        return energies.reshape(self.nSystems, 5)[:, 4]
 
     def prepare_kernel_args(self):
         """
@@ -289,94 +225,21 @@ class UFF_CL(OpenCLBase):
 
         self.args_setup = True
 
-
-    def run_eval_step(self, bClearForce=True):
+    def set_a2f_map_size(self, size):
         """
-        Executes one step of UFF evaluation kernels.
+        Sets the size of the atom-to-force map.
 
         Args:
-            bClearForce (bool): Whether to clear forces before evaluation
-
-        Returns:
-            float: Total energy
+            size (int): Total number of references in the a2f map
         """
-        if not self.args_setup:
-            self.prepare_kernel_args()
+        self.a2f_map_size = size
 
-        queue = self.queue
-        if bClearForce: cl.enqueue_fill_buffer                ( queue, self.buffer_dict["fapos"], np.float32(0), 0, self.natoms * self.nSystems * 4 * f32sz)
-        if self.bDoBonds:      self.prg.evalBondsAndHNeigh_UFF( queue, (self.natoms      * self.nSystems,), None,  *self.kernel_args["evalBondsAndHNeigh_UFF"])
-        if self.bDoAngles:     self.prg.evalAngles_UFF        ( queue, (self.nangles     * self.nSystems,), None,  *self.kernel_args["evalAngles_UFF"])
-        if self.bDoDihedrals:  self.prg.evalDihedrals_UFF     ( queue, (self.ndihedrals  * self.nSystems,), None,  *self.kernel_args["evalDihedrals_UFF"])
-        if self.bDoInversions: self.prg.evalInversions_UFF    ( queue, (self.ninversions * self.nSystems,), None,  *self.kernel_args["evalInversions_UFF"])
-        if self.bDoNonBonded:  self.prg.evalNonBonded         ( queue, (self.natoms      * self.nSystems,), None,  *self.kernel_args["evalNonBonded"])
+        # Allocate a2f map buffers
+        self.check_buf("a2f_offsets", self.natoms * self.nSystems * i32sz)
+        self.check_buf("a2f_counts", self.natoms * self.nSystems * i32sz)
+        self.check_buf("a2f_indices", size * i32sz)
 
-        energies = np.zeros(5 * self.nSystems, dtype=np.float32)
-        #cl.enqueue_copy(self.queue, energies, self.buffer_dict["energies"]) # TODO: implement energy summation
-
-        # Return total energy (last component for each system)
-        return energies[4::5]
-
-    def get_forces(self, iSys=None):
-        """
-        Downloads forces from GPU.
-
-        Args:
-            iSys (int, optional): System index. If None, download all systems.
-
-        Returns:
-            np.ndarray: Forces array
-        """
-        if iSys is None:
-            # Download all forces
-            forces = np.zeros(self.natoms * self.nSystems * 4, dtype=np.float32)
-            cl.enqueue_copy(self.queue, forces, self.buffer_dict["fapos"])
-
-            # Reshape to (nSystems, natoms, 4) and remove padding
-            forces = forces.reshape(self.nSystems, self.natoms, 4)[:, :, :3]
-            return forces
-        else:
-            # Download forces for one system
-            forces = np.zeros(self.natoms * 4, dtype=np.float32)
-            offset = iSys * self.natoms * 4
-            cl.enqueue_copy(self.queue, forces, self.buffer_dict["fapos"],
-                           device_offset=offset * f32sz)
-
-            # Reshape to (natoms, 4) and remove padding
-            forces = forces.reshape(self.natoms, 4)[:, :3]
-            return forces
-
-    def get_energies(self):
-        """
-        Downloads energy contributions from GPU.
-
-        Returns:
-            dict: Dictionary of energy contributions
-        """
-        energies = np.zeros(5 * self.nSystems, dtype=np.float32)
-        cl.enqueue_copy(self.queue, energies, self.buffer_dict["energies"])
-
-        # Reshape to (nSystems, 5)
-        energies = energies.reshape(self.nSystems, 5)
-
-        # Create dictionary of energy components
-        energy_dict = {
-            "bond": energies[:, 0],
-            "angle": energies[:, 1],
-            "dihedral": energies[:, 2],
-            "inversion": energies[:, 3],
-            "total": energies[:, 4]
-        }
-
-        return energy_dict
-
-    def get_total_energy(self):
-        """
-        Downloads and returns the total energy from the GPU.
-        """
-        energies = self.get_energies()
-        return energies['total']
-
+        print(f"A2F map size set to {size}")
 
     def mapAtomInteractions(self, natoms, dihedrals, inversions, angles):
         """
@@ -458,445 +321,3 @@ class UFF_CL(OpenCLBase):
                 a2f_counts_temp[atom_idx] += 1
 
         return a2f_offsets, a2f_counts, a2f_indices
-
-    def bakeDihedralNeighs(self, dihedrals, natoms):
-        """
-        Prepares dihedral neighbor information.
-        Similar to UFF::bakeDihedralNeighs in C++.
-
-        Args:
-            dihedrals (np.ndarray): Array of dihedral definitions
-            natoms (int): Number of atoms
-
-        Returns:
-            tuple: (dihAtoms, dihNgs) arrays for GPU upload
-        """
-        ndihedrals = len(dihedrals)
-        dihAtoms   = np.zeros((ndihedrals, 4), dtype=np.int32)
-        dihNgs     = np.zeros((ndihedrals, 4), dtype=np.int32)
-
-        # Initialize neighbor arrays to -1 (no neighbor)
-        dihNgs.fill(-1)
-
-        # Copy atom indices
-        for i in range(ndihedrals):  dihAtoms[i] = dihedrals[i]
-
-        # Build neighbor lists
-        for i in range(ndihedrals):
-            a1, a2, a3, a4 = dihedrals[i]
-            # Find other dihedrals sharing atoms with this one
-            for j in range(ndihedrals):
-                if i == j:  continue
-                b1, b2, b3, b4 = dihedrals[j]
-                # Check for shared atoms and assign neighbors
-                if ((a1 == b1) or (a1 == b2) or (a1 == b3) or (a1 == b4)) and (dihNgs[i, 0] == -1):    dihNgs[i, 0] = j
-                if ((a2 == b1) or (a2 == b2) or (a2 == b3) or (a2 == b4)) and (dihNgs[i, 1] == -1):    dihNgs[i, 1] = j
-                if ((a3 == b1) or (a3 == b2) or (a3 == b3) or (a3 == b4)) and (dihNgs[i, 2] == -1):    dihNgs[i, 2] = j
-                if ((a4 == b1) or (a4 == b2) or (a4 == b3) or (a4 == b4)) and (dihNgs[i, 3] == -1):    dihNgs[i, 3] = j
-
-        return dihAtoms, dihNgs
-
-    def bakeAngleNeighs(self, angles, natoms):
-        """
-        Prepares angle neighbor information.
-        Similar to UFF::bakeAngleNeighs in C++.
-
-        Args:
-            angles (np.ndarray): Array of angle definitions
-            natoms (int): Number of atoms
-
-        Returns:
-            tuple: (angAtoms, angNgs) arrays for GPU upload
-        """
-        nangles = len(angles)
-        angAtoms = np.zeros((nangles, 4), dtype=np.int32)  # 4th element is padding
-        angNgs = np.zeros((nangles, 4), dtype=np.int32)
-
-        # Initialize neighbor arrays to -1 (no neighbor)
-        angNgs.fill(-1)
-
-        # Copy atom indices and pad with -1
-        for i in range(nangles):
-            angAtoms[i, :3] = angles[i]
-            angAtoms[i, 3] = -1  # Padding
-
-        # Build neighbor lists
-        for i in range(nangles):
-            a1, a2, a3 = angles[i][:3]
-
-            # Find other angles sharing atoms with this one
-            for j in range(nangles):
-                if i == j: continue
-                b1, b2, b3 = angles[j][:3]
-                # Check for shared atoms and assign neighbors
-                if ((a1 == b1) or (a1 == b2) or (a1 == b3)) and (angNgs[i, 0] == -1): angNgs[i, 0] = j
-                if ((a2 == b1) or (a2 == b2) or (a2 == b3)) and (angNgs[i, 1] == -1): angNgs[i, 1] = j
-                if ((a3 == b1) or (a3 == b2) or (a3 == b3)) and (angNgs[i, 2] == -1): angNgs[i, 2] = j
-
-        return angAtoms, angNgs
-
-    def bakeInversionNeighs(self, inversions, natoms):
-        """
-        Prepares inversion neighbor information.
-        Similar to UFF::bakeInversionNeighs in C++.
-
-        Args:
-            inversions (np.ndarray): Array of inversion definitions
-            natoms (int): Number of atoms
-
-        Returns:
-            tuple: (invAtoms, invNgs) arrays for GPU upload
-        """
-        ninversions = len(inversions)
-        invAtoms = np.zeros((ninversions, 4), dtype=np.int32)
-        invNgs = np.zeros((ninversions, 4), dtype=np.int32)
-
-        # Initialize neighbor arrays to -1 (no neighbor)
-        invNgs.fill(-1)
-
-        # Copy atom indices
-        for i in range(ninversions):
-            invAtoms[i] = inversions[i]
-
-        # Build neighbor lists
-        for i in range(ninversions):
-            a1, a2, a3, a4 = inversions[i]
-
-            # Find other inversions sharing atoms with this one
-            for j in range(ninversions):
-                if i == j:
-                    continue
-                b1, b2, b3, b4 = inversions[j]
-                # Check for shared atoms and assign neighbors
-                if ((a1 == b1) or (a1 == b2) or (a1 == b3) or (a1 == b4)) and (invNgs[i, 0] == -1): invNgs[i, 0] = j
-                if ((a2 == b1) or (a2 == b2) or (a2 == b3) or (a2 == b4)) and (invNgs[i, 1] == -1): invNgs[i, 1] = j
-                if ((a3 == b1) or (a3 == b2) or (a3 == b3) or (a3 == b4)) and (invNgs[i, 2] == -1): invNgs[i, 2] = j
-                if ((a4 == b1) or (a4 == b2) or (a4 == b3) or (a4 == b4)) and (invNgs[i, 3] == -1): invNgs[i, 3] = j
-        return invAtoms, invNgs
-
-    def toUFF(self, mol, bRealloc=True):
-        """
-        Converts molecular structure to UFF representation.
-        Similar to builder.toUFF() in C++.
-
-        Args:
-            mol (object): Molecular system with atoms, bonds, etc.
-            bRealloc (bool): Flag to reallocate buffers
-
-        Returns:
-            dict: UFF data dictionary for upload
-        """
-        # Make sure element_types and atom_types are loaded before processing
-        if not hasattr(self, 'element_types') or not hasattr(self, 'atom_types'):
-            # Load element and atom types from data files
-            base_path = os.path.dirname(os.path.abspath(__file__))
-            data_path = os.path.join(base_path, "../../cpp/common_resources/")
-            self.element_types = MMparams.read_element_types(os.path.join(data_path, 'ElementTypes.dat'))
-            self.atom_types = MMparams.read_atom_types(os.path.join(data_path, 'AtomTypes.dat'), self.element_types)
-
-        # Generate or retrieve required attributes for UFF calculation
-        # Number of pi electrons for each atom
-        npi_list = getattr(mol, 'npi_list', [self.atom_types[name].npi if name in self.atom_types else 0 for name in mol.enames])
-        # Number of electron pairs for each atom
-        nep_list = getattr(mol, 'nep_list', [self.atom_types[name].nepair if name in self.atom_types else 0 for name in mol.enames])
-        # Which atoms are nodes in the molecular graph (non-hydrogen atoms usually)
-        capping_atoms = ['H', 'F', 'Cl', 'Br', 'I']  # Terminal atoms typically not considered nodes
-        isNode = getattr(mol, 'isNode', [0 if self.atom_types[name].element_name in capping_atoms else 1
-                                       for name in mol.enames if name in self.atom_types])
-        # REQs (radius, epsilon, charge) parameters
-        REQs = getattr(mol, 'REQs', MMparams.generate_REQs_from_atom_types(mol, self.atom_types))
-
-        # Extract basic molecular information
-        natoms = len(mol.atypes)
-        nbonds = len(mol.bonds)
-
-        # Count angles, dihedrals, and inversions
-        angles = []
-        dihedrals = []
-        inversions = []
-
-        # Build neighbor list
-        neighs_list = [[] for _ in range(natoms)]
-        for i, (a, b) in enumerate(mol.bonds):
-            neighs_list[a].append(b)
-            neighs_list[b].append(a)
-
-        # Pad neighbor list to be natoms x 4
-        neighs = np.full((natoms, 4), -1, dtype=np.int32)
-        neighBs = np.full((natoms, 4), -1, dtype=np.int32)
-        bond_map = {tuple(sorted(bond)): i for i, bond in enumerate(mol.bonds)}
-        for i, ng in enumerate(neighs_list):
-            n = len(ng)
-            if n > 4:
-                n = 4
-            neighs[i, :n] = ng[:n]
-            for j_idx, j in enumerate(ng[:n]):
-                bond_tuple = tuple(sorted((i, j)))
-                if bond_tuple in bond_map:
-                    neighBs[i, j_idx] = bond_map[bond_tuple]
-
-        # Find angles (3 connected atoms) using neighbor lists (avoid -1 sentinels)
-        for i in range(natoms):
-            for j in neighs_list[i]:
-                for k in neighs_list[j]:
-                    if k != i and i < k:
-                        angles.append((i, j, k))
-
-        # Find dihedrals (4 connected atoms) using neighbor lists
-        for i in range(natoms):
-            for j in neighs_list[i]:
-                for k in neighs_list[j]:
-                    if k != i:
-                        for l in neighs_list[k]:
-                            if l != j and i < l:
-                                dihedrals.append((i, j, k, l))
-
-        # Find inversions (atoms with 3 neighbors)
-        # UFF defines 3 inversions for a planar center for symmetry
-        for i in range(natoms):
-            if len(neighs_list[i]) == 3:
-                j, k, l = neighs_list[i]
-                inversions.append((i, j, k, l))
-                inversions.append((i, k, l, j))
-                inversions.append((i, l, j, k))
-
-        # Allocate buffers if needed
-        if bRealloc:
-            self.realloc_buffers(natoms, nbonds, len(angles), len(dihedrals), len(inversions), 0, 1)
-
-        a2f_offsets, a2f_counts, a2f_indices = self.mapAtomInteractions(natoms, np.array(dihedrals, dtype=np.int32), np.array(inversions, dtype=np.int32), np.array(angles, dtype=np.int32))
-        self.set_a2f_map_size(len(a2f_indices))
-
-        # Convert atom types to UFF types
-        atype = np.zeros(natoms, dtype=np.int32)
-        aREQ = np.zeros(natoms * 4, dtype=np.float32)
-        
-        # TODO: This parameter assignment is a placeholder and likely incorrect.
-        # The test script (test_UFF_ocl.py) currently bypasses this by providing correct parameters from the C++ object.
-        for i, at in enumerate(mol.atypes):
-            uff_type        = self._get_uff_type(at)
-            atype[i]        = uff_type
-            aREQ[i*4:i*4+4] = self.get_uff_params(uff_type)
-
-        # Convert bonds to UFF format
-        bonds = np.zeros(nbonds * 2, dtype=np.int32)
-        bonParams = np.zeros(nbonds * 2, dtype=np.float32)
-        for i, (a, b) in enumerate(mol.bonds):
-            bonds[i*2:i*2+2]      = [a, b]
-            bonParams[i*2:i*2+2] = self.get_bond_params(uff_type)
-
-        # Convert angles to UFF format
-        angles = np.array(angles, dtype=np.int32)
-        angleParams = np.zeros((len(angles), 4), dtype=np.float32)
-        angParams2_w = np.zeros(len(angles), dtype=np.float32)
-        for i, (a, b, c) in enumerate(angles):
-            # _get_angle_params returns [angle, force] (shape 2), but we need shape 4
-            angle_params = self._get_angle_params(uff_type)
-            angleParams[i,0]   = angle_params[0]  # equilibrium angle
-            angleParams[i,1] = angle_params[1]  # force constant
-            angleParams[i,2] = 0.0  # Placeholder for any additional parameters
-            angleParams[i,3] = 0.0  # Placeholder for any additional parameters
-
-        # Convert dihedrals to UFF format
-        dihedrals = np.array(dihedrals, dtype=np.int32)
-        dihParams = np.zeros((len(dihedrals), 3), dtype=np.float32)
-        for i, (a, b, c, d) in enumerate(dihedrals):
-            # _get_dihedral_params returns [angle, force] (shape 2), but we need shape 3 for float3
-            dihedral_params = self._get_dihedral_params(uff_type)
-            dihParams[i,0]   = dihedral_params[0]  # V
-            dihParams[i,1] = dihedral_params[1]  # d=cos(n*phi0)
-            dihParams[i,2] = 2.0 # n - periodicity, default to 2
-
-        # Convert inversions to UFF format
-        inversions = np.array(inversions, dtype=np.int32)
-        invParams = np.zeros((len(inversions), 4), dtype=np.float32)
-        for i, (a, b, c, d) in enumerate(inversions):
-            # _get_inversion_params returns [angle, force] (shape 2), but we need shape 4
-            inversion_params = self._get_inversion_params(uff_type)
-            invParams[i,0]   = inversion_params[0]  # equilibrium angle
-            invParams[i,1] = inversion_params[1]  # force constant
-            invParams[i,2] = 0.0  # Placeholder for any additional parameters
-            invParams[i,3] = 0.0  # Placeholder for any additional parameters
-
-        # Create UFF data dictionary
-        uff_data = {
-            "atype": atype,
-            "REQs": aREQ,
-            "bonAtoms": bonds,
-            "bonParams": bonParams,
-            "angles": angles,
-            "angParams1": angleParams,
-            "angParams2_w": angParams2_w,
-            "dihedrals": dihedrals,
-            "dihParams": dihParams,
-            "inversions": inversions,
-            "invParams": invParams,
-            "neighs": neighs,
-            "neighBs": neighBs,
-            "pbc_shifts": None,
-            "a2f_offsets": a2f_offsets,
-            "a2f_counts": a2f_counts,
-            "a2f_indices": a2f_indices
-        }
-
-        return uff_data
-
-
-
-    def get_uff_params(self, uff_type):
-        """
-        Retrieves UFF parameters for a given UFF type.
-
-        Args:
-            uff_type (int): UFF type index
-
-        Returns:
-            np.ndarray: Array of UFF parameters [REQ, epsilon, sigma, mass]
-        """
-        # Use element_types if available
-        if hasattr(self, 'element_types'):
-            for et_name, et in self.element_types.items():
-                if et.iZ == uff_type:
-                    return np.array([et.RvdW, et.EvdW, 0.0, et.iZ * 2.0], dtype=np.float32)
-
-        # Fallback to basic parameters
-        uff_params = {
-            1: [1.0, 0.01, 0.0, 1.0],  # Hydrogen
-            6: [1.7, 0.05, 0.0, 12.0],  # Carbon
-            7: [1.55, 0.07, 0.0, 14.0],  # Nitrogen
-            8: [1.52, 0.06, 0.0, 16.0],  # Oxygen
-            16: [1.8, 0.05, 0.0, 32.0]  # Sulfur
-        }
-        return np.array(uff_params.get(uff_type, [0.0, 0.0, 0.0, 0.0]), dtype=np.float32)
-
-    def get_bond_params(self, uff_type):
-        """
-        Retrieves bond parameters for a given UFF type.
-
-        Args:
-            uff_type (int): UFF type index
-
-        Returns:
-            np.ndarray: Array of bond parameters [bond length, bond force constant]
-        """
-        # ElementType should already be loaded before this is called
-        for et_name, et in self.element_types.items():
-            if et.iZ == uff_type:
-                # UFF bond length is related to covalent radius
-                bond_length = et.Rcov
-                # Bond force constant scales with atomic number
-                bond_force = 350.0 + (et.iZ * 2.0)
-                return np.array([bond_length, bond_force], dtype=np.float32)
-
-        # If we get here, the element type was not found - this is an error
-        raise ValueError(f"Element {uff_type} not found in element_types")
-
-
-
-    def _get_dihedral_params(self, uff_type):
-        """
-        Retrieves dihedral parameters for a given UFF type.
-
-        Args:
-
-            uff_type (int): UFF type index
-
-        Returns:
-            np.ndarray: Array of dihedral parameters [dihedral angle, dihedral force constant]
-        """
-        # AtomType should already be loaded before this is called
-        for at_name, at in self.atom_types.items():
-            if at.iZ == uff_type:
-                # Determine dihedral parameters based on hybridization
-                angle = 0.0  # Default barrier angle (pi)
-                force = at.iZ * 0.5  # Base force constant
-
-                # Stronger barriers for pi-bonded atoms
-                if at.npi > 0:
-                    force *= 1.5
-
-                return np.array([angle, force], dtype=np.float32)
-
-        # If we get here, the atom type was not found - this is an error
-        raise ValueError(f"UFF type {uff_type} not found in atom_types")
-
-
-    def _get_angle_params(self, uff_type):
-        """
-        Retrieves angle parameters for a given UFF type.
-
-        Args:
-            uff_type (int): UFF type index
-
-        Returns:
-            np.ndarray: Array of angle parameters [angle, angle force constant]
-        """
-        # AtomType should already be loaded before this is called
-        for at_name, at in self.atom_types.items():
-            if at.iZ == uff_type:
-                # Get angle based on hybridization determined by npi
-                angle = 109.5  # Default tetrahedral sp3
-                if at.npi == 1: angle = 120.0  # sp2
-                if at.npi == 2: angle = 180.0  # sp
-
-                # Force constant depends on element properties
-                force = 50.0 + (10.0 * at.iZ / 8.0)
-                return np.array([angle, force], dtype=np.float32)
-
-        # If we get here, the atom type was not found - this is an error
-        raise ValueError(f"UFF type {uff_type} not found in atom_types")
-
-
-
-    def _get_inversion_params(self, uff_type):
-        """
-        Retrieves inversion parameters for a given UFF type.
-
-        Args:
-            uff_type (int): UFF type index
-
-        Returns:
-            np.ndarray: Array of inversion parameters [inversion angle, inversion force constant]
-        """
-        # AtomType should be already loaded before this is called
-        # Lookup atom type by element number
-        for at_name, at in self.atom_types.items():
-            if at.iZ == uff_type:
-                # Inversion parameters depend on element and hybridization
-                angle = 0.0  # Default angle
-                force = 0.1   # Default force
-
-                # Planar elements (sp2 hybridized) have higher barriers
-                if at.iZ in [6, 7, 15, 33, 51, 83] and at.npi == 1:
-                    force = 4.0 + (at.iZ / 10.0)
-
-                return np.array([angle, force], dtype=np.float32)
-
-        # If we get here, the atom type was not found - this is an error
-        raise ValueError(f"UFF type {uff_type} not found in atom_types")
-
-    def _get_uff_type(self, atom):
-        """
-        Get the UFF type for an atom.
-
-        Args:
-            atom: The atom to get the UFF type for - can be an atom object with Z attribute
-                 or directly the atomic number (int or numpy.int32)
-
-        Returns:
-            int: The UFF atomic type identifier
-        """
-        # Check if atom is already numeric (int or numpy.int32) or an object with Z attribute
-        if hasattr(atom, 'Z'):
-            element_num = atom.Z
-        else:
-            # Assume it's directly the atomic number
-            element_num = int(atom)  # Convert to int in case it's numpy.int32
-
-        # Verify element exists in element_types
-        for et_name, et in self.element_types.items():
-            if et.iZ == element_num:
-                return element_num
-
-        # If we get here, the element type was not found - this is an error
-        raise ValueError(f"Element {element_num} not found in element_types")

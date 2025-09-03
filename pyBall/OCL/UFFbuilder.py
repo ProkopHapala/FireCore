@@ -1,909 +1,1288 @@
 import os
 import numpy as np
-import pyopencl as cl
-from .OpenCLBase import OpenCLBase
-from . import MMparams
+from  .. import MMFF as mmff
+from . import MMparams as mmparams
+from .. import atomicUtils as au
 
-# Size constants for better readability
-i32sz = 4  # size of int32 in bytes
-f32sz = 4  # size of float32 in bytes
+class Atom:
+    def __init__(self, type_idx, iconf):
+        self.type = type_idx
+        self.iconf = iconf
+        self.REQ = np.zeros(4)
 
-class UFF_CL(OpenCLBase):
-    """
-    PyOpenCL interface for running UFF calculations on GPU,
-    following the structure of the provided C++ reference.
+class Conformer:
+    def __init__(self, nbond):
+        self.nbond = nbond
 
-    This class inherits from OpenCLBase and implements specific functionality
-    for Universal Force Field (UFF) calculations.
-    """
+class Bond:
+    def __init__(self, atoms, order=1):
+        self.atoms = atoms
+        self.order = order
+        self.l0 = 0.0
+        self.k = 0.0
 
-    def __init__(self, nloc=32, kernel_path=None):
-        """
-        Initialize the UFF OpenCL environment.
+class Angle:
+    def __init__(self):
+        self.atoms = (0, 0, 0)
+        self.bonds = (0, 0)
+        self.k = 0.0
+        self.C0 = 0.0
+        self.C1 = 0.0
+        self.C2 = 0.0
+        self.C3 = 0.0
 
-        Args:
-            nloc (int): Local work group size
-            kernel_path (str, optional): Path to the UFF kernel file. If None, auto-detect.
-        """
-        # Initialize the base class
-        super().__init__(nloc=nloc)
+class Dihedral:
+    def __init__(self):
+        self.atoms = (0, 0, 0, 0)
+        self.bonds = (0, 0, 0)
+        self.k = 0.0
+        self.d = 0.0
+        self.n = 0.0
 
-        # Find and load the UFF kernel file
-        if kernel_path is None:
-            base_path = os.path.dirname(os.path.abspath(__file__))
-            rel_path = "../../cpp/common_resources/cl/UFF.cl"
-            kernel_path = os.path.join(base_path, rel_path)
+class Inversion:
+    def __init__(self):
+        self.atoms = (0, 0, 0, 0)
+        self.bonds = (0, 0, 0)
+        self.k = 0.0
+        self.C0 = 0.0
+        self.C1 = 0.0
+        self.C2 = 0.0
 
-        # Load the OpenCL program
-        if not self.load_program(kernel_path=kernel_path, bPrint=True):
-            print(f"Failed to load UFF kernels from {kernel_path}")
-            return
+class UFF_Builder:
 
-        # Initialize system parameters
-        self.nSystems    = 0
-        self.natoms      = 0
-        self.nbonds      = 0
-        self.nangles     = 0
-        self.ndihedrals  = 0
-        self.ninversions = 0
-        self.npbc        = 0
+    def __init__(self, mol, bSimple=False, b141=False, bConj=False, bCumulene=False):
+        self.mol = mol
+        base_path = os.path.dirname(os.path.abspath(__file__))
+        data_path = os.path.join(base_path, "../../cpp/common_resources/")
+        self.params = mmparams.MMFFparams(data_path)
 
-        # Initialize a2f map parameters
-        self.a2f_map_size = 0
+        # Monkey-patch AtomicSystem instance to be compatible with this builder
+        self.builder_atoms = []
+        for i, ename in enumerate(self.mol.enames):
+            type_idx = self.params.getAtomType(ename, bErr=False)
+            if type_idx == -1:
+                # If the direct lookup fails, try to find a default type (e.g., "H_" for "H")
+                type_idx = self.params.getAtomType(ename + "_", bErr=False)
+            if type_idx == -1:
+                 # If that also fails, try the element name itself as a fallback
+                for j, atype in enumerate(self.params.atypes):
+                    if atype.element_name == ename:
+                        type_idx = j
+                        break
+            if type_idx == -1:
+                raise Exception(f"Cannot find a default atom type for element {ename}")
+            self.builder_atoms.append(Atom(type_idx, i))
+            print(f"Atom {i} ({ename}) initial type: {self.params.atypes[type_idx].name}")
 
-        # Initialize kernel arguments dictionary
-        self.kernel_args = {}
+        def make_neighs_bonds():
+            if self.mol.bonds is None:
+                self.mol.findBonds()
+            ngs = au.neigh_bonds(len(self.mol.apos), self.mol.bonds)
+            max_neighs = 4
+            self.neighs = np.full((len(self.mol.apos), max_neighs), -1, dtype=int)
+            self.neighBs = np.full((len(self.mol.apos), max_neighs), -1, dtype=int)
+            for i, ng in enumerate(ngs):
+                for j, (neighbor, bond_idx) in enumerate(ng.items()):
+                    self.neighs[i, j] = neighbor
+                    self.neighBs[i,j] = bond_idx
+            return self.neighs, self.neighBs
+        self.mol.make_neighs_bonds = make_neighs_bonds
 
-        # Flag to track if kernel arguments are set up
-        self.args_setup = False
+        def get_bond_by_atoms(i, j):
+            if self.bonds is None:
+                return None
+            for ib, b in enumerate(self.bonds):
+                if (b.atoms[0] == i and b.atoms[1] == j) or (b.atoms[0] == j and b.atoms[1] == i):
+                    return ib
+            return None
+        self.mol.get_bond_by_atoms = get_bond_by_atoms
 
-        self.bDoBonds      = True
-        self.bDoAngles     = True
-        self.bDoDihedrals  = True
-        self.bDoInversions = True
-        self.bDoNonBonded  = False
+        if self.mol.bonds is None:
+            self.mol.findBonds()
+        bonds_ = self.mol.bonds
+        self.bonds = []
+        for b in bonds_:
+            self.bonds.append(Bond(b))
+        ngs = au.neigh_bonds(len(self.mol.apos), bonds_)
+        self.mol.confs = [Conformer(len(n)) for n in ngs]
 
-    def realloc_buffers(self, natoms, nbonds, nangles, ndihedrals, ninversions, npbc, nSystems=1):
-        """
-        Allocates or reallocates all necessary OpenCL buffers for UFF calculations.
+        self.bSimple = bSimple
+        self.b141 = b141
+        self.bConj = bConj
+        self.bCumulene = bCumulene
 
-        Args:
-            natoms (int): Number of atoms per system
-            nbonds (int): Number of bonds per system
-            nangles (int): Number of angles per system
-            ndihedrals (int): Number of dihedrals per system
-            ninversions (int): Number of inversions per system
-            npbc (int): Number of PBC shift vectors per system
-            nSystems (int): Number of systems to simulate
-        """
-        self.nSystems = nSystems
-        self.natoms = natoms
-        self.nbonds = nbonds
-        self.nangles = nangles
-        self.ndihedrals = ndihedrals
-        self.ninversions = ninversions
-        self.npbc = npbc
+    def build(self):
+        self.assign_uff_types()
+        self.assign_uff_params()
+        return self.get_arrays()
 
-        nA  = natoms     * nSystems
-        nB  = nbonds     * nSystems
-        nAng= nangles    * nSystems
-        nD  = ndihedrals * nSystems
-        nInv= ninversions* nSystems
+    def assign_uff_types(self):
+        # This is a Python implementation of the C++ assignUFFtypes logic
+        # It will modify self.mol.atom_types, self.mol.bond_orders etc.
 
-        # Save totals (keep attribute names but assign correct values)
-        self.na_Tot = nA
-        self.nb_Tot = nB
-        self.nd_Tot = nD
-        self.ni_Tot = nInv
+        # init working arrays
+        tol = 0.05
+        set_atom = np.zeros(len(self.builder_atoms), dtype=bool)
+        set_bond = np.zeros(len(self.bonds), dtype=bool)
+        BOs = np.full(len(self.bonds), -1.0, dtype=np.float64)
+        BOs_int = np.full(len(self.bonds), -1, dtype=np.int32)
 
-        # Core per-atom buffers
-        self.check_buf("apos",   nA * 4 * f32sz)
-        self.check_buf("fapos",  nA * 4 * f32sz)
-        self.check_buf("fint",   nA * 4 * f32sz)
-        self.check_buf("atype",  nA     * i32sz)
-        self.check_buf("REQs",   nA * 4 * f32sz)
+        # make neighbor list
+        neighs, _ = self.mol.make_neighs_bonds()
 
-        # Bonds
-        self.check_buf("bonAtoms",  nB * 2 * i32sz)
-        self.check_buf("bonParams", nB * 2 * f32sz)
+        # assign bond orders and atom types for trivial cases
+        self.assign_uff_types_trivial(neighs, BOs, BOs_int, set_atom, set_bond)
+        print("set_atom after trivial:", np.where(~set_atom)[0])
 
-        # Angles
-        self.check_buf("angles",       nAng * 3 * i32sz)
-        self.check_buf("angParams1",   nAng * 4 * f32sz)
-        self.check_buf("angParams2_w", nAng * f32sz)
-        self.check_buf("angAtoms",     nAng * 4 * i32sz)
-        self.check_buf("angNgs",       nAng * 4 * i32sz)
+        # assign bond orders and atom types for nitro groups
+        self.assign_uff_types_nitro(neighs, BOs, BOs_int, set_atom, set_bond)
+        print("set_atom after nitro:", np.where(~set_atom)[0])
 
-        # Dihedrals
-        self.check_buf("dihedrals",  nD * 4 * i32sz)
-        self.check_buf("dihParams",  nD * 3 * f32sz)
-        self.check_buf("dihAtoms",   nD * 4 * i32sz)
-        self.check_buf("dihNgs",     nD * 4 * i32sz)
+        # find a (hopefully) valid limit resonance structure
+        self.assign_uff_types_treewalk(neighs, BOs_int)
+        print("set_atom after treewalk:", np.where(~set_atom)[0])
 
-        # Inversions
-        self.check_buf("inversions", nInv * 4 * i32sz)
-        self.check_buf("invParams",  nInv * 4 * f32sz)
-        self.check_buf("invAtoms",   nInv * 4 * i32sz)
-        self.check_buf("invNgs",     nInv * 4 * i32sz)
-
-        # Per-atom neighbor data
-        self.check_buf("neighs",     nA * 4 * i32sz)
-        self.check_buf("neighCell",  nA * 4 * i32sz)
-        self.check_buf("neighBs",    nA * 4 * i32sz)
-        self.check_buf("hneigh",     nA * 4 * f32sz)
-
-        # Misc/system
-        self.check_buf("pbc_shifts", npbc * nSystems * 4 * f32sz)
-        self.check_buf("energies",   5 * nSystems * f32sz)
-        self.check_buf("lvec",       9 * nSystems * f32sz)
-        self.check_buf("params",     10 * i32sz)
-
-        # Energy contributions per interaction type
-        self.check_buf("Ea_contrib", nAng * f32sz)
-        self.check_buf("Ed_contrib", nD   * f32sz)
-        self.check_buf("Ei_contrib", nInv * f32sz)
-        self.args_setup = False
-
-        print(f"UFF buffers allocated for {nSystems} systems with {natoms} atoms each")
-
-    def set_a2f_map_size(self, size):
-        """
-        Sets the size of the atom-to-force map.
-
-        Args:
-            size (int): Total number of references in the a2f map
-        """
-        self.a2f_map_size = size
-
-        # Allocate a2f map buffers
-        self.check_buf("a2f_offsets", self.natoms * self.nSystems * i32sz)
-        self.check_buf("a2f_counts", self.natoms * self.nSystems * i32sz)
-        self.check_buf("a2f_indices", size * i32sz)
-
-        print(f"A2F map size set to {size}")
-
-
-    def upload_positions(self, positions, iSys=0):
-        """
-        Uploads atom positions for one system to the GPU.
-
-        Args:
-            positions (np.ndarray): Array of atom positions (natoms x 3)
-            iSys (int): System index
-        """
-        if positions.shape[0] != self.natoms:
-            raise ValueError(f"Expected {self.natoms} atoms, got {positions.shape[0]}")
-
-        # Convert to float32 if needed
-        if positions.dtype != np.float32:
-            positions = positions.astype(np.float32)
-
-        # Ensure positions is a 2D array
-        if len(positions.shape) == 1:
-            positions = positions.reshape(-1, 3)
-
-        # Create a padded array with 4 components per position (xyz + padding)
-        padded_positions = np.zeros((self.natoms, 4), dtype=np.float32)
-        padded_positions[:, :3] = positions
-
-        # Calculate offset for this system
-        offset = iSys * self.natoms * 4
-
-        # Upload to GPU
-        cl.enqueue_copy(self.queue, self.buffer_dict["apos"], padded_positions.flatten(), device_offset=offset * f32sz)
-
-    def upload_topology_params(self, uff_data, iSys=0):
-        """
-        Uploads static topology and parameter data for one system to the GPU buffers.
-
-        Args:
-            uff_data (dict): Dictionary containing UFF parameter arrays
-            iSys (int): System index
-        """
-        # Calculate offsets for this system
-        atom_offset      = iSys * self.natoms
-        bond_offset      = iSys * self.nbonds
-        angle_offset     = iSys * self.nangles
-        dihedral_offset  = iSys * self.ndihedrals
-        inversion_offset = iSys * self.ninversions
-
-        def _upload_if_present(buffer_name, data_key, dtype, offset_elements, element_size):
-            if data_key in uff_data and uff_data[data_key] is not None and len(uff_data[data_key]) > 0:
-                data = uff_data[data_key].astype(dtype)
-                cl.enqueue_copy(self.queue, self.buffer_dict[buffer_name], data, device_offset=(offset_elements * element_size))
-
-        _upload_if_present("atype",          "atype",           np.int32,   atom_offset,          i32sz)
-        _upload_if_present("REQs",           "REQs",            np.float32, atom_offset * 4,      f32sz)
-        _upload_if_present("bonAtoms",       "bonAtoms",        np.int32,   bond_offset * 2,      i32sz)
-        _upload_if_present("bonParams",      "bonParams",       np.float32, bond_offset * 2,      f32sz)
-        _upload_if_present("angles",         "angles",          np.int32,   angle_offset * 3,     i32sz)
-        _upload_if_present("angParams1",     "angParams1",      np.float32, angle_offset * 4,     f32sz)
-        _upload_if_present("angParams2_w",   "angParams2_w",    np.float32, angle_offset,         f32sz)
-        _upload_if_present("dihedrals",      "dihedrals",       np.int32,   dihedral_offset * 4,  i32sz)
-        _upload_if_present("dihParams",      "dihParams",       np.float32, dihedral_offset * 3,  f32sz)
-        _upload_if_present("inversions",     "inversions",      np.int32,   inversion_offset * 4, i32sz)
-        _upload_if_present("invParams",      "invParams",       np.float32, inversion_offset * 4, f32sz)
-        _upload_if_present("neighs",         "neighs",          np.int32,   atom_offset * 4,      i32sz)
-        _upload_if_present("neighBs",        "neighBs",         np.int32,   atom_offset * 4,      i32sz)
-        _upload_if_present("lvec",           "lvec",            np.float32, iSys * 9,             f32sz)
-        _upload_if_present("pbc_shifts",     "pbc_shifts",      np.float32, iSys * self.npbc * 4, f32sz)
-        _upload_if_present("angAtoms",       "angAtoms",        np.int32,   angle_offset * 4,     i32sz)
-        _upload_if_present("angNgs",         "angNgs",          np.int32,   angle_offset * 4,     i32sz)
-        _upload_if_present("dihAtoms",       "dihAtoms",        np.int32,   dihedral_offset * 4,  i32sz)
-        _upload_if_present("dihNgs",         "dihNgs",          np.int32,   dihedral_offset * 4,  i32sz)
-        _upload_if_present("invAtoms",       "invAtoms",        np.int32,   inversion_offset * 4, i32sz)
-        _upload_if_present("invNgs",         "invNgs",          np.int32,   inversion_offset * 4, i32sz)
-
-        indices_offset = iSys * self.a2f_map_size if hasattr(self, 'a2f_map_size') else 0
-        _upload_if_present("a2f_offsets", "a2f_offsets", np.int32, atom_offset,    i32sz)
-        _upload_if_present("a2f_counts",  "a2f_counts",  np.int32, atom_offset,    i32sz)
-        _upload_if_present("a2f_indices", "a2f_indices", np.int32, indices_offset, i32sz)
-
-    def upload_params(self, params):
-        """
-        Uploads general parameters to the GPU.
-
-        Args:
-            params (np.ndarray): Array of parameters
-        """
-        cl.enqueue_copy(self.queue, self.buffer_dict["params"], params.astype(np.int32))
-
-    def prepare_kernel_args(self):
-        """
-        Prepares kernel arguments for all UFF kernels.
-        """
-        if self.args_setup:
-            return
-
-        # Initialize kernel parameters if not already done
-        if not hasattr(self, 'kernel_params'):
-            self.kernel_params = {}
-            # Set basic parameters like natoms, nbonds, etc.
-            self.kernel_params['natoms'] = np.int32(self.natoms)
-            self.kernel_params['nbonds'] = np.int32(self.nbonds)
-            self.kernel_params['nangles'] = np.int32(self.nangles)
-            self.kernel_params['ndihedrals'] = np.int32(self.ndihedrals)
-            self.kernel_params['ninversions'] = np.int32(self.ninversions)
-            self.kernel_params['nSystems'] = np.int32(self.nSystems)
-            self.kernel_params['npbc'] = np.int32(self.npbc)
-            self.kernel_params['bSubtractVdW'] = np.int32(0) # Default value
-            self.kernel_params['i0bon'] = np.int32(0)
-            self.kernel_params['i0ang'] = np.int32(0)
-            self.kernel_params['i0dih'] = np.int32(0)
-            self.kernel_params['i0inv'] = np.int32(0)
-            self.kernel_params['SubNBTorsionFactor'] = np.float32(0.0)
-            self.kernel_params['Rdamp'] = np.float32(1.0)
-            self.kernel_params['FmaxNonBonded'] = np.float32(10.0)
-            self.kernel_params['bSubtractBondNonBond'] = np.int32(0)
-            self.kernel_params['bSubtractAngleNonBond'] = np.int32(0)
-            self.kernel_params['bClearForce'] = np.int32(1)
-
-        # Use OpenCLBase's functionality for generating kernel arguments
-        if not hasattr(self, 'kernelheaders') or not self.kernelheaders:
-            # If kernel headers are not set, extract them from prg source
-            self.kernelheaders = self.extract_kernel_headers(self.prg.get_info(cl.prg_info.SOURCE))
-
-        self.kernel_args = {}
-        for kernel_name in self.kernelheaders:
-            self.kernel_args[kernel_name] = self.generate_kernel_args(kernel_name)
-
-        self.args_setup = True
-
-
-    def run_eval_step(self, bClearForce=True):
-        """
-        Executes one step of UFF evaluation kernels.
-
-        Args:
-            bClearForce (bool): Whether to clear forces before evaluation
-
-        Returns:
-            float: Total energy
-        """
-        if not self.args_setup:
-            self.prepare_kernel_args()
-
-        queue = self.queue
-        if bClearForce: cl.enqueue_fill_buffer                ( queue, self.buffer_dict["fapos"], np.float32(0), 0, self.natoms * self.nSystems * 4 * f32sz)
-        if self.bDoBonds:      self.prg.evalBondsAndHNeigh_UFF( queue, (self.natoms      * self.nSystems,), None,  *self.kernel_args["evalBondsAndHNeigh_UFF"])
-        if self.bDoAngles:     self.prg.evalAngles_UFF        ( queue, (self.nangles     * self.nSystems,), None,  *self.kernel_args["evalAngles_UFF"])
-        if self.bDoDihedrals:  self.prg.evalDihedrals_UFF     ( queue, (self.ndihedrals  * self.nSystems,), None,  *self.kernel_args["evalDihedrals_UFF"])
-        if self.bDoInversions: self.prg.evalInversions_UFF    ( queue, (self.ninversions * self.nSystems,), None,  *self.kernel_args["evalInversions_UFF"])
-        if self.bDoNonBonded:  self.prg.evalNonBonded         ( queue, (self.natoms      * self.nSystems,), None,  *self.kernel_args["evalNonBonded"])
-
-        energies = np.zeros(5 * self.nSystems, dtype=np.float32)
-        #cl.enqueue_copy(self.queue, energies, self.buffer_dict["energies"]) # TODO: implement energy summation
-
-        # Return total energy (last component for each system)
-        return energies[4::5]
-
-    def get_forces(self, iSys=None):
-        """
-        Downloads forces from GPU.
-
-        Args:
-            iSys (int, optional): System index. If None, download all systems.
-
-        Returns:
-            np.ndarray: Forces array
-        """
-        if iSys is None:
-            # Download all forces
-            forces = np.zeros(self.natoms * self.nSystems * 4, dtype=np.float32)
-            cl.enqueue_copy(self.queue, forces, self.buffer_dict["fapos"])
-
-            # Reshape to (nSystems, natoms, 4) and remove padding
-            forces = forces.reshape(self.nSystems, self.natoms, 4)[:, :, :3]
-            return forces
+        if self.bSimple:
+            # assign resonant atoms according to the "simple" rule: atoms with two sp2 neighbors (or heteroatoms) are resonant
+            self.assign_uff_types_simplerule(tol, neighs, BOs, set_atom, set_bond)
+            print("set_atom after simplerule:", np.where(~set_atom)[0])
         else:
-            # Download forces for one system
-            forces = np.zeros(self.natoms * 4, dtype=np.float32)
-            offset = iSys * self.natoms * 4
-            cl.enqueue_copy(self.queue, forces, self.buffer_dict["fapos"],
-                           device_offset=offset * f32sz)
+            # assign resonant atoms according to the Huckel rule for aromaticity
+            self.assign_uff_types_findrings(tol, neighs, BOs, BOs_int, set_atom, set_bond)
+            print("set_atom after findrings:", np.where(~set_atom)[0])
 
-            # Reshape to (natoms, 4) and remove padding
-            forces = forces.reshape(self.natoms, 4)[:, :3]
-            return forces
+        # assign the rest of atom types
+        self.assign_uff_types_assignrest(neighs, BOs, BOs_int, set_atom, set_bond)
+        print("set_atom after assignrest:", np.where(~set_atom)[0])
 
-    def get_energies(self):
-        """
-        Downloads energy contributions from GPU.
+        # try to assign the rest of double bonds
+        self.assign_uff_types_fixsaturation(neighs, BOs, BOs_int, set_bond, tol)
 
-        Returns:
-            dict: Dictionary of energy contributions
-        """
-        energies = np.zeros(5 * self.nSystems, dtype=np.float32)
-        cl.enqueue_copy(self.queue, energies, self.buffer_dict["energies"])
+        # exception to avoid cumulenes
+        if self.bCumulene:
+            self.assign_uff_types_cumulene(neighs, BOs, BOs_int, set_bond)
 
-        # Reshape to (nSystems, 5)
-        energies = energies.reshape(self.nSystems, 5)
+        # manually change sp3 nitrogen and oxygen to "resonant" when they are bonded to an sp2 atom (conjugation)
+        if self.bConj:
+            self.assign_uff_types_conjugation(neighs, BOs)
 
-        # Create dictionary of energy components
-        energy_dict = {
-            "bond": energies[:, 0],
-            "angle": energies[:, 1],
-            "dihedral": energies[:, 2],
-            "inversion": energies[:, 3],
-            "total": energies[:, 4]
-        }
+        # some check before assigning parameters
+        self.assign_uff_types_checks(neighs, BOs, BOs_int, set_atom, set_bond, tol)
 
-        return energy_dict
+        # exception for amide groups
+        self.assign_uff_types_amide(neighs, BOs)
 
-    def get_total_energy(self):
-        """
-        Downloads and returns the total energy from the GPU.
-        """
-        energies = self.get_energies()
-        return energies['total']
+        # store bond orders
+        self.mol.bond_orders = BOs
 
+    def assign_uff_params(self):
+        # This is a Python implementation of the C++ assignUFFparams logic
+        # It will calculate and store bond, angle, dihedral, and inversion parameters
+        neighs, _ = self.mol.make_neighs_bonds()
+        self.assign_uff_params_vdws()
+        self.assign_uff_params_bonds()
+        self.assign_uff_params_angles(neighs)
+        self.assign_uff_params_dihedrals(neighs)
+        self.assign_uff_params_inversions(neighs)
 
-    def mapAtomInteractions(self, natoms, dihedrals, inversions, angles):
-        """
-        Maps atom interactions to force pieces using a buckets structure.
-        Similar to UFF::mapAtomInteractions in C++.
-
-        Args:
-            natoms (int): Number of atoms
-            dihedrals (np.ndarray): Dihedral indices
-            inversions (np.ndarray): Inversion indices
-            angles (np.ndarray): Angle indices
-
-        Returns:
-            tuple: (a2f_offsets, a2f_counts, a2f_indices) arrays for GPU upload
-        """
-        ndihedrals = len(dihedrals)
-        ninversions = len(inversions)
-        nangles = len(angles)
-        # Initialize arrays
-        a2f_counts = np.zeros(natoms, dtype=np.int32)
-
-        # Count interactions per atom
-        # For dihedrals (4 atoms per dihedral)
-        for i in range(ndihedrals):
-            a2f_counts[dihedrals[i, 0]] += 1
-            a2f_counts[dihedrals[i, 1]] += 1
-            a2f_counts[dihedrals[i, 2]] += 1
-            a2f_counts[dihedrals[i, 3]] += 1
-
-        # For inversions (4 atoms per inversion)
-        for i in range(ninversions):
-            a2f_counts[inversions[i, 0]] += 1
-            a2f_counts[inversions[i, 1]] += 1
-            a2f_counts[inversions[i, 2]] += 1
-            a2f_counts[inversions[i, 3]] += 1
-
-        # For angles (3 atoms per angle)
-        for i in range(nangles):
-            a2f_counts[angles[i, 0]] += 1
-            a2f_counts[angles[i, 1]] += 1
-            a2f_counts[angles[i, 2]] += 1
-
-        # Calculate total size and offsets
-        total_refs = np.sum(a2f_counts)
-        a2f_offsets = np.zeros(natoms, dtype=np.int32)
-
-        # Calculate offsets
-        offset = 0
-        for i in range(natoms):
-            a2f_offsets[i] = offset
-            offset += a2f_counts[i]
-
-        # Reset counts for filling indices
-        a2f_counts_temp = np.zeros(natoms, dtype=np.int32)
-        a2f_indices = np.zeros(total_refs, dtype=np.int32)
-
-        # Fill indices for dihedrals
-        for i in range(ndihedrals):
-            for j in range(4):
-                atom_idx                   = dihedrals[i, j]
-                offset                     = a2f_offsets[atom_idx] + a2f_counts_temp[atom_idx]
-                a2f_indices[offset]        = i
-                a2f_counts_temp[atom_idx] += 1
-
-        # Fill indices for inversions
-        for i in range(ninversions):
-            for j in range(4):
-                atom_idx                   = inversions[i, j]
-                offset                     = a2f_offsets[atom_idx] + a2f_counts_temp[atom_idx]
-                a2f_indices[offset]        = i + ndihedrals  # Offset by ndihedrals
-                a2f_counts_temp[atom_idx] += 1
-
-        # Fill indices for angles
-        for i in range(nangles):
-            for j in range(3):
-                atom_idx                   = angles[i, j]
-                offset                     = a2f_offsets[atom_idx] + a2f_counts_temp[atom_idx]
-                a2f_indices[offset]        = i + ndihedrals + ninversions  # Offset by ndihedrals + ninversions
-                a2f_counts_temp[atom_idx] += 1
-
-        return a2f_offsets, a2f_counts, a2f_indices
-
-    def bakeDihedralNeighs(self, dihedrals, natoms):
-        """
-        Prepares dihedral neighbor information.
-        Similar to UFF::bakeDihedralNeighs in C++.
-
-        Args:
-            dihedrals (np.ndarray): Array of dihedral definitions
-            natoms (int): Number of atoms
-
-        Returns:
-            tuple: (dihAtoms, dihNgs) arrays for GPU upload
-        """
-        ndihedrals = len(dihedrals)
-        dihAtoms   = np.zeros((ndihedrals, 4), dtype=np.int32)
-        dihNgs     = np.zeros((ndihedrals, 4), dtype=np.int32)
-
-        # Initialize neighbor arrays to -1 (no neighbor)
-        dihNgs.fill(-1)
-
-        # Copy atom indices
-        for i in range(ndihedrals):  dihAtoms[i] = dihedrals[i]
-
-        # Build neighbor lists
-        for i in range(ndihedrals):
-            a1, a2, a3, a4 = dihedrals[i]
-            # Find other dihedrals sharing atoms with this one
-            for j in range(ndihedrals):
-                if i == j:  continue
-                b1, b2, b3, b4 = dihedrals[j]
-                # Check for shared atoms and assign neighbors
-                if ((a1 == b1) or (a1 == b2) or (a1 == b3) or (a1 == b4)) and (dihNgs[i, 0] == -1):    dihNgs[i, 0] = j
-                if ((a2 == b1) or (a2 == b2) or (a2 == b3) or (a2 == b4)) and (dihNgs[i, 1] == -1):    dihNgs[i, 1] = j
-                if ((a3 == b1) or (a3 == b2) or (a3 == b3) or (a3 == b4)) and (dihNgs[i, 2] == -1):    dihNgs[i, 2] = j
-                if ((a4 == b1) or (a4 == b2) or (a4 == b3) or (a4 == b4)) and (dihNgs[i, 3] == -1):    dihNgs[i, 3] = j
-
-        return dihAtoms, dihNgs
-
-    def bakeAngleNeighs(self, angles, natoms):
-        """
-        Prepares angle neighbor information.
-        Similar to UFF::bakeAngleNeighs in C++.
-
-        Args:
-            angles (np.ndarray): Array of angle definitions
-            natoms (int): Number of atoms
-
-        Returns:
-            tuple: (angAtoms, angNgs) arrays for GPU upload
-        """
-        nangles = len(angles)
-        angAtoms = np.zeros((nangles, 4), dtype=np.int32)  # 4th element is padding
-        angNgs = np.zeros((nangles, 4), dtype=np.int32)
-
-        # Initialize neighbor arrays to -1 (no neighbor)
-        angNgs.fill(-1)
-
-        # Copy atom indices and pad with -1
-        for i in range(nangles):
-            angAtoms[i, :3] = angles[i]
-            angAtoms[i, 3] = -1  # Padding
-
-        # Build neighbor lists
-        for i in range(nangles):
-            a1, a2, a3 = angles[i][:3]
-
-            # Find other angles sharing atoms with this one
-            for j in range(nangles):
-                if i == j: continue
-                b1, b2, b3 = angles[j][:3]
-                # Check for shared atoms and assign neighbors
-                if ((a1 == b1) or (a1 == b2) or (a1 == b3)) and (angNgs[i, 0] == -1): angNgs[i, 0] = j
-                if ((a2 == b1) or (a2 == b2) or (a2 == b3)) and (angNgs[i, 1] == -1): angNgs[i, 1] = j
-                if ((a3 == b1) or (a3 == b2) or (a3 == b3)) and (angNgs[i, 2] == -1): angNgs[i, 2] = j
-
-        return angAtoms, angNgs
-
-    def bakeInversionNeighs(self, inversions, natoms):
-        """
-        Prepares inversion neighbor information.
-        Similar to UFF::bakeInversionNeighs in C++.
-
-        Args:
-            inversions (np.ndarray): Array of inversion definitions
-            natoms (int): Number of atoms
-
-        Returns:
-            tuple: (invAtoms, invNgs) arrays for GPU upload
-        """
-        ninversions = len(inversions)
-        invAtoms = np.zeros((ninversions, 4), dtype=np.int32)
-        invNgs = np.zeros((ninversions, 4), dtype=np.int32)
-
-        # Initialize neighbor arrays to -1 (no neighbor)
-        invNgs.fill(-1)
-
-        # Copy atom indices
-        for i in range(ninversions):
-            invAtoms[i] = inversions[i]
-
-        # Build neighbor lists
-        for i in range(ninversions):
-            a1, a2, a3, a4 = inversions[i]
-
-            # Find other inversions sharing atoms with this one
-            for j in range(ninversions):
-                if i == j:
-                    continue
-                b1, b2, b3, b4 = inversions[j]
-                # Check for shared atoms and assign neighbors
-                if ((a1 == b1) or (a1 == b2) or (a1 == b3) or (a1 == b4)) and (invNgs[i, 0] == -1): invNgs[i, 0] = j
-                if ((a2 == b1) or (a2 == b2) or (a2 == b3) or (a2 == b4)) and (invNgs[i, 1] == -1): invNgs[i, 1] = j
-                if ((a3 == b1) or (a3 == b2) or (a3 == b3) or (a3 == b4)) and (invNgs[i, 2] == -1): invNgs[i, 2] = j
-                if ((a4 == b1) or (a4 == b2) or (a4 == b3) or (a4 == b4)) and (invNgs[i, 3] == -1): invNgs[i, 3] = j
-        return invAtoms, invNgs
-
-    def toUFF(self, mol, bRealloc=True):
-        """
-        Converts molecular structure to UFF representation.
-        Similar to builder.toUFF() in C++.
-
-        Args:
-            mol (object): Molecular system with atoms, bonds, etc.
-            bRealloc (bool): Flag to reallocate buffers
-
-        Returns:
-            dict: UFF data dictionary for upload
-        """
-        # Make sure element_types and atom_types are loaded before processing
-        if not hasattr(self, 'element_types') or not hasattr(self, 'atom_types'):
-            # Load element and atom types from data files
-            base_path = os.path.dirname(os.path.abspath(__file__))
-            data_path = os.path.join(base_path, "../../cpp/common_resources/")
-            self.element_types = MMparams.read_element_types(os.path.join(data_path, 'ElementTypes.dat'))
-            self.atom_types = MMparams.read_atom_types(os.path.join(data_path, 'AtomTypes.dat'), self.element_types)
-
-        # Generate or retrieve required attributes for UFF calculation
-        # Number of pi electrons for each atom
-        npi_list = getattr(mol, 'npi_list', [self.atom_types[name].npi if name in self.atom_types else 0 for name in mol.enames])
-        # Number of electron pairs for each atom
-        nep_list = getattr(mol, 'nep_list', [self.atom_types[name].nepair if name in self.atom_types else 0 for name in mol.enames])
-        # Which atoms are nodes in the molecular graph (non-hydrogen atoms usually)
-        capping_atoms = ['H', 'F', 'Cl', 'Br', 'I']  # Terminal atoms typically not considered nodes
-        isNode = getattr(mol, 'isNode', [0 if self.atom_types[name].element_name in capping_atoms else 1
-                                       for name in mol.enames if name in self.atom_types])
-        # REQs (radius, epsilon, charge) parameters
-        REQs = getattr(mol, 'REQs', MMparams.generate_REQs_from_atom_types(mol, self.atom_types))
-
-        # Extract basic molecular information
-        natoms = len(mol.atypes)
-        nbonds = len(mol.bonds)
-
-        # Count angles, dihedrals, and inversions
-        angles = []
-        dihedrals = []
-        inversions = []
-
-        # Build neighbor list
-        neighs_list = [[] for _ in range(natoms)]
-        for i, (a, b) in enumerate(mol.bonds):
-            neighs_list[a].append(int(b))
-            neighs_list[b].append(int(a))
-
-        # Pad neighbor list to be natoms x 4
-        neighs = np.full((natoms, 4), -1, dtype=np.int32)
-        neighBs = np.full((natoms, 4), -1, dtype=np.int32)
-        bond_map = {tuple(sorted(bond)): i for i, bond in enumerate(mol.bonds)}
-        for i, ng in enumerate(neighs_list):
-            n = len(ng)
-            if n > 4:
-                n = 4
-            neighs[i, :n] = ng[:n]
-            for j_idx, j in enumerate(ng[:n]):
-                bond_tuple = tuple(sorted((i, j)))
-                if bond_tuple in bond_map:
-                    neighBs[i, j_idx] = bond_map[bond_tuple]
-
-        # Find Angles (i-j-k) where j is the central atom
-        for j in range(natoms):
-            neighbors_of_j = neighs_list[j]
-            if len(neighbors_of_j) < 2:
-                continue
-            # Generate all unique pairs of neighbors
-            for i_idx in range(len(neighbors_of_j)):
-                for k_idx in range(i_idx + 1, len(neighbors_of_j)):
-                    i = neighbors_of_j[i_idx]
-                    k = neighbors_of_j[k_idx]
-                    # Canonical order: i < k
-                    if i < k:
-                        angles.append((i, j, k))
-                    else:
-                        angles.append((k, j, i))
-
-        # Find dihedrals (4 connected atoms) using neighbor lists
-        for j_idx, (j, k) in enumerate(mol.bonds):
-            neighbors_of_j = neighs_list[j]
-            neighbors_of_k = neighs_list[k]
-            for i in neighbors_of_j:
-                if i == k: continue
-                for l in neighbors_of_k:
-                    if l == j or l == i: continue
-                    dihedrals.append((i, j, k, l))
-
-        # Find inversions (atoms with 3 neighbors)
-        # UFF defines 3 inversions for a planar center for symmetry
-        for i in range(natoms):
-            if len(neighs_list[i]) == 3:
-                j, k, l = neighs_list[i]
-                inversions.append((i, j, k, l)) # Central atom first
-
-        # Remove duplicate dihedrals that might be found
-        dihedrals = sorted(list(set(dihedrals)))
-
-        # Allocate buffers if needed
-        if bRealloc:
-            self.realloc_buffers(natoms, nbonds, len(angles), len(dihedrals), len(inversions), 0, 1)
-
-        a2f_offsets, a2f_counts, a2f_indices = self.mapAtomInteractions(natoms, np.array(dihedrals, dtype=np.int32), np.array(inversions, dtype=np.int32), np.array(angles, dtype=np.int32))
-        self.set_a2f_map_size(len(a2f_indices))
-
-        # Convert atom types to UFF types
-        atype = np.zeros(natoms, dtype=np.int32)
-        aREQ = np.zeros(natoms * 4, dtype=np.float32)
-        
-        # TODO: This parameter assignment is a placeholder and likely incorrect.
-        # The test script (test_UFF_ocl.py) currently bypasses this by providing correct parameters from the C++ object.
-        for i, at in enumerate(mol.atypes):
-            uff_type        = self._get_uff_type(at)
-            atype[i]        = uff_type
-            aREQ[i*4:i*4+4] = self.get_uff_params(uff_type)
-
-        # Convert bonds to UFF format
-        bonAtoms = np.array(mol.bonds, dtype=np.int32)
-        bonParams = np.zeros(nbonds * 2, dtype=np.float32)
-        for i, (a, b) in enumerate(mol.bonds):
-            bonParams[i*2:i*2+2] = self.get_bond_params(uff_type)
-
-        # Convert angles to UFF format
-        nangles = len(angles)
-        angAtoms = np.full((nangles, 4), -1, dtype=np.int32)
-        if nangles > 0: angAtoms[:, :3] = np.array(angles, dtype=np.int32)
-        angleParams = np.zeros((nangles, 4), dtype=np.float32)
-        angParams2_w = np.zeros(nangles, dtype=np.float32)
-        for i, (a, b, c) in enumerate(angles): # Placeholder parameter logic
-            angle_params = self._get_angle_params(uff_type)
-            angleParams[i,0] = angle_params[0]
-            angleParams[i,1] = angle_params[1]
-
-        # Convert dihedrals to UFF format
-        ndihedrals = len(dihedrals)
-        dihAtoms = np.array(dihedrals, dtype=np.int32) if ndihedrals > 0 else np.empty((0, 4), dtype=np.int32)
-        dihParams = np.zeros((ndihedrals, 3), dtype=np.float32)
-        for i, (a, b, c, d) in enumerate(dihedrals): # Placeholder parameter logic
-            dihedral_params = self._get_dihedral_params(uff_type)
-            dihParams[i,0] = dihedral_params[0]
-            dihParams[i,1] = dihedral_params[1]
-            dihParams[i,2] = 2.0
-
-        # Convert inversions to UFF format
-        ninversions = len(inversions)
-        invAtoms = np.array(inversions, dtype=np.int32) if ninversions > 0 else np.empty((0, 4), dtype=np.int32)
-        invParams = np.zeros((ninversions, 4), dtype=np.float32)
-        for i, (a, b, c, d) in enumerate(inversions): # Placeholder parameter logic
-            inversion_params = self._get_inversion_params(uff_type)
-            invParams[i,0] = inversion_params[0]
-            invParams[i,1] = inversion_params[1]
-
-        # Create UFF data dictionary
+    def get_arrays(self):
+        # This will be the equivalent of the C++ toUFF method
+        # It will return a dictionary of numpy arrays for the OpenCL runner
         uff_data = {
-            "atype": atype,
-            "REQs": aREQ,
-            "bonAtoms": bonAtoms,
-            "bonParams": bonParams,
-            "angAtoms": angAtoms,
-            "angParams1": angleParams,
-            "angParams2_w": angParams2_w,
-            "dihAtoms": dihAtoms,
-            "dihParams": dihParams,
-            "invAtoms": invAtoms,
-            "invParams": invParams,
-            "neighs": neighs,
-            "neighBs": neighBs,
-            "pbc_shifts": None,
-            "a2f_offsets": a2f_offsets,
-            "a2f_counts": a2f_counts,
-            "a2f_indices": a2f_indices
+            "atype": np.array([a.type for a in self.builder_atoms], dtype=np.int32),
+            "REQs": np.array([a.REQ for a in self.builder_atoms], dtype=np.float32),
+            "bonAtoms": np.array([b.atoms for b in self.bonds], dtype=np.int32),
+            "bonParams": np.array([[b.k, b.l0] for b in self.bonds], dtype=np.float32),
+            "angAtoms": np.array([list(a.atoms) + [-1] for a in self.mol.angles], dtype=np.int32),
+            "angParams": np.array([[a.k, a.C0, a.C1, a.C2, a.C3] for a in self.mol.angles], dtype=np.float32),
+            "dihAtoms": np.array([d.atoms for d in self.mol.dihedrals], dtype=np.int32),
+            "dihParams": np.array([[d.k, d.d, d.n] for d in self.mol.dihedrals], dtype=np.float32),
+            "invAtoms": np.array([i.atoms for i in self.mol.inversions], dtype=np.int32),
+            "invParams": np.array([[i.k, i.C0, i.C1, i.C2] for i in self.mol.inversions], dtype=np.float32),
+            "neighs": self.neighs,
+            "neighBs": self.neighBs,
         }
-
         return uff_data
 
+    # --- Helper methods for assign_uff_types ---
 
-
-    def get_uff_params(self, uff_type):
+    def assign_uff_types_trivial(self, neighs, BOs, BOs_int, set_atom, set_bond):
         """
-        Retrieves UFF parameters for a given UFF type.
+        Assigns UFF atom types and bond orders for simple, unambiguous cases.
 
-        Args:
-            uff_type (int): UFF type index
-
-        Returns:
-            np.ndarray: Array of UFF parameters [REQ, epsilon, sigma, mass]
+        This function handles atoms and bonds that can be typed without ambiguity,
+        such as hydrogens, sp3 carbons, and nitrile groups. It serves as the
+        first pass in the typing process, resolving the easy cases before more
+        complex algorithms are used for resonant or ambiguous structures.
         """
-        # Use element_types if available
-        if hasattr(self, 'element_types'):
-            for et_name, et in self.element_types.items():
-                if et.iZ == uff_type:
-                    return np.array([et.RvdW, et.EvdW, 0.0, et.iZ * 2.0], dtype=np.float32)
+        for ia, ai in enumerate(self.builder_atoms):
+            ci = self.mol.confs[ai.iconf]
+            if self.params.atypes[ai.type].name.startswith('H'):
+                ai.type = self.params.getAtomType("H_")
+                set_atom[ia] = True
+                ja = neighs[ia, 0]
+                ib = self.mol.get_bond_by_atoms(ia, ja)
+                if ib is not None:
+                    BOs[ib] = 1.0
+                    BOs_int[ib] = 1
+                    set_bond[ib] = True
+            else:
+                if self.params.atypes[ai.type].name.startswith('C') and ci.nbond == 4:
+                    ai.type = self.params.getAtomType("C_3")
+                    set_atom[ia] = True
+                    for i in range(4):
+                        ja = neighs[ia, i]
+                        if ja < 0: continue
+                        ib = self.mol.get_bond_by_atoms(ia, ja)
+                        if ib is not None:
+                            BOs[ib] = 1.0
+                            BOs_int[ib] = 1
+                            set_bond[ib] = True
+                elif self.params.atypes[ai.type].name.startswith('N') and ci.nbond == 3:
+                    for i in range(3):
+                        ja = neighs[ia, i]
+                        if ja < 0: continue
+                        ib = self.mol.get_bond_by_atoms(ia, ja)
+                        if ib is not None:
+                            BOs_int[ib] = 1
+                elif self.params.atypes[ai.type].name.startswith('N') and ci.nbond == 1:
+                    ai.type = self.params.getAtomType("N_1")
+                    set_atom[ia] = True
+                    ja = neighs[ia, 0]
+                    ib = self.mol.get_bond_by_atoms(ia, ja)
+                    if ib is not None:
+                        BOs[ib] = 3.0
+                        BOs_int[ib] = 3
+                        set_bond[ib] = True
 
-        # Fallback to basic parameters
-        uff_params = {
-            1: [1.0, 0.01, 0.0, 1.0],  # Hydrogen
-            6: [1.7, 0.05, 0.0, 12.0],  # Carbon
-            7: [1.55, 0.07, 0.0, 14.0],  # Nitrogen
-            8: [1.52, 0.06, 0.0, 16.0],  # Oxygen
-            16: [1.8, 0.05, 0.0, 32.0]  # Sulfur
-        }
-        return np.array(uff_params.get(uff_type, [0.0, 0.0, 0.0, 0.0]), dtype=np.float32)
+                    aj = self.builder_atoms[ja]
+                    if self.params.atypes[aj.type].name.startswith('C'):
+                        aj.type = self.params.getAtomType("C_1")
+                        set_atom[ja] = True
+                        cj = self.mol.confs[aj.iconf]
+                        for j in range(cj.nbond):
+                            ka = neighs[ja, j]
+                            if ka < 0: continue
+                            if ka == ia: continue
+                            jb = self.mol.get_bond_by_atoms(ja, ka)
+                            if jb is not None:
+                                BOs[jb] = 1.0
+                                BOs_int[jb] = 1
+                                set_bond[jb] = True
+                elif self.params.atypes[ai.type].name.startswith('O') and ci.nbond == 2:
+                    for i in range(2):
+                        ja = neighs[ia, i]
+                        if ja < 0: continue
+                        ib = self.mol.get_bond_by_atoms(ia, ja)
+                        if ib is not None:
+                            BOs_int[ib] = 1
+                elif self.params.atypes[ai.type].name.startswith('O') and ci.nbond == 1:
+                    ja = neighs[ia, 0]
+                    ib = self.mol.get_bond_by_atoms(ia, ja)
+                    if ib is not None:
+                        BOs[ib] = 2.0
+                        BOs_int[ib] = 2
 
-    def get_bond_params(self, uff_type):
+    def assign_uff_types_nitro(self, neighs, BOs, BOs_int, set_atom, set_bond):
         """
-        Retrieves bond parameters for a given UFF type.
+        Identifies and assigns UFF types for nitro groups.
 
-        Args:
-            uff_type (int): UFF type index
-
-        Returns:
-            np.ndarray: Array of bond parameters [bond length, bond force constant]
+        This function specifically searches for nitrogen atoms bonded to two
+        oxygen atoms (a nitro group). It assigns resonant types (N_R, O_R)
+        to these atoms and sets the N-O bonds to a resonant bond order of 1.5.
         """
-        # ElementType should already be loaded before this is called
-        for et_name, et in self.element_types.items():
-            if et.iZ == uff_type:
-                # UFF bond length is related to covalent radius
-                bond_length = et.Rcov
-                # Bond force constant scales with atomic number
-                bond_force = 350.0 + (et.iZ * 2.0)
-                return np.array([bond_length, bond_force], dtype=np.float32)
+        for ia, ai in enumerate(self.builder_atoms):
+            if self.params.atypes[ai.type].name.startswith('H'):
+                continue
+            ci = self.mol.confs[ai.iconf]
+            if self.params.atypes[ai.type].name.startswith('N') and ci.nbond == 3:
+                n_oxy = 0
+                for i in range(3):
+                    ja = neighs[ia, i]
+                    if ja < 0: continue
+                    aj = self.builder_atoms[ja]
+                    if self.params.atypes[aj.type].name.startswith('O'):
+                        n_oxy += 1
 
-        # If we get here, the element type was not found - this is an error
-        raise ValueError(f"Element {uff_type} not found in element_types")
+                if n_oxy == 2:
+                    ai.type = self.params.getAtomType("N_R")
+                    set_atom[ia] = True
+                    for i in range(3):
+                        ja = neighs[ia, i]
+                        if ja < 0: continue
+                        aj = self.builder_atoms[ja]
+                        ib = self.mol.get_bond_by_atoms(ia, ja)
+                        if ib is None: continue
 
+                        if self.params.atypes[aj.type].name.startswith('O'):
+                            aj.type = self.params.getAtomType("O_R")
+                            set_atom[ja] = True
+                            BOs[ib] = 1.5
+                            set_bond[ib] = True
+                        else:
+                            BOs[ib] = 1.0
+                            set_bond[ib] = True
 
+    def _assign_uff_types_checkall(self, neighs, BOs_int):
+        while True:
+            changed = False
+            for ia, atom in enumerate(self.builder_atoms):
+                if self.params.atypes[atom.type].name.startswith('H'):
+                    continue
 
-    def _get_dihedral_params(self, uff_type):
+                conf = self.mol.confs[atom.iconf]
+
+                found_unset = False
+                for i in range(conf.nbond):
+                    ja = neighs[ia, i]
+                    if ja < 0: continue
+                    ib = self.mol.get_bond_by_atoms(ia, ja)
+                    if ib is not None and BOs_int[ib] < 0:
+                        found_unset = True
+                        break
+                if not found_unset:
+                    continue
+
+                nset = 0
+                val = 0
+                for i in range(conf.nbond):
+                    ja = neighs[ia, i]
+                    if ja < 0: continue
+                    ib = self.mol.get_bond_by_atoms(ia, ja)
+                    if ib is not None and BOs_int[ib] > 0:
+                        nset += 1
+                        val += BOs_int[ib]
+
+                atom_valence = self.params.atypes[atom.type].valence
+                if (nset == conf.nbond - 1) or (conf.nbond - nset == atom_valence - val):
+                    changed = True
+                    if nset == conf.nbond - 1:
+                        for i in range(conf.nbond):
+                            ja = neighs[ia, i]
+                            if ja < 0: continue
+                            ib = self.mol.get_bond_by_atoms(ia, ja)
+                            if ib is not None and BOs_int[ib] < 0:
+                                BOs_int[ib] = atom_valence - val
+                                break
+                    elif (conf.nbond - nset) == (atom_valence - val):
+                        for i in range(conf.nbond):
+                            ja = neighs[ia, i]
+                            if ja < 0: continue
+                            ib = self.mol.get_bond_by_atoms(ia, ja)
+                            if ib is not None and BOs_int[ib] < 0:
+                                BOs_int[ib] = 1
+            if not changed:
+                break
+
+        return not np.any(BOs_int < 0)
+
+    def _assign_uff_types_checkatom(self, ia, neighs, BOs_int):
+        atom = self.builder_atoms[ia]
+        conf = self.mol.confs[atom.iconf]
+        for i in range(conf.nbond):
+            ja = neighs[ia, i]
+            if ja < 0: continue
+            ib = self.mol.get_bond_by_atoms(ia, ja)
+            if ib is not None and BOs_int[ib] < 0:
+                return False
+        return True
+
+    def assign_uff_types_treewalk(self, neighs, BOs_int):
         """
-        Retrieves dihedral parameters for a given UFF type.
+        Resolves ambiguous resonance structures using a tree-like search.
 
-        Args:
-
-            uff_type (int): UFF type index
-
-        Returns:
-            np.ndarray: Array of dihedral parameters [dihedral angle, dihedral force constant]
+        When the initial typing rules fail to assign all bond orders, this function
+        attempts to find a valid Lewis structure by exploring different
+        possibilities for double bonds. It iteratively tries assigning a double
+        bond to an unassigned bond and then checks if this choice leads to a
+        fully determined, valid structure using the `_assign_uff_types_checkall`
+        helper. This is a brute-force approach to find a valid resonance form.
         """
-        # AtomType should already be loaded before this is called
-        for at_name, at in self.atom_types.items():
-            if at.iZ == uff_type:
-                # Determine dihedral parameters based on hybridization
-                angle = 0.0  # Default barrier angle (pi)
-                force = at.iZ * 0.5  # Base force constant
+        if self._assign_uff_types_checkall(neighs, BOs_int):
+            return
 
-                # Stronger barriers for pi-bonded atoms
-                if at.npi > 0:
-                    force *= 1.5
+        bos_int_tmp0 = BOs_int.copy()
+        natoms = len(self.builder_atoms)
 
-                return np.array([angle, force], dtype=np.float32)
+        for ia1 in range(natoms):
+            a1 = self.builder_atoms[ia1]
+            if self.params.atypes[a1.type].name.startswith('H'): continue
+            if self._assign_uff_types_checkatom(ia1, neighs, bos_int_tmp0): continue
 
-        # If we get here, the atom type was not found - this is an error
-        raise ValueError(f"UFF type {uff_type} not found in atom_types")
+            c1 = self.mol.confs[a1.iconf]
+            for i1 in range(c1.nbond):
+                ja1 = neighs[ia1, i1]
+                if ja1 < 0: continue
+                ib1 = self.mol.get_bond_by_atoms(ia1, ja1)
+                if ib1 is None or bos_int_tmp0[ib1] > 0: continue
 
+                bos_int_tmp1 = bos_int_tmp0.copy()
+                bos_int_tmp1[ib1] = 2
+                if self._assign_uff_types_checkall(neighs, bos_int_tmp1):
+                    np.copyto(BOs_int, bos_int_tmp1)
+                    return
 
-    def _get_angle_params(self, uff_type):
+                for ia2 in range(natoms):
+                    a2 = self.builder_atoms[ia2]
+                    if self.params.atypes[a2.type].name.startswith('H'): continue
+                    if self._assign_uff_types_checkatom(ia2, neighs, bos_int_tmp1): continue
+
+                    c2 = self.mol.confs[a2.iconf]
+                    for i2 in range(c2.nbond):
+                        ja2 = neighs[ia2, i2]
+                        if ja2 < 0: continue
+                        ib2 = self.mol.get_bond_by_atoms(ia2, ja2)
+                        if ib2 is None or bos_int_tmp1[ib2] > 0: continue
+
+                        bos_int_tmp2 = bos_int_tmp1.copy()
+                        bos_int_tmp2[ib2] = 2
+                        if self._assign_uff_types_checkall(neighs, bos_int_tmp2):
+                            np.copyto(BOs_int, bos_int_tmp2)
+                            return
+
+                        for ia3 in range(natoms):
+                            a3 = self.builder_atoms[ia3]
+                            if self.params.atypes[a3.type].name.startswith('H'): continue
+                            if self._assign_uff_types_checkatom(ia3, neighs, bos_int_tmp2): continue
+
+                            c3 = self.mol.confs[a3.iconf]
+                            for i3 in range(c3.nbond):
+                                ja3 = neighs[ia3, i3]
+                                if ja3 < 0: continue
+                                ib3 = self.mol.get_bond_by_atoms(ia3, ja3)
+                                if ib3 is None or bos_int_tmp2[ib3] > 0: continue
+
+                                bos_int_tmp3 = bos_int_tmp2.copy()
+                                bos_int_tmp3[ib3] = 2
+                                if self._assign_uff_types_checkall(neighs, bos_int_tmp3):
+                                    np.copyto(BOs_int, bos_int_tmp3)
+                                    return
+
+        raise Exception("ERROR: UFF treewalk failed to find a valid resonance structure.")
+
+    def assign_uff_types_simplerule(self, tol, neighs, BOs, set_atom, set_bond):
         """
-        Retrieves angle parameters for a given UFF type.
+        Assigns resonant types based on a simple neighbor-based heuristic.
 
-        Args:
-            uff_type (int): UFF type index
-
-        Returns:
-            np.ndarray: Array of angle parameters [angle, angle force constant]
+        This function identifies atoms that are likely part of a resonant system
+        by checking their local environment. The rule is that any sp2-like atom
+        (C with 3 neighbors, N with >1, O with 2) that is bonded to at least
+        two other sp2-like atoms is considered resonant. This is a fast,
+        heuristic-based alternative to explicit ring finding for identifying
+        conjugated systems.
         """
-        # AtomType should already be loaded before this is called
-        for at_name, at in self.atom_types.items():
-            if at.iZ == uff_type:
-                # Get angle based on hybridization determined by npi
-                angle = 109.5  # Default tetrahedral sp3
-                if at.npi == 1: angle = 120.0  # sp2
-                if at.npi == 2: angle = 180.0  # sp
+        for ia, atom in enumerate(self.builder_atoms):
+            if self.params.atypes[atom.type].name.startswith('H'):
+                continue
 
-                # Force constant depends on element properties
-                force = 50.0 + (10.0 * at.iZ / 8.0)
-                return np.array([angle, force], dtype=np.float32)
+            conf = self.mol.confs[atom.iconf]
+            atom_type_name = self.params.atypes[atom.type].name
 
-        # If we get here, the atom type was not found - this is an error
-        raise ValueError(f"UFF type {uff_type} not found in atom_types")
+            is_candidate = ( (atom_type_name.startswith('C') and conf.nbond == 3) or
+                             (atom_type_name.startswith('N') and conf.nbond > 1) or
+                             (atom_type_name.startswith('O') and conf.nbond == 2) )
 
+            if is_candidate:
+                n_neighbors = 0
+                for i in range(conf.nbond):
+                    ja = neighs[ia, i]
+                    if ja < 0: continue
+                    neigh_atom = self.builder_atoms[ja]
+                    if self.params.atypes[neigh_atom.type].name.startswith('H'):
+                        continue
 
+                    neigh_conf = self.mol.confs[neigh_atom.iconf]
+                    neigh_type_name = self.params.atypes[neigh_atom.type].name
 
-    def _get_inversion_params(self, uff_type):
+                    is_neigh_candidate = ( (neigh_type_name.startswith('C') and neigh_conf.nbond == 3) or
+                                           (neigh_type_name.startswith('N') and neigh_conf.nbond > 1) or
+                                           (neigh_type_name.startswith('O') and neigh_conf.nbond == 2) )
+                    if is_neigh_candidate:
+                        n_neighbors += 1
+
+                if n_neighbors > 1:
+                    if set_atom[ia]:
+                        if not self.params.atypes[atom.type].name.endswith('R'):
+                            print(f"WARNING SIMPLERULE: atom {ia+1} would be set to resonant but it has already a type of {self.params.atypes[atom.type].name}")
+                        continue
+
+                    if atom_type_name.startswith('C'):
+                        atom.type = self.params.getAtomType("C_R")
+                    elif atom_type_name.startswith('N'):
+                        atom.type = self.params.getAtomType("N_R")
+                    elif atom_type_name.startswith('O'):
+                        atom.type = self.params.getAtomType("O_R")
+                    else:
+                        raise ValueError(f"ERROR SIMPLERULE: atom {ia} type {atom.type} not recognized")
+
+                    set_atom[ia] = True
+
+                    for i in range(conf.nbond):
+                        ja = neighs[ia, i]
+                        if ja < 0: continue
+                        neigh_atom = self.builder_atoms[ja]
+                        if self.params.atypes[neigh_atom.type].name.startswith('H'):
+                            continue
+
+                        neigh_conf = self.mol.confs[neigh_atom.iconf]
+                        neigh_type_name = self.params.atypes[neigh_atom.type].name
+
+                        is_neigh_candidate = ( (neigh_type_name.startswith('C') and neigh_conf.nbond == 3) or
+                                               (neigh_type_name.startswith('N') and neigh_conf.nbond > 1) or
+                                               (neigh_type_name.startswith('O') and neigh_conf.nbond == 2) )
+
+                        if is_neigh_candidate:
+                            ib = self.mol.get_bond_by_atoms(ia, ja)
+                            if ib is None: continue
+                            if set_bond[ib]:
+                                if abs(BOs[ib] - 1.5) > tol:
+                                    print(f"WARNING SIMPLERULE: bond {ib+1} between atoms {ia+1} and {ja+1} would be set to 1.5 but it has already a bond order of {BOs[ib]}")
+                                continue
+                            BOs[ib] = 1.5
+                            set_bond[ib] = True
+
+    def _assign_uff_types_checkaroma(self, n, nb, BOs, BOs_int, tol):
+        for i in range(1, n + 1):
+            atom = self.builder_atoms[nb[i]]
+            conf = self.mol.confs[atom.iconf]
+            if self.params.atypes[atom.type].name.startswith('C') and conf.nbond != 3:
+                return False
+
+        npi = 0
+        for i in range(1, n + 1):
+            atom = self.builder_atoms[nb[i]]
+            conf = self.mol.confs[atom.iconf]
+            atom_type_name = self.params.atypes[atom.type].name
+            if (atom_type_name.startswith('N') and conf.nbond == 3) or \
+               (atom_type_name.startswith('O') and conf.nbond == 2):
+                npi += 2
+
+        npi_save = npi
+
+        for i in range(1, n + 1):
+            ib1 = self.mol.get_bond_by_atoms(nb[i], nb[i % n + 1])
+            ib2 = self.mol.get_bond_by_atoms(nb[i-1 if i > 1 else n], nb[i])
+            if (ib1 is not None and BOs_int[ib1] == 2) or \
+               (ib2 is not None and BOs_int[ib2] == 2):
+                npi += 1
+
+        if npi == 6:
+            return True
+
+        npi = npi_save
+
+        for i in range(1, n + 1):
+            ib1 = self.mol.get_bond_by_atoms(nb[i], nb[i % n + 1])
+            ib2 = self.mol.get_bond_by_atoms(nb[i-1 if i > 1 else n], nb[i])
+            if (ib1 is not None and (BOs_int[ib1] == 2 or abs(BOs[ib1] - 1.5) < tol)) or \
+               (ib2 is not None and (BOs_int[ib2] == 2 or abs(BOs[ib2] - 1.5) < tol)):
+                npi += 1
+
+        return npi == 6
+
+    def _assign_uff_types_setaroma(self, n, nb, neighs, BOs, set_atom, set_bond, tol):
+        for i in range(1, n + 1):
+            ia = nb[i]
+            atom = self.builder_atoms[ia]
+            if set_atom[ia]:
+                print(f"WARNING SETAROMA: atom {self.params.atypes[atom.type].name[0]} {ia+1} would be set to resonant but it has already a type of {atom.type}")
+                continue
+
+            atom_type_name = self.params.atypes[atom.type].name
+            if atom_type_name.startswith('C'):
+                atom.type = self.params.getAtomType("C_R")
+            elif atom_type_name.startswith('N'):
+                atom.type = self.params.getAtomType("N_R")
+            elif atom_type_name.startswith('O'):
+                atom.type = self.params.getAtomType("O_R")
+            else:
+                raise ValueError(f"ERROR SETAROMA: atom {ia+1} type {atom.type} not recognized")
+            set_atom[ia] = True
+
+        for i in range(1, n + 1):
+            ia = nb[i]
+            ja = nb[i % n + 1]
+            ib = self.mol.get_bond_by_atoms(ia, ja)
+            if ib is None: continue
+            if set_bond[ib] and abs(BOs[ib] - 1.5) > tol:
+                a1 = self.builder_atoms[ia]
+                a2 = self.builder_atoms[ja]
+                print(f"WARNING SETAROMA: bond {ib+1} between atoms {self.params.atypes[a1.type].name[0]} {ia+1} and {self.params.atypes[a2.type].name[0]} {ja+1} would be set to 1.5 but it has already a bond order of {BOs[ib]}")
+                continue
+            BOs[ib] = 1.5
+            set_bond[ib] = True
+
+        for i in range(1, n + 1):
+            ia = nb[i]
+            atom = self.builder_atoms[ia]
+            if self.params.atypes[atom.type].name.startswith('H'): continue
+            conf = self.mol.confs[atom.iconf]
+            for i_neigh in range(conf.nbond):
+                ja = neighs[ia, i_neigh]
+                if ja < 0: continue
+
+                is_in_ring = False
+                for j in range(1, n + 1):
+                    if ja == nb[j]:
+                        is_in_ring = True
+                        break
+                if is_in_ring: continue
+
+                neigh_atom = self.builder_atoms[ja]
+                if self.params.atypes[neigh_atom.type].name.startswith('H'): continue
+
+                neigh_conf = self.mol.confs[neigh_atom.iconf]
+                ib = self.mol.get_bond_by_atoms(ia, ja)
+                if ib is None: continue
+
+                if self.params.atypes[neigh_atom.type].name.startswith('O') and neigh_conf.nbond == 1:
+                    if set_atom[ja] and not self.params.atypes[neigh_atom.type].name.endswith('R'):
+                        print(f"WARNING SETAROMA: carbonyl atom {self.params.atypes[neigh_atom.type].name[0]} {ja+1} would be set to resonant but it has already a type of {neigh_atom.type}")
+                        continue
+                    if set_bond[ib] and abs(BOs[ib] - 1.5) > tol:
+                        print(f"WARNING SETAROMA: bond {ib+1} between atoms {self.params.atypes[atom.type].name[0]} {ia+1} and {self.params.atypes[neigh_atom.type].name[0]} {ja+1} would be set to 1.5 but it has already a bond order of {BOs[ib]}")
+                        continue
+
+                    neigh_atom.type = self.params.getAtomType("O_R")
+                    set_atom[ja] = True
+                    BOs[ib] = 1.5
+                    set_bond[ib] = True
+
+    def assign_uff_types_findrings(self, tol, neighs, BOs, BOs_int, set_atom, set_bond):
         """
-        Retrieves inversion parameters for a given UFF type.
+        Finds 5- and 6-membered rings and assigns aromatic types based on Huckel's rule.
 
-        Args:
-            uff_type (int): UFF type index
-
-        Returns:
-            np.ndarray: Array of inversion parameters [inversion angle, inversion force constant]
+        This function performs a brute-force search for small rings in the molecule.
+        For each ring found, it uses the `_assign_uff_types_checkaroma` helper to
+        determine if the ring is aromatic (i.e., has 6 pi electrons). If a ring
+        is determined to be aromatic, the `_assign_uff_types_setaroma` helper is
+        used to assign resonant types and bond orders to the atoms and bonds
+        in the ring.
         """
-        # AtomType should be already loaded before this is called
-        # Lookup atom type by element number
-        for at_name, at in self.atom_types.items():
-            if at.iZ == uff_type:
-                # Inversion parameters depend on element and hybridization
-                angle = 0.0  # Default angle
-                force = 0.1   # Default force
+        natoms = len(self.builder_atoms)
+        explored = np.zeros(natoms, dtype=bool)
 
-                # Planar elements (sp2 hybridized) have higher barriers
-                if at.iZ in [6, 7, 15, 33, 51, 83] and at.npi == 1:
-                    force = 4.0 + (at.iZ / 10.0)
+        while True:
+            changed = False
+            for ia in range(natoms):
+                a1 = self.builder_atoms[ia]
+                if self.params.atypes[a1.type].name.startswith('H'): continue
+                c1 = self.mol.confs[a1.iconf]
 
-                return np.array([angle, force], dtype=np.float32)
+                for i1 in range(c1.nbond):
+                    nb2 = neighs[ia, i1]
+                    if nb2 < 0: continue
+                    a2 = self.builder_atoms[nb2]
+                    if self.params.atypes[a2.type].name.startswith('H'): continue
+                    c2 = self.mol.confs[a2.iconf]
 
-        # If we get here, the atom type was not found - this is an error
-        raise ValueError(f"UFF type {uff_type} not found in atom_types")
+                    for i2 in range(c2.nbond):
+                        nb3 = neighs[nb2, i2]
+                        if nb3 < 0 or nb3 == ia: continue
+                        a3 = self.builder_atoms[nb3]
+                        if self.params.atypes[a3.type].name.startswith('H'): continue
+                        c3 = self.mol.confs[a3.iconf]
 
-    def _get_uff_type(self, atom):
+                        for i3 in range(c3.nbond):
+                            nb4 = neighs[nb3, i3]
+                            if nb4 < 0 or nb4 == nb2: continue
+                            a4 = self.builder_atoms[nb4]
+                            if self.params.atypes[a4.type].name.startswith('H'): continue
+                            c4 = self.mol.confs[a4.iconf]
+
+                            for i4 in range(c4.nbond):
+                                nb5 = neighs[nb4, i4]
+                                if nb5 < 0 or nb5 == nb3: continue
+                                a5 = self.builder_atoms[nb5]
+                                if self.params.atypes[a5.type].name.startswith('H'): continue
+                                c5 = self.mol.confs[a5.iconf]
+
+                                for i5 in range(c5.nbond):
+                                    nb6 = neighs[nb5, i5]
+                                    if nb6 < 0 or nb6 == nb4: continue
+
+                                    if nb6 == ia:
+                                        ring = [0, ia, nb2, nb3, nb4, nb5]
+                                        if any(explored[i] for i in ring[1:]): continue
+
+                                        if self._assign_uff_types_checkaroma(5, ring, BOs, BOs_int, tol):
+                                            changed = True
+                                            for i in ring[1:]: explored[i] = True
+                                            self._assign_uff_types_setaroma(5, ring, neighs, BOs, set_atom, set_bond, tol)
+
+                                    a6 = self.builder_atoms[nb6]
+                                    if self.params.atypes[a6.type].name.startswith('H'): continue
+                                    c6 = self.mol.confs[a6.iconf]
+                                    for i6 in range(c6.nbond):
+                                        nb7 = neighs[nb6, i6]
+                                        if nb7 < 0 or nb7 == nb5: continue
+
+                                        if nb7 == ia:
+                                            ring = [0, ia, nb2, nb3, nb4, nb5, nb6]
+                                            if any(explored[i] for i in ring[1:]): continue
+
+                                            if self._assign_uff_types_checkaroma(6, ring, BOs, BOs_int, tol):
+                                                changed = True
+                                                for i in ring[1:]: explored[i] = True
+                                                self._assign_uff_types_setaroma(6, ring, neighs, BOs, set_atom, set_bond, tol)
+            if not changed:
+                break
+
+    def assign_uff_types_assignrest(self, neighs, BOs, BOs_int, set_atom, set_bond):
         """
-        Get the UFF type for an atom.
+        Assigns UFF types to any remaining un-typed atoms.
 
-        Args:
-            atom: The atom to get the UFF type for - can be an atom object with Z attribute
-                 or directly the atomic number (int or numpy.int32)
-
-        Returns:
-            int: The UFF atomic type identifier
+        After the more specific typing rules (trivial, nitro, resonance) have run,
+        this function handles any atoms that are still without a UFF type. It
+        assigns types based on the element and the number of bonds (e.g., a
+        3-bonded carbon becomes C_2, a 2-bonded oxygen becomes O_3). This acts as a
+        catch-all for common, non-resonant structures.
         """
-        # Check if atom is already numeric (int or numpy.int32) or an object with Z attribute
-        if hasattr(atom, 'Z'):
-            element_num = atom.Z
+        for ia, atom in enumerate(self.builder_atoms):
+            if set_atom[ia]:
+                continue
+            if self.params.atypes[atom.type].name.startswith('H'):
+                continue
+
+            conf = self.mol.confs[atom.iconf]
+            atom_type_name = self.params.atypes[atom.type].name
+
+            if atom_type_name.startswith('C'):
+                if conf.nbond == 2:
+                    atom.type = self.params.getAtomType("C_1")
+                    set_atom[ia] = True
+                elif conf.nbond == 3:
+                    atom.type = self.params.getAtomType("C_2")
+                    set_atom[ia] = True
+            elif atom_type_name.startswith('N'):
+                if conf.nbond == 2:
+                    atom.type = self.params.getAtomType("N_2")
+                    set_atom[ia] = True
+                elif conf.nbond == 3:
+                    atom.type = self.params.getAtomType("N_3")
+                    set_atom[ia] = True
+                    for i in range(3):
+                        ja = neighs[ia, i]
+                        if ja < 0: continue
+                        ib = self.mol.get_bond_by_atoms(ia, ja)
+                        if ib is not None:
+                            BOs[ib] = 1.0
+                            BOs_int[ib] = 1
+                            set_bond[ib] = True
+            elif atom_type_name.startswith('O'):
+                if conf.nbond == 1:
+                    atom.type = self.params.getAtomType("O_2")
+                    set_atom[ia] = True
+                    ja = neighs[ia, 0]
+                    if ja >= 0:
+                        ib = self.mol.get_bond_by_atoms(ia, ja)
+                        if ib is not None:
+                            BOs[ib] = 2.0
+                            BOs_int[ib] = 2
+                            set_bond[ib] = True
+
+                        neigh_atom = self.builder_atoms[ja]
+                        if not self.params.atypes[neigh_atom.type].name.startswith('H'):
+                            neigh_conf = self.mol.confs[neigh_atom.iconf]
+                            if self.params.atypes[neigh_atom.type].name.startswith('C') and not set_atom[ja] and neigh_conf.nbond == 3:
+                                neigh_atom.type = self.params.getAtomType("C_2")
+                                set_atom[ja] = True
+
+                elif conf.nbond == 2:
+                    atom.type = self.params.getAtomType("O_3")
+                    set_atom[ia] = True
+                    for i in range(2):
+                        ja = neighs[ia, i]
+                        if ja < 0: continue
+                        ib = self.mol.get_bond_by_atoms(ia, ja)
+                        if ib is not None:
+                            BOs[ib] = 1.0
+                            BOs_int[ib] = 1
+                            set_bond[ib] = True
+
+    def assign_uff_types_fixsaturation(self, neighs, BOs, BOs_int, set_bond, tol):
+        """
+        Iteratively corrects bond orders to satisfy atom valences.
+
+        This function runs in a loop to resolve any remaining un-set bond orders.
+        It identifies atoms where some, but not all, bond orders are known. If an
+        atom has only one remaining unknown bond, the order of that bond is set
+        to whatever value is needed to satisfy the atom's total valence. If
+        multiple bonds are unknown, it checks if setting them all to 1.0 would
+        satisfy the valence. This process repeats until all bond orders are set.
+        """
+        while True:
+            changed = False
+            for ia, atom in enumerate(self.builder_atoms):
+                if self.params.atypes[atom.type].name.startswith('H'):
+                    continue
+
+                conf = self.mol.confs[atom.iconf]
+
+                all_bonds_set = True
+                for i in range(conf.nbond):
+                    ja = neighs[ia, i]
+                    if ja < 0: continue
+                    ib = self.mol.get_bond_by_atoms(ia, ja)
+                    if ib is not None and BOs[ib] < 0.0:
+                        all_bonds_set = False
+                        break
+                if all_bonds_set:
+                    continue
+
+                nset = 0
+                val = 0.0
+                for i in range(conf.nbond):
+                    ja = neighs[ia, i]
+                    if ja < 0: continue
+                    ib = self.mol.get_bond_by_atoms(ia, ja)
+                    if ib is not None and BOs[ib] > 0.0:
+                        nset += 1
+                        val += BOs_int[ib]
+
+                remaining_valence = self.params.atypes[atom.type].valence - val
+
+                if nset == conf.nbond - 1:
+                    if abs(remaining_valence - round(remaining_valence)) > tol or abs(remaining_valence) < tol:
+                        raise ValueError(f"ERROR FIXSATURATION: atom {self.params.atypes[atom.type].name[0]} {ia+1} would have a valence of {remaining_valence}")
+
+                    changed = True
+                    for i in range(conf.nbond):
+                        ja = neighs[ia, i]
+                        if ja < 0: continue
+                        ib = self.mol.get_bond_by_atoms(ia, ja)
+                        if ib is not None and BOs[ib] < 0.0:
+                            BOs[ib] = remaining_valence
+                            BOs_int[ib] = int(round(remaining_valence))
+                            set_bond[ib] = True
+                            break
+                elif int(round(remaining_valence)) == conf.nbond - nset:
+                    changed = True
+                    for i in range(conf.nbond):
+                        ja = neighs[ia, i]
+                        if ja < 0: continue
+                        ib = self.mol.get_bond_by_atoms(ia, ja)
+                        if ib is not None and BOs[ib] < 0.0:
+                            BOs[ib] = 1.0
+                            BOs_int[ib] = 1
+                            set_bond[ib] = True
+
+            if not changed:
+                break
+
+    def assign_uff_types_cumulene(self, neighs, BOs, BOs_int, set_bond):
+        """
+        Applies an ad-hoc rule to handle specific cumulene-like structures.
+
+        This function identifies a very specific bonding pattern of four sp and sp2
+        carbons (C(sp2)-C(sp)=C(sp)-C(sp2)) that can be misinterpreted by the general
+        typing rules. It corrects the bond orders in this specific case to avoid
+        energetically unfavorable cumulene structures in the final force field.
+        """
+        for ia1, a1 in enumerate(self.builder_atoms):
+            if not self.params.atypes[a1.type].name.startswith('C'): continue
+            c1 = self.mol.confs[a1.iconf]
+            if c1.nbond != 2: continue
+
+            for i1 in range(2):
+                ia2 = neighs[ia1, i1]
+                if ia2 < 0: continue
+                a2 = self.builder_atoms[ia2]
+                if not self.params.atypes[a2.type].name.startswith('C'): continue
+                c2 = self.mol.confs[a2.iconf]
+                if c2.nbond != 2: continue
+
+                ib1 = self.mol.get_bond_by_atoms(ia1, ia2)
+                if ib1 is None: continue
+
+                ia4 = neighs[ia1, 1-i1]
+                if ia4 < 0: continue
+                a4 = self.builder_atoms[ia4]
+                if not self.params.atypes[a4.type].name.startswith('C'): continue
+                c4 = self.mol.confs[a4.iconf]
+                if c4.nbond != 3: continue
+
+                ib4 = self.mol.get_bond_by_atoms(ia1, ia4)
+                if ib4 is None: continue
+
+                for i2 in range(2):
+                    ia3 = neighs[ia2, i2]
+                    if ia3 < 0 or ia3 == ia1: continue
+                    a3 = self.builder_atoms[ia3]
+                    if not self.params.atypes[a3.type].name.startswith('C'): continue
+                    c3 = self.mol.confs[a3.iconf]
+                    if c3.nbond != 3: continue
+
+                    for i3 in range(3):
+                        if neighs[ia3, i3] == ia4:
+                            ib2 = self.mol.get_bond_by_atoms(ia2, ia3)
+                            ib3 = self.mol.get_bond_by_atoms(ia3, ia4)
+                            if ib2 is None or ib3 is None: continue
+
+                            BOs[ib1] = 3.0; BOs_int[ib1] = 3; set_bond[ib1] = True
+                            BOs[ib2] = 1.0; BOs_int[ib2] = 1; set_bond[ib2] = True
+                            BOs[ib3] = 2.0; BOs_int[ib3] = 2; set_bond[ib3] = True
+                            BOs[ib4] = 1.0; BOs_int[ib4] = 1; set_bond[ib4] = True
+                            break
+
+    def assign_uff_types_conjugation(self, neighs, BOs):
+        """
+        Handles conjugation between sp3 heteroatoms and resonant systems.
+
+        This function identifies sp3-hybridized nitrogen or oxygen atoms that are
+        directly bonded to an atom already identified as part of a resonant
+        system. In such cases, the lone pair on the heteroatom can participate
+        in conjugation. The function updates the heteroatom's type to resonant
+        (N_R or O_R) and sets the connecting bond order to 1.5.
+        """
+        for ia, atom in enumerate(self.builder_atoms):
+            if self.params.atypes[atom.type].name.startswith('H'):
+                continue
+
+            conf = self.mol.confs[atom.iconf]
+            atom_type_name = self.params.atypes[atom.type].name
+
+            if (atom_type_name.startswith('N') and conf.nbond == 3) or \
+               (atom_type_name.startswith('O') and conf.nbond == 2):
+                for i in range(conf.nbond):
+                    ja = neighs[ia, i]
+                    if ja < 0: continue
+
+                    neigh_atom = self.builder_atoms[ja]
+                    if self.params.atypes[neigh_atom.type].name.endswith('R'):
+                        if atom_type_name.startswith('N'):
+                            atom.type = self.params.getAtomType("N_R")
+                        elif atom_type_name.startswith('O'):
+                            atom.type = self.params.getAtomType("O_R")
+
+                        ib = self.mol.get_bond_by_atoms(ia, ja)
+                        if ib is not None:
+                            BOs[ib] = 1.5
+
+    def assign_uff_types_checks(self, neighs, BOs, BOs_int, set_atom, set_bond, tol):
+        """
+        Performs sanity checks on the final assigned types and bond orders.
+
+        After all typing rules have been applied, this function verifies that the
+        resulting structure is self-consistent. It checks that all atoms and bonds
+        have been assigned a type, that resonant atoms have resonant bonds, that
+        sp2 atoms have exactly one double bond, and that resonant bonds have
+        valid integer bond orders in their limiting resonance structure.
+        """
+        if not np.all(set_atom):
+            unassigned = np.where(~set_atom)[0]
+            raise ValueError(f"ERROR CHECKS: atoms {unassigned} are not set")
+        if not np.all(set_bond):
+            unassigned = np.where(~set_bond)[0]
+            raise ValueError(f"ERROR CHECKS: bonds {unassigned} are not set")
+        if np.any(BOs < 0.0):
+            unassigned = np.where(BOs < 0.0)[0]
+            raise ValueError(f"ERROR CHECKS: order for bonds {unassigned} is not set")
+        if np.any(BOs_int < 0):
+            unassigned = np.where(BOs_int < 0)[0]
+            raise ValueError(f"ERROR CHECKS: integer order for bonds {unassigned} is not set")
+
+        for ia, atom in enumerate(self.builder_atoms):
+            atom_type_name = self.params.atypes[atom.type].name
+            if atom_type_name.endswith('R'):
+                conf = self.mol.confs[atom.iconf]
+                found = False
+                for i in range(conf.nbond):
+                    ja = neighs[ia, i]
+                    if ja < 0: continue
+                    ib = self.mol.get_bond_by_atoms(ia, ja)
+                    if ib is not None and abs(BOs[ib] - 1.5) < tol:
+                        found = True
+                        break
+                if not found:
+                    raise ValueError(f"ERROR CHECKS: atom {atom_type_name[0]} {ia+1} is resonant but it has no 1.5 bonds")
+            elif atom_type_name.endswith('2'):
+                conf = self.mol.confs[atom.iconf]
+                found_double = False
+                for i in range(conf.nbond):
+                    ja = neighs[ia, i]
+                    if ja < 0: continue
+                    ib = self.mol.get_bond_by_atoms(ia, ja)
+                    if ib is not None and abs(BOs[ib] - 2.0) < tol:
+                        if found_double:
+                            raise ValueError(f"ERROR CHECKS: atom {atom_type_name[0]} {ia+1} is sp2 but it has more than one double bond")
+                        found_double = True
+
+                if not found_double:
+                    found_resonant = False
+                    for i in range(conf.nbond):
+                        ja = neighs[ia, i]
+                        if ja < 0: continue
+                        ib = self.mol.get_bond_by_atoms(ia, ja)
+                        if ib is not None and abs(BOs[ib] - 1.5) < tol:
+                            found_resonant = True
+                            break
+                    if found_resonant:
+                        print(f"WARNING CHECKS: atom {atom_type_name[0]} {ia+1} is sp2 and it has no double bonds, only 1.5 bonds")
+                    else:
+                        raise ValueError(f"ERROR CHECKS: atom {atom_type_name[0]} {ia+1} is sp2 but it has no double bonds")
+
+        for ib, bo in enumerate(BOs):
+            if abs(bo - 1.5) < tol:
+                if BOs_int[ib] not in [1, 2]:
+                    raise ValueError(f"ERROR CHECKS: bond {ib+1} is 1.5 but in the limit resonance structure is neither single nor double")
+
+    def assign_uff_types_amide(self, neighs, BOs):
+        """
+        Identifies and assigns special types for amide groups.
+
+        This function specifically looks for the amide functional group (a carbonyl
+        carbon bonded to a nitrogen). Due to the special resonance of the amide
+        bond, it assigns resonant types to the C, O, and N atoms and sets the
+        C-O bond order to 1.5 and the C-N bond order to 1.41, which is a UFF
+        convention for amides.
+        """
+        for ia, atom in enumerate(self.builder_atoms):
+            if self.params.atypes[atom.type].name.startswith('H'):
+                continue
+
+            conf = self.mol.confs[atom.iconf]
+            atom_type_name = self.params.atypes[atom.type].name
+
+            if atom_type_name.startswith('C') and conf.nbond == 3:
+                found_o = False
+                for i in range(conf.nbond):
+                    ja = neighs[ia, i]
+                    if ja < 0: continue
+                    neigh_atom = self.builder_atoms[ja]
+                    if self.params.atypes[neigh_atom.type].name.startswith('H'): continue
+                    neigh_conf = self.mol.confs[neigh_atom.iconf]
+                    if self.params.atypes[neigh_atom.type].name.startswith('O') and neigh_conf.nbond == 1:
+                        found_o = True
+                        break
+                if not found_o:
+                    continue
+
+                found_n = False
+                for i in range(conf.nbond):
+                    ja = neighs[ia, i]
+                    if ja < 0: continue
+                    neigh_atom = self.builder_atoms[ja]
+                    if self.params.atypes[neigh_atom.type].name.startswith('H'): continue
+                    neigh_conf = self.mol.confs[neigh_atom.iconf]
+                    if self.params.atypes[neigh_atom.type].name.startswith('N') and neigh_conf.nbond == 3:
+                        found_n = True
+                        break
+                if not found_n:
+                    continue
+
+                atom.type = self.params.getAtomType("C_R")
+                for i in range(conf.nbond):
+                    ja = neighs[ia, i]
+                    if ja < 0: continue
+                    neigh_atom = self.builder_atoms[ja]
+                    if self.params.atypes[neigh_atom.type].name.startswith('H'): continue
+                    neigh_conf = self.mol.confs[neigh_atom.iconf]
+
+                    neigh_atom_type_name = self.params.atypes[neigh_atom.type].name
+                    if neigh_atom_type_name.startswith('O') and neigh_conf.nbond == 1:
+                        neigh_atom.type = self.params.getAtomType("O_R")
+                        ib = self.mol.get_bond_by_atoms(ia, ja)
+                        if ib is not None:
+                            BOs[ib] = 1.5
+                    elif neigh_atom_type_name.startswith('N') and neigh_conf.nbond == 3:
+                        neigh_atom.type = self.params.getAtomType("N_R")
+                        ib = self.mol.get_bond_by_atoms(ia, ja)
+                        if ib is not None:
+                            BOs[ib] = 1.41
+
+    # --- Helper methods for assign_uff_params ---
+
+    def assign_uff_params_vdws(self):
+        for atom in self.builder_atoms:
+            self.params.assignRE(atom.type, atom.REQ, True)
+
+    def assign_uff_params_bonds(self):
+        for i, bond in enumerate(self.bonds):
+            bond.l0 = self.assign_uff_params_calcrij(i)
+            ei = self.params.elementOfAtomType(self.builder_atoms[bond.atoms[0]].type)
+            ej = self.params.elementOfAtomType(self.builder_atoms[bond.atoms[1]].type)
+            bond.k = 0.5 * 28.7989689090648 * ei.Quff * ej.Quff / (bond.l0**3)
+
+    def assign_uff_params_angles(self, neighs):
+        self.mol.angles = []
+        for j in range(len(self.builder_atoms)):
+            aj = self.builder_atoms[j]
+            tj = self.params.atypes[aj.type]
+            ct = np.cos(np.deg2rad(tj.Ass))
+            st2 = np.sin(np.deg2rad(tj.Ass))**2
+            if self.params.atypes[aj.type].name[0] == 'H':
+                continue
+            cj = self.mol.confs[aj.iconf]
+            for in1 in range(cj.nbond - 1):
+                i = neighs[j, in1]
+                ei = self.params.elementOfAtomType(self.builder_atoms[i].type)
+                for in2 in range(in1 + 1, cj.nbond):
+                    k = neighs[j, in2]
+                    ek = self.params.elementOfAtomType(self.builder_atoms[k].type)
+                    a = Angle()
+                    a.atoms = (i, j, k)
+                    a.bonds = (self.mol.get_bond_by_atoms(i, j), self.mol.get_bond_by_atoms(j, k))
+                    rij = self.assign_uff_params_calcrij(a.bonds[0])
+                    rjk = self.assign_uff_params_calcrij(a.bonds[1])
+                    rik = np.sqrt(rij**2 + rjk**2 - 2.0 * rij * rjk * ct)
+                    kappa = 28.7989689090648 * ei.Quff * ek.Quff / (rik**5) * (3.0 * rij * rjk * st2 - rik**2 * ct)
+                    if self.params.atypes[aj.type].name[2] in ['1', '2', 'R']:
+                        if self.params.atypes[aj.type].name[2] == '1':
+                            a.k = kappa
+                            a.C0 = 1.0
+                            a.C1 = 1.0
+                            a.C2 = 0.0
+                            a.C3 = 0.0
+                        elif self.params.atypes[aj.type].name[2] in ['2', 'R']:
+                            a.k = kappa / 9.0
+                            a.C0 = 1.0
+                            a.C1 = 0.0
+                            a.C2 = 0.0
+                            a.C3 = -1.0
+                    elif self.params.atypes[aj.type].name[2] == '3':
+                        a.k = kappa
+                        a.C2 = 1.0 / (4.0 * st2)
+                        a.C1 = -4.0 * a.C2 * ct
+                        a.C0 = a.C2 * (2.0 * ct**2 + 1.0)
+                        a.C3 = 0.0
+                    self.mol.angles.append(a)
+
+    def assign_uff_params_dihedrals(self, neighs):
+        self.mol.dihedrals = []
+        for i1 in range(len(self.builder_atoms)):
+            a1 = self.builder_atoms[i1]
+            if self.params.atypes[a1.type].name[0] == 'H':
+                n1 = 1
+            else:
+                c1 = self.mol.confs[a1.iconf]
+                n1 = c1.nbond
+            for in1 in range(n1):
+                i2 = neighs[i1, in1]
+                a2 = self.builder_atoms[i2]
+                if self.params.atypes[a2.type].name[0] == 'H' or self.params.atypes[a2.type].name[2] == '1':
+                    continue
+                c2 = self.mol.confs[a2.iconf]
+                for in2 in range(c2.nbond):
+                    i3 = neighs[i2, in2]
+                    if i3 != i1:
+                        a3 = self.builder_atoms[i3]
+                        if self.params.atypes[a3.type].name[0] == 'H' or self.params.atypes[a3.type].name[2] == '1':
+                            continue
+                        c3 = self.mol.confs[a3.iconf]
+                        for in3 in range(c3.nbond):
+                            i4 = neighs[i3, in3]
+                            if i4 != i2 and i4 > i1:
+                                a4 = self.builder_atoms[i4]
+                                d = Dihedral()
+                                d.atoms = (i1, i2, i3, i4)
+                                d.bonds = (self.mol.get_bond_by_atoms(i1, i2), self.mol.get_bond_by_atoms(i2, i3), self.mol.get_bond_by_atoms(i3, i4))
+                                e2 = self.params.elementOfAtomType(a2.type)
+                                e3 = self.params.elementOfAtomType(a3.type)
+                                if self.params.atypes[a2.type].name[2] == '3' and self.params.atypes[a3.type].name[2] == '3':
+                                    d.k = np.sqrt(e2.Vuff * e3.Vuff)
+                                    d.d = 1
+                                    d.n = 3
+                                    if self.params.atypes[a2.type].name[0] in ['O', 'S'] and self.params.atypes[a3.type].name[0] in ['O', 'S']:
+                                        d.k = 4.1840 / 60.2214076 / 1.602176634
+                                        d.n = 2
+                                        d.k *= 2.0 if self.params.atypes[a2.type].name[0] == 'O' else 6.8
+                                        d.k *= 2.0 if self.params.atypes[a3.type].name[0] == 'O' else 6.8
+                                        d.k = np.sqrt(d.k)
+                                elif (self.params.atypes[a2.type].name[2] == '3' and self.params.atypes[a3.type].name[2] in ['2', 'R']) or (self.params.atypes[a2.type].name[2] in ['2', 'R'] and self.params.atypes[a3.type].name[2] == '3'):
+                                    d.k = 4.1840 / 60.2214076 / 1.602176634
+                                    d.d = -1
+                                    d.n = 6
+                                    if (self.params.atypes[a2.type].name[2] == '3' and self.params.atypes[a2.type].name[0] in ['O', 'S']) or (self.params.atypes[a3.type].name[2] == '3' and self.params.atypes[a3.type].name[0] in ['O', 'S']):
+                                        ib = self.mol.get_bond_by_atoms(i2, i3)
+                                        b = self.bonds[ib]
+                                        d.k = 5.0 * np.sqrt(e2.Uuff * e3.Uuff) * (1.0 + 4.18 * np.log(b.order))
+                                        d.d = 1
+                                        d.n = 2
+                                    if self.params.atypes[a2.type].name[2] == '3':
+                                        found = any(self.params.atypes[self.builder_atoms[neighs[i3, i]].type].name[2] in ['2', 'R'] for i in range(c3.nbond))
+                                        if found:
+                                            d.k = 2.0 * 4.1840 / 60.2214076 / 1.602176634
+                                            d.d = 1
+                                            d.n = 3
+                                    elif self.params.atypes[a3.type].name[2] == '3':
+                                        found = any(self.params.atypes[self.builder_atoms[neighs[i2, i]].type].name[2] in ['2', 'R'] for i in range(c2.nbond))
+                                        if found:
+                                            d.k = 2.0 * 4.1840 / 60.2214076 / 1.602176634
+                                            d.d = 1
+                                            d.n = 3
+                                elif self.params.atypes[a2.type].name[2] in ['2', 'R'] and self.params.atypes[a3.type].name[2] in ['2', 'R']:
+                                    ib = self.mol.get_bond_by_atoms(i2, i3)
+                                    b = self.bonds[ib]
+                                    d.k = 5.0 * np.sqrt(e2.Uuff * e3.Uuff) * (1.0 + 4.18 * np.log(b.order))
+                                    d.d = -1
+                                    d.n = 2
+                                else:
+                                    raise ValueError(f"Dihedral case not found for atoms {self.params.atypes[a1.type].name} {self.params.atypes[a2.type].name} {self.params.atypes[a3.type].name} {self.params.atypes[a4.type].name}")
+                                d.k = 0.5 * d.k / ((c2.nbond - 1) * (c3.nbond - 1))
+                                self.mol.dihedrals.append(d)
+
+    def assign_uff_params_inversions(self, neighs):
+        self.mol.inversions = []
+        for i1 in range(len(self.builder_atoms)):
+            a1 = self.builder_atoms[i1]
+            if self.params.atypes[a1.type].name[0] == 'H':
+                continue
+            c1 = self.mol.confs[a1.iconf]
+            if c1.nbond != 3:
+                continue
+            i2 = neighs[i1, 0]
+            i3 = neighs[i1, 1]
+            i4 = neighs[i1, 2]
+            self.assign_uff_params_assigninversion(i1, i2, i3, i4)
+            self.assign_uff_params_assigninversion(i1, i4, i2, i3)
+            self.assign_uff_params_assigninversion(i1, i3, i4, i2)
+
+    def assign_uff_params_assigninversion(self, i1, i2, i3, i4):
+        a1 = self.builder_atoms[i1]
+        a2 = self.builder_atoms[i2]
+        a3 = self.builder_atoms[i3]
+        a4 = self.builder_atoms[i4]
+
+        i = Inversion()
+        i.atoms = (i1, i2, i3, i4)
+        i.bonds = (self.mol.get_bond_by_atoms(i1, i2), self.mol.get_bond_by_atoms(i1, i3), self.mol.get_bond_by_atoms(i1, i4))
+        if self.params.atypes[a1.type].name[0] == 'C' and self.params.atypes[a1.type].name[2] in ['2', 'R']:
+            if any(self.params.atypes[self.builder_atoms[at].type].name[0] == 'O' and self.params.atypes[self.builder_atoms[at].type].name[2] == '2' for at in [i2, i3, i4]):
+                i.k = 50.0 * 4.1840 / 60.2214076 / 1.602176634
+            else:
+                i.k = 6.0 * 4.1840 / 60.2214076 / 1.602176634
+            i.C0 = 1.0
+            i.C1 = -1.0
+            i.C2 = 0.0
+        elif self.params.atypes[a1.type].name[0] == 'N' and self.params.atypes[a1.type].name[2] in ['2', 'R']:
+            i.k = 6.0 * 4.1840 / 60.2214076 / 1.602176634
+            i.C0 = 1.0
+            i.C1 = -1.0
+            i.C2 = 0.0
+        elif self.params.atypes[a1.type].name[0] == 'N' and self.params.atypes[a1.type].name[2] == '3':
+            i.k = 0.0
+            i.C0 = 0.0
+            i.C1 = 0.0
+            i.C2 = 0.0
+        elif self.params.atypes[a1.type].name[0] in ['P', '3']:
+            omega0 = np.deg2rad(84.4339)
+            i.C0 = 4.0 * np.cos(omega0)**2 - np.cos(2.0 * omega0)
+            i.C1 = -4.0 * np.cos(omega0)
+            i.C2 = 1.0
+            i.k = 22.0 * 4.1840 / 60.2214076 / 1.602176634 / (i.C0 + i.C1 + i.C2)
         else:
-            # Assume it's directly the atomic number
-            element_num = int(atom)  # Convert to int in case it's numpy.int32
+            raise ValueError(f"Inversion case not found for atoms {self.params.atypes[a1.type].name} {self.params.atypes[a2.type].name} {self.params.atypes[a3.type].name} {self.params.atypes[a4.type].name}")
+        i.k /= 3.0
+        self.mol.inversions.append(i)
 
-        # Verify element exists in element_types
-        for et_name, et in self.element_types.items():
-            if et.iZ == element_num:
-                return element_num
-
-        # If we get here, the element type was not found - this is an error
-        raise ValueError(f"Element {element_num} not found in element_types")
+    def assign_uff_params_calcrij(self, ib):
+        bond = self.bonds[ib]
+        ti = self.params.atypes[self.builder_atoms[bond.atoms[0]].type]
+        tj = self.params.atypes[self.builder_atoms[bond.atoms[1]].type]
+        ei = self.params.elementOfAtomType(self.builder_atoms[bond.atoms[0]].type)
+        ej = self.params.elementOfAtomType(self.builder_atoms[bond.atoms[1]].type)
+        rbo = -0.1332 * (ti.Ruff + tj.Ruff) * np.log(bond.order)
+        ren = ti.Ruff * tj.Ruff * (np.sqrt(-ei.Eaff) - np.sqrt(-ej.Eaff))**2 / (-ei.Eaff * ti.Ruff - ej.Eaff * tj.Ruff)
+        rij = ti.Ruff + tj.Ruff + rbo - ren
+        return rij

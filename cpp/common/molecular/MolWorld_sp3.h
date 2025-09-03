@@ -335,7 +335,7 @@ class MolWorld_sp3 : public SolverInterface { public:
             builder.randomizeAtomPos(1.0); 
             bMMFF=true;
         }else if ( xyz_name ){
-            if( bMMFF ){ 
+            if( bMMFF || bUFF ){  
                 printf("buildMolecule_xyz( %s )\n", xyz_name);
                 buildMolecule_xyz( xyz_name );
             }else{
