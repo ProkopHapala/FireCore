@@ -947,6 +947,13 @@ def init_nonbond():
     return lib.init_nonbond()
 '''
 
+# void print_setup(){
+lib.print_setup.argtypes  = []
+lib.print_setup.restype   =  None
+def print_setup():
+    return lib.print_setup()
+
+
 #  void print_debugs( bool bParams, bool bNeighs, bool bShifts ){
 lib.print_debugs.argtypes  = [c_bool, c_bool, c_bool]
 lib.print_debugs.restype   =  None
@@ -1001,8 +1008,9 @@ def init(
         bConj=True,
         bCumulene=True
     ):
-    global glob_bMMFF
+    global glob_bMMFF, glob_bUFF
     glob_bMMFF = bMMFF
+    glob_bUFF = bUFF
     nPBC=np.array(nPBC,dtype=np.int32)
     return lib.init( cstr(xyz_name), cstr(surf_name), cstr(smile_name), bMMFF, bEpairs, bUFF, b141, bSimple, bConj, bCumulene, nPBC, gridStep, cstr(sElementTypes), cstr(sAtomTypes), cstr(sBondTypes), cstr(sAngleTypes), cstr(sDihedralTypes) )
 

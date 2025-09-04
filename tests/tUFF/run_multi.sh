@@ -34,4 +34,4 @@ lscpu
 
 #python3 run.py
 
-python3 -u test_UFF_multi.py # 2>1 | tee OUT-UFF-ocl
+python3 -u test_UFF_multi.py 2>&1 | tee OUT-UFF-multi

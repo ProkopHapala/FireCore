@@ -176,7 +176,7 @@ def run_uff_cpp( args ):
     )
     uff_cpp.setSwitches(NonBonded=-1, SurfAtoms=-1, GridFF=-1)
     #uff_cpp.setSwitchesUFF( DoAssemble=+1, DoBond=1, DoAngle=-1, DoDihedral=-1, DoInversion=-1,  SubtractBondNonBond=-1, ClampNonBonded=-1 )
-    uff_cpp.setSwitchesUFF( DoAssemble=+1, DoBond=1, DoAngle=1, DoDihedral=1, DoInversion=1,  SubtractBondNonBond=1, ClampNonBonded=1 )
+    uff_cpp.setSwitchesUFF( DoAssemble=+1, DoBond=1, DoAngle=1, DoDihedral=1, DoInversion=1,  SubtractBondNonBond=-1, ClampNonBonded=-1 )
     print("-----------\n uff_cpp.getBuffs_UFF()  ")
     uff_cpp.getBuffs_UFF()
     print("-----------\n uff_cpp.setTrjName()  ")
@@ -187,9 +187,15 @@ def run_uff_cpp( args ):
     cpu_param_bufs = get_cpu_bufs(uff_cpp, PARAMS_SPECS)
     print_bufs(cpu_param_bufs, "CPU Parameter Buffers")
 
+
+    uff_cpp.print_debugs()
+    uff_cpp.print_setup()
+
     uff_cpp.setTrjName("trj.xyz", savePerNsteps=1)
-    print("-----------\n uff_cpp.run()  ")
+    #print("-----------\n uff_cpp.run()  ")
+    #uff_cpp.run( nstepMax=1, dt=0.02, Fconv=1e-6, ialg=2, damping=0.1 )
     #uff_cpp.run( nstepMax=10000, dt=0.02, Fconv=1e-6, ialg=2, damping=0.1 )
+    uff_cpp.run( nstepMax=100, dt=0.01, Fconv=1e-6, ialg=2, damping=0.1 )
     energy = uff_cpp.Es[0]
     forces = uff_cpp.fapos.copy()
     return energy, forces, uff_cpp
@@ -291,7 +297,7 @@ if __name__ == "__main__":
     cpu_energy, cpu_forces, uff_cpp = run_uff_cpp(args)  # DEBUG: uncomment this when GPU runs without error
 
 
-    #exit()
+    exit()
 
     if args.gpu:
         gpu_energy, gpu_forces, uff_cl = run_uff_ocl(args)

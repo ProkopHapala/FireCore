@@ -17,4 +17,4 @@ stty cols 1000   # set terminal width
 
 echo "#=========== RUN TEST "
 #python3 run.py "./data_UFF/xyz/ethylene" | tee out
-python3 -u test_UFF_ocl.py #2>1 | tee OUT-UFF-ocl
+python3 -u test_UFF_ocl.py 2>&1 | tee OUT-UFF-ocl

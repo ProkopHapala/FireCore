@@ -18,6 +18,63 @@ from pyBall import MMFF_multi as uff
 # Define the path to common resource files
 data_dir = os.path.join(base_path, "cpp/common_resources")
 
+# ==================
+#  Buffer Specs (mirrored from test_UFF_ocl.py)
+# ==================
+# Unified buffer specification to collect and print CPU buffers.
+# Format:
+# 'buffer_name': {
+#     'stride': canonical columns (GPU layout),
+#     'cpu_stride': optional CPU columns if different,
+#     'type': 'int' (topology) or 'float' (parameters)
+# }
+BUF_SPECS = {
+    # --- Topology Buffers (Integers) ---
+    'bonAtoms':  {'stride': 2, 'type': 'int'},
+    'angAtoms':  {'stride': 4, 'cpu_stride': 3, 'type': 'int'},
+    'dihAtoms':  {'stride': 4, 'type': 'int'},
+    'invAtoms':  {'stride': 4, 'type': 'int'},
+    'neighs':    {'stride': 4, 'type': 'int'},
+    'neighBs':   {'stride': 4, 'type': 'int'},
+    # --- Parameter Buffers (Floats) ---
+    'bonParams': {'stride': 2, 'type': 'float'},
+    'angParams': {'stride': 5, 'type': 'float'},
+    'dihParams': {'stride': 3, 'type': 'float'},
+    'invParams': {'stride': 4, 'type': 'float'},
+}
+
+TOPOLOGY_SPECS = {k: v for k, v in BUF_SPECS.items() if v['type'] == 'int'}
+PARAMS_SPECS   = {k: v for k, v in BUF_SPECS.items() if v['type'] == 'float'}
+
+# ==================
+#  Helper Functions
+# ==================
+def get_cpu_bufs(uff_obj, specs):
+    """Collect CPU buffers from the given UFF object and pad to canonical stride when needed."""
+    bufs = {}
+    for name, spec in specs.items():
+        if hasattr(uff_obj, name):
+            buf = getattr(uff_obj, name)
+            canonical_stride = spec['stride']
+            cpu_stride = spec.get('cpu_stride', canonical_stride)
+            if cpu_stride != canonical_stride:
+                # e.g. angAtoms have 3 columns on CPU, 4 on GPU
+                import numpy as _np
+                padded = _np.full((buf.shape[0], canonical_stride), -1, dtype=_np.int32)
+                padded[:, :cpu_stride] = buf
+                bufs[name] = padded
+            else:
+                bufs[name] = buf
+    return bufs
+
+def print_bufs(bufs, title="Buffers"):
+    print(f"--- {title} ---")
+    if not bufs:
+        print(" (No buffers to print)")
+        return
+    for name, buf in bufs.items():
+        print(f"{name}\n", buf)
+
 def run_uff(use_gpu, components):
     """
     Run a single UFF evaluation step on either CPU or GPU.
@@ -31,35 +88,57 @@ def run_uff(use_gpu, components):
     """
     print(f"\n--- Running UFF on {'GPU' if use_gpu else 'CPU'} ---")
     
+    uff.setSwitches2(NonBonded=-1, SurfAtoms=-1, GridFF=-1)
     # Set which components to evaluate for this run
     uff.setSwitchesUFF(
-        DoBond=components.get('bonds', -1),
-        DoAngle=components.get('angles', -1),
-        DoDihedral=components.get('dihedrals', -1),
-        DoInversion=components.get('inversions', -1),
-        DoAssemble=1,
-        SubtractBondNonBond=1, # This is usually needed for UFF
-        ClampNonBonded=1
+        DoBond      =components.get( 'bonds',      -1 ),
+        DoAngle     =components.get( 'angles',     -1 ),
+        DoDihedral  =components.get( 'dihedrals',  -1 ),
+        DoInversion =components.get( 'inversions', -1 ),
+        DoAssemble          =  1,
+        SubtractBondNonBond = -1, # This is usually needed for UFF
+        ClampNonBonded      = -1
     )
+
+    print("py.DEBUG 4")
     
     # Select CPU or GPU path via the iParalel flag
     # Convention: iParalel > 1 means GPU, otherwise CPU
     iParalel = 3 if use_gpu else 0
+
+    print("py.DEBUG 5")
     
-    # Run a single evaluation step
-    uff.run(nstepMax=1, iParalel=iParalel)
+    #uff.run(nstepMax=1, iParalel=iParalel)
+
+    uff.getBuffs_UFF()
+    print("--- CPU Buffers Before Run ---")
+    print("TOPOLOGY_SPECS ", TOPOLOGY_SPECS)
+    topo_bufs = get_cpu_bufs(uff, TOPOLOGY_SPECS)
+    print("PARAMS_SPECS ", PARAMS_SPECS)
+    print_bufs(topo_bufs, "CPU Topology Buffers")
+    param_bufs = get_cpu_bufs(uff, PARAMS_SPECS)
+    print_bufs(param_bufs, "CPU Parameter Buffers")
+
+    uff.print_debugs() 
+    uff.print_setup()
+
+
+
+    uff.setTrjName("trj_multi.xyz", savePerNsteps=1)
+    #uff.run( nstepMax=1000, dt=0.02, Fconv=1e-6, ialg=2, damping=0.1, iParalel=iParalel )
+    uff.run( nstepMax=100, dt=0.01, Fconv=1e-6, ialg=2, damping=0.1, iParalel=iParalel )
+    #uff.run( nstepMax=1, dt=0.02, Fconv=1e-6, ialg=2, damping=0.1, iParalel=iParalel )
+
+    print("py.DEBUG 6")
     
-    # Download results from GPU if necessary. The CPU path modifies host buffers directly.
-    if use_gpu:
-        uff.download(bForces=True)
-    
-    # Get access to the host-side buffers
-    uff.getBuffs()
-    
-    # Extract results. For both CPU and GPU, the result is in the first system's buffer.
-    # Note: Energy comparison is not fully implemented yet.
+
     energy = 0 
-    forces = uff.gpu_aforces[0, :, :3].copy()
+    if use_gpu:
+        # Download results from GPU if necessary. The CPU path modifies host buffers directly.
+        if use_gpu: uff.download(bForces=True)
+        forces = uff.gpu_aforces[0, :, :3].copy()
+    else:
+        forces = uff.fapos.copy()
     
     return energy, forces
 
@@ -99,11 +178,11 @@ if __name__ == "__main__":
     uff.init(
         nSys_=1,
         xyz_name=args.molecule,
-        sElementTypes=os.path.join(data_dir, "ElementTypes.dat"),
-        sAtomTypes=os.path.join(data_dir, "AtomTypes.dat"),
-        sBondTypes=os.path.join(data_dir, "BondTypes.dat"),
-        sAngleTypes=os.path.join(data_dir, "AngleTypes.dat"),
-        sDihedralTypes=os.path.join(data_dir, "DihedralTypes.dat"),
+        sElementTypes  = os.path.join(data_dir, "ElementTypes.dat"),
+        sAtomTypes     = os.path.join(data_dir, "AtomTypes.dat"),
+        sBondTypes     = os.path.join(data_dir, "BondTypes.dat"),
+        sAngleTypes    = os.path.join(data_dir, "AngleTypes.dat"),
+        sDihedralTypes = os.path.join(data_dir, "DihedralTypes.dat"),
         bMMFF=True, # to use UFF MMFF should be True!
         bUFF=True
     )
@@ -112,21 +191,26 @@ if __name__ == "__main__":
     # set ClampNonBonded/SubtractBondNonBond inside run_uff(), so we disable this invalid call.  # TODO
     # uff.setSwitches(NonBonded=-1)
 
+
+
+    # Run CPU version
+    components = ['bonds', 'angles', 'dihedrals', 'inversions']
+    component_flags = {key: 1 for key in components }
+
+    print("py.DEBUG 3")
+
+    cpu_energy, cpu_forces = run_uff(use_gpu=False, components=component_flags)
+    
+    exit()
+
+    gpu_energy, gpu_forces = run_uff(use_gpu=True, components=component_flags)
     all_components = ['bonds', 'angles', 'dihedrals', 'inversions']
     all_passed = True
 
     for component in all_components:
         print(f"\n================ Testing component: {component} ================")
-        
         # Define which components to enable for this test run
         component_flags = {c: (1 if c == component else -1) for c in all_components}
-        
-        # Run CPU version
-        cpu_energy, cpu_forces = run_uff(use_gpu=False, components=component_flags)
-        
-        # Run GPU version
-        gpu_energy, gpu_forces = run_uff(use_gpu=True, components=component_flags)
-        
         # Compare results
         if not compare_results(cpu_energy, cpu_forces, gpu_energy, gpu_forces, tol=args.tolerance, component_name=component):
             all_passed = False

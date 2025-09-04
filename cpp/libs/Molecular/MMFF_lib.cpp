@@ -90,6 +90,30 @@ void init_buffers(){
     //printBuffNames();
 }
 
+
+void print_debugs( bool bParams, bool bNeighs, bool bShifts ){
+    if(W.bUFF){
+        printf("\n=== UFF Parameters ===\n");
+        W.ffu.printSizes();
+        if(bParams) W.ffu.printAllParams(true, true, true, true, true);
+    } else {
+        W.ffl.printSizes();
+        if( bParams ) W.ffl.printAtomParams();
+        if( bNeighs ) W.ffl.printNeighs();
+        if( bShifts ) W.ffl.print_pbc_shifts();
+    }
+}
+
+void print_setup(){
+    if(W.bUFF){
+        W.ffu.printSimulationSetup();
+    }else{
+        printf("MMFF_lib::print_setup() bUFF=false\n");
+       //W.ffl.printSimulationSetup();
+    }
+}
+    
+
 // int loadmol(char* fname_mol ){ return W.loadmol(fname_mol ); }
 //lib.init( cstr(xyz_name), cstr(surf_name), cstr(smile_name),      bMMFF,      bEpairs,      bUFF,      b141,      bSimple,      bConj,      bCumulene,      nPBC,        gridStep, cstr(sElementTypes), cstr(sAtomTypes), cstr(sBondTypes), cstr(sAngleTypes), cstr(sDihedralTypes) )
 void* init( char* xyz_name, char* surf_name, char* smile_name, bool bMMFF, bool bEpairs, bool bUFF, bool b141, bool bSimple, bool bConj, bool bCumulene, int* nPBC, double gridStep, char* sElementTypes, char* sAtomTypes, char* sBondTypes, char* sAngleTypes, char* sDihedralTypes ){
@@ -218,10 +242,10 @@ int    run( int nstepMax, double dt, double Fconv, int ialg, double damping, dou
     // run_omp( int niter_max, double dt, double Fconv=1e-6, double Flim=1000, double timeLimit=0.02, double* outE=0, double* outF=0 ){
 
     if(W.bUFF){
-        if(omp){ return W.ffu.run_omp(nstepMax,dt,Fconv,   10.0, -1.0, outE, outF, outV, outVF ); }
+        if(omp){ return W.ffu.run_omp(nstepMax,dt,Fconv,   10.0, -1.0,     outE, outF, outV, outVF ); }
         else   { return W.ffu.run    (nstepMax,dt,Fconv, 1000.0,  damping, outE, outF, outV, outVF ); }
     }else{
-        if(omp){ return W.run_omp   (nstepMax,dt,Fconv,   10.0, -1.0, outE, outF, outV, outVF ); }
+        if(omp){ return W.run_omp   (nstepMax,dt,Fconv,   10.0, -1.0,     outE, outF, outV, outVF ); }
         else   { return W.run_no_omp(nstepMax,dt,Fconv, 1000.0,  damping, outE, outF, outV, outVF ); }
     }
     //else   { return W.run       (nstepMax,dt,Fconv,ialg,       outE, outF, outV, outVF ); }
@@ -579,12 +603,7 @@ int sampleHbond( int ib, int n, double* rs, double* Es, double* fs, int kind, do
     return nb;
 }
 
-void print_debugs( bool bParams, bool bNeighs, bool bShifts ){
-    W.ffl.printSizes();
-    if( bParams ) W.ffl.printAtomParams();
-    if( bNeighs ) W.ffl.printNeighs();
-    if( bShifts ) W.ffl.print_pbc_shifts();
-}
+
 
 //void sampleSurf_vecs(char* name, int n, double* poss_, double* FEs_, int kind, int ityp, double RvdW, double EvdW, double Q, double K, double RQ, double* pos0_, int npbc, bool bSave){
 void sampleSurf_vecs(int n, double* poss_, double* FEs_, int kind, int ityp, double RvdW, double EvdW, double Q, double K, double RQ, int npbc, bool bSave){    

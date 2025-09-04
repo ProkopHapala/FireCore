@@ -18,6 +18,7 @@ MolWorld_sp3_multi W;
 extern "C"{
 
 void init_buffers(){
+    printf( "init_buffers() \n" );
     buffers .insert( { "apos",   (double*)W.nbmol.apos } );
     buffers .insert( { "fapos",  (double*)W.nbmol.fapos } );
     if(W.bMMFF){
@@ -67,6 +68,75 @@ void init_buffers(){
     ibuffers.insert( { "selection", W.manipulation_sel  } );
 }
 
+
+void init_buffers_UFF(){
+    printf( "init_buffers_UFF() \n" );
+    // Common buffers
+    buffers.insert( { "apos",   (double*)W.nbmol.apos  } );
+    buffers.insert( { "fapos",  (double*)W.nbmol.fapos } );
+    buffers.insert( { "REQs",   (double*)W.nbmol.REQs  } );
+    //buffers.insert( { "PLQs",   (double*)W.nbmol.PLQs  } );
+    // UFF-specific buffers
+    if(W.bUFF){ // UFF-specific buffers
+        buffers.insert(  { "hneigh",    (double*)W.ffu.hneigh } );
+        buffers.insert(  { "fint",      (double*)W.ffu.fint   } );
+        buffers.insert(  { "bonParams", (double*)W.ffu.bonParams } );
+        buffers.insert(  { "angParams", (double*)W.ffu.angParams } );
+        buffers.insert(  { "dihParams", (double*)W.ffu.dihParams } );
+        buffers.insert(  { "invParams", (double*)W.ffu.invParams } );
+
+        ibuffers.insert( { "neighs",    (int*)W.ffu.neighs    } );
+        ibuffers.insert( { "neighBs",   (int*)W.ffu.neighBs   } );
+        ibuffers.insert( { "bonAtoms",  (int*)W.ffu.bonAtoms  } );
+        ibuffers.insert( { "angAtoms",  (int*)W.ffu.angAtoms  } );
+        ibuffers.insert( { "dihAtoms",  (int*)W.ffu.dihAtoms  } );
+        ibuffers.insert( { "invAtoms",  (int*)W.ffu.invAtoms  } );
+
+        // neighbor indices for angles, dihedrals, inversions
+        ibuffers.insert( { "angNgs",    (int*)W.ffu.angNgs    } );
+        ibuffers.insert( { "dihNgs",    (int*)W.ffu.dihNgs    } );
+        ibuffers.insert( { "invNgs",    (int*)W.ffu.invNgs    } );
+
+
+        // ---- TODO: GPU buffers for UFF
+
+    }
+    // UFF-specific dimensions
+    if(W.bUFF){
+        ibuffers.insert( { "ndims", &W.ffu._natoms } ); // 
+        buffers.insert ( { "Es",    &W.ffu.Etot    } );
+    }
+    ibuffers.insert( { "selection", W.manipulation_sel  } );
+    bbuffers.insert( { "ffflags",  &W.doBonded  } );
+    // int _natoms, nbonds, nangles, ndihedrals, ninversions, nf; // 5
+    // int i0dih,i0inv,i0ang,i0bon;                               // 4
+    // double Etot, Eb, Ea, Ed, Ei;                               // 5
+    printf( "MMFF_lib.cpp::init_buffers_UFF() ndims{natoms=%i, nbonds=%i, nangles=%i, ndihedrals=%i, ninversions=%i, nf=%i, i0dih=%i,i0inv=%i,i0ang=%i,i0bon=%i, }\n", W.ffu._natoms, W.ffu.nbonds, W.ffu.nangles, W.ffu.ndihedrals, W.ffu.ninversions, W.ffu.nf, W.ffu.i0dih, W.ffu.i0inv, W.ffu.i0ang, W.ffu.i0bon );
+    printf( "MMFF_lib.cpp::init_buffers_UFF() Es{ Etot=%f, Eb=%f, Ea=%f, Ed=%f, Ei=%f, }\n", W.ffu.Etot, W.ffu.Eb, W.ffu.Ea, W.ffu.Ed, W.ffu.Ei );
+}
+
+void print_debugs( bool bParams, bool bNeighs, bool bShifts ){
+    if(W.bUFF){
+        printf("\n=== UFF Parameters ===\n");
+        W.ffu.printSizes();
+        if(bParams) W.ffu.printAllParams(true, true, true, true, true);
+    } else {
+        W.ffl.printSizes();
+        if( bParams ) W.ffl.printAtomParams();
+        if( bNeighs ) W.ffl.printNeighs();
+        if( bShifts ) W.ffl.print_pbc_shifts();
+    }
+}
+
+void print_setup(){
+    if(W.bUFF){
+        W.ffu.printSimulationSetup();
+    }else{
+        printf("MMFFmulti_lib::print_setup() bUFF=false\n");
+       //W.ffl.printSimulationSetup();
+    }
+}
+
 // int loadmol(char* fname_mol ){ return W.loadmol(fname_mol ); }
 
 void* init( int nSys, char* xyz_name, char* surf_name, char* smile_name, bool bMMFF, bool bEpairs, bool bUFF, bool b141, bool bSimple, bool bConj, bool bCumulene, int* nPBC, double gridStep, char* sElementTypes, char* sAtomTypes, char* sBondTypes, char* sAngleTypes, char* sDihedralTypes ){
@@ -79,15 +149,41 @@ void* init( int nSys, char* xyz_name, char* surf_name, char* smile_name, bool bM
     W.bEpairs    = bEpairs;
     W.gridStep   = gridStep;
     W.nPBC       = *(Vec3i*)nPBC;
+    // unbuffered printf()
+    setbuf(stdout, NULL);
+    setbuf(stderr, NULL);
     W.params.init( sElementTypes, sAtomTypes, sBondTypes, sAngleTypes, sDihedralTypes );
 	W.builder.bindParams(&W.params);
     W.nSystems=nSys;
     bool bGrid = gridStep>0;
     W.bGridFF = bGrid;
     W.init();
-    init_buffers();
+    //init_buffers();
     return &W;
 }
+
+void setSwitches2( int CheckInvariants, int PBC, int NonBonded, int NonBondNeighs,  int SurfAtoms, int GridFF, int MMFF, int Angles, int PiSigma, int PiPiI ){
+    #define _setbool(b,i) { if(i>0){b=true;}else if(i<0){b=false;} }
+    _setbool( W.bCheckInvariants, CheckInvariants  );
+    _setbool( W.bPBC           , PBC       );
+    
+    _setbool( W.bNonBonded     , NonBonded );
+    _setbool( W.bNonBondNeighs , NonBondNeighs );
+    
+    _setbool( W.bSurfAtoms   , SurfAtoms );
+    _setbool( W.bGridFF      , GridFF    );
+
+    _setbool( W.bMMFF        , MMFF      );
+    _setbool( W.ffl.doAngles , Angles    );
+    _setbool( W.ffl.doPiSigma, PiSigma   );
+    _setbool( W.ffl.doPiPiI  , PiPiI     );
+
+    printf( "setSwitches2() W.bCheckInvariants==%i bPBC=%i | bNonBonded=%i bNonBondNeighs=%i | bSurfAtoms=%i bGridFF=%i | bMMFF=%i doAngles=%i doPiSigma=%i doPiPiI=%i \n", W.bCheckInvariants, W.bPBC,  W.bNonBonded, W.bNonBondNeighs, W.bSurfAtoms, W.bGridFF, W.bMMFF, W.ffl.doAngles, W.ffl.doPiSigma, W.ffl.doPiPiI );
+
+    //W.ffl.bSubtractAngleNonBond = W.bNonBonded;
+    #undef _setbool
+}
+
 
 void setSwitchesUFF( int DoBond, int DoAngle, int DoDihedral, int DoInversion, int DoAssemble, int SubtractBondNonBond, int ClampNonBonded ){
     #define _setbool(b,i) { if(i>0){b=true;}else if(i<0){b=false;} }
@@ -106,12 +202,15 @@ void setSwitchesUFF( int DoBond, int DoAngle, int DoDihedral, int DoInversion, i
     _setbool( W.ffu.bDoAssemble,          DoAssemble );
     _setbool( W.ffu.bSubtractBondNonBond, SubtractBondNonBond );
     _setbool( W.ffu.bClampNonBonded,      ClampNonBonded );
+    printf( "setSwitchesUFF() DoBond=%i DoAngle=%i DoDihedral=%i DoInversion=%i DoAssemble=%i SubtractBondNonBond=%i ClampNonBonded=%i \n", DoBond, DoAngle, DoDihedral, DoInversion, DoAssemble, SubtractBondNonBond, ClampNonBonded );
     #undef _setbool
 }
 
-int run( int nstepMax, double dt, double Fconv, int ialg, double* outE, double* outF, int iParalel ){
+//int run( int nstepMax, double dt, double Fconv, int ialg, double* outE, double* outF, int iParalel ){
+int run( int nstepMax, double dt, double Fconv, int ialg, double damping, double* outE, double* outF, double* outV, double* outVF, int iParalel ){
     W.bOcl= iParalel > 0;
     Mat3d lvec = W.ffls[0].lvec;
+    printf( "MMFFmulti_lib.cpp run() iParalel=%i W.bUFF=%i ialg=%i dt=%g Fconv=%g nstepMax=%i  outE=%p outF=%p \n", iParalel, W.bUFF, ialg, dt, Fconv, nstepMax, outE, outF );
     //printf( "run Fconv=%g lvec{{%6.3f,%6.3f,%6.3f}{%6.3f,%6.3f,%6.3f}{%6.3f,%6.3f,%6.3f}}\n", Fconv, lvec.a.x,lvec.a.y,lvec.a.z, lvec.b.x,lvec.b.y,lvec.b.z, lvec.c.x,lvec.c.y,lvec.c.z );
     int nitrdione=0;
     if(W.bUFF){
@@ -119,37 +218,29 @@ int run( int nstepMax, double dt, double Fconv, int ialg, double* outE, double* 
         switch(iParalel){
             // CPU paths (use UFF::run on host)
             case -1:
-            case  0: {
-                // Run UFF on CPU for system 0 (host-side integrator)
-                // Note: UFF::run updates ffu.apos/fapos internally
-                nitrdione = W.ffu.run( nstepMax, dt, Fconv, 1000.0, 0.1, outE, outF, nullptr, nullptr );
-                // Reflect updated positions/forces into host buffers for system 0
-                W.pack_uff_system( 0, W.ffu, /*bParams=*/false, /*bForces=*/true, /*bVel=*/false, /*blvec=*/false );
-                break;
-            }
-
-            // GPU paths (evaluate UFF via OpenCL kernels)
-            default: {
-                // Sync current UFF state into host-side GPU arrays, then upload
-                W.pack_uff_system( 0, W.ffu, /*bParams=*/true, /*bForces=*/false, /*bVel=*/false, /*blvec=*/true );
-                // Ensure data are uploaded (safe to call multiple times)
-                W.upload( /*bParams=*/true, /*bForces=*/false, /*bVel=*/false, /*blvec=*/true );
+            case  0: { nitrdione = W.ffu.run    ( nstepMax, dt, Fconv, 1000.0, 0.1, outE, outF, outV, outVF ); break; }
+            case 1:  { nitrdione = W.ffu.run_omp( nstepMax, dt, Fconv, 1000.0, 0.1, outE, outF, outV, outVF ); break; }
+            case 2:  { // GPU paths (evaluate UFF via OpenCL kernels)
+                //                           bParams bForces  bVel    bLvec
+                W.pack_uff_system( 0, W.ffu, true,   false,  false,   true   );
+                W.upload         (           true,   false,  false,   true   );
                 double Etot = W.eval_UFF_ocl( nstepMax );
-                // Download forces and positions back to host for inspection/use
-                W.download( /*bForces=*/true, /*bVel=*/false );
+                W.download( true, false );
                 if(outE){ outE[0] = Etot; }
-                nitrdione = nstepMax; // we executed nstepMax evaluation steps on GPU
+                nitrdione = nstepMax; 
                 break;
             }
+            default: printf("run() iParalel=%i not implemented\n", iParalel); break;
         }
     }else{
         switch(iParalel){
             case -1: nitrdione = W.run_multi_serial( nstepMax, Fconv, 1000.0, 1000 ); break; 
             case  0:
-            case  1: nitrdione = W.run_omp_ocl     ( nstepMax, Fconv, 1000.0, 1000 ); break; 
+            case  1: nitrdione = W.run_omp_ocl( nstepMax, Fconv, 1000.0, 1000 ); break; 
             case  2: nitrdione = W.run_ocl_opt( nstepMax, Fconv    ); break; 
             case  3: nitrdione = W.run_ocl_loc( nstepMax, Fconv, 1 ); break; 
             case  4: nitrdione = W.run_ocl_loc( nstepMax, Fconv, 2 ); break; 
+            default: printf("run() iParalel=%i not implemented\n", iParalel); break;
         }
     }
     return nitrdione;

@@ -1352,6 +1352,11 @@ class UFF : public NBFF { public:
         return Etot;
     }
 
+    void printSimulationSetup(){
+        //printf("UFF::printSimulationSetup() \n");
+        printf("UFF::printSimulationSetup() bDoBond %i bDoAngle %i bDoDihedral %i bDoInversion %i bDoAngle %i bDoDihedral %i bDoInversion %i bDoAssemble %i\n", bDoBond, bDoAngle, bDoDihedral, bDoInversion, bDoAngle, bDoDihedral, bDoInversion, bDoAssemble );
+        printf("UFF::printSimulationSetup() bNonBonded %i bNonBondNeighs %i bSubtractBondNonBond %i bSubtractAngleNonBond %i bClampNonBonded %i\n", bNonBonded, bNonBondNeighs, bSubtractBondNonBond, bSubtractAngleNonBond, bClampNonBonded);
+    }
 
    // ============== Move atoms in order to minimize energy
     __attribute__((hot))  
@@ -1401,17 +1406,18 @@ class UFF : public NBFF { public:
         //bool bErr=0;
         //long T0 = getCPUticks();
         for(itr=0; itr<niter; itr++){
+            //printf( "UFF::run() itr %i / %i \n", itr, niter );
             E=0;
             // ------ eval UFF
             //if(bClean)
             cleanForce();
-            if( bDoBond      ) Eb = evalBonds();
+            if( bDoBond      ) Eb = evalBonds(); 
             if( bDoAngle     ) Ea = evalAngles();
             if( bDoDihedral  ) Ed = evalDihedrals();
             if( bDoInversion ) Ei = evalInversions();
             // ---- assemble (we need to wait when all atoms are evaluated)
             for(int ia=0; ia<natoms; ia++){
-                assembleAtomForce(ia); 
+                assembleAtomForce(ia);
                 //printf( "UFF::run() fapos[%i] (%g,%g,%g)\n", ia, fapos[ia].x, fapos[ia].y, fapos[ia].z );
                 if(bNonBonded){
                     if(bNonBondNeighs){
@@ -1629,7 +1635,50 @@ class UFF : public NBFF { public:
 
     // ================== Print functions  
     
-    void printSizes     (      ){ printf( "MMFFf4::printSizes(): natoms(%i) nbonds(%i) nangles(%i) ndihedrals(%i) ninversions(%i) npbc(%i)\n", natoms,nbonds,nangles,ndihedrals,ninversions,npbc); }
+    void printSizes() const {
+        printf( "UFF::printSizes(): natoms(%i) nbonds(%i) nangles(%i) ndihedrals(%i) ninversions(%i)\n",
+                natoms, nbonds, nangles, ndihedrals, ninversions );
+    }
+
+    void printAtomParams(int ia) const {
+        printf("atom[%i] type=%i neighs{%3i,%3i,%3i,%3i} REQ(%5.3f,%5.3f,%5.3f)\n",
+               ia, atypes[ia], neighs[ia].x, neighs[ia].y, neighs[ia].z, neighs[ia].w,
+               REQs[ia].x, REQs[ia].y, REQs[ia].z);
+    }
+    
+    void printBondParams(int ib) const {
+        const Vec2i& atoms  = bonAtoms[ib];
+        const Vec2d& params = bonParams[ib];
+        printf("bond[%i] {%i-%i} K=%5.3f l0=%5.3f\n", ib, atoms.x, atoms.y, params.x, params.y);
+    }
+    
+    void printAngleParams(int ia) const {
+        const double5& p = angParams[ia];
+        // p = {k, c0, c1, c2, c3}
+        printf("angle[%i] K=%5.3f c0=%5.3f c1=%5.3f c2=%5.3f c3=%5.3f\n", ia, p.k, p.c0, p.c1, p.c2, p.c3);
+    }
+    
+    void printDihedralParams(int id) const {
+        const Vec3d& p = dihParams[id];
+        // p = {V, d, n}
+        printf("dihedral[%i] V=%5.3f d=%5.3f n=%5.3f\n", id, p.x, p.y, p.z);
+    }
+    
+    void printInversionParams(int ii) const {
+        const Quat4d& p = invParams[ii];
+        // p = {K, c0, c1, c2}
+        printf("inversion[%i] K=%5.3f c0=%5.3f c1=%5.3f c2=%5.3f\n", ii, p.x, p.y, p.z, p.w);
+    }
+    
+    void printAllParams(bool bAtoms=true, bool bBonds=true, bool bAngles=true, bool bDihedrals=true, bool bInversions=true) const {
+        if(bAtoms){ printf("\n=== Atoms ===\n"); for(int i=0; i<natoms; i++) printAtomParams(i); }
+        if(bBonds && nbonds>0){ printf("\n=== Bonds ===\n"); for(int i=0; i<nbonds; i++) printBondParams(i); }
+        if(bAngles && nangles>0){ printf("\n=== Angles ===\n"); for(int i=0; i<nangles; i++) printAngleParams(i); }
+        if(bDihedrals && ndihedrals>0){ printf("\n=== Dihedrals ===\n"); for(int i=0; i<ndihedrals; i++) printDihedralParams(i); }
+        if(bInversions && ninversions>0){ printf("\n=== Inversions ===\n"); for(int i=0; i<ninversions; i++) printInversionParams(i); }
+    }
+
+
     /*
     void printAtomParams(int ia){ printf("atom[%i] t%i ngs{%3i,%3i,%3i,%3i} par(%5.3f,%5.3f,%5.3f,%5.3f)  bL(%5.3f,%5.3f,%5.3f,%5.3f) bK(%6.3f,%6.3f,%6.3f,%6.3f)  Ksp(%5.3f,%5.3f,%5.3f,%5.3f) Kpp(%5.3f,%5.3f,%5.3f,%5.3f) \n", ia, atypes[ia], neighs[ia].x,neighs[ia].y,neighs[ia].z,neighs[ia].w,    apars[ia].x,apars[ia].y,apars[ia].z,apars[ia].w,    bLs[ia].x,bLs[ia].y,bLs[ia].z,bLs[ia].w,   bKs[ia].x,bKs[ia].y,bKs[ia].z,bKs[ia].w,     Ksp[ia].x,Ksp[ia].y,Ksp[ia].z,Ksp[ia].w,   Kpp[ia].x,Kpp[ia].y,Kpp[ia].z,Kpp[ia].w  ); };
     void printNeighs    (int ia){ printf("atom[%i] neigh{%3i,%3i,%3i,%3i} neighCell{%3i,%3i,%3i,%3i} \n", ia, neighs[ia].x,neighs[ia].y,neighs[ia].z,neighs[ia].w,   neighCell[ia].x,neighCell[ia].y,neighCell[ia].z,neighCell[ia].w ); }
@@ -1706,8 +1755,7 @@ class UFF : public NBFF { public:
             }
         }
     }
-    */
-
+   */
 
 };
 
