@@ -75,11 +75,11 @@ lib.setGlobalParams.restype   =  None
 def setGlobalParams(kMorse=1.6, Lepairs=0.5):
     return lib.setGlobalParams(kMorse, Lepairs)
 
-# void setup( int imodel, int EvalJ, int WriteJ, int CheckRepulsion, int Regularize, int AddRegError, int Epairs, int BroadcastFDOFs, int UdateDOFbounds, int EvalOnlyCorrections){
+# void setup( int imodel, int EvalJ, int WriteJ, int CheckRepulsion, int Regularize, int AddRegError, int Epairs, int BroadcastFDOFs, int UdateDOFbounds, int EvalOnlyCorrections, int SaveJustElementXYZ){
 lib.setup.argtypes  = [c_int,c_int, c_int, c_int, c_int, c_int, c_int, c_int, c_int, c_int]
 lib.setup.restype   =  None    
-def setup(imodel=1, EvalJ=0, WriteJ=0, CheckRepulsion=0, Regularize=0, AddRegError=0, Epairs=0, BroadcastFDOFs=0, UdateDOFbounds=0, EvalOnlyCorrections=0):
-    return lib.setup( imodel,EvalJ, WriteJ, CheckRepulsion, Regularize, AddRegError, Epairs, BroadcastFDOFs, UdateDOFbounds, EvalOnlyCorrections)
+def setup(imodel=1, EvalJ=0, WriteJ=0, CheckRepulsion=0, Regularize=0, AddRegError=0, Epairs=0, BroadcastFDOFs=0, UdateDOFbounds=0, EvalOnlyCorrections=0, SaveJustElementXYZ=0):
+    return lib.setup( imodel,EvalJ, WriteJ, CheckRepulsion, Regularize, AddRegError, Epairs, BroadcastFDOFs, UdateDOFbounds, EvalOnlyCorrections, SaveJustElementXYZ)
 
 #void setFilter( double EmodelCut, double EmodelCutStart, int iWeightModel, int ListOverRepulsive, int SaveOverRepulsive, int PrintOverRepulsive, int DiscardOverRepulsive, int WeightByEmodel ){
 lib.setFilter.argtypes  = [c_double, c_double, c_int, c_int, c_int, c_int, c_int, c_int]
@@ -1070,22 +1070,17 @@ def parse_xyz_mapping(xyz_path, distances=None, angles=None):
     return Gref, seq, axis, distances, angles
 
 
-def compute_model_grid(xyz_path, seq, shape, do_fit=False, verbosity=1, bMorse=True, dof_selection=None, bAddEpairs=True, run_params=None):
+def compute_model_grid(xyz_path, seq, shape, do_fit=False, bAddEpairs=True, run_params=None, bOutXYZ=False):
     """Load the .xyz into FitREQ, optionally run fitting, compute model energies for each frame and map to grid.
     - seq: list of (iy, ix) in file order from parse_xyz_mapping
     - shape: (ny, nx)
     - run_params: dict with keys like nstep, ErrMax, dt, max_step, damping, bClamp
     """
-    if run_params is None:
-        run_params = dict(nstep=100, Fmax=1e-8, dt=0.01, max_step=0.05, damping=0.0, bClamp=False)
-    setVerbosity(verbosity, PrintDOFs=1, PrintfDOFs=1, PrintBeforReg=-1, PrintAfterReg=1)
-    loadTypes()
-    if dof_selection is None:
-        dof_selection = "dofSelection_MorseSR.dat" if bMorse else "dofSelection_LJSR2.dat"
-    loadDOFSelection(fname=dof_selection)
-    loadXYZ(xyz_path, bAddEpairs=bAddEpairs, bOutXYZ=False, bEvalOnlyCorrections=False)
+    loadXYZ(xyz_path, bAddEpairs=bAddEpairs, bOutXYZ=bOutXYZ, bEvalOnlyCorrections=False)
     if do_fit:
-        run(**run_params)
+        if run_params is None: run_params = dict(Fmax=1e-8, dt=0.5, damping=0.1, max_step=-1, bClamp=True, iparallel=0, ialg=1,)
+        #run(**run_params)
+        run( iparallel=0, ialg=1, nstep=run_params["nstep"], Fmax=1e-8, dt=0.5, damping=0.1,   max_step=-1,  bClamp=True )
     # Compute model energies for all frames
     _, Es, _ = getEs(bOmp=False, bEs=True, bFs=False)
     Gm = np.empty(shape, dtype=float); Gm[:] = np.nan

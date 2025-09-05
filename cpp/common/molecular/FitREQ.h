@@ -212,6 +212,7 @@ class FitREQ{ public:
     bool  bUdateDOFbounds = true;     // Should we update fDOFbounds after each sample ?
     bool  bClearDOFboundsEpoch = false; // Should we clear fDOFbounds after each epoch ?
     bool  bEvalOnlyCorrections = false;  // Split evaluation and optimization to Emodel0 and Ecorrection (where only Ecorrection is updated every iteration)
+    bool  bSaveJustElementXYZ  = true;  // Should we save just element names in the output .xyz file ?
 
     // what to do with samples with E>EmodelCut ?
     bool bListOverRepulsive    = true;   // Should we list overrepulsive samples? 
@@ -759,7 +760,7 @@ void addAndReorderEpairs(Atoms*& atoms, FILE* fout=nullptr) {
     if(fout) {
         char line[1024];
         sprintf(line, "#	n0 %i E_tot %g", atoms->n0, atoms->Energy);
-        params->writeXYZ(fout, atoms, line, 0, true);
+        params->writeXYZ(fout, atoms, line, 0, bSaveJustElementXYZ);
     }
     //printf( "addAndReorderEpairs() DONE \n" );
 }
@@ -784,6 +785,7 @@ int loadXYZ( const char* fname, bool bAddEpairs=false, bool bOutXYZ=false ){
     FILE* fout=0;
     if(bAddEpairs && bOutXYZ){
         sprintf(line,"%s_Epairs.xyz", fname );
+        printf("FitREQ::loadXYZ() opened output file %s\n", line);  
         fout = fopen(line,"w");
     }
     int il   = 0;
@@ -828,7 +830,10 @@ int loadXYZ( const char* fname, bool bAddEpairs=false, bool bOutXYZ=false ){
             il=0; nbatch++;
         }
     }
-    if(fout)fclose(fout);
+    if(fout){
+        //printf("FitREQ::loadXYZ() closed output file %s\n", );  
+        fclose(fout);
+    }
     fclose(fin);
     //init_types();
     countTypesPresent( );

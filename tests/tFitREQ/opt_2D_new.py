@@ -60,6 +60,7 @@ if __name__ == "__main__":
     parser.add_argument("--no-epairs", action="store_true",      help="Disable epair terms when loading XYZ")
     parser.add_argument("--no-show",   action="store_true",      help="Do not show the figure")
     parser.add_argument("--line",      action="store_true",      help="Also plot r_min(angle) and E_min(angle) lines")
+    parser.add_argument("--out-xyz",   action="store_true",      help="Output XYZ with fitted DOFs")
     args = parser.parse_args()
 
     bMorse_local = not args.lj
@@ -70,19 +71,38 @@ if __name__ == "__main__":
         fit.plot_compare(Gref, None, angles, distances, title, save_prefix=args.save, show=not args.no_show, line=args.line)
         exit()
 
+
+    imodel = 1 if args.lj else 5
+
+    fit.setVerbosity(args.verbosity, PrintDOFs=1, PrintfDOFs=1, PrintBeforReg=-1, PrintAfterReg=1)
+    fit.setup( imodel=imodel, EvalJ=1, WriteJ=1, Regularize=1, SaveJustElementXYZ=-1 )
+
+    fit.setFilter( EmodelCutStart=0.0, EmodelCut=0.5, PrintOverRepulsive=-1, DiscardOverRepulsive=-1, SaveOverRepulsive=-1, ListOverRepulsive=-1 )
+    fit.loadTypes()
+    dof_selection = args.dof_selection; #if dof_selection is None: dof_selection = "dofSelection_MorseSR.dat" if bMorse else "dofSelection_LJSR2.dat"
+    fit.loadDOFSelection(fname=dof_selection)
+    
     # model or fit: compute model grid and compare
-    run_params = dict(nstep=args.nstep, Fmax=args.fmax, dt=args.dt, max_step=args.max_step, damping=args.damping, bClamp=False)
-    Gmodel = fit.compute_model_grid(
-        args.input,
-        seq,
-        Gref.shape,
-        do_fit=(args.mode == "fit"),
-        verbosity=args.verbosity,
-        bMorse=bMorse_local,
-        dof_selection=args.dof_selection,
-        bAddEpairs=(not args.no_epairs),
-        run_params=run_params,
-    )
+    run_params = dict(nstep=args.nstep, Fmax=args.fmax, dt=args.dt, max_step=args.max_step, damping=args.damping )
+    # Allocate trajectory buffers if we will fit, so the run() fills them
+    if args.mode == "fit":
+        trj_E, trj_F, trj_DOFs, _ = fit.setTrjBuffs(niter=args.nstep)
+    Gmodel = fit.compute_model_grid( args.input, seq, Gref.shape, do_fit=(args.mode == "fit"), bAddEpairs=(not args.no_epairs), run_params=run_params, bOutXYZ=args.out_xyz )
+
+    # If we fitted, plot optimization trajectory of DOFs
+    if args.mode == "fit":
+        try:
+            DOFnames = fit.loadDOFnames(args.dof_selection)
+        except Exception:
+            DOFnames = [f"DOF {i}" for i in range(trj_DOFs.shape[1])] if 'trj_DOFs' in locals() else []
+        lss  = ['-','--',":",'-','--',":",'-','-']
+        clrs = ['b','b','b','r','r','r','c','m']
+        if 'trj_DOFs' in locals():
+            for i in range(min(trj_DOFs.shape[1], len(DOFnames))):
+                ls = lss[i % len(lss)]; c = clrs[i % len(clrs)]
+                plt.plot(trj_DOFs[:, i], ls, c=c, lw=1.0, ms=2.0, label=DOFnames[i])
+            plt.legend(fontsize=8)
+            plt.grid(alpha=0.2)
 
     # Local compare plotting with requested style and optional lines
     save_prefix = None
