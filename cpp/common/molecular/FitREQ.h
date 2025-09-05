@@ -308,7 +308,7 @@ void initTypeParamsFromDOFs() {
         int comp = rt.y;
         typToREQ[ityp].array[comp] = iDOF;
         double xstart = DOFregX[iDOF].y;
-        printf("ityp=%i comp=%i iDOF=%i xstart=%g\n", ityp, comp, iDOF, xstart);
+        printf("FitREQ::initTypeParamsFromDOFs() ityp: %3i comp: %i iDOF: %3i xstart: %16.8f\n", ityp, comp, iDOF, xstart);
         typeREQs      [ityp].array[comp] = xstart;  // Initialize with xstart
         typeREQs0     [ityp].array[comp] = xstart;
         typeREQsMin   [ityp].array[comp] = DOFlimits[iDOF].x;
@@ -322,7 +322,7 @@ void initTypeParamsFromDOFs() {
 
 int initAllTypes(){
     ntype = params->atypes.size();
-    printf( "FitREQ::initAllTypes() ntype=%i \n", ntype );
+    printf( "FitREQ::initAllTypes() ntype=%3i \n", ntype );
     reallocTypeParams(ntype);
     for(int i=0; i<ntype; i++){
         Quat4d tREQH = Quat4d{ params->atypes[i].RvdW, sqrt(params->atypes[i].EvdW), params->atypes[i].Qbase, params->atypes[i].Hb };
@@ -357,7 +357,7 @@ void reduce_sample_fdofs(){
 }
 
 void printTypeParams( bool bOnlyPresent=true ){
-    printf("printTypeParams():\n");
+    printf("FitREQ::printTypeParams():\n");
     int ntype = params->atypes.size();
     bool bCounted = typesPresent.size() > 0;
     for(int i=0; i<ntype; i++){
@@ -461,7 +461,7 @@ int loadDOFSelection( const char* fname ){
         // Add new DOF
         fittedTypes[ityp] = 1;
         if(nw<nw_xstart){ 
-            printf("iDOF: %i %8s.%i xstart missing (nw=%i) => xstart=%g \n", iDOF, at_name, comp, nw, typeREQs0[ityp].array[comp]  );
+            printf("iDOF: %3i %8s.%i xstart missing (nw=%3i) => xstart=%16.8f \n", iDOF, at_name, comp, nw, typeREQs0[ityp].array[comp]  );
             xstart = typeREQs0[ityp].array[comp]; 
         }
         if (nw<nw_xstart+1){ printf("iDOF: %i %8s.%i invMass missing (nw=%i) => invMass=%g \n", iDOF, at_name, comp, nw, 1.0 ); invMass = 1.0; }
@@ -471,7 +471,7 @@ int loadDOFSelection( const char* fname ){
         DOFlimits.push_back( {xmin, xmax}       );
         DOFinvMass.push_back( invMass           );
         //if(verbosity>0)
-            printf( "DOF[%3i] %3i|%i %-8s %c  range(%g,%g) reg(x0=(%g,%g),K=(%g,%g)) xstart=%g invMass=%g\n",  iDOF, ityp,comp,  at_name, "REQH"[comp], xmin, xmax, xlo, xhi, klo, khi, xstart, invMass );
+            printf( "DOF[%3i] %3i|%i %-8s %c | range: %+10.4e ,%+10.4e | reg{ x0: %+10.4e , %+10.4e | K: %+10.4e , %+10.4e } xstart: %+10.4e invMass: %+10.4e \n",  iDOF, ityp,comp,  at_name, "REQH"[comp], xmin, xmax, xlo, xhi, klo, khi, xstart, invMass );
         iDOF++;
     }
     fclose(fin);

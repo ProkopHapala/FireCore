@@ -842,3 +842,343 @@ def plot_Epanels_diff_separate(Emodels, Erefs, ref_dirs, save_prefix=None, bColo
             figs.append(fig)
     
     return figs
+
+
+# ================== From opt_2D_new.py
+
+
+
+# ============== Plotting Helper ==============
+
+def plot_energy_2d_from_xyz(
+    xyz_path,
+    distances=None,
+    angles=None,
+    title=None,
+    cmap='bwr',
+    vmin=None,
+    vmax=None,
+    show=True,
+    save_path=None,
+):
+    """Read an .xyz trajectory with comment lines carrying Etot/x0 and y|z angle tokens, build a 2D grid and plot it.
+
+    - distances: list of distance values (floats) to define the x-axis grid order
+    - angles: list of angle values (ints) to define the y-axis grid order
+    Missing samples are filled with NaN.
+    The function detects whether the file uses 'y' or 'z' angles and labels the axis accordingly.
+    """
+    import numpy as _np
+
+    # Defaults from user's provided grids
+    if distances is None:
+        distances = [
+            1.40, 1.45, 1.50, 1.55, 1.60, 1.65, 1.70, 1.75, 1.80, 1.85,
+            1.90, 1.95, 2.00, 2.05, 2.10, 2.15, 2.20, 2.25, 2.30, 2.35,
+            2.40, 2.45, 2.50, 2.60, 2.70, 2.80, 2.90, 3.00, 3.50, 4.00,
+            4.50, 5.00, 6.00, 8.00, 10.00, 15.00, 20.00,
+        ]
+    if angles is None:
+        angles = list(range(-90, 100, 10))  # -90..90 step 10, includes 0
+
+    # Fast lookup maps
+    dist_to_ix = {float(d): i for i, d in enumerate(distances)}
+    ang_to_iy = {int(a): i for i, a in enumerate(angles)}
+
+    # Prepare grid filled with NaN (shape: distances x angles)
+    G = np.empty((len(distances), len(angles)), dtype=float)
+    G[:] = np.nan
+
+    direction_found = None  # 'y' or 'z'
+
+    def _parse_comment(line: str):
+        # Example: "# n0 3 Etot .4284 x0 01.80 z -90"
+        toks = line.strip().split()
+        vals = {"Etot": None, "x0": None, "angle": None, "axis": None}
+        for i, t in enumerate(toks):
+            if t == 'Etot' and i + 1 < len(toks):
+                try:
+                    vals["Etot"] = float(toks[i + 1])
+                except Exception:
+                    pass
+            elif t == 'x0' and i + 1 < len(toks):
+                try:
+                    vals["x0"] = float(toks[i + 1])
+                except Exception:
+                    pass
+            elif t in ('y', 'z', 'Y', 'Z') and i + 1 < len(toks):
+                vals["axis"] = t.lower()
+                try:
+                    # angle tokens may be like '00' or '-90'
+                    vals["angle"] = int(float(toks[i + 1]))
+                except Exception:
+                    pass
+        return vals
+
+    # Iterate frames: count line, comment line, then skip N atom lines
+    with open(xyz_path, 'r', encoding='utf-8', errors='replace') as f:
+        while True:
+            count = f.readline()
+            if not count:
+                break
+            count = count.strip()
+            if not count:
+                continue
+            try:
+                n = int(count)
+            except Exception:
+                # Not a proper count line; attempt to continue
+                continue
+            comment = f.readline()
+            if not comment:
+                break
+
+            vals = _parse_comment(comment)
+            if vals["axis"] is not None and direction_found is None:
+                direction_found = vals["axis"]
+
+            # Map to indices
+            if vals["x0"] is not None and vals["angle"] is not None and vals["Etot"] is not None:
+                # Map to (distance index, angle index)
+                idist = dist_to_ix.get(round(vals["x0"], 2))
+                if idist is None:
+                    idist = dist_to_ix.get(vals["x0"])  # fallback exact float
+                iang = ang_to_iy.get(int(vals["angle"]))
+                if idist is not None and iang is not None:
+                    G[idist, iang] = vals["Etot"]
+
+            # Skip atom lines
+            for _ in range(n):
+                _ = f.readline()
+
+    # Shift by asymptotic reference (last distance row minimum)
+    ref_row = G[-1, :]
+    ref = np.nanmin(ref_row[np.isfinite(ref_row)]) if np.any(np.isfinite(ref_row)) else 0.0
+    GS = G - ref
+    # Color scaling: vmin from global min (<=0), vmax = -vmin
+    if vmin is None:
+        try:
+            vmin = float(np.nanmin(GS))
+            if np.isfinite(vmin) and vmin > 0: vmin = 0.0
+        except Exception:
+            vmin = None
+    if (vmin is not None) and (vmax is None):
+        vmax = -vmin
+
+    # Plot with angle on x-axis, distance on y-axis
+    axlabel = f"angle ({direction_found})" if direction_found in ('y', 'z') else "angle"
+    mesh = plt.imshow(GS, origin='lower', aspect='auto', cmap=cmap, vmin=vmin, vmax=vmax, interpolation='nearest')
+    # label ticks by physical values while keeping uniform spacing
+    xt = np.linspace(0, GS.shape[1]-1, min(6, GS.shape[1])).astype(int)
+    yt = np.linspace(0, GS.shape[0]-1, min(6, GS.shape[0])).astype(int)
+    plt.xticks(xt, [f"{angles[i]:.0f}" for i in xt])
+    plt.yticks(yt, [f"{distances[i]:.2f}" for i in yt])
+    plt.xlabel(axlabel + ' [deg]')
+    plt.ylabel('distance x0 [Å]')
+    if title is None:
+        title = os.path.basename(xyz_path)
+    plt.title(title)
+    plt.colorbar(mesh, label='Etot shifted [a.u.]')
+    if save_path is not None:
+        plt.savefig(save_path, dpi=200, bbox_inches='tight')
+    if show:
+        plt.show()
+    return GS
+
+
+def parse_xyz_mapping(xyz_path, distances=None, angles=None):
+    """Parse .xyz to build:
+    - ref_grid (angles x distances) filled with Etot where present, NaN otherwise
+    - sequence list of (iy, ix) per frame in file order for mapping model energies
+    - detected axis label ('y' or 'z' or None)
+    """
+    if distances is None:
+        distances = [
+            1.40, 1.45, 1.50, 1.55, 1.60, 1.65, 1.70, 1.75, 1.80, 1.85,
+            1.90, 1.95, 2.00, 2.05, 2.10, 2.15, 2.20, 2.25, 2.30, 2.35,
+            2.40, 2.45, 2.50, 2.60, 2.70, 2.80, 2.90, 3.00, 3.50, 4.00,
+            4.50, 5.00, 6.00, 8.00, 10.00, 15.00, 20.00,
+        ]
+    if angles is None:
+        angles = list(range(-90, 100, 10))
+    dist_to_ix = {float(d): i for i, d in enumerate(distances)}
+    ang_to_iy = {int(a): i for i, a in enumerate(angles)}
+
+    # grid shape: (distances, angles)
+    Gref = np.empty((len(distances), len(angles)), dtype=float)
+    Gref[:] = np.nan
+    seq = []
+    axis = None
+
+    def _parse_comment(line: str):
+        toks = line.strip().split()
+        vals = {"Etot": None, "x0": None, "angle": None, "axis": None}
+        for i, t in enumerate(toks):
+            if t == 'Etot' and i + 1 < len(toks):
+                try: vals["Etot"] = float(toks[i + 1])
+                except Exception: pass
+            elif t == 'x0' and i + 1 < len(toks):
+                try: vals["x0"] = float(toks[i + 1])
+                except Exception: pass
+            elif t in ('y', 'z', 'Y', 'Z') and i + 1 < len(toks):
+                vals["axis"] = t.lower()
+                try: vals["angle"] = int(float(toks[i + 1]))
+                except Exception: pass
+        return vals
+
+    with open(xyz_path, 'r', encoding='utf-8', errors='replace') as f:
+        while True:
+            count = f.readline()
+            if not count: break
+            count = count.strip()
+            if not count: continue
+            try:
+                n = int(count)
+            except Exception:
+                continue
+            comment = f.readline()
+            if not comment: break
+            vals = _parse_comment(comment)
+            if vals["axis"] is not None and axis is None:
+                axis = vals["axis"]
+            idist = iang = None
+            if vals["x0"] is not None:
+                idist = dist_to_ix.get(round(vals["x0"], 2)) or dist_to_ix.get(vals["x0"]) 
+            if vals["angle"] is not None:
+                iang = ang_to_iy.get(int(vals["angle"]))
+            if (iang is not None) and (idist is not None):
+                seq.append((idist, iang))
+                if vals["Etot"] is not None:
+                    Gref[idist, iang] = vals["Etot"]
+            for _ in range(n):
+                _ = f.readline()
+    return Gref, seq, axis, distances, angles
+
+
+def compute_model_grid(xyz_path, seq, shape, do_fit=False, verbosity=1, bMorse=True, dof_selection=None, bAddEpairs=True, run_params=None):
+    """Load the .xyz into FitREQ, optionally run fitting, compute model energies for each frame and map to grid.
+    - seq: list of (iy, ix) in file order from parse_xyz_mapping
+    - shape: (ny, nx)
+    - run_params: dict with keys like nstep, ErrMax, dt, max_step, damping, bClamp
+    """
+    if run_params is None:
+        run_params = dict(nstep=100, Fmax=1e-8, dt=0.01, max_step=0.05, damping=0.0, bClamp=False)
+    setVerbosity(verbosity, PrintDOFs=1, PrintfDOFs=1, PrintBeforReg=-1, PrintAfterReg=1)
+    loadTypes()
+    if dof_selection is None:
+        dof_selection = "dofSelection_MorseSR.dat" if bMorse else "dofSelection_LJSR2.dat"
+    loadDOFSelection(fname=dof_selection)
+    loadXYZ(xyz_path, bAddEpairs=bAddEpairs, bOutXYZ=False, bEvalOnlyCorrections=False)
+    if do_fit:
+        run(**run_params)
+    # Compute model energies for all frames
+    _, Es, _ = getEs(bOmp=False, bEs=True, bFs=False)
+    Gm = np.empty(shape, dtype=float); Gm[:] = np.nan
+    nmap = min(len(Es), len(seq))
+    for i in range(nmap):
+        idist, iang = seq[i]
+        Gm[idist, iang] = Es[i]
+    return Gm
+
+
+def shift_grid(G):
+    import numpy as _np
+    if G.size == 0:
+        return G, 0.0, 0.0
+    last = G[-1, :] if (G.ndim == 2 and G.shape[0] > 0) else np.array([0.0])
+    ref = float(np.nanmin(last[np.isfinite(last)])) if np.any(np.isfinite(last)) else 0.0
+    GS = G - ref
+    mloc = float(np.nanmin(GS)) if np.any(np.isfinite(GS)) else 0.0
+    if np.isfinite(mloc) and mloc > 0: mloc = 0.0
+    return GS, ref, mloc
+
+
+def extract_min_curves(angles, distances, G, rmax=None):
+    import numpy as _np
+    nA = len(angles)
+    rmin = np.full(nA, np.nan)
+    emin = np.full(nA, np.nan)
+    for j in range(nA):
+        col = G[:, j]
+        if np.any(np.isfinite(col)):
+            idx = int(np.nanargmin(col))
+            emin[j] = col[idx]
+            rmin[j] = distances[idx]
+            if (rmax is not None) and np.isfinite(rmin[j]) and (rmin[j] > rmax):
+                rmin[j] = np.nan; emin[j] = np.nan
+    return rmin, emin
+
+
+def plot_compare(Gref, Gmodel, angles, distances, title, save_prefix=None, vmin=None, vmax=None, show=True, line=False):
+    import matplotlib.pyplot as plt
+
+    # Shift each by its own baseline and determine symmetric limits from reference
+    GRS, refR, mlocR = shift_grid(Gref)
+    vminR = float(np.nanmin(GRS)) if np.any(np.isfinite(GRS)) else None
+    if vmin is None:
+        vmin = vminR if (vminR is not None) else None
+        if (vmin is not None) and (vmin > 0): vmin = 0.0
+    if (vmin is not None) and (vmax is None):
+        vmax = -vmin
+
+    if Gmodel is not None:
+        GMS, refM, mlocM = shift_grid(Gmodel)
+    else:
+        GMS = None
+    
+    # 3 rows: Ref, Model, Diff (if model present); else only Ref
+    rows = 3 if (GMS is not None) else 1
+    fig, axs = plt.subplots(rows, 1, figsize=(4, 2.2*rows), constrained_layout=True)
+    if rows == 1:
+        axs = [axs]
+    # Ref
+    im0 = axs[0].imshow(GRS, origin='lower', aspect='auto', cmap='bwr', vmin=vmin, vmax=vmax)
+    xt = np.linspace(0, GRS.shape[1]-1, min(6, GRS.shape[1])).astype(int)
+    yt = np.linspace(0, GRS.shape[0]-1, min(6, GRS.shape[0])).astype(int)
+    axs[0].set_xticks(xt); axs[0].set_yticks(yt)
+    axs[0].set_xticklabels([f"{angles[i]:.0f}" for i in xt]); axs[0].set_yticklabels([f"{distances[i]:.2f}" for i in yt])
+    axs[0].set_ylabel('Distance (Å)')
+    axs[0].set_title(title)
+    plt.colorbar(im0, ax=axs[0])
+    if GMS is not None:
+        im1 = axs[1].imshow(GMS, origin='lower', aspect='auto', cmap='bwr', vmin=vmin, vmax=vmax)
+        axs[1].set_ylabel('Distance (Å)')
+        plt.colorbar(im1, ax=axs[1])
+        # Diff
+        D = GMS - GRS
+        dmax = max(-np.nanmin(D), np.nanmax(D)) if np.any(np.isfinite(D)) else 1.0
+        im2 = axs[2].imshow(D, origin='lower', aspect='auto', cmap='bwr', vmin=-dmax, vmax=dmax)
+        axs[2].set_xlabel('Angle (deg)')
+        axs[2].set_ylabel('Distance (Å)')
+        plt.colorbar(im2, ax=axs[2])
+    else:
+        axs[0].set_xlabel('Angle (deg)')
+
+    if save_prefix:
+        fname = f"{save_prefix}.png" if not save_prefix.endswith('.png') else save_prefix
+        fig.savefig(fname, dpi=150, bbox_inches='tight')
+
+    if line:
+        # Plot Rmin(angle) and Emin(angle) lines for ref (and model if present)
+        fig2, (axR, axE) = plt.subplots(1, 2, figsize=(6, 2.8), constrained_layout=True)
+        rR, eR = extract_min_curves(angles, distances, GRS, rmax=None)
+        axR.plot(angles, rR, '-k', label='Ref')
+        axE.plot(angles, eR, '-k', label='Ref')
+        if GMS is not None:
+            rM, eM = extract_min_curves(angles, distances, GMS, rmax=None)
+            axR.plot(angles, rM, '--r', label='Model')
+            axE.plot(angles, eM, '--r', label='Model')
+        axR.set_title('r_min(angle)'); axE.set_title('E_min(angle)')
+        axR.set_xlabel('Angle (deg)'); axE.set_xlabel('Angle (deg)')
+        axR.set_ylabel('Distance (Å)'); axE.set_ylabel('Energy (shifted)')
+        axR.grid(True, linestyle='--', alpha=0.4); axE.grid(True, linestyle='--', alpha=0.4)
+        axR.legend(fontsize=8); axE.legend(fontsize=8)
+        if save_prefix:
+            p2 = save_prefix.replace('.png','') + '_lines.png'
+            fig2.savefig(p2, dpi=150, bbox_inches='tight')
+        if show and not save_prefix:
+            plt.show()
+
+    if show and not save_prefix:
+        plt.show()
+

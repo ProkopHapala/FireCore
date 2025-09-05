@@ -84,20 +84,20 @@ bMorse = True   # Morse
 
 donors    = [
 'H2O-D1', 
-'NH3-D1'
-'CH2NH-D1',
-'HCOOH-D1', 
-'HCONH2-D1', 
+#'NH3-D1'
+#'CH2NH-D1',
+#'HCOOH-D1', 
+#'HCONH2-D1', 
 #'C4H3NO2-D1', 
 #'C4H5N-D1', 
 ] 
 acceptors = [
 'H2O-A1', 
-'NH3-A1',
-'CH2O-A1', 
+#'NH3-A1',
+#'CH2O-A1', 
 #'CH2NH-A1',    # This makes it crash
-'HCOOH-A1', 
-'HCOOH-A2', 
+#'HCOOH-A1', 
+#'HCOOH-A2', 
 #'HCONH2-A1', 
 #'C4H3NO2-A1', 
 #'C5H5N-A1', 
@@ -140,7 +140,8 @@ fit.loadTypes( )     # load atom types
 if bMorse:
     #fit.loadDOFSelection( fname="dofSelection_Morse.dat" )
     #fit.loadDOFSelection( fname="dofSelection_H2O_Morse.dat" )
-    fit.loadDOFSelection( fname="dofSelection_MorseSR.dat" )
+    #fit.loadDOFSelection( fname="dofSelection_MorseSR.dat" )
+    fit.loadDOFSelection( fname="dofSelection_MorseSR_H2O.dat" )
     #fit.comment_non_matching_lines( fname_in="dofSelection_Morse.dat"); fit.loadDOFSelection()
     #fit.loadDOFSelection( fname="dofSelection_HCOOH_Morse.dat" )
     #fit.loadDOFSelection( fname="dofSelection_HCOOH_Morse.dat" )
@@ -213,10 +214,10 @@ E,Es,Fs = fit.getEs( bOmp=False, bDOFtoTypes=False, bEs=True, bFs=False )
 
 if bMorse:
     #Err = fit.run( iparallel=0, ialg=0, nstep=1000, Fmax=1e-4, dt=0.1, max_step=-1,  bClamp=True )
-    Err = fit.run( iparallel=0, ialg=1, nstep=10, Fmax=1e-8, dt=0.5, damping=0.1,   max_step=-1,  bClamp=True )
+    Err = fit.run( iparallel=0, ialg=1, nstep=100, Fmax=1e-8, dt=0.5, damping=0.1,   max_step=-1,  bClamp=True )
 else:
     #Err = fit.run( iparallel=0, ialg=0, nstep=1000, Fmax=1e-4, dt=0.01, max_step=-1,  bClamp=True )
-    Err = fit.run( iparallel=0, ialg=1, nstep=10, Fmax=1e-8, dt=0.1, damping=0.05,   max_step=-1,  bClamp=True )
+    Err = fit.run( iparallel=0, ialg=1, nstep=100, Fmax=1e-8, dt=0.1, damping=0.05,   max_step=-1,  bClamp=True )
 
 # ----- Combined hybrid optimization ( start with gradient descent, continue with dynamical descent) )
 #Err = fit.run( iparallel=0, ialg=0, nstep=20,  Fmax=1e-2, dt=0.005, max_step=-1,  bClamp=False )
@@ -249,17 +250,17 @@ plt.show(); # exit()
 
 #print( "fit.nDOFs ", fit.nDOFs )
 DOFnames = [
-"E_N3.Q", # 0
-"E_NR.Q", # 1
-"E_N2.Q", # 2 
+#"E_N3.Q", # 0
+#"E_NR.Q", # 1
+#"E_N2.Q", # 2 
 "E_O3.Q", # 3
-"E_O2.Q", # 4
-"N_3.H",  # 5
-"N_R.H",  # 6
-"N_2.H",  # 7
+#"E_O2.Q", # 4
+#"N_3.H",  # 5
+#"N_R.H",  # 6
+#"N_2.H",  # 7
 "O_3.H",  # 8
-"O_2.H",  # 9
-"H_N.H",  # 10
+#"O_2.H",  # 9
+#"H_N.H",  # 10
 "H_O.H"   # 11
 ]
 

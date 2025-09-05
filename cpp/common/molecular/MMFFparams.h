@@ -274,7 +274,7 @@ class MMFFparams{ public:
             string2ElementType( line, etyp );
             etypes.push_back(etyp);
             if( !elementTypeDict.insert({ etyp.name, etypes.size()-1} ).second ){ printf("ERROR in MMFFparams::loadElementTypes: ElementType[%i](%s) is duplicated => Exit()\n", etypes.size(), etyp.name ); printf("%s\n", line ); exit(0); };
-            if(verbosity>1)printf("loadElementTypes[%i] name='%s' iZ=%i neval=%i valence=%i\n", etypes.size(), etyp.name, etyp.iZ, etyp.neval, etyp.valence );
+            if(verbosity>1)printf("loadElementTypes[%3i] name: %-5s iZ=%3i neval=%2i valence=%2i\n", etypes.size(), etyp.name, etyp.iZ, etyp.neval, etyp.valence );
         }
         fclose(pFile);
         return i;
@@ -300,7 +300,7 @@ class MMFFparams{ public:
             atypes.push_back(atyp);
             atomTypeNames.push_back( atyp.name );
             if( !atomTypeDict.insert({atyp.name, atypes.size()-1}).second ){ printf("ERROR in MMFFparams::loadAtomTypes: AtomType[%i](%s) is duplicated => Exit()\n", atypes.size(), atyp.name ); printf("%s\n", line ); exit(0); };
-            if(verbosity>1)printf("loadAtomTypes[%i] name='%s' valence=%i nepair=%i npi=%i sym=%i\n", atypes.size(), atyp.name, atyp.valence, atyp.nepair, atyp.npi, atyp.sym );
+            if(verbosity>1)printf("loadAtomTypes[%3i] name: %-5s valence=%2i nepair=%2i npi=%2i sym=%2i\n", atypes.size(), atyp.name, atyp.valence, atyp.nepair, atyp.npi, atyp.sym );
         }
         fclose(pFile);
         return i;

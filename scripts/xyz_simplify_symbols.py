@@ -132,6 +132,21 @@ def iterate_frames(instream: Iterable[str]) -> Iterable[Tuple[str, str, List[str
         yield count_line, comment_line, atoms
 
 
+def parse_comment(comment_line: str) -> dict:
+    """Extract relevant tokens (direction, angle) from a comment line."""
+    tokens = comment_line.strip().split()
+    vals = {"direction": None, "angle": None}
+    for i, t in enumerate(tokens):
+        if t.lower() in ('y', 'z'):
+            vals["direction"] = t.lower()
+            if i + 1 < len(tokens):
+                try:
+                    vals["angle"] = int(float(tokens[i + 1]))
+                except (ValueError, IndexError):
+                    pass
+    return vals
+
+
 def detect_direction(comment_line: str) -> Optional[str]:
     """Detect scan direction token ('y' or 'z') from the comment line.
     The token is expected as a standalone word in whitespace-separated tokens.
@@ -185,6 +200,111 @@ def out_paths_for_split(in_file: Path, out_dir: Optional[Path], suffix: str) -> 
     return out_dir / yname, out_dir / zname
 
 
+def plot_energy_2d_from_xyz(
+    xyz_path: str,
+    distances: Optional[List[float]] = None,
+    angles: Optional[List[int]] = None,
+    title: Optional[str] = None,
+    cmap: str = 'viridis',
+    vmin: Optional[float] = None,
+    vmax: Optional[float] = None,
+    show: bool = True,
+    save_path: Optional[str] = None,
+):
+    """Parse a single .xyz movie file and plot a 2D heatmap of Etot vs (distance x0, angle y|z).
+
+    - Builds a grid using provided distance and angle lists; missing samples are NaN.
+    - Detects angle axis token from the comment line ('y' or 'z') for labeling.
+    - Matplotlib is imported locally to keep this utility lightweight when unused.
+    """
+    import numpy as _np
+    from matplotlib import pyplot as plt  # local import to avoid global dependency
+
+    if distances is None:
+        distances = [
+            1.40, 1.45, 1.50, 1.55, 1.60, 1.65, 1.70, 1.75, 1.80, 1.85,
+            1.90, 1.95, 2.00, 2.05, 2.10, 2.15, 2.20, 2.25, 2.30, 2.35,
+            2.40, 2.45, 2.50, 2.60, 2.70, 2.80, 2.90, 3.00, 3.50, 4.00,
+            4.50, 5.00, 6.00, 8.00, 10.00, 15.00, 20.00,
+        ]
+    if angles is None:
+        angles = list(range(-90, 100, 10))
+
+    dist_to_ix = {float(d): i for i, d in enumerate(distances)}
+    ang_to_iy = {int(a): i for i, a in enumerate(angles)}
+
+    G = _np.empty((len(angles), len(distances)), dtype=float)
+    G[:] = _np.nan
+
+    axis = None
+
+    def _parse_comment(line: str):
+        toks = line.strip().split()
+        vals = {"Etot": None, "x0": None, "angle": None, "axis": None}
+        for i, t in enumerate(toks):
+            if t == 'Etot' and i + 1 < len(toks):
+                try:
+                    vals["Etot"] = float(toks[i + 1])
+                except Exception:
+                    pass
+            elif t == 'x0' and i + 1 < len(toks):
+                try:
+                    vals["x0"] = float(toks[i + 1])
+                except Exception:
+                    pass
+            elif t in ('y', 'z', 'Y', 'Z') and i + 1 < len(toks):
+                vals["axis"] = t.lower()
+                try:
+                    vals["angle"] = int(float(toks[i + 1]))
+                except Exception:
+                    pass
+        return vals
+
+    with open(xyz_path, 'r', encoding='utf-8', errors='replace') as f:
+        while True:
+            count = f.readline()
+            if not count:
+                break
+            count = count.strip()
+            if not count:
+                continue
+            try:
+                n = int(count)
+            except Exception:
+                continue
+            comment = f.readline()
+            if not comment:
+                break
+            vals = _parse_comment(comment)
+            if vals["axis"] is not None and axis is None:
+                axis = vals["axis"]
+            if vals["x0"] is not None and vals["angle"] is not None and vals["Etot"] is not None:
+                ix = dist_to_ix.get(round(vals["x0"], 2))
+                if ix is None:
+                    ix = dist_to_ix.get(vals["x0"])  # fallback exact float
+                iy = ang_to_iy.get(int(vals["angle"]))
+                if ix is not None and iy is not None:
+                    G[iy, ix] = vals["Etot"]
+            for _ in range(n):
+                _ = f.readline()
+
+    from os.path import basename
+    axlabel = f"angle ({axis})" if axis in ('y', 'z') else "angle"
+    extent = [distances[0], distances[-1], angles[0], angles[-1]]
+    im = plt.imshow(G, origin='lower', extent=extent, aspect='auto', cmap=cmap, vmin=vmin, vmax=vmax, interpolation='nearest')
+    plt.xlabel('distance x0 [Å]')
+    plt.ylabel(axlabel + ' [deg]')
+    if title is None:
+        title = basename(xyz_path)
+    plt.title(title)
+    plt.colorbar(im, label='Etot [a.u.]')
+    if save_path is not None:
+        plt.savefig(save_path, dpi=200, bbox_inches='tight')
+    if show:
+        plt.show()
+    return G
+
+
 def main(argv: Iterable[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description="Utilities for .xyz movies: simplify atom types (e.g., C_2 -> C) and/or split frames by scan direction (y/z). All formatting preserved.")
     ap.add_argument("-i", "--input", required=True, help="Input .xyz file or directory containing .xyz files")
@@ -200,6 +320,8 @@ def main(argv: Iterable[str] | None = None) -> int:
     # Tri-state: None means not specified; we'll derive default behavior after parsing
     ap.set_defaults(simplify=None)
     ap.add_argument("--split", action="store_true", help="Split frames into separate '-y' and '-z' files based on the comment line token")
+    ap.add_argument("--split-angle-zero", dest="split_angle_zero", action="store_true", default=True, help="When splitting, write angle=0 frames to both y and z files (default: True)")
+    ap.add_argument("--no-split-angle-zero", dest="split_angle_zero", action="store_false", help="Disable duplicating angle=0 frames")
 
     args = ap.parse_args(list(argv) if argv is not None else None)
 
@@ -247,7 +369,8 @@ def main(argv: Iterable[str] | None = None) -> int:
                 with f.open('r', encoding='utf-8', errors='replace') as fin:
                     for cnt, com, atoms in iterate_frames(fin):
                         lines += 2 + len(atoms)
-                        direction = detect_direction(com)
+                        vals = parse_comment(com)
+                        direction = vals["direction"]
                         counts[direction] = counts.get(direction, 0) + 1
                         if do_simplify:
                             # Count potential modifications in atom lines
@@ -267,22 +390,33 @@ def main(argv: Iterable[str] | None = None) -> int:
                 fy = stack.enter_context(y_path.open('w', encoding='utf-8', errors='strict'))
                 fz = stack.enter_context(z_path.open('w', encoding='utf-8', errors='strict'))
                 for cnt, com, atoms in iterate_frames(fin):
-                    direction = detect_direction(com)
-                    target = fy if direction == 'y' else fz if direction == 'z' else None
-                    if target is None:
-                        # Skip frames with no detectable direction
+                    vals = parse_comment(com)
+                    direction = vals["direction"]
+                    angle = vals["angle"]
+
+                    targets = []
+                    if args.split_angle_zero and angle == 0:
+                        targets.extend([fy, fz])
+                    elif direction == 'y':
+                        targets.append(fy)
+                    elif direction == 'z':
+                        targets.append(fz)
+
+                    if not targets:
                         continue
-                    # Write frame preserving text; optionally simplify atom lines
-                    target.write(cnt)
-                    target.write(com)
-                    for al in atoms:
-                        new_al = simplify_line(al) if do_simplify else al
-                        if new_al is not al and new_al != al:
-                            mods += 1
-                        target.write(new_al)
-                        lines += 1
-                    # account for header lines
-                    lines += 2
+
+                    for target in targets:
+                        target.write(cnt)
+                        target.write(com)
+                        for al in atoms:
+                            new_al = simplify_line(al) if do_simplify else al
+                            if target is targets[0]: # Count mods only once for duplicated frames
+                                if new_al is not al and new_al != al:
+                                    mods += 1
+                            target.write(new_al)
+
+                    if targets: # Count lines only once
+                        lines += 2 + len(atoms)
             total_lines += lines
             total_mod += mods
             if args.verbose:
