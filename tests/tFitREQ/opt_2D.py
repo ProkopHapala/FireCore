@@ -137,24 +137,14 @@ fit.setVerbosity(verbosity, PrintDOFs=1, PrintfDOFs=1, PrintBeforReg=-1, PrintAf
 #fit.setVerbosity(verbosity, PrintDOFs=1, PrintfDOFs=1, PrintBeforReg=-1, PrintAfterReg=1 )
 fit.loadTypes( )     # load atom types
 
+
+dofFile="dofSelection_MorseSR_H2O.dat"
 if bMorse:
-    #fit.loadDOFSelection( fname="dofSelection_Morse.dat" )
-    #fit.loadDOFSelection( fname="dofSelection_H2O_Morse.dat" )
-    #fit.loadDOFSelection( fname="dofSelection_MorseSR.dat" )
-    fit.loadDOFSelection( fname="dofSelection_MorseSR_H2O.dat" )
-    #fit.comment_non_matching_lines( fname_in="dofSelection_Morse.dat"); fit.loadDOFSelection()
-    #fit.loadDOFSelection( fname="dofSelection_HCOOH_Morse.dat" )
-    #fit.loadDOFSelection( fname="dofSelection_HCOOH_Morse.dat" )
+    #dofFile="dofSelection_MorseSR.dat"
+    dofFile="dofSelection_MorseSR_H2O.dat"
 else:
-    #fit.loadDOFSelection( fname="dofSelection_LJ.dat" )   
-    #fit.loadDOFSelection( fname="dofSelection_H2O_LJ.dat" )  
-    #fit.loadDOFSelection( fname="dofSelection_H2O_LJ.dat" )  
-    #fit.loadDOFSelection( fname="dofSelection_H2O_LJr8.dat" ) 
-    #fit.loadDOFSelection( fname="dofSelection_H2O_LJSR.dat" )   
-    fit.loadDOFSelection( fname="dofSelection_LJSR2.dat" )   
-    #fit.loadDOFSelection( fname="dofSelection_CH2NH_LJ.dat" )   
-    #fit.loadDOFSelection( fname="dofSelection_HCOOH_LJ.dat" ) 
-    #fit.loadDOFSelection( fname="dofSelection_HCOOH_LJ.dat" ) 
+    dofFile="dofSelection_LJSR2.dat"
+fit.loadDOFSelection( fname=dofFile )   
 
 #fname = "input_2CH2NH.xyz"
 #fit.loadDOFSelection( fname="dofSelection_N2.dat" )          
@@ -179,6 +169,8 @@ EminPlot = np.min(Erefs)*fit.ev2kcal
 
 weights0 = np.ones( len(Erefs) )*0.5
 
+
+
 fit.setGlobalParams( kMorse=1.8, Lepairs=1.0 )
 if bMorse:
     #fit.setup( imodel=2, EvalJ=1, WriteJ=1, Regularize=1 )
@@ -189,6 +181,7 @@ else:
     weights0, lens = fit.split_and_weight_curves( Erefs, x0s, n_before_min=2, weight_func=lambda E: fit.exp_weight_func(E,a=1.0, alpha=4.0) )
 # plotEWs( Erefs=Erefs, weights0=weights0, Emin=-1.5 ); plt.title( "Weighting" )
 # plt.show(); exit()
+
 
 fit.setWeights( weights0 )
 fit.getBuffs()
@@ -212,12 +205,29 @@ E,Es,Fs = fit.getEs( bOmp=False, bDOFtoTypes=False, bEs=True, bFs=False )
 #fit.plotEWs( Erefs=Erefs, Emodel=Es, weights=fit.weights, weights0=weights0,  Emin=EminPlot ); plt.title( "BEFORE OPTIMIZATION" )
 #plt.show(); exit()
 
+nstep=100
+trj_E, trj_F, trj_DOFs, _ = fit.setTrjBuffs( niter=nstep )
+
 if bMorse:
     #Err = fit.run( iparallel=0, ialg=0, nstep=1000, Fmax=1e-4, dt=0.1, max_step=-1,  bClamp=True )
-    Err = fit.run( iparallel=0, ialg=1, nstep=100, Fmax=1e-8, dt=0.5, damping=0.1,   max_step=-1,  bClamp=True )
+    Err = fit.run( iparallel=0, ialg=1, nstep=nstep, Fmax=1e-8, dt=0.5, damping=0.1,   max_step=-1,  bClamp=True )
 else:
     #Err = fit.run( iparallel=0, ialg=0, nstep=1000, Fmax=1e-4, dt=0.01, max_step=-1,  bClamp=True )
-    Err = fit.run( iparallel=0, ialg=1, nstep=100, Fmax=1e-8, dt=0.1, damping=0.05,   max_step=-1,  bClamp=True )
+    Err = fit.run( iparallel=0, ialg=1, nstep=nstep, Fmax=1e-8, dt=0.1, damping=0.05,   max_step=-1,  bClamp=True )
+
+
+
+lss =['-','--',":",'-','--',":",'-','-']
+clrs=['b','b','b','r','r','r','c','m']
+DOFnames = fit.loadDOFnames( dofFile )
+print( "DOFnames: ", DOFnames )
+#plt.plot( trj_E, '.-' )
+for i in range(fit.nDOFs):
+    plt.plot( trj_DOFs[:,i], lss[i], c=clrs[i], lw=1.0, ms=2.0, label=DOFnames[i], )
+plt.legend()
+plt.grid(alpha=0.2)
+#plt.show(); exit()
+
 
 # ----- Combined hybrid optimization ( start with gradient descent, continue with dynamical descent) )
 #Err = fit.run( iparallel=0, ialg=0, nstep=20,  Fmax=1e-2, dt=0.005, max_step=-1,  bClamp=False )
@@ -232,8 +242,49 @@ E,Es,Fs = fit.getEs( bOmp=False, bDOFtoTypes=False, bEs=True, bFs=False );
 Eplots_ref = fit.slice_and_reshape(Erefs, marks, angle_data); print( "len(plots_ref): ",  len(Eplots_ref) )
 Eplots_mod = fit.slice_and_reshape(Es,    marks, angle_data); print( "len(Eplots_mod): ", len(Eplots_mod) )
 #fig = fit.plot_Epanels_diff(Eplots_mod, Eplots_ref, ref_dirs, Emin=EminRef*fit.ev2kcal, bColorbar=True, bKcal=True)
-fit.plot_Epanels_diff_separate(Eplots_mod, Eplots_ref, ref_dirs, Emin=EminRef*fit.ev2kcal, bColorbar=True, bKcal=True, save_prefix="opt_2D_", bClose=True )
+fit.plot_Epanels_diff_separate(Eplots_mod, Eplots_ref, ref_dirs, Emin=EminRef*fit.ev2kcal, bColorbar=True, bKcal=True, save_prefix="opt_2D_" )
 plt.savefig( "opt_2D.png" )
+
+# ---- Also plot 1D lines: Rmin(angle) and Emin(angle) for Ref and Model
+def _slice_and_reshape_vals(vals, marks, angle_data):
+    """Generic slicer like fit.slice_and_reshape but for arbitrary 1D vals (e.g., x0s)."""
+    out = []
+    for (i0, i1), nxs in zip(marks, angle_data):
+        nx = np.max(nxs); ny = len(nxs)
+        M = np.empty((ny, nx)); M[:] = np.nan
+        ii = i0
+        for iy, nxi in enumerate(nxs):
+            M[iy, 0:nxi] = vals[ii:ii+nxi]
+            ii += nxi
+        out.append(M)
+    return out
+
+Xplots = _slice_and_reshape_vals(x0s, marks, angle_data)
+
+def _parse_angle_from_comment(line: str):
+    toks = line.strip().split()
+    for i, t in enumerate(toks):
+        if t in ('y','Y','z','Z') and i+1 < len(toks):
+            try:
+                return int(float(toks[i+1]))
+            except Exception:
+                return None
+    return None
+
+for (i_mark, name), Eref, Emod, Xmat in zip(enumerate(ref_dirs), Eplots_ref, Eplots_mod, Xplots):
+    # Build per-molecule angle list from comment lines and angle_data
+    i0, i1 = marks[i_mark]
+    nxs = angle_data[i_mark]
+    angles = []
+    idx = i0
+    for nxi in nxs:
+        ang = _parse_angle_from_comment(comments[idx]) if 0 <= idx < len(comments) else None
+        angles.append(ang if ang is not None else np.nan)
+        idx += nxi
+    angles = np.array(angles)
+
+    clean = name.replace('/', '_').replace('\\', '_')
+    fit.plot_min_lines_pair(Eref, Emod, Xmat, angles, title=name, save_path=f"opt_2D_lines__{clean}.png", to_kcal=True)
 
 # Eplot     = reformat_and_pad_data(Es   , lens)  # Reformat and pad data
 # Eplot_ref = reformat_and_pad_data(Erefs, lens)

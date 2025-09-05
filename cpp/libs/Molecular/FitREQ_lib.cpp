@@ -21,6 +21,9 @@ extern "C"{
 void setVerbosity( int verbosity_, int idebug_, int PrintDOFs, int PrintfDOFs, int PrintBeforReg, int PrintAfterReg ){
     verbosity = verbosity_;
     idebug    = idebug_;
+    // no buffering
+    setbuf(stdout, NULL);
+    setbuf(stderr, NULL);
     #define _setbool(name) { if(name>0){W.b##name=true;}else if(name<0){W.b##name=false;} }
     _setbool( PrintDOFs     );
     _setbool( PrintfDOFs    );
@@ -112,6 +115,14 @@ void setWeights( int n, double* weights ){
 }
 
 int export_Erefs( double* Erefs ){ return W.export_Erefs( Erefs ); }
+
+
+void setTrjBuffs( double* trj_E, double* trj_F, double* trj_DOFs, double* trj_fDOFs){
+    W.trj_E = trj_E;
+    W.trj_F = trj_F;
+    W.trj_DOFs = trj_DOFs;
+    W.trj_fDOFs = trj_fDOFs;
+}
 
 double run( int ialg, int iparallel, int nstep, double Fmax, double dt, double max_step, double damping, bool bClamp ){
     printf( "run(ialg=%i,iparallel=%i,imodel=%i,nstep=%6i,nsamp=%6i) bEvalJ=%i bWriteJ=%i bJ=%i \n", ialg, iparallel, W.imodel, nstep, W.samples.size(),  W.bEvalJ, W.bWriteJ, (W.bEvalJ&&(!W.bWriteJ)) );

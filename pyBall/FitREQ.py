@@ -107,6 +107,19 @@ def setWeights(weights):
     n = len(weights)
     lib.setWeights(n, _np_as(weights,c_double_p))
     
+#void setTrjBuffs( double* trj_E, double* trj_F, double* trj_DOFs, double* trj_fDOFs){
+lib.setTrjBuffs.argtypes  = [c_double_p, c_double_p, c_double_p, c_double_p]
+lib.setTrjBuffs.restype   =  None
+def setTrjBuffs( niter, trj_E=None, trj_F=None, trj_DOFs=None, trj_fDOFs=None, nDOFs_=None, bE=True, bF=True, bDOFs=True, bfDOFs=False ):
+    if nDOFs_     is None: nDOFs_ = nDOFs
+    print("setTrjBuffs(): niter=%i nDOFs=%i bE=%i bF=%i bDOFs=%i bfDOFs=%i" % (niter, nDOFs_, bE, bF, bDOFs, bfDOFs))
+    if (trj_E     is None) and bE     : trj_E     = np.zeros( niter )
+    if (trj_F     is None) and bF     : trj_F     = np.zeros( niter )
+    if (trj_DOFs  is None) and bDOFs  : trj_DOFs  = np.zeros( (niter, nDOFs_) )
+    if (trj_fDOFs is None) and bfDOFs : trj_fDOFs = np.zeros( (niter, nDOFs_) )
+    lib.setTrjBuffs(_np_as(trj_E,c_double_p), _np_as(trj_F,c_double_p), _np_as(trj_DOFs,c_double_p), _np_as(trj_fDOFs,c_double_p))
+    return trj_E, trj_F, trj_DOFs, trj_fDOFs
+
 # double run( int ialg, int iparallel, int nstep, double Fmax, double dt, double max_step, double damping, bool bClamp ){
 lib.run.argtypes  = [c_int, c_int, c_int, c_double, c_double, c_double, c_double, c_bool]
 lib.run.restype   =  c_double
@@ -156,7 +169,9 @@ def loadTypes(fEtypes="data/ElementTypes.dat", fAtypes="data/AtomTypes.dat"):
 lib.loadDOFSelection.argtypes  = [c_char_p]
 lib.loadDOFSelection.restype   =  c_int
 def loadDOFSelection(fname="dofSelection.dat"):
-    return lib.loadDOFSelection(cstr(fname))
+    global nDOFs
+    nDOFs = lib.loadDOFSelection(cstr(fname))
+    return nDOFs
 
 # int loadTypeSelection_walls( const char* fname ){
 # lib.loadTypeSelection.argtypes  = [c_char_p]
@@ -481,7 +496,7 @@ def read_xyz_data(fname="input_all.xyz"):
             #    f.readline()
     return np.array(Erefs), np.array(x0s)
 
-def loadDOFnames( fname="dofSelection.dat", comps="REQH" ):
+def loadDOFnames( fname, comps="REQH" ):
     names = []
     with open(fname, 'r') as f:
         for line in f:
@@ -1181,4 +1196,83 @@ def plot_compare(Gref, Gmodel, angles, distances, title, save_prefix=None, vmin=
 
     if show and not save_prefix:
         plt.show()
+
+
+# ===== Reusable helpers for Rmin/Emin from panel-shaped data (angles x distances)
+
+def _distances_from_Xpanel(Xpanel):
+    """Given Xpanel shaped (ny_angles, nx_distances) with distances per sample,
+    build a single distances vector of length nx by taking the first finite value in each column.
+    Fallback to NaN if none is finite.
+    """
+    ny, nx = Xpanel.shape
+    dists = np.full(nx, np.nan)
+    for j in range(nx):
+        col = Xpanel[:, j]
+        mask = np.isfinite(col)
+        if np.any(mask):
+            dists[j] = col[np.where(mask)[0][0]]
+    return dists
+
+
+def compute_min_lines_from_panel(Epanel, Xpanel, angles, rmax=None, do_shift=True):
+    """Compute Rmin(angle) and Emin(angle) from panel-shaped data.
+
+    Inputs:
+      - Epanel: 2D array (ny_angles, nx_distances) of energies
+      - Xpanel: 2D array (ny_angles, nx_distances) of distances x0 corresponding to columns
+      - angles: list/array of angle values of length ny_angles
+      - rmax: optional cutoff; if provided, entries with rmin > rmax are set to NaN
+      - do_shift: if True, shift grid by asymptotic baseline before extracting
+
+    Returns:
+      rmin, emin arrays of length ny_angles
+    """
+    # Convert to grid shaped (distances, angles) expected by shift_grid/extract_min_curves
+    G = np.asarray(Epanel, dtype=float).T  # (nx, ny)
+    distances = _distances_from_Xpanel(np.asarray(Xpanel, dtype=float))
+    if do_shift:
+        G, _, _ = shift_grid(G)
+    rmin, emin = extract_min_curves(angles=np.asarray(angles), distances=distances, G=G, rmax=rmax)
+    return rmin, emin
+
+
+def plot_min_lines_pair(Epanel_ref, Epanel_mod, Xpanel, angles, title=None, save_path=None, to_kcal=False, ms=2, lw=0.5):
+    """Plot Rmin(angle) and Emin(angle) lines for a ref/model pair using panel-shaped inputs.
+
+    - Epanel_ref/Epanel_mod: (ny_angles, nx_distances)
+    - Xpanel: distances panel (ny_angles, nx_distances)
+    - angles: sequence of ny angle values
+    - to_kcal: if True, convert energy lines to kcal/mol using ev2kcal
+    """
+    rR, eR = compute_min_lines_from_panel(Epanel_ref, Xpanel, angles)
+    rM = eM = None
+    if Epanel_mod is not None:
+        rM, eM = compute_min_lines_from_panel(Epanel_mod, Xpanel, angles)
+    import matplotlib.pyplot as plt
+    fig, (axR, axE) = plt.subplots(1, 2, figsize=(6.5, 2.8), constrained_layout=True)
+    # ------ Distance
+    axR.plot(angles, rR, '.-k', lw=lw,ms=ms, label='Ref')
+    if rM is not None: 
+        axR.plot(angles, rM, '.-r', lw=lw,ms=ms, label='Model')
+    axR.set_title('r_min(angle)');  
+    axR.set_xlabel('Angle (deg)');   
+    axR.set_ylabel('Distance x0 [Å]');
+    axR.set_ylim(None,3.0)
+    axR.grid(alpha=0.3, linestyle='--'); 
+    axR.legend(fontsize=8);
+    # ------ Energy
+    Er = eR * (ev2kcal if to_kcal else 1.0)
+    axE.plot(angles, Er, '.-k', lw=lw,ms=ms, label='Ref')
+    if eM is not None:
+        Em = eM * (ev2kcal if to_kcal else 1.0)
+        axE.plot(angles, Em, '.-r', lw=lw,ms=ms, label='Model')
+    axE.set_title('E_min(angle)')
+    axE.set_xlabel('Angle (deg)')
+    axE.set_ylabel('Energy [{}]'.format('kcal/mol' if to_kcal else 'eV'))
+    axE.grid(alpha=0.3, linestyle='--')
+    axE.legend(fontsize=8)
+    if title:     fig.suptitle(title, fontsize=10)
+    if save_path: fig.savefig(save_path, dpi=150, bbox_inches='tight')
+    return fig
 

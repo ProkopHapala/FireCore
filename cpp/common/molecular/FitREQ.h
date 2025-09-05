@@ -262,6 +262,12 @@ class FitREQ{ public:
     MM::Builder builder;
     MMFFparams* params=0; 
 
+    // export optimization trajectory 
+    double* trj_E    = 0;
+    double* trj_F    = 0;
+    double* trj_DOFs = 0;
+    double* trj_fDOFs = 0;
+
     // New members for H-bond optimization
     
 
@@ -2100,6 +2106,14 @@ void printDOFvalues(){
     }
 }
 
+void saveTrajectory(int itr, double Err, double F2){
+    if(trj_E    ){ trj_E[itr]=Err; }
+    if(trj_F    ){ trj_F[itr]=F2; }
+    int i0=itr*nDOFs;
+    if(trj_DOFs ){ for(int i=0;i<nDOFs;i++){ trj_DOFs [i0+i]=DOFs [i]; } }
+    if(trj_fDOFs){ for(int i=0;i<nDOFs;i++){ trj_fDOFs[i0+i]=fDOFs[i]; } }
+}
+
 __attribute__((hot)) 
 double run( int ialg, int nstep, double Fmax, double dt, double max_step, double damping, bool bClamp, bool bOMP ){
     bSaveSampleToXYZ=false; 
@@ -2121,6 +2135,7 @@ double run( int ialg, int nstep, double Fmax, double dt, double max_step, double
             case 3: F2 = move_GD_BB_long ( itr, dt, max_step          ); break;
         }
         if( bClamp ){ limitDOFs(); } // TODO: should we put this before evalFitError() ?
+        saveTrajectory(itr, Err, F2);
         if( F2<F2max ){ printf("CONVERGED in %i iterations (|F|=%g < F2max= %g) \n", itr, sqrt(F2), Fmax ); break; }
     }
     printf("VERY FINAL |E|=%.15g  DOFs= ",Err     ); for(int j=0;j<nDOFs;j++){ printf("%.15g ", DOFs[j]); };printf("\n");
@@ -2169,6 +2184,7 @@ double run_omp( int ialg, int nstep, double Fmax, double dt, double max_step, do
                 case 3: F2 = move_GD_BB_long ( itr, dt, max_step          ); break;
             }
             if(bClamp     ){ limitDOFs();  }
+            saveTrajectory(itr, Err, F2);
             if( F2<F2max ){ 
                 printf("CONVERGED in %i iterations \n", itr); 
                 itr = nstep;  // to terminate the while-loop
