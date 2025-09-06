@@ -1271,3 +1271,37 @@ def plot_min_lines_pair(Epanel_ref, Epanel_mod, Xpanel, angles, title=None, save
     if save_path: fig.savefig(save_path, dpi=150, bbox_inches='tight')
     return fig
 
+
+def plot_trj_dofs(trj_DOFs, DOFnames=None, lss=None, clrs=None, title=None):
+    """Plot trajectories of DOFs over optimization iterations.
+
+    Args:
+        trj_DOFs: ndarray (niter, nDOFs)
+        DOFnames: optional list of names per DOF; if None, uses generic labels
+        lss: list of line styles to cycle
+        clrs: list of colors to cycle
+        title: optional title for the plot
+
+    Returns:
+        matplotlib.figure.Figure or None
+    """
+    import matplotlib.pyplot as plt
+    if trj_DOFs is None:
+        return None
+    niter, nDOFs_ = trj_DOFs.shape
+    if DOFnames is None:
+        DOFnames = [f"DOF {i}" for i in range(nDOFs_)]
+    if lss is None:
+        lss = ['-','--',":",'-','--',":",'-','-']
+    if clrs is None:
+        clrs = ['b','b','b','r','r','r','c','m']
+    fig = plt.figure()
+    for i in range(min(nDOFs_, len(DOFnames))):
+        ls = lss[i % len(lss)]
+        c  = clrs[i % len(clrs)]
+        plt.plot(trj_DOFs[:, i], ls, c=c, lw=1.0, ms=2.0, label=DOFnames[i])
+    if title:
+        plt.title(title)
+    plt.legend(fontsize=8)
+    plt.grid(alpha=0.2)
+    return fig

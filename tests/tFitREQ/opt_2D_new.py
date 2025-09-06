@@ -55,7 +55,16 @@ if __name__ == "__main__":
     parser.add_argument("--dt",        type=float, default=0.01, help="Integrator dt")
     parser.add_argument("--max-step",  type=float, default=0.05, help="Max step")
     parser.add_argument("--damping",   type=float, default=0.0,  help="Damping")
+    # Global model params
+    parser.add_argument("--kMorse",    type=float, default=1.8,  help="Global kMorse parameter")
+    parser.add_argument("--Lepairs",   type=float, default=1.0,  help="Global Lepairs parameter")
     parser.add_argument("--lj",        action="store_true",      help="Use LJ instead of Morse presets")
+    # Weighting controls
+    parser.add_argument("--weight-a",      type=float, default=1.0, help="Weight amplitude 'a' for exp weight func")
+    parser.add_argument("--weight-alpha",  type=float, default=4.0, help="Weight sharpness 'alpha' for exp weight func")
+    parser.add_argument("--emin-min",      type=float, default=-0.02, help="Emin threshold for weighting segments")
+    parser.add_argument("--n-before-min-morse", type=int, default=100, help="#points before min to weight (Morse)")
+    parser.add_argument("--n-before-min-lj",    type=int, default=2,   help="#points before min to weight (LJ)")
     parser.add_argument("--save",      type=str, default=None,     help="Path to save the plot (PNG)")
     parser.add_argument("--no-epairs", action="store_true",      help="Disable epair terms when loading XYZ")
     parser.add_argument("--no-show",   action="store_true",      help="Do not show the figure")
@@ -77,11 +86,14 @@ if __name__ == "__main__":
 
     Erefs, x0s = fit.read_xyz_data(args.input)  #;print( "x0s:\n", x0s )
     weights0   = np.ones( len(Erefs) )*0.5
-    fit.setGlobalParams( kMorse=1.8, Lepairs=1.0 )
-    if args.lj:
-        weights0, lens = fit.split_and_weight_curves( Erefs, x0s, n_before_min=2,   weight_func=lambda E: fit.exp_weight_func(E,a=1.0, alpha=4.0) )
-    else:
-        weights0, lens = fit.split_and_weight_curves( Erefs, x0s, n_before_min=100, weight_func=lambda E: fit.exp_weight_func(E,a=1.0, alpha=4.0) )
+    fit.setGlobalParams( kMorse=args.kMorse, Lepairs=args.Lepairs )
+    n_before = args.n_before_min_lj if args.lj else args.n_before_min_morse
+    weights0, lens = fit.split_and_weight_curves(
+        Erefs, x0s,
+        n_before_min=n_before,
+        weight_func=lambda E: fit.exp_weight_func(E, a=args.weight_a, alpha=args.weight_alpha),
+        EminMin=args.emin_min,
+    )
     fit.setWeights( weights0 )
     fit.setFilter( EmodelCutStart=0.0, EmodelCut=0.5, PrintOverRepulsive=-1, DiscardOverRepulsive=-1, SaveOverRepulsive=-1, ListOverRepulsive=-1 )
     fit.loadTypes()
@@ -95,21 +107,9 @@ if __name__ == "__main__":
     if args.mode == "fit":
         trj_E, trj_F, trj_DOFs, _ = fit.setTrjBuffs(niter=args.nstep)
     Gmodel = fit.compute_model_grid( args.input, seq, Gref.shape, do_fit=(args.mode == "fit"), bAddEpairs=(not args.no_epairs), run_params=run_params, bOutXYZ=args.out_xyz )
-
-    # If we fitted, plot optimization trajectory of DOFs
     if args.mode == "fit":
-        try:
-            DOFnames = fit.loadDOFnames(args.dof_selection)
-        except Exception:
-            DOFnames = [f"DOF {i}" for i in range(trj_DOFs.shape[1])] if 'trj_DOFs' in locals() else []
-        lss  = ['-','--',":",'-','--',":",'-','-']
-        clrs = ['b','b','b','r','r','r','c','m']
-        if 'trj_DOFs' in locals():
-            for i in range(min(trj_DOFs.shape[1], len(DOFnames))):
-                ls = lss[i % len(lss)]; c = clrs[i % len(clrs)]
-                plt.plot(trj_DOFs[:, i], ls, c=c, lw=1.0, ms=2.0, label=DOFnames[i])
-            plt.legend(fontsize=8)
-            plt.grid(alpha=0.2)
+        DOFnames = fit.loadDOFnames(args.dof_selection)
+        fit.plot_trj_dofs(trj_DOFs, DOFnames=DOFnames, title="Optimization trajectory")
 
     # Local compare plotting with requested style and optional lines
     save_prefix = None
