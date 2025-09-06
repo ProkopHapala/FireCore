@@ -44,7 +44,7 @@ HF-A1_HF-D1-z.xyz     : sample in-plane plane epairs of F atom in HF with HF    
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Plot and compare 2D energy surfaces from a single .xyz file")
 
-    parser.add_argument("--mode", choices=["plot", "model", "fit"], default="plot", help="Action: plot ref only, compare model (no fit), or fit then compare")
+    parser.add_argument("--mode", choices=["plot", "model", "fit"], default="fit", help="Action: plot ref only, compare model (no fit), or fit then compare")
     parser.add_argument("-i", "--input",           default="/home/prokop/Desktop/CARBSIS/PEOPLE/Paolo/HbondFit_small_mols_2025_08_15/confs/wb97m-split/H2O-A1_H2O-D1-y.xyz", help="Input .xyz file (single movie)")
     #parser.add_argument("-i", "--input",           default="/home/prokop/Desktop/CARBSIS/PEOPLE/Paolo/HbondFit_small_mols_2025_08_15/confs/wb97m-splitm/HF-A1_HF-D1-z.xyz", help="Input .xyz file (single movie)")
     #parser.add_argument("--dof-selection",         default="dofSelection_MorseSR.dat", help="DOF selection file (defaults to Morse/LJ based on --lj)")
@@ -59,7 +59,7 @@ if __name__ == "__main__":
     parser.add_argument("--save",      type=str, default=None,     help="Path to save the plot (PNG)")
     parser.add_argument("--no-epairs", action="store_true",      help="Disable epair terms when loading XYZ")
     parser.add_argument("--no-show",   action="store_true",      help="Do not show the figure")
-    parser.add_argument("--line",      action="store_true",      help="Also plot r_min(angle) and E_min(angle) lines")
+    parser.add_argument("--no-line",   action="store_true",      help="Do not plot r_min(angle) and E_min(angle) lines")
     parser.add_argument("--out-xyz",   action="store_true",      help="Output XYZ with fitted DOFs")
     args = parser.parse_args()
 
@@ -68,17 +68,24 @@ if __name__ == "__main__":
     title = os.path.basename(args.input)
 
     if args.mode == "plot":
-        fit.plot_compare(Gref, None, angles, distances, title, save_prefix=args.save, show=not args.no_show, line=args.line)
+        fit.plot_compare(Gref, None, angles, distances, title, save_prefix=args.save, show=not args.no_show, line=not args.no_line)
         exit()
-
-
     imodel = 1 if args.lj else 5
 
     fit.setVerbosity(args.verbosity, PrintDOFs=1, PrintfDOFs=1, PrintBeforReg=-1, PrintAfterReg=1)
     fit.setup( imodel=imodel, EvalJ=1, WriteJ=1, Regularize=1, SaveJustElementXYZ=-1 )
 
+    Erefs, x0s = fit.read_xyz_data(args.input)  #;print( "x0s:\n", x0s )
+    weights0   = np.ones( len(Erefs) )*0.5
+    fit.setGlobalParams( kMorse=1.8, Lepairs=1.0 )
+    if args.lj:
+        weights0, lens = fit.split_and_weight_curves( Erefs, x0s, n_before_min=2,   weight_func=lambda E: fit.exp_weight_func(E,a=1.0, alpha=4.0) )
+    else:
+        weights0, lens = fit.split_and_weight_curves( Erefs, x0s, n_before_min=100, weight_func=lambda E: fit.exp_weight_func(E,a=1.0, alpha=4.0) )
+    fit.setWeights( weights0 )
     fit.setFilter( EmodelCutStart=0.0, EmodelCut=0.5, PrintOverRepulsive=-1, DiscardOverRepulsive=-1, SaveOverRepulsive=-1, ListOverRepulsive=-1 )
     fit.loadTypes()
+
     dof_selection = args.dof_selection; #if dof_selection is None: dof_selection = "dofSelection_MorseSR.dat" if bMorse else "dofSelection_LJSR2.dat"
     fit.loadDOFSelection(fname=dof_selection)
     
@@ -108,4 +115,4 @@ if __name__ == "__main__":
     save_prefix = None
     if args.save:
         save_prefix = args.save[:-4] if args.save.endswith('.png') else args.save
-    fit.plot_compare(Gref, Gmodel, angles, distances, title, save_prefix=save_prefix, show=not args.no_show, line=args.line)
+    fit.plot_compare(Gref, Gmodel, angles, distances, title, save_prefix=save_prefix, show=not args.no_show, line=not args.no_line)

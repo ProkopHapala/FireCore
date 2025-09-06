@@ -252,6 +252,7 @@ class FitREQ{ public:
 
     // check pairwise repulsion betwee atoms within one sample
     double EijMax    = 5.0;
+    int nsamp_debug  = 2;
     int isamp_debug  = 0;
     int iBadFound    = 0; 
     int nBadFoundMax = 10;
@@ -1087,7 +1088,7 @@ void printOverRepulsiveList(){
 __attribute__((hot)) 
 double evalSampleError( int isamp, double& E ){
     //printf( "evalSampleError() isamp = %i \n", isamp );
-    //isamp_debug = i;
+    isamp_debug = isamp;
     Atoms* atoms  = samples[isamp];
     double wi     = (weights)? weights[isamp] : 1.0;
     if(wi<-1e-300) return 0;
@@ -1104,7 +1105,7 @@ double evalSampleError( int isamp, double& E ){
     // }
     if( bSaveSampleToXYZ ){
         char comment[256];
-        sprintf(comment, "# %4i Eref: %16.6e Emodel: %16.6e wi: %16.6e", isamp, atoms->Energy, E, wi );
+        sprintf(comment, "# %4i Eref: %+10.4e Emodel: %+10.4e wi: %+10.4e", isamp, atoms->Energy, E, wi );
         printf( "evalSampleError() saving %s comment: %s \n", xyz_out, comment );
         saveDebugXYZ( 0, atoms->natoms, atoms->atypes, atoms->apos, xyz_out, comment );
     }
@@ -1113,7 +1114,8 @@ double evalSampleError( int isamp, double& E ){
     wi*= invWsum;
     double dEw     = 2.0*dE*wi;
     double Error   =  dE*dE*wi;
-    //printf( "evalSampleError() isamp: %3i Emodel: %20.6f Eref: %20.6f bBroadcastFDOFs=%i @sample_fdofs=%p \n", isamp, E, atoms->Energy, bBroadcastFDOFs, sample_fdofs );
+    //if(isamp_debug<nsamp_debug){ printf( "evalSampleError() isamp: %3i Emodel: %20.6f Eref: %20.6f bBroadcastFDOFs=%i @sample_fdofs=%p \n", isamp, E, atoms->Energy, bBroadcastFDOFs, sample_fdofs ); }
+    //if(isamp_debug<nsamp_debug){ printf( "evalSampleError() isamp: %3i  dEw: %+10.4e wi: %+10.4e dE: %+10.4e Emodel: %+10.4e Eref: %+10.4e \n", isamp, dEw, wi, dE, E, atoms->Energy ); }
     double* fDOFs__ = bBroadcastFDOFs ? sample_fdofs + isamp*nDOFs : fDOFs_;   // broadcast fDOFs ?
     for(int k=0; k<nDOFs; k++){ fDOFs__[k]=0; }                                // clean fDOFs
     acumDerivs( atoms->natoms, atoms->atypes, dEw, fREQs, fDOFs_ );            // accumulate fDOFs from fREQs
@@ -1122,7 +1124,6 @@ double evalSampleError( int isamp, double& E ){
         acumHostDerivs( ad->nep, ad->bs, atoms->atypes, dEw, fREQs, fDOFs_ );
     }
     if( bUdateDOFbounds  ){ updateDOFbounds( fDOFs__ ); }
-    
     if( !bBroadcastFDOFs ){ 
         double F2=0.0;
         for(int k=0; k<nDOFs; k++){ double fi=fDOFs__[k]; fDOFs[k] += fi; F2+=fi*fi;  } 
@@ -1297,7 +1298,10 @@ void acumDerivs( int n, int* types, double dEw, Quat4d* fREQs, double* fDOFs ){
         //if((tt.y>=0)&&(i==0))printf( "acumDerivs i= %i f= %g f*dEw= %g fDOFs= %g\n", i, f.y, f.y*dEw, fDOFs[tt.y] );
         //if((tt.x>=0)||(tt.y>=0))printf( "acumDerivs i= %i dE= %g f.x= %g fDOFs= %g f.y= %g fDOFs= %g\n", i, dE, f.x, fDOFs[tt.x], f.y, fDOFs[tt.y] );
     }
-    //for(int i=0; i<nDOFs; i++){  printf( "acumDerivs() fDOFs[%3i] %10.2e\n", i, fDOFs[i] );}
+    // if( isamp_debug < nsamp_debug ){
+    //     printf( "acumDerivs() isamp=%i  dEw %+10.6e\n", isamp_debug, dEw );
+    //     for(int i=0; i<nDOFs; i++){  printf( "fDOFs[%3i] %+10.6e\n", i, fDOFs[i] );}
+    // }
     //exit(0);
 }
 
@@ -1721,6 +1725,7 @@ __attribute__((hot))
 double evalExampleDerivs_MorseQ_SR( int i0, int ni, int j0, int nj, int*  types, Vec3d* ps, Quat4d* typeREQs, double* Qs, int* host, Quat4d* dEdREQs )const{
     //printf("evalExampleDerivs_MorseQ_SR() i0: %i ni: %i j0: %i nj: %i \n", i0, ni, j0, nj );
     // this differes form evalExampleDerivs_LJQH2() in that it uses short range corrections for electron pairs
+    //if(isamp_debug < nsamp_debug){ printf( "evalExampleDerivs_MorseQ_SR() isamp %i \n", isamp_debug );  }
     double Etot = 0.0;
     const double alpha   = kMorse;
     const bool bWJ = bWriteJ&&dEdREQs;
@@ -1802,6 +1807,9 @@ double evalExampleDerivs_MorseQ_SR( int i0, int ni, int j0, int nj, int*  types,
             fREQi.z += -dE_dQ   * Qj;              // dEtot/dQ_i
             fREQi.w +=  dE_dH   * REQj.w * sH;     // dEtot/dH2i
         }
+
+        //if(isamp_debug < nsamp_debug){ printf( " i %3i ti %3i fREQi( %10.3e , %10.3e , %10.3e , %10.3e ) \n", i, ti, fREQi.x, fREQi.y, fREQi.z, fREQi.w );  }
+
         if(dEdREQs)dEdREQs[i].add(fREQi);
     }
 
