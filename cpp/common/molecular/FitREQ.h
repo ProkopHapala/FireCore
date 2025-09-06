@@ -775,22 +775,26 @@ void addAndReorderEpairs(Atoms*& atoms, FILE* fout=nullptr) {
  * @param bOutXYZ Flag indicating whether to output XYZ file with epairs.
  * @return The number of batches created.
  */
-int loadXYZ( const char* fname, bool bAddEpairs=false, bool bOutXYZ=false ){
-    printf( "FitREQ::loadXYZ(%s) bAddEpairs=%i bOutXYZ=%i\n", fname, bAddEpairs, bOutXYZ );
+int loadXYZ( const char* fname, bool bAddEpairs=false, bool bOutXYZ=false, bool bAppend=false ){
+    printf( "FitREQ::loadXYZ(%s) bAddEpairs=%i bOutXYZ=%i bAppend=%i\n", fname, bAddEpairs, bOutXYZ, bAppend );
     FILE* fin = fopen( fname, "r" );
     if(fin==0){ printf("cannot open '%s' \n", fname ); exit(0);}
     const int nline=1024;
     char line[1024];
     char at_name[8];
+    if(!bAppend){
+        for(Atoms* a : samples) delete a;
+        samples.clear();
+        nbatch = 0;
+    }
     // --- Open output file
     FILE* fout=0;
     if(bAddEpairs && bOutXYZ){
         sprintf(line,"%s_Epairs.xyz", fname );
         printf("FitREQ::loadXYZ() opened output file %s\n", line);  
-        fout = fopen(line,"w");
+        fout = fopen(line, bAppend ? "a" : "w");
     }
     int il   = 0;
-    nbatch=0;
     Atoms* atoms=0;
     while( fgets(line, nline, fin) ){
         if      ( il==0 ){               // --- Read number of atoms
@@ -2529,4 +2533,3 @@ void printDOFregularization(){
 }; // class FitREQ
 
 #endif
-

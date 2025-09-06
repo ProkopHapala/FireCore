@@ -50,7 +50,7 @@ if __name__ == "__main__":
     #parser.add_argument("--dof-selection",         default="dofSelection_MorseSR.dat", help="DOF selection file (defaults to Morse/LJ based on --lj)")
     parser.add_argument("--dof-selection",         default="dofSelection_MorseSR_H2O.dat", help="DOF selection file (defaults to Morse/LJ based on --lj)")
     parser.add_argument("--verbosity", type=int,   default=2,    help="Verbosity for FitREQ")
-    parser.add_argument("--nstep",     type=int,   default=100,  help="Fitting steps")
+    parser.add_argument("--nstep",     type=int,   default=1000,  help="Fitting steps")
     parser.add_argument("--fmax",      type=float, default=1e-8, help="Target force max for fitting")
     parser.add_argument("--dt",        type=float, default=0.01, help="Integrator dt")
     parser.add_argument("--max-step",  type=float, default=0.05, help="Max step")

@@ -205,7 +205,7 @@ E,Es,Fs = fit.getEs( bOmp=False, bDOFtoTypes=False, bEs=True, bFs=False )
 #fit.plotEWs( Erefs=Erefs, Emodel=Es, weights=fit.weights, weights0=weights0,  Emin=EminPlot ); plt.title( "BEFORE OPTIMIZATION" )
 #plt.show(); exit()
 
-nstep=1
+nstep=100
 trj_E, trj_F, trj_DOFs, _ = fit.setTrjBuffs( niter=nstep )
 
 if bMorse:

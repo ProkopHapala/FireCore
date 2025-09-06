@@ -185,12 +185,12 @@ lib.loadWeights.restype   =  c_int
 def loadWeights(fname="weights.dat"):
     return lib.loadWeights(cstr(fname))
 
-# int loadXYZ( const char* fname, bool bAddEpairs, bool bOutXYZ, bool bEvalOnlyCorrections ){ 
-lib.loadXYZ.argtypes  = [c_char_p, c_bool, c_bool, c_bool]
+# int loadXYZ( const char* fname, bool bAddEpairs, bool bOutXYZ, bool bEvalOnlyCorrections, bool bAppend ){ 
+lib.loadXYZ.argtypes  = [c_char_p, c_bool, c_bool, c_bool, c_bool]
 lib.loadXYZ.restype   =  c_int
-def loadXYZ(fname, bAddEpairs=False, bOutXYZ=False, bEvalOnlyCorrections=False ):
+def loadXYZ(fname, bAddEpairs=False, bOutXYZ=False, bEvalOnlyCorrections=False, bAppend=False ):
     global nbatch
-    nbatch = lib.loadXYZ(cstr(fname), bAddEpairs, bOutXYZ, bEvalOnlyCorrections)
+    nbatch = lib.loadXYZ(cstr(fname), bAddEpairs, bOutXYZ, bEvalOnlyCorrections, bAppend)
     return nbatch
 
 #  void setTypeToDOFs(int i, double* REQ )
@@ -1169,24 +1169,16 @@ def plot_compare(Gref, Gmodel, angles, distances, title, save_prefix=None, vmin=
         fig.savefig(fname, dpi=150, bbox_inches='tight')
 
     if line:
-        # Plot Rmin(angle) and Emin(angle) lines for ref (and model if present)
-        fig2, (axR, axE) = plt.subplots(1, 2, figsize=(6, 2.8), constrained_layout=True)
-        rR, eR = extract_min_curves(angles, distances, GRS, rmax=None)
-        axR.plot(angles, rR, '-k', label='Ref')
-        axE.plot(angles, eR, '-k', label='Ref')
-        if GMS is not None:
-            rM, eM = extract_min_curves(angles, distances, GMS, rmax=None)
-            axR.plot(angles, rM, '--r', label='Model')
-            axE.plot(angles, eM, '--r', label='Model')
-        axR.set_title('r_min(angle)'); axE.set_title('E_min(angle)')
-        axR.set_xlabel('Angle (deg)'); axE.set_xlabel('Angle (deg)')
-        axR.set_ylabel('Distance (Å)'); axE.set_ylabel('Energy (shifted)')
-        axR.grid(True, linestyle='--', alpha=0.4); axE.grid(True, linestyle='--', alpha=0.4)
-        axR.legend(fontsize=8); axE.legend(fontsize=8)
+        # Reuse plot_min_lines_pair by building panel-shaped inputs (angles x distances)
+        Epanel_ref = GRS.T
+        Epanel_mod = GMS.T if GMS is not None else None
+        # Xpanel: replicate distances across all angles
+        Xpanel = np.tile(np.asarray(distances, dtype=float), (len(angles), 1))
+        fig2 = plot_min_lines_pair(Epanel_ref, Epanel_mod, Xpanel, angles, title=None, save_path=None, to_kcal=False)
         if save_prefix:
             p2 = save_prefix.replace('.png','') + '_lines.png'
             fig2.savefig(p2, dpi=150, bbox_inches='tight')
-        if show and not save_prefix:
+        elif show:
             plt.show()
 
     if show and not save_prefix:
