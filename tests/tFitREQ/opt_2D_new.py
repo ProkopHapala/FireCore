@@ -47,7 +47,7 @@ if __name__ == "__main__":
     parser.add_argument("-i", "--input",           default="/home/prokophapala/Desktop/CARBSIS/wb97m-split/H2O-A1_H2O-D1-y.xyz", help="Input .xyz file (single movie)")
     parser.add_argument("--dof-selection",         default="dofSelection_MorseSR_H2O.dat", help="DOF selection file")
     parser.add_argument("--verbosity", type=int,   default=2,    help="Verbosity for FitREQ")
-    parser.add_argument("--nstep",     type=int,   default=1000, help="Fitting steps")
+    parser.add_argument("--nstep",     type=int,   default=10, help="Fitting steps")
     parser.add_argument("--fmax",      type=float, default=1e-8, help="Target force max for fitting")
     parser.add_argument("--dt",        type=float, default=0.01, help="Integrator dt")
     parser.add_argument("--max-step",  type=float, default=0.05, help="Max step")
@@ -62,7 +62,7 @@ if __name__ == "__main__":
     parser.add_argument("--emin-min",      type=float, default=-0.02,  help="Emin threshold for weighting segments")
     parser.add_argument("--save",          type=str,   default=None,   help="Path to save the plot (PNG)")
     parser.add_argument("--epairs",        type=int,   default=1,      help="Disable epair terms when loading XYZ")
-    parser.add_argument("--show",          type=int,   default=1,      help="Do not show the figure")
+    parser.add_argument("--show",          type=int,   default=0,      help="Do not show the figure")
     parser.add_argument("--line",          type=int,   default=1,      help="Do not plot r_min(angle) and E_min(angle) lines")
     parser.add_argument("--out-xyz",       type=int,   default=0,      help="Output XYZ with fitted DOFs")
     # Scan arguments

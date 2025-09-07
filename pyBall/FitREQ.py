@@ -691,8 +691,7 @@ def plotDOFscans( iDOFs, xs, DOFnames, bEs=True, bFs=False,  title="plotDOFscans
     plt.grid()
 
     plt.suptitle( title )
-    
-    #plt.show()
+
 
 def checkDOFderiv( iDOF, x0=0.5, d=0.001, bEvalSamples=True ):
         xs = np.array([x0-d,x0,x0+d])
@@ -873,7 +872,6 @@ def plot_energy_2d_from_xyz(
     cmap='bwr',
     vmin=None,
     vmax=None,
-    show=True,
     save_path=None,
 ):
     """Read an .xyz trajectory with comment lines carrying Etot/x0 and y|z angle tokens, build a 2D grid and plot it.
@@ -995,9 +993,8 @@ def plot_energy_2d_from_xyz(
     plt.title(title)
     plt.colorbar(mesh, label='Etot shifted [a.u.]')
     if save_path is not None:
+        print("Saving plot to:", save_path)
         plt.savefig(save_path, dpi=200, bbox_inches='tight')
-    if show:
-        plt.show()
     return GS
 
 
@@ -1136,6 +1133,7 @@ def plot_compare(Gref, Gmodel, angles, distances, title, save_prefix=None, vmin=
         fig2 = plot_min_lines_pair(Epanel_ref, Epanel_mod, Xpanel, angles, title=None, save_path=None, to_kcal=kcal)
         if save_prefix:
             p2 = save_prefix.replace('.png','') + '_lines.png'
+            print("Saving plot to:", p2)
             fig2.savefig(p2, dpi=150, bbox_inches='tight')
 
     if kcal:
@@ -1188,6 +1186,7 @@ def plot_compare(Gref, Gmodel, angles, distances, title, save_prefix=None, vmin=
 
     if save_prefix:
         fname = f"{save_prefix}.png" if not save_prefix.endswith('.png') else save_prefix
+        print("Saving plot to:", fname)
         fig.savefig(fname, dpi=150, bbox_inches='tight')
 
 # ===== Reusable helpers for Rmin/Emin from panel-shaped data (angles x distances)
@@ -1265,7 +1264,9 @@ def plot_min_lines_pair(Epanel_ref, Epanel_mod, Xpanel, angles, title=None, save
     axE.grid(alpha=0.3, linestyle='--')
     axE.legend(fontsize=8)
     if title:     fig.suptitle(title, fontsize=10)
-    if save_path: fig.savefig(save_path, bbox_inches='tight')
+    if save_path: 
+        print("Saving plot to:", save_path)
+        fig.savefig(save_path, bbox_inches='tight')
     return fig
 
 
@@ -1283,15 +1284,11 @@ def plot_trj_dofs(trj_DOFs, DOFnames=None, lss=None, clrs=None, title=None, save
         matplotlib.figure.Figure or None
     """
     import matplotlib.pyplot as plt
-    if trj_DOFs is None:
-        return None
+    if trj_DOFs is None: return None
     niter, nDOFs_ = trj_DOFs.shape
-    if DOFnames is None:
-        DOFnames = [f"DOF {i}" for i in range(nDOFs_)]
-    if lss is None:
-        lss = ['-','--',":",'-','--',":",'-','-']
-    if clrs is None:
-        clrs = ['b','b','b','r','r','r','c','m']
+    if DOFnames is None: DOFnames = [f"DOF {i}" for i in range(nDOFs_)]
+    if lss      is None: lss = ['-','--',":",'-','--',":",'-','-']
+    if clrs     is None: clrs = ['b','b','b','r','r','r','c','m']
     fig = plt.figure()
     for i in range(min(nDOFs_, len(DOFnames))):
         ls = lss[i % len(lss)]
@@ -1301,5 +1298,7 @@ def plot_trj_dofs(trj_DOFs, DOFnames=None, lss=None, clrs=None, title=None, save
         plt.title(title)
     plt.legend(fontsize=8)
     plt.grid(alpha=0.2)
-    if save_path: fig.savefig(save_path, bbox_inches='tight')
+    if save_path: 
+        print("Saving plot to:", save_path)
+        fig.savefig(save_path, bbox_inches='tight')
     return fig

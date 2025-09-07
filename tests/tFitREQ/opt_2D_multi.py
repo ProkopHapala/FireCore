@@ -35,9 +35,9 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Plot and compare 2D energy surfaces from multiple .xyz files")
     parser.add_argument("-i", "--inputs", nargs='*', default=None, help="List of input .xyz files (single movie). If empty, uses default set")
     parser.add_argument("--dir", type=str, default='/home/prokophapala/Desktop/CARBSIS/wb97m-split/', help="Directory where input files are located")
-    parser.add_argument("--dof-selection",         default="dofSelection_MorseSR_H2O.dat", help="DOF selection file")
+    parser.add_argument("--dof-selection",         default="dofSelection_MorseSR_H2O_CH2O.dat", help="DOF selection file")
     parser.add_argument("--verbosity", type=int,   default=2,    help="Verbosity for FitREQ")
-    parser.add_argument("--nstep",     type=int,   default=10, help="Fitting steps")
+    parser.add_argument("--nstep",     type=int,   default=1000,   help="Fitting steps")
     parser.add_argument("--fmax",      type=float, default=1e-8, help="Target force max for fitting")
     parser.add_argument("--dt",        type=float, default=0.01, help="Integrator dt")
     parser.add_argument("--max-step",  type=float, default=0.05, help="Max step")
@@ -47,20 +47,19 @@ if __name__ == "__main__":
     parser.add_argument("--Lepairs",   type=float, default=1.0,  help="Global Lepairs parameter")
     parser.add_argument("--lj",        type=int,   default=0,    help="Use LJ instead of Morse presets")
     # Weighting controls
-    parser.add_argument("--weight-a",      type=float, default=1.0,    help="Weight amplitude 'a' for exp weight func")
-    parser.add_argument("--weight-alpha",  type=float, default=4.0,    help="Weight sharpness 'alpha' for exp weight func")
-    parser.add_argument("--emin-min",      type=float, default=-0.02,  help="Emin threshold for weighting segments")
-    parser.add_argument("--plot-dir", type=str, default='plots', help="Directory to save all output plots")
-    parser.add_argument("--save", type=str, default=None, help="Base name for saving plots (without extension)")
-    parser.add_argument("--epairs",        type=int,   default=1,      help="Disable epair terms when loading XYZ")
-    parser.add_argument("--show",          type=int,   default=1,      help="Do not show the figure")
-    parser.add_argument("--line",          type=int,   default=1,      help="Do not plot r_min(angle) and E_min(angle) lines")
-    parser.add_argument("--out-xyz",       type=int,   default=0,      help="Output XYZ with fitted DOFs")
+    parser.add_argument("--weight-a",      type=float, default=1.0,     help="Weight amplitude 'a' for exp weight func")
+    parser.add_argument("--weight-alpha",  type=float, default=4.0,     help="Weight sharpness 'alpha' for exp weight func")
+    parser.add_argument("--emin-min",      type=float, default=-0.02,   help="Emin threshold for weighting segments")
+    parser.add_argument("--plot-dir",      type=str,   default='plots', help="Directory to save all output plots")
+    parser.add_argument("--save",          type=str,   default=None,    help="Base name for saving plots (without extension)")
+    parser.add_argument("--epairs",        type=int,   default=1,       help="Disable epair terms when loading XYZ")
+    parser.add_argument("--show",          type=int,   default=0,       help="show the figure")
+    parser.add_argument("--line",          type=int,   default=1,       help="plot r_min(angle) and E_min(angle) lines")
+    parser.add_argument("--out-xyz",       type=int,   default=0,       help="Output XYZ with fitted DOFs")
     parser.add_argument("--soft_clamp",        type=int,             default=1,                help="Enable soft clamp during scan")
     parser.add_argument("--user_weights",      type=int,             default=1,                help="Enable user weights during scan")
     parser.add_argument("--regularization",    type=int,             default=0,                help="Enable regularization during scan")
     parser.add_argument("--clamp_thresholds",  nargs=2, type=float,  default=[4.0, 6.0],       help="Soft clamp thresholds: start max")
-    # kcal or eV 
     parser.add_argument("--kcal", type=int, default=1, help="Use kcal instead of eV")
 
 
@@ -106,24 +105,19 @@ if __name__ == "__main__":
         Erefs_all = np.concatenate(all_Erefs)
         x0s_all   = np.concatenate(all_x0s)
         n_before = 5 if args.lj else 100
-        weights0, lens = fit.split_and_weight_curves(
-            Erefs_all, x0s_all,
-            n_before_min=n_before,
-            weight_func=lambda E: fit.exp_weight_func(E, a=args.weight_a, alpha=args.weight_alpha),
-            EminMin=args.emin_min,
-        )
+        weight_func = lambda E: fit.exp_weight_func(E, a=args.weight_a, alpha=args.weight_alpha)
+        weights0, lens = fit.split_and_weight_curves(  Erefs_all, x0s_all,  n_before_min=n_before, weight_func=weight_func, EminMin=args.emin_min )
         fit.setWeights( weights0 )
 
     # --- Fitting
-    run_params = dict(nstep=args.nstep, Fmax=args.fmax, dt=args.dt, max_step=args.max_step, damping=args.damping)
     trj_E, trj_F, trj_DOFs, _ = fit.setTrjBuffs(niter=args.nstep)
-    fit.run(**run_params)
-
     DOFnames = fit.loadDOFnames(args.dof_selection)
     
     # Create plot directory if needed
     if not os.path.exists(args.plot_dir): os.makedirs(args.plot_dir)
     
+    fit.run( iparallel=0, ialg=1, nstep=args.nstep, Fmax=args.fmax, dt=args.dt, damping=args.damping,   max_step=-1,  bClamp=True )
+
     # Save trajectory plot
     traj_path = os.path.join(args.plot_dir, f"trajectory_{os.path.splitext(os.path.basename(args.dof_selection))[0]}.png")
     fit.plot_trj_dofs(trj_DOFs, DOFnames=DOFnames, title="Optimization trajectory", save_path=traj_path)
@@ -155,5 +149,4 @@ if __name__ == "__main__":
         fit.plot_compare(Gref, Gmodel, angles, distances, title, save_prefix=plot_path, line=args.line, kcal=args.kcal)
         istart = iend
 
-    if args.show == 1:
-        plt.show()
+    if args.show == 1: plt.show()

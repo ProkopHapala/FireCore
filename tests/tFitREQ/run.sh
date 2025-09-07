@@ -36,7 +36,7 @@ echo "LD_LIBRARY_PATH: $LD_LIBRARY_PATH"
 
 #python3 -u opt_2D.py    2>&1 | tee OUT-fit
 #python3 -u opt_2D_new.py # 2>&1 | tee OUT-fit-new
-python3 -u opt_2D_multi.py # 2>&1 | tee OUT-fit-multi
+python3 -u opt_2D_multi.py 2>&1 | tee OUT-fit-multi
 
 #python3 -u opt_2D.py 2> asan.log | tee OUT
 #python3 -u opt_2D_2.py 2> asan.log | tee OUT
