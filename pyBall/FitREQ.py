@@ -69,11 +69,11 @@ lib.setVerbosity.restype   =  None
 def setVerbosity(verbosity=1, idebug=0, PrintDOFs=0, PrintfDOFs=0, PrintBeforReg=0, PrintAfterReg=0):
     return lib.setVerbosity(verbosity, idebug, PrintDOFs, PrintfDOFs, PrintBeforReg, PrintAfterReg)
 
-# void setGlobalParams( double kMorse, double Lepairs ){
-lib.setGlobalParams.argtypes  = [c_double, c_double]
+# void setGlobalParams( double kMorse, double Lepairs, double EijMax, double softClamp_start, double softClamp_max ){
+lib.setGlobalParams.argtypes  = [c_double, c_double, c_double, c_double, c_double]
 lib.setGlobalParams.restype   =  None
-def setGlobalParams(kMorse=1.6, Lepairs=0.5):
-    return lib.setGlobalParams(kMorse, Lepairs)
+def setGlobalParams(kMorse=1.6, Lepairs=0.5, EijMax=5.0, softClamp_start=4.0, softClamp_max=6.0):
+    return lib.setGlobalParams(kMorse, Lepairs, EijMax, softClamp_start, softClamp_max)
 
 # void setup( int imodel, int EvalJ, int WriteJ, int CheckRepulsion, int Regularize, int AddRegError, int Epairs, int BroadcastFDOFs, int UdateDOFbounds, int EvalOnlyCorrections, int SaveJustElementXYZ){
 lib.setup.argtypes  = [c_int,c_int, c_int, c_int, c_int, c_int, c_int, c_int, c_int, c_int]

@@ -38,7 +38,7 @@ import time
 
 sys.path.clear()
 #sys.path.append("/home/niko/work/FIRECORE/FireCore/")
-sys.path.append("/home/prokop/git/FireCore-fitREQH")
+sys.path.append("../../")
 #sys.path.append("/home/prokophapala/git/FireCore-fitREQH")
 from pyBall import FitREQ as fit
 from pyBall import atomicUtils as au

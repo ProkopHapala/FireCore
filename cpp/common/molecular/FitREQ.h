@@ -66,6 +66,18 @@ void rigid_transform( Vec3d shift, Vec3d* unshift, Vec3d dir, Vec3d up, int n, V
     }
 }
 
+inline double soft_clamp(double y, double y1, double y2, double& dy_new){
+    if (y > y1){
+        double y12 = y2 - y1;
+        double z   = (y - y1) / y12;
+        dy_new = 1.0 / ((1.0 + z)*(1.0 + z));
+        return y1 + y12 * (1 - 1 / (1 + z));
+    } else {
+        dy_new = 1.0;
+        return y;
+    }
+}
+
 inline double getSR( double r, double Hij, double w, double& dEdH, double& dEdw ){
     double iw = 1.0/w;
     double u  = r*iw; 
@@ -179,6 +191,7 @@ class FitREQ{ public:
     alignas(32) Quat4d*    typeKreg      =0; // [ntype] regulatization stiffness
     alignas(32) Quat4d*    typeKreg_low  =0; // [ntype] regulatization stiffness (lower wall)
     alignas(32) Quat4d*    typeKreg_high =0; // [ntype] regulatization stiffness (upper wall)
+    alignas(32) double*    typeKregCount =0; // [ntype] number of samples for each type
 
     alignas(32) Quat4i*    typToREQ      =0; // [ntype] map each unique atom type to place in DOFs;
     // alignas(32)  Vec2i* DOFtoTyp; // Maps DOF index to (type_index, component)
@@ -189,7 +202,8 @@ class FitREQ{ public:
     std::vector<Vec3d> DOFregX;   // regularization positions (xmin,x0,xmax) for each DOF
     std::vector<Vec3d> DOFregK;   // regularization stiffness (Kmin,K0,Kmax) for each DOF
     std::vector<Vec2d> DOFlimits;   // limits (xmin,xmax) for each DOF
-    std::vector<double> DOFinvMass;   // inverse mass for each DOF ( for dynamical relaxation )
+    std::vector<double> DOFinvMass; // inverse mass for each DOF ( for dynamical relaxation )
+    std::vector<double> DOFcount;   // number of samples for each DOF
 
     alignas(32) double*   DOFs =0;       // [nDOFs]
     alignas(32) double*   fDOFs=0;       // [nDOFs]
@@ -211,8 +225,9 @@ class FitREQ{ public:
     bool  bBroadcastFDOFs = false;    // Should we broadcast fDOFs (each sample to its own chunk of memory) to prevent atomic-write conflicts ?
     bool  bUdateDOFbounds = true;     // Should we update fDOFbounds after each sample ?
     bool  bClearDOFboundsEpoch = false; // Should we clear fDOFbounds after each epoch ?
-    bool  bEvalOnlyCorrections = false;  // Split evaluation and optimization to Emodel0 and Ecorrection (where only Ecorrection is updated every iteration)
+    bool  bEvalOnlyCorrections = false; // Split evaluation and optimization to Emodel0 and Ecorrection (where only Ecorrection is updated every iteration)
     bool  bSaveJustElementXYZ  = true;  // Should we save just element names in the output .xyz file ?
+    bool  bRegCountWeight      = false; // Should we weight regularization by number of samples for each type ?  
 
     // what to do with samples with E>EmodelCut ?
     bool bListOverRepulsive    = true;   // Should we list overrepulsive samples? 
@@ -240,6 +255,11 @@ class FitREQ{ public:
     int    iWeightModel    = 1;    // weight of model energy 1=linear, 2=cubic_smooth_step  
     double EmodelCut       = 10.0; // sample model energy when we consider it too repulsive and ignore it during fitting
     double EmodelCutStart  = 5.0;  // sample model energy when we start to decrease weight in the fitting  
+    
+    bool   bSoftClamp      = false; // Should we apply soft clamp to the model energy ?
+    double softClamp_start = 4.0;   // if (dE=(Ei_model-Ei_ref) > softClamp_start then apply soft clamp 
+    double softClamp_max   = 6.0;   // dE will never be larger than softClamp_max
+
     double invWsum         = 1.0;
 
     //double kMorse          = 1.4;
@@ -310,13 +330,14 @@ void realloc_sample_fdofs(){
 
 
 void initTypeParamsFromDOFs() {
+    //printf("FitREQ::initTypeParamsFromDOFs() typesPresent.size()=%i @DOFcount=%p\n", typesPresent.size(), DOFcount);
     for (int iDOF=0; iDOF<nDOFs; iDOF++) {
         Vec2i rt = DOFtoTyp[iDOF];
         int ityp = rt.x;
         int comp = rt.y;
         typToREQ[ityp].array[comp] = iDOF;
         double xstart = DOFregX[iDOF].y;
-        printf("FitREQ::initTypeParamsFromDOFs() ityp: %3i comp: %i iDOF: %3i xstart: %16.8f\n", ityp, comp, iDOF, xstart);
+        //printf("FitREQ::initTypeParamsFromDOFs() ityp: %3i comp: %i iDOF: %3i xstart: %16.8f\n", ityp, comp, iDOF, xstart);
         typeREQs      [ityp].array[comp] = xstart;  // Initialize with xstart
         typeREQs0     [ityp].array[comp] = xstart;
         typeREQsMin   [ityp].array[comp] = DOFlimits[iDOF].x;
@@ -325,7 +346,9 @@ void initTypeParamsFromDOFs() {
         typeREQs0_high[ityp].array[comp] = DOFregX  [iDOF].z;
         typeKreg_low  [ityp].array[comp] = DOFregK  [iDOF].x;
         typeKreg_high [ityp].array[comp] = DOFregK  [iDOF].z;
+        //DOFcount[iDOF] = typesPresent[ityp];
     }
+    //printf("FitREQ::initTypeParamsFromDOFs() DONE\n");
 }
 
 int initAllTypes(){
@@ -353,6 +376,7 @@ void reallocTypeParams(int ntype_) {
     _realloc0( typeKreg_low,   ntype_, Quat4dZero );
     _realloc0( typeKreg,       ntype_, Quat4dZero );
     _realloc0( typeKreg_high,  ntype_, Quat4dZero );
+    _realloc0( typeKregCount,  ntype_, 0.0 );
 }
 
 void reduce_sample_fdofs(){
@@ -375,8 +399,20 @@ void printTypeParams( bool bOnlyPresent=true ){
             if( bOnlyPresent && (ncount==0) ){ continue; }
         }
         Quat4d tREQH = typeREQs[i]; 
+        //typeKregCount[i] = ncount;
         printf("type %3i %-8s count: %6i REQH: %10.3f %10.3f %10.3f %10.3f \n", i, params->atypes[i].name, ncount, tREQH.x, tREQH.y, tREQH.z, tREQH.w );
     }
+}
+
+void updateTypeStats(){
+    printf("FitREQ::updateTypeStats(): nDOFs=%i DOFcount.size()=%i typesPresent.size()=%i\n", nDOFs, DOFcount.size(), typesPresent.size() );
+    for (int iDOF=0; iDOF<nDOFs; iDOF++) {
+        Vec2i rt = DOFtoTyp[iDOF];
+        int ityp = rt.x; // int comp = rt.y;
+        printf("DOF %3i ityp: %3i typesPresent[ityp]=%i\n", iDOF, ityp, typesPresent[ityp] );
+        DOFcount[iDOF] = typesPresent[ityp];
+    }
+    printf("FitREQ::updateTypeStats(): DONE\n");
 }
 
 void countTypesPresent( ){
@@ -390,6 +426,7 @@ void countTypesPresent( ){
             typesPresent[ityp]+=1;
         }
     }
+    updateTypeStats();
 }
 
 double updateWeightsSum(){
@@ -478,6 +515,7 @@ int loadDOFSelection( const char* fname ){
         DOFregK  .push_back( {klo, K0,     khi} );
         DOFlimits.push_back( {xmin, xmax}       );
         DOFinvMass.push_back( invMass           );
+        DOFcount.push_back( 0 );
         //if(verbosity>0)
             printf( "DOF[%3i] %3i|%i %-8s %c | range: %+10.4e ,%+10.4e | reg{ x0: %+10.4e , %+10.4e | K: %+10.4e , %+10.4e } xstart: %+10.4e invMass: %+10.4e \n",  iDOF, ityp,comp,  at_name, "REQH"[comp], xmin, xmax, xlo, xhi, klo, khi, xstart, invMass );
         iDOF++;
@@ -1113,11 +1151,13 @@ double evalSampleError( int isamp, double& E ){
         printf( "evalSampleError() saving %s comment: %s \n", xyz_out, comment );
         saveDebugXYZ( 0, atoms->natoms, atoms->atypes, atoms->apos, xyz_out, comment );
     }
-    double Eref    = atoms->Energy;
-    double dE      = E - Eref;
+    double Eref       = atoms->Energy;
+    double dE         = E - Eref;
+    double dClamp_dE  = 1.0;
+    if(bSoftClamp) dE = soft_clamp(dE, softClamp_start, softClamp_max, dClamp_dE );
     wi*= invWsum;
-    double dEw     = 2.0*dE*wi;
-    double Error   =  dE*dE*wi;
+    double dEw        = 2.0*dE*wi*dClamp_dE; // chain derivatives   d(wi*Delta_E^2)/dE  = 2*wi*Delta_E * (Delta_E/dE)
+    double Error      =  dE*dE*wi;
     //if(isamp_debug<nsamp_debug){ printf( "evalSampleError() isamp: %3i Emodel: %20.6f Eref: %20.6f bBroadcastFDOFs=%i @sample_fdofs=%p \n", isamp, E, atoms->Energy, bBroadcastFDOFs, sample_fdofs ); }
     //if(isamp_debug<nsamp_debug){ printf( "evalSampleError() isamp: %3i  dEw: %+10.4e wi: %+10.4e dE: %+10.4e Emodel: %+10.4e Eref: %+10.4e \n", isamp, dEw, wi, dE, E, atoms->Energy ); }
     double* fDOFs__ = bBroadcastFDOFs ? sample_fdofs + isamp*nDOFs : fDOFs_;   // broadcast fDOFs ?
@@ -2249,7 +2289,8 @@ double regularizeDOFs(){
     //printf("regularizeDOFs() nDOFs=%i @DOFregX=%p @DOFregX=%p @DOFs=%p @fDOFs=%p @DOFtoTyp=%p \n",  nDOFs, DOFregX, DOFregK, DOFs, fDOFs, DOFtoTyp); 
     double E = 0;
     for(int i=0; i<nDOFs; i++){   
-        E += constrain( DOFs[i], DOFregX[i], DOFregK[i], fDOFs[i] );
+        double w = bRegCountWeight ? 1.0/DOFcount[i] : 1.0; // weight by number of samples for each type
+        E += constrain( DOFs[i], DOFregX[i], DOFregK[i]*w, fDOFs[i] );
         //{ Vec2i tc    = DOFtoTyp[i]; printf( "regularizeDOFs() i: %3i   %8s|%c x: %10.3e f: %10.3e E: %10.3e\n", i,  params->atypes[tc.x].name, "REQH"[tc.y],  DOFs[i], fDOFs[i], E );   }
     }
     //printf( "regularizeDOFs() END E: %10.3e\n", E );

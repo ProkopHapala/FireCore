@@ -44,13 +44,14 @@ void setVerbosity( int verbosity_, int idebug_, int PrintDOFs, int PrintfDOFs, i
 // bool  bBroadcastFDOFs = false;    // Should we broadcast fDOFs (each sample to its own chunk of memory) to prevent atomic-write conflicts ?
 // bool  bUdateDOFbounds = true;     // Should we update fDOFbounds after each sample ?
 // bool  bEvalOnlyCorrections = false;  // Split evaluation and optimization to Emodel0 and Ecorrection (where only Ecorrection is updated every iteration)
-void setup( int imodel, int EvalJ, int WriteJ, int CheckRepulsion, int Regularize, int AddRegError, int Epairs, int BroadcastFDOFs, int UdateDOFbounds, int EvalOnlyCorrections, int SaveJustElementXYZ){
+void setup( int imodel, int EvalJ, int WriteJ, int CheckRepulsion, int Regularize, int RegCountWeight, int AddRegError, int Epairs, int BroadcastFDOFs, int UdateDOFbounds, int EvalOnlyCorrections, int SaveJustElementXYZ){
     W.imodel = imodel;
     #define _setbool(name) { if(name>0){W.b##name=true;}else if(name<0){W.b##name=false;} }
     _setbool( EvalJ          );
     _setbool( WriteJ         );
     _setbool( CheckRepulsion );
     _setbool( Regularize     );
+    _setbool( RegCountWeight );
     _setbool( AddRegError    );
     _setbool( Epairs         );
     _setbool( BroadcastFDOFs );
@@ -60,9 +61,13 @@ void setup( int imodel, int EvalJ, int WriteJ, int CheckRepulsion, int Regulariz
     #undef _setbool
 }
 
-void setGlobalParams( double kMorse, double Lepairs ){
+void setGlobalParams( double kMorse, double Lepairs, double EijMax, double softClamp_start, double softClamp_max ){
     W.kMorse   = kMorse;
     W.Lepairs  = Lepairs;
+    W.EijMax   = EijMax;
+    W.softClamp_start = softClamp_start;
+    W.softClamp_max   = softClamp_max;
+    printf( "setGlobalParams() kMorse %g Lepairs %g EijMax %g softClamp_start %g softClamp_max %g \n", kMorse, Lepairs, EijMax, softClamp_start, softClamp_max );
 }
 
 //bool bListOverRepulsive    = true;   // Should we list overrepulsive samples? 
