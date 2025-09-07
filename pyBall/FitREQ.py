@@ -1119,11 +1119,29 @@ def extract_min_curves(angles, distances, G, rmax=None):
     return rmin, emin
 
 
-def plot_compare(Gref, Gmodel, angles, distances, title, save_prefix=None, vmin=None, vmax=None, show=True, line=False):
+def plot_compare(Gref, Gmodel, angles, distances, title, save_prefix=None, vmin=None, vmax=None, line=False, kcal=False):
     import matplotlib.pyplot as plt
 
     # Shift each by its own baseline and determine symmetric limits from reference
     GRS, refR, mlocR = shift_grid(Gref)
+    GMS = None
+    if Gmodel is not None: GMS, refM, mlocM = shift_grid(Gmodel)
+        
+    if line:
+        # Reuse plot_min_lines_pair by building panel-shaped inputs (angles x distances)
+        Epanel_ref = GRS.T
+        Epanel_mod = GMS.T if GMS is not None else None
+        # Xpanel: replicate distances across all angles
+        Xpanel = np.tile(np.asarray(distances, dtype=float), (len(angles), 1))
+        fig2 = plot_min_lines_pair(Epanel_ref, Epanel_mod, Xpanel, angles, title=None, save_path=None, to_kcal=kcal)
+        if save_prefix:
+            p2 = save_prefix.replace('.png','') + '_lines.png'
+            fig2.savefig(p2, dpi=150, bbox_inches='tight')
+
+    if kcal:
+        if GRS is not None: GRS *= ev2kcal
+        if GMS is not None: GMS *= ev2kcal
+
     vminR = float(np.nanmin(GRS)) if np.any(np.isfinite(GRS)) else None
     if vmin is None:
         vmin = vminR if (vminR is not None) else None
@@ -1131,11 +1149,6 @@ def plot_compare(Gref, Gmodel, angles, distances, title, save_prefix=None, vmin=
     if (vmin is not None) and (vmax is None):
         vmax = -vmin
 
-    if Gmodel is not None:
-        GMS, refM, mlocM = shift_grid(Gmodel)
-    else:
-        GMS = None
-    
     # 3 rows: Ref, Model, Diff (if model present); else only Ref
     rows = 3 if (GMS is not None) else 1
     fig, axs = plt.subplots(rows, 1, figsize=(4, 2.2*rows), constrained_layout=True)
@@ -1146,18 +1159,27 @@ def plot_compare(Gref, Gmodel, angles, distances, title, save_prefix=None, vmin=
     xt = np.linspace(0, GRS.shape[1]-1, min(6, GRS.shape[1])).astype(int)
     yt = np.linspace(0, GRS.shape[0]-1, min(6, GRS.shape[0])).astype(int)
     axs[0].set_xticks(xt); axs[0].set_yticks(yt)
-    axs[0].set_xticklabels([f"{angles[i]:.0f}" for i in xt]); axs[0].set_yticklabels([f"{distances[i]:.2f}" for i in yt])
+    x_ticks=[f"{angles[i]:.0f}" for i in xt]
+    y_ticks=[f"{distances[i]:.2f}" for i in yt]
+    axs[0].set_xticklabels(x_ticks); 
+    axs[0].set_yticklabels(y_ticks)
     axs[0].set_ylabel('Distance (Å)')
     axs[0].set_title(title)
     plt.colorbar(im0, ax=axs[0])
     if GMS is not None:
         im1 = axs[1].imshow(GMS, origin='lower', aspect='auto', cmap='bwr', vmin=vmin, vmax=vmax)
+        axs[1].set_xticks(xt); axs[1].set_yticks(yt)
+        axs[1].set_xticklabels(x_ticks); 
+        axs[1].set_yticklabels(y_ticks)
         axs[1].set_ylabel('Distance (Å)')
         plt.colorbar(im1, ax=axs[1])
         # Diff
         D = GMS - GRS
         dmax = max(-np.nanmin(D), np.nanmax(D)) if np.any(np.isfinite(D)) else 1.0
         im2 = axs[2].imshow(D, origin='lower', aspect='auto', cmap='bwr', vmin=-dmax, vmax=dmax)
+        axs[2].set_xticks(xt); axs[2].set_yticks(yt)
+        axs[2].set_xticklabels(x_ticks); 
+        axs[2].set_yticklabels(y_ticks)
         axs[2].set_xlabel('Angle (deg)')
         axs[2].set_ylabel('Distance (Å)')
         plt.colorbar(im2, ax=axs[2])
@@ -1167,23 +1189,6 @@ def plot_compare(Gref, Gmodel, angles, distances, title, save_prefix=None, vmin=
     if save_prefix:
         fname = f"{save_prefix}.png" if not save_prefix.endswith('.png') else save_prefix
         fig.savefig(fname, dpi=150, bbox_inches='tight')
-
-    if line:
-        # Reuse plot_min_lines_pair by building panel-shaped inputs (angles x distances)
-        Epanel_ref = GRS.T
-        Epanel_mod = GMS.T if GMS is not None else None
-        # Xpanel: replicate distances across all angles
-        Xpanel = np.tile(np.asarray(distances, dtype=float), (len(angles), 1))
-        fig2 = plot_min_lines_pair(Epanel_ref, Epanel_mod, Xpanel, angles, title=None, save_path=None, to_kcal=False)
-        if save_prefix:
-            p2 = save_prefix.replace('.png','') + '_lines.png'
-            fig2.savefig(p2, dpi=150, bbox_inches='tight')
-        elif show:
-            plt.show()
-
-    if show and not save_prefix:
-        plt.show()
-
 
 # ===== Reusable helpers for Rmin/Emin from panel-shaped data (angles x distances)
 
@@ -1260,11 +1265,11 @@ def plot_min_lines_pair(Epanel_ref, Epanel_mod, Xpanel, angles, title=None, save
     axE.grid(alpha=0.3, linestyle='--')
     axE.legend(fontsize=8)
     if title:     fig.suptitle(title, fontsize=10)
-    if save_path: fig.savefig(save_path, dpi=150, bbox_inches='tight')
+    if save_path: fig.savefig(save_path, bbox_inches='tight')
     return fig
 
 
-def plot_trj_dofs(trj_DOFs, DOFnames=None, lss=None, clrs=None, title=None):
+def plot_trj_dofs(trj_DOFs, DOFnames=None, lss=None, clrs=None, title=None, save_path=None):
     """Plot trajectories of DOFs over optimization iterations.
 
     Args:
@@ -1296,4 +1301,5 @@ def plot_trj_dofs(trj_DOFs, DOFnames=None, lss=None, clrs=None, title=None):
         plt.title(title)
     plt.legend(fontsize=8)
     plt.grid(alpha=0.2)
+    if save_path: fig.savefig(save_path, bbox_inches='tight')
     return fig

@@ -72,6 +72,7 @@ if __name__ == "__main__":
     parser.add_argument("--user_weights",      type=int,             default=1,                help="Enable user weights during scan")
     parser.add_argument("--regularization",    type=int,             default=0,                help="Enable regularization during scan")
     parser.add_argument("--clamp_thresholds",  nargs=2, type=float,  default=[4.0, 6.0],       help="Soft clamp thresholds: start max")
+    parser.add_argument("--kcal", type=int, default=1, help="Use kcal instead of eV")
 
     args = parser.parse_args()
 
@@ -123,7 +124,7 @@ if __name__ == "__main__":
     elif args.mode == "plot":
         Gref, seq, axis, distances, angles = fit.parse_xyz_mapping(args.input)
         title = os.path.basename(args.input)
-        fit.plot_compare(Gref, None, angles, distances, title, save_prefix=args.save, show=False, line=args.line == 1)
+        fit.plot_compare(Gref, None, angles, distances, title, save_prefix=args.save, line=args.line == 1, kcal=args.kcal)
     else: # fit or model
         Gref, seq, axis, distances, angles = fit.parse_xyz_mapping(args.input)
         title = os.path.basename(args.input)
@@ -137,5 +138,5 @@ if __name__ == "__main__":
         # Local compare plotting with requested style and optional lines
         save_prefix = None
         if args.save: save_prefix = args.save[:-4] if args.save.endswith('.png') else args.save
-        fit.plot_compare(Gref, Gmodel, angles, distances, title, save_prefix=save_prefix, show=False, line=args.line == 1)
+        fit.plot_compare(Gref, Gmodel, angles, distances, title, save_prefix=save_prefix, line=args.line == 1, kcal=args.kcal)
     if args.show == 1:  plt.show()
