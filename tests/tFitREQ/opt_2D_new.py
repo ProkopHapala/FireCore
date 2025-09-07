@@ -47,22 +47,23 @@ if __name__ == "__main__":
     parser.add_argument("-i", "--input",           default="/home/prokophapala/Desktop/CARBSIS/wb97m-split/H2O-A1_H2O-D1-y.xyz", help="Input .xyz file (single movie)")
     parser.add_argument("--dof-selection",         default="dofSelection_MorseSR_H2O.dat", help="DOF selection file")
     parser.add_argument("--verbosity", type=int,   default=2,    help="Verbosity for FitREQ")
-    parser.add_argument("--nstep",     type=int,   default=10, help="Fitting steps")
+    parser.add_argument("--nstep",     type=int,   default=100, help="Fitting steps")
     parser.add_argument("--fmax",      type=float, default=1e-8, help="Target force max for fitting")
-    parser.add_argument("--dt",        type=float, default=0.01, help="Integrator dt")
-    parser.add_argument("--max-step",  type=float, default=0.05, help="Max step")
+    parser.add_argument("--dt",        type=float, default=0.05, help="Integrator dt")
+    parser.add_argument("--max-step",  type=float, default=0.1, help="Max step")
     parser.add_argument("--damping",   type=float, default=0.0,  help="Damping")
     # Global model params
-    parser.add_argument("--kMorse",    type=float, default=1.8,  help="Global kMorse parameter")
-    parser.add_argument("--Lepairs",   type=float, default=1.0,  help="Global Lepairs parameter")
-    parser.add_argument("--lj",        type=int,   default=0,    help="Use LJ instead of Morse presets")
+    parser.add_argument("--kMorse",    type=float, default=1.7,  help="Global kMorse parameter")
+    parser.add_argument("--Lepairs",   type=float, default=1.2,  help="Global Lepairs parameter")
+    parser.add_argument("--model",     type=int,   default=7,    help="Model type: 1=LJ, 5=MorseQ_SR, 7=MorseQ_SR_boys  8=MorseQ_SR_softclamp ")
     # Weighting controls
+    parser.add_argument("--n_before",        type=int,   default=100,    help="#points before min to weight")
     parser.add_argument("--weight-a",      type=float, default=1.0,    help="Weight amplitude 'a' for exp weight func")
     parser.add_argument("--weight-alpha",  type=float, default=4.0,    help="Weight sharpness 'alpha' for exp weight func")
     parser.add_argument("--emin-min",      type=float, default=-0.02,  help="Emin threshold for weighting segments")
     parser.add_argument("--save",          type=str,   default=None,   help="Path to save the plot (PNG)")
     parser.add_argument("--epairs",        type=int,   default=1,      help="Disable epair terms when loading XYZ")
-    parser.add_argument("--show",          type=int,   default=0,      help="Do not show the figure")
+    parser.add_argument("--show",          type=int,   default=1,      help="Do not show the figure")
     parser.add_argument("--line",          type=int,   default=1,      help="Do not plot r_min(angle) and E_min(angle) lines")
     parser.add_argument("--out-xyz",       type=int,   default=0,      help="Output XYZ with fitted DOFs")
     # Scan arguments
@@ -76,8 +77,7 @@ if __name__ == "__main__":
 
     args = parser.parse_args()
 
-    bMorse_local = not args.lj
-    imodel = 1 if args.lj else 5
+    imodel = args.model
 
     fit.setVerbosity(args.verbosity, PrintDOFs=1, PrintfDOFs=1, PrintBeforReg=-1, PrintAfterReg=1)
     
@@ -96,13 +96,9 @@ if __name__ == "__main__":
     
     if args.user_weights:
         Erefs, x0s = fit.read_xyz_data(args.input)
-        n_before = 5 if args.lj else 100
-        weights0, lens = fit.split_and_weight_curves(
-            Erefs, x0s,
-            n_before_min=n_before,
-            weight_func=lambda E: fit.exp_weight_func(E, a=args.weight_a, alpha=args.weight_alpha),
-            EminMin=args.emin_min,
-        )
+        n_before = args.n_before
+        weight_func = lambda E: fit.exp_weight_func(E, a=args.weight_a, alpha=args.weight_alpha)
+        weights0, lens = fit.split_and_weight_curves( Erefs, x0s, n_before_min=n_before, weight_func=weight_func, EminMin=args.emin_min )
         fit.setWeights( weights0 )
 
     if args.mode == "scan":

@@ -2,6 +2,7 @@
 #define FitREQ_h
 
 #include <vector>
+#include <math.h>
 #include "Vec3.h"
 #include "quaternion.h"
 //#include "NBFF.h"
@@ -31,7 +32,7 @@
  */
 void savexyz(const char* fname, Atoms* A, Atoms* B, const char* comment=0, const char* mode="w" ){ 
     FILE* fout = fopen( fname, mode);
-    if(fout==0){ printf("cannot open '%s' \n", fname ); exit(0);}
+    if(fout==0){ printf("cannot open '%s' \n", fname ); exit(0);}    
     int n=0;
     if(A)n+=A->natoms;
     if(B)n+=B->natoms;
@@ -75,6 +76,172 @@ inline double soft_clamp(double y, double y1, double y2, double& dy_new){
     } else {
         dy_new = 1.0;
         return y;
+    }
+}
+
+// === Damped Coulomb helpers (free functions) ===
+// Bare 1/r potential used as the base (without COULOMB_CONST and without charges)
+inline double coulomb_potential_bare(double r){ return 1.0/r; }
+
+// Exact Boys-like damping: erf(r)/r, stable at r->0 where it tends to 2/sqrt(pi)
+inline double boys_potential_exact(double r){
+    if(r<1e-12) return 1.1283791670955126; // 2/sqrt(pi)
+    return ::erf(r)/r;
+}
+
+inline void boys_potential_exact_val_deriv(double r, double& y, double& dy_dr){
+    if(r<1e-12){ y=1.1283791670955126; dy_dr=0.0; return; }
+    const double exp_r2 = exp(-r*r);
+    y     = ::erf(r)/r;
+    dy_dr = ( 1.1283791670955126 * r * exp_r2 - ::erf(r) ) / (r*r);
+}
+
+// Polynomial approximations for r < r_min (coefficients correspond to r_min=1.5 from Python derivation)
+// NOTE: These are hard-coded for r_min ~ 1.5. If you change boys_rmin, recompute coefficients.
+inline double boys_poly_c1_hermite_cubic(double r){
+    const double c3=0.07607654346400593, c2=-0.3193203709421615, c0=1.12837916709551;
+    double r2=r*r; return (c3*r + c2)*r2 + c0;
+}
+inline void boys_poly_c1_hermite_cubic_val_deriv(double r, double& y, double& dy_dr){
+    const double c3=0.07607654346400593, c2=-0.3193203709421615, c0=1.12837916709551;
+    const double r2=r*r;
+    y     = (c3*r + c2)*r2 + c0;
+    dy_dr = (3.0*c3*r + 2.0*c2)*r;
+}
+inline double boys_poly_c2_hermite_quintic(double r){
+    const double c5=0.0978009599229947, c4=-0.3186499989199512, c3=0.37187006074364537, c2=-0.3761263890318375, c0=1.12837916709551;
+    double r2=r*r; return (((c5*r + c4)*r + c3)*r + c2)*r2 + c0;
+}
+inline void boys_poly_c2_hermite_quintic_val_deriv(double r, double& y, double& dy_dr){
+    const double c5=0.0978009599229947, c4=-0.3186499989199512, c3=0.37187006074364537, c2=-0.3761263890318375, c0=1.12837916709551;
+    const double r2=r*r;
+    y     = (((c5*r + c4)*r + c3)*r + c2)*r2 + c0;
+    dy_dr = (((5.0*c5*r + 4.0*c4)*r + 3.0*c3)*r + 2.0*c2)*r;
+}
+inline double boys_poly_c1_quartic_even(double r){
+    const double c4=0.02535884782133531, c2=-0.26226296334415705, c0=1.12837916709551;
+    double r2=r*r; return (c4*r2 + c2)*r2 + c0;
+}
+inline void boys_poly_c1_quartic_even_val_deriv(double r, double& y, double& dy_dr){
+    const double c4=0.02535884782133531, c2=-0.26226296334415705, c0=1.12837916709551;
+    const double r2=r*r;
+    y     = (c4*r2 + c2)*r2 + c0;
+    dy_dr = (4.0*c4*r2 + 2.0*c2)*r;
+}
+inline double boys_poly_c2_sextic_even(double r){
+    const double c6=0.010677274768021069, c4=-0.022688888634759506, c2=-0.20820925983105038, c0=1.12837916709551;
+    double r2=r*r; return ((c6*r2 + c4)*r2 + c2)*r2 + c0;
+}
+inline void boys_poly_c2_sextic_even_val_deriv(double r, double& y, double& dy_dr){
+    const double c6=0.010677274768021069, c4=-0.022688888634759506, c2=-0.20820925983105038, c0=1.12837916709551;
+    const double r2=r*r;
+    y     = ((c6*r2 + c4)*r2 + c2)*r2 + c0;
+    dy_dr = ((6.0*c6*r2 + 4.0*c4)*r2 + 2.0*c2)*r;
+}
+
+// Piecewise damped Coulomb using Boys: for r<rmin use selected poly/erf, for r>=rmin fall back to 1/r.
+// mode: 0=exact erf/r, 1=C1 Hermite Cubic, 2=C2 Hermite Quintic, 3=C1 Quartic Even, 4=C2 Sextic Even
+inline double dampCoulomb_Boys(double r, double rmin, int mode){
+    if(r<rmin){
+        switch(mode){
+            case 0: return boys_potential_exact(r);
+            case 1: return boys_poly_c1_hermite_cubic(r);
+            case 2: return boys_poly_c2_hermite_quintic(r);
+            case 3: return boys_poly_c1_quartic_even(r);
+            default:return boys_poly_c2_sextic_even(r);
+        }
+    }else{
+        return coulomb_potential_bare(r);
+    }
+}
+
+// Boys damping: value and radial derivative dy/dr
+inline void dampCoulomb_Boys_val_deriv(double r, double rmin, int mode, double& y, double& dy_dr){
+    if(r<rmin){
+        switch(mode){
+            case 0: boys_potential_exact_val_deriv(r, y, dy_dr); break;
+            case 1: boys_poly_c1_hermite_cubic_val_deriv(r, y, dy_dr); break;
+            case 2: boys_poly_c2_hermite_quintic_val_deriv(r, y, dy_dr); break;
+            case 3: boys_poly_c1_quartic_even_val_deriv(r, y, dy_dr); break;
+            default:boys_poly_c2_sextic_even_val_deriv(r, y, dy_dr); break;
+        }
+    }else{
+        y     = 1.0/r;
+        dy_dr = -1.0/(r*r);
+    }
+}
+
+// Soft-clamp on the bare Coulomb potential value y=1/r (no charges, no COULOMB_CONST)
+inline double dampCoulomb_SoftClamp(double r, double y1, double y2){
+    double y = coulomb_potential_bare(r);
+    if(y<=y1) return y;
+    double y12 = y2 - y1; if(y12<=0) return y1; // guard
+    double z   = (y - y1)/y12;
+    return y1 + y12 * (1.0 - 1.0/(1.0+z));
+}
+
+// Soft/Smooth clamp variants (positive/negative) value and dy/dr
+// mode:
+// 1 = soft_clamp (y>y1)
+// 2 = smooth_clamp (y>y1)
+// 3 = soft_clamp_neg (y<y1) on y=-1/r
+// 4 = smooth_clamp_neg (y<y1) on y=-1/r
+// Specialized soft/smooth clamping functions (pos/neg) returning y and dy/dr
+inline void soft_clamp_pos_val_deriv(double r, double y1, double y2, double& y, double& dy_dr){
+    const double y0     = 1.0/r;
+    const double dy0_dr = -1.0/(r*r);
+    if(y0>y1){
+        const double y12 = y2 - y1; if(y12<=0){ y=y1; dy_dr=0; return; }
+        const double z   = (y0 - y1)/y12;
+        const double inv = 1.0/(1.0+z);
+        y     = y1 + y12 * (1.0 - inv);
+        const double dyc_dy0 = inv*inv; // (1+z)^-2
+        dy_dr = dyc_dy0 * dy0_dr;
+    }else{ y=y0; dy_dr=dy0_dr; }
+}
+inline void smooth_clamp_pos_val_deriv(double r, double y1, double y2, double& y, double& dy_dr){
+    const double y0     = 1.0/r;
+    const double dy0_dr = -1.0/(r*r);
+    if(y0>y1){
+        const double y21 = y2 - y1; if(y21<=0){ y=y1; dy_dr=0; return; }
+        const double z   = (y0 - y1)/y21;
+        const double denom = 1.0/(1.0 + z + z*z);
+        y     = y2 - y21 * denom;
+        const double dyc_dy0 = (1.0 + 2.0*z) * denom * denom;
+        dy_dr = dyc_dy0 * dy0_dr;
+    }else{ y=y0; dy_dr=dy0_dr; }
+}
+inline void soft_clamp_neg_val_deriv(double r, double y1, double y2, double& y, double& dy_dr){
+    const double y0     = -1.0/r;
+    const double dy0_dr =  1.0/(r*r);
+    if(y0<y1){
+        const double y12 = y2 - y1; if(y12>=0){ y=y1; dy_dr=0; return; } // expect y2<y1<0
+        const double z   = (y0 - y1)/y12;
+        const double inv = 1.0/(1.0+z);
+        y     = y1 + (y2 - y1) * (1.0 - inv);
+        const double dyc_dy0 = inv*inv;
+        dy_dr = dyc_dy0 * dy0_dr;
+    }else{ y=y0; dy_dr=dy0_dr; }
+}
+inline void smooth_clamp_neg_val_deriv(double r, double y1, double y2, double& y, double& dy_dr){
+    const double y0     = -1.0/r;
+    const double dy0_dr =  1.0/(r*r);
+    if(y0<y1){
+        const double y21 = y2 - y1; if(y21>=0){ y=y1; dy_dr=0; return; }
+        const double z   = (y0 - y1)/y21;
+        const double denom = 1.0/(1.0 + z + z*z);
+        y     = y2 - y21 * denom;
+        const double dyc_dy0 = (1.0 + 2.0*z) * denom * denom;
+        dy_dr = dyc_dy0 * dy0_dr;
+    }else{ y=y0; dy_dr=dy0_dr; }
+}
+
+inline void dampCoulomb_SoftClamp_val_deriv(double r, double y1, double y2, int mode, double& y, double& dy_dr){
+    switch(mode){
+        case 1: soft_clamp_pos_val_deriv(r, y1, y2, y, dy_dr); break;
+        case 2: smooth_clamp_pos_val_deriv(r, y1, y2, y, dy_dr); break;
+        case 3: soft_clamp_neg_val_deriv(r, y1, y2, y, dy_dr); break;
+        default:smooth_clamp_neg_val_deriv(r, y1, y2, y, dy_dr); break;
     }
 }
 
@@ -292,6 +459,15 @@ class FitREQ{ public:
 
     // New members for H-bond optimization
     
+
+    // === Electrostatics damping/clamping parameters ===
+    // Boys-based damping
+    double boys_rmin   = 1.5;   // matching radius for piecewise Boys approximations
+    int    boys_mode   = 4;     // 0=exact erf/r, 1=cubic C1, 2=quintic C2, 3=quartic even C1, 4=sextic even C2
+    // Soft-clamp thresholds on bare Coulomb potential y=1/r (before multiplying by COULOMB_CONST*Qi*Qj)
+    double clamp_y1    = 3.0;   // start clamping when y>y1
+    double clamp_y2    = 6.0;   // asymptote towards y2 as y->infty
+    int    clamp_mode  = 1;     // 1=soft, 2=smooth, 3=soft_neg, 4=smooth_neg
 
 // =================================
 // =========== Functions ===========
@@ -983,6 +1159,7 @@ void fillTempArrays( const Atoms* atoms, Vec3d* apos, double* Qs  )const{
 //     if(  (fabs(Qs[iX])>1e+10) || (fabs(Qs[iE])>1e+10) ){ printf( "fillTempArrays() j=%i Qs[iX]=%12.3e Qs[iE]=%12.3e Qep=%12.3e \n", j, Qs[iX], Qs[iE], Qep ); exit(0); }
 // #endif
             double lep = Lepairs;
+            if(isamp_debug<1){ printf( "FillTempArrays() isamp %3i [iap=%3i] iE=%3i iX=%3i  t %3i %-8s iDOF=%3i Qep=%12.3e lep=%12.3e \n", isamp_debug, j, iE, iX, ityp, params->atypes[ityp].name,  tt.z, Qep, lep ); }
             if( bEpairDistByType ){ typeREQs[atoms->atypes[iE]].w; }
             apos[iE] = apos[iX] + ad->dirs[j] * lep;  // We move the electron pair to proper distance from the atom
             //isEp[iE] = 1;
@@ -1032,6 +1209,16 @@ double evalSample( int isamp, const Atoms* atoms, double wi, Quat4d* fREQs ) con
         case 6:{ 
             E =   evalExampleDerivs_LJr8QH2_SR ( i0, ni, j0, nj, atoms->atypes, apos, typeREQs, Qs, adata->host, fREQs );    // variational derivatives on molecule 1
             if(bJ)evalExampleDerivs_LJr8QH2_SR ( j0, nj, i0, ni, atoms->atypes, apos, typeREQs, Qs, adata->host, fREQs );    // variational derivatives on molecule 2
+        }break;
+        case 7:{
+            // Electrostatics damped by Boys (piecewise poly or exact erf/r controlled by boys_mode)
+            E =   evalExampleDerivs_MorseQ_SR_boys( i0, ni, j0, nj, atoms->atypes, apos, typeREQs, Qs, adata->host, fREQs );
+            if(bJ)evalExampleDerivs_MorseQ_SR_boys( j0, nj, i0, ni, atoms->atypes, apos, typeREQs, Qs, adata->host, fREQs );
+        }break;
+        case 8:{
+            // Electrostatics clamped softly on bare 1/r via clamp_y1, clamp_y2
+            E =   evalExampleDerivs_MorseQ_SR_softclamp( i0, ni, j0, nj, atoms->atypes, apos, typeREQs, Qs, adata->host, fREQs );
+            if(bJ)evalExampleDerivs_MorseQ_SR_softclamp( j0, nj, i0, ni, atoms->atypes, apos, typeREQs, Qs, adata->host, fREQs );
         }break;
         //case 4:{ 
         //    E =   evalExampleDerivs_MorseQH2_SR( i0, ni, j0, nj, atoms->atypes, apos, typeREQs, Qs, fREQs );    // variational derivatives on molecule 1
@@ -1527,6 +1714,148 @@ static double evalExampleDerivs_LJQH2_uncorr( int i0, int ni, int j0, int nj, Ve
         }
     }
     //exit(0);
+    return Etot;
+}
+
+__attribute__((hot))
+double evalExampleDerivs_MorseQ_SR_boys( int i0, int ni, int j0, int nj, int*  types, Vec3d* ps, Quat4d* typeREQs, double* Qs, int* host, Quat4d* dEdREQs )const{
+    double Etot = 0.0;
+    const double alpha   = kMorse;
+    const bool bWJ = bWriteJ&&dEdREQs;
+    for(int ii=0; ii<ni; ii++){
+        const int      i    = i0+ii;
+        const int     ih    = host[i];
+        const bool    bEpi  = ih>=0;
+        const Vec3d&  pi    = ps      [i ];
+        const double  Qi    = Qs      [i ];
+        const int     ti    = types   [i ];
+        const Quat4d& REQi  = typeREQs[ti];
+        Quat4d        fREQi = Quat4dZero;
+        for(int jj=0; jj<nj; jj++){
+            const int   j        = j0+jj;
+            const int   jh       = host[j];
+            const double     Qj  = Qs[j];
+            const Vec3d      dij = ps[j] - pi;
+            const int        tj  = types[j];
+            const Quat4d& REQj   = typeREQs[tj];
+            const double R0      = REQi.x + REQj.x;
+            const double E0      = REQi.y * REQj.y;
+            const double Q       = Qi     * Qj    ;
+            double       H       = REQi.w * REQj.w;     // expected H2<0
+            const double sH      = (H<0.0) ? 1.0 : 0.0; // sH=1.0 if H2<0
+            H *= sH;
+            // --- Electrostatic (damped by Boys)
+            const double r       = dij.norm();
+            const double y_damp  = dampCoulomb_Boys(r, boys_rmin, boys_mode);
+            const double dE_dQ   = y_damp * COULOMB_CONST;  // apply damping on bare 1/r before scaling
+            const double Eel     = Q * dE_dQ;
+
+            double Eij    = Eel;
+            double dE_dR0 = 0.0;
+            double dE_dE0 = 0.0;
+            double dE_dH  = 0.0;
+            double dE_dw  = 0.0;
+            const bool bEpj = jh>=0;
+
+            if( bEpi ){  
+                Eij += getSR2( r, H, REQi.x, dE_dH, dE_dw );
+                dE_dH*=-1.0;
+                dEdREQs[i].x += -dE_dw;
+            }else if( bEpj ){
+                Eij += getSR2( r, H, REQj.x, dE_dH, dE_dw );
+                dE_dH*=-1.0;
+                if( bWJ )dEdREQs[j].x += -dE_dw;
+            }else{
+                const double e       = exp( -alpha * ( r - R0 ) );
+                const double e2      = e * e;
+                const double e2p     = ( 1.0 + H ) * e2;
+                const double dE_dE0  = e2p - 2.0 * e;
+                const double dE_dR0  = 2.0 * alpha * E0 * ( e2p - e );
+                const double dE_dH   = - E0 * e2;
+                const double ELJ     =   E0 * dE_dE0;
+                Eij += ELJ;
+            }
+
+            if( bWJ ){ dEdREQs[j].add( Quat4d{ -dE_dR0, -dE_dE0  * 0.5 * REQi.y, -dE_dQ   * Qi,  dE_dH   * REQi.w * sH }); }
+            Etot    +=  Eij;
+            fREQi.x += -dE_dR0;
+            fREQi.y += -dE_dE0  * 0.5 * REQj.y;
+            fREQi.z += -dE_dQ   * Qj;
+            fREQi.w +=  dE_dH   * REQj.w * sH;
+        }
+        if(dEdREQs)dEdREQs[i].add(fREQi);
+    }
+    return Etot;
+}
+
+__attribute__((hot))
+double evalExampleDerivs_MorseQ_SR_softclamp( int i0, int ni, int j0, int nj, int*  types, Vec3d* ps, Quat4d* typeREQs, double* Qs, int* host, Quat4d* dEdREQs )const{
+    double Etot = 0.0;
+    const double alpha   = kMorse;
+    const bool bWJ = bWriteJ&&dEdREQs;
+    for(int ii=0; ii<ni; ii++){
+        const int      i    = i0+ii;
+        const int     ih    = host[i];
+        const bool    bEpi  = ih>=0;
+        const Vec3d&  pi    = ps      [i ];
+        const double  Qi    = Qs      [i ];
+        const int     ti    = types   [i ];
+        const Quat4d& REQi  = typeREQs[ti];
+        Quat4d        fREQi = Quat4dZero;
+        for(int jj=0; jj<nj; jj++){
+            const int   j        = j0+jj;
+            const int   jh       = host[j];
+            const double     Qj  = Qs[j];
+            const Vec3d      dij = ps[j] - pi;
+            const int        tj  = types[j];
+            const Quat4d& REQj   = typeREQs[tj];
+            const double R0      = REQi.x + REQj.x;
+            const double E0      = REQi.y * REQj.y;
+            const double Q       = Qi     * Qj    ;
+            double       H       = REQi.w * REQj.w;     // expected H2<0
+            const double sH      = (H<0.0) ? 1.0 : 0.0; // sH=1.0 if H2<0
+            H *= sH;
+            // --- Electrostatic (soft clamp on bare 1/r value)
+            const double r       = dij.norm();
+            const double y_damp  = dampCoulomb_SoftClamp(r, clamp_y1, clamp_y2);
+            const double dE_dQ   = y_damp * COULOMB_CONST;
+            const double Eel     = Q * dE_dQ;
+
+            double Eij    = Eel;
+            double dE_dR0 = 0.0;
+            double dE_dE0 = 0.0;
+            double dE_dH  = 0.0;
+            double dE_dw  = 0.0;
+            const bool bEpj = jh>=0;
+
+            if( bEpi ){  
+                Eij += getSR2( r, H, REQi.x, dE_dH, dE_dw );
+                dE_dH*=-1.0;
+                dEdREQs[i].x += -dE_dw;
+            }else if( bEpj ){
+                Eij += getSR2( r, H, REQj.x, dE_dH, dE_dw );
+                dE_dH*=-1.0;
+                if( bWJ )dEdREQs[j].x += -dE_dw;
+            }else{
+                const double e       = exp( -alpha * ( r - R0 ) );
+                const double e2      = e * e;
+                const double e2p     = ( 1.0 + H ) * e2;
+                const double dE_dE0  = e2p - 2.0 * e;
+                const double dE_dR0  = 2.0 * alpha * E0 * ( e2p - e );
+                const double dE_dH   = - E0 * e2;
+                const double ELJ     =   E0 * dE_dE0;
+                Eij += ELJ;
+            }
+
+            if( bWJ ){ dEdREQs[j].add( Quat4d{ -dE_dR0, -dE_dE0  * 0.5 * REQi.y, -dE_dQ   * Qi,  dE_dH   * REQi.w * sH }); }
+            Etot    +=  Eij;
+            fREQi.x += -dE_dR0;
+            fREQi.y += -dE_dE0  * 0.5 * REQj.y;
+            fREQi.z += -dE_dQ   * Qj;
+            fREQi.w +=  dE_dH   * REQj.w * sH;
+        }
+        if(dEdREQs)dEdREQs[i].add(fREQi);
+    }
     return Etot;
 }
 

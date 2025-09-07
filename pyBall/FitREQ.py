@@ -159,6 +159,46 @@ def scanParam2D(iDOFx, iDOFy, xs, ys, Es=None, Fx=None, Fy=None, bEvalSamples=Tr
     lib.scanParam2D(iDOFx, iDOFy, nx, ny, _np_as(xs,c_double_p), _np_as(ys,c_double_p),    _np_as(Es,c_double_p), _np_as(Fx,c_double_p), _np_as(Fy,c_double_p), bEvalSamples)
     return Es, Fx, Fy
 
+# ------------------------------------
+# Sampling interface for damped Coulomb functions (C++ -> Python)
+# void sample_funcEF( int n, double* xs, double* EFs_, int kind, double* params )
+lib.sample_funcEF.argtypes = [c_int, c_double_p, c_double_p, c_int, c_double_p]
+lib.sample_funcEF.restype  = None
+def sample_funcEF(xs, kind=0, params=None):
+    """
+    Sample damped Coulomb functions from C++ for given radii xs.
+
+    Args:
+      xs: 1D array of radii r
+      kind:
+        0   -> bare 1/r
+        10  -> Boys exact erf(r)/r
+        11  -> Boys C1 Hermite Cubic
+        12  -> Boys C2 Hermite Quintic
+        13  -> Boys C1 Quartic Even
+        14  -> Boys C2 Sextic Even
+        20  -> Soft clamp (positive)
+        21  -> Smooth clamp (positive)
+        22  -> Soft clamp (negative)
+        23  -> Smooth clamp (negative)
+      params:
+        for Boys kinds: [rmin]
+        for clamp kinds: [y1, y2]
+
+    Returns:
+      E, F arrays where E=y(r) and F=-dE/dr (radial force)
+    """
+    xs = np.asarray(xs, dtype=np.double)
+    n  = xs.size
+    EFs = np.zeros((n,2), dtype=np.double)
+    if params is not None:
+        params = np.asarray(params, dtype=np.double)
+        pptr = _np_as(params, c_double_p)
+    else:
+        pptr = _np_as(None, c_double_p)
+    lib.sample_funcEF(n, _np_as(xs,c_double_p), _np_as(EFs,c_double_p), kind, pptr)
+    return EFs[:,0].copy(), EFs[:,1].copy()
+
 # void loadTypes_new( const char* fname_ElemTypes, const char* fname_AtomTypes ){
 lib.loadTypes.argtypes  = [c_char_p, c_char_p]
 lib.loadTypes.restype   =  None

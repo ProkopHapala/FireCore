@@ -18,6 +18,46 @@ OptRandomWalk ropt;
 
 extern "C"{
 
+
+// =========================
+// Sampling interface for testing C++ dampers from Python
+// kind codes:
+//  0  : bare coulomb 1/r
+// 10-14 : Boys family (exact, C1 cubic, C2 quintic, C1 even quartic, C2 even sextic) with params: [rmin]
+// 20-23 : Soft-clamp family (soft+, smooth+, soft-, smooth-) with params: [y1, y2]
+// Output EFs_ is an array of Vec2d (E,F) where F = - dE/dr (radial force)
+void sample_funcEF( int n, double* xs, double* EFs_, int kind, double* params ){
+    Vec2d* EFs = (Vec2d*)EFs_;
+    for(int i=0; i<n; i++ ){
+        double x = xs[i];
+        double y=0.0, dydr=0.0;
+        switch (kind){
+            case 0:{ // bare
+                if(x<1e-16){ y=1e16; dydr=-1e32; }
+                else{ y = 1.0/x; dydr = -1.0/(x*x); }
+            }break;
+            // Boys family
+            case 10: case 11: case 12: case 13: case 14:{
+                double rmin = params? params[0] : W.boys_rmin;
+                int mode = 0;
+                if(kind==11) mode=1; else if(kind==12) mode=2; else if(kind==13) mode=3; else if(kind==14) mode=4; // 10=exact
+                dampCoulomb_Boys_val_deriv( x, rmin, mode, y, dydr );
+            }break;
+            // Soft clamp family (positive/negative)
+            case 20: case 21: case 22: case 23:{
+                double y1 = params? params[0] : W.clamp_y1;
+                double y2 = params? params[1] : W.clamp_y2;
+                int mode;
+                if(kind==20) mode=1; else if(kind==21) mode=2; else if(kind==22) mode=3; else mode=4;
+                dampCoulomb_SoftClamp_val_deriv( x, y1, y2, mode, y, dydr );
+            }break;
+            default:{ y=NAN; dydr=NAN; }break;
+        }
+        EFs[i].x = y;
+        EFs[i].y = -dydr; // force is -dE/dr = -dy/dr (since charge scaling can be applied in Python if needed)
+    }
+}
+
 void setVerbosity( int verbosity_, int idebug_, int PrintDOFs, int PrintfDOFs, int PrintBeforReg, int PrintAfterReg ){
     verbosity = verbosity_;
     idebug    = idebug_;
