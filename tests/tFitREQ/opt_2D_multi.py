@@ -34,7 +34,8 @@ defalt_inputs=[
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Plot and compare 2D energy surfaces from multiple .xyz files")
     parser.add_argument("-i", "--inputs", nargs='*', default=None, help="List of input .xyz files (single movie). If empty, uses default set")
-    parser.add_argument("--dir", type=str, default='/home/prokophapala/Desktop/CARBSIS/wb97m-split/', help="Directory where input files are located")
+    #parser.add_argument("--dir", type=str, default='/home/prokophapala/Desktop/CARBSIS/wb97m-split/', help="Directory where input files are located")
+    parser.add_argument("--dir", type=str, default="/home/prokop/Desktop/CARBSIS/PEOPLE/Paolo/HbondFit_small_mols_2025_08_15/confs/wb97m-split/", help="Directory where input files are located")
     parser.add_argument("--dof-selection",         default="dofSelection_MorseSR_H2O_CH2O.dat", help="DOF selection file")
     parser.add_argument("--verbosity", type=int,   default=2,    help="Verbosity for FitREQ")
     parser.add_argument("--nstep",     type=int,   default=1000,   help="Fitting steps")
@@ -51,6 +52,8 @@ if __name__ == "__main__":
     parser.add_argument("--weight-alpha",  type=float, default=4.0,     help="Weight sharpness 'alpha' for exp weight func")
     parser.add_argument("--emin-min",      type=float, default=-0.02,   help="Emin threshold for weighting segments")
     parser.add_argument("--plot-dir",      type=str,   default='plots', help="Directory to save all output plots")
+    parser.add_argument("--data-dir",      type=str,   default='data',  help="Directory to save all output data (2D maps, 1D lines)")
+    parser.add_argument("--save-fmt", choices=["both","npz","gnuplot"], default="both", help="Format for saved data")
     parser.add_argument("--save",          type=str,   default=None,    help="Base name for saving plots (without extension)")
     parser.add_argument("--epairs",        type=int,   default=1,       help="Disable epair terms when loading XYZ")
     parser.add_argument("--show",          type=int,   default=0,       help="show the figure")
@@ -113,8 +116,9 @@ if __name__ == "__main__":
     trj_E, trj_F, trj_DOFs, _ = fit.setTrjBuffs(niter=args.nstep)
     DOFnames = fit.loadDOFnames(args.dof_selection)
     
-    # Create plot directory if needed
+    # Create output directories if needed
     if not os.path.exists(args.plot_dir): os.makedirs(args.plot_dir)
+    if not os.path.exists(args.data_dir): os.makedirs(args.data_dir)
     
     fit.run( iparallel=0, ialg=1, nstep=args.nstep, Fmax=args.fmax, dt=args.dt, damping=args.damping,   max_step=-1,  bClamp=True )
 
@@ -146,7 +150,16 @@ if __name__ == "__main__":
             idist, iang = seq[k]
             Gmodel[idist, iang] = Es_slice[k]
         plot_path = os.path.join(args.plot_dir, f"{base}.png")
-        fit.plot_compare(Gref, Gmodel, angles, distances, title, save_prefix=plot_path, line=args.line, kcal=args.kcal)
+        data_base = os.path.join(args.data_dir, base)
+        fit.plot_compare(
+            Gref, Gmodel, angles, distances, title,
+            save_prefix=plot_path,
+            show=args.show==1,
+            line=bool(args.line),
+            kcal=bool(args.kcal),
+            save_data_prefix=data_base,
+            save_fmt=args.save_fmt
+        )
         istart = iend
 
     if args.show == 1: plt.show()

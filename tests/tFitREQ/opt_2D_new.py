@@ -44,7 +44,8 @@ HF-A1_HF-D1-z.xyz     : sample in-plane plane epairs of F atom in HF with HF    
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Plot and compare 2D energy surfaces from a single .xyz file or scan DOFs")
     parser.add_argument("--mode", choices=["plot", "model", "fit", "scan"], default="fit", help="Action: plot ref only, compare model (no fit), fit then compare, or scan DOFs")
-    parser.add_argument("-i", "--input",           default="/home/prokophapala/Desktop/CARBSIS/wb97m-split/H2O-A1_H2O-D1-y.xyz", help="Input .xyz file (single movie)")
+    #parser.add_argument("-i", "--input",           default="/home/prokophapala/Desktop/CARBSIS/wb97m-split/H2O-A1_H2O-D1-y.xyz", help="Input .xyz file (single movie)")
+    parser.add_argument("-i", "--input",           default="/home/prokop/Desktop/CARBSIS/PEOPLE/Paolo/HbondFit_small_mols_2025_08_15/confs/wb97m-split/H2O-A1_H2O-D1-y.xyz", help="Input .xyz file (single movie)")
     parser.add_argument("--dof-selection",         default="dofSelection_MorseSR_H2O.dat", help="DOF selection file")
     parser.add_argument("--verbosity", type=int,   default=2,    help="Verbosity for FitREQ")
     parser.add_argument("--nstep",     type=int,   default=100, help="Fitting steps")
@@ -62,6 +63,8 @@ if __name__ == "__main__":
     parser.add_argument("--weight-alpha",  type=float, default=4.0,    help="Weight sharpness 'alpha' for exp weight func")
     parser.add_argument("--emin-min",      type=float, default=-0.02,  help="Emin threshold for weighting segments")
     parser.add_argument("--save",          type=str,   default=None,   help="Path to save the plot (PNG)")
+    parser.add_argument("--save-data-prefix", type=str, default=None,   help="Base path to save 2D grids and 1D lines (no extension)")
+    parser.add_argument("--save-fmt", choices=["both","npz","gnuplot"], default="both", help="Format for saved data")
     parser.add_argument("--epairs",        type=int,   default=1,      help="Disable epair terms when loading XYZ")
     parser.add_argument("--show",          type=int,   default=1,      help="Do not show the figure")
     parser.add_argument("--line",          type=int,   default=1,      help="Do not plot r_min(angle) and E_min(angle) lines")
@@ -120,7 +123,13 @@ if __name__ == "__main__":
     elif args.mode == "plot":
         Gref, seq, axis, distances, angles = fit.parse_xyz_mapping(args.input)
         title = os.path.basename(args.input)
-        fit.plot_compare(Gref, None, angles, distances, title, save_prefix=args.save, line=args.line == 1, kcal=args.kcal)
+        fit.plot_compare(Gref, None, angles, distances, title,
+                         save_prefix=args.save,
+                         show=args.show==1,
+                         line=args.line == 1,
+                         kcal=args.kcal,
+                         save_data_prefix=args.save_data_prefix,
+                         save_fmt=args.save_fmt)
     else: # fit or model
         Gref, seq, axis, distances, angles = fit.parse_xyz_mapping(args.input)
         title = os.path.basename(args.input)
@@ -134,5 +143,11 @@ if __name__ == "__main__":
         # Local compare plotting with requested style and optional lines
         save_prefix = None
         if args.save: save_prefix = args.save[:-4] if args.save.endswith('.png') else args.save
-        fit.plot_compare(Gref, Gmodel, angles, distances, title, save_prefix=save_prefix, line=args.line == 1, kcal=args.kcal)
+        fit.plot_compare(Gref, Gmodel, angles, distances, title,
+                         save_prefix=save_prefix,
+                         show=args.show==1,
+                         line=args.line == 1,
+                         kcal=args.kcal,
+                         save_data_prefix=args.save_data_prefix,
+                         save_fmt=args.save_fmt)
     if args.show == 1:  plt.show()

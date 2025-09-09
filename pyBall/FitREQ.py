@@ -1156,7 +1156,56 @@ def extract_min_curves(angles, distances, G, rmax=None):
     return rmin, emin
 
 
-def plot_compare(Gref, Gmodel, angles, distances, title, save_prefix=None, vmin=None, vmax=None, line=False, kcal=False):
+def _save_grid_npz(angles, distances, grid, filepath):
+    """Save 2D map to NPZ with keys a, d, g."""
+    import numpy as _np
+    folder = os.path.dirname(filepath)
+    if folder:
+        try: os.makedirs(folder, exist_ok=True)
+        except Exception: pass
+    _np.savez_compressed(filepath, a=_np.asarray(angles), d=_np.asarray(distances), g=_np.asarray(grid))
+
+
+def _save_grid_gnuplot(angles, distances, grid, filepath):
+    """Save 2D map as gnuplot-friendly triplets: angle distance energy per row. NaNs -> 'nan'."""
+    folder = os.path.dirname(filepath)
+    if folder:
+        try: os.makedirs(folder, exist_ok=True)
+        except Exception: pass
+    with open(filepath, 'w') as f:
+        f.write("# angle  distance  energy\n")
+        for j, a in enumerate(angles):
+            for i, d in enumerate(distances):
+                e = grid[i, j]
+                if np.isnan(e):
+                    f.write(f"{a:.6g} {d:.6g} nan\n")
+                else:
+                    f.write(f"{a:.6g} {d:.6g} {e:.12g}\n")
+
+
+def _save_min_lines_npz(angles, rmin, emin, filepath):
+    import numpy as _np
+    folder = os.path.dirname(filepath)
+    if folder:
+        try: os.makedirs(folder, exist_ok=True)
+        except Exception: pass
+    _np.savez_compressed(filepath, a=_np.asarray(angles), r=_np.asarray(rmin), e=_np.asarray(emin))
+
+
+def _save_min_lines_gnuplot(angles, rmin, emin, filepath):
+    folder = os.path.dirname(filepath)
+    if folder:
+        try: os.makedirs(folder, exist_ok=True)
+        except Exception: pass
+    with open(filepath, 'w') as f:
+        f.write("# angle  rmin  emin\n")
+        for a, r, e in zip(angles, rmin, emin):
+            rs = "nan" if (r is None or not np.isfinite(r)) else f"{r:.12g}"
+            es = "nan" if (e is None or not np.isfinite(e)) else f"{e:.12g}"
+            f.write(f"{a:.6g} {rs} {es}\n")
+
+
+def plot_compare(Gref, Gmodel, angles, distances, title, save_prefix=None, vmin=None, vmax=None, show=True, line=False, kcal=False, save_data_prefix=None, save_fmt="both"):
     import matplotlib.pyplot as plt
 
     # Shift each by its own baseline and determine symmetric limits from reference
@@ -1170,11 +1219,13 @@ def plot_compare(Gref, Gmodel, angles, distances, title, save_prefix=None, vmin=
         Epanel_mod = GMS.T if GMS is not None else None
         # Xpanel: replicate distances across all angles
         Xpanel = np.tile(np.asarray(distances, dtype=float), (len(angles), 1))
-        fig2 = plot_min_lines_pair(Epanel_ref, Epanel_mod, Xpanel, angles, title=None, save_path=None, to_kcal=kcal)
+        fig2 = plot_min_lines_pair(Epanel_ref, Epanel_mod, Xpanel, angles, title=None, save_path=None, to_kcal=kcal, save_data_prefix=save_data_prefix, save_fmt=save_fmt)
         if save_prefix:
             p2 = save_prefix.replace('.png','') + '_lines.png'
             print("Saving plot to:", p2)
             fig2.savefig(p2, dpi=150, bbox_inches='tight')
+        elif show:
+            plt.show()
 
     if kcal:
         if GRS is not None: GRS *= ev2kcal
@@ -1228,6 +1279,25 @@ def plot_compare(Gref, Gmodel, angles, distances, title, save_prefix=None, vmin=
         fname = f"{save_prefix}.png" if not save_prefix.endswith('.png') else save_prefix
         print("Saving plot to:", fname)
         fig.savefig(fname, dpi=150, bbox_inches='tight')
+    elif show:
+        plt.show()
+
+    # Optional: save data grids (shifted) for ref/model/diff
+    if save_data_prefix is not None:
+        base = save_data_prefix
+        try:
+            if GRS is not None:
+                if save_fmt in ("both","npz"): _save_grid_npz(angles, distances, GRS, base+"__ref.npz")
+                if save_fmt in ("both","gnuplot"): _save_grid_gnuplot(angles, distances, GRS, base+"__ref.dat")
+            if GMS is not None:
+                if save_fmt in ("both","npz"): _save_grid_npz(angles, distances, GMS, base+"__model.npz")
+                if save_fmt in ("both","gnuplot"): _save_grid_gnuplot(angles, distances, GMS, base+"__model.dat")
+            if (GMS is not None):
+                D = GMS - GRS
+                if save_fmt in ("both","npz"): _save_grid_npz(angles, distances, D, base+"__diff.npz")
+                if save_fmt in ("both","gnuplot"): _save_grid_gnuplot(angles, distances, D, base+"__diff.dat")
+        except Exception as e:
+            print(f"Warning: failed saving grids: {e}")
 
 # ===== Reusable helpers for Rmin/Emin from panel-shaped data (angles x distances)
 
@@ -1268,7 +1338,7 @@ def compute_min_lines_from_panel(Epanel, Xpanel, angles, rmax=None, do_shift=Tru
     return rmin, emin
 
 
-def plot_min_lines_pair(Epanel_ref, Epanel_mod, Xpanel, angles, title=None, save_path=None, to_kcal=False, ms=2, lw=0.5):
+def plot_min_lines_pair(Epanel_ref, Epanel_mod, Xpanel, angles, title=None, save_path=None, to_kcal=False, ms=2, lw=0.5, save_data_prefix=None, save_fmt="both"):
     """Plot Rmin(angle) and Emin(angle) lines for a ref/model pair using panel-shaped inputs.
 
     - Epanel_ref/Epanel_mod: (ny_angles, nx_distances)
@@ -1304,9 +1374,18 @@ def plot_min_lines_pair(Epanel_ref, Epanel_mod, Xpanel, angles, title=None, save
     axE.grid(alpha=0.3, linestyle='--')
     axE.legend(fontsize=8)
     if title:     fig.suptitle(title, fontsize=10)
-    if save_path: 
-        print("Saving plot to:", save_path)
-        fig.savefig(save_path, bbox_inches='tight')
+    if save_path: fig.savefig(save_path, dpi=150, bbox_inches='tight')
+
+    # Optional: save computed lines
+    try:
+        if save_data_prefix is not None:
+            if save_fmt in ("both","npz"): _save_min_lines_npz(angles, rR, eR*(ev2kcal if to_kcal else 1.0), save_data_prefix+"__ref_lines.npz")
+            if save_fmt in ("both","gnuplot"): _save_min_lines_gnuplot(angles, rR, eR*(ev2kcal if to_kcal else 1.0), save_data_prefix+"__ref_lines.dat")
+            if (Epanel_mod is not None) and (rM is not None) and (eM is not None):
+                if save_fmt in ("both","npz"): _save_min_lines_npz(angles, rM, eM*(ev2kcal if to_kcal else 1.0), save_data_prefix+"__model_lines.npz")
+                if save_fmt in ("both","gnuplot"): _save_min_lines_gnuplot(angles, rM, eM*(ev2kcal if to_kcal else 1.0), save_data_prefix+"__model_lines.dat")
+    except Exception as e:
+        print(f"Warning: failed saving lines: {e}")
     return fig
 
 
