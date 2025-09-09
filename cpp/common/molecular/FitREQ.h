@@ -821,17 +821,22 @@ void printSampleFitSplit(int isamp){
 }
 
 /**
- * @brief Process a molecular system by adding electron pairs and reordering atoms to maintain a specific structure
- * 
- * This function performs the following steps:
- * 1. Adds electron pairs to the molecular system using the builder
- * 2. Identifies root atoms and directions for electron pairs
- * 3. Reorders atoms to maintain the structure: Atoms(mol1), Epairs(mol1), Atoms(mol2), Epairs(mol2)
- * 4. Stores the electron pair data in the atoms' userData
- * 
+ * @brief Add dummy electron pairs and reorder atoms to a canonical layout.
+ *
+ * Principle:
+ *  - Uses `MM::Builder::buildBondsAndEpairs()` to add dummy atoms (electron pairs, sigma holes).
+ *  - Reorders atoms to the layout: Atoms(mol1), Epairs(mol1), Atoms(mol2), Epairs(mol2).
+ *  - Stores epair bonds and unit directions into `atoms->userData` (see `AddedData`).
+ *  - After reordering, it positions epairs at distance `Lepairs` from their host along `dirs`,
+ *    so that the saved .xyz is consistent with the geometry used later in `fillTempArrays()` during fitting.
+ *
+ * Notes:
+ *  - Historical default epair distance (~0.5 Å) originates in `MMFFBuilder::addEpair()` where,
+ *    if no parameters are bound, a default `l=-0.5` becomes 0.5 Å; otherwise the builder uses
+ *    `params->atypes[epairType].Ruff` as the initial length. We override that here to `Lepairs` for consistency.
+ *
  * @param atoms Input molecular system to process
  * @param fout Optional file pointer to write XYZ output (can be null)
- * @return void, but modifies atoms in place
  */
 void addAndReorderEpairs(Atoms*& atoms, FILE* fout=nullptr) {
     //printf( "addAndReorderEpairs() samples.size()=%i \n", samples.size() );
@@ -965,6 +970,16 @@ void addAndReorderEpairs(Atoms*& atoms, FILE* fout=nullptr) {
     for(int i=0; i<nep_found; i++){ data->host[bs[i].y] = bs[i].x; } // bs[i].x is host atom index, bs[i].y is epair index
     //data->isep      = isep;
 
+    // Position epairs at the fitting distance (Lepairs) so that exported .xyz matches fitting geometry
+    // This mirrors the placement done later in fillTempArrays(): apos[iE] = apos[iX] + dirs[i]*Lepairs
+    if(bEpairs && nep_found>0){
+        for(int i=0; i<nep_found; i++){
+            const int iX = bs[i].x;  // host atom
+            const int iE = bs[i].y;  // epair atom (after reordering)
+            atoms->apos[iE] = atoms->apos[iX] + dirs[i]*Lepairs;
+        }
+    }
+
     if(bEvalOnlyCorrections){
         int naFit = initFittedAdata( atoms, 0 );  // first pass just count the number of fitted atoms
         data->reallocHB( atoms->natoms, naFit );  // then we can allocate the arrays
@@ -981,13 +996,19 @@ void addAndReorderEpairs(Atoms*& atoms, FILE* fout=nullptr) {
 }
 
 /**
- * Loads XYZ file and creates Atoms objects for each molecule inside it. It saves the molecules to the "samples" vector.
- * Optionally adds electron pairs and outputs XYZ file with epairs.
+ * @brief Load an XYZ file into `Atoms` samples; optionally add epairs and export.
  *
- * @param fname The name of the XYZ file to load.
- * @param bAddEpairs Flag indicating whether to add epairs to the loaded atoms.
- * @param bOutXYZ Flag indicating whether to output XYZ file with epairs.
- * @return The number of batches created.
+ * Behavior:
+ *  - When `bAddEpairs=true`, calls `addAndReorderEpairs()` which adds epairs and sets their positions
+ *    to `Lepairs` along stored directions. This ensures the exported `.xyz` reflects the geometry used
+ *    during fitting (same as in `fillTempArrays()`).
+ *  - When `bOutXYZ=true`, also writes `<fname>_Epairs.xyz` with the augmented system.
+ *
+ * @param fname Path to input .xyz
+ * @param bAddEpairs Whether to add epairs
+ * @param bOutXYZ Whether to save an augmented .xyz
+ * @param bAppend Whether to append to the output file
+ * @return Number of batches created
  */
 int loadXYZ( const char* fname, bool bAddEpairs=false, bool bOutXYZ=false, bool bAppend=false ){
     printf( "FitREQ::loadXYZ(%s) bAddEpairs=%i bOutXYZ=%i bAppend=%i\n", fname, bAddEpairs, bOutXYZ, bAppend );

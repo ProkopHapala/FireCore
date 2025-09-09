@@ -68,7 +68,7 @@ if __name__ == "__main__":
     parser.add_argument("--epairs",        type=int,   default=1,      help="Disable epair terms when loading XYZ")
     parser.add_argument("--show",          type=int,   default=1,      help="Do not show the figure")
     parser.add_argument("--line",          type=int,   default=1,      help="Do not plot r_min(angle) and E_min(angle) lines")
-    parser.add_argument("--out-xyz",       type=int,   default=0,      help="Output XYZ with fitted DOFs")
+    parser.add_argument("--out-xyz",       type=int,   default=1,      help="Output XYZ with fitted DOFs")
     # Scan arguments
     parser.add_argument("--scan_dofs",         type=int,  nargs='+', default=None,             help="List of DOF indices to scan. If None, all from dof-selection are scanned.")
     parser.add_argument("--scan_range",        type=float, nargs=3,  default=[-1.0, 1.0, 100], help="Scan range: min max n_steps")
