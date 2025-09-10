@@ -1141,7 +1141,6 @@ def shift_grid(G):
 
 
 def extract_min_curves(angles, distances, G, rmax=None):
-    import numpy as _np
     nA = len(angles)
     rmin = np.full(nA, np.nan)
     emin = np.full(nA, np.nan)
@@ -1158,12 +1157,12 @@ def extract_min_curves(angles, distances, G, rmax=None):
 
 def _save_grid_npz(angles, distances, grid, filepath):
     """Save 2D map to NPZ with keys a, d, g."""
-    import numpy as _np
     folder = os.path.dirname(filepath)
     if folder:
         try: os.makedirs(folder, exist_ok=True)
         except Exception: pass
-    _np.savez_compressed(filepath, a=_np.asarray(angles), d=_np.asarray(distances), g=_np.asarray(grid))
+    print("_save_grid_npz(): saving to", filepath)
+    np.savez_compressed(filepath, a=np.asarray(angles), d=np.asarray(distances), g=np.asarray(grid))
 
 
 def _save_grid_gnuplot(angles, distances, grid, filepath):
@@ -1172,24 +1171,25 @@ def _save_grid_gnuplot(angles, distances, grid, filepath):
     if folder:
         try: os.makedirs(folder, exist_ok=True)
         except Exception: pass
+    print("_save_grid_gnuplot(): saving to", filepath)
     with open(filepath, 'w') as f:
         f.write("# angle  distance  energy\n")
         for j, a in enumerate(angles):
             for i, d in enumerate(distances):
                 e = grid[i, j]
                 if np.isnan(e):
-                    f.write(f"{a:.6g} {d:.6g} nan\n")
+                    f.write(f"{a:<12.6g} {d:<12.6g} nan\n")
                 else:
-                    f.write(f"{a:.6g} {d:.6g} {e:.12g}\n")
+                    f.write(f"{a:<12.6g} {d:<12.6g} {e:<12.12g}\n")
+            f.write(f"\n")
 
 
 def _save_min_lines_npz(angles, rmin, emin, filepath):
-    import numpy as _np
     folder = os.path.dirname(filepath)
     if folder:
         try: os.makedirs(folder, exist_ok=True)
         except Exception: pass
-    _np.savez_compressed(filepath, a=_np.asarray(angles), r=_np.asarray(rmin), e=_np.asarray(emin))
+    np.savez_compressed(filepath, a=np.asarray(angles), r=np.asarray(rmin), e=np.asarray(emin))
 
 
 def _save_min_lines_gnuplot(angles, rmin, emin, filepath):
@@ -1205,7 +1205,7 @@ def _save_min_lines_gnuplot(angles, rmin, emin, filepath):
             f.write(f"{a:.6g} {rs} {es}\n")
 
 
-def plot_compare(Gref, Gmodel, angles, distances, title, save_prefix=None, vmin=None, vmax=None, show=True, line=False, kcal=False, save_data_prefix=None, save_fmt="both"):
+def plot_compare(Gref, Gmodel, angles, distances, title, save_prefix=None, vmin=None, vmax=None, line=False, kcal=False, save_data_prefix=None, save_fmt="both"):
     import matplotlib.pyplot as plt
 
     # Shift each by its own baseline and determine symmetric limits from reference
@@ -1224,8 +1224,6 @@ def plot_compare(Gref, Gmodel, angles, distances, title, save_prefix=None, vmin=
             p2 = save_prefix.replace('.png','') + '_lines.png'
             print("Saving plot to:", p2)
             fig2.savefig(p2, dpi=150, bbox_inches='tight')
-        elif show:
-            plt.show()
 
     if kcal:
         if GRS is not None: GRS *= ev2kcal
@@ -1279,25 +1277,22 @@ def plot_compare(Gref, Gmodel, angles, distances, title, save_prefix=None, vmin=
         fname = f"{save_prefix}.png" if not save_prefix.endswith('.png') else save_prefix
         print("Saving plot to:", fname)
         fig.savefig(fname, dpi=150, bbox_inches='tight')
-    elif show:
-        plt.show()
 
     # Optional: save data grids (shifted) for ref/model/diff
     if save_data_prefix is not None:
         base = save_data_prefix
-        try:
-            if GRS is not None:
-                if save_fmt in ("both","npz"): _save_grid_npz(angles, distances, GRS, base+"__ref.npz")
-                if save_fmt in ("both","gnuplot"): _save_grid_gnuplot(angles, distances, GRS, base+"__ref.dat")
-            if GMS is not None:
-                if save_fmt in ("both","npz"): _save_grid_npz(angles, distances, GMS, base+"__model.npz")
-                if save_fmt in ("both","gnuplot"): _save_grid_gnuplot(angles, distances, GMS, base+"__model.dat")
-            if (GMS is not None):
-                D = GMS - GRS
-                if save_fmt in ("both","npz"): _save_grid_npz(angles, distances, D, base+"__diff.npz")
-                if save_fmt in ("both","gnuplot"): _save_grid_gnuplot(angles, distances, D, base+"__diff.dat")
-        except Exception as e:
-            print(f"Warning: failed saving grids: {e}")
+        if GRS is not None:
+            if save_fmt in ("both","npz"    ): _save_grid_npz(angles, distances, GRS, base+"__ref.npz")
+            if save_fmt in ("both","gnuplot"): _save_grid_gnuplot(angles, distances, GRS, base+"__ref.dat")
+        if GMS is not None:
+            if save_fmt in ("both","npz"): _save_grid_npz(angles, distances, GMS, base+"__model.npz")
+            if save_fmt in ("both","gnuplot"): _save_grid_gnuplot(angles, distances, GMS, base+"__model.dat")
+        if (GMS is not None):
+            D = GMS - GRS
+            if save_fmt in ("both","npz"    ): _save_grid_npz(angles, distances, D, base+"__diff.npz")
+            if save_fmt in ("both","gnuplot"): _save_grid_gnuplot(angles, distances, D, base+"__diff.dat")
+        #except Exception as e:
+        #    print(f"Warning: failed saving grids: {e}")
 
 # ===== Reusable helpers for Rmin/Emin from panel-shaped data (angles x distances)
 

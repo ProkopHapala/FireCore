@@ -63,7 +63,7 @@ if __name__ == "__main__":
     parser.add_argument("--weight-alpha",  type=float, default=4.0,    help="Weight sharpness 'alpha' for exp weight func")
     parser.add_argument("--emin-min",      type=float, default=-0.02,  help="Emin threshold for weighting segments")
     parser.add_argument("--save",          type=str,   default=None,   help="Path to save the plot (PNG)")
-    parser.add_argument("--save-data-prefix", type=str, default=None,   help="Base path to save 2D grids and 1D lines (no extension)")
+    parser.add_argument("--save-data-prefix", type=str, default="out_data",   help="Base path to save 2D grids and 1D lines (no extension)")
     parser.add_argument("--save-fmt", choices=["both","npz","gnuplot"], default="both", help="Format for saved data")
     parser.add_argument("--epairs",        type=int,   default=1,      help="Disable epair terms when loading XYZ")
     parser.add_argument("--show",          type=int,   default=1,      help="Do not show the figure")
@@ -125,8 +125,7 @@ if __name__ == "__main__":
         title = os.path.basename(args.input)
         fit.plot_compare(Gref, None, angles, distances, title,
                          save_prefix=args.save,
-                         show=args.show==1,
-                         line=args.line == 1,
+                         line=args.line== 1,
                          kcal=args.kcal,
                          save_data_prefix=args.save_data_prefix,
                          save_fmt=args.save_fmt)
@@ -145,7 +144,6 @@ if __name__ == "__main__":
         if args.save: save_prefix = args.save[:-4] if args.save.endswith('.png') else args.save
         fit.plot_compare(Gref, Gmodel, angles, distances, title,
                          save_prefix=save_prefix,
-                         show=args.show==1,
                          line=args.line == 1,
                          kcal=args.kcal,
                          save_data_prefix=args.save_data_prefix,
