@@ -195,7 +195,7 @@ def run_uff_cpp( args ):
     #print("-----------\n uff_cpp.run()  ")
     #uff_cpp.run( nstepMax=1, dt=0.02, Fconv=1e-6, ialg=2, damping=0.1 )
     #uff_cpp.run( nstepMax=10000, dt=0.02, Fconv=1e-6, ialg=2, damping=0.1 )
-    uff_cpp.run( nstepMax=100, dt=0.01, Fconv=1e-6, ialg=2, damping=0.1 )
+    uff_cpp.run( nstepMax=10000, dt=0.01, Fconv=1e-6, ialg=2, damping=0.1 )
     energy = uff_cpp.Es[0]
     forces = uff_cpp.fapos.copy()
     return energy, forces, uff_cpp

@@ -412,17 +412,10 @@ virtual void init() override {
         uff_ocl->makeKernels("common_resources/cl" );
         printf("DEBUG: uff_ocl->makeKernels() completed\n");
         
-        // --- we should not need this, this is already done in MolWorld_sp3::init(); see MolWorld_sp3::makeFFs() and MolWorld_sp3::makeMMFFs()
-        //MM::UFFBuilder uff_builder;
-        //uff_builder.cloneFrom(builder);
-        //uff_builder.assignUFFtypes( 0, bCumulene, true, b141, bSimple, bConj);
-        //uff_builder.assignUFFparams( 0, true );
-        //uff_builder.toUFF( ffu, true );
+        // The base class MolWorld_sp3::init() already takes care of building the UFF force field (ffu)
+        // when bUFF is set. We just need to initialize the OpenCL part here.
+        // The redundant calls below were likely causing inconsistencies.
         printf("DEBUG: ffu.natoms=%i after base init\n", ffu.natoms);
-        ffu.setLvec( builder.lvec);
-        ffu.makePBCshifts( nPBC, true );
-        ffu.mapAtomInteractions();
-        printf("DEBUG: ffu.natoms=%i after ffu setup\n", ffu.natoms);
     } else {
         ocl.init(i_nvidia);
         ocl.makeKrenels_MM("common_resources/cl" );
@@ -654,6 +647,8 @@ void pack_uff_system( int isys, const UFF& ff, bool bParams=false, bool bForces=
         // Pack PBC
         Mat3_to_cl( ff.lvec,    lvecs[isys] );
         Mat3_to_cl( ff.invLvec, ilvecs[isys] );
+        int i0pbc = isys * (npbc+1);
+        pack( npbc, ff.shifts, pbcshifts + i0pbc );
     }
 }
 
@@ -895,7 +890,10 @@ void upload_uff( bool bParams, bool bForces, bool bVel, bool blvec ){
     err|= uff_ocl->upload( uff_ocl->ibuff_apos,    (float*)atoms );
     err|= uff_ocl->upload( uff_ocl->ibuff_REQs,     (float*)REQs );
     if(bForces) err|= uff_ocl->upload( uff_ocl->ibuff_fapos, (float*)aforces );
-    if(blvec)   err|= uff_ocl->upload( uff_ocl->ibuff_lvecs, lvecs );
+    if(blvec){
+        err|= uff_ocl->upload( uff_ocl->ibuff_lvecs,     lvecs );
+        err|= uff_ocl->upload( uff_ocl->ibuff_pbcshifts, (float*)pbcshifts );
+    }
     if(bParams){
         err|= uff_ocl->upload( uff_ocl->ibuff_bonAtoms,      (int*)host_bon_atoms.data()   );
         err|= uff_ocl->upload( uff_ocl->ibuff_bonParams,  (float*)host_bon_params.data()  );

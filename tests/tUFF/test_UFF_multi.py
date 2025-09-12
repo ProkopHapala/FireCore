@@ -126,7 +126,7 @@ def run_uff(use_gpu, components):
 
     uff.setTrjName("trj_multi.xyz", savePerNsteps=1)
     #uff.run( nstepMax=1000, dt=0.02, Fconv=1e-6, ialg=2, damping=0.1, iParalel=iParalel )
-    uff.run( nstepMax=100, dt=0.01, Fconv=1e-6, ialg=2, damping=0.1, iParalel=iParalel )
+    uff.run( nstepMax=10000, dt=0.01, Fconv=1e-6, ialg=2, damping=0.1, iParalel=iParalel )
     #uff.run( nstepMax=1, dt=0.02, Fconv=1e-6, ialg=2, damping=0.1, iParalel=iParalel )
 
     print("py.DEBUG 6")
