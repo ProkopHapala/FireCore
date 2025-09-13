@@ -62,11 +62,11 @@ class UFF : public NBFF { public:
 
     bool bDoBond=true, bDoAngle=true, bDoDihedral=true, bDoInversion=true, bDoAssemble=true;
     // --- DEBUG controls (CPU)
-    int  DBG_UFF     = 0;   // master switch 0/1
-    int  iDBG_bond   = -1;  // selected DOF ids to trace
-    int  iDBG_angle  = -1;
-    int  iDBG_dih    = -1;
-    int  iDBG_inv    = -1;
+    int  DBG_UFF     = 1;   // master switch 0/1
+    int  iDBG_bond   = 0;  // selected DOF ids to trace
+    int  iDBG_angle  = 0;
+    int  iDBG_dih    = 0;
+    int  iDBG_inv    = 0;
 
     // dimensions of the system
     double Etot, Eb, Ea, Ed, Ei;                          // total, bond, angle, dihedral, inversion energies
@@ -644,7 +644,7 @@ class UFF : public NBFF { public:
                     const Vec2i aij = bonAtoms[ib];
                     const Vec3d fi = f;
                     const Vec3d fj = f*-1.0;
-                    printf("[CPU][BOND-DOF] ib=%4d ia=%4d ja=%4d  k=% .9e l0=% .9e  l=% .9e dl=% .9e  fr=% .9e  Enb=% .9e  fi=(% .9e % .9e % .9e)  fj=(% .9e % .9e % .9e)  E=% .9e\n",
+                    printf("CPU BOND %3d : ia=%3d ja=%3d  k=% .4e l0=% .4e  l=% .4e dl=% .4e  fr=% .4e  Enb=% .4e  fi=(% .4e % .4e % .4e)  fj=(% .4e % .4e % .4e)  E=% .4e\n",
                            ib, aij.x, aij.y,
                            par.x, par.y, l, dl, fr, Enb_loc,
                            fi.x,fi.y,fi.z,
@@ -685,13 +685,24 @@ class UFF : public NBFF { public:
         const double R2damp = Rdamp*Rdamp;
         const double Fmax2  = FmaxNonBonded*FmaxNonBonded;
         if(DBG_UFF!=0){
-            printf("[CPU][BOND] natoms=%d nbonds=%d i0bon=%d Rdamp=% .6e Fmax=% .6e SubNB=%d iDBG=%d\n", natoms, nbonds, i0bon, Rdamp, FmaxNonBonded, (int)bSubtractBondNonBond, iDBG_bond );
-            printf("[CPU][BOND-TABLE]   ib   ia   ja           K           l0\n");
-            int N = nbonds;
-            if(N>64) N=64;
-            for(int ib=0; ib<N; ++ib){ Vec2i a=bonAtoms[ib]; Vec2d p=bonParams[ib];
-                printf("[CPU][BOND-TABLE] %4d %4d %4d % .9e % .9e\n", ib, a.x, a.y, p.x, p.y);
+            printf("CPU evalBonds natoms=%d nbonds=%d i0bon=%d Rdamp=% .6e Fmax=% .6e SubNB=%d iDBG=%d\n", natoms, nbonds, i0bon, Rdamp, FmaxNonBonded, (int)bSubtractBondNonBond, iDBG_bond );
+            printf("CPU ATOM-TABLE   ia   ng   ngC   [k,l]... \n");
+            //if(N>64) N=64;
+            //for(int ib=0; ib<N; ++ib){ Vec2i a=bonAtoms[ib]; Vec2d p=bonParams[ib]; printf("CPU BOND ib=%3d ia=%3d ja=%3d % .4e % .4e\n", ib, a.x, a.y, p.x, p.y); }
+            for (int ia=0; ia<natoms; ++ia){
+                Quat4i ng = neighs[ia];
+                Quat4i ngC= neighCell[ia];
+                printf("CPU ATOM %3d : ng={%2d,%2d,%2d,%2d} ngC={%2d,%2d,%2d,%2d}", ia, ng.x, ng.y, ng.z, ng.w, ngC.x, ngC.y, ngC.z, ngC.w);
+                for(int in=0; in<4; ++in){
+                    int ing = ng.array[in];
+                    if(ing<0) break;
+                    // bond params
+                    Vec2d bp = bonParams[ing];
+                    printf(" k,l[%i](  % .4e , % .4e )", in, bp.x, bp.y);
+                }
+                printf("\n");
             }
+            printf("CPU evalBonds().eval \n");
         }
         for(int ia=0; ia<natoms; ia++){ 
             E += evalAtomBonds(ia, R2damp, Fmax2 );
@@ -754,11 +765,11 @@ class UFF : public NBFF { public:
 
         if(DBG_UFF!=0 && ia==iDBG_angle){
             const Vec3i ijk = angAtoms[ia];
-            double theta_deg = acos( clamp(c, -1.0, 1.0) ) * (180.0/3.14159265358979323846);
-            printf("[CPU][ANGL-DOF] id=%4d ia=%4d ja=%4d ka=%4d  K=% .9e c0=% .6e c1=% .6e c2=% .6e c3=% .6e  theta=% .9e[deg]  Enb=% .9e  fi=(% .9e % .9e % .9e)  fj=(% .9e % .9e % .9e)  fk=(% .9e % .9e % .9e)  E=% .9e\n",
+            double theta = acos( clamp(c, -1.0, 1.0) );
+            printf("CPU ANGL %3d : ia=%3d ja=%3d ka=%3d  K=% .4e c0=% .4e c1=% .4e c2=% .4e c3=% .4e  theta=% .4e  Enb=% .4e  fi=(% .4e % .4e % .4e)  fj=(% .4e % .4e % .4e)  fk=(% .4e % .4e % .4e)  E=% .4e\n",
                    ia, ijk.x, ijk.y, ijk.z,
                    par.k, par.c0, par.c1, par.c2, par.c3,
-                   theta_deg, Enb,
+                   theta, Enb,
                    fpi.x,fpi.y,fpi.z,
                    fpj.x,fpj.y,fpj.z,
                    fpk.x,fpk.y,fpk.z,
@@ -853,11 +864,15 @@ class UFF : public NBFF { public:
         const double R2damp = Rdamp*Rdamp;
         const double Fmax2  = FmaxNonBonded*FmaxNonBonded;
         if(DBG_UFF!=0){
-            printf("[CPU][ANGL] nangles=%d i0ang=%d Rdamp=% .6e Fmax=% .6e SubNB=%d iDBG=%d\n", nangles, i0ang, Rdamp, FmaxNonBonded, (int)bSubtractAngleNonBond, iDBG_angle);
-            printf("[CPU][ANGL-TABLE]  ia   ja   ka            K          c0          c1          c2          c3\n");
-            int N=nangles; if(N>64)N=64; for(int i=0;i<N;i++){ Vec3i a=angAtoms[i]; double5 p=angParams[i];
-                printf("[CPU][ANGL-TABLE] %4d %4d %4d % .9e % .9e % .9e % .9e % .9e\n", a.x,a.y,a.z, p.k,p.c0,p.c1,p.c2,p.c3);
+            printf("CPU evalAngles() nangles=%d i0ang=%d Rdamp=% .6e Fmax=% .6e SubNB=%d iDBG=%d\n", nangles, i0ang, Rdamp, FmaxNonBonded, (int)bSubtractAngleNonBond, iDBG_angle);
+            printf("CPU ANG-TABLE  id   ia   ja   ka            K          c0          c1          c2          c3\n");
+            int N=nangles; if(N>64)N=64; 
+            for(int i=0;i<N;i++){ 
+                Vec3i a=angAtoms[i]; 
+                double5 p=angParams[i];
+                printf("CPU ANG %3d : ia=%3d ja=%3d ka=%3d  K=% .4e c0=% .4e c1=% .4e c2=% .4e c3=% .4e\n", i, a.x,a.y,a.z, p.k,p.c0,p.c1,p.c2,p.c3);
             }
+            printf("CPU evalAngles().eval \n");
         }
         for( int ia=0; ia<nangles; ia++){ 
             E+= evalAngle_Prokop(ia, R2damp, Fmax2 ); 
@@ -936,11 +951,11 @@ class UFF : public NBFF { public:
         if(DBG_UFF!=0 && id==iDBG_dih){
             const Quat4i ijkl  = dihAtoms[id];
             double cphi = clamp( n123.dot(n234)*inv_n12, -1.0, 1.0 );
-            double phi_deg = acos(cphi) * (180.0/3.14159265358979323846);
-            printf("[CPU][DIH -DOF] id=%4d ia=%4d ja=%4d ka=%4d la=%4d  V=% .9e d=% .9e n=% .3f  phi=% .9e[deg]  Enb=% .9e  fi=(% .9e % .9e % .9e)  fj=(% .9e % .9e % .9e)  fk=(% .9e % .9e % .9e)  fl=(% .9e % .9e % .9e)  E=% .9e\n",
+            double phi = acos(cphi);
+            printf("CPU DIH %4d : ia=%3d ja=%3d ka=%3d la=%3d  V=% .4e d=% .4e n=% .3f  phi=% .4e  Enb=% .4e  fi=(% .4e % .4e % .4e)  fj=(% .4e % .4e % .4e)  fk=(% .4e % .4e % .4e)  fl=(% .4e % .4e % .4e)  E=% .4e\n",
                    id, ijkl.x, ijkl.y, ijkl.z, ijkl.w,
                    par.x, par.y, par.z,
-                   phi_deg, Enb,
+                   phi, Enb,
                    fp1.x,fp1.y,fp1.z,
                    fp2.x,fp2.y,fp2.z,
                    fp3.x,fp3.y,fp3.z,
@@ -1050,7 +1065,7 @@ class UFF : public NBFF { public:
         //{ // we need to read the normalized vectros for hneigh because of PBC
         //printf( "evalDihedral_Paolo() id %i \n", id );
         const Vec3i ngs = dihNgs[id];   // {ji, jk, kl}
-        printf( "evalDihedral_Paolo() ngs %i %i %i \n", ngs.x, ngs.y, ngs.z );
+        //printf( "evalDihedral_Paolo() ngs %i %i %i \n", ngs.x, ngs.y, ngs.z );
         const Vec3d  r32 =    hneigh[ngs.y].f;  // jk
         const double l32 = 1./hneigh[ngs.y].e; 
         const Vec3d  r12 =    hneigh[ngs.x].f;  // ji
@@ -1147,11 +1162,15 @@ class UFF : public NBFF { public:
         const double Fmax2     = FmaxNonBonded*FmaxNonBonded;
         const bool bSubNonBond = SubNBTorstionFactor>0;
         if(DBG_UFF!=0){
-            printf("[CPU][DIH ] ndihedrals=%d i0dih=%d Rdamp=% .6e Fmax=% .6e SubNBFac=% .6e iDBG=%d\n", ndihedrals, i0dih, Rdamp, FmaxNonBonded, SubNBTorstionFactor, iDBG_dih);
-            printf("[CPU][DIH -TABLE]  ia   ja   ka   la            V           d           n\n");
-            int N=ndihedrals; if(N>64)N=64; for(int i=0;i<N;i++){ Quat4i a=dihAtoms[i]; Vec3d p=dihParams[i];
-                printf("[CPU][DIH -TABLE] %4d %4d %4d %4d % .9e % .9e % .3f\n", a.x,a.y,a.z,a.w, p.x,p.y,p.z);
+            printf("CPU evalDihedrals() ndihedrals=%d i0dih=%d Rdamp=% .6e Fmax=% .6e SubNBFac=% .6e iDBG=%d\n", ndihedrals, i0dih, Rdamp, FmaxNonBonded, SubNBTorstionFactor, iDBG_dih);
+            printf("CPU DIH-TABLE:  id   ia   ja   ka   la            V           d           n\n");
+            int N=ndihedrals; if(N>64)N=64; 
+            for(int i=0;i<N;i++){ 
+                Quat4i a=dihAtoms[i]; 
+                Vec3d  p=dihParams[i];
+                printf("CPU DIH %3d : %3d %3d %3d %3d % .4e % .4e % .3f\n", i, a.x,a.y,a.z,a.w, p.x,p.y,p.z);
             }
+            printf("CPU evalDihedrals().eval: \n");
         }
         for( int id=0; id<ndihedrals; id++){  
             E+= evalDihedral_Prokop(id, bSubNonBond, R2damp, Fmax2 );
@@ -1193,11 +1212,11 @@ class UFF : public NBFF { public:
 
         if(DBG_UFF!=0 && ii==iDBG_inv){
             const Quat4i ijkl  = invAtoms[ii];
-            double w_deg = asin( clamp(s, -1.0, 1.0) ) * (180.0/3.14159265358979323846);
-            printf("[CPU][INV -DOF] id=%4d ia=%4d ja=%4d ka=%4d la=%4d  K=% .9e c0=% .6e c1=% .6e c2=% .6e  w=% .9e[deg]  fi=(% .9e % .9e % .9e)  fj=(% .9e % .9e % .9e)  fk=(% .9e % .9e % .9e)  fl=(% .9e % .9e % .9e)  E=% .9e\n",
+            double w = asin( clamp(s, -1.0, 1.0) );
+            printf("CPU INV %4d : ia=%3d ja=%3d ka=%3d la=%3d  K=% .4e c0=% .4e c1=% .4e c2=% .4e  w=% .4e  fi=(% .9e % .9e % .9e)  fj=(% .9e % .9e % .9e)  fk=(% .9e % .9e % .9e)  fl=(% .9e % .9e % .9e)  E=% .9e\n",
                    ii, ijkl.x, ijkl.y, ijkl.z, ijkl.w,
                    par.x, par.y, par.z, par.w,
-                   w_deg,
+                   w,
                    fp1.x,fp1.y,fp1.z,
                    fp2.x,fp2.y,fp2.z,
                    fp3.x,fp3.y,fp3.z,
@@ -1337,11 +1356,15 @@ class UFF : public NBFF { public:
         //printf("UFF::evalInversions() \n");
         double E=0.0;
         if(DBG_UFF!=0){
-            printf("[CPU][INV ] ninversions=%d i0inv=%d iDBG=%d\n", ninversions, i0inv, iDBG_inv);
-            printf("[CPU][INV -TABLE]  ia   ja   ka   la            K          c0          c1          c2\n");
-            int N=ninversions; if(N>64)N=64; for(int i=0;i<N;i++){ Quat4i a=invAtoms[i]; Quat4d p=invParams[i];
-                printf("[CPU][INV -TABLE] %4d %4d %4d %4d % .9e % .9e % .9e % .9e\n", a.x,a.y,a.z,a.w, p.x,p.y,p.z,p.w);
+            printf("CPU evalInversions() ninversions=%d i0inv=%d iDBG=%d\n", ninversions, i0inv, iDBG_inv);
+            printf("CPU [INV-TABLE]  ia   ja   ka   la            K          c0          c1          c2\n");
+            int N=ninversions; if(N>64)N=64; 
+            for(int i=0;i<N;i++){ 
+                Quat4i a=invAtoms[i]; 
+                Quat4d p=invParams[i];
+                printf("CPU INV %3d : %3d %3d %3d %3d % .4e % .4e % .4e % .4e\n", i, a.x,a.y,a.z,a.w, p.x,p.y,p.z,p.w);
             }
+            printf("CPU evalInversions().eval\n" );
         }
         for( int ii=0; ii<ninversions; ii++){ 
             E+= evalInversion_Prokop(ii);

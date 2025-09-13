@@ -256,58 +256,30 @@ void realloc( int nSystems_ ){
         int nAngles     = ffu.nangles;
         int nDihedrals  = ffu.ndihedrals;
         int nInversions = ffu.ninversions;
-        printf("MolWorld_sp3_multi::realloc() before atoms\n");
         // The size of the atom-to-force mapping array is the total number of force components
         int nA2F        = ffu.nf;
-            printf("DEBUG: About to call uff_ocl->realloc(), uff_ocl=%p\n", uff_ocl);
-            uff_ocl->realloc( nSystems, ffu.natoms, ffu.nbonds, ffu.nangles, ffu.ndihedrals, ffu.ninversions, 0, nA2F );
-            printf("DEBUG: uff_ocl->realloc() completed successfully\n");
-
+        uff_ocl->realloc( nSystems, ffu.natoms, ffu.nbonds, ffu.nangles, ffu.ndihedrals, ffu.ninversions, 0, nA2F );
         // Allocate host-side arrays
-        printf("DEBUG: About to allocate host-side arrays\n");
-        host_bon_atoms.resize(nSystems * ffu.nbonds);
-        printf("DEBUG: host_bon_atoms allocated\n");
-        host_bon_params.resize(nSystems * ffu.nbonds);
-        printf("DEBUG: host_bon_params allocated\n");
-        host_ang_atoms.resize(nSystems * ffu.nangles);
-        printf("DEBUG: host_ang_atoms allocated\n");
-        host_ang_ngs.resize(nSystems * nAngles);
-        printf("DEBUG: host_ang_ngs allocated\n");
-        host_ang_params1.resize(nSystems * nAngles);
-        printf("DEBUG: host_ang_params1 allocated\n");
+        host_bon_atoms    .resize(nSystems * ffu.nbonds);
+        host_bon_params   .resize(nSystems * ffu.nbonds);
+        host_ang_atoms    .resize(nSystems * ffu.nangles);
+        host_ang_ngs      .resize(nSystems * nAngles);
+        host_ang_params1  .resize(nSystems * nAngles);
         host_ang_params2_w.resize(nSystems * nAngles);
-        printf("DEBUG: host_ang_params2_w allocated\n");
-        host_dih_atoms.resize(nSystems * nDihedrals);
-        printf("DEBUG: host_dih_atoms allocated\n");
-        host_dih_ngs.resize(nSystems * nDihedrals);
-        printf("DEBUG: host_dih_ngs allocated\n");
-        host_dih_params.resize(nSystems * nDihedrals);
-        printf("DEBUG: host_dih_params allocated\n");
-        host_inv_atoms.resize(nSystems * nInversions);
-        printf("DEBUG: host_inv_atoms allocated\n");
-        host_inv_ngs.resize(nSystems * nInversions);
-        printf("DEBUG: host_inv_ngs allocated\n");
-        host_inv_params.resize(nSystems * nInversions);
-        printf("DEBUG: host_inv_params allocated\n");
-        host_a2f_offsets.resize(nSystems * (nAtoms+1));
-        printf("DEBUG: host_a2f_offsets allocated\n");
-        host_a2f_counts.resize(nSystems * nAtoms);
-        printf("DEBUG: host_a2f_counts allocated\n");
-        host_a2f_indices.resize(nSystems * nA2F);
-        printf("DEBUG: host_a2f_indices allocated\n");
-
-        printf("DEBUG: About to _realloc atoms, nAtomsTot=%i\n", uff_ocl->nAtomsTot);
+        host_dih_atoms    .resize(nSystems * nDihedrals);
+        host_dih_ngs      .resize(nSystems * nDihedrals);
+        host_dih_params   .resize(nSystems * nDihedrals);
+        host_inv_atoms    .resize(nSystems * nInversions);
+        host_inv_ngs      .resize(nSystems * nInversions);
+        host_inv_params   .resize(nSystems * nInversions);
+        host_a2f_offsets  .resize(nSystems * (nAtoms+1));
+        host_a2f_counts   .resize(nSystems * nAtoms);
+        host_a2f_indices  .resize(nSystems * nA2F);
         _realloc ( atoms,     uff_ocl->nAtomsTot  );
-        printf("DEBUG: atoms allocated\n");
         _realloc0( aforces,   uff_ocl->nAtomsTot  , Quat4fZero );
-        printf("DEBUG: aforces allocated\n");
         _realloc0( avel,      uff_ocl->nAtomsTot  , Quat4fZero );
-        printf("DEBUG: avel allocated\n");
         _realloc( REQs,       uff_ocl->nAtomsTot );
-        printf("DEBUG: REQs allocated\n");
-        printf("DEBUG: About to _realloc pbcshifts, size=%i\n", uff_ocl->nSystems * (npbc+1));
         _realloc( pbcshifts, uff_ocl->nSystems * (npbc+1) ); // npbc is from MolWorld_sp3
-        printf("DEBUG: pbcshifts allocated\n");
     }else{
         printf( "MolWorld_sp3_multi::realloc() MMFF Systems %i nAtoms %i nnode %i \n", nSystems, ffl.natoms,  ffl.nnode );
         ocl.initAtomsForces( nSystems, ffl.natoms,  ffl.nnode, npbc+1 );
@@ -402,20 +374,12 @@ virtual void init() override {
 
     if(bUFF){
         printf("MolWorld_sp3_multi::init() for UFF_OCL\n");
-        printf("DEBUG: About to create new OCL_UFF()\n");
         uff_ocl = new OCL_UFF();
-        printf("DEBUG: OCL_UFF created, uff_ocl=%p\n", uff_ocl);
-        printf("DEBUG: About to call uff_ocl->init()\n");
         uff_ocl->init(i_nvidia); // Initialize the uff_ocl object
-        printf("DEBUG: uff_ocl->init() completed\n");
-        printf("DEBUG: About to call uff_ocl->makeKernels()\n");
         uff_ocl->makeKernels("common_resources/cl" );
-        printf("DEBUG: uff_ocl->makeKernels() completed\n");
-        
         // The base class MolWorld_sp3::init() already takes care of building the UFF force field (ffu)
         // when bUFF is set. We just need to initialize the OpenCL part here.
         // The redundant calls below were likely causing inconsistencies.
-        printf("DEBUG: ffu.natoms=%i after base init\n", ffu.natoms);
     } else {
         ocl.init(i_nvidia);
         ocl.makeKrenels_MM("common_resources/cl" );

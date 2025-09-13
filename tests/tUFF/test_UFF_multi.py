@@ -75,7 +75,7 @@ def print_bufs(bufs, title="Buffers"):
     for name, buf in bufs.items():
         print(f"{name}\n", buf)
 
-def run_uff(use_gpu, components):
+def run_uff(use_gpu, components, bPrintBufs=False, nPrintSetup=False):
     """
     Run a single UFF evaluation step on either CPU or GPU.
 
@@ -111,18 +111,18 @@ def run_uff(use_gpu, components):
     #uff.run(nstepMax=1, iParalel=iParalel)
 
     uff.getBuffs_UFF()
-    print("--- CPU Buffers Before Run ---")
-    print("TOPOLOGY_SPECS ", TOPOLOGY_SPECS)
-    topo_bufs = get_cpu_bufs(uff, TOPOLOGY_SPECS)
-    print("PARAMS_SPECS ", PARAMS_SPECS)
-    print_bufs(topo_bufs, "CPU Topology Buffers")
-    param_bufs = get_cpu_bufs(uff, PARAMS_SPECS)
-    print_bufs(param_bufs, "CPU Parameter Buffers")
+    if bPrintBufs:
+        print("--- Buffers Before Run ---")
+        print("TOPOLOGY_SPECS ", TOPOLOGY_SPECS)
+        topo_bufs = get_cpu_bufs(uff, TOPOLOGY_SPECS)
+        print("PARAMS_SPECS ", PARAMS_SPECS)
+        print_bufs(topo_bufs, "Topology Buffers")
+        param_bufs = get_cpu_bufs(uff, PARAMS_SPECS)
+        print_bufs(param_bufs, "Parameter Buffers")
 
-    uff.print_debugs() 
-    uff.print_setup()
-
-
+    if nPrintSetup:
+        uff.print_debugs() 
+        uff.print_setup()
 
     uff.setTrjName("trj_multi.xyz", savePerNsteps=1)
     uff.run( nstepMax=1, dt=0.02, Fconv=1e-6, ialg=2, damping=0.1, iParalel=iParalel )
@@ -192,10 +192,9 @@ if __name__ == "__main__":
     # set ClampNonBonded/SubtractBondNonBond inside run_uff(), so we disable this invalid call.  # TODO
     # uff.setSwitches(NonBonded=-1)
 
-
-
     # Run CPU then GPU with the same initialization and switches
-    components = ['bonds', 'angles', 'dihedrals', 'inversions']
+    #components = ['bonds', 'angles', 'dihedrals', 'inversions']
+    components = ['bonds']
     component_flags = {key: 1 for key in components }
 
     print("py.DEBUG 3")

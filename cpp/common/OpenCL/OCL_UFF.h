@@ -127,15 +127,10 @@ public:
         int nf_per_system = (nBonds_ * 2) + (nAngles_ * 3) + (nDihedrals_ * 4) + (nInversions_ * 4);
 
         // Allocate buffers on the GPU
-        printf("DEBUG: About to allocate apos buffer\n");
         ibuff_apos        = newBuffer("apos",        nAtomsTot,       sizeof(cl_float4), 0, CL_MEM_READ_WRITE);
-        printf("DEBUG: About to allocate fapos buffer\n");
         ibuff_fapos       = newBuffer("fapos",       nAtomsTot,       sizeof(cl_float4), 0, CL_MEM_READ_WRITE);
-        printf("DEBUG: About to allocate REQs buffer\n");
         ibuff_REQs        = newBuffer("REQs",        nAtomsTot,       sizeof(cl_float4), 0, CL_MEM_READ_ONLY);
-        printf("DEBUG: About to allocate hneigh buffer\n");
         ibuff_hneigh      = newBuffer("hneigh",      nAtomsTot * 4,   sizeof(cl_float4), 0, CL_MEM_READ_WRITE);
-        printf("DEBUG: About to allocate fint buffer\n");
         ibuff_fint        = newBuffer("fint",        nSystems * nf_per_system, sizeof(cl_float4), 0, CL_MEM_READ_WRITE);
 
         ibuff_neighs      = newBuffer("neighs",      nAtomsTot,       sizeof(cl_int4),   0, CL_MEM_READ_ONLY);
@@ -194,7 +189,7 @@ public:
         task_evalDihedrals  = getTask("evalDihedrals_UFF");
         task_evalInversions = getTask("evalInversions_UFF");
         task_assemble       = getTask("assembleForces_UFF");
-        
+
         // --- evalBondsAndHNeigh_UFF ---
         if(task_evalBonds){
             printf("OCL_UFF::setup_kernels().task_evalBonds \n");

@@ -72,23 +72,13 @@ inline float4 getLJQH( float3 dp, float4 REQ, float R2damp ){
 // Debug Controls (compile-time macros)
 // ======================================================
 // Enable concise debug prints without changing C++ host interface.
-#ifndef DBG_UFF
-#define DBG_UFF 0            // 0/1 master switch
-#endif
-#ifndef IDBG_BOND
-#define IDBG_BOND (-1)       // bond index to trace (global bond id), -1 disables
-#endif
-#ifndef IDBG_ANGLE
-#define IDBG_ANGLE (-1)      // angle index to trace
-#endif
-#ifndef IDBG_DIH
-#define IDBG_DIH (-1)        // dihedral index to trace
-#endif
-#ifndef IDBG_INV
-#define IDBG_INV (-1)        // inversion index to trace
-#endif
+#define DBG_UFF 1         // 0/1 master switch
+#define IDBG_BOND  (0)    // bond index to trace (global bond id), -1 disables
+#define IDBG_ANGLE (0)    // angle index to trace
+#define IDBG_DIH   (0)    // dihedral index to trace
+#define IDBG_INV   (0)    // inversion index to trace
 
-#define GPU_PREFIX "GPU"
+//#define GPU_PREFIX "GPU"
 
 // ======================================================
 // Kernels (Following C++ Structure Closely)
@@ -121,13 +111,32 @@ __kernel void evalBondsAndHNeigh_UFF(
     int ia = get_global_id(0);
     // Header print by a single work-item to avoid async interleaving
     if ((DBG_UFF!=0) && ia==0){
-        printf("[%s][BOND] natoms=%d npbc=%d i0bon=%d Rdamp=% .6e Fmax=% .6e SubNB=%d iDBG=%d\n",
-               GPU_PREFIX, natoms, npbc, i0bon, (double)Rdamp, (double)FmaxNonBonded, bSubtractBondNonBond, IDBG_BOND);
+        printf("GPU evalBondsAndHNeigh_UFF() natoms=%d npbc=%d i0bon=%d Rdamp=% .6e Fmax=% .6e SubNB=%d iDBG=%d\n", natoms, npbc, i0bon, Rdamp, FmaxNonBonded, bSubtractBondNonBond, IDBG_BOND);
         // Print first 64 bond parameter rows on one line per bond (safe upper bound without host arg)
-        printf("[%s][BOND-TABLE]   ib   ia   ja           K           l0\n", GPU_PREFIX);
-        for(int ib=0; ib<64; ++ib){ int2 a = bonAtoms[ib]; float2 p = bonParams[ib];
-            printf("[%s][BOND-TABLE] %4d %4d %4d % .9e % .9e\n", GPU_PREFIX, ib, a.x, a.y, (double)p.x, (double)p.y);
+        printf("GPU BOND-TABLE  ib   ia   ja           K           l0\n");
+
+        // this is loop over bonds, but we should loop over bonds of atoms instead
+        // for(int ib=0; ib<N; ++ib){ 
+        //     int2 a   = bonAtoms[ib]; 
+        //     float2 p = bonParams[ib];
+        //     if(a.x==-1) break; // End of bonds
+        //     printf("[%s][BOND-TABLE] %4d %4d %4d % .9e % .9e\n", GPU_PREFIX, ib, a.x, a.y, p.x, p.y);
+        // }
+
+        for (int ia=0; ia<natoms; ++ia){
+            int4 ng = neighs[ia];
+            int4 ngC= neighCell[ia];
+            printf("GPU ATOM %3d : ng={%3d,%3d,%3d,%3d} ngC={%3d,%3d,%3d,%3d}", ia, ng.x, ng.y, ng.z, ng.w, ngC.x, ngC.y, ngC.z, ngC.w);
+            for(int in=0; in<4; ++in){
+                int ing = ng[in];
+                if(ing<0) break;
+                // bond params
+                float2 bp = bonParams[ing];
+                printf(" k,l[%i](  % .4e , % .4e )", in, bp.x, bp.y);
+            }
+            printf("\n");
         }
+        printf("GPU evalBondsAndHNeigh_UFF().eval \n");
     }
     if (ia >= natoms) return;
 
@@ -173,7 +182,7 @@ __kernel void evalBondsAndHNeigh_UFF(
         hneigh[hneigh_idx] = (float4)(h, inv_l); // Store {nx,ny,nz, 1/L}
 
         // --- Bond Energy & Force ---
-        int ib = inbs[in]; // Precomputed bond index
+        int ib = inbs[in];    // Precomputed bond index
         if (ib < 0) continue; // Should not happen for valid neighbor
 
         float2 param = bonParams[ib]; // { K, l0 }
@@ -210,12 +219,8 @@ __kernel void evalBondsAndHNeigh_UFF(
             int ib_dbg = inbs[in];
             if (ib_dbg == IDBG_BOND){
                 int2 aij = bonAtoms[ib_dbg];
-                printf("[%s][BOND-DOF] ib=%4d ia=%4d ja=%4d  k=% .9e l0=% .9e  l=% .9e dl=% .9e  fr=% .9e  Enb=% .9e  fi=(% .9e % .9e % .9e)  fj=(% .9e % .9e % .9e)  E=% .9e\n",
-                       GPU_PREFIX, ib_dbg, aij.x, aij.y,
-                       (double)k, (double)l0, (double)l, (double)dl, (double)fr, (double)Enb,
-                       (double)fi.x,(double)fi.y,(double)fi.z,
-                       (double)fj.x,(double)fj.y,(double)fj.z,
-                       (double)(E-Enb));
+                printf("GPU BOND %3i : ia=%3i ja=%3i  k=% .4e l0=% .4e  l=% .4e dl=% .4e  fr=% .4e  Enb=% .4e  fi=(% .4e % .4e % .4e)  fj=(% .4e % .4e % .4e)  E=% .4e\n",
+                       ib_dbg, aij.x, aij.y, k, l0, l, dl, fr, Enb, fi.x,fi.y,fi.z, fj.x,fj.y,fj.z, (E-Enb));
             }
         }
 
@@ -277,16 +282,15 @@ __kernel void evalAngles_UFF(
 ) {
     int iang = get_global_id(0);
     if ((DBG_UFF!=0) && iang==0){
-        printf("[%s][ANGL] nangles=%d i0ang=%d Rdamp=% .6e Fmax=% .6e SubNB=%d iDBG=%d\n",
-               GPU_PREFIX, nangles, i0ang, (double)Rdamp, (double)FmaxNonBonded, bSubtractAngleNonBond, IDBG_ANGLE);
-        printf("[%s][ANGL-TABLE]  ia   ja   ka            K          c0          c1          c2          c3\n", GPU_PREFIX);
+        printf("GPU evalAngles_UFF() nangles=%3i i0ang=%3i Rdamp=% .4e Fmax=% .4e SubNB=%d iDBG=%d\n", nangles, i0ang, Rdamp, FmaxNonBonded, bSubtractAngleNonBond, IDBG_ANGLE);
+        printf("GPU ANG-TABLE  ia   ja   ka            K          c0          c1          c2          c3\n");
         int N = (nangles<64)?nangles:64;
         for(int i=0;i<N;i++){
             int ia0=angAtoms[i*3+0], ja0=angAtoms[i*3+1], ka0=angAtoms[i*3+2];
             float4 p1=angParams1[i]; float p3=angParams2_w[i];
-            printf("[%s][ANGL-TABLE] %4d %4d %4d % .9e % .9e % .9e % .9e % .9e\n",
-                   GPU_PREFIX, ia0,ja0,ka0,(double)p1.x,(double)p1.y,(double)p1.z,(double)p1.w,(double)p3);
+            printf("GPU ANG %3i : %3i %3i %3i % .4e % .4e % .4e % .4e % .4e\n", i, ia0,ja0,ka0,p1.x,p1.y,p1.z,p1.w,p3);
         }
+        printf("evalAngles_UFF().eval\n");
     }
     if (iang >= nangles) return;
 
@@ -345,15 +349,14 @@ __kernel void evalAngles_UFF(
     if ((DBG_UFF!=0) && iang==IDBG_ANGLE){
         int ia0=angAtoms[iang*3+0], ja0=angAtoms[iang*3+1], ka0=angAtoms[iang*3+2];
         float theta = acos(clamp(dot(-qij.xyz,qkj.xyz),-1.0f,1.0f));
-        float theta_deg = theta * (180.0f/3.14159265358979323846f);
-        printf("[%s][ANGL-DOF] id=%4d ia=%4d ja=%4d ka=%4d  K=% .9e c0=% .6e c1=% .6e c2=% .6e c3=% .6e  theta=% .9e[deg]  Enb=% .9e  fi=(% .9e % .9e % .9e)  fj=(% .9e % .9e % .9e)  fk=(% .9e % .9e % .9e)  E=% .9e\n",
-               GPU_PREFIX, iang, ia0,ja0,ka0,
-               (double)par1.x,(double)par1.y,(double)par1.z,(double)par1.w,(double)par2_w,
-               (double)theta_deg,(double)Enb,
-               (double)fpi.x,(double)fpi.y,(double)fpi.z,
-               (double)fpj.x,(double)fpj.y,(double)fpj.z,
-               (double)fpk.x,(double)fpk.y,(double)fpk.z,
-               (double)(E-Enb));
+        printf("GPU ANG %3d : ia=%3d ja=%3d ka=%3d  K=% .4e c0=% .4e c1=% .4e c2=% .4e c3=% .4e  ang=% .4e  Enb=% .4e  fi=(% .4e % .4e % .4e)  fj=(% .4e % .4e % .4e)  fk=(% .4e % .4e % .4e)  E=% .4e\n",
+               iang, ia0,ja0,ka0,
+               par1.x,par1.y,par1.z,par1.w,par2_w,
+               theta,Enb,
+               fpi.x,fpi.y,fpi.z,
+               fpj.x,fpj.y,fpj.z,
+               fpk.x,fpk.y,fpk.z,
+               (E-Enb));
     }
     // --- Subtract 1-3 Non-Bonded Interaction ---
     if (bSubtractAngleNonBond != 0) {
@@ -432,12 +435,14 @@ __kernel void evalDihedrals_UFF(
 ) {
     int id = get_global_id(0);
     if ((DBG_UFF!=0) && id==0){
-        printf("[%s][DIH ] ndihedrals=%d i0dih=%d Rdamp=% .6e Fmax=% .6e SubNBFac=% .6e iDBG=%d\n",
-               GPU_PREFIX, ndihedrals, i0dih, (double)Rdamp, (double)FmaxNonBonded, (double)SubNBTorsionFactor, IDBG_DIH);
-        printf("[%s][DIH -TABLE]  ia   ja   ka   la            V           d           n\n", GPU_PREFIX);
-        int N=(ndihedrals<64)?ndihedrals:64; for(int i=0;i<N;i++){ int ia=dihAtoms[i*4+0],ja=dihAtoms[i*4+1],ka=dihAtoms[i*4+2],la=dihAtoms[i*4+3]; float3 p=dihParams[i];
-            printf("[%s][DIH -TABLE] %4d %4d %4d %4d % .9e % .9e % .3f\n", GPU_PREFIX, ia,ja,ka,la, (double)p.x,(double)p.y,(double)p.z);
+        printf("GPU evalDihedrals_UFF() ndihedrals=%d i0dih=%d Rdamp=% .6e Fmax=% .6e SubNBFac=% .6e iDBG=%d\n",
+               ndihedrals, i0dih, Rdamp, FmaxNonBonded, SubNBTorsionFactor, IDBG_DIH);
+        printf("GPU DIH-TABLE  ia   ja   ka   la            V           d           n\n");
+        int N=(ndihedrals<64)?ndihedrals:64; 
+        for(int i=0;i<N;i++){ int ia=dihAtoms[i*4+0],ja=dihAtoms[i*4+1],ka=dihAtoms[i*4+2],la=dihAtoms[i*4+3]; float3 p=dihParams[i];
+            printf("GPU DIH %3d : %3d %3d %3d %3d % .4e % .4e % .3f\n", i, ia,ja,ka,la, p.x,p.y,p.z);
         }
+        printf("GPU evalDihedrals_UFF().eval\n");
     }
     if (id >= ndihedrals) return;
 
@@ -533,16 +538,16 @@ __kernel void evalDihedrals_UFF(
         float3 n234 = cross(-q32.xyz, q43.xyz);
         float n1 = length(n123); float n2 = length(n234);
         float cphi = (n1>1e-12f && n2>1e-12f)? dot(n123,n234)/(n1*n2) : 1.0f; cphi = clamp(cphi,-1.0f,1.0f);
-        float phi = acos(cphi); float phi_deg = phi*(180.0f/3.14159265358979323846f);
+        float phi = acos(cphi);
         float3 par = dihParams[id];
-        printf("[%s][DIH -DOF] id=%4d ia=%4d ja=%4d ka=%4d la=%4d  V=% .9e d=% .9e n=% .3f  phi=% .9e[deg]  Enb=% .9e  fi=(% .9e % .9e % .9e)  fj=(% .9e % .9e % .9e)  fk=(% .9e % .9e % .9e)  fl=(% .9e % .9e % .9e)  E=% .9e\n",
-               GPU_PREFIX, id, ia0,ja0,ka0,la0,
-               (double)par.x,(double)par.y,(double)par.z,
-               (double)phi_deg,(double)Enb,
-               (double)fi.x,(double)fi.y,(double)fi.z,
-               (double)fj.x,(double)fj.y,(double)fj.z,
-               (double)fk.x,(double)fk.y,(double)fk.z,
-               (double)fl.x,(double)fl.y,(double)fl.z,
+        printf("GPU DIH %4d : ia=%4d ja=%4d ka=%4d la=%4d  V=% .4e d=% .4e n=% .3f  phi=% .4e  Enb=% .4e  fi=(% .4e % .4e % .4e)  fj=(% .4e % .4e % .4e)  fk=(% .4e % .4e % .4e)  fl=(% .4e % .4e % .4e)  E=% .4e\n",
+               id, ia0,ja0,ka0,la0,
+               par.x,par.y,par.z,
+               phi,Enb,
+               fi.x,fi.y,fi.z,
+               fj.x,fj.y,fj.z,
+               fk.x,fk.y,fk.z,
+               fl.x,fl.y,fl.z,
                (double)(E-Enb));
     }
     // --- Subtract 1-4 Non-Bonded Interaction ---
@@ -607,11 +612,13 @@ __kernel void evalInversions_UFF(
 ) {
     int ii = get_global_id(0);
     if ((DBG_UFF!=0) && ii==0){
-        printf("[%s][INV ] ninversions=%d i0inv=%d iDBG=%d\n", GPU_PREFIX, ninversions, i0inv, IDBG_INV);
-        printf("[%s][INV -TABLE]  ia   ja   ka   la            K          c0          c1          c2\n", GPU_PREFIX);
-        int N=(ninversions<64)?ninversions:64; for(int i=0;i<N;i++){ int ia=invAtoms[i*4+0],ja=invAtoms[i*4+1],ka=invAtoms[i*4+2],la=invAtoms[i*4+3]; float4 p=invParams[i];
-            printf("[%s][INV -TABLE] %4d %4d %4d %4d % .9e % .9e % .9e % .9e\n", GPU_PREFIX, ia,ja,ka,la,(double)p.x,(double)p.y,(double)p.z,(double)p.w);
+        printf("GPU INV  ninversions=%d i0inv=%d iDBG=%d\n", ninversions, i0inv, IDBG_INV);
+        printf("GPU INV-TABLE  ia   ja   ka   la            K          c0          c1          c2\n");
+        int N=(ninversions<64)?ninversions:64; 
+        for(int i=0;i<N;i++){ int ia=invAtoms[i*4+0],ja=invAtoms[i*4+1],ka=invAtoms[i*4+2],la=invAtoms[i*4+3]; float4 p=invParams[i];
+            printf("GPU INV %3i : ia=%3i ja=%3i ka=%3i la=%3i  K=% .4e c0=% .4e c1=% .4e c2=% .4e\n", i, ia,ja,ka,la,p.x,p.y,p.z,p.w);
         }
+        printf("GPU evalInversions_UFF().eval: \n");
     }
     if (ii >= ninversions) return;
 
@@ -687,16 +694,16 @@ __kernel void evalInversions_UFF(
         float3 n123_dbg = cross(-q21.xyz, -q31.xyz);
         float n1 = length(n123_dbg);
         float s_w = (n1>1e-12f)? -dot(n123_dbg*(1.0f/n1), q41.xyz) : 0.0f; s_w=clamp(s_w,-1.0f,1.0f);
-        float w = asin(s_w); float w_deg = w*(180.0f/3.14159265358979323846f);
-        printf("[%s][INV -DOF] id=%4d ia=%4d ja=%4d ka=%4d la=%4d  K=% .9e c0=% .6e c1=% .6e c2=% .6e  w=% .9e[deg]  fi=(% .9e % .9e % .9e)  fj=(% .9e % .9e % .9e)  fk=(% .9e % .9e % .9e)  fl=(% .9e % .9e % .9e)  E=% .9e\n",
-               GPU_PREFIX, ii, ia0,ja0,ka0,la0,
-               (double)par.x,(double)par.y,(double)par.z,(double)par.w,
-               (double)w_deg,
-               (double)fp1.x,(double)fp1.y,(double)fp1.z,
-               (double)fp2.x,(double)fp2.y,(double)fp2.z,
-               (double)fp3.x,(double)fp3.y,(double)fp3.z,
-               (double)fp4.x,(double)fp4.y,(double)fp4.z,
-               (double)E);
+        float w = asin(s_w);
+        printf("GPU INV %4d : ia=%4d ja=%4d ka=%4d la=%4d  K=% .9e c0=% .6e c1=% .6e c2=% .6e  w=% .9e  fi=(% .9e % .9e % .9e)  fj=(% .9e % .9e % .9e)  fk=(% .9e % .9e % .9e)  fl=(% .9e % .9e % .9e)  E=% .9e\n",
+               ii, ia0,ja0,ka0,la0,
+               par.x,par.y,par.z,par.w,
+               w,
+               fp1.x,fp1.y,fp1.z,
+               fp2.x,fp2.y,fp2.z,
+               fp3.x,fp3.y,fp3.z,
+               fp4.x,fp4.y,fp4.z,
+               E);
     }
 
     // --- Store forces into `fint` array ---
