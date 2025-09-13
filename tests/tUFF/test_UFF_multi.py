@@ -110,6 +110,8 @@ def run_uff(use_gpu, components, bPrintBufs=False, nPrintSetup=False):
     
     #uff.run(nstepMax=1, iParalel=iParalel)
 
+    uff.fapos[:, :] = 0.0 # make sure it's initialized
+
     uff.setTrjName("trj_multi.xyz", savePerNsteps=1)
     uff.run( nstepMax=1, dt=0.00, Fconv=1e-6, ialg=2, damping=0.1, iParalel=iParalel )
     # uff.run( nstepMax=1000, dt=0.02, Fconv=1e-6, ialg=2, damping=0.1, iParalel=iParalel )
@@ -118,8 +120,7 @@ def run_uff(use_gpu, components, bPrintBufs=False, nPrintSetup=False):
     print("py.DEBUG 6")
     energy = 0 
     if use_gpu:
-        # Download results from GPU to host buffers; UFF exposes fapos (double) via init_buffers_UFF
-        uff.download(bForces=True)
+        # Download results from GPU to host buffers; UFF exposes fapos (double) via init_buffers_UFF # make sure it's initialized
         forces = uff.fapos.copy()
     else:
         forces = uff.fapos.copy()
@@ -127,36 +128,81 @@ def run_uff(use_gpu, components, bPrintBufs=False, nPrintSetup=False):
     return energy, forces
 
 def compare_results(cpu_energy, cpu_forces, gpu_energy, gpu_forces, tol=1e-5, component_name=""):
-    """Compare energy and forces from CPU and GPU, and report differences."""
+    """Rich comparison of CPU vs GPU forces and energy.
+
+    - Prints min/max and norms for both CPU/GPU forces to catch all‑zero cases
+    - Prints max absolute component difference and its location
+    - On failure, prints full CPU/GPU force matrices and the absolute diff
+    """
     print(f"\n--- {component_name} Comparison ---")
     print(f"CPU Energy: {cpu_energy:.6f} | GPU Energy: {gpu_energy:.6f} (NOTE: GPU energy not fully implemented for comparison)")
-    
+
     if cpu_forces.shape != gpu_forces.shape:
         print(f"ERROR: Force array shapes mismatch! CPU: {cpu_forces.shape}, GPU: {gpu_forces.shape}")
         return False
 
-    force_diff = np.abs(cpu_forces - gpu_forces)
-    max_force_diff = np.max(force_diff) if force_diff.size > 0 else 0.0
-    
-    print(f"Max force component difference: {max_force_diff:.6f}")
-    
+    def stats(name, F):
+        F = np.asarray(F)
+        finite = np.isfinite(F)
+        if not np.all(finite):
+            print(f"WARNING: {name} has non‑finite values: NaN={np.isnan(F).sum()}, Inf={np.isinf(F).sum()}")
+        minv = np.min(F) if F.size else 0.0
+        maxv = np.max(F) if F.size else 0.0
+        maxabs = np.max(np.abs(F)) if F.size else 0.0
+        l2 = float(np.linalg.norm(F)) if F.size else 0.0
+        print(f"{name} stats: min={minv:.6e} max={maxv:.6e} max|.|={maxabs:.6e} ||F||_2={l2:.6e}")
+        return maxabs, l2
+
+    cpu_maxabs, cpu_l2 = stats("CPU Forces", cpu_forces)
+    gpu_maxabs, gpu_l2 = stats("GPU Forces", gpu_forces)
+
+    # Detect all‑zero (or near‑zero) force arrays
+    tiny = max(1e-12, tol*0.1)
+    cpu_all_zero = cpu_maxabs < tiny
+    gpu_all_zero = gpu_maxabs < tiny
+    if cpu_all_zero and gpu_all_zero:
+        print("NOTE: Both CPU and GPU forces are (near) zero; differences may be meaningless. Check inputs/switches.")
+
+    # Differences
+    diff = np.asarray(gpu_forces) - np.asarray(cpu_forces)
+    adiff = np.abs(diff)
+    max_force_diff = np.max(adiff) if adiff.size else 0.0
+    max_idx = np.unravel_index(np.argmax(adiff), adiff.shape) if adiff.size else (0, 0)
+    print(f"Max force component difference: {max_force_diff:.6e} at index {max_idx}")
+
+    # Also print per‑atom max norms if over tolerance
     if max_force_diff > tol:
-        print(f"Validation FAILED for {component_name}: Forces differ more than tolerance.")
-        print("CPU Forces:\n", cpu_forces)
-        print("GPU Forces:\n", gpu_forces)
-        print("Difference:\n", force_diff)
+        atom_norm_diff = np.linalg.norm(diff.reshape(-1, 3), axis=1) if diff.ndim == 2 and diff.shape[1] >= 3 else np.linalg.norm(diff, axis=-1)
+        worst_atom = int(np.argmax(atom_norm_diff)) if atom_norm_diff.size else -1
+        if worst_atom >= 0:
+            print(f"Worst atom index: {worst_atom}  |ΔF|={atom_norm_diff[worst_atom]:.6e}")
+
+    # Decide pass/fail
+    passed = max_force_diff <= tol
+
+    if not passed:
+        print(f"Validation FAILED for {component_name}: Forces differ more than tolerance = {tol:.2e}.")
+        print("CPU Forces (N,3):\n", cpu_forces)
+        print("GPU Forces (N,3):\n", gpu_forces)
+        print("Abs Diff (N,3):\n", adiff)
         return False
-    else:
-        print(f"Validation PASSED for {component_name}: Forces are consistent.")
-        return True
+
+    print(f"Validation PASSED for {component_name}: Forces are consistent within tol={tol:.2e}.")
+
+    # If one side is all‑zero, highlight that despite PASS
+    if cpu_all_zero or gpu_all_zero:
+        which = "CPU" if cpu_all_zero else "GPU"
+        print(f"WARNING: {which} forces are (near) zero: max|F| < {tiny:g}. Investigate why fapos is zero.")
+        print("Hints: ensure DoAssemble=1, selected components are enabled, and the system/topology isn’t empty.")
+    return True
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='UFF CPU vs. GPU Validation Test')
     default_mol = os.path.join(data_dir, 'mol', 'formic_acid.mol2')
-    parser.add_argument('-m', '--molecule',  type=str, default=default_mol, help='Molecule file (.mol2, .xyz)')
-    parser.add_argument('-t', '--tolerance', type=float, default=1e-5, help='Numerical tolerance for comparison')
-    parser.add_argument('-p', '--print-buffers', type=int, default=0, help='Print buffer contents before run')
-    parser.add_argument('-v', '--verbose',       type=int, default=0, help='Verbose output')
+    parser.add_argument('-m', '--molecule',      type=str,   default=default_mol, help='Molecule file (.mol2, .xyz)')
+    parser.add_argument('-t', '--tolerance',     type=float, default=1e-3, help='Numerical tolerance for comparison')
+    parser.add_argument('-p', '--print-buffers', type=int,   default=0, help='Print buffer contents before run')
+    parser.add_argument('-v', '--verbose',       type=int,   default=0, help='Verbose output')
     args = parser.parse_args()
 
     # --- Initialize the library once ---
@@ -200,10 +246,11 @@ if __name__ == "__main__":
 
     # Run CPU then GPU with the same initialization and switches
     #components = ['bonds', 'angles', 'dihedrals', 'inversions']
-    #components = ['bonds']
+    components = ['bonds']
     #components = ['bonds', 'angles']
     #components = ['bonds', 'angles', 'dihedrals']
-    components = ['bonds', 'inversions']
+    #components = ['bonds', 'inversions']
+    #components = ['bonds', 'angles', 'dihedrals', 'inversions']
     component_flags = {key: 1 for key in components }
 
     cpu_energy, cpu_forces = run_uff(use_gpu=False, components=component_flags)

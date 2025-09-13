@@ -84,6 +84,19 @@ inline float4 getLJQH( float3 dp, float4 REQ, float R2damp ){
 // Kernels (Following C++ Structure Closely)
 // ======================================================
 
+// --- Clear kernels: zero force/energy buffers ---
+__kernel void clear_fapos_UFF(const int n, __global float4* fapos){
+    int i = get_global_id(0);
+    if(i>=n) return;
+    fapos[i] = (float4)(0.f,0.f,0.f,0.f);
+}
+
+__kernel void clear_fint_UFF(const int n, __global float4* fint){
+    int i = get_global_id(0);
+    if(i>=n) return;
+    fint[i] = (float4)(0.f,0.f,0.f,0.f);
+}
+
 // --- Kernel 1: Evaluate Bonds and Calculate H-Neigh vectors (Atom-Centric) ---
 // Corresponds to the loop calling C++ evalAtomBonds
 __kernel void evalBondsAndHNeigh_UFF(
@@ -190,12 +203,14 @@ __kernel void evalBondsAndHNeigh_UFF(
         float l0 = param.y;
         float dl = l - l0;
         float fr = 2.0f * k * dl; // Force magnitude dE/dl
-        float3 f_bond = h * fr; // Force vector ON neighbor `ing`
+        float3 f_bond = h * fr; // Magnitude-direction along (ia->ing)
 
         float E = k * dl * dl; // Harmonic energy E = k*dl^2
 
-        float3 fi = -f_bond; // Force component ON atom `ia` from this bond
-        float3 fj =  f_bond; // Force component ON atom `ing` from this bond
+        // CPU (UFF.h::evalAtomBonds): f set along dp/l and added to fapos[ia]
+        // Therefore, force ON atom ia is +f_bond, and on neighbor ing is -f_bond
+        float3 fi =  f_bond; // Force component ON atom `ia` from this bond
+        float3 fj = -f_bond; // Force component ON atom `ing` from this bond
 
         float Enb = 0.0f;
         // --- Subtract Non-Bonded Interaction ---
@@ -207,11 +222,12 @@ __kernel void evalBondsAndHNeigh_UFF(
             Enb = fnb.w;
             float3 fnb_clamped = clampForce(fnb.xyz, Fmax2);
 
-            // Subtract non-bonded force contribution. fnb.xyz is force ON j FROM i.
-            // f_total_i = f_bond_i - f_nb_i = -f_bond - (-fnb.xyz) = -f_bond + fnb_clamped
-            // f_total_j = f_bond_j - f_nb_j =  f_bond - ( fnb.xyz) =  f_bond - fnb_clamped
-            fi = -f_bond + fnb_clamped;
-            fj =  f_bond - fnb_clamped;
+            // CPU does: f (on ia) -= fnb
+            // Using our convention fi=+f_bond (on ia), fj=-f_bond (on ing):
+            // fi =  f_bond - fnb_clamped
+            // fj = -f_bond + fnb_clamped
+            fi =  f_bond - fnb_clamped;
+            fj = -f_bond + fnb_clamped;
         }
 
         // Per-DOF concise, aligned debug print: only for selected bond index
@@ -228,22 +244,21 @@ __kernel void evalBondsAndHNeigh_UFF(
         float E_contrib = (E - Enb) * 0.5f; // Energy contribution per atom
         E_b += (E - Enb); // Accumulate total bond energy for atom ia
 
-        // Store bond recoil forces into fint
-        {
-            int idx0 = i0bon + ib * 2;
-            int idx1 = idx0 + 1;
-            int2 atoms_ib = bonAtoms[ib];
-            if (atoms_ib.x == ia) {
-                fint[idx0] = (float4)(fi.x, fi.y, fi.z, E_contrib);
-                fint[idx1] = (float4)(fj.x, fj.y, fj.z, E_contrib);
-            } else {
-                fint[idx1] = (float4)(fi.x, fi.y, fi.z, E_contrib);
-                fint[idx0] = (float4)(fj.x, fj.y, fj.z, E_contrib);
-            }
-        }
+        // this is not done in UFF.cl assembleAtomForce, so I don't see why should we do it here. Keep it simple !!!
+        // // Store bond recoil forces into fint
+        // {
+        //     int idx0 = i0bon + ib * 2;
+        //     int idx1 = idx0 + 1;
+        //     int2 atoms_ib = bonAtoms[ib];
+        //     if (atoms_ib.x == ia) {
+        //         fint[idx0] = (float4)(fi.x, fi.y, fi.z, E_contrib);
+        //         fint[idx1] = (float4)(fj.x, fj.y, fj.z, E_contrib);
+        //     } else {
+        //         fint[idx1] = (float4)(fi.x, fi.y, fi.z, E_contrib);
+        //         fint[idx0] = (float4)(fj.x, fj.y, fj.z, E_contrib);
+        //     }
+        // }
     } // End loop over neighbors
-
-
 
 
     // After loop:
@@ -742,6 +757,31 @@ __kernel void assembleForces_UFF(
                                    // If Kernel 1 already added bonds, use bClearForce=0 for fint part.
 ) {
     int ia = get_global_id(0);
+    // Debug dump by a single thread to avoid interleaved prints
+    if ( (DBG_UFF!=0) &&  (ia == 0) ){
+        printf("GPU assembleForces_UFF() ia=%3d natoms=%3d\n", ia, natoms);
+        printf("GPU A2F TABLE natoms=%3d\n", natoms);
+        for (int ia0 = 0; ia0 < natoms; ++ia0) {
+            int off = a2f_offsets[ia0];
+            int cnt = a2f_counts[ia0];
+            float4 f = fapos[ia0];
+            printf("GPU A2F ia=%3d f=( % .6e % .6e % .6e) off=%6d cnt=%4d idxs:", ia0, f.x, f.y, f.z, off, cnt);
+            for (int k = 0; k < cnt; ++k) { int j = a2f_indices[off + k]; printf(" %d", j); }
+            printf("\n");
+        }
+        printf("GPU FINT BY ATOM natoms=%3d\n", natoms);
+        for (int ia0 = 0; ia0 < natoms; ++ia0) {
+            int off = a2f_offsets[ia0];
+            int cnt = a2f_counts[ia0];
+            printf("GPU FINT ia=%3d:", ia0);
+            for (int k = 0; k < cnt; ++k) {
+                int j = a2f_indices[off + k];
+                float4 v = fint[j];
+                printf(" [%3d]( % .6e % .6e % .6e)", j, v.x, v.y, v.z);
+            }
+            printf("\n");
+        }
+    }
     if (ia >= natoms) return;
 
     float3 f_local = (float3){0.0f,0.0f,0.0f}; // Accumulate forces from fint for this atom

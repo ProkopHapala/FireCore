@@ -93,6 +93,8 @@ public:
     OCLtask* task_evalDihedrals = nullptr;
     OCLtask* task_evalInversions= nullptr;
     OCLtask* task_assemble      = nullptr;
+    OCLtask* task_clear_fapos   = nullptr;
+    OCLtask* task_clear_fint    = nullptr;
     bool bKernelPrepared = false;
 
     // ====================== Functions
@@ -104,6 +106,8 @@ public:
         // Create tasks for each kernel
         // TODO: The local work-group sizes (e.g., 32) are hardcoded for now. They should be tuned for optimal performance based on the device and kernel characteristics.
         //                                name                  program  nL nG
+        newTask("clear_fapos_UFF",        program, 1, (size_t4){0,0,0,0}, (size_t4){32,1,1,1} );
+        newTask("clear_fint_UFF",         program, 1, (size_t4){0,0,0,0}, (size_t4){32,1,1,1} );
         newTask("evalBondsAndHNeigh_UFF", program, 1, (size_t4){0,0,0,0}, (size_t4){32,1,1,1} );
         newTask("evalAngles_UFF",         program, 1, (size_t4){0,0,0,0}, (size_t4){32,1,1,1} );
         newTask("evalDihedrals_UFF",      program, 1, (size_t4){0,0,0,0}, (size_t4){32,1,1,1} );
@@ -182,6 +186,7 @@ public:
         int i0ang = i0bon + nBonds * 2;
         int i0dih = i0ang + nAngles * 3;
         int i0inv = i0dih + nDihedrals * 4;
+        int nf_per_system = (nBonds * 2) + (nAngles * 3) + (nDihedrals * 4) + (nInversions * 4);
 
         bKernelPrepared = false;
         // Get task pointers
@@ -190,6 +195,8 @@ public:
         task_evalDihedrals  = getTask("evalDihedrals_UFF");
         task_evalInversions = getTask("evalInversions_UFF");
         task_assemble       = getTask("assembleForces_UFF");
+        task_clear_fapos    = getTask("clear_fapos_UFF");
+        task_clear_fint     = getTask("clear_fint_UFF");
 
         // --- evalBondsAndHNeigh_UFF ---
         if(task_evalBonds){
@@ -218,6 +225,8 @@ public:
             err |= useArgBuff( ibuff_bonAtoms );           OCL_checkError(err, "evalBonds.arg15 bonAtoms");
             err |= useArgBuff( ibuff_hneigh );             OCL_checkError(err, "evalBonds.arg16 hneigh");
             err |= useArgBuff( ibuff_fint );               OCL_checkError(err, "evalBonds.arg17 fint");
+            //int bAssemble = bUFF_assemble ? 1 : 0;
+            //err |= useArg   ( bAssemble );                 OCL_checkError(err, "evalBonds.arg18 bAssemble");
         }
 
         // --- evalAngles_UFF ---
@@ -320,21 +329,43 @@ public:
             err |= useArg   ( bClearForce );               OCL_checkError(err, "assemble.arg7 bClearForce");
         }
 
+        // --- clear_fapos_UFF ---
+        if(task_clear_fapos){
+            int nloc=32;
+            task_clear_fapos->local.x  = nloc;
+            task_clear_fapos->global.x = nAtomsTot + nloc - (nAtomsTot % nloc);
+            useKernel( task_clear_fapos->ikernel );
+            int err=0;
+            err |= useArg   ( nAtomsTot ); OCL_checkError(err, "clear_fapos.arg1 nAtomsTot");
+            err |= useArgBuff( ibuff_fapos ); OCL_checkError(err, "clear_fapos.arg2 fapos");
+        }
+
+        // --- clear_fint_UFF ---
+        if(task_clear_fint){
+            int nloc=32;
+            task_clear_fint->local.x  = nloc;
+            task_clear_fint->global.x = nSystems*nf_per_system + nloc - ((nSystems*nf_per_system) % nloc);
+            useKernel( task_clear_fint->ikernel );
+            int err=0;
+            int nTot = nSystems*nf_per_system;
+            err |= useArg   ( nTot ); OCL_checkError(err, "clear_fint.arg1 nTot");
+            err |= useArgBuff( ibuff_fint ); OCL_checkError(err, "clear_fint.arg2 fint");
+        }
+
         bKernelPrepared = true;
     }
 
     void eval(bool bClearForce = true) {
-        printf("OCL_UFF::eval() bClearForce=%i bUFF_bonds=%i bUFF_angles=%i bUFF_dihedrals=%i bUFF_inversions=%i\n", bClearForce, bUFF_bonds, bUFF_angles, bUFF_dihedrals, bUFF_inversions);
+        printf("OCL_UFF::eval() bClearForce=%i bUFF_bonds=%i bUFF_angles=%i bUFF_dihedrals=%i bUFF_inversions=%i bUFF_assemble=%i\n", bClearForce, bUFF_bonds, bUFF_angles, bUFF_dihedrals, bUFF_inversions, bUFF_assemble);
         // This function enqueues all the kernels for a full UFF evaluation.
         if (bClearForce) {
-            // Enqueue a kernel to zero the force buffers (fapos, fint)
+            if(task_clear_fapos){ task_clear_fapos->enque(); }
+            if(task_clear_fint ){ task_clear_fint ->enque(); }
         }
-        
         if (bUFF_bonds     ){ printf("OCL_UFF::eval().task_evalBonds      \n"); task_evalBonds->enque(); }
         if (bUFF_angles    ){ printf("OCL_UFF::eval().task_evalAngles     \n"); task_evalAngles->enque(); }
         if (bUFF_dihedrals ){ printf("OCL_UFF::eval().task_evalDihedrals  \n"); task_evalDihedrals->enque(); }
         if (bUFF_inversions){ printf("OCL_UFF::eval().task_evalInversions \n"); task_evalInversions->enque(); }
-
         if (bUFF_assemble){ printf("OCL_UFF::eval().task_assemble \n"); task_assemble->enque(); }
         printf("OCL_UFF::eval() DONE");
     }

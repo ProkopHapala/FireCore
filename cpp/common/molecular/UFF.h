@@ -562,6 +562,33 @@ class UFF : public NBFF { public:
 
     __attribute__((hot))  
     void assembleAtomForce(const int ia){
+
+        if( DBG_UFF && (ia==0) ){
+            // Dump per-atom mapping and current fapos before assembly
+            printf("CPU assembleAtomForce() ia=%3d natoms=%3d\n", ia, natoms);
+            printf("CPU A2F TABLE natoms=%3d\n", natoms);
+            for(int ia=0; ia<natoms; ia++){
+                const int off = a2f.cellI0s[ia];
+                const int cnt = a2f.cellNs[ia];
+                const Vec3d f = fapos[ia];
+                printf("CPU A2F ia=%3d f=(% .6e % .6e % .6e) off=%6d cnt=%4d idxs:", ia, f.x, f.y, f.z, off, cnt);
+                for(int k=0;k<cnt;k++){ int j = a2f.cell2obj[off+k]; printf(" %d", j); }
+                printf("\n");
+            }
+            // Dump fint components grouped per atom via mapping
+            printf("CPU FINT BY ATOM natoms=%3d\n", natoms);
+            for(int ia=0; ia<natoms; ia++){
+                const int off = a2f.cellI0s[ia];
+                const int cnt = a2f.cellNs[ia];
+                printf("CPU FINT ia=%3d:", ia);
+                for(int k=0;k<cnt;k++){
+                    int j = a2f.cell2obj[off+k];
+                    const Vec3d v = fint[j];
+                    printf(" [%3d](% .6e % .6e % .6e)", j, v.x, v.y, v.z);
+                }
+                printf("\n");
+            }
+        }
         int i0  = a2f.cellI0s[ia];
         int i1  = i0 + a2f.cellNs[ia];
         Vec3d f = fapos[ia];
@@ -1491,6 +1518,7 @@ class UFF : public NBFF { public:
         double cdamp = colDamp.update( dt );
         const double Fmax2     = FmaxNonBonded*FmaxNonBonded;
         printf( "UFF::run() natoms %i niter %i dt %g Fconv %g Flim %g damping %g \n", natoms, niter, dt, Fconv, Flim, damping );
+        printf( "UFF::run() bDoBond=%i bDoAngle=%i bDoDihedral=%i bDoInversion=%i bDoAssemble=%i\n", bDoBond, bDoAngle, bDoDihedral, bDoInversion, bDoAssemble);
         //printf( "UFF::run(niter=%i,bCol(B=%i,A=%i,NB=%i)) dt %g damp(cM=%g,cB=%g,cA=%g,cNB=%g)\n", niter, colDamp.bBond, colDamp.bAng, colDamp.bNonB, dt, 1-cdamp, colDamp.cdampB*dt, colDamp.cdampAng*dt, colDamp.cdampNB*dt );
         //setNonBondStrategy();
 

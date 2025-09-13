@@ -194,8 +194,14 @@ void setSwitchesUFF( int DoBond, int DoAngle, int DoDihedral, int DoInversion, i
         _setbool( W.uff_ocl->bUFF_angles,     DoAngle );
         _setbool( W.uff_ocl->bUFF_dihedrals,  DoDihedral );
         _setbool( W.uff_ocl->bUFF_inversions, DoInversion );
+        _setbool( W.uff_ocl->bUFF_assemble,   DoAssemble );
         _setbool( W.uff_ocl->bSubtractNB,     SubtractBondNonBond );
         _setbool( W.uff_ocl->bClampNonBonded, ClampNonBonded );
+        // If any higher-order interactions are enabled, force assembly on GPU
+        // Angle/dihedral/inversion kernels are interaction-centric and do not safely accumulate to fapos directly.
+        // if( (W.uff_ocl->bUFF_angles || W.uff_ocl->bUFF_dihedrals || W.uff_ocl->bUFF_inversions) ){
+        //     W.uff_ocl->bUFF_assemble = true;
+        // }
     }
     _setbool( W.ffu.bDoBond,              DoBond );
     _setbool( W.ffu.bDoAngle,             DoAngle );
@@ -215,6 +221,7 @@ void setSwitchesUFF( int DoBond, int DoAngle, int DoDihedral, int DoInversion, i
     W.uff_ocl->bSubtractNB_angle  = W.ffu.bSubtractAngleNonBond && W.ffu.bNonBonded;
     W.uff_ocl->bClampNonBonded    = W.ffu.bClampNonBonded    && W.ffu.bNonBonded;
     printf( "setSwitchesUFF() DoBond=%i DoAngle=%i DoDihedral=%i DoInversion=%i DoAssemble=%i SubtractBondNonBond=%i ClampNonBonded=%i \n", W.ffu.bDoBond, W.ffu.bDoAngle, W.ffu.bDoDihedral, W.ffu.bDoInversion, W.ffu.bDoAssemble, W.ffu.bSubtractBondNonBond, W.ffu.bClampNonBonded );
+    if(W.uff_ocl){ printf("GPU flags: bUFF_bonds=%i bUFF_angles=%i bUFF_dihedrals=%i bUFF_inversions=%i bUFF_assemble=%i\n", W.uff_ocl->bUFF_bonds, W.uff_ocl->bUFF_angles, W.uff_ocl->bUFF_dihedrals, W.uff_ocl->bUFF_inversions, W.uff_ocl->bUFF_assemble ); }
     #undef _setbool
 }
 
@@ -237,7 +244,8 @@ int run( int nstepMax, double dt, double Fconv, int ialg, double damping, double
                 W.pack_uff_system( 0, W.ffu, true,   false,  false,   true   );
                 W.upload_uff     (           true,   false,  false,   true   );
                 double Etot = W.eval_UFF_ocl( nstepMax );
-                W.download_uff( true, false );
+                W.download_uff( true, false );            // fills W.atoms and W.aforces from GPU
+                W.unpack_uff_system( 0, W.ffu, true, false ); // propagate W.aforces -> W.ffu.fapos (and positions)
                 if(outE){ outE[0] = Etot; }
                 nitrdione = nstepMax; 
                 break;
