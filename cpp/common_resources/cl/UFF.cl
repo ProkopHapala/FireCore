@@ -687,8 +687,8 @@ __kernel void evalInversions_UFF(
         // Forces based on C++ evalInversion_Prokop
         float3 tq = s_w*fi123*n123 + fi123*q41.xyz; // Check sign of q41.xyz term? C++ uses +q41.f
         fp4 = fq41*n123 + s_w*fq41*q41.xyz;       // Check sign of q41.xyz term? C++ uses +q41.f
-        fp2 = cross(-q31.xyz, tq) * q21.w;        // cross(ik, tq) / l_ji. Check cross order vs C++?
-        fp3 = cross(tq, -q21.xyz) * q31.w;        // cross(tq, ij) / l_ki. Check cross order vs C++?
+        fp2 = cross( q31.xyz, tq) * q21.w;        // CPU: fp2 = cross(q31, tq) * q21.e
+        fp3 = cross( tq, q21.xyz) * q31.w;        // CPU: fp3 = cross(tq, q21) * q31.e
         fp1 = -(fp2 + fp3 + fp4);                 // Force on central atom i(1)
     } // End of inlined evalInversionUFF block
 

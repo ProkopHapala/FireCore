@@ -202,8 +202,8 @@ if __name__ == "__main__":
     #components = ['bonds', 'angles', 'dihedrals', 'inversions']
     #components = ['bonds']
     #components = ['bonds', 'angles']
-    components = ['bonds', 'angles', 'dihedrals']
-    #components = ['bonds', 'inversions']
+    #components = ['bonds', 'angles', 'dihedrals']
+    components = ['bonds', 'inversions']
     component_flags = {key: 1 for key in components }
 
     cpu_energy, cpu_forces = run_uff(use_gpu=False, components=component_flags)
