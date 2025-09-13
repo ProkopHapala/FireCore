@@ -111,7 +111,7 @@ __kernel void evalBondsAndHNeigh_UFF(
     int ia = get_global_id(0);
     // Header print by a single work-item to avoid async interleaving
     if ((DBG_UFF!=0) && ia==0){
-        printf("GPU evalBondsAndHNeigh_UFF() natoms=%d npbc=%d i0bon=%d Rdamp=% .6e Fmax=% .6e SubNB=%d iDBG=%d\n", natoms, npbc, i0bon, Rdamp, FmaxNonBonded, bSubtractBondNonBond, IDBG_BOND);
+        printf("GPU evalBondsAndHNeigh_UFF() natoms=%d npbc=%d i0bon=%d Rdamp=% .6e Fmax=% .6e bSubtractBondNonBond=%d iDBG=%d\n", natoms, npbc, i0bon, Rdamp, FmaxNonBonded, bSubtractBondNonBond, IDBG_BOND);
         // Print first 64 bond parameter rows on one line per bond (safe upper bound without host arg)
         printf("GPU BOND-TABLE  ib   ia   ja           K           l0\n");
 
@@ -126,13 +126,13 @@ __kernel void evalBondsAndHNeigh_UFF(
         for (int ia=0; ia<natoms; ++ia){
             int4 ng = neighs[ia];
             int4 ngC= neighCell[ia];
-            printf("GPU ATOM %3d : ng={%3d,%3d,%3d,%3d} ngC={%3d,%3d,%3d,%3d}", ia, ng.x, ng.y, ng.z, ng.w, ngC.x, ngC.y, ngC.z, ngC.w);
+            printf("GPU ATOM %3d : ng={%3d,%3d,%3d,%3d} ngC={%3d,%3d,%3d,%3d} pos{%8.4f,%8.4f,%8.4f} ", ia, ng.x, ng.y, ng.z, ng.w, ngC.x, ngC.y, ngC.z, ngC.w, apos[ia].x, apos[ia].y, apos[ia].z);
             for(int in=0; in<4; ++in){
                 int ing = ng[in];
                 if(ing<0) break;
                 // bond params
                 float2 bp = bonParams[ing];
-                printf(" k,l[%i](  % .4e , % .4e )", in, bp.x, bp.y);
+                printf(" k,l[%i](%8.4f,%8.4f)", in, bp.x, bp.y);
             }
             printf("\n");
         }

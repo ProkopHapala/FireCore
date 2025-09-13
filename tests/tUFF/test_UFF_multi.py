@@ -96,7 +96,7 @@ def run_uff(use_gpu, components, bPrintBufs=False, nPrintSetup=False):
         DoDihedral  =components.get( 'dihedrals',  -1 ),
         DoInversion =components.get( 'inversions', -1 ),
         DoAssemble          =  1,
-        SubtractBondNonBond = -1, # This is usually needed for UFF
+        SubtractBondNonBond = -1,
         ClampNonBonded      = -1
     )
 
@@ -125,7 +125,7 @@ def run_uff(use_gpu, components, bPrintBufs=False, nPrintSetup=False):
         uff.print_setup()
 
     uff.setTrjName("trj_multi.xyz", savePerNsteps=1)
-    uff.run( nstepMax=1, dt=0.02, Fconv=1e-6, ialg=2, damping=0.1, iParalel=iParalel )
+    uff.run( nstepMax=1, dt=0.00, Fconv=1e-6, ialg=2, damping=0.1, iParalel=iParalel )
     # uff.run( nstepMax=1000, dt=0.02, Fconv=1e-6, ialg=2, damping=0.1, iParalel=iParalel )
     #uff.run( nstepMax=10000, dt=0.01, Fconv=1e-6, ialg=2, damping=0.1, iParalel=iParalel )
     #uff.run( nstepMax=1, dt=0.02, Fconv=1e-6, ialg=2, damping=0.1, iParalel=iParalel )

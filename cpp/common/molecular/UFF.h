@@ -685,20 +685,20 @@ class UFF : public NBFF { public:
         const double R2damp = Rdamp*Rdamp;
         const double Fmax2  = FmaxNonBonded*FmaxNonBonded;
         if(DBG_UFF!=0){
-            printf("CPU evalBonds natoms=%d nbonds=%d i0bon=%d Rdamp=% .6e Fmax=% .6e SubNB=%d iDBG=%d\n", natoms, nbonds, i0bon, Rdamp, FmaxNonBonded, (int)bSubtractBondNonBond, iDBG_bond );
+            printf("CPU evalBonds natoms=%d nbonds=%d i0bon=%d Rdamp=% .6e Fmax=% .6e bSubtractBondNonBond=%d bClampNonBonded=%d iDBG=%d\n", natoms, nbonds, i0bon, Rdamp, FmaxNonBonded, bSubtractBondNonBond, bClampNonBonded, iDBG_bond );
             printf("CPU ATOM-TABLE   ia   ng   ngC   [k,l]... \n");
             //if(N>64) N=64;
             //for(int ib=0; ib<N; ++ib){ Vec2i a=bonAtoms[ib]; Vec2d p=bonParams[ib]; printf("CPU BOND ib=%3d ia=%3d ja=%3d % .4e % .4e\n", ib, a.x, a.y, p.x, p.y); }
             for (int ia=0; ia<natoms; ++ia){
                 Quat4i ng = neighs[ia];
                 Quat4i ngC= neighCell[ia];
-                printf("CPU ATOM %3d : ng={%2d,%2d,%2d,%2d} ngC={%2d,%2d,%2d,%2d}", ia, ng.x, ng.y, ng.z, ng.w, ngC.x, ngC.y, ngC.z, ngC.w);
+                printf("CPU ATOM %3d : ng={%2d,%2d,%2d,%2d} ngC={%2d,%2d,%2d,%2d} pos{%8.4f,%8.4f,%8.4f} ", ia, ng.x, ng.y, ng.z, ng.w, ngC.x, ngC.y, ngC.z, ngC.w, apos[ia].x, apos[ia].y, apos[ia].z);
                 for(int in=0; in<4; ++in){
                     int ing = ng.array[in];
                     if(ing<0) break;
                     // bond params
                     Vec2d bp = bonParams[ing];
-                    printf(" k,l[%i](  % .4e , % .4e )", in, bp.x, bp.y);
+                    printf(" k,l[%i](%8.4f,%8.4f)", in, bp.x, bp.y);
                 }
                 printf("\n");
             }

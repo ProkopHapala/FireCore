@@ -202,7 +202,14 @@ void setSwitchesUFF( int DoBond, int DoAngle, int DoDihedral, int DoInversion, i
     _setbool( W.ffu.bDoAssemble,          DoAssemble );
     _setbool( W.ffu.bSubtractBondNonBond, SubtractBondNonBond );
     _setbool( W.ffu.bClampNonBonded,      ClampNonBonded );
-    printf( "setSwitchesUFF() DoBond=%i DoAngle=%i DoDihedral=%i DoInversion=%i DoAssemble=%i SubtractBondNonBond=%i ClampNonBonded=%i \n", DoBond, DoAngle, DoDihedral, DoInversion, DoAssemble, SubtractBondNonBond, ClampNonBonded );
+    // Enforce a consistent non-bond strategy on CPU to avoid UFF::run() flipping flags implicitly
+    // Map: SubtractBondNonBond==1 -> imode<0 (no neighbor culling, subtract+clamp)
+    //      SubtractBondNonBond==0 -> imode>0 (neighbor-based, no subtract, no clamp)
+    W.ffu.setNonBondStrategy( !W.ffu.bSubtractBondNonBond );
+    // Propagate the final CPU flags to GPU so kernels match CPU behavior
+    W.uff_ocl->bSubtractNB     = W.ffu.bSubtractBondNonBond;
+    W.uff_ocl->bClampNonBonded = W.ffu.bClampNonBonded;
+    printf( "setSwitchesUFF() DoBond=%i DoAngle=%i DoDihedral=%i DoInversion=%i DoAssemble=%i SubtractBondNonBond=%i ClampNonBonded=%i \n", W.ffu.bDoBond, W.ffu.bDoAngle, W.ffu.bDoDihedral, W.ffu.bDoInversion, W.ffu.bDoAssemble, W.ffu.bSubtractBondNonBond, W.ffu.bClampNonBonded );
     #undef _setbool
 }
 
@@ -223,9 +230,9 @@ int run( int nstepMax, double dt, double Fconv, int ialg, double damping, double
             case 2:  { // GPU paths (evaluate UFF via OpenCL kernels)
                 //                           bParams bForces  bVel    bLvec
                 W.pack_uff_system( 0, W.ffu, true,   false,  false,   true   );
-                W.upload         (           true,   false,  false,   true   );
+                W.upload_uff     (           true,   false,  false,   true   );
                 double Etot = W.eval_UFF_ocl( nstepMax );
-                W.download( true, false );
+                W.download_uff( true, false );
                 if(outE){ outE[0] = Etot; }
                 nitrdione = nstepMax; 
                 break;

@@ -169,12 +169,12 @@ public:
         if(nInversions_>0)ibuff_Ei = newBuffer("Ei_contrib", nSystems * nInversions_,sizeof(cl_float), 0, CL_MEM_WRITE_ONLY);
     }
 
-    void setup_kernels() {
+    void setup_kernels( float Rdamp, float FmaxNonBonded, float SubNBTorsionFactor ) {
         printf("OCL_UFF::setup_kernels()\n");
         // Common temporary scalars; TODO wire from UFF host
-        float Rdamp = 0.0f;
-        float FmaxNonBonded = 1e6f;
-        float SubNBTorsionFactor = 0.0f;
+        //float Rdamp              = 0.0f;
+        //float FmaxNonBonded      = 1e6f;
+        //float SubNBTorsionFactor = 0.0f;
 
         // Compute offsets into fint buffer
         int i0bon = 0;
