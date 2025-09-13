@@ -1290,8 +1290,9 @@ virtual void setConstrains(bool bClear=true, double Kfix=1.0 ){
 virtual int paralel_size( )override{ return nSystems; }
 
 double eval_UFF_ocl( int niter=1 ){
+    printf("MolWorld_sp3_multi::eval_UFF_ocl()\n");
     if(!bUFF) return 0.0;
-    if(!uff_ocl->task_evalBonds) uff_ocl->setup_kernels(); // setup kernels if not done yet
+    if(!uff_ocl->bKernelPrepared) uff_ocl->setup_kernels(); // setup kernels if not done yet
     for(int i=0; i<niter; i++){
         uff_ocl->eval();
     }

@@ -69,6 +69,28 @@ inline float4 getLJQH( float3 dp, float4 REQ, float R2damp ){
 // inline float2 udiv_cmplx( float2 a, float2 b ){ return (float2)( a.x*b.x + a.y*b.y,  a.y*b.x - a.x*b.y ); }
 
 // ======================================================
+// Debug Controls (compile-time macros)
+// ======================================================
+// Enable concise debug prints without changing C++ host interface.
+#ifndef DBG_UFF
+#define DBG_UFF 0            // 0/1 master switch
+#endif
+#ifndef IDBG_BOND
+#define IDBG_BOND (-1)       // bond index to trace (global bond id), -1 disables
+#endif
+#ifndef IDBG_ANGLE
+#define IDBG_ANGLE (-1)      // angle index to trace
+#endif
+#ifndef IDBG_DIH
+#define IDBG_DIH (-1)        // dihedral index to trace
+#endif
+#ifndef IDBG_INV
+#define IDBG_INV (-1)        // inversion index to trace
+#endif
+
+#define GPU_PREFIX "GPU"
+
+// ======================================================
 // Kernels (Following C++ Structure Closely)
 // ======================================================
 
@@ -97,6 +119,16 @@ __kernel void evalBondsAndHNeigh_UFF(
     //__global float*  Eb_contrib   // Output: [natoms] Optional per-atom energy contribution buffer
 ) {
     int ia = get_global_id(0);
+    // Header print by a single work-item to avoid async interleaving
+    if ((DBG_UFF!=0) && ia==0){
+        printf("[%s][BOND] natoms=%d npbc=%d i0bon=%d Rdamp=% .6e Fmax=% .6e SubNB=%d iDBG=%d\n",
+               GPU_PREFIX, natoms, npbc, i0bon, (double)Rdamp, (double)FmaxNonBonded, bSubtractBondNonBond, IDBG_BOND);
+        // Print first 64 bond parameter rows on one line per bond (safe upper bound without host arg)
+        printf("[%s][BOND-TABLE]   ib   ia   ja           K           l0\n", GPU_PREFIX);
+        for(int ib=0; ib<64; ++ib){ int2 a = bonAtoms[ib]; float2 p = bonParams[ib];
+            printf("[%s][BOND-TABLE] %4d %4d %4d % .9e % .9e\n", GPU_PREFIX, ib, a.x, a.y, (double)p.x, (double)p.y);
+        }
+    }
     if (ia >= natoms) return;
 
     float E_b = 0.0f; // Accumulate bond energy for this atom
@@ -173,6 +205,20 @@ __kernel void evalBondsAndHNeigh_UFF(
             fj =  f_bond - fnb_clamped;
         }
 
+        // Per-DOF concise, aligned debug print: only for selected bond index
+        if (DBG_UFF!=0){
+            int ib_dbg = inbs[in];
+            if (ib_dbg == IDBG_BOND){
+                int2 aij = bonAtoms[ib_dbg];
+                printf("[%s][BOND-DOF] ib=%4d ia=%4d ja=%4d  k=% .9e l0=% .9e  l=% .9e dl=% .9e  fr=% .9e  Enb=% .9e  fi=(% .9e % .9e % .9e)  fj=(% .9e % .9e % .9e)  E=% .9e\n",
+                       GPU_PREFIX, ib_dbg, aij.x, aij.y,
+                       (double)k, (double)l0, (double)l, (double)dl, (double)fr, (double)Enb,
+                       (double)fi.x,(double)fi.y,(double)fi.z,
+                       (double)fj.x,(double)fj.y,(double)fj.z,
+                       (double)(E-Enb));
+            }
+        }
+
         ftot += fi;
         float E_contrib = (E - Enb) * 0.5f; // Energy contribution per atom
         E_b += (E - Enb); // Accumulate total bond energy for atom ia
@@ -230,6 +276,18 @@ __kernel void evalAngles_UFF(
     __global float*  Ea_contrib   // Output: [nangles] Optional per-angle energy buffer
 ) {
     int iang = get_global_id(0);
+    if ((DBG_UFF!=0) && iang==0){
+        printf("[%s][ANGL] nangles=%d i0ang=%d Rdamp=% .6e Fmax=% .6e SubNB=%d iDBG=%d\n",
+               GPU_PREFIX, nangles, i0ang, (double)Rdamp, (double)FmaxNonBonded, bSubtractAngleNonBond, IDBG_ANGLE);
+        printf("[%s][ANGL-TABLE]  ia   ja   ka            K          c0          c1          c2          c3\n", GPU_PREFIX);
+        int N = (nangles<64)?nangles:64;
+        for(int i=0;i<N;i++){
+            int ia0=angAtoms[i*3+0], ja0=angAtoms[i*3+1], ka0=angAtoms[i*3+2];
+            float4 p1=angParams1[i]; float p3=angParams2_w[i];
+            printf("[%s][ANGL-TABLE] %4d %4d %4d % .9e % .9e % .9e % .9e % .9e\n",
+                   GPU_PREFIX, ia0,ja0,ka0,(double)p1.x,(double)p1.y,(double)p1.z,(double)p1.w,(double)p3);
+        }
+    }
     if (iang >= nangles) return;
 
     // --- Get Data ---
@@ -241,6 +299,9 @@ __kernel void evalAngles_UFF(
     int2 ngs = angNgs[iang];         // Precomputed hneigh indices {ji, kj}
     float4 qij = hneigh[ngs.x]; // h-vector for j->i {hij, 1/lij}
     float4 qkj = hneigh[ngs.y]; // h-vector for j->k {hkj, 1/lkj}
+
+    // Non-bonded energy placeholder for debug printing
+    float Enb = 0.0f;
 
     float4 par1 = angParams1[iang];
     float  par2_w = angParams2_w[iang]; // c3
@@ -281,7 +342,19 @@ __kernel void evalAngles_UFF(
         fpj = -(fpi + fpk); // Force on j by Newton's third law
     } // End of inlined evalAngleUFF block
 
-    float Enb = 0.0f;
+    if ((DBG_UFF!=0) && iang==IDBG_ANGLE){
+        int ia0=angAtoms[iang*3+0], ja0=angAtoms[iang*3+1], ka0=angAtoms[iang*3+2];
+        float theta = acos(clamp(dot(-qij.xyz,qkj.xyz),-1.0f,1.0f));
+        float theta_deg = theta * (180.0f/3.14159265358979323846f);
+        printf("[%s][ANGL-DOF] id=%4d ia=%4d ja=%4d ka=%4d  K=% .9e c0=% .6e c1=% .6e c2=% .6e c3=% .6e  theta=% .9e[deg]  Enb=% .9e  fi=(% .9e % .9e % .9e)  fj=(% .9e % .9e % .9e)  fk=(% .9e % .9e % .9e)  E=% .9e\n",
+               GPU_PREFIX, iang, ia0,ja0,ka0,
+               (double)par1.x,(double)par1.y,(double)par1.z,(double)par1.w,(double)par2_w,
+               (double)theta_deg,(double)Enb,
+               (double)fpi.x,(double)fpi.y,(double)fpi.z,
+               (double)fpj.x,(double)fpj.y,(double)fpj.z,
+               (double)fpk.x,(double)fpk.y,(double)fpk.z,
+               (double)(E-Enb));
+    }
     // --- Subtract 1-3 Non-Bonded Interaction ---
     if (bSubtractAngleNonBond != 0) {
         // Needs REQs, apos, pbc_shifts, neighs, neighCell passed
@@ -358,6 +431,14 @@ __kernel void evalDihedrals_UFF(
     __global float*  Ed_contrib   // Output: [ndihedrals] Optional per-dihedral energy buffer
 ) {
     int id = get_global_id(0);
+    if ((DBG_UFF!=0) && id==0){
+        printf("[%s][DIH ] ndihedrals=%d i0dih=%d Rdamp=% .6e Fmax=% .6e SubNBFac=% .6e iDBG=%d\n",
+               GPU_PREFIX, ndihedrals, i0dih, (double)Rdamp, (double)FmaxNonBonded, (double)SubNBTorsionFactor, IDBG_DIH);
+        printf("[%s][DIH -TABLE]  ia   ja   ka   la            V           d           n\n", GPU_PREFIX);
+        int N=(ndihedrals<64)?ndihedrals:64; for(int i=0;i<N;i++){ int ia=dihAtoms[i*4+0],ja=dihAtoms[i*4+1],ka=dihAtoms[i*4+2],la=dihAtoms[i*4+3]; float3 p=dihParams[i];
+            printf("[%s][DIH -TABLE] %4d %4d %4d %4d % .9e % .9e % .3f\n", GPU_PREFIX, ia,ja,ka,la, (double)p.x,(double)p.y,(double)p.z);
+        }
+    }
     if (id >= ndihedrals) return;
 
     // --- Get Data ---
@@ -366,6 +447,9 @@ __kernel void evalDihedrals_UFF(
     int ja = dihAtoms[i4a + 1]; // Atom j
     int ka = dihAtoms[i4a + 2]; // Atom k
     int la = dihAtoms[i4a + 3]; // Atom l
+
+    // Non-bonded energy placeholder for debug printing (used before subtraction block)
+    float Enb = 0.0f;
 
     // Get precomputed hneigh indices {ji, kj, lk}
     int3 ngs = ((__global int3*)dihNgs)[id]; // Read as int3
@@ -442,8 +526,25 @@ __kernel void evalDihedrals_UFF(
         }
     } // End of inlined evalDihedralUFF block
 
-
-    float Enb = 0.0f;
+    if ((DBG_UFF!=0) && id==IDBG_DIH){
+        int ia0=dihAtoms[id*4+0], ja0=dihAtoms[id*4+1], ka0=dihAtoms[id*4+2], la0=dihAtoms[id*4+3];
+        // reconstruct cos(phi) as c computed above; if degenerate, set to 1
+        float3 n123 = cross(-q12.xyz, q32.xyz);
+        float3 n234 = cross(-q32.xyz, q43.xyz);
+        float n1 = length(n123); float n2 = length(n234);
+        float cphi = (n1>1e-12f && n2>1e-12f)? dot(n123,n234)/(n1*n2) : 1.0f; cphi = clamp(cphi,-1.0f,1.0f);
+        float phi = acos(cphi); float phi_deg = phi*(180.0f/3.14159265358979323846f);
+        float3 par = dihParams[id];
+        printf("[%s][DIH -DOF] id=%4d ia=%4d ja=%4d ka=%4d la=%4d  V=% .9e d=% .9e n=% .3f  phi=% .9e[deg]  Enb=% .9e  fi=(% .9e % .9e % .9e)  fj=(% .9e % .9e % .9e)  fk=(% .9e % .9e % .9e)  fl=(% .9e % .9e % .9e)  E=% .9e\n",
+               GPU_PREFIX, id, ia0,ja0,ka0,la0,
+               (double)par.x,(double)par.y,(double)par.z,
+               (double)phi_deg,(double)Enb,
+               (double)fi.x,(double)fi.y,(double)fi.z,
+               (double)fj.x,(double)fj.y,(double)fj.z,
+               (double)fk.x,(double)fk.y,(double)fk.z,
+               (double)fl.x,(double)fl.y,(double)fl.z,
+               (double)(E-Enb));
+    }
     // --- Subtract 1-4 Non-Bonded Interaction ---
     if (SubNBTorsionFactor > 1e-6f) {
         // Needs REQs, apos, pbc_shifts, neighs, neighCell passed
@@ -505,6 +606,13 @@ __kernel void evalInversions_UFF(
     __global float*  Ei_contrib   // Output: [ninversions] Optional per-inversion energy buffer
 ) {
     int ii = get_global_id(0);
+    if ((DBG_UFF!=0) && ii==0){
+        printf("[%s][INV ] ninversions=%d i0inv=%d iDBG=%d\n", GPU_PREFIX, ninversions, i0inv, IDBG_INV);
+        printf("[%s][INV -TABLE]  ia   ja   ka   la            K          c0          c1          c2\n", GPU_PREFIX);
+        int N=(ninversions<64)?ninversions:64; for(int i=0;i<N;i++){ int ia=invAtoms[i*4+0],ja=invAtoms[i*4+1],ka=invAtoms[i*4+2],la=invAtoms[i*4+3]; float4 p=invParams[i];
+            printf("[%s][INV -TABLE] %4d %4d %4d %4d % .9e % .9e % .9e % .9e\n", GPU_PREFIX, ia,ja,ka,la,(double)p.x,(double)p.y,(double)p.z,(double)p.w);
+        }
+    }
     if (ii >= ninversions) return;
 
     // --- Get Data ---
@@ -573,6 +681,23 @@ __kernel void evalInversions_UFF(
         fp3 = cross(tq, -q21.xyz) * q31.w;        // cross(tq, ij) / l_ki. Check cross order vs C++?
         fp1 = -(fp2 + fp3 + fp4);                 // Force on central atom i(1)
     } // End of inlined evalInversionUFF block
+
+    if ((DBG_UFF!=0) && ii==IDBG_INV){
+        int ia0=invAtoms[ii*4+0], ja0=invAtoms[ii*4+1], ka0=invAtoms[ii*4+2], la0=invAtoms[ii*4+3];
+        float3 n123_dbg = cross(-q21.xyz, -q31.xyz);
+        float n1 = length(n123_dbg);
+        float s_w = (n1>1e-12f)? -dot(n123_dbg*(1.0f/n1), q41.xyz) : 0.0f; s_w=clamp(s_w,-1.0f,1.0f);
+        float w = asin(s_w); float w_deg = w*(180.0f/3.14159265358979323846f);
+        printf("[%s][INV -DOF] id=%4d ia=%4d ja=%4d ka=%4d la=%4d  K=% .9e c0=% .6e c1=% .6e c2=% .6e  w=% .9e[deg]  fi=(% .9e % .9e % .9e)  fj=(% .9e % .9e % .9e)  fk=(% .9e % .9e % .9e)  fl=(% .9e % .9e % .9e)  E=% .9e\n",
+               GPU_PREFIX, ii, ia0,ja0,ka0,la0,
+               (double)par.x,(double)par.y,(double)par.z,(double)par.w,
+               (double)w_deg,
+               (double)fp1.x,(double)fp1.y,(double)fp1.z,
+               (double)fp2.x,(double)fp2.y,(double)fp2.z,
+               (double)fp3.x,(double)fp3.y,(double)fp3.z,
+               (double)fp4.x,(double)fp4.y,(double)fp4.z,
+               (double)E);
+    }
 
     // --- Store forces into `fint` array ---
     float E_contrib = E * 0.25f;

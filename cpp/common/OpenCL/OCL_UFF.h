@@ -32,6 +32,7 @@ public:
     bool bUFF_angles     = true;
     bool bUFF_dihedrals  = true;
     bool bUFF_inversions = true;
+    bool bUFF_assemble   = true;
     bool bSubtractNB     = true; // Subtract 1-3 and 1-4 non-bonded interactions
     bool bClampNonBonded = true;
 
@@ -70,6 +71,11 @@ public:
     int ibuff_invNgs    = -1; // Precomputed inversion neighbor indices in hneigh
     int ibuff_invParams = -1; // Inversion parameters {K, c0, c1, c2}
 
+    // Optional per-interaction energy contributions
+    int ibuff_Ea = -1; // per-angle energies [nSystems*nAngles]
+    int ibuff_Ed = -1; // per-dihedral energies [nSystems*nDihedrals]
+    int ibuff_Ei = -1; // per-inversion energies [nSystems*nInversions]
+
     // Atom-to-Force mapping buffers for assembly
     int ibuff_a2f_offsets = -1;
     int ibuff_a2f_counts  = -1;
@@ -86,6 +92,7 @@ public:
     OCLtask* task_evalDihedrals = nullptr;
     OCLtask* task_evalInversions= nullptr;
     OCLtask* task_assemble      = nullptr;
+    bool bKernelPrepared = false;
 
     // ====================== Functions
 
@@ -93,7 +100,6 @@ public:
         char srcpath[1024];
         sprintf(srcpath, "%s/UFF.cl", cl_src_dir);
         buildProgram(srcpath, program); // Assuming 'program' is the member from OCL base class
-
         // Create tasks for each kernel
         // TODO: The local work-group sizes (e.g., 32) are hardcoded for now. They should be tuned for optimal performance based on the device and kernel characteristics.
         //                                name                  program  nL nG
@@ -102,13 +108,7 @@ public:
         newTask("evalDihedrals_UFF",      program, 1, (size_t4){0,0,0,0}, (size_t4){32,1,1,1} );
         newTask("evalInversions_UFF",     program, 1, (size_t4){0,0,0,0}, (size_t4){32,1,1,1} );
         newTask("assembleForces_UFF",     program, 1, (size_t4){0,0,0,0}, (size_t4){32,1,1,1} );
-
-        // Get task pointers
-        task_evalBonds      = getTask("evalBondsAndHNeigh_UFF");
-        task_evalAngles     = getTask("evalAngles_UFF");
-        task_evalDihedrals  = getTask("evalDihedrals_UFF");
-        task_evalInversions = getTask("evalInversions_UFF");
-        task_assemble       = getTask("assembleForces_UFF");
+        bKernelPrepared = false;
     }
 
     void realloc(int nSystems_, int nAtoms_, int nBonds_, int nAngles_, int nDihedrals_, int nInversions_, int nPBC_, int nA2F_) {
@@ -167,30 +167,180 @@ public:
         ibuff_pbcshifts   = newBuffer("pbcshifts",   nSystems * nPBC_safe, sizeof(cl_float4), 0, CL_MEM_READ_ONLY);
         ibuff_lvecs       = newBuffer("lvecs",       nSystems,        sizeof(cl_Mat3),   0, CL_MEM_READ_ONLY);
         ibuff_energies    = newBuffer("energies",    nSystems * 5,    sizeof(cl_float),  0, CL_MEM_WRITE_ONLY); // E_b, E_a, E_d, E_i, E_tot
+
+        // Optional energy contributions per interaction
+        if(nAngles_>0)    ibuff_Ea = newBuffer("Ea_contrib", nSystems * nAngles_,    sizeof(cl_float), 0, CL_MEM_WRITE_ONLY);
+        if(nDihedrals_>0) ibuff_Ed = newBuffer("Ed_contrib", nSystems * nDihedrals_, sizeof(cl_float), 0, CL_MEM_WRITE_ONLY);
+        if(nInversions_>0)ibuff_Ei = newBuffer("Ei_contrib", nSystems * nInversions_,sizeof(cl_float), 0, CL_MEM_WRITE_ONLY);
     }
 
     void setup_kernels() {
-        // This function would set up the arguments for each kernel.
-        // It's called once after realloc and before the main loop.
-        // Example for one kernel:
-        // task_evalBonds->args = {
-        //     BUFFarg(ibuff_apos), BUFFarg(ibuff_fapos), ...
-        // };
-        // TODO: Implement argument binding for all kernels based on UFF.cl
+        printf("OCL_UFF::setup_kernels()\n");
+        // Common temporary scalars; TODO wire from UFF host
+        float Rdamp = 0.0f;
+        float FmaxNonBonded = 1e6f;
+        float SubNBTorsionFactor = 0.0f;
+
+        // Compute offsets into fint buffer
+        int i0bon = 0;
+        int i0ang = i0bon + nBonds * 2;
+        int i0dih = i0ang + nAngles * 3;
+        int i0inv = i0dih + nDihedrals * 4;
+
+        bKernelPrepared = false;
+        // Get task pointers
+        task_evalBonds      = getTask("evalBondsAndHNeigh_UFF");
+        task_evalAngles     = getTask("evalAngles_UFF");
+        task_evalDihedrals  = getTask("evalDihedrals_UFF");
+        task_evalInversions = getTask("evalInversions_UFF");
+        task_assemble       = getTask("assembleForces_UFF");
+        
+        // --- evalBondsAndHNeigh_UFF ---
+        if(task_evalBonds){
+            printf("OCL_UFF::setup_kernels().task_evalBonds \n");
+            int nloc = 32;
+            task_evalBonds->local.x  = nloc;
+            task_evalBonds->global.x = nAtoms + nloc - (nAtoms % nloc);
+            task_evalBonds->global.y = nSystems;
+            useKernel( task_evalBonds->ikernel );
+            int err=0;
+            err |= useArg   ( nAtoms );                    OCL_checkError(err, "evalBonds.arg1 nAtoms");
+            err |= useArg   ( nPBC );                      OCL_checkError(err, "evalBonds.arg2 nPBC");
+            err |= useArg   ( i0bon );                     OCL_checkError(err, "evalBonds.arg3 i0bon");
+            int bSub = bSubtractNB?1:0;
+            err |= useArg   ( bSub );                      OCL_checkError(err, "evalBonds.arg4 bSub");
+            err |= useArg   ( Rdamp );                     OCL_checkError(err, "evalBonds.arg5 Rdamp");
+            err |= useArg   ( FmaxNonBonded );             OCL_checkError(err, "evalBonds.arg6 FmaxNB");
+            err |= useArgBuff( ibuff_apos );               OCL_checkError(err, "evalBonds.arg7 apos");
+            err |= useArgBuff( ibuff_fapos );              OCL_checkError(err, "evalBonds.arg8 fapos");
+            err |= useArgBuff( ibuff_neighs );             OCL_checkError(err, "evalBonds.arg9 neighs");
+            err |= useArgBuff( ibuff_neighCell );          OCL_checkError(err, "evalBonds.arg10 neighCell");
+            err |= useArgBuff( ibuff_pbcshifts );          OCL_checkError(err, "evalBonds.arg11 pbc_shifts");
+            err |= useArgBuff( ibuff_neighBs );            OCL_checkError(err, "evalBonds.arg12 neighBs");
+            err |= useArgBuff( ibuff_bonParams );          OCL_checkError(err, "evalBonds.arg13 bonParams");
+            err |= useArgBuff( ibuff_REQs );               OCL_checkError(err, "evalBonds.arg14 REQs");
+            err |= useArgBuff( ibuff_bonAtoms );           OCL_checkError(err, "evalBonds.arg15 bonAtoms");
+            err |= useArgBuff( ibuff_hneigh );             OCL_checkError(err, "evalBonds.arg16 hneigh");
+            err |= useArgBuff( ibuff_fint );               OCL_checkError(err, "evalBonds.arg17 fint");
+        }
+
+        // --- evalAngles_UFF ---
+        if(task_evalAngles){
+            printf("OCL_UFF::setup_kernels().task_evalAngles \n");
+            int nloc = 32;
+            task_evalAngles->local.x  = nloc;
+            task_evalAngles->global.x = nAngles + nloc - (nAngles % nloc);
+            task_evalAngles->global.y = nSystems;
+            useKernel( task_evalAngles->ikernel );
+            int err=0;
+            // offset after bonds
+            // i0ang was computed above
+            int bSub = bSubtractNB?1:0;
+            err |= useArg   ( nAngles );                   OCL_checkError(err, "evalAngles.arg1 nAngles");
+            err |= useArg   ( i0ang );                     OCL_checkError(err, "evalAngles.arg2 i0ang");
+            err |= useArg   ( bSub );                      OCL_checkError(err, "evalAngles.arg3 bSub");
+            err |= useArg   ( Rdamp );                     OCL_checkError(err, "evalAngles.arg4 Rdamp");
+            err |= useArg   ( FmaxNonBonded );             OCL_checkError(err, "evalAngles.arg5 FmaxNB");
+            err |= useArgBuff( ibuff_angAtoms );           OCL_checkError(err, "evalAngles.arg6 angAtoms");
+            err |= useArgBuff( ibuff_angNgs );             OCL_checkError(err, "evalAngles.arg7 angNgs");
+            err |= useArgBuff( ibuff_angParams1 );         OCL_checkError(err, "evalAngles.arg8 angParams1");
+            err |= useArgBuff( ibuff_angParams2_w );       OCL_checkError(err, "evalAngles.arg9 angParams2_w");
+            err |= useArgBuff( ibuff_hneigh );             OCL_checkError(err, "evalAngles.arg10 hneigh");
+            err |= useArgBuff( ibuff_REQs );               OCL_checkError(err, "evalAngles.arg11 REQs");
+            err |= useArgBuff( ibuff_apos );               OCL_checkError(err, "evalAngles.arg12 apos");
+            err |= useArgBuff( ibuff_pbcshifts );          OCL_checkError(err, "evalAngles.arg13 pbc_shifts");
+            err |= useArgBuff( ibuff_neighs );             OCL_checkError(err, "evalAngles.arg14 neighs");
+            err |= useArgBuff( ibuff_neighCell );          OCL_checkError(err, "evalAngles.arg15 neighCell");
+            err |= useArg   ( nPBC );                      OCL_checkError(err, "evalAngles.arg16 nPBC");
+            err |= useArgBuff( ibuff_fint );               OCL_checkError(err, "evalAngles.arg17 fint");
+            if(ibuff_Ea>=0){ err |= useArgBuff( ibuff_Ea ); OCL_checkError(err, "evalAngles.arg18 Ea_contrib"); }
+        }
+
+        // --- evalDihedrals_UFF ---
+        if(task_evalDihedrals){
+            printf("OCL_UFF::setup_kernels().task_evalDihedrals \n");
+            int nloc = 32;
+            task_evalDihedrals->local.x  = nloc;
+            task_evalDihedrals->global.x = nDihedrals + nloc - (nDihedrals % nloc);
+            task_evalDihedrals->global.y = nSystems;
+            useKernel( task_evalDihedrals->ikernel );
+            int err=0;
+            // offset after angles
+            err |= useArg   ( nDihedrals );                OCL_checkError(err, "evalDihedrals.arg1 nDihedrals");
+            err |= useArg   ( i0dih );                     OCL_checkError(err, "evalDihedrals.arg2 i0dih");
+            err |= useArg   ( SubNBTorsionFactor );        OCL_checkError(err, "evalDihedrals.arg3 SubNB");
+            err |= useArg   ( Rdamp );                     OCL_checkError(err, "evalDihedrals.arg4 Rdamp");
+            err |= useArg   ( FmaxNonBonded );             OCL_checkError(err, "evalDihedrals.arg5 FmaxNB");
+            err |= useArgBuff( ibuff_dihAtoms );           OCL_checkError(err, "evalDihedrals.arg6 dihAtoms");
+            err |= useArgBuff( ibuff_dihNgs );             OCL_checkError(err, "evalDihedrals.arg7 dihNgs");
+            err |= useArgBuff( ibuff_dihParams );          OCL_checkError(err, "evalDihedrals.arg8 dihParams");
+            err |= useArgBuff( ibuff_hneigh );             OCL_checkError(err, "evalDihedrals.arg9 hneigh");
+            err |= useArgBuff( ibuff_REQs );               OCL_checkError(err, "evalDihedrals.arg10 REQs");
+            err |= useArgBuff( ibuff_apos );               OCL_checkError(err, "evalDihedrals.arg11 apos");
+            err |= useArgBuff( ibuff_pbcshifts );          OCL_checkError(err, "evalDihedrals.arg12 pbc_shifts");
+            err |= useArgBuff( ibuff_neighs );             OCL_checkError(err, "evalDihedrals.arg13 neighs");
+            err |= useArgBuff( ibuff_neighCell );          OCL_checkError(err, "evalDihedrals.arg14 neighCell");
+            err |= useArg   ( nPBC );                      OCL_checkError(err, "evalDihedrals.arg15 nPBC");
+            err |= useArgBuff( ibuff_fint );               OCL_checkError(err, "evalDihedrals.arg16 fint");
+            if(ibuff_Ed>=0){ err |= useArgBuff( ibuff_Ed ); OCL_checkError(err, "evalDihedrals.arg17 Ed_contrib"); }
+        }
+
+        // --- evalInversions_UFF ---
+        if(task_evalInversions){
+            printf("OCL_UFF::setup_kernels().task_evalInversions \n");
+            int nloc = 32;
+            task_evalInversions->local.x  = nloc;
+            task_evalInversions->global.x = nInversions + nloc - (nInversions % nloc);
+            task_evalInversions->global.y = nSystems;
+            useKernel( task_evalInversions->ikernel );
+            int err=0;
+            // offset after dihedrals
+            err |= useArg   ( nInversions );               OCL_checkError(err, "evalInversions.arg1 nInversions");
+            err |= useArg   ( i0inv );                     OCL_checkError(err, "evalInversions.arg2 i0inv");
+            err |= useArgBuff( ibuff_invAtoms );           OCL_checkError(err, "evalInversions.arg3 invAtoms");
+            err |= useArgBuff( ibuff_invNgs );             OCL_checkError(err, "evalInversions.arg4 invNgs");
+            err |= useArgBuff( ibuff_invParams );          OCL_checkError(err, "evalInversions.arg5 invParams");
+            err |= useArgBuff( ibuff_hneigh );             OCL_checkError(err, "evalInversions.arg6 hneigh");
+            err |= useArgBuff( ibuff_fint );               OCL_checkError(err, "evalInversions.arg7 fint");
+            if(ibuff_Ei>=0){ err |= useArgBuff( ibuff_Ei ); OCL_checkError(err, "evalInversions.arg8 Ei_contrib"); }
+        }
+
+        // --- assembleForces_UFF ---
+        if(task_assemble){
+            printf("OCL_UFF::setup_kernels().task_assemble \n");
+            int nloc = 32;
+            task_assemble->local.x  = nloc;
+            task_assemble->global.x = nAtoms + nloc - (nAtoms % nloc);
+            task_assemble->global.y = nSystems;
+            useKernel( task_assemble->ikernel );
+            int err=0;
+            err |= useArg   ( nAtoms );                    OCL_checkError(err, "assemble.arg1 nAtoms");
+            err |= useArgBuff( ibuff_fint );               OCL_checkError(err, "assemble.arg2 fint");
+            err |= useArgBuff( ibuff_a2f_offsets );        OCL_checkError(err, "assemble.arg3 a2f_offsets");
+            err |= useArgBuff( ibuff_a2f_counts );         OCL_checkError(err, "assemble.arg4 a2f_counts");
+            err |= useArgBuff( ibuff_a2f_indices );        OCL_checkError(err, "assemble.arg5 a2f_indices");
+            err |= useArgBuff( ibuff_fapos );              OCL_checkError(err, "assemble.arg6 fapos");
+            int bClearForce = 1;
+            err |= useArg   ( bClearForce );               OCL_checkError(err, "assemble.arg7 bClearForce");
+        }
+
+        bKernelPrepared = true;
     }
 
     void eval(bool bClearForce = true) {
+        printf("OCL_UFF::eval() bClearForce=%i bUFF_bonds=%i bUFF_angles=%i bUFF_dihedrals=%i bUFF_inversions=%i\n", bClearForce, bUFF_bonds, bUFF_angles, bUFF_dihedrals, bUFF_inversions);
         // This function enqueues all the kernels for a full UFF evaluation.
         if (bClearForce) {
             // Enqueue a kernel to zero the force buffers (fapos, fint)
         }
+        
+        if (bUFF_bonds     ){ printf("OCL_UFF::eval().task_evalBonds      \n"); task_evalBonds->enque(); }
+        if (bUFF_angles    ){ printf("OCL_UFF::eval().task_evalAngles     \n"); task_evalAngles->enque(); }
+        if (bUFF_dihedrals ){ printf("OCL_UFF::eval().task_evalDihedrals  \n"); task_evalDihedrals->enque(); }
+        if (bUFF_inversions){ printf("OCL_UFF::eval().task_evalInversions \n"); task_evalInversions->enque(); }
 
-        if (bUFF_bonds)      task_evalBonds->enque();
-        if (bUFF_angles)     task_evalAngles->enque();
-        if (bUFF_dihedrals)  task_evalDihedrals->enque();
-        if (bUFF_inversions) task_evalInversions->enque();
-
-        task_assemble->enque();
+        if (bUFF_assemble){ printf("OCL_UFF::eval().task_assemble \n"); task_assemble->enque(); }
+        printf("OCL_UFF::eval() DONE");
     }
 
     void download_results(float* fapos_host, float* energies_host = nullptr) {

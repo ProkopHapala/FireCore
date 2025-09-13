@@ -4,6 +4,8 @@
 /// @file UFF.h @brief Implements universal forcefield accodring to article J. Am. Chem. Soc. 1992, 114, 25, 10024–10035 @link https://doi.org/10.1021/ja00051a040 [ref] @endlink, or generally any bond-topology forcefield composed of bonds, angles, torsions (proper-dihedrals) and plane-inversions (improper-dihedrals) 
 /// @ingroup Classical_Molecular_Mechanics
 
+#include "globals.h"
+
 #include <omp.h>
 #include "fastmath.h"   // fast math operations
 #include "Vec2.h"       // 2D vector
@@ -59,6 +61,12 @@ class UFF : public NBFF { public:
     //Quat4i*  neighCell=0;  // [natoms] // from NBFF
 
     bool bDoBond=true, bDoAngle=true, bDoDihedral=true, bDoInversion=true, bDoAssemble=true;
+    // --- DEBUG controls (CPU)
+    int  DBG_UFF     = 0;   // master switch 0/1
+    int  iDBG_bond   = -1;  // selected DOF ids to trace
+    int  iDBG_angle  = -1;
+    int  iDBG_dih    = -1;
+    int  iDBG_inv    = -1;
 
     // dimensions of the system
     double Etot, Eb, Ea, Ed, Ei;                          // total, bond, angle, dihedral, inversion energies
@@ -616,15 +624,33 @@ class UFF : public NBFF { public:
             const Vec2d par = bonParams[ib];
             const double dl = l-par.y;
             E += par.x*dl*dl;
-            Vec3d f; f.set_mul( dp, 2.0*par.x*dl*hneigh[inn].e );
+            const double fr = 2.0*par.x*dl; // force magnitude along unit h
+            Vec3d f; f.set_mul( dp, fr*hneigh[inn].e );
 
+            double Enb_loc = 0.0;
             if(bSubtractBondNonBond){
                 const Quat4d& REQj  = REQs[ing];
                 const Quat4d  REQij = _mixREQ(REQi,REQj); 
                 Vec3d fnb; 
-                E -= getLJQH( dp, fnb, REQij, R2damp );
+                Enb_loc = getLJQH( dp, fnb, REQij, R2damp );
+                E -= Enb_loc;
                 if(bClampNonBonded)[[likely]] { clampForce( fnb, Fmax2 ); }
                 f.sub( fnb );
+            }
+
+            // CPU per-DOF concise debug print
+            if(DBG_UFF!=0){
+                if( ib == iDBG_bond ){
+                    const Vec2i aij = bonAtoms[ib];
+                    const Vec3d fi = f;
+                    const Vec3d fj = f*-1.0;
+                    printf("[CPU][BOND-DOF] ib=%4d ia=%4d ja=%4d  k=% .9e l0=% .9e  l=% .9e dl=% .9e  fr=% .9e  Enb=% .9e  fi=(% .9e % .9e % .9e)  fj=(% .9e % .9e % .9e)  E=% .9e\n",
+                           ib, aij.x, aij.y,
+                           par.x, par.y, l, dl, fr, Enb_loc,
+                           fi.x,fi.y,fi.z,
+                           fj.x,fj.y,fj.z,
+                           (E));
+                }
             }
 
             // //E+= evalBond( h.f, l-bL[i], bK[i], f1 ); 
@@ -658,6 +684,15 @@ class UFF : public NBFF { public:
         double E=0.0;
         const double R2damp = Rdamp*Rdamp;
         const double Fmax2  = FmaxNonBonded*FmaxNonBonded;
+        if(DBG_UFF!=0){
+            printf("[CPU][BOND] natoms=%d nbonds=%d i0bon=%d Rdamp=% .6e Fmax=% .6e SubNB=%d iDBG=%d\n", natoms, nbonds, i0bon, Rdamp, FmaxNonBonded, (int)bSubtractBondNonBond, iDBG_bond );
+            printf("[CPU][BOND-TABLE]   ib   ia   ja           K           l0\n");
+            int N = nbonds;
+            if(N>64) N=64;
+            for(int ib=0; ib<N; ++ib){ Vec2i a=bonAtoms[ib]; Vec2d p=bonParams[ib];
+                printf("[CPU][BOND-TABLE] %4d %4d %4d % .9e % .9e\n", ib, a.x, a.y, p.x, p.y);
+            }
+        }
         for(int ia=0; ia<natoms; ia++){ 
             E += evalAtomBonds(ia, R2damp, Fmax2 );
         }
@@ -698,6 +733,7 @@ class UFF : public NBFF { public:
         Vec3d fpj; fpj.set_lincomb(  fk-fic, qij.f,  fi-fkc, qkj.f );
         const int i3=ia*3;
 
+        double Enb = 0.0;
         // TBD exclude non-bonded interactions between 1-3 neighbors
         if(bSubtractAngleNonBond){
             const Vec3i ijk = angAtoms[ia];
@@ -705,7 +741,8 @@ class UFF : public NBFF { public:
             Vec3d fnb; 
             //Vec3d dp = apos[ijk.x]-apos[ijk.z];   //  There may be problem in PBC
             Vec3d dp; dp.set_lincomb( (1./qij.w), qij.f, (-1./qkj.w), qkj.f );
-            E -= getLJQH( dp, fnb, REQij, R2damp );
+            Enb = getLJQH( dp, fnb, REQij, R2damp );
+            E  -= Enb;
             if(bClampNonBonded)clampForce( fnb, Fmax2 );
             fpi.add( fnb );
             fpk.sub( fnb );
@@ -714,6 +751,19 @@ class UFF : public NBFF { public:
         fang[i3  ]=fpi;
         fang[i3+1]=fpj;
         fang[i3+2]=fpk;
+
+        if(DBG_UFF!=0 && ia==iDBG_angle){
+            const Vec3i ijk = angAtoms[ia];
+            double theta_deg = acos( clamp(c, -1.0, 1.0) ) * (180.0/3.14159265358979323846);
+            printf("[CPU][ANGL-DOF] id=%4d ia=%4d ja=%4d ka=%4d  K=% .9e c0=% .6e c1=% .6e c2=% .6e c3=% .6e  theta=% .9e[deg]  Enb=% .9e  fi=(% .9e % .9e % .9e)  fj=(% .9e % .9e % .9e)  fk=(% .9e % .9e % .9e)  E=% .9e\n",
+                   ia, ijk.x, ijk.y, ijk.z,
+                   par.k, par.c0, par.c1, par.c2, par.c3,
+                   theta_deg, Enb,
+                   fpi.x,fpi.y,fpi.z,
+                   fpj.x,fpj.y,fpj.z,
+                   fpk.x,fpk.y,fpk.z,
+                   E);
+        }
         // TBD exclude non-bonded interactions between 1-3 neighbors
         // { // Debug Draw
         //     glColor3f(1.0,0.0,1.0);
@@ -802,6 +852,13 @@ class UFF : public NBFF { public:
         double E=0.0;
         const double R2damp = Rdamp*Rdamp;
         const double Fmax2  = FmaxNonBonded*FmaxNonBonded;
+        if(DBG_UFF!=0){
+            printf("[CPU][ANGL] nangles=%d i0ang=%d Rdamp=% .6e Fmax=% .6e SubNB=%d iDBG=%d\n", nangles, i0ang, Rdamp, FmaxNonBonded, (int)bSubtractAngleNonBond, iDBG_angle);
+            printf("[CPU][ANGL-TABLE]  ia   ja   ka            K          c0          c1          c2          c3\n");
+            int N=nangles; if(N>64)N=64; for(int i=0;i<N;i++){ Vec3i a=angAtoms[i]; double5 p=angParams[i];
+                printf("[CPU][ANGL-TABLE] %4d %4d %4d % .9e % .9e % .9e % .9e % .9e\n", a.x,a.y,a.z, p.k,p.c0,p.c1,p.c2,p.c3);
+            }
+        }
         for( int ia=0; ia<nangles; ia++){ 
             E+= evalAngle_Prokop(ia, R2damp, Fmax2 ); 
             //E+= evalAngle_Paolo(ia, R2damp, Fmax2 );
@@ -843,13 +900,15 @@ class UFF : public NBFF { public:
         Vec3d fp3; fp3.set_lincomb( -c123,   fp1, -c432-1., fp4 );   // from condition torq_p2=0  ( conservation of angular momentum )
         Vec3d fp2; fp2.set_lincomb( +c123-1, fp1, +c432   , fp4 );   // from condition torq_p3=0  ( conservation of angular momentum )
         
+        double Enb = 0.0;
         if(bSubNonBond){
             const Quat4i ijkl  = dihAtoms[id];
             const Quat4d REQij = _mixREQ( REQs[ijkl.x], REQs[ijkl.w]); 
             Vec3d fnb; 
             //Vec3d dp = apos[ijkl.x]-apos[ijkl.w];   //  There may be problem in PBC
             Vec3d dp; dp.set_lincomb( (1./q12.w), (-1./q43.w), (-1./q32.w), q12.f, q43.f, q32.f );
-            E -= getLJQH( dp, fnb, REQij, R2damp );
+            Enb = getLJQH( dp, fnb, REQij, R2damp );
+            E  -= Enb;
             if(bClampNonBonded)clampForce( fnb, Fmax2 );
             fnb.mul( SubNBTorstionFactor );
             fp1.add( fnb );
@@ -874,6 +933,20 @@ class UFF : public NBFF { public:
         //     Draw3D::drawArrow( p3, p3+fp3, 0.1 );
         //     Draw3D::drawArrow( p4, p4+fp4, 0.1 );
         // }
+        if(DBG_UFF!=0 && id==iDBG_dih){
+            const Quat4i ijkl  = dihAtoms[id];
+            double cphi = clamp( n123.dot(n234)*inv_n12, -1.0, 1.0 );
+            double phi_deg = acos(cphi) * (180.0/3.14159265358979323846);
+            printf("[CPU][DIH -DOF] id=%4d ia=%4d ja=%4d ka=%4d la=%4d  V=% .9e d=% .9e n=% .3f  phi=% .9e[deg]  Enb=% .9e  fi=(% .9e % .9e % .9e)  fj=(% .9e % .9e % .9e)  fk=(% .9e % .9e % .9e)  fl=(% .9e % .9e % .9e)  E=% .9e\n",
+                   id, ijkl.x, ijkl.y, ijkl.z, ijkl.w,
+                   par.x, par.y, par.z,
+                   phi_deg, Enb,
+                   fp1.x,fp1.y,fp1.z,
+                   fp2.x,fp2.y,fp2.z,
+                   fp3.x,fp3.y,fp3.z,
+                   fp4.x,fp4.y,fp4.z,
+                   E);
+        }
         return E;
     }
     __attribute__((hot))  
@@ -1073,6 +1146,13 @@ class UFF : public NBFF { public:
         const double R2damp    = Rdamp*Rdamp;
         const double Fmax2     = FmaxNonBonded*FmaxNonBonded;
         const bool bSubNonBond = SubNBTorstionFactor>0;
+        if(DBG_UFF!=0){
+            printf("[CPU][DIH ] ndihedrals=%d i0dih=%d Rdamp=% .6e Fmax=% .6e SubNBFac=% .6e iDBG=%d\n", ndihedrals, i0dih, Rdamp, FmaxNonBonded, SubNBTorstionFactor, iDBG_dih);
+            printf("[CPU][DIH -TABLE]  ia   ja   ka   la            V           d           n\n");
+            int N=ndihedrals; if(N>64)N=64; for(int i=0;i<N;i++){ Quat4i a=dihAtoms[i]; Vec3d p=dihParams[i];
+                printf("[CPU][DIH -TABLE] %4d %4d %4d %4d % .9e % .9e % .3f\n", a.x,a.y,a.z,a.w, p.x,p.y,p.z);
+            }
+        }
         for( int id=0; id<ndihedrals; id++){  
             E+= evalDihedral_Prokop(id, bSubNonBond, R2damp, Fmax2 );
             //E+= evalDihedral_Paolo(id, bSubNonBond, R2damp, Fmax2 );
@@ -1110,6 +1190,20 @@ class UFF : public NBFF { public:
         finv[ii*4+1]=fp2;
         finv[ii*4+2]=fp3;
         finv[ii*4+3]=fp4;
+
+        if(DBG_UFF!=0 && ii==iDBG_inv){
+            const Quat4i ijkl  = invAtoms[ii];
+            double w_deg = asin( clamp(s, -1.0, 1.0) ) * (180.0/3.14159265358979323846);
+            printf("[CPU][INV -DOF] id=%4d ia=%4d ja=%4d ka=%4d la=%4d  K=% .9e c0=% .6e c1=% .6e c2=% .6e  w=% .9e[deg]  fi=(% .9e % .9e % .9e)  fj=(% .9e % .9e % .9e)  fk=(% .9e % .9e % .9e)  fl=(% .9e % .9e % .9e)  E=% .9e\n",
+                   ii, ijkl.x, ijkl.y, ijkl.z, ijkl.w,
+                   par.x, par.y, par.z, par.w,
+                   w_deg,
+                   fp1.x,fp1.y,fp1.z,
+                   fp2.x,fp2.y,fp2.z,
+                   fp3.x,fp3.y,fp3.z,
+                   fp4.x,fp4.y,fp4.z,
+                   E);
+        }
 
         // { // Debug Draw
         //     double fsc = 20.0;
@@ -1242,14 +1336,19 @@ class UFF : public NBFF { public:
     double evalInversions(){
         //printf("UFF::evalInversions() \n");
         double E=0.0;
+        if(DBG_UFF!=0){
+            printf("[CPU][INV ] ninversions=%d i0inv=%d iDBG=%d\n", ninversions, i0inv, iDBG_inv);
+            printf("[CPU][INV -TABLE]  ia   ja   ka   la            K          c0          c1          c2\n");
+            int N=ninversions; if(N>64)N=64; for(int i=0;i<N;i++){ Quat4i a=invAtoms[i]; Quat4d p=invParams[i];
+                printf("[CPU][INV -TABLE] %4d %4d %4d %4d % .9e % .9e % .9e % .9e\n", a.x,a.y,a.z,a.w, p.x,p.y,p.z,p.w);
+            }
+        }
         for( int ii=0; ii<ninversions; ii++){ 
-            E+=evalInversion_Prokop(ii); 
-            //E+=evalInversion_Paolo(ii); 
+            E+= evalInversion_Prokop(ii);
         }
         return E;
     }
-
-
+//E+=evalInversion_Paolo(ii); 
     // constrain atom to fixed position
     /*
     void constrainAtom( int ia, double Kfix=1.0 ){

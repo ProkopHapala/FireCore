@@ -589,6 +589,7 @@ class OCLsystem{ public:
         printf( "OCL_DEF::release_OCL() context \n" );
         clReleaseContext(context);
         printf( "OCL_DEF::release_OCL() --- DONE \n" );
+        printf( "NOTE: Do not worry about \"double free or corruption\" error message now! It is because of python, we will solve it later. \n" );
     }
     ~OCLsystem(){ 
         release_OCL();

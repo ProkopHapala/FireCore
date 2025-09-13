@@ -102,9 +102,9 @@ def run_uff(use_gpu, components):
 
     print("py.DEBUG 4")
     
-    # Select CPU or GPU path via the iParalel flag
-    # Convention: iParalel > 1 means GPU, otherwise CPU
-    iParalel = 3 if use_gpu else 0
+    # Select CPU or GPU path via the iParalel flag expected by C++ run() switch
+    # CPU: 0 (serial) or 1 (OpenMP); GPU (OpenCL UFF): 2
+    iParalel = 2 if use_gpu else 0
 
     print("py.DEBUG 5")
     
@@ -125,8 +125,9 @@ def run_uff(use_gpu, components):
 
 
     uff.setTrjName("trj_multi.xyz", savePerNsteps=1)
-    #uff.run( nstepMax=1000, dt=0.02, Fconv=1e-6, ialg=2, damping=0.1, iParalel=iParalel )
-    uff.run( nstepMax=10000, dt=0.01, Fconv=1e-6, ialg=2, damping=0.1, iParalel=iParalel )
+    uff.run( nstepMax=1, dt=0.02, Fconv=1e-6, ialg=2, damping=0.1, iParalel=iParalel )
+    # uff.run( nstepMax=1000, dt=0.02, Fconv=1e-6, ialg=2, damping=0.1, iParalel=iParalel )
+    #uff.run( nstepMax=10000, dt=0.01, Fconv=1e-6, ialg=2, damping=0.1, iParalel=iParalel )
     #uff.run( nstepMax=1, dt=0.02, Fconv=1e-6, ialg=2, damping=0.1, iParalel=iParalel )
 
     print("py.DEBUG 6")
@@ -134,9 +135,9 @@ def run_uff(use_gpu, components):
 
     energy = 0 
     if use_gpu:
-        # Download results from GPU if necessary. The CPU path modifies host buffers directly.
-        if use_gpu: uff.download(bForces=True)
-        forces = uff.gpu_aforces[0, :, :3].copy()
+        # Download results from GPU to host buffers; UFF exposes fapos (double) via init_buffers_UFF
+        uff.download(bForces=True)
+        forces = uff.fapos.copy()
     else:
         forces = uff.fapos.copy()
     
@@ -193,31 +194,20 @@ if __name__ == "__main__":
 
 
 
-    # Run CPU version
+    # Run CPU then GPU with the same initialization and switches
     components = ['bonds', 'angles', 'dihedrals', 'inversions']
     component_flags = {key: 1 for key in components }
 
     print("py.DEBUG 3")
 
     cpu_energy, cpu_forces = run_uff(use_gpu=False, components=component_flags)
-    
-    exit()
+    gpu_energy, gpu_forces = run_uff(use_gpu=True,  components=component_flags)
 
-    gpu_energy, gpu_forces = run_uff(use_gpu=True, components=component_flags)
-    all_components = ['bonds', 'angles', 'dihedrals', 'inversions']
-    all_passed = True
-
-    for component in all_components:
-        print(f"\n================ Testing component: {component} ================")
-        # Define which components to enable for this test run
-        component_flags = {c: (1 if c == component else -1) for c in all_components}
-        # Compare results
-        if not compare_results(cpu_energy, cpu_forces, gpu_energy, gpu_forces, tol=args.tolerance, component_name=component):
-            all_passed = False
-
+    # Single comparison across all enabled components
+    passed = compare_results(cpu_energy, cpu_forces, gpu_energy, gpu_forces, tol=args.tolerance, component_name="ALL")
     print("\n================= SUMMARY =================")
-    if all_passed:
-        print("All UFF components PASSED validation!")
+    if passed:
+        print("CPU vs GPU UFF comparison PASSED")
     else:
-        print("One or more UFF components FAILED validation.")
+        print("CPU vs GPU UFF comparison FAILED")
     print("=========================================")
