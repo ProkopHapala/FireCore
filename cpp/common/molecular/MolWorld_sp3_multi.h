@@ -765,6 +765,10 @@ void upload_uff_sys( int isys, bool bParams, bool bForces, bool bVel, bool blvec
     if(bForces){ err|= uff_ocl->upload( uff_ocl->ibuff_fapos, (float*)(aforces+i0a), uff_ocl->nAtoms ); }
     if(blvec){
         err|= uff_ocl->upload( uff_ocl->ibuff_lvecs, lvecs+isys, 1 );
+        // Upload at least one PBC shift record even if npbc==0 (buffer was allocated with safe size 1)
+        int nPBC_safe = (npbc>0)? npbc : 1;
+        int i0pbc = isys * nPBC_safe;
+        err|= uff_ocl->upload( uff_ocl->ibuff_pbcshifts, pbcshifts + i0pbc, nPBC_safe );
     }
     if(bParams){
         int i0b = isys * uff_ocl->nBonds;
@@ -772,6 +776,11 @@ void upload_uff_sys( int isys, bool bParams, bool bForces, bool bVel, bool blvec
         int i0D = isys * uff_ocl->nDihedrals;
         int i0I = isys * uff_ocl->nInversions;
         int i0F = isys * uff_ocl->nA2F;
+
+        // Topology needed by all kernels: neighbors and neighbor bond indices
+        err|= uff_ocl->upload( uff_ocl->ibuff_neighs,    (int*)(ffu.neighs    + i0a), uff_ocl->nAtoms );
+        err|= uff_ocl->upload( uff_ocl->ibuff_neighCell, (int*)(ffu.neighCell + i0a), uff_ocl->nAtoms );
+        err|= uff_ocl->upload( uff_ocl->ibuff_neighBs,   (int*)(ffu.neighBs   + i0a), uff_ocl->nAtoms );
 
         err|= uff_ocl->upload( uff_ocl->ibuff_bonAtoms,      (int*)   (host_bon_atoms.data()   + i0b), uff_ocl->nBonds );
         err|= uff_ocl->upload( uff_ocl->ibuff_bonParams,     (float*) (host_bon_params.data()  + i0b), uff_ocl->nBonds );
