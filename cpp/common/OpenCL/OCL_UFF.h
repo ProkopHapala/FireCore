@@ -181,12 +181,14 @@ public:
         //float FmaxNonBonded      = 1e6f;
         //float SubNBTorsionFactor = 0.0f;
 
-        // Compute offsets into fint buffer
-        int i0bon = 0;
-        int i0ang = i0bon + nBonds * 2;
-        int i0dih = i0ang + nAngles * 3;
+        // Compute offsets into fint buffer to MATCH CPU UFF.h layout exactly:
+        // CPU: nf = 4*ndihedrals + 4*ninversions + 3*nangles + nbonds;
+        //       i0dih=0; i0inv=i0dih+4*ndihedrals; i0ang=i0inv+4*ninversions; i0bon=i0ang+3*nangles;
+        int i0dih = 0;
         int i0inv = i0dih + nDihedrals * 4;
-        int nf_per_system = (nBonds * 2) + (nAngles * 3) + (nDihedrals * 4) + (nInversions * 4);
+        int i0ang = i0inv + nInversions * 4;
+        int i0bon = i0ang + nAngles * 3;
+        int nf_per_system = (nDihedrals * 4) + (nInversions * 4) + (nAngles * 3) + (nBonds);
 
         bKernelPrepared = false;
         // Get task pointers
@@ -238,8 +240,7 @@ public:
             task_evalAngles->global.y = nSystems;
             useKernel( task_evalAngles->ikernel );
             int err=0;
-            // offset after bonds
-            // i0ang was computed above
+            // Offsets match CPU mapping (angles start after dihedrals and inversions)
             int bSub = bSubtractNB_angle?1:0;
             err |= useArg   ( nAngles );                   OCL_checkError(err, "evalAngles.arg1 nAngles");
             err |= useArg   ( i0ang );                     OCL_checkError(err, "evalAngles.arg2 i0ang");
