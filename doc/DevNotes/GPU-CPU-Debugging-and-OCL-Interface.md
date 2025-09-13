@@ -137,3 +137,98 @@ Document 2: UFF‑specific GPU vs CPU validation workflow
     - `run_uff(use_gpu)` – selects iParalel (GPU=2), runs library, then for GPU calls `uff.download(bForces=True)` and reads forces from `uff.fapos`.
     - `compare_results(...)` – compares CPU vs GPU forces.
 
+## Implementation Log - 2025-09-13: CPU/GPU UFF parity achieved
+
+### Summary
+
+We brought the OpenCL UFF implementation to numerical parity with the CPU reference for bonds, angles, dihedrals, and inversions, with full assembly (`DoAssemble=1`). The validation now passes within tolerance for ALL components enabled simultaneously.
+
+Key evidence (from `tests/tUFF/OUT-UFF-multi`):
+- CPU vs GPU Forces stats match to 1e-6 tolerance
+- Max force component difference ~ 6.2e-06
+- Validation PASSED for ALL components
+
+### Symptoms Observed
+
+- GPU A2F table matched CPU, but GPU FINT-by-atom entries were in different slots than CPU when angles were enabled.
+- With bonds+angles only, angle per-interaction forces (`fi,fj,fk`) matched CPU, but FINT indexing mismatched, causing wrong force assembly.
+- When enabling dihedrals/inversions later, CPU/GPU differences reduced but still depended on offsets.
+
+### Root Causes
+
+- __FINT layout/offset mismatch (primary):__
+  - CPU `UFF.h` packs `fint` as `[dihedrals*4][inversions*4][angles*3][bonds]`.
+  - GPU previously packed as bonds-first and counted bonds as 2 slots per bond.
+  - Result: `i0ang` differed between CPU and GPU, so GPU angle forces were written into indices CPU considers bonds.
+
+- __Angle kernel parity check:__
+  - Verified OpenCL `evalAngles_UFF()` matches `UFF.h::evalAngle_Prokop()` exactly.
+  - Fourier series evaluation implemented via complex multiplication `(cos, sin)` power; force assembly consistent.
+  - 1–3 non-bond subtraction vector `dp` matched CPU formula: `dp = (1/lij)*ji - (1/lkj)*kj` with optional PBC shift.
+
+- __Buffer clearing/stale data:__
+  - Needed explicit clearing of `fapos`/`fint` when `bClearForce=1` to avoid residue from prior runs influencing comparisons.
+
+### Fixes Implemented
+
+- __Align FINT layout and offsets in GPU host layer__ (`cpp/common/OpenCL/OCL_UFF.h`):
+  - Compute offsets to mirror CPU exactly:
+    - `i0dih = 0`
+    - `i0inv = i0dih + 4*nDihedrals`
+    - `i0ang = i0inv + 4*nInversions`
+    - `i0bon = i0ang + 3*nAngles`
+  - Total pieces: `nf_per_system = 4*nDihedrals + 4*nInversions + 3*nAngles + nBonds`
+  - Pass corrected `i0ang` into `evalAngles_UFF` kernel.
+  - Effect in logs: `GPU evalAngles_UFF() ... i0ang` changed from `8` (wrong) to `20` (correct for the test), matching CPU.
+
+- __Verified angle kernel math parity__ (`cpp/common_resources/cl/UFF.cl`):
+  - Angle `cos/sin` via `h = qij + qkj`, `c = 0.5*(|h|^2 - 2)`, energy and derivative via complex powers of `(cos, sin)`; scale by `K`.
+  - Force assembly identical to CPU: `fpi = fic*qij - fi*qkj`, `fpk = -fk*qij + fkc*qkj`, `fpj = (fk-fic)*qij + (fi-fkc)*qkj`.
+  - Optional 1–3 NB subtraction mirrored CPU with clamping to `FmaxNonBonded`.
+
+- __Execute full component set in order matching CPU:__
+  - Dihedrals use `i0dih=0`, inversions use `i0inv=8` for the example, angles then bonds; assembly reads from these consistent slots.
+
+- __Clearing buffers__:
+  - Ensure `clear_fapos_UFF` and `clear_fint_UFF` are called when `bClearForce=1` so no stale terms contaminate comparisons.
+
+### Validation Results (after fixes)
+
+- With components `['bonds', 'angles', 'dihedrals', 'inversions']`:
+  - CPU/GPU A2F tables identical.
+  - CPU/GPU FINT-by-atom entries identical up to float noise.
+  - Force stats match: `||F||_2` equal to 1e-6, validation PASSED.
+  - Angle debug prints show identical `fi,fj,fk` and energies.
+  - Dihedral and inversion debug prints show matching parameters, angles (`phi`), intermediates, and forces.
+
+### Key File Touchpoints
+
+- `cpp/common/OpenCL/OCL_UFF.h`
+  - Corrected FINT offsets/layout and `nf_per_system` formula.
+  - Passed corrected `i0ang` to `evalAngles_UFF` kernel.
+
+- `cpp/common_resources/cl/UFF.cl`
+  - Angle kernel computes forces and energy with exact algebra as CPU (`evalAngle_Prokop`).
+  - NB subtraction follows CPU vector reconstruction and clamping.
+
+### Practical Checklist for Future Regressions
+
+If CPU vs GPU diverge again:
+
+- __[Offsets/Layout]__ Dump `i0dih,i0inv,i0ang,i0bon` and `nf_per_system` on CPU and GPU; ensure same formulas/order as CPU.
+- __[Kernel parity]__ Compare computed intermediates (`c,s,csn,fmag,K`) between CPU and GPU in debug prints.
+- __[A2F vs FINT]__ If A2F matches but FINT doesn’t, suspect offset/indexing issues; verify per-interaction write indices.
+- __[Clearing]__ Confirm `bClearForce=1` triggers buffer clears before evaluation.
+- __[NB subtraction]__ For any subtraction terms (1–3, 1–4), verify `dp` reconstruction and PBC shifts match CPU.
+- __[Shapes/strides]__ Re-check host packing shapes and element sizes when uploading buffers.
+
+### Open Items / Next Work
+
+- __Energy return path:__ unify CPU scalar vs GPU array aggregation for reporting, ensure consistent reduction if multi-replica.
+- __Memory management:__ re-check for double free at test end if it reappears; audit ownership of OpenCL buffers and host arrays.
+- __Test coverage:__ expand test set to larger and more diverse molecules; add randomized perturbations and multiple replicas.
+
+### Notes
+
+- Aligning the `fint` layout to CPU order was the decisive fix; physics and per-interaction math were already correct.
+- Keeping CPU and GPU buffer contracts documented here should prevent similar mistakes and speed up future debugging.

@@ -9,7 +9,7 @@ In second step you shoud write the test scrip in python which include MMFF_multi
 These are relevant parts where you shoud start   
 
 * /home/prokophapala/git/FireCore/cpp/common/molecular/UFF.h   : C++ implementation of UFF solvers
-* /home/prokophapala/git/FireCore/tests/tDFT/data/cl/UFF.cl    : OpenCL kernels for UFF solver 
+* /home/prokophapala/git/FireCore/cpp/common_resources/cl/UFF.cl    : OpenCL kernels for UFF solver 
 * /home/prokophapala/git/FireCore/pyBall/OCL/UFF.py            : python pyOpenCL interface to OpenCL UFF solver (not yet tested)
 * /home/prokophapala/git/FireCore/cpp/common/OpenCL/OCL_MM.h   : C++ interface to OpenCL version of MMFFsp3_loc forcefield (this is alternative of UFF which we implemented earlier, and now we want to be able to switch to UFF by some runtime flag)
    * /home/prokophapala/git/FireCore/cpp/common/OpenCL/OCL.h   : OpenCL integration utilities in C/C++ used in OCL_MM.h (perhaps part of it can be replaced by official OpenCL C++ interface)
@@ -107,10 +107,11 @@ The test script should serve as both validation tool and reference implementatio
   - `assembleAtomForce()` for force accumulation
   - `run()` main optimization loop with configurable components
 
-#### 2. OpenCL UFF Kernels (`tests/tDFT/data/cl/UFF.cl`)
-**Status: Needs verification - location unclear from retrieval**
-- GPU kernels for UFF force evaluation
-- **TODO: Verify existence and completeness**
+#### 2. OpenCL UFF Kernels (`cpp/common_resources/cl/UFF.cl`)
+**Status: Present and validated**
+- Kernels for bonds, angles, dihedrals, inversions are implemented.
+- Angle kernel matches `UFF.h::evalAngle_Prokop()`; dihedrals/inversions validated in parity tests.
+- Keep kernel math synchronized with CPU `cpp/common/molecular/UFF.h`.
 
 #### 3. Python OpenCL Interface (`pyBall/OCL/UFF.py`)
 **Status: Partially implemented, untested**
@@ -219,42 +220,38 @@ A specific example in this UFF implementation is the `angAtoms` buffer, which st
 
 Instead of forcing the CPU and GPU memory layouts to be identical (which would make the GPU implementation less efficient), the chosen strategy is to **adapt the test script's comparison logic** to account for these differences.
 
-The `test_UFF_ocl.py` script has been updated accordingly:
+The `tests/tUFF/test_UFF_multi.py` script (and related tooling) has been updated accordingly:
 -   The `get_cpu_bufs()` function now programmatically pads the CPU `angAtoms` array from `(N, 3)` to `(N, 4)` in memory before the comparison is made.
 -   This ensures that when `compare_bufs()` is called, both the CPU and GPU versions of the buffer have the same shape, allowing for a direct and correct comparison of the relevant data. This approach maintains the performance benefits of the padded GPU layout while still enabling rigorous validation.
 
-## Missing Components Analysis
+## Components Status (review)
 
-### Critical Missing Components
+1. **`cpp/common/OpenCL/OCL_UFF.h` — Implemented**
+   - Provides OpenCL wrapper for UFF (analogous to `OCL_MM.h`).
+   - Manages buffers, sets kernel args, and evaluates components.
+   - Fix applied: FINT layout and offsets aligned with CPU order.
 
-1. **`cpp/common/OpenCL/OCL_UFF.h`**
-   - OpenCL wrapper for UFF (analogous to OCL_MM.h)
-   - Buffer management for UFF-specific data structures
-   - Kernel execution interface
-   - Force/energy retrieval
+2. **UFF Integration in `MolWorld_sp3_multi.h` — Implemented**
+   - UFF_OCL path is active; logs show `OCL_UFF::setup_kernels()` and evaluation steps.
+   - Runtime component flags wired; assembly validated.
 
-2. **UFF Integration in `MolWorld_sp3_multi.h`**
-   - Runtime switching between UFF and MMFF
-   - UFF-specific initialization
-   - Parameter passing interface
+3. **Library Interface for UFF — Pending (optional for current tests)**
+   - Potential `cpp/libs_OCL/UFFmulti_lib.cpp` for direct Python integration if needed.
+   - Current tests use existing multi interface; prioritize only if required by workflows.
 
-3. **Library Interface for UFF**
-   - `cpp/libs_OCL/UFFmulti_lib.cpp`
-   - Extern "C" functions for Python integration
-
-4. **Python Wrapper for UFF**
-   - `pyBall/UFF_multi.py`
-   - ctypes interface to UFFmulti_lib
+4. **Python Wrapper for UFF — Pending**
+   - Optional higher-level wrapper (`pyBall/UFF_multi.py`) around a UFF library interface.
+   - Not needed for current C++-driven tests; keep as future enhancement.
 
 5. **Component Control Interface**
    - Flags to enable/disable UFF components
    - Both in C++ and Python interfaces
 
-### OpenCL Kernel Verification Needed
+### OpenCL Kernel Verification Status
 
-1. **Verify `tests/tDFT/data/cl/UFF.cl` exists and is complete**
-2. **Check kernel signatures match expected interface**
-3. **Validate against CPU implementation**
+- `cpp/common_resources/cl/UFF.cl` exists and is the canonical kernel source.
+- Kernel signatures match the host interface in `cpp/common/OpenCL/OCL_UFF.h`.
+- Validated against CPU implementation with full component parity (see Implementation Log 2025-09-13).
 
 ## Implementation Plan
 
@@ -425,9 +422,10 @@ class UFF_multi:
 
 ### Recent Debugging Progress
 
-1. **Fixed molecule file path issue** in test script `test_UFF_ocl.py`:
+1. **Fixed molecule file path issue** in an earlier test script (`test_UFF_ocl.py`):
    - Changed to use absolute path from `data_dir` to `formic_acid.mol2`
    - Resolved segmentation fault from missing file
+   - Note: current validation uses `tests/tUFF/test_UFF_multi.py`.
 
 2. **Identified buffer mismatches** between CPU and GPU implementations:
    - Shape mismatches: angle atoms (3 vs 4), inversion atoms
@@ -456,3 +454,101 @@ class UFF_multi:
 4. Fix GPU energy return type
 5. Add detailed debug prints for value divergence
 6. Investigate memory corruption issues
+
+---
+
+## Implementation Log - 2025-09-13: CPU/GPU UFF parity achieved
+
+### Summary
+
+We brought the OpenCL UFF implementation to numerical parity with the CPU reference for bonds, angles, dihedrals, and inversions, with full assembly (`DoAssemble=1`). The validation now passes within tolerance for ALL components enabled simultaneously.
+
+Key evidence (from `tests/tUFF/OUT-UFF-multi`):
+- CPU vs GPU Forces stats match to 1e-6 tolerance
+- Max force component difference ~ 6.2e-06
+- Validation PASSED for ALL components
+
+### Symptoms Observed
+
+- GPU A2F table matched CPU, but GPU FINT-by-atom entries were in different slots than CPU when angles were enabled.
+- With bonds+angles only, angle per-interaction forces (`fi,fj,fk`) matched CPU, but FINT indexing mismatched, causing wrong force assembly.
+- When enabling dihedrals/inversions later, CPU/GPU differences reduced but still depended on offsets.
+
+### Root Causes
+
+- __FINT layout/offset mismatch (primary):__
+  - CPU `UFF.h` packs `fint` as `[dihedrals*4][inversions*4][angles*3][bonds]`.
+  - GPU previously packed as bonds-first and counted bonds as 2 slots per bond.
+  - Result: `i0ang` differed between CPU and GPU, so GPU angle forces were written into indices CPU considers bonds.
+
+- __Angle kernel parity check:__
+  - Verified OpenCL `evalAngles_UFF()` matches `UFF.h::evalAngle_Prokop()` exactly.
+  - Fourier series evaluation implemented via complex multiplication `(cos, sin)` power; force assembly consistent.
+  - 1–3 non-bond subtraction vector `dp` matched CPU formula: `dp = (1/lij)*ji - (1/lkj)*kj` with optional PBC shift.
+
+- __Buffer clearing/stale data:__
+  - Needed explicit clearing of `fapos`/`fint` when `bClearForce=1` to avoid residue from prior runs influencing comparisons.
+
+### Fixes Implemented
+
+- __Align FINT layout and offsets in GPU host layer__ (`cpp/common/OpenCL/OCL_UFF.h`):
+  - Compute offsets to mirror CPU exactly:
+    - `i0dih = 0`
+    - `i0inv = i0dih + 4*nDihedrals`
+    - `i0ang = i0inv + 4*nInversions`
+    - `i0bon = i0ang + 3*nAngles`
+  - Total pieces: `nf_per_system = 4*nDihedrals + 4*nInversions + 3*nAngles + nBonds`
+  - Pass corrected `i0ang` into `evalAngles_UFF` kernel.
+  - Effect in logs: `GPU evalAngles_UFF() ... i0ang` changed from `8` (wrong) to `20` (correct for the test), matching CPU.
+
+- __Verified angle kernel math parity__ (`cpp/common_resources/cl/UFF.cl`):
+  - Angle `cos/sin` via `h = qij + qkj`, `c = 0.5*(|h|^2 - 2)`, energy and derivative via complex powers of `(cos, sin)`; scale by `K`.
+  - Force assembly identical to CPU: `fpi = fic*qij - fi*qkj`, `fpk = -fk*qij + fkc*qkj`, `fpj = (fk-fic)*qij + (fi-fkc)*qkj`.
+  - Optional 1–3 NB subtraction mirrored CPU with clamping to `FmaxNonBonded`.
+
+- __Execute full component set in order matching CPU:__
+  - Dihedrals use `i0dih=0`, inversions use `i0inv=8` for the example, angles then bonds; assembly reads from these consistent slots.
+
+- __Clearing buffers__:
+  - Ensure `clear_fapos_UFF` and `clear_fint_UFF` are called when `bClearForce=1` so no stale terms contaminate comparisons.
+
+### Validation Results (after fixes)
+
+- With components `['bonds', 'angles', 'dihedrals', 'inversions']`:
+  - CPU/GPU A2F tables identical.
+  - CPU/GPU FINT-by-atom entries identical up to float noise.
+  - Force stats match: `||F||_2` equal to 1e-6, validation PASSED.
+  - Angle debug prints show identical `fi,fj,fk` and energies.
+  - Dihedral and inversion debug prints show matching parameters, angles (`phi`), intermediates, and forces.
+
+### Key File Touchpoints
+
+- `cpp/common/OpenCL/OCL_UFF.h`
+  - Corrected FINT offsets/layout and `nf_per_system` formula.
+  - Passed corrected `i0ang` to `evalAngles_UFF` kernel.
+
+- `cpp/common_resources/cl/UFF.cl`
+  - Angle kernel computes forces and energy with exact algebra as CPU (`evalAngle_Prokop`).
+  - NB subtraction follows CPU vector reconstruction and clamping.
+
+### Practical Checklist for Future Regressions
+
+If CPU vs GPU diverge again:
+
+- __[Offsets/Layout]__ Dump `i0dih,i0inv,i0ang,i0bon` and `nf_per_system` on CPU and GPU; ensure same formulas/order as CPU.
+- __[Kernel parity]__ Compare computed intermediates (`c,s,csn,fmag,K`) between CPU and GPU in debug prints.
+- __[A2F vs FINT]__ If A2F matches but FINT doesn’t, suspect offset/indexing issues; verify per-interaction write indices.
+- __[Clearing]__ Confirm `bClearForce=1` triggers buffer clears before evaluation.
+- __[NB subtraction]__ For any subtraction terms (1–3, 1–4), verify `dp` reconstruction and PBC shifts match CPU.
+- __[Shapes/strides]__ Re-check host packing shapes and element sizes when uploading buffers.
+
+### Open Items / Next Work
+
+- __Energy return path:__ unify CPU scalar vs GPU array aggregation for reporting, ensure consistent reduction if multi-replica.
+- __Memory management:__ re-check for double free at test end if it reappears; audit ownership of OpenCL buffers and host arrays.
+- __Test coverage:__ expand test set to larger and more diverse molecules; add randomized perturbations and multiple replicas.
+
+### Notes
+
+- Aligning the `fint` layout to CPU order was the decisive fix; physics and per-interaction math were already correct.
+- Keeping CPU and GPU buffer contracts documented here should prevent similar mistakes and speed up future debugging.
