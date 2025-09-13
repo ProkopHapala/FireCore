@@ -110,29 +110,12 @@ def run_uff(use_gpu, components, bPrintBufs=False, nPrintSetup=False):
     
     #uff.run(nstepMax=1, iParalel=iParalel)
 
-    uff.getBuffs_UFF()
-    if bPrintBufs:
-        print("--- Buffers Before Run ---")
-        print("TOPOLOGY_SPECS ", TOPOLOGY_SPECS)
-        topo_bufs = get_cpu_bufs(uff, TOPOLOGY_SPECS)
-        print("PARAMS_SPECS ", PARAMS_SPECS)
-        print_bufs(topo_bufs, "Topology Buffers")
-        param_bufs = get_cpu_bufs(uff, PARAMS_SPECS)
-        print_bufs(param_bufs, "Parameter Buffers")
-
-    if nPrintSetup:
-        uff.print_debugs() 
-        uff.print_setup()
-
     uff.setTrjName("trj_multi.xyz", savePerNsteps=1)
     uff.run( nstepMax=1, dt=0.00, Fconv=1e-6, ialg=2, damping=0.1, iParalel=iParalel )
     # uff.run( nstepMax=1000, dt=0.02, Fconv=1e-6, ialg=2, damping=0.1, iParalel=iParalel )
     #uff.run( nstepMax=10000, dt=0.01, Fconv=1e-6, ialg=2, damping=0.1, iParalel=iParalel )
     #uff.run( nstepMax=1, dt=0.02, Fconv=1e-6, ialg=2, damping=0.1, iParalel=iParalel )
-
     print("py.DEBUG 6")
-    
-
     energy = 0 
     if use_gpu:
         # Download results from GPU to host buffers; UFF exposes fapos (double) via init_buffers_UFF
@@ -170,8 +153,10 @@ def compare_results(cpu_energy, cpu_forces, gpu_energy, gpu_forces, tol=1e-5, co
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='UFF CPU vs. GPU Validation Test')
     default_mol = os.path.join(data_dir, 'mol', 'formic_acid.mol2')
-    parser.add_argument('-m', '--molecule', type=str, default=default_mol, help='Molecule file (.mol2, .xyz)')
+    parser.add_argument('-m', '--molecule',  type=str, default=default_mol, help='Molecule file (.mol2, .xyz)')
     parser.add_argument('-t', '--tolerance', type=float, default=1e-5, help='Numerical tolerance for comparison')
+    parser.add_argument('-p', '--print-buffers', type=int, default=0, help='Print buffer contents before run')
+    parser.add_argument('-v', '--verbose',       type=int, default=0, help='Verbose output')
     args = parser.parse_args()
 
     # --- Initialize the library once ---
@@ -192,13 +177,34 @@ if __name__ == "__main__":
     # set ClampNonBonded/SubtractBondNonBond inside run_uff(), so we disable this invalid call.  # TODO
     # uff.setSwitches(NonBonded=-1)
 
+    print("py.DEBUG 3")
+
+    if args.print_buffers:
+        print("--- Buffers Before Run ---")
+        print("TOPOLOGY_SPECS ", TOPOLOGY_SPECS)
+        topo_bufs = get_cpu_bufs(uff, TOPOLOGY_SPECS)
+        print("PARAMS_SPECS ", PARAMS_SPECS)
+        print_bufs(topo_bufs, "Topology Buffers")
+        param_bufs = get_cpu_bufs(uff, PARAMS_SPECS)
+        print_bufs(param_bufs, "Parameter Buffers")
+
+    if args.verbose:
+        uff.print_debugs() 
+        uff.print_setup()
+
+    uff.getBuffs_UFF()
+
+    uff.print_debugs(bParams=False, bNeighs=False, bShifts=False, bAtoms=True)
+    uff.apos[:,:] += 0.2 * np.random.randn(uff.natoms, 3)
+    uff.print_debugs(bParams=False, bNeighs=False, bShifts=False, bAtoms=True)
+
     # Run CPU then GPU with the same initialization and switches
     #components = ['bonds', 'angles', 'dihedrals', 'inversions']
     #components = ['bonds']
-    components = ['bonds', 'angles']
+    #components = ['bonds', 'angles']
+    components = ['bonds', 'angles', 'dihedrals']
+    #components = ['bonds', 'inversions']
     component_flags = {key: 1 for key in components }
-
-    print("py.DEBUG 3")
 
     cpu_energy, cpu_forces = run_uff(use_gpu=False, components=component_flags)
     gpu_energy, gpu_forces = run_uff(use_gpu=True,  components=component_flags)

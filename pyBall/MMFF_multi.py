@@ -359,11 +359,12 @@ lib.print_setup.restype   =  None
 def print_setup():
     return lib.print_setup()
 
-#  void print_debugs( bool bParams, bool bNeighs, bool bShifts ){
-lib.print_debugs.argtypes  = [c_bool, c_bool, c_bool]
+#  void print_debugs( bool bParams, bool bNeighs, bool bShifts, bool bAtoms  ){
+lib.print_debugs.argtypes  = [c_bool, c_bool, c_bool, c_bool]
 lib.print_debugs.restype   =  None
-def print_debugs(bParams=True, bNeighs=True, bShifts=False):
-    return lib.print_debugs(bParams, bNeighs, bShifts)
+def print_debugs(bParams=True, bNeighs=True, bShifts=False, bAtoms=False):
+    print(f"py.DEBUG print_debugs({bParams}, {bNeighs}, {bShifts}, {bAtoms})")
+    return lib.print_debugs(bParams, bNeighs, bShifts, bAtoms)
 
 
 def cstr( s ):

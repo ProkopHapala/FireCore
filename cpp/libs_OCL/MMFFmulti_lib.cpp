@@ -115,16 +115,18 @@ void init_buffers_UFF(){
     printf( "MMFF_lib.cpp::init_buffers_UFF() Es{ Etot=%f, Eb=%f, Ea=%f, Ed=%f, Ei=%f, }\n", W.ffu.Etot, W.ffu.Eb, W.ffu.Ea, W.ffu.Ed, W.ffu.Ei );
 }
 
-void print_debugs( bool bParams, bool bNeighs, bool bShifts ){
+void print_debugs( bool bParams, bool bNeighs, bool bShifts, bool bAtoms ){
+    printf("print_debugs() W.bUFF=%i, bParams=%i, bNeighs=%i, bShifts=%i, bAtoms=%i \n", W.bUFF, bParams, bNeighs, bShifts, bAtoms);
     if(W.bUFF){
-        printf("\n=== UFF Parameters ===\n");
         W.ffu.printSizes();
         if(bParams) W.ffu.printAllParams(true, true, true, true, true);
+        if(bAtoms ) W.ffu.print();
     } else {
         W.ffl.printSizes();
         if( bParams ) W.ffl.printAtomParams();
         if( bNeighs ) W.ffl.printNeighs();
         if( bShifts ) W.ffl.print_pbc_shifts();
+        if( bAtoms  ) W.ffl.print();
     }
 }
 

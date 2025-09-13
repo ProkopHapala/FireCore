@@ -454,8 +454,7 @@ __kernel void evalDihedrals_UFF(
 ) {
     int id = get_global_id(0);
     if ((DBG_UFF!=0) && id==0){
-        printf("GPU evalDihedrals_UFF() ndihedrals=%d i0dih=%d Rdamp=% .6e Fmax=% .6e SubNBFac=% .6e iDBG=%d\n",
-               ndihedrals, i0dih, Rdamp, FmaxNonBonded, SubNBTorsionFactor, IDBG_DIH);
+        printf("GPU evalDihedrals_UFF() ndihedrals=%d i0dih=%d Rdamp=% .6e Fmax=% .6e SubNBTorsionFactor=% .6e iDBG=%d\n", ndihedrals, i0dih, Rdamp, FmaxNonBonded, SubNBTorsionFactor, IDBG_DIH);
         printf("GPU DIH-TABLE  ia   ja   ka   la            V           d           n\n");
         int N=(ndihedrals<64)?ndihedrals:64; 
         for(int i=0;i<N;i++){ int ia=dihAtoms[i*4+0],ja=dihAtoms[i*4+1],ka=dihAtoms[i*4+2],la=dihAtoms[i*4+3]; float3 p=dihParams[i];
@@ -483,80 +482,65 @@ __kernel void evalDihedrals_UFF(
 
     float3 par = dihParams[id]; // { V, d, n }
 
-    // --- Inlined Dihedral Calculation (UFF Fourier Series, Prokop Style) ---
+    // --- Inlined Dihedral Calculation (exact UFF.h::evalDihedral_Prokop) ---
     float3 fi, fj, fk, fl; // Forces on i, j, k, l
     float E = 0.0f;
-    { // Start of inlined evalDihedralUFF block
-        float3 n123 = cross(-q12.xyz, q32.xyz); // cross(ij, kj)
-        float3 n234 = cross(-q32.xyz, q43.xyz); // cross(jk, lk)
-        float n123_mag2 = dot(n123, n123);
-        float n234_mag2 = dot(n234, n234);
+    {
+        // Recover absolute bond vectors and lengths
+        float3 r12 = q12.xyz; float l12 = 1.0f / q12.w; float3 r12abs = r12 * l12; // j->i
+        float3 r32 = q32.xyz; float l32 = 1.0f / q32.w; float3 r32abs = r32 * l32; // j->k
+        float3 r43 = q43.xyz; float l43 = 1.0f / q43.w; float3 r43abs = r43 * l43; // k->l
 
-        if (n123_mag2 < 1e-16f || n234_mag2 < 1e-16f) {
-            fi = fj = fk = fl = (float3){0.0f,0.0f,0.0f};
-            E = 0.0f;
-        } else {
-            float inv_n123_mag2 = 1.0f / n123_mag2;
-            float inv_n234_mag2 = 1.0f / n234_mag2;
-            float inv_n123_n234_mag = sqrt(inv_n123_mag2 * inv_n234_mag2);
+        // Plane normals
+        float3 n123 = cross(r12abs, r32abs);
+        float3 n234 = cross(r43abs, r32abs);
+        float l123 = length(n123); float l234 = length(n234);
+        if (l123 < 1e-16f || l234 < 1e-16f){ fi=fj=fk=fl=(float3)(0.0f); E=0.0f; }
+        else{
+            n123 /= l123; n234 /= l234;
+            float c = clamp(dot(n123, n234), -1.0f, 1.0f);
+            float s = sqrt(fmax(0.0f, 1.0f - c*c) + 1e-14f);
 
-            // Cosine and Sine of the dihedral angle phi
-            float c = dot(n123, n234) * inv_n123_n234_mag; // cos(phi) = dot(norm(n123), norm(n234))
-            c = clamp(c, -1.0f, 1.0f);
-            // sin(phi) = dot(norm(n234), h_ij) * |n123| / (|h_ij|*|h_kj|) -> Complex
-            // Use cross product: cross(n123, n234) = sin(phi) * h_kj * |n123|*|n234|
-            // Sign: dot( cross(n123, n234), h_kj ) should be positive if s is positive.
-            // C++ Prokop uses: -n123.dot(q43.f)*inv_n12 -> relates to sin? Seems unusual.
-            // Let's calculate sin(phi) using standard definition if possible.
-            // float s = dot(cross(n123*sqrt(inv_n123_mag2), n234*sqrt(inv_n234_mag2)), q32.xyz*q32.w);
-            // Simpler: use c and s = sqrt(1-c*c) with correct sign. Sign from dot(cross, axis).
-            float s_sign = dot(cross(n123, n234), q32.xyz); // Sign of sin(phi)
-            float s = sqrt(1.0f - c*c);
-            if (s_sign < 0.0f) s = -s;
+            float3 par = dihParams[id];
+            int   nint = (int)(par.z + 0.5f);
+            float2 cs  = (float2)(c, s);
+            float2 csn = cs;
+            for(int i=1;i<nint;i++){ csn = (float2)( csn.x*cs.x - csn.y*cs.y,  csn.x*cs.y + csn.y*cs.x ); }
+            E = par.x * ( 1.0f + par.y * csn.x );
 
-            float V = par.x; // Barrier height
-            float d = par.y; // Phase factor cos(n*phi0) = +/-1
-            float n = par.z; // Periodicity
+            float3 scaled_123 = n123 * c;
+            float3 scaled_234 = n234 * c;
+            float3 tmp_123 = n123 - scaled_234;
+            float3 tmp_234 = n234 - scaled_123;
+            float3 f_12 = cross( r32, tmp_234 );
+            float3 f_43 = cross( r32, tmp_123 );
+            float3 tmp1_32 = tmp_234 * (l12 / l123);
+            float3 tmp2_32 = tmp_123 * (l43 / l234);
+            float3 vec1_32 = cross( tmp1_32, r12 );
+            float3 vec2_32 = cross( tmp2_32, r43 );
+            float3 vec_32  = vec1_32 + vec2_32;
+            float  fact = -par.x * par.y * par.z * csn.y / s;
+            float3 f_32 = vec_32 * fact;
 
-            // Energy: E = V * (1 - d * cos(n*phi))
-            float2 cs = (float2)(c, s);
-            float2 csn = cs; // For n=1
-            // This loop is inefficient for GPU if n varies; assume n is small integer (e.g. 1, 2, 3)
-            for (int iter = 1; iter < (int)(n + 0.5f); ++iter) {
-                csn = (float2)(csn.x*cs.x - csn.y*cs.y, csn.x*cs.y + csn.y*cs.x); // csn *= cs
-            }
-            float cos_nphi = csn.x;
-            float sin_nphi = csn.y;
+            float3 fp1_loc = f_12 * ( fact * l32 / l123 );
+            float3 fp4_loc = f_43 * ( fact * l32 / l234 );
+            float3 fp2_loc = ( f_32 + fp1_loc ) * -1.0f;
+            float3 fp3_loc = ( f_32 - fp4_loc );
 
-            E = V * (1.0f - d * cos_nphi);
-
-            // Force calculation (dE/dphi)
-            float dEdPhi = V * d * n * sin_nphi;
-
-            // Use Prokop C++ force calculation
-            float f_prokop = -dEdPhi; // f = -dE/dphi in C++ notation
-            fi = n123 * (-f_prokop * inv_n123_mag2 * q12.w); // Force on i
-            fl = n234 * ( f_prokop * inv_n234_mag2 * q43.w); // Force on l
-
-            // Recoil forces on axis atoms j, k (Check dot products carefully)
-            // C++ uses: c123 = q32.f.dot(q12.f)*(q32.w/q12.w); -> dot(kj, ji) * (lkj/lji)
-            //           c432 = q32.f.dot(q43.f)*(q32.w/q43.w); -> dot(kj, lk) * (lkj/llk)
-            float c123 = dot(q32.xyz, q12.xyz) * (q32.w / q12.w); // Note: q12=ji
-            float c432 = dot(q32.xyz, q43.xyz) * (q32.w / q43.w); // Note: q43=lk
-
-            // Recoil forces from Prokop code:
-            fk = -c123 * fi - (c432 + 1.0f) * fl; // Force on k (atom 3)
-            fj = (c123 - 1.0f) * fi + c432 * fl; // Force on j (atom 2)
+            fi = fp1_loc; fj = fp2_loc; fk = fp3_loc; fl = fp4_loc;
         }
-    } // End of inlined evalDihedralUFF block
+    }
 
     if ((DBG_UFF!=0) && id==IDBG_DIH){
         int ia0=dihAtoms[id*4+0], ja0=dihAtoms[id*4+1], ka0=dihAtoms[id*4+2], la0=dihAtoms[id*4+3];
-        // reconstruct cos(phi) as c computed above; if degenerate, set to 1
-        float3 n123 = cross(-q12.xyz, q32.xyz);
-        float3 n234 = cross(-q32.xyz, q43.xyz);
-        float n1 = length(n123); float n2 = length(n234);
-        float cphi = (n1>1e-12f && n2>1e-12f)? dot(n123,n234)/(n1*n2) : 1.0f; cphi = clamp(cphi,-1.0f,1.0f);
+        // Recompute phi exactly as main path
+        float3 r12 = q12.xyz; float l12 = 1.0f / q12.w; float3 r12abs = r12 * l12;
+        float3 r32 = q32.xyz; float l32 = 1.0f / q32.w; float3 r32abs = r32 * l32;
+        float3 r43 = q43.xyz; float l43 = 1.0f / q43.w; float3 r43abs = r43 * l43;
+        float3 n123d = cross(r12abs, r32abs);
+        float3 n234d = cross(r43abs, r32abs);
+        float n1 = length(n123d); float n2 = length(n234d);
+        float cphi = (n1>1e-12f && n2>1e-12f)? dot(n123d,n234d)/(n1*n2) : 1.0f; cphi = clamp(cphi,-1.0f,1.0f);
         float phi = acos(cphi);
         float3 par = dihParams[id];
         printf("GPU DIH %4d : ia=%4d ja=%4d ka=%4d la=%4d  V=% .4e d=% .4e n=% .3f  phi=% .4e  Enb=% .4e  fi=(% .4e % .4e % .4e)  fj=(% .4e % .4e % .4e)  fk=(% .4e % .4e % .4e)  fl=(% .4e % .4e % .4e)  E=% .4e\n",

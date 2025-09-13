@@ -75,7 +75,7 @@ class UFF : public NBFF { public:
     //Vec3d * vapos __attribute__((aligned(64))) = 0;      // [natoms] velocities of atoms
 
     Mat3d   invLvec;    // inverse lattice vectors
-    double  SubNBTorstionFactor   = 0.5;    // if >0 we subtract torsion energy from non-bonded energy
+    double  SubNBTorstionFactor   = 0.0;    // if >0 we subtract torsion energy from non-bonded energy
 
     // Auxiliary Variables
     
@@ -1162,7 +1162,7 @@ class UFF : public NBFF { public:
         const double Fmax2     = FmaxNonBonded*FmaxNonBonded;
         const bool bSubNonBond = SubNBTorstionFactor>0;
         if(DBG_UFF!=0){
-            printf("CPU evalDihedrals() ndihedrals=%d i0dih=%d Rdamp=% .6e Fmax=% .6e SubNBFac=% .6e iDBG=%d\n", ndihedrals, i0dih, Rdamp, FmaxNonBonded, SubNBTorstionFactor, iDBG_dih);
+            printf("CPU evalDihedrals() ndihedrals=%d i0dih=%d Rdamp=% .6e Fmax=% .6e SubNBTorstionFactor=% .6e iDBG=%d\n", ndihedrals, i0dih, Rdamp, FmaxNonBonded, SubNBTorstionFactor, iDBG_dih);
             printf("CPU DIH-TABLE:  id   ia   ja   ka   la            V           d           n\n");
             int N=ndihedrals; if(N>64)N=64; 
             for(int i=0;i<N;i++){ 
