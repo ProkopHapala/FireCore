@@ -33,7 +33,8 @@ public:
     bool bUFF_dihedrals  = true;
     bool bUFF_inversions = true;
     bool bUFF_assemble   = true;
-    bool bSubtractNB     = true; // Subtract 1-3 and 1-4 non-bonded interactions
+    bool bSubtractNB     = true; // Subtract 1-2 (bond) non-bonded interactions
+    bool bSubtractNB_angle = true; // Subtract 1-3 (angle) non-bonded interactions
     bool bClampNonBonded = true;
 
     // --- OpenCL Buffers (identified by integer index)
@@ -230,7 +231,7 @@ public:
             int err=0;
             // offset after bonds
             // i0ang was computed above
-            int bSub = bSubtractNB?1:0;
+            int bSub = bSubtractNB_angle?1:0;
             err |= useArg   ( nAngles );                   OCL_checkError(err, "evalAngles.arg1 nAngles");
             err |= useArg   ( i0ang );                     OCL_checkError(err, "evalAngles.arg2 i0ang");
             err |= useArg   ( bSub );                      OCL_checkError(err, "evalAngles.arg3 bSub");

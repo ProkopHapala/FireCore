@@ -264,10 +264,10 @@ __kernel void evalAngles_UFF(
     const float      Rdamp,
     const float      FmaxNonBonded,
     // --- Input Arrays ---
-    __global int*    angAtoms,    // [nangles*3] {ia, ja, ka} where ja is central
+    __global int4*   angAtoms,    // [nangles] {ia, ja, ka, 0} where ja is central
     __global int2*   angNgs,      // [nangles] Precomputed {hneigh_idx_ji, hneigh_idx_kj}
-    __global float4* angParams1,  // [nangles] {K, c0, c1, c2}
-    __global float*  angParams2_w,// [nangles] {c3}
+    __global float4* angParams1,  // [nangles] {c0, c1, c2, c3}
+    __global float*  angParams2_w,// [nangles] {K}
     __global float4* hneigh,      // Input: [natoms*4] Precomputed h-vectors {nx,ny,nz, 1/L}
     // --- Optional NB Subtraction Inputs (pass only if bSubtractAngleNonBond=1) ---
     __global float4* REQs,
@@ -279,26 +279,26 @@ __kernel void evalAngles_UFF(
     // --- Output Arrays ---
     __global float4* fint,        // Output: [nf] Stores force pieces {fx,fy,fz, E_contrib}
     __global float*  Ea_contrib   // Output: [nangles] Optional per-angle energy buffer
-) {
+){
     int iang = get_global_id(0);
     if ((DBG_UFF!=0) && iang==0){
-        printf("GPU evalAngles_UFF() nangles=%3i i0ang=%3i Rdamp=% .4e Fmax=% .4e SubNB=%d iDBG=%d\n", nangles, i0ang, Rdamp, FmaxNonBonded, bSubtractAngleNonBond, IDBG_ANGLE);
-        printf("GPU ANG-TABLE  ia   ja   ka            K          c0          c1          c2          c3\n");
+        printf("GPU evalAngles_UFF() nangles=%3i i0ang=%3i Rdamp=% .4e Fmax=% .4e bSubtractAngleNonBond=%d iDBG=%d\n", nangles, i0ang, Rdamp, FmaxNonBonded, bSubtractAngleNonBond, IDBG_ANGLE);
+        printf("GPU ANG-TABLE  id   ia   ja   ka            K          c0          c1          c2          c3\n");
         int N = (nangles<64)?nangles:64;
         for(int i=0;i<N;i++){
-            int ia0=angAtoms[i*3+0], ja0=angAtoms[i*3+1], ka0=angAtoms[i*3+2];
-            float4 p1=angParams1[i]; float p3=angParams2_w[i];
-            printf("GPU ANG %3i : %3i %3i %3i % .4e % .4e % .4e % .4e % .4e\n", i, ia0,ja0,ka0,p1.x,p1.y,p1.z,p1.w,p3);
+            int4 a = angAtoms[i]; int ia0=a.x, ja0=a.y, ka0=a.z;
+            float4 cs=angParams1[i]; float K=angParams2_w[i];
+            printf("GPU ANG %3i : ia=%3i ja=%3i ka=%3i  K=% .4e c0=% .4e c1=% .4e c2=% .4e c3=% .4e\n", i, ia0,ja0,ka0,K,cs.x,cs.y,cs.z,cs.w);
         }
         printf("evalAngles_UFF().eval\n");
     }
     if (iang >= nangles) return;
 
     // --- Get Data ---
-    int i3a = iang * 3;
-    int ia = angAtoms[i3a + 0]; // Atom i
-    int ja = angAtoms[i3a + 1]; // Atom j (central)
-    int ka = angAtoms[i3a + 2]; // Atom k
+    int4 a = angAtoms[iang];
+    int ia = a.x; // Atom i
+    int ja = a.y; // Atom j (central)
+    int ka = a.z; // Atom k
 
     int2 ngs = angNgs[iang];         // Precomputed hneigh indices {ji, kj}
     float4 qij = hneigh[ngs.x]; // h-vector for j->i {hij, 1/lij}
@@ -307,51 +307,70 @@ __kernel void evalAngles_UFF(
     // Non-bonded energy placeholder for debug printing
     float Enb = 0.0f;
 
-    float4 par1 = angParams1[iang];
-    float  par2_w = angParams2_w[iang]; // c3
+    float4 par1 = angParams1[iang];   // {c0,c1,c2,c3}
+    float  K     = angParams2_w[iang]; // K
 
-    // --- Inlined Angle Calculation (UFF Fourier Series) ---
+    // --- Angle calculation exactly as CPU (UFF.h::evalAngle_Prokop) ---
     float3 fpi, fpj, fpk; // Forces on i, j, k
     float E = 0.0f;
-    { // Start of inlined evalAngleUFF block
-        float c = dot(-qij.xyz, qkj.xyz); // cos(theta) between ij and kj
+    {
+        // CPU computes c via h = qij + qkj
+        float3 h = qij.xyz + qkj.xyz;
+        float c = 0.5f * ( dot(h,h) - 2.0f );   // cos(theta)
         c = clamp(c, -1.0f, 1.0f);
-        float s = sqrt(1.0f - c*c + 1e-14f);
-        float inv_s = (s > 1e-7f) ? 1.0f / s : 0.0f; // Avoid division by zero if s is tiny
+        float s = sqrt(fmax(0.0f, 1.0f - c*c) + 1e-14f);
+        float inv_s = (s > 1e-12f) ? (1.0f / s) : 0.0f;
 
-        float k  = par1.x;
-        float c0 = par1.y;
-        float c1 = par1.z;
-        float c2 = par1.w;
-        float c3 = par2_w;
+        // E and f via Fourier series using complex multiplication, matching CPU
+        float c0 = par1.x;
+        float c1 = par1.y;
+        float c2 = par1.z;
+        float c3 = par1.w;
 
-        // Energy: E = k * ( c0 + c1*cos(theta) + c2*cos(2*theta) + c3*cos(3*theta) )
-        float c2t = 2.0f*c*c - 1.0f; // cos(2*theta)
-        float c3t = 4.0f*c*c*c - 3.0f*c; // cos(3*theta)
-        E = k * ( c0 + c1*c + c2*c2t + c3*c3t );
+        // Represent cos/sin as a complex number: (x,y) = (cos, sin)
+        float2 cs  = (float2)(c, s);
+        float2 csn = cs; // will hold cos(n*theta), sin(n*theta)
 
-        // Force term: dE/dtheta = -k * ( c1*s + c2*2*sin(2*theta) + c3*3*sin(3*theta) )
-        float s2t = 2.0f*s*c;             // sin(2*theta)
-        float s3t = s*(4.0f*c*c - 1.0f); // sin(3*theta)
-        float dEdTheta = -k * ( c1*s + 2.0f*c2*s2t + 3.0f*c3*s3t );
+        // Start with coefficients
+        float Eloc = c0;
+        float fmag = c1;
 
-        // Force component calculation: F = - (dE/dtheta / sin(theta)) * grad(theta)
-        float force_term = (s > 1e-7f) ? dEdTheta * inv_s : 0.0f; // = -(dE/dtheta)/sin(theta)
+        // n=2 term
+        // csn *= cs  => (cos2, sin2)
+        csn = (float2)( csn.x*cs.x - csn.y*cs.y,  csn.x*cs.y + csn.y*cs.x );
+        Eloc += c2 * csn.x;
+        fmag += c2 * csn.y * inv_s * 2.0f;
 
-        // grad_i(theta) = ( hij*cos(theta) - hkj ) / (lij * sin(theta))
-        // grad_k(theta) = ( hkj*cos(theta) - hij ) / (lkj * sin(theta))
-        // Need vectors ij = -qij.xyz, kj = qkj.xyz
-        fpi = force_term * ( (-qij.xyz)*c - qkj.xyz ) * qij.w; // Force on i ~ dTheta/dri * (-dE/dTheta)
-        fpk = force_term * ( qkj.xyz*c - (-qij.xyz) ) * qkj.w; // Force on k ~ dTheta/drk * (-dE/dTheta)
-        fpj = -(fpi + fpk); // Force on j by Newton's third law
-    } // End of inlined evalAngleUFF block
+        // n=3 term
+        csn = (float2)( csn.x*cs.x - csn.y*cs.y,  csn.x*cs.y + csn.y*cs.x );
+        Eloc += c3 * csn.x;
+        fmag += c3 * csn.y * inv_s * 3.0f;
+
+        // Scale by K
+        E = K * Eloc;
+        fmag *= K;
+
+        // Assemble forces exactly as CPU
+        float fi = fmag * qij.w;
+        float fk = fmag * qkj.w;
+        float fic = fi * c;
+        float fkc = fk * c;
+
+        // fpi = fic*qij - fi*qkj
+        fpi = fic * qij.xyz - fi * qkj.xyz;
+        // fpk = -fk*qij + fkc*qkj
+        fpk = -fk * qij.xyz + fkc * qkj.xyz;
+        // fpj = (fk-fic)*qij + (fi-fkc)*qkj
+        fpj = (fk - fic) * qij.xyz + (fi - fkc) * qkj.xyz;
+    }
 
     if ((DBG_UFF!=0) && iang==IDBG_ANGLE){
-        int ia0=angAtoms[iang*3+0], ja0=angAtoms[iang*3+1], ka0=angAtoms[iang*3+2];
-        float theta = acos(clamp(dot(-qij.xyz,qkj.xyz),-1.0f,1.0f));
+        int4 a_dbg = angAtoms[iang];
+        int ia0=a_dbg.x, ja0=a_dbg.y, ka0=a_dbg.z;
+        float theta = acos(clamp(dot(qij.xyz,qkj.xyz),-1.0f,1.0f));
         printf("GPU ANG %3d : ia=%3d ja=%3d ka=%3d  K=% .4e c0=% .4e c1=% .4e c2=% .4e c3=% .4e  ang=% .4e  Enb=% .4e  fi=(% .4e % .4e % .4e)  fj=(% .4e % .4e % .4e)  fk=(% .4e % .4e % .4e)  E=% .4e\n",
                iang, ia0,ja0,ka0,
-               par1.x,par1.y,par1.z,par1.w,par2_w,
+               K, par1.x,par1.y,par1.z,par1.w,
                theta,Enb,
                fpi.x,fpi.y,fpi.z,
                fpj.x,fpj.y,fpj.z,

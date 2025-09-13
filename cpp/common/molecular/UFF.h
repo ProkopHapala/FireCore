@@ -864,7 +864,7 @@ class UFF : public NBFF { public:
         const double R2damp = Rdamp*Rdamp;
         const double Fmax2  = FmaxNonBonded*FmaxNonBonded;
         if(DBG_UFF!=0){
-            printf("CPU evalAngles() nangles=%d i0ang=%d Rdamp=% .6e Fmax=% .6e SubNB=%d iDBG=%d\n", nangles, i0ang, Rdamp, FmaxNonBonded, (int)bSubtractAngleNonBond, iDBG_angle);
+            printf("CPU evalAngles() nangles=%d i0ang=%d Rdamp=% .6e Fmax=% .6e bSubtractAngleNonBond=%d iDBG=%d\n", nangles, i0ang, Rdamp, FmaxNonBonded, (int)bSubtractAngleNonBond, iDBG_angle);
             printf("CPU ANG-TABLE  id   ia   ja   ka            K          c0          c1          c2          c3\n");
             int N=nangles; if(N>64)N=64; 
             for(int i=0;i<N;i++){ 
