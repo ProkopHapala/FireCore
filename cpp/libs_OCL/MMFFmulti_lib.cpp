@@ -221,7 +221,17 @@ void setSwitchesUFF( int DoBond, int DoAngle, int DoDihedral, int DoInversion, i
     W.uff_ocl->bSubtractNB_angle  = W.ffu.bSubtractAngleNonBond && W.ffu.bNonBonded;
     W.uff_ocl->bClampNonBonded    = W.ffu.bClampNonBonded    && W.ffu.bNonBonded;
     printf( "setSwitchesUFF() DoBond=%i DoAngle=%i DoDihedral=%i DoInversion=%i DoAssemble=%i SubtractBondNonBond=%i ClampNonBonded=%i \n", W.ffu.bDoBond, W.ffu.bDoAngle, W.ffu.bDoDihedral, W.ffu.bDoInversion, W.ffu.bDoAssemble, W.ffu.bSubtractBondNonBond, W.ffu.bClampNonBonded );
-    if(W.uff_ocl){ printf("GPU flags: bUFF_bonds=%i bUFF_angles=%i bUFF_dihedrals=%i bUFF_inversions=%i bUFF_assemble=%i\n", W.uff_ocl->bUFF_bonds, W.uff_ocl->bUFF_angles, W.uff_ocl->bUFF_dihedrals, W.uff_ocl->bUFF_inversions, W.uff_ocl->bUFF_assemble ); }
+    if(W.uff_ocl){
+        printf("GPU flags: bUFF_bonds=%i bUFF_angles=%i bUFF_dihedrals=%i bUFF_inversions=%i bUFF_assemble=%i bSubtractNB=%i bSubtractNB_angle=%i bClampNB=%i\n",
+            W.uff_ocl->bUFF_bonds, W.uff_ocl->bUFF_angles, W.uff_ocl->bUFF_dihedrals, W.uff_ocl->bUFF_inversions, W.uff_ocl->bUFF_assemble,
+            W.uff_ocl->bSubtractNB, W.uff_ocl->bSubtractNB_angle, W.uff_ocl->bClampNonBonded );
+        // Re-bind kernel args with the updated flags and UFF parameters to keep GPU in sync with CPU
+        // Use current UFF parameters from W.ffu
+        float Rdamp = (float)W.ffu.Rdamp;
+        float FmaxNB = (float)W.ffu.FmaxNonBonded;
+        float SubNBTorsion = (float)W.ffu.SubNBTorsionFactor;
+        W.uff_ocl->setup_kernels( Rdamp, FmaxNB, SubNBTorsion );
+    }
     #undef _setbool
 }
 

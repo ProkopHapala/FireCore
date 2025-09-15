@@ -441,6 +441,7 @@ class OCLsystem{ public:
         check_contextSet();
         buffers.push_back( OCLBuffer( name, n, typesize, p_cpu, flags ) );
         int i=buffers.size()-1;
+        printf( "newBuffer( %-16s) ibuff=%4i nbyte=%8li  n %6li typesize %3li \n", name, i, buffers[i].byteSize(), n, typesize );
         buffer_dict.insert( { name, i } );
         int err=buffers[i].initOnGPU(context); OCL_checkError__(err, "newBuffer",i,name);
         return i;
@@ -514,8 +515,14 @@ class OCLsystem{ public:
     }
     int buildProgram( const char * fname ){ return buildProgram( fname, program ); }
  
-    inline int upload  (int i, const void* cpu_data, int n=-1,int i0=0 ){ return buffers[i].toGPU  (commands,cpu_data,n,i0); };
-    inline int download(int i,       void* cpu_data, int n=-1,int i0=0 ){ return buffers[i].fromGPU(commands,cpu_data,n,i0); };
+    inline int upload  (int i, const void* cpu_data, int n=-1,int i0=0, bool bPrint=false ){ 
+        if(bPrint){ printf("OCL::upload %4i %-12s %12li %12i\n", i, buffers[i].name.c_str(), n, i0); } 
+        return buffers[i].toGPU  (commands,cpu_data,n,i0); 
+    };
+    inline int download(int i,       void* cpu_data, int n=-1,int i0=0, bool bPrint=false ){ 
+        if(bPrint){ printf("OCL::download %4i %-12s %12li %12i\n", i, buffers[i].name.c_str(), n, i0); } 
+        return buffers[i].fromGPU(commands,cpu_data,n,i0); 
+    };
     //inline int upload  (int i, void* p_cpu ){ buffers[i].p_cpu=p_cpu; return buffers[i].toGPU  (commands); };
     //inline int download(int i, void* p_cpu ){ buffers[i].p_cpu=p_cpu; return buffers[i].fromGPU(commands); };
 

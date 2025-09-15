@@ -75,7 +75,7 @@ class UFF : public NBFF { public:
     //Vec3d * vapos __attribute__((aligned(64))) = 0;      // [natoms] velocities of atoms
 
     Mat3d   invLvec;    // inverse lattice vectors
-    double  SubNBTorstionFactor   = 0.0;    // if >0 we subtract torsion energy from non-bonded energy
+    double  SubNBTorsionFactor   = 0.0;    // if >0 we subtract torsion energy from non-bonded energy
 
     // Auxiliary Variables
     
@@ -952,7 +952,7 @@ class UFF : public NBFF { public:
             Enb = getLJQH( dp, fnb, REQij, R2damp );
             E  -= Enb;
             if(bClampNonBonded)clampForce( fnb, Fmax2 );
-            fnb.mul( SubNBTorstionFactor );
+            fnb.mul( SubNBTorsionFactor );
             fp1.add( fnb );
             fp4.sub( fnb );
         }
@@ -1040,7 +1040,7 @@ class UFF : public NBFF { public:
             //Vec3d dp; dp.set_lincomb( (1./q12.w), (-1./q43.w), (-1./q32.w), q12.f, q43.f, q32.f );
             E -= getLJQH( dp, fnb, REQij, R2damp );
             if(bClampNonBonded)clampForce( fnb, Fmax2 );
-            fnb.mul( SubNBTorstionFactor );
+            fnb.mul( SubNBTorsionFactor );
             fp1.add( fnb );
             fp4.sub( fnb );
         }
@@ -1148,7 +1148,7 @@ class UFF : public NBFF { public:
             Vec3d dp = r12abs -r43abs - r32abs;
             E -= getLJQH( dp, fnb, REQij, R2damp );
             if(bClampNonBonded)clampForce( fnb, Fmax2 );
-            fnb.mul( SubNBTorstionFactor );
+            fnb.mul( SubNBTorsionFactor );
             fp1.add( fnb );
             fp4.sub( fnb );
         }
@@ -1187,9 +1187,9 @@ class UFF : public NBFF { public:
         double E=0.0;
         const double R2damp    = Rdamp*Rdamp;
         const double Fmax2     = FmaxNonBonded*FmaxNonBonded;
-        const bool bSubNonBond = SubNBTorstionFactor>0;
+        const bool bSubNonBond = SubNBTorsionFactor>0;
         if(DBG_UFF!=0){
-            printf("CPU evalDihedrals() ndihedrals=%d i0dih=%d Rdamp=% .6e Fmax=% .6e SubNBTorstionFactor=% .6e iDBG=%d\n", ndihedrals, i0dih, Rdamp, FmaxNonBonded, SubNBTorstionFactor, iDBG_dih);
+            printf("CPU evalDihedrals() ndihedrals=%d i0dih=%d Rdamp=% .6e Fmax=% .6e SubNBTorsionFactor=% .6e iDBG=%d\n", ndihedrals, i0dih, Rdamp, FmaxNonBonded, SubNBTorsionFactor, iDBG_dih);
             printf("CPU DIH-TABLE:  id   ia   ja   ka   la            V           d           n\n");
             int N=ndihedrals; if(N>64)N=64; 
             for(int i=0;i<N;i++){ 
@@ -1461,7 +1461,7 @@ class UFF : public NBFF { public:
         //printf("UFF::eval_omp() \n");
         const double R2damp    = Rdamp*Rdamp;
         const double Fmax2     = FmaxNonBonded*FmaxNonBonded;
-        const bool bSubNonBond = SubNBTorstionFactor>0;
+        const bool bSubNonBond = SubNBTorsionFactor>0;
         double Enb=0;
         #pragma omp parallel shared(Enb,Eb,Ea,Ed,Ei)
         {
@@ -1528,7 +1528,7 @@ class UFF : public NBFF { public:
         // bSubtractBondNonBond  = false;
         // bSubtractAngleNonBond = true;
         // bClampNonBonded       = false;
-        // //SubNBTorstionFactor   = -1.0;
+        // //SubNBTorsionFactor   = -1.0;
 
         // // --- Non-Bonded using clamp-and-subtract strategy (i.e. no check for neighbors in NBFF) 
         // bNonBonded            = true;
@@ -1536,14 +1536,14 @@ class UFF : public NBFF { public:
         // bSubtractBondNonBond  = true;
         // bSubtractAngleNonBond = true;
         // bClampNonBonded       = true;
-        // //SubNBTorstionFactor   = -1.0;
+        // //SubNBTorsionFactor   = -1.0;
 
 
         // //bSubNonBond         = false;
         // bNonBondNeighs        = false;
         // bSubtractBondNonBond  = false;
         // bSubtractAngleNonBond = false;
-        // SubNBTorstionFactor   = -1.0;
+        // SubNBTorsionFactor   = -1.0;
         //printf( "UFF::run() cdamp=%g \n", cdamp );
 
         ForceField::setNonBondStrategy( bNonBondNeighs*2-1 );
@@ -1706,7 +1706,7 @@ class UFF : public NBFF { public:
         double cdamp = colDamp.update( dt );
         const double R2damp    = Rdamp*Rdamp;
         const double Fmax2     = FmaxNonBonded*FmaxNonBonded;
-        const bool bSubNonBond = SubNBTorstionFactor>0;
+        const bool bSubNonBond = SubNBTorsionFactor>0;
         int    itr=0;
         #pragma omp parallel shared( Enb, Eb, Ea, Ed, Ei, ff,vv,vf ) private(itr)
         for(itr=0; itr<niter; itr++){

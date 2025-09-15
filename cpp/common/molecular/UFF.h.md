@@ -59,7 +59,7 @@ The UFF class implements the Universal Force Field (UFF) for molecular mechanics
 - **int nbonds**: Number of bond interactions.
 - **int i0dih**: Index offset for dihedral interactions.
 - **Mat3d invLvec**: Inverse lattice vectors used for periodic boundary conditions.
-- **double SubNBTorstionFactor**: Factor to subtract torsion energy from non-bonded energy if greater than zero.
+- **double SubNBTorsionFactor**: Factor to subtract torsion energy from non-bonded energy if greater than zero.
 - **Vec3d * fbon**: Forces on atoms due to bonds (not currently in use).
 - **Vec3d * fang**: Forces on atoms due to angles (not currently in use).
 - **Vec3d * fdih**: Forces on atoms due to dihedrals.
