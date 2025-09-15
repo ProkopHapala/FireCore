@@ -462,7 +462,7 @@ __kernel void evalDihedrals_UFF(
     // --- Input Arrays ---
     __global int*    dihAtoms,    // [ndihedrals*4] {ia, ja, ka, la}
     __global int*    dihNgs,      // [ndihedrals*3] Precomputed {hneigh_idx_ji, hneigh_idx_kj, hneigh_idx_lk}
-    __global float3* dihParams,   // [ndihedrals] { V, d=cos(n*phi0), n }
+    __global float4* dihParams,   // [ndihedrals] { V, d=cos(n*phi0), n, w(ignored) }
     __global float4* hneigh,      // Input: [natoms*4] Precomputed h-vectors
     // --- Optional NB Subtraction Inputs (pass only if SubNBTorsionFactor > 0) ---
     __global float4* REQs,
@@ -484,7 +484,7 @@ __kernel void evalDihedrals_UFF(
         printf("GPU evalDihedrals_UFF() ndihedrals=%d i0dih=%d Rdamp=% .6e Fmax=% .6e SubNBTorsionFactor=% .6e iDBG=%d isys=%d\n", ndihedrals, i0dih, Rdamp, FmaxNonBonded, SubNBTorsionFactor, IDBG_DIH, isys);
         printf("GPU DIH-TABLE  ia   ja   ka   la            V           d           n\n");
         int N=(ndihedrals<64)?ndihedrals:64; 
-        for(int i=0;i<N;i++){ int ia=dihAtoms[(i0D+i)*4+0],ja=dihAtoms[(i0D+i)*4+1],ka=dihAtoms[(i0D+i)*4+2],la=dihAtoms[(i0D+i)*4+3]; float3 p=dihParams[i0D+i];
+        for(int i=0;i<N;i++){ int ia=dihAtoms[(i0D+i)*4+0],ja=dihAtoms[(i0D+i)*4+1],ka=dihAtoms[(i0D+i)*4+2],la=dihAtoms[(i0D+i)*4+3]; float4 p=dihParams[i0D+i];
             printf("GPU DIH %3d : %3d %3d %3d %3d % .4e % .4e % .3f\n", i, ia,ja,ka,la, p.x,p.y,p.z);
         }
         printf("GPU evalDihedrals_UFF().eval\n");
@@ -498,7 +498,7 @@ __kernel void evalDihedrals_UFF(
     int ka = dihAtoms[i4a + 2]; // Atom k
     int la = dihAtoms[i4a + 3]; // Atom l
     int4 ngs = dihNgs[i0D + id];
-    float3 par = dihParams[i0D + id];
+    float3 par = dihParams[i0D + id].xyz;
 
     // Non-bonded energy placeholder for debug printing (used before subtraction block)
     float Enb = 0.0f;
@@ -570,7 +570,7 @@ __kernel void evalDihedrals_UFF(
         float n1 = length(n123d); float n2 = length(n234d);
         float cphi = (n1>1e-12f && n2>1e-12f)? dot(n123d,n234d)/(n1*n2) : 1.0f; cphi = clamp(cphi,-1.0f,1.0f);
         float phi = acos(cphi);
-        float3 par = dihParams[i0D + id];
+        float3 par = dihParams[i0D + id].xyz;
         printf("GPU DIH %4d : ia=%4d ja=%4d ka=%4d la=%4d  V=% .4e d=% .4e n=% .3f  phi=% .4e  Enb=% .4e  fi=(% .4e % .4e % .4e)  fj=(% .4e % .4e % .4e)  fk=(% .4e % .4e % .4e)  fl=(% .4e % .4e % .4e)  E=% .4e isys=%d\n",
                id, ia0,ja0,ka0,la0,
                par.x,par.y,par.z,
