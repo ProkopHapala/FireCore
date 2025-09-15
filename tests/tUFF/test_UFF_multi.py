@@ -316,11 +316,11 @@ if __name__ == "__main__":
     # Run CPU then GPU with the same initialization and switches
     #components = ['bonds', 'angles', 'dihedrals', 'inversions']
     #components = ['bonds']
-    #components = ['bonds', 'angles']
+    components = ['bonds', 'angles']
     #components = ['bonds',  'dihedrals']
     #components = ['bonds', 'inversions']
     #components = ['bonds', 'angles', 'dihedrals']
-    components = ['bonds', 'angles', 'dihedrals', 'inversions']
+    #components = ['bonds', 'angles', 'dihedrals', 'inversions']
     component_flags = {key: 1 for key in components }
 
     if args.use_scan or args.nconf>0:

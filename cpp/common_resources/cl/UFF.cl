@@ -302,14 +302,15 @@ __kernel void evalAngles_UFF(
 ){
     int iang = get_global_id(0);
     int isys = get_global_id(1);
-    int i0a = isys * nangles; // Per-system base offset
+    int i0A = isys * nangles;       // per-system base for angle arrays
+    int i0f = isys * nf_per_system; // per-system base for fint
     if ((DBG_UFF!=0) && iang==0 && (isys==IDBG_SYS)){
         printf("GPU evalAngles_UFF() nangles=%3i i0ang=%3i Rdamp=% .4e Fmax=% .4e bSubtractAngleNonBond=%d iDBG=%d isys=%d\n", nangles, i0ang, Rdamp, FmaxNonBonded, bSubtractAngleNonBond, IDBG_ANGLE, isys);
         printf("GPU ANG-TABLE  id   ia   ja   ka            K          c0          c1          c2          c3\n");
         int N = (nangles<64)?nangles:64;
         for(int i=0;i<N;i++){
-            int4 a = angAtoms[i]; int ia0=a.x, ja0=a.y, ka0=a.z;
-            float4 cs=angParams1[i]; float K=angParams2_w[i];
+            int4 a = angAtoms[i0A + i]; int ia0=a.x, ja0=a.y, ka0=a.z;
+            float4 cs=angParams1[i0A + i]; float K=angParams2_w[i0A + i];
             printf("GPU ANG %3i : ia=%3i ja=%3i ka=%3i  K=% .4e c0=% .4e c1=% .4e c2=% .4e c3=% .4e\n", i, ia0,ja0,ka0,K,cs.x,cs.y,cs.z,cs.w);
         }
         printf("evalAngles_UFF().eval\n");
@@ -317,20 +318,20 @@ __kernel void evalAngles_UFF(
     if (iang >= nangles) return;
 
     // --- Get Data ---
-    int4 a = angAtoms[iang];
+    int4 a = angAtoms[i0A + iang];
     int ia = a.x; // Atom i
     int ja = a.y; // Atom j (central)
     int ka = a.z; // Atom k
 
-    int2 ngs = angNgs[iang];         // Precomputed hneigh indices {ji, kj}
-    float4 qij = hneigh[ngs.x]; // h-vector for j->i {hij, 1/lij}
-    float4 qkj = hneigh[ngs.y]; // h-vector for j->k {hkj, 1/lkj}
+    int2 ngs = angNgs[i0A + iang];         // Precomputed hneigh indices {ji, kj}
+    float4 qij = hneigh[ngs.x]; // indices already include per-system base from host
+    float4 qkj = hneigh[ngs.y];
 
     // Non-bonded energy placeholder for debug printing
     float Enb = 0.0f;
 
-    float4 par1 = angParams1[iang];   // {c0,c1,c2,c3}
-    float  K     = angParams2_w[iang]; // K
+    float4 par1 = angParams1[i0A + iang];   // {c0,c1,c2,c3}
+    float  K     = angParams2_w[i0A + iang]; // K
 
     // --- Angle calculation exactly as CPU (UFF.h::evalAngle_Prokop) ---
     float3 fpi, fpj, fpk; // Forces on i, j, k
@@ -442,7 +443,7 @@ __kernel void evalAngles_UFF(
 
     // --- Store forces into `fint` array ---
     float E_contrib = (E - Enb) / 3.0f;
-    int idx_base = i0ang + iang * 3; // Base index for this angle's three force slots
+    int idx_base = i0f + i0ang + iang * 3; // per-system fint offset
     fint[idx_base + 0] = (float4)(fpi, E_contrib); // Store force on atom i
     fint[idx_base + 1] = (float4)(fpj, E_contrib); // Store force on atom j
     fint[idx_base + 2] = (float4)(fpk, E_contrib); // Store force on atom k
@@ -477,35 +478,37 @@ __kernel void evalDihedrals_UFF(
 ) {
     int id = get_global_id(0);
     int isys = get_global_id(1);
-    int i0a = isys * ndihedrals; // Per-system base offset
+    int i0D = isys * ndihedrals;    // per-system base for dihedral arrays
+    int i0f = isys * nf_per_system; // per-system base for fint
     if ((DBG_UFF!=0) && id==0 && (isys==IDBG_SYS)){
         printf("GPU evalDihedrals_UFF() ndihedrals=%d i0dih=%d Rdamp=% .6e Fmax=% .6e SubNBTorsionFactor=% .6e iDBG=%d isys=%d\n", ndihedrals, i0dih, Rdamp, FmaxNonBonded, SubNBTorsionFactor, IDBG_DIH, isys);
         printf("GPU DIH-TABLE  ia   ja   ka   la            V           d           n\n");
         int N=(ndihedrals<64)?ndihedrals:64; 
-        for(int i=0;i<N;i++){ int ia=dihAtoms[i*4+0],ja=dihAtoms[i*4+1],ka=dihAtoms[i*4+2],la=dihAtoms[i*4+3]; float3 p=dihParams[i];
+        for(int i=0;i<N;i++){ int ia=dihAtoms[(i0D+i)*4+0],ja=dihAtoms[(i0D+i)*4+1],ka=dihAtoms[(i0D+i)*4+2],la=dihAtoms[(i0D+i)*4+3]; float3 p=dihParams[i0D+i];
             printf("GPU DIH %3d : %3d %3d %3d %3d % .4e % .4e % .3f\n", i, ia,ja,ka,la, p.x,p.y,p.z);
         }
         printf("GPU evalDihedrals_UFF().eval\n");
     }
     if (id >= ndihedrals) return;
 
-    // --- Get Data ---
-    int i4a = id * 4;
+    // --- Get Data --- (per-system)
+    int i4a = (i0D + id) * 4;
     int ia = dihAtoms[i4a + 0]; // Atom i
     int ja = dihAtoms[i4a + 1]; // Atom j
     int ka = dihAtoms[i4a + 2]; // Atom k
     int la = dihAtoms[i4a + 3]; // Atom l
+    int4 ngs = dihNgs[i0D + id];
+    float3 par = dihParams[i0D + id];
 
     // Non-bonded energy placeholder for debug printing (used before subtraction block)
     float Enb = 0.0f;
 
     // Get precomputed hneigh indices {ji, kj, lk}
-    int3 ngs = ((__global int3*)dihNgs)[id]; // Read as int3
     float4 q12 = hneigh[ngs.x]; // ji {h_ji, 1/l_ji}
     float4 q32 = hneigh[ngs.y]; // kj {h_kj, 1/l_kj}
     float4 q43 = hneigh[ngs.z]; // lk {h_lk, 1/l_lk}
 
-    float3 par = dihParams[id]; // { V, d, n }
+    //float3 par = dihParams[id]; // { V, d, n }
 
     // --- Inlined Dihedral Calculation (exact UFF.h::evalDihedral_Prokop) ---
     float3 fi, fj, fk, fl; // Forces on i, j, k, l
@@ -526,7 +529,7 @@ __kernel void evalDihedrals_UFF(
             float c = clamp(dot(n123, n234), -1.0f, 1.0f);
             float s = sqrt(fmax(0.0f, 1.0f - c*c) + 1e-14f);
 
-            float3 par = dihParams[id];
+            //float3 par = dihParams[id];
             int   nint = (int)(par.z + 0.5f);
             float2 cs  = (float2)(c, s);
             float2 csn = cs;
@@ -557,7 +560,7 @@ __kernel void evalDihedrals_UFF(
     }
 
     if ((DBG_UFF!=0) && id==IDBG_DIH && (isys==IDBG_SYS)){
-        int ia0=dihAtoms[id*4+0], ja0=dihAtoms[id*4+1], ka0=dihAtoms[id*4+2], la0=dihAtoms[id*4+3];
+        int ia0=dihAtoms[(i0D+id)*4+0], ja0=dihAtoms[(i0D+id)*4+1], ka0=dihAtoms[(i0D+id)*4+2], la0=dihAtoms[(i0D+id)*4+3];
         // Recompute phi exactly as main path
         float3 r12 = q12.xyz; float l12 = 1.0f / q12.w; float3 r12abs = r12 * l12;
         float3 r32 = q32.xyz; float l32 = 1.0f / q32.w; float3 r32abs = r32 * l32;
@@ -567,7 +570,7 @@ __kernel void evalDihedrals_UFF(
         float n1 = length(n123d); float n2 = length(n234d);
         float cphi = (n1>1e-12f && n2>1e-12f)? dot(n123d,n234d)/(n1*n2) : 1.0f; cphi = clamp(cphi,-1.0f,1.0f);
         float phi = acos(cphi);
-        float3 par = dihParams[id];
+        float3 par = dihParams[i0D + id];
         printf("GPU DIH %4d : ia=%4d ja=%4d ka=%4d la=%4d  V=% .4e d=% .4e n=% .3f  phi=% .4e  Enb=% .4e  fi=(% .4e % .4e % .4e)  fj=(% .4e % .4e % .4e)  fk=(% .4e % .4e % .4e)  fl=(% .4e % .4e % .4e)  E=% .4e isys=%d\n",
                id, ia0,ja0,ka0,la0,
                par.x,par.y,par.z,
@@ -615,7 +618,7 @@ __kernel void evalDihedrals_UFF(
 
     // --- Store forces into `fint` array ---
     float E_contrib = (E - Enb) * 0.25f;
-    int idx_base = i0dih + id * 4; // Base index for this dihedral's four force slots
+    int idx_base = i0f + i0dih + id * 4; // per-system fint offset
     fint[idx_base + 0] = (float4)(fi, E_contrib); // Store force on atom i
     fint[idx_base + 1] = (float4)(fj, E_contrib); // Store force on atom j
     fint[idx_base + 2] = (float4)(fk, E_contrib); // Store force on atom k
@@ -641,11 +644,13 @@ __kernel void evalInversions_UFF(
 ) {
     int ii = get_global_id(0);
     int isys = get_global_id(1);
+    int i0I = isys * ninversions;    // per-system base for inversion arrays
+    int i0f = isys * nf_per_system;  // per-system base for fint
     if ((DBG_UFF!=0) && ii==0 && (isys==IDBG_SYS)){
         printf("GPU INV  ninversions=%d i0inv=%d iDBG=%d isys=%d\n", ninversions, i0inv, IDBG_INV, isys);
         printf("GPU INV-TABLE  ia   ja   ka   la            K          c0          c1          c2\n");
         int N=(ninversions<64)?ninversions:64; 
-        for(int i=0;i<N;i++){ int ia=invAtoms[i*4+0],ja=invAtoms[i*4+1],ka=invAtoms[i*4+2],la=invAtoms[i*4+3]; float4 p=invParams[i];
+        for(int i=0;i<N;i++){ int ia=invAtoms[(i0I+i)*4+0],ja=invAtoms[(i0I+i)*4+1],ka=invAtoms[(i0I+i)*4+2],la=invAtoms[(i0I+i)*4+3]; float4 p=invParams[i0I+i];
             printf("GPU INV %3i : ia=%3i ja=%3i ka=%3i la=%3i  K=% .4e c0=% .4e c1=% .4e c2=% .4e\n", i, ia,ja,ka,la,p.x,p.y,p.z,p.w);
         }
         printf("GPU evalInversions_UFF().eval: \n");
@@ -653,20 +658,20 @@ __kernel void evalInversions_UFF(
     if (ii >= ninversions) return;
 
     // --- Get Data ---
-    int i4a = ii * 4;
+    int i4a = (i0I + ii) * 4;
     // Atoms ia, ja, ka, la (ia is central)
-    // int ia = invAtoms[i4a + 0]; // Atom i (central)
-    // int ja = invAtoms[i4a + 1]; // Atom j
-    // int ka = invAtoms[i4a + 2]; // Atom k
-    // int la = invAtoms[i4a + 3]; // Atom l
+    int ia = invAtoms[i4a + 0]; // Atom i (central)
+    int ja = invAtoms[i4a + 1]; // Atom j
+    int ka = invAtoms[i4a + 2]; // Atom k
+    int la = invAtoms[i4a + 3]; // Atom l
 
     // Get precomputed hneigh indices {ji, ki, li} relative to central atom ia
-    int3 ngs = ((__global int3*)invNgs)[ii]; // Read as int3
+    int3 ngs = ((__global int3*)invNgs)[i0I + ii]; // Read as int3 (already offset by i0I)
     float4 q21 = hneigh[ngs.x]; // ji {h_ji, 1/l_ji}
     float4 q31 = hneigh[ngs.y]; // ki {h_ki, 1/l_ki}
     float4 q41 = hneigh[ngs.z]; // li {h_li, 1/l_li}
 
-    float4 par = invParams[ii]; // { K, c0, c1, c2 }
+    float4 par = invParams[i0I + ii]; // { K, c0, c1, c2 }
 
     // --- Inlined Inversion Calculation (Prokop Style) ---
     float3 fp1, fp2, fp3, fp4; // Forces on i(1), j(2), k(3), l(4)
@@ -720,7 +725,7 @@ __kernel void evalInversions_UFF(
     } // End of inlined evalInversionUFF block
 
     if ((DBG_UFF!=0) && ii==IDBG_INV && (isys==IDBG_SYS)){
-        int ia0=invAtoms[ii*4+0], ja0=invAtoms[ii*4+1], ka0=invAtoms[ii*4+2], la0=invAtoms[ii*4+3];
+        int ia0=invAtoms[(i0I+ii)*4+0], ja0=invAtoms[(i0I+ii)*4+1], ka0=invAtoms[(i0I+ii)*4+2], la0=invAtoms[(i0I+ii)*4+3];
         float3 n123_dbg = cross(-q21.xyz, -q31.xyz);
         float n1 = length(n123_dbg);
         float s_w = (n1>1e-12f)? -dot(n123_dbg*(1.0f/n1), q41.xyz) : 0.0f; s_w=clamp(s_w,-1.0f,1.0f);
@@ -738,7 +743,7 @@ __kernel void evalInversions_UFF(
 
     // --- Store forces into `fint` array ---
     float E_contrib = E * 0.25f;
-    int idx_base = i0inv + ii * 4; // Base index for this inversion's four force slots
+    int idx_base = i0f + i0inv + ii * 4; // per-system fint offset
     fint[idx_base + 0] = (float4)(fp1, E_contrib); // Store force on atom i (central)
     fint[idx_base + 1] = (float4)(fp2, E_contrib); // Store force on atom j
     fint[idx_base + 2] = (float4)(fp3, E_contrib); // Store force on atom k
@@ -795,8 +800,8 @@ __kernel void assembleForces_UFF(
             printf("GPU FINT ia=%3d:", ia0);
             for (int k = 0; k < cnt; ++k) {
                 int j = a2f_indices[i0a2f + off + k];
-                float4 v = fint[i0f + j];
-                printf(" [%3d]( % .6e % .6e % .6e)", j, v.x, v.y, v.z);
+                if(j>=0){ float4 v = fint[i0f + j]; printf(" [%3d]( % .6e % .6e % .6e)", j, v.x, v.y, v.z); }
+                else{ printf(" [%3d]( skip )", j); }
             }
             printf("\n");
         }
@@ -812,7 +817,8 @@ __kernel void assembleForces_UFF(
 
     // Loop through all fint force pieces contributing to this atom (angles, dihedrals, inversions)
     for (int i = i0; i < i1; ++i) {
-        int j = a2f_indices[i0a2f + i]; // Get index into the per-system fint array
+        int j = a2f_indices[i0a2f + i]; // per-system fint index (local)
+        if(j<0) continue; // guard against invalid indices
         float4 force_piece = fint[i0f + j];
         f_local += force_piece.xyz;
         E_local += force_piece.w; // Accumulate energy contribution

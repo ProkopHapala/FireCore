@@ -145,6 +145,7 @@ class MolWorld_sp3_multi : public MolWorld_sp3, public MultiSolverInterface { pu
     Quat4f* Kpp        =0;
 
     // ---- UFF Host-side parameter arrays
+    // Topology/params per system packed consecutively across systems
     std::vector<int2>    host_bon_atoms;
     std::vector<float2>  host_bon_params;
     std::vector<int4>    host_ang_atoms;
@@ -157,6 +158,9 @@ class MolWorld_sp3_multi : public MolWorld_sp3, public MultiSolverInterface { pu
     std::vector<int4>    host_inv_atoms;
     std::vector<int4>    host_inv_ngs;
     std::vector<float4>  host_inv_params;
+    std::vector<int4>    host_neighs_UFF;     // [nSystems*nAtoms]
+    std::vector<int4>    host_neighCell_UFF;  // [nSystems*nAtoms]
+    std::vector<int4>    host_neighBs_UFF;    // [nSystems*nAtoms]
     std::vector<int>     host_a2f_offsets;
     std::vector<int>     host_a2f_counts;
     std::vector<int>     host_a2f_indices;
@@ -272,6 +276,9 @@ void realloc( int nSystems_ ){
         host_inv_atoms    .resize(nSystems * nInversions);
         host_inv_ngs      .resize(nSystems * nInversions);
         host_inv_params   .resize(nSystems * nInversions);
+        host_neighs_UFF   .resize(nSystems * nAtoms);
+        host_neighCell_UFF.resize(nSystems * nAtoms);
+        host_neighBs_UFF  .resize(nSystems * nAtoms);
         host_a2f_offsets  .resize(nSystems * (nAtoms+1));
         host_a2f_counts   .resize(nSystems * nAtoms);
         host_a2f_indices  .resize(nSystems * nA2F);
@@ -792,11 +799,22 @@ void pack_uff_system( int isys, const UFF& ff, bool bParams=false, bool bForces=
             REQs [i0a + i] = (Quat4f){(float)ff.REQs[i].x, (float)ff.REQs[i].y, (float)ff.REQs[i].z, (float)ff.REQs[i].w};
         }
 
+        // Pack per-atom topology used by UFF kernels
+        for(int i=0; i<nAtoms; ++i){ host_neighs_UFF   [i0a + i] = (int4)ff.neighs[i]; }
+        for(int i=0; i<nAtoms; ++i){ host_neighCell_UFF[i0a + i] = (int4)ff.neighCell[i]; }
+        for(int i=0; i<nAtoms; ++i){
+            int4 nb = (int4)ff.neighBs[i];
+            int* pin = (int*)&nb;
+            for(int k=0;k<4;k++){ if(pin[k]>=0) pin[k] += i0b; }
+            host_neighBs_UFF[i0a + i] = nb;
+        }
+
         // Pack bonds, angles, dihedrals, inversions
         for(int i=0; i<nBonds;      ++i){ host_bon_atoms [i0b + i] = (int2){ff.bonAtoms[i].x, ff.bonAtoms[i].y}; host_bon_params[i0b + i] = (float2){(float)ff.bonParams[i].x, (float)ff.bonParams[i].y}; }
-        for(int i=0; i<nAngles;     ++i){ host_ang_atoms [i0A + i] = (int4){ff.angAtoms[i].x, ff.angAtoms[i].y, ff.angAtoms[i].z, 0}; host_ang_ngs[i0A + i] = (int2){ff.angNgs[i].x, ff.angNgs[i].y}; host_ang_params1[i0A + i] = (float4){(float)ff.angParams[i].c0, (float)ff.angParams[i].c1, (float)ff.angParams[i].c2, (float)ff.angParams[i].c3}; host_ang_params2_w[i0A + i] = (float)ff.angParams[i].k; }
-        for(int i=0; i<nDihedrals;  ++i){ host_dih_atoms [i0D + i] = (int4)ff.dihAtoms[i]; host_dih_ngs[i0D + i] = (int4){ff.dihNgs[i].x, ff.dihNgs[i].y, ff.dihNgs[i].z, 0}; host_dih_params[i0D + i] = (float4){(float)ff.dihParams[i].x, (float)ff.dihParams[i].y, (float)ff.dihParams[i].z, 0.f}; }
-        for(int i=0; i<nInversions; ++i){ host_inv_atoms [i0I + i] = (int4)ff.invAtoms[i]; host_inv_ngs[i0I + i] = (int4){ff.invNgs[i].x, ff.invNgs[i].y, ff.invNgs[i].z, 0}; host_inv_params[i0I + i] = (float4){(float)ff.invParams[i].x, (float)ff.invParams[i].y, (float)ff.invParams[i].z, (float)ff.invParams[i].w}; }
+        int i0h = isys * (nAtoms*4);
+        for(int i=0; i<nAngles;     ++i){ host_ang_atoms [i0A + i] = (int4){ff.angAtoms[i].x, ff.angAtoms[i].y, ff.angAtoms[i].z, 0}; host_ang_ngs[i0A + i] = (int2){ff.angNgs[i].x + i0h, ff.angNgs[i].y + i0h}; host_ang_params1[i0A + i] = (float4){(float)ff.angParams[i].c0, (float)ff.angParams[i].c1, (float)ff.angParams[i].c2, (float)ff.angParams[i].c3}; host_ang_params2_w[i0A + i] = (float)ff.angParams[i].k; }
+        for(int i=0; i<nDihedrals;  ++i){ host_dih_atoms [i0D + i] = (int4)ff.dihAtoms[i]; host_dih_ngs[i0D + i] = (int4){ff.dihNgs[i].x + i0h, ff.dihNgs[i].y + i0h, ff.dihNgs[i].z + i0h, 0}; host_dih_params[i0D + i] = (float4){(float)ff.dihParams[i].x, (float)ff.dihParams[i].y, (float)ff.dihParams[i].z, 0.f}; }
+        for(int i=0; i<nInversions; ++i){ host_inv_atoms [i0I + i] = (int4)ff.invAtoms[i]; host_inv_ngs[i0I + i] = (int4){ff.invNgs[i].x + i0h, ff.invNgs[i].y + i0h, ff.invNgs[i].z + i0h, 0}; host_inv_params[i0I + i] = (float4){(float)ff.invParams[i].x, (float)ff.invParams[i].y, (float)ff.invParams[i].z, (float)ff.invParams[i].w}; }
 
         // Pack force assembly map
         for(int i=0; i<nAtoms; ++i){
@@ -899,10 +917,10 @@ void upload_uff( bool bParams, bool bForces, bool bVel, bool blvec, bool bPrint=
     }
     OCL_checkError(err, "MolWorld_sp3_multi::upload_uff().1");
     if(bParams){
-        // Topology needed by all kernels (bulk upload across all systems)
-        err|= uff_ocl->upload( uff_ocl->ibuff_neighs,            (int*)ffu.neighs,              nAtomsTot,    0, bPrint );
-        err|= uff_ocl->upload( uff_ocl->ibuff_neighCell,         (int*)ffu.neighCell,           nAtomsTot,    0, bPrint );
-        err|= uff_ocl->upload( uff_ocl->ibuff_neighBs,           (int*)ffu.neighBs,             nAtomsTot,    0, bPrint );
+        // Topology needed by all kernels (bulk upload across all systems) from packed host buffers
+        err|= uff_ocl->upload( uff_ocl->ibuff_neighs,            (int*)host_neighs_UFF.data(),     nAtomsTot,    0, bPrint );
+        err|= uff_ocl->upload( uff_ocl->ibuff_neighCell,         (int*)host_neighCell_UFF.data(),  nAtomsTot,    0, bPrint );
+        err|= uff_ocl->upload( uff_ocl->ibuff_neighBs,           (int*)host_neighBs_UFF.data(),    nAtomsTot,    0, bPrint );
         OCL_checkError(err, "MolWorld_sp3_multi::upload_uff().2");
         if(nBondsTot>0){
             err|= uff_ocl->upload( uff_ocl->ibuff_bonAtoms,      (int*)host_bon_atoms.data(),   nBondsTot,    0, bPrint );
