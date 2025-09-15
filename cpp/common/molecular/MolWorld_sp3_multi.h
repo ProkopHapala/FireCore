@@ -398,6 +398,14 @@ virtual void init() override {
 
     // ----- init systems
     realloc( nSystems ); 
+    // Prepare UFF kernels after sizes are known
+    if(bUFF && uff_ocl){
+        // Reasonable defaults; can be parametrized later
+        float Rdamp = 1.0f;
+        float FmaxNonBonded = 10.0f;
+        float SubNBTorsionFactor = 0.0f;
+        uff_ocl->setup_kernels(Rdamp, FmaxNonBonded, SubNBTorsionFactor);
+    }
     //if(bGridFF) evalCheckGridFF_ocl();  // this must be after we make buffers but before we fill them
     float random_init = 0.5;
 
@@ -872,8 +880,17 @@ void upload_uff_sys( int isys, bool bParams, bool bForces, bool bVel, bool blvec
 void upload_uff( bool bParams, bool bForces, bool bVel, bool blvec ){
     printf("MolWorld_sp3_multi::upload_uff() \n");
     int err=0;
-    err|= uff_ocl->upload( uff_ocl->ibuff_apos,    (float*)atoms );
-    err|= uff_ocl->upload( uff_ocl->ibuff_REQs,     (float*)REQs );
+    int nAtomsTot      = uff_ocl->nSystems * uff_ocl->nAtoms;
+    int nBondsTot      = uff_ocl->nSystems * uff_ocl->nBonds;
+    int nAnglesTot     = uff_ocl->nSystems * uff_ocl->nAngles;
+    int nDihedralsTot  = uff_ocl->nSystems * uff_ocl->nDihedrals;
+    int nInversionsTot = uff_ocl->nSystems * uff_ocl->nInversions;
+    int nA2FTot        = uff_ocl->nSystems * uff_ocl->nA2F;
+
+    printf("upload apos n=%d\n", nAtomsTot);
+    err|= uff_ocl->upload( uff_ocl->ibuff_apos,    (float*)atoms, nAtomsTot );
+    printf("upload REQs n=%d\n", nAtomsTot);
+    err|= uff_ocl->upload( uff_ocl->ibuff_REQs,     (float*)REQs,  nAtomsTot );
     if(bForces) err|= uff_ocl->upload( uff_ocl->ibuff_fapos, (float*)aforces );
     if(blvec){
         err|= uff_ocl->upload( uff_ocl->ibuff_lvecs,     lvecs );
@@ -883,25 +900,47 @@ void upload_uff( bool bParams, bool bForces, bool bVel, bool blvec ){
     }
     if(bParams){
         // Topology needed by all kernels (bulk upload across all systems)
-        err|= uff_ocl->upload( uff_ocl->ibuff_neighs,    (int*)ffu.neighs,    nSystems * uff_ocl->nAtoms );
-        err|= uff_ocl->upload( uff_ocl->ibuff_neighCell, (int*)ffu.neighCell, nSystems * uff_ocl->nAtoms );
-        err|= uff_ocl->upload( uff_ocl->ibuff_neighBs,   (int*)ffu.neighBs,   nSystems * uff_ocl->nAtoms );
-        err|= uff_ocl->upload( uff_ocl->ibuff_bonAtoms,      (int*)host_bon_atoms.data()   );
-        err|= uff_ocl->upload( uff_ocl->ibuff_bonParams,  (float*)host_bon_params.data()  );
-        err|= uff_ocl->upload( uff_ocl->ibuff_angAtoms,      (int*)host_ang_atoms.data()   );
-        err|= uff_ocl->upload( uff_ocl->ibuff_angNgs,        (int*)host_ang_ngs.data()     );
-        err|= uff_ocl->upload( uff_ocl->ibuff_angParams1,    host_ang_params1.data() );
-        err|= uff_ocl->upload( uff_ocl->ibuff_angParams2_w, host_ang_params2_w.data() );
-        err|= uff_ocl->upload( uff_ocl->ibuff_dihAtoms,      (int*)host_dih_atoms.data()   );
-        err|= uff_ocl->upload( uff_ocl->ibuff_dihNgs,        (int*)host_dih_ngs.data()     );
-        err|= uff_ocl->upload( uff_ocl->ibuff_dihParams,  (float*)host_dih_params.data()  );
-        err|= uff_ocl->upload( uff_ocl->ibuff_invAtoms,      (int*)host_inv_atoms.data()   );
-        err|= uff_ocl->upload( uff_ocl->ibuff_invNgs,        (int*)host_inv_ngs.data()     );
-        err|= uff_ocl->upload( uff_ocl->ibuff_invParams,  (float*)host_inv_params.data()  );
+        printf("upload neighs n=%d\n", nAtomsTot);
+        err|= uff_ocl->upload( uff_ocl->ibuff_neighs,    (int*)ffu.neighs,    nAtomsTot );
+        printf("upload neighCell n=%d\n", nAtomsTot);
+        err|= uff_ocl->upload( uff_ocl->ibuff_neighCell, (int*)ffu.neighCell, nAtomsTot );
+        printf("upload neighBs n=%d\n", nAtomsTot);
+        err|= uff_ocl->upload( uff_ocl->ibuff_neighBs,   (int*)ffu.neighBs,   nAtomsTot );
+        printf("upload bonAtoms n=%d\n", nBondsTot);
+        err|= uff_ocl->upload( uff_ocl->ibuff_bonAtoms,      (int*)host_bon_atoms.data(),   nBondsTot );
+        printf("upload bonParams n=%d\n", nBondsTot);
+        err|= uff_ocl->upload( uff_ocl->ibuff_bonParams,  (float*)host_bon_params.data(),  nBondsTot );
+        printf("upload angAtoms n=%d\n", nAnglesTot);
+        err|= uff_ocl->upload( uff_ocl->ibuff_angAtoms,      (int*)host_ang_atoms.data(),   nAnglesTot );
+        printf("upload angNgs n=%d\n", nAnglesTot);
+        err|= uff_ocl->upload( uff_ocl->ibuff_angNgs,        (int*)host_ang_ngs.data(),     nAnglesTot );
+        printf("upload angParams1 n=%d\n", nAnglesTot);
+        err|= uff_ocl->upload( uff_ocl->ibuff_angParams1,    host_ang_params1.data(),       nAnglesTot );
+        printf("upload angParams2_w n=%d\n", nAnglesTot);
+        err|= uff_ocl->upload( uff_ocl->ibuff_angParams2_w,  host_ang_params2_w.data(),     nAnglesTot );
+        printf("upload dihAtoms n=%d\n", nDihedralsTot);
+        err|= uff_ocl->upload( uff_ocl->ibuff_dihAtoms,      (int*)host_dih_atoms.data(),   nDihedralsTot );
+        printf("upload dihNgs n=%d\n", nDihedralsTot);
+        err|= uff_ocl->upload( uff_ocl->ibuff_dihNgs,        (int*)host_dih_ngs.data(),     nDihedralsTot );
+        printf("upload dihParams n=%d\n", nDihedralsTot);
+        err|= uff_ocl->upload( uff_ocl->ibuff_dihParams,     (float*)host_dih_params.data(),nDihedralsTot );
+        if(nInversionsTot>0){
+            printf("upload invAtoms n=%d\n", nInversionsTot);
+            err|= uff_ocl->upload( uff_ocl->ibuff_invAtoms,      (int*)host_inv_atoms.data(),   nInversionsTot );
+            printf("upload invNgs n=%d\n", nInversionsTot);
+            err|= uff_ocl->upload( uff_ocl->ibuff_invNgs,        (int*)host_inv_ngs.data(),     nInversionsTot );
+            printf("upload invParams n=%d\n", nInversionsTot);
+            err|= uff_ocl->upload( uff_ocl->ibuff_invParams,     (float*)host_inv_params.data(),nInversionsTot );
+        }else{
+            printf("skip upload inv* (n=0)\n");
+        }
     }
-    err|= uff_ocl->upload( uff_ocl->ibuff_a2f_offsets, host_a2f_offsets.data() );
-    err|= uff_ocl->upload( uff_ocl->ibuff_a2f_counts,  host_a2f_counts.data()  );
-    err|= uff_ocl->upload( uff_ocl->ibuff_a2f_indices, host_a2f_indices.data() );
+    printf("upload a2f_offsets n=%d\n", nAtomsTot);
+    err|= uff_ocl->upload( uff_ocl->ibuff_a2f_offsets, host_a2f_offsets.data(), nAtomsTot );
+    printf("upload a2f_counts n=%d\n", nAtomsTot);
+    err|= uff_ocl->upload( uff_ocl->ibuff_a2f_counts,  host_a2f_counts.data(),  nAtomsTot );
+    printf("upload a2f_indices n=%d\n", nA2FTot);
+    err|= uff_ocl->upload( uff_ocl->ibuff_a2f_indices, host_a2f_indices.data(), nA2FTot );
     err |= uff_ocl->finishRaw(); OCL_checkError(err, "MolWorld_sp3_multi::upload_uff().finish");
 }
 
@@ -928,13 +967,7 @@ void upload(  bool bParams=true, bool bForces=false, bool bVel=false, bool blvec
     if(bUFF) upload_uff( bParams, bForces, bVel, blvec ); else upload_mmff( bParams, bForces, bVel, blvec );
 }
 
-// // Backward-compatible overload used by older callers (e.g., Lua bindings)
-// inline void upload(){
-//     // Use the same default flags as used in init(): params, no forces, velocities, and lvec
-//     upload( true, false, true, true );
-// }
-
-void download( bool bForces, bool bVel ){
+void download( bool bForces=false, bool bVel=false ){
     if(bUFF) download_uff( bForces, bVel ); else download_mmff( bForces, bVel );
 }
 

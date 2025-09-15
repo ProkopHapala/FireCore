@@ -131,42 +131,80 @@ public:
         // Calculate total size of the intermediate force buffer `fint`
         int nf_per_system = (nBonds_ * 2) + (nAngles_ * 3) + (nDihedrals_ * 4) + (nInversions_ * 4);
 
-        // Allocate buffers on the GPU
-        ibuff_apos        = newBuffer("apos",        nAtomsTot,       sizeof(cl_float4), 0, CL_MEM_READ_WRITE);
-        ibuff_fapos       = newBuffer("fapos",       nAtomsTot,       sizeof(cl_float4), 0, CL_MEM_READ_WRITE);
-        ibuff_REQs        = newBuffer("REQs",        nAtomsTot,       sizeof(cl_float4), 0, CL_MEM_READ_ONLY);
-        ibuff_hneigh      = newBuffer("hneigh",      nAtomsTot * 4,   sizeof(cl_float4), 0, CL_MEM_READ_WRITE);
-        ibuff_fint        = newBuffer("fint",        nSystems * nf_per_system, sizeof(cl_float4), 0, CL_MEM_READ_WRITE);
+        // Debug summary of counts
+        printf("OCL_UFF::realloc counts: nSystems=%d nAtoms=%d nBonds=%d nAngles=%d nDihedrals=%d nInversions=%d nPBC=%d nA2F=%d nAtomsTot=%d nf_per_system=%d\n",
+               nSystems, nAtoms, nBonds, nAngles, nDihedrals, nInversions, nPBC, nA2F, nAtomsTot, nf_per_system);
 
-        ibuff_neighs      = newBuffer("neighs",      nAtomsTot,       sizeof(cl_int4),   0, CL_MEM_READ_ONLY);
-        ibuff_neighCell   = newBuffer("neighCell",   nAtomsTot,       sizeof(cl_int4),   0, CL_MEM_READ_ONLY);
-        ibuff_neighBs     = newBuffer("neighBs",     nAtomsTot,       sizeof(cl_int4),   0, CL_MEM_READ_ONLY);
+        // Safe sizes to avoid zero-sized buffer creation (CL_INVALID_BUFFER_SIZE)
+        auto safeN = [](int n){ return (n>0)? n: 1; };
+        int nBondsTot      = nSystems * nBonds_;
+        int nAnglesTot     = nSystems * nAngles_;
+        int nDihedralsTot  = nSystems * nDihedrals_;
+        int nInversionsTot = nSystems * nInversions_;
+        int nA2FTot        = nSystems * nA2F_;
 
-        ibuff_bonAtoms    = newBuffer("bonAtoms",    nSystems * nBonds_,      sizeof(cl_int2),   0, CL_MEM_READ_ONLY);
-        ibuff_bonParams   = newBuffer("bonParams",   nSystems * nBonds_,      sizeof(cl_float2), 0, CL_MEM_READ_ONLY);
+        // Allocate buffers on the GPU (with debug prints and safe sizes where appropriate)
+        printf("alloc apos count=%d elem=%zu bytes=%zu\n", nAtomsTot, sizeof(cl_float4), (size_t)nAtomsTot*sizeof(cl_float4));
+        ibuff_apos        = newBuffer("apos",        nAtomsTot,                   sizeof(cl_float4), 0, CL_MEM_READ_WRITE);
+        printf("alloc fapos count=%d elem=%zu bytes=%zu\n", nAtomsTot, sizeof(cl_float4), (size_t)nAtomsTot*sizeof(cl_float4));
+        ibuff_fapos       = newBuffer("fapos",       nAtomsTot,                   sizeof(cl_float4), 0, CL_MEM_READ_WRITE);
+        printf("alloc REQs count=%d elem=%zu bytes=%zu\n", nAtomsTot, sizeof(cl_float4), (size_t)nAtomsTot*sizeof(cl_float4));
+        ibuff_REQs        = newBuffer("REQs",        nAtomsTot,                   sizeof(cl_float4), 0, CL_MEM_READ_ONLY);
+        printf("alloc hneigh count=%d elem=%zu bytes=%zu\n", nAtomsTot*4, sizeof(cl_float4), (size_t)(nAtomsTot*4)*sizeof(cl_float4));
+        ibuff_hneigh      = newBuffer("hneigh",      nAtomsTot * 4,               sizeof(cl_float4), 0, CL_MEM_READ_WRITE);
+        printf("alloc fint count=%d elem=%zu bytes=%zu\n", nSystems*nf_per_system, sizeof(cl_float4), (size_t)(nSystems*nf_per_system)*sizeof(cl_float4));
+        ibuff_fint        = newBuffer("fint",        nSystems * nf_per_system,    sizeof(cl_float4), 0, CL_MEM_READ_WRITE);
 
-        ibuff_angAtoms    = newBuffer("angAtoms",    nSystems * nAngles_,     sizeof(cl_int4),   0, CL_MEM_READ_ONLY); // Padded to int4
-        ibuff_angNgs      = newBuffer("angNgs",      nSystems * nAngles_,     sizeof(cl_int2),   0, CL_MEM_READ_ONLY);
-        ibuff_angParams1  = newBuffer("angParams1",  nSystems * nAngles_,     sizeof(cl_float4), 0, CL_MEM_READ_ONLY);
-        ibuff_angParams2_w= newBuffer("angParams2_w",nSystems * nAngles_,     sizeof(cl_float),  0, CL_MEM_READ_ONLY);
+        printf("alloc neighs count=%d elem=%zu bytes=%zu\n", nAtomsTot, sizeof(cl_int4), (size_t)nAtomsTot*sizeof(cl_int4));
+        ibuff_neighs      = newBuffer("neighs",      nAtomsTot,                   sizeof(cl_int4),   0, CL_MEM_READ_ONLY);
+        printf("alloc neighCell count=%d elem=%zu bytes=%zu\n", nAtomsTot, sizeof(cl_int4), (size_t)nAtomsTot*sizeof(cl_int4));
+        ibuff_neighCell   = newBuffer("neighCell",   nAtomsTot,                   sizeof(cl_int4),   0, CL_MEM_READ_ONLY);
+        printf("alloc neighBs count=%d elem=%zu bytes=%zu\n", nAtomsTot, sizeof(cl_int4), (size_t)nAtomsTot*sizeof(cl_int4));
+        ibuff_neighBs     = newBuffer("neighBs",     nAtomsTot,                   sizeof(cl_int4),   0, CL_MEM_READ_ONLY);
 
-        ibuff_dihAtoms    = newBuffer("dihAtoms",    nSystems * nDihedrals_,  sizeof(cl_int4),   0, CL_MEM_READ_ONLY);
-        ibuff_dihNgs      = newBuffer("dihNgs",      nSystems * nDihedrals_,  sizeof(cl_int4),   0, CL_MEM_READ_ONLY); // Padded to int4
-        ibuff_dihParams   = newBuffer("dihParams",   nSystems * nDihedrals_,  sizeof(cl_float4), 0, CL_MEM_READ_ONLY); // Padded to float4
+        printf("alloc bonAtoms count=%d elem=%zu bytes=%zu\n", safeN(nBondsTot), sizeof(cl_int2), (size_t)safeN(nBondsTot)*sizeof(cl_int2));
+        ibuff_bonAtoms    = newBuffer("bonAtoms",    safeN(nBondsTot),            sizeof(cl_int2),   0, CL_MEM_READ_ONLY);
+        printf("alloc bonParams count=%d elem=%zu bytes=%zu\n", safeN(nBondsTot), sizeof(cl_float2), (size_t)safeN(nBondsTot)*sizeof(cl_float2));
+        ibuff_bonParams   = newBuffer("bonParams",   safeN(nBondsTot),            sizeof(cl_float2), 0, CL_MEM_READ_ONLY);
 
-        ibuff_invAtoms    = newBuffer("invAtoms",    nSystems * nInversions_, sizeof(cl_int4),   0, CL_MEM_READ_ONLY);
-        ibuff_invNgs      = newBuffer("invNgs",      nSystems * nInversions_, sizeof(cl_int4),   0, CL_MEM_READ_ONLY); // Padded to int4
-        ibuff_invParams   = newBuffer("invParams",   nSystems * nInversions_, sizeof(cl_float4), 0, CL_MEM_READ_ONLY);
+        printf("alloc angAtoms count=%d elem=%zu bytes=%zu\n", safeN(nAnglesTot), sizeof(cl_int4), (size_t)safeN(nAnglesTot)*sizeof(cl_int4));
+        ibuff_angAtoms    = newBuffer("angAtoms",    safeN(nAnglesTot),           sizeof(cl_int4),   0, CL_MEM_READ_ONLY); // Padded to int4
+        printf("alloc angNgs count=%d elem=%zu bytes=%zu\n", safeN(nAnglesTot), sizeof(cl_int2), (size_t)safeN(nAnglesTot)*sizeof(cl_int2));
+        ibuff_angNgs      = newBuffer("angNgs",      safeN(nAnglesTot),           sizeof(cl_int2),   0, CL_MEM_READ_ONLY);
+        printf("alloc angParams1 count=%d elem=%zu bytes=%zu\n", safeN(nAnglesTot), sizeof(cl_float4), (size_t)safeN(nAnglesTot)*sizeof(cl_float4));
+        ibuff_angParams1  = newBuffer("angParams1",  safeN(nAnglesTot),           sizeof(cl_float4), 0, CL_MEM_READ_ONLY);
+        printf("alloc angParams2_w count=%d elem=%zu bytes=%zu\n", safeN(nAnglesTot), sizeof(cl_float), (size_t)safeN(nAnglesTot)*sizeof(cl_float));
+        ibuff_angParams2_w= newBuffer("angParams2_w",safeN(nAnglesTot),           sizeof(cl_float),  0, CL_MEM_READ_ONLY);
 
-        ibuff_a2f_offsets = newBuffer("a2f_offsets", nAtomsTot,       sizeof(cl_int),    0, CL_MEM_READ_ONLY);
-        ibuff_a2f_counts  = newBuffer("a2f_counts",  nAtomsTot,       sizeof(cl_int),    0, CL_MEM_READ_ONLY);
-        ibuff_a2f_indices = newBuffer("a2f_indices", nSystems * nA2F_,sizeof(cl_int),    0, CL_MEM_READ_ONLY);
+        printf("alloc dihAtoms count=%d elem=%zu bytes=%zu\n", safeN(nDihedralsTot), sizeof(cl_int4), (size_t)safeN(nDihedralsTot)*sizeof(cl_int4));
+        ibuff_dihAtoms    = newBuffer("dihAtoms",    safeN(nDihedralsTot),        sizeof(cl_int4),   0, CL_MEM_READ_ONLY);
+        printf("alloc dihNgs count=%d elem=%zu bytes=%zu\n", safeN(nDihedralsTot), sizeof(cl_int4), (size_t)safeN(nDihedralsTot)*sizeof(cl_int4));
+        ibuff_dihNgs      = newBuffer("dihNgs",      safeN(nDihedralsTot),        sizeof(cl_int4),   0, CL_MEM_READ_ONLY); // Padded to int4
+        printf("alloc dihParams count=%d elem=%zu bytes=%zu\n", safeN(nDihedralsTot), sizeof(cl_float4), (size_t)safeN(nDihedralsTot)*sizeof(cl_float4));
+        ibuff_dihParams   = newBuffer("dihParams",   safeN(nDihedralsTot),        sizeof(cl_float4), 0, CL_MEM_READ_ONLY); // Padded to float4
+
+        printf("alloc invAtoms count=%d elem=%zu bytes=%zu\n", safeN(nInversionsTot), sizeof(cl_int4), (size_t)safeN(nInversionsTot)*sizeof(cl_int4));
+        ibuff_invAtoms    = newBuffer("invAtoms",    safeN(nInversionsTot),       sizeof(cl_int4),   0, CL_MEM_READ_ONLY);
+        printf("alloc invNgs count=%d elem=%zu bytes=%zu\n", safeN(nInversionsTot), sizeof(cl_int4), (size_t)safeN(nInversionsTot)*sizeof(cl_int4));
+        ibuff_invNgs      = newBuffer("invNgs",      safeN(nInversionsTot),       sizeof(cl_int4),   0, CL_MEM_READ_ONLY); // Padded to int4
+        printf("alloc invParams count=%d elem=%zu bytes=%zu\n", safeN(nInversionsTot), sizeof(cl_float4), (size_t)safeN(nInversionsTot)*sizeof(cl_float4));
+        ibuff_invParams   = newBuffer("invParams",   safeN(nInversionsTot),       sizeof(cl_float4), 0, CL_MEM_READ_ONLY);
+
+        printf("alloc a2f_offsets count=%d elem=%zu bytes=%zu\n", nAtomsTot, sizeof(cl_int), (size_t)nAtomsTot*sizeof(cl_int));
+        ibuff_a2f_offsets = newBuffer("a2f_offsets", nAtomsTot,                   sizeof(cl_int),    0, CL_MEM_READ_ONLY);
+        printf("alloc a2f_counts count=%d elem=%zu bytes=%zu\n", nAtomsTot, sizeof(cl_int), (size_t)nAtomsTot*sizeof(cl_int));
+        ibuff_a2f_counts  = newBuffer("a2f_counts",  nAtomsTot,                   sizeof(cl_int),    0, CL_MEM_READ_ONLY);
+        printf("alloc a2f_indices count=%d elem=%zu bytes=%zu\n", safeN(nA2FTot), sizeof(cl_int), (size_t)safeN(nA2FTot)*sizeof(cl_int));
+        ibuff_a2f_indices = newBuffer("a2f_indices", safeN(nA2FTot),              sizeof(cl_int),    0, CL_MEM_READ_ONLY);
 
         // Use minimum size of 1 for buffers that could be 0-sized
         int nPBC_safe = (nPBC > 0) ? nPBC : 1;
-        ibuff_pbcshifts   = newBuffer("pbcshifts",   nSystems * nPBC_safe, sizeof(cl_float4), 0, CL_MEM_READ_ONLY);
-        ibuff_lvecs       = newBuffer("lvecs",       nSystems,        sizeof(cl_Mat3),   0, CL_MEM_READ_ONLY);
-        ibuff_energies    = newBuffer("energies",    nSystems * 5,    sizeof(cl_float),  0, CL_MEM_WRITE_ONLY); // E_b, E_a, E_d, E_i, E_tot
+        printf("alloc pbcshifts count=%d elem=%zu bytes=%zu\n", nSystems * nPBC_safe, sizeof(cl_float4), (size_t)(nSystems * nPBC_safe)*sizeof(cl_float4));
+        ibuff_pbcshifts   = newBuffer("pbcshifts",   nSystems * nPBC_safe,        sizeof(cl_float4), 0, CL_MEM_READ_ONLY);
+        printf("alloc lvecs count=%d elem=%zu bytes=%zu\n", nSystems, sizeof(cl_Mat3), (size_t)nSystems*sizeof(cl_Mat3));
+        ibuff_lvecs       = newBuffer("lvecs",       nSystems,                    sizeof(cl_Mat3),   0, CL_MEM_READ_ONLY);
+        printf("alloc energies count=%d elem=%zu bytes=%zu\n", nSystems*5, sizeof(cl_float), (size_t)(nSystems*5)*sizeof(cl_float));
+        ibuff_energies    = newBuffer("energies",    nSystems * 5,                sizeof(cl_float),  0, CL_MEM_WRITE_ONLY); // E_b, E_a, E_d, E_i, E_tot
 
         // Optional energy contributions per interaction
         if(nAngles_>0)    ibuff_Ea = newBuffer("Ea_contrib", nSystems * nAngles_,    sizeof(cl_float), 0, CL_MEM_WRITE_ONLY);
@@ -189,6 +227,12 @@ public:
         int i0ang = i0inv + nInversions * 4;
         int i0bon = i0ang + nAngles * 3;
         int nf_per_system = (nDihedrals * 4) + (nInversions * 4) + (nAngles * 3) + (nBonds);
+
+        // Disable components with zero interactions
+        bUFF_bonds      = (nBonds     > 0);
+        bUFF_angles     = (nAngles    > 0);
+        bUFF_dihedrals  = (nDihedrals > 0);
+        bUFF_inversions = (nInversions> 0);
 
         bKernelPrepared = false;
         // Get task pointers
@@ -236,7 +280,7 @@ public:
             printf("OCL_UFF::setup_kernels().task_evalAngles \n");
             int nloc = 32;
             task_evalAngles->local.x  = nloc;
-            task_evalAngles->global.x = nAngles + nloc - (nAngles % nloc);
+            task_evalAngles->global.x = (nAngles>0)? (nAngles + nloc - (nAngles % nloc)) : 0;
             task_evalAngles->global.y = nSystems;
             useKernel( task_evalAngles->ikernel );
             int err=0;
@@ -267,7 +311,7 @@ public:
             printf("OCL_UFF::setup_kernels().task_evalDihedrals \n");
             int nloc = 32;
             task_evalDihedrals->local.x  = nloc;
-            task_evalDihedrals->global.x = nDihedrals + nloc - (nDihedrals % nloc);
+            task_evalDihedrals->global.x = (nDihedrals>0)? (nDihedrals + nloc - (nDihedrals % nloc)) : 0;
             task_evalDihedrals->global.y = nSystems;
             useKernel( task_evalDihedrals->ikernel );
             int err=0;
@@ -296,7 +340,7 @@ public:
             printf("OCL_UFF::setup_kernels().task_evalInversions \n");
             int nloc = 32;
             task_evalInversions->local.x  = nloc;
-            task_evalInversions->global.x = nInversions + nloc - (nInversions % nloc);
+            task_evalInversions->global.x = (nInversions>0)? (nInversions + nloc - (nInversions % nloc)) : 0;
             task_evalInversions->global.y = nSystems;
             useKernel( task_evalInversions->ikernel );
             int err=0;
