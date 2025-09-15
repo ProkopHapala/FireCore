@@ -8,10 +8,12 @@ These notes capture the target design for running UFF over `nSystems` replicas i
 
 ## Problem recap
 
-- The scan() test shows system 0 matches CPU, while system 1 returns zero forces.
-- With `IDBG_SYS=1`, kernels like `evalBondsAndHNeigh_UFF` print nothing, suggesting the kernel is not actually launched with a 2D NDRange (global.y).
-- Current kernels index into buffers without per‑system offsets, e.g. `fapos[ia] += ...` and `neighs[ia]`, which makes multi‑system undefined (systems overlap in the same buffer slice).
-- Assembly (`assembleForces_UFF`) printed something, but it is likely operating on system 0 only. We need to instrument it per `isys` and use per‑system offsets.
+- **Initial State:** The `scan()` test showed system 0 matching the CPU, while system 1 returned zero or garbage forces.
+- **Root Causes Identified:**
+  - Kernels were not launched with a 2D NDRange, so `get_global_id(1)` was invalid.
+  - Buffer indexing was not multi-system aware, causing data overlaps.
+  - Host-side packing of neighbor indices (`angNgs`, `dihNgs`) into `hneigh` was missing per-system offsets.
+  - The `assembleForces_UFF` kernel used an incorrect base offset for the `a2f_indices` buffer.
 
 ## Target execution model
 
@@ -27,12 +29,12 @@ These notes capture the target design for running UFF over `nSystems` replicas i
   - Inversions: `i0inv = iSys * nInversions;`
   - H‑neigh: `i0h = iSys * (nAtoms*4);`
   - Fint:    `i0f = iSys * nf_per_system;` (exact CPU layout)
-  - A2F:     `i0a2f = iSys * nAtoms;` (for offsets/counts) and `i0a2find = iSys * nA2F;`
+  - A2F:     `i0a2f_offs = iSys * nAtoms;` (for `a2f_offsets`/`counts`) and `i0a2f_inds = iSys * nf_per_system;` (for the `a2f_indices` buffer itself)
 - All reads/writes use these base offsets:
   - `apos[i0a + ia]`, `fapos[i0a + ia]`, `neighs[i0a + ia]`, `neighCell[i0a + ia]`, `REQs[i0a + ia]`, etc.
   - `bonAtoms[i0b + ib]`, `bonParams[i0b + ib]`.
   - `angAtoms[i0ang + iang]`, `angNgs[i0ang + iang]`, ...
-  - `dihAtoms[i0dih + id]`, `dihNgs[i0dih + id]`, ...
+  - `dihAtoms[i0dih + id]`, `dihNgs[i0dih + id]`, `dihParams[i0dih + id]` (as float4), ...
   - `invAtoms[i0inv + ii]`, `invNgs[i0inv + ii]`, ...
   - `hneigh[i0h + ia*4 + slot]`.
   - `fint[i0f + ...]` as per CPU’s `i0` scheme for each interaction class.
@@ -68,7 +70,7 @@ These notes capture the target design for running UFF over `nSystems` replicas i
 - `assembleForces_UFF` (atom‑centric):
   - Base offsets `i0a`, `i0a2f`, `i0f`.
   - For `ia` in `0..nAtoms`: read `off=a2f_offsets[i0a + ia]`, `cnt=a2f_counts[i0a + ia]`.
-  - Accumulate over `cnt` entries at `a2f_indices[i0a2find + off + k]` which index into `fint[i0f + idx]`.
+  - Accumulate over `cnt` entries at `a2f_indices[i0a2f_inds + off + k]` which index into `fint[i0f + idx]`.
   - Write into `fapos[i0a + ia]`.
 
 ## Debug instrumentation
@@ -104,3 +106,39 @@ These notes capture the target design for running UFF over `nSystems` replicas i
 - It’s acceptable to always set tasks as 2D; `global.y=1` works for single system.
 - Do not rely on implicit per‑system strides inside kernels; compute offsets explicitly from `iSys`.
 - Keep debug prints minimal and focused; use `IDBG_SYS` to isolate a problematic replica.
+
+---
+
+## Lab Book / Progress Log
+
+### Session 1: Initial Debugging (Bonds & Angles)
+
+**Initial State:**
+- `tests/tUFF/test_UFF_multi.py` with `nSystems=2` showed system 0 matching CPU, but system 1 forces were zero or garbage.
+- Kernels were not using 2D NDRange, and buffer indexing was not multi-system aware.
+
+**Key Fixes & Insights:**
+1.  **Enabled 2D NDRange:** Switched all UFF kernels in `OCL_UFF.cpp` to use `nDim=2` to get a valid `isys = get_global_id(1)`.
+2.  **Per-System Host Packing:** Implemented `pack_uff_system()` in `MolWorld_sp3_multi.h` to create host-side concatenated buffers for all topology and parameters. This resolved the issue of systems overwriting each other's data.
+3.  **Corrected `hneigh` Indexing:** The `angNgs`, `dihNgs`, and `invNgs` arrays contain indices into the `hneigh` buffer. On the host, these indices were corrected to include the per-system offset `i0h = isys * (nAtoms*4)` before being packed.
+4.  **Fixed `assembleForces_UFF` Indexing:** The `a2f_indices` buffer was being indexed with a base of `isys * nAtoms`, which was incorrect. The correct base is `isys * nf_per_system`. This was the final fix needed to get the `['bonds', 'angles']` test to pass.
+5.  **Added Verbosity Guards:** To reduce log spam, verbose CPU debug prints in `UFF.h` were gated behind `DBG_UFF > 3`. The `scan()` function in `MMFFmulti_lib.cpp` was updated to set this verbosity level only for the system matching `IDBG_SYS` on the GPU.
+
+**End State (Session 1):**
+- The test `['bonds', 'angles']` now **PASSES** with a tolerance of `1e-3`.
+- Both system 0 and system 1 produce correct forces.
+
+### Session 2: Dihedrals & Inversions
+
+**Initial State:**
+- `['bonds', 'angles']` are working correctly.
+- Enabling `['dihedrals']` causes the test to fail with `max|ΔF| ≈ 1.8`.
+
+**Key Fixes & Insights:**
+1.  **Dihedral Parameter Type Mismatch:** The host (`MolWorld_sp3_multi.h`) packs dihedral parameters as `float4`, but the `evalDihedrals_UFF` kernel was reading them as `float3`. This caused a data stride mismatch for `isys > 0`. The kernel was corrected to accept `__global float4* dihParams` and read the `.xyz` components.
+
+**Current State (End of Session):**
+- The test with `['bonds', 'angles', 'dihedrals']` still fails, but the error has changed. The `max|ΔF|` is now smaller (`~0.24`), indicating the parameter type fix was a step in the right direction.
+- The `evalDihedrals_UFF` kernel appears to have an internal logic error in how it calculates forces, as the debug prints show non-physical force distribution (e.g., `fi` and `fj` are identical in one case).
+- The `['inversions']` component also causes a failure.
+- Next step is to analyze the force calculation logic inside the `evalDihedrals_UFF` and `evalInversions_UFF` kernels and compare it line-by-line with the CPU implementation in `UFF.h`.
