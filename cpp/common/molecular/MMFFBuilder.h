@@ -92,6 +92,13 @@ int splitByBond( int ib, int nb, Vec2i* bond2atom, Vec3d* apos, int* selection, 
 /// @details It implements many algorithms for automatic finding of bonding topology, assignment of atomic types, adding/removing explicit free electron paris and capping atoms, substitution, segmentation to groups, etc.
 class Builder : public BuilderBase {  public:
 
+    // Re-expose base-class overloads to avoid name hiding.
+    // Without these, the derived overloads below (e.g., insertAtoms with typed arrays)
+    // hide BuilderBase::insertAtoms(insert via brush) and BuilderBase::insertBonds,
+    // causing compile errors at call sites expecting the brush-based API.
+    using BuilderBase::insertAtoms;  // insertAtoms(int n, Atom brushAtom, const Vec3d* ps, bool withConf)
+    using BuilderBase::insertBonds;  // insertBonds(int n, Bond brushBond, const Vec2i* bond2atom)
+
     // ==== from BuilderBase ====
     //static int iDebug = 0;
     // std::vector<Atom>       atoms;

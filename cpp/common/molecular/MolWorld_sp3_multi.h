@@ -924,9 +924,15 @@ void download_uff( bool bForces, bool bVel ){
 //         GPU <-> CPU I/O  UFF
 // ==================================
 
-void upload(  bool bParams, bool bForces, bool bVel, bool blvec ){
+void upload(  bool bParams=true, bool bForces=false, bool bVel=false, bool blvec=true ){
     if(bUFF) upload_uff( bParams, bForces, bVel, blvec ); else upload_mmff( bParams, bForces, bVel, blvec );
 }
+
+// // Backward-compatible overload used by older callers (e.g., Lua bindings)
+// inline void upload(){
+//     // Use the same default flags as used in init(): params, no forces, velocities, and lvec
+//     upload( true, false, true, true );
+// }
 
 void download( bool bForces, bool bVel ){
     if(bUFF) download_uff( bForces, bVel ); else download_mmff( bForces, bVel );
