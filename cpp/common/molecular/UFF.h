@@ -563,7 +563,7 @@ class UFF : public NBFF { public:
     __attribute__((hot))  
     void assembleAtomForce(const int ia){
 
-        if( DBG_UFF && (ia==0) ){
+        if( (DBG_UFF>3) && (ia==0) ){
             // Dump per-atom mapping and current fapos before assembly
             printf("CPU assembleAtomForce() ia=%3d natoms=%3d\n", ia, natoms);
             printf("CPU A2F TABLE natoms=%3d\n", natoms);
@@ -711,7 +711,7 @@ class UFF : public NBFF { public:
         double E=0.0;
         const double R2damp = Rdamp*Rdamp;
         const double Fmax2  = FmaxNonBonded*FmaxNonBonded;
-        if(DBG_UFF!=0){
+        if(DBG_UFF>3){
             printf("CPU evalBonds natoms=%d nbonds=%d i0bon=%d Rdamp=% .6e Fmax=% .6e bSubtractBondNonBond=%d bClampNonBonded=%d iDBG=%d\n", natoms, nbonds, i0bon, Rdamp, FmaxNonBonded, bSubtractBondNonBond, bClampNonBonded, iDBG_bond );
             printf("CPU ATOM-TABLE   ia   ng   ngC   [k,l]... \n");
             //if(N>64) N=64;

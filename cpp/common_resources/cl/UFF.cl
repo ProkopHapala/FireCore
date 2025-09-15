@@ -777,9 +777,9 @@ __kernel void assembleForces_UFF(
     int ia   = get_global_id(0);
     int isys = get_global_id(1);
     // Per-system base offsets
-    int i0a      = isys * natoms;
-    int i0a2f    = isys * natoms;
-    int i0f      = isys * nf_per_system;
+    int i0a      = isys * natoms;          // per-system base for atom arrays (offsets/counts)
+    int i0a2f    = isys * nf_per_system;   // per-system base for a2f_indices (length = nf_per_system)
+    int i0f      = isys * nf_per_system;   // per-system base for fint
     // NOTE: a2f_indices values are per-system local indices into fint; add i0f below if needed
     // Debug dump by a single thread to avoid interleaved prints (selected system only)
     if ( (DBG_UFF!=0) &&  (ia == 0) && (isys==IDBG_SYS) ){

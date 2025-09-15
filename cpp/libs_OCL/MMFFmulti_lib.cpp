@@ -78,6 +78,7 @@ int scan( int nConf, double* confs_, double* outF_, int iParalel ){
     auto confs = (Vec3d*)confs_;
     auto outF  = (Vec3d*)outF_;
     int nDone = 0;
+    const int dbg_sys = 1; // match IDBG_SYS used on GPU; only this system will be verbose on CPU
     if( (iParalel==2) && W.uff_ocl ){
         // GPU path: process in batches of W.nSystems
         if(!W.uff_ocl->bKernelPrepared){ W.uff_ocl->setup_kernels( (float)W.ffu.Rdamp, (float)W.ffu.FmaxNonBonded, (float)W.ffu.SubNBTorsionFactor ); }
@@ -91,6 +92,8 @@ int scan( int nConf, double* confs_, double* outF_, int iParalel ){
             // pack positions for each system in the batch
             for(int i=0;i<nBatch;i++){
                 int isys = i;
+                // Set CPU verbosity only for the debug system (to reduce noise)
+                W.ffu.DBG_UFF = (isys==dbg_sys) ? 4 : 0;
                 // load positions into CPU UFF, then pack to system slice
                 Vec3d* apos = W.ffu.apos;
                 for(int ia=0; ia<natoms; ia++){ apos[ia] = confs[(ib+i)*natoms + ia]; }
@@ -114,6 +117,8 @@ int scan( int nConf, double* confs_, double* outF_, int iParalel ){
     }else{
         // CPU path: loop configurations one-by-one
         for(int ic=0; ic<nConf; ic++){
+            // Set CPU verbosity only for the debug system
+            W.ffu.DBG_UFF = (ic==dbg_sys) ? 4 : 0;
             // set positions
             for(int ia=0; ia<natoms; ia++){ W.ffu.apos[ia] = confs[ic*natoms + ia]; }
             // zero forces

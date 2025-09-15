@@ -160,6 +160,11 @@ def scan_uff(nconf, nsys, components, tol=1e-3, seed=123):
     # GPU forces (batched)
     F_gpu = uff.scan(confs, iParalel=2)
 
+    cpu_min = float(np.min(F_cpu)) if F_cpu.size else 0.0
+    cpu_max = float(np.max(F_cpu)) if F_cpu.size else 0.0
+    gpu_min = float(np.min(F_gpu)) if F_gpu.size else 0.0
+    gpu_max = float(np.max(F_gpu)) if F_gpu.size else 0.0
+    
     # Compare
     ok = True
     diffs = F_gpu - F_cpu
@@ -174,10 +179,7 @@ def scan_uff(nconf, nsys, components, tol=1e-3, seed=123):
             Gi = F_gpu[ic]
             di = diffs[ic]
             ma = float(np.max(np.abs(di)))
-            cpu_min = float(np.min(Fi)) if Fi.size else 0.0
-            cpu_max = float(np.max(Fi)) if Fi.size else 0.0
-            gpu_min = float(np.min(Gi)) if Gi.size else 0.0
-            gpu_max = float(np.max(Gi)) if Gi.size else 0.0
+
             cpu_l2  = float(np.linalg.norm(Fi))
             gpu_l2  = float(np.linalg.norm(Gi))
             print("\n############################################")
@@ -189,7 +191,7 @@ def scan_uff(nconf, nsys, components, tol=1e-3, seed=123):
             print(f"AbsDiff max|ΔF|={ma:.3e}")
             print("--------------------------------------------")
     else:
-        print(f"scan(): PASSED within tol={tol:.2e}")
+        print(f"\n##### scan(): PASSED within tol={tol:.2e}   | cpu_min,max={cpu_min:.2e}, {cpu_max:.2e} | gpu_min,max={gpu_min:.2e}, {gpu_max:.2e} \n")
     return ok, F_cpu, F_gpu
 
 def compare_results(cpu_energy, cpu_forces, gpu_energy, gpu_forces, tol=1e-5, component_name=""):
@@ -252,7 +254,7 @@ def compare_results(cpu_energy, cpu_forces, gpu_energy, gpu_forces, tol=1e-5, co
         print("Abs Diff (N,3):\n", adiff)
         return False
 
-    print(f"Validation PASSED for {component_name}: Forces are consistent within tol={tol:.2e}.")
+    print(f"Validation PASSED for {component_name}: Forces are consistent within tol={tol:.2e} cpu_maxabs={cpu_maxabs:.2e} gpu_maxabs={gpu_maxabs:.2e}")
 
     # If one side is all‑zero, highlight that despite PASS
     if cpu_all_zero or gpu_all_zero:
