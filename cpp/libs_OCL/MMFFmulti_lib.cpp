@@ -68,6 +68,67 @@ void init_buffers(){
     ibuffers.insert( { "selection", W.manipulation_sel  } );
 }
 
+// Evaluate forces for multiple configurations
+// confs: [nConf, natoms, 3] (row-major doubles)
+// outF : [nConf, natoms, 3]
+// iParalel: CPU serial/OMP uses same mapping as run(); GPU==2 uses OpenCL UFF batched over W.nSystems replicas
+int scan( int nConf, double* confs_, double* outF_, int iParalel ){
+    if(!W.bUFF){ printf("scan(): ERROR bUFF=false; only UFF supported for now\n"); return 0; }
+    const int natoms = W.ffu._natoms;
+    auto confs = (Vec3d*)confs_;
+    auto outF  = (Vec3d*)outF_;
+    int nDone = 0;
+    if( (iParalel==2) && W.uff_ocl ){
+        // GPU path: process in batches of W.nSystems
+        if(!W.uff_ocl->bKernelPrepared){ W.uff_ocl->setup_kernels( (float)W.ffu.Rdamp, (float)W.ffu.FmaxNonBonded, (float)W.ffu.SubNBTorsionFactor ); }
+        // Ensure host-side packed parameter buffers exist for all systems and are uploaded once
+        for(int isys=0; isys<W.nSystems; ++isys){
+            W.pack_uff_system( isys, W.ffu, /*bParams=*/true, /*bForces=*/false, /*bVel=*/false, /*blvec=*/true );
+        }
+        W.upload_uff( /*bParams=*/true, /*bForces=*/false, /*bVel=*/false, /*blvec=*/true );
+        for(int ib=0; ib<nConf; ){
+            int nBatch = W.nSystems; if(ib+nBatch>nConf) nBatch = nConf-ib;
+            // pack positions for each system in the batch
+            for(int i=0;i<nBatch;i++){
+                int isys = i;
+                // load positions into CPU UFF, then pack to system slice
+                Vec3d* apos = W.ffu.apos;
+                for(int ia=0; ia<natoms; ia++){ apos[ia] = confs[(ib+i)*natoms + ia]; }
+                W.pack_uff_system( isys, W.ffu, /*bParams=*/false, /*bForces=*/false, /*bVel=*/false, /*blvec=*/false );
+            }
+            // upload only atoms (params/topology already prepared)
+            W.upload_uff( /*bParams=*/false, /*bForces=*/false, /*bVel=*/false, /*blvec=*/false );
+            // evaluate once
+            W.eval_UFF_ocl( 1 );
+            // download forces and unpack
+            W.download_uff( /*bForces=*/true, /*bVel=*/false );
+            for(int i=0;i<nBatch;i++){
+                int isys = i;
+                W.unpack_uff_system( isys, W.ffu, /*bForces=*/true, /*bVel=*/false );
+                // copy forces to output buffer
+                Vec3d* fapos = W.ffu.fapos;
+                for(int ia=0; ia<natoms; ia++){ outF[(ib+i)*natoms + ia] = fapos[ia]; }
+            }
+            ib += nBatch; nDone += nBatch;
+        }
+    }else{
+        // CPU path: loop configurations one-by-one
+        for(int ic=0; ic<nConf; ic++){
+            // set positions
+            for(int ia=0; ia<natoms; ia++){ W.ffu.apos[ia] = confs[ic*natoms + ia]; }
+            // zero forces
+            for(int ia=0; ia<natoms; ia++){ W.ffu.fapos[ia] = Vec3dZero; }
+            // use same call path as run()
+            if(iParalel==1){ W.ffu.run_omp( 1, 0.0, 1e-6, 1000.0, 0.1, nullptr, nullptr, nullptr, nullptr ); }
+            else            { W.ffu.run    ( 1, 0.0, 1e-6, 1000.0, 0.1, nullptr, nullptr, nullptr, nullptr ); }
+            // copy forces
+            for(int ia=0; ia<natoms; ia++){ outF[ic*natoms + ia] = W.ffu.fapos[ia]; }
+            nDone++;
+        }
+    }
+    return nDone;
+}
+
 
 void init_buffers_UFF(){
     printf( "init_buffers_UFF() \n" );

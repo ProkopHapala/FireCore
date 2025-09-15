@@ -127,6 +127,71 @@ def run_uff(use_gpu, components, bPrintBufs=False, nPrintSetup=False):
     
     return energy, forces
 
+
+def scan_uff(nconf, nsys, components, tol=1e-3, seed=123):
+    """Run multi-configuration CPU vs GPU force comparison using C++ scan().
+
+    - Generates nconf configurations by perturbing the current uff.apos deterministically
+    - CPU path evaluates sequentially
+    - GPU path evaluates batched over nsys replicas
+    """
+    print(f"\n--- Running UFF scan for nconf={nconf} with nsys={nsys} ---")
+
+    # Switches as in single run
+    uff.setSwitches2(NonBonded=-1, SurfAtoms=-1, GridFF=-1)
+    uff.setSwitchesUFF(
+        DoBond      =components.get('bonds',      -1),
+        DoAngle     =components.get('angles',     -1),
+        DoDihedral  =components.get('dihedrals',  -1),
+        DoInversion =components.get('inversions', -1),
+        DoAssemble          =  1,
+        SubtractBondNonBond = -1,
+        ClampNonBonded      = -1,
+    )
+
+    # Build configurations from current geometry
+    base = uff.apos.copy()
+    rng = np.random.default_rng(seed)
+    confs = np.repeat(base[None, :, :], nconf, axis=0)
+    confs += 0.1 * rng.standard_normal(confs.shape)
+
+    # CPU forces
+    F_cpu = uff.scan(confs, iParalel=0)
+    # GPU forces (batched)
+    F_gpu = uff.scan(confs, iParalel=2)
+
+    # Compare
+    ok = True
+    diffs = F_gpu - F_cpu
+    max_abs = np.max(np.abs(diffs)) if diffs.size else 0.0
+    idx = np.unravel_index(np.argmax(np.abs(diffs)), diffs.shape) if diffs.size else (0, 0, 0)
+    print(f"scan(): max |ΔF| = {max_abs:.3e} at index {idx}")
+    if max_abs > tol:
+        ok = False
+        print("scan(): Differences exceed tolerance. Showing summary per-config:")
+        for ic in range(nconf):
+            Fi = F_cpu[ic]
+            Gi = F_gpu[ic]
+            di = diffs[ic]
+            ma = float(np.max(np.abs(di)))
+            cpu_min = float(np.min(Fi)) if Fi.size else 0.0
+            cpu_max = float(np.max(Fi)) if Fi.size else 0.0
+            gpu_min = float(np.min(Gi)) if Gi.size else 0.0
+            gpu_max = float(np.max(Gi)) if Gi.size else 0.0
+            cpu_l2  = float(np.linalg.norm(Fi))
+            gpu_l2  = float(np.linalg.norm(Gi))
+            print("\n############################################")
+            print(f"########### system {ic}  E_GPU=NA  E_CPU=NA")
+            print(f"CPU_force stats: min={cpu_min:.6e} max={cpu_max:.6e} ||F||_2={cpu_l2:.6e}")
+            print(Fi)
+            print(f"GPU_force stats: min={gpu_min:.6e} max={gpu_max:.6e} ||F||_2={gpu_l2:.6e}")
+            print(Gi)
+            print(f"AbsDiff max|ΔF|={ma:.3e}")
+            print("--------------------------------------------")
+    else:
+        print(f"scan(): PASSED within tol={tol:.2e}")
+    return ok, F_cpu, F_gpu
+
 def compare_results(cpu_energy, cpu_forces, gpu_energy, gpu_forces, tol=1e-5, component_name=""):
     """Rich comparison of CPU vs GPU forces and energy.
 
@@ -198,18 +263,21 @@ def compare_results(cpu_energy, cpu_forces, gpu_energy, gpu_forces, tol=1e-5, co
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='UFF CPU vs. GPU Validation Test')
-    #default_mol = os.path.join(data_dir, 'mol', 'formic_acid.mol2')
-    default_mol = os.path.join(data_dir, 'mol', 'xylitol.mol2')
+    default_mol = os.path.join(data_dir, 'mol', 'formic_acid.mol2')
+    #default_mol = os.path.join(data_dir, 'mol', 'xylitol.mol2')
     parser.add_argument('-m', '--molecule',      type=str,   default=default_mol, help='Molecule file (.mol2, .xyz)')
     parser.add_argument('-t', '--tolerance',     type=float, default=1e-3, help='Numerical tolerance for comparison')
     parser.add_argument('-p', '--print-buffers', type=int,   default=0, help='Print buffer contents before run')
     parser.add_argument('-v', '--verbose',       type=int,   default=0, help='Verbose output')
+    parser.add_argument('--nsys',     type=int, default=2, help='Number of GPU replicas (systems)')
+    parser.add_argument('--nconf',    type=int, default=2, help='Number of configurations for scan(); 0 disables scan')
+    parser.add_argument('--use-scan', type=int, default=1, help='Use scan() path (1) or single-step run() (0)')
     args = parser.parse_args()
 
     # --- Initialize the library once ---
     print("--- Initializing MMFF_multi library ---")
     uff.init(
-        nSys_=1,
+        nSys_=args.nsys,
         xyz_name=args.molecule,
         sElementTypes  = os.path.join(data_dir, "ElementTypes.dat"),
         sAtomTypes     = os.path.join(data_dir, "AtomTypes.dat"),
@@ -255,11 +323,15 @@ if __name__ == "__main__":
     components = ['bonds', 'angles', 'dihedrals', 'inversions']
     component_flags = {key: 1 for key in components }
 
-    cpu_energy, cpu_forces = run_uff(use_gpu=False, components=component_flags)
-    gpu_energy, gpu_forces = run_uff(use_gpu=True,  components=component_flags)
-
-    # Single comparison across all enabled components
-    passed = compare_results(cpu_energy, cpu_forces, gpu_energy, gpu_forces, tol=args.tolerance, component_name="ALL")
+    if args.use_scan or args.nconf>0:
+        nconf = args.nconf if args.nconf>0 else args.nsys
+        ok, F_cpu, F_gpu = scan_uff(nconf=nconf, nsys=args.nsys, components=component_flags, tol=args.tolerance)
+        passed = ok
+    else:
+        cpu_energy, cpu_forces = run_uff(use_gpu=False, components=component_flags)
+        gpu_energy, gpu_forces = run_uff(use_gpu=True,  components=component_flags)
+        # Single comparison across all enabled components
+        passed = compare_results(cpu_energy, cpu_forces, gpu_energy, gpu_forces, tol=args.tolerance, component_name="ALL")
     print("\n================= SUMMARY =================")
     if passed:
         print("CPU vs GPU UFF comparison PASSED")

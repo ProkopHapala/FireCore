@@ -77,6 +77,7 @@ inline float4 getLJQH( float3 dp, float4 REQ, float R2damp ){
 #define IDBG_ANGLE (0)    // angle index to trace
 #define IDBG_DIH   (0)    // dihedral index to trace
 #define IDBG_INV   (0)    // inversion index to trace
+#define IDBG_SYS   (1)    // system index to trace
 
 //#define GPU_PREFIX "GPU"
 
@@ -121,10 +122,13 @@ __kernel void evalBondsAndHNeigh_UFF(
     __global float4* fint        // Output: [nf] Stores force pieces {fx,fy,fz, E_contrib}
     //__global float*  Eb_contrib   // Output: [natoms] Optional per-atom energy contribution buffer
 ) {
-    int ia = get_global_id(0);
-    // Header print by a single work-item to avoid async interleaving
-    if ((DBG_UFF!=0) && ia==0){
-        printf("GPU evalBondsAndHNeigh_UFF() natoms=%d npbc=%d i0bon=%d Rdamp=% .6e Fmax=% .6e bSubtractBondNonBond=%d iDBG=%d\n", natoms, npbc, i0bon, Rdamp, FmaxNonBonded, bSubtractBondNonBond, IDBG_BOND);
+    int ia    = get_global_id(0);
+    int isys = get_global_id(1);
+    int i0a = isys * natoms;          // atoms per system (base index)
+    int i0h = isys * (natoms*4);      // hneigh per system (base index)
+    // Header print by a single work-item to avoid async interleaving (selected system only)
+    if ((DBG_UFF!=0) && ia==0 && (isys==IDBG_SYS)){
+        printf("GPU evalBondsAndHNeigh_UFF() natoms=%d npbc=%d i0bon=%d Rdamp=% .6e Fmax=% .6e bSubtractBondNonBond=%d iDBG=%d isys=%d\n", natoms, npbc, i0bon, Rdamp, FmaxNonBonded, bSubtractBondNonBond, IDBG_BOND, isys);
         // Print first 64 bond parameter rows on one line per bond (safe upper bound without host arg)
         printf("GPU BOND-TABLE  ib   ia   ja           K           l0\n");
 
@@ -137,9 +141,9 @@ __kernel void evalBondsAndHNeigh_UFF(
         // }
 
         for (int ia=0; ia<natoms; ++ia){
-            int4 ng = neighs[ia];
-            int4 ngC= neighCell[ia];
-            printf("GPU ATOM %3d : ng={%3d,%3d,%3d,%3d} ngC={%3d,%3d,%3d,%3d} pos{%8.4f,%8.4f,%8.4f} ", ia, ng.x, ng.y, ng.z, ng.w, ngC.x, ngC.y, ngC.z, ngC.w, apos[ia].x, apos[ia].y, apos[ia].z);
+            int4 ng = neighs[i0a + ia];
+            int4 ngC= neighCell[i0a + ia];
+            printf("GPU ATOM %3d : ng={%3d,%3d,%3d,%3d} ngC={%3d,%3d,%3d,%3d} pos{%8.4f,%8.4f,%8.4f} isys=%d ", ia, ng.x, ng.y, ng.z, ng.w, ngC.x, ngC.y, ngC.z, ngC.w, apos[i0a+ia].x, apos[i0a+ia].y, apos[i0a+ia].z, isys);
             for(int in=0; in<4; ++in){
                 int ing = ng[in];
                 if(ing<0) break;
@@ -154,19 +158,19 @@ __kernel void evalBondsAndHNeigh_UFF(
     if (ia >= natoms) return;
 
     float E_b = 0.0f; // Accumulate bond energy for this atom
-    float3 pa = apos[ia].xyz;
-    int4   ng = neighs[ia];
-    int4   ngC= neighCell[ia];
-    int4   nB = neighBs[ia];   // Precomputed bond indices for neighbors
+    float3 pa = apos[i0a + ia].xyz;
+    int4   ng = neighs[i0a + ia];
+    int4   ngC= neighCell[i0a + ia];
+    int4   nB = neighBs[i0a + ia];   // Precomputed bond indices for neighbors (per-system)
     int*   ings = (int*)&ng;
     int*   ingC = (int*)&ngC;
     int*   inbs = (int*)&nB;   // Bond indices ibx, iby, ibz, ibw
 
-    const float4 REQi = (bSubtractBondNonBond != 0) ? REQs[ia] : (float4)(0.0f); // Load only if needed
+    const float4 REQi = (bSubtractBondNonBond != 0) ? REQs[i0a + ia] : (float4)(0.0f); // Load only if needed
     const float R2damp = Rdamp * Rdamp;
     const float Fmax2  = FmaxNonBonded * FmaxNonBonded;
 
-    int i4_h = ia * 4; // Base index for hneigh output for this atom
+    int i4_h = (i0a + ia) * 4; // Base index for hneigh output for this atom
     float3 ftot = (float3){0.0f,0.0f,0.0f};
 
     for (int in = 0; in < 4; ++in) { // Loop over neighbor slots 0..3
@@ -178,7 +182,7 @@ __kernel void evalBondsAndHNeigh_UFF(
 
         // --- Bond vectors (Calculate and Store HNeigh) ---
         int hneigh_idx = i4_h + in;
-        float3 png = apos[ing].xyz;
+        float3 png = apos[i0a + ing].xyz;
         float3 dp = png - pa;
 
         // Apply PBC shift
@@ -198,7 +202,7 @@ __kernel void evalBondsAndHNeigh_UFF(
         int ib = inbs[in];    // Precomputed bond index
         if (ib < 0) continue; // Should not happen for valid neighbor
 
-        float2 param = bonParams[ib]; // { K, l0 }
+        float2 param = bonParams[ib]; // { K, l0 } (ib is already per-system via neighBs packing)
         float k  = param.x;
         float l0 = param.y;
         float dl = l - l0;
@@ -215,7 +219,7 @@ __kernel void evalBondsAndHNeigh_UFF(
         float Enb = 0.0f;
         // --- Subtract Non-Bonded Interaction ---
         if (bSubtractBondNonBond != 0) {
-            float4 REQj = REQs[ing];
+            float4 REQj = REQs[i0a + ing];
             float4 REQij = mixREQ_arithmetic(REQi, REQj); // Use correct mixing rule
             // dp vector already calculated
             float4 fnb = getLJQH(dp, REQij, R2damp); // Returns {force_on_j, Energy}
@@ -231,12 +235,12 @@ __kernel void evalBondsAndHNeigh_UFF(
         }
 
         // Per-DOF concise, aligned debug print: only for selected bond index
-        if (DBG_UFF!=0){
+        if ((DBG_UFF!=0) && (isys==IDBG_SYS)){
             int ib_dbg = inbs[in];
             if (ib_dbg == IDBG_BOND){
                 int2 aij = bonAtoms[ib_dbg];
-                printf("GPU BOND %3i : ia=%3i ja=%3i  k=% .4e l0=% .4e  l=% .4e dl=% .4e  fr=% .4e  Enb=% .4e  fi=(% .4e % .4e % .4e)  fj=(% .4e % .4e % .4e)  E=% .4e\n",
-                       ib_dbg, aij.x, aij.y, k, l0, l, dl, fr, Enb, fi.x,fi.y,fi.z, fj.x,fj.y,fj.z, (E-Enb));
+                printf("GPU BOND %3i : ia=%3i ja=%3i  k=% .4e l0=% .4e  l=% .4e dl=% .4e  fr=% .4e  Enb=% .4e  fi=(% .4e % .4e % .4e)  fj=(% .4e % .4e % .4e)  E=% .4e isys=%d\n",
+                       ib_dbg, aij.x, aij.y, k, l0, l, dl, fr, Enb, fi.x,fi.y,fi.z, fj.x,fj.y,fj.z, (E-Enb), isys);
             }
         }
 
@@ -262,7 +266,7 @@ __kernel void evalBondsAndHNeigh_UFF(
 
 
     // After loop:
-    fapos[ia] += (float4)(ftot, E_b); // Accumulate bond force directly
+    fapos[i0a + ia] += (float4)(ftot, E_b); // Accumulate bond force directly into this system slice
     //if (Eb_contrib) Eb_contrib[ia] = E_b;
     //if (Eb_contrib) Eb_contrib[ia] = E_b * 0.5f; // Energy contribution is per-bond, associate half with ia? Check C++ E calculation. C++ adds E per bond.
                                                  // Let's store total bond energy involving ia.
@@ -283,7 +287,7 @@ __kernel void evalAngles_UFF(
     __global int2*   angNgs,      // [nangles] Precomputed {hneigh_idx_ji, hneigh_idx_kj}
     __global float4* angParams1,  // [nangles] {c0, c1, c2, c3}
     __global float*  angParams2_w,// [nangles] {K}
-    __global float4* hneigh,      // Input: [natoms*4] Precomputed h-vectors {nx,ny,nz, 1/L}
+    __global float4* hneigh,      // Input: [natoms*4] Precomputed h-vectors
     // --- Optional NB Subtraction Inputs (pass only if bSubtractAngleNonBond=1) ---
     __global float4* REQs,
     __global float4* apos,
@@ -293,11 +297,14 @@ __kernel void evalAngles_UFF(
     const int        npbc,
     // --- Output Arrays ---
     __global float4* fint,        // Output: [nf] Stores force pieces {fx,fy,fz, E_contrib}
-    __global float*  Ea_contrib   // Output: [nangles] Optional per-angle energy buffer
+    __global float*  Ea_contrib,  // Output: [nangles] Optional per-angle energy buffer
+    const int        nf_per_system
 ){
     int iang = get_global_id(0);
-    if ((DBG_UFF!=0) && iang==0){
-        printf("GPU evalAngles_UFF() nangles=%3i i0ang=%3i Rdamp=% .4e Fmax=% .4e bSubtractAngleNonBond=%d iDBG=%d\n", nangles, i0ang, Rdamp, FmaxNonBonded, bSubtractAngleNonBond, IDBG_ANGLE);
+    int isys = get_global_id(1);
+    int i0a = isys * nangles; // Per-system base offset
+    if ((DBG_UFF!=0) && iang==0 && (isys==IDBG_SYS)){
+        printf("GPU evalAngles_UFF() nangles=%3i i0ang=%3i Rdamp=% .4e Fmax=% .4e bSubtractAngleNonBond=%d iDBG=%d isys=%d\n", nangles, i0ang, Rdamp, FmaxNonBonded, bSubtractAngleNonBond, IDBG_ANGLE, isys);
         printf("GPU ANG-TABLE  id   ia   ja   ka            K          c0          c1          c2          c3\n");
         int N = (nangles<64)?nangles:64;
         for(int i=0;i<N;i++){
@@ -379,18 +386,18 @@ __kernel void evalAngles_UFF(
         fpj = (fk - fic) * qij.xyz + (fi - fkc) * qkj.xyz;
     }
 
-    if ((DBG_UFF!=0) && iang==IDBG_ANGLE){
+    if ((DBG_UFF!=0) && iang==IDBG_ANGLE && (isys==IDBG_SYS)){
         int4 a_dbg = angAtoms[iang];
         int ia0=a_dbg.x, ja0=a_dbg.y, ka0=a_dbg.z;
         float theta = acos(clamp(dot(qij.xyz,qkj.xyz),-1.0f,1.0f));
-        printf("GPU ANG %3d : ia=%3d ja=%3d ka=%3d  K=% .4e c0=% .4e c1=% .4e c2=% .4e c3=% .4e  ang=% .4e  Enb=% .4e  fi=(% .4e % .4e % .4e)  fj=(% .4e % .4e % .4e)  fk=(% .4e % .4e % .4e)  E=% .4e\n",
+        printf("GPU ANG %3d : ia=%3d ja=%3d ka=%3d  K=% .4e c0=% .4e c1=% .4e c2=% .4e c3=% .4e  ang=% .4e  Enb=% .4e  fi=(% .4e % .4e % .4e)  fj=(% .4e % .4e % .4e)  fk=(% .4e % .4e % .4e)  E=% .4e isys=%d\n",
                iang, ia0,ja0,ka0,
                K, par1.x,par1.y,par1.z,par1.w,
                theta,Enb,
                fpi.x,fpi.y,fpi.z,
                fpj.x,fpj.y,fpj.z,
                fpk.x,fpk.y,fpk.z,
-               (E-Enb));
+               (E-Enb), isys);
     }
     // --- Subtract 1-3 Non-Bonded Interaction ---
     if (bSubtractAngleNonBond != 0) {
@@ -401,7 +408,7 @@ __kernel void evalAngles_UFF(
 
         // Use C++ Prokop reconstruction: dp = ik = ji - jk
         // Vec3d dp; dp.set_lincomb( (1./qij.w), qij.f, (-1./qkj.w), qkj.f );
-        // Note: C++ qij.f is vector ji. So this is (1/lij)*ji - (1/lkj)*kj = r_ji - r_kj = r_ji + r_jk = r_ik ? Needs verification.
+        // Note: C++ qij.f is vector ji. So this is (1/lij)*ji - (1/lkj)*kj = r_ji - r_jk = r_ji + r_jk = r_ik ? Needs verification.
         // Let's assume this formula calculates the ik vector correctly *without* PBC initially.
         float3 dp_ik = (qij.xyz / qij.w) - (qkj.xyz / qkj.w); // Vector ik = ji - ki ? No, kj. ji - kj = ik. Seems correct.
 
@@ -465,11 +472,14 @@ __kernel void evalDihedrals_UFF(
     const int        npbc,
     // --- Output Arrays ---
     __global float4* fint,        // Output: [nf] Stores force pieces {fx,fy,fz, E_contrib}
-    __global float*  Ed_contrib   // Output: [ndihedrals] Optional per-dihedral energy buffer
+    __global float*  Ed_contrib,  // Output: [ndihedrals] Optional per-dihedral energy buffer
+    const int        nf_per_system
 ) {
     int id = get_global_id(0);
-    if ((DBG_UFF!=0) && id==0){
-        printf("GPU evalDihedrals_UFF() ndihedrals=%d i0dih=%d Rdamp=% .6e Fmax=% .6e SubNBTorsionFactor=% .6e iDBG=%d\n", ndihedrals, i0dih, Rdamp, FmaxNonBonded, SubNBTorsionFactor, IDBG_DIH);
+    int isys = get_global_id(1);
+    int i0a = isys * ndihedrals; // Per-system base offset
+    if ((DBG_UFF!=0) && id==0 && (isys==IDBG_SYS)){
+        printf("GPU evalDihedrals_UFF() ndihedrals=%d i0dih=%d Rdamp=% .6e Fmax=% .6e SubNBTorsionFactor=% .6e iDBG=%d isys=%d\n", ndihedrals, i0dih, Rdamp, FmaxNonBonded, SubNBTorsionFactor, IDBG_DIH, isys);
         printf("GPU DIH-TABLE  ia   ja   ka   la            V           d           n\n");
         int N=(ndihedrals<64)?ndihedrals:64; 
         for(int i=0;i<N;i++){ int ia=dihAtoms[i*4+0],ja=dihAtoms[i*4+1],ka=dihAtoms[i*4+2],la=dihAtoms[i*4+3]; float3 p=dihParams[i];
@@ -546,7 +556,7 @@ __kernel void evalDihedrals_UFF(
         }
     }
 
-    if ((DBG_UFF!=0) && id==IDBG_DIH){
+    if ((DBG_UFF!=0) && id==IDBG_DIH && (isys==IDBG_SYS)){
         int ia0=dihAtoms[id*4+0], ja0=dihAtoms[id*4+1], ka0=dihAtoms[id*4+2], la0=dihAtoms[id*4+3];
         // Recompute phi exactly as main path
         float3 r12 = q12.xyz; float l12 = 1.0f / q12.w; float3 r12abs = r12 * l12;
@@ -558,7 +568,7 @@ __kernel void evalDihedrals_UFF(
         float cphi = (n1>1e-12f && n2>1e-12f)? dot(n123d,n234d)/(n1*n2) : 1.0f; cphi = clamp(cphi,-1.0f,1.0f);
         float phi = acos(cphi);
         float3 par = dihParams[id];
-        printf("GPU DIH %4d : ia=%4d ja=%4d ka=%4d la=%4d  V=% .4e d=% .4e n=% .3f  phi=% .4e  Enb=% .4e  fi=(% .4e % .4e % .4e)  fj=(% .4e % .4e % .4e)  fk=(% .4e % .4e % .4e)  fl=(% .4e % .4e % .4e)  E=% .4e\n",
+        printf("GPU DIH %4d : ia=%4d ja=%4d ka=%4d la=%4d  V=% .4e d=% .4e n=% .3f  phi=% .4e  Enb=% .4e  fi=(% .4e % .4e % .4e)  fj=(% .4e % .4e % .4e)  fk=(% .4e % .4e % .4e)  fl=(% .4e % .4e % .4e)  E=% .4e isys=%d\n",
                id, ia0,ja0,ka0,la0,
                par.x,par.y,par.z,
                phi,Enb,
@@ -566,7 +576,7 @@ __kernel void evalDihedrals_UFF(
                fj.x,fj.y,fj.z,
                fk.x,fk.y,fk.z,
                fl.x,fl.y,fl.z,
-               (double)(E-Enb));
+               (double)(E-Enb), isys);
     }
     // --- Subtract 1-4 Non-Bonded Interaction ---
     if (SubNBTorsionFactor > 1e-6f) {
@@ -626,11 +636,13 @@ __kernel void evalInversions_UFF(
     __global float4* hneigh,      // Input: [natoms*4] Precomputed h-vectors
     // --- Output Arrays ---
     __global float4* fint,        // Output: [nf] Stores force pieces {fx,fy,fz, E_contrib}
-    __global float*  Ei_contrib   // Output: [ninversions] Optional per-inversion energy buffer
+    __global float*  Ei_contrib,  // Output: [ninversions] Optional per-inversion energy buffer
+    const int        nf_per_system
 ) {
     int ii = get_global_id(0);
-    if ((DBG_UFF!=0) && ii==0){
-        printf("GPU INV  ninversions=%d i0inv=%d iDBG=%d\n", ninversions, i0inv, IDBG_INV);
+    int isys = get_global_id(1);
+    if ((DBG_UFF!=0) && ii==0 && (isys==IDBG_SYS)){
+        printf("GPU INV  ninversions=%d i0inv=%d iDBG=%d isys=%d\n", ninversions, i0inv, IDBG_INV, isys);
         printf("GPU INV-TABLE  ia   ja   ka   la            K          c0          c1          c2\n");
         int N=(ninversions<64)?ninversions:64; 
         for(int i=0;i<N;i++){ int ia=invAtoms[i*4+0],ja=invAtoms[i*4+1],ka=invAtoms[i*4+2],la=invAtoms[i*4+3]; float4 p=invParams[i];
@@ -707,7 +719,7 @@ __kernel void evalInversions_UFF(
         fp1 = -(fp2 + fp3 + fp4);                 // Force on central atom i(1)
     } // End of inlined evalInversionUFF block
 
-    if ((DBG_UFF!=0) && ii==IDBG_INV){
+    if ((DBG_UFF!=0) && ii==IDBG_INV && (isys==IDBG_SYS)){
         int ia0=invAtoms[ii*4+0], ja0=invAtoms[ii*4+1], ka0=invAtoms[ii*4+2], la0=invAtoms[ii*4+3];
         float3 n123_dbg = cross(-q21.xyz, -q31.xyz);
         float n1 = length(n123_dbg);
@@ -753,30 +765,37 @@ __kernel void assembleForces_UFF(
                                   // Let's assume `fapos` was used by Kernel 1.
     // --- Output forces and energy ---
     // Output forces are written back to `fapos`
-    const int        bClearForce   // 1 to set fapos=sum(bonds+fint), 0 to do fapos+=sum(fint)
+    const int        bClearForce,  // 1 to set fapos=sum(bonds+fint), 0 to do fapos+=sum(fint)
+    const int        nf_per_system
                                    // If Kernel 1 already added bonds, use bClearForce=0 for fint part.
 ) {
-    int ia = get_global_id(0);
-    // Debug dump by a single thread to avoid interleaved prints
-    if ( (DBG_UFF!=0) &&  (ia == 0) ){
-        printf("GPU assembleForces_UFF() ia=%3d natoms=%3d\n", ia, natoms);
+    int ia   = get_global_id(0);
+    int isys = get_global_id(1);
+    // Per-system base offsets
+    int i0a      = isys * natoms;
+    int i0a2f    = isys * natoms;
+    int i0f      = isys * nf_per_system;
+    // NOTE: a2f_indices values are per-system local indices into fint; add i0f below if needed
+    // Debug dump by a single thread to avoid interleaved prints (selected system only)
+    if ( (DBG_UFF!=0) &&  (ia == 0) && (isys==IDBG_SYS) ){
+        printf("GPU assembleForces_UFF() ia=%3d natoms=%3d isys=%d\n", ia, natoms, isys);
         printf("GPU A2F TABLE natoms=%3d\n", natoms);
         for (int ia0 = 0; ia0 < natoms; ++ia0) {
-            int off = a2f_offsets[ia0];
-            int cnt = a2f_counts[ia0];
-            float4 f = fapos[ia0];
+            int off = a2f_offsets[i0a + ia0];
+            int cnt = a2f_counts [i0a + ia0];
+            float4 f = fapos[i0a + ia0];
             printf("GPU A2F ia=%3d f=( % .6e % .6e % .6e) off=%6d cnt=%4d idxs:", ia0, f.x, f.y, f.z, off, cnt);
-            for (int k = 0; k < cnt; ++k) { int j = a2f_indices[off + k]; printf(" %d", j); }
+            for (int k = 0; k < cnt; ++k) { int j = a2f_indices[i0a2f + off + k]; printf(" %d", j); }
             printf("\n");
         }
         printf("GPU FINT BY ATOM natoms=%3d\n", natoms);
         for (int ia0 = 0; ia0 < natoms; ++ia0) {
-            int off = a2f_offsets[ia0];
-            int cnt = a2f_counts[ia0];
+            int off = a2f_offsets[i0a + ia0];
+            int cnt = a2f_counts [i0a + ia0];
             printf("GPU FINT ia=%3d:", ia0);
             for (int k = 0; k < cnt; ++k) {
-                int j = a2f_indices[off + k];
-                float4 v = fint[j];
+                int j = a2f_indices[i0a2f + off + k];
+                float4 v = fint[i0f + j];
                 printf(" [%3d]( % .6e % .6e % .6e)", j, v.x, v.y, v.z);
             }
             printf("\n");
@@ -787,14 +806,14 @@ __kernel void assembleForces_UFF(
     float3 f_local = (float3){0.0f,0.0f,0.0f}; // Accumulate forces from fint for this atom
     float  E_local = 0.0f;         // Accumulate energy from fint for this atom
 
-    int i0 = a2f_offsets[ia];
-    int n  = a2f_counts[ia];
+    int i0 = a2f_offsets[i0a + ia];
+    int n  = a2f_counts [i0a + ia];
     int i1 = i0 + n;
 
     // Loop through all fint force pieces contributing to this atom (angles, dihedrals, inversions)
     for (int i = i0; i < i1; ++i) {
-        int j = a2f_indices[i]; // Get index into the global fint array
-        float4 force_piece = fint[j];
+        int j = a2f_indices[i0a2f + i]; // Get index into the per-system fint array
+        float4 force_piece = fint[i0f + j];
         f_local += force_piece.xyz;
         E_local += force_piece.w; // Accumulate energy contribution
     }
@@ -802,12 +821,12 @@ __kernel void assembleForces_UFF(
     // --- Combine with bond forces and write final force ---
     if (bClearForce != 0) {
         // Read bond force accumulated by Kernel 1 (assuming it's in fapos)
-        float4 bond_force = fapos[ia];
+        float4 bond_force = fapos[i0a + ia];
         // Final force = bond_force + fint_forces
-        fapos[ia] = (float4)(bond_force.xyz + f_local, E_local); // Store total E in .w ? Or keep bond energy separate? C++ doesn't store E in fapos.
+        fapos[i0a + ia] = (float4)(bond_force.xyz + f_local, E_local); // Store total E in .w ? Or keep bond energy separate? C++ doesn't store E in fapos.
                                                                  // Let's store total E contrib in .w here.
     } else {
         // Accumulate angle/dih/inv forces onto existing forces (which should include bonds from Kernel 1)
-        fapos[ia] += (float4)(f_local, E_local);
+        fapos[i0a + ia] += (float4)(f_local, E_local);
     }
 }

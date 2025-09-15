@@ -359,6 +359,27 @@ lib.print_setup.restype   =  None
 def print_setup():
     return lib.print_setup()
 
+#  int scan( int nConf, double* confs, double* outF, int iParalel )
+lib.scan.argtypes = [c_int, c_double_p, c_double_p, c_int]
+lib.scan.restype  = c_int
+def scan(confs, iParalel=2):
+    """Evaluate forces for multiple configurations.
+
+    Args:
+        confs (ndarray): shape (nConf, natoms, 3), dtype float64, contiguous
+        iParalel (int): 0/1 = CPU, 2 = GPU (OpenCL UFF)
+
+    Returns:
+        ndarray: forces with same shape as confs
+    """
+    import numpy as _np
+    confs = _np.ascontiguousarray(confs, dtype=_np.float64)
+    nConf, natoms, dim = confs.shape
+    assert dim == 3, "confs must have shape (nConf,natoms,3)"
+    outF = _np.zeros_like(confs)
+    lib.scan(int(nConf), _np_as(confs, c_double_p), _np_as(outF, c_double_p), int(iParalel))
+    return outF.copy()
+
 #  void print_debugs( bool bParams, bool bNeighs, bool bShifts, bool bAtoms  ){
 lib.print_debugs.argtypes  = [c_bool, c_bool, c_bool, c_bool]
 lib.print_debugs.restype   =  None

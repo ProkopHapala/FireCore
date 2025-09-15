@@ -106,13 +106,13 @@ public:
         // Create tasks for each kernel
         // TODO: The local work-group sizes (e.g., 32) are hardcoded for now. They should be tuned for optimal performance based on the device and kernel characteristics.
         //                                name                  program  nL nG
-        newTask("clear_fapos_UFF",        program, 1, (size_t4){0,0,0,0}, (size_t4){32,1,1,1} );
-        newTask("clear_fint_UFF",         program, 1, (size_t4){0,0,0,0}, (size_t4){32,1,1,1} );
-        newTask("evalBondsAndHNeigh_UFF", program, 1, (size_t4){0,0,0,0}, (size_t4){32,1,1,1} );
-        newTask("evalAngles_UFF",         program, 1, (size_t4){0,0,0,0}, (size_t4){32,1,1,1} );
-        newTask("evalDihedrals_UFF",      program, 1, (size_t4){0,0,0,0}, (size_t4){32,1,1,1} );
-        newTask("evalInversions_UFF",     program, 1, (size_t4){0,0,0,0}, (size_t4){32,1,1,1} );
-        newTask("assembleForces_UFF",     program, 1, (size_t4){0,0,0,0}, (size_t4){32,1,1,1} );
+        newTask("clear_fapos_UFF",        program, 2, (size_t4){0,0,0,0}, (size_t4){32,1,1,1} );
+        newTask("clear_fint_UFF",         program, 2, (size_t4){0,0,0,0}, (size_t4){32,1,1,1} );
+        newTask("evalBondsAndHNeigh_UFF", program, 2, (size_t4){0,0,0,0}, (size_t4){32,1,1,1} );
+        newTask("evalAngles_UFF",         program, 2, (size_t4){0,0,0,0}, (size_t4){32,1,1,1} );
+        newTask("evalDihedrals_UFF",      program, 2, (size_t4){0,0,0,0}, (size_t4){32,1,1,1} );
+        newTask("evalInversions_UFF",     program, 2, (size_t4){0,0,0,0}, (size_t4){32,1,1,1} );
+        newTask("assembleForces_UFF",     program, 2, (size_t4){0,0,0,0}, (size_t4){32,1,1,1} );
         bKernelPrepared = false;
     }
 
@@ -273,6 +273,7 @@ public:
             err |= useArg   ( nPBC );                      OCL_checkError(err, "evalAngles.arg16 nPBC");
             err |= useArgBuff( ibuff_fint );               OCL_checkError(err, "evalAngles.arg17 fint");
             if(ibuff_Ea>=0){ err |= useArgBuff( ibuff_Ea ); OCL_checkError(err, "evalAngles.arg18 Ea_contrib"); }
+            err |= useArg   ( nf_per_system );             OCL_checkError(err, "evalAngles.arg19 nf_per_system");
         }
 
         // --- evalDihedrals_UFF ---
@@ -302,6 +303,7 @@ public:
             err |= useArg   ( nPBC );                      OCL_checkError(err, "evalDihedrals.arg15 nPBC");
             err |= useArgBuff( ibuff_fint );               OCL_checkError(err, "evalDihedrals.arg16 fint");
             if(ibuff_Ed>=0){ err |= useArgBuff( ibuff_Ed ); OCL_checkError(err, "evalDihedrals.arg17 Ed_contrib"); }
+            err |= useArg   ( nf_per_system );             OCL_checkError(err, "evalDihedrals.arg18 nf_per_system");
         }
 
         // --- evalInversions_UFF ---
@@ -322,6 +324,7 @@ public:
             err |= useArgBuff( ibuff_hneigh );             OCL_checkError(err, "evalInversions.arg6 hneigh");
             err |= useArgBuff( ibuff_fint );               OCL_checkError(err, "evalInversions.arg7 fint");
             if(ibuff_Ei>=0){ err |= useArgBuff( ibuff_Ei ); OCL_checkError(err, "evalInversions.arg8 Ei_contrib"); }
+            err |= useArg   ( nf_per_system );             OCL_checkError(err, "evalInversions.arg9 nf_per_system");
         }
 
         // --- assembleForces_UFF ---
@@ -341,6 +344,7 @@ public:
             err |= useArgBuff( ibuff_fapos );              OCL_checkError(err, "assemble.arg6 fapos");
             int bClearForce = 1;
             err |= useArg   ( bClearForce );               OCL_checkError(err, "assemble.arg7 bClearForce");
+            err |= useArg   ( nf_per_system );             OCL_checkError(err, "assemble.arg8 nf_per_system");
         }
 
         // --- clear_fapos_UFF ---
