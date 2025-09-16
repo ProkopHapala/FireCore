@@ -142,3 +142,67 @@ These notes capture the target design for running UFF over `nSystems` replicas i
 - The `evalDihedrals_UFF` kernel appears to have an internal logic error in how it calculates forces, as the debug prints show non-physical force distribution (e.g., `fi` and `fj` are identical in one case).
 - The `['inversions']` component also causes a failure.
 - Next step is to analyze the force calculation logic inside the `evalDihedrals_UFF` and `evalInversions_UFF` kernels and compare it line-by-line with the CPU implementation in `UFF.h`.
+
+### Session 3: Dihedral + Inversion parity (float, multi-system)
+
+**Goal:** Achieve exact CPU↔GPU parity for dihedrals and inversions across `nSystems` replicas, while keeping single precision (float) on GPU.
+
+**Changes (Dihedrals):**
+1.  **Switch to Prokop formulation (CPU parity):**
+    - Use unit h-vectors from `hneigh`: `h12=q12.xyz (ji)`, `h32=q32.xyz (jk)`, `h43=q43.xyz (kl)`.
+    - Plane normals: `n123=cross(h12,h32)`, `n234=cross(h43,h32)`.
+    - `il2_123=1/|n123|^2`, `il2_234=1/|n234|^2`, `inv_n12=sqrt(il2_123*il2_234)`.
+    - `cs={ dot(n123,n234)*inv_n12, -dot(n123,h43)*inv_n12 }`, `csn = cs^n` via complex multiply, `n=(int)par.z`.
+    - Energy: `E = V*(1 + d*csn.x)`; force scalar: `f = -V*d*n*csn.y`.
+    - End-atom forces: `fp1 = n123*(-f*il2_123*q12.w)`, `fp4 = n234*( f*il2_234*q43.w)`.
+    - Central atoms (conservation of angular momentum around jk):
+      - `c123 = dot(h32,h12)*(q32.w/q12.w)`, `c432 = dot(h32,h43)*(q32.w/q43.w)`.
+      - `fp3 = (-c123)*fp1 + (-c432 - 1)*fp4`, `fp2 = (c123 - 1)*fp1 + (c432)*fp4`.
+    - Debug phi uses the same normals and `clamp(...,-1.0f,1.0f)`.
+2.  **Type fixes (GPU compilers are strict):**
+    - All literals are float-suffixed: `1.0f`, `1e-30f`; `clamp` uses float overload.
+    - Avoided mixing float vectors with double scalars.
+3.  **Topology buffer typing:**
+    - `dihNgs` changed to `__global int4*` to match host packing and avoid stride mismatch.
+    - `dihParams` is `__global float4*`, read `.xyz`.
+4.  **Multi-system indexing:**
+    - Use `isys=get_global_id(1)` and per-system bases (`i0dih`, `i0h`, `i0f`, etc.) consistently.
+    - Optional 1–4 NB subtraction remains off by default; if enabled, we will add `natoms` to kernel args and index REQs/apos with `i0a`.
+
+**Changes (Inversions):**
+1.  **Match `UFF.h::evalInversion_Prokop` exactly in float:**
+    - Plane normal `n123=cross(q21.f, q31.f)`, `il123=1/|n123|`; `s=-dot(n123,q41.f)`, `c=sqrt(1-s*s+eps)`.
+    - Params: `par={K,c0,c1,c2}`; `E=K*(c0 + c1*c + c2*cos(2w))` via complex multiply; `f = -K*(c1*s + 2*c2*sin(2w))/c`.
+    - Forces: `fp4=fq41*n123 + s*fq41*q41.f`, `tq=s*fi123*n123 + fi123*q41.f`, `fp2=cross(q31,tq)*q21.e`, `fp3=cross(tq,q21)*q31.e`, `fp1=-(fp2+fp3+fp4)`.
+2.  **Single precision throughout:** float math and literals; no doubles.
+
+**Results:**
+- Parity achieved for `['bonds','angles','dihedrals','inversions']` across `nSystems=10` (tested via `tests/tUFF/test_UFF_multi.py`).
+- GPU debug gated by `IDBG_SYS` matches CPU prints for the selected system.
+
+## Rules & Conventions (for future contributors)
+
+- __Float-only on GPU__: Do everything in single precision in OpenCL. No `double` in kernels (slow on consumer GPUs, different math paths). Use float-suffixed literals (`1.0f`, `1e-14f`), float overloads (e.g., `clamp(x,-1.0f,1.0f)`).
+- __Follow CPU Prokop math exactly__: Mirror `UFF.h` “Prokop” variants (`evalDihedral_Prokop`, `evalInversion_Prokop`) line-by-line. Use the same variable names/flow whenever possible to avoid drift.
+- __Multi-system indexing__: Always compute per-system bases: `i0a,i0b,i0ang,i0dih,i0inv,i0h,i0f,i0a2f`. Index every buffer with its correct base.
+- __Host ↔ Device slicing__: When uploading per-system slices, apply the same offset to the host pointer and the device buffer offset. Example: `upload(ibuff_dihAtoms, host + i0dih, nDihedrals, i0dih)`.
+- __Topology buffer types__: Use `int4` for `*_Atoms`/`*_Ngs` that are 4-tuples; `float4` for params that are padded. Kernels should read `.xyz` or `.w` as needed.
+- __Debugging__: Gate prints by `IDBG_SYS` and print only 1 system per kernel call. Keep oneliners to avoid interleaving.
+
+## Future optimization opportunities
+
+- __Local memory tiling for `hneigh`__: For interaction-centric kernels (angles/dihedrals/inversions), prefetch `hneigh` for the subset of atoms referenced by the current work-group into `__local` memory to reduce global reads.
+- __Vectorized loads__: Use `float4`/`int4` aligned loads uniformly to reduce memory transactions (already done for params/atoms/ngs).
+- __Occupancy & register pressure__: Tune work-group size (e.g., 64 vs 32) to balance occupancy against register usage in kernels with heavier math (dihedrals/inversions).
+- __Kernel fusion (selective)__: Optionally fuse angle+dihedral+inversion into a single pass writing to `fint` when it improves cache locality; keep bonds separate due to different access pattern.
+- __Math micro-opts__: Precompute `q*.w` reciprocals or reuse dot-products; consider fast-math flags if acceptable (ensure parity first).
+- __Optional 1–4 NB subtraction__: If enabled, add `natoms` to kernel args and use `i0a` for `REQs/apos` indexing to maintain multi-system correctness.
+- __Better debug controls__: Make `IDBG_SYS` and per-component `IDBG_*` runtime kernel args instead of macros to avoid rebuilds.
+
+## Testing checklist (regression)
+
+- `['bonds']` only, `nSystems={1,2,10}`.
+- `['bonds','angles']`, parity within `1e-3`.
+- `['dihedrals']` only, compare phi and force components per interaction.
+- `['inversions']` only, compare `w`, `fi..fl` per interaction.
+- Full set `['bonds','angles','dihedrals','inversions']` at `nSystems=10`, `nconf=10`.

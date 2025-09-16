@@ -79,6 +79,7 @@ int scan( int nConf, double* confs_, double* outF_, int iParalel ){
     auto outF  = (Vec3d*)outF_;
     int nDone = 0;
     const int dbg_sys = 1; // match IDBG_SYS used on GPU; only this system will be verbose on CPU
+    //const int dbg_sys = 8; // match IDBG_SYS used on GPU; only this system will be verbose on CPU
     if( (iParalel==2) && W.uff_ocl ){
         // GPU path: process in batches of W.nSystems
         if(!W.uff_ocl->bKernelPrepared){ W.uff_ocl->setup_kernels( (float)W.ffu.Rdamp, (float)W.ffu.FmaxNonBonded, (float)W.ffu.SubNBTorsionFactor ); }

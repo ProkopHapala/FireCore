@@ -1,11 +1,11 @@
-#pragma OPENCL EXTENSION cl_khr_fp64 : enable // Enable if double precision is needed
+#pragma OPENCL EXTENSION cl_khr_fp64 : enable // Enable if float precision is needed
 
 // ======================================================
 // Utility Functions (Translate/Provide these accurately)
 // ======================================================
 // Assuming getLJQH, mixREQ_*, clampForce, float3Zero are defined as before
-// and match the C++ behavior precisely, including precision (float/double).
-// Using 'float' here for consistency with previous examples, adjust if using double.
+// and match the C++ behavior precisely, including precision (float/float).
+// Using 'float' here for consistency with previous examples, adjust if using float.
 
 typedef struct __attribute__ ((packed)){
     float4 a;
@@ -78,6 +78,7 @@ inline float4 getLJQH( float3 dp, float4 REQ, float R2damp ){
 #define IDBG_DIH   (0)    // dihedral index to trace
 #define IDBG_INV   (0)    // inversion index to trace
 #define IDBG_SYS   (1)    // system index to trace
+//#define IDBG_SYS   (8)    // system index to trace
 
 //#define GPU_PREFIX "GPU"
 
@@ -461,7 +462,7 @@ __kernel void evalDihedrals_UFF(
     const float      FmaxNonBonded,
     // --- Input Arrays ---
     __global int*    dihAtoms,    // [ndihedrals*4] {ia, ja, ka, la}
-    __global int*    dihNgs,      // [ndihedrals*3] Precomputed {hneigh_idx_ji, hneigh_idx_kj, hneigh_idx_lk}
+    __global int4*   dihNgs,      // [ndihedrals] Precomputed {hneigh_idx_ji, hneigh_idx_kj, hneigh_idx_lk, 0}
     __global float4* dihParams,   // [ndihedrals] { V, d=cos(n*phi0), n, w(ignored) }
     __global float4* hneigh,      // Input: [natoms*4] Precomputed h-vectors
     // --- Optional NB Subtraction Inputs (pass only if SubNBTorsionFactor > 0) ---
@@ -514,46 +515,39 @@ __kernel void evalDihedrals_UFF(
     float3 fi, fj, fk, fl; // Forces on i, j, k, l
     float E = 0.0f;
     {
-        // Recover absolute bond vectors and lengths
-        float3 r12 = q12.xyz; float l12 = 1.0f / q12.w; float3 r12abs = r12 * l12; // j->i
-        float3 r32 = q32.xyz; float l32 = 1.0f / q32.w; float3 r32abs = r32 * l32; // j->k
-        float3 r43 = q43.xyz; float l43 = 1.0f / q43.w; float3 r43abs = r43 * l43; // k->l
-
-        // Plane normals
-        float3 n123 = cross(r12abs, r32abs);
-        float3 n234 = cross(r43abs, r32abs);
-        float l123 = length(n123); float l234 = length(n234);
-        if (l123 < 1e-16f || l234 < 1e-16f){ fi=fj=fk=fl=(float3)(0.0f); E=0.0f; }
+        // Compute in float precision to match CPU reference
+        float3 h12 = convert_float3(q12.xyz);
+        float3 h32 = convert_float3(q32.xyz);
+        float3 h43 = convert_float3(q43.xyz);
+        float3 n123 = cross(h12, h32);
+        float3 n234 = cross(h43, h32);
+        float n123_2 = dot(n123,n123);
+        float n234_2 = dot(n234,n234);
+        if (n123_2 < 1e-30f || n234_2 < 1e-30f){ fi=fj=fk=fl=(float3)(0.0f); E=0.0f; }
         else{
-            n123 /= l123; n234 /= l234;
-            float c = clamp(dot(n123, n234), -1.0f, 1.0f);
-            float s = sqrt(fmax(0.0f, 1.0f - c*c) + 1e-14f);
-
-            //float3 par = dihParams[id];
-            int   nint = (int)(par.z + 0.5f);
-            float2 cs  = (float2)(c, s);
+            float il2_123 = 1.0f / n123_2;
+            float il2_234 = 1.0f / n234_2;
+            float inv_n12 = sqrt(il2_123 * il2_234);
+            float2 cs = (float2)( dot(n123,n234)*inv_n12,  -dot(n123,h43)*inv_n12 );
             float2 csn = cs;
+            int   nint = (int)(par.z);
             for(int i=1;i<nint;i++){ csn = (float2)( csn.x*cs.x - csn.y*cs.y,  csn.x*cs.y + csn.y*cs.x ); }
-            E = par.x * ( 1.0f + par.y * csn.x );
+            float Ed = (float)par.x * ( 1.0f + (float)par.y * csn.x );
+            E = (float)Ed;
+            float f = -(float)par.x * (float)par.y * (float)par.z * csn.y;
+            // Forces on end atoms
+            float3 fp1_loc_d = n123 * (-f * il2_123 * (float)q12.w);
+            float3 fp4_loc_d = n234 * ( f * il2_234 * (float)q43.w);
+            // Recoil on axis atoms
+            float c123 = dot(h32,h12) * ((float)q32.w / (float)q12.w);
+            float c432 = dot(h32,h43) * ((float)q32.w / (float)q43.w);
+            float3 fp3_loc_d = fp1_loc_d * (-c123) + fp4_loc_d * (-c432 - 1.0f);
+            float3 fp2_loc_d = fp1_loc_d * ( c123 - 1.0f) + fp4_loc_d * ( c432      );
 
-            float3 scaled_123 = n123 * c;
-            float3 scaled_234 = n234 * c;
-            float3 tmp_123 = n123 - scaled_234;
-            float3 tmp_234 = n234 - scaled_123;
-            float3 f_12 = cross( r32, tmp_234 );
-            float3 f_43 = cross( r32, tmp_123 );
-            float3 tmp1_32 = tmp_234 * (l12 / l123);
-            float3 tmp2_32 = tmp_123 * (l43 / l234);
-            float3 vec1_32 = cross( tmp1_32, r12 );
-            float3 vec2_32 = cross( tmp2_32, r43 );
-            float3 vec_32  = vec1_32 + vec2_32;
-            float  fact = -par.x * par.y * par.z * csn.y / s;
-            float3 f_32 = vec_32 * fact;
-
-            float3 fp1_loc = f_12 * ( fact * l32 / l123 );
-            float3 fp4_loc = f_43 * ( fact * l32 / l234 );
-            float3 fp2_loc = ( f_32 + fp1_loc ) * -1.0f;
-            float3 fp3_loc = ( f_32 - fp4_loc );
+            float3 fp1_loc = convert_float3(fp1_loc_d);
+            float3 fp2_loc = convert_float3(fp2_loc_d);
+            float3 fp3_loc = convert_float3(fp3_loc_d);
+            float3 fp4_loc = convert_float3(fp4_loc_d);
 
             fi = fp1_loc; fj = fp2_loc; fk = fp3_loc; fl = fp4_loc;
         }
@@ -561,14 +555,14 @@ __kernel void evalDihedrals_UFF(
 
     if ((DBG_UFF!=0) && id==IDBG_DIH && (isys==IDBG_SYS)){
         int ia0=dihAtoms[(i0D+id)*4+0], ja0=dihAtoms[(i0D+id)*4+1], ka0=dihAtoms[(i0D+id)*4+2], la0=dihAtoms[(i0D+id)*4+3];
-        // Recompute phi exactly as main path
-        float3 r12 = q12.xyz; float l12 = 1.0f / q12.w; float3 r12abs = r12 * l12;
-        float3 r32 = q32.xyz; float l32 = 1.0f / q32.w; float3 r32abs = r32 * l32;
-        float3 r43 = q43.xyz; float l43 = 1.0f / q43.w; float3 r43abs = r43 * l43;
-        float3 n123d = cross(r12abs, r32abs);
-        float3 n234d = cross(r43abs, r32abs);
-        float n1 = length(n123d); float n2 = length(n234d);
-        float cphi = (n1>1e-12f && n2>1e-12f)? dot(n123d,n234d)/(n1*n2) : 1.0f; cphi = clamp(cphi,-1.0f,1.0f);
+        // Recompute phi exactly as CPU Prokop path
+        float3 h12d = convert_float3(q12.xyz); float3 h32d = convert_float3(q32.xyz); float3 h43d = convert_float3(q43.xyz);
+        float3 n123d = cross(h12d, h32d);
+        float3 n234d = cross(h43d, h32d);
+        float n1_2 = dot(n123d,n123d); float n2_2 = dot(n234d,n234d);
+        float cphi_d = 1.0f;
+        if(n1_2>1e-30f && n2_2>1e-30f){ cphi_d = dot(n123d,n234d)/sqrt(n1_2*n2_2); cphi_d = clamp(cphi_d,-1.0f,1.0f); }
+        float cphi = (float)cphi_d;
         float phi = acos(cphi);
         float3 par = dihParams[i0D + id].xyz;
         printf("GPU DIH %4d : ia=%4d ja=%4d ka=%4d la=%4d  V=% .4e d=% .4e n=% .3f  phi=% .4e  Enb=% .4e  fi=(% .4e % .4e % .4e)  fj=(% .4e % .4e % .4e)  fk=(% .4e % .4e % .4e)  fl=(% .4e % .4e % .4e)  E=% .4e isys=%d\n",
@@ -579,7 +573,7 @@ __kernel void evalDihedrals_UFF(
                fj.x,fj.y,fj.z,
                fk.x,fk.y,fk.z,
                fl.x,fl.y,fl.z,
-               (double)(E-Enb), isys);
+               (float)(E-Enb), isys);
     }
     // --- Subtract 1-4 Non-Bonded Interaction ---
     if (SubNBTorsionFactor > 1e-6f) {
@@ -710,7 +704,7 @@ __kernel void evalInversions_UFF(
         float s_2w = 2.0f*s_w*c_w; // sin(2w)
         float dEdw = -K * ( c1*s_w + 2.0f*c2*s_2w );
 
-        // const double f = -par.x * ( par.z * s + 2.0 * par.w * cs2.y ) / c; -> dEdw / c_w ?
+        // const float f = -par.x * ( par.z * s + 2.0 * par.w * cs2.y ) / c; -> dEdw / c_w ?
         float f_term = (c_w > 1e-7f) ? dEdw / c_w : 0.0f; // Need check for c_w near zero
 
         float fq41 = f_term * q41.w; // f_term / l_li

@@ -271,8 +271,11 @@ if __name__ == "__main__":
     parser.add_argument('-t', '--tolerance',     type=float, default=1e-3, help='Numerical tolerance for comparison')
     parser.add_argument('-p', '--print-buffers', type=int,   default=0, help='Print buffer contents before run')
     parser.add_argument('-v', '--verbose',       type=int,   default=0, help='Verbose output')
-    parser.add_argument('--nsys',     type=int, default=2, help='Number of GPU replicas (systems)')
-    parser.add_argument('--nconf',    type=int, default=2, help='Number of configurations for scan(); 0 disables scan')
+    #parser.add_argument('--nsys',     type=int, default=2, help='Number of GPU replicas (systems)')
+    #parser.add_argument('--nconf',    type=int, default=2, help='Number of configurations for scan(); 0 disables scan')
+
+    parser.add_argument('--nsys',     type=int, default=10, help='Number of GPU replicas (systems)')
+    parser.add_argument('--nconf',    type=int, default=10, help='Number of configurations for scan(); 0 disables scan')
     parser.add_argument('--use-scan', type=int, default=1, help='Use scan() path (1) or single-step run() (0)')
     args = parser.parse_args()
 
@@ -321,8 +324,8 @@ if __name__ == "__main__":
     #components = ['bonds', 'angles']
     #components = ['bonds',  'dihedrals']
     #components = ['bonds', 'inversions']
-    components = ['bonds', 'angles', 'dihedrals']
-    #components = ['bonds', 'angles', 'dihedrals', 'inversions']
+    #components = ['bonds', 'angles', 'dihedrals']
+    components = ['bonds', 'angles', 'dihedrals', 'inversions']
     component_flags = {key: 1 for key in components }
 
     if args.use_scan or args.nconf>0:
