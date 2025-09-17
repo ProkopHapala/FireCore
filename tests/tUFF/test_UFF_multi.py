@@ -194,6 +194,68 @@ def scan_uff(nconf, nsys, components, tol=1e-3, seed=123):
         print(f"\n##### scan(): PASSED within tol={tol:.2e}   | cpu_min,max={cpu_min:.2e}, {cpu_max:.2e} | gpu_min,max={gpu_min:.2e}, {gpu_max:.2e} \n")
     return ok, F_cpu, F_gpu
 
+def scan_uff_relaxed(nconf, nsys, components, niter=100, fconv=1e-6, tol=1e-3, seed=123):
+    """Run multi-configuration relaxation on GPU and CPU baselines, compare forces.
+
+    GPU path uses uff.scan_relaxed() which runs niter steps per configuration on device.
+    CPU path uses sequential UFF::run for niter steps per configuration.
+    """
+    print(f"\n--- Running UFF scan_relaxed for nconf={nconf} with nsys={nsys}, niter={niter}, fconv={fconv} ---")
+
+    # Switches as in single run
+    uff.setSwitches2(NonBonded=-1, SurfAtoms=-1, GridFF=-1)
+    uff.setSwitchesUFF(
+        DoBond      =components.get('bonds',      -1),
+        DoAngle     =components.get('angles',     -1),
+        DoDihedral  =components.get('dihedrals',  -1),
+        DoInversion =components.get('inversions', -1),
+        DoAssemble          =  1,
+        SubtractBondNonBond = -1,
+        ClampNonBonded      = -1,
+    )
+
+    base = uff.apos.copy()
+    rng = np.random.default_rng(seed)
+    confs = np.repeat(base[None, :, :], nconf, axis=0)
+    confs += 0.1 * rng.standard_normal(confs.shape)
+
+    # CPU baseline (sequential)
+    F_cpu = uff.scan_relaxed(confs, niter=niter, Fconv=fconv, iParalel=0)
+    # GPU batched relaxation
+    F_gpu = uff.scan_relaxed(confs, niter=niter, Fconv=fconv, iParalel=2)
+
+    cpu_min = float(np.min(F_cpu)) if F_cpu.size else 0.0
+    cpu_max = float(np.max(F_cpu)) if F_cpu.size else 0.0
+    gpu_min = float(np.min(F_gpu)) if F_gpu.size else 0.0
+    gpu_max = float(np.max(F_gpu)) if F_gpu.size else 0.0
+
+    ok = True
+    diffs = F_gpu - F_cpu
+    max_abs = np.max(np.abs(diffs)) if diffs.size else 0.0
+    idx = np.unravel_index(np.argmax(np.abs(diffs)), diffs.shape) if diffs.size else (0, 0, 0)
+    print(f"scan_relaxed(): max |ΔF| = {max_abs:.3e} at index {idx}")
+    if max_abs > tol:
+        ok = False
+        print("scan_relaxed(): Differences exceed tolerance. Showing summary per-config:")
+        for ic in range(nconf):
+            Fi = F_cpu[ic]
+            Gi = F_gpu[ic]
+            di = diffs[ic]
+            ma = float(np.max(np.abs(di)))
+            cpu_l2  = float(np.linalg.norm(Fi))
+            gpu_l2  = float(np.linalg.norm(Gi))
+            print("\n############################################")
+            print(f"########### system {ic}  E_GPU=NA  E_CPU=NA")
+            print(f"CPU_force stats: min={cpu_min:.6e} max={cpu_max:.6e} ||F||_2={cpu_l2:.6e}")
+            print(Fi)
+            print(f"GPU_force stats: min={gpu_min:.6e} max={gpu_max:.6e} ||F||_2={gpu_l2:.6e}")
+            print(Gi)
+            print(f"AbsDiff max|ΔF|={ma:.3e}")
+            print("--------------------------------------------")
+    else:
+        print(f"\n##### scan_relaxed(): PASSED within tol={tol:.2e}   | cpu_min,max={cpu_min:.2e}, {cpu_max:.2e} | gpu_min,max={gpu_min:.2e}, {gpu_max:.2e} \n")
+    return ok, F_cpu, F_gpu
+
 def compare_results(cpu_energy, cpu_forces, gpu_energy, gpu_forces, tol=1e-5, component_name=""):
     """Rich comparison of CPU vs GPU forces and energy.
 
@@ -277,6 +339,9 @@ if __name__ == "__main__":
     parser.add_argument('--nsys',     type=int, default=10, help='Number of GPU replicas (systems)')
     parser.add_argument('--nconf',    type=int, default=10, help='Number of configurations for scan(); 0 disables scan')
     parser.add_argument('--use-scan', type=int, default=1, help='Use scan() path (1) or single-step run() (0)')
+    parser.add_argument('--use-scan-relaxed', type=int, default=0, help='Use scan_relaxed() path (1)')
+    parser.add_argument('--niter', type=int, default=100, help='Relaxation steps per configuration for scan_relaxed()')
+    parser.add_argument('--fconv', type=float, default=1e-6, help='Force convergence threshold for scan_relaxed()')
     args = parser.parse_args()
 
     # --- Initialize the library once ---
@@ -328,7 +393,11 @@ if __name__ == "__main__":
     components = ['bonds', 'angles', 'dihedrals', 'inversions']
     component_flags = {key: 1 for key in components }
 
-    if args.use_scan or args.nconf>0:
+    if args.use_scan_relaxed:
+        nconf = args.nconf if args.nconf>0 else args.nsys
+        ok, F_cpu, F_gpu = scan_uff_relaxed(nconf=nconf, nsys=args.nsys, components=component_flags, niter=args.niter, fconv=args.fconv, tol=args.tolerance)
+        passed = ok
+    elif args.use_scan or args.nconf>0:
         nconf = args.nconf if args.nconf>0 else args.nsys
         ok, F_cpu, F_gpu = scan_uff(nconf=nconf, nsys=args.nsys, components=component_flags, tol=args.tolerance)
         passed = ok

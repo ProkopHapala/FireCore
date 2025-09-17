@@ -1538,6 +1538,18 @@ int saveSysXYZ( int isys, const char* fname, const char* comment="#comment", boo
     return params.saveXYZ( fname, (bNodeOnly ? ffl.nnode : ffl.natoms) , ffl.atypes, ffl.apos, str_tmp, ffl.REQs, mode, true, nPBC, ffl.lvec ); 
 }
 
+int saveXYZ_system(int isys, const char* fname, const char* comment="#comment", const char* mode="w"){
+    if(isys < 0 || isys >= nSystems) return -1;
+    if(bUFF){
+        unpack_uff_system(isys, ffu, true, false);
+        return params.saveXYZ( fname, ffu.natoms, ffu.atypes, ffu.apos, comment, ffu.REQs, mode, true );
+    }else{
+        unpack_system(isys, ffls[isys], true, false);
+        return params.saveXYZ( fname, ffls[isys].natoms, ffls[isys].atypes, ffls[isys].apos, comment, ffls[isys].REQs, mode, true );
+    }
+    return 0;
+}
+
 virtual void setSystemReplica (int i){ 
     int err=0;
     iSystemCur = i;   
@@ -1875,6 +1887,26 @@ int eval_MMFFf4_ocl( int niter, double Fconv=1e-6, bool bForce=false ){
     //          3) remove IF condition for vdw ? ( better use force limit )
     // ===============================================================================================================================================================================
 
+    return niterdone;
+}
+
+// Minimal UFF GPU relaxation loop analogous to run_ocl_opt
+int run_uff_ocl( int niter, double Fconv=1e-6 ){
+    if(!bUFF){ printf("MolWorld_sp3_multi::run_uff_ocl(): bUFF=false\n"); return 0; }
+    if(!uff_ocl){ printf("MolWorld_sp3_multi::run_uff_ocl(): uff_ocl==nullptr\n"); return 0; }
+    if(!uff_ocl->bKernelPrepared){ uff_ocl->setup_kernels( (float)ffu.Rdamp, (float)ffu.FmaxNonBonded, (float)ffu.SubNBTorsionFactor ); }
+    uff_ocl->setup_updateAtomsMMFFf4( ffu._natoms, 0 );
+    int err=0; int niterdone=0; long T0=getCPUticks();
+    for(int itr=0; itr<niter; ++itr){
+        // Evaluate forces for all systems and assemble
+        uff_ocl->eval(true);
+        // Integrate/update on GPU
+        if(uff_ocl->task_updateAtoms){ err |= uff_ocl->task_updateAtoms->enque_raw(); }
+        niterdone++;
+    }
+    err |= uff_ocl->finishRaw(); OCL_checkError(err, "MolWorld_sp3_multi::run_uff_ocl().finishRaw");
+    double t=(getCPUticks()-T0)*tick2second;
+    if(verbosity>0) printf("run_uff_ocl(nSys=%i) steps=%i time %g [ms] (%g [us/step])\n", nSystems, niterdone, t*1000, (niterdone>0)?(t*1e+6/niterdone):0.0 );
     return niterdone;
 }
 

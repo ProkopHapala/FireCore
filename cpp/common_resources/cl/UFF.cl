@@ -830,3 +830,141 @@ __kernel void assembleForces_UFF(
         fapos[i0a + ia] += (float4)(f_local, E_local);
     }
 }
+
+
+
+// Assemble recoil forces from neighbors and  update atoms positions and velocities 
+//__attribute__((reqd_work_group_size(1,1,1)))
+__kernel void updateAtomsMMFFf4(
+    const int4        n,            // 1 // (natoms,nnode) dimensions of the system
+    __global float4*  apos,         // 2 // positions of atoms  (including node atoms [0:nnode] and capping atoms [nnode:natoms] and pi-orbitals [natoms:natoms+nnode] )
+    __global float4*  avel,         // 3 // velocities of atoms 
+    __global float4*  aforce,       // 4 // forces on atoms
+    __global float4*  cvf,          // 5 // damping coefficients for velocity and force
+    __global float4*  constr,       // 8 // constraints (x,y,z,K) for each atom
+    __global float4*  constrK,      // 9 // constraints stiffness (kx,ky,kz,?) for each atom
+    __global float4*  MDparams,     // 10 // MD parameters (dt,damp,Flimit)
+    __global float4*  TDrives      // 11 // Thermal driving (T,gamma_damp,seed,?)
+    //__global cl_Mat3* bboxes,       // 12 // bounding box (xmin,ymin,zmin)(xmax,ymax,zmax)(kx,ky,kz)
+){
+    const int natoms=n.x;           // number of atoms
+    const int nnode =n.y;           // number of node atoms
+    const int nvec  = natoms+nnode; // number of vectors (atoms+node atoms)
+    const int iG = get_global_id  (0); // index of atom
+
+    if(iG>=nvec) return;
+
+    const int iS = get_global_id  (1); // index of system
+    const int nG = get_global_size(0); // number of atoms
+    const int nS = get_global_size(1); // number of systems
+
+    //const int ian = iG + iS*nnode; 
+    const int iaa = iG + iS*natoms;  // index of atom in atoms array
+    const int iav = iG + iS*nvec;    // index of atom in vectors array
+
+    const float4 MDpars  = MDparams[iS]; // (dt,damp,Flimit)
+    const float4 TDrive = TDrives[iS];
+
+    // if((iS==0)&&(iG==0)){ 
+    //     //printf("MDpars[%i] (%g,%g,%g,%g) \n", iS, MDpars.x,MDpars.y,MDpars.z,MDpars.w);  
+    //     for(int is=0; is<nS; is++){
+    //         //printf( "GPU::TDrives[%i](%g,%g,%g,%g)\n", i, TDrives[i].x,TDrives[i].y,TDrives[i].z,TDrives[i].w );
+    //         //printf( "GPU::bboxes[%i](%g,%g,%g)(%g,%g,%g)(%g,%g,%g)\n", is, bboxes[is].a.x,bboxes[is].a.y,bboxes[is].a.z,   bboxes[is].b.x,bboxes[is].b.y,bboxes[is].b.z,   bboxes[is].c.x,bboxes[is].c.y,bboxes[is].c.z );
+    //         for(int ia=0; ia<natoms; ia++){
+    //             int ic = ia+is*natoms;
+    //             if(constr[ia+is*natoms].w>0) printf( "GPU:sys[%i]atom[%i] constr(%g,%g,%g|%g) constrK(%g,%g,%g|%g)\n", is, ia, constr[ic].x,constr[ic].y,constr[ic].z,constr[ic].w,   constrK[ic].x,constrK[ic].y,constrK[ic].z,constrK[ic].w  );
+    //         }
+    //     }
+    // }
+
+    const int iS_DBG = 5; // debug system
+    //const int iG_DBG = 0;
+    const int iG_DBG = 1; // debug atom
+
+    //if((iG==iG_DBG)&&(iS==iS_DBG))printf( "updateAtomsMMFFf4() natoms=%i nnode=%i nvec=%i nG %i iS %i/%i  dt=%g damp=%g Flimit=%g \n", natoms,nnode, nvec, iS, nG, nS, MDpars.x, MDpars.y, MDpars.z );
+    // if((iG==iG_DBG)&&(iS==iS_DBG)){
+    //     int i0a = iS*natoms;
+    //     for(int i=0; i<natoms; i++){
+    //         printf( "GPU:constr[%i](%7.3f,%7.3f,%7.3f |K= %7.3f) \n", i, constr[i0a+i].x,constr[i0a+i].y,constr[i0a+i].z,  constr[i0a+i].w   );
+    //     }
+    // }
+    
+    if(iG>=(natoms+nnode)) return; // make sure we are not out of bounds of current system
+
+    //aforce[iav] = float4Zero;
+
+    float4 fe      = aforce[iav]; // force on atom or pi-orbital
+    const bool bPi = iG>=natoms;  // is it pi-orbital ?
+    
+    // ------ Gather Forces from back-neighbors
+    // ---- Limit Forces - WARRNING : Github_Copilot says: this is not the best way to limit forces, because it can lead to drift, better is to limit forces in the first forcefield run (best is NBFF) 
+    float Flimit = 10.0;
+    float fr2 = dot(fe.xyz,fe.xyz);  // squared force
+    if( fr2 > (Flimit*Flimit) ){  fe.xyz*=(Flimit/sqrt(fr2)); }  // if force is too big, we scale it down to Flimit
+
+    // =============== FORCE DONE
+    aforce[iav] = fe;             // store force before limit
+    //aforce[iav] = float4Zero;   // clean force   : This can be done in the first forcefield run (best is NBFF)
+    
+    // =============== DYNAMICS
+
+    float4 ve = avel[iav]; // velocity of atom or pi-orbital
+    float4 pe = apos[iav]; // position of atom or pi-orbital
+
+    // -------- Fixed Atoms and Bounding Box
+    if(iG<natoms){                  // only atoms have constraints, not pi-orbitals
+        // ------- bboxes
+        // const cl_Mat3 B = bboxes[iS];
+        // if(B.c.z>0.0f){ if(pe.z<B.a.z){ fe.z+=(B.a.z-pe.z)*B.c.z; }else if(pe.z>B.b.z){ fe.z+=(B.b.z-pe.z)*B.c.z; }; }
+        // ------- constrains
+        float4 cons = constr[ iaa ]; // constraints (x,y,z,K)
+        if( cons.w>0.f ){            // if stiffness is positive, we have constraint
+            float4 cK = constrK[ iaa ];
+            cK = max( cK, (float4){0.0f,0.0f,0.0f,0.0f} );
+            const float3 fc = (cons.xyz - pe.xyz)*cK.xyz;
+            fe.xyz += fc; // add constraint force
+            if(iS==0){printf( "GPU::constr[ia=%i|iS=%i] (%g,%g,%g|K=%g) fc(%g,%g,%g) cK(%g,%g,%g)\n", iG, iS, cons.x,cons.y,cons.z,cons.w, fc.x,fc.y,fc.z , cK.x, cK.y, cK.z ); }
+        }
+    }
+    
+    const bool bDrive = TDrive.y > 0.0f;
+
+    // ------ Move (Leap-Frog)
+    if(bPi){ // if pi-orbital, we need to make sure that it has unit length
+        fe.xyz += pe.xyz * -dot( pe.xyz, fe.xyz );   // subtract forces  component which change pi-orbital lenght, 
+        ve.xyz += pe.xyz * -dot( pe.xyz, ve.xyz );   // subtract veocity component which change pi-orbital lenght
+    }else{
+        // Thermal driving  - Langevin thermostat, see C++ MMFFsp3_loc::move_atom_Langevin()
+        if( bDrive ){ // if gamma>0
+            fe.xyz    += ve.xyz * -TDrive.y ;  // damping,  check the untis  ... cdamp/dt = gamma
+            //const float3 rnd = (float3){ hashf_wang(ve.x+TDrive.w,-1.0,1.0),hashf_wang(ve.y+TDrive.w,-1.0,1.0),hashf_wang(ve.z+TDrive.w,-1.0,1.0)};
+            __private float3 ix; 
+            // + (float3){TDrive.w,TDrive.w,TDrive.w}
+            //const float4 rnd = fract( (ve*541547.1547987f + TDrive.wwww), &ix )*2.f - (float4){1.0,1.0,1.0,1.0};  // changes every frame
+            const float3 rvec = (float3){  // random vector depending on the index
+                (((iG+136  + (int)(1000.f*TDrive.w) ) * 2654435761 >> 16)&0xFF) * 0.00390625f, 
+                (((iG+778  + (int)(1013.f*TDrive.w) ) * 2654435761 >> 16)&0xFF) * 0.00390625f,
+                (((iG+4578 + (int)( 998.f*TDrive.w) ) * 2654435761 >> 16)&0xFF) * 0.00390625f
+            };
+            //const float3 rnd = fract( ( rvec + TDrive.www)*12.4565f, &ix )*2.f - (float3){1.0,1.0,1.0};
+            const float3 rnd = sin( ( rvec + TDrive.www )*124.4565f );
+            //if(iS==3){  printf( "atom[%i] seed=%g rvec(%g,%g,%g) rnd(%g,%g,%g) \n", iG, TDrive.w, rvec.x,rvec.y,rvec.z, rnd.x,rnd.y,rnd.z ); }
+            fe.xyz    += rnd.xyz * sqrt( 2*const_kB*TDrive.x*TDrive.y/MDpars.x );
+        }
+    }
+    cvf[iav] += (float4){ dot(fe.xyz,fe.xyz),dot(ve.xyz,ve.xyz),dot(fe.xyz,ve.xyz), 0.0f };    // accumulate |f|^2 , |v|^2  and  <f|v>  to calculate damping coefficients for FIRE algorithm outside of this kernel
+    //if(!bDrive){ ve.xyz *= MDpars.z; } // friction, velocity damping
+    ve.xyz *= MDpars.z;             // friction, velocity damping
+    ve.xyz += fe.xyz*MDpars.x;      // acceleration
+    pe.xyz += ve.xyz*MDpars.x;      // move
+    //ve     *= 0.99f;              // friction, velocity damping
+    //ve.xyz += fe.xyz*0.1f;        // acceleration
+    //pe.xyz += ve.xyz*0.1f;        // move
+    if(bPi){        // if pi-orbital, we need to make sure that it has unit length
+        pe.xyz=normalize(pe.xyz);                   // normalize pi-orobitals
+    }
+    pe.w=0;ve.w=0;    // This seems to be needed, not sure why ?????
+    avel[iav] = ve;   // store velocity
+    apos[iav] = pe;   // store position
+
+}

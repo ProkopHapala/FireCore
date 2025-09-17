@@ -87,12 +87,27 @@ public:
     int ibuff_lvecs     = -1; // Lattice vectors for each system
     int ibuff_energies  = -1; // Buffer to store computed energies
 
+    // --- Common MD/update state (needed for atom updates on GPU)
+    int4   nDOFs{0,0,0,0};   // (natoms, nnode, unused, nMaxSysNeighs)
+
+    // --- Buffers for atom updates (shared with MM path naming)
+    int ibuff_avel      = -1; // velocities (x,y,z,m)
+    int ibuff_cvf       = -1; // accumulators for FIRE damping { |f|^2, |v|^2, <f|v>, 0 }
+    int ibuff_constr    = -1; // constraints target positions (x,y,z,K)
+    int ibuff_constrK   = -1; // constraint stiffness (kx,ky,kz,unused)
+    int ibuff_MDpars    = -1; // per-system MD parameters (dt, damp, Flimit, reserved)
+    int ibuff_TDrive    = -1; // per-system thermal driving (T, gamma, seed, reserved)
+    int ibuff_bboxes    = -1; // per-system bounding boxes (cl_Mat3)
+    int ibuff_sysneighs = -1; // optional inter-system neighbor list
+    int ibuff_sysbonds  = -1; // optional inter-system bond parameters
+
     // --- OpenCL Kernels (identified by OCLtask object)
     OCLtask* task_evalBonds     = nullptr;
     OCLtask* task_evalAngles    = nullptr;
     OCLtask* task_evalDihedrals = nullptr;
     OCLtask* task_evalInversions= nullptr;
     OCLtask* task_assemble      = nullptr;
+    OCLtask* task_updateAtoms   = nullptr;
     OCLtask* task_clear_fapos   = nullptr;
     OCLtask* task_clear_fint    = nullptr;
     bool bKernelPrepared = false;
@@ -113,6 +128,7 @@ public:
         newTask("evalDihedrals_UFF",      program, 2, (size_t4){0,0,0,0}, (size_t4){32,1,1,1} );
         newTask("evalInversions_UFF",     program, 2, (size_t4){0,0,0,0}, (size_t4){32,1,1,1} );
         newTask("assembleForces_UFF",     program, 2, (size_t4){0,0,0,0}, (size_t4){32,1,1,1} );
+        newTask("updateAtomsMMFFf4",      program, 2, (size_t4){0,0,0,0}, (size_t4){32,1,1,1} );
         bKernelPrepared = false;
     }
 
@@ -179,6 +195,19 @@ public:
         if(nAngles_>0)    ibuff_Ea = newBuffer("Ea_contrib", nSystems * nAngles_,    sizeof(cl_float), 0, CL_MEM_WRITE_ONLY);
         if(nDihedrals_>0) ibuff_Ed = newBuffer("Ed_contrib", nSystems * nDihedrals_, sizeof(cl_float), 0, CL_MEM_WRITE_ONLY);
         if(nInversions_>0)ibuff_Ei = newBuffer("Ei_contrib", nSystems * nInversions_,sizeof(cl_float), 0, CL_MEM_WRITE_ONLY);
+
+        // --- Allocate MD/update related buffers (sizes available now)
+        // Note: For UFF we do not use pi orbitals; vectors count equals atoms count per system
+        ibuff_avel     = newBuffer("avel",      nAtomsTot, sizeof(cl_float4), 0, CL_MEM_READ_WRITE);
+        ibuff_cvf      = newBuffer("cvf",       nAtomsTot, sizeof(cl_float4), 0, CL_MEM_READ_WRITE);
+        ibuff_constr   = newBuffer("constr",    nAtomsTot, sizeof(cl_float4), 0, CL_MEM_READ_WRITE);
+        ibuff_constrK  = newBuffer("constrK",   nAtomsTot, sizeof(cl_float4), 0, CL_MEM_READ_WRITE);
+        ibuff_MDpars   = newBuffer("MDpars",    nSystems,  sizeof(cl_float4), 0, CL_MEM_READ_ONLY );
+        ibuff_TDrive   = newBuffer("TDrive",    nSystems,  sizeof(cl_float4), 0, CL_MEM_READ_ONLY );
+        ibuff_bboxes   = newBuffer("bboxes",    nSystems,  sizeof(cl_Mat3),   0, CL_MEM_READ_ONLY );
+        // Inter-system coupling (optional); allocate minimal placeholders
+        ibuff_sysneighs= newBuffer("sysneighs", nSystems,  sizeof(cl_int),    0, CL_MEM_READ_ONLY );
+        ibuff_sysbonds = newBuffer("sysbonds",  nSystems,  sizeof(cl_float4), 0, CL_MEM_READ_ONLY );
     }
 
     void setup_kernels( float Rdamp, float FmaxNonBonded, float SubNBTorsionFactor ) {
@@ -212,6 +241,7 @@ public:
         task_assemble       = getTask("assembleForces_UFF");
         task_clear_fapos    = getTask("clear_fapos_UFF");
         task_clear_fint     = getTask("clear_fint_UFF");
+        task_updateAtoms     = getTask("updateAtomsMMFFf4");
 
         // --- evalBondsAndHNeigh_UFF ---
         if(task_evalBonds){
@@ -371,6 +401,36 @@ public:
         }
 
         bKernelPrepared = true;
+    }
+
+    // Setup and bind arguments for updateAtomsMMFFf4 (UFF)
+    OCLtask* setup_updateAtomsMMFFf4(int natoms, int nNode=0){
+        if(!task_updateAtoms){ task_updateAtoms = getTask("updateAtomsMMFFf4"); }
+        if(!task_updateAtoms) return nullptr;
+        int nloc = 32;
+        int nvec = natoms + nNode; // for UFF, nNode==0 typically
+        task_updateAtoms->local.x  = nloc;
+        task_updateAtoms->global.x = nvec + nloc - (nvec % nloc);
+        task_updateAtoms->global.y = nSystems;
+        useKernel( task_updateAtoms->ikernel );
+        // Pack dimensions (natoms, nnode, 0, nMaxSysNeighs)
+        nDOFs.x = natoms; nDOFs.y = nNode; nDOFs.z = 0; nDOFs.w = 0;
+        int err=0;
+        err |= _useArg   ( nDOFs        ); // 1
+        err |= useArgBuff( ibuff_apos   ); // 2 positions
+        err |= useArgBuff( ibuff_avel   ); // 3 velocities
+        err |= useArgBuff( ibuff_fapos  ); // 4 forces
+        err |= useArgBuff( ibuff_cvf    ); // 5 cvf accumulators
+        // 6 and 7 in MM are fneigh and bkNeighs; we do not use neighbor recoil here
+        err |= useArgBuff( ibuff_constr ); // 8 constraints target
+        err |= useArgBuff( ibuff_constrK); // 9 constraint stiffness
+        err |= useArgBuff( ibuff_MDpars ); // 10 MD params per system
+        err |= useArgBuff( ibuff_TDrive ); // 11 thermal driving per system
+        err |= useArgBuff( ibuff_bboxes ); // 12 bounding boxes per system
+        err |= useArgBuff( ibuff_sysneighs ); // 13 optional
+        err |= useArgBuff( ibuff_sysbonds  ); // 14 optional
+        OCL_checkError(err, "OCL_UFF::setup_updateAtomsMMFFf4");
+        return task_updateAtoms;
     }
 
     void eval(bool bClearForce = true) {
