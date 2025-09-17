@@ -1891,23 +1891,36 @@ int eval_MMFFf4_ocl( int niter, double Fconv=1e-6, bool bForce=false ){
 }
 
 // Minimal UFF GPU relaxation loop analogous to run_ocl_opt
-int run_uff_ocl( int niter, double Fconv=1e-6 ){
-    if(!bUFF){ printf("MolWorld_sp3_multi::run_uff_ocl(): bUFF=false\n"); return 0; }
-    if(!uff_ocl){ printf("MolWorld_sp3_multi::run_uff_ocl(): uff_ocl==nullptr\n"); return 0; }
-    if(!uff_ocl->bKernelPrepared){ uff_ocl->setup_kernels( (float)ffu.Rdamp, (float)ffu.FmaxNonBonded, (float)ffu.SubNBTorsionFactor ); }
-    uff_ocl->setup_updateAtomsMMFFf4( ffu._natoms, 0 );
-    int err=0; int niterdone=0; long T0=getCPUticks();
-    for(int itr=0; itr<niter; ++itr){
-        // Evaluate forces for all systems and assemble
-        uff_ocl->eval(true);
-        // Integrate/update on GPU
-        if(uff_ocl->task_updateAtoms){ err |= uff_ocl->task_updateAtoms->enque_raw(); }
-        niterdone++;
-    }
-    err |= uff_ocl->finishRaw(); OCL_checkError(err, "MolWorld_sp3_multi::run_uff_ocl().finishRaw");
-    double t=(getCPUticks()-T0)*tick2second;
-    if(verbosity>0) printf("run_uff_ocl(nSys=%i) steps=%i time %g [ms] (%g [us/step])\n", nSystems, niterdone, t*1000, (niterdone>0)?(t*1e+6/niterdone):0.0 );
-    return niterdone;
+int run_uff_ocl( int niter, double dt, double Fconv=1e-6 ){
+        if(!bUFF){ printf("MolWorld_sp3_multi::run_uff_ocl(): bUFF=false\n"); return 0; }
+        if(!uff_ocl){ printf("MolWorld_sp3_multi::run_uff_ocl(): uff_ocl==nullptr\n"); return 0; }
+        //printf("MolWorld_sp3_multi::run_uff_ocl(niter=%i, dt=%f, Fconv=%f) \n", niter, dt, Fconv);
+
+        // --- Prepare MD parameters for all systems, matching the kernel's expectation
+        // UFF.cl -> updateAtomsMMFFf4 -> const float4 MDpars  = MDparams[iS]; // (dt,damp,Flimit)
+        // The user has corrected the kernel to use MDpars.x as dt and MDpars.z as damping
+        for(int i=0; i<nSystems; i++){
+            MDpars[i].x = dt;               // dt
+            MDpars[i].y = 10.0;             // Flimit
+            MDpars[i].z = fire[i].damping;  // damping
+            MDpars[i].w = 0.0f;             // unused
+            TDrive[i]   = (Quat4f){0.0f,0.0f,0.0f,0.0f}; // No thermal drive for relaxation
+        }
+        uff_ocl->upload( uff_ocl->ibuff_MDpars, MDpars );
+        uff_ocl->upload( uff_ocl->ibuff_TDrive, TDrive );
+
+        // --- Setup atom update kernel once before the loop
+        // The user has corrected OCL_UFF.h, this signature is now correct.
+        uff_ocl->setup_updateAtomsMMFFf4( uff_ocl->nAtoms, 0 ); // For UFF, nNode is 0
+
+        // --- Run relaxation loop
+        for(int i=0; i<niter; i++){
+            // 1. Evaluate forces for all systems
+            uff_ocl->eval(true);
+            // 2. Update atom positions and velocities for all systems
+            uff_ocl->task_updateAtoms->enque();
+        }
+        return niter;
 }
 
 int run_ocl_loc( int niter, double Fconv=1e-6 , int iVersion=1 ){ 

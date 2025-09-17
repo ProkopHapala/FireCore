@@ -404,6 +404,16 @@ public:
     }
 
     // Setup and bind arguments for updateAtomsMMFFf4 (UFF)
+    // Must match UFF.cl::updateAtomsMMFFf4 signature exactly:
+    // 0: const int4 n
+    // 1: __global float4* apos
+    // 2: __global float4* avel
+    // 3: __global float4* aforce   (we pass ibuff_fapos)
+    // 4: __global float4* cvf
+    // 5: __global float4* constr
+    // 6: __global float4* constrK
+    // 7: __global float4* MDparams
+    // 8: __global float4* TDrives
     OCLtask* setup_updateAtomsMMFFf4(int natoms, int nNode=0){
         if(!task_updateAtoms){ task_updateAtoms = getTask("updateAtomsMMFFf4"); }
         if(!task_updateAtoms) return nullptr;
@@ -416,19 +426,15 @@ public:
         // Pack dimensions (natoms, nnode, 0, nMaxSysNeighs)
         nDOFs.x = natoms; nDOFs.y = nNode; nDOFs.z = 0; nDOFs.w = 0;
         int err=0;
-        err |= _useArg   ( nDOFs        ); // 1
-        err |= useArgBuff( ibuff_apos   ); // 2 positions
-        err |= useArgBuff( ibuff_avel   ); // 3 velocities
-        err |= useArgBuff( ibuff_fapos  ); // 4 forces
-        err |= useArgBuff( ibuff_cvf    ); // 5 cvf accumulators
-        // 6 and 7 in MM are fneigh and bkNeighs; we do not use neighbor recoil here
-        err |= useArgBuff( ibuff_constr ); // 8 constraints target
-        err |= useArgBuff( ibuff_constrK); // 9 constraint stiffness
-        err |= useArgBuff( ibuff_MDpars ); // 10 MD params per system
-        err |= useArgBuff( ibuff_TDrive ); // 11 thermal driving per system
-        err |= useArgBuff( ibuff_bboxes ); // 12 bounding boxes per system
-        err |= useArgBuff( ibuff_sysneighs ); // 13 optional
-        err |= useArgBuff( ibuff_sysbonds  ); // 14 optional
+        err |= _useArg   ( nDOFs        ); // 0
+        err |= useArgBuff( ibuff_apos   ); // 1 positions
+        err |= useArgBuff( ibuff_avel   ); // 2 velocities
+        err |= useArgBuff( ibuff_fapos  ); // 3 forces (aforce)
+        err |= useArgBuff( ibuff_cvf    ); // 4 cvf accumulators
+        err |= useArgBuff( ibuff_constr ); // 5 constraints target
+        err |= useArgBuff( ibuff_constrK); // 6 constraint stiffness
+        err |= useArgBuff( ibuff_MDpars ); // 7 MD params per system
+        err |= useArgBuff( ibuff_TDrive ); // 8 thermal driving per system
         OCL_checkError(err, "OCL_UFF::setup_updateAtomsMMFFf4");
         return task_updateAtoms;
     }

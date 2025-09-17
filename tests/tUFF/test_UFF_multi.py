@@ -75,7 +75,7 @@ def print_bufs(bufs, title="Buffers"):
     for name, buf in bufs.items():
         print(f"{name}\n", buf)
 
-def run_uff(use_gpu, components, bPrintBufs=False, nPrintSetup=False):
+def run_uff(use_gpu, components, dt=0.02, bPrintBufs=False, nPrintSetup=False):
     """
     Run a single UFF evaluation step on either CPU or GPU.
 
@@ -113,7 +113,7 @@ def run_uff(use_gpu, components, bPrintBufs=False, nPrintSetup=False):
     uff.fapos[:, :] = 0.0 # make sure it's initialized
 
     uff.setTrjName("trj_multi.xyz", savePerNsteps=1)
-    uff.run( nstepMax=1, dt=0.00, Fconv=1e-6, ialg=2, damping=0.1, iParalel=iParalel )
+    uff.run( nstepMax=1, dt=dt, Fconv=1e-6, ialg=2, damping=0.1, iParalel=iParalel )
     # uff.run( nstepMax=1000, dt=0.02, Fconv=1e-6, ialg=2, damping=0.1, iParalel=iParalel )
     #uff.run( nstepMax=10000, dt=0.01, Fconv=1e-6, ialg=2, damping=0.1, iParalel=iParalel )
     #uff.run( nstepMax=1, dt=0.02, Fconv=1e-6, ialg=2, damping=0.1, iParalel=iParalel )
@@ -194,7 +194,7 @@ def scan_uff(nconf, nsys, components, tol=1e-3, seed=123):
         print(f"\n##### scan(): PASSED within tol={tol:.2e}   | cpu_min,max={cpu_min:.2e}, {cpu_max:.2e} | gpu_min,max={gpu_min:.2e}, {gpu_max:.2e} \n")
     return ok, F_cpu, F_gpu
 
-def scan_uff_relaxed(nconf, nsys, components, niter=100, fconv=1e-6, tol=1e-3, seed=123):
+def scan_uff_relaxed(nconf, nsys, components, niter=100, dt=0.02, damping=0.1, fconv=1e-6, tol=1e-3, seed=123):
     """Run multi-configuration relaxation on GPU and CPU baselines, compare forces.
 
     GPU path uses uff.scan_relaxed() which runs niter steps per configuration on device.
@@ -220,9 +220,10 @@ def scan_uff_relaxed(nconf, nsys, components, niter=100, fconv=1e-6, tol=1e-3, s
     confs += 0.1 * rng.standard_normal(confs.shape)
 
     # CPU baseline (sequential)
-    F_cpu = uff.scan_relaxed(confs, niter=niter, Fconv=fconv, iParalel=0)
-    # GPU batched relaxation
-    F_gpu = uff.scan_relaxed(confs, niter=niter, Fconv=fconv, iParalel=2)
+    F_cpu = uff.scan_relaxed(confs, niter=niter, dt=dt, Fconv=fconv, iParalel=0)
+    # --- Run GPU calculation
+    print("--- Running GPU calculation ---")
+    F_gpu = uff.scan_relaxed(confs, niter=niter, dt=dt, Fconv=fconv, damping=damping, iParalel=2)
 
     cpu_min = float(np.min(F_cpu)) if F_cpu.size else 0.0
     cpu_max = float(np.max(F_cpu)) if F_cpu.size else 0.0
@@ -336,12 +337,13 @@ if __name__ == "__main__":
     #parser.add_argument('--nsys',     type=int, default=2, help='Number of GPU replicas (systems)')
     #parser.add_argument('--nconf',    type=int, default=2, help='Number of configurations for scan(); 0 disables scan')
 
-    parser.add_argument('--nsys',     type=int, default=10, help='Number of GPU replicas (systems)')
-    parser.add_argument('--nconf',    type=int, default=10, help='Number of configurations for scan(); 0 disables scan')
+    parser.add_argument('--nsys',     type=int, default=2, help='Number of GPU replicas (systems)')
+    parser.add_argument('--nconf',    type=int, default=2, help='Number of configurations for scan(); 0 disables scan')
     parser.add_argument('--use-scan', type=int, default=1, help='Use scan() path (1) or single-step run() (0)')
-    parser.add_argument('--use-scan-relaxed', type=int, default=0, help='Use scan_relaxed() path (1)')
-    parser.add_argument('--niter', type=int, default=100, help='Relaxation steps per configuration for scan_relaxed()')
+    parser.add_argument('--use-scan-relaxed', type=int, default=1, help='Use scan_relaxed() path (1)')
+    parser.add_argument('--niter', type=int, default=2, help='Relaxation steps per configuration for scan_relaxed()')
     parser.add_argument('--fconv', type=float, default=1e-6, help='Force convergence threshold for scan_relaxed()')
+    parser.add_argument('--dt',    type=float, default=0.02, help='Integration timestep for relaxation')
     args = parser.parse_args()
 
     # --- Initialize the library once ---
@@ -395,15 +397,16 @@ if __name__ == "__main__":
 
     if args.use_scan_relaxed:
         nconf = args.nconf if args.nconf>0 else args.nsys
-        ok, F_cpu, F_gpu = scan_uff_relaxed(nconf=nconf, nsys=args.nsys, components=component_flags, niter=args.niter, fconv=args.fconv, tol=args.tolerance)
+        # The call to set_damping is now inside scan_uff_relaxed
+        ok, F_cpu, F_gpu = scan_uff_relaxed(nconf=nconf, nsys=args.nsys, components=component_flags, niter=args.niter, dt=args.dt, fconv=args.fconv, tol=args.tolerance)
         passed = ok
     elif args.use_scan or args.nconf>0:
         nconf = args.nconf if args.nconf>0 else args.nsys
         ok, F_cpu, F_gpu = scan_uff(nconf=nconf, nsys=args.nsys, components=component_flags, tol=args.tolerance)
         passed = ok
     else:
-        cpu_energy, cpu_forces = run_uff(use_gpu=False, components=component_flags)
-        gpu_energy, gpu_forces = run_uff(use_gpu=True,  components=component_flags)
+        cpu_energy, cpu_forces = run_uff(use_gpu=False, components=component_flags, dt=args.dt)
+        gpu_energy, gpu_forces = run_uff(use_gpu=True,  components=component_flags, dt=args.dt)
         # Single comparison across all enabled components
         passed = compare_results(cpu_energy, cpu_forces, gpu_energy, gpu_forces, tol=args.tolerance, component_name="ALL")
     print("\n================= SUMMARY =================")

@@ -328,7 +328,7 @@ int scan( int nConf, double* confs_, double* outF_, int iParalel ){
     return nDone;
 }
 
-int scan_relaxed( int nConf, double* confs_, double* outF_, int niter, double Fconv, int iParalel ){
+int scan_relaxed( int nConf, double* confs_, double* outF_, int niter, double dt, double damping, double Fconv, int iParalel ){
     if(!W.bUFF){ printf("scan_relaxed(): ERROR bUFF=false; only UFF supported\n"); return 0; }
     const int natoms = W.ffu._natoms;
     auto confs = (Vec3d*)confs_;
@@ -348,7 +348,11 @@ int scan_relaxed( int nConf, double* confs_, double* outF_, int niter, double Fc
                 W.pack_uff_system( isys, W.ffu, false, false, false, false );
             }
             W.upload_uff( false, false, false, false );
-            W.run_uff_ocl( niter, Fconv );
+            // Set damping for all systems before running GPU relaxation
+            for(int i=0; i<W.nSystems; i++){
+                W.fire[i].damping = damping;
+            }
+            W.run_uff_ocl( niter, dt, Fconv );
             W.download_uff( true, false );
             for(int i=0;i<nBatch;i++){
                 int isys = i;
