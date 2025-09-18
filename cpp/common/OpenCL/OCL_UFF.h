@@ -457,7 +457,7 @@ public:
         if (bUFF_dihedrals  ){ printf("OCL_UFF::eval().task_evalDihedrals  \n"); task_evalDihedrals ->enque(); }
         if (bUFF_inversions ){ printf("OCL_UFF::eval().task_evalInversions \n"); task_evalInversions->enque(); }
         if (bUFF_assemble   ){ printf("OCL_UFF::eval().task_assemble       \n"); task_assemble      ->enque(); }
-        printf("OCL_UFF::eval() DONE");
+        printf("OCL_UFF::eval() DONE\n");
     }
 
     void download_results(float* fapos_host, float* energies_host = nullptr) {

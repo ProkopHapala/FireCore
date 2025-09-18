@@ -1,6 +1,3 @@
----
-description: UFF multi-system GPU design and debugging plan
----
 
 # UFF multi‑system (GPU/OpenCL) design notes
 
@@ -14,6 +11,16 @@ These notes capture the target design for running UFF over `nSystems` replicas i
   - Buffer indexing was not multi-system aware, causing data overlaps.
   - Host-side packing of neighbor indices (`angNgs`, `dihNgs`) into `hneigh` was missing per-system offsets.
   - The `assembleForces_UFF` kernel used an incorrect base offset for the `a2f_indices` buffer.
+
+## Relevant Files
+
+- `/home/prokop/git/FireCore/cpp/common/molecular/UFF.h` - C++ implementation of UFF forcefield
+- `/home/prokop/git/FireCore/cpp/common_resources/cl/UFF.cl` - OpenCL kernels for UFF forcefield
+- `/home/prokop/git/FireCore/cpp/common/OpenCL/OCL_UFF.h` - OpenCL wrapper for UFF forcefield interfacing UFF.cl
+- `/home/prokop/git/FireCore/cpp/common/molecular/MolWorld_sp3_multi.h` - Main application class for parallel simulations using MMFF and UFF implemented both on CPU and GPU. Interface both UFF.h and OCL_UFF.h. 
+- `/home/prokop/git/FireCore/cpp/libs_OCL/MMFFmulti_lib.cpp` - extern "C" library interface for MolWorld_sp3_multi class, allowing it to be called from Python (avoiding C++ name mangling)
+- `/home/prokop/git/FireCore/pyBall/MMFF_multi.py` - Python interface for MMFFmulti_lib exposing both MMFF and UFF multi-system forcefields (using both CPU and GPU implementations).
+- `/home/prokop/git/FireCore/tests/tUFF/test_UFF_multi.py` - Test script for UFF multi-system forcefield ( compares CPU and GPU results, either single-point or relaxation).
 
 ## Target execution model
 

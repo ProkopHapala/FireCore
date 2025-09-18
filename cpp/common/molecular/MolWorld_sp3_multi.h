@@ -1891,18 +1891,18 @@ int eval_MMFFf4_ocl( int niter, double Fconv=1e-6, bool bForce=false ){
 }
 
 // Minimal UFF GPU relaxation loop analogous to run_ocl_opt
-int run_uff_ocl( int niter, double dt, double Fconv=1e-6 ){
+int run_uff_ocl( int niter, double dt, double damping, double Fconv, double Flim ){
         if(!bUFF){ printf("MolWorld_sp3_multi::run_uff_ocl(): bUFF=false\n"); return 0; }
         if(!uff_ocl){ printf("MolWorld_sp3_multi::run_uff_ocl(): uff_ocl==nullptr\n"); return 0; }
-        //printf("MolWorld_sp3_multi::run_uff_ocl(niter=%i, dt=%f, Fconv=%f) \n", niter, dt, Fconv);
+        printf("MolWorld_sp3_multi::run_uff_ocl(niter=%i, dt=%f, damping=%f, Fconv=%f, Flim=%f) \n", niter, dt, damping, Fconv, Flim);
 
         // --- Prepare MD parameters for all systems, matching the kernel's expectation
         // UFF.cl -> updateAtomsMMFFf4 -> const float4 MDpars  = MDparams[iS]; // (dt,damp,Flimit)
-        // The user has corrected the kernel to use MDpars.x as dt and MDpars.z as damping
+        // The kernel uses MDpars.z as a multiplicative velocity damping factor. CPU uses (1.0-damping).
         for(int i=0; i<nSystems; i++){
             MDpars[i].x = dt;               // dt
-            MDpars[i].y = 10.0;             // Flimit
-            MDpars[i].z = fire[i].damping;  // damping
+            MDpars[i].y = Flim;             // Flimit
+            MDpars[i].z = 1.0f - damping;   // velocity damping factor (1.0 - damping)
             MDpars[i].w = 0.0f;             // unused
             TDrive[i]   = (Quat4f){0.0f,0.0f,0.0f,0.0f}; // No thermal drive for relaxation
         }
@@ -1915,10 +1915,8 @@ int run_uff_ocl( int niter, double dt, double Fconv=1e-6 ){
 
         // --- Run relaxation loop
         for(int i=0; i<niter; i++){
-            // 1. Evaluate forces for all systems
-            uff_ocl->eval(true);
-            // 2. Update atom positions and velocities for all systems
-            uff_ocl->task_updateAtoms->enque();
+            uff_ocl->eval(true);                 // 1. Evaluate forces for all systems
+            uff_ocl->task_updateAtoms->enque();  // 2. Update atom positions and velocities for all systems
         }
         return niter;
 }

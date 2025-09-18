@@ -380,10 +380,10 @@ def scan(confs, iParalel=2):
     lib.scan(int(nConf), _np_as(confs, c_double_p), _np_as(outF, c_double_p), int(iParalel))
     return outF.copy()
 
-#  int scan_relaxed( int nConf, double* confs, double* outF, int niter, double dt, double Fconv, int iParalel )
-lib.scan_relaxed.argtypes = [c_int, c_double_p, c_double_p, c_int, c_double, c_double, c_double, c_int]
+#  int scan_relaxed( int nConf, double* confs, double* outF, int niter, double dt, double Fconv, double Flim, double damping, int iParalel )
+lib.scan_relaxed.argtypes = [c_int, c_double_p, c_double_p, c_int, c_double, c_double, c_double, c_double, c_int]
 lib.scan_relaxed.restype  = c_int
-def scan_relaxed(confs, niter=100, dt=0.02, Fconv=1e-6, damping=0.1, iParalel=2):
+def scan_relaxed(confs, niter=100, dt=0.02, Fconv=1e-6, Flim=1000.0, damping=0.1, iParalel=2):
     """Relax each configuration for niter steps (FIRE on GPU) and return forces.
 
     Args:
@@ -400,7 +400,7 @@ def scan_relaxed(confs, niter=100, dt=0.02, Fconv=1e-6, damping=0.1, iParalel=2)
     nConf, natoms, dim = confs.shape
     assert dim == 3, "confs must have shape (nConf,natoms,3)"
     outF = _np.zeros_like(confs)
-    lib.scan_relaxed(int(nConf), _np_as(confs, c_double_p), _np_as(outF, c_double_p), int(niter), float(dt), float(Fconv), float(damping), int(iParalel))
+    lib.scan_relaxed(int(nConf), _np_as(confs, c_double_p), _np_as(outF, c_double_p), int(niter), float(dt), float(damping), float(Fconv), float(Flim), int(iParalel))
     return outF.copy()
 
 #  void print_debugs( bool bParams, bool bNeighs, bool bShifts, bool bAtoms  ){

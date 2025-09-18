@@ -62,7 +62,7 @@ class UFF : public NBFF { public:
 
     bool bDoBond=true, bDoAngle=true, bDoDihedral=true, bDoInversion=true, bDoAssemble=true;
     // --- DEBUG controls (CPU)
-    int  DBG_UFF     = 1;   // master switch 0/1
+    int  DBG_UFF     = 4;   // master switch 0/1
     int  iDBG_bond   = 0;  // selected DOF ids to trace
     int  iDBG_angle  = 0;
     int  iDBG_dih    = 0;
@@ -1514,10 +1514,10 @@ class UFF : public NBFF { public:
         //printSizes();
         double F2conv = Fconv*Fconv;
         double E=0,ff=0,vv=0,vf=0;
-        //double cdamp = 1-damping; if(cdamp<0)cdamp=0;
-        double cdamp = colDamp.update( dt );
+        double cdamp = 1-damping; if(cdamp<0)cdamp=0;
+        //double cdamp = colDamp.update( dt );
         const double Fmax2     = FmaxNonBonded*FmaxNonBonded;
-        printf( "UFF::run() natoms %i niter %i dt %g Fconv %g Flim %g damping %g \n", natoms, niter, dt, Fconv, Flim, damping );
+        printf( "UFF::run() natoms %i niter %i dt %g Fconv %g Flim %g damping %g cdamp %g \n", natoms, niter, dt, Fconv, Flim, damping, cdamp );
         printf( "UFF::run() bDoBond=%i bDoAngle=%i bDoDihedral=%i bDoInversion=%i bDoAssemble=%i\n", bDoBond, bDoAngle, bDoDihedral, bDoInversion, bDoAssemble);
         //printf( "UFF::run(niter=%i,bCol(B=%i,A=%i,NB=%i)) dt %g damp(cM=%g,cB=%g,cA=%g,cNB=%g)\n", niter, colDamp.bBond, colDamp.bAng, colDamp.bNonB, dt, 1-cdamp, colDamp.cdampB*dt, colDamp.cdampAng*dt, colDamp.cdampNB*dt );
         //setNonBondStrategy();
@@ -1588,20 +1588,30 @@ class UFF : public NBFF { public:
                 if( bExploring ){
                     move_atom_Langevin( i, dt, 10000.0, go->gamma_damp, go->T_target );
                 }else{
+                    // Match GPU debug print format for atom 0 when DBG_UFF is high
+                    if( (DBG_UFF > 3) && (i==0) ){
+                        const Vec3d p = apos[i];
+                        const Vec3d v = vapos[i];
+                        Vec3d f = fapos[i];
+                        double ff_norm2 = f.norm2();
+                        if(ff_norm2>(Flim*Flim)){ f.mul(Flim/sqrt(ff_norm2)); }
+                        double f2_ = f.norm2();
+                        double v2_ = v.norm2();
+                        double vf_ = f.dot(v);
+                        printf( "CPU::UFF::run() isys=%i iG=%i pos(%10.4e,%10.4e,%10.4e) vel(%10.4e,%10.4e,%10.4e) fe(%10.4e,%10.4e,%10.4e) cvf(%10.4e,%10.4e,%10.4e) \n", 0, i, p.x,p.y,p.z, v.x,v.y,v.z, f.x,f.y,f.z, f2_,v2_,vf_ );
+                    }
                     cvf.add( move_atom_MD( i, dt, Flim, cdamp ) );
 
                 }
                 //move_atom_MD( i, 0.05, 1000.0, 0.9 );
                 //F2 += move_atom_kvaziFIRE( i, dt, Flim );
             }
-            if(  (!bExploring) && (cvf.z<F2conv)  ){
-                break;
-            }
-            if(cvf.x<0){ cleanVelocity(); };
+            if(  (!bExploring) && (cvf.z<F2conv)  ){  break; }
+            //if(cvf.x<0){ cleanVelocity(); }; // DEBUG, this it off to check GPU where we cannot clean velocity every step
             {
                 Etot = Eb + Ea + Ed + Ei;
                 double VF = cvf.x,V2 = cvf.y, F2 = cvf.z;
-                printf( "UFF::run() itr %i / %i Etot %+12.2e Fmax %+12.6e ( Fconv %+6.2e Flim %+6.2e ) dt=%6.4f \n", itr, niter, Etot, sqrt(F2), Fconv, Flim, dt );
+                printf( "UFF::run() itr %i / %i Etot %+12.2e Fmax %+12.6e ( Fconv %+6.2e Flim %+6.2e ) dt=%6.4f cdamp=%6.4f \n", itr, niter, Etot, sqrt(F2), Fconv, Flim, dt, cdamp );
                 if(outE )outE [itr]=Etot;
                 if(outF )outF [itr]=sqrt(F2);
                 if(outV )outV [itr]=sqrt(V2);
@@ -1753,7 +1763,6 @@ class UFF : public NBFF { public:
                 Etot = Eb + Ea + Ed + Ei + Enb;
                 cvf.x=ff; cvf.y=vv; cvf.z=vf;
                 if(cvf.x<0){ cleanVelocity(); };
-
                 {
                     double VF = cvf.x,V2 = cvf.y, F2 = cvf.z;
                     if(outE )outE [itr]=Etot;

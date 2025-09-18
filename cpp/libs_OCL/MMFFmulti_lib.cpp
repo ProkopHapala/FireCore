@@ -246,8 +246,8 @@ int run( int nstepMax, double dt, double Fconv, int ialg, double damping, double
         switch(iParalel){
             // CPU paths (use UFF::run on host)
             case -1:
-            case  0: { nitrdione = W.ffu.run    ( nstepMax, dt, Fconv, 1000.0, 0.1, outE, outF, outV, outVF ); break; }
-            case 1:  { nitrdione = W.ffu.run_omp( nstepMax, dt, Fconv, 1000.0, 0.1, outE, outF, outV, outVF ); break; }
+            case  0: { nitrdione = W.ffu.run    ( nstepMax, dt, Fconv, 1000.0, damping, outE, outF, outV, outVF ); break; }
+            case 1:  { nitrdione = W.ffu.run_omp( nstepMax, dt, Fconv, 1000.0, damping, outE, outF, outV, outVF ); break; }
             case 2:  { // GPU paths (evaluate UFF via OpenCL kernels)
                 //                           bParams bForces  bVel    bLvec
                 W.pack_uff_system( 0, W.ffu, true,   false,  false,   true   );
@@ -328,7 +328,7 @@ int scan( int nConf, double* confs_, double* outF_, int iParalel ){
     return nDone;
 }
 
-int scan_relaxed( int nConf, double* confs_, double* outF_, int niter, double dt, double damping, double Fconv, int iParalel ){
+int scan_relaxed( int nConf, double* confs_, double* outF_, int niter, double dt, double damping, double Fconv, double Flim, int iParalel ){
     if(!W.bUFF){ printf("scan_relaxed(): ERROR bUFF=false; only UFF supported\n"); return 0; }
     const int natoms = W.ffu._natoms;
     auto confs = (Vec3d*)confs_;
@@ -348,18 +348,17 @@ int scan_relaxed( int nConf, double* confs_, double* outF_, int niter, double dt
                 W.pack_uff_system( isys, W.ffu, false, false, false, false );
             }
             W.upload_uff( false, false, false, false );
-            // Set damping for all systems before running GPU relaxation
-            for(int i=0; i<W.nSystems; i++){
-                W.fire[i].damping = damping;
-            }
-            W.run_uff_ocl( niter, dt, Fconv );
+            // Zero velocities on host and upload to GPU to ensure a clean start for each batch
+            memset( W.avel, 0, W.uff_ocl->nAtomsTot * sizeof(Quat4f) );
+            W.uff_ocl->upload( W.uff_ocl->ibuff_avel, (float*)W.avel );
+            W.run_uff_ocl( niter, dt, damping, Fconv, Flim );
             W.download_uff( true, false );
             for(int i=0;i<nBatch;i++){
                 int isys = i;
                 W.unpack_uff_system( isys, W.ffu, true, false );
                 Vec3d* fapos = W.ffu.fapos;
                 for(int ia=0; ia<natoms; ia++){ outF[(ib+i)*natoms + ia] = fapos[ia]; }
-                char fname[256]; sprintf(fname, "relaxed_%03i.xyz", ib+i);
+                char fname[256]; sprintf(fname, "relaxed_gpu_%03i.xyz", ib+i);
                 W.saveXYZ_system(isys, fname);
             }
             ib += nBatch; nDone += nBatch;
@@ -368,11 +367,11 @@ int scan_relaxed( int nConf, double* confs_, double* outF_, int niter, double dt
         for(int ic=0; ic<nConf; ic++){
             W.ffu.DBG_UFF = (ic==dbg_sys) ? 4 : 0;
             for(int ia=0; ia<natoms; ia++){ W.ffu.apos[ia] = confs[ic*natoms + ia]; }
-            for(int ia=0; ia<natoms; ia++){ W.ffu.fapos[ia] = Vec3dZero; }
-            if(iParalel==1){ W.ffu.run_omp( niter, 0.0, Fconv, 1000.0, 0.1, nullptr, nullptr, nullptr, nullptr ); }
-            else            { W.ffu.run    ( niter, 0.0, Fconv, 1000.0, 0.1, nullptr, nullptr, nullptr, nullptr ); }
+            W.ffu.cleanVelocity(); // Zero velocities to ensure a clean start for each configuration
+            if(iParalel==1){ W.ffu.run_omp( niter, dt, Fconv, Flim, damping, nullptr, nullptr, nullptr, nullptr ); } // fapos is cleaned inside run()
+            else            { W.ffu.run    ( niter, dt, Fconv, Flim, damping, nullptr, nullptr, nullptr, nullptr ); } // fapos is cleaned inside run()
             for(int ia=0; ia<natoms; ia++){ outF[ic*natoms + ia] = W.ffu.fapos[ia]; }
-            char fname[256]; sprintf(fname, "relaxed_%03i.xyz", ic);
+            char fname[256]; sprintf(fname, "relaxed_cpu_%03i.xyz", ic);
             W.saveXYZ(fname);
             nDone++;
         }

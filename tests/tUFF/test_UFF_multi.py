@@ -194,7 +194,7 @@ def scan_uff(nconf, nsys, components, tol=1e-3, seed=123):
         print(f"\n##### scan(): PASSED within tol={tol:.2e}   | cpu_min,max={cpu_min:.2e}, {cpu_max:.2e} | gpu_min,max={gpu_min:.2e}, {gpu_max:.2e} \n")
     return ok, F_cpu, F_gpu
 
-def scan_uff_relaxed(nconf, nsys, components, niter=100, dt=0.02, damping=0.1, fconv=1e-6, tol=1e-3, seed=123):
+def scan_uff_relaxed(nconf, nsys, components, niter=100, dt=0.02, damping=0.1, fconv=1e-6, flim=1000.0, tol=1e-3, seed=123):
     """Run multi-configuration relaxation on GPU and CPU baselines, compare forces.
 
     GPU path uses uff.scan_relaxed() which runs niter steps per configuration on device.
@@ -220,10 +220,10 @@ def scan_uff_relaxed(nconf, nsys, components, niter=100, dt=0.02, damping=0.1, f
     confs += 0.1 * rng.standard_normal(confs.shape)
 
     # CPU baseline (sequential)
-    F_cpu = uff.scan_relaxed(confs, niter=niter, dt=dt, Fconv=fconv, iParalel=0)
+    F_cpu = uff.scan_relaxed(confs, niter=niter, dt=dt, damping=damping, Fconv=fconv, Flim=flim, iParalel=0)
     # --- Run GPU calculation
     print("--- Running GPU calculation ---")
-    F_gpu = uff.scan_relaxed(confs, niter=niter, dt=dt, Fconv=fconv, damping=damping, iParalel=2)
+    F_gpu = uff.scan_relaxed(confs, niter=niter, dt=dt, damping=damping, Fconv=fconv, Flim=flim, iParalel=2)
 
     cpu_min = float(np.min(F_cpu)) if F_cpu.size else 0.0
     cpu_max = float(np.max(F_cpu)) if F_cpu.size else 0.0
@@ -254,7 +254,7 @@ def scan_uff_relaxed(nconf, nsys, components, niter=100, dt=0.02, damping=0.1, f
             print(f"AbsDiff max|ΔF|={ma:.3e}")
             print("--------------------------------------------")
     else:
-        print(f"\n##### scan_relaxed(): PASSED within tol={tol:.2e}   | cpu_min,max={cpu_min:.2e}, {cpu_max:.2e} | gpu_min,max={gpu_min:.2e}, {gpu_max:.2e} \n")
+        print(f"\n##### scan_relaxed(): PASSED within |ΔF|({max_abs:.3e}) < tol({tol:.2e})   | cpu_min,max={cpu_min:.2e}, {cpu_max:.2e} | gpu_min,max={gpu_min:.2e}, {gpu_max:.2e} \n")
     return ok, F_cpu, F_gpu
 
 def compare_results(cpu_energy, cpu_forces, gpu_energy, gpu_forces, tol=1e-5, component_name=""):
@@ -344,6 +344,8 @@ if __name__ == "__main__":
     parser.add_argument('--niter', type=int, default=2, help='Relaxation steps per configuration for scan_relaxed()')
     parser.add_argument('--fconv', type=float, default=1e-6, help='Force convergence threshold for scan_relaxed()')
     parser.add_argument('--dt',    type=float, default=0.02, help='Integration timestep for relaxation')
+    parser.add_argument('--damping', type=float, default=0.1, help='Damping for relaxation')
+    parser.add_argument('--flim',  type=float, default=1000.0, help='Force limit for relaxation')
     args = parser.parse_args()
 
     # --- Initialize the library once ---
@@ -398,7 +400,7 @@ if __name__ == "__main__":
     if args.use_scan_relaxed:
         nconf = args.nconf if args.nconf>0 else args.nsys
         # The call to set_damping is now inside scan_uff_relaxed
-        ok, F_cpu, F_gpu = scan_uff_relaxed(nconf=nconf, nsys=args.nsys, components=component_flags, niter=args.niter, dt=args.dt, fconv=args.fconv, tol=args.tolerance)
+        ok, F_cpu, F_gpu = scan_uff_relaxed(nconf=nconf, nsys=args.nsys, components=component_flags, niter=args.niter, dt=args.dt, damping=args.damping, fconv=args.fconv, flim=args.flim, tol=args.tolerance)
         passed = ok
     elif args.use_scan or args.nconf>0:
         nconf = args.nconf if args.nconf>0 else args.nsys
