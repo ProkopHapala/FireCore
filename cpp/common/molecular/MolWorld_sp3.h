@@ -1423,7 +1423,7 @@ void printPBCshifts(){
 
             // std::function<double(const Vec3d cvf, int itr, int natoms, Vec3d* apos, Vec3d* fapos, Vec3d* vapos)> perStepCallback = nullptr; // this is called for every MDstep of run()
             ffu.perStepCallback = [&]( const Vec3d p, int itr, int natoms, Vec3d* apos, Vec3d* fapos, Vec3d* vapos )->double{    
-                if( (trj_fname) && ( (itr%savePerNsteps==0) ) ){
+                if( (savePerNsteps>0) && (trj_fname) && ( (itr%savePerNsteps==0) ) ){
                     char str_tmp[1024];
                     sprintf( str_tmp, "# %i E %g |F| %g", itr, Etot, sqrt(ffu.cvf.z) ); 
                     //printf( "perStepCallback save %s | natoms %i | %s \n", trj_fname, natoms, str_tmp ); 
@@ -1988,7 +1988,7 @@ bool relax( int niter, double Ftol = 1e-6, bool bWriteTrj=false ){
             opt_log.set(itr, opt.cos_vf, opt.f_len, opt.v_len, opt.dt, opt.damping );
             if(outE){ outE[itr]=Etot; }
             if(outF){ outF[itr]=F2;   }
-            if( (trj_fname) && (itr%savePerNsteps==0) )[[unlikely]]{
+            if( (savePerNsteps>0) &&  (trj_fname) && (itr%savePerNsteps==0) )[[unlikely]]{
                 sprintf(tmpstr,"# %i E %g |F| %g", itr, Etot, sqrt(F2) );
                 saveXYZ( trj_fname, tmpstr, false, "a", nPBC_save );
             }

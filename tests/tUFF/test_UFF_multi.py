@@ -7,6 +7,7 @@ using a unified library interface.
 import sys
 import os
 import argparse
+import glob
 import numpy as np
 
 # Add FireCore to the Python path
@@ -49,6 +50,20 @@ PARAMS_SPECS   = {k: v for k, v in BUF_SPECS.items() if v['type'] == 'float'}
 # ==================
 #  Helper Functions
 # ==================
+def cleanup_xyz_files(patterns):
+    """Deletes files matching given glob patterns."""
+    print("--- Cleaning up old trajectory files ---")
+    for pattern in patterns:
+        files = glob.glob(pattern)
+        if not files:
+            print(f"No files found for pattern: {pattern}")
+        for f in files:
+            try:
+                os.remove(f)
+                print(f"Removed: {f}")
+            except OSError as e:
+                print(f"Error removing file {f}: {e}")
+
 def get_cpu_bufs(uff_obj, specs):
     """Collect CPU buffers from the given UFF object and pad to canonical stride when needed."""
     bufs = {}
@@ -341,12 +356,15 @@ if __name__ == "__main__":
     parser.add_argument('--nconf',    type=int, default=2, help='Number of configurations for scan(); 0 disables scan')
     parser.add_argument('--use-scan', type=int, default=1, help='Use scan() path (1) or single-step run() (0)')
     parser.add_argument('--use-scan-relaxed', type=int, default=1, help='Use scan_relaxed() path (1)')
-    parser.add_argument('--niter', type=int, default=2, help='Relaxation steps per configuration for scan_relaxed()')
+    parser.add_argument('--niter', type=int, default=100, help='Relaxation steps per configuration for scan_relaxed()')
     parser.add_argument('--fconv', type=float, default=1e-6, help='Force convergence threshold for scan_relaxed()')
     parser.add_argument('--dt',    type=float, default=0.02, help='Integration timestep for relaxation')
     parser.add_argument('--damping', type=float, default=0.1, help='Damping for relaxation')
     parser.add_argument('--flim',  type=float, default=1000.0, help='Force limit for relaxation')
     args = parser.parse_args()
+
+    # Cleanup old files before running
+    cleanup_xyz_files(["scan_relaxed_cpu_*.xyz", "scan_relaxed_gpu_*.xyz", "trj_multi.xyz", "relaxed_gpu_*.xyz"])
 
     # --- Initialize the library once ---
     print("--- Initializing MMFF_multi library ---")

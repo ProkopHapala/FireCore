@@ -62,7 +62,7 @@ class UFF : public NBFF { public:
 
     bool bDoBond=true, bDoAngle=true, bDoDihedral=true, bDoInversion=true, bDoAssemble=true;
     // --- DEBUG controls (CPU)
-    int  DBG_UFF     = 4;   // master switch 0/1
+    int  DBG_UFF     = 0;   // master switch 0/1
     int  iDBG_bond   = 0;  // selected DOF ids to trace
     int  iDBG_angle  = 0;
     int  iDBG_dih    = 0;
@@ -563,7 +563,7 @@ class UFF : public NBFF { public:
     __attribute__((hot))  
     void assembleAtomForce(const int ia){
 
-        if( (DBG_UFF>3) && (ia==0) ){
+        if( (DBG_UFF > 0) && (ia==iDBG_bond) ){
             // Dump per-atom mapping and current fapos before assembly
             printf("CPU assembleAtomForce() ia=%3d natoms=%3d\n", ia, natoms);
             printf("CPU A2F TABLE natoms=%3d\n", natoms);
@@ -655,7 +655,7 @@ class UFF : public NBFF { public:
             Vec3d f; f.set_mul( dp, fr*hneigh[inn].e );
 
             double Enb_loc = 0.0;
-            if(bSubtractBondNonBond){
+            if(bSubtractBondNonBond){ // This is not a debug print, but a conditional calculation
                 const Quat4d& REQj  = REQs[ing];
                 const Quat4d  REQij = _mixREQ(REQi,REQj); 
                 Vec3d fnb; 
@@ -666,7 +666,7 @@ class UFF : public NBFF { public:
             }
 
             // CPU per-DOF concise debug print
-            if(DBG_UFF!=0){
+            if(DBG_UFF > 2){
                 if( ib == iDBG_bond ){
                     const Vec2i aij = bonAtoms[ib];
                     const Vec3d fi = f;
@@ -711,7 +711,7 @@ class UFF : public NBFF { public:
         double E=0.0;
         const double R2damp = Rdamp*Rdamp;
         const double Fmax2  = FmaxNonBonded*FmaxNonBonded;
-        if(DBG_UFF>3){
+        if(DBG_UFF > 0){
             printf("CPU evalBonds natoms=%d nbonds=%d i0bon=%d Rdamp=% .6e Fmax=% .6e bSubtractBondNonBond=%d bClampNonBonded=%d iDBG=%d\n", natoms, nbonds, i0bon, Rdamp, FmaxNonBonded, bSubtractBondNonBond, bClampNonBonded, iDBG_bond );
             printf("CPU ATOM-TABLE   ia   ng   ngC   [k,l]... \n");
             //if(N>64) N=64;
@@ -790,7 +790,7 @@ class UFF : public NBFF { public:
         fang[i3+1]=fpj;
         fang[i3+2]=fpk;
 
-        if(DBG_UFF!=0 && ia==iDBG_angle){
+        if( (DBG_UFF > 0) && (ia==iDBG_angle) ){
             const Vec3i ijk = angAtoms[ia];
             double theta = acos( clamp(c, -1.0, 1.0) );
             printf("CPU ANGL %3d : ia=%3d ja=%3d ka=%3d  K=% .4e c0=% .4e c1=% .4e c2=% .4e c3=% .4e  theta=% .4e  Enb=% .4e  fi=(% .4e % .4e % .4e)  fj=(% .4e % .4e % .4e)  fk=(% .4e % .4e % .4e)  E=% .4e\n",
@@ -890,7 +890,7 @@ class UFF : public NBFF { public:
         double E=0.0;
         const double R2damp = Rdamp*Rdamp;
         const double Fmax2  = FmaxNonBonded*FmaxNonBonded;
-        if(DBG_UFF!=0){
+        if(DBG_UFF > 0){
             printf("CPU evalAngles() nangles=%d i0ang=%d Rdamp=% .6e Fmax=% .6e bSubtractAngleNonBond=%d iDBG=%d\n", nangles, i0ang, Rdamp, FmaxNonBonded, (int)bSubtractAngleNonBond, iDBG_angle);
             printf("CPU ANG-TABLE  id   ia   ja   ka            K          c0          c1          c2          c3\n");
             int N=nangles; if(N>64)N=64; 
@@ -975,7 +975,7 @@ class UFF : public NBFF { public:
         //     Draw3D::drawArrow( p3, p3+fp3, 0.1 );
         //     Draw3D::drawArrow( p4, p4+fp4, 0.1 );
         // }
-        if(DBG_UFF!=0 && id==iDBG_dih){
+        if( (DBG_UFF > 0) && (id==iDBG_dih) ){
             const Quat4i ijkl  = dihAtoms[id];
             double cphi = clamp( n123.dot(n234)*inv_n12, -1.0, 1.0 );
             double phi = acos(cphi);
@@ -1188,7 +1188,7 @@ class UFF : public NBFF { public:
         const double R2damp    = Rdamp*Rdamp;
         const double Fmax2     = FmaxNonBonded*FmaxNonBonded;
         const bool bSubNonBond = SubNBTorsionFactor>0;
-        if(DBG_UFF!=0){
+        if(DBG_UFF > 0){
             printf("CPU evalDihedrals() ndihedrals=%d i0dih=%d Rdamp=% .6e Fmax=% .6e SubNBTorsionFactor=% .6e iDBG=%d\n", ndihedrals, i0dih, Rdamp, FmaxNonBonded, SubNBTorsionFactor, iDBG_dih);
             printf("CPU DIH-TABLE:  id   ia   ja   ka   la            V           d           n\n");
             int N=ndihedrals; if(N>64)N=64; 
@@ -1237,7 +1237,7 @@ class UFF : public NBFF { public:
         finv[ii*4+2]=fp3;
         finv[ii*4+3]=fp4;
 
-        if(DBG_UFF!=0 && ii==iDBG_inv){
+        if( (DBG_UFF > 0) && (ii==iDBG_inv) ){
             const Quat4i ijkl  = invAtoms[ii];
             double w = asin( clamp(s, -1.0, 1.0) );
             printf("CPU INV %4d : ia=%3d ja=%3d ka=%3d la=%3d  K=% .4e c0=% .4e c1=% .4e c2=% .4e  w=% .4e  fi=(% .9e % .9e % .9e)  fj=(% .9e % .9e % .9e)  fk=(% .9e % .9e % .9e)  fl=(% .9e % .9e % .9e)  E=% .9e\n",
@@ -1382,7 +1382,7 @@ class UFF : public NBFF { public:
     double evalInversions(){
         //printf("UFF::evalInversions() \n");
         double E=0.0;
-        if(DBG_UFF!=0){
+        if(DBG_UFF > 0){
             printf("CPU evalInversions() ninversions=%d i0inv=%d iDBG=%d\n", ninversions, i0inv, iDBG_inv);
             printf("CPU [INV-TABLE]  ia   ja   ka   la            K          c0          c1          c2\n");
             int N=ninversions; if(N>64)N=64; 
@@ -1411,8 +1411,8 @@ class UFF : public NBFF { public:
 
     // Full evaluation of UFF intramolecular force-field
     __attribute__((hot))  
-    double eval( bool bClean=true ){
-        printf("UFF::eval() bClean=%i bDoBond=%i bDoAngle=%i bDoDihedral=%i bDoInversion=%i bDoAssemble=%i \n", bClean, bDoBond, bDoAngle, bDoDihedral, bDoInversion, bDoAssemble );
+    double eval( bool bClean=true ){ 
+        if(DBG_UFF > 0) printf("UFF::eval() bClean=%i bDoBond=%i bDoAngle=%i bDoDihedral=%i bDoInversion=%i bDoAssemble=%i \n", bClean, bDoBond, bDoAngle, bDoDihedral, bDoInversion, bDoAssemble );
         Eb=0; Ea=0; Ed=0; Ei=0;
         if(bClean)cleanForce();
         if(bDoBond     ){Eb = evalBonds();      } else { for(int i=0; i<nbonds*2;      i++){ fbon[i]=Vec3dZero; } }
@@ -1517,8 +1517,10 @@ class UFF : public NBFF { public:
         double cdamp = 1-damping; if(cdamp<0)cdamp=0;
         //double cdamp = colDamp.update( dt );
         const double Fmax2     = FmaxNonBonded*FmaxNonBonded;
-        printf( "UFF::run() natoms %i niter %i dt %g Fconv %g Flim %g damping %g cdamp %g \n", natoms, niter, dt, Fconv, Flim, damping, cdamp );
-        printf( "UFF::run() bDoBond=%i bDoAngle=%i bDoDihedral=%i bDoInversion=%i bDoAssemble=%i\n", bDoBond, bDoAngle, bDoDihedral, bDoInversion, bDoAssemble);
+        if(DBG_UFF > 0){
+            printf( "UFF::run() natoms %i niter %i dt %g Fconv %g Flim %g damping %g cdamp %g \n", natoms, niter, dt, Fconv, Flim, damping, cdamp );
+            printf( "UFF::run() bDoBond=%i bDoAngle=%i bDoDihedral=%i bDoInversion=%i bDoAssemble=%i\n", bDoBond, bDoAngle, bDoDihedral, bDoInversion, bDoAssemble);
+        }
         //printf( "UFF::run(niter=%i,bCol(B=%i,A=%i,NB=%i)) dt %g damp(cM=%g,cB=%g,cA=%g,cNB=%g)\n", niter, colDamp.bBond, colDamp.bAng, colDamp.bNonB, dt, 1-cdamp, colDamp.cdampB*dt, colDamp.cdampAng*dt, colDamp.cdampNB*dt );
         //setNonBondStrategy();
 
@@ -1589,7 +1591,7 @@ class UFF : public NBFF { public:
                     move_atom_Langevin( i, dt, 10000.0, go->gamma_damp, go->T_target );
                 }else{
                     // Match GPU debug print format for atom 0 when DBG_UFF is high
-                    if( (DBG_UFF > 3) && (i==0) ){
+                    if( (DBG_UFF > 3) && (i==iDBG_bond) ){
                         const Vec3d p = apos[i];
                         const Vec3d v = vapos[i];
                         Vec3d f = fapos[i];
@@ -1770,6 +1772,7 @@ class UFF : public NBFF { public:
                     if(outV )outV [itr]=sqrt(V2);
                     if(outVF)outVF[itr]=VF/sqrt(F2*V2 + 1e-32);
                 }
+                if(perStepCallback){ perStepCallback( cvf, itr, natoms, apos, fapos, vapos ); }
 
                 //if(cvf.z<F2conv)break;
                 //if(verbosity>2){printf( "step[%i] E %g |F| %g ncpu[%i] \n", itr, Etot, sqrt(ff), omp_get_num_threads() );}

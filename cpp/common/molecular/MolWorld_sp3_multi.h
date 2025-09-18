@@ -536,9 +536,9 @@ int init_groups(){
     int err=0;
     err|= ocl.upload( ocl.ibuff_gweights,  gweights  ); OCL_checkError(err, "init_groups.upload(gweights)");
     err|= ocl.upload( ocl.ibuff_gfweights, gfweights ); OCL_checkError(err, "init_groups.upload(gfweights)");
-    err|= ocl.upload( ocl.ibuff_gforces, gforces );     OCL_checkError(err, "init_groups.upload(gforces)");
-    err|= ocl.upload( ocl.ibuff_gtorqs,  gtorqs  );     OCL_checkError(err, "init_groups.upload(gtorqs)");
-    err|= ocl.upload( ocl.ibuff_bboxes,  bboxes  );     OCL_checkError(err, "init_groups.upload(bboxes)");  // ToDo: this may need to go to different place    
+    err|= ocl.upload( ocl.ibuff_gforces,   gforces );   OCL_checkError(err, "init_groups.upload(gforces)");
+    err|= ocl.upload( ocl.ibuff_gtorqs,    gtorqs  );   OCL_checkError(err, "init_groups.upload(gtorqs)");
+    err|= ocl.upload( ocl.ibuff_bboxes,    bboxes  );   OCL_checkError(err, "init_groups.upload(bboxes)");  // ToDo: this may need to go to different place    
     return err;
 }
 
@@ -844,7 +844,7 @@ void unpack_uff_system( int isys, UFF& ff, bool bForces=false, bool bVel=false )
 
 
 void upload_uff_sys( int isys, bool bParams, bool bForces, bool bVel, bool blvec, bool bPrint=false ){
-    bPrint=true;
+    //bPrint=true;
     if(bPrint)printf("MolWorld_sp3_multi::upload_uff_sys(%i) nAtoms=%i nBonds=%i nAngles=%i nDihedrals=%i nInversions=%i \n", isys, uff_ocl->nAtoms, uff_ocl->nBonds, uff_ocl->nAngles, uff_ocl->nDihedrals, uff_ocl->nInversions);
     int i0a = isys * uff_ocl->nAtoms;
     int err=0;
@@ -896,7 +896,7 @@ void upload_uff_sys( int isys, bool bParams, bool bForces, bool bVel, bool blvec
 }
 
 void upload_uff( bool bParams, bool bForces, bool bVel, bool blvec, bool bPrint=false ){
-    bPrint=true;
+    //bPrint=true;
     if(bPrint)printf("MolWorld_sp3_multi::upload_uff() nSystems=%i nAtomsTot=%i nBondsTot=%i nAnglesTot=%i nDihedralsTot=%i nInversionsTot=%i nA2FTot=%i \n",  uff_ocl->nSystems, uff_ocl->nAtoms, uff_ocl->nBonds, uff_ocl->nAngles, uff_ocl->nDihedrals, uff_ocl->nInversions, uff_ocl->nA2F);
     int err=0;
     int nAtomsTot      = uff_ocl->nSystems * uff_ocl->nAtoms;
@@ -1539,6 +1539,7 @@ int saveSysXYZ( int isys, const char* fname, const char* comment="#comment", boo
 }
 
 int saveXYZ_system(int isys, const char* fname, const char* comment="#comment", const char* mode="w"){
+    printf("MolWorld_sp3_multi::saveXYZ_system(isys=%i, fname=%s, mode=%s, comment=%s)\n", isys, fname, mode, comment);
     if(isys < 0 || isys >= nSystems) return -1;
     if(bUFF){
         unpack_uff_system(isys, ffu, true, false);
@@ -1913,10 +1914,26 @@ int run_uff_ocl( int niter, double dt, double damping, double Fconv, double Flim
         // The user has corrected OCL_UFF.h, this signature is now correct.
         uff_ocl->setup_updateAtomsMMFFf4( uff_ocl->nAtoms, 0 ); // For UFF, nNode is 0
 
+
+
         // --- Run relaxation loop
         for(int i=0; i<niter; i++){
+            printf("MolWorld_sp3_multi::run_uff_ocl(): iter %i / %i\n", i, niter);
             uff_ocl->eval(true);                 // 1. Evaluate forces for all systems
             uff_ocl->task_updateAtoms->enque();  // 2. Update atom positions and velocities for all systems
+
+            // --- Save current frame if trajectory is requested
+            if((savePerNsteps>0) && (i%savePerNsteps==0) && (trj_fname)){
+                download_uff( true, false ); // download positions for this step
+                for(int isys=0; isys<nSystems; ++isys){
+                    char fname[256];
+                    sprintf(fname, "%s_%03i.xyz", trj_fname, isys);
+                    unpack_uff_system( isys, ffu, true, false );
+                    char comment[256];
+                    sprintf(comment, "# step %d", i+1);
+                    saveXYZ_system(isys, fname, comment, "a"); // Append frame
+                }
+            }
         }
         return niter;
 }

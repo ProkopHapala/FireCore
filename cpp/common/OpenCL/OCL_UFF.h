@@ -452,12 +452,12 @@ public:
             if(task_clear_fapos){ task_clear_fapos->enque(); }
             if(task_clear_fint ){ task_clear_fint ->enque(); }
         }
-        if (bUFF_bonds      ){ printf("OCL_UFF::eval().task_evalBonds      \n"); task_evalBonds     ->enque(); }
-        if (bUFF_angles     ){ printf("OCL_UFF::eval().task_evalAngles     \n"); task_evalAngles    ->enque(); }
-        if (bUFF_dihedrals  ){ printf("OCL_UFF::eval().task_evalDihedrals  \n"); task_evalDihedrals ->enque(); }
-        if (bUFF_inversions ){ printf("OCL_UFF::eval().task_evalInversions \n"); task_evalInversions->enque(); }
-        if (bUFF_assemble   ){ printf("OCL_UFF::eval().task_assemble       \n"); task_assemble      ->enque(); }
-        printf("OCL_UFF::eval() DONE\n");
+        if (bUFF_bonds      ){ task_evalBonds     ->enque(); }
+        if (bUFF_angles     ){ task_evalAngles    ->enque(); }
+        if (bUFF_dihedrals  ){ task_evalDihedrals ->enque(); }
+        if (bUFF_inversions ){ task_evalInversions->enque(); }
+        if (bUFF_assemble   ){ task_assemble      ->enque(); }
+        //printf("OCL_UFF::eval() DONE\n");
     }
 
     void download_results(float* fapos_host, float* energies_host = nullptr) {

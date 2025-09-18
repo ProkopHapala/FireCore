@@ -72,7 +72,7 @@ inline float4 getLJQH( float3 dp, float4 REQ, float R2damp ){
 // Debug Controls (compile-time macros)
 // ======================================================
 // Enable concise debug prints without changing C++ host interface.
-#define DBG_UFF 1         // 0/1 master switch
+#define DBG_UFF 0         // 0/1 master switch
 #define IDBG_ATOM  (0)    // atom index to trace
 #define IDBG_BOND  (0)    // bond index to trace (global bond id), -1 disables
 #define IDBG_ANGLE (0)    // angle index to trace
@@ -866,8 +866,8 @@ __kernel void updateAtomsMMFFf4(
     const float4 MDpars  = MDparams[iS]; // (dt,damp,Flimit)
     const float4 TDrive = TDrives[iS];
 
-    if((iS==IDBG_SYS)&&(iG==IDBG_ATOM)){ 
-        printf("GPU updateAtomsMMFFf4[isys=%i]: MDpars(dt=%g,Flim=%g,vel_damp_factor=%g,?= %g) \n", iS, MDpars.x,MDpars.y,MDpars.z,MDpars.w);
+    if((DBG_UFF>0) && (iS==IDBG_SYS)&&(iG==IDBG_ATOM)){ 
+        printf("GPU KERNEL updateAtomsMMFFf4[isys=%i]: MDpars(dt=%g,Flim=%g,vel_damp_factor=%g,?= %g) \n", iS, MDpars.x,MDpars.y,MDpars.z,MDpars.w);
         // for(int is=0; is<nS; is++){
         //     //printf( "GPU::TDrives[%i](%g,%g,%g,%g)\n", i, TDrives[i].x,TDrives[i].y,TDrives[i].z,TDrives[i].w );
         //     //printf( "GPU::bboxes[%i](%g,%g,%g)(%g,%g,%g)(%g,%g,%g)\n", is, bboxes[is].a.x,bboxes[is].a.y,bboxes[is].a.z,   bboxes[is].b.x,bboxes[is].b.y,bboxes[is].b.z,   bboxes[is].c.x,bboxes[is].c.y,bboxes[is].c.z );
@@ -949,8 +949,7 @@ __kernel void updateAtomsMMFFf4(
     cvfs[iaa] += cvf;
     //if(!bDrive){ ve.xyz *= MDpars.z; } // friction, velocity damping
    
-    if ((DBG_UFF!=0) && (iS==IDBG_SYS) && (iG==IDBG_ATOM)){
-        
+    if ((DBG_UFF>0) && (iS==IDBG_SYS) && (iG==IDBG_ATOM)){ 
         printf( "GPU isys=%i iG=%i pos(%10.4e,%10.4e,%10.4e) vel(%10.4e,%10.4e,%10.4e) fe(%10.4e,%10.4e,%10.4e) cvf(%10.4e,%10.4e,%10.4e) \n", iS, iG, pe.x,pe.y,pe.z, ve.x,ve.y,ve.z, fe.x,fe.y,fe.z, cvf.x,cvf.y,cvf.z );
     }
    
