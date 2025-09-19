@@ -87,6 +87,15 @@ public:
     int ibuff_lvecs     = -1; // Lattice vectors for each system
     int ibuff_energies  = -1; // Buffer to store computed energies
 
+    // --- GridFF Buffers and Parameters (copied from OCL_MM)
+    int ibuff_BsplinePLQ = -1;
+    int4 grid_n;
+    Quat4f grid_p0;
+    Quat4f grid_shift0;
+    Quat4f grid_shift0_p0;
+    Quat4f grid_invStep;
+    float4 GFFparams{1.0, 1.5, 0., 0.}; // (Rdamp, alphaMorse, 0, 0)
+
     // --- Common MD/update state (needed for atom updates on GPU)
     int4   nDOFs{0,0,0,0};   // (natoms, nnode, unused, nMaxSysNeighs)
 
@@ -110,6 +119,8 @@ public:
     OCLtask* task_updateAtoms   = nullptr;
     OCLtask* task_clear_fapos   = nullptr;
     OCLtask* task_clear_fint    = nullptr;
+    OCLtask* task_NBFF = nullptr;
+    OCLtask* task_NBFF_Grid_Bspline = nullptr;
     bool bKernelPrepared = false;
 
     // ====================== Functions
@@ -129,6 +140,8 @@ public:
         newTask("evalInversions_UFF",     program, 2, (size_t4){0,0,0,0}, (size_t4){32,1,1,1} );
         newTask("assembleForces_UFF",     program, 2, (size_t4){0,0,0,0}, (size_t4){32,1,1,1} );
         newTask("updateAtomsMMFFf4",      program, 2, (size_t4){0,0,0,0}, (size_t4){32,1,1,1} );
+        newTask("getNonBond",             program, 2, (size_t4){0,0,0,0}, (size_t4){32,1,1,1});
+        newTask("getNonBond_GridFF_Bspline", program, 2, (size_t4){0,0,0,0}, (size_t4){32,1,1,1});
         bKernelPrepared = false;
     }
 
@@ -402,6 +415,68 @@ public:
 
         bKernelPrepared = true;
     }
+
+    OCLtask* setup_getNonBond(int na, Vec3i nPBC_, OCLtask* task = nullptr) {
+        if (!task) task = getTask("getNonBond");
+        int nloc = 32;
+        task->local.x = nloc;
+        task->global.x = na + nloc - (na % nloc);
+        task->global.y = nSystems;
+
+        useKernel(task->ikernel);
+        nDOFs.x = na;
+        nDOFs.y = 0; // nNode is 0 for UFF
+
+        int4 npbc_int4;
+        v2i4(nPBC_, npbc_int4);
+
+        int err = 0;
+        err |= _useArg(nDOFs);                           // 1
+        err |= useArgBuff(ibuff_apos);                  // 2
+        err |= useArgBuff(ibuff_fapos);                 // 3
+        err |= useArgBuff(ibuff_REQs);                  // 4
+        err |= useArgBuff(ibuff_neighs);                // 5
+        err |= useArgBuff(ibuff_neighCell);             // 6
+        err |= useArgBuff(ibuff_lvecs);                 // 7
+        err |= _useArg(npbc_int4);                      // 8
+        err |= _useArg(GFFparams);                      // 9
+        OCL_checkError(err, "setup_getNonBond_UFF");
+        return task;
+    }
+
+    OCLtask* setup_getNonBond_GridFF_Bspline(int na, Vec3i nPBC_, OCLtask* task = nullptr) {
+        if (!task) task = getTask("getNonBond_GridFF_Bspline");
+        int nloc = 32;
+        task->local.x = nloc;
+        task->global.x = na + nloc - (na % nloc);
+        task->global.y = nSystems;
+        grid_shift0_p0 = grid_p0;
+
+        useKernel(task->ikernel);
+        nDOFs.x = na;
+        nDOFs.y = 0; // nNode is 0 for UFF
+
+        int4 npbc_int4;
+        v2i4(nPBC_, npbc_int4);
+
+        int err = 0;
+        err |= _useArg(nDOFs);                           // 1
+        err |= useArgBuff(ibuff_apos);                  // 2
+        err |= useArgBuff(ibuff_fapos);                 // 3
+        err |= useArgBuff(ibuff_REQs);                  // 4
+        err |= useArgBuff(ibuff_neighs);                // 5
+        err |= useArgBuff(ibuff_neighCell);             // 6
+        err |= useArgBuff(ibuff_lvecs);                 // 7
+        err |= _useArg(npbc_int4);                      // 8
+        err |= _useArg(GFFparams);                      // 9
+        err |= useArgBuff(ibuff_BsplinePLQ);            // 10
+        err |= _useArg(grid_n);                         // 11
+        err |= _useArg(grid_invStep);                   // 12
+        err |= _useArg(grid_shift0_p0);                 // 13
+        OCL_checkError(err, "setup_getNonBond_GridFF_Bspline_UFF");
+        return task;
+    }
+
 
     // Setup and bind arguments for updateAtomsMMFFf4 (UFF)
     // Must match UFF.cl::updateAtomsMMFFf4 signature exactly:

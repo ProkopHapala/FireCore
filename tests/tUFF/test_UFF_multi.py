@@ -90,7 +90,7 @@ def print_bufs(bufs, title="Buffers"):
     for name, buf in bufs.items():
         print(f"{name}\n", buf)
 
-def run_uff(use_gpu, components, dt=0.02, bPrintBufs=False, nPrintSetup=False):
+def run_uff(use_gpu, components, dt=0.02, bPrintBufs=False, nPrintSetup=False, bNonBonded=False, bGridFF=False):
     """
     Run a single UFF evaluation step on either CPU or GPU.
 
@@ -101,9 +101,9 @@ def run_uff(use_gpu, components, dt=0.02, bPrintBufs=False, nPrintSetup=False):
     Returns:
         tuple: A tuple containing the calculated energy (placeholder) and forces.
     """
-    print(f"\n--- Running UFF on {'GPU' if use_gpu else 'CPU'} ---")
-    
-    uff.setSwitches2(NonBonded=-1, SurfAtoms=-1, GridFF=-1)
+    print(f"\n--- Running UFF on {'GPU' if use_gpu else 'CPU'} with bNonBonded={bNonBonded} bGridFF={bGridFF}---")
+
+    uff.setSwitches2(NonBonded=1 if bNonBonded else -1, SurfAtoms=-1, GridFF=1 if bGridFF else -1)
     # Set which components to evaluate for this run
     uff.setSwitchesUFF(
         DoBond      =components.get( 'bonds',      -1 ),
@@ -116,13 +116,13 @@ def run_uff(use_gpu, components, dt=0.02, bPrintBufs=False, nPrintSetup=False):
     )
 
     print("py.DEBUG 4")
-    
+
     # Select CPU or GPU path via the iParalel flag expected by C++ run() switch
     # CPU: 0 (serial) or 1 (OpenMP); GPU (OpenCL UFF): 2
     iParalel = 2 if use_gpu else 0
 
     print("py.DEBUG 5")
-    
+
     #uff.run(nstepMax=1, iParalel=iParalel)
 
     uff.fapos[:, :] = 0.0 # make sure it's initialized
@@ -133,27 +133,27 @@ def run_uff(use_gpu, components, dt=0.02, bPrintBufs=False, nPrintSetup=False):
     #uff.run( nstepMax=10000, dt=0.01, Fconv=1e-6, ialg=2, damping=0.1, iParalel=iParalel )
     #uff.run( nstepMax=1, dt=0.02, Fconv=1e-6, ialg=2, damping=0.1, iParalel=iParalel )
     print("py.DEBUG 6")
-    energy = 0 
+    energy = 0
     if use_gpu:
         # Download results from GPU to host buffers; UFF exposes fapos (double) via init_buffers_UFF # make sure it's initialized
         forces = uff.fapos.copy()
     else:
         forces = uff.fapos.copy()
-    
+
     return energy, forces
 
 
-def scan_uff(nconf, nsys, components, tol=1e-3, seed=123):
+def scan_uff(nconf, nsys, components, tol=1e-3, seed=123, bNonBonded=False, bGridFF=False):
     """Run multi-configuration CPU vs GPU force comparison using C++ scan().
 
     - Generates nconf configurations by perturbing the current uff.apos deterministically
     - CPU path evaluates sequentially
     - GPU path evaluates batched over nsys replicas
     """
-    print(f"\n--- Running UFF scan for nconf={nconf} with nsys={nsys} ---")
+    print(f"\n--- Running UFF scan for nconf={nconf} with nsys={nsys} bNonBonded={bNonBonded} bGridFF={bGridFF}---")
 
     # Switches as in single run
-    uff.setSwitches2(NonBonded=-1, SurfAtoms=-1, GridFF=-1)
+    uff.setSwitches2(NonBonded=1 if bNonBonded else -1, SurfAtoms=-1, GridFF=1 if bGridFF else -1)
     uff.setSwitchesUFF(
         DoBond      =components.get('bonds',      -1),
         DoAngle     =components.get('angles',     -1),
@@ -179,7 +179,7 @@ def scan_uff(nconf, nsys, components, tol=1e-3, seed=123):
     cpu_max = float(np.max(F_cpu)) if F_cpu.size else 0.0
     gpu_min = float(np.min(F_gpu)) if F_gpu.size else 0.0
     gpu_max = float(np.max(F_gpu)) if F_gpu.size else 0.0
-    
+
     # Compare
     ok = True
     diffs = F_gpu - F_cpu
@@ -209,16 +209,16 @@ def scan_uff(nconf, nsys, components, tol=1e-3, seed=123):
         print(f"\n##### scan(): PASSED within tol={tol:.2e}   | cpu_min,max={cpu_min:.2e}, {cpu_max:.2e} | gpu_min,max={gpu_min:.2e}, {gpu_max:.2e} \n")
     return ok, F_cpu, F_gpu
 
-def scan_uff_relaxed(nconf, nsys, components, niter=100, dt=0.02, damping=0.1, fconv=1e-6, flim=1000.0, tol=1e-3, seed=123):
+def scan_uff_relaxed(nconf, nsys, components, niter=100, dt=0.02, damping=0.1, fconv=1e-6, flim=1000.0, tol=1e-3, seed=123, bNonBonded=False, bGridFF=False):
     """Run multi-configuration relaxation on GPU and CPU baselines, compare forces.
 
     GPU path uses uff.scan_relaxed() which runs niter steps per configuration on device.
     CPU path uses sequential UFF::run for niter steps per configuration.
     """
-    print(f"\n--- Running UFF scan_relaxed for nconf={nconf} with nsys={nsys}, niter={niter}, fconv={fconv} ---")
+    print(f"\n--- Running UFF scan_relaxed for nconf={nconf} with nsys={nsys}, niter={niter}, fconv={fconv} bNonBonded={bNonBonded} bGridFF={bGridFF}---")
 
     # Switches as in single run
-    uff.setSwitches2(NonBonded=-1, SurfAtoms=-1, GridFF=-1)
+    uff.setSwitches2(NonBonded=1 if bNonBonded else -1, SurfAtoms=-1, GridFF=1 if bGridFF else -1)
     uff.setSwitchesUFF(
         DoBond      =components.get('bonds',      -1),
         DoAngle     =components.get('angles',     -1),
@@ -345,23 +345,31 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='UFF CPU vs. GPU Validation Test')
     default_mol = os.path.join(data_dir, 'mol', 'formic_acid.mol2')
     #default_mol = os.path.join(data_dir, 'mol', 'xylitol.mol2')
-    parser.add_argument('-m', '--molecule',      type=str,   default=default_mol, help='Molecule file (.mol2, .xyz)')
-    parser.add_argument('-t', '--tolerance',     type=float, default=1e-3, help='Numerical tolerance for comparison')
-    parser.add_argument('-p', '--print-buffers', type=int,   default=0, help='Print buffer contents before run')
-    parser.add_argument('-v', '--verbose',       type=int,   default=0, help='Verbose output')
-    #parser.add_argument('--nsys',     type=int, default=2, help='Number of GPU replicas (systems)')
-    #parser.add_argument('--nconf',    type=int, default=2, help='Number of configurations for scan(); 0 disables scan')
-
-    parser.add_argument('--nsys',     type=int, default=2, help='Number of GPU replicas (systems)')
-    parser.add_argument('--nconf',    type=int, default=2, help='Number of configurations for scan(); 0 disables scan')
-    parser.add_argument('--use-scan', type=int, default=1, help='Use scan() path (1) or single-step run() (0)')
-    parser.add_argument('--use-scan-relaxed', type=int, default=1, help='Use scan_relaxed() path (1)')
-    parser.add_argument('--niter', type=int, default=100, help='Relaxation steps per configuration for scan_relaxed()')
-    parser.add_argument('--fconv', type=float, default=1e-6, help='Force convergence threshold for scan_relaxed()')
-    parser.add_argument('--dt',    type=float, default=0.02, help='Integration timestep for relaxation')
-    parser.add_argument('--damping', type=float, default=0.1, help='Damping for relaxation')
-    parser.add_argument('--flim',  type=float, default=1000.0, help='Force limit for relaxation')
+    parser.add_argument('-m', '--molecule',      type=str,      default=default_mol, help='Molecule file (.mol2, .xyz)')
+    parser.add_argument('-t', '--tolerance',     type=float,    default=1e-3,        help='Numerical tolerance for comparison')
+    parser.add_argument('-p', '--print-buffers', type=int,      default=0,           help='Print buffer contents before run')
+    parser.add_argument('-v', '--verbose',       type=int,      default=0,           help='Verbose output')
+    #parser.add_argument('--nsys',               type=int,      default=2,           help='Number of GPU replicas (systems)')
+    #parser.add_argument('--nconf',              type=int,      default=2,           help='Number of configurations for scan(); 0 disables scan')
+    parser.add_argument('--nsys',                type=int,      default=2,           help='Number of GPU replicas (systems)')
+    parser.add_argument('--nconf',               type=int,      default=2,           help='Number of configurations for scan(); 0 disables scan')
+    parser.add_argument('--use-scan',            type=int,      default=1,           help='Use scan() path (1) or single-step run() (0)')
+    parser.add_argument('--use-scan-relaxed',    type=int,      default=1,           help='Use scan_relaxed() path (1)')
+    parser.add_argument('--niter',               type=int,      default=100,         help='Relaxation steps per configuration for scan_relaxed()')
+    parser.add_argument('--fconv',               type=float,    default=1e-6,        help='Force convergence threshold for scan_relaxed()')
+    parser.add_argument('--dt',                  type=float,    default=0.02,        help='Integration timestep for relaxation')
+    parser.add_argument('--damping',             type=float,    default=0.1,         help='Damping for relaxation')
+    parser.add_argument('--flim',                type=float,    default=1000.0,      help='Force limit for relaxation')
+    parser.add_argument('--test_case',           type=str,      default="basic",          help='Test case to run: all, nb, grid, basic')
     args = parser.parse_args()
+
+    bNonBonded = False
+    bGridFF    = False
+    if args.test_case == 'nb':
+        bNonBonded = True
+    elif args.test_case == 'grid':
+        bNonBonded = True
+        bGridFF    = True
 
     # Cleanup old files before running
     cleanup_xyz_files(["scan_relaxed_cpu_*.xyz", "scan_relaxed_gpu_*.xyz", "trj_multi.xyz", "relaxed_gpu_*.xyz"])
@@ -371,6 +379,7 @@ if __name__ == "__main__":
     uff.init(
         nSys_=args.nsys,
         xyz_name=args.molecule,
+        surf_name=os.path.join(data_dir, 'xyz', 'NaCl_1x1_L2.xyz') if bGridFF else None,
         sElementTypes  = os.path.join(data_dir, "ElementTypes.dat"),
         sAtomTypes     = os.path.join(data_dir, "AtomTypes.dat"),
         sBondTypes     = os.path.join(data_dir, "BondTypes.dat"),
@@ -379,10 +388,6 @@ if __name__ == "__main__":
         bMMFF=True, # to use UFF MMFF should be True!
         bUFF=True
     )
-    # NOTE: setSwitches() does not accept the 'NonBonded' keyword; non-bonded handling for UFF
-    # is controlled via setSwitchesUFF (e.g., ClampNonBonded, SubtractBondNonBond). We already
-    # set ClampNonBonded/SubtractBondNonBond inside run_uff(), so we disable this invalid call.  # TODO
-    # uff.setSwitches(NonBonded=-1)
 
     print("py.DEBUG 3")
 
@@ -396,7 +401,7 @@ if __name__ == "__main__":
         print_bufs(param_bufs, "Parameter Buffers")
 
     if args.verbose:
-        uff.print_debugs() 
+        uff.print_debugs()
         uff.print_setup()
 
     uff.getBuffs_UFF()
@@ -415,20 +420,21 @@ if __name__ == "__main__":
     components = ['bonds', 'angles', 'dihedrals', 'inversions']
     component_flags = {key: 1 for key in components }
 
+
+
     if args.use_scan_relaxed:
         nconf = args.nconf if args.nconf>0 else args.nsys
-        # The call to set_damping is now inside scan_uff_relaxed
-        ok, F_cpu, F_gpu = scan_uff_relaxed(nconf=nconf, nsys=args.nsys, components=component_flags, niter=args.niter, dt=args.dt, damping=args.damping, fconv=args.fconv, flim=args.flim, tol=args.tolerance)
+        ok, F_cpu, F_gpu = scan_uff_relaxed(nconf=nconf, nsys=args.nsys, components=component_flags, niter=args.niter, dt=args.dt, damping=args.damping, fconv=args.fconv, flim=args.flim, tol=args.tolerance, bNonBonded=bNonBonded, bGridFF=bGridFF)
         passed = ok
     elif args.use_scan or args.nconf>0:
         nconf = args.nconf if args.nconf>0 else args.nsys
-        ok, F_cpu, F_gpu = scan_uff(nconf=nconf, nsys=args.nsys, components=component_flags, tol=args.tolerance)
+        ok, F_cpu, F_gpu = scan_uff(nconf=nconf, nsys=args.nsys, components=component_flags, tol=args.tolerance, bNonBonded=bNonBonded, bGridFF=bGridFF)
         passed = ok
     else:
-        cpu_energy, cpu_forces = run_uff(use_gpu=False, components=component_flags, dt=args.dt)
-        gpu_energy, gpu_forces = run_uff(use_gpu=True,  components=component_flags, dt=args.dt)
-        # Single comparison across all enabled components
+        cpu_energy, cpu_forces = run_uff(use_gpu=False, components=component_flags, dt=args.dt, bNonBonded=bNonBonded, bGridFF=bGridFF)
+        gpu_energy, gpu_forces = run_uff(use_gpu=True,  components=component_flags, dt=args.dt, bNonBonded=bNonBonded, bGridFF=bGridFF)
         passed = compare_results(cpu_energy, cpu_forces, gpu_energy, gpu_forces, tol=args.tolerance, component_name="ALL")
+
     print("\n================= SUMMARY =================")
     if passed:
         print("CPU vs GPU UFF comparison PASSED")
