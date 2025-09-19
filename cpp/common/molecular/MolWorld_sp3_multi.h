@@ -1348,6 +1348,39 @@ double eval_UFF_ocl( int niter=1 ){
     return energies[4]; // E_tot for system 0
 }
 
+void setup_UFF_ocl(){
+    printf("MolWorld_sp3_multi::setup_UFF_ocl()\n");
+    if(!uff_ocl){ printf("ERROR: setup_UFF_ocl() called but uff_ocl is null!\n"); return; }
+
+    // Ensure kernels are prepared if they haven't been already.
+    if(!uff_ocl->bKernelPrepared){
+        float Rdamp        = (float)ffu.Rdamp;
+        float FmaxNB       = (float)ffu.FmaxNonBonded;
+        float SubNBTorsion = (float)ffu.SubNBTorsionFactor;
+        uff_ocl->setup_kernels(Rdamp, FmaxNB, SubNBTorsion);
+    }
+    
+    Vec3i nPBC_ = nPBC; if(!bPBC) nPBC_ = Vec3iZero;
+    
+    if(bGridFF){
+        if(!uff_ocl->task_NBFF_Grid_Bspline){
+            printf("MolWorld_sp3_multi::setup_UFF_ocl() for UFF GridFF\n");
+            // UFF needs grid parameters from the MMFF-side ocl object.
+            uff_ocl->grid_n           = ocl.grid_n;
+            uff_ocl->grid_p0          = ocl.grid_p0;
+            uff_ocl->grid_invStep     = ocl.grid_invStep;
+            uff_ocl->ibuff_BsplinePLQ = ocl.ibuff_BsplinePLQ; // Share the buffer
+            uff_ocl->task_NBFF_Grid_Bspline = uff_ocl->setup_getNonBond_GridFF_Bspline(ffu.natoms, nPBC_);
+        }
+    } else if(bNonBonded){
+        if(!uff_ocl->task_NBFF){
+            printf("MolWorld_sp3_multi::setup_UFF_ocl() for UFF NonBonded\n");
+            uff_ocl->task_NBFF = uff_ocl->setup_getNonBond(ffu.natoms, nPBC_);
+        }
+    }
+    if(!uff_ocl->task_updateAtoms) uff_ocl->setup_updateAtomsMMFFf4( ffu.natoms, 0 );
+}
+
 virtual double solve_multi ( int nmax, double tol )override{
     //return eval_MMFFf4_ocl( nmax, tol );
     //return run_ocl_opt( nmax, tol );
@@ -1685,54 +1718,38 @@ virtual void evalAFM_FF( GridShape& grid, Quat4f* data_=0, bool bSaveDebug=false
 
 void setup_MMFFf4_ocl(){
     printf("MolWorld_sp3_multi::setup_MMFFf4_ocl() bUFF=%d\n", bUFF);
-    if(bUFF){
-        Vec3i nPBC_ = nPBC; if(!bPBC) nPBC_ = Vec3iZero;
-        if(bGridFF){
-            if(!uff_ocl->task_NBFF_Grid_Bspline){
-                printf("MolWorld_sp3_multi::setup_MMFFf4_ocl() for UFF GridFF\n");
-                uff_ocl->task_NBFF_Grid_Bspline = uff_ocl->setup_getNonBond_GridFF_Bspline(ffu.natoms, nPBC_);
+    ocl.nDOFs.x=ff.natoms;
+    ocl.nDOFs.y=ff.nnode;
+    if(!task_cleanF)   task_cleanF = ocl.setup_cleanForceMMFFf4 ( ffl.natoms, ffl.nnode       );
+    if(!task_move  )   task_move   = ocl.setup_updateAtomsMMFFf4( ffl.natoms, ffl.nnode       );
+    if(!task_print )   task_print  = ocl.setup_printOnGPU       ( ffl.natoms, ffl.nnode       );
+    if(!task_MMFF  )   task_MMFF   = ocl.setup_getMMFFf4        ( ffl.natoms, ffl.nnode, bPBC );
+
+    Vec3i nPBC_=nPBC; if(!bPBC){ nPBC_=Vec3iZero; }; printf( "MolWorld_sp3_multi::setup_MMFFf4_ocl() bPBC=%i nPBC(%i,%i,%i) n", bPBC, nPBC_.x,nPBC_.y,nPBC_.z );
+
+    if(bGridFF) switch( gridFF.mode ){
+        case GridFFmod::LinearFloat: [[fallthrough]]
+        case GridFFmod::LinearDouble:   if(!task_NBFF_Grid         ){ 
+            printf( "MolWorld_sp3_multi::setup_MMFFf4_ocl() GridFFmod::%i => ocl.setup_getNonBond_GridFF() \n", gridFF.mode );
+            task_NBFF_Grid         = ocl.setup_getNonBond_GridFF        ( ffl.natoms, ffl.nnode, nPBC_ ); } break;
+        case GridFFmod::BsplineFloat:  [[fallthrough]]
+        case GridFFmod::BsplineDouble:  
+            if(ocl.bUseTexture){
+                if(!task_NBFF_Grid_Bspline_tex ){ 
+                    printf( "MolWorld_sp3_multi::setup_MMFFf4_ocl() GridFFmod::%i && bUseTexture=%i => ocl.setup_getNonBond_GridFF_Bspline_tex() \n", gridFF.mode, ocl.bUseTexture );
+                    task_NBFF_Grid_Bspline_tex = ocl.setup_getNonBond_GridFF_Bspline_tex( ffl.natoms, ffl.nnode, nPBC_ ); 
+                } 
+            }else{
+                if(!task_NBFF_Grid_Bspline ){ 
+                    printf( "MolWorld_sp3_multi::setup_MMFFf4_ocl() GridFFmod::%i && bUseTexture=%i => ocl.setup_getNonBond_GridFF_Bspline() \n", gridFF.mode, ocl.bUseTexture );
+                    task_NBFF_Grid_Bspline = ocl.setup_getNonBond_GridFF_Bspline( ffl.natoms, ffl.nnode, nPBC_ ); 
+                }        
             }
-        }else if(bNonBonded){
-            if(!uff_ocl->task_NBFF){
-                printf("MolWorld_sp3_multi::setup_MMFFf4_ocl() for UFF NonBonded\n");
-                uff_ocl->task_NBFF = uff_ocl->setup_getNonBond(ffu.natoms, nPBC_);
-            }
-        }
-    } else {
-        ocl.nDOFs.x=ff.natoms;
-        ocl.nDOFs.y=ff.nnode;
-        if(!task_cleanF)   task_cleanF = ocl.setup_cleanForceMMFFf4 ( ffl.natoms, ffl.nnode       );
-        if(!task_move  )   task_move   = ocl.setup_updateAtomsMMFFf4( ffl.natoms, ffl.nnode       );
-        if(!task_print )   task_print  = ocl.setup_printOnGPU       ( ffl.natoms, ffl.nnode       );
-        if(!task_MMFF  )   task_MMFF   = ocl.setup_getMMFFf4        ( ffl.natoms, ffl.nnode, bPBC );
-
-        Vec3i nPBC_=nPBC; if(!bPBC){ nPBC_=Vec3iZero; }; printf( "MolWorld_sp3_multi::setup_MMFFf4_ocl() bPBC=%i nPBC(%i,%i,%i) n", bPBC, nPBC_.x,nPBC_.y,nPBC_.z );
-
-        if(bGridFF) switch( gridFF.mode ){
-            case GridFFmod::LinearFloat: [[fallthrough]]
-            case GridFFmod::LinearDouble:   if(!task_NBFF_Grid         ){ 
-                printf( "MolWorld_sp3_multi::setup_MMFFf4_ocl() GridFFmod::%i => ocl.setup_getNonBond_GridFF() \n", gridFF.mode );
-                task_NBFF_Grid         = ocl.setup_getNonBond_GridFF        ( ffl.natoms, ffl.nnode, nPBC_ ); } break;
-            case GridFFmod::BsplineFloat:  [[fallthrough]]
-            case GridFFmod::BsplineDouble:  
-                if(ocl.bUseTexture){
-                    if(!task_NBFF_Grid_Bspline_tex ){ 
-                        printf( "MolWorld_sp3_multi::setup_MMFFf4_ocl() GridFFmod::%i && bUseTexture=%i => ocl.setup_getNonBond_GridFF_Bspline_tex() \n", gridFF.mode, ocl.bUseTexture );
-                        task_NBFF_Grid_Bspline_tex = ocl.setup_getNonBond_GridFF_Bspline_tex( ffl.natoms, ffl.nnode, nPBC_ ); 
-                    } 
-                }else{
-                    if(!task_NBFF_Grid_Bspline ){ 
-                        printf( "MolWorld_sp3_multi::setup_MMFFf4_ocl() GridFFmod::%i && bUseTexture=%i => ocl.setup_getNonBond_GridFF_Bspline() \n", gridFF.mode, ocl.bUseTexture );
-                        task_NBFF_Grid_Bspline = ocl.setup_getNonBond_GridFF_Bspline( ffl.natoms, ffl.nnode, nPBC_ ); 
-                    }        
-                }
-            break;
-            default: { printf( "MolWorld_sp3_multi::setup_MMFFf4_ocl() GridFFmod::%i not implemented \n", gridFF.mode ); } break;
-        }
-
-        if(!task_NBFF  ){  task_NBFF      = ocl.setup_getNonBond       ( ffl.natoms, ffl.nnode, nPBC_ );  }
+        break;
+        default: { printf( "MolWorld_sp3_multi::setup_MMFFf4_ocl() GridFFmod::%i not implemented \n", gridFF.mode ); } break;
     }
 
+    if(!task_NBFF  ){  task_NBFF      = ocl.setup_getNonBond       ( ffl.natoms, ffl.nnode, nPBC_ );  }
 
     // OCLtask* getSurfMorse(  Vec3i nPBC_, int na=0, float4* atoms=0, float4* REQs=0, int na_s=0, float4* atoms_s=0, float4* REQs_s=0,  bool bRun=true, OCLtask* task=0 ){
     if(!task_SurfAtoms && bSurfAtoms ){ 

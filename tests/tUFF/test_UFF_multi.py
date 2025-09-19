@@ -355,12 +355,12 @@ if __name__ == "__main__":
     parser.add_argument('--nconf',               type=int,      default=2,           help='Number of configurations for scan(); 0 disables scan')
     parser.add_argument('--use-scan',            type=int,      default=1,           help='Use scan() path (1) or single-step run() (0)')
     parser.add_argument('--use-scan-relaxed',    type=int,      default=1,           help='Use scan_relaxed() path (1)')
-    parser.add_argument('--niter',               type=int,      default=100,         help='Relaxation steps per configuration for scan_relaxed()')
+    parser.add_argument('--niter',               type=int,      default=1,         help='Relaxation steps per configuration for scan_relaxed()')
     parser.add_argument('--fconv',               type=float,    default=1e-6,        help='Force convergence threshold for scan_relaxed()')
     parser.add_argument('--dt',                  type=float,    default=0.02,        help='Integration timestep for relaxation')
     parser.add_argument('--damping',             type=float,    default=0.1,         help='Damping for relaxation')
     parser.add_argument('--flim',                type=float,    default=1000.0,      help='Force limit for relaxation')
-    parser.add_argument('--test_case',           type=str,      default="basic",          help='Test case to run: all, nb, grid, basic')
+    parser.add_argument('--test_case',           type=str,      default="basic",     help='Test case to run: all, nb, grid, basic')
     args = parser.parse_args()
 
     bNonBonded = False
@@ -368,6 +368,9 @@ if __name__ == "__main__":
     if args.test_case == 'nb':
         bNonBonded = True
     elif args.test_case == 'grid':
+        bNonBonded = True
+        bGridFF    = True
+    elif args.test_case == 'all':
         bNonBonded = True
         bGridFF    = True
 
@@ -379,7 +382,7 @@ if __name__ == "__main__":
     uff.init(
         nSys_=args.nsys,
         xyz_name=args.molecule,
-        surf_name=os.path.join(data_dir, 'xyz', 'NaCl_1x1_L2.xyz') if bGridFF else None,
+        surf_name=os.path.join(data_dir, 'xyz', 'NaCl_1x1_L2') if bGridFF else None,
         sElementTypes  = os.path.join(data_dir, "ElementTypes.dat"),
         sAtomTypes     = os.path.join(data_dir, "AtomTypes.dat"),
         sBondTypes     = os.path.join(data_dir, "BondTypes.dat"),
@@ -419,8 +422,6 @@ if __name__ == "__main__":
     #components = ['bonds', 'angles', 'dihedrals']
     components = ['bonds', 'angles', 'dihedrals', 'inversions']
     component_flags = {key: 1 for key in components }
-
-
 
     if args.use_scan_relaxed:
         nconf = args.nconf if args.nconf>0 else args.nsys

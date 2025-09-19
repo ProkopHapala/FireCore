@@ -335,12 +335,12 @@ int scan_relaxed( int nConf, double* confs_, double* outF_, int niter, double dt
     auto outF  = (Vec3d*)outF_;
     int nDone = 0;
     const int dbg_sys = -1;
-    Vec3i nPBC={0,0,0};
     if( (iParalel==2) && W.uff_ocl ){
+        W.setup_UFF_ocl();
         if(!W.uff_ocl->bKernelPrepared){ W.uff_ocl->setup_kernels( (float)W.ffu.Rdamp, (float)W.ffu.FmaxNonBonded, (float)W.ffu.SubNBTorsionFactor ); }
         for(int isys=0; isys<W.nSystems; ++isys){ W.pack_uff_system( isys, W.ffu, true, false, false, true ); }
         W.upload_uff( true, false, false, true );
-        setTrjName("scan_relaxed_gpu", 1, (int*)&nPBC);
+        setTrjName("scan_relaxed_gpu", 1, (int*)&W.nPBC);
         for(int ib=0; ib<nConf; ){
             int nBatch = W.nSystems; if(ib+nBatch>nConf) nBatch = nConf-ib;
             for(int i=0;i<nBatch;i++){
@@ -372,10 +372,10 @@ int scan_relaxed( int nConf, double* confs_, double* outF_, int niter, double dt
             for(int ia=0; ia<natoms; ia++){ W.ffu.apos[ia] = confs[ic*natoms + ia]; }
             W.ffu.cleanVelocity(); // Zero velocities to ensure a clean start for each configuration
             char fname[256]; sprintf(fname, "scan_relaxed_cpu_%03i.xyz", ic);
-            setTrjName(fname, 1, (int*)&nPBC);
+            setTrjName(fname, 1, (int*)&W.nPBC);
             if(iParalel==1){ W.ffu.run_omp( niter, dt, Fconv, Flim, damping, nullptr, nullptr, nullptr, nullptr ); } // fapos is cleaned inside run()
             else            { W.ffu.run    ( niter, dt, Fconv, Flim, damping, nullptr, nullptr, nullptr, nullptr ); } // fapos is cleaned inside run()
-            setTrjName(nullptr, -1, (int*)&nPBC ); // Disable trajectory saving
+            setTrjName(nullptr, -1, (int*)&W.nPBC ); // Disable trajectory saving
             for(int ia=0; ia<natoms; ia++){ outF[ic*natoms + ia] = W.ffu.fapos[ia]; }
             nDone++;
         }

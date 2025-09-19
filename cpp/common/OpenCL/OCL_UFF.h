@@ -85,6 +85,7 @@ public:
     // System-wide buffers
     int ibuff_pbcshifts = -1; // PBC shift vectors
     int ibuff_lvecs     = -1; // Lattice vectors for each system
+    int ibuff_ilvecs    = -1; // Inverse lattice vectors for each system (optional, kept for parity)
     int ibuff_energies  = -1; // Buffer to store computed energies
 
     // --- GridFF Buffers and Parameters (copied from OCL_MM)
@@ -202,6 +203,7 @@ public:
         int nPBC_safe = (nPBC > 0) ? nPBC : 1;
         ibuff_pbcshifts   = newBuffer("pbcshifts",   nSystems * nPBC_safe,        sizeof(cl_float4), 0, CL_MEM_READ_ONLY);
         ibuff_lvecs       = newBuffer("lvecs",       nSystems,                    sizeof(cl_Mat3),   0, CL_MEM_READ_ONLY);
+        ibuff_ilvecs      = newBuffer("ilvecs",      nSystems,                    sizeof(cl_Mat3),   0, CL_MEM_READ_ONLY);
         ibuff_energies    = newBuffer("energies",    nSystems * 5,                sizeof(cl_float),  0, CL_MEM_WRITE_ONLY); // E_b, E_a, E_d, E_i, E_tot
 
         // Optional energy contributions per interaction
@@ -431,15 +433,15 @@ public:
         v2i4(nPBC_, npbc_int4);
 
         int err = 0;
-        err |= _useArg(nDOFs);                           // 1
-        err |= useArgBuff(ibuff_apos);                  // 2
-        err |= useArgBuff(ibuff_fapos);                 // 3
-        err |= useArgBuff(ibuff_REQs);                  // 4
-        err |= useArgBuff(ibuff_neighs);                // 5
-        err |= useArgBuff(ibuff_neighCell);             // 6
-        err |= useArgBuff(ibuff_lvecs);                 // 7
-        err |= _useArg(npbc_int4);                      // 8
-        err |= _useArg(GFFparams);                      // 9
+        err |= _useArg(nDOFs);                     OCL_checkError(err, "setup_getNonBond.arg 1");      // 1
+        err |= useArgBuff(ibuff_apos);             OCL_checkError(err, "setup_getNonBond.arg 2");      // 2
+        err |= useArgBuff(ibuff_fapos);            OCL_checkError(err, "setup_getNonBond.arg 3");      // 3
+        err |= useArgBuff(ibuff_REQs);             OCL_checkError(err, "setup_getNonBond.arg 4");      // 4
+        err |= useArgBuff(ibuff_neighs);           OCL_checkError(err, "setup_getNonBond.arg 5");      // 5
+        err |= useArgBuff(ibuff_neighCell);        OCL_checkError(err, "setup_getNonBond.arg 6");      // 6
+        err |= useArgBuff(ibuff_lvecs);            OCL_checkError(err, "setup_getNonBond.arg 7");      // 7
+        err |= _useArg(npbc_int4);                 OCL_checkError(err, "setup_getNonBond.arg 8");      // 9
+        err |= _useArg(GFFparams);                 OCL_checkError(err, "setup_getNonBond.arg 9");      // 10
         OCL_checkError(err, "setup_getNonBond_UFF");
         return task;
     }
@@ -460,19 +462,20 @@ public:
         v2i4(nPBC_, npbc_int4);
 
         int err = 0;
-        err |= _useArg(nDOFs);                           // 1
-        err |= useArgBuff(ibuff_apos);                  // 2
-        err |= useArgBuff(ibuff_fapos);                 // 3
-        err |= useArgBuff(ibuff_REQs);                  // 4
-        err |= useArgBuff(ibuff_neighs);                // 5
-        err |= useArgBuff(ibuff_neighCell);             // 6
-        err |= useArgBuff(ibuff_lvecs);                 // 7
-        err |= _useArg(npbc_int4);                      // 8
-        err |= _useArg(GFFparams);                      // 9
-        err |= useArgBuff(ibuff_BsplinePLQ);            // 10
-        err |= _useArg(grid_n);                         // 11
-        err |= _useArg(grid_invStep);                   // 12
-        err |= _useArg(grid_shift0_p0);                 // 13
+        err |= _useArg(nDOFs);                    OCL_checkError(err, "setup_getNonBond_GridFF_Bspline.arg 1");       // 1
+        err |= useArgBuff(ibuff_apos);            OCL_checkError(err, "setup_getNonBond_GridFF_Bspline.arg 3");       // 2
+        err |= useArgBuff(ibuff_fapos);           OCL_checkError(err, "setup_getNonBond_GridFF_Bspline.arg 3");       // 3
+        err |= useArgBuff(ibuff_REQs);            OCL_checkError(err, "setup_getNonBond_GridFF_Bspline.arg 4");       // 4
+        err |= useArgBuff(ibuff_neighs);          OCL_checkError(err, "setup_getNonBond_GridFF_Bspline.arg 5");       // 5
+        err |= useArgBuff(ibuff_neighCell);       OCL_checkError(err, "setup_getNonBond_GridFF_Bspline.arg 6");       // 6
+        err |= useArgBuff(ibuff_lvecs);           OCL_checkError(err, "setup_getNonBond_GridFF_Bspline.arg 7");       // 7
+        err |= _useArg(npbc_int4);                OCL_checkError(err, "setup_getNonBond_GridFF_Bspline.arg 8");       // 8
+        err |= _useArg(GFFparams);                OCL_checkError(err, "setup_getNonBond_GridFF_Bspline.arg 9");       // 9
+        err |= useArgBuff(ibuff_BsplinePLQ);      OCL_checkError(err, "setup_getNonBond_GridFF_Bspline.arg 10");      // 10
+        err |= _useArg(grid_n);                   OCL_checkError(err, "setup_getNonBond_GridFF_Bspline.arg 11");      // 11
+        err |= _useArg(grid_invStep);             OCL_checkError(err, "setup_getNonBond_GridFF_Bspline.arg 12");      // 12
+        err |= _useArg(grid_shift0_p0);           OCL_checkError(err, "setup_getNonBond_GridFF_Bspline.arg 13");      // 13
+        //err |= useArgBuff(ibuff_pbcshifts);       OCL_checkError(err, "setup_getNonBond_GridFF_Bspline.arg 14");      // 14
         OCL_checkError(err, "setup_getNonBond_GridFF_Bspline_UFF");
         return task;
     }
@@ -501,15 +504,15 @@ public:
         // Pack dimensions (natoms, nnode, 0, nMaxSysNeighs)
         nDOFs.x = natoms; nDOFs.y = nNode; nDOFs.z = 0; nDOFs.w = 0;
         int err=0;
-        err |= _useArg   ( nDOFs        ); // 0
-        err |= useArgBuff( ibuff_apos   ); // 1 positions
-        err |= useArgBuff( ibuff_avel   ); // 2 velocities
-        err |= useArgBuff( ibuff_fapos  ); // 3 forces (aforce)
-        err |= useArgBuff( ibuff_cvf    ); // 4 cvf accumulators
-        err |= useArgBuff( ibuff_constr ); // 5 constraints target
-        err |= useArgBuff( ibuff_constrK); // 6 constraint stiffness
-        err |= useArgBuff( ibuff_MDpars ); // 7 MD params per system
-        err |= useArgBuff( ibuff_TDrive ); // 8 thermal driving per system
+        err |= _useArg   ( nDOFs        ); OCL_checkError(err, "setup_updateAtomsMMFFf4.arg 0"); // 0
+        err |= useArgBuff( ibuff_apos   ); OCL_checkError(err, "setup_updateAtomsMMFFf4.arg 1"); // 1 positions
+        err |= useArgBuff( ibuff_avel   ); OCL_checkError(err, "setup_updateAtomsMMFFf4.arg 2"); // 2 velocities
+        err |= useArgBuff( ibuff_fapos  ); OCL_checkError(err, "setup_updateAtomsMMFFf4.arg 3"); // 3 forces (aforce)
+        err |= useArgBuff( ibuff_cvf    ); OCL_checkError(err, "setup_updateAtomsMMFFf4.arg 4"); // 4 cvf accumulators
+        err |= useArgBuff( ibuff_constr ); OCL_checkError(err, "setup_updateAtomsMMFFf4.arg 5"); // 5 constraints target
+        err |= useArgBuff( ibuff_constrK); OCL_checkError(err, "setup_updateAtomsMMFFf4.arg 6"); // 6 constraint stiffness
+        err |= useArgBuff( ibuff_MDpars ); OCL_checkError(err, "setup_updateAtomsMMFFf4.arg 7"); // 7 MD params per system
+        err |= useArgBuff( ibuff_TDrive ); OCL_checkError(err, "setup_updateAtomsMMFFf4.arg 8"); // 8 thermal driving per system
         OCL_checkError(err, "OCL_UFF::setup_updateAtomsMMFFf4");
         return task_updateAtoms;
     }
