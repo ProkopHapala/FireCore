@@ -11,7 +11,7 @@ GameObject:
   - component: {fileID: 8130792092147637726}
   - component: {fileID: 310747785928177459}
   - component: {fileID: 800122172356559835}
-  m_Layer: 0
+  m_Layer: 5
   m_Name: object
   m_TagString: Untagged
   m_Icon: {fileID: 0}
@@ -150,7 +150,7 @@ GameObject:
   - component: {fileID: 4875424484175619964}
   - component: {fileID: 4649084785839854960}
   - component: {fileID: 6786816142131426858}
-  m_Layer: 0
+  m_Layer: 5
   m_Name: button
   m_TagString: Untagged
   m_Icon: {fileID: 0}
@@ -294,7 +294,7 @@ GameObject:
   - component: {fileID: 8047875396312983126}
   - component: {fileID: 3060344541881600663}
   - component: {fileID: 2776398450527359061}
-  m_Layer: 0
+  m_Layer: 5
   m_Name: position
   m_TagString: Untagged
   m_Icon: {fileID: 0}
@@ -429,13 +429,14 @@ GameObject:
   m_Component:
   - component: {fileID: 2645433053575072886}
   - component: {fileID: 7655025545995712279}
-  m_Layer: 0
+  - component: {fileID: 818546797907676687}
+  m_Layer: 5
   m_Name: InfoBox_A
   m_TagString: InfoBox
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
-  m_IsActive: 0
+  m_IsActive: 1
 --- !u!224 &2645433053575072886
 RectTransform:
   m_ObjectHideFlags: 0
@@ -475,3 +476,24 @@ MonoBehaviour:
   posText: {fileID: 2776398450527359061}
   sizeText: {fileID: 0}
   inputFields: {fileID: 0}
+  IsFixed: 0
+--- !u!114 &818546797907676687
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 8955209301228641717}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 306cc8c2b49d7114eaa3623786fc2126, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  m_IgnoreLayout: 0
+  m_MinWidth: -1
+  m_MinHeight: -1
+  m_PreferredWidth: 100
+  m_PreferredHeight: 100
+  m_FlexibleWidth: -1
+  m_FlexibleHeight: -1
+  m_LayoutPriority: 10

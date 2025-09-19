@@ -1,3 +1,4 @@
+using System;
 using NUnit.Framework;
 using TMPro;
 using Unity.VisualScripting;
@@ -98,5 +99,11 @@ public class Atom : MonoBehaviour, IParticle
     public override string ToString()
     {
         return $"Atom: (id: {_id}, pos: {_position}, style: {Style})";
+    }
+
+    public static void Clear()
+    {
+        atomCount = 0;
+        GameController.main.atoms = Array.Empty<Atom>();
     }
 }

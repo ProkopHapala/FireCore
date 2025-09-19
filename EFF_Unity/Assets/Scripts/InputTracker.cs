@@ -1,6 +1,7 @@
 using TMPro;
 using UnityEngine;
 using UnityEngine.InputSystem;
+using UnityEngine.SceneManagement;
 using UnityEngine.UIElements;
 
 public class InputTracker : MonoBehaviour
@@ -42,6 +43,13 @@ public class InputTracker : MonoBehaviour
 
         if(Input.GetKeyDown(KeyCode.H)) {
             GameController.main.ToggleKeybindList();
+        }
+
+        if (Input.GetKeyDown(KeyCode.P))
+        {
+            Atom.Clear();
+            Electron.Clear();
+            SceneManager.LoadScene(SceneManager.GetActiveScene().name);
         }
     }
 

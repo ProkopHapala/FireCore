@@ -137,6 +137,10 @@ PrefabInstance:
       value: 0.4
       objectReference: {fileID: 0}
     - target: {fileID: 787815935912233138, guid: 6e7bd63cc3461e7ed854bf1a33a27287, type: 3}
+      propertyPath: InitialModule.maxNumParticles
+      value: 50
+      objectReference: {fileID: 0}
+    - target: {fileID: 787815935912233138, guid: 6e7bd63cc3461e7ed854bf1a33a27287, type: 3}
       propertyPath: InitialModule.startSize.scalar
       value: 0.8
       objectReference: {fileID: 0}

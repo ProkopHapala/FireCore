@@ -1,4 +1,6 @@
 // using System.Numerics;
+
+using System;
 using System.Drawing;
 using System.Threading;
 using UnityEngine;
@@ -11,6 +13,8 @@ public class Electron : MonoBehaviour, IParticle
     [SerializeField] private ParticleSystem fogPS;
 
     private Outline outline;
+    
+    private static int electronCount = 0;
   
     //public bool UseFancyRendering {get; private set;} = true;
     public int Spin {get; set;}
@@ -66,8 +70,10 @@ public class Electron : MonoBehaviour, IParticle
         else {
             inst = Instantiate(GameController.main.electronPrefabMinusSpin, Vector3.zero, Quaternion.identity).GetComponent<Electron>();
         }
-
+        
+        inst.Id = electronCount++;
         inst.Spin = spin;
+        inst.Style = RenderingStyle.FOG_AND_POINT;
         return inst;
     }
 
@@ -90,5 +96,11 @@ public class Electron : MonoBehaviour, IParticle
     public override string ToString()
     {
         return $"Electron: (id: {_id}, pos: {_position}, size: {_size}, style: {Style})";
+    }
+    
+    public static void Clear()
+    {
+        electronCount = 0;
+        GameController.main.atoms = Array.Empty<Atom>();
     }
 }

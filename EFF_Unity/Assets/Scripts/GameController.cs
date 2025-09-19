@@ -94,23 +94,35 @@ public static extern void cleanupInitData(IntPtr data);
         Marshal.Copy(positionsPtr, rawPositions, 0, size);
         
         
-        // Convert to Vector3 array
-        Vector3[] positions = new Vector3[(size - electronCount) / 3];
+        // BUG: This should be (atomCount + electronCount), not (size - electronCount) / 3
+        Vector3[] positions = new Vector3[atomCount + electronCount];
         float[] sizes = new float[electronCount];
-        for (int i = 0; i < positions.Length; i++)
+        
+        int idx = 0;
+        // First, extract electron positions
+        for (int i = 0; i < electronCount; i++)
         {
             positions[i] = new Vector3(
-                rawPositions[i * 3],
-                rawPositions[i * 3 + 1],
-                rawPositions[i * 3 + 2]
+                rawPositions[idx++],
+                rawPositions[idx++],
+                rawPositions[idx++]
             );
-            //UnityEngine.Debug.Log(positions[i]);
-        }
-        for (int i = 0; i < electronCount; i++) {
-            sizes[i] = rawPositions[i + (positions.Length * 3)];
-            //UnityEngine.Debug.Log(sizes[i]);
         }
         
+        // Then extract atom positions
+        for (int i = 0; i < atomCount; i++)
+        {
+            positions[electronCount + i] = new Vector3(
+                rawPositions[idx++],
+                rawPositions[idx++],
+                rawPositions[idx++]
+            );
+        }
+        
+        // Finally extract electron sizes
+        for (int i = 0; i < electronCount; i++) {
+            sizes[i] = rawPositions[idx++];
+        }
         
         // Clean up native memory
         cleanupPositions(positionsPtr);
@@ -177,7 +189,7 @@ public static extern void cleanupInitData(IntPtr data);
         for (int i = 0; i < electronCount; i++) {
             var info = Instantiate(infoBoxPrefab_e, infoBoxAnchor.transform);
             info.GetComponent<InfoBox>().SetConnector(i, ObjectType.ELECTRON);
-            info.GetComponent<RectTransform>().anchoredPosition = new Vector2(340 * column, -63 * row);
+            //info.GetComponent<RectTransform>().anchoredPosition = new Vector2(340, -63 * row);
     
             row++;
             if(63*(row + 2) > Screen.height) {
@@ -190,7 +202,7 @@ public static extern void cleanupInitData(IntPtr data);
         for (int i = 0; i < atomCount; i++) {
             var info = Instantiate(infoBoxPrefab_a, infoBoxAnchor.transform);
             info.GetComponent<InfoBox>().SetConnector(i, ObjectType.ATOM);
-            info.GetComponent<RectTransform>().anchoredPosition = new Vector2(340 * column, (-50 * (row - offsetRows)) + (-63 * offsetRows));
+            //info.GetComponent<RectTransform>().anchoredPosition = new Vector2(340 * column, (-50 * (row - offsetRows)) + (-63 * offsetRows));
             
             row++;
             if(63*(row + 2) > Screen.height) {
@@ -235,25 +247,16 @@ public static extern void cleanupInitData(IntPtr data);
         positions = data.positions;
         sizes = data.sizes;
 
-        // for (int i = 0; i < atomCount + electronCount; i++) {
-        //     GetParticle(i).Position = positions[i];
-        //     if(i < electronCount){
-        //         GetParticle(i).GetComponent<Electron>().SetSize(sizes[i]);
-        //         //UnityEngine.Debug.Log(sizes[i]);
-        //     }
-        //     //UnityEngine.Debug.Log(positions[i].x + " " + positions[i].y + " " + positions[i].z);
-
-        // }
-
-        for (int i = 0; i < atomCount; i++) {
-            // Debug.Log("{" + string.Join(" ", atoms.ConvertTo<string[]>()) + "}");
-            // Debug.Log("length: " + atoms.Count() + ", na: " + atomCount);
-            //Array.ForEach(atoms, a => Debug.Log(a.ToString()));
-            atoms[i].Position = positions[i];
-        }
+        // Now the positions array contains electrons first (indices 0 to electronCount-1)
+        // then atoms (indices electronCount to electronCount+atomCount-1)
+        
         for (int i = 0; i < electronCount; i++) {
-            electrons[i].Position = positions[i];
+            electrons[i].Position = positions[i]; // Electrons are at indices 0 to electronCount-1
             electrons[i].Size = sizes[i];
+        }
+        
+        for (int i = 0; i < atomCount; i++) {
+            atoms[i].Position = positions[electronCount + i]; // Atoms are at indices electronCount onwards
         }
     }
 
