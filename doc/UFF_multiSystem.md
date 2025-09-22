@@ -360,3 +360,125 @@ The fix follows a **context-aware pattern** that:
 4. **Preserves existing functionality** for MMFF simulations
 
 This systematic approach ensures robust multi-system UFF simulations with GridFF substrate interactions while maintaining backward compatibility with existing MMFF functionality.
+
+## Session 5: Debugging Non-Bonded Force Differences - Analysis of NaN Issues and Buffer Initialization Problems
+
+**Problem Identified:**
+- Force differences between CPU and GPU implementations persist despite successful GridFF context fix
+- Debug output reveals NaN values in GPU atom positions and REQ parameters, indicating buffer initialization issues
+- The `getNonBond` kernel debug prints show inconsistent data patterns
+
+**Key Findings from Debug Output Analysis:**
+
+### 1. Buffer Initialization Issues (NaN Values)
+The debug output shows clear evidence of uninitialized or corrupted buffer data:
+
+```
+GPU[is:19,ia:1] p( 0.000, 0.000, 0.000, 0.000) REQ( 0.000, 0.000, 0.000,-nan)
+GPU[is:20,ia:0] p( 0.000, 0.000, 0.000, 0.000) REQ( 0.000,-nan,-nan,-nan)
+GPU[is:21]   lvec( 0.000, 0.000, 0.000)( 0.000, 0.000, 0.000)( 0.000,  -nan,  -nan)
+```
+
+**Root Cause Analysis:**
+- The GPU kernel is accessing memory beyond the allocated bounds for the actual systems
+- Only systems 0 and 1 contain valid data (nSystems=2), but the kernel is iterating over systems 0-31 (32 work items)
+- This suggests incorrect NDRange configuration or buffer indexing
+
+### 2. Valid Non-Bonded Interaction Data
+For the working systems (0 and 1), the pairwise interactions show reasonable values:
+
+```
+GPU_NB[0,1] dp(-1.148546e+00, 7.998695e-01,-2.148038e-01) r  1.416012e+00 REQi( 1.925500e+00, 6.747764e-02, 2.919000e-01) REQj( 1.750000e+00, 5.100830e-02,-2.548000e-01)
+GPU_NB[0,2] dp( 8.484654e-01, 7.745953e-01,-1.217823e-01) r  1.155302e+00 REQi( 1.925500e+00, 6.747764e-02, 2.919000e-01) REQj( 1.750000e+00, 5.100830e-02,-4.828000e-01)
+```
+
+**Observation:** The pairwise distances and REQ parameters look correct for the actual molecular system.
+
+### 3. Force Difference Analysis
+The force differences between CPU and GPU are significant but consistent:
+
+- **System 0**: max|ΔF| = 3.262e-01
+- **System 1**: max|ΔF| = 2.414e-01
+
+**Pattern Analysis:**
+- The differences are systematic, not random
+- Both systems show similar magnitude of differences
+- This suggests a consistent algorithmic difference rather than random memory corruption
+
+### 4. Missing CPU Debug Prints
+**Critical Finding:** The debug output shows only GPU debug prints. The CPU implementation in `evalLJQs_atom_omp` from [`NBFF.h`](cpp/common/molecular/NBFF.h) is not producing matching debug output, making direct comparison impossible.
+
+**Root Cause:** The CPU debug prints were not implemented in the `evalLJQs_atom_omp` function as planned.
+
+### 5. NDRange Configuration Issue
+The debug output shows the kernel iterating over 32 systems (is:0 to is:31) when only 2 systems are actually allocated:
+
+```
+GPU::getNonBond() natoms,nnode,nvec(5,0,5) nS,nG,nL(2,32,32)
+```
+
+**Problem:** The global work size is set to 32 (nG=32) but only 2 systems exist. This causes the kernel to access invalid memory for systems 2-31.
+
+## Systematic Diagnosis (5-7 Possible Sources)
+
+### Possible Sources of Force Differences:
+1. **Buffer Initialization Issues** - NaN values in unused system slots ✓ (Confirmed)
+2. **NDRange Configuration Error** - Kernel iterating over non-existent systems ✓ (Confirmed)
+3. **Missing CPU Debug Implementation** - No CPU-side debug prints for comparison ✓ (Confirmed)
+4. **Algorithmic Differences** - Subtle differences in force calculation between CPU and GPU
+5. **Precision Differences** - Single vs double precision arithmetic effects
+6. **Neighbor List Differences** - Different neighbor list construction between CPU and GPU
+7. **Boundary Condition Handling** - Different PBC implementation
+
+### Most Likely Sources (Distilled to 1-2):
+1. **Primary**: NDRange Configuration Error - Kernel accessing invalid memory beyond allocated systems
+2. **Secondary**: Missing CPU Debug Implementation - Cannot perform line-by-line comparison without CPU debug output
+
+## Validation Approach
+
+### Current Status:
+- ✅ GPU debug prints are working and showing valid data for actual systems
+- ❌ CPU debug prints are missing - critical for comparison
+- ❌ NDRange configuration incorrect - causing NaN values
+- ❌ Force differences persist but cannot be diagnosed without CPU comparison
+
+### Next Steps Required:
+
+#### Immediate Actions (Tomorrow):
+1. **Implement CPU Debug Prints** in `evalLJQs_atom_omp` function in [`NBFF.h`](cpp/common/molecular/NBFF.h)
+2. **Fix NDRange Configuration** to match actual number of systems (nS=2, not nG=32)
+3. **Run Comparison Test** with both CPU and GPU debug prints enabled
+
+#### Diagnostic Actions:
+4. **Compare Line-by-Line** the CPU and GPU pairwise force calculations
+5. **Identify Algorithmic Differences** in non-bonded force implementation
+6. **Fix Force Calculation Discrepancies** once root cause is identified
+
+## Critical Notes for Tomorrow's Work
+
+### 1. CPU Debug Implementation Priority
+**MUST IMPLEMENT** matching debug prints in the CPU `evalLJQs_atom_omp` function to enable proper comparison. Without this, we cannot diagnose the force differences.
+
+### 2. NDRange Fix
+The kernel launch configuration must be corrected:
+- Current: `nS=2, nG=32, nL=32` (incorrect - iterates over 32 systems)
+- Should be: Properly configured to only process the 2 allocated systems
+
+### 3. Buffer Bounds Checking
+Add bounds checking in the GPU kernel to prevent accessing systems beyond `nSystems`.
+
+## Outlook
+
+The current debugging session has successfully:
+- ✅ Identified the GridFF context mismatch issue and fixed it
+- ✅ Enabled GPU debug prints for pairwise interactions
+- ✅ Confirmed valid data for actual molecular systems
+- ✅ Identified specific technical issues (NaN values, missing CPU debug)
+
+**Remaining Work:**
+- Implement CPU debug prints for proper comparison
+- Fix NDRange configuration to prevent buffer overruns
+- Perform detailed CPU vs GPU line-by-line comparison
+- Identify and fix the root cause of force differences
+
+The systematic approach has revealed that the force differences are likely due to algorithmic implementation differences rather than memory corruption, but definitive diagnosis requires the missing CPU debug implementation.
