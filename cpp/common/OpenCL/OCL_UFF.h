@@ -23,7 +23,8 @@ public:
     int nAngles     = 0;
     int nDihedrals  = 0;
     int nInversions = 0;
-    int nPBC        = 0;
+    int  npbc       = 0;
+    int4 nPBC       = {0,0,0,0};
     int nAtomsTot   = 0;
     int nA2F        = 0;
 
@@ -96,6 +97,10 @@ public:
     Quat4f grid_shift0_p0;
     Quat4f grid_invStep;
     float4 GFFparams{1.0, 1.5, 0., 0.}; // (Rdamp, alphaMorse, 0, 0)
+    int ibuff_atoms_surf = -1;
+    int ibuff_REQs_surf  = -1;
+    int natom_surf=0;
+    cl_Mat3 cl_grid_lvec;
 
     // --- Common MD/update state (needed for atom updates on GPU)
     int4   nDOFs{0,0,0,0};   // (natoms, nnode, unused, nMaxSysNeighs)
@@ -122,9 +127,52 @@ public:
     OCLtask* task_clear_fint    = nullptr;
     OCLtask* task_NBFF = nullptr;
     OCLtask* task_NBFF_Grid_Bspline = nullptr;
+    OCLtask* task_SurfAtoms   = nullptr;
     bool bKernelPrepared = false;
 
     // ====================== Functions
+
+    void surf2ocl( const GridShape& grid, Vec3i nPBC_, int na=0, float4* atoms=0, float4* REQs=0 ){
+        int err=0;
+        if(ibuff_atoms_surf<0) ibuff_atoms_surf = newBuffer( "atoms_surf", na, sizeof(float4), 0, CL_MEM_READ_ONLY );
+        if(ibuff_REQs_surf <0) ibuff_REQs_surf  = newBuffer( "REQs_surf",  na, sizeof(float4), 0, CL_MEM_READ_ONLY );
+        if(atoms){ err |= upload( ibuff_atoms_surf, atoms, na ); OCL_checkError(err, "makeGridFF().upload(atoms)" ); natom_surf = na; }
+        if(REQs ){ err |= upload( ibuff_REQs_surf , REQs , na ); OCL_checkError(err, "makeGridFF().upload(REQs )" ); }
+        OCL_checkError(err, "surf2ocl()" );
+    }
+
+    OCLtask* getSurfMorse(  Vec3i nPBC_, int na=0, float4* atoms=0, float4* REQs=0, int na_s=0, float4* atoms_s=0, float4* REQs_s=0,  bool bRun=true, OCLtask* task=0 ){
+        v2i4( nPBC_, nPBC );
+        int err=0;
+        err |= finishRaw();       OCL_checkError(err, "getSurfMorse().imgAlloc" );
+        nDOFs.x = nAtoms;
+        nDOFs.y = 0; // nnode is 0 for UFF
+        nDOFs.z = natom_surf;
+        if(task==0) task = getTask("getSurfMorse");
+        int nloc  = 32;
+        task->local.x = nloc;
+        task->global.x = nAtoms + nloc-(nAtoms%nloc);
+        task->local.y = 1;
+        task->global.y = nSystems;
+        useKernel( task->ikernel );
+
+        err |= _useArg   ( nDOFs );
+        err |= useArgBuff( ibuff_apos      );
+        err |= useArgBuff( ibuff_REQs       );
+        err |= useArgBuff( ibuff_fapos    );
+        err |= useArgBuff( ibuff_atoms_surf );
+        err |= useArgBuff( ibuff_REQs_surf  );
+        err |= _useArg( nPBC        );
+        err |= _useArg( cl_grid_lvec    );
+        err |= _useArg( grid_shift0     );
+        err |= _useArg( GFFparams       );
+        OCL_checkError(err, "getSurfMorse().setup");
+        if(bRun){
+            err |= task->enque_raw(); OCL_checkError(err, "getSurfMorse().enque"  );
+            err |= finishRaw();       OCL_checkError(err, "getSurfMorse().finish" );
+        }
+        return task;
+    }
 
     void makeKernels(const char* cl_src_dir) {
         char srcpath[1024];
@@ -143,6 +191,7 @@ public:
         newTask("updateAtomsMMFFf4",      program, 2, (size_t4){0,0,0,0}, (size_t4){32,1,1,1} );
         newTask("getNonBond",             program, 2, (size_t4){0,0,0,0}, (size_t4){32,1,1,1});
         newTask("getNonBond_GridFF_Bspline", program, 2, (size_t4){0,0,0,0}, (size_t4){32,1,1,1});
+        newTask("getSurfMorse",           program, 2, (size_t4){0,0,0,0}, (size_t4){32,1,1,1});
         bKernelPrepared = false;
     }
 
@@ -154,7 +203,8 @@ public:
         nAngles     = nAngles_;
         nDihedrals  = nDihedrals_;
         nInversions = nInversions_;
-        nPBC        = nPBC_;
+        nPBC.x      = nPBC_;
+        npbc = (nPBC.x*2+1)*(nPBC.y*2+1)*(nPBC.z*2+1);
         nA2F        = nA2F_;
         nAtomsTot   = nSystems * nAtoms;
 
@@ -163,7 +213,7 @@ public:
 
         // Debug summary of counts
         printf("OCL_UFF::realloc counts: nSystems=%d nAtoms=%d nBonds=%d nAngles=%d nDihedrals=%d nInversions=%d nPBC=%d nA2F=%d nAtomsTot=%d nf_per_system=%d\n",
-               nSystems, nAtoms, nBonds, nAngles, nDihedrals, nInversions, nPBC, nA2F, nAtomsTot, nf_per_system);
+               nSystems, nAtoms, nBonds, nAngles, nDihedrals, nInversions, npbc, nA2F, nAtomsTot, nf_per_system);
 
         // Safe sizes to avoid zero-sized buffer creation (CL_INVALID_BUFFER_SIZE)
         auto safeN = [](int n){ return (n>0)? n: 1; };
@@ -200,7 +250,7 @@ public:
         ibuff_a2f_indices = newBuffer("a2f_indices", safeN(nA2FTot),              sizeof(cl_int),    0, CL_MEM_READ_ONLY);
 
         // Use minimum size of 1 for buffers that could be 0-sized
-        int nPBC_safe = (nPBC > 0) ? nPBC : 1;
+        int nPBC_safe = (npbc > 0) ? npbc : 1;
         ibuff_pbcshifts   = newBuffer("pbcshifts",   nSystems * nPBC_safe,        sizeof(cl_float4), 0, CL_MEM_READ_ONLY);
         ibuff_lvecs       = newBuffer("lvecs",       nSystems,                    sizeof(cl_Mat3),   0, CL_MEM_READ_ONLY);
         ibuff_ilvecs      = newBuffer("ilvecs",      nSystems,                    sizeof(cl_Mat3),   0, CL_MEM_READ_ONLY);
@@ -268,7 +318,7 @@ public:
             useKernel( task_evalBonds->ikernel );
             int err=0;
             err |= useArg   ( nAtoms );                    OCL_checkError(err, "evalBonds.arg1 nAtoms");
-            err |= useArg   ( nPBC );                      OCL_checkError(err, "evalBonds.arg2 nPBC");
+            err |= useArg   ( npbc );                      OCL_checkError(err, "evalBonds.arg2 nPBC");
             err |= useArg   ( i0bon );                     OCL_checkError(err, "evalBonds.arg3 i0bon");
             int bSub = bSubtractNB?1:0;
             err |= useArg   ( bSub );                      OCL_checkError(err, "evalBonds.arg4 bSub");
@@ -315,7 +365,7 @@ public:
             err |= useArgBuff( ibuff_pbcshifts );          OCL_checkError(err, "evalAngles.arg13 pbc_shifts");
             err |= useArgBuff( ibuff_neighs );             OCL_checkError(err, "evalAngles.arg14 neighs");
             err |= useArgBuff( ibuff_neighCell );          OCL_checkError(err, "evalAngles.arg15 neighCell");
-            err |= useArg   ( nPBC );                      OCL_checkError(err, "evalAngles.arg16 nPBC");
+            err |= useArg   ( npbc );                      OCL_checkError(err, "evalAngles.arg16 nPBC");
             err |= useArgBuff( ibuff_fint );               OCL_checkError(err, "evalAngles.arg17 fint");
             if(ibuff_Ea>=0){ err |= useArgBuff( ibuff_Ea ); OCL_checkError(err, "evalAngles.arg18 Ea_contrib"); }
             err |= useArg   ( nf_per_system );             OCL_checkError(err, "evalAngles.arg19 nf_per_system");
@@ -345,7 +395,7 @@ public:
             err |= useArgBuff( ibuff_pbcshifts );          OCL_checkError(err, "evalDihedrals.arg12 pbc_shifts");
             err |= useArgBuff( ibuff_neighs );             OCL_checkError(err, "evalDihedrals.arg13 neighs");
             err |= useArgBuff( ibuff_neighCell );          OCL_checkError(err, "evalDihedrals.arg14 neighCell");
-            err |= useArg   ( nPBC );                      OCL_checkError(err, "evalDihedrals.arg15 nPBC");
+            err |= useArg   ( npbc );                      OCL_checkError(err, "evalDihedrals.arg15 nPBC");
             err |= useArgBuff( ibuff_fint );               OCL_checkError(err, "evalDihedrals.arg16 fint");
             if(ibuff_Ed>=0){ err |= useArgBuff( ibuff_Ed ); OCL_checkError(err, "evalDihedrals.arg17 Ed_contrib"); }
             err |= useArg   ( nf_per_system );             OCL_checkError(err, "evalDihedrals.arg18 nf_per_system");

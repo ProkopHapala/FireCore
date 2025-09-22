@@ -213,3 +213,53 @@ These notes capture the target design for running UFF over `nSystems` replicas i
 - `['dihedrals']` only, compare phi and force components per interaction.
 - `['inversions']` only, compare `w`, `fi..fl` per interaction.
 - Full set `['bonds','angles','dihedrals','inversions']` at `nSystems=10`, `nconf=10`.
+
+## GPU Execution and Initialization Logic for UFF
+
+This section details the initialization process and the runtime logic for evaluating forces on the GPU, especially concerning non-bonded and molecule-substrate interactions.
+
+### Control Flags
+
+The behavior of the GPU execution is controlled by several boolean flags in the `MolWorld_sp3_multi` class:
+
+- `bUFF`: When `true`, the system uses the UFF force field and the `OCL_UFF` OpenCL handler.
+- `bSurfAtoms`: When `true`, enables interactions with a substrate (surface).
+- `bGridFF`: When `true` (and `bSurfAtoms` is also true), the substrate interaction is calculated by interpolating a pre-computed force field grid.
+- `bNonBonded`: When `true`, enables pairwise Lennard-Jones and Coulomb interactions between atoms in the molecule.
+
+### Initialization Flow
+
+The initialization of substrate interactions is designed to be robust, even if the OpenCL context is not immediately available when the substrate is loaded.
+
+1.  **`loadSurf()`**: When a surface is loaded, the `loadSurf` method is called. This triggers the `initGridFF` method.
+2.  **`initGridFF()`**: This method is responsible for loading the grid parameters. Crucially, it checks if the required OpenCL context (`uff_ocl->context`) is available.
+    - **Context Ready**: If the context exists, it immediately calls `surf2ocl_uff()` to prepare and upload the substrate geometry to the GPU.
+    - **Context Not Ready**: If the context is not available (e.g., `loadSurf` is called before `init()`), it sets the `bGridFF_pending` flag to `true` and defers the GPU upload.
+3.  **`completeGridFFInit()`**: This method is called later in the main `init()` function. If `bGridFF_pending` is true, it now calls `surf2ocl_uff()`, completing the deferred initialization.
+
+### Substrate Interaction Modes
+
+When `bSurfAtoms` is enabled, there are two mutually exclusive modes for calculating molecule-substrate interactions, controlled by the `bGridFF` flag:
+
+1.  **GridFF Interpolation Mode (`bGridFF = true`)**
+    - This mode relies on a pre-calculated force field grid stored on disk (e.g., `.lvs`, `.xsf` files).
+    - The `initGridFF` function will attempt to load these files. **For UFF, on-the-fly grid generation is not supported.** If the grid files are not found, the program will print a fatal error and exit.
+    - At runtime, the `run_uff_ocl` function enqueues the `task_NBFF_Grid_Bspline` kernel to calculate forces by interpolating the grid texture.
+
+2.  **Direct Pairwise Mode (`bGridFF = false`)**
+    - In this mode, substrate interactions are calculated directly (on-the-fly) between the molecule's atoms and the substrate's atoms.
+    - The `setup_UFF_ocl` function prepares the `task_SurfAtoms` by calling `uff_ocl->getSurfMorse(...)`.
+    - At runtime, `run_uff_ocl` enqueues the `task_SurfAtoms` kernel to perform the pairwise calculation.
+
+### Runtime Logic in `run_uff_ocl`
+
+The `run_uff_ocl` function has been updated to orchestrate the evaluation of all force components in the correct order:
+
+1.  **Clear Forces**: `task_clear_fapos` is enqueued to zero out force accumulators.
+2.  **Covalent Forces**: `uff_ocl->eval(false)` is called to enqueue the kernels for bonds, angles, dihedrals, and inversions.
+3.  **Non-Covalent Forces**: Based on the control flags, the appropriate non-covalent kernel is enqueued:
+    - If `bSurfAtoms` is true:
+        - If `bGridFF` is true, `task_NBFF_Grid_Bspline` is used.
+        - If `bGridFF` is false, `task_SurfAtoms` is used.
+    - If `bSurfAtoms` is false but `bNonBonded` is true, the standard `task_NBFF` is enqueued for intramolecular non-bonded interactions.
+4.  **Update Positions**: Finally, `task_updateAtoms` is enqueued to update particle positions and velocities based on the total calculated forces.

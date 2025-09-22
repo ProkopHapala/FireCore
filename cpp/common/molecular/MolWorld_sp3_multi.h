@@ -1542,7 +1542,6 @@ virtual void upload_pop( const char* fname ){
     int nmult=gopt.population.size(); 
     int npara=paralel_size(); if( nmult!=npara ){ printf("ERROR in GlobalOptimizer::lattice_scan_1d_multi(): (imax-imin)=(%i) != solver.paralel_size(%i) => Exit() \n", nmult, npara ); exit(0); }
     gopt.upload_multi(nmult,0, true, true );
-
     // //int initMode=1;
     // int initMode = 0;
     // int nstesp   = 40;
@@ -1563,7 +1562,6 @@ virtual void optimizeLattice_1d( int n1, int n2, Mat3d dlvec ){
     // gopt.tolerance = 0.01;
     ///Mat3d dlvec =  Mat3d{   0.2,0.0,0.0,    0.0,0.0,0.0,    0.0,0.0,0.0  };
     gopt.lattice_scan_2d_multi( n1, dlvec, initMode, "lattice_scan_2d_multi.xyz" );
-    
 }
 
 int saveSysXYZ( int isys, const char* fname, const char* comment="#comment", bool bNodeOnly=false, const char* mode="w", Vec3i nPBC=Vec3i{1,1,1} ){ 
@@ -2765,11 +2763,12 @@ bool evalCheckGridFF_ocl( int imin=0, int imax=1, bool bExit=true, bool bPrint=t
 
 void surf2ocl( Vec3i nPBC ){
     int err=0;
-    printf( " MolWorld_sp3_multi::surf2ocl() gridFF.natoms=%i nPBC(%i,%i,%i)\n", gridFF.natoms, nPBC.x,nPBC.y,nPBC.z );
+    printf( "MolWorld_sp3_multi::surf2ocl() gridFF.natoms=%i nPBC(%i,%i,%i)\n", gridFF.natoms, nPBC.x,nPBC.y,nPBC.z );
     // Debug: Check if OpenCL context is initialized
-    printf( "DEBUG: OCL context = %p, commands = %p\n", (void*)ocl.context, (void*)ocl.commands );
+    printf( "DEBUG surf2ocl: OCL context = %p, commands = %p\n", (void*)ocl.context, (void*)ocl.commands );
     if(ocl.context == 0){
-        printf( "ERROR: OpenCL context not initialized! This will cause surf2ocl to fail.\n" );
+        printf( "ERROR in MolWorld_sp3_multi::surf2ocl(): OpenCL context not initialized! This will cause surf2ocl to fail. =>exit()\n" );
+        exit(0);
     }
     //long T0=getCPUticks();
     Quat4f* atoms_surf = new Quat4f[gridFF.natoms];
@@ -2789,6 +2788,33 @@ void surf2ocl( Vec3i nPBC ){
     bDONE_surf2ocl = true;
 }
 
+void surf2ocl_uff( Vec3i nPBC ){
+    int err=0;
+    printf( "MolWorld_sp3_multi::surf2ocl_uff() gridFF.natoms=%i nPBC(%i,%i,%i)\n", gridFF.natoms, nPBC.x,nPBC.y,nPBC.z );
+    // Debug: Check if OpenCL context is initialized
+    printf( "DEBUG surf2ocl_uff: OCL context = %p, commands = %p\n", (void*)uff_ocl->context, (void*)uff_ocl->commands );
+    if(uff_ocl->context == 0){
+        printf( "ERROR in MolWorld_sp3_multi::surf2ocl_uff(): OpenCL context not initialized! This will cause surf2ocl_uff to fail. =>exit()\n" );
+        exit(0);
+    }
+    //long T0=getCPUticks();
+    Quat4f* atoms_surf = new Quat4f[gridFF.natoms];
+    Quat4f* REQs_surf  = new Quat4f[gridFF.natoms];
+    pack( gridFF.natoms, gridFF.apos, atoms_surf, sq(gridFF.Rdamp) );
+    pack( gridFF.natoms, gridFF.REQs, REQs_surf                     );   // ToDo: H-bonds should be here
+    uff_ocl->GFFparams.x = gridFF.Rdamp;
+    uff_ocl->GFFparams.y = gridFF.alphaMorse;
+    //v2f4( gridFF.grid.pos0, ocl.grid_p0 );
+    uff_ocl->grid_p0.f     = (Vec3f)gridFF.grid.pos0;
+    uff_ocl->grid_shift0.f = (Vec3f)gridFF.shift0;
+    //printf( "grid_p0(%g,%g,%g) grid_shift0(%g,%g,%g)\n", ocl.grid_p0.x,ocl.grid_p0.y,ocl.grid_p0.z,    ocl.grid_shift0.x,ocl.grid_shift0.y,ocl.grid_shift0.z  );
+    //exit(0);
+    uff_ocl->surf2ocl(  gridFF.grid, nPBC, gridFF.natoms, (float4*)atoms_surf, (float4*)REQs_surf );
+    delete [] atoms_surf;
+    delete [] REQs_surf;
+    bDONE_surf2ocl = true;
+}
+
 void completeGridFFInit(){
     if(!bGridFF_pending) return;
     
@@ -2798,8 +2824,12 @@ void completeGridFFInit(){
     printf("Initializing GridFF with name: %s\n", gridFF_name);
     initGridFF(gridFF_name, gridFF_z0, gridFF_cel0, gridFF_bSymetrize);
     
-    // Now call surf2ocl with the properly initialized GridFF
-    surf2ocl(gridFF.nPBC);
+    // Now call the appropriate surf2ocl with the properly initialized GridFF
+    if(bUFF){
+        surf2ocl_uff(gridFF.nPBC);
+    }else{
+        surf2ocl(gridFF.nPBC);
+    }
     
     bGridFF_pending = false;
 }
@@ -2858,12 +2888,22 @@ virtual void initGridFF( const char * name, double z0=NAN, Vec3d cel0={-0.5,-0.5
     MolWorld_sp3::initGridFF(name, z0, cel0, bSymetrize, bAutoNPBC, bCheckEval, bUseEwald, bFit, bRefine);
     
     // Check if OpenCL is initialized before calling surf2ocl
-    if(ocl.context == 0){
-        printf("WARNING: OpenCL context not initialized yet. Deferring surf2ocl call.\n");
-        bGridFF_pending = true;
-    } else {
-        // OpenCL is initialized, call surf2ocl immediately
-        surf2ocl(gridFF.nPBC);
+    if(bUFF){
+        if(uff_ocl == 0 || uff_ocl->context == 0){
+            printf("WARNING: MolWorld_sp3_multi::initGridFF() UFF OpenCL context not initialized yet. Deferring surf2ocl call.\n");
+            bGridFF_pending = true;
+        } else {
+            // OpenCL is initialized, call surf2ocl immediately
+            surf2ocl_uff(gridFF.nPBC);
+        }
+    }else{
+        if(ocl.context == 0){
+            printf("WARNING: MolWorld_sp3_multi::initGridFF() MMFF OpenCL context not initialized yet. Deferring surf2ocl call.\n");
+            bGridFF_pending = true;
+        } else {
+            // OpenCL is initialized, call surf2ocl immediately
+            surf2ocl(gridFF.nPBC);
+        }
     }
     // if(verbosity>0)printf("MolWorld_sp3_multi::initGridFF(%s,bGrid=%i,z0=%g,cel0={%g,%g,%g})\n",  name, z0, cel0.x,cel0.y,cel0.z  );
     // if(gridFF.grid.n.anyEqual(0)){ printf("ERROR in MolWorld_sp3_multi::initGridFF() zero grid.n(%i,%i,%i) => Exit() \n", gridFF.grid.n.x,gridFF.grid.n.y,gridFF.grid.n.z ); exit(0); };
@@ -2919,8 +2959,6 @@ virtual void initGridFF( const char * name, double z0=NAN, Vec3d cel0={-0.5,-0.5
     //gridFF.shift0 = Vec3d{0.,0.,0.0};
     //if(bCheckEval)gridFF.evalCheck();    // WARRNING:  CHECK FOR gridFF TURNED OFF !!!!!!!!!!!!!!!!!!!!!!!!!
     //return ffgrid;
-
-    surf2ocl(  gridFF.nPBC );
 
     if(bOnGPU){
         bool bSaveDebugXSFs=false;
