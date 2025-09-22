@@ -263,3 +263,100 @@ The `run_uff_ocl` function has been updated to orchestrate the evaluation of all
         - If `bGridFF` is false, `task_SurfAtoms` is used.
     - If `bSurfAtoms` is false but `bNonBonded` is true, the standard `task_NBFF` is enqueued for intramolecular non-bonded interactions.
 4.  **Update Positions**: Finally, `task_updateAtoms` is enqueued to update particle positions and velocities based on the total calculated forces.
+
+### Substrate and GridFF Initialization Issues
+
+A key challenge in the initialization process is ensuring that GridFF data is uploaded to the correct OpenCL context, which depends on the active force field.
+
+- **The Problem**: The `MolWorld_sp3_multi::initGridFF` method, after loading the grid data from a file, proceeds to create and upload the B-spline buffer (`Bspline_PLQf`). The original logic for this was hardcoded to use the `ocl` (MMFF) object. When running a UFF simulation, only the `uff_ocl` object is initialized with a valid OpenCL context. This causes the `ocl.newBuffer()` call to fail with an `ERROR OCLsystem context not set` because it's trying to create a buffer in a context that doesn't exist.
+
+- **The Solution**: The buffer creation and upload logic within `initGridFF` must be made force-field-aware. It needs to check the `bUFF` flag and direct the `newBuffer` and `upload` calls to the appropriate object: `uff_ocl` if `bUFF` is true, and `ocl` otherwise. This ensures the B-spline data is loaded into the active and valid OpenCL context.
+
+## Session 4: GridFF Context Fix - Loading GridFF Data into Correct OpenCL Context
+
+**Problem Identified:**
+- When running UFF simulations with GridFF enabled, the program crashed with "ERROR OCLsystem context not set"
+- The issue was in `MolWorld_sp3_multi::initGridFF()` where GridFF data (Bspline_PLQ) was being loaded into the wrong OpenCL context
+- The code was hardcoded to use `ocl` (MMFF OpenCL context) instead of checking the `bUFF` flag to determine whether to use `ocl` or `uff_ocl`
+
+**Root Cause Analysis:**
+1. **Context Mismatch**: When `bUFF=true`, only `uff_ocl` is initialized with a valid OpenCL context, while `ocl` remains uninitialized
+2. **Hardcoded References**: The GridFF initialization code in the `else` branch (when `bOnGPU=false`) directly referenced `ocl` without checking `bUFF`
+3. **Missing Variables**: `OCL_UFF` class was missing several GridFF-related variables that exist in `OCL_MM`
+
+**Systematic Fix Applied:**
+
+### 1. Added Missing GridFF Variables to OCL_UFF.h
+```cpp
+// Added to OCL_UFF.h to match OCL_MM.h GridFF support
+int itex_BsplinePLQH = -1;
+bool bUseTexture     = false;
+Quat4f grid_step     { 0.f, 0.f, 0.f, 0.f }; // grid cell step
+```
+
+### 2. Fixed Context-Aware GridFF Initialization in MolWorld_sp3_multi.h
+The `initGridFF` method was modified to check `bUFF` flag and use the appropriate OpenCL context:
+
+**Before (Problematic):**
+```cpp
+// Hardcoded to use ocl regardless of bUFF flag
+ocl.grid_step = Quat4f{ (float)gsh.dCell.xx, ... };
+ocl.ibuff_BsplinePLQ = ocl.newBuffer( "BsplinePLQ", ... );
+```
+
+**After (Fixed):**
+```cpp
+// Context-aware: use uff_ocl when bUFF=true, ocl otherwise
+if(bUFF){
+    uff_ocl->grid_step = Quat4f{ (float)gsh.dCell.xx, ... };
+    uff_ocl->ibuff_BsplinePLQ = uff_ocl->newBuffer( "BsplinePLQ", ... );
+}else{
+    ocl.grid_step = Quat4f{ (float)gsh.dCell.xx, ... };
+    ocl.ibuff_BsplinePLQ = ocl.newBuffer( "BsplinePLQ", ... );
+}
+```
+
+### 3. Fixed Texture Usage Check
+The texture usage check was also made context-aware:
+```cpp
+// Before: if(target_ocl->bUseTexture) - Error: OCLsystem has no bUseTexture
+// After: if(bUFF ? uff_ocl->bUseTexture : ocl.bUseTexture)
+```
+
+**Verification:**
+- **Compilation**: Successful compilation confirms all required variables are present
+- **Execution**: Program no longer crashes with "ERROR OCLsystem context not set"
+- **GridFF Initialization**: Successfully creates GridFF buffer: `newBuffer( BsplinePLQ ) ibuff=41 nbyte=5120000`
+- **GPU Execution**: UFF simulations with GridFF now run successfully on GPU
+
+**Key Insight:**
+The fix ensures that GridFF data is always loaded into the **active OpenCL context** corresponding to the current force field (MMFF or UFF), preventing context mismatch errors and enabling proper multi-system UFF simulations with GridFF substrate interactions.
+
+## Summary of the Systematic Solution
+
+### Problem Diagnosis (5-7 Possible Sources)
+1. **OpenCL Context Mismatch** - GridFF loading into wrong context ✓
+2. **Missing Variable Definitions** - OCL_UFF lacked GridFF variables ✓
+3. **Incorrect Buffer Indexing** - Multi-system offsets wrong
+4. **Kernel Configuration Issues** - NDRange setup problems
+5. **Memory Allocation Errors** - Buffer size miscalculations
+6. **Data Upload/Download Issues** - Host-device synchronization
+7. **Force Field Parameter Mismatch** - UFF vs MMFF parameter confusion
+
+### Most Likely Sources (Distilled to 1-2)
+1. **Primary**: OpenCL Context Mismatch - GridFF data loaded into uninitialized `ocl` context when `bUFF=true`
+2. **Secondary**: Missing Variable Definitions - `OCL_UFF` class lacked GridFF-specific variables present in `OCL_MM`
+
+### Validation Approach
+- **Added Debug Logs**: Confirmed context initialization status before GridFF operations
+- **Systematic Testing**: Verified fix by running the exact test case that previously failed
+- **Compilation Checks**: Ensured all required variables were properly defined
+
+### Solution Architecture
+The fix follows a **context-aware pattern** that:
+1. **Checks the active force field** via `bUFF` flag
+2. **Routes operations to the correct OpenCL context** (`uff_ocl` for UFF, `ocl` for MMFF)
+3. **Maintains variable parity** between `OCL_UFF` and `OCL_MM` classes
+4. **Preserves existing functionality** for MMFF simulations
+
+This systematic approach ensures robust multi-system UFF simulations with GridFF substrate interactions while maintaining backward compatibility with existing MMFF functionality.

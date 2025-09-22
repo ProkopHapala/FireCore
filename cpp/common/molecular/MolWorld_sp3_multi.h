@@ -2971,28 +2971,55 @@ virtual void initGridFF( const char * name, double z0=NAN, Vec3d cel0={-0.5,-0.5
     }else{
         gridFF.tryLoad_new( bSymetrize, bFit, bRefine );
         bGridFF   =true; 
-        //  copy to GPU
+        //  copy to GPU - use the correct OpenCL context based on bUFF flag
         DEBUG
         GridShape& gsh = gridFF.grid;
-        ocl.grid_step    = Quat4f{ (float)gsh.dCell.xx, (float)gsh.dCell.yy, (float)gsh.dCell.zz, 0.0 };
-        ocl.grid_invStep.f.set_inv( ocl.grid_step.f );
+        
+        // Select the correct OpenCL object based on bUFF flag
+        OCLsystem* target_ocl = bUFF ? (OCLsystem*)uff_ocl : (OCLsystem*)&ocl;
+        
+        if(bUFF){
+            // For UFF, set grid parameters in uff_ocl
+            uff_ocl->grid_step    = Quat4f{ (float)gsh.dCell.xx, (float)gsh.dCell.yy, (float)gsh.dCell.zz, 0.0 };
+            uff_ocl->grid_invStep.f.set_inv( uff_ocl->grid_step.f );
+        }else{
+            // For MMFF, set grid parameters in ocl
+            ocl.grid_step    = Quat4f{ (float)gsh.dCell.xx, (float)gsh.dCell.yy, (float)gsh.dCell.zz, 0.0 };
+            ocl.grid_invStep.f.set_inv( ocl.grid_step.f );
+        }
+        
         DEBUG
         int nxyz = gridFF.Bspline_to_f4(true);
         DEBUG
-        if(ocl.bUseTexture){
+        if(bUFF ? uff_ocl->bUseTexture : ocl.bUseTexture){
             printf("Uploading B-spline data to 3D Texture (itex_BsplinePLQH).\n");
-            ocl.itex_BsplinePLQH = ocl.newBufferImage3D( "BsplinePLQH_tex",  gsh.n.x, gsh.n.y, gsh.n.z, sizeof(cl_float4), gridFF.Bspline_PLQf, CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR, {CL_RGBA, CL_FLOAT} );
-            DEBUG
-            if(ocl.itex_BsplinePLQH < 0) { printf("Error creating BsplinePLQH_tex texture.\n"); exit(0); }
+            if(bUFF){
+                uff_ocl->itex_BsplinePLQH = uff_ocl->newBufferImage3D( "BsplinePLQH_tex",  gsh.n.x, gsh.n.y, gsh.n.z, sizeof(cl_float4), gridFF.Bspline_PLQf, CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR, {CL_RGBA, CL_FLOAT} );
+                DEBUG
+                if(uff_ocl->itex_BsplinePLQH < 0) { printf("Error creating BsplinePLQH_tex texture.\n"); exit(0); }
+            }else{
+                ocl.itex_BsplinePLQH = ocl.newBufferImage3D( "BsplinePLQH_tex",  gsh.n.x, gsh.n.y, gsh.n.z, sizeof(cl_float4), gridFF.Bspline_PLQf, CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR, {CL_RGBA, CL_FLOAT} );
+                DEBUG
+                if(ocl.itex_BsplinePLQH < 0) { printf("Error creating BsplinePLQH_tex texture.\n"); exit(0); }
+            }
         }else{
-            ocl.ibuff_BsplinePLQ = ocl.newBuffer( "BsplinePLQ", nxyz, sizeof(float4), 0, CL_MEM_READ_ONLY  );
-            err = ocl.upload( ocl.ibuff_BsplinePLQ, gridFF.Bspline_PLQf ); OCL_checkError(err, "MolWorld_sp3_multi::initGridFF().upload(BsplinePLQ)");
+            if(bUFF){
+                uff_ocl->ibuff_BsplinePLQ = uff_ocl->newBuffer( "BsplinePLQ", nxyz, sizeof(float4), 0, CL_MEM_READ_ONLY  );
+                err = uff_ocl->upload( uff_ocl->ibuff_BsplinePLQ, gridFF.Bspline_PLQf ); OCL_checkError(err, "MolWorld_sp3_multi::initGridFF().upload(BsplinePLQ)");
+            }else{
+                ocl.ibuff_BsplinePLQ = ocl.newBuffer( "BsplinePLQ", nxyz, sizeof(float4), 0, CL_MEM_READ_ONLY  );
+                err = ocl.upload( ocl.ibuff_BsplinePLQ, gridFF.Bspline_PLQf ); OCL_checkError(err, "MolWorld_sp3_multi::initGridFF().upload(BsplinePLQ)");
+            }
             { // Debug
                 for(int i=0; i<nxyz; i++){ gridFF.Bspline_PLQf[i]=Quat4fZero; }
-                err = ocl.download( ocl.ibuff_BsplinePLQ, gridFF.Bspline_PLQf);  OCL_checkError(err, "MolWorld_sp3_multi::initGridFF().download(BsplinePLQ)");
+                if(bUFF){
+                    err = uff_ocl->download( uff_ocl->ibuff_BsplinePLQ, gridFF.Bspline_PLQf);  OCL_checkError(err, "MolWorld_sp3_multi::initGridFF().download(BsplinePLQ)");
+                }else{
+                    err = ocl.download( ocl.ibuff_BsplinePLQ, gridFF.Bspline_PLQf);  OCL_checkError(err, "MolWorld_sp3_multi::initGridFF().download(BsplinePLQ)");
+                }
                 Vec3d  min1=Vec3dZero,max1=Vec3dZero;
                 Quat4f min2=Quat4fZero,max2=Quat4fZero;
-                for(int i=0; i<nxyz; i++){ 
+                for(int i=0; i<nxyz; i++){
                     gridFF.Bspline_PLQf[i].update_bounds( min2, max2 );
                     gridFF.Bspline_PLQ [i].update_bounds( min1, max1 );
                 }

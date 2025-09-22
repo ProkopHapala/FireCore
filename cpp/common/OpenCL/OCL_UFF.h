@@ -37,6 +37,7 @@ public:
     bool bSubtractNB     = true; // Subtract 1-2 (bond) non-bonded interactions
     bool bSubtractNB_angle = true; // Subtract 1-3 (angle) non-bonded interactions
     bool bClampNonBonded = true;
+    bool bUseTexture     = false;
 
     // --- OpenCL Buffers (identified by integer index)
     // Particle buffers
@@ -90,12 +91,14 @@ public:
     int ibuff_energies  = -1; // Buffer to store computed energies
 
     // --- GridFF Buffers and Parameters (copied from OCL_MM)
+    int itex_BsplinePLQH = -1;
     int ibuff_BsplinePLQ = -1;
     int4 grid_n;
     Quat4f grid_p0;
     Quat4f grid_shift0;
     Quat4f grid_shift0_p0;
-    Quat4f grid_invStep;
+    Quat4f grid_step     { 0.f, 0.f, 0.f, 0.f }; // grid cell step ( assuming it is orghogonal )
+    Quat4f grid_invStep  { 0.f, 0.f, 0.f, 0.f }; // inverse grid cell step (assuming it is orghogonal)
     float4 GFFparams{1.0, 1.5, 0., 0.}; // (Rdamp, alphaMorse, 0, 0)
     int ibuff_atoms_surf = -1;
     int ibuff_REQs_surf  = -1;
