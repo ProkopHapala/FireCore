@@ -256,7 +256,7 @@ class MMFFparams{ public:
 
     // read and store element types
     int loadElementTypes(const char * fname, bool exitIfFail=true){
-        printf(  "MMFFparams:loadElementTypes() verbosity = %i \n", verbosity );
+        printf(  "MMFFparams:loadElementTypes(fname=%s) verbosity = %i \n", fname, verbosity );
         FILE * pFile = fopen(fname,"r");
         if( pFile == NULL ){
             printf("cannot find %s\n", fname );
@@ -282,6 +282,7 @@ class MMFFparams{ public:
 
     // read and store atom types
     int loadAtomTypes(const char * fname, bool exitIfFail=true){
+        printf(  "MMFFparams:loadAtomTypes(fname=%s) verbosity = %i \n", fname, verbosity );
         FILE * pFile = fopen(fname,"r");
         if( pFile == NULL ){
             printf("cannot find %s\n", fname );

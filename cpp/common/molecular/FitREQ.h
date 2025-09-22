@@ -439,7 +439,7 @@ class FitREQ{ public:
 
     // check pairwise repulsion betwee atoms within one sample
     double EijMax    = 5.0;
-    int nsamp_debug  = 2;
+    int nsamp_debug  = 10;
     int isamp_debug  = 0;
     int iBadFound    = 0; 
     int nBadFoundMax = 10;
@@ -1180,7 +1180,7 @@ void fillTempArrays( const Atoms* atoms, Vec3d* apos, double* Qs  )const{
 //     if(  (fabs(Qs[iX])>1e+10) || (fabs(Qs[iE])>1e+10) ){ printf( "fillTempArrays() j=%i Qs[iX]=%12.3e Qs[iE]=%12.3e Qep=%12.3e \n", j, Qs[iX], Qs[iE], Qep ); exit(0); }
 // #endif
             double lep = Lepairs;
-            if(isamp_debug<1){ printf( "FillTempArrays() isamp %3i [iap=%3i] iE=%3i iX=%3i  t %3i %-8s iDOF=%3i Qep=%12.3e lep=%12.3e \n", isamp_debug, j, iE, iX, ityp, params->atypes[ityp].name,  tt.z, Qep, lep ); }
+            //if(isamp_debug<1){ printf( "FillTempArrays() isamp %3i [iap=%3i] iE=%3i iX=%3i  t %3i %-8s iDOF=%3i Qep=%12.3e lep=%12.3e \n", isamp_debug, j, iE, iX, ityp, params->atypes[ityp].name,  tt.z, Qep, lep ); }
             if( bEpairDistByType ){ typeREQs[atoms->atypes[iE]].w; }
             apos[iE] = apos[iX] + ad->dirs[j] * lep;  // We move the electron pair to proper distance from the atom
             //isEp[iE] = 1;
@@ -1360,14 +1360,18 @@ double evalSampleError( int isamp, double& E ){
         saveDebugXYZ( 0, atoms->natoms, atoms->atypes, atoms->apos, xyz_out, comment );
     }
     double Eref       = atoms->Energy;
-    double dE         = E - Eref;
+    double dE_        = E - Eref;
     double dClamp_dE  = 1.0;
-    if(bSoftClamp) dE = soft_clamp(dE, softClamp_start, softClamp_max, dClamp_dE );
+    double dE = (bSoftClamp) ? soft_clamp(dE_, softClamp_start, softClamp_max, dClamp_dE ) : dE_;
+    ///printf( "evalSampleError() isamp: %3i Emodel: %20.6f Eref: %20.6f bBroadcastFDOFs=%i @sample_fdofs=%p \n", isamp, E, atoms->Energy, bBroadcastFDOFs, sample_fdofs );
     wi*= invWsum;
     double dEw        = 2.0*dE*wi*dClamp_dE; // chain derivatives   d(wi*Delta_E^2)/dE  = 2*wi*Delta_E * (Delta_E/dE)
     double Error      =  dE*dE*wi;
     //if(isamp_debug<nsamp_debug){ printf( "evalSampleError() isamp: %3i Emodel: %20.6f Eref: %20.6f bBroadcastFDOFs=%i @sample_fdofs=%p \n", isamp, E, atoms->Energy, bBroadcastFDOFs, sample_fdofs ); }
-    //if(isamp_debug<nsamp_debug){ printf( "evalSampleError() isamp: %3i  dEw: %+10.4e wi: %+10.4e dE: %+10.4e Emodel: %+10.4e Eref: %+10.4e \n", isamp, dEw, wi, dE, E, atoms->Energy ); }
+    if(isamp_debug<nsamp_debug){ 
+        if( abs(dE_)>1 )
+        printf( "evalSampleError() isamp: %3i  dEw: %+10.4e wi: %+10.4e dE: %+10.4e dE_: %+10.4e Emodel: %+10.4e Eref: %+10.4e \n", isamp, dEw, wi, dE, dE_, E, atoms->Energy ); 
+    }
     double* fDOFs__ = bBroadcastFDOFs ? sample_fdofs + isamp*nDOFs : fDOFs_;   // broadcast fDOFs ?
     for(int k=0; k<nDOFs; k++){ fDOFs__[k]=0; }                                // clean fDOFs
     acumDerivs( atoms->natoms, atoms->atypes, dEw, fREQs, fDOFs_ );            // accumulate fDOFs from fREQs
@@ -1779,7 +1783,10 @@ double evalExampleDerivs_MorseQ_SR_boys( int i0, int ni, int j0, int nj, int*  t
             const bool bEpj = jh>=0;
 
             if( bEpi ){  
-                Eij += getSR2( r, H, REQi.x, dE_dH, dE_dw );
+                if(bEpj) continue; // dummy atoms should not interacti which each other
+                double Edummy = getSR2( r, H, REQi.x, dE_dH, dE_dw );
+                Eij += Edummy;
+                if( isamp_debug<nsamp_debug ){   printf( "evalExampleDerivs_MorseQ_SR_boy  %-8s %-8s r: %10.3e H: %10.3e (Hi: %10.3e Hj: %10.3e ) Eij_dummy : %10.3e\n", params->atypes[ti].name, params->atypes[tj].name, r, H, REQi.w, REQj.w, Edummy );}
                 dE_dH*=-1.0;
                 dEdREQs[i].x += -dE_dw;
             }else if( bEpj ){
@@ -1850,6 +1857,7 @@ double evalExampleDerivs_MorseQ_SR_softclamp( int i0, int ni, int j0, int nj, in
             const bool bEpj = jh>=0;
 
             if( bEpi ){  
+                if(bEpj) continue; // dummy atoms should not interacti which each other
                 Eij += getSR2( r, H, REQi.x, dE_dH, dE_dw );
                 dE_dH*=-1.0;
                 dEdREQs[i].x += -dE_dw;
@@ -2146,7 +2154,8 @@ double evalExampleDerivs_MorseQ_SR( int i0, int ni, int j0, int nj, int*  types,
             const double Q       = Qi     * Qj    ;
             double       H       = REQi.w * REQj.w;     // expected H2<0
             const double sH      = (H<0.0) ? 1.0 : 0.0; // sH=1.0 if H2<0
-            H *= sH;
+            H *= sH;  // This makes it impossible to have repulsive sigma-hole - which is bad for HF-HF
+            
             // --- Electrostatic
             const double r       = dij.norm();
             const double ir      = 1/r;
@@ -2161,7 +2170,10 @@ double evalExampleDerivs_MorseQ_SR( int i0, int ni, int j0, int nj, int*  types,
             const bool bEpj = jh>=0;
             
             if( bEpi ){  
-                Eij += getSR2( r, H, REQi.x, dE_dH, dE_dw );
+                if(bEpj) continue; // dummy atoms should not interacti which each other
+                double Edummy = getSR2( r, H, REQi.x, dE_dH, dE_dw );
+                Eij += Edummy;
+                //if( isamp_debug<nsamp_debug ){   printf( "evalExampleDerivs_MorseQ_SR_boy  %-8s %-8s r: %10.3e H: %10.3e (Hi: %10.3e Hj: %10.3e ) Eij_dummy : %10.3e\n", params->atypes[ti].name, params->atypes[tj].name, r, H, REQi.w, REQj.w, Edummy );}
                 dE_dH*=-1.0;
                 dEdREQs[i].x += -dE_dw;
             }else if( bEpj ){
@@ -2169,6 +2181,7 @@ double evalExampleDerivs_MorseQ_SR( int i0, int ni, int j0, int nj, int*  types,
                 dE_dH*=-1.0;
                 if( bWJ )dEdREQs[j].x += -dE_dw;
             }else{
+                
                 const double e       = exp( -alpha * ( r - R0 ) );
                 const double e2      = e * e;
                 const double e2p     = ( 1.0 + H ) * e2;
@@ -2495,12 +2508,13 @@ double evalFitError(int itr, bool bOMP=true, bool bEvalSamples=true){
         if(bOMP){  Err = evalSamples_omp();   }
         else    {  Err = evalSamples_noOmp(); }
     }
-    if(bPrintBeforReg)printStepDOFinfo( itr, Err, "BEFOR_REG: " );
+    //if(bPrintBeforReg)
+    printStepDOFinfo( itr, Err, "evalFitError() BEFOR_REG: " );
     if(bRegularize){ 
         double Ereg = regularizeDOFs(); 
         if(bAddRegError)Err += Ereg;
     }   
-    if(bPrintAfterReg)printStepDOFinfo( itr, Err, "AFTER_REG: " );
+    if(bPrintAfterReg)printStepDOFinfo( itr, Err, "evalFitError() AFTER_REG: " );
     return Err;
 }
 

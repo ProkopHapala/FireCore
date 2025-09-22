@@ -84,7 +84,8 @@ void setVerbosity( int verbosity_, int idebug_, int PrintDOFs, int PrintfDOFs, i
 // bool  bBroadcastFDOFs = false;    // Should we broadcast fDOFs (each sample to its own chunk of memory) to prevent atomic-write conflicts ?
 // bool  bUdateDOFbounds = true;     // Should we update fDOFbounds after each sample ?
 // bool  bEvalOnlyCorrections = false;  // Split evaluation and optimization to Emodel0 and Ecorrection (where only Ecorrection is updated every iteration)
-void setup( int imodel, int EvalJ, int WriteJ, int CheckRepulsion, int Regularize, int RegCountWeight, int AddRegError, int Epairs, int BroadcastFDOFs, int UdateDOFbounds, int EvalOnlyCorrections, int SaveJustElementXYZ){
+void setup( int imodel, int EvalJ, int WriteJ, int CheckRepulsion, int Regularize, int RegCountWeight, int AddRegError, int Epairs, int BroadcastFDOFs, int UdateDOFbounds, int EvalOnlyCorrections, int SaveJustElementXYZ, int SoftClamp){
+    printf("C++ setup()  SoftClamp %i \n", SoftClamp );
     W.imodel = imodel;
     #define _setbool(name) { if(name>0){W.b##name=true;}else if(name<0){W.b##name=false;} }
     _setbool( EvalJ          );
@@ -98,6 +99,9 @@ void setup( int imodel, int EvalJ, int WriteJ, int CheckRepulsion, int Regulariz
     _setbool( UdateDOFbounds );
     _setbool( EvalOnlyCorrections );
     _setbool( SaveJustElementXYZ );
+    _setbool( SoftClamp );
+    printf( "setup() imodel %i EvalJ %i WriteJ %i CheckRepulsion %i Regularize %i RegCountWeight %i AddRegError %i Epairs %i BroadcastFDOFs %i UdateDOFbounds %i EvalOnlyCorrections %i SaveJustElementXYZ %i SoftClamp %i \n", 
+                     W.imodel, W.bEvalJ, W.bWriteJ, W.bCheckRepulsion, W.bRegularize, W.bRegCountWeight, W.bAddRegError, W.bEpairs, W.bBroadcastFDOFs, W.bUdateDOFbounds, W.bEvalOnlyCorrections, W.bSaveJustElementXYZ, W.bSoftClamp );
     #undef _setbool
 }
 

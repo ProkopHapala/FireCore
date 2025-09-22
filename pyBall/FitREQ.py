@@ -75,11 +75,15 @@ lib.setGlobalParams.restype   =  None
 def setGlobalParams(kMorse=1.6, Lepairs=0.5, EijMax=5.0, softClamp_start=4.0, softClamp_max=6.0):
     return lib.setGlobalParams(kMorse, Lepairs, EijMax, softClamp_start, softClamp_max)
 
-# void setup( int imodel, int EvalJ, int WriteJ, int CheckRepulsion, int Regularize, int AddRegError, int Epairs, int BroadcastFDOFs, int UdateDOFbounds, int EvalOnlyCorrections, int SaveJustElementXYZ){
-lib.setup.argtypes  = [c_int,c_int, c_int, c_int, c_int, c_int, c_int, c_int, c_int, c_int]
+#                   1          2          3               4                 5                 6                  7              8              9                   10                    11                     12                    13
+# void setup( int imodel, int EvalJ, int WriteJ, int CheckRepulsion, int Regularize, int RegCountWeight, int AddRegError, int Epairs, int BroadcastFDOFs, int UdateDOFbounds, int EvalOnlyCorrections, int SaveJustElementXYZ, int SoftClamp){
+#                         1      2      3     4    5       6       7      8       9    10    11     12     13
+lib.setup.argtypes  = [c_int,c_int, c_int, c_int, c_int, c_int, c_int, c_int, c_int, c_int, c_int, c_int, c_int]
 lib.setup.restype   =  None    
-def setup(imodel=1, EvalJ=0, WriteJ=0, CheckRepulsion=0, Regularize=0, AddRegError=0, Epairs=0, BroadcastFDOFs=0, UdateDOFbounds=0, EvalOnlyCorrections=0, SaveJustElementXYZ=0):
-    return lib.setup( imodel,EvalJ, WriteJ, CheckRepulsion, Regularize, AddRegError, Epairs, BroadcastFDOFs, UdateDOFbounds, EvalOnlyCorrections, SaveJustElementXYZ)
+def setup(imodel=1, EvalJ=0, WriteJ=0, CheckRepulsion=0, Regularize=0, RegCountWeight=0,  AddRegError=0, Epairs=0, BroadcastFDOFs=0, UdateDOFbounds=0, EvalOnlyCorrections=0, SaveJustElementXYZ=0, SoftClamp=0):
+    print("py Setup ", SoftClamp )
+    #                   1      2      3          4             5            6           7          8               9                10                   11              12              13
+    return lib.setup( imodel,EvalJ, WriteJ, CheckRepulsion, Regularize, RegCountWeight, AddRegError, Epairs, BroadcastFDOFs, UdateDOFbounds, EvalOnlyCorrections, SaveJustElementXYZ, SoftClamp)
 
 #void setFilter( double EmodelCut, double EmodelCutStart, int iWeightModel, int ListOverRepulsive, int SaveOverRepulsive, int PrintOverRepulsive, int DiscardOverRepulsive, int WeightByEmodel ){
 lib.setFilter.argtypes  = [c_double, c_double, c_int, c_int, c_int, c_int, c_int, c_int]
@@ -1155,23 +1159,23 @@ def extract_min_curves(angles, distances, G, rmax=None):
     return rmin, emin
 
 
-def _save_grid_npz(angles, distances, grid, filepath):
+def save_grid_npz(angles, distances, grid, filepath):
     """Save 2D map to NPZ with keys a, d, g."""
     folder = os.path.dirname(filepath)
     if folder:
         try: os.makedirs(folder, exist_ok=True)
         except Exception: pass
-    print("_save_grid_npz(): saving to", filepath)
+    print("save_grid_npz(): saving to", filepath)
     np.savez_compressed(filepath, a=np.asarray(angles), d=np.asarray(distances), g=np.asarray(grid))
 
 
-def _save_grid_gnuplot(angles, distances, grid, filepath):
+def save_grid_gnuplot(angles, distances, grid, filepath):
     """Save 2D map as gnuplot-friendly triplets: angle distance energy per row. NaNs -> 'nan'."""
     folder = os.path.dirname(filepath)
     if folder:
         try: os.makedirs(folder, exist_ok=True)
         except Exception: pass
-    print("_save_grid_gnuplot(): saving to", filepath)
+    print("save_grid_gnuplot(): saving to", filepath)
     with open(filepath, 'w') as f:
         f.write("# angle  distance  energy\n")
         for j, a in enumerate(angles):
@@ -1184,7 +1188,7 @@ def _save_grid_gnuplot(angles, distances, grid, filepath):
             f.write(f"\n")
 
 
-def _save_min_lines_npz(angles, rmin, emin, filepath):
+def save_min_lines_npz(angles, rmin, emin, filepath):
     folder = os.path.dirname(filepath)
     if folder:
         try: os.makedirs(folder, exist_ok=True)
@@ -1192,7 +1196,7 @@ def _save_min_lines_npz(angles, rmin, emin, filepath):
     np.savez_compressed(filepath, a=np.asarray(angles), r=np.asarray(rmin), e=np.asarray(emin))
 
 
-def _save_min_lines_gnuplot(angles, rmin, emin, filepath):
+def save_min_lines_gnuplot(angles, rmin, emin, filepath):
     folder = os.path.dirname(filepath)
     if folder:
         try: os.makedirs(folder, exist_ok=True)
@@ -1211,7 +1215,10 @@ def plot_compare(Gref, Gmodel, angles, distances, title, save_prefix=None, vmin=
     # Shift each by its own baseline and determine symmetric limits from reference
     GRS, refR, mlocR = shift_grid(Gref)
     GMS = None
-    if Gmodel is not None: GMS, refM, mlocM = shift_grid(Gmodel)
+    if Gmodel is not None: 
+        GMS, refM, mlocM = shift_grid(Gmodel)
+        print( "plot_compare() Gmodel min,max", Gmodel.min(), Gmodel.max() )
+        print( "plot_compare() GMS    min,max", GMS.min(), GMS.max() )
         
     if line:
         # Reuse plot_min_lines_pair by building panel-shaped inputs (angles x distances)
@@ -1282,15 +1289,15 @@ def plot_compare(Gref, Gmodel, angles, distances, title, save_prefix=None, vmin=
     if save_data_prefix is not None:
         base = save_data_prefix
         if GRS is not None:
-            if save_fmt in ("both","npz"    ): _save_grid_npz(angles, distances, GRS, base+"__ref.npz")
-            if save_fmt in ("both","gnuplot"): _save_grid_gnuplot(angles, distances, GRS, base+"__ref.dat")
+            if save_fmt in ("both","npz"    ): save_grid_npz    (angles, distances, GRS, base+"__ref.npz")
+            if save_fmt in ("both","gnuplot"): save_grid_gnuplot(angles, distances, GRS, base+"__ref.dat")
         if GMS is not None:
-            if save_fmt in ("both","npz"): _save_grid_npz(angles, distances, GMS, base+"__model.npz")
-            if save_fmt in ("both","gnuplot"): _save_grid_gnuplot(angles, distances, GMS, base+"__model.dat")
+            if save_fmt in ("both","npz"):     save_grid_npz    (angles, distances, GMS, base+"__model.npz")
+            if save_fmt in ("both","gnuplot"): save_grid_gnuplot(angles, distances, GMS, base+"__model.dat")
         if (GMS is not None):
             D = GMS - GRS
-            if save_fmt in ("both","npz"    ): _save_grid_npz(angles, distances, D, base+"__diff.npz")
-            if save_fmt in ("both","gnuplot"): _save_grid_gnuplot(angles, distances, D, base+"__diff.dat")
+            if save_fmt in ("both","npz"    ): save_grid_npz    (angles, distances, D, base+"__diff.npz")
+            if save_fmt in ("both","gnuplot"): save_grid_gnuplot(angles, distances, D, base+"__diff.dat")
         #except Exception as e:
         #    print(f"Warning: failed saving grids: {e}")
 
@@ -1374,11 +1381,11 @@ def plot_min_lines_pair(Epanel_ref, Epanel_mod, Xpanel, angles, title=None, save
     # Optional: save computed lines
     try:
         if save_data_prefix is not None:
-            if save_fmt in ("both","npz"): _save_min_lines_npz(angles, rR, eR*(ev2kcal if to_kcal else 1.0), save_data_prefix+"__ref_lines.npz")
-            if save_fmt in ("both","gnuplot"): _save_min_lines_gnuplot(angles, rR, eR*(ev2kcal if to_kcal else 1.0), save_data_prefix+"__ref_lines.dat")
+            if save_fmt in ("both","npz"):         save_min_lines_npz(angles, rR, eR*(ev2kcal if to_kcal else 1.0), save_data_prefix+"__ref_lines.npz")
+            if save_fmt in ("both","gnuplot"):     save_min_lines_gnuplot(angles, rR, eR*(ev2kcal if to_kcal else 1.0), save_data_prefix+"__ref_lines.dat")
             if (Epanel_mod is not None) and (rM is not None) and (eM is not None):
-                if save_fmt in ("both","npz"): _save_min_lines_npz(angles, rM, eM*(ev2kcal if to_kcal else 1.0), save_data_prefix+"__model_lines.npz")
-                if save_fmt in ("both","gnuplot"): _save_min_lines_gnuplot(angles, rM, eM*(ev2kcal if to_kcal else 1.0), save_data_prefix+"__model_lines.dat")
+                if save_fmt in ("both","npz"):     save_min_lines_npz(angles, rM, eM*(ev2kcal if to_kcal else 1.0), save_data_prefix+"__model_lines.npz")
+                if save_fmt in ("both","gnuplot"): save_min_lines_gnuplot(angles, rM, eM*(ev2kcal if to_kcal else 1.0), save_data_prefix+"__model_lines.dat")
     except Exception as e:
         print(f"Warning: failed saving lines: {e}")
     return fig

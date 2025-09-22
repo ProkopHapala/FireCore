@@ -18,14 +18,18 @@ fit.plt = plt
 np.set_printoptions(linewidth=300)
 
 defalt_inputs=[
-    "H2O-A1_H2O-D1-y.xyz",   # sample out-of   plane epairs of O_3 atom in H2O with H2O probe
-    #"H2O-A1_HCN-D1-y.xyz",   # sample in-plane plane epairs of O_3 atom in H2O with HCN probe
+    #"H2O-A1_H2O-D1-y.xyz",   # sample out-of   plane epairs of O_3 atom in H2O with H2O probe
+    "H2O-A1_HCN-D1-y.xyz",   # sample in-plane plane epairs of O_3 atom in H2O with HCN probe
     #"H2O-A1_HF-D1-y.xyz",    # sample in-plane plane epairs of O_3 atom in H2O with HF probe
     
-    "CH2O-A1_H2O-D1-z.xyz",      # sample in-plane plane epairs of O_2 atom in CH2O with H2O probe
+    #"CH2O-A1_H2O-D1-z.xyz",      # sample in-plane plane epairs of O_2 atom in CH2O with H2O probe
     #"CH2O-A1_HCN-D1-z.xyz",      # sample in-plane plane epairs of O_2 atom in CH2O with HCN  probe
     #"CH2O-A1_HF-D1-z.xyz",       # sample in-plane plane epairs of O_2 atom in CH2O with HF   probe
     
+    #"HCN-A1_HCN-D1-z.xyz", 
+    
+    #"NH3-A1_HCN-D1-z.xyz",
+
     #"HF-A1_H2O-D1-z.xyz",        # sample in-plane plane epairs of F atom in HF with H2O   probe
     #"HF-A1_HCN-D1-z.xyz",        # sample in-plane plane epairs of F atom in HF with HCN   probe
     #"HF-A1_HF-D1-z.xyz",         # sample in-plane plane epairs of F atom in HF with HF    probe
@@ -36,33 +40,44 @@ if __name__ == "__main__":
     parser.add_argument("-i", "--inputs", nargs='*', default=None, help="List of input .xyz files (single movie). If empty, uses default set")
     #parser.add_argument("--dir", type=str, default='/home/prokophapala/Desktop/CARBSIS/wb97m-split/', help="Directory where input files are located")
     parser.add_argument("--dir", type=str, default="/home/prokop/Desktop/CARBSIS/PEOPLE/Paolo/HbondFit_small_mols_2025_08_15/confs/wb97m-split/", help="Directory where input files are located")
-    parser.add_argument("--dof-selection",         default="dofSelection_MorseSR_H2O_CH2O.dat", help="DOF selection file")
+    #parser.add_argument("--dof-selection",         default="dofSelection_MorseSR_H2O_CH2O.dat", help="DOF selection file")
+    
+    #parser.add_argument("--dof-selection",         default="dofSelection_MorseSR_H2O_CH2O_HF_HCN.dat", help="DOF selection file")
+
+    #parser.add_argument("--dof-selection",         default="dofSelection_MorseSR_H2O_CH2O_HF_HCN-fix2.dat", help="DOF selection file")
+
+    parser.add_argument("--dof-selection",         default="dofSelection_MorseSR_H2O_CH2O_HF_HCN-fix.dat", help="DOF selection file")
+    #parser.add_argument("--dof-selection",         default="dofSelection_MorseSR_nofit_H2O_CH2O_HF_HCN.dat", help="DOF selection file")
+
+    #parser.add_argument("--dof-selection",         default="dofSelection_MorseSR_HF_HCN.dat", help="DOF selection file")
+
     parser.add_argument("--verbosity", type=int,   default=2,    help="Verbosity for FitREQ")
     parser.add_argument("--nstep",     type=int,   default=1000,   help="Fitting steps")
     parser.add_argument("--fmax",      type=float, default=1e-8, help="Target force max for fitting")
     parser.add_argument("--dt",        type=float, default=0.01, help="Integrator dt")
     parser.add_argument("--max-step",  type=float, default=0.05, help="Max step")
-    parser.add_argument("--damping",   type=float, default=0.0,  help="Damping")
+    parser.add_argument("--damping",   type=float, default=0.01,  help="Damping")
     # Global model params
     parser.add_argument("--kMorse",    type=float, default=1.8,  help="Global kMorse parameter")
     parser.add_argument("--Lepairs",   type=float, default=1.0,  help="Global Lepairs parameter")
     parser.add_argument("--lj",        type=int,   default=0,    help="Use LJ instead of Morse presets")
     # Weighting controls
+    parser.add_argument("--user_weights",  type=int,   default=0,       help="Enable user weights during scan")
     parser.add_argument("--weight-a",      type=float, default=1.0,     help="Weight amplitude 'a' for exp weight func")
     parser.add_argument("--weight-alpha",  type=float, default=4.0,     help="Weight sharpness 'alpha' for exp weight func")
     parser.add_argument("--emin-min",      type=float, default=-0.02,   help="Emin threshold for weighting segments")
     parser.add_argument("--plot-dir",      type=str,   default='plots', help="Directory to save all output plots")
     parser.add_argument("--data-dir",      type=str,   default='data',  help="Directory to save all output data (2D maps, 1D lines)")
-    parser.add_argument("--save-fmt", choices=["both","npz","gnuplot"], default="both", help="Format for saved data")
+    parser.add_argument("--save-fmt",      choices=["both","npz","gnuplot"], default="both", help="Format for saved data")
     parser.add_argument("--save",          type=str,   default=None,    help="Base name for saving plots (without extension)")
     parser.add_argument("--epairs",        type=int,   default=1,       help="Disable epair terms when loading XYZ")
-    parser.add_argument("--show",          type=int,   default=0,       help="show the figure")
+    parser.add_argument("--show",          type=int,   default=1,       help="show the figure")
     parser.add_argument("--line",          type=int,   default=1,       help="plot r_min(angle) and E_min(angle) lines")
     parser.add_argument("--out-xyz",       type=int,   default=0,       help="Output XYZ with fitted DOFs")
-    parser.add_argument("--soft_clamp",        type=int,             default=1,                help="Enable soft clamp during scan")
-    parser.add_argument("--user_weights",      type=int,             default=1,                help="Enable user weights during scan")
+    parser.add_argument("--soft_clamp",    type=int,   default=1,       help="Enable soft clamp during scan")
+    
     parser.add_argument("--regularization",    type=int,             default=0,                help="Enable regularization during scan")
-    parser.add_argument("--clamp_thresholds",  nargs=2, type=float,  default=[4.0, 6.0],       help="Soft clamp thresholds: start max")
+    parser.add_argument("--clamp_thresholds",  nargs=2, type=float,  default=[0.2,0.5],       help="Soft clamp thresholds: start max")
     parser.add_argument("--kcal", type=int, default=1, help="Use kcal instead of eV")
 
 
@@ -77,7 +92,7 @@ if __name__ == "__main__":
     fit.setVerbosity(args.verbosity, PrintDOFs=1, PrintfDOFs=1, PrintBeforReg=-1, PrintAfterReg=1)
     
     regularize_val = args.regularization
-    fit.setup( imodel=imodel, EvalJ=1, WriteJ=1, Regularize=regularize_val, SaveJustElementXYZ=-1 )
+    fit.setup( imodel=imodel, EvalJ=1, WriteJ=1, Regularize=regularize_val, SaveJustElementXYZ=-1, SoftClamp=args.soft_clamp )
 
     if args.soft_clamp:
         fit.setGlobalParams( kMorse=args.kMorse, Lepairs=args.Lepairs, softClamp_start=args.clamp_thresholds[0], softClamp_max=args.clamp_thresholds[1] )
@@ -154,7 +169,6 @@ if __name__ == "__main__":
         fit.plot_compare(
             Gref, Gmodel, angles, distances, title,
             save_prefix=plot_path,
-            show=args.show==1,
             line=bool(args.line),
             kcal=bool(args.kcal),
             save_data_prefix=data_base,
