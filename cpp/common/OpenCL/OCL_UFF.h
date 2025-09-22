@@ -180,7 +180,11 @@ public:
     void makeKernels(const char* cl_src_dir) {
         char srcpath[1024];
         sprintf(srcpath, "%s/UFF.cl", cl_src_dir);
-        buildProgram(srcpath, program); // Assuming 'program' is the member from OCL base class
+        // Build with debug flags enabled for pairwise interaction comparison
+        // Print interactions for atom 0 with all other atoms
+        char build_options[256];
+        sprintf(build_options, "-I. -cl-std=CL2.0 -DDBG_UFF=1 -DIDBG_ATOM=0 -DIDBG_SYS=1");
+        buildProgram(srcpath, build_options); // Assuming 'program' is the member from OCL base class
         // Create tasks for each kernel
         // TODO: The local work-group sizes (e.g., 32) are hardcoded for now. They should be tuned for optimal performance based on the device and kernel characteristics.
         //                                name                  program  nL nG

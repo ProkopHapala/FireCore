@@ -493,7 +493,7 @@ class OCLsystem{ public:
         return source;
     }
 
-    int buildProgram( const char * fname, cl_program& program_ ){       // TODO : newProgram instead ?
+    int buildProgram( const char * fname, cl_program& program_, const char* build_options = "-I. -cl-std=CL2.0" ){       // TODO : newProgram instead ?
         int err=0;
         char * kernelsource = getKernelSource( fname );
         program_ = clCreateProgramWithSource(context, 1, (const char **) & kernelsource, NULL, &err);
@@ -501,7 +501,7 @@ class OCLsystem{ public:
         sprintf(tmpstr,"Creating program with %s", fname);
         OCL_checkError(err, tmpstr);
         free(kernelsource);
-        err =      clBuildProgram(program_, 0,         NULL,      "-I. -cl-std=CL2.0", NULL, NULL);
+        err =      clBuildProgram(program_, 0,         NULL,      build_options, NULL, NULL);
         //free(kernelsource);     // Why it crashes ?
         if (err != CL_SUCCESS){
             printf( " ERROR in clBuildProgram %s \n", fname);
@@ -514,6 +514,7 @@ class OCLsystem{ public:
         return err;
     }
     int buildProgram( const char * fname ){ return buildProgram( fname, program ); }
+    int buildProgram( const char * fname, const char* build_options ){ return buildProgram( fname, program, build_options ); }
  
     inline int upload  (int i, const void* cpu_data, int n=-1,int i0=0, bool bPrint=false ){ 
         if(bPrint){ printf("OCL::upload %4i %-12s %12li %12i\n", i, buffers[i].name.c_str(), n, i0); } 

@@ -1930,9 +1930,8 @@ int eval_MMFFf4_ocl( int niter, double Fconv=1e-6, bool bForce=false ){
 // Minimal UFF GPU relaxation loop analogous to run_ocl_opt
 int run_uff_ocl( int niter, double dt, double damping, double Fconv, double Flim ){
         if(!bUFF){ printf("MolWorld_sp3_multi::run_uff_ocl(): bUFF=false\n"); return 0; }
-        if(!uff_ocl){ printf("MolWorld_sp3_multi::run_uff_ocl(): uff_ocl==nullptr\n"); return 0; }
-        printf("MolWorld_sp3_multi::run_uff_ocl(niter=%i, dt=%f, damping=%f, Fconv=%f, Flim=%f) \n", niter, dt, damping, Fconv, Flim);
-
+        if(!uff_ocl){ printf("MolWorld_sp3_multi::run_uff_ocl(): uff_ocl==nullptr\n"); return 0; } // This should not happen, uff_ocl is initialized in init()
+        printf("MolWorld_sp3_multi::run_uff_ocl(  bGridFF=%i, bNonBonded=%i | niter=%i, dt=%f, damping=%f, Fconv=%f, Flim=%f) \n",bGridFF, bNonBonded,  niter, dt, damping, Fconv, Flim);
         // --- Prepare MD parameters for all systems, matching the kernel's expectation
         // UFF.cl -> updateAtomsMMFFf4 -> const float4 MDpars  = MDparams[iS]; // (dt,damp,Flimit)
         // The kernel uses MDpars.z as a multiplicative velocity damping factor. CPU uses (1.0-damping).
@@ -1955,14 +1954,10 @@ int run_uff_ocl( int niter, double dt, double damping, double Fconv, double Flim
         // --- Run relaxation loop
         for(int i=0; i<niter; i++){
             uff_ocl->task_clear_fapos->enque();
-            if(bGridFF){
-                uff_ocl->task_NBFF_Grid_Bspline->enque(); // 2. Add non-bonded GridFF forces
-            }else if(bNonBonded){
-                uff_ocl->task_NBFF->enque();             // 2. Add non-bonded forces
-            }
+            if(bGridFF   ){  uff_ocl->task_NBFF_Grid_Bspline->enque(); }else 
+            if(bNonBonded){  uff_ocl->task_NBFF->enque(); }
             uff_ocl->eval(false);                 // 1. Evaluate covalent forces for all systems
             uff_ocl->task_updateAtoms->enque();  // 3. Update atom positions and velocities for all systems
-
             // --- Save current frame if trajectory is requested
             if((savePerNsteps>0) && (i%savePerNsteps==0) && (trj_fname)){
                 download_uff( true, false ); // download positions for this step

@@ -542,8 +542,18 @@ class NBFF: public ForceField{ public:
             Vec3d fij           = Vec3dZero;
             for(int ipbc=0; ipbc<npbc; ipbc++){
                 // --- We calculate non-bonding interaction every time (most atom pairs are not bonded)
-                const Vec3d dpc = dp + shifts[ipbc];    //   dp = pj - pi + pbc_shift = (pj + pbc_shift) - pi 
+                const Vec3d dpc = dp + shifts[ipbc];    //   dp = pj - pi + pbc_shift = (pj + pbc_shift) - pi
                 double eij      = getLJQH( dpc, fij, REQij, R2damp );
+                
+                // Debug print for pairwise interaction (PBC case, matching GPU format)
+                if((ia==0) && (j==0) && (ipbc==0)){  // Using atom 0 for debugging to match GPU debug pattern
+                    printf("CPU_NB[%i,%i] dpc(% .6e,% .6e,% .6e) r % .6e REQi(% .6e,% .6e,% .6e) REQj(% .6e,% .6e,% .6e) ",
+                           ia, j, dpc.x, dpc.y, dpc.z, dpc.norm(),
+                           REQi.x, REQi.y, REQi.z, REQj.x, REQj.y, REQj.z);
+                    printf("fij(% .6e,% .6e,% .6e) E % .6e REQij(% .6e,% .6e,% .6e) bBonded 0 bPBC 1\n",
+                           fij.x, fij.y, fij.z, eij, REQij.x, REQij.y, REQij.z);
+                }
+                
                 if(bClampNonBonded)[[likely]]{ clampForce( fij, Fmax2 ); }
                 //printf( "getLJQs_PBC_omp[%i] dp(%6.3f,%6.3f,%6.3f) REQ(%g,%g,%g,%g) \n", eij, dp.x,dp.y,dp.z, REQij.x,REQij.y,REQij.z,REQij.w );
                 E +=eij;
@@ -634,19 +644,29 @@ class NBFF: public ForceField{ public:
         Vec3d fi = Vec3dZero;
         double E=0,fx=0,fy=0,fz=0;
         //#pragma omp simd reduction(+:E,fx,fy,fz)
-        for (int j=0; j<natoms; j++){ 
+        for (int j=0; j<natoms; j++){
             if(ia==j)[[unlikely]]{continue;}
             const Quat4d& REQj  = REQs[j];
-            const Quat4d  REQij = _mixREQ(REQi,REQj); 
+            const Quat4d  REQij = _mixREQ(REQi,REQj);
             const Vec3d dp      = apos[j]-pi;
             Vec3d fij           = Vec3dZero;
             double eij = getLJQH( dp, fij, REQij, R2damp );
+            
+            // Debug print for pairwise interaction (matching GPU format)
+            if((ia==0) && (j==0)){  // Using atom 0 for debugging to match GPU debug pattern
+                printf("CPU_NB[%i,%i] dp(% .6e,% .6e,% .6e) r % .6e REQi(% .6e,% .6e,% .6e) REQj(% .6e,% .6e,% .6e) ",
+                       ia, j, dp.x, dp.y, dp.z, dp.norm(),
+                       REQi.x, REQi.y, REQi.z, REQj.x, REQj.y, REQj.z);
+                printf("fij(% .6e,% .6e,% .6e) E % .6e REQij(% .6e,% .6e,% .6e) bBonded 0 bPBC 0\n",
+                       fij.x, fij.y, fij.z, eij, REQij.x, REQij.y, REQij.z);
+            }
+            
             if(bClampNonBonded)[[likely]]{ clampForce( fij, Fmax2 ); }
             E +=eij;
             fx+=fij.x;
             fy+=fij.y;
             fz+=fij.z;
-            //fi+=fij; 
+            //fi+=fij;
         }
         fapos[ia].add( Vec3d{fx,fy,fz} );
         return E;
