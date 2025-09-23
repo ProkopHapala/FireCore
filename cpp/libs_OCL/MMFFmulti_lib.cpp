@@ -46,7 +46,7 @@ void init_buffers(){
         fbuffers.insert( { "gpu_aforces",  (float*)W.aforces } );
         fbuffers.insert( { "gpu_avel",     (float*)W.avel    } );
         fbuffers.insert( { "gpu_constr",   (float*)W.constr  } );
-        
+
         fbuffers.insert( { "gpu_REQs",     (float*)W.REQs   } );
         fbuffers.insert( { "gpu_MMpars",   (float*)W.MMpars } );
         fbuffers.insert( { "gpu_BLs",      (float*)W.BLs    } );
@@ -58,7 +58,7 @@ void init_buffers(){
         fbuffers.insert( { "gpu_ilvecs",   (float*)W.ilvecs    } );
         fbuffers.insert( { "gpu_pbcshifts",(float*)W.pbcshifts } );
 
-        //float* gpu_lvecs= getfBuff("gpu_lvecs"); 
+        //float* gpu_lvecs= getfBuff("gpu_lvecs");
         //for(int i=0; i<12; i++){ printf( "gpu_lvecs[%i]=%g\n", i, gpu_lvecs[i] ); };
     }else{
         W.ff.natoms=W.nbmol.natoms;
@@ -102,7 +102,7 @@ void init_buffers_UFF(){
     }
     // UFF-specific dimensions
     if(W.bUFF){
-        ibuffers.insert( { "ndims", &W.ffu._natoms } ); // 
+        ibuffers.insert( { "ndims", &W.ffu._natoms } ); //
         buffers.insert ( { "Es",    &W.ffu.Etot    } );
     }
     ibuffers.insert( { "selection", W.manipulation_sel  } );
@@ -167,10 +167,10 @@ void setSwitches2( int CheckInvariants, int PBC, int NonBonded, int NonBondNeigh
     #define _setbool(b,i) { if(i>0){b=true;}else if(i<0){b=false;} }
     _setbool( W.bCheckInvariants, CheckInvariants  );
     _setbool( W.bPBC           , PBC       );
-    
+
     _setbool( W.bNonBonded     , NonBonded );
     _setbool( W.bNonBondNeighs , NonBondNeighs );
-    
+
     _setbool( W.bSurfAtoms   , SurfAtoms );
     _setbool( W.bGridFF      , GridFF    );
 
@@ -256,25 +256,25 @@ int run( int nstepMax, double dt, double Fconv, int ialg, double damping, double
                 W.download_uff( true, false );            // fills W.atoms and W.aforces from GPU
                 W.unpack_uff_system( 0, W.ffu, true, false ); // propagate W.aforces -> W.ffu.fapos (and positions)
                 if(outE){ outE[0] = Etot; }
-                nitrdione = nstepMax; 
+                nitrdione = nstepMax;
                 break;
             }
             default: printf("run() iParalel=%i not implemented\n", iParalel); break;
         }
     }else{
         switch(iParalel){
-            case -1: nitrdione = W.run_multi_serial( nstepMax, Fconv, 1000.0, 1000 ); break; 
+            case -1: nitrdione = W.run_multi_serial( nstepMax, Fconv, 1000.0, 1000 ); break;
             case  0:
-            case  1: nitrdione = W.run_omp_ocl( nstepMax, Fconv, 1000.0, 1000 ); break; 
-            case  2: nitrdione = W.run_ocl_opt( nstepMax, Fconv    ); break; 
-            case  3: nitrdione = W.run_ocl_loc( nstepMax, Fconv, 1 ); break; 
-            case  4: nitrdione = W.run_ocl_loc( nstepMax, Fconv, 2 ); break; 
+            case  1: nitrdione = W.run_omp_ocl( nstepMax, Fconv, 1000.0, 1000 ); break;
+            case  2: nitrdione = W.run_ocl_opt( nstepMax, Fconv    ); break;
+            case  3: nitrdione = W.run_ocl_loc( nstepMax, Fconv, 1 ); break;
+            case  4: nitrdione = W.run_ocl_loc( nstepMax, Fconv, 2 ); break;
             default: printf("run() iParalel=%i not implemented\n", iParalel); break;
         }
     }
     return nitrdione;
-    //return W.rum_omp_ocl( nstepMax, dt, Fconv, 1000.0, 1000 ); 
-    //return W.run(nstepMax,dt,Fconv,ialg,outE,outF);  
+    //return W.rum_omp_ocl( nstepMax, dt, Fconv, 1000.0, 1000 );
+    //return W.run(nstepMax,dt,Fconv,ialg,outE,outF);
 }
 
 // Evaluate forces for multiple configurations
@@ -287,7 +287,7 @@ int scan( int nConf, double* confs_, double* outF_, int iParalel ){
     auto confs = (Vec3d*)confs_;
     auto outF  = (Vec3d*)outF_;
     int nDone = 0;
-    const int dbg_sys = -1; 
+    const int dbg_sys = 0;
 
     if( (iParalel==2) && W.uff_ocl ){
         if(!W.uff_ocl->bKernelPrepared){ W.uff_ocl->setup_kernels( (float)W.ffu.Rdamp, (float)W.ffu.FmaxNonBonded, (float)W.ffu.SubNBTorsionFactor ); }
@@ -298,7 +298,7 @@ int scan( int nConf, double* confs_, double* outF_, int iParalel ){
             int nBatch = W.nSystems; if(ib+nBatch>nConf) nBatch = nConf-ib;
             for(int i=0;i<nBatch;i++){
                 int isys = i;
-                W.ffu.DBG_UFF = (isys==dbg_sys) ? 4 : 0;
+                idebug = (isys==dbg_sys) ? 4 : 0;
                 Vec3d* apos = W.ffu.apos;
                 for(int ia=0; ia<natoms; ia++){ apos[ia] = confs[(ib+i)*natoms + ia]; }
                 W.pack_uff_system( isys, W.ffu, false, false, false, false );
@@ -316,7 +316,7 @@ int scan( int nConf, double* confs_, double* outF_, int iParalel ){
         }
     }else{
         for(int ic=0; ic<nConf; ic++){
-            W.ffu.DBG_UFF = (ic==dbg_sys) ? 4 : 0;
+            idebug = (ic==dbg_sys) ? 4 : 0;
             for(int ia=0; ia<natoms; ia++){ W.ffu.apos[ia] = confs[ic*natoms + ia]; }
             for(int ia=0; ia<natoms; ia++){ W.ffu.fapos[ia] = Vec3dZero; }
             if(iParalel==1){ W.ffu.run_omp( 1, 0.0, 1e-6, 1000.0, 0.1, nullptr, nullptr, nullptr, nullptr ); }
@@ -334,7 +334,7 @@ int scan_relaxed( int nConf, double* confs_, double* outF_, int niter, double dt
     auto confs = (Vec3d*)confs_;
     auto outF  = (Vec3d*)outF_;
     int nDone = 0;
-    const int dbg_sys = -1;
+    const int dbg_sys = 0;
     if( (iParalel==2) && W.uff_ocl ){
         W.setup_UFF_ocl();
         if(!W.uff_ocl->bKernelPrepared){ W.uff_ocl->setup_kernels( (float)W.ffu.Rdamp, (float)W.ffu.FmaxNonBonded, (float)W.ffu.SubNBTorsionFactor ); }
@@ -345,7 +345,7 @@ int scan_relaxed( int nConf, double* confs_, double* outF_, int niter, double dt
             int nBatch = W.nSystems; if(ib+nBatch>nConf) nBatch = nConf-ib;
             for(int i=0;i<nBatch;i++){
                 int isys = i;
-                W.ffu.DBG_UFF = (isys==dbg_sys) ? 2 : 0;
+                idebug = (isys==dbg_sys) ? 4 : 0;
                 for(int ia=0; ia<natoms; ia++){ W.ffu.apos[ia] = confs[(ib+i)*natoms + ia]; }
                 W.pack_uff_system( isys, W.ffu, false, false, false, false );
             }
@@ -368,7 +368,7 @@ int scan_relaxed( int nConf, double* confs_, double* outF_, int niter, double dt
         }
     }else{
         for(int ic=0; ic<nConf; ic++){
-            W.ffu.DBG_UFF = (ic==dbg_sys) ? 4 : 0;
+            idebug = (ic==dbg_sys) ? 4 : 0;
             for(int ia=0; ia<natoms; ia++){ W.ffu.apos[ia] = confs[ic*natoms + ia]; }
             W.ffu.cleanVelocity(); // Zero velocities to ensure a clean start for each configuration
             char fname[256]; sprintf(fname, "scan_relaxed_cpu_%03i.xyz", ic);
@@ -383,8 +383,8 @@ int scan_relaxed( int nConf, double* confs_, double* outF_, int niter, double dt
     return nDone;
 }
 
-void set_opt( 
-        double dt_max,  double dt_min, double damp_max, 
+void set_opt(
+        double dt_max,  double dt_min, double damp_max,
         double finc,    double fdec,   double falpha, int minLastNeg,
         double cvf_min, double cvf_max
     ){
@@ -403,7 +403,7 @@ void set_opt(
     W.opt.finc       =  finc;
     W.opt.fdec       =  fdec;
     W.opt.falpha     =  falpha;
-    
+
     //W.opt.f_limit  =  f_limit  ;
     //W.opt.v_limit  =  v_limit  ;
     //W.opt.dr_limit =  dr_limit ;
@@ -439,9 +439,9 @@ void sampleSurf(char* name, int n, double* rs, double* Es, double* fs, int kind,
         W.nbmol.apos[0].z=rs[i];
         W.ff.cleanAtomForce();
         switch(kind){
-            case  0: fe.e=   W.nbmol.evalR         (W.surf ); break; 
-            case  1: fe.e=   W.nbmol.evalMorse     (W.surf, false,                           K,RQ  ); fe.f=(Vec3f)W.nbmol.fapos[0]; break; 
-            //case  5: fe.e=   W.nbmol.evalMorsePLQ  (W.surf, PLQ, W.gridFF.grid.cell, {1,1,0},K,R2Q ); fe.f=(Vec3f)W.nbmol.fapos[0]; break; 
+            case  0: fe.e=   W.nbmol.evalR         (W.surf ); break;
+            case  1: fe.e=   W.nbmol.evalMorse     (W.surf, false,                           K,RQ  ); fe.f=(Vec3f)W.nbmol.fapos[0]; break;
+            //case  5: fe.e=   W.nbmol.evalMorsePLQ  (W.surf, PLQ, W.gridFF.grid.cell, {1,1,0},K,R2Q ); fe.f=(Vec3f)W.nbmol.fapos[0]; break;
             case 10:         W.gridFF.addForce_surf(W.nbmol.apos[0], {1.,0.,0.}, fe );  break;
             case 11:         W.gridFF.addForce_surf(W.nbmol.apos[0], PLQ, fe );  break;
             case 12:         W.gridFF.addForce     (W.nbmol.apos[0], PLQ, fe );  break;
@@ -482,9 +482,9 @@ void sampleSurf_vecs(char* name, int n, double* poss_, double* Es, double* fs_, 
         //printf( "[%i] (%g,%g,%g)\n", i, W.nbmol.apos[0].x,W.nbmol.apos[0].y,W.nbmol.apos[0].z );
         W.ff.cleanAtomForce();
         switch(kind){
-            case  0: fe.e=   W.nbmol.evalR         (W.surf ); break; 
-            case  1: fe.e=   W.nbmol.evalMorse     (W.surf, false,                           K,RQ  ); fe.f=(Vec3f)W.nbmol.fapos[0]; break; 
-            //case  5: fe.e=   W.nbmol.evalMorsePLQ  (W.surf, PLQ, W.gridFF.grid.cell, {1,1,0},K,R2Q ); fe.f=(Vec3f)W.nbmol.fapos[0]; break; 
+            case  0: fe.e=   W.nbmol.evalR         (W.surf ); break;
+            case  1: fe.e=   W.nbmol.evalMorse     (W.surf, false,                           K,RQ  ); fe.f=(Vec3f)W.nbmol.fapos[0]; break;
+            //case  5: fe.e=   W.nbmol.evalMorsePLQ  (W.surf, PLQ, W.gridFF.grid.cell, {1,1,0},K,R2Q ); fe.f=(Vec3f)W.nbmol.fapos[0]; break;
             case 10:         W.gridFF.addForce_surf(W.nbmol.apos[0], {1.,0.,0.}, fe );  break;
             case 11:         W.gridFF.addForce_surf(W.nbmol.apos[0], PLQ, fe );  break;
             case 12:         W.gridFF.addForce     (W.nbmol.apos[0], PLQ, fe );  break;
@@ -526,7 +526,7 @@ void change_lvec( double* lvec, bool bAdd, bool bUpdatePi ){
 void upload_pop( const char* fname ){
     printf("MolWorld_sp3::upload_pop(%s)\n", fname );
     W.gopt.loadPopXYZ( fname );
-    int nmult=W.gopt.population.size(); 
+    int nmult=W.gopt.population.size();
     int npara=W.paralel_size(); if( nmult!=npara ){ printf("ERROR in GlobalOptimizer::lattice_scan_1d_multi(): (imax-imin)=(%i) != solver.paralel_size(%i) => Exit() \n", nmult, npara ); exit(0); }
     W.gopt.upload_multi(nmult,0, true, true );
 }

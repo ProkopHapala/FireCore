@@ -1,5 +1,19 @@
 #pragma OPENCL EXTENSION cl_khr_fp64 : enable // Enable if float precision is needed
 
+
+// ======================================================
+// Debug Controls (compile-time macros)
+// ======================================================
+// Enable concise debug prints without changing C++ host interface.
+#define DBG_UFF 1         // 0/1 master switch
+#define IDBG_ATOM  (1)    // atom index to trace
+#define IDBG_BOND  (0)    // bond index to trace (global bond id), -1 disables
+#define IDBG_ANGLE (0)    // angle index to trace
+#define IDBG_DIH   (0)    // dihedral index to trace
+#define IDBG_INV   (0)    // inversion index to trace
+#define IDBG_SYS   (0)    // system index to trace
+//#define IDBG_SYS   (8)    // system index to trace
+
 // ======================================================
 // Utility Functions (Translate/Provide these accurately)
 // ======================================================
@@ -25,9 +39,11 @@ typedef struct __attribute__ ((packed)){
 // Simple Arithmetic Mixing Rule (Placeholder for _mixREQ)
 // REQ = {R0, E0, Q}
 inline float4 mixREQ_arithmetic( float4 REQi, float4 REQj ){
-    float R0 = 0.5f * (REQi.x + REQj.x); // Arithmetic mean for R0 (sigma)
-    float E0 = sqrt(REQi.y * REQj.y); // Geometric mean for E0 (epsilon)
-    float Q  = REQi.z * REQj.z;       // Product of charges for Coulomb term in getLJQH
+    //float R0 = 0.5f * (REQi.x + REQj.x); // Arithmetic mean for R0 (sigma)
+    //float E0 = sqrt(REQi.y * REQj.y); // Geometric mean for E0 (epsilon) // THIS IS WRONG, WE DO NOT DO THIS FOR PERFORMANCE REASONS
+    float R0 = REQi.x + REQj.x;          // This is correct
+    float E0 = REQi.y * REQj.y;          // This is correct we assume Ei,Ej are already pre-sqrt like Ei=sqrt(Eii)
+    float Q  = REQi.z * REQj.z;          // Product of charges for Coulomb term in getLJQH
     float H  = REQi.w * REQj.w; if(H>0){H=0;}
     return (float4)(R0, E0, Q, H);
 }
@@ -84,19 +100,6 @@ inline float4 getMorseQH( float3 dp,  float4 REQH, float K, float R2damp ){
 // inline float3 clampForce( float3 f, float Fmax2 ){ /* ... As defined before ... */ }
 // inline float3 float3Zero(){ return (float3)(0.0f, 0.0f, 0.0f); }
 // inline float2 udiv_cmplx( float2 a, float2 b ){ return (float2)( a.x*b.x + a.y*b.y,  a.y*b.x - a.x*b.y ); }
-
-// ======================================================
-// Debug Controls (compile-time macros)
-// ======================================================
-// Enable concise debug prints without changing C++ host interface.
-#define DBG_UFF 1         // 0/1 master switch
-#define IDBG_ATOM  (0)    // atom index to trace
-#define IDBG_BOND  (0)    // bond index to trace (global bond id), -1 disables
-#define IDBG_ANGLE (0)    // angle index to trace
-#define IDBG_DIH   (0)    // dihedral index to trace
-#define IDBG_INV   (0)    // inversion index to trace
-#define IDBG_SYS   (0)    // system index to trace
-//#define IDBG_SYS   (8)    // system index to trace
 
 //#define GPU_PREFIX "GPU"
 
@@ -1030,32 +1033,20 @@ __kernel void getNonBond(
     const int nL = get_local_size (0); // number of atoms in local memory
 
     const int natoms=ns.x;  // number of atoms
-    const int nnode =ns.y;  // number of node atoms
-    //const int nAtomCeil =ns.w;
-    const int nvec  =natoms+nnode; // number of vectors (atoms+node atoms)
-
-    //const int i0n = iS*nnode;
     const int i0a = iS*natoms;  // index of first atom in atoms array
-    const int i0v = iS*nvec;    // index of first atom in vectors array
-    //const int ian = iG + i0n;
     const int iaa = iG + i0a; // index of atom in atoms array
-    const int iav = iG + i0v; // index of atom in vectors array
 
-    //const int iS_DBG = 0;
-    //const int iG_DBG = 0;
-
-    if((iG==IDBG_ATOM)&&(iS==IDBG_SYS)){  printf( "GPU::getNonBond() natoms,nnode,nvec(%i,%i,%i) nS,nG,nL(%i,%i,%i) \n", natoms,nnode,nvec, nS,nG,nL ); }
+    if((iG==IDBG_ATOM)&&(iS==IDBG_SYS)){  printf( "GPU::getNonBond() natoms(%i) nS,nG,nL(%i,%i,%i) \n", natoms, nS,nG,nL ); }
     if((iG==IDBG_ATOM)&&(iS==IDBG_SYS)){
-       printf( "GPU::getNonBond() natoms,nnode,nvec(%i,%i,%i) nS,nG,nL(%i,%i,%i) \n", natoms,nnode,nvec, nS,nG,nL );
-        for(int i=0; i<nS*nG; i++){
-            int ia = i%nS;
-            int is = i/nS;
-            if(ia==0){ cl_Mat3 lvec = lvecs[is];  printf( "GPU[is:%i]   lvec(%6.3f,%6.3f,%6.3f)(%6.3f,%6.3f,%6.3f)(%6.3f,%6.3f,%6.3f) \n", is, lvec.a.x,lvec.a.y,lvec.a.z,  lvec.b.x,lvec.b.y,lvec.b.z,   lvec.c.x,lvec.c.y,lvec.c.z  ); }
-            printf( "GPU atom [is:%i,ia:%i] p(% .3f,% .3f,% .3f,% .3f) REQ(% .3f,% .3f,% .3f,% .3f) \n", is,ia,     
-                atoms[is*natoms+ia].x,atoms[is*natoms+ia].y,atoms[is*natoms+ia].z,atoms[is*natoms+ia].w,
-                REQKs[is*natoms+ia].x,REQKs[is*natoms+ia].y,REQKs[is*natoms+ia].z,REQKs[is*natoms+ia].w
-            );
-        }
+       printf( "GPU::getNonBond() natoms(%i) nS,nG,nL(%i,%i,%i) \n", natoms, nS,nG,nL );
+       for(int is=0; is<nS; is++){
+            cl_Mat3 lvec = lvecs[is];
+            printf( "GPU[is:%i]   lvec(%6.3f,%6.3f,%6.3f)(%6.3f,%6.3f,%6.3f)(%6.3f,%6.3f,%6.3f) \n", is, lvec.a.x,lvec.a.y,lvec.a.z,  lvec.b.x,lvec.b.y,lvec.b.z,   lvec.c.x,lvec.c.y,lvec.c.z  );
+            for(int ia=0; ia<natoms; ia++){
+                int i = ia+is*natoms;
+                printf( "GPU atom [is:%i,ia:%i] p(% .3f,% .3f,% .3f,% .3f) REQ(% .3f,% .3f,% .3f,% .3f) neighs{%3i,%3i,%3i,%3i} \n", is,ia, atoms[i].x,atoms[i].y,atoms[i].z,atoms[i].w, REQKs[i].x,REQKs[i].y,REQKs[i].z,REQKs[i].w, neighs[i].x,neighs[i].y,neighs[i].z,neighs[i].w );
+            }
+       }
     }
 
 
@@ -1075,7 +1066,7 @@ __kernel void getNonBond(
     const int4   ng    = neighs   [iaa];  // neighbors indices
     const int4   ngC   = neighCell[iaa];  // neighbors cell indices
     const float4 REQKi = REQKs    [iaa];  // non-bonded parameters
-    const float3 posi  = atoms    [iav].xyz; // position of atom
+    const float3 posi  = atoms    [iaa].xyz; // position of atom
     const float  R2damp = GFFParams.x*GFFParams.x; // squared damping radius
     float4 fe          = float4Zero;  // force on atom
 
@@ -1108,7 +1099,7 @@ __kernel void getNonBond(
     for (int j0=0; j0<nG; j0+=nL){      // loop over all atoms in the system, by chunks of size of local memory
         const int i=j0+iL;              // index of atom in local memory
         if(i<natoms){                   // j0*nL may be larger than natoms, so we need to check if we are not reading from invalid address
-            LATOMS[iL] = atoms [i+i0v]; // read atom position to local memory
+            LATOMS[iL] = atoms [i+i0a]; // read atom position to local memory
             LCLJS [iL] = REQKs [i+i0a]; // read atom parameters to local memory
         }
         barrier(CLK_LOCAL_MEM_FENCE);   // wait until all atoms are read to local memory
@@ -1116,17 +1107,17 @@ __kernel void getNonBond(
             const int ja=j0+jl;         // index of atom in global memory
             if( (ja!=iG) && (ja<natoms) ){   // if atom is not the same as current atom and it is not out of range,  // ToDo: Should atom interact with himself in PBC ?
                 const float4 aj = LATOMS[jl];    // read atom position   from local memory
-                float4 REQK     = LCLJS [jl];    // read atom parameters from local memory
+                float4 REQK = mixREQ_arithmetic( REQKi, LCLJS [jl] );   // read atom parameters from local memory
                 float3 dp       = aj.xyz - posi; // vector between atoms
                 //if((iG==44)&&(iS==0))printf( "[i=%i,ja=%i/%i,j0=%i,jl=%i/%i][iG/nG/na %i/%i/%i] aj(%g,%g,%g,%g) REQ(%g,%g,%g,%g)\n", i,ja,nG,j0,jl,nL,   iG,nG,natoms,   aj.x,aj.y,aj.z,aj.w,  REQK.x,REQK.y,REQK.z,REQK.w  );
-                
+
                 // Debug print for pairwise interaction - print all interactions for atom 0
-                if((DBG_UFF!=0) && (iG==IDBG_ATOM) && (iS==IDBG_SYS)){
-                    printf("GPU_NB[%i,%i] dp(% .6e,% .6e,% .6e) r % .6e REQi(% .6e,% .6e,% .6e) REQj(% .6e,% .6e,% .6e) ", iG, ja, dp.x, dp.y, dp.z, length(dp), REQKi.x, REQKi.y, REQKi.z, REQK.x, REQK.y, REQK.z);
-                }
-                
-                REQK.x  +=REQKi.x;   // mixing rules for vdW Radius
-                REQK.yz *=REQKi.yz;  // mixing rules for vdW Energy
+                //if((DBG_UFF!=0) && (iG==IDBG_ATOM) && (iS==IDBG_SYS)){ printf("GPU pair [%i,%i] dp(% .6e,% .6e,% .6e) r % .6e REQi(% .6e,% .6e,% .6e) REQij(% .6e,% .6e,% .6e) \n", iG, ja, dp.x, dp.y, dp.z, length(dp), REQKi.x,REQKi.y,REQKi.z,  REQK.x,REQK.y,REQK.z); }
+
+                //REQK.x  +=REQKi.x;   // mixing rules for vdW Radius
+                //REQK.yz *=REQKi.yz;  // mixing rules for vdW Energy
+                //REQK = mixREQ_arithmetic( REQKi, REQK );
+
                 const bool bBonded = ((ja==ng.x)||(ja==ng.y)||(ja==ng.z)||(ja==ng.w));
                 //if( (j==0)&&(iG==0) )printf( "pbc NONE dp(%g,%g,%g)\n", dp.x,dp.y,dp.z );
                 //if( (ji==1)&&(iG==0) )printf( "2 non-bond[%i,%i] bBonded %i\n",iG,ji,bBonded );
@@ -1149,13 +1140,10 @@ __kernel void getNonBond(
                                 //if( (ji==1)&&(iG==0)&&(iS==0) )printf( "ipbc %i(%i,%i) shift(%g,%g,%g)\n", ipbc,ix,iy, shift.x,shift.y,shift.z );
                                 float4 fij = getLJQH( dp, REQK, R2damp );  // calculate non-bonded force between atoms using LJQH potential
                                 //if((iG==iG_DBG)&&(iS==iS_DBG)){  printf( "GPU_LJQ[%i,%i|%i] fj(%g,%g,%g) R2damp %g REQ(%g,%g,%g) r %g \n", iG,ji,ipbc, fij.x,fij.y,fij.z, R2damp, REQK.x,REQK.y,REQK.z, length(dp+shift)  ); }
-                                
+
                                 // Debug print for force calculation - print all interactions for atom 0
-                                if((DBG_UFF!=0) && (iG==IDBG_ATOM) && (iS==IDBG_SYS)){
-                                    printf("fij(% .6e,% .6e,% .6e) E % .6e REQij(% .6e,% .6e,% .6e) bBonded %i bPBC %i\n",
-                                           fij.x, fij.y, fij.z, fij.w, REQK.x, REQK.y, REQK.z, bBonded, bPBC);
-                                }
-                                
+                                if((DBG_UFF!=0) && (iG==IDBG_ATOM) && (iS==IDBG_SYS)){ printf("GPU fij(% .6e,% .6e,% .6e) E % .6e REQij(% .6e,% .6e,% .6e) bBonded %i bPBC %i\n", fij.x, fij.y, fij.z, fij.w, REQK.x, REQK.y, REQK.z, bBonded, bPBC);  }
+
                                 fe += fij;
                             }
                             ipbc++;
@@ -1166,23 +1154,21 @@ __kernel void getNonBond(
                 }else                                                  // ===== if PBC is not used, it is much simpler
                 if( !bBonded ){
                     float4 fij = getLJQH( dp, REQK, R2damp );  // calculate non-bonded force between atoms using LJQH potential
-                    
+
                     // Debug print for force calculation (non-PBC case) - print all interactions for atom 0
                     if((DBG_UFF!=0) && (iG==IDBG_ATOM) && (iS==IDBG_SYS)){
-                        printf("GPU_NB[%i,%i] dp(% .6e,% .6e,% .6e) r % .6e REQi(% .6e,% .6e,% .6e) REQj(% .6e,% .6e,% .6e) ", iG, ja, dp.x, dp.y, dp.z, length(dp),  REQKi.x, REQKi.y, REQKi.z, REQK.x, REQK.y, REQK.z);
-                        printf("fij(% .6e,% .6e,% .6e) E % .6e REQij(% .6e,% .6e,% .6e) bBonded %i bPBC %i\n", fij.x, fij.y, fij.z, fij.w, REQK.x, REQK.y, REQK.z, bBonded, bPBC);
+                        printf("GPU fij [i:%3i,j:%3i|isys:%i] dp(% .6e,% .6e,% .6e) r % .6e REQi(% .6e,% .6e,% .6e) REQij(% .6e,% .6e,% .6e) fij(% .6e,% .6e,% .6e) E % .6e bBonded %i bPBC %i\n", iG, ja, iS, dp.x, dp.y, dp.z, length(dp),  REQKi.x, REQKi.y, REQKi.z, REQK.x, REQK.y, REQK.z,  fij.x, fij.y, fij.z, fij.w, bBonded, bPBC );
                     }
-                    
+
                     fe += fij;
                 }  // if atoms are not bonded, we calculate non-bonded interaction between them
             }
         }
         //barrier(CLK_LOCAL_MEM_FENCE);
     }
-
     if(iG<natoms){
         //if(iS==0){ printf( "GPU::getNonBond(iG=%i) fe(%g,%g,%g,%g)\n", iG, fe.x,fe.y,fe.z,fe.w ); }
-        forces[iav] += fe;        // If we don't run it as first forcefield, we need to add force to existing force
+        forces[iaa] += fe;        // If we don't run it as first forcefield, we need to add force to existing force
         //forces[iav] += fe;        // If we don't run it as first forcefield, we need to add force to existing force
         //forces[iav] = fe*(-1.f);
     }

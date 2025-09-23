@@ -479,16 +479,16 @@ public:
         if (!task) task = getTask("getNonBond");
         int nloc = 32;
         task->local.x = nloc;
+        task->local.y = 1;  // CRITICAL FIX: Set local size for systems dimension to 1
         task->global.x = na + nloc - (na % nloc);
         task->global.y = nSystems;
-
         useKernel(task->ikernel);
-        nDOFs.x = na;
-        nDOFs.y = 0; // nNode is 0 for UFF
-
+        nDOFs = (int4){na,0,0,0};
+        // nDOFs.y = 0; // nNode is 0 for UFF
+        // nDOFs.z = 0; // nNode is 0 for UFF
+        // nDOFs.w = 0; // nNode is 0 for UFF
         int4 npbc_int4;
         v2i4(nPBC_, npbc_int4);
-
         int err = 0;
         err |= _useArg(nDOFs);                     OCL_checkError(err, "setup_getNonBond.arg 1");      // 1
         err |= useArgBuff(ibuff_apos);             OCL_checkError(err, "setup_getNonBond.arg 2");      // 2
@@ -508,16 +508,14 @@ public:
         int nloc = 32;
         task->local.x = nloc;
         task->global.x = na + nloc - (na % nloc);
+        task->local.y = 1;  // CRITICAL FIX: Set local size for systems dimension to 1
         task->global.y = nSystems;
         grid_shift0_p0 = grid_p0;
-
         useKernel(task->ikernel);
-        nDOFs.x = na;
-        nDOFs.y = 0; // nNode is 0 for UFF
-
+        nDOFs = (int4){na,0,0,0};
+        //nDOFs.y = 0; // nNode is 0 for UFF
         int4 npbc_int4;
         v2i4(nPBC_, npbc_int4);
-
         int err = 0;
         err |= _useArg(nDOFs);                    OCL_checkError(err, "setup_getNonBond_GridFF_Bspline.arg 1");       // 1
         err |= useArgBuff(ibuff_apos);            OCL_checkError(err, "setup_getNonBond_GridFF_Bspline.arg 3");       // 2
