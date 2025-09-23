@@ -316,7 +316,7 @@ public:
         task_updateAtoms     = getTask("updateAtomsMMFFf4");
 
         // --- evalBondsAndHNeigh_UFF ---
-        if(task_evalBonds){
+        if(task_evalBonds && nBonds > 0){
             printf("OCL_UFF::setup_kernels().task_evalBonds \n");
             int nloc = 32;
             task_evalBonds->local.x  = nloc;
@@ -347,7 +347,7 @@ public:
         }
 
         // --- evalAngles_UFF ---
-        if(task_evalAngles){
+        if(task_evalAngles && nAngles > 0){
             printf("OCL_UFF::setup_kernels().task_evalAngles \n");
             int nloc = 32;
             task_evalAngles->local.x  = nloc;
@@ -379,7 +379,7 @@ public:
         }
 
         // --- evalDihedrals_UFF ---
-        if(task_evalDihedrals){
+        if(task_evalDihedrals && nDihedrals > 0){
             printf("OCL_UFF::setup_kernels().task_evalDihedrals \n");
             int nloc = 32;
             task_evalDihedrals->local.x  = nloc;
@@ -409,7 +409,7 @@ public:
         }
 
         // --- evalInversions_UFF ---
-        if(task_evalInversions){
+        if(task_evalInversions && nInversions > 0){
             printf("OCL_UFF::setup_kernels().task_evalInversions \n");
             int nloc = 32;
             task_evalInversions->local.x  = nloc;
