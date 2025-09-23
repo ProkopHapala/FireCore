@@ -35,5 +35,5 @@ lscpu
 #python3 run.py
 
 #python3 -u test_UFF_multi.py 2>&1 | tee OUT-UFF-multi
-python3 -u test_UFF_multi.py --test_case nb 2>&1 | tee OUT-UFF-multi-nb
-#python3 -u test_UFF_multi.py --test_case all 2>&1 | tee OUT-UFF-multi-all
+#python3 -u test_UFF_multi.py --test_case nb 2>&1 | tee OUT-UFF-multi-nb
+python3 -u test_UFF_multi.py --test_case all 2>&1 | tee OUT-UFF-multi-all

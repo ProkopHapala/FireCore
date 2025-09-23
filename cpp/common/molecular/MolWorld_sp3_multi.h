@@ -1375,11 +1375,10 @@ void setup_UFF_ocl(){
     if(bGridFF){
         if(!uff_ocl->task_NBFF_Grid_Bspline){
             printf("MolWorld_sp3_multi::setup_UFF_ocl() for UFF GridFF\n");
-            // UFF needs grid parameters from the MMFF-side ocl object.
-            uff_ocl->grid_n           = ocl.grid_n;
-            uff_ocl->grid_p0          = ocl.grid_p0;
-            uff_ocl->grid_invStep     = ocl.grid_invStep;
-            uff_ocl->ibuff_BsplinePLQ = ocl.ibuff_BsplinePLQ; // Share the buffer
+            // UFF should set grid parameters directly from GridFF object, not copy from MMFF context
+            // Set grid parameters directly from GridFF object
+            uff_ocl->setGridShape(gridFF.grid);
+            printf("DEBUG setup_UFF_ocl: uff_ocl->ibuff_BsplinePLQ=%d (should be 41)\n", uff_ocl->ibuff_BsplinePLQ);
             uff_ocl->task_NBFF_Grid_Bspline = uff_ocl->setup_getNonBond_GridFF_Bspline(ffu.natoms, nPBC_);
         }
     } else if(bNonBonded){
@@ -3006,8 +3005,11 @@ virtual void initGridFF( const char * name, double z0=NAN, Vec3d cel0={-0.5,-0.5
             }
         }else{
             if(bUFF){
+                printf("DEBUG MolWorld_sp3_multi::initGridFF() - Allocating BsplinePLQ buffer for UFF, uff_ocl=%p\n", uff_ocl);
                 uff_ocl->ibuff_BsplinePLQ = uff_ocl->newBuffer( "BsplinePLQ", nxyz, sizeof(float4), 0, CL_MEM_READ_ONLY  );
+                printf("DEBUG MolWorld_sp3_multi::initGridFF() - After newBuffer, ibuff_BsplinePLQ=%d\n", uff_ocl->ibuff_BsplinePLQ);
                 err = uff_ocl->upload( uff_ocl->ibuff_BsplinePLQ, gridFF.Bspline_PLQf ); OCL_checkError(err, "MolWorld_sp3_multi::initGridFF().upload(BsplinePLQ)");
+                printf("DEBUG MolWorld_sp3_multi::initGridFF() - After upload, ibuff_BsplinePLQ=%d\n", uff_ocl->ibuff_BsplinePLQ);
             }else{
                 ocl.ibuff_BsplinePLQ = ocl.newBuffer( "BsplinePLQ", nxyz, sizeof(float4), 0, CL_MEM_READ_ONLY  );
                 err = ocl.upload( ocl.ibuff_BsplinePLQ, gridFF.Bspline_PLQf ); OCL_checkError(err, "MolWorld_sp3_multi::initGridFF().upload(BsplinePLQ)");

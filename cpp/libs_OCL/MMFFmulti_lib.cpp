@@ -374,7 +374,7 @@ int scan_relaxed( int nConf, double* confs_, double* outF_, int niter, double dt
             char fname[256]; sprintf(fname, "scan_relaxed_cpu_%03i.xyz", ic);
             setTrjName(fname, 1, (int*)&W.nPBC);
             if(iParalel==1){ W.ffu.run_omp( niter, dt, Fconv, Flim, damping, nullptr, nullptr, nullptr, nullptr ); } // fapos is cleaned inside run()
-            else            { W.ffu.run    ( niter, dt, Fconv, Flim, damping, nullptr, nullptr, nullptr, nullptr ); } // fapos is cleaned inside run()
+            else           { W.ffu.run    ( niter, dt, Fconv, Flim, damping, nullptr, nullptr, nullptr, nullptr ); } // fapos is cleaned inside run()
             setTrjName(nullptr, -1, (int*)&W.nPBC ); // Disable trajectory saving
             for(int ia=0; ia<natoms; ia++){ outF[ic*natoms + ia] = W.ffu.fapos[ia]; }
             nDone++;

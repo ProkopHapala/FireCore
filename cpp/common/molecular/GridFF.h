@@ -8,6 +8,7 @@
 #include "Grid.h"
 #include "Forces.h"
 #include "MMFFparams.h"
+#include "globals.h"
 
 #include "Multipoles.h"
 
@@ -361,13 +362,19 @@ inline Quat4d getForce_Bspline( Vec3d p, const Quat4d& PLQH, bool bSurf=true ) c
 
     //Quat4d fe = Quat4dZero;
     
-    Quat4d fe = Bspline::fe3d_pbc_comb3( t, grid.n, Bspline_PLQ, PLQH.f, cubic_xqis, cubic_yqis ); 
+    Quat4d fe = Bspline::fe3d_pbc_comb3( t, grid.n, Bspline_PLQ, PLQH.f, cubic_xqis, cubic_yqis );
 
-    //printf( "GridFF::getForce_Bspline() p(%8.4f,%8.4f,%8.4f) g0(%8.4f,%8.4f,%8.4f) PLQH(%8.4f,%8.4f,%8.4f,%8.4f) fe(%g,%g,%g,%g)\n", p.x,p.y,p.z, grid.pos0.x,grid.pos0.y,grid.pos0.z, PLQH.x,PLQH.y,PLQH.z,PLQH.w, fe.x,fe.w,fe.z,fe.w ); 
+    // Detailed GridFF debug prints for CPU (only for atom 1 to match GPU debug)
+    if(idebug != 0 && id_DBG == 1){
+        printf("CPU GridFF getForce_Bspline [i:%3i] p(% .6e,% .6e,% .6e) t(% .6e,% .6e,% .6e) PLQH(% .6e,% .6e,% .6e,% .6e) fe_raw(% .6e,% .6e,% .6e,% .6e)\n",
+               id_DBG, p.x, p.y, p.z, t.x, t.y, t.z, PLQH.x, PLQH.y, PLQH.z, PLQH.w, fe.x, fe.y, fe.z, fe.w);
+    }
+
+    //printf( "GridFF::getForce_Bspline() p(%8.4f,%8.4f,%8.4f) g0(%8.4f,%8.4f,%8.4f) PLQH(%8.4f,%8.4f,%8.4f,%8.4f) fe(%g,%g,%g,%g)\n", p.x,p.y,p.z, grid.pos0.x,grid.pos0.y,grid.pos0.z, PLQH.x,PLQH.y,PLQH.z,PLQH.w, fe.x,fe.w,fe.z,fe.w );
 
     // Quat4d fe = Bspline::fe3d( t, grid.n, Bspline_Pauli   )*PLQH.x
-    //           + Bspline::fe3d( t, grid.n, Bspline_London  )*PLQH.y  
-    //           + Bspline::fe3d( t, grid.n, Bspline_Coulomb )*PLQH.z;  
+    //           + Bspline::fe3d( t, grid.n, Bspline_London  )*PLQH.y
+    //           + Bspline::fe3d( t, grid.n, Bspline_Coulomb )*PLQH.z;
 
 
     //Quat4d fe = Bspline::fe3d( t, gridN, Bspline_Coulomb );
@@ -383,6 +390,13 @@ inline Quat4d getForce_Bspline( Vec3d p, const Quat4d& PLQH, bool bSurf=true ) c
     //printf( "GridFF::getForce_Bspline() p(%g,%g,%g) t(%g,%g,%g) Gs[%i]=%g \n", p.x,p.y,p.z,  t.x,t.y,t.z,  i, fe.w );
 
     fe.f.mul(inv_dg2);
+    
+    // Debug print for scaled force (only for atom 1 to match GPU debug)
+    if(idebug != 0 && id_DBG == 1){
+        printf("CPU GridFF getForce_Bspline scaled [i:%3i] fe_scaled(% .6e,% .6e,% .6e,% .6e) inv_dg2(% .6e,% .6e,% .6e)\n",
+               id_DBG, fe.x, fe.y, fe.z, fe.w, inv_dg2.x, inv_dg2.y, inv_dg2.z);
+    }
+    
     return fe;
 }
 __attribute__((hot))  
@@ -444,7 +458,7 @@ inline void addForce( const Vec3d& pos, const Quat4f& PLQ, Quat4f& fe ) const {
         Quat4d fed;
         switch( mode ){
             // void evalGridFFPoint( int natoms_, const Vec3d * apos_, const Quat4d * REQs_, Vec3d pos, Quat4d& qp, Quat4d& ql, Quat4d& qe )const{
-            case GridFFmod::Direct       :{ Quat4d qp,ql,qe; evalGridFFPoint( apos_.size(), apos_.data(), REQs_.data(), pos, qp, ql, qe ); fed = qp*PLQ.x + ql*PLQ.y + qe*PLQ.z; 
+            case GridFFmod::Direct       :{ Quat4d qp,ql,qe; evalGridFFPoint( apos_.size(), apos_.data(), REQs_.data(), pos, qp, ql, qe ); fed = qp*PLQ.x + ql*PLQ.y + qe*PLQ.z;
                 //printf( "GridFF::addAtom( E(%g,%g,%g|%g)  PLQ(%g,%g,%g)  pos(%g,%g,%g) \n", qp.e, ql.e, qe.e, fed.e,  PLQ.x,PLQ.y,PLQ.z, pos.x,pos.y,pos.z  );
             } break;
             case GridFFmod::LinearFloat  :{ fed=(Quat4d)getForce( pos, (Quat4f)PLQ ); }break;
@@ -455,6 +469,13 @@ inline void addForce( const Vec3d& pos, const Quat4f& PLQ, Quat4f& fe ) const {
             //cast GridFFmod::BSplineFloat:  { }break;
             default: { printf("ERROR GridFF::eval() mode=%i NOT IMPLEMENTED !!! \n", mode); exit(0); }
         }
+        
+        // CPU GridFF debug prints - matching GPU format (only for atom 1 to match GPU debug)
+        if(idebug != 0 && id_DBG == 1){
+            printf("CPU GridFF [i:%3i|isys:%i] pos(% .6e,% .6e,% .6e) PLQ(% .6e,% .6e,% .6e,% .6e) fed(% .6e,% .6e,% .6e,% .6e)\n",
+                   id_DBG, -1, pos.x, pos.y, pos.z, PLQ.x, PLQ.y, PLQ.z, PLQ.w, fed.x, fed.y, fed.z, fed.w);
+        }
+        
         //printf("GridFF::addAtom() FE(%10.5f,%10.5f,%10.5f|%10.5f) pos(%7.5f,%7.5f,%7.5f) PLQ(%7.5f,%10.6f,%7.3f) \n",   fed.x,fed.y,fed.z,fed.w,     pos.x,pos.y,pos.z,  PLQ.x,PLQ.y,PLQ.z );
         fout.add( fed.f );
         //fout.sub( fed.f );

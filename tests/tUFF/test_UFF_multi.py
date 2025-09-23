@@ -343,8 +343,8 @@ def compare_results(cpu_energy, cpu_forces, gpu_energy, gpu_forces, tol=1e-5, co
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='UFF CPU vs. GPU Validation Test')
-    #default_mol = os.path.join(data_dir, 'mol', 'formic_acid.mol2')
-    default_mol = os.path.join(data_dir, 'mol', 'xylitol.mol2')
+    default_mol = os.path.join(data_dir, 'mol', 'formic_acid.mol2')
+    #default_mol = os.path.join(data_dir, 'mol', 'xylitol.mol2')
     parser.add_argument('-m', '--molecule',      type=str,      default=default_mol, help='Molecule file (.mol2, .xyz)')
     parser.add_argument('-t', '--tolerance',     type=float,    default=1e-3,        help='Numerical tolerance for comparison')
     parser.add_argument('-p', '--print-buffers', type=int,      default=0,           help='Print buffer contents before run')

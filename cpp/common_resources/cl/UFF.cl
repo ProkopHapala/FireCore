@@ -1353,18 +1353,14 @@ __kernel void getNonBond_GridFF_Bspline(
     const int nL = get_local_size (0); // number of atoms in the local memory chunk
 
     const int natoms=ns.x;         // number of atoms in the system
-    const int nnode =ns.y;         // number of nodes in the system
-    const int nvec  =natoms+nnode; // number of vectos (atoms and pi-orbitals) in the system
 
     //const int i0n = iS*nnode;    // index of the first node in the system
     const int i0a = iS*natoms;     // index of the first atom in the system
-    const int i0v = iS*nvec;       // index of the first vector (atom or pi-orbital) in the system
     //const int ian = iG + i0n;    // index of the atom in the system
     const int iaa = iG + i0a;      // index of the atom in the system
-    const int iav = iG + i0v;      // index of the vector (atom or pi-orbital) in the system
 
     const float4 REQKi = REQKs    [iaa];           // parameters of Lenard-Jones potential, Coulomb and Hydrogen Bond (RvdW,EvdW,Q,H) of the atom
-    const float3 posi  = atoms    [iav].xyz;       // position of the atom
+    const float3 posi  = atoms    [iaa].xyz;       // position of the atom
     float4 fe          = float4Zero;              // forces on the atom
 
     const int iS_DBG = 0;
@@ -1376,7 +1372,7 @@ __kernel void getNonBond_GridFF_Bspline(
 
     const cl_Mat3 lvec = lvecs[iS]; // lattice vectors of the system
 
-    if((iG==IDBG_ATOM)&&(iS==IDBG_SYS)){  printf( "GPU::getNonBond_GridFF_Bspline() natoms,nnode,nvec(%i,%i,%i) nS,nG,nL(%i,%i,%i) \n", natoms,nnode,nvec, nS,nG,nL ); }
+    if((iG==IDBG_ATOM)&&(iS==IDBG_SYS)){  printf( "GPU::getNonBond_GridFF_Bspline() natoms(%i) nS,nG,nL(%i,%i,%i) \n", natoms, nS,nG,nL ); }
     //if((iG==iG_DBG)&&(iS==iS_DBG)){  printf( "GPU::getNonBond_GridFF_Bspline() natoms,nnode,nvec(%i,%i,%i) nS,nG,nL(%i,%i,%i) \n", natoms,nnode,nvec, nS,nG,nL ); }
     //if((iG==iG_DBG)&&(iS==iS_DBG)) printf( "GPU::getNonBond_GridFF_Bspline() nPBC_(%i,%i,%i) lvec (%g,%g,%g) (%g,%g,%g) (%g,%g,%g)\n", nPBC.x,nPBC.y,nPBC.z, lvec.a.x,lvec.a.y,lvec.a.z,  lvec.b.x,lvec.b.y,lvec.b.z,   lvec.c.x,lvec.c.y,lvec.c.z );
     // if((iG==iG_DBG)&&(iS==iS_DBG)){
@@ -1407,7 +1403,7 @@ __kernel void getNonBond_GridFF_Bspline(
     // ========= Atom-to-Atom interaction ( N-body problem )     - we do it by chunks of nL atoms in order to reuse data and reduce number of global memory reads
     for (int j0=0; j0<natoms; j0+= nL ){ // loop over atoms in the system by chunks of nL atoms which fit into local memory
         const int i = j0 + iL;           // global index of atom in the system
-        LATOMS[iL] = atoms [i+i0v];      // load positions  of atoms into local memory
+        LATOMS[iL] = atoms [i+i0a];      // load positions  of atoms into local memory
         LCLJS [iL] = REQKs [i+i0a];      // load parameters of atoms into local memory
         barrier(CLK_LOCAL_MEM_FENCE);    // wait until all atoms are loaded into local memory
         for (int jl=0; jl<nL; jl++){     // loop over atoms in the local memory chunk
@@ -1417,6 +1413,10 @@ __kernel void getNonBond_GridFF_Bspline(
                 float4       REQK = LCLJS [jl]; // parameters of the atom
                 float3 dp   = aj.xyz - posi;    // vector between atoms
                 REQK = mixREQ_arithmetic( REQKi, REQK ); // Correct mixing
+                
+                // Debug print for pairwise interaction - print all interactions for atom 0
+                if((DBG_UFF!=0) && (iG==IDBG_ATOM) && (iS==IDBG_SYS)){ printf("GPU pair [%i,%i] dp(% .6e,% .6e,% .6e) r % .6e REQi(% .6e,% .6e,% .6e) REQij(% .6e,% .6e,% .6e) \n", iG, ja, dp.x, dp.y, dp.z, length(dp), REQKi.x,REQKi.y,REQKi.z,  REQK.x,REQK.y,REQK.z); }
+                
                 const bool bBonded = ((ja==ng.x)||(ja==ng.y)||(ja==ng.z)||(ja==ng.w));   // atom is bonded if it is one of the neighbors
                 if(bPBC){       // ==== with periodic boundary conditions we need to consider all PBC images of the atom
                     int ipbc=0; // index of PBC image
@@ -1434,6 +1434,10 @@ __kernel void getNonBond_GridFF_Bspline(
                                     //fe += getMorseQ( dp+shifts, REQK, R2damp );
                                     float4 fij = getLJQH( dp, REQK, R2damp );  // calculate Lenard-Jones, Coulomb and Hydrogen-bond forces between atoms
                                     //if((iG==iG_DBG)&&(iS==iS_DBG)){  printf( "GPU_LJQ[%i,%i|%i] fj(%g,%g,%g) R2damp %g REQ(%g,%g,%g) r %g \n", iG,ji,ipbc, fij.x,fij.y,fij.z, R2damp, REQK.x,REQK.y,REQK.z, length(dp+shift)  ); }
+                                    
+                                    // Debug print for force calculation - print all interactions for atom 0
+                                    if((DBG_UFF!=0) && (iG==IDBG_ATOM) && (iS==IDBG_SYS)){ printf("GPU fij(% .6e,% .6e,% .6e) E % .6e REQij(% .6e,% .6e,% .6e) bBonded %i bPBC %i\n", fij.x, fij.y, fij.z, fij.w, REQK.x, REQK.y, REQK.z, bBonded, bPBC);  }
+                                    
                                     fe += fij; // accumulate forces
                                 }
                                 ipbc++;         // increment index of PBC image
@@ -1446,8 +1450,13 @@ __kernel void getNonBond_GridFF_Bspline(
                 }else{ //  ==== without periodic boundary it is much simpler, not need to care about PBC images
                     if(bBonded) continue;  // Bonded ?
                     float4 fij = getLJQH( dp, REQK, R2damp ); // calculate Lenard-Jones, Coulomb and Hydrogen-bond forces between atoms
+                    
+                    // Debug print for force calculation (non-PBC case) - print all interactions for atom 0
+                    if((DBG_UFF!=0) && (iG==IDBG_ATOM) && (iS==IDBG_SYS)){
+                        printf("GPU fij [i:%3i,j:%3i|isys:%i] dp(% .6e,% .6e,% .6e) r % .6e REQi(% .6e,% .6e,% .6e) REQij(% .6e,% .6e,% .6e) fij(% .6e,% .6e,% .6e) E % .6e bBonded %i bPBC %i\n", iG, ja, iS, dp.x, dp.y, dp.z, length(dp),  REQKi.x, REQKi.y, REQKi.z, REQK.x, REQK.y, REQK.z,  fij.x, fij.y, fij.z, fij.w, bBonded, bPBC );
+                    }
+                    
                     fe += fij;
-                    //if((iG==iG_DBG)&&(iS==iS_DBG)){  printf( "GPU_LJQ[%i,%i] fj(%g,%g,%g) R2damp %g REQ(%g,%g,%g) r %g \n", iG,ji, fij.x,fij.y,fij.z, R2damp, REQK.x,REQK.y,REQK.z, length(dp)  ); }
                 }
             }
         }
@@ -1480,14 +1489,27 @@ __kernel void getNonBond_GridFF_Bspline(
 
         float4 fg = fe3d_pbc_comb(u, grid_ns.xyz, BsplinePLQ, PLQH, xqs, yqs);
 
+        // GridFF-specific debug prints for test atom
+        if((DBG_UFF!=0) && (iG==IDBG_ATOM) && (iS==IDBG_SYS)){
+            printf("GPU GridFF [i:%3i|isys:%i] posi(% .6e,% .6e,% .6e) u(% .6e,% .6e,% .6e) PLQH(% .6e,% .6e,% .6e,% .6e) fg_raw(% .6e,% .6e,% .6e,% .6e)\n",
+                   iG, iS, posi.x, posi.y, posi.z, u.x, u.y, u.z, PLQH.x, PLQH.y, PLQH.z, PLQH.w, fg.x, fg.y, fg.z, fg.w);
+        }
+
         //if((iG==iG_DBG)&&(iS==iS_DBG)){  printf( "GPU::getNonBond_GridFF_Bspline() fg(%g,%g,%g|%g) u(%g,%g,%g) posi(%g,%g,%g) grid_invStep(%g,%g,%g)\n", fg.x,fg.y,fg.z,fg.w,  u.x,u.y,u.z, posi.x,posi.y,posi.z, grid_invStep.x, grid_invStep.y, grid_invStep.z  ); }
 
         fg.xyz *= -grid_invStep.xyz;
+        
+        // Debug print for final GridFF force after scaling
+        if((DBG_UFF!=0) && (iG==IDBG_ATOM) && (iS==IDBG_SYS)){
+            printf("GPU GridFF scaled [i:%3i|isys:%i] fg_scaled(% .6e,% .6e,% .6e,% .6e) grid_invStep(% .6e,% .6e,% .6e)\n",
+                   iG, iS, fg.x, fg.y, fg.z, fg.w, grid_invStep.x, grid_invStep.y, grid_invStep.z);
+        }
+        
         fe += fg;
         //fes[iG] = fe;
     }  // insulate gridff
 
-    forces[iav] += fe;        // If we don't run it as first forcefield, we need to add force to existing force
+    forces[iaa] += fe;        // If we don't run it as first forcefield, we need to add force to existing force
     //forces[iav] += fe;     // If we don't run it as first forcefield, we need to add forces to the forces calculated by previous forcefields
     //forces[iav] = fe*(-1.f);
 

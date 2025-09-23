@@ -103,7 +103,10 @@ public:
     int ibuff_atoms_surf = -1;
     int ibuff_REQs_surf  = -1;
     int natom_surf=0;
-    cl_Mat3 cl_grid_lvec;
+    cl_Mat3 cl_dGrid;       // grid cell step (voxel rhombus)
+    cl_Mat3 cl_diGrid;      // inverse grid cell step
+    cl_Mat3 cl_grid_lvec;   // grid lattice vectors
+    cl_Mat3 cl_grid_ilvec;  // inverse grid lattice vectors
 
     // --- Common MD/update state (needed for atom updates on GPU)
     int4   nDOFs{0,0,0,0};   // (natoms, nnode, unused, nMaxSysNeighs)
@@ -135,8 +138,30 @@ public:
 
     // ====================== Functions
 
+    void setGridShape( const GridShape& grid ){
+        printf("DEBUG OCL_UFF::setGridShape() called\n");
+        v2i4      ( grid.n      , grid_n       );
+        grid_p0.f = (Vec3f)grid.pos0;
+        // Set grid step and inverse step from diagonal components of dCell matrix
+        grid_step.f   = Vec3f{ (float)grid.dCell.xx, (float)grid.dCell.yy, (float)grid.dCell.zz };
+        grid_invStep.f.set_inv( grid_step.f );
+        Mat3_to_cl( grid.dCell  , cl_dGrid     );
+        Mat3_to_cl( grid.diCell , cl_diGrid    );
+        Mat3_to_cl( grid.cell   , cl_grid_lvec );
+        Mat3_to_cl( grid.iCell  , cl_grid_ilvec );
+        
+        // Debug print to verify parameters are set correctly
+        printf("DEBUG OCL_UFF::setGridShape() grid_p0=(%f,%f,%f) grid_step=(%f,%f,%f) grid_invStep=(%f,%f,%f)\n",
+               grid_p0.f.x, grid_p0.f.y, grid_p0.f.z,
+               grid_step.f.x, grid_step.f.y, grid_step.f.z,
+               grid_invStep.f.x, grid_invStep.f.y, grid_invStep.f.z);
+        printf("DEBUG OCL_UFF::setGridShape() grid_n=(%d,%d,%d,%d)\n", grid_n.x, grid_n.y, grid_n.z, grid_n.w);
+    }
+
     void surf2ocl( const GridShape& grid, Vec3i nPBC_, int na=0, float4* atoms=0, float4* REQs=0 ){
         int err=0;
+        setGridShape( grid );
+        v2i4( nPBC_, nPBC );
         if(ibuff_atoms_surf<0) ibuff_atoms_surf = newBuffer( "atoms_surf", na, sizeof(float4), 0, CL_MEM_READ_ONLY );
         if(ibuff_REQs_surf <0) ibuff_REQs_surf  = newBuffer( "REQs_surf",  na, sizeof(float4), 0, CL_MEM_READ_ONLY );
         if(atoms){ err |= upload( ibuff_atoms_surf, atoms, na ); OCL_checkError(err, "makeGridFF().upload(atoms)" ); natom_surf = na; }
@@ -517,8 +542,16 @@ public:
         int4 npbc_int4;
         v2i4(nPBC_, npbc_int4);
         int err = 0;
+        
+        // Debug check for BsplinePLQ buffer
+        printf("DEBUG OCL_UFF::setup_getNonBond_GridFF_Bspline() ibuff_BsplinePLQ=%d\n", ibuff_BsplinePLQ);
+        if(ibuff_BsplinePLQ < 0) {
+            printf("ERROR: ibuff_BsplinePLQ not initialized (%d)\n", ibuff_BsplinePLQ);
+            exit(1);
+        }
+        
         err |= _useArg(nDOFs);                    OCL_checkError(err, "setup_getNonBond_GridFF_Bspline.arg 1");       // 1
-        err |= useArgBuff(ibuff_apos);            OCL_checkError(err, "setup_getNonBond_GridFF_Bspline.arg 3");       // 2
+        err |= useArgBuff(ibuff_apos);            OCL_checkError(err, "setup_getNonBond_GridFF_Bspline.arg 2");       // 2
         err |= useArgBuff(ibuff_fapos);           OCL_checkError(err, "setup_getNonBond_GridFF_Bspline.arg 3");       // 3
         err |= useArgBuff(ibuff_REQs);            OCL_checkError(err, "setup_getNonBond_GridFF_Bspline.arg 4");       // 4
         err |= useArgBuff(ibuff_neighs);          OCL_checkError(err, "setup_getNonBond_GridFF_Bspline.arg 5");       // 5
@@ -529,8 +562,15 @@ public:
         err |= useArgBuff(ibuff_BsplinePLQ);      OCL_checkError(err, "setup_getNonBond_GridFF_Bspline.arg 10");      // 10
         err |= _useArg(grid_n);                   OCL_checkError(err, "setup_getNonBond_GridFF_Bspline.arg 11");      // 11
         err |= _useArg(grid_invStep);             OCL_checkError(err, "setup_getNonBond_GridFF_Bspline.arg 12");      // 12
-        err |= _useArg(grid_shift0_p0);           OCL_checkError(err, "setup_getNonBond_GridFF_Bspline.arg 13");      // 13
+        err |= _useArg(grid_p0);                  OCL_checkError(err, "setup_getNonBond_GridFF_Bspline.arg 13");      // 13
         //err |= useArgBuff(ibuff_pbcshifts);       OCL_checkError(err, "setup_getNonBond_GridFF_Bspline.arg 14");      // 14
+        
+        // Debug print to verify parameters are being passed correctly
+        printf("DEBUG OCL_UFF::setup_getNonBond_GridFF_Bspline() passing parameters:\n");
+        printf("  grid_n=(%d,%d,%d,%d)\n", grid_n.x, grid_n.y, grid_n.z, grid_n.w);
+        printf("  grid_invStep=(%f,%f,%f)\n", grid_invStep.f.x, grid_invStep.f.y, grid_invStep.f.z);
+        printf("  grid_p0=(%f,%f,%f)\n", grid_p0.f.x, grid_p0.f.y, grid_p0.f.z);
+        
         OCL_checkError(err, "setup_getNonBond_GridFF_Bspline_UFF");
         return task;
     }
