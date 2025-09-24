@@ -802,15 +802,10 @@ void pack_uff_system( int isys, const UFF& ff, bool bParams=false, bool bForces=
             REQs [i0a + i] = (Quat4f){(float)ff.REQs[i].x, (float)ff.REQs[i].y, (float)ff.REQs[i].z, (float)ff.REQs[i].w};
         }
 
-        // DEBUG PRINT REQs
         if(isys == 0 || isys == 1){ // DEBUG: Print REQs for first two systems
-            printf("DEBUG_CPU_PACK pack_uff_system(isys=%d) REQs:\n", isys);
-            for(int i=0; i<nAtoms; ++i){
-                Quat4f req = REQs[i0a + i];
-                printf("DEBUG_CPU_REQ[s=%d,a=%d]: %g %g %g %g\n", isys, i, req.x, req.y, req.z, req.w);
-            }
+            printf("MolWorld_sp3_multi::pack_uff_system(isys=%d).REQs:\n", isys);
+            for(int i=0; i<nAtoms; ++i){ Quat4f req = REQs[i0a + i];  printf("REQ [s=%d,a=%d]: %g %g %g %g\n", isys, i, req.x, req.y, req.z, req.w); }
         }
-
 
         // Pack per-atom topology used by UFF kernels
         for(int i=0; i<nAtoms; ++i){ host_neighs_UFF   [i0a + i] = (int4)ff.neighs[i]; }
@@ -1378,6 +1373,7 @@ void setup_UFF_ocl(){
             // UFF should set grid parameters directly from GridFF object, not copy from MMFF context
             // Set grid parameters directly from GridFF object
             uff_ocl->setGridShape(gridFF.grid);
+            uff_ocl->bNonBond=bNonBonded;
             printf("DEBUG setup_UFF_ocl: uff_ocl->ibuff_BsplinePLQ=%d (should be 41)\n", uff_ocl->ibuff_BsplinePLQ);
             uff_ocl->task_NBFF_Grid_Bspline = uff_ocl->setup_getNonBond_GridFF_Bspline(ffu.natoms, nPBC_);
         }
@@ -1938,46 +1934,46 @@ int eval_MMFFf4_ocl( int niter, double Fconv=1e-6, bool bForce=false ){
 
 // Minimal UFF GPU relaxation loop analogous to run_ocl_opt
 int run_uff_ocl( int niter, double dt, double damping, double Fconv, double Flim ){
-        if(!bUFF){ printf("MolWorld_sp3_multi::run_uff_ocl(): bUFF=false\n"); return 0; }
-        if(!uff_ocl){ printf("MolWorld_sp3_multi::run_uff_ocl(): uff_ocl==nullptr\n"); return 0; } // This should not happen, uff_ocl is initialized in init()
-        printf("MolWorld_sp3_multi::run_uff_ocl(  bGridFF=%i, bNonBonded=%i | niter=%i, dt=%f, damping=%f, Fconv=%f, Flim=%f) \n",bGridFF, bNonBonded,  niter, dt, damping, Fconv, Flim);
-        // --- Prepare MD parameters for all systems, matching the kernel's expectation
-        // UFF.cl -> updateAtomsMMFFf4 -> const float4 MDpars  = MDparams[iS]; // (dt,damp,Flimit)
-        // The kernel uses MDpars.z as a multiplicative velocity damping factor. CPU uses (1.0-damping).
-        for(int i=0; i<nSystems; i++){
-            MDpars[i].x = dt;               // dt
-            MDpars[i].y = Flim;             // Flimit
-            MDpars[i].z = 1.0f - damping;   // velocity damping factor (1.0 - damping)
-            MDpars[i].w = 0.0f;             // unused
-            TDrive[i]   = (Quat4f){0.0f,0.0f,0.0f,0.0f}; // No thermal drive for relaxation
-        }
-        uff_ocl->upload( uff_ocl->ibuff_MDpars, MDpars );
-        uff_ocl->upload( uff_ocl->ibuff_TDrive, TDrive );
-
-        // --- Setup atom update kernel once before the loop
-        // The user has corrected OCL_UFF.h, this signature is now correct.
-        uff_ocl->setup_updateAtomsMMFFf4( uff_ocl->nAtoms, 0 ); // For UFF, nNode is 0
-        // --- Run relaxation loop
-        for(int i=0; i<niter; i++){
-            uff_ocl->task_clear_fapos->enque();
-            uff_ocl->eval(false);                 // 1. Evaluate covalent forces for all systems
-            if     (bGridFF   ){  uff_ocl->task_NBFF_Grid_Bspline->enque(); }
-            else if(bNonBonded){  uff_ocl->task_NBFF->enque(); }
-            uff_ocl->task_updateAtoms->enque();  // 3. Update atom positions and velocities for all systems
-            // --- Save current frame if trajectory is requested
-            if((savePerNsteps>0) && (i%savePerNsteps==0) && (trj_fname)){
-                download_uff( true, false ); // download positions for this step
-                for(int isys=0; isys<nSystems; ++isys){
-                    char fname[256];
-                    sprintf(fname, "%s_%03i.xyz", trj_fname, isys);
-                    unpack_uff_system( isys, ffu, true, false );
-                    char comment[256];
-                    sprintf(comment, "# step %d", i+1);
-                    saveXYZ_system(isys, fname, comment, "a"); // Append frame
-                }
+    if(!bUFF){ printf("MolWorld_sp3_multi::run_uff_ocl(): bUFF=false\n"); return 0; }
+    if(!uff_ocl){ printf("MolWorld_sp3_multi::run_uff_ocl(): uff_ocl==nullptr\n"); return 0; } // This should not happen, uff_ocl is initialized in init()
+    printf("MolWorld_sp3_multi::run_uff_ocl(  bGridFF=%i, bNonBonded=%i | niter=%i, dt=%f, damping=%f, Fconv=%f, Flim=%f) \n",bGridFF, bNonBonded,  niter, dt, damping, Fconv, Flim);
+    // --- Prepare MD parameters for all systems, matching the kernel's expectation
+    // UFF.cl -> updateAtomsMMFFf4 -> const float4 MDpars  = MDparams[iS]; // (dt,damp,Flimit)
+    // The kernel uses MDpars.z as a multiplicative velocity damping factor. CPU uses (1.0-damping).
+    for(int i=0; i<nSystems; i++){
+        MDpars[i].x = dt;               // dt
+        MDpars[i].y = Flim;             // Flimit
+        MDpars[i].z = 1.0f - damping;   // velocity damping factor (1.0 - damping)
+        MDpars[i].w = 0.0f;             // unused
+        TDrive[i]   = (Quat4f){0.0f,0.0f,0.0f,0.0f}; // No thermal drive for relaxation
+    }
+    uff_ocl->upload( uff_ocl->ibuff_MDpars, MDpars );
+    uff_ocl->upload( uff_ocl->ibuff_TDrive, TDrive );
+    // --- Setup atom update kernel once before the loop
+    // The user has corrected OCL_UFF.h, this signature is now correct.
+    uff_ocl->setup_updateAtomsMMFFf4( uff_ocl->nAtoms, 0 ); // For UFF, nNode is 0
+    // --- Run relaxation loop
+    bBonding = ffu.bDoBond;
+    for(int i=0; i<niter; i++){
+        if     (bBonding)  { uff_ocl->eval(false);                     }
+        else               { uff_ocl->task_clear_fapos->enque();       }
+        if     (bGridFF   ){ uff_ocl->task_NBFF_Grid_Bspline->enque(); }
+        else if(bNonBonded){ uff_ocl->task_NBFF             ->enque(); }
+        uff_ocl->task_updateAtoms->enque(); 
+        // --- Save current frame if trajectory is requested
+        if((savePerNsteps>0) && (i%savePerNsteps==0) && (trj_fname)){
+            download_uff( true, false ); // download positions for this step
+            for(int isys=0; isys<nSystems; ++isys){
+                char fname[256];
+                sprintf(fname, "%s_%03i.xyz", trj_fname, isys);
+                unpack_uff_system( isys, ffu, true, false );
+                char comment[256];
+                sprintf(comment, "# step %d", i+1);
+                saveXYZ_system(isys, fname, comment, "a"); // Append frame
             }
         }
-        return niter;
+    }
+    return niter;
 }
 
 int run_ocl_loc( int niter, double Fconv=1e-6 , int iVersion=1 ){

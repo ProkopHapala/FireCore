@@ -1548,9 +1548,7 @@ class UFF : public NBFF { public:
 
         ForceField::setNonBondStrategy( bNonBondNeighs*2-1 );
         //printf( "UFF::run_no_omp() bNonBonded=%i bNonBondNeighs=%i bSubtractBondNonBond=%i bSubtractAngleNonBond=%i bClampNonBonded=%i\n", bNonBonded, bNonBondNeighs, bSubtractBondNonBond, bSubtractAngleNonBond, bClampNonBonded );
-
         const bool bExploring = go->bExploring;
-
         int    itr=0;
         //if(itr_DBG==0)print_pipos();
         //bool bErr=0;
@@ -1567,7 +1565,7 @@ class UFF : public NBFF { public:
             if( bDoInversion ) Ei = evalInversions();
             // ---- assemble (we need to wait when all atoms are evaluated)
             for(int ia=0; ia<natoms; ia++){
-                assembleAtomForce(ia);
+                if(bDoAssemble)assembleAtomForce(ia);
                 //printf( "UFF::run() fapos[%i] (%g,%g,%g)\n", ia, fapos[ia].x, fapos[ia].y, fapos[ia].z );
                 if(bNonBonded){
                     if(bNonBondNeighs){
@@ -1727,7 +1725,7 @@ class UFF : public NBFF { public:
             #pragma omp for reduction(+:Eb)
             for(int ia=0; ia<natoms; ia++){
                 fapos[ia]=Vec3dZero;
-                Eb +=evalAtomBonds(ia, R2damp, Fmax2 );
+                Eb           +=evalAtomBonds        ( ia, R2damp, Fmax2 );
                 if(bPBC){ Enb+=evalLJQs_PBC_atom_omp( ia, Fmax2 ); }
                 else    { Enb+=evalLJQs_atom_omp    ( ia, Fmax2 ); }
                 // // if(bPBC){ Enb+=ffl.evalLJQs_ng4_PBC_atom_omp( ia ); }

@@ -1368,6 +1368,7 @@ __kernel void getNonBond_GridFF_Bspline(
 
     // =================== Non-Bonded interaction ( molecule-molecule )
 
+    if(ns.w>=0)
     { // insulate nbff
 
     const cl_Mat3 lvec = lvecs[iS]; // lattice vectors of the system

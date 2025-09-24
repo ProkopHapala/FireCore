@@ -34,6 +34,8 @@ public:
     bool bUFF_dihedrals  = true;
     bool bUFF_inversions = true;
     bool bUFF_assemble   = true;
+    bool bNonBond        = true;
+    bool bGridFF         = true;
     bool bSubtractNB     = true; // Subtract 1-2 (bond) non-bonded interactions
     bool bSubtractNB_angle = true; // Subtract 1-3 (angle) non-bonded interactions
     bool bClampNonBonded = true;
@@ -533,11 +535,11 @@ public:
         int nloc = 32;
         task->local.x = nloc;
         task->global.x = na + nloc - (na % nloc);
-        task->local.y = 1;  // CRITICAL FIX: Set local size for systems dimension to 1
+        task->local.y = 1;  
         task->global.y = nSystems;
         grid_shift0_p0 = grid_p0;
         useKernel(task->ikernel);
-        nDOFs = (int4){na,0,0,0};
+        nDOFs = (int4){na,0,0,bNonBond?0:-1};
         //nDOFs.y = 0; // nNode is 0 for UFF
         int4 npbc_int4;
         v2i4(nPBC_, npbc_int4);

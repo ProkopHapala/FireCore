@@ -207,6 +207,7 @@ class MolWorld_sp3 : public SolverInterface { public:
     bool bGridFF           = false; // 6
     bool bTricubic         = false; // 7
 	bool bPlaneSurfForce   = false; // 7
+    bool bBonding          = true;
     bool bMMFF             = true;  // 8
     bool bUFF              = false; // 9
     bool b141              = true;  // 10 // seems not to be used in assignUFFtypes()

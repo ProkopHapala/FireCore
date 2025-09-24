@@ -47,6 +47,8 @@ BUF_SPECS = {
 TOPOLOGY_SPECS = {k: v for k, v in BUF_SPECS.items() if v['type'] == 'int'}
 PARAMS_SPECS   = {k: v for k, v in BUF_SPECS.items() if v['type'] == 'float'}
 
+UFF_COMPONENTS = ('bonds', 'angles', 'dihedrals', 'inversions')
+
 # ==================
 #  Helper Functions
 # ==================
@@ -90,6 +92,61 @@ def print_bufs(bufs, title="Buffers"):
     for name, buf in bufs.items():
         print(f"{name}\n", buf)
 
+
+def components_to_switches(components, *, bNonBonded=False, bGridFF=False):
+    def resolve(name: str) -> int:
+        val = components.get(name, -1)
+        if val is None:
+            return -1
+        return int(val)
+
+    DoBond      = resolve('bonds')
+    DoAngle     = resolve('angles')
+    DoDihedral  = resolve('dihedrals')
+    DoInversion = resolve('inversions')
+    DoAssemble  = 1 if any(v > 0 for v in (DoBond, DoAngle, DoDihedral, DoInversion)) else -1
+    SubtractBondNonBond = -1
+    ClampNonBonded      = -1
+    uff.setSwitches2(
+        NonBonded=1 if bNonBonded else -1,
+        SurfAtoms=1 if bGridFF else -1,
+        GridFF=1 if bGridFF else -1,
+    )
+    uff.setSwitchesUFF(
+        DoBond      =DoBond,
+        DoAngle     =DoAngle,
+        DoDihedral  =DoDihedral,
+        DoInversion =DoInversion,
+        DoAssemble          = DoAssemble,
+        SubtractBondNonBond = SubtractBondNonBond,
+        ClampNonBonded      = ClampNonBonded
+    )
+    return DoBond, DoAngle, DoDihedral, DoInversion, DoAssemble, SubtractBondNonBond, ClampNonBonded
+
+
+def build_component_flags(base_components=None, *, enable=None, disable=None, preset='all'):
+    preset = (preset or 'all').lower()
+    preset_components = {
+        'all': set(UFF_COMPONENTS),
+        'bonded': set(UFF_COMPONENTS),
+        'bonded-only': set(UFF_COMPONENTS),
+        'none': set(),
+        'grid-only': set(),
+        'nonbonded-only': set(),
+    }
+
+    if base_components is None:
+        base_set = set(preset_components.get(preset, UFF_COMPONENTS))
+    else:
+        base_set = set(base_components)
+
+    if enable:
+        base_set.update(enable)
+    if disable:
+        base_set.difference_update(disable)
+
+    return {name: 1 if name in base_set else 0 for name in UFF_COMPONENTS}
+
 def run_uff(use_gpu, components, dt=0.02, bPrintBufs=False, nPrintSetup=False, bNonBonded=False, bGridFF=False):
     """
     Run a single UFF evaluation step on either CPU or GPU.
@@ -103,17 +160,7 @@ def run_uff(use_gpu, components, dt=0.02, bPrintBufs=False, nPrintSetup=False, b
     """
     print(f"\n--- Running UFF on {'GPU' if use_gpu else 'CPU'} with bNonBonded={bNonBonded} bGridFF={bGridFF}---")
 
-    uff.setSwitches2(NonBonded=1 if bNonBonded else -1, SurfAtoms=-1, GridFF=1 if bGridFF else -1)
-    # Set which components to evaluate for this run
-    uff.setSwitchesUFF(
-        DoBond      =components.get( 'bonds',      -1 ),
-        DoAngle     =components.get( 'angles',     -1 ),
-        DoDihedral  =components.get( 'dihedrals',  -1 ),
-        DoInversion =components.get( 'inversions', -1 ),
-        DoAssemble          =  1,
-        SubtractBondNonBond = -1,
-        ClampNonBonded      = -1
-    )
+
 
     print("py.DEBUG 4")
 
@@ -151,19 +198,7 @@ def scan_uff(nconf, nsys, components, tol=1e-3, seed=123, bNonBonded=False, bGri
     - GPU path evaluates batched over nsys replicas
     """
     print(f"\n--- Running UFF scan for nconf={nconf} with nsys={nsys} bNonBonded={bNonBonded} bGridFF={bGridFF}---")
-
-    # Switches as in single run
-    uff.setSwitches2(NonBonded=1 if bNonBonded else -1, SurfAtoms=-1, GridFF=1 if bGridFF else -1)
-    uff.setSwitchesUFF(
-        DoBond      =components.get('bonds',      -1),
-        DoAngle     =components.get('angles',     -1),
-        DoDihedral  =components.get('dihedrals',  -1),
-        DoInversion =components.get('inversions', -1),
-        DoAssemble          =  1,
-        SubtractBondNonBond = -1,
-        ClampNonBonded      = -1,
-    )
-
+    components_to_switches(components, bNonBonded=bNonBonded, bGridFF=bGridFF)
     # Build configurations from current geometry
     base = uff.apos.copy()
     rng = np.random.default_rng(seed)
@@ -216,19 +251,7 @@ def scan_uff_relaxed(nconf, nsys, components, niter=100, dt=0.02, damping=0.1, f
     CPU path uses sequential UFF::run for niter steps per configuration.
     """
     print(f"\n--- Running UFF scan_relaxed for nconf={nconf} with nsys={nsys}, niter={niter}, fconv={fconv} bNonBonded={bNonBonded} bGridFF={bGridFF}---")
-
-    # Switches as in single run
-    uff.setSwitches2(NonBonded=1 if bNonBonded else -1, SurfAtoms=-1, GridFF=1 if bGridFF else -1)
-    uff.setSwitchesUFF(
-        DoBond      =components.get('bonds',      -1),
-        DoAngle     =components.get('angles',     -1),
-        DoDihedral  =components.get('dihedrals',  -1),
-        DoInversion =components.get('inversions', -1),
-        DoAssemble          =  1,
-        SubtractBondNonBond = -1,
-        ClampNonBonded      = -1,
-    )
-
+    components_to_switches(components)
     base = uff.apos.copy()
     rng = np.random.default_rng(seed)
     confs = np.repeat(base[None, :, :], nconf, axis=0)
@@ -346,7 +369,7 @@ if __name__ == "__main__":
     default_mol = os.path.join(data_dir, 'mol', 'formic_acid.mol2')
     #default_mol = os.path.join(data_dir, 'mol', 'xylitol.mol2')
     parser.add_argument('-m', '--molecule',      type=str,      default=default_mol, help='Molecule file (.mol2, .xyz)')
-    parser.add_argument('-t', '--tolerance',     type=float,    default=1e-3,        help='Numerical tolerance for comparison')
+    parser.add_argument('-t', '--tolerance',     type=float,    default=1e-5,        help='Numerical tolerance for comparison')
     parser.add_argument('-p', '--print-buffers', type=int,      default=0,           help='Print buffer contents before run')
     parser.add_argument('-v', '--verbose',       type=int,      default=0,           help='Verbose output')
     #parser.add_argument('--nsys',               type=int,      default=2,           help='Number of GPU replicas (systems)')
@@ -360,19 +383,24 @@ if __name__ == "__main__":
     parser.add_argument('--dt',                  type=float,    default=0.02,        help='Integration timestep for relaxation')
     parser.add_argument('--damping',             type=float,    default=0.1,         help='Damping for relaxation')
     parser.add_argument('--flim',                type=float,    default=1000.0,      help='Force limit for relaxation')
-    parser.add_argument('--test_case',           type=str,      default="basic",     help='Test case to run: all, nb, grid, basic')
+    parser.add_argument('--preset', choices=['all', 'bonded', 'bonded-only', 'none', 'grid-only', 'nonbonded-only'], default='all', help='Component preset before applying --enable/--disable/--comps.')
+    parser.add_argument('--comps', nargs='*', choices=UFF_COMPONENTS, default=None, help='Explicit list of bonded UFF components to enable (overrides preset).')
+    parser.add_argument('--enable', nargs='*', choices=UFF_COMPONENTS, default=None, help='Additional UFF components to enable.')
+    parser.add_argument('--disable', nargs='*', choices=UFF_COMPONENTS, default=None, help='UFF components to disable.')
+    parser.add_argument('--non-bonded', action='store_true', help='Enable non-bonded interactions.')
+    parser.add_argument('--grid-ff', action='store_true', help='Enable GridFF interactions.')
     args = parser.parse_args()
 
-    bNonBonded = False
-    bGridFF    = False
-    if args.test_case == 'nb':
-        bNonBonded = True
-    elif args.test_case == 'grid':
-        bNonBonded = True
-        bGridFF    = True
-    elif args.test_case == 'all':
-        bNonBonded = True
-        bGridFF    = True
+    bNonBonded = args.non_bonded
+    bGridFF    = args.grid_ff
+
+    base_components = None if args.comps is None else list(args.comps)
+    component_flags = build_component_flags(
+        base_components,
+        enable=args.enable,
+        disable=args.disable,
+        preset=args.preset,
+    )
 
     # Cleanup old files before running
     cleanup_xyz_files(["scan_relaxed_cpu_*.xyz", "scan_relaxed_gpu_*.xyz", "trj_multi.xyz", "relaxed_gpu_*.xyz"])
@@ -420,16 +448,35 @@ if __name__ == "__main__":
     #components = ['bonds',  'dihedrals']
     #components = ['bonds', 'inversions']
     #components = ['bonds', 'angles', 'dihedrals']
-    components = ['bonds', 'angles', 'dihedrals', 'inversions']
-    component_flags = {key: 1 for key in components }
+
+    # Ensure flags reflect explicit choices (component_flags already constructed)
 
     if args.use_scan_relaxed:
         nconf = args.nconf if args.nconf>0 else args.nsys
-        ok, F_cpu, F_gpu = scan_uff_relaxed(nconf=nconf, nsys=args.nsys, components=component_flags, niter=args.niter, dt=args.dt, damping=args.damping, fconv=args.fconv, flim=args.flim, tol=args.tolerance, bNonBonded=bNonBonded, bGridFF=bGridFF)
+        ok, F_cpu, F_gpu = scan_uff_relaxed(
+            nconf=nconf,
+            nsys=args.nsys,
+            components=component_flags,
+            niter=args.niter,
+            dt=args.dt,
+            damping=args.damping,
+            fconv=args.fconv,
+            flim=args.flim,
+            tol=args.tolerance,
+            bNonBonded=bNonBonded,
+            bGridFF=bGridFF,
+        )
         passed = ok
     elif args.use_scan or args.nconf>0:
         nconf = args.nconf if args.nconf>0 else args.nsys
-        ok, F_cpu, F_gpu = scan_uff(nconf=nconf, nsys=args.nsys, components=component_flags, tol=args.tolerance, bNonBonded=bNonBonded, bGridFF=bGridFF)
+        ok, F_cpu, F_gpu = scan_uff(
+            nconf=nconf,
+            nsys=args.nsys,
+            components=component_flags,
+            tol=args.tolerance,
+            bNonBonded=bNonBonded,
+            bGridFF=bGridFF,
+        )
         passed = ok
     else:
         cpu_energy, cpu_forces = run_uff(use_gpu=False, components=component_flags, dt=args.dt, bNonBonded=bNonBonded, bGridFF=bGridFF)
