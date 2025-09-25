@@ -57,6 +57,7 @@ char* trj_fname = 0;
 int   savePerNsteps = 1;
 
 bool isPreAllocated=false;
+bool bFixedAtoms=false;
 //bool bChangeCore=true;
 
 int measure_i0=0;
@@ -209,19 +210,19 @@ int run( int nstepMax, double dt, double Fconv, int ialg, double* outE, double* 
         //printf("run() opt.vel %p\n", opt.vel); 
         opt.cleanVel( ); 
     }
-    //if(ff.nfix>0){ ff.apply_hard_fix(); }
+    if(ff.nfix>0){ ff.apply_hard_fix(); }
     for(itr=0; itr<nstepMax; itr++ ){
         ff.clearForce();
         Etot = ff.eval();
         if( ff.bNegativeSizes & (verbosity>0) ){ printf( "negative electron sizes in step #%i => perhaps decrease relaxation time step dt=%g[fs]? \n", itr, opt.dt ); }
-        //if(ff.nfix>0){ if(ialg>0){ ff.clear_fixed_dynamics(); }else{ ff.clear_fixed_force(); } }
+        if(ff.nfix>0){ if(ialg>0){ ff.clear_fixed_dynamics(); }else{ ff.clear_fixed_force(); } }
         switch(ialg){
             case  0: F2 = ff .move_GD      (dt);      break;
             case -1: F2 = opt.move_LeapFrog(dt);      break;
             case  1: F2 = opt.move_MD (dt,opt.damping); break;
             case  2: F2 = opt.move_FIRE();       break;
         }
-        //if(ff.nfix>0){ ff.apply_hard_fix(); }
+        if(ff.nfix>0){ ff.apply_hard_fix(); }
         if(outE){ outE[itr]=Etot;     }
         if(outF){ outF[itr]=sqrt(F2); }
         if(verbosity>2){ printf("itr: %6i Etot[eV] %16.8f |F|[eV/A] %16.8f \n", itr, Etot, sqrt(F2) ); };
@@ -229,11 +230,12 @@ int run( int nstepMax, double dt, double Fconv, int ialg, double* outE, double* 
             if(verbosity>0){ printf("eFF_lib.cpp::run() Converged in %i iteration Etot %g[eV] |F| %g[eV/A] <(Fconv=%g) \n", itr, Etot, sqrt(F2), Fconv ); };
             //if(verbosity>0){ printf("Converged in %i iteration Etot %g[eV] |F| %g[eV/A] <(Fconv=%g) \n", itr, Etot, sqrt(F2), Fconv ); };
             *bConv=true;
+            // printf("bConv %d", *bConv);
             break;
         }
         if( (trj_fname) && (itr%savePerNsteps==0) )  ff.save_xyz( trj_fname, "a" );
     }
-    if(verbosity>1){ printf("run() %s in %6i iterations Etot[eV] %16.8f |F|[eV/A] %16.8f (Fconv=%g) \n", bConv ? "    CONVERGED" : "NOT-CONVERGED", itr, Etot, sqrt(F2), Fconv ); };
+    if(verbosity>1){ printf("run() %s in %6i iterations Etot[eV] %16.8f |F|[eV/A] %16.8f (Fconv=%g) \n", *bConv ? "    CONVERGED" : "NOT-CONVERGED", itr, Etot, sqrt(F2), Fconv ); };
     //printShortestBondLengths();
     return itr;
 }
@@ -739,6 +741,7 @@ int processXYZ_e( const char* fname, double* outEs=0, double* apos_=0, double* e
     int ie=0,ia=0;
     int nae=0,na=0,ne=0;
     while(fgets(line, sizeof(line), fin)){
+        // printf("Line: %s, il: %i , iconf: %i , nae: %i , na: %i , ne: %i \n", line, il, iconf, nae, na, ne);
         if      (il == 0){
             sscanf(line, "%d", &nae);
         }else if(il == 1){
@@ -758,10 +761,12 @@ int processXYZ_e( const char* fname, double* outEs=0, double* apos_=0, double* e
         }
         il++;
         if (il>=nae+2){
-            if(verbosity>0) printf( "----- conf: %i \n", iconf );
+            // printf( "----- conf: %i \n", iconf );
             if(verbosity>0) ff.info();
             if( nstepMax>0 ){ //relaxace - zafixovana jadra
-                { // constrain
+                // constrain
+                // ff.info();
+                if(bFixedAtoms){
                     int nfix=ff.na;
                     if(iconf==0)ff.realloc_fixed(nfix);
                     for(int i=0; i<nfix; i++){
@@ -769,10 +774,13 @@ int processXYZ_e( const char* fname, double* outEs=0, double* apos_=0, double* e
                         ff.fixed_inds[i] = Vec2i{i,7};
                     }
                 }
+                           
                 bool bConv = false;
                 run( nstepMax, dt, Fconv, optAlg, 0, 0, &bConv );
-                //printf("processXYZ_e()");
-                if(bConv) {(*convSum)++;}
+                if(bConv) {
+                    (*convSum)++; 
+                    // printf(" convsum: %d \n", *convSum);
+                }
             }  
             ff.eval();
             ff.copyEnergies         (         outEs, iconf );
@@ -793,6 +801,32 @@ int processXYZ_e( const char* fname, double* outEs=0, double* apos_=0, double* e
 void setKRSrho(double* _KRSrho){
     Vec3d KRSrho =*(Vec3d*)_KRSrho;
     ff.setKRSrho( KRSrho );
+}
+
+void setGaussPauliSizes( int n, double* params){
+    // printf( "setGaussPauliSizes() n=%i \n", n);
+    // for(int i=0; i<n; i++){
+    //     printf( "setGaussPauliSizes() params[%i]=%g \n", i, params[i] );
+    // }
+    ff.paramsSi.assign(params, params+n);
+}
+
+void setEnergyConstant( double eConst ){
+    ff.setEnergyConstant(eConst);
+}
+
+void setFixedAtoms(bool bFix){
+    bFixedAtoms = bFix;
+}
+
+
+void setParsECandPS( int N, double* params) {
+    // printf( "setParsECandPS() N=%i \n", N);
+    setEnergyConstant( params[0] );
+    // for(int i=1; i<N; i++){
+    //     printf( "setParsECandPS() params[%i]=%g \n", i, params[i] );
+    // }
+    ff.paramsSi.assign(params+1, params+N);
 }
 
 

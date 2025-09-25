@@ -1,6 +1,7 @@
 
 #ifndef InteractionsGauss_h
 #define InteractionsGauss_h
+#include <vector>
 /// @file InteractionsGauss.h @brief Implements functions for evaluation of interaction between gaussian functions such as product, overlap, kinetic energy and electrostatic interaction
 /// @ingroup Electron_Forcefield
 
@@ -481,6 +482,14 @@ inline double getOverlapSGauss( double r2, double si, double sj, double& dSr, do
     return getOverlapSGauss( r2, si, sj, dSr, dSsi, dSsj, si2,sj2,is2,is4 );
 }
 
+// inline double getOverlapGaussFromVec( const Vec3d& dR, double si, double sj, Vec3d& f, double& fsi, double& fsj){
+//     double r2 = dR.norm2();
+//     // double S = getOverlapSGauss( r2, si, sj, fsi, fsj );
+//     return 0;
+
+
+// }
+
 inline double PauliSGauss_anti( double S, double& fS, double rho ){
     double S2    = S*S;
     double D     = 1./(1.+S2);
@@ -505,6 +514,33 @@ inline double PauliSGauss_syn( double S, double& fS, double rho ){
     fS   = 2.*( SDm*Dm  + SDrhom*D );
     return  S*( SDm     + SDrhom   );
 
+}
+
+inline double addPauliMultiGauss( const Vec3d& dR, std::vector<double>& paramsSi , double sj, double eConst, Vec3d& f, double& fsi, double& fsj){
+    // eConst is defiened as energy/overlap
+    // E = S*eConst 
+    double r2 = dR.norm2();
+    double S = 0;
+    
+    double ddSr  = 0;
+    double ddSsi = 0;
+    double ddSsj = 0;
+
+    double dSr  = 0;
+    double dSsi = 0;
+    double dSsj = 0;
+
+    for(int i=0; i<paramsSi.size(); i++){
+        double si = paramsSi[i];
+        S += getOverlapSGauss( r2, si, sj, ddSr, ddSsi, ddSsj);
+        dSr  += ddSr;
+        dSsi += ddSsi;
+        dSsj += ddSsj;
+    }
+    fsi += dSsi*eConst;
+    fsj += dSsj*eConst;
+    f.add_mul( dR, dSr*eConst );
+    return S*eConst;
 }
 
 inline double addPauliGauss( const Vec3d& dR, double si, double sj, Vec3d& f, double& fsi, double& fsj, bool anti, const Vec3d& KRSrho ){
@@ -800,6 +836,3 @@ inline void PauliCorePElec(double rc, double re2, double& epauli, double& frc, d
 ///  @}
 
 #endif
-
-
-

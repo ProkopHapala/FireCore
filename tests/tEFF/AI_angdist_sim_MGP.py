@@ -7,6 +7,7 @@ import time
 # import torch
 import tensorflow as tf
 import scipy.optimize as opt 
+import time
 
 sys.path.append("../../")
 from scipy.optimize import dual_annealing
@@ -19,6 +20,7 @@ fileToSaveProcess = "processXYZ.xyz"
 numOfFunc = 0
 maxPairedEl = 4
 fixedAtoms = True
+maxfunc = 2000
 
 
 # class Angdist_sim:
@@ -122,31 +124,29 @@ def save_simulation(angleArr, distArr, minTheta ,fileToSavePath, allEtot=None, f
                 f.write(" ".join(f"{val:.6f}" for val in etot_row) + "\n")
                 f.write("\n")  # blank line between each block
 
-def get_variance_from_KRSrho(theta): #Function we need to minimize
+def get_variance_from_ECandPS(theta): #Function we need to minimize
     global numOfFunc
     outEs = np.zeros((nrec,5))
     epos = np.zeros( (nrec, ne, 4) )
     convSum = [0]
-
-    eff.setKRSrho(theta)
+    # eff.setEnergyConstants(eConst)
+    # eff.setPauliGaussSizes(sizes)
+    eff.setParsECandPS(theta)
     eff.setFixedAtoms(fixedAtoms)
     eff.processXYZ_e(elementPath_e, outEs=outEs, epos=epos, nstepMax=10000, dt=0.005, Fconv=1e-3, xyz_out=None, fgo_out=None, convSum=convSum) # FOR NORMAL PURPOSES USE nstepMax=10000
+    print("Out Es: ", outEs[:,0])
     outEsdiff = np.zeros((nrec,5))
-    # print("Out Es: ", outEs)
-    # print("OutEs[:,0]: ", outEs[:,0])
-    # input()
     outEsdiff[:,0] = params["Etot"] - outEs[:,0]
     outEsdiff[:,0] -= sum(outEsdiff[:,0])/len(outEsdiff[:,0])    
-    outEsdiff[:,0][params['dist'] == 0.7] = 0 #getting rid of unwanted valuess 
+    # outEsdiff[:,0][params['dist'] == 0.7] = 0 #getting rid of unwanted valuess 
     var = np.var(outEsdiff[:,0])
     numOfFunc += 1
     return var , outEs, epos, convSum[0]
 
 
-
-def get_paired_el(eposAll, maxNPairedEl):
+def get_wrong_pair_el(eposAll, maxNPairedEl): #Comutes all electrons that are wrongly paired!!!!
     delta = 5e-2
-    nPairedElAll = 0
+    nWrongPairedEl = 0
     for epos in eposAll:
         nPairedEl = 0
         for i in range(len(epos)):
@@ -155,22 +155,22 @@ def get_paired_el(eposAll, maxNPairedEl):
                 if sum(x**2 for x in depos) < delta:
                     nPairedEl += 1
 
-        nPairedElAll += abs(nPairedEl - maxNPairedEl)
+        nWrongPairedEl += abs(nPairedEl - maxNPairedEl)
 
-    return nPairedElAll
+    return nWrongPairedEl
 
 
 def loss_function(theta):
     loss = 0
-    var, outEs, epos, convSum_val = get_variance_from_KRSrho(theta)
-    nPairedEl = get_paired_el(epos, maxPairedEl)
-    loss = var - convSum_val + nPairedEl*10 
+    var, outEs, epos, convSum_val = get_variance_from_ECandPS(theta)
+    nWrongPairedEl = get_wrong_pair_el(epos, maxPairedEl)
+    loss = var - convSum_val + nWrongPairedEl*10 
 
-    print("Flexible variable: ", theta)
+    print("\nFlexible variable: ", theta)
     print("Number of get varince: ", numOfFunc)
-    print("\n Conv sum in loss_function: ", convSum_val)
+    print("\nConv sum in loss_function: ", convSum_val)
     print("Variance: ", var)
-    print("Paired el: ", nPairedEl)
+    print("Wrongly paired el: ", nWrongPairedEl)
     print("Loss: ", loss)
     print("\n\n\n")
 
@@ -264,7 +264,7 @@ def get_variance_wrapper(theta):
     # Use tf.py_function to wrap the numpy-based black-box function.
     # This allows it to be part of the TF graph execution. It tells TensorFlow:
     # "Run this Python code; I will provide the gradient for it myself."
-    loss = tf.py_function(func=get_variance_from_KRSrho, inp=[theta], Tout=tf.float64)
+    loss = tf.py_function(func=get_variance_from_ECandPS, inp=[theta], Tout=tf.float64)
 
     # Define the backward pass (the gradient function)
     def grad_fn(dy):
@@ -275,14 +275,14 @@ def get_variance_wrapper(theta):
         theta_np = theta.numpy()
         grads_np = np.zeros_like(theta_np)
         epsilon = 1e-6  # A small step for numerical differentiation
-        loss0 = get_variance_from_KRSrho(theta_np)
+        loss0 = get_variance_from_ECandPS(theta_np)
 
         # Calculate partial derivative for each element of theta
         for i in range(len(theta_np)):
             # Perturb theta[i] positively
             theta_plus = theta_np.copy()
             theta_plus[i] += epsilon
-            loss_plus = get_variance_from_KRSrho(theta_plus)
+            loss_plus = get_variance_from_ECandPS(theta_plus)
 
             # Central difference formula for the partial derivative
             partial_grad = (loss_plus - loss0) / (2 * epsilon)
@@ -330,7 +330,7 @@ if __name__ == "__main__":
     eff.info()
     eff.esize[:]=0.7
     
-    theta0 = np.array([1.125, 0.9, -0.2])
+    theta0 = np.array([1., 1., 0.5, 0.3])
     # theta0 = np.array([1.1, 0.7, -0.4])
 
     # Minimize by steps method
@@ -338,16 +338,21 @@ if __name__ == "__main__":
 
     # Dual annealing method
     bounds = [
-    (1.0, 1.3),
-    (0.7, 1.0),
-    (-0.3, -0.1)]
+    (1e-3, 1e3),
+    (1e-3, 1e3),
+    (1e-3, 1e3),
+    (1e-3, 1e3)]
 
-    results = dual_annealing(loss_function, bounds=bounds, maxiter=1000000, maxfun=10)
+    startTime = time.perf_counter()
+    results = dual_annealing(loss_function, bounds=bounds, maxiter=1000000, maxfun=maxfunc)
     minTheta = results.x
     minLoss = results.fun
     funEval = results.nfev
     print("======================================================================================================")
     print(results.message)
+    endTime1 = time.perf_counter()
+    elapsedTime1 = endTime1 - startTime
+    print(f"Elapsed time: {elapsedTime1:.2f} seconds")
 
     # ADAM optimizer method
     # theta = tf.Variable(theta0, dtype=tf.float64)
@@ -378,13 +383,15 @@ if __name__ == "__main__":
     # minTheta = theta0
     # minLoss = 0
 
-    var = get_variance_from_KRSrho(minTheta)[0]
-    nPairedEl = get_paired_el(get_variance_from_KRSrho(minTheta)[2], maxPairedEl)
+    var = get_variance_from_ECandPS(minTheta)[0]
+    nPairedEl = get_wrong_pair_el(get_variance_from_ECandPS(minTheta)[2], maxPairedEl)
 
 
     angleArr = params['ang']
     distArr = params['dist']
     save_simulation(angleArr, distArr, minTheta, fileToSavePath)
+    endTime2 = time.perf_counter()
+    elapsedTime2 = endTime2 - endTime1
 
     print("#===========")
     print("Theta final: ", minTheta)
@@ -392,6 +399,6 @@ if __name__ == "__main__":
     print("Variance final: ", var)
     print("Paired el. final: ", nPairedEl)
     print("Number of get var: ", numOfFunc)
-    # print("Number of function evaluation", funEval)
-    # print("Uncertainty of final variable: ", grad_norm)
+    print(f"Elapsed time for optimizing: {elapsedTime1:.2f} seconds", )
+    print(f"Elapsed time for saving: {elapsedTime2:.2f} seconds", )
     print("#=========== DONE /home/gabriel/git/FireCore/tests/tEFF/AI_angdist_sim.py")

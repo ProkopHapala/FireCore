@@ -133,16 +133,17 @@ def allVal():
 def minVal():
     print("#=========== RUN /home/gabriel/git/FireCore/tests/tEFF/AI_angdist_show.py, all values")
     print(f"Loading from file {fileToReadPath}")
-    KRSrho = read_min_theta(fileToReadPath) 
+    theta = read_min_theta(fileToReadPath) 
     if os.path.exists(fileToSaveProcess):
         os.remove(fileToSaveProcess) # deleting useless information
     
-    KRSrho = np.array([1.125, 0.9, -0.2])
-    KRSrho = np.array([ 1.07161943,  0.83937069, -0.20645425])
+    # theta = np.array([450.8817785 , 521.35019532 ,167.2525531,  594.19675996]) # Small loss function
+    theta = np.array([452.43155209, 521.0722547 , 162.6148738,  593.99594424]) # Big loss function
+
     eff.setTrjName(fileToSaveProcess, savePerNsteps=1)
     eff.setVerbosity(0,0)
     eff.setFixedAtoms(fixedAtoms)
-    eff.setKRSrho(KRSrho)
+    eff.setParsECandPS(theta)
 
     atomParams = np.array([
     #  Q   sQ   sP   cP
@@ -182,7 +183,7 @@ def minVal():
     print("get buffs")
     #eff.aPars[0,2]=1
     eff.esize[:]=0.7
-    print("kRSrho: ", KRSrho)
+    print("Params: ", theta)
     convSum = [0]
     # eff.processXYZ( "export/scan_data/angdistscan_CH4.xyz", outEs=outEs, bCoreElectrons=bCoreElectrons, bChangeCore=False, bChangeEsize=True, nstepMax=0, dt=0.005, Fconv=1e-3, ialg=2 ) #, KRSrho=KRSrho 
     eff.processXYZ_e( elementPath_e, outEs=outEs, nstepMax=10000, dt=0.005, Fconv=1e-3, convSum=convSum) #, KRSrho=KRSrho 
@@ -197,6 +198,7 @@ def minVal():
 
 
 if __name__ == "__main__":
+    print("Runninf")
     parser = argparse.ArgumentParser()
     parser.add_argument('--variant', choices=['all', 'min'], required=True)
     args = parser.parse_args()

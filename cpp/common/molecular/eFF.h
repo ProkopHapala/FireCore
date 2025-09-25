@@ -263,12 +263,16 @@ constexpr static const double aMasses[9] = {  1.0, 4.0, 7.0, 9.0,  11.0,  12.0, 
 
     int iPauliModel = 1;
     bool bCoreCoul  = true;
+    bool bMultiGauss = false;
 
     double KPauliOverlap = 50.0; // ToDo : This is just "bulgarian constant" for now
     double KPauliKin     = 50.0; // ToDo : Not sure if we should use this - perhaps this model of pauli energy should work "ab inition"
 
     constexpr static const double default_esize = 0.5;
     constexpr static const double min_esize     = 0.1;
+
+    double eConst = 1;
+    std::vector<double> paramsSi = {1.0, 0.5, 0.3};
     Vec3d KRSrho = { 1.125, 0.9, -0.2 }; ///< eFF universal parameters
     //constexpr static const Vec3d KRSrho = { 1.125, 0.9, -0.3 }; ///< eFF universal parameters // If it is sufficiently strong electron pairs are formed
     //constexpr static const Vec3d KRSrho = { 1.125, 0.9, -1.0 }; ///< eFF universal parameters // If it is sufficiently strong electron pairs are formed
@@ -326,6 +330,10 @@ constexpr static const double aMasses[9] = {  1.0, 4.0, 7.0, 9.0,  11.0,  12.0, 
     double Etot=0,Ek=0, Eee=0,EeePaul=0,EeeExch=0,  Eae=0,EaePaul=0,  Eaa=0; ///< different kinds of energy
 
 void setKRSrho( const Vec3d& KRSrho_ ){ KRSrho = KRSrho_; }
+
+void setGaussSize(std::vector<double>& paramsSi_){ paramsSi = paramsSi_; }
+
+void setEnergyConstant( double eConst_ ) { eConst = eConst_; }
 
 void realloc(int na_, int ne_, bool bVel=false){
     bDealoc = true;
@@ -672,7 +680,8 @@ double evalAE(){
             //     printf("%s a%i-e%i Coul %5.20f \n",prefix,i,j,dEae); 
             //     printf("%s a%i-e%i Paul %5.20f \n",prefix,i,j,dEaePaul); 
             // }
-            //printf( "evalAE[%i,%i] f(%g,%g,%g) r %g s %g E %g EPaul %g Eee %g \n", i,j, f.x,f.y,f.z, dR.norm(), aPar.y, sj, dEae,dEaePaul,dEee );
+            // printf( "evalAE[%i, %i] aPar.x: %g; aPar.y: %g; aPar.z: %g; aPar.w: %g\n", i, j, aPar.x, aPar.y, aPar.z, aPar.w);
+            // printf( "evalAE[%i,%i] f(%g,%g,%g) r %g s %g sj %g E %g EPaul %g Eee %g \n", i,j, f.x,f.y,f.z, dR.norm(), aPar.y, sj, dEae,dEaePaul,dEee );
             Eae    +=dEae;
             EaePaul+=dEaePaul;
             Eee_   +=dEee;
@@ -694,6 +703,55 @@ double evalAE(){
     return Eae+EaePaul+Eee_;
 }
 
+/// evaluate Atom-Electron forces
+double evalAE_MultiGauss(){
+    Eae    =0;
+    EaePaul=0;
+    double Eee_=0;
+
+    for(int i=0; i<na; i++){
+        const Vec3d  pi   = apos[i];
+        const Quat4d aPar = aPars[i]; // { x=Q,y=sQ,z=sP,w=cP }
+        for(int j=0; j<ne; j++){
+            Vec3d f=Vec3dZero;
+            const Vec3d   dR  = epos [j] - pi;
+            const double  sj  = esize[j];
+            const double  qj  = echarge[j];
+            double& fsj = fsize[j];
+            double  fs_junk=0;
+            double dEae=0,dEaePaul=0,dEee=0;
+            // printf("epos j: %g, %g, %g \n", epos[j].x, epos[j].y, epos[j].z);
+            // printf("apos i: %g, %g, %g \n", apos[i].x, apos[i].y, apos[i].z);
+            if(bEvalAECoulomb){
+                double qCore = bCoreCoul ? aPar.x : (aPar.x-aPar.z);
+                // dEae  = addCoulombGauss( dR, sj, f, fsj, qCore*-qj ); 
+                dEae  = addCoulombGauss( dR, aPar.y, sj, f, fs_junk, fsj, qCore*-qj ); // 0, because this is the size of atoms core
+                //                           ^^^^^^
+                // there should be theoretically 0, because that is the size of an atom core. However, it works better with aPar.y
+                // FIX IT
+                // printf("dEae: %g \n", dEae);
+            }
+            if( aPar.z>1e-8 ){ // is there a core electron?
+                // tady spocitat prekryv gaussianu 
+                if (bEvalAEPauli) {
+                    dEaePaul = addPauliMultiGauss( dR, paramsSi, sj, eConst, f, fs_junk, fsj); // spin=0 means both -1 and +1  
+                }
+                if(bCoreCoul   ){ dEee     = addCoulombGauss  ( dR, aPar.y, sj, f, fsj, fs_junk,            qj*aPar.z     ); 
+                    // printf("dEee %g \n \n", dEee);
+                }
+            }
+            
+            Eae    +=dEae;
+            EaePaul+=dEaePaul;
+            Eee_   +=dEee;
+            eE[j]  +=dEae+dEaePaul+dEee;
+            eforce[j].sub(f);
+            aforce[i].add(f);
+        }
+    }
+    Eee+=Eee_;
+    return Eae+EaePaul+Eee_;
+}
 
 double evalECP( Vec3d dR, Quat4d aPar, Quat4d BCDE, double sj, Vec3d& f, double& fs ){
     double dEae = 0;
@@ -867,11 +925,13 @@ double eval(){
     if(bEvalKinetic    ) Etot+= evalKinetic();
     if(bEvalEE         ) Etot+= evalEE();
     if(bEvalAE){
+        // printf("\n bUseECPs: %i, bMultiGauss: %i \n", bUseECPs, bMultiGauss);
         if(bUseECPs){ Etot+= evalAE_ECP(); }
+        else if (bMultiGauss) {Etot += evalAE_MultiGauss();}
         else        { Etot+= evalAE();     }
     }
     if(bEvalAA         ) Etot+= evalAA();
-    if(bEvalCoreCorect ) Etot+=evalCoreCorrection();
+    if(bEvalCoreCorect ) Etot+=evalCoreCorrection(); // currently false
     //printf( "eval() Etot %g epos[0](%g,%g,%g) \n", Etot, epos[0].x, epos[0].y, epos[0].z );
     return Etot;
 }
@@ -1076,9 +1136,9 @@ void to_xyz( FILE* pFile, const char* comment=0 ){
     }
     fprintf( pFile, " %i \n", na+ne_ );
     if(comment!=0){ 
-        fprintf( pFile, "na,ne,core %i %i f | Etot(%g)=T(%g)+ee(%g)+ea(%g)+aa(%g) | %s ", na,ne_, Etot, Ek, Eee, Eae, Eaa, comment ); 
+        fprintf( pFile, "na,ne,core %i %i m | Etot(%g)=T(%g)+ee(%g)+ea(%g)+aa(%g) | %s ", na,ne_, Etot, Ek, Eee, Eae, Eaa, comment ); 
     }else{ 
-        fprintf( pFile, "na,ne,core %i %i f | Etot(%g)=T(%g)+ee(%g)+ea(%g)+aa(%g) \n", na,ne_, Etot, Ek, Eee, Eae, Eaa );
+        fprintf( pFile, "na,ne,core %i %i m | Etot(%g)=T(%g)+ee(%g)+ea(%g)+aa(%g) \n", na,ne_, Etot, Ek, Eee, Eae, Eaa );
     }
     for (int i=0; i<na; i++){
         int iZ = (int)(aPars[i].x+0.5);
@@ -1141,6 +1201,11 @@ void setCoreMode(char coreMode_){
         case 'e': // ECP: Enhanced Core pseudo-Potential
             //bCoreCoul = true;
             bUseECPs  = true;
+            break;
+        case 'm': //multiple gaussians as core 
+            bCoreCoul = true;
+            bUseECPs  = false;
+            bMultiGauss = true;
             break;
         default:
             printf("ERROR in setCoreMode() coreMode=%c\n", coreMode); exit(0);

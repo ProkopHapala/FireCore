@@ -366,7 +366,7 @@ def preAllocateXYZ(fname, Rfac=-0.5, bCoreElectrons=True):
 
 lib.processXYZ_e.argtypes  = [c_char_p, c_double_p, c_double_p, c_double_p, c_int, c_double, c_double, c_int, c_char_p, c_char_p, c_int_p ]
 lib.processXYZ_e.restype   =  c_int
-def processXYZ_e( fname, outEs=None, apos=None, epos=None, nstepMax=0, dt=0.001, Fconv=1e-3, optAlg=2, xyz_out="processXYZ.xyz", fgo_out="processXYZ.fgo", bOutputs=(0,0,0), convSum=None ):
+def processXYZ_e( fname, outEs=None, apos=None, epos=None, nstepMax=0, dt=0.001, Fconv=1e-3, optAlg=2, xyz_out="processXYZ.xyz", fgo_out="processXYZ.fgo", bOutputs=(0,0,0), convSum=[0] ):
     """
     Process XYZ file with electrons
     Returns: outEs, apos, epos
@@ -387,9 +387,7 @@ def processXYZ_e( fname, outEs=None, apos=None, epos=None, nstepMax=0, dt=0.001,
     if bOutputs[1] and apos  is None: apos  = np.zeros( (nconf, na, 3) )
     if bOutputs[2] and epos  is None: epos  = np.zeros( (nconf, ne, 4) )
     convSumC = ctypes.c_int(0)
-    print("convSumC.value 111", convSumC.value)
     lib.processXYZ_e( cstr(fname), _np_as(outEs, c_double_p), _np_as(apos, c_double_p), _np_as(epos, c_double_p), nstepMax, dt, Fconv, optAlg, cstr(xyz_out), cstr(fgo_out), convSumC)
-    print("ConvSumC.value ", convSumC.value)
     convSum[0] = convSumC.value
     return outEs, apos, epos
 
@@ -400,8 +398,53 @@ def setKRSrho( KRSrho ):
     _KRSrho = np.array( KRSrho, dtype=np.float64 )
     return lib.setKRSrho( _np_as(_KRSrho, c_double_p) )
 
+# void setGaussSize( int n, double* params)
+lib.setGaussPauliSizes.argtypes = [c_int, c_double_p]
+lib.setGaussPauliSizes.restype  = None
+def setPauliGaussSizes(params):
+    """
+    Sets the sizes for multiple Gaussians used in evalAE_MultiGauss.
+    
+    Args:
+        params (list or np.ndarray of floats): A list of Gaussian sizes.
+    """
+    n = len(params)
+    c_params = (c_double * n)(*params)
+    lib.setGaussPauliSizes(n, c_params)
 
+# void setEnergyConstant( double eConst )
+lib.setEnergyConstant.argtypes = [c_double]
+lib.setEnergyConstant.restype  = None
+def setEnergyConstant(eConst):
+    """
+    Sets the energy constant for multi-Gaussian interactions.
+    
+    Args:
+        eConst (float): The energy constant value.
+    """
+    lib.setEnergyConstant(eConst)
 
+# void setParsECandPS( int N, double* params)
+lib.setParsECandPS.argtypes = [c_int, c_double_p]
+lib.setParsECandPS.restype  = None
+def setParsECandPS(params):
+    """
+    Sets the energy constant and sizes for multiple Gaussians.
+    The first element of params is the energy constant, the rest are sizes.
+
+    Args:
+        params (list or np.ndarray of floats): A list where the first element
+                is the energy constant and the rest are Gaussian sizes.
+    """
+    n = len(params)
+    c_params = (c_double * n)(*params)
+    lib.setParsECandPS(n, c_params)
+
+#  void setFixedAtoms(bool bFix){
+lib.setFixedAtoms.argtypes  = [c_bool]
+lib.setFixedAtoms.restype   =  None
+def setFixedAtoms(bFix):
+    return lib.setFixedAtoms(bFix)
 
 #int preAllocateFGO(const char* fname, bool bVel, double fUnits)
 lib.preAllocateFGO.argtypes = [c_char_p, c_bool, c_double]

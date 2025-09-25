@@ -2218,6 +2218,7 @@ void assignTorsions( bool bNonPi=false, bool bNO=true ){
             touchingAtoms( i+1, imax, A.pos, Ri, Rfac, found );
             for(int j:found){
                 if( bCap_i ){ if( capping_types.count( atoms[j].type ) > 0 ) continue ; }  // prevent bonds between two capping atoms
+                // if (A.type == atoms[j].type) continue; // prevent bonds between atoms of the same type SHOULD NOT BE THERE
                 //printf( "bond[%i] (%i,%i) %s-%s \n", nbond, i,j,  params->atypes[ atoms[i].type ].name, params->atypes[ atoms[j].type ].name    );
                 bondBrush.ipbc=Vec3i8{ -1,-1,-1 };
                 bondBrush.atoms={i,j};

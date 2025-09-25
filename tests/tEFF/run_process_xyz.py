@@ -8,6 +8,12 @@ import time
 sys.path.append("../../")
 from pyBall import eFF as eff
 
+# can be used to create _ee file
+elementPath = "export/scan_data/angdistscan_H2O.xyz"
+elementPath_e = "export/scan_data/angdistscan_H2O_ee.xyz"
+# elementPath = "export/scan_data/angdistscan_CH4.xyz"
+# elementPath_e = "export/scan_data/angdistscan_CH4_ee.xyz"
+
 def count_mask_lines( fgo_file, mask='#iconf' ):
     line = None
     nline = 0
@@ -86,7 +92,7 @@ if __name__ == "__main__":
     theta0 = np.array([1.125, 0.9, -0.2])
     # theta0 = np.array([ 1.160836,  0.874741, -0.044889])
     # theta0 = np.array([ 1.153868 , 0.871132, -0.042265])
-    eff.setVerbosity(1,0)
+    eff.setVerbosity(0,0)
     print("verbos")
     atomParams = np.array([
     #  Q   sQ   sP   cP
@@ -103,7 +109,7 @@ if __name__ == "__main__":
     ], dtype=np.float64)
     eff.setAtomParams( atomParams )
     print("set atom par")
-    params, nrec = extract_blocks("export/scan_data/angdistscan_CH4.xyz")
+    params, nrec = extract_blocks(elementPath)
     plot_energy_landscape( params['ang'], params['dist'], params['Etot'], Espan=5.0 )
     plt.title("Before relaxetion")
     plt.savefig("map2D_referece.png")
@@ -122,7 +128,7 @@ if __name__ == "__main__":
     bCoreElectrons = False
     eff.setSwitches( coreCoul=1 )
     #eff.setSwitches( coreCoul=0 )
-    eff.preAllocateXYZ("export/scan_data/angdistscan_CH4.xyz", Rfac=-1.35, bCoreElectrons=bCoreElectrons )
+    eff.preAllocateXYZ(elementPath, Rfac=-1.35, bCoreElectrons=bCoreElectrons )
     eff.getBuffs()
     eff.info()
     #eff.aPars[0,2]=1
@@ -131,7 +137,7 @@ if __name__ == "__main__":
     #eff.processXYZ( "export/scan_data/angdistscan_H2O.xyz", bOutXYZ=True, outEs=outEs, bCoreElectrons=False );
     #eff.processXYZ( "export/scan_data/angdistscan_H2O.xyz", bOutXYZ=True, outEs=outEs, bCoreElectrons=True, nstepMax=1000, dt=0.001, Fconv=1e-3, ialg=2 );
     #eff.processXYZ( "export/scan_data/angdistscan_H2O.xyz", bOutXYZ=True, outEs=outEs, bCoreElectrons=bCoreElectrons, bChangeCore=False, bChangeEsize=False, nstepMax=0 );
-    eff.processXYZ( "export/scan_data/angdistscan_H2O.xyz", bOutXYZ=True, outEs=outEs, bCoreElectrons=bCoreElectrons, bChangeCore=False, bChangeEsize=True, nstepMax=10000, dt=0.005, Fconv=1e-3, ialg=2, KRSrho=theta0, xyz_out="angdistscan_H2O_OUTeFF.xyz"  );
+    eff.processXYZ( elementPath, outEs=outEs, bCoreElectrons=bCoreElectrons, bChangeCore=False, bChangeEsize=True, nstepMax=0, dt=0.005, Fconv=1e-3, ialg=2, xyz_out=elementPath_e  )
     #print(outEs)
     plot_energy_landscape( params['ang'], params['dist'], outEs[:,0] )
     plt.title("After relaxetion")
