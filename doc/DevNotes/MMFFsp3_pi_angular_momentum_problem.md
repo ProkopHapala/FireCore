@@ -137,6 +137,12 @@ Debugging / test recipe
 3. Temporarily turn off pi DOF interactions (set Kspi=Kppi=0) to verify the angular drift disappears — isolates the bug to pi coupling.
 4. Measure the contribution of the projection step: log the change in `ve` and the change in `J` attributed to projection.
 
+A note on bonded vs non-bonded compensation (`bSubtractVdW`)
+
+- The bonded angle kernel (`getMMFFf4` in `cpp/common_resources/cl/relax_multi_mini.cl`) supports subtracting Lennard-Jones / Coulomb terms for bonded pairs via the `bSubtractVdW` flag. Leave this **on** (`--subtract-vdw 1`) whenever the non-bonded kernel (`getNonBond`) is active (`--do-nb 1`), so bonded pairs are not double-counted.
+- If you disable non-bonded forces (`--do-nb 0`), you must also disable subtraction (`--subtract-vdw 0`). Otherwise the bonded kernel removes pairwise forces that were never added, leading to large gradients and NaNs. The test harness `tests/tUFF/test_MD_OCL_formic_acid.py` now exposes CLI switches for both flags to make the coupling explicit.
+- When experimenting with angular momentum diagnostics, document the chosen combination of these options; mixed settings change the effective potential felt by the pi DOFs and can mask torque issues.
+
 A few more practical tips & caveats
 
 * Use quaternions if you add full rotation DOFs for atoms (if you want true rigid-body rotations). For single unit vectors attached to atom centers, the `ω × u` update is fine.

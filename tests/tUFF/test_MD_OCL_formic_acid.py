@@ -38,7 +38,11 @@ sys.path.append(BASE)
 from pyBall.AtomicSystem import AtomicSystem
 from pyBall.OCL.MMFF import MMFF
 from pyBall.OCL.MolecularDynamics import MolecularDynamics
-from pyBall.plotUtils import plotBonds
+from pyBall.plotUtils import plotAtoms, plotBonds
+
+
+# infinite line length for numpy print options
+np.set_printoptions(linewidth=np.inf)
 
 DATA_MOL = os.path.join(BASE, 'cpp/common_resources/mol/formic_acid.mol2')
 
@@ -149,7 +153,7 @@ def print_totals(label, totals):
     print(f"[{label}] F={fmt(F)} | T={fmt(T)} | P={fmt(P)} | L={fmt(L)}")
 
 
-def plot_trajectories(trj_atoms, dim='xy', labels=None, title='Trajectories', save_path=None):
+def plot_trajectories(trj_atoms, dim='xy', labels=None, title='Trajectories', save_path=None, show=True):
     """
     Plot atom trajectories from trj_atoms with shape (nSteps, natoms, 3).
     dim: 'xy' | 'xz' | 'yz'
@@ -157,26 +161,29 @@ def plot_trajectories(trj_atoms, dim='xy', labels=None, title='Trajectories', sa
     proj = {'xy': (0,1), 'xz': (0,2), 'yz': (1,2)}.get(dim, (0,1))
     ii, jj = proj
     nsteps, natoms, _ = trj_atoms.shape
-    plt.figure(figsize=(6,6))
+    fig, ax = plt.subplots(figsize=(6,6))
     for a in range(natoms):
         xy = trj_atoms[:, a, :]
-        plt.plot(xy[:,ii], xy[:,jj], '-', lw=1, label=(labels[a] if labels is not None else None))
-        plt.plot(xy[-1,ii], xy[-1,jj], 'o', ms=3)
-    plt.xlabel(['x','y','z'][ii]); plt.ylabel(['x','y','z'][jj])
-    plt.title(title)
+        ax.plot(xy[:,ii], xy[:,jj], '-', lw=1, label=(labels[a] if labels is not None else None), zorder=1)
+        ax.plot(xy[-1,ii], xy[-1,jj], 'o', ms=3, zorder=2)
+    ax.set_xlabel(['x','y','z'][ii])
+    ax.set_ylabel(['x','y','z'][jj])
+    ax.set_title(title)
     if labels is not None and len(labels) <= 12:
-        plt.legend(loc='best', fontsize=8)
-    plt.axis('equal'); plt.tight_layout()
+        ax.legend(loc='best', fontsize=8)
+    ax.set_aspect('equal', adjustable='box')
+    fig.tight_layout()
     if save_path:
-        plt.savefig(save_path, dpi=150)
+        fig.savefig(save_path, dpi=150)
         print(f"Saved plot to {save_path}")
-    else:
+    if show:
         plt.show()
+    return fig, ax
 
 
 def run_md(steps=100, mode='basic', dt=0.01, damp=0.98, flim=10.0, do_clean=True, do_nb=True, do_mmff=True,
            print_stats=False, print_arrays=False, record=False, plot=False, plot_dim='xy', save_plot=None, save_trj=None,
-           plot_bonds=False):
+           plot_bonds=False, subtract_vdw=False, plot_label_mode='none', print_params=False):
     mol, mm = build_mmff_from_mol(DATA_MOL)
 
     md = MolecularDynamics(nloc=32)
@@ -192,6 +199,10 @@ def run_md(steps=100, mode='basic', dt=0.01, damp=0.98, flim=10.0, do_clean=True
     # Zero dynamic buffers to avoid uninitialized data (helps prevent NaNs)
     zero_dynamic_buffers(md)
     md.setup_kernels()
+    # Update bonded/non-bonded subtraction flag before regenerating kernel argument lists
+    md.kernel_params['bSubtractVdW'] = np.int32(1 if subtract_vdw else 0)
+    md.kernel_args_getMMFFf4 = md.generate_kernel_args('getMMFFf4')
+    md.kernel_args_runMD     = md.generate_kernel_args('runMD')
 
     # Optional recorders for diagnostics
     trj = [] if record else None
@@ -247,27 +258,31 @@ def run_md(steps=100, mode='basic', dt=0.01, damp=0.98, flim=10.0, do_clean=True
             np.save(save_trj, trj)
             print(f"Saved trajectory to {save_trj} with shape {trj.shape}")
         if plot:
-            plot_trajectories(trj, dim=plot_dim, title=f'Trajectories ({plot_dim})', save_path=None)
-            # Overlay molecular skeleton (bonds) from last frame using plotUtils
-            try:
-                # Collect bonds as links (nb,2)
-                if hasattr(mol, 'bonds') and plot_bonds:
-                    links = np.array([[b.i, b.j] for b in mol.bonds], dtype=np.int32)
+            fig, ax = plot_trajectories(trj, dim=plot_dim, title=f'Trajectories ({plot_dim})', save_path=None, show=False)
+            axes = {'xy': (0,1), 'xz': (0,2), 'yz': (1,2)}.get(plot_dim, (0,1))
+            if plot_bonds:
+                try:
+                    if getattr(mol, 'bonds', None) is None or len(mol.bonds) == 0:
+                        mol.findBonds(Rcut=3.0, RvdwCut=0.5)
+                    bonds_arr = np.asarray(mol.bonds, dtype=np.int32)
+                    if bonds_arr.ndim == 1:
+                        bonds_arr = bonds_arr.reshape(1, -1)
+                    links = bonds_arr[:, :2]
                     last = trj[-1]
-                    axmap = {'xy': (0,1), 'xz': (0,2), 'yz': (1,2)}
-                    axes = axmap.get(plot_dim, (0,1))
+                    labels = None
+                    if plot_label_mode == 'number':
+                        labels = [str(i) for i in range(last.shape[0])]
+                    elif plot_label_mode == 'type' and getattr(mol, 'enames', None) is not None:
+                        labels = mol.enames
+                    plotAtoms(apos=last, es=getattr(mol, 'enames', None), axes=axes, sizes=60., colors='#404040', marker='o', labels=labels, bNumbers=False)
                     plotBonds(links=links, ps=last, axes=axes, colors='k', lws=1.5)
-                    if save_plot:
-                        plt.savefig(save_plot, dpi=150)
-                        print(f"Saved plot with bonds to {save_plot}")
-                    else:
-                        plt.show()
-                else:
-                    if save_plot:
-                        plt.savefig(save_plot, dpi=150)
-                        print(f"Saved plot to {save_plot}")
-            except Exception as e:
-                print(f"WARNING: plot_bonds failed: {e}")
+                except Exception as e:
+                    print(f"WARNING: plot_bonds failed: {e}")
+            if save_plot:
+                fig.savefig(save_plot, dpi=150)
+                print(f"Saved plot to {save_plot}")
+            else:
+                plt.show()
 
     na = mm.natoms
     print(f"Done. Steps={steps}  natoms={na}  first-atom pos={apos[0,:3]}  force={aforce[0,:3]}")
@@ -276,23 +291,26 @@ def run_md(steps=100, mode='basic', dt=0.01, damp=0.98, flim=10.0, do_clean=True
 
 if __name__ == '__main__':
     ap = argparse.ArgumentParser()
-    ap.add_argument('--molecule', default=DATA_MOL)
-    ap.add_argument('--steps', type=int, default=100)
-    ap.add_argument('--mode', choices=['basic','rot','rattle','none'], default='basic')
-    ap.add_argument('--dt', type=float, default=0.01)
-    ap.add_argument('--damp', type=float, default=0.98)
-    ap.add_argument('--flim', type=float, default=10.0)
-    ap.add_argument('--do-clean', type=int, default=1, help='Run cleanForceMMFFf4 before forces')
-    ap.add_argument('--do-nb', type=int, default=1, help='Run getNonBond each step')
-    ap.add_argument('--do-mmff', type=int, default=1, help='Run getMMFFf4 (bonded) each step')
-    ap.add_argument('--print-stats', type=int, default=1, help='Print min/max/norm/NaN counts for buffers at end')
-    ap.add_argument('--print-arrays', type=int, default=1, help='Print full arrays at end')
-    ap.add_argument('--record', type=int, default=1, help='Record trajectory and totals each step')
-    ap.add_argument('--plot', type=int, default=0, help='Plot trajectories')
-    ap.add_argument('--plot-dim', type=str, default='xy', choices=['xy','xz','yz'], help='Projection for plotting')
-    ap.add_argument('--save-plot', type=str, default=None, help='Path to save trajectory plot (png)')
-    ap.add_argument('--save-trj', type=str, default=None, help='Path to save trajectory (npy)')
-    ap.add_argument('--plot-bonds', type=int, default=1, help='Overlay molecule bonds on trajectory plot')
+    ap.add_argument('--mode',         choices=['basic','rot','rattle','none'], default='basic')
+    ap.add_argument('--molecule',                 default=DATA_MOL)
+    ap.add_argument('--steps',        type=int,   default=100)
+    ap.add_argument('--dt',           type=float, default=0.01)
+    ap.add_argument('--damp',         type=float, default=0.98)
+    ap.add_argument('--flim',         type=float, default=10.0)
+    ap.add_argument('--do-clean',     type=int,   default=1, help='Run cleanForceMMFFf4 before forces')
+    ap.add_argument('--do-nb',        type=int,   default=0, help='Run getNonBond each step')
+    ap.add_argument('--do-mmff',      type=int,   default=1, help='Run getMMFFf4 (bonded) each step')
+    ap.add_argument('--print-stats',  type=int,   default=1, help='Print min/max/norm/NaN counts for buffers at end')
+    ap.add_argument('--print-arrays', type=int,   default=1, help='Print full arrays at end')
+    ap.add_argument('--record',       type=int,   default=1, help='Record trajectory and totals each step')
+    ap.add_argument('--plot',         type=int,   default=0, help='Plot trajectories')
+    ap.add_argument('--plot-dim',     type=str,   default='xy', choices=['xy','xz','yz'], help='Projection for plotting')
+    ap.add_argument('--save-plot',    type=str,   default=None, help='Path to save trajectory plot (png)')
+    ap.add_argument('--save-trj',     type=str,   default=None, help='Path to save trajectory (npy)')
+    ap.add_argument('--plot-bonds',   type=int,   default=1, help='Overlay molecule bonds on trajectory plot')
+    ap.add_argument('--subtract-vdw', type=int,   default=0, help='Subtract bonded LJ contributions inside getMMFFf4 (requires non-bonded forces)')
+    ap.add_argument('--plot-labels',  type=str,   default='number', choices=['none','number','type'], help='Annotate atoms when plotting trajectories')
+    ap.add_argument('--print-params', type=int,   default=0, help='Dump neighbor and bonded parameter arrays before GPU upload')
     args = ap.parse_args()
 
     if os.path.abspath(args.molecule) != os.path.abspath(DATA_MOL):
@@ -304,5 +322,6 @@ if __name__ == '__main__':
         print_stats=bool(args.print_stats), print_arrays=bool(args.print_arrays),
         record=bool(args.record), plot=bool(args.plot), plot_dim=args.plot_dim,
         save_plot=args.save_plot, save_trj=args.save_trj,
-        plot_bonds=bool(args.plot_bonds)
+        plot_bonds=bool(args.plot_bonds), subtract_vdw=bool(args.subtract_vdw),
+        plot_label_mode=args.plot_labels, print_params=bool(args.print_params)
     )

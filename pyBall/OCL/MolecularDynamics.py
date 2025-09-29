@@ -173,8 +173,8 @@ class MolecularDynamics(OpenCLBase):
         # Back-neighbor indices per vector (atoms + pi) for recoil force accumulation; default to -1 if not provided
         bk = np.full((self.nvecs, 4), -1, dtype=np.int32)
         if hasattr(mmff, 'back_neighs') and (mmff.back_neighs is not None):
-            ncopy = min(mmff.back_neighs.shape[0], self.natoms)
-            bk[:ncopy, :] = mmff.back_neighs[:ncopy, :]
+            ncopy = min(mmff.back_neighs.shape[0], self.nvecs)
+            bk[:ncopy, :] = mmff.back_neighs[:ncopy, :].astype(np.int32)
         offset_bk = iSys * self.nvecs * int4_size
         self.toGPU('bkNeighs', bk.flatten(), byte_offset=offset_bk)
         

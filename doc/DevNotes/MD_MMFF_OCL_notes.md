@@ -34,10 +34,24 @@ PI-orbital placement
 
 Back-neighbor forces
 - Kernels accumulate recoil forces via `bkNeighs` indices addressing `fneigh[]`
-- Python currently uploads `-1` placeholders for `bkNeighs` (no accumulation); proper mapping from atom back-neighbors to `fneigh` indices can be added later
+- Python now mirrors `MMFFsp3_loc::makeBackNeighs()`:
+  - `pyBall/OCL/MMFF.py::make_back_neighs()` packs node bonds as `ia*4+ib` and assigns capping atom neighbors.
+  - `pyBall/OCL/MolecularDynamics.py::pack_system()` uploads this packed table into the `bkNeighs` buffer.
+  - Issue observed: without valid back-neighbors hydrogen caps drifted away. After populating them, trajectories remained stable.
+- `tests/tUFF/test_MD_OCL_formic_acid.py --print-params 1` now dumps `neighs`, `back_neighs`, and bonded parameters to verify correct setup before GPU upload.
 
 Plan / Next steps
 - Hook runMD to choose propagator variant (rot or RATTLE) via a mode flag or separate run methods
 - Implement proper `bkNeighs` mapping (CPU indices to `fneigh` layout) if needed
 - Add thermostats/switching in Python control as needed
 - Validate on small molecules and cross-check with CPU baseline
+
+VdW subtraction toggle (`bSubtractVdW`)
+- `getMMFFf4()` subtracts Lennard-Jones/Coulomb overlap for bonded neighbors when `bSubtractVdW=1`.
+- Rule: enable subtraction only when the non-bonded kernel runs (`--do-nb 1` / `subtract_vdw=1`). Disable it when skipping non-bonded forces, otherwise we remove interactions that were never added, leading to NaNs.
+- `tests/tUFF/test_MD_OCL_formic_acid.py` exposes `--subtract-vdw` so CLI configs clearly reflect this coupling.
+- During debugging, NaNs reproduced when `--do-nb 0` with subtraction still on; turning it off restored stability.
+
+Debugging helpers / learnings
+- `--print-params 1` gives early visibility into neighbor mappings without needing GPU downloads.
+- Label overlays (`--plot-labels {number,type}`) help identify which atoms deviate in trajectory plots.

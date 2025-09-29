@@ -133,19 +133,35 @@ class MMFF:
         self.pbc_shifts = np.full((self.npbc, 3), 0.0,  dtype=np.float32)
         self.pipos = np.zeros((self.natoms, 3), dtype=np.float32)
 
-    def make_back_neighs(self):
-        """
-        Creates back neighbors based on neighbor lists.
-        """
-        self.back_neighs = np.full_like(self.neighs, -1)
-        for ia in range(self.natoms):
-            for k in range(4):
-                ib = self.neighs[ia, k]
-                if ib >= 0 and ib < self.natoms:
-                    for kk in range(4):
-                        if self.neighs[ib, kk] == ia:
-                            self.back_neighs[ia, k] = ib
-                            break
+    def make_back_neighs(self, b_cap_neighs=True):
+        """Populate back-neighbor indices similar to `MMFFsp3_loc::makeBackNeighs()`."""
+        self.back_neighs = np.full((self.nvecs, 4), -1, dtype=np.int32)
+        # Node atoms contribute entries for their sigma bonds.
+        for ia in range(self.nnode):
+            for ib_idx in range(4):
+                ja = int(self.neighs[ia, ib_idx])
+                if ja < 0 or ja >= self.natoms:
+                    continue
+                # store packed index ia*4+ib_idx like CPU version
+                empty = np.where(self.back_neighs[ja] < 0)[0]
+                if empty.size == 0:
+                    raise ValueError(f"Atom {ja} has >4 back-neighbors when adding {ia}")
+                self.back_neighs[ja, empty[0]] = ia * 4 + ib_idx
+        if b_cap_neighs:
+            for ia in range(self.nnode, self.natoms):
+                if self.back_neighs[ia, 0] < 0:
+                    raise ValueError(f"Capping atom {ia} missing back-neighbor")
+                # mirror CPU behavior: set first neighbor to bonded node index
+                self.neighs[ia, :] = -1
+                self.neighs[ia, 0] = self.back_neighs[ia, 0] // 4
+
+    def back_neighs_as_atoms(self):
+        if not hasattr(self, 'back_neighs'):
+            return None
+        arr = np.full_like(self.back_neighs, -1)
+        mask = self.back_neighs >= 0
+        arr[mask] = self.back_neighs[mask] // 4
+        return arr
 
     def toMMFFsp3_loc(self, mol, atom_types, bRealloc=True, bEPairs=False, bUFF=False):
         """

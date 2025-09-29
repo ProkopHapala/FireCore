@@ -621,7 +621,7 @@ __kernel void getMMFFf4(
     const float3 pa  = apos[iav].xyz;  // position of current atom
     const float4 par = apars[ian];     // (xy=s0_ss,z=ssK,w=piC0 ) forcefield parameters for current atom
 
-    //if((iG==iGdbg)&&(iS==iSdbg)){ printf("OCL::getMMFFf4(): natoms %3i nnode %3i nSys %3i \n", nAtoms, nnode, get_global_size(1) ); }
+    // if((iG==iGdbg)&&(iS==iSdbg)){ printf("OCL::getMMFFf4(): natoms %3i nnode %3i nSys %3i \n", nAtoms, nnode, get_global_size(1) ); }
     // if((iG==iGdbg)&&(iS==iSdbg)){
     //     printf("OCL::getMMFFf4(): natoms %3i nnode %3i \n", nAtoms, nnode );
     //     for(int ia=0; ia<nnode; ia++){
@@ -744,7 +744,7 @@ __kernel void getMMFFf4(
                 E   += ea;
                 //if((iG==iGdbg)&&(iS==iSdbg)){ printf("OCL::getMMFFf4(): angle():        iG %3i ing %3i jng %3i ea=%10.5f f1(%10.5f,%10.5f,%10.5f) f2(%10.5f,%10.5f,%10.5f) cos %10.5f apar(%10.5f,%10.5f,%10.5f) \n", iG, ing, jng, ea, f1.x, f1.y, f1.z, f2.x, f2.y, f2.z, dot(hi.xyz,hj.xyz), par.x, par.y, par.z ); }
 
-                //if(bSubtractVdW)
+                if(bSubtractVdW)
                 { // Remove non-bonded interactions from atoms that are bonded to common neighbor
                     float4 REQi=REQs[inga];   // non-bonding parameters of i-th neighbor
                     float4 REQj=REQs[jnga];   // non-bonding parameters of j-th neighbor
@@ -1422,10 +1422,10 @@ __kernel void updateAtomsMMFFf4(
     //     for(int is=0; is<nS; is++){
     //         //printf( "OCL::TDrives[%i](%g,%g,%g,%g)\n", i, TDrives[i].x,TDrives[i].y,TDrives[i].z,TDrives[i].w );
     //         //printf( "OCL::bboxes[%i](%g,%g,%g)(%g,%g,%g)(%g,%g,%g)\n", is, bboxes[is].a.x,bboxes[is].a.y,bboxes[is].a.z,   bboxes[is].b.x,bboxes[is].b.y,bboxes[is].b.z,   bboxes[is].c.x,bboxes[is].c.y,bboxes[is].c.z );
-    //         for(int ia=0; ia<natoms; ia++){
-    //             int ic = ia+is*natoms;
-    //             if(constr[ia+is*natoms].w>0) printf( "OCL  sys[%i]atom[%i] constr(%g,%g,%g|K=%g) constrK(%g,%g,%g|%g)\n", is, ia, constr[ic].x,constr[ic].y,constr[ic].z,constr[ic].w,   constrK[ic].x,constrK[ic].y,constrK[ic].z,constrK[ic].w  );
-    //         }
+    //         // for(int ia=0; ia<natoms; ia++){
+    //         //     int ic = ia+is*natoms;
+    //         //     if(constr[ia+is*natoms].w>0) printf( "OCL  sys[%i]atom[%i] constr(%g,%g,%g|K=%g) constrK(%g,%g,%g|%g)\n", is, ia, constr[ic].x,constr[ic].y,constr[ic].z,constr[ic].w,   constrK[ic].x,constrK[ic].y,constrK[ic].z,constrK[ic].w  );
+    //         // }
     //     }
     // }
 
