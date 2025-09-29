@@ -1685,12 +1685,17 @@ if (bPi) { // --- 2) Position-level RATTLE correction: find scalar lambda so tha
         int hostLocal   = iG - natoms;     // <-- ADAPT THIS if mapping is different
         int hostAa      = hostLocal + iS * natoms; // global index for host atom in avel/aforce arrays
         // If masses are not 1: delta_host = - delta_pi * (m_pi/m_host). For m=1 skip scale.
+        
+        // For now, we skip propagating the opposite impulse to the host atom to avoid races and build issues.
+        // TODO: implement a proper reduction buffer or use scalar arrays for velocities if strict conservation is required.
         //float4 vhost    = avel[ hostAa ];
         //vhost.xyz      += delta_v_pi;      // opposite impulse (delta_host = -delta_pi => add -(-) -> +)
-        //avel[ hostAa ]  = vhost;           // PROBLEM : need atomic operation here        
-        atomic_add( (__global int*)&avel[hostAa].x, as_int(delta_v_pi.x) );
-        atomic_add( (__global int*)&avel[hostAa].y, as_int(delta_v_pi.y) );
-        atomic_add( (__global int*)&avel[hostAa].z, as_int(delta_v_pi.z) );
+        
+        // NOTE: OpenCL forbids taking address of vector components for atomics on many drivers.
+        // atomic_add( (__global int*)&avel[hostAa].x, as_int(delta_v_pi.x) );
+        // atomic_add( (__global int*)&avel[hostAa].y, as_int(delta_v_pi.y) );
+        // atomic_add( (__global int*)&avel[hostAa].z, as_int(delta_v_pi.z) );
+        //avel[ hostAa ]  = vhost;           // WARNING: potential race if multiple work-items write hostAa
         // Optionally update aforce for bookkeeping (impulse->force estimate)
         // aforce[ hostAa ].xyz += delta_v_pi / dt; // optional
     }

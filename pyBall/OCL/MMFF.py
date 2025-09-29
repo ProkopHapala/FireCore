@@ -339,7 +339,26 @@ class MMFF:
                             self.Ksp[ia, k] = atom_type.Ksp
                         else:
                             self.Ksp[ia, k] = 0.0
-   
+        
+        # Normalize pi-orbital vectors and provide a safe fallback if zero
+        if self.pipos is not None:
+            for i in range(self.nnode):
+                v = self.pipos[i]
+                n = np.linalg.norm(v)
+                if not np.isfinite(n) or n < 1e-8:
+                    self.pipos[i] = np.array([0.0, 0.0, 1.0], dtype=np.float32)
+                else:
+                    self.pipos[i] = (v / n).astype(np.float32)
+
+        # Write pi-orbital unit vectors into the tail of apos (indices natoms : natoms+nnode)
+        # This matches kernels expecting apos[iav + nAtoms] to hold pi orientation for each node atom
+        if self.pipos is not None and self.pipos.shape[0] >= self.nnode:
+            self.apos[self.natoms:self.natoms + self.nnode, :3] = self.pipos[:self.nnode, :]
+            self.apos[self.natoms:self.natoms + self.nnode,  3] = 0.0
+
+        # Prepare simple back-neighbor placeholder (atom indices). GPU expects indices into fneigh; left for future mapping.
+        self.make_back_neighs()
+
     def assignBondParamsSimple(self, ia, ja, mol, atom_types ):
         ti = atom_types[mol.enames[ia]]
         tj = atom_types[mol.enames[ja]]
@@ -594,6 +613,9 @@ class MMFF:
                 hs[3] = c * cc - b * cb - a * ca
                 hs[0] = c  # Assuming hs[0] is the original bond direction
         return hs
+
+        # After parameters and orientations are prepared, populate the pi-orbital vectors in the apos buffer
+
 
     def printAtomConf(self, ia, mol):
         """
