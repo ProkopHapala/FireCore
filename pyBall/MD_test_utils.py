@@ -113,7 +113,8 @@ def _estimate_true_velocity(avel_atoms, masses):
 
 
 def compute_energies(avel_atoms, masses, aforce_atoms_full):
-    v = _estimate_true_velocity(avel_atoms, masses)
+    v = _estimate_true_velocity(avel_atoms, masses)   # use this with Leap-Frong integrator
+    #v = np.asarray(avel_atoms, dtype=np.float32)       # use this with Verlet integrator
     m = np.asarray(masses, dtype=np.float32).reshape(-1, 1)
     kin = 0.5 * m * (v * v).sum(axis=1, keepdims=True)
     Ekin = float(kin.sum())
@@ -230,6 +231,8 @@ def zero_dynamic_buffers(md):
     z_vec = np.zeros(md.nSystems * md.nvecs * 4, dtype=np.float32)
     z_fng = np.zeros(md.nSystems * md.nnode * 8, dtype=np.float32)
     md.toGPU('aforce', z_vec)
+    if 'aforce_old' in md.buffer_dict:
+        md.toGPU('aforce_old', z_vec)
     md.toGPU('avel',   z_vec)
     md.toGPU('cvf',    z_vec)
     md.toGPU('fneigh', z_fng)

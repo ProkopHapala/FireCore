@@ -1434,8 +1434,9 @@ __kernel void updateAtomsMMFFf4(
     __global float4*  MDparams,     // 10 // MD parameters (dt,damp,Flimit)
     __global float4*  TDrives,      // 11 // Thermal driving (T,gamma_damp,seed,?)
     __global cl_Mat3* bboxes,       // 12 // bounding box (xmin,ymin,zmin)(xmax,ymax,zmax)(kx,ky,kz)
-    __global int*     sysneighs,    // 13 // // for each system contains array int[nMaxSysNeighs] of nearby other systems
-    __global float4*  sysbonds      // 14 // // contains parameters of bonds (constrains) with neighbor systems   {Lmin,Lmax,Kpres,Ktens}
+    __global int*     sysneighs,    // 13 // for each system contains array int[nMaxSysNeighs] of nearby other systems
+    __global float4*  sysbonds,     // 14 // contains parameters of bonds (constrains) with neighbor systems   {Lmin,Lmax,Kpres,Ktens}
+    __global float4*  aforce_old    // 15 // old force for velocity verlet integration
 ){
     const int natoms=nDOFs.x;           // number of atoms
     const int nnode =nDOFs.y;           // number of node atoms
@@ -1578,20 +1579,24 @@ __kernel void updateAtomsMMFFf4(
     }
     cvf[iav] += (float4){ dot(fe.xyz,fe.xyz),dot(ve.xyz,ve.xyz),dot(fe.xyz,ve.xyz), 0.0f };    // accumulate |f|^2 , |v|^2  and  <f|v>  to calculate damping coefficients for FIRE algorithm outside of this kernel
 
-    // ==== Original leapfrog update kept for reference (disabled):
-    ve.xyz *= MDpars.z;             // friction, velocity damping
-    ve.xyz += fe.xyz*MDpars.x;      // acceleration
-    pe.xyz += ve.xyz*MDpars.x;      // move
     
-    // { // ====== Velocity Verlet update ======
-    //     const float dt = MDpars.x;
-    //     const float damp = MDpars.z;
-    //     ve.xyz += fe.xyz * dt*0.5f;  // half-step velocity
-    //     pe.xyz += ve.xyz * dt;       // position update
-    //     ve.xyz += fe.xyz * dt*0.5f;
-    //     // apply damping once at the end
-    //     //ve *= damp;
-    // }
+
+    if(false)
+    //if(true)
+    { // ====== Verlet
+        const float dt      = MDpars.x;
+        const float damp    = MDpars.z;
+        const float half_dt = 0.5f * dt;
+        ve.xyz         = ve.xyz + (fe.xyz + aforce_old[iav].xyz )*0.5f*dt;
+        pe.xyz         = pe.xyz +  ve.xyz * dt  + fe.xyz * 0.5f* dt * dt;
+        //ve.xyz         = ve.xyz + (fe.xyz + aforce_old[iav].xyz )*0.5f*dt;
+        // store current force for next step
+        aforce_old[iav] = fe;
+    }else{ // ==== Original leapfrog update kept for reference (disabled):
+        ve.xyz *= MDpars.z;             // friction, velocity damping
+        ve.xyz += fe.xyz*MDpars.x;      // acceleration
+        pe.xyz += ve.xyz*MDpars.x;      // move
+    }
 
     // Commented-out alternative gradient descent remains below for history.
     if(bPi){  pe.xyz=normalize(pe.xyz); } // normalize pi-orobitals
@@ -1634,7 +1639,8 @@ __kernel void updateAtomsMMFFf4_RATTLE(
     __global float4*  TDrives,      // 11 // Thermal driving (T,gamma_damp,seed,?)
     __global cl_Mat3* bboxes,       // 12 // bounding box (xmin,ymin,zmin)(xmax,ymax,zmax)(kx,ky,kz)
     __global int*     sysneighs,    // 13 // // for each system contains array int[nMaxSysNeighs] of nearby other systems
-    __global float4*  sysbonds      // 14 // // contains parameters of bonds (constrains) with neighbor systems   {Lmin,Lmax,Kpres,Ktens}
+    __global float4*  sysbonds,     // 14 // // contains parameters of bonds (constrains) with neighbor systems   {Lmin,Lmax,Kpres,Ktens}
+    __global float4*  aforce_old    // 15 // // previous step forces for velocity Verlet
 ){
     const int natoms=nDOFs.x;           // number of atoms
     const int nnode =nDOFs.y;           // number of node atoms
@@ -1775,7 +1781,8 @@ __kernel void updateAtomsMMFFf4_rot(
     __global float4*  TDrives,      // 11 // Thermal driving (T,gamma_damp,seed,?)
     __global cl_Mat3* bboxes,       // 12 // bounding box (xmin,ymin,zmin)(xmax,ymax,zmax)(kx,ky,kz)
     __global int*     sysneighs,    // 13 // // for each system contains array int[nMaxSysNeighs] of nearby other systems
-    __global float4*  sysbonds      // 14 // // contains parameters of bonds (constrains) with neighbor systems   {Lmin,Lmax,Kpres,Ktens}
+    __global float4*  sysbonds,     // 14 // // contains parameters of bonds (constrains) with neighbor systems   {Lmin,Lmax,Kpres,Ktens}
+    __global float4*  aforce_old    // 15 // // previous step forces for velocity Verlet
 ){
     const int natoms=nDOFs.x;           // number of atoms
     const int nnode =nDOFs.y;           // number of node atoms
@@ -1917,7 +1924,8 @@ __kernel void runMD(
     __global float4*  TDrives,      // 11 // Thermal driving (T,gamma_damp,seed,?)
     __global cl_Mat3* bboxes,       // 12 // bounding box (xmin,ymin,zmin)(xmax,ymax,zmax)(kx,ky,kz)
     __global int*     sysneighs,    // 13 // // for each system contains array int[nMaxSysNeighs] of nearby other systems
-    __global float4*  sysbonds      // 14 // // contains parameters of bonds (constrains) with neighbor systems   {Lmin,Lmax,Kpres,Ktens}
+    __global float4*  sysbonds,     // 14 // // contains parameters of bonds (constrains) with neighbor systems   {Lmin,Lmax,Kpres,Ktens}
+    __global float4*  aforce_old    // 15 // // previous step forces for velocity Verlet
 ){
 
    const int iG = get_global_id(0);
@@ -1980,7 +1988,8 @@ __kernel void runMD(
             TDrives,      // 11 // Thermal driving (T,gamma_damp,seed,?)
             bboxes,       // 12 // bounding box (xmin,ymin,zmin)(xmax,ymax,zmax)(kx,ky,kz)
             sysneighs,    // 13 // // for each system contains array int[nMaxSysNeighs] of nearby other systems
-            sysbonds      // 14 // // contains parameters of bonds (constrains) with neighbor systems   {Lmin,Lmax,Kpres,Ktens}
+            sysbonds,     // 14 // // contains parameters of bonds (constrains) with neighbor systems   {Lmin,Lmax,Kpres,Ktens}
+            aforce_old    // 15 // // previous step forces for velocity Verlet
         );
         barrier(CLK_GLOBAL_MEM_FENCE);
     }

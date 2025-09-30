@@ -74,6 +74,7 @@ class MolecularDynamics(OpenCLBase):
     def allocate_host_buffers(self):
         self.atoms  = np.zeros((self.nSystems, self.nvecs, 4), dtype=np.float32)
         self.aforce = np.zeros((self.nSystems, self.nvecs, 4), dtype=np.float32)
+        self.aforce_old = np.zeros((self.nSystems, self.nvecs, 4), dtype=np.float32)
 
     def allocate_cl_buffers(self, mmff):
         """
@@ -115,6 +116,7 @@ class MolecularDynamics(OpenCLBase):
         # Dynamical variables
         self.create_buffer('apos',     nSystems * nvecs * 4 * float_size, mf.READ_WRITE)
         self.create_buffer('aforce',   nSystems * nvecs * 4 * float_size, mf.READ_WRITE)
+        self.create_buffer('aforce_old', nSystems * nvecs * 4 * float_size, mf.READ_WRITE)
         self.create_buffer('avel',     nSystems * nvecs * 4 * float_size, mf.READ_WRITE)
         self.create_buffer('fneigh',   nSystems * nnode * 4 * 2 * float_size, mf.READ_WRITE)
         self.create_buffer('cvf',      nSystems * nvecs * 4 * float_size, mf.READ_WRITE)
@@ -189,6 +191,7 @@ class MolecularDynamics(OpenCLBase):
         offset_apars  = iSys * nnode  * float4_size
         self.toGPU('apos',      self._flat32(mmff.apos),    byte_offset=offset_atoms)
         self.toGPU('aforce',    self._flat32(mmff.fapos),   byte_offset=offset_atoms)
+        self.toGPU('aforce_old', self._flat32(mmff.fapos),  byte_offset=offset_atoms)
         self.toGPU('REQs',      self._flat32(mmff.REQs),    byte_offset=offset_REQs)
         self.toGPU('neighs',    self._int32 (mmff.neighs),    byte_offset=offset_neighs)
         self.toGPU('neighCell', self._int32 (mmff.neighCell), byte_offset=offset_neighs)
