@@ -21,6 +21,11 @@ MONITOR_PROPERTY_TYPES = {
 
 DEFAULT_MONITOR_PROPS = ['F', 'P', 'L', 'Rcm', 'Vcm', 'Ekin', 'Epot', 'Etotal']
 
+_ENERGY_CACHE = {
+    'prev_vel': None,
+    'prev_pos': None,
+}
+
 # __all__ = [
 #     'MONITOR_PROPERTY_TYPES',
 #     'DEFAULT_MONITOR_PROPS',
@@ -95,8 +100,20 @@ def get_atom_masses(mol, use_real=False):
     return masses
 
 
+def _estimate_true_velocity(avel_atoms, masses):
+    """Return velocity estimate closer to central-difference using cached history."""
+    v_now = np.asarray(avel_atoms, dtype=np.float32)
+    v_prev = _ENERGY_CACHE['prev_vel']
+    if v_prev is not None and v_prev.shape == v_now.shape:
+        v_est = 0.5 * (v_now + v_prev)
+    else:
+        v_est = v_now
+    _ENERGY_CACHE['prev_vel'] = v_now.copy()
+    return v_est
+
+
 def compute_energies(avel_atoms, masses, aforce_atoms_full):
-    v = np.asarray(avel_atoms, dtype=np.float32)
+    v = _estimate_true_velocity(avel_atoms, masses)
     m = np.asarray(masses, dtype=np.float32).reshape(-1, 1)
     kin = 0.5 * m * (v * v).sum(axis=1, keepdims=True)
     Ekin = float(kin.sum())
@@ -338,6 +355,8 @@ def plot_trajectories(trj_atoms, dim='xy', labels=None, title='Trajectories', sa
 
 
 def configure_md(mol2_path, dt, damp, flim, subtract_vdw, drive_temp, drive_gamma, drive_seed, builder=build_mmff_from_mol, print_params=False):
+    _ENERGY_CACHE['prev_vel'] = None
+    _ENERGY_CACHE['prev_pos'] = None
     mol, mm = builder(mol2_path)
     md = MolecularDynamics(nloc=32)
     md.set_pack_system_debug(print_params)

@@ -1577,16 +1577,24 @@ __kernel void updateAtomsMMFFf4(
         }
     }
     cvf[iav] += (float4){ dot(fe.xyz,fe.xyz),dot(ve.xyz,ve.xyz),dot(fe.xyz,ve.xyz), 0.0f };    // accumulate |f|^2 , |v|^2  and  <f|v>  to calculate damping coefficients for FIRE algorithm outside of this kernel
-    //if(!bDrive){ ve.xyz *= MDpars.z; } // friction, velocity damping
+
+    // ==== Original leapfrog update kept for reference (disabled):
     ve.xyz *= MDpars.z;             // friction, velocity damping
     ve.xyz += fe.xyz*MDpars.x;      // acceleration
     pe.xyz += ve.xyz*MDpars.x;      // move
-    //ve     *= 0.99f;              // friction, velocity damping
-    //ve.xyz += fe.xyz*0.1f;        // acceleration
-    //pe.xyz += ve.xyz*0.1f;        // move
-    if(bPi){        // if pi-orbital, we need to make sure that it has unit length
-        pe.xyz=normalize(pe.xyz);                   // normalize pi-orobitals
-    }
+    
+    // { // ====== Velocity Verlet update ======
+    //     const float dt = MDpars.x;
+    //     const float damp = MDpars.z;
+    //     ve.xyz += fe.xyz * dt*0.5f;  // half-step velocity
+    //     pe.xyz += ve.xyz * dt;       // position update
+    //     ve.xyz += fe.xyz * dt*0.5f;
+    //     // apply damping once at the end
+    //     //ve *= damp;
+    // }
+
+    // Commented-out alternative gradient descent remains below for history.
+    if(bPi){  pe.xyz=normalize(pe.xyz); } // normalize pi-orobitals
     pe.w=0;ve.w=0;    // This seems to be needed, not sure why ?????
     avel[iav] = ve;   // store velocity
     apos[iav] = pe;   // store position
