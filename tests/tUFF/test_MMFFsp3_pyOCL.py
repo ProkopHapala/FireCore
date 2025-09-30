@@ -35,7 +35,8 @@ from pyBall import elements
 # infinite line length for numpy print options
 np.set_printoptions(linewidth=np.inf)
 
-DATA_MOL = os.path.join(BASE, 'cpp/common_resources/mol/formic_acid.mol2')
+#DATA_MOL = os.path.join(BASE, 'cpp/common_resources/mol/formic_acid.mol2')
+DATA_MOL = os.path.join(BASE, 'cpp/common_resources/mol/methanol.mol2')
 
 MONITOR_PROPERTY_TYPES = {
     'F': 'vector',
@@ -70,7 +71,10 @@ def parse_monitor_props(spec):
     return props
 
 
-def get_atom_masses(mol):
+def get_atom_masses(mol, use_real=False):
+    if not use_real:
+        return np.ones(len(mol.enames), dtype=np.float32)
+
     masses = np.zeros(len(mol.enames), dtype=np.float32)
     for i, sym in enumerate(mol.enames):
         entry = elements.ELEMENT_DICT.get(sym)
@@ -101,7 +105,8 @@ def compute_energies(avel_atoms, masses, aforce_atoms_full):
     kin = 0.5 * m * (v * v).sum(axis=1, keepdims=True)
     Ekin = float(kin.sum())
     af = np.asarray(aforce_atoms_full, dtype=np.float32)
-    Epot = float(af[:, 3].sum())
+    # Each kernel assigns interaction energy to both partners; divide by 2 to avoid double counting.
+    Epot = 0.5 * float(af[:, 3].sum())
     return {
         'Ekin': Ekin,
         'Epot': Epot,
@@ -120,6 +125,34 @@ def finalize_monitor_series(monitor_data):
         else:
             series[key] = np.stack(arrays, axis=0)
     return series
+
+
+def summarize_monitor_series(series, props):
+    if not props:
+        return
+    labels = ['x', 'y', 'z']
+    header_printed = False
+    for name in props:
+        data = series.get(name)
+        if data is None:
+            continue
+        arr = np.asarray(data, dtype=np.float32)
+        if not header_printed:
+            print('Monitor extrema:')
+            header_printed = True
+        if arr.ndim <= 1:
+            mn = float(np.min(arr))
+            mx = float(np.max(arr))
+            print(f"  {name}: min={mn:.6e} max={mx:.6e}")
+        else:
+            stats = []
+            ncomp = arr.shape[1]
+            for j in range(ncomp):
+                mn = float(np.min(arr[:, j]))
+                mx = float(np.max(arr[:, j]))
+                lab = labels[j] if j < len(labels) else str(j)
+                stats.append(f"{lab}=({mn:.6e},{mx:.6e})")
+            print(f"  {name}: {' '.join(stats)}")
 
 
 def plot_monitor_series(series, props, show=True):
@@ -190,6 +223,8 @@ def zero_dynamic_buffers(md):
     md.toGPU('avel',   z_vec)
     md.toGPU('cvf',    z_vec)
     md.toGPU('fneigh', z_fng)
+    z_tdrive = _np.zeros(md.nSystems * 4, dtype=_np.float32)
+    md.toGPU('TDrives', z_tdrive)
 
 
 def fetch_arrays(md, mm):
@@ -309,10 +344,13 @@ def plot_trajectories(trj_atoms, dim='xy', labels=None, title='Trajectories', sa
     return fig, ax
 
 
-def run_md(steps=100, mode='basic', dt=0.01, damp=0.98, flim=10.0, do_clean=True, do_nb=True, do_mmff=True,
+def run_md(steps=100, mode='basic', dt=0.01, damp=1.0, flim=10.0,
+           do_clean=True, do_nb=True, do_mmff=True,
            print_stats=False, print_arrays=False, record=False, plot=False, plot_dim='xy', save_plot=None, save_trj=None,
            plot_bonds=False, subtract_vdw=False, plot_label_mode='none', print_params=False,
-           monitor=True, monitor_props=None, monitor_plot=False, monitor_save=None, monitor_save_data=None):
+           monitor=True, monitor_props=None, monitor_plot=False, monitor_save=None, monitor_save_data=None,
+           use_real_mass=False,
+           drive_temp=0.0, drive_gamma=0.0, drive_seed=0.0):
     mol, mm = build_mmff_from_mol(DATA_MOL)
 
     md = MolecularDynamics(nloc=32)
@@ -325,7 +363,7 @@ def run_md(steps=100, mode='basic', dt=0.01, damp=0.98, flim=10.0, do_clean=True
 
     md.upload_all_systems()
 
-    masses = get_atom_masses(mol)
+    masses = get_atom_masses(mol, use_real=use_real_mass)
 
     # Zero dynamic buffers to avoid uninitialized data (helps prevent NaNs)
     zero_dynamic_buffers(md)
@@ -334,6 +372,17 @@ def run_md(steps=100, mode='basic', dt=0.01, damp=0.98, flim=10.0, do_clean=True
     md.kernel_params['bSubtractVdW'] = np.int32(1 if subtract_vdw else 0)
     md.kernel_args_getMMFFf4 = md.generate_kernel_args('getMMFFf4')
     md.kernel_args_runMD     = md.generate_kernel_args('runMD')
+
+    # Override MDparams buffer with user supplied values (dt, damp, velocity multiplier)
+    md_params = np.array([dt, damp, damp, 0.0], dtype=np.float32)
+    float4_size = 4 * np.float32().itemsize
+    for iSys in range(md.nSystems):
+        md.toGPU('MDparams', md_params, byte_offset=iSys * float4_size)
+
+    # Langevin driving parameters (T, gamma, seed, reserved); zero disables driving
+    tdrive = np.array([drive_temp, drive_gamma, 0.0, drive_seed], dtype=np.float32)
+    for iSys in range(md.nSystems):
+        md.toGPU('TDrives', tdrive, byte_offset=iSys * 4 * np.float32().itemsize)
 
     # Optional recorders for diagnostics
     if monitor_props is None:
@@ -444,6 +493,7 @@ def run_md(steps=100, mode='basic', dt=0.01, damp=0.98, flim=10.0, do_clean=True
 
     if monitor_enabled and monitor_data:
         series = finalize_monitor_series(monitor_data)
+        summarize_monitor_series(series, monitor_props)
         if monitor_save_data:
             np.savez(monitor_save_data, **series)
             print(f"Saved monitor data to {monitor_save_data}")
@@ -482,8 +532,11 @@ if __name__ == '__main__':
     ap.add_argument('--molecule',                 default=DATA_MOL)
     ap.add_argument('--steps',        type=int,   default=100)
     ap.add_argument('--dt',           type=float, default=0.01)
-    ap.add_argument('--damp',         type=float, default=0.98)
+    ap.add_argument('--damp',         type=float, default=1.0)
     ap.add_argument('--flim',         type=float, default=10.0)
+    ap.add_argument('--drive-temp',   type=float, default=0.0, help='Langevin thermostat target temperature (0 disables)')
+    ap.add_argument('--drive-gamma',  type=float, default=0.0, help='Langevin damping coefficient gamma (0 disables)')
+    ap.add_argument('--drive-seed',   type=float, default=0.0, help='Seed offset for Langevin random numbers')
     ap.add_argument('--do-clean',     type=int,   default=1, help='Run cleanForceMMFFf4 before forces')
     ap.add_argument('--do-nb',        type=int,   default=0, help='Run getNonBond each step')
     ap.add_argument('--do-mmff',      type=int,   default=1, help='Run getMMFFf4 (bonded) each step')
@@ -500,8 +553,9 @@ if __name__ == '__main__':
     ap.add_argument('--print-params', type=int,   default=0, help='Dump neighbor and bonded parameter arrays before GPU upload')
     ap.add_argument('--monitor',      type=int,   default=1, help='Collect invariant diagnostics each step')
     ap.add_argument('--monitor-props', type=str,  default=','.join(DEFAULT_MONITOR_PROPS), help='Comma separated invariants to track (or all/none)')
-    ap.add_argument('--monitor-plot', type=int,   default=1, help='Plot monitored invariants at the end')
-    ap.add_argument('--save-monitor', type=str,   default=None, help='Path to save monitor plot (png)')
+    ap.add_argument('--monitor-plot',  type=int,  default=1, help='Plot monitored invariants at the end')
+    ap.add_argument('--use-real-mass', type=int,  default=0, help='Use tabulated atomic masses (default: uniform mass=1)')
+    ap.add_argument('--save-monitor',  type=str,  default=None, help='Path to save monitor plot (png)')
     ap.add_argument('--save-monitor-data', type=str, default=None, help='Path to save monitor data (npz)')
     args = ap.parse_args()
 
@@ -520,5 +574,7 @@ if __name__ == '__main__':
         plot_label_mode=args.plot_labels, print_params=bool(args.print_params),
         monitor=bool(args.monitor), monitor_props=monitor_props,
         monitor_plot=bool(args.monitor_plot), monitor_save=args.save_monitor,
-        monitor_save_data=args.save_monitor_data
+        monitor_save_data=args.save_monitor_data,
+        use_real_mass=bool(args.use_real_mass),
+        drive_temp=args.drive_temp, drive_gamma=args.drive_gamma, drive_seed=args.drive_seed
     )

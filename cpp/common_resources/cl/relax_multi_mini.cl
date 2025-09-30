@@ -774,7 +774,7 @@ __kernel void getMMFFf4(
         //fneigh[i4p+i] = (float4){fps[i],0};
     }
     //aforce[iav     ] = (float4){fa ,0}; // If we do  run it as first forcefield
-    aforce[iav       ] += (float4){fa ,0};  // If we not run it as first forcefield
+    aforce[iav ]       += (float4){fa.x,fa.y,fa.z,E};
     //aforce[iav+nAtoms]  = (float4){fpi,0}; 
     
 }
