@@ -54,6 +54,9 @@ Examples (omit defaults):
   python test_MMFFsp3_pyOCL.py --steps 100 --record 1 --plot 1 --plot-dim xy 
 - Monotor total invariants like momentum, energy, torque etc.
   python test_MMFFsp3_pyOCL.py --steps 200 --monitor 1 --monitor-plot 1
+- Scan energy/force
+  python test_MMFFsp3_pyOCL.py --scan 1 --scan-atom 0 --scan-axis x --scan-nsamp 21
+  python test_MMFFsp3_pyOCL.py --scan 1
 """
 
 if __name__ == '__main__':
@@ -80,18 +83,45 @@ if __name__ == '__main__':
     ap.add_argument('--plot-bonds',   type=int,   default=1, help='Overlay molecule bonds on trajectory plot')
     ap.add_argument('--subtract-vdw', type=int,   default=0, help='Subtract bonded LJ contributions inside getMMFFf4 (requires non-bonded forces)')
     ap.add_argument('--plot-labels',  type=str,   default='number', choices=['none','number','type'], help='Annotate atoms when plotting trajectories')
-    ap.add_argument('--print-params', type=int,   default=0, help='Dump neighbor and bonded parameter arrays before GPU upload')
+    ap.add_argument('--print-params', type=int,   default=1, help='Dump neighbor and bonded parameter arrays before GPU upload')
     ap.add_argument('--monitor',      type=int,   default=1, help='Collect invariant diagnostics each step')
     ap.add_argument('--monitor-props', type=str,  default=','.join(DEFAULT_MONITOR_PROPS), help='Comma separated invariants to track (or all/none)')
     ap.add_argument('--monitor-plot',  type=int,  default=1, help='Plot monitored invariants at the end')
     ap.add_argument('--use-real-mass', type=int,  default=0, help='Use tabulated atomic masses (default: uniform mass=1)')
     ap.add_argument('--save-monitor',  type=str,  default=None, help='Path to save monitor plot (png)')
     ap.add_argument('--save-monitor-data', type=str, default=None, help='Path to save monitor data (npz)')
+    ap.add_argument('--scan',         type=int,   default=0, help='Enable energy derivative scan instead of MD')
+    ap.add_argument('--scan-atom',    type=int,   default=0, help='Atom index to displace during scan')
+    ap.add_argument('--scan-axis',    type=str,   default='x', choices=['x','y','z'], help='Axis to displace (x/y/z)')
+    ap.add_argument('--scan-dx',      type=float, default=1e-3, help='Displacement step for scan')
+    ap.add_argument('--scan-nsamp',   type=int,   default=1001, help='Number of displacement samples (odd)')
+    ap.add_argument('--scan-show',    type=int,   default=1, help='Show scan plot if enabled')
+    ap.add_argument('--scan-save',    type=str,   default=None, help='Optional path to save scan plot (png)')
     args = ap.parse_args()
 
     mol_path = args.molecule
 
     monitor_props = parse_monitor_props(args.monitor_props)
+
+    axis_map = {'x':0, 'y':1, 'z':2}
+
+    if args.scan:
+        mol, mm, md = configure_md(
+            mol_path,
+            args.dt,
+            args.damp,
+            args.flim,
+            bool(args.subtract_vdw),
+            args.drive_temp,
+            args.drive_gamma,
+            args.drive_seed,
+            print_params=bool(args.print_params),
+        )
+        scan = scan_energy_force(mm, md, atom_index=args.scan_atom, axis=axis_map[args.scan_axis], dx=args.scan_dx, nsamp=args.scan_nsamp, restore=True, do_nb=bool(args.do_nb))
+        stats = scan['diff_stats']
+        print(f"Scan stats: energy[{stats['energy_min']:.6e}, {stats['energy_max']:.6e}] force[{stats['force_min']:.6e}, {stats['force_max']:.6e}] diff_min={stats['diff_min']:.6e} diff_max={stats['diff_max']:.6e} diff_rms={stats['diff_rms']:.6e}")
+        plot_energy_force_scan(scan, axis_label=f"{args.scan_axis}-displacement", show=bool(args.scan_show), save_path=args.scan_save)
+        sys.exit(0)
 
     do_clean     = bool(args.do_clean)
     do_nb        = bool(args.do_nb)
@@ -105,7 +135,17 @@ if __name__ == '__main__':
     want_monitor_plot = bool(args.monitor_plot)
     use_real_mass = bool(args.use_real_mass)
 
-    mol, mm, md = configure_md(mol_path, args.dt, args.damp, args.flim, bool(args.subtract_vdw), args.drive_temp, args.drive_gamma, args.drive_seed)
+    mol, mm, md = configure_md(
+        mol_path,
+        args.dt,
+        args.damp,
+        args.flim,
+        bool(args.subtract_vdw),
+        args.drive_temp,
+        args.drive_gamma,
+        args.drive_seed,
+        print_params=bool(args.print_params),
+    )
     masses = get_atom_masses(mol, use_real=use_real_mass)
     monitor_props, monitor_enabled, totals_hist, monitor_data, trj = init_observers(want_record, want_monitor, monitor_props)
 

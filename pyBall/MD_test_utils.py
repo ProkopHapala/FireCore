@@ -102,7 +102,7 @@ def compute_energies(avel_atoms, masses, aforce_atoms_full):
     Ekin = float(kin.sum())
     af = np.asarray(aforce_atoms_full, dtype=np.float32)
     # Each kernel assigns interaction energy to both partners; divide by 2 to avoid double counting.
-    Epot = 0.5 * float(af[:, 3].sum())
+    Epot = float(af[:, 3].sum())
     return {
         'Ekin': Ekin,
         'Epot': Epot,
@@ -197,28 +197,26 @@ def build_mmff_from_mol(mol2_path):
     return mol, mm
 
 
-def _stats(name, arr):
-    import numpy as _np
-    A = _np.asarray(arr)
-    finite = _np.isfinite(A)
-    n_nan = int(_np.isnan(A).sum())
-    n_inf = int(_np.isinf(A).sum())
-    mn = float(_np.min(A)) if A.size else 0.0
-    mx = float(_np.max(A)) if A.size else 0.0
-    l2 = float(_np.linalg.norm(A)) if A.size else 0.0
+def stats(name, arr):
+    A = np.asarray(arr)
+    finite = np.isfinite(A)
+    n_nan = int(np.isnan(A).sum())
+    n_inf = int(np.isinf(A).sum())
+    mn = float(np.min(A)) if A.size else 0.0
+    mx = float(np.max(A)) if A.size else 0.0
+    l2 = float(np.linalg.norm(A)) if A.size else 0.0
     print(f"{name}: shape={A.shape} min={mn:.6e} max={mx:.6e} ||.||_2={l2:.6e} NaN={n_nan} Inf={n_inf} finite={finite.all()}")
 
 
 def zero_dynamic_buffers(md):
     """Zero avel, aforce, cvf, fneigh for all systems."""
-    import numpy as _np
-    z_vec = _np.zeros(md.nSystems * md.nvecs * 4, dtype=_np.float32)
-    z_fng = _np.zeros(md.nSystems * md.nnode * 8, dtype=_np.float32)
+    z_vec = np.zeros(md.nSystems * md.nvecs * 4, dtype=np.float32)
+    z_fng = np.zeros(md.nSystems * md.nnode * 8, dtype=np.float32)
     md.toGPU('aforce', z_vec)
     md.toGPU('avel',   z_vec)
     md.toGPU('cvf',    z_vec)
     md.toGPU('fneigh', z_fng)
-    z_tdrive = _np.zeros(md.nSystems * 4, dtype=_np.float32)
+    z_tdrive = np.zeros(md.nSystems * 4, dtype=np.float32)
     md.toGPU('TDrives', z_tdrive)
 
 
@@ -339,9 +337,10 @@ def plot_trajectories(trj_atoms, dim='xy', labels=None, title='Trajectories', sa
     return fig, ax
 
 
-def configure_md(mol2_path, dt, damp, flim, subtract_vdw, drive_temp, drive_gamma, drive_seed, builder=build_mmff_from_mol):
+def configure_md(mol2_path, dt, damp, flim, subtract_vdw, drive_temp, drive_gamma, drive_seed, builder=build_mmff_from_mol, print_params=False):
     mol, mm = builder(mol2_path)
     md = MolecularDynamics(nloc=32)
+    md.set_pack_system_debug(print_params)
     md.realloc(mm, nSystems=1)
     mm.dt = dt
     mm.damp = damp
@@ -399,11 +398,11 @@ def dump_buffers(buf, print_stats=False, print_arrays=False):
     apos, aforce = buf['apos'], buf['aforce']
     avel, fng, cvf = buf['avel'], buf['fneigh'], buf['cvf']
     if print_stats:
-        _stats('apos', apos)
-        _stats('avel', avel)
-        _stats('aforce', aforce)
-        _stats('fneigh', fng)
-        _stats('cvf', cvf)
+        stats('apos', apos)
+        stats('avel', avel)
+        stats('aforce', aforce)
+        stats('fneigh', fng)
+        stats('cvf', cvf)
     if print_arrays:
         print('apos:\n', apos)
         print('avel:\n', avel)
@@ -490,3 +489,131 @@ def finalize_monitoring(monitor_enabled, monitor_data, monitor_props, monitor_sa
             fig.savefig(monitor_save, dpi=150)
             print(f"Saved monitor plot to {monitor_save}")
     return series
+
+
+def displace_atom_positions(apos, atom_index, displacement):
+    apos_new = np.array(apos, copy=True)
+    disp = np.zeros_like(apos_new[atom_index])
+    disp[:3] = displacement
+    apos_new[atom_index] += disp
+    return apos_new
+
+
+def centered_finite_difference(values, dx):
+    values = np.asarray(values, dtype=np.float64)
+    if values.ndim != 1 or values.size < 3:
+        raise ValueError("Need at least three samples for centered finite difference")
+    deriv = (values[2:] - values[:-2]) / (2.0 * dx)
+    midpoints = np.arange(1, values.size - 1)
+    return deriv, midpoints
+
+
+def upload_mmff_positions(mm, md, positions):
+    positions = np.asarray(positions, dtype=np.float32)
+    if positions.shape != mm.apos.shape:
+        raise ValueError(f"upload_mmff_positions: expected shape {mm.apos.shape}, got {positions.shape}")
+    mm.apos[:, :3] = positions[:, :3]
+    if positions.shape[1] > 3:
+        mm.apos[:, 3:] = positions[:, 3:]
+    md.toGPU('apos', mm.apos.astype(np.float32).ravel())
+
+
+def evaluate_mmff_gpu(mm, md, positions, do_clean=True, do_nb=False, do_mmff=True, mode='none'):
+    upload_mmff_positions(mm, md, positions)
+    run_step(md, do_clean=do_clean, do_nb=do_nb, do_mmff=do_mmff, mode=mode)
+    if mode == 'none':
+        orig_mdparams = md.download_buf('MDparams').copy().reshape(md.nSystems, 4)
+        zero_mdparams = np.zeros(4, dtype=np.float32)
+        float4_size = 4 * np.float32().itemsize
+        for iSys in range(md.nSystems):
+            md.toGPU('MDparams', zero_mdparams, byte_offset=iSys * float4_size)
+        md.run_updateAtomsMMFFf4()
+        for iSys in range(md.nSystems):
+            md.toGPU('MDparams', orig_mdparams[iSys], byte_offset=iSys * float4_size)
+    buf = fetch_arrays(md, mm)
+    forces = buf['afor_atoms'].astype(np.float64)
+    energy = float(buf['afor_atoms_full'][:, 3].sum())
+    return energy, forces
+
+
+def scan_energy_force(mm, md, atom_index=0, axis=0, dx=1e-2, nsamp=100, restore=True, evaluator=None, do_nb=False):
+    if nsamp < 3 or nsamp % 2 == 0:
+        raise ValueError("nsamp must be odd and >= 3 for centered differences")
+    if evaluator is None:
+        evaluator = lambda apos: evaluate_mmff_gpu(mm, md, apos, do_clean=True, do_nb=do_nb, do_mmff=True, mode='none')
+    base_apos = np.array(mm.apos, copy=True)
+    natoms = mm.natoms
+    energies = np.zeros(nsamp, dtype=np.float64)
+    forces = np.zeros((nsamp, natoms, 3), dtype=np.float64)
+    offsets = (np.arange(nsamp) - nsamp // 2) * dx
+    disp = np.zeros(3, dtype=np.float64)
+    for i, offset in enumerate(offsets):
+        disp[:] = 0.0
+        disp[axis] = offset
+        apos_shifted = displace_atom_positions(base_apos, atom_index, disp)
+        energy, force = evaluator(apos_shifted)
+        energies[i] = energy
+        if force.shape != (natoms, 3):
+            raise ValueError(f"Evaluator returned forces with shape {force.shape}, expected {(natoms, 3)}")
+        forces[i] = force
+    if restore:
+        upload_mmff_positions(mm, md, base_apos)
+    analytic_force = -forces[:, atom_index, axis]
+    numeric_force, idx = centered_finite_difference(energies, dx)
+    mid_offsets = offsets[idx]
+    diff = analytic_force[idx] - numeric_force
+    stats = {
+        'energy_min': float(energies.min()),
+        'energy_max': float(energies.max()),
+        'force_min': float(analytic_force.min()),
+        'force_max': float(analytic_force.max()),
+        'diff_min': float(diff.min()),
+        'diff_max': float(diff.max()),
+        'diff_rms': float(np.sqrt(np.mean(diff ** 2))),
+    }
+    return {
+        'offsets': offsets,
+        'energies': energies,
+        'forces': forces,
+        'analytic_force': analytic_force,
+        'numeric_force': numeric_force,
+        'force_mid_offsets': mid_offsets,
+        'diff': diff,
+        'diff_stats': stats,
+    }
+
+
+def plot_energy_force_scan(scan, axis_label='displacement [$\AA$]', show=True, save_path=None):
+    offsets = scan['offsets']
+    energies = scan['energies']
+    mid_offsets = scan['force_mid_offsets']
+    analytic_mid = scan['analytic_force'][1:-1]
+    numeric = scan['numeric_force']
+    diff = scan['diff']
+    stats = scan['diff_stats']
+    fig, axes = plt.subplots(3, 1, figsize=(7, 9), sharex=True)
+    axE, axF, axD = axes
+    axE.plot(offsets, energies, '-', lw=0.5)
+    axE.set_ylabel('Energy')
+    axE.grid(alpha=0.3)
+    axF.plot(mid_offsets, analytic_mid, '-', lw=0.5, label='Analytic')
+    axF.plot(mid_offsets, numeric,      ':', lw=1.5, label='Numeric')
+    axF.set_ylabel('Force component')
+    axF.grid(alpha=0.3)
+    axF.legend(loc='best')
+    axD.plot(mid_offsets, diff, '-', lw=0.5, label='Analytic - Numeric')
+    axD.axhline(0.0, color='k', lw=0.8)
+    axD.set_xlabel(axis_label)
+    axD.set_ylabel('Force diff')
+    axD.grid(alpha=0.3)
+    axD.text(0.05, 0.95,
+             f"min={stats['diff_min']:.3e}\nmax={stats['diff_max']:.3e}\nrms={stats['diff_rms']:.3e}",
+             transform=axD.transAxes, va='top', ha='left', fontsize=9,
+             bbox=dict(boxstyle='round', facecolor='white', alpha=0.6))
+    fig.tight_layout()
+    if save_path:
+        fig.savefig(save_path, dpi=150)
+        print(f"Saved scan plot to {save_path}")
+    if show:
+        plt.show()
+    return fig, axes

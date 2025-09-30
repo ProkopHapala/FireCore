@@ -64,3 +64,9 @@ Related to script `/tests/tUFF/test_MMFFsp3_pyOCL.py`
 
 - `--print-params 1` gives early visibility into neighbor mappings without needing GPU downloads.
 - Label overlays (`--plot-labels {number,type}`) help identify which atoms deviate in trajectory plots.
+
+### 2025-09-30 session notes
+- **[Pack-system diagnostics]** Added `--print-params` passthrough in `tests/tUFF/test_MMFFsp3_pyOCL.py` so that `pyBall/MD_test_utils.configure_md()` calls `MolecularDynamics.set_pack_system_debug(True)`, exposing `pack_system()` dumps before GPU upload for fast inspection of `neighs`, `bkNeighs`, `Ksp`, etc.
+- **[Recoil force assembly]** Confirmed that valid `bkNeighs` are mandatory; when we forget to upload them the hydrogen caps drift because recoil forces are never accumulated back. The current workaround updates `pyBall/OCL/MMFF.make_back_neighs()` and `MolecularDynamics.pack_system()` to mirror `MMFFsp3_loc::makeBackNeighs()`, but we still owe a follow-up to assemble the OpenCL recoil forces on-device instead of relying on host verification logs.
+- **[Methanol Ksp/Kpp check]** Discovered that `MMFF.toMMFFsp3_loc()` copies `AtomTypes.dat` values even for sp³ heteroatoms, so methanol’s `O_3` produced non-zero `Ksp`. For saturated systems we now override these entries to zero in `tests/tmp/data/AtomTypes.dat` (setting both `Ksp` and `Kpp` to 0.0) before building the MMFF tables.
+- **[Validation]** After zeroing the `Ksp/Kpp` override the methanol test (`tests/tUFF/test_MMFFsp3_pyOCL.py --steps 200`) keeps angular momentum and forces at machine zero, confirming the parameter tweak resolves the spurious torques.

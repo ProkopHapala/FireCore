@@ -130,6 +130,41 @@ inline float evalAngleCosHalf( const float4 hr1, const float4 hr2, const float2 
     return E;
 }
 
+inline float evalAngleCosHalf_alt(const float4 hr1, const float4 hr2, const float2 cs0, const float k, __private float3* f1, __private float3* f2){
+    // hr1.xyz, hr2.xyz are unit vectors a, b; hr1.w = 1/l1, hr2.w = 1/l2
+    const float3 a = hr1.xyz;
+    const float3 b = hr2.xyz;
+    const float l1_inv = hr1.w;
+    const float l2_inv = hr2.w;
+
+    float cosT = dot(a,b);
+    cosT = fmax(-1.f, fmin(1.f, cosT));
+
+    // sin(theta) robust
+    float sinT2 = 1.f - cosT*cosT;
+    float sinT = sqrt(fmax(1e-12f, sinT2));    // safe
+
+    // half-angle alpha
+    float cosA = sqrt(fmax(0.f, (1.f + cosT) * 0.5f)); // cos(theta/2)
+    float sinA = sqrt(fmax(1e-12f, (1.f - cosT) * 0.5f)); // sin(theta/2)
+
+    // rotate back by equilibrium half-angle (cs0 must be cos(alpha0), sin(alpha0))
+    float2 cso = (float2)(cosA, sinA);
+    float2 cs  = udiv_cmplx(cs0, cso); // cs = cs0 / cso  => cs.x = cos(alpha0-alpha), cs.y = sin(alpha0-alpha)
+
+    float E = k * (1.f - cs.x);           // same energy
+    float fr = -k * cs.y;                 // fr = dU/dalpha
+
+    // F1 = fr * (b - a*(a·b)) / (2 * l1 * sin(theta))
+    float denom = 2.f * sinT;
+    float s1 = (denom > 1e-12f) ? (fr * l1_inv / denom) : (fr * l1_inv / (1e-6f)); // safe fallback
+    float s2 = (denom > 1e-12f) ? (fr * l2_inv / denom) : (fr * l2_inv / (1e-6f));
+    *f1 = (b - a * cosT) * s1;
+    *f2 = (a - b * cosT) * s2;
+
+    return E;
+}
+
 // evaluate angular force and energy for pi-pi alignment interaction
 inline float evalPiAling( const float3 h1, const float3 h2,  float K, __private float3* f1, __private float3* f2 ){  // interaction between two pi-bonds
     float  c = dot(h1,h2); // cos(a) (assumes that h1 and h2 are normalized)
@@ -690,7 +725,8 @@ __kernel void getMMFFf4(
             // --- Evaluate bond-length stretching energy and forces
             if(iG<ing){  
                 float elb = evalBond( h.xyz, l-bL[i], bK[i], &f1 );  fbs[i]-=f1;  fa+=f1; E+=elb;  // harmonic bond stretching, fa is force on center atom, fbs[i] is recoil force on i-th neighbor, 
-                    //if((iG==iGdbg)&&(iS==iSdbg)){ printf("OCL::getMMFFf4(): bond-length:    iG %3i ing %3i elb %10.5f f(%10.5f,%10.5f,%10.5f) l %10.5f bL %10.5f bK %10.5f \n", iG, ing, elb, f1.x, f1.y, f1.z, l, bL[i], bK[i] ); }
+                //if( (ing>=nnode) || (iG<ing) ){ E+=elb; }
+                //if((iG==iGdbg)&&(iS==iSdbg)){ printf("OCL::getMMFFf4(): bond-length:    iG %3i ing %3i elb %10.5f f(%10.5f,%10.5f,%10.5f) l %10.5f bL %10.5f bK %10.5f \n", iG, ing, elb, f1.x, f1.y, f1.z, l, bL[i], bK[i] ); }
 
                 // pi-pi alignment interaction            
                 float kpp = Kppi[i];
@@ -703,7 +739,8 @@ __kernel void getMMFFf4(
                     //if((iG==iGdbg)&&(iS==iSdbg)){ printf("OCL::getMMFFf4(): cos(pi,pi):     iG %3i ing %3i epp %10.5f f(%10.5f,%10.5f,%10.5f) c %10.5f kpp %10.5f \n", iG, ing, epp, f1.x, f1.y, f1.z, dot(hpi.xyz,apos[ingv+nAtoms].xyz), kpp ); }
                 }
             } 
-            
+
+       
             // pi-sigma othogonalization interaction
             float ksp = Kspi[i];
             if(ksp>1.e-6f){  
@@ -724,8 +761,8 @@ __kernel void getMMFFf4(
 
     }
     
+    //if(false)
     { //  ============== Angles   - here we evaluate angular interactions between pair of sigma-bonds of node atoms with its 4 neighbors
-
         for(int i=0; i<NNEIGH; i++){ // loop over first bond
             int ing = ings[i];
             if(ing<0) break;         // if there is no i-th neighbor we break the loop
@@ -738,26 +775,29 @@ __kernel void getMMFFf4(
                 const int jngv = jng+i0v;
                 const int jnga = jng+i0a;
                 const float4 hj = hs[j];  
-                      
+                // inline float evalAngCos( const float4 hr1, const float4 hr2, float K, float c0, __private float3* f1, __private float3* f2 ){      
+                //float ea = evalAngCos(  hi, hj, par.y, par.x, &f1, &f2 );
+
                 float ea = evalAngleCosHalf( hi, hj, par.xy, par.z, &f1, &f2 );    // evaluate angular force and energy using cos(angle/2) formulation        
+                //float ea = evalAngleCosHalf_alt( hi, hj, par.xy, par.z, &f1, &f2 );    
                 fa  -= f1+f2;
                 E   += ea;
                 //if((iG==iGdbg)&&(iS==iSdbg)){ printf("OCL::getMMFFf4(): angle():        iG %3i ing %3i jng %3i ea=%10.5f f1(%10.5f,%10.5f,%10.5f) f2(%10.5f,%10.5f,%10.5f) cos %10.5f apar(%10.5f,%10.5f,%10.5f) \n", iG, ing, jng, ea, f1.x, f1.y, f1.z, f2.x, f2.y, f2.z, dot(hi.xyz,hj.xyz), par.x, par.y, par.z ); }
 
-                if(bSubtractVdW)
-                { // Remove non-bonded interactions from atoms that are bonded to common neighbor
-                    float4 REQi=REQs[inga];   // non-bonding parameters of i-th neighbor
-                    float4 REQj=REQs[jnga];   // non-bonding parameters of j-th neighbor
-                    // combine non-bonding parameters of i-th and j-th neighbors using mixing rules
-                    float4 REQij;             
-                    REQij.x  = REQi.x  + REQj.x;
-                    REQij.yz = REQi.yz * REQj.yz; 
+                // if(bSubtractVdW)
+                // { // Remove non-bonded interactions from atoms that are bonded to common neighbor
+                //     float4 REQi=REQs[inga];   // non-bonding parameters of i-th neighbor
+                //     float4 REQj=REQs[jnga];   // non-bonding parameters of j-th neighbor
+                //     // combine non-bonding parameters of i-th and j-th neighbors using mixing rules
+                //     float4 REQij;             
+                //     REQij.x  = REQi.x  + REQj.x;
+                //     REQij.yz = REQi.yz * REQj.yz; 
                     
-                    float3 dp = (hj.xyz/hj.w) - (hi.xyz/hi.w);   // recover vector between i-th and j-th neighbors using stored vectos and inverse bond lengths, this should be faster than dp=apos[jngv].xyz-apos[ingv].xyz; from global memory
-                    float4 fij = getLJQH( dp, REQij, 1.0f );     // compute non-bonded interaction between i-th and j-th neighbors using LJQH potential
-                    f1 -=  fij.xyz;
-                    f2 +=  fij.xyz;
-                }
+                //     float3 dp = (hj.xyz/hj.w) - (hi.xyz/hi.w);   // recover vector between i-th and j-th neighbors using stored vectos and inverse bond lengths, this should be faster than dp=apos[jngv].xyz-apos[ingv].xyz; from global memory
+                //     float4 fij = getLJQH( dp, REQij, 1.0f );     // compute non-bonded interaction between i-th and j-th neighbors using LJQH potential
+                //     f1 -=  fij.xyz;
+                //     f2 +=  fij.xyz;
+                // }
 
                 fbs[i]+= f1;
                 fbs[j]+= f2;
@@ -1463,11 +1503,10 @@ __kernel void updateAtomsMMFFf4(
     if( fr2 > (Flimit*Flimit) ){  fe.xyz*=(Flimit/sqrt(fr2)); }  // if force is too big, we scale it down to Flimit
 
     // =============== FORCE DONE
-    //aforce[iav] = fe;           // store force before limit
+    aforce[iav] = fe;           // store force before limit
     //aforce[iav] = float4Zero;   // clean force   : This can be done in the first forcefield run (best is NBFF)
-
     //if((iG==iGdbg)&&(iS==iSdbg)){ printf( "OCL updateAtomsMMFFf4() fe[iS=%3i,iG=%3i](%16.8f,%16.8f,%16.8f|%16.8f) \n", iS,iG, fe.x,fe.y,fe.z,fe.w ); }
-
+    if( MDpars.x < 1e-16 ) return; // if dt is too small, we skip dynamics
     
     // =============== DYNAMICS
 

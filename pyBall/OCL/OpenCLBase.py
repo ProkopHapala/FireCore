@@ -49,6 +49,15 @@ class OpenCLBase:
     - Common utility functions for OpenCL operations
     """
     
+    @staticmethod
+    def _flat32(arr):
+        return np.require(arr, dtype=np.float32, requirements=('C',)) # .view(np.float32)   .ravel()
+
+    @staticmethod
+    def _int32(arr):
+        return np.require(arr, dtype=np.int32, requirements=('C',)) # .view(np.int32).ravel()
+
+
     def __init__(self, nloc=32, device_index=0):
         """
         Initialize the OpenCL environment.
