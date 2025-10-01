@@ -746,10 +746,231 @@ __kernel void getMMFFf4(
             if(ksp>1.e-6f){  
                 float esp = evalAngCos( (float4){hpi,1.f}, h, ksp, par.w, &f1, &f2 );   //   pi-planarization (orthogonality), fpi is force on pi-orbital, fbs[i] is recoil force on i-th neighbor   
                 fa-=f2;  fbs[i]+=f2; E+=esp;    
-                //fpi+=f1; 
+                fpi+=f1; 
                 // fpi+=cross(hpi.xyz, f1);  //   for rotational dynamics
                 //if((iG==iGdbg)&&(iS==iSdbg)){ printf("OCL::etMMFFf4(): cos(pi,sigma):      iG %3i ing %3i esp %10.5f f1(%10.5f,%10.5f,%10.5f) c %10.5f ksp %10.5f par.w %10.5f \n", iG, ing, esp, f1.x, f1.y, f1.z, dot(hpi.xyz,h.xyz), ksp, par.w ); }
             }
+        }
+
+        // --- Store Pi-forces                      we store pi-forces here because we don't use them in the angular force evaluation
+        const int i4p=(iG + iS*nnode*2 )*4 + nnode*4; // index of first pi-force for current atom
+        for(int i=0; i<NNEIGH; i++){
+            fneigh[i4p+i] = (float4){fps[i],0}; // store recoil pi-force on i-th neighbor
+        }
+        aforce[iav+nAtoms]  = (float4){fpi,0};  // store pi-force on pi-orbital of current atom
+
+    }
+    
+    //if(false)
+    { //  ============== Angles   - here we evaluate angular interactions between pair of sigma-bonds of node atoms with its 4 neighbors
+        for(int i=0; i<NNEIGH; i++){ // loop over first bond
+            int ing = ings[i];
+            if(ing<0) break;         // if there is no i-th neighbor we break the loop
+            const float4 hi = hs[i];
+            const int ingv = ing+i0v;
+            const int inga = ing+i0a;
+            for(int j=i+1; j<NNEIGH; j++){ // loop over second bond
+                int jng  = ings[j];
+                if(jng<0) break;           // if there is no j-th neighbor we break the loop
+                const int jngv = jng+i0v;
+                const int jnga = jng+i0a;
+                const float4 hj = hs[j];  
+                // inline float evalAngCos( const float4 hr1, const float4 hr2, float K, float c0, __private float3* f1, __private float3* f2 ){      
+                //float ea = evalAngCos(  hi, hj, par.y, par.x, &f1, &f2 );
+
+                float ea = evalAngleCosHalf( hi, hj, par.xy, par.z, &f1, &f2 );    // evaluate angular force and energy using cos(angle/2) formulation        
+                //float ea = evalAngleCosHalf_alt( hi, hj, par.xy, par.z, &f1, &f2 );    
+                fa  -= f1+f2;
+                E   += ea;
+                //if((iG==iGdbg)&&(iS==iSdbg)){ printf("OCL::getMMFFf4(): angle():        iG %3i ing %3i jng %3i ea=%10.5f f1(%10.5f,%10.5f,%10.5f) f2(%10.5f,%10.5f,%10.5f) cos %10.5f apar(%10.5f,%10.5f,%10.5f) \n", iG, ing, jng, ea, f1.x, f1.y, f1.z, f2.x, f2.y, f2.z, dot(hi.xyz,hj.xyz), par.x, par.y, par.z ); }
+
+                // if(bSubtractVdW)
+                // { // Remove non-bonded interactions from atoms that are bonded to common neighbor
+                //     float4 REQi=REQs[inga];   // non-bonding parameters of i-th neighbor
+                //     float4 REQj=REQs[jnga];   // non-bonding parameters of j-th neighbor
+                //     // combine non-bonding parameters of i-th and j-th neighbors using mixing rules
+                //     float4 REQij;             
+                //     REQij.x  = REQi.x  + REQj.x;
+                //     REQij.yz = REQi.yz * REQj.yz; 
+                    
+                //     float3 dp = (hj.xyz/hj.w) - (hi.xyz/hi.w);   // recover vector between i-th and j-th neighbors using stored vectos and inverse bond lengths, this should be faster than dp=apos[jngv].xyz-apos[ingv].xyz; from global memory
+                //     float4 fij = getLJQH( dp, REQij, 1.0f );     // compute non-bonded interaction between i-th and j-th neighbors using LJQH potential
+                //     f1 -=  fij.xyz;
+                //     f2 +=  fij.xyz;
+                // }
+
+                fbs[i]+= f1;
+                fbs[j]+= f2;
+            }
+        }
+
+    }
+    
+    // ========= Save results - store forces on atoms and recoil on its neighbors  (pi-forces are already done)
+    const int i4 =(iG + iS*nnode*2 )*4;
+    //const int i4p=i4+nnode*4;
+    for(int i=0; i<NNEIGH; i++){
+        fneigh[i4 +i] = (float4){fbs[i],0};
+        //fneigh[i4p+i] = (float4){fps[i],0};
+    }
+    //aforce[iav     ] = (float4){fa ,0}; // If we do  run it as first forcefield
+    aforce[iav ]       += (float4){fa.x,fa.y,fa.z,E};
+    //aforce[iav+nAtoms]  = (float4){fpi,0}; 
+    
+}
+
+
+
+__kernel void getMMFFf4_rot(
+    const int4 nDOFs,               // 1   (nAtoms,nnode) dimensions of the system
+    // Dynamical
+    __global float4*  apos,         // 2  [natoms]     positions of atoms (including node atoms [0:nnode] and capping atoms [nnode:natoms] and pi-orbitals [natoms:natoms+nnode] )
+    __global float4*  aforce,        // 3  [natoms]     forces on    atoms (just node atoms are evaluated)
+    __global float4*  fneigh,       // 4  [nnode*4*2]  recoil forces on neighbors (and pi-orbitals)
+    // parameters
+    __global int4*    neighs,       // 5  [nnode]  neighboring atoms
+    __global int4*    neighCell,    // 5  [nnode]  neighboring atom  cell index
+    __global float4*  REQs,        // 6  [natoms] non-boding parametes {R0,E0,Q} i.e. R0: van der Waals radii, E0: well depth and partial charge, Q: partial charge 
+    __global float4*  apars,        // 7  [nnode]  per atom forcefield parametrs {c0ss,Kss,c0sp}, i.e. c0ss: cos(equlibrium angle/2) for sigma-sigma; Kss: stiffness of sigma-sigma angle; c0sp: is cos(equlibrium angle) for sigma-pi
+    __global float4*  bLs,          // 8  [nnode]  bond length    between node and each neighbor
+    __global float4*  bKs,          // 9  [nnode]  bond stiffness between node and each neighbor
+    __global float4*  Ksp,          // 10 [nnode]  stiffness of pi-alignment for each neighbor     (only node atoms have pi-pi alignemnt interaction)
+    __global float4*  Kpp,          // 11 [nnode]  stiffness of pi-planarization for each neighbor (only node atoms have pi-pi alignemnt interaction)
+    __global cl_Mat3* lvecs,        // 12 lattice vectors         for each system
+    __global cl_Mat3* ilvecs,       // 13 inverse lattice vectors for each system
+    __global float4*  pbc_shifts,
+    const int npbc,
+    const int bSubtractVdW
+){
+
+    const int iG = get_global_id (0);   // intex of atom   (iG<nAtoms)
+    const int iS = get_global_id (1);   // index of system (iS<nS)
+    //const int nG = get_global_size(0);
+    //const int nS = get_global_size(1);  // number of systems
+    //const int iL = get_local_id  (0);
+    //const int nL = get_local_size(0);
+    const int nAtoms=nDOFs.x;  // number of atoms in the system
+    const int nnode =nDOFs.y;  // number of nodes in the system
+    //const int nvec  = nAtoms+nnode;
+
+    if(iG>=nnode) return;
+
+    const int i0a   = iS*nAtoms;         // index of first atom      in the system
+    const int i0n   = iS*nnode;          // index of first node atom in the system
+    const int i0v   = iS*(nAtoms+nnode); // index of first vector    in the system ( either atom or pi-orbital )
+    
+    const int iaa = iG + i0a;  // index of current atom (either node or capping atom)
+    const int ian = iG + i0n;  // index of current node atom
+    const int iav = iG + i0v;  // index of current vector ( either atom or pi-orbital )
+
+    #define NNEIGH 4
+    
+    // ---- Dynamical
+    float4  hs [4];              // direction vectors of bonds (h.xyz) and inverse bond lengths (h.w)
+    float3  fbs[4];              // force on neighbor sigma    (fbs[i] is sigma recoil force on i-th neighbor)
+    float3  fps[4];              // force on neighbor pi       (fps[i] is pi    recoil force on i-th neighbor)
+    float3  fa  = float3Zero;    // force on center atom positon 
+
+    float E=0;                   // Total Energy of this atom
+    // ---- Params
+    const int4   ng  = neighs[iaa];    // neighboring atoms
+    const float3 pa  = apos[iav].xyz;  // position of current atom
+    const float4 par = apars[ian];     // (xy=s0_ss,z=ssK,w=piC0 ) forcefield parameters for current atom
+
+    // if((iG==iGdbg)&&(iS==iSdbg)){ printf("OCL::getMMFFf4(): natoms %3i nnode %3i nSys %3i \n", nAtoms, nnode, get_global_size(1) ); }
+    // if((iG==iGdbg)&&(iS==iSdbg)){
+    //     printf("OCL::getMMFFf4(): natoms %3i nnode %3i \n", nAtoms, nnode );
+    //     for(int ia=0; ia<nnode; ia++){
+    //         int4   ng=neighs[iaa+ia];
+    //         float4 pi=apos[iav+ia];
+    //         float4 bk=bLs[ian];
+    //         float4 bK=bKs[ian];
+    //         float4 Ks=Ksp[ian];
+    //         float4 Kp=Kpp[ian];
+    //         float4 apar=apars[ian];
+    //         //printf("OCL::getMMFFf4(): ia %3i: pos=(%10.5f,%10.5f,%10.5f) ngs=(%3i,%3i,%3i,%3i) bLs=(%10.5f,%10.5f,%10.5f,%10.5f) bKs=(%10.5f,%10.5f,%10.5f,%10.5f) Ks=(%10.5f,%10.5f,%10.5f,%10.5f) Kp=(%10.5f,%10.5f,%10.5f,%10.5f) apar=(%10.5f,%10.5f,%10.5f,%10.5f)\n", 
+    //         //   ia, pi.x, pi.y, pi.z, ng.x, ng.y, ng.z, ng.w, bk.x, bk.y, bk.z, bk.w, bK.x, bK.y, bK.z, bK.w, Ks.x, Ks.y, Ks.z, Ks.w, Kp.x, Kp.y, Kp.z, Kp.w, apar.x, apar.y, apar.z, apar.w );
+    //         printf("OCL::getMMFFf4(): ia %3i: pos=(%10.5f,%10.5f,%10.5f) ngs=(%3i,%3i,%3i,%3i) bLs=(%10.5f,%10.5f,%10.5f,%10.5f) bKs=(%10.5f,%10.5f,%10.5f,%10.5f) apar=(%10.5f,%10.5f,%10.5f,%10.5f)\n", 
+    //            ia, pi.x, pi.y, pi.z, ng.x, ng.y, ng.z, ng.w, bk.x, bk.y, bk.z, bk.w, bK.x, bK.y, bK.z, bK.w, apar.x, apar.y, apar.z, apar.w );
+    //     } 
+    // }
+
+    // Temp Arrays
+    const int*   ings  = (int*  )&ng; // neighboring atoms, we cast it to int[] to be index it in for loop
+
+
+    const float   ssC0   = par.x*par.x - par.y*par.y;                      // cos(2) = cos(x)^2 - sin(x)^2, because we store cos(ang0/2) to use in  evalAngleCosHalf , where ang0 is equilibrium angle
+    for(int i=0; i<NNEIGH; i++){ fbs[i]=float3Zero; fps[i]=float3Zero; }   // clear recoil forces on neighbors
+
+    float3 f1,f2;         // working forces 
+
+    { // ========= BONDS - here we evaluate pairwise interactions of node atoms with its 4 neighbors 
+
+        float3  fpi = float3Zero;                // force on pi-orbital
+        const int4   ngC = neighCell[iaa];       // neighboring atom cell index
+        const float3 hpi = apos[iav+nAtoms].xyz; // direction of pi-orbital
+        const float4 vbL = bLs[ian];             // bond lengths
+        const float4 vbK = bKs[ian];             // bond stiffness
+        const float4 vKs = Ksp[ian];             // stiffness of sigma-pi othogonalization 
+        const float4 vKp = Kpp[ian];             // stiffness of pi-pi    alignment
+
+        const int*   ingC  = (int*  )&ngC;   // neighboring atom cell index (we cast it to int[] to be index it in for loop)
+        const float* bL    = (float*)&vbL;   // bond lengths
+        const float* bK    = (float*)&vbK;   // bond stiffness
+        const float* Kspi  = (float*)&vKs;   // stiffness of sigma-pi othogonalization
+        const float* Kppi  = (float*)&vKp;   // stiffness of pi-pi    alignment
+
+        const int ipbc0 = iS*npbc;  // index of first PBC shift for current system
+
+        for(int i=0; i<NNEIGH; i++){  // loop over 4 neighbors
+            float4 h;                 // direction vector of bond
+            const int ing  = ings[i]; // index of i-th neighbor node atom
+            const int ingv = ing+i0v; // index of i-th neighbor vector
+            const int inga = ing+i0a; // index of i-th neighbor atom
+            if(ing<0) break;
+            
+            // --- Compute bond direction vector and inverse bond length
+            h.xyz    = apos[ingv].xyz - pa;  // direction vector of bond
+            { // shift bond to the proper PBC cell
+                int ic  = ingC[i];                  // index of i-th neighbor cell
+                h.xyz  += pbc_shifts[ipbc0+ic].xyz; // shift bond to the proper PBC cell
+            }
+            float  l = length(h.xyz);  // compute bond length
+            h.w      = 1.f/l;           // store ivnerse bond length
+            h.xyz   *= h.w;            // normalize bond direction vector
+            hs[i]    = h;              // store bond direction vector and inverse bond length
+
+            //float epp = 0; // pi-pi    energy
+            //float esp = 0; // pi-sigma energy
+
+            // --- Evaluate bond-length stretching energy and forces
+            if(iG<ing){  
+                float elb = evalBond( h.xyz, l-bL[i], bK[i], &f1 );  fbs[i]-=f1;  fa+=f1; E+=elb;  // harmonic bond stretching, fa is force on center atom, fbs[i] is recoil force on i-th neighbor, 
+                //if( (ing>=nnode) || (iG<ing) ){ E+=elb; }
+                //if((iG==iGdbg)&&(iS==iSdbg)){ printf("OCL::getMMFFf4(): bond-length:    iG %3i ing %3i elb %10.5f f(%10.5f,%10.5f,%10.5f) l %10.5f bL %10.5f bK %10.5f \n", iG, ing, elb, f1.x, f1.y, f1.z, l, bL[i], bK[i] ); }
+
+                // // pi-pi alignment interaction            
+                // float kpp = Kppi[i];
+                // if( (ing<nnode) && (kpp>1.e-6f) ){   // Only node atoms have pi-pi alignemnt interaction
+                //     float3 hpj = apos[ingv+nAtoms].xyz;
+                //     float epp = evalPiAling( hpi, hpj, kpp,  &f1, &f2 );    //   pi-alignment(konjugation), fpi is force on pi-orbital, fps[i] is recoil force on i-th neighbor's pi-orbital                               
+                //     fpi   -=cross(hpi.xyz, f1);  
+                //     fps[i]+=cross(hpj.xyz, f2);    //   for rotational dynamics
+                //     E+=epp; 
+                //     //if((iG==iGdbg)&&(iS==iSdbg)){ printf("OCL::getMMFFf4(): cos(pi,pi):     iG %3i ing %3i epp %10.5f f(%10.5f,%10.5f,%10.5f) c %10.5f kpp %10.5f \n", iG, ing, epp, f1.x, f1.y, f1.z, dot(hpi.xyz,apos[ingv+nAtoms].xyz), kpp ); }
+                // }
+            } 
+
+
+            // pi-sigma othogonalization interaction
+            float ksp = Kspi[i];
+            if(ksp>1.e-6f){  
+                float esp = evalAngCos( (float4){hpi,1.f}, h, ksp, par.w, &f1, &f2 );   //   pi-planarization (orthogonality), fpi is force on pi-orbital, fbs[i] is recoil force on i-th neighbor   
+                fa-=f2;  fbs[i]+=f2; E+=esp;    
+                fpi-=cross(hpi.xyz, f1);  //   for rotational dynamics
+                //if((iG==iGdbg)&&(iS==iSdbg)){ printf("OCL::etMMFFf4(): cos(pi,sigma):      iG %3i ing %3i esp %10.5f f1(%10.5f,%10.5f,%10.5f) c %10.5f ksp %10.5f par.w %10.5f \n", iG, ing, esp, f1.x, f1.y, f1.z, dot(hpi.xyz,h.xyz), ksp, par.w ); }
+            }
+            
         }
 
         // --- Store Pi-forces                      we store pi-forces here because we don't use them in the angular force evaluation
@@ -1852,7 +2073,7 @@ if (bPi){   // ROTATIONAL DYNAMICS FOR PI-ORBITAL
     // Integrate angular velocity (Leap-frog style: v_{t+1/2} = v_{t-1/2} + a*dt)
     omega += (tau* inv_I) * MDpars.x; // ω += (τ/I) * dt
     omega *= MDpars.z;   // Apply damping (optional, but good for relaxation)
-    u += cross(omega, u) * MDpars.x;  // Update orientation (integrate rotation) du/dt = ω × u - This is a simple but effective first-order integrator for rotation
+    //u += cross(omega, u) * MDpars.x;  // Update orientation (integrate rotation) du/dt = ω × u - This is a simple but effective first-order integrator for rotation
     u  = normalize(u); // Normalize to correct for numerical drift
     // Store updated values
     apos[iav].xyz = u;

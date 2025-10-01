@@ -35,8 +35,8 @@ from pyBall.MD_test_utils import *
 # infinite line length for numpy print options
 np.set_printoptions(linewidth=np.inf)
 
-#DATA_MOL = os.path.join(BASE, 'cpp/common_resources/mol/formic_acid.mol2')
-DATA_MOL = os.path.join(BASE, 'cpp/common_resources/mol/methanol.mol2')
+DATA_MOL = os.path.join(BASE, 'cpp/common_resources/mol/formic_acid.mol2')
+#DATA_MOL = os.path.join(BASE, 'cpp/common_resources/mol/methanol.mol2')
 
 
 
@@ -46,13 +46,18 @@ DATA_MOL = os.path.join(BASE, 'cpp/common_resources/mol/methanol.mol2')
 Examples (omit defaults):
 - Minimal MD with diagnostics
   python test_MMFFsp3_pyOCL.py --steps 50 --print-stats 1
-- Use rotational integrator
+- Use rotational integrator (updateAtomsMMFFf4_rot)
   python test_MMFFsp3_pyOCL.py --steps 50 --mode rot
+- Use rotational force kernel (getMMFFf4_rot) with rotational integrator
+  python test_MMFFsp3_pyOCL.py --steps 50 --mode rot --use-rot-force 1
+- Compare basic vs rotational dynamics on formic acid
+  python test_MMFFsp3_pyOCL.py --steps 200 --mode basic --monitor 1 --monitor-plot 1
+  python test_MMFFsp3_pyOCL.py --steps 200 --mode rot --use-rot-force 1 --monitor 1 --monitor-plot 1
 - Forces only (no motion)
   python test_MMFFsp3_pyOCL.py --steps 10 --mode none --print-stats 1
 - Record and plot XY trajectories
   python test_MMFFsp3_pyOCL.py --steps 100 --record 1 --plot 1 --plot-dim xy 
-- Monotor total invariants like momentum, energy, torque etc.
+- Monitor total invariants like momentum, energy, torque etc.
   python test_MMFFsp3_pyOCL.py --steps 200 --monitor 1 --monitor-plot 1
 - Scan energy/force
   python test_MMFFsp3_pyOCL.py --scan 1 --scan-atom 0 --scan-axis x --scan-nsamp 21
@@ -61,7 +66,8 @@ Examples (omit defaults):
 
 if __name__ == '__main__':
     ap = argparse.ArgumentParser()
-    ap.add_argument('--mode',         choices=['basic','rot','rattle','none'], default='basic')
+    ap.add_argument('--mode',         choices=['basic','rot','rattle','none'], default='basic', help='Integrator mode (for updateAtoms kernel)')
+    ap.add_argument('--use-rot-force', type=int,  default=1, help='Use getMMFFf4_rot instead of getMMFFf4 for force calculation')
     ap.add_argument('--molecule',                 default=DATA_MOL)
     ap.add_argument('--steps',        type=int,   default=100)
     ap.add_argument('--dt',           type=float, default=0.01)
@@ -126,6 +132,7 @@ if __name__ == '__main__':
     do_clean     = bool(args.do_clean)
     do_nb        = bool(args.do_nb)
     do_mmff      = bool(args.do_mmff)
+    use_rot_force = bool(args.use_rot_force)
     want_record  = bool(args.record)
     want_plot    = bool(args.plot)
     plot_bonds   = bool(args.plot_bonds)
@@ -150,7 +157,7 @@ if __name__ == '__main__':
     monitor_props, monitor_enabled, totals_hist, monitor_data, trj = init_observers(want_record, want_monitor, monitor_props)
 
     for _ in range(args.steps):
-        run_step(md, do_clean=do_clean, do_nb=do_nb, do_mmff=do_mmff, mode=args.mode)
+        md.run_MD_step(do_clean=do_clean, do_nb=do_nb, do_mmff=do_mmff, use_rot=use_rot_force, force_kernel=args.mode)
         if want_record or monitor_enabled:
             collect_diagnostics(md, mm, masses, want_record, monitor_enabled, monitor_props, totals_hist, monitor_data, trj)
 

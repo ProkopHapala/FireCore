@@ -256,22 +256,22 @@ def fetch_arrays(md, mm):
     return {'apos': apos, 'aforce': aforce, 'avel': avel, 'fneigh': fng, 'cvf': cvf, **atoms}
 
 
-def run_step(md, do_clean=True, do_nb=True, do_mmff=True, mode='basic'):
-    """Run one force/integrator step according to flags."""
-    if do_clean:
-        md.run_cleanForceMMFFf4()
-    if do_nb:
-        md.run_getNonBond()
-    if do_mmff:
-        md.run_getMMFFf4()
-    if mode == 'rot':
-        md.run_updateAtomsMMFFf4_rot()
-    elif mode == 'rattle':
-        md.run_updateAtomsMMFFf4_RATTLE()
-    elif mode == 'basic':
-        md.run_updateAtomsMMFFf4()
-    elif mode == 'none':
-        pass
+def run_step(md, do_clean=True, do_nb=True, do_mmff=True, mode='basic', use_rot_force=False):
+    """Run one force/integrator step according to flags.
+    
+    DEPRECATED: Use md.run_MD_step() directly for better performance (no string comparisons).
+    This wrapper is kept for backward compatibility.
+    
+    Args:
+        md: MolecularDynamics instance
+        do_clean: Run cleanForceMMFFf4 before forces
+        do_nb: Run getNonBond (non-bonded forces)
+        do_mmff: Run getMMFFf4 or getMMFFf4_rot (bonded forces)
+        mode: Which integrator to use - 'basic', 'rot', 'rattle', or 'none'
+        use_rot_force: Use getMMFFf4_rot instead of getMMFFf4 for bonded forces
+    """
+    md.run_MD_step(do_clean=do_clean, do_nb=do_nb, do_mmff=do_mmff, 
+                   use_rot=use_rot_force, force_kernel=mode)
 
 
 def compute_totals(apos_atoms, avel_atoms, aforce_atoms, masses=None, origin=None):
