@@ -25,22 +25,11 @@ BASE = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)
 sys.path.append(BASE)
 from pyBall.MD_test_utils import *
 
-# from pyBall.AtomicSystem import AtomicSystem
-# from pyBall.OCL.MMFF import MMFF
-# from pyBall.OCL.MolecularDynamics import MolecularDynamics
-# from pyBall.plotUtils import plotAtoms, plotBonds
-# from pyBall import elements
-
-
 # infinite line length for numpy print options
 np.set_printoptions(linewidth=np.inf)
 
 DATA_MOL = os.path.join(BASE, 'cpp/common_resources/mol/formic_acid.mol2')
 #DATA_MOL = os.path.join(BASE, 'cpp/common_resources/mol/methanol.mol2')
-
-
-
-
 
 """
 Examples (omit defaults):
@@ -66,8 +55,7 @@ Examples (omit defaults):
 
 if __name__ == '__main__':
     ap = argparse.ArgumentParser()
-    ap.add_argument('--mode',         choices=['basic','rot','rattle','none'], default='basic', help='Integrator mode (for updateAtoms kernel)')
-    ap.add_argument('--use-rot-force', type=int,  default=1, help='Use getMMFFf4_rot instead of getMMFFf4 for force calculation')
+    ap.add_argument('--rot-dyn',      type=int,   default=1, help='Use rotational dynamics for pi-orbitals (updateAtomsMMFFf4_rot and getMMFFf4_rot)')
     ap.add_argument('--molecule',                 default=DATA_MOL)
     ap.add_argument('--steps',        type=int,   default=100)
     ap.add_argument('--dt',           type=float, default=0.01)
@@ -76,9 +64,7 @@ if __name__ == '__main__':
     ap.add_argument('--drive-temp',   type=float, default=0.0, help='Langevin thermostat target temperature (0 disables)')
     ap.add_argument('--drive-gamma',  type=float, default=0.0, help='Langevin damping coefficient gamma (0 disables)')
     ap.add_argument('--drive-seed',   type=float, default=0.0, help='Seed offset for Langevin random numbers')
-    ap.add_argument('--do-clean',     type=int,   default=1, help='Run cleanForceMMFFf4 before forces')
     ap.add_argument('--do-nb',        type=int,   default=0, help='Run getNonBond each step')
-    ap.add_argument('--do-mmff',      type=int,   default=1, help='Run getMMFFf4 (bonded) each step')
     ap.add_argument('--print-stats',  type=int,   default=1, help='Print min/max/norm/NaN counts for buffers at end')
     ap.add_argument('--print-arrays', type=int,   default=1, help='Print full arrays at end')
     ap.add_argument('--record',       type=int,   default=1, help='Record trajectory and totals each step')
@@ -129,19 +115,6 @@ if __name__ == '__main__':
         plot_energy_force_scan(scan, axis_label=f"{args.scan_axis}-displacement", show=bool(args.scan_show), save_path=args.scan_save)
         sys.exit(0)
 
-    do_clean     = bool(args.do_clean)
-    do_nb        = bool(args.do_nb)
-    do_mmff      = bool(args.do_mmff)
-    use_rot_force = bool(args.use_rot_force)
-    want_record  = bool(args.record)
-    want_plot    = bool(args.plot)
-    plot_bonds   = bool(args.plot_bonds)
-    print_stats  = bool(args.print_stats)
-    print_arrays = bool(args.print_arrays)
-    want_monitor = bool(args.monitor)
-    want_monitor_plot = bool(args.monitor_plot)
-    use_real_mass = bool(args.use_real_mass)
-
     mol, mm, md = configure_md(
         mol_path,
         args.dt,
@@ -153,19 +126,22 @@ if __name__ == '__main__':
         args.drive_seed,
         print_params=bool(args.print_params),
     )
-    masses = get_atom_masses(mol, use_real=use_real_mass)
-    monitor_props, monitor_enabled, totals_hist, monitor_data, trj = init_observers(want_record, want_monitor, monitor_props)
+    masses = get_atom_masses(mol, use_real=args.use_real_mass)
+    monitor_props, monitor_enabled, totals_hist, monitor_data, trj = init_observers(args.record, args.monitor, monitor_props)
 
     for _ in range(args.steps):
-        md.run_MD_step(do_clean=do_clean, do_nb=do_nb, do_mmff=do_mmff, use_rot=use_rot_force, force_kernel=args.mode)
-        if want_record or monitor_enabled:
-            collect_diagnostics(md, mm, masses, want_record, monitor_enabled, monitor_props, totals_hist, monitor_data, trj)
+        if (args.rot_dyn):
+            md.run_step_rot  (do_nb=args.do_nb )
+        else:
+            md.run_step_basic( do_nb=args.do_nb )
+        if (args.record or args.monitor):
+            collect_diagnostics(md, mm, masses, args.record, args.monitor, monitor_props, totals_hist, monitor_data, trj)
 
     buf = fetch_arrays(md, mm)
-    dump_buffers(buf, print_stats=print_stats, print_arrays=print_arrays)
-    report_conservation(totals_hist, args.steps, want_record)
-    trj_arr = finalize_recording(want_record, trj, mol, args.save_trj, want_plot, args.plot_dim, args.plot_labels, args.save_plot, plot_bonds)
-    finalize_monitoring(monitor_enabled, monitor_data, monitor_props, args.save_monitor_data, want_monitor_plot, args.save_monitor)
+    dump_buffers(buf, print_stats=args.print_stats, print_arrays=args.print_arrays)
+    report_conservation(totals_hist, args.steps, args.record)
+    trj_arr = finalize_recording(args.record, trj, mol, args.save_trj, args.plot, args.plot_dim, args.plot_labels, args.save_plot, args.plot_bonds)
+    finalize_monitoring(monitor_enabled, monitor_data, monitor_props, args.save_monitor_data, args.monitor_plot, args.save_monitor)
 
     apos, aforce = buf['apos'], buf['aforce']
     print(f"Done. Steps={args.steps}  natoms={mm.natoms}  first-atom pos={apos[0,:3]}  force={aforce[0,:3]}")

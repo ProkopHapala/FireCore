@@ -94,6 +94,43 @@ inline float3 rotMatT( float3 v, float3 a, float3 b, float3 c ){ return a*v.x + 
 
 //<<<file Forces.cl
 
+// Pure Taylor: compute s = sin(r)/r and c = (1-cos(r))/r^2 as polynomials in r2
+float2 sinc_div_r2_taylor(float r2){
+    // series up to r^6 terms (i.e. up to r2^3)
+    // s = sin(r)/r = 1 - r^2/6 + r^4/120 - r^6/5040
+    // c = (1-cos r)/r^2 = 1/2 - r^2/24 + r^4/720 - r^6/40320
+    const float r4 = r2*r2;
+    const float r6 = r4*r2;
+    float s = 1.0f + r2 * (-1.0f/6.0f) + r4 * (1.0f/120.0f) + r6 * (-1.0f/5040.0f);
+    float c = 0.5f + r2 * (-1.0f/24.0f) + r4 * (1.0f/720.0f) + r6 * (-1.0f/40320.0f);
+    return (float2){s, c};
+}
+
+// Pure-Taylor rotate (no sqrt). Good for small angles (e.g. |theta| < ~0.5...1.0)
+float3 rotate_by_omega_taylor(float3 p, float3 w){
+    float r2    = dot(w,w);
+    float2 sc   = sinc_div_r2_taylor(r2); // sc.x = s, sc.y = c
+    float3 wxp  = cross(w, p);
+    float3 wwxp = cross(w, wxp);
+    // p' = p + s*(w x p) + c*(w x (w x p))
+    return (float3){ p.x + wxp.x*sc.x + wwxp.x*sc.y,
+                     p.y + wxp.y*sc.x + wwxp.y*sc.y,
+                     p.z + wxp.z*sc.x + wwxp.z*sc.y };
+}
+
+float3 rotate_by_omega(float3 p, float3 w){
+    float r2    = dot(w,w);
+    float  r    = sqrt(r2); 
+    float2 sc   = (float2){cos(r), sin(r)}; // sc.x = s, sc.y = c
+    float3 wxp  = cross(w, p);
+    float3 wwxp = cross(w, wxp);
+    // p' = p + s*(w x p) + c*(w x (w x p))
+    return (float3){ p.x + wxp.x*sc.x + wwxp.x*sc.y,
+                     p.y + wxp.y*sc.x + wwxp.y*sc.y,
+                     p.z + wxp.z*sc.x + wwxp.z*sc.y };
+}
+
+
 // evaluate angular force and energy using cos(angle) formulation,    - faster, but not good for angles > 90 deg
 inline float evalAngCos( const float4 hr1, const float4 hr2, float K, float c0, __private float3* f1, __private float3* f2 ){
     float  c = dot(hr1.xyz,hr2.xyz);
@@ -580,7 +617,7 @@ __kernel void cleanForceMMFFf4(
     aforce[iav]=float4Zero;
     //aforce[iav]=(float4){iG,iS,iav,0.0};
 
-    //if(iav==0){ printf("OCL::cleanForceMMFFf4() iS %i nG %i nS %i \n", iS, nG, nS );}
+    if(iav==0){ printf("GPU cleanForceMMFFf4() iS %i nG %i nS %i \n", iS, nG, nS );}
     //if(iG==0){ for(int i=0;i<(natoms+nnode);i++ ){printf("cleanForceMMFFf4[%i](%g,%g,%g)\n",i,aforce[i].x,aforce[i].y,aforce[i].z);} }
     if(iG<nnode){ 
         const int i4 = ian*4;
@@ -656,7 +693,7 @@ __kernel void getMMFFf4(
     const float3 pa  = apos[iav].xyz;  // position of current atom
     const float4 par = apars[ian];     // (xy=s0_ss,z=ssK,w=piC0 ) forcefield parameters for current atom
 
-    // if((iG==iGdbg)&&(iS==iSdbg)){ printf("OCL::getMMFFf4(): natoms %3i nnode %3i nSys %3i \n", nAtoms, nnode, get_global_size(1) ); }
+    if((iG==iGdbg)&&(iS==iSdbg)){ printf("GPU getMMFFf4(): natoms %3i nnode %3i nSys %3i \n", nAtoms, nnode, get_global_size(1) ); }
     // if((iG==iGdbg)&&(iS==iSdbg)){
     //     printf("OCL::getMMFFf4(): natoms %3i nnode %3i \n", nAtoms, nnode );
     //     for(int ia=0; ia<nnode; ia++){
@@ -877,7 +914,7 @@ __kernel void getMMFFf4_rot(
     const float3 pa  = apos[iav].xyz;  // position of current atom
     const float4 par = apars[ian];     // (xy=s0_ss,z=ssK,w=piC0 ) forcefield parameters for current atom
 
-    // if((iG==iGdbg)&&(iS==iSdbg)){ printf("OCL::getMMFFf4(): natoms %3i nnode %3i nSys %3i \n", nAtoms, nnode, get_global_size(1) ); }
+    if((iG==iGdbg)&&(iS==iSdbg)){ printf("GPU getMMFFf4_rot(): natoms %3i nnode %3i nSys %3i \n", nAtoms, nnode, get_global_size(1) ); }
     // if((iG==iGdbg)&&(iS==iSdbg)){
     //     printf("OCL::getMMFFf4(): natoms %3i nnode %3i \n", nAtoms, nnode );
     //     for(int ia=0; ia<nnode; ia++){
@@ -963,13 +1000,13 @@ __kernel void getMMFFf4_rot(
 
 
             // pi-sigma othogonalization interaction
-            float ksp = Kspi[i];
-            if(ksp>1.e-6f){  
-                float esp = evalAngCos( (float4){hpi,1.f}, h, ksp, par.w, &f1, &f2 );   //   pi-planarization (orthogonality), fpi is force on pi-orbital, fbs[i] is recoil force on i-th neighbor   
-                fa-=f2;  fbs[i]+=f2; E+=esp;    
-                fpi-=cross(hpi.xyz, f1);  //   for rotational dynamics
-                //if((iG==iGdbg)&&(iS==iSdbg)){ printf("OCL::etMMFFf4(): cos(pi,sigma):      iG %3i ing %3i esp %10.5f f1(%10.5f,%10.5f,%10.5f) c %10.5f ksp %10.5f par.w %10.5f \n", iG, ing, esp, f1.x, f1.y, f1.z, dot(hpi.xyz,h.xyz), ksp, par.w ); }
-            }
+            // float ksp = Kspi[i];
+            // if(ksp>1.e-6f){  
+            //     float esp = evalAngCos( (float4){hpi,1.f}, h, ksp, par.w, &f1, &f2 );   //   pi-planarization (orthogonality), fpi is force on pi-orbital, fbs[i] is recoil force on i-th neighbor   
+            //     fa-=f2;  fbs[i]+=f2; E+=esp;    
+            //     fpi+=cross(hpi.xyz, f1);  //   for rotational dynamics
+            //     //if((iG==iGdbg)&&(iS==iSdbg)){ printf("OCL::etMMFFf4(): cos(pi,sigma):      iG %3i ing %3i esp %10.5f f1(%10.5f,%10.5f,%10.5f) c %10.5f ksp %10.5f par.w %10.5f \n", iG, ing, esp, f1.x, f1.y, f1.z, dot(hpi.xyz,h.xyz), ksp, par.w ); }
+            // }
             
         }
 
@@ -1678,7 +1715,7 @@ __kernel void updateAtomsMMFFf4(
     const float4 MDpars  = MDparams[iS]; // (dt,damp,Flimit)
     const float4 TDrive = TDrives[iS];
 
-    //if((iG==iGdbg)&&(iS==iSdbg)){ printf("OCL::updateAtomsMMFFf4() natoms %i nvec %i nSys %i MDpars(%g,%g,%g,%g) \n", natoms, nvec, get_global_size(1), MDpars.x,MDpars.y,MDpars.z,MDpars.w); }
+    if((iG==iGdbg)&&(iS==iSdbg)){ printf("OCL::updateAtomsMMFFf4() natoms %i nvec %i nSys %i MDpars(%g,%g,%g,%g) \n", natoms, nvec, get_global_size(1), MDpars.x,MDpars.y,MDpars.z,MDpars.w); }
     // if((iG==iGdbg)&&(iS==iSdbg)){ 
     //     printf("OCL updateAtomsMMFFf4() natoms %i nvec %i MDpars(%g,%g,%g,%g) \n", natoms, nvec, MDpars.x,MDpars.y,MDpars.z,MDpars.w);  
     //     for(int is=0; is<nS; is++){
@@ -1777,7 +1814,7 @@ __kernel void updateAtomsMMFFf4(
     if(bPi){ // if pi-orbital, we need to make sure that it has unit length
         // Fk -= dot(Fk,u)*u;
         fe.xyz += pe.xyz * -dot( pe.xyz, fe.xyz );     // subtract forces  component which change pi-orbital lenght, 
-        fe.xyz += pe.xyz * -dot( ve.xyz, ve.xyz);      // centripedal force - LLM says we should do this rather than subtracting parallel velocity component 
+        //fe.xyz += pe.xyz * -dot( ve.xyz, ve.xyz);      // centripedal force - LLM says we should do this rather than subtracting parallel velocity component 
         //ve.xyz += pe.xyz * -dot( pe.xyz, ve.xyz );   // subtract veocity  component which change pi-orbital lenght, LLM say it will introduce small angular momentum drift
     }else{
         // Thermal driving  - Langevin thermostat, see C++ MMFFsp3_loc::move_atom_Langevin()
@@ -1816,6 +1853,7 @@ __kernel void updateAtomsMMFFf4(
     }else{ // ==== Original leapfrog update kept for reference (disabled):
         ve.xyz *= MDpars.z;             // friction, velocity damping
         ve.xyz += fe.xyz*MDpars.x;      // acceleration
+        if(bPi){ ve.xyz += pe.xyz * -dot( pe.xyz, ve.xyz ); } // subtract parallel velocity component which change pi-orbital lenght
         pe.xyz += ve.xyz*MDpars.x;      // move
     }
 
@@ -2024,6 +2062,8 @@ __kernel void updateAtomsMMFFf4_rot(
     const float4 MDpars  = MDparams[iS]; // (dt,damp,Flimit)
     const float4 TDrive = TDrives[iS];
 
+    if((iG==iGdbg)&&(iS==iSdbg)){ printf("GPU updateAtomsMMFFf4_rot() natoms %i nvec %i nSys %i MDpars(%g,%g,%g,%g) \n", natoms, nvec, get_global_size(1), MDpars.x,MDpars.y,MDpars.z,MDpars.w); }
+
     if(iG>=(natoms+nnode)) return; // make sure we are not out of bounds of current system
 
     //aforce[iav] = float4Zero;
@@ -2036,7 +2076,7 @@ __kernel void updateAtomsMMFFf4_rot(
     int4 ngs = bkNeighs[ iav ]; // back neighbors indices
 
     //if(iS==5)printf( "iG,iS %i %i ngs %i,%i,%i,%i \n", iG, iS, ngs.x,ngs.y,ngs.z,ngs.w );
-    //if( (iS==0)&&(iG==0) ){ printf( "GPU:fe.1[iS=%i,iG=%i](%g,%g,%g,%g) \n", fe.x,fe.y,fe.z,fe.w ); }
+    //if( (iS==0)&&(iG==0) ){ printf( "GPU updateAtomsMMFFf4_rot() GPU:fe.1[iS=%i,iG=%i](%g,%g,%g,%g) \n", fe.x,fe.y,fe.z,fe.w ); }
 
     // sum all recoil forces from back neighbors   - WARRNING : bkNeighs must be properly shifted on CPU by adding offset of system iS*nvec*4
     if(ngs.x>=0){ fe += fneigh[ngs.x]; } // if neighbor index is negative it means that there is no neighbor, so we skip it
@@ -2073,7 +2113,7 @@ if (bPi){   // ROTATIONAL DYNAMICS FOR PI-ORBITAL
     // Integrate angular velocity (Leap-frog style: v_{t+1/2} = v_{t-1/2} + a*dt)
     omega += (tau* inv_I) * MDpars.x; // ω += (τ/I) * dt
     omega *= MDpars.z;   // Apply damping (optional, but good for relaxation)
-    //u += cross(omega, u) * MDpars.x;  // Update orientation (integrate rotation) du/dt = ω × u - This is a simple but effective first-order integrator for rotation
+    u  = rotate_by_omega(u,omega);  // Update orientation (integrate rotation) du/dt = ω × u - This is a simple but effective first-order integrator for rotation
     u  = normalize(u); // Normalize to correct for numerical drift
     // Store updated values
     apos[iav].xyz = u;

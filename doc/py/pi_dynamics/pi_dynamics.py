@@ -40,19 +40,21 @@ def run_kernel(
     steps: int,
     dt: float,
     damping: float,
+    bRot: bool = True,
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     """Execute the sigma–pi simulation kernel and return history arrays."""
 
-    n_records = steps * 3
-    pos_host = np.zeros((n_records, 4), dtype=np.float32)
-    vel_host = np.zeros((n_records, 4), dtype=np.float32)
+    n_records  = steps * 3
+    pos_host   = np.zeros((n_records, 4), dtype=np.float32)
+    vel_host   = np.zeros((n_records, 4), dtype=np.float32)
     force_host = np.zeros((n_records, 4), dtype=np.float32)
 
-    pix=np.sqrt(2) / 2
+    pix = np.sqrt(2) / 2
+    bL0 = 1.5;
 
     # --- Initial conditions (first three entries are the live state)
     node_pos = np.array([0.0, 0.0, 0.0, 0.0], dtype=np.float32)
-    cap_pos  = np.array([1.0, 0.0, 0.0, 0.0], dtype=np.float32)
+    cap_pos  = np.array([bL0, 0.0, 0.0, 0.0], dtype=np.float32)
     pi_vec   = np.array([pix, pix, 0.0, 0.0], dtype=np.float32)
 
     pos_host[0] = node_pos
@@ -64,36 +66,23 @@ def run_kernel(
     vel_host[2] = np.array([0.0, 0.0, 0.0, 0.0], dtype=np.float32)
 
     mf = cl.mem_flags
-    pos_buf = cl.Buffer(queue.context, mf.READ_WRITE | mf.COPY_HOST_PTR, hostbuf=pos_host)
-    vel_buf = cl.Buffer(queue.context, mf.READ_WRITE | mf.COPY_HOST_PTR, hostbuf=vel_host)
+    pos_buf   = cl.Buffer(queue.context, mf.READ_WRITE | mf.COPY_HOST_PTR, hostbuf=pos_host)
+    vel_buf   = cl.Buffer(queue.context, mf.READ_WRITE | mf.COPY_HOST_PTR, hostbuf=vel_host)
     force_buf = cl.Buffer(queue.context, mf.READ_WRITE | mf.COPY_HOST_PTR, hostbuf=force_host)
 
-    evt = prg.simulate_sigma_pi_single(
-        queue,
-        (1,),
-        None,
-        pos_buf,
-        vel_buf,
-        force_buf,
-        np.float32(dt),
-        np.float32(damping),
-        np.int32(steps),
-    )
+    if bRot:
+        evt = prg.simulate_sigma_pi_rot( queue, (1,), None, pos_buf, vel_buf,force_buf, np.float32(dt), np.float32(damping), np.int32(steps),)
+    else:
+        evt = prg.simulate_sigma_pi    ( queue, (1,), None, pos_buf, vel_buf,force_buf, np.float32(dt), np.float32(damping), np.int32(steps),)
     evt.wait()
-
     cl.enqueue_copy(queue, pos_host, pos_buf).wait()
     cl.enqueue_copy(queue, vel_host, vel_buf).wait()
     cl.enqueue_copy(queue, force_host, force_buf).wait()
-
     return pos_host.reshape(steps, 3, 4), vel_host.reshape(steps, 3, 4), force_host.reshape(steps, 3, 4)
 
 
-def plot_results(pos: np.ndarray, vel: np.ndarray, force: np.ndarray, dt: float) -> None:
+def plot_results(pos: np.ndarray, vel: np.ndarray, force: np.ndarray, dt: float, label: str) -> None:
     steps = np.arange(pos.shape[0]) * dt
-
-    node_pos = pos  [:, 0, :3]
-    cap_pos  = pos  [:, 1, :3]
-    pi_vec   = pos  [:, 2, :3]
 
     energy   = pos  [:, 0, 3]
     torque   = force[:, 2, :3]
@@ -140,8 +129,8 @@ def plot_results(pos: np.ndarray, vel: np.ndarray, force: np.ndarray, dt: float)
     axes[2].set_title("Energy and torque magnitude")
     axes[2].legend(loc="upper right")
 
+    fig.suptitle(label)
     fig.tight_layout()
-    plt.show()
 
 
 def report_extrema(pos: np.ndarray, vel: np.ndarray, force: np.ndarray) -> None:
@@ -184,13 +173,13 @@ def write_xyz(path: Path, pos: np.ndarray) -> None:
             fh.write(f"H {cap[0]:.6f} {cap[1]:.6f} {cap[2]:.6f}\n")
             fh.write(f"E {pi_tip[0]:.6f} {pi_tip[1]:.6f} {pi_tip[2]:.6f}\n")
 
-
-def main() -> None:
+if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Run sigma–pi alignment OpenCL test and plot results.")
     parser.add_argument("--steps", type=int,   default=1000,      help="Number of integration steps")
     parser.add_argument("--dt",    type=float, default=0.01,      help="Integration time step")
     parser.add_argument("--damp",  type=float, default=1.0,       help="Damping factor applied each step")
     parser.add_argument("--xyz",   type=Path,  default="trj.xyz", help="Optional XYZ trajectory output path")
+    parser.add_argument("--rot",   type=bool,  default=True,      help="Enable rotational dynamics")
     args = parser.parse_args()
 
     kernel_path = Path(__file__).with_suffix(".cl")
@@ -199,7 +188,7 @@ def main() -> None:
     queue = cl.CommandQueue(ctx)
     program = build_program(ctx, kernel_path)
 
-    pos_hist, vel_hist, force_hist = run_kernel(program, queue, args.steps, args.dt, args.damp)
+    pos_hist, vel_hist, force_hist = run_kernel(program, queue, args.steps, args.dt, args.damp, args.rot)
 
     report_extrema(pos_hist, vel_hist, force_hist)
 
@@ -212,8 +201,8 @@ def main() -> None:
         write_xyz(args.xyz, pos_hist)
         print(f"Trajectory written to {args.xyz}")
 
-    plot_results(pos_hist, vel_hist, force_hist, args.dt)
+    plot_results( pos_hist, vel_hist, force_hist, args.dt, label=( "rot" if args.rot else "no_rot" )  )
 
+    plt.savefig("pi_dynamics.png")
 
-if __name__ == "__main__":
-    main()
+    plt.show()

@@ -407,39 +407,32 @@ class MolecularDynamics(OpenCLBase):
         self.queue.finish()
         return self.atoms.reshape(-1, 4), self.aforce.reshape(-1, 4)
     
-    def run_MD_step(self, do_clean=True, do_nb=False, do_mmff=True, use_rot=False, force_kernel='basic'):
-        """Run a single MD step with specified kernels - optimized version without string comparisons.
-        
-        Args:
-            do_clean: Run cleanForceMMFFf4 before forces
-            do_nb: Run getNonBond (non-bonded forces)
-            do_mmff: Run getMMFFf4 or getMMFFf4_rot (bonded forces)
-            use_rot: Use getMMFFf4_rot instead of getMMFFf4 for bonded forces
-            force_kernel: Which integrator to use - 'basic', 'rot', 'rattle', or 'none'
-        """
-        if do_clean:
-            self.prg.cleanForceMMFFf4(self.queue, self.sz_na, self.sz_loc, *self.kernel_args_cleanForceMMFFf4)
-        
-        if do_nb:
-            self.prg.getNonBond(self.queue, self.sz_na, self.sz_loc, *self.kernel_args_getNonBond)
-        
-        if do_mmff:
-            if use_rot:
-                self.prg.getMMFFf4_rot(self.queue, self.sz_node, self.sz_loc, *self.kernel_args_getMMFFf4_rot)
-            else:
-                self.prg.getMMFFf4(self.queue, self.sz_node, self.sz_loc, *self.kernel_args_getMMFFf4)
-        
-        # Update positions/velocities based on selected integrator
-        if force_kernel == 'rot':
-            self.prg.updateAtomsMMFFf4_rot(self.queue, self.sz_nvec, self.sz_loc, *self.kernel_args_updateAtomsMMFFf4_rot)
-        elif force_kernel == 'rattle':
-            self.prg.updateAtomsMMFFf4_RATTLE(self.queue, self.sz_nvec, self.sz_loc, *self.kernel_args_updateAtomsMMFFf4_RATTLE)
-        elif force_kernel == 'basic':
-            self.prg.updateAtomsMMFFf4(self.queue, self.sz_nvec, self.sz_loc, *self.kernel_args_updateAtomsMMFFf4)
-        elif force_kernel == 'none':
-            pass  # no update
-        
+    def run_step_basic(self, do_nb=False ):
+        """Run a single MD step using basic (non-rotational) force kernels."""
+        if do_nb: 
+            self.prg.getNonBond      (self.queue, self.sz_na,   self.sz_loc, *self.kernel_args_getNonBond)
+        else:
+            self.prg.cleanForceMMFFf4(self.queue, self.sz_na,   self.sz_loc, *self.kernel_args_cleanForceMMFFf4)
+        self.prg.getMMFFf4           (self.queue, self.sz_node, self.sz_loc, *self.kernel_args_getMMFFf4)
+        self.prg.updateAtomsMMFFf4   (self.queue, self.sz_nvec, self.sz_loc, *self.kernel_args_updateAtomsMMFFf4)
         self.queue.finish()
+
+    def run_step_rot(self, do_nb=False):
+        """Run a single MD step using rotational force and update kernels."""
+        if do_nb: 
+            self.prg.getNonBond       (self.queue, self.sz_na,   self.sz_loc, *self.kernel_args_getNonBond)
+        else:
+            self.prg.cleanForceMMFFf4 (self.queue, self.sz_na,   self.sz_loc, *self.kernel_args_cleanForceMMFFf4)
+        self.prg.getMMFFf4_rot        (self.queue, self.sz_node, self.sz_loc, *self.kernel_args_getMMFFf4_rot)
+        self.prg.updateAtomsMMFFf4_rot(self.queue, self.sz_nvec, self.sz_loc, *self.kernel_args_updateAtomsMMFFf4_rot)
+        self.queue.finish()
+
+    def run_MD_step(self, do_clean=True, do_nb=False, do_mmff=True, use_rot=False, force_kernel='basic'):
+        """Backward-compatible wrapper for previous API (deprecated)."""
+        if use_rot:
+            self.run_step_rot(do_clean=do_clean, do_nb=do_nb, do_mmff=do_mmff, integrator=force_kernel)
+        else:
+            self.run_step_basic(do_clean=do_clean, do_nb=do_nb, do_mmff=do_mmff, integrator=force_kernel)
 
     def download_results(self):
         self.fromGPU('apos',   self.atoms)
