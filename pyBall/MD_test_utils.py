@@ -16,11 +16,12 @@ MONITOR_PROPERTY_TYPES = {
     'Fcm': 'vector',
     'Tcm': 'vector',
     'Ekin': 'scalar',
+    'Ekin_rot': 'scalar',
     'Epot': 'scalar',
     'Etotal': 'scalar',
 }
 
-DEFAULT_MONITOR_PROPS = ['F', 'P', 'L', 'Rcm', 'Vcm', 'Ekin', 'Epot', 'Etotal']
+DEFAULT_MONITOR_PROPS = ['F', 'P', 'L', 'Rcm', 'Vcm', 'Ekin', 'Ekin_rot', 'Epot', 'Etotal']
 
 _ENERGY_CACHE = {
     'prev_vel': None,
@@ -113,40 +114,30 @@ def _estimate_true_velocity(avel_atoms, masses):
     return v_est
 
 
-def compute_energies(avel_atoms, masses, aforce_atoms_full, avel_pi=None, inertia_pi=None):
-    v = _estimate_true_velocity(avel_atoms, masses)   # use this with Leap-Frong integrator
+def compute_energies(avel_all, natoms, masses, aforce_atoms_full):
+    vel_atoms = np.asarray(avel_all[:natoms, :3], dtype=np.float32)
+    v = _estimate_true_velocity(vel_atoms, masses)   # use this with Leap-Frong integrator
+    #v = np.asarray(avel_atoms, dtype=np.float32)       # use this with Verlet integrator
     m = np.asarray(masses, dtype=np.float32).reshape(-1, 1)
     kin = 0.5 * m * (v * v).sum(axis=1, keepdims=True)
-    Ekin_trans = float(kin.sum())
-
-    Ekin_rot = 0.0
-    if avel_pi is not None:
-        omega = np.asarray(avel_pi, dtype=np.float32)
-        if omega.size:
-            if inertia_pi is None:
-                inertia = 1.0
-            else:
-                inertia = np.asarray(inertia_pi, dtype=np.float32)
-                if inertia.ndim == 0:
-                    inertia = float(inertia)
-            omega_sq = (omega * omega).sum(axis=1)
-            if isinstance(inertia, float):
-                Ekin_rot = 0.5 * inertia * float(np.sum(omega_sq))
-            else:
-                inertia_vec = inertia.reshape(-1)
-                if inertia_vec.shape[0] != omega_sq.shape[0]:
-                    raise ValueError("inertia_pi length does not match number of pi orbitals")
-                Ekin_rot = 0.5 * float(np.dot(inertia_vec, omega_sq))
-
-    Ekin = Ekin_trans + Ekin_rot
-
+    Ekin = float(kin.sum())
+    omega = np.asarray(avel_all[natoms:, :3], dtype=np.float32)
+    if omega.size:
+        omega_sq = (omega * omega).sum(axis=1)
+        if np.allclose(omega_sq, 0.0):
+            print(f"DEBUG Ekin_rot zero: max |omega|={float(np.max(np.abs(omega))):.3e} n_pi={omega.shape[0]}")
+        else:
+            print(f"DEBUG Ekin_rot stats: max |omega|={float(np.max(np.sqrt(omega_sq))):.3e} min |omega|={float(np.min(np.sqrt(omega_sq))):.3e} sum |omega|^2={float(np.sum(omega_sq)):.3e}")
+        Ekin_rot = 0.5 * float(np.sum(omega_sq))
+        Ekin += Ekin_rot
+    else:
+        Ekin_rot = 0.0
     af = np.asarray(aforce_atoms_full, dtype=np.float32)
     # Each kernel assigns interaction energy to both partners; divide by 2 to avoid double counting.
     Epot = float(af[:, 3].sum())
     return {
-        'Ekin_trans': Ekin_trans,
-        'Ekin_rot': Ekin_rot,
         'Ekin': Ekin,
+        'Ekin_rot': Ekin_rot,
         'Epot': Epot,
         'Etotal': Ekin + Epot,
     }
@@ -193,16 +184,33 @@ def summarize_monitor_series(series, props):
 
 
 def plot_monitor_series(series, props, show=True):
-    if not props:  return None, None
-    fig, axes = plt.subplots(len(props), 1, figsize=(8, 2.6 * len(props)), sharex=True)
+    if not props:
+        return None, None
+
+    display_props = []
+    for name in props:
+        if name == 'Ekin_rot' and 'Ekin' in props:
+            continue
+        display_props.append(name)
+
+    fig, axes = plt.subplots(len(display_props), 1, figsize=(8, 2.6 * len(display_props)), sharex=True)
     if isinstance(axes, np.ndarray):
         axes_list = list(axes.ravel())
     elif isinstance(axes, (list, tuple)):
         axes_list = list(axes)
     else:
         axes_list = [axes]
+
+    axes_map = {name: ax for name, ax in zip(display_props, axes_list)}
+    if 'Ekin' in axes_map and 'Ekin_rot' in props:
+        axes_map['Ekin_rot'] = axes_map['Ekin']
+
     steps = None
-    for ax, name in zip(axes_list, props):
+    used_axes = set()
+    for name in props:
+        ax = axes_map.get(name)
+        if ax is None:
+            continue
         data = series.get(name)
         if data is None:
             ax.set_visible(False)
@@ -218,8 +226,15 @@ def plot_monitor_series(series, props, show=True):
                 comp_label = comps[j] if j < len(comps) else str(j)
                 ax.plot(steps, data[:, j], label=f"{name}_{comp_label}")
             ax.legend(loc='best', fontsize=8)
-        ax.set_ylabel(name)
-        ax.grid(True, alpha=0.3)
+        if name == 'Ekin_rot' and 'Ekin' in props:
+            ax.plot(steps, data, label='Ekin_rot', linestyle='--')
+        if ax not in used_axes:
+            ax.set_ylabel(name)
+            ax.grid(True, alpha=0.3)
+            used_axes.add(ax)
+        if name in {'Ekin', 'Ekin_rot'}:
+            ax.legend(loc='best', fontsize=8)
+
     if axes_list:
         axes_list[-1].set_xlabel('step')
     fig.tight_layout()
@@ -424,15 +439,12 @@ def init_observers(record, monitor, monitor_props):
 def collect_diagnostics(md, mm, masses, record, monitor_enabled, monitor_props, totals_hist, monitor_data, trj):
     buf = fetch_arrays(md, mm)
     apos_step = buf['apos_atoms'].copy()
-    avel_step = buf['avel_atoms'].copy()
+    avel_all = buf['avel'][0, :, :]
+    avel_step = avel_all[:mm.natoms, :3].copy()
     afor_step = buf['afor_atoms'].copy()
     afor_full_step = buf['afor_atoms_full'].copy()
     totals = compute_totals(apos_step, avel_step, afor_step, masses=masses)
-    pi_count = max(mm.nvecs - mm.natoms, 0)
-    avel_pi = None
-    if pi_count > 0:
-        avel_pi = buf['avel'][0, mm.natoms:mm.natoms + pi_count, :3]
-    totals.update(compute_energies(avel_step, masses, afor_full_step, avel_pi=avel_pi))
+    totals.update(compute_energies(avel_all, mm.natoms, masses, afor_full_step))
     if totals_hist is not None:
         totals_hist.append(totals)
     if record:
