@@ -1,5 +1,6 @@
 import numpy as np
 import matplotlib.pyplot as plt
+from pathlib import Path
 
 from .OCL.MMFF import MMFF
 from .OCL.MolecularDynamics import MolecularDynamics
@@ -112,16 +113,39 @@ def _estimate_true_velocity(avel_atoms, masses):
     return v_est
 
 
-def compute_energies(avel_atoms, masses, aforce_atoms_full):
+def compute_energies(avel_atoms, masses, aforce_atoms_full, avel_pi=None, inertia_pi=None):
     v = _estimate_true_velocity(avel_atoms, masses)   # use this with Leap-Frong integrator
-    #v = np.asarray(avel_atoms, dtype=np.float32)       # use this with Verlet integrator
     m = np.asarray(masses, dtype=np.float32).reshape(-1, 1)
     kin = 0.5 * m * (v * v).sum(axis=1, keepdims=True)
-    Ekin = float(kin.sum())
+    Ekin_trans = float(kin.sum())
+
+    Ekin_rot = 0.0
+    if avel_pi is not None:
+        omega = np.asarray(avel_pi, dtype=np.float32)
+        if omega.size:
+            if inertia_pi is None:
+                inertia = 1.0
+            else:
+                inertia = np.asarray(inertia_pi, dtype=np.float32)
+                if inertia.ndim == 0:
+                    inertia = float(inertia)
+            omega_sq = (omega * omega).sum(axis=1)
+            if isinstance(inertia, float):
+                Ekin_rot = 0.5 * inertia * float(np.sum(omega_sq))
+            else:
+                inertia_vec = inertia.reshape(-1)
+                if inertia_vec.shape[0] != omega_sq.shape[0]:
+                    raise ValueError("inertia_pi length does not match number of pi orbitals")
+                Ekin_rot = 0.5 * float(np.dot(inertia_vec, omega_sq))
+
+    Ekin = Ekin_trans + Ekin_rot
+
     af = np.asarray(aforce_atoms_full, dtype=np.float32)
     # Each kernel assigns interaction energy to both partners; divide by 2 to avoid double counting.
     Epot = float(af[:, 3].sum())
     return {
+        'Ekin_trans': Ekin_trans,
+        'Ekin_rot': Ekin_rot,
         'Ekin': Ekin,
         'Epot': Epot,
         'Etotal': Ekin + Epot,
@@ -255,6 +279,28 @@ def fetch_arrays(md, mm):
     }
     return {'apos': apos, 'aforce': aforce, 'avel': avel, 'fneigh': fng, 'cvf': cvf, **atoms}
 
+
+def write_xyz_trajectory(path, trj_atoms, symbols):
+    """Write trajectory frames to XYZ.
+
+    Args:
+        path: output file path (str or Path)
+        trj_atoms: array of shape (steps, natoms, 3)
+        symbols: iterable of length natoms with atomic symbols
+    """
+
+    path = Path(path)
+    nsteps, natoms, _ = trj_atoms.shape
+    if len(symbols) != natoms:  raise ValueError(f"symbols length {len(symbols)} does not match natoms {natoms}")
+
+    with path.open('w') as fh:
+        for step in range(nsteps):
+            fh.write(f"{natoms}\n")
+            fh.write(f"step {step}\n")
+            coords = trj_atoms[step]
+            for sym, (x, y, z) in zip(symbols, coords):
+                fh.write(f"{sym} {x:.6f} {y:.6f} {z:.6f}\n")
+
 def compute_totals(apos_atoms, avel_atoms, aforce_atoms, masses=None, origin=None):
     """
     Compute global conservation diagnostics for a single frame.
@@ -382,7 +428,11 @@ def collect_diagnostics(md, mm, masses, record, monitor_enabled, monitor_props, 
     afor_step = buf['afor_atoms'].copy()
     afor_full_step = buf['afor_atoms_full'].copy()
     totals = compute_totals(apos_step, avel_step, afor_step, masses=masses)
-    totals.update(compute_energies(avel_step, masses, afor_full_step))
+    pi_count = max(mm.nvecs - mm.natoms, 0)
+    avel_pi = None
+    if pi_count > 0:
+        avel_pi = buf['avel'][0, mm.natoms:mm.natoms + pi_count, :3]
+    totals.update(compute_energies(avel_step, masses, afor_full_step, avel_pi=avel_pi))
     if totals_hist is not None:
         totals_hist.append(totals)
     if record:
@@ -455,28 +505,22 @@ def overlay_bonds(mol, frame, plot_dim, labels=None):
     plotBonds(links=links, ps=frame, axes=axes, colors='k', lws=1.5)
 
 
-def finalize_recording(record, trj, mol, save_trj, plot, plot_dim, plot_label_mode, save_plot, plot_bonds):
-    if not (record and trj): return None
-    trj_arr = np.stack(trj, axis=0)
-    if save_trj:
-        np.save(save_trj, trj_arr)
-        print(f"Saved trajectory to {save_trj} with shape {trj_arr.shape}")
-    if not plot:
-        return trj_arr
-    labels = None
-    if plot_label_mode == 'number':
-        labels = [str(i) for i in range(trj_arr.shape[1])]
-    elif plot_label_mode == 'type' and getattr(mol, 'enames', None) is not None:
-        labels = mol.enames
-    fig, _ = plot_trajectories(trj_arr, dim=plot_dim, labels=labels, title=f'Trajectories ({plot_dim})', save_path=None, show=False)
-    if plot_bonds:
-        overlay_bonds(mol, trj_arr[-1], plot_dim, labels=labels)
-    if save_plot and fig is not None:
-        fig.savefig(save_plot, dpi=150)
-        print(f"Saved plot to {save_plot}")
-    else:
-        plt.show()
-    return trj_arr
+# def finalize_recording(record, trj, mol, save_trj, plot, plot_dim, plot_label_mode, plot_bonds, plot_title=None):
+#     if not (record and trj): return None, None
+#     trj_arr = np.stack(trj, axis=0)
+#     if save_trj:
+#         np.save(save_trj, trj_arr)
+#         print(f"Saved trajectory to {save_trj} with shape {trj_arr.shape}")
+#     if not plot:  return trj_arr, None
+#     labels = None
+#     if plot_label_mode == 'number':
+#         labels = [str(i) for i in range(trj_arr.shape[1])]
+#     elif plot_label_mode == 'type' and getattr(mol, 'enames', None) is not None:
+#         labels = mol.enames
+#     fig, _ = plot_trajectories(trj_arr, dim=plot_dim, labels=labels, title=f'Trajectories ({plot_dim})', save_path=None, show=False)
+#     if fig is not None and plot_title:  fig.suptitle(plot_title, fontsize=12)
+#     if plot_bonds:  overlay_bonds(mol, trj_arr[-1], plot_dim, labels=labels)
+#     return trj_arr, fig
 
 
 def finalize_monitoring(monitor_enabled, monitor_data, monitor_props, monitor_save_data, monitor_plot, monitor_save):

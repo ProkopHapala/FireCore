@@ -70,8 +70,9 @@ if __name__ == '__main__':
     ap.add_argument('--record',       type=int,   default=1, help='Record trajectory and totals each step')
     ap.add_argument('--plot',         type=int,   default=0, help='Plot trajectories')
     ap.add_argument('--plot-dim',     type=str,   default='xy', choices=['xy','xz','yz'], help='Projection for plotting')
-    ap.add_argument('--save-plot',    type=str,   default=None, help='Path to save trajectory plot (png)')
+    ap.add_argument('--save-plot',    type=str,   default="invarants.png", help='Path to save trajectory plot (png)')
     ap.add_argument('--save-trj',     type=str,   default=None, help='Path to save trajectory (npy)')
+    ap.add_argument('--save-xyz',     type=str,   default="trj.xyz", help='Path to save trajectory (xyz)')
     ap.add_argument('--plot-bonds',   type=int,   default=1, help='Overlay molecule bonds on trajectory plot')
     ap.add_argument('--subtract-vdw', type=int,   default=0, help='Subtract bonded LJ contributions inside getMMFFf4 (requires non-bonded forces)')
     ap.add_argument('--plot-labels',  type=str,   default='number', choices=['none','number','type'], help='Annotate atoms when plotting trajectories')
@@ -98,34 +99,14 @@ if __name__ == '__main__':
     axis_map = {'x':0, 'y':1, 'z':2}
 
     if args.scan:
-        mol, mm, md = configure_md(
-            mol_path,
-            args.dt,
-            args.damp,
-            args.flim,
-            bool(args.subtract_vdw),
-            args.drive_temp,
-            args.drive_gamma,
-            args.drive_seed,
-            print_params=bool(args.print_params),
-        )
+        mol, mm, md = configure_md( mol_path, args.dt,args.damp, args.flim,  bool(args.subtract_vdw),  args.drive_temp, args.drive_gamma, args.drive_seed, print_params=bool(args.print_params), )
         scan = scan_energy_force(mm, md, atom_index=args.scan_atom, axis=axis_map[args.scan_axis], dx=args.scan_dx, nsamp=args.scan_nsamp, restore=True, do_nb=bool(args.do_nb))
         stats = scan['diff_stats']
         print(f"Scan stats: energy[{stats['energy_min']:.6e}, {stats['energy_max']:.6e}] force[{stats['force_min']:.6e}, {stats['force_max']:.6e}] diff_min={stats['diff_min']:.6e} diff_max={stats['diff_max']:.6e} diff_rms={stats['diff_rms']:.6e}")
         plot_energy_force_scan(scan, axis_label=f"{args.scan_axis}-displacement", show=bool(args.scan_show), save_path=args.scan_save)
         sys.exit(0)
 
-    mol, mm, md = configure_md(
-        mol_path,
-        args.dt,
-        args.damp,
-        args.flim,
-        bool(args.subtract_vdw),
-        args.drive_temp,
-        args.drive_gamma,
-        args.drive_seed,
-        print_params=bool(args.print_params),
-    )
+    mol, mm, md = configure_md( mol_path,args.dt, args.damp, args.flim, bool(args.subtract_vdw), args.drive_temp,args.drive_gamma,args.drive_seed, print_params=bool(args.print_params), )
     masses = get_atom_masses(mol, use_real=args.use_real_mass)
     monitor_props, monitor_enabled, totals_hist, monitor_data, trj = init_observers(args.record, args.monitor, monitor_props)
 
@@ -140,7 +121,33 @@ if __name__ == '__main__':
     buf = fetch_arrays(md, mm)
     dump_buffers(buf, print_stats=args.print_stats, print_arrays=args.print_arrays)
     report_conservation(totals_hist, args.steps, args.record)
-    trj_arr = finalize_recording(args.record, trj, mol, args.save_trj, args.plot, args.plot_dim, args.plot_labels, args.save_plot, args.plot_bonds)
+    mode_label = "rotational" if args.rot_dyn else "basic"
+    mol_label = os.path.basename(mol_path)
+    plot_title = f"{mol_label} – {mode_label} dynamics"
+    trj_arr = None
+    if args.record and trj:
+        trj_arr = np.stack(trj, axis=0)
+        if args.save_trj:
+            np.save(args.save_trj, trj_arr)
+            print(f"Saved trajectory to {args.save_trj} with shape {trj_arr.shape}")
+        want_plot = (args.plot or bool(args.save_plot))
+        if want_plot:
+            labels = None
+            if   args.plot_labels == 'number':  labels = [str(i) for i in range(trj_arr.shape[1])]
+            elif args.plot_labels == 'type' and getattr(mol, 'enames', None) is not None:   labels = mol.enames
+            fig, _ = plot_trajectories(trj_arr, dim=args.plot_dim, labels=labels, title=f'Trajectories ({args.plot_dim})', save_path=None, show=False)
+            if fig is not None and plot_title: fig.suptitle(plot_title, fontsize=12)
+            if args.plot_bonds: overlay_bonds(mol, trj_arr[-1], args.plot_dim, labels=labels)
+            if args.save_plot:
+                fig.savefig(args.save_plot, dpi=150)
+                print(f"Saved plot to {args.save_plot}")
+            if args.plot: plt.show()
+            else:        plt.close(fig)
+    elif args.plot or args.save_trj or args.save_plot:   print("No trajectory recorded; skipping plot/trajectory export.")
+
+    if args.save_xyz and trj_arr is not None:
+        symbols = mol.enames[:mm.natoms]
+        write_xyz_trajectory(args.save_xyz, trj_arr[:, :mm.natoms, :], symbols)
     finalize_monitoring(monitor_enabled, monitor_data, monitor_props, args.save_monitor_data, args.monitor_plot, args.save_monitor)
 
     apos, aforce = buf['apos'], buf['aforce']

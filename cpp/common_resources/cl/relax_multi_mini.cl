@@ -106,7 +106,7 @@ float2 sinc_div_r2_taylor(float r2){
     return (float2){s, c};
 }
 
-// Pure-Taylor rotate (no sqrt). Good for small angles (e.g. |theta| < ~0.5...1.0)
+// Pure-Taylor rotate (no sqrt). Good for small angles (e.g. |theta| < ~0.5...1.0) using Rodrigues formula (https://en.wikipedia.org/wiki/Rodrigues%27_rotation_formula) https://en.wikipedia.org/wiki/Euler%E2%80%93Rodrigues_formula
 float3 rotate_by_omega_taylor(float3 p, float3 w){
     float r2    = dot(w,w);
     float2 sc   = sinc_div_r2_taylor(r2); // sc.x = s, sc.y = c
@@ -2106,25 +2106,17 @@ const float dt = MDpars.x;
 float3 u_old = pe.xyz;
 cvf[iav] += (float4){ dot(fe.xyz,fe.xyz), dot(ve.xyz,ve.xyz), dot(fe.xyz,ve.xyz), 0.0f };
 if (bPi){   // ROTATIONAL DYNAMICS FOR PI-ORBITAL
-    float3 u     = pe.xyz; // Current orientation u
-    float3 omega = ve.xyz; // Current angular velocity ω
-    float3 tau   = fe.xyz; // Torque τ from force kernel
     float inv_I  = 1.0;    // Moment of inertia I
-    // Integrate angular velocity (Leap-frog style: v_{t+1/2} = v_{t-1/2} + a*dt)
-    omega += (tau* inv_I) * MDpars.x; // ω += (τ/I) * dt
-    omega *= MDpars.z;   // Apply damping (optional, but good for relaxation)
-    u  = rotate_by_omega(u,omega);  // Update orientation (integrate rotation) du/dt = ω × u - This is a simple but effective first-order integrator for rotation
-    u  = normalize(u); // Normalize to correct for numerical drift
-    // Store updated values
-    apos[iav].xyz = u;
-    apos[iav].w = 0.0f; // Keep w clean
-}else{
-    // ------ Integrate (Leap-Frog style you already use)
+    ve.xyz *= MDpars.z;   // Apply damping (optional, but good for relaxation)
+    ve.xyz += (fe.xyz* inv_I) * MDpars.x; // ω += (τ/I) * dt
+    //pe.xyz  = rotate_by_omega( pe.xyz, ve.xyz*dt);  // Update orientation (integrate rotation) du/dt = ω × u - This is a simple but effective first-order integrator for rotation
+    pe.xyz  = rotate_by_omega_taylor( pe.xyz, ve.xyz*dt); 
+    pe.xyz  = normalize(pe.xyz); // Normalize to correct for numerical drift
+}else{// ------ Integrate (Leap-Frog style you already use)
     ve.xyz *= MDpars.z;           // damping (note: breaks strict momentum conservation)
     ve.xyz += fe.xyz * dt;        // v' = v + a dt
-    float3 qprime = pe.xyz + ve.xyz * dt; // provisional position/orientation
+    pe.xyz += ve.xyz * dt; // provisional position/orientation
 }
-
 pe.w = 0.0f; ve.w = 0.0f;
 avel[iav] = ve;   // store corrected velocity  // Assuming 'avel' for pi-orbitals is now repurposed to store omega
 apos[iav] = (float4){ pe.xyz, 0.0f }; // store corrected orientation
