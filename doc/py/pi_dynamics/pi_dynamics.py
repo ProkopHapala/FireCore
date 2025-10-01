@@ -175,7 +175,7 @@ def write_xyz(path: Path, pos: np.ndarray) -> None:
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Run sigma–pi alignment OpenCL test and plot results.")
-    parser.add_argument("--steps", type=int,   default=1000,      help="Number of integration steps")
+    parser.add_argument("--steps", type=int,   default=10000,      help="Number of integration steps")
     parser.add_argument("--dt",    type=float, default=0.01,      help="Integration time step")
     parser.add_argument("--damp",  type=float, default=1.0,       help="Damping factor applied each step")
     parser.add_argument("--xyz",   type=Path,  default="trj.xyz", help="Optional XYZ trajectory output path")

@@ -998,13 +998,12 @@ __kernel void getMMFFf4_rot(
                 // }
             } 
 
-
             // pi-sigma othogonalization interaction
             float ksp = Kspi[i];
             if(ksp>1.e-6f){  
                 float esp = evalAngCos( (float4){hpi,1.f}, h, ksp, par.w, &f1, &f2 );   //   pi-planarization (orthogonality), fpi is force on pi-orbital, fbs[i] is recoil force on i-th neighbor   
                 fa-=f2;  fbs[i]+=f2; E+=esp;    
-                fpi+=cross(hpi.xyz, f1);  //   for rotational dynamics
+                fpi+=cross(hpi.xyz, f1);  //  torq on pi-oribtal
                 //if((iG==iGdbg)&&(iS==iSdbg)){ printf("OCL::etMMFFf4(): cos(pi,sigma):      iG %3i ing %3i esp %10.5f f1(%10.5f,%10.5f,%10.5f) c %10.5f ksp %10.5f par.w %10.5f \n", iG, ing, esp, f1.x, f1.y, f1.z, dot(hpi.xyz,h.xyz), ksp, par.w ); }
             }
             
@@ -2107,14 +2106,14 @@ float3 u_old = pe.xyz;
 cvf[iav] += (float4){ dot(fe.xyz,fe.xyz), dot(ve.xyz,ve.xyz), dot(fe.xyz,ve.xyz), 0.0f };
 if (bPi){   // ROTATIONAL DYNAMICS FOR PI-ORBITAL
     float inv_I  = 1.0;    // Moment of inertia I
-    ve.xyz *= MDpars.z;   // Apply damping (optional, but good for relaxation)
+    //ve.xyz *= MDpars.z;   // Apply damping (optional, but good for relaxation)
     ve.xyz += (fe.xyz* inv_I) * MDpars.x; // ω += (τ/I) * dt
-    //pe.xyz  = rotate_by_omega( pe.xyz, ve.xyz*dt);  // Update orientation (integrate rotation) du/dt = ω × u - This is a simple but effective first-order integrator for rotation
-    pe.xyz  = rotate_by_omega_taylor( pe.xyz, ve.xyz*dt); 
+    pe.xyz  = rotate_by_omega( pe.xyz, ve.xyz*dt);  // rotate p by omega*dt
+    //pe.xyz  = rotate_by_omega_taylor( pe.xyz, ve.xyz*dt); 
     pe.xyz  = normalize(pe.xyz); // Normalize to correct for numerical drift
-    printf( "GPU updateAtomsMMFFf4_rot() omega[iS=%3i,iG=%3i] ve(%12.4e,%12.4e,%12.4e | %12.4e)  fe(%12.4e,%12.4e,%12.4e | %12.4e) \n", iS, iG, ve.x,ve.y,ve.z, length(ve.xyz), fe.x, fe.y, fe.z,  length(fe.xyz) );
+    //printf( "GPU updateAtomsMMFFf4_rot() omega[iS=%3i,iG=%3i] ve(%12.4e,%12.4e,%12.4e | %12.4e)  fe(%12.4e,%12.4e,%12.4e | %12.4e) \n", iS, iG, ve.x,ve.y,ve.z, length(ve.xyz), fe.x, fe.y, fe.z,  length(fe.xyz) );
 }else{// ------ Integrate (Leap-Frog style you already use)
-    ve.xyz *= MDpars.z;           // damping (note: breaks strict momentum conservation)
+    //ve.xyz *= MDpars.z;           // damping (note: breaks strict momentum conservation)
     ve.xyz += fe.xyz * dt;        // v' = v + a dt
     pe.xyz += ve.xyz * dt; // provisional position/orientation
 }

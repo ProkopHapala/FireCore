@@ -29,6 +29,7 @@ from pyBall.MD_test_utils import *
 np.set_printoptions(linewidth=np.inf)
 
 DATA_MOL = os.path.join(BASE, 'cpp/common_resources/mol/formic_acid.mol2')
+#DATA_MOL = os.path.join(BASE, 'cpp/common_resources/mol/CH.mol2')
 #DATA_MOL = os.path.join(BASE, 'cpp/common_resources/mol/methanol.mol2')
 
 """
